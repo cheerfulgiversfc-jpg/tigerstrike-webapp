@@ -1,0 +1,158 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tiger Strike 🐅</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body{margin:0;background:#0b0d12;color:#f5f7ff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial}
+    .wrap{max-width:720px;margin:0 auto;padding:16px}
+    .card{background:#121622;border:1px solid #2a3145;border-radius:14px;padding:14px;margin:12px 0}
+    .title{font-size:28px;font-weight:800}
+    .sub{opacity:.7;font-size:13px;margin-top:4px}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .stat{background:#0f1320;border:1px solid #232a3e;border-radius:12px;padding:10px}
+    .label{opacity:.7;font-size:12px}
+    .value{font-weight:800;margin-top:6px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    button{border-radius:12px;border:1px solid #3a4566;background:#1a2031;color:#fff;padding:12px;font-weight:800}
+    button:disabled{opacity:.45}
+    .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+      background:#101626;border:1px solid #2a3145;padding:10px 12px;border-radius:12px;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <div class="title">Tiger Strike 🐅</div>
+      <div class="sub">Telegram Mini App MVP • @TigerStrike_bot</div>
+    </div>
+
+    <div class="card">
+      <div class="stats">
+        <div class="stat"><div class="label">Lives</div><div class="value" id="lives"></div></div>
+        <div class="stat"><div class="label">Funds</div><div class="value" id="funds"></div></div>
+        <div class="stat"><div class="label">Score</div><div class="value" id="score"></div></div>
+      </div>
+      <div style="height:10px"></div>
+      <div class="stats">
+        <div class="stat"><div class="label">Trust</div><div class="value" id="trust"></div></div>
+        <div class="stat"><div class="label">Aggro</div><div class="value" id="aggro"></div></div>
+        <div class="stat"><div class="label">Intel</div><div class="value" id="intel"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <b>1) Deploy</b><div class="sub">Choose a region.</div>
+      <div class="grid" style="margin-top:10px">
+        <button onclick="setRegion('Downtown')">🏙️ Downtown</button>
+        <button onclick="setRegion('Suburbs')">🏘️ Suburbs</button>
+        <button onclick="setRegion('Forest Edge')">🌲 Forest Edge</button>
+        <button onclick="setRegion('Industrial')">🏭 Industrial</button>
+      </div>
+      <div class="sub" style="margin-top:10px">Current region: <b id="region">None</b></div>
+    </div>
+
+    <div class="card">
+      <b>2) Intel</b><div class="sub">Scan until WARM or HOT.</div>
+      <div class="grid" style="margin-top:10px">
+        <button onclick="scan()">🛰️ Scan</button>
+        <button onclick="clearIntel()">🧹 Clear Intel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <b>3) Engage</b><div class="sub">Engage only on WARM/HOT.</div>
+      <div class="grid" style="margin-top:10px">
+        <button id="capBtn" onclick="engage('CAPTURE')">💉 Capture</button>
+        <button id="killBtn" onclick="engage('KILL')">🔫 Kill</button>
+        <button onclick="engage('RETREAT')">💨 Retreat</button>
+        <button onclick="resetGame()">🔁 Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" style="display:none"></div>
+
+<script>
+  const tg = window.Telegram?.WebApp;
+  if (tg) { tg.expand(); tg.ready(); }
+
+  const DEFAULT = { region:null, lives:5, funds:120, score:0, trust:80, aggro:10, intel:null };
+  let state = JSON.parse(localStorage.getItem("ts_state") || "null") || DEFAULT;
+
+  function save(){ localStorage.setItem("ts_state", JSON.stringify(state)); render(); }
+  function toast(msg){
+    const t=document.getElementById("toast");
+    t.innerText=msg; t.style.display="block";
+    setTimeout(()=>t.style.display="none", 2000);
+  }
+
+  function render(){
+    document.getElementById("region").innerText = state.region || "None";
+    document.getElementById("lives").innerText = `❤️ ${state.lives}/5`;
+    document.getElementById("funds").innerText = `💰 ${state.funds}`;
+    document.getElementById("score").innerText = `⭐ ${state.score}`;
+    document.getElementById("trust").innerText = `🏛️ ${state.trust}/100`;
+    document.getElementById("aggro").innerText = `🔥 ${state.aggro}/100`;
+    document.getElementById("intel").innerText = state.intel || "—";
+    const canEngage = state.region && (state.intel==="WARM" || state.intel==="HOT");
+    document.getElementById("capBtn").disabled = !canEngage;
+    document.getElementById("killBtn").disabled = !canEngage;
+  }
+
+  function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
+  function setRegion(r){ state.region=r; state.intel=null; save(); toast(`Deployed to ${r}. Scan for intel.`); }
+
+  function pickIntel(){
+    const r=Math.random();
+    if (r<0.45) return "COLD";
+    if (r<0.80) return "WARM";
+    return "HOT";
+  }
+
+  function scan(){
+    if(!state.region) return toast("Pick a region first.");
+    state.intel = pickIntel(); save(); toast(`Scan: ${state.intel}`);
+  }
+
+  function clearIntel(){ state.intel=null; save(); toast("Intel cleared."); }
+
+  function engage(mode){
+    if(!state.region) return toast("Pick a region first.");
+    const can = (state.intel==="WARM" || state.intel==="HOT");
+    if(mode!=="RETREAT" && !can) return toast("Scan until WARM/HOT.");
+    if(mode==="RETREAT"){ state.intel=null; save(); return toast("Retreated safely."); }
+
+    const threat = state.intel==="HOT" ? 0.65 : 0.45;
+    const failed = Math.random() < threat;
+
+    if(failed){
+      state.lives = Math.max(0, state.lives-1);
+      state.trust = clamp(state.trust-5,0,100);
+      state.aggro = clamp(state.aggro+6,0,100);
+      state.intel=null; save();
+      return toast("FAILED — Lost 1 life.");
+    }
+
+    if(mode==="CAPTURE"){
+      state.funds += 80; state.score += 150;
+      state.trust = clamp(state.trust+6,0,100);
+      state.aggro = clamp(state.aggro-8,0,100);
+      state.intel=null; save();
+      return toast("CAPTURED ✅");
+    } else {
+      state.funds += 40; state.score += 70;
+      state.trust = clamp(state.trust-4,0,100);
+      state.aggro = clamp(state.aggro+14,0,100);
+      state.intel=null; save();
+      return toast("ELIMINATED ⚠️");
+    }
+  }
+
+  function resetGame(){ state = {...DEFAULT}; save(); toast("Reset."); }
+  render();
+</script>
+</body>
+</html>
