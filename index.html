@@ -3,110 +3,67 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Tiger Strike 🐅</title>
-
-  <!-- Telegram Mini App SDK -->
+  <title>Tiger Strike 🐅 — v2</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <style>
     :root{
-      --bg:#0b0d12;
-      --panel:#121622;
-      --panel2:#0f1320;
-      --border:#2a3145;
-      --border2:#232a3e;
-      --btn:#1a2031;
-      --btnBorder:#3a4566;
-      --text:#f5f7ff;
-      --muted:rgba(245,247,255,.72);
-      --good:#4ade80;
-      --warn:#f59e0b;
-      --bad:#fb7185;
+      --bg:#0b0d12; --panel:#121622; --panel2:#0f1320;
+      --border:#2a3145; --border2:#232a3e;
+      --btn:#1a2031; --btnBorder:#3a4566;
+      --text:#f5f7ff; --muted:rgba(245,247,255,.72);
+      --good:#4ade80; --warn:#f59e0b; --bad:#fb7185;
       --shadow: 0 14px 40px rgba(0,0,0,.35);
     }
     *{box-sizing:border-box}
-    body{
-      margin:0;background:var(--bg);color:var(--text);
-      font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial;
-    }
-    .wrap{max-width:920px;margin:0 auto;padding:14px 14px 86px}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial}
+    .wrap{max-width:920px;margin:0 auto;padding:14px 14px 94px}
     .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-top:4px}
     .title{font-size:28px;font-weight:900;letter-spacing:.2px}
     .sub{opacity:.78;font-size:13px;margin-top:4px;line-height:1.25}
 
     .chiprow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    .chip{
-      background:var(--panel2);border:1px solid var(--border2);
-      padding:8px 10px;border-radius:999px;font-size:13px;font-weight:900
-    }
+    .chip{background:var(--panel2);border:1px solid var(--border2);padding:8px 10px;border-radius:999px;font-size:13px;font-weight:900}
     .chip small{opacity:.7;font-weight:800}
 
-    .card{
-      background:var(--panel);border:1px solid var(--border);
-      border-radius:14px;padding:14px;margin:12px 0;
-    }
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin:12px 0}
     .sectionTitle{font-weight:900;margin:0 0 6px;font-size:16px}
     .hint{color:var(--muted);font-size:13px;line-height:1.35}
-
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
     .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    button{
-      border-radius:12px;border:1px solid var(--btnBorder);
-      background:var(--btn);color:#fff;padding:12px 12px;
-      font-weight:900;font-size:14px;cursor:pointer;
-    }
+    button{border-radius:12px;border:1px solid var(--btnBorder);background:var(--btn);color:#fff;padding:12px 12px;font-weight:900;font-size:14px;cursor:pointer}
     button:disabled{opacity:.45;cursor:not-allowed}
     .ghost{background:transparent}
     .danger{border-color:#7f1d1d;background:#2a0f13}
     .good{border-color:#14532d;background:#0f2416}
     .warn{border-color:#7c2d12;background:#2b140d}
-
     .divider{height:1px;background:var(--border);margin:12px 0}
-
-    .log{
-      max-height:220px;overflow:auto;border:1px solid var(--border2);
-      background:var(--panel2);border-radius:12px;padding:10px
-    }
-    .logline{font-size:13px;line-height:1.35;color:var(--muted);margin:6px 0}
     .pill{padding:2px 8px;border-radius:999px;border:1px solid var(--border2);background:#0b0d12}
 
-    .toast{
-      position:fixed;left:50%;bottom:82px;transform:translateX(-50%);
-      background:#101626;border:1px solid var(--border);padding:10px 12px;border-radius:12px;
-      font-size:13px;box-shadow:var(--shadow);display:none;max-width:92vw;z-index:50
-    }
+    .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#101626;border:1px solid var(--border);padding:10px 12px;border-radius:12px;font-size:13px;box-shadow:var(--shadow);display:none;max-width:92vw;z-index:50}
 
-    /* Bottom Nav */
-    .nav{
-      position:fixed;left:0;right:0;bottom:0;
-      background:rgba(11,13,18,.92);
-      border-top:1px solid var(--border);
-      backdrop-filter: blur(10px);
-      padding:10px 10px 14px;
-      z-index:60;
-    }
-    .navInner{max-width:920px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
-    .navBtn{
-      padding:10px 8px;border-radius:12px;border:1px solid var(--border2);
-      background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px;
-    }
+    .nav{position:fixed;left:0;right:0;bottom:0;background:rgba(11,13,18,.92);border-top:1px solid var(--border);backdrop-filter: blur(10px);padding:10px 10px 14px;z-index:60}
+    .navInner{max-width:920px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+    .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn.active{border-color:#5670b8;background:#1a2031}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
 
-    /* Screen switching */
     .screen{display:none}
     .screen.active{display:block}
 
-    /* Shop list */
-    .item{
-      display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
-      border:1px solid var(--border2);background:var(--panel2);border-radius:12px;padding:12px;margin-top:10px
-    }
+    .meter{border:1px solid var(--border2);background:var(--panel2);border-radius:12px;padding:10px;margin-top:10px}
+    .bar{height:10px;background:#0b0d12;border:1px solid var(--border2);border-radius:999px;overflow:hidden;margin-top:6px}
+    .fill{height:100%;background:#3a78ff;width:50%}
+
+    .log{max-height:220px;overflow:auto;border:1px solid var(--border2);background:var(--panel2);border-radius:12px;padding:10px}
+    .logline{font-size:13px;line-height:1.35;color:var(--muted);margin:6px 0}
+
+    .item{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border:1px solid var(--border2);background:var(--panel2);border-radius:12px;padding:12px;margin-top:10px}
     .itemName{font-weight:950}
     .itemDesc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
     .price{font-weight:950}
     .small{font-size:12px;color:var(--muted)}
-    a{color:#9bd1ff}
+    .tag{display:inline-block;margin-left:8px;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;border:1px solid var(--border2);background:#0b0d12;color:var(--muted)}
   </style>
 </head>
 
@@ -114,25 +71,26 @@
   <div class="wrap">
     <div class="top">
       <div>
-        <div class="title">Tiger Strike 🐅</div>
+        <div class="title">Tiger Strike 🐅 <span class="pill">v2</span></div>
         <div class="sub">
-          Mini App for <b>@TigerStrike_bot</b><br>
-          Capture earns more • Kill raises aggression + retaliation risk
+          Missions • Loadout • Pack Types • Events • Stamina<br>
+          Capture earns more • Kill escalates aggression + retaliation
         </div>
       </div>
       <div class="row" style="justify-content:flex-end;margin-top:0">
+        <button class="ghost" onclick="shareCard()">📣</button>
         <button class="ghost" onclick="openHelp()">❓</button>
         <button class="ghost" onclick="openSettings()">⚙️</button>
       </div>
     </div>
 
-    <!-- Quick Stats Chips -->
     <div class="chiprow">
       <div class="chip">❤️ <span id="livesChip"></span><small>/5</small></div>
       <div class="chip">💰 <span id="fundsChip"></span></div>
       <div class="chip">⭐ <span id="scoreChip"></span></div>
       <div class="chip">🏛️ <span id="trustChip"></span><small>/100</small></div>
       <div class="chip">🔥 <span id="aggroChip"></span><small>/100</small></div>
+      <div class="chip">⚡ <span id="staminaChip"></span><small>/100</small></div>
       <div class="chip">🎖️ L<span id="levelChip"></span></div>
       <div class="chip">📍 <span id="regionChip"></span></div>
       <div class="chip">🛰️ <span id="intelChip"></span></div>
@@ -141,13 +99,12 @@
     <!-- HOME -->
     <div class="screen active" id="screen-home">
       <div class="card">
-        <div class="sectionTitle">Command Center</div>
-        <div class="hint">
-          Tap the tabs below to navigate. This version uses <b>no popups</b> (so it works on iPhone every time).
-        </div>
-        <div class="divider"></div>
-        <div class="small">
-          Quick Start: <span class="pill">Deploy</span> → <span class="pill">Intel</span> → <span class="pill">Engage</span> → <span class="pill">Shop</span>
+        <div class="sectionTitle">Today’s Missions</div>
+        <div class="hint">Complete missions to earn bonus funding and unlock gear faster.</div>
+        <div id="missionsBox"></div>
+        <div class="row">
+          <button onclick="rollMissions()">🔄 New Missions</button>
+          <button class="ghost" onclick="claimMissionRewards()">🎯 Claim Completed</button>
         </div>
       </div>
 
@@ -156,7 +113,7 @@
         <div class="hint">Last 20 events.</div>
         <div class="log" id="logBox"></div>
         <div class="row" style="justify-content:flex-end">
-          <button class="danger" onclick="resetGame()">🔁 Reset Game</button>
+          <button class="danger" onclick="resetGame()">🔁 Reset</button>
         </div>
       </div>
     </div>
@@ -165,20 +122,15 @@
     <div class="screen" id="screen-deploy">
       <div class="card">
         <div class="sectionTitle">Deploy</div>
-        <div class="hint">Pick a region to start hunting.</div>
-
+        <div class="hint">Pick a region. Each region has different citizen risk and pack behavior.</div>
         <div class="grid">
           <button onclick="setRegion('Downtown')">🏙️ Downtown</button>
           <button onclick="setRegion('Suburbs')">🏘️ Suburbs</button>
           <button onclick="setRegion('Forest Edge')">🌲 Forest Edge</button>
           <button onclick="setRegion('Industrial')">🏭 Industrial</button>
         </div>
-
         <div class="divider"></div>
-        <div class="hint">
-          Downtown = highest citizen risk (trust drops faster on failures).<br>
-          Forest Edge = more tiger activity (good capture farming).
-        </div>
+        <div class="hint" id="regionHeatInfo"></div>
       </div>
     </div>
 
@@ -186,15 +138,15 @@
     <div class="screen" id="screen-intel">
       <div class="card">
         <div class="sectionTitle">Intel / Scan</div>
-        <div class="hint">
-          You must deploy first. Scan until you get <b>WARM</b> or <b>HOT</b>, then engage.
-        </div>
-
+        <div class="hint">Scanning costs stamina. Scanner upgrades improve HOT odds.</div>
         <div class="row">
           <button onclick="scan()">🛰️ Scan</button>
           <button class="ghost" onclick="clearIntel()">🧹 Clear Intel</button>
         </div>
-
+        <div class="meter">
+          <div class="hint"><b>Stamina</b> regenerates slowly. Don’t spam scans.</div>
+          <div class="bar"><div class="fill" id="staminaBar"></div></div>
+        </div>
         <div class="divider"></div>
         <div class="hint" id="intelInfo"></div>
       </div>
@@ -204,181 +156,244 @@
     <div class="screen" id="screen-engage">
       <div class="card">
         <div class="sectionTitle">Engage</div>
-        <div class="hint">
-          Engage is enabled only when Intel is <b>WARM</b> or <b>HOT</b>. Capture earns more; Kill escalates danger.
+        <div class="hint">Intel must be WARM/HOT. Loadout affects odds & outcomes.</div>
+        <div class="meter">
+          <div class="hint"><b>Equipped:</b> <span id="equipInfo"></span></div>
         </div>
-
         <div class="row">
           <button id="btnCapture" class="good" onclick="encounter('CAPTURE')">💉 Capture</button>
           <button id="btnKill" class="warn" onclick="encounter('KILL')">🔫 Kill</button>
           <button class="ghost" onclick="retreat()">💨 Retreat</button>
         </div>
-
         <div class="divider"></div>
         <div class="hint" id="engageInfo"></div>
       </div>
     </div>
 
-    <!-- SHOP -->
+    <!-- LOADOUT -->
+    <div class="screen" id="screen-loadout">
+      <div class="card">
+        <div class="sectionTitle">Loadout</div>
+        <div class="hint">Equip 1 Primary, 1 Tool, 1 Armor. Unlock more in the Shop.</div>
+
+        <div class="divider"></div>
+        <div class="hint"><b>Primary:</b></div>
+        <div class="grid" id="primaryGrid"></div>
+
+        <div class="divider"></div>
+        <div class="hint"><b>Tool:</b></div>
+        <div class="grid" id="toolGrid"></div>
+
+        <div class="divider"></div>
+        <div class="hint"><b>Armor:</b></div>
+        <div class="grid" id="armorGrid"></div>
+
+        <div class="divider"></div>
+        <div class="hint" id="loadoutInfo"></div>
+      </div>
+    </div>
+
+    <!-- SHOP (ONLY 3 FREE/IN-GAME ITEMS; EVERYTHING ELSE $0.99) -->
     <div class="screen" id="screen-shop">
       <div class="card">
         <div class="sectionTitle">Shop</div>
-        <div class="hint">Spend government funds to improve odds and rewards.</div>
-
-        <div class="item">
-          <div>
-            <div class="itemName">💉 Better Tranqs</div>
-            <div class="itemDesc">Boost capture rewards + slightly improves success chance. (Max 3)</div>
-          </div>
-          <div style="text-align:right">
-            <div class="price">60</div>
-            <button onclick="buy('tranq')">Buy</button>
-          </div>
+        <div class="hint">
+          <b>In-Game Items (3 only):</b> You can buy these with 💰 funds.<br>
+          <b>Premium:</b> Anything beyond these is <b>$0.99</b> (placeholder button for now).
         </div>
 
+        <!-- ✅ IN-GAME ITEM #1 -->
         <div class="item">
           <div>
-            <div class="itemName">🛡️ Armor</div>
-            <div class="itemDesc">Reduces chance of failure (lose life). (Max 3)</div>
-          </div>
-          <div style="text-align:right">
-            <div class="price">75</div>
-            <button onclick="buy('armor')">Buy</button>
-          </div>
-        </div>
-
-        <div class="item">
-          <div>
-            <div class="itemName">📡 Scanner Upgrade</div>
-            <div class="itemDesc">Improves HOT scan odds (find packs faster). (Max 3)</div>
+            <div class="itemName">📡 Scanner Upgrade <span class="tag">IN-GAME</span></div>
+            <div class="itemDesc">Improves HOT scans. Max 3.</div>
           </div>
           <div style="text-align:right">
             <div class="price">90</div>
-            <button onclick="buy('scanner')">Buy</button>
+            <button onclick="buyUpgrade('scanner',90,3)">Buy</button>
           </div>
         </div>
 
+        <!-- ✅ IN-GAME ITEM #2 -->
         <div class="item">
           <div>
-            <div class="itemName">🪤 Traps</div>
-            <div class="itemDesc">Big capture reward boost. (Max 3)</div>
+            <div class="itemName">🛡️ Armor Upgrade <span class="tag">IN-GAME</span></div>
+            <div class="itemDesc">Reduces failure chance. Max 3.</div>
           </div>
           <div style="text-align:right">
-            <div class="price">110</div>
-            <button onclick="buy('traps')">Buy</button>
+            <div class="price">75</div>
+            <button onclick="buyUpgrade('armorUp',75,3)">Buy</button>
           </div>
         </div>
 
+        <!-- ✅ IN-GAME ITEM #3 -->
         <div class="item">
           <div>
-            <div class="itemName">❤️ Med Kit</div>
-            <div class="itemDesc">+1 life (max 5). Use instantly.</div>
+            <div class="itemName">💉 Tranq Upgrade <span class="tag">IN-GAME</span></div>
+            <div class="itemDesc">Improves capture odds + rewards. Max 3.</div>
           </div>
           <div style="text-align:right">
-            <div class="price">50</div>
-            <button onclick="buy('medkit')">Buy</button>
+            <div class="price">60</div>
+            <button onclick="buyUpgrade('tranqUp',60,3)">Buy</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+        <div class="hint"><b>Premium Store ($0.99 each)</b></div>
+
+        <!-- PREMIUM: Trap Kit -->
+        <div class="item">
+          <div>
+            <div class="itemName">🪤 Trap Kit <span class="tag">$0.99</span></div>
+            <div class="itemDesc">Unlocks Trap tool. Great for captures. (one-time)</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">$0.99</div>
+            <button onclick="buyPremium('trap')">Buy</button>
+          </div>
+        </div>
+
+        <!-- PREMIUM: Drone Scan -->
+        <div class="item">
+          <div>
+            <div class="itemName">🛰️ Drone Scan <span class="tag">$0.99</span></div>
+            <div class="itemDesc">Unlocks Drone tool. Makes intel stronger. (one-time)</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">$0.99</div>
+            <button onclick="buyPremium('drone')">Buy</button>
+          </div>
+        </div>
+
+        <!-- PREMIUM: Med Kit -->
+        <div class="item">
+          <div>
+            <div class="itemName">❤️ Med Kit <span class="tag">$0.99</span></div>
+            <div class="itemDesc">+1 life (max 5). (premium purchase)</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">$0.99</div>
+            <button onclick="buyPremium('medkit')">Buy</button>
           </div>
         </div>
 
         <div class="divider"></div>
         <div class="hint" id="shopInfo"></div>
+        <div class="small">
+          Premium purchases are <b>placeholders</b> right now. When you add Telegram Payments, replace <code>buyPremium()</code>
+          with actual invoice logic. For now, it simulates purchase success.
+        </div>
       </div>
     </div>
 
-    <!-- MISSIONS / STATS -->
+    <!-- STATS -->
     <div class="screen" id="screen-stats">
-      <div class="card">
-        <div class="sectionTitle">Missions</div>
-        <div class="hint">Daily challenge + claim reward.</div>
-
-        <div class="divider"></div>
-        <div class="hint" id="dailyInfo"></div>
-
-        <div class="row">
-          <button onclick="claimDaily()">🎯 Claim Daily</button>
-          <button class="ghost" onclick="newTip()">💡 Tip</button>
-        </div>
-      </div>
-
       <div class="card">
         <div class="sectionTitle">Status</div>
         <div class="hint" id="statusInfo"></div>
-      </div>
-
-      <div class="card">
-        <div class="sectionTitle">Leaderboard (Local)</div>
-        <div class="hint" id="leaderInfo"></div>
-        <div class="row">
-          <button onclick="shareCard()">📣 Share Agent Report</button>
-        </div>
       </div>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
 
-  <!-- Bottom Navigation -->
   <div class="nav">
     <div class="navInner">
       <button class="navBtn active" id="tab-home" onclick="go('home')"><span>🏠</span>Home</button>
       <button class="navBtn" id="tab-deploy" onclick="go('deploy')"><span>📍</span>Deploy</button>
       <button class="navBtn" id="tab-intel" onclick="go('intel')"><span>🛰️</span>Intel</button>
       <button class="navBtn" id="tab-engage" onclick="go('engage')"><span>🎯</span>Engage</button>
+      <button class="navBtn" id="tab-loadout" onclick="go('loadout')"><span>🧰</span>Loadout</button>
       <button class="navBtn" id="tab-shop" onclick="go('shop')"><span>🛒</span>Shop</button>
     </div>
   </div>
 
 <script>
-  // Telegram init (safe in browser)
   const tg = window.Telegram?.WebApp;
-  if (tg) {
-    tg.expand();
-    tg.ready();
-    try { tg.setHeaderColor?.("#0b0d12"); tg.setBackgroundColor?.("#0b0d12"); } catch(e){}
-  }
+  if (tg){ tg.expand(); tg.ready(); try{tg.setHeaderColor?.("#0b0d12"); tg.setBackgroundColor?.("#0b0d12");}catch(e){} }
 
-  // ----- State -----
   const DEFAULT = {
     version: 2,
     username: null,
+
     region: null,
+    intel: "—",
+
     lives: 5,
     funds: 120,
     score: 0,
     trust: 80,
     aggro: 10,
+    stamina: 100,
     level: 1,
-    intel: "—",
-    daySeed: null,
-    dailyDone: false,
+
     kills: 0,
     captures: 0,
-    gear: { tranq:0, armor:0, scanner:0, traps:0 },
+
+    heat: { "Downtown": 35, "Suburbs": 30, "Forest Edge": 45, "Industrial": 30 },
+
+    upgrades: { scanner: 0, armorUp: 0, tranqUp: 0 },
+    unlocks: { trap:false, drone:false },
+
+    loadout: { primary: "Tranq Pistol", tool: "None", armor: "Light Vest" },
+
+    missions: [],
+    claimedMissions: {},
+
     log: []
   };
 
   let state = load();
 
-  // Pull Telegram username if available
-  if (tg && tg.initDataUnsafe?.user) {
+  if (tg && tg.initDataUnsafe?.user){
     state.username = tg.initDataUnsafe.user.username || state.username;
     save(false);
   }
 
   function load(){
     try{
-      const saved = JSON.parse(localStorage.getItem("ts_state_v2") || "null");
-      return saved ? { ...DEFAULT, ...saved, gear:{...DEFAULT.gear, ...(saved.gear||{})} } : structuredClone(DEFAULT);
-    }catch(e){
-      return structuredClone(DEFAULT);
-    }
+      const v2 = JSON.parse(localStorage.getItem("ts_v2") || "null");
+      if (v2) return merge(DEFAULT, v2);
+    }catch(e){}
+    try{
+      const v1 = JSON.parse(localStorage.getItem("ts_state_v2") || localStorage.getItem("ts_state_v1") || "null");
+      if (v1){
+        const migrated = structuredClone(DEFAULT);
+        migrated.username = v1.username || migrated.username;
+        migrated.region = v1.region || migrated.region;
+        migrated.lives = v1.lives ?? migrated.lives;
+        migrated.funds = v1.funds ?? migrated.funds;
+        migrated.score = v1.score ?? migrated.score;
+        migrated.trust = v1.trust ?? migrated.trust;
+        migrated.aggro = v1.aggro ?? migrated.aggro;
+        migrated.level = v1.level ?? migrated.level;
+        migrated.kills = v1.kills ?? migrated.kills;
+        migrated.captures = v1.captures ?? migrated.captures;
+        migrated.intel = v1.intel ?? migrated.intel;
+        migrated.log = v1.log ?? migrated.log;
+        return migrated;
+      }
+    }catch(e){}
+    return structuredClone(DEFAULT);
   }
+
+  function merge(a,b){
+    const out = structuredClone(a);
+    for (const k in b){
+      if (b[k] && typeof b[k]==="object" && !Array.isArray(b[k])){
+        out[k] = { ...(out[k]||{}), ...b[k] };
+      } else {
+        out[k] = b[k];
+      }
+    }
+    return out;
+  }
+
   function save(renderNow=true){
-    localStorage.setItem("ts_state_v2", JSON.stringify(state));
+    localStorage.setItem("ts_v2", JSON.stringify(state));
     if (renderNow) render();
   }
 
-  // ----- UI helpers -----
   function toast(msg){
     const t=document.getElementById("toast");
     t.innerText=msg;
@@ -386,34 +401,27 @@
     clearTimeout(window.__toastTimer);
     window.__toastTimer=setTimeout(()=>t.style.display="none",2200);
   }
+
+  function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
+  function escapeHtml(s){ return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+
   function logEvent(msg){
     state.log.unshift(`${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} — ${msg}`);
     state.log = state.log.slice(0,20);
     save();
   }
-  function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
-  function escapeHtml(s){
-    return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
-  }
 
-  // ----- Navigation -----
-  const screens = ["home","deploy","intel","engage","shop","stats"];
+  const screens = ["home","deploy","intel","engage","loadout","shop","stats"];
   function go(name){
-    // redirect Stats from "Home" actions if needed
     if (!screens.includes(name)) name="home";
-
     document.querySelectorAll(".screen").forEach(el=>el.classList.remove("active"));
     document.getElementById(`screen-${name}`).classList.add("active");
-
     document.querySelectorAll(".navBtn").forEach(el=>el.classList.remove("active"));
     const tab = document.getElementById(`tab-${name}`);
     if (tab) tab.classList.add("active");
-
-    // Update per-screen info
     render();
   }
 
-  // ----- Game logic -----
   function gameOver(){ return state.lives<=0 || state.trust<=0; }
 
   function regionRisk(){
@@ -425,75 +433,173 @@
     return { trustLoss:5, trustGain:6, aggroGain:14 };
   }
 
+  function regenStamina(){
+    const now = Date.now();
+    if (!state._lastRegen) state._lastRegen = now;
+    const elapsed = (now - state._lastRegen) / 1000;
+    if (elapsed >= 5){
+      const ticks = Math.floor(elapsed / 5);
+      state.stamina = clamp(state.stamina + ticks*3, 0, 100);
+      state._lastRegen = now;
+      save(false);
+    }
+  }
+
   function intelRoll(){
-    const s=state.gear.scanner;
-    const hotBonus=Math.min(0.10, s*0.03);
-    const warmBonus=Math.min(0.08, s*0.02);
+    const s=state.upgrades.scanner;
+    const hotBonus=Math.min(0.12, s*0.04);
+    const warmBonus=Math.min(0.10, s*0.03);
+    const droneBoost = (state.loadout.tool==="Drone") ? 0.10 : 0.0;
 
     const r=Math.random();
-    const cold=0.45 - warmBonus - hotBonus;
-    const warm=0.35 + warmBonus;
-
+    const cold=0.45 - warmBonus - hotBonus - droneBoost;
+    const warm=0.35 + warmBonus + (droneBoost*0.6);
     if (r < cold) return "COLD";
     if (r < cold + warm) return "WARM";
     return "HOT";
   }
 
+  function packType(){
+    const h = state.heat[state.region] || 30;
+    const r = Math.random();
+    if (h > 55 && r < 0.33) return { name:"Alpha Pack", threat:"HIGH", failMod:+0.10, rewardMod:+0.25 };
+    if (r < 0.30) return { name:"Scouts", threat:"LOW", failMod:-0.08, rewardMod:-0.10 };
+    if (r < 0.75) return { name:"Standard Pack", threat:"MED", failMod:0.00, rewardMod:0.00 };
+    return { name:"Aggressive Pack", threat:"HIGH", failMod:+0.06, rewardMod:+0.10 };
+  }
+
   function baseFailChance(){
-    // base risk from intel
-    let fail = (state.intel==="HOT") ? 0.60 : 0.42;
+    let fail = (state.intel==="HOT") ? 0.58 : 0.40;
 
-    // gear bonuses
-    fail -= state.gear.tranq * 0.03;
-    fail -= state.gear.armor * 0.04;
+    fail -= state.upgrades.tranqUp * 0.03;
+    fail -= state.upgrades.armorUp * 0.05;
 
-    // aggro penalty
+    if (state.loadout.primary==="Tranq Rifle") fail -= 0.03;
+    if (state.loadout.armor==="Heavy Armor") fail -= 0.04;
+    if (state.loadout.tool==="Trap Kit") fail -= 0.03;
+
     fail += (state.aggro/100) * 0.10;
-
     return clamp(fail, 0.15, 0.85);
   }
 
   function maybeLevelUp(){
-    const newLevel = Math.floor(state.score / 500) + 1;
+    const newLevel = Math.floor(state.score / 600) + 1;
     if (newLevel > state.level){
       state.level = newLevel;
-      state.funds += 50;
-      logEvent(`🎖️ LEVEL UP! Now Level ${state.level}. Bonus 💰+50`);
+      state.funds += 60;
+      logEvent(`🎖️ LEVEL UP! Now Level ${state.level}. Bonus 💰+60`);
       toast(`Level up! 🎖️ ${state.level}`);
     }
   }
 
-  function maybeRetaliation(kill){
-    const base = kill ? 0.25 : 0.08;
+  function maybeEvent(kill){
+    const base = kill ? 0.22 : 0.10;
     const extra = (state.aggro/100) * 0.25;
-    const chance = clamp(base + extra, 0, 0.65);
+    const chance = clamp(base + extra, 0, 0.70);
     if (Math.random() < chance){
-      state.aggro = clamp(state.aggro + 8, 0, 100);
-      state.trust = clamp(state.trust - 3, 0, 100);
-      logEvent("🚨 RETALIATION: another pack entered HUNT MODE. 🔥+8 🏛️-3");
-      toast("RETALIATION 🚨");
+      const r=Math.random();
+      if (r < 0.45){
+        state.aggro = clamp(state.aggro + 10, 0, 100);
+        state.trust = clamp(state.trust - 3, 0, 100);
+        logEvent("🚨 RETALIATION: pack entered HUNT MODE. 🔥+10 🏛️-3");
+        toast("RETALIATION 🚨");
+      } else if (r < 0.80){
+        state.trust = clamp(state.trust + 4, 0, 100);
+        state.funds += 25;
+        logEvent("🧍 Citizen Rescue: you saved civilians. 🏛️+4 💰+25");
+        toast("Citizen Rescue ✅");
+      } else {
+        state.trust = clamp(state.trust - 6, 0, 100);
+        logEvent("⚠️ Government Warning: protect citizens or funding ends. 🏛️-6");
+        toast("Government Warning ⚠️");
+      }
+      save();
     }
   }
 
-  // ----- Actions -----
+  function rollMissions(){
+    const pool = [
+      { id:"cap2", text:"Capture 2 packs", type:"captures", target:2, reward:{score:180,funds:60} },
+      { id:"kill1", text:"Eliminate 1 pack", type:"kills", target:1, reward:{score:90,funds:35} },
+      { id:"scan3", text:"Scan 3 times", type:"scans", target:3, reward:{score:120,funds:40} },
+      { id:"downtownCap", text:"Capture in Downtown (1)", type:"downtownCap", target:1, reward:{score:220,funds:70} },
+      { id:"keepTrust", text:"Keep Trust ≥ 70 (after 1 encounter)", type:"trustGate", target:1, reward:{score:140,funds:45} },
+    ];
+    const picks=[];
+    const used=new Set();
+    while (picks.length<3){
+      const m = pool[Math.floor(Math.random()*pool.length)];
+      if (used.has(m.id)) continue;
+      used.add(m.id);
+      picks.push({ ...m, progress:0, done:false, claimed:false });
+    }
+    state.missions = picks;
+    state._missionCounters = { scans:0, encounters:0, captures:0, kills:0, downtownCap:0, trustGate:0 };
+    logEvent("📜 New missions issued.");
+    save();
+    toast("New missions ready ✅");
+  }
+
+  function missionTick(evt){
+    if (!state._missionCounters) state._missionCounters = { scans:0, encounters:0, captures:0, kills:0, downtownCap:0, trustGate:0 };
+
+    if (evt.type==="scan") state._missionCounters.scans++;
+    if (evt.type==="capture") { state._missionCounters.captures++; if (evt.region==="Downtown") state._missionCounters.downtownCap++; }
+    if (evt.type==="kill") state._missionCounters.kills++;
+    if (evt.type==="encounter") { state._missionCounters.encounters++; if ((evt.trustAfter??0) >= 70) state._missionCounters.trustGate++; }
+
+    for (const m of (state.missions||[])){
+      let p=0;
+      if (m.type==="captures") p = state._missionCounters.captures;
+      if (m.type==="kills") p = state._missionCounters.kills;
+      if (m.type==="scans") p = state._missionCounters.scans;
+      if (m.type==="downtownCap") p = state._missionCounters.downtownCap;
+      if (m.type==="trustGate") p = state._missionCounters.trustGate;
+
+      m.progress = Math.min(m.target, p);
+      m.done = (m.progress >= m.target);
+    }
+    save(false);
+  }
+
+  function claimMissionRewards(){
+    let claimed = 0;
+    for (const m of (state.missions||[])){
+      if (m.done && !m.claimed){
+        state.score += m.reward.score;
+        state.funds += m.reward.funds;
+        m.claimed = true;
+        claimed++;
+        logEvent(`🎯 Mission claimed: ${m.text}. ⭐+${m.reward.score} 💰+${m.reward.funds}`);
+      }
+    }
+    if (!claimed) return toast("No completed missions to claim.");
+    maybeLevelUp();
+    save();
+    toast(`Claimed ${claimed} mission(s) ✅`);
+  }
+
   function setRegion(r){
     if (gameOver()) return showGameOver();
-    const valid=["Downtown","Suburbs","Forest Edge","Industrial"];
-    if (!valid.includes(r)) return toast("Invalid region.");
     state.region = r;
     state.intel = "—";
     logEvent(`📍 Deployed to ${r}.`);
     save();
-    toast(`Deployed to ${r}. Now scan intel.`);
+    toast(`Deployed to ${r}. Scan intel next.`);
     go("intel");
   }
 
   function scan(){
     if (gameOver()) return showGameOver();
     if (!state.region) { toast("Deploy first."); return go("deploy"); }
+    if (state.stamina < 12) return toast("Not enough stamina. Wait a moment.");
+    state.stamina -= 12;
+
     state.intel = intelRoll();
     logEvent(`🛰️ Scan result: ${state.intel}`);
+    missionTick({type:"scan"});
     save();
+
     if (state.intel==="WARM" || state.intel==="HOT") toast("Intel ready. Engage when ready.");
   }
 
@@ -515,8 +621,13 @@
     if (gameOver()) return showGameOver();
     if (!state.region) { toast("Deploy first."); return go("deploy"); }
     if (!(state.intel==="WARM" || state.intel==="HOT")) { toast("Scan until WARM/HOT."); return go("intel"); }
+    if (state.stamina < 18) return toast("Not enough stamina. Wait a moment.");
+    state.stamina -= 18;
 
-    const failChance = baseFailChance();
+    const pack = packType();
+    let failChance = baseFailChance() + pack.failMod;
+    failChance = clamp(failChance, 0.15, 0.90);
+
     const failed = Math.random() < failChance;
 
     if (failed){
@@ -525,7 +636,8 @@
       state.trust = clamp(state.trust - loss, 0, 100);
       state.aggro = clamp(state.aggro + 6, 0, 100);
       state.intel = "—";
-      logEvent(`❌ Failed engagement. ❤️-1, 🏛️-${loss}, 🔥+6`);
+      logEvent(`❌ Failed vs ${pack.name} (${pack.threat}). ❤️-1 🏛️-${loss} 🔥+6`);
+      missionTick({type:"encounter", trustAfter: state.trust});
       save();
       toast("FAILED — Lost 1 life.");
       if (gameOver()) return showGameOver();
@@ -533,25 +645,32 @@
     }
 
     if (mode==="CAPTURE"){
-      const bonusFunds = 80 + (state.gear.tranq*10) + (state.gear.traps*12);
-      const bonusScore = 150 + (state.gear.tranq*20) + (state.gear.traps*25);
+      const baseFunds = 80, baseScore = 150;
+      const upF = state.upgrades.tranqUp * 10;
+      const upS = state.upgrades.tranqUp * 20;
+      const trapBonus = (state.loadout.tool==="Trap Kit") ? 25 : 0;
+      const rifleBonus = (state.loadout.primary==="Tranq Rifle") ? 15 : 0;
+
+      const funds = Math.round((baseFunds + upF + trapBonus + rifleBonus) * (1 + pack.rewardMod));
+      const score = Math.round((baseScore + upS + trapBonus + rifleBonus) * (1 + pack.rewardMod));
       const tgain = regionRisk().trustGain;
 
-      state.funds += bonusFunds;
-      state.score += bonusScore;
+      state.funds += funds;
+      state.score += score;
       state.trust = clamp(state.trust + tgain, 0, 100);
       state.aggro = clamp(state.aggro - 8, 0, 100);
       state.captures += 1;
       state.intel = "—";
 
-      logEvent(`✅ CAPTURED. 💰+${bonusFunds}, ⭐+${bonusScore}, 🏛️+${tgain}, 🔥-8`);
-      maybeRetaliation(false);
+      logEvent(`✅ CAPTURED ${pack.name} (${pack.threat}). 💰+${funds} ⭐+${score} 🏛️+${tgain} 🔥-8`);
+      missionTick({type:"capture", region: state.region});
+      missionTick({type:"encounter", trustAfter: state.trust});
+      maybeEvent(false);
       maybeLevelUp();
       save();
       toast("CAPTURED ✅");
     } else {
       const ag = regionRisk().aggroGain;
-
       state.funds += 40;
       state.score += 70;
       state.trust = clamp(state.trust - 4, 0, 100);
@@ -559,14 +678,17 @@
       state.kills += 1;
       state.intel = "—";
 
-      logEvent(`⚠️ ELIMINATED. 💰+40, ⭐+70, 🏛️-4, 🔥+${ag}`);
-      maybeRetaliation(true);
+      logEvent(`⚠️ ELIMINATED ${pack.name} (${pack.threat}). 💰+40 ⭐+70 🏛️-4 🔥+${ag}`);
+      missionTick({type:"kill"});
+      missionTick({type:"encounter", trustAfter: state.trust});
+      maybeEvent(true);
       maybeLevelUp();
       save();
       toast("ELIMINATED ⚠️");
     }
 
-    // Industrial loot chance
+    state.heat[state.region] = clamp((state.heat[state.region] || 30) + (mode==="KILL" ? 6 : -3), 0, 100);
+
     if (state.region==="Industrial" && Math.random() < 0.25){
       state.funds += 25;
       logEvent("🎁 Industrial bonus: found supplies 💰+25");
@@ -574,132 +696,161 @@
     }
   }
 
-  function buy(item){
-    if (gameOver()) return showGameOver();
-    const prices = { tranq:60, armor:75, scanner:90, traps:110, medkit:50 };
-    const cost = prices[item];
-    if (state.funds < cost) return toast("Not enough funds.");
+  function initLoadoutUI(){
+    const primaries = [
+      { name:"Tranq Pistol", owned:true },
+      { name:"Tranq Rifle", owned:(state.level>=2) },
+      { name:"Standard Rifle", owned:(state.level>=2) },
+    ];
+    const tools = [
+      { name:"None", owned:true },
+      { name:"Trap Kit", owned:state.unlocks.trap },
+      { name:"Drone", owned:state.unlocks.drone },
+    ];
+    const armors = [
+      { name:"Light Vest", owned:true },
+      { name:"Heavy Armor", owned:(state.level>=3) },
+    ];
 
-    state.funds -= cost;
+    const p = document.getElementById("primaryGrid");
+    const t = document.getElementById("toolGrid");
+    const a = document.getElementById("armorGrid");
+    if (!p || !t || !a) return;
 
-    if (item==="medkit"){
-      state.lives = clamp(state.lives + 1, 0, 5);
-      logEvent(`❤️ Med Kit used. Lives now ${state.lives}/5`);
-      save();
-      return toast("Med Kit used ❤️");
+    p.innerHTML = primaries.map(x => btnHTML("primary", x)).join("");
+    t.innerHTML = tools.map(x => btnHTML("tool", x)).join("");
+    a.innerHTML = armors.map(x => btnHTML("armor", x)).join("");
+
+    function btnHTML(slot, x){
+      const active = (state.loadout[slot] === x.name);
+      const dis = !x.owned;
+      const label = active ? `✅ ${x.name}` : x.name;
+      return `<button ${dis?'disabled':''} onclick="equip('${slot}','${x.name.replace(/'/g,"\\'")}')">${label}</button>`;
     }
 
-    state.gear[item] = clamp(state.gear[item] + 1, 0, 3);
-    logEvent(`🛒 Bought ${item.toUpperCase()} upgrade. Level ${state.gear[item]}/3`);
+    document.getElementById("loadoutInfo").innerHTML =
+      `<b>Primary:</b> ${state.loadout.primary} • <b>Tool:</b> ${state.loadout.tool} • <b>Armor:</b> ${state.loadout.armor}<br>` +
+      `<span class="small">Premium items ($0.99) unlock Trap Kit / Drone. In-game shop is limited to 3 items.</span>`;
+  }
+
+  function equip(slot, name){
+    state.loadout[slot] = name;
+    logEvent(`🧰 Equipped ${slot}: ${name}`);
+    save();
+    toast("Equipped ✅");
+    initLoadoutUI();
+    render();
+  }
+
+  // ONLY 3 IN-GAME UPGRADES
+  function buyUpgrade(key, cost, max){
+    if (state.funds < cost) return toast("Not enough funds.");
+    if (state.upgrades[key] >= max) return toast("Max level reached.");
+    state.funds -= cost;
+    state.upgrades[key] += 1;
+    logEvent(`🛒 Upgrade purchased: ${key} (${state.upgrades[key]}/${max})`);
     save();
     toast("Purchased ✅");
   }
 
-  // ----- Daily / Leaderboard / Share -----
-  function getDaySeed(){
-    const d=new Date();
-    const seed=`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
-    if (state.daySeed !== seed){
-      state.daySeed = seed;
-      state.dailyDone = false;
-      save(false);
-    }
-    return seed;
-  }
-  function dailyChallenge(){
-    getDaySeed();
-    const options = [
-      { text:"Capture 1 pack", reward:{score:120,funds:40} },
-      { text:"Scan 3 times", reward:{score:80,funds:30} },
-      { text:"Complete 2 encounters", reward:{score:100,funds:35} },
-      { text:"Capture in Downtown", reward:{score:160,funds:55} },
-    ];
-    let h=0; for (const c of state.daySeed) h=(h*31+c.charCodeAt(0))>>>0;
-    return options[h % options.length];
-  }
-  function claimDaily(){
-    if (state.dailyDone) return toast("Already claimed today.");
-    const d = dailyChallenge();
-    let ok=false;
+  // PREMIUM PLACEHOLDER ($0.99)
+  function buyPremium(which){
+    // This is a placeholder simulation until you add Telegram Payments invoices.
+    // You can later replace this with Telegram Payments + server validation.
+    if (which === "trap") state.unlocks.trap = true;
+    if (which === "drone") state.unlocks.drone = true;
+    if (which === "medkit") state.lives = clamp(state.lives + 1, 0, 5);
 
-    if (d.text.includes("Capture 1")) ok = state.captures >= 1;
-    else if (d.text.includes("Scan 3")) ok = true; // MVP easy
-    else if (d.text.includes("Complete 2")) ok = (state.captures + state.kills) >= 2;
-    else if (d.text.includes("Downtown")) ok = state.captures >= 1;
-
-    if (!ok) return toast("Not completed yet.");
-
-    state.score += d.reward.score;
-    state.funds += d.reward.funds;
-    state.dailyDone = true;
-    logEvent(`🎯 Daily claimed. ⭐+${d.reward.score} 💰+${d.reward.funds}`);
-    maybeLevelUp();
+    logEvent(`💳 Premium purchased ($0.99): ${which}`);
     save();
-    toast("Daily claimed ✅");
+    initLoadoutUI();
+    toast("Premium unlocked ✅");
   }
 
-  function updateLocalLeaderboard(){
-    const key="ts_leaderboard_v2";
-    const lb = JSON.parse(localStorage.getItem(key) || "[]");
-    const user = state.username || "Player";
+  function render(){
+    regenStamina();
 
-    const existing = lb.find(x=>x.user===user);
-    if (existing) existing.score = Math.max(existing.score, state.score);
-    else lb.push({user, score: state.score});
+    document.getElementById("livesChip").innerText = state.lives;
+    document.getElementById("fundsChip").innerText = state.funds;
+    document.getElementById("scoreChip").innerText = state.score;
+    document.getElementById("trustChip").innerText = state.trust;
+    document.getElementById("aggroChip").innerText = state.aggro;
+    document.getElementById("staminaChip").innerText = Math.round(state.stamina);
+    document.getElementById("levelChip").innerText = state.level;
+    document.getElementById("regionChip").innerText = state.region || "None";
+    document.getElementById("intelChip").innerText = state.intel;
 
-    lb.sort((a,b)=>b.score-a.score);
-    localStorage.setItem(key, JSON.stringify(lb.slice(0,10)));
-    return lb.slice(0,10);
+    const logBox = document.getElementById("logBox");
+    logBox.innerHTML = state.log.length
+      ? state.log.map(l=>`<div class="logline">${escapeHtml(l)}</div>`).join("")
+      : `<div class="logline">No events yet. Tap <span class="pill">Deploy</span> to begin.</div>`;
+
+    const heatLines = Object.entries(state.heat).map(([k,v])=>`${k}: ${v}`).join(" • ");
+    document.getElementById("regionHeatInfo").innerHTML =
+      `Region Heat (higher = more danger): <span class="pill">${heatLines}</span>`;
+
+    document.getElementById("intelInfo").innerHTML =
+      `<b>Region:</b> ${state.region || "None"} • <b>Intel:</b> ${state.intel}<br>` +
+      `<b>Scanner:</b> ${state.upgrades.scanner}/3 • <b>Tool:</b> ${state.loadout.tool}`;
+
+    const bar = document.getElementById("staminaBar");
+    if (bar) bar.style.width = `${clamp(state.stamina,0,100)}%`;
+
+    const canEngage = !!state.region && (state.intel==="WARM" || state.intel==="HOT") && state.stamina>=18;
+    document.getElementById("btnCapture").disabled = !canEngage;
+    document.getElementById("btnKill").disabled = !canEngage;
+
+    const risk = (state.intel==="WARM" || state.intel==="HOT") ? Math.round(baseFailChance()*100) : null;
+    document.getElementById("engageInfo").innerHTML =
+      `<b>Ready:</b> ${(state.intel==="WARM"||state.intel==="HOT") ? "YES" : "NO (scan first)"} • ` +
+      `<b>Stamina:</b> ${Math.round(state.stamina)}/100 (Engage costs 18)<br>` +
+      `<b>Estimated fail chance:</b> ${risk!==null ? (risk+"%") : "—"}`;
+
+    document.getElementById("equipInfo").innerText =
+      `${state.loadout.primary} • ${state.loadout.tool} • ${state.loadout.armor}`;
+
+    document.getElementById("shopInfo").innerHTML =
+      `<b>Funds:</b> 💰${state.funds}<br>` +
+      `<b>In-Game Upgrades:</b> Scanner ${state.upgrades.scanner}/3 • Armor ${state.upgrades.armorUp}/3 • Tranq ${state.upgrades.tranqUp}/3<br>` +
+      `<b>Premium Unlocks:</b> Trap ${state.unlocks.trap ? "✅" : "❌"} • Drone ${state.unlocks.drone ? "✅" : "❌"} • Extra Life (via premium medkit)`;
+
+    if (!state.missions || !state.missions.length) rollMissions();
+    renderMissions();
+
+    document.getElementById("statusInfo").innerHTML =
+      `<b>Agent:</b> @${state.username || "unknown"}<br>` +
+      `<b>Lives:</b> ❤️${state.lives}/5 • <b>Level:</b> 🎖️${state.level}<br>` +
+      `<b>Score:</b> ⭐${state.score} • <b>Funds:</b> 💰${state.funds}<br>` +
+      `<b>Trust:</b> 🏛️${state.trust}/100 • <b>Aggro:</b> 🔥${state.aggro}/100<br>` +
+      `<b>Region:</b> ${state.region || "None"} • <b>Intel:</b> ${state.intel}<br>` +
+      `<b>Loadout:</b> ${state.loadout.primary} • ${state.loadout.tool} • ${state.loadout.armor}`;
   }
 
-  function shareCard(){
-    const user = state.username ? `@${state.username}` : "Agent";
-    const style =
-      state.captures > state.kills ? "Capture-heavy ✅" :
-      state.kills > state.captures ? "Lethal ⚠️" : "Balanced";
-
-    const text =
-      `🐅 Tiger Strike — Agent Report\n` +
-      `${user}\n` +
-      `⭐ Score: ${state.score} | 💰 Funds: ${state.funds}\n` +
-      `❤️ Lives: ${state.lives}/5 | 🎖️ Level: ${state.level}\n` +
-      `🏛️ Trust: ${state.trust}/100 | 🔥 Aggro: ${state.aggro}/100\n` +
-      `📍 Region: ${state.region || "None"} | Style: ${style}`;
-
-    if (tg?.openTelegramLink){
-      tg.openTelegramLink("https://t.me/share/url?url=&text=" + encodeURIComponent(text));
-    } else {
-      navigator.clipboard?.writeText(text);
-      toast("Copied report to clipboard.");
-    }
+  function renderMissions(){
+    const box = document.getElementById("missionsBox");
+    if (!box) return;
+    box.innerHTML = state.missions.map(m=>{
+      const pct = Math.round((m.progress/m.target)*100);
+      const status = m.claimed ? "✅ Claimed" : (m.done ? "🎯 Ready" : "⏳ In Progress");
+      return `
+        <div class="meter">
+          <div class="hint"><b>${escapeHtml(m.text)}</b> <span class="pill">${status}</span></div>
+          <div class="hint">Progress: ${m.progress}/${m.target} • Reward: ⭐+${m.reward.score} 💰+${m.reward.funds}</div>
+          <div class="bar"><div class="fill" style="width:${pct}%;"></div></div>
+        </div>
+      `;
+    }).join("");
   }
 
-  // ----- Help/Settings/Gameover/Reset -----
-  function openHelp(){
-    const msg =
-      "How to Play:\n" +
-      "1) Deploy to a region.\n" +
-      "2) Scan until WARM/HOT.\n" +
-      "3) Engage.\n\n" +
-      "Capture earns more and lowers aggression.\n" +
-      "Kill raises aggression and can trigger retaliation.\n\n" +
-      "If Lives or Trust hit 0 → Mission Failed.";
-    toast(msg);
-  }
-  function openSettings(){
-    const msg =
-      "Settings:\n" +
-      "• Saves on this device (localStorage)\n" +
-      "• Next upgrade: cloud save + global leaderboard";
-    toast(msg);
-  }
+  function openHelp(){ toast("v2 Flow: Deploy → Scan → Engage. Shop (3 in-game items only). Everything else is $0.99 premium."); }
+  function openSettings(){ toast("Settings: progress saves on device. Next: Telegram Payments invoices + server validation."); }
   function showGameOver(){
     const reason = (state.lives<=0) ? "Out of lives." : "Government trust hit 0.";
-    toast(`🚫 Mission Failed — ${reason} Tap Reset to restart.`);
+    toast(`🚫 Mission Failed — ${reason} Tap Reset.`);
     go("home");
   }
   function resetGame(){
-    localStorage.removeItem("ts_state_v2");
+    localStorage.removeItem("ts_v2");
     state = structuredClone(DEFAULT);
     save();
     logEvent("🔁 Game reset.");
@@ -707,104 +858,11 @@
     go("home");
   }
 
-  // ----- Render -----
-  function render(){
-    // Chips
-    document.getElementById("livesChip").innerText = state.lives;
-    document.getElementById("fundsChip").innerText = state.funds;
-    document.getElementById("scoreChip").innerText = state.score;
-    document.getElementById("trustChip").innerText = state.trust;
-    document.getElementById("aggroChip").innerText = state.aggro;
-    document.getElementById("levelChip").innerText = state.level;
-    document.getElementById("regionChip").innerText = state.region || "None";
-    document.getElementById("intelChip").innerText = state.intel;
-
-    // Event log
-    const logBox = document.getElementById("logBox");
-    logBox.innerHTML = state.log.length
-      ? state.log.map(l=>`<div class="logline">${escapeHtml(l)}</div>`).join("")
-      : `<div class="logline">No events yet. Tap <span class="pill">Deploy</span> to begin.</div>`;
-
-    // Intel screen info
-    const intelInfo = document.getElementById("intelInfo");
-    intelInfo.innerHTML = `
-      <b>Region:</b> ${state.region || "None"}<br>
-      <b>Intel:</b> ${state.intel}<br>
-      <b>Scanner:</b> ${state.gear.scanner}/3 (better HOT odds)
-    `;
-
-    // Engage buttons enabling
-    const canEngage = !!state.region && (state.intel==="WARM" || state.intel==="HOT");
-    const btnC = document.getElementById("btnCapture");
-    const btnK = document.getElementById("btnKill");
-    btnC.disabled = !canEngage;
-    btnK.disabled = !canEngage;
-
-    // Engage info
-    const engageInfo = document.getElementById("engageInfo");
-    const risk = canEngage ? Math.round(baseFailChance()*100) : null;
-    engageInfo.innerHTML = `
-      <b>Ready:</b> ${canEngage ? "YES ✅" : "NO — Scan first"}<br>
-      <b>Risk of failure:</b> ${risk!==null ? (risk+"%") : "—"}<br>
-      <b>Gear:</b> Tranq ${state.gear.tranq}/3 • Armor ${state.gear.armor}/3 • Traps ${state.gear.traps}/3
-    `;
-
-    // Shop info
-    const shopInfo = document.getElementById("shopInfo");
-    shopInfo.innerHTML = `
-      <b>Funds:</b> 💰${state.funds}<br>
-      <b>Upgrades:</b> Tranq ${state.gear.tranq}/3 • Armor ${state.gear.armor}/3 • Scanner ${state.gear.scanner}/3 • Traps ${state.gear.traps}/3
-    `;
-
-    // Daily + Status + Leaderboard in Stats screen
-    const d = dailyChallenge();
-    document.getElementById("dailyInfo").innerHTML = `
-      <b>Daily:</b> ${d.text}<br>
-      <b>Reward:</b> ⭐+${d.reward.score} • 💰+${d.reward.funds}<br>
-      <b>Status:</b> ${state.dailyDone ? "✅ Claimed" : "⏳ Not claimed"}<br>
-      <span class="small">Progress (MVP): Captures ${state.captures} • Kills ${state.kills}</span>
-    `;
-
-    const style =
-      state.captures > state.kills ? "Capture-heavy ✅" :
-      state.kills > state.captures ? "Lethal ⚠️" : "Balanced";
-
-    document.getElementById("statusInfo").innerHTML = `
-      <b>Agent:</b> @${state.username || "unknown"}<br>
-      <b>Lives:</b> ❤️${state.lives}/5 • <b>Level:</b> 🎖️${state.level}<br>
-      <b>Score:</b> ⭐${state.score} • <b>Funds:</b> 💰${state.funds}<br>
-      <b>Trust:</b> 🏛️${state.trust}/100 • <b>Aggro:</b> 🔥${state.aggro}/100<br>
-      <b>Region:</b> ${state.region || "None"} • <b>Intel:</b> ${state.intel}<br>
-      <b>Style:</b> ${style}
-    `;
-
-    const lb = updateLocalLeaderboard();
-    const list = lb.map((x,i)=>`${i+1}) @${x.user} — ⭐${x.score}`).join("<br>") || "No scores yet.";
-    document.getElementById("leaderInfo").innerHTML = list;
-  }
-
-  // Tip helper
-  function newTip(){
-    const tips = [
-      "Capture keeps Aggro down. Kill raises retaliation chance.",
-      "Buy Scanner to hit HOT more often.",
-      "Armor reduces failure chance (losing lives).",
-      "Downtown punishes mistakes harder (trust drops more).",
-      "Forest Edge is great for farming captures."
-    ];
-    toast(tips[Math.floor(Math.random()*tips.length)]);
-  }
-
-  // Initial greeting
-  if (!state.log.length) {
-    logEvent("🟢 Ready. Deploy → Scan → Engage.");
-  } else {
-    save(false);
-  }
+  if (!state.log.length) logEvent("🟢 Tiger Strike v2 ready. Deploy → Scan → Engage.");
+  initLoadoutUI();
   render();
-
-  // Start on Home
   go("home");
+  setInterval(()=>{ render(); }, 1200);
 </script>
 </body>
 </html>
