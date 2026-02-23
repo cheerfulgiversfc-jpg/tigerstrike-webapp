@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>Tiger Strike 🐅 — V4.3</title>
+  <title>Tiger Strike 🐅 — V4.3.1</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <style>
@@ -85,7 +85,6 @@
       font-size:11px;
     }
 
-    /* overlays */
     .overlay{
       position:fixed;inset:0;background:rgba(0,0,0,.72);
       display:none;align-items:center;justify-content:center;z-index:200;
@@ -106,7 +105,6 @@
 
     .divider{height:1px;background:var(--border);margin:12px 0}
 
-    /* battle sheet */
     .battleOverlay{
       position:fixed;inset:0;background:rgba(0,0,0,.72);
       display:none;align-items:flex-end;z-index:220;
@@ -171,12 +169,13 @@
   <div class="wrap">
     <div class="top">
       <div>
-        <div class="title">Tiger Strike 🐅 <span class="pill">V4.3</span></div>
-        <div class="sub">Shop + inventory + target lock + animations + carcass aggro + story scenes + FF battle loop.</div>
+        <div class="title">Tiger Strike 🐅 <span class="pill">V4.3.1</span></div>
+        <div class="sub">Shop + inventory + target lock + carcass aggro + mode-based maps (full scenes per mode).</div>
       </div>
       <div class="row">
         <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
         <button class="ghost" onclick="openMode()">🎮 Mode</button>
+        <button class="ghost" onclick="nextMap()">🗺️ Map</button>
         <button class="ghost" onclick="openShop()">🛒 Shop</button>
         <button class="ghost" onclick="openInventory()">🎒 Inventory</button>
         <button class="ghost" onclick="resetGame()">🔁 Reset</button>
@@ -200,7 +199,7 @@
           <div class="hudTitle">Target</div>
           <div class="hudLine">Tiger HP: <b id="tigerTxt"></b> • Capture/Kill when HP ≤ <b>15</b></div>
           <div class="bar"><div id="tigerBar" class="fill red"></div></div>
-          <div class="hudLine">Region: <b id="regionTxt"></b> • Mode: <b id="modeTxt"></b></div>
+          <div class="hudLine">Map: <b id="mapTxt"></b> • Mode: <b id="modeTxt"></b></div>
           <div class="hudLine">Trust: <b id="trustTxt"></b>/100 • Aggro: <b id="aggroTxt"></b>/100</div>
         </div>
       </div>
@@ -211,7 +210,7 @@
 
       <div class="actionStrip">
         <div class="small" id="statusLine">
-          Tap to move. Tap a tiger to LOCK target. Scan to locate. Engage when close.
+          Tap to move. Tap a tiger to LOCK target. Engage when close.
         </div>
         <div class="row">
           <button onclick="deploy()">📍 Deploy</button>
@@ -237,24 +236,8 @@
         </div>
         <div class="modalText" id="modeDesc"></div>
         <div class="row" style="margin-top:12px">
-          <button class="good" onclick="startStoryScene()">▶ Start Story Scene</button>
-          <button class="ghost" onclick="skipStoryScene()">Skip</button>
+          <button class="good" onclick="closeMode()">Done</button>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Story Scenes (multiple cutscenes + choices) -->
-  <div class="overlay" id="sceneOverlay">
-    <div class="modal">
-      <div class="modalTop">
-        <div class="modalTitle" id="sceneTitle">Story Scene</div>
-        <button class="ghost" onclick="skipStoryScene()">Skip ▶</button>
-      </div>
-      <div class="modalBody">
-        <canvas id="sceneCv" width="960" height="360" style="width:100%;border-radius:14px;border:1px solid rgba(35,42,62,.9);background:#000"></canvas>
-        <div class="modalText" id="sceneText"></div>
-        <div class="row" style="margin-top:12px" id="sceneChoices"></div>
       </div>
     </div>
   </div>
@@ -338,12 +321,13 @@
 
   <div class="toast" id="toast"></div>
 
+  <!-- Bottom nav -->
   <div class="nav">
     <div class="navInner">
       <button class="navBtn" onclick="openMode()"><span>🎮</span>Mode</button>
+      <button class="navBtn" onclick="nextMap()"><span>🗺️</span>Map</button>
       <button class="navBtn" onclick="openShop()"><span>🛒</span>Shop</button>
       <button class="navBtn" onclick="openInventory()"><span>🎒</span>Inventory</button>
-      <button class="navBtn" onclick="toast('Tap tiger = lock target. Engage near locked target.')"><span>💡</span>Help</button>
     </div>
   </div>
 
@@ -352,46 +336,30 @@
   if (tg){ tg.expand(); tg.ready(); try{tg.setHeaderColor?.("#0b0d12"); tg.setBackgroundColor?.("#0b0d12");}catch(e){} }
 
   // --------------------
-  // DATA: Weapons / Ammo / Armor (grades + prices)
-  // Prices: $50 to $100,000
+  // Data: weapons/ammo/armor
   // --------------------
   const WEAPONS = [
-    // Cheap (50-500)
     { id:"W_TRQ_PISTOL_MK1", name:"Tranq Pistol Mk I", grade:"Common", price:50,   type:"tranq", ammo:"TRANQ_DARTS",  mag:6,  dmg:[8,12] },
     { id:"W_9MM_JUNK",      name:"9mm Sidearm (Used)", grade:"Common", price:150, type:"lethal", ammo:"9MM_STD",      mag:12, dmg:[10,14] },
     { id:"W_SHOTGUN",       name:"Pump Shotgun", grade:"Uncommon", price:500,     type:"lethal", ammo:"12GA_STD",     mag:5,  dmg:[18,26] },
-
-    // Mid (2k-20k)
     { id:"W_TRQ_RIFLE",     name:"Tranq Rifle", grade:"Rare", price:2500,         type:"tranq", ammo:"TRANQ_DARTS",  mag:5,  dmg:[14,20] },
     { id:"W_AR_CARBINE",    name:"AR Carbine", grade:"Rare", price:6500,          type:"lethal", ammo:"556_STD",      mag:30, dmg:[14,20] },
     { id:"W_DMR",           name:"DMR Marksman", grade:"Epic", price:18000,       type:"lethal", ammo:"762_STD",      mag:10, dmg:[20,28] },
-
-    // High (50k-100k)
     { id:"W_TRQ_LAUNCHER",  name:"Tranquilizer Launcher", grade:"Legendary", price:50000, type:"tranq", ammo:"TRANQ_HEAVY", mag:2, dmg:[30,42] },
     { id:"W_RAIL_PROTO",    name:"Prototype Rail Rifle", grade:"Mythic", price:100000,    type:"lethal", ammo:"RAIL_CELL",   mag:3, dmg:[40,60] },
   ];
 
   const AMMO = [
-    // Tranq
     { id:"TRANQ_DARTS",  name:"Tranq Darts", grade:"Standard", price:50,  pack:10 },
     { id:"TRANQ_HEAVY",  name:"Heavy Tranq Canisters", grade:"Epic", price:2500, pack:4 },
-
-    // Handgun
     { id:"9MM_STD",      name:"9mm Standard", grade:"Standard", price:80, pack:25 },
     { id:"9MM_AP",       name:"9mm Armor Piercing", grade:"Rare", price:400, pack:20 },
-
-    // Shotgun
     { id:"12GA_STD",     name:"12ga Buckshot", grade:"Standard", price:120, pack:12 },
     { id:"12GA_SLUG",    name:"12ga Slugs", grade:"Rare", price:600, pack:10 },
-
-    // Rifle
     { id:"556_STD",      name:"5.56 Standard", grade:"Standard", price:200, pack:30 },
     { id:"556_AP",       name:"5.56 AP", grade:"Epic", price:1200, pack:25 },
-
     { id:"762_STD",      name:"7.62 Standard", grade:"Standard", price:260, pack:20 },
     { id:"762_AP",       name:"7.62 AP", grade:"Epic", price:1500, pack:15 },
-
-    // Rail
     { id:"RAIL_CELL",    name:"Rail Cells", grade:"Mythic", price:5000, pack:6 },
   ];
 
@@ -403,10 +371,34 @@
   ];
 
   // --------------------
+  // Mode-based maps (full scenes)
+  // --------------------
+  const MODE_MAPS = {
+    Story: [
+      { key:"ST_FOREST", name:"Forest Edge" },
+      { key:"ST_SUBURBS", name:"Suburbs" },
+      { key:"ST_DOWNTOWN", name:"Downtown" },
+      { key:"ST_INDUSTRIAL", name:"Industrial" },
+    ],
+    Arcade: [
+      { key:"AR_ARENA_BAY", name:"Arena Bay" },
+      { key:"AR_NEON_GRID", name:"Neon Grid" },
+      { key:"AR_SAND_YARD", name:"Sand Yard" },
+      { key:"AR_STEEL_PIT", name:"Steel Pit" },
+    ],
+    Survival: [
+      { key:"SV_NIGHT_WOODS", name:"Night Woods" },
+      { key:"SV_STORM_DISTRICT", name:"Storm District" },
+      { key:"SV_RUINS", name:"Ruins" },
+      { key:"SV_ASH_FIELD", name:"Ash Field" },
+    ],
+  };
+
+  // --------------------
   // State
   // --------------------
   const DEFAULT = {
-    v: 43,
+    v: 431,
     mode: "Story",
     arcadeLevel: 1,
     survivalWave: 1,
@@ -425,43 +417,27 @@
     armor: 20,
     armorCap: 100,
 
-    region: "Forest Edge",
+    // map selection per mode
+    mapIndex: 0,
 
-    // inventory system
     ownedWeapons: ["W_TRQ_PISTOL_MK1","W_9MM_JUNK"],
     equippedWeaponId: "W_TRQ_PISTOL_MK1",
     equippedAmmoId: "TRANQ_DARTS",
-
-    // ammo reserves by ammo id
-    ammoReserve: {
-      "TRANQ_DARTS": 20,
-      "9MM_STD": 40
-    },
-
-    // magazine status
+    ammoReserve: { "TRANQ_DARTS": 20, "9MM_STD": 40 },
     mag: { loaded: 6, cap: 6 },
 
-    // world
     me: { x: 160, y: 420 },
     target: null,
     tigers: [],
-    carcasses: [], // dead tiger remains
+    carcasses: [],
     scanPing: 0,
 
-    // target lock
     lockedTigerId: null,
 
-    // battle
     inBattle: false,
     activeTigerId: null,
 
-    // animation effects
     fx: [],
-
-    // story scene
-    sceneSeen: {},
-
-    log: [],
   };
 
   let S = load();
@@ -469,22 +445,18 @@
   const cv = document.getElementById("cv");
   const ctx = cv.getContext("2d");
 
-  const sceneCv = document.getElementById("sceneCv");
-  const sctx = sceneCv.getContext("2d");
-
   function load(){
     try{
-      const saved = JSON.parse(localStorage.getItem("ts_v43") || "null");
+      const saved = JSON.parse(localStorage.getItem("ts_v431") || "null");
       if (!saved) return structuredClone(DEFAULT);
       const merged = { ...DEFAULT, ...saved };
       merged.me = { ...DEFAULT.me, ...(saved.me||{}) };
       merged.mag = { ...DEFAULT.mag, ...(saved.mag||{}) };
       merged.ammoReserve = { ...DEFAULT.ammoReserve, ...(saved.ammoReserve||{}) };
-      merged.sceneSeen = { ...(saved.sceneSeen||{}) };
       return merged;
     }catch(e){ return structuredClone(DEFAULT); }
   }
-  function save(){ localStorage.setItem("ts_v43", JSON.stringify(S)); }
+  function save(){ localStorage.setItem("ts_v431", JSON.stringify(S)); }
 
   // --------------------
   // Sound + haptics
@@ -538,15 +510,9 @@
     clearTimeout(window.__toastTimer);
     window.__toastTimer=setTimeout(()=>t.style.display="none",2200);
   }
-  function log(msg){
-    S.log.unshift(`${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} — ${msg}`);
-    S.log = S.log.slice(16);
-    save();
-  }
   function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
   function rand(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
   function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
-  function now(){ return Date.now(); }
 
   function getWeapon(id){ return WEAPONS.find(w=>w.id===id); }
   function getAmmo(id){ return AMMO.find(a=>a.id===id); }
@@ -555,8 +521,22 @@
   function equippedWeapon(){ return getWeapon(S.equippedWeaponId) || WEAPONS[0]; }
   function tigerById(id){ return S.tigers.find(t=>t.id===id); }
 
+  function currentMap(){
+    const list = MODE_MAPS[S.mode] || MODE_MAPS.Story;
+    return list[clamp(S.mapIndex,0,list.length-1)];
+  }
+
+  function nextMap(){
+    const list = MODE_MAPS[S.mode] || MODE_MAPS.Story;
+    S.mapIndex = (S.mapIndex + 1) % list.length;
+    S.scanPing = 0;
+    sfx("ui");
+    toast("Map: " + currentMap().name);
+    save();
+  }
+
   // --------------------
-  // Modes UI
+  // Mode UI
   // --------------------
   function openMode(){
     document.getElementById("modeOverlay").style.display="flex";
@@ -569,13 +549,12 @@
     if (m==="Arcade"){ S.arcadeLevel = 1; }
     if (m==="Survival"){ S.survivalWave = 1; }
     if (m==="Story"){ S.storyChapter = 1; }
+    S.mapIndex = 0;            // reset to first map of that mode
     S.lockedTigerId = null;
-    spawnTigers(true);
-    save();
+    deploy();
     updateModeDesc();
     markModeTabs();
     sfx("ui"); haptic("light");
-    log(`🎮 Mode set: ${m}`);
   }
   function markModeTabs(){
     ["mStory","mArcade","mSurvival"].forEach(id=>document.getElementById(id).classList.remove("active"));
@@ -586,167 +565,22 @@
   function updateModeDesc(){
     const el=document.getElementById("modeDesc");
     if(S.mode==="Story"){
-      el.innerHTML = `<b>Story Mode:</b> scenes + choices + chapters.<br>
-      Payouts: <b>Capture $2500–$5000</b>, <b>Kill $500–$1500</b>.<br>
-      Progress: <b>Chapter ${S.storyChapter}</b>`;
+      el.innerHTML = `<b>Story Mode:</b> story progression + government payouts.<br>
+      Capture: <b>$2500–$5000</b> • Kill: <b>$500–$1500</b>.<br>
+      Chapter: <b>${S.storyChapter}</b> • Map set: <b>Story Regions</b>`;
     } else if(S.mode==="Arcade"){
       el.innerHTML = `<b>Arcade Mode:</b> win → next level (more tigers + harder).<br>
-      Progress: <b>Level ${S.arcadeLevel}</b>`;
+      Level: <b>${S.arcadeLevel}</b> • Map set: <b>Arcade Arenas</b>`;
     } else {
       el.innerHTML = `<b>Survival Mode:</b> endless waves until death.<br>
-      Progress: <b>Wave ${S.survivalWave}</b>`;
+      Wave: <b>${S.survivalWave}</b> • Map set: <b>Survival Zones</b>`;
     }
-  }
-
-  // --------------------
-  // Story scenes (multiple cutscenes + choices)
-  // --------------------
-  const STORY_SCENES = [
-    {
-      key:"S1",
-      title:"Chapter 1 — Emergency Briefing",
-      text:"Tigers crossed into mainland zones. Civilians are injured. Do you focus on rescue first, or immediate containment?",
-      choices:[
-        { label:"Rescue Civilians (+Trust)", effect:(s)=>{ s.trust=clamp(s.trust+8,0,100); s.funds+=500; log("🏛️ Trust increased. Gov bonus +$500."); } },
-        { label:"Contain Tigers (+Aggro)", effect:(s)=>{ s.aggro=clamp(s.aggro+6,0,100); s.funds+=800; log("🔥 Aggro increased. Rapid response +$800."); } }
-      ]
-    },
-    {
-      key:"S2",
-      title:"Chapter 2 — Rules of Engagement",
-      text:"The government prefers captures. Killing will escalate pack aggression. What’s your doctrine?",
-      choices:[
-        { label:"Capture Doctrine (+Trust)", effect:(s)=>{ s.trust=clamp(s.trust+6,0,100); log("🏛️ Capture doctrine set."); } },
-        { label:"Lethal Doctrine (+Funds)", effect:(s)=>{ s.funds+=1200; s.aggro=clamp(s.aggro+8,0,100); log("💰 Funds granted. 🔥 Aggro rising."); } }
-      ]
-    },
-    {
-      key:"S3",
-      title:"Chapter 3 — Equipment Allocation",
-      text:"Supply depot offers gear. Do you buy armor upgrades, or invest into ammo and weapons?",
-      choices:[
-        { label:"Armor Up (+Armor)", effect:(s)=>{ s.armor=clamp(s.armor+25,0,s.armorCap); log("🛡️ Armor increased."); } },
-        { label:"Ammo/Weapons (+Cash)", effect:(s)=>{ s.funds+=1500; log("💰 Supply credit +$1500."); } }
-      ]
-    }
-  ];
-
-  let sceneTimer=null, sceneT=0, sceneIndex=0;
-
-  function startStoryScene(){
-    closeMode();
-    if (S.mode!=="Story"){
-      toast("Story scenes are for Story Mode. Switch to Story if you want full story.");
-      return;
-    }
-    sceneIndex = Math.min(S.storyChapter-1, STORY_SCENES.length-1);
-    openScene(sceneIndex);
-  }
-
-  function skipStoryScene(){
-    document.getElementById("sceneOverlay").style.display="none";
-    if(sceneTimer) clearInterval(sceneTimer);
-    sfx("ui");
-  }
-
-  function openScene(idx){
-    const sc = STORY_SCENES[idx];
-    if (!sc) { toast("No more scenes yet."); return; }
-
-    document.getElementById("sceneOverlay").style.display="flex";
-    document.getElementById("sceneTitle").innerText = sc.title;
-    document.getElementById("sceneText").innerHTML = sc.text;
-
-    // choices
-    const choices = document.getElementById("sceneChoices");
-    choices.innerHTML = sc.choices.map((c,i)=>`<button class="good" onclick="chooseScene(${idx},${i})">${c.label}</button>`).join("");
-    choices.innerHTML += `<button class="ghost" onclick="skipStoryScene()">Skip</button>`;
-
-    // animate cutscene
-    sceneT=0;
-    if(sceneTimer) clearInterval(sceneTimer);
-    sceneTimer=setInterval(()=>drawScene(sc), 33);
-  }
-
-  function chooseScene(idx, choiceIdx){
-    const sc = STORY_SCENES[idx];
-    if (!sc) return;
-
-    // apply effect once
-    const key = sc.key;
-    if (!S.sceneSeen[key]){
-      S.sceneSeen[key] = true;
-      sc.choices[choiceIdx].effect(S);
-      // advance chapter
-      S.storyChapter = clamp(S.storyChapter+1, 1, 99);
-      updateModeDesc();
-      save();
-    }
-
-    // close & start mission
-    skipStoryScene();
-    deploy();
-  }
-
-  function drawScene(sc){
-    sceneT++;
-    const w=sceneCv.width, h=sceneCv.height;
-    sctx.clearRect(0,0,w,h);
-
-    // cinematic background
-    const g=sctx.createLinearGradient(0,0,0,h);
-    g.addColorStop(0,"#0b0d12");
-    g.addColorStop(1,"#121622");
-    sctx.fillStyle=g; sctx.fillRect(0,0,w,h);
-
-    // moving scan bands
-    sctx.globalAlpha=0.35;
-    for(let i=0;i<6;i++){
-      const y=((sceneT*4 + i*70)%(h+140))-140;
-      const gg=sctx.createLinearGradient(0,y,0,y+80);
-      gg.addColorStop(0,"transparent");
-      gg.addColorStop(.5,"rgba(58,120,255,.45)");
-      gg.addColorStop(1,"transparent");
-      sctx.fillStyle=gg;
-      sctx.fillRect(0,y,w,80);
-    }
-    sctx.globalAlpha=1;
-
-    // map nodes
-    sctx.globalAlpha=0.9;
-    for(let i=0;i<18;i++){
-      const x=80+(i*48)%820;
-      const y=140+((i*63 + sceneT*2)%(h-160));
-      sctx.fillStyle="rgba(245,158,11,.75)";
-      sctx.beginPath(); sctx.arc(x,y,3,0,Math.PI*2); sctx.fill();
-      sctx.strokeStyle="rgba(245,158,11,.18)";
-      sctx.beginPath(); sctx.moveTo(x,y); sctx.lineTo(x+60,y+18); sctx.stroke();
-    }
-    sctx.globalAlpha=1;
-
-    // title
-    sctx.fillStyle="rgba(245,247,255,.92)";
-    sctx.font="900 28px system-ui";
-    sctx.fillText("MISSION BRIEFING", 28, 52);
-
-    sctx.fillStyle="rgba(245,247,255,.75)";
-    sctx.font="800 16px system-ui";
-    sctx.fillText(sc.title, 28, 80);
-
-    // simple tiger silhouette
-    const tx = 740 + Math.sin(sceneT/10)*12;
-    const ty = 220 + Math.cos(sceneT/14)*10;
-    sctx.fillStyle="rgba(245,158,11,.35)";
-    sctx.beginPath(); sctx.roundRect(tx-70,ty-22,140,44,18); sctx.fill();
-    sctx.fillStyle="rgba(245,158,11,.55)";
-    sctx.beginPath(); sctx.arc(tx+72,ty-10,18,0,Math.PI*2); sctx.fill();
   }
 
   // --------------------
   // Shop
   // --------------------
   let currentShopTab="weapons";
-
   function openShop(){
     document.getElementById("shopOverlay").style.display="flex";
     shopTab(currentShopTab);
@@ -761,9 +595,9 @@
     if(tab==="armor") document.getElementById("tabArmor").classList.add("active");
 
     const note=document.getElementById("shopNote");
-    if(tab==="weapons") note.innerHTML="Weapons range from <b>$50</b> to <b>$100,000</b>. Higher grades = higher damage/utility.";
-    if(tab==="ammo") note.innerHTML="Ammo types match weapons. Buy reserve ammo packs. Reload uses reserves.";
-    if(tab==="armor") note.innerHTML="Armory upgrades increase armor instantly (cap 100).";
+    if(tab==="weapons") note.innerHTML="Weapons range from <b>$50</b> to <b>$100,000</b>.";
+    if(tab==="ammo") note.innerHTML="Buy reserve ammo packs. Reload uses reserves.";
+    if(tab==="armor") note.innerHTML="Armory purchases add armor instantly (cap 100).";
     renderShopList();
   }
 
@@ -772,7 +606,6 @@
     if(currentShopTab==="weapons"){
       list.innerHTML = WEAPONS.map(w=>{
         const owned = S.ownedWeapons.includes(w.id);
-        const canAfford = S.funds >= w.price;
         return `
           <div class="item">
             <div>
@@ -823,7 +656,6 @@
           </div>
         `;
       }).join("");
-      return;
     }
   }
 
@@ -833,9 +665,9 @@
     if(S.funds < w.price) return toast("Not enough money.");
     S.funds -= w.price;
     S.ownedWeapons.push(id);
-    log(`🛒 Bought weapon: ${w.name} (-$${w.price.toLocaleString()})`);
-    // auto-equip ammo type if missing
     if(!S.ammoReserve[w.ammo]) S.ammoReserve[w.ammo]=0;
+    toast("Bought: " + w.name);
+    sfx("ui");
     save(); renderShopList(); renderHUD();
   }
 
@@ -844,7 +676,8 @@
     if(S.funds < a.price) return toast("Not enough money.");
     S.funds -= a.price;
     S.ammoReserve[id] = (S.ammoReserve[id]||0) + a.pack;
-    log(`🛒 Bought ammo: ${a.name} (+${a.pack} reserve)`);
+    toast("Ammo added: " + a.name);
+    sfx("ui");
     save(); renderShopList(); renderHUD();
   }
 
@@ -854,7 +687,8 @@
     S.funds -= ar.price;
     S.armorCap = ar.cap;
     S.armor = clamp(S.armor + ar.addArmor, 0, S.armorCap);
-    log(`🛒 Bought armor: ${ar.name} (+${ar.addArmor})`);
+    toast("Armor upgraded: " + ar.name);
+    sfx("ui");
     save(); renderShopList(); renderHUD();
   }
 
@@ -862,23 +696,16 @@
     if(!S.ownedWeapons.includes(id)) return;
     const w=getWeapon(id); if(!w) return;
     S.equippedWeaponId = id;
-
-    // auto-set ammo to weapon's main ammo
     S.equippedAmmoId = w.ammo;
-    if(S.mag.cap !== w.mag){
-      S.mag.cap = w.mag;
-      S.mag.loaded = Math.min(S.mag.loaded, S.mag.cap);
-    }
-    // auto-fill mag if empty (optional)
+    S.mag.cap = w.mag;
+    S.mag.loaded = Math.min(S.mag.loaded, S.mag.cap);
     if(S.mag.loaded===0) reloadWeapon();
-
-    log(`🧰 Equipped: ${w.name}`);
     sfx("ui");
-    save(); renderShopList(); renderHUD();
+    save(); renderHUD(); renderShopList(); renderInventory();
   }
 
   // --------------------
-  // Inventory screen
+  // Inventory
   // --------------------
   function openInventory(){
     document.getElementById("invOverlay").style.display="flex";
@@ -889,15 +716,14 @@
 
   function renderInventory(){
     const w = equippedWeapon();
-    const ammoId = S.equippedAmmoId;
+    const aid = S.equippedAmmoId;
 
     document.getElementById("invSummary").innerHTML =
       `<b>Equipped:</b> ${w.name} <span class="tag">${w.grade}</span><br>
-       <b>Ammo Type:</b> ${ammoId} • <b>Mag:</b> ${S.mag.loaded}/${S.mag.cap} • <b>Reserve:</b> ${(S.ammoReserve[ammoId]||0)}<br>
+       <b>Ammo:</b> ${aid} • <b>Mag:</b> ${S.mag.loaded}/${S.mag.cap} • <b>Reserve:</b> ${(S.ammoReserve[aid]||0)}<br>
        <b>Money:</b> $${S.funds.toLocaleString()} • <b>Armor:</b> ${S.armor}/${S.armorCap}`;
 
-    const invWeapons = document.getElementById("invWeapons");
-    invWeapons.innerHTML = S.ownedWeapons.map(id=>{
+    document.getElementById("invWeapons").innerHTML = S.ownedWeapons.map(id=>{
       const ww=getWeapon(id);
       const active = (id===S.equippedWeaponId);
       return `
@@ -908,22 +734,19 @@
           </div>
           <div style="text-align:right">
             <button ${active?'disabled':''} onclick="equipWeapon('${id}')">Equip</button>
-            <button class="ghost" onclick="setAmmoType('${ww.ammo}')">Set Ammo</button>
           </div>
         </div>
       `;
     }).join("");
 
-    const invAmmo = document.getElementById("invAmmo");
     const keys = Object.keys(S.ammoReserve).sort();
-    invAmmo.innerHTML = keys.map(aid=>{
-      const a = getAmmo(aid);
-      const name = a ? a.name : aid;
+    document.getElementById("invAmmo").innerHTML = keys.map(aid=>{
+      const a=getAmmo(aid);
       const active = (aid===S.equippedAmmoId);
       return `
         <div class="item">
           <div>
-            <div class="itemName">${active?'✅ ':''}${name} <span class="tag">${a?a.grade:'Ammo'}</span></div>
+            <div class="itemName">${active?'✅ ':''}${a?a.name:aid} <span class="tag">${a?a.grade:'Ammo'}</span></div>
             <div class="itemDesc">Reserve: ${S.ammoReserve[aid]||0}</div>
           </div>
           <div style="text-align:right">
@@ -936,34 +759,27 @@
 
   function setAmmoType(aid){
     S.equippedAmmoId = aid;
-    log(`🔧 Ammo type set: ${aid}`);
     sfx("ui");
     save(); renderInventory(); renderHUD();
   }
 
   function reloadWeapon(){
     const w = equippedWeapon();
-    const aid = S.equippedAmmoId || w.ammo;
-    const reserve = S.ammoReserve[aid] || 0;
-
+    if (S.equippedAmmoId !== w.ammo) return toast("Wrong ammo type for this weapon.");
+    const reserve = S.ammoReserve[w.ammo] || 0;
     const need = S.mag.cap - S.mag.loaded;
     if (need <= 0) return toast("Magazine full.");
-    if (reserve <= 0) return toast("No reserve ammo for this type.");
-
+    if (reserve <= 0) return toast("No reserve ammo.");
     const take = Math.min(need, reserve);
     S.mag.loaded += take;
-    S.ammoReserve[aid] = reserve - take;
-
-    log(`🔁 Reloaded ${take} rounds (${S.mag.loaded}/${S.mag.cap}).`);
+    S.ammoReserve[w.ammo] = reserve - take;
     sfx("reload"); haptic("light");
     save(); renderInventory(); renderHUD();
   }
 
   // --------------------
-  // World / Regions / Tigers
+  // World / Tigers / Target lock
   // --------------------
-  const REGIONS=["Forest Edge","Downtown","Suburbs","Industrial"];
-
   function deploy(){
     S.me={x:160,y:420};
     S.target=null;
@@ -971,26 +787,19 @@
     S.lockedTigerId=null;
     S.carcasses=[];
     spawnTigers(true);
-    log(`📍 Deployed to ${S.region} (${S.mode}).`);
-    sfx("ui");
     save();
   }
 
   function spawnTigers(resetHP){
     let count = 2;
-    if (S.mode === "Arcade") count = Math.min(1 + (S.arcadeLevel||1), 7);
-    if (S.mode === "Survival") count = Math.min(3 + ((S.survivalWave||1)-1), 9);
+    if (S.mode === "Arcade") count = Math.min(2 + (S.arcadeLevel||1), 8);
+    if (S.mode === "Survival") count = Math.min(3 + ((S.survivalWave||1)-1), 10);
 
     S.tigers = [];
     for(let i=0;i<count;i++){
       let hp = 100;
-
-      if (S.mode === "Arcade") hp = 100 + ((S.arcadeLevel||1)-1)*12;
-      if (S.mode === "Survival") hp = 110 + ((S.survivalWave||1)-1)*16;
-      if (S.mode === "Story") hp = 100;
-
-      hp = Math.min(hp, 240);
-
+      if (S.mode==="Arcade") hp = Math.min(120 + ((S.arcadeLevel||1)-1)*14, 260);
+      if (S.mode==="Survival") hp = Math.min(130 + ((S.survivalWave||1)-1)*18, 320);
       S.tigers.push({
         id: i+1,
         x: 600 + (i%4)*95,
@@ -1000,11 +809,10 @@
         hp: hp,
         hpMax: hp,
         alive:true,
-        aggroBoost:0, // per tiger aggressiveness
+        aggroBoost:0,
         seenCarcass:false
       });
     }
-    S.scanPing=0;
   }
 
   function scan(){
@@ -1012,12 +820,10 @@
     if(S.stamina < 12) return toast("Not enough stamina.");
     S.stamina -= 12;
     S.scanPing = 140;
-    log("🛰️ Scan launched.");
     sfx("scan"); haptic("light");
     save();
   }
 
-  // target selection (tap tiger to lock)
   cv.addEventListener("click", (e)=>{
     if(S.inBattle) return;
     ensureAudio();
@@ -1025,17 +831,13 @@
     const x=(e.clientX-rect.left)*(cv.width/rect.width);
     const y=(e.clientY-rect.top)*(cv.height/rect.height);
 
-    // if tap near a tiger -> lock it
     const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 32);
     if(tapped){
       S.lockedTigerId = tapped.id;
-      log(`🎯 Target locked: Tiger #${tapped.id}`);
       sfx("ui"); haptic("light");
       save();
       return;
     }
-
-    // else move
     S.target={x,y};
     sfx("ui"); haptic("light");
   });
@@ -1064,7 +866,7 @@
   }
 
   // --------------------
-  // Battle (Final Fantasy loop + animations)
+  // Battle
   // --------------------
   function startCombat(){
     const t=canEngage();
@@ -1108,259 +910,133 @@
     S.activeTigerId=null;
     if(reason==="RETREAT"){
       S.aggro = clamp(S.aggro + 4, 0, 100);
-      log("💨 Retreated from battle.");
     }
     save();
+  }
+
+  function payout(outcome){
+    if (S.mode==="Story"){
+      if(outcome==="CAPTURE") return { cash: rand(2500,5000), score: 220, trust:+6, aggro:-8 };
+      return { cash: rand(500,1500), score: 100, trust:-4, aggro:+14 };
+    }
+    if (S.mode==="Arcade"){
+      const L=S.arcadeLevel||1;
+      if(outcome==="CAPTURE") return { cash: 900 + L*220, score: 180 + L*40, trust:+2, aggro:-4 };
+      return { cash: 450 + L*140, score: 90 + L*25, trust:-1, aggro:+6 };
+    }
+    const W=S.survivalWave||1;
+    if(outcome==="CAPTURE") return { cash: 800 + W*260, score: 200 + W*45, trust:+1, aggro:-3 };
+    return { cash: 350 + W*170, score: 95 + W*28, trust:0, aggro:+7 };
   }
 
   function playerAction(action){
     const t=tigerById(S.activeTigerId);
     if(!t || !t.alive) return endBattle();
 
-    // capture/kill only at low HP
     if(action==="CAPTURE"){
       if(t.hp>15) return toast("Tiger HP too high to capture.");
       t.alive=false;
-
-      const pay = payout("CAPTURE");
-      S.funds += pay.cash;
-      S.score += pay.score;
+      const pay=payout("CAPTURE");
+      S.funds += pay.cash; S.score += pay.score;
       S.trust = clamp(S.trust + pay.trust, 0, 100);
       S.aggro = clamp(S.aggro + pay.aggro, 0, 100);
-
-      log(`✅ Captured Tiger #${t.id}. +$${pay.cash.toLocaleString()} +${pay.score} score`);
       sfx("win"); haptic("light");
-      postBattleFlow("CAPTURE");
+      postBattleFlow();
       return;
     }
 
     if(action==="KILL"){
       if(t.hp>15) return toast("Tiger HP too high to finish.");
       t.alive=false;
-
-      // leave carcass on map (aggro trigger)
       S.carcasses.push({ x:t.x, y:t.y, ttl: 1800, seenBy:{} });
-
-      const pay = payout("KILL");
-      S.funds += pay.cash;
-      S.score += pay.score;
+      const pay=payout("KILL");
+      S.funds += pay.cash; S.score += pay.score;
       S.trust = clamp(S.trust + pay.trust, 0, 100);
       S.aggro = clamp(S.aggro + pay.aggro, 0, 100);
-
-      log(`⚠️ Killed Tiger #${t.id}. Carcass left behind.`);
       sfx("win"); haptic("medium");
-      postBattleFlow("KILL");
+      postBattleFlow();
       return;
     }
 
     if(action==="ATTACK"){
-      // if empty mag, block attack
-      if(S.mag.loaded <= 0){
-        toast("Magazine empty. Reload!");
-        return;
-      }
-
-      const w = equippedWeapon();
-
-      // ammo type must match weapon ammo
-      if(S.equippedAmmoId !== w.ammo){
-        toast(`Wrong ammo type. Set ammo to ${w.ammo}.`);
-        return;
-      }
-
-      // consume 1 from magazine
+      if(S.mag.loaded<=0) return toast("Magazine empty. Reload!");
+      const w=equippedWeapon();
+      if(S.equippedAmmoId !== w.ammo) return toast(`Wrong ammo. Set ammo to ${w.ammo}.`);
       S.mag.loaded -= 1;
 
-      // guaranteed damage
       let dmg = rand(w.dmg[0], w.dmg[1]);
-
-      // mode scaling
-      if(S.mode==="Arcade") dmg = Math.floor(dmg * 1.10);
-      if(S.mode==="Survival") dmg = Math.floor(dmg * 0.95);
-
-      // aggression makes tigers tougher
+      if(S.mode==="Arcade") dmg = Math.floor(dmg*1.10);
+      if(S.mode==="Survival") dmg = Math.floor(dmg*0.95);
       dmg = Math.max(6, dmg - Math.floor(S.aggro/45));
 
-      // apply
       t.hp = clamp(t.hp - dmg, 0, t.hpMax);
 
-      // animations
-      pushFX({ type:"playerRecoil", t:10 });
-      pushFX({ type:"hitFlash", id:t.id, t:12 });
-      pushFX({ type:"floatingText", x:t.x, y:t.y-40, text:`-${dmg}`, t:40 });
-
-      setBattleMsg(`You fired ${w.name}! Tiger took ${dmg} damage.`);
       if(w.type==="tranq") sfx("tranq"); else sfx("hit");
       haptic("light");
-
-      // force critical state at 0 to require capture/kill choice
-      if(t.hp <= 0){
-        t.hp = 15;
-        setBattleMsg("Tiger is critically weak. Choose Capture or Kill!");
-      }
+      if(t.hp<=0){ t.hp=15; }
 
       updateBattleButtons();
-
-      // tiger turn
       tigerTurn(t);
-
       save();
-      return;
     }
   }
 
   function tigerTurn(t){
     if(!t.alive) return;
-
-    // lunge animation
-    pushFX({ type:"tigerLunge", id:t.id, t:14 });
-    pushFX({ type:"screenShake", t:10 });
-
     const rage = clamp((S.aggro/100) + (t.aggroBoost||0), 0, 1);
-
-    let dmg = rand(10, 18) + Math.floor(rage*8);
-
-    // scale with arcade / survival
-    if (S.mode === "Arcade") dmg += Math.floor(((S.arcadeLevel||1)-1) * 2);
-    if (S.mode === "Survival") dmg += Math.floor(((S.survivalWave||1)-1) * 3);
-
+    let dmg = rand(10,18) + Math.floor(rage*8);
+    if(S.mode==="Arcade") dmg += Math.floor(((S.arcadeLevel||1)-1)*2);
+    if(S.mode==="Survival") dmg += Math.floor(((S.survivalWave||1)-1)*3);
     dmg = clamp(dmg, 6, 48);
 
-    // armor absorbs first
-    if(S.armor > 0){
-      const absorbed = Math.min(S.armor, dmg);
+    if(S.armor>0){
+      const absorbed=Math.min(S.armor, dmg);
       S.armor -= absorbed;
       dmg -= absorbed;
-      if(absorbed>0) log(`🛡️ Armor absorbed ${absorbed}.`);
     }
-
     if(dmg>0){
       S.hp = clamp(S.hp - dmg, 0, 100);
-      log(`🐅 Tiger attacks! -${dmg} HP`);
       sfx("hurt"); haptic("heavy");
-    } else {
-      log("🛡️ Armor blocked the hit!");
-      haptic("light");
     }
-
-    // emergency armor pack auto-trigger (if player has reserve armor items via armory purchases only)
-    if(S.hp <= 15){
-      // soft assist: grant tiny auto armor if near death and armor very low
-      if(S.armor < 8){
-        S.armor = clamp(S.armor + 8, 0, S.armorCap);
-        log("🛡️ Emergency brace engaged (+8 armor).");
-      }
-    }
-
-    if(S.hp <= 0){
-      log("☠️ You were defeated. Reset to try again.");
-      endBattle();
-    } else {
-      setBattleMsg("Tiger moved! Your turn.");
-    }
-
     updateBattleButtons();
+    if(S.hp<=0) endBattle();
   }
 
-  // payouts per mode
-  function payout(outcome){
-    // outcome: "CAPTURE" | "KILL"
-    if (S.mode==="Story"){
-      if(outcome==="CAPTURE"){
-        return { cash: rand(2500,5000), score: 220, trust:+6, aggro:-8 };
-      } else {
-        return { cash: rand(500,1500), score: 100, trust:-4, aggro:+14 };
-      }
-    }
+  function postBattleFlow(){
+    const alive=S.tigers.some(x=>x.alive);
+    if(alive){ endBattle(); save(); return; }
 
-    // Arcade: faster loop, moderate payouts scaling by level
-    if (S.mode==="Arcade"){
-      const L = S.arcadeLevel || 1;
-      if(outcome==="CAPTURE"){
-        return { cash: 900 + L*220, score: 180 + L*40, trust:+2, aggro:-4 };
-      } else {
-        return { cash: 450 + L*140, score: 90 + L*25, trust:-1, aggro:+6 };
-      }
-    }
-
-    // Survival: wave scaling
-    const W = S.survivalWave || 1;
-    if(outcome==="CAPTURE"){
-      return { cash: 800 + W*260, score: 200 + W*45, trust:+1, aggro:-3 };
+    if(S.mode==="Survival"){
+      S.survivalWave = (S.survivalWave||1)+1;
+      if(S.survivalWave % 3 === 0) nextMap(); // rotate survival maps every 3 waves
+      spawnTigers(true);
+    } else if(S.mode==="Arcade"){
+      S.arcadeLevel = (S.arcadeLevel||1)+1;
+      if(S.arcadeLevel % 2 === 0) nextMap(); // rotate arcade maps every 2 levels
+      spawnTigers(true);
     } else {
-      return { cash: 350 + W*170, score: 95 + W*28, trust:0, aggro:+7 };
-    }
-  }
-
-  // After battle: progression per mode
-  function postBattleFlow(outcome){
-    const alive = S.tigers.some(x=>x.alive);
-
-    if (alive){
-      endBattle();
-      save();
-      return;
-    }
-
-    if (S.mode === "Survival"){
-      S.survivalWave = (S.survivalWave || 1) + 1;
-      log(`🔥 Survival: Wave cleared! Next wave: ${S.survivalWave}`);
-      S.aggro = clamp(S.aggro + 8, 0, 100);
+      S.storyChapter = (S.storyChapter||1)+1;
+      if(S.storyChapter % 2 === 0) nextMap(); // rotate story maps every 2 chapters
       spawnTigers(true);
     }
-    else if (S.mode === "Arcade"){
-      S.arcadeLevel = (S.arcadeLevel || 1) + 1;
-
-      const bonusCash = 800 + (S.arcadeLevel-1)*250;
-      const bonusScore = 200 + (S.arcadeLevel-1)*60;
-      S.funds += bonusCash;
-      S.score += bonusScore;
-
-      log(`🕹️ Arcade WIN! Level up → ${S.arcadeLevel}. Bonus +$${bonusCash.toLocaleString()} +${bonusScore} score`);
-      S.aggro = clamp(S.aggro + 6, 0, 100);
-
-      spawnTigers(true);
-    }
-    else {
-      // Story: chapter moves forward + new scene (if exists)
-      S.storyChapter = (S.storyChapter || 1) + 1;
-      log(`📖 Story: Chapter ${S.storyChapter} reached.`);
-      // rotate region for variety
-      const i=REGIONS.indexOf(S.region);
-      S.region = REGIONS[(i+1)%REGIONS.length];
-      spawnTigers(true);
-
-      // trigger next story scene if available
-      const nextSceneIndex = Math.min(S.storyChapter-1, STORY_SCENES.length-1);
-      if (STORY_SCENES[nextSceneIndex] && !S.sceneSeen[STORY_SCENES[nextSceneIndex].key]){
-        setTimeout(()=>openScene(nextSceneIndex), 250);
-      }
-    }
-
     endBattle();
     save();
   }
 
   // --------------------
-  // Carcass aggression system:
-  // if tiger sees a dead body -> becomes hunter
+  // Carcass aggro
   // --------------------
   function updateCarcasses(){
-    // decay carcasses
     for (const c of S.carcasses) c.ttl -= 1;
     S.carcasses = S.carcasses.filter(c=>c.ttl > 0);
 
-    // for each tiger, if near carcass and not seen it -> increase aggression boost
     for (const t of S.tigers){
       if(!t.alive) continue;
       for (const c of S.carcasses){
         if (c.seenBy[t.id]) continue;
-        const d = dist(t.x,t.y,c.x,c.y);
-        if (d < 190){
-          c.seenBy[t.id] = true;
+        if (dist(t.x,t.y,c.x,c.y) < 190){
+          c.seenBy[t.id]=true;
           t.aggroBoost = clamp((t.aggroBoost||0) + 0.35, 0, 1);
-          log(`🚨 Tiger #${t.id} saw a carcass — it becomes a HUNTER.`);
-          // global aggro rises too
           S.aggro = clamp(S.aggro + 6, 0, 100);
         }
       }
@@ -1368,37 +1044,175 @@
   }
 
   // --------------------
-  // Visual FX system
+  // Draw: mode-based map scenes
   // --------------------
-  function pushFX(fx){ S.fx.push(fx); }
+  function drawMapScene(){
+    const w=cv.width,h=cv.height;
+    const map = currentMap();
+    const key = map.key;
 
-  function tickFX(){
-    for (const f of S.fx) f.t -= 1;
-    S.fx = S.fx.filter(f=>f.t > 0);
-  }
+    ctx.clearRect(0,0,w,h);
 
-  // --------------------
-  // World movement + drawing
-  // --------------------
-  function regen(){
-    const nowT=Date.now();
-    if(!S._last) S._last=nowT;
-    const dt=(nowT-S._last)/1000;
-    if(dt>=2.5){
-      const ticks=Math.floor(dt/2.5);
-      S.stamina = clamp(S.stamina + ticks*3, 0, 100);
-      S._last=nowT;
+    // Helpers
+    function grad(a,b,c){
+      const g=ctx.createLinearGradient(0,0,0,h);
+      g.addColorStop(0,a); g.addColorStop(.65,b); g.addColorStop(1,c);
+      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+    }
+    function grid(alpha=0.12){
+      ctx.globalAlpha=alpha; ctx.strokeStyle="#3a4566";
+      for(let x=0;x<=w;x+=60){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+      for(let y=0;y<=h;y+=60){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+      ctx.globalAlpha=1;
+    }
+
+    // STORY maps (regions)
+    if(key==="ST_FOREST"){
+      grad("#102017","#0b0d12","#1a2a1b");
+      for(let i=0;i<18;i++){
+        const x=(i*62+(i%3)*18)%w, y=70+(i%5)*70;
+        ctx.fillStyle="rgba(20,80,35,.25)";
+        ctx.beginPath(); ctx.arc(x,y,28,0,Math.PI*2); ctx.fill();
+      }
+      grid(0.10);
+    }
+    else if(key==="ST_SUBURBS"){
+      grad("#142235","#0b0d12","#1a2a2a");
+      for(let i=0;i<10;i++){
+        const x=70+i*85, y=h-160-(i%2)*20;
+        ctx.fillStyle="rgba(80,140,180,.18)";
+        ctx.fillRect(x,y,60,60);
+        ctx.fillStyle="rgba(245,158,11,.14)";
+        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+30,y-26); ctx.lineTo(x+60,y); ctx.closePath(); ctx.fill();
+      }
+      grid(0.10);
+    }
+    else if(key==="ST_DOWNTOWN"){
+      grad("#1a1a2a","#0b0d12","#2a1a1a");
+      for(let i=0;i<14;i++){
+        const x=i*70, bh=120+(i%4)*60;
+        ctx.fillStyle="rgba(90,110,160,.18)";
+        ctx.fillRect(x,h-bh,54,bh);
+      }
+      grid(0.10);
+    }
+    else if(key==="ST_INDUSTRIAL"){
+      grad("#1b1f24","#0b0d12","#2a2220");
+      ctx.fillStyle="rgba(140,110,90,.18)";
+      for(let i=0;i<9;i++){
+        ctx.fillRect(60+i*95,120,20,260);
+        ctx.fillRect(40+i*95,200,60,18);
+      }
+      grid(0.10);
+    }
+
+    // ARCADE arenas
+    else if(key==="AR_ARENA_BAY"){
+      grad("#0f1a2a","#0b0d12","#102033");
+      ctx.fillStyle="rgba(58,120,255,.10)";
+      ctx.fillRect(80,90,w-160,h-180);
+      ctx.strokeStyle="rgba(58,120,255,.25)";
+      ctx.lineWidth=3;
+      ctx.strokeRect(80,90,w-160,h-180);
+      grid(0.16);
+    }
+    else if(key==="AR_NEON_GRID"){
+      grad("#140b22","#0b0d12","#1a0f2b");
+      ctx.globalAlpha=0.22;
+      ctx.strokeStyle="rgba(58,120,255,.55)";
+      for(let x=0;x<=w;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+      for(let y=0;y<=h;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+      ctx.globalAlpha=1;
+    }
+    else if(key==="AR_SAND_YARD"){
+      grad("#2a1f12","#0b0d12","#2b2214");
+      ctx.fillStyle="rgba(245,158,11,.12)";
+      for(let i=0;i<28;i++){
+        ctx.beginPath();
+        ctx.arc((i*37)%w, 90+((i*71)% (h-180)), 14, 0, Math.PI*2);
+        ctx.fill();
+      }
+      grid(0.10);
+    }
+    else if(key==="AR_STEEL_PIT"){
+      grad("#1a1f26","#0b0d12","#242a33");
+      ctx.fillStyle="rgba(245,247,255,.06)";
+      for(let i=0;i<7;i++){
+        ctx.fillRect(110+i*110, 140, 28, 260);
+      }
+      grid(0.14);
+    }
+
+    // SURVIVAL zones
+    else if(key==="SV_NIGHT_WOODS"){
+      grad("#07131a","#0b0d12","#061018");
+      ctx.fillStyle="rgba(20,80,35,.18)";
+      for(let i=0;i<20;i++){
+        ctx.beginPath();
+        ctx.arc((i*58)%w, 60+((i*83)%(h-120)), 26, 0, Math.PI*2);
+        ctx.fill();
+      }
+      grid(0.08);
+    }
+    else if(key==="SV_STORM_DISTRICT"){
+      grad("#0b1320","#0b0d12","#10162a");
+      // storm streaks
+      ctx.globalAlpha=0.25;
+      ctx.strokeStyle="rgba(245,247,255,.35)";
+      for(let i=0;i<18;i++){
+        ctx.beginPath();
+        ctx.moveTo((i*70)%w, 0);
+        ctx.lineTo((i*70)%w + 120, h);
+        ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+      grid(0.10);
+    }
+    else if(key==="SV_RUINS"){
+      grad("#1b1a18","#0b0d12","#221f1a");
+      ctx.fillStyle="rgba(245,247,255,.08)";
+      for(let i=0;i<10;i++){
+        ctx.fillRect(80+i*80, 160+(i%2)*40, 46, 120);
+      }
+      grid(0.12);
+    }
+    else if(key==="SV_ASH_FIELD"){
+      grad("#1a1212","#0b0d12","#241818");
+      ctx.globalAlpha=0.18;
+      ctx.fillStyle="rgba(180,180,180,.55)";
+      for(let i=0;i<40;i++){
+        ctx.beginPath();
+        ctx.arc((i*24)%w, 50+((i*57)%(h-100)), 6, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.globalAlpha=1;
+      grid(0.10);
+    }
+    else {
+      grad("#121622","#0b0d12","#0f1320");
+      grid(0.12);
+    }
+
+    // scan ping ring around target tiger
+    if(S.scanPing>0){
+      S.scanPing--;
+      const t=currentTargetTiger();
+      if(t){
+        const r = 40 + (140-S.scanPing)*2.2;
+        ctx.globalAlpha = Math.max(0, S.scanPing/140);
+        ctx.strokeStyle="rgba(245,158,11,.35)";
+        ctx.lineWidth=3;
+        ctx.beginPath(); ctx.arc(t.x,t.y,r,0,Math.PI*2); ctx.stroke();
+        ctx.globalAlpha=1;
+      }
     }
   }
 
   function roamTigers(){
     for(const t of S.tigers){
       if(!t.alive) continue;
-
-      // chase chance increases with global aggro + carcass hunter boost
       const hunter = (t.aggroBoost||0);
       const chaseChance = clamp((S.aggro/100)*0.25 + hunter*0.55, 0, 0.90);
-
       const chase = Math.random() < chaseChance;
 
       if(chase){
@@ -1429,82 +1243,10 @@
     const d=Math.hypot(dx,dy);
     if(d<6){ S.target=null; return; }
     if(S.stamina<=0) return;
-
     const speed=3.2;
     S.me.x += (dx/d)*speed;
     S.me.y += (dy/d)*speed;
     S.stamina = clamp(S.stamina - 0.12, 0, 100);
-  }
-
-  function drawRegion(){
-    const w=cv.width,h=cv.height;
-    ctx.clearRect(0,0,w,h);
-
-    if(S.region==="Forest Edge"){
-      grad("#102017","#0b0d12","#1a2a1b"); trees();
-    } else if(S.region==="Downtown"){
-      grad("#1a1a2a","#0b0d12","#2a1a1a"); city();
-    } else if(S.region==="Suburbs"){
-      grad("#142235","#0b0d12","#1a2a2a"); houses();
-    } else {
-      grad("#1b1f24","#0b0d12","#2a2220"); pipes();
-    }
-
-    // scan ping ring around locked/nearest tiger
-    if(S.scanPing>0){
-      S.scanPing--;
-      const t=currentTargetTiger();
-      if(t){
-        const r = 40 + (140-S.scanPing)*2.2;
-        ctx.globalAlpha = Math.max(0, S.scanPing/140);
-        ctx.strokeStyle="rgba(245,158,11,.35)";
-        ctx.lineWidth=3;
-        ctx.beginPath(); ctx.arc(t.x,t.y,r,0,Math.PI*2); ctx.stroke();
-        ctx.globalAlpha=1;
-      }
-    }
-
-    // subtle floor grid
-    ctx.globalAlpha=0.12; ctx.strokeStyle="#3a4566";
-    for(let x=0;x<=w;x+=60){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
-    for(let y=0;y<=h;y+=60){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
-    ctx.globalAlpha=1;
-
-    function grad(a,b,c){
-      const g=ctx.createLinearGradient(0,0,0,h);
-      g.addColorStop(0,a); g.addColorStop(.65,b); g.addColorStop(1,c);
-      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
-    }
-    function trees(){
-      for(let i=0;i<18;i++){
-        const x=(i*62+(i%3)*18)%w, y=70+(i%5)*70;
-        ctx.fillStyle="rgba(20,80,35,.25)";
-        ctx.beginPath(); ctx.arc(x,y,28,0,Math.PI*2); ctx.fill();
-      }
-    }
-    function city(){
-      for(let i=0;i<14;i++){
-        const x=i*70, bh=120+(i%4)*60;
-        ctx.fillStyle="rgba(90,110,160,.18)";
-        ctx.fillRect(x,h-bh,54,bh);
-      }
-    }
-    function houses(){
-      for(let i=0;i<10;i++){
-        const x=70+i*85, y=h-160-(i%2)*20;
-        ctx.fillStyle="rgba(80,140,180,.18)";
-        ctx.fillRect(x,y,60,60);
-        ctx.fillStyle="rgba(245,158,11,.14)";
-        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+30,y-26); ctx.lineTo(x+60,y); ctx.closePath(); ctx.fill();
-      }
-    }
-    function pipes(){
-      ctx.fillStyle="rgba(140,110,90,.18)";
-      for(let i=0;i<9;i++){
-        ctx.fillRect(60+i*95,120,20,260);
-        ctx.fillRect(40+i*95,200,60,18);
-      }
-    }
   }
 
   function drawEntities(){
@@ -1520,78 +1262,45 @@
     for(const t of S.tigers){
       if(!t.alive) continue;
 
-      // apply tiger lunge fx offset if active
-      let lx=0, ly=0;
-      const lfx = S.fx.find(f=>f.type==="tigerLunge" && f.id===t.id);
-      if(lfx){
-        const k = lfx.t/14;
-        lx = (S.me.x>t.x?1:-1) * (1-k)*18;
-        ly = (S.me.y>t.y?1:-1) * (1-k)*10;
-      }
-
-      // hit flash
-      const flash = S.fx.some(f=>f.type==="hitFlash" && f.id===t.id);
-      const bodyColor = flash ? "rgba(245,247,255,.95)" : "rgba(245,158,11,.95)";
-
       ctx.globalAlpha=0.25; ctx.fillStyle="#000";
-      ctx.beginPath(); ctx.ellipse(t.x+lx,t.y+ly+18,20,8,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(t.x,t.y+18,20,8,0,0,Math.PI*2); ctx.fill();
       ctx.globalAlpha=1;
 
-      ctx.fillStyle=bodyColor;
-      ctx.beginPath(); ctx.roundRect(t.x+lx-16,t.y+ly-14,32,26,10); ctx.fill();
+      ctx.fillStyle="rgba(245,158,11,.95)";
+      ctx.beginPath(); ctx.roundRect(t.x-16,t.y-14,32,26,10); ctx.fill();
 
       ctx.strokeStyle="rgba(0,0,0,.35)"; ctx.lineWidth=2;
       for(let i=-10;i<=10;i+=5){
-        ctx.beginPath(); ctx.moveTo(t.x+lx+i,t.y+ly-12); ctx.lineTo(t.x+lx+i+4,t.y+ly+10); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(t.x+i,t.y-12); ctx.lineTo(t.x+i+4,t.y+10); ctx.stroke();
       }
 
-      ctx.fillStyle=bodyColor;
-      ctx.beginPath(); ctx.arc(t.x+lx+18,t.y+ly-8,10,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="rgba(245,158,11,.98)";
+      ctx.beginPath(); ctx.arc(t.x+18,t.y-8,10,0,Math.PI*2); ctx.fill();
       ctx.fillStyle="rgba(0,0,0,.55)";
-      ctx.beginPath(); ctx.arc(t.x+lx+21,t.y+ly-10,2,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(t.x+21,t.y-10,2,0,Math.PI*2); ctx.fill();
 
-      // target lock outline
-      if (S.lockedTigerId === t.id){
+      // lock outline
+      if(S.lockedTigerId===t.id){
         ctx.strokeStyle="rgba(58,120,255,.9)";
         ctx.lineWidth=3;
-        ctx.beginPath(); ctx.arc(t.x+lx,t.y+ly,26,0,Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(t.x,t.y,26,0,Math.PI*2); ctx.stroke();
       }
 
       // hp bar
       const pct=t.hp/t.hpMax;
       ctx.fillStyle="rgba(11,13,18,.85)";
-      ctx.fillRect(t.x+lx-24,t.y+ly-34,48,6);
+      ctx.fillRect(t.x-24,t.y-34,48,6);
       ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
-      ctx.fillRect(t.x+lx-24,t.y+ly-34,48*pct,6);
+      ctx.fillRect(t.x-24,t.y-34,48*pct,6);
 
       // threshold mark at 15%
       ctx.strokeStyle="rgba(245,247,255,.35)";
-      ctx.beginPath(); ctx.moveTo(t.x+lx-24+48*0.15,t.y+ly-34); ctx.lineTo(t.x+lx-24+48*0.15,t.y+ly-28); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(t.x-24+48*0.15,t.y-34); ctx.lineTo(t.x-24+48*0.15,t.y-28); ctx.stroke();
     }
-
-    // player recoil fx
-    let rx=0;
-    const pr = S.fx.find(f=>f.type==="playerRecoil");
-    if(pr){
-      const k=pr.t/10;
-      rx = (1-k)*-10;
-    }
-
-    // screen shake
-    const shake = S.fx.find(f=>f.type==="screenShake");
-    let shx=0, shy=0;
-    if(shake){
-      shx = (Math.random()-0.5)*6;
-      shy = (Math.random()-0.5)*6;
-    }
-
-    // apply shake by translating whole scene? simplest: translate player only and floating texts will still look OK
-    ctx.save();
-    ctx.translate(shx, shy);
 
     // player
     ctx.save();
-    ctx.translate(S.me.x+rx, S.me.y);
+    ctx.translate(S.me.x, S.me.y);
 
     ctx.globalAlpha=0.25; ctx.fillStyle="#000";
     ctx.beginPath(); ctx.ellipse(0,18,18,8,0,0,Math.PI*2); ctx.fill();
@@ -1609,46 +1318,19 @@
     ctx.beginPath(); ctx.moveTo(10,-10); ctx.lineTo(22,-6); ctx.stroke();
 
     ctx.restore();
-
-    // floating texts
-    for(const f of S.fx.filter(x=>x.type==="floatingText")){
-      ctx.globalAlpha = Math.min(1, f.t/40);
-      ctx.fillStyle="rgba(245,247,255,.92)";
-      ctx.font="900 18px system-ui";
-      ctx.fillText(f.text, f.x, f.y - (40-f.t)*1.2);
-      ctx.globalAlpha=1;
-    }
-
-    ctx.restore();
   }
 
-  // --------------------
-  // Main loop
-  // --------------------
-  function draw(){
-    regen();
-
-    drawRegion();
-
-    if(!S.inBattle){
-      updateCarcasses();
-      roamTigers();
-      movePlayer();
+  function regen(){
+    const nowT=Date.now();
+    if(!S._last) S._last=nowT;
+    const dt=(nowT-S._last)/1000;
+    if(dt>=2.5){
+      const ticks=Math.floor(dt/2.5);
+      S.stamina = clamp(S.stamina + ticks*3, 0, 100);
+      S._last=nowT;
     }
-
-    tickFX();
-    drawEntities();
-
-    document.getElementById("engageBtn").disabled = !canEngage();
-
-    renderHUD();
-    save();
-    requestAnimationFrame(draw);
   }
 
-  // --------------------
-  // HUD render
-  // --------------------
   function renderHUD(){
     document.getElementById("soundLbl").innerText = S.soundOn ? "On" : "Off";
 
@@ -1662,13 +1344,13 @@
     document.getElementById("trustTxt").innerText = S.trust;
     document.getElementById("aggroTxt").innerText = S.aggro;
 
-    document.getElementById("regionTxt").innerText = S.region;
-
     let modeLabel = S.mode;
     if (S.mode==="Arcade") modeLabel = `Arcade L${S.arcadeLevel || 1}`;
     if (S.mode==="Survival") modeLabel = `Survival W${S.survivalWave || 1}`;
     if (S.mode==="Story") modeLabel = `Story C${S.storyChapter || 1}`;
     document.getElementById("modeTxt").innerText = modeLabel;
+
+    document.getElementById("mapTxt").innerText = currentMap().name;
 
     const t=currentTargetTiger();
     document.getElementById("tigerTxt").innerText = t ? `${Math.round(t.hp)}/${Math.round(t.hpMax)}` : "—";
@@ -1682,43 +1364,40 @@
     document.getElementById("ammoTxt").innerText = `${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[S.equippedAmmoId]||0})`;
   }
 
-  // --------------------
-  // Close/open overlays
-  // --------------------
-  function openInventory(){ document.getElementById("invOverlay").style.display="flex"; renderInventory(); }
-  function closeInventory(){ document.getElementById("invOverlay").style.display="none"; }
-  function openShop(){ document.getElementById("shopOverlay").style.display="flex"; shopTab(currentShopTab); }
-  function closeShop(){ document.getElementById("shopOverlay").style.display="none"; }
+  function draw(){
+    regen();
+    drawMapScene();
 
-  // --------------------
-  // Reset
-  // --------------------
+    if(!S.inBattle){
+      updateCarcasses();
+      roamTigers();
+      movePlayer();
+    }
+
+    drawEntities();
+
+    document.getElementById("engageBtn").disabled = !canEngage();
+
+    renderHUD();
+    save();
+    requestAnimationFrame(draw);
+  }
+
   function resetGame(){
-    localStorage.removeItem("ts_v43");
+    localStorage.removeItem("ts_v431");
     S = structuredClone(DEFAULT);
     save();
     toast("Reset ✅");
     openMode();
   }
 
-  // --------------------
-  // INIT
-  // --------------------
   function init(){
-    if(!S.tigers || !S.tigers.length) spawnTigers(true);
-
-    // force mag cap to equipped weapon
+    // force mag to equipped weapon
     const w = equippedWeapon();
     S.mag.cap = w.mag;
     S.mag.loaded = Math.min(S.mag.loaded || w.mag, w.mag);
 
-    // open mode on first run
-    if(!S.sceneSeen.S1 && S.mode==="Story"){
-      openMode();
-      updateModeDesc();
-      markModeTabs();
-    }
-
+    if(!S.tigers || !S.tigers.length) spawnTigers(true);
     requestAnimationFrame(draw);
   }
   init();
