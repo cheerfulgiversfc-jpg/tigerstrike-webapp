@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>Tiger Strike 🐅 — v4</title>
+  <title>Tiger Strike 🐅 — V4.2</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <style>
@@ -16,10 +16,12 @@
     }
     *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
     body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial;overflow-x:hidden}
-    .wrap{max-width:980px;margin:0 auto;padding:12px 12px 92px}
+    .wrap{max-width:1020px;margin:0 auto;padding:12px 12px 86px}
+
     .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-    .title{font-size:26px;font-weight:950}
+    .title{font-size:24px;font-weight:950}
     .sub{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
+
     .row{display:flex;gap:10px;flex-wrap:wrap}
     button{
       border-radius:12px;border:1px solid var(--border2);background:#1a2031;color:#fff;
@@ -31,81 +33,82 @@
     .warn{border-color:#7c2d12;background:#2b140d}
     .danger{border-color:#7f1d1d;background:#2a0f13}
 
-    .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    .chip{background:var(--panel2);border:1px solid var(--border2);padding:8px 10px;border-radius:999px;font-size:13px;font-weight:900}
-    .chip small{opacity:.7}
-    .grid2{display:grid;grid-template-columns: 1.35fr .65fr; gap:12px; margin-top:12px}
-    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
-    .h{font-weight:950;margin:0 0 6px}
-    .hint{font-size:12px;color:var(--muted);line-height:1.35}
-    .divider{height:1px;background:var(--border);margin:12px 0}
-
-    /* GAME VIEW */
-    .stageWrap{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;position:relative}
-    canvas{display:block;width:100%;height:auto;touch-action:manipulation}
-    .hudTop{
-      position:absolute;left:10px;right:10px;top:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none
-    }
-    .hudPill{
-      pointer-events:auto;
-      background:rgba(18,22,34,.82);
-      border:1px solid rgba(42,49,69,.8);
+    .hud{
+      margin-top:10px;
+      background:rgba(18,22,34,.85);
+      border:1px solid rgba(42,49,69,.9);
       border-radius:14px;
-      padding:8px 10px;
-      font-size:12px;
-      font-weight:900;
+      padding:10px;
       backdrop-filter: blur(10px);
-      max-width:48%;
+      box-shadow: var(--shadow);
     }
-
-    .bar{
-      height:10px;border-radius:999px;background:rgba(11,13,18,.9);
-      border:1px solid rgba(35,42,62,.9);overflow:hidden;margin-top:6px
-    }
+    .hudGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .hudBox{background:rgba(15,19,32,.7);border:1px solid rgba(35,42,62,.9);border-radius:14px;padding:10px}
+    .hudTitle{font-weight:950}
+    .hudLine{font-size:12px;color:var(--muted);margin-top:4px}
+    .bar{height:10px;border-radius:999px;background:rgba(11,13,18,.9);border:1px solid rgba(35,42,62,.9);overflow:hidden;margin-top:6px}
     .fill{height:100%;width:50%;background:var(--blue)}
     .fill.green{background:var(--good)}
     .fill.red{background:var(--bad)}
     .fill.orange{background:var(--warn)}
 
-    /* STORY INTRO OVERLAY */
-    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;z-index:100}
-    .intro{
-      width:min(980px, 94vw);
+    .screenCard{
+      margin-top:12px;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:16px;
+      overflow:hidden;
+      box-shadow: var(--shadow);
+      position:relative;
+    }
+    canvas{display:block;width:100%;height:auto;touch-action:manipulation}
+
+    .actionStrip{
+      border-top:1px solid var(--border);
+      background:rgba(15,19,32,.85);
+      padding:10px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .small{font-size:12px;color:var(--muted)}
+    .pill{
+      display:inline-block;
+      padding:2px 8px;
+      border-radius:999px;
+      border:1px solid var(--border2);
+      background:#0b0d12;
+      color:var(--muted);
+      font-weight:900;
+      font-size:11px;
+    }
+
+    .overlay{
+      position:fixed;inset:0;background:rgba(0,0,0,.72);
+      display:none;align-items:center;justify-content:center;z-index:200;
+      padding:14px;
+    }
+    .modal{
+      width:min(980px, 96vw);
       background:linear-gradient(180deg,#121622,#0b0d12);
       border:1px solid var(--border);
       border-radius:18px;
-      overflow:hidden;
       box-shadow:var(--shadow);
-    }
-    .introTop{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,.25)}
-    .introTitle{font-weight:950}
-    .introBody{padding:14px}
-    .fakeVideo{
-      height:240px;
-      border-radius:14px;
-      border:1px solid var(--border2);
-      background:
-        radial-gradient(circle at 30% 30%, rgba(245,158,11,.25), transparent 55%),
-        radial-gradient(circle at 70% 40%, rgba(58,120,255,.20), transparent 55%),
-        linear-gradient(180deg, rgba(18,22,34,.9), rgba(11,13,18,.95));
-      position:relative;
       overflow:hidden;
     }
-    .scanLine{
-      position:absolute;left:-20%;top:-30%;
-      width:140%;height:22%;
-      background:linear-gradient(90deg, transparent, rgba(58,120,255,.22), transparent);
-      transform:rotate(14deg);
-      animation:scan 2.4s linear infinite;
-    }
-    @keyframes scan{0%{transform:translateY(-40%) rotate(14deg)}100%{transform:translateY(260%) rotate(14deg)}}
-    .introText{margin-top:12px;font-size:13px;color:var(--muted);line-height:1.35}
-    .introBtns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .modalTop{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,.25)}
+    .modalTitle{font-weight:950}
+    .modalBody{padding:14px}
+    .modalText{font-size:13px;color:var(--muted);line-height:1.35;margin-top:10px}
 
-    /* COMBAT SHEET */
-    .sheetOverlay{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:flex-end;z-index:120}
-    .sheet{
-      width:min(980px, 100vw);
+    .battleOverlay{
+      position:fixed;inset:0;background:rgba(0,0,0,.72);
+      display:none;align-items:flex-end;z-index:220;
+    }
+    .battleSheet{
+      width:min(1020px,100vw);
       margin:0 auto;
       background:var(--panel);
       border:1px solid var(--border);
@@ -113,16 +116,26 @@
       padding:12px;
       box-shadow:var(--shadow);
     }
-    .sheetGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+    .battleTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .battleTitle{font-weight:950}
+    .battleMsg{font-size:12px;color:var(--muted);line-height:1.35;margin-top:6px}
+    .divider{height:1px;background:var(--border);margin:12px 0}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
     .weaponGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
-    .tag{display:inline-block;margin-left:8px;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;border:1px solid var(--border2);background:#0b0d12;color:var(--muted)}
-    .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#101626;border:1px solid var(--border);padding:10px 12px;border-radius:12px;font-size:13px;box-shadow:var(--shadow);display:none;max-width:92vw;z-index:150}
-    .log{max-height:220px;overflow:auto;border:1px solid var(--border2);background:var(--panel2);border-radius:12px;padding:10px;margin-top:10px}
-    .logline{font-size:12px;color:var(--muted);line-height:1.35;margin:6px 0}
 
-    /* bottom nav */
-    .nav{position:fixed;left:0;right:0;bottom:0;background:rgba(11,13,18,.92);border-top:1px solid var(--border);backdrop-filter: blur(10px);padding:10px 10px 14px;z-index:60}
-    .navInner{max-width:980px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    .toast{
+      position:fixed;left:50%;bottom:90px;transform:translateX(-50%);
+      background:#101626;border:1px solid var(--border);padding:10px 12px;border-radius:12px;
+      font-size:13px;box-shadow:var(--shadow);display:none;max-width:92vw;z-index:240
+    }
+
+    .nav{
+      position:fixed;left:0;right:0;bottom:0;
+      background:rgba(11,13,18,.92);border-top:1px solid var(--border);
+      backdrop-filter: blur(10px);
+      padding:10px 10px 14px;z-index:100;
+    }
+    .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
   </style>
@@ -132,103 +145,85 @@
   <div class="wrap">
     <div class="top">
       <div>
-        <div class="title">Tiger Strike 🐅 <span class="tag">V4</span></div>
-        <div class="sub">Story intro → region scene → tap-to-move → roaming tigers → turn combat (HP + capture threshold).</div>
+        <div class="title">Tiger Strike 🐅 <span class="pill">V4.2</span></div>
+        <div class="sub">Story / Arcade (level-up) / Survival (waves) + intro cutscene + roaming map + FF battle loop.</div>
       </div>
       <div class="row">
         <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
-        <button class="ghost" onclick="openRegion()">🗺️ Region</button>
+        <button class="ghost" onclick="openMode()">🎮 Mode</button>
         <button class="ghost" onclick="resetGame()">🔁 Reset</button>
       </div>
     </div>
 
-    <div class="chips">
-      <div class="chip">❤️ HP <span id="hp"></span><small>/100</small></div>
-      <div class="chip">🛡️ Armor <span id="armor"></span><small>/50</small></div>
-      <div class="chip">🐅 Tiger HP <span id="tigerHp"></span><small>/100</small></div>
-      <div class="chip">💰 <span id="funds"></span></div>
-      <div class="chip">⭐ <span id="score"></span></div>
-      <div class="chip">🏛️ <span id="trust"></span><small>/100</small></div>
-      <div class="chip">🔥 <span id="aggro"></span><small>/100</small></div>
-      <div class="chip">⚡ <span id="stam"></span><small>/100</small></div>
-      <div class="chip">📍 <span id="region"></span></div>
+    <div class="hud">
+      <div class="hudGrid">
+        <div class="hudBox">
+          <div class="hudTitle">Agent</div>
+          <div class="hudLine">HP: <b id="hpTxt"></b>/100 • Armor: <b id="armorTxt"></b>/50 • ⚡ <b id="stamTxt"></b>/100</div>
+          <div class="bar"><div id="hpBar" class="fill green"></div></div>
+          <div class="bar"><div id="armorBar" class="fill orange"></div></div>
+          <div class="hudLine">💰 <b id="fundsTxt"></b> • ⭐ <b id="scoreTxt"></b></div>
+        </div>
+
+        <div class="hudBox">
+          <div class="hudTitle">Tiger</div>
+          <div class="hudLine">Target HP: <b id="tigerTxt"></b> • Capture/Kill when HP ≤ <b>15</b></div>
+          <div class="bar"><div id="tigerBar" class="fill red"></div></div>
+          <div class="hudLine">Region: <b id="regionTxt"></b> • Mode: <b id="modeTxt"></b></div>
+          <div class="hudLine">Trust: <b id="trustTxt"></b>/100 • Aggro: <b id="aggroTxt"></b>/100</div>
+        </div>
+      </div>
     </div>
 
-    <div class="grid2">
-      <!-- Stage -->
-      <div class="stageWrap">
-        <div class="hudTop">
-          <div class="hudPill">
-            Agent
-            <div class="bar"><div id="hpBar" class="fill green"></div></div>
-            <div class="bar"><div id="armorBar" class="fill orange"></div></div>
-          </div>
-          <div class="hudPill">
-            Tiger
-            <div class="bar"><div id="tigerBar" class="fill red"></div></div>
-            <div style="margin-top:6px;font-size:11px;color:var(--muted)">
-              Capture/Kill available when Tiger HP ≤ <b>15</b>
-            </div>
-          </div>
+    <div class="screenCard">
+      <canvas id="cv" width="960" height="540"></canvas>
+
+      <div class="actionStrip">
+        <div class="small" id="statusLine">
+          Tap the screen to move. Scan to reveal tigers. Engage when close.
         </div>
-        <canvas id="cv" width="960" height="540"></canvas>
-      </div>
-
-      <!-- Side panel -->
-      <div class="card">
-        <div class="h">Next Actions</div>
-        <div class="hint">Tap the scene to move. When close to a tiger, you can start combat.</div>
-        <div class="divider"></div>
-
         <div class="row">
+          <button onclick="deploy()">📍 Deploy</button>
           <button onclick="scan()">🛰️ Scan</button>
-          <button class="warn" id="fightBtn" onclick="startCombat()" disabled>🎯 Engage</button>
-          <button class="ghost" onclick="toast('Tip: Scan → walk toward tiger → Engage.')">💡 Tip</button>
+          <button class="warn" id="engageBtn" onclick="startCombat()" disabled>🎯 Engage</button>
         </div>
-
-        <div class="divider"></div>
-        <div class="h">Shop Limits</div>
-        <div class="hint">
-          In-game items limited to <b>3</b> each. Beyond that = <b>$0.99</b> (placeholder).
-        </div>
-
-        <div class="row">
-          <button onclick="buy('ammo')">🔫 Ammo</button>
-          <button onclick="buy('tranq')">💉 Tranq</button>
-          <button onclick="buy('armorpack')">🛡️ Armor</button>
-        </div>
-
-        <div class="row">
-          <button onclick="premium('$0.99 Pack')">💳 Premium $0.99</button>
-        </div>
-
-        <div class="divider"></div>
-        <div class="h">Log</div>
-        <div class="log" id="log"></div>
       </div>
     </div>
   </div>
 
-  <!-- STORY INTRO (skippable) -->
-  <div class="overlay" id="intro">
-    <div class="intro">
-      <div class="introTop">
-        <div class="introTitle">Tiger Strike — Story Briefing</div>
+  <!-- Mode Select -->
+  <div class="overlay" id="modeOverlay">
+    <div class="modal">
+      <div class="modalTop">
+        <div class="modalTitle">Choose Mode</div>
+        <button class="ghost" onclick="closeMode()">Close</button>
+      </div>
+      <div class="modalBody">
+        <div class="row">
+          <button class="good" onclick="setMode('Story')">📖 Story</button>
+          <button onclick="setMode('Arcade')">🕹️ Arcade</button>
+          <button class="warn" onclick="setMode('Survival')">🔥 Survival</button>
+        </div>
+        <div class="modalText" id="modeDesc"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="good" onclick="playIntro()">▶ Start Intro</button>
+          <button class="ghost" onclick="skipIntro()">Skip Intro</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Intro Cutscene -->
+  <div class="overlay" id="introOverlay">
+    <div class="modal">
+      <div class="modalTop">
+        <div class="modalTitle">Story Briefing</div>
         <button class="ghost" onclick="skipIntro()">Skip ▶</button>
       </div>
-      <div class="introBody">
-        <div class="fakeVideo" id="fakeVideo">
-          <div class="scanLine"></div>
-          <div style="position:absolute;left:14px;bottom:14px;font-weight:950">
-            “Tigers crossed into mainland zones… civilians at risk.”
-            <div style="margin-top:6px;font-size:12px;color:var(--muted)">Tap Start to begin. (Audio unlocks on first tap.)</div>
-          </div>
-        </div>
-        <div class="introText">
-          You are the lead agent. Find the pack, weaken it, then decide: <b>capture</b> or <b>kill</b>.<br>
-          If you kill too often, aggression rises… and the tiger packs fight harder.
-        </div>
-        <div class="introBtns">
+      <div class="modalBody">
+        <canvas id="introCv" width="960" height="360" style="width:100%;border-radius:14px;border:1px solid rgba(35,42,62,.9);background:#000"></canvas>
+        <div class="modalText" id="introText"></div>
+        <div class="row" style="margin-top:12px">
           <button class="good" onclick="startGame()">Start Mission</button>
           <button class="ghost" onclick="toggleSound()">🔊 Toggle Sound</button>
         </div>
@@ -236,24 +231,29 @@
     </div>
   </div>
 
-  <!-- COMBAT SHEET -->
-  <div class="sheetOverlay" id="combatSheet">
-    <div class="sheet">
-      <div class="h" id="combatTitle">Combat</div>
-      <div class="hint" id="combatHint"></div>
+  <!-- Battle -->
+  <div class="battleOverlay" id="battleOverlay">
+    <div class="battleSheet">
+      <div class="battleTop">
+        <div>
+          <div class="battleTitle" id="battleTitle">Battle</div>
+          <div class="battleMsg" id="battleMsg">Choose your weapon and action.</div>
+        </div>
+        <button class="ghost" onclick="endBattle('RETREAT')">Close</button>
+      </div>
 
       <div class="divider"></div>
 
-      <div class="h">Choose Weapon</div>
-      <div class="weaponGrid" id="weapons"></div>
+      <div class="battleTitle">Weapon Select</div>
+      <div class="weaponGrid" id="weaponGrid"></div>
 
       <div class="divider"></div>
 
-      <div class="sheetGrid">
-        <button class="warn" onclick="playerTurn('ATTACK')">Attack</button>
-        <button class="ghost" onclick="playerTurn('RETREAT')">Retreat</button>
-        <button class="good" id="capBtn" onclick="playerTurn('CAPTURE')" disabled>Capture (HP low)</button>
-        <button class="danger" id="killBtn" onclick="playerTurn('KILL')" disabled>Kill (HP low)</button>
+      <div class="grid2">
+        <button class="warn" onclick="playerAction('ATTACK')">Attack</button>
+        <button class="ghost" onclick="endBattle('RETREAT')">Retreat</button>
+        <button class="good" id="capBtn" onclick="playerAction('CAPTURE')" disabled>Capture (HP low)</button>
+        <button class="danger" id="killBtn" onclick="playerAction('KILL')" disabled>Kill (HP low)</button>
       </div>
     </div>
   </div>
@@ -262,28 +262,30 @@
 
   <div class="nav">
     <div class="navInner">
-      <button class="navBtn" onclick="openRegion()"><span>🗺️</span>Region</button>
-      <button class="navBtn" onclick="toast('Tap scene to move. Engage when close.')"><span>💡</span>Help</button>
+      <button class="navBtn" onclick="openMode()"><span>🎮</span>Mode</button>
+      <button class="navBtn" onclick="toast('Tap screen to move. Engage near tiger.')"><span>💡</span>Help</button>
       <button class="navBtn" onclick="toggleSound()"><span>🔊</span>Sound</button>
       <button class="navBtn" onclick="resetGame()"><span>🔁</span>Reset</button>
     </div>
   </div>
 
 <script>
-  // Telegram init
   const tg = window.Telegram?.WebApp;
   if (tg){ tg.expand(); tg.ready(); try{tg.setHeaderColor?.("#0b0d12"); tg.setBackgroundColor?.("#0b0d12");}catch(e){} }
 
-  // -----------------------------
-  // V4 State (vertical slice)
-  // -----------------------------
   const DEFAULT = {
-    v: 4,
+    v: 42,
+    mode: "Story",
+
+    // NEW: progression trackers
+    arcadeLevel: 1,
+    survivalWave: 1,
+    storyChapter: 1,
+
     soundOn: true,
     audioUnlocked: false,
 
-    region: "Forest Edge",
-    funds: 120,
+    funds: 1000,
     score: 0,
     trust: 80,
     aggro: 10,
@@ -292,72 +294,69 @@
     hp: 100,
     armor: 20,
 
-    // shop items limited to 3 each (in-game)
-    inv: { ammo: 0, tranq: 0, armorpack: 0 },
+    region: "Forest Edge",
 
-    // scene entities
-    me: { x: 180, y: 360, vx:0, vy:0 },
-    tigers: [
-      { id:1, x: 700, y: 160, vx: 1.2, vy: 0.8, hp: 100, alive:true },
-      { id:2, x: 620, y: 310, vx: -1.1, vy: 0.9, hp: 100, alive:true }
-    ],
-    target: null, // movement target
+    inv: { ammo: 2, tranq: 2, armorpack: 1 },
+
+    me: { x: 160, y: 420 },
+    target: null,
+
+    tigers: [],
     scanPing: 0,
-    inCombat: false,
+
+    inBattle: false,
     activeTigerId: null,
     weapon: "Tranq Pistol",
-    log: []
+
+    log: [],
+    introSeen: false
   };
 
   let S = load();
   const cv = document.getElementById("cv");
   const ctx = cv.getContext("2d");
+  const introCv = document.getElementById("introCv");
+  const ictx = introCv.getContext("2d");
 
-  // -----------------------------
-  // Save/load
-  // -----------------------------
   function load(){
     try{
-      const saved = JSON.parse(localStorage.getItem("ts_v4") || "null");
-      return saved ? { ...DEFAULT, ...saved,
+      const saved = JSON.parse(localStorage.getItem("ts_v42") || "null");
+      return saved ? {
+        ...DEFAULT, ...saved,
         inv:{...DEFAULT.inv, ...(saved.inv||{})},
-        me:{...DEFAULT.me, ...(saved.me||{})},
+        me:{...DEFAULT.me, ...(saved.me||{})}
       } : structuredClone(DEFAULT);
     }catch(e){ return structuredClone(DEFAULT); }
   }
-  function save(){ localStorage.setItem("ts_v4", JSON.stringify(S)); }
+  function save(){ localStorage.setItem("ts_v42", JSON.stringify(S)); }
 
-  // -----------------------------
-  // Audio (simple WebAudio SFX)
-  // -----------------------------
-  let AC = null;
+  // SOUND
+  let AC=null;
   function ensureAudio(){
     if (!S.soundOn) return;
     if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
     if (AC.state === "suspended") AC.resume();
     S.audioUnlocked = true;
   }
-  document.addEventListener("pointerdown", ()=>{ if (!S.audioUnlocked) ensureAudio(); }, {once:true});
-
-  function beep(f=440, ms=90, type="sine", vol=0.06){
-    if (!S.soundOn) return;
+  document.addEventListener("pointerdown", ()=>{ if(!S.audioUnlocked) ensureAudio(); }, {once:true});
+  function beep(f=440,ms=80,type="sine",vol=0.06){
+    if(!S.soundOn) return;
     try{
       ensureAudio();
-      if (!AC) return;
-      const o=AC.createOscillator(); const g=AC.createGain();
+      const o=AC.createOscillator(), g=AC.createGain();
       o.type=type; o.frequency.value=f; g.gain.value=vol;
       o.connect(g); g.connect(AC.destination);
       o.start(); setTimeout(()=>o.stop(), ms);
     }catch(e){}
   }
   function sfx(name){
-    if (!S.soundOn) return;
-    if (name==="move") beep(320,45,"sine",0.04);
-    if (name==="scan"){ beep(520,70,"triangle",0.05); setTimeout(()=>beep(740,70,"triangle",0.05),80); }
-    if (name==="hit"){ beep(640,60,"square",0.05); }
-    if (name==="tranq"){ beep(520,80,"triangle",0.05); }
-    if (name==="hurt"){ beep(220,110,"sawtooth",0.05); }
-    if (name==="win"){ beep(660,60,"triangle",0.05); setTimeout(()=>beep(980,80,"triangle",0.05),70); }
+    if(!S.soundOn) return;
+    if(name==="ui"){ beep(420,70,"sine",0.05); }
+    if(name==="scan"){ beep(520,70,"triangle",0.05); setTimeout(()=>beep(740,70,"triangle",0.05),80); }
+    if(name==="hit"){ beep(620,70,"square",0.05); }
+    if(name==="tranq"){ beep(520,90,"triangle",0.05); }
+    if(name==="hurt"){ beep(220,120,"sawtooth",0.05); }
+    if(name==="win"){ beep(660,60,"triangle",0.05); setTimeout(()=>beep(980,80,"triangle",0.05),70); }
   }
   function haptic(style="light"){ try{ tg?.HapticFeedback?.impactOccurred?.(style); }catch(e){} }
 
@@ -366,12 +365,10 @@
     document.getElementById("soundLbl").innerText = S.soundOn ? "On" : "Off";
     save();
     toast("Sound: " + (S.soundOn?"On":"Off"));
-    if (S.soundOn) beep(420,70,"sine",0.05);
+    if(S.soundOn) sfx("ui");
   }
 
-  // -----------------------------
   // UI helpers
-  // -----------------------------
   function toast(msg){
     const t=document.getElementById("toast");
     t.innerText=msg;
@@ -382,392 +379,525 @@
   function log(msg){
     S.log.unshift(`${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} — ${msg}`);
     S.log = S.log.slice(0,18);
-    renderLog();
     save();
   }
   function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
+  function rand(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
   function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
 
-  // -----------------------------
-  // Intro
-  // -----------------------------
+  // MODES
+  function openMode(){
+    document.getElementById("modeOverlay").style.display="flex";
+    updateModeDesc();
+  }
+  function closeMode(){ document.getElementById("modeOverlay").style.display="none"; }
+  function setMode(m){
+    S.mode = m;
+
+    // reset progression when switching modes (so they feel different)
+    if (m==="Arcade"){ S.arcadeLevel = 1; }
+    if (m==="Survival"){ S.survivalWave = 1; }
+    if (m==="Story"){ S.storyChapter = 1; }
+
+    save();
+    updateModeDesc();
+    sfx("ui"); haptic("light");
+  }
+  function updateModeDesc(){
+    const el=document.getElementById("modeDesc");
+    const m=S.mode;
+
+    if(m==="Story"){
+      el.innerHTML = `
+        <b>Story Mode:</b> chapters + region unlocks.<br>
+        - 2 tigers per chapter.<br>
+        - Rewards balanced, trust matters more.<br>
+        - Progress: <b>Chapter ${S.storyChapter}</b>
+      `;
+    } else if(m==="Arcade"){
+      el.innerHTML = `
+        <b>Arcade Mode:</b> win → next level (harder + more tigers).<br>
+        - Each win increases <b>Arcade Level</b>.<br>
+        - Higher level = more tigers, more HP, more damage.<br>
+        - Progress: <b>Level ${S.arcadeLevel}</b>
+      `;
+    } else {
+      el.innerHTML = `
+        <b>Survival Mode:</b> endless waves until death.<br>
+        - Each wave spawns more tigers and harder hits.<br>
+        - Progress: <b>Wave ${S.survivalWave}</b>
+      `;
+    }
+  }
+
+  // INTRO CUTSCENE
+  let introT=0, introTimer=null;
+  function playIntro(){
+    closeMode();
+    document.getElementById("introOverlay").style.display="flex";
+    introT=0;
+    document.getElementById("introText").innerHTML =
+      `Briefing loading… <b>Tap Start Mission</b> any time or press Skip.`;
+    if(introTimer) clearInterval(introTimer);
+    introTimer = setInterval(drawIntro, 33);
+    sfx("ui");
+  }
+  function skipIntro(){
+    document.getElementById("introOverlay").style.display="none";
+    document.getElementById("modeOverlay").style.display="none";
+    if(introTimer) clearInterval(introTimer);
+    S.introSeen = true;
+    save();
+    log("⏭️ Intro skipped. Mission ready.");
+    sfx("ui");
+  }
   function startGame(){
     ensureAudio();
-    document.getElementById("intro").style.display="none";
-    log("🟢 Mission start. Tap the scene to move.");
+    document.getElementById("introOverlay").style.display="none";
+    if(introTimer) clearInterval(introTimer);
+    S.introSeen = true;
+    spawnTigers(true);
+    save();
+    log("🟢 Mission started. Tap the screen to move.");
     sfx("win"); haptic("light");
   }
-  function skipIntro(){ document.getElementById("intro").style.display="none"; log("⏭️ Intro skipped. Begin mission."); }
 
-  // -----------------------------
-  // Regions (visual backgrounds)
-  // -----------------------------
-  const REGIONS = ["Downtown","Suburbs","Forest Edge","Industrial"];
-  function openRegion(){
-    const next = REGIONS[(REGIONS.indexOf(S.region)+1) % REGIONS.length];
-    S.region = next;
-    S.scanPing = 0;
-    log(`🗺️ Region set: ${next}`);
-    save();
+  function drawIntro(){
+    introT++;
+    const w=introCv.width, h=introCv.height;
+    ictx.clearRect(0,0,w,h);
+
+    const g=ictx.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,"#0b0d12");
+    g.addColorStop(1,"#121622");
+    ictx.fillStyle=g; ictx.fillRect(0,0,w,h);
+
+    ictx.globalAlpha=0.35;
+    for(let i=0;i<6;i++){
+      const y=((introT*4 + i*70)%(h+140))-140;
+      const gg=ictx.createLinearGradient(0,y,0,y+80);
+      gg.addColorStop(0,"transparent");
+      gg.addColorStop(.5,"rgba(58,120,255,.45)");
+      gg.addColorStop(1,"transparent");
+      ictx.fillStyle=gg;
+      ictx.fillRect(0,y,w,80);
+    }
+    ictx.globalAlpha=1;
+
+    ictx.fillStyle="rgba(245,247,255,.95)";
+    ictx.font="900 34px system-ui";
+    ictx.fillText("TIGER STRIKE — BRIEFING", 28, 62);
+
+    ictx.fillStyle="rgba(245,247,255,.78)";
+    ictx.font="700 16px system-ui";
+    ictx.fillText("Tigers breached mainland zones. Civilians endangered. Your squad is deployed.", 28, 92);
+
+    ictx.globalAlpha=0.9;
+    for(let i=0;i<18;i++){
+      const x=80+(i*48)%820;
+      const y=140+((i*63 + introT*2)%(h-160));
+      ictx.fillStyle="rgba(245,158,11,.75)";
+      ictx.beginPath(); ictx.arc(x,y,3,0,Math.PI*2); ictx.fill();
+      ictx.strokeStyle="rgba(245,158,11,.18)";
+      ictx.beginPath(); ictx.moveTo(x,y); ictx.lineTo(x+60,y+18); ictx.stroke();
+    }
+    ictx.globalAlpha=1;
+
+    const tx = 740 + Math.sin(introT/10)*12;
+    const ty = 230 + Math.cos(introT/14)*10;
+    ictx.fillStyle="rgba(245,158,11,.35)";
+    ictx.beginPath(); ictx.roundRect(tx-70,ty-22,140,44,18); ictx.fill();
+    ictx.fillStyle="rgba(245,158,11,.55)";
+    ictx.beginPath(); ictx.arc(tx+72,ty-10,18,0,Math.PI*2); ictx.fill();
+
+    ictx.fillStyle="rgba(245,247,255,.75)";
+    ictx.font="900 18px system-ui";
+    const label = (S.mode==="Arcade") ? `ARCADE LEVEL ${S.arcadeLevel}` :
+                  (S.mode==="Survival") ? `SURVIVAL WAVE ${S.survivalWave}` :
+                  `STORY CHAPTER ${S.storyChapter}`;
+    ictx.fillText(`MODE: ${label}`, 28, h-36);
+
+    if(introT>300){
+      document.getElementById("introText").innerHTML =
+        `Briefing complete. <b>Start Mission</b> to deploy.`;
+    }
   }
 
-  // -----------------------------
-  // Scene interactions
-  // -----------------------------
+  // REGIONS
+  const REGIONS=["Forest Edge","Downtown","Suburbs","Industrial"];
+  function rotateRegion(){
+    const i=REGIONS.indexOf(S.region);
+    S.region = REGIONS[(i+1)%REGIONS.length];
+    log(`🗺️ Region changed to ${S.region}`);
+  }
+
+  // WORLD + MOVEMENT
   cv.addEventListener("click", (e)=>{
-    if (S.inCombat) return;
+    if(S.inBattle) return;
     ensureAudio();
-    const rect = cv.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (cv.width / rect.width);
-    const y = (e.clientY - rect.top) * (cv.height / rect.height);
-    S.target = {x, y};
-    sfx("move"); haptic("light");
+    const rect=cv.getBoundingClientRect();
+    const x=(e.clientX-rect.left)*(cv.width/rect.width);
+    const y=(e.clientY-rect.top)*(cv.height/rect.height);
+    S.target={x,y};
+    sfx("ui"); haptic("light");
   });
 
   function deploy(){
-    S.me.x = 160; S.me.y = 380;
-    for (const t of S.tigers){ t.hp=100; t.alive=true; }
-    S.hp = 100; S.armor = 20;
-    S.scanPing = 0;
-    log(`📍 Deployed. Region: ${S.region}`);
+    S.me={x:160,y:420};
+    S.target=null;
+    S.hp=100; S.armor=20; S.stamina=100;
+    spawnTigers(true);
+    log(`📍 Deployed to ${S.region} (${S.mode}).`);
+    sfx("ui");
     save();
   }
 
-  // Scan highlights nearest tiger (visual ping)
+  // ✅ V4.2: Arcade levels + Survival waves + Story chapters all change tiger count/strength
+  function spawnTigers(resetHP){
+    let count = 2;
+    if (S.mode === "Arcade") count = Math.min(1 + (S.arcadeLevel||1), 7);        // L1 => 2, L2 => 3...
+    if (S.mode === "Survival") count = Math.min(3 + ((S.survivalWave||1)-1), 9); // W1 => 3, W2 => 4...
+
+    S.tigers = [];
+    for(let i=0;i<count;i++){
+      let hp = resetHP ? 100 : 80;
+
+      if (S.mode === "Arcade") hp = resetHP ? (100 + ((S.arcadeLevel||1)-1)*12) : (85 + ((S.arcadeLevel||1)-1)*10);
+      if (S.mode === "Survival") hp = resetHP ? (105 + ((S.survivalWave||1)-1)*15) : (90 + ((S.survivalWave||1)-1)*12);
+
+      hp = Math.min(hp, 220);
+
+      S.tigers.push({
+        id: i+1,
+        x: 600 + (i%4)*95,
+        y: 140 + Math.floor(i/4)*120,
+        vx: (Math.random()<0.5?-1:1)*(1.1 + i*0.18),
+        vy: (Math.random()<0.5?-1:1)*(0.9 + i*0.16),
+        hp: hp,
+        alive:true
+      });
+    }
+    S.scanPing=0;
+  }
+
   function scan(){
-    if (S.inCombat) return toast("Finish combat first.");
-    if (S.stamina < 12) return toast("Not enough stamina.");
+    if(S.inBattle) return toast("Finish battle first.");
+    if(S.stamina < 12) return toast("Not enough stamina.");
     S.stamina -= 12;
-    S.scanPing = 140; // frames
-    log("🛰️ Scan ping launched.");
+    S.scanPing = 140;
+    log("🛰️ Scan launched.");
     sfx("scan"); haptic("light");
     save();
   }
 
-  // If close to a tiger, enable engage
-  function canEngageTiger(){
-    const t = nearestTiger();
-    if (!t) return null;
-    const d = dist(S.me.x,S.me.y,t.x,t.y);
-    return d < 70 ? t : null;
-  }
-
   function nearestTiger(){
-    const alive = S.tigers.filter(t=>t.alive);
-    if (!alive.length) return null;
+    const alive=S.tigers.filter(t=>t.alive);
+    if(!alive.length) return null;
     let best=alive[0], bd=1e9;
-    for (const t of alive){
+    for(const t of alive){
       const d=dist(S.me.x,S.me.y,t.x,t.y);
-      if (d<bd){ bd=d; best=t; }
+      if(d<bd){bd=d; best=t;}
     }
     return best;
   }
 
-  function startCombat(){
-    const t = canEngageTiger();
-    if (!t) return toast("Get closer to a tiger first.");
-    S.inCombat = true;
-    S.activeTigerId = t.id;
-    openCombatSheet();
-    haptic("medium");
+  function canEngage(){
+    const t=nearestTiger();
+    if(!t) return null;
+    return dist(S.me.x,S.me.y,t.x,t.y) < 85 ? t : null;
   }
 
-  // -----------------------------
-  // Combat: turn-based loop
-  // Capture/Kill only when tiger HP <= 15
-  // Tiger attacks after your first action (if still alive)
-  // Armor reduces incoming damage (acts like shield)
-  // -----------------------------
+  // BATTLE
   const WEAPONS = [
-    { name:"Tranq Pistol", type:"tranq", dmg:[10,16], cost:"tranq" },
-    { name:"Tranq Rifle",  type:"tranq", dmg:[14,20], cost:"tranq" },
-    { name:"9mm Pistol",   type:"lethal", dmg:[12,18], cost:"ammo" },
-    { name:"Rifle",        type:"lethal", dmg:[16,24], cost:"ammo" }
+    { name:"Tranq Pistol", type:"tranq", cost:"tranq", dmg:[10,16] },
+    { name:"Tranq Rifle",  type:"tranq", cost:"tranq", dmg:[14,20] },
+    { name:"9mm Pistol",   type:"lethal",cost:"ammo",  dmg:[12,18] },
+    { name:"Rifle",        type:"lethal",cost:"ammo",  dmg:[16,24] },
   ];
 
-  function openCombatSheet(){
-    const t = S.tigers.find(x=>x.id===S.activeTigerId);
-    if (!t) return;
-    document.getElementById("combatSheet").style.display="flex";
-    document.getElementById("combatTitle").innerText = `Combat — Tiger #${t.id}`;
-    document.getElementById("combatHint").innerHTML =
-      `Choose weapon, then Attack / Retreat. Capture/Kill unlock when Tiger HP ≤ <b>15</b>.`;
+  function startCombat(){
+    const t=canEngage();
+    if(!t) return toast("Move closer to a tiger to engage.");
+    S.inBattle = true;
+    S.activeTigerId = t.id;
+    document.getElementById("battleOverlay").style.display="flex";
+    renderWeapons();
+    updateBattleButtons();
+    setBattleMsg(`A tiger pack steps forward… Choose your move.`);
+    sfx("ui"); haptic("medium");
+    save();
+  }
 
-    // weapons UI
-    const box = document.getElementById("weapons");
+  function setBattleMsg(msg){
+    document.getElementById("battleTitle").innerText = `Battle — Tiger #${S.activeTigerId}`;
+    document.getElementById("battleMsg").innerText = msg;
+  }
+
+  function renderWeapons(){
+    const box=document.getElementById("weaponGrid");
     box.innerHTML = WEAPONS.map(w=>{
       const active = (S.weapon===w.name);
-      return `<button ${active?'class="good"':''} onclick="setWeapon('${w.name.replace(/'/g,"\\'")}')">
+      return `<button ${active?'class="good"':''} onclick="selectWeapon('${w.name.replace(/'/g,"\\'")}')">
         ${active?'✅ ':''}${w.name}
       </button>`;
     }).join("");
-
-    updateCombatButtons();
   }
 
-  function closeCombatSheet(){
-    document.getElementById("combatSheet").style.display="none";
-    S.inCombat = false;
-    S.activeTigerId = null;
+  function selectWeapon(name){
+    S.weapon=name;
+    renderWeapons();
+    sfx("ui");
     save();
   }
 
-  function setWeapon(name){
-    S.weapon = name;
-    openCombatSheet();
-    save();
+  function updateBattleButtons(){
+    const t=S.tigers.find(x=>x.id===S.activeTigerId);
+    const ok = t && t.hp <= 15;
+    document.getElementById("capBtn").disabled = !ok;
+    document.getElementById("killBtn").disabled = !ok;
   }
 
-  function updateCombatButtons(){
-    const t = S.tigers.find(x=>x.id===S.activeTigerId);
-    const capOk = t && t.hp <= 15;
-    document.getElementById("capBtn").disabled = !capOk;
-    document.getElementById("killBtn").disabled = !capOk;
-  }
-
-  function playerTurn(action){
-    const t = S.tigers.find(x=>x.id===S.activeTigerId);
-    if (!t || !t.alive) { closeCombatSheet(); return; }
-
-    if (action==="RETREAT"){
-      log("💨 You retreated.");
+  function endBattle(reason){
+    document.getElementById("battleOverlay").style.display="none";
+    S.inBattle=false;
+    S.activeTigerId=null;
+    if(reason==="RETREAT"){
       S.aggro = clamp(S.aggro + 4, 0, 100);
-      closeCombatSheet();
-      return;
+      log("💨 Retreated from battle.");
     }
+    save();
+  }
 
-    if (action==="CAPTURE"){
-      if (t.hp > 15) return toast("Tiger HP too high to capture.");
-      t.alive = false;
-      S.score += 180; S.funds += 90;
+  function playerAction(action){
+    const t=S.tigers.find(x=>x.id===S.activeTigerId);
+    if(!t || !t.alive) return endBattle();
+
+    if(action==="CAPTURE"){
+      if(t.hp>15) return toast("Tiger HP too high to capture.");
+      t.alive=false;
+      S.score += 220;
+      S.funds += 160;
       S.trust = clamp(S.trust + 6, 0, 100);
       S.aggro = clamp(S.aggro - 10, 0, 100);
-      log(`✅ Captured Tiger #${t.id}. Rewards received.`);
+      log(`✅ Captured Tiger #${t.id}. +$160 +220 score`);
       sfx("win"); haptic("light");
-      closeCombatSheet();
+      postBattleFlow();
       return;
     }
 
-    if (action==="KILL"){
-      if (t.hp > 15) return toast("Tiger HP too high to finish.");
-      t.alive = false;
-      S.score += 90; S.funds += 40;
+    if(action==="KILL"){
+      if(t.hp>15) return toast("Tiger HP too high to finish.");
+      t.alive=false;
+      S.score += 100;
+      S.funds += 60;
       S.trust = clamp(S.trust - 4, 0, 100);
       S.aggro = clamp(S.aggro + 14, 0, 100);
-      log(`⚠️ Eliminated Tiger #${t.id}. Aggression rising.`);
+      log(`⚠️ Killed Tiger #${t.id}. Aggro rising.`);
       sfx("win"); haptic("medium");
-      closeCombatSheet();
+      postBattleFlow();
       return;
     }
 
-    // ATTACK
-    const w = WEAPONS.find(x=>x.name===S.weapon) || WEAPONS[0];
+    if(action==="ATTACK"){
+      const w=WEAPONS.find(x=>x.name===S.weapon) || WEAPONS[0];
 
-    // check ammo/consumable
-    if (S.inv[w.cost] <= 0){
-      toast(`No ${w.cost} left. Buy more in Shop.`);
-      return;
-    }
-    S.inv[w.cost] -= 1;
+      if(S.inv[w.cost] <= 0){
+        toast(`No ${w.cost} left. Buy in shop.`);
+        return;
+      }
+      S.inv[w.cost] -= 1;
 
-    const dmg = rand(w.dmg[0], w.dmg[1]) + Math.floor((S.aggro/100)*2);
-    t.hp = clamp(t.hp - dmg, 0, 100);
+      // guaranteed damage
+      let dmg = rand(w.dmg[0], w.dmg[1]);
 
-    if (w.type==="tranq"){ sfx("tranq"); } else { sfx("hit"); }
-    haptic("light");
-    log(`🗡️ You attacked with ${w.name}: -${dmg} Tiger HP`);
+      if(S.mode==="Arcade") dmg = Math.floor(dmg * 1.15);
+      if(S.mode==="Survival") dmg = Math.floor(dmg * 0.95);
 
-    // if tiger down to threshold, enable capture/kill
-    updateCombatButtons();
+      dmg = Math.max(6, dmg - Math.floor(S.aggro/40));
 
-    // Tiger counter-attack if alive
-    if (t.hp > 0){
+      t.hp = clamp(t.hp - dmg, 0, 220);
+
+      setBattleMsg(`You used ${w.name}! Tiger took ${dmg} damage.`);
+      if(w.type==="tranq") sfx("tranq"); else sfx("hit");
+      haptic("light");
+
+      if(t.hp <= 0){
+        t.hp = 15;
+        setBattleMsg("Tiger is critically weak. Choose Capture or Kill!");
+      }
+
+      updateBattleButtons();
       tigerTurn(t);
-    } else {
-      // if hp hit 0, you can still choose CAPTURE/KILL only at low HP
-      // force to 15 minimum so user must pick finisher
-      t.hp = 15;
-      log("🐅 Tiger is critically weak. Choose Capture or Kill.");
-      updateCombatButtons();
+      save();
+      return;
     }
-
-    save();
   }
 
+  // ✅ V4.2: tiger damage scales with Arcade level and Survival wave
   function tigerTurn(t){
-    // Tiger chooses action: attack or fake-out
-    const rage = (S.aggro/100);
-    const attackChance = clamp(0.65 + rage*0.25, 0.55, 0.90);
-    if (Math.random() > attackChance){
-      log("🐅 Tiger circles… waiting.");
-      return;
-    }
+    if(!t.alive) return;
 
-    const base = rand(10, 18) + Math.floor(rage*6);
-    let dmg = base;
+    const rage = clamp(S.aggro/100, 0, 1);
 
-    // Armor absorbs first
-    if (S.armor > 0){
+    let dmg = rand(10, 18) + Math.floor(rage*6);
+
+    if (S.mode === "Arcade") dmg += Math.floor(((S.arcadeLevel||1)-1) * 2);
+    if (S.mode === "Survival") dmg += Math.floor(((S.survivalWave||1)-1) * 3);
+    if (S.mode === "Arcade") dmg -= 1;
+
+    dmg = clamp(dmg, 6, 42);
+
+    if(S.armor > 0){
       const absorbed = Math.min(S.armor, dmg);
       S.armor -= absorbed;
       dmg -= absorbed;
-      log(`🛡️ Armor absorbed ${absorbed}.`);
+      if(absorbed>0) log(`🛡️ Armor absorbed ${absorbed}.`);
     }
 
-    if (dmg > 0){
+    if(dmg>0){
       S.hp = clamp(S.hp - dmg, 0, 100);
-      log(`🐅 Tiger attacks: -${dmg} HP`);
+      log(`🐅 Tiger attacks! -${dmg} HP`);
       sfx("hurt"); haptic("heavy");
     } else {
+      log("🛡️ Armor blocked the hit!");
       haptic("light");
     }
 
-    // If low HP, auto-apply armor pack if you have one
-    if (S.hp <= 18 && S.inv.armorpack > 0){
+    if(S.hp <= 15 && S.inv.armorpack > 0){
       S.inv.armorpack -= 1;
       S.armor = clamp(S.armor + 25, 0, 50);
       log("🛡️ Armor pack triggered! +25 armor");
     }
 
-    if (S.hp <= 0){
+    if(S.hp <= 0){
       log("☠️ You were defeated. Reset to try again.");
-      closeCombatSheet();
+      endBattle();
+    } else {
+      setBattleMsg("Tiger moved! Your turn.");
     }
+
+    updateBattleButtons();
   }
 
-  // -----------------------------
-  // Shop: limit to 3 each in-game
-  // Beyond that is premium placeholder $0.99
-  // -----------------------------
-  function buy(item){
-    const prices = { ammo: 20, tranq: 25, armorpack: 30 };
-    if (S.inv[item] >= 3){
-      toast("Limit reached (3). This item becomes $0.99 premium.");
+  // ✅ V4.2: Arcade = win -> next level -> more tigers; Survival = waves; Story = chapters
+  function postBattleFlow(){
+    const alive = S.tigers.some(x=>x.alive);
+
+    if (alive){
+      endBattle();
+      save();
       return;
     }
-    if (S.funds < prices[item]) return toast("Not enough funds.");
+
+    if (S.mode === "Survival"){
+      S.survivalWave = (S.survivalWave || 1) + 1;
+      log(`🔥 Survival: Wave cleared! Next wave: ${S.survivalWave}`);
+      S.aggro = clamp(S.aggro + 8, 0, 100);
+      spawnTigers(true);
+    }
+    else if (S.mode === "Arcade"){
+      S.arcadeLevel = (S.arcadeLevel || 1) + 1;
+
+      const bonusCash = 120 + (S.arcadeLevel-1)*35;
+      const bonusScore = 160 + (S.arcadeLevel-1)*40;
+      S.funds += bonusCash;
+      S.score += bonusScore;
+
+      log(`🕹️ Arcade WIN! Level up → ${S.arcadeLevel}. Bonus +$${bonusCash} +${bonusScore} score`);
+      S.aggro = clamp(S.aggro + 6, 0, 100);
+
+      spawnTigers(true);
+    }
+    else {
+      S.storyChapter = (S.storyChapter || 1) + 1;
+      log(`📖 Story: Chapter ${S.storyChapter} unlocked. New region ahead.`);
+      rotateRegion();
+      spawnTigers(true);
+    }
+
+    endBattle();
+    save();
+  }
+
+  // SHOP LIMIT (3 each)
+  function buy(item){
+    const prices = { ammo: 35, tranq: 45, armorpack: 55 };
+    if(S.inv[item] >= 3){
+      toast("Limit reached (3). This becomes $0.99 premium.");
+      return;
+    }
+    if(S.funds < prices[item]) return toast("Not enough funds.");
     S.funds -= prices[item];
     S.inv[item] += 1;
     log(`🛒 Bought ${item}. (${S.inv[item]}/3)`);
+    sfx("ui");
     save();
   }
 
   function premium(label){
-    // placeholder for Telegram Payments
-    log(`💳 Premium purchase (${label}) — placeholder.`);
-    toast("Premium flow placeholder. Add Telegram Payments later.");
+    log(`💳 Premium purchase ${label} (placeholder).`);
+    toast("Premium is placeholder until Telegram Payments are added.");
   }
 
-  // -----------------------------
-  // Render
-  // -----------------------------
-  function renderHUD(){
-    document.getElementById("soundLbl").innerText = S.soundOn ? "On" : "Off";
-    document.getElementById("hp").innerText = S.hp;
-    document.getElementById("armor").innerText = S.armor;
-
-    const t = nearestTiger();
-    document.getElementById("tigerHp").innerText = t ? t.hp : 0;
-
-    document.getElementById("funds").innerText = S.funds;
-    document.getElementById("score").innerText = S.score;
-    document.getElementById("trust").innerText = S.trust;
-    document.getElementById("aggro").innerText = S.aggro;
-    document.getElementById("stam").innerText = Math.round(S.stamina);
-    document.getElementById("region").innerText = S.region;
-
-    // bars
-    document.getElementById("hpBar").style.width = S.hp + "%";
-    document.getElementById("armorBar").style.width = (S.armor/50*100) + "%";
-    document.getElementById("tigerBar").style.width = (t? t.hp:0) + "%";
-
-    // engage enable
-    document.getElementById("fightBtn").disabled = !canEngageTiger();
-  }
-
-  function renderLog(){
-    const el=document.getElementById("log");
-    const lines = S.log.length ? S.log : ["🟢 Ready. Tap Start, then move + scan."];
-    el.innerHTML = lines.map(x=>`<div class="logline">${x}</div>`).join("");
-  }
-
+  // DRAW LOOP
   function draw(){
-    // stamina regen
     regen();
+    drawRegion();
+    if(!S.inBattle){
+      roamTigers();
+      movePlayer();
+    }
+    drawEntities();
 
-    // background per region
-    drawRegionBackground();
+    document.getElementById("engageBtn").disabled = !canEngage();
 
-    // scan ping effect
-    if (S.scanPing > 0) S.scanPing -= 1;
-
-    // tigers roam
-    if (!S.inCombat) tigerAI();
-
-    // move player toward target
-    if (!S.inCombat) movePlayer();
-
-    // draw entities
-    drawTigers();
-    drawPlayer();
-
-    // overlays
     renderHUD();
-
     save();
     requestAnimationFrame(draw);
   }
 
   function regen(){
-    const now = Date.now();
-    if (!S._last) S._last = now;
-    const dt = (now - S._last)/1000;
-    if (dt >= 2.5){
-      const ticks = Math.floor(dt/2.5);
+    const now=Date.now();
+    if(!S._last) S._last=now;
+    const dt=(now-S._last)/1000;
+    if(dt>=2.5){
+      const ticks=Math.floor(dt/2.5);
       S.stamina = clamp(S.stamina + ticks*3, 0, 100);
-      S._last = now;
+      S._last=now;
     }
   }
 
-  function drawRegionBackground(){
-    // simple “visual scenes” using gradients + shapes
-    const w=cv.width, h=cv.height;
+  function drawRegion(){
+    const w=cv.width,h=cv.height;
     ctx.clearRect(0,0,w,h);
 
-    if (S.region==="Forest Edge"){
-      grad("#102017","#0b0d12","#1a2a1b");
-      trees();
-    } else if (S.region==="Downtown"){
-      grad("#1a1a2a","#0b0d12","#2a1a1a");
-      city();
-    } else if (S.region==="Suburbs"){
-      grad("#142235","#0b0d12","#1a2a2a");
-      houses();
+    if(S.region==="Forest Edge"){
+      grad("#102017","#0b0d12","#1a2a1b"); trees();
+    } else if(S.region==="Downtown"){
+      grad("#1a1a2a","#0b0d12","#2a1a1a"); city();
+    } else if(S.region==="Suburbs"){
+      grad("#142235","#0b0d12","#1a2a2a"); houses();
     } else {
-      // Industrial
-      grad("#1b1f24","#0b0d12","#2a2220");
-      pipes();
+      grad("#1b1f24","#0b0d12","#2a2220"); pipes();
     }
 
-    // subtle grid floor
-    ctx.globalAlpha=0.12;
-    ctx.strokeStyle="#3a4566";
-    for (let x=0;x<=w;x+=60){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
-    for (let y=0;y<=h;y+=60){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
-    ctx.globalAlpha=1;
-
-    // scan ping ring near nearest tiger
-    if (S.scanPing > 0){
-      const t = nearestTiger();
-      if (t){
-        const r = 40 + (140 - S.scanPing)*2.1;
+    if(S.scanPing>0){
+      S.scanPing--;
+      const t=nearestTiger();
+      if(t){
+        const r = 40 + (140-S.scanPing)*2.2;
         ctx.globalAlpha = Math.max(0, S.scanPing/140);
-        ctx.strokeStyle = "rgba(245,158,11,.35)";
-        ctx.lineWidth = 3;
+        ctx.strokeStyle="rgba(245,158,11,.35)";
+        ctx.lineWidth=3;
         ctx.beginPath(); ctx.arc(t.x,t.y,r,0,Math.PI*2); ctx.stroke();
         ctx.globalAlpha=1;
       }
     }
+
+    ctx.globalAlpha=0.12; ctx.strokeStyle="#3a4566";
+    for(let x=0;x<=w;x+=60){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+    for(let y=0;y<=h;y+=60){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+    ctx.globalAlpha=1;
 
     function grad(a,b,c){
       const g=ctx.createLinearGradient(0,0,0,h);
@@ -775,25 +905,22 @@
       ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
     }
     function trees(){
-      for (let i=0;i<18;i++){
-        const x=(i*62 + (i%3)*18)%w;
-        const y=80 + (i%5)*60;
+      for(let i=0;i<18;i++){
+        const x=(i*62+(i%3)*18)%w, y=70+(i%5)*70;
         ctx.fillStyle="rgba(20,80,35,.25)";
-        ctx.beginPath(); ctx.arc(x,y,26,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x,y,28,0,Math.PI*2); ctx.fill();
       }
     }
     function city(){
-      for (let i=0;i<14;i++){
-        const x=i*70;
-        const bh=120 + (i%4)*60;
+      for(let i=0;i<14;i++){
+        const x=i*70, bh=120+(i%4)*60;
         ctx.fillStyle="rgba(90,110,160,.18)";
         ctx.fillRect(x,h-bh,54,bh);
       }
     }
     function houses(){
-      for (let i=0;i<10;i++){
-        const x=70+i*85;
-        const y=h-160 - (i%2)*20;
+      for(let i=0;i<10;i++){
+        const x=70+i*85, y=h-160-(i%2)*20;
         ctx.fillStyle="rgba(80,140,180,.18)";
         ctx.fillRect(x,y,60,60);
         ctx.fillStyle="rgba(245,158,11,.14)";
@@ -802,184 +929,156 @@
     }
     function pipes(){
       ctx.fillStyle="rgba(140,110,90,.18)";
-      for (let i=0;i<9;i++){
+      for(let i=0;i<9;i++){
         ctx.fillRect(60+i*95,120,20,260);
         ctx.fillRect(40+i*95,200,60,18);
       }
     }
   }
 
-  function tigerAI(){
-    for (const t of S.tigers){
-      if (!t.alive) continue;
-      // roam + mild chase if aggro high
-      const chase = Math.random() < (S.aggro/100)*0.25;
-      if (chase){
+  function roamTigers(){
+    for(const t of S.tigers){
+      if(!t.alive) continue;
+
+      const chaseChance = (S.mode==="Survival") ? (S.aggro/100)*0.35 : (S.aggro/100)*0.22;
+      const chase = Math.random() < chaseChance;
+
+      if(chase){
         t.vx += (S.me.x>t.x?0.05:-0.05);
         t.vy += (S.me.y>t.y?0.05:-0.05);
       } else {
         t.vx += (Math.random()-0.5)*0.08;
         t.vy += (Math.random()-0.5)*0.08;
       }
-      // clamp velocity
-      t.vx = clamp(t.vx, -2.0, 2.0);
-      t.vy = clamp(t.vy, -2.0, 2.0);
+
+      t.vx = clamp(t.vx, -2.2, 2.2);
+      t.vy = clamp(t.vy, -2.2, 2.2);
 
       t.x += t.vx; t.y += t.vy;
 
-      // bounce walls
-      if (t.x<40||t.x>cv.width-40) t.vx*=-1;
-      if (t.y<60||t.y>cv.height-40) t.vy*=-1;
+      if(t.x<40||t.x>cv.width-40) t.vx*=-1;
+      if(t.y<60||t.y>cv.height-40) t.vy*=-1;
 
-      t.x = clamp(t.x, 40, cv.width-40);
-      t.y = clamp(t.y, 60, cv.height-40);
+      t.x=clamp(t.x,40,cv.width-40);
+      t.y=clamp(t.y,60,cv.height-40);
     }
   }
 
   function movePlayer(){
-    if (!S.target) return;
-    const dx = S.target.x - S.me.x;
-    const dy = S.target.y - S.me.y;
-    const d = Math.hypot(dx,dy);
-    if (d < 6){ S.target=null; return; }
+    if(!S.target) return;
+    const dx=S.target.x-S.me.x, dy=S.target.y-S.me.y;
+    const d=Math.hypot(dx,dy);
+    if(d<6){ S.target=null; return; }
+    if(S.stamina<=0) return;
 
-    // movement stamina cost over time
-    if (S.stamina <= 0){ toast("Too tired. Wait to regen stamina."); return; }
-
-    const speed = 3.2;
+    const speed=3.2;
     S.me.x += (dx/d)*speed;
     S.me.y += (dy/d)*speed;
     S.stamina = clamp(S.stamina - 0.12, 0, 100);
   }
 
-  function drawPlayer(){
-    // simple character silhouette + weapon color
+  function drawEntities(){
+    for(const t of S.tigers){
+      if(!t.alive) continue;
+
+      ctx.globalAlpha=0.25; ctx.fillStyle="#000";
+      ctx.beginPath(); ctx.ellipse(t.x,t.y+18,20,8,0,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+
+      ctx.fillStyle="rgba(245,158,11,.95)";
+      ctx.beginPath(); ctx.roundRect(t.x-16,t.y-14,32,26,10); ctx.fill();
+
+      ctx.strokeStyle="rgba(0,0,0,.35)"; ctx.lineWidth=2;
+      for(let i=-10;i<=10;i+=5){
+        ctx.beginPath(); ctx.moveTo(t.x+i,t.y-12); ctx.lineTo(t.x+i+4,t.y+10); ctx.stroke();
+      }
+
+      ctx.fillStyle="rgba(245,158,11,.98)";
+      ctx.beginPath(); ctx.arc(t.x+18,t.y-8,10,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="rgba(0,0,0,.55)";
+      ctx.beginPath(); ctx.arc(t.x+21,t.y-10,2,0,Math.PI*2); ctx.fill();
+
+      const pct=t.hp/Math.max(100,t.hp);
+      ctx.fillStyle="rgba(11,13,18,.85)";
+      ctx.fillRect(t.x-24,t.y-34,48,6);
+      ctx.fillStyle=(t.hp>50)?"#4ade80":(t.hp>20?"#f59e0b":"#fb7185");
+      ctx.fillRect(t.x-24,t.y-34,48*(Math.min(t.hp,100)/100),6);
+
+      ctx.strokeStyle="rgba(245,247,255,.35)";
+      ctx.beginPath(); ctx.moveTo(t.x-24+48*0.15,t.y-34); ctx.lineTo(t.x-24+48*0.15,t.y-28); ctx.stroke();
+    }
+
     ctx.save();
     ctx.translate(S.me.x, S.me.y);
 
-    // shadow
-    ctx.globalAlpha=0.25;
-    ctx.fillStyle="#000";
+    ctx.globalAlpha=0.25; ctx.fillStyle="#000";
     ctx.beginPath(); ctx.ellipse(0,18,18,8,0,0,Math.PI*2); ctx.fill();
     ctx.globalAlpha=1;
 
-    // body
     ctx.fillStyle="rgba(245,247,255,.92)";
     ctx.beginPath(); ctx.roundRect(-10,-18,20,30,8); ctx.fill();
-
-    // head
     ctx.fillStyle="rgba(245,247,255,.95)";
     ctx.beginPath(); ctx.arc(0,-26,10,0,Math.PI*2); ctx.fill();
 
-    // weapon (tiny)
-    ctx.strokeStyle = (S.weapon.includes("Tranq") ? "rgba(58,120,255,.95)" : "rgba(245,158,11,.95)");
+    const isTranq = S.weapon.includes("Tranq");
+    ctx.strokeStyle = isTranq ? "rgba(58,120,255,.95)" : "rgba(245,158,11,.95)";
     ctx.lineWidth=4;
     ctx.beginPath(); ctx.moveTo(10,-10); ctx.lineTo(22,-6); ctx.stroke();
 
     ctx.restore();
   }
 
-  function drawTigers(){
-    for (const t of S.tigers){
-      if (!t.alive) continue;
-
-      // shadow
-      ctx.globalAlpha=0.25;
-      ctx.fillStyle="#000";
-      ctx.beginPath(); ctx.ellipse(t.x,t.y+18,20,8,0,0,Math.PI*2); ctx.fill();
-      ctx.globalAlpha=1;
-
-      // tiger body (simple)
-      ctx.fillStyle="rgba(245,158,11,.95)";
-      ctx.beginPath(); ctx.roundRect(t.x-16,t.y-14,32,26,10); ctx.fill();
-
-      // stripes
-      ctx.strokeStyle="rgba(0,0,0,.35)";
-      ctx.lineWidth=2;
-      for (let i=-10;i<=10;i+=5){
-        ctx.beginPath(); ctx.moveTo(t.x+i,t.y-12); ctx.lineTo(t.x+i+4,t.y+10); ctx.stroke();
-      }
-
-      // head
-      ctx.fillStyle="rgba(245,158,11,.98)";
-      ctx.beginPath(); ctx.arc(t.x+18,t.y-8,10,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle="rgba(0,0,0,.55)";
-      ctx.beginPath(); ctx.arc(t.x+21,t.y-10,2,0,Math.PI*2); ctx.fill();
-
-      // health bar above tiger
-      const pct = t.hp/100;
-      ctx.fillStyle="rgba(11,13,18,.85)";
-      ctx.fillRect(t.x-24,t.y-34,48,6);
-      ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
-      ctx.fillRect(t.x-24,t.y-34,48*pct,6);
-
-      // “capture threshold” mark
-      ctx.strokeStyle="rgba(245,247,255,.35)";
-      ctx.beginPath(); ctx.moveTo(t.x-24+48*0.15,t.y-34); ctx.lineTo(t.x-24+48*0.15,t.y-28); ctx.stroke();
-    }
-  }
-
-  // -----------------------------
-  // Weapons + Combat UI sync
-  // -----------------------------
-  function updateCombatHUD(){
-    const t = nearestTiger();
-    if (!t) return;
-    document.getElementById("tigerHp").innerText = t.hp;
-    document.getElementById("tigerBar").style.width = (t.hp)+"%";
-    document.getElementById("hpBar").style.width = (S.hp)+"%";
-    document.getElementById("armorBar").style.width = (S.armor/50*100)+"%";
-  }
-
-  // -----------------------------
-  // Reset & init
-  // -----------------------------
-  function resetGame(){
-    localStorage.removeItem("ts_v4");
-    S = structuredClone(DEFAULT);
-    save();
-    toast("Reset ✅");
-    // show intro again
-    document.getElementById("intro").style.display="flex";
-    renderAll();
-  }
-
-  function renderAll(){
-    renderLog();
-    renderHUD();
-  }
-
   function renderHUD(){
     document.getElementById("soundLbl").innerText = S.soundOn ? "On" : "Off";
-    document.getElementById("hp").innerText = S.hp;
-    document.getElementById("armor").innerText = S.armor;
 
-    const t = nearestTiger();
-    document.getElementById("tigerHp").innerText = t ? t.hp : 0;
+    document.getElementById("hpTxt").innerText = S.hp;
+    document.getElementById("armorTxt").innerText = S.armor;
+    document.getElementById("stamTxt").innerText = Math.round(S.stamina);
 
-    document.getElementById("funds").innerText = S.funds;
-    document.getElementById("score").innerText = S.score;
-    document.getElementById("trust").innerText = S.trust;
-    document.getElementById("aggro").innerText = S.aggro;
-    document.getElementById("stam").innerText = Math.round(S.stamina);
-    document.getElementById("region").innerText = S.region;
+    document.getElementById("fundsTxt").innerText = S.funds;
+    document.getElementById("scoreTxt").innerText = S.score;
+
+    document.getElementById("trustTxt").innerText = S.trust;
+    document.getElementById("aggroTxt").innerText = S.aggro;
+
+    document.getElementById("regionTxt").innerText = S.region;
+
+    let modeLabel = S.mode;
+    if (S.mode==="Arcade") modeLabel = `Arcade L${S.arcadeLevel || 1}`;
+    if (S.mode==="Survival") modeLabel = `Survival W${S.survivalWave || 1}`;
+    if (S.mode==="Story") modeLabel = `Story C${S.storyChapter || 1}`;
+    document.getElementById("modeTxt").innerText = modeLabel;
+
+    const t=nearestTiger();
+    document.getElementById("tigerTxt").innerText = t ? t.hp : 0;
 
     document.getElementById("hpBar").style.width = S.hp + "%";
     document.getElementById("armorBar").style.width = (S.armor/50*100) + "%";
-    document.getElementById("tigerBar").style.width = ((t? t.hp:0)) + "%";
-
-    document.getElementById("fightBtn").disabled = !canEngageTiger();
+    document.getElementById("tigerBar").style.width = ((t?Math.min(t.hp,100):0)) + "%";
   }
 
-  function renderLog(){
-    const el=document.getElementById("log");
-    const lines = S.log.length ? S.log : ["🟢 Ready. Start mission, then move + scan."];
-    el.innerHTML = lines.map(x=>`<div class="logline">${x}</div>`).join("");
+  function resetGame(){
+    localStorage.removeItem("ts_v42");
+    S = structuredClone(DEFAULT);
+    save();
+    toast("Reset ✅");
+    openMode();
   }
 
-  // Start loop
-  renderAll();
-  requestAnimationFrame(draw);
+  function init(){
+    document.getElementById("soundLbl").innerText = S.soundOn ? "On" : "Off";
+
+    if(!S.introSeen){
+      openMode();
+    }
+    if(!S.tigers || !S.tigers.length){
+      spawnTigers(true);
+      save();
+    }
+    requestAnimationFrame(draw);
+  }
+
+  init();
 </script>
 </body>
 </html>
