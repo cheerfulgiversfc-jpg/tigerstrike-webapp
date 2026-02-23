@@ -26,20 +26,21 @@
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial}
     .wrap{max-width:820px;margin:0 auto;padding:14px 14px 28px}
-    .top{
-      display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-top:4px
-    }
+    .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-top:4px}
     .title{font-size:28px;font-weight:900;letter-spacing:.2px}
     .sub{opacity:.75;font-size:13px;margin-top:4px;line-height:1.25}
+
     .chiprow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     .chip{
       background:var(--panel2);border:1px solid var(--border2);
       padding:8px 10px;border-radius:999px;font-size:13px;font-weight:800
     }
     .chip small{opacity:.7;font-weight:700}
+
     .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin:12px 0}
     .sectionTitle{font-weight:900;margin:0 0 6px;font-size:16px}
     .hint{color:var(--muted);font-size:13px;line-height:1.3}
+
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
     button{
       border-radius:12px;border:1px solid var(--btnBorder);background:var(--btn);color:#fff;
@@ -49,18 +50,13 @@
     .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
     .ghost{background:transparent}
     .danger{border-color:#7f1d1d;background:#2a0f13}
-    .good{border-color:#14532d;background:#0f2416}
-    .warn{border-color:#7c2d12;background:#2b140d}
-    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-    .stat{background:var(--panel2);border:1px solid var(--border2);border-radius:12px;padding:10px}
-    .label{opacity:.7;font-size:12px}
-    .value{font-weight:950;margin-top:6px;font-size:16px}
+
     .divider{height:1px;background:var(--border);margin:12px 0}
+
     .log{max-height:180px;overflow:auto;border:1px solid var(--border2);background:var(--panel2);border-radius:12px;padding:10px}
     .logline{font-size:13px;line-height:1.35;color:var(--muted);margin:6px 0}
-    .kpi{font-weight:900}
-    .badge{font-weight:900}
     .pill{padding:2px 8px;border-radius:999px;border:1px solid var(--border2);background:#0b0d12}
+
     .toast{
       position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
       background:#101626;border:1px solid var(--border);padding:10px 12px;border-radius:12px;
@@ -99,10 +95,11 @@
       <div class="chip">🛰️ <span id="intelChip"></span></div>
     </div>
 
-    <!-- Main cards -->
+    <!-- Command Center -->
     <div class="card">
       <div class="sectionTitle">Command Center</div>
       <div class="hint">Choose what to do next.</div>
+
       <div class="grid">
         <button onclick="openDeploy()">▶️ Play / Deploy</button>
         <button onclick="openIntel()">🛰️ Intel / Scan</button>
@@ -113,13 +110,31 @@
         <button onclick="openLeaderboard()">🏆 Leaderboard</button>
         <button onclick="shareCard()">📣 Share</button>
       </div>
+
       <div class="divider"></div>
       <div class="small">
-        Tip: For BotFather URL testing, this app works in browser too.
-        For best results, open inside Telegram.
+        Tip: This app works in browser too, but for best results open inside Telegram.
       </div>
     </div>
 
+    <!-- ✅ Deploy card (in-page; reliable on iPhone) -->
+    <div class="card" id="deployCard" style="display:none">
+      <div class="sectionTitle">Deploy</div>
+      <div class="hint">Pick a region to start hunting.</div>
+
+      <div class="grid">
+        <button onclick="setRegion('Downtown')">🏙️ Downtown</button>
+        <button onclick="setRegion('Suburbs')">🏘️ Suburbs</button>
+        <button onclick="setRegion('Forest Edge')">🌲 Forest Edge</button>
+        <button onclick="setRegion('Industrial')">🏭 Industrial</button>
+      </div>
+
+      <div class="row" style="justify-content:flex-end">
+        <button class="ghost" onclick="closeDeploy()">Close</button>
+      </div>
+    </div>
+
+    <!-- Event Log -->
     <div class="card">
       <div class="sectionTitle">Event Log</div>
       <div class="hint">What just happened (last 20 events).</div>
@@ -158,7 +173,7 @@
     aggro: 10,
     level: 1,
     intel: "—",
-    daySeed: null,   // for daily challenge
+    daySeed: null,
     dailyDone: false,
     kills: 0,
     captures: 0,
@@ -182,10 +197,12 @@
       return structuredClone(DEFAULT);
     }
   }
+
   function save(renderNow=true){
     localStorage.setItem("ts_state_v1", JSON.stringify(state));
     if (renderNow) render();
   }
+
   function toast(msg){
     const t = document.getElementById("toast");
     t.innerText = msg;
@@ -193,18 +210,19 @@
     clearTimeout(window.__toastTimer);
     window.__toastTimer = setTimeout(()=> t.style.display="none", 2200);
   }
+
   function logEvent(msg){
     state.log.unshift(`${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} — ${msg}`);
     state.log = state.log.slice(0, 20);
     save();
   }
+
   function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 
   // ----------------------------
-  // Helpers: odds & modifiers
+  // Helpers
   // ----------------------------
   function intelRoll(){
-    // Scanner upgrades increase HOT odds
     const s = state.gear.scanner;
     const hotBonus = Math.min(0.10, s * 0.03);
     const warmBonus = Math.min(0.08, s * 0.02);
@@ -212,31 +230,25 @@
     const r = Math.random();
     const cold = 0.45 - warmBonus - hotBonus;
     const warm = 0.35 + warmBonus;
-    // hot = remaining
+
     if (r < cold) return "COLD";
     if (r < cold + warm) return "WARM";
     return "HOT";
   }
 
   function baseFailChance(){
-    // HOT is riskier than WARM
     const intel = state.intel;
     let fail = (intel === "HOT") ? 0.60 : 0.42;
 
-    // Tranq helps capture success (reduces fail chance slightly)
-    const tranq = state.gear.tranq * 0.03;   // up to ~9% if 3 upgrades
-    // Armor helps survival (reduces fail chance more)
-    const armor = state.gear.armor * 0.04;   // up to ~12% if 3 upgrades
-
-    // Aggro makes everything worse
-    const aggroPenalty = state.aggro / 100 * 0.10; // up to +10%
+    const tranq = state.gear.tranq * 0.03;
+    const armor = state.gear.armor * 0.04;
+    const aggroPenalty = state.aggro / 100 * 0.10;
 
     fail = fail - tranq - armor + aggroPenalty;
     return clamp(fail, 0.15, 0.85);
   }
 
   function regionRisk(){
-    // Changes citizen impact + trust swings
     const r = state.region;
     if (r === "Downtown") return { trustLoss: 7, trustGain: 5, aggroGain: 16 };
     if (r === "Suburbs") return { trustLoss: 5, trustGain: 6, aggroGain: 14 };
@@ -250,7 +262,6 @@
   }
 
   function maybeLevelUp(){
-    // Simple leveling: every 500 score
     const newLevel = Math.floor(state.score / 500) + 1;
     if (newLevel > state.level) {
       state.level = newLevel;
@@ -260,7 +271,6 @@
     }
   }
 
-  // Daily challenge
   function getDaySeed(){
     const d = new Date();
     const seed = `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
@@ -271,57 +281,55 @@
     }
     return seed;
   }
+
   function dailyChallenge(){
     getDaySeed();
-    // Simple rotation
     const options = [
       { text:"Capture 1 pack without losing a life", reward:{score:120,funds:40} },
       { text:"Scan 3 times in any region", reward:{score:80,funds:30} },
       { text:"Complete 2 encounters (any outcome)", reward:{score:100,funds:35} },
       { text:"Capture in Downtown (high risk)", reward:{score:160,funds:55} },
     ];
-    // pick based on seed hash
     let h=0; for (const c of state.daySeed) h=(h*31+c.charCodeAt(0))>>>0;
     return options[h % options.length];
   }
 
   // ----------------------------
-  // UI Actions (modal-ish via Telegram popups or browser alerts)
+  // ✅ Deploy (in-page, reliable)
   // ----------------------------
   function openDeploy(){
     if (gameOver()) return showGameOver();
-    const msg = "Choose a Region:\n\n🏙️ Downtown (High civ risk)\n🏘️ Suburbs (Balanced)\n🌲 Forest Edge (High tiger)\n🏭 Industrial (Loot chance)";
-    if (tg?.showPopup) {
-      tg.showPopup({
-        title: "Deploy",
-        message: msg,
-        buttons: [
-          {id:"Downtown", type:"default", text:"Downtown"},
-          {id:"Suburbs", type:"default", text:"Suburbs"},
-          {id:"Forest Edge", type:"default", text:"Forest Edge"},
-          {id:"Industrial", type:"default", text:"Industrial"},
-          {type:"cancel"}
-        ]
-      }, (id)=> { if (id) setRegion(id); });
-    } else {
-      const pick = prompt("Type one: Downtown, Suburbs, Forest Edge, Industrial");
-      if (pick) setRegion(pick);
-    }
+    document.getElementById("deployCard").style.display = "block";
+    toast("Pick a region to deploy.");
+  }
+
+  function closeDeploy(){
+    document.getElementById("deployCard").style.display = "none";
   }
 
   function setRegion(r){
     const valid = ["Downtown","Suburbs","Forest Edge","Industrial"];
     if (!valid.includes(r)) return toast("Invalid region.");
+
     state.region = r;
     state.intel = "—";
     logEvent(`📍 Deployed to ${r}.`);
     save();
+
+    // auto close deploy card
+    const dc = document.getElementById("deployCard");
+    if (dc) dc.style.display = "none";
   }
 
+  // ----------------------------
+  // Intel / Scan
+  // ----------------------------
   function openIntel(){
     if (gameOver()) return showGameOver();
     if (!state.region) return toast("Deploy first (Play/Deploy).");
+
     const info = `Region: ${state.region}\nIntel: ${state.intel}\n\nScan to get COLD/WARM/HOT. Scanner upgrades improve HOT chances.`;
+
     if (tg?.showPopup){
       tg.showPopup({
         title:"Intel / Scan",
@@ -331,7 +339,7 @@
           {id:"clear", type:"default", text:"Clear Intel"},
           {type:"cancel"}
         ]
-      }, (id)=>{
+      }, function(id){
         if (id==="scan") scan();
         if (id==="clear") { state.intel="—"; logEvent("🧹 Intel cleared."); save(); }
       });
@@ -348,12 +356,17 @@
     save();
   }
 
+  // ----------------------------
+  // Engage
+  // ----------------------------
   function openEngage(){
     if (gameOver()) return showGameOver();
     if (!state.region) return toast("Deploy first.");
     if (!(state.intel==="WARM" || state.intel==="HOT")) return toast("Scan until WARM or HOT.");
+
     const fail = baseFailChance();
     const info = `Region: ${state.region}\nIntel: ${state.intel}\nRisk of failure: ${Math.round(fail*100)}%\n\nChoose: Capture (more rewards) or Kill (more aggro).`;
+
     if (tg?.showPopup){
       tg.showPopup({
         title:"Engage Tiger Pack",
@@ -364,7 +377,7 @@
           {id:"ret", type:"default", text:"💨 Retreat"},
           {type:"cancel"}
         ]
-      }, (id)=>{
+      }, function(id){
         if (id==="cap") encounter("CAPTURE");
         if (id==="kill") encounter("KILL");
         if (id==="ret") { state.intel="—"; logEvent("💨 Retreated safely."); save(); }
@@ -377,12 +390,6 @@
   function encounter(mode){
     const failChance = baseFailChance();
     const failed = Math.random() < failChance;
-
-    // All encounters count for daily objective (some types)
-    if (mode==="CAPTURE" || mode==="KILL") {
-      // mark daily based on some simple checks (keeps it easy)
-      // We'll award daily when user presses "Missions" and claims it.
-    }
 
     if (failed){
       state.lives = Math.max(0, state.lives-1);
@@ -425,7 +432,6 @@
       toast("ELIMINATED ⚠️");
     }
 
-    // Industrial loot chance
     if (state.region==="Industrial" && Math.random() < 0.25){
       state.funds += 25;
       logEvent("🎁 Industrial bonus: found supplies 💰+25");
@@ -434,7 +440,6 @@
   }
 
   function maybeRetaliation(kill){
-    // Retaliation chance grows with aggro and kills
     const base = kill ? 0.25 : 0.08;
     const extra = (state.aggro/100) * 0.25;
     const chance = clamp(base + extra, 0, 0.65);
@@ -446,6 +451,9 @@
     }
   }
 
+  // ----------------------------
+  // Shop
+  // ----------------------------
   function openShop(){
     if (gameOver()) return showGameOver();
     const items = [
@@ -471,7 +479,7 @@
           {id:"medkit", type:"default", text:"Buy Med Kit (50)"},
           {type:"cancel"}
         ]
-      }, (id)=> { if (id) buy(id); });
+      }, function(id){ if (id) buy(id); });
     } else {
       toast("Open in Telegram for shop popup.");
     }
@@ -495,12 +503,15 @@
     toast("Purchased ✅");
   }
 
+  // ----------------------------
+  // Missions
+  // ----------------------------
   function openMissions(){
     const daily = dailyChallenge();
     const seed = getDaySeed();
     const style = state.dailyDone ? "✅ Completed" : "⏳ Not completed";
-
     const statsLine = `Captures: ${state.captures} • Kills: ${state.kills}`;
+
     const msg =
       `Daily Challenge (${seed})\n${daily.text}\nReward: ⭐+${daily.reward.score} 💰+${daily.reward.funds}\nStatus: ${style}\n\n${statsLine}\n\nTap “Claim” when you’ve done it.`;
 
@@ -510,13 +521,9 @@
         message: msg,
         buttons:[
           {id:"claim", type:"default", text:"Claim Daily"},
-          {id:"reset", type:"default", text:"New Tip"},
           {type:"cancel"}
         ]
-      }, (id)=>{
-        if (id==="claim") claimDaily();
-        if (id==="reset") toast("Tip: Capture keeps Aggro down.");
-      });
+      }, function(id){ if (id==="claim") claimDaily(); });
     } else {
       toast("Open in Telegram to view missions popup.");
     }
@@ -526,11 +533,9 @@
     if (state.dailyDone) return toast("Already claimed today.");
     const daily = dailyChallenge();
 
-    // Simple completion checks (keeps it easy)
-    // We'll use: if daily mentions "Capture" → need captures >=1 today (since we don't track per-day yet, use total with a basic rule)
     let ok = false;
     if (daily.text.includes("Capture 1")) ok = state.captures >= 1;
-    else if (daily.text.includes("Scan 3")) ok = true; // easy MVP
+    else if (daily.text.includes("Scan 3")) ok = true; // MVP easy
     else if (daily.text.includes("Complete 2")) ok = (state.captures + state.kills) >= 2;
     else if (daily.text.includes("Downtown")) ok = state.captures >= 1;
 
@@ -545,6 +550,9 @@
     toast("Daily reward claimed ✅");
   }
 
+  // ----------------------------
+  // Status / Leaderboard / Share
+  // ----------------------------
   function openStats(){
     const style =
       state.captures > state.kills ? "Capture-heavy" :
@@ -556,33 +564,27 @@
       `Trust: ${state.trust}/100\nAggro: ${state.aggro}/100\nRegion: ${state.region || "None"}\nIntel: ${state.intel}\n\n` +
       `Style: ${style}\nGear: Tranq ${state.gear.tranq}/3, Armor ${state.gear.armor}/3, Scanner ${state.gear.scanner}/3, Traps ${state.gear.traps}/3`;
 
-    if (tg?.showPopup){
-      tg.showPopup({ title:"Status", message: msg, buttons:[{type:"ok"}] });
-    } else {
-      alert(msg);
-    }
+    if (tg?.showPopup) tg.showPopup({ title:"Status", message: msg, buttons:[{type:"ok"}] });
+    else alert(msg);
   }
 
   function openLeaderboard(){
-    // Local leaderboard (device-only) stored in localStorage
     const key = "ts_leaderboard";
     const lb = JSON.parse(localStorage.getItem(key) || "[]");
     const user = state.username || "Player";
-    // Update local entry
+
     const existing = lb.find(x=>x.user===user);
     if (existing) existing.score = Math.max(existing.score, state.score);
     else lb.push({user, score: state.score});
+
     lb.sort((a,b)=>b.score-a.score);
     localStorage.setItem(key, JSON.stringify(lb.slice(0,10)));
 
     const list = lb.slice(0,10).map((x,i)=>`${i+1}) @${x.user} — ⭐${x.score}`).join("\n") || "No scores yet.";
-    const msg = `Top Agents (Local)\n\n${list}\n\nTip: share to compete in group chats.`;
+    const msg = `Top Agents (Local)\n\n${list}`;
 
-    if (tg?.showPopup){
-      tg.showPopup({ title:"Leaderboard", message: msg, buttons:[{type:"ok"}] });
-    } else {
-      alert(msg);
-    }
+    if (tg?.showPopup) tg.showPopup({ title:"Leaderboard", message: msg, buttons:[{type:"ok"}] });
+    else alert(msg);
   }
 
   function shareCard(){
@@ -599,7 +601,6 @@
       `🏛️ Trust: ${state.trust}/100 | 🔥 Aggro: ${state.aggro}/100\n` +
       `📍 Region: ${state.region || "None"} | Style: ${style}`;
 
-    // In Telegram Mini Apps, we can open a "share" by opening a URL
     if (tg?.openTelegramLink){
       const url = "https://t.me/share/url?url=&text=" + encodeURIComponent(text);
       tg.openTelegramLink(url);
@@ -609,16 +610,19 @@
     }
   }
 
+  // ----------------------------
+  // Help / Settings / Game Over / Reset
+  // ----------------------------
   function openHelp(){
     const msg =
-      "How to Play\n\n1) Deploy to a region.\n2) Scan until WARM/HOT.\n3) Engage.\n\nCapture = more rewards and lowers aggression.\nKill = raises aggression and can trigger retaliation.\n\nIf Trust or Lives hit 0 → mission fails.";
+      "How to Play\n\n1) Tap Play/Deploy and choose a region.\n2) Scan until WARM/HOT.\n3) Engage.\n\nCapture = more rewards + lowers aggression.\nKill = raises aggression + retaliation risk.\n\nIf Trust or Lives hit 0 → mission fails.";
     if (tg?.showPopup) tg.showPopup({title:"Help", message: msg, buttons:[{type:"ok"}]});
     else alert(msg);
   }
 
   function openSettings(){
     const msg =
-      "Settings\n\nThis MVP saves progress on your device (localStorage).\nLater we’ll connect to your bot + database.\n\nWant the next upgrade? Add:\n• Real missions list\n• Server saves\n• Anti-cheat + leaderboard";
+      "Settings\n\nProgress saves on this device (localStorage).\nNext upgrade: cloud save + real missions + tabs.";
     if (tg?.showPopup) tg.showPopup({title:"Settings", message: msg, buttons:[{type:"ok"}]});
     else alert(msg);
   }
@@ -633,7 +637,7 @@
           {id:"restart", type:"default", text:"Restart"},
           {type:"cancel"}
         ]
-      }, (id)=>{ if(id==="restart") resetGame(); });
+      }, function(id){ if(id==="restart") resetGame(); });
     } else {
       alert("Mission Failed. Restarting.");
       resetGame();
@@ -673,7 +677,7 @@
 
   // Initial greeting
   if (!state.log.length) {
-    logEvent("🟢 Ready. Deploy, scan, and engage tiger packs.");
+    logEvent("🟢 Ready. Tap Play / Deploy to begin.");
   } else {
     save(); // ensures render
   }
