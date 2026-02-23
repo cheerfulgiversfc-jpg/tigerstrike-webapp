@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Tiger Strike 🐅 — v2</title>
+  <title>Tiger Strike 🐅 — v3</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <style>
@@ -13,57 +13,123 @@
       --btn:#1a2031; --btnBorder:#3a4566;
       --text:#f5f7ff; --muted:rgba(245,247,255,.72);
       --good:#4ade80; --warn:#f59e0b; --bad:#fb7185;
+      --blue:#3a78ff;
       --shadow: 0 14px 40px rgba(0,0,0,.35);
     }
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial}
-    .wrap{max-width:920px;margin:0 auto;padding:14px 14px 94px}
+    .wrap{max-width:980px;margin:0 auto;padding:14px 14px 94px}
     .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-top:4px}
-    .title{font-size:28px;font-weight:900;letter-spacing:.2px}
+    .title{font-size:28px;font-weight:900}
     .sub{opacity:.78;font-size:13px;margin-top:4px;line-height:1.25}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    button{
+      border-radius:12px;border:1px solid var(--btnBorder);background:var(--btn);color:#fff;
+      padding:10px 12px;font-weight:900;font-size:14px;cursor:pointer
+    }
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .ghost{background:transparent}
+    .good{border-color:#14532d;background:#0f2416}
+    .warn{border-color:#7c2d12;background:#2b140d}
+    .danger{border-color:#7f1d1d;background:#2a0f13}
 
     .chiprow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     .chip{background:var(--panel2);border:1px solid var(--border2);padding:8px 10px;border-radius:999px;font-size:13px;font-weight:900}
-    .chip small{opacity:.7;font-weight:800}
+    .chip small{opacity:.7}
 
-    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin:12px 0}
+    .grid2{display:grid;grid-template-columns: 1.35fr .65fr; gap:12px; margin-top:12px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px}
     .sectionTitle{font-weight:900;margin:0 0 6px;font-size:16px}
     .hint{color:var(--muted);font-size:13px;line-height:1.35}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
-    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    button{border-radius:12px;border:1px solid var(--btnBorder);background:var(--btn);color:#fff;padding:12px 12px;font-weight:900;font-size:14px;cursor:pointer}
-    button:disabled{opacity:.45;cursor:not-allowed}
-    .ghost{background:transparent}
-    .danger{border-color:#7f1d1d;background:#2a0f13}
-    .good{border-color:#14532d;background:#0f2416}
-    .warn{border-color:#7c2d12;background:#2b140d}
     .divider{height:1px;background:var(--border);margin:12px 0}
-    .pill{padding:2px 8px;border-radius:999px;border:1px solid var(--border2);background:#0b0d12}
 
-    .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#101626;border:1px solid var(--border);padding:10px 12px;border-radius:12px;font-size:13px;box-shadow:var(--shadow);display:none;max-width:92vw;z-index:50}
+    /* MAP */
+    .mapWrap{
+      background:linear-gradient(180deg, #0f1320, #0b0d12);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:12px;
+    }
+    .mapHeader{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+    .mapTitle{font-weight:900}
+    .mapSmall{font-size:12px;color:var(--muted)}
+    .map{
+      display:grid;
+      grid-template-columns: repeat(9, 1fr);
+      gap:6px;
+      user-select:none;
+    }
+    .tile{
+      aspect-ratio: 1/1;
+      border-radius:10px;
+      border:1px solid var(--border2);
+      background:rgba(18,22,34,.55);
+      display:flex;align-items:center;justify-content:center;
+      font-weight:900;
+      position:relative;
+      overflow:hidden;
+    }
+    .tile:hover{filter:brightness(1.05)}
+    .tile.hot{box-shadow:0 0 0 2px rgba(245,158,11,.35) inset}
+    .tile.hazard{box-shadow:0 0 0 2px rgba(251,113,133,.35) inset}
+    .tile.me{box-shadow:0 0 0 2px rgba(58,120,255,.55) inset}
+    .tile .dot{
+      width:10px;height:10px;border-radius:999px;background:var(--blue);
+      box-shadow:0 0 18px rgba(58,120,255,.75);
+    }
+    .tile .tiger{
+      font-size:18px; filter: drop-shadow(0 6px 10px rgba(0,0,0,.35));
+      transform: translateY(1px);
+    }
+    .pulse{
+      position:absolute; inset:-8px;
+      border-radius:16px;
+      border:2px solid rgba(245,158,11,.25);
+      animation:pulse 1.2s infinite;
+      pointer-events:none;
+    }
+    @keyframes pulse{
+      0%{transform:scale(.88);opacity:.55}
+      70%{transform:scale(1.1);opacity:0}
+      100%{transform:scale(1.1);opacity:0}
+    }
 
+    /* Encounter overlay */
+    .overlay{
+      position:fixed; inset:0;
+      background:rgba(0,0,0,.55);
+      display:none;
+      align-items:flex-end;
+      z-index:80;
+    }
+    .sheet{
+      width:100%;
+      max-width:980px;
+      margin:0 auto;
+      background:var(--panel);
+      border-top-left-radius:18px;
+      border-top-right-radius:18px;
+      border:1px solid var(--border);
+      box-shadow: var(--shadow);
+      padding:14px;
+    }
+    .sheetTitle{font-weight:950;font-size:16px}
+    .sheetText{font-size:13px;color:var(--muted);line-height:1.35;margin-top:6px}
+    .sheetBtns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .toast{
+      position:fixed;left:50%;bottom:90px;transform:translateX(-50%);
+      background:#101626;border:1px solid var(--border);padding:10px 12px;border-radius:12px;
+      font-size:13px;box-shadow:var(--shadow);display:none;max-width:92vw;z-index:90
+    }
+    .log{max-height:220px;overflow:auto;border:1px solid var(--border2);background:var(--panel2);border-radius:12px;padding:10px;margin-top:10px}
+    .logline{font-size:13px;line-height:1.35;color:var(--muted);margin:6px 0}
+
+    /* bottom nav */
     .nav{position:fixed;left:0;right:0;bottom:0;background:rgba(11,13,18,.92);border-top:1px solid var(--border);backdrop-filter: blur(10px);padding:10px 10px 14px;z-index:60}
-    .navInner{max-width:920px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+    .navInner{max-width:980px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn.active{border-color:#5670b8;background:#1a2031}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
-
-    .screen{display:none}
-    .screen.active{display:block}
-
-    .meter{border:1px solid var(--border2);background:var(--panel2);border-radius:12px;padding:10px;margin-top:10px}
-    .bar{height:10px;background:#0b0d12;border:1px solid var(--border2);border-radius:999px;overflow:hidden;margin-top:6px}
-    .fill{height:100%;background:#3a78ff;width:50%}
-
-    .log{max-height:220px;overflow:auto;border:1px solid var(--border2);background:var(--panel2);border-radius:12px;padding:10px}
-    .logline{font-size:13px;line-height:1.35;color:var(--muted);margin:6px 0}
-
-    .item{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border:1px solid var(--border2);background:var(--panel2);border-radius:12px;padding:12px;margin-top:10px}
-    .itemName{font-weight:950}
-    .itemDesc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
-    .price{font-weight:950}
-    .small{font-size:12px;color:var(--muted)}
-    .tag{display:inline-block;margin-left:8px;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;border:1px solid var(--border2);background:#0b0d12;color:var(--muted)}
   </style>
 </head>
 
@@ -71,226 +137,85 @@
   <div class="wrap">
     <div class="top">
       <div>
-        <div class="title">Tiger Strike 🐅 <span class="pill">v2</span></div>
-        <div class="sub">
-          Missions • Loadout • Pack Types • Events • Stamina<br>
-          Capture earns more • Kill escalates aggression + retaliation
-        </div>
+        <div class="title">Tiger Strike 🐅 <span style="opacity:.7;font-weight:900">v3</span></div>
+        <div class="sub">Interactive map + encounters + sound + haptics (tap once to unlock audio)</div>
       </div>
-      <div class="row" style="justify-content:flex-end;margin-top:0">
-        <button class="ghost" onclick="shareCard()">📣</button>
-        <button class="ghost" onclick="openHelp()">❓</button>
-        <button class="ghost" onclick="openSettings()">⚙️</button>
+      <div class="row">
+        <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLabel">On</span></button>
+        <button class="ghost" onclick="shareReport()">📣 Share</button>
+        <button class="ghost" onclick="resetGame()">🔁 Reset</button>
       </div>
     </div>
 
     <div class="chiprow">
-      <div class="chip">❤️ <span id="livesChip"></span><small>/5</small></div>
-      <div class="chip">💰 <span id="fundsChip"></span></div>
-      <div class="chip">⭐ <span id="scoreChip"></span></div>
-      <div class="chip">🏛️ <span id="trustChip"></span><small>/100</small></div>
-      <div class="chip">🔥 <span id="aggroChip"></span><small>/100</small></div>
-      <div class="chip">⚡ <span id="staminaChip"></span><small>/100</small></div>
-      <div class="chip">🎖️ L<span id="levelChip"></span></div>
-      <div class="chip">📍 <span id="regionChip"></span></div>
-      <div class="chip">🛰️ <span id="intelChip"></span></div>
+      <div class="chip">❤️ <span id="lives"></span><small>/5</small></div>
+      <div class="chip">💰 <span id="funds"></span></div>
+      <div class="chip">⭐ <span id="score"></span></div>
+      <div class="chip">🏛️ <span id="trust"></span><small>/100</small></div>
+      <div class="chip">🔥 <span id="aggro"></span><small>/100</small></div>
+      <div class="chip">⚡ <span id="stamina"></span><small>/100</small></div>
+      <div class="chip">📍 <span id="region"></span></div>
+      <div class="chip">🛰️ <span id="intel"></span></div>
     </div>
 
-    <!-- HOME -->
-    <div class="screen active" id="screen-home">
-      <div class="card">
-        <div class="sectionTitle">Today’s Missions</div>
-        <div class="hint">Complete missions to earn bonus funding and unlock gear faster.</div>
-        <div id="missionsBox"></div>
-        <div class="row">
-          <button onclick="rollMissions()">🔄 New Missions</button>
-          <button class="ghost" onclick="claimMissionRewards()">🎯 Claim Completed</button>
+    <div class="grid2">
+      <!-- Map -->
+      <div class="mapWrap">
+        <div class="mapHeader">
+          <div>
+            <div class="mapTitle">Map Grid</div>
+            <div class="mapSmall">Tap tiles to move. Scan reveals hot zones. Engage when you’re close.</div>
+          </div>
+          <div class="row">
+            <button onclick="deploy()">📍 Deploy</button>
+            <button onclick="scan()">🛰️ Scan</button>
+            <button id="engageBtn" class="warn" onclick="tryEngage()">🎯 Engage</button>
+          </div>
         </div>
-      </div>
-
-      <div class="card">
-        <div class="sectionTitle">Event Log</div>
-        <div class="hint">Last 20 events.</div>
-        <div class="log" id="logBox"></div>
-        <div class="row" style="justify-content:flex-end">
-          <button class="danger" onclick="resetGame()">🔁 Reset</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- DEPLOY -->
-    <div class="screen" id="screen-deploy">
-      <div class="card">
-        <div class="sectionTitle">Deploy</div>
-        <div class="hint">Pick a region. Each region has different citizen risk and pack behavior.</div>
-        <div class="grid">
-          <button onclick="setRegion('Downtown')">🏙️ Downtown</button>
-          <button onclick="setRegion('Suburbs')">🏘️ Suburbs</button>
-          <button onclick="setRegion('Forest Edge')">🌲 Forest Edge</button>
-          <button onclick="setRegion('Industrial')">🏭 Industrial</button>
-        </div>
+        <div class="map" id="map"></div>
         <div class="divider"></div>
-        <div class="hint" id="regionHeatInfo"></div>
+        <div class="hint" id="mapInfo"></div>
       </div>
-    </div>
 
-    <!-- INTEL -->
-    <div class="screen" id="screen-intel">
+      <!-- Right panel -->
       <div class="card">
-        <div class="sectionTitle">Intel / Scan</div>
-        <div class="hint">Scanning costs stamina. Scanner upgrades improve HOT odds.</div>
-        <div class="row">
-          <button onclick="scan()">🛰️ Scan</button>
-          <button class="ghost" onclick="clearIntel()">🧹 Clear Intel</button>
-        </div>
-        <div class="meter">
-          <div class="hint"><b>Stamina</b> regenerates slowly. Don’t spam scans.</div>
-          <div class="bar"><div class="fill" id="staminaBar"></div></div>
-        </div>
+        <div class="sectionTitle">Actions</div>
+        <div class="hint">V3 is “visual-first.” Your position + tiger pings matter.</div>
         <div class="divider"></div>
-        <div class="hint" id="intelInfo"></div>
-      </div>
-    </div>
 
-    <!-- ENGAGE -->
-    <div class="screen" id="screen-engage">
-      <div class="card">
-        <div class="sectionTitle">Engage</div>
-        <div class="hint">Intel must be WARM/HOT. Loadout affects odds & outcomes.</div>
-        <div class="meter">
-          <div class="hint"><b>Equipped:</b> <span id="equipInfo"></span></div>
-        </div>
-        <div class="row">
-          <button id="btnCapture" class="good" onclick="encounter('CAPTURE')">💉 Capture</button>
-          <button id="btnKill" class="warn" onclick="encounter('KILL')">🔫 Kill</button>
-          <button class="ghost" onclick="retreat()">💨 Retreat</button>
-        </div>
-        <div class="divider"></div>
-        <div class="hint" id="engageInfo"></div>
-      </div>
-    </div>
-
-    <!-- LOADOUT -->
-    <div class="screen" id="screen-loadout">
-      <div class="card">
         <div class="sectionTitle">Loadout</div>
-        <div class="hint">Equip 1 Primary, 1 Tool, 1 Armor. Unlock more in the Shop.</div>
+        <div class="hint"><b>In-game limit:</b> 3 upgrades each. Premium items are placeholders ($0.99).</div>
+        <div class="row">
+          <button onclick="buyUpgrade('scanner',90,3)">📡 Scanner</button>
+          <button onclick="buyUpgrade('armor',75,3)">🛡️ Armor</button>
+          <button onclick="buyUpgrade('tranq',60,3)">💉 Tranq</button>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <button onclick="premium('trap')">🪤 Trap $0.99</button>
+          <button onclick="premium('drone')">🛰️ Drone $0.99</button>
+        </div>
+        <div class="row">
+          <button onclick="premium('medkit')">❤️ Medkit $0.99</button>
+        </div>
 
         <div class="divider"></div>
-        <div class="hint"><b>Primary:</b></div>
-        <div class="grid" id="primaryGrid"></div>
-
-        <div class="divider"></div>
-        <div class="hint"><b>Tool:</b></div>
-        <div class="grid" id="toolGrid"></div>
-
-        <div class="divider"></div>
-        <div class="hint"><b>Armor:</b></div>
-        <div class="grid" id="armorGrid"></div>
-
-        <div class="divider"></div>
-        <div class="hint" id="loadoutInfo"></div>
+        <div class="sectionTitle">Event Log</div>
+        <div class="log" id="log"></div>
       </div>
     </div>
+  </div>
 
-    <!-- SHOP (ONLY 3 FREE/IN-GAME ITEMS; EVERYTHING ELSE $0.99) -->
-    <div class="screen" id="screen-shop">
-      <div class="card">
-        <div class="sectionTitle">Shop</div>
-        <div class="hint">
-          <b>In-Game Items (3 only):</b> You can buy these with 💰 funds.<br>
-          <b>Premium:</b> Anything beyond these is <b>$0.99</b> (placeholder button for now).
-        </div>
-
-        <!-- ✅ IN-GAME ITEM #1 -->
-        <div class="item">
-          <div>
-            <div class="itemName">📡 Scanner Upgrade <span class="tag">IN-GAME</span></div>
-            <div class="itemDesc">Improves HOT scans. Max 3.</div>
-          </div>
-          <div style="text-align:right">
-            <div class="price">90</div>
-            <button onclick="buyUpgrade('scanner',90,3)">Buy</button>
-          </div>
-        </div>
-
-        <!-- ✅ IN-GAME ITEM #2 -->
-        <div class="item">
-          <div>
-            <div class="itemName">🛡️ Armor Upgrade <span class="tag">IN-GAME</span></div>
-            <div class="itemDesc">Reduces failure chance. Max 3.</div>
-          </div>
-          <div style="text-align:right">
-            <div class="price">75</div>
-            <button onclick="buyUpgrade('armorUp',75,3)">Buy</button>
-          </div>
-        </div>
-
-        <!-- ✅ IN-GAME ITEM #3 -->
-        <div class="item">
-          <div>
-            <div class="itemName">💉 Tranq Upgrade <span class="tag">IN-GAME</span></div>
-            <div class="itemDesc">Improves capture odds + rewards. Max 3.</div>
-          </div>
-          <div style="text-align:right">
-            <div class="price">60</div>
-            <button onclick="buyUpgrade('tranqUp',60,3)">Buy</button>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-        <div class="hint"><b>Premium Store ($0.99 each)</b></div>
-
-        <!-- PREMIUM: Trap Kit -->
-        <div class="item">
-          <div>
-            <div class="itemName">🪤 Trap Kit <span class="tag">$0.99</span></div>
-            <div class="itemDesc">Unlocks Trap tool. Great for captures. (one-time)</div>
-          </div>
-          <div style="text-align:right">
-            <div class="price">$0.99</div>
-            <button onclick="buyPremium('trap')">Buy</button>
-          </div>
-        </div>
-
-        <!-- PREMIUM: Drone Scan -->
-        <div class="item">
-          <div>
-            <div class="itemName">🛰️ Drone Scan <span class="tag">$0.99</span></div>
-            <div class="itemDesc">Unlocks Drone tool. Makes intel stronger. (one-time)</div>
-          </div>
-          <div style="text-align:right">
-            <div class="price">$0.99</div>
-            <button onclick="buyPremium('drone')">Buy</button>
-          </div>
-        </div>
-
-        <!-- PREMIUM: Med Kit -->
-        <div class="item">
-          <div>
-            <div class="itemName">❤️ Med Kit <span class="tag">$0.99</span></div>
-            <div class="itemDesc">+1 life (max 5). (premium purchase)</div>
-          </div>
-          <div style="text-align:right">
-            <div class="price">$0.99</div>
-            <button onclick="buyPremium('medkit')">Buy</button>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-        <div class="hint" id="shopInfo"></div>
-        <div class="small">
-          Premium purchases are <b>placeholders</b> right now. When you add Telegram Payments, replace <code>buyPremium()</code>
-          with actual invoice logic. For now, it simulates purchase success.
-        </div>
-      </div>
-    </div>
-
-    <!-- STATS -->
-    <div class="screen" id="screen-stats">
-      <div class="card">
-        <div class="sectionTitle">Status</div>
-        <div class="hint" id="statusInfo"></div>
+  <!-- Encounter Sheet -->
+  <div class="overlay" id="overlay">
+    <div class="sheet">
+      <div class="sheetTitle" id="encTitle">Encounter</div>
+      <div class="sheetText" id="encText"></div>
+      <div class="sheetBtns">
+        <button class="good" onclick="resolve('CAPTURE')">💉 Capture</button>
+        <button class="warn" onclick="resolve('KILL')">🔫 Kill</button>
+        <button class="ghost" onclick="closeEncounter()">💨 Retreat</button>
+        <button class="danger" onclick="closeEncounter()">Close</button>
       </div>
     </div>
   </div>
@@ -299,101 +224,108 @@
 
   <div class="nav">
     <div class="navInner">
-      <button class="navBtn active" id="tab-home" onclick="go('home')"><span>🏠</span>Home</button>
-      <button class="navBtn" id="tab-deploy" onclick="go('deploy')"><span>📍</span>Deploy</button>
-      <button class="navBtn" id="tab-intel" onclick="go('intel')"><span>🛰️</span>Intel</button>
-      <button class="navBtn" id="tab-engage" onclick="go('engage')"><span>🎯</span>Engage</button>
-      <button class="navBtn" id="tab-loadout" onclick="go('loadout')"><span>🧰</span>Loadout</button>
-      <button class="navBtn" id="tab-shop" onclick="go('shop')"><span>🛒</span>Shop</button>
+      <button class="navBtn active" id="tab-map" onclick="noop()"><span>🗺️</span>Map</button>
+      <button class="navBtn" onclick="toast('Tip: Scan → move toward HOT → Engage.')"><span>💡</span>Tip</button>
+      <button class="navBtn" onclick="shareReport()"><span>📣</span>Share</button>
+      <button class="navBtn" onclick="resetGame()"><span>🔁</span>Reset</button>
     </div>
   </div>
 
 <script>
+  // Telegram init
   const tg = window.Telegram?.WebApp;
   if (tg){ tg.expand(); tg.ready(); try{tg.setHeaderColor?.("#0b0d12"); tg.setBackgroundColor?.("#0b0d12");}catch(e){} }
 
+  // ---------------------------
+  // V3 STATE
+  // ---------------------------
   const DEFAULT = {
-    version: 2,
-    username: null,
-
-    region: null,
+    v: 3,
+    region: "None",
     intel: "—",
-
     lives: 5,
     funds: 120,
     score: 0,
     trust: 80,
     aggro: 10,
     stamina: 100,
-    level: 1,
 
-    kills: 0,
-    captures: 0,
+    upgrades: { scanner:0, armor:0, tranq:0 },
+    premium: { trap:false, drone:false },
 
-    heat: { "Downtown": 35, "Suburbs": 30, "Forest Edge": 45, "Industrial": 30 },
+    // map
+    size: 9,
+    me: {x:4, y:7},
+    tigers: [{x:4,y:2},{x:2,y:3},{x:6,y:3}],
+    hot: [], // tiles from scan
+    lastScanAt: 0,
 
-    upgrades: { scanner: 0, armorUp: 0, tranqUp: 0 },
-    unlocks: { trap:false, drone:false },
-
-    loadout: { primary: "Tranq Pistol", tool: "None", armor: "Light Vest" },
-
-    missions: [],
-    claimedMissions: {},
-
-    log: []
+    log: [],
+    soundOn: true,
+    audioUnlocked: false
   };
 
-  let state = load();
-
-  if (tg && tg.initDataUnsafe?.user){
-    state.username = tg.initDataUnsafe.user.username || state.username;
-    save(false);
-  }
+  let S = load();
 
   function load(){
     try{
-      const v2 = JSON.parse(localStorage.getItem("ts_v2") || "null");
-      if (v2) return merge(DEFAULT, v2);
-    }catch(e){}
+      const saved = JSON.parse(localStorage.getItem("ts_v3") || "null");
+      return saved ? {...DEFAULT, ...saved, upgrades:{...DEFAULT.upgrades, ...(saved.upgrades||{})}, premium:{...DEFAULT.premium, ...(saved.premium||{})}} : structuredClone(DEFAULT);
+    }catch(e){ return structuredClone(DEFAULT); }
+  }
+  function save(){ localStorage.setItem("ts_v3", JSON.stringify(S)); render(); }
+
+  // ---------------------------
+  // SOUND (WebAudio beeps)
+  // ---------------------------
+  let AC = null;
+  function ensureAudio(){
+    if (!S.soundOn) return;
+    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === "suspended") AC.resume();
+    S.audioUnlocked = true;
+  }
+  function beep(freq=440, ms=90, type="sine", vol=0.06){
+    if (!S.soundOn) return;
     try{
-      const v1 = JSON.parse(localStorage.getItem("ts_state_v2") || localStorage.getItem("ts_state_v1") || "null");
-      if (v1){
-        const migrated = structuredClone(DEFAULT);
-        migrated.username = v1.username || migrated.username;
-        migrated.region = v1.region || migrated.region;
-        migrated.lives = v1.lives ?? migrated.lives;
-        migrated.funds = v1.funds ?? migrated.funds;
-        migrated.score = v1.score ?? migrated.score;
-        migrated.trust = v1.trust ?? migrated.trust;
-        migrated.aggro = v1.aggro ?? migrated.aggro;
-        migrated.level = v1.level ?? migrated.level;
-        migrated.kills = v1.kills ?? migrated.kills;
-        migrated.captures = v1.captures ?? migrated.captures;
-        migrated.intel = v1.intel ?? migrated.intel;
-        migrated.log = v1.log ?? migrated.log;
-        return migrated;
-      }
+      ensureAudio();
+      if (!AC) return;
+      const o=AC.createOscillator();
+      const g=AC.createGain();
+      o.type=type;
+      o.frequency.value=freq;
+      g.gain.value=vol;
+      o.connect(g); g.connect(AC.destination);
+      o.start();
+      setTimeout(()=>{ o.stop(); }, ms);
     }catch(e){}
-    return structuredClone(DEFAULT);
+  }
+  function sfx(name){
+    if (!S.soundOn) return;
+    // simple patterns
+    if (name==="scan"){ beep(520,70,"triangle",0.05); setTimeout(()=>beep(740,70,"triangle",0.05),80); }
+    if (name==="move"){ beep(320,45,"sine",0.04); }
+    if (name==="hot"){ beep(880,80,"square",0.04); }
+    if (name==="open"){ beep(420,70,"sine",0.05); }
+    if (name==="win"){ beep(660,60,"triangle",0.05); setTimeout(()=>beep(980,80,"triangle",0.05),70); }
+    if (name==="fail"){ beep(220,120,"sawtooth",0.05); }
+  }
+  function haptic(style="light"){
+    try{ tg?.HapticFeedback?.impactOccurred?.(style); }catch(e){}
+  }
+  function toggleSound(){
+    S.soundOn = !S.soundOn;
+    save();
+    toast(`Sound: ${S.soundOn ? "On" : "Off"}`);
+    if (S.soundOn) sfx("open");
   }
 
-  function merge(a,b){
-    const out = structuredClone(a);
-    for (const k in b){
-      if (b[k] && typeof b[k]==="object" && !Array.isArray(b[k])){
-        out[k] = { ...(out[k]||{}), ...b[k] };
-      } else {
-        out[k] = b[k];
-      }
-    }
-    return out;
-  }
+  // unlock audio on first tap anywhere
+  document.addEventListener("pointerdown", ()=>{ if (!S.audioUnlocked) { ensureAudio(); } }, {once:true});
 
-  function save(renderNow=true){
-    localStorage.setItem("ts_v2", JSON.stringify(state));
-    if (renderNow) render();
-  }
-
+  // ---------------------------
+  // UI helpers
+  // ---------------------------
   function toast(msg){
     const t=document.getElementById("toast");
     t.innerText=msg;
@@ -401,468 +333,354 @@
     clearTimeout(window.__toastTimer);
     window.__toastTimer=setTimeout(()=>t.style.display="none",2200);
   }
-
+  function log(msg){
+    S.log.unshift(`${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} — ${msg}`);
+    S.log = S.log.slice(0,18);
+    save();
+  }
   function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
-  function escapeHtml(s){ return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+  function dist(a,b){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y); }
+  function same(a,b){ return a.x===b.x && a.y===b.y; }
 
-  function logEvent(msg){
-    state.log.unshift(`${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} — ${msg}`);
-    state.log = state.log.slice(0,20);
-    save();
-  }
+  // ---------------------------
+  // MAP RENDER
+  // ---------------------------
+  function renderMap(){
+    const map = document.getElementById("map");
+    map.innerHTML = "";
+    const N = S.size;
 
-  const screens = ["home","deploy","intel","engage","loadout","shop","stats"];
-  function go(name){
-    if (!screens.includes(name)) name="home";
-    document.querySelectorAll(".screen").forEach(el=>el.classList.remove("active"));
-    document.getElementById(`screen-${name}`).classList.add("active");
-    document.querySelectorAll(".navBtn").forEach(el=>el.classList.remove("active"));
-    const tab = document.getElementById(`tab-${name}`);
-    if (tab) tab.classList.add("active");
-    render();
-  }
+    for (let y=0;y<N;y++){
+      for (let x=0;x<N;x++){
+        const tile = document.createElement("div");
+        tile.className = "tile";
 
-  function gameOver(){ return state.lives<=0 || state.trust<=0; }
+        // mark hot tiles
+        if (S.hot.some(p=>p.x===x && p.y===y)) tile.classList.add("hot");
 
-  function regionRisk(){
-    const r=state.region;
-    if (r==="Downtown") return { trustLoss:7, trustGain:5, aggroGain:16 };
-    if (r==="Suburbs") return { trustLoss:5, trustGain:6, aggroGain:14 };
-    if (r==="Forest Edge") return { trustLoss:4, trustGain:6, aggroGain:13 };
-    if (r==="Industrial") return { trustLoss:5, trustGain:6, aggroGain:14 };
-    return { trustLoss:5, trustGain:6, aggroGain:14 };
-  }
+        // mark player
+        if (S.me.x===x && S.me.y===y){
+          tile.classList.add("me");
+          const dot=document.createElement("div"); dot.className="dot";
+          tile.appendChild(dot);
+        }
 
-  function regenStamina(){
-    const now = Date.now();
-    if (!state._lastRegen) state._lastRegen = now;
-    const elapsed = (now - state._lastRegen) / 1000;
-    if (elapsed >= 5){
-      const ticks = Math.floor(elapsed / 5);
-      state.stamina = clamp(state.stamina + ticks*3, 0, 100);
-      state._lastRegen = now;
-      save(false);
-    }
-  }
+        // mark tiger if discovered OR close
+        const tigerHere = S.tigers.some(t=>t.x===x && t.y===y);
+        const nearTiger = S.tigers.some(t=>dist(S.me,t)<=1);
+        if (tigerHere && (nearTiger || S.hot.some(p=>p.x===x && p.y===y))){
+          const em=document.createElement("div");
+          em.className="tiger";
+          em.textContent="🐅";
+          tile.appendChild(em);
+          tile.classList.add(dist(S.me,{x,y})<=1 ? "hazard":"hot");
+          if (dist(S.me,{x,y})<=1){
+            const pulse=document.createElement("div"); pulse.className="pulse";
+            tile.appendChild(pulse);
+          }
+        }
 
-  function intelRoll(){
-    const s=state.upgrades.scanner;
-    const hotBonus=Math.min(0.12, s*0.04);
-    const warmBonus=Math.min(0.10, s*0.03);
-    const droneBoost = (state.loadout.tool==="Drone") ? 0.10 : 0.0;
-
-    const r=Math.random();
-    const cold=0.45 - warmBonus - hotBonus - droneBoost;
-    const warm=0.35 + warmBonus + (droneBoost*0.6);
-    if (r < cold) return "COLD";
-    if (r < cold + warm) return "WARM";
-    return "HOT";
-  }
-
-  function packType(){
-    const h = state.heat[state.region] || 30;
-    const r = Math.random();
-    if (h > 55 && r < 0.33) return { name:"Alpha Pack", threat:"HIGH", failMod:+0.10, rewardMod:+0.25 };
-    if (r < 0.30) return { name:"Scouts", threat:"LOW", failMod:-0.08, rewardMod:-0.10 };
-    if (r < 0.75) return { name:"Standard Pack", threat:"MED", failMod:0.00, rewardMod:0.00 };
-    return { name:"Aggressive Pack", threat:"HIGH", failMod:+0.06, rewardMod:+0.10 };
-  }
-
-  function baseFailChance(){
-    let fail = (state.intel==="HOT") ? 0.58 : 0.40;
-
-    fail -= state.upgrades.tranqUp * 0.03;
-    fail -= state.upgrades.armorUp * 0.05;
-
-    if (state.loadout.primary==="Tranq Rifle") fail -= 0.03;
-    if (state.loadout.armor==="Heavy Armor") fail -= 0.04;
-    if (state.loadout.tool==="Trap Kit") fail -= 0.03;
-
-    fail += (state.aggro/100) * 0.10;
-    return clamp(fail, 0.15, 0.85);
-  }
-
-  function maybeLevelUp(){
-    const newLevel = Math.floor(state.score / 600) + 1;
-    if (newLevel > state.level){
-      state.level = newLevel;
-      state.funds += 60;
-      logEvent(`🎖️ LEVEL UP! Now Level ${state.level}. Bonus 💰+60`);
-      toast(`Level up! 🎖️ ${state.level}`);
-    }
-  }
-
-  function maybeEvent(kill){
-    const base = kill ? 0.22 : 0.10;
-    const extra = (state.aggro/100) * 0.25;
-    const chance = clamp(base + extra, 0, 0.70);
-    if (Math.random() < chance){
-      const r=Math.random();
-      if (r < 0.45){
-        state.aggro = clamp(state.aggro + 10, 0, 100);
-        state.trust = clamp(state.trust - 3, 0, 100);
-        logEvent("🚨 RETALIATION: pack entered HUNT MODE. 🔥+10 🏛️-3");
-        toast("RETALIATION 🚨");
-      } else if (r < 0.80){
-        state.trust = clamp(state.trust + 4, 0, 100);
-        state.funds += 25;
-        logEvent("🧍 Citizen Rescue: you saved civilians. 🏛️+4 💰+25");
-        toast("Citizen Rescue ✅");
-      } else {
-        state.trust = clamp(state.trust - 6, 0, 100);
-        logEvent("⚠️ Government Warning: protect citizens or funding ends. 🏛️-6");
-        toast("Government Warning ⚠️");
-      }
-      save();
-    }
-  }
-
-  function rollMissions(){
-    const pool = [
-      { id:"cap2", text:"Capture 2 packs", type:"captures", target:2, reward:{score:180,funds:60} },
-      { id:"kill1", text:"Eliminate 1 pack", type:"kills", target:1, reward:{score:90,funds:35} },
-      { id:"scan3", text:"Scan 3 times", type:"scans", target:3, reward:{score:120,funds:40} },
-      { id:"downtownCap", text:"Capture in Downtown (1)", type:"downtownCap", target:1, reward:{score:220,funds:70} },
-      { id:"keepTrust", text:"Keep Trust ≥ 70 (after 1 encounter)", type:"trustGate", target:1, reward:{score:140,funds:45} },
-    ];
-    const picks=[];
-    const used=new Set();
-    while (picks.length<3){
-      const m = pool[Math.floor(Math.random()*pool.length)];
-      if (used.has(m.id)) continue;
-      used.add(m.id);
-      picks.push({ ...m, progress:0, done:false, claimed:false });
-    }
-    state.missions = picks;
-    state._missionCounters = { scans:0, encounters:0, captures:0, kills:0, downtownCap:0, trustGate:0 };
-    logEvent("📜 New missions issued.");
-    save();
-    toast("New missions ready ✅");
-  }
-
-  function missionTick(evt){
-    if (!state._missionCounters) state._missionCounters = { scans:0, encounters:0, captures:0, kills:0, downtownCap:0, trustGate:0 };
-
-    if (evt.type==="scan") state._missionCounters.scans++;
-    if (evt.type==="capture") { state._missionCounters.captures++; if (evt.region==="Downtown") state._missionCounters.downtownCap++; }
-    if (evt.type==="kill") state._missionCounters.kills++;
-    if (evt.type==="encounter") { state._missionCounters.encounters++; if ((evt.trustAfter??0) >= 70) state._missionCounters.trustGate++; }
-
-    for (const m of (state.missions||[])){
-      let p=0;
-      if (m.type==="captures") p = state._missionCounters.captures;
-      if (m.type==="kills") p = state._missionCounters.kills;
-      if (m.type==="scans") p = state._missionCounters.scans;
-      if (m.type==="downtownCap") p = state._missionCounters.downtownCap;
-      if (m.type==="trustGate") p = state._missionCounters.trustGate;
-
-      m.progress = Math.min(m.target, p);
-      m.done = (m.progress >= m.target);
-    }
-    save(false);
-  }
-
-  function claimMissionRewards(){
-    let claimed = 0;
-    for (const m of (state.missions||[])){
-      if (m.done && !m.claimed){
-        state.score += m.reward.score;
-        state.funds += m.reward.funds;
-        m.claimed = true;
-        claimed++;
-        logEvent(`🎯 Mission claimed: ${m.text}. ⭐+${m.reward.score} 💰+${m.reward.funds}`);
+        tile.addEventListener("click", ()=> moveTo({x,y}));
+        map.appendChild(tile);
       }
     }
-    if (!claimed) return toast("No completed missions to claim.");
-    maybeLevelUp();
-    save();
-    toast(`Claimed ${claimed} mission(s) ✅`);
   }
 
-  function setRegion(r){
-    if (gameOver()) return showGameOver();
-    state.region = r;
-    state.intel = "—";
-    logEvent(`📍 Deployed to ${r}.`);
+  // ---------------------------
+  // GAMEPLAY
+  // ---------------------------
+  function deploy(){
+    const regions=["Downtown","Suburbs","Forest Edge","Industrial"];
+    const r = regions[Math.floor(Math.random()*regions.length)];
+    S.region = r;
+    // reset positions a bit
+    S.me = {x:4, y:7};
+    S.tigers = [{x:4,y:2},{x:2,y:3},{x:6,y:3}].map(t=>({
+      x: clamp(t.x + (Math.random()<0.5?-1:1),0,8),
+      y: clamp(t.y + (Math.random()<0.5?-1:1),0,8),
+    }));
+    S.hot = [];
+    S.intel = "—";
+    log(`📍 Deployed to ${r}. Tap Scan to locate packs.`);
+    haptic("light"); sfx("open");
     save();
-    toast(`Deployed to ${r}. Scan intel next.`);
-    go("intel");
   }
 
   function scan(){
-    if (gameOver()) return showGameOver();
-    if (!state.region) { toast("Deploy first."); return go("deploy"); }
-    if (state.stamina < 12) return toast("Not enough stamina. Wait a moment.");
-    state.stamina -= 12;
+    if (S.stamina < 12) return toast("Not enough stamina.");
+    S.stamina -= 12;
 
-    state.intel = intelRoll();
-    logEvent(`🛰️ Scan result: ${state.intel}`);
-    missionTick({type:"scan"});
+    // scan strength
+    const scanner = S.upgrades.scanner;
+    const drone = S.premium.drone ? 1 : 0;
+    const strength = 2 + scanner + drone; // radius
+
+    // choose nearest tiger and mark hot tiles around it
+    let nearest = S.tigers[0];
+    let best = 999;
+    for (const t of S.tigers){
+      const d = dist(S.me,t);
+      if (d < best){ best=d; nearest=t; }
+    }
+
+    S.hot = [];
+    for (let dy=-strength; dy<=strength; dy++){
+      for (let dx=-strength; dx<=strength; dx++){
+        const x=nearest.x+dx, y=nearest.y+dy;
+        if (x<0||y<0||x>=S.size||y>=S.size) continue;
+        if (Math.abs(dx)+Math.abs(dy) <= strength){
+          S.hot.push({x,y});
+        }
+      }
+    }
+
+    // intel label
+    const d = dist(S.me, nearest);
+    S.intel = d<=2 ? "HOT" : (d<=4 ? "WARM" : "COLD");
+
+    log(`🛰️ Scan: ${S.intel}. Hot zone highlighted.`);
+    haptic("light");
+    sfx("scan");
+    if (S.intel==="HOT") sfx("hot");
+
+    tickTigers(); // tigers shuffle after scans
     save();
-
-    if (state.intel==="WARM" || state.intel==="HOT") toast("Intel ready. Engage when ready.");
   }
 
-  function clearIntel(){
-    state.intel="—";
-    logEvent("🧹 Intel cleared.");
+  function moveTo(p){
+    // unlock audio on first real interaction
+    ensureAudio();
+
+    const d = dist(S.me,p);
+    if (d===0) return;
+
+    // movement cost: only allow near steps (<=2) so it feels like moving
+    if (d>2) return toast("Move closer (tap a nearby tile).");
+
+    const cost = 6 + (d-1)*4;
+    if (S.stamina < cost) return toast("Not enough stamina to move.");
+    S.stamina -= cost;
+
+    S.me = {x:p.x, y:p.y};
+    haptic("light");
+    sfx("move");
+    log(`👣 Moved to (${p.x+1},${p.y+1}).`);
+
+    // if you move next to tiger, auto-prompt engage
+    const close = S.tigers.some(t=>dist(S.me,t)<=1);
+    if (close) toast("🐅 Pack nearby — Engage!");
+    tickTigers(); // tigers move after you move
     save();
   }
 
-  function retreat(){
-    if (!state.region) return toast("Deploy first.");
-    state.intel="—";
-    logEvent("💨 Retreated safely.");
-    save();
-    toast("Retreated safely.");
+  function tickTigers(){
+    // simple tiger AI: random step; aggression makes them drift toward player
+    for (let i=0;i<S.tigers.length;i++){
+      const t = S.tigers[i];
+      let nx=t.x, ny=t.y;
+
+      const chase = Math.random() < (S.aggro/100)*0.45; // more aggro = more chasing
+      if (chase){
+        if (S.me.x > t.x) nx++; else if (S.me.x < t.x) nx--;
+        if (S.me.y > t.y) ny++; else if (S.me.y < t.y) ny--;
+      } else {
+        nx += (Math.random()<0.5?-1:1);
+        ny += (Math.random()<0.5?-1:1);
+      }
+
+      S.tigers[i] = {x: clamp(nx,0,8), y: clamp(ny,0,8)};
+    }
   }
 
-  function encounter(mode){
-    if (gameOver()) return showGameOver();
-    if (!state.region) { toast("Deploy first."); return go("deploy"); }
-    if (!(state.intel==="WARM" || state.intel==="HOT")) { toast("Scan until WARM/HOT."); return go("intel"); }
-    if (state.stamina < 18) return toast("Not enough stamina. Wait a moment.");
-    state.stamina -= 18;
+  function tryEngage(){
+    const closeTiger = S.tigers.find(t=>dist(S.me,t)<=1);
+    if (!closeTiger) return toast("No tiger pack close enough. Move closer.");
+    openEncounter(closeTiger);
+  }
 
-    const pack = packType();
-    let failChance = baseFailChance() + pack.failMod;
-    failChance = clamp(failChance, 0.15, 0.90);
+  function openEncounter(t){
+    ensureAudio();
+    const d = dist(S.me,t);
+    const failBase = (S.intel==="HOT") ? 0.55 : 0.40;
 
-    const failed = Math.random() < failChance;
+    // modifiers
+    let fail = failBase;
+    fail -= S.upgrades.armor * 0.05;
+    fail -= S.upgrades.tranq * 0.03;
+    if (S.premium.trap) fail -= 0.03;
+    fail += (S.aggro/100)*0.10;
+    fail = clamp(fail, 0.15, 0.85);
+
+    // store encounter
+    S._enc = { tiger:{...t}, fail, threat: (d===0?"HIGH":"MED") };
+
+    document.getElementById("encTitle").innerText = `Encounter — Pack ${S._enc.threat}`;
+    document.getElementById("encText").innerHTML =
+      `You are <b>${d===0?"ON TOP OF":"NEAR"}</b> the pack.<br>` +
+      `Estimated failure chance: <b>${Math.round(fail*100)}%</b><br><br>` +
+      `Capture earns more and lowers aggression. Killing raises aggression and triggers retaliation.`;
+
+    document.getElementById("overlay").style.display="flex";
+    sfx("open"); haptic("medium");
+  }
+
+  function closeEncounter(){
+    document.getElementById("overlay").style.display="none";
+    S._enc = null;
+    save();
+  }
+
+  function resolve(mode){
+    if (!S._enc) return closeEncounter();
+    const failed = Math.random() < S._enc.fail;
 
     if (failed){
-      const loss = regionRisk().trustLoss;
-      state.lives = Math.max(0, state.lives-1);
-      state.trust = clamp(state.trust - loss, 0, 100);
-      state.aggro = clamp(state.aggro + 6, 0, 100);
-      state.intel = "—";
-      logEvent(`❌ Failed vs ${pack.name} (${pack.threat}). ❤️-1 🏛️-${loss} 🔥+6`);
-      missionTick({type:"encounter", trustAfter: state.trust});
-      save();
-      toast("FAILED — Lost 1 life.");
-      if (gameOver()) return showGameOver();
+      S.lives = Math.max(0, S.lives-1);
+      S.trust = clamp(S.trust - 6, 0, 100);
+      S.aggro = clamp(S.aggro + 8, 0, 100);
+      log(`❌ Failed encounter. ❤️-1 🏛️-6 🔥+8`);
+      sfx("fail"); haptic("heavy");
+      S.intel="—"; S.hot=[];
+      closeEncounter();
+      if (S.lives<=0 || S.trust<=0) toast("🚫 Mission failed — Reset to restart.");
       return;
     }
 
     if (mode==="CAPTURE"){
-      const baseFunds = 80, baseScore = 150;
-      const upF = state.upgrades.tranqUp * 10;
-      const upS = state.upgrades.tranqUp * 20;
-      const trapBonus = (state.loadout.tool==="Trap Kit") ? 25 : 0;
-      const rifleBonus = (state.loadout.primary==="Tranq Rifle") ? 15 : 0;
-
-      const funds = Math.round((baseFunds + upF + trapBonus + rifleBonus) * (1 + pack.rewardMod));
-      const score = Math.round((baseScore + upS + trapBonus + rifleBonus) * (1 + pack.rewardMod));
-      const tgain = regionRisk().trustGain;
-
-      state.funds += funds;
-      state.score += score;
-      state.trust = clamp(state.trust + tgain, 0, 100);
-      state.aggro = clamp(state.aggro - 8, 0, 100);
-      state.captures += 1;
-      state.intel = "—";
-
-      logEvent(`✅ CAPTURED ${pack.name} (${pack.threat}). 💰+${funds} ⭐+${score} 🏛️+${tgain} 🔥-8`);
-      missionTick({type:"capture", region: state.region});
-      missionTick({type:"encounter", trustAfter: state.trust});
-      maybeEvent(false);
-      maybeLevelUp();
-      save();
-      toast("CAPTURED ✅");
+      const funds = 80 + S.upgrades.tranq*10 + (S.premium.trap?20:0);
+      const score = 150 + S.upgrades.tranq*20 + (S.premium.trap?35:0);
+      S.funds += funds;
+      S.score += score;
+      S.trust = clamp(S.trust + 6, 0, 100);
+      S.aggro = clamp(S.aggro - 8, 0, 100);
+      log(`✅ CAPTURED pack. 💰+${funds} ⭐+${score} 🏛️+6 🔥-8`);
+      sfx("win"); haptic("light");
     } else {
-      const ag = regionRisk().aggroGain;
-      state.funds += 40;
-      state.score += 70;
-      state.trust = clamp(state.trust - 4, 0, 100);
-      state.aggro = clamp(state.aggro + ag, 0, 100);
-      state.kills += 1;
-      state.intel = "—";
-
-      logEvent(`⚠️ ELIMINATED ${pack.name} (${pack.threat}). 💰+40 ⭐+70 🏛️-4 🔥+${ag}`);
-      missionTick({type:"kill"});
-      missionTick({type:"encounter", trustAfter: state.trust});
-      maybeEvent(true);
-      maybeLevelUp();
-      save();
-      toast("ELIMINATED ⚠️");
+      S.funds += 40;
+      S.score += 70;
+      S.trust = clamp(S.trust - 4, 0, 100);
+      S.aggro = clamp(S.aggro + 14, 0, 100);
+      log(`⚠️ ELIMINATED pack. 💰+40 ⭐+70 🏛️-4 🔥+14`);
+      sfx("win"); haptic("medium");
     }
 
-    state.heat[state.region] = clamp((state.heat[state.region] || 30) + (mode==="KILL" ? 6 : -3), 0, 100);
+    // remove one tiger from map (pack cleared)
+    S.tigers.pop();
+    if (S.tigers.length===0){
+      // respawn new pack farther away
+      S.tigers = [{x:1,y:1},{x:7,y:1},{x:4,y:2}];
+      log("🐅 New pack detected in the region.");
+    }
 
-    if (state.region==="Industrial" && Math.random() < 0.25){
-      state.funds += 25;
-      logEvent("🎁 Industrial bonus: found supplies 💰+25");
-      save();
+    S.intel="—"; S.hot=[];
+    closeEncounter();
+  }
+
+  // ---------------------------
+  // SHOP LIMITS (3 max each)
+  // premium is placeholder
+  // ---------------------------
+  function buyUpgrade(key,cost,max){
+    if (S.upgrades[key] >= max) return toast("Max level reached (3).");
+    if (S.funds < cost) return toast("Not enough funds.");
+    S.funds -= cost;
+    S.upgrades[key] += 1;
+    log(`🛒 Bought ${key} upgrade (${S.upgrades[key]}/3).`);
+    sfx("open"); haptic("light");
+    save();
+  }
+
+  function premium(item){
+    // placeholder: simulate $0.99 purchase
+    if (item==="trap") S.premium.trap = true;
+    if (item==="drone") S.premium.drone = true;
+    if (item==="medkit") S.lives = clamp(S.lives+1, 0, 5);
+    log(`💳 Premium unlock ($0.99): ${item}`);
+    sfx("win"); haptic("light");
+    save();
+    toast("Premium unlocked ✅ (placeholder)");
+  }
+
+  // ---------------------------
+  // SHARE + RESET
+  // ---------------------------
+  function shareReport(){
+    const text =
+      `🐅 Tiger Strike v3 — Agent Report\n` +
+      `⭐ ${S.score} | 💰 ${S.funds} | ❤️ ${S.lives}/5\n` +
+      `🏛️ ${S.trust}/100 | 🔥 ${S.aggro}/100 | ⚡ ${S.stamina}/100\n` +
+      `📍 ${S.region} | Intel: ${S.intel}`;
+    if (tg?.openTelegramLink){
+      tg.openTelegramLink("https://t.me/share/url?url=&text=" + encodeURIComponent(text));
+    } else {
+      navigator.clipboard?.writeText(text);
+      toast("Copied report to clipboard.");
     }
   }
 
-  function initLoadoutUI(){
-    const primaries = [
-      { name:"Tranq Pistol", owned:true },
-      { name:"Tranq Rifle", owned:(state.level>=2) },
-      { name:"Standard Rifle", owned:(state.level>=2) },
-    ];
-    const tools = [
-      { name:"None", owned:true },
-      { name:"Trap Kit", owned:state.unlocks.trap },
-      { name:"Drone", owned:state.unlocks.drone },
-    ];
-    const armors = [
-      { name:"Light Vest", owned:true },
-      { name:"Heavy Armor", owned:(state.level>=3) },
-    ];
+  function resetGame(){
+    localStorage.removeItem("ts_v3");
+    S = structuredClone(DEFAULT);
+    save();
+    toast("Reset ✅");
+  }
 
-    const p = document.getElementById("primaryGrid");
-    const t = document.getElementById("toolGrid");
-    const a = document.getElementById("armorGrid");
-    if (!p || !t || !a) return;
+  function noop(){}
 
-    p.innerHTML = primaries.map(x => btnHTML("primary", x)).join("");
-    t.innerHTML = tools.map(x => btnHTML("tool", x)).join("");
-    a.innerHTML = armors.map(x => btnHTML("armor", x)).join("");
-
-    function btnHTML(slot, x){
-      const active = (state.loadout[slot] === x.name);
-      const dis = !x.owned;
-      const label = active ? `✅ ${x.name}` : x.name;
-      return `<button ${dis?'disabled':''} onclick="equip('${slot}','${x.name.replace(/'/g,"\\'")}')">${label}</button>`;
+  // ---------------------------
+  // RENDER
+  // ---------------------------
+  function regen(){
+    // stamina regen
+    const now = Date.now();
+    if (!S._last) S._last = now;
+    const dt = (now - S._last)/1000;
+    if (dt >= 3){
+      const ticks = Math.floor(dt/3);
+      S.stamina = clamp(S.stamina + ticks*3, 0, 100);
+      S._last = now;
     }
-
-    document.getElementById("loadoutInfo").innerHTML =
-      `<b>Primary:</b> ${state.loadout.primary} • <b>Tool:</b> ${state.loadout.tool} • <b>Armor:</b> ${state.loadout.armor}<br>` +
-      `<span class="small">Premium items ($0.99) unlock Trap Kit / Drone. In-game shop is limited to 3 items.</span>`;
-  }
-
-  function equip(slot, name){
-    state.loadout[slot] = name;
-    logEvent(`🧰 Equipped ${slot}: ${name}`);
-    save();
-    toast("Equipped ✅");
-    initLoadoutUI();
-    render();
-  }
-
-  // ONLY 3 IN-GAME UPGRADES
-  function buyUpgrade(key, cost, max){
-    if (state.funds < cost) return toast("Not enough funds.");
-    if (state.upgrades[key] >= max) return toast("Max level reached.");
-    state.funds -= cost;
-    state.upgrades[key] += 1;
-    logEvent(`🛒 Upgrade purchased: ${key} (${state.upgrades[key]}/${max})`);
-    save();
-    toast("Purchased ✅");
-  }
-
-  // PREMIUM PLACEHOLDER ($0.99)
-  function buyPremium(which){
-    // This is a placeholder simulation until you add Telegram Payments invoices.
-    // You can later replace this with Telegram Payments + server validation.
-    if (which === "trap") state.unlocks.trap = true;
-    if (which === "drone") state.unlocks.drone = true;
-    if (which === "medkit") state.lives = clamp(state.lives + 1, 0, 5);
-
-    logEvent(`💳 Premium purchased ($0.99): ${which}`);
-    save();
-    initLoadoutUI();
-    toast("Premium unlocked ✅");
   }
 
   function render(){
-    regenStamina();
+    regen();
 
-    document.getElementById("livesChip").innerText = state.lives;
-    document.getElementById("fundsChip").innerText = state.funds;
-    document.getElementById("scoreChip").innerText = state.score;
-    document.getElementById("trustChip").innerText = state.trust;
-    document.getElementById("aggroChip").innerText = state.aggro;
-    document.getElementById("staminaChip").innerText = Math.round(state.stamina);
-    document.getElementById("levelChip").innerText = state.level;
-    document.getElementById("regionChip").innerText = state.region || "None";
-    document.getElementById("intelChip").innerText = state.intel;
+    document.getElementById("soundLabel").innerText = S.soundOn ? "On" : "Off";
+    document.getElementById("lives").innerText = S.lives;
+    document.getElementById("funds").innerText = S.funds;
+    document.getElementById("score").innerText = S.score;
+    document.getElementById("trust").innerText = S.trust;
+    document.getElementById("aggro").innerText = S.aggro;
+    document.getElementById("stamina").innerText = Math.round(S.stamina);
+    document.getElementById("region").innerText = S.region;
+    document.getElementById("intel").innerText = S.intel;
 
-    const logBox = document.getElementById("logBox");
-    logBox.innerHTML = state.log.length
-      ? state.log.map(l=>`<div class="logline">${escapeHtml(l)}</div>`).join("")
-      : `<div class="logline">No events yet. Tap <span class="pill">Deploy</span> to begin.</div>`;
+    // engage button enable
+    const close = S.tigers.some(t=>dist(S.me,t)<=1);
+    document.getElementById("engageBtn").disabled = !close;
 
-    const heatLines = Object.entries(state.heat).map(([k,v])=>`${k}: ${v}`).join(" • ");
-    document.getElementById("regionHeatInfo").innerHTML =
-      `Region Heat (higher = more danger): <span class="pill">${heatLines}</span>`;
+    // map info
+    const nearest = S.tigers.reduce((best,t)=> (dist(S.me,t)<dist(S.me,best)?t:best), S.tigers[0]);
+    const d = dist(S.me, nearest);
+    document.getElementById("mapInfo").innerHTML =
+      `<b>Position:</b> (${S.me.x+1},${S.me.y+1}) • <b>Nearest pack:</b> ${d} steps • ` +
+      `<b>Scanner:</b> ${S.upgrades.scanner}/3 • <b>Armor:</b> ${S.upgrades.armor}/3 • <b>Tranq:</b> ${S.upgrades.tranq}/3`;
 
-    document.getElementById("intelInfo").innerHTML =
-      `<b>Region:</b> ${state.region || "None"} • <b>Intel:</b> ${state.intel}<br>` +
-      `<b>Scanner:</b> ${state.upgrades.scanner}/3 • <b>Tool:</b> ${state.loadout.tool}`;
+    // log
+    const lb = document.getElementById("log");
+    lb.innerHTML = (S.log.length? S.log : ["🟢 V3 ready. Tap Deploy → Scan → Move → Engage."])
+      .map(l=>`<div class="logline">${l}</div>`).join("");
 
-    const bar = document.getElementById("staminaBar");
-    if (bar) bar.style.width = `${clamp(state.stamina,0,100)}%`;
+    renderMap();
 
-    const canEngage = !!state.region && (state.intel==="WARM" || state.intel==="HOT") && state.stamina>=18;
-    document.getElementById("btnCapture").disabled = !canEngage;
-    document.getElementById("btnKill").disabled = !canEngage;
-
-    const risk = (state.intel==="WARM" || state.intel==="HOT") ? Math.round(baseFailChance()*100) : null;
-    document.getElementById("engageInfo").innerHTML =
-      `<b>Ready:</b> ${(state.intel==="WARM"||state.intel==="HOT") ? "YES" : "NO (scan first)"} • ` +
-      `<b>Stamina:</b> ${Math.round(state.stamina)}/100 (Engage costs 18)<br>` +
-      `<b>Estimated fail chance:</b> ${risk!==null ? (risk+"%") : "—"}`;
-
-    document.getElementById("equipInfo").innerText =
-      `${state.loadout.primary} • ${state.loadout.tool} • ${state.loadout.armor}`;
-
-    document.getElementById("shopInfo").innerHTML =
-      `<b>Funds:</b> 💰${state.funds}<br>` +
-      `<b>In-Game Upgrades:</b> Scanner ${state.upgrades.scanner}/3 • Armor ${state.upgrades.armorUp}/3 • Tranq ${state.upgrades.tranqUp}/3<br>` +
-      `<b>Premium Unlocks:</b> Trap ${state.unlocks.trap ? "✅" : "❌"} • Drone ${state.unlocks.drone ? "✅" : "❌"} • Extra Life (via premium medkit)`;
-
-    if (!state.missions || !state.missions.length) rollMissions();
-    renderMissions();
-
-    document.getElementById("statusInfo").innerHTML =
-      `<b>Agent:</b> @${state.username || "unknown"}<br>` +
-      `<b>Lives:</b> ❤️${state.lives}/5 • <b>Level:</b> 🎖️${state.level}<br>` +
-      `<b>Score:</b> ⭐${state.score} • <b>Funds:</b> 💰${state.funds}<br>` +
-      `<b>Trust:</b> 🏛️${state.trust}/100 • <b>Aggro:</b> 🔥${state.aggro}/100<br>` +
-      `<b>Region:</b> ${state.region || "None"} • <b>Intel:</b> ${state.intel}<br>` +
-      `<b>Loadout:</b> ${state.loadout.primary} • ${state.loadout.tool} • ${state.loadout.armor}`;
+    // store
+    localStorage.setItem("ts_v3", JSON.stringify(S));
   }
 
-  function renderMissions(){
-    const box = document.getElementById("missionsBox");
-    if (!box) return;
-    box.innerHTML = state.missions.map(m=>{
-      const pct = Math.round((m.progress/m.target)*100);
-      const status = m.claimed ? "✅ Claimed" : (m.done ? "🎯 Ready" : "⏳ In Progress");
-      return `
-        <div class="meter">
-          <div class="hint"><b>${escapeHtml(m.text)}</b> <span class="pill">${status}</span></div>
-          <div class="hint">Progress: ${m.progress}/${m.target} • Reward: ⭐+${m.reward.score} 💰+${m.reward.funds}</div>
-          <div class="bar"><div class="fill" style="width:${pct}%;"></div></div>
-        </div>
-      `;
-    }).join("");
-  }
-
-  function openHelp(){ toast("v2 Flow: Deploy → Scan → Engage. Shop (3 in-game items only). Everything else is $0.99 premium."); }
-  function openSettings(){ toast("Settings: progress saves on device. Next: Telegram Payments invoices + server validation."); }
-  function showGameOver(){
-    const reason = (state.lives<=0) ? "Out of lives." : "Government trust hit 0.";
-    toast(`🚫 Mission Failed — ${reason} Tap Reset.`);
-    go("home");
-  }
-  function resetGame(){
-    localStorage.removeItem("ts_v2");
-    state = structuredClone(DEFAULT);
-    save();
-    logEvent("🔁 Game reset.");
-    toast("Reset.");
-    go("home");
-  }
-
-  if (!state.log.length) logEvent("🟢 Tiger Strike v2 ready. Deploy → Scan → Engage.");
-  initLoadoutUI();
+  // init
+  if (!S.log.length) S.log.unshift("🟢 V3 ready. Tap Deploy → Scan → Move → Engage.");
   render();
-  go("home");
-  setInterval(()=>{ render(); }, 1200);
+  setInterval(render, 900);
 </script>
 </body>
 </html>
