@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>Tiger Strike 🐅 — V4.3.6 (Procedural Maps)</title>
+  <title>Tiger Strike 🐅 — V4.3.6 (Calm Maps + Trap Hold)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <style>
@@ -81,8 +81,8 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.6</span> <span class="tag">Procedural Maps</span></div>
-      <div class="sub">Follow-only civilians (no sprint) • Mission Complete returns after Shop/Inventory • Soldier + Real Tigers + Diverse Civilians</div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.6</span> <span class="tag">Calm Maps</span> <span class="tag">Trap Hold</span></div>
+      <div class="sub">No flashing maps • Traps HOLD tigers 3–5s • Civilians follow only when close (no sprint) • Mission Complete returns after Shop/Inventory</div>
     </div>
     <div class="row">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
@@ -123,7 +123,7 @@
   <div class="screenCard">
     <canvas id="cv" width="960" height="540"></canvas>
     <div class="actionStrip">
-      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Civilians follow you when close (slow). Tigers can still attack civilians.</div>
+      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Place trap to HOLD tiger 3–5 seconds.</div>
       <div class="row">
         <button onclick="deploy()">📍 Deploy</button>
         <button onclick="scan()">🛰️ Scan</button>
@@ -336,11 +336,11 @@
   };
 
   const TIGER_TYPES = [
-    { key:"Scout",     hpMul:0.70, dmgMul:0.75, spd:3.4, civBias:0.85, stealth:0.00, rage:0.00 },
-    { key:"Standard",  hpMul:1.00, dmgMul:1.00, spd:2.6, civBias:0.45, stealth:0.00, rage:0.00 },
-    { key:"Alpha",     hpMul:1.35, dmgMul:1.25, spd:2.4, civBias:0.35, stealth:0.00, rage:0.10 },
-    { key:"Berserker", hpMul:1.15, dmgMul:1.35, spd:2.7, civBias:0.25, stealth:0.00, rage:0.35 },
-    { key:"Stalker",   hpMul:0.95, dmgMul:1.05, spd:3.1, civBias:0.55, stealth:0.55, rage:0.00 },
+    { key:"Scout",     hpMul:0.70, spd:3.4, civBias:0.85, stealth:0.00, rage:0.00 },
+    { key:"Standard",  hpMul:1.00, spd:2.6, civBias:0.45, stealth:0.00, rage:0.00 },
+    { key:"Alpha",     hpMul:1.35, spd:2.4, civBias:0.35, stealth:0.00, rage:0.10 },
+    { key:"Berserker", hpMul:1.15, spd:2.7, civBias:0.25, stealth:0.00, rage:0.35 },
+    { key:"Stalker",   hpMul:0.95, spd:3.1, civBias:0.55, stealth:0.55, rage:0.00 },
   ];
 
   const MODE_MAPS = {
@@ -366,7 +366,7 @@
 
   // ===================== STATE =====================
   const DEFAULT = {
-    v: 436,
+    v: 4361,
     paused: false,
     pauseReason: null,
     mode: "Story",
@@ -427,30 +427,30 @@
   };
 
   let S = load();
-  let lastOverlay = null; // "complete" | null
+  let lastOverlay = null;
 
   const cv = document.getElementById("cv");
   const ctx = cv.getContext("2d");
 
   function load(){
     try{
-      const saved = JSON.parse(localStorage.getItem("ts_v436") || localStorage.getItem("ts_v435") || "null");
+      const saved = JSON.parse(localStorage.getItem("ts_v4361") || localStorage.getItem("ts_v436") || "null");
       if(!saved) return structuredClone(DEFAULT);
-      const merged = { ...DEFAULT, ...saved };
-      merged.me = { ...DEFAULT.me, ...(saved.me||{}) };
-      merged.mag = { ...DEFAULT.mag, ...(saved.mag||{}) };
-      merged.ammoReserve = { ...DEFAULT.ammoReserve, ...(saved.ammoReserve||{}) };
-      merged.durability = { ...DEFAULT.durability, ...(saved.durability||{}) };
-      merged.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
-      merged.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
-      merged.trapsPlaced = Array.isArray(saved.trapsPlaced) ? saved.trapsPlaced : [];
-      merged.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
-      if(merged.lives==null) merged.lives=3;
-      merged.v=436;
-      return merged;
+      const m = { ...DEFAULT, ...saved };
+      m.me = { ...DEFAULT.me, ...(saved.me||{}) };
+      m.mag = { ...DEFAULT.mag, ...(saved.mag||{}) };
+      m.ammoReserve = { ...DEFAULT.ammoReserve, ...(saved.ammoReserve||{}) };
+      m.durability = { ...DEFAULT.durability, ...(saved.durability||{}) };
+      m.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
+      m.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
+      m.trapsPlaced = Array.isArray(saved.trapsPlaced) ? saved.trapsPlaced : [];
+      m.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
+      m.v = 4361;
+      if(m.lives==null) m.lives=3;
+      return m;
     }catch(e){ return structuredClone(DEFAULT); }
   }
-  function save(){ localStorage.setItem("ts_v436", JSON.stringify(S)); }
+  function save(){ localStorage.setItem("ts_v4361", JSON.stringify(S)); }
 
   // ===================== AUDIO =====================
   let AC=null;
@@ -481,6 +481,7 @@
     if(name==="win"){ beep(660,60,"triangle",0.05); setTimeout(()=>beep(980,80,"triangle",0.05),70); }
     if(name==="reload"){ beep(360,60,"sine",0.05); setTimeout(()=>beep(420,60,"sine",0.05),70); }
     if(name==="jam"){ beep(180,140,"sawtooth",0.06); }
+    if(name==="trap"){ beep(300,80,"triangle",0.05); setTimeout(()=>beep(240,110,"triangle",0.04),70); }
   }
   function toggleSound(){
     S.soundOn=!S.soundOn;
@@ -521,9 +522,7 @@
   }
 
   // ===================== CARCASS COLLISION =====================
-  function carcassRects(){
-    return (S.carcasses || []).map(c => ({ x: c.x - 14, y: c.y - 8, w: 28, h: 16 }));
-  }
+  function carcassRects(){ return (S.carcasses || []).map(c => ({ x: c.x - 14, y: c.y - 8, w: 28, h: 16 })); }
   function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr){
     const closestX = Math.max(rx, Math.min(cx, rx + rw));
     const closestY = Math.max(ry, Math.min(cy, ry + rh));
@@ -553,9 +552,10 @@
       <div class="item"><div><div class="itemName">Scout</div><div class="itemDesc">Fast, small, civilian hunter. Capture requires Tranq Pistol hit first.</div></div></div>
       <div class="item"><div><div class="itemName">Standard</div><div class="itemDesc">Balanced tiger. Capture requires Tranq Pistol hit first.</div></div></div>
       <div class="item"><div><div class="itemName">Stalker</div><div class="itemDesc">Stealth fade + ambush feel. Capture requires Tranq Rifle hit first.</div></div></div>
-      <div class="item"><div><div class="itemName">Berserker</div><div class="itemDesc">Rage at low HP (glow), hits harder. Capture requires Tranq Rifle hit first.</div></div></div>
-      <div class="item"><div><div class="itemName">Alpha / Boss Alpha</div><div class="itemDesc">Bigger + aura. Boss has phases. Capture requires Tranq Launcher hit first.</div></div></div>
+      <div class="item"><div><div class="itemName">Berserker</div><div class="itemDesc">Rage at low HP, hits harder. Capture requires Tranq Rifle hit first.</div></div></div>
+      <div class="item"><div><div class="itemName">Alpha / Boss Alpha</div><div class="itemDesc">Pack aura + reinforcements. Boss has phases. Capture requires Tranq Launcher hit first.</div></div></div>
       <div class="divider"></div>
+      <div class="hudLine"><b>Traps:</b> Hold tigers inside the trap circle for 3–5 seconds when they enter it.</div>
       <div class="hudLine"><b>Carcasses:</b> persist across missions and block movement for everyone.</div>
     `;
     sfx("ui");
@@ -579,7 +579,12 @@
   }
 
   // ===================== MODE =====================
-  function openMode(){ setPaused(true,"mode"); document.getElementById("modeOverlay").style.display="flex"; updateModeDesc(); markModeTabs(); sfx("ui"); }
+  function openMode(){
+    setPaused(true,"mode");
+    document.getElementById("modeOverlay").style.display="flex";
+    updateModeDesc(); markModeTabs();
+    sfx("ui");
+  }
   function closeMode(){ document.getElementById("modeOverlay").style.display="none"; setPaused(false,null); }
   function setMode(m){
     S.mode=m;
@@ -606,7 +611,7 @@
     else el.innerText="Survival: no civilians. Tigers pressure-damage you over time. Survive as long as possible.";
   }
 
-  // ===================== SHOP / INVENTORY (return to mission complete) =====================
+  // ===================== SHOP / INVENTORY (return to Mission Complete) =====================
   let currentShopTab="weapons";
 
   function openShop(){
@@ -716,24 +721,22 @@
 
     if(currentShopTab==="armor"){
       note.innerText="Armory prices match medkits. Adds armor instantly.";
-      list.innerHTML = ARMORY.map(ar=>{
-        return `
-          <div class="item">
-            <div>
-              <div class="itemName">${ar.name}</div>
-              <div class="itemDesc">Adds +${ar.addArmor} armor (cap ${ar.cap})</div>
-            </div>
-            <div style="text-align:right">
-              <div class="price">$${ar.price.toLocaleString()}</div>
-              <button onclick="buyArmor('${ar.id}')">Buy</button>
-            </div>
-          </div>`;
-      }).join("");
+      list.innerHTML = ARMORY.map(ar=>`
+        <div class="item">
+          <div>
+            <div class="itemName">${ar.name}</div>
+            <div class="itemDesc">Adds +${ar.addArmor} armor (cap ${ar.cap})</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">$${ar.price.toLocaleString()}</div>
+            <button onclick="buyArmor('${ar.id}')">Buy</button>
+          </div>
+        </div>`).join("");
       return;
     }
 
     if(currentShopTab==="meds"){
-      note.innerText="Shows how many you own. Can heal Self or Civilian in Inventory.";
+      note.innerText="Shows how many you own. Heal Self or Civilian in Inventory.";
       list.innerHTML = MEDS.map(m=>{
         const owned=ownedMedCount(m.id);
         return `
@@ -770,21 +773,19 @@
       return;
     }
 
-    if(currentShopTab==="traps"){
-      note.innerText="Traps slow tigers. Carcasses block movement too.";
-      list.innerHTML = `
-        <div class="item">
-          <div>
-            <div class="itemName">Trap <span class="tag">Owned: ${S.trapsOwned}</span></div>
-            <div class="itemDesc">Place on map to slow tigers.</div>
-          </div>
-          <div style="text-align:right">
-            <div class="price">$${TRAP_ITEM.price.toLocaleString()}</div>
-            <button onclick="buyTrap()">Buy</button>
-          </div>
-        </div>`;
-      return;
-    }
+    // traps
+    note.innerText="Traps HOLD tigers in the circle for 3–5 seconds when they enter.";
+    list.innerHTML = `
+      <div class="item">
+        <div>
+          <div class="itemName">Trap <span class="tag">Owned: ${S.trapsOwned}</span></div>
+          <div class="itemDesc">Hold tigers 3–5 seconds inside the trap circle.</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price">$${TRAP_ITEM.price.toLocaleString()}</div>
+          <button onclick="buyTrap()">Buy</button>
+        </div>
+      </div>`;
   }
 
   function buyWeapon(id){
@@ -906,7 +907,7 @@
       <div class="item">
         <div>
           <div class="itemName">🪤 Traps <span class="tag">Owned: ${S.trapsOwned}</span></div>
-          <div class="itemDesc">Place traps on map to slow tigers.</div>
+          <div class="itemDesc">Hold tigers 3–5 seconds inside trap circle.</div>
         </div>
         <div style="text-align:right">
           <button ${S.trapsOwned<=0?'disabled':''} onclick="placeTrap()">Place</button>
@@ -925,15 +926,11 @@
   }
 
   function setHealTarget(t){ S.healTarget=t; save(); if(document.getElementById("invOverlay").style.display==="flex") renderInventory(); renderHUD(); }
-
   function pickMostInjuredCivilian(){
     const civs = S.civilians.filter(c=>c.alive && !c.evac);
     if(!civs.length) return null;
     let best=civs[0], gap=(best.hpMax-best.hp);
-    for(const c of civs){
-      const g=c.hpMax-c.hp;
-      if(g>gap){gap=g; best=c;}
-    }
+    for(const c of civs){ const g=c.hpMax-c.hp; if(g>gap){gap=g; best=c;} }
     return gap<=0 ? null : best;
   }
 
@@ -974,13 +971,13 @@
     toast(`Repaired +${t.add} durability`);
   }
 
-  // ===================== BACKUP / TRAPS =====================
+  // ===================== BACKUP =====================
   function callBackup(){
     if(S.funds < 50000) return toast("Need $50,000 for backup.");
     if(S.backupCooldown>0) return toast("Backup cooling down.");
     S.funds -= 50000;
-    S.backupActive = 600;
-    S.backupCooldown = 1800;
+    S.backupActive = 600;    // 10s
+    S.backupCooldown = 1800; // 30s
     toast("🚨 Backup deployed! Tigers frozen. Civilians protected.");
     sfx("ui");
     save();
@@ -988,29 +985,87 @@
     if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
   }
 
-  function placeTrap(){
-    if(S.trapsOwned<=0) return toast("No traps. Buy in shop.");
-    if(S.paused) return toast("Resume to place trap.");
-    S.trapsOwned -= 1;
-    S.trapsPlaced.push({ x:S.me.x, y:S.me.y, r:70, slow:0.55, ttl:1800 });
-    toast("🪤 Trap placed.");
-    sfx("ui");
-    save(); renderHUD();
+  function backupTick(){
+    if(S.backupActive>0) S.backupActive--;
+    if(S.backupCooldown>0) S.backupCooldown--;
   }
 
-  function trapTick(){
-    for(const tr of S.trapsPlaced) tr.ttl -= 1;
-    S.trapsPlaced = S.trapsPlaced.filter(t=>t.ttl>0);
-    for(const t of S.tigers){
-      if(!t.alive) continue;
-      t._trapSlow = 1.0;
-      for(const tr of S.trapsPlaced){
-        if(dist(t.x,t.y,tr.x,tr.y) < tr.r){ t._trapSlow = tr.slow; break; }
-      }
+  // ===================== TRAPS (ONE-TIME USE: HOLD 3–5s) =====================
+function placeTrap(){
+  if(S.trapsOwned<=0) return toast("No traps. Buy in shop.");
+  if(S.paused) return toast("Resume to place trap.");
+  S.trapsOwned -= 1;
+
+  // one-time trap: removed after it successfully holds a tiger once
+  S.trapsPlaced.push({
+    id: Date.now() + Math.random(),
+    x: S.me.x,
+    y: S.me.y,
+    r: 80,
+    ttl: 1800,
+    used: false
+  });
+
+  toast("🪤 Trap placed (one-time).");
+  sfx("trap");
+  save(); renderHUD();
+}
+
+function trapTick(){
+  // decay trap lifetime
+  for (const tr of S.trapsPlaced) tr.ttl -= 1;
+
+  const now = Date.now();
+
+  // update held state for tigers
+  for (const t of S.tigers){
+    if(!t.alive) continue;
+
+    if(t.holdUntil && now < t.holdUntil){
+      t.vx = 0; t.vy = 0;
+      t._held = true;
+    } else {
+      t._held = false;
     }
   }
 
-  // ===================== AUTO RELOAD / DURABILITY =====================
+  // apply holds: each trap can trigger ONE time
+  for (const tr of S.trapsPlaced){
+    if(tr.used) continue;
+
+    const tgt = S.tigers.find(x =>
+      x.alive &&
+      dist(x.x, x.y, tr.x, tr.y) < tr.r &&
+      !(x.holdUntil && now < x.holdUntil)
+    );
+
+    if(!tgt) continue;
+
+    const holdMs = rand(3000, 5000);
+    tgt.holdUntil = now + holdMs;
+    tgt.vx = 0; tgt.vy = 0;
+    tgt._held = true;
+
+    // mark used, but DON'T remove yet
+    tr.used = true;
+
+    // 🔥 NEW: set when the trap should disappear (after hold ends)
+    tr.removeAt = tgt.holdUntil;
+
+    toast("🪤 Tiger trapped!");
+    sfx("trap");
+
+    tgt.aggroBoost = clamp((tgt.aggroBoost||0) + 0.05, 0, 1);
+    break;
+  }
+
+  // ✅ remove trap AFTER the hold ends (or if ttl runs out)
+  S.trapsPlaced = S.trapsPlaced.filter(tr =>
+    tr.ttl > 0 && (!tr.used || (tr.removeAt && now < tr.removeAt))
+  );
+}
+
+  // ===================== DURABILITY / RELOAD =====================
   function ammoEffectFor(ammoId){
     const a=getAmmo(ammoId);
     const grade=a?.grade||"Standard";
@@ -1056,23 +1111,9 @@
     if(document.getElementById("battleOverlay").style.display==="flex") renderWeaponGrid();
   }
 
-  // ===================== DIFFICULTY / SPAWNS =====================
+  // ===================== SPAWNS =====================
   function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
-  function pickTigerType(){
-    const r=Math.random();
-    if(S.mode==="Survival"){
-      if(r<0.22) return "Scout";
-      if(r<0.48) return "Stalker";
-      if(r<0.72) return "Berserker";
-      if(r<0.90) return "Standard";
-      return "Alpha";
-    }
-    if(r<0.22) return "Scout";
-    if(r<0.55) return "Standard";
-    if(r<0.72) return "Stalker";
-    if(r<0.90) return "Berserker";
-    return "Alpha";
-  }
+  function randomEvacZone(){ return { x: rand(120, 900), y: rand(120, 500), r:70 }; }
 
   const SKIN_TONES = ["#f6d7c3","#eac0a6","#d9a07f","#c9865c","#a86a44","#7a4a2c","#4b2f1f"];
   const SHIRT_COLS = ["#4aa3ff","#3ddc97","#f59e0b","#fb7185","#a78bfa","#f97316","#eab308","#22c55e","#60a5fa"];
@@ -1096,6 +1137,22 @@
       });
     }
     S.evacDone=0;
+  }
+
+  function pickTigerType(){
+    const r=Math.random();
+    if(S.mode==="Survival"){
+      if(r<0.22) return "Scout";
+      if(r<0.48) return "Stalker";
+      if(r<0.72) return "Berserker";
+      if(r<0.90) return "Standard";
+      return "Alpha";
+    }
+    if(r<0.22) return "Scout";
+    if(r<0.55) return "Standard";
+    if(r<0.72) return "Stalker";
+    if(r<0.90) return "Berserker";
+    return "Alpha";
   }
 
   function spawnTigers(){
@@ -1142,17 +1199,11 @@
         stealth:def.stealth,
         rage:def.rage,
         bossPhases,
-        bossEnraged:false,
         tranqTagged:false,
-        _packBuff:0,
-        _trapSlow:1.0,
-        step: rand(0,1000)
+        step: rand(0,1000),
+        holdUntil: 0
       });
     }
-  }
-
-  function randomEvacZone(){
-    return { x: rand(120, 900), y: rand(120, 500), r:70 };
   }
 
   // ===================== DEPLOY / NEXT =====================
@@ -1243,7 +1294,7 @@
     sfx("scan"); save();
   }
 
-  // ===================== MOVEMENT (soldier walk bob + facing) =====================
+  // ===================== MOVEMENT =====================
   function movePlayer(){
     if(!S.target) return;
     const dx=S.target.x-S.me.x, dy=S.target.y-S.me.y;
@@ -1273,7 +1324,7 @@
     sfx("ui"); save();
   }
 
-  // ===================== CIVILIANS FOLLOW-ONLY (NO PANIC SPRINT) =====================
+  // ===================== CIVILIANS FOLLOW-ONLY =====================
   function followCiviliansTick(){
     if(S.mode==="Survival") return;
     for(const c of S.civilians){
@@ -1282,7 +1333,7 @@
       if(d < 95){
         const dx = S.me.x - c.x, dy = S.me.y - c.y;
         const dd = Math.hypot(dx,dy) || 1;
-        const sp = 1.35; // walk speed only
+        const sp = 1.35;
         const nx = c.x + (dx/dd)*sp;
         const ny = c.y + (dy/dd)*sp;
         tryMoveEntity(c, nx, ny, 14);
@@ -1341,7 +1392,7 @@
     S._underAttack=underAttack;
   }
 
-  // ===================== TIGERS ROAM =====================
+  // ===================== TIGERS ROAM (trap hold respected) =====================
   function alphaBuffs(){
     const alphas = S.tigers.filter(t=>t.alive && t.type==="Alpha");
     for(const t of S.tigers){
@@ -1358,10 +1409,19 @@
     alphaBuffs();
     if(S.backupActive>0) return;
 
+    const now = Date.now();
+
     for(const t of S.tigers){
       if(!t.alive) continue;
 
-      t.step = (t.step + 0.12*(t._trapSlow||1)) % (Math.PI*2);
+      // If held, do not roam
+      if(t.holdUntil && now < t.holdUntil){
+        t.vx = 0; t.vy = 0;
+        t.step = (t.step + 0.05) % (Math.PI*2);
+        continue;
+      }
+
+      t.step = (t.step + 0.12) % (Math.PI*2);
 
       const civs = (S.mode!=="Survival") ? S.civilians.filter(c=>c.alive && !c.evac) : [];
       let targetX=S.me.x, targetY=S.me.y;
@@ -1383,8 +1443,7 @@
       const chaseChance = clamp((S.aggro/100)*0.25 + hunter*0.55 + 0.10, 0, 0.95);
       const chase = Math.random() < chaseChance;
 
-      const trapSlow = t._trapSlow || 1.0;
-      const speedCap = ((def.spd*0.9) + hunter*1.2 + (t._packBuff?0.35:0)) * trapSlow;
+      const speedCap = ((def.spd*0.9) + hunter*1.2 + (t._packBuff?0.35:0));
 
       if(chase){
         t.vx += (targetX>t.x?0.06:-0.06);
@@ -1455,11 +1514,7 @@
     }
   }
 
-  // ===================== BACKUP / REGEN =====================
-  function backupTick(){
-    if(S.backupActive>0) S.backupActive--;
-    if(S.backupCooldown>0) S.backupCooldown--;
-  }
+  // ===================== REGEN =====================
   function regen(){
     const now=Date.now();
     if(!S._last) S._last=now;
@@ -1471,7 +1526,7 @@
     }
   }
 
-  // ===================== BATTLE =====================
+  // ===================== BATTLE (same rules) =====================
   function startCombat(){
     const t=canEngage();
     if(!t) return toast("Move closer to a tiger to engage.");
@@ -1551,7 +1606,6 @@
     const newId = S.tigers.length + 1;
     const typeKey = (Math.random()<0.6) ? "Scout" : "Standard";
     const def=TIGER_TYPES.find(t=>t.key===typeKey)||TIGER_TYPES[1];
-
     const diff = carcassDifficulty();
     const hp = Math.round(95 * def.hpMul * diff);
 
@@ -1565,10 +1619,10 @@
       aggroBoost:0,
       civBias: clamp(def.civBias + (diff-1)*0.18, 0, 0.98),
       stealth:def.stealth, rage:def.rage,
-      bossPhases:0, bossEnraged:false,
+      bossPhases:0,
       tranqTagged:false,
-      _packBuff:0, _trapSlow:1.0,
-      step: rand(0,1000)
+      step: rand(0,1000),
+      holdUntil: 0
     });
     toast("🚨 Reinforcements arrived!");
   }
@@ -1618,14 +1672,10 @@
 
     if(action==="ATTACK"){
       const w=equippedWeapon();
+
       if(S.mag.loaded<=0){
         const ok=autoReloadIfNeeded(true);
-        if(!ok){
-          toast("Out of ammo. Buy more in Shop.");
-          tigerTurn(t);
-          save();
-          return;
-        }
+        if(!ok){ toast("Out of ammo. Buy more in Shop."); tigerTurn(t); save(); return; }
       }
 
       if(Math.random()<jamChance(w)){
@@ -1654,9 +1704,7 @@
       }
 
       dmg = Math.max(6, Math.round(dmg / carcassDifficulty()));
-      if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35){
-        dmg = Math.max(6, Math.round(dmg*0.85));
-      }
+      if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35) dmg = Math.max(6, Math.round(dmg*0.85));
 
       t.hp = clamp(t.hp - dmg, 0, t.hpMax);
       applyWearOnShot(w);
@@ -1757,7 +1805,6 @@
     const w=equippedWeapon();
     document.getElementById("weaponTxt").innerText = w.name;
     document.getElementById("durTxt").innerText = Math.round(weaponDurability(w.id));
-
     document.getElementById("ammoTxt").innerText = `${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[w.ammo]||0})`;
     document.getElementById("medTxt").innerText = totalMedkits();
     document.getElementById("repTxt").innerText = totalRepairKits();
@@ -1788,30 +1835,16 @@
 
     document.getElementById("objTxt").innerText =
       (S.mode==="Survival")
-        ? `Objective: Survive • Carcasses block movement`
-        : `Objective: Evacuate living civilians + clear ALL tigers • Civilians follow only when close`;
+        ? `Objective: Survive • Traps hold tigers • Carcasses block movement`
+        : `Objective: Evacuate living civilians + clear ALL tigers • Traps hold tigers 3–5s`;
   }
 
-  // ===================== PROCEDURAL REAL MAPS =====================
+  // ===================== CALM MAPS (NO FLASHING) =====================
   function drawMapScene(){
-    const w=cv.width,h=cv.height;
+    const w=cv.width, h=cv.height;
     const key=currentMap().key;
 
-    function fillBG(a,b){
-      const g=ctx.createLinearGradient(0,0,0,h);
-      g.addColorStop(0,a); g.addColorStop(1,b);
-      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
-    }
-    function noise(alpha=0.06){
-      ctx.globalAlpha=alpha;
-      for(let i=0;i<1600;i++){
-        const x=(Math.random()*w)|0, y=(Math.random()*h)|0;
-        const v=40+((Math.random()*40)|0);
-        ctx.fillStyle=`rgb(${v},${v},${v})`;
-        ctx.fillRect(x,y,1,1);
-      }
-      ctx.globalAlpha=1;
-    }
+    function fillSolid(color){ ctx.fillStyle=color; ctx.fillRect(0,0,w,h); }
     function rounded(x,y,ww,hh,r,fill,stroke=null){
       ctx.beginPath();
       ctx.moveTo(x+r,y);
@@ -1823,161 +1856,115 @@
       ctx.fillStyle=fill; ctx.fill();
       if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.stroke(); }
     }
-    function roadLine(points,width,fill="#4b4f59"){
+    function roadLine(points,width,fill){
       ctx.strokeStyle=fill; ctx.lineWidth=width; ctx.lineCap="round"; ctx.lineJoin="round";
       ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
       for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0],points[i][1]);
       ctx.stroke();
     }
-    function dashedCenter(points){
-      ctx.strokeStyle="rgba(235,235,240,.9)";
+    function dashed(points){
+      ctx.strokeStyle="rgba(240,240,245,.7)";
       ctx.lineWidth=4; ctx.setLineDash([18,14]); ctx.lineCap="round";
       ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
       for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0],points[i][1]);
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    function tree(x,y,s=1){
-      const r=10*s;
-      ctx.fillStyle="#1e6a39";
-      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle="rgba(15,45,25,.8)";
-      ctx.beginPath(); ctx.arc(x-2*s,y-2*s,r*0.65,0,Math.PI*2); ctx.fill();
+    function treeDot(x,y){
+      ctx.fillStyle="rgba(22,120,60,.85)";
+      ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fill();
     }
-    function house(x,y,s=1){
-      const ww=34*s, hh=24*s;
-      rounded(x-ww/2,y-hh/2,ww,hh,6*s,"#bfb4a0","#4b4a44");
-      ctx.fillStyle="#7a3c2c";
-      ctx.beginPath();
-      ctx.moveTo(x-ww/2,y-hh/2);
-      ctx.lineTo(x,y-hh/2-12*s);
-      ctx.lineTo(x+ww/2,y-hh/2);
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle="#7b7b80";
-      ctx.fillRect(x+ww/2,y+4*s,22*s,10*s);
+    function buildingBlock(x,y,ww,hh){
+      rounded(x-ww/2,y-hh/2,ww,hh,10,"rgba(55,70,95,.85)","rgba(18,24,38,.9)");
     }
-    function building(x,y,ww,hh){
-      rounded(x-ww/2,y-hh/2,ww,hh,10,"#4a5568","#111827");
-      ctx.fillStyle="rgba(170,200,235,.75)";
-      for(let i=-2;i<=2;i++){
-        for(let j=-1;j<=1;j++){
-          ctx.fillRect(x+i*10-3,y+j*10-3,6,6);
-        }
-      }
+    function houseBlock(x,y){
+      rounded(x-18,y-12,36,24,8,"rgba(190,180,160,.8)","rgba(60,55,50,.9)");
     }
-    function crate(x,y,s=1){
-      const ww=22*s, hh=18*s;
-      rounded(x-ww/2,y-hh/2,ww,hh,4*s,"#84532a","#3b2412");
-      ctx.strokeStyle="rgba(60,35,15,.6)";
-      ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(x-ww/2,y); ctx.lineTo(x+ww/2,y); ctx.stroke();
-    }
-    function pipes(){
-      for(let i=0;i<8;i++){
-        const x1=Math.random()*w, y1=Math.random()*h;
-        const x2=Math.random()*w, y2=Math.random()*h;
-        ctx.strokeStyle="rgba(125,135,155,.9)";
-        ctx.lineWidth=10; ctx.lineCap="round";
-        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-        ctx.strokeStyle="rgba(30,30,40,.5)";
-        ctx.lineWidth=2;
-        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-      }
+    function crateBlock(x,y){
+      rounded(x-12,y-10,24,20,6,"rgba(140,90,45,.85)","rgba(70,40,20,.85)");
     }
 
     if(key==="ST_FOREST" || key==="AR_SAND_YARD" || key==="SV_NIGHT_WOODS"){
-      fillBG("#0f2b1c","#0b0d12");
-      const p1=[[40,420],[220,380],[420,420],[560,360],[760,380],[920,320]];
-      const p2=[[0,150],[220,220],[460,180],[700,240],[960,190]];
-      roadLine(p1,70,"#5a4328"); roadLine(p2,54,"#4f3a22");
-      for(let i=0;i<35;i++){
-        const x=20+Math.random()*(w-40), y=20+Math.random()*(h-40);
-        const r=4+Math.random()*8;
-        ctx.fillStyle="rgba(120,125,118,.9)";
-        ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
-        ctx.strokeStyle="rgba(55,60,50,.8)"; ctx.lineWidth=2; ctx.stroke();
-      }
-      for(let i=0;i<240;i++){
-        const x=Math.random()*w, y=Math.random()*h;
-        if(Math.random()<0.6) tree(x,y,0.7+Math.random()*0.9);
-      }
-      for(let i=0;i<2;i++){
-        const x=160+Math.random()*640, y=120+Math.random()*320;
-        ctx.fillStyle="rgba(25,90,105,.9)";
-        ctx.beginPath(); ctx.ellipse(x,y,90,35,0,0,Math.PI*2); ctx.fill();
-        ctx.strokeStyle="rgba(10,60,80,.8)"; ctx.lineWidth=2; ctx.stroke();
-      }
-      noise(0.05);
+      fillSolid("#0f2b1c");
+      roadLine([[60,430],[260,390],[450,420],[610,360],[820,390],[940,330]], 62, "rgba(90,70,45,.85)");
+      roadLine([[0,160],[240,230],[470,190],[720,250],[960,210]], 48, "rgba(80,60,38,.85)");
+      const trees = [
+        [90,90],[140,120],[210,90],[300,140],[360,90],[420,150],[520,110],[610,140],[700,100],[780,150],[880,120],
+        [120,300],[200,320],[280,300],[360,330],[440,300],[520,330],[600,300],[700,320],[820,300],
+        [110,500],[210,490],[320,500],[420,480],[520,500],[650,490],[760,500],[880,490],
+      ];
+      for(const [x,y] of trees) treeDot(x,y);
+
+      ctx.fillStyle="rgba(25,90,105,.65)";
+      ctx.beginPath(); ctx.ellipse(260,220,90,34,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(720,190,85,30,0,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="rgba(10,60,80,.7)"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.ellipse(260,220,90,34,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(720,190,85,30,0,0,Math.PI*2); ctx.stroke();
     }
     else if(key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD"){
-      fillBG("#18402a","#0b0d12");
+      fillSolid("#18402a");
       const main=[[0,280],[240,270],[480,300],[720,280],[960,300]];
-      roadLine(main,84,"#474a52");
-      dashedCenter(main);
-      roadLine([[120,120],[420,110],[760,120]],62,"#474a52");
-      roadLine([[120,440],[420,430],[760,440]],62,"#474a52");
-      for(let row of [90,170,360,450]){
-        for(let col=80; col<=920; col+=120){
-          if(Math.random()<0.9) house(col+(-10+Math.random()*20), row+(-10+Math.random()*20), 0.9+Math.random()*0.3);
-        }
-      }
-      for(let i=0;i<110;i++) tree(Math.random()*w, Math.random()*h, 0.6+Math.random()*0.6);
-      for(let i=0;i<2;i++){
-        const x=120+Math.random()*720, y=90+Math.random()*360;
-        rounded(x-80,y-40,160,90,18,"rgba(40,140,70,.9)","rgba(10,60,30,.9)");
-      }
-      noise(0.04);
+      roadLine(main, 84, "rgba(75,78,86,.9)");
+      dashed(main);
+      roadLine([[120,120],[420,110],[760,120]], 62, "rgba(75,78,86,.9)");
+      roadLine([[120,440],[420,430],[760,440]], 62, "rgba(75,78,86,.9)");
+
+      const houses = [
+        [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
+        [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
+        [140,360],[280,360],[420,360],[560,360],[700,360],[840,360],
+        [120,450],[240,450],[360,450],[480,450],[600,450],[720,450],[840,450],
+      ];
+      for(const [x,y] of houses) houseBlock(x,y);
+
+      rounded(120,210,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
+      rounded(670,320,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
+
+      const trees = [[70,200],[90,240],[110,260],[930,220],[900,250],[880,280],[70,520],[930,520]];
+      for(const [x,y] of trees) treeDot(x,y);
     }
     else if(key==="ST_DOWNTOWN" || key==="AR_NEON_GRID" || key==="SV_STORM_DISTRICT"){
-      fillBG("#1a1f2d","#0b0d12");
-      ctx.fillStyle="#42444e";
-      for(let x=60; x<w; x+=160) ctx.fillRect(x-44,0,88,h);
-      for(let y=60; y<h; y+=140) ctx.fillRect(0,y-40,w,80);
+      fillSolid("#1a1f2d");
+      ctx.fillStyle="rgba(70,72,80,.95)";
+      for(let x=80; x<w; x+=170) ctx.fillRect(x-46,0,92,h);
+      for(let y=80; y<h; y+=150) ctx.fillRect(0,y-42,w,84);
 
-      ctx.fillStyle="rgba(235,235,240,.9)";
-      for(let x=60; x<w; x+=160){
-        for(let y=0; y<h; y+=34) ctx.fillRect(x-2,y+8,4,10);
-      }
-      for(let y=60; y<h; y+=140){
-        for(let x=0; x<w; x+=34) ctx.fillRect(x+8,y-2,10,4);
-      }
+      const blocks = [
+        [150,140,90,80],[320,150,80,70],[520,140,100,80],[720,150,80,75],[880,140,80,70],
+        [180,310,100,85],[360,320,90,80],[560,310,110,85],[760,320,90,80],[900,310,80,75],
+        [150,470,90,70],[340,470,90,70],[540,470,100,70],[740,470,90,70],[900,470,80,70],
+      ];
+      for(const [x,y,ww,hh] of blocks) buildingBlock(x,y,ww,hh);
 
-      for(let by=40; by<h; by+=140){
-        for(let bx=40; bx<w; bx+=160){
-          if(Math.random()<0.95){
-            building(bx+(40+Math.random()*80), by+(40+Math.random()*60), 50+Math.random()*50, 40+Math.random()*50);
-          }
-        }
+      ctx.fillStyle="rgba(240,240,245,.75)";
+      for(let i=0;i<8;i++){
+        const cx=120+i*100;
+        for(let k=0;k<7;k++) ctx.fillRect(cx+k*9, 270, 5, 18);
       }
-
-      ctx.fillStyle="rgba(240,240,245,.9)";
-      for(let i=0;i<14;i++){
-        const x=Math.random()*(w-80), y=Math.random()*(h-30);
-        if(Math.random()<0.6){
-          for(let k=0;k<8;k++) ctx.fillRect(x+k*9,y,5,18);
-        }
-      }
-      noise(0.035);
     }
     else {
-      fillBG("#2b2b30","#0b0d12");
-      for(let i=0;i<3;i++){
-        const x=80+Math.random()*740, y=80+Math.random()*320;
-        const ww=180+Math.random()*220, hh=70+Math.random()*120;
-        rounded(x,y,ww,hh,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
-        for(let k=0;k<ww;k+=16){
-          ctx.strokeStyle="rgba(240,190,55,.85)";
-          ctx.lineWidth=6;
-          ctx.beginPath(); ctx.moveTo(x+k,y); ctx.lineTo(x+k-40,y+hh); ctx.stroke();
-        }
+      fillSolid("#2b2b30");
+      rounded(90,90,260,130,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+      rounded(610,110,260,110,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+      rounded(240,340,340,140,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+
+      ctx.strokeStyle="rgba(240,190,55,.55)";
+      ctx.lineWidth=6;
+      for(let k=0;k<260;k+=18){
+        ctx.beginPath(); ctx.moveTo(90+k,90); ctx.lineTo(90+k-45,220); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(610+k,110); ctx.lineTo(610+k-45,220); ctx.stroke();
       }
-      for(let i=0;i<7;i++) building(120+Math.random()*760, 100+Math.random()*340, 90+Math.random()*90, 60+Math.random()*70);
-      pipes();
-      for(let i=0;i<45;i++) crate(20+Math.random()*(w-40), 20+Math.random()*(h-40), 0.8+Math.random()*0.6);
-      noise(0.03);
+
+      buildingBlock(170,260,140,90);
+      buildingBlock(520,260,160,90);
+      buildingBlock(820,300,150,90);
+
+      const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
+      for(const [x,y] of crates) crateBlock(x,y);
     }
 
-    // Evac ring + traps + scan ping (unchanged)
+    // Evac ring
     if(S.mode!=="Survival"){
       ctx.globalAlpha=0.9;
       ctx.strokeStyle="rgba(74,222,128,.55)";
@@ -1988,6 +1975,7 @@
       ctx.globalAlpha=1;
     }
 
+    // Traps
     for(const tr of S.trapsPlaced){
       ctx.globalAlpha=0.75;
       ctx.strokeStyle="rgba(58,120,255,.55)";
@@ -1996,13 +1984,14 @@
       ctx.globalAlpha=1;
     }
 
+    // Scan ping (soft)
     if(S.scanPing>0){
       S.scanPing--;
       const t=currentTargetTiger();
       if(t){
-        const r=40+(140-S.scanPing)*2.2;
-        ctx.globalAlpha=Math.max(0,S.scanPing/140);
-        ctx.strokeStyle="rgba(245,158,11,.35)";
+        const r=40+(140-S.scanPing)*1.3;
+        ctx.globalAlpha=Math.max(0,S.scanPing/260);
+        ctx.strokeStyle="rgba(245,158,11,.18)";
         ctx.lineWidth=3;
         ctx.beginPath(); ctx.arc(t.x,t.y,r,0,Math.PI*2); ctx.stroke();
         ctx.globalAlpha=1;
@@ -2010,7 +1999,7 @@
     }
   }
 
-  // ===================== SPRITES =====================
+  // ===================== DRAW ENTITIES =====================
   function roundedRectFill(x,y,w,h,r){
     ctx.beginPath();
     ctx.moveTo(x+r,y);
@@ -2122,14 +2111,10 @@
 
     ctx.fillStyle=c.body;
     ctx.beginPath(); ctx.ellipse(x, y+2*s, 22*s, 13*s, 0, 0, Math.PI*2); ctx.fill();
-
     ctx.fillStyle=c.belly;
     ctx.beginPath(); ctx.ellipse(x+3*s, y+6*s, 14*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
-
     ctx.fillStyle=c.body;
     ctx.beginPath(); ctx.ellipse(x+20*s, y-6*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
-
-    ctx.fillStyle=c.body;
     ctx.beginPath(); ctx.ellipse(x+26*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(x+16*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
 
@@ -2148,30 +2133,12 @@
       ctx.lineTo(x-2*s + i*6*s, y+10*s);
       ctx.stroke();
     }
-    ctx.lineWidth=2.5*s;
-    for(let i=-1;i<=1;i++){
-      ctx.beginPath();
-      ctx.moveTo(x+16*s+i*4*s, y-12*s);
-      ctx.lineTo(x+20*s+i*4*s, y-2*s);
-      ctx.stroke();
-    }
 
-    ctx.fillStyle="rgba(10,10,12,.9)";
-    ctx.beginPath(); ctx.arc(x+24*s, y-7*s, 1.6*s, 0, Math.PI*2); ctx.fill();
-
-    if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35){
+    if(t._held){
       ctx.globalAlpha=0.35;
-      ctx.strokeStyle="rgba(255,60,80,.9)";
-      ctx.lineWidth=4;
-      ctx.beginPath(); ctx.arc(x, y, 28*s, 0, Math.PI*2); ctx.stroke();
-      ctx.globalAlpha=alpha;
-    }
-
-    if(t.type==="Alpha"){
-      ctx.globalAlpha=0.25;
       ctx.strokeStyle="rgba(58,120,255,.9)";
-      ctx.lineWidth=3;
-      ctx.beginPath(); ctx.arc(x, y, 34*s, 0, Math.PI*2); ctx.stroke();
+      ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(x, y, 30*s, 0, Math.PI*2); ctx.stroke();
       ctx.globalAlpha=alpha;
     }
 
@@ -2204,22 +2171,20 @@
     drawSoldier();
   }
 
-  // ===================== ENGAGE BUTTON =====================
-  function updateEngage(){
-    document.getElementById("engageBtn").disabled = !canEngage() || S.paused || S.missionEnded || S.gameOver;
-  }
+  // ===================== MISSION COMPLETE UI =====================
+  function closeComplete(){ document.getElementById("completeOverlay").style.display="none"; }
 
   // ===================== RESET =====================
   function resetGame(){
+    localStorage.removeItem("ts_v4361");
     localStorage.removeItem("ts_v436");
-    localStorage.removeItem("ts_v435");
     S = structuredClone(DEFAULT);
     save();
     toast("Reset ✅");
     openMode();
   }
 
-  // ===================== LOOP =====================
+  // ===================== MAIN LOOP =====================
   function draw(){
     renderHUD();
     updateEngage();
