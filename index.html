@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>Tiger Strike 🐅 — V4.3.5 (Carcass Collision)</title>
+  <title>Tiger Strike 🐅 — V4.3.6</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root{
@@ -80,8 +80,8 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.5</span> <span class="tag">Carcass Collision</span></div>
-      <div class="sub">Backup/Traps/Panic • Owned counts • Manual next mission • All tigers required • Persistent carcasses block movement</div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.6</span></div>
+      <div class="sub">Follow-only civilians (no sprint) • Mission Complete returns after Shop/Inventory • Soldier + Real Tigers + Diverse Civilians • Real Map Images</div>
     </div>
     <div class="row">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
@@ -122,7 +122,7 @@
   <div class="screenCard">
     <canvas id="cv" width="960" height="540"></canvas>
     <div class="actionStrip">
-      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Escort civilians to evac zone. ALL tigers must be captured/killed.</div>
+      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Civilians follow you when close (slow). Tigers can still attack civilians.</div>
       <div class="row">
         <button onclick="deploy()">📍 Deploy</button>
         <button onclick="scan()">🛰️ Scan</button>
@@ -271,7 +271,40 @@
   const tg = window.Telegram?.WebApp;
   if (tg){ tg.expand(); tg.ready(); try{tg.setHeaderColor?.("#0b0d12"); tg.setBackgroundColor?.("#0b0d12");}catch(e){} }
 
-  // ===================== DATA =====================
+  // ===================== MAP IMAGES (your picks: v1 for all 4) =====================
+  // Put these in /maps/ next to your HTML:
+  // maps/forest_v1.png, maps/suburbs_v1.png, maps/downtown_v1.png, maps/industrial_v1.png
+  const MAP_BG = {
+    "ST_FOREST":     "maps/forest_v1.png",
+    "ST_SUBURBS":    "maps/suburbs_v1.png",
+    "ST_DOWNTOWN":   "maps/downtown_v1.png",
+    "ST_INDUSTRIAL": "maps/industrial_v1.png",
+    // Use same art for arcade/survival for now (keeps everything else the same)
+    "AR_ARENA_BAY":  "maps/suburbs_v1.png",
+    "AR_NEON_GRID":  "maps/downtown_v1.png",
+    "AR_SAND_YARD":  "maps/forest_v1.png",
+    "AR_STEEL_PIT":  "maps/industrial_v1.png",
+    "SV_NIGHT_WOODS":"maps/forest_v1.png",
+    "SV_STORM_DISTRICT":"maps/downtown_v1.png",
+    "SV_RUINS":"maps/industrial_v1.png",
+    "SV_ASH_FIELD":"maps/suburbs_v1.png",
+  };
+
+  const bgCache = {};
+  function getBgImage(mapKey){
+    const url = MAP_BG[mapKey];
+    if(!url) return null;
+    if(bgCache[url]) return bgCache[url].ready ? bgCache[url].img : null;
+
+    const img = new Image();
+    bgCache[url] = { img, ready:false };
+    img.onload = ()=> bgCache[url].ready = true;
+    img.onerror = ()=> bgCache[url].ready = false;
+    img.src = url;
+    return null;
+  }
+
+  // ===================== DATA (kept same) =====================
   const WEAPONS = [
     { id:"W_TRQ_PISTOL_MK1", name:"Tranq Pistol Mk I", grade:"Common", price:50,   type:"tranq", ammo:"TRANQ_DARTS",  mag:6,  dmg:[8,12] },
     { id:"W_9MM_JUNK",      name:"9mm Sidearm (Used)", grade:"Common", price:150, type:"lethal", ammo:"9MM_STD",      mag:12, dmg:[10,14] },
@@ -365,10 +398,9 @@
 
   // ===================== STATE =====================
   const DEFAULT = {
-    v: 435,
+    v: 436,
     paused: false,
     pauseReason: null,
-
     mode: "Story",
     arcadeLevel: 1,
     survivalWave: 1,
@@ -379,7 +411,6 @@
     audioUnlocked: false,
 
     lives: 3,
-
     funds: 1000,
     score: 0,
     trust: 80,
@@ -404,8 +435,9 @@
     backupCooldown: 0,
     backupActive: 0,
 
-    me: { x: 160, y: 420 },
+    me: { x: 160, y: 420, face:0, step:0 },
     target: null,
+
     tigers: [],
     carcasses: [],
 
@@ -422,19 +454,21 @@
     survivalStart: null,
     surviveSeconds: 0,
 
-    markedTigerId: null,
     missionEnded: false,
     gameOver: false,
   };
 
   let S = load();
 
+  // ✅ Mission Complete overlay return fix:
+  let lastOverlay = null; // "complete" | null
+
   const cv = document.getElementById("cv");
   const ctx = cv.getContext("2d");
 
   function load(){
     try{
-      const saved = JSON.parse(localStorage.getItem("ts_v435") || "null");
+      const saved = JSON.parse(localStorage.getItem("ts_v436") || localStorage.getItem("ts_v435") || "null");
       if(!saved) return structuredClone(DEFAULT);
       const merged = { ...DEFAULT, ...saved };
       merged.me = { ...DEFAULT.me, ...(saved.me||{}) };
@@ -446,12 +480,13 @@
       merged.trapsPlaced = Array.isArray(saved.trapsPlaced) ? saved.trapsPlaced : [];
       merged.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
       if(merged.lives==null) merged.lives=3;
+      merged.v=436;
       return merged;
     }catch(e){ return structuredClone(DEFAULT); }
   }
-  function save(){ localStorage.setItem("ts_v435", JSON.stringify(S)); }
+  function save(){ localStorage.setItem("ts_v436", JSON.stringify(S)); }
 
-  // ===================== AUDIO =====================
+  // ===================== AUDIO (same) =====================
   let AC=null;
   function ensureAudio(){
     if(!S.soundOn) return;
@@ -481,7 +516,6 @@
     if(name==="reload"){ beep(360,60,"sine",0.05); setTimeout(()=>beep(420,60,"sine",0.05),70); }
     if(name==="jam"){ beep(180,140,"sawtooth",0.06); }
   }
-
   function toggleSound(){
     S.soundOn=!S.soundOn;
     document.getElementById("soundLbl").innerText = S.soundOn?"On":"Off";
@@ -520,7 +554,7 @@
     save();
   }
 
-  // ===================== CARCASS COLLISION (SOLID OBSTACLES) =====================
+  // ===================== CARCASS COLLISION =====================
   function carcassRects(){
     return (S.carcasses || []).map(c => ({ x: c.x - 14, y: c.y - 8, w: 28, h: 16 }));
   }
@@ -545,18 +579,18 @@
     return true;
   }
 
-  // ===================== ABOUT MENU =====================
+  // ===================== ABOUT =====================
   function openAbout(){
     setPaused(true,"about");
     document.getElementById("aboutOverlay").style.display="flex";
     document.getElementById("aboutBody").innerHTML = `
-      <div class="item"><div><div class="itemName">Scout</div><div class="itemDesc">Fastest. Prioritizes civilians. Low HP. Capture requires Tranq Pistol hit first.</div></div></div>
-      <div class="item"><div><div class="itemName">Standard</div><div class="itemDesc">Balanced threat. Targets civilians sometimes. Capture requires Tranq Pistol hit first.</div></div></div>
-      <div class="item"><div><div class="itemName">Stalker</div><div class="itemDesc">Stealth fade + ambush pounce. Capture requires Tranq Rifle hit first.</div></div></div>
-      <div class="item"><div><div class="itemName">Berserker</div><div class="itemDesc">Rage at low HP → higher damage. Capture requires Tranq Rifle hit first.</div></div></div>
-      <div class="item"><div><div class="itemName">Alpha / Boss Alpha</div><div class="itemDesc">Buffs nearby tigers, may call reinforcements. Boss has phases. Capture requires Tranq Launcher hit first.</div></div></div>
+      <div class="item"><div><div class="itemName">Scout</div><div class="itemDesc">Fast, small, civilian hunter. Capture requires Tranq Pistol hit first.</div></div></div>
+      <div class="item"><div><div class="itemName">Standard</div><div class="itemDesc">Balanced tiger. Capture requires Tranq Pistol hit first.</div></div></div>
+      <div class="item"><div><div class="itemName">Stalker</div><div class="itemDesc">Stealth fade + ambush. Capture requires Tranq Rifle hit first.</div></div></div>
+      <div class="item"><div><div class="itemName">Berserker</div><div class="itemDesc">Rage at low HP, hits harder. Capture requires Tranq Rifle hit first.</div></div></div>
+      <div class="item"><div><div class="itemName">Alpha / Boss Alpha</div><div class="itemDesc">Pack aura + reinforcements. Boss has phases. Capture requires Tranq Launcher hit first.</div></div></div>
       <div class="divider"></div>
-      <div class="hudLine"><b>Carcasses:</b> dead tigers persist across missions and now block movement for everyone.</div>
+      <div class="hudLine"><b>Carcasses:</b> persist across missions and block movement for everyone.</div>
     `;
     sfx("ui");
   }
@@ -601,16 +635,17 @@
   }
   function updateModeDesc(){
     const el=document.getElementById("modeDesc");
-    if(S.mode==="Story") el.innerText="Story: +1 civilian each level (max 7). After 7, +1 tiger per level. Must clear ALL tigers.";
-    else if(S.mode==="Arcade") el.innerText="Arcade: civilians on map. Must clear ALL tigers before mission completes.";
+    if(S.mode==="Story") el.innerText="Story: +1 civilian each level (max 7). After 7, +1 tiger per level. Must clear ALL tigers + evac living civilians.";
+    else if(S.mode==="Arcade") el.innerText="Arcade: civilians on map. Must clear ALL tigers + evac living civilians.";
     else el.innerText="Survival: no civilians. Tigers pressure-damage you over time. Survive as long as possible.";
   }
 
-  // ===================== SHOP/INVENTORY =====================
+  // ===================== SHOP/INVENTORY (mission-complete return fix) =====================
   let currentShopTab="weapons";
 
   function openShop(){
     if(S.gameOver) return;
+    if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
     setPaused(true,"shop");
     document.getElementById("shopOverlay").style.display="flex";
     shopTab(currentShopTab);
@@ -618,11 +653,18 @@
   }
   function closeShop(){
     document.getElementById("shopOverlay").style.display="none";
+    if(lastOverlay==="complete" && S.missionEnded){
+      setPaused(true,"complete");
+      document.getElementById("completeOverlay").style.display="flex";
+      lastOverlay=null;
+      return;
+    }
     setPaused(false,null);
   }
 
   function openInventory(){
     if(S.gameOver) return;
+    if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
     setPaused(true,"inv");
     document.getElementById("invOverlay").style.display="flex";
     renderInventory();
@@ -630,6 +672,12 @@
   }
   function closeInventory(){
     document.getElementById("invOverlay").style.display="none";
+    if(lastOverlay==="complete" && S.missionEnded){
+      setPaused(true,"complete");
+      document.getElementById("completeOverlay").style.display="flex";
+      lastOverlay=null;
+      return;
+    }
     setPaused(false,null);
   }
 
@@ -706,7 +754,7 @@
         return `
           <div class="item">
             <div>
-              <div class="itemName">${ar.name} <span class="tag">Owned: N/A</span></div>
+              <div class="itemName">${ar.name}</div>
               <div class="itemDesc">Adds +${ar.addArmor} armor (cap ${ar.cap})</div>
             </div>
             <div style="text-align:right">
@@ -738,7 +786,7 @@
     }
 
     if(currentShopTab==="tools"){
-      note.innerText="Repair Kit $300 (+10 durability). Pro Repair Kit (+100 durability). Shows owned.";
+      note.innerText="Repair Kit $300 (+10 durability). Pro Repair Kit (+100 durability).";
       list.innerHTML = TOOLS.map(t=>{
         const owned=ownedToolCount(t.id);
         return `
@@ -757,19 +805,18 @@
     }
 
     if(currentShopTab==="traps"){
-      note.innerText="Traps slow tigers. Owned count increases when you buy.";
+      note.innerText="Traps slow tigers. Carcasses block movement too.";
       list.innerHTML = `
         <div class="item">
           <div>
             <div class="itemName">Trap <span class="tag">Owned: ${S.trapsOwned}</span></div>
-            <div class="itemDesc">Place on map to slow tigers. Carcasses block movement too.</div>
+            <div class="itemDesc">Place on map to slow tigers.</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${TRAP_ITEM.price.toLocaleString()}</div>
             <button onclick="buyTrap()">Buy</button>
           </div>
-        </div>
-      `;
+        </div>`;
       return;
     }
   }
@@ -786,7 +833,7 @@
     save(); renderShopList(); renderHUD();
   }
   function buyAmmo(id){
-    const a=AMMO.find(x=>x.id===id); if(!a) return;
+    const a=getAmmo(id); if(!a) return;
     const p=ammoPriceCapped(a);
     if(S.funds < p) return toast("Not enough money.");
     S.funds -= p;
@@ -893,7 +940,7 @@
       <div class="item">
         <div>
           <div class="itemName">🪤 Traps <span class="tag">Owned: ${S.trapsOwned}</span></div>
-          <div class="itemDesc">Place traps on map. Carcasses also block movement.</div>
+          <div class="itemDesc">Place traps on map to slow tigers.</div>
         </div>
         <div style="text-align:right">
           <button ${S.trapsOwned<=0?'disabled':''} onclick="placeTrap()">Place</button>
@@ -961,13 +1008,13 @@
     toast(`Repaired +${t.add} durability`);
   }
 
-  // ===================== BACKUP =====================
+  // ===================== BACKUP/TRAPS (same) =====================
   function callBackup(){
     if(S.funds < 50000) return toast("Need $50,000 for backup.");
     if(S.backupCooldown>0) return toast("Backup cooling down.");
     S.funds -= 50000;
-    S.backupActive = 600;    // 10s
-    S.backupCooldown = 1800; // 30s
+    S.backupActive = 600;
+    S.backupCooldown = 1800;
     toast("🚨 Backup deployed! Tigers frozen. Civilians protected.");
     sfx("ui");
     save();
@@ -975,7 +1022,6 @@
     if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
   }
 
-  // ===================== TRAPS =====================
   function placeTrap(){
     if(S.trapsOwned<=0) return toast("No traps. Buy in shop.");
     if(S.paused) return toast("Resume to place trap.");
@@ -1001,14 +1047,12 @@
     }
   }
 
-  // ===================== EPIC AMMO CAP =====================
+  // ===================== AUTO RELOAD / DURABILITY (same) =====================
   function ammoEffectFor(ammoId){
     const a=getAmmo(ammoId);
     const grade=a?.grade||"Standard";
     return AMMO_EFFECTS[grade] || AMMO_EFFECTS.Standard;
   }
-
-  // ===================== DURABILITY/JAM =====================
   function weaponDurability(id){ if(S.durability[id]==null) S.durability[id]=100; return S.durability[id]; }
   function applyWearOnShot(w){
     const g=WEAPON_GRADE[w.grade]||WEAPON_GRADE.Common;
@@ -1021,8 +1065,6 @@
     const wearFactor = dur>=60?0.0:(60-dur)/60;
     return clamp(g.jamBase + wearFactor*0.18, 0, 0.28);
   }
-
-  // ===================== AUTO RELOAD =====================
   function autoReloadIfNeeded(force=false){
     const w=equippedWeapon();
     if(!force && S.mag.loaded>0) return true;
@@ -1036,30 +1078,47 @@
     return true;
   }
 
-  // ===================== MODE SCALING =====================
-  function storyCivCount(){ return clamp(3 + (S.storyLevel-1), 3, 7); }
-  function storyTigerCount(){
-    const afterMax = Math.max(0, (S.storyLevel - 1) - (7-3));
-    return 2 + afterMax;
-  }
-  function arcadeCivCount(){ return clamp(2 + (S.arcadeLevel-1), 2, 7); }
-  function arcadeTigerCount(){
-    const afterMax = Math.max(0, (S.arcadeLevel - 1) - (7-2));
-    return 3 + afterMax;
-  }
-
-  function carcassDifficulty(){
-    const n = S.carcasses.length;
-    return clamp(1 + n*0.05, 1, 3.5);
+  function equipWeapon(id){
+    if(!S.ownedWeapons.includes(id)) return;
+    const w=getWeapon(id); if(!w) return;
+    S.equippedWeaponId=id;
+    S.mag.cap=w.mag;
+    S.mag.loaded=clamp(S.mag.loaded,0,S.mag.cap);
+    if(S.mag.loaded===0) autoReloadIfNeeded(true);
+    sfx("ui");
+    save();
+    renderHUD();
+    if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+    if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
+    if(document.getElementById("battleOverlay").style.display==="flex") renderWeaponGrid();
   }
 
-  // ===================== SPAWNS =====================
-  function randomEvacZone(){
-    const x = rand(120, 900);
-    const y = rand(120, 500);
-    return { x, y, r:70 };
+  // ===================== SPAWN CIVILIANS (diverse appearance) =====================
+  const SKIN_TONES = ["#f6d7c3","#eac0a6","#d9a07f","#c9865c","#a86a44","#7a4a2c","#4b2f1f"];
+  const SHIRT_COLS = ["#4aa3ff","#3ddc97","#f59e0b","#fb7185","#a78bfa","#f97316","#eab308","#22c55e","#60a5fa"];
+  const PANTS_COLS = ["#1f2937","#334155","#0f172a","#3f3f46","#1c1917","#111827"];
+  function spawnCivilians(){
+    const n = (S.mode==="Story") ? clamp(3 + (S.storyLevel-1), 3, 7) : (S.mode==="Arcade" ? clamp(2 + (S.arcadeLevel-1), 2, 7) : 0);
+    S.civilians = [];
+    for(let i=0;i<n;i++){
+      S.civilians.push({
+        id:i+1,
+        x: 220 + (i%3)*180 + rand(-20,20),
+        y: 140 + Math.floor(i/3)*160 + rand(-20,20),
+        hp:100, hpMax:100,
+        alive:true,
+        evac:false,
+        skin: SKIN_TONES[rand(0,SKIN_TONES.length-1)],
+        shirt: SHIRT_COLS[rand(0,SHIRT_COLS.length-1)],
+        pants: PANTS_COLS[rand(0,PANTS_COLS.length-1)],
+        hair: rand(0,3)
+      });
+    }
+    S.evacDone=0;
   }
 
+  // ===================== TIGERS (same stats, different looks) =====================
+  function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
   function pickTigerType(){
     const r=Math.random();
     if(S.mode==="Survival"){
@@ -1075,33 +1134,20 @@
     if(r<0.90) return "Berserker";
     return "Alpha";
   }
-
-  function spawnCivilians(){
-    const n = (S.mode==="Story") ? storyCivCount() : (S.mode==="Arcade" ? arcadeCivCount() : 0);
-    S.civilians = [];
-    for(let i=0;i<n;i++){
-      S.civilians.push({
-        id:i+1,
-        x: 220 + (i%3)*180 + rand(-20,20),
-        y: 140 + Math.floor(i/3)*160 + rand(-20,20),
-        hp:100, hpMax:100,
-        alive:true,
-        evac:false
-      });
-    }
-    S.evacDone=0;
-  }
-
   function spawnTigers(){
     let count=2;
-    if(S.mode==="Story") count = storyTigerCount();
-    if(S.mode==="Arcade") count = arcadeTigerCount();
+    if(S.mode==="Story"){
+      const afterMax = Math.max(0, (S.storyLevel - 1) - (7-3));
+      count = 2 + afterMax;
+    }
+    if(S.mode==="Arcade"){
+      const afterMax = Math.max(0, (S.arcadeLevel - 1) - (7-2));
+      count = 3 + afterMax;
+    }
     if(S.mode==="Survival") count = Math.min(4 + (S.survivalWave-1), 10);
 
     const boss = (S.mode==="Story" && (S.storyLevel % 5 === 0));
     S.tigers=[];
-    S.markedTigerId = (S.mode==="Survival") ? null : (1 + Math.floor(Math.random()*count));
-
     const diff = carcassDifficulty();
 
     for(let i=0;i<count;i++){
@@ -1115,12 +1161,8 @@
       if(S.mode==="Story") baseHp = 118 + (S.storyLevel-1)*4;
 
       let hp = Math.round(baseHp * def.hpMul * diff);
-
       let bossPhases=0;
-      if(boss && i===0){
-        hp = Math.round(hp*2.2);
-        bossPhases=2;
-      }
+      if(boss && i===0){ hp = Math.round(hp*2.2); bossPhases=2; }
 
       S.tigers.push({
         id:i+1,
@@ -1139,21 +1181,24 @@
         bossEnraged:false,
         tranqTagged:false,
         _packBuff:0,
-        _trapSlow:1.0
+        _trapSlow:1.0,
+        step: rand(0,1000)
       });
     }
   }
 
-  // ===================== DEPLOY / NEXT MISSION =====================
+  // ===================== DEPLOY/NEXT =====================
+  function randomEvacZone(){
+    return { x: rand(120, 900), y: rand(120, 500), r:70 };
+  }
   function deploy(){
     S.gameOver=false;
     S.missionEnded=false;
     S.inBattle=false;
     S.activeTigerId=null;
-
     S.paused=false; S.pauseReason=null;
 
-    S.me={x:160,y:420};
+    S.me={x:160,y:420,face:0,step:0};
     S.target=null;
     S.hp=100; S.armor=20; S.stamina=100;
     S.lockedTigerId=null;
@@ -1174,11 +1219,10 @@
     S.mag.loaded = clamp(S.mag.loaded || w.mag, 0, S.mag.cap);
     if(S.mag.loaded===0) autoReloadIfNeeded(true);
 
-    if(S.mode==="Survival" && !S.survivalStart) S.survivalStart = Date.now();
+    if(S.mode==="Survival"){ S.survivalStart = Date.now(); S.surviveSeconds=0; }
 
     save();
   }
-
   function startNextMission(){
     document.getElementById("completeOverlay").style.display="none";
     if(S.mode==="Story") S.storyLevel += 1;
@@ -1190,7 +1234,7 @@
   }
   function closeComplete(){ document.getElementById("completeOverlay").style.display="none"; }
 
-  // ===================== TARGETING / INPUT =====================
+  // ===================== INPUT =====================
   cv.addEventListener("click",(e)=>{
     if(S.inBattle || S.gameOver || S.missionEnded) return;
     if(S.paused) return;
@@ -1199,7 +1243,7 @@
     const x=(e.clientX-rect.left)*(cv.width/rect.width);
     const y=(e.clientY-rect.top)*(cv.height/rect.height);
 
-    const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 32);
+    const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
     if(tapped){ S.lockedTigerId=tapped.id; sfx("ui"); save(); return; }
     S.target={x,y}; sfx("ui"); save();
   });
@@ -1223,7 +1267,7 @@
   function canEngage(){
     const t=currentTargetTiger();
     if(!t) return null;
-    return dist(S.me.x,S.me.y,t.x,t.y) < 85 ? t : null;
+    return dist(S.me.x,S.me.y,t.x,t.y) < 90 ? t : null;
   }
 
   // ===================== SCAN =====================
@@ -1236,7 +1280,7 @@
     sfx("scan"); save();
   }
 
-  // ===================== MOVEMENT (WITH CARCASS BLOCKING) =====================
+  // ===================== MOVEMENT (soldier walk bob + facing) =====================
   function movePlayer(){
     if(!S.target) return;
     const dx=S.target.x-S.me.x, dy=S.target.y-S.me.y;
@@ -1246,6 +1290,9 @@
 
     let speed=3.2;
     if(S._sprintTicks && S._sprintTicks>0){ speed=5.0; S._sprintTicks--; }
+
+    S.me.face = Math.atan2(dy, dx);
+    S.me.step = (S.me.step + speed*0.35) % (Math.PI*2);
 
     const nx = S.me.x + (dx/d)*speed;
     const ny = S.me.y + (dy/d)*speed;
@@ -1263,11 +1310,27 @@
     sfx("ui"); save();
   }
 
-  // ===================== CIVILIANS (WITH CARCASS BLOCKING) =====================
-  function escortCivilians(){
+  // ===================== CIVILIANS FOLLOW-ONLY (NO PANIC SPRINT) =====================
+  function followCiviliansTick(){
     if(S.mode==="Survival") return;
-    panicSprintTick();
+    for(const c of S.civilians){
+      if(!c.alive || c.evac) continue;
+      const d = dist(c.x,c.y,S.me.x,S.me.y);
 
+      // follow only when close; slow walk; never sprint to evac
+      if(d < 95){
+        const dx = S.me.x - c.x, dy = S.me.y - c.y;
+        const dd = Math.hypot(dx,dy) || 1;
+        const sp = 1.35;
+        const nx = c.x + (dx/dd)*sp;
+        const ny = c.y + (dy/dd)*sp;
+        tryMoveEntity(c, nx, ny, 14);
+      }
+    }
+  }
+
+  function evacCheck(){
+    if(S.mode==="Survival") return;
     for(const c of S.civilians){
       if(!c.alive || c.evac) continue;
       if(dist(c.x,c.y,S.evacZone.x,S.evacZone.y) < S.evacZone.r){
@@ -1278,40 +1341,15 @@
     }
   }
 
-  function panicSprintTick(){
-    if(S.mode==="Survival") return;
-    for(const c of S.civilians){
-      if(!c.alive || c.evac) continue;
-
-      const nearPlayer = dist(c.x,c.y,S.me.x,S.me.y) < 85;
-      const nearTiger = S.tigers.some(t=>t.alive && dist(c.x,c.y,t.x,t.y)<120);
-
-      if(nearPlayer || nearTiger){ c._panicTicks = 140; }
-
-      if(c._panicTicks && c._panicTicks>0){
-        c._panicTicks--;
-        const dx=S.evacZone.x - c.x, dy=S.evacZone.y - c.y;
-        const dd=Math.hypot(dx,dy)||1;
-        const sp=3.2;
-
-        const nx = c.x + (dx/dd)*sp;
-        const ny = c.y + (dy/dd)*sp;
-
-        tryMoveEntity(c, nx, ny, 14);
-      }
-    }
-  }
-
-  // ===================== CIVILIANS UNDER ATTACK =====================
+  // ===================== CIVILIANS UNDER ATTACK (kept same behavior) =====================
   function tickCiviliansAndThreats(){
     if(S.mode==="Survival") return;
-    let underAttack=0;
 
+    let underAttack=0;
     if(S.backupActive>0){ S._underAttack=0; return; }
 
     for(const t of S.tigers){
       if(!t.alive) continue;
-
       const aliveCivs=S.civilians.filter(c=>c.alive && !c.evac);
       if(!aliveCivs.length) continue;
 
@@ -1341,27 +1379,10 @@
         toast(`Civilian died. Lives left: ${S.lives}`);
       }
     }
-
     S._underAttack=underAttack;
   }
 
-  // ===================== TIGERS (WITH CARCASS BLOCKING) =====================
-  function trapTick(){
-    for(const tr of S.trapsPlaced) tr.ttl -= 1;
-    S.trapsPlaced = S.trapsPlaced.filter(t=>t.ttl>0);
-
-    for(const t of S.tigers){
-      if(!t.alive) continue;
-      t._trapSlow = 1.0;
-      for(const tr of S.trapsPlaced){
-        if(dist(t.x,t.y,tr.x,tr.y) < tr.r){
-          t._trapSlow = tr.slow;
-          break;
-        }
-      }
-    }
-  }
-
+  // ===================== TIGERS ROAM (same logic) =====================
   function alphaBuffs(){
     const alphas = S.tigers.filter(t=>t.alive && t.type==="Alpha");
     for(const t of S.tigers){
@@ -1376,21 +1397,6 @@
     }
   }
 
-  function stalkerAmbush(t){
-    if(t.type!=="Stalker" || !t.alive) return;
-    const d=dist(t.x,t.y,S.me.x,S.me.y);
-    if(d<130 && Math.random()<0.02){
-      const dx=S.me.x-t.x, dy=S.me.y-t.y, dd=Math.hypot(dx,dy)||1;
-      const nx = t.x + (dx/dd)*18;
-      const ny = t.y + (dy/dd)*18;
-      tryMoveEntity(t, nx, ny, 18);
-      if(dist(t.x,t.y,S.me.x,S.me.y) < 60){
-        applyPlayerDamage(6 + Math.floor(carcassDifficulty()*2), false);
-        toast("🟣 Stalker ambush!");
-      }
-    }
-  }
-
   function roamTigers(){
     alphaBuffs();
     if(S.backupActive>0) return;
@@ -1398,7 +1404,7 @@
     for(const t of S.tigers){
       if(!t.alive) continue;
 
-      stalkerAmbush(t);
+      t.step = (t.step + 0.12*(t._trapSlow||1)) % (Math.PI*2);
 
       const civs = (S.mode!=="Survival") ? S.civilians.filter(c=>c.alive && !c.evac) : [];
       let targetX=S.me.x, targetY=S.me.y;
@@ -1421,7 +1427,6 @@
       const chase = Math.random() < chaseChance;
 
       const trapSlow = t._trapSlow || 1.0;
-
       const speedCap = ((def.spd*0.9) + hunter*1.2 + (t._packBuff?0.35:0)) * trapSlow;
 
       if(chase){
@@ -1439,10 +1444,7 @@
       const ny = t.y + t.vy;
 
       const moved = tryMoveEntity(t, nx, ny, 18);
-      if(!moved){
-        t.vx *= -0.8;
-        t.vy *= -0.8;
-      }
+      if(!moved){ t.vx *= -0.8; t.vy *= -0.8; }
 
       if(t.x<40||t.x>cv.width-40) t.vx*=-1;
       if(t.y<60||t.y>cv.height-40) t.vy*=-1;
@@ -1451,7 +1453,7 @@
     }
   }
 
-  // ===================== SURVIVAL PRESSURE =====================
+  // ===================== SURVIVAL PRESSURE (same) =====================
   function survivalPressureTick(){
     if(S.mode!=="Survival" || S.paused || S.gameOver) return;
     if(S.backupActive>0) return;
@@ -1496,13 +1498,11 @@
     }
   }
 
-  // ===================== BACKUP TICKS =====================
+  // ===================== BACKUP/REGEN =====================
   function backupTick(){
     if(S.backupActive>0) S.backupActive--;
     if(S.backupCooldown>0) S.backupCooldown--;
   }
-
-  // ===================== REGEN =====================
   function regen(){
     const now=Date.now();
     if(!S._last) S._last=now;
@@ -1514,7 +1514,7 @@
     }
   }
 
-  // ===================== BATTLE (CAPTURE RULES) =====================
+  // ===================== BATTLE (kept same rules) =====================
   function startCombat(){
     const t=canEngage();
     if(!t) return toast("Move closer to a tiger to engage.");
@@ -1528,12 +1528,10 @@
     sfx("ui");
     save();
   }
-
   function setBattleMsg(msg){
     document.getElementById("battleTitle").innerText = `Battle — Tiger #${S.activeTigerId}`;
     document.getElementById("battleMsg").innerText = msg;
   }
-
   function renderWeaponGrid(){
     const box=document.getElementById("weaponGrid");
     box.innerHTML = S.ownedWeapons.map(id=>{
@@ -1543,22 +1541,6 @@
       return `<button ${active?'class="good"':''} onclick="equipWeapon('${id}')">${active?'✅ ':''}${w.name} (${dur}%)</button>`;
     }).join("");
   }
-
-  function equipWeapon(id){
-    if(!S.ownedWeapons.includes(id)) return;
-    const w=getWeapon(id); if(!w) return;
-    S.equippedWeaponId=id;
-    S.mag.cap=w.mag;
-    S.mag.loaded=clamp(S.mag.loaded,0,S.mag.cap);
-    if(S.mag.loaded===0) autoReloadIfNeeded(true);
-    sfx("ui");
-    save();
-    renderHUD();
-    if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-    if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
-    if(document.getElementById("battleOverlay").style.display==="flex") renderWeaponGrid();
-  }
-
   function endBattle(reason){
     document.getElementById("battleOverlay").style.display="none";
     S.inBattle=false;
@@ -1573,7 +1555,6 @@
     if(t.type==="Stalker" || t.type==="Berserker") return "W_TRQ_RIFLE";
     return "W_TRQ_PISTOL_MK1";
   }
-
   function canCaptureTiger(t){
     if(!t || !t.alive) return false;
     if(t.hp>15) return false;
@@ -1584,7 +1565,6 @@
     if(w.type!=="tranq") return false;
     return true;
   }
-
   function updateBattleButtons(){
     const t=tigerById(S.activeTigerId);
     document.getElementById("killBtn").disabled = !(t && t.hp<=15);
@@ -1630,10 +1610,9 @@
       stealth:def.stealth, rage:def.rage,
       bossPhases:0, bossEnraged:false,
       tranqTagged:false,
-      _packBuff:0,
-      _trapSlow:1.0
+      _packBuff:0, _trapSlow:1.0,
+      step: rand(0,1000)
     });
-
     toast("🚨 Reinforcements arrived!");
   }
 
@@ -1668,17 +1647,12 @@
     if(action==="KILL"){
       if(t.hp>15) return toast("Tiger HP too high to finish.");
       t.alive=false;
-
-      // persistent carcass blocks movement in next missions too
-      S.carcasses.push({ x:t.x, y:t.y });
-
+      S.carcasses.push({ x:t.x, y:t.y }); // persists & blocks movement
       const pay=payout("KILL");
       S.funds+=pay.cash; S.score+=pay.score;
       S.trust=clamp(S.trust+pay.trust,0,100);
       S.aggro=clamp(S.aggro+pay.aggro,0,100);
-
       maybeReinforceOnKill();
-
       sfx("win");
       endBattle();
       checkMissionComplete();
@@ -1687,7 +1661,6 @@
 
     if(action==="ATTACK"){
       const w=equippedWeapon();
-
       if(S.mag.loaded<=0){
         const ok=autoReloadIfNeeded(true);
         if(!ok){
@@ -1729,16 +1702,13 @@
       }
 
       t.hp = clamp(t.hp - dmg, 0, t.hpMax);
-
       applyWearOnShot(w);
 
       setBattleMsg(`${crit?'CRIT! ':''}Hit for ${dmg}. ${w.type==='tranq'?'(tranq applied)':''}`);
-
       if(t.hp<=0){ t.hp=15; setBattleMsg("Tiger is critically weak. Choose Capture or Kill!"); }
 
       updateBattleButtons();
       tigerTurn(t);
-
       save();
       return;
     }
@@ -1758,9 +1728,7 @@
       if((t.hp/t.hpMax)<0.35) dmg=Math.floor(dmg*1.20);
     }
     if(t.type==="Stalker") dmg=Math.floor(dmg*1.05);
-
     if(softened) dmg=Math.floor(dmg*0.85);
-
     dmg=clamp(dmg,6,75);
 
     applyPlayerDamage(dmg,false);
@@ -1768,7 +1736,7 @@
     if(S.lives<=0) endBattle();
   }
 
-  // ===================== MISSION COMPLETE RULE =====================
+  // ===================== MISSION COMPLETE (same rule) =====================
   function checkMissionComplete(){
     if(S.mode==="Survival") return;
 
@@ -1781,199 +1749,12 @@
         S.missionEnded=true;
         setPaused(true,"complete");
         document.getElementById("completeText").innerText =
-          `Mission complete. All tigers cleared. Civilians evacuated. Shop before next mission.`;
+          `Mission complete. All tigers cleared. Civilians evacuated. You can Shop/Inventory and then start next mission.`;
         document.getElementById("completeOverlay").style.display="flex";
         sfx("win");
         save();
       }
     }
-  }
-
-  // ===================== DRAW MAP / ENTITIES =====================
-  function drawMapScene(){
-    const w=cv.width,h=cv.height;
-    const map=currentMap().key;
-    ctx.clearRect(0,0,w,h);
-
-    function grad(a,b,c){
-      const g=ctx.createLinearGradient(0,0,0,h);
-      g.addColorStop(0,a); g.addColorStop(.65,b); g.addColorStop(1,c);
-      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
-    }
-    function grid(alpha=0.12){
-      ctx.globalAlpha=alpha; ctx.strokeStyle="#3a4566";
-      for(let x=0;x<=w;x+=60){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
-      for(let y=0;y<=h;y+=60){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
-      ctx.globalAlpha=1;
-    }
-
-    if(map==="ST_FOREST"){ grad("#102017","#0b0d12","#1a2a1b"); grid(0.10); }
-    else if(map==="ST_SUBURBS"){ grad("#142235","#0b0d12","#1a2a2a"); grid(0.10); }
-    else if(map==="ST_DOWNTOWN"){ grad("#1a1a2a","#0b0d12","#2a1a1a"); grid(0.10); }
-    else if(map==="ST_INDUSTRIAL"){ grad("#1b1f24","#0b0d12","#2a2220"); grid(0.10); }
-    else if(map==="AR_ARENA_BAY"){ grad("#0f1a2a","#0b0d12","#102033"); grid(0.16); }
-    else if(map==="AR_NEON_GRID"){ grad("#140b22","#0b0d12","#1a0f2b"); grid(0.18); }
-    else if(map==="AR_SAND_YARD"){ grad("#2a1f12","#0b0d12","#2b2214"); grid(0.10); }
-    else if(map==="AR_STEEL_PIT"){ grad("#1a1f26","#0b0d12","#242a33"); grid(0.14); }
-    else if(map==="SV_NIGHT_WOODS"){ grad("#07131a","#0b0d12","#061018"); grid(0.08); }
-    else if(map==="SV_STORM_DISTRICT"){ grad("#0b1320","#0b0d12","#10162a"); grid(0.10); }
-    else if(map==="SV_RUINS"){ grad("#1b1a18","#0b0d12","#221f1a"); grid(0.12); }
-    else if(map==="SV_ASH_FIELD"){ grad("#1a1212","#0b0d12","#241818"); grid(0.10); }
-    else { grad("#121622","#0b0d12","#0f1320"); grid(0.12); }
-
-    if(S.mode!=="Survival"){
-      ctx.globalAlpha=0.9;
-      ctx.strokeStyle="rgba(74,222,128,.55)";
-      ctx.lineWidth=3;
-      ctx.beginPath(); ctx.arc(S.evacZone.x,S.evacZone.y,S.evacZone.r,0,Math.PI*2); ctx.stroke();
-      ctx.fillStyle="rgba(74,222,128,.10)";
-      ctx.beginPath(); ctx.arc(S.evacZone.x,S.evacZone.y,S.evacZone.r,0,Math.PI*2); ctx.fill();
-      ctx.globalAlpha=1;
-    }
-
-    for(const tr of S.trapsPlaced){
-      ctx.globalAlpha=0.75;
-      ctx.strokeStyle="rgba(58,120,255,.55)";
-      ctx.lineWidth=2;
-      ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.r,0,Math.PI*2); ctx.stroke();
-      ctx.globalAlpha=1;
-    }
-
-    if(S.scanPing>0){
-      S.scanPing--;
-      const t=currentTargetTiger();
-      if(t){
-        const r=40+(140-S.scanPing)*2.2;
-        ctx.globalAlpha=Math.max(0,S.scanPing/140);
-        ctx.strokeStyle="rgba(245,158,11,.35)";
-        ctx.lineWidth=3;
-        ctx.beginPath(); ctx.arc(t.x,t.y,r,0,Math.PI*2); ctx.stroke();
-        ctx.globalAlpha=1;
-      }
-    }
-  }
-
-  function drawEntities(){
-    // carcasses (solid obstacles)
-    for(const c of S.carcasses){
-      ctx.globalAlpha=0.55;
-      ctx.fillStyle="rgba(180,40,60,.60)";
-      ctx.beginPath();
-      ctx.moveTo(c.x-14+8, c.y-8);
-      ctx.arcTo(c.x-14+28, c.y-8, c.x-14+28, c.y-8+16, 8);
-      ctx.arcTo(c.x-14+28, c.y-8+16, c.x-14, c.y-8+16, 8);
-      ctx.arcTo(c.x-14, c.y-8+16, c.x-14, c.y-8, 8);
-      ctx.arcTo(c.x-14, c.y-8, c.x-14+28, c.y-8, 8);
-      ctx.closePath();
-      ctx.fill();
-      ctx.globalAlpha=1;
-    }
-
-    // civilians
-    if(S.mode!=="Survival"){
-      for(const c of S.civilians){
-        if(!c.alive) continue;
-        ctx.fillStyle="rgba(245,247,255,.92)";
-        ctx.beginPath();
-        ctx.moveTo(c.x-10+8,c.y-14);
-        ctx.arcTo(c.x-10+20,c.y-14,c.x-10+20,c.y-14+28,8);
-        ctx.arcTo(c.x-10+20,c.y-14+28,c.x-10,c.y-14+28,8);
-        ctx.arcTo(c.x-10,c.y-14+28,c.x-10,c.y-14,8);
-        ctx.arcTo(c.x-10,c.y-14,c.x-10+20,c.y-14,8);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle="rgba(245,247,255,.95)";
-        ctx.beginPath(); ctx.arc(c.x,c.y-22,9,0,Math.PI*2); ctx.fill();
-
-        if(c.evac){
-          ctx.fillStyle="rgba(74,222,128,.75)";
-          ctx.beginPath(); ctx.arc(c.x,c.y-34,5,0,Math.PI*2); ctx.fill();
-        }
-
-        const pct=c.hp/c.hpMax;
-        ctx.fillStyle="rgba(11,13,18,.85)";
-        ctx.fillRect(c.x-22,c.y-40,44,6);
-        ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
-        ctx.fillRect(c.x-22,c.y-40,44*pct,6);
-      }
-    }
-
-    // tigers
-    for(const t of S.tigers){
-      if(!t.alive) continue;
-      let alpha=1.0;
-      if(t.type==="Stalker"){
-        const near=dist(t.x,t.y,S.me.x,S.me.y) < 180;
-        alpha = near ? 0.85 : 0.45;
-      }
-      ctx.globalAlpha=0.25*alpha; ctx.fillStyle="#000";
-      ctx.beginPath(); ctx.ellipse(t.x,t.y+18,20,8,0,0,Math.PI*2); ctx.fill();
-
-      ctx.globalAlpha=alpha;
-      ctx.fillStyle="rgba(245,158,11,.95)";
-      ctx.beginPath();
-      ctx.moveTo(t.x-16+10,t.y-14);
-      ctx.arcTo(t.x-16+32,t.y-14,t.x-16+32,t.y-14+26,10);
-      ctx.arcTo(t.x-16+32,t.y-14+26,t.x-16,t.y-14+26,10);
-      ctx.arcTo(t.x-16,t.y-14+26,t.x-16,t.y-14,10);
-      ctx.arcTo(t.x-16,t.y-14,t.x-16+32,t.y-14,10);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle="rgba(0,0,0,.35)"; ctx.lineWidth=2;
-      for(let i=-10;i<=10;i+=5){
-        ctx.beginPath(); ctx.moveTo(t.x+i,t.y-12); ctx.lineTo(t.x+i+4,t.y+10); ctx.stroke();
-      }
-
-      ctx.fillStyle="rgba(245,158,11,.98)";
-      ctx.beginPath(); ctx.arc(t.x+18,t.y-8,10,0,Math.PI*2); ctx.fill();
-
-      if(S.lockedTigerId===t.id){
-        ctx.strokeStyle="rgba(58,120,255,.9)";
-        ctx.lineWidth=3;
-        ctx.beginPath(); ctx.arc(t.x,t.y,26,0,Math.PI*2); ctx.stroke();
-      }
-
-      const pct=t.hp/t.hpMax;
-      ctx.fillStyle="rgba(11,13,18,.85)";
-      ctx.fillRect(t.x-24,t.y-34,48,6);
-      ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
-      ctx.fillRect(t.x-24,t.y-34,48*pct,6);
-
-      ctx.globalAlpha=0.85*alpha;
-      ctx.fillStyle="rgba(245,247,255,.75)";
-      ctx.font="900 12px system-ui";
-      ctx.fillText(t.type + (t.tranqTagged?" (tranq)":""),
-        t.x-28, t.y-44);
-      ctx.globalAlpha=1;
-    }
-
-    // player
-    ctx.save();
-    ctx.translate(S.me.x,S.me.y);
-    ctx.globalAlpha=0.25; ctx.fillStyle="#000";
-    ctx.beginPath(); ctx.ellipse(0,18,18,8,0,0,Math.PI*2); ctx.fill();
-    ctx.globalAlpha=1;
-
-    ctx.fillStyle="rgba(245,247,255,.92)";
-    ctx.beginPath();
-    ctx.moveTo(-10+8,-18);
-    ctx.arcTo(-10+20,-18,-10+20,-18+30,8);
-    ctx.arcTo(-10+20,-18+30,-10,-18+30,8);
-    ctx.arcTo(-10,-18+30,-10,-18,8);
-    ctx.arcTo(-10,-18,-10+20,-18,8);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle="rgba(245,247,255,.95)";
-    ctx.beginPath(); ctx.arc(0,-26,10,0,Math.PI*2); ctx.fill();
-
-    const w=equippedWeapon();
-    ctx.strokeStyle=(w.type==="tranq")?"rgba(58,120,255,.95)":"rgba(245,158,11,.95)";
-    ctx.lineWidth=4;
-    ctx.beginPath(); ctx.moveTo(10,-10); ctx.lineTo(22,-6); ctx.stroke();
-
-    ctx.restore();
   }
 
   // ===================== GAME OVER =====================
@@ -1987,27 +1768,6 @@
     save();
   }
   function closeOver(){ document.getElementById("overOverlay").style.display="none"; }
-
-  // ===================== MISSION COMPLETE =====================
-  function checkMissionComplete(){
-    if(S.mode==="Survival") return;
-
-    const tAlive = S.tigers.some(t=>t.alive);
-    const civAlive = S.civilians.filter(c=>c.alive).length;
-    const civEvac = S.civilians.filter(c=>c.alive && c.evac).length;
-
-    if(!tAlive && (civAlive===0 || civEvac===civAlive)){
-      if(!S.missionEnded){
-        S.missionEnded=true;
-        setPaused(true,"complete");
-        document.getElementById("completeText").innerText =
-          `Mission complete. All tigers cleared. Civilians evacuated. Shop before next mission.`;
-        document.getElementById("completeOverlay").style.display="flex";
-        sfx("win");
-        save();
-      }
-    }
-  }
 
   // ===================== ENGAGE UI =====================
   function updateEngage(){
@@ -2042,8 +1802,8 @@
     document.getElementById("durTxt").innerText = Math.round(weaponDurability(w.id));
 
     document.getElementById("ammoTxt").innerText = `${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[w.ammo]||0})`;
-    document.getElementById("medTxt").innerText = totalMedkits();
-    document.getElementById("repTxt").innerText = totalRepairKits();
+    document.getElementById("medTxt").innerText = Object.values(S.medkits||{}).reduce((a,b)=>a+(b||0),0);
+    document.getElementById("repTxt").innerText = Object.values(S.repairKits||{}).reduce((a,b)=>a+(b||0),0);
     document.getElementById("trapTxt").innerText = S.trapsOwned;
 
     const backupStr = (S.backupActive>0) ? `ACTIVE (${Math.ceil(S.backupActive/60)}s)` : (S.backupCooldown>0 ? `Cooldown (${Math.ceil(S.backupCooldown/60)}s)` : "Ready");
@@ -2067,23 +1827,311 @@
     document.getElementById("civTxt").innerText = civAlive;
     document.getElementById("evacTxt").innerText = (S.mode==="Survival") ? "—" : `${S.evacDone}/${S.civilians.length||0}`;
 
-    const tLeft = S.tigers.filter(t=>t.alive).length;
-    document.getElementById("tleftTxt").innerText = tLeft;
-
-    const threat = (S.mode==="Survival") ? "Pressure" : (S._underAttack ? `${S._underAttack} attacks` : "Low");
-    document.getElementById("threatTxt").innerText = threat;
+    document.getElementById("tleftTxt").innerText = S.tigers.filter(t=>t.alive).length;
+    document.getElementById("threatTxt").innerText = (S.mode==="Survival") ? "Pressure" : (S._underAttack ? `${S._underAttack} attacks` : "Low");
 
     document.getElementById("objTxt").innerText =
       (S.mode==="Survival")
-        ? `Objective: Survive • Backup pauses pressure • Carcasses block movement`
-        : `Objective: Evacuate civilians + clear ALL tigers • Carcasses block movement`;
+        ? `Objective: Survive • Carcasses block movement`
+        : `Objective: Evacuate living civilians + clear ALL tigers • Civilians follow only when close`;
   }
 
-  // ===================== BACKUP/REGEN =====================
+  // ===================== DRAW MAP (real image) =====================
+  function drawMapScene(){
+    const w=cv.width,h=cv.height;
+    const mapKey=currentMap().key;
+
+    // Real image background if available:
+    const bg = getBgImage(mapKey);
+    if(bg){
+      ctx.drawImage(bg, 0, 0, w, h);
+    } else {
+      // fallback
+      ctx.fillStyle="#0b0d12";
+      ctx.fillRect(0,0,w,h);
+    }
+
+    // evac ring
+    if(S.mode!=="Survival"){
+      ctx.globalAlpha=0.9;
+      ctx.strokeStyle="rgba(74,222,128,.55)";
+      ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(S.evacZone.x,S.evacZone.y,S.evacZone.r,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle="rgba(74,222,128,.10)";
+      ctx.beginPath(); ctx.arc(S.evacZone.x,S.evacZone.y,S.evacZone.r,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+    }
+
+    // traps
+    for(const tr of S.trapsPlaced){
+      ctx.globalAlpha=0.75;
+      ctx.strokeStyle="rgba(58,120,255,.55)";
+      ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.r,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+
+    // scan ping
+    if(S.scanPing>0){
+      S.scanPing--;
+      const t=currentTargetTiger();
+      if(t){
+        const r=40+(140-S.scanPing)*2.2;
+        ctx.globalAlpha=Math.max(0,S.scanPing/140);
+        ctx.strokeStyle="rgba(245,158,11,.35)";
+        ctx.lineWidth=3;
+        ctx.beginPath(); ctx.arc(t.x,t.y,r,0,Math.PI*2); ctx.stroke();
+        ctx.globalAlpha=1;
+      }
+    }
+  }
+
+  // ===================== SPRITES (soldier / tigers / civilians) =====================
+  function drawCarcass(x,y){
+    ctx.globalAlpha=0.55;
+    ctx.fillStyle="rgba(180,40,60,.65)";
+    roundedRectFill(x-14,y-8,28,16,8);
+    ctx.globalAlpha=1;
+  }
+  function roundedRectFill(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+    ctx.fill();
+  }
+  function drawCivilian(c){
+    // body
+    ctx.fillStyle=c.shirt;
+    roundedRectFill(c.x-9, c.y-12, 18, 24, 6);
+    // legs
+    ctx.fillStyle=c.pants;
+    roundedRectFill(c.x-9, c.y+10, 18, 10, 4);
+    // head
+    ctx.fillStyle=c.skin;
+    ctx.beginPath(); ctx.arc(c.x, c.y-18, 8.5, 0, Math.PI*2); ctx.fill();
+
+    // hair styles
+    ctx.fillStyle="rgba(20,20,22,.75)";
+    if(c.hair===0){
+      ctx.beginPath(); ctx.arc(c.x, c.y-21, 7, Math.PI, Math.PI*2); ctx.fill();
+    } else if(c.hair===1){
+      roundedRectFill(c.x-7, c.y-27, 14, 6, 3);
+    } else if(c.hair===2){
+      ctx.beginPath(); ctx.ellipse(c.x, c.y-24, 7, 5, 0, 0, Math.PI*2); ctx.fill();
+    } // hair===3 -> bald
+
+    // evac marker
+    if(c.evac){
+      ctx.fillStyle="rgba(74,222,128,.85)";
+      ctx.beginPath(); ctx.arc(c.x, c.y-32, 4.5, 0, Math.PI*2); ctx.fill();
+    }
+
+    // health bar
+    const pct=c.hp/c.hpMax;
+    ctx.fillStyle="rgba(11,13,18,.80)";
+    ctx.fillRect(c.x-22,c.y-34,44,6);
+    ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
+    ctx.fillRect(c.x-22,c.y-34,44*pct,6);
+  }
+
+  function drawSoldier(){
+    const bob = Math.sin(S.me.step)*1.5;
+    const x=S.me.x, y=S.me.y + bob;
+
+    // shadow
+    ctx.globalAlpha=0.25; ctx.fillStyle="#000";
+    ctx.beginPath(); ctx.ellipse(x,y+18,18,8,0,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+
+    // torso vest
+    ctx.fillStyle="rgba(40,50,60,.95)";
+    roundedRectFill(x-10, y-16, 20, 26, 7);
+
+    // vest plate
+    ctx.fillStyle="rgba(20,30,40,.95)";
+    roundedRectFill(x-8, y-12, 16, 18, 6);
+
+    // helmet
+    ctx.fillStyle="rgba(55,65,75,.95)";
+    ctx.beginPath(); ctx.arc(x, y-24, 9.5, Math.PI, Math.PI*2); ctx.fill();
+    ctx.fillStyle="rgba(35,45,55,.95)";
+    roundedRectFill(x-10, y-24, 20, 6, 3);
+
+    // head/face mask
+    ctx.fillStyle="rgba(220,220,225,.90)";
+    ctx.beginPath(); ctx.arc(x, y-20, 6.5, 0, Math.PI*2); ctx.fill();
+
+    // weapon direction
+    const ang = S.me.face || 0;
+    const wx = x + Math.cos(ang)*12;
+    const wy = y + Math.sin(ang)*12;
+
+    ctx.strokeStyle="rgba(30,30,34,.95)";
+    ctx.lineWidth=4;
+    ctx.beginPath(); ctx.moveTo(x+Math.cos(ang)*6, y+Math.sin(ang)*2); ctx.lineTo(wx, wy); ctx.stroke();
+
+    // muzzle tip
+    ctx.fillStyle="rgba(245,158,11,.90)";
+    ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, Math.PI*2); ctx.fill();
+  }
+
+  function tigerColors(type){
+    if(type==="Scout") return { body:"#f7b24a", stripe:"#1c1917", belly:"#ffd9a3" };
+    if(type==="Standard") return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
+    if(type==="Stalker") return { body:"#c77c2f", stripe:"#0b0d12", belly:"#d9b18a" };
+    if(type==="Berserker") return { body:"#f08a24", stripe:"#111827", belly:"#ffd1a1" };
+    return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" }; // Alpha
+  }
+
+  function drawTiger(t){
+    let alpha=1.0;
+    if(t.type==="Stalker"){
+      const near=dist(t.x,t.y,S.me.x,S.me.y) < 180;
+      alpha = near ? 0.85 : 0.45;
+    }
+
+    const c=tigerColors(t.type);
+    const bob = Math.sin(t.step||0)*1.2;
+    const x=t.x, y=t.y + bob;
+
+    // size by type
+    let s=1.0;
+    if(t.type==="Scout") s=0.85;
+    if(t.type==="Alpha") s=1.22;
+    if(t.type==="Berserker") s=1.10;
+
+    ctx.globalAlpha=0.25*alpha; ctx.fillStyle="#000";
+    ctx.beginPath(); ctx.ellipse(x,y+18*s,22*s,8*s,0,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=alpha;
+
+    // body (real tiger-ish)
+    ctx.fillStyle=c.body;
+    ctx.beginPath();
+    ctx.ellipse(x, y+2*s, 22*s, 13*s, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // belly
+    ctx.fillStyle=c.belly;
+    ctx.beginPath(); ctx.ellipse(x+3*s, y+6*s, 14*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
+
+    // head
+    ctx.fillStyle=c.body;
+    ctx.beginPath(); ctx.ellipse(x+20*s, y-6*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
+
+    // ears
+    ctx.fillStyle=c.body;
+    ctx.beginPath(); ctx.ellipse(x+26*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x+16*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+
+    // tail (sway)
+    ctx.strokeStyle=c.body;
+    ctx.lineWidth=5*s;
+    ctx.beginPath();
+    ctx.moveTo(x-20*s, y+2*s);
+    ctx.quadraticCurveTo(x-34*s, y-2*s + Math.sin((t.step||0)+1.4)*6*s, x-40*s, y-10*s);
+    ctx.stroke();
+
+    // stripes
+    ctx.strokeStyle=c.stripe;
+    ctx.lineWidth=3*s;
+    for(let i=-2;i<=2;i++){
+      ctx.beginPath();
+      ctx.moveTo(x-8*s + i*6*s, y-6*s);
+      ctx.lineTo(x-2*s + i*6*s, y+10*s);
+      ctx.stroke();
+    }
+    // head stripes
+    ctx.lineWidth=2.5*s;
+    for(let i=-1;i<=1;i++){
+      ctx.beginPath();
+      ctx.moveTo(x+16*s+i*4*s, y-12*s);
+      ctx.lineTo(x+20*s+i*4*s, y-2*s);
+      ctx.stroke();
+    }
+
+    // eyes
+    ctx.fillStyle="rgba(10,10,12,.9)";
+    ctx.beginPath(); ctx.arc(x+24*s, y-7*s, 1.6*s, 0, Math.PI*2); ctx.fill();
+
+    // berserker rage glow at low hp
+    if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35){
+      ctx.globalAlpha=0.35;
+      ctx.strokeStyle="rgba(255,60,80,.9)";
+      ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(x, y, 28*s, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=alpha;
+    }
+
+    // alpha aura
+    if(t.type==="Alpha"){
+      ctx.globalAlpha=0.25;
+      ctx.strokeStyle="rgba(58,120,255,.9)";
+      ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(x, y, 34*s, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=alpha;
+    }
+
+    // lock ring
+    if(S.lockedTigerId===t.id){
+      ctx.strokeStyle="rgba(58,120,255,.95)";
+      ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(x,y,30*s,0,Math.PI*2); ctx.stroke();
+    }
+
+    // health bar
+    const pct=t.hp/t.hpMax;
+    ctx.fillStyle="rgba(11,13,18,.85)";
+    ctx.fillRect(x-26*s,y-34*s,52*s,6);
+    ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
+    ctx.fillRect(x-26*s,y-34*s,52*s*pct,6);
+
+    // tranq tag label
+    ctx.globalAlpha=0.85*alpha;
+    ctx.fillStyle="rgba(245,247,255,.80)";
+    ctx.font="900 12px system-ui";
+    ctx.fillText(t.type + (t.tranqTagged?" (tranq)":""),
+      x-28*s, y-44*s);
+    ctx.globalAlpha=1;
+  }
+
+  function drawEntities(){
+    // carcasses
+    for(const c of S.carcasses) drawCarcass(c.x,c.y);
+
+    // civilians
+    if(S.mode!=="Survival"){
+      for(const c of S.civilians){ if(c.alive) drawCivilian(c); }
+    }
+
+    // tigers
+    for(const t of S.tigers){ if(t.alive) drawTiger(t); }
+
+    // soldier
+    drawSoldier();
+  }
+
+  // ===================== WORLD LOOP =====================
+  function trapTick(){
+    for(const tr of S.trapsPlaced) tr.ttl -= 1;
+    S.trapsPlaced = S.trapsPlaced.filter(t=>t.ttl>0);
+    for(const t of S.tigers){
+      if(!t.alive) continue;
+      t._trapSlow = 1.0;
+      for(const tr of S.trapsPlaced){
+        if(dist(t.x,t.y,tr.x,tr.y) < tr.r){ t._trapSlow = tr.slow; break; }
+      }
+    }
+  }
+
   function backupTick(){
     if(S.backupActive>0) S.backupActive--;
     if(S.backupCooldown>0) S.backupCooldown--;
   }
+
   function regen(){
     const now=Date.now();
     if(!S._last) S._last=now;
@@ -2095,8 +2143,14 @@
     }
   }
 
+  // ===================== TIGER ATTACK TARGETING / MISC =====================
+  function updateEngage(){
+    document.getElementById("engageBtn").disabled = !canEngage() || S.paused || S.missionEnded || S.gameOver;
+  }
+
   // ===================== RESET =====================
   function resetGame(){
+    localStorage.removeItem("ts_v436");
     localStorage.removeItem("ts_v435");
     S = structuredClone(DEFAULT);
     save();
@@ -2104,7 +2158,7 @@
     openMode();
   }
 
-  // ===================== MAIN LOOP =====================
+  // ===================== GAME LOOP =====================
   function draw(){
     renderHUD();
     updateEngage();
@@ -2121,14 +2175,14 @@
     if(!S.inBattle){
       roamTigers();
       movePlayer();
-      escortCivilians();
+      followCiviliansTick();   // ✅ follow-only (no sprint)
+      evacCheck();
       tickCiviliansAndThreats();
       survivalPressureTick();
       checkMissionComplete();
     }
 
     drawEntities();
-
     save();
     requestAnimationFrame(draw);
   }
@@ -2144,6 +2198,9 @@
 
     if(!S.tigers || !S.tigers.length) spawnTigers();
     if(!S.civilians) spawnCivilians();
+
+    // preload current map
+    getBgImage(currentMap().key);
 
     requestAnimationFrame(draw);
   }
