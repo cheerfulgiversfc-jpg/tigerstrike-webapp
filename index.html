@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>Tiger Strike 🐅 — V4.3.6 (Calm Maps + Trap Hold)</title>
+  <title>Tiger Strike 🐅 — V4.3.7 (Respawn Lives + Game Over Choices)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <style>
@@ -81,8 +81,11 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.6</span> <span class="tag">Calm Maps</span> <span class="tag">Trap Hold</span></div>
-      <div class="sub">No flashing maps • Traps HOLD tigers 3–5s • Civilians follow only when close (no sprint) • Mission Complete returns after Shop/Inventory</div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.7</span> <span class="tag">Respawn Lives</span> <span class="tag">2-Choice Game Over</span></div>
+      <div class="sub">
+        If you die and still have lives: you RESPAWN and keep playing. Only at 0 lives: popup (Restart Mission / Restart Mission 1).<br>
+        Civilians: 1s grace after deploy + slower damage unless Alpha/Boss Alpha. Calm maps, no flashing. Traps: one-time hold 3–5s.
+      </div>
     </div>
     <div class="row">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
@@ -123,7 +126,7 @@
   <div class="screenCard">
     <canvas id="cv" width="960" height="540"></canvas>
     <div class="actionStrip">
-      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Place trap to HOLD tiger 3–5 seconds.</div>
+      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Traps hold 3–5s. Civilians have 1s grace after deploy.</div>
       <div class="row">
         <button onclick="deploy()">📍 Deploy</button>
         <button onclick="scan()">🛰️ Scan</button>
@@ -242,16 +245,16 @@
   </div>
 </div>
 
-<!-- Game Over -->
+<!-- Game Over (0 lives only) -->
 <div class="overlay" id="overOverlay">
   <div class="modal">
-    <div class="modalTop"><div class="modalTitle">🚫 Mission Failed</div><button class="ghost" onclick="closeOver()">Close</button></div>
+    <div class="modalTop"><div class="modalTitle">🚫 Out of Lives</div></div>
     <div class="modalBody">
       <div class="hudLine" id="overText"></div>
       <div class="divider"></div>
       <div class="row">
-        <button class="good" onclick="resetGame()">Restart</button>
-        <button class="ghost" onclick="closeOver()">Back</button>
+        <button class="good" onclick="restartCurrentMission()">Restart This Mission</button>
+        <button class="ghost" onclick="resetGame()">Restart From Mission 1</button>
       </div>
     </div>
   </div>
@@ -366,64 +369,51 @@
 
   // ===================== STATE =====================
   const DEFAULT = {
-    v: 4361,
-    paused: false,
-    pauseReason: null,
-    mode: "Story",
-    arcadeLevel: 1,
-    survivalWave: 1,
-    storyLevel: 1,
-    mapIndex: 0,
+    v: 4371,
+    paused:false, pauseReason:null,
+    mode:"Story", arcadeLevel:1, survivalWave:1, storyLevel:1, mapIndex:0,
+    soundOn:true, audioUnlocked:false,
 
-    soundOn: true,
-    audioUnlocked: false,
+    lives:3, funds:1000, score:0, trust:80, aggro:10, stamina:100,
+    hp:100, armor:20, armorCap:100,
 
-    lives: 3,
-    funds: 1000,
-    score: 0,
-    trust: 80,
-    aggro: 10,
-    stamina: 100,
+    ownedWeapons:["W_TRQ_PISTOL_MK1","W_9MM_JUNK","W_TRQ_RIFLE","W_TRQ_LAUNCHER"],
+    equippedWeaponId:"W_TRQ_PISTOL_MK1",
+    ammoReserve:{ "TRANQ_DARTS":20, "9MM_STD":40 },
+    mag:{ loaded:6, cap:6 },
+    durability:{},
 
-    hp: 100,
-    armor: 20,
-    armorCap: 100,
+    medkits:{ "M_SMALL":1 },
+    repairKits:{ "T_REPAIR":1 },
+    trapsOwned:2,
+    trapsPlaced:[],
 
-    ownedWeapons: ["W_TRQ_PISTOL_MK1","W_9MM_JUNK","W_TRQ_RIFLE","W_TRQ_LAUNCHER"],
-    equippedWeaponId: "W_TRQ_PISTOL_MK1",
-    ammoReserve: { "TRANQ_DARTS": 20, "9MM_STD": 40 },
-    mag: { loaded: 6, cap: 6 },
-    durability: {},
+    backupCooldown:0, backupActive:0,
 
-    medkits: { "M_SMALL": 1 },
-    repairKits: { "T_REPAIR": 1 },
-    trapsOwned: 2,
-    trapsPlaced: [],
+    me:{ x:160, y:420, face:0, step:0 },
+    target:null,
 
-    backupCooldown: 0,
-    backupActive: 0,
+    tigers:[],
+    carcasses:[],
 
-    me: { x: 160, y: 420, face:0, step:0 },
-    target: null,
+    scanPing:0,
+    lockedTigerId:null,
 
-    tigers: [],
-    carcasses: [],
+    civilians:[],
+    evacZone:{ x:880, y:460, r:70 },
+    evacDone:0,
 
-    scanPing: 0,
-    lockedTigerId: null,
+    civGraceUntil:0,
+    dangerCivId:null,
 
-    civilians: [],
-    evacZone: { x: 880, y: 460, r: 70 },
-    evacDone: 0,
+    inBattle:false,
+    activeTigerId:null,
 
-    inBattle: false,
-    activeTigerId: null,
+    survivalStart:null,
+    surviveSeconds:0,
 
-    survivalStart: null,
-    surviveSeconds: 0,
-
-    missionEnded: false,
-    gameOver: false,
+    missionEnded:false,
+    gameOver:false,
   };
 
   let S = load();
@@ -434,7 +424,7 @@
 
   function load(){
     try{
-      const saved = JSON.parse(localStorage.getItem("ts_v4361") || localStorage.getItem("ts_v436") || "null");
+      const saved = JSON.parse(localStorage.getItem("ts_v4371") || localStorage.getItem("ts_v4370") || "null");
       if(!saved) return structuredClone(DEFAULT);
       const m = { ...DEFAULT, ...saved };
       m.me = { ...DEFAULT.me, ...(saved.me||{}) };
@@ -445,12 +435,12 @@
       m.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
       m.trapsPlaced = Array.isArray(saved.trapsPlaced) ? saved.trapsPlaced : [];
       m.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
-      m.v = 4361;
       if(m.lives==null) m.lives=3;
+      m.v = 4371;
       return m;
     }catch(e){ return structuredClone(DEFAULT); }
   }
-  function save(){ localStorage.setItem("ts_v4361", JSON.stringify(S)); }
+  function save(){ localStorage.setItem("ts_v4371", JSON.stringify(S)); }
 
   // ===================== AUDIO =====================
   let AC=null;
@@ -486,15 +476,13 @@
   function toggleSound(){
     S.soundOn=!S.soundOn;
     document.getElementById("soundLbl").innerText = S.soundOn?"On":"Off";
-    save();
-    if(S.soundOn) sfx("ui");
+    save(); if(S.soundOn) sfx("ui");
   }
 
   // ===================== HELPERS =====================
   function toast(msg){
     const t=document.getElementById("toast");
-    t.innerText=msg;
-    t.style.display="block";
+    t.innerText=msg; t.style.display="block";
     clearTimeout(window.__toastTimer);
     window.__toastTimer=setTimeout(()=>t.style.display="none",2200);
   }
@@ -516,12 +504,10 @@
   function nextMap(){
     const list = MODE_MAPS[S.mode] || MODE_MAPS.Story;
     S.mapIndex = (S.mapIndex+1) % list.length;
-    S.scanPing=0;
-    sfx("ui");
-    save();
+    S.scanPing=0; sfx("ui"); save();
   }
 
-  // ===================== CARCASS COLLISION =====================
+  // ===================== COLLISION (carcasses) =====================
   function carcassRects(){ return (S.carcasses || []).map(c => ({ x: c.x - 14, y: c.y - 8, w: 28, h: 16 })); }
   function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr){
     const closestX = Math.max(rx, Math.min(cx, rx + rw));
@@ -544,7 +530,7 @@
     return true;
   }
 
-  // ===================== ABOUT =====================
+  // ===================== UI: About / Pause / Mode =====================
   function openAbout(){
     setPaused(true,"about");
     document.getElementById("aboutOverlay").style.display="flex";
@@ -555,17 +541,14 @@
       <div class="item"><div><div class="itemName">Berserker</div><div class="itemDesc">Rage at low HP, hits harder. Capture requires Tranq Rifle hit first.</div></div></div>
       <div class="item"><div><div class="itemName">Alpha / Boss Alpha</div><div class="itemDesc">Pack aura + reinforcements. Boss has phases. Capture requires Tranq Launcher hit first.</div></div></div>
       <div class="divider"></div>
-      <div class="hudLine"><b>Traps:</b> Hold tigers inside the trap circle for 3–5 seconds when they enter it.</div>
-      <div class="hudLine"><b>Carcasses:</b> persist across missions and block movement for everyone.</div>
+      <div class="hudLine"><b>Traps:</b> one-time hold 3–5s (no damage).</div>
+      <div class="hudLine"><b>Civilians:</b> 1s grace after deploy. Damage slower unless Alpha/Boss Alpha.</div>
+      <div class="hudLine"><b>Lives:</b> You respawn until lives hit 0.</div>
     `;
     sfx("ui");
   }
-  function closeAbout(){
-    document.getElementById("aboutOverlay").style.display="none";
-    setPaused(false,null);
-  }
+  function closeAbout(){ document.getElementById("aboutOverlay").style.display="none"; setPaused(false,null); }
 
-  // ===================== PAUSE =====================
   function setPaused(on, reason=null){
     S.paused=on; S.pauseReason=reason;
     document.getElementById("pauseLbl").innerText = on?"Resume":"Pause";
@@ -574,29 +557,23 @@
   function togglePause(){
     if(S.gameOver) return;
     if(S.inBattle) return toast("Finish battle first.");
-    setPaused(!S.paused,"manual");
-    sfx("ui");
+    setPaused(!S.paused,"manual"); sfx("ui");
   }
 
-  // ===================== MODE =====================
   function openMode(){
     setPaused(true,"mode");
     document.getElementById("modeOverlay").style.display="flex";
-    updateModeDesc(); markModeTabs();
-    sfx("ui");
+    updateModeDesc(); markModeTabs(); sfx("ui");
   }
   function closeMode(){ document.getElementById("modeOverlay").style.display="none"; setPaused(false,null); }
   function setMode(m){
-    S.mode=m;
-    S.lives=3;
+    S.mode=m; S.lives=3;
     if(m==="Arcade") S.arcadeLevel=1;
     if(m==="Survival"){ S.survivalWave=1; S.survivalStart=Date.now(); S.surviveSeconds=0; }
     if(m==="Story") S.storyLevel=1;
     S.mapIndex=0;
     deploy();
-    updateModeDesc(); markModeTabs();
-    sfx("ui");
-    save();
+    updateModeDesc(); markModeTabs(); sfx("ui"); save();
   }
   function markModeTabs(){
     ["mStory","mArcade","mSurvival"].forEach(id=>document.getElementById(id).classList.remove("active"));
@@ -611,7 +588,7 @@
     else el.innerText="Survival: no civilians. Tigers pressure-damage you over time. Survive as long as possible.";
   }
 
-  // ===================== SHOP / INVENTORY (return to Mission Complete) =====================
+  // ===================== Shop / Inventory =====================
   let currentShopTab="weapons";
 
   function openShop(){
@@ -619,16 +596,14 @@
     if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
     setPaused(true,"shop");
     document.getElementById("shopOverlay").style.display="flex";
-    shopTab(currentShopTab);
-    sfx("ui");
+    shopTab(currentShopTab); sfx("ui");
   }
   function closeShop(){
     document.getElementById("shopOverlay").style.display="none";
     if(lastOverlay==="complete" && S.missionEnded){
       setPaused(true,"complete");
       document.getElementById("completeOverlay").style.display="flex";
-      lastOverlay=null;
-      return;
+      lastOverlay=null; return;
     }
     setPaused(false,null);
   }
@@ -638,16 +613,14 @@
     if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
     setPaused(true,"inv");
     document.getElementById("invOverlay").style.display="flex";
-    renderInventory();
-    sfx("ui");
+    renderInventory(); sfx("ui");
   }
   function closeInventory(){
     document.getElementById("invOverlay").style.display="none";
     if(lastOverlay==="complete" && S.missionEnded){
       setPaused(true,"complete");
       document.getElementById("completeOverlay").style.display="flex";
-      lastOverlay=null;
-      return;
+      lastOverlay=null; return;
     }
     setPaused(false,null);
   }
@@ -773,13 +746,12 @@
       return;
     }
 
-    // traps
-    note.innerText="Traps HOLD tigers in the circle for 3–5 seconds when they enter.";
+    note.innerText="Traps are one-time: hold a tiger 3–5s then disappear after hold ends.";
     list.innerHTML = `
       <div class="item">
         <div>
           <div class="itemName">Trap <span class="tag">Owned: ${S.trapsOwned}</span></div>
-          <div class="itemDesc">Hold tigers 3–5 seconds inside the trap circle.</div>
+          <div class="itemDesc">Hold tigers 3–5 seconds inside trap circle.</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${TRAP_ITEM.price.toLocaleString()}</div>
@@ -844,6 +816,15 @@
   function totalMedkits(){ return Object.values(S.medkits||{}).reduce((a,b)=>a+(b||0),0); }
   function totalRepairKits(){ return Object.values(S.repairKits||{}).reduce((a,b)=>a+(b||0),0); }
 
+  function setHealTarget(t){ S.healTarget=t; save(); if(document.getElementById("invOverlay").style.display==="flex") renderInventory(); renderHUD(); }
+  function pickMostInjuredCivilian(){
+    const civs = S.civilians.filter(c=>c.alive && !c.evac);
+    if(!civs.length) return null;
+    let best=civs[0], gap=(best.hpMax-best.hp);
+    for(const c of civs){ const g=c.hpMax-c.hp; if(g>gap){gap=g; best=c;} }
+    return gap<=0 ? null : best;
+  }
+
   function renderInventory(){
     const w=equippedWeapon();
     const ammoId=w.ammo;
@@ -907,7 +888,7 @@
       <div class="item">
         <div>
           <div class="itemName">🪤 Traps <span class="tag">Owned: ${S.trapsOwned}</span></div>
-          <div class="itemDesc">Hold tigers 3–5 seconds inside trap circle.</div>
+          <div class="itemDesc">One-time hold 3–5s.</div>
         </div>
         <div style="text-align:right">
           <button ${S.trapsOwned<=0?'disabled':''} onclick="placeTrap()">Place</button>
@@ -923,15 +904,6 @@
         </div>
       </div>
     `;
-  }
-
-  function setHealTarget(t){ S.healTarget=t; save(); if(document.getElementById("invOverlay").style.display==="flex") renderInventory(); renderHUD(); }
-  function pickMostInjuredCivilian(){
-    const civs = S.civilians.filter(c=>c.alive && !c.evac);
-    if(!civs.length) return null;
-    let best=civs[0], gap=(best.hpMax-best.hp);
-    for(const c of civs){ const g=c.hpMax-c.hp; if(g>gap){gap=g; best=c;} }
-    return gap<=0 ? null : best;
   }
 
   function useMedkit(){
@@ -976,94 +948,81 @@
     if(S.funds < 50000) return toast("Need $50,000 for backup.");
     if(S.backupCooldown>0) return toast("Backup cooling down.");
     S.funds -= 50000;
-    S.backupActive = 600;    // 10s
-    S.backupCooldown = 1800; // 30s
+    S.backupActive = 600;
+    S.backupCooldown = 1800;
     toast("🚨 Backup deployed! Tigers frozen. Civilians protected.");
     sfx("ui");
     save();
     renderHUD();
     if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
   }
-
   function backupTick(){
     if(S.backupActive>0) S.backupActive--;
     if(S.backupCooldown>0) S.backupCooldown--;
   }
 
-  // ===================== TRAPS (ONE-TIME USE: HOLD 3–5s) =====================
-function placeTrap(){
-  if(S.trapsOwned<=0) return toast("No traps. Buy in shop.");
-  if(S.paused) return toast("Resume to place trap.");
-  S.trapsOwned -= 1;
+  // ===================== TRAPS (one-time, remove after hold ends) =====================
+  function placeTrap(){
+    if(S.trapsOwned<=0) return toast("No traps. Buy in shop.");
+    if(S.paused) return toast("Resume to place trap.");
+    S.trapsOwned -= 1;
 
-  // one-time trap: removed after it successfully holds a tiger once
-  S.trapsPlaced.push({
-    id: Date.now() + Math.random(),
-    x: S.me.x,
-    y: S.me.y,
-    r: 80,
-    ttl: 1800,
-    used: false
-  });
+    S.trapsPlaced.push({
+      id: Date.now() + Math.random(),
+      x: S.me.x,
+      y: S.me.y,
+      r: 80,
+      ttl: 1800,
+      used: false,
+      removeAt: 0
+    });
 
-  toast("🪤 Trap placed (one-time).");
-  sfx("trap");
-  save(); renderHUD();
-}
-
-function trapTick(){
-  // decay trap lifetime
-  for (const tr of S.trapsPlaced) tr.ttl -= 1;
-
-  const now = Date.now();
-
-  // update held state for tigers
-  for (const t of S.tigers){
-    if(!t.alive) continue;
-
-    if(t.holdUntil && now < t.holdUntil){
-      t.vx = 0; t.vy = 0;
-      t._held = true;
-    } else {
-      t._held = false;
-    }
-  }
-
-  // apply holds: each trap can trigger ONE time
-  for (const tr of S.trapsPlaced){
-    if(tr.used) continue;
-
-    const tgt = S.tigers.find(x =>
-      x.alive &&
-      dist(x.x, x.y, tr.x, tr.y) < tr.r &&
-      !(x.holdUntil && now < x.holdUntil)
-    );
-
-    if(!tgt) continue;
-
-    const holdMs = rand(3000, 5000);
-    tgt.holdUntil = now + holdMs;
-    tgt.vx = 0; tgt.vy = 0;
-    tgt._held = true;
-
-    // mark used, but DON'T remove yet
-    tr.used = true;
-
-    // 🔥 NEW: set when the trap should disappear (after hold ends)
-    tr.removeAt = tgt.holdUntil;
-
-    toast("🪤 Tiger trapped!");
+    toast("🪤 Trap placed (one-time).");
     sfx("trap");
-
-    tgt.aggroBoost = clamp((tgt.aggroBoost||0) + 0.05, 0, 1);
-    break;
+    save(); renderHUD();
   }
 
-  // ✅ remove trap AFTER the hold ends (or if ttl runs out)
-  S.trapsPlaced = S.trapsPlaced.filter(tr =>
-    tr.ttl > 0 && (!tr.used || (tr.removeAt && now < tr.removeAt))
-  );
-}
+  function trapTick(){
+    for (const tr of S.trapsPlaced) tr.ttl -= 1;
+    const now = Date.now();
+
+    for (const t of S.tigers){
+      if(!t.alive) continue;
+      if(t.holdUntil && now < t.holdUntil){
+        t.vx = 0; t.vy = 0;
+        t._held = true;
+      } else {
+        t._held = false;
+      }
+    }
+
+    for (const tr of S.trapsPlaced){
+      if(tr.used) continue;
+      const tgt = S.tigers.find(x =>
+        x.alive &&
+        dist(x.x, x.y, tr.x, tr.y) < tr.r &&
+        !(x.holdUntil && now < x.holdUntil)
+      );
+      if(!tgt) continue;
+
+      const holdMs = rand(3000, 5000);
+      tgt.holdUntil = now + holdMs;
+      tgt.vx = 0; tgt.vy = 0;
+      tgt._held = true;
+
+      tr.used = true;
+      tr.removeAt = tgt.holdUntil;
+
+      toast("🪤 Tiger trapped!");
+      sfx("trap");
+      tgt.aggroBoost = clamp((tgt.aggroBoost||0) + 0.05, 0, 1);
+      break;
+    }
+
+    S.trapsPlaced = S.trapsPlaced.filter(tr =>
+      tr.ttl > 0 && (!tr.used || (tr.removeAt && now < tr.removeAt))
+    );
+  }
 
   // ===================== DURABILITY / RELOAD =====================
   function ammoEffectFor(ammoId){
@@ -1095,7 +1054,6 @@ function trapTick(){
     sfx("reload");
     return true;
   }
-
   function equipWeapon(id){
     if(!S.ownedWeapons.includes(id)) return;
     const w=getWeapon(id); if(!w) return;
@@ -1128,8 +1086,7 @@ function trapTick(){
         x: 220 + (i%3)*180 + rand(-20,20),
         y: 140 + Math.floor(i/3)*160 + rand(-20,20),
         hp:100, hpMax:100,
-        alive:true,
-        evac:false,
+        alive:true, evac:false,
         skin: SKIN_TONES[rand(0,SKIN_TONES.length-1)],
         shirt: SHIRT_COLS[rand(0,SHIRT_COLS.length-1)],
         pants: PANTS_COLS[rand(0,PANTS_COLS.length-1)],
@@ -1206,7 +1163,7 @@ function trapTick(){
     }
   }
 
-  // ===================== DEPLOY / NEXT =====================
+  // ===================== DEPLOY / NEXT / RESTART =====================
   function deploy(){
     S.gameOver=false;
     S.missionEnded=false;
@@ -1214,10 +1171,14 @@ function trapTick(){
     S.activeTigerId=null;
     S.paused=false; S.pauseReason=null;
 
+    S.hp=100; S.armor=20; S.stamina=100;
     S.me={x:160,y:420,face:0,step:0};
     S.target=null;
-    S.hp=100; S.armor=20; S.stamina=100;
     S.lockedTigerId=null;
+
+    // 1s civilian grace
+    S.civGraceUntil = Date.now() + 1000;
+    S.dangerCivId = null;
 
     if(S.mode!=="Survival") S.evacZone = randomEvacZone();
     S.backupActive=0;
@@ -1246,7 +1207,35 @@ function trapTick(){
     toast("Next mission started.");
     save();
   }
+
+  function restartCurrentMission(){
+    // keep same mode + same mission number
+    document.getElementById("battleOverlay").style.display="none";
+    document.getElementById("completeOverlay").style.display="none";
+    document.getElementById("overOverlay").style.display="none";
+    lastOverlay=null;
+
+    S.gameOver=false;
+    deploy();
+    toast("Restarted this mission.");
+    save();
+  }
+
   function closeComplete(){ document.getElementById("completeOverlay").style.display="none"; }
+
+  // ===================== GAME OVER (0 lives only) =====================
+  function gameOverChoice(msg){
+    S.gameOver = true;
+    S.paused = true;
+    document.getElementById("battleOverlay").style.display="none";
+    document.getElementById("completeOverlay").style.display="none";
+    lastOverlay=null;
+
+    document.getElementById("overText").innerText = msg + "\n\nChoose:";
+    document.getElementById("overOverlay").style.display="flex";
+    sfx("hurt");
+    save();
+  }
 
   // ===================== INPUT =====================
   cv.addEventListener("click",(e)=>{
@@ -1294,7 +1283,7 @@ function trapTick(){
     sfx("scan"); save();
   }
 
-  // ===================== MOVEMENT =====================
+  // ===================== MOVEMENT (slower) =====================
   function movePlayer(){
     if(!S.target) return;
     const dx=S.target.x-S.me.x, dy=S.target.y-S.me.y;
@@ -1302,8 +1291,8 @@ function trapTick(){
     if(d<6){ S.target=null; return; }
     if(S.stamina<=0) return;
 
-    let speed=3.2;
-    if(S._sprintTicks && S._sprintTicks>0){ speed=5.0; S._sprintTicks--; }
+    let speed=2.6;
+    if(S._sprintTicks && S._sprintTicks>0){ speed=4.2; S._sprintTicks--; }
 
     S.me.face = Math.atan2(dy, dx);
     S.me.step = (S.me.step + speed*0.35) % (Math.PI*2);
@@ -1314,7 +1303,7 @@ function trapTick(){
     const ok = tryMoveEntity(S.me, nx, ny, 16);
     if(!ok){ S.target=null; }
 
-    S.stamina = clamp(S.stamina - (speed>3.2?0.22:0.12), 0, 100);
+    S.stamina = clamp(S.stamina - (speed>2.6?0.20:0.10), 0, 100);
   }
 
   function sprint(){
@@ -1333,10 +1322,8 @@ function trapTick(){
       if(d < 95){
         const dx = S.me.x - c.x, dy = S.me.y - c.y;
         const dd = Math.hypot(dx,dy) || 1;
-        const sp = 1.35;
-        const nx = c.x + (dx/dd)*sp;
-        const ny = c.y + (dy/dd)*sp;
-        tryMoveEntity(c, nx, ny, 14);
+        const sp = 1.25;
+        tryMoveEntity(c, c.x + (dx/dd)*sp, c.y + (dy/dd)*sp, 14);
       }
     }
   }
@@ -1353,46 +1340,80 @@ function trapTick(){
     }
   }
 
-  // ===================== CIVILIANS UNDER ATTACK =====================
+  // ===================== CIVILIANS UNDER ATTACK (slower damage) =====================
   function tickCiviliansAndThreats(){
     if(S.mode==="Survival") return;
 
+    if(Date.now() < (S.civGraceUntil||0)){
+      S._underAttack=0;
+      S.dangerCivId=null;
+      return;
+    }
+
+    if(S.backupActive>0){
+      S._underAttack=0;
+      S.dangerCivId=null;
+      return;
+    }
+
+    const aliveCivsAll = S.civilians.filter(c=>c.alive && !c.evac);
+    if(!aliveCivsAll.length){
+      S._underAttack=0;
+      S.dangerCivId=null;
+      return;
+    }
+
     let underAttack=0;
-    if(S.backupActive>0){ S._underAttack=0; return; }
+    let dangerPair={ civId:null, dist:1e9 };
 
     for(const t of S.tigers){
       if(!t.alive) continue;
-      const aliveCivs=S.civilians.filter(c=>c.alive && !c.evac);
-      if(!aliveCivs.length) continue;
 
-      let best=aliveCivs[0], bd=1e9;
-      for(const c of aliveCivs){
+      let best=aliveCivsAll[0], bd=1e9;
+      for(const c of aliveCivsAll){
         const d=dist(t.x,t.y,c.x,c.y);
         if(d<bd){bd=d; best=c;}
       }
 
+      if(bd < dangerPair.dist) dangerPair={ civId: best.id, dist: bd };
+
       if(bd < 70){
         underAttack++;
-        const base=0.65;
-        const diff=carcassDifficulty();
-        const multType = (t.type==="Scout")?1.25:(t.type==="Alpha")?1.6:(t.type==="Berserker")?1.8:1.0;
-        const dmg = base * multType * (1 + (diff-1)*0.25);
+
+        const base = 0.25;
+        const diff = carcassDifficulty();
+        const isBossAlpha = (t.type==="Alpha" && t.bossPhases>0);
+        const multType =
+          isBossAlpha ? 2.8 :
+          (t.type==="Alpha") ? 2.2 : 1.0;
+
+        const dmg = base * multType * (1 + (diff-1)*0.20);
         best.hp = clamp(best.hp - dmg, 0, best.hpMax);
       }
     }
+
+    S._underAttack=underAttack;
+    S.dangerCivId = (dangerPair.civId && dangerPair.dist < 160) ? dangerPair.civId : null;
 
     for(const c of S.civilians){
       if(c.alive && c.hp<=0){
         c.alive=false;
         S.lives -= 1;
-        if(S.lives<=0) return gameOver("A civilian died and you ran out of lives.");
+
+        if(S.lives <= 0){
+          S.lives = 0;
+          return gameOverChoice("A civilian died and you ran out of lives.");
+        }
+
+        // ✅ keep playing (no restart). Civilian stays dead.
         toast(`Civilian died. Lives left: ${S.lives}`);
+        save();
+        return;
       }
     }
-    S._underAttack=underAttack;
   }
 
-  // ===================== TIGERS ROAM (trap hold respected) =====================
+  // ===================== TIGERS ROAM =====================
   function alphaBuffs(){
     const alphas = S.tigers.filter(t=>t.alive && t.type==="Alpha");
     for(const t of S.tigers){
@@ -1414,9 +1435,8 @@ function trapTick(){
     for(const t of S.tigers){
       if(!t.alive) continue;
 
-      // If held, do not roam
       if(t.holdUntil && now < t.holdUntil){
-        t.vx = 0; t.vy = 0;
+        t.vx=0; t.vy=0;
         t.step = (t.step + 0.05) % (Math.PI*2);
         continue;
       }
@@ -1442,7 +1462,6 @@ function trapTick(){
       const hunter=(t.aggroBoost||0);
       const chaseChance = clamp((S.aggro/100)*0.25 + hunter*0.55 + 0.10, 0, 0.95);
       const chase = Math.random() < chaseChance;
-
       const speedCap = ((def.spd*0.9) + hunter*1.2 + (t._packBuff?0.35:0));
 
       if(chase){
@@ -1456,10 +1475,7 @@ function trapTick(){
       t.vx = clamp(t.vx, -speedCap, speedCap);
       t.vy = clamp(t.vy, -speedCap, speedCap);
 
-      const nx = t.x + t.vx;
-      const ny = t.y + t.vy;
-
-      const moved = tryMoveEntity(t, nx, ny, 18);
+      const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18);
       if(!moved){ t.vx *= -0.8; t.vy *= -0.8; }
 
       if(t.x<40||t.x>cv.width-40) t.vx*=-1;
@@ -1495,6 +1511,7 @@ function trapTick(){
     }
   }
 
+  // ===================== DAMAGE / RESPAWN (key fix) =====================
   function applyPlayerDamage(dmg, showToast=false){
     if(S.armor>0){
       const absorbed=Math.min(S.armor,dmg);
@@ -1504,13 +1521,36 @@ function trapTick(){
     if(dmg>0){
       S.hp = clamp(S.hp - dmg, 0, 100);
       sfx("hurt");
-      if(showToast) toast(`🐅 Pressure hit: -${dmg} HP`);
+      if(showToast) toast(`🐅 Hit: -${dmg} HP`);
     }
+
     if(S.hp<=0){
       S.lives -= 1;
-      if(S.lives<=0) return gameOver(`You died. Lives exhausted. Time: ${S.surviveSeconds||0}s`);
-      toast(`You went down. Lives left: ${S.lives}`);
-      S.hp=100; S.armor=20;
+
+      // ✅ Lives remain: respawn and keep playing SAME mission
+      if(S.lives > 0){
+        toast(`You went down. Respawned. Lives left: ${S.lives}`);
+
+        // respawn
+        S.hp = 100;
+        S.armor = 20;
+        S.stamina = 100;
+        S.me.x = 160; S.me.y = 420;
+        S.target = null;
+
+        // end battle if you died in battle
+        if(S.inBattle) endBattle("RETREAT");
+
+        // small fairness
+        S.aggro = clamp(S.aggro - 5, 0, 100);
+
+        save();
+        return;
+      }
+
+      // ✅ 0 lives: show 2-choice popup
+      S.lives = 0;
+      return gameOverChoice("You died and ran out of lives.");
     }
   }
 
@@ -1526,7 +1566,7 @@ function trapTick(){
     }
   }
 
-  // ===================== BATTLE (same rules) =====================
+  // ===================== BATTLE =====================
   function startCombat(){
     const t=canEngage();
     if(!t) return toast("Move closer to a tiger to engage.");
@@ -1738,12 +1778,12 @@ function trapTick(){
 
     applyPlayerDamage(dmg,false);
     updateBattleButtons();
-    if(S.lives<=0) endBattle();
   }
 
   // ===================== MISSION COMPLETE =====================
   function checkMissionComplete(){
     if(S.mode==="Survival") return;
+    if(S.gameOver) return;
 
     const tAlive = S.tigers.some(t=>t.alive);
     const civAlive = S.civilians.filter(c=>c.alive).length;
@@ -1762,24 +1802,11 @@ function trapTick(){
     }
   }
 
-  // ===================== GAME OVER =====================
-  function gameOver(msg){
-    if(S.gameOver) return;
-    S.gameOver=true;
-    setPaused(true,"over");
-    document.getElementById("overText").innerText=msg;
-    document.getElementById("overOverlay").style.display="flex";
-    sfx("hurt");
-    save();
-  }
-  function closeOver(){ document.getElementById("overOverlay").style.display="none"; }
-
-  // ===================== ENGAGE UI =====================
+  // ===================== ENGAGE / HUD =====================
   function updateEngage(){
     document.getElementById("engageBtn").disabled = !canEngage() || S.paused || S.missionEnded || S.gameOver;
   }
 
-  // ===================== HUD =====================
   function renderHUD(){
     document.getElementById("soundLbl").innerText = S.soundOn ? "On" : "Off";
     document.getElementById("livesTxt").innerText = S.lives;
@@ -1833,13 +1860,14 @@ function trapTick(){
     document.getElementById("tleftTxt").innerText = S.tigers.filter(t=>t.alive).length;
     document.getElementById("threatTxt").innerText = (S.mode==="Survival") ? "Pressure" : (S._underAttack ? `${S._underAttack} attacks` : "Low");
 
+    const grace = (S.mode!=="Survival" && Date.now() < (S.civGraceUntil||0)) ? " • Civ Grace" : "";
     document.getElementById("objTxt").innerText =
       (S.mode==="Survival")
         ? `Objective: Survive • Traps hold tigers • Carcasses block movement`
-        : `Objective: Evacuate living civilians + clear ALL tigers • Traps hold tigers 3–5s`;
+        : `Objective: Evacuate living civilians + clear ALL tigers${grace}`;
   }
 
-  // ===================== CALM MAPS (NO FLASHING) =====================
+  // ===================== CALM MAPS =====================
   function drawMapScene(){
     const w=cv.width, h=cv.height;
     const key=currentMap().key;
@@ -1894,7 +1922,6 @@ function trapTick(){
         [110,500],[210,490],[320,500],[420,480],[520,500],[650,490],[760,500],[880,490],
       ];
       for(const [x,y] of trees) treeDot(x,y);
-
       ctx.fillStyle="rgba(25,90,105,.65)";
       ctx.beginPath(); ctx.ellipse(260,220,90,34,0,0,Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.ellipse(720,190,85,30,0,0,Math.PI*2); ctx.fill();
@@ -1909,7 +1936,6 @@ function trapTick(){
       dashed(main);
       roadLine([[120,120],[420,110],[760,120]], 62, "rgba(75,78,86,.9)");
       roadLine([[120,440],[420,430],[760,440]], 62, "rgba(75,78,86,.9)");
-
       const houses = [
         [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
         [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
@@ -1917,10 +1943,8 @@ function trapTick(){
         [120,450],[240,450],[360,450],[480,450],[600,450],[720,450],[840,450],
       ];
       for(const [x,y] of houses) houseBlock(x,y);
-
       rounded(120,210,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
       rounded(670,320,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
-
       const trees = [[70,200],[90,240],[110,260],[930,220],[900,250],[880,280],[70,520],[930,520]];
       for(const [x,y] of trees) treeDot(x,y);
     }
@@ -1929,14 +1953,12 @@ function trapTick(){
       ctx.fillStyle="rgba(70,72,80,.95)";
       for(let x=80; x<w; x+=170) ctx.fillRect(x-46,0,92,h);
       for(let y=80; y<h; y+=150) ctx.fillRect(0,y-42,w,84);
-
       const blocks = [
         [150,140,90,80],[320,150,80,70],[520,140,100,80],[720,150,80,75],[880,140,80,70],
         [180,310,100,85],[360,320,90,80],[560,310,110,85],[760,320,90,80],[900,310,80,75],
         [150,470,90,70],[340,470,90,70],[540,470,100,70],[740,470,90,70],[900,470,80,70],
       ];
       for(const [x,y,ww,hh] of blocks) buildingBlock(x,y,ww,hh);
-
       ctx.fillStyle="rgba(240,240,245,.75)";
       for(let i=0;i<8;i++){
         const cx=120+i*100;
@@ -1948,23 +1970,19 @@ function trapTick(){
       rounded(90,90,260,130,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
       rounded(610,110,260,110,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
       rounded(240,340,340,140,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
-
       ctx.strokeStyle="rgba(240,190,55,.55)";
       ctx.lineWidth=6;
       for(let k=0;k<260;k+=18){
         ctx.beginPath(); ctx.moveTo(90+k,90); ctx.lineTo(90+k-45,220); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(610+k,110); ctx.lineTo(610+k-45,220); ctx.stroke();
       }
-
       buildingBlock(170,260,140,90);
       buildingBlock(520,260,160,90);
       buildingBlock(820,300,150,90);
-
       const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
       for(const [x,y] of crates) crateBlock(x,y);
     }
 
-    // Evac ring
     if(S.mode!=="Survival"){
       ctx.globalAlpha=0.9;
       ctx.strokeStyle="rgba(74,222,128,.55)";
@@ -1975,7 +1993,6 @@ function trapTick(){
       ctx.globalAlpha=1;
     }
 
-    // Traps
     for(const tr of S.trapsPlaced){
       ctx.globalAlpha=0.75;
       ctx.strokeStyle="rgba(58,120,255,.55)";
@@ -1984,7 +2001,6 @@ function trapTick(){
       ctx.globalAlpha=1;
     }
 
-    // Scan ping (soft)
     if(S.scanPing>0){
       S.scanPing--;
       const t=currentTargetTiger();
@@ -2010,14 +2026,27 @@ function trapTick(){
     ctx.closePath();
     ctx.fill();
   }
-
   function drawCarcass(x,y){
     ctx.globalAlpha=0.55;
     ctx.fillStyle="rgba(180,40,60,.65)";
     roundedRectFill(x-14,y-8,28,16,8);
     ctx.globalAlpha=1;
   }
-
+  function drawDangerMarker(x,y){
+    ctx.save();
+    ctx.globalAlpha=0.95;
+    ctx.fillStyle="rgba(251,113,133,.95)";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x-10, y+18);
+    ctx.lineTo(x+10, y+18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle="rgba(11,13,18,.9)";
+    ctx.font="900 14px system-ui";
+    ctx.fillText("!", x-3.5, y+15);
+    ctx.restore();
+  }
   function drawCivilian(c){
     ctx.fillStyle=c.shirt;
     roundedRectFill(c.x-9, c.y-12, 18, 24, 6);
@@ -2040,13 +2069,14 @@ function trapTick(){
       ctx.beginPath(); ctx.arc(c.x, c.y-32, 4.5, 0, Math.PI*2); ctx.fill();
     }
 
+    if(S.dangerCivId===c.id) drawDangerMarker(c.x, c.y-58);
+
     const pct=c.hp/c.hpMax;
     ctx.fillStyle="rgba(11,13,18,.80)";
     ctx.fillRect(c.x-22,c.y-34,44,6);
     ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
     ctx.fillRect(c.x-22,c.y-34,44*pct,6);
   }
-
   function drawSoldier(){
     const bob = Math.sin(S.me.step)*1.5;
     const x=S.me.x, y=S.me.y + bob;
@@ -2057,7 +2087,6 @@ function trapTick(){
 
     ctx.fillStyle="rgba(40,50,60,.95)";
     roundedRectFill(x-10, y-16, 20, 26, 7);
-
     ctx.fillStyle="rgba(20,30,40,.95)";
     roundedRectFill(x-8, y-12, 16, 18, 6);
 
@@ -2080,7 +2109,6 @@ function trapTick(){
     ctx.fillStyle="rgba(245,158,11,.90)";
     ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, Math.PI*2); ctx.fill();
   }
-
   function tigerColors(type){
     if(type==="Scout") return { body:"#f7b24a", stripe:"#1c1917", belly:"#ffd9a3" };
     if(type==="Standard") return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
@@ -2088,18 +2116,15 @@ function trapTick(){
     if(type==="Berserker") return { body:"#f08a24", stripe:"#111827", belly:"#ffd1a1" };
     return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
   }
-
   function drawTiger(t){
     let alpha=1.0;
     if(t.type==="Stalker"){
       const near=dist(t.x,t.y,S.me.x,S.me.y) < 180;
       alpha = near ? 0.85 : 0.45;
     }
-
     const c=tigerColors(t.type);
     const bob = Math.sin(t.step||0)*1.2;
     const x=t.x, y=t.y + bob;
-
     let s=1.0;
     if(t.type==="Scout") s=0.85;
     if(t.type==="Alpha") s=1.22;
@@ -2118,15 +2143,13 @@ function trapTick(){
     ctx.beginPath(); ctx.ellipse(x+26*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(x+16*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
 
-    ctx.strokeStyle=c.body;
-    ctx.lineWidth=5*s;
+    ctx.strokeStyle=c.body; ctx.lineWidth=5*s;
     ctx.beginPath();
     ctx.moveTo(x-20*s, y+2*s);
     ctx.quadraticCurveTo(x-34*s, y-2*s + Math.sin((t.step||0)+1.4)*6*s, x-40*s, y-10*s);
     ctx.stroke();
 
-    ctx.strokeStyle=c.stripe;
-    ctx.lineWidth=3*s;
+    ctx.strokeStyle=c.stripe; ctx.lineWidth=3*s;
     for(let i=-2;i<=2;i++){
       ctx.beginPath();
       ctx.moveTo(x-8*s + i*6*s, y-6*s);
@@ -2161,7 +2184,6 @@ function trapTick(){
       x-28*s, y-44*s);
     ctx.globalAlpha=1;
   }
-
   function drawEntities(){
     for(const c of S.carcasses) drawCarcass(c.x,c.y);
     if(S.mode!=="Survival"){
@@ -2171,13 +2193,10 @@ function trapTick(){
     drawSoldier();
   }
 
-  // ===================== MISSION COMPLETE UI =====================
-  function closeComplete(){ document.getElementById("completeOverlay").style.display="none"; }
-
-  // ===================== RESET =====================
+  // ===================== COMPLETE / RESET =====================
   function resetGame(){
-    localStorage.removeItem("ts_v4361");
-    localStorage.removeItem("ts_v436");
+    localStorage.removeItem("ts_v4371");
+    localStorage.removeItem("ts_v4370");
     S = structuredClone(DEFAULT);
     save();
     toast("Reset ✅");
@@ -2195,7 +2214,6 @@ function trapTick(){
     regen();
     backupTick();
     trapTick();
-
     drawMapScene();
 
     if(!S.inBattle){
