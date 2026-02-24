@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>Tiger Strike 🐅 — V4.3.6</title>
+  <title>Tiger Strike 🐅 — V4.3.6 (Procedural Maps)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
   <style>
     :root{
       --bg:#0b0d12; --panel:#121622; --panel2:#0f1320;
@@ -80,8 +81,8 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.6</span></div>
-      <div class="sub">Follow-only civilians (no sprint) • Mission Complete returns after Shop/Inventory • Soldier + Real Tigers + Diverse Civilians • Real Map Images</div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.6</span> <span class="tag">Procedural Maps</span></div>
+      <div class="sub">Follow-only civilians (no sprint) • Mission Complete returns after Shop/Inventory • Soldier + Real Tigers + Diverse Civilians</div>
     </div>
     <div class="row">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
@@ -271,40 +272,7 @@
   const tg = window.Telegram?.WebApp;
   if (tg){ tg.expand(); tg.ready(); try{tg.setHeaderColor?.("#0b0d12"); tg.setBackgroundColor?.("#0b0d12");}catch(e){} }
 
-  // ===================== MAP IMAGES (your picks: v1 for all 4) =====================
-  // Put these in /maps/ next to your HTML:
-  // maps/forest_v1.png, maps/suburbs_v1.png, maps/downtown_v1.png, maps/industrial_v1.png
-  const MAP_BG = {
-    "ST_FOREST":     "maps/forest_v1.png",
-    "ST_SUBURBS":    "maps/suburbs_v1.png",
-    "ST_DOWNTOWN":   "maps/downtown_v1.png",
-    "ST_INDUSTRIAL": "maps/industrial_v1.png",
-    // Use same art for arcade/survival for now (keeps everything else the same)
-    "AR_ARENA_BAY":  "maps/suburbs_v1.png",
-    "AR_NEON_GRID":  "maps/downtown_v1.png",
-    "AR_SAND_YARD":  "maps/forest_v1.png",
-    "AR_STEEL_PIT":  "maps/industrial_v1.png",
-    "SV_NIGHT_WOODS":"maps/forest_v1.png",
-    "SV_STORM_DISTRICT":"maps/downtown_v1.png",
-    "SV_RUINS":"maps/industrial_v1.png",
-    "SV_ASH_FIELD":"maps/suburbs_v1.png",
-  };
-
-  const bgCache = {};
-  function getBgImage(mapKey){
-    const url = MAP_BG[mapKey];
-    if(!url) return null;
-    if(bgCache[url]) return bgCache[url].ready ? bgCache[url].img : null;
-
-    const img = new Image();
-    bgCache[url] = { img, ready:false };
-    img.onload = ()=> bgCache[url].ready = true;
-    img.onerror = ()=> bgCache[url].ready = false;
-    img.src = url;
-    return null;
-  }
-
-  // ===================== DATA (kept same) =====================
+  // ===================== DATA =====================
   const WEAPONS = [
     { id:"W_TRQ_PISTOL_MK1", name:"Tranq Pistol Mk I", grade:"Common", price:50,   type:"tranq", ammo:"TRANQ_DARTS",  mag:6,  dmg:[8,12] },
     { id:"W_9MM_JUNK",      name:"9mm Sidearm (Used)", grade:"Common", price:150, type:"lethal", ammo:"9MM_STD",      mag:12, dmg:[10,14] },
@@ -459,8 +427,6 @@
   };
 
   let S = load();
-
-  // ✅ Mission Complete overlay return fix:
   let lastOverlay = null; // "complete" | null
 
   const cv = document.getElementById("cv");
@@ -486,7 +452,7 @@
   }
   function save(){ localStorage.setItem("ts_v436", JSON.stringify(S)); }
 
-  // ===================== AUDIO (same) =====================
+  // ===================== AUDIO =====================
   let AC=null;
   function ensureAudio(){
     if(!S.soundOn) return;
@@ -586,9 +552,9 @@
     document.getElementById("aboutBody").innerHTML = `
       <div class="item"><div><div class="itemName">Scout</div><div class="itemDesc">Fast, small, civilian hunter. Capture requires Tranq Pistol hit first.</div></div></div>
       <div class="item"><div><div class="itemName">Standard</div><div class="itemDesc">Balanced tiger. Capture requires Tranq Pistol hit first.</div></div></div>
-      <div class="item"><div><div class="itemName">Stalker</div><div class="itemDesc">Stealth fade + ambush. Capture requires Tranq Rifle hit first.</div></div></div>
-      <div class="item"><div><div class="itemName">Berserker</div><div class="itemDesc">Rage at low HP, hits harder. Capture requires Tranq Rifle hit first.</div></div></div>
-      <div class="item"><div><div class="itemName">Alpha / Boss Alpha</div><div class="itemDesc">Pack aura + reinforcements. Boss has phases. Capture requires Tranq Launcher hit first.</div></div></div>
+      <div class="item"><div><div class="itemName">Stalker</div><div class="itemDesc">Stealth fade + ambush feel. Capture requires Tranq Rifle hit first.</div></div></div>
+      <div class="item"><div><div class="itemName">Berserker</div><div class="itemDesc">Rage at low HP (glow), hits harder. Capture requires Tranq Rifle hit first.</div></div></div>
+      <div class="item"><div><div class="itemName">Alpha / Boss Alpha</div><div class="itemDesc">Bigger + aura. Boss has phases. Capture requires Tranq Launcher hit first.</div></div></div>
       <div class="divider"></div>
       <div class="hudLine"><b>Carcasses:</b> persist across missions and block movement for everyone.</div>
     `;
@@ -640,7 +606,7 @@
     else el.innerText="Survival: no civilians. Tigers pressure-damage you over time. Survive as long as possible.";
   }
 
-  // ===================== SHOP/INVENTORY (mission-complete return fix) =====================
+  // ===================== SHOP / INVENTORY (return to mission complete) =====================
   let currentShopTab="weapons";
 
   function openShop(){
@@ -1008,7 +974,7 @@
     toast(`Repaired +${t.add} durability`);
   }
 
-  // ===================== BACKUP/TRAPS (same) =====================
+  // ===================== BACKUP / TRAPS =====================
   function callBackup(){
     if(S.funds < 50000) return toast("Need $50,000 for backup.");
     if(S.backupCooldown>0) return toast("Backup cooling down.");
@@ -1039,15 +1005,12 @@
       if(!t.alive) continue;
       t._trapSlow = 1.0;
       for(const tr of S.trapsPlaced){
-        if(dist(t.x,t.y,tr.x,tr.y) < tr.r){
-          t._trapSlow = tr.slow;
-          break;
-        }
+        if(dist(t.x,t.y,tr.x,tr.y) < tr.r){ t._trapSlow = tr.slow; break; }
       }
     }
   }
 
-  // ===================== AUTO RELOAD / DURABILITY (same) =====================
+  // ===================== AUTO RELOAD / DURABILITY =====================
   function ammoEffectFor(ammoId){
     const a=getAmmo(ammoId);
     const grade=a?.grade||"Standard";
@@ -1093,10 +1056,28 @@
     if(document.getElementById("battleOverlay").style.display==="flex") renderWeaponGrid();
   }
 
-  // ===================== SPAWN CIVILIANS (diverse appearance) =====================
+  // ===================== DIFFICULTY / SPAWNS =====================
+  function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
+  function pickTigerType(){
+    const r=Math.random();
+    if(S.mode==="Survival"){
+      if(r<0.22) return "Scout";
+      if(r<0.48) return "Stalker";
+      if(r<0.72) return "Berserker";
+      if(r<0.90) return "Standard";
+      return "Alpha";
+    }
+    if(r<0.22) return "Scout";
+    if(r<0.55) return "Standard";
+    if(r<0.72) return "Stalker";
+    if(r<0.90) return "Berserker";
+    return "Alpha";
+  }
+
   const SKIN_TONES = ["#f6d7c3","#eac0a6","#d9a07f","#c9865c","#a86a44","#7a4a2c","#4b2f1f"];
   const SHIRT_COLS = ["#4aa3ff","#3ddc97","#f59e0b","#fb7185","#a78bfa","#f97316","#eab308","#22c55e","#60a5fa"];
   const PANTS_COLS = ["#1f2937","#334155","#0f172a","#3f3f46","#1c1917","#111827"];
+
   function spawnCivilians(){
     const n = (S.mode==="Story") ? clamp(3 + (S.storyLevel-1), 3, 7) : (S.mode==="Arcade" ? clamp(2 + (S.arcadeLevel-1), 2, 7) : 0);
     S.civilians = [];
@@ -1117,23 +1098,6 @@
     S.evacDone=0;
   }
 
-  // ===================== TIGERS (same stats, different looks) =====================
-  function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
-  function pickTigerType(){
-    const r=Math.random();
-    if(S.mode==="Survival"){
-      if(r<0.22) return "Scout";
-      if(r<0.48) return "Stalker";
-      if(r<0.72) return "Berserker";
-      if(r<0.90) return "Standard";
-      return "Alpha";
-    }
-    if(r<0.22) return "Scout";
-    if(r<0.55) return "Standard";
-    if(r<0.72) return "Stalker";
-    if(r<0.90) return "Berserker";
-    return "Alpha";
-  }
   function spawnTigers(){
     let count=2;
     if(S.mode==="Story"){
@@ -1187,10 +1151,11 @@
     }
   }
 
-  // ===================== DEPLOY/NEXT =====================
   function randomEvacZone(){
     return { x: rand(120, 900), y: rand(120, 500), r:70 };
   }
+
+  // ===================== DEPLOY / NEXT =====================
   function deploy(){
     S.gameOver=false;
     S.missionEnded=false;
@@ -1204,15 +1169,12 @@
     S.lockedTigerId=null;
 
     if(S.mode!=="Survival") S.evacZone = randomEvacZone();
-
     S.backupActive=0;
 
     spawnTigers();
     spawnCivilians();
 
-    for(const wid of S.ownedWeapons){
-      if(S.durability[wid]==null) S.durability[wid]=100;
-    }
+    for(const wid of S.ownedWeapons){ if(S.durability[wid]==null) S.durability[wid]=100; }
 
     const w=equippedWeapon();
     S.mag.cap = w.mag;
@@ -1223,6 +1185,7 @@
 
     save();
   }
+
   function startNextMission(){
     document.getElementById("completeOverlay").style.display="none";
     if(S.mode==="Story") S.storyLevel += 1;
@@ -1316,12 +1279,10 @@
     for(const c of S.civilians){
       if(!c.alive || c.evac) continue;
       const d = dist(c.x,c.y,S.me.x,S.me.y);
-
-      // follow only when close; slow walk; never sprint to evac
       if(d < 95){
         const dx = S.me.x - c.x, dy = S.me.y - c.y;
         const dd = Math.hypot(dx,dy) || 1;
-        const sp = 1.35;
+        const sp = 1.35; // walk speed only
         const nx = c.x + (dx/dd)*sp;
         const ny = c.y + (dy/dd)*sp;
         tryMoveEntity(c, nx, ny, 14);
@@ -1341,7 +1302,7 @@
     }
   }
 
-  // ===================== CIVILIANS UNDER ATTACK (kept same behavior) =====================
+  // ===================== CIVILIANS UNDER ATTACK =====================
   function tickCiviliansAndThreats(){
     if(S.mode==="Survival") return;
 
@@ -1373,16 +1334,14 @@
       if(c.alive && c.hp<=0){
         c.alive=false;
         S.lives -= 1;
-        if(S.lives<=0){
-          return gameOver("A civilian died and you ran out of lives.");
-        }
+        if(S.lives<=0) return gameOver("A civilian died and you ran out of lives.");
         toast(`Civilian died. Lives left: ${S.lives}`);
       }
     }
     S._underAttack=underAttack;
   }
 
-  // ===================== TIGERS ROAM (same logic) =====================
+  // ===================== TIGERS ROAM =====================
   function alphaBuffs(){
     const alphas = S.tigers.filter(t=>t.alive && t.type==="Alpha");
     for(const t of S.tigers){
@@ -1390,9 +1349,7 @@
       if(!t.alive) continue;
       for(const a of alphas){
         if(a.id===t.id) continue;
-        if(dist(a.x,a.y,t.x,t.y) < 220){
-          t._packBuff = Math.max(t._packBuff, 0.18);
-        }
+        if(dist(a.x,a.y,t.x,t.y) < 220) t._packBuff = Math.max(t._packBuff, 0.18);
       }
     }
   }
@@ -1453,7 +1410,7 @@
     }
   }
 
-  // ===================== SURVIVAL PRESSURE (same) =====================
+  // ===================== SURVIVAL PRESSURE =====================
   function survivalPressureTick(){
     if(S.mode!=="Survival" || S.paused || S.gameOver) return;
     if(S.backupActive>0) return;
@@ -1498,7 +1455,7 @@
     }
   }
 
-  // ===================== BACKUP/REGEN =====================
+  // ===================== BACKUP / REGEN =====================
   function backupTick(){
     if(S.backupActive>0) S.backupActive--;
     if(S.backupCooldown>0) S.backupCooldown--;
@@ -1514,7 +1471,7 @@
     }
   }
 
-  // ===================== BATTLE (kept same rules) =====================
+  // ===================== BATTLE =====================
   function startCombat(){
     const t=canEngage();
     if(!t) return toast("Move closer to a tiger to engage.");
@@ -1647,7 +1604,7 @@
     if(action==="KILL"){
       if(t.hp>15) return toast("Tiger HP too high to finish.");
       t.alive=false;
-      S.carcasses.push({ x:t.x, y:t.y }); // persists & blocks movement
+      S.carcasses.push({ x:t.x, y:t.y });
       const pay=payout("KILL");
       S.funds+=pay.cash; S.score+=pay.score;
       S.trust=clamp(S.trust+pay.trust,0,100);
@@ -1736,7 +1693,7 @@
     if(S.lives<=0) endBattle();
   }
 
-  // ===================== MISSION COMPLETE (same rule) =====================
+  // ===================== MISSION COMPLETE =====================
   function checkMissionComplete(){
     if(S.mode==="Survival") return;
 
@@ -1802,8 +1759,8 @@
     document.getElementById("durTxt").innerText = Math.round(weaponDurability(w.id));
 
     document.getElementById("ammoTxt").innerText = `${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[w.ammo]||0})`;
-    document.getElementById("medTxt").innerText = Object.values(S.medkits||{}).reduce((a,b)=>a+(b||0),0);
-    document.getElementById("repTxt").innerText = Object.values(S.repairKits||{}).reduce((a,b)=>a+(b||0),0);
+    document.getElementById("medTxt").innerText = totalMedkits();
+    document.getElementById("repTxt").innerText = totalRepairKits();
     document.getElementById("trapTxt").innerText = S.trapsOwned;
 
     const backupStr = (S.backupActive>0) ? `ACTIVE (${Math.ceil(S.backupActive/60)}s)` : (S.backupCooldown>0 ? `Cooldown (${Math.ceil(S.backupCooldown/60)}s)` : "Ready");
@@ -1811,8 +1768,7 @@
 
     document.getElementById("mapTxt").innerText = currentMap().name;
 
-    let modeLabel=S.mode;
-    let lvl="—";
+    let modeLabel=S.mode, lvl="—";
     if(S.mode==="Story"){ modeLabel="Story"; lvl=S.storyLevel; }
     if(S.mode==="Arcade"){ modeLabel="Arcade"; lvl=S.arcadeLevel; }
     if(S.mode==="Survival"){ modeLabel="Survival"; lvl=S.survivalWave; }
@@ -1836,22 +1792,192 @@
         : `Objective: Evacuate living civilians + clear ALL tigers • Civilians follow only when close`;
   }
 
-  // ===================== DRAW MAP (real image) =====================
+  // ===================== PROCEDURAL REAL MAPS =====================
   function drawMapScene(){
     const w=cv.width,h=cv.height;
-    const mapKey=currentMap().key;
+    const key=currentMap().key;
 
-    // Real image background if available:
-    const bg = getBgImage(mapKey);
-    if(bg){
-      ctx.drawImage(bg, 0, 0, w, h);
-    } else {
-      // fallback
-      ctx.fillStyle="#0b0d12";
-      ctx.fillRect(0,0,w,h);
+    function fillBG(a,b){
+      const g=ctx.createLinearGradient(0,0,0,h);
+      g.addColorStop(0,a); g.addColorStop(1,b);
+      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+    }
+    function noise(alpha=0.06){
+      ctx.globalAlpha=alpha;
+      for(let i=0;i<1600;i++){
+        const x=(Math.random()*w)|0, y=(Math.random()*h)|0;
+        const v=40+((Math.random()*40)|0);
+        ctx.fillStyle=`rgb(${v},${v},${v})`;
+        ctx.fillRect(x,y,1,1);
+      }
+      ctx.globalAlpha=1;
+    }
+    function rounded(x,y,ww,hh,r,fill,stroke=null){
+      ctx.beginPath();
+      ctx.moveTo(x+r,y);
+      ctx.arcTo(x+ww,y,x+ww,y+hh,r);
+      ctx.arcTo(x+ww,y+hh,x,y+hh,r);
+      ctx.arcTo(x,y+hh,x,y,r);
+      ctx.arcTo(x,y,x+ww,y,r);
+      ctx.closePath();
+      ctx.fillStyle=fill; ctx.fill();
+      if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.stroke(); }
+    }
+    function roadLine(points,width,fill="#4b4f59"){
+      ctx.strokeStyle=fill; ctx.lineWidth=width; ctx.lineCap="round"; ctx.lineJoin="round";
+      ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
+      for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0],points[i][1]);
+      ctx.stroke();
+    }
+    function dashedCenter(points){
+      ctx.strokeStyle="rgba(235,235,240,.9)";
+      ctx.lineWidth=4; ctx.setLineDash([18,14]); ctx.lineCap="round";
+      ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
+      for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0],points[i][1]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    function tree(x,y,s=1){
+      const r=10*s;
+      ctx.fillStyle="#1e6a39";
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="rgba(15,45,25,.8)";
+      ctx.beginPath(); ctx.arc(x-2*s,y-2*s,r*0.65,0,Math.PI*2); ctx.fill();
+    }
+    function house(x,y,s=1){
+      const ww=34*s, hh=24*s;
+      rounded(x-ww/2,y-hh/2,ww,hh,6*s,"#bfb4a0","#4b4a44");
+      ctx.fillStyle="#7a3c2c";
+      ctx.beginPath();
+      ctx.moveTo(x-ww/2,y-hh/2);
+      ctx.lineTo(x,y-hh/2-12*s);
+      ctx.lineTo(x+ww/2,y-hh/2);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle="#7b7b80";
+      ctx.fillRect(x+ww/2,y+4*s,22*s,10*s);
+    }
+    function building(x,y,ww,hh){
+      rounded(x-ww/2,y-hh/2,ww,hh,10,"#4a5568","#111827");
+      ctx.fillStyle="rgba(170,200,235,.75)";
+      for(let i=-2;i<=2;i++){
+        for(let j=-1;j<=1;j++){
+          ctx.fillRect(x+i*10-3,y+j*10-3,6,6);
+        }
+      }
+    }
+    function crate(x,y,s=1){
+      const ww=22*s, hh=18*s;
+      rounded(x-ww/2,y-hh/2,ww,hh,4*s,"#84532a","#3b2412");
+      ctx.strokeStyle="rgba(60,35,15,.6)";
+      ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(x-ww/2,y); ctx.lineTo(x+ww/2,y); ctx.stroke();
+    }
+    function pipes(){
+      for(let i=0;i<8;i++){
+        const x1=Math.random()*w, y1=Math.random()*h;
+        const x2=Math.random()*w, y2=Math.random()*h;
+        ctx.strokeStyle="rgba(125,135,155,.9)";
+        ctx.lineWidth=10; ctx.lineCap="round";
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+        ctx.strokeStyle="rgba(30,30,40,.5)";
+        ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      }
     }
 
-    // evac ring
+    if(key==="ST_FOREST" || key==="AR_SAND_YARD" || key==="SV_NIGHT_WOODS"){
+      fillBG("#0f2b1c","#0b0d12");
+      const p1=[[40,420],[220,380],[420,420],[560,360],[760,380],[920,320]];
+      const p2=[[0,150],[220,220],[460,180],[700,240],[960,190]];
+      roadLine(p1,70,"#5a4328"); roadLine(p2,54,"#4f3a22");
+      for(let i=0;i<35;i++){
+        const x=20+Math.random()*(w-40), y=20+Math.random()*(h-40);
+        const r=4+Math.random()*8;
+        ctx.fillStyle="rgba(120,125,118,.9)";
+        ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle="rgba(55,60,50,.8)"; ctx.lineWidth=2; ctx.stroke();
+      }
+      for(let i=0;i<240;i++){
+        const x=Math.random()*w, y=Math.random()*h;
+        if(Math.random()<0.6) tree(x,y,0.7+Math.random()*0.9);
+      }
+      for(let i=0;i<2;i++){
+        const x=160+Math.random()*640, y=120+Math.random()*320;
+        ctx.fillStyle="rgba(25,90,105,.9)";
+        ctx.beginPath(); ctx.ellipse(x,y,90,35,0,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle="rgba(10,60,80,.8)"; ctx.lineWidth=2; ctx.stroke();
+      }
+      noise(0.05);
+    }
+    else if(key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD"){
+      fillBG("#18402a","#0b0d12");
+      const main=[[0,280],[240,270],[480,300],[720,280],[960,300]];
+      roadLine(main,84,"#474a52");
+      dashedCenter(main);
+      roadLine([[120,120],[420,110],[760,120]],62,"#474a52");
+      roadLine([[120,440],[420,430],[760,440]],62,"#474a52");
+      for(let row of [90,170,360,450]){
+        for(let col=80; col<=920; col+=120){
+          if(Math.random()<0.9) house(col+(-10+Math.random()*20), row+(-10+Math.random()*20), 0.9+Math.random()*0.3);
+        }
+      }
+      for(let i=0;i<110;i++) tree(Math.random()*w, Math.random()*h, 0.6+Math.random()*0.6);
+      for(let i=0;i<2;i++){
+        const x=120+Math.random()*720, y=90+Math.random()*360;
+        rounded(x-80,y-40,160,90,18,"rgba(40,140,70,.9)","rgba(10,60,30,.9)");
+      }
+      noise(0.04);
+    }
+    else if(key==="ST_DOWNTOWN" || key==="AR_NEON_GRID" || key==="SV_STORM_DISTRICT"){
+      fillBG("#1a1f2d","#0b0d12");
+      ctx.fillStyle="#42444e";
+      for(let x=60; x<w; x+=160) ctx.fillRect(x-44,0,88,h);
+      for(let y=60; y<h; y+=140) ctx.fillRect(0,y-40,w,80);
+
+      ctx.fillStyle="rgba(235,235,240,.9)";
+      for(let x=60; x<w; x+=160){
+        for(let y=0; y<h; y+=34) ctx.fillRect(x-2,y+8,4,10);
+      }
+      for(let y=60; y<h; y+=140){
+        for(let x=0; x<w; x+=34) ctx.fillRect(x+8,y-2,10,4);
+      }
+
+      for(let by=40; by<h; by+=140){
+        for(let bx=40; bx<w; bx+=160){
+          if(Math.random()<0.95){
+            building(bx+(40+Math.random()*80), by+(40+Math.random()*60), 50+Math.random()*50, 40+Math.random()*50);
+          }
+        }
+      }
+
+      ctx.fillStyle="rgba(240,240,245,.9)";
+      for(let i=0;i<14;i++){
+        const x=Math.random()*(w-80), y=Math.random()*(h-30);
+        if(Math.random()<0.6){
+          for(let k=0;k<8;k++) ctx.fillRect(x+k*9,y,5,18);
+        }
+      }
+      noise(0.035);
+    }
+    else {
+      fillBG("#2b2b30","#0b0d12");
+      for(let i=0;i<3;i++){
+        const x=80+Math.random()*740, y=80+Math.random()*320;
+        const ww=180+Math.random()*220, hh=70+Math.random()*120;
+        rounded(x,y,ww,hh,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+        for(let k=0;k<ww;k+=16){
+          ctx.strokeStyle="rgba(240,190,55,.85)";
+          ctx.lineWidth=6;
+          ctx.beginPath(); ctx.moveTo(x+k,y); ctx.lineTo(x+k-40,y+hh); ctx.stroke();
+        }
+      }
+      for(let i=0;i<7;i++) building(120+Math.random()*760, 100+Math.random()*340, 90+Math.random()*90, 60+Math.random()*70);
+      pipes();
+      for(let i=0;i<45;i++) crate(20+Math.random()*(w-40), 20+Math.random()*(h-40), 0.8+Math.random()*0.6);
+      noise(0.03);
+    }
+
+    // Evac ring + traps + scan ping (unchanged)
     if(S.mode!=="Survival"){
       ctx.globalAlpha=0.9;
       ctx.strokeStyle="rgba(74,222,128,.55)";
@@ -1862,7 +1988,6 @@
       ctx.globalAlpha=1;
     }
 
-    // traps
     for(const tr of S.trapsPlaced){
       ctx.globalAlpha=0.75;
       ctx.strokeStyle="rgba(58,120,255,.55)";
@@ -1871,7 +1996,6 @@
       ctx.globalAlpha=1;
     }
 
-    // scan ping
     if(S.scanPing>0){
       S.scanPing--;
       const t=currentTargetTiger();
@@ -1886,13 +2010,7 @@
     }
   }
 
-  // ===================== SPRITES (soldier / tigers / civilians) =====================
-  function drawCarcass(x,y){
-    ctx.globalAlpha=0.55;
-    ctx.fillStyle="rgba(180,40,60,.65)";
-    roundedRectFill(x-14,y-8,28,16,8);
-    ctx.globalAlpha=1;
-  }
+  // ===================== SPRITES =====================
   function roundedRectFill(x,y,w,h,r){
     ctx.beginPath();
     ctx.moveTo(x+r,y);
@@ -1903,18 +2021,22 @@
     ctx.closePath();
     ctx.fill();
   }
+
+  function drawCarcass(x,y){
+    ctx.globalAlpha=0.55;
+    ctx.fillStyle="rgba(180,40,60,.65)";
+    roundedRectFill(x-14,y-8,28,16,8);
+    ctx.globalAlpha=1;
+  }
+
   function drawCivilian(c){
-    // body
     ctx.fillStyle=c.shirt;
     roundedRectFill(c.x-9, c.y-12, 18, 24, 6);
-    // legs
     ctx.fillStyle=c.pants;
     roundedRectFill(c.x-9, c.y+10, 18, 10, 4);
-    // head
     ctx.fillStyle=c.skin;
     ctx.beginPath(); ctx.arc(c.x, c.y-18, 8.5, 0, Math.PI*2); ctx.fill();
 
-    // hair styles
     ctx.fillStyle="rgba(20,20,22,.75)";
     if(c.hair===0){
       ctx.beginPath(); ctx.arc(c.x, c.y-21, 7, Math.PI, Math.PI*2); ctx.fill();
@@ -1922,15 +2044,13 @@
       roundedRectFill(c.x-7, c.y-27, 14, 6, 3);
     } else if(c.hair===2){
       ctx.beginPath(); ctx.ellipse(c.x, c.y-24, 7, 5, 0, 0, Math.PI*2); ctx.fill();
-    } // hair===3 -> bald
+    }
 
-    // evac marker
     if(c.evac){
       ctx.fillStyle="rgba(74,222,128,.85)";
       ctx.beginPath(); ctx.arc(c.x, c.y-32, 4.5, 0, Math.PI*2); ctx.fill();
     }
 
-    // health bar
     const pct=c.hp/c.hpMax;
     ctx.fillStyle="rgba(11,13,18,.80)";
     ctx.fillRect(c.x-22,c.y-34,44,6);
@@ -1942,30 +2062,24 @@
     const bob = Math.sin(S.me.step)*1.5;
     const x=S.me.x, y=S.me.y + bob;
 
-    // shadow
     ctx.globalAlpha=0.25; ctx.fillStyle="#000";
     ctx.beginPath(); ctx.ellipse(x,y+18,18,8,0,0,Math.PI*2); ctx.fill();
     ctx.globalAlpha=1;
 
-    // torso vest
     ctx.fillStyle="rgba(40,50,60,.95)";
     roundedRectFill(x-10, y-16, 20, 26, 7);
 
-    // vest plate
     ctx.fillStyle="rgba(20,30,40,.95)";
     roundedRectFill(x-8, y-12, 16, 18, 6);
 
-    // helmet
     ctx.fillStyle="rgba(55,65,75,.95)";
     ctx.beginPath(); ctx.arc(x, y-24, 9.5, Math.PI, Math.PI*2); ctx.fill();
     ctx.fillStyle="rgba(35,45,55,.95)";
     roundedRectFill(x-10, y-24, 20, 6, 3);
 
-    // head/face mask
     ctx.fillStyle="rgba(220,220,225,.90)";
     ctx.beginPath(); ctx.arc(x, y-20, 6.5, 0, Math.PI*2); ctx.fill();
 
-    // weapon direction
     const ang = S.me.face || 0;
     const wx = x + Math.cos(ang)*12;
     const wy = y + Math.sin(ang)*12;
@@ -1974,7 +2088,6 @@
     ctx.lineWidth=4;
     ctx.beginPath(); ctx.moveTo(x+Math.cos(ang)*6, y+Math.sin(ang)*2); ctx.lineTo(wx, wy); ctx.stroke();
 
-    // muzzle tip
     ctx.fillStyle="rgba(245,158,11,.90)";
     ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, Math.PI*2); ctx.fill();
   }
@@ -1984,7 +2097,7 @@
     if(type==="Standard") return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
     if(type==="Stalker") return { body:"#c77c2f", stripe:"#0b0d12", belly:"#d9b18a" };
     if(type==="Berserker") return { body:"#f08a24", stripe:"#111827", belly:"#ffd1a1" };
-    return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" }; // Alpha
+    return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
   }
 
   function drawTiger(t){
@@ -1998,7 +2111,6 @@
     const bob = Math.sin(t.step||0)*1.2;
     const x=t.x, y=t.y + bob;
 
-    // size by type
     let s=1.0;
     if(t.type==="Scout") s=0.85;
     if(t.type==="Alpha") s=1.22;
@@ -2008,26 +2120,19 @@
     ctx.beginPath(); ctx.ellipse(x,y+18*s,22*s,8*s,0,0,Math.PI*2); ctx.fill();
     ctx.globalAlpha=alpha;
 
-    // body (real tiger-ish)
     ctx.fillStyle=c.body;
-    ctx.beginPath();
-    ctx.ellipse(x, y+2*s, 22*s, 13*s, 0, 0, Math.PI*2);
-    ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x, y+2*s, 22*s, 13*s, 0, 0, Math.PI*2); ctx.fill();
 
-    // belly
     ctx.fillStyle=c.belly;
     ctx.beginPath(); ctx.ellipse(x+3*s, y+6*s, 14*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
 
-    // head
     ctx.fillStyle=c.body;
     ctx.beginPath(); ctx.ellipse(x+20*s, y-6*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
 
-    // ears
     ctx.fillStyle=c.body;
     ctx.beginPath(); ctx.ellipse(x+26*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(x+16*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
 
-    // tail (sway)
     ctx.strokeStyle=c.body;
     ctx.lineWidth=5*s;
     ctx.beginPath();
@@ -2035,7 +2140,6 @@
     ctx.quadraticCurveTo(x-34*s, y-2*s + Math.sin((t.step||0)+1.4)*6*s, x-40*s, y-10*s);
     ctx.stroke();
 
-    // stripes
     ctx.strokeStyle=c.stripe;
     ctx.lineWidth=3*s;
     for(let i=-2;i<=2;i++){
@@ -2044,7 +2148,6 @@
       ctx.lineTo(x-2*s + i*6*s, y+10*s);
       ctx.stroke();
     }
-    // head stripes
     ctx.lineWidth=2.5*s;
     for(let i=-1;i<=1;i++){
       ctx.beginPath();
@@ -2053,11 +2156,9 @@
       ctx.stroke();
     }
 
-    // eyes
     ctx.fillStyle="rgba(10,10,12,.9)";
     ctx.beginPath(); ctx.arc(x+24*s, y-7*s, 1.6*s, 0, Math.PI*2); ctx.fill();
 
-    // berserker rage glow at low hp
     if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35){
       ctx.globalAlpha=0.35;
       ctx.strokeStyle="rgba(255,60,80,.9)";
@@ -2066,7 +2167,6 @@
       ctx.globalAlpha=alpha;
     }
 
-    // alpha aura
     if(t.type==="Alpha"){
       ctx.globalAlpha=0.25;
       ctx.strokeStyle="rgba(58,120,255,.9)";
@@ -2075,21 +2175,18 @@
       ctx.globalAlpha=alpha;
     }
 
-    // lock ring
     if(S.lockedTigerId===t.id){
       ctx.strokeStyle="rgba(58,120,255,.95)";
       ctx.lineWidth=3;
       ctx.beginPath(); ctx.arc(x,y,30*s,0,Math.PI*2); ctx.stroke();
     }
 
-    // health bar
     const pct=t.hp/t.hpMax;
     ctx.fillStyle="rgba(11,13,18,.85)";
     ctx.fillRect(x-26*s,y-34*s,52*s,6);
     ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
     ctx.fillRect(x-26*s,y-34*s,52*s*pct,6);
 
-    // tranq tag label
     ctx.globalAlpha=0.85*alpha;
     ctx.fillStyle="rgba(245,247,255,.80)";
     ctx.font="900 12px system-ui";
@@ -2099,51 +2196,15 @@
   }
 
   function drawEntities(){
-    // carcasses
     for(const c of S.carcasses) drawCarcass(c.x,c.y);
-
-    // civilians
     if(S.mode!=="Survival"){
       for(const c of S.civilians){ if(c.alive) drawCivilian(c); }
     }
-
-    // tigers
     for(const t of S.tigers){ if(t.alive) drawTiger(t); }
-
-    // soldier
     drawSoldier();
   }
 
-  // ===================== WORLD LOOP =====================
-  function trapTick(){
-    for(const tr of S.trapsPlaced) tr.ttl -= 1;
-    S.trapsPlaced = S.trapsPlaced.filter(t=>t.ttl>0);
-    for(const t of S.tigers){
-      if(!t.alive) continue;
-      t._trapSlow = 1.0;
-      for(const tr of S.trapsPlaced){
-        if(dist(t.x,t.y,tr.x,tr.y) < tr.r){ t._trapSlow = tr.slow; break; }
-      }
-    }
-  }
-
-  function backupTick(){
-    if(S.backupActive>0) S.backupActive--;
-    if(S.backupCooldown>0) S.backupCooldown--;
-  }
-
-  function regen(){
-    const now=Date.now();
-    if(!S._last) S._last=now;
-    const dt=(now-S._last)/1000;
-    if(dt>=2.5){
-      const ticks=Math.floor(dt/2.5);
-      S.stamina = clamp(S.stamina + ticks*3, 0, 100);
-      S._last=now;
-    }
-  }
-
-  // ===================== TIGER ATTACK TARGETING / MISC =====================
+  // ===================== ENGAGE BUTTON =====================
   function updateEngage(){
     document.getElementById("engageBtn").disabled = !canEngage() || S.paused || S.missionEnded || S.gameOver;
   }
@@ -2158,7 +2219,7 @@
     openMode();
   }
 
-  // ===================== GAME LOOP =====================
+  // ===================== LOOP =====================
   function draw(){
     renderHUD();
     updateEngage();
@@ -2175,7 +2236,7 @@
     if(!S.inBattle){
       roamTigers();
       movePlayer();
-      followCiviliansTick();   // ✅ follow-only (no sprint)
+      followCiviliansTick();
       evacCheck();
       tickCiviliansAndThreats();
       survivalPressureTick();
@@ -2198,9 +2259,6 @@
 
     if(!S.tigers || !S.tigers.length) spawnTigers();
     if(!S.civilians) spawnCivilians();
-
-    // preload current map
-    getBgImage(currentMap().key);
 
     requestAnimationFrame(draw);
   }
