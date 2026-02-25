@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>Tiger Strike 🐅 — V4.3.8.3 (Strict Tutorial Fixes)</title>
+  <title>Tiger Strike 🐅 — V4.3.7 (Respawn Lives + Game Over Choices)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <style>
@@ -43,7 +43,6 @@
     canvas{display:block;width:100%;height:auto;touch-action:manipulation}
     .actionStrip{border-top:1px solid var(--border);background:rgba(15,19,32,.85);padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
     .small{font-size:12px;color:var(--muted)}
-    .tag{display:inline-block;margin-left:8px;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;border:1px solid rgba(35,42,62,.9);background:#0b0d12;color:var(--muted)}
 
     .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:200;padding:14px}
     .modal{width:min(980px,96vw);background:linear-gradient(180deg,#121622,#0b0d12);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;max-height:88vh;display:flex;flex-direction:column}
@@ -60,12 +59,13 @@
     .itemName{font-weight:950}
     .itemDesc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
     .price{font-weight:950}
+    .tag{display:inline-block;margin-left:8px;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;border:1px solid rgba(35,42,62,.9);background:#0b0d12;color:var(--muted)}
 
     .battleOverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:flex-end;z-index:220}
     .battleSheet{width:min(1020px,100vw);margin:0 auto;background:var(--panel);border:1px solid var(--border);border-top-left-radius:18px;border-top-right-radius:18px;padding:12px;box-shadow:var(--shadow)}
     .battleTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
     .battleTitle{font-weight:950}
-    .battleMsg{font-size:12px;color:var(--muted);line-height:1.35;margin-top:6px;white-space:pre-line}
+    .battleMsg{font-size:12px;color:var(--muted);line-height:1.35;margin-top:6px}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
     .weaponGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 
@@ -74,24 +74,6 @@
     .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
-
-    /* Tutorial spotlight (click-through) */
-    .tutSpotlight{position:fixed; inset:0; z-index:260; display:none; pointer-events:none;}
-
-    /* Tutorial card at TOP */
-    .tutCard{
-      position:fixed; left:50%; top:10px; transform:translateX(-50%);
-      z-index:270; width:min(980px,92vw);
-      background:linear-gradient(180deg,#121622,#0b0d12);
-      border:1px solid var(--border); border-radius:16px;
-      box-shadow:var(--shadow); padding:10px 12px;
-      display:none;
-    }
-    .tutTitle{font-weight:950}
-    .tutText{font-size:12px;color:var(--muted);line-height:1.35;margin-top:6px;white-space:pre-line;max-height:140px;overflow:auto}
-    .tutRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-top:10px}
-    .tutBtns{display:flex;gap:10px;flex-wrap:wrap}
-    .tutHint{font-size:12px;color:var(--muted)}
   </style>
 </head>
 
@@ -99,12 +81,14 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.8.3</span> <span class="tag">Tutorial: Evac Before Engage</span></div>
-      <div class="sub">Strict tutorial (1 civilian + 1 tiger) • Evac hard-lock before Engage • Battle weapons usable • Choice “fate” messaging</div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.7</span> <span class="tag">Respawn Lives</span> <span class="tag">2-Choice Game Over</span></div>
+      <div class="sub">
+        If you die and still have lives: you RESPAWN and keep playing. Only at 0 lives: popup (Restart Mission / Restart Mission 1).<br>
+        Civilians: 1s grace after deploy + slower damage unless Alpha/Boss Alpha. Calm maps, no flashing. Traps: one-time hold 3–5s.
+      </div>
     </div>
     <div class="row">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
-      <button class="ghost" onclick="toggleMotion()">♿ Motion: <span id="motionLbl">On</span></button>
       <button class="ghost" onclick="openAbout()">ℹ️ About</button>
       <button class="ghost" onclick="openMode()">🎮 Mode</button>
       <button class="ghost" onclick="nextMap()">🗺️ Map</button>
@@ -142,9 +126,9 @@
   <div class="screenCard">
     <canvas id="cv" width="960" height="540"></canvas>
     <div class="actionStrip">
-      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Traps hold 3–5 seconds.</div>
+      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Traps hold 3–5s. Civilians have 1s grace after deploy.</div>
       <div class="row">
-        <button onclick="deployFromUI()">📍 Deploy</button>
+        <button onclick="deploy()">📍 Deploy</button>
         <button onclick="scan()">🛰️ Scan</button>
         <button class="warn" id="engageBtn" onclick="startCombat()" disabled>🎯 Engage</button>
         <button class="ghost" onclick="useMedkit()">❤️ Medkit</button>
@@ -174,7 +158,6 @@
         <button class="tab" id="mStory" onclick="setMode('Story')">📖 Story</button>
         <button class="tab" id="mArcade" onclick="setMode('Arcade')">🕹️ Arcade</button>
         <button class="tab" id="mSurvival" onclick="setMode('Survival')">🔥 Survival</button>
-        <button class="tab" id="mTut" onclick="tutOpen(true)">📘 Tutorial</button>
       </div>
       <div class="divider"></div>
       <div class="hudLine" id="modeDesc"></div>
@@ -186,7 +169,7 @@
 <div class="overlay" id="shopOverlay">
   <div class="modal">
     <div class="modalTop">
-      <div class="modalTitle" id="shopTitle">Shop (Paused)</div>
+      <div class="modalTitle">Shop (Paused) — Money: $<span id="shopMoney"></span></div>
       <button class="ghost" onclick="closeShop()">Resume</button>
     </div>
     <div class="modalBody">
@@ -238,7 +221,7 @@
     <div class="weaponGrid" id="weaponGrid"></div>
     <div class="divider"></div>
     <div class="grid2">
-      <button class="warn" id="attackBtn" onclick="playerAction('ATTACK')">Attack</button>
+      <button class="warn" onclick="playerAction('ATTACK')">Attack</button>
       <button class="ghost" onclick="playerAction('PROTECT')">Protect Civilians</button>
       <button class="good" id="capBtn" onclick="playerAction('CAPTURE')" disabled>Capture</button>
       <button class="danger" id="killBtn" onclick="playerAction('KILL')" disabled>Kill</button>
@@ -262,37 +245,17 @@
   </div>
 </div>
 
-<!-- Game Over -->
+<!-- Game Over (0 lives only) -->
 <div class="overlay" id="overOverlay">
   <div class="modal">
-    <div class="modalTop"><div class="modalTitle">🚫 Mission Failed</div><button class="ghost" onclick="closeOver()">Close</button></div>
+    <div class="modalTop"><div class="modalTitle">🚫 Out of Lives</div></div>
     <div class="modalBody">
       <div class="hudLine" id="overText"></div>
       <div class="divider"></div>
       <div class="row">
-        <button class="good" onclick="resetGame()">Restart</button>
-        <button class="ghost" onclick="closeOver()">Back</button>
+        <button class="good" onclick="restartCurrentMission()">Restart This Mission</button>
+        <button class="ghost" onclick="resetGame()">Restart From Mission 1</button>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- Tutorial Spotlight -->
-<canvas id="tutSpotlight" class="tutSpotlight"></canvas>
-
-<!-- Tutorial Card -->
-<div id="tutCard" class="tutCard">
-  <div class="tutTitle" id="tutTitle">Tutorial</div>
-  <div class="tutText" id="tutText"></div>
-  <div class="tutRow">
-    <label class="tutHint" style="display:flex;gap:8px;align-items:center;margin:0">
-      <input type="checkbox" id="tutDontShow" />
-      Don’t show again
-    </label>
-    <div class="tutBtns">
-      <button class="ghost" onclick="tutSkip()">Skip</button>
-      <button class="ghost" onclick="tutPrev()">Back</button>
-      <button class="good" onclick="tutNext()">Next</button>
     </div>
   </div>
 </div>
@@ -311,17 +274,6 @@
 <script>
   const tg = window.Telegram?.WebApp;
   if (tg){ tg.expand(); tg.ready(); try{tg.setHeaderColor?.("#0b0d12"); tg.setBackgroundColor?.("#0b0d12");}catch(e){} }
-
-  // ===================== SAVE KEYS =====================
-  const SAVE_MAIN = "ts_v4383_main";
-  const SAVE_TUT  = "ts_v4383_tut";
-  const TUT_BACKUP_KEY = "ts_v4383_backup";
-  const TUT_RUN_KEY  = "ts_tut_running_v4383";
-  const TUT_STEP_KEY = "ts_tut_step_v4383";
-  const TUT_KEY = "ts_guided_tutorial_seen_v4383";
-
-  function isTutorialRunning(){ return localStorage.getItem(TUT_RUN_KEY)==="1"; }
-  function activeSaveKey(){ return (TUT.on || isTutorialRunning()) ? SAVE_TUT : SAVE_MAIN; }
 
   // ===================== DATA =====================
   const WEAPONS = [
@@ -417,103 +369,78 @@
 
   // ===================== STATE =====================
   const DEFAULT = {
-    v: 4383,
-    paused: false,
-    pauseReason: null,
-    mode: "Story",
-    arcadeLevel: 1,
-    survivalWave: 1,
-    storyLevel: 1,
-    mapIndex: 0,
+    v: 4371,
+    paused:false, pauseReason:null,
+    mode:"Story", arcadeLevel:1, survivalWave:1, storyLevel:1, mapIndex:0,
+    soundOn:true, audioUnlocked:false,
 
-    soundOn: true,
-    audioUnlocked: false,
-    reducedMotion: false,
+    lives:3, funds:1000, score:0, trust:80, aggro:10, stamina:100,
+    hp:100, armor:20, armorCap:100,
 
-    lives: 3,
-    funds: 1000,
-    score: 0,
-    trust: 80,
-    aggro: 10,
-    stamina: 100,
+    ownedWeapons:["W_TRQ_PISTOL_MK1","W_9MM_JUNK","W_TRQ_RIFLE","W_TRQ_LAUNCHER"],
+    equippedWeaponId:"W_TRQ_PISTOL_MK1",
+    ammoReserve:{ "TRANQ_DARTS":20, "9MM_STD":40 },
+    mag:{ loaded:6, cap:6 },
+    durability:{},
 
-    hp: 100,
-    armor: 20,
-    armorCap: 100,
+    medkits:{ "M_SMALL":1 },
+    repairKits:{ "T_REPAIR":1 },
+    trapsOwned:2,
+    trapsPlaced:[],
 
-    ownedWeapons: ["W_TRQ_PISTOL_MK1","W_9MM_JUNK","W_TRQ_RIFLE","W_TRQ_LAUNCHER"],
-    equippedWeaponId: "W_TRQ_PISTOL_MK1",
-    ammoReserve: { "TRANQ_DARTS": 20, "9MM_STD": 40 },
+    backupCooldown:0, backupActive:0,
 
-    magByWeapon: {},
-    durability: {},
+    me:{ x:160, y:420, face:0, step:0 },
+    target:null,
 
-    medkits: { "M_SMALL": 1 },
-    repairKits: { "T_REPAIR": 1 },
-    trapsOwned: 2,
-    trapsPlaced: [],
+    tigers:[],
+    carcasses:[],
 
-    backupCooldown: 0,
-    backupActive: 0,
+    scanPing:0,
+    lockedTigerId:null,
 
-    me: { x: 160, y: 420, face:0, step:0 },
-    target: null,
+    civilians:[],
+    evacZone:{ x:880, y:460, r:70 },
+    evacDone:0,
 
-    tigers: [],
-    carcasses: [],
+    civGraceUntil:0,
+    dangerCivId:null,
 
-    scanPing: 0,
-    lockedTigerId: null,
+    inBattle:false,
+    activeTigerId:null,
 
-    civilians: [],
-    evacZone: { x: 880, y: 460, r: 70 },
-    evacDone: 0,
+    survivalStart:null,
+    surviveSeconds:0,
 
-    inBattle: false,
-    activeTigerId: null,
-
-    survivalStart: null,
-    surviveSeconds: 0,
-
-    missionEnded: false,
-    gameOver: false,
-
-    missionStats: null,
-    dangerCivId: null,
-
-    tutScenario: false
+    missionEnded:false,
+    gameOver:false,
   };
 
-  let TUT = { on:false, idx:0, allow:{} };
-  let S = loadState();
+  let S = load();
   let lastOverlay = null;
 
   const cv = document.getElementById("cv");
   const ctx = cv.getContext("2d");
 
-  function saveState(){ localStorage.setItem(activeSaveKey(), JSON.stringify(S)); }
-  function loadState(){
+  function load(){
     try{
-      const key = isTutorialRunning() ? SAVE_TUT : SAVE_MAIN;
-      const saved = JSON.parse(localStorage.getItem(key) || "null");
+      const saved = JSON.parse(localStorage.getItem("ts_v4371") || localStorage.getItem("ts_v4370") || "null");
       if(!saved) return structuredClone(DEFAULT);
-
       const m = { ...DEFAULT, ...saved };
       m.me = { ...DEFAULT.me, ...(saved.me||{}) };
+      m.mag = { ...DEFAULT.mag, ...(saved.mag||{}) };
       m.ammoReserve = { ...DEFAULT.ammoReserve, ...(saved.ammoReserve||{}) };
       m.durability = { ...DEFAULT.durability, ...(saved.durability||{}) };
       m.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
       m.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
       m.trapsPlaced = Array.isArray(saved.trapsPlaced) ? saved.trapsPlaced : [];
       m.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
-      m.tigers = Array.isArray(saved.tigers) ? saved.tigers : [];
-      m.civilians = Array.isArray(saved.civilians) ? saved.civilians : [];
-      m.magByWeapon = saved.magByWeapon && typeof saved.magByWeapon==="object" ? saved.magByWeapon : {};
       if(m.lives==null) m.lives=3;
-      m.v = DEFAULT.v;
+      m.v = 4371;
       return m;
     }catch(e){ return structuredClone(DEFAULT); }
   }
+  function save(){ localStorage.setItem("ts_v4371", JSON.stringify(S)); }
 
   // ===================== AUDIO =====================
   let AC=null;
@@ -529,9 +456,7 @@
     try{
       ensureAudio();
       const o=AC.createOscillator(), g=AC.createGain();
-      o.type=type; o.frequency.value=f;
-      const mult = S.reducedMotion ? 0.65 : 1.0;
-      g.gain.value=vol * mult;
+      o.type=type; o.frequency.value=f; g.gain.value=vol;
       o.connect(g); g.connect(AC.destination);
       o.start(); setTimeout(()=>o.stop(), ms);
     }catch(e){}
@@ -551,22 +476,13 @@
   function toggleSound(){
     S.soundOn=!S.soundOn;
     document.getElementById("soundLbl").innerText = S.soundOn?"On":"Off";
-    saveState();
-    if(S.soundOn) sfx("ui");
-  }
-  function toggleMotion(){
-    S.reducedMotion = !S.reducedMotion;
-    document.getElementById("motionLbl").innerText = S.reducedMotion ? "Reduced" : "On";
-    toast(S.reducedMotion ? "Reduced Motion enabled." : "Reduced Motion off.");
-    sfx("ui");
-    saveState();
+    save(); if(S.soundOn) sfx("ui");
   }
 
   // ===================== HELPERS =====================
   function toast(msg){
     const t=document.getElementById("toast");
-    t.innerText=msg;
-    t.style.display="block";
+    t.innerText=msg; t.style.display="block";
     clearTimeout(window.__toastTimer);
     window.__toastTimer=setTimeout(()=>t.style.display="none",2200);
   }
@@ -586,76 +502,36 @@
     return list[clamp(S.mapIndex,0,list.length-1)];
   }
   function nextMap(){
-    if(TUT.on) return toast("Tutorial: map switching is disabled.");
     const list = MODE_MAPS[S.mode] || MODE_MAPS.Story;
     S.mapIndex = (S.mapIndex+1) % list.length;
-    sfx("ui");
-    saveState();
+    S.scanPing=0; sfx("ui"); save();
   }
 
-  // ===================== STRICT TUTORIAL ACTION GATE =====================
-  function tutBlock(actionKey, msg="Tutorial: complete the current step first."){
-    if(!TUT.on) return false;
-    if(TUT.allow[actionKey]) return false;
-    toast(msg);
-    return true;
+  // ===================== COLLISION (carcasses) =====================
+  function carcassRects(){ return (S.carcasses || []).map(c => ({ x: c.x - 14, y: c.y - 8, w: 28, h: 16 })); }
+  function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr){
+    const closestX = Math.max(rx, Math.min(cx, rx + rw));
+    const closestY = Math.max(ry, Math.min(cy, ry + rh));
+    const dx = cx - closestX;
+    const dy = cy - closestY;
+    return (dx*dx + dy*dy) <= cr*cr;
   }
-
-  // ===================== PER-WEAPON MAGS =====================
-  function ensureWeaponMag(wid){
-    const w = getWeapon(wid);
-    if(!w) return { loaded:0, cap:0 };
-    if(!S.magByWeapon) S.magByWeapon = {};
-    if(!S.magByWeapon[wid]) S.magByWeapon[wid] = { loaded: 0, cap: w.mag };
-    S.magByWeapon[wid].cap = w.mag;
-    S.magByWeapon[wid].loaded = clamp(S.magByWeapon[wid].loaded, 0, S.magByWeapon[wid].cap);
-    return S.magByWeapon[wid];
-  }
-  function currentMag(){ return ensureWeaponMag(S.equippedWeaponId); }
-  function reserveForWeapon(wid){
-    const w = getWeapon(wid);
-    if(!w) return 0;
-    return S.ammoReserve[w.ammo] || 0;
-  }
-  function weaponHasAmmo(wid){
-    const mag = ensureWeaponMag(wid);
-    return (mag.loaded > 0) || (reserveForWeapon(wid) > 0);
-  }
-  function anyWeaponHasAmmo(){
-    for(const wid of (S.ownedWeapons || [])){
-      if(weaponHasAmmo(wid)) return true;
+  function blockedAt(x, y, radius){
+    for(const r of carcassRects()){
+      if(rectCircleCollide(r.x, r.y, r.w, r.h, x, y, radius)) return true;
     }
     return false;
   }
-  function listWeaponsWithAmmo(){
-    const out = [];
-    for(const wid of (S.ownedWeapons || [])){
-      const w = getWeapon(wid);
-      if(w && weaponHasAmmo(wid)) out.push(w.name);
-    }
-    return out;
-  }
-  function autoReloadWeapon(wid){
-    const w = getWeapon(wid);
-    if(!w) return false;
-    const mag = ensureWeaponMag(wid);
-    if(mag.loaded > 0) return true;
-    const reserve = S.ammoReserve[w.ammo] || 0;
-    if(reserve <= 0) return false;
-    const need = mag.cap - mag.loaded;
-    const take = Math.min(need, reserve);
-    mag.loaded += take;
-    S.ammoReserve[w.ammo] = reserve - take;
-    sfx("reload");
+  function tryMoveEntity(ent, nx, ny, radius){
+    const ox = ent.x, oy = ent.y;
+    if(!blockedAt(nx, oy, radius)) ent.x = nx;
+    if(!blockedAt(ent.x, ny, radius)) ent.y = ny;
+    if(blockedAt(ent.x, ent.y, radius)){ ent.x = ox; ent.y = oy; return false; }
     return true;
   }
 
-  // ===================== COLLISION / DIFFICULTY =====================
-  function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
-
-  // ===================== ABOUT =====================
+  // ===================== UI: About / Pause / Mode =====================
   function openAbout(){
-    if(tutBlock("about","Tutorial: not yet.")) return;
     setPaused(true,"about");
     document.getElementById("aboutOverlay").style.display="flex";
     document.getElementById("aboutBody").innerHTML = `
@@ -665,48 +541,39 @@
       <div class="item"><div><div class="itemName">Berserker</div><div class="itemDesc">Rage at low HP, hits harder. Capture requires Tranq Rifle hit first.</div></div></div>
       <div class="item"><div><div class="itemName">Alpha / Boss Alpha</div><div class="itemDesc">Pack aura + reinforcements. Boss has phases. Capture requires Tranq Launcher hit first.</div></div></div>
       <div class="divider"></div>
-      <div class="hudLine"><b>Traps:</b> Hold tigers inside the trap circle for 3–5 seconds when they enter it.</div>
-      <div class="hudLine"><b>Carcasses:</b> persist across missions. More carcasses = more danger.</div>
+      <div class="hudLine"><b>Traps:</b> one-time hold 3–5s (no damage).</div>
+      <div class="hudLine"><b>Civilians:</b> 1s grace after deploy. Damage slower unless Alpha/Boss Alpha.</div>
+      <div class="hudLine"><b>Lives:</b> You respawn until lives hit 0.</div>
     `;
     sfx("ui");
   }
   function closeAbout(){ document.getElementById("aboutOverlay").style.display="none"; setPaused(false,null); }
 
-  // ===================== PAUSE =====================
   function setPaused(on, reason=null){
     S.paused=on; S.pauseReason=reason;
     document.getElementById("pauseLbl").innerText = on?"Resume":"Pause";
-    saveState();
+    save();
   }
   function togglePause(){
-    if(TUT.on) return toast("Tutorial: pause is disabled.");
     if(S.gameOver) return;
     if(S.inBattle) return toast("Finish battle first.");
-    setPaused(!S.paused,"manual");
-    sfx("ui");
+    setPaused(!S.paused,"manual"); sfx("ui");
   }
 
-  // ===================== MODE =====================
   function openMode(){
-    if(TUT.on) return toast("Tutorial: finish or skip first.");
     setPaused(true,"mode");
     document.getElementById("modeOverlay").style.display="flex";
-    updateModeDesc(); markModeTabs();
-    sfx("ui");
+    updateModeDesc(); markModeTabs(); sfx("ui");
   }
   function closeMode(){ document.getElementById("modeOverlay").style.display="none"; setPaused(false,null); }
   function setMode(m){
-    if(TUT.on) return toast("Tutorial: finish or skip first.");
-    S.mode=m;
-    S.lives=3;
+    S.mode=m; S.lives=3;
     if(m==="Arcade") S.arcadeLevel=1;
     if(m==="Survival"){ S.survivalWave=1; S.survivalStart=Date.now(); S.surviveSeconds=0; }
     if(m==="Story") S.storyLevel=1;
     S.mapIndex=0;
     deploy();
-    updateModeDesc(); markModeTabs();
-    sfx("ui");
-    saveState();
+    updateModeDesc(); markModeTabs(); sfx("ui"); save();
   }
   function markModeTabs(){
     ["mStory","mArcade","mSurvival"].forEach(id=>document.getElementById(id).classList.remove("active"));
@@ -716,48 +583,44 @@
   }
   function updateModeDesc(){
     const el=document.getElementById("modeDesc");
-    if(S.mode==="Story") el.innerText="Story: civilians scale, must clear ALL tigers + evac living civilians.";
-    else if(S.mode==="Arcade") el.innerText="Arcade: clear ALL tigers + evac civilians (harder each level).";
-    else el.innerText="Survival: no civilians. Tigers pressure-damage you. Survive as long as possible.";
+    if(S.mode==="Story") el.innerText="Story: +1 civilian each level (max 7). After 7, +1 tiger per level. Must clear ALL tigers + evac living civilians.";
+    else if(S.mode==="Arcade") el.innerText="Arcade: civilians on map. Must clear ALL tigers + evac living civilians.";
+    else el.innerText="Survival: no civilians. Tigers pressure-damage you over time. Survive as long as possible.";
   }
 
-  // ===================== SHOP / INVENTORY (same behavior) =====================
+  // ===================== Shop / Inventory =====================
   let currentShopTab="weapons";
+
   function openShop(){
-    if(tutBlock("shop","Tutorial: not yet.")) return;
     if(S.gameOver) return;
     if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
     setPaused(true,"shop");
     document.getElementById("shopOverlay").style.display="flex";
-    shopTab(currentShopTab);
-    sfx("ui");
+    shopTab(currentShopTab); sfx("ui");
   }
   function closeShop(){
     document.getElementById("shopOverlay").style.display="none";
     if(lastOverlay==="complete" && S.missionEnded){
       setPaused(true,"complete");
       document.getElementById("completeOverlay").style.display="flex";
-      lastOverlay=null;
-      return;
+      lastOverlay=null; return;
     }
     setPaused(false,null);
   }
+
   function openInventory(){
-    if(tutBlock("inv","Tutorial: not yet.")) return;
     if(S.gameOver) return;
     if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
     setPaused(true,"inv");
     document.getElementById("invOverlay").style.display="flex";
-    renderInventory();
-    sfx("ui");
+    renderInventory(); sfx("ui");
   }
   function closeInventory(){
     document.getElementById("invOverlay").style.display="none";
     if(lastOverlay==="complete" && S.missionEnded){
       setPaused(true,"complete");
       document.getElementById("completeOverlay").style.display="flex";
-      lastOverlay=null;
-      return;
+      lastOverlay=null; return;
     }
     setPaused(false,null);
   }
@@ -785,12 +648,12 @@
   function ownedToolCount(toolId){ return S.repairKits[toolId]||0; }
 
   function renderShopList(){
-    document.getElementById("shopTitle").innerText = `Shop (Paused) — Money: $${S.funds.toLocaleString()}`;
+    document.getElementById("shopMoney").innerText = S.funds.toLocaleString();
     const list=document.getElementById("shopList");
     const note=document.getElementById("shopNote");
 
     if(currentShopTab==="weapons"){
-      note.innerText="Weapons show Owned/Not owned.";
+      note.innerText="Weapons show Owned/Not owned. Money updates live.";
       list.innerHTML = WEAPONS.map(w=>{
         const owned = S.ownedWeapons.includes(w.id);
         return `
@@ -830,7 +693,7 @@
     }
 
     if(currentShopTab==="armor"){
-      note.innerText="Cannot buy armor if already full (100/100).";
+      note.innerText="Armory prices match medkits. Adds armor instantly.";
       list.innerHTML = ARMORY.map(ar=>`
         <div class="item">
           <div>
@@ -846,7 +709,7 @@
     }
 
     if(currentShopTab==="meds"){
-      note.innerText="Buy medkits (inventory). Use in Inventory (self or civilian).";
+      note.innerText="Shows how many you own. Heal Self or Civilian in Inventory.";
       list.innerHTML = MEDS.map(m=>{
         const owned=ownedMedCount(m.id);
         return `
@@ -865,7 +728,7 @@
     }
 
     if(currentShopTab==="tools"){
-      note.innerText="Blocked if durability is already 100%.";
+      note.innerText="Repair Kit $300 (+10 durability). Pro Repair Kit (+100 durability).";
       list.innerHTML = TOOLS.map(t=>{
         const owned=ownedToolCount(t.id);
         return `
@@ -883,12 +746,12 @@
       return;
     }
 
-    note.innerText="Traps HOLD tigers 3–5 seconds when they enter.";
+    note.innerText="Traps are one-time: hold a tiger 3–5s then disappear after hold ends.";
     list.innerHTML = `
       <div class="item">
         <div>
           <div class="itemName">Trap <span class="tag">Owned: ${S.trapsOwned}</span></div>
-          <div class="itemDesc">Hold tigers 3–5 seconds inside the trap circle.</div>
+          <div class="itemDesc">Hold tigers 3–5 seconds inside trap circle.</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${TRAP_ITEM.price.toLocaleString()}</div>
@@ -897,7 +760,6 @@
       </div>`;
   }
 
-  function weaponDurability(id){ if(S.durability[id]==null) S.durability[id]=100; return S.durability[id]; }
   function buyWeapon(id){
     const w=getWeapon(id); if(!w) return;
     if(S.ownedWeapons.includes(id)) return toast("Already owned.");
@@ -906,9 +768,8 @@
     S.ownedWeapons.push(id);
     if(S.durability[w.id]==null) S.durability[w.id]=100;
     if(!S.ammoReserve[w.ammo]) S.ammoReserve[w.ammo]=0;
-    ensureWeaponMag(w.id);
     sfx("ui");
-    saveState(); renderShopList(); renderHUD();
+    save(); renderShopList(); renderHUD();
   }
   function buyAmmo(id){
     const a=getAmmo(id); if(!a) return;
@@ -916,9 +777,17 @@
     if(S.funds < p) return toast("Not enough money.");
     S.funds -= p;
     S.ammoReserve[id] = (S.ammoReserve[id]||0) + a.pack;
-    autoReloadWeapon(S.equippedWeaponId);
     sfx("ui");
-    saveState(); renderShopList(); renderHUD();
+    save(); renderShopList(); renderHUD();
+  }
+  function buyArmor(id){
+    const ar=getArmor(id); if(!ar) return;
+    if(S.funds < ar.price) return toast("Not enough money.");
+    S.funds -= ar.price;
+    S.armorCap = ar.cap;
+    S.armor = clamp(S.armor + ar.addArmor, 0, S.armorCap);
+    sfx("ui");
+    save(); renderShopList(); renderHUD();
   }
   function buyMed(id){
     const m=getMed(id); if(!m) return;
@@ -926,64 +795,52 @@
     S.funds -= m.price;
     S.medkits[id] = (S.medkits[id]||0)+1;
     sfx("ui");
-    saveState(); renderShopList(); renderHUD();
+    save(); renderShopList(); renderHUD();
   }
   function buyTool(id){
     const t=getTool(id); if(!t) return;
-    const w = equippedWeapon();
-    const dur = Math.round(weaponDurability(w.id));
-    if(dur >= 100){ toast("Weapon durability is already full (100%)."); return; }
     if(S.funds < t.price) return toast("Not enough money.");
     S.funds -= t.price;
     S.repairKits[id] = (S.repairKits[id]||0) + t.qty;
     sfx("ui");
-    saveState(); renderShopList(); renderHUD();
+    save(); renderShopList(); renderHUD();
   }
   function buyTrap(){
     if(S.funds < TRAP_ITEM.price) return toast("Not enough money.");
     S.funds -= TRAP_ITEM.price;
     S.trapsOwned += TRAP_ITEM.qty;
     sfx("ui");
-    saveState(); renderShopList(); renderHUD();
-  }
-  function buyArmor(id){
-    const ar = getArmor(id);
-    if(!ar) return;
-    if(S.armor >= S.armorCap){ toast("Armor is already full."); return; }
-    if(S.funds < ar.price){ toast("Not enough money."); return; }
-    S.funds -= ar.price;
-    S.armorCap = ar.cap;
-    const before = S.armor;
-    S.armor = clamp(S.armor + ar.addArmor, 0, S.armorCap);
-    if(S.armor <= before){ S.funds += ar.price; toast("Armor is already full."); return; }
-    sfx("ui");
-    saveState(); renderShopList(); renderHUD();
+    save(); renderShopList(); renderHUD();
   }
 
   function totalMedkits(){ return Object.values(S.medkits||{}).reduce((a,b)=>a+(b||0),0); }
   function totalRepairKits(){ return Object.values(S.repairKits||{}).reduce((a,b)=>a+(b||0),0); }
 
+  function setHealTarget(t){ S.healTarget=t; save(); if(document.getElementById("invOverlay").style.display==="flex") renderInventory(); renderHUD(); }
+  function pickMostInjuredCivilian(){
+    const civs = S.civilians.filter(c=>c.alive && !c.evac);
+    if(!civs.length) return null;
+    let best=civs[0], gap=(best.hpMax-best.hp);
+    for(const c of civs){ const g=c.hpMax-c.hp; if(g>gap){gap=g; best=c;} }
+    return gap<=0 ? null : best;
+  }
+
   function renderInventory(){
     const w=equippedWeapon();
-    const mag = currentMag();
     const ammoId=w.ammo;
-
     document.getElementById("invSummary").innerHTML =
       `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
-       <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${mag.loaded}/${mag.cap} (reserve ${S.ammoReserve[ammoId]||0})`;
+       <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0})`;
 
     document.getElementById("invWeapons").innerHTML = S.ownedWeapons.map(id=>{
       const ww=getWeapon(id);
       const active=(id===S.equippedWeaponId);
       const dur=Math.round(weaponDurability(id));
-      const m = ensureWeaponMag(id);
-      const res = S.ammoReserve[ww.ammo]||0;
-      const ammoOk = weaponHasAmmo(id) ? "✅ ammo" : "❌ ammo";
       return `
         <div class="item">
           <div>
             <div class="itemName">${active?'✅ ':''}${ww.name} <span class="tag">${ww.grade}</span></div>
-            <div class="itemDesc">Mag: ${m.loaded}/${m.cap} • Reserve: ${res} • Durability: ${dur}% • ${ammoOk}</div>
+            <div class="itemDesc">Ammo: ${ww.ammo} • Mag: ${ww.mag} • Durability: ${dur}%</div>
           </div>
           <div style="text-align:right">
             <button ${active?'disabled':''} onclick="equipWeapon('${id}')">Equip</button>
@@ -1001,7 +858,7 @@
             <div class="itemDesc">Reserve: ${S.ammoReserve[aid]||0}</div>
           </div>
           <div style="text-align:right">
-            <button class="ghost" onclick="openShop(); shopTab('ammo')">Buy</button>
+            <button class="ghost" onclick="openShop()">Buy</button>
           </div>
         </div>`;
     }).join("");
@@ -1028,16 +885,25 @@
           <button ${totalRepairKits()<=0?'disabled':''} onclick="useRepairKit()">Use</button>
         </div>
       </div>
+      <div class="item">
+        <div>
+          <div class="itemName">🪤 Traps <span class="tag">Owned: ${S.trapsOwned}</span></div>
+          <div class="itemDesc">One-time hold 3–5s.</div>
+        </div>
+        <div style="text-align:right">
+          <button ${S.trapsOwned<=0?'disabled':''} onclick="placeTrap()">Place</button>
+        </div>
+      </div>
+      <div class="item">
+        <div>
+          <div class="itemName">🚨 Backup <span class="tag">$50,000</span></div>
+          <div class="itemDesc">Freezes tigers + pauses civilian attacks for 10 seconds.</div>
+        </div>
+        <div style="text-align:right">
+          <button ${S.funds<50000?'disabled':''} onclick="callBackup()">Call</button>
+        </div>
+      </div>
     `;
-  }
-
-  function setHealTarget(t){ S.healTarget=t; saveState(); if(document.getElementById("invOverlay").style.display==="flex") renderInventory(); renderHUD(); }
-  function pickMostInjuredCivilian(){
-    const civs = S.civilians.filter(c=>c.alive && !c.evac);
-    if(!civs.length) return null;
-    let best=civs[0], gap=(best.hpMax-best.hp);
-    for(const c of civs){ const g=c.hpMax-c.hp; if(g>gap){gap=g; best=c;} }
-    return gap<=0 ? null : best;
   }
 
   function useMedkit(){
@@ -1052,7 +918,7 @@
       if(!civ) return toast("No injured civilians to heal.");
       S.medkits[pick]-=1;
       civ.hp = clamp(civ.hp + m.heal, 0, civ.hpMax);
-      sfx("ui"); saveState(); renderHUD();
+      sfx("ui"); save(); renderHUD();
       if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
       return toast(`Healed civilian +${m.heal}`);
     }
@@ -1060,7 +926,7 @@
     if(S.hp>=100) return toast("HP already full.");
     S.medkits[pick]-=1;
     S.hp = clamp(S.hp + m.heal, 0, 100);
-    sfx("ui"); saveState(); renderHUD();
+    sfx("ui"); save(); renderHUD();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
     toast(`Healed +${m.heal}`);
   }
@@ -1072,23 +938,99 @@
     const t=getTool(pick);
     S.repairKits[pick]-=1;
     S.durability[w.id] = clamp((S.durability[w.id]??100) + t.add, 0, 100);
-    sfx("ui"); saveState(); renderHUD();
+    sfx("ui"); save(); renderHUD();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
     toast(`Repaired +${t.add} durability`);
   }
 
-  // ===================== BACKUP/TRAPS/SCAN/SPRINT (unchanged gameplay; tutorial blocks some) =====================
-  function callBackup(){ if(TUT.on) return toast("Tutorial: backup disabled."); toast("Backup is disabled in this build."); }
-  function placeTrap(){ if(TUT.on) return toast("Tutorial: traps disabled."); toast("Traps are disabled in this build."); }
-  function scan(){ if(TUT.on) return toast("Tutorial: scan disabled."); toast("Scan is disabled in this build."); }
-  function sprint(){ if(TUT.on) return toast("Tutorial: sprint disabled."); toast("Sprint is disabled in this build."); }
+  // ===================== BACKUP =====================
+  function callBackup(){
+    if(S.funds < 50000) return toast("Need $50,000 for backup.");
+    if(S.backupCooldown>0) return toast("Backup cooling down.");
+    S.funds -= 50000;
+    S.backupActive = 600;
+    S.backupCooldown = 1800;
+    toast("🚨 Backup deployed! Tigers frozen. Civilians protected.");
+    sfx("ui");
+    save();
+    renderHUD();
+    if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
+  }
+  function backupTick(){
+    if(S.backupActive>0) S.backupActive--;
+    if(S.backupCooldown>0) S.backupCooldown--;
+  }
 
-  // ===================== DURABILITY / DAMAGE =====================
+  // ===================== TRAPS (one-time, remove after hold ends) =====================
+  function placeTrap(){
+    if(S.trapsOwned<=0) return toast("No traps. Buy in shop.");
+    if(S.paused) return toast("Resume to place trap.");
+    S.trapsOwned -= 1;
+
+    S.trapsPlaced.push({
+      id: Date.now() + Math.random(),
+      x: S.me.x,
+      y: S.me.y,
+      r: 80,
+      ttl: 1800,
+      used: false,
+      removeAt: 0
+    });
+
+    toast("🪤 Trap placed (one-time).");
+    sfx("trap");
+    save(); renderHUD();
+  }
+
+  function trapTick(){
+    for (const tr of S.trapsPlaced) tr.ttl -= 1;
+    const now = Date.now();
+
+    for (const t of S.tigers){
+      if(!t.alive) continue;
+      if(t.holdUntil && now < t.holdUntil){
+        t.vx = 0; t.vy = 0;
+        t._held = true;
+      } else {
+        t._held = false;
+      }
+    }
+
+    for (const tr of S.trapsPlaced){
+      if(tr.used) continue;
+      const tgt = S.tigers.find(x =>
+        x.alive &&
+        dist(x.x, x.y, tr.x, tr.y) < tr.r &&
+        !(x.holdUntil && now < x.holdUntil)
+      );
+      if(!tgt) continue;
+
+      const holdMs = rand(3000, 5000);
+      tgt.holdUntil = now + holdMs;
+      tgt.vx = 0; tgt.vy = 0;
+      tgt._held = true;
+
+      tr.used = true;
+      tr.removeAt = tgt.holdUntil;
+
+      toast("🪤 Tiger trapped!");
+      sfx("trap");
+      tgt.aggroBoost = clamp((tgt.aggroBoost||0) + 0.05, 0, 1);
+      break;
+    }
+
+    S.trapsPlaced = S.trapsPlaced.filter(tr =>
+      tr.ttl > 0 && (!tr.used || (tr.removeAt && now < tr.removeAt))
+    );
+  }
+
+  // ===================== DURABILITY / RELOAD =====================
   function ammoEffectFor(ammoId){
     const a=getAmmo(ammoId);
     const grade=a?.grade||"Standard";
     return AMMO_EFFECTS[grade] || AMMO_EFFECTS.Standard;
   }
+  function weaponDurability(id){ if(S.durability[id]==null) S.durability[id]=100; return S.durability[id]; }
   function applyWearOnShot(w){
     const g=WEAPON_GRADE[w.grade]||WEAPON_GRADE.Common;
     const wear = g.wear * (w.type==="lethal"?1.0:0.9);
@@ -1100,144 +1042,230 @@
     const wearFactor = dur>=60?0.0:(60-dur)/60;
     return clamp(g.jamBase + wearFactor*0.18, 0, 0.28);
   }
-
+  function autoReloadIfNeeded(force=false){
+    const w=equippedWeapon();
+    if(!force && S.mag.loaded>0) return true;
+    const reserve = S.ammoReserve[w.ammo] || 0;
+    if(reserve<=0) return false;
+    const need = S.mag.cap - S.mag.loaded;
+    const take = Math.min(need, reserve);
+    S.mag.loaded += take;
+    S.ammoReserve[w.ammo] = reserve - take;
+    sfx("reload");
+    return true;
+  }
   function equipWeapon(id){
-    if(TUT.on && !TUT.allow.equipWeapon) return toast("Tutorial: not yet.");
     if(!S.ownedWeapons.includes(id)) return;
     const w=getWeapon(id); if(!w) return;
     S.equippedWeaponId=id;
-    ensureWeaponMag(id);
-    autoReloadWeapon(id);
+    S.mag.cap=w.mag;
+    S.mag.loaded=clamp(S.mag.loaded,0,S.mag.cap);
+    if(S.mag.loaded===0) autoReloadIfNeeded(true);
     sfx("ui");
-    saveState();
+    save();
     renderHUD();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
     if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
     if(document.getElementById("battleOverlay").style.display==="flex") renderWeaponGrid();
   }
 
-  // ===================== SPAWNS (tutorial override: 1 civ + 1 tiger) =====================
+  // ===================== SPAWNS =====================
+  function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
+  function randomEvacZone(){ return { x: rand(120, 900), y: rand(120, 500), r:70 }; }
+
   const SKIN_TONES = ["#f6d7c3","#eac0a6","#d9a07f","#c9865c","#a86a44","#7a4a2c","#4b2f1f"];
   const SHIRT_COLS = ["#4aa3ff","#3ddc97","#f59e0b","#fb7185","#a78bfa","#f97316","#eab308","#22c55e","#60a5fa"];
   const PANTS_COLS = ["#1f2937","#334155","#0f172a","#3f3f46","#1c1917","#111827"];
 
-  function randomEvacZone(){ return { x: rand(140, 900), y: rand(150, 500), r:70 }; }
-
   function spawnCivilians(){
-    const isTut = TUT.on && S.tutScenario;
-    const n = isTut ? 1 : 3;
+    const n = (S.mode==="Story") ? clamp(3 + (S.storyLevel-1), 3, 7) : (S.mode==="Arcade" ? clamp(2 + (S.arcadeLevel-1), 2, 7) : 0);
     S.civilians = [];
     for(let i=0;i<n;i++){
       S.civilians.push({
         id:i+1,
-        x: isTut ? 300 : (220 + (i%3)*180),
-        y: isTut ? 260 : (140 + Math.floor(i/3)*160),
-        hp:100, hpMax:100, alive:true, evac:false,
+        x: 220 + (i%3)*180 + rand(-20,20),
+        y: 140 + Math.floor(i/3)*160 + rand(-20,20),
+        hp:100, hpMax:100,
+        alive:true, evac:false,
         skin: SKIN_TONES[rand(0,SKIN_TONES.length-1)],
         shirt: SHIRT_COLS[rand(0,SHIRT_COLS.length-1)],
         pants: PANTS_COLS[rand(0,PANTS_COLS.length-1)],
+        hair: rand(0,3)
       });
     }
     S.evacDone=0;
   }
 
+  function pickTigerType(){
+    const r=Math.random();
+    if(S.mode==="Survival"){
+      if(r<0.22) return "Scout";
+      if(r<0.48) return "Stalker";
+      if(r<0.72) return "Berserker";
+      if(r<0.90) return "Standard";
+      return "Alpha";
+    }
+    if(r<0.22) return "Scout";
+    if(r<0.55) return "Standard";
+    if(r<0.72) return "Stalker";
+    if(r<0.90) return "Berserker";
+    return "Alpha";
+  }
+
   function spawnTigers(){
-    const isTut = TUT.on && S.tutScenario;
-    const count = isTut ? 1 : 2;
+    let count=2;
+    if(S.mode==="Story"){
+      const afterMax = Math.max(0, (S.storyLevel - 1) - (7-3));
+      count = 2 + afterMax;
+    }
+    if(S.mode==="Arcade"){
+      const afterMax = Math.max(0, (S.arcadeLevel - 1) - (7-2));
+      count = 3 + afterMax;
+    }
+    if(S.mode==="Survival") count = Math.min(4 + (S.survivalWave-1), 10);
+
+    const boss = (S.mode==="Story" && (S.storyLevel % 5 === 0));
     S.tigers=[];
-    const def = TIGER_TYPES.find(t=>t.key==="Standard") || TIGER_TYPES[1];
+    const diff = carcassDifficulty();
+
     for(let i=0;i<count;i++){
-      const baseHp = isTut ? 90 : 118;
-      const hp = Math.round(baseHp * def.hpMul * carcassDifficulty());
+      let typeKey = pickTigerType();
+      if(boss && i===0) typeKey="Alpha";
+      const def = TIGER_TYPES.find(t=>t.key===typeKey) || TIGER_TYPES[1];
+
+      let baseHp = 115;
+      if(S.mode==="Arcade") baseHp = 125 + (S.arcadeLevel-1)*8;
+      if(S.mode==="Survival") baseHp = 140 + (S.survivalWave-1)*12;
+      if(S.mode==="Story") baseHp = 118 + (S.storyLevel-1)*4;
+
+      let hp = Math.round(baseHp * def.hpMul * diff);
+      let bossPhases=0;
+      if(boss && i===0){ hp = Math.round(hp*2.2); bossPhases=2; }
+
       S.tigers.push({
-        id:i+1, type:"Standard",
-        x: isTut ? 720 : (600+(i%4)*95),
-        y: isTut ? 240 : (140+Math.floor(i/4)*120),
-        vx:0, vy:0,
+        id:i+1,
+        type:def.key,
+        x:600+(i%4)*95,
+        y:140+Math.floor(i/4)*120,
+        vx:(Math.random()<0.5?-1:1)*def.spd*0.55,
+        vy:(Math.random()<0.5?-1:1)*def.spd*0.50,
         hp, hpMax:hp,
         alive:true,
-        tranqTagged:false
+        aggroBoost:0,
+        civBias: clamp(def.civBias + (diff-1)*0.18, 0, 0.98),
+        stealth:def.stealth,
+        rage:def.rage,
+        bossPhases,
+        tranqTagged:false,
+        step: rand(0,1000),
+        holdUntil: 0
       });
     }
   }
 
-  // ===================== DEPLOY =====================
+  // ===================== DEPLOY / NEXT / RESTART =====================
   function deploy(){
     S.gameOver=false;
     S.missionEnded=false;
     S.inBattle=false;
     S.activeTigerId=null;
+    S.paused=false; S.pauseReason=null;
 
+    S.hp=100; S.armor=20; S.stamina=100;
     S.me={x:160,y:420,face:0,step:0};
     S.target=null;
-    S.hp=100; S.armor=20; S.stamina=100;
     S.lockedTigerId=null;
 
-    S.evacZone = randomEvacZone();
-    if(TUT.on && S.tutScenario){
-      S.evacZone = { x: 860, y: 420, r: 70 };
-    }
+    // 1s civilian grace
+    S.civGraceUntil = Date.now() + 1000;
+    S.dangerCivId = null;
+
+    if(S.mode!=="Survival") S.evacZone = randomEvacZone();
+    S.backupActive=0;
 
     spawnTigers();
     spawnCivilians();
 
-    for(const wid of (S.ownedWeapons||[])){
-      if(S.durability[wid]==null) S.durability[wid]=100;
-      ensureWeaponMag(wid);
-      autoReloadWeapon(wid);
-    }
-    ensureWeaponMag(S.equippedWeaponId);
-    autoReloadWeapon(S.equippedWeaponId);
+    for(const wid of S.ownedWeapons){ if(S.durability[wid]==null) S.durability[wid]=100; }
 
-    saveState();
-  }
+    const w=equippedWeapon();
+    S.mag.cap = w.mag;
+    S.mag.loaded = clamp(S.mag.loaded || w.mag, 0, S.mag.cap);
+    if(S.mag.loaded===0) autoReloadIfNeeded(true);
 
-  function deployFromUI(){
-    if(tutBlock("deploy","Tutorial: tap NEXT until it tells you to deploy.")) return;
-    deploy();
-    if(TUT.on) tutComplete("deploy");
+    if(S.mode==="Survival"){ S.survivalStart = Date.now(); S.surviveSeconds=0; }
+
+    save();
   }
 
   function startNextMission(){
-    if(TUT.on) return toast("Tutorial: finish or skip.");
     document.getElementById("completeOverlay").style.display="none";
     if(S.mode==="Story") S.storyLevel += 1;
     if(S.mode==="Arcade") S.arcadeLevel += 1;
     if(S.mode==="Survival") S.survivalWave += 1;
     deploy();
     toast("Next mission started.");
-    saveState();
+    save();
   }
+
+  function restartCurrentMission(){
+    // keep same mode + same mission number
+    document.getElementById("battleOverlay").style.display="none";
+    document.getElementById("completeOverlay").style.display="none";
+    document.getElementById("overOverlay").style.display="none";
+    lastOverlay=null;
+
+    S.gameOver=false;
+    deploy();
+    toast("Restarted this mission.");
+    save();
+  }
+
   function closeComplete(){ document.getElementById("completeOverlay").style.display="none"; }
+
+  // ===================== GAME OVER (0 lives only) =====================
+  function gameOverChoice(msg){
+    S.gameOver = true;
+    S.paused = true;
+    document.getElementById("battleOverlay").style.display="none";
+    document.getElementById("completeOverlay").style.display="none";
+    lastOverlay=null;
+
+    document.getElementById("overText").innerText = msg + "\n\nChoose:";
+    document.getElementById("overOverlay").style.display="flex";
+    sfx("hurt");
+    save();
+  }
 
   // ===================== INPUT =====================
   cv.addEventListener("click",(e)=>{
     if(S.inBattle || S.gameOver || S.missionEnded) return;
     if(S.paused) return;
-
     ensureAudio();
     const rect=cv.getBoundingClientRect();
     const x=(e.clientX-rect.left)*(cv.width/rect.width);
     const y=(e.clientY-rect.top)*(cv.height/rect.height);
 
     const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
-    if(tapped){
-      if(tutBlock("tigerTap","Tutorial: not yet.")) return;
-      S.lockedTigerId=tapped.id; sfx("ui"); saveState();
-      if(TUT.on) tutComplete("tigerTap");
-      return;
-    }
-
-    if(tutBlock("mapTap","Tutorial: not yet.")) return;
-    S.target={x,y}; sfx("ui"); saveState();
-    if(TUT.on) tutComplete("mapTap");
+    if(tapped){ S.lockedTigerId=tapped.id; sfx("ui"); save(); return; }
+    S.target={x,y}; sfx("ui"); save();
   });
 
   function tigerById(id){ return S.tigers.find(t=>t.id===id); }
+  function nearestTiger(){
+    const alive=S.tigers.filter(t=>t.alive);
+    if(!alive.length) return null;
+    let best=alive[0], bd=1e9;
+    for(const t of alive){
+      const d=dist(S.me.x,S.me.y,t.x,t.y);
+      if(d<bd){bd=d; best=t;}
+    }
+    return best;
+  }
   function currentTargetTiger(){
     const locked=tigerById(S.lockedTigerId);
     if(locked && locked.alive) return locked;
-    return S.tigers.find(t=>t.alive) || null;
+    return nearestTiger();
   }
   function canEngage(){
     const t=currentTargetTiger();
@@ -1245,21 +1273,47 @@
     return dist(S.me.x,S.me.y,t.x,t.y) < 90 ? t : null;
   }
 
-  // ===================== MOVEMENT + FOLLOW + EVAC =====================
+  // ===================== SCAN =====================
+  function scan(){
+    if(S.inBattle) return toast("Finish battle first.");
+    if(S.paused) return toast("Resume to scan.");
+    if(S.stamina < 12) return toast("Not enough stamina.");
+    S.stamina -= 12;
+    S.scanPing=140;
+    sfx("scan"); save();
+  }
+
+  // ===================== MOVEMENT (slower) =====================
   function movePlayer(){
     if(!S.target) return;
     const dx=S.target.x-S.me.x, dy=S.target.y-S.me.y;
     const d=Math.hypot(dx,dy);
     if(d<6){ S.target=null; return; }
+    if(S.stamina<=0) return;
 
-    const speed=3.2;
+    let speed=2.6;
+    if(S._sprintTicks && S._sprintTicks>0){ speed=4.2; S._sprintTicks--; }
+
     S.me.face = Math.atan2(dy, dx);
     S.me.step = (S.me.step + speed*0.35) % (Math.PI*2);
 
-    S.me.x += (dx/d)*speed;
-    S.me.y += (dy/d)*speed;
+    const nx = S.me.x + (dx/d)*speed;
+    const ny = S.me.y + (dy/d)*speed;
+
+    const ok = tryMoveEntity(S.me, nx, ny, 16);
+    if(!ok){ S.target=null; }
+
+    S.stamina = clamp(S.stamina - (speed>2.6?0.20:0.10), 0, 100);
   }
 
+  function sprint(){
+    if(S.stamina < 25) return toast("Not enough stamina.");
+    S.stamina -= 25;
+    S._sprintTicks=90;
+    sfx("ui"); save();
+  }
+
+  // ===================== CIVILIANS FOLLOW-ONLY =====================
   function followCiviliansTick(){
     if(S.mode==="Survival") return;
     for(const c of S.civilians){
@@ -1268,21 +1322,10 @@
       if(d < 95){
         const dx = S.me.x - c.x, dy = S.me.y - c.y;
         const dd = Math.hypot(dx,dy) || 1;
-        const sp = 1.35;
-        c.x += (dx/dd)*sp;
-        c.y += (dy/dd)*sp;
+        const sp = 1.25;
+        tryMoveEntity(c, c.x + (dx/dd)*sp, c.y + (dy/dd)*sp, 14);
       }
     }
-  }
-
-  function tutEvacDone(){
-    const alive = S.civilians.filter(c=>c.alive);
-    return alive.length ? alive.every(c=>c.evac) : true;
-  }
-  function tutTigerDown(){ return !S.tigers.some(t=>t.alive); }
-  function tutNearestCivilian(){
-    const civs = S.civilians.filter(c=>c.alive && !c.evac);
-    return civs[0] || null;
   }
 
   function evacCheck(){
@@ -1293,12 +1336,250 @@
         c.evac=true;
         S.evacDone += 1;
         toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length})`);
-        if(TUT.on) tutComplete("evac");
       }
     }
   }
 
+  // ===================== CIVILIANS UNDER ATTACK (slower damage) =====================
+  function tickCiviliansAndThreats(){
+    if(S.mode==="Survival") return;
+
+    if(Date.now() < (S.civGraceUntil||0)){
+      S._underAttack=0;
+      S.dangerCivId=null;
+      return;
+    }
+
+    if(S.backupActive>0){
+      S._underAttack=0;
+      S.dangerCivId=null;
+      return;
+    }
+
+    const aliveCivsAll = S.civilians.filter(c=>c.alive && !c.evac);
+    if(!aliveCivsAll.length){
+      S._underAttack=0;
+      S.dangerCivId=null;
+      return;
+    }
+
+    let underAttack=0;
+    let dangerPair={ civId:null, dist:1e9 };
+
+    for(const t of S.tigers){
+      if(!t.alive) continue;
+
+      let best=aliveCivsAll[0], bd=1e9;
+      for(const c of aliveCivsAll){
+        const d=dist(t.x,t.y,c.x,c.y);
+        if(d<bd){bd=d; best=c;}
+      }
+
+      if(bd < dangerPair.dist) dangerPair={ civId: best.id, dist: bd };
+
+      if(bd < 70){
+        underAttack++;
+
+        const base = 0.25;
+        const diff = carcassDifficulty();
+        const isBossAlpha = (t.type==="Alpha" && t.bossPhases>0);
+        const multType =
+          isBossAlpha ? 2.8 :
+          (t.type==="Alpha") ? 2.2 : 1.0;
+
+        const dmg = base * multType * (1 + (diff-1)*0.20);
+        best.hp = clamp(best.hp - dmg, 0, best.hpMax);
+      }
+    }
+
+    S._underAttack=underAttack;
+    S.dangerCivId = (dangerPair.civId && dangerPair.dist < 160) ? dangerPair.civId : null;
+
+    for(const c of S.civilians){
+      if(c.alive && c.hp<=0){
+        c.alive=false;
+        S.lives -= 1;
+
+        if(S.lives <= 0){
+          S.lives = 0;
+          return gameOverChoice("A civilian died and you ran out of lives.");
+        }
+
+        // ✅ keep playing (no restart). Civilian stays dead.
+        toast(`Civilian died. Lives left: ${S.lives}`);
+        save();
+        return;
+      }
+    }
+  }
+
+  // ===================== TIGERS ROAM =====================
+  function alphaBuffs(){
+    const alphas = S.tigers.filter(t=>t.alive && t.type==="Alpha");
+    for(const t of S.tigers){
+      t._packBuff=0;
+      if(!t.alive) continue;
+      for(const a of alphas){
+        if(a.id===t.id) continue;
+        if(dist(a.x,a.y,t.x,t.y) < 220) t._packBuff = Math.max(t._packBuff, 0.18);
+      }
+    }
+  }
+
+  function roamTigers(){
+    alphaBuffs();
+    if(S.backupActive>0) return;
+
+    const now = Date.now();
+
+    for(const t of S.tigers){
+      if(!t.alive) continue;
+
+      if(t.holdUntil && now < t.holdUntil){
+        t.vx=0; t.vy=0;
+        t.step = (t.step + 0.05) % (Math.PI*2);
+        continue;
+      }
+
+      t.step = (t.step + 0.12) % (Math.PI*2);
+
+      const civs = (S.mode!=="Survival") ? S.civilians.filter(c=>c.alive && !c.evac) : [];
+      let targetX=S.me.x, targetY=S.me.y;
+
+      const extraCivBias = (carcassDifficulty()-1)*0.15;
+      const bias = clamp(t.civBias + extraCivBias, 0, 0.98);
+
+      if(civs.length && Math.random() < bias){
+        let best=civs[0], bd=1e9;
+        for(const c of civs){
+          const d=dist(t.x,t.y,c.x,c.y);
+          if(d<bd){bd=d; best=c;}
+        }
+        targetX=best.x; targetY=best.y;
+      }
+
+      const def=TIGER_TYPES.find(x=>x.key===t.type) || TIGER_TYPES[1];
+      const hunter=(t.aggroBoost||0);
+      const chaseChance = clamp((S.aggro/100)*0.25 + hunter*0.55 + 0.10, 0, 0.95);
+      const chase = Math.random() < chaseChance;
+      const speedCap = ((def.spd*0.9) + hunter*1.2 + (t._packBuff?0.35:0));
+
+      if(chase){
+        t.vx += (targetX>t.x?0.06:-0.06);
+        t.vy += (targetY>t.y?0.06:-0.06);
+      } else {
+        t.vx += (Math.random()-0.5)*0.08;
+        t.vy += (Math.random()-0.5)*0.08;
+      }
+
+      t.vx = clamp(t.vx, -speedCap, speedCap);
+      t.vy = clamp(t.vy, -speedCap, speedCap);
+
+      const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18);
+      if(!moved){ t.vx *= -0.8; t.vy *= -0.8; }
+
+      if(t.x<40||t.x>cv.width-40) t.vx*=-1;
+      if(t.y<60||t.y>cv.height-40) t.vy*=-1;
+      t.x=clamp(t.x,40,cv.width-40);
+      t.y=clamp(t.y,60,cv.height-40);
+    }
+  }
+
+  // ===================== SURVIVAL PRESSURE =====================
+  function survivalPressureTick(){
+    if(S.mode!=="Survival" || S.paused || S.gameOver) return;
+    if(S.backupActive>0) return;
+
+    if(!S.survivalStart) S.survivalStart = Date.now();
+    S.surviveSeconds = Math.floor((Date.now()-S.survivalStart)/1000);
+
+    let hits=0;
+    for(const t of S.tigers){
+      if(!t.alive) continue;
+      if(dist(t.x,t.y,S.me.x,S.me.y) < 140) hits++;
+    }
+    if(hits>0){
+      const base=0.20 + hits*0.10;
+      S._pressure=(S._pressure||0)+base;
+    }
+    S._pressTick=(S._pressTick||0)+1;
+    if(S._pressTick>=20){
+      S._pressTick=0;
+      const dmg=Math.min(8, Math.round((S._pressure||0)));
+      S._pressure=0;
+      if(dmg>0) applyPlayerDamage(dmg,true);
+    }
+  }
+
+  // ===================== DAMAGE / RESPAWN (key fix) =====================
+  function applyPlayerDamage(dmg, showToast=false){
+    if(S.armor>0){
+      const absorbed=Math.min(S.armor,dmg);
+      S.armor -= absorbed;
+      dmg -= absorbed;
+    }
+    if(dmg>0){
+      S.hp = clamp(S.hp - dmg, 0, 100);
+      sfx("hurt");
+      if(showToast) toast(`🐅 Hit: -${dmg} HP`);
+    }
+
+    if(S.hp<=0){
+      S.lives -= 1;
+
+      // ✅ Lives remain: respawn and keep playing SAME mission
+      if(S.lives > 0){
+        toast(`You went down. Respawned. Lives left: ${S.lives}`);
+
+        // respawn
+        S.hp = 100;
+        S.armor = 20;
+        S.stamina = 100;
+        S.me.x = 160; S.me.y = 420;
+        S.target = null;
+
+        // end battle if you died in battle
+        if(S.inBattle) endBattle("RETREAT");
+
+        // small fairness
+        S.aggro = clamp(S.aggro - 5, 0, 100);
+
+        save();
+        return;
+      }
+
+      // ✅ 0 lives: show 2-choice popup
+      S.lives = 0;
+      return gameOverChoice("You died and ran out of lives.");
+    }
+  }
+
+  // ===================== REGEN =====================
+  function regen(){
+    const now=Date.now();
+    if(!S._last) S._last=now;
+    const dt=(now-S._last)/1000;
+    if(dt>=2.5){
+      const ticks=Math.floor(dt/2.5);
+      S.stamina = clamp(S.stamina + ticks*3, 0, 100);
+      S._last=now;
+    }
+  }
+
   // ===================== BATTLE =====================
+  function startCombat(){
+    const t=canEngage();
+    if(!t) return toast("Move closer to a tiger to engage.");
+    if(S.paused) return toast("Resume first.");
+    S.inBattle=true;
+    S.activeTigerId=t.id;
+    document.getElementById("battleOverlay").style.display="flex";
+    renderWeaponGrid();
+    updateBattleButtons();
+    setBattleMsg(`Tiger #${t.id} (${t.type}) steps forward…`);
+    sfx("ui");
+    save();
+  }
   function setBattleMsg(msg){
     document.getElementById("battleTitle").innerText = `Battle — Tiger #${S.activeTigerId}`;
     document.getElementById("battleMsg").innerText = msg;
@@ -1309,15 +1590,21 @@
       const w=getWeapon(id);
       const active=(id===S.equippedWeaponId);
       const dur=Math.round(weaponDurability(id));
-      const m = ensureWeaponMag(id);
-      const res = S.ammoReserve[w.ammo]||0;
-      const ammoOk = weaponHasAmmo(id) ? "✅ ammo" : "❌ ammo";
-      return `<button ${active?'class="good"':''} onclick="equipWeapon('${id}')">${active?'✅ ':''}${w.name} (${dur}%) • ${m.loaded}/${m.cap} • ${res} • ${ammoOk}</button>`;
+      return `<button ${active?'class="good"':''} onclick="equipWeapon('${id}')">${active?'✅ ':''}${w.name} (${dur}%)</button>`;
     }).join("");
+  }
+  function endBattle(reason){
+    document.getElementById("battleOverlay").style.display="none";
+    S.inBattle=false;
+    S.activeTigerId=null;
+    if(reason==="RETREAT") S.aggro = clamp(S.aggro+4,0,100);
+    save();
   }
 
   function requiredTranqWeaponId(t){
-    // (simplified for tutorial: Standard needs tranq pistol)
+    const boss = (t.type==="Alpha" && t.bossPhases>0);
+    if(boss) return "W_TRQ_LAUNCHER";
+    if(t.type==="Stalker" || t.type==="Berserker") return "W_TRQ_RIFLE";
     return "W_TRQ_PISTOL_MK1";
   }
   function canCaptureTiger(t){
@@ -1327,64 +1614,57 @@
     const req = requiredTranqWeaponId(t);
     if(S.equippedWeaponId !== req) return false;
     const w=equippedWeapon();
-    return (w.type==="tranq");
+    if(w.type!=="tranq") return false;
+    return true;
   }
-
   function updateBattleButtons(){
     const t=tigerById(S.activeTigerId);
     document.getElementById("killBtn").disabled = !(t && t.hp<=15);
     document.getElementById("capBtn").disabled = !canCaptureTiger(t);
-
-    const attackBtn = document.getElementById("attackBtn");
-    if(attackBtn){
-      if(TUT.on && !TUT.allow.attack) attackBtn.disabled = true;
-      else attackBtn.disabled = !anyWeaponHasAmmo();
-    }
-  }
-
-  // HARD-LOCK Engage in Tutorial: evac must be done
-  function startCombat(){
-    if (TUT.on && S.tutScenario) {
-      if (!tutEvacDone()) {
-        toast("Tutorial: Escort the civilian to the SAFE ZONE first.");
-        return;
-      }
-      if (!TUT.allow.engage) {
-        toast("Tutorial: follow the current step.");
-        return;
-      }
-    }
-
-    if(tutBlock("engage","Tutorial: not yet.")) return;
-    if(S.missionEnded) return toast("Mission complete.");
-
-    const t=canEngage();
-    if(!t) return toast("Move closer to a tiger to engage.");
-    if(S.paused) return toast("Resume first.");
-
-    S.inBattle=true;
-    S.activeTigerId=t.id;
-    document.getElementById("battleOverlay").style.display="flex";
-    renderWeaponGrid();
-    updateBattleButtons();
-    setBattleMsg(`Tiger #${t.id} (${t.type}) steps forward…`);
-    sfx("ui");
-    saveState();
-
-    if(TUT.on) tutComplete("engage");
-  }
-
-  function endBattle(reason){
-    document.getElementById("battleOverlay").style.display="none";
-    S.inBattle=false;
-    S.activeTigerId=null;
-    saveState();
   }
 
   function payout(outcome){
-    // tutorial uses story payout messaging; real payout logic can stay in your full build
-    if(outcome==="CAPTURE") return { cash: 2500, score: 220, trust:+6, aggro:-8 };
-    return { cash: 800, score: 100, trust:-4, aggro:+14 };
+    if(S.mode==="Story"){
+      if(outcome==="CAPTURE") return { cash: rand(2500,5000), score: 220, trust:+6, aggro:-8 };
+      return { cash: rand(500,1500), score: 100, trust:-4, aggro:+14 };
+    }
+    if(S.mode==="Arcade"){
+      const L=S.arcadeLevel||1;
+      if(outcome==="CAPTURE") return { cash: 900 + L*220, score: 180 + L*40, trust:+2, aggro:-4 };
+      return { cash: 450 + L*140, score: 90 + L*25, trust:-1, aggro:+6 };
+    }
+    const W=S.survivalWave||1;
+    if(outcome==="CAPTURE") return { cash: 700 + W*260, score: 180 + W*45, trust:0, aggro:-2 };
+    return { cash: 300 + W*170, score: 85 + W*28, trust:0, aggro:+5 };
+  }
+
+  function maybeReinforceOnKill(){
+    if(S.mode==="Survival") return;
+    const chance = clamp(0.12 + (S.carcasses.length*0.01), 0.12, 0.30);
+    if(Math.random() > chance) return;
+
+    const newId = S.tigers.length + 1;
+    const typeKey = (Math.random()<0.6) ? "Scout" : "Standard";
+    const def=TIGER_TYPES.find(t=>t.key===typeKey)||TIGER_TYPES[1];
+    const diff = carcassDifficulty();
+    const hp = Math.round(95 * def.hpMul * diff);
+
+    S.tigers.push({
+      id:newId, type:def.key,
+      x: rand(520, 900), y: rand(90, 420),
+      vx:(Math.random()<0.5?-1:1)*def.spd*0.55,
+      vy:(Math.random()<0.5?-1:1)*def.spd*0.50,
+      hp, hpMax:hp,
+      alive:true,
+      aggroBoost:0,
+      civBias: clamp(def.civBias + (diff-1)*0.18, 0, 0.98),
+      stealth:def.stealth, rage:def.rage,
+      bossPhases:0,
+      tranqTagged:false,
+      step: rand(0,1000),
+      holdUntil: 0
+    });
+    toast("🚨 Reinforcements arrived!");
   }
 
   function playerAction(action){
@@ -1392,82 +1672,63 @@
     if(!t || !t.alive) return endBattle();
 
     if(action==="PROTECT"){
-      toast("Protect is disabled in the tutorial.");
+      if(S.mode==="Survival"){ setBattleMsg("No civilians in Survival."); return; }
+      S._protectTicks=240;
+      S.aggro=clamp(S.aggro+6,0,100);
+      setBattleMsg("You draw attention! Civilian damage reduced briefly.");
+      sfx("ui");
+      tigerTurn(t,true);
+      save();
       return;
     }
 
     if(action==="CAPTURE"){
-      if(tutBlock("capture","Tutorial: not yet.")) return;
       if(!canCaptureTiger(t)) return toast("Capture rules not met.");
       t.alive=false;
       const pay=payout("CAPTURE");
-      S.funds+=pay.cash; S.score+=pay.score; S.trust=clamp(S.trust+pay.trust,0,100); S.aggro=clamp(S.aggro+pay.aggro,0,100);
-
-      toast("✅ CAPTURED — Government rewards you. Aggression decreases.");
-      setBattleMsg("CAPTURED ✅\nYou spared the tiger.\nFuture packs are less aggressive.");
+      S.funds+=pay.cash; S.score+=pay.score;
+      S.trust=clamp(S.trust+pay.trust,0,100);
+      S.aggro=clamp(S.aggro+pay.aggro,0,100);
       sfx("win");
       endBattle();
       checkMissionComplete();
-      if(TUT.on) tutComplete("finishTiger");
-      saveState();
       return;
     }
 
     if(action==="KILL"){
-      if(tutBlock("kill","Tutorial: not yet.")) return;
       if(t.hp>15) return toast("Tiger HP too high to finish.");
       t.alive=false;
-      S.carcasses.push({ x:t.x, y:t.y }); // blood/carcass remains (affects difficulty)
-      S.aggro = clamp(S.aggro + 6, 0, 100); // extra aggression bump for tutorial clarity
-
+      S.carcasses.push({ x:t.x, y:t.y });
       const pay=payout("KILL");
-      S.funds+=pay.cash; S.score+=pay.score; S.trust=clamp(S.trust+pay.trust,0,100); S.aggro=clamp(S.aggro+pay.aggro,0,100);
-
-      toast("⚠️ KILLED — Carcass remains. Future tigers become more aggressive.");
-      setBattleMsg("KILLED ⚠️\nBlood remains on the map.\nOther tigers will grow more aggressive.");
+      S.funds+=pay.cash; S.score+=pay.score;
+      S.trust=clamp(S.trust+pay.trust,0,100);
+      S.aggro=clamp(S.aggro+pay.aggro,0,100);
+      maybeReinforceOnKill();
       sfx("win");
       endBattle();
       checkMissionComplete();
-      if(TUT.on) tutComplete("finishTiger");
-      saveState();
       return;
     }
 
     if(action==="ATTACK"){
-      if(tutBlock("attack","Tutorial: not yet.")) return;
-
       const w=equippedWeapon();
-      const mag = currentMag();
 
-      if(mag.loaded <= 0){
-        const ok = autoReloadWeapon(S.equippedWeaponId);
-        if(!ok){
-          if(anyWeaponHasAmmo()){
-            const options = listWeaponsWithAmmo().slice(0,4).join(", ");
-            toast("No ammo for this weapon. Switch weapons or buy ammo.");
-            setBattleMsg("NO AMMO for current weapon.\nSwitch to a weapon with ammo, then Attack.\n" + (options ? `Weapons with ammo: ${options}` : ""));
-            updateBattleButtons();
-            saveState();
-            return;
-          } else {
-            toast("No ammo for any weapons! Buy ammo in Shop → Ammo tab.");
-            setBattleMsg("NO AMMO for any weapons.\nAttack is disabled until you buy ammo.\nYou can still Retreat / Heal.");
-            updateBattleButtons();
-            saveState();
-            return;
-          }
-        }
+      if(S.mag.loaded<=0){
+        const ok=autoReloadIfNeeded(true);
+        if(!ok){ toast("Out of ammo. Buy more in Shop."); tigerTurn(t); save(); return; }
       }
 
       if(Math.random()<jamChance(w)){
         applyWearOnShot(w);
         sfx("jam");
         setBattleMsg(`JAM! ${w.name} malfunctioned.`);
-        saveState();
+        tigerTurn(t);
+        save();
         return;
       }
 
-      mag.loaded -= 1;
+      S.mag.loaded -= 1;
+
       const eff=ammoEffectFor(w.ammo);
       let dmg=rand(w.dmg[0],w.dmg[1]);
       const crit=Math.random()<eff.crit;
@@ -1476,13 +1737,15 @@
 
       if(w.type==="tranq"){
         t.tranqTagged = true;
+        dmg = Math.round(dmg * eff.tranq);
         sfx("tranq");
       } else {
         sfx("hit");
       }
 
-      // tutorial damage tuned: always reduces hp
-      dmg = Math.max(8, Math.round(dmg / carcassDifficulty()));
+      dmg = Math.max(6, Math.round(dmg / carcassDifficulty()));
+      if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35) dmg = Math.max(6, Math.round(dmg*0.85));
+
       t.hp = clamp(t.hp - dmg, 0, t.hpMax);
       applyWearOnShot(w);
 
@@ -1490,14 +1753,38 @@
       if(t.hp<=0){ t.hp=15; setBattleMsg("Tiger is critically weak. Choose Capture or Kill!"); }
 
       updateBattleButtons();
-      saveState();
-      if(TUT.on) tutComplete("attack");
+      tigerTurn(t);
+      save();
       return;
     }
   }
 
+  function tigerTurn(t, softened=false){
+    if(!t.alive) return;
+    const diff=carcassDifficulty();
+
+    let dmg = rand(10,18) + Math.floor((S.aggro/100)*10);
+    dmg = Math.round(dmg * diff);
+
+    if(t.type==="Scout") dmg=Math.floor(dmg*0.85);
+    if(t.type==="Alpha") dmg=Math.floor(dmg*1.15);
+    if(t.type==="Berserker"){
+      dmg=Math.floor(dmg*1.25);
+      if((t.hp/t.hpMax)<0.35) dmg=Math.floor(dmg*1.20);
+    }
+    if(t.type==="Stalker") dmg=Math.floor(dmg*1.05);
+    if(softened) dmg=Math.floor(dmg*0.85);
+    dmg=clamp(dmg,6,75);
+
+    applyPlayerDamage(dmg,false);
+    updateBattleButtons();
+  }
+
   // ===================== MISSION COMPLETE =====================
   function checkMissionComplete(){
+    if(S.mode==="Survival") return;
+    if(S.gameOver) return;
+
     const tAlive = S.tigers.some(t=>t.alive);
     const civAlive = S.civilians.filter(c=>c.alive).length;
     const civEvac = S.civilians.filter(c=>c.alive && c.evac).length;
@@ -1506,33 +1793,22 @@
       if(!S.missionEnded){
         S.missionEnded=true;
         setPaused(true,"complete");
-        document.getElementById("completeText").innerHTML =
-          (TUT.on && S.tutScenario)
-            ? `<b>Tutorial Mission Complete ✅</b><br>You escorted the civilian, evacuated them, and defeated the tiger.`
-            : `Mission complete.`;
+        document.getElementById("completeText").innerText =
+          `Mission complete. All tigers cleared. Civilians evacuated. You can Shop/Inventory and then start next mission.`;
         document.getElementById("completeOverlay").style.display="flex";
         sfx("win");
-        saveState();
+        save();
       }
     }
   }
 
-  // ===================== GAME OVER (simple) =====================
-  function gameOver(msg){
-    if(S.gameOver) return;
-    S.gameOver=true;
-    setPaused(true,"over");
-    document.getElementById("overText").innerText=msg;
-    document.getElementById("overOverlay").style.display="flex";
-    sfx("hurt");
-    saveState();
+  // ===================== ENGAGE / HUD =====================
+  function updateEngage(){
+    document.getElementById("engageBtn").disabled = !canEngage() || S.paused || S.missionEnded || S.gameOver;
   }
-  function closeOver(){ document.getElementById("overOverlay").style.display="none"; }
 
-  // ===================== HUD + ENGAGE DISABLE (includes evac hard-lock) =====================
   function renderHUD(){
     document.getElementById("soundLbl").innerText = S.soundOn ? "On" : "Off";
-    document.getElementById("motionLbl").innerText = S.reducedMotion ? "Reduced" : "On";
     document.getElementById("livesTxt").innerText = S.lives;
 
     document.getElementById("hpTxt").innerText = Math.round(S.hp);
@@ -1544,59 +1820,202 @@
 
     document.getElementById("fundsTxt").innerText = S.funds.toLocaleString();
     document.getElementById("scoreTxt").innerText = S.score.toLocaleString();
-    document.getElementById("surviveTxt").innerText = "—";
+
+    if(S.mode==="Survival"){
+      if(!S.survivalStart) S.survivalStart=Date.now();
+      S.surviveSeconds = Math.floor((Date.now()-S.survivalStart)/1000);
+      document.getElementById("surviveTxt").innerText = S.surviveSeconds+"s";
+    } else {
+      document.getElementById("surviveTxt").innerText = "—";
+    }
 
     const w=equippedWeapon();
-    const mag = currentMag();
     document.getElementById("weaponTxt").innerText = w.name;
     document.getElementById("durTxt").innerText = Math.round(weaponDurability(w.id));
-    document.getElementById("ammoTxt").innerText = `${mag.loaded}/${mag.cap} (reserve ${S.ammoReserve[w.ammo]||0})`;
+    document.getElementById("ammoTxt").innerText = `${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[w.ammo]||0})`;
     document.getElementById("medTxt").innerText = totalMedkits();
     document.getElementById("repTxt").innerText = totalRepairKits();
     document.getElementById("trapTxt").innerText = S.trapsOwned;
-    document.getElementById("backupTxt").innerText = "—";
+
+    const backupStr = (S.backupActive>0) ? `ACTIVE (${Math.ceil(S.backupActive/60)}s)` : (S.backupCooldown>0 ? `Cooldown (${Math.ceil(S.backupCooldown/60)}s)` : "Ready");
+    document.getElementById("backupTxt").innerText = backupStr;
 
     document.getElementById("mapTxt").innerText = currentMap().name;
-    document.getElementById("modeTxt").innerText = (TUT.on && S.tutScenario) ? "Tutorial" : S.mode;
-    document.getElementById("lvlTxt").innerText = (S.mode==="Story") ? S.storyLevel : ((S.mode==="Arcade") ? S.arcadeLevel : S.survivalWave);
+
+    let modeLabel=S.mode, lvl="—";
+    if(S.mode==="Story"){ modeLabel="Story"; lvl=S.storyLevel; }
+    if(S.mode==="Arcade"){ modeLabel="Arcade"; lvl=S.arcadeLevel; }
+    if(S.mode==="Survival"){ modeLabel="Survival"; lvl=S.survivalWave; }
+    document.getElementById("modeTxt").innerText = modeLabel;
+    document.getElementById("lvlTxt").innerText = lvl;
 
     const t=currentTargetTiger();
     document.getElementById("tigerTxt").innerText = t ? `${Math.round(t.hp)}/${Math.round(t.hpMax)} (${t.type})` : "—";
     document.getElementById("tigerBar").style.width = t ? `${(t.hp/t.hpMax)*100}%` : "0%";
 
-    const civAlive = `${S.civilians.filter(c=>c.alive).length}/${S.civilians.length||0}`;
+    const civAlive = (S.mode==="Survival") ? "—" : `${S.civilians.filter(c=>c.alive).length}/${S.civilians.length||0}`;
     document.getElementById("civTxt").innerText = civAlive;
-    document.getElementById("evacTxt").innerText = `${S.evacDone}/${S.civilians.length||0}`;
+    document.getElementById("evacTxt").innerText = (S.mode==="Survival") ? "—" : `${S.evacDone}/${S.civilians.length||0}`;
+
     document.getElementById("tleftTxt").innerText = S.tigers.filter(t=>t.alive).length;
-    document.getElementById("threatTxt").innerText = "—";
+    document.getElementById("threatTxt").innerText = (S.mode==="Survival") ? "Pressure" : (S._underAttack ? `${S._underAttack} attacks` : "Low");
 
+    const grace = (S.mode!=="Survival" && Date.now() < (S.civGraceUntil||0)) ? " • Civ Grace" : "";
     document.getElementById("objTxt").innerText =
-      (TUT.on && S.tutScenario)
-        ? `Tutorial Objective: Evacuate the civilian FIRST, then defeat the tiger.`
-        : `Objective: Evacuate living civilians + clear ALL tigers.`;
-
-    // ENGAGE disabled rules (includes evac hard-lock)
-    document.getElementById("engageBtn").disabled =
-      !(canEngage()) ||
-      S.paused || S.missionEnded || S.gameOver ||
-      (TUT.on && !TUT.allow.engage) ||
-      (TUT.on && S.tutScenario && !tutEvacDone());
+      (S.mode==="Survival")
+        ? `Objective: Survive • Traps hold tigers • Carcasses block movement`
+        : `Objective: Evacuate living civilians + clear ALL tigers${grace}`;
   }
 
-  // ===================== CALM MAP + ENTITIES (simple) =====================
+  // ===================== CALM MAPS =====================
   function drawMapScene(){
-    ctx.fillStyle="#0f2b1c";
-    ctx.fillRect(0,0,cv.width,cv.height);
+    const w=cv.width, h=cv.height;
+    const key=currentMap().key;
 
-    // evac ring
-    ctx.globalAlpha=0.9;
-    ctx.strokeStyle="rgba(74,222,128,.55)";
-    ctx.lineWidth=3;
-    ctx.beginPath(); ctx.arc(S.evacZone.x,S.evacZone.y,S.evacZone.r,0,Math.PI*2); ctx.stroke();
-    ctx.fillStyle="rgba(74,222,128,.10)";
-    ctx.beginPath(); ctx.arc(S.evacZone.x,S.evacZone.y,S.evacZone.r,0,Math.PI*2); ctx.fill();
-    ctx.globalAlpha=1;
+    function fillSolid(color){ ctx.fillStyle=color; ctx.fillRect(0,0,w,h); }
+    function rounded(x,y,ww,hh,r,fill,stroke=null){
+      ctx.beginPath();
+      ctx.moveTo(x+r,y);
+      ctx.arcTo(x+ww,y,x+ww,y+hh,r);
+      ctx.arcTo(x+ww,y+hh,x,y+hh,r);
+      ctx.arcTo(x,y+hh,x,y,r);
+      ctx.arcTo(x,y,x+ww,y,r);
+      ctx.closePath();
+      ctx.fillStyle=fill; ctx.fill();
+      if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.stroke(); }
+    }
+    function roadLine(points,width,fill){
+      ctx.strokeStyle=fill; ctx.lineWidth=width; ctx.lineCap="round"; ctx.lineJoin="round";
+      ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
+      for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0],points[i][1]);
+      ctx.stroke();
+    }
+    function dashed(points){
+      ctx.strokeStyle="rgba(240,240,245,.7)";
+      ctx.lineWidth=4; ctx.setLineDash([18,14]); ctx.lineCap="round";
+      ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
+      for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0],points[i][1]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    function treeDot(x,y){
+      ctx.fillStyle="rgba(22,120,60,.85)";
+      ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fill();
+    }
+    function buildingBlock(x,y,ww,hh){
+      rounded(x-ww/2,y-hh/2,ww,hh,10,"rgba(55,70,95,.85)","rgba(18,24,38,.9)");
+    }
+    function houseBlock(x,y){
+      rounded(x-18,y-12,36,24,8,"rgba(190,180,160,.8)","rgba(60,55,50,.9)");
+    }
+    function crateBlock(x,y){
+      rounded(x-12,y-10,24,20,6,"rgba(140,90,45,.85)","rgba(70,40,20,.85)");
+    }
+
+    if(key==="ST_FOREST" || key==="AR_SAND_YARD" || key==="SV_NIGHT_WOODS"){
+      fillSolid("#0f2b1c");
+      roadLine([[60,430],[260,390],[450,420],[610,360],[820,390],[940,330]], 62, "rgba(90,70,45,.85)");
+      roadLine([[0,160],[240,230],[470,190],[720,250],[960,210]], 48, "rgba(80,60,38,.85)");
+      const trees = [
+        [90,90],[140,120],[210,90],[300,140],[360,90],[420,150],[520,110],[610,140],[700,100],[780,150],[880,120],
+        [120,300],[200,320],[280,300],[360,330],[440,300],[520,330],[600,300],[700,320],[820,300],
+        [110,500],[210,490],[320,500],[420,480],[520,500],[650,490],[760,500],[880,490],
+      ];
+      for(const [x,y] of trees) treeDot(x,y);
+      ctx.fillStyle="rgba(25,90,105,.65)";
+      ctx.beginPath(); ctx.ellipse(260,220,90,34,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(720,190,85,30,0,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="rgba(10,60,80,.7)"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.ellipse(260,220,90,34,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(720,190,85,30,0,0,Math.PI*2); ctx.stroke();
+    }
+    else if(key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD"){
+      fillSolid("#18402a");
+      const main=[[0,280],[240,270],[480,300],[720,280],[960,300]];
+      roadLine(main, 84, "rgba(75,78,86,.9)");
+      dashed(main);
+      roadLine([[120,120],[420,110],[760,120]], 62, "rgba(75,78,86,.9)");
+      roadLine([[120,440],[420,430],[760,440]], 62, "rgba(75,78,86,.9)");
+      const houses = [
+        [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
+        [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
+        [140,360],[280,360],[420,360],[560,360],[700,360],[840,360],
+        [120,450],[240,450],[360,450],[480,450],[600,450],[720,450],[840,450],
+      ];
+      for(const [x,y] of houses) houseBlock(x,y);
+      rounded(120,210,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
+      rounded(670,320,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
+      const trees = [[70,200],[90,240],[110,260],[930,220],[900,250],[880,280],[70,520],[930,520]];
+      for(const [x,y] of trees) treeDot(x,y);
+    }
+    else if(key==="ST_DOWNTOWN" || key==="AR_NEON_GRID" || key==="SV_STORM_DISTRICT"){
+      fillSolid("#1a1f2d");
+      ctx.fillStyle="rgba(70,72,80,.95)";
+      for(let x=80; x<w; x+=170) ctx.fillRect(x-46,0,92,h);
+      for(let y=80; y<h; y+=150) ctx.fillRect(0,y-42,w,84);
+      const blocks = [
+        [150,140,90,80],[320,150,80,70],[520,140,100,80],[720,150,80,75],[880,140,80,70],
+        [180,310,100,85],[360,320,90,80],[560,310,110,85],[760,320,90,80],[900,310,80,75],
+        [150,470,90,70],[340,470,90,70],[540,470,100,70],[740,470,90,70],[900,470,80,70],
+      ];
+      for(const [x,y,ww,hh] of blocks) buildingBlock(x,y,ww,hh);
+      ctx.fillStyle="rgba(240,240,245,.75)";
+      for(let i=0;i<8;i++){
+        const cx=120+i*100;
+        for(let k=0;k<7;k++) ctx.fillRect(cx+k*9, 270, 5, 18);
+      }
+    }
+    else {
+      fillSolid("#2b2b30");
+      rounded(90,90,260,130,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+      rounded(610,110,260,110,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+      rounded(240,340,340,140,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+      ctx.strokeStyle="rgba(240,190,55,.55)";
+      ctx.lineWidth=6;
+      for(let k=0;k<260;k+=18){
+        ctx.beginPath(); ctx.moveTo(90+k,90); ctx.lineTo(90+k-45,220); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(610+k,110); ctx.lineTo(610+k-45,220); ctx.stroke();
+      }
+      buildingBlock(170,260,140,90);
+      buildingBlock(520,260,160,90);
+      buildingBlock(820,300,150,90);
+      const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
+      for(const [x,y] of crates) crateBlock(x,y);
+    }
+
+    if(S.mode!=="Survival"){
+      ctx.globalAlpha=0.9;
+      ctx.strokeStyle="rgba(74,222,128,.55)";
+      ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(S.evacZone.x,S.evacZone.y,S.evacZone.r,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle="rgba(74,222,128,.10)";
+      ctx.beginPath(); ctx.arc(S.evacZone.x,S.evacZone.y,S.evacZone.r,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+    }
+
+    for(const tr of S.trapsPlaced){
+      ctx.globalAlpha=0.75;
+      ctx.strokeStyle="rgba(58,120,255,.55)";
+      ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.r,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+
+    if(S.scanPing>0){
+      S.scanPing--;
+      const t=currentTargetTiger();
+      if(t){
+        const r=40+(140-S.scanPing)*1.3;
+        ctx.globalAlpha=Math.max(0,S.scanPing/260);
+        ctx.strokeStyle="rgba(245,158,11,.18)";
+        ctx.lineWidth=3;
+        ctx.beginPath(); ctx.arc(t.x,t.y,r,0,Math.PI*2); ctx.stroke();
+        ctx.globalAlpha=1;
+      }
+    }
   }
+
+  // ===================== DRAW ENTITIES =====================
   function roundedRectFill(x,y,w,h,r){
     ctx.beginPath();
     ctx.moveTo(x+r,y);
@@ -1607,349 +2026,224 @@
     ctx.closePath();
     ctx.fill();
   }
+  function drawCarcass(x,y){
+    ctx.globalAlpha=0.55;
+    ctx.fillStyle="rgba(180,40,60,.65)";
+    roundedRectFill(x-14,y-8,28,16,8);
+    ctx.globalAlpha=1;
+  }
+  function drawDangerMarker(x,y){
+    ctx.save();
+    ctx.globalAlpha=0.95;
+    ctx.fillStyle="rgba(251,113,133,.95)";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x-10, y+18);
+    ctx.lineTo(x+10, y+18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle="rgba(11,13,18,.9)";
+    ctx.font="900 14px system-ui";
+    ctx.fillText("!", x-3.5, y+15);
+    ctx.restore();
+  }
   function drawCivilian(c){
-    ctx.fillStyle=c.shirt; roundedRectFill(c.x-9, c.y-12, 18, 24, 6);
-    ctx.fillStyle=c.pants; roundedRectFill(c.x-9, c.y+10, 18, 10, 4);
-    ctx.fillStyle=c.skin; ctx.beginPath(); ctx.arc(c.x, c.y-18, 8.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=c.shirt;
+    roundedRectFill(c.x-9, c.y-12, 18, 24, 6);
+    ctx.fillStyle=c.pants;
+    roundedRectFill(c.x-9, c.y+10, 18, 10, 4);
+    ctx.fillStyle=c.skin;
+    ctx.beginPath(); ctx.arc(c.x, c.y-18, 8.5, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle="rgba(20,20,22,.75)";
+    if(c.hair===0){
+      ctx.beginPath(); ctx.arc(c.x, c.y-21, 7, Math.PI, Math.PI*2); ctx.fill();
+    } else if(c.hair===1){
+      roundedRectFill(c.x-7, c.y-27, 14, 6, 3);
+    } else if(c.hair===2){
+      ctx.beginPath(); ctx.ellipse(c.x, c.y-24, 7, 5, 0, 0, Math.PI*2); ctx.fill();
+    }
+
+    if(c.evac){
+      ctx.fillStyle="rgba(74,222,128,.85)";
+      ctx.beginPath(); ctx.arc(c.x, c.y-32, 4.5, 0, Math.PI*2); ctx.fill();
+    }
+
+    if(S.dangerCivId===c.id) drawDangerMarker(c.x, c.y-58);
+
     const pct=c.hp/c.hpMax;
-    ctx.fillStyle="rgba(11,13,18,.80)"; ctx.fillRect(c.x-22,c.y-34,44,6);
-    ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185"); ctx.fillRect(c.x-22,c.y-34,44*pct,6);
+    ctx.fillStyle="rgba(11,13,18,.80)";
+    ctx.fillRect(c.x-22,c.y-34,44,6);
+    ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
+    ctx.fillRect(c.x-22,c.y-34,44*pct,6);
   }
   function drawSoldier(){
-    const bob = S.reducedMotion ? 0 : Math.sin(S.me.step)*1.5;
+    const bob = Math.sin(S.me.step)*1.5;
     const x=S.me.x, y=S.me.y + bob;
+
     ctx.globalAlpha=0.25; ctx.fillStyle="#000";
     ctx.beginPath(); ctx.ellipse(x,y+18,18,8,0,0,Math.PI*2); ctx.fill();
     ctx.globalAlpha=1;
-    ctx.fillStyle="rgba(40,50,60,.95)"; roundedRectFill(x-10, y-16, 20, 26, 7);
-    ctx.fillStyle="rgba(220,220,225,.90)"; ctx.beginPath(); ctx.arc(x, y-20, 6.5, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle="rgba(40,50,60,.95)";
+    roundedRectFill(x-10, y-16, 20, 26, 7);
+    ctx.fillStyle="rgba(20,30,40,.95)";
+    roundedRectFill(x-8, y-12, 16, 18, 6);
+
+    ctx.fillStyle="rgba(55,65,75,.95)";
+    ctx.beginPath(); ctx.arc(x, y-24, 9.5, Math.PI, Math.PI*2); ctx.fill();
+    ctx.fillStyle="rgba(35,45,55,.95)";
+    roundedRectFill(x-10, y-24, 20, 6, 3);
+
+    ctx.fillStyle="rgba(220,220,225,.90)";
+    ctx.beginPath(); ctx.arc(x, y-20, 6.5, 0, Math.PI*2); ctx.fill();
+
+    const ang = S.me.face || 0;
+    const wx = x + Math.cos(ang)*12;
+    const wy = y + Math.sin(ang)*12;
+
+    ctx.strokeStyle="rgba(30,30,34,.95)";
+    ctx.lineWidth=4;
+    ctx.beginPath(); ctx.moveTo(x+Math.cos(ang)*6, y+Math.sin(ang)*2); ctx.lineTo(wx, wy); ctx.stroke();
+
+    ctx.fillStyle="rgba(245,158,11,.90)";
+    ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, Math.PI*2); ctx.fill();
+  }
+  function tigerColors(type){
+    if(type==="Scout") return { body:"#f7b24a", stripe:"#1c1917", belly:"#ffd9a3" };
+    if(type==="Standard") return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
+    if(type==="Stalker") return { body:"#c77c2f", stripe:"#0b0d12", belly:"#d9b18a" };
+    if(type==="Berserker") return { body:"#f08a24", stripe:"#111827", belly:"#ffd1a1" };
+    return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
   }
   function drawTiger(t){
-    const x=t.x, y=t.y;
-    ctx.fillStyle="#f59e0b";
-    ctx.beginPath(); ctx.ellipse(x, y+2, 22, 13, 0, 0, Math.PI*2); ctx.fill();
+    let alpha=1.0;
+    if(t.type==="Stalker"){
+      const near=dist(t.x,t.y,S.me.x,S.me.y) < 180;
+      alpha = near ? 0.85 : 0.45;
+    }
+    const c=tigerColors(t.type);
+    const bob = Math.sin(t.step||0)*1.2;
+    const x=t.x, y=t.y + bob;
+    let s=1.0;
+    if(t.type==="Scout") s=0.85;
+    if(t.type==="Alpha") s=1.22;
+    if(t.type==="Berserker") s=1.10;
+
+    ctx.globalAlpha=0.25*alpha; ctx.fillStyle="#000";
+    ctx.beginPath(); ctx.ellipse(x,y+18*s,22*s,8*s,0,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=alpha;
+
+    ctx.fillStyle=c.body;
+    ctx.beginPath(); ctx.ellipse(x, y+2*s, 22*s, 13*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=c.belly;
+    ctx.beginPath(); ctx.ellipse(x+3*s, y+6*s, 14*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=c.body;
+    ctx.beginPath(); ctx.ellipse(x+20*s, y-6*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x+26*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x+16*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+
+    ctx.strokeStyle=c.body; ctx.lineWidth=5*s;
+    ctx.beginPath();
+    ctx.moveTo(x-20*s, y+2*s);
+    ctx.quadraticCurveTo(x-34*s, y-2*s + Math.sin((t.step||0)+1.4)*6*s, x-40*s, y-10*s);
+    ctx.stroke();
+
+    ctx.strokeStyle=c.stripe; ctx.lineWidth=3*s;
+    for(let i=-2;i<=2;i++){
+      ctx.beginPath();
+      ctx.moveTo(x-8*s + i*6*s, y-6*s);
+      ctx.lineTo(x-2*s + i*6*s, y+10*s);
+      ctx.stroke();
+    }
+
+    if(t._held){
+      ctx.globalAlpha=0.35;
+      ctx.strokeStyle="rgba(58,120,255,.9)";
+      ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(x, y, 30*s, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=alpha;
+    }
+
     if(S.lockedTigerId===t.id){
       ctx.strokeStyle="rgba(58,120,255,.95)";
       ctx.lineWidth=3;
-      ctx.beginPath(); ctx.arc(x,y,30,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x,y,30*s,0,Math.PI*2); ctx.stroke();
     }
+
     const pct=t.hp/t.hpMax;
-    ctx.fillStyle="rgba(11,13,18,.85)"; ctx.fillRect(x-26,y-34,52,6);
-    ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185"); ctx.fillRect(x-26,y-34,52*pct,6);
+    ctx.fillStyle="rgba(11,13,18,.85)";
+    ctx.fillRect(x-26*s,y-34*s,52*s,6);
+    ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
+    ctx.fillRect(x-26*s,y-34*s,52*s*pct,6);
+
+    ctx.globalAlpha=0.85*alpha;
+    ctx.fillStyle="rgba(245,247,255,.80)";
+    ctx.font="900 12px system-ui";
+    ctx.fillText(t.type + (t.tranqTagged?" (tranq)":""),
+      x-28*s, y-44*s);
+    ctx.globalAlpha=1;
   }
   function drawEntities(){
-    for(const c of S.civilians){ if(c.alive) drawCivilian(c); }
+    for(const c of S.carcasses) drawCarcass(c.x,c.y);
+    if(S.mode!=="Survival"){
+      for(const c of S.civilians){ if(c.alive) drawCivilian(c); }
+    }
     for(const t of S.tigers){ if(t.alive) drawTiger(t); }
     drawSoldier();
   }
 
-  // ===================== TUTORIAL UI + STEPS =====================
-  function getSpotCanvas(){
-    const c = document.getElementById("tutSpotlight");
-    c.width = window.innerWidth;
-    c.height = window.innerHeight;
-    return c;
-  }
-  window.addEventListener("resize", ()=>{ if(TUT.on) tutRender(); });
-
-  function rectOf(el){
-    if(!el) return null;
-    const r = el.getBoundingClientRect();
-    return { x:r.left, y:r.top, w:r.width, h:r.height };
-  }
-  function hlButtonByText(txt){
-    const btns = Array.from(document.querySelectorAll("button"));
-    const el = btns.find(b => (b.innerText||"").trim() === txt);
-    const r = rectOf(el);
-    return r ? { rect:r, pad:12 } : { none:true };
-  }
-  function hlButtonById(id){
-    const el = document.getElementById(id);
-    const r = rectOf(el);
-    return r ? { rect:r, pad:10 } : { none:true };
-  }
-  function hlCanvas(){
-    const r = rectOf(document.getElementById("cv"));
-    return r ? { rect:r, pad:14 } : { none:true };
-  }
-  function drawSpotlight(h){
-    const c = getSpotCanvas();
-    const g = c.getContext("2d");
-    g.clearRect(0,0,c.width,c.height);
-    g.fillStyle = "rgba(0,0,0,0.75)";
-    g.fillRect(0,0,c.width,c.height);
-    if(h?.none) return;
-
-    const pad = h.pad ?? 12;
-    const r = h.rect;
-    const x = r.x - pad;
-    const y = r.y - pad;
-    const w = r.w + pad*2;
-    const hh = r.h + pad*2;
-    const radius = 18;
-
-    g.globalCompositeOperation = "destination-out";
-    g.beginPath();
-    g.moveTo(x+radius, y);
-    g.arcTo(x+w, y, x+w, y+hh, radius);
-    g.arcTo(x+w, y+hh, x, y+hh, radius);
-    g.arcTo(x, y+hh, x, y, radius);
-    g.arcTo(x, y, x+w, y, radius);
-    g.closePath();
-    g.fill();
-    g.globalCompositeOperation = "source-over";
-
-    g.strokeStyle = "rgba(58,120,255,0.95)";
-    g.lineWidth = 3;
-    g.beginPath();
-    g.moveTo(x+radius, y);
-    g.arcTo(x+w, y, x+w, y+hh, radius);
-    g.arcTo(x+w, y+hh, x, y+hh, radius);
-    g.arcTo(x, y+hh, x, y, radius);
-    g.arcTo(x, y, x+w, y, radius);
-    g.closePath();
-    g.stroke();
-  }
-
-  // UPDATED STRICT ORDER: evac before tiger steps
-  const tutSteps = [
-    { title:"Welcome", text:"Strict tutorial:\n• 1 civilian\n• 1 tiger\n• Complete each step to unlock the next.\n\nTap NEXT.", highlight:()=>({none:true}),
-      allow:{ next:true } },
-
-    { title:"Deploy", text:"Tap DEPLOY.", highlight:()=>hlButtonByText("📍 Deploy"),
-      allow:{ deploy:true } },
-
-    { title:"Move", text:"Tap the MAP to move toward the civilian.", highlight:()=>hlCanvas(),
-      allow:{ mapTap:true } },
-
-    { title:"Escort", text:"Get close until the civilian follows you.", highlight:()=>hlCanvas(),
-      allow:{ mapTap:true } },
-
-    { title:"Evacuate", text:"Lead the civilian into the GREEN safe zone (evac).", highlight:()=>hlCanvas(),
-      allow:{ mapTap:true } },
-
-    { title:"Lock Tiger", text:"Now tap the tiger to LOCK it as your target.", highlight:()=>hlCanvas(),
-      allow:{ tigerTap:true } },
-
-    { title:"Move Close", text:"Move closer until ENGAGE becomes available.", highlight:()=>hlButtonById("engageBtn"),
-      allow:{ mapTap:true } },
-
-    { title:"Engage", text:"Tap ENGAGE to start battle.", highlight:()=>hlButtonById("engageBtn"),
-      allow:{ engage:true } },
-
-    { title:"Attack", text:"You can tap different guns.\nThen ATTACK until the tiger is weak.", highlight:()=>hlCanvas(),
-      allow:{ attack:true, equipWeapon:true } },
-
-    { title:"Finish", text:"When tiger HP is low (≤15), choose CAPTURE or KILL.\nCapture requires Tranq Pistol + a tranq hit.", highlight:()=>hlCanvas(),
-      allow:{ capture:true, kill:true, equipWeapon:true } },
-
-    { title:"Complete", text:"Tutorial complete ✅\nYou learned the full loop.\nReplay tutorial from Mode anytime.", highlight:()=>({none:true}),
-      allow:{ next:true } },
-  ];
-
-  function tutOpen(force=false){
-    const seen = localStorage.getItem(TUT_KEY) === "1";
-    if(seen && !force) return;
-
-    localStorage.setItem(TUT_RUN_KEY, "1");
-    localStorage.setItem(TUT_STEP_KEY, "0");
-
-    // backup main
-    const mainSaved = JSON.parse(localStorage.getItem(SAVE_MAIN) || "null");
-    localStorage.setItem(TUT_BACKUP_KEY, JSON.stringify(mainSaved || S));
-
-    // start tutorial slot fresh
-    const backup = JSON.parse(localStorage.getItem(TUT_BACKUP_KEY) || "null");
-    S = backup ? { ...structuredClone(DEFAULT), ...backup } : structuredClone(DEFAULT);
-
-    S.tutScenario = true;
-    S.mode = "Story";
-    S.storyLevel = 1;
-    S.mapIndex = 0;
-    S.lives = 3;
-    S.hp = 100;
-    S.armor = 20;
-    S.stamina = 100;
-
-    // Give tutorial plenty of ammo so guns can be used
-    S.ammoReserve = {
-      "TRANQ_DARTS": 60,
-      "9MM_STD": 80,
-      "12GA_STD": 30,
-      "556_STD": 120,
-      "762_STD": 40,
-      "TRANQ_HEAVY": 10,
-      "RAIL_CELL": 12
-    };
-
-    S.magByWeapon = S.magByWeapon || {};
-    for(const wid of S.ownedWeapons){
-      const w = getWeapon(wid);
-      if(!w) continue;
-      ensureWeaponMag(wid);
-      autoReloadWeapon(wid);
-      if(S.durability[wid]==null) S.durability[wid]=100;
-    }
-    autoReloadWeapon(S.equippedWeaponId);
-
-    localStorage.setItem(SAVE_TUT, JSON.stringify(S));
-
-    TUT.on = true;
-    TUT.idx = 0;
-    TUT.allow = {};
-    setPaused(false, null);
-
-    document.getElementById("tutCard").style.display = "block";
-    document.getElementById("tutSpotlight").style.display = "block";
-    tutRender();
-
-    // start tutorial mission state immediately
-    deploy();
-  }
-
-  function tutRender(){
-    const step = tutSteps[TUT.idx];
-    document.getElementById("tutTitle").innerText = `Tutorial (${TUT.idx+1}/${tutSteps.length}) — ${step.title}`;
-    document.getElementById("tutText").innerText = step.text;
-
-    TUT.allow = { ...(step.allow||{}) };
-    TUT.allow.next = !!step.allow?.next;
-
-    const h = step.highlight?.() || { none:true };
-    drawSpotlight(h);
-
-    localStorage.setItem(TUT_STEP_KEY, String(TUT.idx));
-    saveState();
-  }
-
-  function tutComplete(key){
-    if(!TUT.on) return;
-    if(!TUT.allow[key]) return;
-    if(TUT.idx < tutSteps.length-1){
-      TUT.idx++;
-      tutRender();
-    }
-  }
-
-  function tutNext(){
-    sfx("ui");
-    const step = tutSteps[TUT.idx];
-    const requiresAction = !step.allow?.next;
-    if(requiresAction){ toast("Complete the highlighted action first."); return; }
-    if(TUT.idx < tutSteps.length-1){ TUT.idx++; tutRender(); }
-  }
-  function tutPrev(){ sfx("ui"); if(TUT.idx > 0){ TUT.idx--; tutRender(); } }
-
-  function tutSkip(){
-    sfx("ui");
-    if(document.getElementById("tutDontShow").checked){
-      localStorage.setItem(TUT_KEY, "1");
-    }
-    const backup = JSON.parse(localStorage.getItem(TUT_BACKUP_KEY) || "null");
-    if(backup){ localStorage.setItem(SAVE_MAIN, JSON.stringify(backup)); }
-
-    localStorage.removeItem(SAVE_TUT);
-    localStorage.removeItem(TUT_BACKUP_KEY);
-    localStorage.removeItem(TUT_RUN_KEY);
-    localStorage.removeItem(TUT_STEP_KEY);
-
-    TUT.on = false;
-    document.getElementById("tutCard").style.display="none";
-    document.getElementById("tutSpotlight").style.display="none";
-
-    S = loadState();
-  }
-
-  // STRICT tutorial progression checks
-  function tutTick(){
-    if(!TUT.on) return;
-
-    // Escort step completes when civ close enough to follow
-    if(TUT.idx===3){
-      const c = tutNearestCivilian();
-      if(c && dist(S.me.x,S.me.y,c.x,c.y) < 95){
-        TUT.idx = 4; tutRender();
-      }
-    }
-
-    // Evac step completes when evac done
-    if(TUT.idx===4 && tutEvacDone()){
-      TUT.idx = 5; tutRender();
-    }
-
-    // Move close step completes when Engage is enabled
-    if(TUT.idx===6){
-      const btn = document.getElementById("engageBtn");
-      if(btn && !btn.disabled){
-        TUT.idx = 7; tutRender();
-      }
-    }
-
-    // After tiger finished and mission ended, show Complete step
-    if(TUT.idx===9 && tutTigerDown() && S.missionEnded){
-      TUT.idx = 10; tutRender();
-    }
-  }
-
-  // ===================== RESET =====================
+  // ===================== COMPLETE / RESET =====================
   function resetGame(){
-    localStorage.removeItem(SAVE_MAIN);
-    localStorage.removeItem(SAVE_TUT);
-    localStorage.removeItem(TUT_BACKUP_KEY);
-    localStorage.removeItem(TUT_RUN_KEY);
-    localStorage.removeItem(TUT_STEP_KEY);
+    localStorage.removeItem("ts_v4371");
+    localStorage.removeItem("ts_v4370");
     S = structuredClone(DEFAULT);
-    saveState();
+    save();
     toast("Reset ✅");
-    document.getElementById("tutCard").style.display="none";
-    document.getElementById("tutSpotlight").style.display="none";
-    TUT.on=false;
+    openMode();
   }
 
   // ===================== MAIN LOOP =====================
   function draw(){
     renderHUD();
-    tutTick();
+    updateEngage();
 
-    if(S.gameOver){ saveState(); requestAnimationFrame(draw); return; }
-    if(S.paused){ saveState(); requestAnimationFrame(draw); return; }
+    if(S.gameOver){ save(); requestAnimationFrame(draw); return; }
+    if(S.paused || S.missionEnded){ save(); requestAnimationFrame(draw); return; }
 
+    regen();
+    backupTick();
+    trapTick();
     drawMapScene();
 
-    if(!S.inBattle && !S.missionEnded){
+    if(!S.inBattle){
+      roamTigers();
       movePlayer();
       followCiviliansTick();
       evacCheck();
+      tickCiviliansAndThreats();
+      survivalPressureTick();
       checkMissionComplete();
     }
 
     drawEntities();
-    saveState();
+    save();
     requestAnimationFrame(draw);
   }
 
   // ===================== INIT =====================
   function init(){
-    for(const wid of (S.ownedWeapons||[])){
-      ensureWeaponMag(wid);
-      if(S.durability[wid]==null) S.durability[wid]=100;
-      autoReloadWeapon(wid);
-    }
-    if(!S.ownedWeapons.includes(S.equippedWeaponId)){
-      S.equippedWeaponId = S.ownedWeapons[0] || "W_TRQ_PISTOL_MK1";
-    }
-    ensureWeaponMag(S.equippedWeaponId);
-    autoReloadWeapon(S.equippedWeaponId);
+    for(const wid of S.ownedWeapons){ if(S.durability[wid]==null) S.durability[wid]=100; }
+    const w=equippedWeapon();
+    S.mag.cap=w.mag;
+    if(S.mag.loaded==null) S.mag.loaded=w.mag;
+    S.mag.loaded = clamp(S.mag.loaded,0,S.mag.cap);
+    if(S.mag.loaded===0) autoReloadIfNeeded(true);
 
     if(!S.tigers || !S.tigers.length) spawnTigers();
-    if(!S.civilians || !S.civilians.length) spawnCivilians();
+    if(!S.civilians) spawnCivilians();
 
     requestAnimationFrame(draw);
-
-    const seen = localStorage.getItem(TUT_KEY) === "1";
-    if(!seen){
-      tutOpen(false);
-    }
   }
 
   init();
