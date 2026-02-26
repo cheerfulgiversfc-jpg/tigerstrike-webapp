@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>Tiger Strike 🐅 — V4.3.7 (Respawn Lives + Game Over Choices)</title>
+  <title>Tiger Strike 🐅 — V4.3.7 + Tutorial Overlay (Non-Invasive)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <style>
@@ -74,10 +74,52 @@
     .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
+
+    /* ===== Tutorial overlay (TOP, non-blocking) ===== */
+    .tutWrap{
+      position:fixed; left:50%; top:6px; transform:translateX(-50%);
+      width:min(1020px, 94vw);
+      z-index:260;
+      pointer-events:none;
+      display:none;
+    }
+    .tutCard{
+      pointer-events:auto;
+      background:linear-gradient(180deg,#121622,#0b0d12);
+      border:1px solid rgba(42,49,69,.9);
+      border-radius:16px;
+      box-shadow:var(--shadow);
+      padding:10px 12px;
+      display:flex; gap:10px; justify-content:space-between; align-items:flex-start;
+    }
+    .tutLeft{min-width:0}
+    .tutTitle{font-weight:950}
+    .tutText{margin-top:6px;font-size:12px;line-height:1.35;color:rgba(245,247,255,.72);white-space:pre-line;max-height:120px;overflow:auto}
+    .tutBtns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .tutMini{
+      border-radius:12px;border:1px solid #232a3e;background:transparent;color:#fff;font-weight:900;padding:8px 10px;cursor:pointer;
+      pointer-events:auto;
+    }
+    .tutMini.good{border-color:#14532d;background:#0f2416}
   </style>
 </head>
 
 <body>
+<!-- Tutorial overlay -->
+<div class="tutWrap" id="tutWrap">
+  <div class="tutCard">
+    <div class="tutLeft">
+      <div class="tutTitle" id="tutTitle">Tutorial</div>
+      <div class="tutText" id="tutText">…</div>
+    </div>
+    <div class="tutBtns">
+      <button class="tutMini" id="tutBack">Back</button>
+      <button class="tutMini good" id="tutNext">Next</button>
+      <button class="tutMini" id="tutEnd">End</button>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
   <div class="top">
     <div>
@@ -88,6 +130,9 @@
       </div>
     </div>
     <div class="row">
+      <!-- Tutorial button is its own top button (NOT in main menu) -->
+      <button class="ghost" onclick="Tutorial.start()">📘 Tutorial</button>
+
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
       <button class="ghost" onclick="openAbout()">ℹ️ About</button>
       <button class="ghost" onclick="openMode()">🎮 Mode</button>
@@ -440,7 +485,12 @@
       return m;
     }catch(e){ return structuredClone(DEFAULT); }
   }
-  function save(){ localStorage.setItem("ts_v4371", JSON.stringify(S)); }
+
+  // NOTE: save() is called often; tutorial MUST NOT affect real saves.
+  function save(){
+    if (window.TUTORIAL_ACTIVE) return; // <— prevents tutorial from modifying your real progress
+    localStorage.setItem("ts_v4371", JSON.stringify(S));
+  }
 
   // ===================== AUDIO =====================
   let AC=null;
@@ -592,6 +642,7 @@
   let currentShopTab="weapons";
 
   function openShop(){
+    if (window.TUTORIAL_ACTIVE) return toast("Tutorial: finish the steps first.");
     if(S.gameOver) return;
     if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
     setPaused(true,"shop");
@@ -609,6 +660,7 @@
   }
 
   function openInventory(){
+    if (window.TUTORIAL_ACTIVE) return toast("Tutorial: finish the steps first.");
     if(S.gameOver) return;
     if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
     setPaused(true,"inv");
@@ -1196,6 +1248,9 @@
     if(S.mode==="Survival"){ S.survivalStart = Date.now(); S.surviveSeconds=0; }
 
     save();
+
+    // Tutorial hook
+    Tutorial._onDeploy();
   }
 
   function startNextMission(){
@@ -1209,7 +1264,6 @@
   }
 
   function restartCurrentMission(){
-    // keep same mode + same mission number
     document.getElementById("battleOverlay").style.display="none";
     document.getElementById("completeOverlay").style.display="none";
     document.getElementById("overOverlay").style.display="none";
@@ -1247,8 +1301,15 @@
     const y=(e.clientY-rect.top)*(cv.height/rect.height);
 
     const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
-    if(tapped){ S.lockedTigerId=tapped.id; sfx("ui"); save(); return; }
+    if(tapped){
+      S.lockedTigerId=tapped.id;
+      sfx("ui");
+      save();
+      Tutorial._onLockTiger();
+      return;
+    }
     S.target={x,y}; sfx("ui"); save();
+    Tutorial._onMoveTap();
   });
 
   function tigerById(id){ return S.tigers.find(t=>t.id===id); }
@@ -1324,6 +1385,7 @@
         const dd = Math.hypot(dx,dy) || 1;
         const sp = 1.25;
         tryMoveEntity(c, c.x + (dx/dd)*sp, c.y + (dy/dd)*sp, 14);
+        Tutorial._onEscort(); // tutorial hook when follow begins
       }
     }
   }
@@ -1336,6 +1398,7 @@
         c.evac=true;
         S.evacDone += 1;
         toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length})`);
+        Tutorial._onEvac(); // tutorial hook
       }
     }
   }
@@ -1405,7 +1468,6 @@
           return gameOverChoice("A civilian died and you ran out of lives.");
         }
 
-        // ✅ keep playing (no restart). Civilian stays dead.
         toast(`Civilian died. Lives left: ${S.lives}`);
         save();
         return;
@@ -1511,7 +1573,7 @@
     }
   }
 
-  // ===================== DAMAGE / RESPAWN (key fix) =====================
+  // ===================== DAMAGE / RESPAWN =====================
   function applyPlayerDamage(dmg, showToast=false){
     if(S.armor>0){
       const absorbed=Math.min(S.armor,dmg);
@@ -1527,28 +1589,23 @@
     if(S.hp<=0){
       S.lives -= 1;
 
-      // ✅ Lives remain: respawn and keep playing SAME mission
       if(S.lives > 0){
         toast(`You went down. Respawned. Lives left: ${S.lives}`);
 
-        // respawn
         S.hp = 100;
         S.armor = 20;
         S.stamina = 100;
         S.me.x = 160; S.me.y = 420;
         S.target = null;
 
-        // end battle if you died in battle
         if(S.inBattle) endBattle("RETREAT");
 
-        // small fairness
         S.aggro = clamp(S.aggro - 5, 0, 100);
 
         save();
         return;
       }
 
-      // ✅ 0 lives: show 2-choice popup
       S.lives = 0;
       return gameOverChoice("You died and ran out of lives.");
     }
@@ -1568,6 +1625,11 @@
 
   // ===================== BATTLE =====================
   function startCombat(){
+    // Tutorial rule: must evac before engage
+    if (Tutorial.isOn() && !Tutorial.canEngageNow()){
+      return toast("Tutorial: escort the civilian into the green safe zone FIRST.");
+    }
+
     const t=canEngage();
     if(!t) return toast("Move closer to a tiger to engage.");
     if(S.paused) return toast("Resume first.");
@@ -1579,6 +1641,8 @@
     setBattleMsg(`Tiger #${t.id} (${t.type}) steps forward…`);
     sfx("ui");
     save();
+
+    Tutorial._onEngage();
   }
   function setBattleMsg(msg){
     document.getElementById("battleTitle").innerText = `Battle — Tiger #${S.activeTigerId}`;
@@ -1690,6 +1754,9 @@
       S.trust=clamp(S.trust+pay.trust,0,100);
       S.aggro=clamp(S.aggro+pay.aggro,0,100);
       sfx("win");
+
+      Tutorial._onFinish("CAPTURE");
+
       endBattle();
       checkMissionComplete();
       return;
@@ -1705,6 +1772,9 @@
       S.aggro=clamp(S.aggro+pay.aggro,0,100);
       maybeReinforceOnKill();
       sfx("win");
+
+      Tutorial._onFinish("KILL");
+
       endBattle();
       checkMissionComplete();
       return;
@@ -1753,6 +1823,9 @@
       if(t.hp<=0){ t.hp=15; setBattleMsg("Tiger is critically weak. Choose Capture or Kill!"); }
 
       updateBattleButtons();
+
+      Tutorial._onAttack();
+
       tigerTurn(t);
       save();
       return;
@@ -1804,7 +1877,10 @@
 
   // ===================== ENGAGE / HUD =====================
   function updateEngage(){
-    document.getElementById("engageBtn").disabled = !canEngage() || S.paused || S.missionEnded || S.gameOver;
+    // Tutorial: don’t allow engage until evac step is done
+    const tOk = Tutorial.isOn() ? Tutorial.canEngageNow() : true;
+    document.getElementById("engageBtn").disabled = !canEngage() || !tOk || S.paused || S.missionEnded || S.gameOver;
+    Tutorial._onCloseEnough();
   }
 
   function renderHUD(){
@@ -2227,6 +2303,10 @@
     }
 
     drawEntities();
+
+    // Tutorial: keep overlay text updated while playing
+    Tutorial._tick();
+
     save();
     requestAnimationFrame(draw);
   }
@@ -2245,6 +2325,250 @@
 
     requestAnimationFrame(draw);
   }
+
+  /* ==========================================================
+     TUTORIAL OVERLAY (NON-INVASIVE)
+     - Exact same graphics + maps (uses same S + draw functions)
+     - Does NOT save or affect real progress (save() blocked)
+     - 1 civilian + 1 tiger + forced step order
+     - Must escort civilian to safe zone BEFORE engage
+     - Uses real battle UI + guns (works)
+     - Shows fate message after capture/kill
+  ========================================================== */
+  window.TUTORIAL_ACTIVE = false;
+
+  const Tutorial = (() => {
+    let on = false;
+    let step = 0;
+    let snap = null;
+
+    const wrap = document.getElementById("tutWrap");
+    const title = document.getElementById("tutTitle");
+    const text = document.getElementById("tutText");
+    const btnBack = document.getElementById("tutBack");
+    const btnNext = document.getElementById("tutNext");
+    const btnEnd  = document.getElementById("tutEnd");
+
+    const steps = [
+      { t:"Welcome", need:null, body:
+`This tutorial will walk you through completing the first mission.
+It uses the REAL game graphics and controls.
+Nothing you do here is saved or affects your real progress.
+
+Tap Next.` },
+
+      { t:"Deploy", need:"deploy", body:
+`Tap DEPLOY to start the tutorial mission.` },
+
+      { t:"Move to Civilian", need:"move", body:
+`Tap on the map to move toward the civilian.` },
+
+      { t:"Escort Civilian", need:"escort", body:
+`Get CLOSE so the civilian follows you.
+(They follow only when close — no sprinting.)` },
+
+      { t:"Guide to Safe Zone", need:"evac", body:
+`Escort the civilian into the GREEN safe zone first.
+You cannot engage the tiger until the civilian is safe.` },
+
+      { t:"Lock Target", need:"lock", body:
+`Tap the tiger to LOCK it as your target (blue ring).` },
+
+      { t:"Get Close", need:"close", body:
+`Move close enough so ENGAGE becomes available.` },
+
+      { t:"Engage", need:"engage", body:
+`Tap ENGAGE to start the battle.` },
+
+      { t:"Attack", need:"attack", body:
+`Use ATTACK to lower the tiger's HP.
+You can switch weapons in the Weapon Select grid.` },
+
+      { t:"Capture or Kill", need:"finish", body:
+`When tiger HP ≤ 15:
+• CAPTURE (requires tranq hit + correct tranq weapon)
+• or KILL
+
+Your choice changes the story:
+Kill leaves blood/remains and increases future aggression.` },
+
+      { t:"Complete", need:null, body:
+`Tutorial complete ✅
+Tap END to return to your real game (no changes saved).` },
+    ];
+
+    function clone(obj){ return JSON.parse(JSON.stringify(obj)); }
+
+    function render(){
+      wrap.style.display = on ? "block" : "none";
+      title.textContent = `Tutorial (${step+1}/${steps.length}) — ${steps[step].t}`;
+      text.textContent = steps[step].body;
+
+      btnBack.disabled = step === 0;
+      btnNext.disabled = !!steps[step].need; // Next only when no action required
+    }
+
+    function setStepDone(need){
+      if(!on) return;
+      if(steps[step].need !== need) return;
+
+      step = Math.min(step+1, steps.length-1);
+      render();
+    }
+
+    function start(){
+      if(on) return;
+
+      // snapshot real state
+      snap = clone(S);
+
+      // tutorial sandbox
+      window.TUTORIAL_ACTIVE = true;
+      on = true;
+      step = 0;
+
+      // build tutorial scenario using your REAL systems
+      // - force Story, level 1
+      // - deploy
+      const oldMode = S.mode;
+      S.mode = "Story";
+      S.storyLevel = 1;
+      S.arcadeLevel = 1;
+      S.survivalWave = 1;
+
+      // reset anything that would confuse tutorial
+      S.carcasses = [];
+      S.trapsPlaced = [];
+      S.trapsOwned = 2;
+      S.lockedTigerId = null;
+
+      deploy(); // spawns your normal things
+
+      // force exactly 1 civilian + 1 tiger (but keep your same graphics)
+      if (Array.isArray(S.civilians) && S.civilians.length){
+        const c = S.civilians[0];
+        S.civilians = [c];
+        c.hp = c.hpMax = 100;
+        c.alive = true;
+        c.evac = false;
+        S.evacDone = 0;
+      }
+      if (Array.isArray(S.tigers) && S.tigers.length){
+        const t = S.tigers[0];
+        S.tigers = [t];
+        t.alive = true;
+        t.tranqTagged = false;
+        t.hp = Math.min(t.hpMax, 120);
+        t.hpMax = t.hp;
+      }
+
+      // make safe zone reachable and obvious
+      S.evacZone = { x: 860, y: 420, r: 70 };
+
+      // give tutorial ammo so weapons always work
+      S.ownedWeapons = ["W_TRQ_PISTOL_MK1","W_9MM_JUNK","W_TRQ_RIFLE","W_TRQ_LAUNCHER"];
+      S.equippedWeaponId = "W_TRQ_PISTOL_MK1";
+      S.ammoReserve["TRANQ_DARTS"] = 999;
+      S.ammoReserve["9MM_STD"] = 999;
+      S.mag.loaded = 6;
+      S.mag.cap = 6;
+
+      // protect tutorial from losing to civ/tiger quickly
+      S.civGraceUntil = Date.now() + 999999; // tutorial controls order, not pressure
+
+      render();
+
+      // bind buttons once
+      btnEnd.onclick = end;
+      btnBack.onclick = () => { if(step>0){ step--; render(); } };
+      btnNext.onclick = () => { if(!steps[step].need){ step = Math.min(step+1, steps.length-1); render(); } };
+
+      // restore original mode in snapshot only (real game)
+      S.mode = oldMode;
+    }
+
+    function end(){
+      if(!on) return;
+
+      // exit tutorial: restore real state exactly
+      if (snap){
+        S = snap;
+        snap = null;
+      }
+      on = false;
+      window.TUTORIAL_ACTIVE = false;
+
+      // close tutorial UI
+      wrap.style.display = "none";
+      toast("Tutorial ended (no changes saved).");
+    }
+
+    function isOn(){ return on; }
+
+    // Called from game hooks
+    function _onDeploy(){ setStepDone("deploy"); }
+    function _onMoveTap(){ setStepDone("move"); }
+    function _onEscort(){ setStepDone("escort"); }
+    function _onEvac(){ setStepDone("evac"); }
+    function _onLockTiger(){ setStepDone("lock"); }
+    function _onCloseEnough(){
+      if(!on) return;
+      if(steps[step].need !== "close") return;
+      if (canEngage()) setStepDone("close");
+    }
+    function _onEngage(){ setStepDone("engage"); }
+    function _onAttack(){ setStepDone("attack"); }
+    function _onFinish(type){
+      if(!on) return;
+      if(steps[step].need !== "finish") return;
+
+      if(type === "KILL"){
+        toast("FATE: Blood remains. Future tigers become more aggressive when they see a dead tiger.");
+      } else {
+        toast("FATE: Captured alive. Aggression stays lower and rewards are higher.");
+      }
+      setStepDone("finish");
+      // move to final "Complete" screen
+      if (steps[step].need === null && steps[step].t !== "Complete"){
+        // no-op
+      }
+      // advance to Complete automatically
+      if (step < steps.length-1) { step = steps.length-1; render(); }
+    }
+
+    function canEngageNow(){
+      if(!on) return true;
+      // must evac first during tutorial
+      const civ = (S.civilians && S.civilians[0]) ? S.civilians[0] : null;
+      return civ ? !!civ.evac : true;
+    }
+
+    // lightweight tick: keeps instructions correct even if user goes off-script
+    function _tick(){
+      if(!on) return;
+
+      // If they try to engage early, button already disables via updateEngage()
+      // If evac already done, auto-advance if stuck
+      if (steps[step].need === "evac"){
+        const civ = S.civilians && S.civilians[0];
+        if(civ && civ.evac) setStepDone("evac");
+      }
+      if (steps[step].need === "lock"){
+        const t = S.tigers && S.tigers[0];
+        if(t && S.lockedTigerId === t.id) setStepDone("lock");
+      }
+      if (steps[step].need === "close"){
+        if (canEngage()) setStepDone("close");
+      }
+    }
+
+    return {
+      start, end, isOn,
+      canEngageNow,
+      _tick,
+      _onDeploy, _onMoveTap, _onEscort, _onEvac, _onLockTiger, _onCloseEnough, _onEngage, _onAttack, _onFinish
+    };
+  })();
 
   init();
 </script>
