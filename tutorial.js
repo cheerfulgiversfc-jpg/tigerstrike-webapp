@@ -1,411 +1,374 @@
-/* Tiger Strike Tutorial (STRICT STEP LOCK)
-   - Blocks actions until required step is completed.
-   - Shows overlay text + highlights what to do.
-   - Uses window.S from game.js.
+// tutorial.js
+// Simple guided tutorial overlay + task tracker for the game UI.
+// Assumes your index.html has: #tutorialOverlay, #tutorialTitle, #tutorialText,
+// #tutorialStep, #tutorialNext, #tutorialSkip, #tutorialHint
+// If they don't exist, this file will create a minimal overlay automatically.
 
-   Action keys used by game.js:
-   OPEN_MODE, SET_MODE, DEPLOY, CANVAS_TAP, SCAN, ENGAGE,
-   BATTLE_SHOOT, BATTLE_RELOAD, CAPTURE,
-   OPEN_SHOP, OPEN_INVENTORY, USE_MED, EQUIP_WEAPON, BUY_AMMO, BUY_WEAPON, BUY_MED,
-   TOGGLE_PAUSE, RESET_GAME, START_NEXT_MISSION, RESTART_MISSION, OPEN_ABOUT
-*/
+(function () {
+  const tg = window.Telegram?.WebApp;
 
-(() => {
-  const $ = (id) => document.getElementById(id);
+  const STORAGE_KEY = "ts_tutorial_v1";
+  const state = loadState();
 
-  const Tutorial = {
-    active: false,
-    step: 0,
+  // ------------------ helpers ------------------
+  function $(sel) { return document.querySelector(sel); }
+  function el(tag, props = {}, children = []) {
+    const n = document.createElement(tag);
+    Object.assign(n, props);
+    for (const c of children) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+  function safeCall(fn) { try { fn(); } catch (_) {} }
+  function haptic(type = "light") {
+    safeCall(() => {
+      const h = tg?.HapticFeedback;
+      if (h?.impactOccurred) h.impactOccurred(type);
+    });
+  }
+  function loadState() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || {
+        done: false,
+        stepIndex: 0,
+        completed: {},
+        firstSeenAt: Date.now(),
+      };
+    } catch {
+      return { done: false, stepIndex: 0, completed: {}, firstSeenAt: Date.now() };
+    }
+  }
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
 
-    // "strict" means: ONLY allow actions listed for current step.
-    strict: true,
-
-    steps: [
-      {
-        title: "Welcome to Tiger Strike",
-        text:
-          "This tutorial is STRICT step-lock.\n\nStep 1: Press “Deploy” to spawn your mission.",
-        allow: ["DEPLOY"],
-        onEnter() {
-          showOverlay(true);
-          setTip(this.title, this.text);
-          pulse("btnDeploy");
-        },
-        onExit() {
-          unpulse("btnDeploy");
-        },
+  // ------------------ steps ------------------
+  // Each step can optionally:
+  // - watch: a predicate that returns true when user completed the action
+  // - hint: small hint text
+  // - onEnter: run when step becomes active
+  // - onExit: run when leaving step
+  const steps = [
+    {
+      id: "welcome",
+      title: "Welcome",
+      text:
+        "This quick tutorial will show you the basics:\n" +
+        "• Tap to move\n• Scan to locate a tiger\n• Engage to battle\n• Evacuate civilians (Story/Arcade)\n\n" +
+        "Tip: You can Pause, Shop, or Inventory anytime outside battle.",
+      hint: "Tap NEXT to begin.",
+    },
+    {
+      id: "move",
+      title: "Move",
+      text:
+        "Tap anywhere on the map to set a destination.\n" +
+        "Your soldier will move there and spend stamina.",
+      hint: "Tap on the map now.",
+      watch: () => {
+        const S = window.S;
+        return !!S?.target || (S && (Math.abs((S.me?.x || 0) - 160) > 10 || Math.abs((S.me?.y || 0) - 420) > 10));
       },
-      {
-        title: "Movement",
-        text:
-          "Step 2: Tap anywhere on the map to move your player circle.\n\n(Just tap once.)",
-        allow: ["CANVAS_TAP"],
-        onEnter() {
-          setTip(this.title, this.text);
-        },
-        requires: { moved: true },
+    },
+    {
+      id: "scan",
+      title: "Scan",
+      text:
+        "Press SCAN to ping the nearest/locked tiger.\n" +
+        "Scan costs stamina, but helps you locate threats quickly.",
+      hint: "Press the SCAN button once.",
+      onEnter: () => pulse("#scanBtn"),
+      onExit: () => stopPulse("#scanBtn"),
+      watch: () => {
+        const S = window.S;
+        return (S?.achievements && S.achievements.scan1) || (S?.scanPing || 0) > 0;
       },
-      {
-        title: "Scan",
-        text:
-          "Step 3: Press “Scan”.\n\nThis creates a blue ping ring around you.",
-        allow: ["SCAN"],
-        onEnter() {
-          pulse("btnScan");
-          setTip(this.title, this.text);
-        },
-        onExit() {
-          unpulse("btnScan");
-        },
+    },
+    {
+      id: "lock",
+      title: "Lock a Tiger",
+      text:
+        "Tap directly on a tiger to lock it.\n" +
+        "A blue ring shows the lock and your HUD targets that tiger.",
+      hint: "Tap on a tiger (if you see one). If none are nearby, scan again.",
+      watch: () => {
+        const S = window.S;
+        return !!S?.lockedTigerId;
       },
-      {
-        title: "Lock a Tiger",
-        text:
-          "Step 4: Tap directly on a tiger to lock it.\n\nYou should see a white ring around the tiger.",
-        allow: ["CANVAS_TAP"],
-        requires: { lockedTiger: true },
+    },
+    {
+      id: "engage",
+      title: "Engage (Battle)",
+      text:
+        "Move close to a tiger, then press ENGAGE to enter battle.\n" +
+        "In battle, you can ATTACK, PROTECT (Story/Arcade), CAPTURE, or KILL.",
+      hint: "Get near a tiger and press ENGAGE.",
+      onEnter: () => pulse("#engageBtn"),
+      onExit: () => stopPulse("#engageBtn"),
+      watch: () => {
+        const S = window.S;
+        return !!S?.inBattle || (S?.stats && (S.stats.shots || 0) > 0);
       },
-      {
-        title: "Engage",
-        text:
-          "Step 5: Move close to the locked tiger, then press “Engage”.\n\nTip: If it says “Get closer”, tap near the tiger first.",
-        allow: ["CANVAS_TAP", "ENGAGE"],
-        onEnter() {
-          pulse("btnEngage");
-          setTip(this.title, this.text);
-        },
-        onExit() {
-          unpulse("btnEngage");
-        },
-        requires: { enteredBattle: true },
+    },
+    {
+      id: "ammo",
+      title: "Ammo & Reload",
+      text:
+        "Each weapon has a magazine + reserve ammo.\n" +
+        "If your current weapon is empty, switch weapons.\n" +
+        "If ALL weapons have no ammo, buy ammo in the Shop.",
+      hint: "In battle, try ATTACK once (or open Shop to see ammo).",
+      watch: () => {
+        const S = window.S;
+        return (S?.stats && (S.stats.shots || 0) > 0) || (S?.funds || 0) < 1000; // spent something
       },
-      {
-        title: "Reload",
-        text:
-          "Step 6: Press “Reload” in the battle screen.",
-        allow: ["BATTLE_RELOAD"],
-        onEnter() {
-          pulse("btnReload");
-          setTip(this.title, this.text);
-        },
-        onExit() {
-          unpulse("btnReload");
-        },
+    },
+    {
+      id: "civs",
+      title: "Civilians & Evac",
+      text:
+        "In Story/Arcade, civilians follow you when you're nearby.\n" +
+        "Lead them into the green evac zone to evacuate them.\n" +
+        "If civilians die, you lose lives.",
+      hint: "Lead at least one civilian into the evac circle.",
+      watch: () => {
+        const S = window.S;
+        if (!S) return false;
+        if (S.mode === "Survival") return true; // skip in Survival
+        return (S.stats?.evac || 0) > 0 || (S.evacDone || 0) > 0;
       },
-      {
-        title: "Tranq / Shoot",
-        text:
-          "Step 7: Press “Tranq/Shoot” in battle.\n\nIf you are using a tranq weapon, keep tranq-ing until the tiger sleeps.",
-        allow: ["BATTLE_SHOOT"],
-        onEnter() {
-          pulse("btnShoot");
-          setTip(this.title, this.text);
-        },
-        onExit() {
-          unpulse("btnShoot");
-        },
-        requires: { didShoot: true },
+    },
+    {
+      id: "shop",
+      title: "Shop & Inventory",
+      text:
+        "Use SHOP to buy weapons, ammo, armor, med kits, repair kits, and traps.\n" +
+        "Use INVENTORY to equip weapons and use supplies.",
+      hint: "Open Shop or Inventory once.",
+      onEnter: () => { pulse("#shopBtn"); pulse("#invBtn"); },
+      onExit: () => { stopPulse("#shopBtn"); stopPulse("#invBtn"); },
+      watch: () => {
+        const shopOpen = isVisible("#shopOverlay");
+        const invOpen = isVisible("#invOverlay");
+        return shopOpen || invOpen;
       },
-      {
-        title: "Capture",
-        text:
-          "Step 8: When the tiger is asleep, press “Capture”.\n\nIf it’s not asleep yet, keep using Tranq.",
-        allow: ["BATTLE_SHOOT", "CAPTURE"],
-        onEnter() {
-          pulse("btnCapture");
-          setTip(this.title, this.text);
-        },
-        onExit() {
-          unpulse("btnCapture");
-        },
-        requires: { captured: true },
-      },
-      {
-        title: "Shop",
-        text:
-          "Step 9: Open the Shop and buy 1 ammo pack (any ammo).\n\nThen close Shop.",
-        allow: ["OPEN_SHOP", "BUY_AMMO"],
-        onEnter() {
-          pulse("btnShop");
-          setTip(this.title, this.text);
-        },
-        onExit() {
-          unpulse("btnShop");
-        },
-        requires: { boughtAmmo: true },
-      },
-      {
-        title: "Inventory + Heal",
-        text:
-          "Step 10: Open Inventory and use a Med Kit (if you have one).\n\nTutorial will allow “Use” even if HP is full.",
-        allow: ["OPEN_INVENTORY", "USE_MED"],
-        onEnter() {
-          pulse("btnInv");
-          setTip(this.title, this.text);
-        },
-        onExit() {
-          unpulse("btnInv");
-        },
-        requires: { usedMed: true },
-      },
-      {
-        title: "Done ✅",
-        text:
-          "Tutorial complete.\n\nYou are now unlocked to play normally!",
-        allow: ["*"],
-        onEnter() {
-          setTip(this.title, this.text);
-          showFinish();
-        },
-      },
-    ],
-
-    // ------- Public API -------
-    isActive() {
-      return this.active;
     },
-
-    start() {
-      this.active = true;
-      this.step = 0;
-      showOverlay(true);
-      this._enterStep();
+    {
+      id: "done",
+      title: "You’re Ready",
+      text:
+        "That’s it!\n\n" +
+        "Remember:\n• Traps hold tigers 3–5s (one-time)\n• Carcasses block movement\n• Backup costs $50,000 and freezes tigers temporarily\n\n" +
+        "Good luck out there.",
+      hint: "Press FINISH to close tutorial.",
     },
+  ];
 
-    stop() {
-      this._exitStep();
-      this.active = false;
-      showOverlay(false);
-      clearFinish();
-    },
-
-    allow(actionKey) {
-      if (!this.active) return true;
-      const stepDef = this.steps[this.step];
-      if (!stepDef) return true;
-
-      // wildcard step unlock
-      if (stepDef.allow && stepDef.allow.includes("*")) return true;
-
-      // strict lock
-      if (this.strict) {
-        return stepDef.allow?.includes(actionKey) || false;
-      }
-
-      // non-strict: allow everything, only guide
-      return true;
-    },
-
-    // hooks called from game.js
-    onDeploy() {
-      if (!this.active) return;
-      if (this.step === 0) this.next();
-    },
-
-    onCanvasTap(x, y) {
-      if (!this.active) return;
-      const S = window.S;
-
-      // step 1 movement: any tap that creates target counts
-      if (this.step === 1) {
-        // we can’t see internal movement completion reliably, so accept a tap here
-        this._flag("moved", true);
-        this.next();
-      }
-
-      // lock tiger step: if game locked tiger, accept
-      if (this.step === 3) {
-        // game locks tiger when tap hits a tiger
-        // we check shortly after tap
-        setTimeout(() => {
-          if (window.S?.lockedTigerId) {
-            this._flag("lockedTiger", true);
-            this.next();
-          }
-        }, 50);
-      }
-    },
-
-    onScan() {
-      if (!this.active) return;
-      if (this.step === 2) this.next();
-    },
-
-    onEngage() {
-      if (!this.active) return;
-      if (this.step === 4) {
-        this._flag("enteredBattle", true);
-        this.next();
-      }
-    },
-
-    onShoot() {
-      if (!this.active) return;
-      if (this.step === 6) {
-        this._flag("didShoot", true);
-        this.next();
-      }
-    },
-
-    onTranqSleep() {
-      // optional: could show extra hint, but not required
-    },
-
-    onCapture() {
-      if (!this.active) return;
-      if (this.step === 7) {
-        this._flag("captured", true);
-        this.next();
-      }
-    },
-
-    // "consume" lets tutorial simulate some actions even if game would block (like using med at full HP)
-    consume(kind) {
-      if (!this.active) return true;
-
-      if (kind === "RELOAD") {
-        if (this.step === 5) {
-          this.next();
-          return true;
-        }
-        return false;
-      }
-
-      if (kind === "MEDKIT") {
-        if (this.step === 9) {
-          this._flag("usedMed", true);
-          this.next();
-          return true;
-        }
-        return false;
-      }
-
-      return true;
-    },
-
-    // shop buys
-    onBoughtAmmo() {
-      if (!this.active) return;
-      if (this.step === 8) {
-        this._flag("boughtAmmo", true);
-        this.next();
-      }
-    },
-
-    next() {
-      if (!this.active) return;
-      this._exitStep();
-      this.step = Math.min(this.step + 1, this.steps.length - 1);
-      this._enterStep();
-    },
-
-    // ------- internals -------
-    _enterStep() {
-      clearFinish();
-      const def = this.steps[this.step];
-      if (!def) return;
-      def.onEnter?.call(def);
-      updateProgress(this.step, this.steps.length - 1);
-    },
-
-    _exitStep() {
-      const def = this.steps[this.step];
-      def?.onExit?.call(def);
-    },
-
-    _flag(k, v) {
-      const def = this.steps[this.step];
-      def.requires = def.requires || {};
-      def.requires[k] = v;
-    },
+  // ------------------ overlay creation ------------------
+  ensureOverlay();
+  const ui = {
+    overlay: $("#tutorialOverlay"),
+    title: $("#tutorialTitle"),
+    text: $("#tutorialText"),
+    step: $("#tutorialStep"),
+    hint: $("#tutorialHint"),
+    next: $("#tutorialNext"),
+    skip: $("#tutorialSkip"),
   };
 
-  // expose
-  window.Tutorial = Tutorial;
-
-  // ---------- Overlay UI ----------
-  function showOverlay(on) {
-    const ov = $("tutorialOverlay");
-    if (!ov) return;
-    ov.style.display = on ? "flex" : "none";
-  }
-
-  function setTip(title, text) {
-    $("tTitle").textContent = title || "Tutorial";
-    $("tText").textContent = text || "";
-  }
-
-  function updateProgress(step, total) {
-    const p = $("tProgress");
-    if (!p) return;
-    if (total <= 0) {
-      p.textContent = "";
-      return;
-    }
-    p.textContent = `Step ${Math.min(step + 1, total + 1)} of ${total + 1}`;
-  }
-
-  function pulse(id) {
-    const el = $(id);
-    if (!el) return;
-    el.classList.add("pulse");
-  }
-
-  function unpulse(id) {
-    const el = $(id);
-    if (!el) return;
-    el.classList.remove("pulse");
-  }
-
-  function showFinish() {
-    const btn = $("tDone");
-    if (btn) btn.style.display = "inline-flex";
-  }
-
-  function clearFinish() {
-    const btn = $("tDone");
-    if (btn) btn.style.display = "none";
-  }
-
-  // ---------- Wire tutorial buttons ----------
-  window.addEventListener("DOMContentLoaded", () => {
-    const startBtn = $("btnTutorial");
-    if (startBtn) {
-      startBtn.addEventListener("click", () => Tutorial.start());
-    }
-
-    const doneBtn = $("tDone");
-    if (doneBtn) {
-      doneBtn.addEventListener("click", () => Tutorial.stop());
-    }
+  // Buttons
+  ui.next.addEventListener("click", () => {
+    haptic("light");
+    nextStep(true);
+  });
+  ui.skip.addEventListener("click", () => {
+    haptic("medium");
+    finishTutorial(true);
   });
 
-  // ---------- Intercept buyAmmo to notify tutorial ----------
-  // (We wrap the global buyAmmo function after game.js defines it.)
-  function wrapBuyAmmo() {
-    const original = window.buyAmmo;
-    if (!original || original.__wrapped) return;
+  // Auto advance watcher
+  let watcher = null;
+  function startWatcher() {
+    stopWatcher();
+    watcher = setInterval(() => {
+      if (!ui.overlay || ui.overlay.style.display !== "flex") return;
+      const st = steps[state.stepIndex];
+      if (!st || !st.watch) return;
 
-    const wrapped = function (...args) {
-      const before = window.S?.funds;
-      original.apply(this, args);
-
-      // if funds decreased, treat as buy success (good enough for tutorial)
-      const after = window.S?.funds;
-      if (Tutorial.isActive() && Tutorial.step === 8 && typeof before === "number" && typeof after === "number" && after < before) {
-        Tutorial.onBoughtAmmo();
+      if (st.watch()) {
+        state.completed[st.id] = true;
+        saveState();
+        nextStep(false);
       }
-    };
-    wrapped.__wrapped = true;
-    window.buyAmmo = wrapped;
+    }, 350);
+  }
+  function stopWatcher() {
+    if (watcher) clearInterval(watcher);
+    watcher = null;
   }
 
-  // poll a few times until game.js is loaded
-  let tries = 0;
-  const timer = setInterval(() => {
-    wrapBuyAmmo();
-    tries++;
-    if (tries > 40) clearInterval(timer);
-    if (window.buyAmmo?.__wrapped) clearInterval(timer);
-  }, 50);
+  // Public API
+  window.TigerTutorial = {
+    start: () => showTutorial(false),
+    reset: () => { localStorage.removeItem(STORAGE_KEY); location.reload(); },
+    skip: () => finishTutorial(true),
+    state,
+  };
+
+  // Start automatically on first load (unless done)
+  if (!state.done) {
+    // delay a bit so the game renders behind it
+    setTimeout(() => showTutorial(true), 600);
+  }
+
+  // ------------------ core functions ------------------
+  function showTutorial(firstAuto) {
+    // pause game if game.js exposes setPaused
+    safeCall(() => window.setPaused?.(true, "tutorial"));
+    ui.overlay.style.display = "flex";
+    render();
+    startWatcher();
+    if (firstAuto) haptic("light");
+  }
+
+  function hideTutorial() {
+    ui.overlay.style.display = "none";
+    stopWatcher();
+    // resume game
+    safeCall(() => window.setPaused?.(false, null));
+  }
+
+  function nextStep(fromButton) {
+    const prev = steps[state.stepIndex];
+    safeCall(() => prev?.onExit?.());
+
+    // If this was a button click, mark as completed too
+    if (fromButton && prev?.id) state.completed[prev.id] = true;
+
+    state.stepIndex = Math.min(state.stepIndex + 1, steps.length - 1);
+    saveState();
+
+    const cur = steps[state.stepIndex];
+    safeCall(() => cur?.onEnter?.());
+
+    // If last step, change button label
+    render();
+  }
+
+  function finishTutorial(bySkip) {
+    state.done = true;
+    state.stepIndex = steps.length - 1;
+    saveState();
+    hideTutorial();
+    // small toast if available
+    safeCall(() => window.toast?.(bySkip ? "Tutorial skipped." : "Tutorial complete!"));
+  }
+
+  function render() {
+    const st = steps[state.stepIndex];
+
+    ui.title.textContent = st.title;
+    ui.text.textContent = st.text;
+    ui.hint.textContent = st.hint || "";
+
+    ui.step.textContent = `Step ${state.stepIndex + 1} / ${steps.length}`;
+    ui.next.textContent = (st.id === "done") ? "FINISH" : "NEXT";
+
+    // If done step, finishing should close
+    ui.next.onclick = null;
+    ui.next.addEventListener("click", onNextClick, { once: true });
+
+    function onNextClick() {
+      haptic("light");
+      if (st.id === "done") finishTutorial(false);
+      else nextStep(true);
+    }
+  }
+
+  // ------------------ utility ------------------
+  function isVisible(sel) {
+    const n = $(sel);
+    if (!n) return false;
+    return getComputedStyle(n).display !== "none";
+  }
+
+  // Simple pulsing highlight (no flashing)
+  const pulses = new Map();
+  function pulse(sel) {
+    const n = $(sel);
+    if (!n) return;
+    if (pulses.has(sel)) return;
+
+    const original = n.style.boxShadow;
+    let on = false;
+    const t = setInterval(() => {
+      on = !on;
+      n.style.boxShadow = on
+        ? "0 0 0 3px rgba(74, 222, 128, .55)"
+        : "0 0 0 0 rgba(0,0,0,0)";
+    }, 650);
+    pulses.set(sel, { t, original });
+  }
+  function stopPulse(sel) {
+    const p = pulses.get(sel);
+    if (!p) return;
+    clearInterval(p.t);
+    const n = $(sel);
+    if (n) n.style.boxShadow = p.original || "";
+    pulses.delete(sel);
+  }
+
+  // ------------------ DOM bootstrap ------------------
+  function ensureOverlay() {
+    if ($("#tutorialOverlay")) return;
+
+    const overlay = el("div", { id: "tutorialOverlay" });
+    overlay.style.cssText =
+      "position:fixed; inset:0; display:none; align-items:center; justify-content:center;" +
+      "background:rgba(11,13,18,.72); z-index:9999; padding:18px;";
+
+    const card = el("div", { id: "tutorialCard" });
+    card.style.cssText =
+      "max-width:560px; width:100%; background:rgba(18,24,38,.98); color:#f1f5f9;" +
+      "border:1px solid rgba(148,163,184,.25); border-radius:16px; padding:16px;";
+
+    const head = el("div", { style: "display:flex; justify-content:space-between; align-items:center; gap:12px;" }, [
+      el("div", {}, [
+        el("div", { id: "tutorialTitle", style: "font-weight:800; font-size:18px; margin-bottom:4px;" }, ["Tutorial"]),
+        el("div", { id: "tutorialStep", style: "opacity:.8; font-size:12px;" }, ["Step"]),
+      ]),
+      el("button", { id: "tutorialSkip" }, ["Skip"]),
+    ]);
+
+    const body = el("div", { style: "margin-top:12px; white-space:pre-line; line-height:1.35;" }, [
+      el("div", { id: "tutorialText", style: "font-size:14px;" }, ["..."]),
+      el("div", { id: "tutorialHint", style: "margin-top:10px; font-size:13px; opacity:.9;" }, [""]),
+    ]);
+
+    const foot = el("div", { style: "margin-top:14px; display:flex; justify-content:flex-end; gap:10px;" }, [
+      el("button", { id: "tutorialNext", className: "good" }, ["Next"]),
+    ]);
+
+    // Minimal button styles
+    const style = el("style", { textContent:
+      `
+      #tutorialOverlay button{
+        padding:10px 12px; border-radius:12px; border:1px solid rgba(148,163,184,.25);
+        background:rgba(30,41,59,.85); color:#f8fafc; font-weight:700;
+      }
+      #tutorialOverlay button.good{
+        background:rgba(34,197,94,.22);
+        border-color: rgba(34,197,94,.55);
+      }
+      #tutorialOverlay button:active{ transform: translateY(1px); }
+      `
+    });
+
+    card.appendChild(head);
+    card.appendChild(body);
+    card.appendChild(foot);
+    overlay.appendChild(card);
+
+    document.body.appendChild(style);
+    document.body.appendChild(overlay);
+  }
 })();
