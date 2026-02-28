@@ -341,7 +341,6 @@ function buyPerk(key){
     renderInventory();
   }
 }
-}
 function getWeapon(id){ return WEAPONS.find(w=>w.id===id); }
 function getAmmo(id){ return AMMO.find(a=>a.id===id); }
 function getMed(id){ return MEDS.find(m=>m.id===id); }
