@@ -1,317 +1,498 @@
-<!-- index.html -->
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>Tiger Strike 🐅 — V4.3.8 (Phase 1: Action+Strategy+Loot)</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Tiger Strike</title>
   <style>
     :root{
-      --bg:#0b0d12; --panel:#121622; --panel2:#0f1320;
-      --border:#2a3145; --border2:#232a3e;
-      --text:#f5f7ff; --muted:rgba(245,247,255,.72);
-      --blue:#3a78ff; --good:#4ade80; --warn:#f59e0b; --bad:#fb7185;
-      --shadow:0 18px 50px rgba(0,0,0,.45);
+      --bg:#0b0d12;
+      --panel:#121826f5;
+      --panel2:#0f172af0;
+      --line:rgba(148,163,184,.22);
+      --text:#e5e7eb;
+      --muted:rgba(229,231,235,.75);
+      --good:rgba(34,197,94,.22);
+      --goodLine:rgba(34,197,94,.55);
+      --warn:rgba(245,158,11,.22);
+      --bad:rgba(239,68,68,.22);
+      --btn:#1e293bf0;
+      --btnLine:rgba(148,163,184,.25);
     }
-    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial;overflow-x:hidden}
-    .wrap{max-width:1020px;margin:0 auto;padding:12px 12px 86px}
-    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-    .title{font-size:24px;font-weight:950}
-    .sub{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
-    .row{display:flex;gap:10px;flex-wrap:wrap}
-    button{border-radius:12px;border:1px solid var(--border2);background:#1a2031;color:#fff;padding:10px 12px;font-weight:900;font-size:14px;cursor:pointer}
-    button:disabled{opacity:.45;cursor:not-allowed}
-    .ghost{background:transparent}
-    .good{border-color:#14532d;background:#0f2416}
-    .warn{border-color:#7c2d12;background:#2b140d}
-    .danger{border-color:#7f1d1d;background:#2a0f13}
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+    #app{ height:100%; display:flex; flex-direction:column; }
 
-    .hud{margin-top:10px;background:rgba(18,22,34,.85);border:1px solid rgba(42,49,69,.9);border-radius:14px;padding:10px;backdrop-filter:blur(10px);box-shadow:var(--shadow)}
-    .hudGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .hudBox{background:rgba(15,19,32,.7);border:1px solid rgba(35,42,62,.9);border-radius:14px;padding:10px}
-    .hudTitle{font-weight:950}
-    .hudLine{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
-    .bar{height:10px;border-radius:999px;background:rgba(11,13,18,.9);border:1px solid rgba(35,42,62,.9);overflow:hidden;margin-top:6px}
-    .fill{height:100%;width:50%;background:var(--blue);transition:width .15s linear}
-    .fill.green{background:var(--good)}
-    .fill.red{background:var(--bad)}
-    .fill.orange{background:var(--warn)}
+    /* Top HUD */
+    #topbar{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:10px 12px; gap:10px;
+      background:linear-gradient(to bottom, rgba(18,24,38,.98), rgba(18,24,38,.70));
+      border-bottom:1px solid var(--line);
+    }
+    #brand{ font-weight:900; letter-spacing:.4px; }
+    #stats{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-end; }
+    .pill{
+      display:inline-flex; gap:8px; align-items:center;
+      padding:6px 10px; border-radius:999px;
+      background:rgba(30,41,59,.55);
+      border:1px solid var(--line);
+      font-size:12px;
+      white-space:nowrap;
+    }
+    .pill b{ font-weight:800; }
+    .pill .k{ opacity:.8; }
 
-    .screenCard{margin-top:12px;background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);position:relative}
-    canvas{display:block;width:100%;height:auto;touch-action:manipulation}
-    .actionStrip{border-top:1px solid var(--border);background:rgba(15,19,32,.85);padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
-    .small{font-size:12px;color:var(--muted)}
+    /* Main stage */
+    #stage{
+      position:relative;
+      flex:1;
+      display:flex;
+      align-items:stretch;
+      justify-content:center;
+      overflow:hidden;
+    }
+    #gameWrap{
+      position:relative;
+      width:100%;
+      max-width:1100px;
+      height:100%;
+    }
+    canvas{
+      width:100%;
+      height:100%;
+      display:block;
+      background:radial-gradient(1200px 700px at 60% 40%, rgba(34,197,94,.08), rgba(2,6,23,.85));
+    }
 
-    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:200;padding:14px}
-    .modal{width:min(980px,96vw);background:linear-gradient(180deg,#121622,#0b0d12);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;max-height:88vh;display:flex;flex-direction:column}
-    .modalTop{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,.25);flex:0 0 auto}
-    .modalTitle{font-weight:950}
-    .modalBody{padding:14px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1 1 auto}
-    .divider{height:1px;background:var(--border);margin:12px 0}
+    /* Bottom controls */
+    #controls{
+      padding:10px 12px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:center;
+      background:linear-gradient(to top, rgba(18,24,38,.98), rgba(18,24,38,.65));
+      border-top:1px solid var(--line);
+    }
+    button{
+      appearance:none;
+      border:1px solid var(--btnLine);
+      background:var(--btn);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      font-weight:800;
+      letter-spacing:.2px;
+      cursor:pointer;
+      user-select:none;
+      -webkit-tap-highlight-color:transparent;
+    }
+    button:active{ transform:translateY(1px); }
+    button.good{ background:var(--good); border-color:var(--goodLine); }
+    button.warn{ background:var(--warn); }
+    button.bad{ background:var(--bad); }
+    button.small{ padding:8px 10px; font-size:12px; border-radius:10px; }
+    button.wide{ min-width:120px; }
 
-    .tabs{display:flex;gap:10px;flex-wrap:wrap}
-    .tab{background:rgba(15,19,32,.7);border:1px solid rgba(35,42,62,.9)}
-    .tab.active{border-color:#5670b8;background:#1a2031}
-    .list{display:grid;gap:10px;margin-top:10px}
-    .item{border:1px solid rgba(35,42,62,.9);background:rgba(15,19,32,.75);border-radius:14px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
-    .itemName{font-weight:950}
-    .itemDesc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
-    .price{font-weight:950}
-    .tag{display:inline-block;margin-left:8px;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;border:1px solid rgba(35,42,62,.9);background:#0b0d12;color:var(--muted)}
+    /* Toast */
+    #toast{
+      position:absolute;
+      left:50%;
+      bottom:76px;
+      transform:translateX(-50%);
+      background:rgba(2,6,23,.86);
+      border:1px solid var(--line);
+      padding:10px 12px;
+      border-radius:12px;
+      font-weight:800;
+      opacity:0;
+      transition:opacity .15s ease;
+      pointer-events:none;
+      z-index:50;
+      max-width:92%;
+      text-align:center;
+    }
 
-    .battleOverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:flex-end;z-index:220}
-    .battleSheet{width:min(1020px,100vw);margin:0 auto;background:var(--panel);border:1px solid var(--border);border-top-left-radius:18px;border-top-right-radius:18px;padding:12px;box-shadow:var(--shadow)}
-    .battleTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
-    .battleTitle{font-weight:950}
-    .battleMsg{font-size:12px;color:var(--muted);line-height:1.35;margin-top:6px}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
-    .weaponGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+    /* Event ticker */
+    #eventTicker{
+      position:absolute;
+      top:12px; left:12px;
+      background:rgba(2,6,23,.64);
+      border:1px solid var(--line);
+      padding:8px 10px;
+      border-radius:12px;
+      font-size:12px;
+      opacity:0;
+      transition:opacity .2s ease;
+      z-index:40;
+      white-space:pre-line;
+      max-width:min(520px, 92%);
+    }
+    #eventTicker .t{ font-weight:900; }
+    #eventTicker .s{ opacity:.8; font-weight:700; }
 
-    .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#101626;border:1px solid var(--border);padding:10px 12px;border-radius:12px;font-size:13px;box-shadow:var(--shadow);display:none;max-width:92vw;z-index:240}
-    .nav{position:fixed;left:0;right:0;bottom:0;background:rgba(11,13,18,.92);border-top:1px solid var(--border);backdrop-filter:blur(10px);padding:10px 10px 14px;z-index:100}
-    .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-    .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
-    .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
+    /* Overlays */
+    .overlay{
+      position:fixed; inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      background:rgba(11,13,18,.72);
+      z-index:9990;
+      padding:16px;
+    }
+    .card{
+      width:100%;
+      max-width:720px;
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:14px;
+    }
+    .cardHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:10px;
+    }
+    .cardHeader .title{
+      font-weight:900;
+      font-size:16px;
+    }
+    .muted{ color:var(--muted); }
+    .row{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .spacer{ height:10px; }
 
-    /* Tutorial overlay (for strict step-lock tutorial.js) */
-    #tutorialOverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:9999;padding:14px}
-    #tutorialCard{width:min(620px,96vw);background:linear-gradient(180deg,#121622,#0b0d12);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
-    #tutorialTop{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,.25)}
-    #tutorialTitle{font-weight:950}
-    #tutorialStep{font-size:12px;color:var(--muted);margin-top:4px}
-    #tutorialBody{padding:14px;white-space:pre-line}
-    #tutorialText{font-size:14px;line-height:1.35}
-    #tutorialHint{font-size:13px;color:rgba(245,247,255,.86);margin-top:10px}
-    #tutorialBtns{display:flex;justify-content:flex-end;gap:10px;padding:12px;border-top:1px solid var(--border)}
+    /* Shop lists */
+    .tabs{ display:flex; gap:8px; flex-wrap:wrap; }
+    .tabs button{ font-weight:900; }
+    .list{ margin-top:10px; }
+    .item{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:center;
+      padding:10px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background:rgba(15,23,42,.55);
+      margin-bottom:8px;
+    }
+    .itemName{ font-weight:900; }
+    .itemDesc{ font-size:12px; opacity:.8; margin-top:2px; }
+    .tag{
+      display:inline-block;
+      font-size:11px;
+      font-weight:900;
+      padding:2px 8px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:rgba(30,41,59,.55);
+      margin-left:6px;
+      opacity:.95;
+    }
+
+    /* Inventory */
+    .invGrid{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:10px;
+    }
+    @media (min-width:720px){
+      .invGrid{ grid-template-columns:1fr 1fr; }
+    }
+    .panel{
+      border:1px solid var(--line);
+      background:rgba(15,23,42,.55);
+      border-radius:14px;
+      padding:10px;
+    }
+    .panel h4{ margin:0 0 8px 0; font-size:13px; letter-spacing:.2px; }
+    .panel .kv{ display:flex; justify-content:space-between; font-size:12px; padding:6px 0; border-bottom:1px dashed rgba(148,163,184,.18); }
+    .panel .kv:last-child{ border-bottom:none; }
+    .panel .kv b{ font-weight:900; }
+
+    /* Small helper text */
+    .help{
+      font-size:12px;
+      opacity:.85;
+      line-height:1.35;
+      white-space:pre-line;
+    }
   </style>
 </head>
 
 <body>
-<div class="wrap">
-  <div class="top">
-    <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V4.3.8</span> <span class="tag">Phase 1</span></div>
-      <div class="sub">
-        Phase 1: Tiger Abilities + Events (Story/Arcade only) + Loot Pickups + Achievements + Haptics.<br>
-        Lives respawn stays. Calm maps, no flashing. Traps: one-time hold 3–5s.
+<div id="app">
+
+  <!-- TOP HUD -->
+  <div id="topbar">
+    <div id="brand">Tiger Strike</div>
+
+    <div id="stats">
+      <div class="pill"><span class="k">Mode</span> <b id="hudMode">Story</b></div>
+      <div class="pill"><span class="k">Lives</span> <b id="hudLives">3</b></div>
+      <div class="pill"><span class="k">HP</span> <b id="hudHP">100</b></div>
+      <div class="pill"><span class="k">Armor</span> <b id="hudArmor">0</b></div>
+      <div class="pill"><span class="k">Stamina</span> <b id="hudStam">100</b></div>
+      <div class="pill"><span class="k">$</span> <b id="hudFunds">1000</b></div>
+      <div class="pill"><span class="k">Weapon</span> <b id="hudWeapon">Pistol</b></div>
+    </div>
+  </div>
+
+  <!-- GAME STAGE -->
+  <div id="stage">
+    <div id="gameWrap">
+      <canvas id="game" width="1100" height="640"></canvas>
+
+      <div id="eventTicker">
+        <div class="t" id="eventTitle">Event</div>
+        <div class="s" id="eventSub">…</div>
+      </div>
+
+      <div id="toast">Toast</div>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div id="controls">
+    <button id="scanBtn" class="wide">SCAN</button>
+    <button id="engageBtn" class="good wide">ENGAGE</button>
+
+    <button id="trapBtn" class="warn wide">TRAP</button>
+    <button id="backupBtn" class="wide">BACKUP</button>
+
+    <button id="shopBtn" class="wide">SHOP</button>
+    <button id="invBtn" class="wide">INVENTORY</button>
+
+    <button id="pauseBtn" class="small">PAUSE</button>
+    <button id="tutorialBtn" class="small">TUTORIAL</button>
+    <button id="modeBtn" class="small">MODE</button>
+    <button id="aboutBtn" class="small">ABOUT</button>
+    <button id="soundBtn" class="small">SOUND</button>
+  </div>
+
+</div>
+
+<!-- SHOP OVERLAY -->
+<div id="shopOverlay" class="overlay">
+  <div class="card">
+    <div class="cardHeader">
+      <div>
+        <div class="title">Shop</div>
+        <div class="muted" style="font-size:12px;">Money: $<b id="shopMoney">0</b></div>
+      </div>
+      <div class="row">
+        <button class="small" onclick="closeShop()">Close</button>
       </div>
     </div>
+
+    <div class="tabs">
+      <button class="small" onclick="shopTab('weapons')">Weapons</button>
+      <button class="small" onclick="shopTab('ammo')">Ammo</button>
+      <button class="small" onclick="shopTab('armor')">Armor</button>
+      <button class="small" onclick="shopTab('meds')">Med Kits</button>
+      <button class="small" onclick="shopTab('tools')">Repair Kits</button>
+      <button class="small" onclick="shopTab('traps')">Traps</button>
+    </div>
+
+    <div class="list" id="shopWeapons"></div>
+    <div class="list" id="shopAmmo" style="display:none;"></div>
+    <div class="list" id="shopArmor" style="display:none;"></div>
+    <div class="list" id="shopMeds" style="display:none;"></div>
+    <div class="list" id="shopTools" style="display:none;"></div>
+    <div class="list" id="shopTraps" style="display:none;"></div>
+
+    <div class="spacer"></div>
+    <div class="help">
+Tip:
+• Ammo prices rise as you keep buying (soft cap).
+• Backup = $50,000 and briefly freezes tigers.
+• Traps hold a tiger for 3–5 seconds (one-time).
+    </div>
+  </div>
+</div>
+
+<!-- INVENTORY OVERLAY -->
+<div id="invOverlay" class="overlay">
+  <div class="card">
+    <div class="cardHeader">
+      <div>
+        <div class="title">Inventory</div>
+        <div class="muted" style="font-size:12px;">Equip weapons • Use meds • Check ammo</div>
+      </div>
+      <div class="row">
+        <button class="small" onclick="closeInventory()">Close</button>
+      </div>
+    </div>
+
+    <div class="invGrid">
+      <div class="panel">
+        <h4>Weapons</h4>
+        <div id="invWeapons" class="help">Loading…</div>
+      </div>
+
+      <div class="panel">
+        <h4>Ammo Reserve</h4>
+        <div id="invAmmo" class="help">Loading…</div>
+      </div>
+
+      <div class="panel">
+        <h4>Med Kits</h4>
+        <div id="invMeds" class="help">Loading…</div>
+        <div class="spacer"></div>
+        <div class="row">
+          <button class="small good" onclick="useMed('med_small')">Use Small</button>
+          <button class="small good" onclick="useMed('med_large')">Use Large</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Tools</h4>
+        <div id="invTools" class="help">Loading…</div>
+        <div class="spacer"></div>
+        <div class="row">
+          <button class="small" onclick="useRepairKit()">Use Repair Kit</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="help">
+Notes:
+• If a magazine is empty, reload happens automatically when you attack (if reserve exists).
+• If all weapons are out of ammo, buy ammo in the Shop.
+    </div>
+  </div>
+</div>
+
+<!-- PAUSE OVERLAY -->
+<div id="pauseOverlay" class="overlay">
+  <div class="card">
+    <div class="cardHeader">
+      <div class="title">Paused</div>
+      <button class="small" onclick="setPaused(false,null)">Resume</button>
+    </div>
+
+    <div class="help">
+You can:
+• Open Shop / Inventory
+• Change Mode
+• Restart / Redeploy
+    </div>
+
+    <div class="spacer"></div>
     <div class="row">
-      <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
-      <button class="ghost" onclick="openAbout()">ℹ️ About</button>
-      <button class="ghost" onclick="openMode()">🎮 Mode</button>
-      <button class="ghost" onclick="nextMap()">🗺️ Map</button>
-      <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLbl">Pause</span></button>
-
-      <!-- IDs added for tutorial highlighting -->
-      <button class="ghost" id="shopBtn" onclick="openShop()">🛒 Shop</button>
-      <button class="ghost" id="invBtn" onclick="openInventory()">🎒 Inventory</button>
-
-      <button class="ghost" onclick="resetGame()">🔁 Reset</button>
-    </div>
-  </div>
-
-  <div class="hud">
-    <div class="hudGrid">
-      <div class="hudBox">
-        <div class="hudTitle">Agent</div>
-        <div class="hudLine">Title: <b id="titleTxt"></b> • Achv: <b id="achvTxt"></b></div>
-        <div class="hudLine">Lives: <b id="livesTxt"></b> • HP: <b id="hpTxt"></b>/100 • Armor: <b id="armorTxt"></b>/100 • ⚡ <b id="stamTxt"></b>/100</div>
-        <div class="bar"><div id="hpBar" class="fill green"></div></div>
-        <div class="bar"><div id="armorBar" class="fill orange"></div></div>
-        <div class="hudLine">💰 <b id="fundsTxt"></b> • ⭐ <b id="scoreTxt"></b> • ⏱️ <b id="surviveTxt"></b></div>
-        <div class="hudLine">Weapon: <b id="weaponTxt"></b> • Durability: <b id="durTxt"></b>%</div>
-        <div class="hudLine">Ammo: <b id="ammoTxt"></b> • Medkits: <b id="medTxt"></b> • Repair: <b id="repTxt"></b> • Traps: <b id="trapTxt"></b></div>
-        <div class="hudLine">Backup: <b id="backupTxt"></b></div>
-        <div class="hudLine" id="eventTxt"></div>
-      </div>
-
-      <div class="hudBox">
-        <div class="hudTitle">Mission</div>
-        <div class="hudLine">Map: <b id="mapTxt"></b> • Mode: <b id="modeTxt"></b> • Level: <b id="lvlTxt"></b></div>
-        <div class="hudLine">Target Tiger HP: <b id="tigerTxt"></b> • Capture/Kill when HP ≤ <b>15</b></div>
-        <div class="bar"><div id="tigerBar" class="fill red"></div></div>
-        <div class="hudLine">Civilians Alive: <b id="civTxt"></b> • Evac: <b id="evacTxt"></b> • Tigers left: <b id="tleftTxt"></b> • Threat: <b id="threatTxt"></b></div>
-        <div class="hudLine" id="objTxt"></div>
-        <div class="hudLine" id="dangerTxt"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="screenCard">
-    <canvas id="cv" width="960" height="540"></canvas>
-    <div class="actionStrip">
-      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Loot spawns on map. Events happen in Story/Arcade.</div>
-      <div class="row">
-        <button onclick="deploy()">📍 Deploy</button>
-        <button id="scanBtn" onclick="scan()">🛰️ Scan</button>
-        <button class="warn" id="engageBtn" onclick="startCombat()" disabled>🎯 Engage</button>
-        <button class="ghost" onclick="useMedkit()">❤️ Medkit</button>
-        <button class="ghost" onclick="useRepairKit()">🧰 Repair</button>
-        <button class="ghost" onclick="placeTrap()">🪤 Place Trap</button>
-        <button class="ghost" onclick="callBackup()">🚨 Backup ($50,000)</button>
-        <button class="ghost" onclick="sprint()">⚡ Sprint</button>
-      </div>
+      <button class="small" onclick="openShop()">Shop</button>
+      <button class="small" onclick="openInventory()">Inventory</button>
+      <button class="small" onclick="openMode()">Mode</button>
+      <button class="small bad" onclick="deploy()">Redeploy</button>
     </div>
   </div>
 </div>
 
-<!-- About -->
-<div class="overlay" id="aboutOverlay">
-  <div class="modal">
-    <div class="modalTop"><div class="modalTitle">Phase 1 — Tigers / Events / Loot</div><button class="ghost" onclick="closeAbout()">Back</button></div>
-    <div class="modalBody" id="aboutBody"></div>
-  </div>
-</div>
-
-<!-- Mode -->
-<div class="overlay" id="modeOverlay">
-  <div class="modal">
-    <div class="modalTop"><div class="modalTitle">Choose Mode</div><button class="ghost" onclick="closeMode()">Back</button></div>
-    <div class="modalBody">
-      <div class="tabs">
-        <button class="tab" id="mStory" onclick="setMode('Story')">📖 Story</button>
-        <button class="tab" id="mArcade" onclick="setMode('Arcade')">🕹️ Arcade</button>
-        <button class="tab" id="mSurvival" onclick="setMode('Survival')">🔥 Survival</button>
-      </div>
-      <div class="divider"></div>
-      <div class="hudLine" id="modeDesc"></div>
+<!-- MODE OVERLAY -->
+<div id="modeOverlay" class="overlay">
+  <div class="card">
+    <div class="cardHeader">
+      <div class="title">Choose Mode</div>
+      <button class="small" onclick="closeMode()">Close</button>
     </div>
-  </div>
-</div>
 
-<!-- Shop -->
-<div class="overlay" id="shopOverlay">
-  <div class="modal">
-    <div class="modalTop">
-      <div class="modalTitle">Shop (Paused) — Money: $<span id="shopMoney"></span></div>
-      <button class="ghost" onclick="closeShop()">Resume</button>
+    <div class="help">
+Story: Evacuate civilians + battles + progression
+Arcade: Faster pace + evac + tougher spawns
+Survival: No civilians, survive waves
     </div>
-    <div class="modalBody">
-      <div class="tabs">
-        <button class="tab active" id="tabWeapons" onclick="shopTab('weapons')">Weapons</button>
-        <button class="tab" id="tabAmmo" onclick="shopTab('ammo')">Ammo</button>
-        <button class="tab" id="tabArmor" onclick="shopTab('armor')">Armory</button>
-        <button class="tab" id="tabMeds" onclick="shopTab('meds')">Med Kits</button>
-        <button class="tab" id="tabTools" onclick="shopTab('tools')">Tools</button>
-        <button class="tab" id="tabTraps" onclick="shopTab('traps')">Traps</button>
-      </div>
-      <div class="hudLine" id="shopNote"></div>
-      <div class="list" id="shopList"></div>
+
+    <div class="spacer"></div>
+    <div class="row">
+      <button class="good" onclick="setMode('Story')">Story</button>
+      <button class="warn" onclick="setMode('Arcade')">Arcade</button>
+      <button class="bad" onclick="setMode('Survival')">Survival</button>
     </div>
   </div>
 </div>
 
-<!-- Inventory -->
-<div class="overlay" id="invOverlay">
-  <div class="modal">
-    <div class="modalTop"><div class="modalTitle">Inventory (Paused)</div><button class="ghost" onclick="closeInventory()">Resume</button></div>
-    <div class="modalBody">
-      <div class="hudLine" id="invSummary"></div>
-      <div class="divider"></div>
-      <div class="hudTitle">Weapons Owned</div>
-      <div class="list" id="invWeapons"></div>
-      <div class="divider"></div>
-      <div class="hudTitle">Ammo Reserves</div>
-      <div class="list" id="invAmmo"></div>
-      <div class="divider"></div>
-      <div class="hudTitle">Supplies</div>
-      <div class="list" id="invSupplies"></div>
+<!-- ABOUT OVERLAY -->
+<div id="aboutOverlay" class="overlay">
+  <div class="card">
+    <div class="cardHeader">
+      <div class="title">About / Help</div>
+      <button class="small" onclick="closeAbout()">Close</button>
+    </div>
+
+    <div class="help">
+Controls:
+• Tap anywhere on the map to move
+• SCAN to ping a tiger
+• Tap a tiger to lock it (blue ring)
+• ENGAGE near a tiger to enter battle
+• TRAP places a trap (one-time hold)
+• BACKUP costs $50,000 (brief freeze)
+
+Tutorial:
+• Press TUTORIAL anytime to replay the guided tutorial.
     </div>
   </div>
 </div>
 
-<!-- Battle -->
-<div class="battleOverlay" id="battleOverlay">
-  <div class="battleSheet">
-    <div class="battleTop">
-      <div>
-        <div class="battleTitle" id="battleTitle">Battle</div>
-        <div class="battleMsg" id="battleMsg">Switch weapons anytime. Attack works unless ALL guns are out of ammo.</div>
-      </div>
-      <button class="ghost" onclick="endBattle('RETREAT')">Close</button>
-    </div>
-    <div class="divider"></div>
-    <div class="battleTitle">Weapon Select</div>
-    <div class="weaponGrid" id="weaponGrid"></div>
-    <div class="divider"></div>
-    <div class="grid2">
-      <button class="warn" id="atkBtn" onclick="playerAction('ATTACK')">Attack</button>
-      <button class="ghost" onclick="playerAction('PROTECT')">Protect Civilians</button>
-      <button class="good" id="capBtn" onclick="playerAction('CAPTURE')" disabled>Capture</button>
-      <button class="danger" id="killBtn" onclick="playerAction('KILL')" disabled>Kill</button>
-    </div>
-  </div>
-</div>
+<!-- IMPORTANT: Tutorial overlay elements are optional — tutorial.js can auto-create them.
+     If you WANT them in HTML, uncomment below:
 
-<!-- Mission Complete -->
-<div class="overlay" id="completeOverlay">
-  <div class="modal">
-    <div class="modalTop"><div class="modalTitle">✅ Mission Complete</div><button class="ghost" onclick="closeComplete()">Close</button></div>
-    <div class="modalBody">
-      <div class="hudLine" id="completeText"></div>
-      <div class="divider"></div>
-      <div class="row">
-        <button class="good" onclick="startNextMission()">Start Next Mission</button>
-        <button class="ghost" onclick="openShop()">Shop First</button>
-        <button class="ghost" onclick="openInventory()">Inventory</button>
-      </div>
-    </div>
-  </div>
-</div>
+<div id="tutorialOverlay"></div>
 
-<!-- Game Over -->
-<div class="overlay" id="overOverlay">
-  <div class="modal">
-    <div class="modalTop"><div class="modalTitle">🚫 Out of Lives</div></div>
-    <div class="modalBody">
-      <div class="hudLine" id="overText"></div>
-      <div class="divider"></div>
-      <div class="row">
-        <button class="good" onclick="restartCurrentMission()">Restart This Mission</button>
-        <button class="ghost" onclick="resetGame()">Restart From Mission 1</button>
-      </div>
-    </div>
-  </div>
-</div>
+-->
 
-<!-- Tutorial Overlay (Strict step-lock UI) -->
-<div id="tutorialOverlay">
-  <div id="tutorialCard">
-    <div id="tutorialTop">
-      <div>
-        <div id="tutorialTitle">Tutorial</div>
-        <div id="tutorialStep">Step</div>
-      </div>
-      <button id="tutorialSkip" class="ghost" type="button">Skip</button>
-    </div>
-    <div id="tutorialBody">
-      <div id="tutorialText"></div>
-      <div id="tutorialHint"></div>
-    </div>
-    <div id="tutorialBtns">
-      <button id="tutorialNext" class="good" type="button">Next</button>
-    </div>
-  </div>
-</div>
+<script>
+  // Wire buttons that are not inline
+  (function(){
+    const $ = (id)=>document.getElementById(id);
 
-<div class="toast" id="toast"></div>
+    $("scanBtn").addEventListener("click", ()=> window.doScan?.());
+    $("engageBtn").addEventListener("click", ()=> window.doEngage?.());
+    $("trapBtn").addEventListener("click", ()=> window.placeTrap?.());
+    $("backupBtn").addEventListener("click", ()=> window.callBackup?.());
 
-<div class="nav">
-  <div class="navInner">
-    <button class="navBtn" onclick="openMode()"><span>🎮</span>Mode</button>
-    <button class="navBtn" onclick="nextMap()"><span>🗺️</span>Map</button>
-    <button class="navBtn" onclick="openShop()"><span>🛒</span>Shop</button>
-    <button class="navBtn" onclick="openInventory()"><span>🎒</span>Inventory</button>
-  </div>
-</div>
+    $("shopBtn").addEventListener("click", ()=> window.openShop?.());
+    $("invBtn").addEventListener("click", ()=> window.openInventory?.());
 
-<!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js"></script>
-<script src="./tutorial.js"></script>
+    $("pauseBtn").addEventListener("click", ()=> window.setPaused?.(true,"pause"));
+    $("modeBtn").addEventListener("click", ()=> window.openMode?.());
+    $("aboutBtn").addEventListener("click", ()=> window.openAbout?.());
+    $("soundBtn").addEventListener("click", ()=> window.toggleSound?.());
+
+    // ✅ The tutorial button you asked about (works anytime)
+    $("tutorialBtn").addEventListener("click", ()=> window.TigerTutorial?.start?.());
+
+    // close overlays when tapping outside card (optional)
+    for(const id of ["shopOverlay","invOverlay","pauseOverlay","modeOverlay","aboutOverlay"]){
+      const o = $(id);
+      if(!o) continue;
+      o.addEventListener("click",(e)=>{
+        if(e.target === o){
+          if(id==="shopOverlay") window.closeShop?.();
+          if(id==="invOverlay") window.closeInventory?.();
+          if(id==="pauseOverlay") window.setPaused?.(false,null);
+          if(id==="modeOverlay") window.closeMode?.();
+          if(id==="aboutOverlay") window.closeAbout?.();
+        }
+      });
+    }
+  })();
+</script>
+
+<!-- Your game + tutorial scripts -->
+<script src="game.js"></script>
+<script src="tutorial.js"></script>
 
 </body>
 </html>
