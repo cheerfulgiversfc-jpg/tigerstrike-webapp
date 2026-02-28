@@ -163,7 +163,24 @@ const DEFAULT = {
   pickups:[],
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0 },
   achievements:{},
-  title:"Rookie"
+  title:"Rookie",
+
+// ===== PHASE 2 PROGRESSION =====
+xp: 0,
+level: 1,
+perkPoints: 0,
+
+perks: {
+  H_CRIT: 0,
+  H_JAM: 0,
+  H_DMG: 0,
+  G_CIV_GUARD: 0,
+  G_ARMOR: 0,
+  G_LIVES: 0,
+  T_LOOT: 0,
+  T_TRAPS: 0,
+  T_RELOAD: 0
+}
 };
 
 let S = load();
@@ -253,7 +270,65 @@ function toast(msg){
 function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
 function rand(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
 function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
+// ================= PHASE 2 XP / PERKS =================
 
+function xpNeededForLevel(lv){
+  return 200 + lv * 80;
+}
+
+function addXP(amount){
+  if(!amount) return;
+  S.xp += amount;
+
+  while(S.xp >= xpNeededForLevel(S.level)){
+    S.xp -= xpNeededForLevel(S.level);
+    S.level++;
+    S.perkPoints++;
+    toast("Level Up! +1 Perk Point");
+  }
+
+  save();
+}
+
+function perkRank(k){
+  return S.perks?.[k] || 0;
+}
+
+function perkCritBonus(){
+  return perkRank("H_CRIT") * 0.02;
+}
+
+function perkDamageMul(){
+  return 1 + perkRank("H_DMG") * 0.05;
+}
+
+function perkJamMul(){
+  return 1 - perkRank("H_JAM") * 0.15;
+}
+
+function perkArmorEff(){
+  return 1 + perkRank("G_ARMOR") * 0.05;
+}
+
+function perkCivMul(){
+  return 1 - perkRank("G_CIV_GUARD") * 0.15;
+}
+
+function perkTrapScale(){
+  return 1 + perkRank("T_TRAPS") * 0.10;
+}
+
+function perkReloadBonus(){
+  return perkRank("T_RELOAD") * 0.10;
+}
+
+function buyPerk(key){
+  if(S.perkPoints <= 0) return toast("No perk points.");
+  S.perks[key]++;
+  S.perkPoints--;
+  save();
+  renderHUD();
+}
 function getWeapon(id){ return WEAPONS.find(w=>w.id===id); }
 function getAmmo(id){ return AMMO.find(a=>a.id===id); }
 function getMed(id){ return MEDS.find(m=>m.id===id); }
@@ -426,6 +501,7 @@ function collectPickup(p){
     const amt = rand(80, 260);
     S.funds += amt;
     S.stats.cashEarned += amt;
+    addXP(10);
     unlockAchv("pickup1","First Pickup");
     setEventText(`💵 Picked up cash +$${amt}`, 4);
     sfx("loot"); hapticImpact("light");
@@ -854,8 +930,23 @@ function renderInventory(){
       <div style="text-align:right">
         <button ${S.trapsOwned<=0?'disabled':''} onclick="placeTrap()">Place</button>
       </div>
-    </div>
-  `;
+    </div> 
+   <div class="divider"></div>
+<div>
+  <b>Level:</b> ${S.level} |
+  <b>XP:</b> ${S.xp}/${xpNeededForLevel(S.level)} |
+  <b>Perk Points:</b> ${S.perkPoints}
+</div>
+
+<div style="margin-top:8px;">
+  <button onclick="buyPerk('H_CRIT')">Deadeye</button>
+  <button onclick="buyPerk('H_DMG')">Damage</button>
+  <button onclick="buyPerk('H_JAM')">Anti Jam</button>
+  <button onclick="buyPerk('G_CIV_GUARD')">Civ Guard</button>
+  <button onclick="buyPerk('G_ARMOR')">Armor</button>
+  <button onclick="buyPerk('T_TRAPS')">Trap+</button>
+  <button onclick="buyPerk('T_RELOAD')">Reload+</button>
+</div>
 }
 
 function useMedkit(){
@@ -923,7 +1014,7 @@ function placeTrap(){
     id: Date.now() + Math.random(),
     x: S.me.x,
     y: S.me.y,
-    r: 80,
+    r: 80 * perkTrapScale(),
     ttl: 1800,
     used: false,
     removeAt: 0
@@ -992,7 +1083,7 @@ function jamChance(w){
   const g=WEAPON_GRADE[w.grade]||WEAPON_GRADE.Common;
   const dur=weaponDurability(w.id);
   const wearFactor = dur>=60?0.0:(60-dur)/60;
-  return clamp(g.jamBase + wearFactor*0.18, 0, 0.28);
+  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul(), 0, 0.28);
 }
 function autoReloadIfNeeded(force=false){
   const w=equippedWeapon();
@@ -1001,7 +1092,7 @@ function autoReloadIfNeeded(force=false){
   if(reserve<=0) return false;
   const need = S.mag.cap - S.mag.loaded;
   const take = Math.min(need, reserve);
-  S.mag.loaded += take;
+  S.mag.loaded += take + Math.floor(take * perkReloadBonus());
   S.ammoReserve[w.ammo] = reserve - take;
   sfx("reload"); hapticImpact("light");
   return true;
@@ -1344,6 +1435,7 @@ function evacCheck(){
       c.evac=true;
       S.evacDone += 1;
       S.stats.evac += 1;
+      addXP(35);
       toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length})`);
       unlockAchv("evac1","First Evac");
       hapticNotif("success");
@@ -1402,7 +1494,7 @@ function tickCiviliansAndThreats(){
       const rageMult = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? 1.25 : 1.0;
 
       const dmg = base * multType * rageMult * (1 + (diff-1)*0.20);
-      best.hp = clamp(best.hp - dmg, 0, best.hpMax);
+      best.hp = clamp(best.hp - (dmg * perkCivMul()), 0, best.hpMax);
     }
   }
 
@@ -1574,7 +1666,7 @@ function survivalPressureTick(){
 // ===================== DAMAGE / RESPAWN =====================
 function applyPlayerDamage(dmg, showToast=false){
   if(S.armor>0){
-    const absorbed=Math.min(S.armor,dmg);
+    const absorbed=Math.min(S.armor, Math.ceil(dmg * perkArmorEff()));
     S.armor -= absorbed;
     dmg -= absorbed;
   }
@@ -1751,6 +1843,7 @@ function playerAction(action){
     const pay=payout("CAPTURE");
     S.funds+=pay.cash; S.score+=pay.score;
     S.stats.captures += 1;
+    addXP(90);
     S.stats.cashEarned += pay.cash;
     unlockAchv("cap1","First Capture");
     S.trust=clamp(S.trust+pay.trust,0,100);
@@ -1768,6 +1861,7 @@ function playerAction(action){
     const pay=payout("KILL");
     S.funds+=pay.cash; S.score+=pay.score;
     S.stats.kills += 1;
+    addXP(50);
     S.stats.cashEarned += pay.cash;
     unlockAchv("kill1","First Kill");
     S.trust=clamp(S.trust+pay.trust,0,100);
@@ -1821,10 +1915,12 @@ function playerAction(action){
 
     S.mag.loaded -= 1;
     S.stats.shots += 1;
-
+    addXP(2);
+    
     const eff=ammoEffectFor(w.ammo);
     let dmg=rand(w.dmg[0],w.dmg[1]);
-    const crit=Math.random()<eff.crit;
+    dmg *= perkDamageMul();
+    const crit=Math.random()<(eff.crit + perkCritBonus());
     if(crit) dmg=Math.round(dmg*1.6);
     dmg=Math.round(dmg*eff.dmgMul);
 
@@ -1896,6 +1992,7 @@ function checkMissionComplete(){
       document.getElementById("completeText").innerText =
         `Mission complete!\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
+      addXP(120);
       sfx("win"); hapticNotif("success");
       save();
     }
@@ -2480,3 +2577,4 @@ window.buyTool = buyTool;
 window.buyTrap = buyTrap;
 
 window.equipWeapon = equipWeapon;
+window.buyPerk = buyPerk;
