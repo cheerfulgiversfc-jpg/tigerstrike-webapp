@@ -205,26 +205,10 @@
 
   // Public API
   window.TigerTutorial = {
-  // Start from the beginning every time you press the Tutorial button
-  start: (restart = true) => {
-    if (restart) {
-      state.done = false;
-      state.stepIndex = 0;
-      state.completed = {};
-      saveState();
-    }
-    showTutorial(false);
-  },
-
-  // Hard reset (optional, keeps your old behavior)
-  reset: () => {
-    localStorage.removeItem(STORAGE_KEY);
-    location.reload();
-  },
-
+  start: () => showTutorial(false),
+  reset: () => { localStorage.removeItem(STORAGE_KEY); location.reload(); },
   skip: () => finishTutorial(true),
   state,
-};
   };
 
   // ✅ This is what your Tutorial button should call
