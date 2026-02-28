@@ -947,6 +947,7 @@ function renderInventory(){
   <button onclick="buyPerk('T_TRAPS')">Trap+</button>
   <button onclick="buyPerk('T_RELOAD')">Reload+</button>
 </div>
+`;
 }
 
 function useMedkit(){
