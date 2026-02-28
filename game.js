@@ -951,13 +951,64 @@ function renderInventory(){
 </div>
 
 <div style="margin-top:8px;">
-  <button onclick="buyPerk('H_CRIT')">Deadeye</button>
-  <button onclick="buyPerk('H_DMG')">Damage</button>
-  <button onclick="buyPerk('H_JAM')">Anti Jam</button>
-  <button onclick="buyPerk('G_CIV_GUARD')">Civ Guard</button>
-  <button onclick="buyPerk('G_ARMOR')">Armor</button>
-  <button onclick="buyPerk('T_TRAPS')">Trap+</button>
-  <button onclick="buyPerk('T_RELOAD')">Reload+</button>
+  <div class="divider"></div>
+<div>
+  <b>Level:</b> ${S.level} |
+  <b>XP:</b> ${S.xp}/${xpNeededForLevel(S.level)} |
+  <b>Perk Points:</b> ${S.perkPoints}
+</div>
+
+<div style="margin-top:10px; font-size:13px; line-height:1.5;">
+
+  <div>
+    <b>Deadeye</b> (Rank ${perkRank("H_CRIT")})
+    +${(perkRank("H_CRIT")*5).toFixed(0)}% Crit Chance
+    <br>
+    <button onclick="buyPerk('H_CRIT')">Upgrade</button>
+  </div>
+
+  <div>
+    <b>Damage Boost</b> (Rank ${perkRank("H_DMG")})
+    +${(perkRank("H_DMG")*8).toFixed(0)}% Weapon Damage
+    <br>
+    <button onclick="buyPerk('H_DMG')">Upgrade</button>
+  </div>
+
+  <div>
+    <b>Anti-Jam</b> (Rank ${perkRank("H_JAM")})
+    -${(perkRank("H_JAM")*10).toFixed(0)}% Jam Chance
+    <br>
+    <button onclick="buyPerk('H_JAM')">Upgrade</button>
+  </div>
+
+  <div>
+    <b>Civilian Guard</b> (Rank ${perkRank("G_CIV_GUARD")})
+    -${(perkRank("G_CIV_GUARD")*15).toFixed(0)}% Civilian Damage Taken
+    <br>
+    <button onclick="buyPerk('G_CIV_GUARD')">Upgrade</button>
+  </div>
+
+  <div>
+    <b>Armor Efficiency</b> (Rank ${perkRank("G_ARMOR")})
+    +${(perkRank("G_ARMOR")*5).toFixed(0)}% Armor Effectiveness
+    <br>
+    <button onclick="buyPerk('G_ARMOR')">Upgrade</button>
+  </div>
+
+  <div>
+    <b>Trap Expansion</b> (Rank ${perkRank("T_TRAPS")})
+    +${(perkRank("T_TRAPS")*10).toFixed(0)}% Trap Radius
+    <br>
+    <button onclick="buyPerk('T_TRAPS')">Upgrade</button>
+  </div>
+
+  <div>
+    <b>Reload Boost</b> (Rank ${perkRank("T_RELOAD")})
+    +${(perkRank("T_RELOAD")*10).toFixed(0)}% Reload Efficiency
+    <br>
+    <button onclick="buyPerk('T_RELOAD')">Upgrade</button>
+  </div>
+
 </div>
 `;
 }
