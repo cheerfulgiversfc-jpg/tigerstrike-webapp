@@ -323,11 +323,24 @@ function perkReloadBonus(){
 }
 
 function buyPerk(key){
-  if(S.perkPoints <= 0) return toast("No perk points.");
-  S.perks[key]++;
-  S.perkPoints--;
+
+  const points = Number(S.perkPoints || 0);
+
+  if(points <= 0){
+    toast("No perk points.");
+    return;
+  }
+
+  S.perks[key] = (S.perks[key] || 0) + 1;
+  S.perkPoints = points - 1;
+
   save();
   renderHUD();
+
+  if(document.getElementById("invOverlay").style.display === "flex"){
+    renderInventory();
+  }
+}
 }
 function getWeapon(id){ return WEAPONS.find(w=>w.id===id); }
 function getAmmo(id){ return AMMO.find(a=>a.id===id); }
