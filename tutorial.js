@@ -1,6 +1,8 @@
 // tutorial.js
-// Tutorial overlay + step tracker. Works anytime via TigerTutorial.start().
-// Requires: window.S and window.setPaused from game.js (now provided).
+// Simple guided tutorial overlay + task tracker for the game UI.
+// Assumes your index.html has: #tutorialOverlay, #tutorialTitle, #tutorialText,
+// #tutorialStep, #tutorialNext, #tutorialSkip, #tutorialHint
+// If they don't exist, this file will create a minimal overlay automatically.
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -8,6 +10,7 @@
   const STORAGE_KEY = "ts_tutorial_v1";
   const state = loadState();
 
+  // ------------------ helpers ------------------
   function $(sel) { return document.querySelector(sel); }
   function el(tag, props = {}, children = []) {
     const n = document.createElement(tag);
@@ -38,6 +41,12 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }
 
+  // ------------------ steps ------------------
+  // Each step can optionally:
+  // - watch: a predicate that returns true when user completed the action
+  // - hint: small hint text
+  // - onEnter: run when step becomes active
+  // - onExit: run when leaving step
   const steps = [
     {
       id: "welcome",
@@ -101,6 +110,19 @@
       },
     },
     {
+      id: "ammo",
+      title: "Ammo & Reload",
+      text:
+        "Each weapon has a magazine + reserve ammo.\n" +
+        "If your current weapon is empty, switch weapons.\n" +
+        "If ALL weapons have no ammo, buy ammo in the Shop.",
+      hint: "In battle, try ATTACK once (or open Shop to see ammo).",
+      watch: () => {
+        const S = window.S;
+        return (S?.stats && (S.stats.shots || 0) > 0) || (S?.funds || 0) < 1000; // spent something
+      },
+    },
+    {
       id: "civs",
       title: "Civilians & Evac",
       text:
@@ -111,7 +133,7 @@
       watch: () => {
         const S = window.S;
         if (!S) return false;
-        if (S.mode === "Survival") return true;
+        if (S.mode === "Survival") return true; // skip in Survival
         return (S.stats?.evac || 0) > 0 || (S.evacDone || 0) > 0;
       },
     },
@@ -124,7 +146,11 @@
       hint: "Open Shop or Inventory once.",
       onEnter: () => { pulse("#shopBtn"); pulse("#invBtn"); },
       onExit: () => { stopPulse("#shopBtn"); stopPulse("#invBtn"); },
-      watch: () => isVisible("#shopOverlay") || isVisible("#invOverlay"),
+      watch: () => {
+        const shopOpen = isVisible("#shopOverlay");
+        const invOpen = isVisible("#invOverlay");
+        return shopOpen || invOpen;
+      },
     },
     {
       id: "done",
@@ -137,6 +163,7 @@
     },
   ];
 
+  // ------------------ overlay creation ------------------
   ensureOverlay();
   const ui = {
     overlay: $("#tutorialOverlay"),
@@ -148,18 +175,24 @@
     skip: $("#tutorialSkip"),
   };
 
-  ui.skip.onclick = () => {
+  // Buttons
+  ui.next.addEventListener("click", () => {
+    haptic("light");
+    nextStep(true);
+  });
+  ui.skip.addEventListener("click", () => {
     haptic("medium");
     finishTutorial(true);
-  };
+  });
 
+  // Auto advance watcher
   let watcher = null;
   function startWatcher() {
     stopWatcher();
     watcher = setInterval(() => {
       if (!ui.overlay || ui.overlay.style.display !== "flex") return;
       const st = steps[state.stepIndex];
-      if (!st?.watch) return;
+      if (!st || !st.watch) return;
 
       if (st.watch()) {
         state.completed[st.id] = true;
@@ -173,6 +206,7 @@
     watcher = null;
   }
 
+  // Public API
   window.TigerTutorial = {
     start: () => showTutorial(false),
     reset: () => { localStorage.removeItem(STORAGE_KEY); location.reload(); },
@@ -180,10 +214,15 @@
     state,
   };
 
-  // Auto-start only first time
-  if (!state.done) setTimeout(() => showTutorial(true), 600);
+  // Start automatically on first load (unless done)
+  if (!state.done) {
+    // delay a bit so the game renders behind it
+    setTimeout(() => showTutorial(true), 600);
+  }
 
+  // ------------------ core functions ------------------
   function showTutorial(firstAuto) {
+    // pause game if game.js exposes setPaused
     safeCall(() => window.setPaused?.(true, "tutorial"));
     ui.overlay.style.display = "flex";
     render();
@@ -194,12 +233,15 @@
   function hideTutorial() {
     ui.overlay.style.display = "none";
     stopWatcher();
+    // resume game
     safeCall(() => window.setPaused?.(false, null));
   }
 
   function nextStep(fromButton) {
     const prev = steps[state.stepIndex];
     safeCall(() => prev?.onExit?.());
+
+    // If this was a button click, mark as completed too
     if (fromButton && prev?.id) state.completed[prev.id] = true;
 
     state.stepIndex = Math.min(state.stepIndex + 1, steps.length - 1);
@@ -207,6 +249,8 @@
 
     const cur = steps[state.stepIndex];
     safeCall(() => cur?.onEnter?.());
+
+    // If last step, change button label
     render();
   }
 
@@ -215,30 +259,39 @@
     state.stepIndex = steps.length - 1;
     saveState();
     hideTutorial();
+    // small toast if available
     safeCall(() => window.toast?.(bySkip ? "Tutorial skipped." : "Tutorial complete!"));
   }
 
   function render() {
     const st = steps[state.stepIndex];
+
     ui.title.textContent = st.title;
     ui.text.textContent = st.text;
     ui.hint.textContent = st.hint || "";
+
     ui.step.textContent = `Step ${state.stepIndex + 1} / ${steps.length}`;
     ui.next.textContent = (st.id === "done") ? "FINISH" : "NEXT";
 
-    ui.next.onclick = () => {
+    // If done step, finishing should close
+    ui.next.onclick = null;
+    ui.next.addEventListener("click", onNextClick, { once: true });
+
+    function onNextClick() {
       haptic("light");
       if (st.id === "done") finishTutorial(false);
       else nextStep(true);
-    };
+    }
   }
 
+  // ------------------ utility ------------------
   function isVisible(sel) {
     const n = $(sel);
     if (!n) return false;
     return getComputedStyle(n).display !== "none";
   }
 
+  // Simple pulsing highlight (no flashing)
   const pulses = new Map();
   function pulse(sel) {
     const n = $(sel);
@@ -264,6 +317,7 @@
     pulses.delete(sel);
   }
 
+  // ------------------ DOM bootstrap ------------------
   function ensureOverlay() {
     if ($("#tutorialOverlay")) return;
 
@@ -294,6 +348,7 @@
       el("button", { id: "tutorialNext", className: "good" }, ["Next"]),
     ]);
 
+    // Minimal button styles
     const style = el("style", { textContent:
       `
       #tutorialOverlay button{
