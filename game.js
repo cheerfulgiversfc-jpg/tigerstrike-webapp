@@ -167,6 +167,13 @@ const DEFAULT = {
 };
 
 let S = load();
+// ---- Tutorial support: expose game state + helpers to tutorial.js ----
+window.S = S;                   // tutorial.js reads state here
+window.toast = window.toast || toast;   // tutorial can use toast (if defined)
+window.setPaused = window.setPaused || setPaused; // tutorial can pause/resume
+
+function exposeStateToTutorial(){
+  window.S = S;
 let lastOverlay = null;
 
 const cv = document.getElementById("cv");
