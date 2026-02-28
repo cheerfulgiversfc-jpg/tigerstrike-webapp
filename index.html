@@ -1,3 +1,4 @@
+<!-- index.html -->
 <!doctype html>
 <html>
 <head>
@@ -71,9 +72,20 @@
 
     .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#101626;border:1px solid var(--border);padding:10px 12px;border-radius:12px;font-size:13px;box-shadow:var(--shadow);display:none;max-width:92vw;z-index:240}
     .nav{position:fixed;left:0;right:0;bottom:0;background:rgba(11,13,18,.92);border-top:1px solid var(--border);backdrop-filter:blur(10px);padding:10px 10px 14px;z-index:100}
-    .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+    .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
+
+    /* Tutorial overlay (for strict step-lock tutorial.js) */
+    #tutorialOverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:9999;padding:14px}
+    #tutorialCard{width:min(620px,96vw);background:linear-gradient(180deg,#121622,#0b0d12);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+    #tutorialTop{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,.25)}
+    #tutorialTitle{font-weight:950}
+    #tutorialStep{font-size:12px;color:var(--muted);margin-top:4px}
+    #tutorialBody{padding:14px;white-space:pre-line}
+    #tutorialText{font-size:14px;line-height:1.35}
+    #tutorialHint{font-size:13px;color:rgba(245,247,255,.86);margin-top:10px}
+    #tutorialBtns{display:flex;justify-content:flex-end;gap:10px;padding:12px;border-top:1px solid var(--border)}
   </style>
 </head>
 
@@ -89,13 +101,15 @@
     </div>
     <div class="row">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
-      <button class="ghost" id="tutorialBtn" onclick="TigerTutorial?.start()">🧭 Tutorial</button>
       <button class="ghost" onclick="openAbout()">ℹ️ About</button>
       <button class="ghost" onclick="openMode()">🎮 Mode</button>
       <button class="ghost" onclick="nextMap()">🗺️ Map</button>
       <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLbl">Pause</span></button>
+
+      <!-- IDs added for tutorial highlighting -->
       <button class="ghost" id="shopBtn" onclick="openShop()">🛒 Shop</button>
       <button class="ghost" id="invBtn" onclick="openInventory()">🎒 Inventory</button>
+
       <button class="ghost" onclick="resetGame()">🔁 Reset</button>
     </div>
   </div>
@@ -264,6 +278,26 @@
   </div>
 </div>
 
+<!-- Tutorial Overlay (Strict step-lock UI) -->
+<div id="tutorialOverlay">
+  <div id="tutorialCard">
+    <div id="tutorialTop">
+      <div>
+        <div id="tutorialTitle">Tutorial</div>
+        <div id="tutorialStep">Step</div>
+      </div>
+      <button id="tutorialSkip" class="ghost" type="button">Skip</button>
+    </div>
+    <div id="tutorialBody">
+      <div id="tutorialText"></div>
+      <div id="tutorialHint"></div>
+    </div>
+    <div id="tutorialBtns">
+      <button id="tutorialNext" class="good" type="button">Next</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <div class="nav">
@@ -272,12 +306,12 @@
     <button class="navBtn" onclick="nextMap()"><span>🗺️</span>Map</button>
     <button class="navBtn" onclick="openShop()"><span>🛒</span>Shop</button>
     <button class="navBtn" onclick="openInventory()"><span>🎒</span>Inventory</button>
-    <button class="navBtn" onclick="TigerTutorial?.start()"><span>🧭</span>Tutorial</button>
   </div>
 </div>
 
-<!-- IMPORTANT: game first, tutorial second -->
+<!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
 <script src="./game.js"></script>
 <script src="./tutorial.js"></script>
+
 </body>
 </html>
