@@ -167,14 +167,16 @@ const DEFAULT = {
 };
 
 let S = load();
-// ---- Tutorial support: expose game state + helpers to tutorial.js ----
-window.S = S;                   // tutorial.js reads state here
-window.toast = window.toast || toast;   // tutorial can use toast (if defined)
-window.setPaused = window.setPaused || setPaused; // tutorial can pause/resume
 
-function exposeStateToTutorial(){
-  window.S = S;
+// ---- Tutorial support + global state ----
 let lastOverlay = null;
+
+// Make tutorial.js able to read game state
+window.S = S;
+
+// We'll set these after their functions exist (later), but define placeholders now
+window.toast = window.toast || function(){};
+window.setPaused = window.setPaused || function(){};
 
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
@@ -2426,3 +2428,55 @@ function init(){
 }
 
 init();
+// ---- Expose functions for HTML onclick + tutorial integration ----
+window.S = S; // keep it updated
+
+window.toast = toast;
+window.setPaused = setPaused;
+
+// Buttons used by index.html
+window.toggleSound = toggleSound;
+window.openAbout = openAbout;
+window.closeAbout = closeAbout;
+
+window.openMode = openMode;
+window.closeMode = closeMode;
+window.setMode = setMode;
+
+window.nextMap = nextMap;
+window.togglePause = togglePause;
+
+window.openShop = openShop;
+window.closeShop = closeShop;
+window.shopTab = shopTab;
+
+window.openInventory = openInventory;
+window.closeInventory = closeInventory;
+
+window.resetGame = resetGame;
+window.deploy = deploy;
+window.scan = scan;
+window.startCombat = startCombat;
+
+window.useMedkit = useMedkit;
+window.useRepairKit = useRepairKit;
+window.placeTrap = placeTrap;
+window.callBackup = callBackup;
+window.sprint = sprint;
+
+window.playerAction = playerAction;
+window.endBattle = endBattle;
+
+window.startNextMission = startNextMission;
+window.restartCurrentMission = restartCurrentMission;
+window.closeComplete = closeComplete;
+
+// Shop functions that your HTML calls
+window.buyWeapon = buyWeapon;
+window.buyAmmo = buyAmmo;
+window.buyArmor = buyArmor;
+window.buyMed = buyMed;
+window.buyTool = buyTool;
+window.buyTrap = buyTrap;
+
+window.equipWeapon = equipWeapon;
