@@ -1,13 +1,14 @@
 // tutorial.js
-// Simple guided tutorial overlay + task tracker for the game UI.
-// Assumes your index.html has: #tutorialOverlay, #tutorialTitle, #tutorialText,
-// #tutorialStep, #tutorialNext, #tutorialSkip, #tutorialHint
-// If they don't exist, this file will create a minimal overlay automatically.
+// Tiger Strike — Guided Tutorial Overlay (Strict Step Lock)
+// - Adds global startTutorial() so you can open tutorial anytime via a button
+// - Fixes the double-click/skip-step issue
+// - Strict step lock: "NEXT" is disabled until the step action is detected (when possible)
+// - Safe fallbacks if game state isn't accessible
 
 (function () {
   const tg = window.Telegram?.WebApp;
 
-  const STORAGE_KEY = "ts_tutorial_v1";
+  const STORAGE_KEY = "ts_tutorial_v2_strict";
   const state = loadState();
 
   // ------------------ helpers ------------------
@@ -18,11 +19,12 @@
     for (const c of children) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
     return n;
   }
-  function safeCall(fn) { try { fn(); } catch (_) {} }
+  function safeCall(fn) { try { return fn(); } catch (_) { return undefined; } }
   function haptic(type = "light") {
     safeCall(() => {
       const h = tg?.HapticFeedback;
       if (h?.impactOccurred) h.impactOccurred(type);
+      else if (h?.notificationOccurred) h.notificationOccurred("success");
     });
   }
   function loadState() {
@@ -41,12 +43,15 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }
 
+  // Try to access the game state (recommended: in game.js expose `window.S = S;`)
+  function getS() {
+    return window.S || window.__TS_STATE__ || null;
+  }
+
   // ------------------ steps ------------------
-  // Each step can optionally:
-  // - watch: a predicate that returns true when user completed the action
-  // - hint: small hint text
-  // - onEnter: run when step becomes active
-  // - onExit: run when leaving step
+  // Strict lock:
+  // - If watch exists and we can evaluate it (game state exists), NEXT stays disabled until watch() === true.
+  // - If watch exists but state is unavailable, NEXT becomes "I DID IT" (manual confirm).
   const steps = [
     {
       id: "welcome",
@@ -55,7 +60,8 @@
         "This quick tutorial will show you the basics:\n" +
         "• Tap to move\n• Scan to locate a tiger\n• Engage to battle\n• Evacuate civilians (Story/Arcade)\n\n" +
         "Tip: You can Pause, Shop, or Inventory anytime outside battle.",
-      hint: "Tap NEXT to begin.",
+      hint: "Press NEXT to begin.",
+      lock: false,
     },
     {
       id: "move",
@@ -64,9 +70,11 @@
         "Tap anywhere on the map to set a destination.\n" +
         "Your soldier will move there and spend stamina.",
       hint: "Tap on the map now.",
+      lock: true,
       watch: () => {
-        const S = window.S;
-        return !!S?.target || (S && (Math.abs((S.me?.x || 0) - 160) > 10 || Math.abs((S.me?.y || 0) - 420) > 10));
+        const S = getS();
+        if (!S) return false;
+        return !!S.target || (S.me && (Math.abs((S.me.x || 0) - 160) > 10 || Math.abs((S.me.y || 0) - 420) > 10));
       },
     },
     {
@@ -75,12 +83,14 @@
       text:
         "Press SCAN to ping the nearest/locked tiger.\n" +
         "Scan costs stamina, but helps you locate threats quickly.",
-      hint: "Press the SCAN button once.",
-      onEnter: () => pulse("#scanBtn"),
-      onExit: () => stopPulse("#scanBtn"),
+      hint: "Press SCAN once.",
+      lock: true,
+      onEnter: () => pulseSmart("scan"),
+      onExit: () => stopPulseSmart("scan"),
       watch: () => {
-        const S = window.S;
-        return (S?.achievements && S.achievements.scan1) || (S?.scanPing || 0) > 0;
+        const S = getS();
+        if (!S) return false;
+        return (S.achievements && S.achievements.scan1) || (S.scanPing || 0) > 0;
       },
     },
     {
@@ -89,10 +99,12 @@
       text:
         "Tap directly on a tiger to lock it.\n" +
         "A blue ring shows the lock and your HUD targets that tiger.",
-      hint: "Tap on a tiger (if you see one). If none are nearby, scan again.",
+      hint: "Tap a tiger. If none nearby, scan again and move toward it.",
+      lock: true,
       watch: () => {
-        const S = window.S;
-        return !!S?.lockedTigerId;
+        const S = getS();
+        if (!S) return false;
+        return !!S.lockedTigerId;
       },
     },
     {
@@ -102,11 +114,13 @@
         "Move close to a tiger, then press ENGAGE to enter battle.\n" +
         "In battle, you can ATTACK, PROTECT (Story/Arcade), CAPTURE, or KILL.",
       hint: "Get near a tiger and press ENGAGE.",
-      onEnter: () => pulse("#engageBtn"),
-      onExit: () => stopPulse("#engageBtn"),
+      lock: true,
+      onEnter: () => pulseBySelector("#engageBtn"),
+      onExit: () => stopPulseBySelector("#engageBtn"),
       watch: () => {
-        const S = window.S;
-        return !!S?.inBattle || (S?.stats && (S.stats.shots || 0) > 0);
+        const S = getS();
+        if (!S) return false;
+        return !!S.inBattle || ((S.stats?.shots || 0) > 0);
       },
     },
     {
@@ -116,10 +130,14 @@
         "Each weapon has a magazine + reserve ammo.\n" +
         "If your current weapon is empty, switch weapons.\n" +
         "If ALL weapons have no ammo, buy ammo in the Shop.",
-      hint: "In battle, try ATTACK once (or open Shop to see ammo).",
+      hint: "In battle, try ATTACK once (or open Shop and buy ammo).",
+      lock: true,
+      onEnter: () => pulseSmart("shop"),
+      onExit: () => stopPulseSmart("shop"),
       watch: () => {
-        const S = window.S;
-        return (S?.stats && (S.stats.shots || 0) > 0) || (S?.funds || 0) < 1000; // spent something
+        const S = getS();
+        if (!S) return false;
+        return (S.stats?.shots || 0) > 0 || (S.funds || 0) !== 1000; // spent/earned money
       },
     },
     {
@@ -129,11 +147,12 @@
         "In Story/Arcade, civilians follow you when you're nearby.\n" +
         "Lead them into the green evac zone to evacuate them.\n" +
         "If civilians die, you lose lives.",
-      hint: "Lead at least one civilian into the evac circle.",
+      hint: "Evacuate at least one civilian (Story/Arcade).",
+      lock: true,
       watch: () => {
-        const S = window.S;
+        const S = getS();
         if (!S) return false;
-        if (S.mode === "Survival") return true; // skip in Survival
+        if (S.mode === "Survival") return true; // skip
         return (S.stats?.evac || 0) > 0 || (S.evacDone || 0) > 0;
       },
     },
@@ -144,8 +163,9 @@
         "Use SHOP to buy weapons, ammo, armor, med kits, repair kits, and traps.\n" +
         "Use INVENTORY to equip weapons and use supplies.",
       hint: "Open Shop or Inventory once.",
-      onEnter: () => { pulse("#shopBtn"); pulse("#invBtn"); },
-      onExit: () => { stopPulse("#shopBtn"); stopPulse("#invBtn"); },
+      lock: true,
+      onEnter: () => { pulseSmart("shop"); pulseSmart("inv"); },
+      onExit: () => { stopPulseSmart("shop"); stopPulseSmart("inv"); },
       watch: () => {
         const shopOpen = isVisible("#shopOverlay");
         const invOpen = isVisible("#invOverlay");
@@ -160,11 +180,13 @@
         "Remember:\n• Traps hold tigers 3–5s (one-time)\n• Carcasses block movement\n• Backup costs $50,000 and freezes tigers temporarily\n\n" +
         "Good luck out there.",
       hint: "Press FINISH to close tutorial.",
+      lock: false,
     },
   ];
 
   // ------------------ overlay creation ------------------
   ensureOverlay();
+
   const ui = {
     overlay: $("#tutorialOverlay"),
     title: $("#tutorialTitle"),
@@ -175,36 +197,11 @@
     skip: $("#tutorialSkip"),
   };
 
-  // Buttons
-  ui.next.addEventListener("click", () => {
-    haptic("light");
-    nextStep(true);
-  });
-  ui.skip.addEventListener("click", () => {
+  // Skip
+  ui.skip.onclick = () => {
     haptic("medium");
     finishTutorial(true);
-  });
-
-  // Auto advance watcher
-  let watcher = null;
-  function startWatcher() {
-    stopWatcher();
-    watcher = setInterval(() => {
-      if (!ui.overlay || ui.overlay.style.display !== "flex") return;
-      const st = steps[state.stepIndex];
-      if (!st || !st.watch) return;
-
-      if (st.watch()) {
-        state.completed[st.id] = true;
-        saveState();
-        nextStep(false);
-      }
-    }, 350);
-  }
-  function stopWatcher() {
-    if (watcher) clearInterval(watcher);
-    watcher = null;
-  }
+  };
 
   // Public API
   window.TigerTutorial = {
@@ -214,15 +211,47 @@
     state,
   };
 
-  // Start automatically on first load (unless done)
+  // ✅ This is what your Tutorial button should call
+  window.startTutorial = function () {
+    window.TigerTutorial?.start?.();
+  };
+
+  // Auto-start on first load (unless done)
   if (!state.done) {
-    // delay a bit so the game renders behind it
     setTimeout(() => showTutorial(true), 600);
+  }
+
+  // ------------------ strict lock watcher ------------------
+  let watcher = null;
+  function startWatcher() {
+    stopWatcher();
+    watcher = setInterval(() => {
+      if (!ui.overlay || ui.overlay.style.display !== "flex") return;
+
+      const st = steps[state.stepIndex];
+      if (!st || !st.watch) return;
+
+      // only auto-advance if we can read game state (strict)
+      const S = getS();
+      if (!S) return;
+
+      if (st.watch()) {
+        state.completed[st.id] = true;
+        saveState();
+        nextStep(false);
+      } else {
+        // keep button locked
+        syncNextButtonLock();
+      }
+    }, 300);
+  }
+  function stopWatcher() {
+    if (watcher) clearInterval(watcher);
+    watcher = null;
   }
 
   // ------------------ core functions ------------------
   function showTutorial(firstAuto) {
-    // pause game if game.js exposes setPaused
     safeCall(() => window.setPaused?.(true, "tutorial"));
     ui.overlay.style.display = "flex";
     render();
@@ -233,7 +262,6 @@
   function hideTutorial() {
     ui.overlay.style.display = "none";
     stopWatcher();
-    // resume game
     safeCall(() => window.setPaused?.(false, null));
   }
 
@@ -241,7 +269,6 @@
     const prev = steps[state.stepIndex];
     safeCall(() => prev?.onExit?.());
 
-    // If this was a button click, mark as completed too
     if (fromButton && prev?.id) state.completed[prev.id] = true;
 
     state.stepIndex = Math.min(state.stepIndex + 1, steps.length - 1);
@@ -250,7 +277,6 @@
     const cur = steps[state.stepIndex];
     safeCall(() => cur?.onEnter?.());
 
-    // If last step, change button label
     render();
   }
 
@@ -259,7 +285,6 @@
     state.stepIndex = steps.length - 1;
     saveState();
     hideTutorial();
-    // small toast if available
     safeCall(() => window.toast?.(bySkip ? "Tutorial skipped." : "Tutorial complete!"));
   }
 
@@ -269,19 +294,70 @@
     ui.title.textContent = st.title;
     ui.text.textContent = st.text;
     ui.hint.textContent = st.hint || "";
-
     ui.step.textContent = `Step ${state.stepIndex + 1} / ${steps.length}`;
-    ui.next.textContent = (st.id === "done") ? "FINISH" : "NEXT";
 
-    // If done step, finishing should close
-    ui.next.onclick = null;
-    ui.next.addEventListener("click", onNextClick, { once: true });
-
-    function onNextClick() {
+    // Button behavior (no double listeners)
+    ui.next.onclick = () => {
       haptic("light");
-      if (st.id === "done") finishTutorial(false);
-      else nextStep(true);
+
+      if (st.id === "done") return finishTutorial(false);
+
+      // strict lock
+      if (st.watch && st.lock !== false) {
+        const S = getS();
+        if (S) {
+          if (!st.watch()) {
+            // still not complete
+            safeCall(() => window.toast?.("Complete the step first."));
+            return;
+          }
+        }
+        // If no game state, allow manual confirm
+      }
+
+      nextStep(true);
+    };
+
+    // Button labels + lock state
+    syncNextButtonLock();
+
+    // Show a small status line if state isn't available
+    const S = getS();
+    const needsState = !!st.watch && st.lock !== false;
+    if (needsState && !S) {
+      ui.hint.textContent =
+        (st.hint ? st.hint + " " : "") +
+        "Note: If the step doesn’t auto-detect, press “I DID IT” after completing it.";
     }
+  }
+
+  function syncNextButtonLock() {
+    const st = steps[state.stepIndex];
+
+    if (st.id === "done") {
+      ui.next.textContent = "FINISH";
+      ui.next.disabled = false;
+      return;
+    }
+
+    // If strict lock step and we can read state -> disable until watch true
+    if (st.watch && st.lock !== false) {
+      const S = getS();
+      if (S) {
+        const ok = !!st.watch();
+        ui.next.textContent = ok ? "NEXT" : "LOCKED";
+        ui.next.disabled = !ok;
+        return;
+      }
+
+      // No state -> manual confirm mode
+      ui.next.textContent = "I DID IT";
+      ui.next.disabled = false;
+      return;
+    }
+
+    ui.next.textContent = "NEXT";
+    ui.next.disabled = false;
   }
 
   // ------------------ utility ------------------
@@ -291,9 +367,10 @@
     return getComputedStyle(n).display !== "none";
   }
 
-  // Simple pulsing highlight (no flashing)
+  // ------------------ pulsing highlight (no flashing) ------------------
   const pulses = new Map();
-  function pulse(sel) {
+
+  function pulseBySelector(sel) {
     const n = $(sel);
     if (!n) return;
     if (pulses.has(sel)) return;
@@ -304,17 +381,90 @@
       on = !on;
       n.style.boxShadow = on
         ? "0 0 0 3px rgba(74, 222, 128, .55)"
-        : "0 0 0 0 rgba(0,0,0,0)";
+        : (original || "");
     }, 650);
     pulses.set(sel, { t, original });
   }
-  function stopPulse(sel) {
+
+  function stopPulseBySelector(sel) {
     const p = pulses.get(sel);
     if (!p) return;
     clearInterval(p.t);
     const n = $(sel);
     if (n) n.style.boxShadow = p.original || "";
     pulses.delete(sel);
+  }
+
+  // Smart pulse: tries id selectors first, then searches buttons by text/emoji
+  function pulseSmart(kind) {
+    const map = {
+      scan: ["#scanBtn", "button[onclick*='scan(']"],
+      shop: ["#shopBtn", "button[onclick*='openShop(']"],
+      inv:  ["#invBtn", "button[onclick*='openInventory(']"],
+    };
+    const selectors = map[kind] || [];
+    for (const sel of selectors) {
+      const n = $(sel);
+      if (n) return pulseBySelector(sel);
+    }
+
+    // Fallback: match button text
+    const btn = findButtonByText(kind);
+    if (btn) {
+      const key = "__smart__" + kind;
+      pulseElement(key, btn);
+    }
+  }
+
+  function stopPulseSmart(kind) {
+    const map = {
+      scan: ["#scanBtn", "button[onclick*='scan(']"],
+      shop: ["#shopBtn", "button[onclick*='openShop(']"],
+      inv:  ["#invBtn", "button[onclick*='openInventory(']"],
+    };
+    const selectors = map[kind] || [];
+    for (const sel of selectors) stopPulseBySelector(sel);
+
+    const key = "__smart__" + kind;
+    stopPulseElement(key);
+  }
+
+  function findButtonByText(kind) {
+    const buttons = Array.from(document.querySelectorAll("button"));
+    const t = (s) => (s || "").toLowerCase();
+
+    if (kind === "scan") {
+      return buttons.find(b => t(b.textContent).includes("scan") || b.textContent.includes("🛰️"));
+    }
+    if (kind === "shop") {
+      return buttons.find(b => t(b.textContent).includes("shop") || b.textContent.includes("🛒"));
+    }
+    if (kind === "inv") {
+      return buttons.find(b => t(b.textContent).includes("inventory") || b.textContent.includes("🎒"));
+    }
+    return null;
+  }
+
+  function pulseElement(key, node) {
+    if (!node) return;
+    if (pulses.has(key)) return;
+    const original = node.style.boxShadow;
+    let on = false;
+    const tmr = setInterval(() => {
+      on = !on;
+      node.style.boxShadow = on
+        ? "0 0 0 3px rgba(74, 222, 128, .55)"
+        : (original || "");
+    }, 650);
+    pulses.set(key, { t: tmr, original, node });
+  }
+
+  function stopPulseElement(key) {
+    const p = pulses.get(key);
+    if (!p) return;
+    clearInterval(p.t);
+    if (p.node) p.node.style.boxShadow = p.original || "";
+    pulses.delete(key);
   }
 
   // ------------------ DOM bootstrap ------------------
@@ -348,18 +498,20 @@
       el("button", { id: "tutorialNext", className: "good" }, ["Next"]),
     ]);
 
-    // Minimal button styles
-    const style = el("style", { textContent:
-      `
-      #tutorialOverlay button{
-        padding:10px 12px; border-radius:12px; border:1px solid rgba(148,163,184,.25);
-        background:rgba(30,41,59,.85); color:#f8fafc; font-weight:700;
-      }
-      #tutorialOverlay button.good{
-        background:rgba(34,197,94,.22);
-        border-color: rgba(34,197,94,.55);
-      }
-      #tutorialOverlay button:active{ transform: translateY(1px); }
+    const style = el("style", {
+      textContent: `
+        #tutorialOverlay button{
+          padding:10px 12px; border-radius:12px; border:1px solid rgba(148,163,184,.25);
+          background:rgba(30,41,59,.85); color:#f8fafc; font-weight:800;
+        }
+        #tutorialOverlay button.good{
+          background:rgba(34,197,94,.22);
+          border-color: rgba(34,197,94,.55);
+        }
+        #tutorialOverlay button:disabled{
+          opacity:.55;
+        }
+        #tutorialOverlay button:active{ transform: translateY(1px); }
       `
     });
 
