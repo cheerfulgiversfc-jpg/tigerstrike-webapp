@@ -1729,17 +1729,18 @@ function survivalPressureTick(){
 
 // ===================== DAMAGE / RESPAWN =====================
 function applyPlayerDamage(dmg, showToast=false){
-  if(S.armor>0){
-    const absorbed=Math.min(S.armor, Math.ceil(dmg * perkArmorEff()));
-    S.armor -= absorbed;
-    dmg -= absorbed;
-  }
+  if(S.armor > 0){
+  const eff = (typeof perkArmorEff === "function") ? perkArmorEff() : 1; // 1.00, 1.05, 1.10...
+  const absorbed = Math.min(S.armor, dmg);
+  const armorCost = absorbed / eff;   // perk slows armor drain
+  S.armor = clamp(S.armor - armorCost, 0, S.armorCap);
+  dmg -= absorbed;
+}
   if(dmg>0){
     S.hp = clamp(S.hp - dmg, 0, 100);
     sfx("hurt"); hapticImpact("medium");
     if(showToast) toast(`🐅 Hit: -${dmg} HP`);
   }
-
   if(S.hp<=0){
     S.lives -= 1;
 
