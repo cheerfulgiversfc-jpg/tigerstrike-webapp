@@ -76,18 +76,18 @@
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
 
-    /* Tutorial overlay (for strict step-lock tutorial.js) */
+  /* Tutorial overlay */
 #tutorialOverlay{
   position:fixed;
   inset:0;
   background:rgba(0,0,0,.72);
   display:none;
-  align-items:center;
+  align-items:flex-start;
   justify-content:center;
   z-index:9999;
-  padding:14px;
+  padding:10px 14px 14px;
 
-  /* Allow game clicks through the overlay */
+  /* Allow game clicks through overlay */
   pointer-events:none;
 }
 
@@ -98,6 +98,8 @@
   border-radius:18px;
   box-shadow:var(--shadow);
   overflow:hidden;
+  margin-top:6px;
+  max-height:44vh;
 }
 
 /* Allow clicks on the tutorial card/buttons */
@@ -105,10 +107,17 @@
   pointer-events:auto;
 }
 
+/* allow scrolling inside tutorial if needed */
+#tutorialBody{
+  padding:14px;
+  white-space:pre-line;
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+}
+
 #tutorialTop{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,.25)}
 #tutorialTitle{font-weight:950}
 #tutorialStep{font-size:12px;color:var(--muted);margin-top:4px}
-#tutorialBody{padding:14px;white-space:pre-line}
 #tutorialText{font-size:14px;line-height:1.35}
 #tutorialHint{font-size:13px;color:rgba(245,247,255,.86);margin-top:10px}
 #tutorialBtns{display:flex;justify-content:flex-end;gap:10px;padding:12px;border-top:1px solid var(--border)}
@@ -135,7 +144,7 @@
       <!-- IDs added for tutorial highlighting -->
       <button class="ghost" id="shopBtn" onclick="openShop()">🛒 Shop</button>
       <button class="ghost" id="invBtn" onclick="openInventory()">🎒 Inventory</button>
-<button class="ghost" id="tutorialBtn" onclick="TigerTutorial.reset(); TigerTutorial.start();">🧭 Tutorial</button>
+<button class="ghost" id="tutorialBtn" onclick="startTutorial()">🧭 Tutorial</button>
       <button class="ghost" onclick="resetGame()">🔁 Reset</button>
     </div>
   </div>
