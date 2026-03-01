@@ -205,11 +205,21 @@
 
   // Public API
   window.TigerTutorial = {
-  start: () => showTutorial(false),
+  // ✅ Always start from Step 1 when user taps Tutorial
+  start: () => {
+    state.done = false;
+    state.stepIndex = 0;
+    state.completed = {};
+    saveState();
+    showTutorial(false);
+  },
+
+  // Optional: keep reset if you want a full wipe + reload
   reset: () => { localStorage.removeItem(STORAGE_KEY); location.reload(); },
+
   skip: () => finishTutorial(true),
   state,
-  };
+};
 
   // ✅ This is what your Tutorial button should call
   window.startTutorial = function () {
