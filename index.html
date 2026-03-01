@@ -121,6 +121,22 @@
 #tutorialText{font-size:14px;line-height:1.35}
 #tutorialHint{font-size:13px;color:rgba(245,247,255,.86);margin-top:10px}
 #tutorialBtns{display:flex;justify-content:flex-end;gap:10px;padding:12px;border-top:1px solid var(--border)}
+   
+/* ================= Tutorial Arrow ================= */
+#tutorialArrow{
+  position:fixed;
+  font-size:32px;
+  z-index:10000;
+  pointer-events:none;
+  display:none;
+  animation:tutBounce 1s infinite ease-in-out;
+  transform:translate(-50%, -50%);
+}
+
+@keyframes tutBounce{
+  0%,100%{ transform:translate(-50%, -50%) translateY(0); }
+  50%{ transform:translate(-50%, -50%) translateY(8px); }
+}
   </style>
 </head>
 
@@ -347,6 +363,7 @@
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
 <script src="./game.js"></script>
 <script src="./tutorial.js"></script>
-
+<!-- Tutorial Arrow Pointer -->
+<div id="tutorialArrow">👇</div>
 </body>
 </html>
