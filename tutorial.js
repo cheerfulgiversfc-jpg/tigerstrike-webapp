@@ -262,12 +262,14 @@
 
   // ------------------ core functions ------------------
   function showTutorial(firstAuto) {
-    safeCall(() => window.setPaused?.(true, "tutorial"));
-    ui.overlay.style.display = "flex";
-    render();
-    startWatcher();
-    if (firstAuto) haptic("light");
-  }
+  // DO NOT pause the game — we need taps to reach the map/buttons
+  safeCall(() => window.setPaused?.(false, null));
+
+  ui.overlay.style.display = "flex";
+  render();
+  startWatcher();
+  if (firstAuto) haptic("light");
+}
 
   function hideTutorial() {
     ui.overlay.style.display = "none";
