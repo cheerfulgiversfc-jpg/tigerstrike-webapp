@@ -15,7 +15,66 @@ function hapticNotif(type="success"){
     if(h?.notificationOccurred) h.notificationOccurred(type);
   }catch(e){}
 }
+// ===================== DAILY LOGIN REWARD (NO BACKEND) =====================
+function tgUserKey(){
+  const uid = tg?.initDataUnsafe?.user?.id;
+  return uid ? String(uid) : "local";
+}
 
+function ymdUTC(d=new Date()){
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth()+1).padStart(2,"0");
+  const dd = String(d.getUTCDate()).padStart(2,"0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function readDaily(){
+  const key = `ts_daily_${tgUserKey()}`;
+  try{ return JSON.parse(localStorage.getItem(key) || "null") || { last:null, streak:0, total:0 }; }
+  catch(e){ return { last:null, streak:0, total:0 }; }
+}
+
+function writeDaily(obj){
+  const key = `ts_daily_${tgUserKey()}`;
+  localStorage.setItem(key, JSON.stringify(obj));
+}
+
+function awardDailyLogin(){
+  if(!window.S) return;
+
+  const today = ymdUTC();
+  const info = readDaily();
+
+  if(info.last === today){
+    return;
+  }
+
+  let newStreak = 1;
+  if(info.last){
+    const yesterday = new Date(Date.now());
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const y = ymdUTC(yesterday);
+    newStreak = (info.last === y) ? (Number(info.streak||0) + 1) : 1;
+  }
+
+  const cashBase = 300;
+  const cash = cashBase + Math.min(900, newStreak * 60);
+  const perkPts = (newStreak % 3 === 0) ? 2 : 1;
+
+  S.funds = (S.funds||0) + cash;
+  S.perkPoints = (Number(S.perkPoints||0) + perkPts);
+
+  if(S.stats) S.stats.cashEarned = (S.stats.cashEarned||0) + cash;
+
+  info.last = today;
+  info.streak = newStreak;
+  info.total = (Number(info.total||0) + 1);
+  writeDaily(info);
+
+  toast(`🎁 Daily reward: +$${cash.toLocaleString()} • +${perkPts} perk point${perkPts>1?"s":""} • Streak: ${newStreak}`);
+  try{ hapticNotif("success"); }catch(e){}
+  save();
+}
 // ===================== DATA =====================
 const WEAPONS = [
   { id:"W_TRQ_PISTOL_MK1", name:"Tranq Pistol Mk I", grade:"Common", price:50,   type:"tranq", ammo:"TRANQ_DARTS",  mag:6,  dmg:[8,12] },
@@ -2585,7 +2644,7 @@ function init(){
   if(!S.tigers || !S.tigers.length) spawnTigers();
   if(!S.civilians) spawnCivilians();
   if(!Array.isArray(S.pickups)) S.pickups=[];
-
+  awardDailyLogin();
   requestAnimationFrame(draw);
 }
 
@@ -2640,6 +2699,6 @@ window.buyArmor = buyArmor;
 window.buyMed = buyMed;
 window.buyTool = buyTool;
 window.buyTrap = buyTrap;
-
+window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
 window.buyPerk = buyPerk;
