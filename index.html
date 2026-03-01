@@ -77,15 +77,41 @@
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
 
     /* Tutorial overlay (for strict step-lock tutorial.js) */
-    #tutorialOverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:9999;padding:14px}
-    #tutorialCard{width:min(620px,96vw);background:linear-gradient(180deg,#121622,#0b0d12);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
-    #tutorialTop{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,.25)}
-    #tutorialTitle{font-weight:950}
-    #tutorialStep{font-size:12px;color:var(--muted);margin-top:4px}
-    #tutorialBody{padding:14px;white-space:pre-line}
-    #tutorialText{font-size:14px;line-height:1.35}
-    #tutorialHint{font-size:13px;color:rgba(245,247,255,.86);margin-top:10px}
-    #tutorialBtns{display:flex;justify-content:flex-end;gap:10px;padding:12px;border-top:1px solid var(--border)}
+#tutorialOverlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.72);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:9999;
+  padding:14px;
+
+  /* Allow game clicks through the overlay */
+  pointer-events:none;
+}
+
+#tutorialCard{
+  width:min(620px,96vw);
+  background:linear-gradient(180deg,#121622,#0b0d12);
+  border:1px solid var(--border);
+  border-radius:18px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+
+/* Allow clicks on the tutorial card/buttons */
+#tutorialCard, #tutorialCard *{
+  pointer-events:auto;
+}
+
+#tutorialTop{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,.25)}
+#tutorialTitle{font-weight:950}
+#tutorialStep{font-size:12px;color:var(--muted);margin-top:4px}
+#tutorialBody{padding:14px;white-space:pre-line}
+#tutorialText{font-size:14px;line-height:1.35}
+#tutorialHint{font-size:13px;color:rgba(245,247,255,.86);margin-top:10px}
+#tutorialBtns{display:flex;justify-content:flex-end;gap:10px;padding:12px;border-top:1px solid var(--border)}
   </style>
 </head>
 
