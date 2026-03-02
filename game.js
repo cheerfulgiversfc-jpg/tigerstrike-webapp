@@ -1459,16 +1459,53 @@ function gameOverChoice(msg){
 
 // ===================== INPUT =====================
 cv.addEventListener("click",(e)=>{
+
+  // --- Allow tutorial to receive clicks FIRST ---
+  if(window.TigerTutorial && TigerTutorial.isRunning){
+    TigerTutorial.mapClicked = true;
+  }
+
+  // Stop normal gameplay while tutorial controls flow
+  if(window.TigerTutorial && TigerTutorial.isRunning){
+    ensureAudio();
+
+    const rect=cv.getBoundingClientRect();
+    const x=(e.clientX-rect.left)*(cv.width/rect.width);
+    const y=(e.clientY-rect.top)*(cv.height/rect.height);
+
+    // allow movement ONLY for tutorial progression
+    S.target={x,y};
+
+    sfx("ui");
+    hapticImpact("light");
+    save();
+    return;
+  }
+
+  // --- NORMAL GAMEPLAY ---
   if(S.inBattle || S.gameOver || S.missionEnded) return;
   if(S.paused) return;
+
   ensureAudio();
+
   const rect=cv.getBoundingClientRect();
   const x=(e.clientX-rect.left)*(cv.width/rect.width);
   const y=(e.clientY-rect.top)*(cv.height/rect.height);
 
   const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
-  if(tapped){ S.lockedTigerId=tapped.id; sfx("ui"); hapticImpact("light"); save(); return; }
-  S.target={x,y}; sfx("ui"); hapticImpact("light"); save();
+
+  if(tapped){
+    S.lockedTigerId=tapped.id;
+    sfx("ui");
+    hapticImpact("light");
+    save();
+    return;
+  }
+
+  S.target={x,y};
+  sfx("ui");
+  hapticImpact("light");
+  save();
 });
 
 function tigerById(id){ return S.tigers.find(t=>t.id===id); }
