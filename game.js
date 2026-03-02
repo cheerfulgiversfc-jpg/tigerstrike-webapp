@@ -15,11 +15,13 @@ function hapticNotif(type="success"){
     if(h?.notificationOccurred) h.notificationOccurred(type);
   }catch(e){}
 }
+
 // ===================== DAILY LOGIN REWARD (NO BACKEND) =====================
 function tgUserKey(){
   const uid = tg?.initDataUnsafe?.user?.id;
   return uid ? String(uid) : "local";
 }
+// ...rest of daily reward helpers...
 
 function ymdUTC(d=new Date()){
   const yyyy = d.getUTCFullYear();
@@ -1236,6 +1238,34 @@ function equipWeapon(id){
 }
 
 // ===================== SPAWNS =====================
+
+// --------------------------------------------------
+// TUTORIAL MODE FLAG
+// --------------------------------------------------
+window.__TUTORIAL_MODE__ = false;
+
+window.enterTutorialMode = function () {
+  window.__TUTORIAL_MODE__ = true;
+
+  // reset battlefield
+  S.tigers = [];
+  S.civilians = [];
+
+  spawnCivilians();
+  spawnTigers();
+};
+
+window.exitTutorialMode = function () {
+  window.__TUTORIAL_MODE__ = false;
+
+  // restore normal mission spawns
+  spawnCivilians();
+  spawnTigers();
+};
+
+
+// --------------------------------------------------
+
 function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
 function randomEvacZone(){ return { x: rand(120, 900), y: rand(120, 500), r:70 }; }
 
@@ -1243,27 +1273,61 @@ const SKIN_TONES = ["#f6d7c3","#eac0a6","#d9a07f","#c9865c","#a86a44","#7a4a2c",
 const SHIRT_COLS = ["#4aa3ff","#3ddc97","#f59e0b","#fb7185","#a78bfa","#f97316","#eab308","#22c55e","#60a5fa"];
 const PANTS_COLS = ["#1f2937","#334155","#0f172a","#3f3f46","#1c1917","#111827"];
 
+
+// ===================== CIVILIANS =====================
 function spawnCivilians(){
-  const n = (S.mode==="Story") ? clamp(3 + (S.storyLevel-1), 3, 7) : (S.mode==="Arcade" ? clamp(2 + (S.arcadeLevel-1), 2, 7) : 0);
+
+  // ✅ TUTORIAL SPAWN (FORCED)
+  if(window.__TUTORIAL_MODE__){
+    S.civilians = [{
+      id:1,
+      x:300,
+      y:260,
+      hp:100,
+      hpMax:100,
+      alive:true,
+      evac:false,
+      skin:SKIN_TONES[2],
+      shirt:"#22c55e",
+      pants:"#1f2937",
+      hair:1
+    }];
+    S.evacDone = 0;
+    return;
+  }
+
+  const n = (S.mode==="Story")
+    ? clamp(3 + (S.storyLevel-1), 3, 7)
+    : (S.mode==="Arcade"
+      ? clamp(2 + (S.arcadeLevel-1), 2, 7)
+      : 0);
+
   S.civilians = [];
+
   for(let i=0;i<n;i++){
     S.civilians.push({
       id:i+1,
-      x: 220 + (i%3)*180 + rand(-20,20),
-      y: 140 + Math.floor(i/3)*160 + rand(-20,20),
-      hp:100, hpMax:100,
-      alive:true, evac:false,
-      skin: SKIN_TONES[rand(0,SKIN_TONES.length-1)],
-      shirt: SHIRT_COLS[rand(0,SHIRT_COLS.length-1)],
-      pants: PANTS_COLS[rand(0,PANTS_COLS.length-1)],
-      hair: rand(0,3)
+      x:220+(i%3)*180+rand(-20,20),
+      y:140+Math.floor(i/3)*160+rand(-20,20),
+      hp:100,
+      hpMax:100,
+      alive:true,
+      evac:false,
+      skin:SKIN_TONES[rand(0,SKIN_TONES.length-1)],
+      shirt:SHIRT_COLS[rand(0,SHIRT_COLS.length-1)],
+      pants:PANTS_COLS[rand(0,PANTS_COLS.length-1)],
+      hair:rand(0,3)
     });
   }
+
   S.evacDone=0;
 }
 
+
+// ===================== TIGER TYPE =====================
 function pickTigerType(){
   const r=Math.random();
+
   if(S.mode==="Survival"){
     if(r<0.22) return "Scout";
     if(r<0.48) return "Stalker";
@@ -1271,6 +1335,7 @@ function pickTigerType(){
     if(r<0.90) return "Standard";
     return "Alpha";
   }
+
   if(r<0.22) return "Scout";
   if(r<0.55) return "Standard";
   if(r<0.72) return "Stalker";
@@ -1278,35 +1343,79 @@ function pickTigerType(){
   return "Alpha";
 }
 
-function spawnTigers(){
-  let count=2;
-  if(S.mode==="Story"){
-    const afterMax = Math.max(0, (S.storyLevel - 1) - (7-3));
-    count = 2 + afterMax;
-  }
-  if(S.mode==="Arcade"){
-    const afterMax = Math.max(0, (S.arcadeLevel - 1) - (7-2));
-    count = 3 + afterMax;
-  }
-  if(S.mode==="Survival") count = Math.min(4 + (S.survivalWave-1), 10);
 
-  const boss = (S.mode==="Story" && (S.storyLevel % 5 === 0));
+// ===================== TIGERS =====================
+function spawnTigers(){
+
+  // ✅ TUTORIAL TIGER (FORCED)
+  if(window.__TUTORIAL_MODE__){
+    const def = TIGER_TYPES.find(t=>t.key==="Standard") || TIGER_TYPES[1];
+
+    S.tigers = [{
+      id:1,
+      type:def.key,
+      x:650,
+      y:260,
+      vx:0,
+      vy:0,
+      hp:120,
+      hpMax:120,
+      alive:true,
+      aggroBoost:0,
+      civBias:0.3,
+      stealth:false,
+      rage:false,
+      bossPhases:0,
+      tranqTagged:false,
+      step:0,
+      holdUntil:0,
+      dashUntil:0,
+      fadeUntil:0,
+      roarUntil:0,
+      rageOn:false
+    }];
+
+    return;
+  }
+
+  let count=2;
+
+  if(S.mode==="Story"){
+    const afterMax=Math.max(0,(S.storyLevel-1)-(7-3));
+    count=2+afterMax;
+  }
+
+  if(S.mode==="Arcade"){
+    const afterMax=Math.max(0,(S.arcadeLevel-1)-(7-2));
+    count=3+afterMax;
+  }
+
+  if(S.mode==="Survival")
+    count=Math.min(4+(S.survivalWave-1),10);
+
+  const boss=(S.mode==="Story"&&(S.storyLevel%5===0));
+
   S.tigers=[];
-  const diff = carcassDifficulty();
+  const diff=carcassDifficulty();
 
   for(let i=0;i<count;i++){
-    let typeKey = pickTigerType();
+    let typeKey=pickTigerType();
     if(boss && i===0) typeKey="Alpha";
-    const def = TIGER_TYPES.find(t=>t.key===typeKey) || TIGER_TYPES[1];
 
-    let baseHp = 115;
-    if(S.mode==="Arcade") baseHp = 125 + (S.arcadeLevel-1)*8;
-    if(S.mode==="Survival") baseHp = 140 + (S.survivalWave-1)*12;
-    if(S.mode==="Story") baseHp = 118 + (S.storyLevel-1)*4;
+    const def=TIGER_TYPES.find(t=>t.key===typeKey)||TIGER_TYPES[1];
 
-    let hp = Math.round(baseHp * def.hpMul * diff);
+    let baseHp=115;
+    if(S.mode==="Arcade") baseHp=125+(S.arcadeLevel-1)*8;
+    if(S.mode==="Survival") baseHp=140+(S.survivalWave-1)*12;
+    if(S.mode==="Story") baseHp=118+(S.storyLevel-1)*4;
+
+    let hp=Math.round(baseHp*def.hpMul*diff);
     let bossPhases=0;
-    if(boss && i===0){ hp = Math.round(hp*2.2); bossPhases=2; }
+
+    if(boss && i===0){
+      hp=Math.round(hp*2.2);
+      bossPhases=2;
+    }
 
     S.tigers.push({
       id:i+1,
@@ -1315,18 +1424,17 @@ function spawnTigers(){
       y:140+Math.floor(i/4)*120,
       vx:(Math.random()<0.5?-1:1)*def.spd*0.55,
       vy:(Math.random()<0.5?-1:1)*def.spd*0.50,
-      hp, hpMax:hp,
+      hp,
+      hpMax:hp,
       alive:true,
       aggroBoost:0,
-      civBias: clamp(def.civBias + (diff-1)*0.18, 0, 0.98),
+      civBias:clamp(def.civBias+(diff-1)*0.18,0,0.98),
       stealth:def.stealth,
       rage:def.rage,
       bossPhases,
       tranqTagged:false,
-      step: rand(0,1000),
-      holdUntil: 0,
-
-      // Phase 1: abilities
+      step:rand(0,1000),
+      holdUntil:0,
       dashUntil:0,
       fadeUntil:0,
       roarUntil:0,
@@ -1334,33 +1442,6 @@ function spawnTigers(){
     });
   }
 }
-
-function spawnRogueTiger(){
-  const newId = (S.tigers?.length||0) + 1;
-  const typeKey = (Math.random()<0.5) ? "Scout" : "Standard";
-  const def=TIGER_TYPES.find(t=>t.key===typeKey)||TIGER_TYPES[1];
-  const diff = carcassDifficulty();
-  const hp = Math.round(105 * def.hpMul * diff);
-
-  S.tigers.push({
-    id:newId, type:def.key,
-    x: rand(520, 900), y: rand(90, 420),
-    vx:(Math.random()<0.5?-1:1)*def.spd*0.55,
-    vy:(Math.random()<0.5?-1:1)*def.spd*0.50,
-    hp, hpMax:hp,
-    alive:true,
-    aggroBoost:0.15,
-    civBias: clamp(def.civBias + (diff-1)*0.18, 0, 0.98),
-    stealth:def.stealth, rage:def.rage,
-    bossPhases:0,
-    tranqTagged:false,
-    step: rand(0,1000),
-    holdUntil: 0,
-    dashUntil:0, fadeUntil:0, roarUntil:0, rageOn:false
-  });
-  save();
-}
-
 // ===================== DEPLOY / NEXT / RESTART =====================
 function deploy(){
   S.gameOver=false;
@@ -2671,21 +2752,35 @@ function init(){
   if(!S.achievements) S.achievements={};
   updateTitle();
 
-  for(const wid of S.ownedWeapons){ if(S.durability[wid]==null) S.durability[wid]=100; }
-  const w=equippedWeapon();
-  S.mag.cap=w.mag;
-  if(S.mag.loaded==null) S.mag.loaded=w.mag;
+  for(const wid of S.ownedWeapons){
+    if(S.durability[wid]==null) S.durability[wid]=100;
+  }
+
+  const w = equippedWeapon();
+  S.mag.cap = w.mag;
+
+  if(S.mag.loaded==null) S.mag.loaded = w.mag;
   S.mag.loaded = clamp(S.mag.loaded,0,S.mag.cap);
+
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
 
   if(!S.tigers || !S.tigers.length) spawnTigers();
   if(!S.civilians) spawnCivilians();
-  if(!Array.isArray(S.pickups)) S.pickups=[];
+  if(!Array.isArray(S.pickups)) S.pickups = [];
+
   awardDailyLogin();
   requestAnimationFrame(draw);
 }
 
 init();
+
+
+// ===================== TUTORIAL ACCESS =====================
+// expose live game state safely for tutorial system
+window.getGameState = () => S;
+window.isTutorialRunning = () => window.TigerTutorial?.isRunning === true;
+
+
 // ---- Expose functions for HTML onclick + tutorial integration ----
 window.S = S; // keep it updated
 
