@@ -280,7 +280,24 @@ function load(){
     return m;
   }catch(e){ return structuredClone(DEFAULT); }
 }
-function save(){ localStorage.setItem("ts_v4380", JSON.stringify(S)); }
+// ===================== SAVE (THROTTLED — FIXES IOS FREEZE) =====================
+let __lastSave = 0;
+
+function save(force=false){
+  try{
+    const now = Date.now();
+
+    // Only save once every 900ms unless forced
+    if(!force && (now - __lastSave) < 700) return;
+
+    __lastSave = now;
+
+    localStorage.setItem("ts_v4380", JSON.stringify(S));
+  }
+  catch(e){
+    console.log("Save failed:", e);
+  }
+}
 
 // ===================== AUDIO =====================
 let AC=null;
