@@ -1460,20 +1460,20 @@ function gameOverChoice(msg){
 // ===================== INPUT =====================
 cv.addEventListener("click",(e)=>{
 
-  // --- Allow tutorial to receive clicks FIRST ---
-  if(window.TigerTutorial && TigerTutorial.isRunning){
-    TigerTutorial.mapClicked = true;
+  // --- Tutorial: capture map click so tutorial can advance ---
+  if (window.TigerTutorial?.isRunning) {
+    window.TigerTutorial.mapClicked = true;
   }
 
   // Stop normal gameplay while tutorial controls flow
-  if(window.TigerTutorial && TigerTutorial.isRunning){
+  if (window.TigerTutorial?.isRunning){
     ensureAudio();
 
     const rect=cv.getBoundingClientRect();
     const x=(e.clientX-rect.left)*(cv.width/rect.width);
     const y=(e.clientY-rect.top)*(cv.height/rect.height);
 
-    // allow movement ONLY for tutorial progression
+    // still allow movement during tutorial
     S.target={x,y};
 
     sfx("ui");
