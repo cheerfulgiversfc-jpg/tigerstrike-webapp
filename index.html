@@ -42,16 +42,32 @@
 
     .screenCard{order:3;margin-top:12px;background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);position:relative}
     .mobileStatusPanel{display:none}
-    .mobileStatsRow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
-    .mobileStat{background:rgba(11,16,28,.96);border:1px solid rgba(35,42,62,.95);border-radius:12px;padding:7px 8px}
-    .mobileStatLabel{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-    .mobileStatValue{display:block;margin-top:2px;font-size:15px;font-weight:950}
-    .mobileStatusText{margin-top:6px;font-size:11px;line-height:1.25;color:rgba(245,247,255,.92)}
-    .mobileCountsText{margin-top:4px;font-size:10px;line-height:1.25;color:var(--muted)}
-    canvas{display:block;width:100%;height:auto;touch-action:none}
-    .actionStrip{border-top:1px solid var(--border);background:rgba(15,19,32,.85);padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+    .mobileBattleRow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .mobileBattleCard{background:rgba(10,16,29,.9);border:1px solid rgba(35,42,62,.95);border-radius:14px;padding:8px 10px}
+    .mobileBattleLabel{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+    .mobileBattleValue{display:block;margin-top:2px;font-size:16px;font-weight:950}
+    .mobileChipRow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+    .mobileChip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;border:1px solid rgba(42,49,69,.9);background:rgba(16,22,38,.9);font-size:11px;font-weight:900;color:#eef2ff}
+    .mobileChip.subtle{color:var(--muted);font-weight:800}
+    .mobileStatusText{margin-top:8px;font-size:12px;line-height:1.3;color:rgba(245,247,255,.95)}
+    .mapStage{position:relative;background:
+      radial-gradient(circle at 20% 18%, rgba(74,222,128,.08), transparent 28%),
+      radial-gradient(circle at 82% 14%, rgba(58,120,255,.10), transparent 24%),
+      linear-gradient(180deg, rgba(14,18,30,.95), rgba(7,10,18,.98))}
+    .mapStage::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.04), transparent 12%, transparent 88%, rgba(0,0,0,.18)),
+        linear-gradient(90deg, rgba(255,255,255,.03), transparent 12%, transparent 88%, rgba(0,0,0,.12));
+    }
+    canvas{display:block;width:100%;height:auto;touch-action:none;position:relative;z-index:1}
+    .actionStrip{border-top:1px solid var(--border);background:rgba(15,19,32,.88);padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
     .small{font-size:12px;color:var(--muted)}
     .actionButtons{flex:1 1 560px}
+    .mobileUtilityBar{display:none}
 
     .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:200;padding:14px}
     .modal{width:min(980px,96vw);background:linear-gradient(180deg,#121622,#0b0d12);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;max-height:88vh;display:flex;flex-direction:column}
@@ -89,15 +105,19 @@
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
     @media (max-width:760px){
-      .wrap{padding:8px 10px 96px}
-      .top{order:1;flex-direction:column;gap:8px}
-      .title{font-size:20px}
+      body{min-height:100dvh}
+      .wrap{min-height:100dvh;padding:8px 10px 176px}
+      .top{order:1;flex-direction:column;gap:4px;align-items:center}
+      .title{font-size:18px;text-align:center}
+      .title .tag{font-size:10px;padding:2px 6px}
       .sub{display:none}
-      .topActions{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-      .topActions button{min-height:40px;padding:8px 6px;font-size:11px;line-height:1.1}
-      .mobileCompactHide{display:none}
+      .topActions{display:none}
       .screenCard{
         order:2;
+        flex:1 1 auto;
+        min-height:0;
+        display:flex;
+        flex-direction:column;
         margin-top:6px;
         margin-left:-10px;
         margin-right:-10px;
@@ -106,14 +126,27 @@
         border-right:none;
         border-radius:0;
       }
-      .mobileStatusPanel{display:block;padding:8px;background:rgba(7,11,20,.98);border-bottom:1px solid rgba(35,42,62,.95)}
-      .hud{order:3;margin-top:10px}
-      .hudGrid{grid-template-columns:1fr}
-      canvas{height:58vh}
-      .actionStrip{flex-direction:column;align-items:stretch;padding:8px}
+      .mobileStatusPanel{
+        display:block;
+        order:1;
+        padding:10px;
+        background:linear-gradient(180deg, rgba(8,12,22,.98), rgba(10,15,28,.96));
+        border-bottom:1px solid rgba(35,42,62,.95);
+      }
+      .actionStrip{
+        order:2;
+        flex-direction:column;
+        align-items:stretch;
+        padding:8px 10px;
+        border-top:none;
+        border-bottom:1px solid rgba(35,42,62,.92);
+      }
       .actionButtons{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
       .actionButtons button{width:100%;min-height:46px;padding:8px 6px;font-size:11px;line-height:1.15}
       #statusLine{font-size:11px}
+      .mapStage{order:3;flex:1 1 auto;min-height:0}
+      canvas{width:100%;height:100%}
+      .hud{display:none}
       .tabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}
       .tab{flex:0 0 auto}
       .item{flex-direction:column;align-items:stretch}
@@ -123,12 +156,35 @@
       .modalBody{padding:12px}
       .toast{bottom:96px}
       .nav{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+      .mobileUtilityBar{
+        display:grid;
+        grid-template-columns:repeat(4,minmax(0,1fr));
+        gap:8px;
+        position:fixed;
+        left:10px;
+        right:10px;
+        bottom:calc(92px + env(safe-area-inset-bottom));
+        z-index:105;
+        padding:8px;
+        border-radius:16px;
+        border:1px solid rgba(42,49,69,.92);
+        background:rgba(10,14,24,.94);
+        box-shadow:var(--shadow);
+        backdrop-filter:blur(12px);
+      }
+      .mobileUtilityBar button{
+        min-height:42px;
+        padding:7px 6px;
+        font-size:11px;
+        line-height:1.15;
+      }
     }
 
     @media (max-width:460px){
       .navInner{gap:6px}
       .navBtn{font-size:11px}
-      canvas{height:62vh}
+      .mobileBattleRow{grid-template-columns:1fr}
+      .actionButtons{grid-template-columns:repeat(2,minmax(0,1fr))}
       .screenCard{width:calc(100% + 16px);margin-left:-8px;margin-right:-8px}
     }
 
@@ -227,30 +283,32 @@
 
   <div class="screenCard">
     <div class="mobileStatusPanel">
-      <div class="mobileStatsRow">
-        <div class="mobileStat">
-          <div class="mobileStatLabel">HP</div>
-          <b class="mobileStatValue" id="mobileHpMini">100</b>
+      <div class="mobileBattleRow">
+        <div class="mobileBattleCard">
+          <div class="mobileBattleLabel">Agent</div>
+          <b class="mobileBattleValue" id="mobilePlayerHpValue">100 / 100</b>
+          <div class="bar"><div id="mobilePlayerHpBar" class="fill green"></div></div>
         </div>
-        <div class="mobileStat">
-          <div class="mobileStatLabel">Armor</div>
-          <b class="mobileStatValue" id="mobileArmorMini">20</b>
-        </div>
-        <div class="mobileStat">
-          <div class="mobileStatLabel">Stamina</div>
-          <b class="mobileStatValue" id="mobileStamMini">100</b>
-        </div>
-        <div class="mobileStat">
-          <div class="mobileStatLabel">Ammo</div>
-          <b class="mobileStatValue" id="mobileAmmoMini">6/6</b>
+        <div class="mobileBattleCard">
+          <div class="mobileBattleLabel">Target Tiger</div>
+          <b class="mobileBattleValue" id="mobileTigerHpValue">No target</b>
+          <div class="bar"><div id="mobileTigerHpBar" class="fill red"></div></div>
         </div>
       </div>
+      <div class="mobileChipRow">
+        <span class="mobileChip" id="mobileArmorChip">Armor 20</span>
+        <span class="mobileChip" id="mobileStamChip">Stamina 100</span>
+        <span class="mobileChip" id="mobileAmmoChip">Ammo 6/6</span>
+        <span class="mobileChip" id="mobileMissionChip">Tigers 0</span>
+        <span class="mobileChip subtle" id="mobileThreatChip">Threat Low</span>
+      </div>
       <div class="mobileStatusText" id="mobilePromptTxt">Protect civilians, move to the evac zone, and clear all tigers.</div>
-      <div class="mobileCountsText" id="mobileCountsTxt">Civilians 0/0 • Evac 0/0 • Tigers 0</div>
     </div>
-    <canvas id="cv" width="960" height="540"></canvas>
+    <div class="mapStage">
+      <canvas id="cv" width="960" height="540"></canvas>
+    </div>
     <div class="actionStrip">
-      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Loot spawns on map. Events happen in Story/Arcade.</div>
+      <div class="small" id="statusLine">Use the top game bar to track health and the buttons below it to deploy, scan, engage, and use gear.</div>
       <div class="row actionButtons">
         <button onclick="deploy()">📍 Deploy</button>
         <button id="scanBtn" onclick="scan()">🛰️ Scan</button>
@@ -262,6 +320,13 @@
         <button class="ghost" onclick="sprint()">⚡ Sprint</button>
       </div>
     </div>
+  </div>
+
+  <div class="mobileUtilityBar">
+    <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLblMobile">On</span></button>
+    <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLblMobile">Pause</span></button>
+    <button class="ghost" onclick="startTutorial()">🧭 Tutorial</button>
+    <button class="ghost" onclick="resetGame()">🔁 Reset</button>
   </div>
 
   <div class="hud">

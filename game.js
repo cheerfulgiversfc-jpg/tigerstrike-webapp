@@ -339,6 +339,8 @@ function sfx(name){
 function toggleSound(){
   S.soundOn=!S.soundOn;
   document.getElementById("soundLbl").innerText = S.soundOn?"On":"Off";
+  const mobileLbl = document.getElementById("soundLblMobile");
+  if(mobileLbl) mobileLbl.innerText = S.soundOn ? "On" : "Off";
   save(); if(S.soundOn) sfx("ui");
 }
 
@@ -774,6 +776,8 @@ function closeAbout(){ document.getElementById("aboutOverlay").style.display="no
 function setPaused(on, reason=null){
   S.paused=on; S.pauseReason=reason;
   document.getElementById("pauseLbl").innerText = on?"Resume":"Pause";
+  const mobileLbl = document.getElementById("pauseLblMobile");
+  if(mobileLbl) mobileLbl.innerText = on ? "Resume" : "Pause";
   save(true);
 }
 function togglePause(){
@@ -2602,6 +2606,10 @@ function renderHUD(){
   if(S.eventTextUntil && Date.now()>S.eventTextUntil) S.eventText="";
 
   document.getElementById("soundLbl").innerText = S.soundOn ? "On" : "Off";
+  const soundLblMobile = document.getElementById("soundLblMobile");
+  if(soundLblMobile) soundLblMobile.innerText = S.soundOn ? "On" : "Off";
+  const pauseLblMobile = document.getElementById("pauseLblMobile");
+  if(pauseLblMobile) pauseLblMobile.innerText = S.paused ? "Resume" : "Pause";
   document.getElementById("livesTxt").innerText = S.lives;
 
   document.getElementById("titleTxt").innerText = S.title || "Rookie";
@@ -2715,16 +2723,33 @@ function renderHUD(){
   document.getElementById("assistTxt").innerText = assistParts.slice(0,3).join(" • ") || "Sweep the map, scan, and keep pressure off civilians.";
   document.getElementById("eventTxt").innerText = S.eventText ? `EVENT: ${S.eventText}` : "";
 
-  const mobileHpMini = document.getElementById("mobileHpMini");
-  const mobileArmorMini = document.getElementById("mobileArmorMini");
-  const mobileStamMini = document.getElementById("mobileStamMini");
-  const mobileAmmoMini = document.getElementById("mobileAmmoMini");
+  const mobilePlayerHpValue = document.getElementById("mobilePlayerHpValue");
+  const mobilePlayerHpBar = document.getElementById("mobilePlayerHpBar");
+  const mobileTigerHpValue = document.getElementById("mobileTigerHpValue");
+  const mobileTigerHpBar = document.getElementById("mobileTigerHpBar");
+  const mobileArmorChip = document.getElementById("mobileArmorChip");
+  const mobileStamChip = document.getElementById("mobileStamChip");
+  const mobileAmmoChip = document.getElementById("mobileAmmoChip");
+  const mobileMissionChip = document.getElementById("mobileMissionChip");
+  const mobileThreatChip = document.getElementById("mobileThreatChip");
   const mobilePromptTxt = document.getElementById("mobilePromptTxt");
-  const mobileCountsTxt = document.getElementById("mobileCountsTxt");
-  if(mobileHpMini) mobileHpMini.innerText = `${Math.round(S.hp)}`;
-  if(mobileArmorMini) mobileArmorMini.innerText = `${Math.round(S.armor)}`;
-  if(mobileStamMini) mobileStamMini.innerText = `${Math.round(S.stamina)}`;
-  if(mobileAmmoMini) mobileAmmoMini.innerText = `${S.mag.loaded}/${S.mag.cap}`;
+  if(mobilePlayerHpValue) mobilePlayerHpValue.innerText = `${Math.round(S.hp)} / 100`;
+  if(mobilePlayerHpBar) mobilePlayerHpBar.style.width = `${clamp(S.hp, 0, 100)}%`;
+  if(mobileTigerHpValue) mobileTigerHpValue.innerText = t ? `${Math.round(t.hp)} / ${Math.round(t.hpMax)}` : "No target";
+  if(mobileTigerHpBar) mobileTigerHpBar.style.width = t ? `${clamp((t.hp/t.hpMax) * 100, 0, 100)}%` : "0%";
+  if(mobileArmorChip) mobileArmorChip.innerText = `Armor ${Math.round(S.armor)}`;
+  if(mobileStamChip) mobileStamChip.innerText = `Stamina ${Math.round(S.stamina)}`;
+  if(mobileAmmoChip) mobileAmmoChip.innerText = `Ammo ${S.mag.loaded}/${S.mag.cap}`;
+  if(mobileMissionChip){
+    mobileMissionChip.innerText =
+      S.mode==="Survival"
+        ? `Wave ${S.survivalWave}`
+        : `Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`;
+  }
+  if(mobileThreatChip){
+    const threatText = S.mode==="Survival" ? "Pressure High" : (S._underAttack ? `Threat ${S._underAttack} attack` : "Threat Low");
+    mobileThreatChip.innerText = threatText;
+  }
   if(mobilePromptTxt){
     let mobilePrompt =
       S.mode==="Survival"
@@ -2746,19 +2771,13 @@ function renderHUD(){
     }
     mobilePromptTxt.innerText = mobilePrompt;
   }
-  if(mobileCountsTxt){
-    mobileCountsTxt.innerText =
-      S.mode==="Survival"
-        ? `Wave ${S.survivalWave} • Time ${S.surviveSeconds}s • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`
-        : `Civilians ${civAlive} • Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`;
-  }
 
   document.getElementById("statusLine").innerText =
     S.inBattle
       ? "Battle controls: Attack, Protect, Capture, or Kill. Capture requires the correct tranq weapon at 15 HP."
       : (window.matchMedia?.("(pointer:fine)")?.matches
           ? "Desktop: click to move or lock. WASD/arrow keys move. Q locks nearest tiger. Space scans. E engages. Shift sprints."
-          : "Tap the map to move. Tap a tiger to lock. Your health, ammo, and mission status stay above the map.");
+          : "Your health, tiger health, and mission status stay above the map. Use the top action row to deploy, scan, engage, and use gear.");
 }
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
@@ -2808,20 +2827,31 @@ function drawMapScene(){
 
   if(key==="ST_FOREST" || key==="AR_SAND_YARD" || key==="SV_NIGHT_WOODS"){
     fillSolid("#0f2b1c");
-    roadLine([[60,430],[260,390],[450,420],[610,360],[820,390],[940,330]], 62, "rgba(90,70,45,.85)");
-    roadLine([[0,160],[240,230],[470,190],[720,250],[960,210]], 48, "rgba(80,60,38,.85)");
+    const upperRoad = h * 0.18;
+    const midRoad = h * 0.43;
+    const lowRoad = h * 0.72;
+    roadLine([[0,upperRoad],[240,upperRoad + 70],[470,upperRoad + 28],[720,upperRoad + 92],[960,upperRoad + 52]], 48, "rgba(80,60,38,.85)");
+    roadLine([[60,midRoad],[260,midRoad - 40],[450,midRoad - 10],[610,midRoad - 70],[820,midRoad - 40],[940,midRoad - 100]], 62, "rgba(90,70,45,.85)");
+    roadLine([[50,lowRoad],[260,lowRoad - 34],[450,lowRoad - 8],[610,lowRoad - 58],[820,lowRoad - 26],[940,lowRoad - 82]], 56, "rgba(84,66,42,.82)");
     const trees = [
-      [90,90],[140,120],[210,90],[300,140],[360,90],[420,150],[520,110],[610,140],[700,100],[780,150],[880,120],
-      [120,300],[200,320],[280,300],[360,330],[440,300],[520,330],[600,300],[700,320],[820,300],
-      [110,500],[210,490],[320,500],[420,480],[520,500],[650,490],[760,500],[880,490],
+      [90,h*0.08],[140,h*0.11],[210,h*0.08],[300,h*0.13],[360,h*0.08],[420,h*0.14],[520,h*0.10],[610,h*0.13],[700,h*0.09],[780,h*0.14],[880,h*0.11],
+      [120,h*0.24],[200,h*0.26],[280,h*0.24],[360,h*0.27],[440,h*0.24],[520,h*0.27],[600,h*0.24],[700,h*0.26],[820,h*0.24],
+      [110,h*0.40],[210,h*0.39],[320,h*0.40],[420,h*0.38],[520,h*0.40],[650,h*0.39],[760,h*0.40],[880,h*0.39],
+      [100,h*0.56],[200,h*0.55],[300,h*0.57],[420,h*0.54],[520,h*0.56],[650,h*0.55],[760,h*0.57],[880,h*0.56],
+      [110,h*0.74],[210,h*0.72],[320,h*0.75],[420,h*0.73],[520,h*0.74],[650,h*0.72],[760,h*0.75],[880,h*0.73],
+      [90,h*0.88],[170,h*0.91],[290,h*0.88],[410,h*0.90],[520,h*0.87],[660,h*0.90],[780,h*0.88],[900,h*0.91],
     ];
     for(const [x,y] of trees) treeDot(x,y);
     ctx.fillStyle="rgba(25,90,105,.65)";
-    ctx.beginPath(); ctx.ellipse(260,220,90,34,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(720,190,85,30,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(260,h*0.17,90,34,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(720,h*0.15,85,30,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(220,h*0.80,96,42,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(760,h*0.66,80,28,0,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle="rgba(10,60,80,.7)"; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.ellipse(260,220,90,34,0,0,Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(720,190,85,30,0,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(260,h*0.17,90,34,0,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(720,h*0.15,85,30,0,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(220,h*0.80,96,42,0,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(760,h*0.66,80,28,0,0,Math.PI*2); ctx.stroke();
   }
   else if(key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD"){
     fillSolid("#18402a");
