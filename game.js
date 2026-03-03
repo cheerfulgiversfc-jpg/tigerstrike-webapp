@@ -354,7 +354,7 @@ function rand(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
 function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
 function mobileCanvasHeight(){
   const vh = window.innerHeight || 844;
-  return Math.round(clamp(vh * 0.9, 700, 840));
+  return Math.round(clamp(vh * 1.45, 980, 1280));
 }
 function clampWorldToCanvas(){
   if(!S) return;
@@ -393,6 +393,10 @@ function resizeCanvasForViewport(){
   cv.height = mobile ? mobileCanvasHeight() : 540;
   clampWorldToCanvas();
 }
+const STAMINA_COST_SCAN = 8;
+const STAMINA_COST_SPRINT = 16;
+const STAMINA_DRAIN_WALK = 0.035;
+const STAMINA_DRAIN_SPRINT = 0.08;
 function pickupLabel(type){
   if(type==="CASH") return "Cash";
   if(type==="AMMO") return "Ammo";
@@ -1350,7 +1354,7 @@ function equipWeapon(id){
   renderHUD();
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
-  if(document.getElementById("battleOverlay").style.display==="flex") { renderWeaponGrid(); updateBattleButtons(); updateAttackButton(); }
+  if(document.getElementById("battleOverlay").style.display==="flex") { renderWeaponGrid(); updateBattleButtons(); updateAttackButton(); renderBattleStatus(); }
 }
 
 // ===================== SPAWNS =====================
@@ -1883,8 +1887,8 @@ function canEngage(){
 function scan(){
   if(!tutorialAllows("scan")) return toast(tutorialBlockMessage("scan"));
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
-  if(S.stamina < 12) return toast("Not enough stamina.");
-  S.stamina -= 12;
+  if(S.stamina < STAMINA_COST_SCAN) return toast("Not enough stamina.");
+  S.stamina -= STAMINA_COST_SCAN;
   S.scanPing=140;
   if(!window.TigerTutorial?.isRunning) lockNearestTiger({ silent:true });
   sfx("scan"); hapticImpact("light"); save();
@@ -1929,7 +1933,7 @@ function keyboardMoveTick(){
   const ny = S.me.y + uy*speed;
   tryMoveEntity(S.me, nx, ny, 16);
 
-  S.stamina = clamp(S.stamina - (speed>2.6?0.20:0.10), 0, 100);
+  S.stamina = clamp(S.stamina - (speed>2.6 ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK), 0, 100);
   return true;
 }
 
@@ -1952,13 +1956,13 @@ function movePlayer(){
   const ok = tryMoveEntity(S.me, nx, ny, 16);
   if(!ok){ S.target=null; }
 
-  S.stamina = clamp(S.stamina - (speed>2.6?0.20:0.10), 0, 100);
+  S.stamina = clamp(S.stamina - (speed>2.6 ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK), 0, 100);
 }
 
 function sprint(){
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
-  if(S.stamina < 25) return toast("Not enough stamina.");
-  S.stamina -= 25;
+  if(S.stamina < STAMINA_COST_SPRINT) return toast("Not enough stamina.");
+  S.stamina -= STAMINA_COST_SPRINT;
   S._sprintTicks=90;
   sfx("ui"); hapticImpact("light"); save();
   unlockAchv("sprint1","Sprint");
@@ -2229,6 +2233,7 @@ function applyPlayerDamage(dmg, showToast=false){
     sfx("hurt"); hapticImpact("medium");
     if(showToast) toast(`🐅 Hit: -${dmg} HP`);
   }
+  if(S.inBattle) renderBattleStatus();
   if(S.hp<=0){
     S.lives -= 1;
 
@@ -2277,6 +2282,7 @@ function startCombat(){
   S.activeTigerId=t.id;
   document.getElementById("battleOverlay").style.display="flex";
   renderWeaponGrid();
+  renderBattleStatus();
   updateBattleButtons();
   updateAttackButton();
   setBattleMsg(`Tiger #${t.id} (${t.type}) steps forward…`);
@@ -2286,6 +2292,28 @@ function startCombat(){
 function setBattleMsg(msg){
   document.getElementById("battleTitle").innerText = `Battle — Tiger #${S.activeTigerId}`;
   document.getElementById("battleMsg").innerText = msg;
+  renderBattleStatus();
+}
+function renderBattleStatus(){
+  const t = tigerById(S.activeTigerId);
+  const agentBar = document.getElementById("battleAgentBar");
+  const tigerBar = document.getElementById("battleTigerBar");
+  const agentValue = document.getElementById("battleAgentValue");
+  const tigerValue = document.getElementById("battleTigerValue");
+  const agentMeta = document.getElementById("battleAgentMeta");
+  const tigerMeta = document.getElementById("battleTigerMeta");
+  if(!agentBar || !tigerBar || !agentValue || !tigerValue || !agentMeta || !tigerMeta) return;
+
+  agentBar.style.width = `${clamp(S.hp, 0, 100)}%`;
+  tigerBar.style.width = t ? `${clamp((t.hp / t.hpMax) * 100, 0, 100)}%` : "0%";
+
+  agentValue.innerText = `${Math.round(S.hp)} HP`;
+  tigerValue.innerText = t ? `${Math.round(t.hp)} / ${Math.round(t.hpMax)}` : "No target";
+
+  agentMeta.innerText = `Armor ${Math.round(S.armor)} • Stamina ${Math.round(S.stamina)} • Ammo ${S.mag.loaded}/${S.mag.cap}`;
+  tigerMeta.innerText = t
+    ? `${t.type}${t.tranqTagged ? " • Tranq tagged" : ""} • Capture/Kill at 15 HP`
+    : "Target lost";
 }
 function renderWeaponGrid(){
   const box=document.getElementById("weaponGrid");
@@ -2326,6 +2354,7 @@ function updateBattleButtons(){
   const t=tigerById(S.activeTigerId);
   document.getElementById("killBtn").disabled = !(t && t.hp<=15);
   document.getElementById("capBtn").disabled = !canCaptureTiger(t);
+  renderBattleStatus();
 }
 
 function payout(outcome){
@@ -2533,6 +2562,7 @@ function tigerTurn(t, softened=false){
   applyPlayerDamage(dmg,false);
   updateBattleButtons();
   updateAttackButton();
+  renderBattleStatus();
 }
 
 // ===================== MISSION COMPLETE =====================
