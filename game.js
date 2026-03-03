@@ -352,6 +352,47 @@ function toast(msg){
 function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
 function rand(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
 function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
+function mobileCanvasHeight(){
+  const vh = window.innerHeight || 844;
+  return Math.round(clamp(vh * 0.9, 700, 840));
+}
+function clampWorldToCanvas(){
+  if(!S) return;
+  if(S.me){
+    S.me.x = clamp(S.me.x, 40, cv.width - 40);
+    S.me.y = clamp(S.me.y, 60, cv.height - 40);
+  }
+  if(S.evacZone){
+    S.evacZone.x = clamp(S.evacZone.x, 100, cv.width - 60);
+    S.evacZone.y = clamp(S.evacZone.y, 100, cv.height - 60);
+  }
+  for(const civ of (S.civilians || [])){
+    civ.x = clamp(civ.x, 50, cv.width - 50);
+    civ.y = clamp(civ.y, 70, cv.height - 50);
+  }
+  for(const tiger of (S.tigers || [])){
+    tiger.x = clamp(tiger.x, 40, cv.width - 40);
+    tiger.y = clamp(tiger.y, 60, cv.height - 40);
+  }
+  for(const pickup of (S.pickups || [])){
+    pickup.x = clamp(pickup.x, 40, cv.width - 40);
+    pickup.y = clamp(pickup.y, 60, cv.height - 40);
+  }
+  for(const carcass of (S.carcasses || [])){
+    carcass.x = clamp(carcass.x, 40, cv.width - 40);
+    carcass.y = clamp(carcass.y, 60, cv.height - 40);
+  }
+  for(const trap of (S.trapsPlaced || [])){
+    trap.x = clamp(trap.x, 40, cv.width - 40);
+    trap.y = clamp(trap.y, 60, cv.height - 40);
+  }
+}
+function resizeCanvasForViewport(){
+  const mobile = window.matchMedia?.("(max-width:760px)")?.matches;
+  cv.width = 960;
+  cv.height = mobile ? mobileCanvasHeight() : 540;
+  clampWorldToCanvas();
+}
 function pickupLabel(type){
   if(type==="CASH") return "Cash";
   if(type==="AMMO") return "Ammo";
@@ -391,6 +432,16 @@ function tutorialBlockMessage(action){
   if(action==="inventory") return "Open Inventory after the Shop step.";
   return "Follow the tutorial steps in order.";
 }
+
+resizeCanvasForViewport();
+window.addEventListener("resize", ()=>{
+  resizeCanvasForViewport();
+  renderHUD();
+}, { passive:true });
+window.addEventListener("orientationchange", ()=>{
+  resizeCanvasForViewport();
+  renderHUD();
+});
 // ================= PHASE 2 XP / PERKS =================
 
 function xpNeededForLevel(lv){
@@ -1379,7 +1430,13 @@ window.exitTutorialMode = function () {
 // --------------------------------------------------
 
 function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
-function randomEvacZone(){ return { x: rand(120, 900), y: rand(120, 500), r:70 }; }
+function randomEvacZone(){
+  return {
+    x: rand(140, cv.width - 80),
+    y: rand(130, cv.height - 80),
+    r:70
+  };
+}
 
 const SKIN_TONES = ["#f6d7c3","#eac0a6","#d9a07f","#c9865c","#a86a44","#7a4a2c","#4b2f1f"];
 const SHIRT_COLS = ["#4aa3ff","#3ddc97","#f59e0b","#fb7185","#a78bfa","#f97316","#eab308","#22c55e","#60a5fa"];
@@ -1413,14 +1470,24 @@ function spawnCivilians(){
     : (S.mode==="Arcade"
       ? clamp(2 + (S.arcadeLevel-1), 2, 7)
       : 0);
+  const cols = Math.min(3, Math.max(1, n));
+  const rows = Math.max(1, Math.ceil(n / cols));
+  const minX = 220;
+  const maxX = Math.max(minX, cv.width - 220);
+  const minY = 140;
+  const maxY = Math.max(minY, cv.height - 180);
+  const xGap = cols > 1 ? (maxX - minX) / (cols - 1) : 0;
+  const yGap = rows > 1 ? (maxY - minY) / (rows - 1) : 0;
 
   S.civilians = [];
 
   for(let i=0;i<n;i++){
+    const col = i % cols;
+    const row = Math.floor(i / cols);
     S.civilians.push({
       id:i+1,
-      x:220+(i%3)*180+rand(-20,20),
-      y:140+Math.floor(i/3)*160+rand(-20,20),
+      x:clamp(Math.round(minX + col * xGap + rand(-20,20)), 60, cv.width - 60),
+      y:clamp(Math.round(minY + row * yGap + rand(-20,20)), 90, cv.height - 70),
       hp:100,
       hpMax:100,
       alive:true,
@@ -1506,6 +1573,14 @@ function spawnTigers(){
     count=Math.min(4+(S.survivalWave-1),10);
 
   const boss=(S.mode==="Story"&&(S.storyLevel%5===0));
+  const cols = Math.min(4, Math.max(1, count));
+  const rows = Math.max(1, Math.ceil(count / cols));
+  const minX = Math.round(cv.width * 0.58);
+  const maxX = Math.max(minX, cv.width - 90);
+  const minY = 140;
+  const maxY = Math.max(minY, cv.height - 180);
+  const xGap = cols > 1 ? (maxX - minX) / (cols - 1) : 0;
+  const yGap = rows > 1 ? (maxY - minY) / (rows - 1) : 0;
 
   S.tigers=[];
   const diff=carcassDifficulty();
@@ -1513,6 +1588,8 @@ function spawnTigers(){
   for(let i=0;i<count;i++){
     let typeKey=pickTigerType();
     if(boss && i===0) typeKey="Alpha";
+    const col = i % cols;
+    const row = Math.floor(i / cols);
 
     const def=TIGER_TYPES.find(t=>t.key===typeKey)||TIGER_TYPES[1];
 
@@ -1532,8 +1609,8 @@ function spawnTigers(){
     S.tigers.push({
       id:i+1,
       type:def.key,
-      x:600+(i%4)*95,
-      y:140+Math.floor(i/4)*120,
+      x:clamp(Math.round(minX + col * xGap + rand(-18,18)), 140, cv.width - 50),
+      y:clamp(Math.round(minY + row * yGap + rand(-18,18)), 90, cv.height - 70),
       vx:(Math.random()<0.5?-1:1)*def.spd*0.55,
       vy:(Math.random()<0.5?-1:1)*def.spd*0.50,
       hp,
@@ -1556,6 +1633,7 @@ function spawnTigers(){
 }
 // ===================== DEPLOY / NEXT / RESTART =====================
 function deploy(){
+  resizeCanvasForViewport();
   S.gameOver=false;
   S.missionEnded=false;
   S.inBattle=false;
@@ -1563,7 +1641,7 @@ function deploy(){
   S.paused=false; S.pauseReason=null;
 
   S.hp=100; S.armor=20; S.stamina=100;
-  S.me={x:160,y:420,face:0,step:0};
+  S.me={x:160,y:clamp(cv.height - 120, 240, 420),face:0,step:0};
   S.target=null;
   S.lockedTigerId=null;
 
@@ -1588,8 +1666,8 @@ function deploy(){
   spawnCivilians();
 
   // spawn a couple guaranteed pickups early
-  spawnPickup("CASH", 260, 470);
-  spawnPickup("AMMO", 320, 480);
+  spawnPickup("CASH", 260, clamp(cv.height - 150, 220, cv.height - 80));
+  spawnPickup("AMMO", 320, clamp(cv.height - 120, 240, cv.height - 70));
 
   for(const wid of S.ownedWeapons){ if(S.durability[wid]==null) S.durability[wid]=100; }
 
@@ -2606,12 +2684,51 @@ function renderHUD(){
 
   document.getElementById("assistTxt").innerText = assistParts.slice(0,3).join(" • ") || "Sweep the map, scan, and keep pressure off civilians.";
   document.getElementById("eventTxt").innerText = S.eventText ? `EVENT: ${S.eventText}` : "";
+
+  const mobileHpMini = document.getElementById("mobileHpMini");
+  const mobileArmorMini = document.getElementById("mobileArmorMini");
+  const mobileStamMini = document.getElementById("mobileStamMini");
+  const mobileAmmoMini = document.getElementById("mobileAmmoMini");
+  const mobilePromptTxt = document.getElementById("mobilePromptTxt");
+  const mobileCountsTxt = document.getElementById("mobileCountsTxt");
+  if(mobileHpMini) mobileHpMini.innerText = `${Math.round(S.hp)}`;
+  if(mobileArmorMini) mobileArmorMini.innerText = `${Math.round(S.armor)}`;
+  if(mobileStamMini) mobileStamMini.innerText = `${Math.round(S.stamina)}`;
+  if(mobileAmmoMini) mobileAmmoMini.innerText = `${S.mag.loaded}/${S.mag.cap}`;
+  if(mobilePromptTxt){
+    let mobilePrompt =
+      S.mode==="Survival"
+        ? "Stay moving, manage ammo, and survive the pressure."
+        : "Protect civilians, reach the evac zone, and clear every tiger.";
+    if(S.dangerCivId){
+      const civ = S.civilians.find(c=>c.id===S.dangerCivId);
+      mobilePrompt = civ ? `Civilian #${civ.id} is under attack. Move there now.` : mobilePrompt;
+    } else if(!anyWeaponHasAmmo()){
+      mobilePrompt = "Out of ammo. Open Shop before the next fight.";
+    } else if(t && canEngage()){
+      mobilePrompt = `Tiger #${t.id} is in range. Tap Engage when ready.`;
+    } else if(t){
+      mobilePrompt = `Tiger #${t.id} locked. Close the distance and stay ready.`;
+    } else if(window.TigerTutorial?.isRunning){
+      mobilePrompt = assistParts[0] || "Follow the tutorial prompt and stay on the map.";
+    } else if(S.missionEnded){
+      mobilePrompt = "Mission complete. Shop, inventory, or start the next mission.";
+    }
+    mobilePromptTxt.innerText = mobilePrompt;
+  }
+  if(mobileCountsTxt){
+    mobileCountsTxt.innerText =
+      S.mode==="Survival"
+        ? `Wave ${S.survivalWave} • Time ${S.surviveSeconds}s • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`
+        : `Civilians ${civAlive} • Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`;
+  }
+
   document.getElementById("statusLine").innerText =
     S.inBattle
       ? "Battle controls: Attack, Protect, Capture, or Kill. Capture requires the correct tranq weapon at 15 HP."
       : (window.matchMedia?.("(pointer:fine)")?.matches
           ? "Desktop: click to move or lock. WASD/arrow keys move. Q locks nearest tiger. Space scans. E engages. Shift sprints."
-          : "Tap the map to move. Tap a tiger to lock. Use the action buttons below the map when you need Scan, Engage, Medkit, or Sprint.");
+          : "Tap the map to move. Tap a tiger to lock. Your health, ammo, and mission status stay above the map.");
 }
 
 // ===================== CALM MAPS + FOG (no flashing) =====================

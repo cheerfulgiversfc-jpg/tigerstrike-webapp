@@ -11,6 +11,18 @@
   const arrow = document.getElementById("tutorialArrow");
 
   function byId(id){ return document.getElementById(id); }
+  function visibleEl(id){
+    const el = byId(id);
+    if(!el) return null;
+    if(el.getClientRects().length === 0) return null;
+    if(window.getComputedStyle(el).display === "none") return null;
+    return el;
+  }
+  function tutorialTarget(id){
+    if(id === "shopBtn") return visibleEl("shopBtn") || visibleEl("navShopBtn");
+    if(id === "invBtn") return visibleEl("invBtn") || visibleEl("navInvBtn");
+    return visibleEl(id);
+  }
   function getS(){
     return (typeof window.getGameState === "function") ? window.getGameState() : window.S;
   }
@@ -176,7 +188,7 @@
       const tiger = S?.tigers?.find((t) => t.alive);
       showArrowAtCanvasPoint(tiger?.x, tiger?.y);
     } else if(typeof step.arrow === "string"){
-      showArrowAtEl(byId(step.arrow));
+      showArrowAtEl(tutorialTarget(step.arrow));
     } else {
       hideArrow();
     }

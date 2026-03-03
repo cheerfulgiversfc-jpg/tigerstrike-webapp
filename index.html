@@ -41,6 +41,13 @@
     .fill.orange{background:var(--warn)}
 
     .screenCard{order:3;margin-top:12px;background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);position:relative}
+    .mobileStatusPanel{display:none}
+    .mobileStatsRow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+    .mobileStat{background:rgba(11,16,28,.96);border:1px solid rgba(35,42,62,.95);border-radius:12px;padding:7px 8px}
+    .mobileStatLabel{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+    .mobileStatValue{display:block;margin-top:2px;font-size:15px;font-weight:950}
+    .mobileStatusText{margin-top:6px;font-size:11px;line-height:1.25;color:rgba(245,247,255,.92)}
+    .mobileCountsText{margin-top:4px;font-size:10px;line-height:1.25;color:var(--muted)}
     canvas{display:block;width:100%;height:auto;touch-action:none}
     .actionStrip{border-top:1px solid var(--border);background:rgba(15,19,32,.85);padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
     .small{font-size:12px;color:var(--muted)}
@@ -79,13 +86,14 @@
     @media (max-width:760px){
       .wrap{padding:8px 10px 96px}
       .top{order:1;flex-direction:column;gap:8px}
-      .title{font-size:22px}
+      .title{font-size:20px}
       .sub{display:none}
       .topActions{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-      .topActions button{padding:10px 6px;font-size:12px;line-height:1.1}
+      .topActions button{min-height:40px;padding:8px 6px;font-size:11px;line-height:1.1}
+      .mobileCompactHide{display:none}
       .screenCard{
         order:2;
-        margin-top:8px;
+        margin-top:6px;
         margin-left:-10px;
         margin-right:-10px;
         width:calc(100% + 20px);
@@ -93,6 +101,7 @@
         border-right:none;
         border-radius:0;
       }
+      .mobileStatusPanel{display:block;padding:8px;background:rgba(7,11,20,.98);border-bottom:1px solid rgba(35,42,62,.95)}
       .hud{order:3;margin-top:10px}
       .hudGrid{grid-template-columns:1fr}
       .actionStrip{flex-direction:column;align-items:stretch;padding:8px}
@@ -110,7 +119,6 @@
     }
 
     @media (max-width:460px){
-      .topActions{grid-template-columns:repeat(3,minmax(0,1fr))}
       .navInner{gap:6px}
       .navBtn{font-size:11px}
       .screenCard{width:calc(100% + 16px);margin-left:-8px;margin-right:-8px}
@@ -196,20 +204,42 @@
     </div>
     <div class="row topActions">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
-      <button class="ghost" onclick="openAbout()">ℹ️ About</button>
-      <button class="ghost" onclick="openMode()">🎮 Mode</button>
-      <button class="ghost" onclick="nextMap()">🗺️ Map</button>
+      <button class="ghost mobileCompactHide" onclick="openAbout()">ℹ️ About</button>
+      <button class="ghost mobileCompactHide" onclick="openMode()">🎮 Mode</button>
+      <button class="ghost mobileCompactHide" onclick="nextMap()">🗺️ Map</button>
       <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLbl">Pause</span></button>
 
       <!-- IDs added for tutorial highlighting -->
-      <button class="ghost" id="shopBtn" onclick="openShop()">🛒 Shop</button>
-      <button class="ghost" id="invBtn" onclick="openInventory()">🎒 Inventory</button>
-<button class="ghost" id="tutorialBtn" onclick="startTutorial()">🧭 Tutorial</button>
+      <button class="ghost mobileCompactHide" id="shopBtn" onclick="openShop()">🛒 Shop</button>
+      <button class="ghost mobileCompactHide" id="invBtn" onclick="openInventory()">🎒 Inventory</button>
+      <button class="ghost" id="tutorialBtn" onclick="startTutorial()">🧭 Tutorial</button>
       <button class="ghost" onclick="resetGame()">🔁 Reset</button>
     </div>
   </div>
 
   <div class="screenCard">
+    <div class="mobileStatusPanel">
+      <div class="mobileStatsRow">
+        <div class="mobileStat">
+          <div class="mobileStatLabel">HP</div>
+          <b class="mobileStatValue" id="mobileHpMini">100</b>
+        </div>
+        <div class="mobileStat">
+          <div class="mobileStatLabel">Armor</div>
+          <b class="mobileStatValue" id="mobileArmorMini">20</b>
+        </div>
+        <div class="mobileStat">
+          <div class="mobileStatLabel">Stamina</div>
+          <b class="mobileStatValue" id="mobileStamMini">100</b>
+        </div>
+        <div class="mobileStat">
+          <div class="mobileStatLabel">Ammo</div>
+          <b class="mobileStatValue" id="mobileAmmoMini">6/6</b>
+        </div>
+      </div>
+      <div class="mobileStatusText" id="mobilePromptTxt">Protect civilians, move to the evac zone, and clear all tigers.</div>
+      <div class="mobileCountsText" id="mobileCountsTxt">Civilians 0/0 • Evac 0/0 • Tigers 0</div>
+    </div>
     <canvas id="cv" width="960" height="540"></canvas>
     <div class="actionStrip">
       <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Loot spawns on map. Events happen in Story/Arcade.</div>
@@ -398,10 +428,10 @@
 
 <div class="nav">
   <div class="navInner">
-    <button class="navBtn" onclick="openMode()"><span>🎮</span>Mode</button>
-    <button class="navBtn" onclick="nextMap()"><span>🗺️</span>Map</button>
-    <button class="navBtn" onclick="openShop()"><span>🛒</span>Shop</button>
-    <button class="navBtn" onclick="openInventory()"><span>🎒</span>Inventory</button>
+    <button class="navBtn" id="navModeBtn" onclick="openMode()"><span>🎮</span>Mode</button>
+    <button class="navBtn" id="navMapBtn" onclick="nextMap()"><span>🗺️</span>Map</button>
+    <button class="navBtn" id="navShopBtn" onclick="openShop()"><span>🛒</span>Shop</button>
+    <button class="navBtn" id="navInvBtn" onclick="openInventory()"><span>🎒</span>Inventory</button>
   </div>
 </div>
 
