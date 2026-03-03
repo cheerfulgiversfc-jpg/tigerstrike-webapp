@@ -22,7 +22,7 @@
     .title{font-size:24px;font-weight:950}
     .sub{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
     .row{display:flex;gap:10px;flex-wrap:wrap}
-    button{border-radius:12px;border:1px solid var(--border2);background:#1a2031;color:#fff;padding:10px 12px;font-weight:900;font-size:14px;cursor:pointer}
+    button{border-radius:12px;border:1px solid var(--border2);background:#1a2031;color:#fff;padding:10px 12px;font-weight:900;font-size:14px;cursor:pointer;min-height:44px}
     button:disabled{opacity:.45;cursor:not-allowed}
     .ghost{background:transparent}
     .good{border-color:#14532d;background:#0f2416}
@@ -41,9 +41,10 @@
     .fill.orange{background:var(--warn)}
 
     .screenCard{margin-top:12px;background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);position:relative}
-    canvas{display:block;width:100%;height:auto;touch-action:manipulation}
+    canvas{display:block;width:100%;height:auto;touch-action:none}
     .actionStrip{border-top:1px solid var(--border);background:rgba(15,19,32,.85);padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
     .small{font-size:12px;color:var(--muted)}
+    .actionButtons{flex:1 1 560px}
 
     .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:200;padding:14px}
     .modal{width:min(980px,96vw);background:linear-gradient(180deg,#121622,#0b0d12);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;max-height:88vh;display:flex;flex-direction:column}
@@ -75,6 +76,53 @@
     .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
+    .mobileDock{display:none}
+    .mobileDockText{font-size:12px;color:var(--muted);line-height:1.3}
+    .mobileDockGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+    .dockBtn{width:100%;min-height:50px;padding:10px 8px}
+
+    @media (max-width:760px){
+      .wrap{padding:10px 10px 200px}
+      .top{flex-direction:column}
+      .title{font-size:22px}
+      .sub{font-size:11px}
+      .topActions{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+      .topActions button{padding:10px 6px;font-size:12px;line-height:1.1}
+      .hudGrid{grid-template-columns:1fr}
+      .screenCard{border-radius:14px}
+      .actionStrip{flex-direction:column;align-items:stretch}
+      .actionButtons{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .actionButtons button{width:100%;min-height:48px}
+      .tabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}
+      .tab{flex:0 0 auto}
+      .item{flex-direction:column;align-items:stretch}
+      .weaponGrid{grid-template-columns:1fr}
+      .modal{width:min(100vw - 12px, 980px);max-height:90vh}
+      .modalBody{padding:12px}
+      .toast{bottom:168px}
+      .nav{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+      .mobileDock{
+        display:block;
+        position:fixed;
+        left:10px;
+        right:10px;
+        bottom:calc(76px + env(safe-area-inset-bottom));
+        z-index:110;
+        background:rgba(15,19,32,.94);
+        border:1px solid rgba(42,49,69,.92);
+        border-radius:16px;
+        padding:10px;
+        box-shadow:var(--shadow);
+        backdrop-filter:blur(12px);
+      }
+    }
+
+    @media (max-width:460px){
+      .topActions{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .navInner{gap:6px}
+      .navBtn{font-size:11px}
+      .mobileDockGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
 
   /* Tutorial overlay (CLICK-THROUGH) */
 #tutorialOverlay{
@@ -149,7 +197,7 @@
         Lives respawn stays. Calm maps, no flashing. Traps: one-time hold 3–5s.
       </div>
     </div>
-    <div class="row">
+    <div class="row topActions">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
       <button class="ghost" onclick="openAbout()">ℹ️ About</button>
       <button class="ghost" onclick="openMode()">🎮 Mode</button>
@@ -187,6 +235,7 @@
         <div class="hudLine">Civilians Alive: <b id="civTxt"></b> • Evac: <b id="evacTxt"></b> • Tigers left: <b id="tleftTxt"></b> • Threat: <b id="threatTxt"></b></div>
         <div class="hudLine" id="objTxt"></div>
         <div class="hudLine" id="dangerTxt"></div>
+        <div class="hudLine" id="assistTxt"></div>
       </div>
     </div>
   </div>
@@ -195,16 +244,26 @@
     <canvas id="cv" width="960" height="540"></canvas>
     <div class="actionStrip">
       <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Loot spawns on map. Events happen in Story/Arcade.</div>
-      <div class="row">
+      <div class="row actionButtons">
         <button onclick="deploy()">📍 Deploy</button>
         <button id="scanBtn" onclick="scan()">🛰️ Scan</button>
-        <button class="warn" id="engageBtn" onclick="startCombat()" disabled>🎯 Engage</button>
+        <button class="warn" id="engageBtn" data-engage-btn onclick="startCombat()" disabled>🎯 Engage</button>
         <button class="ghost" onclick="useMedkit()">❤️ Medkit</button>
         <button class="ghost" onclick="useRepairKit()">🧰 Repair</button>
         <button class="ghost" onclick="placeTrap()">🪤 Place Trap</button>
         <button class="ghost" onclick="callBackup()">🚨 Backup ($50,000)</button>
         <button class="ghost" onclick="sprint()">⚡ Sprint</button>
       </div>
+    </div>
+  </div>
+
+  <div class="mobileDock">
+    <div class="mobileDockText" id="mobileDockTxt">Tap the map to move, scan to lock a tiger, then engage when you get close.</div>
+    <div class="mobileDockGrid">
+      <button class="dockBtn" onclick="scan()">🛰️ Scan</button>
+      <button class="dockBtn warn" data-engage-btn onclick="startCombat()" disabled>🎯 Engage</button>
+      <button class="dockBtn ghost" onclick="useMedkit()">❤️ Medkit</button>
+      <button class="dockBtn ghost" onclick="sprint()">⚡ Sprint</button>
     </div>
   </div>
 </div>

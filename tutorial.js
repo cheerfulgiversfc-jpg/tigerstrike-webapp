@@ -1,62 +1,192 @@
-// tutorial.js — Tiger Strike Tutorial (11 steps, no sprint)
+// tutorial.js — Tiger Strike Tutorial
 
 (function(){
   const overlay = document.getElementById("tutorialOverlay");
-  const card    = document.getElementById("tutorialCard");
   const titleEl = document.getElementById("tutorialTitle");
-  const stepEl  = document.getElementById("tutorialStep");
-  const textEl  = document.getElementById("tutorialText");
-  const hintEl  = document.getElementById("tutorialHint");
+  const stepEl = document.getElementById("tutorialStep");
+  const textEl = document.getElementById("tutorialText");
+  const hintEl = document.getElementById("tutorialHint");
   const nextBtn = document.getElementById("tutorialNext");
   const skipBtn = document.getElementById("tutorialSkip");
-  const arrow   = document.getElementById("tutorialArrow");
-
-  // IDs in index.html you already have:
-  // shopBtn, invBtn, tutorialBtn
-  // plus in action strip: scanBtn, engageBtn
+  const arrow = document.getElementById("tutorialArrow");
 
   function byId(id){ return document.getElementById(id); }
+  function getS(){
+    return (typeof window.getGameState === "function") ? window.getGameState() : window.S;
+  }
+  function getStepList(){
+    return [
+      {
+        key:"intro",
+        title:"Tutorial",
+        text:"Welcome to Tiger Strike.\nYou will learn movement, escorting civilians, scanning, locking targets, and basic combat.",
+        hint:"Tap Next to begin.",
+        arrow:null,
+        canNext: () => true
+      },
+      {
+        key:"move",
+        title:"Move",
+        text:"Step 1: Tap anywhere on the map to move your agent.",
+        hint:"Tap the map once.",
+        arrow:"cv",
+        canNext: () => window.TigerTutorial.mapClicked === true
+      },
+      {
+        key:"escort",
+        title:"Escort Civilian",
+        text:"Step 2: Move close to the civilian, then guide them into the green evac zone.",
+        hint:"Stay near the civilian so they follow you to safety.",
+        arrow:"evacZone",
+        canNext: () => (getS()?.evacDone || 0) >= 1
+      },
+      {
+        key:"scan",
+        title:"Scan",
+        text:"Step 3: Press Scan to reveal the tiger.",
+        hint:"Tap the Scan button once.",
+        arrow:"scanBtn",
+        canNext: () => (getS()?.scanPing || 0) > 0
+      },
+      {
+        key:"lock",
+        title:"Lock Target",
+        text:"Step 4: Tap the tiger on the map to lock onto it.",
+        hint:"The lock is working when a blue ring appears around the tiger.",
+        arrow:"tiger",
+        canNext: () => {
+          const S = getS();
+          return !!(S && S.lockedTigerId);
+        }
+      },
+      {
+        key:"engage",
+        title:"Engage",
+        text:"Step 5: Move close to the tiger, then tap Engage.",
+        hint:"Engage becomes available when you are close enough.",
+        arrow:"engageBtn",
+        canNext: () => {
+          const S = getS();
+          return !!(S && S.inBattle === true);
+        }
+      },
+      {
+        key:"attack",
+        title:"Attack",
+        text:"Step 6: Press Attack once to learn the battle flow.",
+        hint:"Fire one shot, then tap Next.",
+        arrow:"atkBtn",
+        canNext: () => (getS()?.stats?.shots || 0) >= 1
+      },
+      {
+        key:"shop",
+        title:"Shop",
+        text:"Step 7: Open the Shop to buy ammo, gear, armor, and tools.",
+        hint:"Tap Shop once.",
+        arrow:"shopBtn",
+        canNext: () => {
+          const el = byId("shopOverlay");
+          return !!(el && el.style.display === "flex");
+        }
+      },
+      {
+        key:"inventory",
+        title:"Inventory",
+        text:"Step 8: Open Inventory to review weapons and supplies.",
+        hint:"Tap Inventory once.",
+        arrow:"invBtn",
+        canNext: () => {
+          const el = byId("invOverlay");
+          return !!(el && el.style.display === "flex");
+        }
+      },
+      {
+        key:"done",
+        title:"Done",
+        text:"Step 9: Tutorial complete.\nYou are ready to protect civilians, evacuate survivors, and deal with tigers.",
+        hint:"Tap Finish.",
+        arrow:null,
+        finish:true,
+        canNext: () => true
+      }
+    ];
+  }
 
-  // Exposed object so game.js can detect it
   window.TigerTutorial = {
     isRunning:false,
     step:0,
+    currentKey:null,
     mapClicked:false,
     lastLockedTigerId:null
   };
 
   function showArrowAtEl(el){
-    if(!el){ arrow.style.display="none"; return; }
+    if(!el){ arrow.style.display = "none"; return; }
     const r = el.getBoundingClientRect();
-    arrow.style.display="block";
-    arrow.style.left = (r.left + r.width/2) + "px";
-    arrow.style.top  = (r.top  - 18) + "px";
+    arrow.style.display = "block";
+    arrow.style.left = (r.left + r.width / 2) + "px";
+    arrow.style.top = (r.top - 18) + "px";
   }
 
-  function hideArrow(){ arrow.style.display="none"; }
+  function showArrowAtCanvasPoint(x, y){
+    const cv = byId("cv");
+    if(!cv || x == null || y == null){ arrow.style.display = "none"; return; }
+    const r = cv.getBoundingClientRect();
+    arrow.style.display = "block";
+    arrow.style.left = (r.left + (x / cv.width) * r.width) + "px";
+    arrow.style.top = (r.top + (y / cv.height) * r.height - 22) + "px";
+  }
+
+  function hideArrow(){
+    arrow.style.display = "none";
+  }
 
   function open(){
-    overlay.style.display="flex";
-    // IMPORTANT: your CSS overlay has pointer-events:none (click-through)
-    // That’s OK — the card itself is clickable.
+    overlay.style.display = "flex";
   }
 
   function close(){
-    overlay.style.display="none";
+    overlay.style.display = "none";
     hideArrow();
+    clearInterval(window.__tutTimer);
   }
 
   function setNextEnabled(on){
     nextBtn.disabled = !on;
   }
 
-  function getS(){
-    // Use your live state
-    return (typeof window.getGameState === "function") ? window.getGameState() : window.S;
-  }
+  function render(){
+    const T = window.TigerTutorial;
+    const steps = getStepList();
+    const step = steps[T.step];
+    const S = getS();
 
-  function safeToast(msg){
-    try{ window.toast?.(msg); }catch(e){}
+    T.currentKey = step.key;
+    titleEl.innerText = step.title;
+    stepEl.innerText = `Step ${T.step + 1} / ${steps.length}`;
+    textEl.innerText = step.text;
+    hintEl.innerText = step.hint || "";
+    nextBtn.innerText = step.finish ? "Finish" : "Next";
+
+    if(step.arrow === "cv"){
+      showArrowAtEl(byId("cv"));
+    } else if(step.arrow === "evacZone"){
+      showArrowAtCanvasPoint(S?.evacZone?.x, S?.evacZone?.y);
+    } else if(step.arrow === "tiger"){
+      const tiger = S?.tigers?.find((t) => t.alive);
+      showArrowAtCanvasPoint(tiger?.x, tiger?.y);
+    } else if(typeof step.arrow === "string"){
+      showArrowAtEl(byId(step.arrow));
+    } else {
+      hideArrow();
+    }
+
+    setNextEnabled(!!step.canNext());
+    clearInterval(window.__tutTimer);
+    window.__tutTimer = setInterval(() => {
+      if(!window.TigerTutorial.isRunning) return;
+      setNextEnabled(!!step.canNext());
+    }, 200);
   }
 
   function startTutorial(){
@@ -65,19 +195,18 @@
 
     T.isRunning = true;
     T.step = 0;
+    T.currentKey = "intro";
     T.mapClicked = false;
     T.lastLockedTigerId = null;
 
-    // Reset the game clean then force tutorial spawns
     try{ window.deploy?.(); }catch(e){}
     try{ window.enterTutorialMode?.(); }catch(e){}
 
-    // Make sure the game is NOT paused so buttons are not greyed out
-    // (we freeze simulation in game.js draw() instead)
-    try{
-      const S = getS();
-      if(S){ S.paused = false; S.pauseReason = null; }
-    }catch(e){}
+    const S = getS();
+    if(S){
+      S.paused = false;
+      S.pauseReason = null;
+    }
 
     open();
     render();
@@ -87,162 +216,43 @@
     const T = window.TigerTutorial;
     T.isRunning = false;
     T.step = 0;
+    T.currentKey = null;
     T.mapClicked = false;
     T.lastLockedTigerId = null;
 
+    try{ window.closeShop?.(); }catch(e){}
+    try{ window.closeInventory?.(); }catch(e){}
+    try{ window.endBattle?.(); }catch(e){}
     try{ window.exitTutorialMode?.(); }catch(e){}
+
     close();
-    safeToast("Tutorial complete ✅");
-  }
-
-  function stepData(){
-    // 11 steps (no sprint)
-    return [
-      {
-        title:"Tutorial",
-        text:"Welcome to Tiger Strike.\nThis tutorial will guide you through the basics.",
-        hint:"Tap Next to begin.",
-        arrow:null,
-        canNext: () => true
-      },
-      {
-        title:"Move",
-        text:"Step 1: Tap anywhere on the MAP to move.",
-        hint:"Tap the map once.",
-        arrow:"cv",
-        canNext: () => window.TigerTutorial.mapClicked === true
-      },
-      {
-        title:"Scan",
-        text:"Step 2: Press 🛰️ Scan to locate a tiger.",
-        hint:"Tap the Scan button.",
-        arrow:"scanBtn",
-        canNext: () => (getS()?.scanPing || 0) > 0
-      },
-      {
-        title:"Lock Target",
-        text:"Step 3: Tap the tiger on the map to LOCK it.",
-        hint:"You should see a blue circle around the tiger.",
-        arrow:"cv",
-        canNext: () => {
-          const S = getS();
-          return !!(S && S.lockedTigerId);
-        }
-      },
-      {
-        title:"Engage",
-        text:"Step 4: Move close to the tiger, then press 🎯 Engage.",
-        hint:"Engage activates when you’re close enough.",
-        arrow:"engageBtn",
-        canNext: () => {
-          const S = getS();
-          return !!(S && S.inBattle === true);
-        }
-      },
-      {
-        title:"Weapon Select",
-        text:"Step 5: You can switch weapons here anytime.",
-        hint:"Tap Next to continue.",
-        arrow:null,
-        canNext: () => true
-      },
-      {
-        title:"Attack",
-        text:"Step 6: Press Attack to damage the tiger.",
-        hint:"Attack at least once.",
-        arrow:"atkBtn",
-        canNext: () => {
-          const S = getS();
-          return (S?.stats?.shots || 0) >= 1;
-        }
-      },
-      {
-        title:"Capture / Kill",
-        text:"Step 7: When tiger HP is low (≤15), you can Capture or Kill.",
-        hint:"Tap Next (no need to finish the tiger in tutorial).",
-        arrow:null,
-        canNext: () => true
-      },
-      {
-        title:"Shop",
-        text:"Step 8: Open the 🛒 Shop to buy weapons, ammo, armor, medkits, traps.",
-        hint:"Tap Shop once.",
-        arrow:"shopBtn",
-        canNext: () => {
-          const el = byId("shopOverlay");
-          return el && el.style.display === "flex";
-        }
-      },
-      {
-        title:"Inventory",
-        text:"Step 9: Open 🎒 Inventory to equip weapons and use supplies.",
-        hint:"Tap Inventory once.",
-        arrow:"invBtn",
-        canNext: () => {
-          const el = byId("invOverlay");
-          return el && el.style.display === "flex";
-        }
-      },
-      {
-        title:"Done",
-        text:"Step 10: Tutorial is complete.\nYou will return to normal gameplay.",
-        hint:"Tap Finish.",
-        arrow:null,
-        finish:true,
-        canNext: () => true
-      }
-    ];
-  }
-
-  function render(){
-    const T = window.TigerTutorial;
-    const steps = stepData();
-    const s = steps[T.step];
-
-    titleEl.innerText = s.title;
-    stepEl.innerText  = `Step ${T.step+1} / ${steps.length}`;
-    textEl.innerText  = s.text;
-    hintEl.innerText  = s.hint || "";
-
-    // arrow targeting
-    if(s.arrow === "cv"){
-      const el = document.getElementById("cv");
-      showArrowAtEl(el);
-    } else if(typeof s.arrow === "string"){
-      showArrowAtEl(byId(s.arrow));
-    } else {
-      hideArrow();
-    }
-
-    // next button label
-    nextBtn.innerText = s.finish ? "Finish" : "Next";
-
-    // determine if next is allowed
-    setNextEnabled(!!s.canNext());
-
-    // keep re-checking while this step is active
-    clearInterval(window.__tutTimer);
-    window.__tutTimer = setInterval(() => {
-      if(!window.TigerTutorial.isRunning) return;
-      setNextEnabled(!!s.canNext());
-    }, 250);
+    try{ window.toast?.("Tutorial complete ✅"); }catch(e){}
   }
 
   nextBtn.addEventListener("click", () => {
     const T = window.TigerTutorial;
     if(!T.isRunning) return;
 
-    const steps = stepData();
-    const s = steps[T.step];
+    const steps = getStepList();
+    const step = steps[T.step];
+    if(!step.canNext()) return;
 
-    if(!s.canNext()) return;
-
-    if(s.finish){
+    if(step.finish){
       endTutorial();
       return;
     }
 
-    T.step++;
+    if(step.key === "attack"){
+      try{ window.endBattle?.(); }catch(e){}
+    }
+    if(step.key === "shop"){
+      try{ window.closeShop?.(); }catch(e){}
+    }
+    if(step.key === "inventory"){
+      try{ window.closeInventory?.(); }catch(e){}
+    }
+
+    T.step += 1;
     T.mapClicked = false;
     render();
   });
@@ -251,7 +261,5 @@
     endTutorial();
   });
 
-  // Expose startTutorial for index.html button
   window.startTutorial = startTutorial;
-
 })();
