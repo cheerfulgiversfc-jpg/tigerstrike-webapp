@@ -2611,26 +2611,7 @@ function renderHUD(){
       ? "Battle controls: Attack, Protect, Capture, or Kill. Capture requires the correct tranq weapon at 15 HP."
       : (window.matchMedia?.("(pointer:fine)")?.matches
           ? "Desktop: click to move or lock. WASD/arrow keys move. Q locks nearest tiger. Space scans. E engages. Shift sprints."
-          : "Tap the map to move. Tap a tiger to lock. Use the quick dock for Scan, Engage, Medkit, and Sprint.");
-
-  const mobileDockTxt = document.getElementById("mobileDockTxt");
-  if(mobileDockTxt){
-    let mobilePrompt = "Escort survivors to the evac zone and clear every tiger.";
-    if(S.mode==="Survival"){
-      mobilePrompt = "Keep moving, collect loot, and survive the pressure as long as possible.";
-    } else if(S.dangerCivId){
-      const civ = S.civilians.find(c=>c.id===S.dangerCivId);
-      mobilePrompt = civ ? `Civilian #${civ.id} is under attack. Move there now.` : mobilePrompt;
-    } else if(S.missionEnded){
-      mobilePrompt = "Mission complete. Open Shop or Inventory, then start the next mission.";
-    } else if(t && canEngage()){
-      mobilePrompt = `Tiger #${t.id} is in range. Tap Engage to enter battle.`;
-    } else if(t){
-      mobilePrompt = `Close the distance to Tiger #${t.id}. Scan refreshes your target lock.`;
-    }
-    if(!anyWeaponHasAmmo()) mobilePrompt = "You are out of ammo. Open Shop before the next fight.";
-    mobileDockTxt.innerText = mobilePrompt;
-  }
+          : "Tap the map to move. Tap a tiger to lock. Use the action buttons below the map when you need Scan, Engage, Medkit, or Sprint.");
 }
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
@@ -3012,11 +2993,6 @@ function drawEntities(){
   }
   for(const t of S.tigers){ if(t.alive) drawTiger(t); }
   drawSoldier();
-}
-
-// ===================== ENGAGE UI =====================
-function updateEngage(){
-  document.getElementById("engageBtn").disabled = !canEngage() || S.paused || S.missionEnded || S.gameOver;
 }
 
 // ===================== MISSION FLOW =====================

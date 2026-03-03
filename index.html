@@ -17,7 +17,7 @@
     }
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial;overflow-x:hidden}
-    .wrap{max-width:1020px;margin:0 auto;padding:12px 12px 86px}
+    .wrap{max-width:1020px;margin:0 auto;padding:12px 12px 86px;display:flex;flex-direction:column}
     .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
     .title{font-size:24px;font-weight:950}
     .sub{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
@@ -29,7 +29,7 @@
     .warn{border-color:#7c2d12;background:#2b140d}
     .danger{border-color:#7f1d1d;background:#2a0f13}
 
-    .hud{margin-top:10px;background:rgba(18,22,34,.85);border:1px solid rgba(42,49,69,.9);border-radius:14px;padding:10px;backdrop-filter:blur(10px);box-shadow:var(--shadow)}
+    .hud{order:2;margin-top:10px;background:rgba(18,22,34,.85);border:1px solid rgba(42,49,69,.9);border-radius:14px;padding:10px;backdrop-filter:blur(10px);box-shadow:var(--shadow)}
     .hudGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .hudBox{background:rgba(15,19,32,.7);border:1px solid rgba(35,42,62,.9);border-radius:14px;padding:10px}
     .hudTitle{font-weight:950}
@@ -40,7 +40,7 @@
     .fill.red{background:var(--bad)}
     .fill.orange{background:var(--warn)}
 
-    .screenCard{margin-top:12px;background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);position:relative}
+    .screenCard{order:3;margin-top:12px;background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);position:relative}
     canvas{display:block;width:100%;height:auto;touch-action:none}
     .actionStrip{border-top:1px solid var(--border);background:rgba(15,19,32,.85);padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
     .small{font-size:12px;color:var(--muted)}
@@ -76,52 +76,44 @@
     .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
-    .mobileDock{display:none}
-    .mobileDockText{font-size:12px;color:var(--muted);line-height:1.3}
-    .mobileDockGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
-    .dockBtn{width:100%;min-height:50px;padding:10px 8px}
-
     @media (max-width:760px){
-      .wrap{padding:10px 10px 200px}
-      .top{flex-direction:column}
+      .wrap{padding:8px 10px 96px}
+      .top{order:1;flex-direction:column;gap:8px}
       .title{font-size:22px}
-      .sub{font-size:11px}
+      .sub{display:none}
       .topActions{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
       .topActions button{padding:10px 6px;font-size:12px;line-height:1.1}
+      .screenCard{
+        order:2;
+        margin-top:8px;
+        margin-left:-10px;
+        margin-right:-10px;
+        width:calc(100% + 20px);
+        border-left:none;
+        border-right:none;
+        border-radius:0;
+      }
+      .hud{order:3;margin-top:10px}
       .hudGrid{grid-template-columns:1fr}
-      .screenCard{border-radius:14px}
-      .actionStrip{flex-direction:column;align-items:stretch}
-      .actionButtons{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-      .actionButtons button{width:100%;min-height:48px}
+      .actionStrip{flex-direction:column;align-items:stretch;padding:8px}
+      .actionButtons{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+      .actionButtons button{width:100%;min-height:46px;padding:8px 6px;font-size:11px;line-height:1.15}
+      #statusLine{font-size:11px}
       .tabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}
       .tab{flex:0 0 auto}
       .item{flex-direction:column;align-items:stretch}
       .weaponGrid{grid-template-columns:1fr}
       .modal{width:min(100vw - 12px, 980px);max-height:90vh}
       .modalBody{padding:12px}
-      .toast{bottom:168px}
+      .toast{bottom:96px}
       .nav{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
-      .mobileDock{
-        display:block;
-        position:fixed;
-        left:10px;
-        right:10px;
-        bottom:calc(76px + env(safe-area-inset-bottom));
-        z-index:110;
-        background:rgba(15,19,32,.94);
-        border:1px solid rgba(42,49,69,.92);
-        border-radius:16px;
-        padding:10px;
-        box-shadow:var(--shadow);
-        backdrop-filter:blur(12px);
-      }
     }
 
     @media (max-width:460px){
       .topActions{grid-template-columns:repeat(3,minmax(0,1fr))}
       .navInner{gap:6px}
       .navBtn{font-size:11px}
-      .mobileDockGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .screenCard{width:calc(100% + 16px);margin-left:-8px;margin-right:-8px}
     }
 
   /* Tutorial overlay (CLICK-THROUGH) */
@@ -170,6 +162,11 @@
 #tutorialHint{font-size:13px;color:rgba(245,247,255,.86);margin-top:10px}
 #tutorialBtns{display:flex;justify-content:flex-end;gap:10px;padding:12px;border-top:1px solid var(--border)}
 
+@media (max-width:760px){
+  #tutorialCard{top:12px;width:min(100vw - 12px,620px);max-height:30vh;border-radius:16px}
+  #tutorialBody{padding:12px}
+}
+
 /* Tutorial Arrow */
 #tutorialArrow{
   position:fixed;
@@ -212,6 +209,23 @@
     </div>
   </div>
 
+  <div class="screenCard">
+    <canvas id="cv" width="960" height="540"></canvas>
+    <div class="actionStrip">
+      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Loot spawns on map. Events happen in Story/Arcade.</div>
+      <div class="row actionButtons">
+        <button onclick="deploy()">📍 Deploy</button>
+        <button id="scanBtn" onclick="scan()">🛰️ Scan</button>
+        <button class="warn" id="engageBtn" data-engage-btn onclick="startCombat()" disabled>🎯 Engage</button>
+        <button class="ghost" onclick="useMedkit()">❤️ Medkit</button>
+        <button class="ghost" onclick="useRepairKit()">🧰 Repair</button>
+        <button class="ghost" onclick="placeTrap()">🪤 Trap</button>
+        <button class="ghost" onclick="callBackup()">🚨 Backup</button>
+        <button class="ghost" onclick="sprint()">⚡ Sprint</button>
+      </div>
+    </div>
+  </div>
+
   <div class="hud">
     <div class="hudGrid">
       <div class="hudBox">
@@ -237,33 +251,6 @@
         <div class="hudLine" id="dangerTxt"></div>
         <div class="hudLine" id="assistTxt"></div>
       </div>
-    </div>
-  </div>
-
-  <div class="screenCard">
-    <canvas id="cv" width="960" height="540"></canvas>
-    <div class="actionStrip">
-      <div class="small" id="statusLine">Tap to move. Tap tiger to LOCK. Loot spawns on map. Events happen in Story/Arcade.</div>
-      <div class="row actionButtons">
-        <button onclick="deploy()">📍 Deploy</button>
-        <button id="scanBtn" onclick="scan()">🛰️ Scan</button>
-        <button class="warn" id="engageBtn" data-engage-btn onclick="startCombat()" disabled>🎯 Engage</button>
-        <button class="ghost" onclick="useMedkit()">❤️ Medkit</button>
-        <button class="ghost" onclick="useRepairKit()">🧰 Repair</button>
-        <button class="ghost" onclick="placeTrap()">🪤 Place Trap</button>
-        <button class="ghost" onclick="callBackup()">🚨 Backup ($50,000)</button>
-        <button class="ghost" onclick="sprint()">⚡ Sprint</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="mobileDock">
-    <div class="mobileDockText" id="mobileDockTxt">Tap the map to move, scan to lock a tiger, then engage when you get close.</div>
-    <div class="mobileDockGrid">
-      <button class="dockBtn" onclick="scan()">🛰️ Scan</button>
-      <button class="dockBtn warn" data-engage-btn onclick="startCombat()" disabled>🎯 Engage</button>
-      <button class="dockBtn ghost" onclick="useMedkit()">❤️ Medkit</button>
-      <button class="dockBtn ghost" onclick="sprint()">⚡ Sprint</button>
     </div>
   </div>
 </div>
