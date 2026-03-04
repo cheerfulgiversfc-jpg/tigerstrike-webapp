@@ -1973,13 +1973,23 @@ cv.addEventListener("pointerdown",(e)=>{
   // Stop normal gameplay while tutorial controls flow
   if (window.TigerTutorial?.isRunning){
     ensureAudio();
-    if(tapped && tutorialAllows("lock")){
-      S.lockedTigerId=tapped.id;
-      window.TigerTutorial.lastLockedTigerId = tapped.id;
-      sfx("ui");
-      hapticImpact("light");
-      save();
-      return;
+    if(tapped){
+      if(tapped.id===S.lockedTigerId && tutorialAllows("engage")){
+        if(canEngage()){
+          startCombat();
+        }else{
+          toast("Move closer to the locked tiger, then tap it again.");
+        }
+        return;
+      }
+      if(tutorialAllows("lock")){
+        S.lockedTigerId=tapped.id;
+        window.TigerTutorial.lastLockedTigerId = tapped.id;
+        sfx("ui");
+        hapticImpact("light");
+        save();
+        return;
+      }
     }
 
     S.target={x,y};
@@ -1997,10 +2007,18 @@ cv.addEventListener("pointerdown",(e)=>{
   ensureAudio();
 
   if(tapped && !S.inBattle){
-    S.lockedTigerId=tapped.id;
-    sfx("ui");
-    hapticImpact("light");
-    save();
+    if(tapped.id===S.lockedTigerId){
+      if(canEngage()){
+        startCombat();
+      }else{
+        toast("Move closer to the locked tiger, then tap it again.");
+      }
+    }else{
+      S.lockedTigerId=tapped.id;
+      sfx("ui");
+      hapticImpact("light");
+      save();
+    }
     return;
   }
 
@@ -2480,9 +2498,13 @@ function nearestTiger(){
   }
   return best;
 }
-function currentTargetTiger(){
+function lockedTiger(){
   const locked=tigerById(S.lockedTigerId);
-  if(locked && locked.alive) return locked;
+  return locked && locked.alive ? locked : null;
+}
+function currentTargetTiger(){
+  const locked=lockedTiger();
+  if(locked) return locked;
   return nearestTiger();
 }
 function lockNearestTiger(opts={}){
@@ -2507,7 +2529,7 @@ function lockNearestTiger(opts={}){
   return t;
 }
 function canEngage(){
-  const t=currentTargetTiger();
+  const t=lockedTiger();
   if(!t) return null;
   return dist(S.me.x,S.me.y,t.x,t.y) < 90 ? t : null;
 }
@@ -3066,7 +3088,8 @@ function startCombat(){
   if(!tutorialAllows("engage")) return toast(tutorialBlockMessage("engage"));
   if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
   const t=canEngage();
-  if(!t) return toast("Move closer to a tiger to engage.");
+  if(!lockedTiger()) return toast("Lock a tiger first.");
+  if(!t) return toast("Move closer to the locked tiger and tap it again.");
   S.inBattle = true;
   S.activeTigerId = t.id;
   S.lockedTigerId = t.id;
@@ -3610,7 +3633,7 @@ function renderHUD(){
     } else if(!anyWeaponHasAmmo()){
       mobilePrompt = "Out of ammo. Open Shop before the next fight.";
     } else if(t && canEngage()){
-      mobilePrompt = `Tiger #${t.id} is in range. Tap Engage when ready.`;
+      mobilePrompt = `Tiger #${t.id} is in range. Tap that locked tiger again to engage.`;
     } else if(t){
       mobilePrompt = `Tiger #${t.id} locked. Close the distance and stay ready.`;
     } else if(window.TigerTutorial?.isRunning){
@@ -3625,8 +3648,8 @@ function renderHUD(){
     S.inBattle
       ? (S.battleMsg || `On-map combat active. Use Attack, Capture, Kill, and weapon swap while Tiger #${S.activeTigerId} stays locked.`)
       : (window.matchMedia?.("(pointer:fine)")?.matches
-          ? "Desktop: click to move or lock. WASD/arrow keys move. Q locks nearest tiger. Space scans. E engages. Shift sprints."
-          : "Agent and Mission stay above the map. Use the joystick on the map to move, then use the on-map buttons for deploy, scan, engage, gear, and combat.");
+          ? "Desktop: click a tiger once to lock it, then click that same tiger again when close to engage. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Shift sprints."
+          : "Agent and Mission stay above the map. Use the joystick to move, tap a tiger once to lock it, then tap that same locked tiger again to engage.");
   renderCombatControls();
 }
 

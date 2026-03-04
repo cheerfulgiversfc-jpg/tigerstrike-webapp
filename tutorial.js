@@ -22,7 +22,6 @@
     if(id === "shopBtn") return visibleEl("shopBtn") || visibleEl("navShopBtn");
     if(id === "invBtn") return visibleEl("invBtn") || visibleEl("navInvBtn");
     if(id === "scanBtn") return visibleEl("scanBtn") || visibleEl("touchScanBtn");
-    if(id === "engageBtn") return visibleEl("engageBtn") || visibleEl("touchEngageBtn");
     if(id === "atkBtn") return visibleEl("atkBtn") || visibleEl("touchAttackBtn") || visibleEl("combatAttackBtn");
     return visibleEl(id);
   }
@@ -77,9 +76,9 @@
       {
         key:"engage",
         title:"Engage",
-        text:"Step 5: Move close to the tiger, then tap Engage.",
-        hint:"Engage becomes available when you are close enough.",
-        arrow:"engageBtn",
+        text:"Step 5: Move close to the locked tiger, then tap that same tiger again to engage.",
+        hint:"The tiger with the blue ring is the only one you can engage right now.",
+        arrow:"tiger",
         canNext: () => {
           const S = getS();
           return !!(S && S.inBattle === true);

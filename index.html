@@ -109,6 +109,28 @@
     .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
+    .mobileMenuToggle{display:none}
+    #rotateLock{
+      display:none;
+      position:fixed;
+      inset:0;
+      z-index:500;
+      background:rgba(8,10,18,.96);
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      padding:24px;
+    }
+    #rotateLockCard{
+      max-width:320px;
+      padding:22px 18px;
+      border-radius:18px;
+      border:1px solid rgba(42,49,69,.95);
+      background:rgba(18,22,34,.96);
+      box-shadow:var(--shadow);
+    }
+    #rotateLockTitle{font-size:22px;font-weight:950}
+    #rotateLockText{margin-top:8px;font-size:14px;color:var(--muted);line-height:1.35}
     @media (max-width:760px){
       body{min-height:100dvh}
       .wrap{min-height:100dvh;padding:8px 10px 176px}
@@ -197,19 +219,19 @@
       .touchCluster{
         position:absolute;
         right:10px;
-        top:14px;
+        bottom:18px;
         display:grid;
-        grid-template-columns:repeat(2,46px);
-        gap:8px;
+        grid-template-columns:repeat(2,58px);
+        gap:10px;
         z-index:5;
         opacity:.74;
       }
-      #combatTouchCluster{display:none}
+      #combatTouchCluster{display:none;grid-template-columns:repeat(3,54px)}
       .touchBtn{
-        min-height:46px;
-        width:46px;
+        min-height:58px;
+        width:58px;
         padding:0;
-        border-radius:15px;
+        border-radius:18px;
         border:1px solid rgba(245,247,255,.10);
         background:rgba(8,12,22,.16);
         backdrop-filter:blur(4px);
@@ -226,8 +248,9 @@
         opacity:.98;
         background:rgba(18,24,38,.42);
       }
-      .touchBtnIcon{font-size:20px;line-height:1}
+      .touchBtnIcon{font-size:24px;line-height:1}
       .touchBtnLabel{display:none}
+      .touchBtnAux{display:none!important}
       .tabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}
       .tab{flex:0 0 auto}
       .item{flex-direction:column;align-items:stretch}
@@ -259,6 +282,28 @@
         font-size:11px;
         line-height:1.15;
       }
+      .mobileMenuToggle{
+        display:block;
+        position:fixed;
+        right:10px;
+        bottom:calc(86px + env(safe-area-inset-bottom));
+        z-index:108;
+        min-height:34px;
+        padding:6px 10px;
+        border-radius:999px;
+        border:1px solid rgba(42,49,69,.92);
+        background:rgba(10,14,24,.90);
+        box-shadow:var(--shadow);
+        font-size:11px;
+      }
+      body.mobileMenuHidden .nav{
+        transform:translateY(calc(100% + 12px));
+        opacity:0;
+        pointer-events:none;
+      }
+      body.mobileMenuHidden .mobileMenuToggle{
+        bottom:calc(10px + env(safe-area-inset-bottom));
+      }
     }
 
     @media (max-width:460px){
@@ -268,60 +313,12 @@
       .touchStickShell{left:10px;bottom:14px;width:124px;height:124px}
       .touchStick{left:34px;top:34px;width:56px;height:56px}
       .screenCard{width:calc(100% + 16px);margin-left:-8px;margin-right:-8px}
+      .touchCluster{grid-template-columns:repeat(2,54px)}
+      .touchBtn{width:54px;min-height:54px}
     }
 
     @media (max-width:960px) and (orientation:landscape) and (max-height:540px){
-      body{min-height:100dvh}
-      .wrap{padding:8px 10px 150px}
-      .top{gap:2px}
-      .sub{display:none}
-      .topActions{display:none}
-      .hud{margin-top:6px;padding:8px}
-      .hudGrid{grid-template-columns:1fr 1fr;gap:8px}
-      .hudBox{padding:8px}
-      .hudLine{font-size:11px}
-      .screenCard{
-        margin-top:6px;
-        margin-left:-10px;
-        margin-right:-10px;
-        width:calc(100% + 20px);
-        border-left:none;
-        border-right:none;
-        border-radius:0;
-      }
-      .mapStage{min-height:clamp(280px, 72dvh, 460px)}
-      .mapStage canvas{
-        position:absolute;
-        inset:0;
-        width:100%;
-        height:100%;
-      }
-      .actionStrip{display:none}
-      .touchOverlay{
-        display:block;
-        position:absolute;
-        inset:0;
-        z-index:4;
-        pointer-events:none;
-      }
-      .touchStickShell{left:12px;bottom:12px;width:110px;height:110px}
-      .touchStick{left:30px;top:30px;width:50px;height:50px}
-      .touchHint{left:16px;bottom:118px}
-      .touchCluster{right:10px;top:10px;grid-template-columns:repeat(4,42px);gap:6px}
-      .touchBtn{width:42px;min-height:42px}
-      .touchBtnIcon{font-size:18px}
-      .mobileUtilityBar{
-        display:grid;
-        left:10px;
-        right:10px;
-        bottom:calc(82px + env(safe-area-inset-bottom));
-        padding:6px;
-      }
-      .mobileUtilityBar button{min-height:38px;font-size:10px}
-      .nav{padding-top:8px;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
-      .navBtn{min-height:40px;font-size:11px}
-      .navBtn span{font-size:16px;line-height:16px}
-      #tutorialCard{max-height:min(58vh, 320px)}
+      #rotateLock{display:flex}
     }
 
   /* Tutorial overlay (CLICK-THROUGH) */
@@ -434,10 +431,6 @@
             <span class="touchBtnIcon">🛰️</span>
             <span class="touchBtnLabel">Scan</span>
           </button>
-          <button class="touchBtn warn" id="touchEngageBtn" data-engage-btn onclick="startCombat()" disabled>
-            <span class="touchBtnIcon">🎯</span>
-            <span class="touchBtnLabel">Engage</span>
-          </button>
           <button class="touchBtn" id="touchMedkitBtn" onclick="useMedkit()">
             <span class="touchBtnIcon">❤️</span>
             <span class="touchBtnLabel">Med</span>
@@ -500,11 +493,10 @@
       </div>
     </div>
     <div class="actionStrip">
-      <div class="small" id="statusLine">Use the top game bar to track health and the buttons below it to deploy, scan, engage, and use gear.</div>
+      <div class="small" id="statusLine">Use the top game bar to track health. Tap a tiger once to lock it, then tap that same locked tiger again to engage.</div>
       <div class="row actionButtons">
         <button onclick="deploy()">📍 Deploy</button>
         <button id="scanBtn" onclick="scan()">🛰️ Scan</button>
-        <button class="warn" id="engageBtn" data-engage-btn onclick="startCombat()" disabled>🎯 Engage</button>
         <button class="ghost" onclick="useMedkit()">❤️ Medkit</button>
         <button class="ghost" onclick="useRepairKit()">🧰 Repair</button>
         <button class="ghost" onclick="placeTrap()">🪤 Trap</button>
