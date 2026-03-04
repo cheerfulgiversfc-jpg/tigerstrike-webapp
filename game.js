@@ -2368,14 +2368,18 @@ function pollGamepadControls(){
   const pad = pads[0];
 
   if(!pad){
+    const wasConnected = GAMEPAD_STATE.connected;
+    const hadFocus = GAMEPAD_UI.index >= 0 || GAMEPAD_UI.buttons.length > 0;
     GAMEPAD_STATE.connected = false;
     GAMEPAD_STATE.id = "";
     GAMEPAD_STATE.lx = 0;
     GAMEPAD_STATE.ly = 0;
     GAMEPAD_STATE.activeAt = 0;
     GAMEPAD_STATE.buttons = Object.create(null);
-    clearGamepadFocus();
-    LAST_CONTROLLER_UI_KEY = "";
+    if(wasConnected || hadFocus){
+      clearGamepadFocus();
+      LAST_CONTROLLER_UI_KEY = "__controller-disconnected__";
+    }
     return { x:0, y:0 };
   }
 
@@ -2931,16 +2935,16 @@ function roamTigers(){
     const chase = Math.random() < chaseChance;
 
     // ability speed mods
-    let speedCap = ((def.spd*1.18) + hunter*1.5 + (t._packBuff?0.72:0));
+    let speedCap = ((def.spd*1.42) + hunter*1.85 + (t._packBuff?0.88:0));
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap *= 1.55;
     if(t.type==="Berserker" && t.rageOn) speedCap *= 1.20;
 
     if(chase){
-      t.vx += (targetX>t.x?0.085:-0.085);
-      t.vy += (targetY>t.y?0.085:-0.085);
+      t.vx += (targetX>t.x?0.11:-0.11);
+      t.vy += (targetY>t.y?0.11:-0.11);
     } else {
-      t.vx += (Math.random()-0.5)*0.08;
-      t.vy += (Math.random()-0.5)*0.08;
+      t.vx += (Math.random()-0.5)*0.10;
+      t.vy += (Math.random()-0.5)*0.10;
     }
 
     if(t.packId){
@@ -2959,8 +2963,8 @@ function roamTigers(){
 
     const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18);
     if(!moved){ t.vx *= -0.8; t.vy *= -0.8; }
-    t.vx *= chase ? 0.93 : 0.87;
-    t.vy *= chase ? 0.93 : 0.87;
+    t.vx *= chase ? 0.95 : 0.90;
+    t.vy *= chase ? 0.95 : 0.90;
 
     if(t.x<40||t.x>cv.width-40) t.vx*=-1;
     if(t.y<60||t.y>cv.height-40) t.vy*=-1;
@@ -3109,7 +3113,7 @@ function renderCombatControls(){
 
   const t = activeTiger();
   const canCap = canAttemptCapture(t);
-  const canAtk = anyWeaponHasAmmo();
+  const canAtk = anyLethalWeaponHasAmmo();
 
   [["touchAttackBtn", !canAtk], ["combatAttackBtn", !canAtk]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
@@ -3324,6 +3328,24 @@ function anyWeaponHasAmmo(){
   }
   return false;
 }
+function anyLethalWeaponHasAmmo(){
+  for(const id of S.ownedWeapons){
+    const w=getWeapon(id);
+    if(!w || w.type!=="lethal") continue;
+    if(hasAmmoForWeaponId(id)) return true;
+  }
+  return false;
+}
+function preferredAttackWeaponId(){
+  const current = equippedWeapon();
+  if(current?.type==="lethal" && hasAmmoForWeaponId(current.id)) return current.id;
+  for(const id of S.ownedWeapons){
+    const w=getWeapon(id);
+    if(!w || w.type!=="lethal") continue;
+    if(hasAmmoForWeaponId(id)) return id;
+  }
+  return null;
+}
 function equippedWeaponHasAmmoNow(){
   const w=equippedWeapon();
   if(S.mag.loaded>0) return true;
@@ -3332,7 +3354,7 @@ function equippedWeaponHasAmmoNow(){
 }
 function updateAttackButton(){
   const btn = document.getElementById("atkBtn");
-  if(btn) btn.disabled = !anyWeaponHasAmmo();
+  if(btn) btn.disabled = !anyLethalWeaponHasAmmo();
   renderCombatControls();
 }
 
@@ -3433,10 +3455,15 @@ function playerAction(action){
 
   if(action==="ATTACK"){
     updateAttackButton();
-    if(!anyWeaponHasAmmo()){
-      toast("No ammo for any weapon. Buy ammo in Shop.");
+    const attackWeaponId = preferredAttackWeaponId();
+    if(!attackWeaponId){
+      toast("No lethal ammo. Buy ammo in Shop or use Capture when the tiger is weak enough.");
       sfx("jam");
       return;
+    }
+    if(S.equippedWeaponId !== attackWeaponId){
+      equipWeapon(attackWeaponId);
+      S.mag.loaded = 0;
     }
 
     const w=equippedWeapon();
