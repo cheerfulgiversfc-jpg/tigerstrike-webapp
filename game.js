@@ -2007,17 +2007,18 @@ cv.addEventListener("pointerdown",(e)=>{
   ensureAudio();
 
   if(tapped && !S.inBattle){
-    if(tapped.id===S.lockedTigerId){
-      if(canEngage()){
-        startCombat();
-      }else{
-        toast("Move closer to the locked tiger, then tap it again.");
-      }
+    const wasLocked = tapped.id===S.lockedTigerId;
+    S.lockedTigerId=tapped.id;
+    if(canEngage()){
+      startCombat();
     }else{
-      S.lockedTigerId=tapped.id;
-      sfx("ui");
-      hapticImpact("light");
-      save();
+      if(!wasLocked){
+        sfx("ui");
+        hapticImpact("light");
+        save();
+      }else{
+        toast("Tiger locked. Move closer to start the fight.");
+      }
     }
     return;
   }
@@ -3633,9 +3634,9 @@ function renderHUD(){
     } else if(!anyWeaponHasAmmo()){
       mobilePrompt = "Out of ammo. Open Shop before the next fight.";
     } else if(t && canEngage()){
-      mobilePrompt = `Tiger #${t.id} is in range. Tap that locked tiger again to engage.`;
+      mobilePrompt = `Tiger #${t.id} is in range. Tap it to fight.`;
     } else if(t){
-      mobilePrompt = `Tiger #${t.id} locked. Close the distance and stay ready.`;
+      mobilePrompt = `Tiger #${t.id} locked. Move closer and tap it to fight.`;
     } else if(window.TigerTutorial?.isRunning){
       mobilePrompt = assistParts[0] || "Follow the tutorial prompt and stay on the map.";
     } else if(S.missionEnded){
@@ -3648,8 +3649,8 @@ function renderHUD(){
     S.inBattle
       ? (S.battleMsg || `On-map combat active. Use Attack, Capture, Kill, and weapon swap while Tiger #${S.activeTigerId} stays locked.`)
       : (window.matchMedia?.("(pointer:fine)")?.matches
-          ? "Desktop: click a tiger once to lock it, then click that same tiger again when close to engage. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Shift sprints."
-          : "Agent and Mission stay above the map. Use the joystick to move, tap a tiger once to lock it, then tap that same locked tiger again to engage.");
+          ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Shift sprints."
+          : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear.");
   renderCombatControls();
 }
 
