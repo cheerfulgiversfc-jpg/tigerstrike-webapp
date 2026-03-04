@@ -148,6 +148,34 @@ const TIGER_TYPES = [
   { key:"Stalker",   hpMul:0.95, spd:3.1, civBias:0.55, stealth:0.55, rage:0.00 },
 ];
 
+const TIGER_LOCOMOTION = {
+  Scout: {
+    walk:3.8, chase:5.2, sprint:6.8, minChase:4.7,
+    detect:460, chaseAccel:0.25, wanderAccel:0.13,
+    burstMs:[650,1100], pounceForce:1.75, pounceCd:[1200,2000], pounceChance:0.075
+  },
+  Standard: {
+    walk:3.3, chase:4.7, sprint:6.1, minChase:4.3,
+    detect:420, chaseAccel:0.22, wanderAccel:0.11,
+    burstMs:[620,980], pounceForce:1.55, pounceCd:[1400,2400], pounceChance:0.065
+  },
+  Alpha: {
+    walk:3.4, chase:4.9, sprint:6.3, minChase:4.4,
+    detect:470, chaseAccel:0.23, wanderAccel:0.10,
+    burstMs:[680,1080], pounceForce:1.65, pounceCd:[1400,2400], pounceChance:0.07
+  },
+  Berserker: {
+    walk:3.5, chase:5.0, sprint:6.7, minChase:4.5,
+    detect:430, chaseAccel:0.25, wanderAccel:0.11,
+    burstMs:[700,1200], pounceForce:1.8, pounceCd:[1200,2100], pounceChance:0.085
+  },
+  Stalker: {
+    walk:3.6, chase:5.1, sprint:6.5, minChase:4.6,
+    detect:500, chaseAccel:0.24, wanderAccel:0.12,
+    burstMs:[640,1020], pounceForce:1.7, pounceCd:[1300,2200], pounceChance:0.075
+  }
+};
+
 const MODE_MAPS = {
   Story: [
     { key:"ST_FOREST", name:"Forest Edge" },
@@ -1824,9 +1852,15 @@ function spawnTigers(){
       step:0,
       holdUntil:0,
       dashUntil:0,
+      nextDashAt:0,
       fadeUntil:0,
+      nextFadeAt:0,
       roarUntil:0,
-      rageOn:false
+      nextRoarAt:0,
+      rageOn:false,
+      burstUntil:0,
+      nextPounceAt:0,
+      wanderAngle:Math.random()*(Math.PI*2)
     }];
 
     return;
@@ -1914,9 +1948,15 @@ function spawnTigers(){
       step:rand(0,1000),
       holdUntil:0,
       dashUntil:0,
+      nextDashAt:0,
       fadeUntil:0,
+      nextFadeAt:0,
       roarUntil:0,
-      rageOn:false
+      nextRoarAt:0,
+      rageOn:false,
+      burstUntil:0,
+      nextPounceAt:0,
+      wanderAngle:Math.random()*(Math.PI*2)
     });
   }
 }
@@ -2874,6 +2914,33 @@ function tickCiviliansAndThreats(){
 }
 
 // ===================== TIGER ABILITIES (Phase 1) =====================
+function tigerMotionProfile(t, def, now=Date.now()){
+  const base = TIGER_LOCOMOTION[t.type] || TIGER_LOCOMOTION.Standard;
+  const hunter = t.aggroBoost || 0;
+  const pack = t._packBuff || 0;
+  const rage = (t.type==="Berserker" && t.rageOn) ? 1 : 0;
+  const fading = (t.type==="Stalker" && now < (t.fadeUntil||0)) ? 1 : 0;
+  const scoutDash = (t.type==="Scout" && now < (t.dashUntil||0)) ? 1 : 0;
+
+  const walk = base.walk + (def.spd * 0.15) + (hunter * 0.30) + (pack * 0.25);
+  const chase = base.chase + (def.spd * 0.20) + (hunter * 0.85) + (pack * 0.55) + (rage * 0.35) + (fading * 0.22);
+  const sprint = base.sprint + (def.spd * 0.24) + (hunter * 1.05) + (pack * 0.85) + (rage * 0.55) + (scoutDash * 0.35);
+
+  return {
+    walk,
+    chase,
+    sprint,
+    minChase: base.minChase + (hunter * 0.55) + (pack * 0.30) + (rage * 0.35) + (fading * 0.20),
+    detect: base.detect + (hunter * 80) + (pack * 45) + (fading * 60),
+    chaseAccel: base.chaseAccel + (hunter * 0.04) + (pack * 0.02) + (rage * 0.03),
+    wanderAccel: base.wanderAccel,
+    burstMs: base.burstMs,
+    pounceForce: base.pounceForce + (hunter * 0.35) + (pack * 0.18) + (rage * 0.25),
+    pounceCd: base.pounceCd,
+    pounceChance: clamp(base.pounceChance + (hunter * 0.03) + (pack * 0.02) + (rage * 0.02), 0, 0.22)
+  };
+}
+
 function abilityTick(t){
   const now = Date.now();
   if(!t.alive) return;
@@ -2884,25 +2951,31 @@ function abilityTick(t){
   } else t.rageOn = false;
 
   // Scout Dash (short burst)
-  if(t.type==="Scout" && now > (t.dashUntil||0)){
-    if(Math.random() < 0.007){ // occasional
-      t.dashUntil = now + 900;
-      setEventText("🐅 Scout Dash!", 2);
+  if(t.type==="Scout"){
+    if(!t.nextDashAt) t.nextDashAt = now + rand(650, 1300);
+    if(now >= t.nextDashAt){
+      t.dashUntil = now + rand(760, 1120);
+      t.nextDashAt = t.dashUntil + rand(900, 1650);
+      if(Math.random() < 0.20) setEventText("🐅 Scout Dash!", 2);
     }
   }
 
   // Stalker Fade
-  if(t.type==="Stalker" && now > (t.fadeUntil||0)){
-    if(Math.random() < 0.004){
-      t.fadeUntil = now + rand(1600, 2400);
-      setEventText("🐅 Stalker vanished…", 2);
+  if(t.type==="Stalker"){
+    if(!t.nextFadeAt) t.nextFadeAt = now + rand(1600, 2800);
+    if(now >= t.nextFadeAt){
+      t.fadeUntil = now + rand(1400, 2200);
+      t.nextFadeAt = t.fadeUntil + rand(1700, 3100);
+      if(Math.random() < 0.20) setEventText("🐅 Stalker vanished…", 2);
     }
   }
 
   // Alpha Roar Buff
-  if(t.type==="Alpha" && now > (t.roarUntil||0)){
-    if(Math.random() < 0.004){
+  if(t.type==="Alpha"){
+    if(!t.nextRoarAt) t.nextRoarAt = now + rand(1800, 3200);
+    if(now >= t.nextRoarAt){
       t.roarUntil = now + rand(1800, 2600);
+      t.nextRoarAt = t.roarUntil + rand(1900, 3200);
       setEventText("🦁 Alpha ROAR! Pack buffed.", 3);
       sfx("event"); hapticImpact("heavy");
     }
@@ -2943,37 +3016,71 @@ function roamTigers(){
       continue;
     }
 
-    const civs = (S.mode!=="Survival") ? S.civilians.filter(c=>c.alive && !c.evac) : [];
-    let targetX=S.me.x, targetY=S.me.y;
-
-    const extraCivBias = (carcassDifficulty()-1)*0.15;
-    const bias = clamp(t.civBias + extraCivBias, 0, 0.98);
-
-    if(civs.length && Math.random() < bias){
-      let best=civs[0], bd=1e9;
-      for(const c of civs){
-        const d=dist(t.x,t.y,c.x,c.y);
-        if(d<bd){bd=d; best=c;}
-      }
-      targetX=best.x; targetY=best.y;
-    }
+    if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * (Math.PI * 2);
+    if(!Number.isFinite(t.burstUntil)) t.burstUntil = 0;
+    if(!Number.isFinite(t.nextPounceAt) || t.nextPounceAt<=0) t.nextPounceAt = now + rand(900, 1500);
 
     const def=TIGER_TYPES.find(x=>x.key===t.type) || TIGER_TYPES[1];
-    const hunter=(t.aggroBoost||0);
-    const chaseChance = clamp((S.aggro/100)*0.25 + hunter*0.55 + 0.10, 0, 0.95);
-    const chase = Math.random() < chaseChance;
+    const motion = tigerMotionProfile(t, def, now);
+    const civs = (S.mode!=="Survival") ? S.civilians.filter(c=>c.alive && !c.evac) : [];
+    let targetX=S.me.x, targetY=S.me.y, targetDist=dist(t.x,t.y,S.me.x,S.me.y);
 
-    // ability speed mods
-    let speedCap = ((def.spd*1.7) + hunter*2.2 + (t._packBuff?1.0:0));
-    if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap *= 1.55;
-    if(t.type==="Berserker" && t.rageOn) speedCap *= 1.20;
+    let closestCiv=null, closestCivDist=1e9;
+    for(const c of civs){
+      const d=dist(t.x,t.y,c.x,c.y);
+      if(d<closestCivDist){ closestCivDist=d; closestCiv=c; }
+    }
 
-    if(chase){
-      t.vx += (targetX>t.x?0.14:-0.14);
-      t.vy += (targetY>t.y?0.14:-0.14);
+    const extraCivBias = (carcassDifficulty()-1)*0.15;
+    const bias = clamp(t.civBias + extraCivBias + (targetDist > 180 ? 0.08 : 0), 0, 0.99);
+    if(closestCiv && (Math.random() < bias || targetDist > motion.detect + 40)){
+      targetX = closestCiv.x;
+      targetY = closestCiv.y;
+      targetDist = closestCivDist;
+    }
+
+    if(S.lockedTigerId===t.id){
+      targetX=S.me.x;
+      targetY=S.me.y;
+      targetDist=dist(t.x,t.y,S.me.x,S.me.y);
+    }
+
+    let chase = targetDist < motion.detect || (t.aggroBoost||0) > 0.35;
+    if(t.type==="Stalker" && now < (t.fadeUntil||0) && targetDist < motion.detect + 120){
+      chase = true;
+    }
+
+    const tx = targetX - t.x;
+    const ty = targetY - t.y;
+    const td = Math.hypot(tx, ty) || 1;
+    const ux = tx / td;
+    const uy = ty / td;
+
+    if(chase && td > 22){
+      if(now >= (t.nextPounceAt||0) && td > 92 && td < 330 && Math.random() < motion.pounceChance){
+        t.vx += ux * motion.pounceForce;
+        t.vy += uy * motion.pounceForce;
+        t.burstUntil = now + rand(motion.burstMs[0], motion.burstMs[1]);
+        t.nextPounceAt = now + rand(motion.pounceCd[0], motion.pounceCd[1]);
+      }
+
+      const accel = motion.chaseAccel + (now < (t.burstUntil||0) ? 0.04 : 0);
+      t.vx += ux * accel;
+      t.vy += uy * accel;
+
+      const vel = Math.hypot(t.vx, t.vy);
+      if(vel < motion.minChase){
+        const push = (motion.minChase - vel) * 0.18;
+        t.vx += ux * push;
+        t.vy += uy * push;
+      }
     } else {
-      t.vx += (Math.random()-0.5)*0.12;
-      t.vy += (Math.random()-0.5)*0.12;
+      t.wanderAngle += (Math.random()-0.5) * 0.28;
+      const wx = Math.cos(t.wanderAngle);
+      const wy = Math.sin(t.wanderAngle);
+      const jitter = 0.35 + Math.random()*0.65;
+      t.vx += wx * motion.wanderAccel * jitter;
+      t.vy += wy * motion.wanderAccel * jitter;
     }
 
     if(t.packId){
@@ -2981,26 +3088,37 @@ function roamTigers(){
       if(mates.length){
         const packX = mates.reduce((sum, x) => sum + x.x, 0) / mates.length;
         const packY = mates.reduce((sum, x) => sum + x.y, 0) / mates.length;
-        const pull = dist(t.x, t.y, packX, packY) > 55 ? 0.035 : 0.012;
+        const pull = dist(t.x, t.y, packX, packY) > 58 ? 0.055 : 0.018;
         t.vx += (packX > t.x ? pull : -pull);
         t.vy += (packY > t.y ? pull : -pull);
       }
     }
 
+    let speedCap = chase ? motion.chase : motion.walk;
+    if(now < (t.burstUntil||0)) speedCap = Math.max(speedCap, motion.sprint);
+    if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap = Math.max(speedCap, motion.sprint + 0.35);
+    if(t.type==="Berserker" && t.rageOn) speedCap = Math.max(speedCap, motion.sprint * 1.06);
+
     t.vx = clamp(t.vx, -speedCap, speedCap);
     t.vy = clamp(t.vy, -speedCap, speedCap);
 
     const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18);
-    if(!moved){ t.vx *= -0.8; t.vy *= -0.8; }
-    t.vx *= chase ? 0.965 : 0.92;
-    t.vy *= chase ? 0.965 : 0.92;
+    if(!moved){
+      t.vx *= -0.72;
+      t.vy *= -0.72;
+      t.wanderAngle += Math.PI * 0.58;
+      t.burstUntil = 0;
+    }
+    t.vx *= chase ? 0.978 : 0.94;
+    t.vy *= chase ? 0.978 : 0.94;
 
     if(t.x<40||t.x>cv.width-40) t.vx*=-1;
     if(t.y<60||t.y>cv.height-40) t.vy*=-1;
     t.x=clamp(t.x,40,cv.width-40);
     t.y=clamp(t.y,60,cv.height-40);
-    const gait = Math.min(1.8, Math.hypot(t.vx, t.vy));
-    t.step = (t.step + 0.04 + gait * 0.18) % (Math.PI*2);
+    const gait = Math.hypot(t.vx, t.vy);
+    const runMul = now < (t.burstUntil||0) ? 1.35 : 1;
+    t.step = (t.step + 0.08 + gait * 0.26 * runMul) % (Math.PI*2);
   }
 }
 
@@ -4316,8 +4434,9 @@ function drawTiger(t){
   }
 
   const c=tigerColors(t.type);
-  const gait = Math.min(1.2, Math.hypot(t.vx||0, t.vy||0));
-  const bob = Math.sin((t.step||0)*2)*0.35*gait;
+  const gait = Math.min(2.6, Math.hypot(t.vx||0, t.vy||0));
+  const sprinting = (Date.now() < (t.burstUntil||0)) || (t.type==="Scout" && Date.now() < (t.dashUntil||0));
+  const bob = Math.sin((t.step||0)*2.3)*0.38*Math.max(0.7, gait*0.92);
   const x=t.x, y=t.y + bob;
   let s=1.0;
   if(t.type==="Scout") s=0.85;
@@ -4345,7 +4464,7 @@ function drawTiger(t){
   ctx.beginPath(); ctx.ellipse(x+26*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(x+16*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
 
-  const legSwing = Math.sin(t.step||0) * 5 * s * gait;
+  const legSwing = Math.sin((t.step||0)*1.9) * (2.8 + gait*3.9) * s * (sprinting ? 1.18 : 1);
   ctx.strokeStyle=c.body;
   ctx.lineWidth=3*s;
   [[-10,-legSwing],[-2,legSwing],[8,legSwing],[16,-legSwing]].forEach(([offset, swing])=>{
@@ -4491,6 +4610,15 @@ function init(){
   S.mag.loaded = clamp(S.mag.loaded,0,S.mag.cap);
 
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
+
+  for(const t of (S.tigers || [])){
+    if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * (Math.PI * 2);
+    if(!Number.isFinite(t.burstUntil)) t.burstUntil = 0;
+    if(!Number.isFinite(t.nextPounceAt)) t.nextPounceAt = 0;
+    if(!Number.isFinite(t.nextDashAt)) t.nextDashAt = 0;
+    if(!Number.isFinite(t.nextFadeAt)) t.nextFadeAt = 0;
+    if(!Number.isFinite(t.nextRoarAt)) t.nextRoarAt = 0;
+  }
 
   if(!S.tigers || !S.tigers.length) spawnTigers();
   if(!S.civilians) spawnCivilians();
