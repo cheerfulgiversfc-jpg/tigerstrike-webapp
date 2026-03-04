@@ -212,8 +212,6 @@
     T.currentKey = "intro";
     T.mapClicked = false;
     T.lastLockedTigerId = null;
-
-    try{ window.deploy?.(); }catch(e){}
     try{ window.enterTutorialMode?.(); }catch(e){}
 
     const S = getS();

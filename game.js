@@ -1469,6 +1469,9 @@ function cycleWeapon(dir=1){
 window.__TUTORIAL_MODE__ = false;
 
 window.enterTutorialMode = function () {
+  if(!S._tutorialSnapshot){
+    S._tutorialSnapshot = structuredClone(S);
+  }
   window.__TUTORIAL_MODE__ = true;
   S._tutorialPrev = {
     mode:S.mode,
@@ -1494,6 +1497,22 @@ window.enterTutorialMode = function () {
   S.activeTigerId = null;
   S.me = { x:230, y:330, face:0, step:0 };
   S.evacZone = { x:160, y:140, r:70 };
+  S.stats.shots = 0;
+  S.stats.captures = 0;
+  S.stats.kills = 0;
+  S.stats.evac = 0;
+
+  // Tutorial loadout guarantees Attack and Capture steps can proceed.
+  if(!S.ownedWeapons.includes("W_9MM_JUNK")) S.ownedWeapons.push("W_9MM_JUNK");
+  if(!S.ownedWeapons.includes("W_TRQ_PISTOL_MK1")) S.ownedWeapons.push("W_TRQ_PISTOL_MK1");
+  S.ammoReserve["9MM_STD"] = Math.max(S.ammoReserve["9MM_STD"]||0, 24);
+  S.ammoReserve["TRANQ_DARTS"] = Math.max(S.ammoReserve["TRANQ_DARTS"]||0, 12);
+  S.equippedWeaponId = "W_9MM_JUNK";
+  const tutorialWeapon = getWeapon(S.equippedWeaponId);
+  if(tutorialWeapon){
+    S.mag.cap = tutorialWeapon.mag;
+    S.mag.loaded = tutorialWeapon.mag;
+  }
 
   // reset battlefield
   S.tigers = [];
@@ -1514,6 +1533,8 @@ window.enterTutorialMode = function () {
 
 window.exitTutorialMode = function () {
   window.__TUTORIAL_MODE__ = false;
+  const snapshot = S._tutorialSnapshot || null;
+  delete S._tutorialSnapshot;
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
@@ -1521,6 +1542,14 @@ window.exitTutorialMode = function () {
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
+
+  if(snapshot){
+    S = snapshot;
+    syncWindowState();
+    resizeCanvasForViewport();
+    maybeRenderHUD(true);
+    return;
+  }
 
   if(prev){
     S.mode = prev.mode;
@@ -2935,16 +2964,16 @@ function roamTigers(){
     const chase = Math.random() < chaseChance;
 
     // ability speed mods
-    let speedCap = ((def.spd*1.42) + hunter*1.85 + (t._packBuff?0.88:0));
+    let speedCap = ((def.spd*1.7) + hunter*2.2 + (t._packBuff?1.0:0));
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap *= 1.55;
     if(t.type==="Berserker" && t.rageOn) speedCap *= 1.20;
 
     if(chase){
-      t.vx += (targetX>t.x?0.11:-0.11);
-      t.vy += (targetY>t.y?0.11:-0.11);
+      t.vx += (targetX>t.x?0.14:-0.14);
+      t.vy += (targetY>t.y?0.14:-0.14);
     } else {
-      t.vx += (Math.random()-0.5)*0.10;
-      t.vy += (Math.random()-0.5)*0.10;
+      t.vx += (Math.random()-0.5)*0.12;
+      t.vy += (Math.random()-0.5)*0.12;
     }
 
     if(t.packId){
@@ -2963,8 +2992,8 @@ function roamTigers(){
 
     const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18);
     if(!moved){ t.vx *= -0.8; t.vy *= -0.8; }
-    t.vx *= chase ? 0.95 : 0.90;
-    t.vy *= chase ? 0.95 : 0.90;
+    t.vx *= chase ? 0.965 : 0.92;
+    t.vy *= chase ? 0.965 : 0.92;
 
     if(t.x<40||t.x>cv.width-40) t.vx*=-1;
     if(t.y<60||t.y>cv.height-40) t.vy*=-1;
@@ -3208,6 +3237,7 @@ function clearAttackHold(){
 
 function onAttackPressStart(e){
   if(e.pointerType==="mouse" && e.button!==0) return;
+  if(window.TigerTutorial?.isRunning) return;
   ATTACK_HOLD.longPress = false;
   clearAttackHold();
   ATTACK_HOLD.timer = setTimeout(()=>{
@@ -3961,13 +3991,54 @@ function drawMapScene(){
   }
 
   if(S.mode!=="Survival"){
-    ctx.globalAlpha=0.9;
-    ctx.strokeStyle="rgba(74,222,128,.55)";
-    ctx.lineWidth=3;
-    ctx.beginPath(); ctx.arc(S.evacZone.x,S.evacZone.y,S.evacZone.r,0,Math.PI*2); ctx.stroke();
-    ctx.fillStyle="rgba(74,222,128,.10)";
-    ctx.beginPath(); ctx.arc(S.evacZone.x,S.evacZone.y,S.evacZone.r,0,Math.PI*2); ctx.fill();
-    ctx.globalAlpha=1;
+    const pulse = 0.86 + Math.sin(Date.now() / 240) * 0.08;
+    const ex = S.evacZone.x;
+    const ey = S.evacZone.y;
+    const er = S.evacZone.r;
+
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "rgba(16,56,34,.28)";
+    ctx.beginPath(); ctx.arc(ex,ey,er,0,Math.PI*2); ctx.fill();
+
+    // striped safe-zone floor
+    ctx.beginPath(); ctx.arc(ex,ey,er-2,0,Math.PI*2); ctx.clip();
+    ctx.strokeStyle = "rgba(74,222,128,.28)";
+    ctx.lineWidth = 4;
+    for(let i=-er*2; i<er*2; i+=12){
+      ctx.beginPath();
+      ctx.moveTo(ex - er + i, ey - er);
+      ctx.lineTo(ex + er + i, ey + er);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = "rgba(74,222,128,.95)";
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(ex,ey,er,0,Math.PI*2); ctx.stroke();
+
+    ctx.strokeStyle = "rgba(167,243,208,.85)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8,6]);
+    ctx.beginPath(); ctx.arc(ex,ey,er-9,0,Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // center safe marker
+    ctx.fillStyle = "rgba(74,222,128,.9)";
+    rounded(ex-14, ey-14, 28, 28, 8, "rgba(74,222,128,.24)", "rgba(74,222,128,.95)");
+    ctx.fillStyle = "rgba(220,255,235,.95)";
+    ctx.fillRect(ex-2, ey-9, 4, 18);
+    ctx.fillRect(ex-9, ey-2, 18, 4);
+
+    // label
+    rounded(ex-56, ey-er-30, 112, 24, 12, "rgba(16,56,34,.92)", "rgba(74,222,128,.95)");
+    ctx.fillStyle = "rgba(220,255,235,.98)";
+    ctx.font = "900 11px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("SAFE ZONE", ex, ey-er-14);
+    ctx.textAlign = "start";
+    ctx.globalAlpha = 1;
   }
 
   for(const tr of S.trapsPlaced){
