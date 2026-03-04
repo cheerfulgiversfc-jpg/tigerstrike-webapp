@@ -1964,7 +1964,7 @@ cv.addEventListener("pointerdown",(e)=>{
 
 const touchStickShellEl = document.getElementById("touchStickShell");
 const touchStickEl = document.getElementById("touchStick");
-const TOUCH_STICK = { active:false, pointerId:null, dx:0, dy:0, max:34 };
+const TOUCH_STICK = { active:false, pointerId:null, touchId:null, dx:0, dy:0, max:34 };
 
 function renderTouchStick(){
   if(!touchStickEl) return;
@@ -1974,6 +1974,7 @@ function renderTouchStick(){
 function resetTouchStick(){
   TOUCH_STICK.active = false;
   TOUCH_STICK.pointerId = null;
+  TOUCH_STICK.touchId = null;
   TOUCH_STICK.dx = 0;
   TOUCH_STICK.dy = 0;
   renderTouchStick();
@@ -2011,11 +2012,47 @@ function touchEndListener(e){
   resetTouchStick();
 }
 
+function findTrackedTouch(touchList){
+  if(TOUCH_STICK.touchId == null || !touchList) return null;
+  for(const touch of touchList){
+    if(touch.identifier === TOUCH_STICK.touchId) return touch;
+  }
+  return null;
+}
+
+function touchStartFallback(e){
+  const touch = e.changedTouches?.[0];
+  if(!touch) return;
+  stopTouchOverlayEvent(e);
+  TOUCH_STICK.active = true;
+  TOUCH_STICK.pointerId = null;
+  TOUCH_STICK.touchId = touch.identifier;
+  S.target = null;
+  if(window.TigerTutorial?.isRunning) window.TigerTutorial.mapClicked = true;
+  updateTouchStick(touch.clientX, touch.clientY);
+}
+
+function touchMoveFallback(e){
+  const touch = findTrackedTouch(e.touches) || findTrackedTouch(e.changedTouches);
+  if(!touch) return;
+  stopTouchOverlayEvent(e);
+  updateTouchStick(touch.clientX, touch.clientY);
+}
+
+function touchEndFallback(e){
+  const touch = findTrackedTouch(e.changedTouches);
+  if(!touch) return;
+  stopTouchOverlayEvent(e);
+  resetTouchStick();
+}
+
 function setupTouchControls(){
   document.querySelectorAll(".touchBtn").forEach((el)=>{
     el.addEventListener("pointerdown", (e)=>e.stopPropagation());
     el.addEventListener("pointerup", (e)=>e.stopPropagation());
     el.addEventListener("click", (e)=>e.stopPropagation());
+    el.addEventListener("touchstart", (e)=>e.stopPropagation(), { passive:true });
+    el.addEventListener("touchend", (e)=>e.stopPropagation(), { passive:true });
   });
 
   if(!touchStickShellEl) return;
@@ -2031,9 +2068,13 @@ function setupTouchControls(){
   };
 
   touchStickShellEl.addEventListener("pointerdown", begin);
+  touchStickShellEl.addEventListener("touchstart", touchStartFallback, { passive:false });
   document.addEventListener("pointermove", touchMoveListener, { passive:false });
   document.addEventListener("pointerup", touchEndListener, { passive:false });
   document.addEventListener("pointercancel", touchEndListener, { passive:false });
+  document.addEventListener("touchmove", touchMoveFallback, { passive:false });
+  document.addEventListener("touchend", touchEndFallback, { passive:false });
+  document.addEventListener("touchcancel", touchEndFallback, { passive:false });
   renderTouchStick();
 }
 
