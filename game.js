@@ -293,16 +293,24 @@ function load(){
 let __lastSave = 0;
 let __lastHudRender = 0;
 let __lastAutosave = 0;
+let __savePending = false;
+
+function flushSaveNow(){
+  __lastSave = Date.now();
+  __savePending = false;
+  localStorage.setItem("ts_v4380", JSON.stringify(S));
+}
 
 function save(force=false){
   try{
     const now = Date.now();
-
-    if(!force && (now - __lastSave) < 1000) return;
-
-    __lastSave = now;
-
-    localStorage.setItem("ts_v4380", JSON.stringify(S));
+    if(force){
+      flushSaveNow();
+      return;
+    }
+    __savePending = true;
+    if((now - __lastSave) < 1800) return;
+    flushSaveNow();
   }
   catch(e){
     console.log("Save failed:", e);
@@ -311,9 +319,9 @@ function save(force=false){
 
 function maybeAutosave(force=false){
   const now = Date.now();
-  if(force || (now - __lastAutosave) > 3600){
+  if(force || (__savePending && (now - __lastAutosave) > 7000)){
     __lastAutosave = now;
-    save(force);
+    save(true);
   }
 }
 
@@ -383,8 +391,8 @@ function mobileCanvasHeight(){
   const vh = window.innerHeight || 844;
   const landscape = vw > vh;
   return landscape
-    ? Math.round(clamp(vh * 1.12, 640, 860))
-    : Math.round(clamp(vh * 1.45, 980, 1280));
+    ? Math.round(clamp(vh * 0.92, 500, 680))
+    : Math.round(clamp(vh * 1.08, 820, 980));
 }
 function isMobileViewport(){
   const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches;
@@ -438,7 +446,7 @@ function clampWorldToCanvas(){
 }
 function resizeCanvasForViewport(){
   const mobile = isMobileViewport();
-  cv.width = 960;
+  cv.width = mobile ? 820 : 960;
   cv.height = mobile ? mobileCanvasHeight() : 540;
   clampWorldToCanvas();
 }
@@ -2923,16 +2931,16 @@ function roamTigers(){
     const chase = Math.random() < chaseChance;
 
     // ability speed mods
-    let speedCap = ((def.spd*0.9) + hunter*1.2 + (t._packBuff?0.55:0));
+    let speedCap = ((def.spd*1.18) + hunter*1.5 + (t._packBuff?0.72:0));
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap *= 1.55;
     if(t.type==="Berserker" && t.rageOn) speedCap *= 1.20;
 
     if(chase){
-      t.vx += (targetX>t.x?0.05:-0.05);
-      t.vy += (targetY>t.y?0.05:-0.05);
+      t.vx += (targetX>t.x?0.085:-0.085);
+      t.vy += (targetY>t.y?0.085:-0.085);
     } else {
-      t.vx += (Math.random()-0.5)*0.05;
-      t.vy += (Math.random()-0.5)*0.05;
+      t.vx += (Math.random()-0.5)*0.08;
+      t.vy += (Math.random()-0.5)*0.08;
     }
 
     if(t.packId){
@@ -2951,8 +2959,8 @@ function roamTigers(){
 
     const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18);
     if(!moved){ t.vx *= -0.8; t.vy *= -0.8; }
-    t.vx *= chase ? 0.88 : 0.80;
-    t.vy *= chase ? 0.88 : 0.80;
+    t.vx *= chase ? 0.93 : 0.87;
+    t.vy *= chase ? 0.93 : 0.87;
 
     if(t.x<40||t.x>cv.width-40) t.vx*=-1;
     if(t.y<60||t.y>cv.height-40) t.vy*=-1;
@@ -3788,12 +3796,11 @@ function renderHUD(){
       : (window.matchMedia?.("(pointer:fine)")?.matches
           ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Shift sprints."
           : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear.");
-  renderCombatControls();
 }
 
 function maybeRenderHUD(force=false){
   const now = performance.now ? performance.now() : Date.now();
-  if(force || (now - __lastHudRender) >= 120){
+  if(force || (now - __lastHudRender) >= 180){
     __lastHudRender = now;
     renderHUD();
   }
