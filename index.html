@@ -302,14 +302,39 @@
     }
 
     @media (max-width:960px) and (orientation:landscape) and (max-height:540px){
+      body{min-height:100dvh}
       .wrap{padding:8px 10px 150px}
       .top{gap:2px}
+      .sub{display:none}
+      .topActions{display:none}
       .hud{margin-top:6px;padding:8px}
       .hudGrid{grid-template-columns:1fr 1fr;gap:8px}
       .hudBox{padding:8px}
       .hudLine{font-size:11px}
-      .screenCard{margin-top:6px}
+      .screenCard{
+        margin-top:6px;
+        margin-left:-10px;
+        margin-right:-10px;
+        width:calc(100% + 20px);
+        border-left:none;
+        border-right:none;
+        border-radius:0;
+      }
       .mapStage{min-height:clamp(280px, 72dvh, 460px)}
+      .mapStage canvas{
+        position:absolute;
+        inset:0;
+        width:100%;
+        height:100%;
+      }
+      .actionStrip{display:none}
+      .touchOverlay{
+        display:block;
+        position:absolute;
+        inset:0;
+        z-index:4;
+        pointer-events:none;
+      }
       .touchStickShell{left:12px;bottom:12px;width:110px;height:110px}
       .touchStick{left:30px;top:30px;width:50px;height:50px}
       .touchHint{left:16px;bottom:118px}
@@ -317,6 +342,7 @@
       .touchBtn{width:42px;min-height:42px}
       .touchBtnIcon{font-size:18px}
       .mobileUtilityBar{
+        display:grid;
         left:10px;
         right:10px;
         bottom:calc(82px + env(safe-area-inset-bottom));
@@ -324,6 +350,7 @@
       }
       .mobileUtilityBar button{min-height:38px;font-size:10px}
       .mobileChromeToggle{
+        display:block;
         bottom:calc(134px + env(safe-area-inset-bottom));
         min-height:32px;
         font-size:10px;
@@ -332,6 +359,17 @@
       .navBtn{min-height:40px;font-size:11px}
       .navBtn span{font-size:16px;line-height:16px}
       #tutorialCard{max-height:min(58vh, 320px)}
+      body.mobileChromeHidden .wrap{padding-bottom:54px}
+      body.mobileChromeHidden .nav{
+        transform:translateY(calc(100% + 12px));
+        opacity:0;
+        pointer-events:none;
+      }
+      body.mobileChromeHidden .mobileUtilityBar{
+        transform:translateY(calc(100% + 18px));
+        opacity:0;
+        pointer-events:none;
+      }
       body.mobileChromeHidden .mobileChromeToggle{bottom:calc(10px + env(safe-area-inset-bottom))}
     }
 

@@ -395,7 +395,10 @@ function mobileCanvasHeight(){
     : Math.round(clamp(vh * 1.45, 980, 1280));
 }
 function isMobileViewport(){
-  return !!window.matchMedia?.("(max-width:760px)")?.matches;
+  const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches;
+  const phoneLandscape = !!window.matchMedia?.("(max-width:960px) and (max-height:540px) and (orientation:landscape)")?.matches;
+  const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
+  return narrow || (coarse && phoneLandscape);
 }
 function isLandscapeViewport(){
   return (window.innerWidth || 0) > (window.innerHeight || 0);
