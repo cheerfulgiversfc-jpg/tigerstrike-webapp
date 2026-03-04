@@ -263,6 +263,7 @@ window.setPaused = window.setPaused || function(){};
 
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
+const COMBAT_FX = [];
 
 function load(){
   try{
@@ -290,6 +291,8 @@ function load(){
 }
 // ===================== SAVE (THROTTLED — FIXES IOS FREEZE) =====================
 let __lastSave = 0;
+let __lastHudRender = 0;
+let __lastAutosave = 0;
 
 function save(force=false){
   try{
@@ -304,6 +307,14 @@ function save(force=false){
   }
   catch(e){
     console.log("Save failed:", e);
+  }
+}
+
+function maybeAutosave(force=false){
+  const now = Date.now();
+  if(force || (now - __lastAutosave) > 2400){
+    __lastAutosave = now;
+    save(force);
   }
 }
 
@@ -358,9 +369,23 @@ function toast(msg){
 function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
 function rand(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
 function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
+function pointSegmentDistance(px, py, ax, ay, bx, by){
+  const abx = bx - ax;
+  const aby = by - ay;
+  const len2 = (abx * abx) + (aby * aby);
+  if(!len2) return dist(px, py, ax, ay);
+  const t = clamp(((px - ax) * abx + (py - ay) * aby) / len2, 0, 1);
+  const sx = ax + abx * t;
+  const sy = ay + aby * t;
+  return dist(px, py, sx, sy);
+}
 function mobileCanvasHeight(){
+  const vw = window.innerWidth || 390;
   const vh = window.innerHeight || 844;
-  return Math.round(clamp(vh * 1.45, 980, 1280));
+  const landscape = vw > vh;
+  return landscape
+    ? Math.round(clamp(vh * 1.12, 640, 860))
+    : Math.round(clamp(vh * 1.45, 980, 1280));
 }
 function clampWorldToCanvas(){
   if(!S) return;
@@ -1373,6 +1398,14 @@ function equipWeapon(id){
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
   if(document.getElementById("battleOverlay").style.display==="flex") { renderWeaponGrid(); updateBattleButtons(); updateAttackButton(); renderBattleStatus(); }
+  renderCombatControls();
+}
+
+function cycleWeapon(dir=1){
+  if(!S.ownedWeapons?.length) return;
+  const idx = Math.max(0, S.ownedWeapons.indexOf(S.equippedWeaponId));
+  const nextIdx = (idx + dir + S.ownedWeapons.length) % S.ownedWeapons.length;
+  equipWeapon(S.ownedWeapons[nextIdx]);
 }
 
 // ===================== SPAWNS =====================
@@ -1943,12 +1976,12 @@ cv.addEventListener("pointerdown",(e)=>{
   }
 
   // --- NORMAL GAMEPLAY ---
-  if(S.inBattle || S.gameOver || S.missionEnded) return;
+  if(S.gameOver || S.missionEnded) return;
   if(S.paused) return;
 
   ensureAudio();
 
-  if(tapped){
+  if(tapped && !S.inBattle){
     S.lockedTigerId=tapped.id;
     sfx("ui");
     hapticImpact("light");
@@ -2080,6 +2113,295 @@ function setupTouchControls(){
 
 setupTouchControls();
 
+const GAMEPAD_STATE = {
+  connected: false,
+  id: "",
+  lx: 0,
+  ly: 0,
+  activeAt: 0,
+  buttons: Object.create(null),
+};
+const GAMEPAD_UI = {
+  buttons: [],
+  index: -1,
+  activeAt: 0,
+};
+let LAST_CONTROLLER_UI_KEY = "";
+
+function gamepadUiContainers(){
+  const tutorial = document.getElementById("tutorialOverlay");
+  if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
+
+  const overlays = ["overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay"]
+    .map((id)=>document.getElementById(id))
+    .filter((el)=>el && el.style.display === "flex");
+  if(overlays.length) return overlays;
+
+  return [
+    document.getElementById("combatButtons"),
+    document.querySelector(".actionButtons"),
+    document.querySelector(".mobileUtilityBar"),
+    document.querySelector(".nav"),
+    document.querySelector(".topActions"),
+  ].filter(Boolean);
+}
+
+function isGamepadFocusable(el){
+  if(!el || el.disabled) return false;
+  if(el.getClientRects().length === 0) return false;
+  const cs = window.getComputedStyle(el);
+  return cs.display !== "none" && cs.visibility !== "hidden" && cs.opacity !== "0";
+}
+
+function collectGamepadButtons(){
+  return gamepadUiContainers()
+    .flatMap((container)=>Array.from(container.querySelectorAll("button")))
+    .filter(isGamepadFocusable);
+}
+
+function clearGamepadFocus(){
+  for(const btn of GAMEPAD_UI.buttons){
+    btn.classList.remove("gamepadFocus");
+  }
+  GAMEPAD_UI.buttons = [];
+  GAMEPAD_UI.index = -1;
+}
+
+function syncGamepadFocus(){
+  const buttons = collectGamepadButtons();
+  const current = GAMEPAD_UI.buttons[GAMEPAD_UI.index];
+  GAMEPAD_UI.buttons.forEach((btn)=>btn.classList.remove("gamepadFocus"));
+  GAMEPAD_UI.buttons = buttons;
+
+  if(!buttons.length){
+    GAMEPAD_UI.index = -1;
+    return null;
+  }
+
+  const currentIdx = current ? buttons.indexOf(current) : -1;
+  if(currentIdx >= 0) GAMEPAD_UI.index = currentIdx;
+  else if(GAMEPAD_UI.index < 0 || GAMEPAD_UI.index >= buttons.length) GAMEPAD_UI.index = 0;
+
+  const active = buttons[GAMEPAD_UI.index];
+  if(active){
+    active.classList.add("gamepadFocus");
+    active.scrollIntoView?.({ block:"nearest", inline:"nearest" });
+  }
+  return active || null;
+}
+
+function moveGamepadFocus(delta){
+  const buttons = collectGamepadButtons();
+  if(!buttons.length) return null;
+  GAMEPAD_UI.buttons.forEach((btn)=>btn.classList.remove("gamepadFocus"));
+  GAMEPAD_UI.buttons = buttons;
+  GAMEPAD_UI.index = (GAMEPAD_UI.index < 0)
+    ? 0
+    : (GAMEPAD_UI.index + delta + buttons.length) % buttons.length;
+  GAMEPAD_UI.activeAt = Date.now();
+  const active = buttons[GAMEPAD_UI.index];
+  if(active){
+    active.classList.add("gamepadFocus");
+    active.scrollIntoView?.({ block:"nearest", inline:"nearest" });
+  }
+  return active || null;
+}
+
+function gamepadUiOwnsInput(){
+  return GAMEPAD_UI.index >= 0 && (Date.now() - (GAMEPAD_UI.activeAt || 0)) < 5000;
+}
+
+function activateGamepadFocus(){
+  const btn = syncGamepadFocus();
+  if(!btn) return false;
+  GAMEPAD_UI.activeAt = Date.now();
+  btn.click();
+  syncGamepadFocus();
+  return true;
+}
+
+function anyGamepadOverlayVisible(){
+  const ids = ["tutorialOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay"];
+  return ids.some((id)=>{
+    const el = document.getElementById(id);
+    return !!(el && el.style.display === "flex");
+  });
+}
+
+function activateGamepadBack(){
+  const buttons = collectGamepadButtons();
+  if(!buttons.length) return false;
+  const focused = buttons[GAMEPAD_UI.index];
+  const preferFocused = focused && /back|close|resume|skip|finish/i.test(focused.innerText || "");
+  const btn = preferFocused
+    ? focused
+    : buttons.find((el)=>/back|close|resume|skip|finish/i.test(el.innerText || ""));
+  if(!btn) return false;
+  GAMEPAD_UI.activeAt = Date.now();
+  btn.click();
+  syncGamepadFocus();
+  return true;
+}
+
+function refreshControllerUi(force=false){
+  const key = `${controllerOwnsUi()?1:0}:${S.inBattle?1:0}:${anyGamepadOverlayVisible()?1:0}`;
+  if(force || key !== LAST_CONTROLLER_UI_KEY){
+    renderCombatControls();
+    if(controllerOwnsUi() || anyGamepadOverlayVisible()) syncGamepadFocus();
+    else clearGamepadFocus();
+    LAST_CONTROLLER_UI_KEY = key;
+  }
+}
+
+function gamepadAxis(v, deadzone=0.18){
+  const n = Number(v || 0);
+  if(Math.abs(n) < deadzone) return 0;
+  const sign = Math.sign(n);
+  const scaled = (Math.abs(n) - deadzone) / (1 - deadzone);
+  return sign * clamp(scaled, 0, 1);
+}
+
+function gamepadButtonPressed(btn){
+  if(!btn) return false;
+  if(typeof btn === "number") return btn > 0.55;
+  return !!btn.pressed || Number(btn.value || 0) > 0.55;
+}
+
+function gamepadButtonEdge(name, pressed){
+  const was = !!GAMEPAD_STATE.buttons[name];
+  GAMEPAD_STATE.buttons[name] = pressed;
+  if(pressed) GAMEPAD_STATE.activeAt = Date.now();
+  return pressed && !was;
+}
+
+function gamepadLabel(id=""){
+  const text = String(id || "").trim();
+  if(!text) return "Controller";
+  const parts = text.split("(")[0].trim().split(/\s+/).slice(0,3);
+  return parts.join(" ");
+}
+
+function pollGamepadControls(){
+  const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
+  const pad = pads[0];
+
+  if(!pad){
+    GAMEPAD_STATE.connected = false;
+    GAMEPAD_STATE.id = "";
+    GAMEPAD_STATE.lx = 0;
+    GAMEPAD_STATE.ly = 0;
+    GAMEPAD_STATE.activeAt = 0;
+    GAMEPAD_STATE.buttons = Object.create(null);
+    clearGamepadFocus();
+    LAST_CONTROLLER_UI_KEY = "";
+    return { x:0, y:0 };
+  }
+
+  GAMEPAD_STATE.connected = true;
+  GAMEPAD_STATE.id = pad.id || "Controller";
+
+  const lx = gamepadAxis(pad.axes?.[0]);
+  const ly = gamepadAxis(pad.axes?.[1]);
+  GAMEPAD_STATE.lx = lx;
+  GAMEPAD_STATE.ly = ly;
+  if(Math.abs(GAMEPAD_STATE.lx) > 0.08 || Math.abs(GAMEPAD_STATE.ly) > 0.08){
+    GAMEPAD_STATE.activeAt = Date.now();
+  }
+
+  if(window.TigerTutorial?.isRunning && (Math.abs(GAMEPAD_STATE.lx) > 0.08 || Math.abs(GAMEPAD_STATE.ly) > 0.08)){
+    window.TigerTutorial.mapClicked = true;
+  }
+
+  const uiVisible = anyGamepadOverlayVisible();
+  if(uiVisible) syncGamepadFocus();
+
+  if(gamepadButtonEdge("dpadUp", gamepadButtonPressed(pad.buttons?.[12]))){
+    moveGamepadFocus(-1);
+  }
+  if(gamepadButtonEdge("dpadDown", gamepadButtonPressed(pad.buttons?.[13]))){
+    moveGamepadFocus(1);
+  }
+  if(gamepadButtonEdge("dpadLeft", gamepadButtonPressed(pad.buttons?.[14]))){
+    moveGamepadFocus(-1);
+  }
+  if(gamepadButtonEdge("dpadRight", gamepadButtonPressed(pad.buttons?.[15]))){
+    moveGamepadFocus(1);
+  }
+
+  if(gamepadButtonEdge("a", gamepadButtonPressed(pad.buttons?.[0]))){
+    if(uiVisible || gamepadUiOwnsInput()){
+      if(activateGamepadFocus()) return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
+    }
+    if(S.inBattle) playerAction("ATTACK");
+    else if(canEngage()) startCombat();
+    else lockNearestTiger({ silent:true });
+  }
+  if(gamepadButtonEdge("b", gamepadButtonPressed(pad.buttons?.[1]))){
+    if(uiVisible || gamepadUiOwnsInput()){
+      if(activateGamepadBack()) return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
+    }
+    if(S.inBattle) endBattle("RETREAT");
+    else sprint();
+  }
+  if(gamepadButtonEdge("x", gamepadButtonPressed(pad.buttons?.[2]))){
+    scan();
+  }
+  if(gamepadButtonEdge("y", gamepadButtonPressed(pad.buttons?.[3]))){
+    useMedkit();
+  }
+  if(gamepadButtonEdge("lb", gamepadButtonPressed(pad.buttons?.[4]))){
+    cycleWeapon(-1);
+  }
+  if(gamepadButtonEdge("rb", gamepadButtonPressed(pad.buttons?.[5]))){
+    cycleWeapon(1);
+  }
+  if(gamepadButtonEdge("lt", gamepadButtonPressed(pad.buttons?.[6]))){
+    placeTrap();
+  }
+  if(gamepadButtonEdge("rt", gamepadButtonPressed(pad.buttons?.[7]))){
+    if(S.inBattle) playerAction("ATTACK");
+    else if(canEngage()) startCombat();
+    else lockNearestTiger({ silent:true });
+  }
+  if(gamepadButtonEdge("back", gamepadButtonPressed(pad.buttons?.[8]))){
+    useRepairKit();
+  }
+  if(gamepadButtonEdge("start", gamepadButtonPressed(pad.buttons?.[9]))){
+    togglePause();
+  }
+  if(gamepadButtonEdge("ls", gamepadButtonPressed(pad.buttons?.[10]))){
+    deploy();
+  }
+  if(gamepadButtonEdge("rs", gamepadButtonPressed(pad.buttons?.[11]))){
+    callBackup();
+  }
+
+  return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
+}
+
+function controllerOwnsUi(){
+  if(!GAMEPAD_STATE.connected) return false;
+  return (Date.now() - (GAMEPAD_STATE.activeAt || 0)) < 4000;
+}
+
+window.addEventListener("gamepadconnected", (e)=>{
+  const label = gamepadLabel(e.gamepad?.id);
+  GAMEPAD_STATE.connected = true;
+  GAMEPAD_STATE.id = e.gamepad?.id || "Controller";
+  GAMEPAD_STATE.activeAt = Date.now();
+  refreshControllerUi(true);
+  toast(`${label} connected`);
+});
+
+window.addEventListener("gamepaddisconnected", ()=>{
+  GAMEPAD_STATE.connected = false;
+  GAMEPAD_STATE.id = "";
+  GAMEPAD_STATE.activeAt = 0;
+  clearGamepadFocus();
+  refreshControllerUi(true);
+  toast("Controller disconnected");
+});
+
 document.addEventListener("keydown",(e)=>{
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -2200,11 +2522,12 @@ function setMoveKey(key, on){
 
 function keyboardMoveTick(){
   const touchActive = Math.abs(TOUCH_STICK.dx) > 0.04 || Math.abs(TOUCH_STICK.dy) > 0.04;
-  if(window.TigerTutorial?.isRunning && !touchActive) return false;
-  if(S.inBattle || S.paused || S.gameOver || S.missionEnded) return false;
+  const gamepadActive = Math.abs(GAMEPAD_STATE.lx) > 0.04 || Math.abs(GAMEPAD_STATE.ly) > 0.04;
+  if(window.TigerTutorial?.isRunning && !touchActive && !gamepadActive) return false;
+  if(S.paused || S.gameOver || S.missionEnded) return false;
 
-  const dx = ((KEY_STATE.right ? 1 : 0) - (KEY_STATE.left ? 1 : 0)) + TOUCH_STICK.dx;
-  const dy = ((KEY_STATE.down ? 1 : 0) - (KEY_STATE.up ? 1 : 0)) + TOUCH_STICK.dy;
+  const dx = ((KEY_STATE.right ? 1 : 0) - (KEY_STATE.left ? 1 : 0)) + TOUCH_STICK.dx + GAMEPAD_STATE.lx;
+  const dy = ((KEY_STATE.down ? 1 : 0) - (KEY_STATE.up ? 1 : 0)) + TOUCH_STICK.dy + GAMEPAD_STATE.ly;
   if(!dx && !dy) return false;
   if(S.stamina<=0) return false;
 
@@ -2253,7 +2576,7 @@ function movePlayer(){
 }
 
 function sprint(){
-  if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
+  if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
   if(S.stamina < STAMINA_COST_SPRINT) return toast("Not enough stamina.");
   S.stamina -= STAMINA_COST_SPRINT;
   S._sprintTicks=90;
@@ -2396,7 +2719,8 @@ function tickCiviliansAndThreats(){
       const rageMult = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? 1.25 : 1.0;
       const nearbySupport = (S.supportUnits || []).filter(unit => dist(unit.x, unit.y, best.x, best.y) < 96).length;
       const guardMult = nearbySupport ? clamp(1 - nearbySupport * 0.35, 0.3, 1) : 1;
-      const dmg = base * multType * rageMult * (1 + (diff-1)*0.20) * guardMult;
+      const protectMult = S._protectTicks > 0 ? 0.45 : 1;
+      const dmg = base * multType * rageMult * (1 + (diff-1)*0.20) * guardMult * protectMult;
       best.hp = clamp(best.hp - (dmg * perkCivMul()), 0, best.hpMax);
     }
   }
@@ -2631,27 +2955,119 @@ function regen(){
 }
 
 // ===================== BATTLE =====================
+function activeTiger(){
+  return tigerById(S.activeTigerId);
+}
+
+function emitCombatFx(x1, y1, x2, y2, color, width=3){
+  COMBAT_FX.push({ x1, y1, x2, y2, color, width, ttl:8, maxTtl:8 });
+}
+
+function tickCombatFx(){
+  for(const fx of COMBAT_FX) fx.ttl -= 1;
+  for(let i = COMBAT_FX.length - 1; i >= 0; i--){
+    if(COMBAT_FX[i].ttl <= 0) COMBAT_FX.splice(i, 1);
+  }
+}
+
+function drawCombatFx(){
+  for(const fx of COMBAT_FX){
+    const alpha = clamp(fx.ttl / fx.maxTtl, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = fx.color;
+    ctx.lineWidth = fx.width;
+    ctx.beginPath();
+    ctx.moveTo(fx.x1, fx.y1);
+    ctx.lineTo(fx.x2, fx.y2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function combatWeaponLabel(dir){
+  if(!S.ownedWeapons?.length) return "Weapon";
+  const idx = Math.max(0, S.ownedWeapons.indexOf(S.equippedWeaponId));
+  const targetIdx = (idx + dir + S.ownedWeapons.length) % S.ownedWeapons.length;
+  const nextWeapon = getWeapon(S.ownedWeapons[targetIdx]);
+  if(!nextWeapon) return "Weapon";
+  const words = nextWeapon.name.split(" ");
+  return words.slice(0,2).join(" ");
+}
+
+function renderCombatControls(){
+  const touchOverlay = document.querySelector(".touchOverlay");
+  const touchHint = document.querySelector(".touchHint");
+  const mapCluster = document.getElementById("mapTouchCluster");
+  const combatCluster = document.getElementById("combatTouchCluster");
+  const actionButtons = document.querySelector(".actionButtons");
+  const combatButtons = document.getElementById("combatButtons");
+  const inCombat = !!S.inBattle;
+  const hideTouchUi = controllerOwnsUi();
+  if(touchOverlay) touchOverlay.style.display = hideTouchUi ? "none" : "block";
+  if(touchHint) touchHint.style.display = hideTouchUi ? "none" : "block";
+  if(mapCluster) mapCluster.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "grid");
+  if(combatCluster) combatCluster.style.display = hideTouchUi ? "none" : (inCombat ? "grid" : "none");
+  if(actionButtons) actionButtons.style.display = (hideTouchUi || inCombat) ? "none" : "";
+  if(combatButtons) combatButtons.style.display = hideTouchUi ? "none" : (inCombat ? "flex" : "none");
+
+  const t = activeTiger();
+  const canCap = canCaptureTiger(t);
+  const canKill = !!(t && t.hp <= 15);
+  const canAtk = anyWeaponHasAmmo();
+
+  [["touchAttackBtn", !canAtk], ["combatAttackBtn", !canAtk]].forEach(([id, disabled])=>{
+    const el = document.getElementById(id);
+    if(el) el.disabled = disabled;
+  });
+  [["touchCaptureBtn", !canCap], ["combatCaptureBtn", !canCap]].forEach(([id, disabled])=>{
+    const el = document.getElementById(id);
+    if(el) el.disabled = disabled;
+  });
+  [["touchKillBtn", !canKill], ["combatKillBtn", !canKill]].forEach(([id, disabled])=>{
+    const el = document.getElementById(id);
+    if(el) el.disabled = disabled;
+  });
+
+  const prevLabel = combatWeaponLabel(-1);
+  const nextLabel = combatWeaponLabel(1);
+  const prevDesktop = document.getElementById("combatPrevWeaponBtn");
+  const nextDesktop = document.getElementById("combatNextWeaponBtn");
+  if(prevDesktop) prevDesktop.innerText = `◀️ ${prevLabel}`;
+  if(nextDesktop) nextDesktop.innerText = `${nextLabel} ▶️`;
+  if(controllerOwnsUi() || anyGamepadOverlayVisible()) syncGamepadFocus();
+}
+
+function setBattleMsg(msg){
+  S.battleMsg = msg;
+  const titleEl = document.getElementById("battleTitle");
+  const msgEl = document.getElementById("battleMsg");
+  if(titleEl) titleEl.innerText = `Battle — Tiger #${S.activeTigerId}`;
+  if(msgEl) msgEl.innerText = msg;
+  renderBattleStatus();
+}
+
 function startCombat(){
   if(!tutorialAllows("engage")) return toast(tutorialBlockMessage("engage"));
   if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
   const t=canEngage();
   if(!t) return toast("Move closer to a tiger to engage.");
-  S.inBattle=true;
-  S.activeTigerId=t.id;
-  document.getElementById("battleOverlay").style.display="flex";
-  renderWeaponGrid();
+  S.inBattle = true;
+  S.activeTigerId = t.id;
+  S.lockedTigerId = t.id;
+  S._combatTigerAttackAt = Date.now() + 950;
+  t.aggroBoost = Math.max(t.aggroBoost || 0, 0.85);
+  const overlay = document.getElementById("battleOverlay");
+  if(overlay) overlay.style.display = "none";
   renderBattleStatus();
   updateBattleButtons();
   updateAttackButton();
-  setBattleMsg(`Tiger #${t.id} (${t.type}) steps forward…`);
+  renderCombatControls();
+  setBattleMsg(`Engaged Tiger #${t.id}. Fight stays on the map.`);
   sfx("ui"); hapticImpact("light");
   save();
 }
-function setBattleMsg(msg){
-  document.getElementById("battleTitle").innerText = `Battle — Tiger #${S.activeTigerId}`;
-  document.getElementById("battleMsg").innerText = msg;
-  renderBattleStatus();
-}
+
 function renderBattleStatus(){
   const t = tigerById(S.activeTigerId);
   const agentBar = document.getElementById("battleAgentBar");
@@ -2672,6 +3088,7 @@ function renderBattleStatus(){
   tigerMeta.innerText = t
     ? `${t.type}${t.tranqTagged ? " • Tranq tagged" : ""} • Capture/Kill at 15 HP`
     : "Target lost";
+  renderCombatControls();
 }
 function renderWeaponGrid(){
   const box=document.getElementById("weaponGrid");
@@ -2685,10 +3102,14 @@ function renderWeaponGrid(){
   }).join("");
 }
 function endBattle(reason){
-  document.getElementById("battleOverlay").style.display="none";
+  const overlay = document.getElementById("battleOverlay");
+  if(overlay) overlay.style.display="none";
   S.inBattle=false;
   S.activeTigerId=null;
+  S.battleMsg="";
+  S._combatTigerAttackAt = 0;
   if(reason==="RETREAT") S.aggro = clamp(S.aggro+4,0,100);
+  renderCombatControls();
   save();
 }
 
@@ -2710,8 +3131,11 @@ function canCaptureTiger(t){
 }
 function updateBattleButtons(){
   const t=tigerById(S.activeTigerId);
-  document.getElementById("killBtn").disabled = !(t && t.hp<=15);
-  document.getElementById("capBtn").disabled = !canCaptureTiger(t);
+  const killBtn = document.getElementById("killBtn");
+  const capBtn = document.getElementById("capBtn");
+  if(killBtn) killBtn.disabled = !(t && t.hp<=15);
+  if(capBtn) capBtn.disabled = !canCaptureTiger(t);
+  renderCombatControls();
   renderBattleStatus();
 }
 
@@ -2759,8 +3183,25 @@ function equippedWeaponHasAmmoNow(){
 }
 function updateAttackButton(){
   const btn = document.getElementById("atkBtn");
-  if(!btn) return;
-  btn.disabled = !anyWeaponHasAmmo();
+  if(btn) btn.disabled = !anyWeaponHasAmmo();
+  renderCombatControls();
+}
+
+function findFriendlyFireVictim(targetTiger){
+  if(S.mode==="Survival") return null;
+  const candidates = S.civilians.filter(c=>c.alive && !c.evac);
+  let victim = null;
+  let nearest = 1e9;
+  for(const civ of candidates){
+    const segDist = pointSegmentDistance(civ.x, civ.y, S.me.x, S.me.y, targetTiger.x, targetTiger.y);
+    const fromShooter = dist(S.me.x, S.me.y, civ.x, civ.y);
+    const toTiger = dist(S.me.x, S.me.y, targetTiger.x, targetTiger.y);
+    if(segDist < 18 && fromShooter < toTiger && fromShooter < nearest){
+      nearest = fromShooter;
+      victim = civ;
+    }
+  }
+  return victim;
 }
 
 function playerAction(action){
@@ -2779,7 +3220,6 @@ function playerAction(action){
     S.aggro=clamp(S.aggro+6,0,100);
     setBattleMsg("You draw attention! Civilian damage reduced briefly.");
     sfx("ui"); hapticImpact("light");
-    tigerTurn(t,true);
     save();
     return;
   }
@@ -2879,21 +3319,32 @@ function playerAction(action){
       sfx("hit");
     }
 
+    const victim = findFriendlyFireVictim(t);
+
     // ability mitigation
     dmg = Math.max(6, Math.round(dmg / carcassDifficulty()));
     if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35) dmg = Math.max(6, Math.round(dmg*0.85));
 
-    t.hp = clamp(t.hp - dmg, 0, t.hpMax);
     applyWearOnShot(w);
 
-    hapticImpact(crit ? "heavy" : "light");
-    setBattleMsg(`${crit?'CRIT! ':''}Hit for ${dmg}. ${w.type==='tranq'?'(tranq applied)':''}`);
+    if(victim){
+      const civDmg = Math.max(4, Math.round(dmg * 0.7));
+      victim.hp = clamp(victim.hp - civDmg, 0, victim.hpMax);
+      emitCombatFx(S.me.x, S.me.y - 6, victim.x, victim.y, "rgba(251,191,36,.95)", 3);
+      hapticImpact("medium");
+      setBattleMsg(`Friendly fire! Civilian #${victim.id} took ${civDmg}.`);
+    } else {
+      t.hp = clamp(t.hp - dmg, 0, t.hpMax);
+      emitCombatFx(S.me.x, S.me.y - 6, t.x, t.y, w.type==="tranq" ? "rgba(96,165,250,.96)" : "rgba(245,247,255,.96)", crit ? 4 : 3);
+      hapticImpact(crit ? "heavy" : "light");
+      setBattleMsg(`${crit?'CRIT! ':''}Hit for ${dmg}. ${w.type==='tranq'?'(tranq applied)':''}`);
+    }
 
     if(t.hp<=0){ t.hp=15; setBattleMsg("Tiger is critically weak. Choose Capture or Kill!"); }
 
     updateBattleButtons();
     updateAttackButton();
-    tigerTurn(t);
+    S._combatTigerAttackAt = Date.now() + rand(420, 780);
     save();
     return;
   }
@@ -2917,10 +3368,39 @@ function tigerTurn(t, softened=false){
   if(softened) dmg=Math.floor(dmg*0.85);
   dmg=clamp(dmg,6,75);
 
+  emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(251,113,133,.95)", 3);
   applyPlayerDamage(dmg,false);
+  if(S.inBattle) setBattleMsg(`Tiger #${t.id} hits back for ${dmg}.`);
   updateBattleButtons();
   updateAttackButton();
   renderBattleStatus();
+  return dmg;
+}
+
+function combatTick(){
+  if(!S.inBattle) return;
+  if(S._protectTicks>0) S._protectTicks--;
+
+  const t = activeTiger();
+  if(!t || !t.alive){
+    endBattle();
+    return;
+  }
+
+  S.lockedTigerId = t.id;
+  t.aggroBoost = Math.max(t.aggroBoost || 0, 0.95);
+
+  const d = dist(S.me.x, S.me.y, t.x, t.y);
+  if(d > 260){
+    toast("Target broke contact. Re-engage when closer.");
+    endBattle("RETREAT");
+    return;
+  }
+
+  if(d < 96 && Date.now() >= (S._combatTigerAttackAt || 0)){
+    S._combatTigerAttackAt = Date.now() + rand(900, 1300);
+    tigerTurn(t, S._protectTicks > 0);
+  }
 }
 
 // ===================== MISSION COMPLETE =====================
@@ -2949,7 +3429,7 @@ function checkMissionComplete(){
 
 // ===================== ENGAGE / HUD =====================
 function updateEngage(){
-  const disabled = !canEngage() || S.paused || S.missionEnded || S.gameOver || !tutorialAllows("engage");
+  const disabled = S.inBattle || !canEngage() || S.paused || S.missionEnded || S.gameOver || !tutorialAllows("engage");
   document.querySelectorAll("[data-engage-btn]").forEach((btn)=>{
     btn.disabled = disabled;
   });
@@ -3128,10 +3608,19 @@ function renderHUD(){
 
   document.getElementById("statusLine").innerText =
     S.inBattle
-      ? "Battle controls: Attack, Protect, Capture, or Kill. Capture requires the correct tranq weapon at 15 HP."
+      ? (S.battleMsg || `On-map combat active. Use Attack, Capture, Kill, and weapon swap while Tiger #${S.activeTigerId} stays locked.`)
       : (window.matchMedia?.("(pointer:fine)")?.matches
           ? "Desktop: click to move or lock. WASD/arrow keys move. Q locks nearest tiger. Space scans. E engages. Shift sprints."
-          : "Agent and Mission stay above the map. Use the joystick on the map to move, then use the buttons below the map for deploy, scan, engage, and gear.");
+          : "Agent and Mission stay above the map. Use the joystick on the map to move, then use the on-map buttons for deploy, scan, engage, gear, and combat.");
+  renderCombatControls();
+}
+
+function maybeRenderHUD(force=false){
+  const now = performance.now ? performance.now() : Date.now();
+  if(force || (now - __lastHudRender) >= 120){
+    __lastHudRender = now;
+    renderHUD();
+  }
 }
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
@@ -3635,6 +4124,7 @@ function drawEntities(){
   for(const unit of (S.supportUnits || [])) drawSupportUnit(unit);
   for(const t of S.tigers){ if(t.alive) drawTiger(t); }
   drawSoldier();
+  drawCombatFx();
 }
 
 // ===================== MISSION FLOW =====================
@@ -3642,11 +4132,13 @@ function closeComplete(){ document.getElementById("completeOverlay").style.displ
 
 // ===================== MAIN LOOP =====================
 function draw(){
-  renderHUD();
+  pollGamepadControls();
+  refreshControllerUi();
+  maybeRenderHUD();
   updateEngage();
 
-  if(S.gameOver){ save(); requestAnimationFrame(draw); return; }
-  if(S.paused || S.missionEnded){ save(); requestAnimationFrame(draw); return; }
+  if(S.gameOver){ maybeAutosave(); requestAnimationFrame(draw); return; }
+  if(S.paused || S.missionEnded){ maybeAutosave(); requestAnimationFrame(draw); return; }
 
   regen();
   backupTick();
@@ -3660,21 +4152,20 @@ function draw(){
   }
 
   drawMapScene();
-
-  if(!S.inBattle){
-    roamTigers();
-    supportUnitsTick();
-    const usedKeyboard = keyboardMoveTick();
-    if(!usedKeyboard) movePlayer();
-    followCiviliansTick();
-    evacCheck();
-    tickCiviliansAndThreats();
-    survivalPressureTick();
-    checkMissionComplete();
-  }
+  roamTigers();
+  supportUnitsTick();
+  const usedKeyboard = keyboardMoveTick();
+  if(!usedKeyboard) movePlayer();
+  followCiviliansTick();
+  evacCheck();
+  tickCiviliansAndThreats();
+  survivalPressureTick();
+  combatTick();
+  tickCombatFx();
+  checkMissionComplete();
 
   drawEntities();
-  save();
+  maybeAutosave();
   requestAnimationFrame(draw);
 }
 

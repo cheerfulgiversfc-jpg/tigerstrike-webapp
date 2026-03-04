@@ -24,6 +24,7 @@
     .row{display:flex;gap:10px;flex-wrap:wrap}
     button{border-radius:12px;border:1px solid var(--border2);background:#1a2031;color:#fff;padding:10px 12px;font-weight:900;font-size:14px;cursor:pointer;min-height:44px}
     button:disabled{opacity:.45;cursor:not-allowed}
+    button.gamepadFocus{outline:2px solid rgba(58,120,255,.98);box-shadow:0 0 0 3px rgba(58,120,255,.32)}
     .ghost{background:transparent}
     .good{border-color:#14532d;background:#0f2416}
     .warn{border-color:#7c2d12;background:#2b140d}
@@ -67,6 +68,7 @@
     .actionStrip{border-top:1px solid var(--border);background:rgba(15,19,32,.88);padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
     .small{font-size:12px;color:var(--muted)}
     .actionButtons{flex:1 1 560px}
+    .combatButtons{display:none;flex:1 1 560px}
     .mobileUtilityBar{display:none}
     .touchOverlay{display:none}
     .touchCluster,.touchStickShell,.touchPad,.touchBtn{pointer-events:auto}
@@ -200,6 +202,7 @@
         gap:8px;
         z-index:5;
       }
+      #combatTouchCluster{display:none}
       .touchBtn{
         min-height:46px;
         width:46px;
@@ -257,6 +260,34 @@
       .touchStickShell{left:10px;bottom:14px;width:124px;height:124px}
       .touchStick{left:34px;top:34px;width:56px;height:56px}
       .screenCard{width:calc(100% + 16px);margin-left:-8px;margin-right:-8px}
+    }
+
+    @media (max-width:960px) and (orientation:landscape) and (max-height:540px){
+      .wrap{padding:8px 10px 150px}
+      .top{gap:2px}
+      .hud{margin-top:6px;padding:8px}
+      .hudGrid{grid-template-columns:1fr 1fr;gap:8px}
+      .hudBox{padding:8px}
+      .hudLine{font-size:11px}
+      .screenCard{margin-top:6px}
+      .mapStage{min-height:clamp(280px, 72dvh, 460px)}
+      .touchStickShell{left:12px;bottom:12px;width:110px;height:110px}
+      .touchStick{left:30px;top:30px;width:50px;height:50px}
+      .touchHint{left:16px;bottom:118px}
+      .touchCluster{right:10px;top:10px;grid-template-columns:repeat(4,42px);gap:6px}
+      .touchBtn{width:42px;min-height:42px}
+      .touchBtnIcon{font-size:18px}
+      .mobileUtilityBar{
+        left:10px;
+        right:10px;
+        bottom:calc(82px + env(safe-area-inset-bottom));
+        padding:6px;
+      }
+      .mobileUtilityBar button{min-height:38px;font-size:10px}
+      .nav{padding-top:8px;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+      .navBtn{min-height:40px;font-size:11px}
+      .navBtn span{font-size:16px;line-height:16px}
+      #tutorialCard{max-height:min(58vh, 320px)}
     }
 
   /* Tutorial overlay (CLICK-THROUGH) */
@@ -364,38 +395,72 @@
           <div class="touchPad" id="touchPad"></div>
           <div class="touchStick" id="touchStick"></div>
         </div>
-        <div class="touchCluster">
-          <button class="touchBtn" onclick="scan()">
+        <div class="touchCluster" id="mapTouchCluster">
+          <button class="touchBtn" id="touchScanBtn" onclick="scan()">
             <span class="touchBtnIcon">🛰️</span>
             <span class="touchBtnLabel">Scan</span>
           </button>
-          <button class="touchBtn warn" data-engage-btn onclick="startCombat()" disabled>
+          <button class="touchBtn warn" id="touchEngageBtn" data-engage-btn onclick="startCombat()" disabled>
             <span class="touchBtnIcon">🎯</span>
             <span class="touchBtnLabel">Engage</span>
           </button>
-          <button class="touchBtn" onclick="useMedkit()">
+          <button class="touchBtn" id="touchMedkitBtn" onclick="useMedkit()">
             <span class="touchBtnIcon">❤️</span>
             <span class="touchBtnLabel">Med</span>
           </button>
-          <button class="touchBtn" onclick="sprint()">
+          <button class="touchBtn" id="touchSprintBtn" onclick="sprint()">
             <span class="touchBtnIcon">⚡</span>
             <span class="touchBtnLabel">Sprint</span>
           </button>
-          <button class="touchBtn" onclick="useRepairKit()">
+          <button class="touchBtn" id="touchRepairBtn" onclick="useRepairKit()">
             <span class="touchBtnIcon">🧰</span>
             <span class="touchBtnLabel">Repair</span>
           </button>
-          <button class="touchBtn" onclick="placeTrap()">
+          <button class="touchBtn" id="touchTrapBtn" onclick="placeTrap()">
             <span class="touchBtnIcon">🪤</span>
             <span class="touchBtnLabel">Trap</span>
           </button>
-          <button class="touchBtn" onclick="callBackup()">
+          <button class="touchBtn" id="touchBackupBtn" onclick="callBackup()">
             <span class="touchBtnIcon">🚨</span>
             <span class="touchBtnLabel">Backup</span>
           </button>
-          <button class="touchBtn" onclick="deploy()">
+          <button class="touchBtn" id="touchDeployBtn" onclick="deploy()">
             <span class="touchBtnIcon">📍</span>
             <span class="touchBtnLabel">Deploy</span>
+          </button>
+        </div>
+        <div class="touchCluster" id="combatTouchCluster">
+          <button class="touchBtn warn" id="touchAttackBtn" onclick="playerAction('ATTACK')">
+            <span class="touchBtnIcon">🔫</span>
+            <span class="touchBtnLabel">Attack</span>
+          </button>
+          <button class="touchBtn" id="touchCaptureBtn" onclick="playerAction('CAPTURE')">
+            <span class="touchBtnIcon">💉</span>
+            <span class="touchBtnLabel">Cap</span>
+          </button>
+          <button class="touchBtn danger" id="touchKillBtn" onclick="playerAction('KILL')">
+            <span class="touchBtnIcon">💀</span>
+            <span class="touchBtnLabel">Kill</span>
+          </button>
+          <button class="touchBtn" id="touchRetreatBtn" onclick="endBattle('RETREAT')">
+            <span class="touchBtnIcon">↩️</span>
+            <span class="touchBtnLabel">Back</span>
+          </button>
+          <button class="touchBtn" id="touchPrevWeaponBtn" onclick="cycleWeapon(-1)">
+            <span class="touchBtnIcon">◀️</span>
+            <span class="touchBtnLabel">Prev</span>
+          </button>
+          <button class="touchBtn" id="touchNextWeaponBtn" onclick="cycleWeapon(1)">
+            <span class="touchBtnIcon">▶️</span>
+            <span class="touchBtnLabel">Next</span>
+          </button>
+          <button class="touchBtn" id="touchCombatMedkitBtn" onclick="useMedkit()">
+            <span class="touchBtnIcon">❤️</span>
+            <span class="touchBtnLabel">Med</span>
+          </button>
+          <button class="touchBtn" id="touchCombatSprintBtn" onclick="sprint()">
+            <span class="touchBtnIcon">⚡</span>
+            <span class="touchBtnLabel">Sprint</span>
           </button>
         </div>
       </div>
@@ -411,6 +476,14 @@
         <button class="ghost" onclick="placeTrap()">🪤 Trap</button>
         <button class="ghost" onclick="callBackup()">🚨 Backup</button>
         <button class="ghost" onclick="sprint()">⚡ Sprint</button>
+      </div>
+      <div class="row combatButtons" id="combatButtons">
+        <button class="warn" id="combatAttackBtn" onclick="playerAction('ATTACK')">🔫 Attack</button>
+        <button class="good" id="combatCaptureBtn" onclick="playerAction('CAPTURE')" disabled>💉 Capture</button>
+        <button class="danger" id="combatKillBtn" onclick="playerAction('KILL')" disabled>💀 Kill</button>
+        <button class="ghost" id="combatPrevWeaponBtn" onclick="cycleWeapon(-1)">◀️ Weapon</button>
+        <button class="ghost" id="combatNextWeaponBtn" onclick="cycleWeapon(1)">Weapon ▶️</button>
+        <button class="ghost" onclick="endBattle('RETREAT')">↩️ Retreat</button>
       </div>
     </div>
   </div>
