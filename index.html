@@ -109,8 +109,6 @@
     .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
-    .nav,.mobileUtilityBar,.mobileChromeToggle{transition:transform .22s ease, opacity .22s ease}
-    .mobileChromeToggle{display:none}
     @media (max-width:760px){
       body{min-height:100dvh}
       .wrap{min-height:100dvh;padding:8px 10px 176px}
@@ -261,35 +259,6 @@
         font-size:11px;
         line-height:1.15;
       }
-      .mobileChromeToggle{
-        display:block;
-        position:fixed;
-        right:10px;
-        bottom:calc(144px + env(safe-area-inset-bottom));
-        z-index:112;
-        min-height:34px;
-        padding:6px 10px;
-        border-radius:999px;
-        border:1px solid rgba(42,49,69,.9);
-        background:rgba(10,14,24,.58);
-        backdrop-filter:blur(8px);
-        font-size:11px;
-      }
-      body.mobileChromeHidden .wrap{padding-bottom:54px}
-      body.mobileChromeHidden .nav{
-        transform:translateY(calc(100% + 12px));
-        opacity:0;
-        pointer-events:none;
-      }
-      body.mobileChromeHidden .mobileUtilityBar{
-        transform:translateY(calc(100% + 18px));
-        opacity:0;
-        pointer-events:none;
-      }
-      body.mobileChromeHidden .mobileChromeToggle{
-        bottom:calc(12px + env(safe-area-inset-bottom));
-        opacity:.96;
-      }
     }
 
     @media (max-width:460px){
@@ -349,28 +318,10 @@
         padding:6px;
       }
       .mobileUtilityBar button{min-height:38px;font-size:10px}
-      .mobileChromeToggle{
-        display:block;
-        bottom:calc(134px + env(safe-area-inset-bottom));
-        min-height:32px;
-        font-size:10px;
-      }
       .nav{padding-top:8px;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
       .navBtn{min-height:40px;font-size:11px}
       .navBtn span{font-size:16px;line-height:16px}
       #tutorialCard{max-height:min(58vh, 320px)}
-      body.mobileChromeHidden .wrap{padding-bottom:54px}
-      body.mobileChromeHidden .nav{
-        transform:translateY(calc(100% + 12px));
-        opacity:0;
-        pointer-events:none;
-      }
-      body.mobileChromeHidden .mobileUtilityBar{
-        transform:translateY(calc(100% + 18px));
-        opacity:0;
-        pointer-events:none;
-      }
-      body.mobileChromeHidden .mobileChromeToggle{bottom:calc(10px + env(safe-area-inset-bottom))}
     }
 
   /* Tutorial overlay (CLICK-THROUGH) */
@@ -761,7 +712,6 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<button class="mobileChromeToggle ghost" id="mobileChromeToggleBtn" onclick="toggleMobileChrome()">▼ Menu</button>
 
 <div class="nav">
   <div class="navInner">
