@@ -439,6 +439,10 @@
             <span class="touchBtnIcon">⚡</span>
             <span class="touchBtnLabel">Sprint</span>
           </button>
+          <button class="touchBtn" id="touchShieldBtn" data-shield-btn onclick="activateShield()">
+            <span class="touchBtnIcon">🛡️</span>
+            <span class="touchBtnLabel">Shield</span>
+          </button>
           <button class="touchBtn" id="touchRepairBtn" onclick="useRepairKit()">
             <span class="touchBtnIcon">🧰</span>
             <span class="touchBtnLabel">Repair</span>
@@ -481,6 +485,7 @@
       <div class="row actionButtons">
         <button id="scanBtn" onclick="scan()">🛰️ Scan</button>
         <button class="ghost" onclick="useMedkit()">❤️ Medkit</button>
+        <button class="ghost" data-shield-btn onclick="activateShield()">🛡️ Shield</button>
         <button class="ghost" onclick="useRepairKit()">🧰 Repair</button>
         <button class="ghost" onclick="placeTrap()">🪤 Trap</button>
       </div>
@@ -511,7 +516,7 @@
         <div class="bar"><div id="armorBar" class="fill orange"></div></div>
         <div class="hudLine">💰 <b id="fundsTxt"></b> • ⭐ <b id="scoreTxt"></b> • ⏱️ <b id="surviveTxt"></b></div>
         <div class="hudLine">Weapon: <b id="weaponTxt"></b> • Durability: <b id="durTxt"></b>%</div>
-        <div class="hudLine">Ammo: <b id="ammoTxt"></b> • Medkits: <b id="medTxt"></b> • Repair: <b id="repTxt"></b> • Traps: <b id="trapTxt"></b></div>
+        <div class="hudLine">Ammo: <b id="ammoTxt"></b> • Medkits: <b id="medTxt"></b> • Repair: <b id="repTxt"></b> • Traps: <b id="trapTxt"></b> • Shields: <b id="shieldTxt"></b></div>
         <div class="hudLine">Backup: <b id="backupTxt"></b></div>
         <div class="hudLine" id="eventTxt"></div>
       </div>

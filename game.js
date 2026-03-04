@@ -217,6 +217,8 @@ const DEFAULT = {
   repairKits:{ "T_REPAIR":1 },
   trapsOwned:2,
   trapsPlaced:[],
+  shields:1,
+  shieldUntil:0,
 
   backupCooldown:0, backupActive:0,
 
@@ -482,6 +484,9 @@ const STAMINA_COST_SCAN = 8;
 const STAMINA_COST_SPRINT = 16;
 const STAMINA_DRAIN_WALK = 0.035;
 const STAMINA_DRAIN_SPRINT = 0.08;
+const SHIELD_DURATION_MS = 5000;
+const SHIELD_RADIUS = 150;
+const SHIELD_PRICE = 1000;
 function pickupLabel(type){
   if(type==="CASH") return "Cash";
   if(type==="AMMO") return "Ammo";
@@ -520,6 +525,11 @@ function tutorialBlockMessage(action){
   if(action==="shop") return "Finish the combat basics before opening the shop.";
   if(action==="inventory") return "Open Inventory after the Shop step.";
   return "Follow the tutorial steps in order.";
+}
+function shieldActiveNow(){ return Date.now() < (S.shieldUntil||0); }
+function civilianShielded(c){
+  if(!c || !shieldActiveNow()) return false;
+  return dist(S.me.x, S.me.y, c.x, c.y) <= SHIELD_RADIUS;
 }
 
 resizeCanvasForViewport();
@@ -1078,8 +1088,8 @@ function renderShopList(){
   }
 
   if(currentShopTab==="tools"){
-    note.innerText="Blocks buying repair kits if current weapon durability is already 100%.";
-    list.innerHTML = TOOLS.map(t=>{
+    note.innerText="Repair kits restore weapon durability. Escort Shield protects you and nearby civilians for 5 seconds.";
+    const repairCards = TOOLS.map(t=>{
       const owned=ownedToolCount(t.id);
       return `
         <div class="item">
@@ -1093,6 +1103,18 @@ function renderShopList(){
           </div>
         </div>`;
     }).join("");
+    const shieldCard = `
+      <div class="item">
+        <div>
+          <div class="itemName">Escort Shield <span class="tag">Owned: ${S.shields||0}</span></div>
+          <div class="itemDesc">Creates a shield around you and nearby civilians for 5 seconds.</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price">$${SHIELD_PRICE.toLocaleString()}</div>
+          <button onclick="buyShield()">Buy</button>
+        </div>
+      </div>`;
+    list.innerHTML = shieldCard + repairCards;
     return;
   }
 
@@ -1158,6 +1180,13 @@ function buyTool(id){
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
 }
+function buyShield(){
+  if(S.funds < SHIELD_PRICE) return toast("Not enough money.");
+  S.funds -= SHIELD_PRICE;
+  S.shields = (S.shields||0) + 1;
+  sfx("ui"); hapticImpact("light");
+  save(); renderShopList(); renderHUD();
+}
 function buyTrap(){
   if(S.funds < TRAP_ITEM.price) return toast("Not enough money.");
   S.funds -= TRAP_ITEM.price;
@@ -1183,7 +1212,7 @@ function renderInventory(){
   const ammoId=w.ammo;
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
-     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0})`;
+     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0}`;
 
   document.getElementById("invWeapons").innerHTML = S.ownedWeapons.map(id=>{
     const ww=getWeapon(id);
@@ -1976,6 +2005,8 @@ function deploy(){
 
   S.civGraceUntil = Date.now() + 1000;
   S.dangerCivId = null;
+  S.shields = 1;
+  S.shieldUntil = 0;
 
   if(S.mode!=="Survival") S.evacZone = randomEvacZone();
   S.backupActive=0;
@@ -2528,7 +2559,7 @@ function pollGamepadControls(){
     deploy();
   }
   if(gamepadButtonEdge("rs", gamepadButtonPressed(pad.buttons?.[11]))){
-    callBackup();
+    activateShield();
   }
 
   return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
@@ -2751,6 +2782,19 @@ function sprint(){
   unlockAchv("sprint1","Sprint");
 }
 
+function activateShield(){
+  if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
+  if((S.shields||0) <= 0) return toast("No shields left. Buy more in Shop.");
+  S.shields = Math.max(0, (S.shields||0) - 1);
+  S.shieldUntil = Date.now() + SHIELD_DURATION_MS;
+  S.eventText = "🛡️ Escort Shield active for 5 seconds.";
+  S.eventTextUntil = Date.now() + 1500;
+  sfx("ui");
+  hapticImpact("medium");
+  renderHUD();
+  save();
+}
+
 function supportUnitsTick(){
   if(S.inBattle || S.paused || S.gameOver || S.missionEnded) return;
   const liveCivs = (S.mode==="Survival") ? [] : S.civilians.filter(c=>c.alive && !c.evac);
@@ -2807,13 +2851,15 @@ function supportUnitsTick(){
 // ===================== CIVILIANS FOLLOW-ONLY =====================
 function followCiviliansTick(){
   if(S.mode==="Survival") return;
+  const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? 4.2 : 2.6;
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
     const d = dist(c.x,c.y,S.me.x,S.me.y);
-    if(d < 95){
+    if(d < 190){
       const dx = S.me.x - c.x, dy = S.me.y - c.y;
       const dd = Math.hypot(dx,dy) || 1;
-      const sp = 1.25;
+      const catchup = clamp((d - 52) * 0.03, 0, 2.8);
+      const sp = Math.min(Math.max(playerSpeed, 2.8) + catchup, 5.8);
       tryMoveEntity(c, c.x + (dx/dd)*sp, c.y + (dy/dd)*sp, 14);
     }
   }
@@ -2872,10 +2918,10 @@ function tickCiviliansAndThreats(){
 
     if(bd < dangerPair.dist) dangerPair={ civId: best.id, dist: bd };
 
-    if(bd < 70){
+    if(bd < 64){
       underAttack++;
 
-      const base = 0.25;
+      const base = 0.12;
       const diff = carcassDifficulty();
       const isBossAlpha = (t.type==="Alpha" && t.bossPhases>0);
       const multType =
@@ -2887,7 +2933,8 @@ function tickCiviliansAndThreats(){
       const nearbySupport = (S.supportUnits || []).filter(unit => dist(unit.x, unit.y, best.x, best.y) < 96).length;
       const guardMult = nearbySupport ? clamp(1 - nearbySupport * 0.35, 0.3, 1) : 1;
       const protectMult = S._protectTicks > 0 ? 0.45 : 1;
-      const dmg = base * multType * rageMult * (1 + (diff-1)*0.20) * guardMult * protectMult;
+      const shieldMult = civilianShielded(best) ? 0 : 1;
+      const dmg = base * multType * rageMult * (1 + (diff-1)*0.20) * guardMult * protectMult * shieldMult;
       best.hp = clamp(best.hp - (dmg * perkCivMul()), 0, best.hpMax);
     }
   }
@@ -3150,6 +3197,13 @@ function survivalPressureTick(){
 
 // ===================== DAMAGE / RESPAWN =====================
 function applyPlayerDamage(dmg, showToast=false){
+  if(shieldActiveNow()){
+    dmg = Math.floor(dmg * 0.20);
+    if(dmg <= 0){
+      if(showToast) toast("🛡️ Shield absorbed the hit.");
+      return;
+    }
+  }
   if(S.armor > 0){
   const eff = (typeof perkArmorEff === "function") ? perkArmorEff() : 1; // 1.00, 1.05, 1.10...
   const absorbed = Math.min(S.armor, dmg);
@@ -3833,9 +3887,14 @@ function renderHUD(){
   document.getElementById("medTxt").innerText = totalMedkits();
   document.getElementById("repTxt").innerText = totalRepairKits();
   document.getElementById("trapTxt").innerText = S.trapsOwned;
+  const shieldSecs = Math.max(0, Math.ceil(((S.shieldUntil||0) - Date.now()) / 1000));
+  const shieldLabel = shieldActiveNow() ? `${S.shields||0} • ACTIVE (${shieldSecs}s)` : `${S.shields||0}`;
+  document.getElementById("shieldTxt").innerText = shieldLabel;
 
   const backupStr = (S.backupActive>0) ? `ACTIVE (${Math.ceil(S.backupActive/60)}s)` : (S.backupCooldown>0 ? `Cooldown (${Math.ceil(S.backupCooldown/60)}s)` : "Ready");
   document.getElementById("backupTxt").innerText = backupStr;
+  const shieldDisabled = S.paused || S.missionEnded || S.gameOver || (S.shields||0)<=0;
+  document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = shieldDisabled; });
 
   document.getElementById("mapTxt").innerText = currentMap().name;
 
@@ -4312,6 +4371,18 @@ function drawPickup(p){
 }
 
 function drawCivilian(c){
+  if(civilianShielded(c)){
+    const pulse = 0.82 + Math.sin(Date.now()/120) * 0.15;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = "rgba(96,165,250,.92)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y - 4, 20, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   ctx.fillStyle=c.shirt;
   roundedRectFill(c.x-9, c.y-12, 18, 24, 6);
   ctx.fillStyle=c.pants;
@@ -4345,6 +4416,24 @@ function drawCivilian(c){
 function drawSoldier(){
   const bob = Math.sin(S.me.step)*1.5;
   const x=S.me.x, y=S.me.y + bob;
+
+  if(shieldActiveNow()){
+    const pulse = 0.78 + Math.sin(Date.now()/130) * 0.16;
+    ctx.save();
+    ctx.globalAlpha = pulse * 0.72;
+    ctx.strokeStyle = "rgba(96,165,250,.96)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(x, y, SHIELD_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = pulse * 0.22;
+    ctx.fillStyle = "rgba(96,165,250,.35)";
+    ctx.beginPath();
+    ctx.arc(x, y, SHIELD_RADIUS - 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 
   ctx.globalAlpha=0.25; ctx.fillStyle="#000";
   ctx.beginPath(); ctx.ellipse(x,y+18,18,8,0,0,Math.PI*2); ctx.fill();
@@ -4590,6 +4679,8 @@ function init(){
   if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
   if(!S.evacZone) S.evacZone = { ...DEFAULT.evacZone };
+  if(!Number.isFinite(S.shields)) S.shields = 1;
+  if(!Number.isFinite(S.shieldUntil)) S.shieldUntil = 0;
   if(S.paused && !S.gameOver && !S.missionEnded){
     S.paused = false;
     S.pauseReason = null;
@@ -4673,6 +4764,7 @@ window.useRepairKit = useRepairKit;
 window.placeTrap = placeTrap;
 window.callBackup = callBackup;
 window.sprint = sprint;
+window.activateShield = activateShield;
 
 window.playerAction = playerAction;
 window.endBattle = endBattle;
@@ -4687,6 +4779,7 @@ window.buyAmmo = buyAmmo;
 window.buyArmor = buyArmor;
 window.buyMed = buyMed;
 window.buyTool = buyTool;
+window.buyShield = buyShield;
 window.buyTrap = buyTrap;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
