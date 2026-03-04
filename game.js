@@ -264,6 +264,13 @@ window.setPaused = window.setPaused || function(){};
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
 const COMBAT_FX = [];
+const MAP_RENDER_CACHE = {
+  key: "",
+  width: 0,
+  height: 0,
+  canvas: null,
+};
+let MOBILE_CHROME_PREF = "";
 
 function load(){
   try{
@@ -298,8 +305,8 @@ function save(force=false){
   try{
     const now = Date.now();
 
-    // Only save once every 900ms unless forced
-    if(!force && (now - __lastSave) < 700) return;
+    // Save less often on phones to reduce localStorage stalls.
+    if(!force && (now - __lastSave) < 1200) return;
 
     __lastSave = now;
 
@@ -312,7 +319,7 @@ function save(force=false){
 
 function maybeAutosave(force=false){
   const now = Date.now();
-  if(force || (now - __lastAutosave) > 2400){
+  if(force || (now - __lastAutosave) > 3600){
     __lastAutosave = now;
     save(force);
   }
@@ -387,6 +394,46 @@ function mobileCanvasHeight(){
     ? Math.round(clamp(vh * 1.12, 640, 860))
     : Math.round(clamp(vh * 1.45, 980, 1280));
 }
+function isMobileViewport(){
+  return !!window.matchMedia?.("(max-width:760px)")?.matches;
+}
+function isLandscapeViewport(){
+  return (window.innerWidth || 0) > (window.innerHeight || 0);
+}
+function mobileChromeHidden(){
+  if(!isMobileViewport()) return false;
+  if(MOBILE_CHROME_PREF === "hide") return true;
+  if(MOBILE_CHROME_PREF === "show") return false;
+  return isLandscapeViewport();
+}
+function updateMobileChromeToggle(){
+  const btn = document.getElementById("mobileChromeToggleBtn");
+  if(!btn) return;
+  const hidden = mobileChromeHidden();
+  btn.innerText = hidden ? "▲ Menu" : "▼ Menu";
+  btn.setAttribute("aria-pressed", hidden ? "true" : "false");
+}
+function applyMobileChromeState(){
+  document.body.classList.toggle("mobileChromeHidden", mobileChromeHidden());
+  updateMobileChromeToggle();
+  if(typeof refreshControllerUi === "function") refreshControllerUi(true);
+}
+function toggleMobileChrome(){
+  MOBILE_CHROME_PREF = mobileChromeHidden() ? "show" : "hide";
+  try{ localStorage.setItem("ts_mobile_chrome_pref", MOBILE_CHROME_PREF); }catch(e){}
+  applyMobileChromeState();
+}
+function loadMobileChromePref(){
+  try{ MOBILE_CHROME_PREF = localStorage.getItem("ts_mobile_chrome_pref") || ""; }
+  catch(e){ MOBILE_CHROME_PREF = ""; }
+  applyMobileChromeState();
+}
+function invalidateMapCache(){
+  MAP_RENDER_CACHE.key = "";
+  MAP_RENDER_CACHE.width = 0;
+  MAP_RENDER_CACHE.height = 0;
+  MAP_RENDER_CACHE.canvas = null;
+}
 function clampWorldToCanvas(){
   if(!S) return;
   if(S.me){
@@ -429,10 +476,12 @@ function clampWorldToCanvas(){
   }
 }
 function resizeCanvasForViewport(){
-  const mobile = window.matchMedia?.("(max-width:760px)")?.matches;
+  const mobile = isMobileViewport();
   cv.width = 960;
   cv.height = mobile ? mobileCanvasHeight() : 540;
   clampWorldToCanvas();
+  invalidateMapCache();
+  applyMobileChromeState();
 }
 const STAMINA_COST_SCAN = 8;
 const STAMINA_COST_SPRINT = 16;
@@ -479,6 +528,7 @@ function tutorialBlockMessage(action){
 }
 
 resizeCanvasForViewport();
+loadMobileChromePref();
 window.addEventListener("resize", ()=>{
   resizeCanvasForViewport();
   renderHUD();
@@ -2138,6 +2188,7 @@ function gamepadUiContainers(){
   if(overlays.length) return overlays;
 
   return [
+    document.getElementById("mobileChromeToggleBtn"),
     document.getElementById("combatButtons"),
     document.querySelector(".actionButtons"),
     document.querySelector(".mobileUtilityBar"),
@@ -3624,39 +3675,36 @@ function maybeRenderHUD(force=false){
 }
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
-function drawMapScene(){
-  const w=cv.width, h=cv.height;
-  const key=currentMap().key;
-
-  function fillSolid(color){ ctx.fillStyle=color; ctx.fillRect(0,0,w,h); }
+function drawMapStaticLayer(drawCtx, w, h, key){
+  function fillSolid(color){ drawCtx.fillStyle=color; drawCtx.fillRect(0,0,w,h); }
   function rounded(x,y,ww,hh,r,fill,stroke=null){
-    ctx.beginPath();
-    ctx.moveTo(x+r,y);
-    ctx.arcTo(x+ww,y,x+ww,y+hh,r);
-    ctx.arcTo(x+ww,y+hh,x,y+hh,r);
-    ctx.arcTo(x,y+hh,x,y,r);
-    ctx.arcTo(x,y,x+ww,y,r);
-    ctx.closePath();
-    ctx.fillStyle=fill; ctx.fill();
-    if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.stroke(); }
+    drawCtx.beginPath();
+    drawCtx.moveTo(x+r,y);
+    drawCtx.arcTo(x+ww,y,x+ww,y+hh,r);
+    drawCtx.arcTo(x+ww,y+hh,x,y+hh,r);
+    drawCtx.arcTo(x,y+hh,x,y,r);
+    drawCtx.arcTo(x,y,x+ww,y,r);
+    drawCtx.closePath();
+    drawCtx.fillStyle=fill; drawCtx.fill();
+    if(stroke){ drawCtx.strokeStyle=stroke; drawCtx.lineWidth=2; drawCtx.stroke(); }
   }
   function roadLine(points,width,fill){
-    ctx.strokeStyle=fill; ctx.lineWidth=width; ctx.lineCap="round"; ctx.lineJoin="round";
-    ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
-    for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0],points[i][1]);
-    ctx.stroke();
+    drawCtx.strokeStyle=fill; drawCtx.lineWidth=width; drawCtx.lineCap="round"; drawCtx.lineJoin="round";
+    drawCtx.beginPath(); drawCtx.moveTo(points[0][0],points[0][1]);
+    for(let i=1;i<points.length;i++) drawCtx.lineTo(points[i][0],points[i][1]);
+    drawCtx.stroke();
   }
   function dashed(points){
-    ctx.strokeStyle="rgba(240,240,245,.7)";
-    ctx.lineWidth=4; ctx.setLineDash([18,14]); ctx.lineCap="round";
-    ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
-    for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0],points[i][1]);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    drawCtx.strokeStyle="rgba(240,240,245,.7)";
+    drawCtx.lineWidth=4; drawCtx.setLineDash([18,14]); drawCtx.lineCap="round";
+    drawCtx.beginPath(); drawCtx.moveTo(points[0][0],points[0][1]);
+    for(let i=1;i<points.length;i++) drawCtx.lineTo(points[i][0],points[i][1]);
+    drawCtx.stroke();
+    drawCtx.setLineDash([]);
   }
   function treeDot(x,y){
-    ctx.fillStyle="rgba(22,120,60,.85)";
-    ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fill();
+    drawCtx.fillStyle="rgba(22,120,60,.85)";
+    drawCtx.beginPath(); drawCtx.arc(x,y,8,0,Math.PI*2); drawCtx.fill();
   }
   function buildingBlock(x,y,ww,hh){
     rounded(x-ww/2,y-hh/2,ww,hh,10,"rgba(55,70,95,.85)","rgba(18,24,38,.9)");
@@ -3685,16 +3733,16 @@ function drawMapScene(){
       [90,h*0.88],[170,h*0.91],[290,h*0.88],[410,h*0.90],[520,h*0.87],[660,h*0.90],[780,h*0.88],[900,h*0.91],
     ];
     for(const [x,y] of trees) treeDot(x,y);
-    ctx.fillStyle="rgba(25,90,105,.65)";
-    ctx.beginPath(); ctx.ellipse(260,h*0.17,90,34,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(720,h*0.15,85,30,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(220,h*0.80,96,42,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(760,h*0.66,80,28,0,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle="rgba(10,60,80,.7)"; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.ellipse(260,h*0.17,90,34,0,0,Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(720,h*0.15,85,30,0,0,Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(220,h*0.80,96,42,0,0,Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(760,h*0.66,80,28,0,0,Math.PI*2); ctx.stroke();
+    drawCtx.fillStyle="rgba(25,90,105,.65)";
+    drawCtx.beginPath(); drawCtx.ellipse(260,h*0.17,90,34,0,0,Math.PI*2); drawCtx.fill();
+    drawCtx.beginPath(); drawCtx.ellipse(720,h*0.15,85,30,0,0,Math.PI*2); drawCtx.fill();
+    drawCtx.beginPath(); drawCtx.ellipse(220,h*0.80,96,42,0,0,Math.PI*2); drawCtx.fill();
+    drawCtx.beginPath(); drawCtx.ellipse(760,h*0.66,80,28,0,0,Math.PI*2); drawCtx.fill();
+    drawCtx.strokeStyle="rgba(10,60,80,.7)"; drawCtx.lineWidth=2;
+    drawCtx.beginPath(); drawCtx.ellipse(260,h*0.17,90,34,0,0,Math.PI*2); drawCtx.stroke();
+    drawCtx.beginPath(); drawCtx.ellipse(720,h*0.15,85,30,0,0,Math.PI*2); drawCtx.stroke();
+    drawCtx.beginPath(); drawCtx.ellipse(220,h*0.80,96,42,0,0,Math.PI*2); drawCtx.stroke();
+    drawCtx.beginPath(); drawCtx.ellipse(760,h*0.66,80,28,0,0,Math.PI*2); drawCtx.stroke();
   }
   else if(key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD"){
     fillSolid("#18402a");
@@ -3717,19 +3765,19 @@ function drawMapScene(){
   }
   else if(key==="ST_DOWNTOWN" || key==="AR_NEON_GRID" || key==="SV_STORM_DISTRICT"){
     fillSolid("#1a1f2d");
-    ctx.fillStyle="rgba(70,72,80,.95)";
-    for(let x=80; x<w; x+=170) ctx.fillRect(x-46,0,92,h);
-    for(let y=80; y<h; y+=150) ctx.fillRect(0,y-42,w,84);
+    drawCtx.fillStyle="rgba(70,72,80,.95)";
+    for(let x=80; x<w; x+=170) drawCtx.fillRect(x-46,0,92,h);
+    for(let y=80; y<h; y+=150) drawCtx.fillRect(0,y-42,w,84);
     const blocks = [
       [150,140,90,80],[320,150,80,70],[520,140,100,80],[720,150,80,75],[880,140,80,70],
       [180,310,100,85],[360,320,90,80],[560,310,110,85],[760,320,90,80],[900,310,80,75],
       [150,470,90,70],[340,470,90,70],[540,470,100,70],[740,470,90,70],[900,470,80,70],
     ];
     for(const [x,y,ww,hh] of blocks) buildingBlock(x,y,ww,hh);
-    ctx.fillStyle="rgba(240,240,245,.75)";
+    drawCtx.fillStyle="rgba(240,240,245,.75)";
     for(let i=0;i<8;i++){
       const cx=120+i*100;
-      for(let k=0;k<7;k++) ctx.fillRect(cx+k*9, 270, 5, 18);
+      for(let k=0;k<7;k++) drawCtx.fillRect(cx+k*9, 270, 5, 18);
     }
   }
   else {
@@ -3737,11 +3785,11 @@ function drawMapScene(){
     rounded(90,90,260,130,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
     rounded(610,110,260,110,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
     rounded(240,340,340,140,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
-    ctx.strokeStyle="rgba(240,190,55,.55)";
-    ctx.lineWidth=6;
+    drawCtx.strokeStyle="rgba(240,190,55,.55)";
+    drawCtx.lineWidth=6;
     for(let k=0;k<260;k+=18){
-      ctx.beginPath(); ctx.moveTo(90+k,90); ctx.lineTo(90+k-45,220); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(610+k,110); ctx.lineTo(610+k-45,220); ctx.stroke();
+      drawCtx.beginPath(); drawCtx.moveTo(90+k,90); drawCtx.lineTo(90+k-45,220); drawCtx.stroke();
+      drawCtx.beginPath(); drawCtx.moveTo(610+k,110); drawCtx.lineTo(610+k-45,220); drawCtx.stroke();
     }
     buildingBlock(170,260,140,90);
     buildingBlock(520,260,160,90);
@@ -3749,6 +3797,33 @@ function drawMapScene(){
     const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
     for(const [x,y] of crates) crateBlock(x,y);
   }
+}
+
+function ensureMapRenderCache(){
+  const key = currentMap().key;
+  if(
+    MAP_RENDER_CACHE.canvas &&
+    MAP_RENDER_CACHE.key === key &&
+    MAP_RENDER_CACHE.width === cv.width &&
+    MAP_RENDER_CACHE.height === cv.height
+  ){
+    return MAP_RENDER_CACHE.canvas;
+  }
+
+  const layer = document.createElement("canvas");
+  layer.width = cv.width;
+  layer.height = cv.height;
+  const layerCtx = layer.getContext("2d");
+  drawMapStaticLayer(layerCtx, layer.width, layer.height, key);
+  MAP_RENDER_CACHE.key = key;
+  MAP_RENDER_CACHE.width = layer.width;
+  MAP_RENDER_CACHE.height = layer.height;
+  MAP_RENDER_CACHE.canvas = layer;
+  return layer;
+}
+
+function drawMapDynamicLayer(){
+  const w=cv.width, h=cv.height;
 
   if(S.mode!=="Survival"){
     ctx.globalAlpha=0.9;
@@ -3781,13 +3856,18 @@ function drawMapScene(){
     }
   }
 
-  // fog overlay
   if(Date.now() < (S.fogUntil||0)){
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = "#0b0d12";
     ctx.fillRect(0,0,w,h);
     ctx.globalAlpha = 1;
   }
+}
+
+function drawMapScene(){
+  const layer = ensureMapRenderCache();
+  ctx.drawImage(layer, 0, 0);
+  drawMapDynamicLayer();
 }
 
 // ===================== DRAW ENTITIES =====================
@@ -4230,6 +4310,7 @@ window.openInventory = openInventory;
 window.closeInventory = closeInventory;
 
 window.resetGame = resetGame;
+window.toggleMobileChrome = toggleMobileChrome;
 window.deploy = deploy;
 window.scan = scan;
 window.startCombat = startCombat;
