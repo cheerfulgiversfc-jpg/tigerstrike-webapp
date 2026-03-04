@@ -449,17 +449,13 @@
           </button>
         </div>
         <div class="touchCluster" id="combatTouchCluster">
-          <button class="touchBtn warn" id="touchAttackBtn" onclick="playerAction('ATTACK')">
+          <button class="touchBtn warn" id="touchAttackBtn" data-attack-btn>
             <span class="touchBtnIcon">🔫</span>
             <span class="touchBtnLabel">Attack</span>
           </button>
           <button class="touchBtn" id="touchCaptureBtn" onclick="playerAction('CAPTURE')">
             <span class="touchBtnIcon">💉</span>
             <span class="touchBtnLabel">Cap</span>
-          </button>
-          <button class="touchBtn danger" id="touchKillBtn" onclick="playerAction('KILL')">
-            <span class="touchBtnIcon">💀</span>
-            <span class="touchBtnLabel">Kill</span>
           </button>
           <button class="touchBtn" id="touchRetreatBtn" onclick="endBattle('RETREAT')">
             <span class="touchBtnIcon">↩️</span>
@@ -489,9 +485,8 @@
         <button class="ghost" onclick="placeTrap()">🪤 Trap</button>
       </div>
       <div class="row combatButtons" id="combatButtons">
-        <button class="warn" id="combatAttackBtn" onclick="playerAction('ATTACK')">🔫 Attack</button>
+        <button class="warn" id="combatAttackBtn" data-attack-btn>🔫 Attack</button>
         <button class="good" id="combatCaptureBtn" onclick="playerAction('CAPTURE')" disabled>💉 Capture</button>
-        <button class="danger" id="combatKillBtn" onclick="playerAction('KILL')" disabled>💀 Kill</button>
         <button class="ghost" id="combatPrevWeaponBtn" onclick="cycleWeapon(-1)">◀️ Weapon</button>
         <button class="ghost" id="combatNextWeaponBtn" onclick="cycleWeapon(1)">Weapon ▶️</button>
         <button class="ghost" onclick="endBattle('RETREAT')">↩️ Retreat</button>
@@ -524,7 +519,7 @@
       <div class="hudBox">
         <div class="hudTitle">Mission</div>
         <div class="hudLine">Map: <b id="mapTxt"></b> • Mode: <b id="modeTxt"></b> • Level: <b id="lvlTxt"></b></div>
-        <div class="hudLine">Target Tiger HP: <b id="tigerTxt"></b> • Capture/Kill when HP ≤ <b>15</b></div>
+        <div class="hudLine">Target Tiger HP: <b id="tigerTxt"></b> • Capture at <b>25%</b> HP or lower</div>
         <div class="bar"><div id="tigerBar" class="fill red"></div></div>
         <div class="hudLine">Civilians Alive: <b id="civTxt"></b> • Evac: <b id="evacTxt"></b> • Tigers left: <b id="tleftTxt"></b> • Threat: <b id="threatTxt"></b></div>
         <div class="hudLine" id="objTxt"></div>
@@ -600,6 +595,16 @@
   </div>
 </div>
 
+<div class="overlay" id="weaponQuickOverlay">
+  <div class="modal">
+    <div class="modalTop"><div class="modalTitle">Switch Weapon</div><button class="ghost" onclick="closeQuickWeaponPicker()">Close</button></div>
+    <div class="modalBody">
+      <div class="hudLine">Quick tap on Attack still fires. Long-press Attack to open this list and swap guns.</div>
+      <div class="weaponGrid" id="weaponQuickList"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Battle -->
 <div class="battleOverlay" id="battleOverlay">
   <div class="battleSheet">
@@ -621,7 +626,7 @@
         <div class="battleLabel">Tiger</div>
         <div class="battleValue" id="battleTigerValue">100 / 100</div>
         <div class="bar"><div id="battleTigerBar" class="fill red"></div></div>
-        <div class="battleMeta" id="battleTigerMeta">Standard • Capture/Kill at 15 HP</div>
+        <div class="battleMeta" id="battleTigerMeta">Standard • Capture at 25% HP or lower</div>
       </div>
     </div>
     <div class="divider"></div>
@@ -629,7 +634,7 @@
     <div class="weaponGrid" id="weaponGrid"></div>
     <div class="divider"></div>
     <div class="grid2">
-      <button class="warn" id="atkBtn" onclick="playerAction('ATTACK')">Attack</button>
+      <button class="warn" id="atkBtn" data-attack-btn>Attack</button>
       <button class="ghost" onclick="playerAction('PROTECT')">Protect Civilians</button>
       <button class="good" id="capBtn" onclick="playerAction('CAPTURE')" disabled>Capture</button>
       <button class="danger" id="killBtn" onclick="playerAction('KILL')" disabled>Kill</button>

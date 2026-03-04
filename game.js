@@ -79,14 +79,14 @@ function awardDailyLogin(){
 }
 // ===================== DATA =====================
 const WEAPONS = [
-  { id:"W_TRQ_PISTOL_MK1", name:"Tranq Pistol Mk I", grade:"Common", price:50,   type:"tranq", ammo:"TRANQ_DARTS",  mag:6,  dmg:[8,12] },
-  { id:"W_9MM_JUNK",      name:"9mm Sidearm (Used)", grade:"Common", price:150, type:"lethal", ammo:"9MM_STD",      mag:12, dmg:[10,14] },
-  { id:"W_SHOTGUN",       name:"Pump Shotgun", grade:"Uncommon", price:500,     type:"lethal", ammo:"12GA_STD",     mag:5,  dmg:[18,26] },
-  { id:"W_TRQ_RIFLE",     name:"Tranq Rifle", grade:"Rare", price:2500,         type:"tranq", ammo:"TRANQ_DARTS",  mag:5,  dmg:[14,20] },
-  { id:"W_AR_CARBINE",    name:"AR Carbine", grade:"Rare", price:6500,          type:"lethal", ammo:"556_STD",      mag:30, dmg:[14,20] },
-  { id:"W_DMR",           name:"DMR Marksman", grade:"Epic", price:18000,       type:"lethal", ammo:"762_STD",      mag:10, dmg:[20,28] },
-  { id:"W_TRQ_LAUNCHER",  name:"Tranquilizer Launcher", grade:"Legendary", price:50000, type:"tranq", ammo:"TRANQ_HEAVY", mag:2, dmg:[30,42] },
-  { id:"W_RAIL_PROTO",    name:"Prototype Rail Rifle", grade:"Mythic", price:100000,    type:"lethal", ammo:"RAIL_CELL",   mag:3, dmg:[40,60] },
+  { id:"W_TRQ_PISTOL_MK1", name:"Tranq Pistol Mk I", grade:"Common", price:50,   type:"tranq", ammo:"TRANQ_DARTS",  mag:6,  dmg:[8,12], range:112 },
+  { id:"W_9MM_JUNK",      name:"9mm Sidearm (Used)", grade:"Common", price:150, type:"lethal", ammo:"9MM_STD",      mag:12, dmg:[10,14], range:124 },
+  { id:"W_SHOTGUN",       name:"Pump Shotgun", grade:"Uncommon", price:500,     type:"lethal", ammo:"12GA_STD",     mag:5,  dmg:[18,26], range:94 },
+  { id:"W_TRQ_RIFLE",     name:"Tranq Rifle", grade:"Rare", price:2500,         type:"tranq", ammo:"TRANQ_DARTS",  mag:5,  dmg:[14,20], range:168 },
+  { id:"W_AR_CARBINE",    name:"AR Carbine", grade:"Rare", price:6500,          type:"lethal", ammo:"556_STD",      mag:30, dmg:[14,20], range:176 },
+  { id:"W_DMR",           name:"DMR Marksman", grade:"Epic", price:18000,       type:"lethal", ammo:"762_STD",      mag:10, dmg:[20,28], range:214 },
+  { id:"W_TRQ_LAUNCHER",  name:"Tranquilizer Launcher", grade:"Legendary", price:50000, type:"tranq", ammo:"TRANQ_HEAVY", mag:2, dmg:[30,42], range:188 },
+  { id:"W_RAIL_PROTO",    name:"Prototype Rail Rifle", grade:"Mythic", price:100000,    type:"lethal", ammo:"RAIL_CELL",   mag:3, dmg:[40,60], range:236 },
 ];
 
 const AMMO = [
@@ -298,7 +298,7 @@ function save(force=false){
   try{
     const now = Date.now();
 
-    if(!force && (now - __lastSave) < 700) return;
+    if(!force && (now - __lastSave) < 1000) return;
 
     __lastSave = now;
 
@@ -311,7 +311,7 @@ function save(force=false){
 
 function maybeAutosave(force=false){
   const now = Date.now();
-  if(force || (now - __lastAutosave) > 2400){
+  if(force || (now - __lastAutosave) > 3600){
     __lastAutosave = now;
     save(force);
   }
@@ -572,6 +572,8 @@ function getMed(id){ return MEDS.find(m=>m.id===id); }
 function getArmor(id){ return ARMORY.find(a=>a.id===id); }
 function getTool(id){ return TOOLS.find(t=>t.id===id); }
 function equippedWeapon(){ return getWeapon(S.equippedWeaponId) || WEAPONS[0]; }
+function equippedWeaponRange(){ return equippedWeapon()?.range || 112; }
+function captureWindowHp(t){ return Math.max(1, Math.ceil((t?.hpMax || 0) * 0.25)); }
 
 function currentMap(){
   const list = MODE_MAPS[S.mode] || MODE_MAPS.Story;
@@ -900,6 +902,41 @@ function closeInventory(){
     lastOverlay=null; return;
   }
   setPaused(false,null);
+}
+const WEAPON_PICKER_STATE = { paused:false, reason:null };
+
+function renderQuickWeaponPicker(){
+  const box = document.getElementById("weaponQuickList");
+  if(!box) return;
+  box.innerHTML = S.ownedWeapons.map((id)=>{
+    const w = getWeapon(id);
+    const active = id===S.equippedWeaponId;
+    const reserve = S.ammoReserve[w.ammo]||0;
+    const loaded = active ? S.mag.loaded : 0;
+    const range = w.range || 0;
+    return `<button ${active?'class="good"':''} onclick="selectQuickWeapon('${id}')">${active?'✅ ':''}${w.name}<br><span class="small">Ammo ${loaded}/${w.mag} • Reserve ${reserve} • Range ${range}</span></button>`;
+  }).join("");
+}
+function openQuickWeaponPicker(){
+  const overlay = document.getElementById("weaponQuickOverlay");
+  if(!overlay || overlay.style.display==="flex") return;
+  WEAPON_PICKER_STATE.paused = S.paused;
+  WEAPON_PICKER_STATE.reason = S.pauseReason;
+  setPaused(true,"weapon");
+  renderQuickWeaponPicker();
+  overlay.style.display = "flex";
+  sfx("ui");
+  syncGamepadFocus();
+}
+function closeQuickWeaponPicker(){
+  const overlay = document.getElementById("weaponQuickOverlay");
+  if(overlay) overlay.style.display = "none";
+  setPaused(WEAPON_PICKER_STATE.paused, WEAPON_PICKER_STATE.paused ? WEAPON_PICKER_STATE.reason : null);
+  syncGamepadFocus();
+}
+function selectQuickWeapon(id){
+  equipWeapon(id);
+  closeQuickWeaponPicker();
 }
 
 function shopTab(tab){
@@ -1472,7 +1509,7 @@ window.exitTutorialMode = function () {
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
-  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay"].forEach((id)=>{
+  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -1914,6 +1951,7 @@ function restartCurrentMission(){
   document.getElementById("battleOverlay").style.display="none";
   document.getElementById("completeOverlay").style.display="none";
   document.getElementById("overOverlay").style.display="none";
+  document.getElementById("weaponQuickOverlay").style.display="none";
   lastOverlay=null;
 
   S.gameOver=false;
@@ -1931,6 +1969,7 @@ function resetGame(){
   syncWindowState();
   document.getElementById("shopOverlay").style.display="none";
   document.getElementById("invOverlay").style.display="none";
+  document.getElementById("weaponQuickOverlay").style.display="none";
   document.getElementById("aboutOverlay").style.display="none";
   document.getElementById("completeOverlay").style.display="none";
   document.getElementById("overOverlay").style.display="none";
@@ -2007,18 +2046,19 @@ cv.addEventListener("pointerdown",(e)=>{
   ensureAudio();
 
   if(tapped && !S.inBattle){
-    const wasLocked = tapped.id===S.lockedTigerId;
+    const d = dist(S.me.x,S.me.y,tapped.x,tapped.y);
+    if(d > equippedWeaponRange()){
+      S.lockedTigerId = null;
+      toast(`${equippedWeapon().name} is out of range. Move closer before you lock that tiger.`);
+      save();
+      return;
+    }
     S.lockedTigerId=tapped.id;
-    if(canEngage()){
-      startCombat();
-    }else{
-      if(!wasLocked){
-        sfx("ui");
-        hapticImpact("light");
-        save();
-      }else{
-        toast("Tiger locked. Move closer to start the fight.");
-      }
+    startCombat();
+    if(!S.inBattle){
+      sfx("ui");
+      hapticImpact("light");
+      save();
     }
     return;
   }
@@ -2166,7 +2206,7 @@ function gamepadUiContainers(){
   const tutorial = document.getElementById("tutorialOverlay");
   if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
 
-  const overlays = ["overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay"]
+  const overlays = ["overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"]
     .map((id)=>document.getElementById(id))
     .filter((el)=>el && el.style.display === "flex");
   if(overlays.length) return overlays;
@@ -2255,7 +2295,7 @@ function activateGamepadFocus(){
 }
 
 function anyGamepadOverlayVisible(){
-  const ids = ["tutorialOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay"];
+  const ids = ["tutorialOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"];
   return ids.some((id)=>{
     const el = document.getElementById(id);
     return !!(el && el.style.display === "flex");
@@ -2532,7 +2572,15 @@ function lockNearestTiger(opts={}){
 function canEngage(){
   const t=lockedTiger();
   if(!t) return null;
-  return dist(S.me.x,S.me.y,t.x,t.y) < 90 ? t : null;
+  return dist(S.me.x,S.me.y,t.x,t.y) <= equippedWeaponRange() ? t : null;
+}
+function clearOutOfRangeLock(){
+  if(S.inBattle || window.TigerTutorial?.isRunning) return;
+  const t = lockedTiger();
+  if(!t) return;
+  if(dist(S.me.x,S.me.y,t.x,t.y) > equippedWeaponRange()){
+    S.lockedTigerId = null;
+  }
 }
 
 // ===================== SCAN =====================
@@ -2850,11 +2898,9 @@ function roamTigers(){
 
     if(t.holdUntil && now < t.holdUntil){
       t.vx=0; t.vy=0;
-      t.step = (t.step + 0.05) % (Math.PI*2);
+      t.step = (t.step + 0.03) % (Math.PI*2);
       continue;
     }
-
-    t.step = (t.step + 0.12) % (Math.PI*2);
 
     const civs = (S.mode!=="Survival") ? S.civilians.filter(c=>c.alive && !c.evac) : [];
     let targetX=S.me.x, targetY=S.me.y;
@@ -2882,11 +2928,11 @@ function roamTigers(){
     if(t.type==="Berserker" && t.rageOn) speedCap *= 1.20;
 
     if(chase){
-      t.vx += (targetX>t.x?0.06:-0.06);
-      t.vy += (targetY>t.y?0.06:-0.06);
+      t.vx += (targetX>t.x?0.05:-0.05);
+      t.vy += (targetY>t.y?0.05:-0.05);
     } else {
-      t.vx += (Math.random()-0.5)*0.08;
-      t.vy += (Math.random()-0.5)*0.08;
+      t.vx += (Math.random()-0.5)*0.05;
+      t.vy += (Math.random()-0.5)*0.05;
     }
 
     if(t.packId){
@@ -2905,11 +2951,15 @@ function roamTigers(){
 
     const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18);
     if(!moved){ t.vx *= -0.8; t.vy *= -0.8; }
+    t.vx *= chase ? 0.88 : 0.80;
+    t.vy *= chase ? 0.88 : 0.80;
 
     if(t.x<40||t.x>cv.width-40) t.vx*=-1;
     if(t.y<60||t.y>cv.height-40) t.vy*=-1;
     t.x=clamp(t.x,40,cv.width-40);
     t.y=clamp(t.y,60,cv.height-40);
+    const gait = Math.min(1.8, Math.hypot(t.vx, t.vy));
+    t.step = (t.step + 0.04 + gait * 0.18) % (Math.PI*2);
   }
 }
 
@@ -3050,8 +3100,7 @@ function renderCombatControls(){
   if(combatButtons) combatButtons.style.display = hideTouchUi ? "none" : (inCombat ? "flex" : "none");
 
   const t = activeTiger();
-  const canCap = canCaptureTiger(t);
-  const canKill = !!(t && t.hp <= 15);
+  const canCap = canAttemptCapture(t);
   const canAtk = anyWeaponHasAmmo();
 
   [["touchAttackBtn", !canAtk], ["combatAttackBtn", !canAtk]].forEach(([id, disabled])=>{
@@ -3059,10 +3108,6 @@ function renderCombatControls(){
     if(el) el.disabled = disabled;
   });
   [["touchCaptureBtn", !canCap], ["combatCaptureBtn", !canCap]].forEach(([id, disabled])=>{
-    const el = document.getElementById(id);
-    if(el) el.disabled = disabled;
-  });
-  [["touchKillBtn", !canKill], ["combatKillBtn", !canKill]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
@@ -3125,7 +3170,7 @@ function renderBattleStatus(){
 
   agentMeta.innerText = `Armor ${Math.round(S.armor)} • Stamina ${Math.round(S.stamina)} • Ammo ${S.mag.loaded}/${S.mag.cap}`;
   tigerMeta.innerText = t
-    ? `${t.type}${t.tranqTagged ? " • Tranq tagged" : ""} • Capture/Kill at 15 HP`
+    ? `${t.type} • Capture at 25% HP or lower`
     : "Target lost";
   renderCombatControls();
 }
@@ -3140,6 +3185,52 @@ function renderWeaponGrid(){
     return `<button ${active?'class="good"':''} onclick="equipWeapon('${id}')">${active?'✅ ':''}${w.name} (${dur}%)${badge}</button>`;
   }).join("");
 }
+const ATTACK_HOLD = { timer:0, longPress:false };
+
+function clearAttackHold(){
+  if(ATTACK_HOLD.timer){
+    clearTimeout(ATTACK_HOLD.timer);
+    ATTACK_HOLD.timer = 0;
+  }
+}
+
+function onAttackPressStart(e){
+  if(e.pointerType==="mouse" && e.button!==0) return;
+  ATTACK_HOLD.longPress = false;
+  clearAttackHold();
+  ATTACK_HOLD.timer = setTimeout(()=>{
+    ATTACK_HOLD.longPress = true;
+    openQuickWeaponPicker();
+  }, 420);
+}
+
+function onAttackPressEnd(){
+  clearAttackHold();
+}
+
+function onAttackClick(e){
+  if(ATTACK_HOLD.longPress){
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    ATTACK_HOLD.longPress = false;
+    return;
+  }
+  playerAction("ATTACK");
+}
+
+function bindAttackButtonGestures(){
+  document.querySelectorAll("[data-attack-btn]").forEach((btn)=>{
+    if(btn.dataset.attackBound==="1") return;
+    btn.dataset.attackBound="1";
+    btn.addEventListener("pointerdown", onAttackPressStart);
+    btn.addEventListener("pointerup", onAttackPressEnd);
+    btn.addEventListener("pointercancel", onAttackPressEnd);
+    btn.addEventListener("pointerleave", onAttackPressEnd);
+    btn.addEventListener("contextmenu", (e)=>e.preventDefault());
+    btn.addEventListener("click", onAttackClick, true);
+  });
+}
+
 function endBattle(reason){
   const overlay = document.getElementById("battleOverlay");
   if(overlay) overlay.style.display="none";
@@ -3158,22 +3249,33 @@ function requiredTranqWeaponId(t){
   if(t.type==="Stalker" || t.type==="Berserker") return "W_TRQ_RIFLE";
   return "W_TRQ_PISTOL_MK1";
 }
+function hasAmmoForWeaponId(id){
+  const w = getWeapon(id);
+  if(!w) return false;
+  if(S.equippedWeaponId === id && S.mag.loaded > 0) return true;
+  return (S.ammoReserve[w.ammo]||0) > 0;
+}
+function canAttemptCapture(t){
+  if(!t || !t.alive) return false;
+  if(t.hp > captureWindowHp(t)) return false;
+  const req = requiredTranqWeaponId(t);
+  return S.ownedWeapons.includes(req) && hasAmmoForWeaponId(req);
+}
 function canCaptureTiger(t){
   if(!t || !t.alive) return false;
-  if(t.hp>15) return false;
-  if(!t.tranqTagged) return false;
+  if(t.hp > captureWindowHp(t)) return false;
   const req = requiredTranqWeaponId(t);
   if(S.equippedWeaponId !== req) return false;
   const w=equippedWeapon();
   if(w.type!=="tranq") return false;
-  return true;
+  return S.mag.loaded > 0 || (S.ammoReserve[w.ammo]||0) > 0;
 }
 function updateBattleButtons(){
   const t=tigerById(S.activeTigerId);
   const killBtn = document.getElementById("killBtn");
   const capBtn = document.getElementById("capBtn");
   if(killBtn) killBtn.disabled = !(t && t.hp<=15);
-  if(capBtn) capBtn.disabled = !canCaptureTiger(t);
+  if(capBtn) capBtn.disabled = !canAttemptCapture(t);
   renderCombatControls();
   renderBattleStatus();
 }
@@ -3226,6 +3328,24 @@ function updateAttackButton(){
   renderCombatControls();
 }
 
+function finishTigerKill(t){
+  if(!t || !t.alive) return;
+  t.alive=false;
+  S.carcasses.push({ x:t.x, y:t.y });
+  const pay=payout("KILL");
+  S.funds+=pay.cash; S.score+=pay.score;
+  S.stats.kills += 1;
+  addXP(50);
+  S.stats.cashEarned += pay.cash;
+  unlockAchv("kill1","First Kill");
+  S.trust=clamp(S.trust+pay.trust,0,100);
+  S.aggro=clamp(S.aggro+pay.aggro,0,100);
+  maybeReinforceOnKill();
+  sfx("win"); hapticNotif("success");
+  endBattle();
+  checkMissionComplete();
+}
+
 function findFriendlyFireVictim(targetTiger){
   if(S.mode==="Survival") return null;
   const candidates = S.civilians.filter(c=>c.alive && !c.evac);
@@ -3264,7 +3384,24 @@ function playerAction(action){
   }
 
   if(action==="CAPTURE"){
-    if(!canCaptureTiger(t)) return toast("Capture rules not met.");
+    if(t.hp > captureWindowHp(t)) return toast("Capture is available when the tiger is at 25% HP or lower.");
+    const req = requiredTranqWeaponId(t);
+    const reqWeapon = getWeapon(req);
+    if(!reqWeapon) return toast("Required tranq weapon data missing.");
+    if(!S.ownedWeapons.includes(req)) return toast(`${reqWeapon.name} is required to capture this ${t.type}.`);
+    const magReady = (S.equippedWeaponId === req && S.mag.loaded > 0);
+    const reserveReady = (S.ammoReserve[reqWeapon.ammo]||0) > 0;
+    if(!magReady && !reserveReady){
+      return toast(`${reqWeapon.name} is out of ammo for this ${t.type}.`);
+    }
+    if(S.equippedWeaponId !== req){
+      equipWeapon(req);
+      S.mag.loaded = 0;
+    }
+    if(S.mag.loaded <= 0 && !autoReloadIfNeeded(true)){
+      return toast(`${reqWeapon.name} is out of ammo for this ${t.type}.`);
+    }
+    if(!canCaptureTiger(t)) return toast(`${reqWeapon.name} is needed to capture this ${t.type}.`);
     t.alive=false;
     const pay=payout("CAPTURE");
     S.funds+=pay.cash; S.score+=pay.score;
@@ -3281,21 +3418,8 @@ function playerAction(action){
   }
 
   if(action==="KILL"){
-    if(t.hp>15) return toast("Tiger HP too high to finish.");
-    t.alive=false;
-    S.carcasses.push({ x:t.x, y:t.y });
-    const pay=payout("KILL");
-    S.funds+=pay.cash; S.score+=pay.score;
-    S.stats.kills += 1;
-    addXP(50);
-    S.stats.cashEarned += pay.cash;
-    unlockAchv("kill1","First Kill");
-    S.trust=clamp(S.trust+pay.trust,0,100);
-    S.aggro=clamp(S.aggro+pay.aggro,0,100);
-    maybeReinforceOnKill();
-    sfx("win"); hapticNotif("success");
-    endBattle();
-    checkMissionComplete();
+    if(t.hp>captureWindowHp(t)) return toast("Tiger HP is still too high to finish.");
+    finishTigerKill(t);
     return;
   }
 
@@ -3373,13 +3497,23 @@ function playerAction(action){
       hapticImpact("medium");
       setBattleMsg(`Friendly fire! Civilian #${victim.id} took ${civDmg}.`);
     } else {
-      t.hp = clamp(t.hp - dmg, 0, t.hpMax);
+      if(w.type==="tranq"){
+        t.hp = clamp(t.hp - dmg, 1, t.hpMax);
+      }else{
+        t.hp = clamp(t.hp - dmg, 0, t.hpMax);
+      }
       emitCombatFx(S.me.x, S.me.y - 6, t.x, t.y, w.type==="tranq" ? "rgba(96,165,250,.96)" : "rgba(245,247,255,.96)", crit ? 4 : 3);
       hapticImpact(crit ? "heavy" : "light");
       setBattleMsg(`${crit?'CRIT! ':''}Hit for ${dmg}. ${w.type==='tranq'?'(tranq applied)':''}`);
     }
 
-    if(t.hp<=0){ t.hp=15; setBattleMsg("Tiger is critically weak. Choose Capture or Kill!"); }
+    if(t.hp<=0){
+      finishTigerKill(t);
+      return;
+    }
+    if(w.type==="tranq" && t.hp <= captureWindowHp(t)){
+      setBattleMsg(`Tiger is subdued. Tap Capture to use ${getWeapon(requiredTranqWeaponId(t))?.name || "the required tranq gun"}.`);
+    }
 
     updateBattleButtons();
     updateAttackButton();
@@ -3430,9 +3564,12 @@ function combatTick(){
   t.aggroBoost = Math.max(t.aggroBoost || 0, 0.95);
 
   const d = dist(S.me.x, S.me.y, t.x, t.y);
-  if(d > 260){
-    toast("Target broke contact. Re-engage when closer.");
+  const rangeLimit = equippedWeaponRange();
+  if(d > rangeLimit){
     endBattle("RETREAT");
+    S.lockedTigerId = null;
+    toast(`${equippedWeapon().name} lost range. Tap that tiger again when you get back in range.`);
+    save(true);
     return;
   }
 
@@ -3647,7 +3784,7 @@ function renderHUD(){
 
   document.getElementById("statusLine").innerText =
     S.inBattle
-      ? (S.battleMsg || `On-map combat active. Use Attack, Capture, Kill, and weapon swap while Tiger #${S.activeTigerId} stays locked.`)
+      ? (S.battleMsg || `On-map combat active. Use Attack, Capture, weapon swap, and Retreat while Tiger #${S.activeTigerId} stays locked.`)
       : (window.matchMedia?.("(pointer:fine)")?.matches
           ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Shift sprints."
           : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear.");
@@ -4074,7 +4211,8 @@ function drawTiger(t){
   }
 
   const c=tigerColors(t.type);
-  const bob = Math.sin(t.step||0)*1.2;
+  const gait = Math.min(1.2, Math.hypot(t.vx||0, t.vy||0));
+  const bob = Math.sin((t.step||0)*2)*0.35*gait;
   const x=t.x, y=t.y + bob;
   let s=1.0;
   if(t.type==="Scout") s=0.85;
@@ -4101,6 +4239,16 @@ function drawTiger(t){
   ctx.beginPath(); ctx.ellipse(x+20*s, y-6*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(x+26*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(x+16*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+
+  const legSwing = Math.sin(t.step||0) * 5 * s * gait;
+  ctx.strokeStyle=c.body;
+  ctx.lineWidth=3*s;
+  [[-10,-legSwing],[-2,legSwing],[8,legSwing],[16,-legSwing]].forEach(([offset, swing])=>{
+    ctx.beginPath();
+    ctx.moveTo(x+offset*s, y+10*s);
+    ctx.lineTo(x+offset*s + swing*0.18, y+21*s);
+    ctx.stroke();
+  });
 
   ctx.strokeStyle=c.body; ctx.lineWidth=5*s;
   ctx.beginPath();
@@ -4190,6 +4338,7 @@ function draw(){
     supportUnitsTick();
     const usedKeyboard = keyboardMoveTick();
     if(!usedKeyboard) movePlayer();
+    clearOutOfRangeLock();
     followCiviliansTick();
     evacCheck();
     tickCiviliansAndThreats();
@@ -4243,6 +4392,7 @@ function init(){
   if(!Array.isArray(S.pickups)) S.pickups = [];
 
   awardDailyLogin();
+  bindAttackButtonGestures();
   requestAnimationFrame(draw);
 }
 
@@ -4307,5 +4457,8 @@ window.buyTool = buyTool;
 window.buyTrap = buyTrap;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
+window.openQuickWeaponPicker = openQuickWeaponPicker;
+window.closeQuickWeaponPicker = closeQuickWeaponPicker;
+window.selectQuickWeapon = selectQuickWeapon;
 window.buyPerk = buyPerk;
 window.lockNearestTiger = lockNearestTiger;
