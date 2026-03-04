@@ -41,7 +41,7 @@
     .fill.orange{background:var(--warn)}
 
     .screenCard{order:3;margin-top:12px;background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);position:relative}
-    .mobileStatusPanel{display:none}
+    .mobileStatusPanel{display:none!important}
     .mobileBattleRow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .mobileBattleCard{background:rgba(10,16,29,.9);border:1px solid rgba(35,42,62,.95);border-radius:14px;padding:8px 10px}
     .mobileBattleLabel{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
@@ -68,6 +68,9 @@
     .small{font-size:12px;color:var(--muted)}
     .actionButtons{flex:1 1 560px}
     .mobileUtilityBar{display:none}
+    .touchOverlay{display:none}
+    .touchCluster,.touchStickShell,.touchPad,.touchBtn{pointer-events:auto}
+    .touchHint{display:none}
 
     .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:200;padding:14px}
     .modal{width:min(980px,96vw);background:linear-gradient(180deg,#121622,#0b0d12);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;max-height:88vh;display:flex;flex-direction:column}
@@ -112,13 +115,11 @@
       .title .tag{font-size:10px;padding:2px 6px}
       .sub{display:none}
       .topActions{display:none}
+      .hud{order:2;display:block;margin-top:8px}
+      .hudGrid{grid-template-columns:1fr}
       .screenCard{
-        order:2;
-        flex:1 1 auto;
-        min-height:0;
-        display:flex;
-        flex-direction:column;
-        margin-top:6px;
+        order:3;
+        margin-top:8px;
         margin-left:-10px;
         margin-right:-10px;
         width:calc(100% + 20px);
@@ -126,27 +127,87 @@
         border-right:none;
         border-radius:0;
       }
-      .mobileStatusPanel{
+      .mapStage{min-height:clamp(520px, 60vh, 860px)}
+      .mapStage canvas{
+        position:absolute;
+        inset:0;
+        width:100%;
+        height:100%;
+      }
+      .actionStrip{display:none}
+      .touchOverlay{
         display:block;
-        order:1;
-        padding:10px;
-        background:linear-gradient(180deg, rgba(8,12,22,.98), rgba(10,15,28,.96));
-        border-bottom:1px solid rgba(35,42,62,.95);
+        position:absolute;
+        inset:0;
+        z-index:4;
+        pointer-events:none;
       }
-      .actionStrip{
-        order:2;
+      .touchStickShell{
+        position:absolute;
+        left:14px;
+        bottom:18px;
+        width:120px;
+        height:120px;
+      }
+      .touchPad{
+        position:absolute;
+        inset:0;
+        border-radius:999px;
+        border:2px solid rgba(245,247,255,.20);
+        background:rgba(8,12,22,.18);
+        box-shadow:0 0 0 1px rgba(10,12,18,.35) inset;
+        backdrop-filter:blur(6px);
+      }
+      .touchStick{
+        position:absolute;
+        left:32px;
+        top:32px;
+        width:56px;
+        height:56px;
+        border-radius:999px;
+        border:2px solid rgba(245,247,255,.28);
+        background:rgba(18,24,38,.42);
+        box-shadow:0 4px 14px rgba(0,0,0,.28);
+      }
+      .touchHint{
+        display:block;
+        position:absolute;
+        left:20px;
+        bottom:146px;
+        padding:4px 8px;
+        border-radius:999px;
+        border:1px solid rgba(42,49,69,.9);
+        background:rgba(8,12,22,.72);
+        font-size:10px;
+        font-weight:900;
+        color:rgba(245,247,255,.72);
+      }
+      .touchCluster{
+        position:absolute;
+        right:12px;
+        bottom:18px;
+        display:grid;
+        grid-template-columns:repeat(2,58px);
+        gap:8px;
+      }
+      .touchBtn{
+        min-height:58px;
+        padding:0;
+        border-radius:18px;
+        border:2px solid rgba(245,247,255,.18);
+        background:rgba(12,17,28,.24);
+        backdrop-filter:blur(8px);
+        box-shadow:0 10px 22px rgba(0,0,0,.18);
+        display:flex;
         flex-direction:column;
-        align-items:stretch;
-        padding:8px 10px;
-        border-top:none;
-        border-bottom:1px solid rgba(35,42,62,.92);
+        align-items:center;
+        justify-content:center;
+        gap:2px;
+        font-size:11px;
+        line-height:1;
       }
-      .actionButtons{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-      .actionButtons button{width:100%;min-height:46px;padding:8px 6px;font-size:11px;line-height:1.15}
-      #statusLine{font-size:11px}
-      .mapStage{order:3;flex:1 1 auto;min-height:0}
-      canvas{width:100%;height:100%}
-      .hud{display:none}
+      .touchBtnIcon{font-size:22px;line-height:1}
+      .touchBtnLabel{font-size:9px;letter-spacing:.04em;text-transform:uppercase;opacity:.88}
       .tabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}
       .tab{flex:0 0 auto}
       .item{flex-direction:column;align-items:stretch}
@@ -183,8 +244,11 @@
     @media (max-width:460px){
       .navInner{gap:6px}
       .navBtn{font-size:11px}
-      .mobileBattleRow{grid-template-columns:1fr}
-      .actionButtons{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .mapStage{min-height:clamp(480px, 56vh, 760px)}
+      .touchStickShell{left:10px;bottom:14px;width:108px;height:108px}
+      .touchStick{left:28px;top:28px;width:52px;height:52px}
+      .touchCluster{right:10px;bottom:14px;grid-template-columns:repeat(2,56px);gap:8px}
+      .touchBtn{min-height:56px}
       .screenCard{width:calc(100% + 16px);margin-left:-8px;margin-right:-8px}
     }
 
@@ -282,30 +346,49 @@
   </div>
 
   <div class="screenCard">
-    <div class="mobileStatusPanel">
-      <div class="mobileBattleRow">
-        <div class="mobileBattleCard">
-          <div class="mobileBattleLabel">Agent</div>
-          <b class="mobileBattleValue" id="mobilePlayerHpValue">100 / 100</b>
-          <div class="bar"><div id="mobilePlayerHpBar" class="fill green"></div></div>
-        </div>
-        <div class="mobileBattleCard">
-          <div class="mobileBattleLabel">Target Tiger</div>
-          <b class="mobileBattleValue" id="mobileTigerHpValue">No target</b>
-          <div class="bar"><div id="mobileTigerHpBar" class="fill red"></div></div>
-        </div>
-      </div>
-      <div class="mobileChipRow">
-        <span class="mobileChip" id="mobileArmorChip">Armor 20</span>
-        <span class="mobileChip" id="mobileStamChip">Stamina 100</span>
-        <span class="mobileChip" id="mobileAmmoChip">Ammo 6/6</span>
-        <span class="mobileChip" id="mobileMissionChip">Tigers 0</span>
-        <span class="mobileChip subtle" id="mobileThreatChip">Threat Low</span>
-      </div>
-      <div class="mobileStatusText" id="mobilePromptTxt">Protect civilians, move to the evac zone, and clear all tigers.</div>
-    </div>
     <div class="mapStage">
       <canvas id="cv" width="960" height="540"></canvas>
+      <div class="touchOverlay">
+        <div class="touchHint">Move</div>
+        <div class="touchStickShell" id="touchStickShell">
+          <div class="touchPad" id="touchPad"></div>
+          <div class="touchStick" id="touchStick"></div>
+        </div>
+        <div class="touchCluster">
+          <button class="touchBtn" onclick="scan()">
+            <span class="touchBtnIcon">🛰️</span>
+            <span class="touchBtnLabel">Scan</span>
+          </button>
+          <button class="touchBtn warn" data-engage-btn onclick="startCombat()" disabled>
+            <span class="touchBtnIcon">🎯</span>
+            <span class="touchBtnLabel">Engage</span>
+          </button>
+          <button class="touchBtn" onclick="useMedkit()">
+            <span class="touchBtnIcon">❤️</span>
+            <span class="touchBtnLabel">Med</span>
+          </button>
+          <button class="touchBtn" onclick="sprint()">
+            <span class="touchBtnIcon">⚡</span>
+            <span class="touchBtnLabel">Sprint</span>
+          </button>
+          <button class="touchBtn" onclick="useRepairKit()">
+            <span class="touchBtnIcon">🧰</span>
+            <span class="touchBtnLabel">Repair</span>
+          </button>
+          <button class="touchBtn" onclick="placeTrap()">
+            <span class="touchBtnIcon">🪤</span>
+            <span class="touchBtnLabel">Trap</span>
+          </button>
+          <button class="touchBtn" onclick="callBackup()">
+            <span class="touchBtnIcon">🚨</span>
+            <span class="touchBtnLabel">Backup</span>
+          </button>
+          <button class="touchBtn" onclick="deploy()">
+            <span class="touchBtnIcon">📍</span>
+            <span class="touchBtnLabel">Deploy</span>
+          </button>
+        </div>
+      </div>
     </div>
     <div class="actionStrip">
       <div class="small" id="statusLine">Use the top game bar to track health and the buttons below it to deploy, scan, engage, and use gear.</div>

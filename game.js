@@ -197,6 +197,8 @@ const DEFAULT = {
 
   tigers:[],
   carcasses:[],
+  supportUnits:[],
+  rescueSites:[],
 
   scanPing:0,
   lockedTigerId:null,
@@ -276,6 +278,8 @@ function load(){
     m.trapsPlaced = Array.isArray(saved.trapsPlaced) ? saved.trapsPlaced : [];
     m.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
     m.pickups = Array.isArray(saved.pickups) ? saved.pickups : [];
+    m.supportUnits = Array.isArray(saved.supportUnits) ? saved.supportUnits : [];
+    m.rescueSites = Array.isArray(saved.rescueSites) ? saved.rescueSites : [];
     m.achievements = saved.achievements || {};
     m.stats = { ...DEFAULT.stats, ...(saved.stats||{}) };
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
@@ -387,6 +391,16 @@ function clampWorldToCanvas(){
   for(const trap of (S.trapsPlaced || [])){
     trap.x = clamp(trap.x, 40, cv.width - 40);
     trap.y = clamp(trap.y, 60, cv.height - 40);
+  }
+  for(const ally of (S.supportUnits || [])){
+    ally.x = clamp(ally.x, 40, cv.width - 40);
+    ally.y = clamp(ally.y, 60, cv.height - 40);
+    ally.homeX = clamp(ally.homeX ?? ally.x, 40, cv.width - 40);
+    ally.homeY = clamp(ally.homeY ?? ally.y, 60, cv.height - 40);
+  }
+  for(const site of (S.rescueSites || [])){
+    site.x = clamp(site.x, 70, cv.width - 70);
+    site.y = clamp(site.y, 90, cv.height - 80);
   }
 }
 function resizeCanvasForViewport(){
@@ -1449,6 +1463,161 @@ function randomEvacZone(){
 const SKIN_TONES = ["#f6d7c3","#eac0a6","#d9a07f","#c9865c","#a86a44","#7a4a2c","#4b2f1f"];
 const SHIRT_COLS = ["#4aa3ff","#3ddc97","#f59e0b","#fb7185","#a78bfa","#f97316","#eab308","#22c55e","#60a5fa"];
 const PANTS_COLS = ["#1f2937","#334155","#0f172a","#3f3f46","#1c1917","#111827"];
+const SUPPORT_CALLSIGNS = ["Ranger","Guardian","Trailwatch","Sentinel","Echo","Sierra"];
+
+function currentMapKey(){
+  return currentMap().key;
+}
+
+function rescueSitePool(){
+  const h = cv.height;
+  const pools = {
+    ST_FOREST: [
+      { kind:"trail", label:"Trail Gate", x:140, y:h*0.18, r:42 },
+      { kind:"cabin", label:"Ranger Cabin", x:330, y:h*0.45, r:46 },
+      { kind:"truck", label:"Camp Truck", x:720, y:h*0.22, r:48 },
+      { kind:"park", label:"Creek Park", x:620, y:h*0.68, r:54 },
+      { kind:"trail", label:"Lookout Trail", x:840, y:h*0.58, r:42 },
+      { kind:"house", label:"Forest House", x:220, y:h*0.78, r:48 },
+    ],
+    AR_SAND_YARD: [
+      { kind:"truck", label:"Yard Truck", x:170, y:h*0.20, r:48 },
+      { kind:"trail", label:"Fence Run", x:420, y:h*0.34, r:40 },
+      { kind:"building", label:"Control Shack", x:760, y:h*0.24, r:48 },
+      { kind:"park", label:"Supply Yard", x:620, y:h*0.68, r:54 },
+      { kind:"truck", label:"Loader Bay", x:860, y:h*0.78, r:48 },
+    ],
+    SV_NIGHT_WOODS: [
+      { kind:"trail", label:"Night Trail", x:160, y:h*0.18, r:42 },
+      { kind:"cabin", label:"Watch Cabin", x:360, y:h*0.44, r:46 },
+      { kind:"park", label:"Flooded Park", x:700, y:h*0.26, r:54 },
+      { kind:"truck", label:"Rescue Truck", x:820, y:h*0.68, r:48 },
+      { kind:"house", label:"Edge House", x:240, y:h*0.80, r:48 },
+    ],
+    ST_SUBURBS: [
+      { kind:"house", label:"Maple House", x:150, y:h*0.22, r:48 },
+      { kind:"car", label:"Street Car", x:390, y:h*0.52, r:42 },
+      { kind:"park", label:"Play Park", x:720, y:h*0.36, r:54 },
+      { kind:"truck", label:"Moving Truck", x:860, y:h*0.62, r:48 },
+      { kind:"house", label:"Corner Home", x:250, y:h*0.76, r:48 },
+      { kind:"car", label:"School Dropoff", x:620, y:h*0.78, r:42 },
+    ],
+    AR_ARENA_BAY: [
+      { kind:"car", label:"Pit Car", x:170, y:h*0.22, r:42 },
+      { kind:"truck", label:"Supply Van", x:430, y:h*0.34, r:48 },
+      { kind:"park", label:"Staging Park", x:760, y:h*0.32, r:54 },
+      { kind:"building", label:"Bay Office", x:830, y:h*0.66, r:48 },
+      { kind:"trail", label:"Catwalk", x:250, y:h*0.74, r:40 },
+    ],
+    SV_ASH_FIELD: [
+      { kind:"truck", label:"Ash Truck", x:170, y:h*0.18, r:48 },
+      { kind:"park", label:"Field Camp", x:420, y:h*0.48, r:54 },
+      { kind:"building", label:"Relay Hut", x:780, y:h*0.30, r:48 },
+      { kind:"trail", label:"Burn Line", x:860, y:h*0.72, r:40 },
+      { kind:"car", label:"Responder Car", x:260, y:h*0.80, r:42 },
+    ],
+    ST_DOWNTOWN: [
+      { kind:"building", label:"Office Tower", x:180, y:h*0.20, r:52 },
+      { kind:"car", label:"Taxi Lane", x:430, y:h*0.49, r:42 },
+      { kind:"park", label:"City Plaza", x:720, y:h*0.34, r:54 },
+      { kind:"building", label:"Mall Entry", x:860, y:h*0.60, r:52 },
+      { kind:"truck", label:"Service Truck", x:280, y:h*0.76, r:48 },
+      { kind:"building", label:"Parking Deck", x:640, y:h*0.78, r:52 },
+    ],
+    AR_NEON_GRID: [
+      { kind:"building", label:"Neon Hub", x:170, y:h*0.24, r:52 },
+      { kind:"car", label:"Grid Cab", x:420, y:h*0.48, r:42 },
+      { kind:"park", label:"Sky Court", x:770, y:h*0.34, r:54 },
+      { kind:"building", label:"Arcade Block", x:830, y:h*0.68, r:52 },
+      { kind:"trail", label:"Light Run", x:260, y:h*0.76, r:40 },
+    ],
+    SV_STORM_DISTRICT: [
+      { kind:"building", label:"Shelter Block", x:180, y:h*0.20, r:52 },
+      { kind:"truck", label:"Storm Truck", x:430, y:h*0.50, r:48 },
+      { kind:"park", label:"Flood Plaza", x:740, y:h*0.34, r:54 },
+      { kind:"building", label:"Metro Entry", x:860, y:h*0.66, r:52 },
+      { kind:"car", label:"Signal Car", x:270, y:h*0.78, r:42 },
+    ],
+    ST_INDUSTRIAL: [
+      { kind:"building", label:"Warehouse A", x:170, y:h*0.22, r:52 },
+      { kind:"truck", label:"Loading Truck", x:430, y:h*0.46, r:48 },
+      { kind:"building", label:"Plant Office", x:770, y:h*0.24, r:52 },
+      { kind:"park", label:"Scrap Yard", x:700, y:h*0.68, r:54 },
+      { kind:"truck", label:"Fuel Rig", x:860, y:h*0.78, r:48 },
+      { kind:"car", label:"Gate Sedan", x:260, y:h*0.76, r:42 },
+    ],
+    AR_STEEL_PIT: [
+      { kind:"building", label:"Steel Office", x:170, y:h*0.24, r:52 },
+      { kind:"truck", label:"Crane Truck", x:420, y:h*0.48, r:48 },
+      { kind:"park", label:"Pit Yard", x:730, y:h*0.32, r:54 },
+      { kind:"building", label:"Smelter Gate", x:860, y:h*0.68, r:52 },
+      { kind:"trail", label:"Pipe Run", x:260, y:h*0.78, r:40 },
+    ],
+    SV_RUINS: [
+      { kind:"building", label:"Ruined Hall", x:180, y:h*0.22, r:52 },
+      { kind:"car", label:"Abandoned Car", x:420, y:h*0.50, r:42 },
+      { kind:"park", label:"Overgrown Court", x:750, y:h*0.34, r:54 },
+      { kind:"building", label:"Broken Tower", x:860, y:h*0.68, r:52 },
+      { kind:"trail", label:"Rubble Trail", x:270, y:h*0.80, r:40 },
+    ],
+  };
+  const pool = pools[currentMapKey()] || pools.ST_FOREST;
+  return pool.map((site, idx) => ({
+    id: idx + 1,
+    kind: site.kind,
+    label: site.label,
+    x: clamp(Math.round(site.x), 70, cv.width - 70),
+    y: clamp(Math.round(site.y), 90, cv.height - 80),
+    r: site.r
+  }));
+}
+
+function spawnRescueSites(){
+  if(window.__TUTORIAL_MODE__){
+    S.rescueSites = [{
+      id: 1,
+      kind: "trail",
+      label: "Evac Route",
+      x: 300,
+      y: 260,
+      r: 40
+    }];
+    return;
+  }
+
+  const basePool = rescueSitePool();
+  const wanted = (S.mode==="Story")
+    ? clamp(4 + Math.floor((S.storyLevel - 1) / 2), 4, 6)
+    : (S.mode==="Arcade")
+      ? clamp(4 + Math.floor((S.arcadeLevel - 1) / 2), 4, 6)
+      : 5;
+
+  S.rescueSites = basePool
+    .slice()
+    .sort(() => Math.random() - 0.5)
+    .slice(0, Math.min(wanted, basePool.length))
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
+function spawnSupportUnits(){
+  if(window.__TUTORIAL_MODE__){
+    S.supportUnits = [];
+    return;
+  }
+
+  const count = (S.mode==="Survival") ? 1 : clamp(2 + Math.floor(((S.mode==="Story" ? S.storyLevel : S.arcadeLevel) - 1) / 4), 2, 3);
+  const sites = (S.rescueSites || []).slice(0, count);
+  S.supportUnits = sites.map((site, idx) => ({
+    id: idx + 1,
+    name: SUPPORT_CALLSIGNS[idx % SUPPORT_CALLSIGNS.length],
+    x: site.x + rand(-26, 26),
+    y: site.y + rand(-26, 26),
+    homeX: site.x + rand(-18, 18),
+    homeY: site.y + rand(-18, 18),
+    step: rand(0, 1000),
+    face: 0
+  }));
+}
 
 
 // ===================== CIVILIANS =====================
@@ -1478,28 +1647,27 @@ function spawnCivilians(){
     : (S.mode==="Arcade"
       ? clamp(2 + (S.arcadeLevel-1), 2, 7)
       : 0);
-  const cols = Math.min(3, Math.max(1, n));
-  const rows = Math.max(1, Math.ceil(n / cols));
-  const minX = 220;
-  const maxX = Math.max(minX, cv.width - 220);
-  const minY = 140;
-  const maxY = Math.max(minY, cv.height - 180);
-  const xGap = cols > 1 ? (maxX - minX) / (cols - 1) : 0;
-  const yGap = rows > 1 ? (maxY - minY) / (rows - 1) : 0;
+  const sites = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice();
 
   S.civilians = [];
 
   for(let i=0;i<n;i++){
-    const col = i % cols;
-    const row = Math.floor(i / cols);
+    const site = sites[i % sites.length] || { x: rand(160, cv.width - 160), y: rand(140, cv.height - 120), kind:"trail", label:"Field Site" };
+    const orbit = 16 + ((i % 3) * 14);
+    const angle = (Math.PI * 2 * (i % Math.max(1, sites.length))) / Math.max(1, sites.length);
+    const jitterX = Math.round(Math.cos(angle) * orbit + rand(-10, 10));
+    const jitterY = Math.round(Math.sin(angle) * orbit + rand(-10, 10));
     S.civilians.push({
       id:i+1,
-      x:clamp(Math.round(minX + col * xGap + rand(-20,20)), 60, cv.width - 60),
-      y:clamp(Math.round(minY + row * yGap + rand(-20,20)), 90, cv.height - 70),
+      x:clamp(site.x + jitterX, 60, cv.width - 60),
+      y:clamp(site.y + jitterY, 90, cv.height - 70),
       hp:100,
       hpMax:100,
       alive:true,
       evac:false,
+      siteId:site.id,
+      rescueKind:site.kind,
+      rescueLabel:site.label,
       skin:SKIN_TONES[rand(0,SKIN_TONES.length-1)],
       shirt:SHIRT_COLS[rand(0,SHIRT_COLS.length-1)],
       pants:PANTS_COLS[rand(0,PANTS_COLS.length-1)],
@@ -1581,14 +1749,25 @@ function spawnTigers(){
     count=Math.min(4+(S.survivalWave-1),10);
 
   const boss=(S.mode==="Story"&&(S.storyLevel%5===0));
-  const cols = Math.min(4, Math.max(1, count));
-  const rows = Math.max(1, Math.ceil(count / cols));
-  const minX = Math.round(cv.width * 0.58);
-  const maxX = Math.max(minX, cv.width - 90);
-  const minY = 140;
-  const maxY = Math.max(minY, cv.height - 180);
-  const xGap = cols > 1 ? (maxX - minX) / (cols - 1) : 0;
-  const yGap = rows > 1 ? (maxY - minY) / (rows - 1) : 0;
+  const packCount = clamp(Math.ceil(count / 2), 1, 4);
+  const sitePool = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice().reverse();
+  const fallbackPacks = [
+    { x: cv.width * 0.68, y: cv.height * 0.22 },
+    { x: cv.width * 0.78, y: cv.height * 0.48 },
+    { x: cv.width * 0.64, y: cv.height * 0.76 },
+    { x: cv.width * 0.84, y: cv.height * 0.64 },
+  ];
+  const packAnchors = Array.from({ length: packCount }, (_, idx) => {
+    const site = sitePool[idx];
+    const anchor = site
+      ? { x: clamp(site.x + rand(90, 180), 160, cv.width - 70), y: clamp(site.y + rand(-110, 110), 100, cv.height - 70) }
+      : fallbackPacks[idx % fallbackPacks.length];
+    return {
+      id: idx + 1,
+      x: Math.round(anchor.x),
+      y: Math.round(anchor.y)
+    };
+  });
 
   S.tigers=[];
   const diff=carcassDifficulty();
@@ -1596,8 +1775,6 @@ function spawnTigers(){
   for(let i=0;i<count;i++){
     let typeKey=pickTigerType();
     if(boss && i===0) typeKey="Alpha";
-    const col = i % cols;
-    const row = Math.floor(i / cols);
 
     const def=TIGER_TYPES.find(t=>t.key===typeKey)||TIGER_TYPES[1];
 
@@ -1614,16 +1791,21 @@ function spawnTigers(){
       bossPhases=2;
     }
 
+    const pack = packAnchors[i % packAnchors.length];
+    const theta = (Math.PI * 2 * (i % 3)) / 3;
+    const radius = 24 + ((i % 2) * 20);
+
     S.tigers.push({
       id:i+1,
       type:def.key,
-      x:clamp(Math.round(minX + col * xGap + rand(-18,18)), 140, cv.width - 50),
-      y:clamp(Math.round(minY + row * yGap + rand(-18,18)), 90, cv.height - 70),
+      x:clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, cv.width - 50),
+      y:clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, cv.height - 70),
       vx:(Math.random()<0.5?-1:1)*def.spd*0.55,
       vy:(Math.random()<0.5?-1:1)*def.spd*0.50,
       hp,
       hpMax:hp,
       alive:true,
+      packId:pack.id,
       aggroBoost:0,
       civBias:clamp(def.civBias+(diff-1)*0.18,0,0.98),
       stealth:def.stealth,
@@ -1664,12 +1846,16 @@ function deploy(){
   S.eventText = "";
   S.eventCooldown = 240;
   S.pickups = [];
+  S.supportUnits = [];
+  S.rescueSites = [];
   S.stats.shots = 0;
   S.stats.captures = 0;
   S.stats.kills = 0;
   S.stats.evac = 0;
   S.stats.cashEarned = 0;
 
+  spawnRescueSites();
+  spawnSupportUnits();
   spawnTigers();
   spawnCivilians();
 
@@ -1792,6 +1978,84 @@ cv.addEventListener("pointerdown",(e)=>{
   save();
 });
 
+const touchStickShellEl = document.getElementById("touchStickShell");
+const touchStickEl = document.getElementById("touchStick");
+const TOUCH_STICK = { active:false, pointerId:null, dx:0, dy:0, max:34 };
+
+function renderTouchStick(){
+  if(!touchStickEl) return;
+  touchStickEl.style.transform = `translate(${Math.round(TOUCH_STICK.dx * TOUCH_STICK.max)}px, ${Math.round(TOUCH_STICK.dy * TOUCH_STICK.max)}px)`;
+}
+
+function resetTouchStick(){
+  TOUCH_STICK.active = false;
+  TOUCH_STICK.pointerId = null;
+  TOUCH_STICK.dx = 0;
+  TOUCH_STICK.dy = 0;
+  renderTouchStick();
+}
+
+function updateTouchStick(clientX, clientY){
+  if(!touchStickShellEl) return;
+  const rect = touchStickShellEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const rawX = clientX - cx;
+  const rawY = clientY - cy;
+  const limit = Math.max(22, rect.width * 0.32);
+  const len = Math.hypot(rawX, rawY) || 1;
+  const clampedLen = Math.min(len, limit);
+  TOUCH_STICK.dx = rawX / len * (clampedLen / limit);
+  TOUCH_STICK.dy = rawY / len * (clampedLen / limit);
+  renderTouchStick();
+}
+
+function stopTouchOverlayEvent(e){
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+function setupTouchControls(){
+  document.querySelectorAll(".touchBtn").forEach((el)=>{
+    el.addEventListener("pointerdown", (e)=>e.stopPropagation());
+    el.addEventListener("pointerup", (e)=>e.stopPropagation());
+    el.addEventListener("click", (e)=>e.stopPropagation());
+  });
+
+  if(!touchStickShellEl) return;
+
+  const begin = (e)=>{
+    stopTouchOverlayEvent(e);
+    if(e.pointerType==="mouse" && e.button!==0) return;
+    TOUCH_STICK.active = true;
+    TOUCH_STICK.pointerId = e.pointerId;
+    S.target = null;
+    if(window.TigerTutorial?.isRunning) window.TigerTutorial.mapClicked = true;
+    touchStickShellEl.setPointerCapture?.(e.pointerId);
+    updateTouchStick(e.clientX, e.clientY);
+  };
+  const move = (e)=>{
+    if(!TOUCH_STICK.active || TOUCH_STICK.pointerId!==e.pointerId) return;
+    stopTouchOverlayEvent(e);
+    updateTouchStick(e.clientX, e.clientY);
+  };
+  const end = (e)=>{
+    if(TOUCH_STICK.pointerId!=null && TOUCH_STICK.pointerId!==e.pointerId) return;
+    stopTouchOverlayEvent(e);
+    touchStickShellEl.releasePointerCapture?.(e.pointerId);
+    resetTouchStick();
+  };
+
+  touchStickShellEl.addEventListener("pointerdown", begin);
+  touchStickShellEl.addEventListener("pointermove", move);
+  touchStickShellEl.addEventListener("pointerup", end);
+  touchStickShellEl.addEventListener("pointercancel", end);
+  touchStickShellEl.addEventListener("lostpointercapture", resetTouchStick);
+  renderTouchStick();
+}
+
+setupTouchControls();
+
 document.addEventListener("keydown",(e)=>{
   if(isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -1911,11 +2175,12 @@ function setMoveKey(key, on){
 }
 
 function keyboardMoveTick(){
-  if(window.TigerTutorial?.isRunning) return false;
+  const touchActive = Math.abs(TOUCH_STICK.dx) > 0.04 || Math.abs(TOUCH_STICK.dy) > 0.04;
+  if(window.TigerTutorial?.isRunning && !touchActive) return false;
   if(S.inBattle || S.paused || S.gameOver || S.missionEnded) return false;
 
-  const dx = (KEY_STATE.right ? 1 : 0) - (KEY_STATE.left ? 1 : 0);
-  const dy = (KEY_STATE.down ? 1 : 0) - (KEY_STATE.up ? 1 : 0);
+  const dx = ((KEY_STATE.right ? 1 : 0) - (KEY_STATE.left ? 1 : 0)) + TOUCH_STICK.dx;
+  const dy = ((KEY_STATE.down ? 1 : 0) - (KEY_STATE.up ? 1 : 0)) + TOUCH_STICK.dy;
   if(!dx && !dy) return false;
   if(S.stamina<=0) return false;
 
@@ -1970,6 +2235,59 @@ function sprint(){
   S._sprintTicks=90;
   sfx("ui"); hapticImpact("light"); save();
   unlockAchv("sprint1","Sprint");
+}
+
+function supportUnitsTick(){
+  if(S.inBattle || S.paused || S.gameOver || S.missionEnded) return;
+  const liveCivs = (S.mode==="Survival") ? [] : S.civilians.filter(c=>c.alive && !c.evac);
+  const liveTigers = S.tigers.filter(t=>t.alive);
+
+  for(const unit of (S.supportUnits || [])){
+    unit.step = (unit.step || 0) + 0.08;
+    const patrolX = (unit.homeX ?? unit.x) + Math.cos(unit.step * 0.55) * 16;
+    const patrolY = (unit.homeY ?? unit.y) + Math.sin(unit.step * 0.72) * 14;
+    let targetX = patrolX;
+    let targetY = patrolY;
+
+    const dangerCiv = liveCivs.find(c => c.id === S.dangerCivId);
+    if(dangerCiv){
+      targetX = dangerCiv.x;
+      targetY = dangerCiv.y;
+    } else {
+      const nearestTiger = liveTigers
+        .slice()
+        .sort((a,b)=>dist(unit.x,unit.y,a.x,a.y) - dist(unit.x,unit.y,b.x,b.y))[0];
+      if(nearestTiger && dist(unit.x, unit.y, nearestTiger.x, nearestTiger.y) < 240){
+        targetX = nearestTiger.x;
+        targetY = nearestTiger.y;
+      }
+    }
+
+    const dx = targetX - unit.x;
+    const dy = targetY - unit.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const step = Math.min(1.65, len);
+    unit.face = Math.atan2(dy, dx);
+    tryMoveEntity(unit, unit.x + (dx / len) * step, unit.y + (dy / len) * step, 16);
+
+    for(const civ of liveCivs){
+      if(dist(unit.x, unit.y, civ.x, civ.y) < 78){
+        civ.hp = clamp(civ.hp + 0.025, 0, civ.hpMax);
+      }
+    }
+
+    for(const tiger of liveTigers){
+      const tigerDist = dist(unit.x, unit.y, tiger.x, tiger.y);
+      if(tigerDist < 130){
+        tiger.aggroBoost = clamp((tiger.aggroBoost || 0) - 0.01, 0, 1);
+      }
+      if(tigerDist < 82 && tiger.hp > 16){
+        tiger.hp = Math.max(16, tiger.hp - 0.045);
+        tiger.vx *= 0.96;
+        tiger.vy *= 0.96;
+      }
+    }
+  }
 }
 
 // ===================== CIVILIANS FOLLOW-ONLY =====================
@@ -2052,8 +2370,9 @@ function tickCiviliansAndThreats(){
 
       // Berserker rage increases civilian threat slightly
       const rageMult = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? 1.25 : 1.0;
-
-      const dmg = base * multType * rageMult * (1 + (diff-1)*0.20);
+      const nearbySupport = (S.supportUnits || []).filter(unit => dist(unit.x, unit.y, best.x, best.y) < 96).length;
+      const guardMult = nearbySupport ? clamp(1 - nearbySupport * 0.35, 0.3, 1) : 1;
+      const dmg = base * multType * rageMult * (1 + (diff-1)*0.20) * guardMult;
       best.hp = clamp(best.hp - (dmg * perkCivMul()), 0, best.hpMax);
     }
   }
@@ -2182,6 +2501,17 @@ function roamTigers(){
     } else {
       t.vx += (Math.random()-0.5)*0.08;
       t.vy += (Math.random()-0.5)*0.08;
+    }
+
+    if(t.packId){
+      const mates = S.tigers.filter(x => x.alive && x.packId === t.packId && x.id !== t.id);
+      if(mates.length){
+        const packX = mates.reduce((sum, x) => sum + x.x, 0) / mates.length;
+        const packY = mates.reduce((sum, x) => sum + x.y, 0) / mates.length;
+        const pull = dist(t.x, t.y, packX, packY) > 55 ? 0.035 : 0.012;
+        t.vx += (packX > t.x ? pull : -pull);
+        t.vy += (packY > t.y ? pull : -pull);
+      }
     }
 
     t.vx = clamp(t.vx, -speedCap, speedCap);
@@ -2674,7 +3004,7 @@ function renderHUD(){
   if(S.dangerCivId && S.mode!=="Survival"){
     const civ = S.civilians.find(c=>c.id===S.dangerCivId);
     const d = civ ? Math.round(dist(S.me.x,S.me.y,civ.x,civ.y)) : null;
-    document.getElementById("dangerTxt").innerText = civ ? `⚠️ Civilian #${civ.id} under attack! Distance: ${d}` : "";
+    document.getElementById("dangerTxt").innerText = civ ? `⚠️ Civilian #${civ.id} under attack near ${civ.rescueLabel || "the rescue site"}! Distance: ${d}` : "";
   } else {
     document.getElementById("dangerTxt").innerText = "";
   }
@@ -2693,7 +3023,7 @@ function renderHUD(){
         }
       }
       const evacDist = Math.round(dist(S.me.x,S.me.y,S.evacZone.x,S.evacZone.y));
-      assistParts.push(`Nearest civilian: #${nearestCiv.id} (${Math.round(nearestCivDist)}m)`);
+      assistParts.push(`Nearest civilian: #${nearestCiv.id} at ${nearestCiv.rescueLabel || "site"} (${Math.round(nearestCivDist)}m)`);
       assistParts.push(`Evac zone: ${evacDist}m`);
     }
   }
@@ -2980,6 +3310,78 @@ function drawDangerMarker(x,y){
   ctx.restore();
 }
 
+function drawRescueSite(site){
+  ctx.save();
+  const palette = {
+    trail: ["rgba(96,165,250,.20)", "rgba(96,165,250,.85)"],
+    park: ["rgba(74,222,128,.18)", "rgba(74,222,128,.88)"],
+    car: ["rgba(251,191,36,.20)", "rgba(251,191,36,.88)"],
+    truck: ["rgba(248,113,113,.20)", "rgba(248,113,113,.88)"],
+    house: ["rgba(244,114,182,.18)", "rgba(244,114,182,.88)"],
+    cabin: ["rgba(245,158,11,.18)", "rgba(245,158,11,.88)"],
+    building: ["rgba(167,139,250,.18)", "rgba(167,139,250,.88)"],
+  };
+  const [fill, stroke] = palette[site.kind] || palette.trail;
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.arc(site.x, site.y, site.r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(site.x, site.y, site.r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 0.88;
+  ctx.fillStyle = stroke;
+
+  if(site.kind==="car"){
+    roundedRectFill(site.x - 16, site.y - 9, 32, 18, 7);
+  } else if(site.kind==="truck"){
+    roundedRectFill(site.x - 24, site.y - 10, 38, 20, 6);
+    roundedRectFill(site.x + 10, site.y - 6, 12, 12, 4);
+  } else if(site.kind==="house" || site.kind==="cabin"){
+    roundedRectFill(site.x - 15, site.y - 10, 30, 22, 6);
+    ctx.fillStyle = "rgba(90,50,35,.9)";
+    ctx.beginPath();
+    ctx.moveTo(site.x - 18, site.y - 10);
+    ctx.lineTo(site.x, site.y - 26);
+    ctx.lineTo(site.x + 18, site.y - 10);
+    ctx.closePath();
+    ctx.fill();
+  } else if(site.kind==="building"){
+    roundedRectFill(site.x - 17, site.y - 18, 34, 36, 6);
+    ctx.fillStyle = "rgba(230,235,245,.45)";
+    for(let row=0; row<3; row++){
+      for(let col=0; col<2; col++){
+        ctx.fillRect(site.x - 10 + col * 10, site.y - 11 + row * 10, 5, 6);
+      }
+    }
+  } else if(site.kind==="park"){
+    ctx.fillStyle = "rgba(24,100,58,.92)";
+    ctx.beginPath();
+    ctx.arc(site.x, site.y - 6, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(85,55,30,.95)";
+    ctx.fillRect(site.x - 3, site.y + 4, 6, 16);
+  } else {
+    ctx.fillStyle = "rgba(231,245,255,.90)";
+    ctx.fillRect(site.x - 3, site.y - 18, 6, 26);
+    ctx.beginPath();
+    ctx.moveTo(site.x + 3, site.y - 18);
+    ctx.lineTo(site.x + 16, site.y - 10);
+    ctx.lineTo(site.x + 3, site.y - 4);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.globalAlpha = 0.94;
+  ctx.fillStyle = "rgba(245,247,255,.9)";
+  ctx.font = "900 11px system-ui";
+  ctx.fillText(site.label, site.x - Math.min(40, site.label.length * 2.8), site.y + site.r + 14);
+  ctx.restore();
+}
+
 function drawPickup(p){
   const color = (p.type==="CASH") ? "rgba(74,222,128,.95)"
     : (p.type==="AMMO") ? "rgba(58,120,255,.95)"
@@ -3060,6 +3462,42 @@ function drawSoldier(){
 
   ctx.fillStyle="rgba(245,158,11,.90)";
   ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, Math.PI*2); ctx.fill();
+}
+
+function drawSupportUnit(unit){
+  const bob = Math.sin(unit.step || 0) * 1.2;
+  const x = unit.x;
+  const y = unit.y + bob;
+
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 18, 16, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = "rgba(30,68,92,.95)";
+  roundedRectFill(x - 9, y - 15, 18, 24, 6);
+  ctx.fillStyle = "rgba(52,211,153,.88)";
+  roundedRectFill(x - 7, y - 10, 14, 11, 4);
+  ctx.fillStyle = "rgba(220,220,225,.92)";
+  ctx.beginPath();
+  ctx.arc(x, y - 18, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(26,36,49,.96)";
+  ctx.fillRect(x - 9, y - 25, 18, 5);
+
+  const ang = unit.face || 0;
+  ctx.strokeStyle = "rgba(210,240,255,.88)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 2);
+  ctx.lineTo(x + Math.cos(ang) * 11, y + Math.sin(ang) * 11);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(245,247,255,.78)";
+  ctx.font = "900 10px system-ui";
+  ctx.fillText(unit.name, x - Math.min(26, unit.name.length * 2.2), y - 28);
 }
 
 function tigerColors(type){
@@ -3165,9 +3603,12 @@ function drawEntities(){
   // pickups
   for(const p of (S.pickups||[])) drawPickup(p);
 
+  for(const site of (S.rescueSites || [])) drawRescueSite(site);
+
   if(S.mode!=="Survival"){
     for(const c of S.civilians){ if(c.alive) drawCivilian(c); }
   }
+  for(const unit of (S.supportUnits || [])) drawSupportUnit(unit);
   for(const t of S.tigers){ if(t.alive) drawTiger(t); }
   drawSoldier();
 }
@@ -3198,6 +3639,7 @@ function draw(){
 
   if(!S.inBattle){
     roamTigers();
+    supportUnitsTick();
     const usedKeyboard = keyboardMoveTick();
     if(!usedKeyboard) movePlayer();
     followCiviliansTick();
