@@ -1600,23 +1600,7 @@ function spawnRescueSites(){
 }
 
 function spawnSupportUnits(){
-  if(window.__TUTORIAL_MODE__){
-    S.supportUnits = [];
-    return;
-  }
-
-  const count = (S.mode==="Survival") ? 1 : clamp(2 + Math.floor(((S.mode==="Story" ? S.storyLevel : S.arcadeLevel) - 1) / 4), 2, 3);
-  const sites = (S.rescueSites || []).slice(0, count);
-  S.supportUnits = sites.map((site, idx) => ({
-    id: idx + 1,
-    name: SUPPORT_CALLSIGNS[idx % SUPPORT_CALLSIGNS.length],
-    x: site.x + rand(-26, 26),
-    y: site.y + rand(-26, 26),
-    homeX: site.x + rand(-18, 18),
-    homeY: site.y + rand(-18, 18),
-    step: rand(0, 1000),
-    face: 0
-  }));
+  S.supportUnits = [];
 }
 
 
@@ -2015,6 +1999,18 @@ function stopTouchOverlayEvent(e){
   e.stopPropagation();
 }
 
+function touchMoveListener(e){
+  if(!TOUCH_STICK.active || TOUCH_STICK.pointerId!==e.pointerId) return;
+  stopTouchOverlayEvent(e);
+  updateTouchStick(e.clientX, e.clientY);
+}
+
+function touchEndListener(e){
+  if(TOUCH_STICK.pointerId!=null && TOUCH_STICK.pointerId!==e.pointerId) return;
+  stopTouchOverlayEvent(e);
+  resetTouchStick();
+}
+
 function setupTouchControls(){
   document.querySelectorAll(".touchBtn").forEach((el)=>{
     el.addEventListener("pointerdown", (e)=>e.stopPropagation());
@@ -2031,26 +2027,13 @@ function setupTouchControls(){
     TOUCH_STICK.pointerId = e.pointerId;
     S.target = null;
     if(window.TigerTutorial?.isRunning) window.TigerTutorial.mapClicked = true;
-    touchStickShellEl.setPointerCapture?.(e.pointerId);
     updateTouchStick(e.clientX, e.clientY);
-  };
-  const move = (e)=>{
-    if(!TOUCH_STICK.active || TOUCH_STICK.pointerId!==e.pointerId) return;
-    stopTouchOverlayEvent(e);
-    updateTouchStick(e.clientX, e.clientY);
-  };
-  const end = (e)=>{
-    if(TOUCH_STICK.pointerId!=null && TOUCH_STICK.pointerId!==e.pointerId) return;
-    stopTouchOverlayEvent(e);
-    touchStickShellEl.releasePointerCapture?.(e.pointerId);
-    resetTouchStick();
   };
 
   touchStickShellEl.addEventListener("pointerdown", begin);
-  touchStickShellEl.addEventListener("pointermove", move);
-  touchStickShellEl.addEventListener("pointerup", end);
-  touchStickShellEl.addEventListener("pointercancel", end);
-  touchStickShellEl.addEventListener("lostpointercapture", resetTouchStick);
+  document.addEventListener("pointermove", touchMoveListener, { passive:false });
+  document.addEventListener("pointerup", touchEndListener, { passive:false });
+  document.addEventListener("pointercancel", touchEndListener, { passive:false });
   renderTouchStick();
 }
 
@@ -3107,7 +3090,7 @@ function renderHUD(){
       ? "Battle controls: Attack, Protect, Capture, or Kill. Capture requires the correct tranq weapon at 15 HP."
       : (window.matchMedia?.("(pointer:fine)")?.matches
           ? "Desktop: click to move or lock. WASD/arrow keys move. Q locks nearest tiger. Space scans. E engages. Shift sprints."
-          : "Your health, tiger health, and mission status stay above the map. Use the top action row to deploy, scan, engage, and use gear.");
+          : "Agent and Mission stay above the map. Use the joystick on the map to move, then use the buttons below the map for deploy, scan, engage, and gear.");
 }
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
