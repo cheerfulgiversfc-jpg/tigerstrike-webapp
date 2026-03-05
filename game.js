@@ -341,7 +341,7 @@ function save(force=false){
       return;
     }
     __savePending = true;
-    if((now - __lastSave) < 1800) return;
+    if((now - __lastSave) < 2600) return;
     flushSaveNow();
   }
   catch(e){
@@ -351,7 +351,7 @@ function save(force=false){
 
 function maybeAutosave(force=false){
   const now = Date.now();
-  if(force || (__savePending && (now - __lastAutosave) > 7000)){
+  if(force || (__savePending && (now - __lastAutosave) > 9000)){
     __lastAutosave = now;
     save(true);
   }
@@ -688,7 +688,7 @@ function eventsEnabled(){
 function setEventText(txt, seconds=6){
   S.eventText = txt;
   S.eventTextUntil = Date.now() + seconds*1000;
-  save();
+  __savePending = true;
 }
 function tickEvents(){
   if(!eventsEnabled() || S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
@@ -1215,24 +1215,26 @@ function buyShield(){
   save(); renderShopList(); renderHUD();
 }
 function buyTigerSpecialist(){
+  if((S.soldierAttackersOwned||0) >= 8) return toast("Tiger specialist roster is full.");
   if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
   S.funds -= SOLDIER_PRICE;
   S.soldierAttackersOwned = (S.soldierAttackersOwned||0) + 1;
   if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
     const attackCount = (S.supportUnits || []).filter(unit => unit.role === "attacker").length;
-    S.supportUnits.push(createSupportUnit("attacker", attackCount));
+    if(attackCount < 8) S.supportUnits.push(createSupportUnit("attacker", attackCount));
   }
   toast("Tiger specialist hired.");
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
 }
 function buyRescueSpecialist(){
+  if((S.soldierRescuersOwned||0) >= 8) return toast("Rescue specialist roster is full.");
   if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
   S.funds -= SOLDIER_PRICE;
   S.soldierRescuersOwned = (S.soldierRescuersOwned||0) + 1;
   if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
     const rescueCount = (S.supportUnits || []).filter(unit => unit.role === "rescue").length;
-    S.supportUnits.push(createSupportUnit("rescue", rescueCount));
+    if(rescueCount < 8) S.supportUnits.push(createSupportUnit("rescue", rescueCount));
   }
   toast("Rescue specialist hired.");
   sfx("ui"); hapticImpact("light");
@@ -1878,6 +1880,7 @@ function spawnCivilians(){
       hpMax:100,
       alive:true,
       evac:false,
+      following:false,
       skin:SKIN_TONES[2],
       shirt:"#22c55e",
       pants:"#1f2937",
@@ -1910,6 +1913,7 @@ function spawnCivilians(){
       hpMax:100,
       alive:true,
       evac:false,
+      following:false,
       siteId:site.id,
       rescueKind:site.kind,
       rescueLabel:site.label,
@@ -2912,8 +2916,35 @@ function damageSupportUnit(unit, dmg){
 
 function supportUnitsTick(){
   if(S.inBattle || S.paused || S.gameOver || S.missionEnded) return;
+  if(!S.supportUnits?.length) return;
+
+  const now = Date.now();
+  if(now < (S._supportTickAt || 0)) return;
+  S._supportTickAt = now + 50; // ~20fps for support AI to reduce mobile stalls
 
   const liveCivs = (S.mode==="Survival") ? [] : S.civilians.filter(c=>c.alive && !c.evac);
+  const followCivs = liveCivs.filter(c=>c.following);
+  const activeTigers = S.tigers.filter(t=>t.alive);
+
+  const nearestTigerTo = (ux, uy) => {
+    let best = null;
+    let bestD = Infinity;
+    for(const tiger of activeTigers){
+      const d = dist(ux, uy, tiger.x, tiger.y);
+      if(d < bestD){ bestD = d; best = tiger; }
+    }
+    return { tiger: best, d: bestD };
+  };
+  const nearestCivTo = (ux, uy) => {
+    let best = null;
+    let bestD = Infinity;
+    for(const civ of followCivs){
+      const d = dist(ux, uy, civ.x, civ.y);
+      if(d < bestD){ bestD = d; best = civ; }
+    }
+    return { civ: best, d: bestD };
+  };
+
   for(const unit of (S.supportUnits || [])){
     if(!unit.alive) continue;
 
@@ -2923,41 +2954,38 @@ function supportUnitsTick(){
 
     let targetX = unit.homeX + Math.cos(unit.step * 0.6) * 18;
     let targetY = unit.homeY + Math.sin(unit.step * 0.7) * 14;
-    const activeTigers = S.tigers.filter(t=>t.alive);
 
-    if(unit.role === "rescue" && liveCivs.length){
-      const targetCiv = (S.dangerCivId && liveCivs.find(c=>c.id===S.dangerCivId))
-        || liveCivs
-          .slice()
-          .sort((a,b)=>dist(unit.x,unit.y,a.x,a.y) - dist(unit.x,unit.y,b.x,b.y))[0];
+    if(unit.role === "rescue" && followCivs.length){
+      let targetCiv = (S.dangerCivId && followCivs.find(c=>c.id===S.dangerCivId)) || null;
+      if(!targetCiv){
+        targetCiv = nearestCivTo(unit.x, unit.y).civ;
+      }
 
       if(targetCiv){
         const civDist = dist(unit.x, unit.y, targetCiv.x, targetCiv.y);
-        if(civDist > 66){
+        if(civDist > 74){
           targetX = targetCiv.x;
           targetY = targetCiv.y;
         } else {
-          targetX = (targetCiv.x + S.evacZone.x) * 0.5;
-          targetY = (targetCiv.y + S.evacZone.y) * 0.5;
+          targetX = (targetCiv.x + S.me.x + S.evacZone.x) / 3;
+          targetY = (targetCiv.y + S.me.y + S.evacZone.y) / 3;
 
-          if(Date.now() >= (unit.guideAt || 0)){
-            unit.guideAt = Date.now() + 110;
+          if(now >= (unit.guideAt || 0)){
+            unit.guideAt = now + 120;
             const gdx = S.evacZone.x - targetCiv.x;
             const gdy = S.evacZone.y - targetCiv.y;
             const gd = Math.hypot(gdx, gdy) || 1;
-            const guideSpeed = Math.min(2.25, gd);
+            const guideSpeed = Math.min(1.45, gd);
             tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14);
             targetCiv.hp = clamp(targetCiv.hp + 0.03, 0, targetCiv.hpMax);
           }
         }
       }
     } else if(unit.role === "attacker" && activeTigers.length){
-      const nearestTiger = activeTigers
-        .slice()
-        .sort((a,b)=>dist(unit.x,unit.y,a.x,a.y) - dist(unit.x,unit.y,b.x,b.y))[0];
-      if(nearestTiger && dist(unit.x,unit.y,nearestTiger.x,nearestTiger.y) < 330){
-        targetX = nearestTiger.x;
-        targetY = nearestTiger.y;
+      const nearest = nearestTigerTo(unit.x, unit.y);
+      if(nearest.tiger && nearest.d < 330){
+        targetX = nearest.tiger.x;
+        targetY = nearest.tiger.y;
       }
     }
 
@@ -2994,23 +3022,45 @@ function supportUnitsTick(){
     }
   }
 
-  S.supportUnits = (S.supportUnits || []).filter(unit => unit.alive);
+  S.supportUnits = (S.supportUnits || []).filter(unit => unit.alive).slice(0, 16);
 }
 
 // ===================== CIVILIANS FOLLOW-ONLY =====================
 function followCiviliansTick(){
   if(S.mode==="Survival") return;
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
+  const engageDist = 58;
+  const followMaxDist = 360;
+  const baseBehind = 50;
+  const face = Number.isFinite(S.me.face) ? S.me.face : 0;
+
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
-    const d = dist(c.x,c.y,S.me.x,S.me.y);
-    if(d < 190){
-      const dx = S.me.x - c.x, dy = S.me.y - c.y;
-      const dd = Math.hypot(dx,dy) || 1;
-      const catchup = clamp((d - 52) * 0.03, 0, 2.8);
-      const sp = Math.min(Math.max(playerSpeed, 2.7) + catchup, 5.4);
-      tryMoveEntity(c, c.x + (dx/dd)*sp, c.y + (dy/dd)*sp, 14);
+
+    const toPlayer = dist(c.x, c.y, S.me.x, S.me.y);
+    if(!c.following){
+      if(toPlayer <= engageDist){
+        c.following = true;
+      } else {
+        continue;
+      }
     }
+
+    if(toPlayer > followMaxDist){
+      c.following = false;
+      continue;
+    }
+
+    const laneOffset = ((c.id % 3) - 1) * 12;
+    const anchorX = S.me.x - Math.cos(face) * (baseBehind + laneOffset * 0.25) + Math.sin(face) * laneOffset;
+    const anchorY = S.me.y - Math.sin(face) * (baseBehind + laneOffset * 0.25) - Math.cos(face) * laneOffset * 0.4;
+
+    const dx = anchorX - c.x;
+    const dy = anchorY - c.y;
+    const dd = Math.hypot(dx,dy) || 1;
+    const catchup = clamp((dd - 22) * 0.032, 0, 2.1);
+    const sp = Math.min(Math.max(playerSpeed * 0.95, 2.25) + catchup, 4.95);
+    tryMoveEntity(c, c.x + (dx/dd)*sp, c.y + (dy/dd)*sp, 14);
   }
 }
 
@@ -4570,34 +4620,59 @@ function drawCivilian(c){
     ctx.restore();
   }
 
+  const walkPose = Math.sin((S.me.step || 0) + c.id) * (c.following ? 1.2 : 0.25);
+  const bx = c.x;
+  const by = c.y + walkPose;
+
+  ctx.fillStyle="rgba(8,12,20,.28)";
+  ctx.beginPath(); ctx.ellipse(bx, by + 20, 14, 6, 0, 0, Math.PI*2); ctx.fill();
+
   ctx.fillStyle=c.shirt;
-  roundedRectFill(c.x-9, c.y-12, 18, 24, 6);
+  roundedRectFill(bx-9, by-12, 18, 24, 6);
+  ctx.fillStyle="rgba(255,255,255,.14)";
+  roundedRectFill(bx-7, by-10, 14, 10, 4);
   ctx.fillStyle=c.pants;
-  roundedRectFill(c.x-9, c.y+10, 18, 10, 4);
+  roundedRectFill(bx-9, by+10, 18, 10, 4);
+  ctx.fillStyle="rgba(32,36,46,.92)";
+  roundedRectFill(bx-9, by+18, 7, 4, 2);
+  roundedRectFill(bx+2, by+18, 7, 4, 2);
+
   ctx.fillStyle=c.skin;
-  ctx.beginPath(); ctx.arc(c.x, c.y-18, 8.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx, by-18, 8.5, 0, Math.PI*2); ctx.fill();
 
   ctx.fillStyle="rgba(20,20,22,.75)";
   if(c.hair===0){
-    ctx.beginPath(); ctx.arc(c.x, c.y-21, 7, Math.PI, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx, by-21, 7, Math.PI, Math.PI*2); ctx.fill();
   } else if(c.hair===1){
-    roundedRectFill(c.x-7, c.y-27, 14, 6, 3);
+    roundedRectFill(bx-7, by-27, 14, 6, 3);
   } else if(c.hair===2){
-    ctx.beginPath(); ctx.ellipse(c.x, c.y-24, 7, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(bx, by-24, 7, 5, 0, 0, Math.PI*2); ctx.fill();
   }
+
+  ctx.fillStyle="rgba(26,30,44,.92)";
+  ctx.beginPath(); ctx.arc(bx-2.7, by-19, 1.05, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx+2.7, by-19, 1.05, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle="rgba(70,42,32,.78)";
+  ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(bx-2, by-15); ctx.lineTo(bx+2, by-15); ctx.stroke();
 
   if(c.evac){
     ctx.fillStyle="rgba(74,222,128,.85)";
-    ctx.beginPath(); ctx.arc(c.x, c.y-32, 4.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx, by-32, 4.5, 0, Math.PI*2); ctx.fill();
+  }
+  if(!c.following && !c.evac){
+    ctx.fillStyle="rgba(245,247,255,.75)";
+    ctx.font="900 11px system-ui";
+    ctx.fillText("…", bx-4, by-33);
   }
 
-  if(S.dangerCivId===c.id) drawDangerMarker(c.x, c.y-58);
+  if(S.dangerCivId===c.id) drawDangerMarker(bx, by-58);
 
   const pct=c.hp/c.hpMax;
   ctx.fillStyle="rgba(11,13,18,.80)";
-  ctx.fillRect(c.x-22,c.y-34,44,6);
+  ctx.fillRect(bx-22,by-34,44,6);
   ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
-  ctx.fillRect(c.x-22,c.y-34,44*pct,6);
+  ctx.fillRect(bx-22,by-34,44*pct,6);
 }
 
 function drawSoldier(){
@@ -4622,30 +4697,48 @@ function drawSoldier(){
     ctx.restore();
   }
 
-  ctx.globalAlpha=0.25; ctx.fillStyle="#000";
-  ctx.beginPath(); ctx.ellipse(x,y+18,18,8,0,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=0.26; ctx.fillStyle="#000";
+  ctx.beginPath(); ctx.ellipse(x,y+19,20,8,0,0,Math.PI*2); ctx.fill();
   ctx.globalAlpha=1;
 
-  ctx.fillStyle="rgba(40,50,60,.95)";
-  roundedRectFill(x-10, y-16, 20, 26, 7);
-  ctx.fillStyle="rgba(20,30,40,.95)";
-  roundedRectFill(x-8, y-12, 16, 18, 6);
+  ctx.fillStyle="rgba(48,58,72,.96)";
+  roundedRectFill(x-10, y-16, 20, 27, 7);
+  ctx.fillStyle="rgba(20,30,44,.97)";
+  roundedRectFill(x-8, y-11, 16, 19, 6);
+  ctx.fillStyle="rgba(72,88,108,.45)";
+  roundedRectFill(x-4.5, y-10, 9, 6, 2);
+  ctx.fillStyle="rgba(28,36,48,.95)";
+  roundedRectFill(x-14, y-12, 5, 16, 2);
+  roundedRectFill(x+9, y-12, 5, 16, 2);
+  ctx.fillStyle="rgba(26,32,44,.95)";
+  roundedRectFill(x-8, y+9, 7, 10, 3);
+  roundedRectFill(x+1, y+9, 7, 10, 3);
 
   ctx.fillStyle="rgba(55,65,75,.95)";
   ctx.beginPath(); ctx.arc(x, y-24, 9.5, Math.PI, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(35,45,55,.95)";
   roundedRectFill(x-10, y-24, 20, 6, 3);
+  ctx.fillStyle="rgba(180,210,235,.55)";
+  roundedRectFill(x-6, y-22, 12, 3, 2);
 
   ctx.fillStyle="rgba(220,220,225,.90)";
   ctx.beginPath(); ctx.arc(x, y-20, 6.5, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle="rgba(22,26,38,.95)";
+  ctx.beginPath(); ctx.arc(x-2, y-20, 1, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+2, y-20, 1, 0, Math.PI*2); ctx.fill();
 
   const ang = S.me.face || 0;
   const wx = x + Math.cos(ang)*12;
   const wy = y + Math.sin(ang)*12;
 
-  ctx.strokeStyle="rgba(30,30,34,.95)";
-  ctx.lineWidth=4;
-  ctx.beginPath(); ctx.moveTo(x+Math.cos(ang)*6, y+Math.sin(ang)*2); ctx.lineTo(wx, wy); ctx.stroke();
+  const gripX = x + Math.cos(ang)*5;
+  const gripY = y + Math.sin(ang)*2;
+  ctx.strokeStyle="rgba(18,22,28,.96)";
+  ctx.lineWidth=4.3;
+  ctx.beginPath(); ctx.moveTo(gripX, gripY); ctx.lineTo(wx, wy); ctx.stroke();
+  ctx.strokeStyle="rgba(105,116,128,.75)";
+  ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(gripX, gripY); ctx.lineTo(wx, wy); ctx.stroke();
 
   ctx.fillStyle="rgba(245,158,11,.90)";
   ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, Math.PI*2); ctx.fill();
@@ -4735,12 +4828,26 @@ function drawTiger(t){
 
   ctx.fillStyle=c.body;
   ctx.beginPath(); ctx.ellipse(x, y+2*s, 22*s, 13*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.14)";
+  ctx.beginPath(); ctx.ellipse(x-2*s, y-2*s, 14*s, 5*s, -0.15, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle=c.belly;
   ctx.beginPath(); ctx.ellipse(x+3*s, y+6*s, 14*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle=c.body;
   ctx.beginPath(); ctx.ellipse(x+20*s, y-6*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(x+26*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(x+16*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle="rgba(240,220,190,.88)";
+  ctx.beginPath(); ctx.ellipse(x+22*s, y-4.5*s, 6.5*s, 4.4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle="#12161f";
+  ctx.beginPath(); ctx.arc(x+24*s, y-8.4*s, 1.1*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+18.5*s, y-8.6*s, 1.1*s, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle="rgba(15,15,15,.88)";
+  ctx.beginPath();
+  ctx.moveTo(x+22*s, y-4.4*s);
+  ctx.lineTo(x+20.5*s, y-2.3*s);
+  ctx.lineTo(x+23.5*s, y-2.3*s);
+  ctx.closePath();
+  ctx.fill();
 
   const legSwing = Math.sin((t.step||0)*1.9) * (2.8 + gait*3.9) * s * (sprinting ? 1.18 : 1);
   ctx.strokeStyle=c.body;
@@ -4750,6 +4857,10 @@ function drawTiger(t){
     ctx.moveTo(x+offset*s, y+10*s);
     ctx.lineTo(x+offset*s + swing*0.18, y+21*s);
     ctx.stroke();
+    ctx.fillStyle="rgba(24,26,33,.92)";
+    ctx.beginPath();
+    ctx.ellipse(x+offset*s + swing*0.18, y+21.5*s, 1.8*s, 1.05*s, 0, 0, Math.PI*2);
+    ctx.fill();
   });
 
   ctx.strokeStyle=c.body; ctx.lineWidth=5*s;
@@ -4765,6 +4876,10 @@ function drawTiger(t){
     ctx.lineTo(x-2*s + i*6*s, y+10*s);
     ctx.stroke();
   }
+  ctx.strokeStyle="rgba(28,30,35,.78)";
+  ctx.lineWidth=1.2*s;
+  ctx.beginPath(); ctx.moveTo(x+28*s, y-4.8*s); ctx.lineTo(x+32*s, y-5.6*s); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x+28*s, y-3.3*s); ctx.lineTo(x+32*s, y-3.6*s); ctx.stroke();
 
   if(t._held){
     ctx.globalAlpha=0.35;
@@ -4902,6 +5017,9 @@ function init(){
     if(!Number.isFinite(t.nextRoarAt)) t.nextRoarAt = 0;
     if(!Number.isFinite(t.enragedUntil)) t.enragedUntil = 0;
   }
+  for(const civ of (S.civilians || [])){
+    if(typeof civ.following !== "boolean") civ.following = false;
+  }
   for(const unit of (S.supportUnits || [])){
     if(!unit.role) unit.role = "attacker";
     if(!unit.name) unit.name = unit.role === "rescue" ? "Rescue Specialist" : "Tiger Specialist";
@@ -4909,6 +5027,9 @@ function init(){
     if(!Number.isFinite(unit.hpMax)) unit.hpMax = unit.hp;
     if(!Number.isFinite(unit.armor)) unit.armor = unit.role === "rescue" ? 50 : 95;
     if(unit.alive == null) unit.alive = true;
+  }
+  if(Array.isArray(S.supportUnits) && S.supportUnits.length > 16){
+    S.supportUnits = S.supportUnits.slice(0,16);
   }
 
   if(!S.tigers || !S.tigers.length) spawnTigers();
