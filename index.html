@@ -147,21 +147,16 @@
         z-index:2;
       }
       .hudGrid{
-        display:flex;
-        gap:10px;
-        overflow-x:auto;
-        overflow-y:hidden;
-        scroll-snap-type:x mandatory;
-        -webkit-overflow-scrolling:touch;
-        touch-action:pan-x;
-        scrollbar-width:none;
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:8px;
+        overflow:visible;
       }
-      .hudGrid::-webkit-scrollbar{display:none}
       .hudBox{
-        flex:0 0 100%;
-        min-width:100%;
-        scroll-snap-align:start;
+        min-width:0;
       }
+      .hudMission{order:1}
+      .hudAgent{order:2}
       .screenCard{
         order:3;
         margin-top:8px;
