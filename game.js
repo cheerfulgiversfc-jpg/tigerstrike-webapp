@@ -435,6 +435,45 @@ function isMobileViewport(){
 function isLandscapeViewport(){
   return (window.innerWidth || 0) > (window.innerHeight || 0);
 }
+const MOBILE_MENU_PREF_KEY = "ts_mobile_menu_hidden";
+let __mobileMenuHiddenPref = false;
+function canToggleMobileMenu(){
+  return isMobileViewport() || !!window.matchMedia?.("(pointer:coarse)")?.matches;
+}
+function applyMobileMenuState(hidden){
+  const body = document.body;
+  if(!body) return;
+  const btn = document.getElementById("mobileMenuToggle");
+  if(!canToggleMobileMenu()){
+    body.classList.remove("mobileMenuHidden");
+    if(btn) btn.style.display = "none";
+    return;
+  }
+  body.classList.toggle("mobileMenuHidden", !!hidden);
+  if(btn){
+    btn.style.display = "block";
+    btn.innerText = hidden ? "Show Menu" : "Hide Menu";
+    btn.setAttribute("aria-label", hidden ? "Show bottom menu" : "Hide bottom menu");
+  }
+}
+function toggleMobileMenu(force){
+  const body = document.body;
+  if(!body) return;
+  const next = (typeof force === "boolean")
+    ? !!force
+    : !body.classList.contains("mobileMenuHidden");
+  __mobileMenuHiddenPref = next;
+  applyMobileMenuState(next);
+  try{ localStorage.setItem(MOBILE_MENU_PREF_KEY, next ? "1" : "0"); }catch(e){}
+}
+function initMobileMenuToggle(){
+  try{
+    __mobileMenuHiddenPref = localStorage.getItem(MOBILE_MENU_PREF_KEY) === "1";
+  }catch(e){
+    __mobileMenuHiddenPref = false;
+  }
+  applyMobileMenuState(__mobileMenuHiddenPref);
+}
 function clampWorldToCanvas(){
   if(!S) return;
   if(S.me){
@@ -540,12 +579,15 @@ function civilianShielded(c){
 resizeCanvasForViewport();
 window.addEventListener("resize", ()=>{
   resizeCanvasForViewport();
+  applyMobileMenuState(__mobileMenuHiddenPref);
   renderHUD();
 }, { passive:true });
 window.addEventListener("orientationchange", ()=>{
   resizeCanvasForViewport();
+  applyMobileMenuState(__mobileMenuHiddenPref);
   renderHUD();
 });
+initMobileMenuToggle();
 // ================= PHASE 2 XP / PERKS =================
 
 function xpNeededForLevel(lv){
@@ -918,12 +960,14 @@ let currentShopTab="weapons";
 
 function openShop(){
   if(!tutorialAllows("shop")) return toast(tutorialBlockMessage("shop"));
-  if(S.inBattle) return toast("Finish battle first.");
   if(S.gameOver) return;
+  const fromBattle = !!S.inBattle;
   if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
-  setPaused(true,"shop");
+  setPaused(true, fromBattle ? "shop-battle" : "shop");
   document.getElementById("shopOverlay").style.display="flex";
+  if(fromBattle && !anyLethalWeaponHasAmmo()) currentShopTab = "ammo";
   shopTab(currentShopTab); sfx("ui");
+  if(fromBattle) setBattleMsg("Combat paused in Shop. Buy ammo or weapons, then tap Resume.");
 }
 function closeShop(){
   document.getElementById("shopOverlay").style.display="none";
@@ -931,6 +975,13 @@ function closeShop(){
     setPaused(true,"complete");
     document.getElementById("completeOverlay").style.display="flex";
     lastOverlay=null; return;
+  }
+  if(S.inBattle){
+    setPaused(false,null);
+    updateAttackButton();
+    if(anyLethalWeaponHasAmmo()) setBattleMsg(`Back in combat with Tiger #${S.activeTigerId}.`);
+    else setBattleMsg("No lethal ammo yet. Open Shop again or switch to Capture when the tiger is weak.");
+    return;
   }
   setPaused(false,null);
 }
@@ -5158,6 +5209,7 @@ window.shopTab = shopTab;
 
 window.openInventory = openInventory;
 window.closeInventory = closeInventory;
+window.toggleMobileMenu = toggleMobileMenu;
 
 window.resetGame = resetGame;
 window.deploy = deploy;
