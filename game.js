@@ -637,7 +637,6 @@ function nextMap(){
 }
 
 // ===================== COLLISION (carcasses) =====================
-function carcassRects(){ return (S.carcasses || []).map(c => ({ x: c.x - 14, y: c.y - 8, w: 28, h: 16 })); }
 function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr){
   const closestX = Math.max(rx, Math.min(cx, rx + rw));
   const closestY = Math.max(ry, Math.min(cy, ry + rh));
@@ -646,8 +645,8 @@ function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr){
   return (dx*dx + dy*dy) <= cr*cr;
 }
 function blockedAt(x, y, radius){
-  for(const r of carcassRects()){
-    if(rectCircleCollide(r.x, r.y, r.w, r.h, x, y, radius)) return true;
+  for(const carcass of (S.carcasses || [])){
+    if(rectCircleCollide(carcass.x - 14, carcass.y - 8, 28, 16, x, y, radius)) return true;
   }
   return false;
 }
@@ -2083,6 +2082,81 @@ function spawnTigers(){
       wanderAngle:Math.random()*(Math.PI*2)
     });
   }
+}
+
+function spawnRogueTiger(){
+  if(!Array.isArray(S.tigers)) S.tigers = [];
+
+  const aliveCount = S.tigers.reduce((n, t)=>n + (t?.alive ? 1 : 0), 0);
+  const maxAlive = (S.mode === "Survival") ? 14 : 10;
+  if(aliveCount >= maxAlive) return null;
+
+  const typeKey = pickTigerType();
+  const def = TIGER_TYPES.find((t)=>t.key===typeKey) || TIGER_TYPES[1];
+  const diff = carcassDifficulty();
+
+  let baseHp = 110;
+  if(S.mode==="Arcade") baseHp = 122 + (S.arcadeLevel - 1) * 7;
+  if(S.mode==="Survival") baseHp = 135 + (S.survivalWave - 1) * 10;
+  if(S.mode==="Story") baseHp = 116 + (S.storyLevel - 1) * 4;
+  const hp = Math.round(baseHp * def.hpMul * diff);
+
+  const spawnEdge = rand(0, 3);
+  let sx = 0;
+  let sy = 0;
+  if(spawnEdge === 0){ // top
+    sx = rand(90, cv.width - 90);
+    sy = rand(72, 116);
+  } else if(spawnEdge === 1){ // right
+    sx = rand(cv.width - 116, cv.width - 72);
+    sy = rand(90, cv.height - 90);
+  } else if(spawnEdge === 2){ // bottom
+    sx = rand(90, cv.width - 90);
+    sy = rand(cv.height - 116, cv.height - 72);
+  } else { // left
+    sx = rand(72, 116);
+    sy = rand(90, cv.height - 90);
+  }
+
+  const nextId = (S.tigers.reduce((maxId, t)=>{
+    const tid = Number(t?.id);
+    return Number.isFinite(tid) ? Math.max(maxId, tid) : maxId;
+  }, 0) + 1);
+
+  const tiger = {
+    id: nextId,
+    type: def.key,
+    x: clamp(Math.round(sx), 70, cv.width - 70),
+    y: clamp(Math.round(sy), 90, cv.height - 70),
+    vx:(Math.random()<0.5?-1:1)*def.spd*0.58,
+    vy:(Math.random()<0.5?-1:1)*def.spd*0.54,
+    hp,
+    hpMax:hp,
+    alive:true,
+    packId:rand(1,4),
+    aggroBoost:0.18,
+    civBias:clamp(def.civBias + (diff-1)*0.14, 0, 0.98),
+    stealth:def.stealth,
+    rage:def.rage,
+    bossPhases:0,
+    tranqTagged:false,
+    step:rand(0,1000),
+    holdUntil:0,
+    dashUntil:0,
+    nextDashAt:0,
+    fadeUntil:0,
+    nextFadeAt:0,
+    roarUntil:0,
+    nextRoarAt:0,
+    rageOn:false,
+    burstUntil:0,
+    nextPounceAt:0,
+    enragedUntil:0,
+    wanderAngle:Math.random()*(Math.PI*2)
+  };
+
+  S.tigers.push(tiger);
+  return tiger;
 }
 // ===================== DEPLOY / NEXT / RESTART =====================
 function deploy(){
@@ -4935,40 +5009,50 @@ function closeComplete(){ document.getElementById("completeOverlay").style.displ
 
 // ===================== MAIN LOOP =====================
 function draw(){
-  pollGamepadControls();
-  refreshControllerUi();
-  maybeRenderHUD();
-  updateEngage();
+  try{
+    pollGamepadControls();
+    refreshControllerUi();
+    maybeRenderHUD();
+    updateEngage();
 
-  if(!(S.gameOver || S.paused || S.missionEnded)){
-    regen();
-    backupTick();
-    trapTick();
+    if(!(S.gameOver || S.paused || S.missionEnded)){
+      regen();
+      backupTick();
+      trapTick();
 
-    if(!window.TigerTutorial?.isRunning){
-      tickEvents();
-      maybeSpawnAmbientPickup();
-      tickPickups();
+      if(!window.TigerTutorial?.isRunning){
+        tickEvents();
+        maybeSpawnAmbientPickup();
+        tickPickups();
+      }
+
+      roamTigers();
+      supportUnitsTick();
+      const usedKeyboard = keyboardMoveTick();
+      if(!usedKeyboard) movePlayer();
+      clearOutOfRangeLock();
+      followCiviliansTick();
+      evacCheck();
+      tickCiviliansAndThreats();
+      survivalPressureTick();
+      combatTick();
+      tickCombatFx();
+      checkMissionComplete();
     }
 
-    roamTigers();
-    supportUnitsTick();
-    const usedKeyboard = keyboardMoveTick();
-    if(!usedKeyboard) movePlayer();
-    clearOutOfRangeLock();
-    followCiviliansTick();
-    evacCheck();
-    tickCiviliansAndThreats();
-    survivalPressureTick();
-    combatTick();
-    tickCombatFx();
-    checkMissionComplete();
+    drawMapScene();
+    drawEntities();
+    maybeAutosave();
+  }catch(err){
+    const now = Date.now();
+    if((window.__tsFrameErrAt || 0) + 2500 < now){
+      window.__tsFrameErrAt = now;
+      console.error("Frame loop recovered from error:", err);
+      toast("Recovered from a game script error.");
+    }
+  }finally{
+    requestAnimationFrame(draw);
   }
-
-  drawMapScene();
-  drawEntities();
-  maybeAutosave();
-  requestAnimationFrame(draw);
 }
 
 // ===================== INIT =====================
