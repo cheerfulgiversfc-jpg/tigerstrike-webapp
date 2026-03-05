@@ -176,6 +176,47 @@ const TIGER_LOCOMOTION = {
   }
 };
 
+const TIGER_PERSONALITIES = {
+  Hunter: {
+    label: "Hunter",
+    playerBias: 0.32,
+    civBiasDelta: -0.16,
+    speedMul: 1.08,
+    detectMul: 1.10,
+    pounceMul: 1.08,
+    packPullMul: 0.90
+  },
+  Ambusher: {
+    label: "Ambusher",
+    playerBias: 0.14,
+    civBiasDelta: 0.05,
+    speedMul: 1.02,
+    detectMul: 1.05,
+    pounceMul: 1.28,
+    packPullMul: 0.95
+  },
+  Sentinel: {
+    label: "Sentinel",
+    playerBias: -0.06,
+    civBiasDelta: 0.14,
+    speedMul: 0.97,
+    detectMul: 0.96,
+    pounceMul: 0.90,
+    packPullMul: 1.35
+  },
+  Fury: {
+    label: "Fury",
+    playerBias: 0.22,
+    civBiasDelta: -0.10,
+    speedMul: 1.00,
+    detectMul: 1.00,
+    pounceMul: 1.18,
+    packPullMul: 1.00
+  }
+};
+
+const COMBO_WINDOW_MS = 14000;
+
 const MODE_MAPS = {
   Story: [
     { key:"ST_FOREST", name:"Forest Edge" },
@@ -615,6 +656,7 @@ const DEFAULT = {
   carcasses:[],
   supportUnits:[],
   rescueSites:[],
+  mapInteractables:[],
 
   scanPing:0,
   lockedTigerId:null,
@@ -641,6 +683,9 @@ const DEFAULT = {
   eventText:"",
   eventCooldown:0,
   pickups:[],
+  comboCount:0,
+  comboBest:0,
+  comboExpireAt:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
   achievements:{},
   title:"Rookie",
@@ -698,6 +743,7 @@ function load(){
     m.pickups = Array.isArray(saved.pickups) ? saved.pickups : [];
     m.supportUnits = Array.isArray(saved.supportUnits) ? saved.supportUnits : [];
     m.rescueSites = Array.isArray(saved.rescueSites) ? saved.rescueSites : [];
+    m.mapInteractables = Array.isArray(saved.mapInteractables) ? saved.mapInteractables : [];
     m.achievements = saved.achievements || {};
     m.stats = { ...DEFAULT.stats, ...(saved.stats||{}) };
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
@@ -715,6 +761,7 @@ const MAX_PERSIST_PICKUPS = 26;
 const MAX_PERSIST_TRAPS = 24;
 const MAX_PERSIST_RESCUE_SITES = 12;
 const MAX_PERSIST_SUPPORT_UNITS = 16;
+const MAX_PERSIST_INTERACTABLES = 10;
 const MAX_PERSIST_TIGERS = 24;
 const MAX_PERSIST_CIVILIANS = 24;
 
@@ -735,6 +782,7 @@ function trimPersistentState(state){
   state.trapsPlaced = capTail(state.trapsPlaced, MAX_PERSIST_TRAPS);
   state.rescueSites = capHead(state.rescueSites, MAX_PERSIST_RESCUE_SITES);
   state.supportUnits = capHead(state.supportUnits, MAX_PERSIST_SUPPORT_UNITS);
+  state.mapInteractables = capHead(state.mapInteractables, MAX_PERSIST_INTERACTABLES);
   state.tigers = capHead(state.tigers, MAX_PERSIST_TIGERS);
   state.civilians = capHead(state.civilians, MAX_PERSIST_CIVILIANS);
   return state;
@@ -748,6 +796,7 @@ function buildPersistedState(){
   out.trapsPlaced = capTail(S.trapsPlaced, MAX_PERSIST_TRAPS);
   out.rescueSites = capHead(S.rescueSites, MAX_PERSIST_RESCUE_SITES);
   out.supportUnits = capHead(S.supportUnits, MAX_PERSIST_SUPPORT_UNITS);
+  out.mapInteractables = capHead(S.mapInteractables, MAX_PERSIST_INTERACTABLES);
   out.tigers = capHead(S.tigers, MAX_PERSIST_TIGERS);
   out.civilians = capHead(S.civilians, MAX_PERSIST_CIVILIANS);
   return out;
@@ -945,6 +994,10 @@ function clampWorldToCanvas(){
     site.x = clamp(site.x, 70, cv.width - 70);
     site.y = clamp(site.y, 90, cv.height - 80);
   }
+  for(const it of (S.mapInteractables || [])){
+    it.x = clamp(it.x, 70, cv.width - 70);
+    it.y = clamp(it.y, 90, cv.height - 80);
+  }
 }
 function resizeCanvasForViewport(){
   const mobile = isMobileViewport();
@@ -1106,6 +1159,7 @@ function currentMap(){
 function nextMap(){
   const list = MODE_MAPS[S.mode] || MODE_MAPS.Story;
   S.mapIndex = (S.mapIndex+1) % list.length;
+  if(!window.__TUTORIAL_MODE__) spawnMapInteractables();
   S.scanPing=0; sfx("ui"); save();
 }
 
@@ -2110,10 +2164,13 @@ window.enterTutorialMode = function () {
   S.target = null;
   S.pickups = [];
   S.supportUnits = [];
+  S.mapInteractables = [];
   S.eventText = "";
   S.fogUntil = 0;
   S.inBattle = false;
   S.activeTigerId = null;
+  S.comboCount = 0;
+  S.comboExpireAt = 0;
   S.me = { x:230, y:330, face:0, step:0 };
   S.evacZone = { x:160, y:140, r:70 };
   S.stats.shots = 0;
@@ -2335,6 +2392,247 @@ function spawnRescueSites(){
     .sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
+function pickTigerPersonality(type){
+  const r = Math.random();
+  if(type==="Alpha") return r < 0.5 ? "Sentinel" : (r < 0.8 ? "Hunter" : "Fury");
+  if(type==="Berserker") return r < 0.6 ? "Fury" : (r < 0.85 ? "Hunter" : "Ambusher");
+  if(type==="Stalker") return r < 0.6 ? "Ambusher" : (r < 0.85 ? "Hunter" : "Fury");
+  if(type==="Scout") return r < 0.55 ? "Hunter" : (r < 0.85 ? "Ambusher" : "Sentinel");
+  return r < 0.35 ? "Hunter" : (r < 0.62 ? "Ambusher" : (r < 0.84 ? "Sentinel" : "Fury"));
+}
+
+function tigerPersonalityProfile(t, now=Date.now()){
+  const pKey = t?.personality || "Hunter";
+  const base = TIGER_PERSONALITIES[pKey] || TIGER_PERSONALITIES.Hunter;
+  const hpPct = t?.hpMax ? (t.hp / t.hpMax) : 1;
+  let speedMul = base.speedMul;
+  let detectMul = base.detectMul;
+  let pounceMul = base.pounceMul;
+  let playerBias = base.playerBias;
+  let civBiasDelta = base.civBiasDelta;
+
+  if(pKey==="Fury" && hpPct < 0.55){
+    const rage = clamp((0.55 - hpPct) * 1.45, 0, 0.35);
+    speedMul += rage;
+    detectMul += rage * 0.35;
+    pounceMul += rage * 0.55;
+    playerBias += rage * 0.45;
+    civBiasDelta -= rage * 0.35;
+  }
+
+  if(pKey==="Ambusher" && now < (t?.burstUntil || 0)){
+    speedMul += 0.08;
+    pounceMul += 0.12;
+  }
+
+  return {
+    key: pKey,
+    label: base.label || pKey,
+    playerBias,
+    civBiasDelta,
+    speedMul,
+    detectMul,
+    pounceMul,
+    packPullMul: base.packPullMul || 1
+  };
+}
+
+function setTigerIntent(t, label, ms=520){
+  if(!t) return;
+  t.intent = label;
+  t.intentUntil = Date.now() + ms;
+}
+
+function mapInteractablePool(){
+  const w = cv.width;
+  const h = cv.height;
+  const key = currentMapKey();
+  const pools = {
+    ST_FOREST: [
+      { kind:"alarm", label:"Siren Tree", x:w*0.20, y:h*0.14 },
+      { kind:"barricade", label:"Trail Gate", x:w*0.54, y:h*0.56 },
+      { kind:"cache", label:"Ranger Cache", x:w*0.84, y:h*0.79 }
+    ],
+    ST_SUBURBS: [
+      { kind:"alarm", label:"Street Alarm", x:w*0.17, y:h*0.23 },
+      { kind:"barricade", label:"Blockade Switch", x:w*0.58, y:h*0.50 },
+      { kind:"cache", label:"Garage Cache", x:w*0.83, y:h*0.72 }
+    ],
+    ST_DOWNTOWN: [
+      { kind:"alarm", label:"Tower Siren", x:w*0.16, y:h*0.22 },
+      { kind:"barricade", label:"Barrier Console", x:w*0.60, y:h*0.53 },
+      { kind:"cache", label:"Service Crate", x:w*0.82, y:h*0.78 }
+    ],
+    ST_INDUSTRIAL: [
+      { kind:"alarm", label:"Plant Alarm", x:w*0.18, y:h*0.22 },
+      { kind:"barricade", label:"Steel Gate", x:w*0.56, y:h*0.50 },
+      { kind:"cache", label:"Dock Cache", x:w*0.84, y:h*0.76 }
+    ]
+  };
+  const fallback = [
+    { kind:"alarm", label:"Alert Beacon", x:w*0.18, y:h*0.18 },
+    { kind:"barricade", label:"Barrier Node", x:w*0.56, y:h*0.54 },
+    { kind:"cache", label:"Supply Cache", x:w*0.84, y:h*0.78 }
+  ];
+  return (pools[key] || fallback).map((it)=>({
+    kind: it.kind,
+    label: it.label,
+    x: clamp(Math.round(it.x), 70, w - 70),
+    y: clamp(Math.round(it.y), 90, h - 80)
+  }));
+}
+
+function spawnMapInteractables(){
+  if(window.__TUTORIAL_MODE__ || S.mode==="Survival"){
+    S.mapInteractables = [];
+    return;
+  }
+  const base = mapInteractablePool();
+  S.mapInteractables = base.map((it, idx)=>({
+    id: `INT-${idx+1}`,
+    kind: it.kind,
+    label: it.label,
+    x: it.x,
+    y: it.y,
+    r: 22,
+    uses: it.kind === "cache" ? 1 : 99,
+    cooldownUntil: 0,
+    activeUntil: 0,
+    effectR: it.kind === "barricade" ? 128 : 0
+  }));
+}
+
+function findInteractableAt(x,y){
+  const items = S.mapInteractables || [];
+  for(const it of items){
+    const tapR = (it.r || 22) + 10;
+    if(dist(x,y,it.x,it.y) <= tapR) return it;
+  }
+  return null;
+}
+
+function activeBarricades(now=Date.now()){
+  return (S.mapInteractables || []).filter((it)=>it.kind==="barricade" && now < (it.activeUntil || 0));
+}
+
+function activateMapInteractable(it){
+  if(!it) return false;
+  const now = Date.now();
+  if((it.uses||0) <= 0){
+    toast(`${it.label} already used.`);
+    return false;
+  }
+  if(now < (it.cooldownUntil || 0)){
+    const sec = Math.max(1, Math.ceil(((it.cooldownUntil || 0) - now) / 1000));
+    toast(`${it.label} cooling down (${sec}s).`);
+    return false;
+  }
+
+  if(it.kind==="alarm"){
+    S.scanPing = Math.max(S.scanPing || 0, 220);
+    for(const tiger of (S.tigers || [])){
+      if(!tiger.alive) continue;
+      if(dist(it.x, it.y, tiger.x, tiger.y) < 260){
+        tiger.holdUntil = Math.max(tiger.holdUntil || 0, now + 1100);
+        tiger.aggroBoost = clamp((tiger.aggroBoost || 0) + 0.06, 0, 1.5);
+      }
+    }
+    it.activeUntil = now + 1400;
+    it.cooldownUntil = now + 18000;
+    setEventText("📡 Siren triggered: nearby tigers exposed and staggered.", 3);
+    __savePending = true;
+    return true;
+  }
+
+  if(it.kind==="barricade"){
+    it.activeUntil = now + 9500;
+    it.cooldownUntil = now + 21000;
+    setEventText("🧱 Barrier deployed: tigers are forced around the block zone.", 3);
+    __savePending = true;
+    return true;
+  }
+
+  if(it.kind==="cache"){
+    const cash = rand(180, 520);
+    S.funds += cash;
+    S.stats.cashEarned += cash;
+    const w = equippedWeapon();
+    if(w){
+      const refill = Math.max(2, Math.floor(w.mag * 0.6));
+      S.ammoReserve[w.ammo] = (S.ammoReserve[w.ammo] || 0) + refill;
+    }
+    if(Math.random() < 0.45){
+      S.armor = clamp(S.armor + rand(6, 16), 0, S.armorCap);
+    }
+    if(Math.random() < 0.32){
+      S.trapsOwned += 1;
+    }
+    it.uses = Math.max(0, (it.uses || 0) - 1);
+    it.cooldownUntil = now + 60000;
+    it.activeUntil = now + 900;
+    setEventText(`📦 ${it.label} opened: +$${cash} and supplies found.`, 3);
+    unlockAchv("pickup1","First Pickup");
+    addXP(18);
+    __savePending = true;
+    return true;
+  }
+
+  return false;
+}
+
+function mapInteractableTick(){
+  if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
+  const now = Date.now();
+  for(const it of S.mapInteractables){
+    if(it.activeUntil && now >= it.activeUntil && it.kind !== "barricade"){
+      it.activeUntil = 0;
+    }
+  }
+}
+
+function comboTick(){
+  if((S.comboCount || 0) <= 0) return;
+  if(Date.now() > (S.comboExpireAt || 0)){
+    S.comboCount = 0;
+    S.comboExpireAt = 0;
+  }
+}
+
+function breakCombo(reason=""){
+  const prev = S.comboCount || 0;
+  if(prev <= 0){
+    S.comboCount = 0;
+    S.comboExpireAt = 0;
+    return;
+  }
+  S.comboCount = 0;
+  S.comboExpireAt = 0;
+  if(reason && prev >= 2){
+    setEventText(`Combo ended: ${reason}`, 2);
+  }
+}
+
+function awardCombo(kind){
+  if(window.__TUTORIAL_MODE__) return;
+  const now = Date.now();
+  const within = (S.comboExpireAt || 0) > now;
+  S.comboCount = within ? (S.comboCount || 0) + 1 : 1;
+  S.comboExpireAt = now + COMBO_WINDOW_MS;
+  S.comboBest = Math.max(S.comboBest || 0, S.comboCount || 0);
+
+  const baseCash = kind==="capture" ? 180 : 120;
+  const baseXp = kind==="capture" ? 24 : 16;
+  const chain = Math.max(1, S.comboCount || 1);
+  const bonusCash = Math.round(baseCash * (1 + ((chain - 1) * 0.30)));
+  const bonusXp = Math.round(baseXp * (1 + ((chain - 1) * 0.22)));
+
+  S.funds += bonusCash;
+  S.stats.cashEarned += bonusCash;
+  addXP(bonusXp);
+  setEventText(`🔥 ${kind==="capture" ? "Capture" : "Rescue"} combo x${chain}: +$${bonusCash} +${bonusXp}XP`, 2.5);
+  __savePending = true;
+}
+
 function createSupportUnit(role, slotIndex=0){
   const attacker = role === "attacker";
   const lane = slotIndex % 3;
@@ -2480,8 +2778,11 @@ function spawnTigers(){
       civBias:0.3,
       stealth:false,
       rage:false,
+      personality:"Hunter",
       bossPhases:0,
       tranqTagged:false,
+      intent:"",
+      intentUntil:0,
       step:0,
       holdUntil:0,
       dashUntil:0,
@@ -2584,8 +2885,11 @@ function spawnTigers(){
       civBias:clamp(def.civBias+(diff-1)*0.18,0,0.98),
       stealth:def.stealth,
       rage:def.rage,
+      personality:pickTigerPersonality(def.key),
       bossPhases,
       tranqTagged:false,
+      intent:"",
+      intentUntil:0,
       step:rand(0,1000),
       holdUntil:0,
       dashUntil:0,
@@ -2657,8 +2961,11 @@ function spawnRogueTiger(){
     civBias:clamp(def.civBias + (diff-1)*0.14, 0, 0.98),
     stealth:def.stealth,
     rage:def.rage,
+    personality:pickTigerPersonality(def.key),
     bossPhases:0,
     tranqTagged:false,
+    intent:"",
+    intentUntil:0,
     step:rand(0,1000),
     holdUntil:0,
     dashUntil:0,
@@ -2706,6 +3013,9 @@ function deploy(){
   S.pickups = [];
   S.supportUnits = [];
   S.rescueSites = [];
+  S.mapInteractables = [];
+  S.comboCount = 0;
+  S.comboExpireAt = 0;
   S.stats.shots = 0;
   S.stats.captures = 0;
   S.stats.kills = 0;
@@ -2717,6 +3027,7 @@ function deploy(){
   S._storyFinalOutcome = null;
 
   spawnRescueSites();
+  spawnMapInteractables();
   spawnSupportUnits();
   spawnTigers();
   spawnCivilians();
@@ -2838,6 +3149,7 @@ cv.addEventListener("pointerdown",(e)=>{
   const rect=cv.getBoundingClientRect();
   const x=(e.clientX-rect.left)*(cv.width/rect.width);
   const y=(e.clientY-rect.top)*(cv.height/rect.height);
+  const tappedInteractable = findInteractableAt(x,y);
   const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
 
   // --- Tutorial: capture map click so tutorial can advance ---
@@ -2880,6 +3192,16 @@ cv.addEventListener("pointerdown",(e)=>{
   if(S.paused) return;
 
   ensureAudio();
+
+  if(tappedInteractable && !S.inBattle){
+    const changed = activateMapInteractable(tappedInteractable);
+    if(changed){
+      sfx("ui");
+      hapticImpact("light");
+      save();
+    }
+    return;
+  }
 
   if(tapped && !S.inBattle){
     const d = dist(S.me.x,S.me.y,tapped.x,tapped.y);
@@ -3706,6 +4028,7 @@ function evacCheck(){
       S.evacDone += 1;
       S.stats.evac += 1;
       addXP(35);
+      awardCombo("rescue");
       toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length})`);
       unlockAchv("evac1","First Evac");
       hapticNotif("success");
@@ -3778,6 +4101,7 @@ function tickCiviliansAndThreats(){
     if(c.alive && c.hp<=0){
       c.alive=false;
       S.lives -= 1;
+      breakCombo("civilian lost");
 
       if(S.lives <= 0){
         S.lives = 0;
@@ -3795,28 +4119,30 @@ function tickCiviliansAndThreats(){
 // ===================== TIGER ABILITIES (Phase 1) =====================
 function tigerMotionProfile(t, def, now=Date.now()){
   const base = TIGER_LOCOMOTION[t.type] || TIGER_LOCOMOTION.Standard;
+  const persona = tigerPersonalityProfile(t, now);
   const hunter = t.aggroBoost || 0;
   const pack = t._packBuff || 0;
   const rage = (t.type==="Berserker" && t.rageOn) ? 1 : 0;
   const fading = (t.type==="Stalker" && now < (t.fadeUntil||0)) ? 1 : 0;
   const scoutDash = (t.type==="Scout" && now < (t.dashUntil||0)) ? 1 : 0;
 
-  const walk = base.walk + (def.spd * 0.15) + (hunter * 0.30) + (pack * 0.25);
-  const chase = base.chase + (def.spd * 0.20) + (hunter * 0.85) + (pack * 0.55) + (rage * 0.35) + (fading * 0.22);
-  const sprint = base.sprint + (def.spd * 0.24) + (hunter * 1.05) + (pack * 0.85) + (rage * 0.55) + (scoutDash * 0.35);
+  const walk = (base.walk + (def.spd * 0.15) + (hunter * 0.30) + (pack * 0.25)) * persona.speedMul;
+  const chase = (base.chase + (def.spd * 0.20) + (hunter * 0.85) + (pack * 0.55) + (rage * 0.35) + (fading * 0.22)) * persona.speedMul;
+  const sprint = (base.sprint + (def.spd * 0.24) + (hunter * 1.05) + (pack * 0.85) + (rage * 0.55) + (scoutDash * 0.35)) * persona.speedMul;
 
   return {
     walk,
     chase,
     sprint,
-    minChase: base.minChase + (hunter * 0.55) + (pack * 0.30) + (rage * 0.35) + (fading * 0.20),
-    detect: base.detect + (hunter * 80) + (pack * 45) + (fading * 60),
+    minChase: (base.minChase + (hunter * 0.55) + (pack * 0.30) + (rage * 0.35) + (fading * 0.20)) * Math.max(0.95, persona.speedMul),
+    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul,
     chaseAccel: base.chaseAccel + (hunter * 0.04) + (pack * 0.02) + (rage * 0.03),
     wanderAccel: base.wanderAccel,
     burstMs: base.burstMs,
     pounceForce: base.pounceForce + (hunter * 0.35) + (pack * 0.18) + (rage * 0.25),
     pounceCd: base.pounceCd,
-    pounceChance: clamp(base.pounceChance + (hunter * 0.03) + (pack * 0.02) + (rage * 0.02), 0, 0.22)
+    pounceChance: clamp((base.pounceChance + (hunter * 0.03) + (pack * 0.02) + (rage * 0.02)) * persona.pounceMul, 0, 0.24),
+    personality: persona
   };
 }
 
@@ -3832,9 +4158,11 @@ function abilityTick(t){
   // Scout Dash (short burst)
   if(t.type==="Scout"){
     if(!t.nextDashAt) t.nextDashAt = now + rand(650, 1300);
+    if((t.nextDashAt - now) < 240) setTigerIntent(t, "Dash", 320);
     if(now >= t.nextDashAt){
       t.dashUntil = now + rand(760, 1120);
       t.nextDashAt = t.dashUntil + rand(900, 1650);
+      setTigerIntent(t, "Dash", 560);
       if(Math.random() < 0.20) setEventText("🐅 Scout Dash!", 2);
     }
   }
@@ -3842,9 +4170,11 @@ function abilityTick(t){
   // Stalker Fade
   if(t.type==="Stalker"){
     if(!t.nextFadeAt) t.nextFadeAt = now + rand(1600, 2800);
+    if((t.nextFadeAt - now) < 240) setTigerIntent(t, "Fade", 320);
     if(now >= t.nextFadeAt){
       t.fadeUntil = now + rand(1400, 2200);
       t.nextFadeAt = t.fadeUntil + rand(1700, 3100);
+      setTigerIntent(t, "Fade", 560);
       if(Math.random() < 0.20) setEventText("🐅 Stalker vanished…", 2);
     }
   }
@@ -3852,9 +4182,11 @@ function abilityTick(t){
   // Alpha Roar Buff
   if(t.type==="Alpha"){
     if(!t.nextRoarAt) t.nextRoarAt = now + rand(1800, 3200);
+    if((t.nextRoarAt - now) < 260) setTigerIntent(t, "Roar", 360);
     if(now >= t.nextRoarAt){
       t.roarUntil = now + rand(1800, 2600);
       t.nextRoarAt = t.roarUntil + rand(1900, 3200);
+      setTigerIntent(t, "Roar", 620);
       setEventText("🦁 Alpha ROAR! Pack buffed.", 3);
       sfx("event"); hapticImpact("heavy");
     }
@@ -3883,6 +4215,7 @@ function roamTigers(){
   if(S.backupActive>0) return;
 
   const now = Date.now();
+  const barricades = activeBarricades(now);
 
   for(const t of S.tigers){
     if(!t.alive) continue;
@@ -3901,6 +4234,7 @@ function roamTigers(){
 
     const def=TIGER_TYPES.find(x=>x.key===t.type) || TIGER_TYPES[1];
     const motion = tigerMotionProfile(t, def, now);
+    const persona = motion.personality || tigerPersonalityProfile(t, now);
     const civs = (S.mode!=="Survival") ? S.civilians.filter(c=>c.alive && !c.evac) : [];
     let targetX=t.x + Math.cos(t.wanderAngle) * 20;
     let targetY=t.y + Math.sin(t.wanderAngle) * 20;
@@ -3931,9 +4265,9 @@ function roamTigers(){
 
     const closePlayerRange = 145 + (bloodScent * 85);
     const closeCivRange = 130 + (bloodScent * 95);
-    const closeToPlayer = playerDist <= closePlayerRange;
+    const closeToPlayer = playerDist <= (closePlayerRange + (persona.playerBias * 120));
     const closeToCiv = closestCiv && closestCivDist <= closeCivRange;
-    const civFocusBias = clamp(t.civBias + bloodScent * 0.25 + (carcassDifficulty()-1)*0.10, 0.08, 0.95);
+    const civFocusBias = clamp(t.civBias + bloodScent * 0.25 + (carcassDifficulty()-1)*0.10 + persona.civBiasDelta, 0.05, 0.95);
 
     if(closeToCiv && (!closeToPlayer || Math.random() < civFocusBias)){
       targetX = closestCiv.x;
@@ -3947,6 +4281,26 @@ function roamTigers(){
       targetX = closestCiv.x;
       targetY = closestCiv.y;
       targetDist = closestCivDist;
+    }
+
+    if(persona.key === "Hunter" && playerDist < motion.detect + 110){
+      targetX = S.me.x;
+      targetY = S.me.y;
+      targetDist = playerDist;
+    } else if(persona.key === "Sentinel" && S.rescueSites?.length){
+      let nearSite = null;
+      let nearSiteDist = 1e9;
+      for(const site of S.rescueSites){
+        const sd = dist(t.x, t.y, site.x, site.y);
+        if(sd < nearSiteDist){ nearSiteDist = sd; nearSite = site; }
+      }
+      if(nearSite && nearSiteDist > 180 && !closeToPlayer && (!closestCiv || closestCivDist > 120)){
+        targetX = nearSite.x;
+        targetY = nearSite.y;
+        targetDist = nearSiteDist;
+      }
+    } else if(persona.key === "Ambusher" && Number.isFinite(targetDist) && targetDist < motion.detect + 80 && targetDist > 145){
+      t.wanderAngle += (Math.random() - 0.5) * 0.22;
     }
 
     if(S.lockedTigerId===t.id && playerDist < motion.detect + 90){
@@ -3973,11 +4327,13 @@ function roamTigers(){
     const uy = ty / td;
 
     if(chase && td > 22){
+      if((t.nextPounceAt||0) - now < 220 && td > 90 && td < 330) setTigerIntent(t, "Pounce", 360);
       if(now >= (t.nextPounceAt||0) && td > 92 && td < 330 && Math.random() < motion.pounceChance){
         t.vx += ux * motion.pounceForce;
         t.vy += uy * motion.pounceForce;
         t.burstUntil = now + rand(motion.burstMs[0], motion.burstMs[1]);
         t.nextPounceAt = now + rand(motion.pounceCd[0], motion.pounceCd[1]);
+        setTigerIntent(t, "Pounce", 520);
       }
 
       const accel = motion.chaseAccel + (now < (t.burstUntil||0) ? 0.04 : 0);
@@ -4004,9 +4360,25 @@ function roamTigers(){
       if(mates.length){
         const packX = mates.reduce((sum, x) => sum + x.x, 0) / mates.length;
         const packY = mates.reduce((sum, x) => sum + x.y, 0) / mates.length;
-        const pull = dist(t.x, t.y, packX, packY) > 58 ? 0.055 : 0.018;
+        const pullBase = dist(t.x, t.y, packX, packY) > 58 ? 0.055 : 0.018;
+        const pull = pullBase * (persona.packPullMul || 1);
         t.vx += (packX > t.x ? pull : -pull);
         t.vy += (packY > t.y ? pull : -pull);
+      }
+    }
+
+    for(const field of barricades){
+      const fieldR = field.effectR || 128;
+      const bd = dist(t.x, t.y, field.x, field.y);
+      if(bd >= fieldR) continue;
+      const nx = (t.x - field.x) / (bd || 1);
+      const ny = (t.y - field.y) / (bd || 1);
+      const repel = clamp((fieldR - bd) / fieldR, 0.08, 1) * 0.78;
+      t.vx += nx * repel;
+      t.vy += ny * repel;
+      if(bd < fieldR * 0.64){
+        t.x = clamp(t.x + nx * 1.8, 40, cv.width - 40);
+        t.y = clamp(t.y + ny * 1.8, 60, cv.height - 40);
       }
     }
 
@@ -4437,6 +4809,7 @@ function finishTigerKill(t){
   if(!t || !t.alive) return;
   markStoryFinalBossOutcome("KILL", t);
   t.alive=false;
+  breakCombo("tiger killed");
   S.carcasses.push({ x:t.x, y:t.y });
   if(S.carcasses.length > MAX_PERSIST_CARCASSES){
     S.carcasses = S.carcasses.slice(-MAX_PERSIST_CARCASSES);
@@ -4517,6 +4890,7 @@ function playerAction(action){
     S.funds+=pay.cash; S.score+=pay.score;
     S.stats.captures += 1;
     addXP(90);
+    awardCombo("capture");
     S.stats.cashEarned += pay.cash;
     unlockAchv("cap1","First Capture");
     S.trust=clamp(S.trust+pay.trust,0,100);
@@ -4641,6 +5015,7 @@ function playerAction(action){
 function tigerTurn(t, softened=false){
   if(!t.alive) return;
   const diff=carcassDifficulty();
+  const persona = tigerPersonalityProfile(t);
 
   let dmg = rand(10,18) + Math.floor((S.aggro/100)*10);
   dmg = Math.round(dmg * diff);
@@ -4653,8 +5028,13 @@ function tigerTurn(t, softened=false){
     if((t.hp/t.hpMax)<0.35) dmg=Math.floor(dmg*1.20);
   }
   if(t.type==="Stalker") dmg=Math.floor(dmg*1.05);
+  if(persona.key==="Hunter") dmg = Math.round(dmg * 1.08);
+  if(persona.key==="Sentinel") dmg = Math.round(dmg * 0.94);
+  if(persona.key==="Fury" && (t.hp/t.hpMax) < 0.55) dmg = Math.round(dmg * 1.10);
+  if(persona.key==="Ambusher" && Date.now() < (t.burstUntil||0)) dmg = Math.round(dmg * 1.08);
   if(softened) dmg=Math.floor(dmg*0.85);
   dmg=clamp(dmg,6,75);
+  setTigerIntent(t, "Strike", 440);
 
   emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(251,113,133,.95)", 3);
   applyPlayerDamage(dmg,false);
@@ -4864,6 +5244,10 @@ function renderHUD(){
   }
 
   const assistParts = [];
+  if((S.comboCount || 0) > 0){
+    const left = Math.max(0, Math.ceil(((S.comboExpireAt || 0) - Date.now()) / 1000));
+    assistParts.push(`Combo x${S.comboCount}${left ? ` (${left}s)` : ""}`);
+  }
   if(S.mode!=="Survival"){
     const civTargets = S.civilians.filter(c=>c.alive && !c.evac);
     if(civTargets.length){
@@ -4898,6 +5282,22 @@ function renderHUD(){
       }
     }
     assistParts.push(`${pickupLabel(nearestPickup.type)} pickup: ${Math.round(nearestPickupDist)}m`);
+  }
+
+  if((S.mapInteractables || []).length && !S.inBattle){
+    let nearestInteract = null;
+    let nearestInteractDist = 1e9;
+    for(const it of (S.mapInteractables || [])){
+      if((it.uses || 0) <= 0) continue;
+      const d = dist(S.me.x, S.me.y, it.x, it.y);
+      if(d < nearestInteractDist){
+        nearestInteract = it;
+        nearestInteractDist = d;
+      }
+    }
+    if(nearestInteract && nearestInteractDist < 170){
+      assistParts.push(`${nearestInteract.label}: ${Math.round(nearestInteractDist)}m (tap to use)`);
+    }
   }
 
   if(!anyWeaponHasAmmo()) assistParts.unshift("Out of ammo. Visit Shop before the next fight.");
@@ -4943,6 +5343,16 @@ function renderHUD(){
       S.mode==="Survival"
         ? "Stay moving, manage ammo, and survive the pressure."
         : "Protect civilians, reach the evac zone, and clear every tiger.";
+    let nearInteract = null;
+    let nearInteractDist = 1e9;
+    for(const it of (S.mapInteractables || [])){
+      if((it.uses || 0) <= 0) continue;
+      const d = dist(S.me.x, S.me.y, it.x, it.y);
+      if(d < nearInteractDist){
+        nearInteract = it;
+        nearInteractDist = d;
+      }
+    }
     if(S.dangerCivId){
       const civ = S.civilians.find(c=>c.id===S.dangerCivId);
       mobilePrompt = civ ? `Civilian #${civ.id} is under attack. Move there now.` : mobilePrompt;
@@ -4952,6 +5362,8 @@ function renderHUD(){
       mobilePrompt = `Tiger #${t.id} is in range. Tap it to fight.`;
     } else if(t){
       mobilePrompt = `Tiger #${t.id} locked. Move closer and tap it to fight.`;
+    } else if(nearInteract && nearInteractDist < 165){
+      mobilePrompt = `${nearInteract.label} nearby. Tap it to activate.`;
     } else if(window.TigerTutorial?.isRunning){
       mobilePrompt = assistParts[0] || "Follow the tutorial prompt and stay on the map.";
     } else if(S.missionEnded){
@@ -4964,8 +5376,8 @@ function renderHUD(){
       S.inBattle
         ? (S.battleMsg || `On-map combat active. Use Attack, Capture, weapon swap, and Retreat while Tiger #${S.activeTigerId} stays locked.`)
         : (window.matchMedia?.("(pointer:fine)")?.matches
-            ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Shift sprints."
-            : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear.");
+            ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Tap map devices to trigger alarms, barriers, and caches."
+            : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear. Tap map devices for alarms, barriers, and caches.");
   }catch(err){
     const now = Date.now();
     if((window.__tsHudErrAt || 0) + 3000 < now){
@@ -5295,6 +5707,63 @@ function drawRescueSite(site){
   ctx.restore();
 }
 
+function drawMapInteractable(it){
+  const now = Date.now();
+  const active = now < (it.activeUntil || 0);
+  const cooling = now < (it.cooldownUntil || 0);
+  const spent = (it.uses || 0) <= 0;
+  const pulse = 0.8 + Math.sin(now / 180) * 0.18;
+  const icon = it.kind==="alarm" ? "A" : (it.kind==="barricade" ? "B" : "S");
+  const label = it.kind==="alarm" ? "Alarm" : (it.kind==="barricade" ? "Barrier" : "Cache");
+  const palette = it.kind==="alarm"
+    ? ["rgba(96,165,250,.24)","rgba(96,165,250,.95)"]
+    : (it.kind==="barricade"
+      ? ["rgba(251,191,36,.24)","rgba(251,191,36,.96)"]
+      : ["rgba(74,222,128,.22)","rgba(74,222,128,.95)"]);
+
+  ctx.save();
+  if(spent) ctx.globalAlpha = 0.35;
+
+  if(it.kind==="barricade" && active){
+    ctx.globalAlpha = 0.18 + (pulse * 0.14);
+    ctx.strokeStyle = "rgba(251,191,36,.95)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(it.x, it.y, it.effectR || 128, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = spent ? 0.35 : 1;
+  }
+
+  ctx.fillStyle = palette[0];
+  ctx.beginPath();
+  ctx.arc(it.x, it.y, it.r || 22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = palette[1];
+  ctx.lineWidth = active ? 3.5 : 2;
+  ctx.beginPath();
+  ctx.arc(it.x, it.y, (it.r || 22) + (active ? 1 : 0), 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(242,247,255,.95)";
+  ctx.font = "900 12px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(icon, it.x, it.y + 4);
+
+  ctx.font = "800 10px system-ui";
+  ctx.fillStyle = "rgba(242,247,255,.9)";
+  ctx.fillText(label, it.x, it.y + 24);
+
+  if(cooling && !active && !spent){
+    const sec = Math.max(1, Math.ceil(((it.cooldownUntil || 0) - now) / 1000));
+    ctx.font = "700 10px system-ui";
+    ctx.fillStyle = "rgba(255,235,180,.95)";
+    ctx.fillText(`${sec}s`, it.x, it.y - 18);
+  }
+
+  ctx.textAlign = "start";
+  ctx.restore();
+}
+
 function drawPickup(p){
   const color = (p.type==="CASH") ? "rgba(74,222,128,.95)"
     : (p.type==="AMMO") ? "rgba(58,120,255,.95)"
@@ -5601,6 +6070,19 @@ function drawTiger(t){
     ctx.beginPath(); ctx.arc(x,y,30*s,0,Math.PI*2); ctx.stroke();
   }
 
+  if((t.intentUntil || 0) > Date.now()){
+    ctx.strokeStyle="rgba(251,191,36,.92)";
+    ctx.lineWidth=2.2;
+    ctx.setLineDash([6,5]);
+    ctx.beginPath();
+    ctx.arc(x, y, 34*s, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="rgba(255,235,180,.98)";
+    ctx.font="800 10px system-ui";
+    ctx.fillText(t.intent || "Ready", x-20*s, y-52*s);
+  }
+
   const pct=t.hp/t.hpMax;
   ctx.fillStyle="rgba(11,13,18,.85)";
   ctx.fillRect(x-26*s,y-34*s,52*s,6);
@@ -5614,7 +6096,8 @@ function drawTiger(t){
   const fade = (t.type==="Stalker" && Date.now()<(t.fadeUntil||0)) ? " (FADE)" : "";
   const roar = (t.type==="Alpha" && Date.now()<(t.roarUntil||0)) ? " (ROAR)" : "";
   const rage = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? " (RAGE)" : "";
-  ctx.fillText(t.type + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage, x-44*s, y-44*s);
+  const persona = t.personality ? ` • ${t.personality}` : "";
+  ctx.fillText(t.type + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage, x-44*s, y-44*s);
   ctx.globalAlpha=1;
 }
 
@@ -5624,6 +6107,8 @@ function drawEntities(){
 
   // pickups
   for(const p of (S.pickups||[])) drawPickup(p);
+
+  for(const it of (S.mapInteractables || [])) drawMapInteractable(it);
 
   for(const site of (S.rescueSites || [])) drawRescueSite(site);
 
@@ -5654,6 +6139,8 @@ function draw(){
       regen();
       backupTick();
       trapTick();
+      mapInteractableTick();
+      comboTick();
 
       if(!window.TigerTutorial?.isRunning){
         tickEvents();
@@ -5705,11 +6192,15 @@ function init(){
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
+  if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   if(!S.evacZone) S.evacZone = { ...DEFAULT.evacZone };
   if(!Number.isFinite(S.shields)) S.shields = 1;
   if(!Number.isFinite(S.shieldUntil)) S.shieldUntil = 0;
   if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
   if(!Number.isFinite(S.soldierRescuersOwned)) S.soldierRescuersOwned = 0;
+  if(!Number.isFinite(S.comboCount)) S.comboCount = 0;
+  if(!Number.isFinite(S.comboBest)) S.comboBest = 0;
+  if(!Number.isFinite(S.comboExpireAt)) S.comboExpireAt = 0;
   if(S.paused && !S.gameOver && !S.missionEnded){
     S.paused = false;
     S.pauseReason = null;
@@ -5732,6 +6223,9 @@ function init(){
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
 
   for(const t of (S.tigers || [])){
+    if(!t.personality) t.personality = pickTigerPersonality(t.type || "Standard");
+    if(typeof t.intent !== "string") t.intent = "";
+    if(!Number.isFinite(t.intentUntil)) t.intentUntil = 0;
     if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * (Math.PI * 2);
     if(!Number.isFinite(t.burstUntil)) t.burstUntil = 0;
     if(!Number.isFinite(t.nextPounceAt)) t.nextPounceAt = 0;
@@ -5751,6 +6245,15 @@ function init(){
     if(!Number.isFinite(unit.armor)) unit.armor = unit.role === "rescue" ? 50 : 95;
     if(unit.alive == null) unit.alive = true;
   }
+  for(const it of (S.mapInteractables || [])){
+    if(!it.kind) it.kind = "cache";
+    if(!it.label) it.label = it.kind === "barricade" ? "Barrier" : (it.kind === "alarm" ? "Alarm" : "Cache");
+    if(!Number.isFinite(it.r)) it.r = 22;
+    if(!Number.isFinite(it.uses)) it.uses = it.kind === "cache" ? 1 : 99;
+    if(!Number.isFinite(it.cooldownUntil)) it.cooldownUntil = 0;
+    if(!Number.isFinite(it.activeUntil)) it.activeUntil = 0;
+    if(!Number.isFinite(it.effectR)) it.effectR = it.kind === "barricade" ? 128 : 0;
+  }
   if(Array.isArray(S.supportUnits) && S.supportUnits.length > 16){
     S.supportUnits = S.supportUnits.slice(0,16);
   }
@@ -5758,6 +6261,9 @@ function init(){
   if(!S.tigers || !S.tigers.length) spawnTigers();
   if(!S.civilians) spawnCivilians();
   if(!Array.isArray(S.pickups)) S.pickups = [];
+  if(!window.__TUTORIAL_MODE__ && (!Array.isArray(S.mapInteractables) || !S.mapInteractables.length)){
+    spawnMapInteractables();
+  }
 
   awardDailyLogin();
   bindAttackButtonGestures();
