@@ -197,6 +197,390 @@ const MODE_MAPS = {
   ],
 };
 
+const ARCADE_CAMPAIGN_CHAPTERS = [
+  "Jungle Awakening",
+  "Growing Danger",
+  "Deep Jungle",
+  "Abandoned Village",
+  "River Crossing",
+  "Mountain Pass",
+  "Tiger Territory",
+  "Jungle War",
+  "The Last Villages",
+  "Final Operation",
+];
+
+const ARCADE_CAMPAIGN_OBJECTIVES = [
+  "Escort 2 civilians to the safe zone. 1 tiger appears.",
+  "Rescue 3 civilians. 2 tigers attack.",
+  "First capture tutorial. Capture 1 tiger.",
+  "Escort 4 civilians through light jungle.",
+  "Kill or capture 2 tigers while escorting civilians.",
+  "First trap tutorial. Set 1 trap.",
+  "Escort 5 civilians safely.",
+  "Tigers attack from two directions.",
+  "Capture 2 tigers without killing them.",
+  "Boss: Alpha Tiger appears.",
+  "Escort 6 civilians. 3 tigers attack.",
+  "Blood mechanic introduced. Killing tigers increases aggression.",
+  "Capture 3 tigers.",
+  "Escort civilians through narrow jungle path.",
+  "7 civilians under attack.",
+  "Use traps to stop 4 tigers.",
+  "Night mission – reduced visibility.",
+  "Rescue civilians trapped in huts.",
+  "5 tigers attack simultaneously.",
+  "Boss: Blood Tiger (first aggressive boss).",
+  "Escort 8 civilians through dense jungle.",
+  "Tigers hide in tall grass.",
+  "Capture 4 tigers.",
+  "Civilians split into two groups.",
+  "6 tiger ambush attack.",
+  "Escort doctor civilian (healing ability).",
+  "Defend village entrance.",
+  "High aggression jungle area.",
+  "Escort 10 civilians.",
+  "Boss: Stealth Tiger.",
+  "Rescue civilians from abandoned homes.",
+  "Tigers roam village streets.",
+  "Capture 5 tigers for research.",
+  "Escort civilians through burning buildings.",
+  "8 tigers attack at once.",
+  "Protect doctor civilian.",
+  "Use drone scanner to locate tigers.",
+  "Rescue trapped children.",
+  "Aggressive tiger swarm.",
+  "Boss: Twin Alpha Tigers.",
+  "Escort civilians across river bridge.",
+  "Tigers attack near water.",
+  "Capture 3 river tigers.",
+  "Flooded path slows movement.",
+  "9 tigers ambush crossing.",
+  "Use traps near riverbank.",
+  "Escort injured civilians.",
+  "High aggression tiger zone.",
+  "Protect supply convoy.",
+  "Boss: Giant River Tiger.",
+  "Escort civilians up steep mountain.",
+  "Tigers attack from cliffs.",
+  "Capture rare mountain tiger.",
+  "Avalanche hazard mission.",
+  "10 tigers attack convoy.",
+  "Escort elderly civilians.",
+  "Limited ammo challenge.",
+  "Snowstorm reduces vision.",
+  "Extreme aggression zone.",
+  "Boss: Mountain Alpha Tiger.",
+  "Enter tiger breeding territory.",
+  "Rescue lost hunter civilian.",
+  "Capture 6 tigers.",
+  "Escort civilians through cave path.",
+  "Tiger swarm attack.",
+  "Defend rescue helicopter zone.",
+  "Night ambush mission.",
+  "Protect scientist civilian.",
+  "Aggression level extreme.",
+  "Boss: Legendary Blood Tiger.",
+  "Escort 12 civilians.",
+  "Tigers attack from every direction.",
+  "Capture rare stealth tiger.",
+  "Use advanced traps.",
+  "Rescue trapped village leader.",
+  "15 tiger swarm attack.",
+  "Protect evacuation convoy.",
+  "Massive tiger ambush.",
+  "Extreme jungle aggression.",
+  "Boss: Tiger King.",
+  "Rescue final village survivors.",
+  "Tigers dominate the jungle.",
+  "Capture elite tiger squad.",
+  "Escort civilians through fire zone.",
+  "Massive tiger ambush.",
+  "Defend safe zone.",
+  "Escort helicopter evacuation.",
+  "Survive tiger swarm.",
+  "Extreme final battle preparation.",
+  "Boss: Phantom Tiger.",
+  "Escort last civilians.",
+  "Tigers extremely aggressive.",
+  "Capture elite tiger.",
+  "Escort convoy through jungle.",
+  "Massive tiger assault.",
+  "Rescue trapped soldiers.",
+  "Final civilian evacuation.",
+  "Survive jungle chaos.",
+  "Prepare for final boss.",
+  "FINAL BOSS: The Ancient Tiger (Legendary).",
+];
+
+function arcadeCampaignMission(level){
+  const count = ARCADE_CAMPAIGN_OBJECTIVES.length;
+  const n = clamp(Math.floor(level || 1), 1, count);
+  const objective = ARCADE_CAMPAIGN_OBJECTIVES[n - 1];
+  const chapter = Math.ceil(n / 10);
+  const chapterName = ARCADE_CAMPAIGN_CHAPTERS[chapter - 1] || "Campaign";
+
+  const cfg = {
+    number: n,
+    chapter,
+    chapterName,
+    objective,
+    civilians: clamp(2 + chapter, 2, 12),
+    tigers: clamp(1 + chapter + Math.floor((n - 1) / 20), 1, 16),
+    captureRequired: 0,
+    captureOnly: /without killing/i.test(objective),
+    trapPlaceRequired: 0,
+    trapTriggerRequired: 0,
+    boss: /boss/i.test(objective),
+    bossType: "Alpha",
+    bossTwin: /twin alpha/i.test(objective),
+    finalBoss: n === 100,
+    lowVisibility: /(night|reduced visibility|snowstorm|hide in tall grass)/i.test(objective),
+    limitedAmmo: /limited ammo/i.test(objective),
+    bloodAggro: /blood mechanic/i.test(objective),
+  };
+
+  const civMatch = objective.match(/(?:escort|rescue)\s+(\d+)\s+civilians?/i) || objective.match(/(\d+)\s+civilians?\s+under attack/i);
+  if(civMatch) cfg.civilians = clamp(parseInt(civMatch[1], 10) || cfg.civilians, 0, 14);
+
+  const tigerNums = [...objective.matchAll(/(\d+)\s+tigers?/ig)].map((m)=>parseInt(m[1], 10)).filter(Number.isFinite);
+  if(tigerNums.length) cfg.tigers = clamp(Math.max(cfg.tigers, ...tigerNums), 1, 18);
+
+  const capMatch = objective.match(/capture\s+(\d+)\s+tigers?/i);
+  if(capMatch) cfg.captureRequired = clamp(parseInt(capMatch[1], 10) || 0, 0, 12);
+  else if(/capture\s+(?:rare|elite|first)/i.test(objective)) cfg.captureRequired = 1;
+  else if(/capture elite tiger squad/i.test(objective)) cfg.captureRequired = 3;
+
+  const trapSet = objective.match(/set\s+(\d+)\s+trap/i);
+  if(trapSet) cfg.trapPlaceRequired = clamp(parseInt(trapSet[1], 10) || 0, 0, 10);
+  const trapStop = objective.match(/use traps?\s+to stop\s+(\d+)\s+tigers?/i);
+  if(trapStop) cfg.trapTriggerRequired = clamp(parseInt(trapStop[1], 10) || 0, 0, 10);
+
+  if(/aggressive tiger swarm|massive tiger|tiger swarm|every direction/i.test(objective)){
+    cfg.tigers = clamp(Math.max(cfg.tigers, 7 + chapter), 1, 18);
+  }
+
+  if(cfg.boss){
+    cfg.tigers = Math.max(cfg.tigers, cfg.bossTwin ? 2 : 1);
+    if(/stealth|phantom/i.test(objective)) cfg.bossType = "Stalker";
+    else if(/blood|berserker/i.test(objective)) cfg.bossType = "Berserker";
+    else cfg.bossType = "Alpha";
+  }
+
+  return cfg;
+}
+
+function arcadeObjectiveProgressText(cfg){
+  if(!cfg) return "";
+  const bits = [];
+  if(cfg.captureRequired > 0) bits.push(`Capture ${Math.min(S.stats.captures||0, cfg.captureRequired)}/${cfg.captureRequired}`);
+  if(cfg.trapPlaceRequired > 0) bits.push(`Traps set ${Math.min(S.stats.trapsPlaced||0, cfg.trapPlaceRequired)}/${cfg.trapPlaceRequired}`);
+  if(cfg.trapTriggerRequired > 0) bits.push(`Trap stops ${Math.min(S.stats.trapsTriggered||0, cfg.trapTriggerRequired)}/${cfg.trapTriggerRequired}`);
+  if(cfg.captureOnly) bits.push(`Kills ${S.stats.kills||0}/0`);
+  return bits.length ? ` • ${bits.join(" • ")}` : "";
+}
+
+const STORY_CAMPAIGN_CHAPTERS = [
+  "The First Attack",
+  "Blood in the Jungle",
+  "The Deep Jungle",
+  "Abandoned Villages",
+  "River Territory",
+  "Mountain Edge",
+  "Tiger Territory",
+  "The Tiger King",
+  "The Hidden Jungle",
+  "The Ancient Guardian",
+];
+
+const STORY_CAMPAIGN_OBJECTIVES = [
+  "Escort 2 villagers from the jungle edge.",
+  "Tigers attack a farm road. Escort 3 civilians.",
+  "First tiger encounter. Kill or capture 1 tiger.",
+  "Rescue villagers trapped in a hut.",
+  "Escort 4 civilians through jungle trail.",
+  "Tigers attack from tall grass.",
+  "Escort injured villager to safe zone.",
+  "Capture your first tiger for research.",
+  "Multiple tigers attack village gate.",
+  "Boss: Alpha Tiger appears near village.",
+  "Escort villagers through narrow path.",
+  "Killing a tiger increases aggression.",
+  "Capture 2 tigers for scientists.",
+  "Protect doctor civilian.",
+  "Tigers ambush caravan.",
+  "Escort 5 civilians through forest.",
+  "Rescue children hiding in village.",
+  "Capture aggressive tiger pack.",
+  "High aggression tiger swarm.",
+  "Boss: Blood Tiger appears.",
+  "Escort research team.",
+  "Tigers hide in tall grass.",
+  "Capture stealth tiger.",
+  "Escort villagers through river trail.",
+  "Tiger ambush near jungle bridge.",
+  "Rescue lost hunter.",
+  "Escort group through abandoned camp.",
+  "Large tiger pack attacks.",
+  "Escort 7 civilians to helicopter zone.",
+  "Boss: Stealth Tiger.",
+  "Search empty homes for survivors.",
+  "Tigers roam village streets.",
+  "Escort survivors to safe zone.",
+  "Capture 3 tigers for study.",
+  "Tigers attack evacuation convoy.",
+  "Protect scientist collecting tiger samples.",
+  "Escort civilians through burning buildings.",
+  "Tiger swarm in town center.",
+  "Massive tiger pack attack.",
+  "Boss: Twin Alpha Tigers.",
+  "Escort civilians across broken bridge.",
+  "Tigers attack near riverbank.",
+  "Capture river tiger.",
+  "Escort wounded villager across water.",
+  "Tiger ambush during crossing.",
+  "Protect supply convoy.",
+  "Escort civilians to river camp.",
+  "Tigers attack rescue boat.",
+  "Large tiger pack near river delta.",
+  "Boss: Giant River Tiger.",
+  "Escort mountain villagers.",
+  "Tigers attack from cliffs.",
+  "Capture rare mountain tiger.",
+  "Rescue trapped climbers.",
+  "Tiger pack attacks mountain road.",
+  "Escort caravan through canyon.",
+  "Snowstorm reduces visibility.",
+  "Protect rescue helicopter landing.",
+  "Aggressive tiger swarm.",
+  "Boss: Mountain Alpha Tiger.",
+  "Escort scientists deeper into jungle.",
+  "Tigers guard cave entrances.",
+  "Capture 4 tigers for research.",
+  "Escort villagers through cave tunnel.",
+  "Massive tiger pack attack.",
+  "Defend temporary base camp.",
+  "Night ambush by stealth tigers.",
+  "Protect research equipment.",
+  "Extreme aggression zone.",
+  "Boss: Legendary Blood Tiger.",
+  "Escort villagers fleeing jungle center.",
+  "Tigers attack from all directions.",
+  "Capture elite tiger hunters.",
+  "Escort caravan through dangerous jungle path.",
+  "Tiger swarm attack.",
+  "Rescue lost soldiers.",
+  "Escort final villagers from jungle.",
+  "Massive tiger ambush.",
+  "Prepare for Tiger King encounter.",
+  "Boss: Tiger King.",
+  "Escort research team into hidden jungle.",
+  "Rare tigers appear.",
+  "Capture stealth tiger.",
+  "Escort villagers through ancient ruins.",
+  "Tiger pack guarding ruins.",
+  "Protect excavation team.",
+  "Escort survivors to helicopter zone.",
+  "Extreme tiger aggression.",
+  "Prepare for final confrontation.",
+  "Boss: Phantom Tiger.",
+  "Escort final villagers from jungle core.",
+  "Tigers become extremely aggressive.",
+  "Capture elite guardian tiger.",
+  "Escort convoy through ancient jungle.",
+  "Massive tiger assault.",
+  "Rescue trapped soldiers.",
+  "Protect final evacuation helicopter.",
+  "Survive tiger swarm.",
+  "Enter the ancient jungle temple.",
+  "Final Boss: The Ancient Tiger.",
+];
+
+const STORY_CHAPTER_CUTSCENES = {
+  10: "Commander Reyes realizes the attacks are becoming organized.",
+  20: "Scientists confirm tiger blood is causing chain reactions.",
+  30: "Scientists detect a powerful predator controlling packs.",
+  40: "Two alpha leaders confirm tiger hierarchy.",
+  50: "Satellite scans reveal deeper jungle movement.",
+  60: "Scientists detect ancient territory beyond mountains.",
+  70: "Evidence suggests a massive tiger leader exists.",
+  80: "After defeating the Tiger King, scientists uncover a deeper mystery.",
+  90: "Ancient legends speak of a guardian tiger.",
+};
+
+function storyCampaignMission(level){
+  const count = STORY_CAMPAIGN_OBJECTIVES.length;
+  const n = clamp(Math.floor(level || 1), 1, count);
+  const objective = STORY_CAMPAIGN_OBJECTIVES[n - 1];
+  const chapter = Math.ceil(n / 10);
+  const chapterName = STORY_CAMPAIGN_CHAPTERS[chapter - 1] || "Story Campaign";
+
+  const cfg = {
+    number: n,
+    chapter,
+    chapterName,
+    objective,
+    civilians: clamp(2 + chapter, 2, 12),
+    tigers: clamp(1 + chapter, 1, 14),
+    captureRequired: 0,
+    boss: /boss/i.test(objective),
+    bossType: "Alpha",
+    bossTwin: /twin alpha/i.test(objective),
+    finalBoss: n === 100,
+    lowVisibility: /(night|snowstorm|tall grass|stealth)/i.test(objective),
+    bloodAggro: /(increases aggression|high aggression|extreme aggression|aggressive)/i.test(objective),
+  };
+
+  const civMatch = objective.match(/(?:escort|rescue)\s+(\d+)\s+(?:civilians?|villagers?)/i);
+  if(civMatch) cfg.civilians = clamp(parseInt(civMatch[1], 10) || cfg.civilians, 0, 14);
+  else if(/injured villager|wounded villager|lost hunter|doctor civilian|scientist/i.test(objective)) cfg.civilians = Math.max(1, cfg.civilians);
+
+  const tigerNums = [...objective.matchAll(/(\d+)\s+tigers?/ig)].map((m)=>parseInt(m[1], 10)).filter(Number.isFinite);
+  if(tigerNums.length) cfg.tigers = clamp(Math.max(cfg.tigers, ...tigerNums), 1, 18);
+  if(/swarm|massive tiger|all directions|pack attack/i.test(objective)) cfg.tigers = clamp(Math.max(cfg.tigers, 7 + chapter), 1, 18);
+
+  if(!/kill or capture/i.test(objective)){
+    const capCount = objective.match(/capture\s+(\d+)\s+tigers?/i);
+    if(capCount) cfg.captureRequired = clamp(parseInt(capCount[1], 10) || 0, 0, 12);
+    else if(/capture/i.test(objective)){
+      cfg.captureRequired = /pack|hunters/i.test(objective) ? 2 : 1;
+    }
+  }
+
+  if(cfg.boss){
+    cfg.tigers = cfg.bossTwin ? 2 : 1;
+    if(/blood/i.test(objective)) cfg.bossType = "Berserker";
+    else if(/stealth|phantom/i.test(objective)) cfg.bossType = "Stalker";
+    else cfg.bossType = "Alpha";
+  }
+
+  if(cfg.finalBoss){
+    cfg.boss = true;
+    cfg.bossTwin = false;
+    cfg.bossType = "Alpha";
+    cfg.tigers = 1;
+    cfg.civilians = 0;
+  }
+
+  return cfg;
+}
+
+function storyObjectiveProgressText(cfg){
+  if(!cfg) return "";
+  const bits = [];
+  if(cfg.captureRequired > 0) bits.push(`Capture ${Math.min(S.stats.captures||0, cfg.captureRequired)}/${cfg.captureRequired}`);
+  return bits.length ? ` • ${bits.join(" • ")}` : "";
+}
+
+function markStoryFinalBossOutcome(outcome, tiger){
+  if(S.mode!=="Story") return;
+  const m = storyCampaignMission(S.storyLevel);
+  if(!m || m.number !== 100) return;
+  if(!tiger || !tiger.bossPhases) return;
+  S._storyFinalOutcome = outcome;
+}
+
+
 // ===================== STATE =====================
 const DEFAULT = {
   v: 4380,
@@ -250,13 +634,14 @@ const DEFAULT = {
 
   missionEnded:false,
   gameOver:false,
+  storyIntroSeen:false,
 
   // Phase 1 systems
   fogUntil:0,
   eventText:"",
   eventCooldown:0,
   pickups:[],
-  stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0 },
+  stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
   achievements:{},
   title:"Rookie",
 
@@ -933,14 +1318,34 @@ function openMode(){
   updateModeDesc(); markModeTabs(); sfx("ui");
 }
 function closeMode(){ document.getElementById("modeOverlay").style.display="none"; setPaused(false,null); }
+function openStoryIntro(force=false){
+  if(S.mode!=="Story" || window.__TUTORIAL_MODE__) return;
+  if(!force && S.storyIntroSeen) return;
+  const overlay = document.getElementById("storyIntroOverlay");
+  if(!overlay) return;
+  setPaused(true,"story-intro");
+  overlay.style.display = "flex";
+  syncGamepadFocus();
+}
+function startStoryIntroMission(){
+  const overlay = document.getElementById("storyIntroOverlay");
+  if(overlay) overlay.style.display = "none";
+  S.storyIntroSeen = true;
+  setPaused(false,null);
+  save();
+  syncGamepadFocus();
+}
 function setMode(m){
+  const wantsStoryIntro = (m==="Story" && !window.__TUTORIAL_MODE__);
   S.mode=m; S.lives=3;
   if(m==="Arcade") S.arcadeLevel=1;
   if(m==="Survival"){ S.survivalWave=1; S.survivalStart=Date.now(); S.surviveSeconds=0; }
   if(m==="Story") S.storyLevel=1;
   S.mapIndex=0;
   deploy();
-  updateModeDesc(); markModeTabs(); closeMode(); sfx("ui"); save();
+  updateModeDesc(); markModeTabs(); closeMode(); sfx("ui");
+  if(wantsStoryIntro) openStoryIntro(false);
+  save();
 }
 function markModeTabs(){
   ["mStory","mArcade","mSurvival"].forEach(id=>document.getElementById(id).classList.remove("active"));
@@ -950,8 +1355,8 @@ function markModeTabs(){
 }
 function updateModeDesc(){
   const el=document.getElementById("modeDesc");
-  if(S.mode==="Story") el.innerText="Story: +1 civilian each level (max 7). After 7, +1 tiger per level. Events ON.";
-  else if(S.mode==="Arcade") el.innerText="Arcade: civilians on map. Events ON. Each win gets harder.";
+  if(S.mode==="Story") el.innerText="Story Campaign: 100 missions with chapter objectives, mission-based bosses, and chapter-end cutscenes.";
+  else if(S.mode==="Arcade") el.innerText="Arcade Campaign: 100 missions in 10 chapters. Objective text, tiger/civilian counts, boss fights, and special rules are mission-based.";
   else el.innerText="Survival: no civilians. Tigers pressure-damage you. Events OFF.";
 }
 
@@ -1510,6 +1915,7 @@ function placeTrap(){
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
   if(S.trapsOwned<=0) return toast("No traps. Buy in shop.");
   S.trapsOwned -= 1;
+  S.stats.trapsPlaced = (S.stats.trapsPlaced || 0) + 1;
 
   S.trapsPlaced.push({
     id: Date.now() + Math.random(),
@@ -1556,6 +1962,7 @@ function trapTick(){
 
     tr.used = true;
     tr.removeAt = tgt.holdUntil;
+    S.stats.trapsTriggered = (S.stats.trapsTriggered || 0) + 1;
 
     toast("🪤 Tiger trapped!");
     sfx("trap"); hapticImpact("medium");
@@ -1663,6 +2070,8 @@ window.enterTutorialMode = function () {
   S.stats.captures = 0;
   S.stats.kills = 0;
   S.stats.evac = 0;
+  S.stats.trapsPlaced = 0;
+  S.stats.trapsTriggered = 0;
 
   // Tutorial loadout guarantees Attack and Capture steps can proceed.
   if(!S.ownedWeapons.includes("W_9MM_JUNK")) S.ownedWeapons.push("W_9MM_JUNK");
@@ -1700,7 +2109,7 @@ window.exitTutorialMode = function () {
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
-  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay"].forEach((id)=>{
+  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","storyIntroOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -1940,10 +2349,12 @@ function spawnCivilians(){
     return;
   }
 
+  const storyMission = (S.mode==="Story") ? storyCampaignMission(S.storyLevel) : null;
+  const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
   const n = (S.mode==="Story")
-    ? clamp(3 + (S.storyLevel-1), 3, 7)
+    ? clamp(storyMission?.civilians ?? (3 + (S.storyLevel-1)), 0, 14)
     : (S.mode==="Arcade"
-      ? clamp(2 + (S.arcadeLevel-1), 2, 7)
+      ? clamp(arcadeMission?.civilians ?? (2 + (S.arcadeLevel-1)), 0, 14)
       : 0);
   const sites = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice();
 
@@ -2039,22 +2450,25 @@ function spawnTigers(){
     return;
   }
 
+  const storyMission = (S.mode==="Story") ? storyCampaignMission(S.storyLevel) : null;
+  const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
   let count=2;
 
   if(S.mode==="Story"){
-    const afterMax=Math.max(0,(S.storyLevel-1)-(7-3));
-    count=2+afterMax;
+    count = clamp(storyMission?.tigers ?? (2 + Math.max(0,(S.storyLevel-1)-(7-3))), 1, 18);
   }
 
   if(S.mode==="Arcade"){
-    const afterMax=Math.max(0,(S.arcadeLevel-1)-(7-2));
-    count=3+afterMax;
+    count = clamp(arcadeMission?.tigers ?? (3 + Math.max(0,(S.arcadeLevel-1)-(7-2))), 1, 18);
   }
 
   if(S.mode==="Survival")
     count=Math.min(4+(S.survivalWave-1),10);
 
-  const boss=(S.mode==="Story"&&(S.storyLevel%5===0));
+  const storyBoss=!!(storyMission && storyMission.boss);
+  const storyBossCount = storyMission?.bossTwin ? 2 : (storyBoss ? 1 : 0);
+  const arcadeBoss=!!(arcadeMission && arcadeMission.boss);
+  const arcadeBossCount = arcadeMission?.bossTwin ? 2 : (arcadeBoss ? 1 : 0);
   const packCount = clamp(Math.ceil(count / 2), 1, 4);
   const sitePool = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice().reverse();
   const fallbackPacks = [
@@ -2080,7 +2494,8 @@ function spawnTigers(){
 
   for(let i=0;i<count;i++){
     let typeKey=pickTigerType();
-    if(boss && i===0) typeKey="Alpha";
+    if(storyBoss && i < storyBossCount) typeKey = storyMission.bossType || "Alpha";
+    if(arcadeBoss && i < arcadeBossCount) typeKey = arcadeMission.bossType || "Alpha";
 
     const def=TIGER_TYPES.find(t=>t.key===typeKey)||TIGER_TYPES[1];
 
@@ -2092,9 +2507,12 @@ function spawnTigers(){
     let hp=Math.round(baseHp*def.hpMul*diff);
     let bossPhases=0;
 
-    if(boss && i===0){
-      hp=Math.round(hp*2.2);
-      bossPhases=2;
+    if(storyBoss && i < storyBossCount){
+      hp = Math.round(hp * (storyMission.finalBoss ? 3.1 : (storyMission.bossTwin ? 2.0 : 2.25)));
+      bossPhases = storyMission.finalBoss ? 3 : (storyMission.bossTwin ? 1 : 2);
+    } else if(arcadeBoss && i < arcadeBossCount){
+      hp = Math.round(hp * (arcadeMission.finalBoss ? 2.9 : (arcadeMission.bossTwin ? 2.0 : 2.3)));
+      bossPhases = arcadeMission.finalBoss ? 3 : (arcadeMission.bossTwin ? 1 : 2);
     }
 
     const pack = packAnchors[i % packAnchors.length];
@@ -2243,6 +2661,10 @@ function deploy(){
   S.stats.kills = 0;
   S.stats.evac = 0;
   S.stats.cashEarned = 0;
+  S.stats.trapsPlaced = 0;
+  S.stats.trapsTriggered = 0;
+  S._arcadeNoKillWarned = false;
+  S._storyFinalOutcome = null;
 
   spawnRescueSites();
   spawnSupportUnits();
@@ -2260,6 +2682,37 @@ function deploy(){
   S.mag.loaded = clamp(S.mag.loaded || w.mag, 0, S.mag.cap);
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
 
+  if(S.mode==="Story"){
+    const mission = storyCampaignMission(S.storyLevel);
+    if(mission.lowVisibility){
+      S.fogUntil = Date.now() + 120000;
+    }
+    if(mission.bloodAggro){
+      setEventText("Story modifier active: tiger aggression is elevated this mission.", 8);
+    }
+  }
+
+  if(S.mode==="Arcade"){
+    const mission = arcadeCampaignMission(S.arcadeLevel);
+    if(mission.lowVisibility){
+      S.fogUntil = Date.now() + 120000;
+    }
+    if(mission.limitedAmmo){
+      for(const wid of S.ownedWeapons){
+        const ww = getWeapon(wid);
+        if(!ww) continue;
+        const keep = Math.max(ww.mag, Math.round(ww.mag * 1.4));
+        S.ammoReserve[ww.ammo] = Math.min(S.ammoReserve[ww.ammo] || 0, keep);
+      }
+      if((S.ammoReserve[w.ammo] || 0) <= 0 && S.mag.loaded <= 0){
+        S.mag.loaded = Math.max(1, Math.floor(w.mag * 0.5));
+      }
+    }
+    if(mission.bloodAggro){
+      setEventText("Blood mechanic active: kills increase tiger aggression.", 8);
+    }
+  }
+
   if(S.mode==="Survival"){ S.survivalStart = Date.now(); S.surviveSeconds=0; }
 
   save();
@@ -2267,11 +2720,19 @@ function deploy(){
 
 function startNextMission(){
   document.getElementById("completeOverlay").style.display="none";
-  if(S.mode==="Story") S.storyLevel += 1;
-  if(S.mode==="Arcade") S.arcadeLevel += 1;
+  const wasStoryFinal = (S.mode==="Story" && S.storyLevel >= STORY_CAMPAIGN_OBJECTIVES.length);
+  const wasArcadeFinal = (S.mode==="Arcade" && S.arcadeLevel >= ARCADE_CAMPAIGN_OBJECTIVES.length);
+  if(S.mode==="Story"){
+    S.storyLevel = Math.min(S.storyLevel + 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  }
+  if(S.mode==="Arcade"){
+    S.arcadeLevel = Math.min(S.arcadeLevel + 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  }
   if(S.mode==="Survival") S.survivalWave += 1;
   deploy();
-  toast("Next mission started.");
+  if(wasStoryFinal) toast("Story campaign complete. Replaying Mission 100.");
+  else if(wasArcadeFinal) toast("Arcade campaign complete. Replaying Mission 100.");
+  else toast("Next mission started.");
   save();
 }
 
@@ -2298,6 +2759,7 @@ function resetGame(){
   document.getElementById("shopOverlay").style.display="none";
   document.getElementById("invOverlay").style.display="none";
   document.getElementById("weaponQuickOverlay").style.display="none";
+  document.getElementById("storyIntroOverlay").style.display="none";
   document.getElementById("aboutOverlay").style.display="none";
   document.getElementById("completeOverlay").style.display="none";
   document.getElementById("overOverlay").style.display="none";
@@ -2534,7 +2996,7 @@ function gamepadUiContainers(){
   const tutorial = document.getElementById("tutorialOverlay");
   if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
 
-  const overlays = ["overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"]
+  const overlays = ["storyIntroOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"]
     .map((id)=>document.getElementById(id))
     .filter((el)=>el && el.style.display === "flex");
   if(overlays.length) return overlays;
@@ -2623,7 +3085,7 @@ function activateGamepadFocus(){
 }
 
 function anyGamepadOverlayVisible(){
-  const ids = ["tutorialOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"];
+  const ids = ["tutorialOverlay","storyIntroOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"];
   return ids.some((id)=>{
     const el = document.getElementById(id);
     return !!(el && el.style.display === "flex");
@@ -3924,6 +4386,7 @@ function updateAttackButton(){
 
 function finishTigerKill(t){
   if(!t || !t.alive) return;
+  markStoryFinalBossOutcome("KILL", t);
   t.alive=false;
   S.carcasses.push({ x:t.x, y:t.y });
   const pay=payout("KILL");
@@ -3996,6 +4459,7 @@ function playerAction(action){
       return toast(`${reqWeapon.name} is out of ammo for this ${t.type}.`);
     }
     if(!canCaptureTiger(t)) return toast(`${reqWeapon.name} is needed to capture this ${t.type}.`);
+    markStoryFinalBossOutcome("CAPTURE", t);
     t.alive=false;
     const pay=payout("CAPTURE");
     S.funds+=pay.cash; S.score+=pay.score;
@@ -4183,17 +4647,62 @@ function checkMissionComplete(){
   if(S.mode==="Survival") return;
   if(S.gameOver) return;
 
+  const storyMission = (S.mode==="Story") ? storyCampaignMission(S.storyLevel) : null;
+  const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
+  const activeMission = storyMission || arcadeMission;
   const tAlive = S.tigers.some(t=>t.alive);
   const civAlive = S.civilians.filter(c=>c.alive).length;
   const civEvac = S.civilians.filter(c=>c.alive && c.evac).length;
+  const evacReady = (civAlive===0 || civEvac===civAlive);
+  const captureReady = !activeMission || (S.stats.captures || 0) >= (activeMission.captureRequired || 0);
+  const trapPlaceReady = !arcadeMission || (S.stats.trapsPlaced || 0) >= (arcadeMission.trapPlaceRequired || 0);
+  const trapTriggerReady = !arcadeMission || (S.stats.trapsTriggered || 0) >= (arcadeMission.trapTriggerRequired || 0);
+  const noKillReady = !arcadeMission || !arcadeMission.captureOnly || (S.stats.kills || 0) === 0;
 
-  if(!tAlive && (civAlive===0 || civEvac===civAlive)){
+  if(arcadeMission?.captureOnly && (S.stats.kills||0) > 0 && !S._arcadeNoKillWarned){
+    S._arcadeNoKillWarned = true;
+    toast("Mission rule failed: this mission requires captures only (no tiger kills).");
+  }
+
+  if(!tAlive && evacReady && !(captureReady && trapPlaceReady && trapTriggerReady && noKillReady)){
+    if(!S.missionEnded && !S.gameOver){
+      const missing = [];
+      if(!captureReady) missing.push("capture objective not met");
+      if(!trapPlaceReady) missing.push("trap placement objective not met");
+      if(!trapTriggerReady) missing.push("trap stop objective not met");
+      if(!noKillReady) missing.push("no-kill objective failed");
+      return gameOverChoice(`Mission failed: ${missing.join(" • ")}.`);
+    }
+    return;
+  }
+
+  if(!tAlive && evacReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady){
     if(!S.missionEnded){
       S.missionEnded=true;
       setPaused(true,"complete");
       if(S._underAttack===0) unlockAchv("clear_clean","Clean Clear");
+      let heading = "Mission complete!\n";
+      if(storyMission){
+        heading = `Story Mission ${storyMission.number}/100 — ${storyMission.chapterName}\n${storyMission.objective}\n`;
+      } else if(arcadeMission){
+        heading = `Arcade Mission ${arcadeMission.number}/100 — ${arcadeMission.chapterName}\n${arcadeMission.objective}\n`;
+      }
+
+      let chapterCutscene = "";
+      if(storyMission && STORY_CHAPTER_CUTSCENES[storyMission.number]){
+        chapterCutscene = `\nCutscene: ${STORY_CHAPTER_CUTSCENES[storyMission.number]}\n`;
+      }
+
+      let finalEnding = "";
+      if(storyMission?.number === 100){
+        const choseCapture = S._storyFinalOutcome === "CAPTURE";
+        finalEnding = choseCapture
+          ? "\nFinal Choice: You captured the Ancient Tiger.\nEnding: Preservation ending unlocked.\nRewards Unlocked: Legendary Commander Rank • Golden Soldier Skin • Endless Jungle Mode\n"
+          : "\nFinal Choice: You killed the Ancient Tiger.\nEnding: Dominance ending unlocked.\nRewards Unlocked: Legendary Commander Rank • Golden Soldier Skin • Endless Jungle Mode\n";
+      }
+
       document.getElementById("completeText").innerText =
-        `Mission complete!\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${chapterCutscene}${finalEnding}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       sfx("win"); hapticNotif("success");
@@ -4279,10 +4788,18 @@ function renderHUD(){
   document.getElementById("threatTxt").innerText = (S.mode==="Survival") ? "Pressure" : (S._underAttack ? `${S._underAttack} attacks` : "Low");
 
   const grace = (S.mode!=="Survival" && Date.now() < (S.civGraceUntil||0)) ? " • Civ Grace" : "";
+  const storyMission = (S.mode==="Story") ? storyCampaignMission(S.storyLevel) : null;
+  const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
+  const storyObjective = storyMission ? `${storyMission.objective}${storyObjectiveProgressText(storyMission)}` : "";
+  const arcadeObjective = arcadeMission ? `${arcadeMission.objective}${arcadeObjectiveProgressText(arcadeMission)}` : "";
   document.getElementById("objTxt").innerText =
     (S.mode==="Survival")
       ? `Objective: Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
-      : `Objective: Evacuate living civilians + clear ALL tigers${grace}`;
+      : (S.mode==="Story")
+        ? `Objective: ${storyObjective}${grace}`
+      : (S.mode==="Arcade")
+        ? `Objective: ${arcadeObjective}${grace}`
+        : `Objective: Evacuate living civilians + clear ALL tigers${grace}`;
 
   // danger ping
   if(S.dangerCivId && S.mode!=="Survival"){
@@ -4358,7 +4875,11 @@ function renderHUD(){
     mobileMissionChip.innerText =
       S.mode==="Survival"
         ? `Wave ${S.survivalWave}`
-        : `Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`;
+        : (S.mode==="Story" && storyMission)
+          ? `Story ${storyMission.number}/100 • Ch ${storyMission.chapter}`
+        : (S.mode==="Arcade" && arcadeMission)
+          ? `Mission ${arcadeMission.number}/100 • Ch ${arcadeMission.chapter}`
+          : `Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`;
   }
   if(mobileThreatChip){
     const threatText = S.mode==="Survival" ? "Pressure High" : (S._underAttack ? `Threat ${S._underAttack} attack` : "Threat Low");
@@ -5108,6 +5629,9 @@ function draw(){
 
 // ===================== INIT =====================
 function init(){
+  S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  S.arcadeLevel = clamp(Math.floor(S.arcadeLevel || 1), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
   if(!S.equippedWeaponId || !getWeapon(S.equippedWeaponId)) S.equippedWeaponId = DEFAULT.equippedWeaponId;
   if(!S.ammoReserve || typeof S.ammoReserve !== "object") S.ammoReserve = { ...DEFAULT.ammoReserve };
@@ -5174,6 +5698,7 @@ function init(){
   awardDailyLogin();
   bindAttackButtonGestures();
   requestAnimationFrame(draw);
+  if(S.mode === "Story" && !window.__TUTORIAL_MODE__) openStoryIntro(false);
 }
 
 init();
@@ -5199,6 +5724,8 @@ window.closeAbout = closeAbout;
 window.openMode = openMode;
 window.closeMode = closeMode;
 window.setMode = setMode;
+window.openStoryIntro = openStoryIntro;
+window.startStoryIntroMission = startStoryIntroMission;
 
 window.nextMap = nextMap;
 window.togglePause = togglePause;
