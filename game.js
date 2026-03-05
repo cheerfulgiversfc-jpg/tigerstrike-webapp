@@ -150,28 +150,28 @@ const TIGER_TYPES = [
 
 const TIGER_LOCOMOTION = {
   Scout: {
-    walk:3.8, chase:5.2, sprint:6.8, minChase:4.7,
-    detect:460, chaseAccel:0.25, wanderAccel:0.13,
+    walk:3.4, chase:4.8, sprint:6.2, minChase:4.2,
+    detect:230, chaseAccel:0.24, wanderAccel:0.11,
     burstMs:[650,1100], pounceForce:1.75, pounceCd:[1200,2000], pounceChance:0.075
   },
   Standard: {
-    walk:3.3, chase:4.7, sprint:6.1, minChase:4.3,
-    detect:420, chaseAccel:0.22, wanderAccel:0.11,
+    walk:3.0, chase:4.2, sprint:5.6, minChase:3.9,
+    detect:200, chaseAccel:0.20, wanderAccel:0.10,
     burstMs:[620,980], pounceForce:1.55, pounceCd:[1400,2400], pounceChance:0.065
   },
   Alpha: {
-    walk:3.4, chase:4.9, sprint:6.3, minChase:4.4,
-    detect:470, chaseAccel:0.23, wanderAccel:0.10,
+    walk:3.1, chase:4.3, sprint:5.7, minChase:4.0,
+    detect:210, chaseAccel:0.21, wanderAccel:0.10,
     burstMs:[680,1080], pounceForce:1.65, pounceCd:[1400,2400], pounceChance:0.07
   },
   Berserker: {
-    walk:3.5, chase:5.0, sprint:6.7, minChase:4.5,
-    detect:430, chaseAccel:0.25, wanderAccel:0.11,
+    walk:3.2, chase:4.5, sprint:6.0, minChase:4.1,
+    detect:205, chaseAccel:0.23, wanderAccel:0.10,
     burstMs:[700,1200], pounceForce:1.8, pounceCd:[1200,2100], pounceChance:0.085
   },
   Stalker: {
-    walk:3.6, chase:5.1, sprint:6.5, minChase:4.6,
-    detect:500, chaseAccel:0.24, wanderAccel:0.12,
+    walk:3.3, chase:4.6, sprint:6.0, minChase:4.2,
+    detect:220, chaseAccel:0.22, wanderAccel:0.11,
     burstMs:[640,1020], pounceForce:1.7, pounceCd:[1300,2200], pounceChance:0.075
   }
 };
@@ -219,6 +219,8 @@ const DEFAULT = {
   trapsPlaced:[],
   shields:1,
   shieldUntil:0,
+  soldierAttackersOwned:0,
+  soldierRescuersOwned:0,
 
   backupCooldown:0, backupActive:0,
 
@@ -484,9 +486,12 @@ const STAMINA_COST_SCAN = 8;
 const STAMINA_COST_SPRINT = 16;
 const STAMINA_DRAIN_WALK = 0.035;
 const STAMINA_DRAIN_SPRINT = 0.08;
+const PLAYER_WALK_SPEED = 2.45;
+const PLAYER_SPRINT_SPEED = 3.9;
 const SHIELD_DURATION_MS = 5000;
 const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
+const SOLDIER_PRICE = 15000;
 function pickupLabel(type){
   if(type==="CASH") return "Cash";
   if(type==="AMMO") return "Ammo";
@@ -1088,7 +1093,7 @@ function renderShopList(){
   }
 
   if(currentShopTab==="tools"){
-    note.innerText="Repair kits restore weapon durability. Escort Shield protects you and nearby civilians for 5 seconds.";
+    note.innerText="Repair kits restore weapon durability. Shield protects escorts. Specialists cost $15,000 each.";
     const repairCards = TOOLS.map(t=>{
       const owned=ownedToolCount(t.id);
       return `
@@ -1103,6 +1108,28 @@ function renderShopList(){
           </div>
         </div>`;
     }).join("");
+    const attackerCard = `
+      <div class="item">
+        <div>
+          <div class="itemName">Tiger Specialist <span class="tag">Owned: ${S.soldierAttackersOwned||0}</span></div>
+          <div class="itemDesc">Frontline tiger-killer. Can die in combat, then must be repurchased.</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
+          <button onclick="buyTigerSpecialist()">Buy</button>
+        </div>
+      </div>`;
+    const rescueCard = `
+      <div class="item">
+        <div>
+          <div class="itemName">Search & Rescue Specialist <span class="tag">Owned: ${S.soldierRescuersOwned||0}</span></div>
+          <div class="itemDesc">Finds civilians and helps guide them toward the safe zone.</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
+          <button onclick="buyRescueSpecialist()">Buy</button>
+        </div>
+      </div>`;
     const shieldCard = `
       <div class="item">
         <div>
@@ -1114,7 +1141,7 @@ function renderShopList(){
           <button onclick="buyShield()">Buy</button>
         </div>
       </div>`;
-    list.innerHTML = shieldCard + repairCards;
+    list.innerHTML = attackerCard + rescueCard + shieldCard + repairCards;
     return;
   }
 
@@ -1187,6 +1214,30 @@ function buyShield(){
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
 }
+function buyTigerSpecialist(){
+  if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
+  S.funds -= SOLDIER_PRICE;
+  S.soldierAttackersOwned = (S.soldierAttackersOwned||0) + 1;
+  if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
+    const attackCount = (S.supportUnits || []).filter(unit => unit.role === "attacker").length;
+    S.supportUnits.push(createSupportUnit("attacker", attackCount));
+  }
+  toast("Tiger specialist hired.");
+  sfx("ui"); hapticImpact("light");
+  save(); renderShopList(); renderHUD();
+}
+function buyRescueSpecialist(){
+  if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
+  S.funds -= SOLDIER_PRICE;
+  S.soldierRescuersOwned = (S.soldierRescuersOwned||0) + 1;
+  if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
+    const rescueCount = (S.supportUnits || []).filter(unit => unit.role === "rescue").length;
+    S.supportUnits.push(createSupportUnit("rescue", rescueCount));
+  }
+  toast("Rescue specialist hired.");
+  sfx("ui"); hapticImpact("light");
+  save(); renderShopList(); renderHUD();
+}
 function buyTrap(){
   if(S.funds < TRAP_ITEM.price) return toast("Not enough money.");
   S.funds -= TRAP_ITEM.price;
@@ -1212,7 +1263,8 @@ function renderInventory(){
   const ammoId=w.ammo;
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
-     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0}`;
+     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0}<br>
+     <b>Squad:</b> Attack ${S.soldierAttackersOwned||0} • Rescue ${S.soldierRescuersOwned||0}`;
 
   document.getElementById("invWeapons").innerHTML = S.ownedWeapons.map(id=>{
     const ww=getWeapon(id);
@@ -1548,6 +1600,7 @@ window.enterTutorialMode = function () {
   S.lockedTigerId = null;
   S.target = null;
   S.pickups = [];
+  S.supportUnits = [];
   S.eventText = "";
   S.fogUntil = 0;
   S.inBattle = false;
@@ -1771,8 +1824,44 @@ function spawnRescueSites(){
     .sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
+function createSupportUnit(role, slotIndex=0){
+  const attacker = role === "attacker";
+  const lane = slotIndex % 3;
+  const row = Math.floor(slotIndex / 3);
+  const baseX = attacker ? (S.me.x - 34 - (lane * 20)) : (S.me.x + 36 + (lane * 20));
+  const baseY = attacker ? (S.me.y + 32 + (row * 20)) : (S.me.y + 28 + (row * 20));
+  return {
+    id: `${attacker ? "A" : "R"}-${Date.now()}-${rand(100,999)}`,
+    name: attacker ? "Tiger Specialist" : "Rescue Specialist",
+    role,
+    x: clamp(baseX, 40, cv.width - 40),
+    y: clamp(baseY, 60, cv.height - 40),
+    homeX: S.me.x,
+    homeY: S.me.y,
+    face:0,
+    step:rand(0,1000),
+    hp: attacker ? 185 : 145,
+    hpMax: attacker ? 185 : 145,
+    armor: attacker ? 95 : 50,
+    fireAt:0,
+    guideAt:0,
+    alive:true
+  };
+}
+
 function spawnSupportUnits(){
   S.supportUnits = [];
+  if(window.__TUTORIAL_MODE__) return;
+
+  const attackers = clamp(Math.floor(S.soldierAttackersOwned || 0), 0, 8);
+  const rescuers = clamp(Math.floor(S.soldierRescuersOwned || 0), 0, 8);
+
+  for(let i=0;i<attackers;i++){
+    S.supportUnits.push(createSupportUnit("attacker", i));
+  }
+  for(let i=0;i<rescuers;i++){
+    S.supportUnits.push(createSupportUnit("rescue", i));
+  }
 }
 
 
@@ -1889,6 +1978,7 @@ function spawnTigers(){
       rageOn:false,
       burstUntil:0,
       nextPounceAt:0,
+      enragedUntil:0,
       wanderAngle:Math.random()*(Math.PI*2)
     }];
 
@@ -1985,6 +2075,7 @@ function spawnTigers(){
       rageOn:false,
       burstUntil:0,
       nextPounceAt:0,
+      enragedUntil:0,
       wanderAngle:Math.random()*(Math.PI*2)
     });
   }
@@ -2732,10 +2823,10 @@ function keyboardMoveTick(){
   const len = Math.hypot(dx,dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
-  let speed=2.6;
+  let speed=PLAYER_WALK_SPEED;
 
   if(S._sprintTicks && S._sprintTicks>0){
-    speed=4.2;
+    speed=PLAYER_SPRINT_SPEED;
     S._sprintTicks--;
   }
 
@@ -2747,7 +2838,7 @@ function keyboardMoveTick(){
   const ny = S.me.y + uy*speed;
   tryMoveEntity(S.me, nx, ny, 16);
 
-  S.stamina = clamp(S.stamina - (speed>2.6 ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK), 0, 100);
+  S.stamina = clamp(S.stamina - (speed>PLAYER_WALK_SPEED ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK), 0, 100);
   return true;
 }
 
@@ -2758,8 +2849,8 @@ function movePlayer(){
   if(d<6){ S.target=null; return; }
   if(S.stamina<=0) return;
 
-  let speed=2.6;
-  if(S._sprintTicks && S._sprintTicks>0){ speed=4.2; S._sprintTicks--; }
+  let speed=PLAYER_WALK_SPEED;
+  if(S._sprintTicks && S._sprintTicks>0){ speed=PLAYER_SPRINT_SPEED; S._sprintTicks--; }
 
   S.me.face = Math.atan2(dy, dx);
   S.me.step = (S.me.step + speed*0.35) % (Math.PI*2);
@@ -2770,14 +2861,14 @@ function movePlayer(){
   const ok = tryMoveEntity(S.me, nx, ny, 16);
   if(!ok){ S.target=null; }
 
-  S.stamina = clamp(S.stamina - (speed>2.6 ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK), 0, 100);
+  S.stamina = clamp(S.stamina - (speed>PLAYER_WALK_SPEED ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK), 0, 100);
 }
 
 function sprint(){
   if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
   if(S.stamina < STAMINA_COST_SPRINT) return toast("Not enough stamina.");
   S.stamina -= STAMINA_COST_SPRINT;
-  S._sprintTicks=90;
+  S._sprintTicks=82;
   sfx("ui"); hapticImpact("light"); save();
   unlockAchv("sprint1","Sprint");
 }
@@ -2795,27 +2886,76 @@ function activateShield(){
   save();
 }
 
+function damageSupportUnit(unit, dmg){
+  if(!unit || !unit.alive || dmg <= 0) return;
+  if(unit.armor > 0){
+    const absorbed = Math.min(unit.armor, dmg * 0.8);
+    unit.armor = Math.max(0, unit.armor - absorbed);
+    dmg = Math.max(0, dmg - absorbed);
+  }
+  if(dmg > 0){
+    unit.hp = Math.max(0, unit.hp - dmg);
+  }
+  if(unit.hp > 0) return;
+
+  unit.alive = false;
+  if(unit.role === "attacker" && !unit._rosterDeducted){
+    unit._rosterDeducted = true;
+    S.soldierAttackersOwned = Math.max(0, (S.soldierAttackersOwned||0) - 1);
+    toast("Tiger specialist down. Repurchase in Shop.");
+  } else if(unit.role === "rescue"){
+    toast("Rescue specialist down.");
+  }
+  hapticNotif("warning");
+  save();
+}
+
 function supportUnitsTick(){
   if(S.inBattle || S.paused || S.gameOver || S.missionEnded) return;
+
   const liveCivs = (S.mode==="Survival") ? [] : S.civilians.filter(c=>c.alive && !c.evac);
-  const liveTigers = S.tigers.filter(t=>t.alive);
-
   for(const unit of (S.supportUnits || [])){
-    unit.step = (unit.step || 0) + 0.08;
-    const patrolX = (unit.homeX ?? unit.x) + Math.cos(unit.step * 0.55) * 16;
-    const patrolY = (unit.homeY ?? unit.y) + Math.sin(unit.step * 0.72) * 14;
-    let targetX = patrolX;
-    let targetY = patrolY;
+    if(!unit.alive) continue;
 
-    const dangerCiv = liveCivs.find(c => c.id === S.dangerCivId);
-    if(dangerCiv){
-      targetX = dangerCiv.x;
-      targetY = dangerCiv.y;
-    } else {
-      const nearestTiger = liveTigers
+    unit.step = (unit.step || 0) + 0.08;
+    unit.homeX = S.me.x;
+    unit.homeY = S.me.y;
+
+    let targetX = unit.homeX + Math.cos(unit.step * 0.6) * 18;
+    let targetY = unit.homeY + Math.sin(unit.step * 0.7) * 14;
+    const activeTigers = S.tigers.filter(t=>t.alive);
+
+    if(unit.role === "rescue" && liveCivs.length){
+      const targetCiv = (S.dangerCivId && liveCivs.find(c=>c.id===S.dangerCivId))
+        || liveCivs
+          .slice()
+          .sort((a,b)=>dist(unit.x,unit.y,a.x,a.y) - dist(unit.x,unit.y,b.x,b.y))[0];
+
+      if(targetCiv){
+        const civDist = dist(unit.x, unit.y, targetCiv.x, targetCiv.y);
+        if(civDist > 66){
+          targetX = targetCiv.x;
+          targetY = targetCiv.y;
+        } else {
+          targetX = (targetCiv.x + S.evacZone.x) * 0.5;
+          targetY = (targetCiv.y + S.evacZone.y) * 0.5;
+
+          if(Date.now() >= (unit.guideAt || 0)){
+            unit.guideAt = Date.now() + 110;
+            const gdx = S.evacZone.x - targetCiv.x;
+            const gdy = S.evacZone.y - targetCiv.y;
+            const gd = Math.hypot(gdx, gdy) || 1;
+            const guideSpeed = Math.min(2.25, gd);
+            tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14);
+            targetCiv.hp = clamp(targetCiv.hp + 0.03, 0, targetCiv.hpMax);
+          }
+        }
+      }
+    } else if(unit.role === "attacker" && activeTigers.length){
+      const nearestTiger = activeTigers
         .slice()
         .sort((a,b)=>dist(unit.x,unit.y,a.x,a.y) - dist(unit.x,unit.y,b.x,b.y))[0];
-      if(nearestTiger && dist(unit.x, unit.y, nearestTiger.x, nearestTiger.y) < 240){
+      if(nearestTiger && dist(unit.x,unit.y,nearestTiger.x,nearestTiger.y) < 330){
         targetX = nearestTiger.x;
         targetY = nearestTiger.y;
       }
@@ -2824,34 +2964,43 @@ function supportUnitsTick(){
     const dx = targetX - unit.x;
     const dy = targetY - unit.y;
     const len = Math.hypot(dx, dy) || 1;
-    const step = Math.min(1.65, len);
+    const stepCap = unit.role === "attacker" ? 2.05 : 1.9;
+    const step = Math.min(stepCap, len);
     unit.face = Math.atan2(dy, dx);
     tryMoveEntity(unit, unit.x + (dx / len) * step, unit.y + (dy / len) * step, 16);
 
-    for(const civ of liveCivs){
-      if(dist(unit.x, unit.y, civ.x, civ.y) < 78){
-        civ.hp = clamp(civ.hp + 0.025, 0, civ.hpMax);
-      }
-    }
-
-    for(const tiger of liveTigers){
+    for(const tiger of activeTigers){
       const tigerDist = dist(unit.x, unit.y, tiger.x, tiger.y);
-      if(tigerDist < 130){
-        tiger.aggroBoost = clamp((tiger.aggroBoost || 0) - 0.01, 0, 1);
-      }
-      if(tigerDist < 82 && tiger.hp > 16){
-        tiger.hp = Math.max(16, tiger.hp - 0.045);
-        tiger.vx *= 0.96;
-        tiger.vy *= 0.96;
+
+      if(unit.role === "attacker"){
+        if(tigerDist < 190 && Date.now() >= (unit.fireAt || 0)){
+          unit.fireAt = Date.now() + rand(380, 620);
+          const shotDmg = rand(4,8) + (tigerDist < 95 ? 2 : 0);
+          tiger.hp = clamp(tiger.hp - shotDmg, 0, tiger.hpMax);
+          tiger.aggroBoost = clamp((tiger.aggroBoost||0) + 0.05, 0, 1.4);
+          if(tiger.hp <= 0){
+            finishTigerKill(tiger);
+            break;
+          }
+        }
+        if(tigerDist < 74){
+          damageSupportUnit(unit, rand(4,7) * 0.55);
+        }
+      } else if(unit.role === "rescue"){
+        if(tigerDist < 76){
+          damageSupportUnit(unit, rand(4,8));
+        }
       }
     }
   }
+
+  S.supportUnits = (S.supportUnits || []).filter(unit => unit.alive);
 }
 
 // ===================== CIVILIANS FOLLOW-ONLY =====================
 function followCiviliansTick(){
   if(S.mode==="Survival") return;
-  const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? 4.2 : 2.6;
+  const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
     const d = dist(c.x,c.y,S.me.x,S.me.y);
@@ -2859,7 +3008,7 @@ function followCiviliansTick(){
       const dx = S.me.x - c.x, dy = S.me.y - c.y;
       const dd = Math.hypot(dx,dy) || 1;
       const catchup = clamp((d - 52) * 0.03, 0, 2.8);
-      const sp = Math.min(Math.max(playerSpeed, 2.8) + catchup, 5.8);
+      const sp = Math.min(Math.max(playerSpeed, 2.7) + catchup, 5.4);
       tryMoveEntity(c, c.x + (dx/dd)*sp, c.y + (dy/dd)*sp, 14);
     }
   }
@@ -3070,7 +3219,10 @@ function roamTigers(){
     const def=TIGER_TYPES.find(x=>x.key===t.type) || TIGER_TYPES[1];
     const motion = tigerMotionProfile(t, def, now);
     const civs = (S.mode!=="Survival") ? S.civilians.filter(c=>c.alive && !c.evac) : [];
-    let targetX=S.me.x, targetY=S.me.y, targetDist=dist(t.x,t.y,S.me.x,S.me.y);
+    let targetX=t.x + Math.cos(t.wanderAngle) * 20;
+    let targetY=t.y + Math.sin(t.wanderAngle) * 20;
+    let targetDist=Infinity;
+    const playerDist = dist(t.x,t.y,S.me.x,S.me.y);
 
     let closestCiv=null, closestCivDist=1e9;
     for(const c of civs){
@@ -3078,23 +3230,57 @@ function roamTigers(){
       if(d<closestCivDist){ closestCivDist=d; closestCiv=c; }
     }
 
-    const extraCivBias = (carcassDifficulty()-1)*0.15;
-    const bias = clamp(t.civBias + extraCivBias + (targetDist > 180 ? 0.08 : 0), 0, 0.99);
-    if(closestCiv && (Math.random() < bias || targetDist > motion.detect + 40)){
+    let nearestCarcassDist = 1e9;
+    for(const carcass of (S.carcasses || [])){
+      const d = dist(t.x,t.y,carcass.x,carcass.y);
+      if(d < nearestCarcassDist) nearestCarcassDist = d;
+    }
+
+    const killPressure = clamp((S.stats?.kills || 0) * 0.06, 0, 0.65);
+    const bloodScent = nearestCarcassDist < 210
+      ? (1 - (nearestCarcassDist / 210)) * (0.35 + killPressure)
+      : 0;
+
+    if(bloodScent > 0.08){
+      t.aggroBoost = clamp((t.aggroBoost||0) + bloodScent * 0.015, 0, 1.5);
+      t.enragedUntil = Math.max(t.enragedUntil || 0, now + rand(650, 1300));
+    }
+
+    const closePlayerRange = 145 + (bloodScent * 85);
+    const closeCivRange = 130 + (bloodScent * 95);
+    const closeToPlayer = playerDist <= closePlayerRange;
+    const closeToCiv = closestCiv && closestCivDist <= closeCivRange;
+    const civFocusBias = clamp(t.civBias + bloodScent * 0.25 + (carcassDifficulty()-1)*0.10, 0.08, 0.95);
+
+    if(closeToCiv && (!closeToPlayer || Math.random() < civFocusBias)){
+      targetX = closestCiv.x;
+      targetY = closestCiv.y;
+      targetDist = closestCivDist;
+    } else if(closeToPlayer){
+      targetX = S.me.x;
+      targetY = S.me.y;
+      targetDist = playerDist;
+    } else if(closestCiv && nearestCarcassDist < 130 && Math.random() < (0.12 + killPressure * 0.22)){
       targetX = closestCiv.x;
       targetY = closestCiv.y;
       targetDist = closestCivDist;
     }
 
-    if(S.lockedTigerId===t.id){
+    if(S.lockedTigerId===t.id && playerDist < motion.detect + 90){
       targetX=S.me.x;
       targetY=S.me.y;
-      targetDist=dist(t.x,t.y,S.me.x,S.me.y);
+      targetDist=playerDist;
     }
 
-    let chase = targetDist < motion.detect || (t.aggroBoost||0) > 0.35;
-    if(t.type==="Stalker" && now < (t.fadeUntil||0) && targetDist < motion.detect + 120){
+    let chase = Number.isFinite(targetDist) && (
+      targetDist < motion.detect ||
+      (now < (t.enragedUntil||0) && targetDist < motion.detect + 80)
+    );
+    if(t.type==="Stalker" && now < (t.fadeUntil||0) && Number.isFinite(targetDist) && targetDist < motion.detect + 90){
       chase = true;
+    }
+    if(!chase){
+      t.aggroBoost = Math.max(0, (t.aggroBoost||0) - 0.004);
     }
 
     const tx = targetX - t.x;
@@ -3125,7 +3311,7 @@ function roamTigers(){
       t.wanderAngle += (Math.random()-0.5) * 0.28;
       const wx = Math.cos(t.wanderAngle);
       const wy = Math.sin(t.wanderAngle);
-      const jitter = 0.35 + Math.random()*0.65;
+      const jitter = 0.28 + Math.random()*0.55;
       t.vx += wx * motion.wanderAccel * jitter;
       t.vy += wy * motion.wanderAccel * jitter;
     }
@@ -3142,6 +3328,7 @@ function roamTigers(){
     }
 
     let speedCap = chase ? motion.chase : motion.walk;
+    speedCap += bloodScent * 0.55;
     if(now < (t.burstUntil||0)) speedCap = Math.max(speedCap, motion.sprint);
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap = Math.max(speedCap, motion.sprint + 0.35);
     if(t.type==="Berserker" && t.rageOn) speedCap = Math.max(speedCap, motion.sprint * 1.06);
@@ -3892,7 +4079,7 @@ function renderHUD(){
   document.getElementById("shieldTxt").innerText = shieldLabel;
 
   const backupStr = (S.backupActive>0) ? `ACTIVE (${Math.ceil(S.backupActive/60)}s)` : (S.backupCooldown>0 ? `Cooldown (${Math.ceil(S.backupCooldown/60)}s)` : "Ready");
-  document.getElementById("backupTxt").innerText = backupStr;
+  document.getElementById("backupTxt").innerText = `${backupStr} • Squad A:${S.soldierAttackersOwned||0} R:${S.soldierRescuersOwned||0}`;
   const shieldDisabled = S.paused || S.missionEnded || S.gameOver || (S.shields||0)<=0;
   document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = shieldDisabled; });
 
@@ -4468,6 +4655,7 @@ function drawSupportUnit(unit){
   const bob = Math.sin(unit.step || 0) * 1.2;
   const x = unit.x;
   const y = unit.y + bob;
+  const attacker = unit.role === "attacker";
 
   ctx.globalAlpha = 0.22;
   ctx.fillStyle = "#000";
@@ -4476,9 +4664,9 @@ function drawSupportUnit(unit){
   ctx.fill();
   ctx.globalAlpha = 1;
 
-  ctx.fillStyle = "rgba(30,68,92,.95)";
+  ctx.fillStyle = attacker ? "rgba(114,44,26,.95)" : "rgba(30,68,92,.95)";
   roundedRectFill(x - 9, y - 15, 18, 24, 6);
-  ctx.fillStyle = "rgba(52,211,153,.88)";
+  ctx.fillStyle = attacker ? "rgba(251,146,60,.88)" : "rgba(52,211,153,.88)";
   roundedRectFill(x - 7, y - 10, 14, 11, 4);
   ctx.fillStyle = "rgba(220,220,225,.92)";
   ctx.beginPath();
@@ -4488,16 +4676,17 @@ function drawSupportUnit(unit){
   ctx.fillRect(x - 9, y - 25, 18, 5);
 
   const ang = unit.face || 0;
-  ctx.strokeStyle = "rgba(210,240,255,.88)";
+  ctx.strokeStyle = attacker ? "rgba(255,214,170,.9)" : "rgba(210,240,255,.88)";
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(x, y - 2);
   ctx.lineTo(x + Math.cos(ang) * 11, y + Math.sin(ang) * 11);
   ctx.stroke();
 
-  ctx.fillStyle = "rgba(245,247,255,.78)";
+  ctx.fillStyle = attacker ? "rgba(255,233,205,.86)" : "rgba(245,247,255,.78)";
   ctx.font = "900 10px system-ui";
-  ctx.fillText(unit.name, x - Math.min(26, unit.name.length * 2.2), y - 28);
+  const label = unit.name || (attacker ? "Tiger Specialist" : "Rescue Specialist");
+  ctx.fillText(label, x - Math.min(26, label.length * 2.2), y - 28);
 }
 
 function tigerColors(type){
@@ -4681,6 +4870,8 @@ function init(){
   if(!S.evacZone) S.evacZone = { ...DEFAULT.evacZone };
   if(!Number.isFinite(S.shields)) S.shields = 1;
   if(!Number.isFinite(S.shieldUntil)) S.shieldUntil = 0;
+  if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
+  if(!Number.isFinite(S.soldierRescuersOwned)) S.soldierRescuersOwned = 0;
   if(S.paused && !S.gameOver && !S.missionEnded){
     S.paused = false;
     S.pauseReason = null;
@@ -4709,6 +4900,15 @@ function init(){
     if(!Number.isFinite(t.nextDashAt)) t.nextDashAt = 0;
     if(!Number.isFinite(t.nextFadeAt)) t.nextFadeAt = 0;
     if(!Number.isFinite(t.nextRoarAt)) t.nextRoarAt = 0;
+    if(!Number.isFinite(t.enragedUntil)) t.enragedUntil = 0;
+  }
+  for(const unit of (S.supportUnits || [])){
+    if(!unit.role) unit.role = "attacker";
+    if(!unit.name) unit.name = unit.role === "rescue" ? "Rescue Specialist" : "Tiger Specialist";
+    if(!Number.isFinite(unit.hp)) unit.hp = unit.role === "rescue" ? 145 : 185;
+    if(!Number.isFinite(unit.hpMax)) unit.hpMax = unit.hp;
+    if(!Number.isFinite(unit.armor)) unit.armor = unit.role === "rescue" ? 50 : 95;
+    if(unit.alive == null) unit.alive = true;
   }
 
   if(!S.tigers || !S.tigers.length) spawnTigers();
@@ -4780,6 +4980,8 @@ window.buyArmor = buyArmor;
 window.buyMed = buyMed;
 window.buyTool = buyTool;
 window.buyShield = buyShield;
+window.buyTigerSpecialist = buyTigerSpecialist;
+window.buyRescueSpecialist = buyRescueSpecialist;
 window.buyTrap = buyTrap;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
