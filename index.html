@@ -274,29 +274,28 @@
         display:grid;
         grid-template-columns:repeat(4,minmax(0,1fr));
         gap:8px;
-        position:fixed;
-        left:10px;
-        right:10px;
-        bottom:calc(92px + env(safe-area-inset-bottom));
-        z-index:105;
-        padding:8px;
+        position:static;
+        margin-top:8px;
+        padding:0;
         border-radius:16px;
-        border:1px solid rgba(42,49,69,.92);
-        background:rgba(10,14,24,.94);
-        box-shadow:var(--shadow);
-        backdrop-filter:blur(12px);
+        border:none;
+        background:transparent;
+        box-shadow:none;
+        backdrop-filter:none;
       }
       .mobileUtilityBar button{
         min-height:42px;
         padding:7px 6px;
         font-size:11px;
         line-height:1.15;
+        background:rgba(18,22,34,.75);
+        border:1px solid var(--border2);
       }
       .mobileMenuToggle{
         display:block;
         position:fixed;
         right:10px;
-        bottom:calc(86px + env(safe-area-inset-bottom));
+        bottom:calc(152px + env(safe-area-inset-bottom));
         z-index:108;
         min-height:34px;
         padding:6px 10px;
@@ -509,13 +508,6 @@
     </div>
   </div>
 
-  <div class="mobileUtilityBar">
-    <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLblMobile">On</span></button>
-    <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLblMobile">Pause</span></button>
-    <button class="ghost" onclick="startTutorial()">🧭 Tutorial</button>
-    <button class="ghost" onclick="resetGame()">🔁 Reset</button>
-  </div>
-
   <div class="hud">
     <div class="hudGrid">
       <div class="hudBox hudAgent">
@@ -717,6 +709,12 @@
     <button class="navBtn" id="navMapBtn" onclick="nextMap()"><span>🗺️</span>Map</button>
     <button class="navBtn" id="navShopBtn" onclick="openShop()"><span>🛒</span>Shop</button>
     <button class="navBtn" id="navInvBtn" onclick="openInventory()"><span>🎒</span>Inventory</button>
+  </div>
+  <div class="mobileUtilityBar">
+    <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLblMobile">On</span></button>
+    <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLblMobile">Pause</span></button>
+    <button class="ghost" onclick="startTutorial()">🧭 Tutorial</button>
+    <button class="ghost" onclick="resetGame()">🔁 Reset</button>
   </div>
 </div>
 
