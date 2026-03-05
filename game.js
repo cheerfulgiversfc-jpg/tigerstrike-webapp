@@ -703,10 +703,56 @@ function load(){
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
     if(m.lives==null) m.lives=3;
     m.v = 4380;
+    trimPersistentState(m);
     return m;
   }catch(e){ return structuredClone(DEFAULT); }
 }
 // ===================== SAVE (THROTTLED — FIXES IOS FREEZE) =====================
+const SAVE_MIN_INTERVAL_MS = 4200;
+const SAVE_AUTOSAVE_MS = 12000;
+const MAX_PERSIST_CARCASSES = 48;
+const MAX_PERSIST_PICKUPS = 26;
+const MAX_PERSIST_TRAPS = 24;
+const MAX_PERSIST_RESCUE_SITES = 12;
+const MAX_PERSIST_SUPPORT_UNITS = 16;
+const MAX_PERSIST_TIGERS = 24;
+const MAX_PERSIST_CIVILIANS = 24;
+
+function capTail(list, max){
+  if(!Array.isArray(list)) return [];
+  if(list.length <= max) return list;
+  return list.slice(-max);
+}
+function capHead(list, max){
+  if(!Array.isArray(list)) return [];
+  if(list.length <= max) return list;
+  return list.slice(0, max);
+}
+function trimPersistentState(state){
+  if(!state || typeof state !== "object") return state;
+  state.carcasses = capTail(state.carcasses, MAX_PERSIST_CARCASSES);
+  state.pickups = capTail(state.pickups, MAX_PERSIST_PICKUPS);
+  state.trapsPlaced = capTail(state.trapsPlaced, MAX_PERSIST_TRAPS);
+  state.rescueSites = capHead(state.rescueSites, MAX_PERSIST_RESCUE_SITES);
+  state.supportUnits = capHead(state.supportUnits, MAX_PERSIST_SUPPORT_UNITS);
+  state.tigers = capHead(state.tigers, MAX_PERSIST_TIGERS);
+  state.civilians = capHead(state.civilians, MAX_PERSIST_CIVILIANS);
+  return state;
+}
+function buildPersistedState(){
+  const out = { ...S };
+  delete out._tutorialSnapshot;
+  delete out._tutorialPrev;
+  out.carcasses = capTail(S.carcasses, MAX_PERSIST_CARCASSES);
+  out.pickups = capTail(S.pickups, MAX_PERSIST_PICKUPS);
+  out.trapsPlaced = capTail(S.trapsPlaced, MAX_PERSIST_TRAPS);
+  out.rescueSites = capHead(S.rescueSites, MAX_PERSIST_RESCUE_SITES);
+  out.supportUnits = capHead(S.supportUnits, MAX_PERSIST_SUPPORT_UNITS);
+  out.tigers = capHead(S.tigers, MAX_PERSIST_TIGERS);
+  out.civilians = capHead(S.civilians, MAX_PERSIST_CIVILIANS);
+  return out;
+}
+
 let __lastSave = 0;
 let __lastHudRender = 0;
 let __lastAutosave = 0;
@@ -715,7 +761,7 @@ let __savePending = false;
 function flushSaveNow(){
   __lastSave = Date.now();
   __savePending = false;
-  localStorage.setItem("ts_v4380", JSON.stringify(S));
+  localStorage.setItem("ts_v4380", JSON.stringify(buildPersistedState()));
 }
 
 function save(force=false){
@@ -726,7 +772,7 @@ function save(force=false){
       return;
     }
     __savePending = true;
-    if((now - __lastSave) < 2600) return;
+    if((now - __lastSave) < SAVE_MIN_INTERVAL_MS) return;
     flushSaveNow();
   }
   catch(e){
@@ -736,7 +782,7 @@ function save(force=false){
 
 function maybeAutosave(force=false){
   const now = Date.now();
-  if(force || (__savePending && (now - __lastAutosave) > 9000)){
+  if(force || (__savePending && (now - __lastAutosave) > SAVE_AUTOSAVE_MS)){
     __lastAutosave = now;
     save(true);
   }
@@ -1169,6 +1215,8 @@ function tickEvents(){
 // ===================== PICKUPS / LOOT =====================
 // Types: CASH, AMMO, ARMOR, MED, TRAP, CRATE
 function spawnPickup(type, x, y){
+  if(!Array.isArray(S.pickups)) S.pickups = [];
+  if(S.pickups.length >= MAX_PERSIST_PICKUPS) S.pickups.shift();
   S.pickups.push({
     id: Date.now()+Math.random(),
     type,
@@ -1916,6 +1964,8 @@ function placeTrap(){
   if(S.trapsOwned<=0) return toast("No traps. Buy in shop.");
   S.trapsOwned -= 1;
   S.stats.trapsPlaced = (S.stats.trapsPlaced || 0) + 1;
+  if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
+  if(S.trapsPlaced.length >= MAX_PERSIST_TRAPS) S.trapsPlaced.shift();
 
   S.trapsPlaced.push({
     id: Date.now() + Math.random(),
@@ -2756,14 +2806,10 @@ function resetGame(){
   localStorage.removeItem("ts_v4371");
   S = structuredClone(DEFAULT);
   syncWindowState();
-  document.getElementById("shopOverlay").style.display="none";
-  document.getElementById("invOverlay").style.display="none";
-  document.getElementById("weaponQuickOverlay").style.display="none";
-  document.getElementById("storyIntroOverlay").style.display="none";
-  document.getElementById("aboutOverlay").style.display="none";
-  document.getElementById("completeOverlay").style.display="none";
-  document.getElementById("overOverlay").style.display="none";
-  document.getElementById("modeOverlay").style.display="none";
+  ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","aboutOverlay","completeOverlay","overOverlay","modeOverlay"].forEach((id)=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = "none";
+  });
   lastOverlay = null;
   deploy();
   save(true);
@@ -4085,6 +4131,9 @@ function activeTiger(){
 }
 
 function emitCombatFx(x1, y1, x2, y2, color, width=3){
+  if(COMBAT_FX.length >= 64){
+    COMBAT_FX.splice(0, COMBAT_FX.length - 63);
+  }
   COMBAT_FX.push({ x1, y1, x2, y2, color, width, ttl:8, maxTtl:8 });
 }
 
@@ -4389,6 +4438,9 @@ function finishTigerKill(t){
   markStoryFinalBossOutcome("KILL", t);
   t.alive=false;
   S.carcasses.push({ x:t.x, y:t.y });
+  if(S.carcasses.length > MAX_PERSIST_CARCASSES){
+    S.carcasses = S.carcasses.slice(-MAX_PERSIST_CARCASSES);
+  }
   const pay=payout("KILL");
   S.funds+=pay.cash; S.score+=pay.score;
   S.stats.kills += 1;
@@ -4720,8 +4772,9 @@ function updateEngage(){
 }
 
 function renderHUD(){
-  // clear event text if expired
-  if(S.eventTextUntil && Date.now()>S.eventTextUntil) S.eventText="";
+  try{
+    // clear event text if expired
+    if(S.eventTextUntil && Date.now()>S.eventTextUntil) S.eventText="";
 
   document.getElementById("soundLbl").innerText = S.soundOn ? "On" : "Off";
   const soundLblMobile = document.getElementById("soundLblMobile");
@@ -4907,17 +4960,24 @@ function renderHUD(){
     mobilePromptTxt.innerText = mobilePrompt;
   }
 
-  document.getElementById("statusLine").innerText =
-    S.inBattle
-      ? (S.battleMsg || `On-map combat active. Use Attack, Capture, weapon swap, and Retreat while Tiger #${S.activeTigerId} stays locked.`)
-      : (window.matchMedia?.("(pointer:fine)")?.matches
-          ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Shift sprints."
-          : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear.");
+    document.getElementById("statusLine").innerText =
+      S.inBattle
+        ? (S.battleMsg || `On-map combat active. Use Attack, Capture, weapon swap, and Retreat while Tiger #${S.activeTigerId} stays locked.`)
+        : (window.matchMedia?.("(pointer:fine)")?.matches
+            ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Shift sprints."
+            : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear.");
+  }catch(err){
+    const now = Date.now();
+    if((window.__tsHudErrAt || 0) + 3000 < now){
+      window.__tsHudErrAt = now;
+      console.error("HUD render recovered from error:", err);
+    }
+  }
 }
 
 function maybeRenderHUD(force=false){
   const now = performance.now ? performance.now() : Date.now();
-  if(force || (now - __lastHudRender) >= 180){
+  if(force || (now - __lastHudRender) >= 240){
     __lastHudRender = now;
     renderHUD();
   }
@@ -5577,11 +5637,14 @@ function drawEntities(){
 }
 
 // ===================== MISSION FLOW =====================
-function closeComplete(){ document.getElementById("completeOverlay").style.display="none"; }
 
 // ===================== MAIN LOOP =====================
 function draw(){
   try{
+    if(document.hidden){
+      maybeAutosave();
+      return;
+    }
     pollGamepadControls();
     refreshControllerUi();
     maybeRenderHUD();
@@ -5631,6 +5694,7 @@ function draw(){
 function init(){
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.arcadeLevel = clamp(Math.floor(S.arcadeLevel || 1), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  trimPersistentState(S);
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
   if(!S.equippedWeaponId || !getWeapon(S.equippedWeaponId)) S.equippedWeaponId = DEFAULT.equippedWeaponId;
