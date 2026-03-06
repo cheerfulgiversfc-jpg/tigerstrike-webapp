@@ -2961,6 +2961,8 @@ function spawnCivilians(){
       alive:true,
       evac:false,
       following:false,
+      face:0,
+      step:0,
       skin:SKIN_TONES[2],
       shirt:"#22c55e",
       pants:"#1f2937",
@@ -2996,6 +2998,8 @@ function spawnCivilians(){
       alive:true,
       evac:false,
       following:false,
+      face:0,
+      step:Math.random() * Math.PI * 2,
       siteId:site.id,
       rescueKind:site.kind,
       rescueLabel:site.label,
@@ -4389,7 +4393,13 @@ function followCiviliansTick(){
     const dd = Math.hypot(dx,dy) || 1;
     const catchup = clamp((dd - 16) * 0.04, 0, 3.3);
     const sp = Math.min(Math.max(playerSpeed * 1.02, 2.35) + catchup, PLAYER_SPRINT_SPEED + 1.5);
-    tryMoveEntity(c, c.x + (dx/dd)*sp, c.y + (dy/dd)*sp, 14);
+    const vx = (dx/dd) * sp;
+    const vy = (dy/dd) * sp;
+    if(Math.hypot(vx, vy) > 0.02){
+      c.face = Math.atan2(vy, vx);
+      c.step = (c.step || 0) + clamp(Math.hypot(vx, vy) * 0.11, 0.04, 0.30);
+    }
+    tryMoveEntity(c, c.x + vx, c.y + vy, 14);
   }
 }
 
@@ -6522,41 +6532,69 @@ function drawCivilian(c){
     ctx.restore();
   }
 
-  const walkPose = Math.sin((S.me.step || 0) + c.id) * (c.following ? 1.2 : 0.25);
+  const face = Number.isFinite(c.face) ? c.face : 0;
+  const dir = Math.cos(face) >= 0 ? 1 : -1;
+  const strideAmp = c.following ? 2.2 : 0.7;
+  const stride = Math.sin(((c.step || 0) * 2.3) + (c.id * 0.4)) * strideAmp;
+  const breath = Math.sin((Date.now() * 0.0042) + (c.id * 0.9)) * 0.45;
   const bx = c.x;
-  const by = c.y + walkPose;
+  const by = c.y + breath;
 
-  ctx.fillStyle="rgba(8,12,20,.28)";
-  ctx.beginPath(); ctx.ellipse(bx, by + 20, 14, 6, 0, 0, Math.PI*2); ctx.fill();
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.scale(dir, 1);
+
+  ctx.fillStyle="rgba(8,12,20,.30)";
+  ctx.beginPath(); ctx.ellipse(0, 20, 15, 6.2, 0, 0, Math.PI*2); ctx.fill();
+
+  ctx.fillStyle=c.pants;
+  roundedRectFill(-9, 9, 7, 11, 3);
+  roundedRectFill(2, 9, 7, 11, 3);
+  ctx.fillStyle="rgba(36,42,55,.94)";
+  roundedRectFill(-9 + (stride * 0.35), 18, 7, 4, 2);
+  roundedRectFill(2 - (stride * 0.35), 18, 7, 4, 2);
 
   ctx.fillStyle=c.shirt;
-  roundedRectFill(bx-9, by-12, 18, 24, 6);
-  ctx.fillStyle="rgba(255,255,255,.14)";
-  roundedRectFill(bx-7, by-10, 14, 10, 4);
-  ctx.fillStyle=c.pants;
-  roundedRectFill(bx-9, by+10, 18, 10, 4);
-  ctx.fillStyle="rgba(32,36,46,.92)";
-  roundedRectFill(bx-9, by+18, 7, 4, 2);
-  roundedRectFill(bx+2, by+18, 7, 4, 2);
+  roundedRectFill(-9, -12, 18, 24, 6);
+  ctx.fillStyle="rgba(255,255,255,.16)";
+  roundedRectFill(-7, -10, 14, 9, 4);
+  ctx.fillStyle="rgba(20,28,40,.44)";
+  roundedRectFill(-3, -8, 6, 14, 2);
+
+  ctx.fillStyle="rgba(28,36,48,.92)";
+  roundedRectFill(-13, -10, 4, 14, 2);
+  roundedRectFill(9, -10, 4, 14, 2);
+  ctx.fillStyle="rgba(55,68,88,.68)";
+  roundedRectFill(-13, -1.5 + (stride * 0.14), 4, 4, 1.5);
+  roundedRectFill(9, -1.5 - (stride * 0.14), 4, 4, 1.5);
+
+  ctx.fillStyle="rgba(34,40,54,.88)";
+  roundedRectFill(-11, -14, 6, 10, 3);
+  ctx.fillStyle="rgba(124,208,255,.45)";
+  roundedRectFill(-10, -11, 4, 4, 1.5);
 
   ctx.fillStyle=c.skin;
-  ctx.beginPath(); ctx.arc(bx, by-18, 8.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -18, 8.5, 0, Math.PI*2); ctx.fill();
 
-  ctx.fillStyle="rgba(20,20,22,.75)";
+  ctx.fillStyle="rgba(20,20,22,.78)";
   if(c.hair===0){
-    ctx.beginPath(); ctx.arc(bx, by-21, 7, Math.PI, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -21, 7, Math.PI, Math.PI*2); ctx.fill();
   } else if(c.hair===1){
-    roundedRectFill(bx-7, by-27, 14, 6, 3);
+    roundedRectFill(-7, -27, 14, 6, 3);
   } else if(c.hair===2){
-    ctx.beginPath(); ctx.ellipse(bx, by-24, 7, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, -24, 7, 5, 0, 0, Math.PI*2); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.ellipse(-1, -23, 6, 4.5, 0, 0, Math.PI*2); ctx.fill();
   }
 
   ctx.fillStyle="rgba(26,30,44,.92)";
-  ctx.beginPath(); ctx.arc(bx-2.7, by-19, 1.05, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(bx+2.7, by-19, 1.05, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-2.5, -19, 1.05, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(2.5, -19, 1.05, 0, Math.PI*2); ctx.fill();
   ctx.strokeStyle="rgba(70,42,32,.78)";
   ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(bx-2, by-15); ctx.lineTo(bx+2, by-15); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-2, -15); ctx.lineTo(2, -15); ctx.stroke();
+
+  ctx.restore();
 
   if(c.evac){
     ctx.fillStyle="rgba(74,222,128,.85)";
@@ -6578,8 +6616,14 @@ function drawCivilian(c){
 }
 
 function drawSoldier(){
-  const bob = Math.sin(S.me.step)*1.5;
-  const x=S.me.x, y=S.me.y + bob;
+  const step = S.me.step || 0;
+  const bob = Math.sin(step) * 1.5;
+  const x = S.me.x;
+  const y = S.me.y + bob;
+  const ang = S.me.face || 0;
+  const dir = Math.cos(ang) >= 0 ? 1 : -1;
+  const stride = Math.sin(step * 1.9) * 2.1;
+  const lean = clamp(Math.sin(ang) * 0.06, -0.1, 0.1);
 
   if(shieldActiveNow()){
     const pulse = 0.78 + Math.sin(Date.now()/130) * 0.16;
@@ -6599,42 +6643,56 @@ function drawSoldier(){
     ctx.restore();
   }
 
-  ctx.globalAlpha=0.26; ctx.fillStyle="#000";
-  ctx.beginPath(); ctx.ellipse(x,y+19,20,8,0,0,Math.PI*2); ctx.fill();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir, 1);
+  ctx.rotate(lean);
+
+  ctx.globalAlpha=0.28;
+  ctx.fillStyle="#000";
+  ctx.beginPath(); ctx.ellipse(0,19,20,8,0,0,Math.PI*2); ctx.fill();
   ctx.globalAlpha=1;
 
-  ctx.fillStyle="rgba(48,58,72,.96)";
-  roundedRectFill(x-10, y-16, 20, 27, 7);
-  ctx.fillStyle="rgba(20,30,44,.97)";
-  roundedRectFill(x-8, y-11, 16, 19, 6);
-  ctx.fillStyle="rgba(72,88,108,.45)";
-  roundedRectFill(x-4.5, y-10, 9, 6, 2);
-  ctx.fillStyle="rgba(28,36,48,.95)";
-  roundedRectFill(x-14, y-12, 5, 16, 2);
-  roundedRectFill(x+9, y-12, 5, 16, 2);
   ctx.fillStyle="rgba(26,32,44,.95)";
-  roundedRectFill(x-8, y+9, 7, 10, 3);
-  roundedRectFill(x+1, y+9, 7, 10, 3);
+  roundedRectFill(-9,9,7,10,3);
+  roundedRectFill(2,9,7,10,3);
+  ctx.fillStyle="rgba(17,22,31,.95)";
+  roundedRectFill(-9 + (stride * 0.35), 18, 7, 4, 2);
+  roundedRectFill(2 - (stride * 0.35), 18, 7, 4, 2);
+
+  ctx.fillStyle="rgba(48,58,72,.96)";
+  roundedRectFill(-10,-16,20,27,7);
+  ctx.fillStyle="rgba(20,30,44,.97)";
+  roundedRectFill(-8,-11,16,19,6);
+  ctx.fillStyle="rgba(72,88,108,.45)";
+  roundedRectFill(-4.5,-10,9,6,2);
+  ctx.fillStyle="rgba(28,36,48,.95)";
+  roundedRectFill(-14,-12,5,16,2);
+  roundedRectFill(9,-12,5,16,2);
+
+  ctx.fillStyle="rgba(36,44,59,.9)";
+  roundedRectFill(-12,-14,6,12,3);
+  ctx.fillStyle="rgba(120,208,255,.46)";
+  roundedRectFill(-11,-11,4,4,1.5);
 
   ctx.fillStyle="rgba(55,65,75,.95)";
-  ctx.beginPath(); ctx.arc(x, y-24, 9.5, Math.PI, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -24, 9.5, Math.PI, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(35,45,55,.95)";
-  roundedRectFill(x-10, y-24, 20, 6, 3);
+  roundedRectFill(-10,-24,20,6,3);
   ctx.fillStyle="rgba(180,210,235,.55)";
-  roundedRectFill(x-6, y-22, 12, 3, 2);
+  roundedRectFill(-6,-22,12,3,2);
 
   ctx.fillStyle="rgba(220,220,225,.90)";
-  ctx.beginPath(); ctx.arc(x, y-20, 6.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(0,-20,6.5,0,Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(22,26,38,.95)";
-  ctx.beginPath(); ctx.arc(x-2, y-20, 1, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(x+2, y-20, 1, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-2,-20,1,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(2,-20,1,0,Math.PI*2); ctx.fill();
+  ctx.restore();
 
-  const ang = S.me.face || 0;
-  const wx = x + Math.cos(ang)*12;
-  const wy = y + Math.sin(ang)*12;
-
-  const gripX = x + Math.cos(ang)*5;
-  const gripY = y + Math.sin(ang)*2;
+  const wx = x + Math.cos(ang) * 14;
+  const wy = y + Math.sin(ang) * 13;
+  const gripX = x + Math.cos(ang) * 5;
+  const gripY = y + Math.sin(ang) * 2;
   ctx.strokeStyle="rgba(18,22,28,.96)";
   ctx.lineWidth=4.3;
   ctx.beginPath(); ctx.moveTo(gripX, gripY); ctx.lineTo(wx, wy); ctx.stroke();
@@ -6651,26 +6709,44 @@ function drawSupportUnit(unit){
   const x = unit.x;
   const y = unit.y + bob;
   const attacker = unit.role === "attacker";
+  const ang = unit.face || 0;
+  const dir = Math.cos(ang) >= 0 ? 1 : -1;
+  const stride = Math.sin((unit.step || 0) * 1.8) * 1.6;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir, 1);
 
   ctx.globalAlpha = 0.22;
   ctx.fillStyle = "#000";
   ctx.beginPath();
-  ctx.ellipse(x, y + 18, 16, 7, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 18, 16, 7, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
 
+  ctx.fillStyle = "rgba(25,30,40,.95)";
+  roundedRectFill(-8, 8, 6, 9, 3);
+  roundedRectFill(2, 8, 6, 9, 3);
+  ctx.fillStyle = "rgba(20,24,32,.95)";
+  roundedRectFill(-8 + (stride * 0.35), 16, 6, 4, 2);
+  roundedRectFill(2 - (stride * 0.35), 16, 6, 4, 2);
+
   ctx.fillStyle = attacker ? "rgba(114,44,26,.95)" : "rgba(30,68,92,.95)";
-  roundedRectFill(x - 9, y - 15, 18, 24, 6);
+  roundedRectFill(-9, -15, 18, 24, 6);
   ctx.fillStyle = attacker ? "rgba(251,146,60,.88)" : "rgba(52,211,153,.88)";
-  roundedRectFill(x - 7, y - 10, 14, 11, 4);
+  roundedRectFill(-7, -10, 14, 11, 4);
   ctx.fillStyle = "rgba(220,220,225,.92)";
   ctx.beginPath();
-  ctx.arc(x, y - 18, 7, 0, Math.PI * 2);
+  ctx.arc(0, -18, 7, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = "rgba(26,36,49,.96)";
-  ctx.fillRect(x - 9, y - 25, 18, 5);
+  ctx.fillRect(-9, -25, 18, 5);
 
-  const ang = unit.face || 0;
+  ctx.fillStyle = attacker ? "rgba(89,30,18,.88)" : "rgba(20,56,78,.9)";
+  roundedRectFill(-12, -12, 4, 12, 2);
+  roundedRectFill(8, -12, 4, 12, 2);
+  ctx.restore();
+
   ctx.strokeStyle = attacker ? "rgba(255,214,170,.9)" : "rgba(210,240,255,.88)";
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -6981,6 +7057,8 @@ function init(){
   }
   for(const civ of (S.civilians || [])){
     if(typeof civ.following !== "boolean") civ.following = false;
+    if(!Number.isFinite(civ.face)) civ.face = 0;
+    if(!Number.isFinite(civ.step)) civ.step = 0;
   }
   for(const unit of (S.supportUnits || [])){
     if(!unit.role) unit.role = "attacker";
