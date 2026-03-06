@@ -849,6 +849,17 @@ let __lastSave = 0;
 let __lastHudRender = 0;
 let __lastAutosave = 0;
 let __savePending = false;
+const __frameTaskGate = Object.create(null);
+const MAP_CACHE_INTERVAL_MS = 42;
+let __mapFrameCacheCanvas = null;
+let __mapFrameCacheCtx = null;
+let __mapFrameCacheSig = "";
+let __mapFrameCacheAt = 0;
+
+function invalidateMapCache(){
+  __mapFrameCacheSig = "";
+  __mapFrameCacheAt = 0;
+}
 
 function flushSaveNow(){
   __lastSave = Date.now();
@@ -878,6 +889,14 @@ function maybeAutosave(force=false){
     __lastAutosave = now;
     save(true);
   }
+}
+
+function runFrameTask(key, intervalMs, fn){
+  const now = Date.now();
+  if(now < (__frameTaskGate[key] || 0)) return false;
+  __frameTaskGate[key] = now + intervalMs;
+  fn();
+  return true;
 }
 
 // ===================== AUDIO =====================
@@ -1053,6 +1072,7 @@ function resizeCanvasForViewport(){
   cv.width = mobile ? 820 : 960;
   cv.height = mobile ? mobileCanvasHeight() : 540;
   clampWorldToCanvas();
+  invalidateMapCache();
 }
 const STAMINA_COST_SCAN = 8;
 const STAMINA_COST_SPRINT = 16;
@@ -3256,6 +3276,8 @@ function spawnRogueTiger(){
 // ===================== DEPLOY / NEXT / RESTART =====================
 function deploy(){
   resizeCanvasForViewport();
+  invalidateMapCache();
+  for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
   S.gameOver=false;
   S.missionEnded=false;
   S.inBattle=false;
@@ -5848,8 +5870,27 @@ function maybeRenderHUD(force=false){
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
 function drawMapScene(){
+  const frameNow = Date.now();
   const w=cv.width, h=cv.height;
   const key=currentMap().key;
+  const missionIndex = S.mode==="Story"
+    ? (S.storyLevel||1)
+    : (S.mode==="Arcade" ? (S.arcadeLevel||1) : (S.survivalWave||1));
+  const ez = S.evacZone || DEFAULT.evacZone;
+  const cacheSig = [
+    key, w, h, S.mode, missionIndex, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
+    Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
+    (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0
+  ].join("|");
+  const canUseCache =
+    !!__mapFrameCacheCanvas &&
+    __mapFrameCacheSig === cacheSig &&
+    (frameNow - __mapFrameCacheAt) < MAP_CACHE_INTERVAL_MS;
+  if(canUseCache){
+    ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
+    return;
+  }
+
   const themeKey =
     (key==="ST_FOREST" || key==="AR_SAND_YARD" || key==="SV_NIGHT_WOODS") ? "ST_FOREST" :
     (key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD") ? "ST_SUBURBS" :
@@ -6113,7 +6154,6 @@ function drawMapScene(){
   }
 
   // ambient atmospheric depth by mission progression
-  const missionIndex = S.mode==="Story" ? (S.storyLevel||1) : (S.mode==="Arcade" ? (S.arcadeLevel||1) : (S.survivalWave||1));
   const phase = missionIndex % 4;
   if(phase===1){
     ctx.fillStyle="rgba(255,220,150,.06)";
@@ -6218,6 +6258,19 @@ function drawMapScene(){
     ctx.fillStyle = "#0b0d12";
     ctx.fillRect(0,0,w,h);
     ctx.globalAlpha = 1;
+  }
+
+  if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== w || __mapFrameCacheCanvas.height !== h){
+    __mapFrameCacheCanvas = document.createElement("canvas");
+    __mapFrameCacheCanvas.width = w;
+    __mapFrameCacheCanvas.height = h;
+    __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
+  }
+  if(__mapFrameCacheCtx){
+    __mapFrameCacheCtx.clearRect(0, 0, w, h);
+    __mapFrameCacheCtx.drawImage(cv, 0, 0, w, h, 0, 0, w, h);
+    __mapFrameCacheSig = cacheSig;
+    __mapFrameCacheAt = frameNow;
   }
 }
 
@@ -6824,28 +6877,28 @@ function draw(){
 
     if(!(S.gameOver || S.paused || S.missionEnded)){
       regen();
-      backupTick();
-      trapTick();
-      mapInteractableTick();
-      comboTick();
+      runFrameTask("backupTick", 42, backupTick);
+      runFrameTask("trapTick", 34, trapTick);
+      runFrameTask("mapInteractableTick", 64, mapInteractableTick);
+      runFrameTask("comboTick", 110, comboTick);
 
       if(!window.TigerTutorial?.isRunning){
-        tickEvents();
-        maybeSpawnAmbientPickup();
-        tickPickups();
+        runFrameTask("tickEvents", 180, tickEvents);
+        runFrameTask("ambientPickup", 300, maybeSpawnAmbientPickup);
+        runFrameTask("tickPickups", 46, tickPickups);
       }
 
-      roamTigers();
+      runFrameTask("roamTigers", 34, roamTigers);
       supportUnitsTick();
       const usedKeyboard = keyboardMoveTick();
       if(!usedKeyboard) movePlayer();
       clearOutOfRangeLock();
-      followCiviliansTick();
-      evacCheck();
-      tickCiviliansAndThreats();
-      survivalPressureTick();
+      runFrameTask("followCivilians", 40, followCiviliansTick);
+      runFrameTask("evacCheck", 58, evacCheck);
+      runFrameTask("civThreats", 72, tickCiviliansAndThreats);
+      runFrameTask("survivalPressure", 86, survivalPressureTick);
       combatTick();
-      tickCombatFx();
+      runFrameTask("combatFx", 24, tickCombatFx);
       checkMissionComplete();
     }
 
