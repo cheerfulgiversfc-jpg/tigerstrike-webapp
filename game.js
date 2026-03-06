@@ -6419,7 +6419,6 @@ function draw(){
     if((window.__tsFrameErrAt || 0) + 2500 < now){
       window.__tsFrameErrAt = now;
       console.error("Frame loop recovered from error:", err);
-      toast("Recovered from a game script error.");
     }
   }finally{
     requestAnimationFrame(draw);
