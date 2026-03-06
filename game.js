@@ -246,6 +246,37 @@ const MODE_MAPS = {
   ],
 };
 
+const MAP_REALISM_PROPS = {
+  ST_FOREST: [
+    { kind:"bush", x:130, y:148, s:1.1 },
+    { kind:"bush", x:844, y:176, s:1.0 },
+    { kind:"log", x:386, y:430, s:1.0 },
+    { kind:"rock", x:728, y:466, s:1.0 },
+    { kind:"sign", x:592, y:252, s:1.0 },
+  ],
+  ST_SUBURBS: [
+    { kind:"lamp", x:150, y:192, s:1.0 },
+    { kind:"lamp", x:790, y:210, s:1.0 },
+    { kind:"car", x:424, y:246, s:1.0 },
+    { kind:"fence", x:610, y:408, s:1.0 },
+    { kind:"fence", x:286, y:418, s:1.0 },
+  ],
+  ST_DOWNTOWN: [
+    { kind:"barrier", x:320, y:236, s:1.0 },
+    { kind:"barrier", x:642, y:368, s:1.0 },
+    { kind:"crate", x:196, y:438, s:1.0 },
+    { kind:"crate", x:828, y:432, s:1.0 },
+    { kind:"lamp", x:486, y:170, s:1.0 },
+  ],
+  ST_INDUSTRIAL: [
+    { kind:"crate", x:174, y:264, s:1.1 },
+    { kind:"crate", x:792, y:320, s:1.1 },
+    { kind:"barrel", x:564, y:458, s:1.0 },
+    { kind:"fence", x:362, y:198, s:1.0 },
+    { kind:"lamp", x:690, y:132, s:1.0 },
+  ],
+};
+
 const ARCADE_CAMPAIGN_CHAPTERS = [
   "Jungle Awakening",
   "Growing Danger",
@@ -900,6 +931,12 @@ function toast(msg){
 function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
 function rand(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
 function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
+function normalizeAngle(a){
+  let v = a;
+  while(v > Math.PI) v -= Math.PI * 2;
+  while(v < -Math.PI) v += Math.PI * 2;
+  return v;
+}
 function pointSegmentDistance(px, py, ax, ay, bx, by){
   const abx = bx - ax;
   const aby = by - ay;
@@ -2921,7 +2958,11 @@ function spawnTigers(){
       burstUntil:0,
       nextPounceAt:0,
       enragedUntil:0,
-      wanderAngle:Math.random()*(Math.PI*2)
+      wanderAngle:Math.random()*(Math.PI*2),
+      heading:0,
+      drawDir:1,
+      gaitState:"walk",
+      gaitBlend:0
     }];
 
     return;
@@ -2995,14 +3036,16 @@ function spawnTigers(){
     const pack = packAnchors[i % packAnchors.length];
     const theta = (Math.PI * 2 * (i % 3)) / 3;
     const radius = 24 + ((i % 2) * 20);
+    const initialVx = (Math.random()<0.5?-1:1)*def.spd*0.55;
+    const initialVy = (Math.random()<0.5?-1:1)*def.spd*0.50;
 
     S.tigers.push({
       id:i+1,
       type:def.key,
       x:clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, cv.width - 50),
       y:clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, cv.height - 70),
-      vx:(Math.random()<0.5?-1:1)*def.spd*0.55,
-      vy:(Math.random()<0.5?-1:1)*def.spd*0.50,
+      vx:initialVx,
+      vy:initialVy,
       hp,
       hpMax:hp,
       alive:true,
@@ -3028,7 +3071,11 @@ function spawnTigers(){
       burstUntil:0,
       nextPounceAt:0,
       enragedUntil:0,
-      wanderAngle:Math.random()*(Math.PI*2)
+      wanderAngle:Math.random()*(Math.PI*2),
+      heading:Math.atan2(initialVy, initialVx),
+      drawDir:initialVx >= 0 ? 1 : -1,
+      gaitState:"walk",
+      gaitBlend:0
     });
   }
 }
@@ -3104,8 +3151,14 @@ function spawnRogueTiger(){
     burstUntil:0,
     nextPounceAt:0,
     enragedUntil:0,
-    wanderAngle:Math.random()*(Math.PI*2)
+    wanderAngle:Math.random()*(Math.PI*2),
+    heading:0,
+    drawDir:1,
+    gaitState:"walk",
+    gaitBlend:0
   };
+  tiger.heading = Math.atan2(tiger.vy, tiger.vx);
+  tiger.drawDir = tiger.vx >= 0 ? 1 : -1;
 
   S.tigers.push(tiger);
   return tiger;
@@ -4266,6 +4319,8 @@ function tigerMotionProfile(t, def, now=Date.now()){
   const walk = (base.walk + (def.spd * 0.15) + (hunter * 0.30) + (pack * 0.25)) * persona.speedMul;
   const chase = (base.chase + (def.spd * 0.20) + (hunter * 0.85) + (pack * 0.55) + (rage * 0.35) + (fading * 0.22)) * persona.speedMul;
   const sprint = (base.sprint + (def.spd * 0.24) + (hunter * 1.05) + (pack * 0.85) + (rage * 0.55) + (scoutDash * 0.35)) * persona.speedMul;
+  const turnBase = t.type==="Scout" ? 0.21 : (t.type==="Stalker" ? 0.18 : (t.type==="Berserker" ? 0.17 : 0.155));
+  const steerBase = t.type==="Scout" ? 0.062 : (t.type==="Stalker" ? 0.054 : 0.048);
 
   return {
     walk,
@@ -4279,6 +4334,11 @@ function tigerMotionProfile(t, def, now=Date.now()){
     pounceForce: base.pounceForce + (hunter * 0.35) + (pack * 0.18) + (rage * 0.25),
     pounceCd: base.pounceCd,
     pounceChance: clamp((base.pounceChance + (hunter * 0.03) + (pack * 0.02) + (rage * 0.02)) * persona.pounceMul, 0, 0.24),
+    turnRateWalk: turnBase * (0.60 + (hunter * 0.08)),
+    turnRateChase: turnBase * (1.00 + (hunter * 0.12)),
+    steerGain: steerBase + (hunter * 0.01),
+    chaseDrag: clamp(0.944 + (persona.speedMul * 0.01), 0.93, 0.97),
+    wanderDrag: clamp(0.89 + (persona.speedMul * 0.01), 0.86, 0.93),
     personality: persona
   };
 }
@@ -4463,19 +4523,39 @@ function roamTigers(){
     const ux = tx / td;
     const uy = ty / td;
 
+    if(!Number.isFinite(t.heading)){
+      const seedHeading = Math.atan2(t.vy || Math.sin(t.wanderAngle || 0), t.vx || Math.cos(t.wanderAngle || 0));
+      t.heading = Number.isFinite(seedHeading) ? seedHeading : 0;
+    }
+
+    const desiredHeading = chase ? Math.atan2(uy, ux) : t.wanderAngle;
+    const burstTurnBoost = now < (t.burstUntil||0) ? 0.03 : 0;
+    const maxTurn = (chase ? motion.turnRateChase : motion.turnRateWalk) + burstTurnBoost;
+    t.heading += clamp(normalizeAngle(desiredHeading - t.heading), -maxTurn, maxTurn);
+    t.heading = normalizeAngle(t.heading);
+
+    const hx = Math.cos(t.heading);
+    const hy = Math.sin(t.heading);
+
     if(chase && td > 22){
       if((t.nextPounceAt||0) - now < 220 && td > 90 && td < 330) setTigerIntent(t, "Pounce", 360);
       if(now >= (t.nextPounceAt||0) && td > 92 && td < 330 && Math.random() < motion.pounceChance){
-        t.vx += ux * motion.pounceForce;
-        t.vy += uy * motion.pounceForce;
+        t.heading = Math.atan2(uy, ux);
+        const px = Math.cos(t.heading);
+        const py = Math.sin(t.heading);
+        t.vx += px * motion.pounceForce;
+        t.vy += py * motion.pounceForce;
         t.burstUntil = now + rand(motion.burstMs[0], motion.burstMs[1]);
         t.nextPounceAt = now + rand(motion.pounceCd[0], motion.pounceCd[1]);
         setTigerIntent(t, "Pounce", 520);
       }
 
       const accel = motion.chaseAccel + (now < (t.burstUntil||0) ? 0.04 : 0);
-      t.vx += ux * accel;
-      t.vy += uy * accel;
+      const align = clamp((hx * ux) + (hy * uy), -1, 1);
+      const forwardAccel = accel * (0.76 + Math.max(0, align) * 0.58);
+      const steerAssist = motion.steerGain * (1 - Math.max(0, align));
+      t.vx += (hx * forwardAccel) + (ux * steerAssist);
+      t.vy += (hy * forwardAccel) + (uy * steerAssist);
 
       const vel = Math.hypot(t.vx, t.vy);
       if(vel < motion.minChase){
@@ -4484,12 +4564,14 @@ function roamTigers(){
         t.vy += uy * push;
       }
     } else {
-      t.wanderAngle += (Math.random()-0.5) * 0.28;
+      t.wanderAngle += (Math.random()-0.5) * 0.19;
       const wx = Math.cos(t.wanderAngle);
       const wy = Math.sin(t.wanderAngle);
-      const jitter = 0.28 + Math.random()*0.55;
-      t.vx += wx * motion.wanderAccel * jitter;
-      t.vy += wy * motion.wanderAccel * jitter;
+      const jitter = 0.30 + Math.random()*0.42;
+      const align = clamp((hx * wx) + (hy * wy), -1, 1);
+      const forwardAccel = motion.wanderAccel * (0.56 + Math.max(0, align) * 0.65) * jitter;
+      t.vx += (hx * forwardAccel) + (wx * motion.wanderAccel * 0.18);
+      t.vy += (hy * forwardAccel) + (wy * motion.wanderAccel * 0.18);
     }
 
     if(t.packId){
@@ -4525,26 +4607,40 @@ function roamTigers(){
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap = Math.max(speedCap, motion.sprint + 0.35);
     if(t.type==="Berserker" && t.rageOn) speedCap = Math.max(speedCap, motion.sprint * 1.06);
 
-    t.vx = clamp(t.vx, -speedCap, speedCap);
-    t.vy = clamp(t.vy, -speedCap, speedCap);
+    const velNow = Math.hypot(t.vx, t.vy);
+    if(velNow > speedCap){
+      const s = speedCap / (velNow || 1);
+      t.vx *= s;
+      t.vy *= s;
+    }
 
     const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18);
     if(!moved){
       t.vx *= -0.72;
       t.vy *= -0.72;
+      t.heading += Math.PI * 0.42;
       t.wanderAngle += Math.PI * 0.58;
       t.burstUntil = 0;
     }
-    t.vx *= chase ? 0.978 : 0.94;
-    t.vy *= chase ? 0.978 : 0.94;
+    const drag = chase ? motion.chaseDrag : motion.wanderDrag;
+    t.vx *= drag;
+    t.vy *= drag;
 
     if(t.x<40||t.x>cv.width-40) t.vx*=-1;
     if(t.y<60||t.y>cv.height-40) t.vy*=-1;
     t.x=clamp(t.x,40,cv.width-40);
     t.y=clamp(t.y,60,cv.height-40);
     const gait = Math.hypot(t.vx, t.vy);
-    const runMul = now < (t.burstUntil||0) ? 1.35 : 1;
-    t.step = (t.step + 0.08 + gait * 0.26 * runMul) % (Math.PI*2);
+    const sprintingNow = (now < (t.burstUntil||0)) || (t.type==="Scout" && now < (t.dashUntil||0));
+    const runMul = sprintingNow ? 1.35 : (gait > motion.chase * 0.84 ? 1.14 : (gait > motion.walk * 0.72 ? 0.94 : 0.70));
+    t.gaitState = sprintingNow
+      ? "sprint"
+      : (gait > motion.chase * 0.84 ? "run" : (gait > motion.walk * 0.72 ? "trot" : "walk"));
+    t.gaitBlend = clamp(gait / Math.max(0.01, motion.sprint), 0, 1);
+    t.step = (t.step + 0.08 + gait * 0.24 * runMul) % (Math.PI*2);
+    if(gait > 0.08){
+      t.drawDir = Math.cos(t.heading) >= 0 ? 1 : -1;
+    }
   }
 }
 
@@ -5592,8 +5688,30 @@ function maybeRenderHUD(force=false){
 function drawMapScene(){
   const w=cv.width, h=cv.height;
   const key=currentMap().key;
+  const themeKey =
+    (key==="ST_FOREST" || key==="AR_SAND_YARD" || key==="SV_NIGHT_WOODS") ? "ST_FOREST" :
+    (key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD") ? "ST_SUBURBS" :
+    (key==="ST_DOWNTOWN" || key==="AR_NEON_GRID" || key==="SV_STORM_DISTRICT") ? "ST_DOWNTOWN" :
+    "ST_INDUSTRIAL";
 
   function fillSolid(color){ ctx.fillStyle=color; ctx.fillRect(0,0,w,h); }
+  function seedNoise(ix, iy, seed=0){
+    let n = (ix * 374761393) ^ (iy * 668265263) ^ (seed * 982451653);
+    n = (n ^ (n >> 13)) * 1274126177;
+    return ((n ^ (n >> 16)) >>> 0) / 4294967295;
+  }
+  function terrainTexture(seed, step=30, alpha=0.08, colorA="rgba(255,255,255,.05)", colorB="rgba(0,0,0,.08)"){
+    for(let y=0; y<h; y+=step){
+      for(let x=0; x<w; x+=step){
+        const n = seedNoise((x/step)|0, (y/step)|0, seed);
+        if(n < 0.30) continue;
+        ctx.fillStyle = n > 0.62 ? colorA : colorB;
+        ctx.globalAlpha = alpha * (0.4 + n * 0.8);
+        ctx.fillRect(x + (n * 5), y + ((1 - n) * 4), 2 + (n * 3), 2 + (n * 3));
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
   function rounded(x,y,ww,hh,r,fill,stroke=null){
     ctx.beginPath();
     ctx.moveTo(x+r,y);
@@ -5611,6 +5729,22 @@ function drawMapScene(){
     for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0],points[i][1]);
     ctx.stroke();
   }
+  function roadShoulder(points, width){
+    ctx.strokeStyle="rgba(12,16,24,.28)";
+    ctx.lineWidth=width + 10;
+    ctx.lineCap="round";
+    ctx.lineJoin="round";
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0], points[i][1]);
+    ctx.stroke();
+    ctx.strokeStyle="rgba(235,210,160,.12)";
+    ctx.lineWidth=Math.max(6, width * 0.14);
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0], points[i][1]);
+    ctx.stroke();
+  }
   function dashed(points){
     ctx.strokeStyle="rgba(240,240,245,.7)";
     ctx.lineWidth=4; ctx.setLineDash([18,14]); ctx.lineCap="round";
@@ -5619,28 +5753,121 @@ function drawMapScene(){
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  function treeDot(x,y){
-    ctx.fillStyle="rgba(22,120,60,.85)";
-    ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fill();
+  function treeDot(x,y,size=8){
+    ctx.globalAlpha=0.25;
+    ctx.fillStyle="#05070b";
+    ctx.beginPath(); ctx.ellipse(x, y + (size * 0.85), size * 1.05, size * 0.45, 0, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+    ctx.fillStyle="rgba(15,78,42,.95)";
+    ctx.beginPath(); ctx.arc(x,y,size,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="rgba(33,142,74,.78)";
+    ctx.beginPath(); ctx.arc(x - (size * 0.22), y - (size * 0.18), size * 0.58,0,Math.PI*2); ctx.fill();
   }
   function buildingBlock(x,y,ww,hh){
+    ctx.globalAlpha=0.2;
+    ctx.fillStyle="#080b12";
+    rounded(x-ww/2+4,y-hh/2+6,ww,hh,10,"rgba(0,0,0,.35)");
+    ctx.globalAlpha=1;
     rounded(x-ww/2,y-hh/2,ww,hh,10,"rgba(55,70,95,.85)","rgba(18,24,38,.9)");
   }
   function houseBlock(x,y){
+    ctx.globalAlpha=0.2;
+    rounded(x-16,y-9,36,24,8,"rgba(0,0,0,.3)");
+    ctx.globalAlpha=1;
     rounded(x-18,y-12,36,24,8,"rgba(190,180,160,.8)","rgba(60,55,50,.9)");
   }
   function crateBlock(x,y){
+    ctx.globalAlpha=0.2;
+    rounded(x-10,y-8,24,20,6,"rgba(0,0,0,.3)");
+    ctx.globalAlpha=1;
     rounded(x-12,y-10,24,20,6,"rgba(140,90,45,.85)","rgba(70,40,20,.85)");
+  }
+  function drawProp(p){
+    const px = p.x * (w / 960);
+    const py = p.y * (h / 540);
+    const s = p.s || 1;
+    if(p.kind==="bush"){
+      treeDot(px, py, 10 * s);
+      treeDot(px + (8*s), py + (3*s), 7 * s);
+      return;
+    }
+    if(p.kind==="rock"){
+      ctx.fillStyle="rgba(70,78,88,.82)";
+      ctx.beginPath(); ctx.ellipse(px, py, 16*s, 10*s, -0.2, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle="rgba(110,122,138,.42)";
+      ctx.beginPath(); ctx.ellipse(px - (3*s), py - (2*s), 7*s, 4*s, -0.1, 0, Math.PI*2); ctx.fill();
+      return;
+    }
+    if(p.kind==="log"){
+      ctx.strokeStyle="rgba(82,56,35,.88)";
+      ctx.lineWidth=8*s;
+      ctx.lineCap="round";
+      ctx.beginPath(); ctx.moveTo(px-(16*s), py+(4*s)); ctx.lineTo(px+(16*s), py-(4*s)); ctx.stroke();
+      return;
+    }
+    if(p.kind==="sign"){
+      ctx.fillStyle="rgba(60,44,28,.95)";
+      ctx.fillRect(px-(2*s), py-(4*s), 4*s, 18*s);
+      rounded(px-(16*s), py-(16*s), 32*s, 12*s, 4*s, "rgba(220,190,120,.84)", "rgba(60,44,28,.9)");
+      return;
+    }
+    if(p.kind==="lamp"){
+      ctx.fillStyle="rgba(92,100,120,.95)";
+      ctx.fillRect(px-(1.8*s), py-(18*s), 3.6*s, 22*s);
+      ctx.fillStyle="rgba(250,228,168,.9)";
+      ctx.beginPath(); ctx.arc(px, py-(20*s), 4.5*s, 0, Math.PI*2); ctx.fill();
+      return;
+    }
+    if(p.kind==="car"){
+      rounded(px-(20*s), py-(9*s), 40*s, 18*s, 6*s, "rgba(92,120,156,.88)", "rgba(22,30,45,.95)");
+      ctx.fillStyle="rgba(195,222,245,.46)";
+      rounded(px-(11*s), py-(8*s), 22*s, 7*s, 3*s, "rgba(195,222,245,.46)");
+      return;
+    }
+    if(p.kind==="barrier"){
+      rounded(px-(18*s), py-(6*s), 36*s, 12*s, 4*s, "rgba(220,180,70,.86)", "rgba(64,52,22,.95)");
+      return;
+    }
+    if(p.kind==="barrel"){
+      rounded(px-(7*s), py-(11*s), 14*s, 22*s, 4*s, "rgba(150,72,52,.88)", "rgba(62,28,20,.9)");
+      return;
+    }
+    if(p.kind==="fence"){
+      ctx.strokeStyle="rgba(160,138,98,.75)";
+      ctx.lineWidth=2.2*s;
+      ctx.beginPath();
+      ctx.moveTo(px-(18*s), py-(6*s));
+      ctx.lineTo(px+(18*s), py-(6*s));
+      ctx.moveTo(px-(18*s), py+(4*s));
+      ctx.lineTo(px+(18*s), py+(4*s));
+      ctx.stroke();
+      for(let i=-16;i<=16;i+=8){
+        ctx.beginPath();
+        ctx.moveTo(px+(i*s), py-(7*s));
+        ctx.lineTo(px+(i*s), py+(7*s));
+        ctx.stroke();
+      }
+      return;
+    }
+    if(p.kind==="crate"){
+      crateBlock(px, py);
+    }
   }
 
   if(key==="ST_FOREST" || key==="AR_SAND_YARD" || key==="SV_NIGHT_WOODS"){
     fillSolid("#0f2b1c");
+    ctx.fillStyle="rgba(18,66,40,.34)";
+    ctx.fillRect(0,0,w,h);
+    terrainTexture(11, 30, 0.09, "rgba(74,222,128,.10)", "rgba(0,0,0,.12)");
     const upperRoad = h * 0.18;
     const midRoad = h * 0.43;
     const lowRoad = h * 0.72;
-    roadLine([[0,upperRoad],[240,upperRoad + 70],[470,upperRoad + 28],[720,upperRoad + 92],[960,upperRoad + 52]], 48, "rgba(80,60,38,.85)");
-    roadLine([[60,midRoad],[260,midRoad - 40],[450,midRoad - 10],[610,midRoad - 70],[820,midRoad - 40],[940,midRoad - 100]], 62, "rgba(90,70,45,.85)");
-    roadLine([[50,lowRoad],[260,lowRoad - 34],[450,lowRoad - 8],[610,lowRoad - 58],[820,lowRoad - 26],[940,lowRoad - 82]], 56, "rgba(84,66,42,.82)");
+    const roadA = [[0,upperRoad],[240,upperRoad + 70],[470,upperRoad + 28],[720,upperRoad + 92],[960,upperRoad + 52]];
+    const roadB = [[60,midRoad],[260,midRoad - 40],[450,midRoad - 10],[610,midRoad - 70],[820,midRoad - 40],[940,midRoad - 100]];
+    const roadC = [[50,lowRoad],[260,lowRoad - 34],[450,lowRoad - 8],[610,lowRoad - 58],[820,lowRoad - 26],[940,lowRoad - 82]];
+    roadShoulder(roadA, 48); roadLine(roadA, 48, "rgba(80,60,38,.85)");
+    roadShoulder(roadB, 62); roadLine(roadB, 62, "rgba(90,70,45,.85)");
+    roadShoulder(roadC, 56); roadLine(roadC, 56, "rgba(84,66,42,.82)");
     const trees = [
       [90,h*0.08],[140,h*0.11],[210,h*0.08],[300,h*0.13],[360,h*0.08],[420,h*0.14],[520,h*0.10],[610,h*0.13],[700,h*0.09],[780,h*0.14],[880,h*0.11],
       [120,h*0.24],[200,h*0.26],[280,h*0.24],[360,h*0.27],[440,h*0.24],[520,h*0.27],[600,h*0.24],[700,h*0.26],[820,h*0.24],
@@ -5649,7 +5876,10 @@ function drawMapScene(){
       [110,h*0.74],[210,h*0.72],[320,h*0.75],[420,h*0.73],[520,h*0.74],[650,h*0.72],[760,h*0.75],[880,h*0.73],
       [90,h*0.88],[170,h*0.91],[290,h*0.88],[410,h*0.90],[520,h*0.87],[660,h*0.90],[780,h*0.88],[900,h*0.91],
     ];
-    for(const [x,y] of trees) treeDot(x,y);
+    for(const [x,y] of trees){
+      const size = 6 + seedNoise((x/40)|0, (y/40)|0, 17) * 4;
+      treeDot(x,y,size);
+    }
     ctx.fillStyle="rgba(25,90,105,.65)";
     ctx.beginPath(); ctx.ellipse(260,h*0.17,90,34,0,0,Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(720,h*0.15,85,30,0,0,Math.PI*2); ctx.fill();
@@ -5663,11 +5893,14 @@ function drawMapScene(){
   }
   else if(key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD"){
     fillSolid("#18402a");
+    terrainTexture(19, 32, 0.08, "rgba(232,240,250,.05)", "rgba(0,0,0,.11)");
     const main=[[0,280],[240,270],[480,300],[720,280],[960,300]];
-    roadLine(main, 84, "rgba(75,78,86,.9)");
+    roadShoulder(main, 84); roadLine(main, 84, "rgba(75,78,86,.9)");
     dashed(main);
-    roadLine([[120,120],[420,110],[760,120]], 62, "rgba(75,78,86,.9)");
-    roadLine([[120,440],[420,430],[760,440]], 62, "rgba(75,78,86,.9)");
+    const laneTop = [[120,120],[420,110],[760,120]];
+    const laneLow = [[120,440],[420,430],[760,440]];
+    roadShoulder(laneTop, 62); roadLine(laneTop, 62, "rgba(75,78,86,.9)");
+    roadShoulder(laneLow, 62); roadLine(laneLow, 62, "rgba(75,78,86,.9)");
     const houses = [
       [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
       [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
@@ -5678,10 +5911,11 @@ function drawMapScene(){
     rounded(120,210,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
     rounded(670,320,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
     const trees = [[70,200],[90,240],[110,260],[930,220],[900,250],[880,280],[70,520],[930,520]];
-    for(const [x,y] of trees) treeDot(x,y);
+    for(const [x,y] of trees) treeDot(x,y,7.5);
   }
   else if(key==="ST_DOWNTOWN" || key==="AR_NEON_GRID" || key==="SV_STORM_DISTRICT"){
     fillSolid("#1a1f2d");
+    terrainTexture(29, 34, 0.07, "rgba(126,149,196,.06)", "rgba(0,0,0,.13)");
     ctx.fillStyle="rgba(70,72,80,.95)";
     for(let x=80; x<w; x+=170) ctx.fillRect(x-46,0,92,h);
     for(let y=80; y<h; y+=150) ctx.fillRect(0,y-42,w,84);
@@ -5699,6 +5933,7 @@ function drawMapScene(){
   }
   else {
     fillSolid("#2b2b30");
+    terrainTexture(41, 32, 0.09, "rgba(230,210,170,.05)", "rgba(0,0,0,.14)");
     rounded(90,90,260,130,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
     rounded(610,110,260,110,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
     rounded(240,340,340,140,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
@@ -5714,6 +5949,35 @@ function drawMapScene(){
     const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
     for(const [x,y] of crates) crateBlock(x,y);
   }
+
+  // ambient atmospheric depth by mission progression
+  const missionIndex = S.mode==="Story" ? (S.storyLevel||1) : (S.mode==="Arcade" ? (S.arcadeLevel||1) : (S.survivalWave||1));
+  const phase = missionIndex % 4;
+  if(phase===1){
+    ctx.fillStyle="rgba(255,220,150,.06)";
+    ctx.fillRect(0,0,w,h);
+  } else if(phase===2){
+    ctx.fillStyle="rgba(120,165,255,.05)";
+    ctx.fillRect(0,0,w,h);
+  } else if(phase===3){
+    const g = ctx.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,"rgba(210,220,255,.11)");
+    g.addColorStop(0.35,"rgba(120,135,170,.05)");
+    g.addColorStop(1,"rgba(8,12,20,.02)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,w,h);
+  }
+
+  // realism props
+  const props = MAP_REALISM_PROPS[themeKey] || [];
+  for(const p of props) drawProp(p);
+
+  // subtle vignette to reduce flatness
+  const vignette = ctx.createRadialGradient(w*0.5, h*0.48, h*0.25, w*0.5, h*0.5, h*0.85);
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,.22)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0,0,w,h);
 
   if(S.mode!=="Survival"){
     const pulse = 0.86 + Math.sin(Date.now() / 240) * 0.08;
@@ -6215,12 +6479,10 @@ function tigerColors(type){
 
 function drawTiger(t){
   let alpha=1.0;
+  const now = Date.now();
 
-  // Fog reduces visibility
-  if(Date.now() < (S.fogUntil||0)) alpha *= 0.75;
-
-  // Stalker fade
-  if(t.type==="Stalker" && Date.now() < (t.fadeUntil||0)){
+  if(now < (S.fogUntil||0)) alpha *= 0.75;
+  if(t.type==="Stalker" && now < (t.fadeUntil||0)){
     alpha *= 0.35;
   } else if(t.type==="Stalker"){
     const near=dist(t.x,t.y,S.me.x,S.me.y) < 180;
@@ -6228,16 +6490,19 @@ function drawTiger(t){
   }
 
   const c=tigerColors(t.type);
-  const gait = Math.min(2.6, Math.hypot(t.vx||0, t.vy||0));
-  const sprinting = (Date.now() < (t.burstUntil||0)) || (t.type==="Scout" && Date.now() < (t.dashUntil||0));
-  const bob = Math.sin((t.step||0)*2.3)*0.38*Math.max(0.7, gait*0.92);
-  const x=t.x, y=t.y + bob;
+  const speed = Math.min(2.9, Math.hypot(t.vx||0, t.vy||0));
+  const sprinting = (now < (t.burstUntil||0)) || (t.type==="Scout" && now < (t.dashUntil||0));
+  const gaitState = t.gaitState || (sprinting ? "sprint" : (speed > 2.1 ? "run" : (speed > 1.0 ? "trot" : "walk")));
+  const gaitBlend = Number.isFinite(t.gaitBlend) ? t.gaitBlend : clamp(speed / 6, 0, 1);
+  const bob = Math.sin((t.step||0)*2.2)*0.34*Math.max(0.62, speed*0.90);
+  const bodyLift = clamp(gaitBlend * 2.4 + (sprinting ? 1.35 : 0), 0, 3.8);
+  const x=t.x, y=t.y + bob - bodyLift;
   let s=1.0;
   if(t.type==="Scout") s=0.85;
   if(t.type==="Alpha") s=1.22;
   if(t.type==="Berserker") s=1.10;
+  const drawDir = Number.isFinite(t.drawDir) ? (t.drawDir >= 0 ? 1 : -1) : ((Math.cos(t.heading || 0) >= 0) ? 1 : -1);
 
-  // Rage glow
   if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35){
     ctx.globalAlpha=0.18*alpha;
     ctx.strokeStyle="rgba(251,113,133,.95)";
@@ -6245,64 +6510,75 @@ function drawTiger(t){
     ctx.beginPath(); ctx.arc(x,y,34*s,0,Math.PI*2); ctx.stroke();
   }
 
-  ctx.globalAlpha=0.25*alpha; ctx.fillStyle="#000";
-  ctx.beginPath(); ctx.ellipse(x,y+18*s,22*s,8*s,0,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=0.24*alpha;
+  ctx.fillStyle="#000";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 18*s, 22*s + (speed * 0.8), 8*s, 0, 0, Math.PI*2);
+  ctx.fill();
   ctx.globalAlpha=alpha;
 
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(drawDir, 1);
+  ctx.rotate(clamp((t.vy || 0) * 0.018, -0.09, 0.09));
+
   ctx.fillStyle=c.body;
-  ctx.beginPath(); ctx.ellipse(x, y+2*s, 22*s, 13*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 2*s, 22*s, 13*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(255,255,255,.14)";
-  ctx.beginPath(); ctx.ellipse(x-2*s, y-2*s, 14*s, 5*s, -0.15, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-2*s, -2*s, 14*s, 5*s, -0.15, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle=c.belly;
-  ctx.beginPath(); ctx.ellipse(x+3*s, y+6*s, 14*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(3*s, 6*s, 14*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle=c.body;
-  ctx.beginPath(); ctx.ellipse(x+20*s, y-6*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(x+26*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(x+16*s, y-14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(20*s, -6*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(26*s, -14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(16*s, -14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(240,220,190,.88)";
-  ctx.beginPath(); ctx.ellipse(x+22*s, y-4.5*s, 6.5*s, 4.4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(22*s, -4.5*s, 6.5*s, 4.4*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="#12161f";
-  ctx.beginPath(); ctx.arc(x+24*s, y-8.4*s, 1.1*s, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(x+18.5*s, y-8.6*s, 1.1*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(24*s, -8.4*s, 1.1*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(18.5*s, -8.6*s, 1.1*s, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(15,15,15,.88)";
   ctx.beginPath();
-  ctx.moveTo(x+22*s, y-4.4*s);
-  ctx.lineTo(x+20.5*s, y-2.3*s);
-  ctx.lineTo(x+23.5*s, y-2.3*s);
+  ctx.moveTo(22*s, -4.4*s);
+  ctx.lineTo(20.5*s, -2.3*s);
+  ctx.lineTo(23.5*s, -2.3*s);
   ctx.closePath();
   ctx.fill();
 
-  const legSwing = Math.sin((t.step||0)*1.9) * (2.8 + gait*3.9) * s * (sprinting ? 1.18 : 1);
+  const gaitMul = gaitState==="sprint" ? 1.34 : (gaitState==="run" ? 1.18 : (gaitState==="trot" ? 0.92 : 0.64));
+  const legSwingA = Math.sin((t.step||0)*1.9) * (2.6 + speed*3.7) * s * gaitMul;
+  const legSwingB = Math.sin((t.step||0)*1.9 + Math.PI) * (2.2 + speed*3.2) * s * gaitMul;
   ctx.strokeStyle=c.body;
   ctx.lineWidth=3*s;
-  [[-10,-legSwing],[-2,legSwing],[8,legSwing],[16,-legSwing]].forEach(([offset, swing])=>{
+  [[-10,legSwingA],[-2,legSwingB],[8,legSwingB],[16,legSwingA]].forEach(([offset, swing])=>{
     ctx.beginPath();
-    ctx.moveTo(x+offset*s, y+10*s);
-    ctx.lineTo(x+offset*s + swing*0.18, y+21*s);
+    ctx.moveTo(offset*s, 10*s);
+    ctx.lineTo(offset*s + swing*0.18, 21*s);
     ctx.stroke();
     ctx.fillStyle="rgba(24,26,33,.92)";
     ctx.beginPath();
-    ctx.ellipse(x+offset*s + swing*0.18, y+21.5*s, 1.8*s, 1.05*s, 0, 0, Math.PI*2);
+    ctx.ellipse(offset*s + swing*0.18, 21.5*s, 1.8*s, 1.05*s, 0, 0, Math.PI*2);
     ctx.fill();
   });
 
   ctx.strokeStyle=c.body; ctx.lineWidth=5*s;
   ctx.beginPath();
-  ctx.moveTo(x-20*s, y+2*s);
-  ctx.quadraticCurveTo(x-34*s, y-2*s + Math.sin((t.step||0)+1.4)*6*s, x-40*s, y-10*s);
+  ctx.moveTo(-20*s, 2*s);
+  ctx.quadraticCurveTo(-34*s, -2*s + Math.sin((t.step||0)+1.4)*6*s*gaitMul, -40*s, -10*s);
   ctx.stroke();
 
   ctx.strokeStyle=c.stripe; ctx.lineWidth=3*s;
   for(let i=-2;i<=2;i++){
     ctx.beginPath();
-    ctx.moveTo(x-8*s + i*6*s, y-6*s);
-    ctx.lineTo(x-2*s + i*6*s, y+10*s);
+    ctx.moveTo(-8*s + i*6*s, -6*s);
+    ctx.lineTo(-2*s + i*6*s, 10*s);
     ctx.stroke();
   }
   ctx.strokeStyle="rgba(28,30,35,.78)";
   ctx.lineWidth=1.2*s;
-  ctx.beginPath(); ctx.moveTo(x+28*s, y-4.8*s); ctx.lineTo(x+32*s, y-5.6*s); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x+28*s, y-3.3*s); ctx.lineTo(x+32*s, y-3.6*s); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(28*s, -4.8*s); ctx.lineTo(32*s, -5.6*s); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(28*s, -3.3*s); ctx.lineTo(32*s, -3.6*s); ctx.stroke();
+  ctx.restore();
 
   if(t._held){
     ctx.globalAlpha=0.35;
@@ -6318,7 +6594,7 @@ function drawTiger(t){
     ctx.beginPath(); ctx.arc(x,y,30*s,0,Math.PI*2); ctx.stroke();
   }
 
-  if((t.intentUntil || 0) > Date.now()){
+  if((t.intentUntil || 0) > now){
     ctx.strokeStyle="rgba(251,191,36,.92)";
     ctx.lineWidth=2.2;
     ctx.setLineDash([6,5]);
@@ -6340,9 +6616,9 @@ function drawTiger(t){
   ctx.globalAlpha=0.85*alpha;
   ctx.fillStyle="rgba(245,247,255,.80)";
   ctx.font="900 12px system-ui";
-  const dash = (t.type==="Scout" && Date.now()<(t.dashUntil||0)) ? " (DASH)" : "";
-  const fade = (t.type==="Stalker" && Date.now()<(t.fadeUntil||0)) ? " (FADE)" : "";
-  const roar = (t.type==="Alpha" && Date.now()<(t.roarUntil||0)) ? " (ROAR)" : "";
+  const dash = (t.type==="Scout" && now<(t.dashUntil||0)) ? " (DASH)" : "";
+  const fade = (t.type==="Stalker" && now<(t.fadeUntil||0)) ? " (FADE)" : "";
+  const roar = (t.type==="Alpha" && now<(t.roarUntil||0)) ? " (ROAR)" : "";
   const rage = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? " (RAGE)" : "";
   const persona = t.personality ? ` • ${t.personality}` : "";
   ctx.fillText(t.type + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage, x-44*s, y-44*s);
@@ -6483,6 +6759,10 @@ function init(){
     if(!Number.isFinite(t.nextFadeAt)) t.nextFadeAt = 0;
     if(!Number.isFinite(t.nextRoarAt)) t.nextRoarAt = 0;
     if(!Number.isFinite(t.enragedUntil)) t.enragedUntil = 0;
+    if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || Math.sin(t.wanderAngle || 0), t.vx || Math.cos(t.wanderAngle || 0));
+    if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
+    if(typeof t.gaitState !== "string") t.gaitState = "walk";
+    if(!Number.isFinite(t.gaitBlend)) t.gaitBlend = 0;
   }
   for(const civ of (S.civilians || [])){
     if(typeof civ.following !== "boolean") civ.following = false;
