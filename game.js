@@ -216,6 +216,14 @@ const TIGER_PERSONALITIES = {
 };
 
 const COMBO_WINDOW_MS = 14000;
+const COMBO_WINDOW_BONUS_MS = 4000;
+
+const PROGRESSION_UNLOCKS = [
+  { key:"cache_boost", level:3, label:"Cache Boost", desc:"+35% cache cash and +25% cache ammo." },
+  { key:"barrier_boost", level:5, label:"Barrier Engineer", desc:"+26% barricade radius." },
+  { key:"cooldown_boost", level:7, label:"Tempo Link", desc:"-16% cooldown on Scan, Sprint, and Shield." },
+  { key:"combo_boost", level:9, label:"Chain Keeper", desc:"+4s combo timer window." },
+];
 
 const MODE_MAPS = {
   Story: [
@@ -644,6 +652,7 @@ const DEFAULT = {
   trapsPlaced:[],
   shields:1,
   shieldUntil:0,
+  abilityCooldowns:{ scan:0, sprint:0, shield:0 },
   soldierAttackersOwned:0,
   soldierRescuersOwned:0,
 
@@ -705,7 +714,8 @@ perks: {
   T_LOOT: 0,
   T_TRAPS: 0,
   T_RELOAD: 0
-}
+},
+progressionUnlocks: {}
 };
 
 let S = load();
@@ -738,6 +748,7 @@ function load(){
     m.durability = { ...DEFAULT.durability, ...(saved.durability||{}) };
     m.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
     m.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
+    m.abilityCooldowns = { ...DEFAULT.abilityCooldowns, ...(saved.abilityCooldowns||{}) };
     m.trapsPlaced = Array.isArray(saved.trapsPlaced) ? saved.trapsPlaced : [];
     m.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
     m.pickups = Array.isArray(saved.pickups) ? saved.pickups : [];
@@ -747,6 +758,7 @@ function load(){
     m.achievements = saved.achievements || {};
     m.stats = { ...DEFAULT.stats, ...(saved.stats||{}) };
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
+    m.progressionUnlocks = { ...DEFAULT.progressionUnlocks, ...(saved.progressionUnlocks||{}) };
     if(m.lives==null) m.lives=3;
     m.v = 4380;
     trimPersistentState(m);
@@ -1015,6 +1027,12 @@ const SHIELD_DURATION_MS = 5000;
 const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
 const SOLDIER_PRICE = 15000;
+const ABILITY_COOLDOWN_MS = { scan:6800, sprint:5200, shield:12000 };
+const ABILITY_WHEEL = [
+  { key:"scan", icon:"🛰️", color:"rgba(96,165,250,.95)" },
+  { key:"sprint", icon:"⚡", color:"rgba(245,158,11,.95)" },
+  { key:"shield", icon:"🛡️", color:"rgba(74,222,128,.95)" },
+];
 function pickupLabel(type){
   if(type==="CASH") return "Cash";
   if(type==="AMMO") return "Ammo";
@@ -1078,17 +1096,118 @@ function xpNeededForLevel(lv){
   return 200 + lv * 80;
 }
 
+function hasProgressionUnlock(key){
+  return !!(S.progressionUnlocks && S.progressionUnlocks[key]);
+}
+
+function progressionUnlockCount(){
+  let n = 0;
+  for(const u of PROGRESSION_UNLOCKS){
+    if(hasProgressionUnlock(u.key)) n++;
+  }
+  return n;
+}
+
+function nextProgressionUnlock(){
+  for(const u of PROGRESSION_UNLOCKS){
+    if(!hasProgressionUnlock(u.key)) return u;
+  }
+  return null;
+}
+
+function comboWindowMs(){
+  return COMBO_WINDOW_MS + (hasProgressionUnlock("combo_boost") ? COMBO_WINDOW_BONUS_MS : 0);
+}
+
+function cacheRewardMul(){
+  return hasProgressionUnlock("cache_boost") ? 1.35 : 1;
+}
+
+function barricadeEffectRadius(){
+  return Math.round(128 * (hasProgressionUnlock("barrier_boost") ? 1.26 : 1));
+}
+
+function abilityCooldownMul(){
+  return hasProgressionUnlock("cooldown_boost") ? 0.84 : 1;
+}
+
+function abilityCooldownDuration(key){
+  const base = ABILITY_COOLDOWN_MS[key] || 0;
+  if(base <= 0) return 0;
+  return Math.max(500, Math.round(base * abilityCooldownMul()));
+}
+
+function ensureAbilityCooldownState(){
+  if(!S.abilityCooldowns || typeof S.abilityCooldowns !== "object"){
+    S.abilityCooldowns = { scan:0, sprint:0, shield:0 };
+  }
+  if(!Number.isFinite(S.abilityCooldowns.scan)) S.abilityCooldowns.scan = 0;
+  if(!Number.isFinite(S.abilityCooldowns.sprint)) S.abilityCooldowns.sprint = 0;
+  if(!Number.isFinite(S.abilityCooldowns.shield)) S.abilityCooldowns.shield = 0;
+}
+
+function abilityCooldownLeftMs(key, now=Date.now()){
+  ensureAbilityCooldownState();
+  return Math.max(0, (S.abilityCooldowns[key] || 0) - now);
+}
+
+function abilityOnCooldown(key){
+  return abilityCooldownLeftMs(key) > 0;
+}
+
+function abilityCooldownLabel(key){
+  const left = abilityCooldownLeftMs(key);
+  return left > 0 ? `${Math.max(1, Math.ceil(left / 1000))}s` : "";
+}
+
+function triggerAbilityCooldown(key){
+  ensureAbilityCooldownState();
+  const ms = abilityCooldownDuration(key);
+  if(ms <= 0) return;
+  S.abilityCooldowns[key] = Date.now() + ms;
+}
+
+function checkProgressionUnlocks(opts={}){
+  if(!S.progressionUnlocks || typeof S.progressionUnlocks !== "object"){
+    S.progressionUnlocks = {};
+  }
+  const silent = !!opts.silent;
+  let unlockedAny = false;
+  for(const u of PROGRESSION_UNLOCKS){
+    if(S.level >= u.level && !S.progressionUnlocks[u.key]){
+      S.progressionUnlocks[u.key] = true;
+      unlockedAny = true;
+      if(!silent){
+        toast(`🔓 Unlock: ${u.label}`);
+        setEventText(`🔓 ${u.label}: ${u.desc}`, 4);
+      }
+    }
+  }
+  if(unlockedAny){
+    for(const it of (S.mapInteractables || [])){
+      if(it.kind === "barricade"){
+        it.effectR = barricadeEffectRadius();
+      }
+    }
+    save();
+  }
+  return unlockedAny;
+}
+
 function addXP(amount){
   if(!amount) return;
   S.xp += amount;
+  let leveled = false;
 
   while(S.xp >= xpNeededForLevel(S.level)){
     S.xp -= xpNeededForLevel(S.level);
     S.level++;
     S.perkPoints++;
+    leveled = true;
     toast("Level Up! +1 Perk Point");
   }
 
+  if(leveled) checkProgressionUnlocks();
   save();
 }
 
@@ -1857,6 +1976,44 @@ function renderInventory(){
   }).join("");
 
   const civs = (S.mode==="Survival") ? [] : S.civilians.filter(c=>c.alive);
+  const perkRows = [
+    { key:"H_CRIT", name:"Deadeye", detail:(r)=>`+${(r*5).toFixed(0)}% Crit Chance` },
+    { key:"H_DMG", name:"Damage Boost", detail:(r)=>`+${(r*8).toFixed(0)}% Weapon Damage` },
+    { key:"H_JAM", name:"Anti-Jam", detail:(r)=>`-${(r*10).toFixed(0)}% Jam Chance` },
+    { key:"G_CIV_GUARD", name:"Civilian Guard", detail:(r)=>`-${(r*15).toFixed(0)}% Civilian Damage Taken` },
+    { key:"G_ARMOR", name:"Armor Efficiency", detail:(r)=>`+${(r*5).toFixed(0)}% Armor Effectiveness` },
+    { key:"T_TRAPS", name:"Trap Expansion", detail:(r)=>`+${(r*10).toFixed(0)}% Trap Radius` },
+    { key:"T_RELOAD", name:"Reload Boost", detail:(r)=>`+${(r*10).toFixed(0)}% Reload Efficiency` },
+  ];
+  const perkHtml = perkRows.map((p)=>{
+    const rank = perkRank(p.key);
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${p.name} <span class="tag">Rank ${rank}</span></div>
+          <div class="itemDesc">${p.detail(rank)}</div>
+        </div>
+        <div style="text-align:right">
+          <button ${S.perkPoints<=0?'disabled':''} onclick="buyPerk('${p.key}')">Upgrade</button>
+        </div>
+      </div>`;
+  }).join("");
+
+  const unlockHtml = PROGRESSION_UNLOCKS.map((u)=>{
+    const on = hasProgressionUnlock(u.key);
+    return `
+      <div class="item" style="padding:10px 12px; ${on ? "" : "opacity:.72;"}">
+        <div>
+          <div class="itemName">${on ? "✅" : "🔒"} ${u.label} <span class="tag">Level ${u.level}</span></div>
+          <div class="itemDesc">${u.desc}</div>
+        </div>
+      </div>`;
+  }).join("");
+  const nextUnlock = nextProgressionUnlock();
+  const progressText = nextUnlock
+    ? `Next unlock at Level ${nextUnlock.level}: ${nextUnlock.label}`
+    : "All progression unlocks completed.";
+
   document.getElementById("invSupplies").innerHTML = `
     <div class="item">
       <div>
@@ -1886,74 +2043,21 @@ function renderInventory(){
       <div style="text-align:right">
         <button ${S.trapsOwned<=0?'disabled':''} onclick="placeTrap()">Place</button>
       </div>
-    </div> 
-   <div class="divider"></div>
-<div>
-  <b>Level:</b> ${S.level} |
-  <b>XP:</b> ${S.xp}/${xpNeededForLevel(S.level)} |
-  <b>Perk Points:</b> ${S.perkPoints}
-</div>
+    </div>
 
-<div style="margin-top:8px;">
-  <div class="divider"></div>
-<div>
-  <b>Level:</b> ${S.level} |
-  <b>XP:</b> ${S.xp}/${xpNeededForLevel(S.level)} |
-  <b>Perk Points:</b> ${S.perkPoints}
-</div>
+    <div class="divider"></div>
+    <div class="item" style="padding:10px 12px;">
+      <div>
+        <div class="itemName">Progression</div>
+        <div class="itemDesc"><b>Level:</b> ${S.level} • <b>XP:</b> ${S.xp}/${xpNeededForLevel(S.level)} • <b>Perk Points:</b> ${S.perkPoints}</div>
+        <div class="itemDesc"><b>Unlocks:</b> ${progressionUnlockCount()}/${PROGRESSION_UNLOCKS.length} • ${progressText}</div>
+      </div>
+    </div>
+    ${unlockHtml}
 
-<div style="margin-top:10px; font-size:13px; line-height:1.5;">
-
-  <div>
-    <b>Deadeye</b> (Rank ${perkRank("H_CRIT")})
-    +${(perkRank("H_CRIT")*5).toFixed(0)}% Crit Chance
-    <br>
-    <button onclick="buyPerk('H_CRIT')">Upgrade</button>
-  </div>
-
-  <div>
-    <b>Damage Boost</b> (Rank ${perkRank("H_DMG")})
-    +${(perkRank("H_DMG")*8).toFixed(0)}% Weapon Damage
-    <br>
-    <button onclick="buyPerk('H_DMG')">Upgrade</button>
-  </div>
-
-  <div>
-    <b>Anti-Jam</b> (Rank ${perkRank("H_JAM")})
-    -${(perkRank("H_JAM")*10).toFixed(0)}% Jam Chance
-    <br>
-    <button onclick="buyPerk('H_JAM')">Upgrade</button>
-  </div>
-
-  <div>
-    <b>Civilian Guard</b> (Rank ${perkRank("G_CIV_GUARD")})
-    -${(perkRank("G_CIV_GUARD")*15).toFixed(0)}% Civilian Damage Taken
-    <br>
-    <button onclick="buyPerk('G_CIV_GUARD')">Upgrade</button>
-  </div>
-
-  <div>
-    <b>Armor Efficiency</b> (Rank ${perkRank("G_ARMOR")})
-    +${(perkRank("G_ARMOR")*5).toFixed(0)}% Armor Effectiveness
-    <br>
-    <button onclick="buyPerk('G_ARMOR')">Upgrade</button>
-  </div>
-
-  <div>
-    <b>Trap Expansion</b> (Rank ${perkRank("T_TRAPS")})
-    +${(perkRank("T_TRAPS")*10).toFixed(0)}% Trap Radius
-    <br>
-    <button onclick="buyPerk('T_TRAPS')">Upgrade</button>
-  </div>
-
-  <div>
-    <b>Reload Boost</b> (Rank ${perkRank("T_RELOAD")})
-    +${(perkRank("T_RELOAD")*10).toFixed(0)}% Reload Efficiency
-    <br>
-    <button onclick="buyPerk('T_RELOAD')">Upgrade</button>
-  </div>
-
-</div>
+    <div class="divider"></div>
+    <div class="hudTitle">Perks</div>
+    ${perkHtml}
 `;
 }
 
@@ -2467,6 +2571,26 @@ function mapInteractablePool(){
       { kind:"alarm", label:"Plant Alarm", x:w*0.18, y:h*0.22 },
       { kind:"barricade", label:"Steel Gate", x:w*0.56, y:h*0.50 },
       { kind:"cache", label:"Dock Cache", x:w*0.84, y:h*0.76 }
+    ],
+    AR_ARENA_BAY: [
+      { kind:"alarm", label:"Arena Siren", x:w*0.18, y:h*0.26 },
+      { kind:"barricade", label:"Bay Gate", x:w*0.56, y:h*0.50 },
+      { kind:"cache", label:"Pit Cache", x:w*0.83, y:h*0.74 }
+    ],
+    AR_NEON_GRID: [
+      { kind:"alarm", label:"Neon Beacon", x:w*0.17, y:h*0.24 },
+      { kind:"barricade", label:"Grid Wall", x:w*0.58, y:h*0.48 },
+      { kind:"cache", label:"Arc Cache", x:w*0.82, y:h*0.70 }
+    ],
+    AR_SAND_YARD: [
+      { kind:"alarm", label:"Dust Alarm", x:w*0.20, y:h*0.18 },
+      { kind:"barricade", label:"Dune Barrier", x:w*0.55, y:h*0.52 },
+      { kind:"cache", label:"Yard Cache", x:w*0.84, y:h*0.77 }
+    ],
+    AR_STEEL_PIT: [
+      { kind:"alarm", label:"Steel Horn", x:w*0.19, y:h*0.23 },
+      { kind:"barricade", label:"Pit Lock", x:w*0.57, y:h*0.50 },
+      { kind:"cache", label:"Steel Cache", x:w*0.83, y:h*0.73 }
     ]
   };
   const fallback = [
@@ -2498,7 +2622,7 @@ function spawnMapInteractables(){
     uses: it.kind === "cache" ? 1 : 99,
     cooldownUntil: 0,
     activeUntil: 0,
-    effectR: it.kind === "barricade" ? 128 : 0
+    effectR: it.kind === "barricade" ? barricadeEffectRadius() : 0
   }));
 }
 
@@ -2545,6 +2669,7 @@ function activateMapInteractable(it){
   }
 
   if(it.kind==="barricade"){
+    it.effectR = barricadeEffectRadius();
     it.activeUntil = now + 9500;
     it.cooldownUntil = now + 21000;
     setEventText("🧱 Barrier deployed: tigers are forced around the block zone.", 3);
@@ -2553,12 +2678,13 @@ function activateMapInteractable(it){
   }
 
   if(it.kind==="cache"){
-    const cash = rand(180, 520);
+    const cash = Math.round(rand(180, 520) * cacheRewardMul());
     S.funds += cash;
     S.stats.cashEarned += cash;
     const w = equippedWeapon();
     if(w){
-      const refill = Math.max(2, Math.floor(w.mag * 0.6));
+      const refillBase = Math.max(2, Math.floor(w.mag * 0.6));
+      const refill = Math.round(refillBase * (hasProgressionUnlock("cache_boost") ? 1.25 : 1));
       S.ammoReserve[w.ammo] = (S.ammoReserve[w.ammo] || 0) + refill;
     }
     if(Math.random() < 0.45){
@@ -2617,7 +2743,7 @@ function awardCombo(kind){
   const now = Date.now();
   const within = (S.comboExpireAt || 0) > now;
   S.comboCount = within ? (S.comboCount || 0) + 1 : 1;
-  S.comboExpireAt = now + COMBO_WINDOW_MS;
+  S.comboExpireAt = now + comboWindowMs();
   S.comboBest = Math.max(S.comboBest || 0, S.comboCount || 0);
 
   const baseCash = kind==="capture" ? 180 : 120;
@@ -3002,6 +3128,10 @@ function deploy(){
   S.dangerCivId = null;
   S.shields = 1;
   S.shieldUntil = 0;
+  ensureAbilityCooldownState();
+  S.abilityCooldowns.scan = 0;
+  S.abilityCooldowns.sprint = 0;
+  S.abilityCooldowns.shield = 0;
 
   if(S.mode!=="Survival") S.evacZone = randomEvacZone();
   S.backupActive=0;
@@ -3025,6 +3155,7 @@ function deploy(){
   S.stats.trapsTriggered = 0;
   S._arcadeNoKillWarned = false;
   S._storyFinalOutcome = null;
+  checkProgressionUnlocks({ silent:true });
 
   spawnRescueSites();
   spawnMapInteractables();
@@ -3749,9 +3880,11 @@ function clearOutOfRangeLock(){
 function scan(){
   if(!tutorialAllows("scan")) return toast(tutorialBlockMessage("scan"));
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
+  if(abilityOnCooldown("scan")) return toast(`Scan cooling down (${abilityCooldownLabel("scan")}).`);
   if(S.stamina < STAMINA_COST_SCAN) return toast("Not enough stamina.");
   S.stamina -= STAMINA_COST_SCAN;
   S.scanPing=140;
+  triggerAbilityCooldown("scan");
   if(!window.TigerTutorial?.isRunning) lockNearestTiger({ silent:true });
   sfx("scan"); hapticImpact("light"); save();
   unlockAchv("scan1","First Scan");
@@ -3825,18 +3958,22 @@ function movePlayer(){
 
 function sprint(){
   if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
+  if(abilityOnCooldown("sprint")) return toast(`Sprint cooling down (${abilityCooldownLabel("sprint")}).`);
   if(S.stamina < STAMINA_COST_SPRINT) return toast("Not enough stamina.");
   S.stamina -= STAMINA_COST_SPRINT;
   S._sprintTicks=82;
+  triggerAbilityCooldown("sprint");
   sfx("ui"); hapticImpact("light"); save();
   unlockAchv("sprint1","Sprint");
 }
 
 function activateShield(){
   if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
+  if(abilityOnCooldown("shield")) return toast(`Shield cooling down (${abilityCooldownLabel("shield")}).`);
   if((S.shields||0) <= 0) return toast("No shields left. Buy more in Shop.");
   S.shields = Math.max(0, (S.shields||0) - 1);
   S.shieldUntil = Date.now() + SHIELD_DURATION_MS;
+  triggerAbilityCooldown("shield");
   S.eventText = "🛡️ Escort Shield active for 5 seconds.";
   S.eventTextUntil = Date.now() + 1500;
   sfx("ui");
@@ -4541,6 +4678,55 @@ function combatWeaponLabel(dir){
   return words.slice(0,2).join(" ");
 }
 
+function paintAbilityCooldownButton(btn, key){
+  if(!btn) return;
+  const left = abilityCooldownLeftMs(key);
+  const total = Math.max(1, abilityCooldownDuration(key));
+
+  if(!btn.dataset.baseBg) btn.dataset.baseBg = btn.style.background || "";
+  if(!btn.dataset.baseBorder) btn.dataset.baseBorder = btn.style.borderColor || "";
+  if(!btn.dataset.baseText && !btn.classList.contains("touchBtn")){
+    btn.dataset.baseText = btn.innerText;
+  }
+
+  const iconEl = btn.querySelector?.(".touchBtnIcon");
+  if(iconEl && !iconEl.dataset.baseIcon) iconEl.dataset.baseIcon = iconEl.innerText;
+
+  if(left > 0){
+    const ratio = clamp(left / total, 0, 1);
+    const deg = Math.round(ratio * 360);
+    const sec = Math.max(1, Math.ceil(left / 1000));
+    btn.style.borderColor = "rgba(251,191,36,.72)";
+    btn.style.background = `conic-gradient(rgba(6,10,18,.82) ${deg}deg, rgba(24,30,44,.28) 0deg), rgba(11,16,28,.52)`;
+    btn.title = `${key} cooling down (${sec}s)`;
+    if(iconEl){
+      iconEl.innerText = `${sec}`;
+      iconEl.style.fontSize = "18px";
+    } else if(btn.dataset.baseText){
+      const base = btn.dataset.baseText.replace(/\s*\(\d+s\)\s*$/,"");
+      btn.innerText = `${base} (${sec}s)`;
+    }
+    return;
+  }
+
+  btn.style.background = btn.dataset.baseBg;
+  btn.style.borderColor = btn.dataset.baseBorder;
+  btn.title = "";
+  if(iconEl){
+    iconEl.innerText = iconEl.dataset.baseIcon || iconEl.innerText;
+    iconEl.style.fontSize = "";
+  } else if(btn.dataset.baseText){
+    btn.innerText = btn.dataset.baseText;
+  }
+}
+
+function renderAbilityCooldownUi(){
+  paintAbilityCooldownButton(document.getElementById("scanBtn"), "scan");
+  paintAbilityCooldownButton(document.getElementById("touchScanBtn"), "scan");
+  paintAbilityCooldownButton(document.getElementById("touchSprintBtn"), "sprint");
+  document.querySelectorAll("[data-shield-btn]").forEach((btn)=>paintAbilityCooldownButton(btn, "shield"));
+}
+
 function renderCombatControls(){
   const touchOverlay = document.querySelector(".touchOverlay");
   const touchHint = document.querySelector(".touchHint");
@@ -4576,6 +4762,7 @@ function renderCombatControls(){
   const nextDesktop = document.getElementById("combatNextWeaponBtn");
   if(prevDesktop) prevDesktop.innerText = `◀️ ${prevLabel}`;
   if(nextDesktop) nextDesktop.innerText = `${nextLabel} ▶️`;
+  renderAbilityCooldownUi();
   if(controllerOwnsUi() || anyGamepadOverlayVisible()) syncGamepadFocus();
 }
 
@@ -5197,7 +5384,7 @@ function renderHUD(){
 
   const backupStr = (S.backupActive>0) ? `ACTIVE (${Math.ceil(S.backupActive/60)}s)` : (S.backupCooldown>0 ? `Cooldown (${Math.ceil(S.backupCooldown/60)}s)` : "Ready");
   document.getElementById("backupTxt").innerText = `${backupStr} • Squad A:${S.soldierAttackersOwned||0} R:${S.soldierRescuersOwned||0}`;
-  const shieldDisabled = S.paused || S.missionEnded || S.gameOver || (S.shields||0)<=0;
+  const shieldDisabled = S.paused || S.missionEnded || S.gameOver || (S.shields||0)<=0 || abilityOnCooldown("shield");
   document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = shieldDisabled; });
 
   document.getElementById("mapTxt").innerText = currentMap().name;
@@ -5303,6 +5490,11 @@ function renderHUD(){
   if(!anyWeaponHasAmmo()) assistParts.unshift("Out of ammo. Visit Shop before the next fight.");
   else if(S.mag.loaded<=0 && equippedWeaponHasAmmoNow()) assistParts.unshift("Magazine empty. Attack reloads or switch weapons.");
   if(S.stamina < 20) assistParts.push("Low stamina");
+  const cooldownBits = [];
+  if(abilityOnCooldown("scan")) cooldownBits.push(`Scan ${abilityCooldownLabel("scan")}`);
+  if(abilityOnCooldown("sprint")) cooldownBits.push(`Sprint ${abilityCooldownLabel("sprint")}`);
+  if(abilityOnCooldown("shield")) cooldownBits.push(`Shield ${abilityCooldownLabel("shield")}`);
+  if(cooldownBits.length) assistParts.push(cooldownBits.join(" • "));
 
   document.getElementById("assistTxt").innerText = assistParts.slice(0,3).join(" • ") || "Sweep the map, scan, and keep pressure off civilians.";
   document.getElementById("eventTxt").innerText = S.eventText ? `EVENT: ${S.eventText}` : "";
@@ -5378,6 +5570,7 @@ function renderHUD(){
         : (window.matchMedia?.("(pointer:fine)")?.matches
             ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Tap map devices to trigger alarms, barriers, and caches."
             : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear. Tap map devices for alarms, barriers, and caches.");
+    renderAbilityCooldownUi();
   }catch(err){
     const now = Date.now();
     if((window.__tsHudErrAt || 0) + 3000 < now){
@@ -5764,6 +5957,61 @@ function drawMapInteractable(it){
   ctx.restore();
 }
 
+function drawAbilityCooldownWheel(){
+  if(S.inBattle) return;
+  const x = cv.width - 42;
+  const startY = 56;
+  const gap = 56;
+  const now = Date.now();
+
+  ctx.save();
+  ctx.textAlign = "center";
+  for(let i=0; i<ABILITY_WHEEL.length; i++){
+    const info = ABILITY_WHEEL[i];
+    const y = startY + i * gap;
+    const left = abilityCooldownLeftMs(info.key, now);
+    const total = Math.max(1, abilityCooldownDuration(info.key));
+    const ratio = clamp(left / total, 0, 1);
+
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = "rgba(8,12,22,.72)";
+    ctx.beginPath();
+    ctx.arc(x, y, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.92;
+    ctx.strokeStyle = "rgba(20,30,45,.92)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, 18, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if(left > 0){
+      const sweep = ratio * Math.PI * 2;
+      ctx.strokeStyle = "rgba(251,191,36,.96)";
+      ctx.lineWidth = 3.4;
+      ctx.beginPath();
+      ctx.arc(x, y, 18, -Math.PI / 2, (-Math.PI / 2) + sweep, false);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,235,180,.95)";
+      ctx.font = "800 9px system-ui";
+      ctx.fillText(`${Math.max(1, Math.ceil(left / 1000))}`, x, y + 29);
+    } else {
+      ctx.strokeStyle = info.color;
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.arc(x, y, 18, -Math.PI / 2, (Math.PI * 1.5), false);
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 0.96;
+    ctx.fillStyle = "rgba(245,247,255,.96)";
+    ctx.font = "900 13px system-ui";
+    ctx.fillText(info.icon, x, y + 4);
+  }
+  ctx.restore();
+}
+
 function drawPickup(p){
   const color = (p.type==="CASH") ? "rgba(74,222,128,.95)"
     : (p.type==="AMMO") ? "rgba(58,120,255,.95)"
@@ -6118,6 +6366,7 @@ function drawEntities(){
   for(const unit of (S.supportUnits || [])) drawSupportUnit(unit);
   for(const t of S.tigers){ if(t.alive) drawTiger(t); }
   drawSoldier();
+  drawAbilityCooldownWheel();
   drawCombatFx();
 }
 
@@ -6196,11 +6445,13 @@ function init(){
   if(!S.evacZone) S.evacZone = { ...DEFAULT.evacZone };
   if(!Number.isFinite(S.shields)) S.shields = 1;
   if(!Number.isFinite(S.shieldUntil)) S.shieldUntil = 0;
+  ensureAbilityCooldownState();
   if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
   if(!Number.isFinite(S.soldierRescuersOwned)) S.soldierRescuersOwned = 0;
   if(!Number.isFinite(S.comboCount)) S.comboCount = 0;
   if(!Number.isFinite(S.comboBest)) S.comboBest = 0;
   if(!Number.isFinite(S.comboExpireAt)) S.comboExpireAt = 0;
+  if(!S.progressionUnlocks || typeof S.progressionUnlocks !== "object") S.progressionUnlocks = {};
   if(S.paused && !S.gameOver && !S.missionEnded){
     S.paused = false;
     S.pauseReason = null;
@@ -6252,7 +6503,8 @@ function init(){
     if(!Number.isFinite(it.uses)) it.uses = it.kind === "cache" ? 1 : 99;
     if(!Number.isFinite(it.cooldownUntil)) it.cooldownUntil = 0;
     if(!Number.isFinite(it.activeUntil)) it.activeUntil = 0;
-    if(!Number.isFinite(it.effectR)) it.effectR = it.kind === "barricade" ? 128 : 0;
+    if(!Number.isFinite(it.effectR)) it.effectR = it.kind === "barricade" ? barricadeEffectRadius() : 0;
+    if(it.kind === "barricade") it.effectR = barricadeEffectRadius();
   }
   if(Array.isArray(S.supportUnits) && S.supportUnits.length > 16){
     S.supportUnits = S.supportUnits.slice(0,16);
@@ -6264,6 +6516,7 @@ function init(){
   if(!window.__TUTORIAL_MODE__ && (!Array.isArray(S.mapInteractables) || !S.mapInteractables.length)){
     spawnMapInteractables();
   }
+  checkProgressionUnlocks({ silent:true });
 
   awardDailyLogin();
   bindAttackButtonGestures();
