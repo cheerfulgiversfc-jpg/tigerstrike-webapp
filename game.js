@@ -2386,11 +2386,101 @@ window.exitTutorialMode = function () {
 // --------------------------------------------------
 
 function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
-function randomEvacZone(){
+function randomEvacZone(civilians=[]){
+  const r = 70;
+  const minX = 110;
+  const maxX = cv.width - 90;
+  const minY = 120;
+  const maxY = cv.height - 90;
+  const validCivs = (Array.isArray(civilians) ? civilians : [])
+    .filter((c)=>c && Number.isFinite(c.x) && Number.isFinite(c.y) && c.alive !== false && !c.evac);
+
+  if(!validCivs.length){
+    return {
+      x: rand(minX, maxX),
+      y: rand(minY, maxY),
+      r
+    };
+  }
+
+  const candidates = [];
+  const cols = 12;
+  const rows = 9;
+  for(let yi=0; yi<=rows; yi++){
+    const py = minY + ((maxY - minY) * (yi / rows));
+    for(let xi=0; xi<=cols; xi++){
+      const px = minX + ((maxX - minX) * (xi / cols));
+      candidates.push({ x:px, y:py });
+    }
+  }
+
+  candidates.push(
+    { x:minX, y:minY }, { x:maxX, y:minY },
+    { x:minX, y:maxY }, { x:maxX, y:maxY },
+    { x:Math.round((minX + maxX) * 0.5), y:minY },
+    { x:Math.round((minX + maxX) * 0.5), y:maxY },
+    { x:minX, y:Math.round((minY + maxY) * 0.5) },
+    { x:maxX, y:Math.round((minY + maxY) * 0.5) }
+  );
+
+  for(let i=0;i<20;i++){
+    candidates.push({
+      x: rand(minX, maxX),
+      y: rand(minY, maxY)
+    });
+  }
+
+  let best = null;
+  for(const pt of candidates){
+    let nearest = Infinity;
+    for(const civ of validCivs){
+      nearest = Math.min(nearest, dist(pt.x, pt.y, civ.x, civ.y));
+    }
+    if(!best || nearest > best.nearest){
+      best = { x:pt.x, y:pt.y, nearest };
+    }
+  }
+
+  if((best?.nearest ?? 0) < (r + 12)){
+    for(let i=0;i<50;i++){
+      const trialX = rand(minX, maxX);
+      const trialY = rand(minY, maxY);
+      let nearest = Infinity;
+      for(const civ of validCivs){
+        nearest = Math.min(nearest, dist(trialX, trialY, civ.x, civ.y));
+      }
+      if(!best || nearest > best.nearest){
+        best = { x:trialX, y:trialY, nearest };
+      }
+    }
+  }
+
+  if(best){
+    let zx = best.x;
+    let zy = best.y;
+    for(let pass=0; pass<4; pass++){
+      let nearest = Infinity;
+      let nearestCiv = null;
+      for(const civ of validCivs){
+        const d = dist(zx, zy, civ.x, civ.y);
+        if(d < nearest){
+          nearest = d;
+          nearestCiv = civ;
+        }
+      }
+      if(nearest >= (r + 8) || !nearestCiv) break;
+      const angle = Math.atan2(zy - nearestCiv.y, zx - nearestCiv.x) || 0;
+      const push = (r + 18) - nearest;
+      zx = clamp(zx + Math.cos(angle) * push, minX, maxX);
+      zy = clamp(zy + Math.sin(angle) * push, minY, maxY);
+      best = { x:zx, y:zy, nearest };
+    }
+  }
+
   return {
-    x: rand(140, cv.width - 80),
-    y: rand(130, cv.height - 80),
-    r:70
+    x: clamp(Math.round(best?.x ?? rand(minX, maxX)), minX, maxX),
+    y: clamp(Math.round(best?.y ?? rand(minY, maxY)), minY, maxY),
+    r
   };
 }
 
@@ -3186,8 +3276,9 @@ function deploy(){
   S.abilityCooldowns.sprint = 0;
   S.abilityCooldowns.shield = 0;
 
-  if(S.mode!=="Survival") S.evacZone = randomEvacZone();
+  if(S.mode!=="Survival") S.evacZone = null;
   S.backupActive=0;
+  S._escortSlotById = {};
 
   // phase 1
   S.fogUntil = 0;
@@ -3215,6 +3306,9 @@ function deploy(){
   spawnSupportUnits();
   spawnTigers();
   spawnCivilians();
+  if(S.mode!=="Survival" && !window.__TUTORIAL_MODE__){
+    S.evacZone = randomEvacZone(S.civilians);
+  }
 
   // spawn a couple guaranteed pickups early
   spawnPickup("CASH", 260, clamp(cv.height - 150, 220, cv.height - 80));
@@ -4176,8 +4270,8 @@ function followCiviliansTick(){
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const engageDist = 58;
   const followMaxDist = 360;
-  const baseBehind = 50;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
+  const activeFollowers = [];
 
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
@@ -4196,15 +4290,83 @@ function followCiviliansTick(){
       continue;
     }
 
-    const laneOffset = ((c.id % 3) - 1) * 12;
-    const anchorX = S.me.x - Math.cos(face) * (baseBehind + laneOffset * 0.25) + Math.sin(face) * laneOffset;
-    const anchorY = S.me.y - Math.sin(face) * (baseBehind + laneOffset * 0.25) - Math.cos(face) * laneOffset * 0.4;
+    activeFollowers.push(c);
+  }
 
-    const dx = anchorX - c.x;
-    const dy = anchorY - c.y;
+  if(!activeFollowers.length){
+    S._escortSlotById = {};
+    return;
+  }
+
+  const cols = Math.min(4, Math.max(2, activeFollowers.length >= 6 ? 4 : 3));
+  const sideGap = 34;
+  const rowGap = 34;
+  const baseBehind = 58;
+  const anchors = [];
+
+  for(let i=0;i<activeFollowers.length;i++){
+    const row = Math.floor(i / cols);
+    const col = i % cols;
+    const colsInRow = Math.min(cols, activeFollowers.length - (row * cols));
+    const center = (colsInRow - 1) * 0.5;
+    const lateral = ((col - center) * sideGap) + ((row % 2) ? sideGap * 0.4 : 0);
+    const back = baseBehind + (row * rowGap) + (Math.abs(lateral) * 0.16);
+    anchors.push({
+      x: S.me.x - Math.cos(face) * back + Math.sin(face) * lateral,
+      y: S.me.y - Math.sin(face) * back - Math.cos(face) * lateral
+    });
+  }
+
+  if(!S._escortSlotById || typeof S._escortSlotById !== "object"){
+    S._escortSlotById = {};
+  }
+  const slotById = S._escortSlotById;
+  const assigned = new Map();
+  const usedSlots = new Set();
+  const activeIds = new Set(activeFollowers.map((c)=>c.id));
+
+  for(const key of Object.keys(slotById)){
+    if(!activeIds.has(Number(key))) delete slotById[key];
+  }
+
+  for(const c of activeFollowers){
+    const prev = slotById[c.id];
+    if(Number.isInteger(prev) && prev >= 0 && prev < anchors.length && !usedSlots.has(prev)){
+      assigned.set(c.id, prev);
+      usedSlots.add(prev);
+    }
+  }
+
+  for(const c of activeFollowers){
+    if(assigned.has(c.id)) continue;
+    let bestSlot = -1;
+    let bestDist = Infinity;
+    for(let i=0;i<anchors.length;i++){
+      if(usedSlots.has(i)) continue;
+      const a = anchors[i];
+      const d = dist(c.x, c.y, a.x, a.y);
+      if(d < bestDist){
+        bestDist = d;
+        bestSlot = i;
+      }
+    }
+    if(bestSlot < 0) continue;
+    assigned.set(c.id, bestSlot);
+    usedSlots.add(bestSlot);
+  }
+
+  for(const c of activeFollowers){
+    const slot = assigned.get(c.id);
+    if(!Number.isInteger(slot)) continue;
+    slotById[c.id] = slot;
+    const anchor = anchors[slot];
+    if(!anchor) continue;
+
+    const dx = anchor.x - c.x;
+    const dy = anchor.y - c.y;
     const dd = Math.hypot(dx,dy) || 1;
-    const catchup = clamp((dd - 22) * 0.032, 0, 2.1);
-    const sp = Math.min(Math.max(playerSpeed * 0.95, 2.25) + catchup, 4.95);
+    const catchup = clamp((dd - 16) * 0.04, 0, 3.3);
+    const sp = Math.min(Math.max(playerSpeed * 1.02, 2.35) + catchup, PLAYER_SPRINT_SPEED + 1.5);
     tryMoveEntity(c, c.x + (dx/dd)*sp, c.y + (dy/dd)*sp, 14);
   }
 }
