@@ -1348,16 +1348,66 @@ function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr){
   return (dx*dx + dy*dy) <= cr*cr;
 }
 function blockedAt(x, y, radius){
+  const now = Date.now();
   for(const carcass of (S.carcasses || [])){
-    if(rectCircleCollide(carcass.x - 14, carcass.y - 8, 28, 16, x, y, radius)) return true;
+    // Fresh blood should not hard-lock entities in place.
+    if((now - (carcass.bornAt || 0)) < 1300) continue;
+    if(rectCircleCollide(carcass.x - 11, carcass.y - 6, 22, 12, x, y, radius)) return true;
+  }
+  return false;
+}
+function tryCarcassEscape(ent, radius, minX, maxX, minY, maxY){
+  let nearest = null;
+  let nearestD = Infinity;
+  for(const carcass of (S.carcasses || [])){
+    if(!rectCircleCollide(carcass.x - 11, carcass.y - 6, 22, 12, ent.x, ent.y, radius)) continue;
+    const d = dist(ent.x, ent.y, carcass.x, carcass.y);
+    if(d < nearestD){
+      nearest = carcass;
+      nearestD = d;
+    }
+  }
+  if(!nearest) return false;
+
+  let angle = Math.atan2(ent.y - nearest.y, ent.x - nearest.x);
+  if(!Number.isFinite(angle)) angle = Math.random() * Math.PI * 2;
+  const basePush = Math.max(6, radius * 0.9);
+
+  for(let i=0;i<8;i++){
+    const scale = 1 + (i * 0.35);
+    const nx = clamp(ent.x + Math.cos(angle) * basePush * scale, minX, maxX);
+    const ny = clamp(ent.y + Math.sin(angle) * basePush * scale, minY, maxY);
+    if(!blockedAt(nx, ny, radius)){
+      ent.x = nx;
+      ent.y = ny;
+      return true;
+    }
+    angle += Math.PI / 4;
   }
   return false;
 }
 function tryMoveEntity(ent, nx, ny, radius){
+  const minX = 30 + radius;
+  const maxX = cv.width - (30 + radius);
+  const minY = 48 + radius;
+  const maxY = cv.height - (22 + radius);
+  nx = clamp(nx, minX, maxX);
+  ny = clamp(ny, minY, maxY);
+
   const ox = ent.x, oy = ent.y;
   if(!blockedAt(nx, oy, radius)) ent.x = nx;
   if(!blockedAt(ent.x, ny, radius)) ent.y = ny;
-  if(blockedAt(ent.x, ent.y, radius)){ ent.x = ox; ent.y = oy; return false; }
+  ent.x = clamp(ent.x, minX, maxX);
+  ent.y = clamp(ent.y, minY, maxY);
+
+  if(blockedAt(ent.x, ent.y, radius)){
+    const escaped = tryCarcassEscape(ent, radius, minX, maxX, minY, maxY);
+    if(!escaped || blockedAt(ent.x, ent.y, radius)){
+      ent.x = clamp(ox, minX, maxX);
+      ent.y = clamp(oy, minY, maxY);
+      return false;
+    }
+  }
   return true;
 }
 
@@ -1654,7 +1704,7 @@ function openShop(){
 }
 function closeShop(){
   document.getElementById("shopOverlay").style.display="none";
-  if(lastOverlay==="complete" && S.missionEnded){
+  if(S.missionEnded){
     setPaused(true,"complete");
     document.getElementById("completeOverlay").style.display="flex";
     lastOverlay=null; return;
@@ -1680,7 +1730,7 @@ function openInventory(){
 }
 function closeInventory(){
   document.getElementById("invOverlay").style.display="none";
-  if(lastOverlay==="complete" && S.missionEnded){
+  if(S.missionEnded){
     setPaused(true,"complete");
     document.getElementById("completeOverlay").style.display="flex";
     lastOverlay=null; return;
@@ -5287,7 +5337,7 @@ function finishTigerKill(t){
   markStoryFinalBossOutcome("KILL", t);
   t.alive=false;
   breakCombo("tiger killed");
-  S.carcasses.push({ x:t.x, y:t.y });
+  S.carcasses.push({ x:t.x, y:t.y, bornAt:Date.now() });
   if(S.carcasses.length > MAX_PERSIST_CARCASSES){
     S.carcasses = S.carcasses.slice(-MAX_PERSIST_CARCASSES);
   }
@@ -6702,6 +6752,23 @@ function drawSoldier(){
 
   ctx.fillStyle="rgba(245,158,11,.90)";
   ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, Math.PI*2); ctx.fill();
+
+  if(S.inBattle){
+    const hpPct = Math.round(clamp((S.hp / 100) * 100, 0, 100));
+    const hpRatio = clamp(S.hp / 100, 0, 1);
+    const labelY = y - 46;
+    ctx.fillStyle = "rgba(9,12,18,.86)";
+    roundedRectFill(x - 28, labelY - 12, 56, 16, 7);
+    ctx.fillStyle = "rgba(245,247,255,.94)";
+    ctx.font = "900 10px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(`${hpPct}%`, x, labelY);
+    ctx.fillStyle = "rgba(11,13,18,.88)";
+    ctx.fillRect(x - 24, labelY + 4, 48, 4);
+    ctx.fillStyle = hpRatio > 0.5 ? "#4ade80" : (hpRatio > 0.2 ? "#f59e0b" : "#fb7185");
+    ctx.fillRect(x - 24, labelY + 4, 48 * hpRatio, 4);
+    ctx.textAlign = "start";
+  }
 }
 
 function drawSupportUnit(unit){
@@ -6903,6 +6970,15 @@ function drawTiger(t){
   ctx.fillRect(x-26*s,y-34*s,52*s,6);
   ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
   ctx.fillRect(x-26*s,y-34*s,52*s*pct,6);
+  if(S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id)){
+    ctx.fillStyle="rgba(9,12,18,.85)";
+    roundedRectFill(x - (22*s), y - (49*s), 44*s, 12*s, 5*s);
+    ctx.fillStyle="rgba(245,247,255,.95)";
+    ctx.font=`900 ${Math.round(10*s)}px system-ui`;
+    ctx.textAlign="center";
+    ctx.fillText(`${Math.round(clamp(pct, 0, 1) * 100)}%`, x, y-(40*s));
+    ctx.textAlign="start";
+  }
 
   ctx.globalAlpha=0.85*alpha;
   ctx.fillStyle="rgba(245,247,255,.80)";
@@ -6952,6 +7028,7 @@ function draw(){
     updateEngage();
 
     if(!(S.gameOver || S.paused || S.missionEnded)){
+      runFrameTask("clampWorld", 180, clampWorldToCanvas);
       regen();
       runFrameTask("backupTick", 42, backupTick);
       runFrameTask("trapTick", 34, trapTick);
