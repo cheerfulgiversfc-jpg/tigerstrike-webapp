@@ -18,10 +18,21 @@
     if(window.getComputedStyle(el).display === "none") return null;
     return el;
   }
+  function visibleSelector(selector){
+    const nodes = document.querySelectorAll(selector);
+    for(const el of nodes){
+      if(!el) continue;
+      if(el.getClientRects().length === 0) continue;
+      if(window.getComputedStyle(el).display === "none") continue;
+      return el;
+    }
+    return null;
+  }
   function tutorialTarget(id){
     if(id === "shopBtn") return visibleEl("shopBtn") || visibleEl("navShopBtn");
     if(id === "invBtn") return visibleEl("invBtn") || visibleEl("navInvBtn");
     if(id === "scanBtn") return visibleEl("scanBtn") || visibleEl("touchScanBtn");
+    if(id === "shieldBtn") return visibleSelector("[data-shield-btn]") || visibleEl("touchShieldBtn");
     if(id === "atkBtn") return visibleEl("atkBtn") || visibleEl("touchAttackBtn") || visibleEl("combatAttackBtn");
     return visibleEl(id);
   }
@@ -32,16 +43,24 @@
     return [
       {
         key:"intro",
-        title:"Tutorial",
-        text:"Welcome to Tiger Strike.\nYou will learn movement, escorting civilians, scanning, locking targets, and basic combat.",
+        title:"Story Tutorial",
+        text:"Welcome to Tiger Strike Story Mode.\nYou will learn movement, escorting civilians, on-map combat, and your new systems.",
         hint:"Tap Next to begin.",
         arrow:null,
         canNext: () => true
       },
       {
+        key:"storyflow",
+        title:"Mission Flow",
+        text:"Story missions are objective-based:\n1) Keep civilians alive\n2) Escort them to SAFE ZONE\n3) Clear or capture tigers.\nYour Agent + Mission HUD stays above the map.",
+        hint:"Tap Next to begin.",
+        arrow:"objTxt",
+        canNext: () => true
+      },
+      {
         key:"move",
         title:"Move",
-        text:"Step 1: Tap anywhere on the map to move your agent.",
+        text:"Tap anywhere on the map to move your agent.",
         hint:"Tap the map once.",
         arrow:"cv",
         canNext: () => window.TigerTutorial.mapClicked === true
@@ -49,24 +68,24 @@
       {
         key:"escort",
         title:"Escort Civilian",
-        text:"Step 2: Move close to the civilian, then guide them into the green evac zone.",
-        hint:"Stay near the civilian so they follow you to safety.",
+        text:"Move close to the civilian, then guide them into the green SAFE ZONE.",
+        hint:"Stay near them so they follow you.",
         arrow:"evacZone",
         canNext: () => (getS()?.evacDone || 0) >= 1
       },
       {
         key:"scan",
         title:"Scan",
-        text:"Step 3: Press Scan to reveal the tiger.",
-        hint:"Tap the Scan button once.",
+        text:"Press Scan to locate the tiger.",
+        hint:"Tap Scan once.",
         arrow:"scanBtn",
         canNext: () => (getS()?.scanPing || 0) > 0
       },
       {
         key:"lock",
         title:"Lock Target",
-        text:"Step 4: Tap the tiger on the map to lock onto it.",
-        hint:"The lock is working when a blue ring appears around the tiger.",
+        text:"Tap a tiger on the map to lock it.",
+        hint:"Blue ring = locked.",
         arrow:"tiger",
         canNext: () => {
           const S = getS();
@@ -75,9 +94,9 @@
       },
       {
         key:"engage",
-        title:"Engage",
-        text:"Step 5: Move close to the locked tiger, then tap that same tiger again to engage.",
-        hint:"The tiger with the blue ring is the only one you can engage right now.",
+        title:"Engage On Map",
+        text:"Move into range and tap that same locked tiger again to engage.",
+        hint:"Combat stays on the main map screen.",
         arrow:"tiger",
         canNext: () => {
           const S = getS();
@@ -86,17 +105,41 @@
       },
       {
         key:"attack",
-        title:"Attack",
-        text:"Step 6: Press Attack once to learn the battle flow.",
-        hint:"Fire one shot, then tap Next.",
+        title:"Fire Weapon",
+        text:"Press Attack once.",
+        hint:"Fire one shot to continue.",
         arrow:"atkBtn",
         canNext: () => (getS()?.stats?.shots || 0) >= 1
       },
       {
+        key:"capture_rules",
+        title:"Capture Rules",
+        text:"Capture uses the tranq weapon required for that tiger type.\nCapture is available at 25% HP or lower.",
+        hint:"Tap Next.",
+        arrow:"tigerTxt",
+        canNext: () => true
+      },
+      {
+        key:"interactables",
+        title:"Map Interactables",
+        text:"Story maps include interactables:\n• Alarm (stagger/reveal)\n• Barricade (block zone)\n• Cache (supplies/cash).",
+        hint:"Tap Next.",
+        arrow:"cv",
+        canNext: () => true
+      },
+      {
+        key:"shield",
+        title:"Shield Ability",
+        text:"Use Shield to protect yourself and nearby civilians for 5 seconds.",
+        hint:"Tap Shield once.",
+        arrow:"shieldBtn",
+        canNext: () => (getS()?.shieldUntil || 0) > Date.now()
+      },
+      {
         key:"shop",
         title:"Shop",
-        text:"Step 7: Open the Shop to buy ammo, gear, armor, and tools.",
-        hint:"Tap Shop once.",
+        text:"Open Shop. You can buy during a run when needed.",
+        hint:"Tap Shop.",
         arrow:"shopBtn",
         canNext: () => {
           const el = byId("shopOverlay");
@@ -104,9 +147,21 @@
         }
       },
       {
+        key:"squad",
+        title:"Squad Specialists",
+        text:"Open the Squad tab.\nTiger Specialist + Rescue Specialist unlock at Level 15 and cost $50,000 each.",
+        hint:"Tap Squad tab in Shop.",
+        arrow:"tabSquad",
+        canNext: () => {
+          const shop = byId("shopOverlay");
+          const tab = byId("tabSquad");
+          return !!(shop && tab && shop.style.display === "flex" && tab.classList.contains("active"));
+        }
+      },
+      {
         key:"inventory",
         title:"Inventory",
-        text:"Step 8: Open Inventory to review weapons and supplies.",
+        text:"Open Inventory to review weapons, ammo, supplies, and squad status.",
         hint:"Tap Inventory once.",
         arrow:"invBtn",
         canNext: () => {
@@ -117,7 +172,7 @@
       {
         key:"done",
         title:"Done",
-        text:"Step 9: Tutorial complete.\nYou are ready to protect civilians, evacuate survivors, and deal with tigers.",
+        text:"Tutorial complete.\nYou are ready for Story missions.",
         hint:"Tap Finish.",
         arrow:null,
         finish:true,
@@ -257,7 +312,7 @@
     if(step.key === "attack"){
       try{ window.endBattle?.(); }catch(e){}
     }
-    if(step.key === "shop"){
+    if(step.key === "squad"){
       try{ window.closeShop?.(); }catch(e){}
     }
     if(step.key === "inventory"){

@@ -1120,11 +1120,11 @@ function tutorialAllows(action){
   const key = tutorialKey();
   if(!key) return true;
   const allow = {
-    scan:["scan","lock","engage","attack","shop","inventory","done"],
-    lock:["lock","engage","attack","shop","inventory","done"],
-    engage:["engage","attack","shop","inventory","done"],
+    scan:["scan","lock","engage","attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
+    lock:["lock","engage","attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
+    engage:["engage","attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
     attack:["attack"],
-    shop:["shop","inventory","done"],
+    shop:["shop","squad","inventory","done"],
     inventory:["inventory","done"],
   };
   return !allow[action] || allow[action].includes(key);
@@ -1134,7 +1134,7 @@ function tutorialBlockMessage(action){
   if(action==="lock") return "Scan first, then tap the tiger to lock it.";
   if(action==="engage") return "Scan and lock the tiger before engaging.";
   if(action==="attack") return "Enter battle through the Engage step first.";
-  if(action==="shop") return "Finish the combat basics before opening the shop.";
+  if(action==="shop") return "Finish combat and shield basics before opening the shop.";
   if(action==="inventory") return "Open Inventory after the Shop step.";
   return "Follow the tutorial steps in order.";
 }
@@ -2489,6 +2489,12 @@ window.enterTutorialMode = function () {
   S.stats.evac = 0;
   S.stats.trapsPlaced = 0;
   S.stats.trapsTriggered = 0;
+  S.shields = Math.max(1, S.shields || 0);
+  S.shieldUntil = 0;
+  ensureAbilityCooldownState();
+  S.abilityCooldowns.scan = 0;
+  S.abilityCooldowns.sprint = 0;
+  S.abilityCooldowns.shield = 0;
 
   // Tutorial loadout guarantees Attack and Capture steps can proceed.
   if(!S.ownedWeapons.includes("W_9MM_JUNK")) S.ownedWeapons.push("W_9MM_JUNK");
