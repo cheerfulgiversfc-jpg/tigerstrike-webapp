@@ -818,6 +818,7 @@ window.setPaused = window.setPaused || function(){};
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
 const COMBAT_FX = [];
+const DAMAGE_POPUPS = [];
 
 function load(){
   try{
@@ -5268,8 +5269,9 @@ function evacCheck(){
 // ===================== CIVILIANS UNDER ATTACK (slower damage) =====================
 function tickCiviliansAndThreats(){
   if(S.mode==="Survival") return;
+  const now = Date.now();
 
-  if(Date.now() < (S.civGraceUntil||0)){
+  if(now < (S.civGraceUntil||0)){
     S._underAttack=0;
     S.dangerCivId=null;
     return;
@@ -5316,7 +5318,12 @@ function tickCiviliansAndThreats(){
       const protectMult = S._protectTicks > 0 ? 0.45 : 1;
       const shieldMult = civilianShielded(best) ? 0 : 1;
       const dmg = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * shieldMult;
+      const prevHp = best.hp;
       best.hp = clamp(best.hp - (dmg * perkCivMul()), 0, best.hpMax);
+      if(prevHp > best.hp && now >= (best._nextDmgPopupAt || 0)){
+        best._nextDmgPopupAt = now + 240;
+        emitDamagePopup(best.x, best.y - 40, `-${Math.max(1, Math.round(prevHp - best.hp))}`, "civilian");
+      }
     }
   }
 
@@ -5836,6 +5843,54 @@ function drawCombatFx(){
     ctx.moveTo(fx.x1, fx.y1);
     ctx.lineTo(fx.x2, fx.y2);
     ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function emitDamagePopup(x, y, text, kind="hit"){
+  if(!Number.isFinite(x) || !Number.isFinite(y) || text == null) return;
+  if(DAMAGE_POPUPS.length >= 56){
+    DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - 55);
+  }
+  DAMAGE_POPUPS.push({
+    x, y,
+    text: String(text),
+    kind,
+    ttl: 32,
+    maxTtl: 32,
+    vy: kind === "player" ? -1.55 : -1.15,
+    drift: (Math.random() - 0.5) * 0.35
+  });
+}
+
+function tickDamagePopups(){
+  for(const p of DAMAGE_POPUPS){
+    p.ttl -= 1;
+    p.y += p.vy;
+    p.x += p.drift;
+  }
+  for(let i=DAMAGE_POPUPS.length-1; i>=0; i--){
+    if(DAMAGE_POPUPS[i].ttl <= 0) DAMAGE_POPUPS.splice(i, 1);
+  }
+}
+
+function drawDamagePopups(){
+  for(const p of DAMAGE_POPUPS){
+    const a = clamp(p.ttl / p.maxTtl, 0, 1);
+    let color = "rgba(245,247,255,.95)";
+    if(p.kind === "crit") color = "rgba(252,211,77,.98)";
+    else if(p.kind === "tranq") color = "rgba(125,211,252,.98)";
+    else if(p.kind === "player") color = "rgba(248,113,113,.98)";
+    else if(p.kind === "civilian") color = "rgba(251,191,36,.96)";
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = "rgba(9,12,18,.84)";
+    roundedRectFill(p.x - 16, p.y - 10, 32, 14, 5);
+    ctx.fillStyle = color;
+    ctx.font = "900 11px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.textAlign = "start";
     ctx.restore();
   }
 }
@@ -6390,6 +6445,7 @@ function playerAction(action){
       const civDmg = Math.max(4, Math.round(dmg * 0.7));
       victim.hp = clamp(victim.hp - civDmg, 0, victim.hpMax);
       emitCombatFx(S.me.x, S.me.y - 6, victim.x, victim.y, "rgba(251,191,36,.95)", 3);
+      emitDamagePopup(victim.x, victim.y - 42, `-${civDmg}`, "civilian");
       hapticImpact("medium");
       setBattleMsg(`Friendly fire! Civilian #${victim.id} took ${civDmg}.`);
     } else {
@@ -6399,6 +6455,7 @@ function playerAction(action){
         t.hp = clamp(t.hp - dmg, 0, t.hpMax);
       }
       emitCombatFx(S.me.x, S.me.y - 6, t.x, t.y, w.type==="tranq" ? "rgba(96,165,250,.96)" : "rgba(245,247,255,.96)", crit ? 4 : 3);
+      emitDamagePopup(t.x, t.y - 44, `-${dmg}`, crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"));
       hapticImpact(crit ? "heavy" : "light");
       setBattleMsg(`${crit?'CRIT! ':''}Hit for ${dmg}. ${w.type==='tranq'?'(tranq applied)':''}`);
     }
@@ -6445,6 +6502,7 @@ function tigerTurn(t, softened=false){
   setTigerIntent(t, "Strike", 440);
 
   emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(251,113,133,.95)", 3);
+  emitDamagePopup(S.me.x, S.me.y - 50, `-${dmg}`, "player");
   applyPlayerDamage(dmg,false);
   if(S.inBattle) setBattleMsg(`Tiger #${t.id} hits back for ${dmg}.`);
   updateBattleButtons();
@@ -7837,6 +7895,33 @@ function drawTiger(t){
     ctx.strokeStyle="rgba(58,120,255,.95)";
     ctx.lineWidth=3;
     ctx.beginPath(); ctx.arc(x,y,30*s,0,Math.PI*2); ctx.stroke();
+    if(!S.inBattle){
+      const dLock = dist(S.me.x, S.me.y, t.x, t.y);
+      const range = equippedWeaponRange();
+      const inRange = dLock <= range;
+      ctx.strokeStyle = inRange ? "rgba(74,222,128,.88)" : "rgba(251,191,36,.9)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash(inRange ? [6,5] : [3,5]);
+      ctx.beginPath();
+      ctx.arc(x, y, 36*s, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if(!inRange){
+        const delta = Math.max(0, Math.round(dLock - range));
+        ctx.fillStyle = "rgba(251,191,36,.96)";
+        ctx.font = "900 10px system-ui";
+        ctx.fillText(`+${delta}m`, x-14, y-57*s);
+      }
+    }
+  }
+  if(t.alive && t.hp <= captureWindowHp(t)){
+    ctx.strokeStyle = "rgba(125,211,252,.86)";
+    ctx.lineWidth = 2.2;
+    ctx.setLineDash([7,6]);
+    ctx.beginPath();
+    ctx.arc(x, y, 43*s, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   if(t.huntState === TIGER_HUNT_STATES.STALK){
@@ -7932,6 +8017,7 @@ function drawEntities(){
   drawSoldier();
   drawAbilityCooldownWheel();
   drawCombatFx();
+  drawDamagePopups();
 }
 
 // ===================== MISSION FLOW =====================
@@ -7976,6 +8062,7 @@ function draw(){
       runFrameTask("survivalPressure", frameInterval(86, 1.4), survivalPressureTick);
       combatTick();
       runFrameTask("combatFx", frameInterval(24, 1.6), tickCombatFx);
+      runFrameTask("damagePopups", frameInterval(24, 1.6), tickDamagePopups);
       checkMissionComplete();
     }
 
