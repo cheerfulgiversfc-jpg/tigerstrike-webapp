@@ -900,6 +900,10 @@ let __mapFrameCacheCanvas = null;
 let __mapFrameCacheCtx = null;
 let __mapFrameCacheSig = "";
 let __mapFrameCacheAt = 0;
+let __frameSlowUntil = 0;
+let __frameLagScore = 0;
+let __lastFrameAt = 0;
+let __drawLoopStarted = false;
 
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
@@ -942,6 +946,36 @@ function runFrameTask(key, intervalMs, fn){
   __frameTaskGate[key] = now + intervalMs;
   fn();
   return true;
+}
+
+function frameIsSlow(nowTs){
+  const now = Number.isFinite(nowTs) ? nowTs : (performance.now ? performance.now() : Date.now());
+  return now < (__frameSlowUntil || 0);
+}
+
+function frameInterval(baseMs, slowMul=1.45){
+  if(frameIsSlow()) return Math.max(baseMs + 1, Math.round(baseMs * slowMul));
+  return baseMs;
+}
+
+function updateFrameLoad(frameStartTs){
+  const now = performance.now ? performance.now() : Date.now();
+  if(!Number.isFinite(__lastFrameAt) || __lastFrameAt <= 0){
+    __lastFrameAt = now;
+    return;
+  }
+  const frameGap = now - __lastFrameAt;
+  __lastFrameAt = now;
+  const frameCost = now - frameStartTs;
+  if(frameGap > 70 || frameCost > 34){
+    __frameLagScore = Math.min(20, (__frameLagScore || 0) + 2);
+  } else {
+    __frameLagScore = Math.max(0, (__frameLagScore || 0) - 1);
+  }
+  if(__frameLagScore >= 6){
+    __frameSlowUntil = now + 2400;
+    __frameLagScore = 2;
+  }
 }
 
 // ===================== AUDIO =====================
@@ -992,7 +1026,12 @@ function toast(msg){
   clearTimeout(window.__toastTimer);
   window.__toastTimer=setTimeout(()=>t.style.display="none",2200);
 }
-function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
+function clamp(n,min,max){
+  const lo = Number.isFinite(min) ? min : 0;
+  const hi = Number.isFinite(max) ? max : lo;
+  const v = Number.isFinite(n) ? n : lo;
+  return Math.max(lo, Math.min(hi, v));
+}
 function rand(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
 function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
 function normalizeAngle(a){
@@ -1110,6 +1149,126 @@ function clampWorldToCanvas(){
   for(const it of (S.mapInteractables || [])){
     it.x = clamp(it.x, 70, cv.width - 70);
     it.y = clamp(it.y, 90, cv.height - 80);
+  }
+}
+function sanitizeRuntimeState(){
+  if(!S || typeof S !== "object") return;
+  if(!Array.isArray(S.tigers)) S.tigers = [];
+  if(!Array.isArray(S.civilians)) S.civilians = [];
+  if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
+  if(!Array.isArray(S.pickups)) S.pickups = [];
+  if(!Array.isArray(S.carcasses)) S.carcasses = [];
+  if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
+  if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
+  if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
+
+  trimPersistentState(S);
+
+  const w = cv.width || 960;
+  const h = cv.height || 540;
+  const clampX = (v, min=40, max=w-40)=>clamp(v, min, max);
+  const clampY = (v, min=60, max=h-40)=>clamp(v, min, max);
+
+  if(!S.me || typeof S.me !== "object") S.me = { ...DEFAULT.me };
+  S.me.x = clampX(S.me.x, 40, w - 40);
+  S.me.y = clampY(S.me.y, 60, h - 40);
+  if(!Number.isFinite(S.me.face)) S.me.face = 0;
+  if(!Number.isFinite(S.me.step)) S.me.step = 0;
+
+  if(!S.evacZone || typeof S.evacZone !== "object") S.evacZone = { ...DEFAULT.evacZone };
+  S.evacZone.x = clampX(S.evacZone.x, 100, w - 60);
+  S.evacZone.y = clampY(S.evacZone.y, 100, h - 60);
+  S.evacZone.r = clamp(S.evacZone.r, 38, 120);
+
+  S.tigers = S.tigers.filter((t)=>{
+    if(!t || typeof t !== "object") return false;
+    t.x = clampX(t.x, 40, w - 40);
+    t.y = clampY(t.y, 60, h - 40);
+    t.vx = clamp(Number.isFinite(t.vx) ? t.vx : 0, -8, 8);
+    t.vy = clamp(Number.isFinite(t.vy) ? t.vy : 0, -8, 8);
+    t.hpMax = Math.max(1, Math.round(Number.isFinite(t.hpMax) ? t.hpMax : 100));
+    t.hp = clamp(Number.isFinite(t.hp) ? t.hp : t.hpMax, 0, t.hpMax);
+    if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || 0, t.vx || 1);
+    if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
+    if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * Math.PI * 2;
+    t.alive = t.alive !== false && t.hp > 0;
+    return true;
+  }).slice(0, MAX_PERSIST_TIGERS);
+
+  S.civilians = S.civilians.filter((c)=>{
+    if(!c || typeof c !== "object") return false;
+    c.x = clampX(c.x, 50, w - 50);
+    c.y = clampY(c.y, 70, h - 50);
+    c.hpMax = Math.max(1, Math.round(Number.isFinite(c.hpMax) ? c.hpMax : 100));
+    c.hp = clamp(Number.isFinite(c.hp) ? c.hp : c.hpMax, 0, c.hpMax);
+    c.alive = c.alive !== false && c.hp > 0;
+    c.following = !!c.following;
+    if(!Number.isFinite(c.face)) c.face = 0;
+    if(!Number.isFinite(c.step)) c.step = 0;
+    return true;
+  }).slice(0, MAX_PERSIST_CIVILIANS);
+
+  S.supportUnits = S.supportUnits.filter((u)=>{
+    if(!u || typeof u !== "object") return false;
+    u.x = clampX(u.x, 40, w - 40);
+    u.y = clampY(u.y, 60, h - 40);
+    u.homeX = clampX(u.homeX ?? u.x, 40, w - 40);
+    u.homeY = clampY(u.homeY ?? u.y, 60, h - 40);
+    if(!u.role) u.role = "attacker";
+    u.hpMax = Math.max(1, Math.round(Number.isFinite(u.hpMax) ? u.hpMax : (u.role === "rescue" ? 220 : 280)));
+    u.hp = clamp(Number.isFinite(u.hp) ? u.hp : u.hpMax, 0, u.hpMax);
+    u.armor = clamp(Number.isFinite(u.armor) ? u.armor : (u.role === "rescue" ? 0 : 170), 0, 220);
+    if(u.role === "rescue") u.armor = 0;
+    u.alive = u.alive !== false && u.hp > 0;
+    if(!Number.isFinite(u.face)) u.face = 0;
+    if(!Number.isFinite(u.step)) u.step = 0;
+    return true;
+  }).slice(0, MAX_PERSIST_SUPPORT_UNITS);
+
+  S.pickups = S.pickups.filter((p)=>p && typeof p === "object" && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(-MAX_PERSIST_PICKUPS);
+  for(const p of S.pickups){
+    p.x = clampX(p.x, 40, w - 40);
+    p.y = clampY(p.y, 60, h - 40);
+    p.ttl = Math.max(1, Math.round(Number.isFinite(p.ttl) ? p.ttl : 1));
+  }
+  S.carcasses = S.carcasses.filter((c)=>c && typeof c === "object" && Number.isFinite(c.x) && Number.isFinite(c.y)).slice(-MAX_PERSIST_CARCASSES);
+  for(const c of S.carcasses){
+    c.x = clampX(c.x, 40, w - 40);
+    c.y = clampY(c.y, 60, h - 40);
+  }
+  S.trapsPlaced = S.trapsPlaced.filter((tr)=>tr && typeof tr === "object" && Number.isFinite(tr.x) && Number.isFinite(tr.y)).slice(-MAX_PERSIST_TRAPS);
+  for(const tr of S.trapsPlaced){
+    tr.x = clampX(tr.x, 40, w - 40);
+    tr.y = clampY(tr.y, 60, h - 40);
+    if(!Number.isFinite(tr.ttl)) tr.ttl = 0;
+  }
+  S.mapInteractables = S.mapInteractables.filter((it)=>it && typeof it === "object" && Number.isFinite(it.x) && Number.isFinite(it.y)).slice(0, MAX_PERSIST_INTERACTABLES);
+  for(const it of S.mapInteractables){
+    it.x = clampX(it.x, 70, w - 70);
+    it.y = clampY(it.y, 90, h - 80);
+    it.r = clamp(it.r, 12, 54);
+    if(!Number.isFinite(it.uses)) it.uses = 0;
+  }
+  S.rescueSites = S.rescueSites.filter((site)=>site && typeof site === "object" && Number.isFinite(site.x) && Number.isFinite(site.y)).slice(0, MAX_PERSIST_RESCUE_SITES);
+  for(const site of S.rescueSites){
+    site.x = clampX(site.x, 70, w - 70);
+    site.y = clampY(site.y, 90, h - 80);
+    site.r = clamp(site.r, 24, 96);
+  }
+
+  S.hp = clamp(S.hp, 0, 100);
+  S.armor = clamp(S.armor, 0, S.armorCap || 100);
+  S.stamina = clamp(S.stamina, 0, 100);
+  S.lives = clamp(Math.round(Number.isFinite(S.lives) ? S.lives : 5), 0, 99);
+  if(S.lockedTigerId != null && !S.tigers.some((t)=>t.id === S.lockedTigerId && t.alive)){
+    S.lockedTigerId = null;
+  }
+  if(S.activeTigerId != null && !S.tigers.some((t)=>t.id === S.activeTigerId && t.alive)){
+    S.activeTigerId = null;
+    S.inBattle = false;
+  }
+  if(COMBAT_FX.length > 96){
+    COMBAT_FX.splice(0, COMBAT_FX.length - 96);
   }
 }
 function resizeCanvasForViewport(){
@@ -5125,9 +5284,18 @@ function roamTigers(){
 
   const now = Date.now();
   const barricades = activeBarricades(now);
+  const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
+  const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
+  const packStats = Object.create(null);
+  for(const tiger of aliveTigers){
+    if(!tiger.packId) continue;
+    if(!packStats[tiger.packId]) packStats[tiger.packId] = { x:0, y:0, n:0 };
+    packStats[tiger.packId].x += tiger.x;
+    packStats[tiger.packId].y += tiger.y;
+    packStats[tiger.packId].n += 1;
+  }
 
-  for(const t of S.tigers){
-    if(!t.alive) continue;
+  for(const t of aliveTigers){
 
     abilityTick(t);
 
@@ -5144,7 +5312,7 @@ function roamTigers(){
     const def=TIGER_TYPES.find(x=>x.key===t.type) || TIGER_TYPES[1];
     const motion = tigerMotionProfile(t, def, now);
     const persona = motion.personality || tigerPersonalityProfile(t, now);
-    const civs = (S.mode!=="Survival") ? S.civilians.filter(c=>c.alive && !c.evac) : [];
+    const civs = liveCivs;
     let targetX=t.x + Math.cos(t.wanderAngle) * 20;
     let targetY=t.y + Math.sin(t.wanderAngle) * 20;
     let targetDist=Infinity;
@@ -5287,10 +5455,11 @@ function roamTigers(){
     }
 
     if(t.packId){
-      const mates = S.tigers.filter(x => x.alive && x.packId === t.packId && x.id !== t.id);
-      if(mates.length){
-        const packX = mates.reduce((sum, x) => sum + x.x, 0) / mates.length;
-        const packY = mates.reduce((sum, x) => sum + x.y, 0) / mates.length;
+      const pack = packStats[t.packId];
+      if(pack && pack.n > 1){
+        const matesCount = pack.n - 1;
+        const packX = (pack.x - t.x) / matesCount;
+        const packY = (pack.y - t.y) / matesCount;
         const pullBase = dist(t.x, t.y, packX, packY) > 58 ? 0.055 : 0.018;
         const pull = pullBase * (persona.packPullMul || 1);
         t.vx += (packX > t.x ? pull : -pull);
@@ -6443,7 +6612,8 @@ function renderHUD(){
 
 function maybeRenderHUD(force=false){
   const now = performance.now ? performance.now() : Date.now();
-  if(force || (now - __lastHudRender) >= 240){
+  const minInterval = frameIsSlow(now) ? 340 : 240;
+  if(force || (now - __lastHudRender) >= minInterval){
     __lastHudRender = now;
     renderHUD();
   }
@@ -6463,10 +6633,11 @@ function drawMapScene(){
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0
   ].join("|");
+  const cacheAgeCap = frameIsSlow() ? Math.max(MAP_CACHE_INTERVAL_MS, 120) : MAP_CACHE_INTERVAL_MS;
   const canUseCache =
     !!__mapFrameCacheCanvas &&
     __mapFrameCacheSig === cacheSig &&
-    (frameNow - __mapFrameCacheAt) < MAP_CACHE_INTERVAL_MS;
+    (frameNow - __mapFrameCacheAt) < cacheAgeCap;
   if(canUseCache){
     ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
     return;
@@ -7538,6 +7709,7 @@ function drawEntities(){
 
 // ===================== MAIN LOOP =====================
 function draw(){
+  const frameStart = performance.now ? performance.now() : Date.now();
   try{
     if(document.hidden){
       maybeAutosave();
@@ -7549,31 +7721,32 @@ function draw(){
     updateEngage();
 
     if(!(S.gameOver || S.paused || S.missionEnded)){
-      runFrameTask("clampWorld", 180, clampWorldToCanvas);
+      runFrameTask("sanitizeState", frameInterval(120, 1.9), sanitizeRuntimeState);
+      runFrameTask("clampWorld", frameInterval(180, 1.3), clampWorldToCanvas);
       regen();
-      runFrameTask("backupTick", 42, backupTick);
-      runFrameTask("trapTick", 34, trapTick);
-      runFrameTask("mapInteractableTick", 64, mapInteractableTick);
-      runFrameTask("comboTick", 110, comboTick);
+      runFrameTask("backupTick", frameInterval(42, 1.5), backupTick);
+      runFrameTask("trapTick", frameInterval(34, 1.6), trapTick);
+      runFrameTask("mapInteractableTick", frameInterval(64, 1.5), mapInteractableTick);
+      runFrameTask("comboTick", frameInterval(110, 1.4), comboTick);
 
       if(!window.TigerTutorial?.isRunning){
-        runFrameTask("tickEvents", 180, tickEvents);
-        runFrameTask("ambientPickup", 300, maybeSpawnAmbientPickup);
-        runFrameTask("tickPickups", 46, tickPickups);
+        runFrameTask("tickEvents", frameInterval(180, 1.5), tickEvents);
+        runFrameTask("ambientPickup", frameInterval(300, 1.35), maybeSpawnAmbientPickup);
+        runFrameTask("tickPickups", frameInterval(46, 1.5), tickPickups);
       }
 
-      runFrameTask("roamTigers", 34, roamTigers);
-      runFrameTask("bossReinforce", 110, bossReinforcementTick);
+      runFrameTask("roamTigers", frameInterval(34, 1.55), roamTigers);
+      runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick);
       supportUnitsTick();
       const usedKeyboard = keyboardMoveTick();
       if(!usedKeyboard) movePlayer();
       clearOutOfRangeLock();
-      runFrameTask("followCivilians", 40, followCiviliansTick);
-      runFrameTask("evacCheck", 58, evacCheck);
-      runFrameTask("civThreats", 72, tickCiviliansAndThreats);
-      runFrameTask("survivalPressure", 86, survivalPressureTick);
+      runFrameTask("followCivilians", frameInterval(40, 1.5), followCiviliansTick);
+      runFrameTask("evacCheck", frameInterval(58, 1.5), evacCheck);
+      runFrameTask("civThreats", frameInterval(72, 1.5), tickCiviliansAndThreats);
+      runFrameTask("survivalPressure", frameInterval(86, 1.4), survivalPressureTick);
       combatTick();
-      runFrameTask("combatFx", 24, tickCombatFx);
+      runFrameTask("combatFx", frameInterval(24, 1.6), tickCombatFx);
       checkMissionComplete();
     }
 
@@ -7587,6 +7760,7 @@ function draw(){
       console.error("Frame loop recovered from error:", err);
     }
   }finally{
+    updateFrameLoad(frameStart);
     requestAnimationFrame(draw);
   }
 }
@@ -7698,7 +7872,10 @@ function init(){
 
   awardDailyLogin();
   bindAttackButtonGestures();
-  requestAnimationFrame(draw);
+  if(!__drawLoopStarted){
+    __drawLoopStarted = true;
+    requestAnimationFrame(draw);
+  }
   if(S.mode === "Story" && !window.__TUTORIAL_MODE__) openStoryIntro(false);
 }
 
