@@ -572,47 +572,41 @@
 <div class="overlay" id="storyIntroOverlay">
   <div class="modal">
     <div class="modalTop">
-      <div class="modalTitle">🐯 Tiger Strike — Story Mode Intro</div>
-      <button class="ghost" onclick="startStoryIntroMission()">Skip</button>
+      <div class="modalTitle">🐯 TIGER STRIKE</div>
+      <button class="ghost" onclick="skipStoryIntro()">Skip</button>
     </div>
     <div class="modalBody storyIntroBody">
       <div class="storyScene">
-        <div class="storySceneTitle">Scene 1 — The Peaceful Jungle</div>
-        <div class="storySceneVisual">(Visual: sunrise over a large jungle. Birds flying. Villagers walking along dirt roads.)</div>
-        <div class="storySceneText"><b>Narrator</b><br>For generations…<br>The great jungle and the nearby villages lived in peace.<br><br>The people respected the jungle.<br><br>And the jungle respected them.<br><br>But something has changed.</div>
+        <div class="storySceneTitle">5-Second Briefing</div>
+        <div class="storySceneText"><b>Rescue civilians.</b> Control tiger aggression. Choose capture or kill.</div>
       </div>
-      <div class="storyScene">
-        <div class="storySceneTitle">Scene 2 — The First Attack</div>
-        <div class="storySceneVisual">(Visual: villagers running. Tiger roar echoes through the jungle.)</div>
-        <div class="storySceneText">Without warning…<br><br>The tigers began attacking villages.<br><br>Farms were abandoned.<br><br>Roads became dangerous.<br><br>Entire communities were forced to flee.<br><br>No one knew why.</div>
+      <div class="row">
+        <button class="good" onclick="beginStoryMissionFromIntro()">🎮 Begin Mission</button>
+        <button class="ghost" onclick="startQuickTutorialFromIntro()">🧭 Quick Tutorial</button>
+        <button class="ghost" onclick="skipStoryIntro()">Skip</button>
       </div>
-      <div class="storyScene">
-        <div class="storySceneTitle">Scene 3 — The Civilian Rescue Unit</div>
-        <div class="storySceneVisual">(Visual: helicopter flying over jungle. Soldiers preparing equipment.)</div>
-        <div class="storySceneText">To protect the civilians…<br><br>A special rescue force was created.<br><br>The Civilian Rescue Unit.<br><br>Their mission:<br><br>Escort civilians through the jungle and protect them from the tiger threat.<br><br>You are one of their best soldiers.</div>
-      </div>
-      <div class="storyScene">
-        <div class="storySceneTitle">Scene 4 — The Dangerous Discovery</div>
-        <div class="storySceneVisual">(Visual: scientist examining tiger blood samples.)</div>
-        <div class="storySceneText">But scientists soon discovered something terrifying.<br><br>Every time a tiger is killed…<br><br>The jungle becomes more dangerous.<br><br>The scent of tiger blood spreads through the forest.<br><br>And the remaining tigers become more aggressive.</div>
-      </div>
-      <div class="storyScene">
-        <div class="storySceneTitle">Scene 5 — The Player's Choice</div>
-        <div class="storySceneVisual">(Visual: soldier aiming weapon while civilians hide behind him.)</div>
-        <div class="storySceneText">Every mission will test your judgment.<br><br>Will you kill the tiger quickly… and risk making the jungle more dangerous?<br><br>Or will you capture the tiger… and help scientists uncover the truth?<br><br>Your choices will shape the fate of the jungle.</div>
-      </div>
-      <div class="storyScene">
-        <div class="storySceneTitle">Scene 6 — The Rising Threat</div>
-        <div class="storySceneVisual">(Visual: shadows of many tigers moving through the jungle.)</div>
-        <div class="storySceneText">As you travel deeper into the jungle…<br><br>You will discover something even more dangerous.<br><br>The tiger attacks are not random.<br><br>Something is controlling them.<br><br>Something ancient… Hidden deep within the jungle.</div>
-      </div>
-      <div class="storyScene">
-        <div class="storySceneTitle">Scene 7 — The Mission Begins</div>
-        <div class="storySceneVisual">(Visual: soldier walking into the jungle with civilians behind him.)</div>
-        <div class="storySceneText">Villagers are waiting.<br><br>Tigers are hunting.<br><br>And the jungle is watching.<br><br><b>TIGER STRIKE</b><br>Save the civilians.<br>Face the jungle.<br>Choose your path.</div>
-      </div>
-      <div class="storyIntroFooter">
-        <button class="good" onclick="startStoryIntroMission()">🎮 BEGIN MISSION</button>
+      <div class="divider"></div>
+      <button class="ghost" onclick="toggleChapterRecap()">📖 Chapter Recap</button>
+      <div class="hudLine" id="storyRecapText" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Mission Brief -->
+<div class="overlay" id="missionBriefOverlay">
+  <div class="modal" style="width:min(560px,94vw)">
+    <div class="modalTop">
+      <div class="modalTitle">📋 Mission Brief</div>
+      <button class="ghost" onclick="closeMissionBrief()">Hide</button>
+    </div>
+    <div class="modalBody">
+      <div class="hudLine"><b id="missionBriefName">Mission</b></div>
+      <div class="hudLine" id="missionBriefObjective">Objective</div>
+      <div class="hudLine" id="missionBriefRule">Special Rule</div>
+      <div class="hudLine" id="missionBriefBoss">Boss Warning</div>
+      <div class="small">Auto-hides in 2–3 seconds.</div>
+      <div class="row" style="margin-top:8px">
+        <button class="good" onclick="closeMissionBrief()">Start</button>
       </div>
     </div>
   </div>

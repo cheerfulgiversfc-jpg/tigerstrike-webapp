@@ -588,6 +588,19 @@ const STORY_CHAPTER_CUTSCENES = {
   90: "Ancient legends speak of a guardian tiger.",
 };
 
+const STORY_CHAPTER_RECAPS = [
+  "Border villages saw their first organized tiger attacks. You were deployed to escort civilians and stop the panic while command gathered evidence.",
+  "Scientists confirmed tiger blood triggers chain aggression. You now balance fast kills against long-term danger by using captures when possible.",
+  "The CRU pushed deeper into tall-grass routes and hidden trails. Pack behavior became coordinated, and stealth ambushes started appearing.",
+  "Abandoned villages proved the conflict had spread. Evac routes through homes and streets became active warzones with heavy pack pressure.",
+  "River territory turned crossings into choke points. Escort timing, trap placement, and route control became critical to keep civilians alive.",
+  "Mountain routes added visibility loss and terrain pressure. Cliff attacks and convoy defense forced tighter movement and resource discipline.",
+  "Inside core tiger territory, aggression surged and mission stakes escalated. Rescue teams now operate under constant high-threat conditions.",
+  "The Tiger King campaign exposed leadership patterns across the packs. Missions shifted to full-scale evacuation under multi-direction attacks.",
+  "Hidden jungle ruins revealed rare tiger variants and deeper coordination. Final preparation missions focused on survival and controlled captures.",
+  "The final operation enters ancient territory. Your decisions on capture versus kill determine the campaign ending and legacy rewards.",
+];
+
 function storyCampaignMission(level){
   const count = STORY_CAMPAIGN_OBJECTIVES.length;
   const n = clamp(Math.floor(level || 1), 1, count);
@@ -1726,22 +1739,174 @@ function closeMode(){
   }
   setPaused(false,null);
 }
+let __storyIntroAutoTimer = 0;
+let __missionBriefTimer = 0;
+
+function clearStoryIntroAutoTimer(){
+  if(__storyIntroAutoTimer){
+    clearTimeout(__storyIntroAutoTimer);
+    __storyIntroAutoTimer = 0;
+  }
+}
+function clearMissionBriefTimer(){
+  if(__missionBriefTimer){
+    clearTimeout(__missionBriefTimer);
+    __missionBriefTimer = 0;
+  }
+}
+function currentMissionCardData(){
+  if(S.mode==="Story"){
+    return {
+      mode: "Story",
+      total: STORY_CAMPAIGN_OBJECTIVES.length,
+      mission: storyCampaignMission(S.storyLevel)
+    };
+  }
+  if(S.mode==="Arcade"){
+    return {
+      mode: "Arcade",
+      total: ARCADE_CAMPAIGN_OBJECTIVES.length,
+      mission: arcadeCampaignMission(S.arcadeLevel)
+    };
+  }
+  return null;
+}
+function chapterRecapTextForCurrentStoryMission(){
+  const mission = storyCampaignMission(S.storyLevel);
+  const idx = clamp((mission?.chapter || 1) - 1, 0, STORY_CHAPTER_RECAPS.length - 1);
+  return STORY_CHAPTER_RECAPS[idx] || STORY_CHAPTER_RECAPS[0];
+}
+function missionObjectiveCountText(mode, mission){
+  if(!mission) return "Objective Count: mission clear.";
+  const bits = [];
+  if((mission.civilians || 0) > 0) bits.push(`${mission.civilians} civilians`);
+  if((mission.tigers || 0) > 0) bits.push(`${mission.tigers} tigers`);
+  if((mission.captureRequired || 0) > 0) bits.push(`capture ${mission.captureRequired}`);
+  if(mode==="Arcade" && (mission.trapPlaceRequired || 0) > 0) bits.push(`set ${mission.trapPlaceRequired} traps`);
+  if(mode==="Arcade" && (mission.trapTriggerRequired || 0) > 0) bits.push(`trap-stop ${mission.trapTriggerRequired}`);
+  if(mode==="Arcade" && mission.captureOnly) bits.push("no tiger kills");
+  if(!bits.length) bits.push("mission clear");
+  return `Objective Count: ${bits.join(" • ")}.`;
+}
+function missionSpecialRuleText(mode, mission){
+  if(!mission) return "Special Rule: standard mission rules.";
+  const rules = [];
+  if((mission.captureRequired || 0) > 0) rules.push(`capture objective active`);
+  if(mode==="Arcade" && mission.captureOnly) rules.push("capture-only (no kills)");
+  if(mode==="Arcade" && (mission.trapPlaceRequired || 0) > 0) rules.push("trap placement required");
+  if(mode==="Arcade" && (mission.trapTriggerRequired || 0) > 0) rules.push("trap-stop objective active");
+  if(mode==="Arcade" && mission.limitedAmmo) rules.push("limited ammo");
+  if(mission.lowVisibility) rules.push("reduced visibility");
+  if(mission.bloodAggro) rules.push("blood increases aggression");
+  if(mission.finalBoss) rules.push("final choice changes ending");
+  if(!rules.length) return "Special Rule: standard mission rules.";
+  return `Special Rule: ${rules[0]}.`;
+}
+function missionBossWarningText(mission){
+  if(!mission || !mission.boss) return "Boss Warning: none.";
+  if(mission.finalBoss) return "Boss Warning: Final boss mission.";
+  if(mission.bossTwin) return `Boss Warning: Twin ${mission.bossType || "Alpha"} Tigers.`;
+  return `Boss Warning: ${mission.bossType || "Alpha"} Tiger.`;
+}
+function shouldShowMissionBrief(){
+  if(window.__TUTORIAL_MODE__) return false;
+  if(S.mode==="Survival") return false;
+  if(S.mode==="Story" && !S.storyIntroSeen) return false;
+  return true;
+}
+function showMissionBrief(durationMs=2600){
+  const overlay = document.getElementById("missionBriefOverlay");
+  if(!overlay || !shouldShowMissionBrief()) return false;
+
+  const card = currentMissionCardData();
+  if(!card || !card.mission) return false;
+
+  const nameEl = document.getElementById("missionBriefName");
+  const objectiveEl = document.getElementById("missionBriefObjective");
+  const ruleEl = document.getElementById("missionBriefRule");
+  const bossEl = document.getElementById("missionBriefBoss");
+  if(nameEl) nameEl.innerText = `${card.mode} Mission ${card.mission.number}/${card.total} — ${card.mission.chapterName}`;
+  if(objectiveEl) objectiveEl.innerText = missionObjectiveCountText(card.mode, card.mission);
+  if(ruleEl) ruleEl.innerText = missionSpecialRuleText(card.mode, card.mission);
+  if(bossEl) bossEl.innerText = missionBossWarningText(card.mission);
+
+  clearMissionBriefTimer();
+  setPaused(true,"mission-brief");
+  overlay.style.display = "flex";
+  syncGamepadFocus();
+  const ms = clamp(Math.floor(durationMs || 2600), 2000, 3400);
+  __missionBriefTimer = setTimeout(()=>{
+    closeMissionBrief(true);
+  }, ms);
+  return true;
+}
+function closeMissionBrief(fromTimer=false){
+  clearMissionBriefTimer();
+  const overlay = document.getElementById("missionBriefOverlay");
+  if(overlay) overlay.style.display = "none";
+  if(S.paused && S.pauseReason === "mission-brief"){
+    setPaused(false,null);
+  }
+  if(!fromTimer) sfx("ui");
+  syncGamepadFocus();
+}
 function openStoryIntro(force=false){
   if(S.mode!=="Story" || window.__TUTORIAL_MODE__) return;
   if(!force && S.storyIntroSeen) return;
   const overlay = document.getElementById("storyIntroOverlay");
   if(!overlay) return;
+  const recapEl = document.getElementById("storyRecapText");
+  if(recapEl){
+    recapEl.style.display = "none";
+    recapEl.innerText = chapterRecapTextForCurrentStoryMission();
+  }
+  clearStoryIntroAutoTimer();
+  clearMissionBriefTimer();
+  closeMissionBrief(true);
   setPaused(true,"story-intro");
   overlay.style.display = "flex";
+  __storyIntroAutoTimer = setTimeout(()=>{
+    beginStoryMissionFromIntro({ auto:true });
+  }, 5000);
   syncGamepadFocus();
 }
-function startStoryIntroMission(){
+function beginStoryMissionFromIntro(){
+  clearStoryIntroAutoTimer();
+  const overlay = document.getElementById("storyIntroOverlay");
+  if(overlay) overlay.style.display = "none";
+  S.storyIntroSeen = true;
+  save();
+  const shown = showMissionBrief(rand(2200, 3000));
+  if(!shown) setPaused(false,null);
+  syncGamepadFocus();
+}
+function startQuickTutorialFromIntro(){
+  clearStoryIntroAutoTimer();
   const overlay = document.getElementById("storyIntroOverlay");
   if(overlay) overlay.style.display = "none";
   S.storyIntroSeen = true;
   setPaused(false,null);
   save();
   syncGamepadFocus();
+  window.startTutorial?.();
+}
+function skipStoryIntro(){
+  beginStoryMissionFromIntro();
+}
+function toggleChapterRecap(){
+  const recapEl = document.getElementById("storyRecapText");
+  if(!recapEl) return;
+  if(recapEl.style.display === "none" || !recapEl.style.display){
+    recapEl.innerText = chapterRecapTextForCurrentStoryMission();
+    recapEl.style.display = "block";
+  } else {
+    recapEl.style.display = "none";
+  }
+  sfx("ui");
+  syncGamepadFocus();
+}
+function startStoryIntroMission(){
+  beginStoryMissionFromIntro();
 }
 function setMode(m){
   const wantsStoryIntro = (m==="Story" && !window.__TUTORIAL_MODE__);
@@ -1775,6 +1940,7 @@ function openShop(){
   if(!tutorialAllows("shop")) return toast(tutorialBlockMessage("shop"));
   if(S.gameOver) return;
   const fromBattle = !!S.inBattle;
+  ensureSquadShopTab();
   if(S.missionEnded){
     lastOverlay="complete";
     document.getElementById("completeOverlay").style.display="none";
@@ -1857,16 +2023,51 @@ function selectQuickWeapon(id){
   closeQuickWeaponPicker();
 }
 
+function ensureSquadShopTab(){
+  let tab = document.getElementById("tabSquad");
+  if(tab) return tab;
+  const tabsWrap = document.querySelector("#shopOverlay .tabs");
+  if(!tabsWrap) return null;
+
+  tab = document.createElement("button");
+  tab.className = "tab";
+  tab.id = "tabSquad";
+  tab.type = "button";
+  tab.innerText = "Squad";
+  tab.addEventListener("click", ()=>shopTab("squad"));
+
+  const medsTab = document.getElementById("tabMeds");
+  if(medsTab && medsTab.parentElement === tabsWrap){
+    tabsWrap.insertBefore(tab, medsTab.nextSibling);
+  } else {
+    tabsWrap.appendChild(tab);
+  }
+  return tab;
+}
+
 function shopTab(tab){
+  ensureSquadShopTab();
   currentShopTab=tab;
-  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabTools","tabTraps"].forEach(id=>document.getElementById(id).classList.remove("active"));
-  if(tab==="weapons") document.getElementById("tabWeapons").classList.add("active");
-  if(tab==="ammo") document.getElementById("tabAmmo").classList.add("active");
-  if(tab==="armor") document.getElementById("tabArmor").classList.add("active");
-  if(tab==="meds") document.getElementById("tabMeds").classList.add("active");
-  if(tab==="squad") document.getElementById("tabSquad").classList.add("active");
-  if(tab==="tools") document.getElementById("tabTools").classList.add("active");
-  if(tab==="traps") document.getElementById("tabTraps").classList.add("active");
+  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabTools","tabTraps"].forEach((id)=>{
+    const el = document.getElementById(id);
+    if(el) el.classList.remove("active");
+  });
+  const activeByTab = {
+    weapons:"tabWeapons",
+    ammo:"tabAmmo",
+    armor:"tabArmor",
+    meds:"tabMeds",
+    squad:"tabSquad",
+    tools:"tabTools",
+    traps:"tabTraps",
+  };
+  const activeEl = document.getElementById(activeByTab[tab] || "tabWeapons");
+  if(activeEl){
+    activeEl.classList.add("active");
+    if(typeof activeEl.scrollIntoView === "function"){
+      activeEl.scrollIntoView({ block:"nearest", inline:"center" });
+    }
+  }
   renderShopList();
 }
 
@@ -2532,7 +2733,7 @@ window.exitTutorialMode = function () {
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
-  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","storyIntroOverlay"].forEach((id)=>{
+  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -3535,6 +3736,9 @@ function deploy(){
 
   if(S.mode==="Survival"){ S.survivalStart = Date.now(); S.surviveSeconds=0; }
 
+  if(shouldShowMissionBrief()) showMissionBrief(rand(2200, 3000));
+  else closeMissionBrief(true);
+
   save();
 }
 
@@ -3582,7 +3786,7 @@ function performResetGame(){
   localStorage.removeItem("ts_v4371");
   S = structuredClone(DEFAULT);
   syncWindowState();
-  ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","aboutOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
+  ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -3836,7 +4040,7 @@ function gamepadUiContainers(){
   const tutorial = document.getElementById("tutorialOverlay");
   if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
 
-  const overlays = ["storyIntroOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"]
+  const overlays = ["storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"]
     .map((id)=>document.getElementById(id))
     .filter((el)=>el && el.style.display === "flex");
   if(overlays.length) return overlays;
@@ -3925,7 +4129,7 @@ function activateGamepadFocus(){
 }
 
 function anyGamepadOverlayVisible(){
-  const ids = ["tutorialOverlay","storyIntroOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"];
+  const ids = ["tutorialOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"];
   return ids.some((id)=>{
     const el = document.getElementById(id);
     return !!(el && el.style.display === "flex");
@@ -7317,6 +7521,11 @@ window.pickProgressGuardAction = pickProgressGuardAction;
 window.setMode = setMode;
 window.openStoryIntro = openStoryIntro;
 window.startStoryIntroMission = startStoryIntroMission;
+window.beginStoryMissionFromIntro = beginStoryMissionFromIntro;
+window.startQuickTutorialFromIntro = startQuickTutorialFromIntro;
+window.skipStoryIntro = skipStoryIntro;
+window.toggleChapterRecap = toggleChapterRecap;
+window.closeMissionBrief = closeMissionBrief;
 
 window.nextMap = nextMap;
 window.togglePause = togglePause;
