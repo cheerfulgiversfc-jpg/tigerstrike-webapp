@@ -243,6 +243,16 @@
         z-index:5;
         opacity:.74;
       }
+      #touchCacheBtn{
+        position:absolute;
+        right:88px;
+        bottom:172px;
+        z-index:6;
+        opacity:.78;
+      }
+      #touchCacheBtn:disabled{
+        opacity:.34;
+      }
       #combatTouchCluster{display:none;grid-template-columns:repeat(2,64px)}
       .touchBtn{
         min-height:64px;
@@ -331,6 +341,7 @@
       .screenCard{width:calc(100% + 16px);margin-left:-8px;margin-right:-8px}
       .touchCluster{grid-template-columns:repeat(2,54px)}
       .touchBtn{width:54px;min-height:54px}
+      #touchCacheBtn{right:76px;bottom:154px}
     }
 
     @media (max-width:960px) and (orientation:landscape) and (max-height:540px){
@@ -468,6 +479,10 @@
             <span class="touchBtnLabel">Trap</span>
           </button>
         </div>
+        <button class="touchBtn" id="touchCacheBtn" onclick="useNearestCache()">
+          <span class="touchBtnIcon">📦</span>
+          <span class="touchBtnLabel">Cache</span>
+        </button>
         <div class="touchCluster" id="combatTouchCluster">
           <button class="touchBtn warn" id="touchAttackBtn" data-attack-btn>
             <span class="touchBtnIcon">🔫</span>

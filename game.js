@@ -141,11 +141,11 @@ const WEAPON_GRADE = {
 };
 
 const TIGER_TYPES = [
-  { key:"Scout",     hpMul:0.70, spd:3.4, civBias:0.85, stealth:0.00, rage:0.00 },
-  { key:"Standard",  hpMul:1.00, spd:2.6, civBias:0.45, stealth:0.00, rage:0.00 },
-  { key:"Alpha",     hpMul:1.35, spd:2.4, civBias:0.35, stealth:0.00, rage:0.10 },
-  { key:"Berserker", hpMul:1.15, spd:2.7, civBias:0.25, stealth:0.00, rage:0.35 },
-  { key:"Stalker",   hpMul:0.95, spd:3.1, civBias:0.55, stealth:0.55, rage:0.00 },
+  { key:"Standard",  hpMul:0.92, spd:3.00, civBias:0.42, stealth:0.00, rage:0.00 },
+  { key:"Scout",     hpMul:1.02, spd:3.42, civBias:0.62, stealth:0.00, rage:0.00 },
+  { key:"Stalker",   hpMul:1.12, spd:3.30, civBias:0.56, stealth:0.55, rage:0.00 },
+  { key:"Berserker", hpMul:1.30, spd:3.16, civBias:0.40, stealth:0.00, rage:0.42 },
+  { key:"Alpha",     hpMul:1.56, spd:3.08, civBias:0.36, stealth:0.00, rage:0.14 },
 ];
 
 const TIGER_LOCOMOTION = {
@@ -175,6 +175,38 @@ const TIGER_LOCOMOTION = {
     burstMs:[640,1020], pounceForce:1.7, pounceCd:[1300,2200], pounceChance:0.075
   }
 };
+
+const TIGER_POWER_ORDER = {
+  Standard: 1,
+  Scout: 2,
+  Stalker: 3,
+  Berserker: 4,
+  Alpha: 5,
+};
+const TIGER_DAMAGE_SCALES = {
+  player: [0.88, 0.96, 1.08, 1.22, 1.38, 1.58],
+  civilian: [1.00, 1.10, 1.22, 1.38, 1.62, 2.05],
+  support: [0.78, 0.90, 1.05, 1.22, 1.42, 1.72],
+};
+const TIGER_DEFENSE_SCALES = [0.92, 0.98, 1.08, 1.18, 1.32, 1.58];
+
+function isBossTiger(t){
+  return !!(t && t.type === "Alpha" && (t.bossPhases || 0) > 0);
+}
+function tigerPowerRank(t){
+  if(!t) return 1;
+  if(isBossTiger(t)) return 6;
+  return TIGER_POWER_ORDER[t.type] || 1;
+}
+function tigerDamageScale(t, target="player"){
+  const table = TIGER_DAMAGE_SCALES[target] || TIGER_DAMAGE_SCALES.player;
+  const idx = clamp(tigerPowerRank(t) - 1, 0, table.length - 1);
+  return table[idx];
+}
+function tigerDefenseScale(t){
+  const idx = clamp(tigerPowerRank(t) - 1, 0, TIGER_DEFENSE_SCALES.length - 1);
+  return TIGER_DEFENSE_SCALES[idx];
+}
 
 const TIGER_PERSONALITIES = {
   Hunter: {
@@ -681,7 +713,7 @@ const DEFAULT = {
   mode:"Story", arcadeLevel:1, survivalWave:1, storyLevel:1, mapIndex:0,
   soundOn:true, audioUnlocked:false,
 
-  lives:3, funds:1000, score:0, trust:80, aggro:10, stamina:100,
+  lives:5, funds:1000, score:0, trust:80, aggro:10, stamina:100,
   hp:100, armor:20, armorCap:100,
 
   ownedWeapons:["W_TRQ_PISTOL_MK1","W_9MM_JUNK","W_TRQ_RIFLE","W_TRQ_LAUNCHER"],
@@ -803,7 +835,7 @@ function load(){
     m.stats = { ...DEFAULT.stats, ...(saved.stats||{}) };
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
     m.progressionUnlocks = { ...DEFAULT.progressionUnlocks, ...(saved.progressionUnlocks||{}) };
-    if(m.lives==null) m.lives=3;
+    if(m.lives==null) m.lives=5;
     m.v = 4380;
     trimPersistentState(m);
     return m;
@@ -1486,9 +1518,14 @@ function tickEvents(){
     sfx("event"); hapticImpact("medium");
   } else if(roll < 0.52){
     // Rogue Pack: spawn 1 tiger
-    spawnRogueTiger();
-    setEventText("🚨 Rogue Pack entered the area!", 7);
-    sfx("event"); hapticImpact("heavy");
+    if(hasAliveBossTiger()){
+      setEventText("👑 Boss presence suppressed random rogue pack event.", 4);
+      sfx("ui");
+    } else {
+      spawnRogueTiger();
+      setEventText("🚨 Rogue Pack entered the area!", 7);
+      sfx("event"); hapticImpact("heavy");
+    }
   } else if(roll < 0.78){
     // Fog
     S.fogUntil = Date.now() + rand(6000, 12000);
@@ -1910,7 +1947,7 @@ function startStoryIntroMission(){
 }
 function setMode(m){
   const wantsStoryIntro = (m==="Story" && !window.__TUTORIAL_MODE__);
-  S.mode=m; S.lives=3;
+  S.mode=m; S.lives=5;
   if(m==="Arcade") S.arcadeLevel=1;
   if(m==="Survival"){ S.survivalWave=1; S.survivalStart=Date.now(); S.surviveSeconds=0; }
   if(m==="Story") S.storyLevel=1;
@@ -1986,6 +2023,13 @@ function closeInventory(){
     lastOverlay=null; return;
   }
   setPaused(false,null);
+}
+function openShopFromInventory(tab="ammo"){
+  closeInventory();
+  openShop();
+  if(document.getElementById("shopOverlay").style.display === "flex"){
+    shopTab(tab);
+  }
 }
 const WEAPON_PICKER_STATE = { paused:false, reason:null };
 
@@ -2173,7 +2217,7 @@ function renderShopList(){
       <div class="item">
         <div>
           <div class="itemName">Tiger Specialist <span class="tag">Owned: ${S.soldierAttackersOwned||0}</span> <span class="tag">${unlocked ? "Unlocked" : `Unlock L${SOLDIER_UNLOCK_LEVEL}`}</span></div>
-          <div class="itemDesc">Frontline tiger-killer. Can die in combat, then must be repurchased.</div>
+          <div class="itemDesc">Frontline tiger specialist with high HP + armor. Skilled at captures and takedowns. Persists across missions until killed.</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
@@ -2184,7 +2228,7 @@ function renderShopList(){
       <div class="item">
         <div>
           <div class="itemName">Search & Rescue Specialist <span class="tag">Owned: ${S.soldierRescuersOwned||0}</span> <span class="tag">${unlocked ? "Unlocked" : `Unlock L${SOLDIER_UNLOCK_LEVEL}`}</span></div>
-          <div class="itemDesc">Finds civilians and helps guide them toward the safe zone.</div>
+          <div class="itemDesc">Civilian escort specialist with high HP and no armor. Focuses on collecting civilians and guiding to safe zone.</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
@@ -2377,7 +2421,7 @@ function renderInventory(){
           <div class="itemDesc">Reserve: ${S.ammoReserve[aid]||0}</div>
         </div>
         <div style="text-align:right">
-          <button class="ghost" onclick="openShop(); shopTab('ammo')">Buy</button>
+          <button class="ghost" onclick="openShopFromInventory('ammo')">Buy</button>
         </div>
       </div>`;
   }).join("");
@@ -3137,6 +3181,36 @@ function findInteractableAt(x,y){
   }
   return null;
 }
+function nearestCacheInteractable(maxDist=128){
+  const items = S.mapInteractables || [];
+  let best = null;
+  let bestD = Infinity;
+  for(const it of items){
+    if(it.kind !== "cache") continue;
+    if((it.uses || 0) <= 0) continue;
+    const d = dist(S.me.x, S.me.y, it.x, it.y);
+    if(d < bestD){
+      bestD = d;
+      best = it;
+    }
+  }
+  if(!best) return null;
+  return bestD <= maxDist ? best : null;
+}
+function useNearestCache(){
+  if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
+  const cache = nearestCacheInteractable(132);
+  if(!cache){
+    toast("Move closer to a cache to open it.");
+    return;
+  }
+  const changed = activateMapInteractable(cache);
+  if(changed){
+    sfx("ui");
+    hapticImpact("light");
+    save();
+  }
+}
 
 function activeBarricades(now=Date.now()){
   return (S.mapInteractables || []).filter((it)=>it.kind==="barricade" && now < (it.activeUntil || 0));
@@ -3278,9 +3352,9 @@ function createSupportUnit(role, slotIndex=0){
     homeY: S.me.y,
     face:0,
     step:rand(0,1000),
-    hp: attacker ? 185 : 145,
-    hpMax: attacker ? 185 : 145,
-    armor: attacker ? 95 : 50,
+    hp: attacker ? 280 : 220,
+    hpMax: attacker ? 280 : 220,
+    armor: attacker ? 170 : 0,
     fireAt:0,
     guideAt:0,
     alive:true
@@ -3288,18 +3362,42 @@ function createSupportUnit(role, slotIndex=0){
 }
 
 function spawnSupportUnits(){
-  S.supportUnits = [];
   if(window.__TUTORIAL_MODE__) return;
+  if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
 
-  const attackers = clamp(Math.floor(S.soldierAttackersOwned || 0), 0, 8);
-  const rescuers = clamp(Math.floor(S.soldierRescuersOwned || 0), 0, 8);
+  const alive = S.supportUnits.filter((unit)=>unit && unit.alive !== false);
+  const attackersWanted = clamp(Math.floor(S.soldierAttackersOwned || 0), 0, 8);
+  const rescuersWanted = clamp(Math.floor(S.soldierRescuersOwned || 0), 0, 8);
 
-  for(let i=0;i<attackers;i++){
-    S.supportUnits.push(createSupportUnit("attacker", i));
+  const attackers = alive.filter((unit)=>unit.role === "attacker").slice(0, attackersWanted);
+  const rescuers = alive.filter((unit)=>unit.role === "rescue").slice(0, rescuersWanted);
+
+  while(attackers.length < attackersWanted){
+    attackers.push(createSupportUnit("attacker", attackers.length));
   }
-  for(let i=0;i<rescuers;i++){
-    S.supportUnits.push(createSupportUnit("rescue", i));
+  while(rescuers.length < rescuersWanted){
+    rescuers.push(createSupportUnit("rescue", rescuers.length));
   }
+
+  const merged = [...attackers, ...rescuers].slice(0, 16);
+  merged.forEach((unit, idx)=>{
+    const lane = idx % 4;
+    const row = Math.floor(idx / 4);
+    const side = unit.role === "attacker" ? -1 : 1;
+    unit.homeX = S.me.x;
+    unit.homeY = S.me.y;
+    unit.x = clamp(S.me.x + side * (40 + lane * 22), 40, cv.width - 40);
+    unit.y = clamp(S.me.y + 30 + row * 22, 60, cv.height - 40);
+    unit.face = Number.isFinite(unit.face) ? unit.face : 0;
+    unit.step = Number.isFinite(unit.step) ? unit.step : rand(0, 1000);
+    if(!Number.isFinite(unit.hpMax)) unit.hpMax = unit.role === "rescue" ? 220 : 280;
+    if(!Number.isFinite(unit.hp)) unit.hp = unit.hpMax;
+    unit.hp = clamp(unit.hp, 0, unit.hpMax);
+    if(!Number.isFinite(unit.armor)) unit.armor = unit.role === "rescue" ? 0 : 170;
+    if(unit.role === "rescue") unit.armor = 0;
+    unit.alive = unit.hp > 0;
+  });
+  S.supportUnits = merged.filter((unit)=>unit.alive);
 }
 
 
@@ -3424,6 +3522,7 @@ function spawnTigers(){
       nextFadeAt:0,
       roarUntil:0,
       nextRoarAt:0,
+      nextReinforceAt:0,
       rageOn:false,
       burstUntil:0,
       nextPounceAt:0,
@@ -3454,9 +3553,10 @@ function spawnTigers(){
     count=Math.min(4+(S.survivalWave-1),10);
 
   const storyBoss=!!(storyMission && storyMission.boss);
-  const storyBossCount = storyMission?.bossTwin ? 2 : (storyBoss ? 1 : 0);
+  const storyBossCount = storyBoss ? 1 : 0;
   const arcadeBoss=!!(arcadeMission && arcadeMission.boss);
-  const arcadeBossCount = arcadeMission?.bossTwin ? 2 : (arcadeBoss ? 1 : 0);
+  const arcadeBossCount = arcadeBoss ? 1 : 0;
+  if(storyBoss || arcadeBoss) count = 1;
   const packCount = clamp(Math.ceil(count / 2), 1, 4);
   const sitePool = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice().reverse();
   const fallbackPacks = [
@@ -3496,11 +3596,11 @@ function spawnTigers(){
     let bossPhases=0;
 
     if(storyBoss && i < storyBossCount){
-      hp = Math.round(hp * (storyMission.finalBoss ? 3.1 : (storyMission.bossTwin ? 2.0 : 2.25)));
-      bossPhases = storyMission.finalBoss ? 3 : (storyMission.bossTwin ? 1 : 2);
+      hp = Math.round(hp * (storyMission.finalBoss ? 3.35 : 2.65));
+      bossPhases = storyMission.finalBoss ? 3 : 2;
     } else if(arcadeBoss && i < arcadeBossCount){
-      hp = Math.round(hp * (arcadeMission.finalBoss ? 2.9 : (arcadeMission.bossTwin ? 2.0 : 2.3)));
-      bossPhases = arcadeMission.finalBoss ? 3 : (arcadeMission.bossTwin ? 1 : 2);
+      hp = Math.round(hp * (arcadeMission.finalBoss ? 3.2 : 2.55));
+      bossPhases = arcadeMission.finalBoss ? 3 : 2;
     }
 
     const pack = packAnchors[i % packAnchors.length];
@@ -3537,6 +3637,7 @@ function spawnTigers(){
       nextFadeAt:0,
       roarUntil:0,
       nextRoarAt:0,
+      nextReinforceAt:0,
       rageOn:false,
       burstUntil:0,
       nextPounceAt:0,
@@ -3550,14 +3651,17 @@ function spawnTigers(){
   }
 }
 
-function spawnRogueTiger(){
+function spawnRogueTiger(options={}){
   if(!Array.isArray(S.tigers)) S.tigers = [];
 
   const aliveCount = S.tigers.reduce((n, t)=>n + (t?.alive ? 1 : 0), 0);
   const maxAlive = (S.mode === "Survival") ? 14 : 10;
   if(aliveCount >= maxAlive) return null;
 
-  const typeKey = pickTigerType();
+  const forcedType = (typeof options.typeKey === "string" && TIGER_TYPES.some((t)=>t.key === options.typeKey))
+    ? options.typeKey
+    : null;
+  const typeKey = forcedType || pickTigerType();
   const def = TIGER_TYPES.find((t)=>t.key===typeKey) || TIGER_TYPES[1];
   const diff = carcassDifficulty();
 
@@ -3567,21 +3671,28 @@ function spawnRogueTiger(){
   if(S.mode==="Story") baseHp = 116 + (S.storyLevel - 1) * 4;
   const hp = Math.round(baseHp * def.hpMul * diff);
 
-  const spawnEdge = rand(0, 3);
   let sx = 0;
   let sy = 0;
-  if(spawnEdge === 0){ // top
-    sx = rand(90, cv.width - 90);
-    sy = rand(72, 116);
-  } else if(spawnEdge === 1){ // right
-    sx = rand(cv.width - 116, cv.width - 72);
-    sy = rand(90, cv.height - 90);
-  } else if(spawnEdge === 2){ // bottom
-    sx = rand(90, cv.width - 90);
-    sy = rand(cv.height - 116, cv.height - 72);
-  } else { // left
-    sx = rand(72, 116);
-    sy = rand(90, cv.height - 90);
+  if(Number.isFinite(options.nearX) && Number.isFinite(options.nearY)){
+    const a = Math.random() * Math.PI * 2;
+    const r = rand(86, 170);
+    sx = options.nearX + Math.cos(a) * r;
+    sy = options.nearY + Math.sin(a) * r;
+  } else {
+    const spawnEdge = rand(0, 3);
+    if(spawnEdge === 0){ // top
+      sx = rand(90, cv.width - 90);
+      sy = rand(72, 116);
+    } else if(spawnEdge === 1){ // right
+      sx = rand(cv.width - 116, cv.width - 72);
+      sy = rand(90, cv.height - 90);
+    } else if(spawnEdge === 2){ // bottom
+      sx = rand(90, cv.width - 90);
+      sy = rand(cv.height - 116, cv.height - 72);
+    } else { // left
+      sx = rand(72, 116);
+      sy = rand(90, cv.height - 90);
+    }
   }
 
   const nextId = (S.tigers.reduce((maxId, t)=>{
@@ -3599,8 +3710,8 @@ function spawnRogueTiger(){
     hp,
     hpMax:hp,
     alive:true,
-    packId:rand(1,4),
-    aggroBoost:0.18,
+    packId:Number.isFinite(options.packId) ? options.packId : rand(1,4),
+    aggroBoost:(forcedType === "Standard") ? 0.22 : 0.18,
     civBias:clamp(def.civBias + (diff-1)*0.14, 0, 0.98),
     stealth:def.stealth,
     rage:def.rage,
@@ -3617,6 +3728,7 @@ function spawnRogueTiger(){
     nextFadeAt:0,
     roarUntil:0,
     nextRoarAt:0,
+    nextReinforceAt:0,
     rageOn:false,
     burstUntil:0,
     nextPounceAt:0,
@@ -3667,7 +3779,6 @@ function deploy(){
   S.eventText = "";
   S.eventCooldown = 240;
   S.pickups = [];
-  S.supportUnits = [];
   S.rescueSites = [];
   S.mapInteractables = [];
   S.comboCount = 0;
@@ -4529,8 +4640,11 @@ function activateShield(){
 
 function damageSupportUnit(unit, dmg){
   if(!unit || !unit.alive || dmg <= 0) return;
+  if(unit.role === "rescue"){
+    unit.armor = 0;
+  }
   if(unit.armor > 0){
-    const absorbed = Math.min(unit.armor, dmg * 0.8);
+    const absorbed = Math.min(unit.armor, dmg * 0.84);
     unit.armor = Math.max(0, unit.armor - absorbed);
     dmg = Math.max(0, dmg - absorbed);
   }
@@ -4545,10 +4659,26 @@ function damageSupportUnit(unit, dmg){
     S.soldierAttackersOwned = Math.max(0, (S.soldierAttackersOwned||0) - 1);
     toast("Tiger specialist down. Repurchase in Shop.");
   } else if(unit.role === "rescue"){
+    S.soldierRescuersOwned = Math.max(0, (S.soldierRescuersOwned||0) - 1);
     toast("Rescue specialist down.");
   }
   hapticNotif("warning");
   save();
+}
+
+function supportTigerHitDamage(tiger, role){
+  const base = (role === "attacker") ? rand(2, 4) : rand(4, 7);
+  const tier = tigerDamageScale(tiger, "support");
+  const roleMul = role === "attacker" ? 0.68 : 1.02;
+  return Math.max(1.2, base * tier * roleMul);
+}
+
+function supportAttackDamage(unit, tiger, tigerDist){
+  const rank = tigerPowerRank(tiger);
+  const base = rand(7, 12) + (tigerDist < 95 ? 4 : 1);
+  const antiTigerSkill = 1.14;
+  const targetResist = 1 - ((rank - 1) * 0.06);
+  return Math.max(4, Math.round(base * antiTigerSkill * clamp(targetResist, 0.68, 1.0)));
 }
 
 function supportUnitsTick(){
@@ -4639,27 +4769,46 @@ function supportUnitsTick(){
 
       if(unit.role === "attacker"){
         if(tigerDist < 190 && Date.now() >= (unit.fireAt || 0)){
-          unit.fireAt = Date.now() + rand(380, 620);
-          const shotDmg = rand(4,8) + (tigerDist < 95 ? 2 : 0);
+          unit.fireAt = Date.now() + rand(340, 560);
+          const shotDmg = supportAttackDamage(unit, tiger, tigerDist);
           tiger.hp = clamp(tiger.hp - shotDmg, 0, tiger.hpMax);
           tiger.aggroBoost = clamp((tiger.aggroBoost||0) + 0.05, 0, 1.4);
+          if(tiger.hp > 0 && tiger.hp <= captureWindowHp(tiger) && Math.random() < 0.36){
+            tiger.hp = Math.max(0, tiger.hp - 1);
+            tiger.tranqTagged = true;
+            if(Math.random() < 0.50){
+              markStoryFinalBossOutcome("CAPTURE", tiger);
+              tiger.alive = false;
+              S.stats.captures = (S.stats.captures || 0) + 1;
+              const pay = payout("CAPTURE");
+              const cash = Math.round(pay.cash * 0.42);
+              const score = Math.round(pay.score * 0.45);
+              S.funds += cash;
+              S.score += score;
+              S.stats.cashEarned += cash;
+              setEventText("Tiger specialist secured a capture.", 2.2);
+              break;
+            }
+          }
           if(tiger.hp <= 0){
             finishTigerKill(tiger);
             break;
           }
         }
         if(tigerDist < 74){
-          damageSupportUnit(unit, rand(4,7) * 0.55);
+          damageSupportUnit(unit, supportTigerHitDamage(tiger, "attacker"));
         }
       } else if(unit.role === "rescue"){
         if(tigerDist < 76){
-          damageSupportUnit(unit, rand(4,8));
+          damageSupportUnit(unit, supportTigerHitDamage(tiger, "rescue"));
         }
       }
     }
   }
 
   S.supportUnits = (S.supportUnits || []).filter(unit => unit.alive).slice(0, 16);
+  S.soldierAttackersOwned = S.supportUnits.filter((unit)=>unit.role === "attacker").length;
+  S.soldierRescuersOwned = S.supportUnits.filter((unit)=>unit.role === "rescue").length;
 }
 
 // ===================== CIVILIANS FOLLOW-ONLY =====================
@@ -4832,12 +4981,9 @@ function tickCiviliansAndThreats(){
     if(bd < 64){
       underAttack++;
 
-      const base = 0.12;
+      const base = 0.145;
       const diff = carcassDifficulty();
-      const isBossAlpha = (t.type==="Alpha" && t.bossPhases>0);
-      const multType =
-        isBossAlpha ? 2.8 :
-        (t.type==="Alpha") ? 2.2 : 1.0;
+      const multType = tigerDamageScale(t, "civilian");
 
       // Berserker rage increases civilian threat slightly
       const rageMult = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? 1.25 : 1.0;
@@ -4845,7 +4991,7 @@ function tickCiviliansAndThreats(){
       const guardMult = nearbySupport ? clamp(1 - nearbySupport * 0.35, 0.3, 1) : 1;
       const protectMult = S._protectTicks > 0 ? 0.45 : 1;
       const shieldMult = civilianShielded(best) ? 0 : 1;
-      const dmg = base * multType * rageMult * (1 + (diff-1)*0.20) * guardMult * protectMult * shieldMult;
+      const dmg = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * shieldMult;
       best.hp = clamp(best.hp - (dmg * perkCivMul()), 0, best.hpMax);
     }
   }
@@ -5394,6 +5540,7 @@ function renderCombatControls(){
   const touchHint = document.querySelector(".touchHint");
   const mapCluster = document.getElementById("mapTouchCluster");
   const combatCluster = document.getElementById("combatTouchCluster");
+  const cacheBtn = document.getElementById("touchCacheBtn");
   const actionButtons = document.querySelector(".actionButtons");
   const combatButtons = document.getElementById("combatButtons");
   const inCombat = !!S.inBattle;
@@ -5402,6 +5549,7 @@ function renderCombatControls(){
   if(touchHint) touchHint.style.display = hideTouchUi ? "none" : "block";
   if(mapCluster) mapCluster.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "grid");
   if(combatCluster) combatCluster.style.display = hideTouchUi ? "none" : (inCombat ? "grid" : "none");
+  if(cacheBtn) cacheBtn.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "flex");
   if(actionButtons) actionButtons.style.display = (hideTouchUi || inCombat) ? "none" : "";
   if(combatButtons) combatButtons.style.display = hideTouchUi ? "none" : (inCombat ? "flex" : "none");
 
@@ -5552,7 +5700,7 @@ function endBattle(reason){
 }
 
 function requiredTranqWeaponId(t){
-  const boss = (t.type==="Alpha" && t.bossPhases>0);
+  const boss = isBossTiger(t);
   if(boss) return "W_TRQ_LAUNCHER";
   if(t.type==="Stalker" || t.type==="Berserker") return "W_TRQ_RIFLE";
   return "W_TRQ_PISTOL_MK1";
@@ -5605,11 +5753,55 @@ function payout(outcome){
 
 function maybeReinforceOnKill(){
   if(S.mode==="Survival") return;
+  if(hasAliveBossTiger()) return;
   const chance = clamp(0.12 + (S.carcasses.length*0.01), 0.12, 0.30);
   if(Math.random() > chance) return;
 
   spawnRogueTiger();
   toast("🚨 Reinforcements arrived!");
+}
+
+function hasAliveBossTiger(){
+  return (S.tigers || []).some((t)=>t.alive && isBossTiger(t));
+}
+function bossStandardReinforcementCap(){
+  return clamp(2 + Math.floor((currentCampaignLevel() - 1) / 16), 2, 7);
+}
+function bossReinforcementTick(){
+  if(S.mode==="Survival" || S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
+  const boss = (S.tigers || []).find((t)=>t.alive && isBossTiger(t));
+  if(!boss) return;
+
+  const aliveStandards = (S.tigers || []).filter((t)=>t.alive && t.type==="Standard" && !isBossTiger(t)).length;
+  const cap = bossStandardReinforcementCap();
+  if(aliveStandards >= cap) return;
+
+  const now = Date.now();
+  const level = currentCampaignLevel();
+  const minCd = clamp(17000 - level * 110, 4200, 17000);
+  const maxCd = clamp(24500 - level * 120, 6800, 24500);
+  if(!Number.isFinite(boss.nextReinforceAt) || boss.nextReinforceAt <= 0){
+    boss.nextReinforceAt = now + rand(minCd, maxCd);
+    return;
+  }
+  if(now < boss.nextReinforceAt) return;
+
+  const want = (level >= 45 && Math.random() < 0.30) ? 2 : 1;
+  let spawned = 0;
+  for(let i=0; i<want; i++){
+    if((S.tigers || []).filter((t)=>t.alive && t.type==="Standard" && !isBossTiger(t)).length >= cap) break;
+    const spawnedTiger = spawnRogueTiger({ typeKey:"Standard", nearX:boss.x, nearY:boss.y, packId:boss.packId || 1 });
+    if(spawnedTiger){
+      spawnedTiger.intent = "Boss Call";
+      spawnedTiger.intentUntil = now + 700;
+      spawned += 1;
+    }
+  }
+  boss.nextReinforceAt = now + rand(minCd, maxCd);
+  if(spawned > 0){
+    setEventText(`👑 Boss called ${spawned} Standard reinforcement${spawned>1?"s":""}.`, 3);
+    sfx("event");
+  }
 }
 
 // ---- Ammo availability helpers (Phase 1 fix) ----
@@ -5822,9 +6014,11 @@ function playerAction(action){
 
     const victim = findFriendlyFireVictim(t);
 
-    // ability mitigation
+    // Tiger defense scales with threat rank (Boss > Alpha > Berserker > Stalker > Scout > Standard)
     dmg = Math.max(6, Math.round(dmg / carcassDifficulty()));
-    if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35) dmg = Math.max(6, Math.round(dmg*0.85));
+    dmg = Math.max(4, Math.round(dmg / tigerDefenseScale(t)));
+    if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35) dmg = Math.max(4, Math.round(dmg*0.88));
+    if(isBossTiger(t)) dmg = Math.max(3, Math.round(dmg*0.88));
 
     applyWearOnShot(w);
 
@@ -5867,16 +6061,17 @@ function tigerTurn(t, softened=false){
   const persona = tigerPersonalityProfile(t);
 
   let dmg = rand(10,18) + Math.floor((S.aggro/100)*10);
-  dmg = Math.round(dmg * diff);
+  dmg = Math.round(dmg * diff * tigerDamageScale(t, "player"));
 
   // abilities
-  if(t.type==="Scout" && Date.now() < (t.dashUntil||0)) dmg = Math.round(dmg*0.95);
-  if(t.type==="Alpha" && Date.now() < (t.roarUntil||0)) dmg = Math.round(dmg*1.12);
+  if(t.type==="Scout" && Date.now() < (t.dashUntil||0)) dmg = Math.round(dmg*1.03);
+  if(t.type==="Alpha" && Date.now() < (t.roarUntil||0)) dmg = Math.round(dmg*1.15);
   if(t.type==="Berserker"){
-    dmg=Math.floor(dmg*1.25);
-    if((t.hp/t.hpMax)<0.35) dmg=Math.floor(dmg*1.20);
+    dmg=Math.floor(dmg*1.16);
+    if((t.hp/t.hpMax)<0.35) dmg=Math.floor(dmg*1.10);
   }
-  if(t.type==="Stalker") dmg=Math.floor(dmg*1.05);
+  if(t.type==="Stalker") dmg=Math.floor(dmg*1.06);
+  if(isBossTiger(t)) dmg = Math.round(dmg * 1.18);
   if(persona.key==="Hunter") dmg = Math.round(dmg * 1.08);
   if(persona.key==="Sentinel") dmg = Math.round(dmg * 0.94);
   if(persona.key==="Fury" && (t.hp/t.hpMax) < 0.55) dmg = Math.round(dmg * 1.10);
@@ -6048,6 +6243,10 @@ function renderHUD(){
   document.getElementById("backupTxt").innerText = `${backupStr} • Squad A:${S.soldierAttackersOwned||0} R:${S.soldierRescuersOwned||0}`;
   const shieldDisabled = S.paused || S.missionEnded || S.gameOver || (S.shields||0)<=0 || abilityOnCooldown("shield");
   document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = shieldDisabled; });
+  const cacheBtn = document.getElementById("touchCacheBtn");
+  if(cacheBtn){
+    cacheBtn.disabled = S.paused || S.inBattle || S.missionEnded || S.gameOver || !nearestCacheInteractable(132);
+  }
 
   document.getElementById("mapTxt").innerText = currentMap().name;
 
@@ -7364,6 +7563,7 @@ function draw(){
       }
 
       runFrameTask("roamTigers", 34, roamTigers);
+      runFrameTask("bossReinforce", 110, bossReinforcementTick);
       supportUnitsTick();
       const usedKeyboard = keyboardMoveTick();
       if(!usedKeyboard) movePlayer();
@@ -7448,6 +7648,7 @@ function init(){
     if(!Number.isFinite(t.nextDashAt)) t.nextDashAt = 0;
     if(!Number.isFinite(t.nextFadeAt)) t.nextFadeAt = 0;
     if(!Number.isFinite(t.nextRoarAt)) t.nextRoarAt = 0;
+    if(!Number.isFinite(t.nextReinforceAt)) t.nextReinforceAt = 0;
     if(!Number.isFinite(t.enragedUntil)) t.enragedUntil = 0;
     if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || Math.sin(t.wanderAngle || 0), t.vx || Math.cos(t.wanderAngle || 0));
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
@@ -7462,10 +7663,16 @@ function init(){
   for(const unit of (S.supportUnits || [])){
     if(!unit.role) unit.role = "attacker";
     if(!unit.name) unit.name = unit.role === "rescue" ? "Rescue Specialist" : "Tiger Specialist";
-    if(!Number.isFinite(unit.hp)) unit.hp = unit.role === "rescue" ? 145 : 185;
-    if(!Number.isFinite(unit.hpMax)) unit.hpMax = unit.hp;
-    if(!Number.isFinite(unit.armor)) unit.armor = unit.role === "rescue" ? 50 : 95;
+    if(!Number.isFinite(unit.hpMax)) unit.hpMax = unit.role === "rescue" ? 220 : 280;
+    if(!Number.isFinite(unit.hp)) unit.hp = unit.hpMax;
+    unit.hp = clamp(unit.hp, 0, unit.hpMax);
+    if(!Number.isFinite(unit.armor)) unit.armor = unit.role === "rescue" ? 0 : 170;
+    if(unit.role === "rescue") unit.armor = 0;
     if(unit.alive == null) unit.alive = true;
+  }
+  if((S.soldierAttackersOwned || 0) + (S.soldierRescuersOwned || 0) <= 0 && Array.isArray(S.supportUnits) && S.supportUnits.length){
+    S.soldierAttackersOwned = S.supportUnits.filter((unit)=>unit.alive && unit.role === "attacker").length;
+    S.soldierRescuersOwned = S.supportUnits.filter((unit)=>unit.alive && unit.role === "rescue").length;
   }
   for(const it of (S.mapInteractables || [])){
     if(!it.kind) it.kind = "cache";
@@ -7536,6 +7743,7 @@ window.shopTab = shopTab;
 
 window.openInventory = openInventory;
 window.closeInventory = closeInventory;
+window.openShopFromInventory = openShopFromInventory;
 window.toggleMobileMenu = toggleMobileMenu;
 
 window.resetGame = resetGame;
@@ -7549,6 +7757,7 @@ window.placeTrap = placeTrap;
 window.callBackup = callBackup;
 window.sprint = sprint;
 window.activateShield = activateShield;
+window.useNearestCache = useNearestCache;
 
 window.playerAction = playerAction;
 window.endBattle = endBattle;
