@@ -175,6 +175,12 @@ const TIGER_LOCOMOTION = {
     burstMs:[640,1020], pounceForce:1.7, pounceCd:[1300,2200], pounceChance:0.075
   }
 };
+const TIGER_HUNT_STATES = Object.freeze({
+  PATROL: "patrol",
+  STALK: "stalk",
+  POUNCE: "pounce",
+  RECOVER: "recover",
+});
 
 const TIGER_POWER_ORDER = {
   Standard: 1,
@@ -1191,6 +1197,7 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || 0, t.vx || 1);
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * Math.PI * 2;
+    ensureTigerHuntState(t);
     t.alive = t.alive !== false && t.hp > 0;
     return true;
   }).slice(0, MAX_PERSIST_TIGERS);
@@ -1203,6 +1210,7 @@ function sanitizeRuntimeState(){
     c.hp = clamp(Number.isFinite(c.hp) ? c.hp : c.hpMax, 0, c.hpMax);
     c.alive = c.alive !== false && c.hp > 0;
     c.following = !!c.following;
+    if(!Number.isFinite(c.followGraceUntil)) c.followGraceUntil = 0;
     if(!Number.isFinite(c.face)) c.face = 0;
     if(!Number.isFinite(c.step)) c.step = 0;
     return true;
@@ -3253,6 +3261,100 @@ function setTigerIntent(t, label, ms=520){
   t.intentUntil = Date.now() + ms;
 }
 
+function ensureTigerHuntState(t, now=Date.now()){
+  if(!t) return;
+  const st = t.huntState;
+  if(st !== TIGER_HUNT_STATES.PATROL && st !== TIGER_HUNT_STATES.STALK && st !== TIGER_HUNT_STATES.POUNCE && st !== TIGER_HUNT_STATES.RECOVER){
+    t.huntState = TIGER_HUNT_STATES.PATROL;
+  }
+  if(!Number.isFinite(t.huntStateUntil) || t.huntStateUntil <= 0){
+    t.huntStateUntil = now + rand(900, 1500);
+  }
+  if(!Number.isFinite(t.pounceWindupUntil)) t.pounceWindupUntil = 0;
+  if(!Number.isFinite(t.pounceDirX)) t.pounceDirX = 0;
+  if(!Number.isFinite(t.pounceDirY)) t.pounceDirY = 0;
+}
+
+function setTigerHuntState(t, nextState, now=Date.now(), durationMs=640){
+  if(!t) return;
+  t.huntState = nextState;
+  t.huntStateUntil = now + Math.max(120, durationMs);
+  if(nextState !== TIGER_HUNT_STATES.POUNCE){
+    t.pounceWindupUntil = 0;
+  }
+}
+
+function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
+  ensureTigerHuntState(t, now);
+  const hasTarget = Number.isFinite(targetDist) && targetDist < (motion.detect + 80);
+  const inPounceBand = Number.isFinite(targetDist) && targetDist > 88 && targetDist < 340;
+
+  if(t.huntState === TIGER_HUNT_STATES.RECOVER){
+    if(now >= (t.huntStateUntil || 0)){
+      setTigerHuntState(t, hasTarget ? TIGER_HUNT_STATES.STALK : TIGER_HUNT_STATES.PATROL, now, hasTarget ? rand(700, 1200) : rand(900, 1700));
+    } else {
+      setTigerIntent(t, "Recover", 260);
+    }
+    return;
+  }
+
+  if(t.huntState === TIGER_HUNT_STATES.POUNCE){
+    if(now < (t.pounceWindupUntil || 0)){
+      setTigerIntent(t, "Pounce!", Math.max(160, (t.pounceWindupUntil || 0) - now));
+    } else {
+      setTigerIntent(t, "Pounce", 220);
+    }
+    if(now >= (t.huntStateUntil || 0)){
+      setTigerHuntState(t, TIGER_HUNT_STATES.RECOVER, now, rand(520, 820));
+      t.nextPounceAt = now + rand(motion.pounceCd[0], motion.pounceCd[1]);
+    }
+    return;
+  }
+
+  if(t.huntState === TIGER_HUNT_STATES.PATROL){
+    if(hasTarget){
+      setTigerHuntState(t, TIGER_HUNT_STATES.STALK, now, rand(700, 1300));
+      setTigerIntent(t, "Stalk", 320);
+      return;
+    }
+    if(now >= (t.huntStateUntil || 0)){
+      t.huntStateUntil = now + rand(900, 1700);
+    }
+    return;
+  }
+
+  // STALK
+  if(!hasTarget){
+    setTigerHuntState(t, TIGER_HUNT_STATES.PATROL, now, rand(950, 1700));
+    return;
+  }
+
+  if(inPounceBand && ((t.nextPounceAt || 0) - now) < 360){
+    setTigerIntent(t, "Pounce soon", 260);
+  } else {
+    setTigerIntent(t, "Stalk", 220);
+  }
+
+  if(inPounceBand && now >= (t.nextPounceAt || 0)){
+    const chance = clamp(motion.pounceChance + 0.05, 0.09, 0.34);
+    if(Math.random() < chance){
+      const dx = targetX - t.x;
+      const dy = targetY - t.y;
+      const dd = Math.hypot(dx, dy) || 1;
+      t.pounceDirX = dx / dd;
+      t.pounceDirY = dy / dd;
+      t.pounceWindupUntil = now + rand(200, 340);
+      setTigerHuntState(t, TIGER_HUNT_STATES.POUNCE, now, (t.pounceWindupUntil - now) + rand(420, 660));
+      t.burstUntil = Math.max(t.burstUntil || 0, t.huntStateUntil + 80);
+      setTigerIntent(t, "Pounce!", Math.max(200, t.pounceWindupUntil - now));
+    } else {
+      t.nextPounceAt = now + rand(440, 980);
+    }
+  } else if(now >= (t.huntStateUntil || 0)){
+    t.huntStateUntil = now + rand(700, 1300);
+  }
+}
+
 function mapInteractablePool(){
   const w = cv.width;
   const h = cv.height;
@@ -3801,6 +3903,11 @@ function spawnTigers(){
       burstUntil:0,
       nextPounceAt:0,
       enragedUntil:0,
+      huntState:TIGER_HUNT_STATES.PATROL,
+      huntStateUntil:0,
+      pounceWindupUntil:0,
+      pounceDirX:0,
+      pounceDirY:0,
       wanderAngle:Math.random()*(Math.PI*2),
       heading:Math.atan2(initialVy, initialVx),
       drawDir:initialVx >= 0 ? 1 : -1,
@@ -3892,6 +3999,11 @@ function spawnRogueTiger(options={}){
     burstUntil:0,
     nextPounceAt:0,
     enragedUntil:0,
+    huntState:TIGER_HUNT_STATES.PATROL,
+    huntStateUntil:0,
+    pounceWindupUntil:0,
+    pounceDirX:0,
+    pounceDirY:0,
     wanderAngle:Math.random()*(Math.PI*2),
     heading:0,
     drawDir:1,
@@ -4849,8 +4961,9 @@ function supportUnitsTick(){
   S._supportTickAt = now + 50; // ~20fps for support AI to reduce mobile stalls
 
   const liveCivs = (S.mode==="Survival") ? [] : S.civilians.filter(c=>c.alive && !c.evac);
-  const followCivs = liveCivs.filter(c=>c.following);
   const activeTigers = S.tigers.filter(t=>t.alive);
+  const lockTiger = S.lockedTigerId ? activeTigers.find((t)=>t.id===S.lockedTigerId) : null;
+  const dangerCiv = (S.mode==="Survival") ? null : liveCivs.find((c)=>c.id===S.dangerCivId) || null;
 
   const nearestTigerTo = (ux, uy) => {
     let best = null;
@@ -4871,6 +4984,15 @@ function supportUnitsTick(){
     return { civ: best, d: bestD };
   };
 
+  let priorityTiger = lockTiger || null;
+  if(!priorityTiger && dangerCiv){
+    priorityTiger = nearestTigerTo(dangerCiv.x, dangerCiv.y).tiger;
+  }
+  if(!priorityTiger){
+    const nearPlayer = nearestTigerTo(S.me.x, S.me.y);
+    if(nearPlayer.tiger && nearPlayer.d < 280) priorityTiger = nearPlayer.tiger;
+  }
+
   for(const unit of (S.supportUnits || [])){
     if(!unit.alive) continue;
 
@@ -4881,38 +5003,70 @@ function supportUnitsTick(){
     let targetX = unit.homeX + Math.cos(unit.step * 0.6) * 18;
     let targetY = unit.homeY + Math.sin(unit.step * 0.7) * 14;
 
-    if(unit.role === "rescue" && followCivs.length){
-      let targetCiv = (S.dangerCivId && followCivs.find(c=>c.id===S.dangerCivId)) || null;
+    if(unit.role === "rescue" && liveCivs.length){
+      const nonFollowers = liveCivs.filter((c)=>!c.following);
+      let targetCiv = dangerCiv || null;
+      if(!targetCiv && nonFollowers.length){
+        targetCiv = nonFollowers[0];
+        let bestD = dist(unit.x, unit.y, targetCiv.x, targetCiv.y);
+        for(const civ of nonFollowers){
+          const d = dist(unit.x, unit.y, civ.x, civ.y);
+          if(d < bestD){
+            bestD = d;
+            targetCiv = civ;
+          }
+        }
+      }
       if(!targetCiv){
         targetCiv = nearestCivTo(unit.x, unit.y).civ;
       }
 
       if(targetCiv){
         const civDist = dist(unit.x, unit.y, targetCiv.x, targetCiv.y);
-        if(civDist > 74){
+        const engageDist = 56;
+        if(!targetCiv.following){
           targetX = targetCiv.x;
           targetY = targetCiv.y;
-        } else {
-          targetX = (targetCiv.x + S.me.x + S.evacZone.x) / 3;
-          targetY = (targetCiv.y + S.me.y + S.evacZone.y) / 3;
+          if(civDist <= engageDist){
+            targetCiv.following = true;
+            targetCiv.followGraceUntil = now + 2500;
+          }
+        } else if(civDist > 76){
+          targetX = targetCiv.x;
+          targetY = targetCiv.y;
+        } else if(S.evacZone){
+          targetX = (targetCiv.x * 0.54) + (S.me.x * 0.24) + (S.evacZone.x * 0.22);
+          targetY = (targetCiv.y * 0.54) + (S.me.y * 0.24) + (S.evacZone.y * 0.22);
 
           if(now >= (unit.guideAt || 0)){
             unit.guideAt = now + 120;
             const gdx = S.evacZone.x - targetCiv.x;
             const gdy = S.evacZone.y - targetCiv.y;
             const gd = Math.hypot(gdx, gdy) || 1;
-            const guideSpeed = Math.min(1.45, gd);
+            const guideSpeed = Math.min(1.5, gd);
             tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14);
             targetCiv.hp = clamp(targetCiv.hp + 0.03, 0, targetCiv.hpMax);
           }
         }
       }
     } else if(unit.role === "attacker" && activeTigers.length){
-      const nearest = nearestTigerTo(unit.x, unit.y);
-      if(nearest.tiger && nearest.d < 330){
-        targetX = nearest.tiger.x;
-        targetY = nearest.tiger.y;
+      const fallback = nearestTigerTo(unit.x, unit.y);
+      const chaseTiger = priorityTiger || (fallback.d < 210 ? fallback.tiger : null);
+      if(chaseTiger){
+        const nearPlayer = dist(chaseTiger.x, chaseTiger.y, S.me.x, S.me.y) < 300;
+        const nearDanger = dangerCiv ? dist(chaseTiger.x, chaseTiger.y, dangerCiv.x, dangerCiv.y) < 210 : false;
+        const isLocked = !!lockTiger && chaseTiger.id === lockTiger.id;
+        if(isLocked || nearPlayer || nearDanger){
+          targetX = chaseTiger.x;
+          targetY = chaseTiger.y;
+        }
       }
+    }
+
+    const homeDist = dist(unit.x, unit.y, unit.homeX, unit.homeY);
+    if(homeDist > 265){
+      targetX = unit.homeX + Math.cos(unit.step * 0.55) * 14;
+      targetY = unit.homeY + Math.sin(unit.step * 0.62) * 12;
     }
 
     const dx = targetX - unit.x;
@@ -4925,10 +5079,14 @@ function supportUnitsTick(){
 
     for(const tiger of activeTigers){
       const tigerDist = dist(unit.x, unit.y, tiger.x, tiger.y);
+      const nearPlayer = dist(tiger.x, tiger.y, S.me.x, S.me.y) < 300;
+      const nearDanger = dangerCiv ? dist(tiger.x, tiger.y, dangerCiv.x, dangerCiv.y) < 210 : false;
+      const isPriority = !!priorityTiger && tiger.id === priorityTiger.id;
+      const allowEngage = isPriority || nearPlayer || nearDanger;
 
       if(unit.role === "attacker"){
-        if(tigerDist < 190 && Date.now() >= (unit.fireAt || 0)){
-          unit.fireAt = Date.now() + rand(340, 560);
+        if(allowEngage && tigerDist < 190 && now >= (unit.fireAt || 0)){
+          unit.fireAt = now + rand(340, 560);
           const shotDmg = supportAttackDamage(unit, tiger, tigerDist);
           tiger.hp = clamp(tiger.hp - shotDmg, 0, tiger.hpMax);
           tiger.aggroBoost = clamp((tiger.aggroBoost||0) + 0.05, 0, 1.4);
@@ -4954,7 +5112,7 @@ function supportUnitsTick(){
             break;
           }
         }
-        if(tigerDist < 74){
+        if(allowEngage && tigerDist < 74){
           damageSupportUnit(unit, supportTigerHitDamage(tiger, "attacker"));
         }
       } else if(unit.role === "rescue"){
@@ -4975,9 +5133,10 @@ function followCiviliansTick(){
   if(S.mode==="Survival") return;
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const engageDist = 58;
-  const followMaxDist = 360;
+  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 470 : 410;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
   const activeFollowers = [];
+  const now = Date.now();
 
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
@@ -4986,14 +5145,20 @@ function followCiviliansTick(){
     if(!c.following){
       if(toPlayer <= engageDist){
         c.following = true;
+        c.followGraceUntil = now + 2800;
       } else {
         continue;
       }
     }
 
+    if(toPlayer <= 220){
+      c.followGraceUntil = now + 1700;
+    }
     if(toPlayer > followMaxDist){
-      c.following = false;
-      continue;
+      if(now > (c.followGraceUntil || 0)){
+        c.following = false;
+        continue;
+      }
     }
 
     activeFollowers.push(c);
@@ -5385,6 +5550,7 @@ function roamTigers(){
       targetY=S.me.y;
       targetDist=playerDist;
     }
+    tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion);
 
     let chase = Number.isFinite(targetDist) && (
       targetDist < motion.detect ||
@@ -5395,6 +5561,15 @@ function roamTigers(){
     }
     if(!chase){
       t.aggroBoost = Math.max(0, (t.aggroBoost||0) - 0.004);
+    }
+    if(t.huntState === TIGER_HUNT_STATES.PATROL){
+      chase = Number.isFinite(targetDist) && targetDist < 88;
+    } else if(t.huntState === TIGER_HUNT_STATES.STALK){
+      chase = Number.isFinite(targetDist) && targetDist < motion.detect + 120;
+    } else if(t.huntState === TIGER_HUNT_STATES.POUNCE){
+      chase = true;
+    } else if(t.huntState === TIGER_HUNT_STATES.RECOVER){
+      chase = Number.isFinite(targetDist) && targetDist < motion.detect * 0.62;
     }
 
     const tx = targetX - t.x;
@@ -5416,21 +5591,27 @@ function roamTigers(){
 
     const hx = Math.cos(t.heading);
     const hy = Math.sin(t.heading);
+    const pounceWindup = (t.huntState === TIGER_HUNT_STATES.POUNCE) && now < (t.pounceWindupUntil || 0);
+    const pounceActive = (t.huntState === TIGER_HUNT_STATES.POUNCE) && !pounceWindup;
 
     if(chase && td > 22){
-      if((t.nextPounceAt||0) - now < 220 && td > 90 && td < 330) setTigerIntent(t, "Pounce", 360);
-      if(now >= (t.nextPounceAt||0) && td > 92 && td < 330 && Math.random() < motion.pounceChance){
-        t.heading = Math.atan2(uy, ux);
-        const px = Math.cos(t.heading);
-        const py = Math.sin(t.heading);
-        t.vx += px * motion.pounceForce;
-        t.vy += py * motion.pounceForce;
-        t.burstUntil = now + rand(motion.burstMs[0], motion.burstMs[1]);
-        t.nextPounceAt = now + rand(motion.pounceCd[0], motion.pounceCd[1]);
-        setTigerIntent(t, "Pounce", 520);
+      if(pounceWindup){
+        t.vx *= 0.84;
+        t.vy *= 0.84;
+      } else if(pounceActive){
+        const pdx = Math.abs(t.pounceDirX || 0) > 0.001 ? t.pounceDirX : ux;
+        const pdy = Math.abs(t.pounceDirY || 0) > 0.001 ? t.pounceDirY : uy;
+        const burstForce = motion.pounceForce * 1.24;
+        t.vx += pdx * burstForce;
+        t.vy += pdy * burstForce;
+        t.heading = Math.atan2(pdy, pdx);
+        setTigerIntent(t, "Pounce", 220);
       }
 
-      const accel = motion.chaseAccel + (now < (t.burstUntil||0) ? 0.04 : 0);
+      const stalkBoost = t.huntState === TIGER_HUNT_STATES.STALK ? 0.03 : 0;
+      const pounceBoost = pounceActive ? 0.10 : 0;
+      const recoverPenalty = t.huntState === TIGER_HUNT_STATES.RECOVER ? -0.06 : 0;
+      const accel = Math.max(0.05, motion.chaseAccel + (now < (t.burstUntil||0) ? 0.04 : 0) + stalkBoost + pounceBoost + recoverPenalty);
       const align = clamp((hx * ux) + (hy * uy), -1, 1);
       const forwardAccel = accel * (0.76 + Math.max(0, align) * 0.58);
       const steerAssist = motion.steerGain * (1 - Math.max(0, align));
@@ -5439,12 +5620,13 @@ function roamTigers(){
 
       const vel = Math.hypot(t.vx, t.vy);
       if(vel < motion.minChase){
-        const push = (motion.minChase - vel) * 0.18;
+        const push = (motion.minChase - vel) * (pounceActive ? 0.26 : 0.18);
         t.vx += ux * push;
         t.vy += uy * push;
       }
     } else {
-      t.wanderAngle += (Math.random()-0.5) * 0.19;
+      const wanderJitter = t.huntState === TIGER_HUNT_STATES.RECOVER ? 0.11 : 0.19;
+      t.wanderAngle += (Math.random()-0.5) * wanderJitter;
       const wx = Math.cos(t.wanderAngle);
       const wy = Math.sin(t.wanderAngle);
       const jitter = 0.30 + Math.random()*0.42;
@@ -5484,6 +5666,19 @@ function roamTigers(){
 
     let speedCap = chase ? motion.chase : motion.walk;
     speedCap += bloodScent * 0.55;
+    if(t.huntState === TIGER_HUNT_STATES.STALK){
+      speedCap = Math.max(speedCap, motion.chase * 1.05);
+    }
+    if(t.huntState === TIGER_HUNT_STATES.POUNCE){
+      if(pounceWindup){
+        speedCap = Math.max(motion.walk * 0.92, speedCap * 0.86);
+      } else {
+        speedCap = Math.max(speedCap, motion.sprint * 1.28);
+      }
+    }
+    if(t.huntState === TIGER_HUNT_STATES.RECOVER){
+      speedCap *= 0.84;
+    }
     if(now < (t.burstUntil||0)) speedCap = Math.max(speedCap, motion.sprint);
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap = Math.max(speedCap, motion.sprint + 0.35);
     if(t.type==="Berserker" && t.rageOn) speedCap = Math.max(speedCap, motion.sprint * 1.06);
@@ -7644,6 +7839,36 @@ function drawTiger(t){
     ctx.beginPath(); ctx.arc(x,y,30*s,0,Math.PI*2); ctx.stroke();
   }
 
+  if(t.huntState === TIGER_HUNT_STATES.STALK){
+    ctx.strokeStyle = "rgba(250,204,21,.85)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5,4]);
+    ctx.beginPath();
+    ctx.arc(x, y, 35*s, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  } else if(t.huntState === TIGER_HUNT_STATES.POUNCE){
+    const windup = now < (t.pounceWindupUntil || 0);
+    const pulse = 0.65 + (0.35 * Math.sin(now * 0.022));
+    ctx.globalAlpha = clamp(alpha * pulse, 0.25, 1);
+    ctx.strokeStyle = windup ? "rgba(251,191,36,.96)" : "rgba(248,113,113,.98)";
+    ctx.lineWidth = windup ? 2.4 : 3.2;
+    if(windup) ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    ctx.arc(x, y, (windup ? 36 : 40) * s, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = alpha;
+  } else if(t.huntState === TIGER_HUNT_STATES.RECOVER){
+    ctx.strokeStyle = "rgba(125,211,252,.72)";
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([3,5]);
+    ctx.beginPath();
+    ctx.arc(x, y, 33*s, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   if((t.intentUntil || 0) > now){
     ctx.strokeStyle="rgba(251,191,36,.92)";
     ctx.lineWidth=2.2;
@@ -7679,8 +7904,12 @@ function drawTiger(t){
   const fade = (t.type==="Stalker" && now<(t.fadeUntil||0)) ? " (FADE)" : "";
   const roar = (t.type==="Alpha" && now<(t.roarUntil||0)) ? " (ROAR)" : "";
   const rage = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? " (RAGE)" : "";
+  const hunt =
+    t.huntState === TIGER_HUNT_STATES.POUNCE ? " (POUNCE)" :
+    t.huntState === TIGER_HUNT_STATES.STALK ? " (STALK)" :
+    t.huntState === TIGER_HUNT_STATES.RECOVER ? " (RECOVER)" : "";
   const persona = t.personality ? ` • ${t.personality}` : "";
-  ctx.fillText(t.type + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage, x-44*s, y-44*s);
+  ctx.fillText(t.type + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt, x-44*s, y-44*s);
   ctx.globalAlpha=1;
 }
 
@@ -7828,9 +8057,11 @@ function init(){
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(typeof t.gaitState !== "string") t.gaitState = "walk";
     if(!Number.isFinite(t.gaitBlend)) t.gaitBlend = 0;
+    ensureTigerHuntState(t);
   }
   for(const civ of (S.civilians || [])){
     if(typeof civ.following !== "boolean") civ.following = false;
+    if(!Number.isFinite(civ.followGraceUntil)) civ.followGraceUntil = 0;
     if(!Number.isFinite(civ.face)) civ.face = 0;
     if(!Number.isFinite(civ.step)) civ.step = 0;
   }
