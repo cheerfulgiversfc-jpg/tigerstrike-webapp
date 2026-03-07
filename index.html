@@ -631,6 +631,7 @@
         <button class="tab" id="tabAmmo" onclick="shopTab('ammo')">Ammo</button>
         <button class="tab" id="tabArmor" onclick="shopTab('armor')">Armory</button>
         <button class="tab" id="tabMeds" onclick="shopTab('meds')">Med Kits</button>
+        <button class="tab" id="tabSquad" onclick="shopTab('squad')">Squad</button>
         <button class="tab" id="tabTools" onclick="shopTab('tools')">Tools</button>
         <button class="tab" id="tabTraps" onclick="shopTab('traps')">Traps</button>
       </div>
@@ -717,6 +718,22 @@
         <button class="good" onclick="startNextMission()">Start Next Mission</button>
         <button class="ghost" onclick="openShop()">Shop First</button>
         <button class="ghost" onclick="openInventory()">Inventory</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mission Progress Guard -->
+<div class="overlay" id="progressGuardOverlay">
+  <div class="modal">
+    <div class="modalTop"><div class="modalTitle">Mission Progress Options</div><button class="ghost" onclick="pickProgressGuardAction('cancel')">Back</button></div>
+    <div class="modalBody">
+      <div class="hudLine" id="progressGuardText"></div>
+      <div class="divider"></div>
+      <div class="row">
+        <button class="good" onclick="pickProgressGuardAction('next')">Start Next Mission</button>
+        <button class="ghost" onclick="pickProgressGuardAction('mode')">Play Another Mode</button>
+        <button class="ghost" onclick="pickProgressGuardAction('reset')">Restart From Mission 1</button>
       </div>
     </div>
   </div>

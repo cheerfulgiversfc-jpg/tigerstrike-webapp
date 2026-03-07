@@ -1083,7 +1083,8 @@ const PLAYER_SPRINT_SPEED = 3.9;
 const SHIELD_DURATION_MS = 5000;
 const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
-const SOLDIER_PRICE = 15000;
+const SOLDIER_PRICE = 50000;
+const SOLDIER_UNLOCK_LEVEL = 15;
 const ABILITY_COOLDOWN_MS = { scan:6800, sprint:5200, shield:12000 };
 const ABILITY_WHEEL = [
   { key:"scan", icon:"🛰️", color:"rgba(96,165,250,.95)" },
@@ -1103,6 +1104,14 @@ function isTypingContext(target){
   if(!el) return false;
   const tag = el.tagName;
   return el.isContentEditable || tag==="INPUT" || tag==="TEXTAREA" || tag==="SELECT";
+}
+function currentCampaignLevel(){
+  if(S.mode==="Story") return Math.max(1, S.storyLevel || 1);
+  if(S.mode==="Arcade") return Math.max(1, S.arcadeLevel || 1);
+  return Math.max(1, S.survivalWave || 1);
+}
+function soldierUnlockLevelReached(){
+  return currentCampaignLevel() >= SOLDIER_UNLOCK_LEVEL;
 }
 function tutorialKey(){
   return window.TigerTutorial?.isRunning ? (window.TigerTutorial.currentKey || null) : null;
@@ -1640,12 +1649,83 @@ function togglePause(){
   setPaused(!S.paused,"manual"); sfx("ui");
 }
 
-function openMode(){
+function currentMissionLabel(){
+  if(S.mode==="Story") return `Story Mission ${clamp(S.storyLevel || 1, 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
+  if(S.mode==="Arcade") return `Arcade Mission ${clamp(S.arcadeLevel || 1, 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
+  return `Survival Wave ${Math.max(1, S.survivalWave || 1)}`;
+}
+function nextMissionLabel(){
+  if(S.mode==="Story") return `Story Mission ${Math.min((S.storyLevel || 1) + 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
+  if(S.mode==="Arcade") return `Arcade Mission ${Math.min((S.arcadeLevel || 1) + 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
+  return `Survival Wave ${Math.max(1, (S.survivalWave || 1) + 1)}`;
+}
+function openMissionProgressGuard(source=""){
+  const overlay = document.getElementById("progressGuardOverlay");
+  const text = document.getElementById("progressGuardText");
+  if(!overlay || !text) return;
+  const reason =
+    source==="mode"
+      ? "Switching mode now can interrupt your current mission progress."
+      : source==="reset"
+        ? "Reset will restart progress from Mission 1."
+        : "Choose what you want to do with your mission progress.";
+  text.innerText = `${reason}\nCurrent: ${currentMissionLabel()}\nNext available: ${nextMissionLabel()}`;
+  document.getElementById("completeOverlay").style.display = "none";
+  setPaused(true,"progress-guard");
+  overlay.style.display = "flex";
+}
+function closeMissionProgressGuard(restoreComplete=true){
+  const overlay = document.getElementById("progressGuardOverlay");
+  if(overlay) overlay.style.display = "none";
+  if(restoreComplete && S.missionEnded && !S.gameOver){
+    setPaused(true,"complete");
+    document.getElementById("completeOverlay").style.display = "flex";
+    return;
+  }
+  setPaused(false,null);
+}
+function pickProgressGuardAction(action){
+  if(action==="cancel"){
+    closeMissionProgressGuard(true);
+    return;
+  }
+  if(action==="next"){
+    closeMissionProgressGuard(false);
+    startNextMission();
+    return;
+  }
+  if(action==="reset"){
+    closeMissionProgressGuard(false);
+    performResetGame();
+    return;
+  }
+  if(action==="mode"){
+    closeMissionProgressGuard(false);
+    openModeOverlay();
+  }
+}
+
+function openModeOverlay(){
   setPaused(true,"mode");
   document.getElementById("modeOverlay").style.display="flex";
   updateModeDesc(); markModeTabs(); sfx("ui");
 }
-function closeMode(){ document.getElementById("modeOverlay").style.display="none"; setPaused(false,null); }
+function openMode(){
+  if(S.missionEnded && !S.gameOver){
+    openMissionProgressGuard("mode");
+    return;
+  }
+  openModeOverlay();
+}
+function closeMode(){
+  document.getElementById("modeOverlay").style.display="none";
+  if(S.missionEnded && !S.gameOver){
+    setPaused(true,"complete");
+    document.getElementById("completeOverlay").style.display="flex";
+    return;
+  }
+  setPaused(false,null);
+}
 function openStoryIntro(force=false){
   if(S.mode!=="Story" || window.__TUTORIAL_MODE__) return;
   if(!force && S.storyIntroSeen) return;
@@ -1695,7 +1775,11 @@ function openShop(){
   if(!tutorialAllows("shop")) return toast(tutorialBlockMessage("shop"));
   if(S.gameOver) return;
   const fromBattle = !!S.inBattle;
-  if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
+  if(S.missionEnded){
+    lastOverlay="complete";
+    document.getElementById("completeOverlay").style.display="none";
+    currentShopTab = "squad";
+  }
   setPaused(true, fromBattle ? "shop-battle" : "shop");
   document.getElementById("shopOverlay").style.display="flex";
   if(fromBattle && !anyLethalWeaponHasAmmo()) currentShopTab = "ammo";
@@ -1775,11 +1859,12 @@ function selectQuickWeapon(id){
 
 function shopTab(tab){
   currentShopTab=tab;
-  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabTools","tabTraps"].forEach(id=>document.getElementById(id).classList.remove("active"));
+  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabTools","tabTraps"].forEach(id=>document.getElementById(id).classList.remove("active"));
   if(tab==="weapons") document.getElementById("tabWeapons").classList.add("active");
   if(tab==="ammo") document.getElementById("tabAmmo").classList.add("active");
   if(tab==="armor") document.getElementById("tabArmor").classList.add("active");
   if(tab==="meds") document.getElementById("tabMeds").classList.add("active");
+  if(tab==="squad") document.getElementById("tabSquad").classList.add("active");
   if(tab==="tools") document.getElementById("tabTools").classList.add("active");
   if(tab==="traps") document.getElementById("tabTraps").classList.add("active");
   renderShopList();
@@ -1875,8 +1960,42 @@ function renderShopList(){
     return;
   }
 
+  if(currentShopTab==="squad"){
+    const unlocked = soldierUnlockLevelReached();
+    const level = currentCampaignLevel();
+    const spawnNow = (!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded);
+    note.innerText = unlocked
+      ? `Unlocked at level ${SOLDIER_UNLOCK_LEVEL}. Current level: ${level}. ${spawnNow ? "Buy now to spawn immediately." : "Buy now and they join on next mission deploy."}`
+      : `Locked until level ${SOLDIER_UNLOCK_LEVEL}. Current level: ${level}.`;
+
+    const attackerCard = `
+      <div class="item">
+        <div>
+          <div class="itemName">Tiger Specialist <span class="tag">Owned: ${S.soldierAttackersOwned||0}</span> <span class="tag">${unlocked ? "Unlocked" : `Unlock L${SOLDIER_UNLOCK_LEVEL}`}</span></div>
+          <div class="itemDesc">Frontline tiger-killer. Can die in combat, then must be repurchased.</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
+          <button onclick="buyTigerSpecialist()" ${unlocked ? "" : "disabled"}>${unlocked ? "Buy" : "Locked"}</button>
+        </div>
+      </div>`;
+    const rescueCard = `
+      <div class="item">
+        <div>
+          <div class="itemName">Search & Rescue Specialist <span class="tag">Owned: ${S.soldierRescuersOwned||0}</span> <span class="tag">${unlocked ? "Unlocked" : `Unlock L${SOLDIER_UNLOCK_LEVEL}`}</span></div>
+          <div class="itemDesc">Finds civilians and helps guide them toward the safe zone.</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
+          <button onclick="buyRescueSpecialist()" ${unlocked ? "" : "disabled"}>${unlocked ? "Buy" : "Locked"}</button>
+        </div>
+      </div>`;
+    list.innerHTML = attackerCard + rescueCard;
+    return;
+  }
+
   if(currentShopTab==="tools"){
-    note.innerText="Repair kits restore weapon durability. Shield protects escorts. Specialists cost $15,000 each.";
+    note.innerText="Repair kits restore weapon durability. Shield protects escorts.";
     const repairCards = TOOLS.map(t=>{
       const owned=ownedToolCount(t.id);
       return `
@@ -1891,28 +2010,6 @@ function renderShopList(){
           </div>
         </div>`;
     }).join("");
-    const attackerCard = `
-      <div class="item">
-        <div>
-          <div class="itemName">Tiger Specialist <span class="tag">Owned: ${S.soldierAttackersOwned||0}</span></div>
-          <div class="itemDesc">Frontline tiger-killer. Can die in combat, then must be repurchased.</div>
-        </div>
-        <div style="text-align:right">
-          <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
-          <button onclick="buyTigerSpecialist()">Buy</button>
-        </div>
-      </div>`;
-    const rescueCard = `
-      <div class="item">
-        <div>
-          <div class="itemName">Search & Rescue Specialist <span class="tag">Owned: ${S.soldierRescuersOwned||0}</span></div>
-          <div class="itemDesc">Finds civilians and helps guide them toward the safe zone.</div>
-        </div>
-        <div style="text-align:right">
-          <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
-          <button onclick="buyRescueSpecialist()">Buy</button>
-        </div>
-      </div>`;
     const shieldCard = `
       <div class="item">
         <div>
@@ -1924,7 +2021,7 @@ function renderShopList(){
           <button onclick="buyShield()">Buy</button>
         </div>
       </div>`;
-    list.innerHTML = attackerCard + rescueCard + shieldCard + repairCards;
+    list.innerHTML = shieldCard + repairCards;
     return;
   }
 
@@ -1998,6 +2095,7 @@ function buyShield(){
   save(); renderShopList(); renderHUD();
 }
 function buyTigerSpecialist(){
+  if(!soldierUnlockLevelReached()) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}.`);
   if((S.soldierAttackersOwned||0) >= 8) return toast("Tiger specialist roster is full.");
   if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
   S.funds -= SOLDIER_PRICE;
@@ -2011,6 +2109,7 @@ function buyTigerSpecialist(){
   save(); renderShopList(); renderHUD();
 }
 function buyRescueSpecialist(){
+  if(!soldierUnlockLevelReached()) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}.`);
   if((S.soldierRescuersOwned||0) >= 8) return toast("Rescue specialist roster is full.");
   if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
   S.funds -= SOLDIER_PRICE;
@@ -3464,14 +3563,20 @@ function restartCurrentMission(){
   save();
 }
 
-function closeComplete(){ document.getElementById("completeOverlay").style.display="none"; }
+function closeComplete(){
+  if(S.missionEnded && !S.gameOver){
+    openMissionProgressGuard("close");
+    return;
+  }
+  document.getElementById("completeOverlay").style.display="none";
+}
 
-function resetGame(){
+function performResetGame(){
   localStorage.removeItem("ts_v4380");
   localStorage.removeItem("ts_v4371");
   S = structuredClone(DEFAULT);
   syncWindowState();
-  ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","aboutOverlay","completeOverlay","overOverlay","modeOverlay"].forEach((id)=>{
+  ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","aboutOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -3479,6 +3584,13 @@ function resetGame(){
   deploy();
   save(true);
   toast("Reset ✅");
+}
+function resetGame(){
+  if(S.missionEnded && !S.gameOver){
+    openMissionProgressGuard("reset");
+    return;
+  }
+  performResetGame();
 }
 
 // ===================== GAME OVER =====================
@@ -7195,6 +7307,7 @@ window.closeAbout = closeAbout;
 
 window.openMode = openMode;
 window.closeMode = closeMode;
+window.pickProgressGuardAction = pickProgressGuardAction;
 window.setMode = setMode;
 window.openStoryIntro = openStoryIntro;
 window.startStoryIntroMission = startStoryIntroMission;
