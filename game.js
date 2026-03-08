@@ -6368,7 +6368,7 @@ function evacCheck(){
   }
 }
 
-// ===================== CIVILIANS UNDER ATTACK (slower damage) =====================
+// ===================== CIVILIANS UNDER ATTACK (pulse damage) =====================
 function tickCiviliansAndThreats(){
   if(S.mode==="Survival") return;
   const now = Date.now();
@@ -6408,8 +6408,10 @@ function tickCiviliansAndThreats(){
 
     if(bd < 64){
       underAttack++;
+      if(now < (t._nextCivAttackAt || 0)) continue;
+      t._nextCivAttackAt = now + 420;
 
-      const base = 0.145;
+      const base = 5;
       const diff = carcassDifficulty();
       const multType = tigerDamageScale(t, "civilian");
 
@@ -6419,9 +6421,10 @@ function tickCiviliansAndThreats(){
       const guardMult = nearbySupport ? clamp(1 - nearbySupport * 0.35, 0.3, 1) : 1;
       const protectMult = S._protectTicks > 0 ? 0.45 : 1;
       const shieldMult = civilianShielded(best) ? 0 : 1;
-      const dmg = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * shieldMult;
+      const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * perkCivMul() * storyCivilianDamageMul();
+      const dmg = shieldMult ? Math.max(5, scaled) : 0;
       const prevHp = best.hp;
-      best.hp = clamp(best.hp - (dmg * perkCivMul() * storyCivilianDamageMul()), 0, best.hpMax);
+      best.hp = clamp(best.hp - dmg, 0, best.hpMax);
       if(prevHp > best.hp && now >= (best._nextDmgPopupAt || 0)){
         best._nextDmgPopupAt = now + 240;
         emitDamagePopup(best.x, best.y - 40, `-${Math.max(1, Math.round(prevHp - best.hp))}`, "civilian");
