@@ -481,6 +481,38 @@ const MAP_COLLIDER_PROFILES = {
   sign: { type:"rect", w:28, h:14, pad:3 },
   log: { type:"rect", w:34, h:12, pad:3 },
 };
+const MAP_SOFT_COLLIDER_KINDS = new Set([
+  "bush",
+  "log",
+  "lamp",
+  "sign",
+  "barrel",
+  "fence",
+  "park",
+]);
+const MAP_WATER_LAYOUTS = {
+  ST_FOREST: [
+    { nx:0.27, ny:0.17, rx:0.094, ry:0.062, rot:0.02 },
+    { nx:0.75, ny:0.15, rx:0.088, ry:0.056, rot:-0.03 },
+    { nx:0.23, ny:0.80, rx:0.102, ry:0.074, rot:0.04 },
+    { nx:0.79, ny:0.66, rx:0.087, ry:0.053, rot:-0.02 },
+  ],
+  ST_SUBURBS: [
+    { nx:0.18, ny:0.12, rx:0.108, ry:0.052, rot:-0.08 },
+    { nx:0.50, ny:0.56, rx:0.172, ry:0.066, rot:0.05, riverBoost:true },
+    { nx:0.82, ny:0.86, rx:0.128, ry:0.054, rot:-0.04 },
+  ],
+  ST_DOWNTOWN: [
+    { nx:0.17, ny:0.28, rx:0.106, ry:0.048, rot:-0.10 },
+    { nx:0.52, ny:0.51, rx:0.118, ry:0.050, rot:0.06 },
+    { nx:0.80, ny:0.72, rx:0.108, ry:0.046, rot:0.03 },
+  ],
+  ST_INDUSTRIAL: [
+    { nx:0.21, ny:0.34, rx:0.118, ry:0.054, rot:-0.08 },
+    { nx:0.67, ny:0.24, rx:0.130, ry:0.058, rot:0.05 },
+    { nx:0.74, ny:0.76, rx:0.120, ry:0.052, rot:-0.03 },
+  ],
+};
 
 const ARCADE_CAMPAIGN_CHAPTERS = [
   "Jungle Awakening",
@@ -1084,6 +1116,8 @@ let __mapFrameCacheAt = 0;
 let __mapObstacleSig = "";
 let __mapObstacleRects = [];
 let __mapObstacleCircles = [];
+let __mapWaterSig = "";
+let __mapWaterZones = [];
 let __frameSlowUntil = 0;
 let __frameLagScore = 0;
 let __lastFrameAt = 0;
@@ -1104,6 +1138,8 @@ function invalidateMapCache(){
   __mapObstacleSig = "";
   __mapObstacleRects = [];
   __mapObstacleCircles = [];
+  __mapWaterSig = "";
+  __mapWaterZones = [];
 }
 
 function flushSaveNow(){
@@ -2050,6 +2086,7 @@ function pushMapObstacleCircle(circles, x, y, r, pad=0){
   circles.push({ x, y, r: Math.max(4, r + pad) });
 }
 function addMapObstacleForLandmark(rects, circles, item){
+  if(MAP_SOFT_COLLIDER_KINDS.has(item?.kind)) return;
   const profile = MAP_COLLIDER_PROFILES[item?.kind];
   if(!profile) return;
   const scale = Math.max(0.72, item?.s || 1);
@@ -2058,6 +2095,46 @@ function addMapObstacleForLandmark(rects, circles, item){
     return;
   }
   pushMapObstacleRect(rects, item.x, item.y, profile.w * scale, profile.h * scale, profile.pad || 0);
+}
+function buildMapWaterZones(mapKey, chapter, w=cv.width, h=cv.height){
+  const family = mapFamilyKey(mapKey);
+  const defs = MAP_WATER_LAYOUTS[family] || [];
+  const riverChapter = (chapter === 5);
+  const chapterMul = riverChapter ? 1.08 : 1;
+  return defs.map((def)=>{
+    const boost = (riverChapter && def.riverBoost) ? 1.16 : 1;
+    const rx = clamp(Math.round(w * def.rx * chapterMul * boost), 18, Math.round(w * 0.30));
+    const ry = clamp(Math.round(h * def.ry * chapterMul * boost), 12, Math.round(h * 0.18));
+    return {
+      x: clamp(Math.round(w * def.nx), 24, w - 24),
+      y: clamp(Math.round(h * def.ny), 24, h - 24),
+      rx,
+      ry,
+      rot: Number.isFinite(def.rot) ? def.rot : 0
+    };
+  });
+}
+function waterZoneRadii(zone){
+  const rx = Math.max(2, Number(zone?.rx || zone?.r || 0));
+  const ry = Math.max(2, Number(zone?.ry || zone?.r || 0));
+  return { rx, ry };
+}
+function pointInWaterZone(zone, x, y, radius=0){
+  if(!zone) return false;
+  const pad = Math.max(0, Number(radius) || 0);
+  const base = waterZoneRadii(zone);
+  const rx = base.rx + pad;
+  const ry = base.ry + pad;
+  const rot = Number.isFinite(zone.rot) ? zone.rot : 0;
+  const dx = x - zone.x;
+  const dy = y - zone.y;
+  const cos = Math.cos(-rot);
+  const sin = Math.sin(-rot);
+  const lx = (dx * cos) - (dy * sin);
+  const ly = (dx * sin) + (dy * cos);
+  const nx = lx / Math.max(1, rx);
+  const ny = ly / Math.max(1, ry);
+  return ((nx * nx) + (ny * ny)) <= 1;
 }
 function ensureMapObstacleCache(){
   const map = currentMap();
@@ -2070,6 +2147,7 @@ function ensureMapObstacleCache(){
 
   const rects = [];
   const circles = [];
+  const waters = buildMapWaterZones(key, chapter, w, h);
   const family = mapFamilyKey(key);
   const sx = (v)=> v * (w / 960);
   const sy = (v)=> v * (h / 540);
@@ -2084,42 +2162,50 @@ function ensureMapObstacleCache(){
     addMapObstacleForLandmark(rects, circles, { kind:p.kind, x:px, y:py, s:p.s || 1 });
   }
 
-  if(family === "ST_FOREST"){
-    pushMapObstacleCircle(circles, sx(260), h * 0.17, sx(80), 6);
-    pushMapObstacleCircle(circles, sx(720), h * 0.15, sx(76), 6);
-    pushMapObstacleCircle(circles, sx(220), h * 0.80, sx(86), 6);
-    pushMapObstacleCircle(circles, sx(760), h * 0.66, sx(72), 6);
-  } else if(family === "ST_SUBURBS"){
-    const houses = [
-      [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
-      [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
-      [140,360],[280,360],[420,360],[560,360],[700,360],[840,360],
-      [120,450],[240,450],[360,450],[480,450],[600,450],[720,450],[840,450],
+  if(family === "ST_SUBURBS"){
+    const anchors = [
+      [220,146],[460,146],[718,146],
+      [240,388],[560,388],[820,388],
     ];
-    for(const [hx, hy] of houses){
-      pushMapObstacleRect(rects, sx(hx), sy(hy), sx(36), sy(24), 4);
+    for(const [hx, hy] of anchors){
+      pushMapObstacleRect(rects, sx(hx), sy(hy), sx(34), sy(22), 2);
     }
   } else if(family === "ST_DOWNTOWN"){
     const blocks = [
-      [150,140,90,80],[320,150,80,70],[520,140,100,80],[720,150,80,75],[880,140,80,70],
-      [180,310,100,85],[360,320,90,80],[560,310,110,85],[760,320,90,80],[900,310,80,75],
-      [150,470,90,70],[340,470,90,70],[540,470,100,70],[740,470,90,70],[900,470,80,70],
+      [180,145,74,60],[520,145,84,64],[840,145,72,58],
+      [200,330,86,66],[560,325,92,68],[860,320,78,60],
     ];
     for(const [bx, by, bw, bh] of blocks){
-      pushMapObstacleRect(rects, sx(bx), sy(by), sx(bw), sy(bh), 6);
+      pushMapObstacleRect(rects, sx(bx), sy(by), sx(bw), sy(bh), 4);
     }
-  } else {
-    pushMapObstacleRect(rects, sx(220), sy(155), sx(260), sy(130), 7);
-    pushMapObstacleRect(rects, sx(740), sy(165), sx(260), sy(110), 7);
-    pushMapObstacleRect(rects, sx(410), sy(410), sx(340), sy(140), 8);
-    pushMapObstacleRect(rects, sx(170), sy(260), sx(140), sy(90), 6);
-    pushMapObstacleRect(rects, sx(520), sy(260), sx(160), sy(90), 6);
-    pushMapObstacleRect(rects, sx(820), sy(300), sx(150), sy(90), 6);
+  } else if(family === "ST_INDUSTRIAL"){
+    pushMapObstacleRect(rects, sx(218), sy(158), sx(198), sy(96), 5);
+    pushMapObstacleRect(rects, sx(738), sy(166), sx(202), sy(92), 5);
+    pushMapObstacleRect(rects, sx(420), sy(408), sx(240), sy(112), 5);
+    pushMapObstacleRect(rects, sx(815), sy(300), sx(112), sy(72), 4);
   }
 
   __mapObstacleRects = rects;
   __mapObstacleCircles = circles;
+  __mapWaterZones = waters;
+  __mapWaterSig = sig;
   __mapObstacleSig = sig;
+}
+function isPointInWater(x, y, radius=0){
+  ensureMapObstacleCache();
+  if(__mapWaterSig !== __mapObstacleSig) return false;
+  for(const zone of (__mapWaterZones || [])){
+    if(pointInWaterZone(zone, x, y, radius)) return true;
+  }
+  return false;
+}
+function waterSpeedMul(entityType, x, y, radius=0){
+  if(!isPointInWater(x, y, radius)) return 1;
+  if(entityType === "tiger") return 0.96;
+  if(entityType === "soldier") return 0.90;
+  if(entityType === "support") return 0.88;
+  if(entityType === "civilian") return 0.86;
+  return 0.90;
 }
 function blockedByMapObstacle(x, y, radius){
   ensureMapObstacleCache();
@@ -2134,15 +2220,173 @@ function blockedByMapObstacle(x, y, radius){
   }
   return false;
 }
-function blockedAt(x, y, radius){
-  const now = Date.now();
-  for(const carcass of (S.carcasses || [])){
-    // Fresh blood should not hard-lock entities in place.
-    if((now - (carcass.bornAt || 0)) < 1300) continue;
-    if(rectCircleCollide(carcass.x - 11, carcass.y - 6, 22, 12, x, y, radius)) return true;
+function mobileControlKeepoutZones(){
+  if(!isMobileViewport()) return [];
+  const w = cv.width || 960;
+  const h = cv.height || 540;
+  return [
+    { x:w * 0.13, y:h * 0.86, r:76 }, // left joystick
+    { x:w * 0.87, y:h * 0.84, r:92 }, // right action cluster
+    { x:w * 0.79, y:h * 0.68, r:58 }, // cache button
+  ];
+}
+function inMobileControlKeepout(x, y, radius=0){
+  const zones = mobileControlKeepoutZones();
+  if(!zones.length) return false;
+  const rrBase = Math.max(0, radius || 0);
+  for(const zone of zones){
+    const rr = zone.r + rrBase;
+    const dx = x - zone.x;
+    const dy = y - zone.y;
+    if((dx * dx + dy * dy) <= (rr * rr)) return true;
   }
+  return false;
+}
+function blockedAt(x, y, radius){
+  // Blood pools are visual hazards; they should never hard-block movement.
   if(blockedByMapObstacle(x, y, radius)) return true;
   return false;
+}
+function findNearestOpenPoint(x, y, radius, opts={}){
+  const avoidKeepout = !!opts.avoidKeepout;
+  const avoidWater = !!opts.avoidWater;
+  const minX = 30 + radius;
+  const maxX = cv.width - (30 + radius);
+  const minY = 48 + radius;
+  const maxY = cv.height - (22 + radius);
+  const ox = clamp(x, minX, maxX);
+  const oy = clamp(y, minY, maxY);
+  const targetX = Number.isFinite(opts.targetX) ? opts.targetX : ox;
+  const targetY = Number.isFinite(opts.targetY) ? opts.targetY : oy;
+  let best = null;
+  let bestScore = Infinity;
+
+  const testPoint = (px, py, weight=0.25)=>{
+    const tx = clamp(px, minX, maxX);
+    const ty = clamp(py, minY, maxY);
+    if(blockedAt(tx, ty, radius)) return;
+    if(avoidKeepout && inMobileControlKeepout(tx, ty, radius)) return;
+    if(avoidWater && isPointInWater(tx, ty, Math.max(2, radius * 0.45))) return;
+    const homeDist = dist(tx, ty, ox, oy);
+    const targetDist = dist(tx, ty, targetX, targetY);
+    const score = targetDist + (homeDist * weight);
+    if(score < bestScore){
+      bestScore = score;
+      best = { x:tx, y:ty };
+    }
+  };
+
+  testPoint(ox, oy, 0.22);
+  const baseStep = Math.max(8, radius + 6);
+  for(let ring=1; ring<=10; ring++){
+    const steps = 8 + (ring * 2);
+    const rr = baseStep * ring;
+    for(let i=0; i<steps; i++){
+      const a = (Math.PI * 2 * i) / steps;
+      testPoint(ox + Math.cos(a) * rr, oy + Math.sin(a) * rr, 0.32);
+    }
+    if(best) break;
+  }
+  return best;
+}
+function updateEntityStuckState(ent, moveEps=0.75){
+  if(!ent || !Number.isFinite(ent.x) || !Number.isFinite(ent.y)) return;
+  if(!Number.isFinite(ent._lastMoveX)) ent._lastMoveX = ent.x;
+  if(!Number.isFinite(ent._lastMoveY)) ent._lastMoveY = ent.y;
+  const moved = dist(ent.x, ent.y, ent._lastMoveX, ent._lastMoveY);
+  ent._stuckTicks = moved <= moveEps ? ((ent._stuckTicks || 0) + 1) : 0;
+  ent._lastMoveX = ent.x;
+  ent._lastMoveY = ent.y;
+}
+function resolveEntityStuck(ent, radius, opts={}){
+  if(!ent || !Number.isFinite(ent.x) || !Number.isFinite(ent.y)) return false;
+  const avoidKeepout = !!opts.avoidKeepout;
+  const movingIntent = opts.movingIntent !== false;
+  const stuckThreshold = Math.max(8, Math.floor(opts.stuckThreshold || 22));
+  updateEntityStuckState(ent, opts.moveEps || 0.75);
+  const isBlocked = blockedAt(ent.x, ent.y, radius);
+  const inKeepout = avoidKeepout && inMobileControlKeepout(ent.x, ent.y, radius);
+  if(!movingIntent){
+    ent._stuckTicks = 0;
+    ent._lastMoveX = ent.x;
+    ent._lastMoveY = ent.y;
+  }
+  const isStuck = movingIntent && Number(ent._stuckTicks || 0) >= stuckThreshold;
+  if(!isBlocked && !inKeepout && !isStuck) return false;
+
+  const free = findNearestOpenPoint(ent.x, ent.y, radius, {
+    avoidKeepout,
+    targetX: Number.isFinite(opts.targetX) ? opts.targetX : ent.x,
+    targetY: Number.isFinite(opts.targetY) ? opts.targetY : ent.y
+  });
+  if(!free) return false;
+  ent.x = free.x;
+  ent.y = free.y;
+  ent._stuckTicks = 0;
+  ent._lastMoveX = ent.x;
+  ent._lastMoveY = ent.y;
+  return true;
+}
+function safeSpawnPoint(x, y, radius=16, avoidKeepout=true, avoidWater=false){
+  const free = findNearestOpenPoint(x, y, radius, {
+    avoidKeepout,
+    avoidWater,
+    targetX:x,
+    targetY:y
+  });
+  if(free) return free;
+  return {
+    x: clamp(x, 30 + radius, cv.width - (30 + radius)),
+    y: clamp(y, 48 + radius, cv.height - (22 + radius))
+  };
+}
+function unstickEntitiesTick(){
+  if(!S || S.paused || S.gameOver || S.missionEnded) return;
+  const playerIntent =
+    !!S.target ||
+    KEY_STATE.up || KEY_STATE.down || KEY_STATE.left || KEY_STATE.right ||
+    Math.abs(TOUCH_STICK.dx) > 0.08 || Math.abs(TOUCH_STICK.dy) > 0.08 ||
+    Math.abs(GAMEPAD_STATE.lx) > 0.08 || Math.abs(GAMEPAD_STATE.ly) > 0.08;
+  resolveEntityStuck(S.me, 16, {
+    avoidKeepout:false,
+    movingIntent:playerIntent,
+    stuckThreshold:36,
+    targetX:S.target?.x,
+    targetY:S.target?.y
+  });
+
+  for(const civ of (S.civilians || [])){
+    if(!civ.alive || civ.evac) continue;
+    const civIntent = !!civ.following || (S.guideTargetId === civ.id);
+    resolveEntityStuck(civ, 14, {
+      avoidKeepout:true,
+      movingIntent:civIntent,
+      stuckThreshold:20,
+      targetX:S.evacZone?.x,
+      targetY:S.evacZone?.y
+    });
+  }
+  for(const unit of (S.supportUnits || [])){
+    if(!unit.alive) continue;
+    resolveEntityStuck(unit, 16, {
+      avoidKeepout:true,
+      movingIntent:true,
+      stuckThreshold:18,
+      targetX:S.me?.x,
+      targetY:S.me?.y
+    });
+  }
+  for(const tiger of (S.tigers || [])){
+    if(!tiger.alive) continue;
+    const tigerIntent = Math.hypot(tiger.vx || 0, tiger.vy || 0) > 0.16 || !!tiger.targetCivId;
+    resolveEntityStuck(tiger, 16, {
+      avoidKeepout:true,
+      movingIntent:tigerIntent,
+      stuckThreshold:16,
+      targetX:S.me?.x,
+      targetY:S.me?.y
+    });
+  }
 }
 function tryCarcassEscape(ent, radius, minX, maxX, minY, maxY){
   ensureMapObstacleCache();
@@ -2194,11 +2438,14 @@ function tryCarcassEscape(ent, radius, minX, maxX, minY, maxY){
   }
   return false;
 }
-function tryMoveEntity(ent, nx, ny, radius){
+function tryMoveEntity(ent, nx, ny, radius, opts={}){
   const minX = 30 + radius;
   const maxX = cv.width - (30 + radius);
   const minY = 48 + radius;
   const maxY = cv.height - (22 + radius);
+  const avoidKeepout = opts.avoidKeepout === true;
+  const targetX = Number.isFinite(nx) ? nx : ent.x;
+  const targetY = Number.isFinite(ny) ? ny : ent.y;
   nx = clamp(nx, minX, maxX);
   ny = clamp(ny, minY, maxY);
 
@@ -2208,12 +2455,51 @@ function tryMoveEntity(ent, nx, ny, radius){
   ent.x = clamp(ent.x, minX, maxX);
   ent.y = clamp(ent.y, minY, maxY);
 
+  const desiredDx = targetX - ox;
+  const desiredDy = targetY - oy;
+  const wantedDist = Math.hypot(desiredDx, desiredDy);
+  if(wantedDist > 0.34 && dist(ent.x, ent.y, ox, oy) < 0.24){
+    const baseAng = Math.atan2(desiredDy, desiredDx);
+    const detourStep = Math.min(wantedDist, Math.max(4.5, radius * 0.86));
+    const turns = [0.46, -0.46, 0.92, -0.92, 1.32, -1.32, Math.PI];
+    for(const turn of turns){
+      const tx = clamp(ox + Math.cos(baseAng + turn) * detourStep, minX, maxX);
+      const ty = clamp(oy + Math.sin(baseAng + turn) * detourStep, minY, maxY);
+      if(blockedAt(tx, ty, radius)) continue;
+      if(avoidKeepout && inMobileControlKeepout(tx, ty, radius)) continue;
+      ent.x = tx;
+      ent.y = ty;
+      break;
+    }
+  }
+
   if(blockedAt(ent.x, ent.y, radius)){
     const escaped = tryCarcassEscape(ent, radius, minX, maxX, minY, maxY);
     if(!escaped || blockedAt(ent.x, ent.y, radius)){
-      ent.x = clamp(ox, minX, maxX);
-      ent.y = clamp(oy, minY, maxY);
-      return false;
+      const fallback = findNearestOpenPoint(ox, oy, radius, {
+        avoidKeepout,
+        targetX,
+        targetY
+      });
+      if(fallback){
+        ent.x = fallback.x;
+        ent.y = fallback.y;
+      } else {
+        ent.x = clamp(ox, minX, maxX);
+        ent.y = clamp(oy, minY, maxY);
+        return false;
+      }
+    }
+  }
+  if(avoidKeepout && inMobileControlKeepout(ent.x, ent.y, radius)){
+    const free = findNearestOpenPoint(ent.x, ent.y, radius, {
+      avoidKeepout:true,
+      targetX:S.me?.x,
+      targetY:S.me?.y
+    });
+    if(free){
+      ent.x = free.x;
+      ent.y = free.y;
     }
   }
   return true;
@@ -3758,6 +4044,8 @@ function randomEvacZone(civilians=[]){
 
   let best = null;
   for(const pt of candidates){
+    if(blockedAt(pt.x, pt.y, Math.round(r * 0.45))) continue;
+    if(isPointInWater(pt.x, pt.y, Math.round(r * 0.50))) continue;
     let nearest = Infinity;
     for(const civ of validCivs){
       nearest = Math.min(nearest, dist(pt.x, pt.y, civ.x, civ.y));
@@ -3771,6 +4059,8 @@ function randomEvacZone(civilians=[]){
     for(let i=0;i<50;i++){
       const trialX = rand(minX, maxX);
       const trialY = rand(minY, maxY);
+      if(blockedAt(trialX, trialY, Math.round(r * 0.45))) continue;
+      if(isPointInWater(trialX, trialY, Math.round(r * 0.50))) continue;
       let nearest = Infinity;
       for(const civ of validCivs){
         nearest = Math.min(nearest, dist(trialX, trialY, civ.x, civ.y));
@@ -3803,11 +4093,19 @@ function randomEvacZone(civilians=[]){
     }
   }
 
-  return {
-    x: clamp(Math.round(best?.x ?? rand(minX, maxX)), minX, maxX),
-    y: clamp(Math.round(best?.y ?? rand(minY, maxY)), minY, maxY),
-    r
-  };
+  const fallbackX = Math.round(best?.x ?? rand(minX, maxX));
+  const fallbackY = Math.round(best?.y ?? rand(minY, maxY));
+  let zonePoint = safeSpawnPoint(fallbackX, fallbackY, Math.round(r * 0.45), true, true);
+  if(isPointInWater(zonePoint.x, zonePoint.y, Math.round(r * 0.50))){
+    const dryPoint = findNearestOpenPoint(zonePoint.x, zonePoint.y, Math.round(r * 0.45), {
+      avoidKeepout:true,
+      avoidWater:true,
+      targetX:cv.width * 0.5,
+      targetY:cv.height * 0.5
+    });
+    if(dryPoint) zonePoint = dryPoint;
+  }
+  return { x:zonePoint.x, y:zonePoint.y, r };
 }
 
 const SKIN_TONES = ["#f6d7c3","#eac0a6","#d9a07f","#c9865c","#a86a44","#7a4a2c","#4b2f1f"];
@@ -4159,18 +4457,21 @@ function spawnMapInteractables(){
     return;
   }
   const base = mapInteractablePool();
-  S.mapInteractables = base.map((it, idx)=>({
-    id: `INT-${idx+1}`,
-    kind: it.kind,
-    label: it.label,
-    x: it.x,
-    y: it.y,
-    r: 22,
-    uses: it.kind === "cache" ? 1 : 99,
-    cooldownUntil: 0,
-    activeUntil: 0,
-    effectR: it.kind === "barricade" ? barricadeEffectRadius() : 0
-  }));
+  S.mapInteractables = base.map((it, idx)=>{
+    const pt = safeSpawnPoint(it.x, it.y, 22, true, true);
+    return {
+      id: `INT-${idx+1}`,
+      kind: it.kind,
+      label: it.label,
+      x: pt.x,
+      y: pt.y,
+      r: 22,
+      uses: it.kind === "cache" ? 1 : 99,
+      cooldownUntil: 0,
+      activeUntil: 0,
+      effectR: it.kind === "barricade" ? barricadeEffectRadius() : 0
+    };
+  });
 }
 
 function findInteractableAt(x,y){
@@ -4388,8 +4689,15 @@ function spawnSupportUnits(){
     const side = unit.role === "attacker" ? -1 : 1;
     unit.homeX = S.me.x;
     unit.homeY = S.me.y;
-    unit.x = clamp(S.me.x + side * (40 + lane * 22), 40, cv.width - 40);
-    unit.y = clamp(S.me.y + 30 + row * 22, 60, cv.height - 40);
+    const spawnPt = safeSpawnPoint(
+      clamp(S.me.x + side * (40 + lane * 22), 40, cv.width - 40),
+      clamp(S.me.y + 30 + row * 22, 60, cv.height - 40),
+      16,
+      true,
+      true
+    );
+    unit.x = spawnPt.x;
+    unit.y = spawnPt.y;
     unit.face = Number.isFinite(unit.face) ? unit.face : 0;
     unit.step = Number.isFinite(unit.step) ? unit.step : rand(0, 1000);
     const targetHpMax = storySupportHpMax(unit.role);
@@ -4446,10 +4754,17 @@ function spawnCivilians(){
     const angle = (Math.PI * 2 * (i % Math.max(1, sites.length))) / Math.max(1, sites.length);
     const jitterX = Math.round(Math.cos(angle) * orbit + rand(-10, 10));
     const jitterY = Math.round(Math.sin(angle) * orbit + rand(-10, 10));
+    const civSpawn = safeSpawnPoint(
+      clamp(site.x + jitterX, 60, cv.width - 60),
+      clamp(site.y + jitterY, 90, cv.height - 70),
+      14,
+      true,
+      true
+    );
     S.civilians.push({
       id:i+1,
-      x:clamp(site.x + jitterX, 60, cv.width - 60),
-      y:clamp(site.y + jitterY, 90, cv.height - 70),
+      x:civSpawn.x,
+      y:civSpawn.y,
       hp:100,
       hpMax:100,
       alive:true,
@@ -4611,12 +4926,19 @@ function spawnTigers(){
     const radius = 24 + ((i % 2) * 20);
     const initialVx = (Math.random()<0.5?-1:1)*def.spd*0.55;
     const initialVy = (Math.random()<0.5?-1:1)*def.spd*0.50;
+    const tigerSpawn = safeSpawnPoint(
+      clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, cv.width - 50),
+      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, cv.height - 70),
+      18,
+      true,
+      true
+    );
 
     S.tigers.push({
       id:i+1,
       type:def.key,
-      x:clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, cv.width - 50),
-      y:clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, cv.height - 70),
+      x:tigerSpawn.x,
+      y:tigerSpawn.y,
       vx:initialVx,
       vy:initialVy,
       hp,
@@ -4703,6 +5025,7 @@ function spawnRogueTiger(options={}){
     }
   }
 
+  const rogueSpawn = safeSpawnPoint(Math.round(sx), Math.round(sy), 18, true, true);
   const nextId = (S.tigers.reduce((maxId, t)=>{
     const tid = Number(t?.id);
     return Number.isFinite(tid) ? Math.max(maxId, tid) : maxId;
@@ -4711,8 +5034,8 @@ function spawnRogueTiger(options={}){
   const tiger = {
     id: nextId,
     type: def.key,
-    x: clamp(Math.round(sx), 70, cv.width - 70),
-    y: clamp(Math.round(sy), 90, cv.height - 70),
+    x: rogueSpawn.x,
+    y: rogueSpawn.y,
     vx:(Math.random()<0.5?-1:1)*def.spd*0.58,
     vy:(Math.random()<0.5?-1:1)*def.spd*0.54,
     hp,
@@ -5598,11 +5921,14 @@ function keyboardMoveTick(){
   const ux = dx / len;
   const uy = dy / len;
   let speed=PLAYER_WALK_SPEED;
+  let sprinting = false;
 
   if(S._sprintTicks && S._sprintTicks>0){
     speed=PLAYER_SPRINT_SPEED;
+    sprinting = true;
     S._sprintTicks--;
   }
+  speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
 
   S.target=null;
   S.me.face = Math.atan2(uy, ux);
@@ -5610,9 +5936,9 @@ function keyboardMoveTick(){
 
   const nx = S.me.x + ux*speed;
   const ny = S.me.y + uy*speed;
-  tryMoveEntity(S.me, nx, ny, 16);
+  tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
 
-  S.stamina = clamp(S.stamina - ((speed>PLAYER_WALK_SPEED ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()), 0, 100);
+  S.stamina = clamp(S.stamina - ((sprinting ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()), 0, 100);
   return true;
 }
 
@@ -5624,7 +5950,9 @@ function movePlayer(){
   if(S.stamina<=0) return;
 
   let speed=PLAYER_WALK_SPEED;
-  if(S._sprintTicks && S._sprintTicks>0){ speed=PLAYER_SPRINT_SPEED; S._sprintTicks--; }
+  let sprinting = false;
+  if(S._sprintTicks && S._sprintTicks>0){ speed=PLAYER_SPRINT_SPEED; sprinting = true; S._sprintTicks--; }
+  speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
 
   S.me.face = Math.atan2(dy, dx);
   S.me.step = (S.me.step + speed*0.35) % (Math.PI*2);
@@ -5632,10 +5960,10 @@ function movePlayer(){
   const nx = S.me.x + (dx/d)*speed;
   const ny = S.me.y + (dy/d)*speed;
 
-  const ok = tryMoveEntity(S.me, nx, ny, 16);
+  const ok = tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
   if(!ok){ S.target=null; }
 
-  S.stamina = clamp(S.stamina - ((speed>PLAYER_WALK_SPEED ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()), 0, 100);
+  S.stamina = clamp(S.stamina - ((sprinting ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()), 0, 100);
 }
 
 function sprint(){
@@ -5809,8 +6137,8 @@ function supportUnitsTick(){
             const gdx = S.evacZone.x - targetCiv.x;
             const gdy = S.evacZone.y - targetCiv.y;
             const gd = Math.hypot(gdx, gdy) || 1;
-            const guideSpeed = Math.min(1.5, gd);
-            tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14);
+            const guideSpeed = Math.min(1.5, gd) * waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10);
+            tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14, { avoidKeepout:true });
             targetCiv.hp = clamp(targetCiv.hp + 0.03, 0, targetCiv.hpMax);
           }
         }
@@ -5838,12 +6166,14 @@ function supportUnitsTick(){
     const dx = targetX - unit.x;
     const dy = targetY - unit.y;
     const len = Math.hypot(dx, dy) || 1;
+    const waterMul = waterSpeedMul("support", unit.x, unit.y, 12);
     const stepCap = unit.role === "attacker"
       ? (2.05 * (S.mode==="Story" ? (1 + (storySpecialistRank("SP_ATK_DRILL") * 0.04)) : 1))
       : (1.9 * storyRescueSpeedMul());
-    const step = Math.min(stepCap, len);
+    const finalStepCap = stepCap * waterMul;
+    const step = Math.min(finalStepCap, len);
     unit.face = Math.atan2(dy, dx);
-    tryMoveEntity(unit, unit.x + (dx / len) * step, unit.y + (dy / len) * step, 16);
+    tryMoveEntity(unit, unit.x + (dx / len) * step, unit.y + (dy / len) * step, 16, { avoidKeepout:true });
 
     for(const tiger of activeTigers){
       const tigerDist = dist(unit.x, unit.y, tiger.x, tiger.y);
@@ -6007,14 +6337,17 @@ function followCiviliansTick(){
     const dy = anchor.y - c.y;
     const dd = Math.hypot(dx,dy) || 1;
     const catchup = clamp((dd - 16) * 0.04, 0, 3.3);
-    const sp = Math.min((Math.max(playerSpeed * 1.02, 2.35) + catchup) * escortBoost, PLAYER_SPRINT_SPEED + 1.8);
+    const sp = Math.min(
+      ((Math.max(playerSpeed * 1.02, 2.35) + catchup) * escortBoost * waterSpeedMul("civilian", c.x, c.y, 10)),
+      PLAYER_SPRINT_SPEED + 1.8
+    );
     const vx = (dx/dd) * sp;
     const vy = (dy/dd) * sp;
     if(Math.hypot(vx, vy) > 0.02){
       c.face = Math.atan2(vy, vx);
       c.step = (c.step || 0) + clamp(Math.hypot(vx, vy) * 0.11, 0.04, 0.30);
     }
-    tryMoveEntity(c, c.x + vx, c.y + vy, 14);
+    tryMoveEntity(c, c.x + vx, c.y + vy, 14, { avoidKeepout:true });
   }
 }
 
@@ -6458,6 +6791,7 @@ function roamTigers(){
     if(now < (t.burstUntil||0)) speedCap = Math.max(speedCap, motion.sprint);
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap = Math.max(speedCap, motion.sprint + 0.35);
     if(t.type==="Berserker" && t.rageOn) speedCap = Math.max(speedCap, motion.sprint * 1.06);
+    speedCap *= waterSpeedMul("tiger", t.x, t.y, 14);
 
     const velNow = Math.hypot(t.vx, t.vy);
     if(velNow > speedCap){
@@ -6466,7 +6800,7 @@ function roamTigers(){
       t.vy *= s;
     }
 
-    const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18);
+    const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18, { avoidKeepout:true });
     if(!moved){
       t.vx *= -0.72;
       t.vy *= -0.72;
@@ -7679,6 +8013,20 @@ function drawMapScene(){
   }
 
   const themeKey = mapFamilyKey(key);
+  ensureMapObstacleCache();
+  const waterZones = __mapWaterZones || [];
+  const waterPalette = (()=>{
+    if(themeKey === "ST_DOWNTOWN"){
+      return { fill:"rgba(34,98,136,.46)", edge:"rgba(165,220,255,.55)", glint:"rgba(186,230,253,.24)" };
+    }
+    if(themeKey === "ST_INDUSTRIAL"){
+      return { fill:"rgba(50,96,118,.44)", edge:"rgba(180,228,255,.50)", glint:"rgba(186,230,253,.20)" };
+    }
+    if(themeKey === "ST_SUBURBS"){
+      return { fill:"rgba(40,108,142,.50)", edge:"rgba(186,230,253,.60)", glint:"rgba(191,241,255,.24)" };
+    }
+    return { fill:"rgba(25,90,105,.62)", edge:"rgba(147,217,247,.58)", glint:"rgba(186,230,253,.26)" };
+  })();
 
   function fillSolid(color){ ctx.fillStyle=color; ctx.fillRect(0,0,w,h); }
   function seedNoise(ix, iy, seed=0){
@@ -7767,6 +8115,38 @@ function drawMapScene(){
     rounded(x-10,y-8,24,20,6,"rgba(0,0,0,.3)");
     ctx.globalAlpha=1;
     rounded(x-12,y-10,24,20,6,"rgba(140,90,45,.85)","rgba(70,40,20,.85)");
+  }
+  function drawWaterBodies(alphaMul=1){
+    if(!waterZones.length) return;
+    const mul = clamp(alphaMul, 0.35, 1.2);
+    ctx.save();
+    for(const zone of waterZones){
+      const rad = waterZoneRadii(zone);
+      const rx = rad.rx;
+      const ry = rad.ry;
+      const rot = zone.rot || 0;
+
+      ctx.globalAlpha = 0.92 * mul;
+      ctx.fillStyle = waterPalette.fill;
+      ctx.beginPath();
+      ctx.ellipse(zone.x, zone.y, rx, ry, rot, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.56 * mul;
+      ctx.strokeStyle = waterPalette.edge;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(zone.x, zone.y, Math.max(8, rx - 2), Math.max(6, ry - 2), rot, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.globalAlpha = 0.42 * mul;
+      ctx.strokeStyle = waterPalette.glint;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(zone.x - (rx * 0.12), zone.y - (ry * 0.08), Math.max(6, rx * 0.54), Math.max(4, ry * 0.30), rot, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
   function drawProp(p){
     const px = p._abs ? p.x : (p.x * (w / 960));
@@ -7910,16 +8290,6 @@ function drawMapScene(){
       const size = 6 + seedNoise((x/40)|0, (y/40)|0, 17) * 4;
       treeDot(x,y,size);
     }
-    ctx.fillStyle="rgba(25,90,105,.65)";
-    ctx.beginPath(); ctx.ellipse(260,h*0.17,90,34,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(720,h*0.15,85,30,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(220,h*0.80,96,42,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(760,h*0.66,80,28,0,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle="rgba(10,60,80,.7)"; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.ellipse(260,h*0.17,90,34,0,0,Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(720,h*0.15,85,30,0,0,Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(220,h*0.80,96,42,0,0,Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(760,h*0.66,80,28,0,0,Math.PI*2); ctx.stroke();
   }
   else if(themeKey==="ST_SUBURBS"){
     fillSolid("#18402a");
@@ -7979,6 +8349,7 @@ function drawMapScene(){
     const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
     for(const [x,y] of crates) crateBlock(x,y);
   }
+  drawWaterBodies(1);
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -8370,8 +8741,25 @@ function drawPickup(p){
   ctx.fillText(letter, p.x-3.2, p.y+3.5);
   ctx.globalAlpha=1;
 }
+function drawWaterRipple(x, y, size=16, alpha=0.52){
+  if(!isPointInWater(x, y, size * 0.35)) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = "rgba(186,230,253,.78)";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.ellipse(x, y + (size * 0.68), size * 1.05, size * 0.34, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = alpha * 0.6;
+  ctx.strokeStyle = "rgba(147,197,253,.72)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + (size * 0.70), size * 0.66, size * 0.20, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
 
 function drawCivilian(c){
+  drawWaterRipple(c.x, c.y, 16, 0.50);
   if(civilianShielded(c)){
     const pulse = 0.82 + Math.sin(Date.now()/120) * 0.15;
     ctx.save();
@@ -8472,6 +8860,7 @@ function drawSoldier(){
   const bob = Math.sin(step) * 1.5;
   const x = S.me.x;
   const y = S.me.y + bob;
+  drawWaterRipple(x, y, 18, 0.56);
   const ang = S.me.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
   const stride = Math.sin(step * 1.9) * 2.1;
@@ -8577,6 +8966,7 @@ function drawSupportUnit(unit){
   const bob = Math.sin(unit.step || 0) * 1.2;
   const x = unit.x;
   const y = unit.y + bob;
+  drawWaterRipple(x, y, 17, 0.52);
   const attacker = unit.role === "attacker";
   const ang = unit.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
@@ -8661,6 +9051,7 @@ function drawTiger(t){
   if(t.type==="Scout") s=0.85;
   if(t.type==="Alpha") s=1.22;
   if(t.type==="Berserker") s=1.10;
+  drawWaterRipple(x, y, 20 * s, 0.58);
   const drawDir = Number.isFinite(t.drawDir) ? (t.drawDir >= 0 ? 1 : -1) : ((Math.cos(t.heading || 0) >= 0) ? 1 : -1);
 
   if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35){
@@ -8902,6 +9293,7 @@ function draw(){
     if(!(S.gameOver || S.paused || S.missionEnded)){
       runFrameTask("sanitizeState", frameInterval(120, 1.9), sanitizeRuntimeState, { costHint:1.8 });
       runFrameTask("clampWorld", frameInterval(180, 1.3), clampWorldToCanvas, { costHint:0.9 });
+      runFrameTask("unstickEntities", frameInterval(84, 1.6), unstickEntitiesTick, { costHint:1.5, critical:true });
       safeTick("regen", regen);
       runFrameTask("backupTick", frameInterval(42, 1.5), backupTick, { costHint:1.1 });
       runFrameTask("trapTick", frameInterval(34, 1.6), trapTick, { costHint:1.2 });
