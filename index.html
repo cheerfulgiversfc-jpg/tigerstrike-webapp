@@ -548,7 +548,7 @@
       <div class="hudBox hudMission">
         <div class="hudTitle">Mission</div>
         <div class="hudLine">Map: <b id="mapTxt"></b> • Mode: <b id="modeTxt"></b> • Level: <b id="lvlTxt"></b></div>
-        <div class="hudLine">Target Tiger HP: <b id="tigerTxt"></b> • Capture at <b>25%</b> HP or lower</div>
+        <div class="hudLine">Target Tiger HP: <b id="tigerTxt"></b> • Capture at <b id="capturePctTxt">25%</b> HP or lower</div>
         <div class="bar"><div id="tigerBar" class="fill red"></div></div>
         <div class="hudLine">Civilians Alive: <b id="civTxt"></b> • Evac: <b id="evacTxt"></b> • Tigers left: <b id="tleftTxt"></b> • Threat: <b id="threatTxt"></b></div>
         <div class="hudLine" id="objTxt"></div>
@@ -641,6 +641,7 @@
         <button class="tab" id="tabArmor" onclick="shopTab('armor')">Armory</button>
         <button class="tab" id="tabMeds" onclick="shopTab('meds')">Med Kits</button>
         <button class="tab" id="tabSquad" onclick="shopTab('squad')">Squad</button>
+        <button class="tab" id="tabMeta" onclick="shopTab('meta')">Meta</button>
         <button class="tab" id="tabTools" onclick="shopTab('tools')">Tools</button>
         <button class="tab" id="tabTraps" onclick="shopTab('traps')">Traps</button>
       </div>

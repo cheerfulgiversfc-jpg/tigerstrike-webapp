@@ -263,6 +263,34 @@ const PROGRESSION_UNLOCKS = [
   { key:"combo_boost", level:9, label:"Chain Keeper", desc:"+4s combo timer window." },
 ];
 
+const STORY_BASE_UPGRADES = [
+  { key:"BASE_ARMORY", name:"Base Armory", maxRank:3, costs:[4500,8500,13500], desc:"+8 starting armor per rank in Story missions." },
+  { key:"BASE_LOGISTICS", name:"Logistics Wing", maxRank:3, costs:[4200,7600,11800], desc:"Higher minimum mission-start supplies (medkits/traps/repair)." },
+  { key:"BASE_SHIELD_NET", name:"Shield Network", maxRank:2, costs:[5200,9400], desc:"+1 starting shield per rank in Story missions." },
+  { key:"BASE_ENDURANCE", name:"Endurance Program", maxRank:3, costs:[3800,7000,10600], desc:"-8% stamina drain per rank in Story missions." },
+  { key:"BASE_FINANCE", name:"Operations Finance", maxRank:3, costs:[6000,10200,15400], desc:"+8% Story payout cash per rank." },
+];
+
+const STORY_SPECIALIST_PERKS = [
+  { key:"SP_ATK_DRILL", role:"attacker", name:"Tiger Specialist Drill", maxRank:3, costs:[6800,11600,17200], desc:"Tiger specialists gain damage, HP, and armor." },
+  { key:"SP_ATK_CAPTURE", role:"attacker", name:"Capture Tactics", maxRank:3, costs:[7000,12400,18400], desc:"Tiger specialists capture more reliably and improve Story capture window." },
+  { key:"SP_RESCUE_ESCORT", role:"rescue", name:"Escort Formation", maxRank:3, costs:[6400,10800,16400], desc:"Rescue specialists move and guide civilians faster." },
+  { key:"SP_RESCUE_GUARD", role:"rescue", name:"Civilian Guard Protocol", maxRank:3, costs:[6200,10400,15800], desc:"Rescue specialists and nearby civilians take less tiger damage." },
+];
+
+const STORY_CHAPTER_REWARDS = [
+  { chapter:1, key:"RW_FIELD_GRANT", label:"Field Grant", desc:"One-time grant: +$3,000 and +1 perk point.", cash:3000, perkPoints:1 },
+  { chapter:2, key:"RW_CAPTURE_RESEARCH", label:"Capture Research", desc:"Capture window permanently expands in Story missions.", captureWindowBonus:0.03 },
+  { chapter:3, key:"RW_ESCORT_KIT", label:"Escort Kit", desc:"Story missions start with +1 extra shield.", shieldBonus:1 },
+  { chapter:4, key:"RW_TRIAGE_PROTOCOL", label:"Triage Protocol", desc:"Civilians take less tiger damage in Story missions.", civilianDamageMul:0.90 },
+  { chapter:5, key:"RW_ARMOR_CACHE", label:"Armor Cache", desc:"Story missions start with bonus armor.", startArmorBonus:6 },
+  { chapter:6, key:"RW_STAMINA_DOCTRINE", label:"Stamina Doctrine", desc:"Extra Story stamina efficiency bonus unlocked.", staminaDrainMul:0.95 },
+  { chapter:7, key:"RW_HUNTER_COMMAND", label:"Hunter Command", desc:"Tiger specialists gain additional combat edge.", attackerDamageMul:1.08, attackerDurabilityMul:1.08 },
+  { chapter:8, key:"RW_TREASURY_LINK", label:"Treasury Link", desc:"Story payouts gain an extra multiplier.", payoutMul:1.08 },
+  { chapter:9, key:"RW_EVAC_NETWORK", label:"Evac Network", desc:"Rescue specialists gain extra escort speed.", rescueSpeedMul:1.10 },
+  { chapter:10, key:"RW_LEGENDARY_COMMAND", label:"Legendary Command", desc:"Final chapter reward: +2 perk points and Commander title.", perkPoints:2, title:"Legendary Commander" },
+];
+
 const MODE_MAPS = {
   Story: [
     { key:"ST_FOREST", name:"Forest Edge" },
@@ -936,7 +964,10 @@ perks: {
   T_TRAPS: 0,
   T_RELOAD: 0
 },
-progressionUnlocks: {}
+progressionUnlocks: {},
+metaBase: {},
+specialistPerks: {},
+chapterRewardsUnlocked: {}
 };
 
 let S = load();
@@ -981,6 +1012,9 @@ function load(){
     m.stats = { ...DEFAULT.stats, ...(saved.stats||{}) };
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
     m.progressionUnlocks = { ...DEFAULT.progressionUnlocks, ...(saved.progressionUnlocks||{}) };
+    m.metaBase = { ...DEFAULT.metaBase, ...(saved.metaBase||{}) };
+    m.specialistPerks = { ...DEFAULT.specialistPerks, ...(saved.specialistPerks||{}) };
+    m.chapterRewardsUnlocked = { ...DEFAULT.chapterRewardsUnlocked, ...(saved.chapterRewardsUnlocked||{}) };
     if(m.lives==null) m.lives=5;
     m.v = 4380;
     trimPersistentState(m);
@@ -1305,6 +1339,7 @@ function clampWorldToCanvas(){
 }
 function sanitizeRuntimeState(){
   if(!S || typeof S !== "object") return;
+  ensureStoryMetaState();
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
@@ -1369,10 +1404,10 @@ function sanitizeRuntimeState(){
     u.homeX = clampX(u.homeX ?? u.x, 40, w - 40);
     u.homeY = clampY(u.homeY ?? u.y, 60, h - 40);
     if(!u.role) u.role = "attacker";
-    u.hpMax = Math.max(1, Math.round(Number.isFinite(u.hpMax) ? u.hpMax : (u.role === "rescue" ? 220 : 280)));
+    const desiredHpMax = storySupportHpMax(u.role);
+    u.hpMax = Math.max(1, Math.round(desiredHpMax));
     u.hp = clamp(Number.isFinite(u.hp) ? u.hp : u.hpMax, 0, u.hpMax);
-    u.armor = clamp(Number.isFinite(u.armor) ? u.armor : (u.role === "rescue" ? 0 : 170), 0, 220);
-    if(u.role === "rescue") u.armor = 0;
+    u.armor = clamp(storySupportArmorBase(u.role), 0, 280);
     u.alive = u.alive !== false && u.hp > 0;
     if(!Number.isFinite(u.face)) u.face = 0;
     if(!Number.isFinite(u.step)) u.step = 0;
@@ -1558,6 +1593,169 @@ function nextProgressionUnlock(){
   return null;
 }
 
+function storyChapterRewardDef(chapter){
+  return STORY_CHAPTER_REWARDS.find((r)=>r.chapter === chapter) || null;
+}
+function ensureStoryMetaState(){
+  if(!S.metaBase || typeof S.metaBase !== "object") S.metaBase = {};
+  if(!S.specialistPerks || typeof S.specialistPerks !== "object") S.specialistPerks = {};
+  if(!S.chapterRewardsUnlocked || typeof S.chapterRewardsUnlocked !== "object") S.chapterRewardsUnlocked = {};
+  for(const def of STORY_BASE_UPGRADES){
+    const rank = Math.floor(S.metaBase[def.key] || 0);
+    S.metaBase[def.key] = clamp(rank, 0, def.maxRank);
+  }
+  for(const def of STORY_SPECIALIST_PERKS){
+    const rank = Math.floor(S.specialistPerks[def.key] || 0);
+    S.specialistPerks[def.key] = clamp(rank, 0, def.maxRank);
+  }
+}
+function storyBaseRank(key){
+  ensureStoryMetaState();
+  return Math.max(0, Math.floor(S.metaBase[key] || 0));
+}
+function storySpecialistRank(key){
+  ensureStoryMetaState();
+  return Math.max(0, Math.floor(S.specialistPerks[key] || 0));
+}
+function storyMetaNextCost(def, rank){
+  return def.costs[Math.min(rank, def.costs.length - 1)];
+}
+function storyChapterRewardUnlocked(chapter){
+  ensureStoryMetaState();
+  const def = storyChapterRewardDef(chapter);
+  if(!def) return false;
+  return !!S.chapterRewardsUnlocked[def.key];
+}
+function chapterRewardUnlockedCount(){
+  ensureStoryMetaState();
+  return STORY_CHAPTER_REWARDS.reduce((n, def)=>n + (S.chapterRewardsUnlocked[def.key] ? 1 : 0), 0);
+}
+function storyCaptureWindowPct(){
+  if(S.mode !== "Story") return 0.25;
+  const capRank = storySpecialistRank("SP_ATK_CAPTURE");
+  const chapterBonus = storyChapterRewardUnlocked(2) ? 0.03 : 0;
+  return clamp(0.25 + (capRank * 0.02) + chapterBonus, 0.25, 0.36);
+}
+function storyStaminaDrainMul(){
+  if(S.mode !== "Story") return 1;
+  const base = 1 - (storyBaseRank("BASE_ENDURANCE") * 0.08);
+  const chapterMul = storyChapterRewardUnlocked(6) ? 0.95 : 1;
+  return clamp(base * chapterMul, 0.62, 1);
+}
+function storyPayoutMul(){
+  if(S.mode !== "Story") return 1;
+  const base = 1 + (storyBaseRank("BASE_FINANCE") * 0.08);
+  const chapterMul = storyChapterRewardUnlocked(8) ? 1.08 : 1;
+  return base * chapterMul;
+}
+function storyCivilianDamageMul(){
+  if(S.mode !== "Story") return 1;
+  const rescueGuard = 1 - (storySpecialistRank("SP_RESCUE_GUARD") * 0.04);
+  const chapterMul = storyChapterRewardUnlocked(4) ? 0.90 : 1;
+  return clamp(rescueGuard * chapterMul, 0.68, 1);
+}
+function storyStartingArmorBonus(){
+  if(S.mode !== "Story") return 0;
+  return (storyBaseRank("BASE_ARMORY") * 8) + (storyChapterRewardUnlocked(5) ? 6 : 0);
+}
+function storyStartingShieldBonus(){
+  if(S.mode !== "Story") return 0;
+  return storyBaseRank("BASE_SHIELD_NET") + (storyChapterRewardUnlocked(3) ? 1 : 0);
+}
+function storyMissionSupplyMinimums(){
+  if(S.mode !== "Story") return { medkits:1, traps:2, repair:1 };
+  const logistics = storyBaseRank("BASE_LOGISTICS");
+  return {
+    medkits: 1 + logistics,
+    traps: 2 + Math.floor((logistics + 1) / 2),
+    repair: 1 + (logistics >= 2 ? 1 : 0)
+  };
+}
+function storyAttackerDamageMul(){
+  if(S.mode !== "Story") return 1;
+  const drill = 1 + (storySpecialistRank("SP_ATK_DRILL") * 0.12);
+  const chapterMul = storyChapterRewardUnlocked(7) ? 1.08 : 1;
+  return drill * chapterMul;
+}
+function storyAttackerDurabilityMul(){
+  if(S.mode !== "Story") return 1;
+  const drill = 1 + (storySpecialistRank("SP_ATK_DRILL") * 0.10);
+  const chapterMul = storyChapterRewardUnlocked(7) ? 1.08 : 1;
+  return drill * chapterMul;
+}
+function storyAttackerCaptureBonus(){
+  if(S.mode !== "Story") return 0;
+  const rankBonus = storySpecialistRank("SP_ATK_CAPTURE") * 0.06;
+  const chapterBonus = storyChapterRewardUnlocked(2) ? 0.05 : 0;
+  return rankBonus + chapterBonus;
+}
+function storyRescueSpeedMul(){
+  if(S.mode !== "Story") return 1;
+  const escort = 1 + (storySpecialistRank("SP_RESCUE_ESCORT") * 0.10);
+  const chapterMul = storyChapterRewardUnlocked(9) ? 1.10 : 1;
+  return escort * chapterMul;
+}
+function storyRescueDamageMul(){
+  if(S.mode !== "Story") return 1;
+  const guard = 1 - (storySpecialistRank("SP_RESCUE_GUARD") * 0.08);
+  return clamp(guard, 0.62, 1);
+}
+function storySupportHpMax(role){
+  const base = role === "rescue" ? 220 : 280;
+  if(S.mode !== "Story") return base;
+  if(role === "attacker"){
+    return Math.round(base * storyAttackerDurabilityMul());
+  }
+  const escort = 1 + (storySpecialistRank("SP_RESCUE_ESCORT") * 0.10);
+  return Math.round(base * escort);
+}
+function storySupportArmorBase(role){
+  if(role === "rescue") return 0;
+  const base = 170;
+  if(S.mode !== "Story") return base;
+  return Math.round(base + (storySpecialistRank("SP_ATK_DRILL") * 16) + (storyChapterRewardUnlocked(7) ? 18 : 0));
+}
+function unlockStoryChapterReward(chapter, opts={}){
+  const silent = !!opts.silent;
+  ensureStoryMetaState();
+  const def = storyChapterRewardDef(chapter);
+  if(!def) return null;
+  if(S.chapterRewardsUnlocked[def.key]) return null;
+  S.chapterRewardsUnlocked[def.key] = true;
+
+  const grantBits = [];
+  if(def.cash){
+    S.funds += def.cash;
+    S.stats.cashEarned = (S.stats.cashEarned || 0) + def.cash;
+    grantBits.push(`+$${def.cash.toLocaleString()}`);
+  }
+  if(def.perkPoints){
+    S.perkPoints = (S.perkPoints || 0) + def.perkPoints;
+    grantBits.push(`+${def.perkPoints} perk point${def.perkPoints > 1 ? "s" : ""}`);
+  }
+  if(def.title){
+    S.title = def.title;
+    grantBits.push(`Title: ${def.title}`);
+  }
+
+  const rewardLine = grantBits.length ? `${def.label} (${grantBits.join(" • ")})` : def.label;
+  if(!silent){
+    toast(`🏆 Chapter Reward Unlocked: ${rewardLine}`);
+    setEventText(`🏆 ${def.label} unlocked. ${def.desc}`, 5);
+  }
+  return { label:def.label, desc:def.desc, grants:grantBits.join(" • ") };
+}
+function syncStoryChapterRewardsFromProgress(){
+  ensureStoryMetaState();
+  const completed = clamp(Math.floor((Math.max(1, S.storyLevel || 1) - 1) / 10), 0, STORY_CHAPTER_REWARDS.length);
+  let unlocked = 0;
+  for(let ch=1; ch<=completed; ch++){
+    const got = unlockStoryChapterReward(ch, { silent:true });
+    if(got) unlocked++;
+  }
+  return unlocked;
+}
+
 function comboWindowMs(){
   return COMBO_WINDOW_MS + (hasProgressionUnlock("combo_boost") ? COMBO_WINDOW_BONUS_MS : 0);
 }
@@ -1712,7 +1910,8 @@ function getArmor(id){ return ARMORY.find(a=>a.id===id); }
 function getTool(id){ return TOOLS.find(t=>t.id===id); }
 function equippedWeapon(){ return getWeapon(S.equippedWeaponId) || WEAPONS[0]; }
 function equippedWeaponRange(){ return equippedWeapon()?.range || 112; }
-function captureWindowHp(t){ return Math.max(1, Math.ceil((t?.hpMax || 0) * 0.25)); }
+function captureWindowPctLabel(){ return `${Math.round(storyCaptureWindowPct() * 100)}%`; }
+function captureWindowHp(t){ return Math.max(1, Math.ceil((t?.hpMax || 0) * storyCaptureWindowPct())); }
 
 function currentMap(){
   if(S.mode==="Story"){
@@ -1950,6 +2149,10 @@ function unlockAchv(key, label){
   save();
 }
 function updateTitle(){
+  if(storyChapterRewardUnlocked(10)){
+    S.title = "Legendary Commander";
+    return;
+  }
   const a = achvCount();
   if(a>=8) S.title="Elite Hunter";
   else if(a>=5) S.title="Guardian";
@@ -2559,11 +2762,33 @@ function ensureSquadShopTab(){
   }
   return tab;
 }
+function ensureMetaShopTab(){
+  let tab = document.getElementById("tabMeta");
+  if(tab) return tab;
+  const tabsWrap = document.querySelector("#shopOverlay .tabs");
+  if(!tabsWrap) return null;
+
+  tab = document.createElement("button");
+  tab.className = "tab";
+  tab.id = "tabMeta";
+  tab.type = "button";
+  tab.innerText = "Meta";
+  tab.addEventListener("click", ()=>shopTab("meta"));
+
+  const squadTab = document.getElementById("tabSquad");
+  if(squadTab && squadTab.parentElement === tabsWrap){
+    tabsWrap.insertBefore(tab, squadTab.nextSibling);
+  } else {
+    tabsWrap.appendChild(tab);
+  }
+  return tab;
+}
 
 function shopTab(tab){
   ensureSquadShopTab();
+  ensureMetaShopTab();
   currentShopTab=tab;
-  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabTools","tabTraps"].forEach((id)=>{
+  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabTools","tabTraps"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.classList.remove("active");
   });
@@ -2573,6 +2798,7 @@ function shopTab(tab){
     armor:"tabArmor",
     meds:"tabMeds",
     squad:"tabSquad",
+    meta:"tabMeta",
     tools:"tabTools",
     traps:"tabTraps",
   };
@@ -2710,6 +2936,73 @@ function renderShopList(){
     return;
   }
 
+  if(currentShopTab==="meta"){
+    ensureStoryMetaState();
+    const storyModeLive = S.mode === "Story";
+    note.innerText = storyModeLive
+      ? "Meta progression is active. Base upgrades, specialist perks, and chapter rewards affect Story missions."
+      : "Meta progression purchases are persistent, but effects apply in Story missions.";
+
+    const baseCards = STORY_BASE_UPGRADES.map((def)=>{
+      const rank = storyBaseRank(def.key);
+      const maxed = rank >= def.maxRank;
+      const nextCost = maxed ? null : storyMetaNextCost(def, rank);
+      return `
+        <div class="item">
+          <div>
+            <div class="itemName">${def.name} <span class="tag">Rank ${rank}/${def.maxRank}</span></div>
+            <div class="itemDesc">${def.desc}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">${maxed ? "MAX" : `$${nextCost.toLocaleString()}`}</div>
+            <button ${maxed ? "disabled" : ""} onclick="buyStoryBaseUpgrade('${def.key}')">${maxed ? "Maxed" : "Upgrade"}</button>
+          </div>
+        </div>`;
+    }).join("");
+
+    const specialistCards = STORY_SPECIALIST_PERKS.map((def)=>{
+      const rank = storySpecialistRank(def.key);
+      const maxed = rank >= def.maxRank;
+      const nextCost = maxed ? null : storyMetaNextCost(def, rank);
+      return `
+        <div class="item">
+          <div>
+            <div class="itemName">${def.name} <span class="tag">${def.role==="attacker" ? "Tiger Specialist" : "Rescue Specialist"}</span> <span class="tag">Rank ${rank}/${def.maxRank}</span></div>
+            <div class="itemDesc">${def.desc}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">${maxed ? "MAX" : `$${nextCost.toLocaleString()}`}</div>
+            <button ${maxed ? "disabled" : ""} onclick="buyStorySpecialistPerk('${def.key}')">${maxed ? "Maxed" : "Upgrade"}</button>
+          </div>
+        </div>`;
+    }).join("");
+
+    const completedChapter = Math.floor(Math.max(0, (S.storyLevel || 1) - 1) / 10);
+    const rewardCards = STORY_CHAPTER_REWARDS.map((def)=>{
+      const on = !!S.chapterRewardsUnlocked[def.key];
+      const ready = completedChapter >= def.chapter;
+      return `
+        <div class="item" style="${on ? "" : "opacity:.78;"}">
+          <div>
+            <div class="itemName">${on ? "✅" : "🔒"} Chapter ${def.chapter}: ${def.label} <span class="tag">${on ? "Unlocked" : (ready ? "Ready on clear" : "Locked")}</span></div>
+            <div class="itemDesc">${def.desc}</div>
+          </div>
+        </div>`;
+    }).join("");
+
+    list.innerHTML = `
+      <div class="hudTitle">Base Upgrades (Story)</div>
+      ${baseCards}
+      <div class="divider"></div>
+      <div class="hudTitle">Specialist Perks (Story)</div>
+      ${specialistCards}
+      <div class="divider"></div>
+      <div class="hudTitle">Chapter Rewards (${chapterRewardUnlockedCount()}/${STORY_CHAPTER_REWARDS.length})</div>
+      ${rewardCards}
+    `;
+    return;
+  }
+
   if(currentShopTab==="tools"){
     note.innerText="Repair kits restore weapon durability. Shield protects escorts.";
     const repairCards = TOOLS.map(t=>{
@@ -2838,6 +3131,49 @@ function buyRescueSpecialist(){
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
 }
+function storyBaseUpgradeDef(key){
+  return STORY_BASE_UPGRADES.find((def)=>def.key === key) || null;
+}
+function storySpecialistPerkDef(key){
+  return STORY_SPECIALIST_PERKS.find((def)=>def.key === key) || null;
+}
+function buyStoryBaseUpgrade(key){
+  ensureStoryMetaState();
+  const def = storyBaseUpgradeDef(key);
+  if(!def) return;
+  const rank = storyBaseRank(key);
+  if(rank >= def.maxRank) return toast("Upgrade already maxed.");
+  const cost = storyMetaNextCost(def, rank);
+  if(S.funds < cost) return toast("Not enough money.");
+  S.funds -= cost;
+  S.metaBase[key] = rank + 1;
+  toast(`${def.name} upgraded to Rank ${rank + 1}.`);
+  sfx("ui"); hapticImpact("light");
+  save();
+  renderShopList();
+  renderHUD();
+  if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+}
+function buyStorySpecialistPerk(key){
+  ensureStoryMetaState();
+  const def = storySpecialistPerkDef(key);
+  if(!def) return;
+  const rank = storySpecialistRank(key);
+  if(rank >= def.maxRank) return toast("Perk already maxed.");
+  const cost = storyMetaNextCost(def, rank);
+  if(S.funds < cost) return toast("Not enough money.");
+  S.funds -= cost;
+  S.specialistPerks[key] = rank + 1;
+  if(!window.__TUTORIAL_MODE__ && Array.isArray(S.supportUnits) && S.supportUnits.length){
+    spawnSupportUnits();
+  }
+  toast(`${def.name} upgraded to Rank ${rank + 1}.`);
+  sfx("ui"); hapticImpact("light");
+  save();
+  renderShopList();
+  renderHUD();
+  if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+}
 function buyTrap(){
   if(S.funds < TRAP_ITEM.price) return toast("Not enough money.");
   S.funds -= TRAP_ITEM.price;
@@ -2859,12 +3195,19 @@ function pickMostInjuredCivilian(){
 }
 
 function renderInventory(){
+  ensureStoryMetaState();
   const w=equippedWeapon();
   const ammoId=w.ammo;
+  const baseRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + storyBaseRank(def.key), 0);
+  const baseMaxRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + def.maxRank, 0);
+  const specialistRanks = STORY_SPECIALIST_PERKS.reduce((n, def)=>n + storySpecialistRank(def.key), 0);
+  const specialistMaxRanks = STORY_SPECIALIST_PERKS.reduce((n, def)=>n + def.maxRank, 0);
+  const chapterRewards = chapterRewardUnlockedCount();
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
      <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0}<br>
-     <b>Squad:</b> Attack ${S.soldierAttackersOwned||0} • Rescue ${S.soldierRescuersOwned||0}`;
+     <b>Squad:</b> Attack ${S.soldierAttackersOwned||0} • Rescue ${S.soldierRescuersOwned||0}<br>
+     <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}`;
 
   document.getElementById("invWeapons").innerHTML = S.ownedWeapons.map(id=>{
     const ww=getWeapon(id);
@@ -2935,6 +3278,12 @@ function renderInventory(){
   const progressText = nextUnlock
     ? `Next unlock at Level ${nextUnlock.level}: ${nextUnlock.label}`
     : "All progression unlocks completed.";
+  const topBase = [...STORY_BASE_UPGRADES].sort((a,b)=>storyBaseRank(b.key)-storyBaseRank(a.key)).slice(0,2);
+  const topSpec = [...STORY_SPECIALIST_PERKS].sort((a,b)=>storySpecialistRank(b.key)-storySpecialistRank(a.key)).slice(0,2);
+  const metaBits = [
+    ...topBase.map((d)=>`${d.name} R${storyBaseRank(d.key)}/${d.maxRank}`),
+    ...topSpec.map((d)=>`${d.name} R${storySpecialistRank(d.key)}/${d.maxRank}`)
+  ].filter(Boolean);
 
   document.getElementById("invSupplies").innerHTML = `
     <div class="item">
@@ -2973,7 +3322,9 @@ function renderInventory(){
         <div class="itemName">Progression</div>
         <div class="itemDesc"><b>Level:</b> ${S.level} • <b>XP:</b> ${S.xp}/${xpNeededForLevel(S.level)} • <b>Perk Points:</b> ${S.perkPoints}</div>
         <div class="itemDesc"><b>Unlocks:</b> ${progressionUnlockCount()}/${PROGRESSION_UNLOCKS.length} • ${progressText}</div>
+        <div class="itemDesc"><b>Story Meta:</b> ${metaBits.join(" • ") || "No upgrades yet"} • Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}</div>
       </div>
+      <div style="text-align:right"><button class="ghost" onclick="openShopFromInventory('meta')">Meta Shop</button></div>
     </div>
     ${unlockHtml}
 
@@ -3903,6 +4254,8 @@ function awardCombo(kind){
 
 function createSupportUnit(role, slotIndex=0){
   const attacker = role === "attacker";
+  const hpMax = storySupportHpMax(role);
+  const armorBase = storySupportArmorBase(role);
   const lane = slotIndex % 3;
   const row = Math.floor(slotIndex / 3);
   const baseX = attacker ? (S.me.x - 34 - (lane * 20)) : (S.me.x + 36 + (lane * 20));
@@ -3917,9 +4270,9 @@ function createSupportUnit(role, slotIndex=0){
     homeY: S.me.y,
     face:0,
     step:rand(0,1000),
-    hp: attacker ? 280 : 220,
-    hpMax: attacker ? 280 : 220,
-    armor: attacker ? 170 : 0,
+    hp: hpMax,
+    hpMax,
+    armor: armorBase,
     fireAt:0,
     guideAt:0,
     alive:true
@@ -3955,11 +4308,12 @@ function spawnSupportUnits(){
     unit.y = clamp(S.me.y + 30 + row * 22, 60, cv.height - 40);
     unit.face = Number.isFinite(unit.face) ? unit.face : 0;
     unit.step = Number.isFinite(unit.step) ? unit.step : rand(0, 1000);
-    if(!Number.isFinite(unit.hpMax)) unit.hpMax = unit.role === "rescue" ? 220 : 280;
+    const targetHpMax = storySupportHpMax(unit.role);
+    const hpRatio = Number.isFinite(unit.hpMax) && unit.hpMax > 0 ? clamp(unit.hp / unit.hpMax, 0, 1) : 1;
+    unit.hpMax = targetHpMax;
     if(!Number.isFinite(unit.hp)) unit.hp = unit.hpMax;
-    unit.hp = clamp(unit.hp, 0, unit.hpMax);
-    if(!Number.isFinite(unit.armor)) unit.armor = unit.role === "rescue" ? 0 : 170;
-    if(unit.role === "rescue") unit.armor = 0;
+    else unit.hp = clamp(Math.round(unit.hpMax * hpRatio), 0, unit.hpMax);
+    unit.armor = storySupportArmorBase(unit.role);
     unit.alive = unit.hp > 0;
   });
   S.supportUnits = merged.filter((unit)=>unit.alive);
@@ -4325,25 +4679,37 @@ function deploy(){
   resizeCanvasForViewport();
   invalidateMapCache();
   for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
+  ensureStoryMetaState();
   S.gameOver=false;
   S.missionEnded=false;
   S.inBattle=false;
   S.activeTigerId=null;
   S.paused=false; S.pauseReason=null;
 
-  S.hp=100; S.armor=20; S.stamina=100;
+  S.hp=100;
+  S.armor=clamp(20 + storyStartingArmorBonus(), 0, S.armorCap || 100);
+  S.stamina=100;
   S.me={x:160,y:clamp(cv.height - 120, 240, 420),face:0,step:0};
   S.target=null;
   S.lockedTigerId=null;
 
   S.civGraceUntil = Date.now() + 1000;
   S.dangerCivId = null;
-  S.shields = 1;
+  S.shields = Math.max(0, 1 + storyStartingShieldBonus());
   S.shieldUntil = 0;
   ensureAbilityCooldownState();
   S.abilityCooldowns.scan = 0;
   S.abilityCooldowns.sprint = 0;
   S.abilityCooldowns.shield = 0;
+
+  if(S.mode==="Story"){
+    const mins = storyMissionSupplyMinimums();
+    if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
+    if(!S.repairKits || typeof S.repairKits !== "object") S.repairKits = {};
+    S.medkits["M_SMALL"] = Math.max(S.medkits["M_SMALL"] || 0, mins.medkits);
+    S.trapsOwned = Math.max(S.trapsOwned || 0, mins.traps);
+    S.repairKits["T_REPAIR"] = Math.max(S.repairKits["T_REPAIR"] || 0, mins.repair);
+  }
 
   if(S.mode!=="Survival") S.evacZone = null;
   S.backupActive=0;
@@ -5112,8 +5478,9 @@ function scan(){
   if(!tutorialAllows("scan")) return toast(tutorialBlockMessage("scan"));
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
   if(abilityOnCooldown("scan")) return toast(`Scan cooling down (${abilityCooldownLabel("scan")}).`);
-  if(S.stamina < STAMINA_COST_SCAN) return toast("Not enough stamina.");
-  S.stamina -= STAMINA_COST_SCAN;
+  const scanCost = Math.max(2, STAMINA_COST_SCAN * storyStaminaDrainMul());
+  if(S.stamina < scanCost) return toast("Not enough stamina.");
+  S.stamina -= scanCost;
   S.scanPing=140;
   triggerAbilityCooldown("scan");
   if(!window.TigerTutorial?.isRunning) lockNearestTiger({ silent:true });
@@ -5161,7 +5528,7 @@ function keyboardMoveTick(){
   const ny = S.me.y + uy*speed;
   tryMoveEntity(S.me, nx, ny, 16);
 
-  S.stamina = clamp(S.stamina - (speed>PLAYER_WALK_SPEED ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK), 0, 100);
+  S.stamina = clamp(S.stamina - ((speed>PLAYER_WALK_SPEED ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()), 0, 100);
   return true;
 }
 
@@ -5184,14 +5551,15 @@ function movePlayer(){
   const ok = tryMoveEntity(S.me, nx, ny, 16);
   if(!ok){ S.target=null; }
 
-  S.stamina = clamp(S.stamina - (speed>PLAYER_WALK_SPEED ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK), 0, 100);
+  S.stamina = clamp(S.stamina - ((speed>PLAYER_WALK_SPEED ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()), 0, 100);
 }
 
 function sprint(){
   if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
   if(abilityOnCooldown("sprint")) return toast(`Sprint cooling down (${abilityCooldownLabel("sprint")}).`);
-  if(S.stamina < STAMINA_COST_SPRINT) return toast("Not enough stamina.");
-  S.stamina -= STAMINA_COST_SPRINT;
+  const sprintCost = Math.max(4, STAMINA_COST_SPRINT * storyStaminaDrainMul());
+  if(S.stamina < sprintCost) return toast("Not enough stamina.");
+  S.stamina -= sprintCost;
   S._sprintTicks=82;
   triggerAbilityCooldown("sprint");
   sfx("ui"); hapticImpact("light"); save();
@@ -5245,7 +5613,16 @@ function supportTigerHitDamage(tiger, role){
   const base = (role === "attacker") ? rand(2, 4) : rand(4, 7);
   const tier = tigerDamageScale(tiger, "support");
   const roleMul = role === "attacker" ? 0.68 : 1.02;
-  return Math.max(1.2, base * tier * roleMul);
+  let dmg = base * tier * roleMul;
+  if(S.mode==="Story"){
+    if(role === "attacker"){
+      const resist = clamp(1 - (storySpecialistRank("SP_ATK_DRILL") * 0.06), 0.72, 1);
+      dmg *= resist;
+    } else {
+      dmg *= storyRescueDamageMul();
+    }
+  }
+  return Math.max(1.2, dmg);
 }
 
 function supportAttackDamage(unit, tiger, tigerDist){
@@ -5253,7 +5630,8 @@ function supportAttackDamage(unit, tiger, tigerDist){
   const base = rand(7, 12) + (tigerDist < 95 ? 4 : 1);
   const antiTigerSkill = 1.14;
   const targetResist = 1 - ((rank - 1) * 0.06);
-  return Math.max(4, Math.round(base * antiTigerSkill * clamp(targetResist, 0.68, 1.0)));
+  const boost = storyAttackerDamageMul();
+  return Math.max(4, Math.round(base * antiTigerSkill * clamp(targetResist, 0.68, 1.0) * boost));
 }
 
 function supportUnitsTick(){
@@ -5281,7 +5659,7 @@ function supportUnitsTick(){
   const nearestCivTo = (ux, uy) => {
     let best = null;
     let bestD = Infinity;
-    for(const civ of followCivs){
+    for(const civ of liveCivs){
       const d = dist(ux, uy, civ.x, civ.y);
       if(d < bestD){ bestD = d; best = civ; }
     }
@@ -5376,7 +5754,9 @@ function supportUnitsTick(){
     const dx = targetX - unit.x;
     const dy = targetY - unit.y;
     const len = Math.hypot(dx, dy) || 1;
-    const stepCap = unit.role === "attacker" ? 2.05 : 1.9;
+    const stepCap = unit.role === "attacker"
+      ? (2.05 * (S.mode==="Story" ? (1 + (storySpecialistRank("SP_ATK_DRILL") * 0.04)) : 1))
+      : (1.9 * storyRescueSpeedMul());
     const step = Math.min(stepCap, len);
     unit.face = Math.atan2(dy, dx);
     tryMoveEntity(unit, unit.x + (dx / len) * step, unit.y + (dy / len) * step, 16);
@@ -5394,7 +5774,8 @@ function supportUnitsTick(){
           const shotDmg = supportAttackDamage(unit, tiger, tigerDist);
           tiger.hp = clamp(tiger.hp - shotDmg, 0, tiger.hpMax);
           tiger.aggroBoost = clamp((tiger.aggroBoost||0) + 0.05, 0, 1.4);
-          if(tiger.hp > 0 && tiger.hp <= captureWindowHp(tiger) && Math.random() < 0.36){
+          const capChance = clamp(0.36 + storyAttackerCaptureBonus(), 0.36, 0.82);
+          if(tiger.hp > 0 && tiger.hp <= captureWindowHp(tiger) && Math.random() < capChance){
             tiger.hp = Math.max(0, tiger.hp - 1);
             tiger.tranqTagged = true;
             if(Math.random() < 0.50){
@@ -5436,6 +5817,7 @@ function supportUnitsTick(){
 function followCiviliansTick(){
   if(S.mode==="Survival") return;
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
+  const escortBoost = storyRescueSpeedMul();
   const engageDist = 58;
   const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 470 : 410;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
@@ -5541,7 +5923,7 @@ function followCiviliansTick(){
     const dy = anchor.y - c.y;
     const dd = Math.hypot(dx,dy) || 1;
     const catchup = clamp((dd - 16) * 0.04, 0, 3.3);
-    const sp = Math.min(Math.max(playerSpeed * 1.02, 2.35) + catchup, PLAYER_SPRINT_SPEED + 1.5);
+    const sp = Math.min((Math.max(playerSpeed * 1.02, 2.35) + catchup) * escortBoost, PLAYER_SPRINT_SPEED + 1.8);
     const vx = (dx/dd) * sp;
     const vy = (dy/dd) * sp;
     if(Math.hypot(vx, vy) > 0.02){
@@ -5622,7 +6004,7 @@ function tickCiviliansAndThreats(){
       const shieldMult = civilianShielded(best) ? 0 : 1;
       const dmg = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * shieldMult;
       const prevHp = best.hp;
-      best.hp = clamp(best.hp - (dmg * perkCivMul()), 0, best.hpMax);
+      best.hp = clamp(best.hp - (dmg * perkCivMul() * storyCivilianDamageMul()), 0, best.hpMax);
       if(prevHp > best.hp && now >= (best._nextDmgPopupAt || 0)){
         best._nextDmgPopupAt = now + 240;
         emitDamagePopup(best.x, best.y - 40, `-${Math.max(1, Math.round(prevHp - best.hp))}`, "civilian");
@@ -6347,7 +6729,7 @@ function renderBattleStatus(){
 
   agentMeta.innerText = `Armor ${Math.round(S.armor)} • Stamina ${Math.round(S.stamina)} • Ammo ${S.mag.loaded}/${S.mag.cap}`;
   tigerMeta.innerText = t
-    ? `${t.type} • Capture at 25% HP or lower`
+    ? `${t.type} • Capture at ${captureWindowPctLabel()} HP or lower`
     : "Target lost";
   renderCombatControls();
 }
@@ -6460,8 +6842,9 @@ function updateBattleButtons(){
 
 function payout(outcome){
   if(S.mode==="Story"){
-    if(outcome==="CAPTURE") return { cash: rand(2500,5000), score: 220, trust:+6, aggro:-8 };
-    return { cash: rand(500,1500), score: 100, trust:-4, aggro:+14 };
+    const mul = storyPayoutMul();
+    if(outcome==="CAPTURE") return { cash: Math.round(rand(2500,5000) * mul), score: Math.round(220 * mul), trust:+6, aggro:-8 };
+    return { cash: Math.round(rand(500,1500) * mul), score: Math.round(100 * mul), trust:-4, aggro:+14 };
   }
   if(S.mode==="Arcade"){
     const L=S.arcadeLevel||1;
@@ -6629,7 +7012,7 @@ function playerAction(action){
   }
 
   if(action==="CAPTURE"){
-    if(t.hp > captureWindowHp(t)) return toast("Capture is available when the tiger is at 25% HP or lower.");
+    if(t.hp > captureWindowHp(t)) return toast(`Capture is available when the tiger is at ${captureWindowPctLabel()} HP or lower.`);
     const req = requiredTranqWeaponId(t);
     const reqWeapon = getWeapon(req);
     if(!reqWeapon) return toast("Required tranq weapon data missing.");
@@ -6894,6 +7277,14 @@ function checkMissionComplete(){
         chapterCutscene = `\nCutscene: ${STORY_CHAPTER_CUTSCENES[storyMission.number]}\n`;
       }
 
+      let chapterRewardNote = "";
+      if(storyMission && (storyMission.number % 10 === 0)){
+        const reward = unlockStoryChapterReward(storyMission.chapter);
+        if(reward){
+          chapterRewardNote = `\nChapter Reward Unlocked: ${reward.label}${reward.grants ? ` (${reward.grants})` : ""}\n${reward.desc}\n`;
+        }
+      }
+
       let finalEnding = "";
       if(storyMission?.number === 100){
         const choseCapture = S._storyFinalOutcome === "CAPTURE";
@@ -6903,7 +7294,7 @@ function checkMissionComplete(){
       }
 
       document.getElementById("completeText").innerText =
-        `${heading}${chapterCutscene}${finalEnding}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${chapterCutscene}${chapterRewardNote}${finalEnding}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       sfx("win"); hapticNotif("success");
@@ -6985,6 +7376,8 @@ function renderHUD(){
   const t=currentTargetTiger();
   document.getElementById("tigerTxt").innerText = t ? `${Math.round(t.hp)}/${Math.round(t.hpMax)} (${t.type})` : "—";
   document.getElementById("tigerBar").style.width = t ? `${(t.hp/t.hpMax)*100}%` : "0%";
+  const capturePctTxt = document.getElementById("capturePctTxt");
+  if(capturePctTxt) capturePctTxt.innerText = captureWindowPctLabel();
 
   const civAlive = (S.mode==="Survival") ? "—" : `${S.civilians.filter(c=>c.alive).length}/${S.civilians.length||0}`;
   document.getElementById("civTxt").innerText = civAlive;
@@ -8462,8 +8855,12 @@ function draw(){
 
 // ===================== INIT =====================
 function init(){
+  ensureStoryMetaState();
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.arcadeLevel = clamp(Math.floor(S.arcadeLevel || 1), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  if(syncStoryChapterRewardsFromProgress() > 0){
+    __savePending = true;
+  }
   trimPersistentState(S);
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
@@ -8534,11 +8931,11 @@ function init(){
   for(const unit of (S.supportUnits || [])){
     if(!unit.role) unit.role = "attacker";
     if(!unit.name) unit.name = unit.role === "rescue" ? "Rescue Specialist" : "Tiger Specialist";
-    if(!Number.isFinite(unit.hpMax)) unit.hpMax = unit.role === "rescue" ? 220 : 280;
+    if(!Number.isFinite(unit.hpMax)) unit.hpMax = storySupportHpMax(unit.role);
+    else unit.hpMax = storySupportHpMax(unit.role);
     if(!Number.isFinite(unit.hp)) unit.hp = unit.hpMax;
     unit.hp = clamp(unit.hp, 0, unit.hpMax);
-    if(!Number.isFinite(unit.armor)) unit.armor = unit.role === "rescue" ? 0 : 170;
-    if(unit.role === "rescue") unit.armor = 0;
+    unit.armor = storySupportArmorBase(unit.role);
     if(unit.alive == null) unit.alive = true;
   }
   if((S.soldierAttackersOwned || 0) + (S.soldierRescuersOwned || 0) <= 0 && Array.isArray(S.supportUnits) && S.supportUnits.length){
@@ -8649,6 +9046,8 @@ window.buyTool = buyTool;
 window.buyShield = buyShield;
 window.buyTigerSpecialist = buyTigerSpecialist;
 window.buyRescueSpecialist = buyRescueSpecialist;
+window.buyStoryBaseUpgrade = buyStoryBaseUpgrade;
+window.buyStorySpecialistPerk = buyStorySpecialistPerk;
 window.buyTrap = buyTrap;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
