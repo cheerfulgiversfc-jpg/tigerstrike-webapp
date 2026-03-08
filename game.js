@@ -315,6 +315,145 @@ const MAP_REALISM_PROPS = {
   ],
 };
 
+const STORY_CHAPTER_MAPS = [
+  { key:"ST_FOREST", name:"Border Jungle" },
+  { key:"ST_SUBURBS", name:"Blood Path Villages" },
+  { key:"ST_FOREST", name:"Deep Jungle Corridor" },
+  { key:"ST_DOWNTOWN", name:"Abandoned Villages" },
+  { key:"ST_SUBURBS", name:"River Territory" },
+  { key:"ST_INDUSTRIAL", name:"Mountain Edge" },
+  { key:"ST_FOREST", name:"Tiger Territory" },
+  { key:"ST_DOWNTOWN", name:"Jungle Warfront" },
+  { key:"ST_SUBURBS", name:"Hidden Jungle Rim" },
+  { key:"ST_INDUSTRIAL", name:"Ancient Temple Zone" },
+];
+
+const ARCADE_CHAPTER_MAPS = [
+  { key:"AR_SAND_YARD", name:"Arcade: Jungle Awakening" },
+  { key:"AR_ARENA_BAY", name:"Arcade: Growing Danger" },
+  { key:"ST_FOREST", name:"Arcade: Deep Jungle" },
+  { key:"ST_DOWNTOWN", name:"Arcade: Abandoned Village" },
+  { key:"AR_ARENA_BAY", name:"Arcade: River Crossing" },
+  { key:"AR_STEEL_PIT", name:"Arcade: Mountain Pass" },
+  { key:"ST_FOREST", name:"Arcade: Tiger Territory" },
+  { key:"AR_NEON_GRID", name:"Arcade: Jungle War" },
+  { key:"ST_SUBURBS", name:"Arcade: Last Villages" },
+  { key:"SV_RUINS", name:"Arcade: Final Operation" },
+];
+
+const CHAPTER_VISUALS = {
+  Story: [
+    { tint:"rgba(86,188,120,.05)", haze:"rgba(255,218,142,.06)", landmarkScale:0.00, safeHue:"rgba(74,222,128,.95)" },
+    { tint:"rgba(198,84,84,.05)", haze:"rgba(252,165,165,.05)", landmarkScale:0.02, safeHue:"rgba(110,231,183,.95)" },
+    { tint:"rgba(94,188,255,.04)", haze:"rgba(190,230,255,.05)", landmarkScale:0.03, safeHue:"rgba(74,222,128,.95)" },
+    { tint:"rgba(168,85,247,.04)", haze:"rgba(196,181,253,.05)", landmarkScale:0.02, safeHue:"rgba(110,231,183,.95)" },
+    { tint:"rgba(59,130,246,.05)", haze:"rgba(191,219,254,.06)", landmarkScale:0.02, safeHue:"rgba(52,211,153,.95)" },
+    { tint:"rgba(245,158,11,.05)", haze:"rgba(254,215,170,.06)", landmarkScale:0.04, safeHue:"rgba(110,231,183,.95)" },
+    { tint:"rgba(34,197,94,.05)", haze:"rgba(187,247,208,.06)", landmarkScale:0.03, safeHue:"rgba(74,222,128,.95)" },
+    { tint:"rgba(239,68,68,.05)", haze:"rgba(252,165,165,.06)", landmarkScale:0.03, safeHue:"rgba(110,231,183,.95)" },
+    { tint:"rgba(14,165,233,.05)", haze:"rgba(186,230,253,.06)", landmarkScale:0.03, safeHue:"rgba(74,222,128,.95)" },
+    { tint:"rgba(234,179,8,.05)", haze:"rgba(254,240,138,.06)", landmarkScale:0.05, safeHue:"rgba(74,222,128,.95)" },
+  ],
+  Arcade: [
+    { tint:"rgba(234,179,8,.05)", haze:"rgba(254,240,138,.05)", landmarkScale:0.01, safeHue:"rgba(74,222,128,.95)" },
+    { tint:"rgba(248,113,113,.05)", haze:"rgba(252,165,165,.05)", landmarkScale:0.02, safeHue:"rgba(110,231,183,.95)" },
+    { tint:"rgba(34,197,94,.05)", haze:"rgba(187,247,208,.05)", landmarkScale:0.03, safeHue:"rgba(74,222,128,.95)" },
+    { tint:"rgba(168,85,247,.05)", haze:"rgba(221,214,254,.05)", landmarkScale:0.02, safeHue:"rgba(110,231,183,.95)" },
+    { tint:"rgba(59,130,246,.05)", haze:"rgba(191,219,254,.05)", landmarkScale:0.03, safeHue:"rgba(74,222,128,.95)" },
+    { tint:"rgba(245,158,11,.05)", haze:"rgba(254,215,170,.06)", landmarkScale:0.03, safeHue:"rgba(110,231,183,.95)" },
+    { tint:"rgba(16,185,129,.05)", haze:"rgba(167,243,208,.06)", landmarkScale:0.03, safeHue:"rgba(74,222,128,.95)" },
+    { tint:"rgba(96,165,250,.05)", haze:"rgba(191,219,254,.06)", landmarkScale:0.04, safeHue:"rgba(110,231,183,.95)" },
+    { tint:"rgba(244,114,182,.05)", haze:"rgba(251,207,232,.06)", landmarkScale:0.03, safeHue:"rgba(74,222,128,.95)" },
+    { tint:"rgba(250,204,21,.06)", haze:"rgba(254,240,138,.07)", landmarkScale:0.04, safeHue:"rgba(74,222,128,.95)" },
+  ],
+  Survival: [
+    { tint:"rgba(125,211,252,.04)", haze:"rgba(186,230,253,.05)", landmarkScale:0.02, safeHue:"rgba(110,231,183,.95)" },
+  ],
+};
+
+const MAP_DENSE_LANDMARKS = {
+  ST_FOREST: [
+    { kind:"house", nx:0.12, ny:0.13, s:0.95 },
+    { kind:"truck", nx:0.22, ny:0.23, s:0.9 },
+    { kind:"park", nx:0.34, ny:0.10, s:1.0 },
+    { kind:"house", nx:0.48, ny:0.18, s:0.9 },
+    { kind:"truck", nx:0.62, ny:0.26, s:0.95 },
+    { kind:"house", nx:0.84, ny:0.15, s:0.95 },
+    { kind:"park", nx:0.14, ny:0.66, s:1.05 },
+    { kind:"truck", nx:0.30, ny:0.78, s:0.9 },
+    { kind:"house", nx:0.48, ny:0.84, s:0.9 },
+    { kind:"house", nx:0.70, ny:0.70, s:0.9 },
+    { kind:"truck", nx:0.86, ny:0.80, s:0.88 },
+    { kind:"park", nx:0.58, ny:0.57, s:1.1 },
+  ],
+  ST_SUBURBS: [
+    { kind:"house", nx:0.10, ny:0.16, s:0.95 },
+    { kind:"house", nx:0.20, ny:0.16, s:0.95 },
+    { kind:"car", nx:0.31, ny:0.30, s:0.95 },
+    { kind:"truck", nx:0.47, ny:0.18, s:0.95 },
+    { kind:"park", nx:0.63, ny:0.20, s:1.05 },
+    { kind:"house", nx:0.80, ny:0.17, s:0.95 },
+    { kind:"car", nx:0.15, ny:0.56, s:0.92 },
+    { kind:"house", nx:0.31, ny:0.62, s:0.95 },
+    { kind:"truck", nx:0.49, ny:0.62, s:0.95 },
+    { kind:"park", nx:0.65, ny:0.66, s:1.1 },
+    { kind:"house", nx:0.82, ny:0.64, s:0.95 },
+    { kind:"car", nx:0.90, ny:0.40, s:0.9 },
+    { kind:"house", nx:0.22, ny:0.86, s:0.9 },
+    { kind:"truck", nx:0.74, ny:0.84, s:0.9 },
+  ],
+  ST_DOWNTOWN: [
+    { kind:"building", nx:0.12, ny:0.12, s:1.0 },
+    { kind:"building", nx:0.26, ny:0.12, s:1.0 },
+    { kind:"bus", nx:0.42, ny:0.22, s:0.95 },
+    { kind:"building", nx:0.58, ny:0.11, s:1.0 },
+    { kind:"building", nx:0.78, ny:0.12, s:1.0 },
+    { kind:"car", nx:0.90, ny:0.24, s:0.92 },
+    { kind:"building", nx:0.15, ny:0.48, s:1.0 },
+    { kind:"bus", nx:0.34, ny:0.52, s:0.95 },
+    { kind:"park", nx:0.50, ny:0.50, s:0.95 },
+    { kind:"building", nx:0.67, ny:0.50, s:1.0 },
+    { kind:"car", nx:0.82, ny:0.52, s:0.95 },
+    { kind:"building", nx:0.90, ny:0.48, s:1.0 },
+    { kind:"building", nx:0.22, ny:0.82, s:1.0 },
+    { kind:"building", nx:0.48, ny:0.82, s:1.0 },
+    { kind:"building", nx:0.75, ny:0.82, s:1.0 },
+  ],
+  ST_INDUSTRIAL: [
+    { kind:"building", nx:0.12, ny:0.16, s:1.05 },
+    { kind:"truck", nx:0.26, ny:0.20, s:0.95 },
+    { kind:"crate", nx:0.38, ny:0.16, s:1.0 },
+    { kind:"building", nx:0.56, ny:0.18, s:1.05 },
+    { kind:"truck", nx:0.72, ny:0.24, s:0.95 },
+    { kind:"building", nx:0.86, ny:0.16, s:1.05 },
+    { kind:"crate", nx:0.14, ny:0.56, s:1.0 },
+    { kind:"truck", nx:0.30, ny:0.62, s:0.95 },
+    { kind:"building", nx:0.52, ny:0.58, s:1.05 },
+    { kind:"crate", nx:0.68, ny:0.62, s:1.0 },
+    { kind:"truck", nx:0.84, ny:0.58, s:0.95 },
+    { kind:"building", nx:0.20, ny:0.84, s:1.0 },
+    { kind:"building", nx:0.48, ny:0.84, s:1.0 },
+    { kind:"building", nx:0.78, ny:0.84, s:1.0 },
+  ],
+};
+
+const MAP_COLLIDER_PROFILES = {
+  house: { type:"rect", w:32, h:24, pad:6 },
+  building: { type:"rect", w:56, h:42, pad:8 },
+  truck: { type:"rect", w:44, h:22, pad:5 },
+  car: { type:"rect", w:34, h:16, pad:4 },
+  bus: { type:"rect", w:52, h:20, pad:5 },
+  crate: { type:"rect", w:24, h:20, pad:4 },
+  barrier: { type:"rect", w:34, h:14, pad:4 },
+  fence: { type:"rect", w:40, h:12, pad:4 },
+  rock: { type:"circle", r:14, pad:4 },
+  bush: { type:"circle", r:14, pad:2 },
+  barrel: { type:"circle", r:10, pad:2 },
+  lamp: { type:"circle", r:8, pad:2 },
+  sign: { type:"rect", w:28, h:14, pad:3 },
+  log: { type:"rect", w:34, h:12, pad:3 },
+};
+
 const ARCADE_CAMPAIGN_CHAPTERS = [
   "Jungle Awakening",
   "Growing Danger",
@@ -907,6 +1046,9 @@ let __mapFrameCacheCanvas = null;
 let __mapFrameCacheCtx = null;
 let __mapFrameCacheSig = "";
 let __mapFrameCacheAt = 0;
+let __mapObstacleSig = "";
+let __mapObstacleRects = [];
+let __mapObstacleCircles = [];
 let __frameSlowUntil = 0;
 let __frameLagScore = 0;
 let __lastFrameAt = 0;
@@ -915,6 +1057,9 @@ let __drawLoopStarted = false;
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
   __mapFrameCacheAt = 0;
+  __mapObstacleSig = "";
+  __mapObstacleRects = [];
+  __mapObstacleCircles = [];
 }
 
 function flushSaveNow(){
@@ -1323,6 +1468,25 @@ function currentCampaignLevel(){
   if(S.mode==="Arcade") return Math.max(1, S.arcadeLevel || 1);
   return Math.max(1, S.survivalWave || 1);
 }
+function missionIndexForMode(mode=S.mode){
+  if(mode==="Story") return clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  if(mode==="Arcade") return clamp(Math.floor(S.arcadeLevel || 1), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  return Math.max(1, Math.floor(S.survivalWave || 1));
+}
+function chapterIndexForMode(mode=S.mode){
+  if(mode==="Survival") return 1;
+  return clamp(Math.ceil(missionIndexForMode(mode) / 10), 1, 10);
+}
+function mapFamilyKey(key){
+  if(key==="ST_FOREST" || key==="AR_SAND_YARD" || key==="SV_NIGHT_WOODS") return "ST_FOREST";
+  if(key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD") return "ST_SUBURBS";
+  if(key==="ST_DOWNTOWN" || key==="AR_NEON_GRID" || key==="SV_STORM_DISTRICT") return "ST_DOWNTOWN";
+  return "ST_INDUSTRIAL";
+}
+function chapterVisualForMode(mode=S.mode, chapter=chapterIndexForMode(mode)){
+  const list = CHAPTER_VISUALS[mode] || CHAPTER_VISUALS.Survival;
+  return list[clamp(chapter, 1, list.length) - 1] || list[0] || CHAPTER_VISUALS.Survival[0];
+}
 function soldierUnlockLevelReached(){
   return currentCampaignLevel() >= SOLDIER_UNLOCK_LEVEL;
 }
@@ -1551,10 +1715,23 @@ function equippedWeaponRange(){ return equippedWeapon()?.range || 112; }
 function captureWindowHp(t){ return Math.max(1, Math.ceil((t?.hpMax || 0) * 0.25)); }
 
 function currentMap(){
+  if(S.mode==="Story"){
+    const chapter = chapterIndexForMode("Story");
+    return STORY_CHAPTER_MAPS[chapter - 1] || STORY_CHAPTER_MAPS[0];
+  }
+  if(S.mode==="Arcade"){
+    const chapter = chapterIndexForMode("Arcade");
+    return ARCADE_CHAPTER_MAPS[chapter - 1] || ARCADE_CHAPTER_MAPS[0];
+  }
   const list = MODE_MAPS[S.mode] || MODE_MAPS.Story;
   return list[clamp(S.mapIndex,0,list.length-1)];
 }
 function nextMap(){
+  if(S.mode==="Story" || S.mode==="Arcade"){
+    toast("Campaign maps are chapter-based. Map background updates every 10 missions.");
+    sfx("ui");
+    return;
+  }
   const list = MODE_MAPS[S.mode] || MODE_MAPS.Story;
   S.mapIndex = (S.mapIndex+1) % list.length;
   if(!window.__TUTORIAL_MODE__) spawnMapInteractables();
@@ -1569,6 +1746,111 @@ function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr){
   const dy = cy - closestY;
   return (dx*dx + dy*dy) <= cr*cr;
 }
+function buildDenseLandmarks(mapKey, chapter, w=cv.width, h=cv.height){
+  const family = mapFamilyKey(mapKey);
+  const base = MAP_DENSE_LANDMARKS[family] || [];
+  const ch = clamp(chapter || 1, 1, 10) - 1;
+  return base.map((lm, idx)=>{
+    const wobbleX = Math.sin((idx + 1) * 1.71 + ch * 0.93) * 0.012;
+    const wobbleY = Math.cos((idx + 1) * 1.37 + ch * 0.81) * 0.010;
+    const x = clamp(Math.round((lm.nx + wobbleX) * w), 52, w - 52);
+    const y = clamp(Math.round((lm.ny + wobbleY) * h), 70, h - 56);
+    return { ...lm, x, y };
+  });
+}
+function pushMapObstacleRect(rects, cx, cy, ww, hh, pad=0){
+  const w = Math.max(6, ww + (pad * 2));
+  const h = Math.max(6, hh + (pad * 2));
+  rects.push({ x: cx - (w / 2), y: cy - (h / 2), w, h });
+}
+function pushMapObstacleCircle(circles, x, y, r, pad=0){
+  circles.push({ x, y, r: Math.max(4, r + pad) });
+}
+function addMapObstacleForLandmark(rects, circles, item){
+  const profile = MAP_COLLIDER_PROFILES[item?.kind];
+  if(!profile) return;
+  const scale = Math.max(0.72, item?.s || 1);
+  if(profile.type === "circle"){
+    pushMapObstacleCircle(circles, item.x, item.y, profile.r * scale, profile.pad || 0);
+    return;
+  }
+  pushMapObstacleRect(rects, item.x, item.y, profile.w * scale, profile.h * scale, profile.pad || 0);
+}
+function ensureMapObstacleCache(){
+  const map = currentMap();
+  const key = map?.key || "ST_FOREST";
+  const chapter = chapterIndexForMode(S.mode);
+  const w = cv.width || 960;
+  const h = cv.height || 540;
+  const sig = [S.mode, key, chapter, w, h, window.__TUTORIAL_MODE__ ? 1 : 0].join("|");
+  if(sig === __mapObstacleSig) return;
+
+  const rects = [];
+  const circles = [];
+  const family = mapFamilyKey(key);
+  const sx = (v)=> v * (w / 960);
+  const sy = (v)=> v * (h / 540);
+
+  for(const lm of buildDenseLandmarks(key, chapter, w, h)){
+    addMapObstacleForLandmark(rects, circles, lm);
+  }
+
+  for(const p of (MAP_REALISM_PROPS[family] || [])){
+    const px = p.x * (w / 960);
+    const py = p.y * (h / 540);
+    addMapObstacleForLandmark(rects, circles, { kind:p.kind, x:px, y:py, s:p.s || 1 });
+  }
+
+  if(family === "ST_FOREST"){
+    pushMapObstacleCircle(circles, sx(260), h * 0.17, sx(80), 6);
+    pushMapObstacleCircle(circles, sx(720), h * 0.15, sx(76), 6);
+    pushMapObstacleCircle(circles, sx(220), h * 0.80, sx(86), 6);
+    pushMapObstacleCircle(circles, sx(760), h * 0.66, sx(72), 6);
+  } else if(family === "ST_SUBURBS"){
+    const houses = [
+      [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
+      [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
+      [140,360],[280,360],[420,360],[560,360],[700,360],[840,360],
+      [120,450],[240,450],[360,450],[480,450],[600,450],[720,450],[840,450],
+    ];
+    for(const [hx, hy] of houses){
+      pushMapObstacleRect(rects, sx(hx), sy(hy), sx(36), sy(24), 4);
+    }
+  } else if(family === "ST_DOWNTOWN"){
+    const blocks = [
+      [150,140,90,80],[320,150,80,70],[520,140,100,80],[720,150,80,75],[880,140,80,70],
+      [180,310,100,85],[360,320,90,80],[560,310,110,85],[760,320,90,80],[900,310,80,75],
+      [150,470,90,70],[340,470,90,70],[540,470,100,70],[740,470,90,70],[900,470,80,70],
+    ];
+    for(const [bx, by, bw, bh] of blocks){
+      pushMapObstacleRect(rects, sx(bx), sy(by), sx(bw), sy(bh), 6);
+    }
+  } else {
+    pushMapObstacleRect(rects, sx(220), sy(155), sx(260), sy(130), 7);
+    pushMapObstacleRect(rects, sx(740), sy(165), sx(260), sy(110), 7);
+    pushMapObstacleRect(rects, sx(410), sy(410), sx(340), sy(140), 8);
+    pushMapObstacleRect(rects, sx(170), sy(260), sx(140), sy(90), 6);
+    pushMapObstacleRect(rects, sx(520), sy(260), sx(160), sy(90), 6);
+    pushMapObstacleRect(rects, sx(820), sy(300), sx(150), sy(90), 6);
+  }
+
+  __mapObstacleRects = rects;
+  __mapObstacleCircles = circles;
+  __mapObstacleSig = sig;
+}
+function blockedByMapObstacle(x, y, radius){
+  ensureMapObstacleCache();
+  for(const c of __mapObstacleCircles){
+    const rr = (c.r || 0) + radius;
+    const dx = x - c.x;
+    const dy = y - c.y;
+    if((dx*dx + dy*dy) <= (rr*rr)) return true;
+  }
+  for(const ob of __mapObstacleRects){
+    if(rectCircleCollide(ob.x, ob.y, ob.w, ob.h, x, y, radius)) return true;
+  }
+  return false;
+}
 function blockedAt(x, y, radius){
   const now = Date.now();
   for(const carcass of (S.carcasses || [])){
@@ -1576,9 +1858,11 @@ function blockedAt(x, y, radius){
     if((now - (carcass.bornAt || 0)) < 1300) continue;
     if(rectCircleCollide(carcass.x - 11, carcass.y - 6, 22, 12, x, y, radius)) return true;
   }
+  if(blockedByMapObstacle(x, y, radius)) return true;
   return false;
 }
 function tryCarcassEscape(ent, radius, minX, maxX, minY, maxY){
+  ensureMapObstacleCache();
   let nearest = null;
   let nearestD = Infinity;
   for(const carcass of (S.carcasses || [])){
@@ -1586,6 +1870,25 @@ function tryCarcassEscape(ent, radius, minX, maxX, minY, maxY){
     const d = dist(ent.x, ent.y, carcass.x, carcass.y);
     if(d < nearestD){
       nearest = carcass;
+      nearestD = d;
+    }
+  }
+  for(const ob of __mapObstacleRects){
+    if(!rectCircleCollide(ob.x, ob.y, ob.w, ob.h, ent.x, ent.y, radius)) continue;
+    const cx = ob.x + (ob.w * 0.5);
+    const cy = ob.y + (ob.h * 0.5);
+    const d = dist(ent.x, ent.y, cx, cy);
+    if(d < nearestD){
+      nearest = { x:cx, y:cy };
+      nearestD = d;
+    }
+  }
+  for(const c of __mapObstacleCircles){
+    const rr = (c.r || 0) + radius;
+    const d = dist(ent.x, ent.y, c.x, c.y);
+    if(d > rr) continue;
+    if(d < nearestD){
+      nearest = c;
       nearestD = d;
     }
   }
@@ -6876,13 +7179,14 @@ function maybeRenderHUD(force=false){
 function drawMapScene(){
   const frameNow = Date.now();
   const w=cv.width, h=cv.height;
-  const key=currentMap().key;
-  const missionIndex = S.mode==="Story"
-    ? (S.storyLevel||1)
-    : (S.mode==="Arcade" ? (S.arcadeLevel||1) : (S.survivalWave||1));
+  const mapInfo = currentMap();
+  const key = mapInfo.key;
+  const missionIndex = missionIndexForMode(S.mode);
+  const chapter = chapterIndexForMode(S.mode);
+  const chapterStyle = chapterVisualForMode(S.mode, chapter);
   const ez = S.evacZone || DEFAULT.evacZone;
   const cacheSig = [
-    key, w, h, S.mode, missionIndex, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
+    key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0
   ].join("|");
@@ -6896,11 +7200,7 @@ function drawMapScene(){
     return;
   }
 
-  const themeKey =
-    (key==="ST_FOREST" || key==="AR_SAND_YARD" || key==="SV_NIGHT_WOODS") ? "ST_FOREST" :
-    (key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD") ? "ST_SUBURBS" :
-    (key==="ST_DOWNTOWN" || key==="AR_NEON_GRID" || key==="SV_STORM_DISTRICT") ? "ST_DOWNTOWN" :
-    "ST_INDUSTRIAL";
+  const themeKey = mapFamilyKey(key);
 
   function fillSolid(color){ ctx.fillStyle=color; ctx.fillRect(0,0,w,h); }
   function seedNoise(ix, iy, seed=0){
@@ -6991,8 +7291,8 @@ function drawMapScene(){
     rounded(x-12,y-10,24,20,6,"rgba(140,90,45,.85)","rgba(70,40,20,.85)");
   }
   function drawProp(p){
-    const px = p.x * (w / 960);
-    const py = p.y * (h / 540);
+    const px = p._abs ? p.x : (p.x * (w / 960));
+    const py = p._abs ? p.y : (p.y * (h / 540));
     const s = p.s || 1;
     if(p.kind==="bush"){
       treeDot(px, py, 10 * s);
@@ -7032,6 +7332,50 @@ function drawMapScene(){
       rounded(px-(11*s), py-(8*s), 22*s, 7*s, 3*s, "rgba(195,222,245,.46)");
       return;
     }
+    if(p.kind==="truck"){
+      rounded(px-(26*s), py-(11*s), 42*s, 22*s, 6*s, "rgba(110,124,140,.9)", "rgba(22,30,45,.95)");
+      rounded(px+(12*s), py-(8*s), 14*s, 16*s, 4*s, "rgba(150,165,180,.85)", "rgba(24,34,46,.9)");
+      ctx.fillStyle="rgba(210,228,245,.42)";
+      rounded(px+(14*s), py-(6*s), 10*s, 7*s, 2*s, "rgba(210,228,245,.42)");
+      return;
+    }
+    if(p.kind==="bus"){
+      rounded(px-(30*s), py-(11*s), 60*s, 22*s, 7*s, "rgba(84,124,184,.88)", "rgba(22,30,45,.95)");
+      ctx.fillStyle="rgba(210,232,255,.45)";
+      for(let i=0;i<5;i++){
+        rounded(px-(23*s)+(i*10*s), py-(8*s), 8*s, 6*s, 2*s, "rgba(210,232,255,.45)");
+      }
+      return;
+    }
+    if(p.kind==="house"){
+      houseBlock(px, py);
+      ctx.fillStyle="rgba(90,50,35,.9)";
+      ctx.beginPath();
+      ctx.moveTo(px - (18*s), py - (10*s));
+      ctx.lineTo(px, py - (24*s));
+      ctx.lineTo(px + (18*s), py - (10*s));
+      ctx.closePath();
+      ctx.fill();
+      return;
+    }
+    if(p.kind==="building"){
+      buildingBlock(px, py, 54*s, 42*s);
+      ctx.fillStyle="rgba(205,220,240,.40)";
+      for(let row=0; row<3; row++){
+        for(let col=0; col<2; col++){
+          ctx.fillRect(px - (13*s) + (col * 12*s), py - (12*s) + (row * 10*s), 6*s, 6*s);
+        }
+      }
+      return;
+    }
+    if(p.kind==="park"){
+      rounded(px-(26*s), py-(16*s), 52*s, 32*s, 10*s, "rgba(28,118,66,.82)", "rgba(8,54,30,.88)");
+      treeDot(px-(10*s), py-(2*s), 8*s);
+      treeDot(px+(10*s), py+(2*s), 7*s);
+      ctx.fillStyle="rgba(88,62,36,.9)";
+      ctx.fillRect(px-(8*s), py+(8*s), 16*s, 3*s);
+      return;
+    }
     if(p.kind==="barrier"){
       rounded(px-(18*s), py-(6*s), 36*s, 12*s, 4*s, "rgba(220,180,70,.86)", "rgba(64,52,22,.95)");
       return;
@@ -7062,7 +7406,7 @@ function drawMapScene(){
     }
   }
 
-  if(key==="ST_FOREST" || key==="AR_SAND_YARD" || key==="SV_NIGHT_WOODS"){
+  if(themeKey==="ST_FOREST"){
     fillSolid("#0f2b1c");
     ctx.fillStyle="rgba(18,66,40,.34)";
     ctx.fillRect(0,0,w,h);
@@ -7099,7 +7443,7 @@ function drawMapScene(){
     ctx.beginPath(); ctx.ellipse(220,h*0.80,96,42,0,0,Math.PI*2); ctx.stroke();
     ctx.beginPath(); ctx.ellipse(760,h*0.66,80,28,0,0,Math.PI*2); ctx.stroke();
   }
-  else if(key==="ST_SUBURBS" || key==="AR_ARENA_BAY" || key==="SV_ASH_FIELD"){
+  else if(themeKey==="ST_SUBURBS"){
     fillSolid("#18402a");
     terrainTexture(19, 32, 0.08, "rgba(232,240,250,.05)", "rgba(0,0,0,.11)");
     const main=[[0,280],[240,270],[480,300],[720,280],[960,300]];
@@ -7121,7 +7465,7 @@ function drawMapScene(){
     const trees = [[70,200],[90,240],[110,260],[930,220],[900,250],[880,280],[70,520],[930,520]];
     for(const [x,y] of trees) treeDot(x,y,7.5);
   }
-  else if(key==="ST_DOWNTOWN" || key==="AR_NEON_GRID" || key==="SV_STORM_DISTRICT"){
+  else if(themeKey==="ST_DOWNTOWN"){
     fillSolid("#1a1f2d");
     terrainTexture(29, 34, 0.07, "rgba(126,149,196,.06)", "rgba(0,0,0,.13)");
     ctx.fillStyle="rgba(70,72,80,.95)";
@@ -7158,26 +7502,27 @@ function drawMapScene(){
     for(const [x,y] of crates) crateBlock(x,y);
   }
 
-  // ambient atmospheric depth by mission progression
-  const phase = missionIndex % 4;
-  if(phase===1){
-    ctx.fillStyle="rgba(255,220,150,.06)";
+  if(chapterStyle?.tint){
+    ctx.fillStyle = chapterStyle.tint;
     ctx.fillRect(0,0,w,h);
-  } else if(phase===2){
-    ctx.fillStyle="rgba(120,165,255,.05)";
-    ctx.fillRect(0,0,w,h);
-  } else if(phase===3){
-    const g = ctx.createLinearGradient(0,0,0,h);
-    g.addColorStop(0,"rgba(210,220,255,.11)");
-    g.addColorStop(0.35,"rgba(120,135,170,.05)");
-    g.addColorStop(1,"rgba(8,12,20,.02)");
-    ctx.fillStyle = g;
+  }
+  if(chapterStyle?.haze){
+    const haze = ctx.createLinearGradient(0,0,0,h);
+    haze.addColorStop(0, chapterStyle.haze);
+    haze.addColorStop(0.45, "rgba(0,0,0,0)");
+    haze.addColorStop(1, "rgba(0,0,0,.03)");
+    ctx.fillStyle = haze;
     ctx.fillRect(0,0,w,h);
   }
 
   // realism props
   const props = MAP_REALISM_PROPS[themeKey] || [];
   for(const p of props) drawProp(p);
+  const denseLandmarks = buildDenseLandmarks(key, chapter, w, h);
+  const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
+  for(const lm of denseLandmarks){
+    drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
+  }
 
   // subtle vignette to reduce flatness
   const vignette = ctx.createRadialGradient(w*0.5, h*0.48, h*0.25, w*0.5, h*0.5, h*0.85);
@@ -7187,10 +7532,19 @@ function drawMapScene(){
   ctx.fillRect(0,0,w,h);
 
   if(S.mode!=="Survival"){
+    const chapterLabel = `${S.mode} Chapter ${chapter}`;
+    rounded(14, 12, 152, 24, 10, "rgba(8,14,24,.68)", "rgba(170,196,235,.28)");
+    ctx.fillStyle = "rgba(232,240,255,.92)";
+    ctx.font = "700 11px system-ui";
+    ctx.fillText(chapterLabel, 24, 28);
+  }
+
+  if(S.mode!=="Survival"){
     const pulse = 0.86 + Math.sin(Date.now() / 240) * 0.08;
     const ex = S.evacZone.x;
     const ey = S.evacZone.y;
     const er = S.evacZone.r;
+    const safeHue = chapterStyle?.safeHue || "rgba(74,222,128,.95)";
 
     ctx.save();
     ctx.globalAlpha = 0.95;
@@ -7210,7 +7564,7 @@ function drawMapScene(){
     ctx.restore();
 
     ctx.globalAlpha = pulse;
-    ctx.strokeStyle = "rgba(74,222,128,.95)";
+    ctx.strokeStyle = safeHue;
     ctx.lineWidth = 4;
     ctx.beginPath(); ctx.arc(ex,ey,er,0,Math.PI*2); ctx.stroke();
 
@@ -7221,18 +7575,43 @@ function drawMapScene(){
     ctx.setLineDash([]);
 
     // center safe marker
-    ctx.fillStyle = "rgba(74,222,128,.9)";
-    rounded(ex-14, ey-14, 28, 28, 8, "rgba(74,222,128,.24)", "rgba(74,222,128,.95)");
+    ctx.fillStyle = safeHue;
+    rounded(ex-14, ey-14, 28, 28, 8, "rgba(74,222,128,.24)", safeHue);
     ctx.fillStyle = "rgba(220,255,235,.95)";
     ctx.fillRect(ex-2, ey-9, 4, 18);
     ctx.fillRect(ex-9, ey-2, 18, 4);
 
-    // label
-    rounded(ex-56, ey-er-30, 112, 24, 12, "rgba(16,56,34,.92)", "rgba(74,222,128,.95)");
+    for(let i=0;i<4;i++){
+      const a = (Math.PI * 0.5 * i) + (Date.now() / 1300);
+      const bx = ex + Math.cos(a) * (er + 14);
+      const by = ey + Math.sin(a) * (er + 14);
+      rounded(bx-7, by-7, 14, 14, 5, "rgba(10,20,14,.88)", safeHue);
+    }
+
+    // label + directional signage
+    rounded(ex-72, ey-er-34, 144, 26, 12, "rgba(16,56,34,.92)", safeHue);
     ctx.fillStyle = "rgba(220,255,235,.98)";
     ctx.font = "900 11px system-ui";
     ctx.textAlign = "center";
-    ctx.fillText("SAFE ZONE", ex, ey-er-14);
+    ctx.fillText("EVAC SAFE ZONE", ex, ey-er-16);
+    ctx.font = "800 10px system-ui";
+    ctx.fillStyle = "rgba(190,255,220,.9)";
+    ctx.fillText("FOLLOW MARKER", ex, ey-er-4);
+
+    ctx.strokeStyle = "rgba(170,243,208,.72)";
+    ctx.lineWidth = 2;
+    for(let i=0;i<3;i++){
+      const r = er + 26 + (i * 10);
+      const ang = (Date.now() / 900) + (i * 1.4);
+      const tx = ex + Math.cos(ang) * r;
+      const ty = ey + Math.sin(ang) * r;
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(tx - 10, ty - 6);
+      ctx.lineTo(tx - 8, ty + 6);
+      ctx.closePath();
+      ctx.stroke();
+    }
     ctx.textAlign = "start";
     ctx.globalAlpha = 1;
   }
