@@ -885,6 +885,7 @@ const DEFAULT = {
   paused:false, pauseReason:null,
   mode:"Story", arcadeLevel:1, survivalWave:1, storyLevel:1, mapIndex:0,
   soundOn:true, audioUnlocked:false,
+  performanceMode:"AUTO",
 
   lives:5, funds:1000, score:0, trust:80, aggro:10, stamina:100,
   hp:100, armor:20, armorCap:100,
@@ -1087,6 +1088,15 @@ let __frameSlowUntil = 0;
 let __frameLagScore = 0;
 let __lastFrameAt = 0;
 let __drawLoopStarted = false;
+let __frameRecoverUntil = 0;
+let __frameHeavyFxFlip = 0;
+const __frameErrorGate = Object.create(null);
+const __frameBudgetState = {
+  frameNo: 0,
+  startTs: 0,
+  limitMs: 12.6,
+  dropped: 0
+};
 
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
@@ -1126,11 +1136,83 @@ function maybeAutosave(force=false){
   }
 }
 
-function runFrameTask(key, intervalMs, fn){
+function normalizePerformanceMode(mode){
+  return mode === "PERFORMANCE" ? "PERFORMANCE" : "AUTO";
+}
+function performanceMode(){
+  if(!S || typeof S !== "object") return "AUTO";
+  S.performanceMode = normalizePerformanceMode(S.performanceMode);
+  return S.performanceMode;
+}
+function updatePerformanceLabels(){
+  const mode = performanceMode();
+  const label = mode === "PERFORMANCE" ? "Performance" : "Auto";
+  const perfLbl = document.getElementById("perfLbl");
+  if(perfLbl) perfLbl.innerText = label;
+  const perfLblMobile = document.getElementById("perfLblMobile");
+  if(perfLblMobile) perfLblMobile.innerText = label;
+}
+function togglePerformanceMode(){
+  const mode = performanceMode();
+  S.performanceMode = mode === "PERFORMANCE" ? "AUTO" : "PERFORMANCE";
+  updatePerformanceLabels();
+  save();
+  toast(S.performanceMode === "PERFORMANCE"
+    ? "Performance mode enabled (more stable on heavy missions)."
+    : "Performance mode set to Auto.");
+}
+function beginFrameBudget(frameStartTs){
+  const now = Number.isFinite(frameStartTs) ? frameStartTs : (performance.now ? performance.now() : Date.now());
+  const mode = performanceMode();
+  let limit = mode === "PERFORMANCE" ? 9.8 : 12.6;
+  if(frameIsSlow(now)) limit -= 1.6;
+  if(now < (__frameRecoverUntil || 0)) limit = Math.min(limit, 8.2);
+  __frameBudgetState.frameNo += 1;
+  __frameBudgetState.startTs = now;
+  __frameBudgetState.limitMs = clamp(limit, 6.6, 14.8);
+  __frameBudgetState.dropped = 0;
+}
+function frameBudgetExceeded(costHint=0){
+  const now = performance.now ? performance.now() : Date.now();
+  if(!Number.isFinite(__frameBudgetState.startTs) || __frameBudgetState.startTs <= 0) return false;
+  const used = now - (__frameBudgetState.startTs || now);
+  return (used + Math.max(0, costHint || 0)) > (__frameBudgetState.limitMs || 12.6);
+}
+function reportTickError(key, err){
+  const now = Date.now();
+  if((__frameErrorGate[key] || 0) + 2200 < now){
+    __frameErrorGate[key] = now;
+    console.error(`Tick recovered from error (${key}):`, err);
+  }
+  __frameRecoverUntil = (performance.now ? performance.now() : now) + 1800;
+  __frameSlowUntil = Math.max(__frameSlowUntil || 0, (performance.now ? performance.now() : now) + 2200);
+}
+function safeTick(key, fn){
+  try{
+    fn();
+    return true;
+  }catch(err){
+    reportTickError(key, err);
+    return false;
+  }
+}
+function runFrameTask(key, intervalMs, fn, options={}){
+  const opts = options || {};
   const now = Date.now();
   if(now < (__frameTaskGate[key] || 0)) return false;
+  const costHint = Math.max(0, Number(opts.costHint) || 0);
+  const critical = !!opts.critical;
+  if(!critical && frameBudgetExceeded(costHint)){
+    __frameTaskGate[key] = now + Math.min(intervalMs, 40);
+    __frameBudgetState.dropped = (__frameBudgetState.dropped || 0) + 1;
+    if(__frameBudgetState.dropped >= 6){
+      const perfNow = performance.now ? performance.now() : now;
+      __frameSlowUntil = Math.max(__frameSlowUntil || 0, perfNow + 1400);
+    }
+    return false;
+  }
   __frameTaskGate[key] = now + intervalMs;
-  fn();
+  safeTick(key, fn);
   return true;
 }
 
@@ -1140,7 +1222,9 @@ function frameIsSlow(nowTs){
 }
 
 function frameInterval(baseMs, slowMul=1.45){
-  if(frameIsSlow()) return Math.max(baseMs + 1, Math.round(baseMs * slowMul));
+  const modeMul = performanceMode() === "PERFORMANCE" ? 1.24 : 1;
+  if(frameIsSlow()) return Math.max(baseMs + 1, Math.round(baseMs * Math.max(slowMul, modeMul)));
+  if(modeMul > 1) return Math.max(baseMs + 1, Math.round(baseMs * modeMul));
   return baseMs;
 }
 
@@ -1159,7 +1243,7 @@ function updateFrameLoad(frameStartTs){
     __frameLagScore = Math.max(0, (__frameLagScore || 0) - 1);
   }
   if(__frameLagScore >= 6){
-    __frameSlowUntil = now + 2400;
+    __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 2400);
     __frameLagScore = 2;
   }
 }
@@ -7321,6 +7405,7 @@ function renderHUD(){
   if(soundLblMobile) soundLblMobile.innerText = S.soundOn ? "On" : "Off";
   const pauseLblMobile = document.getElementById("pauseLblMobile");
   if(pauseLblMobile) pauseLblMobile.innerText = S.paused ? "Resume" : "Pause";
+  updatePerformanceLabels();
   document.getElementById("livesTxt").innerText = S.lives;
 
   document.getElementById("titleTxt").innerText = S.title || "Rookie";
@@ -8788,8 +8873,14 @@ function drawEntities(){
   for(const t of S.tigers){ if(t.alive) drawTiger(t); }
   drawSoldier();
   drawAbilityCooldownWheel();
-  drawCombatFx();
-  drawDamagePopups();
+  const perfMode = performanceMode();
+  const isSlowFrame = frameIsSlow();
+  __frameHeavyFxFlip = (__frameHeavyFxFlip + 1) % 6;
+  const drawFx = (perfMode !== "PERFORMANCE" && !isSlowFrame)
+    || (perfMode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 === 0))
+    || (isSlowFrame && (__frameHeavyFxFlip % 3 === 0));
+  if(drawFx) drawCombatFx();
+  if(drawFx || __frameHeavyFxFlip % 2 === 0) drawDamagePopups();
 }
 
 // ===================== MISSION FLOW =====================
@@ -8802,44 +8893,46 @@ function draw(){
       maybeAutosave();
       return;
     }
-    pollGamepadControls();
-    refreshControllerUi();
-    maybeRenderHUD();
-    updateEngage();
+    beginFrameBudget(frameStart);
+    safeTick("pollGamepadControls", pollGamepadControls);
+    safeTick("refreshControllerUi", refreshControllerUi);
+    safeTick("maybeRenderHUD", maybeRenderHUD);
+    safeTick("updateEngage", updateEngage);
 
     if(!(S.gameOver || S.paused || S.missionEnded)){
-      runFrameTask("sanitizeState", frameInterval(120, 1.9), sanitizeRuntimeState);
-      runFrameTask("clampWorld", frameInterval(180, 1.3), clampWorldToCanvas);
-      regen();
-      runFrameTask("backupTick", frameInterval(42, 1.5), backupTick);
-      runFrameTask("trapTick", frameInterval(34, 1.6), trapTick);
-      runFrameTask("mapInteractableTick", frameInterval(64, 1.5), mapInteractableTick);
-      runFrameTask("comboTick", frameInterval(110, 1.4), comboTick);
+      runFrameTask("sanitizeState", frameInterval(120, 1.9), sanitizeRuntimeState, { costHint:1.8 });
+      runFrameTask("clampWorld", frameInterval(180, 1.3), clampWorldToCanvas, { costHint:0.9 });
+      safeTick("regen", regen);
+      runFrameTask("backupTick", frameInterval(42, 1.5), backupTick, { costHint:1.1 });
+      runFrameTask("trapTick", frameInterval(34, 1.6), trapTick, { costHint:1.2 });
+      runFrameTask("mapInteractableTick", frameInterval(64, 1.5), mapInteractableTick, { costHint:1.1 });
+      runFrameTask("comboTick", frameInterval(110, 1.4), comboTick, { costHint:0.7 });
 
       if(!window.TigerTutorial?.isRunning){
-        runFrameTask("tickEvents", frameInterval(180, 1.5), tickEvents);
-        runFrameTask("ambientPickup", frameInterval(300, 1.35), maybeSpawnAmbientPickup);
-        runFrameTask("tickPickups", frameInterval(46, 1.5), tickPickups);
+        runFrameTask("tickEvents", frameInterval(180, 1.5), tickEvents, { costHint:0.9 });
+        runFrameTask("ambientPickup", frameInterval(300, 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
+        runFrameTask("tickPickups", frameInterval(46, 1.5), tickPickups, { costHint:1.0 });
       }
 
-      runFrameTask("roamTigers", frameInterval(34, 1.55), roamTigers);
-      runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick);
-      supportUnitsTick();
-      const usedKeyboard = keyboardMoveTick();
-      if(!usedKeyboard) movePlayer();
-      clearOutOfRangeLock();
-      runFrameTask("followCivilians", frameInterval(40, 1.5), followCiviliansTick);
-      runFrameTask("evacCheck", frameInterval(58, 1.5), evacCheck);
-      runFrameTask("civThreats", frameInterval(72, 1.5), tickCiviliansAndThreats);
-      runFrameTask("survivalPressure", frameInterval(86, 1.4), survivalPressureTick);
-      combatTick();
-      runFrameTask("combatFx", frameInterval(24, 1.6), tickCombatFx);
-      runFrameTask("damagePopups", frameInterval(24, 1.6), tickDamagePopups);
-      checkMissionComplete();
+      runFrameTask("roamTigers", frameInterval(34, 1.55), roamTigers, { costHint:2.6, critical:true });
+      runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
+      runFrameTask("supportUnits", frameInterval(50, 1.8), supportUnitsTick, { costHint:2.4 });
+      let usedKeyboard = false;
+      safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
+      if(!usedKeyboard) safeTick("movePlayer", movePlayer);
+      safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
+      runFrameTask("followCivilians", frameInterval(40, 1.5), followCiviliansTick, { costHint:1.7, critical:S.mode!=="Survival" });
+      runFrameTask("evacCheck", frameInterval(58, 1.5), evacCheck, { costHint:0.9 });
+      runFrameTask("civThreats", frameInterval(72, 1.5), tickCiviliansAndThreats, { costHint:1.6, critical:S.mode!=="Survival" });
+      runFrameTask("survivalPressure", frameInterval(86, 1.4), survivalPressureTick, { costHint:1.1 });
+      runFrameTask("combatTick", frameInterval(S.inBattle ? 24 : 34, 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
+      runFrameTask("combatFx", frameInterval(24, 1.6), tickCombatFx, { costHint:0.9 });
+      runFrameTask("damagePopups", frameInterval(24, 1.6), tickDamagePopups, { costHint:0.9 });
+      runFrameTask("checkMissionComplete", frameInterval(90, 1.4), checkMissionComplete, { costHint:0.8, critical:true });
     }
 
-    drawMapScene();
-    drawEntities();
+    safeTick("drawMapScene", drawMapScene);
+    safeTick("drawEntities", drawEntities);
     maybeAutosave();
   }catch(err){
     const now = Date.now();
@@ -8863,6 +8956,7 @@ function init(){
   }
   trimPersistentState(S);
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
+  S.performanceMode = normalizePerformanceMode(S.performanceMode);
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
   if(!S.equippedWeaponId || !getWeapon(S.equippedWeaponId)) S.equippedWeaponId = DEFAULT.equippedWeaponId;
   if(!S.ammoReserve || typeof S.ammoReserve !== "object") S.ammoReserve = { ...DEFAULT.ammoReserve };
@@ -8890,6 +8984,7 @@ function init(){
 
   // achievements defaults
   if(!S.achievements) S.achievements={};
+  updatePerformanceLabels();
   updateTitle();
 
   for(const wid of S.ownedWeapons){
@@ -8990,6 +9085,7 @@ window.setPaused = setPaused;
 
 // Buttons used by index.html
 window.toggleSound = toggleSound;
+window.togglePerformanceMode = togglePerformanceMode;
 window.openAbout = openAbout;
 window.closeAbout = closeAbout;
 
