@@ -181,6 +181,18 @@ const TIGER_HUNT_STATES = Object.freeze({
   POUNCE: "pounce",
   RECOVER: "recover",
 });
+const BOSS_IDENTITY_BY_CHAPTER = Object.freeze({
+  1: { name:"Pack Caller", cycle:["reinforce"], cd:[11500, 15500], reinforce:[1,1] },
+  2: { name:"Blood Herald", cycle:["roar","charge"], cd:[9800, 13200] },
+  3: { name:"Shadow Stalker", cycle:["stealth","pounce_chain"], cd:[9000, 12400] },
+  4: { name:"Twin Fang Prime", cycle:["pounce_chain","roar"], cd:[8800, 11800] },
+  5: { name:"River Breaker", cycle:["charge","reinforce"], cd:[9400, 12600], reinforce:[1,2] },
+  6: { name:"Mountain Crusher", cycle:["charge","pounce_chain"], cd:[8600, 11400] },
+  7: { name:"Territory Marshal", cycle:["reinforce","roar","charge"], cd:[8400, 11000], reinforce:[1,2] },
+  8: { name:"Tiger King", cycle:["roar","pounce_chain","reinforce","charge"], cd:[7800, 10400], reinforce:[1,2] },
+  9: { name:"Phantom Lord", cycle:["stealth","charge","pounce_chain"], cd:[7600, 10200] },
+  10:{ name:"Ancient Tiger", cycle:["roar","stealth","pounce_chain","reinforce","charge"], cd:[7000, 9600], reinforce:[2,3] },
+});
 
 const TIGER_POWER_ORDER = {
   Standard: 1,
@@ -197,7 +209,87 @@ const TIGER_DAMAGE_SCALES = {
 const TIGER_DEFENSE_SCALES = [0.92, 0.98, 1.08, 1.18, 1.32, 1.58];
 
 function isBossTiger(t){
-  return !!(t && t.type === "Alpha" && (t.bossPhases || 0) > 0);
+  return !!(t && (t.bossPhases || 0) > 0);
+}
+function currentModeMission(){
+  if(S.mode==="Story") return storyCampaignMission(S.storyLevel);
+  if(S.mode==="Arcade") return arcadeCampaignMission(S.arcadeLevel);
+  return null;
+}
+function bossChapterIndex(){
+  const mission = currentModeMission();
+  if(mission?.chapter) return clamp(mission.chapter, 1, 10);
+  return chapterIndexForMode(S.mode);
+}
+function bossIdentityProfile(t){
+  if(!isBossTiger(t)) return null;
+  if(Number.isFinite(t.bossIdentityChapter) && BOSS_IDENTITY_BY_CHAPTER[t.bossIdentityChapter]){
+    return BOSS_IDENTITY_BY_CHAPTER[t.bossIdentityChapter];
+  }
+  const chapter = bossChapterIndex();
+  t.bossIdentityChapter = chapter;
+  return BOSS_IDENTITY_BY_CHAPTER[chapter] || BOSS_IDENTITY_BY_CHAPTER[1];
+}
+function bossStealthActive(t, now=Date.now()){
+  return !!(t && now < (t.bossStealthUntil || 0));
+}
+function triggerBossIdentitySkill(t, profile, now=Date.now()){
+  if(!t || !profile) return;
+  const cycle = Array.isArray(profile.cycle) && profile.cycle.length ? profile.cycle : ["roar"];
+  const idx = Number.isFinite(t.bossSkillStep) ? t.bossSkillStep : 0;
+  const skill = cycle[idx % cycle.length];
+  t.bossSkillStep = idx + 1;
+
+  if(skill === "roar"){
+    t.roarUntil = Math.max(t.roarUntil || 0, now + rand(2500, 3600));
+    t.enragedUntil = Math.max(t.enragedUntil || 0, now + rand(3200, 4700));
+    setTigerIntent(t, "War Roar", 860);
+    if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} uses War Roar.`);
+  } else if(skill === "stealth"){
+    t.bossStealthUntil = Math.max(t.bossStealthUntil || 0, now + rand(1700, 2600));
+    t.burstUntil = Math.max(t.burstUntil || 0, (t.bossStealthUntil || 0) + rand(420, 760));
+    setTigerIntent(t, "Shadow Fade", 860);
+    if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} entered stealth phase.`);
+  } else if(skill === "pounce_chain"){
+    t.bossPounceCharges = rand(2, 3);
+    t.bossPounceChainUntil = now + rand(2400, 3400);
+    t.nextPounceAt = now + rand(120, 260);
+    setTigerIntent(t, `Pounce x${t.bossPounceCharges}`, 900);
+    if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} is chaining pounces.`);
+  } else if(skill === "charge"){
+    t.bossChargeUntil = now + rand(2000, 3200);
+    t.enragedUntil = Math.max(t.enragedUntil || 0, t.bossChargeUntil + 900);
+    setTigerIntent(t, "Rage Charge", 860);
+    if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} is charging.`);
+  } else if(skill === "reinforce"){
+    t.nextReinforceAt = Math.min(t.nextReinforceAt || (now + 70), now + 70);
+    setTigerIntent(t, "Howl Call", 820);
+    if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} is calling reinforcements.`);
+  }
+
+  const cd = profile.cd || [9000, 13000];
+  const levelScale = clamp(1 - (Math.max(1, currentCampaignLevel()) - 1) * 0.005, 0.68, 1);
+  const cdMin = Math.round(cd[0] * levelScale);
+  const cdMax = Math.max(cdMin + 250, Math.round(cd[1] * levelScale));
+  t.nextBossSkillAt = now + rand(cdMin, cdMax);
+}
+function bossIdentityTick(){
+  if(S.mode==="Survival" || S.paused || S.missionEnded || S.gameOver) return;
+  const now = Date.now();
+  for(const t of (S.tigers || [])){
+    if(!t?.alive || !isBossTiger(t)) continue;
+    if(t.holdUntil && now < t.holdUntil) continue;
+    const profile = bossIdentityProfile(t);
+    if(!profile) continue;
+    if(!Number.isFinite(t.nextBossSkillAt) || t.nextBossSkillAt <= 0){
+      const cd = profile.cd || [9000, 13000];
+      t.nextBossSkillAt = now + rand(cd[0], cd[1]);
+      t.bossSkillStep = 0;
+      continue;
+    }
+    if(now < t.nextBossSkillAt) continue;
+    triggerBossIdentitySkill(t, profile, now);
+  }
 }
 function tigerPowerRank(t){
   if(!t) return 1;
@@ -2254,9 +2346,8 @@ function mobileControlKeepoutZones(){
   const w = cv.width || 960;
   const h = cv.height || 540;
   return [
-    { x:w * 0.13, y:h * 0.86, r:76 }, // left joystick
-    { x:w * 0.87, y:h * 0.84, r:92 }, // right action cluster
-    { x:w * 0.79, y:h * 0.68, r:58 }, // cache button
+    { x:w * 0.12, y:h * 0.91, r:52 }, // left joystick (tighter)
+    { x:w * 0.88, y:h * 0.90, r:56 }, // right action cluster (tighter)
   ];
 }
 function inMobileControlKeepout(x, y, radius=0){
@@ -2273,6 +2364,7 @@ function inMobileControlKeepout(x, y, radius=0){
 }
 function blockedAt(x, y, radius){
   // Blood pools are visual hazards; they should never hard-block movement.
+  if(isMobileViewport() && x > (cv.width * 0.66) && y > (cv.height * 0.70)) return false;
   if(blockedByMapObstacle(x, y, radius)) return true;
   return false;
 }
@@ -2388,7 +2480,7 @@ function unstickEntitiesTick(){
     if(!civ.alive || civ.evac) continue;
     const civIntent = !!civ.following || (S.guideTargetId === civ.id);
     resolveEntityStuck(civ, 14, {
-      avoidKeepout:true,
+      avoidKeepout:false,
       movingIntent:civIntent,
       stuckThreshold:20,
       targetX:S.evacZone?.x,
@@ -2398,7 +2490,7 @@ function unstickEntitiesTick(){
   for(const unit of (S.supportUnits || [])){
     if(!unit.alive) continue;
     resolveEntityStuck(unit, 16, {
-      avoidKeepout:true,
+      avoidKeepout:false,
       movingIntent:true,
       stuckThreshold:18,
       targetX:S.me?.x,
@@ -2409,7 +2501,7 @@ function unstickEntitiesTick(){
     if(!tiger.alive) continue;
     const tigerIntent = Math.hypot(tiger.vx || 0, tiger.vy || 0) > 0.16 || !!tiger.targetCivId;
     resolveEntityStuck(tiger, 16, {
-      avoidKeepout:true,
+      avoidKeepout:false,
       movingIntent:tigerIntent,
       stuckThreshold:16,
       targetX:S.me?.x,
@@ -2914,9 +3006,11 @@ function missionSpecialRuleText(mode, mission){
 }
 function missionBossWarningText(mission){
   if(!mission || !mission.boss) return "Boss Warning: none.";
+  const identity = BOSS_IDENTITY_BY_CHAPTER[clamp(mission.chapter || 1, 1, 10)];
+  const sig = identity ? ` Signature: ${identity.name}.` : "";
   if(mission.finalBoss) return "Boss Warning: Final boss mission.";
-  if(mission.bossTwin) return `Boss Warning: Twin ${mission.bossType || "Alpha"} Tigers.`;
-  return `Boss Warning: ${mission.bossType || "Alpha"} Tiger.`;
+  if(mission.bossTwin) return `Boss Warning: Twin ${mission.bossType || "Alpha"} Tigers.${sig}`;
+  return `Boss Warning: ${mission.bossType || "Alpha"} Tiger.${sig}`;
 }
 function shouldShowMissionBrief(){
   if(window.__TUTORIAL_MODE__) return false;
@@ -4934,6 +5028,13 @@ function spawnTigers(){
       burstUntil:0,
       nextPounceAt:0,
       enragedUntil:0,
+      bossSkillStep:0,
+      nextBossSkillAt:0,
+      bossIdentityChapter:0,
+      bossStealthUntil:0,
+      bossPounceCharges:0,
+      bossPounceChainUntil:0,
+      bossChargeUntil:0,
       wanderAngle:Math.random()*(Math.PI*2),
       heading:0,
       drawDir:1,
@@ -5058,6 +5159,13 @@ function spawnTigers(){
       pounceWindupUntil:0,
       pounceDirX:0,
       pounceDirY:0,
+      bossSkillStep:0,
+      nextBossSkillAt:0,
+      bossIdentityChapter:0,
+      bossStealthUntil:0,
+      bossPounceCharges:0,
+      bossPounceChainUntil:0,
+      bossChargeUntil:0,
       wanderAngle:Math.random()*(Math.PI*2),
       heading:Math.atan2(initialVy, initialVx),
       drawDir:initialVx >= 0 ? 1 : -1,
@@ -5155,6 +5263,13 @@ function spawnRogueTiger(options={}){
     pounceWindupUntil:0,
     pounceDirX:0,
     pounceDirY:0,
+    bossSkillStep:0,
+    nextBossSkillAt:0,
+    bossIdentityChapter:0,
+    bossStealthUntil:0,
+    bossPounceCharges:0,
+    bossPounceChainUntil:0,
+    bossChargeUntil:0,
     wanderAngle:Math.random()*(Math.PI*2),
     heading:0,
     drawDir:1,
@@ -6257,7 +6372,7 @@ function supportUnitsTick(){
             const gdy = S.evacZone.y - targetCiv.y;
             const gd = Math.hypot(gdx, gdy) || 1;
             const guideSpeed = Math.min(1.5, gd) * waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10);
-            tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14, { avoidKeepout:true });
+            tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14, { avoidKeepout:false });
             targetCiv.hp = clamp(targetCiv.hp + 0.03, 0, targetCiv.hpMax);
           }
         }
@@ -6292,7 +6407,7 @@ function supportUnitsTick(){
     const finalStepCap = stepCap * waterMul;
     const step = Math.min(finalStepCap, len);
     unit.face = Math.atan2(dy, dx);
-    tryMoveEntity(unit, unit.x + (dx / len) * step, unit.y + (dy / len) * step, 16, { avoidKeepout:true });
+    tryMoveEntity(unit, unit.x + (dx / len) * step, unit.y + (dy / len) * step, 16, { avoidKeepout:false });
 
     for(const tiger of activeTigers){
       const tigerDist = dist(unit.x, unit.y, tiger.x, tiger.y);
@@ -6466,7 +6581,7 @@ function followCiviliansTick(){
       c.face = Math.atan2(vy, vx);
       c.step = (c.step || 0) + clamp(Math.hypot(vx, vy) * 0.11, 0.04, 0.30);
     }
-    tryMoveEntity(c, c.x + vx, c.y + vy, 14, { avoidKeepout:true });
+    tryMoveEntity(c, c.x + vx, c.y + vy, 14, { avoidKeepout:false });
   }
 }
 
@@ -6583,7 +6698,7 @@ function tigerMotionProfile(t, def, now=Date.now()){
   const hunter = t.aggroBoost || 0;
   const pack = t._packBuff || 0;
   const rage = (t.type==="Berserker" && t.rageOn) ? 1 : 0;
-  const fading = (t.type==="Stalker" && now < (t.fadeUntil||0)) ? 1 : 0;
+  const fading = ((t.type==="Stalker" && now < (t.fadeUntil||0)) || bossStealthActive(t, now)) ? 1 : 0;
   const scoutDash = (t.type==="Scout" && now < (t.dashUntil||0)) ? 1 : 0;
 
   const walk = (base.walk + (def.spd * 0.15) + (hunter * 0.30) + (pack * 0.25)) * persona.speedMul;
@@ -6790,6 +6905,9 @@ function roamTigers(){
       targetDist < motion.detect ||
       (now < (t.enragedUntil||0) && targetDist < motion.detect + 80)
     );
+    if(isBossTiger(t) && now < (t.bossChargeUntil || 0) && Number.isFinite(targetDist) && targetDist < motion.detect + 190){
+      chase = true;
+    }
     if(t.type==="Stalker" && now < (t.fadeUntil||0) && Number.isFinite(targetDist) && targetDist < motion.detect + 90){
       chase = true;
     }
@@ -6900,6 +7018,8 @@ function roamTigers(){
 
     let speedCap = chase ? motion.chase : motion.walk;
     speedCap += bloodScent * 0.55;
+    if(isBossTiger(t) && now < (t.bossChargeUntil || 0)) speedCap = Math.max(speedCap, motion.sprint * 1.26);
+    if(isBossTiger(t) && bossStealthActive(t, now)) speedCap = Math.max(speedCap, motion.sprint * 1.12);
     if(t.huntState === TIGER_HUNT_STATES.STALK){
       speedCap = Math.max(speedCap, motion.chase * 1.05);
     }
@@ -6925,7 +7045,7 @@ function roamTigers(){
       t.vy *= s;
     }
 
-    const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18, { avoidKeepout:true });
+    const moved = tryMoveEntity(t, t.x + t.vx, t.y + t.vy, 18, { avoidKeepout:false });
     if(!moved){
       t.vx *= -0.72;
       t.vy *= -0.72;
@@ -7507,23 +7627,29 @@ function bossReinforcementTick(){
   if(S.mode==="Survival" || S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
   const boss = (S.tigers || []).find((t)=>t.alive && isBossTiger(t));
   if(!boss) return;
-  if(boss.holdUntil && Date.now() < boss.holdUntil) return;
-
-  const aliveStandards = (S.tigers || []).filter((t)=>t.alive && t.type==="Standard" && !isBossTiger(t)).length;
-  const cap = bossStandardReinforcementCap();
-  if(aliveStandards >= cap) return;
+  const profile = bossIdentityProfile(boss);
+  if(!profile || !(profile.cycle || []).includes("reinforce")) return;
 
   const now = Date.now();
+  if(boss.holdUntil && now < boss.holdUntil) return;
+  const aliveStandards = (S.tigers || []).filter((t)=>t.alive && t.type==="Standard" && !isBossTiger(t)).length;
+  const capBoost = ((profile.reinforce && profile.reinforce[1]) || 1) > 1 ? 1 : 0;
+  const cap = bossStandardReinforcementCap() + capBoost;
+  if(aliveStandards >= cap) return;
+
+  const cd = profile.cd || [9000, 13000];
   const level = currentCampaignLevel();
-  const minCd = clamp(17000 - level * 110, 4200, 17000);
-  const maxCd = clamp(24500 - level * 120, 6800, 24500);
+  const levelScale = clamp(1 - (Math.max(1, level) - 1) * 0.005, 0.68, 1);
+  const minCd = Math.round(clamp(cd[0] * levelScale, 3600, 17000));
+  const maxCd = Math.round(clamp(cd[1] * levelScale, minCd + 250, 24000));
   if(!Number.isFinite(boss.nextReinforceAt) || boss.nextReinforceAt <= 0){
     boss.nextReinforceAt = now + rand(minCd, maxCd);
     return;
   }
   if(now < boss.nextReinforceAt) return;
 
-  const want = (level >= 45 && Math.random() < 0.30) ? 2 : 1;
+  const reinfRange = profile.reinforce || [1, 1];
+  const want = clamp(rand(reinfRange[0], reinfRange[1]), 1, 3);
   let spawned = 0;
   for(let i=0; i<want; i++){
     if((S.tigers || []).filter((t)=>t.alive && t.type==="Standard" && !isBossTiger(t)).length >= cap) break;
@@ -7536,7 +7662,8 @@ function bossReinforcementTick(){
   }
   boss.nextReinforceAt = now + rand(minCd, maxCd);
   if(spawned > 0){
-    setEventText(`👑 Boss called ${spawned} Standard reinforcement${spawned>1?"s":""}.`, 3);
+    setTigerIntent(boss, "Pack Call", 900);
+    setEventText(`👑 ${profile.name} called ${spawned} Standard reinforcement${spawned>1?"s":""}.`, 3);
     sfx("event");
   }
 }
@@ -7757,6 +7884,12 @@ function playerAction(action){
     dmg = Math.max(4, Math.round(dmg / tigerDefenseScale(t)));
     if(t.type==="Berserker" && (t.hp/t.hpMax)<0.35) dmg = Math.max(4, Math.round(dmg*0.88));
     if(isBossTiger(t)) dmg = Math.max(3, Math.round(dmg*0.88));
+    if(isBossTiger(t) && bossStealthActive(t)){
+      dmg = Math.max(2, Math.round(dmg * 0.62));
+      if(Math.random() < 0.45){
+        setBattleMsg(`${bossIdentityProfile(t)?.name || "Boss"} is in stealth phase. Shots are less effective.`);
+      }
+    }
 
     applyWearOnShot(w);
 
@@ -7893,6 +8026,30 @@ function combatTick(){
     return;
   }
 
+  if(isBossTiger(t)){
+    if(!Number.isFinite(t.nextBossSkillAt) || t.nextBossSkillAt <= now){
+      triggerBossIdentitySkill(t, bossIdentityProfile(t), now);
+    }
+    if(now < (t.bossPounceChainUntil || 0) && (t.bossPounceCharges || 0) > 0 && d < 196 && now >= (S._combatTigerAttackAt || 0)){
+      S._combatTigerAttackAt = now + rand(620, 900);
+      tigerTurn(t, S._protectTicks > 0, { kind:"pounce", dmgMul:1.24, maxRange:196 });
+      t.bossPounceCharges = Math.max(0, (t.bossPounceCharges || 0) - 1);
+      if(t.bossPounceCharges <= 0) t.bossPounceChainUntil = 0;
+      return;
+    }
+    if(now < (t.bossChargeUntil || 0) && now >= (S._combatTigerAttackAt || 0)){
+      S._combatTigerAttackAt = now + rand(920, 1320);
+      tigerTurn(t, S._protectTicks > 0, { kind:"charge", dmgMul:1.46, maxRange:248 });
+      return;
+    }
+    if(bossStealthActive(t, now)){
+      if((t._bossStealthPromptAt || 0) + 900 < now){
+        t._bossStealthPromptAt = now;
+        setBattleMsg(`${bossIdentityProfile(t)?.name || "Boss"} is in stealth phase. Watch for the lunge.`);
+      }
+    }
+  }
+
   const band = weaponRangeBand(rangeLimit);
   if(band === "short"){
     if(d < 96 && now >= (S._combatTigerAttackAt || 0)){
@@ -7917,7 +8074,7 @@ function combatTick(){
     const dy = S.me.y - t.y;
     const len = Math.hypot(dx, dy) || 1;
     const chargeStep = Math.min(7.4, len);
-    tryMoveEntity(t, t.x + (dx / len) * chargeStep, t.y + (dy / len) * chargeStep, 18, { avoidKeepout:true });
+    tryMoveEntity(t, t.x + (dx / len) * chargeStep, t.y + (dy / len) * chargeStep, 18, { avoidKeepout:false });
   }
   if(!Number.isFinite(t._chargeWindupUntil) || t._chargeWindupUntil <= now){
     t._chargeWindupUntil = now + rand(800, 1200);
@@ -9323,9 +9480,10 @@ function tigerColors(type){
 function drawTiger(t){
   let alpha=1.0;
   const now = Date.now();
+  const bossStealth = bossStealthActive(t, now);
 
   if(now < (S.fogUntil||0)) alpha *= 0.75;
-  if(t.type==="Stalker" && now < (t.fadeUntil||0)){
+  if((t.type==="Stalker" && now < (t.fadeUntil||0)) || bossStealth){
     alpha *= 0.35;
   } else if(t.type==="Stalker"){
     const near=dist(t.x,t.y,S.me.x,S.me.y) < 180;
@@ -9527,15 +9685,16 @@ function drawTiger(t){
   ctx.fillStyle="rgba(245,247,255,.80)";
   ctx.font="900 12px system-ui";
   const dash = (t.type==="Scout" && now<(t.dashUntil||0)) ? " (DASH)" : "";
-  const fade = (t.type==="Stalker" && now<(t.fadeUntil||0)) ? " (FADE)" : "";
-  const roar = (t.type==="Alpha" && now<(t.roarUntil||0)) ? " (ROAR)" : "";
+  const fade = ((t.type==="Stalker" && now<(t.fadeUntil||0)) || bossStealth) ? " (FADE)" : "";
+  const roar = (now<(t.roarUntil||0)) ? " (ROAR)" : "";
   const rage = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? " (RAGE)" : "";
   const hunt =
     t.huntState === TIGER_HUNT_STATES.POUNCE ? " (POUNCE)" :
     t.huntState === TIGER_HUNT_STATES.STALK ? " (STALK)" :
     t.huntState === TIGER_HUNT_STATES.RECOVER ? " (RECOVER)" : "";
   const persona = t.personality ? ` • ${t.personality}` : "";
-  ctx.fillText(t.type + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt, x-44*s, y-44*s);
+  const bossTag = isBossTiger(t) ? ` • ${bossIdentityProfile(t)?.name || "Boss"}` : "";
+  ctx.fillText(t.type + bossTag + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt, x-44*s, y-44*s);
   ctx.globalAlpha=1;
 }
 
@@ -9601,6 +9760,7 @@ function draw(){
       }
 
       runFrameTask("roamTigers", frameInterval(34, 1.55), roamTigers, { costHint:2.6, critical:true });
+      runFrameTask("bossIdentity", frameInterval(92, 1.45), bossIdentityTick, { costHint:0.9, critical:true });
       runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
       runFrameTask("supportUnits", frameInterval(50, 1.8), supportUnitsTick, { costHint:2.4 });
       let usedKeyboard = false;
@@ -9703,6 +9863,13 @@ function init(){
     if(!Number.isFinite(t.nextRoarAt)) t.nextRoarAt = 0;
     if(!Number.isFinite(t.nextReinforceAt)) t.nextReinforceAt = 0;
     if(!Number.isFinite(t.enragedUntil)) t.enragedUntil = 0;
+    if(!Number.isFinite(t.bossSkillStep)) t.bossSkillStep = 0;
+    if(!Number.isFinite(t.nextBossSkillAt)) t.nextBossSkillAt = 0;
+    if(!Number.isFinite(t.bossIdentityChapter)) t.bossIdentityChapter = 0;
+    if(!Number.isFinite(t.bossStealthUntil)) t.bossStealthUntil = 0;
+    if(!Number.isFinite(t.bossPounceCharges)) t.bossPounceCharges = 0;
+    if(!Number.isFinite(t.bossPounceChainUntil)) t.bossPounceChainUntil = 0;
+    if(!Number.isFinite(t.bossChargeUntil)) t.bossChargeUntil = 0;
     if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || Math.sin(t.wanderAngle || 0), t.vx || Math.cos(t.wanderAngle || 0));
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(typeof t.gaitState !== "string") t.gaitState = "walk";
