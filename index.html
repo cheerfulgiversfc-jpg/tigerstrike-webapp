@@ -253,6 +253,11 @@
       #touchCacheBtn:disabled{
         opacity:.24;
       }
+      #touchRollBtn .touchBtnIcon{
+        font-size:13px;
+        font-weight:900;
+        letter-spacing:.2px;
+      }
       #combatTouchCluster{display:none;grid-template-columns:repeat(2,64px)}
       .touchBtn{
         min-height:64px;
@@ -506,7 +511,7 @@
             <span class="touchBtnLabel">Next</span>
           </button>
           <button class="touchBtn" id="touchRollBtn" onclick="rollDodge()">
-            <span class="touchBtnIcon">🤸</span>
+            <span class="touchBtnIcon">Roll</span>
             <span class="touchBtnLabel">Roll</span>
           </button>
         </div>
@@ -527,7 +532,7 @@
         <button class="good" id="combatCaptureBtn" onclick="playerAction('CAPTURE')" disabled>💉 Capture</button>
         <button class="ghost" id="combatPrevWeaponBtn" onclick="cycleWeapon(-1)">◀️ Weapon</button>
         <button class="ghost" id="combatNextWeaponBtn" onclick="cycleWeapon(1)">Weapon ▶️</button>
-        <button class="ghost" id="combatRollBtn" onclick="rollDodge()">🤸 Roll</button>
+        <button class="ghost" id="combatRollBtn" onclick="rollDodge()">Roll</button>
         <button class="ghost" onclick="endBattle('RETREAT')">↩️ Retreat</button>
       </div>
     </div>

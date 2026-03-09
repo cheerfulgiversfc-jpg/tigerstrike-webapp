@@ -1028,6 +1028,12 @@ const DEFAULT = {
   shieldUntil:0,
   rollCooldownUntil:0,
   rollInvulnUntil:0,
+  rollAnimStart:0,
+  rollAnimUntil:0,
+  rollAnimFromX:0,
+  rollAnimFromY:0,
+  rollAnimToX:0,
+  rollAnimToY:0,
   abilityCooldowns:{ scan:0, sprint:0, shield:0 },
   soldierAttackersOwned:0,
   soldierRescuersOwned:0,
@@ -1582,6 +1588,12 @@ function sanitizeRuntimeState(){
   S.me.y = clampY(S.me.y, 60, h - 40);
   if(!Number.isFinite(S.me.face)) S.me.face = 0;
   if(!Number.isFinite(S.me.step)) S.me.step = 0;
+  if(!Number.isFinite(S.rollAnimStart)) S.rollAnimStart = 0;
+  if(!Number.isFinite(S.rollAnimUntil)) S.rollAnimUntil = 0;
+  S.rollAnimFromX = clampX(S.rollAnimFromX, 40, w - 40);
+  S.rollAnimFromY = clampY(S.rollAnimFromY, 60, h - 40);
+  S.rollAnimToX = clampX(S.rollAnimToX, 40, w - 40);
+  S.rollAnimToY = clampY(S.rollAnimToY, 60, h - 40);
 
   if(!S.evacZone || typeof S.evacZone !== "object") S.evacZone = { ...DEFAULT.evacZone };
   S.evacZone.x = clampX(S.evacZone.x, 100, w - 60);
@@ -1703,6 +1715,7 @@ const SOLDIER_UNLOCK_LEVEL = 15;
 const ROLL_COOLDOWN_MS = 2800;
 const ROLL_INVULN_MS = 520;
 const ROLL_TRAVEL_DIST = 92;
+const ROLL_ANIM_MS = 420;
 const ESCORT_TAKEOVER_WINDOW_MS = 3000;
 const ESCORT_TAKEOVER_DISTANCE = 92;
 const WEAPON_RANGE_BANDS = { short:110, mid:170 };
@@ -6278,12 +6291,20 @@ function rollDodge(){
 
   const t = activeTiger() || lockedTiger();
   const away = t ? Math.atan2(S.me.y - t.y, S.me.x - t.x) : ((S.me.face || 0) + Math.PI);
+  const fromX = S.me.x;
+  const fromY = S.me.y;
   const nx = S.me.x + Math.cos(away) * ROLL_TRAVEL_DIST;
   const ny = S.me.y + Math.sin(away) * ROLL_TRAVEL_DIST;
   tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
   S.target = null;
   S.rollInvulnUntil = now + ROLL_INVULN_MS;
   S.rollCooldownUntil = now + ROLL_COOLDOWN_MS;
+  S.rollAnimStart = now;
+  S.rollAnimUntil = now + ROLL_ANIM_MS;
+  S.rollAnimFromX = fromX;
+  S.rollAnimFromY = fromY;
+  S.rollAnimToX = S.me.x;
+  S.rollAnimToY = S.me.y;
   S.me.face = away;
   S.me.step = (S.me.step + 2.2) % (Math.PI * 2);
   setBattleMsg("Roll executed. You can dodge charge hits.");
@@ -7577,7 +7598,7 @@ function renderCombatControls(){
     if(el) el.disabled = disabled;
   });
   const rollBtn = document.getElementById("combatRollBtn");
-  if(rollBtn) rollBtn.innerText = rollLeft ? `🤸 Roll (${rollLeft})` : "🤸 Roll";
+  if(rollBtn) rollBtn.innerText = rollLeft ? `Roll (${rollLeft})` : "Roll";
 
   const prevLabel = combatWeaponLabel(-1);
   const nextLabel = combatWeaponLabel(1);
@@ -9487,15 +9508,33 @@ function drawCivilian(c){
 }
 
 function drawSoldier(){
+  const now = Date.now();
   const step = S.me.step || 0;
-  const bob = Math.sin(step) * 1.5;
-  const x = S.me.x;
-  const y = S.me.y + bob;
+  const rollStart = Number.isFinite(S.rollAnimStart) ? S.rollAnimStart : 0;
+  const rollUntil = Number.isFinite(S.rollAnimUntil) ? S.rollAnimUntil : 0;
+  const rolling = rollUntil > now && rollUntil > rollStart;
+  let rollProgress = 0;
+  let px = S.me.x;
+  let py = S.me.y;
+  if(rolling){
+    const duration = Math.max(1, rollUntil - rollStart);
+    const linearT = clamp((now - rollStart) / duration, 0, 1);
+    rollProgress = 1 - Math.pow(1 - linearT, 3);
+    const fromX = Number.isFinite(S.rollAnimFromX) ? S.rollAnimFromX : S.me.x;
+    const fromY = Number.isFinite(S.rollAnimFromY) ? S.rollAnimFromY : S.me.y;
+    const toX = Number.isFinite(S.rollAnimToX) ? S.rollAnimToX : S.me.x;
+    const toY = Number.isFinite(S.rollAnimToY) ? S.rollAnimToY : S.me.y;
+    px = fromX + ((toX - fromX) * rollProgress);
+    py = fromY + ((toY - fromY) * rollProgress);
+  }
+  const bob = rolling ? 0 : (Math.sin(step) * 1.5);
+  const x = px;
+  const y = py + bob;
   drawWaterRipple(x, y, 18, 0.56);
   const ang = S.me.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
-  const stride = Math.sin(step * 1.9) * 2.1;
-  const lean = clamp(Math.sin(ang) * 0.06, -0.1, 0.1);
+  const stride = rolling ? 0 : (Math.sin(step * 1.9) * 2.1);
+  const lean = rolling ? 0 : clamp(Math.sin(ang) * 0.06, -0.1, 0.1);
 
   if(shieldActiveNow()){
     const pulse = 0.78 + Math.sin(Date.now()/130) * 0.16;
@@ -9518,7 +9557,12 @@ function drawSoldier(){
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(dir, 1);
-  ctx.rotate(lean);
+  if(rolling){
+    const spin = rollProgress * (Math.PI * 2.35);
+    ctx.rotate(spin * (dir >= 0 ? 1 : -1));
+  } else {
+    ctx.rotate(lean);
+  }
 
   ctx.globalAlpha=0.28;
   ctx.fillStyle="#000";
@@ -9561,19 +9605,21 @@ function drawSoldier(){
   ctx.beginPath(); ctx.arc(2,-20,1,0,Math.PI*2); ctx.fill();
   ctx.restore();
 
-  const wx = x + Math.cos(ang) * 14;
-  const wy = y + Math.sin(ang) * 13;
-  const gripX = x + Math.cos(ang) * 5;
-  const gripY = y + Math.sin(ang) * 2;
-  ctx.strokeStyle="rgba(18,22,28,.96)";
-  ctx.lineWidth=4.3;
-  ctx.beginPath(); ctx.moveTo(gripX, gripY); ctx.lineTo(wx, wy); ctx.stroke();
-  ctx.strokeStyle="rgba(105,116,128,.75)";
-  ctx.lineWidth=1.5;
-  ctx.beginPath(); ctx.moveTo(gripX, gripY); ctx.lineTo(wx, wy); ctx.stroke();
+  if(!rolling){
+    const wx = x + Math.cos(ang) * 14;
+    const wy = y + Math.sin(ang) * 13;
+    const gripX = x + Math.cos(ang) * 5;
+    const gripY = y + Math.sin(ang) * 2;
+    ctx.strokeStyle="rgba(18,22,28,.96)";
+    ctx.lineWidth=4.3;
+    ctx.beginPath(); ctx.moveTo(gripX, gripY); ctx.lineTo(wx, wy); ctx.stroke();
+    ctx.strokeStyle="rgba(105,116,128,.75)";
+    ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(gripX, gripY); ctx.lineTo(wx, wy); ctx.stroke();
 
-  ctx.fillStyle="rgba(245,158,11,.90)";
-  ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle="rgba(245,158,11,.90)";
+    ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, Math.PI*2); ctx.fill();
+  }
 
   if(S.inBattle){
     const hpPct = Math.round(clamp((S.hp / 100) * 100, 0, 100));
@@ -9999,6 +10045,12 @@ function init(){
   if(!Number.isFinite(S.shieldUntil)) S.shieldUntil = 0;
   if(!Number.isFinite(S.rollCooldownUntil)) S.rollCooldownUntil = 0;
   if(!Number.isFinite(S.rollInvulnUntil)) S.rollInvulnUntil = 0;
+  if(!Number.isFinite(S.rollAnimStart)) S.rollAnimStart = 0;
+  if(!Number.isFinite(S.rollAnimUntil)) S.rollAnimUntil = 0;
+  if(!Number.isFinite(S.rollAnimFromX)) S.rollAnimFromX = S.me?.x ?? DEFAULT.me.x;
+  if(!Number.isFinite(S.rollAnimFromY)) S.rollAnimFromY = S.me?.y ?? DEFAULT.me.y;
+  if(!Number.isFinite(S.rollAnimToX)) S.rollAnimToX = S.me?.x ?? DEFAULT.me.x;
+  if(!Number.isFinite(S.rollAnimToY)) S.rollAnimToY = S.me?.y ?? DEFAULT.me.y;
   if(!Number.isFinite(S.respawnPendingUntil)) S.respawnPendingUntil = 0;
   if(!Number.isFinite(S.respawnTargetX)) S.respawnTargetX = 0;
   if(!Number.isFinite(S.respawnTargetY)) S.respawnTargetY = 0;
