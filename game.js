@@ -1037,6 +1037,9 @@ const DEFAULT = {
   respawnTargetX:0,
   respawnTargetY:0,
   respawnNoticeAt:0,
+  takeoverPromptUntil:0,
+  takeoverCivId:null,
+  takeoverUnitId:null,
 
   me:{ x:160, y:420, face:0, step:0 },
   target:null,
@@ -1700,6 +1703,8 @@ const SOLDIER_UNLOCK_LEVEL = 15;
 const ROLL_COOLDOWN_MS = 2800;
 const ROLL_INVULN_MS = 520;
 const ROLL_TRAVEL_DIST = 92;
+const ESCORT_TAKEOVER_WINDOW_MS = 3000;
+const ESCORT_TAKEOVER_DISTANCE = 92;
 const WEAPON_RANGE_BANDS = { short:110, mid:170 };
 const CIVILIAN_HIT_PCT_BY_TIGER = {
   Standard:[0.01,0.03],
@@ -1786,6 +1791,56 @@ function civilianShielded(c){
   if(!c || !shieldActiveNow()) return false;
   if(c.following) return true;
   return dist(S.me.x, S.me.y, c.x, c.y) <= SHIELD_RADIUS;
+}
+function rescueUnitById(unitId){
+  if(!unitId) return null;
+  return (S.supportUnits || []).find((unit)=>unit.alive && unit.role === "rescue" && unit.id === unitId) || null;
+}
+function civilianById(civId){
+  if(civId == null) return null;
+  return (S.civilians || []).find((civ)=>civ.alive && !civ.evac && civ.id === civId) || null;
+}
+function clearEscortTakeoverPrompt(){
+  S.takeoverPromptUntil = 0;
+  S.takeoverCivId = null;
+  S.takeoverUnitId = null;
+}
+function setEscortTakeoverPrompt(unit, civ, now=Date.now()){
+  if(!unit || !civ) return;
+  if(S.inBattle || S.paused || S.missionEnded || S.gameOver) return;
+  if(civ.escortOwner !== "rescue" || civ.escortUnitId !== unit.id) return;
+  if(dist(S.me.x, S.me.y, unit.x, unit.y) > ESCORT_TAKEOVER_DISTANCE) return;
+  if(now < (civ._takeoverPromptLockUntil || 0)) return;
+  if(S.takeoverUnitId === unit.id && S.takeoverCivId === civ.id && S.takeoverPromptUntil > now) return;
+  S.takeoverPromptUntil = now + ESCORT_TAKEOVER_WINDOW_MS;
+  S.takeoverCivId = civ.id;
+  S.takeoverUnitId = unit.id;
+  civ._takeoverPromptLockUntil = now + ESCORT_TAKEOVER_WINDOW_MS + 900;
+}
+function takeoverEscort(){
+  const now = Date.now();
+  if(S.inBattle || S.paused || S.missionEnded || S.gameOver) return;
+  if(!S.takeoverPromptUntil || now > S.takeoverPromptUntil) return clearEscortTakeoverPrompt();
+
+  const unit = rescueUnitById(S.takeoverUnitId);
+  const civ = civilianById(S.takeoverCivId);
+  if(!unit || !civ){
+    clearEscortTakeoverPrompt();
+    return;
+  }
+  if(dist(S.me.x, S.me.y, unit.x, unit.y) > (ESCORT_TAKEOVER_DISTANCE + 8)){
+    clearEscortTakeoverPrompt();
+    return;
+  }
+
+  civ.following = true;
+  civ.escortOwner = "player";
+  civ.escortUnitId = "";
+  civ.followGraceUntil = now + 2500;
+  clearEscortTakeoverPrompt();
+  setEventText(`You took over Civilian #${civ.id}.`, 2.2);
+  renderHUD();
+  save();
 }
 
 resizeCanvasForViewport();
@@ -4884,6 +4939,11 @@ function spawnCivilians(){
       alive:true,
       evac:false,
       following:false,
+      escortOwner:"",
+      escortUnitId:"",
+      fleeUntil:0,
+      fleeFromTigerId:0,
+      _takeoverPromptLockUntil:0,
       face:0,
       step:0,
       skin:SKIN_TONES[2],
@@ -4928,6 +4988,11 @@ function spawnCivilians(){
       alive:true,
       evac:false,
       following:false,
+      escortOwner:"",
+      escortUnitId:"",
+      fleeUntil:0,
+      fleeFromTigerId:0,
+      _takeoverPromptLockUntil:0,
       face:0,
       step:Math.random() * Math.PI * 2,
       siteId:site.id,
@@ -5322,6 +5387,7 @@ function deploy(){
   if(S.mode!=="Survival") S.evacZone = null;
   S.backupActive=0;
   S._escortSlotById = {};
+  clearEscortTakeoverPrompt();
 
   // phase 1
   S.fogUntil = 0;
@@ -6332,12 +6398,29 @@ function supportUnitsTick(){
     let targetY = unit.homeY + Math.sin(unit.step * 0.7) * 14;
 
     if(unit.role === "rescue" && liveCivs.length){
-      const nonFollowers = liveCivs.filter((c)=>!c.following);
-      let targetCiv = dangerCiv || null;
-      if(!targetCiv && nonFollowers.length){
-        targetCiv = nonFollowers[0];
+      const ownTag = "rescue";
+      const ownedByThisUnit = liveCivs.filter((c)=>c.following && c.escortOwner === ownTag && c.escortUnitId === unit.id);
+      const available = liveCivs.filter((c)=>!c.following && (c.escortOwner !== ownTag || !c.escortUnitId || c.escortUnitId === unit.id));
+      let targetCiv = null;
+
+      if(dangerCiv && (dangerCiv.escortOwner !== ownTag || !dangerCiv.escortUnitId || dangerCiv.escortUnitId === unit.id)){
+        targetCiv = dangerCiv;
+      }
+      if(!targetCiv && ownedByThisUnit.length){
+        targetCiv = ownedByThisUnit[0];
         let bestD = dist(unit.x, unit.y, targetCiv.x, targetCiv.y);
-        for(const civ of nonFollowers){
+        for(const civ of ownedByThisUnit){
+          const d = dist(unit.x, unit.y, civ.x, civ.y);
+          if(d < bestD){
+            bestD = d;
+            targetCiv = civ;
+          }
+        }
+      }
+      if(!targetCiv && available.length){
+        targetCiv = available[0];
+        let bestD = dist(unit.x, unit.y, targetCiv.x, targetCiv.y);
+        for(const civ of available){
           const d = dist(unit.x, unit.y, civ.x, civ.y);
           if(d < bestD){
             bestD = d;
@@ -6346,7 +6429,10 @@ function supportUnitsTick(){
         }
       }
       if(!targetCiv){
-        targetCiv = nearestCivTo(unit.x, unit.y).civ;
+        const nearest = nearestCivTo(unit.x, unit.y).civ;
+        if(nearest && (nearest.escortOwner !== ownTag || !nearest.escortUnitId || nearest.escortUnitId === unit.id)){
+          targetCiv = nearest;
+        }
       }
 
       if(targetCiv){
@@ -6357,23 +6443,31 @@ function supportUnitsTick(){
           targetY = targetCiv.y;
           if(civDist <= engageDist){
             targetCiv.following = true;
+            targetCiv.escortOwner = ownTag;
+            targetCiv.escortUnitId = unit.id;
             targetCiv.followGraceUntil = now + 2500;
           }
-        } else if(civDist > 76){
-          targetX = targetCiv.x;
-          targetY = targetCiv.y;
-        } else if(S.evacZone){
-          targetX = (targetCiv.x * 0.54) + (S.me.x * 0.24) + (S.evacZone.x * 0.22);
-          targetY = (targetCiv.y * 0.54) + (S.me.y * 0.24) + (S.evacZone.y * 0.22);
+        } else if(targetCiv.escortOwner === ownTag && targetCiv.escortUnitId === unit.id){
+          if(civDist > 76){
+            targetX = targetCiv.x;
+            targetY = targetCiv.y;
+          } else if(S.evacZone){
+            targetX = (targetCiv.x * 0.54) + (S.me.x * 0.24) + (S.evacZone.x * 0.22);
+            targetY = (targetCiv.y * 0.54) + (S.me.y * 0.24) + (S.evacZone.y * 0.22);
 
-          if(now >= (unit.guideAt || 0)){
-            unit.guideAt = now + 120;
-            const gdx = S.evacZone.x - targetCiv.x;
-            const gdy = S.evacZone.y - targetCiv.y;
-            const gd = Math.hypot(gdx, gdy) || 1;
-            const guideSpeed = Math.min(1.5, gd) * waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10);
-            tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14, { avoidKeepout:false });
-            targetCiv.hp = clamp(targetCiv.hp + 0.03, 0, targetCiv.hpMax);
+            if(now >= (unit.guideAt || 0)){
+              unit.guideAt = now + 120;
+              const gdx = S.evacZone.x - targetCiv.x;
+              const gdy = S.evacZone.y - targetCiv.y;
+              const gd = Math.hypot(gdx, gdy) || 1;
+              const guideSpeed = Math.min(1.5, gd) * waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10);
+              tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14, { avoidKeepout:false });
+              targetCiv.hp = clamp(targetCiv.hp + 0.03, 0, targetCiv.hpMax);
+            }
+          }
+
+          if(dist(S.me.x, S.me.y, unit.x, unit.y) <= ESCORT_TAKEOVER_DISTANCE){
+            setEscortTakeoverPrompt(unit, targetCiv, now);
           }
         }
       }
@@ -6461,6 +6555,43 @@ function supportUnitsTick(){
   S.soldierRescuersOwned = S.supportUnits.filter((unit)=>unit.role === "rescue").length;
 }
 
+function runCivilianFleeStep(c, now=Date.now()){
+  if(!c || !c.alive || c.evac) return false;
+  if(now >= (c.fleeUntil || 0)) return false;
+
+  let threat = null;
+  if(Number.isFinite(c.fleeFromTigerId)){
+    threat = (S.tigers || []).find((t)=>t.alive && t.id === c.fleeFromTigerId) || null;
+  }
+  if(!threat){
+    let nearest = null;
+    let nearestD = Infinity;
+    for(const t of (S.tigers || [])){
+      if(!t.alive) continue;
+      const d = dist(c.x, c.y, t.x, t.y);
+      if(d < nearestD){
+        nearestD = d;
+        nearest = t;
+      }
+    }
+    threat = nearest;
+  }
+  if(!threat) return false;
+
+  const awayX = c.x - threat.x;
+  const awayY = c.y - threat.y;
+  const awayLen = Math.hypot(awayX, awayY) || 1;
+  const jitter = ((c.id % 3) - 1) * 0.28;
+  const ang = Math.atan2(awayY, awayX) + jitter;
+  const fleeSpeed = (c.following ? 2.55 : 2.25) * waterSpeedMul("civilian", c.x, c.y, 10);
+  const nx = c.x + Math.cos(ang) * fleeSpeed;
+  const ny = c.y + Math.sin(ang) * fleeSpeed;
+  tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
+  c.face = ang;
+  c.step = (c.step || 0) + 0.20;
+  return true;
+}
+
 // ===================== CIVILIANS FOLLOW-ONLY =====================
 function followCiviliansTick(){
   if(S.mode==="Survival") return;
@@ -6475,10 +6606,30 @@ function followCiviliansTick(){
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
 
+    const ownerIsRescue = c.escortOwner === "rescue" && !!c.escortUnitId;
+    if(ownerIsRescue && !rescueUnitById(c.escortUnitId)){
+      c.escortOwner = "";
+      c.escortUnitId = "";
+    }
+    if(c.escortOwner === "rescue" && !c.following){
+      c.escortOwner = "";
+      c.escortUnitId = "";
+    }
+
+    if(runCivilianFleeStep(c, now)){
+      continue;
+    }
+
+    if(c.escortOwner === "rescue"){
+      continue;
+    }
+
     const toPlayer = dist(c.x, c.y, S.me.x, S.me.y);
     if(!c.following){
       if(toPlayer <= engageDist){
         c.following = true;
+        c.escortOwner = "player";
+        c.escortUnitId = "";
         c.followGraceUntil = now + 2800;
       } else {
         continue;
@@ -6491,10 +6642,16 @@ function followCiviliansTick(){
     if(toPlayer > followMaxDist){
       if(now > (c.followGraceUntil || 0)){
         c.following = false;
+        c.escortOwner = "";
+        c.escortUnitId = "";
         continue;
       }
     }
 
+    if(c.escortOwner !== "player"){
+      c.escortOwner = "player";
+      c.escortUnitId = "";
+    }
     activeFollowers.push(c);
   }
 
@@ -6645,6 +6802,8 @@ function tickCiviliansAndThreats(){
       underAttack++;
       if(now < (t._nextCivAttackAt || 0)) continue;
       t._nextCivAttackAt = now + rand(3000, 5000);
+      best.fleeUntil = now + rand(1300, 2200);
+      best.fleeFromTigerId = t.id;
 
       const hitRange = tigerCivilianHitRange(t);
       const pct = hitRange[0] + (Math.random() * (hitRange[1] - hitRange[0]));
@@ -8412,6 +8571,28 @@ function renderHUD(){
     mobilePromptTxt.innerText = mobilePrompt;
   }
 
+    const takeoverBtn = document.getElementById("escortTakeoverBtn");
+    if(takeoverBtn){
+      const nowTakeover = Date.now();
+      let showTakeover = false;
+      if(!S.inBattle && !S.paused && !S.missionEnded && !S.gameOver && S.takeoverPromptUntil > nowTakeover){
+        const unit = rescueUnitById(S.takeoverUnitId);
+        const civ = civilianById(S.takeoverCivId);
+        if(unit && civ && civ.escortOwner === "rescue" && civ.escortUnitId === unit.id && dist(S.me.x, S.me.y, unit.x, unit.y) <= ESCORT_TAKEOVER_DISTANCE){
+          showTakeover = true;
+          const left = Math.max(1, Math.ceil((S.takeoverPromptUntil - nowTakeover) / 1000));
+          takeoverBtn.innerText = `Take Over Escort (${left})`;
+        } else {
+          clearEscortTakeoverPrompt();
+        }
+      } else if(S.takeoverPromptUntil && nowTakeover > S.takeoverPromptUntil){
+        clearEscortTakeoverPrompt();
+      }
+      takeoverBtn.style.display = showTakeover ? "inline-flex" : "none";
+      takeoverBtn.disabled = !showTakeover;
+      if(!showTakeover) takeoverBtn.innerText = "Take Over Escort";
+    }
+
     document.getElementById("statusLine").innerText =
       S.inBattle
         ? (S.battleMsg || `On-map combat active. Use Attack, Capture, weapon swap, and Retreat while Tiger #${S.activeTigerId} stays locked.`)
@@ -9822,6 +10003,12 @@ function init(){
   if(!Number.isFinite(S.respawnTargetX)) S.respawnTargetX = 0;
   if(!Number.isFinite(S.respawnTargetY)) S.respawnTargetY = 0;
   if(!Number.isFinite(S.respawnNoticeAt)) S.respawnNoticeAt = 0;
+  if(!Number.isFinite(S.takeoverPromptUntil)) S.takeoverPromptUntil = 0;
+  if(S.takeoverCivId != null){
+    const civIdNum = Number(S.takeoverCivId);
+    S.takeoverCivId = Number.isFinite(civIdNum) ? civIdNum : null;
+  } else S.takeoverCivId = null;
+  if(typeof S.takeoverUnitId !== "string") S.takeoverUnitId = null;
   ensureAbilityCooldownState();
   if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
   if(!Number.isFinite(S.soldierRescuersOwned)) S.soldierRescuersOwned = 0;
@@ -9879,6 +10066,12 @@ function init(){
   for(const civ of (S.civilians || [])){
     if(typeof civ.following !== "boolean") civ.following = false;
     if(!Number.isFinite(civ.followGraceUntil)) civ.followGraceUntil = 0;
+    if(typeof civ.escortOwner !== "string") civ.escortOwner = civ.following ? "player" : "";
+    if(civ.escortOwner !== "player" && civ.escortOwner !== "rescue") civ.escortOwner = "";
+    if(typeof civ.escortUnitId !== "string") civ.escortUnitId = "";
+    if(!Number.isFinite(civ.fleeUntil)) civ.fleeUntil = 0;
+    if(!Number.isFinite(civ.fleeFromTigerId)) civ.fleeFromTigerId = 0;
+    if(!Number.isFinite(civ._takeoverPromptLockUntil)) civ._takeoverPromptLockUntil = 0;
     if(!Number.isFinite(civ.face)) civ.face = 0;
     if(!Number.isFinite(civ.step)) civ.step = 0;
   }
@@ -9983,6 +10176,7 @@ window.placeTrap = placeTrap;
 window.callBackup = callBackup;
 window.sprint = sprint;
 window.activateShield = activateShield;
+window.takeoverEscort = takeoverEscort;
 window.useNearestCache = useNearestCache;
 
 window.playerAction = playerAction;
