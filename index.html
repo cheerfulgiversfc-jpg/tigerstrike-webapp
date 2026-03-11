@@ -498,9 +498,9 @@
             <span class="touchBtnIcon">💉</span>
             <span class="touchBtnLabel">Cap</span>
           </button>
-          <button class="touchBtn" id="touchRetreatBtn" onclick="endBattle('RETREAT')">
-            <span class="touchBtnIcon">↩️</span>
-            <span class="touchBtnLabel">Back</span>
+          <button class="touchBtn" id="touchCombatMedkitBtn" onclick="useMedkit()">
+            <span class="touchBtnIcon">❤️</span>
+            <span class="touchBtnLabel">Med</span>
           </button>
           <button class="touchBtn" id="touchPrevWeaponBtn" onclick="cycleWeapon(-1)">
             <span class="touchBtnIcon">◀️</span>
@@ -530,6 +530,7 @@
       <div class="row combatButtons" id="combatButtons">
         <button class="warn" id="combatAttackBtn" data-attack-btn>🔫 Attack</button>
         <button class="good" id="combatCaptureBtn" onclick="playerAction('CAPTURE')" disabled>💉 Capture</button>
+        <button class="ghost" id="combatMedkitBtn" onclick="useMedkit()">❤️ Medkit</button>
         <button class="ghost" id="combatPrevWeaponBtn" onclick="cycleWeapon(-1)">◀️ Weapon</button>
         <button class="ghost" id="combatNextWeaponBtn" onclick="cycleWeapon(1)">Weapon ▶️</button>
         <button class="ghost" id="combatRollBtn" onclick="rollDodge()">Roll</button>

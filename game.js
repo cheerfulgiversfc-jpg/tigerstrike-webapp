@@ -1612,6 +1612,11 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * Math.PI * 2;
     ensureTigerHuntState(t);
+    if(inMobileControlKeepout(t.x, t.y, 16)){
+      const pt = safeSpawnPoint(t.x, t.y, 16, true, false);
+      t.x = pt.x;
+      t.y = pt.y;
+    }
     t.alive = t.alive !== false && t.hp > 0;
     return true;
   }).slice(0, MAX_PERSIST_TIGERS);
@@ -1627,6 +1632,11 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(c.followGraceUntil)) c.followGraceUntil = 0;
     if(!Number.isFinite(c.face)) c.face = 0;
     if(!Number.isFinite(c.step)) c.step = 0;
+    if(inMobileControlKeepout(c.x, c.y, 14)){
+      const pt = safeSpawnPoint(c.x, c.y, 14, true, false);
+      c.x = pt.x;
+      c.y = pt.y;
+    }
     return true;
   }).slice(0, MAX_PERSIST_CIVILIANS);
 
@@ -1644,6 +1654,13 @@ function sanitizeRuntimeState(){
     u.alive = u.alive !== false && u.hp > 0;
     if(!Number.isFinite(u.face)) u.face = 0;
     if(!Number.isFinite(u.step)) u.step = 0;
+    if(inMobileControlKeepout(u.x, u.y, 16)){
+      const pt = safeSpawnPoint(u.x, u.y, 16, true, false);
+      u.x = pt.x;
+      u.y = pt.y;
+      u.homeX = clampX(u.homeX ?? u.x, 40, w - 40);
+      u.homeY = clampY(u.homeY ?? u.y, 60, h - 40);
+    }
     return true;
   }).slice(0, MAX_PERSIST_SUPPORT_UNITS);
 
@@ -1652,6 +1669,11 @@ function sanitizeRuntimeState(){
     p.x = clampX(p.x, 40, w - 40);
     p.y = clampY(p.y, 60, h - 40);
     p.ttl = Math.max(1, Math.round(Number.isFinite(p.ttl) ? p.ttl : 1));
+    if(inMobileControlKeepout(p.x, p.y, 12)){
+      const pt = safeSpawnPoint(p.x, p.y, 12, true, false);
+      p.x = pt.x;
+      p.y = pt.y;
+    }
   }
   S.carcasses = S.carcasses.filter((c)=>c && typeof c === "object" && Number.isFinite(c.x) && Number.isFinite(c.y)).slice(-MAX_PERSIST_CARCASSES);
   for(const c of S.carcasses){
@@ -1670,12 +1692,22 @@ function sanitizeRuntimeState(){
     it.y = clampY(it.y, 90, h - 80);
     it.r = clamp(it.r, 12, 54);
     if(!Number.isFinite(it.uses)) it.uses = 0;
+    if(inMobileControlKeepout(it.x, it.y, it.r)){
+      const pt = safeSpawnPoint(it.x, it.y, it.r, true, true);
+      it.x = pt.x;
+      it.y = pt.y;
+    }
   }
   S.rescueSites = S.rescueSites.filter((site)=>site && typeof site === "object" && Number.isFinite(site.x) && Number.isFinite(site.y)).slice(0, MAX_PERSIST_RESCUE_SITES);
   for(const site of S.rescueSites){
     site.x = clampX(site.x, 70, w - 70);
     site.y = clampY(site.y, 90, h - 80);
     site.r = clamp(site.r, 24, 96);
+    if(inMobileControlKeepout(site.x, site.y, Math.round(site.r * 0.42))){
+      const pt = safeSpawnPoint(site.x, site.y, Math.round(site.r * 0.42), true, true);
+      site.x = pt.x;
+      site.y = pt.y;
+    }
   }
 
   S.hp = clamp(S.hp, 0, 100);
@@ -2411,11 +2443,15 @@ function blockedByMapObstacle(x, y, radius){
 }
 function mobileControlKeepoutZones(){
   if(!isMobileViewport()) return [];
+  if(controllerOwnsUi()) return [];
   const w = cv.width || 960;
   const h = cv.height || 540;
   return [
-    { x:w * 0.12, y:h * 0.91, r:52 }, // left joystick (tighter)
-    { x:w * 0.88, y:h * 0.90, r:56 }, // right action cluster (tighter)
+    { x:w * 0.12, y:h * 0.91, r:52 }, // left joystick
+    { x:w * 0.88, y:h * 0.90, r:60 }, // right bottom cluster
+    { x:w * 0.88, y:h * 0.76, r:68 }, // right cluster upper reach
+    { x:w * 0.80, y:h * 0.67, r:44 }, // cache button region
+    { x:w * 0.92, y:h * 0.61, r:58 }, // clear right-side lane behind buttons
   ];
 }
 function inMobileControlKeepout(x, y, radius=0){
@@ -2548,7 +2584,7 @@ function unstickEntitiesTick(){
     if(!civ.alive || civ.evac) continue;
     const civIntent = !!civ.following || (S.guideTargetId === civ.id);
     resolveEntityStuck(civ, 14, {
-      avoidKeepout:false,
+      avoidKeepout:true,
       movingIntent:civIntent,
       stuckThreshold:20,
       targetX:S.evacZone?.x,
@@ -2558,7 +2594,7 @@ function unstickEntitiesTick(){
   for(const unit of (S.supportUnits || [])){
     if(!unit.alive) continue;
     resolveEntityStuck(unit, 16, {
-      avoidKeepout:false,
+      avoidKeepout:true,
       movingIntent:true,
       stuckThreshold:18,
       targetX:S.me?.x,
@@ -2569,12 +2605,31 @@ function unstickEntitiesTick(){
     if(!tiger.alive) continue;
     const tigerIntent = Math.hypot(tiger.vx || 0, tiger.vy || 0) > 0.16 || !!tiger.targetCivId;
     resolveEntityStuck(tiger, 16, {
-      avoidKeepout:false,
+      avoidKeepout:true,
       movingIntent:tigerIntent,
       stuckThreshold:16,
       targetX:S.me?.x,
       targetY:S.me?.y
     });
+  }
+  for(const p of (S.pickups || [])){
+    if(!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    if(!inMobileControlKeepout(p.x, p.y, 12)) continue;
+    const free = findNearestOpenPoint(p.x, p.y, 12, { avoidKeepout:true, avoidWater:false });
+    if(free){
+      p.x = free.x;
+      p.y = free.y;
+    }
+  }
+  for(const it of (S.mapInteractables || [])){
+    if(!Number.isFinite(it.x) || !Number.isFinite(it.y)) continue;
+    const rr = clamp(it.r, 12, 54);
+    if(!inMobileControlKeepout(it.x, it.y, rr)) continue;
+    const free = findNearestOpenPoint(it.x, it.y, rr, { avoidKeepout:true, avoidWater:true });
+    if(free){
+      it.x = free.x;
+      it.y = free.y;
+    }
   }
 }
 function tryCarcassEscape(ent, radius, minX, maxX, minY, maxY){
@@ -2789,10 +2844,18 @@ function tickEvents(){
 function spawnPickup(type, x, y){
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(S.pickups.length >= MAX_PERSIST_PICKUPS) S.pickups.shift();
+  const pt = safeSpawnPoint(
+    clamp(Number.isFinite(x) ? x : rand(80, cv.width - 80), 40, cv.width - 40),
+    clamp(Number.isFinite(y) ? y : rand(90, cv.height - 70), 60, cv.height - 40),
+    12,
+    true,
+    false
+  );
   S.pickups.push({
     id: Date.now()+Math.random(),
     type,
-    x, y,
+    x:pt.x,
+    y:pt.y,
     ttl: 60*20 // ~20 seconds at 60fps
   });
 }
@@ -3950,6 +4013,7 @@ function useMedkit(){
     S.medkits[pick]-=1;
     civ.hp = clamp(civ.hp + m.heal, 0, civ.hpMax);
     sfx("ui"); hapticImpact("light"); save(); renderHUD();
+    renderCombatControls();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
     return toast(`Healed civilian +${m.heal}`);
   }
@@ -3958,6 +4022,7 @@ function useMedkit(){
   S.medkits[pick]-=1;
   S.hp = clamp(S.hp + m.heal, 0, 100);
   sfx("ui"); hapticImpact("light"); save(); renderHUD();
+  renderCombatControls();
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   toast(`Healed +${m.heal}`);
 }
@@ -4470,7 +4535,11 @@ function spawnRescueSites(){
     .slice()
     .sort(() => Math.random() - 0.5)
     .slice(0, Math.min(wanted, basePool.length))
-    .sort((a, b) => a.y - b.y || a.x - b.x);
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .map((site)=>{
+      const pt = safeSpawnPoint(site.x, site.y, Math.round((site.r || 44) * 0.42), true, true);
+      return { ...site, x:pt.x, y:pt.y };
+    });
 }
 
 function pickTigerPersonality(type){
@@ -7582,6 +7651,8 @@ function renderCombatControls(){
   const t = activeTiger();
   const canCap = canAttemptCapture(t);
   const canAtk = anyLethalWeaponHasAmmo();
+  const medCount = totalMedkits();
+  const canMed = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && medCount > 0 && S.hp < 100;
   const rollLeft = rollCooldownLabel();
   const canRoll = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && !rollLeft;
 
@@ -7590,6 +7661,10 @@ function renderCombatControls(){
     if(el) el.disabled = disabled;
   });
   [["touchCaptureBtn", !canCap], ["combatCaptureBtn", !canCap]].forEach(([id, disabled])=>{
+    const el = document.getElementById(id);
+    if(el) el.disabled = disabled;
+  });
+  [["touchCombatMedkitBtn", !canMed], ["combatMedkitBtn", !canMed]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
@@ -7604,8 +7679,10 @@ function renderCombatControls(){
   const nextLabel = combatWeaponLabel(1);
   const prevDesktop = document.getElementById("combatPrevWeaponBtn");
   const nextDesktop = document.getElementById("combatNextWeaponBtn");
+  const medDesktop = document.getElementById("combatMedkitBtn");
   if(prevDesktop) prevDesktop.innerText = `◀️ ${prevLabel}`;
   if(nextDesktop) nextDesktop.innerText = `${nextLabel} ▶️`;
+  if(medDesktop) medDesktop.innerText = `❤️ Medkit (${medCount})`;
   renderAbilityCooldownUi();
   if(controllerOwnsUi() || anyGamepadOverlayVisible()) syncGamepadFocus();
 }
