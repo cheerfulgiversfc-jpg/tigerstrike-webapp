@@ -1037,6 +1037,8 @@ const DEFAULT = {
   abilityCooldowns:{ scan:0, sprint:0, shield:0 },
   soldierAttackersOwned:0,
   soldierRescuersOwned:0,
+  soldierAttackersDowned:0,
+  soldierRescuersDowned:0,
 
   backupCooldown:0, backupActive:0,
   respawnPendingUntil:0,
@@ -1575,6 +1577,11 @@ function sanitizeRuntimeState(){
   if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
+  if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
+  if(!Number.isFinite(S.soldierRescuersOwned)) S.soldierRescuersOwned = 0;
+  if(!Number.isFinite(S.soldierAttackersDowned)) S.soldierAttackersDowned = 0;
+  if(!Number.isFinite(S.soldierRescuersDowned)) S.soldierRescuersDowned = 0;
+  syncSquadRosterBounds();
 
   trimPersistentState(S);
 
@@ -1743,6 +1750,12 @@ const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
 const SOLDIER_PRICE = 50000;
 const REINFORCEMENT_BUNDLE_PRICE = 80000;
+const SQUAD_MAX_PER_ROLE = 8;
+const SQUAD_UPKEEP_ATTACKER = 1400;
+const SQUAD_UPKEEP_RESCUE = 1100;
+const SQUAD_REVIVE_ATTACKER = 18000;
+const SQUAD_REVIVE_RESCUE = 15000;
+const SQUAD_REVIVE_ALL_DISCOUNT = 0.90;
 const SOLDIER_UNLOCK_LEVEL = 15;
 const ROLL_COOLDOWN_MS = 2800;
 const ROLL_INVULN_MS = 520;
@@ -1805,6 +1818,121 @@ function chapterVisualForMode(mode=S.mode, chapter=chapterIndexForMode(mode)){
 }
 function soldierUnlockLevelReached(){
   return currentCampaignLevel() >= SOLDIER_UNLOCK_LEVEL;
+}
+function syncSquadRosterBounds(){
+  S.soldierAttackersOwned = clamp(Math.floor(Number(S.soldierAttackersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
+  S.soldierRescuersOwned = clamp(Math.floor(Number(S.soldierRescuersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
+  S.soldierAttackersDowned = clamp(Math.floor(Number(S.soldierAttackersDowned || 0)), 0, S.soldierAttackersOwned);
+  S.soldierRescuersDowned = clamp(Math.floor(Number(S.soldierRescuersDowned || 0)), 0, S.soldierRescuersOwned);
+}
+function squadOwnedCount(role){
+  return role === "attacker" ? (S.soldierAttackersOwned || 0) : (S.soldierRescuersOwned || 0);
+}
+function squadDownedCount(role){
+  return role === "attacker" ? (S.soldierAttackersDowned || 0) : (S.soldierRescuersDowned || 0);
+}
+function squadAliveCount(role){
+  return Math.max(0, squadOwnedCount(role) - squadDownedCount(role));
+}
+function squadUpkeepUnitCost(role){
+  return role === "attacker" ? SQUAD_UPKEEP_ATTACKER : SQUAD_UPKEEP_RESCUE;
+}
+function squadReviveUnitCost(role){
+  return role === "attacker" ? SQUAD_REVIVE_ATTACKER : SQUAD_REVIVE_RESCUE;
+}
+function squadReviveAllCost(){
+  const total =
+    (squadDownedCount("attacker") * SQUAD_REVIVE_ATTACKER) +
+    (squadDownedCount("rescue") * SQUAD_REVIVE_RESCUE);
+  return Math.round(total * SQUAD_REVIVE_ALL_DISCOUNT);
+}
+function syncActiveSupportToRoster(){
+  if(window.__TUTORIAL_MODE__ || S.gameOver || S.missionEnded) return;
+  if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
+  for(const role of ["attacker", "rescue"]){
+    const wanted = squadAliveCount(role);
+    const alive = S.supportUnits.filter((unit)=>unit.alive && unit.role === role);
+    let idx = alive.length;
+    while(idx < wanted && idx < SQUAD_MAX_PER_ROLE){
+      S.supportUnits.push(createSupportUnit(role, idx));
+      idx += 1;
+    }
+  }
+}
+function applySquadUpkeepAfterMission(){
+  if(window.__TUTORIAL_MODE__) return null;
+  syncSquadRosterBounds();
+  const aliveAttackers = squadAliveCount("attacker");
+  const aliveRescuers = squadAliveCount("rescue");
+  const activeCount = aliveAttackers + aliveRescuers;
+  if(activeCount <= 0) return null;
+
+  const upkeepA = squadUpkeepUnitCost("attacker");
+  const upkeepR = squadUpkeepUnitCost("rescue");
+  const dueAttackers = aliveAttackers * upkeepA;
+  const dueRescuers = aliveRescuers * upkeepR;
+  const totalDue = dueAttackers + dueRescuers;
+  let funds = Math.max(0, Math.floor(Number(S.funds || 0)));
+
+  let paidAttackers = 0;
+  let paidRescuers = 0;
+  let remAttackers = aliveAttackers;
+  let remRescuers = aliveRescuers;
+  const ratioA = ()=> (aliveAttackers > 0 ? (paidAttackers / aliveAttackers) : 1);
+  const ratioR = ()=> (aliveRescuers > 0 ? (paidRescuers / aliveRescuers) : 1);
+
+  while(true){
+    const canPayA = remAttackers > 0 && funds >= upkeepA;
+    const canPayR = remRescuers > 0 && funds >= upkeepR;
+    if(!canPayA && !canPayR) break;
+    if(canPayR && (!canPayA || ratioR() <= ratioA())){
+      funds -= upkeepR;
+      paidRescuers++;
+      remRescuers--;
+    } else if(canPayA){
+      funds -= upkeepA;
+      paidAttackers++;
+      remAttackers--;
+    }
+  }
+
+  S.funds = funds;
+  const unpaidAttackers = Math.max(0, aliveAttackers - paidAttackers);
+  const unpaidRescuers = Math.max(0, aliveRescuers - paidRescuers);
+  if(unpaidAttackers > 0){
+    S.soldierAttackersDowned = clamp((S.soldierAttackersDowned || 0) + unpaidAttackers, 0, S.soldierAttackersOwned || 0);
+  }
+  if(unpaidRescuers > 0){
+    S.soldierRescuersDowned = clamp((S.soldierRescuersDowned || 0) + unpaidRescuers, 0, S.soldierRescuersOwned || 0);
+  }
+
+  if((unpaidAttackers > 0 || unpaidRescuers > 0) && Array.isArray(S.supportUnits) && S.supportUnits.length){
+    let dropA = unpaidAttackers;
+    let dropR = unpaidRescuers;
+    S.supportUnits = S.supportUnits.filter((unit)=>{
+      if(!unit || !unit.alive) return false;
+      if(unit.role === "attacker" && dropA > 0){
+        dropA--;
+        return false;
+      }
+      if(unit.role === "rescue" && dropR > 0){
+        dropR--;
+        return false;
+      }
+      return true;
+    });
+  }
+  syncSquadRosterBounds();
+
+  const paid = (paidAttackers * upkeepA) + (paidRescuers * upkeepR);
+  return {
+    totalDue,
+    paid,
+    paidAttackers,
+    paidRescuers,
+    unpaidAttackers,
+    unpaidRescuers
+  };
 }
 function tutorialKey(){
   return window.TigerTutorial?.isRunning ? (window.TigerTutorial.currentKey || null) : null;
@@ -3527,33 +3655,44 @@ function renderShopList(){
   }
 
   if(currentShopTab==="squad"){
+    syncSquadRosterBounds();
     const unlocked = soldierUnlockLevelReached();
     const level = currentCampaignLevel();
     const spawnNow = (!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded);
+    const ownA = squadOwnedCount("attacker");
+    const ownR = squadOwnedCount("rescue");
+    const downA = squadDownedCount("attacker");
+    const downR = squadDownedCount("rescue");
+    const aliveA = squadAliveCount("attacker");
+    const aliveR = squadAliveCount("rescue");
+    const reviveAllCost = squadReviveAllCost();
+    const totalDowned = downA + downR;
     note.innerText = unlocked
-      ? `Unlocked at level ${SOLDIER_UNLOCK_LEVEL}. Current level: ${level}. ${spawnNow ? "Buy now to spawn immediately." : "Buy now and they join on next mission deploy."}`
+      ? `Unlocked at level ${SOLDIER_UNLOCK_LEVEL}. Current level: ${level}. ${spawnNow ? "Buy now to spawn immediately." : "Buy now and they join on next mission deploy."} Upkeep per mission: Tiger Specialist $${SQUAD_UPKEEP_ATTACKER.toLocaleString()} • Rescue Specialist $${SQUAD_UPKEEP_RESCUE.toLocaleString()}.`
       : `Locked until level ${SOLDIER_UNLOCK_LEVEL}. Current level: ${level}.`;
 
     const attackerCard = `
       <div class="item">
         <div>
-          <div class="itemName">Tiger Specialist <span class="tag">Owned: ${S.soldierAttackersOwned||0}</span> <span class="tag">${unlocked ? "Unlocked" : `Unlock L${SOLDIER_UNLOCK_LEVEL}`}</span></div>
+          <div class="itemName">Tiger Specialist <span class="tag">Owned: ${ownA}</span> <span class="tag">Alive: ${aliveA}</span> <span class="tag">Downed: ${downA}</span> <span class="tag">${unlocked ? "Unlocked" : `Unlock L${SOLDIER_UNLOCK_LEVEL}`}</span></div>
           <div class="itemDesc">Frontline tiger specialist with high HP + armor. Skilled at captures and takedowns. Persists across missions until killed.</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
-          <button onclick="buyTigerSpecialist()" ${unlocked ? "" : "disabled"}>${unlocked ? "Buy" : "Locked"}</button>
+          <button onclick="buyTigerSpecialist()" ${unlocked && ownA < SQUAD_MAX_PER_ROLE ? "" : "disabled"}>${unlocked ? (ownA < SQUAD_MAX_PER_ROLE ? "Buy" : "Roster Full") : "Locked"}</button>
+          <button class="ghost" onclick="reviveSoldier('attacker')" ${downA > 0 ? "" : "disabled"}>Revive ($${SQUAD_REVIVE_ATTACKER.toLocaleString()})</button>
         </div>
       </div>`;
     const rescueCard = `
       <div class="item">
         <div>
-          <div class="itemName">Search & Rescue Specialist <span class="tag">Owned: ${S.soldierRescuersOwned||0}</span> <span class="tag">${unlocked ? "Unlocked" : `Unlock L${SOLDIER_UNLOCK_LEVEL}`}</span></div>
+          <div class="itemName">Search & Rescue Specialist <span class="tag">Owned: ${ownR}</span> <span class="tag">Alive: ${aliveR}</span> <span class="tag">Downed: ${downR}</span> <span class="tag">${unlocked ? "Unlocked" : `Unlock L${SOLDIER_UNLOCK_LEVEL}`}</span></div>
           <div class="itemDesc">Civilian escort specialist with high HP and no armor. Focuses on collecting civilians and guiding to safe zone.</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
-          <button onclick="buyRescueSpecialist()" ${unlocked ? "" : "disabled"}>${unlocked ? "Buy" : "Locked"}</button>
+          <button onclick="buyRescueSpecialist()" ${unlocked && ownR < SQUAD_MAX_PER_ROLE ? "" : "disabled"}>${unlocked ? (ownR < SQUAD_MAX_PER_ROLE ? "Buy" : "Roster Full") : "Locked"}</button>
+          <button class="ghost" onclick="reviveSoldier('rescue')" ${downR > 0 ? "" : "disabled"}>Revive ($${SQUAD_REVIVE_RESCUE.toLocaleString()})</button>
         </div>
       </div>`;
     const bundleCard = `
@@ -3564,10 +3703,21 @@ function renderShopList(){
         </div>
         <div style="text-align:right">
           <div class="price">$${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()}</div>
-          <button onclick="buyReinforcementBundle()" ${unlocked ? "" : "disabled"}>${unlocked ? "Buy Bundle" : "Locked"}</button>
+          <button onclick="buyReinforcementBundle()" ${unlocked && (ownA < SQUAD_MAX_PER_ROLE || ownR < SQUAD_MAX_PER_ROLE) ? "" : "disabled"}>${unlocked ? ((ownA < SQUAD_MAX_PER_ROLE || ownR < SQUAD_MAX_PER_ROLE) ? "Buy Bundle" : "Roster Full") : "Locked"}</button>
         </div>
       </div>`;
-    list.innerHTML = attackerCard + rescueCard + bundleCard;
+    const reviveAllCard = `
+      <div class="item">
+        <div>
+          <div class="itemName">Revive All Downed <span class="tag">Downed Total: ${totalDowned}</span></div>
+          <div class="itemDesc">Bring all downed specialists back to active roster (10% discount).</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price">$${reviveAllCost.toLocaleString()}</div>
+          <button onclick="reviveAllSoldiers()" ${totalDowned > 0 ? "" : "disabled"}>${totalDowned > 0 ? "Revive All" : "No Downed"}</button>
+        </div>
+      </div>`;
+    list.innerHTML = attackerCard + rescueCard + bundleCard + reviveAllCard;
     return;
   }
 
@@ -3740,13 +3890,15 @@ function buyShield(){
 }
 function buyTigerSpecialist(){
   if(!soldierUnlockLevelReached()) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}.`);
-  if((S.soldierAttackersOwned||0) >= 8) return toast("Tiger specialist roster is full.");
+  syncSquadRosterBounds();
+  if(squadOwnedCount("attacker") >= SQUAD_MAX_PER_ROLE) return toast("Tiger specialist roster is full.");
   if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
   S.funds -= SOLDIER_PRICE;
-  S.soldierAttackersOwned = (S.soldierAttackersOwned||0) + 1;
+  S.soldierAttackersOwned = squadOwnedCount("attacker") + 1;
+  syncSquadRosterBounds();
   if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
     const attackCount = (S.supportUnits || []).filter(unit => unit.role === "attacker").length;
-    if(attackCount < 8) S.supportUnits.push(createSupportUnit("attacker", attackCount));
+    if(attackCount < squadAliveCount("attacker")) S.supportUnits.push(createSupportUnit("attacker", attackCount));
   }
   toast("Tiger specialist hired.");
   sfx("ui"); hapticImpact("light");
@@ -3754,13 +3906,15 @@ function buyTigerSpecialist(){
 }
 function buyRescueSpecialist(){
   if(!soldierUnlockLevelReached()) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}.`);
-  if((S.soldierRescuersOwned||0) >= 8) return toast("Rescue specialist roster is full.");
+  syncSquadRosterBounds();
+  if(squadOwnedCount("rescue") >= SQUAD_MAX_PER_ROLE) return toast("Rescue specialist roster is full.");
   if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
   S.funds -= SOLDIER_PRICE;
-  S.soldierRescuersOwned = (S.soldierRescuersOwned||0) + 1;
+  S.soldierRescuersOwned = squadOwnedCount("rescue") + 1;
+  syncSquadRosterBounds();
   if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
     const rescueCount = (S.supportUnits || []).filter(unit => unit.role === "rescue").length;
-    if(rescueCount < 8) S.supportUnits.push(createSupportUnit("rescue", rescueCount));
+    if(rescueCount < squadAliveCount("rescue")) S.supportUnits.push(createSupportUnit("rescue", rescueCount));
   }
   toast("Rescue specialist hired.");
   sfx("ui"); hapticImpact("light");
@@ -3768,32 +3922,70 @@ function buyRescueSpecialist(){
 }
 function buyReinforcementBundle(){
   if(!soldierUnlockLevelReached()) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}.`);
-  const attackersOwned = S.soldierAttackersOwned || 0;
-  const rescuersOwned = S.soldierRescuersOwned || 0;
-  if(attackersOwned >= 8 && rescuersOwned >= 8) return toast("Both specialist rosters are full.");
+  syncSquadRosterBounds();
+  const attackersOwned = squadOwnedCount("attacker");
+  const rescuersOwned = squadOwnedCount("rescue");
+  if(attackersOwned >= SQUAD_MAX_PER_ROLE && rescuersOwned >= SQUAD_MAX_PER_ROLE) return toast("Both specialist rosters are full.");
   if(S.funds < REINFORCEMENT_BUNDLE_PRICE) return toast("Not enough money.");
   S.funds -= REINFORCEMENT_BUNDLE_PRICE;
 
   let addedA = 0;
   let addedR = 0;
-  if(attackersOwned < 8){
+  if(attackersOwned < SQUAD_MAX_PER_ROLE){
     S.soldierAttackersOwned = attackersOwned + 1;
     addedA = 1;
     if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
       const attackCount = (S.supportUnits || []).filter(unit => unit.role === "attacker").length;
-      if(attackCount < 8) S.supportUnits.push(createSupportUnit("attacker", attackCount));
+      if(attackCount < squadAliveCount("attacker")) S.supportUnits.push(createSupportUnit("attacker", attackCount));
     }
   }
-  if(rescuersOwned < 8){
+  if(rescuersOwned < SQUAD_MAX_PER_ROLE){
     S.soldierRescuersOwned = rescuersOwned + 1;
     addedR = 1;
     if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
       const rescueCount = (S.supportUnits || []).filter(unit => unit.role === "rescue").length;
-      if(rescueCount < 8) S.supportUnits.push(createSupportUnit("rescue", rescueCount));
+      if(rescueCount < squadAliveCount("rescue")) S.supportUnits.push(createSupportUnit("rescue", rescueCount));
     }
   }
 
+  syncSquadRosterBounds();
   toast(`Reinforcement deployed: +${addedA} Tiger Specialist, +${addedR} Rescue Specialist.`);
+  sfx("ui"); hapticImpact("medium");
+  save(); renderShopList(); renderHUD();
+}
+function reviveSoldier(role){
+  if(role !== "attacker" && role !== "rescue") return;
+  syncSquadRosterBounds();
+  const downed = squadDownedCount(role);
+  if(downed <= 0){
+    return toast(role === "attacker" ? "No downed Tiger Specialist." : "No downed Rescue Specialist.");
+  }
+  const price = squadReviveUnitCost(role);
+  if(S.funds < price) return toast("Not enough money.");
+  S.funds -= price;
+  if(role === "attacker"){
+    S.soldierAttackersDowned = Math.max(0, (S.soldierAttackersDowned || 0) - 1);
+  } else {
+    S.soldierRescuersDowned = Math.max(0, (S.soldierRescuersDowned || 0) - 1);
+  }
+  syncSquadRosterBounds();
+  syncActiveSupportToRoster();
+  toast(role === "attacker" ? "Tiger specialist revived." : "Rescue specialist revived.");
+  sfx("ui"); hapticImpact("light");
+  save(); renderShopList(); renderHUD();
+}
+function reviveAllSoldiers(){
+  syncSquadRosterBounds();
+  const totalDowned = squadDownedCount("attacker") + squadDownedCount("rescue");
+  if(totalDowned <= 0) return toast("No downed specialists.");
+  const price = squadReviveAllCost();
+  if(S.funds < price) return toast("Not enough money.");
+  S.funds -= price;
+  S.soldierAttackersDowned = 0;
+  S.soldierRescuersDowned = 0;
+  syncSquadRosterBounds();
+  syncActiveSupportToRoster();
+  toast(`All specialists revived for $${price.toLocaleString()}.`);
   sfx("ui"); hapticImpact("medium");
   save(); renderShopList(); renderHUD();
 }
@@ -3862,6 +4054,7 @@ function pickMostInjuredCivilian(){
 
 function renderInventory(){
   ensureStoryMetaState();
+  syncSquadRosterBounds();
   const w=equippedWeapon();
   const ammoId=w.ammo;
   const baseRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + storyBaseRank(def.key), 0);
@@ -3872,7 +4065,7 @@ function renderInventory(){
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
      <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0}<br>
-     <b>Squad:</b> Attack ${S.soldierAttackersOwned||0} • Rescue ${S.soldierRescuersOwned||0}<br>
+     <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
      <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}`;
 
   document.getElementById("invWeapons").innerHTML = S.ownedWeapons.map(id=>{
@@ -4961,11 +5154,12 @@ function createSupportUnit(role, slotIndex=0){
 
 function spawnSupportUnits(){
   if(window.__TUTORIAL_MODE__) return;
+  syncSquadRosterBounds();
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
 
   const alive = S.supportUnits.filter((unit)=>unit && unit.alive !== false);
-  const attackersWanted = clamp(Math.floor(S.soldierAttackersOwned || 0), 0, 8);
-  const rescuersWanted = clamp(Math.floor(S.soldierRescuersOwned || 0), 0, 8);
+  const attackersWanted = clamp(squadAliveCount("attacker"), 0, SQUAD_MAX_PER_ROLE);
+  const rescuersWanted = clamp(squadAliveCount("rescue"), 0, SQUAD_MAX_PER_ROLE);
 
   const attackers = alive.filter((unit)=>unit.role === "attacker").slice(0, attackersWanted);
   const rescuers = alive.filter((unit)=>unit.role === "rescue").slice(0, rescuersWanted);
@@ -5435,6 +5629,7 @@ function deploy(){
   invalidateMapCache();
   for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
   ensureStoryMetaState();
+  syncSquadRosterBounds();
   S.gameOver=false;
   S.missionEnded=false;
   S.inBattle=false;
@@ -6399,14 +6594,17 @@ function damageSupportUnit(unit, dmg){
   if(unit.hp > 0) return;
 
   unit.alive = false;
-  if(unit.role === "attacker" && !unit._rosterDeducted){
-    unit._rosterDeducted = true;
-    S.soldierAttackersOwned = Math.max(0, (S.soldierAttackersOwned||0) - 1);
-    toast("Tiger specialist down. Repurchase in Shop.");
-  } else if(unit.role === "rescue"){
-    S.soldierRescuersOwned = Math.max(0, (S.soldierRescuersOwned||0) - 1);
-    toast("Rescue specialist down.");
+  if(!unit._downedApplied){
+    unit._downedApplied = true;
+    if(unit.role === "attacker"){
+      S.soldierAttackersDowned = clamp((S.soldierAttackersDowned || 0) + 1, 0, S.soldierAttackersOwned || 0);
+      toast("Tiger specialist down. Revive in Shop > Squad.");
+    } else if(unit.role === "rescue"){
+      S.soldierRescuersDowned = clamp((S.soldierRescuersDowned || 0) + 1, 0, S.soldierRescuersOwned || 0);
+      toast("Rescue specialist down. Revive in Shop > Squad.");
+    }
   }
+  syncSquadRosterBounds();
   hapticNotif("warning");
   save();
 }
@@ -6641,8 +6839,7 @@ function supportUnitsTick(){
   }
 
   S.supportUnits = (S.supportUnits || []).filter(unit => unit.alive).slice(0, 16);
-  S.soldierAttackersOwned = S.supportUnits.filter((unit)=>unit.role === "attacker").length;
-  S.soldierRescuersOwned = S.supportUnits.filter((unit)=>unit.role === "rescue").length;
+  syncSquadRosterBounds();
 }
 
 function runCivilianFleeStep(c, now=Date.now()){
@@ -8417,9 +8614,22 @@ function checkMissionComplete(){
           ? "\nFinal Choice: You captured the Ancient Tiger.\nEnding: Preservation ending unlocked.\nRewards Unlocked: Legendary Commander Rank • Golden Soldier Skin • Endless Jungle Mode\n"
           : "\nFinal Choice: You killed the Ancient Tiger.\nEnding: Dominance ending unlocked.\nRewards Unlocked: Legendary Commander Rank • Golden Soldier Skin • Endless Jungle Mode\n";
       }
+      let upkeepNote = "";
+      const upkeep = applySquadUpkeepAfterMission();
+      if(upkeep){
+        const unpaid = upkeep.unpaidAttackers + upkeep.unpaidRescuers;
+        if(unpaid > 0){
+          upkeepNote =
+            `\nSquad upkeep paid: $${upkeep.paid.toLocaleString()} / $${upkeep.totalDue.toLocaleString()}` +
+            `\nUnpaid specialists moved to downed: A ${upkeep.unpaidAttackers} • R ${upkeep.unpaidRescuers}\n`;
+          toast(`Upkeep shortfall: ${unpaid} specialist${unpaid>1?"s":""} moved to downed.`);
+        } else {
+          upkeepNote = `\nSquad upkeep paid: $${upkeep.paid.toLocaleString()} (all active specialists maintained)\n`;
+        }
+      }
 
       document.getElementById("completeText").innerText =
-        `${heading}${chapterCutscene}${chapterRewardNote}${finalEnding}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${chapterCutscene}${chapterRewardNote}${finalEnding}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       sfx("win"); hapticNotif("success");
@@ -8438,6 +8648,7 @@ function updateEngage(){
 
 function renderHUD(){
   try{
+    syncSquadRosterBounds();
     // clear event text if expired
     if(S.eventTextUntil && Date.now()>S.eventTextUntil) S.eventText="";
     if(S.shieldUntil && Date.now() >= S.shieldUntil) S.shieldUntil = 0;
@@ -8482,7 +8693,7 @@ function renderHUD(){
   const shieldLabel = shieldActiveNow() ? `${S.shields||0} • ACTIVE (${shieldSecs}s)` : `${S.shields||0}`;
   document.getElementById("shieldTxt").innerText = shieldLabel;
 
-  document.getElementById("backupTxt").innerText = `Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${S.soldierAttackersOwned||0} R:${S.soldierRescuersOwned||0}`;
+  document.getElementById("backupTxt").innerText = `Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
   const shieldDisabled = S.paused || S.missionEnded || S.gameOver || (S.shields||0)<=0 || abilityOnCooldown("shield");
   document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = shieldDisabled; });
   const cacheBtn = document.getElementById("touchCacheBtn");
@@ -10141,6 +10352,9 @@ function init(){
   ensureAbilityCooldownState();
   if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
   if(!Number.isFinite(S.soldierRescuersOwned)) S.soldierRescuersOwned = 0;
+  if(!Number.isFinite(S.soldierAttackersDowned)) S.soldierAttackersDowned = 0;
+  if(!Number.isFinite(S.soldierRescuersDowned)) S.soldierRescuersDowned = 0;
+  syncSquadRosterBounds();
   if(!Number.isFinite(S.comboCount)) S.comboCount = 0;
   if(!Number.isFinite(S.comboBest)) S.comboBest = 0;
   if(!Number.isFinite(S.comboExpireAt)) S.comboExpireAt = 0;
@@ -10214,10 +10428,13 @@ function init(){
     unit.armor = storySupportArmorBase(unit.role);
     if(unit.alive == null) unit.alive = true;
   }
-  if((S.soldierAttackersOwned || 0) + (S.soldierRescuersOwned || 0) <= 0 && Array.isArray(S.supportUnits) && S.supportUnits.length){
+  if((S.soldierAttackersOwned || 0) + (S.soldierRescuersOwned || 0) + (S.soldierAttackersDowned || 0) + (S.soldierRescuersDowned || 0) <= 0 && Array.isArray(S.supportUnits) && S.supportUnits.length){
     S.soldierAttackersOwned = S.supportUnits.filter((unit)=>unit.alive && unit.role === "attacker").length;
     S.soldierRescuersOwned = S.supportUnits.filter((unit)=>unit.alive && unit.role === "rescue").length;
+    S.soldierAttackersDowned = 0;
+    S.soldierRescuersDowned = 0;
   }
+  syncSquadRosterBounds();
   for(const it of (S.mapInteractables || [])){
     if(!it.kind) it.kind = "cache";
     if(!it.label) it.label = it.kind === "barricade" ? "Barrier" : (it.kind === "alarm" ? "Alarm" : "Cache");
@@ -10327,6 +10544,8 @@ window.buyShield = buyShield;
 window.buyTigerSpecialist = buyTigerSpecialist;
 window.buyRescueSpecialist = buyRescueSpecialist;
 window.buyReinforcementBundle = buyReinforcementBundle;
+window.reviveSoldier = reviveSoldier;
+window.reviveAllSoldiers = reviveAllSoldiers;
 window.buyStoryBaseUpgrade = buyStoryBaseUpgrade;
 window.buyStorySpecialistPerk = buyStorySpecialistPerk;
 window.buyTrap = buyTrap;
