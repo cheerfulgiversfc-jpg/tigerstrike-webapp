@@ -1166,6 +1166,9 @@ function load(){
 // ===================== SAVE (THROTTLED — FIXES IOS FREEZE) =====================
 const SAVE_MIN_INTERVAL_MS = 4200;
 const SAVE_AUTOSAVE_MS = 12000;
+const STABILITY_SPIKE_GAP_MS = 520;
+const STABILITY_SPIKE_RECOVER_MS = 3200;
+const BLOCKED_CACHE_QUANT = 2;
 const MAX_PERSIST_CARCASSES = 48;
 const MAX_PERSIST_PICKUPS = 26;
 const MAX_PERSIST_TRAPS = 24;
@@ -1233,7 +1236,10 @@ let __lastFrameAt = 0;
 let __drawLoopStarted = false;
 let __frameRecoverUntil = 0;
 let __frameHeavyFxFlip = 0;
+let __frameSpikePending = false;
 const __frameErrorGate = Object.create(null);
+const __blockedAtCache = new Map();
+let __blockedAtCacheFrame = 0;
 const __frameBudgetState = {
   frameNo: 0,
   startTs: 0,
@@ -1249,6 +1255,8 @@ function invalidateMapCache(){
   __mapObstacleCircles = [];
   __mapWaterSig = "";
   __mapWaterZones = [];
+  __blockedAtCache.clear();
+  __blockedAtCacheFrame = 0;
 }
 
 function flushSaveNow(){
@@ -1313,6 +1321,10 @@ function beginFrameBudget(frameStartTs){
   if(frameIsSlow(now)) limit -= 1.6;
   if(now < (__frameRecoverUntil || 0)) limit = Math.min(limit, 8.2);
   __frameBudgetState.frameNo += 1;
+  if(__blockedAtCacheFrame !== __frameBudgetState.frameNo){
+    __blockedAtCache.clear();
+    __blockedAtCacheFrame = __frameBudgetState.frameNo;
+  }
   __frameBudgetState.startTs = now;
   __frameBudgetState.limitMs = clamp(limit, 6.6, 14.8);
   __frameBudgetState.dropped = 0;
@@ -1382,6 +1394,9 @@ function updateFrameLoad(frameStartTs){
   const frameGap = now - __lastFrameAt;
   __lastFrameAt = now;
   const frameCost = now - frameStartTs;
+  if(frameGap > STABILITY_SPIKE_GAP_MS || frameCost > 46){
+    __frameSpikePending = true;
+  }
   if(frameGap > 70 || frameCost > 34){
     __frameLagScore = Math.min(20, (__frameLagScore || 0) + 2);
   } else {
@@ -1390,6 +1405,23 @@ function updateFrameLoad(frameStartTs){
   if(__frameLagScore >= 6){
     __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 2400);
     __frameLagScore = 2;
+  }
+}
+
+function recoverFromSpikeFrame(){
+  __frameSpikePending = false;
+  const now = performance.now ? performance.now() : Date.now();
+  __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + STABILITY_SPIKE_RECOVER_MS);
+  __frameRecoverUntil = Math.max(__frameRecoverUntil || 0, now + 1800);
+  if(COMBAT_FX.length > 24) COMBAT_FX.splice(0, COMBAT_FX.length - 24);
+  if(DAMAGE_POPUPS.length > 24) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - 24);
+  if(S && typeof S === "object"){
+    S.scanPing = Math.min(42, Math.max(0, S.scanPing || 0));
+    for(const t of (S.tigers || [])){
+      t.vx = clamp(Number.isFinite(t.vx) ? t.vx : 0, -4.2, 4.2);
+      t.vy = clamp(Number.isFinite(t.vy) ? t.vy : 0, -4.2, 4.2);
+      if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || 0, t.vx || 1);
+    }
   }
 }
 
@@ -2594,15 +2626,30 @@ function inMobileControlKeepout(x, y, radius=0){
   }
   return false;
 }
+function blockedCacheKey(x, y, radius=0){
+  const q = BLOCKED_CACHE_QUANT;
+  return `${Math.round(x / q)}|${Math.round(y / q)}|${Math.round((radius || 0) / q)}`;
+}
 function blockedAt(x, y, radius){
+  const key = blockedCacheKey(x, y, radius);
+  if(__blockedAtCache.has(key)) return __blockedAtCache.get(key);
+  let blocked = false;
   // Blood pools are visual hazards; they should never hard-block movement.
-  if(isMobileViewport() && x > (cv.width * 0.66) && y > (cv.height * 0.70)) return false;
-  if(blockedByMapObstacle(x, y, radius)) return true;
-  return false;
+  if(!(isMobileViewport() && x > (cv.width * 0.66) && y > (cv.height * 0.70))){
+    blocked = blockedByMapObstacle(x, y, radius);
+  }
+  __blockedAtCache.set(key, blocked);
+  if(__blockedAtCache.size > 1200){
+    __blockedAtCache.clear();
+    __blockedAtCacheFrame = __frameBudgetState.frameNo;
+  }
+  return blocked;
 }
 function findNearestOpenPoint(x, y, radius, opts={}){
   const avoidKeepout = !!opts.avoidKeepout;
   const avoidWater = !!opts.avoidWater;
+  const inPerfMode = performanceMode() === "PERFORMANCE";
+  const slowFrame = frameIsSlow();
   const minX = 30 + radius;
   const maxX = cv.width - (30 + radius);
   const minY = 48 + radius;
@@ -2631,8 +2678,11 @@ function findNearestOpenPoint(x, y, radius, opts={}){
 
   testPoint(ox, oy, 0.22);
   const baseStep = Math.max(8, radius + 6);
-  for(let ring=1; ring<=10; ring++){
-    const steps = 8 + (ring * 2);
+  const maxRings = slowFrame ? 6 : (inPerfMode ? 8 : 10);
+  for(let ring=1; ring<=maxRings; ring++){
+    if(ring > 2 && frameBudgetExceeded(0.55)) break;
+    const stepMul = slowFrame ? 0.84 : (inPerfMode ? 0.92 : 1);
+    const steps = Math.max(6, Math.round((8 + (ring * 2)) * stepMul));
     const rr = baseStep * ring;
     for(let i=0; i<steps; i++){
       const a = (Math.PI * 2 * i) / steps;
@@ -2653,6 +2703,7 @@ function updateEntityStuckState(ent, moveEps=0.75){
 }
 function resolveEntityStuck(ent, radius, opts={}){
   if(!ent || !Number.isFinite(ent.x) || !Number.isFinite(ent.y)) return false;
+  const now = Date.now();
   const avoidKeepout = !!opts.avoidKeepout;
   const movingIntent = opts.movingIntent !== false;
   const stuckThreshold = Math.max(8, Math.floor(opts.stuckThreshold || 22));
@@ -2663,21 +2714,30 @@ function resolveEntityStuck(ent, radius, opts={}){
     ent._stuckTicks = 0;
     ent._lastMoveX = ent.x;
     ent._lastMoveY = ent.y;
+    ent._nextUnstickTryAt = 0;
   }
   const isStuck = movingIntent && Number(ent._stuckTicks || 0) >= stuckThreshold;
-  if(!isBlocked && !inKeepout && !isStuck) return false;
+  if(!isBlocked && !inKeepout && !isStuck){
+    ent._nextUnstickTryAt = 0;
+    return false;
+  }
+  if((ent._nextUnstickTryAt || 0) > now) return false;
 
   const free = findNearestOpenPoint(ent.x, ent.y, radius, {
     avoidKeepout,
     targetX: Number.isFinite(opts.targetX) ? opts.targetX : ent.x,
     targetY: Number.isFinite(opts.targetY) ? opts.targetY : ent.y
   });
-  if(!free) return false;
+  if(!free){
+    ent._nextUnstickTryAt = now + (frameIsSlow() ? 260 : 160);
+    return false;
+  }
   ent.x = free.x;
   ent.y = free.y;
   ent._stuckTicks = 0;
   ent._lastMoveX = ent.x;
   ent._lastMoveY = ent.y;
+  ent._nextUnstickTryAt = 0;
   return true;
 }
 function safeSpawnPoint(x, y, radius=16, avoidKeepout=true, avoidWater=false){
@@ -2811,6 +2871,7 @@ function tryCarcassEscape(ent, radius, minX, maxX, minY, maxY){
   return false;
 }
 function tryMoveEntity(ent, nx, ny, radius, opts={}){
+  const now = Date.now();
   const minX = 30 + radius;
   const maxX = cv.width - (30 + radius);
   const minY = 48 + radius;
@@ -2848,6 +2909,11 @@ function tryMoveEntity(ent, nx, ny, radius, opts={}){
   if(blockedAt(ent.x, ent.y, radius)){
     const escaped = tryCarcassEscape(ent, radius, minX, maxX, minY, maxY);
     if(!escaped || blockedAt(ent.x, ent.y, radius)){
+      if((ent._nextPathRecoverAt || 0) > now){
+        ent.x = clamp(ox, minX, maxX);
+        ent.y = clamp(oy, minY, maxY);
+        return false;
+      }
       const fallback = findNearestOpenPoint(ox, oy, radius, {
         avoidKeepout,
         targetX,
@@ -2856,7 +2922,9 @@ function tryMoveEntity(ent, nx, ny, radius, opts={}){
       if(fallback){
         ent.x = fallback.x;
         ent.y = fallback.y;
+        ent._nextPathRecoverAt = 0;
       } else {
+        ent._nextPathRecoverAt = now + (frameIsSlow() ? 220 : 120);
         ent.x = clamp(ox, minX, maxX);
         ent.y = clamp(oy, minY, maxY);
         return false;
@@ -2864,6 +2932,11 @@ function tryMoveEntity(ent, nx, ny, radius, opts={}){
     }
   }
   if(avoidKeepout && inMobileControlKeepout(ent.x, ent.y, radius)){
+    if((ent._nextKeepoutRecoverAt || 0) > now){
+      ent.x = clamp(ox, minX, maxX);
+      ent.y = clamp(oy, minY, maxY);
+      return false;
+    }
     const free = findNearestOpenPoint(ent.x, ent.y, radius, {
       avoidKeepout:true,
       targetX:S.me?.x,
@@ -2872,6 +2945,9 @@ function tryMoveEntity(ent, nx, ny, radius, opts={}){
     if(free){
       ent.x = free.x;
       ent.y = free.y;
+      ent._nextKeepoutRecoverAt = 0;
+    } else {
+      ent._nextKeepoutRecoverAt = now + (frameIsSlow() ? 220 : 140);
     }
   }
   return true;
@@ -7255,7 +7331,23 @@ function roamTigers(){
     packStats[tiger.packId].n += 1;
   }
 
-  for(const t of aliveTigers){
+  let tickTigers = aliveTigers;
+  if(aliveTigers.length > 12){
+    const underLoad = frameIsSlow() || performanceMode() === "PERFORMANCE";
+    const batchSize = underLoad
+      ? Math.max(6, Math.ceil(aliveTigers.length * 0.45))
+      : Math.max(8, Math.ceil(aliveTigers.length * 0.62));
+    const start = (S._tigerBatchStart || 0) % aliveTigers.length;
+    tickTigers = [];
+    for(let i=0; i<batchSize; i++){
+      tickTigers.push(aliveTigers[(start + i) % aliveTigers.length]);
+    }
+    S._tigerBatchStart = (start + batchSize) % aliveTigers.length;
+  } else {
+    S._tigerBatchStart = 0;
+  }
+
+  for(const t of tickTigers){
 
     abilityTick(t);
 
@@ -10252,6 +10344,9 @@ function draw(){
       return;
     }
     beginFrameBudget(frameStart);
+    if(__frameSpikePending){
+      safeTick("recoverFromSpikeFrame", recoverFromSpikeFrame);
+    }
     safeTick("pollGamepadControls", pollGamepadControls);
     safeTick("refreshControllerUi", refreshControllerUi);
     safeTick("maybeRenderHUD", maybeRenderHUD);
