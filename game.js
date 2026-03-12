@@ -1022,6 +1022,7 @@ const DEFAULT = {
 
   medkits:{ "M_SMALL":1 },
   repairKits:{ "T_REPAIR":1 },
+  armorPlates:0,
   trapsOwned:2,
   trapsPlaced:[],
   shields:1,
@@ -1039,6 +1040,7 @@ const DEFAULT = {
   soldierRescuersOwned:0,
   soldierAttackersDowned:0,
   soldierRescuersDowned:0,
+  lastCombatLethalWeaponId:"",
 
   backupCooldown:0, backupActive:0,
   respawnPendingUntil:0,
@@ -1826,6 +1828,8 @@ function sanitizeRuntimeState(){
   S.armor = clamp(S.armor, 0, S.armorCap || 100);
   S.stamina = clamp(S.stamina, 0, 100);
   S.lives = clamp(Math.round(Number.isFinite(S.lives) ? S.lives : 5), 0, 99);
+  S.armorPlates = clamp(Math.floor(Number(S.armorPlates || 0)), 0, 999);
+  if(typeof S.lastCombatLethalWeaponId !== "string") S.lastCombatLethalWeaponId = "";
   if(S.lockedTigerId != null && !S.tigers.some((t)=>t.id === S.lockedTigerId && t.alive)){
     S.lockedTigerId = null;
   }
@@ -1854,6 +1858,7 @@ const PLAYER_SPRINT_SPEED = 3.9;
 const SHIELD_DURATION_MS = 5000;
 const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
+const ARMOR_PLATE_VALUE = 20;
 const SOLDIER_PRICE = 50000;
 const REINFORCEMENT_BUNDLE_PRICE = 80000;
 const SQUAD_MAX_PER_ROLE = 8;
@@ -2541,6 +2546,7 @@ function pushMapObstacleCircle(circles, x, y, r, pad=0){
   circles.push({ x, y, r: Math.max(4, r + pad) });
 }
 function addMapObstacleForLandmark(rects, circles, item){
+  if(inMobileNoBuildZone(item?.x, item?.y, 26)) return;
   if(MAP_SOFT_COLLIDER_KINDS.has(item?.kind)) return;
   const profile = MAP_COLLIDER_PROFILES[item?.kind];
   if(!profile) return;
@@ -2567,7 +2573,7 @@ function buildMapWaterZones(mapKey, chapter, w=cv.width, h=cv.height){
       ry,
       rot: Number.isFinite(def.rot) ? def.rot : 0
     };
-  });
+  }).filter((zone)=>!inMobileNoBuildZone(zone.x, zone.y, Math.max(zone.rx || 0, zone.ry || 0) * 0.55));
 }
 function waterZoneRadii(zone){
   const rx = Math.max(2, Number(zone?.rx || zone?.r || 0));
@@ -2623,7 +2629,10 @@ function ensureMapObstacleCache(){
       [240,388],[560,388],[820,388],
     ];
     for(const [hx, hy] of anchors){
-      pushMapObstacleRect(rects, sx(hx), sy(hy), sx(34), sy(22), 2);
+      const cx = sx(hx);
+      const cy = sy(hy);
+      if(inMobileNoBuildZone(cx, cy, 24)) continue;
+      pushMapObstacleRect(rects, cx, cy, sx(34), sy(22), 2);
     }
   } else if(family === "ST_DOWNTOWN"){
     const blocks = [
@@ -2631,13 +2640,24 @@ function ensureMapObstacleCache(){
       [200,330,86,66],[560,325,92,68],[860,320,78,60],
     ];
     for(const [bx, by, bw, bh] of blocks){
-      pushMapObstacleRect(rects, sx(bx), sy(by), sx(bw), sy(bh), 4);
+      const cx = sx(bx);
+      const cy = sy(by);
+      if(inMobileNoBuildZone(cx, cy, Math.max(sx(bw), sy(bh)) * 0.52)) continue;
+      pushMapObstacleRect(rects, cx, cy, sx(bw), sy(bh), 4);
     }
   } else if(family === "ST_INDUSTRIAL"){
-    pushMapObstacleRect(rects, sx(218), sy(158), sx(198), sy(96), 5);
-    pushMapObstacleRect(rects, sx(738), sy(166), sx(202), sy(92), 5);
-    pushMapObstacleRect(rects, sx(420), sy(408), sx(240), sy(112), 5);
-    pushMapObstacleRect(rects, sx(815), sy(300), sx(112), sy(72), 4);
+    const industrialBlocks = [
+      [218,158,198,96,5],
+      [738,166,202,92,5],
+      [420,408,240,112,5],
+      [815,300,112,72,4],
+    ];
+    for(const [bx, by, bw, bh, pad] of industrialBlocks){
+      const cx = sx(bx);
+      const cy = sy(by);
+      if(inMobileNoBuildZone(cx, cy, Math.max(sx(bw), sy(bh)) * 0.52)) continue;
+      pushMapObstacleRect(rects, cx, cy, sx(bw), sy(bh), pad);
+    }
   }
 
   __mapObstacleRects = rects;
@@ -2682,10 +2702,10 @@ function mobileControlKeepoutZones(){
   const h = cv.height || 540;
   return [
     { x:w * 0.12, y:h * 0.91, r:52 }, // left joystick
-    { x:w * 0.88, y:h * 0.90, r:60 }, // right bottom cluster
-    { x:w * 0.88, y:h * 0.76, r:68 }, // right cluster upper reach
-    { x:w * 0.80, y:h * 0.67, r:44 }, // cache button region
-    { x:w * 0.92, y:h * 0.61, r:58 }, // clear right-side lane behind buttons
+    { x:w * 0.88, y:h * 0.90, r:64 }, // right bottom cluster
+    { x:w * 0.88, y:h * 0.76, r:78 }, // right cluster upper reach
+    { x:w * 0.93, y:h * 0.50, r:62 }, // cache button region (moved higher)
+    { x:w * 0.86, y:h * 0.64, r:114 }, // clear full right-side control lane
   ];
 }
 function inMobileControlKeepout(x, y, radius=0){
@@ -2699,6 +2719,10 @@ function inMobileControlKeepout(x, y, radius=0){
     if((dx * dx + dy * dy) <= (rr * rr)) return true;
   }
   return false;
+}
+function inMobileNoBuildZone(x, y, radius=0){
+  if(!isMobileViewport()) return false;
+  return inMobileControlKeepout(x, y, Math.max(0, radius) + 18);
 }
 function blockedCacheKey(x, y, radius=0){
   const q = BLOCKED_CACHE_QUANT;
@@ -3770,12 +3794,12 @@ function renderShopList(){
   }
 
   if(currentShopTab==="armor"){
-    note.innerText="Cannot buy armor if armor is already full.";
+    note.innerText="Armor now buys a storable Armor Plate (+20 armor each). If armor is not full, one plate auto-applies immediately.";
     list.innerHTML = ARMORY.map(ar=>`
       <div class="item">
         <div>
           <div class="itemName">${ar.name}</div>
-          <div class="itemDesc">Adds +${ar.addArmor} armor (cap ${ar.cap})</div>
+          <div class="itemDesc">Armor Plate: +${ARMOR_PLATE_VALUE} armor per use • Armor cap ${ar.cap} • Stored plates: ${totalArmorPlates()}</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${ar.price.toLocaleString()}</div>
@@ -4005,13 +4029,21 @@ function buyAmmo(id){
 }
 function buyArmor(id){
   const ar=getArmor(id); if(!ar) return;
-  if(S.armor >= S.armorCap) return toast("Armor already full.");
   if(S.funds < ar.price) return toast("Not enough money.");
   S.funds -= ar.price;
-  S.armorCap = ar.cap;
-  S.armor = clamp(S.armor + ar.addArmor, 0, S.armorCap);
+  S.armorCap = Math.max(S.armorCap || 100, ar.cap);
+  S.armorPlates = totalArmorPlates() + 1;
+  const applied = useArmorPlate({ silent:true, skipSfx:true, skipRender:true, skipSave:true });
+  if(applied > 0){
+    toast(`Armor +${applied}. Plates left: ${totalArmorPlates()}.`);
+  } else {
+    toast(`Armor plate stored. Plates: ${totalArmorPlates()}.`);
+  }
   sfx("ui"); hapticImpact("light");
-  save(); renderShopList(); renderHUD();
+  save();
+  renderShopList();
+  renderHUD();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
 }
 function buyMed(id){
   const m=getMed(id); if(!m) return;
@@ -4192,6 +4224,7 @@ function buyTrap(){
 
 function totalMedkits(){ return Object.values(S.medkits||{}).reduce((a,b)=>a+(b||0),0); }
 function totalRepairKits(){ return Object.values(S.repairKits||{}).reduce((a,b)=>a+(b||0),0); }
+function totalArmorPlates(){ return clamp(Math.floor(Number(S.armorPlates || 0)), 0, 999); }
 
 function setHealTarget(t){ S.healTarget=t; save(); if(document.getElementById("invOverlay").style.display==="flex") renderInventory(); renderHUD(); }
 function pickMostInjuredCivilian(){
@@ -4214,7 +4247,7 @@ function renderInventory(){
   const chapterRewards = chapterRewardUnlockedCount();
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
-     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0}<br>
+     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
      <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}`;
 
@@ -4317,6 +4350,16 @@ function renderInventory(){
     </div>
     <div class="item">
       <div>
+        <div class="itemName">🛡️ Armor Plates <span class="tag">Owned: ${totalArmorPlates()}</span></div>
+        <div class="itemDesc">Use one plate to restore +${ARMOR_PLATE_VALUE} armor (up to cap).</div>
+      </div>
+      <div style="text-align:right">
+        <button ${totalArmorPlates()<=0 || S.armor>=S.armorCap?'disabled':''} onclick="useArmorPlate()">Use</button>
+        <button class="ghost" onclick="openShopFromInventory('armor')">Buy</button>
+      </div>
+    </div>
+    <div class="item">
+      <div>
         <div class="itemName">🪤 Traps <span class="tag">Owned: ${S.trapsOwned}</span></div>
         <div class="itemDesc">One-time hold 3–5s.</div>
       </div>
@@ -4380,6 +4423,43 @@ function useRepairKit(){
   sfx("ui"); hapticImpact("light"); save(); renderHUD();
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   toast(`Repaired +${t.add} durability`);
+}
+function useArmorPlate(opts={}){
+  const options = opts || {};
+  const silent = !!options.silent;
+  const skipSfx = !!options.skipSfx;
+  const skipRender = !!options.skipRender;
+  const skipSave = !!options.skipSave;
+  const plates = totalArmorPlates();
+  if(plates <= 0){
+    if(!silent) toast("No armor plates. Buy in Shop > Armor.");
+    return 0;
+  }
+  if(S.armor >= S.armorCap){
+    if(!silent) toast("Armor already full.");
+    return 0;
+  }
+  const prevArmor = S.armor;
+  S.armorPlates = plates - 1;
+  S.armor = clamp(S.armor + ARMOR_PLATE_VALUE, 0, S.armorCap);
+  const restored = Math.max(0, Math.round(S.armor - prevArmor));
+  if(restored <= 0){
+    S.armorPlates = plates;
+    if(!silent) toast("Armor already full.");
+    return 0;
+  }
+  if(!skipSfx){
+    sfx("ui");
+    hapticImpact("light");
+  }
+  if(!skipSave) save();
+  if(!skipRender){
+    renderHUD();
+    renderCombatControls();
+    if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  }
+  if(!silent) toast(`Armor restored +${restored}.`);
+  return restored;
 }
 
 // ===================== BACKUP =====================
@@ -5038,48 +5118,48 @@ function mapInteractablePool(){
     ST_FOREST: [
       { kind:"alarm", label:"Siren Tree", x:w*0.20, y:h*0.14 },
       { kind:"barricade", label:"Trail Gate", x:w*0.54, y:h*0.56 },
-      { kind:"cache", label:"Ranger Cache", x:w*0.84, y:h*0.79 }
+      { kind:"cache", label:"Ranger Cache", x:w*0.66, y:h*0.79 }
     ],
     ST_SUBURBS: [
       { kind:"alarm", label:"Street Alarm", x:w*0.17, y:h*0.23 },
       { kind:"barricade", label:"Blockade Switch", x:w*0.58, y:h*0.50 },
-      { kind:"cache", label:"Garage Cache", x:w*0.83, y:h*0.72 }
+      { kind:"cache", label:"Garage Cache", x:w*0.66, y:h*0.72 }
     ],
     ST_DOWNTOWN: [
       { kind:"alarm", label:"Tower Siren", x:w*0.16, y:h*0.22 },
       { kind:"barricade", label:"Barrier Console", x:w*0.60, y:h*0.53 },
-      { kind:"cache", label:"Service Crate", x:w*0.82, y:h*0.78 }
+      { kind:"cache", label:"Service Crate", x:w*0.65, y:h*0.78 }
     ],
     ST_INDUSTRIAL: [
       { kind:"alarm", label:"Plant Alarm", x:w*0.18, y:h*0.22 },
       { kind:"barricade", label:"Steel Gate", x:w*0.56, y:h*0.50 },
-      { kind:"cache", label:"Dock Cache", x:w*0.84, y:h*0.76 }
+      { kind:"cache", label:"Dock Cache", x:w*0.66, y:h*0.76 }
     ],
     AR_ARENA_BAY: [
       { kind:"alarm", label:"Arena Siren", x:w*0.18, y:h*0.26 },
       { kind:"barricade", label:"Bay Gate", x:w*0.56, y:h*0.50 },
-      { kind:"cache", label:"Pit Cache", x:w*0.83, y:h*0.74 }
+      { kind:"cache", label:"Pit Cache", x:w*0.66, y:h*0.74 }
     ],
     AR_NEON_GRID: [
       { kind:"alarm", label:"Neon Beacon", x:w*0.17, y:h*0.24 },
       { kind:"barricade", label:"Grid Wall", x:w*0.58, y:h*0.48 },
-      { kind:"cache", label:"Arc Cache", x:w*0.82, y:h*0.70 }
+      { kind:"cache", label:"Arc Cache", x:w*0.65, y:h*0.70 }
     ],
     AR_SAND_YARD: [
       { kind:"alarm", label:"Dust Alarm", x:w*0.20, y:h*0.18 },
       { kind:"barricade", label:"Dune Barrier", x:w*0.55, y:h*0.52 },
-      { kind:"cache", label:"Yard Cache", x:w*0.84, y:h*0.77 }
+      { kind:"cache", label:"Yard Cache", x:w*0.66, y:h*0.77 }
     ],
     AR_STEEL_PIT: [
       { kind:"alarm", label:"Steel Horn", x:w*0.19, y:h*0.23 },
       { kind:"barricade", label:"Pit Lock", x:w*0.57, y:h*0.50 },
-      { kind:"cache", label:"Steel Cache", x:w*0.83, y:h*0.73 }
+      { kind:"cache", label:"Steel Cache", x:w*0.66, y:h*0.73 }
     ]
   };
   const fallback = [
     { kind:"alarm", label:"Alert Beacon", x:w*0.18, y:h*0.18 },
     { kind:"barricade", label:"Barrier Node", x:w*0.56, y:h*0.54 },
-    { kind:"cache", label:"Supply Cache", x:w*0.84, y:h*0.78 }
+    { kind:"cache", label:"Supply Cache", x:w*0.66, y:h*0.78 }
   ];
   return (pools[key] || fallback).map((it)=>({
     kind: it.kind,
@@ -5774,7 +5854,10 @@ function spawnRogueTiger(options={}){
   return tiger;
 }
 // ===================== DEPLOY / NEXT / RESTART =====================
-function deploy(){
+function deploy(opts={}){
+  const carryStats = !!opts.carryStats;
+  const carryHp = clamp(Number.isFinite(opts.hp) ? opts.hp : S.hp, 0, 100);
+  const carryArmor = clamp(Number.isFinite(opts.armor) ? opts.armor : S.armor, 0, S.armorCap || 100);
   resizeCanvasForViewport();
   invalidateMapCache();
   for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
@@ -5786,8 +5869,10 @@ function deploy(){
   S.activeTigerId=null;
   S.paused=false; S.pauseReason=null;
 
-  S.hp=100;
-  S.armor=clamp(20 + storyStartingArmorBonus(), 0, S.armorCap || 100);
+  S.hp = carryStats ? carryHp : 100;
+  S.armor = carryStats
+    ? carryArmor
+    : clamp(20 + storyStartingArmorBonus(), 0, S.armorCap || 100);
   S.stamina=100;
   S.me={x:160,y:clamp(cv.height - 120, 240, 420),face:0,step:0};
   S.target=null;
@@ -5897,6 +5982,8 @@ function deploy(){
 
 function startNextMission(){
   document.getElementById("completeOverlay").style.display="none";
+  const carryHp = clamp(S.hp, 0, 100);
+  const carryArmor = clamp(S.armor, 0, S.armorCap || 100);
   const wasStoryFinal = (S.mode==="Story" && S.storyLevel >= STORY_CAMPAIGN_OBJECTIVES.length);
   const wasArcadeFinal = (S.mode==="Arcade" && S.arcadeLevel >= ARCADE_CAMPAIGN_OBJECTIVES.length);
   if(S.mode==="Story"){
@@ -5906,7 +5993,7 @@ function startNextMission(){
     S.arcadeLevel = Math.min(S.arcadeLevel + 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
   }
   if(S.mode==="Survival") S.survivalWave += 1;
-  deploy();
+  deploy({ carryStats:true, hp:carryHp, armor:carryArmor });
   if(wasStoryFinal) toast("Story campaign complete. Replaying Mission 100.");
   else if(wasArcadeFinal) toast("Arcade campaign complete. Replaying Mission 100.");
   else toast("Next mission started.");
@@ -8201,6 +8288,13 @@ function canCaptureTiger(t){
   if(w.type!=="tranq") return false;
   return S.mag.loaded > 0 || (S.ammoReserve[w.ammo]||0) > 0;
 }
+function restorePostCaptureWeapon(requiredTranqId){
+  const restoreId = (typeof S.lastCombatLethalWeaponId === "string") ? S.lastCombatLethalWeaponId : "";
+  if(!restoreId || restoreId === requiredTranqId) return false;
+  if(!S.ownedWeapons?.includes(restoreId)) return false;
+  equipWeapon(restoreId);
+  return true;
+}
 function updateBattleButtons(){
   const t=tigerById(S.activeTigerId);
   const killBtn = document.getElementById("killBtn");
@@ -8392,6 +8486,7 @@ function playerAction(action){
   }
 
   if(action==="CAPTURE"){
+    const preCaptureWeaponId = S.equippedWeaponId;
     if(t.hp > captureWindowHp(t)) return toast(`Capture is available when the tiger is at ${captureWindowPctLabel()} HP or lower.`);
     const req = requiredTranqWeaponId(t);
     const reqWeapon = getWeapon(req);
@@ -8423,6 +8518,9 @@ function playerAction(action){
     S.aggro=clamp(S.aggro+pay.aggro,0,100);
     sfx("win"); hapticNotif("success");
     endBattle();
+    if(!restorePostCaptureWeapon(req) && preCaptureWeaponId && preCaptureWeaponId !== req && S.ownedWeapons.includes(preCaptureWeaponId)){
+      equipWeapon(preCaptureWeaponId);
+    }
     checkMissionComplete();
     return;
   }
@@ -8441,6 +8539,7 @@ function playerAction(action){
       sfx("jam");
       return;
     }
+    S.lastCombatLethalWeaponId = attackWeaponId;
     if(S.equippedWeaponId !== attackWeaponId){
       equipWeapon(attackWeaponId);
       S.mag.loaded = 0;
@@ -8859,7 +8958,7 @@ function renderHUD(){
   const shieldLabel = shieldActiveNow() ? `${S.shields||0} • ACTIVE (${shieldSecs}s)` : `${S.shields||0}`;
   document.getElementById("shieldTxt").innerText = shieldLabel;
 
-  document.getElementById("backupTxt").innerText = `Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
+  document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
   const shieldDisabled = S.paused || S.missionEnded || S.gameOver || (S.shields||0)<=0 || abilityOnCooldown("shield");
   document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = shieldDisabled; });
   const cacheBtn = document.getElementById("touchCacheBtn");
@@ -9258,6 +9357,7 @@ function drawMapScene(){
     const px = p._abs ? p.x : (p.x * (w / 960));
     const py = p._abs ? p.y : (p.y * (h / 540));
     const s = p.s || 1;
+    if(inMobileNoBuildZone(px, py, 24 * s)) return;
     if(p.kind==="bush"){
       treeDot(px, py, 10 * s);
       treeDot(px + (8*s), py + (3*s), 7 * s);
@@ -10697,6 +10797,7 @@ window.scan = scan;
 window.startCombat = startCombat;
 
 window.useMedkit = useMedkit;
+window.useArmorPlate = useArmorPlate;
 window.useRepairKit = useRepairKit;
 window.placeTrap = placeTrap;
 window.callBackup = callBackup;
