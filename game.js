@@ -1169,6 +1169,11 @@ const SAVE_AUTOSAVE_MS = 12000;
 const STABILITY_SPIKE_GAP_MS = 520;
 const STABILITY_SPIKE_RECOVER_MS = 3200;
 const BLOCKED_CACHE_QUANT = 2;
+const STABILITY_SOFT_CAP_TIGERS = 36;
+const STABILITY_SOFT_CAP_CIVILIANS = 30;
+const STABILITY_SOFT_CAP_PICKUPS = 34;
+const STABILITY_SOFT_CAP_CARCASSES = 64;
+const STABILITY_SOFT_CAP_TRAPS = 28;
 const MAX_PERSIST_CARCASSES = 48;
 const MAX_PERSIST_PICKUPS = 26;
 const MAX_PERSIST_TRAPS = 24;
@@ -1220,7 +1225,7 @@ let __lastHudRender = 0;
 let __lastAutosave = 0;
 let __savePending = false;
 const __frameTaskGate = Object.create(null);
-const MAP_CACHE_INTERVAL_MS = 42;
+const MAP_CACHE_INTERVAL_MS = 56;
 let __mapFrameCacheCanvas = null;
 let __mapFrameCacheCtx = null;
 let __mapFrameCacheSig = "";
@@ -1422,6 +1427,74 @@ function recoverFromSpikeFrame(){
       t.vy = clamp(Number.isFinite(t.vy) ? t.vy : 0, -4.2, 4.2);
       if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || 0, t.vx || 1);
     }
+  }
+}
+
+function trimActiveEntityLoad(){
+  if(!S || typeof S !== "object") return;
+  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
+  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
+
+  if(Array.isArray(S.tigers) && S.tigers.length > STABILITY_SOFT_CAP_TIGERS){
+    const keep = [];
+    const overflow = [];
+    for(const t of S.tigers){
+      if(!t || typeof t !== "object") continue;
+      const priority = !!(isBossTiger(t) || t.id === S.activeTigerId || t.id === S.lockedTigerId);
+      if(priority){
+        keep.push(t);
+      } else {
+        overflow.push(t);
+      }
+    }
+    overflow.sort((a, b)=>{
+      const da = dist(meX, meY, a.x, a.y);
+      const db = dist(meX, meY, b.x, b.y);
+      return da - db;
+    });
+    S.tigers = [...keep, ...overflow].slice(0, STABILITY_SOFT_CAP_TIGERS);
+  }
+
+  if(Array.isArray(S.civilians) && S.civilians.length > STABILITY_SOFT_CAP_CIVILIANS){
+    const alive = S.civilians.filter((c)=>c && c.alive && !c.evac);
+    const others = S.civilians.filter((c)=>!alive.includes(c));
+    S.civilians = [...alive, ...others].slice(0, STABILITY_SOFT_CAP_CIVILIANS);
+  }
+  if(Array.isArray(S.pickups) && S.pickups.length > STABILITY_SOFT_CAP_PICKUPS){
+    S.pickups = S.pickups.slice(-STABILITY_SOFT_CAP_PICKUPS);
+  }
+  if(Array.isArray(S.carcasses) && S.carcasses.length > STABILITY_SOFT_CAP_CARCASSES){
+    S.carcasses = S.carcasses.slice(-STABILITY_SOFT_CAP_CARCASSES);
+  }
+  if(Array.isArray(S.trapsPlaced) && S.trapsPlaced.length > STABILITY_SOFT_CAP_TRAPS){
+    S.trapsPlaced = S.trapsPlaced.slice(-STABILITY_SOFT_CAP_TRAPS);
+  }
+}
+
+function stabilityHealthTick(){
+  if(!S || typeof S !== "object") return;
+  if(!Array.isArray(S.tigers)) S.tigers = [];
+  if(!Array.isArray(S.civilians)) S.civilians = [];
+  if(!Array.isArray(S.pickups)) S.pickups = [];
+  if(!Array.isArray(S.carcasses)) S.carcasses = [];
+  if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
+
+  trimActiveEntityLoad();
+
+  if(!Number.isFinite(S.hp) || !Number.isFinite(S.armor) || !Number.isFinite(S.stamina)){
+    sanitizeRuntimeState();
+    return;
+  }
+
+  if(S.inBattle){
+    const t = tigerById(S.activeTigerId);
+    if(!t || !t.alive){
+      endBattle();
+    }
+  }
+
+  if(S.lockedTigerId != null && !S.tigers.some((t)=>t && t.alive && t.id === S.lockedTigerId)){
+    S.lockedTigerId = null;
   }
 }
 
@@ -1760,6 +1833,7 @@ function sanitizeRuntimeState(){
     S.activeTigerId = null;
     S.inBattle = false;
   }
+  if(!Number.isFinite(S._tigerBatchStart)) S._tigerBatchStart = 0;
   if(COMBAT_FX.length > 96){
     COMBAT_FX.splice(0, COMBAT_FX.length - 96);
   }
@@ -10325,12 +10399,20 @@ function drawEntities(){
   drawAbilityCooldownWheel();
   const perfMode = performanceMode();
   const isSlowFrame = frameIsSlow();
+  const entityLoad =
+    (S.tigers?.length || 0) +
+    (S.civilians?.length || 0) +
+    (S.supportUnits?.length || 0) +
+    (S.pickups?.length || 0);
+  const heavyLoad = entityLoad > 34;
   __frameHeavyFxFlip = (__frameHeavyFxFlip + 1) % 6;
-  const drawFx = (perfMode !== "PERFORMANCE" && !isSlowFrame)
-    || (perfMode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 === 0))
-    || (isSlowFrame && (__frameHeavyFxFlip % 3 === 0));
+  const drawFx = heavyLoad
+    ? (__frameHeavyFxFlip % (isSlowFrame ? 4 : 3) === 0)
+    : ((perfMode !== "PERFORMANCE" && !isSlowFrame)
+      || (perfMode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 === 0))
+      || (isSlowFrame && (__frameHeavyFxFlip % 3 === 0)));
   if(drawFx) drawCombatFx();
-  if(drawFx || __frameHeavyFxFlip % 2 === 0) drawDamagePopups();
+  if(drawFx || __frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0) drawDamagePopups();
 }
 
 // ===================== MISSION FLOW =====================
@@ -10352,9 +10434,10 @@ function draw(){
     safeTick("maybeRenderHUD", maybeRenderHUD);
     safeTick("updateEngage", updateEngage);
     safeTick("respawnTick", respawnTick);
+    runFrameTask("stabilityHealth", frameInterval(220, 1.6), stabilityHealthTick, { costHint:0.9, critical:true });
 
     if(!(S.gameOver || S.paused || S.missionEnded)){
-      runFrameTask("sanitizeState", frameInterval(120, 1.9), sanitizeRuntimeState, { costHint:1.8 });
+      runFrameTask("sanitizeState", frameInterval(150, 2.0), sanitizeRuntimeState, { costHint:1.3, critical:true });
       runFrameTask("clampWorld", frameInterval(180, 1.3), clampWorldToCanvas, { costHint:0.9 });
       runFrameTask("unstickEntities", frameInterval(84, 1.6), unstickEntitiesTick, { costHint:1.5, critical:true });
       safeTick("regen", regen);
@@ -10392,6 +10475,8 @@ function draw(){
     maybeAutosave();
   }catch(err){
     const now = Date.now();
+    __frameSpikePending = true;
+    safeTick("stabilityHealthTick", stabilityHealthTick);
     if((window.__tsFrameErrAt || 0) + 2500 < now){
       window.__tsFrameErrAt = now;
       console.error("Frame loop recovered from error:", err);
