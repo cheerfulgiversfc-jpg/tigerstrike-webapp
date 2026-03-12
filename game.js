@@ -1023,6 +1023,10 @@ const DEFAULT = {
   medkits:{ "M_SMALL":1 },
   repairKits:{ "T_REPAIR":1 },
   armorPlates:0,
+  armorKits:{},
+  selectedMedkitId:"M_SMALL",
+  selectedArmorKitId:"A_TIER1",
+  medkitMode:"GENIUS",
   trapsOwned:2,
   trapsPlaced:[],
   shields:1,
@@ -1145,6 +1149,7 @@ function load(){
     m.durability = { ...DEFAULT.durability, ...(saved.durability||{}) };
     m.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
     m.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
+    m.armorKits = { ...(DEFAULT.armorKits || {}), ...(saved.armorKits || {}) };
     m.abilityCooldowns = { ...DEFAULT.abilityCooldowns, ...(saved.abilityCooldowns||{}) };
     m.trapsPlaced = Array.isArray(saved.trapsPlaced) ? saved.trapsPlaced : [];
     m.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
@@ -1633,18 +1638,39 @@ function clampWorldToCanvas(){
   if(S.me){
     S.me.x = clamp(S.me.x, 40, cv.width - 40);
     S.me.y = clamp(S.me.y, 60, cv.height - 40);
+    if(inMobileNoBuildZone(S.me.x, S.me.y, 16)){
+      const mePt = safeSpawnPoint(S.me.x, S.me.y, 16, true, false);
+      S.me.x = mePt.x;
+      S.me.y = mePt.y;
+      if(S.target && inMobileNoBuildZone(S.target.x, S.target.y, 20)) S.target = null;
+    }
   }
   if(S.evacZone){
     S.evacZone.x = clamp(S.evacZone.x, 100, cv.width - 60);
     S.evacZone.y = clamp(S.evacZone.y, 100, cv.height - 60);
+    if(inMobileNoBuildZone(S.evacZone.x, S.evacZone.y, Math.round((S.evacZone.r || 70) * 0.90))){
+      const zonePt = safeSpawnPoint(S.evacZone.x, S.evacZone.y, Math.round((S.evacZone.r || 70) * 0.45), true, true);
+      S.evacZone.x = zonePt.x;
+      S.evacZone.y = zonePt.y;
+    }
   }
   for(const civ of (S.civilians || [])){
     civ.x = clamp(civ.x, 50, cv.width - 50);
     civ.y = clamp(civ.y, 70, cv.height - 50);
+    if(inMobileNoBuildZone(civ.x, civ.y, 14)){
+      const civPt = safeSpawnPoint(civ.x, civ.y, 14, true, false);
+      civ.x = civPt.x;
+      civ.y = civPt.y;
+    }
   }
   for(const tiger of (S.tigers || [])){
     tiger.x = clamp(tiger.x, 40, cv.width - 40);
     tiger.y = clamp(tiger.y, 60, cv.height - 40);
+    if(inMobileNoBuildZone(tiger.x, tiger.y, 16)){
+      const tigerPt = safeSpawnPoint(tiger.x, tiger.y, 16, true, false);
+      tiger.x = tigerPt.x;
+      tiger.y = tigerPt.y;
+    }
   }
   for(const pickup of (S.pickups || [])){
     pickup.x = clamp(pickup.x, 40, cv.width - 40);
@@ -1663,6 +1689,13 @@ function clampWorldToCanvas(){
     ally.y = clamp(ally.y, 60, cv.height - 40);
     ally.homeX = clamp(ally.homeX ?? ally.x, 40, cv.width - 40);
     ally.homeY = clamp(ally.homeY ?? ally.y, 60, cv.height - 40);
+    if(inMobileNoBuildZone(ally.x, ally.y, 16)){
+      const allyPt = safeSpawnPoint(ally.x, ally.y, 16, true, false);
+      ally.x = allyPt.x;
+      ally.y = allyPt.y;
+      ally.homeX = clamp(ally.homeX ?? ally.x, 40, cv.width - 40);
+      ally.homeY = clamp(ally.homeY ?? ally.y, 60, cv.height - 40);
+    }
   }
   for(const site of (S.rescueSites || [])){
     site.x = clamp(site.x, 70, cv.width - 70);
@@ -1700,6 +1733,11 @@ function sanitizeRuntimeState(){
   if(!S.me || typeof S.me !== "object") S.me = { ...DEFAULT.me };
   S.me.x = clampX(S.me.x, 40, w - 40);
   S.me.y = clampY(S.me.y, 60, h - 40);
+  if(inMobileNoBuildZone(S.me.x, S.me.y, 16)){
+    const mePt = safeSpawnPoint(S.me.x, S.me.y, 16, true, false);
+    S.me.x = mePt.x;
+    S.me.y = mePt.y;
+  }
   if(!Number.isFinite(S.me.face)) S.me.face = 0;
   if(!Number.isFinite(S.me.step)) S.me.step = 0;
   if(!Number.isFinite(S.rollAnimStart)) S.rollAnimStart = 0;
@@ -1713,6 +1751,11 @@ function sanitizeRuntimeState(){
   S.evacZone.x = clampX(S.evacZone.x, 100, w - 60);
   S.evacZone.y = clampY(S.evacZone.y, 100, h - 60);
   S.evacZone.r = clamp(S.evacZone.r, 38, 120);
+  if(inMobileNoBuildZone(S.evacZone.x, S.evacZone.y, Math.round((S.evacZone.r || 70) * 0.90))){
+    const evacPt = safeSpawnPoint(S.evacZone.x, S.evacZone.y, Math.round((S.evacZone.r || 70) * 0.45), true, true);
+    S.evacZone.x = evacPt.x;
+    S.evacZone.y = evacPt.y;
+  }
 
   S.tigers = S.tigers.filter((t)=>{
     if(!t || typeof t !== "object") return false;
@@ -1726,7 +1769,7 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * Math.PI * 2;
     ensureTigerHuntState(t);
-    if(inMobileControlKeepout(t.x, t.y, 16)){
+    if(inMobileNoBuildZone(t.x, t.y, 16)){
       const pt = safeSpawnPoint(t.x, t.y, 16, true, false);
       t.x = pt.x;
       t.y = pt.y;
@@ -1746,7 +1789,7 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(c.followGraceUntil)) c.followGraceUntil = 0;
     if(!Number.isFinite(c.face)) c.face = 0;
     if(!Number.isFinite(c.step)) c.step = 0;
-    if(inMobileControlKeepout(c.x, c.y, 14)){
+    if(inMobileNoBuildZone(c.x, c.y, 14)){
       const pt = safeSpawnPoint(c.x, c.y, 14, true, false);
       c.x = pt.x;
       c.y = pt.y;
@@ -1768,7 +1811,7 @@ function sanitizeRuntimeState(){
     u.alive = u.alive !== false && u.hp > 0;
     if(!Number.isFinite(u.face)) u.face = 0;
     if(!Number.isFinite(u.step)) u.step = 0;
-    if(inMobileControlKeepout(u.x, u.y, 16)){
+    if(inMobileNoBuildZone(u.x, u.y, 16)){
       const pt = safeSpawnPoint(u.x, u.y, 16, true, false);
       u.x = pt.x;
       u.y = pt.y;
@@ -1783,7 +1826,7 @@ function sanitizeRuntimeState(){
     p.x = clampX(p.x, 40, w - 40);
     p.y = clampY(p.y, 60, h - 40);
     p.ttl = Math.max(1, Math.round(Number.isFinite(p.ttl) ? p.ttl : 1));
-    if(inMobileControlKeepout(p.x, p.y, 12)){
+    if(inMobileNoBuildZone(p.x, p.y, 12)){
       const pt = safeSpawnPoint(p.x, p.y, 12, true, false);
       p.x = pt.x;
       p.y = pt.y;
@@ -1806,7 +1849,7 @@ function sanitizeRuntimeState(){
     it.y = clampY(it.y, 90, h - 80);
     it.r = clamp(it.r, 12, 54);
     if(!Number.isFinite(it.uses)) it.uses = 0;
-    if(inMobileControlKeepout(it.x, it.y, it.r)){
+    if(inMobileNoBuildZone(it.x, it.y, it.r)){
       const pt = safeSpawnPoint(it.x, it.y, it.r, true, true);
       it.x = pt.x;
       it.y = pt.y;
@@ -1817,7 +1860,7 @@ function sanitizeRuntimeState(){
     site.x = clampX(site.x, 70, w - 70);
     site.y = clampY(site.y, 90, h - 80);
     site.r = clamp(site.r, 24, 96);
-    if(inMobileControlKeepout(site.x, site.y, Math.round(site.r * 0.42))){
+    if(inMobileNoBuildZone(site.x, site.y, Math.round(site.r * 0.42))){
       const pt = safeSpawnPoint(site.x, site.y, Math.round(site.r * 0.42), true, true);
       site.x = pt.x;
       site.y = pt.y;
@@ -1828,7 +1871,7 @@ function sanitizeRuntimeState(){
   S.armor = clamp(S.armor, 0, S.armorCap || 100);
   S.stamina = clamp(S.stamina, 0, 100);
   S.lives = clamp(Math.round(Number.isFinite(S.lives) ? S.lives : 5), 0, 99);
-  S.armorPlates = clamp(Math.floor(Number(S.armorPlates || 0)), 0, 999);
+  normalizeStoredSupplies();
   if(typeof S.lastCombatLethalWeaponId !== "string") S.lastCombatLethalWeaponId = "";
   if(S.lockedTigerId != null && !S.tigers.some((t)=>t.id === S.lockedTigerId && t.alive)){
     S.lockedTigerId = null;
@@ -1858,7 +1901,6 @@ const PLAYER_SPRINT_SPEED = 3.9;
 const SHIELD_DURATION_MS = 5000;
 const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
-const ARMOR_PLATE_VALUE = 20;
 const SOLDIER_PRICE = 50000;
 const REINFORCEMENT_BUNDLE_PRICE = 80000;
 const SQUAD_MAX_PER_ROLE = 8;
@@ -2479,6 +2521,38 @@ function getAmmo(id){ return AMMO.find(a=>a.id===id); }
 function getMed(id){ return MEDS.find(m=>m.id===id); }
 function getArmor(id){ return ARMORY.find(a=>a.id===id); }
 function getTool(id){ return TOOLS.find(t=>t.id===id); }
+function normalizeStoredSupplies(){
+  if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
+  if(!S.armorKits || typeof S.armorKits !== "object") S.armorKits = {};
+  for(const med of MEDS){
+    const qty = Math.max(0, Math.floor(Number(S.medkits[med.id] || 0)));
+    S.medkits[med.id] = qty;
+  }
+  for(const armor of ARMORY){
+    const qty = Math.max(0, Math.floor(Number(S.armorKits[armor.id] || 0)));
+    S.armorKits[armor.id] = qty;
+  }
+  // Backward compatibility: convert old generic armor plates into Tier I kits.
+  const legacyPlates = Math.max(0, Math.floor(Number(S.armorPlates || 0)));
+  if(legacyPlates > 0){
+    S.armorKits.A_TIER1 = (S.armorKits.A_TIER1 || 0) + legacyPlates;
+    S.armorPlates = 0;
+  }
+
+  if(!getMed(S.selectedMedkitId) || (S.medkits[S.selectedMedkitId] || 0) <= 0){
+    const firstOwnedMed = MEDS.find((m)=>(S.medkits[m.id] || 0) > 0);
+    S.selectedMedkitId = firstOwnedMed?.id || MEDS[0].id;
+  }
+  if(!getArmor(S.selectedArmorKitId) || (S.armorKits[S.selectedArmorKitId] || 0) <= 0){
+    const firstOwnedArmor = ARMORY.find((a)=>(S.armorKits[a.id] || 0) > 0);
+    S.selectedArmorKitId = firstOwnedArmor?.id || ARMORY[0].id;
+  }
+  if(S.medkitMode !== "GENIUS") S.medkitMode = "GENIUS";
+}
+function totalArmorKits(){
+  normalizeStoredSupplies();
+  return ARMORY.reduce((sum, ar)=>sum + (S.armorKits[ar.id] || 0), 0);
+}
 function equippedWeapon(){ return getWeapon(S.equippedWeaponId) || WEAPONS[0]; }
 function equippedWeaponRange(){ return equippedWeapon()?.range || 112; }
 function weaponRangeBand(range=equippedWeaponRange()){
@@ -2704,9 +2778,27 @@ function mobileControlKeepoutZones(){
     { x:w * 0.12, y:h * 0.91, r:52 }, // left joystick
     { x:w * 0.88, y:h * 0.90, r:64 }, // right bottom cluster
     { x:w * 0.88, y:h * 0.76, r:78 }, // right cluster upper reach
-    { x:w * 0.93, y:h * 0.50, r:62 }, // cache button region (moved higher)
-    { x:w * 0.86, y:h * 0.64, r:114 }, // clear full right-side control lane
+    { x:w * 0.16, y:h * 0.63, r:56 }, // cache button region (left side)
+    { x:w * 0.88, y:h * 0.72, r:96 }, // reinforce right control lane keepout
   ];
+}
+function mobileRightUiLaneRect(){
+  if(!isMobileViewport()) return null;
+  if(controllerOwnsUi()) return null;
+  const w = cv.width || 960;
+  const h = cv.height || 540;
+  return {
+    x: Math.round(w * 0.76),
+    y: Math.round(h * 0.50),
+    w: Math.round(w * 0.24),
+    h: Math.round(h * 0.50),
+  };
+}
+function inMobileRightUiLane(x, y, radius=0){
+  const rect = mobileRightUiLaneRect();
+  if(!rect) return false;
+  const r = Math.max(0, radius || 0);
+  return rectCircleCollide(rect.x, rect.y, rect.w, rect.h, x, y, r);
 }
 function inMobileControlKeepout(x, y, radius=0){
   const zones = mobileControlKeepoutZones();
@@ -2722,7 +2814,7 @@ function inMobileControlKeepout(x, y, radius=0){
 }
 function inMobileNoBuildZone(x, y, radius=0){
   if(!isMobileViewport()) return false;
-  return inMobileControlKeepout(x, y, Math.max(0, radius) + 18);
+  return inMobileRightUiLane(x, y, Math.max(0, radius) + 8) || inMobileControlKeepout(x, y, Math.max(0, radius) + 18);
 }
 function blockedCacheKey(x, y, radius=0){
   const q = BLOCKED_CACHE_QUANT;
@@ -2732,6 +2824,10 @@ function blockedAt(x, y, radius){
   const key = blockedCacheKey(x, y, radius);
   if(__blockedAtCache.has(key)) return __blockedAtCache.get(key);
   let blocked = false;
+  if(inMobileNoBuildZone(x, y, radius + 4)){
+    __blockedAtCache.set(key, false);
+    return false;
+  }
   // Blood pools are visual hazards; they should never hard-block movement.
   if(!(isMobileViewport() && x > (cv.width * 0.66) && y > (cv.height * 0.70))){
     blocked = blockedByMapObstacle(x, y, radius);
@@ -2763,7 +2859,7 @@ function findNearestOpenPoint(x, y, radius, opts={}){
     const tx = clamp(px, minX, maxX);
     const ty = clamp(py, minY, maxY);
     if(blockedAt(tx, ty, radius)) return;
-    if(avoidKeepout && inMobileControlKeepout(tx, ty, radius)) return;
+    if(avoidKeepout && inMobileNoBuildZone(tx, ty, radius)) return;
     if(avoidWater && isPointInWater(tx, ty, Math.max(2, radius * 0.45))) return;
     const homeDist = dist(tx, ty, ox, oy);
     const targetDist = dist(tx, ty, targetX, targetY);
@@ -2807,7 +2903,7 @@ function resolveEntityStuck(ent, radius, opts={}){
   const stuckThreshold = Math.max(8, Math.floor(opts.stuckThreshold || 22));
   updateEntityStuckState(ent, opts.moveEps || 0.75);
   const isBlocked = blockedAt(ent.x, ent.y, radius);
-  const inKeepout = avoidKeepout && inMobileControlKeepout(ent.x, ent.y, radius);
+  const inKeepout = avoidKeepout && inMobileNoBuildZone(ent.x, ent.y, radius);
   if(!movingIntent){
     ent._stuckTicks = 0;
     ent._lastMoveX = ent.x;
@@ -2900,7 +2996,7 @@ function unstickEntitiesTick(){
   }
   for(const p of (S.pickups || [])){
     if(!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
-    if(!inMobileControlKeepout(p.x, p.y, 12)) continue;
+    if(!inMobileNoBuildZone(p.x, p.y, 12)) continue;
     const free = findNearestOpenPoint(p.x, p.y, 12, { avoidKeepout:true, avoidWater:false });
     if(free){
       p.x = free.x;
@@ -2910,7 +3006,7 @@ function unstickEntitiesTick(){
   for(const it of (S.mapInteractables || [])){
     if(!Number.isFinite(it.x) || !Number.isFinite(it.y)) continue;
     const rr = clamp(it.r, 12, 54);
-    if(!inMobileControlKeepout(it.x, it.y, rr)) continue;
+    if(!inMobileNoBuildZone(it.x, it.y, rr)) continue;
     const free = findNearestOpenPoint(it.x, it.y, rr, { avoidKeepout:true, avoidWater:true });
     if(free){
       it.x = free.x;
@@ -2997,7 +3093,7 @@ function tryMoveEntity(ent, nx, ny, radius, opts={}){
       const tx = clamp(ox + Math.cos(baseAng + turn) * detourStep, minX, maxX);
       const ty = clamp(oy + Math.sin(baseAng + turn) * detourStep, minY, maxY);
       if(blockedAt(tx, ty, radius)) continue;
-      if(avoidKeepout && inMobileControlKeepout(tx, ty, radius)) continue;
+      if(avoidKeepout && inMobileNoBuildZone(tx, ty, radius)) continue;
       ent.x = tx;
       ent.y = ty;
       break;
@@ -3029,7 +3125,7 @@ function tryMoveEntity(ent, nx, ny, radius, opts={}){
       }
     }
   }
-  if(avoidKeepout && inMobileControlKeepout(ent.x, ent.y, radius)){
+  if(avoidKeepout && inMobileNoBuildZone(ent.x, ent.y, radius)){
     if((ent._nextKeepoutRecoverAt || 0) > now){
       ent.x = clamp(ox, minX, maxX);
       ent.y = clamp(oy, minY, maxY);
@@ -3749,6 +3845,7 @@ function ownedMedCount(medId){ return S.medkits[medId]||0; }
 function ownedToolCount(toolId){ return S.repairKits[toolId]||0; }
 
 function renderShopList(){
+  normalizeStoredSupplies();
   document.getElementById("shopMoney").innerText = S.funds.toLocaleString();
   const list=document.getElementById("shopList");
   const note=document.getElementById("shopNote");
@@ -3794,12 +3891,13 @@ function renderShopList(){
   }
 
   if(currentShopTab==="armor"){
-    note.innerText="Armor now buys a storable Armor Plate (+20 armor each). If armor is not full, one plate auto-applies immediately.";
+    normalizeStoredSupplies();
+    note.innerText="Armor kits are storable by tier. Tier I +10%, Tier II +25%, Tier III +50%, Tier IV +100%. Select which kit to use from Inventory.";
     list.innerHTML = ARMORY.map(ar=>`
       <div class="item">
         <div>
           <div class="itemName">${ar.name}</div>
-          <div class="itemDesc">Armor Plate: +${ARMOR_PLATE_VALUE} armor per use • Armor cap ${ar.cap} • Stored plates: ${totalArmorPlates()}</div>
+          <div class="itemDesc">Restores +${ar.addArmor}% armor • Armor cap ${ar.cap} • Owned: ${totalArmorKitsById(ar.id)}</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${ar.price.toLocaleString()}</div>
@@ -4029,16 +4127,13 @@ function buyAmmo(id){
 }
 function buyArmor(id){
   const ar=getArmor(id); if(!ar) return;
+  normalizeStoredSupplies();
   if(S.funds < ar.price) return toast("Not enough money.");
   S.funds -= ar.price;
   S.armorCap = Math.max(S.armorCap || 100, ar.cap);
-  S.armorPlates = totalArmorPlates() + 1;
-  const applied = useArmorPlate({ silent:true, skipSfx:true, skipRender:true, skipSave:true });
-  if(applied > 0){
-    toast(`Armor +${applied}. Plates left: ${totalArmorPlates()}.`);
-  } else {
-    toast(`Armor plate stored. Plates: ${totalArmorPlates()}.`);
-  }
+  S.armorKits[ar.id] = (S.armorKits[ar.id] || 0) + 1;
+  S.selectedArmorKitId = ar.id;
+  toast(`${ar.name} stored. Owned: ${totalArmorKitsById(ar.id)}.`);
   sfx("ui"); hapticImpact("light");
   save();
   renderShopList();
@@ -4047,9 +4142,11 @@ function buyArmor(id){
 }
 function buyMed(id){
   const m=getMed(id); if(!m) return;
+  normalizeStoredSupplies();
   if(S.funds < m.price) return toast("Not enough money.");
   S.funds -= m.price;
   S.medkits[id] = (S.medkits[id]||0)+1;
+  S.selectedMedkitId = id;
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
 }
@@ -4222,9 +4319,57 @@ function buyTrap(){
   save(); renderShopList(); renderHUD();
 }
 
-function totalMedkits(){ return Object.values(S.medkits||{}).reduce((a,b)=>a+(b||0),0); }
+function totalMedkits(){
+  normalizeStoredSupplies();
+  return MEDS.reduce((sum, med)=>sum + (S.medkits[med.id] || 0), 0);
+}
 function totalRepairKits(){ return Object.values(S.repairKits||{}).reduce((a,b)=>a+(b||0),0); }
-function totalArmorPlates(){ return clamp(Math.floor(Number(S.armorPlates || 0)), 0, 999); }
+function totalArmorPlates(){ return totalArmorKits(); } // backward-compat alias
+function totalArmorKitsById(id){
+  normalizeStoredSupplies();
+  return Math.max(0, Math.floor(Number(S.armorKits[id] || 0)));
+}
+function medkitSelectionText(){
+  const med = getMed(S.selectedMedkitId);
+  if(!med) return "Auto";
+  return `${med.name} (+${med.heal})`;
+}
+function armorSelectionText(){
+  const armor = getArmor(S.selectedArmorKitId);
+  if(!armor) return "Auto";
+  return `${armor.name} (+${armor.addArmor}%)`;
+}
+function setSelectedMedkit(id){
+  if(!getMed(id)) return;
+  normalizeStoredSupplies();
+  S.selectedMedkitId = id;
+  save();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  renderHUD();
+}
+function setSelectedArmorKit(id){
+  if(!getArmor(id)) return;
+  normalizeStoredSupplies();
+  S.selectedArmorKitId = id;
+  save();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  renderHUD();
+}
+function pickSupplyForMissing(defs, ownedFn, selectedId, missing, smart=false){
+  const available = defs
+    .map((def)=>({ def, qty: ownedFn(def.id), amount: Number(def.heal ?? def.addArmor ?? 0) }))
+    .filter((entry)=>entry.qty > 0)
+    .sort((a,b)=>a.amount - b.amount);
+  if(!available.length) return null;
+  if(!smart){
+    const selected = available.find((entry)=>entry.def.id === selectedId);
+    return selected?.def || available[0].def;
+  }
+  const need = Math.max(0, Number(missing) || 0);
+  if(need <= 0) return available[0].def;
+  const enough = available.find((entry)=>entry.amount >= need);
+  return (enough || available[available.length - 1]).def;
+}
 
 function setHealTarget(t){ S.healTarget=t; save(); if(document.getElementById("invOverlay").style.display==="flex") renderInventory(); renderHUD(); }
 function pickMostInjuredCivilian(){
@@ -4237,6 +4382,7 @@ function pickMostInjuredCivilian(){
 
 function renderInventory(){
   ensureStoryMetaState();
+  normalizeStoredSupplies();
   syncSquadRosterBounds();
   const w=equippedWeapon();
   const ammoId=w.ammo;
@@ -4247,7 +4393,7 @@ function renderInventory(){
   const chapterRewards = chapterRewardUnlockedCount();
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
-     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
+     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0} • <b>Armor Kits:</b> ${totalArmorKits()}<br>
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
      <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}`;
 
@@ -4283,6 +4429,16 @@ function renderInventory(){
   }).join("");
 
   const civs = (S.mode==="Survival") ? [] : S.civilians.filter(c=>c.alive);
+  const medOptions = MEDS.map((m)=>{
+    const qty = S.medkits[m.id] || 0;
+    const selected = S.selectedMedkitId === m.id;
+    return `<button ${qty<=0 ? "disabled" : ""} ${selected ? "class=\"good\"" : "class=\"ghost\""} onclick="setSelectedMedkit('${m.id}')">${m.name} (${qty})</button>`;
+  }).join("");
+  const armorOptions = ARMORY.map((a)=>{
+    const qty = totalArmorKitsById(a.id);
+    const selected = S.selectedArmorKitId === a.id;
+    return `<button ${qty<=0 ? "disabled" : ""} ${selected ? "class=\"good\"" : "class=\"ghost\""} onclick="setSelectedArmorKit('${a.id}')">${a.name} (${qty})</button>`;
+  }).join("");
   const perkRows = [
     { key:"H_CRIT", name:"Deadeye", detail:(r)=>`+${(r*5).toFixed(0)}% Crit Chance` },
     { key:"H_DMG", name:"Damage Boost", detail:(r)=>`+${(r*8).toFixed(0)}% Weapon Damage` },
@@ -4331,7 +4487,8 @@ function renderInventory(){
     <div class="item">
       <div>
         <div class="itemName">❤️ Med Kits <span class="tag">Owned: ${totalMedkits()}</span></div>
-        <div class="itemDesc">Heal target: <b>${S.healTarget||'self'}</b></div>
+        <div class="itemDesc">Heal target: <b>${S.healTarget||'self'}</b> • Selection: <b>${medkitSelectionText()}</b> • Battle Mode: <b>GENIUS</b></div>
+        <div class="itemDesc">${medOptions}</div>
       </div>
       <div style="text-align:right">
         <button onclick="setHealTarget('self')">Self</button>
@@ -4350,11 +4507,12 @@ function renderInventory(){
     </div>
     <div class="item">
       <div>
-        <div class="itemName">🛡️ Armor Plates <span class="tag">Owned: ${totalArmorPlates()}</span></div>
-        <div class="itemDesc">Use one plate to restore +${ARMOR_PLATE_VALUE} armor (up to cap).</div>
+        <div class="itemName">🛡️ Armor Kits <span class="tag">Owned: ${totalArmorKits()}</span></div>
+        <div class="itemDesc">Selection: <b>${armorSelectionText()}</b> • Tier values: Tier I +10% • Tier II +25% • Tier III +50% • Tier IV +100%.</div>
+        <div class="itemDesc">${armorOptions}</div>
       </div>
       <div style="text-align:right">
-        <button ${totalArmorPlates()<=0 || S.armor>=S.armorCap?'disabled':''} onclick="useArmorPlate()">Use</button>
+        <button ${totalArmorKits()<=0 || S.armor>=S.armorCap?'disabled':''} onclick="useArmorKit()">Use</button>
         <button class="ghost" onclick="openShopFromInventory('armor')">Buy</button>
       </div>
     </div>
@@ -4387,30 +4545,62 @@ function renderInventory(){
 }
 
 function useMedkit(){
+  normalizeStoredSupplies();
   if(totalMedkits()<=0) return toast("No medkits. Buy in shop.");
-  const order=["M_TRAUMA","M_LARGE","M_MED","M_SMALL"];
-  const pick = order.find(k => (S.medkits[k]||0)>0);
-  if(!pick) return;
-  const m=getMed(pick);
 
+  const smartMode = !!S.inBattle;
   if(S.healTarget==="civ" && S.mode!=="Survival"){
-    const civ=pickMostInjuredCivilian();
+    const civ = pickMostInjuredCivilian();
     if(!civ) return toast("No injured civilians to heal.");
-    S.medkits[pick]-=1;
-    civ.hp = clamp(civ.hp + m.heal, 0, civ.hpMax);
-    sfx("ui"); hapticImpact("light"); save(); renderHUD();
+    const missing = Math.max(0, Math.round(civ.hpMax - civ.hp));
+    const med = pickSupplyForMissing(
+      MEDS,
+      (id)=>S.medkits[id] || 0,
+      S.selectedMedkitId,
+      missing,
+      smartMode
+    );
+    if(!med) return toast("No medkits. Buy in shop.");
+    S.selectedMedkitId = med.id;
+    S.medkits[med.id] = Math.max(0, (S.medkits[med.id] || 0) - 1);
+    const prevHp = civ.hp;
+    civ.hp = clamp(civ.hp + med.heal, 0, civ.hpMax);
+    const healed = Math.max(0, Math.round(civ.hp - prevHp));
+    sfx("ui");
+    hapticImpact("light");
+    save();
+    renderHUD();
     renderCombatControls();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-    return toast(`Healed civilian +${m.heal}`);
+    return toast(`Healed civilian +${healed} (${med.name}).`);
   }
 
-  if(S.hp>=100) return toast("HP already full.");
-  S.medkits[pick]-=1;
-  S.hp = clamp(S.hp + m.heal, 0, 100);
-  sfx("ui"); hapticImpact("light"); save(); renderHUD();
+  const missing = Math.max(0, Math.round(100 - S.hp));
+  if(!smartMode && missing <= 0) return toast("HP already full.");
+  const med = pickSupplyForMissing(
+    MEDS,
+    (id)=>S.medkits[id] || 0,
+    S.selectedMedkitId,
+    missing,
+    smartMode
+  );
+  if(!med) return toast("No medkits. Buy in shop.");
+  S.selectedMedkitId = med.id;
+  S.medkits[med.id] = Math.max(0, (S.medkits[med.id] || 0) - 1);
+  const prevHp = S.hp;
+  S.hp = clamp(S.hp + med.heal, 0, 100);
+  const healed = Math.max(0, Math.round(S.hp - prevHp));
+  sfx("ui");
+  hapticImpact("light");
+  save();
+  renderHUD();
   renderCombatControls();
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-  toast(`Healed +${m.heal}`);
+  if(healed <= 0){
+    toast(`HP held at full (100%) with ${med.name}.`);
+    return;
+  }
+  toast(`Healed +${healed} (${med.name}).`);
 }
 
 function useRepairKit(){
@@ -4424,27 +4614,41 @@ function useRepairKit(){
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   toast(`Repaired +${t.add} durability`);
 }
-function useArmorPlate(opts={}){
+function useArmorKit(opts={}){
   const options = opts || {};
   const silent = !!options.silent;
   const skipSfx = !!options.skipSfx;
   const skipRender = !!options.skipRender;
   const skipSave = !!options.skipSave;
-  const plates = totalArmorPlates();
-  if(plates <= 0){
-    if(!silent) toast("No armor plates. Buy in Shop > Armor.");
+  normalizeStoredSupplies();
+  if(totalArmorKits() <= 0){
+    if(!silent) toast("No armor kits. Buy in Shop > Armor.");
     return 0;
   }
   if(S.armor >= S.armorCap){
     if(!silent) toast("Armor already full.");
     return 0;
   }
+  const missing = Math.max(0, Math.round(S.armorCap - S.armor));
+  const smartMode = !!S.inBattle;
+  const armorKit = pickSupplyForMissing(
+    ARMORY,
+    (id)=>S.armorKits[id] || 0,
+    options.id || S.selectedArmorKitId,
+    missing,
+    smartMode
+  );
+  if(!armorKit){
+    if(!silent) toast("No armor kits. Buy in Shop > Armor.");
+    return 0;
+  }
+  S.selectedArmorKitId = armorKit.id;
   const prevArmor = S.armor;
-  S.armorPlates = plates - 1;
-  S.armor = clamp(S.armor + ARMOR_PLATE_VALUE, 0, S.armorCap);
+  S.armorKits[armorKit.id] = Math.max(0, (S.armorKits[armorKit.id] || 0) - 1);
+  S.armor = clamp(S.armor + armorKit.addArmor, 0, S.armorCap);
   const restored = Math.max(0, Math.round(S.armor - prevArmor));
   if(restored <= 0){
-    S.armorPlates = plates;
+    S.armorKits[armorKit.id] = (S.armorKits[armorKit.id] || 0) + 1;
     if(!silent) toast("Armor already full.");
     return 0;
   }
@@ -4458,9 +4662,10 @@ function useArmorPlate(opts={}){
     renderCombatControls();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   }
-  if(!silent) toast(`Armor restored +${restored}.`);
+  if(!silent) toast(`Armor restored +${restored}% (${armorKit.name}).`);
   return restored;
 }
+function useArmorPlate(opts={}){ return useArmorKit(opts); } // backward-compat alias
 
 // ===================== BACKUP =====================
 function callBackup(){
@@ -4722,11 +4927,8 @@ function randomEvacZone(civilians=[]){
     .filter((c)=>c && Number.isFinite(c.x) && Number.isFinite(c.y) && c.alive !== false && !c.evac);
 
   if(!validCivs.length){
-    return {
-      x: rand(minX, maxX),
-      y: rand(minY, maxY),
-      r
-    };
+    const fresh = safeSpawnPoint(rand(minX, maxX), rand(minY, maxY), Math.round(r * 0.45), true, true);
+    return { x:fresh.x, y:fresh.y, r };
   }
 
   const candidates = [];
@@ -4758,6 +4960,7 @@ function randomEvacZone(civilians=[]){
 
   let best = null;
   for(const pt of candidates){
+    if(inMobileNoBuildZone(pt.x, pt.y, Math.round(r * 0.85))) continue;
     if(blockedAt(pt.x, pt.y, Math.round(r * 0.45))) continue;
     if(isPointInWater(pt.x, pt.y, Math.round(r * 0.50))) continue;
     let nearest = Infinity;
@@ -4773,6 +4976,7 @@ function randomEvacZone(civilians=[]){
     for(let i=0;i<50;i++){
       const trialX = rand(minX, maxX);
       const trialY = rand(minY, maxY);
+      if(inMobileNoBuildZone(trialX, trialY, Math.round(r * 0.85))) continue;
       if(blockedAt(trialX, trialY, Math.round(r * 0.45))) continue;
       if(isPointInWater(trialX, trialY, Math.round(r * 0.50))) continue;
       let nearest = Infinity;
@@ -4803,6 +5007,18 @@ function randomEvacZone(civilians=[]){
       const push = (r + 18) - nearest;
       zx = clamp(zx + Math.cos(angle) * push, minX, maxX);
       zy = clamp(zy + Math.sin(angle) * push, minY, maxY);
+      if(inMobileNoBuildZone(zx, zy, Math.round(r * 0.85))){
+        const moved = findNearestOpenPoint(zx, zy, Math.round(r * 0.45), {
+          avoidKeepout:true,
+          avoidWater:true,
+          targetX:cv.width * 0.44,
+          targetY:cv.height * 0.56
+        });
+        if(moved){
+          zx = moved.x;
+          zy = moved.y;
+        }
+      }
       best = { x:zx, y:zy, nearest };
     }
   }
@@ -4818,6 +5034,15 @@ function randomEvacZone(civilians=[]){
       targetY:cv.height * 0.5
     });
     if(dryPoint) zonePoint = dryPoint;
+  }
+  if(inMobileNoBuildZone(zonePoint.x, zonePoint.y, Math.round(r * 0.85))){
+    const clearPoint = findNearestOpenPoint(zonePoint.x, zonePoint.y, Math.round(r * 0.45), {
+      avoidKeepout:true,
+      avoidWater:true,
+      targetX:cv.width * 0.40,
+      targetY:cv.height * 0.55
+    });
+    if(clearPoint) zonePoint = clearPoint;
   }
   return { x:zonePoint.x, y:zonePoint.y, r };
 }
@@ -7268,9 +7493,10 @@ function followCiviliansTick(){
 
 function evacCheck(){
   if(S.mode==="Survival") return;
+  const evacRadius = (S.evacZone?.r || 70) + 10;
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
-    if(dist(c.x,c.y,S.evacZone.x,S.evacZone.y) < S.evacZone.r){
+    if(dist(c.x,c.y,S.evacZone.x,S.evacZone.y) <= evacRadius){
       c.evac=true;
       S.evacDone += 1;
       S.stats.evac += 1;
@@ -8102,7 +8328,8 @@ function renderCombatControls(){
   const canCap = canAttemptCapture(t);
   const canAtk = anyLethalWeaponHasAmmo();
   const medCount = totalMedkits();
-  const canMed = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && medCount > 0 && S.hp < 100;
+  const canMed = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && medCount > 0;
+  const canShield = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && (S.shields||0) > 0 && !abilityOnCooldown("shield");
   const rollLeft = rollCooldownLabel();
   const canRoll = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && !rollLeft;
 
@@ -8115,6 +8342,10 @@ function renderCombatControls(){
     if(el) el.disabled = disabled;
   });
   [["touchCombatMedkitBtn", !canMed], ["combatMedkitBtn", !canMed]].forEach(([id, disabled])=>{
+    const el = document.getElementById(id);
+    if(el) el.disabled = disabled;
+  });
+  [["touchCombatShieldBtn", !canShield], ["combatShieldBtn", !canShield]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
@@ -8914,6 +9145,7 @@ function updateEngage(){
 function renderHUD(){
   try{
     syncSquadRosterBounds();
+    normalizeStoredSupplies();
     // clear event text if expired
     if(S.eventTextUntil && Date.now()>S.eventTextUntil) S.eventText="";
     if(S.shieldUntil && Date.now() >= S.shieldUntil) S.shieldUntil = 0;
@@ -8958,7 +9190,7 @@ function renderHUD(){
   const shieldLabel = shieldActiveNow() ? `${S.shields||0} • ACTIVE (${shieldSecs}s)` : `${S.shields||0}`;
   document.getElementById("shieldTxt").innerText = shieldLabel;
 
-  document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
+  document.getElementById("backupTxt").innerText = `Armor Kits: ${totalArmorKits()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
   const shieldDisabled = S.paused || S.missionEnded || S.gameOver || (S.shields||0)<=0 || abilityOnCooldown("shield");
   document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = shieldDisabled; });
   const cacheBtn = document.getElementById("touchCacheBtn");
@@ -9966,6 +10198,14 @@ function drawWaterRipple(x, y, size=16, alpha=0.52){
 
 function drawCivilian(c){
   drawWaterRipple(c.x, c.y, 16, 0.50);
+  ctx.save();
+  ctx.globalAlpha = S.inBattle ? 0.22 : 0.14;
+  ctx.strokeStyle = "rgba(236,253,245,.92)";
+  ctx.lineWidth = S.inBattle ? 2.6 : 1.8;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y - 4, S.inBattle ? 20 : 17, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
   if(civilianShielded(c)){
     const pulse = 0.82 + Math.sin(Date.now()/120) * 0.15;
     ctx.save();
@@ -10084,6 +10324,14 @@ function drawSoldier(){
   const bob = rolling ? 0 : (Math.sin(step) * 1.5);
   const x = px;
   const y = py + bob;
+  ctx.save();
+  ctx.globalAlpha = S.inBattle ? 0.28 : 0.18;
+  ctx.strokeStyle = S.inBattle ? "rgba(56,189,248,.96)" : "rgba(148,163,184,.88)";
+  ctx.lineWidth = S.inBattle ? 3.4 : 2.0;
+  ctx.beginPath();
+  ctx.arc(x, y - 2, S.inBattle ? 25 : 20, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
   drawWaterRipple(x, y, 18, 0.56);
   const ang = S.me.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
@@ -10279,6 +10527,15 @@ function drawTiger(t){
   const bob = Math.sin((t.step||0)*2.2)*0.34*Math.max(0.62, speed*0.90);
   const bodyLift = clamp(gaitBlend * 2.4 + (sprinting ? 1.35 : 0), 0, 3.8);
   const x=t.x, y=t.y + bob - bodyLift;
+  const tigerFocus = S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id);
+  ctx.save();
+  ctx.globalAlpha = tigerFocus ? 0.36 : 0.16;
+  ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.98)" : "rgba(253,186,116,.78)";
+  ctx.lineWidth = tigerFocus ? 3.4 : 2.0;
+  ctx.beginPath();
+  ctx.arc(x, y, tigerFocus ? 38 : 30, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
   let s=1.0;
   if(t.type==="Scout") s=0.85;
   if(t.type==="Alpha") s=1.22;
@@ -10514,6 +10771,23 @@ function drawEntities(){
   if(drawFx) drawCombatFx();
   if(drawFx || __frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0) drawDamagePopups();
 }
+function drawMobileUiClearLane(){
+  const lane = mobileRightUiLaneRect();
+  if(!lane) return;
+  ctx.save();
+  const grad = ctx.createLinearGradient(lane.x, lane.y, lane.x + lane.w, lane.y + lane.h);
+  grad.addColorStop(0, "rgba(4,8,16,.28)");
+  grad.addColorStop(1, "rgba(4,8,16,.58)");
+  ctx.fillStyle = grad;
+  roundedRectFill(lane.x, lane.y, lane.w, lane.h, 18);
+  ctx.strokeStyle = "rgba(74,90,120,.28)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(lane.x + 8, lane.y + 4);
+  ctx.lineTo(lane.x + lane.w - 8, lane.y + 4);
+  ctx.stroke();
+  ctx.restore();
+}
 
 // ===================== MISSION FLOW =====================
 
@@ -10572,6 +10846,7 @@ function draw(){
 
     safeTick("drawMapScene", drawMapScene);
     safeTick("drawEntities", drawEntities);
+    safeTick("drawMobileUiClearLane", drawMobileUiClearLane);
     maybeAutosave();
   }catch(err){
     const now = Date.now();
@@ -10596,6 +10871,7 @@ function init(){
     __savePending = true;
   }
   trimPersistentState(S);
+  normalizeStoredSupplies();
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   S.performanceMode = normalizePerformanceMode(S.performanceMode);
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
@@ -10797,6 +11073,7 @@ window.scan = scan;
 window.startCombat = startCombat;
 
 window.useMedkit = useMedkit;
+window.useArmorKit = useArmorKit;
 window.useArmorPlate = useArmorPlate;
 window.useRepairKit = useRepairKit;
 window.placeTrap = placeTrap;
@@ -10837,3 +11114,5 @@ window.closeQuickWeaponPicker = closeQuickWeaponPicker;
 window.selectQuickWeapon = selectQuickWeapon;
 window.buyPerk = buyPerk;
 window.lockNearestTiger = lockNearestTiger;
+window.setSelectedMedkit = setSelectedMedkit;
+window.setSelectedArmorKit = setSelectedArmorKit;

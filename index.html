@@ -245,8 +245,9 @@
       }
       #touchCacheBtn{
         position:absolute;
-        right:12px;
-        bottom:248px;
+        left:14px;
+        right:auto;
+        bottom:244px;
         z-index:6;
         opacity:.58;
       }
@@ -346,7 +347,7 @@
       .screenCard{width:calc(100% + 16px);margin-left:-8px;margin-right:-8px}
       .touchCluster{grid-template-columns:repeat(2,54px)}
       .touchBtn{width:54px;min-height:54px}
-      #touchCacheBtn{right:10px;bottom:224px}
+      #touchCacheBtn{left:10px;right:auto;bottom:216px}
     }
 
     @media (max-width:960px) and (orientation:landscape) and (max-height:540px){
@@ -502,6 +503,10 @@
             <span class="touchBtnIcon">❤️</span>
             <span class="touchBtnLabel">Med</span>
           </button>
+          <button class="touchBtn" id="touchCombatShieldBtn" data-shield-btn onclick="activateShield()">
+            <span class="touchBtnIcon">🛡️</span>
+            <span class="touchBtnLabel">Shield</span>
+          </button>
           <button class="touchBtn" id="touchPrevWeaponBtn" onclick="cycleWeapon(-1)">
             <span class="touchBtnIcon">◀️</span>
             <span class="touchBtnLabel">Prev</span>
@@ -531,6 +536,7 @@
         <button class="warn" id="combatAttackBtn" data-attack-btn>🔫 Attack</button>
         <button class="good" id="combatCaptureBtn" onclick="playerAction('CAPTURE')" disabled>💉 Capture</button>
         <button class="ghost" id="combatMedkitBtn" onclick="useMedkit()">❤️ Medkit</button>
+        <button class="ghost" id="combatShieldBtn" data-shield-btn onclick="activateShield()">🛡️ Shield</button>
         <button class="ghost" id="combatPrevWeaponBtn" onclick="cycleWeapon(-1)">◀️ Weapon</button>
         <button class="ghost" id="combatNextWeaponBtn" onclick="cycleWeapon(1)">Weapon ▶️</button>
         <button class="ghost" id="combatRollBtn" onclick="rollDodge()">Roll</button>
