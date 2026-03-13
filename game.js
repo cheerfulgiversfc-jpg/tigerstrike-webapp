@@ -2596,8 +2596,22 @@ function getAmmo(id){ return AMMO.find(a=>a.id===id); }
 function getMed(id){ return MEDS.find(m=>m.id===id); }
 function getArmor(id){ return ARMORY.find(a=>a.id===id); }
 function getTool(id){ return TOOLS.find(t=>t.id===id); }
+function medTierLabel(id){
+  if(id === "M_SMALL") return "T1";
+  if(id === "M_MED") return "T2";
+  if(id === "M_LARGE") return "T3";
+  if(id === "M_TRAUMA") return "T4";
+  return "T?";
+}
+function armorTierLabel(id){
+  if(id === "A_TIER1") return "T1";
+  if(id === "A_TIER2") return "T2";
+  if(id === "A_TIER3") return "T3";
+  if(id === "A_TIER4") return "T4";
+  return "T?";
+}
 function normalizeArmorPlateInventory(raw){
-  const stock = Object.create(null);
+  const stock = {};
   for(const ar of ARMORY) stock[ar.id] = 0;
   if(raw && typeof raw === "object" && !Array.isArray(raw)){
     for(const ar of ARMORY){
@@ -4038,12 +4052,12 @@ function renderShopList(){
   }
 
   if(currentShopTab==="armor"){
-    note.innerText="Armor plates are storable by tier. Buy multiple and choose the plate you want in Inventory.";
+    note.innerText="Armor plates are storable by tier. Pick a tier in Inventory for exact use, or quick-use to auto-fill armor to 100.";
     list.innerHTML = ARMORY.map(ar=>`
       <div class="item">
         <div>
-          <div class="itemName">${ar.name}</div>
-          <div class="itemDesc">Armor Plate: +${ar.addArmor} armor per use • Armor cap ${ar.cap} • Stored: ${armorPlateCount(ar.id)} (Total ${totalArmorPlates()})</div>
+          <div class="itemName">${ar.name} <span class="tag">${armorTierLabel(ar.id)}</span> <span class="tag">Owned: ${armorPlateCount(ar.id)}</span></div>
+          <div class="itemDesc">Armor Plate: +${ar.addArmor} armor per use • Armor cap ${ar.cap} • Total plates: ${totalArmorPlates()}</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${ar.price.toLocaleString()}</div>
@@ -4054,13 +4068,13 @@ function renderShopList(){
   }
 
   if(currentShopTab==="meds"){
-    note.innerText="Shows how many you own. Heal Self or Civilian in Inventory.";
+    note.innerText="Pick a tier in Inventory for exact use, or quick-use to auto-fill HP to 100.";
     list.innerHTML = MEDS.map(m=>{
       const owned=ownedMedCount(m.id);
       return `
         <div class="item">
           <div>
-            <div class="itemName">${m.name} <span class="tag">Owned: ${owned}</span></div>
+            <div class="itemName">${m.name} <span class="tag">${medTierLabel(m.id)}</span> <span class="tag">Owned: ${owned}</span></div>
             <div class="itemDesc">Heals +${m.heal} HP</div>
           </div>
           <div style="text-align:right">
@@ -4281,7 +4295,7 @@ function buyArmor(id){
   if(!getArmor(S.armorPlateSelectedId) || armorPlateCount(S.armorPlateSelectedId) <= 0){
     S.armorPlateSelectedId = ar.id;
   }
-  toast(`${ar.name} stored (+${ar.addArmor} armor).`);
+  toast(`${ar.name} bought. ${armorTierLabel(ar.id)} owned: ${armorPlateCount(ar.id)}.`);
   sfx("ui"); hapticImpact("light");
   save();
   renderShopList();
@@ -4293,6 +4307,7 @@ function buyMed(id){
   if(S.funds < m.price) return toast("Not enough money.");
   S.funds -= m.price;
   S.medkits[id] = (S.medkits[id]||0)+1;
+  toast(`${m.name} bought. ${medTierLabel(m.id)} owned: ${S.medkits[id]||0}.`);
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
 }
@@ -4584,16 +4599,16 @@ function renderInventory(){
     <div class="item">
       <div>
         <div class="itemName">❤️ Med Kits <span class="tag">Owned: ${totalMedkits()}</span></div>
-        <div class="itemDesc">Heal target: <b>${S.healTarget||'self'}</b> • Selected: <b>${medSelectedDef.name}</b> (+${medSelectedDef.heal} HP)</div>
-        <div class="itemDesc">${MEDS.map((m)=>`${m.name}: ${S.medkits?.[m.id] || 0}`).join(" • ")}</div>
+        <div class="itemDesc">Heal target: <b>${S.healTarget||'self'}</b> • Selected: <b>${medTierLabel(medSelectedDef.id)} ${medSelectedDef.name}</b> (+${medSelectedDef.heal} HP)</div>
+        <div class="itemDesc">${MEDS.map((m)=>`${medTierLabel(m.id)} ${m.name}: ${S.medkits?.[m.id] || 0}`).join(" • ")}</div>
       </div>
       <div style="text-align:right">
         <button onclick="setHealTarget('self')">Self</button>
         <button ${civs.length?'':'disabled'} onclick="setHealTarget('civ')">Civilian</button>
-        <button class="${medSelectedDef.id===MEDS[0].id ? 'good' : 'ghost'}" ${totalMedkits()<=0?'disabled':''} onclick="setSelectedMedkit('${MEDS[0].id}')">S</button>
-        <button class="${medSelectedDef.id===MEDS[1].id ? 'good' : 'ghost'}" ${totalMedkits()<=0?'disabled':''} onclick="setSelectedMedkit('${MEDS[1].id}')">M</button>
-        <button class="${medSelectedDef.id===MEDS[2].id ? 'good' : 'ghost'}" ${totalMedkits()<=0?'disabled':''} onclick="setSelectedMedkit('${MEDS[2].id}')">L</button>
-        <button class="${medSelectedDef.id===MEDS[3].id ? 'good' : 'ghost'}" ${totalMedkits()<=0?'disabled':''} onclick="setSelectedMedkit('${MEDS[3].id}')">T</button>
+        <button class="${medSelectedDef.id===MEDS[0].id ? 'good' : 'ghost'}" ${totalMedkits()<=0?'disabled':''} onclick="setSelectedMedkit('${MEDS[0].id}')">T1</button>
+        <button class="${medSelectedDef.id===MEDS[1].id ? 'good' : 'ghost'}" ${totalMedkits()<=0?'disabled':''} onclick="setSelectedMedkit('${MEDS[1].id}')">T2</button>
+        <button class="${medSelectedDef.id===MEDS[2].id ? 'good' : 'ghost'}" ${totalMedkits()<=0?'disabled':''} onclick="setSelectedMedkit('${MEDS[2].id}')">T3</button>
+        <button class="${medSelectedDef.id===MEDS[3].id ? 'good' : 'ghost'}" ${totalMedkits()<=0?'disabled':''} onclick="setSelectedMedkit('${MEDS[3].id}')">T4</button>
         <button class="good" ${totalMedkits()<=0?'disabled':''} onclick="useMedkit({ medId:'${medSelectedDef.id}' })">Use Selected</button>
       </div>
     </div>
@@ -4609,7 +4624,7 @@ function renderInventory(){
     <div class="item">
       <div>
         <div class="itemName">🛡️ Armor Plates <span class="tag">Owned: ${totalArmorPlates()}</span></div>
-        <div class="itemDesc">Selected: <b>${armorSelectedDef.name}</b> (+${armorSelectedDef.addArmor} armor). T1 ${armorPlateCount("A_TIER1")} • T2 ${armorPlateCount("A_TIER2")} • T3 ${armorPlateCount("A_TIER3")} • T4 ${armorPlateCount("A_TIER4")}</div>
+        <div class="itemDesc">Selected: <b>${armorTierLabel(armorSelectedDef.id)} ${armorSelectedDef.name}</b> (+${armorSelectedDef.addArmor} armor). T1 ${armorPlateCount("A_TIER1")} • T2 ${armorPlateCount("A_TIER2")} • T3 ${armorPlateCount("A_TIER3")} • T4 ${armorPlateCount("A_TIER4")}</div>
       </div>
       <div style="text-align:right">
         <button class="${armorSelectedDef.id==='A_TIER1' ? 'good' : 'ghost'}" ${totalArmorPlates()<=0?'disabled':''} onclick="setSelectedArmorPlate('A_TIER1')">T1</button>
@@ -4651,12 +4666,16 @@ function renderInventory(){
 function useMedkit(opts={}){
   if(totalMedkits()<=0) return toast("No medkits. Buy in shop.");
   const options = (opts && typeof opts === "object") ? opts : {};
-  const smart = (options.smart != null) ? !!options.smart : !!S.inBattle;
-  const allowFull = (options.allowFull != null) ? !!options.allowFull : !!S.inBattle;
   const preferred = (typeof options.medId === "string" && getMed(options.medId)) ? options.medId : null;
+  const smart = (options.smart != null) ? !!options.smart : !preferred;
+  const allowFull = (options.allowFull != null) ? !!options.allowFull : !!S.inBattle;
+  const autoFill = (options.autoFill != null) ? !!options.autoFill : !preferred;
 
   const pickIdFor = (currentHp, maxHp)=>{
-    if(preferred && (S.medkits?.[preferred] || 0) > 0) return preferred;
+    if(preferred){
+      if((S.medkits?.[preferred] || 0) > 0) return preferred;
+      return null;
+    }
     if(smart){
       const smartPick = pickSmartMedkitId(currentHp, maxHp, allowFull);
       if(smartPick && (S.medkits?.[smartPick] || 0) > 0) return smartPick;
@@ -4666,34 +4685,63 @@ function useMedkit(opts={}){
     return MEDS.find((m)=>(S.medkits?.[m.id] || 0) > 0)?.id || null;
   };
 
+  const applyToTarget = (target, getHp, setHp, maxHp)=>{
+    let used = 0;
+    let healed = 0;
+    while(totalMedkits() > 0){
+      const hpNow = clamp(Number(getHp()) || 0, 0, maxHp);
+      if(hpNow >= maxHp){
+        if(!allowFull || used > 0) break;
+      }
+      const pick = pickIdFor(hpNow, maxHp);
+      if(!pick) break;
+      const m = getMed(pick);
+      if(!m) break;
+      S.medkits[pick] = Math.max(0, (S.medkits[pick] || 0) - 1);
+      const hpAfter = clamp(hpNow + m.heal, 0, maxHp);
+      setHp(hpAfter);
+      healed += Math.max(0, Math.round(hpAfter - hpNow));
+      used += 1;
+      if(preferred || !autoFill) break;
+      if(hpAfter >= maxHp) break;
+      if(m.heal <= 0) break;
+    }
+    return { target, used, healed };
+  };
+
   if(S.healTarget==="civ" && S.mode!=="Survival"){
     const civ=pickMostInjuredCivilian();
     if(!civ) return toast("No injured civilians to heal.");
-    const pick = pickIdFor(civ.hp, civ.hpMax);
-    if(!pick) return toast("No medkits. Buy in shop.");
-    const m=getMed(pick);
-    S.medkits[pick] = Math.max(0, (S.medkits[pick] || 0) - 1);
-    const before = civ.hp;
-    civ.hp = clamp(civ.hp + m.heal, 0, civ.hpMax);
-    const healed = Math.max(0, Math.round(civ.hp - before));
+    const result = applyToTarget(civ, ()=>civ.hp, (next)=>{ civ.hp = next; }, civ.hpMax || 100);
+    if(result.used <= 0){
+      if(preferred) return toast(`${medTierLabel(preferred)} medkits out of stock.`);
+      return toast("No usable medkits.");
+    }
     sfx("ui"); hapticImpact("light"); save(); renderHUD();
     renderCombatControls();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-    return toast(healed > 0 ? `Healed civilian +${healed}` : `${m.name} used.`);
+    return toast(
+      result.healed > 0
+        ? `Healed civilian +${result.healed}${result.used > 1 ? ` (${result.used} kits)` : ""}`
+        : `Medkit used${result.used > 1 ? ` (${result.used})` : ""}.`
+    );
   }
 
   if(S.hp>=100 && !allowFull) return toast("HP already full.");
-  const pick = pickIdFor(S.hp, 100);
-  if(!pick) return toast("No medkits. Buy in shop.");
-  const m=getMed(pick);
-  S.medkits[pick] = Math.max(0, (S.medkits[pick] || 0) - 1);
-  const before = S.hp;
-  S.hp = clamp(S.hp + m.heal, 0, 100);
-  const healed = Math.max(0, Math.round(S.hp - before));
+  const result = applyToTarget(S.me, ()=>S.hp, (next)=>{ S.hp = next; }, 100);
+  if(result.used <= 0){
+    if(preferred) return toast(`${medTierLabel(preferred)} medkits out of stock.`);
+    if(S.hp>=100 && !allowFull) return toast("HP already full.");
+    return toast("No usable medkits.");
+  }
   sfx("ui"); hapticImpact("light"); save(); renderHUD();
   renderCombatControls();
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-  toast(healed > 0 ? `Healed +${healed}` : `${m.name} used. HP remains full.`);
+  toast(
+    result.healed > 0
+      ? `Healed +${result.healed}${result.used > 1 ? ` (${result.used} kits)` : ""}`
+      : `Medkit used${result.used > 1 ? ` (${result.used})` : ""}. HP remains full.`
+  );
 }
 
 function useRepairKit(){
@@ -4713,8 +4761,9 @@ function useArmorPlate(opts={}){
   const skipSfx = !!options.skipSfx;
   const skipRender = !!options.skipRender;
   const skipSave = !!options.skipSave;
-  const smart = !!options.smart;
   const preferred = (typeof options.armorId === "string" && getArmor(options.armorId)) ? options.armorId : null;
+  const smart = (options.smart != null) ? !!options.smart : !preferred;
+  const autoFill = (options.autoFill != null) ? !!options.autoFill : !preferred;
   const plates = totalArmorPlates();
   if(plates <= 0){
     if(!silent) toast("No armor plates. Buy in Shop > Armor.");
@@ -4724,24 +4773,48 @@ function useArmorPlate(opts={}){
     if(!silent) toast("Armor already full.");
     return 0;
   }
-  const pick =
-    (preferred && armorPlateCount(preferred) > 0) ? preferred :
-    (smart ? pickSmartArmorPlateId() : null) ||
-    ((armorPlateCount(selectedArmorPlateId()) > 0) ? selectedArmorPlateId() : null) ||
-    ARMORY.find((ar)=>armorPlateCount(ar.id) > 0)?.id;
-  if(!pick){
-    if(!silent) toast("No armor plates. Buy in Shop > Armor.");
-    return 0;
+  const pickId = ()=>{
+    if(preferred){
+      if(armorPlateCount(preferred) > 0) return preferred;
+      return null;
+    }
+    return (smart ? pickSmartArmorPlateId() : null) ||
+      ((armorPlateCount(selectedArmorPlateId()) > 0) ? selectedArmorPlateId() : null) ||
+      ARMORY.find((ar)=>armorPlateCount(ar.id) > 0)?.id || null;
+  };
+
+  let restoredTotal = 0;
+  let used = 0;
+  let lastPlateName = "Armor plate";
+  while(totalArmorPlates() > 0){
+    if(S.armor >= S.armorCap) break;
+    const pick = pickId();
+    if(!pick) break;
+    const plate = getArmor(pick);
+    if(!plate) break;
+    const beforeCount = armorPlateCount(pick);
+    if(beforeCount <= 0) break;
+    ensureArmorPlateInventoryState();
+    S.armorPlates[pick] = beforeCount - 1;
+    const prevArmor = S.armor;
+    S.armor = clamp(S.armor + (plate.addArmor || 0), 0, S.armorCap);
+    const restored = Math.max(0, Math.round(S.armor - prevArmor));
+    if(restored <= 0){
+      S.armorPlates[pick] = beforeCount;
+      break;
+    }
+    used += 1;
+    restoredTotal += restored;
+    lastPlateName = plate.name || "Armor plate";
+    if(preferred || !autoFill) break;
+    if(S.armor >= S.armorCap) break;
   }
-  const plate = getArmor(pick);
-  const prevArmor = S.armor;
-  ensureArmorPlateInventoryState();
-  S.armorPlates[pick] = Math.max(0, armorPlateCount(pick) - 1);
-  S.armor = clamp(S.armor + (plate?.addArmor || 0), 0, S.armorCap);
-  const restored = Math.max(0, Math.round(S.armor - prevArmor));
-  if(restored <= 0){
-    S.armorPlates[pick] = armorPlateCount(pick) + 1;
-    if(!silent) toast("Armor already full.");
+  if(restoredTotal <= 0){
+    if(!silent){
+      if(preferred && armorPlateCount(preferred) <= 0) toast(`${armorTierLabel(preferred)} armor plates out of stock.`);
+      else if(S.armor >= S.armorCap) toast("Armor already full.");
+      else toast("No armor plates. Buy in Shop > Armor.");
+    }
     return 0;
   }
   if(!skipSfx){
@@ -4754,8 +4827,8 @@ function useArmorPlate(opts={}){
     renderCombatControls();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   }
-  if(!silent) toast(`${plate?.name || "Armor plate"} restored +${restored}.`);
-  return restored;
+  if(!silent) toast(`${lastPlateName} restored +${restoredTotal}${used > 1 ? ` (${used} plates)` : ""}.`);
+  return restoredTotal;
 }
 
 // ===================== BACKUP =====================
@@ -6862,7 +6935,8 @@ function pollGamepadControls(){
     deploy();
   }
   if(gamepadButtonEdge("rs", gamepadButtonPressed(pad.buttons?.[11]))){
-    activateShield();
+    if(S.inBattle) useArmorPlate({ smart:true });
+    else activateShield();
   }
 
   return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
@@ -8237,19 +8311,20 @@ function applyPlayerDamage(dmg, showToast=false){
     return;
   }
   if(S.armor > 0){
-  const eff = (typeof perkArmorEff === "function") ? perkArmorEff() : 1; // 1.00, 1.05, 1.10...
-  const absorbed = Math.min(S.armor, dmg);
-  const armorCost = absorbed / eff;   // perk slows armor drain
-  S.armor = clamp(S.armor - armorCost, 0, S.armorCap);
-  dmg -= absorbed;
-}
+    const eff = (typeof perkArmorEff === "function") ? perkArmorEff() : 1; // 1.00, 1.05, 1.10...
+    const absorbed = Math.min(S.armor, dmg);
+    const armorCost = absorbed / eff;   // perk slows armor drain
+    S.armor = clamp(S.armor - armorCost, 0, S.armorCap);
+    if(S.armor < 0.01) S.armor = 0;
+    dmg -= absorbed;
+  }
   if(dmg>0){
     S.hp = clamp(S.hp - dmg, 0, 100);
     sfx("hurt"); hapticImpact("medium");
     if(showToast) toast(`🐅 Hit: -${dmg} HP`);
   }
   if(S.inBattle) renderBattleStatus();
-  if(S.hp<=0){
+  if(S.hp<=0 && S.armor<=0){
     S.lives -= 1;
 
     if(S.lives > 0){
@@ -8440,7 +8515,9 @@ function renderCombatControls(){
   const canCap = canAttemptCapture(t);
   const canAtk = anyLethalWeaponHasAmmo();
   const medCount = totalMedkits();
+  const armorPlateCountAll = totalArmorPlates();
   const canMed = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && medCount > 0;
+  const canArmorPlate = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && armorPlateCountAll > 0 && S.armor < S.armorCap;
   const rollLeft = rollCooldownLabel();
   const canRoll = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && !rollLeft;
 
@@ -8456,6 +8533,10 @@ function renderCombatControls(){
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
+  [["touchCombatArmorBtn", !canArmorPlate], ["combatArmorBtn", !canArmorPlate]].forEach(([id, disabled])=>{
+    const el = document.getElementById(id);
+    if(el) el.disabled = disabled;
+  });
   [["touchRollBtn", !canRoll], ["combatRollBtn", !canRoll]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
@@ -8468,9 +8549,11 @@ function renderCombatControls(){
   const prevDesktop = document.getElementById("combatPrevWeaponBtn");
   const nextDesktop = document.getElementById("combatNextWeaponBtn");
   const medDesktop = document.getElementById("combatMedkitBtn");
+  const armorDesktop = document.getElementById("combatArmorBtn");
   if(prevDesktop) prevDesktop.innerText = `◀️ ${prevLabel}`;
   if(nextDesktop) nextDesktop.innerText = `${nextLabel} ▶️`;
   if(medDesktop) medDesktop.innerText = `❤️ Medkit (${medCount})`;
+  if(armorDesktop) armorDesktop.innerText = `🛡️ Armor (${armorPlateCountAll})`;
   renderAbilityCooldownUi();
   if(controllerOwnsUi() || anyGamepadOverlayVisible()) syncGamepadFocus();
 }
