@@ -2596,6 +2596,13 @@ function getAmmo(id){ return AMMO.find(a=>a.id===id); }
 function getMed(id){ return MEDS.find(m=>m.id===id); }
 function getArmor(id){ return ARMORY.find(a=>a.id===id); }
 function getTool(id){ return TOOLS.find(t=>t.id===id); }
+function armorTierIndex(id){
+  if(id === "A_TIER1") return 1;
+  if(id === "A_TIER2") return 2;
+  if(id === "A_TIER3") return 3;
+  if(id === "A_TIER4") return 4;
+  return 0;
+}
 function medTierLabel(id){
   if(id === "M_SMALL") return "T1";
   if(id === "M_MED") return "T2";
@@ -2610,12 +2617,44 @@ function armorTierLabel(id){
   if(id === "A_TIER4") return "T4";
   return "T?";
 }
+function legacyArmorKeysForId(id){
+  const tier = armorTierIndex(id);
+  if(!tier) return [id];
+  return [
+    id,
+    `T${tier}`, `t${tier}`,
+    `A${tier}`, `a${tier}`,
+    `TIER${tier}`, `tier${tier}`, `tier_${tier}`,
+    `ARMOR_T${tier}`, `armor_t${tier}`,
+    `ARMOR_TIER${tier}`, `armor_tier${tier}`,
+    `armorTier${tier}`, `armor_${tier}`
+  ];
+}
 function normalizeArmorPlateInventory(raw){
   const stock = {};
   for(const ar of ARMORY) stock[ar.id] = 0;
+  if(Array.isArray(raw)){
+    for(let i=0; i<ARMORY.length; i++){
+      const id = ARMORY[i].id;
+      stock[id] = clamp(Math.floor(Number(raw[i] || 0)), 0, 999);
+    }
+    return stock;
+  }
   if(raw && typeof raw === "object" && !Array.isArray(raw)){
     for(const ar of ARMORY){
-      stock[ar.id] = clamp(Math.floor(Number(raw[ar.id] || 0)), 0, 999);
+      let count = 0;
+      for(const key of legacyArmorKeysForId(ar.id)){
+        const v = Number(raw[key]);
+        if(Number.isFinite(v)) count = Math.max(count, Math.floor(v));
+      }
+      stock[ar.id] = clamp(count, 0, 999);
+    }
+    const knownTotal = Object.values(stock).reduce((sum, val)=>sum + val, 0);
+    if(knownTotal <= 0){
+      const fallbackTotal = Number(raw.total ?? raw.count ?? raw.owned ?? raw.plates);
+      if(Number.isFinite(fallbackTotal) && fallbackTotal > 0){
+        stock.A_TIER1 = clamp(Math.floor(fallbackTotal), 0, 999);
+      }
     }
     return stock;
   }
