@@ -41,9 +41,16 @@ function writeDaily(obj){
   localStorage.setItem(key, JSON.stringify(obj));
 }
 
-const STORAGE_VERSION = 4382;
+const STORAGE_VERSION = 4383;
 const STORAGE_KEY = `ts_v${STORAGE_VERSION}`;
-const STORAGE_FALLBACK_KEYS = ["ts_v4381", "ts_v4380", "ts_v4371"];
+const STORAGE_FALLBACK_KEYS = ["ts_v4382", "ts_v4381", "ts_v4380", "ts_v4371"];
+
+function cloneState(obj){
+  if(typeof structuredClone === "function"){
+    try{ return structuredClone(obj); }catch(e){}
+  }
+  return JSON.parse(JSON.stringify(obj));
+}
 
 function awardDailyLogin(){
   if(!window.S) return;
@@ -1158,7 +1165,7 @@ function load(){
         try{ localStorage.removeItem(key); }catch(err){}
       }
     }
-    if(!saved) return structuredClone(DEFAULT);
+    if(!saved) return cloneState(DEFAULT);
     const m = { ...DEFAULT, ...saved };
     m.me = { ...DEFAULT.me, ...(saved.me||{}) };
     m.mag = { ...DEFAULT.mag, ...(saved.mag||{}) };
@@ -1189,7 +1196,7 @@ function load(){
       }catch(e){}
     }
     return m;
-  }catch(e){ return structuredClone(DEFAULT); }
+  }catch(e){ return cloneState(DEFAULT); }
 }
 // ===================== SAVE (THROTTLED — FIXES IOS FREEZE) =====================
 const SAVE_MIN_INTERVAL_MS = 4200;
@@ -4696,7 +4703,7 @@ window.__TUTORIAL_MODE__ = false;
 
 window.enterTutorialMode = function () {
   if(!S._tutorialSnapshot){
-    S._tutorialSnapshot = structuredClone(S);
+    S._tutorialSnapshot = cloneState(S);
   }
   window.__TUTORIAL_MODE__ = true;
   S._tutorialPrev = {
@@ -6139,7 +6146,7 @@ function performResetGame(){
   for(const key of STORAGE_FALLBACK_KEYS){
     localStorage.removeItem(key);
   }
-  S = structuredClone(DEFAULT);
+  S = cloneState(DEFAULT);
   syncWindowState();
   ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
@@ -10923,7 +10930,37 @@ function init(){
   if(S.mode === "Story" && !window.__TUTORIAL_MODE__) openStoryIntro(false);
 }
 
-init();
+function bootstrap(){
+  try{
+    init();
+  }catch(err){
+    try{ console.error("Startup recovered from init error:", err); }catch(e){}
+    try{
+      const keepMode = ["Story","Arcade","Survival"].includes(S?.mode) ? S.mode : DEFAULT.mode;
+      const keepMapIndex = Number.isFinite(S?.mapIndex) ? S.mapIndex : 0;
+      S = cloneState(DEFAULT);
+      S.mode = keepMode;
+      S.mapIndex = keepMapIndex;
+      syncWindowState();
+      resizeCanvasForViewport();
+      deploy();
+      maybeRenderHUD(true);
+      safeTick("recoverDrawMapScene", drawMapScene);
+      safeTick("recoverDrawEntities", drawEntities);
+      safeTick("recoverDrawUiLane", drawMobileUiClearLane);
+      if(!__drawLoopStarted){
+        __drawLoopStarted = true;
+        requestAnimationFrame(draw);
+      }
+      toast("Recovered from startup error. Mission reloaded.");
+      save(true);
+    }catch(recoverErr){
+      try{ console.error("Startup recovery failed:", recoverErr); }catch(e){}
+    }
+  }
+}
+
+bootstrap();
 
 
 // ===================== TUTORIAL ACCESS =====================
