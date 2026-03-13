@@ -1023,10 +1023,6 @@ const DEFAULT = {
   medkits:{ "M_SMALL":1 },
   repairKits:{ "T_REPAIR":1 },
   armorPlates:0,
-  armorKits:{},
-  selectedMedkitId:"M_SMALL",
-  selectedArmorKitId:"A_TIER1",
-  medkitMode:"GENIUS",
   trapsOwned:2,
   trapsPlaced:[],
   shields:1,
@@ -1149,7 +1145,6 @@ function load(){
     m.durability = { ...DEFAULT.durability, ...(saved.durability||{}) };
     m.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
     m.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
-    m.armorKits = { ...(DEFAULT.armorKits || {}), ...(saved.armorKits || {}) };
     m.abilityCooldowns = { ...DEFAULT.abilityCooldowns, ...(saved.abilityCooldowns||{}) };
     m.trapsPlaced = Array.isArray(saved.trapsPlaced) ? saved.trapsPlaced : [];
     m.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
@@ -1871,7 +1866,7 @@ function sanitizeRuntimeState(){
   S.armor = clamp(S.armor, 0, S.armorCap || 100);
   S.stamina = clamp(S.stamina, 0, 100);
   S.lives = clamp(Math.round(Number.isFinite(S.lives) ? S.lives : 5), 0, 99);
-  normalizeStoredSupplies();
+  S.armorPlates = clamp(Math.floor(Number(S.armorPlates || 0)), 0, 999);
   if(typeof S.lastCombatLethalWeaponId !== "string") S.lastCombatLethalWeaponId = "";
   if(S.lockedTigerId != null && !S.tigers.some((t)=>t.id === S.lockedTigerId && t.alive)){
     S.lockedTigerId = null;
@@ -1901,6 +1896,7 @@ const PLAYER_SPRINT_SPEED = 3.9;
 const SHIELD_DURATION_MS = 5000;
 const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
+const ARMOR_PLATE_VALUE = 20;
 const SOLDIER_PRICE = 50000;
 const REINFORCEMENT_BUNDLE_PRICE = 80000;
 const SQUAD_MAX_PER_ROLE = 8;
@@ -2521,38 +2517,6 @@ function getAmmo(id){ return AMMO.find(a=>a.id===id); }
 function getMed(id){ return MEDS.find(m=>m.id===id); }
 function getArmor(id){ return ARMORY.find(a=>a.id===id); }
 function getTool(id){ return TOOLS.find(t=>t.id===id); }
-function normalizeStoredSupplies(){
-  if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
-  if(!S.armorKits || typeof S.armorKits !== "object") S.armorKits = {};
-  for(const med of MEDS){
-    const qty = Math.max(0, Math.floor(Number(S.medkits[med.id] || 0)));
-    S.medkits[med.id] = qty;
-  }
-  for(const armor of ARMORY){
-    const qty = Math.max(0, Math.floor(Number(S.armorKits[armor.id] || 0)));
-    S.armorKits[armor.id] = qty;
-  }
-  // Backward compatibility: convert old generic armor plates into Tier I kits.
-  const legacyPlates = Math.max(0, Math.floor(Number(S.armorPlates || 0)));
-  if(legacyPlates > 0){
-    S.armorKits.A_TIER1 = (S.armorKits.A_TIER1 || 0) + legacyPlates;
-    S.armorPlates = 0;
-  }
-
-  if(!getMed(S.selectedMedkitId) || (S.medkits[S.selectedMedkitId] || 0) <= 0){
-    const firstOwnedMed = MEDS.find((m)=>(S.medkits[m.id] || 0) > 0);
-    S.selectedMedkitId = firstOwnedMed?.id || MEDS[0].id;
-  }
-  if(!getArmor(S.selectedArmorKitId) || (S.armorKits[S.selectedArmorKitId] || 0) <= 0){
-    const firstOwnedArmor = ARMORY.find((a)=>(S.armorKits[a.id] || 0) > 0);
-    S.selectedArmorKitId = firstOwnedArmor?.id || ARMORY[0].id;
-  }
-  if(S.medkitMode !== "GENIUS") S.medkitMode = "GENIUS";
-}
-function totalArmorKits(){
-  normalizeStoredSupplies();
-  return ARMORY.reduce((sum, ar)=>sum + (S.armorKits[ar.id] || 0), 0);
-}
 function equippedWeapon(){ return getWeapon(S.equippedWeaponId) || WEAPONS[0]; }
 function equippedWeaponRange(){ return equippedWeapon()?.range || 112; }
 function weaponRangeBand(range=equippedWeaponRange()){
@@ -3845,7 +3809,6 @@ function ownedMedCount(medId){ return S.medkits[medId]||0; }
 function ownedToolCount(toolId){ return S.repairKits[toolId]||0; }
 
 function renderShopList(){
-  normalizeStoredSupplies();
   document.getElementById("shopMoney").innerText = S.funds.toLocaleString();
   const list=document.getElementById("shopList");
   const note=document.getElementById("shopNote");
@@ -3891,13 +3854,12 @@ function renderShopList(){
   }
 
   if(currentShopTab==="armor"){
-    normalizeStoredSupplies();
-    note.innerText="Armor kits are storable by tier. Tier I +10%, Tier II +25%, Tier III +50%, Tier IV +100%. Select which kit to use from Inventory.";
+    note.innerText="Armor now buys a storable Armor Plate (+20 armor each). If armor is not full, one plate auto-applies immediately.";
     list.innerHTML = ARMORY.map(ar=>`
       <div class="item">
         <div>
           <div class="itemName">${ar.name}</div>
-          <div class="itemDesc">Restores +${ar.addArmor}% armor • Armor cap ${ar.cap} • Owned: ${totalArmorKitsById(ar.id)}</div>
+          <div class="itemDesc">Armor Plate: +${ARMOR_PLATE_VALUE} armor per use • Armor cap ${ar.cap} • Stored plates: ${totalArmorPlates()}</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${ar.price.toLocaleString()}</div>
@@ -4127,13 +4089,16 @@ function buyAmmo(id){
 }
 function buyArmor(id){
   const ar=getArmor(id); if(!ar) return;
-  normalizeStoredSupplies();
   if(S.funds < ar.price) return toast("Not enough money.");
   S.funds -= ar.price;
   S.armorCap = Math.max(S.armorCap || 100, ar.cap);
-  S.armorKits[ar.id] = (S.armorKits[ar.id] || 0) + 1;
-  S.selectedArmorKitId = ar.id;
-  toast(`${ar.name} stored. Owned: ${totalArmorKitsById(ar.id)}.`);
+  S.armorPlates = totalArmorPlates() + 1;
+  const applied = useArmorPlate({ silent:true, skipSfx:true, skipRender:true, skipSave:true });
+  if(applied > 0){
+    toast(`Armor +${applied}. Plates left: ${totalArmorPlates()}.`);
+  } else {
+    toast(`Armor plate stored. Plates: ${totalArmorPlates()}.`);
+  }
   sfx("ui"); hapticImpact("light");
   save();
   renderShopList();
@@ -4142,11 +4107,9 @@ function buyArmor(id){
 }
 function buyMed(id){
   const m=getMed(id); if(!m) return;
-  normalizeStoredSupplies();
   if(S.funds < m.price) return toast("Not enough money.");
   S.funds -= m.price;
   S.medkits[id] = (S.medkits[id]||0)+1;
-  S.selectedMedkitId = id;
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
 }
@@ -4319,58 +4282,9 @@ function buyTrap(){
   save(); renderShopList(); renderHUD();
 }
 
-function totalMedkits(){
-  normalizeStoredSupplies();
-  return MEDS.reduce((sum, med)=>sum + (S.medkits[med.id] || 0), 0);
-}
+function totalMedkits(){ return Object.values(S.medkits||{}).reduce((a,b)=>a+(b||0),0); }
 function totalRepairKits(){ return Object.values(S.repairKits||{}).reduce((a,b)=>a+(b||0),0); }
-function totalArmorPlates(){ return totalArmorKits(); } // backward-compat alias
-function totalArmorKitsById(id){
-  normalizeStoredSupplies();
-  return Math.max(0, Math.floor(Number(S.armorKits[id] || 0)));
-}
-function medkitSelectionText(){
-  const med = getMed(S.selectedMedkitId);
-  if(!med) return "Auto";
-  return `${med.name} (+${med.heal})`;
-}
-function armorSelectionText(){
-  const armor = getArmor(S.selectedArmorKitId);
-  if(!armor) return "Auto";
-  return `${armor.name} (+${armor.addArmor}%)`;
-}
-function setSelectedMedkit(id){
-  if(!getMed(id)) return;
-  normalizeStoredSupplies();
-  S.selectedMedkitId = id;
-  save();
-  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-  renderHUD();
-}
-function setSelectedArmorKit(id){
-  if(!getArmor(id)) return;
-  normalizeStoredSupplies();
-  S.selectedArmorKitId = id;
-  save();
-  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-  renderHUD();
-}
-function pickSupplyForMissing(defs, ownedFn, selectedId, missing, smart=false){
-  const available = defs
-    .map((def)=>({ def, qty: ownedFn(def.id), amount: Number(def.heal ?? def.addArmor ?? 0) }))
-    .filter((entry)=>entry.qty > 0)
-    .sort((a,b)=>a.amount - b.amount);
-  if(!available.length) return null;
-  if(!smart){
-    const selected = available.find((entry)=>entry.def.id === selectedId);
-    return selected?.def || available[0].def;
-  }
-  const need = Math.max(0, Number(missing) || 0);
-  if(need <= 0) return available[0].def;
-  const enough = available.find((entry)=>entry.amount >= need);
-  return (enough || available[available.length - 1]).def;
-}
-
+function totalArmorPlates(){ return clamp(Math.floor(Number(S.armorPlates || 0)), 0, 999); }
 function setHealTarget(t){ S.healTarget=t; save(); if(document.getElementById("invOverlay").style.display==="flex") renderInventory(); renderHUD(); }
 function pickMostInjuredCivilian(){
   const civs = S.civilians.filter(c=>c.alive && !c.evac);
@@ -4382,7 +4296,6 @@ function pickMostInjuredCivilian(){
 
 function renderInventory(){
   ensureStoryMetaState();
-  normalizeStoredSupplies();
   syncSquadRosterBounds();
   const w=equippedWeapon();
   const ammoId=w.ammo;
@@ -4393,7 +4306,7 @@ function renderInventory(){
   const chapterRewards = chapterRewardUnlockedCount();
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
-     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0} • <b>Armor Kits:</b> ${totalArmorKits()}<br>
+     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
      <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}`;
 
@@ -4429,16 +4342,6 @@ function renderInventory(){
   }).join("");
 
   const civs = (S.mode==="Survival") ? [] : S.civilians.filter(c=>c.alive);
-  const medOptions = MEDS.map((m)=>{
-    const qty = S.medkits[m.id] || 0;
-    const selected = S.selectedMedkitId === m.id;
-    return `<button ${qty<=0 ? "disabled" : ""} ${selected ? "class=\"good\"" : "class=\"ghost\""} onclick="setSelectedMedkit('${m.id}')">${m.name} (${qty})</button>`;
-  }).join("");
-  const armorOptions = ARMORY.map((a)=>{
-    const qty = totalArmorKitsById(a.id);
-    const selected = S.selectedArmorKitId === a.id;
-    return `<button ${qty<=0 ? "disabled" : ""} ${selected ? "class=\"good\"" : "class=\"ghost\""} onclick="setSelectedArmorKit('${a.id}')">${a.name} (${qty})</button>`;
-  }).join("");
   const perkRows = [
     { key:"H_CRIT", name:"Deadeye", detail:(r)=>`+${(r*5).toFixed(0)}% Crit Chance` },
     { key:"H_DMG", name:"Damage Boost", detail:(r)=>`+${(r*8).toFixed(0)}% Weapon Damage` },
@@ -4487,8 +4390,7 @@ function renderInventory(){
     <div class="item">
       <div>
         <div class="itemName">❤️ Med Kits <span class="tag">Owned: ${totalMedkits()}</span></div>
-        <div class="itemDesc">Heal target: <b>${S.healTarget||'self'}</b> • Selection: <b>${medkitSelectionText()}</b> • Battle Mode: <b>GENIUS</b></div>
-        <div class="itemDesc">${medOptions}</div>
+        <div class="itemDesc">Heal target: <b>${S.healTarget||'self'}</b></div>
       </div>
       <div style="text-align:right">
         <button onclick="setHealTarget('self')">Self</button>
@@ -4507,12 +4409,11 @@ function renderInventory(){
     </div>
     <div class="item">
       <div>
-        <div class="itemName">🛡️ Armor Kits <span class="tag">Owned: ${totalArmorKits()}</span></div>
-        <div class="itemDesc">Selection: <b>${armorSelectionText()}</b> • Tier values: Tier I +10% • Tier II +25% • Tier III +50% • Tier IV +100%.</div>
-        <div class="itemDesc">${armorOptions}</div>
+        <div class="itemName">🛡️ Armor Plates <span class="tag">Owned: ${totalArmorPlates()}</span></div>
+        <div class="itemDesc">Use one plate to restore +${ARMOR_PLATE_VALUE} armor (up to cap).</div>
       </div>
       <div style="text-align:right">
-        <button ${totalArmorKits()<=0 || S.armor>=S.armorCap?'disabled':''} onclick="useArmorKit()">Use</button>
+        <button ${totalArmorPlates()<=0 || S.armor>=S.armorCap?'disabled':''} onclick="useArmorPlate()">Use</button>
         <button class="ghost" onclick="openShopFromInventory('armor')">Buy</button>
       </div>
     </div>
@@ -4545,62 +4446,30 @@ function renderInventory(){
 }
 
 function useMedkit(){
-  normalizeStoredSupplies();
   if(totalMedkits()<=0) return toast("No medkits. Buy in shop.");
+  const order=["M_TRAUMA","M_LARGE","M_MED","M_SMALL"];
+  const pick = order.find(k => (S.medkits[k]||0)>0);
+  if(!pick) return;
+  const m=getMed(pick);
 
-  const smartMode = !!S.inBattle;
   if(S.healTarget==="civ" && S.mode!=="Survival"){
-    const civ = pickMostInjuredCivilian();
+    const civ=pickMostInjuredCivilian();
     if(!civ) return toast("No injured civilians to heal.");
-    const missing = Math.max(0, Math.round(civ.hpMax - civ.hp));
-    const med = pickSupplyForMissing(
-      MEDS,
-      (id)=>S.medkits[id] || 0,
-      S.selectedMedkitId,
-      missing,
-      smartMode
-    );
-    if(!med) return toast("No medkits. Buy in shop.");
-    S.selectedMedkitId = med.id;
-    S.medkits[med.id] = Math.max(0, (S.medkits[med.id] || 0) - 1);
-    const prevHp = civ.hp;
-    civ.hp = clamp(civ.hp + med.heal, 0, civ.hpMax);
-    const healed = Math.max(0, Math.round(civ.hp - prevHp));
-    sfx("ui");
-    hapticImpact("light");
-    save();
-    renderHUD();
+    S.medkits[pick]-=1;
+    civ.hp = clamp(civ.hp + m.heal, 0, civ.hpMax);
+    sfx("ui"); hapticImpact("light"); save(); renderHUD();
     renderCombatControls();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-    return toast(`Healed civilian +${healed} (${med.name}).`);
+    return toast(`Healed civilian +${m.heal}`);
   }
 
-  const missing = Math.max(0, Math.round(100 - S.hp));
-  if(!smartMode && missing <= 0) return toast("HP already full.");
-  const med = pickSupplyForMissing(
-    MEDS,
-    (id)=>S.medkits[id] || 0,
-    S.selectedMedkitId,
-    missing,
-    smartMode
-  );
-  if(!med) return toast("No medkits. Buy in shop.");
-  S.selectedMedkitId = med.id;
-  S.medkits[med.id] = Math.max(0, (S.medkits[med.id] || 0) - 1);
-  const prevHp = S.hp;
-  S.hp = clamp(S.hp + med.heal, 0, 100);
-  const healed = Math.max(0, Math.round(S.hp - prevHp));
-  sfx("ui");
-  hapticImpact("light");
-  save();
-  renderHUD();
+  if(S.hp>=100) return toast("HP already full.");
+  S.medkits[pick]-=1;
+  S.hp = clamp(S.hp + m.heal, 0, 100);
+  sfx("ui"); hapticImpact("light"); save(); renderHUD();
   renderCombatControls();
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-  if(healed <= 0){
-    toast(`HP held at full (100%) with ${med.name}.`);
-    return;
-  }
-  toast(`Healed +${healed} (${med.name}).`);
+  toast(`Healed +${m.heal}`);
 }
 
 function useRepairKit(){
@@ -4614,41 +4483,27 @@ function useRepairKit(){
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   toast(`Repaired +${t.add} durability`);
 }
-function useArmorKit(opts={}){
+function useArmorPlate(opts={}){
   const options = opts || {};
   const silent = !!options.silent;
   const skipSfx = !!options.skipSfx;
   const skipRender = !!options.skipRender;
   const skipSave = !!options.skipSave;
-  normalizeStoredSupplies();
-  if(totalArmorKits() <= 0){
-    if(!silent) toast("No armor kits. Buy in Shop > Armor.");
+  const plates = totalArmorPlates();
+  if(plates <= 0){
+    if(!silent) toast("No armor plates. Buy in Shop > Armor.");
     return 0;
   }
   if(S.armor >= S.armorCap){
     if(!silent) toast("Armor already full.");
     return 0;
   }
-  const missing = Math.max(0, Math.round(S.armorCap - S.armor));
-  const smartMode = !!S.inBattle;
-  const armorKit = pickSupplyForMissing(
-    ARMORY,
-    (id)=>S.armorKits[id] || 0,
-    options.id || S.selectedArmorKitId,
-    missing,
-    smartMode
-  );
-  if(!armorKit){
-    if(!silent) toast("No armor kits. Buy in Shop > Armor.");
-    return 0;
-  }
-  S.selectedArmorKitId = armorKit.id;
   const prevArmor = S.armor;
-  S.armorKits[armorKit.id] = Math.max(0, (S.armorKits[armorKit.id] || 0) - 1);
-  S.armor = clamp(S.armor + armorKit.addArmor, 0, S.armorCap);
+  S.armorPlates = plates - 1;
+  S.armor = clamp(S.armor + ARMOR_PLATE_VALUE, 0, S.armorCap);
   const restored = Math.max(0, Math.round(S.armor - prevArmor));
   if(restored <= 0){
-    S.armorKits[armorKit.id] = (S.armorKits[armorKit.id] || 0) + 1;
+    S.armorPlates = plates;
     if(!silent) toast("Armor already full.");
     return 0;
   }
@@ -4662,10 +4517,9 @@ function useArmorKit(opts={}){
     renderCombatControls();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   }
-  if(!silent) toast(`Armor restored +${restored}% (${armorKit.name}).`);
+  if(!silent) toast(`Armor restored +${restored}.`);
   return restored;
 }
-function useArmorPlate(opts={}){ return useArmorKit(opts); } // backward-compat alias
 
 // ===================== BACKUP =====================
 function callBackup(){
@@ -8328,8 +8182,7 @@ function renderCombatControls(){
   const canCap = canAttemptCapture(t);
   const canAtk = anyLethalWeaponHasAmmo();
   const medCount = totalMedkits();
-  const canMed = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && medCount > 0;
-  const canShield = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && (S.shields||0) > 0 && !abilityOnCooldown("shield");
+  const canMed = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && medCount > 0 && S.hp < 100;
   const rollLeft = rollCooldownLabel();
   const canRoll = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && !rollLeft;
 
@@ -8342,10 +8195,6 @@ function renderCombatControls(){
     if(el) el.disabled = disabled;
   });
   [["touchCombatMedkitBtn", !canMed], ["combatMedkitBtn", !canMed]].forEach(([id, disabled])=>{
-    const el = document.getElementById(id);
-    if(el) el.disabled = disabled;
-  });
-  [["touchCombatShieldBtn", !canShield], ["combatShieldBtn", !canShield]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
@@ -9145,7 +8994,6 @@ function updateEngage(){
 function renderHUD(){
   try{
     syncSquadRosterBounds();
-    normalizeStoredSupplies();
     // clear event text if expired
     if(S.eventTextUntil && Date.now()>S.eventTextUntil) S.eventText="";
     if(S.shieldUntil && Date.now() >= S.shieldUntil) S.shieldUntil = 0;
@@ -9190,7 +9038,7 @@ function renderHUD(){
   const shieldLabel = shieldActiveNow() ? `${S.shields||0} • ACTIVE (${shieldSecs}s)` : `${S.shields||0}`;
   document.getElementById("shieldTxt").innerText = shieldLabel;
 
-  document.getElementById("backupTxt").innerText = `Armor Kits: ${totalArmorKits()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
+  document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
   const shieldDisabled = S.paused || S.missionEnded || S.gameOver || (S.shields||0)<=0 || abilityOnCooldown("shield");
   document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = shieldDisabled; });
   const cacheBtn = document.getElementById("touchCacheBtn");
@@ -10871,7 +10719,6 @@ function init(){
     __savePending = true;
   }
   trimPersistentState(S);
-  normalizeStoredSupplies();
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   S.performanceMode = normalizePerformanceMode(S.performanceMode);
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
@@ -11073,7 +10920,6 @@ window.scan = scan;
 window.startCombat = startCombat;
 
 window.useMedkit = useMedkit;
-window.useArmorKit = useArmorKit;
 window.useArmorPlate = useArmorPlate;
 window.useRepairKit = useRepairKit;
 window.placeTrap = placeTrap;
@@ -11114,5 +10960,3 @@ window.closeQuickWeaponPicker = closeQuickWeaponPicker;
 window.selectQuickWeapon = selectQuickWeapon;
 window.buyPerk = buyPerk;
 window.lockNearestTiger = lockNearestTiger;
-window.setSelectedMedkit = setSelectedMedkit;
-window.setSelectedArmorKit = setSelectedArmorKit;
