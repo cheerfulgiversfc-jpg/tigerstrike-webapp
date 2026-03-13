@@ -41,9 +41,9 @@ function writeDaily(obj){
   localStorage.setItem(key, JSON.stringify(obj));
 }
 
-const STORAGE_VERSION = 4381;
+const STORAGE_VERSION = 4382;
 const STORAGE_KEY = `ts_v${STORAGE_VERSION}`;
-const STORAGE_FALLBACK_KEYS = ["ts_v4380", "ts_v4371"];
+const STORAGE_FALLBACK_KEYS = ["ts_v4381", "ts_v4380", "ts_v4371"];
 
 function awardDailyLogin(){
   if(!window.S) return;
@@ -1416,6 +1416,14 @@ function frameInterval(baseMs, slowMul=1.45){
   if(frameIsSlow()) return Math.max(baseMs + 1, Math.round(baseMs * Math.max(slowMul, modeMul)));
   if(modeMul > 1) return Math.max(baseMs + 1, Math.round(baseMs * modeMul));
   return baseMs;
+}
+
+function shouldSuspendForHiddenDocument(){
+  const hidden = !!document.hidden;
+  if(!hidden) return false;
+  const inTelegramMiniApp = !!window.Telegram?.WebApp;
+  const coarsePointer = !!window.matchMedia?.("(pointer:coarse)")?.matches;
+  return !(inTelegramMiniApp || coarsePointer);
 }
 
 function updateFrameLoad(frameStartTs){
@@ -10671,7 +10679,7 @@ function drawMobileUiClearLane(){
 function draw(){
   const frameStart = performance.now ? performance.now() : Date.now();
   try{
-    if(document.hidden){
+    if(shouldSuspendForHiddenDocument()){
       maybeAutosave();
       return;
     }
@@ -10739,8 +10747,19 @@ function draw(){
 }
 
 // ===================== INIT =====================
+function missionStateLooksEmpty(){
+  if(!S || typeof S !== "object") return true;
+  const hasPlayer = !!(S.me && Number.isFinite(S.me.x) && Number.isFinite(S.me.y));
+  const hasTiger = Array.isArray(S.tigers) && S.tigers.some((t)=>t && t.alive !== false && Number.isFinite(t.x) && Number.isFinite(t.y));
+  if(S.mode === "Survival") return !(hasPlayer && hasTiger);
+  const hasCivilian = Array.isArray(S.civilians) && S.civilians.some((c)=>c && c.alive !== false && !c.evac && Number.isFinite(c.x) && Number.isFinite(c.y));
+  const hasEvac = !!(S.evacZone && Number.isFinite(S.evacZone.x) && Number.isFinite(S.evacZone.y) && Number.isFinite(S.evacZone.r));
+  return !(hasPlayer && hasTiger && hasCivilian && hasEvac);
+}
+
 function init(){
   ensureStoryMetaState();
+  if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.arcadeLevel = clamp(Math.floor(S.arcadeLevel || 1), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
   if(syncStoryChapterRewardsFromProgress() > 0){
@@ -10881,15 +10900,22 @@ function init(){
   }
 
   if(!S.tigers || !S.tigers.length) spawnTigers();
-  if(!S.civilians) spawnCivilians();
+  if(!S.civilians || !S.civilians.length) spawnCivilians();
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(!window.__TUTORIAL_MODE__ && (!Array.isArray(S.mapInteractables) || !S.mapInteractables.length)){
     spawnMapInteractables();
+  }
+  if(missionStateLooksEmpty()){
+    deploy({ carryStats:true, hp:S.hp, armor:S.armor });
   }
   checkProgressionUnlocks({ silent:true });
 
   awardDailyLogin();
   bindAttackButtonGestures();
+  maybeRenderHUD(true);
+  safeTick("bootDrawMapScene", drawMapScene);
+  safeTick("bootDrawEntities", drawEntities);
+  safeTick("bootDrawMobileUiClearLane", drawMobileUiClearLane);
   if(!__drawLoopStarted){
     __drawLoopStarted = true;
     requestAnimationFrame(draw);
