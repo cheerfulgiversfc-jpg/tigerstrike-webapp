@@ -41,6 +41,10 @@ function writeDaily(obj){
   localStorage.setItem(key, JSON.stringify(obj));
 }
 
+const STORAGE_VERSION = 4381;
+const STORAGE_KEY = `ts_v${STORAGE_VERSION}`;
+const STORAGE_FALLBACK_KEYS = ["ts_v4380", "ts_v4371"];
+
 function awardDailyLogin(){
   if(!window.S) return;
 
@@ -1005,7 +1009,7 @@ function markStoryFinalBossOutcome(outcome, tiger){
 
 // ===================== STATE =====================
 const DEFAULT = {
-  v: 4380,
+  v: STORAGE_VERSION,
   paused:false, pauseReason:null,
   mode:"Story", arcadeLevel:1, survivalWave:1, storyLevel:1, mapIndex:0,
   soundOn:true, audioUnlocked:false,
@@ -1136,7 +1140,24 @@ const DAMAGE_POPUPS = [];
 
 function load(){
   try{
-    const saved = JSON.parse(localStorage.getItem("ts_v4380") || localStorage.getItem("ts_v4371") || "null");
+    let saved = null;
+    let sourceKey = null;
+    for(const key of [STORAGE_KEY, ...STORAGE_FALLBACK_KEYS]){
+      let raw = null;
+      try{
+        raw = localStorage.getItem(key);
+      }catch(e){
+        raw = null;
+      }
+      if(!raw) continue;
+      try{
+        saved = JSON.parse(raw);
+        sourceKey = key;
+        break;
+      }catch(e){
+        try{ localStorage.removeItem(key); }catch(err){}
+      }
+    }
     if(!saved) return structuredClone(DEFAULT);
     const m = { ...DEFAULT, ...saved };
     m.me = { ...DEFAULT.me, ...(saved.me||{}) };
@@ -1160,8 +1181,13 @@ function load(){
     m.specialistPerks = { ...DEFAULT.specialistPerks, ...(saved.specialistPerks||{}) };
     m.chapterRewardsUnlocked = { ...DEFAULT.chapterRewardsUnlocked, ...(saved.chapterRewardsUnlocked||{}) };
     if(m.lives==null) m.lives=5;
-    m.v = 4380;
+    m.v = STORAGE_VERSION;
     trimPersistentState(m);
+    if(sourceKey && sourceKey !== STORAGE_KEY){
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(m));
+      }catch(e){}
+    }
     return m;
   }catch(e){ return structuredClone(DEFAULT); }
 }
@@ -1269,7 +1295,7 @@ function invalidateMapCache(){
 function flushSaveNow(){
   __lastSave = Date.now();
   __savePending = false;
-  localStorage.setItem("ts_v4380", JSON.stringify(buildPersistedState()));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistedState()));
 }
 
 function save(force=false){
@@ -6101,8 +6127,10 @@ function closeComplete(){
 }
 
 function performResetGame(){
-  localStorage.removeItem("ts_v4380");
-  localStorage.removeItem("ts_v4371");
+  localStorage.removeItem(STORAGE_KEY);
+  for(const key of STORAGE_FALLBACK_KEYS){
+    localStorage.removeItem(key);
+  }
   S = structuredClone(DEFAULT);
   syncWindowState();
   ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
