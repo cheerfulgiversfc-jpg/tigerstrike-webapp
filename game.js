@@ -2806,11 +2806,10 @@ function mobileControlKeepoutZones(){
   const w = cv.width || 960;
   const h = cv.height || 540;
   return [
-    { x:w * 0.12, y:h * 0.91, r:52 }, // left joystick
-    { x:w * 0.88, y:h * 0.90, r:64 }, // right bottom cluster
-    { x:w * 0.88, y:h * 0.76, r:78 }, // right cluster upper reach
-    { x:w * 0.16, y:h * 0.63, r:56 }, // cache button region (left side)
-    { x:w * 0.88, y:h * 0.72, r:96 }, // reinforce right control lane keepout
+    { x:w * 0.12, y:h * 0.91, r:44 }, // left joystick
+    { x:w * 0.88, y:h * 0.90, r:46 }, // right bottom cluster
+    { x:w * 0.88, y:h * 0.76, r:50 }, // right cluster upper reach
+    { x:w * 0.16, y:h * 0.63, r:42 }, // cache button region (left side)
   ];
 }
 function mobileRightUiLaneRect(){
@@ -2845,7 +2844,8 @@ function inMobileControlKeepout(x, y, radius=0){
 }
 function inMobileNoBuildZone(x, y, radius=0){
   if(!isMobileViewport()) return false;
-  return inMobileRightUiLane(x, y, Math.max(0, radius) + 8) || inMobileControlKeepout(x, y, Math.max(0, radius) + 18);
+  // Do not block the entire right lane; keep only a tight control buffer.
+  return inMobileControlKeepout(x, y, Math.max(0, radius) + 6);
 }
 function blockedCacheKey(x, y, radius=0){
   const q = BLOCKED_CACHE_QUANT;
@@ -10692,17 +10692,12 @@ function drawMobileUiClearLane(){
   const lane = mobileRightUiLaneRect();
   if(!lane) return;
   ctx.save();
-  const grad = ctx.createLinearGradient(lane.x, lane.y, lane.x + lane.w, lane.y + lane.h);
-  grad.addColorStop(0, "rgba(4,8,16,.28)");
-  grad.addColorStop(1, "rgba(4,8,16,.58)");
-  ctx.fillStyle = grad;
-  roundedRectFill(lane.x, lane.y, lane.w, lane.h, 18);
-  ctx.strokeStyle = "rgba(74,90,120,.28)";
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.moveTo(lane.x + 8, lane.y + 4);
-  ctx.lineTo(lane.x + lane.w - 8, lane.y + 4);
-  ctx.stroke();
+  // Keep map visible under right controls: draw only a faint guide edge, no dark fill.
+  ctx.strokeStyle = "rgba(148,163,184,.14)";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([7, 9]);
+  ctx.strokeRect(lane.x + 3, lane.y + 3, Math.max(0, lane.w - 6), Math.max(0, lane.h - 6));
+  ctx.setLineDash([]);
   ctx.restore();
 }
 
