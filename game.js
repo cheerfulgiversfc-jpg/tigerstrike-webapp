@@ -50,9 +50,9 @@ function writeDaily(obj){
   localStorage.setItem(key, JSON.stringify(obj));
 }
 
-const STORAGE_VERSION = 4384;
+const STORAGE_VERSION = 4385;
 const STORAGE_KEY = `ts_v${STORAGE_VERSION}`;
-const STORAGE_FALLBACK_KEYS = ["ts_v4383", "ts_v4382", "ts_v4381", "ts_v4380", "ts_v4371"];
+const STORAGE_FALLBACK_KEYS = ["ts_v4384", "ts_v4383", "ts_v4382", "ts_v4381", "ts_v4380", "ts_v4371"];
 
 function cloneState(obj){
   if(typeof structuredClone === "function"){
@@ -1679,7 +1679,23 @@ function initMobileMenuToggle(){
   applyMobileMenuState(__mobileMenuHiddenPref);
 }
 function clampWorldToCanvas(){
-  if(!S) return;
+  if(!S || typeof S !== "object") return;
+  if(!Array.isArray(S.civilians)) S.civilians = [];
+  if(!Array.isArray(S.tigers)) S.tigers = [];
+  if(!Array.isArray(S.pickups)) S.pickups = [];
+  if(!Array.isArray(S.carcasses)) S.carcasses = [];
+  if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
+  if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
+  if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
+  if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
+  S.civilians = S.civilians.filter((c)=>c && typeof c === "object");
+  S.tigers = S.tigers.filter((t)=>t && typeof t === "object");
+  S.pickups = S.pickups.filter((p)=>p && typeof p === "object");
+  S.carcasses = S.carcasses.filter((c)=>c && typeof c === "object");
+  S.trapsPlaced = S.trapsPlaced.filter((t)=>t && typeof t === "object");
+  S.supportUnits = S.supportUnits.filter((u)=>u && typeof u === "object");
+  S.rescueSites = S.rescueSites.filter((s)=>s && typeof s === "object");
+  S.mapInteractables = S.mapInteractables.filter((i)=>i && typeof i === "object");
   if(S.me){
     S.me.x = clamp(S.me.x, 40, cv.width - 40);
     S.me.y = clamp(S.me.y, 60, cv.height - 40);
@@ -1934,7 +1950,8 @@ function resizeCanvasForViewport(){
   const mobile = isMobileViewport();
   cv.width = mobile ? 820 : 960;
   cv.height = mobile ? mobileCanvasHeight() : 540;
-  clampWorldToCanvas();
+  try{ sanitizeRuntimeState(); }catch(e){}
+  try{ clampWorldToCanvas(); }catch(e){}
   invalidateMapCache();
 }
 const STAMINA_COST_SCAN = 8;
@@ -2215,7 +2232,7 @@ function takeoverEscort(){
   save();
 }
 
-resizeCanvasForViewport();
+try{ resizeCanvasForViewport(); }catch(e){ try{ console.warn("Initial viewport setup recovered:", e); }catch(err){} }
 window.addEventListener("resize", ()=>{
   resizeCanvasForViewport();
   applyMobileMenuState(__mobileMenuHiddenPref);
@@ -10942,6 +10959,7 @@ function init(){
 function bootstrap(){
   try{
     init();
+    window.__TS_BOOT_OK__ = true;
   }catch(err){
     try{ console.error("Startup recovered from init error:", err); }catch(e){}
     try{
@@ -10961,6 +10979,7 @@ function bootstrap(){
         __drawLoopStarted = true;
         requestAnimationFrame(draw);
       }
+      window.__TS_BOOT_OK__ = true;
       toast("Recovered from startup error. Mission reloaded.");
       save(true);
     }catch(recoverErr){

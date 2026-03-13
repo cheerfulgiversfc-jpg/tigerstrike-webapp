@@ -817,8 +817,28 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4384"></script>
-<script src="./tutorial.js?v=4384"></script>
+<script src="./game.js?v=4385"></script>
+<script src="./tutorial.js?v=4385"></script>
+<script>
+(() => {
+  const recoverOnceKey = "ts_boot_recover_once";
+  const gameKeys = ["ts_v4385","ts_v4384","ts_v4383","ts_v4382","ts_v4381","ts_v4380","ts_v4371"];
+  const tryRecover = () => {
+    try{
+      if(window.__TS_BOOT_OK__) return;
+      if(sessionStorage.getItem(recoverOnceKey) === "1") return;
+      sessionStorage.setItem(recoverOnceKey, "1");
+      for(const key of gameKeys){
+        try{ localStorage.removeItem(key); }catch(e){}
+      }
+      const u = new URL(window.location.href);
+      u.searchParams.set("recover", String(Date.now()));
+      window.location.replace(u.toString());
+    }catch(e){}
+  };
+  window.setTimeout(tryRecover, 1800);
+})();
+</script>
 <!-- Tutorial Arrow Pointer -->
 <div id="tutorialArrow">👇</div>
 </body>
