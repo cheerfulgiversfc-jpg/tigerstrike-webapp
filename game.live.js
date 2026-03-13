@@ -1,14 +1,5 @@
 const tg = window.Telegram?.WebApp;
-if(tg){
-  try{
-    tg.expand?.();
-    tg.ready?.();
-    tg.setHeaderColor?.("#0b0d12");
-    tg.setBackgroundColor?.("#0b0d12");
-  }catch(e){
-    try{ console.warn("Telegram init recovered:", e); }catch(err){}
-  }
-}
+if (tg){ tg.expand(); tg.ready(); try{tg.setHeaderColor?.("#0b0d12"); tg.setBackgroundColor?.("#0b0d12");}catch(e){} }
 
 // ===================== TELEGRAM HAPTICS (safe fallback) =====================
 function hapticImpact(style="light"){
@@ -50,9 +41,9 @@ function writeDaily(obj){
   localStorage.setItem(key, JSON.stringify(obj));
 }
 
-const STORAGE_VERSION = 4384;
+const STORAGE_VERSION = 4383;
 const STORAGE_KEY = `ts_v${STORAGE_VERSION}`;
-const STORAGE_FALLBACK_KEYS = ["ts_v4383", "ts_v4382", "ts_v4381", "ts_v4380", "ts_v4371"];
+const STORAGE_FALLBACK_KEYS = ["ts_v4382", "ts_v4381", "ts_v4380", "ts_v4371"];
 
 function cloneState(obj){
   if(typeof structuredClone === "function"){
