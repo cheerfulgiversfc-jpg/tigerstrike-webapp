@@ -1044,6 +1044,7 @@ const DEFAULT = {
   medkitSelectedId:"M_SMALL",
   repairKits:{ "T_REPAIR":1 },
   armorPlates:{ "A_TIER1":0, "A_TIER2":0, "A_TIER3":0, "A_TIER4":0 },
+  armorPlatesFallback:{ "A_TIER1":0, "A_TIER2":0, "A_TIER3":0, "A_TIER4":0 },
   armorPlateSelectedId:"A_TIER1",
   trapsOwned:2,
   trapsPlaced:[],
@@ -1192,6 +1193,8 @@ function load(){
     m.durability = { ...DEFAULT.durability, ...(saved.durability||{}) };
     m.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
     m.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
+    m.armorPlates = normalizeArmorPlateInventory(saved.armorPlates ?? m.armorPlates);
+    m.armorPlatesFallback = normalizeArmorPlateInventory(saved.armorPlatesFallback ?? saved.armorPlates ?? m.armorPlatesFallback);
     m.abilityCooldowns = { ...DEFAULT.abilityCooldowns, ...(saved.abilityCooldowns||{}) };
     m.trapsPlaced = Array.isArray(saved.trapsPlaced) ? saved.trapsPlaced : [];
     m.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
@@ -1953,6 +1956,7 @@ function sanitizeRuntimeState(){
   S.stamina = clamp(S.stamina, 0, 100);
   S.lives = clamp(Math.round(Number.isFinite(S.lives) ? S.lives : 5), 0, 99);
   ensureArmorPlateInventoryState();
+  ensureArmorPlateFallbackState();
   ensureSupplySelectionState();
   if(typeof S.lastCombatLethalWeaponId !== "string") S.lastCombatLethalWeaponId = "";
   if(S.lockedTigerId != null && !S.tigers.some((t)=>t.id === S.lockedTigerId && t.alive)){
@@ -2674,14 +2678,23 @@ function normalizeArmorPlateInventory(raw){
 function ensureArmorPlateInventoryState(){
   S.armorPlates = normalizeArmorPlateInventory(S.armorPlates);
 }
+function ensureArmorPlateFallbackState(){
+  S.armorPlatesFallback = normalizeArmorPlateInventory(S.armorPlatesFallback);
+}
 function ensureSupplySelectionState(){
   if(!getMed(S.medkitSelectedId)) S.medkitSelectedId = MEDS[0].id;
   if(!getArmor(S.armorPlateSelectedId)) S.armorPlateSelectedId = ARMORY[0].id;
 }
 function armorPlateCount(id){
   ensureArmorPlateInventoryState();
+  ensureArmorPlateFallbackState();
   const key = String(id || "");
-  return clamp(Math.floor(Number(S.armorPlates[key] || 0)), 0, 999);
+  const primary = clamp(Math.floor(Number(S.armorPlates[key] || 0)), 0, 999);
+  const fallback = clamp(Math.floor(Number(S.armorPlatesFallback[key] || 0)), 0, 999);
+  const merged = Math.max(primary, fallback);
+  if(primary !== merged) S.armorPlates[key] = merged;
+  if(fallback !== merged) S.armorPlatesFallback[key] = merged;
+  return merged;
 }
 function selectedMedkitId(){
   ensureSupplySelectionState();
@@ -4338,11 +4351,20 @@ function buyArmor(id){
   S.funds -= ar.price;
   S.armorCap = Math.max(S.armorCap || 100, ar.cap);
   ensureArmorPlateInventoryState();
-  S.armorPlates[ar.id] = armorPlateCount(ar.id) + 1;
+  ensureArmorPlateFallbackState();
+  const ownedBefore = armorPlateCount(ar.id);
+  const ownedNext = clamp(ownedBefore + 1, 0, 999);
+  S.armorPlates[ar.id] = ownedNext;
+  S.armorPlatesFallback[ar.id] = ownedNext;
   if(!getArmor(S.armorPlateSelectedId) || armorPlateCount(S.armorPlateSelectedId) <= 0){
     S.armorPlateSelectedId = ar.id;
   }
-  toast(`${ar.name} bought. ${armorTierLabel(ar.id)} owned: ${armorPlateCount(ar.id)}.`);
+  const armorBefore = S.armor;
+  if(S.armor < S.armorCap){
+    S.armor = clamp(S.armor + (ar.addArmor || 0), 0, S.armorCap);
+  }
+  const armorGain = Math.max(0, Math.round(S.armor - armorBefore));
+  toast(`${ar.name} bought. ${armorTierLabel(ar.id)} owned: ${armorPlateCount(ar.id)}${armorGain > 0 ? ` • Armor +${armorGain}` : ""}.`);
   sfx("ui"); hapticImpact("light");
   save();
   renderShopList();
@@ -4842,12 +4864,15 @@ function useArmorPlate(opts={}){
     const beforeCount = armorPlateCount(pick);
     if(beforeCount <= 0) break;
     ensureArmorPlateInventoryState();
+    ensureArmorPlateFallbackState();
     S.armorPlates[pick] = beforeCount - 1;
+    S.armorPlatesFallback[pick] = beforeCount - 1;
     const prevArmor = S.armor;
     S.armor = clamp(S.armor + (plate.addArmor || 0), 0, S.armorCap);
     const restored = Math.max(0, Math.round(S.armor - prevArmor));
     if(restored <= 0){
       S.armorPlates[pick] = beforeCount;
+      S.armorPlatesFallback[pick] = beforeCount;
       break;
     }
     used += 1;
@@ -11152,6 +11177,7 @@ function init(){
   if(!S.medkits || typeof S.medkits !== "object") S.medkits = { ...DEFAULT.medkits };
   if(!S.repairKits || typeof S.repairKits !== "object") S.repairKits = { ...DEFAULT.repairKits };
   ensureArmorPlateInventoryState();
+  ensureArmorPlateFallbackState();
   ensureSupplySelectionState();
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
