@@ -1155,6 +1155,14 @@ const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
 const COMBAT_FX = [];
 const DAMAGE_POPUPS = [];
+const DAMAGE_POPUP_RATE_MS = 82;
+const DAMAGE_POPUP_GATE = new Map();
+
+function clearTransientCombatVisuals(){
+  COMBAT_FX.length = 0;
+  DAMAGE_POPUPS.length = 0;
+  DAMAGE_POPUP_GATE.clear();
+}
 
 function load(){
   try{
@@ -6314,6 +6322,7 @@ function deploy(opts={}){
   S.inBattle=false;
   S.activeTigerId=null;
   S.paused=false; S.pauseReason=null;
+  clearTransientCombatVisuals();
 
   S.hp = carryStats ? carryHp : 100;
   S.armor = carryStats
@@ -6495,6 +6504,7 @@ function resetGame(){
 function gameOverChoice(msg){
   S.gameOver = true;
   S.paused = true;
+  clearTransientCombatVisuals();
   document.getElementById("battleOverlay").style.display="none";
   document.getElementById("completeOverlay").style.display="none";
   lastOverlay=null;
@@ -7797,8 +7807,12 @@ function tickCiviliansAndThreats(){
       const prevHp = best.hp;
       best.hp = clamp(best.hp - dmg, 0, best.hpMax);
       if(prevHp > best.hp && now >= (best._nextDmgPopupAt || 0)){
-        best._nextDmgPopupAt = now + 240;
-        emitDamagePopup(best.x, best.y - 40, `-${Math.max(1, Math.round(prevHp - best.hp))}`, "civilian");
+        const nearPlayer = dist(S.me.x, S.me.y, best.x, best.y) < 260;
+        const showPopup = S.inBattle || nearPlayer;
+        best._nextDmgPopupAt = now + (showPopup ? 520 : 1350);
+        if(showPopup){
+          emitDamagePopup(best.x, best.y - 40, `-${Math.max(1, Math.round(prevHp - best.hp))}`, "civilian");
+        }
       }
     }
   }
@@ -8406,7 +8420,8 @@ function emitCombatFx(x1, y1, x2, y2, color, width=3){
 function tickCombatFx(){
   for(const fx of COMBAT_FX) fx.ttl -= 1;
   for(let i = COMBAT_FX.length - 1; i >= 0; i--){
-    if(COMBAT_FX[i].ttl <= 0) COMBAT_FX.splice(i, 1);
+    const fx = COMBAT_FX[i];
+    if(!fx || !Number.isFinite(fx.ttl) || fx.ttl <= 0) COMBAT_FX.splice(i, 1);
   }
 }
 
@@ -8427,8 +8442,22 @@ function drawCombatFx(){
 
 function emitDamagePopup(x, y, text, kind="hit"){
   if(!Number.isFinite(x) || !Number.isFinite(y) || text == null) return;
-  if(DAMAGE_POPUPS.length >= 56){
-    DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - 55);
+  const now = Date.now();
+  const cellX = Math.round(x / 22);
+  const cellY = Math.round(y / 22);
+  const gateKey = `${kind}:${String(text)}:${cellX}:${cellY}`;
+  const lastAt = DAMAGE_POPUP_GATE.get(gateKey) || 0;
+  if(now - lastAt < DAMAGE_POPUP_RATE_MS) return;
+  DAMAGE_POPUP_GATE.set(gateKey, now);
+  if(DAMAGE_POPUP_GATE.size > 260){
+    for(const [k, at] of DAMAGE_POPUP_GATE){
+      if(now - at > 1600) DAMAGE_POPUP_GATE.delete(k);
+    }
+    if(DAMAGE_POPUP_GATE.size > 320) DAMAGE_POPUP_GATE.clear();
+  }
+
+  if(DAMAGE_POPUPS.length >= 34){
+    DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - 33);
   }
   DAMAGE_POPUPS.push({
     x, y,
@@ -8442,13 +8471,21 @@ function emitDamagePopup(x, y, text, kind="hit"){
 }
 
 function tickDamagePopups(){
+  const idleFade = (S.paused || S.missionEnded || S.gameOver || !S.inBattle) ? 1.8 : 1;
   for(const p of DAMAGE_POPUPS){
-    p.ttl -= 1;
+    p.ttl -= idleFade;
     p.y += p.vy;
     p.x += p.drift;
   }
   for(let i=DAMAGE_POPUPS.length-1; i>=0; i--){
-    if(DAMAGE_POPUPS[i].ttl <= 0) DAMAGE_POPUPS.splice(i, 1);
+    const p = DAMAGE_POPUPS[i];
+    if(!p || !Number.isFinite(p.ttl) || !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.ttl <= 0){
+      DAMAGE_POPUPS.splice(i, 1);
+      continue;
+    }
+    if(p.y < -40 || p.y > (cv.height + 120) || p.x < -120 || p.x > (cv.width + 120)){
+      DAMAGE_POPUPS.splice(i, 1);
+    }
   }
 }
 
@@ -8613,6 +8650,7 @@ function startCombat(){
   const t=canEngage();
   if(!lockedTiger()) return toast("Lock a tiger first.");
   if(!t) return toast("Move closer to the locked tiger and tap it again.");
+  clearTransientCombatVisuals();
   S.inBattle = true;
   S.activeTigerId = t.id;
   S.lockedTigerId = t.id;
@@ -8716,6 +8754,7 @@ function endBattle(reason){
   S.activeTigerId=null;
   S.battleMsg="";
   S._combatTigerAttackAt = 0;
+  clearTransientCombatVisuals();
   if(reason==="RETREAT") S.aggro = clamp(S.aggro+4,0,100);
   renderCombatControls();
   save();
@@ -9311,6 +9350,7 @@ function checkMissionComplete(){
     if(!S.missionEnded){
       S.missionEnded=true;
       setPaused(true,"complete");
+      clearTransientCombatVisuals();
       if(S._underAttack===0) unlockAchv("clear_clean","Clean Clear");
       let heading = "Mission complete!\n";
       if(storyMission){
@@ -11060,10 +11100,10 @@ function draw(){
       runFrameTask("civThreats", frameInterval(72, 1.5), tickCiviliansAndThreats, { costHint:1.6, critical:S.mode!=="Survival" });
       runFrameTask("survivalPressure", frameInterval(86, 1.4), survivalPressureTick, { costHint:1.1 });
       runFrameTask("combatTick", frameInterval(S.inBattle ? 24 : 34, 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
-      runFrameTask("combatFx", frameInterval(24, 1.6), tickCombatFx, { costHint:0.9 });
-      runFrameTask("damagePopups", frameInterval(24, 1.6), tickDamagePopups, { costHint:0.9 });
       runFrameTask("checkMissionComplete", frameInterval(90, 1.4), checkMissionComplete, { costHint:0.8, critical:true });
     }
+    runFrameTask("combatFx", frameInterval(26, 1.5), tickCombatFx, { costHint:0.8 });
+    runFrameTask("damagePopups", frameInterval(26, 1.5), tickDamagePopups, { costHint:0.8 });
 
     safeTick("drawMapScene", drawMapScene);
     safeTick("drawEntities", drawEntities);
