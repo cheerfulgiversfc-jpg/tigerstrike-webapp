@@ -1225,6 +1225,12 @@ const SAVE_MIN_INTERVAL_MS = 4200;
 const SAVE_AUTOSAVE_MS = 12000;
 const STABILITY_SPIKE_GAP_MS = 520;
 const STABILITY_SPIKE_RECOVER_MS = 3200;
+const STABILITY_STALL_GAP_MS = 1600;
+const STABILITY_STALL_HARD_GAP_MS = 2600;
+const STABILITY_STALL_COST_MS = 84;
+const STABILITY_RECOVER_COOLDOWN_MS = 5200;
+const STABILITY_RECOVER_MAX_PER_MIN = 6;
+const STABILITY_MONITOR_SAMPLE_MAX = 36;
 const BLOCKED_CACHE_QUANT = 2;
 const STABILITY_SOFT_CAP_TIGERS = 36;
 const STABILITY_SOFT_CAP_CIVILIANS = 30;
@@ -1308,6 +1314,17 @@ const __frameBudgetState = {
   limitMs: 12.6,
   dropped: 0
 };
+const __freezeRecoverState = {
+  lastRecoverAt: 0,
+  history: []
+};
+const __stabilityMonitorState = {
+  node: null,
+  lastRenderAt: 0,
+  lastSpikeAt: 0,
+  frameGaps: [],
+  frameCosts: []
+};
 
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
@@ -1375,6 +1392,15 @@ function togglePerformanceMode(){
   toast(S.performanceMode === "PERFORMANCE"
     ? "Performance mode enabled (more stable on heavy missions)."
     : "Performance mode set to Auto.");
+}
+function toggleLagMonitor(force){
+  if(typeof force === "boolean"){
+    window.__TS_SHOW_MONITOR__ = force;
+  } else {
+    window.__TS_SHOW_MONITOR__ = !window.__TS_SHOW_MONITOR__;
+  }
+  renderStabilityMonitor(true);
+  toast(window.__TS_SHOW_MONITOR__ ? "Lag monitor ON" : "Lag monitor OFF");
 }
 function beginFrameBudget(frameStartTs){
   const now = Number.isFinite(frameStartTs) ? frameStartTs : (performance.now ? performance.now() : Date.now());
@@ -1447,6 +1473,131 @@ function frameInterval(baseMs, slowMul=1.45){
   return baseMs;
 }
 
+function __pushStabilitySample(list, value, cap=STABILITY_MONITOR_SAMPLE_MAX){
+  if(!Array.isArray(list)) return;
+  list.push(value);
+  if(list.length > cap) list.splice(0, list.length - cap);
+}
+function __avgStabilitySample(list){
+  if(!Array.isArray(list) || !list.length) return 0;
+  let total = 0;
+  for(const v of list) total += Number(v) || 0;
+  return total / list.length;
+}
+function __maxStabilitySample(list){
+  if(!Array.isArray(list) || !list.length) return 0;
+  let max = 0;
+  for(const v of list){
+    const n = Number(v) || 0;
+    if(n > max) max = n;
+  }
+  return max;
+}
+function ensureStabilityMonitorNode(){
+  if(__stabilityMonitorState.node && document.body?.contains(__stabilityMonitorState.node)) return __stabilityMonitorState.node;
+  const el = document.createElement("div");
+  el.id = "stabilityMonitor";
+  el.style.cssText = [
+    "position:fixed",
+    "right:10px",
+    "top:10px",
+    "z-index:80",
+    "display:none",
+    "pointer-events:none",
+    "padding:6px 8px",
+    "max-width:76vw",
+    "border-radius:10px",
+    "border:1px solid rgba(148,163,184,.34)",
+    "background:rgba(6,10,18,.62)",
+    "color:#dbeafe",
+    "font:700 11px/1.28 system-ui",
+    "letter-spacing:.02em",
+    "backdrop-filter: blur(5px)"
+  ].join(";");
+  el.innerText = "Perf monitor";
+  try{ document.body.appendChild(el); }catch(e){ return null; }
+  __stabilityMonitorState.node = el;
+  return el;
+}
+function shouldShowStabilityMonitor(now=Date.now()){
+  if(window.__TS_SHOW_MONITOR__ === true) return true;
+  if(window.__TUTORIAL_MODE__) return false;
+  if(performanceMode() === "PERFORMANCE") return true;
+  if(frameIsSlow()) return true;
+  return (now - (__stabilityMonitorState.lastSpikeAt || 0)) < 9000;
+}
+function renderStabilityMonitor(force=false){
+  const now = Date.now();
+  if(!force && (now - (__stabilityMonitorState.lastRenderAt || 0) < 260)) return;
+  __stabilityMonitorState.lastRenderAt = now;
+  const node = ensureStabilityMonitorNode();
+  if(!node) return;
+  const visible = shouldShowStabilityMonitor(now);
+  node.style.display = visible ? "block" : "none";
+  if(!visible) return;
+
+  const avgGap = __avgStabilitySample(__stabilityMonitorState.frameGaps);
+  const avgCost = __avgStabilitySample(__stabilityMonitorState.frameCosts);
+  const worstGap = __maxStabilitySample(__stabilityMonitorState.frameGaps);
+  const worstCost = __maxStabilitySample(__stabilityMonitorState.frameCosts);
+  const fps = avgGap > 0 ? (1000 / avgGap) : 0;
+  const dropped = Number(__frameBudgetState.dropped || 0);
+  const recoversMin = (__freezeRecoverState.history || []).filter((t)=>(now - t) < 60000).length;
+  const mode = performanceMode() === "PERFORMANCE" ? "PERF" : "AUTO";
+  node.innerText =
+    `FPS ${fps.toFixed(0)} | gap ${avgGap.toFixed(1)}ms (max ${worstGap.toFixed(0)})` +
+    `\nframe ${avgCost.toFixed(1)}ms (max ${worstCost.toFixed(0)}) | drop ${dropped}` +
+    `\nmode ${mode} | recov ${recoversMin}/min`;
+}
+function noteFrameSample(frameGap, frameCost){
+  __pushStabilitySample(__stabilityMonitorState.frameGaps, frameGap);
+  __pushStabilitySample(__stabilityMonitorState.frameCosts, frameCost);
+  if(frameGap > 70 || frameCost > 30){
+    __stabilityMonitorState.lastSpikeAt = Date.now();
+  }
+  renderStabilityMonitor(false);
+}
+function canRunStabilityRecovery(now=Date.now()){
+  __freezeRecoverState.history = (__freezeRecoverState.history || []).filter((t)=>(now - t) < 60000);
+  if((now - (__freezeRecoverState.lastRecoverAt || 0)) < STABILITY_RECOVER_COOLDOWN_MS) return false;
+  if(__freezeRecoverState.history.length >= STABILITY_RECOVER_MAX_PER_MIN) return false;
+  return true;
+}
+function runStabilityRecovery(reason="stall"){
+  const now = Date.now();
+  if(!canRunStabilityRecovery(now)) return false;
+  __freezeRecoverState.lastRecoverAt = now;
+  __freezeRecoverState.history.push(now);
+
+  for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
+  __frameSpikePending = false;
+  __frameLagScore = 0;
+  const perfNow = performance.now ? performance.now() : now;
+  __frameRecoverUntil = Math.max(__frameRecoverUntil || 0, perfNow + 2200);
+  __frameSlowUntil = Math.max(__frameSlowUntil || 0, perfNow + 2600);
+
+  try{ if(typeof clearTransientCombatVisuals === "function") clearTransientCombatVisuals(); }catch(e){}
+  try{ if(typeof transitionCleanupSweep === "function") transitionCleanupSweep(`recover:${reason}`); }catch(e){}
+  try{ if(typeof sanitizeRuntimeState === "function") sanitizeRuntimeState(); }catch(e){}
+  try{ if(typeof clampWorldToCanvas === "function") clampWorldToCanvas(); }catch(e){}
+  try{
+    if(typeof validateMissionSpawnLayout === "function"){
+      const res = validateMissionSpawnLayout({ repair:true });
+      if((res?.fixed || 0) > 0){
+        setEventText(`Stability recovered • spawn fixes: ${res.fixed}`, 1.4);
+      } else {
+        setEventText("Stability recovered.", 1.1);
+      }
+    } else {
+      setEventText("Stability recovered.", 1.1);
+    }
+  }catch(e){}
+  try{ maybeRenderHUD(true); }catch(e){}
+  try{ renderCombatControls(); }catch(e){}
+  try{ updateAttackButton(); }catch(e){}
+  return true;
+}
+
 function shouldSuspendForHiddenDocument(){
   const hidden = !!document.hidden;
   if(!hidden) return false;
@@ -1459,13 +1610,20 @@ function updateFrameLoad(frameStartTs){
   const now = performance.now ? performance.now() : Date.now();
   if(!Number.isFinite(__lastFrameAt) || __lastFrameAt <= 0){
     __lastFrameAt = now;
+    noteFrameSample(16.7, 0);
     return;
   }
   const frameGap = now - __lastFrameAt;
   __lastFrameAt = now;
   const frameCost = now - frameStartTs;
+  noteFrameSample(frameGap, frameCost);
   if(frameGap > STABILITY_SPIKE_GAP_MS || frameCost > 46){
     __frameSpikePending = true;
+  }
+  if(frameGap > STABILITY_STALL_HARD_GAP_MS || frameCost > STABILITY_STALL_COST_MS){
+    runStabilityRecovery(frameGap > STABILITY_STALL_HARD_GAP_MS ? "hard-gap" : "hard-cost");
+  } else if(frameGap > STABILITY_STALL_GAP_MS){
+    __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 3000);
   }
   if(frameGap > 70 || frameCost > 34){
     __frameLagScore = Math.min(20, (__frameLagScore || 0) + 2);
@@ -5281,6 +5439,110 @@ function randomEvacZone(civilians=[]){
   return { x:zonePoint.x, y:zonePoint.y, r };
 }
 
+function validateMissionSpawnLayout(opts={}){
+  const repair = opts?.repair !== false;
+  if(!S || typeof S !== "object") return { fixed:0 };
+  if(!Number.isFinite(cv.width) || !Number.isFinite(cv.height) || cv.width < 100 || cv.height < 100) return { fixed:0 };
+
+  let fixed = 0;
+  const aliveCivs = (S.civilians || []).filter((c)=>c && c.alive !== false && !c.evac && Number.isFinite(c.x) && Number.isFinite(c.y));
+  const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive && Number.isFinite(t.x) && Number.isFinite(t.y));
+
+  if(S.mode !== "Survival" && S.evacZone && aliveCivs.length){
+    let nearest = Infinity;
+    for(const civ of aliveCivs){
+      nearest = Math.min(nearest, dist(civ.x, civ.y, S.evacZone.x, S.evacZone.y));
+    }
+    const evacTooClose = nearest < Math.max(150, (S.evacZone.r || 70) + 64);
+    const evacInvalid = inMapScenarioKeepout(S.evacZone.x, S.evacZone.y, Math.round((S.evacZone.r || 70) * 0.86))
+      || blockedAt(S.evacZone.x, S.evacZone.y, Math.round((S.evacZone.r || 70) * 0.45))
+      || isPointInWater(S.evacZone.x, S.evacZone.y, Math.round((S.evacZone.r || 70) * 0.50));
+    if((evacTooClose || evacInvalid) && repair){
+      S.evacZone = randomEvacZone(aliveCivs);
+      fixed += 1;
+    }
+  }
+
+  if(S.me && aliveTigers.length){
+    let nearTiger = Infinity;
+    for(const t of aliveTigers){
+      nearTiger = Math.min(nearTiger, dist(S.me.x, S.me.y, t.x, t.y));
+    }
+    if(nearTiger < 128 && repair){
+      const mePt = safeSpawnPoint(cv.width * 0.16, cv.height * 0.78, 16, true, false);
+      S.me.x = mePt.x;
+      S.me.y = mePt.y;
+      fixed += 1;
+    }
+  }
+
+  if(repair){
+    for(const civ of aliveCivs){
+      if(inMapScenarioKeepout(civ.x, civ.y, 12)){
+        const pt = safeSpawnPoint(civ.x, civ.y, 14, true, false);
+        civ.x = pt.x;
+        civ.y = pt.y;
+        fixed += 1;
+      }
+    }
+  }
+
+  if(repair){
+    for(const tiger of aliveTigers){
+      let tooClose = dist(tiger.x, tiger.y, S.me.x, S.me.y) < 150;
+      if(!tooClose && S.mode !== "Survival"){
+        for(const civ of aliveCivs){
+          if(dist(tiger.x, tiger.y, civ.x, civ.y) < 175){
+            tooClose = true;
+            break;
+          }
+        }
+      }
+      if(tooClose){
+        const pt = pickTigerSpawnAwayFromEscort(tiger.x, tiger.y);
+        tiger.x = pt.x;
+        tiger.y = pt.y;
+        tiger.vx = clamp(Number(tiger.vx) || 0, -3.8, 3.8);
+        tiger.vy = clamp(Number(tiger.vy) || 0, -3.8, 3.8);
+        fixed += 1;
+      }
+    }
+  }
+
+  return { fixed, civilians: aliveCivs.length, tigers: aliveTigers.length };
+}
+
+function transitionCleanupSweep(reason=""){
+  if(!S || typeof S !== "object") return;
+  const r = String(reason || "");
+  if(!Array.isArray(S.pickups)) S.pickups = [];
+  if(!Array.isArray(S.carcasses)) S.carcasses = [];
+  if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
+  if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
+  if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
+  if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
+  if(!Array.isArray(S.civilians)) S.civilians = [];
+  if(!Array.isArray(S.tigers)) S.tigers = [];
+  S.scanPing = clamp(Number(S.scanPing) || 0, 0, 42);
+
+  if(!S.inBattle){
+    S.activeTigerId = null;
+    S._combatTigerAttackAt = 0;
+    if(S.lockedTigerId != null){
+      const t = tigerById(S.lockedTigerId);
+      if(!t || !t.alive) S.lockedTigerId = null;
+    }
+  }
+
+  if(r.includes("deploy") || r.includes("complete") || r.includes("over") || r.includes("recover")){
+    clearTransientCombatVisuals();
+  }
+  if(r.includes("battle-end")) clearTransientCombatVisuals();
+
+  clearEscortTakeoverPrompt();
+  try{ sanitizeRuntimeState(); }catch(e){}
+}
+
 const SKIN_TONES = ["#f6d7c3","#eac0a6","#d9a07f","#c9865c","#a86a44","#7a4a2c","#4b2f1f"];
 const SHIRT_COLS = ["#4aa3ff","#3ddc97","#f59e0b","#fb7185","#a78bfa","#f97316","#eab308","#22c55e","#60a5fa"];
 const PANTS_COLS = ["#1f2937","#334155","#0f172a","#3f3f46","#1c1917","#111827"];
@@ -6346,6 +6608,7 @@ function deploy(opts={}){
   S.activeTigerId=null;
   S.paused=false; S.pauseReason=null;
   clearTransientCombatVisuals();
+  transitionCleanupSweep("deploy-pre");
 
   S.hp = carryStats ? carryHp : 100;
   S.armor = carryStats
@@ -6407,6 +6670,11 @@ function deploy(opts={}){
   if(S.mode!=="Survival" && !window.__TUTORIAL_MODE__){
     S.evacZone = randomEvacZone(S.civilians);
   }
+  const spawnAudit = validateMissionSpawnLayout({ repair:true });
+  if((spawnAudit?.fixed || 0) > 0){
+    setEventText(`Spawn safety adjusted: ${spawnAudit.fixed}`, 1.3);
+  }
+  transitionCleanupSweep("deploy-post");
 
   // spawn a couple guaranteed pickups early
   spawnPickup("CASH", 260, clamp(cv.height - 150, 220, cv.height - 80));
@@ -6527,6 +6795,7 @@ function resetGame(){
 function gameOverChoice(msg){
   S.gameOver = true;
   S.paused = true;
+  transitionCleanupSweep("game-over");
   clearTransientCombatVisuals();
   document.getElementById("battleOverlay").style.display="none";
   document.getElementById("completeOverlay").style.display="none";
@@ -8673,6 +8942,7 @@ function startCombat(){
   const t=canEngage();
   if(!lockedTiger()) return toast("Lock a tiger first.");
   if(!t) return toast("Move closer to the locked tiger and tap it again.");
+  transitionCleanupSweep("battle-start");
   clearTransientCombatVisuals();
   S.inBattle = true;
   S.activeTigerId = t.id;
@@ -8777,6 +9047,7 @@ function endBattle(reason){
   S.activeTigerId=null;
   S.battleMsg="";
   S._combatTigerAttackAt = 0;
+  transitionCleanupSweep("battle-end");
   clearTransientCombatVisuals();
   if(reason==="RETREAT") S.aggro = clamp(S.aggro+4,0,100);
   renderCombatControls();
@@ -9373,6 +9644,7 @@ function checkMissionComplete(){
     if(!S.missionEnded){
       S.missionEnded=true;
       setPaused(true,"complete");
+      transitionCleanupSweep("mission-complete");
       clearTransientCombatVisuals();
       if(S._underAttack===0) unlockAchv("clear_clean","Clean Clear");
       let heading = "Mission complete!\n";
@@ -11136,6 +11408,10 @@ function draw(){
     const now = Date.now();
     __frameSpikePending = true;
     safeTick("stabilityHealthTick", stabilityHealthTick);
+    if((window.__tsFrameRecoverAt || 0) + 5200 < now){
+      window.__tsFrameRecoverAt = now;
+      try{ runStabilityRecovery("frame-exception"); }catch(e){}
+    }
     if((window.__tsFrameErrAt || 0) + 2500 < now){
       window.__tsFrameErrAt = now;
       console.error("Frame loop recovered from error:", err);
@@ -11223,6 +11499,8 @@ function init(){
   if(!S.achievements) S.achievements={};
   updatePerformanceLabels();
   updateTitle();
+  ensureStabilityMonitorNode();
+  renderStabilityMonitor(true);
 
   for(const wid of S.ownedWeapons){
     if(S.durability[wid]==null) S.durability[wid]=100;
@@ -11310,6 +11588,8 @@ function init(){
   if(!window.__TUTORIAL_MODE__ && (!Array.isArray(S.mapInteractables) || !S.mapInteractables.length)){
     spawnMapInteractables();
   }
+  validateMissionSpawnLayout({ repair:true });
+  transitionCleanupSweep("init");
   if(missionStateLooksEmpty()){
     deploy({ carryStats:true, hp:S.hp, armor:S.armor });
   }
@@ -11378,6 +11658,7 @@ window.setPaused = setPaused;
 // Buttons used by index.html
 window.toggleSound = toggleSound;
 window.togglePerformanceMode = togglePerformanceMode;
+window.toggleLagMonitor = toggleLagMonitor;
 window.openAbout = openAbout;
 window.closeAbout = closeAbout;
 
