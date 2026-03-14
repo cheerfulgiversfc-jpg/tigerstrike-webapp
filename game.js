@@ -1996,6 +1996,7 @@ const SQUAD_UPKEEP_RESCUE = 1100;
 const SQUAD_REVIVE_ATTACKER = 18000;
 const SQUAD_REVIVE_RESCUE = 15000;
 const SQUAD_REVIVE_ALL_DISCOUNT = 0.90;
+const SQUAD_REVIVE_ALL_FLAT = 30000;
 const SOLDIER_UNLOCK_LEVEL = 15;
 const ROLL_COOLDOWN_MS = 2800;
 const ROLL_INVULN_MS = 520;
@@ -2081,10 +2082,7 @@ function squadReviveUnitCost(role){
   return role === "attacker" ? SQUAD_REVIVE_ATTACKER : SQUAD_REVIVE_RESCUE;
 }
 function squadReviveAllCost(){
-  const total =
-    (squadDownedCount("attacker") * SQUAD_REVIVE_ATTACKER) +
-    (squadDownedCount("rescue") * SQUAD_REVIVE_RESCUE);
-  return Math.round(total * SQUAD_REVIVE_ALL_DISCOUNT);
+  return SQUAD_REVIVE_ALL_FLAT;
 }
 function syncActiveSupportToRoster(){
   if(window.__TUTORIAL_MODE__ || S.gameOver || S.missionEnded) return;
