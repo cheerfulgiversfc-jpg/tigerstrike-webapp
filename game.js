@@ -11933,3 +11933,4 @@ window.closeQuickWeaponPicker = closeQuickWeaponPicker;
 window.selectQuickWeapon = selectQuickWeapon;
 window.buyPerk = buyPerk;
 window.lockNearestTiger = lockNearestTiger;
+window.canAttemptCapture = canAttemptCapture;

@@ -51,8 +51,24 @@
       if(shots > (T.baseShots || 0)) T.attackedOnce = true;
       const activeTigerId = Number(S.activeTigerId || 0);
       const tiger = activeTigerId > 0 ? (S.tigers || []).find((it)=>it && it.id === activeTigerId && it.alive) : null;
-      if(tiger && tiger.hpMax > 0 && (tiger.hp / tiger.hpMax) <= 0.25){
-        T.captureWindowReached = true;
+      if(!T.captureWindowReached){
+        let ready = false;
+        try{
+          if(typeof window.canAttemptCapture === "function"){
+            if(tiger) ready = !!window.canAttemptCapture(tiger);
+            if(!ready){
+              for(const it of (S.tigers || [])){
+                if(!it || !it.alive) continue;
+                if(window.canAttemptCapture(it)){ ready = true; break; }
+              }
+            }
+          }
+        }catch(e){}
+        if(!ready && tiger && tiger.hpMax > 0 && (tiger.hp / tiger.hpMax) <= 0.28){
+          // Fallback tolerance to avoid step-lock from rounding/cross-frame timing.
+          ready = true;
+        }
+        if(ready) T.captureWindowReached = true;
       }
       const shieldUntil = Number(S.shieldUntil || 0);
       if(shieldUntil > Date.now() && shieldUntil > (T.lastShieldUntil || 0)) T.shieldUsed = true;
