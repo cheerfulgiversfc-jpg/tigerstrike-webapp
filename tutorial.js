@@ -54,8 +54,11 @@
       if(!T.captureWindowReached){
         let ready = false;
         try{
+          if(typeof window.tutorialAnyCaptureWindowReady === "function"){
+            ready = !!window.tutorialAnyCaptureWindowReady();
+          }
           if(typeof window.tutorialCaptureWindowReady === "function"){
-            ready = !!window.tutorialCaptureWindowReady();
+            ready = ready || !!window.tutorialCaptureWindowReady();
           }
         }catch(e){}
         if(!ready && tiger && tiger.hpMax > 0 && (tiger.hp / tiger.hpMax) <= 0.28){
@@ -313,6 +316,15 @@
       } else if(outcome === "KILL"){
         text = "Kill complete.\nYou removed the threat fast, but blood raises jungle aggression more.";
         hint = "Fast clear with higher risk later. Tap Next.";
+      }
+    } else if(step.key === "weaken_tiger"){
+      const activeTigerId = Number(S?.activeTigerId || 0);
+      const tiger = activeTigerId > 0 ? (S?.tigers || []).find((it)=>it && it.id === activeTigerId && it.alive) : null;
+      if(tiger && tiger.hpMax > 0){
+        const pct = Math.max(0, Math.round((tiger.hp / tiger.hpMax) * 100));
+        hint = `Current tiger HP: ${Math.round(tiger.hp)}/${Math.round(tiger.hpMax)} (${pct}%). Get to 25% or lower.`;
+      } else {
+        hint = "Stay in battle and lower a tiger to 25% HP or lower.";
       }
     }
 

@@ -9271,6 +9271,13 @@ function tutorialCaptureWindowReady(){
   if(!t || !t.alive) return false;
   return t.hp <= captureWindowHp(t);
 }
+function tutorialAnyCaptureWindowReady(){
+  for(const t of (S.tigers || [])){
+    if(!t || !t.alive) continue;
+    if(t.hp <= captureWindowHp(t)) return true;
+  }
+  return false;
+}
 function restorePostCaptureWeapon(requiredTranqId){
   const restoreId = (typeof S.lastCombatLethalWeaponId === "string") ? S.lastCombatLethalWeaponId : "";
   if(!restoreId || restoreId === requiredTranqId) return false;
@@ -11940,3 +11947,4 @@ window.buyPerk = buyPerk;
 window.lockNearestTiger = lockNearestTiger;
 window.canAttemptCapture = canAttemptCapture;
 window.tutorialCaptureWindowReady = tutorialCaptureWindowReady;
+window.tutorialAnyCaptureWindowReady = tutorialAnyCaptureWindowReady;
