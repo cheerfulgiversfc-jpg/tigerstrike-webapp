@@ -1134,7 +1134,17 @@ perks: {
 progressionUnlocks: {},
 metaBase: {},
 specialistPerks: {},
-chapterRewardsUnlocked: {}
+chapterRewardsUnlocked: {},
+  touchHud:{
+    opacity:44,
+    size:100,
+    stickX:0,
+    stickY:0,
+    actionX:0,
+    actionY:0,
+    cacheX:0,
+    cacheY:0
+  }
 };
 
 let S = load();
@@ -1209,6 +1219,7 @@ function load(){
     m.metaBase = { ...DEFAULT.metaBase, ...(saved.metaBase||{}) };
     m.specialistPerks = { ...DEFAULT.specialistPerks, ...(saved.specialistPerks||{}) };
     m.chapterRewardsUnlocked = { ...DEFAULT.chapterRewardsUnlocked, ...(saved.chapterRewardsUnlocked||{}) };
+    m.touchHud = normalizeTouchHudSettings(saved.touchHud ?? m.touchHud);
     if(m.lives==null) m.lives=5;
     m.v = STORAGE_VERSION;
     trimPersistentState(m);
@@ -1812,6 +1823,17 @@ function isLandscapeViewport(){
 }
 const MOBILE_MENU_PREF_KEY = "ts_mobile_menu_hidden";
 let __mobileMenuHiddenPref = false;
+const TOUCH_HUD_DEFAULT = Object.freeze({
+  opacity: 44,
+  size: 100,
+  stickX: 0,
+  stickY: 0,
+  actionX: 0,
+  actionY: 0,
+  cacheX: 0,
+  cacheY: 0
+});
+let __touchHudSaveTimer = 0;
 function canToggleMobileMenu(){
   return isMobileViewport() || !!window.matchMedia?.("(pointer:coarse)")?.matches;
 }
@@ -1848,6 +1870,161 @@ function initMobileMenuToggle(){
     __mobileMenuHiddenPref = false;
   }
   applyMobileMenuState(__mobileMenuHiddenPref);
+}
+function normalizeTouchHudSettings(raw){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  return {
+    opacity: clamp(Math.round(Number(src.opacity ?? TOUCH_HUD_DEFAULT.opacity)), 20, 90),
+    size: clamp(Math.round(Number(src.size ?? TOUCH_HUD_DEFAULT.size)), 80, 145),
+    stickX: clamp(Math.round(Number(src.stickX ?? TOUCH_HUD_DEFAULT.stickX)), -160, 160),
+    stickY: clamp(Math.round(Number(src.stickY ?? TOUCH_HUD_DEFAULT.stickY)), -180, 180),
+    actionX: clamp(Math.round(Number(src.actionX ?? TOUCH_HUD_DEFAULT.actionX)), -180, 180),
+    actionY: clamp(Math.round(Number(src.actionY ?? TOUCH_HUD_DEFAULT.actionY)), -200, 200),
+    cacheX: clamp(Math.round(Number(src.cacheX ?? TOUCH_HUD_DEFAULT.cacheX)), -180, 180),
+    cacheY: clamp(Math.round(Number(src.cacheY ?? TOUCH_HUD_DEFAULT.cacheY)), -220, 220),
+  };
+}
+function ensureTouchHudState(){
+  if(!S || typeof S !== "object") return normalizeTouchHudSettings(null);
+  S.touchHud = normalizeTouchHudSettings(S.touchHud);
+  return S.touchHud;
+}
+function applyTouchHudSettings(){
+  const root = document.documentElement;
+  if(!root) return;
+  const hud = ensureTouchHudState();
+  const baseOpacity = clamp(hud.opacity / 100, 0.20, 0.90);
+  const scale = clamp(hud.size / 100, 0.80, 1.45);
+  root.style.setProperty("--touch-ui-scale", scale.toFixed(2));
+  root.style.setProperty("--touch-stick-offset-x", `${Math.round(hud.stickX)}px`);
+  root.style.setProperty("--touch-stick-offset-y", `${Math.round(-hud.stickY)}px`);
+  root.style.setProperty("--touch-cluster-offset-x", `${Math.round(hud.actionX)}px`);
+  root.style.setProperty("--touch-cluster-offset-y", `${Math.round(-hud.actionY)}px`);
+  root.style.setProperty("--touch-cache-offset-x", `${Math.round(hud.cacheX)}px`);
+  root.style.setProperty("--touch-cache-offset-y", `${Math.round(-hud.cacheY)}px`);
+  root.style.setProperty("--touch-stick-opacity", clamp(baseOpacity + 0.08, 0.24, 0.95).toFixed(2));
+  root.style.setProperty("--touch-cluster-opacity", clamp(baseOpacity, 0.20, 0.92).toFixed(2));
+  root.style.setProperty("--touch-cache-opacity", clamp(baseOpacity + 0.02, 0.20, 0.95).toFixed(2));
+  root.style.setProperty("--touch-btn-opacity", clamp(baseOpacity - 0.04, 0.16, 0.86).toFixed(2));
+}
+function queueTouchHudSave(){
+  if(__touchHudSaveTimer) clearTimeout(__touchHudSaveTimer);
+  __touchHudSaveTimer = setTimeout(()=>{
+    __touchHudSaveTimer = 0;
+    save();
+  }, 260);
+}
+function renderHudCustomizer(){
+  const overlay = document.getElementById("hudOverlay");
+  if(!overlay) return;
+  const hud = ensureTouchHudState();
+  const pairs = [
+    ["hudOpacityRange", hud.opacity], ["hudOpacityValue", `${hud.opacity}%`],
+    ["hudSizeRange", hud.size], ["hudSizeValue", `${hud.size}%`],
+    ["hudStickXRange", hud.stickX], ["hudStickXValue", `${hud.stickX}`],
+    ["hudStickYRange", hud.stickY], ["hudStickYValue", `${hud.stickY}`],
+    ["hudActionXRange", hud.actionX], ["hudActionXValue", `${hud.actionX}`],
+    ["hudActionYRange", hud.actionY], ["hudActionYValue", `${hud.actionY}`],
+    ["hudCacheXRange", hud.cacheX], ["hudCacheXValue", `${hud.cacheX}`],
+    ["hudCacheYRange", hud.cacheY], ["hudCacheYValue", `${hud.cacheY}`],
+  ];
+  for(const [id, value] of pairs){
+    const el = document.getElementById(id);
+    if(!el) continue;
+    if(el.tagName === "INPUT") el.value = `${value}`;
+    else el.innerText = `${value}`;
+  }
+}
+function openHudCustomizer(){
+  if(window.TigerTutorial?.isRunning) return toast("Finish the tutorial first.");
+  if(S.gameOver) return;
+  if(S.missionEnded){
+    lastOverlay = "complete";
+    const complete = document.getElementById("completeOverlay");
+    if(complete) complete.style.display = "none";
+  }
+  const overlay = document.getElementById("hudOverlay");
+  if(!overlay) return;
+  setPaused(true, S.inBattle ? "hud-battle" : "hud");
+  applyTouchHudSettings();
+  renderHudCustomizer();
+  overlay.style.display = "flex";
+  syncGamepadFocus();
+  sfx("ui");
+}
+function closeHudCustomizer(){
+  const overlay = document.getElementById("hudOverlay");
+  if(overlay) overlay.style.display = "none";
+  if(S.missionEnded){
+    setPaused(true, "complete");
+    const complete = document.getElementById("completeOverlay");
+    if(complete) complete.style.display = "flex";
+    lastOverlay = null;
+    syncGamepadFocus();
+    return;
+  }
+  if(S.inBattle){
+    setPaused(false, null);
+    updateBattleButtons();
+    updateAttackButton();
+    if(anyLethalWeaponHasAmmo()) setBattleMsg(`Back in combat with Tiger #${S.activeTigerId}.`);
+    else setBattleMsg("No lethal ammo. Open Shop or switch to Capture when the tiger is weak.");
+    syncGamepadFocus();
+    return;
+  }
+  setPaused(false, null);
+  syncGamepadFocus();
+}
+function updateHudCustomizerSetting(key, rawValue){
+  const hud = ensureTouchHudState();
+  const ranges = {
+    opacity: [20, 90],
+    size: [80, 145],
+    stickX: [-160, 160],
+    stickY: [-180, 180],
+    actionX: [-180, 180],
+    actionY: [-200, 200],
+    cacheX: [-180, 180],
+    cacheY: [-220, 220],
+  };
+  if(!ranges[key]) return;
+  const [min, max] = ranges[key];
+  const next = clamp(Math.round(Number(rawValue) || 0), min, max);
+  hud[key] = next;
+  S.touchHud = hud;
+  applyTouchHudSettings();
+  renderHudCustomizer();
+  queueTouchHudSave();
+}
+function applyHudPreset(name){
+  const hud = ensureTouchHudState();
+  if(name === "leftHanded"){
+    hud.stickX = 118;
+    hud.stickY = 0;
+    hud.actionX = -118;
+    hud.actionY = 0;
+    hud.cacheX = 120;
+    hud.cacheY = 0;
+  } else {
+    hud.stickX = 0;
+    hud.stickY = 0;
+    hud.actionX = 0;
+    hud.actionY = 0;
+    hud.cacheX = 0;
+    hud.cacheY = 0;
+  }
+  S.touchHud = normalizeTouchHudSettings(hud);
+  applyTouchHudSettings();
+  renderHudCustomizer();
+  save();
+  toast(name === "leftHanded" ? "Left-handed HUD preset applied." : "Right-handed HUD preset applied.");
+}
+function resetHudCustomizer(){
+  S.touchHud = normalizeTouchHudSettings(TOUCH_HUD_DEFAULT);
+  applyTouchHudSettings();
+  renderHudCustomizer();
+  save();
+  toast("HUD controls reset to default.");
 }
 function clampWorldToCanvas(){
   if(!S || typeof S !== "object") return;
@@ -1951,6 +2128,7 @@ function clampWorldToCanvas(){
 function sanitizeRuntimeState(){
   if(!S || typeof S !== "object") return;
   ensureStoryMetaState();
+  ensureTouchHudState();
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
@@ -2416,14 +2594,17 @@ try{ resizeCanvasForViewport(); }catch(e){ try{ console.warn("Initial viewport s
 window.addEventListener("resize", ()=>{
   resizeCanvasForViewport();
   applyMobileMenuState(__mobileMenuHiddenPref);
+  applyTouchHudSettings();
   renderHUD();
 }, { passive:true });
 window.addEventListener("orientationchange", ()=>{
   resizeCanvasForViewport();
   applyMobileMenuState(__mobileMenuHiddenPref);
+  applyTouchHudSettings();
   renderHUD();
 });
 initMobileMenuToggle();
+applyTouchHudSettings();
 // ================= PHASE 2 XP / PERKS =================
 
 function xpNeededForLevel(lv){
@@ -5280,7 +5461,7 @@ window.exitTutorialMode = function () {
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
-  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay"].forEach((id)=>{
+  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -6774,7 +6955,7 @@ function performResetGame(){
   }
   S = cloneState(DEFAULT);
   syncWindowState();
-  ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
+  ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -7030,7 +7211,7 @@ function gamepadUiContainers(){
   const tutorial = document.getElementById("tutorialOverlay");
   if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
 
-  const overlays = ["storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"]
+  const overlays = ["storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
     .map((id)=>document.getElementById(id))
     .filter((el)=>el && el.style.display === "flex");
   if(overlays.length) return overlays;
@@ -7119,7 +7300,7 @@ function activateGamepadFocus(){
 }
 
 function anyGamepadOverlayVisible(){
-  const ids = ["tutorialOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay"];
+  const ids = ["tutorialOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
   return ids.some((id)=>{
     const el = document.getElementById(id);
     return !!(el && el.style.display === "flex");
@@ -11444,6 +11625,7 @@ function init(){
   trimPersistentState(S);
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   S.performanceMode = normalizePerformanceMode(S.performanceMode);
+  S.touchHud = normalizeTouchHudSettings(S.touchHud);
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
   if(!S.equippedWeaponId || !getWeapon(S.equippedWeaponId)) S.equippedWeaponId = DEFAULT.equippedWeaponId;
   if(!S.ammoReserve || typeof S.ammoReserve !== "object") S.ammoReserve = { ...DEFAULT.ammoReserve };
@@ -11498,6 +11680,7 @@ function init(){
   // achievements defaults
   if(!S.achievements) S.achievements={};
   updatePerformanceLabels();
+  applyTouchHudSettings();
   updateTitle();
   ensureStabilityMonitorNode();
   renderStabilityMonitor(true);
@@ -11622,6 +11805,7 @@ function bootstrap(){
       S.mapIndex = keepMapIndex;
       syncWindowState();
       resizeCanvasForViewport();
+      applyTouchHudSettings();
       deploy();
       maybeRenderHUD(true);
       safeTick("recoverDrawMapScene", drawMapScene);
@@ -11659,6 +11843,11 @@ window.setPaused = setPaused;
 window.toggleSound = toggleSound;
 window.togglePerformanceMode = togglePerformanceMode;
 window.toggleLagMonitor = toggleLagMonitor;
+window.openHudCustomizer = openHudCustomizer;
+window.closeHudCustomizer = closeHudCustomizer;
+window.updateHudCustomizerSetting = updateHudCustomizerSetting;
+window.applyHudPreset = applyHudPreset;
+window.resetHudCustomizer = resetHudCustomizer;
 window.openAbout = openAbout;
 window.closeAbout = closeAbout;
 

@@ -17,6 +17,17 @@
       --text:#f5f7ff; --muted:rgba(245,247,255,.72);
       --blue:#3a78ff; --good:#4ade80; --warn:#f59e0b; --bad:#fb7185;
       --shadow:0 18px 50px rgba(0,0,0,.45);
+      --touch-ui-scale:1;
+      --touch-stick-offset-x:0px;
+      --touch-stick-offset-y:0px;
+      --touch-cluster-offset-x:0px;
+      --touch-cluster-offset-y:0px;
+      --touch-cache-offset-x:0px;
+      --touch-cache-offset-y:0px;
+      --touch-stick-opacity:.52;
+      --touch-cluster-opacity:.44;
+      --touch-cache-opacity:.46;
+      --touch-btn-opacity:.40;
     }
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial;overflow-x:hidden}
@@ -100,6 +111,11 @@
     .itemDesc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
     .price{font-weight:950}
     .tag{display:inline-block;margin-left:8px;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;border:1px solid rgba(35,42,62,.9);background:#0b0d12;color:var(--muted)}
+    .controlGrid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px}
+    .controlItem{border:1px solid rgba(35,42,62,.9);background:rgba(15,19,32,.7);border-radius:12px;padding:10px}
+    .controlLabel{font-size:12px;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;gap:8px}
+    .controlLabel b{color:var(--text)}
+    .controlItem input[type="range"]{width:100%}
 
     .battleOverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:flex-end;z-index:220}
     .battleSheet{width:min(1020px,100vw);margin:0 auto;background:var(--panel);border:1px solid var(--border);border-top-left-radius:18px;border-top-right-radius:18px;padding:12px;box-shadow:var(--shadow)}
@@ -200,7 +216,9 @@
         height:136px;
         z-index:5;
         touch-action:none;
-        opacity:.52;
+        opacity:var(--touch-stick-opacity,.52);
+        transform:translate(var(--touch-stick-offset-x), var(--touch-stick-offset-y)) scale(var(--touch-ui-scale));
+        transform-origin:left bottom;
       }
       .touchPad{
         position:absolute;
@@ -244,7 +262,9 @@
         grid-template-columns:repeat(2,64px);
         gap:12px;
         z-index:5;
-        opacity:.44;
+        opacity:var(--touch-cluster-opacity,.44);
+        transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
+        transform-origin:right bottom;
       }
       #touchCacheBtn{
         position:absolute;
@@ -252,7 +272,9 @@
         right:auto;
         bottom:312px;
         z-index:6;
-        opacity:.46;
+        opacity:var(--touch-cache-opacity,.46);
+        transform:translate(var(--touch-cache-offset-x), var(--touch-cache-offset-y)) scale(var(--touch-ui-scale));
+        transform-origin:left bottom;
       }
       #touchCacheBtn:disabled{
         opacity:.24;
@@ -277,7 +299,7 @@
         justify-content:center;
         font-size:12px;
         line-height:1;
-        opacity:.40;
+        opacity:var(--touch-btn-opacity,.40);
       }
       .touchBtn:active,
       .touchBtn.gamepadFocus{
@@ -445,6 +467,7 @@
       <button class="ghost mobileCompactHide" onclick="nextMap()">🗺️ Map</button>
       <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLbl">Pause</span></button>
       <button class="ghost" onclick="togglePerformanceMode()">⚙️ <span id="perfLbl">Auto</span></button>
+      <button class="ghost" onclick="openHudCustomizer()">🎛️ HUD</button>
 
       <!-- IDs added for tutorial highlighting -->
       <button class="ghost mobileCompactHide" id="shopBtn" onclick="openShop()">🛒 Shop</button>
@@ -645,6 +668,53 @@
   </div>
 </div>
 
+<!-- HUD / Controls Customizer -->
+<div class="overlay" id="hudOverlay">
+  <div class="modal" style="width:min(620px,95vw)">
+    <div class="modalTop">
+      <div class="modalTitle">HUD / Controls</div>
+      <button class="ghost" onclick="closeHudCustomizer()">Done</button>
+    </div>
+    <div class="modalBody">
+      <div class="hudLine">Adjust on-screen controls for comfort. These settings save automatically.</div>
+      <div class="controlGrid">
+        <div class="controlItem">
+          <div class="controlLabel"><span>Transparency</span><b id="hudOpacityValue">44%</b></div>
+          <input id="hudOpacityRange" type="range" min="20" max="90" step="1" oninput="updateHudCustomizerSetting('opacity', this.value)">
+        </div>
+        <div class="controlItem">
+          <div class="controlLabel"><span>Control Size</span><b id="hudSizeValue">100%</b></div>
+          <input id="hudSizeRange" type="range" min="80" max="145" step="1" oninput="updateHudCustomizerSetting('size', this.value)">
+        </div>
+        <div class="controlItem">
+          <div class="controlLabel"><span>Move Joystick (X)</span><b id="hudStickXValue">0</b></div>
+          <input id="hudStickXRange" type="range" min="-160" max="160" step="2" oninput="updateHudCustomizerSetting('stickX', this.value)">
+          <div class="controlLabel" style="margin:10px 0 0"><span>Move Joystick (Y, up +)</span><b id="hudStickYValue">0</b></div>
+          <input id="hudStickYRange" type="range" min="-180" max="180" step="2" oninput="updateHudCustomizerSetting('stickY', this.value)">
+        </div>
+        <div class="controlItem">
+          <div class="controlLabel"><span>Move Action Buttons (X)</span><b id="hudActionXValue">0</b></div>
+          <input id="hudActionXRange" type="range" min="-180" max="180" step="2" oninput="updateHudCustomizerSetting('actionX', this.value)">
+          <div class="controlLabel" style="margin:10px 0 0"><span>Move Action Buttons (Y, up +)</span><b id="hudActionYValue">0</b></div>
+          <input id="hudActionYRange" type="range" min="-200" max="200" step="2" oninput="updateHudCustomizerSetting('actionY', this.value)">
+        </div>
+        <div class="controlItem">
+          <div class="controlLabel"><span>Move Cache Button (X)</span><b id="hudCacheXValue">0</b></div>
+          <input id="hudCacheXRange" type="range" min="-180" max="180" step="2" oninput="updateHudCustomizerSetting('cacheX', this.value)">
+          <div class="controlLabel" style="margin:10px 0 0"><span>Move Cache Button (Y, up +)</span><b id="hudCacheYValue">0</b></div>
+          <input id="hudCacheYRange" type="range" min="-220" max="220" step="2" oninput="updateHudCustomizerSetting('cacheY', this.value)">
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="row">
+        <button class="ghost" onclick="applyHudPreset('leftHanded')">Left-Handed</button>
+        <button class="ghost" onclick="applyHudPreset('rightHanded')">Right-Handed</button>
+        <button class="ghost" onclick="resetHudCustomizer()">Reset Default</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Shop -->
 <div class="overlay" id="shopOverlay">
   <div class="modal">
@@ -816,14 +886,15 @@
     <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLblMobile">On</span></button>
     <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLblMobile">Pause</span></button>
     <button class="ghost" onclick="togglePerformanceMode()">⚙️ <span id="perfLblMobile">Auto</span></button>
+    <button class="ghost" onclick="openHudCustomizer()">🎛️ HUD</button>
     <button class="ghost" onclick="startTutorial()">🧭 Tutorial</button>
     <button class="ghost" onclick="resetGame()">🔁 Reset</button>
   </div>
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4392"></script>
-<script src="./tutorial.js?v=4392"></script>
+<script src="./game.js?v=4393"></script>
+<script src="./tutorial.js?v=4393"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";
