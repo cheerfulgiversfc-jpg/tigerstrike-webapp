@@ -49,6 +49,11 @@
       if(S.inBattle) T.engagedOnce = true;
       const shots = Number(S.stats?.shots || 0);
       if(shots > (T.baseShots || 0)) T.attackedOnce = true;
+      const activeTigerId = Number(S.activeTigerId || 0);
+      const tiger = activeTigerId > 0 ? (S.tigers || []).find((it)=>it && it.id === activeTigerId && it.alive) : null;
+      if(tiger && tiger.hpMax > 0 && (tiger.hp / tiger.hpMax) <= 0.25){
+        T.captureWindowReached = true;
+      }
       const shieldUntil = Number(S.shieldUntil || 0);
       if(shieldUntil > Date.now() && shieldUntil > (T.lastShieldUntil || 0)) T.shieldUsed = true;
       T.lastShieldUntil = shieldUntil;
@@ -145,20 +150,23 @@
         }
       },
       {
-        key:"attack",
-        title:"Fire Weapon",
-        text:"Press Attack once.",
-        hint:"Fire one shot to continue.",
-        arrow:"atkBtn",
-        canNext: () => window.TigerTutorial.attackedOnce === true
+        key:"weaken_tiger",
+        title:"Weaken Tiger",
+        text:"Attack until the tiger is at 25% HP or lower.",
+        hint:"Keep attacking until the tiger health bar reaches capture range.",
+        arrow:"tiger",
+        canNext: () => window.TigerTutorial.captureWindowReached === true
       },
       {
-        key:"capture_rules",
-        title:"Capture Rules",
-        text:"Capture uses the tranq weapon required for that tiger type.\nCapture is available at 25% HP or lower.",
-        hint:"Tap Next.",
-        arrow:"tigerTxt",
-        canNext: () => true
+        key:"resolve_tiger",
+        title:"Capture Or Kill",
+        text:"Now finish the fight.\nCapture: safer control, lower aggression spike.\nKill: faster clear, higher aggression spike.",
+        hint:"Capture or kill this tiger to continue.",
+        arrow:"tiger",
+        canNext: () => {
+          const outcome = window.TigerTutorial.combatOutcome;
+          return outcome === "CAPTURE" || outcome === "KILL";
+        }
       },
       {
         key:"interactables",
@@ -234,6 +242,8 @@
     baseShots:0,
     engagedOnce:false,
     attackedOnce:false,
+    captureWindowReached:false,
+    combatOutcome:null,
     shieldUsed:false,
     shopOpened:false,
     squadOpened:false,
@@ -283,12 +293,24 @@
     const S = getS();
     updateProgressFlags();
     setCardPlacement(step.key);
+    let text = step.text;
+    let hint = step.hint || "";
+    if(step.key === "resolve_tiger"){
+      const outcome = T.combatOutcome;
+      if(outcome === "CAPTURE"){
+        text = "Capture complete.\nYou preserved the tiger for research and kept aggression lower than a kill.";
+        hint = "Good control. Tap Next.";
+      } else if(outcome === "KILL"){
+        text = "Kill complete.\nYou removed the threat fast, but blood raises jungle aggression more.";
+        hint = "Fast clear with higher risk later. Tap Next.";
+      }
+    }
 
     T.currentKey = step.key;
     titleEl.innerText = step.title;
     stepEl.innerText = `Step ${T.step + 1} / ${steps.length}`;
-    textEl.innerText = step.text;
-    hintEl.innerText = step.hint || "";
+    textEl.innerText = text;
+    hintEl.innerText = hint;
     nextBtn.innerText = step.finish ? "Finish" : "Next";
 
     if(step.arrow === "cv"){
@@ -325,6 +347,8 @@
     T.baseShots = Number(getS()?.stats?.shots || 0);
     T.engagedOnce = false;
     T.attackedOnce = false;
+    T.captureWindowReached = false;
+    T.combatOutcome = null;
     T.shieldUsed = false;
     T.shopOpened = false;
     T.squadOpened = false;
@@ -352,6 +376,8 @@
     T.baseShots = 0;
     T.engagedOnce = false;
     T.attackedOnce = false;
+    T.captureWindowReached = false;
+    T.combatOutcome = null;
     T.shieldUsed = false;
     T.shopOpened = false;
     T.squadOpened = false;
@@ -380,9 +406,6 @@
       return;
     }
 
-    if(step.key === "attack"){
-      try{ window.endBattle?.(); }catch(e){}
-    }
     if(step.key === "squad"){
       try{ window.closeShop?.(); }catch(e){}
     }

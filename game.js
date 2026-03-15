@@ -2515,11 +2515,12 @@ function tutorialAllows(action){
   const key = tutorialKey();
   if(!key) return true;
   const allow = {
-    scan:["scan","lock","engage","attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
-    lock:["lock","engage","attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
-    engage:["engage","attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
-    attack:["attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
-    capture:["capture_rules","interactables","shield","shop","squad","inventory","done"],
+    scan:["scan","lock","engage","weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
+    lock:["lock","engage","weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
+    engage:["engage","weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
+    attack:["weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
+    capture:["resolve_tiger","interactables","shield","shop","squad","inventory","done"],
+    kill:["resolve_tiger","interactables","shield","shop","squad","inventory","done"],
     shop:["shop","squad","inventory","done"],
     inventory:["inventory","done"],
   };
@@ -2529,8 +2530,9 @@ function tutorialBlockMessage(action){
   if(action==="scan") return "Escort the civilian to the green safe zone first.";
   if(action==="lock") return "Scan first, then tap the tiger to lock it.";
   if(action==="engage") return "Scan and lock the tiger before engaging.";
-  if(action==="attack") return "Enter battle through the Engage step first.";
+  if(action==="attack") return "Engage first, then weaken the tiger to capture range.";
   if(action==="capture") return "Reach the Capture step first.";
+  if(action==="kill") return "Reach the Capture/Kill step first.";
   if(action==="shop") return "Finish combat and shield basics before opening the shop.";
   if(action==="inventory") return "Open Inventory after the Shop step.";
   return "Follow the tutorial steps in order.";
@@ -9402,6 +9404,9 @@ function updateAttackButton(){
 
 function finishTigerKill(t){
   if(!t || !t.alive) return;
+  if(window.TigerTutorial?.isRunning){
+    window.TigerTutorial.combatOutcome = "KILL";
+  }
   markStoryFinalBossOutcome("KILL", t);
   t.alive=false;
   breakCombo("tiger killed");
@@ -9445,7 +9450,8 @@ function playerAction(action){
   if(window.TigerTutorial?.isRunning){
     if(action==="ATTACK" && !tutorialAllows("attack")) return toast(tutorialBlockMessage("attack"));
     if(action==="CAPTURE" && !tutorialAllows("capture")) return toast(tutorialBlockMessage("capture"));
-    if(action==="PROTECT" || action==="KILL") return toast("Use Attack/Capture for the tutorial battle steps.");
+    if(action==="KILL" && !tutorialAllows("kill")) return toast(tutorialBlockMessage("kill"));
+    if(action==="PROTECT") return toast("Use Attack, Capture, or Kill for tutorial battle steps.");
   }
   const t=tigerById(S.activeTigerId);
   if(!t || !t.alive) return endBattle();
@@ -9480,6 +9486,9 @@ function playerAction(action){
       return toast(`${reqWeapon.name} is out of ammo for this ${t.type}.`);
     }
     if(!canCaptureTiger(t)) return toast(`${reqWeapon.name} is needed to capture this ${t.type}.`);
+    if(window.TigerTutorial?.isRunning){
+      window.TigerTutorial.combatOutcome = "CAPTURE";
+    }
     markStoryFinalBossOutcome("CAPTURE", t);
     t.alive=false;
     const pay=payout("CAPTURE");
