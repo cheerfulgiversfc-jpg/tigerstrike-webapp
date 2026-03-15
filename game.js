@@ -9821,6 +9821,7 @@ function combatTick(){
 
 // ===================== MISSION COMPLETE =====================
 function checkMissionComplete(){
+  if(window.__TUTORIAL_MODE__) return;
   if(S.mode==="Survival") return;
   if(S.gameOver) return;
 

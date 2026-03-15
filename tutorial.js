@@ -443,7 +443,7 @@
     render();
   }
 
-  function endTutorial(){
+  function endTutorial(openModePicker=false){
     const T = window.TigerTutorial;
     T.isRunning = false;
     T.step = 0;
@@ -465,6 +465,14 @@
     try{ window.closeInventory?.(); }catch(e){}
     try{ window.endBattle?.(); }catch(e){}
     try{ window.exitTutorialMode?.(); }catch(e){}
+    if(openModePicker){
+      setTimeout(() => {
+        try{
+          if(typeof window.openModeOverlay === "function") window.openModeOverlay();
+          else if(typeof window.openMode === "function") window.openMode();
+        }catch(e){}
+      }, 60);
+    }
 
     close();
     try{ window.toast?.("Tutorial complete ✅"); }catch(e){}
@@ -479,7 +487,7 @@
     const step = steps[T.step];
 
     if(step.finish){
-      endTutorial();
+      endTutorial(true);
       return;
     }
 
@@ -496,7 +504,7 @@
   });
 
   skipBtn.addEventListener("click", () => {
-    endTutorial();
+    endTutorial(false);
   });
 
   window.startTutorial = startTutorial;
