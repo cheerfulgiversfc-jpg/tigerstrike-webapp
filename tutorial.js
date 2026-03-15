@@ -54,14 +54,8 @@
       if(!T.captureWindowReached){
         let ready = false;
         try{
-          if(typeof window.canAttemptCapture === "function"){
-            if(tiger) ready = !!window.canAttemptCapture(tiger);
-            if(!ready){
-              for(const it of (S.tigers || [])){
-                if(!it || !it.alive) continue;
-                if(window.canAttemptCapture(it)){ ready = true; break; }
-              }
-            }
+          if(typeof window.tutorialCaptureWindowReady === "function"){
+            ready = !!window.tutorialCaptureWindowReady();
           }
         }catch(e){}
         if(!ready && tiger && tiger.hpMax > 0 && (tiger.hp / tiger.hpMax) <= 0.28){

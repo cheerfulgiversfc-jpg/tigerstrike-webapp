@@ -9266,6 +9266,11 @@ function canCaptureTiger(t){
   if(w.type!=="tranq") return false;
   return S.mag.loaded > 0 || (S.ammoReserve[w.ammo]||0) > 0;
 }
+function tutorialCaptureWindowReady(){
+  const t = tigerById(S.activeTigerId);
+  if(!t || !t.alive) return false;
+  return t.hp <= captureWindowHp(t);
+}
 function restorePostCaptureWeapon(requiredTranqId){
   const restoreId = (typeof S.lastCombatLethalWeaponId === "string") ? S.lastCombatLethalWeaponId : "";
   if(!restoreId || restoreId === requiredTranqId) return false;
@@ -11934,3 +11939,4 @@ window.selectQuickWeapon = selectQuickWeapon;
 window.buyPerk = buyPerk;
 window.lockNearestTiger = lockNearestTiger;
 window.canAttemptCapture = canAttemptCapture;
+window.tutorialCaptureWindowReady = tutorialCaptureWindowReady;
