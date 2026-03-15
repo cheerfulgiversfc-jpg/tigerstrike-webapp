@@ -6,6 +6,7 @@
   const stepEl = document.getElementById("tutorialStep");
   const textEl = document.getElementById("tutorialText");
   const hintEl = document.getElementById("tutorialHint");
+  const cardEl = document.getElementById("tutorialCard");
   const nextBtn = document.getElementById("tutorialNext");
   const skipBtn = document.getElementById("tutorialSkip");
   const arrow = document.getElementById("tutorialArrow");
@@ -38,6 +39,45 @@
   }
   function getS(){
     return (typeof window.getGameState === "function") ? window.getGameState() : window.S;
+  }
+  function updateProgressFlags(){
+    const T = window.TigerTutorial;
+    if(!T?.isRunning) return;
+    const S = getS();
+
+    if(S){
+      if(S.inBattle) T.engagedOnce = true;
+      const shots = Number(S.stats?.shots || 0);
+      if(shots > (T.baseShots || 0)) T.attackedOnce = true;
+      const shieldUntil = Number(S.shieldUntil || 0);
+      if(shieldUntil > Date.now() && shieldUntil > (T.lastShieldUntil || 0)) T.shieldUsed = true;
+      T.lastShieldUntil = shieldUntil;
+    }
+
+    const shop = byId("shopOverlay");
+    if(shop && shop.style.display === "flex") T.shopOpened = true;
+    const squadTab = byId("tabSquad");
+    if(T.shopOpened && squadTab && squadTab.classList.contains("active")) T.squadOpened = true;
+    const inv = byId("invOverlay");
+    if(inv && inv.style.display === "flex") T.inventoryOpened = true;
+  }
+  function setCardPlacement(stepKey){
+    if(!cardEl) return;
+    const mobile = !!window.matchMedia?.("(max-width:760px)")?.matches;
+    const dockBottom = stepKey === "shop" || stepKey === "squad" || stepKey === "inventory";
+    if(dockBottom){
+      cardEl.style.top = "auto";
+      cardEl.style.bottom = mobile ? "10px" : "14px";
+      cardEl.style.left = "50%";
+      cardEl.style.transform = "translateX(-50%)";
+      cardEl.style.maxHeight = mobile ? "min(34vh, 280px)" : "min(36vh, 300px)";
+      return;
+    }
+    cardEl.style.top = mobile ? "12px" : "70px";
+    cardEl.style.bottom = "auto";
+    cardEl.style.left = "50%";
+    cardEl.style.transform = "translateX(-50%)";
+    cardEl.style.maxHeight = mobile ? "min(42vh, 340px)" : "min(44vh, 360px)";
   }
   function getStepList(){
     return [
@@ -100,7 +140,8 @@
         arrow:"tiger",
         canNext: () => {
           const S = getS();
-          return !!(S && S.inBattle === true);
+          const T = window.TigerTutorial;
+          return !!((S && S.inBattle === true) || T?.engagedOnce);
         }
       },
       {
@@ -109,7 +150,7 @@
         text:"Press Attack once.",
         hint:"Fire one shot to continue.",
         arrow:"atkBtn",
-        canNext: () => (getS()?.stats?.shots || 0) >= 1
+        canNext: () => window.TigerTutorial.attackedOnce === true
       },
       {
         key:"capture_rules",
@@ -130,10 +171,10 @@
       {
         key:"shield",
         title:"Shield Ability",
-        text:"Use Shield to protect yourself and nearby civilians for 5 seconds.",
+        text:"Use Shield to protect yourself and nearby civilians for 5 seconds.\n(Shield then cools down before next use.)",
         hint:"Tap Shield once.",
         arrow:"shieldBtn",
-        canNext: () => (getS()?.shieldUntil || 0) > Date.now()
+        canNext: () => window.TigerTutorial.shieldUsed === true
       },
       {
         key:"shop",
@@ -142,6 +183,7 @@
         hint:"Tap Shop.",
         arrow:"shopBtn",
         canNext: () => {
+          if(window.TigerTutorial.shopOpened) return true;
           const el = byId("shopOverlay");
           return !!(el && el.style.display === "flex");
         }
@@ -153,6 +195,7 @@
         hint:"Tap Squad tab in Shop.",
         arrow:"tabSquad",
         canNext: () => {
+          if(window.TigerTutorial.squadOpened) return true;
           const shop = byId("shopOverlay");
           const tab = byId("tabSquad");
           return !!(shop && tab && shop.style.display === "flex" && tab.classList.contains("active"));
@@ -165,6 +208,7 @@
         hint:"Tap Inventory once.",
         arrow:"invBtn",
         canNext: () => {
+          if(window.TigerTutorial.inventoryOpened) return true;
           const el = byId("invOverlay");
           return !!(el && el.style.display === "flex");
         }
@@ -186,7 +230,15 @@
     step:0,
     currentKey:null,
     mapClicked:false,
-    lastLockedTigerId:null
+    lastLockedTigerId:null,
+    baseShots:0,
+    engagedOnce:false,
+    attackedOnce:false,
+    shieldUsed:false,
+    shopOpened:false,
+    squadOpened:false,
+    inventoryOpened:false,
+    lastShieldUntil:0
   };
 
   function showArrowAtEl(el){
@@ -229,6 +281,8 @@
     const steps = getStepList();
     const step = steps[T.step];
     const S = getS();
+    updateProgressFlags();
+    setCardPlacement(step.key);
 
     T.currentKey = step.key;
     titleEl.innerText = step.title;
@@ -254,6 +308,7 @@
     clearInterval(window.__tutTimer);
     window.__tutTimer = setInterval(() => {
       if(!window.TigerTutorial.isRunning) return;
+      updateProgressFlags();
       setNextEnabled(!!step.canNext());
     }, 200);
   }
@@ -267,6 +322,14 @@
     T.currentKey = "intro";
     T.mapClicked = false;
     T.lastLockedTigerId = null;
+    T.baseShots = Number(getS()?.stats?.shots || 0);
+    T.engagedOnce = false;
+    T.attackedOnce = false;
+    T.shieldUsed = false;
+    T.shopOpened = false;
+    T.squadOpened = false;
+    T.inventoryOpened = false;
+    T.lastShieldUntil = Number(getS()?.shieldUntil || 0);
     try{ window.enterTutorialMode?.(); }catch(e){}
 
     const S = getS();
@@ -286,6 +349,14 @@
     T.currentKey = null;
     T.mapClicked = false;
     T.lastLockedTigerId = null;
+    T.baseShots = 0;
+    T.engagedOnce = false;
+    T.attackedOnce = false;
+    T.shieldUsed = false;
+    T.shopOpened = false;
+    T.squadOpened = false;
+    T.inventoryOpened = false;
+    T.lastShieldUntil = 0;
 
     try{ window.closeShop?.(); }catch(e){}
     try{ window.closeInventory?.(); }catch(e){}

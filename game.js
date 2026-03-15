@@ -2518,7 +2518,8 @@ function tutorialAllows(action){
     scan:["scan","lock","engage","attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
     lock:["lock","engage","attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
     engage:["engage","attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
-    attack:["attack"],
+    attack:["attack","capture_rules","interactables","shield","shop","squad","inventory","done"],
+    capture:["capture_rules","interactables","shield","shop","squad","inventory","done"],
     shop:["shop","squad","inventory","done"],
     inventory:["inventory","done"],
   };
@@ -2529,6 +2530,7 @@ function tutorialBlockMessage(action){
   if(action==="lock") return "Scan first, then tap the tiger to lock it.";
   if(action==="engage") return "Scan and lock the tiger before engaging.";
   if(action==="attack") return "Enter battle through the Engage step first.";
+  if(action==="capture") return "Reach the Capture step first.";
   if(action==="shop") return "Finish combat and shield basics before opening the shop.";
   if(action==="inventory") return "Open Inventory after the Shop step.";
   return "Follow the tutorial steps in order.";
@@ -9442,9 +9444,8 @@ function playerAction(action){
   if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return;
   if(window.TigerTutorial?.isRunning){
     if(action==="ATTACK" && !tutorialAllows("attack")) return toast(tutorialBlockMessage("attack"));
-    if(action==="PROTECT" || action==="CAPTURE" || action==="KILL"){
-      return toast("Use Attack for the tutorial battle step.");
-    }
+    if(action==="CAPTURE" && !tutorialAllows("capture")) return toast(tutorialBlockMessage("capture"));
+    if(action==="PROTECT" || action==="KILL") return toast("Use Attack/Capture for the tutorial battle steps.");
   }
   const t=tigerById(S.activeTigerId);
   if(!t || !t.alive) return endBattle();
