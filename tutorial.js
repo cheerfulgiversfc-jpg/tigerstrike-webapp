@@ -40,6 +40,19 @@
   function getS(){
     return (typeof window.getGameState === "function") ? window.getGameState() : window.S;
   }
+  function parseHudCaptureState(){
+    const tigerTxt = byId("tigerTxt")?.innerText || "";
+    const capTxt = byId("capturePctTxt")?.innerText || "25%";
+    const m = tigerTxt.match(/(\d+)\s*\/\s*(\d+)/);
+    const cap = capTxt.match(/(\d+)/);
+    if(!m) return null;
+    const hp = Number(m[1] || 0);
+    const hpMax = Number(m[2] || 0);
+    const capPct = Number(cap?.[1] || 25);
+    if(!(hpMax > 0)) return null;
+    const ready = hp <= Math.ceil(hpMax * (capPct / 100));
+    return { hp, hpMax, capPct, ready };
+  }
   function updateProgressFlags(){
     const T = window.TigerTutorial;
     if(!T?.isRunning) return;
@@ -54,6 +67,8 @@
       if(!T.captureWindowReached){
         let ready = false;
         try{
+          const hudState = parseHudCaptureState();
+          if(hudState?.ready) ready = true;
           if(typeof window.tutorialAnyCaptureWindowReady === "function"){
             ready = !!window.tutorialAnyCaptureWindowReady();
           }
@@ -318,13 +333,12 @@
         hint = "Fast clear with higher risk later. Tap Next.";
       }
     } else if(step.key === "weaken_tiger"){
-      const activeTigerId = Number(S?.activeTigerId || 0);
-      const tiger = activeTigerId > 0 ? (S?.tigers || []).find((it)=>it && it.id === activeTigerId && it.alive) : null;
-      if(tiger && tiger.hpMax > 0){
-        const pct = Math.max(0, Math.round((tiger.hp / tiger.hpMax) * 100));
-        hint = `Current tiger HP: ${Math.round(tiger.hp)}/${Math.round(tiger.hpMax)} (${pct}%). Get to 25% or lower.`;
+      const hudState = parseHudCaptureState();
+      if(hudState){
+        const pct = Math.max(0, Math.round((hudState.hp / hudState.hpMax) * 100));
+        hint = `Current tiger HP: ${Math.round(hudState.hp)}/${Math.round(hudState.hpMax)} (${pct}%). Get to ${hudState.capPct}% or lower.`;
       } else {
-        hint = "Stay in battle and lower a tiger to 25% HP or lower.";
+        hint = "Stay in battle and lower a tiger to capture range.";
       }
     }
 
