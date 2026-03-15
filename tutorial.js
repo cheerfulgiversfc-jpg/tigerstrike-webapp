@@ -40,18 +40,66 @@
   function getS(){
     return (typeof window.getGameState === "function") ? window.getGameState() : window.S;
   }
+  function pickTutorialTiger(S){
+    if(!S || !Array.isArray(S.tigers)) return null;
+    const byId = (id) => S.tigers.find((t)=>t && t.alive && t.id === id) || null;
+    const active = byId(Number(S.activeTigerId || 0));
+    if(active) return active;
+    const locked = byId(Number(S.lockedTigerId || 0));
+    if(locked) return locked;
+    const alive = S.tigers.filter((t)=>t && t.alive && t.hpMax > 0);
+    if(!alive.length) return null;
+    alive.sort((a,b)=>((a.hp/a.hpMax) - (b.hp/b.hpMax)));
+    return alive[0] || null;
+  }
   function parseHudCaptureState(){
-    const tigerTxt = byId("tigerTxt")?.innerText || "";
     const capTxt = byId("capturePctTxt")?.innerText || "25%";
-    const m = tigerTxt.match(/(\d+)\s*\/\s*(\d+)/);
     const cap = capTxt.match(/(\d+)/);
+    const capPct = Number(cap?.[1] || 25);
+
+    const S = getS();
+    const tiger = pickTutorialTiger(S);
+    if(tiger && tiger.hpMax > 0){
+      const hp = Number(tiger.hp || 0);
+      const hpMax = Number(tiger.hpMax || 0);
+      const ready = hp <= Math.ceil(hpMax * (capPct / 100));
+      return { hp, hpMax, capPct, ready };
+    }
+
+    const tigerTxt = byId("tigerTxt")?.innerText || "";
+    const m = tigerTxt.match(/(\d+)\s*\/\s*(\d+)/);
     if(!m) return null;
     const hp = Number(m[1] || 0);
     const hpMax = Number(m[2] || 0);
-    const capPct = Number(cap?.[1] || 25);
     if(!(hpMax > 0)) return null;
     const ready = hp <= Math.ceil(hpMax * (capPct / 100));
     return { hp, hpMax, capPct, ready };
+  }
+  function captureReadyFromUi(){
+    try{
+      if(typeof window.tutorialAnyCaptureWindowReady === "function" && window.tutorialAnyCaptureWindowReady()) return true;
+      if(typeof window.tutorialCaptureWindowReady === "function" && window.tutorialCaptureWindowReady()) return true;
+    }catch(e){}
+    const hudState = parseHudCaptureState();
+    if(hudState?.ready) return true;
+    const capButtons = ["capBtn", "combatCaptureBtn", "touchCaptureBtn"];
+    for(const id of capButtons){
+      const el = byId(id);
+      if(!el) continue;
+      if(el.getClientRects().length === 0) continue;
+      if(window.getComputedStyle(el).display === "none") continue;
+      if(!el.disabled) return true;
+    }
+    return false;
+  }
+  function updateWeakenTigerHint(){
+    const hudState = parseHudCaptureState();
+    if(hudState){
+      const pct = Math.max(0, Math.round((hudState.hp / hudState.hpMax) * 100));
+      hintEl.innerText = `Current tiger HP: ${Math.round(hudState.hp)}/${Math.round(hudState.hpMax)} (${pct}%). Get to ${hudState.capPct}% or lower.`;
+      return;
+    }
+    hintEl.innerText = "Stay in battle and lower a tiger to capture range.";
   }
   function updateProgressFlags(){
     const T = window.TigerTutorial;
@@ -67,15 +115,12 @@
       if(!T.captureWindowReached){
         let ready = false;
         try{
-          const hudState = parseHudCaptureState();
-          if(hudState?.ready) ready = true;
-          if(typeof window.tutorialAnyCaptureWindowReady === "function"){
-            ready = !!window.tutorialAnyCaptureWindowReady();
-          }
-          if(typeof window.tutorialCaptureWindowReady === "function"){
-            ready = ready || !!window.tutorialCaptureWindowReady();
-          }
+          ready = captureReadyFromUi();
         }catch(e){}
+        if(!ready && Array.isArray(S?.tigers)){
+          const capPct = parseHudCaptureState()?.capPct || 25;
+          ready = S.tigers.some((it)=>it && it.alive && it.hpMax > 0 && Number(it.hp || 0) <= Math.ceil(Number(it.hpMax || 0) * (capPct / 100)));
+        }
         if(!ready && tiger && tiger.hpMax > 0 && (tiger.hp / tiger.hpMax) <= 0.28){
           // Fallback tolerance to avoid step-lock from rounding/cross-frame timing.
           ready = true;
@@ -183,7 +228,7 @@
         text:"Attack until the tiger is at 25% HP or lower.",
         hint:"Keep attacking until the tiger health bar reaches capture range.",
         arrow:"tiger",
-        canNext: () => window.TigerTutorial.captureWindowReached === true
+        canNext: () => window.TigerTutorial.captureWindowReached === true || captureReadyFromUi() || !!window.TigerTutorial.combatOutcome
       },
       {
         key:"resolve_tiger",
@@ -333,13 +378,8 @@
         hint = "Fast clear with higher risk later. Tap Next.";
       }
     } else if(step.key === "weaken_tiger"){
-      const hudState = parseHudCaptureState();
-      if(hudState){
-        const pct = Math.max(0, Math.round((hudState.hp / hudState.hpMax) * 100));
-        hint = `Current tiger HP: ${Math.round(hudState.hp)}/${Math.round(hudState.hpMax)} (${pct}%). Get to ${hudState.capPct}% or lower.`;
-      } else {
-        hint = "Stay in battle and lower a tiger to capture range.";
-      }
+      updateWeakenTigerHint();
+      hint = hintEl.innerText || hint;
     }
 
     T.currentKey = step.key;
@@ -367,6 +407,7 @@
     window.__tutTimer = setInterval(() => {
       if(!window.TigerTutorial.isRunning) return;
       updateProgressFlags();
+      if(step.key === "weaken_tiger") updateWeakenTigerHint();
       setNextEnabled(!!step.canNext());
     }, 200);
   }
@@ -432,10 +473,10 @@
   nextBtn.addEventListener("click", () => {
     const T = window.TigerTutorial;
     if(!T.isRunning) return;
+    if(nextBtn.disabled) return;
 
     const steps = getStepList();
     const step = steps[T.step];
-    if(!step.canNext()) return;
 
     if(step.finish){
       endTutorial();

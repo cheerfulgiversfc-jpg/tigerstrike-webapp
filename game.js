@@ -9291,6 +9291,11 @@ function updateBattleButtons(){
   const capBtn = document.getElementById("capBtn");
   if(killBtn) killBtn.disabled = !(t && t.hp<=15);
   if(capBtn) capBtn.disabled = !canAttemptCapture(t);
+  try{
+    if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weaken_tiger" && t && t.alive && t.hp <= captureWindowHp(t)){
+      window.TigerTutorial.captureWindowReached = true;
+    }
+  }catch(e){}
   renderCombatControls();
   renderBattleStatus();
 }
@@ -9631,6 +9636,11 @@ function playerAction(action){
       finishTigerKill(t);
       return;
     }
+    try{
+      if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weaken_tiger" && t.hp <= captureWindowHp(t)){
+        window.TigerTutorial.captureWindowReached = true;
+      }
+    }catch(e){}
     if(w.type==="tranq" && t.hp <= captureWindowHp(t)){
       setBattleMsg(`Tiger is subdued. Tap Capture to use ${getWeapon(requiredTranqWeaponId(t))?.name || "the required tranq gun"}.`);
     }
