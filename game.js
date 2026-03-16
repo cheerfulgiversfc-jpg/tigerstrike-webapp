@@ -1052,6 +1052,8 @@ const DEFAULT = {
   shieldUntil:0,
   rollCooldownUntil:0,
   rollInvulnUntil:0,
+  rollBufferedDodges:0,
+  rollBufferedUntil:0,
   rollAnimStart:0,
   rollAnimUntil:0,
   rollAnimFromX:0,
@@ -2160,6 +2162,8 @@ function sanitizeRuntimeState(){
   }
   if(!Number.isFinite(S.me.face)) S.me.face = 0;
   if(!Number.isFinite(S.me.step)) S.me.step = 0;
+  if(!Number.isFinite(S.rollBufferedDodges)) S.rollBufferedDodges = 0;
+  if(!Number.isFinite(S.rollBufferedUntil)) S.rollBufferedUntil = 0;
   if(!Number.isFinite(S.rollAnimStart)) S.rollAnimStart = 0;
   if(!Number.isFinite(S.rollAnimUntil)) S.rollAnimUntil = 0;
   S.rollAnimFromX = clampX(S.rollAnimFromX, 40, w - 40);
@@ -2338,6 +2342,7 @@ const ROLL_COOLDOWN_MS = 2800;
 const ROLL_INVULN_MS = 520;
 const ROLL_TRAVEL_DIST = 92;
 const ROLL_ANIM_MS = 420;
+const ROLL_BUFFER_DODGE_MS = 1100;
 const ESCORT_TAKEOVER_WINDOW_MS = 3000;
 const ESCORT_TAKEOVER_DISTANCE = 92;
 const WEAPON_RANGE_BANDS = { short:110, mid:170 };
@@ -7735,6 +7740,8 @@ function rollDodge(){
   tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
   S.target = null;
   S.rollInvulnUntil = now + ROLL_INVULN_MS;
+  S.rollBufferedDodges = 1;
+  S.rollBufferedUntil = now + ROLL_BUFFER_DODGE_MS;
   S.rollCooldownUntil = now + ROLL_COOLDOWN_MS;
   S.rollAnimStart = now;
   S.rollAnimUntil = now + ROLL_ANIM_MS;
@@ -7744,7 +7751,7 @@ function rollDodge(){
   S.rollAnimToY = S.me.y;
   S.me.face = away;
   S.me.step = (S.me.step + 2.2) % (Math.PI * 2);
-  setBattleMsg("Roll executed. You can dodge charge hits.");
+  setBattleMsg("Roll executed. Next tiger hit will be dodged.");
   sfx("ui");
   hapticImpact("medium");
   renderCombatControls();
@@ -9232,6 +9239,8 @@ function endBattle(reason){
   S.activeTigerId=null;
   S.battleMsg="";
   S._combatTigerAttackAt = 0;
+  S.rollBufferedDodges = 0;
+  S.rollBufferedUntil = 0;
   transitionCleanupSweep("battle-end");
   clearTransientCombatVisuals();
   if(reason==="RETREAT") S.aggro = clamp(S.aggro+4,0,100);
@@ -9673,7 +9682,13 @@ function tigerTurn(t, softened=false, opts={}){
     renderBattleStatus();
     return 0;
   }
-  if(now < (S.rollInvulnUntil || 0)){
+  const rollInvulnActive = now < (S.rollInvulnUntil || 0);
+  const rollBufferedActive = (S.rollBufferedDodges || 0) > 0 && now < (S.rollBufferedUntil || 0);
+  if(rollInvulnActive || rollBufferedActive){
+    if(rollBufferedActive){
+      S.rollBufferedDodges = 0;
+      S.rollBufferedUntil = 0;
+    }
     emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(250,204,21,.95)", 2);
     emitDamagePopup(S.me.x, S.me.y - 50, "DODGE", "crit");
     if(S.inBattle) setBattleMsg("🤸 Roll dodge successful.");
@@ -11679,6 +11694,8 @@ function init(){
   if(!Number.isFinite(S.shieldUntil)) S.shieldUntil = 0;
   if(!Number.isFinite(S.rollCooldownUntil)) S.rollCooldownUntil = 0;
   if(!Number.isFinite(S.rollInvulnUntil)) S.rollInvulnUntil = 0;
+  if(!Number.isFinite(S.rollBufferedDodges)) S.rollBufferedDodges = 0;
+  if(!Number.isFinite(S.rollBufferedUntil)) S.rollBufferedUntil = 0;
   if(!Number.isFinite(S.rollAnimStart)) S.rollAnimStart = 0;
   if(!Number.isFinite(S.rollAnimUntil)) S.rollAnimUntil = 0;
   if(!Number.isFinite(S.rollAnimFromX)) S.rollAnimFromX = S.me?.x ?? DEFAULT.me.x;

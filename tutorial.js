@@ -139,23 +139,73 @@
     const inv = byId("invOverlay");
     if(inv && inv.style.display === "flex") T.inventoryOpened = true;
   }
-  function setCardPlacement(stepKey){
+  function setCardPlacement(step){
     if(!cardEl) return;
+    const key = (typeof step === "string") ? step : (step?.key || "");
     const mobile = !!window.matchMedia?.("(max-width:760px)")?.matches;
-    const dockBottom = stepKey === "shop" || stepKey === "squad" || stepKey === "inventory";
-    if(dockBottom){
-      cardEl.style.top = "auto";
-      cardEl.style.bottom = mobile ? "10px" : "14px";
-      cardEl.style.left = "50%";
-      cardEl.style.transform = "translateX(-50%)";
-      cardEl.style.maxHeight = mobile ? "min(34vh, 280px)" : "min(36vh, 300px)";
-      return;
-    }
-    cardEl.style.top = mobile ? "12px" : "70px";
-    cardEl.style.bottom = "auto";
+    const baseTop = mobile ? 12 : 70;
+    const margin = mobile ? 8 : 12;
+    const maxH = key === "squad"
+      ? (mobile ? "min(34vh, 280px)" : "min(36vh, 300px)")
+      : (mobile ? "min(42vh, 340px)" : "min(44vh, 360px)");
+
     cardEl.style.left = "50%";
     cardEl.style.transform = "translateX(-50%)";
-    cardEl.style.maxHeight = mobile ? "min(42vh, 340px)" : "min(44vh, 360px)";
+    cardEl.style.maxHeight = maxH;
+    cardEl.style.bottom = "auto";
+    cardEl.style.top = `${baseTop}px`;
+
+    // Auto-place Squad step to avoid covering the Squad tab target.
+    if(key !== "squad") return;
+    const target = tutorialTarget("tabSquad");
+    if(!target) return;
+
+    const priorVisibility = cardEl.style.visibility;
+    const priorTop = cardEl.style.top;
+    const priorBottom = cardEl.style.bottom;
+    cardEl.style.visibility = "hidden";
+    cardEl.style.top = `${baseTop}px`;
+    cardEl.style.bottom = "auto";
+    const measured = cardEl.getBoundingClientRect();
+    const cardH = Math.max(180, measured.height || (mobile ? 240 : 260));
+    cardEl.style.visibility = priorVisibility;
+    cardEl.style.top = priorTop;
+    cardEl.style.bottom = priorBottom;
+
+    const vpH = window.innerHeight || document.documentElement.clientHeight || 800;
+    const minTop = margin;
+    const maxTop = Math.max(minTop, vpH - cardH - margin);
+    const tr = target.getBoundingClientRect();
+    const aboveTop = Math.round(tr.top - cardH - margin);
+    const belowTop = Math.round(tr.bottom + margin);
+    const canAbove = aboveTop >= minTop;
+    const canBelow = belowTop <= maxTop;
+    let top = baseTop;
+
+    if(canAbove && canBelow){
+      const roomAbove = tr.top;
+      const roomBelow = vpH - tr.bottom;
+      top = roomBelow >= roomAbove ? belowTop : aboveTop;
+    } else if(canBelow){
+      top = belowTop;
+    } else if(canAbove){
+      top = aboveTop;
+    } else {
+      top = Math.round(Math.max(minTop, Math.min(maxTop, baseTop)));
+    }
+
+    top = Math.round(Math.max(minTop, Math.min(maxTop, top)));
+    cardEl.style.top = `${top}px`;
+    cardEl.style.bottom = "auto";
+
+    // Final overlap guard for very small screens.
+    const cardRect = cardEl.getBoundingClientRect();
+    const overlaps = !(cardRect.right < tr.left || cardRect.left > tr.right || cardRect.bottom < tr.top || cardRect.top > tr.bottom);
+    if(overlaps){
+      const nudgeUp = Math.max(minTop, Math.round(tr.top - cardH - margin));
+      const nudgeDown = Math.min(maxTop, Math.round(tr.bottom + margin));
+      cardEl.style.top = `${(tr.top > vpH * 0.5 ? nudgeUp : nudgeDown)}px`;
+    }
   }
   function getStepList(){
     return [
@@ -365,7 +415,6 @@
     const step = steps[T.step];
     const S = getS();
     updateProgressFlags();
-    setCardPlacement(step.key);
     let text = step.text;
     let hint = step.hint || "";
     if(step.key === "resolve_tiger"){
@@ -388,6 +437,7 @@
     textEl.innerText = text;
     hintEl.innerText = hint;
     nextBtn.innerText = step.finish ? "Finish" : "Next";
+    setCardPlacement(step);
 
     if(step.arrow === "cv"){
       showArrowAtEl(byId("cv"));
@@ -408,6 +458,7 @@
       if(!window.TigerTutorial.isRunning) return;
       updateProgressFlags();
       if(step.key === "weaken_tiger") updateWeakenTigerHint();
+      if(step.key === "squad") setCardPlacement(step);
       setNextEnabled(!!step.canNext());
     }, 200);
   }
