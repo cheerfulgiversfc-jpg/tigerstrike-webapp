@@ -111,14 +111,13 @@ async function findMatchingTransaction(orderMeta, offer, userId, excludedTxIds, 
       const starsAmount = Math.abs(Number(tx?.amount || 0));
       if(starsAmount !== Number(offer.stars)) continue;
 
-      const sourceUserId = extractSourceUserId(tx);
-      if(sourceUserId > 0 && sourceUserId !== userId) continue;
-
       const payload = extractInvoicePayload(tx);
       if(payload && payload === orderMeta.raw){
         return tx;
       }
 
+      const sourceUserId = extractSourceUserId(tx);
+      if(sourceUserId > 0 && sourceUserId !== userId) continue;
       if(sourceUserId !== userId) continue;
 
       if(orderMeta.createdAtMs > 0){
