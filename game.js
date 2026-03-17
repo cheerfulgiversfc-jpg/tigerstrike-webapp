@@ -4318,6 +4318,7 @@ async function claimStarsOrder(orderRef, opts={}){
   const poll = opts.poll !== false;
   const attempts = poll ? 8 : 1;
   for(let i=0;i<attempts;i++){
+    console.log("claim orderRef", orderRef);
     const data = await starsApiPost("/api/stars/claim", { orderRef, initData });
     if(data.status === "pending"){
       if(i < attempts - 1){
