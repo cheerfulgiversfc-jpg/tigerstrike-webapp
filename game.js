@@ -144,9 +144,13 @@ const TOOLS = [
 
 const TRAP_ITEM = { id:"TRAP", name:"Trap", price:300, qty:1 };
 const STARS_CASH_PACKS = [
-  { sku:"funds_small",  name:"Supply Cache", stars:100, funds:12000, desc:"Entry pack: best low-cost top-up." },
-  { sku:"funds_medium", name:"Field Treasury", stars:250, funds:35000, desc:"Mid pack with better value per Star." },
-  { sku:"funds_large",  name:"War Chest", stars:500, funds:80000, desc:"Best value pack for major progression." },
+  { sku:"funds_100",   name:"Supply Cache", stars:100, funds:1000, desc:"100 Stars -> $1,000 in-game cash." },
+  { sku:"funds_250",   name:"Field Treasury", stars:250, funds:2500, desc:"250 Stars -> $2,500 in-game cash." },
+  { sku:"funds_500",   name:"War Chest", stars:500, funds:5000, desc:"500 Stars -> $5,000 in-game cash." },
+  { sku:"funds_1000",  name:"Command Reserve", stars:1000, funds:10000, desc:"1,000 Stars -> $10,000 in-game cash." },
+  { sku:"funds_2500",  name:"Strategic Reserve", stars:2500, funds:25000, desc:"2,500 Stars -> $25,000 in-game cash." },
+  { sku:"funds_5000",  name:"High Command Vault", stars:5000, funds:50000, desc:"5,000 Stars -> $50,000 in-game cash." },
+  { sku:"funds_10000", name:"Sovereign Treasury", stars:10000, funds:100000, desc:"10,000 Stars -> $100,000 in-game cash." },
 ];
 
 const AMMO_EFFECTS = {
