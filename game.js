@@ -144,19 +144,21 @@ const TOOLS = [
 
 const TRAP_ITEM = { id:"TRAP", name:"Trap", price:300, qty:1 };
 const STARS_CASH_PACKS = [
+  { sku:"funds_50",    name:"Scout Purse", stars:50, funds:500, desc:"Convert 50 Stars into $500 in-game cash." },
   { sku:"funds_100",   name:"Supply Cache", stars:100, funds:1000, desc:"Convert 100 Stars into $1,000 in-game cash." },
   { sku:"funds_250",   name:"Field Treasury", stars:250, funds:2500, desc:"Convert 250 Stars into $2,500 in-game cash." },
-  { sku:"funds_500",   name:"War Chest", stars:500, funds:5000, desc:"Convert 500 Stars into $5,000 in-game cash." },
-  { sku:"funds_1000",  name:"Command Reserve", stars:1000, funds:10000, desc:"Convert 1,000 Stars into $10,000 in-game cash." },
+  { sku:"funds_350",   name:"Taskforce Reserve", stars:350, funds:3500, desc:"Convert 350 Stars into $3,500 in-game cash." },
   { sku:"funds_2500",  name:"Strategic Reserve", stars:2500, funds:25000, desc:"Convert 2,500 Stars into $25,000 in-game cash." },
   { sku:"funds_5000",  name:"High Command Vault", stars:5000, funds:50000, desc:"Convert 5,000 Stars into $50,000 in-game cash." },
   { sku:"funds_10000", name:"Sovereign Treasury", stars:10000, funds:100000, desc:"Convert 10,000 Stars into $100,000 in-game cash." },
+  { sku:"funds_25000", name:"National Treasury", stars:25000, funds:250000, desc:"Convert 25,000 Stars into $250,000 in-game cash." },
+  { sku:"funds_35000", name:"Titan Treasury", stars:35000, funds:350000, desc:"Convert 35,000 Stars into $350,000 in-game cash." },
 ];
 const STARS_PREMIUM_PACKS = [
   {
     sku:"premium_supply_drop",
     name:"Supply Drop",
-    stars:100,
+    stars:350,
     desc:"Instant refill pack for active runs.",
     preview:"+3 Med Kits • +2 Repair Kits • +3 Traps • +1 Shield",
     grant:{ medkits:{ M_SMALL:3, M_MED:2 }, repairs:{ T_REPAIR:2 }, traps:3, shields:1 },
@@ -164,7 +166,7 @@ const STARS_PREMIUM_PACKS = [
   {
     sku:"premium_arsenal_convoy",
     name:"Arsenal Convoy",
-    stars:250,
+    stars:1000,
     desc:"Large ammo shipment and maintenance support.",
     preview:"+260 Ammo • +1 Pro Repair • +2 Traps",
     grant:{ ammo:{ "9MM_STD":120, "556_STD":60, "762_STD":40, "TRANQ_DARTS":40 }, repairs:{ T_REPAIR_PRO:1 }, traps:2 },
@@ -172,7 +174,7 @@ const STARS_PREMIUM_PACKS = [
   {
     sku:"premium_rescue_priority",
     name:"Rescue Priority",
-    stars:500,
+    stars:2500,
     desc:"High-pressure mission support for survival streaks.",
     preview:"+5 Shields • +8 Traps • +3 Trauma Kits • +2 Pro Repairs",
     grant:{ shields:5, traps:8, medkits:{ M_TRAUMA:3 }, repairs:{ T_REPAIR_PRO:2 } },
@@ -195,6 +197,23 @@ const CASH_SUPPLY_BUNDLES = [
     preview:"+6 Shields • +8 Traps • +2 Trauma Kits • +2 Pro Repairs • +140 Ammo",
     grant:{ shields:6, traps:8, medkits:{ M_TRAUMA:2 }, repairs:{ T_REPAIR_PRO:2 }, ammo:{ "9MM_STD":60, "556_STD":40, "TRANQ_DARTS":40 } },
   },
+];
+const STARS_TOPUP_GUIDE = [
+  { stars:50, label:"$0.99" },
+  { stars:75, label:"$1.49" },
+  { stars:100, label:"$1.99" },
+  { stars:150, label:"$2.99" },
+  { stars:250, label:"$4.99" },
+  { stars:350, label:"$6.99" },
+  { stars:500, label:"$9.99" },
+  { stars:750, label:"$14.99" },
+  { stars:1000, label:"$19.99" },
+  { stars:1500, label:"$29.99" },
+  { stars:2500, label:"$49.99" },
+  { stars:5000, label:"$99.99" },
+  { stars:10000, label:"$199.99" },
+  { stars:25000, label:"$499.99" },
+  { stars:35000, label:"$699.99" },
 ];
 const STARS_ALL_OFFERS = [...STARS_CASH_PACKS, ...STARS_PREMIUM_PACKS];
 
@@ -4292,6 +4311,8 @@ function updateModeDesc(){
 let currentShopTab="weapons";
 let starsCheckoutBusy = false;
 let starsPendingOrderRef = readStarsPendingOrderRef();
+let starsAutoClaimBusy = false;
+let starsAutoClaimAt = 0;
 
 function starsOfferBySku(sku){
   return STARS_ALL_OFFERS.find((pack)=>pack.sku === sku) || null;
@@ -4450,21 +4471,40 @@ function starsUnavailableReason(){
   if(!tg.initData) return "Reopen the Mini App from your bot to enable Stars checkout.";
   return "";
 }
+function openStarsTopUp(targetStars){
+  const stars = positiveInt(targetStars);
+  const hint = stars > 0 ? `${stars} Stars` : "a Stars package";
+  try{
+    if(tg && typeof tg.openTelegramLink === "function"){
+      tg.openTelegramLink("https://t.me/PremiumBot");
+      toast(`Opening Telegram Stars top-up for ${hint}.`);
+      return;
+    }
+    window.open("https://t.me/PremiumBot", "_blank", "noopener,noreferrer");
+    toast("Open @PremiumBot to buy Stars.");
+  }catch(e){
+    toast("Could not open Stars top-up. Open @PremiumBot in Telegram.");
+  }
+}
 async function claimStarsOrder(orderRef, opts={}){
   const initData = tg?.initData || "";
   if(!orderRef || !initData) return false;
   const poll = opts.poll !== false;
-  const attempts = poll ? 8 : 1;
+  const attempts = Math.max(1, Math.min(60, Math.floor(Number(opts.attempts || (poll ? 8 : 1)))));
+  const intervalMs = Math.max(500, Math.min(5000, Math.floor(Number(opts.intervalMs || 1400))));
+  const silentPending = !!opts.silentPending;
   for(let i=0;i<attempts;i++){
     const excludeTxIds = readClaimedStarsTxIds();
     const data = await starsApiPost("/api/stars/claim", { orderRef, initData, excludeTxIds });
     if(data.status === "pending"){
       if(i < attempts - 1){
-        await waitMs(1400);
+        await waitMs(intervalMs);
         continue;
       }
-      if(poll) toast("Payment is still processing. Tap Claim Pending Purchase in Stars tab.");
-      else toast("No completed payment was found for this pending order yet.");
+      if(!silentPending){
+        if(poll) toast("Payment is still processing. Tap Claim Pending Purchase in Cash or Premium tab.");
+        else toast("No completed payment was found for this pending order yet.");
+      }
       return false;
     }
     if(data.status === "paid"){
@@ -4518,11 +4558,12 @@ async function buyWithStars(sku){
     const invoiceLink = String(data.invoiceLink || "");
     if(!orderRef || !invoiceLink) throw new Error("Missing invoice link.");
     writeStarsPendingOrderRef(orderRef);
+    toast(`Opening invoice: ${pack.stars} Stars`);
     const onStatus = (status)=>{
       const s = String(status || "").toLowerCase();
       if(s === "paid" || s === "pending"){
         toast("Payment submitted. Verifying purchase...");
-        Promise.resolve(claimStarsOrder(orderRef, { poll:true }))
+        Promise.resolve(claimStarsOrder(orderRef, { poll:true, attempts:40, intervalMs:2000 }))
           .catch((err)=>toast(err?.message || "Could not verify Stars purchase."));
       } else if(s === "cancelled"){
         writeStarsPendingOrderRef(null);
@@ -4535,32 +4576,23 @@ async function buyWithStars(sku){
       }
     };
     if(typeof tg.openInvoice === "function"){
-      await new Promise((resolve, reject)=>{
-        let settled = false;
-        const done = ()=>{
-          if(settled) return;
-          settled = true;
-          clearTimeout(timeoutId);
-          resolve();
-        };
-        const timeoutId = setTimeout(()=>{
-          done();
-          toast("If payment completed, tap Claim Pending Purchase.");
-        }, 15000);
-        try{
-          tg.openInvoice(invoiceLink, (status)=>{
-            try{
-              onStatus(status);
-            }catch(err){
-              toast(err?.message || "Could not process invoice status.");
-            }
-            done();
-          });
-        }catch(e){
-          clearTimeout(timeoutId);
-          reject(e);
-        }
-      });
+      let callbackFired = false;
+      try{
+        tg.openInvoice(invoiceLink, (status)=>{
+          callbackFired = true;
+          try{
+            onStatus(status);
+          }catch(err){
+            toast(err?.message || "Could not process invoice status.");
+          }
+        });
+      }catch(e){
+        throw e;
+      }
+      setTimeout(()=>{
+        if(callbackFired) return;
+        toast("Payment window is still open or delayed. If charged, tap Claim Pending Purchase.");
+      }, 12000);
     } else if(typeof tg.openTelegramLink === "function"){
       tg.openTelegramLink(invoiceLink);
       toast("Complete payment, then tap Claim Pending Purchase.");
@@ -4583,7 +4615,7 @@ async function claimPendingStarsPurchase(){
   const orderRef = starsPendingOrderRef || readStarsPendingOrderRef();
   if(!orderRef) return toast("No pending Stars purchase.");
   try{
-    await claimStarsOrder(orderRef, { poll:false });
+    await claimStarsOrder(orderRef, { poll:true, attempts:35, intervalMs:2000 });
   }catch(e){
     toast(e?.message || "Could not claim Stars purchase.");
   }
@@ -4592,6 +4624,24 @@ function clearPendingStarsPurchase(){
   writeStarsPendingOrderRef(null);
   toast("Pending Stars purchase cleared.");
   if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
+}
+function maybeAutoClaimPendingStars(){
+  const now = Date.now();
+  if(starsAutoClaimBusy) return;
+  if((now - starsAutoClaimAt) < 15000) return;
+  const orderRef = starsPendingOrderRef || readStarsPendingOrderRef();
+  if(!orderRef) return;
+  if(!tg?.initData) return;
+  starsAutoClaimAt = now;
+  starsAutoClaimBusy = true;
+  Promise.resolve(claimStarsOrder(orderRef, {
+    poll:true,
+    attempts:20,
+    intervalMs:2000,
+    silentPending:true,
+  }))
+    .catch(()=>{})
+    .finally(()=>{ starsAutoClaimBusy = false; });
 }
 
 function openShop(){
@@ -4735,7 +4785,7 @@ function shopTab(tab){
   ensureSquadShopTab();
   ensureMetaShopTab();
   currentShopTab=tab;
-  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabStars","tabCash","tabTools","tabTraps"].forEach((id)=>{
+  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabStars","tabCash","tabPremium","tabTools","tabTraps"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.classList.remove("active");
   });
@@ -4748,6 +4798,7 @@ function shopTab(tab){
     meta:"tabMeta",
     stars:"tabStars",
     cash:"tabCash",
+    premium:"tabPremium",
     tools:"tabTools",
     traps:"tabTraps",
   };
@@ -4985,8 +5036,29 @@ function renderShopList(){
     return;
   }
 
+  if(currentShopTab==="stars"){
+    const guideHtml = STARS_TOPUP_GUIDE.map((plan)=>{
+      return `
+        <div class="item">
+          <div>
+            <div class="itemName">${plan.stars.toLocaleString()} Stars <span class="tag">Top-up</span></div>
+            <div class="itemDesc">Buy Stars in Telegram, then return here for Cash conversion or Premium bundles.</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">${plan.label}</div>
+            <button onclick="openStarsTopUp(${plan.stars})">Buy Stars</button>
+          </div>
+        </div>`;
+    }).join("");
+
+    note.innerText = "Stars purchases are handled by Telegram. Prices can vary by region/taxes.";
+    list.innerHTML = guideHtml;
+    return;
+  }
+
   if(currentShopTab==="cash"){
     starsPendingOrderRef = starsPendingOrderRef || readStarsPendingOrderRef();
+    maybeAutoClaimPendingStars();
     const reason = starsUnavailableReason();
     note.innerText = reason
       ? reason
@@ -5026,12 +5098,13 @@ function renderShopList(){
     return;
   }
 
-  if(currentShopTab==="stars"){
+  if(currentShopTab==="premium"){
     starsPendingOrderRef = starsPendingOrderRef || readStarsPendingOrderRef();
+    maybeAutoClaimPendingStars();
     const reason = starsUnavailableReason();
     note.innerText = reason
       ? reason
-      : "Premium Stars items deliver supply bundles (not cash) for high-pressure runs.";
+      : "Premium Stars bundles are high-value mission boosts.";
 
     const offersHtml = STARS_PREMIUM_PACKS.map((pack)=>{
       const disabled = !!reason || starsCheckoutBusy;
@@ -12437,6 +12510,7 @@ window.reviveAllSoldiers = reviveAllSoldiers;
 window.buyStoryBaseUpgrade = buyStoryBaseUpgrade;
 window.buyStorySpecialistPerk = buyStorySpecialistPerk;
 window.buyTrap = buyTrap;
+window.openStarsTopUp = openStarsTopUp;
 window.buyWithStars = buyWithStars;
 window.claimPendingStarsPurchase = claimPendingStarsPurchase;
 window.clearPendingStarsPurchase = clearPendingStarsPurchase;
