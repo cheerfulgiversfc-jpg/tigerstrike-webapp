@@ -2,23 +2,23 @@ const STARS_OFFERS = Object.freeze({
   funds_small: Object.freeze({
     sku: "funds_small",
     name: "Supply Cache",
-    stars: 15,
-    funds: 1800,
-    desc: "Fast refill for ammo and meds.",
+    stars: 100,
+    funds: 12000,
+    desc: "Entry pack: best low-cost top-up.",
   }),
   funds_medium: Object.freeze({
     sku: "funds_medium",
     name: "Field Treasury",
-    stars: 45,
-    funds: 6200,
-    desc: "Solid mission run boost.",
+    stars: 250,
+    funds: 35000,
+    desc: "Mid pack with better value per Star.",
   }),
   funds_large: Object.freeze({
     sku: "funds_large",
     name: "War Chest",
-    stars: 120,
-    funds: 18500,
-    desc: "Big push for squad and meta upgrades.",
+    stars: 500,
+    funds: 80000,
+    desc: "Best value pack for major progression.",
   }),
 });
 
