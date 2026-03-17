@@ -144,14 +144,59 @@ const TOOLS = [
 
 const TRAP_ITEM = { id:"TRAP", name:"Trap", price:300, qty:1 };
 const STARS_CASH_PACKS = [
-  { sku:"funds_100",   name:"Supply Cache", stars:100, funds:1000, desc:"100 Stars -> $1,000 in-game cash." },
-  { sku:"funds_250",   name:"Field Treasury", stars:250, funds:2500, desc:"250 Stars -> $2,500 in-game cash." },
-  { sku:"funds_500",   name:"War Chest", stars:500, funds:5000, desc:"500 Stars -> $5,000 in-game cash." },
-  { sku:"funds_1000",  name:"Command Reserve", stars:1000, funds:10000, desc:"1,000 Stars -> $10,000 in-game cash." },
-  { sku:"funds_2500",  name:"Strategic Reserve", stars:2500, funds:25000, desc:"2,500 Stars -> $25,000 in-game cash." },
-  { sku:"funds_5000",  name:"High Command Vault", stars:5000, funds:50000, desc:"5,000 Stars -> $50,000 in-game cash." },
-  { sku:"funds_10000", name:"Sovereign Treasury", stars:10000, funds:100000, desc:"10,000 Stars -> $100,000 in-game cash." },
+  { sku:"funds_100",   name:"Supply Cache", stars:100, funds:1000, desc:"Convert 100 Stars into $1,000 in-game cash." },
+  { sku:"funds_250",   name:"Field Treasury", stars:250, funds:2500, desc:"Convert 250 Stars into $2,500 in-game cash." },
+  { sku:"funds_500",   name:"War Chest", stars:500, funds:5000, desc:"Convert 500 Stars into $5,000 in-game cash." },
+  { sku:"funds_1000",  name:"Command Reserve", stars:1000, funds:10000, desc:"Convert 1,000 Stars into $10,000 in-game cash." },
+  { sku:"funds_2500",  name:"Strategic Reserve", stars:2500, funds:25000, desc:"Convert 2,500 Stars into $25,000 in-game cash." },
+  { sku:"funds_5000",  name:"High Command Vault", stars:5000, funds:50000, desc:"Convert 5,000 Stars into $50,000 in-game cash." },
+  { sku:"funds_10000", name:"Sovereign Treasury", stars:10000, funds:100000, desc:"Convert 10,000 Stars into $100,000 in-game cash." },
 ];
+const STARS_PREMIUM_PACKS = [
+  {
+    sku:"premium_supply_drop",
+    name:"Supply Drop",
+    stars:100,
+    desc:"Instant refill pack for active runs.",
+    preview:"+3 Med Kits • +2 Repair Kits • +3 Traps • +1 Shield",
+    grant:{ medkits:{ M_SMALL:3, M_MED:2 }, repairs:{ T_REPAIR:2 }, traps:3, shields:1 },
+  },
+  {
+    sku:"premium_arsenal_convoy",
+    name:"Arsenal Convoy",
+    stars:250,
+    desc:"Large ammo shipment and maintenance support.",
+    preview:"+260 Ammo • +1 Pro Repair • +2 Traps",
+    grant:{ ammo:{ "9MM_STD":120, "556_STD":60, "762_STD":40, "TRANQ_DARTS":40 }, repairs:{ T_REPAIR_PRO:1 }, traps:2 },
+  },
+  {
+    sku:"premium_rescue_priority",
+    name:"Rescue Priority",
+    stars:500,
+    desc:"High-pressure mission support for survival streaks.",
+    preview:"+5 Shields • +8 Traps • +3 Trauma Kits • +2 Pro Repairs",
+    grant:{ shields:5, traps:8, medkits:{ M_TRAUMA:3 }, repairs:{ T_REPAIR_PRO:2 } },
+  },
+];
+const CASH_SUPPLY_BUNDLES = [
+  {
+    id:"cash_quick_prep",
+    name:"Quick Prep Bundle",
+    price:1800,
+    desc:"Low-cost mission prep with mixed utility.",
+    preview:"+2 Shields • +4 Traps • +2 Med Kits • +1 Repair Kit",
+    grant:{ shields:2, traps:4, medkits:{ M_MED:2 }, repairs:{ T_REPAIR:1 } },
+  },
+  {
+    id:"cash_war_loadout",
+    name:"War Loadout Bundle",
+    price:6200,
+    desc:"Heavy loadout for long missions and boss pushes.",
+    preview:"+6 Shields • +8 Traps • +2 Trauma Kits • +2 Pro Repairs • +140 Ammo",
+    grant:{ shields:6, traps:8, medkits:{ M_TRAUMA:2 }, repairs:{ T_REPAIR_PRO:2 }, ammo:{ "9MM_STD":60, "556_STD":40, "TRANQ_DARTS":40 } },
+  },
+];
+const STARS_ALL_OFFERS = [...STARS_CASH_PACKS, ...STARS_PREMIUM_PACKS];
 
 const AMMO_EFFECTS = {
   "Standard": { dmgMul:1.00, crit:0.04, pen:0.00, tranq:1.00 },
@@ -4249,7 +4294,10 @@ let starsCheckoutBusy = false;
 let starsPendingOrderRef = readStarsPendingOrderRef();
 
 function starsOfferBySku(sku){
-  return STARS_CASH_PACKS.find((pack)=>pack.sku === sku) || null;
+  return STARS_ALL_OFFERS.find((pack)=>pack.sku === sku) || null;
+}
+function cashBundleById(id){
+  return CASH_SUPPLY_BUNDLES.find((bundle)=>bundle.id === id) || null;
 }
 function starsPendingOrderKey(){
   return `ts_stars_pending_${tgUserKey()}`;
@@ -4298,6 +4346,92 @@ function markClaimedStarsTx(txId){
 function waitMs(ms){
   return new Promise((resolve)=>setTimeout(resolve, ms));
 }
+function positiveInt(value){
+  const n = Math.floor(Number(value || 0));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+function applyRewardGrant(grantInput){
+  const grant = grantInput && typeof grantInput === "object" ? grantInput : null;
+  if(!grant) return { changed:false, summary:"No reward" };
+
+  if(!S.ammoReserve || typeof S.ammoReserve !== "object") S.ammoReserve = {};
+  if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
+  if(!S.repairKits || typeof S.repairKits !== "object") S.repairKits = {};
+
+  let changed = false;
+  const bits = [];
+
+  const funds = positiveInt(grant.funds);
+  if(funds > 0){
+    S.funds += funds;
+    changed = true;
+    bits.push(`+$${funds.toLocaleString()} cash`);
+  }
+
+  const shields = positiveInt(grant.shields);
+  if(shields > 0){
+    S.shields = (S.shields || 0) + shields;
+    changed = true;
+    bits.push(`+${shields} shields`);
+  }
+
+  const traps = positiveInt(grant.traps);
+  if(traps > 0){
+    S.trapsOwned = (S.trapsOwned || 0) + traps;
+    changed = true;
+    bits.push(`+${traps} traps`);
+  }
+
+  let medAdded = 0;
+  if(grant.medkits && typeof grant.medkits === "object"){
+    for(const [id, rawQty] of Object.entries(grant.medkits)){
+      if(!getMed(id)) continue;
+      const qty = positiveInt(rawQty);
+      if(qty <= 0) continue;
+      S.medkits[id] = (S.medkits[id] || 0) + qty;
+      medAdded += qty;
+      changed = true;
+    }
+  }
+  if(medAdded > 0){
+    bits.push(`+${medAdded} med kits`);
+  }
+
+  let repairAdded = 0;
+  if(grant.repairs && typeof grant.repairs === "object"){
+    for(const [id, rawQty] of Object.entries(grant.repairs)){
+      if(!getTool(id)) continue;
+      const qty = positiveInt(rawQty);
+      if(qty <= 0) continue;
+      S.repairKits[id] = (S.repairKits[id] || 0) + qty;
+      repairAdded += qty;
+      changed = true;
+    }
+  }
+  if(repairAdded > 0){
+    bits.push(`+${repairAdded} repair kits`);
+  }
+
+  let ammoAdded = 0;
+  if(grant.ammo && typeof grant.ammo === "object"){
+    for(const [id, rawQty] of Object.entries(grant.ammo)){
+      if(!getAmmo(id)) continue;
+      const qty = positiveInt(rawQty);
+      if(qty <= 0) continue;
+      S.ammoReserve[id] = (S.ammoReserve[id] || 0) + qty;
+      ammoAdded += qty;
+      changed = true;
+    }
+  }
+  if(ammoAdded > 0){
+    bits.push(`+${ammoAdded} ammo`);
+  }
+
+  return {
+    changed,
+    summary: bits.join(" • ") || "Reward applied",
+  };
+}
 async function starsApiPost(path, body){
   const res = await fetch(path, {
     method:"POST",
@@ -4343,17 +4477,21 @@ async function claimStarsOrder(orderRef, opts={}){
         toast("Purchase is syncing. Tap Claim Pending Purchase in a moment.");
         return false;
       }
-      const funds = Math.max(0, Math.round(Number(data.funds || 0)));
-      if(funds <= 0){
+      const grant = (data?.grant && typeof data.grant === "object") ? { ...data.grant } : {};
+      if(positiveInt(data?.funds) > 0 && positiveInt(grant.funds) <= 0){
+        grant.funds = positiveInt(data.funds);
+      }
+      const applied = applyRewardGrant(grant);
+      if(!applied.changed){
         throw new Error("Invalid purchase grant returned.");
       }
-      S.funds += funds;
       markClaimedStarsTx(txId);
       writeStarsPendingOrderRef(null);
       save();
       renderHUD();
       if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
-      toast(`Stars purchase applied: +$${funds.toLocaleString()}`);
+      if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+      toast(`Stars purchase applied: ${applied.summary}`);
       try{ hapticNotif("success"); }catch(e){}
       return true;
     }
@@ -4575,7 +4713,7 @@ function shopTab(tab){
   ensureSquadShopTab();
   ensureMetaShopTab();
   currentShopTab=tab;
-  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabStars","tabTools","tabTraps"].forEach((id)=>{
+  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabStars","tabCash","tabTools","tabTraps"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.classList.remove("active");
   });
@@ -4587,6 +4725,7 @@ function shopTab(tab){
     squad:"tabSquad",
     meta:"tabMeta",
     stars:"tabStars",
+    cash:"tabCash",
     tools:"tabTools",
     traps:"tabTraps",
   };
@@ -4824,12 +4963,12 @@ function renderShopList(){
     return;
   }
 
-  if(currentShopTab==="stars"){
+  if(currentShopTab==="cash"){
     starsPendingOrderRef = starsPendingOrderRef || readStarsPendingOrderRef();
     const reason = starsUnavailableReason();
     note.innerText = reason
       ? reason
-      : "Pay with Telegram Stars to add instant in-game cash. Payment confirmation happens server-side.";
+      : "Convert Stars into in-game cash when you want. Purchases are repeatable.";
 
     const offersHtml = STARS_CASH_PACKS.map((pack)=>{
       const disabled = !!reason || starsCheckoutBusy;
@@ -4841,6 +4980,47 @@ function renderShopList(){
           </div>
           <div style="text-align:right">
             <div class="price">+$${pack.funds.toLocaleString()}</div>
+            <button onclick="buyWithStars('${pack.sku}')" ${disabled ? "disabled" : ""}>${starsCheckoutBusy ? "Processing..." : "Convert with Stars"}</button>
+          </div>
+        </div>`;
+    }).join("");
+
+    const pendingHtml = starsPendingOrderRef
+      ? `
+      <div class="item">
+        <div>
+          <div class="itemName">Pending Purchase <span class="tag">Needs claim</span></div>
+          <div class="itemDesc">If payment completed but the reward was not added yet, tap Claim Pending Purchase.</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price">Ready</div>
+          <button onclick="claimPendingStarsPurchase()" ${reason ? "disabled" : ""}>Claim Pending Purchase</button>
+          <button class="ghost" onclick="clearPendingStarsPurchase()">Clear Pending</button>
+        </div>
+      </div>`
+      : "";
+
+    list.innerHTML = offersHtml + pendingHtml;
+    return;
+  }
+
+  if(currentShopTab==="stars"){
+    starsPendingOrderRef = starsPendingOrderRef || readStarsPendingOrderRef();
+    const reason = starsUnavailableReason();
+    note.innerText = reason
+      ? reason
+      : "Premium Stars items deliver supply bundles (not cash) for high-pressure runs.";
+
+    const offersHtml = STARS_PREMIUM_PACKS.map((pack)=>{
+      const disabled = !!reason || starsCheckoutBusy;
+      return `
+        <div class="item">
+          <div>
+            <div class="itemName">${pack.name} <span class="tag">${pack.stars} Stars</span></div>
+            <div class="itemDesc">${pack.desc}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">${pack.preview}</div>
             <button onclick="buyWithStars('${pack.sku}')" ${disabled ? "disabled" : ""}>${starsCheckoutBusy ? "Processing..." : "Buy with Stars"}</button>
           </div>
         </div>`;
@@ -4851,7 +5031,7 @@ function renderShopList(){
       <div class="item">
         <div>
           <div class="itemName">Pending Purchase <span class="tag">Needs claim</span></div>
-          <div class="itemDesc">If payment completed but funds were not added yet, tap Claim Pending Purchase.</div>
+          <div class="itemDesc">If payment completed but rewards were not added yet, tap Claim Pending Purchase.</div>
         </div>
         <div style="text-align:right">
           <div class="price">Ready</div>
@@ -4866,7 +5046,20 @@ function renderShopList(){
   }
 
   if(currentShopTab==="tools"){
-    note.innerText="Repair kits restore weapon durability. Shield protects escorts.";
+    note.innerText="Cash utility bundles are optional prep packs. Repair kits restore weapon durability. Shield protects escorts.";
+    const bundleCards = CASH_SUPPLY_BUNDLES.map((bundle)=>{
+      return `
+        <div class="item">
+          <div>
+            <div class="itemName">${bundle.name} <span class="tag">Bundle</span></div>
+            <div class="itemDesc">${bundle.desc}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">$${bundle.price.toLocaleString()} • ${bundle.preview}</div>
+            <button onclick="buyCashBundle('${bundle.id}')">Buy Bundle</button>
+          </div>
+        </div>`;
+    }).join("");
     const repairCards = TOOLS.map(t=>{
       const owned=ownedToolCount(t.id);
       return `
@@ -4892,7 +5085,7 @@ function renderShopList(){
           <button onclick="buyShield()">Buy</button>
         </div>
       </div>`;
-    list.innerHTML = shieldCard + repairCards;
+    list.innerHTML = bundleCards + shieldCard + repairCards;
     return;
   }
 
@@ -4981,6 +5174,22 @@ function buyShield(){
   S.shields = (S.shields||0) + 1;
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
+}
+function buyCashBundle(id){
+  const bundle = cashBundleById(id);
+  if(!bundle) return toast("Unknown bundle.");
+  if(S.funds < bundle.price) return toast("Not enough money.");
+  S.funds -= bundle.price;
+  const applied = applyRewardGrant(bundle.grant);
+  if(!applied.changed){
+    return toast("Bundle has no configured rewards.");
+  }
+  sfx("ui"); hapticImpact("medium");
+  save();
+  renderShopList();
+  renderHUD();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  toast(`${bundle.name} applied: ${applied.summary}`);
 }
 function buyTigerSpecialist(){
   if(!soldierUnlockLevelReached()) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}.`);
@@ -12197,6 +12406,7 @@ window.buyArmor = buyArmor;
 window.buyMed = buyMed;
 window.buyTool = buyTool;
 window.buyShield = buyShield;
+window.buyCashBundle = buyCashBundle;
 window.buyTigerSpecialist = buyTigerSpecialist;
 window.buyRescueSpecialist = buyRescueSpecialist;
 window.buyReinforcementBundle = buyReinforcementBundle;
