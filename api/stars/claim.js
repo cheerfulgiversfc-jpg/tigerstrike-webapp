@@ -91,11 +91,24 @@ function isExcludedTx(tx, excludedTxIds){
   return excludedTxIds.has(txId);
 }
 
+function acceptedStarsSet(offer){
+  const out = new Set();
+  const primary = Math.abs(Number(offer?.stars || 0));
+  if(primary > 0) out.add(primary);
+  const legacy = Array.isArray(offer?.acceptedStars) ? offer.acceptedStars : [];
+  for(const value of legacy){
+    const n = Math.abs(Number(value || 0));
+    if(n > 0) out.add(n);
+  }
+  return out;
+}
+
 async function findMatchingTransaction(orderMeta, offer, userId, excludedTxIds, botToken){
   const pageSize = 100;
   const maxPages = 8;
   let fallback = null;
   const minTxMs = orderMeta.createdAtMs > 0 ? (orderMeta.createdAtMs - (2 * 60 * 1000)) : 0;
+  const acceptedStars = acceptedStarsSet(offer);
 
   for(let page=0; page<maxPages; page++){
     const offset = page * pageSize;
@@ -109,7 +122,7 @@ async function findMatchingTransaction(orderMeta, offer, userId, excludedTxIds, 
       if(isExcludedTx(tx, excludedTxIds)) continue;
 
       const starsAmount = Math.abs(Number(tx?.amount || 0));
-      if(starsAmount !== Number(offer.stars)) continue;
+      if(!acceptedStars.has(starsAmount)) continue;
 
       const payload = extractInvoicePayload(tx);
       if(payload && payload === orderMeta.raw){
@@ -165,7 +178,7 @@ module.exports = async function handler(req, res){
     }
 
     const starsAmount = Math.abs(Number(tx?.amount || 0));
-    if(starsAmount !== Number(offer.stars)){
+    if(!acceptedStarsSet(offer).has(starsAmount)){
       return json(res, 400, { ok:false, error:"Transaction amount does not match this order." });
     }
 
