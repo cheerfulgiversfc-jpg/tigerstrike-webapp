@@ -4518,24 +4518,46 @@ async function buyWithStars(sku){
     const invoiceLink = String(data.invoiceLink || "");
     if(!orderRef || !invoiceLink) throw new Error("Missing invoice link.");
     writeStarsPendingOrderRef(orderRef);
-    const onStatus = async(status)=>{
-      if(status === "paid" || status === "pending"){
-        await claimStarsOrder(orderRef, { poll:true });
-      } else if(status === "cancelled"){
+    const onStatus = (status)=>{
+      const s = String(status || "").toLowerCase();
+      if(s === "paid" || s === "pending"){
+        toast("Payment submitted. Verifying purchase...");
+        Promise.resolve(claimStarsOrder(orderRef, { poll:true }))
+          .catch((err)=>toast(err?.message || "Could not verify Stars purchase."));
+      } else if(s === "cancelled"){
         writeStarsPendingOrderRef(null);
         toast("Stars payment canceled.");
-      } else if(status === "failed"){
+      } else if(s === "failed"){
         writeStarsPendingOrderRef(null);
         toast("Stars payment failed.");
+      } else {
+        toast("Invoice closed. If charged, tap Claim Pending Purchase.");
       }
     };
     if(typeof tg.openInvoice === "function"){
       await new Promise((resolve, reject)=>{
+        let settled = false;
+        const done = ()=>{
+          if(settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          resolve();
+        };
+        const timeoutId = setTimeout(()=>{
+          done();
+          toast("If payment completed, tap Claim Pending Purchase.");
+        }, 15000);
         try{
           tg.openInvoice(invoiceLink, (status)=>{
-            Promise.resolve(onStatus(String(status || ""))).then(resolve).catch(reject);
+            try{
+              onStatus(status);
+            }catch(err){
+              toast(err?.message || "Could not process invoice status.");
+            }
+            done();
           });
         }catch(e){
+          clearTimeout(timeoutId);
           reject(e);
         }
       });
