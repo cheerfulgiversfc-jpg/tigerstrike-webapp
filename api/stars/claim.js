@@ -3,19 +3,14 @@ const { validateTelegramInitData } = require("../_lib/telegram-auth");
 const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
 
-function parseOrderRef(orderRef){
+function parseOrderRefLite(orderRef){
   const ref = String(orderRef || "").trim();
-  const parts = ref.split(":");
-  if(parts.length !== 4) return null;
-  const [prefix, sku, userIdRaw, nonce] = parts;
-  const userId = Number(userIdRaw || 0);
-  if(prefix !== "ts1" || !sku || !nonce || !Number.isFinite(userId) || userId <= 0){
-    return null;
-  }
-  return { ref, sku, userId };
+  if(!ref) return null;
+  if(ref.length > 220) return null;
+  return ref;
 }
 
-async function findMatchingTransaction(orderRef, userId, expectedStars, botToken){
+async function findMatchingTransaction(orderRef, userId, botToken){
   const pageSize = 100;
   const maxPages = 8;
   for(let page=0; page<maxPages; page++){
@@ -30,10 +25,8 @@ async function findMatchingTransaction(orderRef, userId, expectedStars, botToken
       const source = tx?.source || {};
       const sourceUserId = Number(source?.user?.id || 0);
       const payload = String(source?.invoice_payload || "");
-      const amount = Math.abs(Number(tx?.amount || 0));
       if(sourceUserId !== userId) continue;
       if(payload !== orderRef) continue;
-      if(amount !== expectedStars) continue;
       return tx;
     }
     if(txs.length < pageSize) break;
@@ -48,28 +41,31 @@ module.exports = async function handler(req, res){
 
   try{
     const body = readJsonBody(req);
-    const orderRef = String(body?.orderRef || "").trim();
+    const orderRef = parseOrderRefLite(body?.orderRef);
     const initData = String(body?.initData || "");
     const botToken = process.env.TELEGRAM_BOT_TOKEN || "";
 
-    const parsed = parseOrderRef(orderRef);
-    if(!parsed){
+    if(!orderRef){
       return json(res, 400, { ok:false, error:"Invalid order reference." });
     }
 
-    const offer = getOffer(parsed.sku);
-    if(!offer){
-      return json(res, 400, { ok:false, error:"Unknown order SKU." });
-    }
-
     const { user } = validateTelegramInitData(initData, botToken);
-    if(user.id !== parsed.userId){
-      return json(res, 403, { ok:false, error:"Order does not belong to this user." });
-    }
-
-    const tx = await findMatchingTransaction(orderRef, user.id, offer.stars, botToken);
+    const tx = await findMatchingTransaction(orderRef, user.id, botToken);
     if(!tx){
       return json(res, 200, { ok:true, status:"pending" });
+    }
+
+    const starsAmount = Math.abs(Number(tx?.amount || 0));
+    let offer = null;
+    for(const sku of ["funds_small", "funds_medium", "funds_large"]){
+      const candidate = getOffer(sku);
+      if(candidate && Number(candidate.stars) === starsAmount){
+        offer = candidate;
+        break;
+      }
+    }
+    if(!offer){
+      return json(res, 400, { ok:false, error:"No matching Stars offer for this transaction amount." });
     }
 
     return json(res, 200, {
