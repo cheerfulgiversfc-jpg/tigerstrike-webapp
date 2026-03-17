@@ -7,7 +7,7 @@ const { json, readJsonBody } = require("../_lib/http");
 function makeOrderRef(sku, userId){
   const nonce = crypto.randomBytes(6).toString("hex");
   const ts = Date.now().toString(36);
-  return `ts1:${sku}:${Number(userId)}:${ts}${nonce}`;
+  return `ts2:${sku}:${Number(userId)}:${ts}:${nonce}`;
 }
 
 module.exports = async function handler(req, res){
@@ -29,9 +29,13 @@ module.exports = async function handler(req, res){
     const { user } = validateTelegramInitData(initData, botToken);
     const orderRef = makeOrderRef(sku, user.id);
 
+    const extra = Number(offer.funds || 0) > 0
+      ? ` (+$${Number(offer.funds).toLocaleString()} in-game cash)`
+      : "";
+
     const invoiceLink = await telegramBotApi("createInvoiceLink", {
       title: `Tiger Strike: ${offer.name}`,
-      description: `${offer.desc} (+$${offer.funds.toLocaleString()} in-game cash)`,
+      description: `${offer.desc}${extra}`,
       payload: orderRef,
       provider_token: "",
       currency: "XTR",
