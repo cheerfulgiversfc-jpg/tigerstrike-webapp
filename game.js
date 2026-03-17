@@ -144,9 +144,9 @@ const TOOLS = [
 
 const TRAP_ITEM = { id:"TRAP", name:"Trap", price:300, qty:1 };
 const STARS_CASH_PACKS = [
-  { sku:"funds_small",  name:"Supply Cache", stars:15,  funds:1800,  desc:"Fast refill for ammo and meds." },
-  { sku:"funds_medium", name:"Field Treasury", stars:45, funds:6200,  desc:"Solid mission run boost." },
-  { sku:"funds_large",  name:"War Chest", stars:120, funds:18500, desc:"Big push for squad and meta upgrades." },
+  { sku:"funds_small",  name:"Supply Cache", stars:100, funds:12000, desc:"Entry pack: best low-cost top-up." },
+  { sku:"funds_medium", name:"Field Treasury", stars:250, funds:35000, desc:"Mid pack with better value per Star." },
+  { sku:"funds_large",  name:"War Chest", stars:500, funds:80000, desc:"Best value pack for major progression." },
 ];
 
 const AMMO_EFFECTS = {
@@ -4318,14 +4318,14 @@ async function claimStarsOrder(orderRef, opts={}){
   const poll = opts.poll !== false;
   const attempts = poll ? 8 : 1;
   for(let i=0;i<attempts;i++){
-    console.log("claim orderRef", orderRef);
     const data = await starsApiPost("/api/stars/claim", { orderRef, initData });
     if(data.status === "pending"){
       if(i < attempts - 1){
         await waitMs(1400);
         continue;
       }
-      toast("Payment is still processing. Tap Claim Pending Purchase in Stars tab.");
+      if(poll) toast("Payment is still processing. Tap Claim Pending Purchase in Stars tab.");
+      else toast("No completed payment was found for this pending order yet.");
       return false;
     }
     if(data.status === "paid"){
@@ -4376,8 +4376,10 @@ async function buyWithStars(sku){
       if(status === "paid" || status === "pending"){
         await claimStarsOrder(orderRef, { poll:true });
       } else if(status === "cancelled"){
+        writeStarsPendingOrderRef(null);
         toast("Stars payment canceled.");
       } else if(status === "failed"){
+        writeStarsPendingOrderRef(null);
         toast("Stars payment failed.");
       }
     };
@@ -4417,6 +4419,11 @@ async function claimPendingStarsPurchase(){
   }catch(e){
     toast(e?.message || "Could not claim Stars purchase.");
   }
+}
+function clearPendingStarsPurchase(){
+  writeStarsPendingOrderRef(null);
+  toast("Pending Stars purchase cleared.");
+  if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
 }
 
 function openShop(){
@@ -4841,6 +4848,7 @@ function renderShopList(){
         <div style="text-align:right">
           <div class="price">Ready</div>
           <button onclick="claimPendingStarsPurchase()" ${reason ? "disabled" : ""}>Claim Pending Purchase</button>
+          <button class="ghost" onclick="clearPendingStarsPurchase()">Clear Pending</button>
         </div>
       </div>`
       : "";
@@ -12191,6 +12199,7 @@ window.buyStorySpecialistPerk = buyStorySpecialistPerk;
 window.buyTrap = buyTrap;
 window.buyWithStars = buyWithStars;
 window.claimPendingStarsPurchase = claimPendingStarsPurchase;
+window.clearPendingStarsPurchase = clearPendingStarsPurchase;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
 window.openQuickWeaponPicker = openQuickWeaponPicker;
