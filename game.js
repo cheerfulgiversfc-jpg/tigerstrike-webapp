@@ -1855,6 +1855,187 @@ function toast(msg){
   clearTimeout(window.__toastTimer);
   window.__toastTimer=setTimeout(()=>t.style.display="none",2200);
 }
+const STARS_DEBUG_ENABLED_KEY = "ts_stars_debug_enabled";
+let starsDebugPanelOpen = false;
+let starsDebugEntries = [];
+function starsDebugEnabled(){
+  try{
+    const v = localStorage.getItem(STARS_DEBUG_ENABLED_KEY);
+    if(v == null){
+      localStorage.setItem(STARS_DEBUG_ENABLED_KEY, "1");
+      return true;
+    }
+    return v === "1";
+  }catch(e){
+    return false;
+  }
+}
+function setStarsDebugEnabled(on){
+  const next = !!on;
+  try{
+    localStorage.setItem(STARS_DEBUG_ENABLED_KEY, next ? "1" : "0");
+  }catch(e){}
+  renderStarsDebugPanel();
+}
+function shortDebugRef(ref){
+  const txt = String(ref || "").trim();
+  if(!txt) return "-";
+  if(txt.length <= 28) return txt;
+  return `${txt.slice(0,14)}…${txt.slice(-10)}`;
+}
+function sanitizeDebugDetails(details){
+  if(!details || typeof details !== "object") return "";
+  const out = {};
+  for(const [k, v] of Object.entries(details)){
+    if(v == null) continue;
+    if(typeof v === "string"){
+      out[k] = v.length > 120 ? `${v.slice(0,117)}...` : v;
+    } else {
+      out[k] = v;
+    }
+  }
+  const keys = Object.keys(out);
+  if(!keys.length) return "";
+  try{
+    return JSON.stringify(out);
+  }catch(e){
+    return "";
+  }
+}
+function pushStarsDebug(event, details){
+  if(!starsDebugEnabled()) return;
+  const ts = new Date();
+  const hh = String(ts.getHours()).padStart(2, "0");
+  const mm = String(ts.getMinutes()).padStart(2, "0");
+  const ss = String(ts.getSeconds()).padStart(2, "0");
+  const suffix = sanitizeDebugDetails(details);
+  starsDebugEntries.push(`[${hh}:${mm}:${ss}] ${String(event || "event")}${suffix ? ` ${suffix}` : ""}`);
+  if(starsDebugEntries.length > 80){
+    starsDebugEntries = starsDebugEntries.slice(-80);
+  }
+  renderStarsDebugPanel();
+}
+function copyStarsDebugLog(){
+  const lines = starsDebugEntries.join("\n");
+  if(!lines){
+    toast("No Stars debug logs yet.");
+    return;
+  }
+  const status = `pending=${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | user=${tgUserKey()}`;
+  const text = `Tiger Strike Stars Debug\n${status}\n\n${lines}`;
+  const done = ()=>toast("Stars debug copied.");
+  if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
+    return;
+  }
+  try{
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    done();
+  }catch(e){
+    toast("Copy failed.");
+  }
+}
+function ensureStarsDebugUi(){
+  if(typeof document === "undefined" || !document.body) return;
+  if(document.getElementById("starsDebugToggle")) return;
+
+  const toggle = document.createElement("button");
+  toggle.id = "starsDebugToggle";
+  toggle.type = "button";
+  toggle.textContent = "DBG";
+  toggle.style.position = "fixed";
+  toggle.style.right = "10px";
+  toggle.style.bottom = "10px";
+  toggle.style.zIndex = "9999";
+  toggle.style.fontSize = "11px";
+  toggle.style.fontWeight = "800";
+  toggle.style.borderRadius = "999px";
+  toggle.style.padding = "6px 10px";
+  toggle.style.border = "1px solid rgba(255,255,255,.35)";
+  toggle.style.color = "#e5eefc";
+  toggle.style.background = "rgba(12,22,42,.82)";
+  toggle.style.boxShadow = "0 4px 14px rgba(0,0,0,.4)";
+  toggle.style.cursor = "pointer";
+  toggle.setAttribute("aria-label", "Open Stars debug panel");
+
+  const panel = document.createElement("div");
+  panel.id = "starsDebugPanel";
+  panel.style.position = "fixed";
+  panel.style.right = "10px";
+  panel.style.bottom = "42px";
+  panel.style.width = "min(92vw, 320px)";
+  panel.style.maxHeight = "42vh";
+  panel.style.zIndex = "9999";
+  panel.style.display = "none";
+  panel.style.flexDirection = "column";
+  panel.style.background = "rgba(8,14,28,.96)";
+  panel.style.border = "1px solid rgba(100,170,255,.45)";
+  panel.style.borderRadius = "12px";
+  panel.style.boxShadow = "0 12px 28px rgba(0,0,0,.48)";
+  panel.style.color = "#e5eefc";
+  panel.style.overflow = "hidden";
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(38,93,182,.2);font-size:12px;font-weight:700;">
+      <span>Stars Debug</span>
+      <button id="starsDebugClose" type="button" style="border:1px solid rgba(255,255,255,.35);border-radius:8px;background:rgba(17,24,39,.65);color:#e5eefc;padding:2px 8px;font-size:11px;cursor:pointer;">Close</button>
+    </div>
+    <div id="starsDebugStatus" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07);font-size:11px;line-height:1.35;"></div>
+    <div id="starsDebugLog" style="padding:8px 10px;overflow:auto;max-height:26vh;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;"></div>
+    <div style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);">
+      <button id="starsDebugCopy" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(30,64,175,.45);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
+      <button id="starsDebugClear" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(55,65,81,.55);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Clear</button>
+      <button id="starsDebugToggleLog" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(37,99,235,.55);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Log: ON</button>
+    </div>
+  `;
+
+  toggle.addEventListener("click", ()=>{
+    starsDebugPanelOpen = !starsDebugPanelOpen;
+    renderStarsDebugPanel();
+  });
+  document.body.appendChild(toggle);
+  document.body.appendChild(panel);
+
+  document.getElementById("starsDebugClose")?.addEventListener("click", ()=>{
+    starsDebugPanelOpen = false;
+    renderStarsDebugPanel();
+  });
+  document.getElementById("starsDebugCopy")?.addEventListener("click", copyStarsDebugLog);
+  document.getElementById("starsDebugClear")?.addEventListener("click", ()=>{
+    starsDebugEntries = [];
+    renderStarsDebugPanel();
+    toast("Stars debug cleared.");
+  });
+  document.getElementById("starsDebugToggleLog")?.addEventListener("click", ()=>{
+    setStarsDebugEnabled(!starsDebugEnabled());
+    toast(`Stars debug logging ${starsDebugEnabled() ? "ON" : "OFF"}.`);
+  });
+  renderStarsDebugPanel();
+}
+function renderStarsDebugPanel(){
+  const toggle = document.getElementById("starsDebugToggle");
+  const panel = document.getElementById("starsDebugPanel");
+  const log = document.getElementById("starsDebugLog");
+  const status = document.getElementById("starsDebugStatus");
+  const toggleLog = document.getElementById("starsDebugToggleLog");
+  if(!toggle || !panel || !log || !status || !toggleLog) return;
+
+  const enabled = starsDebugEnabled();
+  panel.style.display = starsDebugPanelOpen ? "flex" : "none";
+  toggle.style.background = enabled ? "rgba(22,101,52,.84)" : "rgba(12,22,42,.82)";
+  toggle.style.borderColor = enabled ? "rgba(134,239,172,.72)" : "rgba(255,255,255,.35)";
+  toggleLog.textContent = `Log: ${enabled ? "ON" : "OFF"}`;
+  toggleLog.style.background = enabled ? "rgba(37,99,235,.55)" : "rgba(55,65,81,.55)";
+  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())}`;
+  log.textContent = starsDebugEntries.length ? starsDebugEntries.join("\n") : "No Stars events yet.";
+  log.scrollTop = log.scrollHeight;
+}
 function clamp(n,min,max){
   const lo = Number.isFinite(min) ? min : 0;
   const hi = Number.isFinite(max) ? max : lo;
@@ -4326,9 +4507,29 @@ function starsPendingOrderKey(){
 function starsClaimedTxKey(){
   return `ts_stars_claimed_${tgUserKey()}`;
 }
+function starsScopedKeys(prefix){
+  const keys = [
+    `${prefix}_${tgUserKey()}`,
+    `${prefix}_local`,
+    prefix,
+  ];
+  const out = [];
+  const seen = new Set();
+  for(const key of keys){
+    const k = String(key || "").trim();
+    if(!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(k);
+  }
+  return out;
+}
 function readStarsPendingOrderRef(){
   try{
-    return String(localStorage.getItem(starsPendingOrderKey()) || "").trim() || null;
+    for(const key of starsScopedKeys("ts_stars_pending")){
+      const val = String(localStorage.getItem(key) || "").trim();
+      if(val) return val;
+    }
+    return null;
   }catch(e){
     return null;
   }
@@ -4336,16 +4537,35 @@ function readStarsPendingOrderRef(){
 function writeStarsPendingOrderRef(orderRef){
   starsPendingOrderRef = orderRef ? String(orderRef) : null;
   try{
-    if(starsPendingOrderRef) localStorage.setItem(starsPendingOrderKey(), starsPendingOrderRef);
-    else localStorage.removeItem(starsPendingOrderKey());
+    const keys = starsScopedKeys("ts_stars_pending");
+    if(starsPendingOrderRef){
+      for(const key of keys){
+        localStorage.setItem(key, starsPendingOrderRef);
+      }
+    } else {
+      for(const key of keys){
+        localStorage.removeItem(key);
+      }
+    }
   }catch(e){}
+  pushStarsDebug(starsPendingOrderRef ? "pending:set" : "pending:clear", { orderRef: shortDebugRef(starsPendingOrderRef) });
 }
 function readClaimedStarsTxIds(){
   try{
-    const raw = localStorage.getItem(starsClaimedTxKey());
-    const arr = raw ? JSON.parse(raw) : [];
-    if(!Array.isArray(arr)) return [];
-    return arr.filter((id)=>typeof id === "string" && id.length > 0).slice(-100);
+    const merged = [];
+    const seen = new Set();
+    for(const key of starsScopedKeys("ts_stars_claimed")){
+      const raw = localStorage.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      if(!Array.isArray(arr)) continue;
+      for(const idRaw of arr){
+        const id = String(idRaw || "").trim();
+        if(!id || seen.has(id)) continue;
+        seen.add(id);
+        merged.push(id);
+      }
+    }
+    return merged.slice(-200);
   }catch(e){
     return [];
   }
@@ -4361,7 +4581,10 @@ function markClaimedStarsTx(txId){
   if(prior.includes(id)) return;
   prior.push(id);
   try{
-    localStorage.setItem(starsClaimedTxKey(), JSON.stringify(prior.slice(-100)));
+    const payload = JSON.stringify(prior.slice(-200));
+    for(const key of starsScopedKeys("ts_stars_claimed")){
+      localStorage.setItem(key, payload);
+    }
   }catch(e){}
 }
 function waitMs(ms){
@@ -4454,6 +4677,11 @@ function applyRewardGrant(grantInput){
   };
 }
 async function starsApiPost(path, body){
+  pushStarsDebug("api:request", {
+    path,
+    sku: body?.sku ? String(body.sku) : undefined,
+    orderRef: body?.orderRef ? shortDebugRef(body.orderRef) : undefined,
+  });
   const res = await fetch(path, {
     method:"POST",
     headers:{ "Content-Type":"application/json" },
@@ -4462,8 +4690,10 @@ async function starsApiPost(path, body){
   let data = null;
   try{ data = await res.json(); }catch(e){ data = null; }
   if(!res.ok || !data?.ok){
+    pushStarsDebug("api:error", { path, status: res.status, error: data?.error || "Stars service unavailable." });
     throw new Error(data?.error || "Stars service unavailable.");
   }
+  pushStarsDebug("api:ok", { path, status: data?.status || "ok", sku: data?.sku, tx: data?.transactionId ? shortDebugRef(data.transactionId) : undefined });
   return data;
 }
 function starsUnavailableReason(){
@@ -4474,21 +4704,20 @@ function starsUnavailableReason(){
 function openStarsTopUp(targetStars){
   const stars = positiveInt(targetStars);
   const hint = stars > 0 ? `${stars} Stars` : "a Stars package";
+  pushStarsDebug("topup:route", { targetStars: stars });
   try{
-    if(tg && typeof tg.openTelegramLink === "function"){
-      tg.openTelegramLink("https://t.me/PremiumBot");
-      toast(`Opening Telegram Stars top-up for ${hint}.`);
-      return;
+    if(document.getElementById("shopOverlay")?.style?.display === "flex"){
+      shopTab("cash");
     }
-    window.open("https://t.me/PremiumBot", "_blank", "noopener,noreferrer");
-    toast("Open @PremiumBot to buy Stars.");
+    toast(`To get ${hint}, tap Convert with Stars in Cash tab. Telegram will show top-up options if balance is low.`);
   }catch(e){
-    toast("Could not open Stars top-up. Open @PremiumBot in Telegram.");
+    toast("Open Cash tab and tap Convert with Stars to trigger Telegram Stars checkout.");
   }
 }
 async function claimStarsOrder(orderRef, opts={}){
   const initData = tg?.initData || "";
   if(!orderRef || !initData) return false;
+  pushStarsDebug("claim:start", { orderRef: shortDebugRef(orderRef), poll: opts.poll !== false });
   const poll = opts.poll !== false;
   const attempts = Math.max(1, Math.min(60, Math.floor(Number(opts.attempts || (poll ? 8 : 1)))));
   const intervalMs = Math.max(500, Math.min(5000, Math.floor(Number(opts.intervalMs || 1400))));
@@ -4505,6 +4734,7 @@ async function claimStarsOrder(orderRef, opts={}){
         if(poll) toast("Payment is still processing. Tap Claim Pending Purchase in Cash or Premium tab.");
         else toast("No completed payment was found for this pending order yet.");
       }
+      pushStarsDebug("claim:pending", { orderRef: shortDebugRef(orderRef), attempts });
       return false;
     }
     if(data.status === "paid"){
@@ -4515,6 +4745,7 @@ async function claimStarsOrder(orderRef, opts={}){
           continue;
         }
         toast("Purchase is syncing. Tap Claim Pending Purchase in a moment.");
+        pushStarsDebug("claim:duplicate_tx", { orderRef: shortDebugRef(orderRef), tx: shortDebugRef(txId) });
         return false;
       }
       const grant = (data?.grant && typeof data.grant === "object") ? { ...data.grant } : {};
@@ -4533,11 +4764,17 @@ async function claimStarsOrder(orderRef, opts={}){
       if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
       toast(`Stars purchase applied: ${applied.summary}`);
       try{ hapticNotif("success"); }catch(e){}
+      pushStarsDebug("claim:paid", {
+        orderRef: shortDebugRef(orderRef),
+        tx: shortDebugRef(txId),
+        funds: positiveInt(grant?.funds || 0),
+      });
       return true;
     }
     if(data.status === "already_claimed"){
       writeStarsPendingOrderRef(null);
       toast("This Stars purchase was already claimed.");
+      pushStarsDebug("claim:already_claimed", { orderRef: shortDebugRef(orderRef) });
       return false;
     }
     throw new Error(data.error || "Unexpected Stars claim response.");
@@ -4550,6 +4787,7 @@ async function buyWithStars(sku){
   if(reason) return toast(reason);
   const pack = starsOfferBySku(sku);
   if(!pack) return toast("Unknown Stars offer.");
+  pushStarsDebug("checkout:start", { sku, stars: pack.stars });
   starsCheckoutBusy = true;
   try{
     const initData = tg.initData;
@@ -4559,18 +4797,18 @@ async function buyWithStars(sku){
     if(!orderRef || !invoiceLink) throw new Error("Missing invoice link.");
     writeStarsPendingOrderRef(orderRef);
     toast(`Opening invoice: ${pack.stars} Stars`);
+    pushStarsDebug("checkout:invoice", { sku, orderRef: shortDebugRef(orderRef) });
     const onStatus = (status)=>{
       const s = String(status || "").toLowerCase();
+      pushStarsDebug("checkout:status", { orderRef: shortDebugRef(orderRef), status: s || "unknown" });
       if(s === "paid" || s === "pending"){
         toast("Payment submitted. Verifying purchase...");
         Promise.resolve(claimStarsOrder(orderRef, { poll:true, attempts:40, intervalMs:2000 }))
           .catch((err)=>toast(err?.message || "Could not verify Stars purchase."));
       } else if(s === "cancelled"){
-        writeStarsPendingOrderRef(null);
-        toast("Stars payment canceled.");
+        toast("Stars payment canceled. If charged, tap Claim Pending Purchase.");
       } else if(s === "failed"){
-        writeStarsPendingOrderRef(null);
-        toast("Stars payment failed.");
+        toast("Stars payment failed. If charged, tap Claim Pending Purchase.");
       } else {
         toast("Invoice closed. If charged, tap Claim Pending Purchase.");
       }
@@ -4603,6 +4841,7 @@ async function buyWithStars(sku){
     sfx("ui");
     try{ hapticImpact("light"); }catch(e){}
   }catch(e){
+    pushStarsDebug("checkout:error", { sku, error: e?.message || "Could not start Stars checkout." });
     toast(e?.message || "Could not start Stars checkout.");
   }finally{
     starsCheckoutBusy = false;
@@ -4613,15 +4852,21 @@ async function claimPendingStarsPurchase(){
   const reason = starsUnavailableReason();
   if(reason) return toast(reason);
   const orderRef = starsPendingOrderRef || readStarsPendingOrderRef();
-  if(!orderRef) return toast("No pending Stars purchase.");
+  if(!orderRef){
+    pushStarsDebug("claim:missing_pending");
+    return toast("No pending Stars purchase.");
+  }
+  pushStarsDebug("claim:manual", { orderRef: shortDebugRef(orderRef) });
   try{
     await claimStarsOrder(orderRef, { poll:true, attempts:35, intervalMs:2000 });
   }catch(e){
+    pushStarsDebug("claim:error", { orderRef: shortDebugRef(orderRef), error: e?.message || "Could not claim Stars purchase." });
     toast(e?.message || "Could not claim Stars purchase.");
   }
 }
 function clearPendingStarsPurchase(){
   writeStarsPendingOrderRef(null);
+  pushStarsDebug("pending:cleared_by_user");
   toast("Pending Stars purchase cleared.");
   if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
 }
@@ -5042,16 +5287,16 @@ function renderShopList(){
         <div class="item">
           <div>
             <div class="itemName">${plan.stars.toLocaleString()} Stars <span class="tag">Top-up</span></div>
-            <div class="itemDesc">Buy Stars in Telegram, then return here for Cash conversion or Premium bundles.</div>
+            <div class="itemDesc">Reference pricing for Stars packages. Final checkout pricing may vary by app store taxes/region.</div>
           </div>
           <div style="text-align:right">
             <div class="price">${plan.label}</div>
-            <button onclick="openStarsTopUp(${plan.stars})">Buy Stars</button>
+            <button onclick="openStarsTopUp(${plan.stars})">Use in Cash Tab</button>
           </div>
         </div>`;
     }).join("");
 
-    note.innerText = "Stars purchases are handled by Telegram. Prices can vary by region/taxes.";
+    note.innerText = "Buy Stars through Telegram checkout from Cash/Premium offers, then spend them here in-game.";
     list.innerHTML = guideHtml;
     return;
   }
@@ -12206,6 +12451,8 @@ function missionStateLooksEmpty(){
 }
 
 function init(){
+  ensureStarsDebugUi();
+  pushStarsDebug("app:init", { user: tgUserKey() });
   ensureStoryMetaState();
   if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
