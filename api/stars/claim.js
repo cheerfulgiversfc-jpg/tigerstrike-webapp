@@ -1,4 +1,4 @@
-const { getOffer } = require("../_lib/stars-catalog");
+const { STARS_OFFERS } = require("../_lib/stars-catalog");
 const { validateTelegramInitData } = require("../_lib/telegram-auth");
 const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
@@ -56,14 +56,7 @@ module.exports = async function handler(req, res){
     }
 
     const starsAmount = Math.abs(Number(tx?.amount || 0));
-    let offer = null;
-    for(const sku of ["funds_small", "funds_medium", "funds_large"]){
-      const candidate = getOffer(sku);
-      if(candidate && Number(candidate.stars) === starsAmount){
-        offer = candidate;
-        break;
-      }
-    }
+    const offer = Object.values(STARS_OFFERS).find((candidate)=>Number(candidate.stars) === starsAmount) || null;
     if(!offer){
       return json(res, 400, { ok:false, error:"No matching Stars offer for this transaction amount." });
     }
