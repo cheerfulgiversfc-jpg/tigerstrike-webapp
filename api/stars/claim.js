@@ -106,8 +106,9 @@ function acceptedStarsSet(offer){
 async function findMatchingTransaction(orderMeta, offer, userId, excludedTxIds, botToken){
   const pageSize = 100;
   const maxPages = 8;
-  let fallback = null;
+  const fallbackCandidates = [];
   const minTxMs = orderMeta.createdAtMs > 0 ? (orderMeta.createdAtMs - (2 * 60 * 1000)) : 0;
+  const maxTxMs = orderMeta.createdAtMs > 0 ? (orderMeta.createdAtMs + (20 * 60 * 1000)) : 0;
   const acceptedStars = acceptedStarsSet(offer);
 
   for(let page=0; page<maxPages; page++){
@@ -129,21 +130,27 @@ async function findMatchingTransaction(orderMeta, offer, userId, excludedTxIds, 
         return tx;
       }
 
+      // If payload exists and is different, this transaction belongs to a different invoice.
+      if(payload) continue;
+
       const sourceUserId = extractSourceUserId(tx);
       if(sourceUserId > 0 && sourceUserId !== userId) continue;
       if(sourceUserId !== userId) continue;
 
-      if(orderMeta.createdAtMs > 0){
-        const txDateSec = Number(tx?.date || 0);
-        const txMs = Number.isFinite(txDateSec) && txDateSec > 0 ? txDateSec * 1000 : 0;
-        if(txMs > 0 && txMs >= minTxMs && !fallback){
-          fallback = tx;
-        }
-      }
+      if(orderMeta.createdAtMs <= 0) continue;
+      const txDateSec = Number(tx?.date || 0);
+      const txMs = Number.isFinite(txDateSec) && txDateSec > 0 ? txDateSec * 1000 : 0;
+      if(txMs <= 0) continue;
+      if(txMs < minTxMs || txMs > maxTxMs) continue;
+      fallbackCandidates.push(tx);
     }
     if(txs.length < pageSize) break;
   }
-  return fallback;
+  // Fallback is only safe when exactly one candidate is present.
+  if(fallbackCandidates.length === 1){
+    return fallbackCandidates[0];
+  }
+  return null;
 }
 
 module.exports = async function handler(req, res){
