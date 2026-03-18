@@ -36,10 +36,30 @@
     .title{font-size:24px;font-weight:950}
     .sub{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
     .row{display:flex;gap:10px;flex-wrap:wrap}
-    button{border-radius:12px;border:1px solid var(--border2);background:#1a2031;color:#fff;padding:10px 12px;font-weight:900;font-size:14px;cursor:pointer;min-height:44px}
+    button{
+      border-radius:12px;
+      border:1px solid rgba(92,126,196,.42);
+      background:linear-gradient(180deg, rgba(42,56,92,.92), rgba(24,34,56,.92));
+      color:#fff;
+      padding:10px 12px;
+      font-weight:900;
+      font-size:14px;
+      cursor:pointer;
+      min-height:44px;
+      box-shadow:0 8px 22px rgba(10,14,24,.28);
+      transition:transform .16s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    button:hover:not(:disabled){
+      transform:translateY(-1px);
+      border-color:rgba(116,154,232,.70);
+      box-shadow:0 10px 24px rgba(23,36,68,.30);
+    }
     button:disabled{opacity:.45;cursor:not-allowed}
     button.gamepadFocus{outline:2px solid rgba(58,120,255,.98);box-shadow:0 0 0 3px rgba(58,120,255,.32)}
-    .ghost{background:transparent}
+    .ghost{
+      background:rgba(14,20,34,.35);
+      box-shadow:none;
+    }
     .good{border-color:#14532d;background:#0f2416}
     .warn{border-color:#7c2d12;background:#2b140d}
     .danger{border-color:#7f1d1d;background:#2a0f13}
@@ -103,14 +123,69 @@
     .storyIntroFooter{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 
     .tabs{display:flex;gap:10px;flex-wrap:wrap}
-    .tab{background:rgba(15,19,32,.7);border:1px solid rgba(35,42,62,.9)}
-    .tab.active{border-color:#5670b8;background:#1a2031}
+    .tab{
+      background:linear-gradient(180deg, rgba(18,24,42,.76), rgba(12,16,28,.82));
+      border:1px solid rgba(52,70,116,.88);
+    }
+    .tab.active{
+      border-color:#6f92dc;
+      background:linear-gradient(180deg, rgba(48,68,116,.94), rgba(28,44,84,.92));
+      box-shadow:0 0 0 1px rgba(111,146,220,.18) inset;
+    }
     .list{display:grid;gap:10px;margin-top:10px}
-    .item{border:1px solid rgba(35,42,62,.9);background:rgba(15,19,32,.75);border-radius:14px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
-    .itemName{font-weight:950}
+    .item{
+      border:1px solid rgba(58,77,120,.88);
+      background:
+        radial-gradient(circle at 14% 16%, rgba(111,146,220,.12), transparent 40%),
+        radial-gradient(circle at 86% 84%, rgba(74,222,128,.09), transparent 44%),
+        linear-gradient(180deg, rgba(18,24,42,.82), rgba(12,16,30,.86));
+      border-radius:14px;
+      padding:12px;
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      align-items:flex-start;
+      box-shadow:0 10px 28px rgba(4,8,16,.30);
+      transition:transform .16s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    .item:hover{
+      transform:translateY(-1px);
+      border-color:rgba(96,126,198,.96);
+      box-shadow:0 14px 30px rgba(8,14,28,.34);
+    }
+    .itemName{
+      font-weight:950;
+      letter-spacing:.01em;
+    }
     .itemDesc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
-    .price{font-weight:950}
-    .tag{display:inline-block;margin-left:8px;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;border:1px solid rgba(35,42,62,.9);background:#0b0d12;color:var(--muted)}
+    .price{
+      font-weight:950;
+      color:#dbeafe;
+      text-shadow:0 1px 10px rgba(74,113,189,.22);
+    }
+    .tag{
+      display:inline-block;
+      margin-left:8px;
+      font-size:11px;
+      font-weight:900;
+      padding:2px 8px;
+      border-radius:999px;
+      border:1px solid rgba(90,116,176,.72);
+      background:linear-gradient(180deg, rgba(16,22,40,.96), rgba(10,14,24,.96));
+      color:#cbd5e1;
+      box-shadow:0 2px 10px rgba(8,12,22,.24) inset;
+    }
+    .item button{
+      min-width:132px;
+      background:linear-gradient(180deg, rgba(66,96,164,.92), rgba(35,58,112,.95));
+      border-color:rgba(122,155,228,.54);
+      box-shadow:0 10px 24px rgba(18,36,82,.28);
+    }
+    .item button.ghost{
+      background:rgba(14,20,34,.46);
+      border-color:rgba(84,101,146,.58);
+      box-shadow:none;
+    }
     .controlGrid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px}
     .controlItem{border:1px solid rgba(35,42,62,.9);background:rgba(15,19,32,.7);border-radius:12px;padding:10px}
     .controlLabel{font-size:12px;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;gap:8px}
@@ -136,6 +211,10 @@
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
     .mobileMenuToggle{display:none}
+    @media (prefers-reduced-motion:reduce){
+      button,.item{transition:none}
+      button:hover:not(:disabled),.item:hover{transform:none}
+    }
     #rotateLock{
       display:none;
       position:fixed;
@@ -896,7 +975,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4420"></script>
+<script src="./game.js?v=4421"></script>
 <script src="./tutorial.js?v=4404"></script>
 <script>
 (() => {

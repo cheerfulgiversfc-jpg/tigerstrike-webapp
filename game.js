@@ -1260,13 +1260,32 @@ const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
 const COMBAT_FX = [];
 const DAMAGE_POPUPS = [];
+const IMPACT_PULSES = [];
 const DAMAGE_POPUP_RATE_MS = 82;
 const DAMAGE_POPUP_GATE = new Map();
+const CAMERA_SHAKE = { until:0, power:0 };
+const ATMOS_PARTICLES = Object.freeze(Array.from({ length:26 }, (_, i)=>{
+  const seed = i + 1;
+  const u = Math.abs(Math.sin(seed * 12.9898) * 43758.5453) % 1;
+  const v = Math.abs(Math.sin(seed * 39.3467) * 19642.3491) % 1;
+  const depth = 0.45 + ((i % 7) * 0.09);
+  return Object.freeze({
+    u,
+    v,
+    depth,
+    size: 0.8 + ((i % 5) * 0.22),
+    drift: 0.18 + ((i % 6) * 0.05),
+    alpha: 0.035 + ((i % 4) * 0.012),
+  });
+}));
 
 function clearTransientCombatVisuals(){
   COMBAT_FX.length = 0;
   DAMAGE_POPUPS.length = 0;
+  IMPACT_PULSES.length = 0;
   DAMAGE_POPUP_GATE.clear();
+  CAMERA_SHAKE.until = 0;
+  CAMERA_SHAKE.power = 0;
 }
 
 function load(){
@@ -9904,11 +9923,75 @@ function activeTiger(){
   return tigerById(S.activeTigerId);
 }
 
+function visualEffectsHeavyMode(){
+  if(performanceMode() === "PERFORMANCE") return true;
+  return frameIsSlow();
+}
+
+function queueCameraShake(power=1, durationMs=120){
+  const base = clamp(Number(power || 0), 0, 2);
+  if(base <= 0) return;
+  const modeScale = performanceMode() === "PERFORMANCE" ? 0.44 : (frameIsSlow() ? 0.62 : 1);
+  const scaled = base * modeScale;
+  if(scaled <= 0.02) return;
+  CAMERA_SHAKE.power = Math.max(CAMERA_SHAKE.power, scaled);
+  CAMERA_SHAKE.until = Math.max(CAMERA_SHAKE.until, Date.now() + clamp(durationMs, 40, 360));
+}
+
+function sampleCameraShake(){
+  const now = Date.now();
+  if(now >= CAMERA_SHAKE.until || CAMERA_SHAKE.power <= 0.02){
+    CAMERA_SHAKE.power = 0;
+    CAMERA_SHAKE.until = 0;
+    return { x:0, y:0, active:false };
+  }
+  const lifeLeft = clamp((CAMERA_SHAKE.until - now) / 220, 0, 1);
+  const amp = CAMERA_SHAKE.power * lifeLeft;
+  CAMERA_SHAKE.power = Math.max(0, (CAMERA_SHAKE.power * 0.90) - 0.01);
+  const x = (Math.sin(now * 0.115) + Math.cos(now * 0.071)) * amp * 2.2;
+  const y = (Math.cos(now * 0.097) - Math.sin(now * 0.061)) * amp * 1.8;
+  return { x, y, active:true };
+}
+
+function queueImpactPulse(x, y, kind="hit"){
+  if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+  if(IMPACT_PULSES.length >= 30){
+    IMPACT_PULSES.splice(0, IMPACT_PULSES.length - 29);
+  }
+  let color = "rgba(245,247,255,.88)";
+  let maxR = 18;
+  let ttl = 18;
+  if(kind === "crit"){
+    color = "rgba(251,191,36,.95)";
+    maxR = 24;
+    ttl = 22;
+  }else if(kind === "player"){
+    color = "rgba(248,113,113,.92)";
+    maxR = 22;
+    ttl = 20;
+  }else if(kind === "tranq"){
+    color = "rgba(125,211,252,.92)";
+    maxR = 20;
+    ttl = 19;
+  }else if(kind === "civilian"){
+    color = "rgba(251,191,36,.90)";
+    maxR = 19;
+    ttl = 17;
+  }
+  if(visualEffectsHeavyMode()){
+    maxR *= 0.84;
+    ttl = Math.max(12, Math.round(ttl * 0.78));
+  }
+  IMPACT_PULSES.push({ x, y, color, ttl, maxTtl:ttl, r:2, maxR });
+}
+
 function emitCombatFx(x1, y1, x2, y2, color, width=3){
   if(COMBAT_FX.length >= 64){
     COMBAT_FX.splice(0, COMBAT_FX.length - 63);
   }
-  COMBAT_FX.push({ x1, y1, x2, y2, color, width, ttl:8, maxTtl:8 });
+  const ttl = visualEffectsHeavyMode() ? 6 : 8;
+  COMBAT_FX.push({ x1, y1, x2, y2, color, width, ttl, maxTtl:ttl });
+  queueImpactPulse(x2, y2, "hit");
 }
 
 function tickCombatFx(){
@@ -9919,17 +10002,60 @@ function tickCombatFx(){
   }
 }
 
+function tickImpactPulses(){
+  const fade = visualEffectsHeavyMode() ? 1.6 : 1.1;
+  for(const pulse of IMPACT_PULSES){
+    pulse.ttl -= fade;
+    const progress = 1 - clamp(pulse.ttl / pulse.maxTtl, 0, 1);
+    pulse.r = 2 + (pulse.maxR * progress);
+  }
+  for(let i=IMPACT_PULSES.length-1; i>=0; i--){
+    const pulse = IMPACT_PULSES[i];
+    if(!pulse || !Number.isFinite(pulse.ttl) || pulse.ttl <= 0){
+      IMPACT_PULSES.splice(i, 1);
+    }
+  }
+}
+
 function drawCombatFx(){
+  const heavy = visualEffectsHeavyMode();
   for(const fx of COMBAT_FX){
     const alpha = clamp(fx.ttl / fx.maxTtl, 0, 1);
     ctx.save();
     ctx.globalAlpha = alpha;
+    if(!heavy){
+      ctx.strokeStyle = "rgba(255,255,255,.24)";
+      ctx.lineWidth = fx.width + 3.2;
+      ctx.beginPath();
+      ctx.moveTo(fx.x1, fx.y1);
+      ctx.lineTo(fx.x2, fx.y2);
+      ctx.stroke();
+    }
     ctx.strokeStyle = fx.color;
     ctx.lineWidth = fx.width;
     ctx.beginPath();
     ctx.moveTo(fx.x1, fx.y1);
     ctx.lineTo(fx.x2, fx.y2);
     ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawImpactPulses(){
+  for(const pulse of IMPACT_PULSES){
+    const life = clamp(pulse.ttl / pulse.maxTtl, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = life * 0.55;
+    ctx.strokeStyle = pulse.color;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(pulse.x, pulse.y, pulse.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = life * 0.22;
+    ctx.fillStyle = pulse.color;
+    ctx.beginPath();
+    ctx.arc(pulse.x, pulse.y, Math.max(1.8, pulse.r * 0.34), 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 }
@@ -9962,6 +10088,18 @@ function emitDamagePopup(x, y, text, kind="hit"){
     vy: kind === "player" ? -1.55 : -1.15,
     drift: (Math.random() - 0.5) * 0.35
   });
+  queueImpactPulse(x, y, kind);
+  if(kind === "crit"){
+    queueCameraShake(1.15, 180);
+  }else if(kind === "player"){
+    queueCameraShake(1.35, 210);
+  }else if(kind === "civilian"){
+    queueCameraShake(0.86, 150);
+  }else if(kind === "tranq"){
+    queueCameraShake(0.55, 110);
+  }else{
+    queueCameraShake(0.32, 90);
+  }
 }
 
 function tickDamagePopups(){
@@ -11747,6 +11885,54 @@ function drawMapScene(){
   }
 }
 
+function drawAtmosphericParallax(nowTs=Date.now()){
+  const mode = performanceMode();
+  const slow = frameIsSlow();
+  if(mode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 !== 0)) return;
+  if(slow && (__frameHeavyFxFlip % 3 === 1)) return;
+
+  const w = cv.width;
+  const h = cv.height;
+  const hazeLayers = mode === "PERFORMANCE" ? 1 : (slow ? 2 : 3);
+  const streakCount = mode === "PERFORMANCE" ? 6 : (slow ? 9 : 14);
+  const t = nowTs * 0.00006;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  for(let i=0; i<hazeLayers; i++){
+    const phase = (i * 1.67);
+    const x = ((Math.sin((t * (0.8 + i * 0.12)) + phase) + 1) * 0.5) * w;
+    const y = ((Math.cos((t * (0.66 + i * 0.1)) + (phase * 0.8)) + 1) * 0.5) * h;
+    const rx = (w * (0.34 - (i * 0.06)));
+    const ry = (h * (0.24 - (i * 0.04)));
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry));
+    grad.addColorStop(0, `rgba(147,197,253,${0.11 - (i * 0.02)})`);
+    grad.addColorStop(0.52, `rgba(148,163,184,${0.05 - (i * 0.009)})`);
+    grad.addColorStop(1, "rgba(15,23,42,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  }
+  ctx.globalCompositeOperation = "source-over";
+
+  for(let i=0; i<streakCount; i++){
+    const p = ATMOS_PARTICLES[i % ATMOS_PARTICLES.length];
+    const px = ((p.u * w) + ((t * (26 + (p.drift * 22)) * p.depth) % (w + 120))) % (w + 120) - 60;
+    const py = (p.v * h) + Math.sin(t * (1.9 + p.depth) + (i * 0.8)) * (8 + (p.depth * 10));
+    const len = 22 + (p.size * 20);
+    const alpha = p.alpha * (slow ? 0.7 : 1);
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = "rgba(226,232,240,.55)";
+    ctx.lineWidth = 1 + (p.size * 0.45);
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px + len, py + (4 * p.depth));
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 // ===================== DRAW ENTITIES =====================
 function roundedRectFill(x,y,w,h,r){
   ctx.beginPath();
@@ -12576,6 +12762,7 @@ function drawEntities(){
     : ((perfMode !== "PERFORMANCE" && !isSlowFrame)
       || (perfMode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 === 0))
       || (isSlowFrame && (__frameHeavyFxFlip % 3 === 0)));
+  if(drawFx || IMPACT_PULSES.length > 0) drawImpactPulses();
   if(drawFx) drawCombatFx();
   if(drawFx || __frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0) drawDamagePopups();
 }
@@ -12638,10 +12825,22 @@ function draw(){
     }
     runFrameTask("combatFx", frameInterval(26, 1.5), tickCombatFx, { costHint:0.8 });
     runFrameTask("damagePopups", frameInterval(26, 1.5), tickDamagePopups, { costHint:0.8 });
+    runFrameTask("impactPulses", frameInterval(24, 1.5), tickImpactPulses, { costHint:0.7 });
 
-    safeTick("drawMapScene", drawMapScene);
-    safeTick("drawEntities", drawEntities);
-    safeTick("drawMobileUiClearLane", drawMobileUiClearLane);
+    safeTick("drawSceneFrame", ()=>{
+      drawMapScene();
+      const shake = sampleCameraShake();
+      if(shake.active){
+        ctx.save();
+        ctx.translate(shake.x, shake.y);
+      }
+      drawAtmosphericParallax();
+      drawEntities();
+      if(shake.active){
+        ctx.restore();
+      }
+      drawMobileUiClearLane();
+    });
     maybeAutosave();
   }catch(err){
     const now = Date.now();
@@ -12844,6 +13043,7 @@ function init(){
   bindAttackButtonGestures();
   maybeRenderHUD(true);
   safeTick("bootDrawMapScene", drawMapScene);
+  safeTick("bootDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
   safeTick("bootDrawEntities", drawEntities);
   safeTick("bootDrawMobileUiClearLane", drawMobileUiClearLane);
   if(!__drawLoopStarted){
@@ -12871,6 +13071,7 @@ function bootstrap(){
       deploy();
       maybeRenderHUD(true);
       safeTick("recoverDrawMapScene", drawMapScene);
+      safeTick("recoverDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
       safeTick("recoverDrawEntities", drawEntities);
       safeTick("recoverDrawUiLane", drawMobileUiClearLane);
       if(!__drawLoopStarted){
