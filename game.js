@@ -1,4 +1,5 @@
 const tg = window.Telegram?.WebApp;
+const TS_BUILD = "4419";
 if(tg){
   try{
     tg.expand?.();
@@ -12569,7 +12570,7 @@ function missionStateLooksEmpty(){
 
 function init(){
   ensureStarsDebugUi();
-  pushStarsDebug("app:init", { user: tgUserKey() });
+  pushStarsDebug("app:init", { user: tgUserKey(), build: TS_BUILD });
   ensureStoryMetaState();
   if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
