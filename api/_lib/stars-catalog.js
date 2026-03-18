@@ -85,10 +85,10 @@ const STARS_OFFERS = Object.freeze({
   funds_150: Object.freeze({
     sku: "funds_150",
     kind: "cash",
-    name: "Legacy Reserve 150",
+    name: "Rapid Reserve",
     stars: 150,
     funds: 1500,
-    desc: "Legacy conversion 150 Stars -> $1,500 in-game cash.",
+    desc: "Convert 150 Stars into $1,500 in-game cash.",
     grant: Object.freeze({ funds: 1500 }),
   }),
   funds_500: Object.freeze({
