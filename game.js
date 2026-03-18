@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4419";
+const TS_BUILD = "4424";
 if(tg){
   try{
     tg.expand?.();
@@ -900,6 +900,31 @@ function arcadeObjectiveProgressText(cfg){
   return bits.length ? ` • ${bits.join(" • ")}` : "";
 }
 
+function arcadeMissionTimeLeftSec(){
+  const limit = Math.max(0, Math.floor(Number(S.arcadeMissionLimitSec || 0)));
+  const startAt = Math.max(0, Math.floor(Number(S.arcadeMissionStartAt || 0)));
+  if(limit <= 0 || startAt <= 0) return 0;
+  const elapsed = Math.floor((Date.now() - startAt) / 1000);
+  return Math.max(0, limit - Math.max(0, elapsed));
+}
+
+function arcadeComboMultiplier(){
+  const chain = Math.max(1, Math.floor(Number(S.comboCount || 0)));
+  return clamp(1 + ((chain - 1) * 0.20), 1, 3);
+}
+
+function arcadeMissionMedal(){
+  const limit = Math.max(1, Math.floor(Number(S.arcadeMissionLimitSec || 1)));
+  const left = arcadeMissionTimeLeftSec();
+  const ratio = left / limit;
+  const peak = Math.max(0, Math.floor(Number(S.arcadeComboPeak || 0)));
+
+  if(ratio >= 0.52 && peak >= 8) return "Platinum";
+  if(ratio >= 0.34 && peak >= 5) return "Gold";
+  if(ratio >= 0.18 && peak >= 3) return "Silver";
+  return "Bronze";
+}
+
 const STORY_CAMPAIGN_CHAPTERS = [
   "The First Attack",
   "Blood in the Jungle",
@@ -1205,6 +1230,11 @@ const DEFAULT = {
   comboCount:0,
   comboBest:0,
   comboExpireAt:0,
+  arcadeMissionStartAt:0,
+  arcadeMissionLimitSec:0,
+  arcadeComboPeak:0,
+  arcadeScoreBonus:0,
+  _arcadeTimerWarn:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
   achievements:{},
   title:"Rookie",
@@ -2653,6 +2683,63 @@ const ABILITY_WHEEL = [
   { key:"sprint", icon:"⚡", color:"rgba(245,158,11,.95)" },
   { key:"shield", icon:"🛡️", color:"rgba(74,222,128,.95)" },
 ];
+const MODE_THEME = Object.freeze({
+  Story: Object.freeze({
+    bg:"#0b111b",
+    panel:"#121b2c",
+    panel2:"#101829",
+    border:"#2d4261",
+    border2:"#253850",
+    blue:"#4f8cff",
+    accent:"#7db0ff",
+    glow:"rgba(125,176,255,.34)",
+    mapA:"rgba(245,158,11,.10)",
+    mapB:"rgba(96,165,250,.10)",
+  }),
+  Arcade: Object.freeze({
+    bg:"#090d18",
+    panel:"#14152c",
+    panel2:"#10112a",
+    border:"#4b2e78",
+    border2:"#3a225f",
+    blue:"#47b6ff",
+    accent:"#7bf7ff",
+    glow:"rgba(123,247,255,.36)",
+    mapA:"rgba(34,211,238,.12)",
+    mapB:"rgba(192,132,252,.16)",
+  }),
+  Survival: Object.freeze({
+    bg:"#100f16",
+    panel:"#1a1320",
+    panel2:"#150f1c",
+    border:"#5a3343",
+    border2:"#4a2937",
+    blue:"#f97316",
+    accent:"#fb7185",
+    glow:"rgba(251,113,133,.30)",
+    mapA:"rgba(251,113,133,.10)",
+    mapB:"rgba(245,158,11,.09)",
+  }),
+});
+let __modeThemeApplied = "";
+function applyModeTheme(mode=S.mode){
+  const key = MODE_THEME[mode] ? mode : "Story";
+  if(__modeThemeApplied === key) return;
+  __modeThemeApplied = key;
+  const root = document.documentElement;
+  if(!root) return;
+  const theme = MODE_THEME[key];
+  root.style.setProperty("--bg", theme.bg);
+  root.style.setProperty("--panel", theme.panel);
+  root.style.setProperty("--panel2", theme.panel2);
+  root.style.setProperty("--border", theme.border);
+  root.style.setProperty("--border2", theme.border2);
+  root.style.setProperty("--blue", theme.blue);
+  root.style.setProperty("--mode-accent", theme.accent);
+  root.style.setProperty("--mode-glow", theme.glow);
+  root.style.setProperty("--mode-map-a", theme.mapA);
+  root.style.setProperty("--mode-map-b", theme.mapB);
+}
 function pickupLabel(type){
   if(type==="CASH") return "Cash";
   if(type==="AMMO") return "Ammo";
@@ -4515,6 +4602,7 @@ function startStoryIntroMission(){
 function setMode(m){
   const wantsStoryIntro = (m==="Story" && !window.__TUTORIAL_MODE__);
   S.mode=m; S.lives=5;
+  applyModeTheme(S.mode);
   if(m==="Arcade") S.arcadeLevel=1;
   if(m==="Survival"){ S.survivalWave=1; S.survivalStart=Date.now(); S.surviveSeconds=0; }
   if(m==="Story") S.storyLevel=1;
@@ -4532,8 +4620,8 @@ function markModeTabs(){
 }
 function updateModeDesc(){
   const el=document.getElementById("modeDesc");
-  if(S.mode==="Story") el.innerText="Story Campaign: 100 missions with chapter objectives, mission-based bosses, and chapter-end cutscenes.";
-  else if(S.mode==="Arcade") el.innerText="Arcade Campaign: 100 missions in 10 chapters. Objective text, tiger/civilian counts, boss fights, and special rules are mission-based.";
+  if(S.mode==="Story") el.innerText="Story Campaign: tactical mission flow with chapter objectives, story cutscenes, and boss encounters.";
+  else if(S.mode==="Arcade") el.innerText="Arcade Campaign: score-attack missions with a live timer, combo multiplier pressure, and medal ranking on clear.";
   else el.innerText="Survival: no civilians. Tigers pressure-damage you. Events OFF.";
 }
 
@@ -7278,6 +7366,30 @@ function comboTick(){
   }
 }
 
+function arcadeModeTick(){
+  if(window.__TUTORIAL_MODE__) return;
+  if(S.mode!=="Arcade") return;
+  if(S.gameOver || S.missionEnded) return;
+  const limit = Math.max(0, Math.floor(Number(S.arcadeMissionLimitSec || 0)));
+  const started = Math.max(0, Math.floor(Number(S.arcadeMissionStartAt || 0)));
+  if(limit <= 0 || started <= 0) return;
+
+  const left = arcadeMissionTimeLeftSec();
+  if(left <= 0){
+    gameOverChoice("Arcade timer expired.\nMission failed.\nPush faster routes and chain combos for higher medals.");
+    return;
+  }
+
+  let warnBucket = 0;
+  if(left <= 5) warnBucket = 5;
+  else if(left <= 10) warnBucket = 10;
+  else if(left <= 20) warnBucket = 20;
+  if(warnBucket > 0 && S._arcadeTimerWarn !== warnBucket){
+    S._arcadeTimerWarn = warnBucket;
+    setEventText(`Arcade timer: ${left}s remaining`, 1.8);
+  }
+}
+
 function breakCombo(reason=""){
   const prev = S.comboCount || 0;
   if(prev <= 0){
@@ -7309,7 +7421,16 @@ function awardCombo(kind){
   S.funds += bonusCash;
   S.stats.cashEarned += bonusCash;
   addXP(bonusXp);
-  setEventText(`🔥 ${kind==="capture" ? "Capture" : "Rescue"} combo x${chain}: +$${bonusCash} +${bonusXp}XP`, 2.5);
+  let arcadeSuffix = "";
+  if(S.mode==="Arcade"){
+    const mult = arcadeComboMultiplier();
+    const scoreBonus = Math.max(8, Math.round((kind==="capture" ? 42 : 28) * mult));
+    S.score += scoreBonus;
+    S.arcadeScoreBonus = Math.max(0, Math.floor(Number(S.arcadeScoreBonus || 0))) + scoreBonus;
+    S.arcadeComboPeak = Math.max(Math.floor(Number(S.arcadeComboPeak || 0)), chain);
+    arcadeSuffix = ` • +${scoreBonus} score`;
+  }
+  setEventText(`🔥 ${kind==="capture" ? "Capture" : "Rescue"} combo x${chain}: +$${bonusCash} +${bonusXp}XP${arcadeSuffix}`, 2.5);
   __savePending = true;
 }
 
@@ -7877,6 +7998,11 @@ function deploy(opts={}){
   S.stats.cashEarned = 0;
   S.stats.trapsPlaced = 0;
   S.stats.trapsTriggered = 0;
+  S.arcadeMissionStartAt = 0;
+  S.arcadeMissionLimitSec = 0;
+  S.arcadeComboPeak = 0;
+  S.arcadeScoreBonus = 0;
+  S._arcadeTimerWarn = 0;
   S._arcadeNoKillWarned = false;
   S._storyFinalOutcome = null;
   S._survivalClearAt = 0;
@@ -7921,6 +8047,18 @@ function deploy(opts={}){
 
   if(S.mode==="Arcade"){
     const mission = arcadeCampaignMission(S.arcadeLevel);
+    let timeLimitSec = 95 + (mission.chapter * 8);
+    if(mission.captureOnly) timeLimitSec += 14;
+    timeLimitSec += (mission.captureRequired || 0) * 6;
+    timeLimitSec += (mission.trapPlaceRequired || 0) * 5;
+    timeLimitSec += (mission.trapTriggerRequired || 0) * 5;
+    if(mission.boss) timeLimitSec += mission.bossTwin ? 24 : 18;
+    if(mission.finalBoss) timeLimitSec += 30;
+    S.arcadeMissionLimitSec = clamp(Math.round(timeLimitSec), 90, 240);
+    S.arcadeMissionStartAt = Date.now();
+    S.arcadeComboPeak = 0;
+    S.arcadeScoreBonus = 0;
+    S._arcadeTimerWarn = 0;
     if(mission.lowVisibility){
       S.fogUntil = Date.now() + 120000;
     }
@@ -11056,6 +11194,19 @@ function checkMissionComplete(){
       } else if(arcadeMission){
         heading = `Arcade Mission ${arcadeMission.number}/100 — ${arcadeMission.chapterName}\n${arcadeMission.objective}\n`;
       }
+      let arcadeSummary = "";
+      if(arcadeMission){
+        const left = arcadeMissionTimeLeftSec();
+        const limit = Math.max(0, Math.floor(Number(S.arcadeMissionLimitSec || 0)));
+        const peak = Math.max(Math.floor(Number(S.arcadeComboPeak || 0)), Math.floor(Number(S.comboCount || 0)));
+        const medal = arcadeMissionMedal();
+        const bonus = Math.max(0, Math.floor(Number(S.arcadeScoreBonus || 0)));
+        arcadeSummary =
+          `\nArcade Medal: ${medal}` +
+          `\nArcade Time Left: ${left}s / ${limit}s` +
+          `\nArcade Combo Peak: x${peak}` +
+          `\nArcade Score Bonus: +${bonus.toLocaleString()}\n`;
+      }
 
       let chapterCutscene = "";
       if(storyMission && STORY_CHAPTER_CUTSCENES[storyMission.number]){
@@ -11092,7 +11243,7 @@ function checkMissionComplete(){
       }
 
       document.getElementById("completeText").innerText =
-        `${heading}${chapterCutscene}${chapterRewardNote}${finalEnding}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${finalEnding}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       sfx("win"); hapticNotif("success");
@@ -11112,6 +11263,7 @@ function updateEngage(){
 function renderHUD(){
   try{
     syncSquadRosterBounds();
+    applyModeTheme(S.mode);
     // clear event text if expired
     if(S.eventTextUntil && Date.now()>S.eventTextUntil) S.eventText="";
     if(S.shieldUntil && Date.now() >= S.shieldUntil) S.shieldUntil = 0;
@@ -11191,13 +11343,19 @@ function renderHUD(){
   const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
   const storyObjective = storyMission ? `${storyMission.objective}${storyObjectiveProgressText(storyMission)}` : "";
   const arcadeObjective = arcadeMission ? `${arcadeMission.objective}${arcadeObjectiveProgressText(arcadeMission)}` : "";
+  const arcadeLeft = (S.mode==="Arcade") ? arcadeMissionTimeLeftSec() : 0;
+  const arcadeMult = (S.mode==="Arcade") ? arcadeComboMultiplier() : 1;
+  const arcadeMedal = (S.mode==="Arcade") ? arcadeMissionMedal() : "";
+  const arcadeHint = (S.mode==="Arcade")
+    ? ` • Timer ${arcadeLeft}s • Mult x${arcadeMult.toFixed(1)} • Medal ${arcadeMedal}`
+    : "";
   document.getElementById("objTxt").innerText =
     (S.mode==="Survival")
       ? `Objective: Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
       : (S.mode==="Story")
         ? `Objective: ${storyObjective}${grace}`
       : (S.mode==="Arcade")
-        ? `Objective: ${arcadeObjective}${grace}`
+        ? `Objective: ${arcadeObjective}${arcadeHint}${grace}`
         : `Objective: Evacuate living civilians + clear ALL tigers${grace}`;
 
   // danger ping
@@ -11213,6 +11371,12 @@ function renderHUD(){
   if((S.comboCount || 0) > 0){
     const left = Math.max(0, Math.ceil(((S.comboExpireAt || 0) - Date.now()) / 1000));
     assistParts.push(`Combo x${S.comboCount}${left ? ` (${left}s)` : ""}`);
+  }
+  if(S.mode==="Arcade"){
+    const limit = Math.max(0, Math.floor(Number(S.arcadeMissionLimitSec || 0)));
+    const peak = Math.max(Math.floor(Number(S.arcadeComboPeak || 0)), Math.floor(Number(S.comboCount || 0)));
+    assistParts.push(`Arcade clock: ${arcadeLeft}s/${limit}s • Medal: ${arcadeMedal}`);
+    assistParts.push(`Arcade combo multiplier: x${arcadeMult.toFixed(1)} • Peak combo x${peak}`);
   }
   if(S.mode!=="Survival"){
     const civTargets = S.civilians.filter(c=>c.alive && !c.evac);
@@ -11302,18 +11466,25 @@ function renderHUD(){
         : (S.mode==="Story" && storyMission)
           ? `Story ${storyMission.number}/100 • Ch ${storyMission.chapter}`
         : (S.mode==="Arcade" && arcadeMission)
-          ? `Mission ${arcadeMission.number}/100 • Ch ${arcadeMission.chapter}`
+          ? `Arcade ${arcadeMission.number}/100 • ${arcadeLeft}s • ${arcadeMedal}`
           : `Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`;
   }
   if(mobileThreatChip){
-    const threatText = S.mode==="Survival" ? "Pressure High" : (S._underAttack ? `Threat ${S._underAttack} attack` : "Threat Low");
+    const threatText =
+      S.mode==="Arcade"
+        ? (arcadeLeft <= 20 ? `Clock ${arcadeLeft}s` : `Combo x${Math.max(1, S.comboCount || 1)}`)
+        : (S.mode==="Survival"
+          ? "Pressure High"
+          : (S._underAttack ? `Threat ${S._underAttack} attack` : "Threat Low"));
     mobileThreatChip.innerText = threatText;
   }
   if(mobilePromptTxt){
     let mobilePrompt =
       S.mode==="Survival"
         ? "Stay moving, manage ammo, and survive the pressure."
-        : "Protect civilians, reach the evac zone, and clear every tiger.";
+        : (S.mode==="Arcade"
+            ? "Beat the clock, chain combos, and finish with a higher medal."
+            : "Protect civilians, reach the evac zone, and clear every tiger.");
     let nearInteract = null;
     let nearInteractDist = 1e9;
     for(const it of (S.mapInteractables || [])){
@@ -11783,6 +11954,30 @@ function drawMapScene(){
   vignette.addColorStop(1, "rgba(0,0,0,.22)");
   ctx.fillStyle = vignette;
   ctx.fillRect(0,0,w,h);
+
+  if(S.mode==="Arcade"){
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    const arcadeTint = ctx.createLinearGradient(0, 0, w, h);
+    arcadeTint.addColorStop(0, "rgba(34,211,238,.11)");
+    arcadeTint.addColorStop(1, "rgba(192,132,252,.12)");
+    ctx.fillStyle = arcadeTint;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 0.07;
+    ctx.fillStyle = "rgba(255,255,255,.65)";
+    for(let y=8; y<h; y+=18){
+      ctx.fillRect(0, y, w, 1);
+    }
+    ctx.restore();
+  } else if(S.mode==="Story"){
+    ctx.save();
+    const storyTint = ctx.createLinearGradient(0, 0, 0, h);
+    storyTint.addColorStop(0, "rgba(245,158,11,.06)");
+    storyTint.addColorStop(1, "rgba(59,130,246,.05)");
+    ctx.fillStyle = storyTint;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
 
   if(S.mode!=="Survival"){
     const chapterLabel = `${S.mode} Chapter ${chapter}`;
@@ -12817,6 +13012,7 @@ function draw(){
     safeTick("updateEngage", updateEngage);
     safeTick("respawnTick", respawnTick);
     runFrameTask("stabilityHealth", frameInterval(220, 1.6), stabilityHealthTick, { costHint:0.9, critical:true });
+    runFrameTask("arcadeModeTick", frameInterval(220, 1.45), arcadeModeTick, { costHint:0.6, critical:S.mode==="Arcade" });
 
     if(!(S.gameOver || S.paused || S.missionEnded)){
       runFrameTask("sanitizeState", frameInterval(150, 2.0), sanitizeRuntimeState, { costHint:1.3, critical:true });
@@ -12958,6 +13154,11 @@ function init(){
   if(!Number.isFinite(S.comboCount)) S.comboCount = 0;
   if(!Number.isFinite(S.comboBest)) S.comboBest = 0;
   if(!Number.isFinite(S.comboExpireAt)) S.comboExpireAt = 0;
+  if(!Number.isFinite(S.arcadeMissionStartAt)) S.arcadeMissionStartAt = 0;
+  if(!Number.isFinite(S.arcadeMissionLimitSec)) S.arcadeMissionLimitSec = 0;
+  if(!Number.isFinite(S.arcadeComboPeak)) S.arcadeComboPeak = 0;
+  if(!Number.isFinite(S.arcadeScoreBonus)) S.arcadeScoreBonus = 0;
+  if(!Number.isFinite(S._arcadeTimerWarn)) S._arcadeTimerWarn = 0;
   if(!S.progressionUnlocks || typeof S.progressionUnlocks !== "object") S.progressionUnlocks = {};
   if(S.paused && !S.gameOver && !S.missionEnded){
     S.paused = false;
@@ -12966,6 +13167,7 @@ function init(){
 
   // achievements defaults
   if(!S.achievements) S.achievements={};
+  applyModeTheme(S.mode);
   updatePerformanceLabels();
   applyTouchHudSettings();
   updateTitle();
