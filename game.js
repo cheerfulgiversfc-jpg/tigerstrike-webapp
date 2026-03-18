@@ -4494,6 +4494,7 @@ let currentShopTab="weapons";
 let starsCheckoutBusy = false;
 let starsTopupBusy = false;
 const starsClaimInFlight = new Map();
+const starsOrderStatus = new Map();
 let starsInvoiceActiveOrderRef = "";
 let starsPendingOrderRef = readStarsPendingOrderRef();
 let starsAutoClaimBusy = false;
@@ -4794,6 +4795,11 @@ async function claimStarsOrder(orderRef, opts={}){
     const intervalMs = Math.max(500, Math.min(5000, Math.floor(Number(opts.intervalMs || 1400))));
     const silentPending = !!opts.silentPending;
     for(let i=0;i<attempts;i++){
+      const invoiceState = String(starsOrderStatus.get(ref) || "").toLowerCase();
+      if(invoiceState === "cancelled" || invoiceState === "failed"){
+        pushStarsDebug("claim:aborted", { orderRef: shortDebugRef(ref), state: invoiceState });
+        return false;
+      }
       const excludeTxIds = readClaimedStarsTxIds();
       const data = await starsApiPost("/api/stars/claim", { orderRef: ref, initData, excludeTxIds });
       if(data.status === "pending"){
@@ -4829,6 +4835,7 @@ async function claimStarsOrder(orderRef, opts={}){
         }
         markClaimedStarsTx(txId);
         writeStarsPendingOrderRef(null);
+        starsOrderStatus.delete(ref);
         save();
         renderHUD();
         if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
@@ -4844,6 +4851,7 @@ async function claimStarsOrder(orderRef, opts={}){
       }
       if(data.status === "already_claimed"){
         writeStarsPendingOrderRef(null);
+        starsOrderStatus.delete(ref);
         toast("This Stars purchase was already claimed.");
         pushStarsDebug("claim:already_claimed", { orderRef: shortDebugRef(ref) });
         return false;
@@ -4879,12 +4887,16 @@ async function buyWithStars(sku){
     if(!orderRef || !invoiceLink) throw new Error("Missing invoice link.");
     writeStarsPendingOrderRef(orderRef);
     starsInvoiceActiveOrderRef = orderRef;
+    starsOrderStatus.set(orderRef, "open");
     toast(`Opening invoice: ${pack.stars} Stars`);
     pushStarsDebug("checkout:invoice", { sku, orderRef: shortDebugRef(orderRef) });
     const onStatus = (status)=>{
       const s = String(status || "").toLowerCase();
       if(starsInvoiceActiveOrderRef === orderRef){
         starsInvoiceActiveOrderRef = "";
+      }
+      if(s){
+        starsOrderStatus.set(orderRef, s);
       }
       pushStarsDebug("checkout:status", { orderRef: shortDebugRef(orderRef), status: s || "unknown" });
       if(s === "paid" || s === "pending"){
@@ -4895,11 +4907,13 @@ async function buyWithStars(sku){
         if(String(starsPendingOrderRef || "") === orderRef){
           writeStarsPendingOrderRef(null);
         }
+        starsOrderStatus.delete(orderRef);
         toast("Checkout canceled. No Stars were spent.");
       } else if(s === "failed"){
         if(String(starsPendingOrderRef || "") === orderRef){
           writeStarsPendingOrderRef(null);
         }
+        starsOrderStatus.delete(orderRef);
         toast("Stars payment failed.");
       } else {
         toast("Invoice closed. If charged, tap Claim Pending Purchase.");
@@ -4925,22 +4939,8 @@ async function buyWithStars(sku){
       }
       setTimeout(()=>{
         if(callbackFired) return;
-        if(starsInvoiceActiveOrderRef === orderRef){
-          starsInvoiceActiveOrderRef = "";
-        }
         pushStarsDebug("checkout:callback_missing", { orderRef: shortDebugRef(orderRef), sku });
-        Promise.resolve(claimStarsOrder(orderRef, {
-          poll:true,
-          attempts:15,
-          intervalMs:2000,
-          silentPending:true,
-        }))
-          .then((claimed)=>{
-            if(!claimed){
-              toast("Payment window delayed. If charged, tap Claim Pending Purchase.");
-            }
-          })
-          .catch(()=>toast("Payment window delayed. If charged, tap Claim Pending Purchase."));
+        toast("Waiting for Telegram checkout result. If charged, tap Claim Pending Purchase.");
       }, 12000);
     } else if(typeof tg.openTelegramLink === "function"){
       tg.openTelegramLink(invoiceLink);
@@ -4983,7 +4983,9 @@ async function claimPendingStarsPurchase(){
   }
 }
 function clearPendingStarsPurchase(){
+  const prior = String(starsPendingOrderRef || readStarsPendingOrderRef() || "");
   writeStarsPendingOrderRef(null);
+  if(prior) starsOrderStatus.delete(prior);
   pushStarsDebug("pending:cleared_by_user");
   toast("Pending Stars purchase cleared.");
   if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
