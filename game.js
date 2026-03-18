@@ -4590,6 +4590,22 @@ function markClaimedStarsTx(txId){
     }
   }catch(e){}
 }
+function orderRefCreatedAtMs(orderRef){
+  const ref = String(orderRef || "").trim();
+  if(!ref) return 0;
+  const parts = ref.split(":");
+  if(parts.length >= 5 && parts[0] === "ts2"){
+    const parsed = parseInt(String(parts[3] || ""), 36);
+    if(Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+function pendingOrderIsStale(orderRef, staleMinutes = 20){
+  const createdAt = orderRefCreatedAtMs(orderRef);
+  if(!createdAt) return false;
+  const ageMs = Date.now() - createdAt;
+  return ageMs > (Math.max(5, staleMinutes) * 60 * 1000);
+}
 function waitMs(ms){
   return new Promise((resolve)=>setTimeout(resolve, ms));
 }
@@ -4713,7 +4729,7 @@ function openStarsTopUp(targetStars){
   if(reason) return toast(reason);
   starsTopupBusy = true;
   pushStarsDebug("topup:start", { targetStars: starterStars });
-  const helperSku = "funds_100";
+  const helperSku = "funds_450";
   Promise.resolve((async ()=>{
     const initData = tg.initData;
     const data = await starsApiPost("/api/stars/create-invoice", { sku: helperSku, initData });
@@ -4871,9 +4887,33 @@ async function buyWithStars(sku){
         Promise.resolve(claimStarsOrder(orderRef, { poll:true, attempts:40, intervalMs:2000 }))
           .catch((err)=>toast(err?.message || "Could not verify Stars purchase."));
       } else if(s === "cancelled"){
-        toast("Stars payment canceled. If charged, tap Claim Pending Purchase.");
+        Promise.resolve(claimStarsOrder(orderRef, {
+          poll:true,
+          attempts:3,
+          intervalMs:1200,
+          silentPending:true,
+        }))
+          .then((claimed)=>{
+            if(!claimed && String(starsPendingOrderRef || "") === orderRef){
+              writeStarsPendingOrderRef(null);
+            }
+          })
+          .catch(()=>{})
+          .finally(()=>toast("Stars payment canceled."));
       } else if(s === "failed"){
-        toast("Stars payment failed. If charged, tap Claim Pending Purchase.");
+        Promise.resolve(claimStarsOrder(orderRef, {
+          poll:true,
+          attempts:3,
+          intervalMs:1200,
+          silentPending:true,
+        }))
+          .then((claimed)=>{
+            if(!claimed && String(starsPendingOrderRef || "") === orderRef){
+              writeStarsPendingOrderRef(null);
+            }
+          })
+          .catch(()=>{})
+          .finally(()=>toast("Stars payment failed."));
       } else {
         toast("Invoice closed. If charged, tap Claim Pending Purchase.");
       }
@@ -4933,6 +4973,10 @@ async function claimPendingStarsPurchase(){
     pushStarsDebug("claim:missing_pending");
     return toast("No pending Stars purchase.");
   }
+  if(pendingOrderIsStale(orderRef)){
+    pushStarsDebug("claim:stale_pending", { orderRef: shortDebugRef(orderRef) });
+    return toast("This pending purchase is stale. Clear Pending, then try again.");
+  }
   pushStarsDebug("claim:manual", { orderRef: shortDebugRef(orderRef) });
   try{
     await claimStarsOrder(orderRef, { poll:true, attempts:35, intervalMs:2000 });
@@ -4954,6 +4998,7 @@ function maybeAutoClaimPendingStars(){
   if((now - starsAutoClaimAt) < 15000) return;
   const orderRef = starsPendingOrderRef || readStarsPendingOrderRef();
   if(!orderRef) return;
+  if(pendingOrderIsStale(orderRef)) return;
   if(!tg?.initData) return;
   starsAutoClaimAt = now;
   starsAutoClaimBusy = true;
@@ -5390,6 +5435,7 @@ function renderShopList(){
     starsPendingOrderRef = starsPendingOrderRef || readStarsPendingOrderRef();
     maybeAutoClaimPendingStars();
     const reason = starsUnavailableReason();
+    const stalePending = !!starsPendingOrderRef && pendingOrderIsStale(starsPendingOrderRef);
     note.innerText = reason
       ? reason
       : "Convert Stars into in-game cash when you want. Telegram requires a Confirm & Pay step for each conversion. If balance is low, it shows Stars top-up options. Purchases are repeatable.";
@@ -5414,12 +5460,12 @@ function renderShopList(){
       ? `
       <div class="item">
         <div>
-          <div class="itemName">Pending Purchase <span class="tag">Needs claim</span></div>
-          <div class="itemDesc">If payment completed but the reward was not added yet, tap Claim Pending Purchase.</div>
+          <div class="itemName">Pending Purchase <span class="tag">${stalePending ? "Stale" : "Needs claim"}</span></div>
+          <div class="itemDesc">${stalePending ? "This pending order is old. Clear it, then retry purchase." : "If payment completed but the reward was not added yet, tap Claim Pending Purchase."}</div>
         </div>
         <div style="text-align:right">
           <div class="price">Ready</div>
-          <button onclick="claimPendingStarsPurchase()" ${(reason || claimBusy) ? "disabled" : ""}>${claimBusy ? "Claiming..." : "Claim Pending Purchase"}</button>
+          <button onclick="claimPendingStarsPurchase()" ${(reason || claimBusy || stalePending) ? "disabled" : ""}>${claimBusy ? "Claiming..." : "Claim Pending Purchase"}</button>
           <button class="ghost" onclick="clearPendingStarsPurchase()">Clear Pending</button>
         </div>
       </div>`
@@ -5433,6 +5479,7 @@ function renderShopList(){
     starsPendingOrderRef = starsPendingOrderRef || readStarsPendingOrderRef();
     maybeAutoClaimPendingStars();
     const reason = starsUnavailableReason();
+    const stalePending = !!starsPendingOrderRef && pendingOrderIsStale(starsPendingOrderRef);
     note.innerText = reason
       ? reason
       : "Premium Stars bundles are high-value mission boosts.";
@@ -5457,12 +5504,12 @@ function renderShopList(){
       ? `
       <div class="item">
         <div>
-          <div class="itemName">Pending Purchase <span class="tag">Needs claim</span></div>
-          <div class="itemDesc">If payment completed but rewards were not added yet, tap Claim Pending Purchase.</div>
+          <div class="itemName">Pending Purchase <span class="tag">${stalePending ? "Stale" : "Needs claim"}</span></div>
+          <div class="itemDesc">${stalePending ? "This pending order is old. Clear it, then retry purchase." : "If payment completed but rewards were not added yet, tap Claim Pending Purchase."}</div>
         </div>
         <div style="text-align:right">
           <div class="price">Ready</div>
-          <button onclick="claimPendingStarsPurchase()" ${(reason || claimBusy) ? "disabled" : ""}>${claimBusy ? "Claiming..." : "Claim Pending Purchase"}</button>
+          <button onclick="claimPendingStarsPurchase()" ${(reason || claimBusy || stalePending) ? "disabled" : ""}>${claimBusy ? "Claiming..." : "Claim Pending Purchase"}</button>
           <button class="ghost" onclick="clearPendingStarsPurchase()">Clear Pending</button>
         </div>
       </div>`
