@@ -105,7 +105,7 @@ function acceptedStarsSet(offer){
 
 async function findMatchingTransaction(orderMeta, offer, userId, excludedTxIds, botToken){
   const pageSize = 100;
-  const maxPages = 8;
+  const maxPages = 6;
   const fallbackCandidates = [];
   const minTxMs = orderMeta.createdAtMs > 0 ? (orderMeta.createdAtMs - (2 * 60 * 1000)) : 0;
   const maxTxMs = orderMeta.createdAtMs > 0 ? (orderMeta.createdAtMs + (20 * 60 * 1000)) : 0;
@@ -179,7 +179,17 @@ module.exports = async function handler(req, res){
       return json(res, 400, { ok:false, error:"Unknown Stars offer in order reference." });
     }
 
-    const tx = await findMatchingTransaction(orderMeta, offer, user.id, excludedTxIds, botToken);
+    let tx = null;
+    try{
+      tx = await findMatchingTransaction(orderMeta, offer, user.id, excludedTxIds, botToken);
+    }catch(e){
+      const msg = String(e?.message || "");
+      if(/fetch failed|network|timed? out|ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT/i.test(msg)){
+        // Treat transient upstream failures as pending so clients can retry cleanly.
+        return json(res, 200, { ok:true, status:"pending", transient:true });
+      }
+      throw e;
+    }
     if(!tx){
       return json(res, 200, { ok:true, status:"pending" });
     }
