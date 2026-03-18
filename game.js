@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4425";
+const TS_BUILD = "4427";
 if(tg){
   try{
     tg.expand?.();
@@ -1140,10 +1140,99 @@ function markStoryFinalBossOutcome(outcome, tiger){
 
 
 // ===================== STATE =====================
+const MODE_KEYS = Object.freeze(["Story","Arcade","Survival"]);
+const MODE_WALLET_START = Object.freeze({
+  Story: 1000,
+  Arcade: 1000,
+  Survival: 1000,
+});
+
+function normalizeModeName(mode){
+  const key = String(mode || "").trim();
+  return MODE_KEYS.includes(key) ? key : "Story";
+}
+function sanitizeWalletAmount(value, fallback = 1000){
+  const n = Math.floor(Number(value));
+  if(Number.isFinite(n) && n >= 0) return n;
+  const fb = Math.floor(Number(fallback));
+  if(Number.isFinite(fb) && fb >= 0) return fb;
+  return 1000;
+}
+function modeWalletStartValue(mode){
+  const key = normalizeModeName(mode);
+  return sanitizeWalletAmount(MODE_WALLET_START[key], 1000);
+}
+function normalizeModeWallets(wallets, fallbackFunds, activeMode){
+  const out = {};
+  for(const mode of MODE_KEYS){
+    out[mode] = modeWalletStartValue(mode);
+  }
+  if(wallets && typeof wallets === "object"){
+    for(const mode of MODE_KEYS){
+      if(Object.prototype.hasOwnProperty.call(wallets, mode)){
+        out[mode] = sanitizeWalletAmount(wallets[mode], out[mode]);
+      }
+    }
+  }else{
+    const mode = normalizeModeName(activeMode);
+    out[mode] = sanitizeWalletAmount(fallbackFunds, out[mode]);
+  }
+  return out;
+}
+function ensureModeWalletsState(state){
+  if(!state || typeof state !== "object") return;
+  state.mode = normalizeModeName(state.mode);
+  state.modeWallets = normalizeModeWallets(state.modeWallets, state.funds, state.mode);
+}
+function getModeWallet(mode = S?.mode, state = S){
+  if(!state || typeof state !== "object"){
+    return modeWalletStartValue(mode);
+  }
+  ensureModeWalletsState(state);
+  const key = normalizeModeName(mode);
+  return sanitizeWalletAmount(state.modeWallets[key], modeWalletStartValue(key));
+}
+function setModeWallet(mode, amount, state = S){
+  if(!state || typeof state !== "object") return;
+  ensureModeWalletsState(state);
+  const key = normalizeModeName(mode);
+  state.modeWallets[key] = sanitizeWalletAmount(amount, modeWalletStartValue(key));
+}
+function bindFundsWallet(state){
+  if(!state || typeof state !== "object") return;
+  ensureModeWalletsState(state);
+  let fundsValue = sanitizeWalletAmount(state.funds, getModeWallet(state.mode, state));
+  Object.defineProperty(state, "funds", {
+    configurable: true,
+    enumerable: true,
+    get(){ return fundsValue; },
+    set(next){
+      fundsValue = sanitizeWalletAmount(next, fundsValue);
+      ensureModeWalletsState(state);
+      const mode = normalizeModeName(state.mode);
+      state.modeWallets[mode] = fundsValue;
+    },
+  });
+  // Re-sync displayed funds from the active mode wallet.
+  state.funds = getModeWallet(state.mode, state);
+}
+function resetModeWallet(mode, state = S){
+  const key = normalizeModeName(mode);
+  setModeWallet(key, modeWalletStartValue(key), state);
+  if(state && typeof state === "object" && normalizeModeName(state.mode) === key){
+    state.funds = getModeWallet(key, state);
+  }
+}
+
 const DEFAULT = {
   v: STORAGE_VERSION,
   paused:false, pauseReason:null,
   mode:"Story", arcadeLevel:1, survivalWave:1, storyLevel:1, mapIndex:0,
+  modeWallets:{
+    Story:1000,
+    Arcade:1000,
+    Survival:1000,
+  },
   soundOn:true, audioUnlocked:false,
   performanceMode:"AUTO",
 
@@ -1272,6 +1361,7 @@ chapterRewardsUnlocked: {},
 };
 
 let S = load();
+bindFundsWallet(S);
 
 function syncWindowState(){
   window.S = S;
@@ -1364,6 +1454,9 @@ function load(){
     m.specialistStarUnlocks = { ...DEFAULT.specialistStarUnlocks, ...(saved.specialistStarUnlocks||{}) };
     m.chapterRewardsUnlocked = { ...DEFAULT.chapterRewardsUnlocked, ...(saved.chapterRewardsUnlocked||{}) };
     m.touchHud = normalizeTouchHudSettings(saved.touchHud ?? m.touchHud);
+    m.mode = normalizeModeName(m.mode);
+    m.modeWallets = normalizeModeWallets(saved.modeWallets, m.funds, m.mode);
+    m.funds = getModeWallet(m.mode, m);
     if(m.lives==null) m.lives=5;
     m.v = STORAGE_VERSION;
     trimPersistentState(m);
@@ -4361,14 +4454,18 @@ function nextMissionLabel(){
   if(S.mode==="Arcade") return `Arcade Mission ${Math.min((S.arcadeLevel || 1) + 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
   return `Survival Wave ${Math.max(1, (S.survivalWave || 1) + 1)}`;
 }
+let progressGuardSource = "";
 function openMissionProgressGuard(source=""){
   const overlay = document.getElementById("progressGuardOverlay");
   const text = document.getElementById("progressGuardText");
   if(!overlay || !text) return;
+  progressGuardSource = String(source || "");
   const reason =
     source==="mode"
       ? "Switching mode now can interrupt your current mission progress."
-      : source==="reset"
+      : source==="reset-all"
+        ? "Reset will wipe progress and wallets for all modes."
+        : source==="reset"
         ? "Reset will restart progress from Mission 1."
         : "Choose what you want to do with your mission progress.";
   text.innerText = `${reason}\nCurrent: ${currentMissionLabel()}\nNext available: ${nextMissionLabel()}`;
@@ -4379,6 +4476,7 @@ function openMissionProgressGuard(source=""){
 function closeMissionProgressGuard(restoreComplete=true){
   const overlay = document.getElementById("progressGuardOverlay");
   if(overlay) overlay.style.display = "none";
+  progressGuardSource = "";
   if(restoreComplete && S.missionEnded && !S.gameOver){
     setPaused(true,"complete");
     document.getElementById("completeOverlay").style.display = "flex";
@@ -4387,6 +4485,7 @@ function closeMissionProgressGuard(restoreComplete=true){
   setPaused(false,null);
 }
 function pickProgressGuardAction(action){
+  const source = progressGuardSource;
   if(action==="cancel"){
     closeMissionProgressGuard(true);
     return;
@@ -4398,7 +4497,8 @@ function pickProgressGuardAction(action){
   }
   if(action==="reset"){
     closeMissionProgressGuard(false);
-    performResetGame();
+    if(source === "reset-all") performResetGame();
+    else restartModeFromMission1();
     return;
   }
   if(action==="mode"){
@@ -4675,12 +4775,16 @@ function startStoryIntroMission(){
   beginStoryMissionFromIntro();
 }
 function setMode(m){
-  const wantsStoryIntro = (m==="Story" && !window.__TUTORIAL_MODE__);
-  S.mode=m; S.lives=5;
+  const nextMode = normalizeModeName(m);
+  const wantsStoryIntro = (nextMode==="Story" && !window.__TUTORIAL_MODE__);
+  setModeWallet(S.mode, S.funds, S);
+  S.mode = nextMode;
+  S.funds = getModeWallet(nextMode, S);
+  S.lives=5;
   applyModeTheme(S.mode);
-  if(m==="Arcade") S.arcadeLevel=1;
-  if(m==="Survival"){ S.survivalWave=1; S.survivalStart=Date.now(); S.surviveSeconds=0; }
-  if(m==="Story") S.storyLevel=1;
+  if(nextMode==="Arcade") S.arcadeLevel=1;
+  if(nextMode==="Survival"){ S.survivalWave=1; S.survivalStart=Date.now(); S.surviveSeconds=0; }
+  if(nextMode==="Story") S.storyLevel=1;
   S.mapIndex=0;
   deploy();
   updateModeDesc(); markModeTabs(); closeMode(); sfx("ui");
@@ -4710,12 +4814,49 @@ let starsInvoiceActiveOrderRef = "";
 let starsPendingOrderRef = readStarsPendingOrderRef();
 let starsAutoClaimBusy = false;
 let starsAutoClaimAt = 0;
+const STARS_ORDER_STATUS_TTL_MS = 120000;
 
 function starsOfferBySku(sku){
   return STARS_ALL_OFFERS.find((pack)=>pack.sku === sku) || null;
 }
 function cashBundleById(id){
   return CASH_SUPPLY_BUNDLES.find((bundle)=>bundle.id === id) || null;
+}
+function setStarsOrderStatus(orderRef, status){
+  const ref = String(orderRef || "").trim();
+  const s = String(status || "").trim().toLowerCase();
+  if(!ref) return;
+  if(!s){
+    starsOrderStatus.delete(ref);
+    return;
+  }
+  starsOrderStatus.set(ref, { status:s, at:Date.now() });
+}
+function getStarsOrderStatus(orderRef){
+  const ref = String(orderRef || "").trim();
+  if(!ref) return "";
+  const raw = starsOrderStatus.get(ref);
+  if(!raw) return "";
+  if(typeof raw === "string") return raw.toLowerCase();
+  if(raw && typeof raw === "object"){
+    return String(raw.status || "").toLowerCase();
+  }
+  return "";
+}
+function clearStarsOrderStatus(orderRef){
+  const ref = String(orderRef || "").trim();
+  if(!ref) return;
+  starsOrderStatus.delete(ref);
+}
+function clearStarsOrderStatusLater(orderRef, ttlMs = STARS_ORDER_STATUS_TTL_MS){
+  const ref = String(orderRef || "").trim();
+  if(!ref) return;
+  const delayMs = Math.max(5000, Math.floor(Number(ttlMs || STARS_ORDER_STATUS_TTL_MS)));
+  setTimeout(()=>{
+    const state = getStarsOrderStatus(ref);
+    if(state === "open" || state === "pending") return;
+    clearStarsOrderStatus(ref);
+  }, delayMs);
 }
 function starsPendingOrderKey(){
   return `ts_stars_pending_${tgUserKey()}`;
@@ -5014,13 +5155,25 @@ function openStarsTopUp(targetStars){
       callbackFired = true;
       const status = String(statusRaw || "").toLowerCase();
       pushStarsDebug("topup:status", { status, orderRef: shortDebugRef(orderRef) });
-      if(status === "paid" || status === "pending"){
-        // If someone actually completes helper checkout, claim so nothing is lost.
+      if(status === "paid"){
+        // If helper checkout is completed, verify once and let users claim manually if still pending.
         writeStarsPendingOrderRef(orderRef);
+        setStarsOrderStatus(orderRef, status);
         toast("Checkout submitted. Verifying...");
-        Promise.resolve(claimStarsOrder(orderRef, { poll:true, attempts:30, intervalMs:2000 }))
+        Promise.resolve(claimStarsOrder(orderRef, { poll:true, attempts:10, intervalMs:1600, silentPending:true }))
+          .then((ok)=>{
+            if(!ok){
+              toast("Top-up payment is processing. Use Claim Pending Purchase in Cash tab.");
+            }
+          })
           .catch((err)=>toast(err?.message || "Could not verify checkout."));
+      } else if(status === "pending"){
+        writeStarsPendingOrderRef(orderRef);
+        setStarsOrderStatus(orderRef, status);
+        toast("Top-up is still processing. Use Claim Pending Purchase in Cash tab.");
       } else {
+        setStarsOrderStatus(orderRef, status || "closed");
+        clearStarsOrderStatusLater(orderRef);
         toast("Top-up window closed. Go to Cash tab to convert Stars into game cash.");
       }
     };
@@ -5065,9 +5218,12 @@ async function claimStarsOrder(orderRef, opts={}){
     const intervalMs = Math.max(500, Math.min(5000, Math.floor(Number(opts.intervalMs || 1400))));
     const silentPending = !!opts.silentPending;
     for(let i=0;i<attempts;i++){
-      const invoiceState = String(starsOrderStatus.get(ref) || "").toLowerCase();
-      if(invoiceState === "cancelled" || invoiceState === "failed"){
+      const invoiceState = getStarsOrderStatus(ref);
+      if(invoiceState === "failed" || (invoiceState === "cancelled" && poll)){
         pushStarsDebug("claim:aborted", { orderRef: shortDebugRef(ref), state: invoiceState });
+        if(invoiceState === "failed" && String(starsPendingOrderRef || "") === ref){
+          writeStarsPendingOrderRef(null);
+        }
         return false;
       }
       const excludeTxIds = readClaimedStarsTxIds();
@@ -5105,7 +5261,7 @@ async function claimStarsOrder(orderRef, opts={}){
         }
         markClaimedStarsTx(txId);
         writeStarsPendingOrderRef(null);
-        starsOrderStatus.delete(ref);
+        clearStarsOrderStatus(ref);
         save();
         renderHUD();
         if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
@@ -5121,7 +5277,7 @@ async function claimStarsOrder(orderRef, opts={}){
       }
       if(data.status === "already_claimed"){
         writeStarsPendingOrderRef(null);
-        starsOrderStatus.delete(ref);
+        clearStarsOrderStatus(ref);
         toast("This Stars purchase was already claimed.");
         pushStarsDebug("claim:already_claimed", { orderRef: shortDebugRef(ref) });
         return false;
@@ -5153,7 +5309,20 @@ async function buyWithStars(sku){
   if(sku === "premium_rescue_specialist_unlock" && hasPremiumSpecialistUnlock("rescue")){
     return toast("Rescue Specialist is already premium-unlocked.");
   }
+  const openPending = String(starsPendingOrderRef || readStarsPendingOrderRef() || "").trim();
+  if(openPending && openPending !== starsInvoiceActiveOrderRef){
+    const pendingState = getStarsOrderStatus(openPending);
+    if(pendingState === "cancelled" || pendingState === "failed" || pendingOrderIsStale(openPending)){
+      writeStarsPendingOrderRef(null);
+      clearStarsOrderStatus(openPending);
+      pushStarsDebug("pending:auto_clear", { orderRef: shortDebugRef(openPending), state: pendingState || "stale" });
+    } else {
+      pushStarsDebug("checkout:blocked_pending", { sku, orderRef: shortDebugRef(openPending) });
+      return toast("Claim or clear the current pending purchase before starting another.");
+    }
+  }
   pushStarsDebug("checkout:start", { sku, stars: pack.stars });
+  pushStarsDebug("checkout:consume_existing_balance", { sku, stars: pack.stars });
   starsCheckoutBusy = true;
   try{
     const initData = tg.initData;
@@ -5163,7 +5332,7 @@ async function buyWithStars(sku){
     if(!orderRef || !invoiceLink) throw new Error("Missing invoice link.");
     writeStarsPendingOrderRef(orderRef);
     starsInvoiceActiveOrderRef = orderRef;
-    starsOrderStatus.set(orderRef, "open");
+    setStarsOrderStatus(orderRef, "open");
     toast(`Opening invoice: ${pack.stars} Stars`);
     pushStarsDebug("checkout:invoice", { sku, orderRef: shortDebugRef(orderRef) });
     const onStatus = (status)=>{
@@ -5172,26 +5341,34 @@ async function buyWithStars(sku){
         starsInvoiceActiveOrderRef = "";
       }
       if(s){
-        starsOrderStatus.set(orderRef, s);
+        setStarsOrderStatus(orderRef, s);
       }
       pushStarsDebug("checkout:status", { orderRef: shortDebugRef(orderRef), status: s || "unknown" });
-      if(s === "paid" || s === "pending"){
+      if(s === "paid"){
         toast("Payment submitted. Verifying purchase...");
-        Promise.resolve(claimStarsOrder(orderRef, { poll:true, attempts:40, intervalMs:2000 }))
+        Promise.resolve(claimStarsOrder(orderRef, { poll:true, attempts:15, intervalMs:1500, silentPending:true }))
+          .then((ok)=>{
+            if(!ok){
+              toast("Payment is processing. Tap Claim Pending Purchase in Cash or Premium tab.");
+            }
+          })
           .catch((err)=>toast(err?.message || "Could not verify Stars purchase."));
+      } else if(s === "pending"){
+        toast("Payment is processing. Tap Claim Pending Purchase in Cash or Premium tab.");
       } else if(s === "cancelled"){
-        if(String(starsPendingOrderRef || "") === orderRef){
-          writeStarsPendingOrderRef(null);
-        }
-        starsOrderStatus.delete(orderRef);
-        toast("Checkout canceled. No Stars were spent.");
+        setStarsOrderStatus(orderRef, "cancelled");
+        clearStarsOrderStatusLater(orderRef);
+        toast("Checkout canceled. If charged, tap Claim Pending Purchase once.");
       } else if(s === "failed"){
         if(String(starsPendingOrderRef || "") === orderRef){
           writeStarsPendingOrderRef(null);
         }
-        starsOrderStatus.delete(orderRef);
+        setStarsOrderStatus(orderRef, "failed");
+        clearStarsOrderStatusLater(orderRef);
         toast("Stars payment failed.");
       } else {
+        setStarsOrderStatus(orderRef, "closed");
+        clearStarsOrderStatusLater(orderRef);
         toast("Invoice closed. If charged, tap Claim Pending Purchase.");
       }
       if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
@@ -5252,7 +5429,7 @@ async function claimPendingStarsPurchase(){
   }
   pushStarsDebug("claim:manual", { orderRef: shortDebugRef(orderRef) });
   try{
-    await claimStarsOrder(orderRef, { poll:true, attempts:35, intervalMs:2000 });
+    await claimStarsOrder(orderRef, { poll:false, attempts:1, intervalMs:1200 });
   }catch(e){
     pushStarsDebug("claim:error", { orderRef: shortDebugRef(orderRef), error: e?.message || "Could not claim Stars purchase." });
     toast(e?.message || "Could not claim Stars purchase.");
@@ -5261,7 +5438,7 @@ async function claimPendingStarsPurchase(){
 function clearPendingStarsPurchase(){
   const prior = String(starsPendingOrderRef || readStarsPendingOrderRef() || "");
   writeStarsPendingOrderRef(null);
-  if(prior) starsOrderStatus.delete(prior);
+  if(prior) clearStarsOrderStatus(prior);
   pushStarsDebug("pending:cleared_by_user");
   toast("Pending Stars purchase cleared.");
   if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
@@ -5701,7 +5878,7 @@ function renderShopList(){
     const stalePending = !!starsPendingOrderRef && pendingOrderIsStale(starsPendingOrderRef);
     note.innerText = reason
       ? reason
-      : "Convert Stars into in-game cash when you want. Telegram requires a Confirm & Pay step for each conversion. If balance is low, it shows Stars top-up options. Purchases are repeatable.";
+      : "Convert Stars into in-game cash when you want. Telegram spends your existing Stars balance first; if balance is low, it shows top-up options. Purchases are repeatable.";
 
     const claimBusy = starsClaimInFlight.size > 0;
     const offersHtml = STARS_CASH_PACKS.map((pack)=>{
@@ -5714,7 +5891,7 @@ function renderShopList(){
           </div>
           <div style="text-align:right">
             <div class="price">+$${pack.funds.toLocaleString()}</div>
-            <button onclick="buyWithStars('${pack.sku}')" ${disabled ? "disabled" : ""}>${starsCheckoutBusy ? "Processing..." : "Convert with Stars"}</button>
+            <button onclick="buyWithStars('${pack.sku}')" ${disabled ? "disabled" : ""}>${starsCheckoutBusy ? "Processing..." : "Spend Stars"}</button>
           </div>
         </div>`;
     }).join("");
@@ -5745,7 +5922,7 @@ function renderShopList(){
     const stalePending = !!starsPendingOrderRef && pendingOrderIsStale(starsPendingOrderRef);
     note.innerText = reason
       ? reason
-      : "Premium Stars bundles are high-value mission boosts.";
+      : "Premium bundles spend your existing Stars first. If your balance is low, Telegram offers top-up during checkout.";
 
     const claimBusy = starsClaimInFlight.size > 0;
     const offersHtml = STARS_PREMIUM_PACKS.map((pack)=>{
@@ -6669,6 +6846,7 @@ window.exitTutorialMode = function () {
 
   if(snapshot){
     S = snapshot;
+    bindFundsWallet(S);
     syncWindowState();
     resizeCanvasForViewport();
     maybeRenderHUD(true);
@@ -8199,6 +8377,30 @@ function restartCurrentMission(){
   save();
 }
 
+function restartModeFromMission1(){
+  const mode = normalizeModeName(S.mode);
+  ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay","modeOverlay"].forEach((id)=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = "none";
+  });
+  lastOverlay = null;
+  S.gameOver = false;
+
+  if(mode === "Story") S.storyLevel = 1;
+  else if(mode === "Arcade") S.arcadeLevel = 1;
+  else {
+    S.survivalWave = 1;
+    S.survivalStart = Date.now();
+    S.surviveSeconds = 0;
+  }
+  S.mapIndex = 0;
+  resetModeWallet(mode, S);
+
+  deploy();
+  toast(`${mode} restarted from Mission 1. ${mode} wallet reset.`);
+  save();
+}
+
 function closeComplete(){
   if(S.missionEnded && !S.gameOver){
     openMissionProgressGuard("close");
@@ -8213,6 +8415,7 @@ function performResetGame(){
     localStorage.removeItem(key);
   }
   S = cloneState(DEFAULT);
+  bindFundsWallet(S);
   syncWindowState();
   ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
@@ -8225,7 +8428,7 @@ function performResetGame(){
 }
 function resetGame(){
   if(S.missionEnded && !S.gameOver){
-    openMissionProgressGuard("reset");
+    openMissionProgressGuard("reset-all");
     return;
   }
   performResetGame();
@@ -13411,9 +13614,12 @@ function bootstrap(){
     try{
       const keepMode = ["Story","Arcade","Survival"].includes(S?.mode) ? S.mode : DEFAULT.mode;
       const keepMapIndex = Number.isFinite(S?.mapIndex) ? S.mapIndex : 0;
+      const keepWallets = normalizeModeWallets(S?.modeWallets, S?.funds, keepMode);
       S = cloneState(DEFAULT);
       S.mode = keepMode;
       S.mapIndex = keepMapIndex;
+      S.modeWallets = keepWallets;
+      bindFundsWallet(S);
       syncWindowState();
       resizeCanvasForViewport();
       applyTouchHudSettings();
@@ -13511,6 +13717,7 @@ window.cycleWeapon = cycleWeapon;
 
 window.startNextMission = startNextMission;
 window.restartCurrentMission = restartCurrentMission;
+window.restartModeFromMission1 = restartModeFromMission1;
 window.closeComplete = closeComplete;
 
 // Shop functions that your HTML calls
