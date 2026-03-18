@@ -4493,6 +4493,7 @@ function updateModeDesc(){
 let currentShopTab="weapons";
 let starsCheckoutBusy = false;
 let starsTopupBusy = false;
+const starsClaimInFlight = new Map();
 let starsPendingOrderRef = readStarsPendingOrderRef();
 let starsAutoClaimBusy = false;
 let starsAutoClaimAt = 0;
@@ -4759,71 +4760,90 @@ function openStarsTopUp(targetStars){
     });
 }
 async function claimStarsOrder(orderRef, opts={}){
+  const ref = String(orderRef || "").trim();
   const initData = tg?.initData || "";
-  if(!orderRef || !initData) return false;
-  pushStarsDebug("claim:start", { orderRef: shortDebugRef(orderRef), poll: opts.poll !== false });
-  const poll = opts.poll !== false;
-  const attempts = Math.max(1, Math.min(60, Math.floor(Number(opts.attempts || (poll ? 8 : 1)))));
-  const intervalMs = Math.max(500, Math.min(5000, Math.floor(Number(opts.intervalMs || 1400))));
-  const silentPending = !!opts.silentPending;
-  for(let i=0;i<attempts;i++){
-    const excludeTxIds = readClaimedStarsTxIds();
-    const data = await starsApiPost("/api/stars/claim", { orderRef, initData, excludeTxIds });
-    if(data.status === "pending"){
-      if(i < attempts - 1){
-        await waitMs(intervalMs);
-        continue;
-      }
-      if(!silentPending){
-        if(poll) toast("Payment is still processing. Tap Claim Pending Purchase in Cash or Premium tab.");
-        else toast("No completed payment was found for this pending order yet.");
-      }
-      pushStarsDebug("claim:pending", { orderRef: shortDebugRef(orderRef), attempts });
-      return false;
-    }
-    if(data.status === "paid"){
-      const txId = String(data.transactionId || "");
-      if(txId && hasClaimedStarsTx(txId)){
+  if(!ref || !initData) return false;
+
+  if(starsClaimInFlight.has(ref)){
+    pushStarsDebug("claim:dedup", { orderRef: shortDebugRef(ref) });
+    return starsClaimInFlight.get(ref);
+  }
+
+  const run = (async ()=>{
+    pushStarsDebug("claim:start", { orderRef: shortDebugRef(ref), poll: opts.poll !== false });
+    const poll = opts.poll !== false;
+    const attempts = Math.max(1, Math.min(60, Math.floor(Number(opts.attempts || (poll ? 8 : 1)))));
+    const intervalMs = Math.max(500, Math.min(5000, Math.floor(Number(opts.intervalMs || 1400))));
+    const silentPending = !!opts.silentPending;
+    for(let i=0;i<attempts;i++){
+      const excludeTxIds = readClaimedStarsTxIds();
+      const data = await starsApiPost("/api/stars/claim", { orderRef: ref, initData, excludeTxIds });
+      if(data.status === "pending"){
         if(i < attempts - 1){
-          await waitMs(500);
+          await waitMs(intervalMs);
           continue;
         }
-        toast("Purchase is syncing. Tap Claim Pending Purchase in a moment.");
-        pushStarsDebug("claim:duplicate_tx", { orderRef: shortDebugRef(orderRef), tx: shortDebugRef(txId) });
+        if(!silentPending){
+          if(poll) toast("Payment is still processing. Tap Claim Pending Purchase in Cash or Premium tab.");
+          else toast("No completed payment was found for this pending order yet.");
+        }
+        pushStarsDebug("claim:pending", { orderRef: shortDebugRef(ref), attempts });
         return false;
       }
-      const grant = (data?.grant && typeof data.grant === "object") ? { ...data.grant } : {};
-      if(positiveInt(data?.funds) > 0 && positiveInt(grant.funds) <= 0){
-        grant.funds = positiveInt(data.funds);
+      if(data.status === "paid"){
+        const txId = String(data.transactionId || "");
+        if(txId && hasClaimedStarsTx(txId)){
+          if(i < attempts - 1){
+            await waitMs(500);
+            continue;
+          }
+          toast("Purchase is syncing. Tap Claim Pending Purchase in a moment.");
+          pushStarsDebug("claim:duplicate_tx", { orderRef: shortDebugRef(ref), tx: shortDebugRef(txId) });
+          return false;
+        }
+        const grant = (data?.grant && typeof data.grant === "object") ? { ...data.grant } : {};
+        if(positiveInt(data?.funds) > 0 && positiveInt(grant.funds) <= 0){
+          grant.funds = positiveInt(data.funds);
+        }
+        const applied = applyRewardGrant(grant);
+        if(!applied.changed){
+          throw new Error("Invalid purchase grant returned.");
+        }
+        markClaimedStarsTx(txId);
+        writeStarsPendingOrderRef(null);
+        save();
+        renderHUD();
+        if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
+        if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+        toast(`Stars purchase applied: ${applied.summary}`);
+        try{ hapticNotif("success"); }catch(e){}
+        pushStarsDebug("claim:paid", {
+          orderRef: shortDebugRef(ref),
+          tx: shortDebugRef(txId),
+          funds: positiveInt(grant?.funds || 0),
+        });
+        return true;
       }
-      const applied = applyRewardGrant(grant);
-      if(!applied.changed){
-        throw new Error("Invalid purchase grant returned.");
+      if(data.status === "already_claimed"){
+        writeStarsPendingOrderRef(null);
+        toast("This Stars purchase was already claimed.");
+        pushStarsDebug("claim:already_claimed", { orderRef: shortDebugRef(ref) });
+        return false;
       }
-      markClaimedStarsTx(txId);
-      writeStarsPendingOrderRef(null);
-      save();
-      renderHUD();
-      if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
-      if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
-      toast(`Stars purchase applied: ${applied.summary}`);
-      try{ hapticNotif("success"); }catch(e){}
-      pushStarsDebug("claim:paid", {
-        orderRef: shortDebugRef(orderRef),
-        tx: shortDebugRef(txId),
-        funds: positiveInt(grant?.funds || 0),
-      });
-      return true;
+      throw new Error(data.error || "Unexpected Stars claim response.");
     }
-    if(data.status === "already_claimed"){
-      writeStarsPendingOrderRef(null);
-      toast("This Stars purchase was already claimed.");
-      pushStarsDebug("claim:already_claimed", { orderRef: shortDebugRef(orderRef) });
-      return false;
+    return false;
+  })();
+
+  starsClaimInFlight.set(ref, run);
+  try{
+    return await run;
+  }finally{
+    if(starsClaimInFlight.get(ref) === run){
+      starsClaimInFlight.delete(ref);
     }
-    throw new Error(data.error || "Unexpected Stars claim response.");
+    if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
   }
-  return false;
 }
 async function buyWithStars(sku){
   if(starsCheckoutBusy) return toast("Stars checkout already in progress.");
@@ -4929,6 +4949,7 @@ function clearPendingStarsPurchase(){
 function maybeAutoClaimPendingStars(){
   const now = Date.now();
   if(starsAutoClaimBusy) return;
+  if(starsClaimInFlight.size > 0) return;
   if((now - starsAutoClaimAt) < 15000) return;
   const orderRef = starsPendingOrderRef || readStarsPendingOrderRef();
   if(!orderRef) return;
@@ -5372,6 +5393,7 @@ function renderShopList(){
       ? reason
       : "Convert Stars into in-game cash when you want. If balance is low, Telegram will show Stars top-up options. Purchases are repeatable.";
 
+    const claimBusy = starsClaimInFlight.size > 0;
     const offersHtml = STARS_CASH_PACKS.map((pack)=>{
       const disabled = !!reason || starsCheckoutBusy;
       return `
@@ -5396,7 +5418,7 @@ function renderShopList(){
         </div>
         <div style="text-align:right">
           <div class="price">Ready</div>
-          <button onclick="claimPendingStarsPurchase()" ${reason ? "disabled" : ""}>Claim Pending Purchase</button>
+          <button onclick="claimPendingStarsPurchase()" ${(reason || claimBusy) ? "disabled" : ""}>${claimBusy ? "Claiming..." : "Claim Pending Purchase"}</button>
           <button class="ghost" onclick="clearPendingStarsPurchase()">Clear Pending</button>
         </div>
       </div>`
@@ -5414,6 +5436,7 @@ function renderShopList(){
       ? reason
       : "Premium Stars bundles are high-value mission boosts.";
 
+    const claimBusy = starsClaimInFlight.size > 0;
     const offersHtml = STARS_PREMIUM_PACKS.map((pack)=>{
       const disabled = !!reason || starsCheckoutBusy;
       return `
@@ -5438,7 +5461,7 @@ function renderShopList(){
         </div>
         <div style="text-align:right">
           <div class="price">Ready</div>
-          <button onclick="claimPendingStarsPurchase()" ${reason ? "disabled" : ""}>Claim Pending Purchase</button>
+          <button onclick="claimPendingStarsPurchase()" ${(reason || claimBusy) ? "disabled" : ""}>${claimBusy ? "Claiming..." : "Claim Pending Purchase"}</button>
           <button class="ghost" onclick="clearPendingStarsPurchase()">Clear Pending</button>
         </div>
       </div>`
