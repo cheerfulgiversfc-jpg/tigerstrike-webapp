@@ -10,6 +10,39 @@ function makeOrderRef(sku, userId){
   return `ts2:${sku}:${Number(userId)}:${ts}:${nonce}`;
 }
 
+function headerFirst(value){
+  const raw = String(value || "").trim();
+  if(!raw) return "";
+  const first = raw.split(",")[0];
+  return String(first || "").trim();
+}
+
+function detectWebhookUrl(req){
+  const envUrl = String(process.env.TELEGRAM_WEBHOOK_URL || "").trim();
+  if(envUrl) return envUrl;
+
+  const proto = headerFirst(req.headers?.["x-forwarded-proto"]) || "https";
+  const host = headerFirst(req.headers?.["x-forwarded-host"]) || headerFirst(req.headers?.host);
+  if(!host) return "";
+  return `${proto}://${host}/api/telegram/webhook`;
+}
+
+async function ensureTelegramWebhook(req, botToken){
+  const url = detectWebhookUrl(req);
+  if(!url) throw new Error("Could not detect webhook URL.");
+
+  const secret = String(process.env.TELEGRAM_WEBHOOK_SECRET || "").trim();
+  const payload = {
+    url,
+    allowed_updates: ["pre_checkout_query", "message"],
+    drop_pending_updates: false,
+  };
+  if(secret){
+    payload.secret_token = secret;
+  }
+  await telegramBotApi("setWebhook", payload, botToken);
+}
+
 module.exports = async function handler(req, res){
   if(req.method !== "POST"){
     return json(res, 405, { ok:false, error:"Method not allowed." });
@@ -25,6 +58,8 @@ module.exports = async function handler(req, res){
     if(!offer){
       return json(res, 400, { ok:false, error:"Unknown Stars offer." });
     }
+
+    await ensureTelegramWebhook(req, botToken);
 
     const { user } = validateTelegramInitData(initData, botToken);
     const orderRef = makeOrderRef(sku, user.id);
