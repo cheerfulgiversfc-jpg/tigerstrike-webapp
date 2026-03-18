@@ -4494,6 +4494,7 @@ let currentShopTab="weapons";
 let starsCheckoutBusy = false;
 let starsTopupBusy = false;
 const starsClaimInFlight = new Map();
+let starsInvoiceActiveOrderRef = "";
 let starsPendingOrderRef = readStarsPendingOrderRef();
 let starsAutoClaimBusy = false;
 let starsAutoClaimAt = 0;
@@ -4877,46 +4878,33 @@ async function buyWithStars(sku){
     const invoiceLink = String(data.invoiceLink || "");
     if(!orderRef || !invoiceLink) throw new Error("Missing invoice link.");
     writeStarsPendingOrderRef(orderRef);
+    starsInvoiceActiveOrderRef = orderRef;
     toast(`Opening invoice: ${pack.stars} Stars`);
     pushStarsDebug("checkout:invoice", { sku, orderRef: shortDebugRef(orderRef) });
     const onStatus = (status)=>{
       const s = String(status || "").toLowerCase();
+      if(starsInvoiceActiveOrderRef === orderRef){
+        starsInvoiceActiveOrderRef = "";
+      }
       pushStarsDebug("checkout:status", { orderRef: shortDebugRef(orderRef), status: s || "unknown" });
       if(s === "paid" || s === "pending"){
         toast("Payment submitted. Verifying purchase...");
         Promise.resolve(claimStarsOrder(orderRef, { poll:true, attempts:40, intervalMs:2000 }))
           .catch((err)=>toast(err?.message || "Could not verify Stars purchase."));
       } else if(s === "cancelled"){
-        Promise.resolve(claimStarsOrder(orderRef, {
-          poll:true,
-          attempts:3,
-          intervalMs:1200,
-          silentPending:true,
-        }))
-          .then((claimed)=>{
-            if(!claimed && String(starsPendingOrderRef || "") === orderRef){
-              writeStarsPendingOrderRef(null);
-            }
-          })
-          .catch(()=>{})
-          .finally(()=>toast("Stars payment canceled."));
+        if(String(starsPendingOrderRef || "") === orderRef){
+          writeStarsPendingOrderRef(null);
+        }
+        toast("Checkout canceled. No Stars were spent.");
       } else if(s === "failed"){
-        Promise.resolve(claimStarsOrder(orderRef, {
-          poll:true,
-          attempts:3,
-          intervalMs:1200,
-          silentPending:true,
-        }))
-          .then((claimed)=>{
-            if(!claimed && String(starsPendingOrderRef || "") === orderRef){
-              writeStarsPendingOrderRef(null);
-            }
-          })
-          .catch(()=>{})
-          .finally(()=>toast("Stars payment failed."));
+        if(String(starsPendingOrderRef || "") === orderRef){
+          writeStarsPendingOrderRef(null);
+        }
+        toast("Stars payment failed.");
       } else {
         toast("Invoice closed. If charged, tap Claim Pending Purchase.");
       }
+      if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
     };
     if(typeof tg.openInvoice === "function"){
       let callbackFired = false;
@@ -4930,10 +4918,16 @@ async function buyWithStars(sku){
           }
         });
       }catch(e){
+        if(starsInvoiceActiveOrderRef === orderRef){
+          starsInvoiceActiveOrderRef = "";
+        }
         throw e;
       }
       setTimeout(()=>{
         if(callbackFired) return;
+        if(starsInvoiceActiveOrderRef === orderRef){
+          starsInvoiceActiveOrderRef = "";
+        }
         pushStarsDebug("checkout:callback_missing", { orderRef: shortDebugRef(orderRef), sku });
         Promise.resolve(claimStarsOrder(orderRef, {
           poll:true,
@@ -4968,6 +4962,9 @@ async function buyWithStars(sku){
 async function claimPendingStarsPurchase(){
   const reason = starsUnavailableReason();
   if(reason) return toast(reason);
+  if(starsInvoiceActiveOrderRef){
+    return toast("Finish or close the current Stars checkout first.");
+  }
   const orderRef = starsPendingOrderRef || readStarsPendingOrderRef();
   if(!orderRef){
     pushStarsDebug("claim:missing_pending");
@@ -4992,24 +4989,8 @@ function clearPendingStarsPurchase(){
   if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
 }
 function maybeAutoClaimPendingStars(){
-  const now = Date.now();
-  if(starsAutoClaimBusy) return;
-  if(starsClaimInFlight.size > 0) return;
-  if((now - starsAutoClaimAt) < 15000) return;
-  const orderRef = starsPendingOrderRef || readStarsPendingOrderRef();
-  if(!orderRef) return;
-  if(pendingOrderIsStale(orderRef)) return;
-  if(!tg?.initData) return;
-  starsAutoClaimAt = now;
-  starsAutoClaimBusy = true;
-  Promise.resolve(claimStarsOrder(orderRef, {
-    poll:true,
-    attempts:20,
-    intervalMs:2000,
-    silentPending:true,
-  }))
-    .catch(()=>{})
-    .finally(()=>{ starsAutoClaimBusy = false; });
+  // Manual claim only. Auto-claim loops caused confusing repeated pending behavior.
+  return;
 }
 
 function openShop(){
