@@ -146,6 +146,7 @@ const TRAP_ITEM = { id:"TRAP", name:"Trap", price:300, qty:1 };
 const STARS_CASH_PACKS = [
   { sku:"funds_50",    name:"Scout Purse", stars:50, funds:500, desc:"Convert 50 Stars into $500 in-game cash." },
   { sku:"funds_100",   name:"Supply Cache", stars:100, funds:1000, desc:"Convert 100 Stars into $1,000 in-game cash." },
+  { sku:"funds_150",   name:"Rapid Reserve", stars:150, funds:1500, desc:"Convert 150 Stars into $1,500 in-game cash." },
   { sku:"funds_250",   name:"Field Treasury", stars:250, funds:2500, desc:"Convert 250 Stars into $2,500 in-game cash." },
   { sku:"funds_350",   name:"Taskforce Reserve", stars:350, funds:3500, desc:"Convert 350 Stars into $3,500 in-game cash." },
   { sku:"funds_2500",  name:"Strategic Reserve", stars:2500, funds:25000, desc:"Convert 2,500 Stars into $25,000 in-game cash." },
@@ -4706,12 +4707,16 @@ function openStarsTopUp(targetStars){
   const hint = stars > 0 ? `${stars} Stars` : "a Stars package";
   pushStarsDebug("topup:route", { targetStars: stars });
   try{
-    if(document.getElementById("shopOverlay")?.style?.display === "flex"){
-      shopTab("cash");
+    const topupUrl = "https://t.me/PremiumBot?start=stars";
+    if(tg && typeof tg.openTelegramLink === "function"){
+      tg.openTelegramLink(topupUrl);
+      toast(`Opening Telegram Stars top-up for ${hint}.`);
+      return;
     }
-    toast(`To get ${hint}, tap Convert with Stars in Cash tab. Telegram will show top-up options if balance is low.`);
+    window.open(topupUrl, "_blank", "noopener,noreferrer");
+    toast("Opening Telegram Stars top-up.");
   }catch(e){
-    toast("Open Cash tab and tap Convert with Stars to trigger Telegram Stars checkout.");
+    toast("Could not open Telegram Stars top-up. Update Telegram app, or use a Cash tab purchase to trigger top-up.");
   }
 }
 async function claimStarsOrder(orderRef, opts={}){
@@ -5282,22 +5287,29 @@ function renderShopList(){
   }
 
   if(currentShopTab==="stars"){
-    const guideHtml = STARS_TOPUP_GUIDE.map((plan)=>{
-      return `
-        <div class="item">
-          <div>
-            <div class="itemName">${plan.stars.toLocaleString()} Stars <span class="tag">Top-up</span></div>
-            <div class="itemDesc">Reference pricing for Stars packages. Final checkout pricing may vary by app store taxes/region.</div>
-          </div>
-          <div style="text-align:right">
-            <div class="price">${plan.label}</div>
-            <button onclick="openStarsTopUp(${plan.stars})">Use in Cash Tab</button>
-          </div>
-        </div>`;
-    }).join("");
+    const guideText = STARS_TOPUP_GUIDE
+      .map((plan)=>`${plan.stars.toLocaleString()} Stars • ${plan.label}`)
+      .join(" • ");
 
-    note.innerText = "Buy Stars through Telegram checkout from Cash/Premium offers, then spend them here in-game.";
-    list.innerHTML = guideHtml;
+    note.innerText = "Stars tab is for top-up only. Cash tab converts Stars you already own into in-game money.";
+    list.innerHTML = `
+      <div class="item">
+        <div>
+          <div class="itemName">Buy Stars <span class="tag">Top-up</span></div>
+          <div class="itemDesc">Opens Telegram Stars purchase flow. Packages can be purchased repeatedly.</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price">Telegram</div>
+          <button onclick="openStarsTopUp()">Buy Stars</button>
+        </div>
+      </div>
+      <div class="item">
+        <div>
+          <div class="itemName">Stars Price Guide</div>
+          <div class="itemDesc">${guideText}</div>
+        </div>
+      </div>
+    `;
     return;
   }
 
