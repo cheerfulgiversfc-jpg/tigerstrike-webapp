@@ -35,6 +35,15 @@ const STARS_OFFERS = Object.freeze({
     desc: "Convert 350 Stars into $3,500 in-game cash.",
     grant: Object.freeze({ funds: 3500 }),
   }),
+  funds_450: Object.freeze({
+    sku: "funds_450",
+    kind: "cash",
+    name: "Top-up Gateway 450",
+    stars: 450,
+    funds: 4500,
+    desc: "Top-up gateway checkout. If paid, grants $4,500 in-game cash.",
+    grant: Object.freeze({ funds: 4500 }),
+  }),
   funds_2500: Object.freeze({
     sku: "funds_2500",
     kind: "cash",
