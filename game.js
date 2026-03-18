@@ -4706,13 +4706,14 @@ function starsUnavailableReason(){
 }
 function openStarsTopUp(targetStars){
   const stars = positiveInt(targetStars);
-  const hint = stars > 0 ? `${stars} Stars` : "a Stars package";
+  const starterStars = stars > 0 ? stars : 100;
+  const hint = `${starterStars} Stars+`;
   if(starsTopupBusy) return toast("Stars top-up flow is already opening.");
   const reason = starsUnavailableReason();
   if(reason) return toast(reason);
   starsTopupBusy = true;
-  pushStarsDebug("topup:start", { targetStars: stars || 35000 });
-  const helperSku = "funds_35000";
+  pushStarsDebug("topup:start", { targetStars: starterStars });
+  const helperSku = "funds_100";
   Promise.resolve((async ()=>{
     const initData = tg.initData;
     const data = await starsApiPost("/api/stars/create-invoice", { sku: helperSku, initData });
@@ -5391,7 +5392,7 @@ function renderShopList(){
     const reason = starsUnavailableReason();
     note.innerText = reason
       ? reason
-      : "Convert Stars into in-game cash when you want. If balance is low, Telegram will show Stars top-up options. Purchases are repeatable.";
+      : "Convert Stars into in-game cash when you want. Telegram requires a Confirm & Pay step for each conversion. If balance is low, it shows Stars top-up options. Purchases are repeatable.";
 
     const claimBusy = starsClaimInFlight.size > 0;
     const offersHtml = STARS_CASH_PACKS.map((pack)=>{
