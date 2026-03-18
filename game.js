@@ -4492,6 +4492,7 @@ function updateModeDesc(){
 // ===================== Shop / Inventory =====================
 let currentShopTab="weapons";
 let starsCheckoutBusy = false;
+let starsTopupBusy = false;
 let starsPendingOrderRef = readStarsPendingOrderRef();
 let starsAutoClaimBusy = false;
 let starsAutoClaimAt = 0;
@@ -4705,19 +4706,57 @@ function starsUnavailableReason(){
 function openStarsTopUp(targetStars){
   const stars = positiveInt(targetStars);
   const hint = stars > 0 ? `${stars} Stars` : "a Stars package";
-  pushStarsDebug("topup:route", { targetStars: stars });
-  try{
-    const topupUrl = "https://t.me/PremiumBot?start=stars";
-    if(tg && typeof tg.openTelegramLink === "function"){
-      tg.openTelegramLink(topupUrl);
-      toast(`Opening Telegram Stars top-up for ${hint}.`);
-      return;
+  if(starsTopupBusy) return toast("Stars top-up flow is already opening.");
+  const reason = starsUnavailableReason();
+  if(reason) return toast(reason);
+  starsTopupBusy = true;
+  pushStarsDebug("topup:start", { targetStars: stars || 35000 });
+  const helperSku = "funds_35000";
+  Promise.resolve((async ()=>{
+    const initData = tg.initData;
+    const data = await starsApiPost("/api/stars/create-invoice", { sku: helperSku, initData });
+    const orderRef = String(data.orderRef || "");
+    const invoiceLink = String(data.invoiceLink || "");
+    if(!orderRef || !invoiceLink) throw new Error("Missing top-up invoice link.");
+    toast(`Opening Stars top-up for ${hint}.`);
+    let callbackFired = false;
+    const onClosed = (statusRaw)=>{
+      callbackFired = true;
+      const status = String(statusRaw || "").toLowerCase();
+      pushStarsDebug("topup:status", { status, orderRef: shortDebugRef(orderRef) });
+      if(status === "paid" || status === "pending"){
+        // If someone actually completes helper checkout, claim so nothing is lost.
+        writeStarsPendingOrderRef(orderRef);
+        toast("Checkout submitted. Verifying...");
+        Promise.resolve(claimStarsOrder(orderRef, { poll:true, attempts:30, intervalMs:2000 }))
+          .catch((err)=>toast(err?.message || "Could not verify checkout."));
+      } else {
+        toast("Top-up window closed. Go to Cash tab to convert Stars into game cash.");
+      }
+    };
+    if(typeof tg.openInvoice === "function"){
+      tg.openInvoice(invoiceLink, onClosed);
+    } else if(typeof tg.openTelegramLink === "function"){
+      tg.openTelegramLink(invoiceLink);
+      toast("Complete top-up in Telegram, then return to Cash tab.");
+    } else {
+      window.open(invoiceLink, "_blank", "noopener,noreferrer");
+      toast("Complete top-up in Telegram, then return to Cash tab.");
     }
-    window.open(topupUrl, "_blank", "noopener,noreferrer");
-    toast("Opening Telegram Stars top-up.");
-  }catch(e){
-    toast("Could not open Telegram Stars top-up. Update Telegram app, or use a Cash tab purchase to trigger top-up.");
-  }
+    setTimeout(()=>{
+      if(callbackFired) return;
+      pushStarsDebug("topup:callback_missing", { orderRef: shortDebugRef(orderRef) });
+      toast("If you bought Stars, close checkout and go to Cash tab to convert.");
+    }, 12000);
+  })())
+    .catch((e)=>{
+      pushStarsDebug("topup:error", { error: e?.message || "Top-up open failed." });
+      toast(e?.message || "Could not open Stars top-up.");
+    })
+    .finally(()=>{
+      starsTopupBusy = false;
+      if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
+    });
 }
 async function claimStarsOrder(orderRef, opts={}){
   const initData = tg?.initData || "";
@@ -4834,7 +4873,19 @@ async function buyWithStars(sku){
       }
       setTimeout(()=>{
         if(callbackFired) return;
-        toast("Payment window is still open or delayed. If charged, tap Claim Pending Purchase.");
+        pushStarsDebug("checkout:callback_missing", { orderRef: shortDebugRef(orderRef), sku });
+        Promise.resolve(claimStarsOrder(orderRef, {
+          poll:true,
+          attempts:15,
+          intervalMs:2000,
+          silentPending:true,
+        }))
+          .then((claimed)=>{
+            if(!claimed){
+              toast("Payment window delayed. If charged, tap Claim Pending Purchase.");
+            }
+          })
+          .catch(()=>toast("Payment window delayed. If charged, tap Claim Pending Purchase."));
       }, 12000);
     } else if(typeof tg.openTelegramLink === "function"){
       tg.openTelegramLink(invoiceLink);
@@ -5296,7 +5347,7 @@ function renderShopList(){
       <div class="item">
         <div>
           <div class="itemName">Buy Stars <span class="tag">Top-up</span></div>
-          <div class="itemDesc">Opens Telegram Stars purchase flow. Packages can be purchased repeatedly.</div>
+          <div class="itemDesc">Opens the same in-app Stars-needed purchase sheet used by checkout. Buy Stars there, then convert in Cash tab.</div>
         </div>
         <div style="text-align:right">
           <div class="price">Telegram</div>
@@ -5319,7 +5370,7 @@ function renderShopList(){
     const reason = starsUnavailableReason();
     note.innerText = reason
       ? reason
-      : "Convert Stars into in-game cash when you want. Purchases are repeatable.";
+      : "Convert Stars into in-game cash when you want. If balance is low, Telegram will show Stars top-up options. Purchases are repeatable.";
 
     const offersHtml = STARS_CASH_PACKS.map((pack)=>{
       const disabled = !!reason || starsCheckoutBusy;
