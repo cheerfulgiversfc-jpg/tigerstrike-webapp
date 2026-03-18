@@ -63,6 +63,8 @@ function extractInvoicePayload(tx){
   const payload = [
     tx?.source?.invoice_payload,
     tx?.source?.paid_media_payload,
+    tx?.receiver?.invoice_payload,
+    tx?.receiver?.paid_media_payload,
     tx?.invoice_payload,
     tx?.payload,
   ].find((value)=>typeof value === "string" && value.trim().length > 0);
@@ -106,7 +108,8 @@ function acceptedStarsSet(offer){
 async function findMatchingTransaction(orderMeta, offer, userId, excludedTxIds, botToken){
   const pageSize = 100;
   const maxPages = 6;
-  const fallbackCandidates = [];
+  const fallbackUserCandidates = [];
+  const fallbackUnknownCandidates = [];
   const minTxMs = orderMeta.createdAtMs > 0 ? (orderMeta.createdAtMs - (2 * 60 * 1000)) : 0;
   const maxTxMs = orderMeta.createdAtMs > 0 ? (orderMeta.createdAtMs + (20 * 60 * 1000)) : 0;
   const acceptedStars = acceptedStarsSet(offer);
@@ -135,20 +138,41 @@ async function findMatchingTransaction(orderMeta, offer, userId, excludedTxIds, 
 
       const sourceUserId = extractSourceUserId(tx);
       if(sourceUserId > 0 && sourceUserId !== userId) continue;
-      if(sourceUserId !== userId) continue;
 
       if(orderMeta.createdAtMs <= 0) continue;
       const txDateSec = Number(tx?.date || 0);
       const txMs = Number.isFinite(txDateSec) && txDateSec > 0 ? txDateSec * 1000 : 0;
       if(txMs <= 0) continue;
       if(txMs < minTxMs || txMs > maxTxMs) continue;
-      fallbackCandidates.push(tx);
+      const candidate = {
+        tx,
+        distanceMs: Math.abs(txMs - orderMeta.createdAtMs),
+      };
+      if(sourceUserId === userId){
+        fallbackUserCandidates.push(candidate);
+      } else {
+        fallbackUnknownCandidates.push(candidate);
+      }
     }
     if(txs.length < pageSize) break;
   }
-  // Fallback is only safe when exactly one candidate is present.
-  if(fallbackCandidates.length === 1){
-    return fallbackCandidates[0];
+  // Prefer user-matched fallback transactions, nearest to order creation.
+  if(fallbackUserCandidates.length > 0){
+    fallbackUserCandidates.sort((a, b)=>a.distanceMs - b.distanceMs);
+    return fallbackUserCandidates[0].tx;
+  }
+
+  // If user id is missing in transaction payload, use a conservative nearest fallback.
+  if(fallbackUnknownCandidates.length === 1){
+    return fallbackUnknownCandidates[0].tx;
+  }
+  if(fallbackUnknownCandidates.length > 1){
+    fallbackUnknownCandidates.sort((a, b)=>a.distanceMs - b.distanceMs);
+    const best = fallbackUnknownCandidates[0];
+    const second = fallbackUnknownCandidates[1];
+    if(best.distanceMs <= (90 * 1000) && (second.distanceMs - best.distanceMs) >= (45 * 1000)){
+      return best.tx;
+    }
   }
   return null;
 }
