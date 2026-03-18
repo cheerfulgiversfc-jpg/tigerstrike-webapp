@@ -677,6 +677,7 @@
         <div class="hudLine">Civilians Alive: <b id="civTxt"></b> • Evac: <b id="evacTxt"></b> • Tigers left: <b id="tleftTxt"></b> • Threat: <b id="threatTxt"></b></div>
         <div class="hudLine" id="objTxt"></div>
         <div class="hudLine" id="dangerTxt"></div>
+        <div class="hudLine" id="storyOpsTxt"></div>
         <div class="hudLine" id="assistTxt"></div>
       </div>
     </div>
@@ -735,7 +736,7 @@
 <div class="overlay" id="missionBriefOverlay">
   <div class="modal" style="width:min(560px,94vw)">
     <div class="modalTop">
-      <div class="modalTitle">📋 Mission Brief</div>
+      <div class="modalTitle" id="missionBriefTitle">📋 Mission Brief</div>
       <button class="ghost" onclick="closeMissionBrief()">Hide</button>
     </div>
     <div class="modalBody">
@@ -743,7 +744,9 @@
       <div class="hudLine" id="missionBriefObjective">Objective</div>
       <div class="hudLine" id="missionBriefRule">Special Rule</div>
       <div class="hudLine" id="missionBriefBoss">Boss Warning</div>
-      <div class="small">Auto-hides in 2–3 seconds.</div>
+      <div class="hudLine" id="missionBriefIntel"></div>
+      <div class="hudLine" id="missionBriefReward"></div>
+      <div class="small">Auto-hides in 2–3 seconds (Story briefs stay longer).</div>
       <div class="row" style="margin-top:8px">
         <button class="good" onclick="closeMissionBrief()">Start</button>
       </div>
@@ -979,7 +982,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4424"></script>
+<script src="./game.js?v=4425"></script>
 <script src="./tutorial.js?v=4404"></script>
 <script>
 (() => {

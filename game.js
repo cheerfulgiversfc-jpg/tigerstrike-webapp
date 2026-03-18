@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4424";
+const TS_BUILD = "4425";
 if(tg){
   try{
     tg.expand?.();
@@ -4480,6 +4480,7 @@ function missionObjectiveCountText(mode, mission){
 function missionSpecialRuleText(mode, mission){
   if(!mission) return "Special Rule: standard mission rules.";
   const rules = [];
+  if(mode==="Story" && (mission.civilians || 0) > 0) rules.push("escort/protect civilians");
   if((mission.captureRequired || 0) > 0) rules.push(`capture objective active`);
   if(mode==="Arcade" && mission.captureOnly) rules.push("capture-only (no kills)");
   if(mode==="Arcade" && (mission.trapPlaceRequired || 0) > 0) rules.push("trap placement required");
@@ -4490,6 +4491,55 @@ function missionSpecialRuleText(mode, mission){
   if(mission.finalBoss) rules.push("final choice changes ending");
   if(!rules.length) return "Special Rule: standard mission rules.";
   return `Special Rule: ${rules[0]}.`;
+}
+function bossCycleLabel(skill){
+  if(skill==="roar") return "War Roar";
+  if(skill==="stealth") return "Shadow Fade";
+  if(skill==="pounce_chain") return "Pounce Chain";
+  if(skill==="reinforce") return "Howl Call";
+  if(skill==="charge") return "Rage Charge";
+  return "Boss Skill";
+}
+function storyChapterRewardPreviewText(mission){
+  if(!mission) return "Reward Track: complete objectives to unlock chapter rewards.";
+  const chapter = clamp(mission.chapter || 1, 1, STORY_CHAPTER_REWARDS.length);
+  const reward = storyChapterRewardDef(chapter);
+  if(!reward) return "Reward Track: all chapter rewards unlocked.";
+  if(storyChapterRewardUnlocked(chapter)){
+    const next = storyChapterRewardDef(chapter + 1);
+    if(next) return `Reward Track: Chapter ${chapter} reward unlocked. Next up Chapter ${chapter + 1} — ${next.label}.`;
+    return `Reward Track: Chapter ${chapter} reward unlocked — ${reward.label}.`;
+  }
+  const until = Math.max(0, (chapter * 10) - (mission.number || 1));
+  if(until === 0) return `Reward Track: this mission clear unlocks ${reward.label}.`;
+  return `Reward Track: ${reward.label} unlocks in ${until} mission${until===1?"":"s"}.`;
+}
+function storyMissionIntelText(mission){
+  if(!mission) return "Story Intel: hold evac lanes and minimize civilian risk.";
+  const focus = [];
+  if((mission.civilians || 0) > 0) focus.push(`protect ${mission.civilians} civilian${mission.civilians===1?"":"s"}`);
+  if((mission.captureRequired || 0) > 0) focus.push(`secure ${mission.captureRequired} capture${mission.captureRequired===1?"":"s"}`);
+  if(mission.lowVisibility) focus.push("low visibility route");
+  if(mission.bloodAggro) focus.push("lethal kills increase aggression");
+  if(!focus.length) focus.push("clear tiger threats and secure evacuation");
+  return `Story Intel: ${focus.join(" • ")}.`;
+}
+function storyBossIntroText(mission){
+  if(!mission) return "Boss Intro: no active boss for this mission.";
+  if(!mission.boss) return "Boss Intro: no chapter boss on this mission.";
+  const chapter = clamp(mission.chapter || 1, 1, 10);
+  const profile = BOSS_IDENTITY_BY_CHAPTER[chapter];
+  if(mission.finalBoss){
+    return "Boss Intro: Ancient Tiger final confrontation. Multi-phase pressure expected; your capture-vs-kill choice sets the ending.";
+  }
+  const tigerLine = mission.bossTwin
+    ? `Twin ${mission.bossType || "Alpha"} Tigers`
+    : `${mission.bossType || "Alpha"} Tiger`;
+  const cycleLine = profile?.cycle?.length
+    ? profile.cycle.map((skill)=>bossCycleLabel(skill)).slice(0, 3).join(" -> ")
+    : "War Roar -> Rage Charge";
+  const sig = profile?.name ? `${profile.name}` : "Chapter Predator";
+  return `Boss Intro: ${tigerLine}. Signature profile: ${sig} (${cycleLine}).`;
 }
 function missionBossWarningText(mission){
   if(!mission || !mission.boss) return "Boss Warning: none.";
@@ -4512,20 +4562,45 @@ function showMissionBrief(durationMs=2600){
   const card = currentMissionCardData();
   if(!card || !card.mission) return false;
 
+  const titleEl = document.getElementById("missionBriefTitle");
   const nameEl = document.getElementById("missionBriefName");
   const objectiveEl = document.getElementById("missionBriefObjective");
   const ruleEl = document.getElementById("missionBriefRule");
   const bossEl = document.getElementById("missionBriefBoss");
+  const intelEl = document.getElementById("missionBriefIntel");
+  const rewardEl = document.getElementById("missionBriefReward");
+  const isStory = card.mode === "Story";
+  if(titleEl) titleEl.innerText = isStory ? "📖 Story Operations Brief" : "📋 Mission Brief";
   if(nameEl) nameEl.innerText = `${card.mode} Mission ${card.mission.number}/${card.total} — ${card.mission.chapterName}`;
-  if(objectiveEl) objectiveEl.innerText = missionObjectiveCountText(card.mode, card.mission);
-  if(ruleEl) ruleEl.innerText = missionSpecialRuleText(card.mode, card.mission);
-  if(bossEl) bossEl.innerText = missionBossWarningText(card.mission);
+  if(objectiveEl){
+    objectiveEl.innerText = isStory
+      ? `Objective: ${card.mission.objective}`
+      : missionObjectiveCountText(card.mode, card.mission);
+  }
+  if(ruleEl){
+    ruleEl.innerText = isStory
+      ? missionObjectiveCountText(card.mode, card.mission)
+      : missionSpecialRuleText(card.mode, card.mission);
+  }
+  if(bossEl){
+    bossEl.innerText = isStory
+      ? storyBossIntroText(card.mission)
+      : missionBossWarningText(card.mission);
+  }
+  if(intelEl) intelEl.innerText = isStory ? storyMissionIntelText(card.mission) : "";
+  if(rewardEl) rewardEl.innerText = isStory ? storyChapterRewardPreviewText(card.mission) : "";
 
   clearMissionBriefTimer();
   setPaused(true,"mission-brief");
   overlay.style.display = "flex";
   syncGamepadFocus();
-  const ms = clamp(Math.floor(durationMs || 2600), 2000, 3400);
+  let ms = Math.floor(durationMs || 2600);
+  if(isStory){
+    ms = Math.max(ms, card.mission.boss ? 5600 : 4300);
+    ms = clamp(ms, 3400, 6800);
+  } else {
+    ms = clamp(ms, 2000, 3400);
+  }
   __missionBriefTimer = setTimeout(()=>{
     closeMissionBrief(true);
   }, ms);
@@ -4620,7 +4695,7 @@ function markModeTabs(){
 }
 function updateModeDesc(){
   const el=document.getElementById("modeDesc");
-  if(S.mode==="Story") el.innerText="Story Campaign: tactical mission flow with chapter objectives, story cutscenes, and boss encounters.";
+  if(S.mode==="Story") el.innerText="Story Campaign: chapter-based operations with escort/protect pressure, boss intros, and steady chapter rewards.";
   else if(S.mode==="Arcade") el.innerText="Arcade Campaign: score-attack missions with a live timer, combo multiplier pressure, and medal ranking on clear.";
   else el.innerText="Survival: no civilians. Tigers pressure-damage you. Events OFF.";
 }
@@ -8042,6 +8117,11 @@ function deploy(opts={}){
     }
     if(mission.bloodAggro){
       setEventText("Story modifier active: tiger aggression is elevated this mission.", 8);
+    } else if(((mission.number - 1) % 10) === 0){
+      setEventText(`Story chapter ${mission.chapter} deployed. ${storyChapterRewardPreviewText(mission)}`, 8);
+    }
+    if(mission.boss){
+      setEventText(storyBossIntroText(mission), 9);
     }
   }
 
@@ -11220,6 +11300,16 @@ function checkMissionComplete(){
           chapterRewardNote = `\nChapter Reward Unlocked: ${reward.label}${reward.grants ? ` (${reward.grants})` : ""}\n${reward.desc}\n`;
         }
       }
+      let storyProgressNote = "";
+      if(storyMission){
+        const rewardDef = storyChapterRewardDef(storyMission.chapter || 1);
+        if(rewardDef){
+          const until = Math.max(0, ((storyMission.chapter || 1) * 10) - (storyMission.number || 1));
+          storyProgressNote = until === 0
+            ? `\nProgression Track: Chapter ${storyMission.chapter} reward checkpoint reached (${rewardDef.label}).\n`
+            : `\nProgression Track: ${rewardDef.label} unlocks in ${until} mission${until===1?"":"s"}.\n`;
+        }
+      }
 
       let finalEnding = "";
       if(storyMission?.number === 100){
@@ -11243,7 +11333,7 @@ function checkMissionComplete(){
       }
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${finalEnding}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       sfx("win"); hapticNotif("success");
@@ -11357,6 +11447,21 @@ function renderHUD(){
       : (S.mode==="Arcade")
         ? `Objective: ${arcadeObjective}${arcadeHint}${grace}`
         : `Objective: Evacuate living civilians + clear ALL tigers${grace}`;
+  const storyOpsEl = document.getElementById("storyOpsTxt");
+  if(storyOpsEl){
+    if(S.mode==="Story" && storyMission){
+      const civNeed = S.civilians.filter(c=>c.alive && !c.evac).length;
+      const captureNeed = Math.max(0, storyMission.captureRequired || 0);
+      const captureDone = Math.min(S.stats.captures || 0, captureNeed);
+      const rewardTrack = storyChapterRewardPreviewText(storyMission).replace(/^Reward Track:\s*/i, "");
+      const focus = captureNeed > 0
+        ? `Story Ops: escort/protect civilians (${civNeed} pending) • Captures ${captureDone}/${captureNeed}`
+        : `Story Ops: escort/protect civilians (${civNeed} pending)`;
+      storyOpsEl.innerText = `${focus} • ${rewardTrack}`;
+    } else {
+      storyOpsEl.innerText = "";
+    }
+  }
 
   // danger ping
   if(S.dangerCivId && S.mode!=="Survival"){
@@ -11377,6 +11482,18 @@ function renderHUD(){
     const peak = Math.max(Math.floor(Number(S.arcadeComboPeak || 0)), Math.floor(Number(S.comboCount || 0)));
     assistParts.push(`Arcade clock: ${arcadeLeft}s/${limit}s • Medal: ${arcadeMedal}`);
     assistParts.push(`Arcade combo multiplier: x${arcadeMult.toFixed(1)} • Peak combo x${peak}`);
+  } else if(S.mode==="Story" && storyMission){
+    const reward = storyChapterRewardDef(storyMission.chapter || 1);
+    const until = Math.max(0, ((storyMission.chapter || 1) * 10) - (storyMission.number || 1));
+    if(reward && !storyChapterRewardUnlocked(storyMission.chapter || 1)){
+      assistParts.push(until===0
+        ? `Chapter reward ready after clear: ${reward.label}`
+        : `Chapter reward in ${until} mission${until===1?"":"s"}: ${reward.label}`);
+    }
+    if(storyMission.boss){
+      const introShort = storyBossIntroText(storyMission).replace(/^Boss Intro:\s*/i, "");
+      assistParts.unshift(`Boss mission: ${introShort}`);
+    }
   }
   if(S.mode!=="Survival"){
     const civTargets = S.civilians.filter(c=>c.alive && !c.evac);
@@ -11539,9 +11656,13 @@ function renderHUD(){
     document.getElementById("statusLine").innerText =
       S.inBattle
         ? (S.battleMsg || `On-map combat active. Use Attack, Capture, weapon swap, and Retreat while Tiger #${S.activeTigerId} stays locked.`)
-        : (window.matchMedia?.("(pointer:fine)")?.matches
-            ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Tap map devices to trigger alarms, barriers, and caches."
-            : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear. Tap map devices for alarms, barriers, and caches.");
+        : (S.mode==="Story"
+            ? ((storyMission && storyMission.boss)
+                ? "Story Ops: chapter boss mission. Keep civilians safe, stay mobile, and control aggression before committing to the boss."
+                : "Story Ops: escort/protect civilians first, then secure captures and clear routes to evacuation.")
+            : (window.matchMedia?.("(pointer:fine)")?.matches
+                ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Tap map devices to trigger alarms, barriers, and caches."
+                : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear. Tap map devices for alarms, barriers, and caches."));
     renderAbilityCooldownUi();
   }catch(err){
     const now = Date.now();
