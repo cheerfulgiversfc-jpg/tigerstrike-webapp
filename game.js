@@ -7879,6 +7879,9 @@ function deploy(opts={}){
   S.stats.trapsTriggered = 0;
   S._arcadeNoKillWarned = false;
   S._storyFinalOutcome = null;
+  S._survivalClearAt = 0;
+  S._pressure = 0;
+  S._pressTick = 0;
   checkProgressionUnlocks({ silent:true });
 
   spawnRescueSites();
@@ -9761,9 +9764,32 @@ function survivalPressureTick(){
   S.surviveSeconds = Math.floor((Date.now()-S.survivalStart)/1000);
 
   const now = Date.now();
+  const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
+  if(aliveTigers.length <= 0){
+    if(!Number.isFinite(S._survivalClearAt) || S._survivalClearAt <= 0){
+      S._survivalClearAt = now + 1400;
+      setEventText(`Wave ${Math.max(1, S.survivalWave || 1)} cleared. Incoming pack...`, 2.4);
+    } else if(now >= S._survivalClearAt && !S.inBattle && !S.missionEnded){
+      S._survivalClearAt = 0;
+      S.survivalWave = Math.max(1, Math.floor(S.survivalWave || 1) + 1);
+      spawnTigers();
+      const spawnAudit = validateMissionSpawnLayout({ repair:true });
+      if((spawnAudit?.fixed || 0) > 0){
+        setEventText(`Wave ${S.survivalWave} started • spawn safety adjusted ${spawnAudit.fixed}`, 2.8);
+      } else {
+        setEventText(`Wave ${S.survivalWave} started • Tigers incoming`, 2.8);
+      }
+      toast(`Survival Wave ${S.survivalWave} started.`);
+      sfx("event");
+      hapticImpact("medium");
+      save();
+    }
+    return;
+  }
+  if(S._survivalClearAt) S._survivalClearAt = 0;
+
   let hits=0;
-  for(const t of S.tigers){
-    if(!t.alive) continue;
+  for(const t of aliveTigers){
     if(t.holdUntil && now < t.holdUntil) continue;
     if(dist(t.x,t.y,S.me.x,S.me.y) < 140) hits++;
   }
