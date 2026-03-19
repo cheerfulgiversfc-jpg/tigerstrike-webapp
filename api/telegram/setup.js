@@ -83,11 +83,14 @@ module.exports = async function handler(req, res){
       { command:"settings", description:"Open bot settings shortcuts" },
       { command:"play", description:"Launch Tiger Strike Mini App" },
       { command:"stars", description:"How to buy/spend Telegram Stars" },
+      { command:"ref", description:"Get your personal referral link" },
       { command:"status", description:"Check bot/webhook status" },
+      { command:"admin", description:"Admin command shortcuts" },
     ];
     const groupCommands = [
       { command:"start", description:"Initialize in this chat" },
       { command:"help", description:"Show available commands" },
+      { command:"play", description:"Open Tiger Strike Mini App" },
       { command:"status", description:"Check bot status" },
     ];
     await telegramBotApi("setMyCommands", {
