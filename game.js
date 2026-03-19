@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4427";
+const TS_BUILD = "4428";
 if(tg){
   try{
     tg.expand?.();
@@ -4819,6 +4819,18 @@ const STARS_ORDER_STATUS_TTL_MS = 120000;
 function starsOfferBySku(sku){
   return STARS_ALL_OFFERS.find((pack)=>pack.sku === sku) || null;
 }
+function starsTopupPackForTarget(targetStars){
+  const list = [...STARS_CASH_PACKS].sort((a,b)=>a.stars-b.stars);
+  if(!list.length) return null;
+  const desired = positiveInt(targetStars);
+  if(desired <= 0){
+    return list.find((pack)=>pack.stars === 100) || list[0];
+  }
+  const exact = list.find((pack)=>pack.stars === desired);
+  if(exact) return exact;
+  const higher = list.find((pack)=>pack.stars >= desired);
+  return higher || list[list.length - 1];
+}
 function cashBundleById(id){
   return CASH_SUPPLY_BUNDLES.find((bundle)=>bundle.id === id) || null;
 }
@@ -5134,48 +5146,71 @@ function starsUnavailableReason(){
   return "";
 }
 function openStarsTopUp(targetStars){
-  const stars = positiveInt(targetStars);
-  const starterStars = stars > 0 ? stars : 100;
-  const hint = `${starterStars} Stars+`;
+  const pack = starsTopupPackForTarget(targetStars);
+  if(!pack) return toast("Stars top-up is not configured.");
+  const starterStars = positiveInt(pack.stars || 0);
+  const hint = `${starterStars.toLocaleString()} Stars`;
   if(starsTopupBusy) return toast("Stars top-up flow is already opening.");
   const reason = starsUnavailableReason();
   if(reason) return toast(reason);
+  const openPending = String(starsPendingOrderRef || readStarsPendingOrderRef() || "").trim();
+  if(openPending && openPending !== starsInvoiceActiveOrderRef){
+    const pendingState = getStarsOrderStatus(openPending);
+    if(pendingState === "cancelled" || pendingState === "failed" || pendingOrderIsStale(openPending)){
+      writeStarsPendingOrderRef(null);
+      clearStarsOrderStatus(openPending);
+      pushStarsDebug("pending:auto_clear", { orderRef: shortDebugRef(openPending), state: pendingState || "stale" });
+    } else {
+      pushStarsDebug("topup:blocked_pending", { orderRef: shortDebugRef(openPending) });
+      return toast("Claim or clear the current pending purchase before opening top-up.");
+    }
+  }
   starsTopupBusy = true;
-  pushStarsDebug("topup:start", { targetStars: starterStars });
-  const helperSku = "funds_450";
+  pushStarsDebug("topup:start", { targetStars: starterStars, sku: pack.sku });
   Promise.resolve((async ()=>{
     const initData = tg.initData;
-    const data = await starsApiPost("/api/stars/create-invoice", { sku: helperSku, initData });
+    const data = await starsApiPost("/api/stars/create-invoice", { sku: pack.sku, initData });
     const orderRef = String(data.orderRef || "");
     const invoiceLink = String(data.invoiceLink || "");
     if(!orderRef || !invoiceLink) throw new Error("Missing top-up invoice link.");
-    toast(`Opening Stars top-up for ${hint}.`);
+    writeStarsPendingOrderRef(orderRef);
+    starsInvoiceActiveOrderRef = orderRef;
+    setStarsOrderStatus(orderRef, "open");
+    toast(`Opening Stars top-up around ${hint}.`);
     let callbackFired = false;
     const onClosed = (statusRaw)=>{
       callbackFired = true;
       const status = String(statusRaw || "").toLowerCase();
+      if(starsInvoiceActiveOrderRef === orderRef){
+        starsInvoiceActiveOrderRef = "";
+      }
       pushStarsDebug("topup:status", { status, orderRef: shortDebugRef(orderRef) });
       if(status === "paid"){
-        // If helper checkout is completed, verify once and let users claim manually if still pending.
-        writeStarsPendingOrderRef(orderRef);
         setStarsOrderStatus(orderRef, status);
-        toast("Checkout submitted. Verifying...");
-        Promise.resolve(claimStarsOrder(orderRef, { poll:true, attempts:10, intervalMs:1600, silentPending:true }))
-          .then((ok)=>{
-            if(!ok){
-              toast("Top-up payment is processing. Use Claim Pending Purchase in Cash tab.");
-            }
-          })
-          .catch((err)=>toast(err?.message || "Could not verify checkout."));
+        toast("Checkout submitted. Use Claim Pending Purchase in Cash/Premium tab if not applied yet.");
       } else if(status === "pending"){
-        writeStarsPendingOrderRef(orderRef);
         setStarsOrderStatus(orderRef, status);
-        toast("Top-up is still processing. Use Claim Pending Purchase in Cash tab.");
+        toast("Top-up is processing. Use Claim Pending Purchase in Cash/Premium tab.");
+      } else if(status === "cancelled"){
+        if(String(starsPendingOrderRef || "") === orderRef){
+          writeStarsPendingOrderRef(null);
+        }
+        setStarsOrderStatus(orderRef, "cancelled");
+        clearStarsOrderStatusLater(orderRef);
+        toast("Top-up window closed. Buy Stars anytime from this tab.");
+      } else if(status === "failed"){
+        if(String(starsPendingOrderRef || "") === orderRef){
+          writeStarsPendingOrderRef(null);
+        }
+        setStarsOrderStatus(orderRef, "failed");
+        clearStarsOrderStatusLater(orderRef);
+        toast("Top-up failed.");
       } else {
         setStarsOrderStatus(orderRef, status || "closed");
         clearStarsOrderStatusLater(orderRef);
-        toast("Top-up window closed. Go to Cash tab to convert Stars into game cash.");
+        toast("Top-up window closed. If charged, tap Claim Pending Purchase.");
       }
+      if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
     };
     if(typeof tg.openInvoice === "function"){
       tg.openInvoice(invoiceLink, onClosed);
@@ -5189,7 +5224,7 @@ function openStarsTopUp(targetStars){
     setTimeout(()=>{
       if(callbackFired) return;
       pushStarsDebug("topup:callback_missing", { orderRef: shortDebugRef(orderRef) });
-      toast("If you bought Stars, close checkout and go to Cash tab to convert.");
+      toast("Waiting for Telegram result. If charged, tap Claim Pending Purchase.");
     }, 12000);
   })())
     .catch((e)=>{
@@ -5845,20 +5880,28 @@ function renderShopList(){
   }
 
   if(currentShopTab==="stars"){
+    const quickTargets = [50, 100, 150, 250, 350];
+    const quickButtons = quickTargets.map((stars)=>{
+      const topupPack = starsTopupPackForTarget(stars);
+      const label = topupPack ? `${topupPack.stars.toLocaleString()} Stars` : `${stars.toLocaleString()} Stars`;
+      return `<button onclick="openStarsTopUp(${stars})">${label}</button>`;
+    }).join("");
     const guideText = STARS_TOPUP_GUIDE
       .map((plan)=>`${plan.stars.toLocaleString()} Stars • ${plan.label}`)
       .join(" • ");
 
-    note.innerText = "Stars tab is for top-up only. Cash tab converts Stars you already own into in-game money.";
+    note.innerText = "Stars tab is top-up only. Pick a target amount to open Telegram checkout near that size. Cash/Premium tabs spend Stars you already own.";
     list.innerHTML = `
       <div class="item">
         <div>
           <div class="itemName">Buy Stars <span class="tag">Top-up</span></div>
-          <div class="itemDesc">Opens the same in-app Stars-needed purchase sheet used by checkout. Buy Stars there, then convert in Cash tab.</div>
+          <div class="itemDesc">Use quick amounts below. If you only want to add Stars balance, close the invoice after top-up and then spend in Cash/Premium tabs.</div>
         </div>
         <div style="text-align:right">
-          <div class="price">Telegram</div>
-          <button onclick="openStarsTopUp()">Buy Stars</button>
+          <div class="price">Quick Top-up</div>
+          <div class="row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap;max-width:340px;">
+            ${quickButtons}
+          </div>
         </div>
       </div>
       <div class="item">
