@@ -172,3 +172,56 @@ Phase 2A adds channel-growth tooling directly in your webhook: admin posting com
 - Keep `TELEGRAM_WEBHOOK_SECRET` enabled.
 - Keep `TELEGRAM_SETUP_KEY` as a strong secret after setup.
 - Never commit bot token/admin secrets into GitHub.
+
+## Bot Phase 3B + 3C
+Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
+
+### Phase 3B (analytics)
+Tracked metrics include:
+- invoice creation success/error
+- claim paid/pending/error
+- pre-checkout confirmations
+- successful payment updates
+- liveops post counts
+
+Admin commands:
+- `/stats_today` - same-day funnel snapshot
+- `/stats_7d` - 7-day funnel snapshot
+
+Storage mode:
+- If Vercel KV/Upstash is connected (`KV_REST_API_URL` + `KV_REST_API_TOKEN`), stats persist across deploys.
+- Otherwise, stats use in-memory fallback (temporary, not durable across cold starts).
+
+### Phase 3C (liveops automation)
+Added endpoint:
+- `GET/POST /api/telegram/liveops-cron`
+
+Behavior:
+- Posts one rotating campaign template per day to `TELEGRAM_CHANNEL_ID`
+- Rotation order: campaign -> premium -> stars -> play
+- Skips if already posted that UTC day
+- Manual admin trigger via `/liveops_now`
+
+### New env vars for Phase 3B/3C
+- `TELEGRAM_LIVEOPS_KEY` (recommended)
+  - Secret for calling `/api/telegram/liveops-cron` manually.
+- `CRON_SECRET` (recommended for Vercel Cron)
+  - Vercel sends this as `Authorization: Bearer ...` on cron requests.
+- `KV_REST_API_URL` (optional, recommended for persistent stats)
+- `KV_REST_API_TOKEN` (optional, recommended for persistent stats)
+
+### Vercel cron
+`vercel.json` now schedules:
+- `/api/telegram/liveops-cron` at `0 16 * * *` (daily)
+
+### Deploy checklist (Phase 3B/3C)
+1. Upload changed files.
+2. Add new env vars in Vercel.
+3. Redeploy.
+4. Re-run setup endpoint:
+   ```bash
+   curl -X POST "https://<your-domain>/api/telegram/setup?key=<TELEGRAM_SETUP_KEY>"
+   ```
+5. Test in Telegram:
+   - `/stats_today`
+   - `/liveops_now`

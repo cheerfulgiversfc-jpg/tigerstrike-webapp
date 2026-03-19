@@ -1,3 +1,9 @@
 {
-  "cleanUrls": true
+  "cleanUrls": true,
+  "crons": [
+    {
+      "path": "/api/telegram/liveops-cron",
+      "schedule": "0 16 * * *"
+    }
+  ]
 }
