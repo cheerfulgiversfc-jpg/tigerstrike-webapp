@@ -84,6 +84,9 @@ module.exports = async function handler(req, res){
       { command:"play", description:"Launch Tiger Strike Mini App" },
       { command:"stars", description:"How to buy/spend Telegram Stars" },
       { command:"ref", description:"Get your personal referral link" },
+      { command:"liveops_now", description:"Admin trigger liveops post" },
+      { command:"stats_today", description:"Admin funnel stats (today)" },
+      { command:"stats_7d", description:"Admin funnel stats (7d)" },
       { command:"status", description:"Check bot/webhook status" },
       { command:"admin", description:"Admin command shortcuts" },
     ];
