@@ -39,3 +39,48 @@ If your current bot backend already does this, you are good.
 - Keep them in sync when changing prices or rewards.
 - The `/api/stars/claim` route scans recent Star transactions (up to 800 records) for matching `invoice_payload`.
 - Device-side duplicate protection is local (`localStorage`). For strict anti-fraud, move claiming/idempotency to a persistent DB on your bot backend.
+
+## Stars payout checklist (how you get paid)
+Use this checklist whenever you want to withdraw earnings from your bot's Stars revenue.
+
+### 1) Confirm what counts as earnings
+- You earn when users pay your bot invoice in `XTR` (Telegram Stars).
+- Users simply buying Stars for themselves does **not** pay you until they spend those Stars on your bot.
+
+### 2) Confirm live payment setup is healthy
+- `TELEGRAM_BOT_TOKEN` is set in production.
+- Webhook can answer `pre_checkout_query` within 10 seconds.
+- Invoices are created with `currency: "XTR"` and empty `provider_token` for digital goods.
+- You only grant rewards after successful verification (`/api/stars/claim` paid status).
+
+### 3) Check balance and withdrawable amount
+- Open your bot/channel profile in Telegram.
+- Go to the Monetization/Balance section.
+- Check:
+  - `Total balance` (all earned Stars)
+  - `Available balance` (Stars currently withdrawable)
+  - `withdrawal_enabled` status
+- If available balance is low, wait for more revenue to clear into withdrawable balance.
+
+### 4) Withdraw to TON wallet (Fragment)
+- Start withdrawal from Telegram Monetization/Balance.
+- Telegram opens a Fragment withdrawal page.
+- Enter/select your TON wallet address.
+- Confirm withdrawal.
+
+### 5) Common blockers
+- Not the bot owner account.
+- Telegram 2FA password not set/confirmed.
+- Withdrawals not enabled yet for the account.
+- Available balance below Telegram minimum withdrawal amount.
+- Revenue still in pending/hold period before becoming withdrawable.
+
+### 6) Ops best practices
+- Keep `game.js` and `api/_lib/stars-catalog.js` prices in sync.
+- Keep a small manual test purchase SKU for production health checks.
+- Keep `telegram_payment_charge_id` / transaction IDs for refunds and support.
+- Never commit bot tokens or secrets to GitHub.
+
+### Official references
+- Telegram Stars API: <https://core.telegram.org/api/stars>
+- Bot payments with Stars: <https://core.telegram.org/bots/payments-stars>
