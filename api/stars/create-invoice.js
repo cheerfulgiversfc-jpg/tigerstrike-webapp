@@ -3,6 +3,7 @@ const { getOffer } = require("../_lib/stars-catalog");
 const { validateTelegramInitData } = require("../_lib/telegram-auth");
 const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
+const { incrMetric } = require("../_lib/metrics-store");
 
 function makeOrderRef(sku, userId){
   const nonce = crypto.randomBytes(6).toString("hex");
@@ -34,13 +35,35 @@ async function ensureTelegramWebhook(req, botToken){
   const secret = String(process.env.TELEGRAM_WEBHOOK_SECRET || "").trim();
   const payload = {
     url,
-    allowed_updates: ["pre_checkout_query", "message"],
+    allowed_updates: [
+      "message",
+      "channel_post",
+      "inline_query",
+      "callback_query",
+      "pre_checkout_query",
+      "business_connection",
+      "business_message",
+      "edited_business_message",
+      "deleted_business_messages",
+    ],
     drop_pending_updates: false,
   };
   if(secret){
     payload.secret_token = secret;
   }
   await telegramBotApi("setWebhook", payload, botToken);
+}
+
+async function metric(name){
+  try{ await incrMetric(name, 1); }catch(e){ /* best effort */ }
+}
+
+async function metricSku(name, sku){
+  try{
+    const safeSku = String(sku || "").trim().toLowerCase().replace(/[^a-z0-9:_-]/g, "_");
+    if(!safeSku) return;
+    await incrMetric(`${name}:${safeSku}`, 1);
+  }catch(e){ /* best effort */ }
 }
 
 module.exports = async function handler(req, res){
@@ -56,6 +79,7 @@ module.exports = async function handler(req, res){
 
     const offer = getOffer(sku);
     if(!offer){
+      await metric("create_invoice_bad_sku");
       return json(res, 400, { ok:false, error:"Unknown Stars offer." });
     }
 
@@ -79,6 +103,9 @@ module.exports = async function handler(req, res){
       ],
     }, botToken);
 
+    await metric("create_invoice_ok");
+    await metricSku("create_invoice_ok_sku", offer.sku);
+
     return json(res, 200, {
       ok: true,
       sku: offer.sku,
@@ -87,6 +114,7 @@ module.exports = async function handler(req, res){
       invoiceLink,
     });
   }catch(e){
+    await metric("create_invoice_error");
     return json(res, 500, { ok:false, error:e?.message || "Could not create invoice." });
   }
 };

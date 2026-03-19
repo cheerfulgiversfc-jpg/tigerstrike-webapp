@@ -2,6 +2,7 @@ const { getOffer } = require("../_lib/stars-catalog");
 const { validateTelegramInitData } = require("../_lib/telegram-auth");
 const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
+const { incrMetric } = require("../_lib/metrics-store");
 
 function parseOrderRef(orderRef){
   const ref = String(orderRef || "").trim();
@@ -177,6 +178,18 @@ async function findMatchingTransaction(orderMeta, offer, userId, excludedTxIds, 
   return null;
 }
 
+async function metric(name){
+  try{ await incrMetric(name, 1); }catch(e){ /* best effort */ }
+}
+
+async function metricSku(name, sku){
+  try{
+    const safeSku = String(sku || "").trim().toLowerCase().replace(/[^a-z0-9:_-]/g, "_");
+    if(!safeSku) return;
+    await incrMetric(`${name}:${safeSku}`, 1);
+  }catch(e){ /* best effort */ }
+}
+
 module.exports = async function handler(req, res){
   if(req.method !== "POST"){
     return json(res, 405, { ok:false, error:"Method not allowed." });
@@ -190,16 +203,19 @@ module.exports = async function handler(req, res){
     const botToken = process.env.TELEGRAM_BOT_TOKEN || "";
 
     if(!orderMeta){
+      await metric("claim_bad_order_ref");
       return json(res, 400, { ok:false, error:"Invalid order reference." });
     }
 
     const { user } = validateTelegramInitData(initData, botToken);
     if(Number(orderMeta.userId) !== Number(user.id)){
+      await metric("claim_wrong_user");
       return json(res, 400, { ok:false, error:"Order does not belong to this user." });
     }
 
     const offer = getOffer(orderMeta.sku);
     if(!offer){
+      await metric("claim_unknown_offer");
       return json(res, 400, { ok:false, error:"Unknown Stars offer in order reference." });
     }
 
@@ -210,18 +226,25 @@ module.exports = async function handler(req, res){
       const msg = String(e?.message || "");
       if(/fetch failed|network|timed? out|ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT/i.test(msg)){
         // Treat transient upstream failures as pending so clients can retry cleanly.
+        await metric("claim_pending_transient");
         return json(res, 200, { ok:true, status:"pending", transient:true });
       }
       throw e;
     }
     if(!tx){
+      await metric("claim_pending");
+      await metricSku("claim_pending_sku", offer.sku);
       return json(res, 200, { ok:true, status:"pending" });
     }
 
     const starsAmount = Math.abs(Number(tx?.amount || 0));
     if(!acceptedStarsSet(offer).has(starsAmount)){
+      await metric("claim_mismatch_amount");
       return json(res, 400, { ok:false, error:"Transaction amount does not match this order." });
     }
+
+    await metric("claim_paid");
+    await metricSku("claim_paid_sku", offer.sku);
 
     return json(res, 200, {
       ok: true,
@@ -235,6 +258,7 @@ module.exports = async function handler(req, res){
       paidAt: Number(tx.date || 0),
     });
   }catch(e){
+    await metric("claim_error");
     return json(res, 500, { ok:false, error:e?.message || "Could not verify Stars purchase." });
   }
 };
