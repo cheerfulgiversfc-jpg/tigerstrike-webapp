@@ -134,3 +134,41 @@ If `TELEGRAM_SETUP_KEY` is not set, the endpoint still works, but setting a key 
 ### Notes
 - The setup endpoint can be safely re-run after env changes.
 - Payments still require your webhook to keep answering `pre_checkout_query` within 10 seconds.
+
+## Bot Phase 2A
+Phase 2A adds channel-growth tooling directly in your webhook: admin posting commands, referral links, and referral start tracking.
+
+### New commands (webhook)
+- Public:
+  - `/ref` - Generates a personal referral link in format `https://t.me/<bot>?start=ref_<userId>`
+- Admin-only:
+  - `/admin`
+  - `/post_play`
+  - `/post_stars`
+  - `/post_premium`
+  - `/post_campaign`
+
+### New environment variables (Phase 2A)
+- `TELEGRAM_ADMIN_IDS` (recommended)
+  - Comma-separated Telegram user IDs allowed to run admin commands.
+  - Example: `123456789,987654321`
+- `TELEGRAM_CHANNEL_ID` (recommended for posting)
+  - Target channel for `/post_*` commands when command is sent from private chat/group.
+  - Use numeric channel id (e.g. `-1001234567890`) or `@channelusername`.
+- `TELEGRAM_REF_LOG_CHAT_ID` (optional)
+  - If set, referral starts (`/start ref_*`) are logged to this chat/channel for tracking.
+
+### Phase 2A usage
+1. Add env vars above in Vercel.
+2. Redeploy.
+3. Re-run setup:
+   ```bash
+   curl -X POST "https://<your-domain>/api/telegram/setup?key=<TELEGRAM_SETUP_KEY>"
+   ```
+4. In Telegram (from an admin account in `TELEGRAM_ADMIN_IDS`), run `/admin`.
+5. Use `/post_play`, `/post_stars`, `/post_premium`, `/post_campaign` to publish channel posts.
+
+### Security notes
+- Keep `TELEGRAM_WEBHOOK_SECRET` enabled.
+- Keep `TELEGRAM_SETUP_KEY` as a strong secret after setup.
+- Never commit bot token/admin secrets into GitHub.
