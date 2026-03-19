@@ -2227,7 +2227,7 @@ function mobileCanvasHeight(){
   const vh = window.innerHeight || 844;
   const landscape = vw > vh;
   return landscape
-    ? Math.round(clamp(vh * 0.92, 500, 680))
+    ? Math.round(clamp(vh * 0.78, 280, 430))
     : Math.round(clamp(vh * 1.08, 820, 980));
 }
 function isMobileViewport(){
@@ -2729,7 +2729,9 @@ function sanitizeRuntimeState(){
 }
 function resizeCanvasForViewport(){
   const mobile = isMobileViewport();
-  cv.width = mobile ? 820 : 960;
+  cv.width = mobile
+    ? (isLandscapeViewport() ? 900 : 820)
+    : 960;
   cv.height = mobile ? mobileCanvasHeight() : 540;
   try{ sanitizeRuntimeState(); }catch(e){}
   try{ clampWorldToCanvas(); }catch(e){}
