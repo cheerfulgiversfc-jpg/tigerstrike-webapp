@@ -4531,12 +4531,20 @@ function closeMode(){
   setPaused(false,null);
 }
 let __storyIntroAutoTimer = 0;
+let __launchIntroAutoTimer = 0;
+let __launchIntroShownThisBoot = false;
 let __missionBriefTimer = 0;
 
 function clearStoryIntroAutoTimer(){
   if(__storyIntroAutoTimer){
     clearTimeout(__storyIntroAutoTimer);
     __storyIntroAutoTimer = 0;
+  }
+}
+function clearLaunchIntroAutoTimer(){
+  if(__launchIntroAutoTimer){
+    clearTimeout(__launchIntroAutoTimer);
+    __launchIntroAutoTimer = 0;
   }
 }
 function clearMissionBriefTimer(){
@@ -4717,6 +4725,63 @@ function closeMissionBrief(fromTimer=false){
   }
   if(!fromTimer) sfx("ui");
   syncGamepadFocus();
+}
+function continueFromLaunchIntro(allowStoryIntro=true){
+  if(S.mode==="Story" && !window.__TUTORIAL_MODE__ && !S.storyIntroSeen){
+    if(allowStoryIntro){
+      openStoryIntro(false);
+      return;
+    }
+    setPaused(false,null);
+    syncGamepadFocus();
+    return;
+  }
+  const shown = showMissionBrief(rand(2200, 3000));
+  if(!shown) setPaused(false,null);
+  syncGamepadFocus();
+}
+function openLaunchIntro(force=false){
+  if(window.__TUTORIAL_MODE__) return;
+  if(!force && __launchIntroShownThisBoot) return;
+  const overlay = document.getElementById("launchIntroOverlay");
+  if(!overlay){
+    // Fallback to existing flow if launch overlay is unavailable.
+    continueFromLaunchIntro(true);
+    return;
+  }
+  __launchIntroShownThisBoot = true;
+  clearLaunchIntroAutoTimer();
+  clearStoryIntroAutoTimer();
+  clearMissionBriefTimer();
+  closeMissionBrief(true);
+  const storyOverlay = document.getElementById("storyIntroOverlay");
+  if(storyOverlay) storyOverlay.style.display = "none";
+  setPaused(true,"launch-intro");
+  overlay.style.display = "flex";
+  __launchIntroAutoTimer = setTimeout(()=>{
+    beginFromLaunchIntro({ auto:true });
+  }, 5200);
+  syncGamepadFocus();
+}
+function beginFromLaunchIntro(){
+  clearLaunchIntroAutoTimer();
+  const overlay = document.getElementById("launchIntroOverlay");
+  if(overlay) overlay.style.display = "none";
+  continueFromLaunchIntro(true);
+}
+function startQuickTutorialFromLaunchIntro(){
+  clearLaunchIntroAutoTimer();
+  const overlay = document.getElementById("launchIntroOverlay");
+  if(overlay) overlay.style.display = "none";
+  setPaused(false,null);
+  syncGamepadFocus();
+  window.startTutorial?.();
+}
+function skipLaunchIntro(){
+  clearLaunchIntroAutoTimer();
+  const overlay = document.getElementById("launchIntroOverlay");
+  if(overlay) overlay.style.display = "none";
+  continueFromLaunchIntro(false);
 }
 function openStoryIntro(force=false){
   if(S.mode!=="Story" || window.__TUTORIAL_MODE__) return;
@@ -6884,7 +6949,7 @@ window.exitTutorialMode = function () {
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
-  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
+  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","storyIntroOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -8462,7 +8527,7 @@ function performResetGame(){
   S = cloneState(DEFAULT);
   bindFundsWallet(S);
   syncWindowState();
-  ["shopOverlay","invOverlay","weaponQuickOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
+  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -8718,7 +8783,7 @@ function gamepadUiContainers(){
   const tutorial = document.getElementById("tutorialOverlay");
   if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
 
-  const overlays = ["storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
+  const overlays = ["launchIntroOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
     .map((id)=>document.getElementById(id))
     .filter((el)=>el && el.style.display === "flex");
   if(overlays.length) return overlays;
@@ -8807,7 +8872,7 @@ function activateGamepadFocus(){
 }
 
 function anyGamepadOverlayVisible(){
-  const ids = ["tutorialOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
+  const ids = ["tutorialOverlay","launchIntroOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
   return ids.some((id)=>{
     const el = document.getElementById(id);
     return !!(el && el.style.display === "flex");
@@ -13647,7 +13712,7 @@ function init(){
     __drawLoopStarted = true;
     requestAnimationFrame(draw);
   }
-  if(S.mode === "Story" && !window.__TUTORIAL_MODE__) openStoryIntro(false);
+  openLaunchIntro(true);
 }
 
 function bootstrap(){
@@ -13718,6 +13783,10 @@ window.openMode = openMode;
 window.closeMode = closeMode;
 window.pickProgressGuardAction = pickProgressGuardAction;
 window.setMode = setMode;
+window.openLaunchIntro = openLaunchIntro;
+window.beginFromLaunchIntro = beginFromLaunchIntro;
+window.startQuickTutorialFromLaunchIntro = startQuickTutorialFromLaunchIntro;
+window.skipLaunchIntro = skipLaunchIntro;
 window.openStoryIntro = openStoryIntro;
 window.startStoryIntroMission = startStoryIntroMission;
 window.beginStoryMissionFromIntro = beginStoryMissionFromIntro;

@@ -859,6 +859,28 @@
   </div>
 </div>
 
+<!-- Launch Intro -->
+<div class="overlay" id="launchIntroOverlay">
+  <div class="modal" style="width:min(620px,95vw)">
+    <div class="modalTop">
+      <div class="modalTitle">🐯 TIGER STRIKE</div>
+      <button class="ghost" onclick="skipLaunchIntro()">Skip</button>
+    </div>
+    <div class="modalBody storyIntroBody">
+      <div class="storyScene">
+        <div class="storySceneTitle">Mission Control Online</div>
+        <div class="storySceneText"><b>Rescue civilians.</b> Control tiger aggression. Choose capture or kill.</div>
+      </div>
+      <div class="hudLine">Tap Begin Mission to enter operations, or run Quick Tutorial first.</div>
+      <div class="row">
+        <button class="good" onclick="beginFromLaunchIntro()">🎮 Begin Mission</button>
+        <button class="ghost" onclick="startQuickTutorialFromLaunchIntro()">🧭 Quick Tutorial</button>
+        <button class="ghost" onclick="skipLaunchIntro()">Skip</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Story Intro -->
 <div class="overlay" id="storyIntroOverlay">
   <div class="modal">
@@ -1133,8 +1155,8 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4430"></script>
-<script src="./tutorial.js?v=4430"></script>
+<script src="./game.js?v=4431"></script>
+<script src="./tutorial.js?v=4431"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";
