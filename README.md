@@ -84,3 +84,53 @@ Use this checklist whenever you want to withdraw earnings from your bot's Stars 
 ### Official references
 - Telegram Stars API: <https://core.telegram.org/api/stars>
 - Bot payments with Stars: <https://core.telegram.org/bots/payments-stars>
+
+## Bot Phase 1 foundation
+Phase 1 adds command/menu/webhook scaffolding so your bot can reliably handle the core Telegram bot interactions.
+
+### Added endpoints
+- [`api/telegram/webhook.js`](api/telegram/webhook.js)
+  - Handles:
+    - `pre_checkout_query` (required for payments)
+    - `successful_payment` (ack)
+    - commands from `message`, `channel_post`, and `business_message`
+    - `callback_query` button actions
+    - `inline_query` responses
+- [`api/telegram/setup.js`](api/telegram/setup.js)
+  - One-call setup for:
+    - webhook
+    - bot command list (private + group scopes)
+    - chat menu button (Web App if configured)
+
+### Supported commands
+- `/start`
+- `/help`
+- `/settings`
+- `/play`
+- `/stars`
+- `/status`
+
+### New environment variables
+- `TELEGRAM_BOT_TOKEN` (required)
+- `TELEGRAM_WEBHOOK_SECRET` (recommended)
+- `TELEGRAM_MINI_APP_URL` (recommended for menu + launch buttons)
+- `TELEGRAM_SETUP_KEY` (recommended to protect setup endpoint)
+- `TELEGRAM_WEBHOOK_URL` (optional override if host auto-detect is not correct)
+
+### Configure bot (Phase 1)
+After deploy, call setup endpoint once:
+
+```bash
+curl -X POST "https://<your-domain>/api/telegram/setup?key=<TELEGRAM_SETUP_KEY>"
+```
+
+If `TELEGRAM_SETUP_KEY` is not set, the endpoint still works, but setting a key is strongly recommended.
+
+### BotFather toggles to verify
+- Enable Inline Mode for the bot.
+- Set Main Mini App for the bot.
+- Confirm Menu Button points to your Mini App (or commands).
+
+### Notes
+- The setup endpoint can be safely re-run after env changes.
+- Payments still require your webhook to keep answering `pre_checkout_query` within 10 seconds.
