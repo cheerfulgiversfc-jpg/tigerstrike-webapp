@@ -1,5 +1,7 @@
 const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
+const { incrMetric, summarizeMetrics, storageMode } = require("../_lib/metrics-store");
+const liveops = require("../_lib/liveops");
 
 let cachedBotMeta = null;
 let cachedBotMetaAt = 0;
@@ -135,6 +137,9 @@ function helpText(){
     "",
     "Admin-only:",
     "/admin",
+    "/stats_today",
+    "/stats_7d",
+    "/liveops_now",
     "/post_play",
     "/post_stars",
     "/post_premium",
@@ -168,6 +173,7 @@ function statusText(ctx){
   const hasSecret = !!envText("TELEGRAM_WEBHOOK_SECRET");
   const hasMini = !!miniAppUrl();
   const hasSetupKey = !!envText("TELEGRAM_SETUP_KEY");
+  const hasLiveopsKey = !!envText("TELEGRAM_LIVEOPS_KEY");
   const hasAdmins = parseAdminIds().size > 0;
   const hasChannel = !!normalizeChatId(envText("TELEGRAM_CHANNEL_ID"));
   const source = ctx?.chat?.type || "unknown";
@@ -178,8 +184,10 @@ function statusText(ctx){
     `webhook secret: ${hasSecret ? "ok" : "not set"}`,
     `mini app url: ${hasMini ? "ok" : "missing"}`,
     `setup key: ${hasSetupKey ? "ok" : "not set"}`,
+    `liveops key: ${hasLiveopsKey ? "ok" : "not set"}`,
     `admin ids: ${hasAdmins ? "ok" : "missing"}`,
     `channel id: ${hasChannel ? "ok" : "missing"}`,
+    `stats storage: ${storageMode()}`,
     `chat type: ${source}`,
   ].join("\n");
 }
@@ -187,6 +195,9 @@ function statusText(ctx){
 function adminHelpText(){
   return [
     "Admin commands:",
+    "/stats_today - Conversion funnel snapshot (today)",
+    "/stats_7d - Conversion funnel snapshot (7 days)",
+    "/liveops_now - Post today's rotating campaign template",
     "/post_play - Post Play CTA to channel",
     "/post_stars - Post Stars top-up CTA",
     "/post_premium - Post Premium bundle CTA",
@@ -197,72 +208,7 @@ function adminHelpText(){
 }
 
 function templateForPost(kind, botUsername){
-  const appUrl = miniAppUrl();
-  const botUrl = botLink(botUsername);
-  const starsUrl = botLink(botUsername, "stars");
-  const playUrl = appUrl || botLink(botUsername, "play") || botUrl;
-
-  if(kind === "play"){
-    return {
-      text: [
-        "Tiger Strike is live.",
-        "Story mode, Arcade, and Survival are ready.",
-        "Tap below and deploy your squad.",
-      ].join("\n"),
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "Play Tiger Strike", url: playUrl }],
-          botUrl ? [{ text: "Open Bot", url: botUrl }] : [],
-        ].filter((row) => row.length > 0),
-      },
-    };
-  }
-
-  if(kind === "stars"){
-    return {
-      text: [
-        "Need more Stars for Tiger Strike?",
-        "Top up, then spend Stars in Cash and Premium tabs.",
-        "All rewards are verified server-side.",
-      ].join("\n"),
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "Open Stars Shop", url: playUrl }],
-          starsUrl ? [{ text: "Open Bot Stars Help", url: starsUrl }] : [],
-        ].filter((row) => row.length > 0),
-      },
-    };
-  }
-
-  if(kind === "premium"){
-    return {
-      text: [
-        "Premium bundles are live in Tiger Strike.",
-        "Use Stars to unlock high-impact mission loadouts.",
-        "Limited-time campaign packs rotate weekly.",
-      ].join("\n"),
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "Open Premium Shop", url: playUrl }],
-          botUrl ? [{ text: "Chat with Bot", url: botUrl }] : [],
-        ].filter((row) => row.length > 0),
-      },
-    };
-  }
-
-  return {
-    text: [
-      "Campaign Alert: Tiger Strike operations updated.",
-      "New mission pacing and rewards now active.",
-      "Rally your squad and jump in.",
-    ].join("\n"),
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "Launch Mission", url: playUrl }],
-        botUrl ? [{ text: "Bot Updates", url: botUrl }] : [],
-      ].filter((row) => row.length > 0),
-    },
-  };
+  return liveops.buildPostTemplate(kind, botUsername);
 }
 
 async function sendMessage(botToken, chatId, text, extra = {}){
@@ -293,8 +239,73 @@ function sourceMessageFromUpdate(update){
 }
 
 function targetChannelFrom(source){
-  if(source?.chat?.type === "channel") return source.chat.id;
-  return normalizeChatId(envText("TELEGRAM_CHANNEL_ID"));
+  return liveops.targetChannelFrom(source);
+}
+
+const FUNNEL_METRICS = Object.freeze([
+  "create_invoice_ok",
+  "create_invoice_error",
+  "claim_paid",
+  "claim_pending",
+  "claim_error",
+  "pre_checkout_ok",
+  "payment_success",
+  "liveops_posted",
+]);
+
+async function metric(name){
+  try{ await incrMetric(name, 1); }catch(e){ /* best effort */ }
+}
+
+async function metricKind(prefix, kind){
+  const safeKind = String(kind || "").trim().toLowerCase().replace(/[^a-z0-9:_-]/g, "_");
+  if(!safeKind) return;
+  await metric(`${prefix}:${safeKind}`);
+}
+
+function pct(num, den){
+  const n = Number(num || 0);
+  const d = Number(den || 0);
+  if(!Number.isFinite(n) || !Number.isFinite(d) || d <= 0) return "0.0";
+  return ((n / d) * 100).toFixed(1);
+}
+
+function parseSkuFromOrderRef(orderRef){
+  const raw = String(orderRef || "").trim();
+  if(!raw) return "";
+  const parts = raw.split(":");
+  if(parts.length < 2) return "";
+  if(parts[0] !== "ts1" && parts[0] !== "ts2") return "";
+  return String(parts[1] || "").trim().toLowerCase();
+}
+
+async function buildStatsText(days){
+  const count = Math.max(1, Math.min(30, Number(days || 1)));
+  const summary = await summarizeMetrics(FUNNEL_METRICS, count);
+  const totals = summary?.totals || {};
+  const created = Number(totals.create_invoice_ok || 0);
+  const paid = Number(totals.claim_paid || 0);
+  const pending = Number(totals.claim_pending || 0);
+  const failed = Number(totals.claim_error || 0);
+
+  const header = count === 1 ? "Tiger Strike Stats (today, UTC)" : `Tiger Strike Stats (last ${count} days, UTC)`;
+  const lines = [
+    header,
+    `storage: ${summary?.storage || storageMode()}`,
+    `invoice_created: ${created}`,
+    `invoice_errors: ${Number(totals.create_invoice_error || 0)}`,
+    `claims_paid: ${paid}`,
+    `claims_pending: ${pending}`,
+    `claims_failed: ${failed}`,
+    `pre_checkout_ok: ${Number(totals.pre_checkout_ok || 0)}`,
+    `successful_payment_updates: ${Number(totals.payment_success || 0)}`,
+    `liveops_posts: ${Number(totals.liveops_posted || 0)}`,
+    `paid_rate: ${pct(paid, created)}%`,
+    `pending_rate: ${pct(pending, created)}%`,
+    `error_rate: ${pct(failed, created)}%`,
+  ];
+
+  return lines.join("\n");
 }
 
 async function notifyReferralEvent(botToken, data){
@@ -358,6 +369,7 @@ async function handleRefCommand(botToken, ctx, botUsername){
 
   const startToken = `ref_${userId}`;
   const link = botLink(botUsername, startToken);
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Join me in Tiger Strike")}`;
 
   await sendMessage(botToken, ctx.chat.id, [
     "Your referral link:",
@@ -367,7 +379,7 @@ async function handleRefCommand(botToken, ctx, botUsername){
   ].join("\n"), {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "Share Link", switch_inline_query: `Join Tiger Strike: ${link}` }],
+        [{ text: "Share Link", url: shareUrl }],
       ],
     },
   });
@@ -389,9 +401,45 @@ async function handlePostCommand(botToken, ctx, botUsername, kind){
   await sendMessage(botToken, target, tpl.text, {
     reply_markup: tpl.reply_markup,
   });
+  await metric("manual_post_sent");
+  await metricKind("manual_post_kind", kind);
 
   if(String(target) !== String(ctx.chat.id)){
     await sendMessage(botToken, ctx.chat.id, `Posted ${kind} template to ${String(target)}.`);
+  }
+}
+
+async function handleStatsCommand(botToken, ctx, days){
+  if(!isAdminUser(ctx.from)){
+    await sendMessage(botToken, ctx.chat.id, "Unauthorized. Add your Telegram user id to TELEGRAM_ADMIN_IDS.");
+    return;
+  }
+  const text = await buildStatsText(days);
+  await sendMessage(botToken, ctx.chat.id, text);
+}
+
+async function handleLiveopsNow(botToken, ctx, botUsername){
+  if(!isAdminUser(ctx.from)){
+    await sendMessage(botToken, ctx.chat.id, "Unauthorized. Add your Telegram user id to TELEGRAM_ADMIN_IDS.");
+    return;
+  }
+
+  const target = targetChannelFrom(ctx);
+  if(!target){
+    await sendMessage(botToken, ctx.chat.id, "Missing TELEGRAM_CHANNEL_ID. Set it, redeploy, then retry.");
+    return;
+  }
+
+  const kind = liveops.pickLiveopsKind(Date.now());
+  const tpl = templateForPost(kind, botUsername);
+  await sendMessage(botToken, target, `LiveOps: ${kind.toUpperCase()}\n\n${tpl.text}`, {
+    reply_markup: tpl.reply_markup,
+  });
+  await metric("liveops_posted");
+  await metricKind("liveops_post_kind", kind);
+
+  if(String(target) !== String(ctx.chat.id)){
+    await sendMessage(botToken, ctx.chat.id, `LiveOps posted: ${kind} -> ${String(target)}.`);
   }
 }
 
@@ -456,6 +504,19 @@ async function handleCommand(botToken, update, source){
       }else{
         await sendMessage(botToken, ctx.chat.id, adminHelpText());
       }
+      return true;
+    }
+    case "stats":
+    case "stats_today": {
+      await handleStatsCommand(botToken, ctx, 1);
+      return true;
+    }
+    case "stats_7d": {
+      await handleStatsCommand(botToken, ctx, 7);
+      return true;
+    }
+    case "liveops_now": {
+      await handleLiveopsNow(botToken, ctx, bot?.username || "");
       return true;
     }
     case "post_play": {
@@ -557,6 +618,7 @@ async function handlePreCheckout(botToken, update){
     pre_checkout_query_id: pre.id,
     ok: true,
   }, botToken);
+  await metric("pre_checkout_ok");
 }
 
 async function handleSuccessfulPayment(botToken, source){
@@ -569,6 +631,12 @@ async function handleSuccessfulPayment(botToken, source){
     : "Payment confirmed.";
 
   await sendMessage(botToken, source.chat.id, `${line}\nYour purchase is being processed.`);
+  await metric("payment_success");
+
+  const sku = parseSkuFromOrderRef(source?.successful_payment?.invoice_payload);
+  if(sku){
+    await metricKind("payment_success_sku", sku);
+  }
 }
 
 module.exports = async function handler(req, res){
@@ -613,6 +681,7 @@ module.exports = async function handler(req, res){
 
     return json(res, 200, { ok: true });
   }catch(e){
+    await metric("webhook_error");
     return json(res, 500, { ok: false, error: e?.message || "Webhook handling failed." });
   }
 };
