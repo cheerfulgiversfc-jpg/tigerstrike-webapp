@@ -11246,6 +11246,8 @@ function applyPlayerDamage(dmg, showToast=false){
     dmg -= absorbed;
   }
   if(dmg>0){
+    S.meHitFlashUntil = now + 190;
+    S.meHitFlashPower = clamp((Number(dmg) || 0) / 42, 0.28, 1.15);
     S.hp = clamp(S.hp - dmg, 0, 100);
     sfx("hurt"); hapticImpact("medium");
     if(showToast) toast(`🐅 Hit: -${dmg} HP`);
@@ -11330,6 +11332,14 @@ function queueImpactPulse(x, y, kind="hit"){
     color = "rgba(248,113,113,.92)";
     maxR = 22;
     ttl = 20;
+  }else if(kind === "dodge"){
+    color = "rgba(250,204,21,.92)";
+    maxR = 21;
+    ttl = 19;
+  }else if(kind === "shield"){
+    color = "rgba(96,165,250,.95)";
+    maxR = 22;
+    ttl = 20;
   }else if(kind === "tranq"){
     color = "rgba(125,211,252,.92)";
     maxR = 20;
@@ -11343,16 +11353,19 @@ function queueImpactPulse(x, y, kind="hit"){
     maxR *= 0.84;
     ttl = Math.max(12, Math.round(ttl * 0.78));
   }
-  IMPACT_PULSES.push({ x, y, color, ttl, maxTtl:ttl, r:2, maxR });
+  IMPACT_PULSES.push({
+    x, y, color, kind, ttl, maxTtl:ttl, r:2, maxR,
+    spin: Math.random() * Math.PI * 2
+  });
 }
 
-function emitCombatFx(x1, y1, x2, y2, color, width=3){
+function emitCombatFx(x1, y1, x2, y2, color, width=3, kind="hit"){
   if(COMBAT_FX.length >= 64){
     COMBAT_FX.splice(0, COMBAT_FX.length - 63);
   }
   const ttl = visualEffectsHeavyMode() ? 6 : 8;
-  COMBAT_FX.push({ x1, y1, x2, y2, color, width, ttl, maxTtl:ttl });
-  queueImpactPulse(x2, y2, "hit");
+  COMBAT_FX.push({ x1, y1, x2, y2, color, width, kind, ttl, maxTtl:ttl, spin:Math.random() * Math.PI * 2 });
+  queueImpactPulse(x2, y2, kind);
 }
 
 function tickCombatFx(){
@@ -11382,6 +11395,13 @@ function drawCombatFx(){
   const heavy = visualEffectsHeavyMode();
   for(const fx of COMBAT_FX){
     const alpha = clamp(fx.ttl / fx.maxTtl, 0, 1);
+    const dx = fx.x2 - fx.x1;
+    const dy = fx.y2 - fx.y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const tipX = fx.x2;
+    const tipY = fx.y2;
     ctx.save();
     ctx.globalAlpha = alpha;
     if(!heavy){
@@ -11398,6 +11418,24 @@ function drawCombatFx(){
     ctx.moveTo(fx.x1, fx.y1);
     ctx.lineTo(fx.x2, fx.y2);
     ctx.stroke();
+    if(!heavy){
+      ctx.globalAlpha = alpha * 0.72;
+      ctx.fillStyle = fx.color;
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, Math.max(1.6, fx.width * 0.95), 0, Math.PI * 2);
+      ctx.fill();
+      if(fx.kind === "crit" || fx.kind === "player"){
+        const cross = (fx.width * 1.6) + 2;
+        ctx.strokeStyle = fx.kind === "crit" ? "rgba(252,211,77,.98)" : "rgba(248,113,113,.96)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(tipX - (uy * cross), tipY + (ux * cross));
+        ctx.lineTo(tipX + (uy * cross), tipY - (ux * cross));
+        ctx.moveTo(tipX - (ux * cross * 0.8), tipY - (uy * cross * 0.8));
+        ctx.lineTo(tipX + (ux * cross * 0.8), tipY + (uy * cross * 0.8));
+        ctx.stroke();
+      }
+    }
     ctx.restore();
   }
 }
@@ -11406,12 +11444,29 @@ function drawImpactPulses(){
   for(const pulse of IMPACT_PULSES){
     const life = clamp(pulse.ttl / pulse.maxTtl, 0, 1);
     ctx.save();
+    const spin = (pulse.spin || 0) + ((1 - life) * 2.6);
     ctx.globalAlpha = life * 0.55;
     ctx.strokeStyle = pulse.color;
     ctx.lineWidth = 2.4;
     ctx.beginPath();
     ctx.arc(pulse.x, pulse.y, pulse.r, 0, Math.PI * 2);
     ctx.stroke();
+    if(pulse.kind === "crit" || pulse.kind === "player"){
+      ctx.globalAlpha = life * 0.44;
+      ctx.lineWidth = 1.7;
+      const spoke = Math.max(4, pulse.r * 0.46);
+      for(let i=0;i<4;i++){
+        const a = spin + (i * (Math.PI * 0.5));
+        const x1 = pulse.x + Math.cos(a) * (pulse.r * 0.56);
+        const y1 = pulse.y + Math.sin(a) * (pulse.r * 0.56);
+        const x2 = pulse.x + Math.cos(a) * (pulse.r * 0.56 + spoke);
+        const y2 = pulse.y + Math.sin(a) * (pulse.r * 0.56 + spoke);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+    }
     ctx.globalAlpha = life * 0.22;
     ctx.fillStyle = pulse.color;
     ctx.beginPath();
@@ -11444,10 +11499,11 @@ function emitDamagePopup(x, y, text, kind="hit"){
     x, y,
     text: String(text),
     kind,
-    ttl: 32,
-    maxTtl: 32,
-    vy: kind === "player" ? -1.55 : -1.15,
-    drift: (Math.random() - 0.5) * 0.35
+    ttl: (kind === "crit" ? 38 : 34),
+    maxTtl: (kind === "crit" ? 38 : 34),
+    vy: kind === "player" ? -1.45 : -1.10,
+    drift: (Math.random() - 0.5) * 0.28,
+    scale: kind === "crit" ? 1.16 : (kind === "player" ? 1.10 : 1.0)
   });
   queueImpactPulse(x, y, kind);
   if(kind === "crit"){
@@ -11486,18 +11542,43 @@ function drawDamagePopups(){
   for(const p of DAMAGE_POPUPS){
     const a = clamp(p.ttl / p.maxTtl, 0, 1);
     let color = "rgba(245,247,255,.95)";
+    let bg = "rgba(9,12,18,.84)";
+    let icon = "";
     if(p.kind === "crit") color = "rgba(252,211,77,.98)";
     else if(p.kind === "tranq") color = "rgba(125,211,252,.98)";
     else if(p.kind === "player") color = "rgba(248,113,113,.98)";
     else if(p.kind === "civilian") color = "rgba(251,191,36,.96)";
+    else if(p.kind === "shield") color = "rgba(96,165,250,.98)";
+    else if(p.kind === "dodge") color = "rgba(250,204,21,.98)";
+    if(p.kind === "crit"){ bg = "rgba(74,50,8,.86)"; icon = "CRIT"; }
+    else if(p.kind === "player"){ bg = "rgba(82,24,24,.88)"; icon = "HP"; }
+    else if(p.kind === "tranq"){ bg = "rgba(18,48,78,.86)"; icon = "TRQ"; }
+    else if(p.kind === "civilian"){ bg = "rgba(72,46,8,.88)"; icon = "CIV"; }
+    else if(p.kind === "shield"){ bg = "rgba(14,44,86,.88)"; icon = "SHD"; }
+    else if(p.kind === "dodge"){ bg = "rgba(86,64,10,.88)"; icon = "DGE"; }
     ctx.save();
     ctx.globalAlpha = a;
-    ctx.fillStyle = "rgba(9,12,18,.84)";
-    roundedRectFill(p.x - 16, p.y - 10, 32, 14, 5);
+    const sc = clamp(Number(p.scale) || 1, 0.85, 1.35);
+    const txt = String(p.text || "");
+    const width = Math.max(34, Math.min(72, 18 + (txt.length * 8) + (icon ? 22 : 0)));
+    const h = 16;
+    const x = p.x - (width * 0.5);
+    const y = p.y - 11;
+    ctx.fillStyle = bg;
+    roundedRectFill(x, y, width, h, 6);
+    ctx.strokeStyle = "rgba(241,245,249,.18)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, width - 1, h - 1);
+    if(icon){
+      ctx.fillStyle = "rgba(255,255,255,.64)";
+      ctx.font = "800 8px system-ui";
+      ctx.textAlign = "left";
+      ctx.fillText(icon, x + 5, y + 11);
+    }
     ctx.fillStyle = color;
-    ctx.font = "900 11px system-ui";
+    ctx.font = `900 ${Math.round(11 * sc)}px system-ui`;
     ctx.textAlign = "center";
-    ctx.fillText(p.text, p.x, p.y);
+    ctx.fillText(txt, p.x + (icon ? 8 : 0), p.y);
     ctx.textAlign = "start";
     ctx.restore();
   }
@@ -12149,17 +12230,25 @@ function playerAction(action){
     if(victim){
       const civDmg = Math.max(4, Math.round(dmg * 0.7));
       victim.hp = clamp(victim.hp - civDmg, 0, victim.hpMax);
-      emitCombatFx(S.me.x, S.me.y - 6, victim.x, victim.y, "rgba(251,191,36,.95)", 3);
+      emitCombatFx(S.me.x, S.me.y - 6, victim.x, victim.y, "rgba(251,191,36,.95)", 3, "civilian");
       emitDamagePopup(victim.x, victim.y - 42, `-${civDmg}`, "civilian");
       hapticImpact("medium");
       setBattleMsg(`Friendly fire! Civilian #${victim.id} took ${civDmg}.`);
     } else {
+      t.hitFlashUntil = Date.now() + 190;
+      t.hitFlashKind = crit ? "crit" : (w.type === "tranq" ? "tranq" : "hit");
+      t.lastHitDamage = dmg;
       if(w.type==="tranq"){
         t.hp = clamp(t.hp - dmg, 1, t.hpMax);
       }else{
         t.hp = clamp(t.hp - dmg, 0, t.hpMax);
       }
-      emitCombatFx(S.me.x, S.me.y - 6, t.x, t.y, w.type==="tranq" ? "rgba(96,165,250,.96)" : "rgba(245,247,255,.96)", crit ? 4 : 3);
+      emitCombatFx(
+        S.me.x, S.me.y - 6, t.x, t.y,
+        w.type==="tranq" ? "rgba(96,165,250,.96)" : "rgba(245,247,255,.96)",
+        crit ? 4 : 3,
+        (crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"))
+      );
       emitDamagePopup(t.x, t.y - 44, `-${dmg}`, crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"));
       hapticImpact(crit ? "heavy" : "light");
       setBattleMsg(`${crit?'CRIT! ':''}Hit for ${dmg}. ${w.type==='tranq'?'(tranq applied)':''}`);
@@ -12198,8 +12287,8 @@ function tigerTurn(t, softened=false, opts={}){
   if(distToPlayer > maxRange) return 0;
 
   if(shieldActiveNow()){
-    emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(96,165,250,.95)", 2);
-    emitDamagePopup(S.me.x, S.me.y - 50, "BLOCK", "tranq");
+    emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(96,165,250,.95)", 2, "shield");
+    emitDamagePopup(S.me.x, S.me.y - 50, "BLOCK", "shield");
     if(S.inBattle) setBattleMsg("🛡️ Shield blocked the tiger attack.");
     updateBattleButtons();
     updateAttackButton();
@@ -12213,8 +12302,8 @@ function tigerTurn(t, softened=false, opts={}){
       S.rollBufferedDodges = 0;
       S.rollBufferedUntil = 0;
     }
-    emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(250,204,21,.95)", 2);
-    emitDamagePopup(S.me.x, S.me.y - 50, "DODGE", "crit");
+    emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(250,204,21,.95)", 2, "dodge");
+    emitDamagePopup(S.me.x, S.me.y - 50, "DODGE", "dodge");
     if(S.inBattle) setBattleMsg("🤸 Roll dodge successful.");
     updateBattleButtons();
     updateAttackButton();
@@ -12249,7 +12338,7 @@ function tigerTurn(t, softened=false, opts={}){
   else if(opts.kind === "pounce") setTigerIntent(t, "Pounce", 480);
   else setTigerIntent(t, "Strike", 440);
 
-  emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(251,113,133,.95)", 3);
+  emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(251,113,133,.95)", 3, "player");
   emitDamagePopup(S.me.x, S.me.y - 50, `-${dmg}`, "player");
   applyPlayerDamage(dmg,false);
   if(S.inBattle){
@@ -13759,6 +13848,120 @@ function smoothedDrawPoint(entity, targetX, targetY, stiffness=0.38){
   entity.__drawY += dy * blend;
   return { x:entity.__drawX, y:entity.__drawY };
 }
+function currentDrawPoint(entity, fallbackX, fallbackY){
+  if(entity && Number.isFinite(entity.__drawX) && Number.isFinite(entity.__drawY)){
+    return { x:entity.__drawX, y:entity.__drawY };
+  }
+  return { x:fallbackX, y:fallbackY };
+}
+function drawOnMapBattleReadability(){
+  if(!S.inBattle) return;
+  const t = activeTiger();
+  if(!t || !t.alive) return;
+  const p = currentDrawPoint(S.me, S.me.x, S.me.y);
+  const tp = currentDrawPoint(t, t.x, t.y);
+  const dx = tp.x - p.x;
+  const dy = tp.y - p.y;
+  const d = Math.hypot(dx, dy);
+  const mx = (p.x + tp.x) * 0.5;
+  const my = (p.y + tp.y) * 0.5;
+  const focusR = clamp((d * 0.68) + 140, 160, Math.max(cv.width, cv.height) * 0.7);
+  const range = equippedWeaponRange();
+  const inRange = d <= range;
+
+  ctx.save();
+  const vignette = ctx.createRadialGradient(mx, my, focusR * 0.32, mx, my, focusR);
+  vignette.addColorStop(0, "rgba(8,12,18,0)");
+  vignette.addColorStop(0.7, "rgba(8,12,18,.10)");
+  vignette.addColorStop(1, "rgba(5,8,14,.34)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+
+  const beamAlpha = inRange ? 0.38 : 0.22;
+  ctx.strokeStyle = inRange ? `rgba(74,222,128,${beamAlpha})` : `rgba(251,191,36,${beamAlpha})`;
+  ctx.lineWidth = inRange ? 2.6 : 2.2;
+  ctx.setLineDash(inRange ? [8,6] : [4,6]);
+  ctx.beginPath();
+  ctx.moveTo(p.x, p.y - 4);
+  ctx.lineTo(tp.x, tp.y - 4);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = inRange ? "rgba(74,222,128,.85)" : "rgba(251,191,36,.85)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 34, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(tp.x, tp.y, 40, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const chipW = 120;
+  const chipH = 24;
+  const chipX = clamp(mx - (chipW * 0.5), 8, cv.width - chipW - 8);
+  const chipY = clamp(my - 58, 8, cv.height - chipH - 8);
+  ctx.fillStyle = "rgba(8,12,18,.80)";
+  roundedRectFill(chipX, chipY, chipW, chipH, 8);
+  ctx.strokeStyle = inRange ? "rgba(74,222,128,.75)" : "rgba(251,191,36,.75)";
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(chipX + 0.5, chipY + 0.5, chipW - 1, chipH - 1);
+  ctx.fillStyle = "rgba(241,245,249,.95)";
+  ctx.font = "800 11px system-ui";
+  ctx.textAlign = "center";
+  const rangeLeft = Math.max(0, Math.round(d - range));
+  ctx.fillText(inRange ? "IN RANGE" : `OUT OF RANGE +${rangeLeft}m`, chipX + (chipW * 0.5), chipY + 16);
+  ctx.textAlign = "start";
+  ctx.restore();
+}
+function drawOnMapBattleHud(){
+  if(!S.inBattle) return;
+  const t = activeTiger();
+  if(!t || !t.alive) return;
+  const panelW = Math.min(cv.width - 16, 320);
+  const panelX = 8;
+  const panelY = 8;
+  const panelH = 48;
+  const hpRatio = clamp((S.hp || 0) / 100, 0, 1);
+  const armorCap = Math.max(1, Number(S.armorCap) || 100);
+  const armorRatio = clamp((S.armor || 0) / armorCap, 0, 1);
+  const tigerRatio = clamp((t.hp || 0) / Math.max(1, t.hpMax || 1), 0, 1);
+  const tigerPct = Math.round(tigerRatio * 100);
+  const lowHpPulse = hpRatio <= 0.28 ? (0.62 + (Math.sin(Date.now() / 110) * 0.28)) : 0;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(8,12,18,.78)";
+  roundedRectFill(panelX, panelY, panelW, panelH, 10);
+  ctx.strokeStyle = lowHpPulse > 0 ? `rgba(248,113,113,${clamp(lowHpPulse, 0.25, 0.95)})` : "rgba(148,163,184,.42)";
+  ctx.lineWidth = lowHpPulse > 0 ? 2 : 1.2;
+  ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
+
+  const leftX = panelX + 10;
+  const rightX = panelX + (panelW * 0.52);
+  ctx.fillStyle = "rgba(241,245,249,.94)";
+  ctx.font = "800 10px system-ui";
+  ctx.fillText(`AGENT HP ${Math.round(hpRatio * 100)}%`, leftX, panelY + 13);
+  ctx.fillText(`${t.type.toUpperCase()} ${tigerPct}%`, rightX, panelY + 13);
+
+  ctx.fillStyle = "rgba(8,12,18,.9)";
+  ctx.fillRect(leftX, panelY + 18, panelW * 0.42, 8);
+  ctx.fillRect(rightX, panelY + 18, panelW * 0.42, 8);
+  ctx.fillStyle = hpRatio > 0.5 ? "#4ade80" : (hpRatio > 0.25 ? "#f59e0b" : "#fb7185");
+  ctx.fillRect(leftX, panelY + 18, (panelW * 0.42) * hpRatio, 8);
+  ctx.fillStyle = tigerRatio > 0.5 ? "#4ade80" : (tigerRatio > 0.25 ? "#f59e0b" : "#fb7185");
+  ctx.fillRect(rightX, panelY + 18, (panelW * 0.42) * tigerRatio, 8);
+
+  ctx.fillStyle = "rgba(241,245,249,.88)";
+  ctx.font = "700 9px system-ui";
+  ctx.fillText(`AR ${Math.round(armorRatio * 100)}%`, leftX, panelY + 40);
+  ctx.fillStyle = "rgba(8,12,18,.9)";
+  ctx.fillRect(leftX + 36, panelY + 34, panelW * 0.20, 6);
+  ctx.fillStyle = armorRatio > 0.5 ? "rgba(96,165,250,.96)" : "rgba(147,197,253,.92)";
+  ctx.fillRect(leftX + 36, panelY + 34, (panelW * 0.20) * armorRatio, 6);
+
+  ctx.fillStyle = "rgba(241,245,249,.86)";
+  ctx.fillText(`DIST ${Math.round(dist(S.me.x, S.me.y, t.x, t.y))}m`, rightX, panelY + 40);
+  ctx.restore();
+}
 
 function drawCivilian(c){
   const smooth = smoothedDrawPoint(c, c.x, c.y, c.following ? 0.44 : 0.34);
@@ -13906,6 +14109,10 @@ function drawSoldier(){
   const bob = rolling ? 0 : (Math.sin(step) * 1.5) + (Math.sin(step * 2.2) * 0.45);
   const x = px;
   const y = py + bob;
+  const meHitFlashLeft = Math.max(0, (S.meHitFlashUntil || 0) - now);
+  const meHitFlashAlpha = meHitFlashLeft > 0
+    ? clamp((meHitFlashLeft / 190) * (Number(S.meHitFlashPower) || 0.7), 0.12, 0.86)
+    : 0;
   ctx.save();
   ctx.globalAlpha = S.inBattle ? 0.40 : 0.26;
   ctx.strokeStyle = S.inBattle ? "rgba(56,189,248,.98)" : "rgba(226,232,240,.90)";
@@ -13915,6 +14122,16 @@ function drawSoldier(){
   ctx.stroke();
   ctx.restore();
   drawWaterRipple(x, y, 18, 0.56);
+  if(meHitFlashAlpha > 0){
+    ctx.save();
+    ctx.globalAlpha = meHitFlashAlpha;
+    ctx.strokeStyle = "rgba(248,113,113,.96)";
+    ctx.lineWidth = 4.4;
+    ctx.beginPath();
+    ctx.arc(x, y - 2, 29, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   const ang = S.me.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
   const stride = rolling ? 0 : (Math.sin(step * 1.9) * 2.1);
@@ -14012,17 +14229,25 @@ function drawSoldier(){
   if(S.inBattle){
     const hpPct = Math.round(clamp((S.hp / 100) * 100, 0, 100));
     const hpRatio = clamp(S.hp / 100, 0, 1);
+    const armorCap = Math.max(1, Number(S.armorCap) || 100);
+    const arRatio = clamp((S.armor || 0) / armorCap, 0, 1);
+    const arPct = Math.round(arRatio * 100);
     const labelY = y - 46;
     ctx.fillStyle = "rgba(9,12,18,.86)";
-    roundedRectFill(x - 28, labelY - 12, 56, 16, 7);
+    roundedRectFill(x - 36, labelY - 12, 72, 26, 7);
     ctx.fillStyle = "rgba(245,247,255,.94)";
     ctx.font = "900 10px system-ui";
     ctx.textAlign = "center";
-    ctx.fillText(`${hpPct}%`, x, labelY);
+    ctx.fillText(`HP ${hpPct}%`, x, labelY - 1);
     ctx.fillStyle = "rgba(11,13,18,.88)";
-    ctx.fillRect(x - 24, labelY + 4, 48, 4);
+    ctx.fillRect(x - 30, labelY + 4, 60, 4);
     ctx.fillStyle = hpRatio > 0.5 ? "#4ade80" : (hpRatio > 0.2 ? "#f59e0b" : "#fb7185");
-    ctx.fillRect(x - 24, labelY + 4, 48 * hpRatio, 4);
+    ctx.fillRect(x - 30, labelY + 4, 60 * hpRatio, 4);
+    ctx.fillStyle = "rgba(96,165,250,.95)";
+    ctx.fillRect(x - 30, labelY + 10, 60 * arRatio, 3);
+    ctx.fillStyle = "rgba(180,214,255,.92)";
+    ctx.font = "800 8px system-ui";
+    ctx.fillText(`AR ${arPct}%`, x, labelY + 20);
     ctx.textAlign = "start";
   }
 }
@@ -14123,6 +14348,11 @@ function drawTiger(t){
   const headBob = Math.sin((t.step||0)*2.4 + 0.7) * (gaitState==="sprint" ? 1.7 : (gaitState==="run" ? 1.25 : 0.7));
   const shoulderRoll = Math.sin((t.step||0)*1.3) * (gaitState==="sprint" ? 0.06 : 0.04);
   const tigerFocus = S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id);
+  const hitFlashLeft = Math.max(0, (t.hitFlashUntil || 0) - now);
+  const hitFlashAlpha = hitFlashLeft > 0 ? clamp(hitFlashLeft / 190, 0.12, 0.78) : 0;
+  const hitFlashColor = t.hitFlashKind === "tranq"
+    ? "rgba(125,211,252,.95)"
+    : (t.hitFlashKind === "crit" ? "rgba(252,211,77,.98)" : "rgba(248,113,113,.96)");
   ctx.save();
   ctx.globalAlpha = tigerFocus ? 0.50 : 0.28;
   ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.99)" : "rgba(254,215,170,.88)";
@@ -14143,6 +14373,16 @@ function drawTiger(t){
     ctx.strokeStyle="rgba(251,113,133,.95)";
     ctx.lineWidth=10;
     ctx.beginPath(); ctx.arc(x,y,34*s,0,Math.PI*2); ctx.stroke();
+  }
+  if(hitFlashAlpha > 0){
+    ctx.save();
+    ctx.globalAlpha = hitFlashAlpha;
+    ctx.strokeStyle = hitFlashColor;
+    ctx.lineWidth = tigerFocus ? 5 : 3.8;
+    ctx.beginPath();
+    ctx.arc(x, y, tigerFocus ? 44*s : 36*s, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   ctx.globalAlpha=0.24*alpha;
@@ -14308,18 +14548,29 @@ function drawTiger(t){
   ctx.lineWidth = 1;
   ctx.strokeRect(x-26*s,y-34*s,52*s,6);
   if(S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id)){
-    ctx.fillStyle="rgba(9,12,18,.85)";
-    roundedRectFill(x - (22*s), y - (49*s), 44*s, 12*s, 5*s);
+    ctx.fillStyle="rgba(9,12,18,.88)";
+    roundedRectFill(x - (36*s), y - (52*s), 72*s, 20*s, 6*s);
     ctx.fillStyle="rgba(245,247,255,.95)";
-    ctx.font=`900 ${Math.round(10*s)}px system-ui`;
+    ctx.font=`900 ${Math.round(9.5*s)}px system-ui`;
     ctx.textAlign="center";
-    ctx.fillText(`${Math.round(clamp(pct, 0, 1) * 100)}%`, x, y-(40*s));
+    ctx.fillText(`${Math.round(t.hp)}/${Math.round(t.hpMax)} (${Math.round(clamp(pct, 0, 1) * 100)}%)`, x, y-(40*s));
     ctx.textAlign="start";
+    if(pct <= 0.25){
+      const pulse = 0.58 + (Math.sin(now / 95) * 0.30);
+      ctx.globalAlpha = clamp(pulse, 0.20, 0.92);
+      ctx.strokeStyle = "rgba(248,113,113,.98)";
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(x, y, 45*s, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
   }
 
-  ctx.globalAlpha=0.85*alpha;
+  const nonFocusBattle = S.inBattle && !tigerFocus;
+  ctx.globalAlpha=(nonFocusBattle ? 0.55 : 0.85)*alpha;
   ctx.fillStyle="rgba(245,247,255,.80)";
-  ctx.font="900 12px system-ui";
+  ctx.font= nonFocusBattle ? "800 11px system-ui" : "900 12px system-ui";
   const dash = (t.type==="Scout" && now<(t.dashUntil||0)) ? " (DASH)" : "";
   const fade = ((t.type==="Stalker" && now<(t.fadeUntil||0)) || bossStealth) ? " (FADE)" : "";
   const roar = (now<(t.roarUntil||0)) ? " (ROAR)" : "";
@@ -14330,7 +14581,9 @@ function drawTiger(t){
     t.huntState === TIGER_HUNT_STATES.RECOVER ? " (RECOVER)" : "";
   const persona = t.personality ? ` • ${t.personality}` : "";
   const bossTag = isBossTiger(t) ? ` • ${bossIdentityProfile(t)?.name || "Boss"}` : "";
-  ctx.fillText(t.type + bossTag + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt, x-44*s, y-44*s);
+  const fullLabel = t.type + bossTag + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
+  const compactLabel = t.type + (t.tranqTagged ? " (tranq)" : "");
+  ctx.fillText(nonFocusBattle ? compactLabel : fullLabel, x-44*s, y-44*s);
   ctx.globalAlpha=1;
 }
 
@@ -14351,6 +14604,8 @@ function drawEntities(){
   for(const unit of (S.supportUnits || [])) drawSupportUnit(unit);
   for(const t of S.tigers){ if(t.alive) drawTiger(t); }
   drawSoldier();
+  drawOnMapBattleReadability();
+  drawOnMapBattleHud();
   drawAbilityCooldownWheel();
   const perfMode = performanceMode();
   const isSlowFrame = frameIsSlow();
