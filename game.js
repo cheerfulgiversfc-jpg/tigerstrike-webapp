@@ -1391,6 +1391,18 @@ const IMPACT_PULSES = [];
 const DAMAGE_POPUP_RATE_MS = 82;
 const DAMAGE_POPUP_GATE = new Map();
 const CAMERA_SHAKE = { until:0, power:0 };
+const BATTLE_CINE_ENTER_MS = 260;
+const BATTLE_CINE_EXIT_MS = 220;
+const BATTLE_CINEMATIC = {
+  active:false,
+  startAt:0,
+  durationMs:0,
+  fromScale:1,
+  toScale:1,
+  scale:1,
+  focusX:0,
+  focusY:0
+};
 const ATMOS_PARTICLES = Object.freeze(Array.from({ length:26 }, (_, i)=>{
   const seed = i + 1;
   const u = Math.abs(Math.sin(seed * 12.9898) * 43758.5453) % 1;
@@ -7975,12 +7987,13 @@ function transitionCleanupSweep(reason=""){
     }
   }
 
-  if(r.includes("deploy") || r.includes("complete") || r.includes("over") || r.includes("recover")){
+  if(r.includes("deploy") || r.includes("complete") || r.includes("over") || r.includes("recover") || r.includes("init")){
     clearTransientCombatVisuals();
     __frameBgFxFlip = 0;
     __frameDynamicLoadMul = FRAME_LOAD_LIGHT;
     __battleHudRenderAt = 0;
     __battleReadabilityRenderAt = 0;
+    resetBattleCinematic();
   }
   if(r.includes("battle-end")) clearTransientCombatVisuals();
 
@@ -11379,6 +11392,104 @@ function visualExtremeLoadMode(){
   return false;
 }
 
+function currentBattleCinematicTargetScale(){
+  const perfScale = (performanceMode() === "PERFORMANCE" || frameIsSlow()) ? 0.96 : 1;
+  const base = isMobileViewport() ? (isLandscapeViewport() ? 1.10 : 1.16) : 1.14;
+  return clamp(base * perfScale, 1.06, 1.18);
+}
+
+function resolveBattleCinematicFocus(t){
+  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
+  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
+  const tiger = t || activeTiger() || tigerById(S.lockedTigerId);
+  let x = meX;
+  let y = meY;
+  if(tiger && tiger.alive){
+    x = (meX + tiger.x) * 0.5;
+    y = (meY + tiger.y) * 0.5;
+  }
+  return {
+    x: clamp(x, 70, Math.max(70, cv.width - 70)),
+    y: clamp(y, 70, Math.max(70, cv.height - 70))
+  };
+}
+
+function battleCinematicScaleNow(now=Date.now()){
+  if(!BATTLE_CINEMATIC.active) return Number(BATTLE_CINEMATIC.scale) || 1;
+  const dur = Math.max(1, Number(BATTLE_CINEMATIC.durationMs) || 1);
+  const p = clamp((now - (BATTLE_CINEMATIC.startAt || now)) / dur, 0, 1);
+  const eased = 1 - Math.pow(1 - p, 3);
+  return (BATTLE_CINEMATIC.fromScale || 1) + ((BATTLE_CINEMATIC.toScale || 1) - (BATTLE_CINEMATIC.fromScale || 1)) * eased;
+}
+
+function resetBattleCinematic(){
+  BATTLE_CINEMATIC.active = false;
+  BATTLE_CINEMATIC.startAt = 0;
+  BATTLE_CINEMATIC.durationMs = 0;
+  BATTLE_CINEMATIC.fromScale = 1;
+  BATTLE_CINEMATIC.toScale = 1;
+  BATTLE_CINEMATIC.scale = 1;
+  BATTLE_CINEMATIC.focusX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
+  BATTLE_CINEMATIC.focusY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
+}
+
+function triggerBattleCinematic(kind="enter", focusTigerId=null){
+  const now = Date.now();
+  const focusTiger = focusTigerId != null ? tigerById(focusTigerId) : null;
+  const focus = resolveBattleCinematicFocus(focusTiger || activeTiger() || tigerById(S.lockedTigerId));
+  BATTLE_CINEMATIC.focusX = focus.x;
+  BATTLE_CINEMATIC.focusY = focus.y;
+  const from = battleCinematicScaleNow(now);
+  const to = kind === "enter" ? currentBattleCinematicTargetScale() : 1;
+  if(Math.abs(from - to) < 0.004){
+    BATTLE_CINEMATIC.active = false;
+    BATTLE_CINEMATIC.scale = to;
+    BATTLE_CINEMATIC.fromScale = to;
+    BATTLE_CINEMATIC.toScale = to;
+    BATTLE_CINEMATIC.startAt = now;
+    BATTLE_CINEMATIC.durationMs = 0;
+    return;
+  }
+  BATTLE_CINEMATIC.active = true;
+  BATTLE_CINEMATIC.startAt = now;
+  BATTLE_CINEMATIC.durationMs = kind === "enter" ? BATTLE_CINE_ENTER_MS : BATTLE_CINE_EXIT_MS;
+  BATTLE_CINEMATIC.fromScale = from;
+  BATTLE_CINEMATIC.toScale = to;
+  BATTLE_CINEMATIC.scale = from;
+}
+
+function sampleBattleCinematic(){
+  const now = Date.now();
+  let scale = battleCinematicScaleNow(now);
+  if(BATTLE_CINEMATIC.active){
+    const doneAt = (BATTLE_CINEMATIC.startAt || 0) + Math.max(1, BATTLE_CINEMATIC.durationMs || 1);
+    if(now >= doneAt){
+      BATTLE_CINEMATIC.active = false;
+      scale = BATTLE_CINEMATIC.toScale || 1;
+    }
+  }else{
+    const holdTarget = S.inBattle ? currentBattleCinematicTargetScale() : 1;
+    if(Math.abs(scale - holdTarget) > 0.004){
+      scale += (holdTarget - scale) * 0.14;
+    }else{
+      scale = holdTarget;
+    }
+  }
+  BATTLE_CINEMATIC.scale = clamp(scale, 1, 1.20);
+  if(S.inBattle || BATTLE_CINEMATIC.active || BATTLE_CINEMATIC.scale > 1.01){
+    const f = resolveBattleCinematicFocus();
+    BATTLE_CINEMATIC.focusX += (f.x - BATTLE_CINEMATIC.focusX) * 0.18;
+    BATTLE_CINEMATIC.focusY += (f.y - BATTLE_CINEMATIC.focusY) * 0.18;
+  }
+  const active = BATTLE_CINEMATIC.active || BATTLE_CINEMATIC.scale > 1.01;
+  return {
+    active,
+    scale: BATTLE_CINEMATIC.scale,
+    x: Number.isFinite(BATTLE_CINEMATIC.focusX) ? BATTLE_CINEMATIC.focusX : (cv.width * 0.5),
+    y: Number.isFinite(BATTLE_CINEMATIC.focusY) ? BATTLE_CINEMATIC.focusY : (cv.height * 0.5)
+  };
+}
+
 function queueCameraShake(power=1, durationMs=120){
   const base = clamp(Number(power || 0), 0, 2);
   if(base <= 0) return;
@@ -11850,6 +11961,7 @@ function startCombat(){
   updateBattleButtons();
   updateAttackButton();
   renderCombatControls();
+  triggerBattleCinematic("enter", t.id);
   setBattleMsg(`Engaged Tiger #${t.id}. Fight stays on the map.`);
   sfx("ui"); hapticImpact("light");
   save();
@@ -11936,6 +12048,8 @@ function bindAttackButtonGestures(){
 }
 
 function endBattle(reason){
+  const focusTigerId = S.activeTigerId;
+  triggerBattleCinematic("exit", focusTigerId);
   const overlay = document.getElementById("battleOverlay");
   if(overlay) overlay.style.display="none";
   S.inBattle=false;
@@ -14867,17 +14981,26 @@ function draw(){
     runFrameTask("impactPulses", frameInterval(24, 1.5), tickImpactPulses, { costHint:0.7 });
 
     safeTick("drawSceneFrame", ()=>{
-      drawMapScene();
       const shake = sampleCameraShake();
-      if(shake.active){
+      const cine = sampleBattleCinematic();
+      const needsTransform = shake.active || cine.active;
+      if(needsTransform){
         ctx.save();
-        ctx.translate(shake.x, shake.y);
+        if(cine.active){
+          ctx.translate(cine.x, cine.y);
+          ctx.scale(cine.scale, cine.scale);
+          ctx.translate(-cine.x, -cine.y);
+        }
+        if(shake.active){
+          ctx.translate(shake.x, shake.y);
+        }
       }
+      drawMapScene();
       if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
         drawAtmosphericParallax();
       }
       drawEntities();
-      if(shake.active){
+      if(needsTransform){
         ctx.restore();
       }
       drawMobileUiClearLane();
