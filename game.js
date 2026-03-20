@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4445";
+const TS_BUILD = "4446";
 if(tg){
   try{
     tg.expand?.();
@@ -5167,6 +5167,18 @@ function storyResumeMissionLevel(){
     STORY_CAMPAIGN_OBJECTIVES.length
   );
 }
+function storyProgressMissionFromState(state=S){
+  const src = (state && typeof state === "object") ? state : {};
+  return clamp(
+    Math.max(
+      1,
+      Math.floor(Number(src.storyLevel || 1)),
+      Math.floor(Number(src.storyLastMission || 1))
+    ),
+    1,
+    STORY_CAMPAIGN_OBJECTIVES.length
+  );
+}
 function writeStorySaveData(source="manual"){
   if(window.__TUTORIAL_MODE__) return null;
   const resumeState = buildStoryResumeSnapshot();
@@ -5412,8 +5424,12 @@ function loadStorySaveFromLaunchIntro(){
   if(dailyOverlay) dailyOverlay.style.display = "none";
   __dailyRewardContinue = null;
 
-  const mission = storySaveMissionFromPayload(slot);
-  const restored = restoreStoryResumeSnapshot(slot, "launch-load-story-slot");
+  const slotMission = storySaveMissionFromPayload(slot);
+  const beforeMission = storyProgressMissionFromState(S);
+  const mission = clamp(Math.max(slotMission, beforeMission), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  const restored = (slotMission >= beforeMission)
+    ? restoreStoryResumeSnapshot(slot, "launch-load-story-slot")
+    : false;
   if(!restored){
     setModeWallet(S.mode, S.funds, S);
     S.mode = "Story";
@@ -5424,6 +5440,15 @@ function loadStorySaveFromLaunchIntro(){
     const nextHp = Number.isFinite(Number(slot.hp)) ? clamp(Number(slot.hp), 0, 100) : clamp(S.hp, 0, 100);
     const nextArmor = Number.isFinite(Number(slot.armor)) ? clamp(Number(slot.armor), 0, S.armorCap || 100) : clamp(S.armor, 0, S.armorCap || 100);
     deploy({ carryStats:true, hp:nextHp, armor:nextArmor });
+    save(true);
+  }
+  if(storyProgressMissionFromState(S) < mission){
+    const forceHp = clamp(Number(S.hp || 100), 0, 100);
+    const forceArmor = clamp(Number(S.armor || 0), 0, S.armorCap || 100);
+    S.mode = "Story";
+    S.storyLevel = mission;
+    S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
+    deploy({ carryStats:true, hp:forceHp, armor:forceArmor });
     save(true);
   }
   toast(`Loaded Story save at Mission ${mission}.`);
@@ -5500,13 +5525,24 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
   clearLaunchMusicLoop();
   if(S.mode === "Story"){
     const slot = readStorySaveData();
-    if(slot && restoreStoryResumeSnapshot(slot, "launch-continue-story-slot")){
-      const mission = storySaveMissionFromPayload(slot);
+    const beforeMission = storyProgressMissionFromState(S);
+    const slotMission = storySaveMissionFromPayload(slot || {});
+    const mission = clamp(Math.max(beforeMission, slotMission), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+    const shouldRestoreFromSlot = !!slot && (slotMission >= beforeMission);
+    if(shouldRestoreFromSlot && restoreStoryResumeSnapshot(slot, "launch-continue-story-slot")){
       S.storyLevel = mission;
       S.storyLastMission = Math.max(S.storyLastMission || mission, mission);
     } else {
-      S.storyLevel = storyResumeMissionLevel();
+      S.storyLevel = mission;
       S.storyLastMission = S.storyLevel;
+    }
+    if(storyProgressMissionFromState(S) < mission){
+      const forceHp = clamp(Number(S.hp || 100), 0, 100);
+      const forceArmor = clamp(Number(S.armor || 0), 0, S.armorCap || 100);
+      S.mode = "Story";
+      S.storyLevel = mission;
+      S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
+      deploy({ carryStats:true, hp:forceHp, armor:forceArmor });
     }
     writeStorySaveData("continue-launch");
   }
