@@ -12894,6 +12894,30 @@ function drawMapScene(){
     ctx.fillStyle=fill; ctx.fill();
     if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.stroke(); }
   }
+  function groundShadow(x, y, rx, ry, alpha=0.24){
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "rgba(5,8,14,.82)";
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  function terrainBands(seed=0, count=4, alpha=0.08){
+    ctx.save();
+    for(let i=0;i<count;i++){
+      const t = (i + 1) / (count + 1);
+      const wobble = (seedNoise((seed + i) * 3, Math.floor(t * 100), seed + 71) - 0.5) * (h * 0.05);
+      const y = (h * t) + wobble;
+      const grad = ctx.createLinearGradient(0, y - 26, 0, y + 26);
+      grad.addColorStop(0, `rgba(0,0,0,${alpha * 0.32})`);
+      grad.addColorStop(0.5, `rgba(0,0,0,${alpha})`);
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, y - 26, w, 52);
+    }
+    ctx.restore();
+  }
   function roadLine(points,width,fill){
     ctx.strokeStyle=fill; ctx.lineWidth=width; ctx.lineCap="round"; ctx.lineJoin="round";
     ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
@@ -12956,6 +12980,7 @@ function drawMapScene(){
   function drawWaterBodies(alphaMul=1){
     if(!waterZones.length) return;
     const mul = clamp(alphaMul, 0.35, 1.2);
+    const wavePhase = (Date.now() * 0.00135);
     ctx.save();
     for(const zone of waterZones){
       const rad = waterZoneRadii(zone);
@@ -12969,6 +12994,16 @@ function drawMapScene(){
       ctx.ellipse(zone.x, zone.y, rx, ry, rot, 0, Math.PI * 2);
       ctx.fill();
 
+      const centerGrad = ctx.createRadialGradient(zone.x - (rx * 0.18), zone.y - (ry * 0.16), 0, zone.x, zone.y, Math.max(rx, ry));
+      centerGrad.addColorStop(0, "rgba(220,245,255,.20)");
+      centerGrad.addColorStop(0.35, "rgba(155,216,245,.12)");
+      centerGrad.addColorStop(1, "rgba(20,48,66,0)");
+      ctx.globalAlpha = 0.55 * mul;
+      ctx.fillStyle = centerGrad;
+      ctx.beginPath();
+      ctx.ellipse(zone.x, zone.y, rx * 0.98, ry * 0.98, rot, 0, Math.PI * 2);
+      ctx.fill();
+
       ctx.globalAlpha = 0.56 * mul;
       ctx.strokeStyle = waterPalette.edge;
       ctx.lineWidth = 2;
@@ -12980,7 +13015,23 @@ function drawMapScene(){
       ctx.strokeStyle = waterPalette.glint;
       ctx.lineWidth = 1.4;
       ctx.beginPath();
-      ctx.ellipse(zone.x - (rx * 0.12), zone.y - (ry * 0.08), Math.max(6, rx * 0.54), Math.max(4, ry * 0.30), rot, 0, Math.PI * 2);
+      ctx.ellipse(
+        zone.x - (rx * 0.12) + (Math.sin(wavePhase + (zone.x * 0.01)) * 2.4),
+        zone.y - (ry * 0.08) + (Math.cos(wavePhase + (zone.y * 0.01)) * 1.8),
+        Math.max(6, rx * 0.54),
+        Math.max(4, ry * 0.30),
+        rot,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
+
+      ctx.globalAlpha = 0.34 * mul;
+      ctx.strokeStyle = "rgba(186,230,253,.55)";
+      ctx.lineWidth = 1.2;
+      const ripple = 0.78 + (Math.sin(wavePhase * 2 + (zone.x * 0.006) + (zone.y * 0.004)) * 0.06);
+      ctx.beginPath();
+      ctx.ellipse(zone.x, zone.y, Math.max(8, rx * ripple), Math.max(6, ry * ripple), rot, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.restore();
@@ -12990,6 +13041,16 @@ function drawMapScene(){
     const py = p._abs ? p.y : (p.y * (h / 540));
     const s = p.s || 1;
     if(inMapScenarioKeepout(px, py, 24 * s)) return;
+    const shadowRx = (()=>{
+      if(p.kind === "building") return 20 * s;
+      if(p.kind === "truck" || p.kind === "bus") return 18 * s;
+      if(p.kind === "house" || p.kind === "park") return 16 * s;
+      if(p.kind === "car") return 14 * s;
+      if(p.kind === "tree" || p.kind === "bush") return 12 * s;
+      return 10 * s;
+    })();
+    const shadowRy = Math.max(3.5 * s, shadowRx * 0.34);
+    groundShadow(px, py + (6.5 * s), shadowRx, shadowRy, 0.23);
     if(p.kind==="bush"){
       treeDot(px, py, 10 * s);
       treeDot(px + (8*s), py + (3*s), 7 * s);
@@ -13107,6 +13168,7 @@ function drawMapScene(){
     ctx.fillStyle="rgba(18,66,40,.34)";
     ctx.fillRect(0,0,w,h);
     terrainTexture(11, 30, 0.09, "rgba(74,222,128,.10)", "rgba(0,0,0,.12)");
+    terrainBands(11, 5, 0.07);
     const upperRoad = h * 0.18;
     const midRoad = h * 0.43;
     const lowRoad = h * 0.72;
@@ -13132,6 +13194,7 @@ function drawMapScene(){
   else if(themeKey==="ST_SUBURBS"){
     fillSolid("#18402a");
     terrainTexture(19, 32, 0.08, "rgba(232,240,250,.05)", "rgba(0,0,0,.11)");
+    terrainBands(19, 4, 0.065);
     const main=[[0,280],[240,270],[480,300],[720,280],[960,300]];
     roadShoulder(main, 84); roadLine(main, 84, "rgba(75,78,86,.9)");
     dashed(main);
@@ -13154,6 +13217,7 @@ function drawMapScene(){
   else if(themeKey==="ST_DOWNTOWN"){
     fillSolid("#1a1f2d");
     terrainTexture(29, 34, 0.07, "rgba(126,149,196,.06)", "rgba(0,0,0,.13)");
+    terrainBands(29, 4, 0.055);
     ctx.fillStyle="rgba(70,72,80,.95)";
     for(let x=80; x<w; x+=170) ctx.fillRect(x-46,0,92,h);
     for(let y=80; y<h; y+=150) ctx.fillRect(0,y-42,w,84);
@@ -13172,6 +13236,7 @@ function drawMapScene(){
   else {
     fillSolid("#2b2b30");
     terrainTexture(41, 32, 0.09, "rgba(230,210,170,.05)", "rgba(0,0,0,.14)");
+    terrainBands(41, 4, 0.062);
     rounded(90,90,260,130,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
     rounded(610,110,260,110,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
     rounded(240,340,340,140,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
@@ -13667,15 +13732,45 @@ function drawWaterRipple(x, y, size=16, alpha=0.52){
   ctx.stroke();
   ctx.restore();
 }
+function smoothedDrawPoint(entity, targetX, targetY, stiffness=0.38){
+  if(!entity || !Number.isFinite(targetX) || !Number.isFinite(targetY)){
+    return { x:targetX, y:targetY };
+  }
+  const now = performance.now ? performance.now() : Date.now();
+  if(!Number.isFinite(entity.__drawX) || !Number.isFinite(entity.__drawY)){
+    entity.__drawX = targetX;
+    entity.__drawY = targetY;
+    entity.__drawAt = now;
+    return { x:targetX, y:targetY };
+  }
+  const prevAt = Number(entity.__drawAt) || now;
+  const dt = clamp(now - prevAt, 0, 50);
+  entity.__drawAt = now;
+  const snapDist = 120;
+  const dx = targetX - entity.__drawX;
+  const dy = targetY - entity.__drawY;
+  if((dx*dx + dy*dy) > (snapDist * snapDist)){
+    entity.__drawX = targetX;
+    entity.__drawY = targetY;
+    return { x:targetX, y:targetY };
+  }
+  const blend = clamp(stiffness * (dt / 16.7), 0.14, 0.68);
+  entity.__drawX += dx * blend;
+  entity.__drawY += dy * blend;
+  return { x:entity.__drawX, y:entity.__drawY };
+}
 
 function drawCivilian(c){
-  drawWaterRipple(c.x, c.y, 16, 0.50);
+  const smooth = smoothedDrawPoint(c, c.x, c.y, c.following ? 0.44 : 0.34);
+  const cx = smooth.x;
+  const cy = smooth.y;
+  drawWaterRipple(cx, cy, 16, 0.50);
   ctx.save();
   ctx.globalAlpha = S.inBattle ? 0.34 : 0.24;
   ctx.strokeStyle = S.inBattle ? "rgba(254,240,138,.95)" : "rgba(236,253,245,.95)";
   ctx.lineWidth = S.inBattle ? 3.0 : 2.3;
   ctx.beginPath();
-  ctx.arc(c.x, c.y - 4, S.inBattle ? 20 : 17, 0, Math.PI * 2);
+  ctx.arc(cx, cy - 4, S.inBattle ? 20 : 17, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
   if(civilianShielded(c)){
@@ -13685,7 +13780,7 @@ function drawCivilian(c){
     ctx.strokeStyle = "rgba(96,165,250,.92)";
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(c.x, c.y - 4, 20, 0, Math.PI*2);
+    ctx.arc(cx, cy - 4, 20, 0, Math.PI*2);
     ctx.stroke();
     ctx.restore();
   }
@@ -13695,8 +13790,8 @@ function drawCivilian(c){
   const strideAmp = c.following ? 2.2 : 0.7;
   const stride = Math.sin(((c.step || 0) * 2.3) + (c.id * 0.4)) * strideAmp;
   const breath = Math.sin((Date.now() * 0.0042) + (c.id * 0.9)) * 0.45;
-  const bx = c.x;
-  const by = c.y + breath;
+  const bx = cx;
+  const by = cy + breath;
 
   ctx.save();
   ctx.translate(bx, by);
@@ -13714,6 +13809,9 @@ function drawCivilian(c){
 
   ctx.fillStyle=c.shirt;
   roundedRectFill(-9, -12, 18, 24, 6);
+  ctx.strokeStyle="rgba(9,12,18,.44)";
+  ctx.lineWidth=1;
+  ctx.strokeRect(-9, -12, 18, 24);
   ctx.fillStyle="rgba(255,255,255,.16)";
   roundedRectFill(-7, -10, 14, 9, 4);
   ctx.fillStyle="rgba(20,28,40,.44)";
@@ -13796,7 +13894,16 @@ function drawSoldier(){
     px = fromX + ((toX - fromX) * rollProgress);
     py = fromY + ((toY - fromY) * rollProgress);
   }
-  const bob = rolling ? 0 : (Math.sin(step) * 1.5);
+  if(!rolling){
+    const smooth = smoothedDrawPoint(S.me, px, py, 0.50);
+    px = smooth.x;
+    py = smooth.y;
+  } else {
+    S.me.__drawX = px;
+    S.me.__drawY = py;
+    S.me.__drawAt = performance.now ? performance.now() : Date.now();
+  }
+  const bob = rolling ? 0 : (Math.sin(step) * 1.5) + (Math.sin(step * 2.2) * 0.45);
   const x = px;
   const y = py + bob;
   ctx.save();
@@ -13811,6 +13918,7 @@ function drawSoldier(){
   const ang = S.me.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
   const stride = rolling ? 0 : (Math.sin(step * 1.9) * 2.1);
+  const shoulderShift = rolling ? 0 : (Math.sin(step * 2.1) * 0.7);
   const lean = rolling ? 0 : clamp(Math.sin(ang) * 0.06, -0.1, 0.1);
 
   if(shieldActiveNow()){
@@ -13855,6 +13963,9 @@ function drawSoldier(){
 
   ctx.fillStyle="rgba(48,58,72,.96)";
   roundedRectFill(-10,-16,20,27,7);
+  ctx.strokeStyle="rgba(7,10,16,.42)";
+  ctx.lineWidth=1;
+  ctx.strokeRect(-10,-16,20,27);
   ctx.fillStyle="rgba(20,30,44,.97)";
   roundedRectFill(-8,-11,16,19,6);
   ctx.fillStyle="rgba(72,88,108,.45)";
@@ -13884,9 +13995,9 @@ function drawSoldier(){
 
   if(!rolling){
     const wx = x + Math.cos(ang) * 14;
-    const wy = y + Math.sin(ang) * 13;
+    const wy = y + Math.sin(ang) * 13 + (shoulderShift * 0.25);
     const gripX = x + Math.cos(ang) * 5;
-    const gripY = y + Math.sin(ang) * 2;
+    const gripY = y + Math.sin(ang) * 2 + (shoulderShift * 0.35);
     ctx.strokeStyle="rgba(18,22,28,.96)";
     ctx.lineWidth=4.3;
     ctx.beginPath(); ctx.moveTo(gripX, gripY); ctx.lineTo(wx, wy); ctx.stroke();
@@ -13917,9 +14028,10 @@ function drawSoldier(){
 }
 
 function drawSupportUnit(unit){
+  const smooth = smoothedDrawPoint(unit, unit.x, unit.y, 0.42);
   const bob = Math.sin(unit.step || 0) * 1.2;
-  const x = unit.x;
-  const y = unit.y + bob;
+  const x = smooth.x;
+  const y = smooth.y + bob;
   drawWaterRipple(x, y, 17, 0.52);
   const attacker = unit.role === "attacker";
   const ang = unit.face || 0;
@@ -13946,6 +14058,9 @@ function drawSupportUnit(unit){
 
   ctx.fillStyle = attacker ? "rgba(114,44,26,.95)" : "rgba(30,68,92,.95)";
   roundedRectFill(-9, -15, 18, 24, 6);
+  ctx.strokeStyle = "rgba(8,12,18,.40)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-9, -15, 18, 24);
   ctx.fillStyle = attacker ? "rgba(251,146,60,.88)" : "rgba(52,211,153,.88)";
   roundedRectFill(-7, -10, 14, 11, 4);
   ctx.fillStyle = "rgba(220,220,225,.92)";
@@ -13999,9 +14114,14 @@ function drawTiger(t){
   const sprinting = (now < (t.burstUntil||0)) || (t.type==="Scout" && now < (t.dashUntil||0));
   const gaitState = t.gaitState || (sprinting ? "sprint" : (speed > 2.1 ? "run" : (speed > 1.0 ? "trot" : "walk")));
   const gaitBlend = Number.isFinite(t.gaitBlend) ? t.gaitBlend : clamp(speed / 6, 0, 1);
+  const smoothStiff = sprinting ? 0.72 : (gaitState === "run" ? 0.62 : 0.52);
+  const smooth = smoothedDrawPoint(t, t.x, t.y, smoothStiff);
   const bob = Math.sin((t.step||0)*2.2)*0.34*Math.max(0.62, speed*0.90);
+  const strideBounce = Math.abs(Math.sin((t.step||0)*2.2)) * (gaitState==="sprint" ? 1.35 : (gaitState==="run" ? 0.95 : 0.58));
   const bodyLift = clamp(gaitBlend * 2.4 + (sprinting ? 1.35 : 0), 0, 3.8);
-  const x=t.x, y=t.y + bob - bodyLift;
+  const x=smooth.x, y=smooth.y + bob - bodyLift + (strideBounce * 0.36);
+  const headBob = Math.sin((t.step||0)*2.4 + 0.7) * (gaitState==="sprint" ? 1.7 : (gaitState==="run" ? 1.25 : 0.7));
+  const shoulderRoll = Math.sin((t.step||0)*1.3) * (gaitState==="sprint" ? 0.06 : 0.04);
   const tigerFocus = S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id);
   ctx.save();
   ctx.globalAlpha = tigerFocus ? 0.50 : 0.28;
@@ -14035,7 +14155,7 @@ function drawTiger(t){
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(drawDir, 1);
-  ctx.rotate(clamp((t.vy || 0) * 0.018, -0.09, 0.09));
+  ctx.rotate(clamp((t.vy || 0) * 0.018, -0.09, 0.09) + shoulderRoll);
 
   ctx.fillStyle=c.body;
   ctx.beginPath(); ctx.ellipse(0, 2*s, 22*s, 13*s, 0, 0, Math.PI*2); ctx.fill();
@@ -14044,19 +14164,19 @@ function drawTiger(t){
   ctx.fillStyle=c.belly;
   ctx.beginPath(); ctx.ellipse(3*s, 6*s, 14*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle=c.body;
-  ctx.beginPath(); ctx.ellipse(20*s, -6*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(26*s, -14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(16*s, -14*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(20*s, (-6 + (headBob * 0.55))*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(26*s, (-14 + (headBob * 0.35))*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(16*s, (-14 + (headBob * 0.35))*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(240,220,190,.88)";
-  ctx.beginPath(); ctx.ellipse(22*s, -4.5*s, 6.5*s, 4.4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(22*s, (-4.5 + (headBob * 0.55))*s, 6.5*s, 4.4*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="#12161f";
-  ctx.beginPath(); ctx.arc(24*s, -8.4*s, 1.1*s, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(18.5*s, -8.6*s, 1.1*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(24*s, (-8.4 + (headBob * 0.52))*s, 1.1*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(18.5*s, (-8.6 + (headBob * 0.52))*s, 1.1*s, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(15,15,15,.88)";
   ctx.beginPath();
-  ctx.moveTo(22*s, -4.4*s);
-  ctx.lineTo(20.5*s, -2.3*s);
-  ctx.lineTo(23.5*s, -2.3*s);
+  ctx.moveTo(22*s, (-4.4 + (headBob * 0.50))*s);
+  ctx.lineTo(20.5*s, (-2.3 + (headBob * 0.50))*s);
+  ctx.lineTo(23.5*s, (-2.3 + (headBob * 0.50))*s);
   ctx.closePath();
   ctx.fill();
 
