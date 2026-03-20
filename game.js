@@ -1484,6 +1484,9 @@ function load(){
 // ===================== SAVE (THROTTLED — FIXES IOS FREEZE) =====================
 const SAVE_MIN_INTERVAL_MS = 4200;
 const SAVE_AUTOSAVE_MS = 12000;
+const SAVE_AUTOSAVE_HEAVY_MS = 18000;
+const SAVE_AUTOSAVE_BATTLE_MS = 22000;
+const SAVE_AUTOSAVE_MAX_DEFER_MS = 42000;
 const STABILITY_SPIKE_GAP_MS = 520;
 const STABILITY_SPIKE_RECOVER_MS = 3200;
 const STABILITY_STALL_GAP_MS = 1600;
@@ -1506,6 +1509,10 @@ const MAX_PERSIST_SUPPORT_UNITS = 16;
 const MAX_PERSIST_INTERACTABLES = 10;
 const MAX_PERSIST_TIGERS = 24;
 const MAX_PERSIST_CIVILIANS = 24;
+const FRAME_LOAD_LIGHT = 1;
+const FRAME_LOAD_MID = 1.15;
+const FRAME_LOAD_HIGH = 1.32;
+const FRAME_LOAD_EXTREME = 1.52;
 
 function capTail(list, max){
   if(!Array.isArray(list)) return [];
@@ -1565,6 +1572,8 @@ let __lastFrameAt = 0;
 let __drawLoopStarted = false;
 let __frameRecoverUntil = 0;
 let __frameHeavyFxFlip = 0;
+let __frameBgFxFlip = 0;
+let __frameDynamicLoadMul = FRAME_LOAD_LIGHT;
 let __frameSpikePending = false;
 const __frameErrorGate = Object.create(null);
 const __blockedAtCache = new Map();
@@ -1626,7 +1635,20 @@ function save(force=false){
 
 function maybeAutosave(force=false){
   const now = Date.now();
-  if(force || (__savePending && (now - __lastAutosave) > SAVE_AUTOSAVE_MS)){
+  if(force){
+    __lastAutosave = now;
+    save(true);
+    return;
+  }
+  if(!__savePending) return;
+  const since = now - __lastAutosave;
+  if(since <= SAVE_AUTOSAVE_MS) return;
+  const heavy = frameIsSlow() || performanceMode() === "PERFORMANCE" || frameActiveEntityLoadScore() >= 44;
+  if(since < SAVE_AUTOSAVE_MAX_DEFER_MS){
+    if(S.inBattle && since < SAVE_AUTOSAVE_BATTLE_MS) return;
+    if(!S.inBattle && heavy && since < SAVE_AUTOSAVE_HEAVY_MS) return;
+  }
+  if(__savePending){
     __lastAutosave = now;
     save(true);
   }
@@ -1666,11 +1688,33 @@ function toggleLagMonitor(force){
   renderStabilityMonitor(true);
   toast(window.__TS_SHOW_MONITOR__ ? "Lag monitor ON" : "Lag monitor OFF");
 }
+function frameActiveEntityLoadScore(){
+  if(!S || typeof S !== "object") return 0;
+  const tigerLoad = (S.tigers || []).reduce((n, t)=>n + (t?.alive ? 1 : 0), 0);
+  const civLoad = (S.civilians || []).reduce((n, c)=>n + (c?.alive && !c?.evac ? 1 : 0), 0);
+  const supportLoad = (S.supportUnits || []).reduce((n, u)=>n + (u?.alive ? 1 : 0), 0);
+  const pickupLoad = Math.max(0, (S.pickups || []).length);
+  const trapLoad = Math.max(0, (S.trapsPlaced || []).length);
+  const carcassLoad = Math.max(0, Math.round(((S.carcasses || []).length || 0) * 0.5));
+  const interactLoad = Math.max(0, Math.round(((S.mapInteractables || []).length || 0) * 0.5));
+  const battleBoost = S.inBattle ? 8 : 0;
+  return tigerLoad + civLoad + supportLoad + pickupLoad + trapLoad + carcassLoad + interactLoad + battleBoost;
+}
+function computeFrameLoadMultiplier(){
+  const score = frameActiveEntityLoadScore();
+  if(score >= 74) return FRAME_LOAD_EXTREME;
+  if(score >= 56) return FRAME_LOAD_HIGH;
+  if(score >= 38) return FRAME_LOAD_MID;
+  return FRAME_LOAD_LIGHT;
+}
 function beginFrameBudget(frameStartTs){
   const now = Number.isFinite(frameStartTs) ? frameStartTs : (performance.now ? performance.now() : Date.now());
   const mode = performanceMode();
+  __frameDynamicLoadMul = computeFrameLoadMultiplier();
   let limit = mode === "PERFORMANCE" ? 9.8 : 12.6;
   if(frameIsSlow(now)) limit -= 1.6;
+  if(__frameDynamicLoadMul >= FRAME_LOAD_HIGH) limit -= 0.8;
+  if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) limit -= 0.8;
   if(now < (__frameRecoverUntil || 0)) limit = Math.min(limit, 8.2);
   __frameBudgetState.frameNo += 1;
   if(__blockedAtCacheFrame !== __frameBudgetState.frameNo){
@@ -1732,8 +1776,10 @@ function frameIsSlow(nowTs){
 
 function frameInterval(baseMs, slowMul=1.45){
   const modeMul = performanceMode() === "PERFORMANCE" ? 1.24 : 1;
-  if(frameIsSlow()) return Math.max(baseMs + 1, Math.round(baseMs * Math.max(slowMul, modeMul)));
-  if(modeMul > 1) return Math.max(baseMs + 1, Math.round(baseMs * modeMul));
+  const dynamicMul = Math.max(FRAME_LOAD_LIGHT, Number(__frameDynamicLoadMul || FRAME_LOAD_LIGHT));
+  const blendedMul = Math.max(modeMul, dynamicMul);
+  if(frameIsSlow()) return Math.max(baseMs + 1, Math.round(baseMs * Math.max(slowMul, blendedMul)));
+  if(blendedMul > 1) return Math.max(baseMs + 1, Math.round(baseMs * blendedMul));
   return baseMs;
 }
 
@@ -1836,11 +1882,14 @@ function runStabilityRecovery(reason="stall"){
   for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
   __frameSpikePending = false;
   __frameLagScore = 0;
+  __frameBgFxFlip = 0;
+  __frameDynamicLoadMul = FRAME_LOAD_LIGHT;
   const perfNow = performance.now ? performance.now() : now;
   __frameRecoverUntil = Math.max(__frameRecoverUntil || 0, perfNow + 2200);
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, perfNow + 2600);
 
   try{ if(typeof clearTransientCombatVisuals === "function") clearTransientCombatVisuals(); }catch(e){}
+  try{ if(typeof invalidateMapCache === "function") invalidateMapCache(); }catch(e){}
   try{ if(typeof transitionCleanupSweep === "function") transitionCleanupSweep(`recover:${reason}`); }catch(e){}
   try{ if(typeof sanitizeRuntimeState === "function") sanitizeRuntimeState(); }catch(e){}
   try{ if(typeof clampWorldToCanvas === "function") clampWorldToCanvas(); }catch(e){}
@@ -1965,6 +2014,21 @@ function stabilityHealthTick(){
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(!Array.isArray(S.carcasses)) S.carcasses = [];
   if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
+
+  const slow = frameIsSlow();
+  const fxCap = slow ? 28 : 44;
+  const popupCap = slow ? 20 : 32;
+  const pulseCap = slow ? 18 : 28;
+  if(COMBAT_FX.length > fxCap) COMBAT_FX.splice(0, COMBAT_FX.length - fxCap);
+  if(DAMAGE_POPUPS.length > popupCap) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - popupCap);
+  if(IMPACT_PULSES.length > pulseCap) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - pulseCap);
+  if(DAMAGE_POPUP_GATE.size > 360){
+    const nowGate = Date.now();
+    for(const [k, at] of DAMAGE_POPUP_GATE){
+      if((Number(at) || 0) + 2400 < nowGate) DAMAGE_POPUP_GATE.delete(k);
+    }
+    if(DAMAGE_POPUP_GATE.size > 360) DAMAGE_POPUP_GATE.clear();
+  }
 
   trimActiveEntityLoad();
 
@@ -7883,6 +7947,8 @@ function transitionCleanupSweep(reason=""){
 
   if(r.includes("deploy") || r.includes("complete") || r.includes("over") || r.includes("recover")){
     clearTransientCombatVisuals();
+    __frameBgFxFlip = 0;
+    __frameDynamicLoadMul = FRAME_LOAD_LIGHT;
   }
   if(r.includes("battle-end")) clearTransientCombatVisuals();
 
@@ -12718,7 +12784,12 @@ function renderHUD(){
 
 function maybeRenderHUD(force=false){
   const now = performance.now ? performance.now() : Date.now();
-  const minInterval = frameIsSlow(now) ? 340 : 240;
+  const loadScore = frameActiveEntityLoadScore();
+  let minInterval = 240;
+  if(frameIsSlow(now)) minInterval = 340;
+  if(performanceMode() === "PERFORMANCE") minInterval = Math.max(minInterval, 320);
+  if(loadScore >= 60) minInterval = Math.max(minInterval, 380);
+  else if(loadScore >= 44) minInterval = Math.max(minInterval, 320);
   if(force || (now - __lastHudRender) >= minInterval){
     __lastHudRender = now;
     renderHUD();
@@ -14155,6 +14226,15 @@ function drawMobileUiClearLane(){
   // Intentionally no overlay in the control lane; keep full map visibility.
   return;
 }
+function shouldDrawAtmosphericPass(){
+  __frameBgFxFlip = (__frameBgFxFlip + 1) % 9;
+  const score = frameActiveEntityLoadScore();
+  if(performanceMode() === "PERFORMANCE") return (__frameBgFxFlip % 3) === 0;
+  if(frameIsSlow()) return (__frameBgFxFlip % 2) === 0;
+  if(score >= 64) return (__frameBgFxFlip % 3) === 0;
+  if(score >= 46) return (__frameBgFxFlip % 2) === 0;
+  return true;
+}
 
 // ===================== MISSION FLOW =====================
 
@@ -14220,7 +14300,9 @@ function draw(){
         ctx.save();
         ctx.translate(shake.x, shake.y);
       }
-      drawAtmosphericParallax();
+      if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
+        drawAtmosphericParallax();
+      }
       drawEntities();
       if(shake.active){
         ctx.restore();
