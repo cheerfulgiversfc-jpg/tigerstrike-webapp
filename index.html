@@ -149,6 +149,49 @@
     }
     .launchHeroTitle{font-size:18px;font-weight:950;line-height:1.2;max-width:90%}
     .launchHeroSub{font-size:13px;color:var(--muted);line-height:1.4;margin-top:8px;max-width:92%}
+    .launchPoster{
+      position:relative;
+      height:180px;
+      border:1px solid rgba(70,97,166,.72);
+      border-radius:14px;
+      overflow:hidden;
+      background-image:
+        linear-gradient(180deg, rgba(8,14,24,.14), rgba(5,9,18,.65)),
+        url("./launch-cover.jpg"),
+        radial-gradient(circle at 82% 14%, rgba(74,222,128,.22), transparent 46%),
+        radial-gradient(circle at 14% 82%, rgba(58,120,255,.26), transparent 52%);
+      background-size:cover, cover, cover, cover;
+      background-position:center, center, center, center;
+      margin-bottom:10px;
+      box-shadow:0 12px 26px rgba(6,10,18,.36);
+    }
+    .launchPosterTint{
+      position:absolute;
+      inset:0;
+      background:
+        linear-gradient(180deg, rgba(4,8,16,.22), rgba(4,8,16,.56)),
+        linear-gradient(90deg, rgba(9,16,26,.55), rgba(9,16,26,.18));
+    }
+    .launchPosterText{
+      position:absolute;
+      left:12px;
+      right:12px;
+      bottom:12px;
+      z-index:2;
+      text-shadow:0 5px 20px rgba(0,0,0,.65);
+    }
+    .launchPosterTitle{
+      font-size:21px;
+      font-weight:950;
+      letter-spacing:.02em;
+      line-height:1.1;
+    }
+    .launchPosterTag{
+      margin-top:4px;
+      font-size:13px;
+      color:#dbeafe;
+      font-weight:900;
+    }
     .launchChips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
     .launchChip{
       display:inline-flex;
@@ -200,6 +243,35 @@
       font-size:22px;
       font-weight:950;
       line-height:1.1;
+    }
+    .launchHeroCards{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:10px;
+    }
+    .launchHeroCard{
+      border:1px solid rgba(35,42,62,.9);
+      border-radius:12px;
+      background:rgba(14,19,32,.8);
+      padding:10px;
+    }
+    .launchHeroCardTitle{
+      font-size:11px;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:.06em;
+    }
+    .launchHeroCardValue{
+      margin-top:6px;
+      font-size:14px;
+      line-height:1.35;
+      font-weight:900;
+    }
+    .launchHeroCard .ghost{
+      margin-top:8px;
+      width:100%;
+      min-height:40px;
+      font-size:13px;
     }
     @keyframes launchSpin{
       to{transform:rotate(360deg)}
@@ -544,6 +616,8 @@
       body.mobileMenuHidden .mobileMenuToggle{
         bottom:calc(10px + env(safe-area-inset-bottom));
       }
+      .launchPoster{height:152px}
+      .launchHeroCards{grid-template-columns:1fr}
     }
 
     @media (max-width:460px){
@@ -556,6 +630,7 @@
       .touchCluster{grid-template-columns:repeat(2,54px)}
       .touchBtn{width:54px;min-height:54px}
       #touchCacheBtn{left:10px;right:auto;bottom:286px}
+      .launchPoster{height:136px}
     }
 
     /* Phone landscape playability pass */
@@ -968,8 +1043,15 @@
     </div>
     <div class="modalBody storyIntroBody">
       <div class="launchHero">
-        <div class="launchHeroTitle">Rescue civilians. Control tiger aggression. Choose capture or kill.</div>
-        <div class="launchHeroSub">Mission command is online. Lead your squad, keep civilians alive, and adapt your tactics as tiger pressure rises.</div>
+        <div class="launchPoster" id="launchPoster">
+          <div class="launchPosterTint"></div>
+          <div class="launchPosterText">
+            <div class="launchPosterTitle">TIGER STRIKE</div>
+            <div class="launchPosterTag">Scan • Engage • Capture or Kill</div>
+          </div>
+        </div>
+        <div class="launchHeroTitle">Tiger Strike - Scan • Engage • Capture or Kill</div>
+        <div class="launchHeroSub">Mission command is online. Protect civilians, control tiger aggression, and decide when to capture versus kill.</div>
         <div class="launchChips">
           <div class="launchChip" id="launchIntroStreak">🔥 Streak 0</div>
           <div class="launchChip" id="launchIntroDailyStatus">Daily reward loading...</div>
@@ -977,6 +1059,21 @@
         <div class="launchSpinnerRow">
           <span class="launchSpinner"></span>
           <span>Preparing operation map...</span>
+        </div>
+      </div>
+      <div class="launchHeroCards">
+        <div class="launchHeroCard">
+          <div class="launchHeroCardTitle">Commander</div>
+          <div class="launchHeroCardValue" id="launchCommanderCard">Rookie • Lv 1 • Funds $1,000</div>
+        </div>
+        <div class="launchHeroCard">
+          <div class="launchHeroCardTitle">Mission Intel</div>
+          <div class="launchHeroCardValue" id="launchIntelCard">Story Mission 1 • Civilians 2 • Tigers 1</div>
+        </div>
+        <div class="launchHeroCard">
+          <div class="launchHeroCardTitle">Daily Reward</div>
+          <div class="launchHeroCardValue" id="launchDailyCard">Checking reward status...</div>
+          <button class="ghost" onclick="openDailyRewardOverlay()">🎁 Daily Reward</button>
         </div>
       </div>
       <div class="hudLine">Tap Begin Mission to enter operations, or run Quick Tutorial first. Music cues start when you tap.</div>
@@ -994,11 +1091,13 @@
   <div class="modal" style="width:min(560px,95vw)">
     <div class="modalTop">
       <div class="modalTitle">🎁 Daily Reward</div>
+      <button class="ghost" onclick="claimDailyRewardOverlay()">Continue</button>
     </div>
     <div class="modalBody">
       <div class="storyScene">
         <div class="storySceneTitle">Welcome Back, Commander</div>
-        <div class="storySceneText"><b>Your login reward is ready.</b> Claim it to continue your mission.</div>
+        <div class="storySceneText" id="dailyRewardStateText"><b>Your login reward is ready.</b> Claim it to continue your mission.</div>
+        <div class="storySceneVisual" id="dailyRewardCountdownText"></div>
       </div>
       <div class="dailyRewardGrid">
         <div class="dailyRewardCard">
@@ -1019,7 +1118,7 @@
         </div>
       </div>
       <div class="row" style="margin-top:10px">
-        <button class="good" onclick="claimDailyRewardOverlay()">Claim Reward</button>
+        <button class="good" id="dailyRewardClaimBtn" onclick="claimDailyRewardOverlay()">Claim Reward</button>
       </div>
     </div>
   </div>
@@ -1063,7 +1162,7 @@
       <div class="hudLine" id="missionBriefBoss">Boss Warning</div>
       <div class="hudLine" id="missionBriefIntel"></div>
       <div class="hudLine" id="missionBriefReward"></div>
-      <div class="small">Auto-hides in 2–3 seconds (Story briefs stay longer).</div>
+      <div class="small">Auto-hide timing depends on mission flow. Tap Start anytime.</div>
       <div class="row" style="margin-top:8px">
         <button class="good" onclick="closeMissionBrief()">Start</button>
       </div>
@@ -1299,8 +1398,8 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4433"></script>
-<script src="./tutorial.js?v=4433"></script>
+<script src="./game.js?v=4435"></script>
+<script src="./tutorial.js?v=4435"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";

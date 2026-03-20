@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4433";
+const TS_BUILD = "4435";
 if(tg){
   try{
     tg.expand?.();
@@ -2014,7 +2014,17 @@ function toggleSound(){
   document.getElementById("soundLbl").innerText = S.soundOn?"On":"Off";
   const mobileLbl = document.getElementById("soundLblMobile");
   if(mobileLbl) mobileLbl.innerText = S.soundOn ? "On" : "Off";
-  save(); if(S.soundOn) sfx("ui");
+  if(!S.soundOn){
+    clearLaunchMusicLoop();
+  }
+  save();
+  if(S.soundOn){
+    sfx("ui");
+    if(introOverlayVisible()){
+      playLaunchTheme(true);
+      startLaunchMusicLoop(true);
+    }
+  }
 }
 
 // ===================== HELPERS =====================
@@ -4596,6 +4606,11 @@ let __missionBriefTimer = 0;
 let __pendingDailyReward = null;
 let __dailyRewardContinue = null;
 let __launchThemeAt = 0;
+let __launchMusicLoopTimer = 0;
+
+const INTRO_LAUNCH_MS = 10000;
+const INTRO_STORY_MS = 10000;
+const INTRO_BRIEF_MS = 10000;
 
 function clearStoryIntroAutoTimer(){
   if(__storyIntroAutoTimer){
@@ -4766,8 +4781,11 @@ function showMissionBrief(durationMs=2600){
   setPaused(true,"mission-brief");
   overlay.style.display = "flex";
   syncGamepadFocus();
-  let ms = Math.floor(durationMs || 2600);
-  if(isStory){
+  const requestedMs = Math.floor(durationMs || 0);
+  let ms = requestedMs || 2600;
+  if(requestedMs >= 9000){
+    ms = clamp(requestedMs, 9000, 14000);
+  } else if(isStory){
     ms = Math.max(ms, card.mission.boss ? 5600 : 4300);
     ms = clamp(ms, 3400, 6800);
   } else {
@@ -4801,46 +4819,168 @@ function playLaunchTheme(force=false){
     });
   }catch(e){}
 }
+function introOverlayVisible(){
+  const launch = document.getElementById("launchIntroOverlay");
+  const story = document.getElementById("storyIntroOverlay");
+  return !!((launch && launch.style.display === "flex") || (story && story.style.display === "flex"));
+}
+function clearLaunchMusicLoop(){
+  if(__launchMusicLoopTimer){
+    clearInterval(__launchMusicLoopTimer);
+    __launchMusicLoopTimer = 0;
+  }
+}
+function playHuntPulse(){
+  if(!S.soundOn) return;
+  try{
+    ensureAudio();
+    beep(146, 130, "sawtooth", 0.035);
+    setTimeout(()=>beep(196, 90, "triangle", 0.03), 160);
+    setTimeout(()=>beep(246, 80, "triangle", 0.028), 320);
+    setTimeout(()=>beep(164, 120, "square", 0.03), 780);
+    setTimeout(()=>beep(220, 70, "triangle", 0.028), 960);
+  }catch(e){}
+}
+function startLaunchMusicLoop(force=false){
+  if(!S.soundOn) return;
+  if(__launchMusicLoopTimer && !force) return;
+  clearLaunchMusicLoop();
+  playHuntPulse();
+  __launchMusicLoopTimer = setInterval(playHuntPulse, 1800);
+}
+function nextDailyCountdownText(){
+  const now = new Date();
+  const nextUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0);
+  const remainingMs = Math.max(0, nextUtc - now.getTime());
+  const totalMin = Math.floor(remainingMs / 60000);
+  const hh = String(Math.floor(totalMin / 60)).padStart(2, "0");
+  const mm = String(totalMin % 60).padStart(2, "0");
+  return `${hh}h ${mm}m`;
+}
+function previewNextDailyReward(){
+  const info = readDaily();
+  const today = ymdUTC();
+  const yesterday = new Date(Date.now());
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const y = ymdUTC(yesterday);
+  let streak = 1;
+  if(info?.last === today) streak = Number(info.streak || 0) + 1;
+  else if(info?.last === y) streak = Number(info.streak || 0) + 1;
+  const cash = 300 + Math.min(900, streak * 60);
+  const perkPts = (streak % 3 === 0) ? 2 : 1;
+  return { streak, cash, perkPts, total:Math.max(1, Number(info?.total || 0) + (info?.last === today ? 0 : 1)) };
+}
+function setLaunchArtwork(url=""){
+  try{
+    const next = String(url || "").trim();
+    if(next) localStorage.setItem("ts_launch_art_url", next);
+    else localStorage.removeItem("ts_launch_art_url");
+  }catch(e){}
+  refreshLaunchIntroStatus();
+}
 function bindLaunchIntroAudioGesture(){
   const overlay = document.getElementById("launchIntroOverlay");
   if(!overlay || overlay.dataset.audioBound === "1") return;
   overlay.dataset.audioBound = "1";
   overlay.addEventListener("pointerdown", ()=>{
     if(!S.soundOn) return;
+    ensureAudio();
     playLaunchTheme(true);
+    startLaunchMusicLoop(true);
   }, { passive:true });
 }
 function refreshLaunchIntroStatus(){
   const streakEl = document.getElementById("launchIntroStreak");
   const dailyEl = document.getElementById("launchIntroDailyStatus");
+  const commanderEl = document.getElementById("launchCommanderCard");
+  const intelEl = document.getElementById("launchIntelCard");
+  const dailyCardEl = document.getElementById("launchDailyCard");
+  const posterEl = document.getElementById("launchPoster");
   const info = readDaily();
   const streak = Math.max(0, Number(info?.streak || 0));
-  if(streakEl) streakEl.innerText = `🔥 Streak ${streak}`;
-  if(!dailyEl) return;
-  if(__pendingDailyReward){
-    const cash = Number(__pendingDailyReward.cash || 0);
-    const perks = Number(__pendingDailyReward.perkPts || 0);
-    dailyEl.innerText = `Daily reward ready: +$${cash.toLocaleString()} and +${perks} perk point${perks===1?"":"s"}.`;
-    return;
+  const missionCard = currentMissionCardData();
+  const mission = missionCard?.mission || null;
+  if(posterEl){
+    try{
+      const customArt = localStorage.getItem("ts_launch_art_url");
+      if(customArt){
+        const safeUrl = customArt.replace(/["'()]/g, "");
+        posterEl.style.backgroundImage =
+          `linear-gradient(180deg, rgba(8,14,24,.14), rgba(5,9,18,.65)), url("${safeUrl}"), radial-gradient(circle at 82% 14%, rgba(74,222,128,.22), transparent 46%), radial-gradient(circle at 14% 82%, rgba(58,120,255,.26), transparent 52%)`;
+      } else {
+        posterEl.style.backgroundImage = "";
+      }
+    }catch(e){}
   }
-  dailyEl.innerText = "Daily reward claimed. Check back tomorrow for your next drop.";
+  if(streakEl) streakEl.innerText = `🔥 Streak ${streak}`;
+  if(dailyEl){
+    if(__pendingDailyReward){
+      const cash = Number(__pendingDailyReward.cash || 0);
+      const perks = Number(__pendingDailyReward.perkPts || 0);
+      dailyEl.innerText = `Daily reward ready: +$${cash.toLocaleString()} and +${perks} perk point${perks===1?"":"s"}.`;
+    } else {
+      dailyEl.innerText = `Daily reward claimed. Next drop in ${nextDailyCountdownText()}.`;
+    }
+  }
+  if(commanderEl){
+    const lv = Math.max(1, Number(S.level || 1));
+    const title = S.title || "Rookie";
+    commanderEl.innerText = `${title} • Lv ${lv} • Funds $${Number(S.funds||0).toLocaleString()}`;
+  }
+  if(intelEl){
+    if(mission){
+      const civ = Number(mission.civilians || 0);
+      const tig = Number(mission.tigers || 0);
+      intelEl.innerText = `${missionCard.mode} Mission ${mission.number} • Civilians ${civ} • Tigers ${tig}`;
+    } else {
+      intelEl.innerText = `${S.mode} Ops • Prepare your squad and loadout.`;
+    }
+  }
+  if(dailyCardEl){
+    if(__pendingDailyReward){
+      dailyCardEl.innerText = `Ready now: +$${Number(__pendingDailyReward.cash || 0).toLocaleString()} • +${Number(__pendingDailyReward.perkPts || 0)} perk`;
+    } else {
+      const next = previewNextDailyReward();
+      dailyCardEl.innerText = `Next reward: +$${next.cash.toLocaleString()} • +${next.perkPts} perk in ${nextDailyCountdownText()}`;
+    }
+  }
 }
-function openDailyRewardOverlay(reward, onDone=null){
-  if(!reward) return false;
+function openDailyRewardOverlay(reward=null, onDone=null){
+  const active = reward || __pendingDailyReward;
   const overlay = document.getElementById("dailyRewardOverlay");
   if(!overlay) return false;
   const cashEl = document.getElementById("dailyRewardCash");
   const perkEl = document.getElementById("dailyRewardPerks");
   const streakEl = document.getElementById("dailyRewardStreak");
   const totalEl = document.getElementById("dailyRewardTotal");
-  if(cashEl) cashEl.innerText = `$${Number(reward.cash || 0).toLocaleString()}`;
-  if(perkEl) perkEl.innerText = `+${Number(reward.perkPts || 0)}`;
-  if(streakEl) streakEl.innerText = `${Math.max(1, Number(reward.streak || 1))}`;
-  if(totalEl) totalEl.innerText = `${Math.max(1, Number(reward.total || 1))}`;
+  const stateEl = document.getElementById("dailyRewardStateText");
+  const countdownEl = document.getElementById("dailyRewardCountdownText");
+  const claimBtn = document.getElementById("dailyRewardClaimBtn");
+  const dailyInfo = readDaily();
+  const preview = active || previewNextDailyReward();
+  if(cashEl) cashEl.innerText = `$${Number(preview.cash || 0).toLocaleString()}`;
+  if(perkEl) perkEl.innerText = `+${Number(preview.perkPts || 0)}`;
+  if(streakEl) streakEl.innerText = `${Math.max(1, Number(preview.streak || 1))}`;
+  if(totalEl) totalEl.innerText = `${Math.max(1, Number((active ? preview.total : Number(dailyInfo.total || 0)) || 1))}`;
+  if(stateEl){
+    if(active) stateEl.innerHTML = "<b>Your login reward is ready.</b> Claim it to continue your mission.";
+    else stateEl.innerHTML = "<b>Today's reward was already claimed.</b> Here is your next reward preview.";
+  }
+  if(countdownEl){
+    countdownEl.innerText = active
+      ? `Claim now • Streak ${Math.max(1, Number(preview.streak || 1))}`
+      : `Next claim opens in ${nextDailyCountdownText()} (UTC reset)`;
+  }
+  if(claimBtn){
+    claimBtn.innerText = active ? "Claim Reward" : "Continue";
+    claimBtn.classList.toggle("good", !!active);
+    claimBtn.classList.toggle("ghost", !active);
+  }
   __dailyRewardContinue = (typeof onDone === "function") ? onDone : null;
   setPaused(true,"daily-reward");
   overlay.style.display = "flex";
-  sfx("win");
+  if(active) sfx("win");
+  else sfx("ui");
   syncGamepadFocus();
   return true;
 }
@@ -4849,15 +4989,23 @@ function claimDailyRewardOverlay(){
   if(overlay) overlay.style.display = "none";
   const onDone = __dailyRewardContinue;
   __dailyRewardContinue = null;
+  const hadPending = !!__pendingDailyReward;
   __pendingDailyReward = null;
   refreshLaunchIntroStatus();
   if(typeof onDone === "function"){
+    if(hadPending) save();
     onDone();
+    return;
+  }
+  if(introOverlayVisible()){
+    setPaused(true, "launch-intro");
+    syncGamepadFocus();
     return;
   }
   if(S.paused && S.pauseReason === "daily-reward"){
     setPaused(false,null);
   }
+  if(hadPending) save();
   syncGamepadFocus();
 }
 function maybeShowPendingDailyReward(onDone){
@@ -4865,6 +5013,7 @@ function maybeShowPendingDailyReward(onDone){
   return openDailyRewardOverlay(__pendingDailyReward, onDone);
 }
 function continueAfterLaunchIntro(allowStoryIntro=true){
+  clearLaunchMusicLoop();
   if(S.mode==="Story" && !window.__TUTORIAL_MODE__ && !S.storyIntroSeen){
     if(allowStoryIntro){
       openStoryIntro(false);
@@ -4874,7 +5023,7 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
     syncGamepadFocus();
     return;
   }
-  const shown = showMissionBrief(rand(2200, 3000));
+  const shown = showMissionBrief(INTRO_BRIEF_MS);
   if(!shown) setPaused(false,null);
   syncGamepadFocus();
 }
@@ -4905,10 +5054,12 @@ function openLaunchIntro(force=false){
   refreshLaunchIntroStatus();
   setPaused(true,"launch-intro");
   overlay.style.display = "flex";
+  clearLaunchMusicLoop();
   playLaunchTheme(false);
+  startLaunchMusicLoop(false);
   __launchIntroAutoTimer = setTimeout(()=>{
     beginFromLaunchIntro({ auto:true });
-  }, 5200);
+  }, INTRO_LAUNCH_MS);
   syncGamepadFocus();
 }
 function beginFromLaunchIntro(){
@@ -4918,6 +5069,7 @@ function beginFromLaunchIntro(){
   continueFromLaunchIntro(true);
 }
 function startQuickTutorialFromLaunchIntro(){
+  clearLaunchMusicLoop();
   clearLaunchIntroAutoTimer();
   const overlay = document.getElementById("launchIntroOverlay");
   if(overlay) overlay.style.display = "none";
@@ -4926,6 +5078,7 @@ function startQuickTutorialFromLaunchIntro(){
   window.startTutorial?.();
 }
 function skipLaunchIntro(){
+  clearLaunchMusicLoop();
   clearLaunchIntroAutoTimer();
   const overlay = document.getElementById("launchIntroOverlay");
   if(overlay) overlay.style.display = "none";
@@ -4946,22 +5099,25 @@ function openStoryIntro(force=false){
   closeMissionBrief(true);
   setPaused(true,"story-intro");
   overlay.style.display = "flex";
+  startLaunchMusicLoop(false);
   __storyIntroAutoTimer = setTimeout(()=>{
     beginStoryMissionFromIntro({ auto:true });
-  }, 5000);
+  }, INTRO_STORY_MS);
   syncGamepadFocus();
 }
 function beginStoryMissionFromIntro(){
+  clearLaunchMusicLoop();
   clearStoryIntroAutoTimer();
   const overlay = document.getElementById("storyIntroOverlay");
   if(overlay) overlay.style.display = "none";
   S.storyIntroSeen = true;
   save();
-  const shown = showMissionBrief(rand(2200, 3000));
+  const shown = showMissionBrief(INTRO_BRIEF_MS);
   if(!shown) setPaused(false,null);
   syncGamepadFocus();
 }
 function startQuickTutorialFromIntro(){
+  clearLaunchMusicLoop();
   clearStoryIntroAutoTimer();
   const overlay = document.getElementById("storyIntroOverlay");
   if(overlay) overlay.style.display = "none";
@@ -13936,7 +14092,9 @@ window.openLaunchIntro = openLaunchIntro;
 window.beginFromLaunchIntro = beginFromLaunchIntro;
 window.startQuickTutorialFromLaunchIntro = startQuickTutorialFromLaunchIntro;
 window.skipLaunchIntro = skipLaunchIntro;
+window.openDailyRewardOverlay = openDailyRewardOverlay;
 window.claimDailyRewardOverlay = claimDailyRewardOverlay;
+window.setLaunchArtwork = setLaunchArtwork;
 window.openStoryIntro = openStoryIntro;
 window.startStoryIntroMission = startStoryIntroMission;
 window.beginStoryMissionFromIntro = beginStoryMissionFromIntro;
