@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4436";
+const TS_BUILD = "4437";
 if(tg){
   try{
     tg.expand?.();
@@ -5204,7 +5204,10 @@ function setMode(m){
   applyModeTheme(S.mode);
   if(nextMode==="Arcade") S.arcadeLevel=1;
   if(nextMode==="Survival"){ S.survivalWave=1; S.survivalStart=Date.now(); S.surviveSeconds=0; }
-  if(nextMode==="Story") S.storyLevel=1;
+  if(nextMode==="Story"){
+    // Keep Story progress when returning to Story mode.
+    S.storyLevel = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  }
   S.mapIndex=0;
   deploy();
   updateModeDesc(); markModeTabs(); closeMode(); sfx("ui");
