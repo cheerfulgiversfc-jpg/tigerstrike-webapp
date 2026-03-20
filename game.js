@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4435";
+const TS_BUILD = "4436";
 if(tg){
   try{
     tg.expand?.();
@@ -4876,6 +4876,34 @@ function setLaunchArtwork(url=""){
   }catch(e){}
   refreshLaunchIntroStatus();
 }
+function launchProgressLabelForMode(mode=S.mode){
+  const m = normalizeModeName(mode);
+  if(m === "Story") return `Story Mission ${clamp(S.storyLevel || 1, 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
+  if(m === "Arcade") return `Arcade Mission ${clamp(S.arcadeLevel || 1, 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
+  return `Survival Wave ${Math.max(1, S.survivalWave || 1)}`;
+}
+function modeHasSavedProgress(mode=S.mode){
+  const m = normalizeModeName(mode);
+  if(m === "Story") return Math.max(1, S.storyLevel || 1) > 1;
+  if(m === "Arcade") return Math.max(1, S.arcadeLevel || 1) > 1;
+  return Math.max(1, S.survivalWave || 1) > 1 || Number(S.surviveSeconds || 0) > 0;
+}
+function refreshLaunchStartButtons(){
+  const continueBtn = document.getElementById("launchContinueBtn");
+  const restartBtn = document.getElementById("launchRestartBtn");
+  const hintEl = document.getElementById("launchProgressHint");
+  const mode = normalizeModeName(S.mode);
+  const progressLabel = launchProgressLabelForMode(mode);
+  const hasProgress = modeHasSavedProgress(mode);
+
+  if(continueBtn) continueBtn.innerText = `▶ Continue (${progressLabel})`;
+  if(restartBtn) restartBtn.disabled = !hasProgress;
+  if(hintEl){
+    hintEl.innerText = hasProgress
+      ? `Saved progress found: ${progressLabel}. Continue where you left off, or restart from Mission 1.`
+      : `${mode} save is currently at Mission 1. Continue to start playing.`;
+  }
+}
 function bindLaunchIntroAudioGesture(){
   const overlay = document.getElementById("launchIntroOverlay");
   if(!overlay || overlay.dataset.audioBound === "1") return;
@@ -4942,6 +4970,29 @@ function refreshLaunchIntroStatus(){
       dailyCardEl.innerText = `Next reward: +$${next.cash.toLocaleString()} • +${next.perkPts} perk in ${nextDailyCountdownText()}`;
     }
   }
+  refreshLaunchStartButtons();
+}
+function restartFromMission1FromLaunchIntro(){
+  const mode = normalizeModeName(S.mode);
+  if(!modeHasSavedProgress(mode)){
+    toast(`${mode} is already at Mission 1.`);
+    return;
+  }
+  const progressLabel = launchProgressLabelForMode(mode);
+  const ok = window.confirm
+    ? window.confirm(`Restart ${mode} from Mission 1?\nCurrent saved progress: ${progressLabel}`)
+    : true;
+  if(!ok) return;
+  clearLaunchMusicLoop();
+  clearLaunchIntroAutoTimer();
+  const launchOverlay = document.getElementById("launchIntroOverlay");
+  if(launchOverlay) launchOverlay.style.display = "none";
+  const dailyOverlay = document.getElementById("dailyRewardOverlay");
+  if(dailyOverlay) dailyOverlay.style.display = "none";
+  __dailyRewardContinue = null;
+  restartModeFromMission1();
+  setPaused(false, null);
+  syncGamepadFocus();
 }
 function openDailyRewardOverlay(reward=null, onDone=null){
   const active = reward || __pendingDailyReward;
@@ -14090,6 +14141,7 @@ window.openLaunchIntro = openLaunchIntro;
 window.beginFromLaunchIntro = beginFromLaunchIntro;
 window.startQuickTutorialFromLaunchIntro = startQuickTutorialFromLaunchIntro;
 window.skipLaunchIntro = skipLaunchIntro;
+window.restartFromMission1FromLaunchIntro = restartFromMission1FromLaunchIntro;
 window.openDailyRewardOverlay = openDailyRewardOverlay;
 window.claimDailyRewardOverlay = claimDailyRewardOverlay;
 window.setLaunchArtwork = setLaunchArtwork;
