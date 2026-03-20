@@ -11300,6 +11300,19 @@ function battleTigerMinSpacing(t){
   if(t.type === "Scout") return 102;
   return 110;
 }
+function battleTigerDesiredSpacing(t, rangeLimit=equippedWeaponRange()){
+  const safeRange = Math.max(70, Number(rangeLimit) || 112);
+  const band = weaponRangeBand(safeRange);
+  const weapon = equippedWeapon();
+  let base = battleTigerMinSpacing(t);
+  if(band === "short") base = Math.min(base, 82);
+  else if(band === "mid") base = Math.min(base, 108);
+  else base = Math.min(base + 8, 132);
+  if(weapon?.type === "tranq") base -= 6;
+  const minSep = band === "short" ? 62 : (band === "mid" ? 70 : 82);
+  const maxSep = Math.max(66, safeRange - (band === "long" ? 16 : 12));
+  return clamp(base, minSep, maxSep);
+}
 function keepBattleTigerBesidePlayer(t, now=Date.now()){
   if(!S.inBattle || !t || !t.alive) return;
   const meX = Number(S.me?.x) || 0;
@@ -11307,8 +11320,11 @@ function keepBattleTigerBesidePlayer(t, now=Date.now()){
   const dx = t.x - meX;
   const dy = t.y - meY;
   const d = Math.hypot(dx, dy);
-  const minSep = battleTigerMinSpacing(t);
-  if(d >= minSep) return;
+  const rangeLimit = Math.max(70, Number(equippedWeaponRange()) || 112);
+  const band = weaponRangeBand(rangeLimit);
+  const desiredSep = battleTigerDesiredSpacing(t, rangeLimit);
+  const overlapSep = band === "short" ? Math.max(52, desiredSep - 18) : Math.max(58, desiredSep - 14);
+  if(d >= overlapSep) return;
 
   let ux = dx / (d || 1);
   let uy = dy / (d || 1);
@@ -11317,15 +11333,29 @@ function keepBattleTigerBesidePlayer(t, now=Date.now()){
     ux = Math.cos(a);
     uy = Math.sin(a);
   }
-  const prefer = minSep + 10;
-  const targetX = meX + (ux * prefer);
-  const targetY = meY + (uy * prefer);
+  const targetX = meX + (ux * desiredSep);
+  const targetY = meY + (uy * desiredSep);
   const moved = tryMoveEntity(t, targetX, targetY, 18, { avoidKeepout:false });
   if(!moved){
     const fallback = findNearestOpenPoint(targetX, targetY, 18, { avoidKeepout:false, targetX, targetY });
     if(fallback){
       t.x = fallback.x;
       t.y = fallback.y;
+    }
+  }
+  // Safety: never auto-push the tiger out of current weapon range.
+  const nd = dist(meX, meY, t.x, t.y);
+  const safeMax = Math.max(band === "short" ? 54 : 60, rangeLimit - (band === "long" ? 14 : 8));
+  if(nd > safeMax){
+    const pullX = meX + (ux * safeMax);
+    const pullY = meY + (uy * safeMax);
+    const pulled = tryMoveEntity(t, pullX, pullY, 18, { avoidKeepout:false });
+    if(!pulled){
+      const refit = findNearestOpenPoint(pullX, pullY, 18, { avoidKeepout:false, targetX:pullX, targetY:pullY });
+      if(refit){
+        t.x = refit.x;
+        t.y = refit.y;
+      }
     }
   }
   // keep the tiger oriented toward the player for clearer strike readability
