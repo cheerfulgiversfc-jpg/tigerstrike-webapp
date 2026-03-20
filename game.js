@@ -11291,6 +11291,49 @@ function regen(){
 function activeTiger(){
   return tigerById(S.activeTigerId);
 }
+function battleTigerMinSpacing(t){
+  if(!t) return 108;
+  if(isBossTiger(t)) return 138;
+  if(t.type === "Alpha") return 130;
+  if(t.type === "Berserker") return 122;
+  if(t.type === "Stalker") return 116;
+  if(t.type === "Scout") return 102;
+  return 110;
+}
+function keepBattleTigerBesidePlayer(t, now=Date.now()){
+  if(!S.inBattle || !t || !t.alive) return;
+  const meX = Number(S.me?.x) || 0;
+  const meY = Number(S.me?.y) || 0;
+  const dx = t.x - meX;
+  const dy = t.y - meY;
+  const d = Math.hypot(dx, dy);
+  const minSep = battleTigerMinSpacing(t);
+  if(d >= minSep) return;
+
+  let ux = dx / (d || 1);
+  let uy = dy / (d || 1);
+  if(!Number.isFinite(ux) || !Number.isFinite(uy) || d < 4){
+    const a = (t.id || 1) + (now * 0.0026);
+    ux = Math.cos(a);
+    uy = Math.sin(a);
+  }
+  const prefer = minSep + 10;
+  const targetX = meX + (ux * prefer);
+  const targetY = meY + (uy * prefer);
+  const moved = tryMoveEntity(t, targetX, targetY, 18, { avoidKeepout:false });
+  if(!moved){
+    const fallback = findNearestOpenPoint(targetX, targetY, 18, { avoidKeepout:false, targetX, targetY });
+    if(fallback){
+      t.x = fallback.x;
+      t.y = fallback.y;
+    }
+  }
+  // keep the tiger oriented toward the player for clearer strike readability
+  const fx = meX - t.x;
+  const fy = meY - t.y;
+  t.heading = Math.atan2(fy || 0, fx || 1);
+  t.drawDir = Math.cos(t.heading) >= 0 ? 1 : -1;
+}
 
 function visualEffectsHeavyMode(){
   if(performanceMode() === "PERFORMANCE") return true;
@@ -12307,6 +12350,7 @@ function tigerTurn(t, softened=false, opts={}){
     if(S.inBattle) setBattleMsg(`Tiger #${t.id} is trapped and cannot attack.`);
     return 0;
   }
+  keepBattleTigerBesidePlayer(t, now);
   const maxRange = Number.isFinite(opts.maxRange) ? opts.maxRange : 120;
   const distToPlayer = dist(t.x, t.y, S.me.x, S.me.y);
   if(distToPlayer > maxRange) return 0;
@@ -12362,6 +12406,9 @@ function tigerTurn(t, softened=false, opts={}){
   if(opts.kind === "charge") setTigerIntent(t, "Charge", 520);
   else if(opts.kind === "pounce") setTigerIntent(t, "Pounce", 480);
   else setTigerIntent(t, "Strike", 440);
+  t.attackAnimKind = opts.kind || "strike";
+  t.attackAnimStart = now;
+  t.attackAnimUntil = now + ((opts.kind === "charge") ? 360 : (opts.kind === "pounce" ? 320 : 260));
 
   emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(251,113,133,.95)", 3, "player");
   emitDamagePopup(S.me.x, S.me.y - 50, `-${dmg}`, "player");
@@ -12388,6 +12435,7 @@ function combatTick(){
 
   S.lockedTigerId = t.id;
   t.aggroBoost = Math.max(t.aggroBoost || 0, 0.95);
+  keepBattleTigerBesidePlayer(t, Date.now());
 
   const d = dist(S.me.x, S.me.y, t.x, t.y);
   const rangeLimit = equippedWeaponRange();
@@ -14394,6 +14442,12 @@ function drawTiger(t){
   const hitFlashColor = t.hitFlashKind === "tranq"
     ? "rgba(125,211,252,.95)"
     : (t.hitFlashKind === "crit" ? "rgba(252,211,77,.98)" : "rgba(248,113,113,.96)");
+  const atkLeft = Math.max(0, (t.attackAnimUntil || 0) - now);
+  const atkProgress = atkLeft > 0 && (t.attackAnimStart || 0) < (t.attackAnimUntil || 0)
+    ? clamp(1 - (atkLeft / Math.max(1, (t.attackAnimUntil - t.attackAnimStart))), 0, 1)
+    : 0;
+  const atkKind = t.attackAnimKind || "";
+  const atkSwing = atkProgress > 0 ? Math.sin(atkProgress * Math.PI) : 0;
   ctx.save();
   ctx.globalAlpha = tigerFocus ? 0.50 : 0.28;
   ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.99)" : "rgba(254,215,170,.88)";
@@ -14460,6 +14514,25 @@ function drawTiger(t){
   ctx.lineTo(23.5*s, (-2.3 + (headBob * 0.50))*s);
   ctx.closePath();
   ctx.fill();
+  if(atkProgress > 0){
+    const biteOpen = atkKind === "charge" ? 1.2 : (atkKind === "pounce" ? 1.0 : 0.75);
+    const jawDrop = atkSwing * biteOpen * 2.4;
+    ctx.strokeStyle = "rgba(18,18,18,.95)";
+    ctx.lineWidth = 1.3*s;
+    ctx.beginPath();
+    ctx.moveTo(20.4*s, (-3.0 + (headBob * 0.50))*s);
+    ctx.lineTo(22.2*s, (-1.0 + jawDrop + (headBob * 0.50))*s);
+    ctx.lineTo(24.1*s, (-3.0 + (headBob * 0.50))*s);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(250,250,250,.85)";
+    ctx.lineWidth = 0.95*s;
+    ctx.beginPath();
+    ctx.moveTo(21.3*s, (-2.3 + (headBob * 0.50))*s);
+    ctx.lineTo(21.9*s, (-0.6 + jawDrop + (headBob * 0.50))*s);
+    ctx.moveTo(22.6*s, (-2.3 + (headBob * 0.50))*s);
+    ctx.lineTo(22.2*s, (-0.6 + jawDrop + (headBob * 0.50))*s);
+    ctx.stroke();
+  }
 
   const gaitMul = gaitState==="sprint" ? 1.34 : (gaitState==="run" ? 1.18 : (gaitState==="trot" ? 0.92 : 0.64));
   const legSwingA = Math.sin((t.step||0)*1.9) * (2.6 + speed*3.7) * s * gaitMul;
@@ -14494,6 +14567,29 @@ function drawTiger(t){
   ctx.lineWidth=1.2*s;
   ctx.beginPath(); ctx.moveTo(28*s, -4.8*s); ctx.lineTo(32*s, -5.6*s); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(28*s, -3.3*s); ctx.lineTo(32*s, -3.6*s); ctx.stroke();
+  if(atkProgress > 0){
+    const clawReach = (atkKind === "charge" ? 12 : (atkKind === "pounce" ? 10 : 8)) * atkSwing;
+    const clawLift = (atkKind === "pounce" ? 3.2 : 2.2) * atkSwing;
+    const pawY = 8.2*s;
+    ctx.strokeStyle = "rgba(24,24,26,.96)";
+    ctx.lineWidth = 2.2*s;
+    ctx.beginPath();
+    ctx.moveTo(11*s, pawY);
+    ctx.lineTo((21 + clawReach)*s, (pawY - clawLift)*s);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(4*s, pawY + (1.2*s));
+    ctx.lineTo((14 + clawReach*0.85)*s, (pawY + 1.2 - clawLift*0.65)*s);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(245,245,245,.86)";
+    ctx.lineWidth = 0.9*s;
+    ctx.beginPath();
+    ctx.moveTo((21 + clawReach)*s, (pawY - clawLift)*s);
+    ctx.lineTo((24.3 + clawReach)*s, (pawY - clawLift - 1.2)*s);
+    ctx.moveTo((19.4 + clawReach)*s, (pawY - clawLift + 0.5)*s);
+    ctx.lineTo((22.3 + clawReach)*s, (pawY - clawLift - 0.8)*s);
+    ctx.stroke();
+  }
   ctx.restore();
 
   if(t._held){
@@ -14849,6 +14945,8 @@ function init(){
   if(!Number.isFinite(S.rollAnimFromY)) S.rollAnimFromY = S.me?.y ?? DEFAULT.me.y;
   if(!Number.isFinite(S.rollAnimToX)) S.rollAnimToX = S.me?.x ?? DEFAULT.me.x;
   if(!Number.isFinite(S.rollAnimToY)) S.rollAnimToY = S.me?.y ?? DEFAULT.me.y;
+  if(!Number.isFinite(S.meHitFlashUntil)) S.meHitFlashUntil = 0;
+  if(!Number.isFinite(S.meHitFlashPower)) S.meHitFlashPower = 0;
   if(!Number.isFinite(S.respawnPendingUntil)) S.respawnPendingUntil = 0;
   if(!Number.isFinite(S.respawnTargetX)) S.respawnTargetX = 0;
   if(!Number.isFinite(S.respawnTargetY)) S.respawnTargetY = 0;
@@ -14919,6 +15017,9 @@ function init(){
     if(!Number.isFinite(t.bossPounceCharges)) t.bossPounceCharges = 0;
     if(!Number.isFinite(t.bossPounceChainUntil)) t.bossPounceChainUntil = 0;
     if(!Number.isFinite(t.bossChargeUntil)) t.bossChargeUntil = 0;
+    if(!Number.isFinite(t.attackAnimStart)) t.attackAnimStart = 0;
+    if(!Number.isFinite(t.attackAnimUntil)) t.attackAnimUntil = 0;
+    if(typeof t.attackAnimKind !== "string") t.attackAnimKind = "";
     if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || Math.sin(t.wanderAngle || 0), t.vx || Math.cos(t.wanderAngle || 0));
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(typeof t.gaitState !== "string") t.gaitState = "walk";
