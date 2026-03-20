@@ -12945,7 +12945,7 @@ function renderHUD(){
     } else if(!anyWeaponHasAmmo()){
       mobilePrompt = "Out of ammo. Open Shop before the next fight.";
     } else if(t && canEngage()){
-      mobilePrompt = `Tiger #${t.id} is in range. Tap it to fight.`;
+      mobilePrompt = `Tiger #${t.id} locked. Tap it to fight.`;
     } else if(t){
       mobilePrompt = `Tiger #${t.id} locked. Move closer and tap it to fight.`;
     } else if(nearInteract && nearInteractDist < 165){
@@ -14009,21 +14009,6 @@ function drawOnMapBattleReadability(){
     ctx.stroke();
   }
 
-  const chipW = 120;
-  const chipH = 24;
-  const chipX = clamp(mx - (chipW * 0.5), 8, cv.width - chipW - 8);
-  const chipY = clamp(my - 58, 8, cv.height - chipH - 8);
-  ctx.fillStyle = "rgba(8,12,18,.80)";
-  roundedRectFill(chipX, chipY, chipW, chipH, 8);
-  ctx.strokeStyle = inRange ? "rgba(74,222,128,.75)" : "rgba(251,191,36,.75)";
-  ctx.lineWidth = 1.2;
-  ctx.strokeRect(chipX + 0.5, chipY + 0.5, chipW - 1, chipH - 1);
-  ctx.fillStyle = "rgba(241,245,249,.95)";
-  ctx.font = "800 11px system-ui";
-  ctx.textAlign = "center";
-  const rangeLeft = Math.max(0, Math.round(d - range));
-  ctx.fillText(inRange ? "IN RANGE" : `OUT OF RANGE +${rangeLeft}m`, chipX + (chipW * 0.5), chipY + 16);
-  ctx.textAlign = "start";
   ctx.restore();
 }
 function drawOnMapBattleHud(){
@@ -15188,6 +15173,14 @@ document.addEventListener("visibilitychange", ()=>{
 // expose live game state safely for tutorial system
 window.getGameState = () => S;
 window.isTutorialRunning = () => window.TigerTutorial?.isRunning === true;
+window.getTutorialConfig = () => ({
+  capturePct: Math.round(storyCaptureWindowPct() * 100),
+  shieldDurationSec: Math.max(1, Math.round(SHIELD_DURATION_MS / 1000)),
+  shieldCooldownSec: Math.max(1, Math.round((ABILITY_COOLDOWN_MS?.shield || 0) / 1000)),
+  squadUnlockLevel: Number(SOLDIER_UNLOCK_LEVEL || 15),
+  squadUnitPrice: Number(SOLDIER_PRICE || 50000),
+  squadBundlePrice: Number(REINFORCEMENT_BUNDLE_PRICE || 80000)
+});
 
 
 // ---- Expose functions for HTML onclick + tutorial integration ----

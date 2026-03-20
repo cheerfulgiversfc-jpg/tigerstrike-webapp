@@ -40,6 +40,12 @@
   function getS(){
     return (typeof window.getGameState === "function") ? window.getGameState() : window.S;
   }
+  function getTutorialConfig(){
+    try{
+      if(typeof window.getTutorialConfig === "function") return window.getTutorialConfig() || {};
+    }catch(e){}
+    return {};
+  }
   function pickTutorialTiger(S){
     if(!S || !Array.isArray(S.tigers)) return null;
     const byId = (id) => S.tigers.find((t)=>t && t.alive && t.id === id) || null;
@@ -53,9 +59,11 @@
     return alive[0] || null;
   }
   function parseHudCaptureState(){
-    const capTxt = byId("capturePctTxt")?.innerText || "25%";
+    const cfg = getTutorialConfig();
+    const defaultCap = Math.max(1, Number(cfg.capturePct || 25));
+    const capTxt = byId("capturePctTxt")?.innerText || `${defaultCap}%`;
     const cap = capTxt.match(/(\d+)/);
-    const capPct = Number(cap?.[1] || 25);
+    const capPct = Number(cap?.[1] || defaultCap);
 
     const S = getS();
     const tiger = pickTutorialTiger(S);
@@ -118,7 +126,7 @@
           ready = captureReadyFromUi();
         }catch(e){}
         if(!ready && Array.isArray(S?.tigers)){
-          const capPct = parseHudCaptureState()?.capPct || 25;
+          const capPct = parseHudCaptureState()?.capPct || Math.max(1, Number(getTutorialConfig().capturePct || 25));
           ready = S.tigers.some((it)=>it && it.alive && it.hpMax > 0 && Number(it.hp || 0) <= Math.ceil(Number(it.hpMax || 0) * (capPct / 100)));
         }
         if(!ready && tiger && tiger.hpMax > 0 && (tiger.hp / tiger.hpMax) <= 0.28){
@@ -208,6 +216,13 @@
     }
   }
   function getStepList(){
+    const cfg = getTutorialConfig();
+    const capturePct = Math.max(1, Number(cfg.capturePct || 25));
+    const shieldDurationSec = Math.max(1, Number(cfg.shieldDurationSec || 5));
+    const shieldCooldownSec = Math.max(1, Number(cfg.shieldCooldownSec || 12));
+    const squadUnlockLevel = Math.max(1, Number(cfg.squadUnlockLevel || 15));
+    const squadUnitPrice = Math.max(1, Number(cfg.squadUnitPrice || 50000));
+    const squadBundlePrice = Math.max(1, Number(cfg.squadBundlePrice || 80000));
     return [
       {
         key:"intro",
@@ -275,7 +290,7 @@
       {
         key:"weaken_tiger",
         title:"Weaken Tiger",
-        text:"Attack until the tiger is at 25% HP or lower.",
+        text:`Attack until the tiger is at ${capturePct}% HP or lower.`,
         hint:"Keep attacking until the tiger health bar reaches capture range.",
         arrow:"tiger",
         canNext: () => window.TigerTutorial.captureWindowReached === true || captureReadyFromUi() || !!window.TigerTutorial.combatOutcome
@@ -283,7 +298,7 @@
       {
         key:"resolve_tiger",
         title:"Capture Or Kill",
-        text:"Now finish the fight.\nCapture: safer control, lower aggression spike.\nKill: faster clear, higher aggression spike.",
+        text:`Now finish the fight.\nCapture: available at ${capturePct}% HP or lower, safer control, lower aggression spike.\nKill: faster clear, higher aggression spike.`,
         hint:"Capture or kill this tiger to continue.",
         arrow:"tiger",
         canNext: () => {
@@ -302,7 +317,7 @@
       {
         key:"shield",
         title:"Shield Ability",
-        text:"Use Shield to protect yourself and nearby civilians for 5 seconds.\n(Shield then cools down before next use.)",
+        text:`Use Shield to protect yourself and nearby civilians for ${shieldDurationSec} seconds.\nThen Shield cooldown is ${shieldCooldownSec} seconds.`,
         hint:"Tap Shield once.",
         arrow:"shieldBtn",
         canNext: () => window.TigerTutorial.shieldUsed === true
@@ -322,7 +337,7 @@
       {
         key:"squad",
         title:"Squad Specialists",
-        text:"Open the Squad tab.\nTiger Specialist + Rescue Specialist unlock at Level 15 and cost $50,000 each.",
+        text:`Open the Squad tab.\nTiger Specialist + Rescue Specialist unlock at Level ${squadUnlockLevel} and cost $${squadUnitPrice.toLocaleString()} each.\nBundle option: $${squadBundlePrice.toLocaleString()} for both.`,
         hint:"Tap Squad tab in Shop.",
         arrow:"tabSquad",
         canNext: () => {
