@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4428";
+const TS_BUILD = "4433";
 if(tg){
   try{
     tg.expand?.();
@@ -63,13 +63,13 @@ function cloneState(obj){
 }
 
 function awardDailyLogin(){
-  if(!window.S) return;
+  if(!window.S) return null;
 
   const today = ymdUTC();
   const info = readDaily();
 
   if(info.last === today){
-    return;
+    return null;
   }
 
   let newStreak = 1;
@@ -97,6 +97,13 @@ function awardDailyLogin(){
   toast(`🎁 Daily reward: +$${cash.toLocaleString()} • +${perkPts} perk point${perkPts>1?"s":""} • Streak: ${newStreak}`);
   try{ hapticNotif("success"); }catch(e){}
   save();
+  return {
+    cash,
+    perkPts,
+    streak:newStreak,
+    total:Number(info.total || 0),
+    today,
+  };
 }
 // ===================== DATA =====================
 const WEAPONS = [
@@ -4586,6 +4593,9 @@ let __storyIntroAutoTimer = 0;
 let __launchIntroAutoTimer = 0;
 let __launchIntroShownThisBoot = false;
 let __missionBriefTimer = 0;
+let __pendingDailyReward = null;
+let __dailyRewardContinue = null;
+let __launchThemeAt = 0;
 
 function clearStoryIntroAutoTimer(){
   if(__storyIntroAutoTimer){
@@ -4778,7 +4788,83 @@ function closeMissionBrief(fromTimer=false){
   if(!fromTimer) sfx("ui");
   syncGamepadFocus();
 }
-function continueFromLaunchIntro(allowStoryIntro=true){
+function playLaunchTheme(force=false){
+  if(!S.soundOn) return;
+  const now = Date.now();
+  if(!force && (now - __launchThemeAt) < 2600) return;
+  __launchThemeAt = now;
+  try{
+    ensureAudio();
+    const notes = [392, 523, 659, 784];
+    notes.forEach((hz, idx)=>{
+      setTimeout(()=>beep(hz, 120, "triangle", 0.045), idx * 150);
+    });
+  }catch(e){}
+}
+function bindLaunchIntroAudioGesture(){
+  const overlay = document.getElementById("launchIntroOverlay");
+  if(!overlay || overlay.dataset.audioBound === "1") return;
+  overlay.dataset.audioBound = "1";
+  overlay.addEventListener("pointerdown", ()=>{
+    if(!S.soundOn) return;
+    playLaunchTheme(true);
+  }, { passive:true });
+}
+function refreshLaunchIntroStatus(){
+  const streakEl = document.getElementById("launchIntroStreak");
+  const dailyEl = document.getElementById("launchIntroDailyStatus");
+  const info = readDaily();
+  const streak = Math.max(0, Number(info?.streak || 0));
+  if(streakEl) streakEl.innerText = `🔥 Streak ${streak}`;
+  if(!dailyEl) return;
+  if(__pendingDailyReward){
+    const cash = Number(__pendingDailyReward.cash || 0);
+    const perks = Number(__pendingDailyReward.perkPts || 0);
+    dailyEl.innerText = `Daily reward ready: +$${cash.toLocaleString()} and +${perks} perk point${perks===1?"":"s"}.`;
+    return;
+  }
+  dailyEl.innerText = "Daily reward claimed. Check back tomorrow for your next drop.";
+}
+function openDailyRewardOverlay(reward, onDone=null){
+  if(!reward) return false;
+  const overlay = document.getElementById("dailyRewardOverlay");
+  if(!overlay) return false;
+  const cashEl = document.getElementById("dailyRewardCash");
+  const perkEl = document.getElementById("dailyRewardPerks");
+  const streakEl = document.getElementById("dailyRewardStreak");
+  const totalEl = document.getElementById("dailyRewardTotal");
+  if(cashEl) cashEl.innerText = `$${Number(reward.cash || 0).toLocaleString()}`;
+  if(perkEl) perkEl.innerText = `+${Number(reward.perkPts || 0)}`;
+  if(streakEl) streakEl.innerText = `${Math.max(1, Number(reward.streak || 1))}`;
+  if(totalEl) totalEl.innerText = `${Math.max(1, Number(reward.total || 1))}`;
+  __dailyRewardContinue = (typeof onDone === "function") ? onDone : null;
+  setPaused(true,"daily-reward");
+  overlay.style.display = "flex";
+  sfx("win");
+  syncGamepadFocus();
+  return true;
+}
+function claimDailyRewardOverlay(){
+  const overlay = document.getElementById("dailyRewardOverlay");
+  if(overlay) overlay.style.display = "none";
+  const onDone = __dailyRewardContinue;
+  __dailyRewardContinue = null;
+  __pendingDailyReward = null;
+  refreshLaunchIntroStatus();
+  if(typeof onDone === "function"){
+    onDone();
+    return;
+  }
+  if(S.paused && S.pauseReason === "daily-reward"){
+    setPaused(false,null);
+  }
+  syncGamepadFocus();
+}
+function maybeShowPendingDailyReward(onDone){
+  if(!__pendingDailyReward) return false;
+  return openDailyRewardOverlay(__pendingDailyReward, onDone);
+}
+function continueAfterLaunchIntro(allowStoryIntro=true){
   if(S.mode==="Story" && !window.__TUTORIAL_MODE__ && !S.storyIntroSeen){
     if(allowStoryIntro){
       openStoryIntro(false);
@@ -4791,6 +4877,10 @@ function continueFromLaunchIntro(allowStoryIntro=true){
   const shown = showMissionBrief(rand(2200, 3000));
   if(!shown) setPaused(false,null);
   syncGamepadFocus();
+}
+function continueFromLaunchIntro(allowStoryIntro=true){
+  if(maybeShowPendingDailyReward(()=>continueAfterLaunchIntro(allowStoryIntro))) return;
+  continueAfterLaunchIntro(allowStoryIntro);
 }
 function openLaunchIntro(force=false){
   if(window.__TUTORIAL_MODE__) return;
@@ -4808,8 +4898,14 @@ function openLaunchIntro(force=false){
   closeMissionBrief(true);
   const storyOverlay = document.getElementById("storyIntroOverlay");
   if(storyOverlay) storyOverlay.style.display = "none";
+  const dailyOverlay = document.getElementById("dailyRewardOverlay");
+  if(dailyOverlay) dailyOverlay.style.display = "none";
+  __dailyRewardContinue = null;
+  bindLaunchIntroAudioGesture();
+  refreshLaunchIntroStatus();
   setPaused(true,"launch-intro");
   overlay.style.display = "flex";
+  playLaunchTheme(false);
   __launchIntroAutoTimer = setTimeout(()=>{
     beginFromLaunchIntro({ auto:true });
   }, 5200);
@@ -7001,7 +7097,7 @@ window.exitTutorialMode = function () {
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
-  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","storyIntroOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
+  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -8579,7 +8675,7 @@ function performResetGame(){
   S = cloneState(DEFAULT);
   bindFundsWallet(S);
   syncWindowState();
-  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
+  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -8835,7 +8931,7 @@ function gamepadUiContainers(){
   const tutorial = document.getElementById("tutorialOverlay");
   if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
 
-  const overlays = ["launchIntroOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
+  const overlays = ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
     .map((id)=>document.getElementById(id))
     .filter((el)=>el && el.style.display === "flex");
   if(overlays.length) return overlays;
@@ -8924,7 +9020,7 @@ function activateGamepadFocus(){
 }
 
 function anyGamepadOverlayVisible(){
-  const ids = ["tutorialOverlay","launchIntroOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
+  const ids = ["tutorialOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
   return ids.some((id)=>{
     const el = document.getElementById(id);
     return !!(el && el.style.display === "flex");
@@ -13753,7 +13849,8 @@ function init(){
   }
   checkProgressionUnlocks({ silent:true });
 
-  awardDailyLogin();
+  __pendingDailyReward = awardDailyLogin();
+  refreshLaunchIntroStatus();
   bindAttackButtonGestures();
   maybeRenderHUD(true);
   safeTick("bootDrawMapScene", drawMapScene);
@@ -13839,6 +13936,7 @@ window.openLaunchIntro = openLaunchIntro;
 window.beginFromLaunchIntro = beginFromLaunchIntro;
 window.startQuickTutorialFromLaunchIntro = startQuickTutorialFromLaunchIntro;
 window.skipLaunchIntro = skipLaunchIntro;
+window.claimDailyRewardOverlay = claimDailyRewardOverlay;
 window.openStoryIntro = openStoryIntro;
 window.startStoryIntroMission = startStoryIntroMission;
 window.beginStoryMissionFromIntro = beginStoryMissionFromIntro;
