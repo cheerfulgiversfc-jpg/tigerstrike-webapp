@@ -214,7 +214,28 @@
     .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
     .navBtn span{display:block;font-size:18px;line-height:18px;margin-bottom:2px}
-    .mobileMenuToggle{display:none}
+    .mobileMenuToggle{
+      display:none;
+      position:fixed;
+      right:10px;
+      bottom:calc(132px + env(safe-area-inset-bottom));
+      z-index:108;
+      min-height:34px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(42,49,69,.92);
+      background:rgba(10,14,24,.90);
+      box-shadow:var(--shadow);
+      font-size:11px;
+    }
+    body.mobileMenuHidden .nav{
+      transform:translateY(calc(100% + 12px));
+      opacity:0;
+      pointer-events:none;
+    }
+    body.mobileMenuHidden .mobileMenuToggle{
+      bottom:calc(10px + env(safe-area-inset-bottom));
+    }
     @media (prefers-reduced-motion:reduce){
       button,.item{transition:none}
       button:hover:not(:disabled),.item:hover{transform:none}
@@ -1155,8 +1176,8 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4431"></script>
-<script src="./tutorial.js?v=4431"></script>
+<script src="./game.js?v=4432"></script>
+<script src="./tutorial.js?v=4432"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";

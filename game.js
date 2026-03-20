@@ -2253,7 +2253,10 @@ const TOUCH_HUD_DEFAULT = Object.freeze({
 });
 let __touchHudSaveTimer = 0;
 function canToggleMobileMenu(){
-  return isMobileViewport() || !!window.matchMedia?.("(pointer:coarse)")?.matches;
+  const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
+  const touchCapable = ("ontouchstart" in window) || ((typeof navigator !== "undefined") && Number(navigator.maxTouchPoints || 0) > 0);
+  const shortLandscape = isLandscapeViewport() && (window.innerHeight || 0) <= 620;
+  return isMobileViewport() || coarse || touchCapable || shortLandscape;
 }
 function applyMobileMenuState(hidden){
   const body = document.body;
@@ -2443,6 +2446,52 @@ function resetHudCustomizer(){
   renderHudCustomizer();
   save();
   toast("HUD controls reset to default.");
+}
+function scalePointXY(obj, sx, sy, xKey="x", yKey="y"){
+  if(!obj || typeof obj !== "object") return;
+  const x = Number(obj[xKey]);
+  const y = Number(obj[yKey]);
+  if(Number.isFinite(x)) obj[xKey] = x * sx;
+  if(Number.isFinite(y)) obj[yKey] = y * sy;
+}
+function scaleWorldForViewportResize(oldW, oldH, newW, newH){
+  if(!S || typeof S !== "object") return;
+  if(!(oldW > 0 && oldH > 0 && newW > 0 && newH > 0)) return;
+  if(oldW === newW && oldH === newH) return;
+  const sx = newW / oldW;
+  const sy = newH / oldH;
+  const sr = Math.sqrt(Math.max(0.01, sx * sy));
+
+  scalePointXY(S.me, sx, sy);
+  scalePointXY(S.target, sx, sy);
+  scalePointXY(S.evacZone, sx, sy);
+  if(S.evacZone && Number.isFinite(S.evacZone.r)) S.evacZone.r = S.evacZone.r * sr;
+
+  for(const arrName of ["civilians","tigers","pickups","carcasses","trapsPlaced","rescueSites","mapInteractables"]){
+    const arr = S[arrName];
+    if(!Array.isArray(arr)) continue;
+    for(const item of arr){
+      scalePointXY(item, sx, sy);
+      if(Number.isFinite(item?.r)) item.r = item.r * sr;
+      if(arrName === "supportUnits"){
+        scalePointXY(item, sx, sy, "homeX", "homeY");
+      }
+    }
+  }
+
+  if(Array.isArray(S.supportUnits)){
+    for(const unit of S.supportUnits){
+      scalePointXY(unit, sx, sy);
+      scalePointXY(unit, sx, sy, "homeX", "homeY");
+    }
+  }
+
+  if(Number.isFinite(S.respawnTargetX)) S.respawnTargetX *= sx;
+  if(Number.isFinite(S.respawnTargetY)) S.respawnTargetY *= sy;
+  if(Number.isFinite(S.rollAnimFromX)) S.rollAnimFromX *= sx;
+  if(Number.isFinite(S.rollAnimFromY)) S.rollAnimFromY *= sy;
+  if(Number.isFinite(S.rollAnimToX)) S.rollAnimToX *= sx;
+  if(Number.isFinite(S.rollAnimToY)) S.rollAnimToY *= sy;
 }
 function clampWorldToCanvas(){
   if(!S || typeof S !== "object") return;
@@ -2728,11 +2777,14 @@ function sanitizeRuntimeState(){
   }
 }
 function resizeCanvasForViewport(){
+  const prevW = Number(cv.width || 0) || 960;
+  const prevH = Number(cv.height || 0) || 540;
   const mobile = isMobileViewport();
   cv.width = mobile
     ? (isLandscapeViewport() ? 900 : 820)
     : 960;
   cv.height = mobile ? mobileCanvasHeight() : 540;
+  try{ scaleWorldForViewportResize(prevW, prevH, cv.width, cv.height); }catch(e){}
   try{ sanitizeRuntimeState(); }catch(e){}
   try{ clampWorldToCanvas(); }catch(e){}
   invalidateMapCache();
