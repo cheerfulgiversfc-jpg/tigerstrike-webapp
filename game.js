@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4437";
+const TS_BUILD = "4438";
 if(tg){
   try{
     tg.expand?.();
@@ -1233,6 +1233,7 @@ const DEFAULT = {
   v: STORAGE_VERSION,
   paused:false, pauseReason:null,
   mode:"Story", arcadeLevel:1, survivalWave:1, storyLevel:1, mapIndex:0,
+  storyLastMission:1,
   modeWallets:{
     Story:1000,
     Arcade:1000,
@@ -1460,6 +1461,7 @@ function load(){
     m.chapterRewardsUnlocked = { ...DEFAULT.chapterRewardsUnlocked, ...(saved.chapterRewardsUnlocked||{}) };
     m.touchHud = normalizeTouchHudSettings(saved.touchHud ?? m.touchHud);
     m.mode = normalizeModeName(m.mode);
+    m.storyLastMission = clamp(Math.floor(Number(saved.storyLastMission ?? m.storyLevel ?? 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
     m.modeWallets = normalizeModeWallets(saved.modeWallets, m.funds, m.mode);
     m.funds = getModeWallet(m.mode, m);
     if(m.lives==null) m.lives=5;
@@ -4855,6 +4857,17 @@ function nextDailyCountdownText(){
   const mm = String(totalMin % 60).padStart(2, "0");
   return `${hh}h ${mm}m`;
 }
+function storyResumeMissionLevel(){
+  return clamp(
+    Math.max(
+      1,
+      Math.floor(Number(S.storyLevel || 1)),
+      Math.floor(Number(S.storyLastMission || 1))
+    ),
+    1,
+    STORY_CAMPAIGN_OBJECTIVES.length
+  );
+}
 function previewNextDailyReward(){
   const info = readDaily();
   const today = ymdUTC();
@@ -4878,13 +4891,13 @@ function setLaunchArtwork(url=""){
 }
 function launchProgressLabelForMode(mode=S.mode){
   const m = normalizeModeName(mode);
-  if(m === "Story") return `Story Mission ${clamp(S.storyLevel || 1, 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
+  if(m === "Story") return `Story Mission ${storyResumeMissionLevel()}`;
   if(m === "Arcade") return `Arcade Mission ${clamp(S.arcadeLevel || 1, 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
   return `Survival Wave ${Math.max(1, S.survivalWave || 1)}`;
 }
 function modeHasSavedProgress(mode=S.mode){
   const m = normalizeModeName(mode);
-  if(m === "Story") return Math.max(1, S.storyLevel || 1) > 1;
+  if(m === "Story") return storyResumeMissionLevel() > 1;
   if(m === "Arcade") return Math.max(1, S.arcadeLevel || 1) > 1;
   return Math.max(1, S.survivalWave || 1) > 1 || Number(S.surviveSeconds || 0) > 0;
 }
@@ -4896,7 +4909,11 @@ function refreshLaunchStartButtons(){
   const progressLabel = launchProgressLabelForMode(mode);
   const hasProgress = modeHasSavedProgress(mode);
 
-  if(continueBtn) continueBtn.innerText = `▶ Continue (${progressLabel})`;
+  if(continueBtn){
+    continueBtn.innerText = mode === "Story"
+      ? `▶ Continue Last Mission (${progressLabel})`
+      : `▶ Continue (${progressLabel})`;
+  }
   if(restartBtn) restartBtn.disabled = !hasProgress;
   if(hintEl){
     hintEl.innerText = hasProgress
@@ -5063,6 +5080,10 @@ function maybeShowPendingDailyReward(onDone){
 }
 function continueAfterLaunchIntro(allowStoryIntro=true){
   clearLaunchMusicLoop();
+  if(S.mode === "Story"){
+    S.storyLevel = storyResumeMissionLevel();
+    S.storyLastMission = S.storyLevel;
+  }
   if(S.mode==="Story" && !window.__TUTORIAL_MODE__ && !S.storyIntroSeen){
     if(allowStoryIntro){
       openStoryIntro(false);
@@ -5206,7 +5227,8 @@ function setMode(m){
   if(nextMode==="Survival"){ S.survivalWave=1; S.survivalStart=Date.now(); S.surviveSeconds=0; }
   if(nextMode==="Story"){
     // Keep Story progress when returning to Story mode.
-    S.storyLevel = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+    S.storyLevel = storyResumeMissionLevel();
+    S.storyLastMission = S.storyLevel;
   }
   S.mapIndex=0;
   deploy();
@@ -8818,6 +8840,7 @@ function startNextMission(){
   const wasArcadeFinal = (S.mode==="Arcade" && S.arcadeLevel >= ARCADE_CAMPAIGN_OBJECTIVES.length);
   if(S.mode==="Story"){
     S.storyLevel = Math.min(S.storyLevel + 1, STORY_CAMPAIGN_OBJECTIVES.length);
+    S.storyLastMission = Math.max(storyResumeMissionLevel(), S.storyLevel);
   }
   if(S.mode==="Arcade"){
     S.arcadeLevel = Math.min(S.arcadeLevel + 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
@@ -8827,7 +8850,7 @@ function startNextMission(){
   if(wasStoryFinal) toast("Story campaign complete. Replaying Mission 100.");
   else if(wasArcadeFinal) toast("Arcade campaign complete. Replaying Mission 100.");
   else toast("Next mission started.");
-  save();
+  save(true);
 }
 
 function restartCurrentMission(){
@@ -8852,7 +8875,10 @@ function restartModeFromMission1(){
   lastOverlay = null;
   S.gameOver = false;
 
-  if(mode === "Story") S.storyLevel = 1;
+  if(mode === "Story"){
+    S.storyLevel = 1;
+    S.storyLastMission = 1;
+  }
   else if(mode === "Arcade") S.arcadeLevel = 1;
   else {
     S.survivalWave = 1;
@@ -10128,13 +10154,41 @@ function followCiviliansTick(){
   }
 }
 
+function moveCivilianInsideEvac(c){
+  const ez = S.evacZone || DEFAULT.evacZone;
+  if(!ez || !Number.isFinite(ez.x) || !Number.isFinite(ez.y)) return;
+  const radius = Math.max(10, (ez.r || 70) - 14);
+  const seed = ((Number(c.id || 1) * 97) % 360) * (Math.PI / 180);
+  const laneR = Math.max(8, Math.min(radius * 0.56, 12 + ((Number(c.id || 1) % 5) * 6)));
+  const tx = clamp(ez.x + Math.cos(seed) * laneR, 24, cv.width - 24);
+  const ty = clamp(ez.y + Math.sin(seed) * laneR, 24, cv.height - 24);
+  const spot = findNearestOpenPoint(tx, ty, 12, {
+    avoidKeepout:false,
+    avoidWater:false,
+    targetX:ez.x,
+    targetY:ez.y
+  }) || { x:tx, y:ty };
+  c.x = spot.x;
+  c.y = spot.y;
+  c.following = false;
+  c.escortOwner = "";
+  c.escortUnitId = "";
+}
+
 function evacCheck(){
   if(S.mode==="Survival") return;
-  const evacRadius = (S.evacZone?.r || 70) + 18;
+  const ez = S.evacZone || DEFAULT.evacZone;
+  const evacOuterRadius = (ez.r || 70) + 18;
+  const evacCoreRadius = Math.max(14, (ez.r || 70) - 6);
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
     const followBonus = c.following ? 7 : 0;
-    if(dist(c.x,c.y,S.evacZone.x,S.evacZone.y) <= (evacRadius + followBonus)){
+    const d = dist(c.x, c.y, ez.x, ez.y);
+    if(d <= (evacOuterRadius + followBonus)){
+      moveCivilianInsideEvac(c);
+      if(dist(c.x, c.y, ez.x, ez.y) > evacCoreRadius){
+        continue;
+      }
       c.evac=true;
       S.evacDone += 1;
       S.stats.evac += 1;
@@ -13889,6 +13943,12 @@ function init(){
   ensureStoryMetaState();
   if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  S.storyLastMission = clamp(Math.floor(S.storyLastMission || S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  if(S.mode === "Story"){
+    S.storyLevel = Math.max(S.storyLevel, S.storyLastMission);
+  } else {
+    S.storyLastMission = Math.max(S.storyLastMission, S.storyLevel);
+  }
   S.arcadeLevel = clamp(Math.floor(S.arcadeLevel || 1), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
   if(syncStoryChapterRewardsFromProgress() > 0){
     __savePending = true;
@@ -14082,10 +14142,18 @@ function bootstrap(){
       const keepMode = ["Story","Arcade","Survival"].includes(S?.mode) ? S.mode : DEFAULT.mode;
       const keepMapIndex = Number.isFinite(S?.mapIndex) ? S.mapIndex : 0;
       const keepWallets = normalizeModeWallets(S?.modeWallets, S?.funds, keepMode);
+      const keepStoryLevel = clamp(Math.floor(Number(S?.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+      const keepStoryLastMission = clamp(Math.floor(Number(S?.storyLastMission || keepStoryLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+      const keepArcadeLevel = clamp(Math.floor(Number(S?.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+      const keepSurvivalWave = Math.max(1, Math.floor(Number(S?.survivalWave || 1)));
       S = cloneState(DEFAULT);
       S.mode = keepMode;
       S.mapIndex = keepMapIndex;
       S.modeWallets = keepWallets;
+      S.storyLevel = keepStoryLevel;
+      S.storyLastMission = Math.max(keepStoryLevel, keepStoryLastMission);
+      S.arcadeLevel = keepArcadeLevel;
+      S.survivalWave = keepSurvivalWave;
       bindFundsWallet(S);
       syncWindowState();
       resizeCanvasForViewport();
@@ -14110,6 +14178,15 @@ function bootstrap(){
 }
 
 bootstrap();
+
+// Flush progress when app is backgrounded/closed (important on mobile).
+window.addEventListener("pagehide", ()=>{
+  try{ save(true); }catch(e){}
+}, { capture:true });
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState !== "hidden") return;
+  try{ save(true); }catch(e){}
+});
 
 
 // ===================== TUTORIAL ACCESS =====================
