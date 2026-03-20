@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4439";
+const TS_BUILD = "4440";
 if(tg){
   try{
     tg.expand?.();
@@ -4913,11 +4913,13 @@ function applyStorySaveToState(state, opts={}){
   return state;
 }
 function storyResumeMissionLevel(){
+  const slotMission = Math.floor(Number(readStorySaveData()?.mission || 1));
   return clamp(
     Math.max(
       1,
       Math.floor(Number(S.storyLevel || 1)),
-      Math.floor(Number(S.storyLastMission || 1))
+      Math.floor(Number(S.storyLastMission || 1)),
+      slotMission
     ),
     1,
     STORY_CAMPAIGN_OBJECTIVES.length
@@ -9020,6 +9022,7 @@ function restartModeFromMission1(){
   if(mode === "Story"){
     S.storyLevel = 1;
     S.storyLastMission = 1;
+    clearStorySaveData();
   }
   else if(mode === "Arcade") S.arcadeLevel = 1;
   else {
