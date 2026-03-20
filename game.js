@@ -1575,6 +1575,8 @@ let __frameRecoverUntil = 0;
 let __frameHeavyFxFlip = 0;
 let __frameBgFxFlip = 0;
 let __frameDynamicLoadMul = FRAME_LOAD_LIGHT;
+let __battleHudRenderAt = 0;
+let __battleReadabilityRenderAt = 0;
 let __frameSpikePending = false;
 const __frameErrorGate = Object.create(null);
 const __blockedAtCache = new Map();
@@ -1910,6 +1912,8 @@ function runStabilityRecovery(reason="stall"){
   __frameLagScore = 0;
   __frameBgFxFlip = 0;
   __frameDynamicLoadMul = FRAME_LOAD_LIGHT;
+  __battleHudRenderAt = 0;
+  __battleReadabilityRenderAt = 0;
   const perfNow = performance.now ? performance.now() : now;
   __frameRecoverUntil = Math.max(__frameRecoverUntil || 0, perfNow + 2200);
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, perfNow + 2600);
@@ -7975,6 +7979,8 @@ function transitionCleanupSweep(reason=""){
     clearTransientCombatVisuals();
     __frameBgFxFlip = 0;
     __frameDynamicLoadMul = FRAME_LOAD_LIGHT;
+    __battleHudRenderAt = 0;
+    __battleReadabilityRenderAt = 0;
   }
   if(r.includes("battle-end")) clearTransientCombatVisuals();
 
@@ -11290,6 +11296,15 @@ function visualEffectsHeavyMode(){
   if(performanceMode() === "PERFORMANCE") return true;
   return frameIsSlow();
 }
+function visualReadabilityHeavyMode(){
+  if(visualEffectsHeavyMode()) return true;
+  return __frameDynamicLoadMul >= FRAME_LOAD_HIGH;
+}
+function visualExtremeLoadMode(){
+  if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) return true;
+  if(frameIsSlow()) return frameBudgetExceeded(0.55);
+  return false;
+}
 
 function queueCameraShake(power=1, durationMs=120){
   const base = clamp(Number(power || 0), 0, 2);
@@ -11393,7 +11408,10 @@ function tickImpactPulses(){
 
 function drawCombatFx(){
   const heavy = visualEffectsHeavyMode();
-  for(const fx of COMBAT_FX){
+  const maxDraw = heavy ? (frameIsSlow() ? 16 : 24) : 56;
+  const startIdx = Math.max(0, COMBAT_FX.length - maxDraw);
+  for(let i=startIdx; i<COMBAT_FX.length; i++){
+    const fx = COMBAT_FX[i];
     const alpha = clamp(fx.ttl / fx.maxTtl, 0, 1);
     const dx = fx.x2 - fx.x1;
     const dy = fx.y2 - fx.y1;
@@ -11441,7 +11459,10 @@ function drawCombatFx(){
 }
 
 function drawImpactPulses(){
-  for(const pulse of IMPACT_PULSES){
+  const maxDraw = visualReadabilityHeavyMode() ? (frameIsSlow() ? 10 : 14) : 24;
+  const startIdx = Math.max(0, IMPACT_PULSES.length - maxDraw);
+  for(let i=startIdx; i<IMPACT_PULSES.length; i++){
+    const pulse = IMPACT_PULSES[i];
     const life = clamp(pulse.ttl / pulse.maxTtl, 0, 1);
     ctx.save();
     const spin = (pulse.spin || 0) + ((1 - life) * 2.6);
@@ -11520,7 +11541,7 @@ function emitDamagePopup(x, y, text, kind="hit"){
 }
 
 function tickDamagePopups(){
-  const idleFade = (S.paused || S.missionEnded || S.gameOver || !S.inBattle) ? 1.8 : 1;
+  const idleFade = (S.paused || S.missionEnded || S.gameOver || !S.inBattle) ? 2.6 : 1;
   for(const p of DAMAGE_POPUPS){
     p.ttl -= idleFade;
     p.y += p.vy;
@@ -11539,7 +11560,11 @@ function tickDamagePopups(){
 }
 
 function drawDamagePopups(){
-  for(const p of DAMAGE_POPUPS){
+  const heavy = visualReadabilityHeavyMode();
+  const maxDraw = heavy ? (frameIsSlow() ? 8 : 12) : 24;
+  const startIdx = Math.max(0, DAMAGE_POPUPS.length - maxDraw);
+  for(let i=startIdx; i<DAMAGE_POPUPS.length; i++){
+    const p = DAMAGE_POPUPS[i];
     const a = clamp(p.ttl / p.maxTtl, 0, 1);
     let color = "rgba(245,247,255,.95)";
     let bg = "rgba(9,12,18,.84)";
@@ -12927,8 +12952,8 @@ function drawMapScene(){
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0
   ].join("|");
   const cacheAgeCap = frameIsSlow()
-    ? (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 180 : 120)
-    : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 96 : MAP_CACHE_INTERVAL_MS);
+    ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 280 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 220 : 140))
+    : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 130 : MAP_CACHE_INTERVAL_MS);
   const canUseCache =
     !!__mapFrameCacheCanvas &&
     __mapFrameCacheSig === cacheSig &&
@@ -13858,6 +13883,12 @@ function drawOnMapBattleReadability(){
   if(!S.inBattle) return;
   const t = activeTiger();
   if(!t || !t.alive) return;
+  const now = Date.now();
+  const heavy = visualReadabilityHeavyMode();
+  const extreme = visualExtremeLoadMode();
+  const minInterval = extreme ? 110 : (heavy ? 70 : 0);
+  if(minInterval > 0 && (now - (__battleReadabilityRenderAt || 0)) < minInterval) return;
+  __battleReadabilityRenderAt = now;
   const p = currentDrawPoint(S.me, S.me.x, S.me.y);
   const tp = currentDrawPoint(t, t.x, t.y);
   const dx = tp.x - p.x;
@@ -13870,31 +13901,35 @@ function drawOnMapBattleReadability(){
   const inRange = d <= range;
 
   ctx.save();
-  const vignette = ctx.createRadialGradient(mx, my, focusR * 0.32, mx, my, focusR);
-  vignette.addColorStop(0, "rgba(8,12,18,0)");
-  vignette.addColorStop(0.7, "rgba(8,12,18,.10)");
-  vignette.addColorStop(1, "rgba(5,8,14,.34)");
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, cv.width, cv.height);
+  if(!extreme){
+    const vignette = ctx.createRadialGradient(mx, my, focusR * 0.32, mx, my, focusR);
+    vignette.addColorStop(0, "rgba(8,12,18,0)");
+    vignette.addColorStop(0.7, "rgba(8,12,18,.10)");
+    vignette.addColorStop(1, "rgba(5,8,14,.34)");
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, cv.width, cv.height);
+  }
 
-  const beamAlpha = inRange ? 0.38 : 0.22;
+  const beamAlpha = inRange ? (extreme ? 0.30 : 0.38) : (extreme ? 0.18 : 0.22);
   ctx.strokeStyle = inRange ? `rgba(74,222,128,${beamAlpha})` : `rgba(251,191,36,${beamAlpha})`;
-  ctx.lineWidth = inRange ? 2.6 : 2.2;
-  ctx.setLineDash(inRange ? [8,6] : [4,6]);
+  ctx.lineWidth = inRange ? (extreme ? 2.0 : 2.6) : (extreme ? 1.8 : 2.2);
+  ctx.setLineDash(inRange ? (extreme ? [5,5] : [8,6]) : [4,6]);
   ctx.beginPath();
   ctx.moveTo(p.x, p.y - 4);
   ctx.lineTo(tp.x, tp.y - 4);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  ctx.strokeStyle = inRange ? "rgba(74,222,128,.85)" : "rgba(251,191,36,.85)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 34, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(tp.x, tp.y, 40, 0, Math.PI * 2);
-  ctx.stroke();
+  if(!extreme){
+    ctx.strokeStyle = inRange ? "rgba(74,222,128,.85)" : "rgba(251,191,36,.85)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 34, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(tp.x, tp.y, 40, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   const chipW = 120;
   const chipH = 24;
@@ -13917,10 +13952,16 @@ function drawOnMapBattleHud(){
   if(!S.inBattle) return;
   const t = activeTiger();
   if(!t || !t.alive) return;
+  const now = Date.now();
+  const heavy = visualReadabilityHeavyMode();
+  const extreme = visualExtremeLoadMode();
+  const minInterval = extreme ? 140 : (heavy ? 95 : 0);
+  if(minInterval > 0 && (now - (__battleHudRenderAt || 0)) < minInterval) return;
+  __battleHudRenderAt = now;
   const panelW = Math.min(cv.width - 16, 320);
   const panelX = 8;
   const panelY = 8;
-  const panelH = 48;
+  const panelH = extreme ? 42 : 48;
   const hpRatio = clamp((S.hp || 0) / 100, 0, 1);
   const armorCap = Math.max(1, Number(S.armorCap) || 100);
   const armorRatio = clamp((S.armor || 0) / armorCap, 0, 1);
@@ -13938,28 +13979,28 @@ function drawOnMapBattleHud(){
   const leftX = panelX + 10;
   const rightX = panelX + (panelW * 0.52);
   ctx.fillStyle = "rgba(241,245,249,.94)";
-  ctx.font = "800 10px system-ui";
+  ctx.font = extreme ? "800 9px system-ui" : "800 10px system-ui";
   ctx.fillText(`AGENT HP ${Math.round(hpRatio * 100)}%`, leftX, panelY + 13);
   ctx.fillText(`${t.type.toUpperCase()} ${tigerPct}%`, rightX, panelY + 13);
 
   ctx.fillStyle = "rgba(8,12,18,.9)";
-  ctx.fillRect(leftX, panelY + 18, panelW * 0.42, 8);
-  ctx.fillRect(rightX, panelY + 18, panelW * 0.42, 8);
+  ctx.fillRect(leftX, panelY + 18, panelW * 0.42, extreme ? 7 : 8);
+  ctx.fillRect(rightX, panelY + 18, panelW * 0.42, extreme ? 7 : 8);
   ctx.fillStyle = hpRatio > 0.5 ? "#4ade80" : (hpRatio > 0.25 ? "#f59e0b" : "#fb7185");
-  ctx.fillRect(leftX, panelY + 18, (panelW * 0.42) * hpRatio, 8);
+  ctx.fillRect(leftX, panelY + 18, (panelW * 0.42) * hpRatio, extreme ? 7 : 8);
   ctx.fillStyle = tigerRatio > 0.5 ? "#4ade80" : (tigerRatio > 0.25 ? "#f59e0b" : "#fb7185");
-  ctx.fillRect(rightX, panelY + 18, (panelW * 0.42) * tigerRatio, 8);
+  ctx.fillRect(rightX, panelY + 18, (panelW * 0.42) * tigerRatio, extreme ? 7 : 8);
 
   ctx.fillStyle = "rgba(241,245,249,.88)";
   ctx.font = "700 9px system-ui";
-  ctx.fillText(`AR ${Math.round(armorRatio * 100)}%`, leftX, panelY + 40);
+  ctx.fillText(`AR ${Math.round(armorRatio * 100)}%`, leftX, panelY + (extreme ? 36 : 40));
   ctx.fillStyle = "rgba(8,12,18,.9)";
-  ctx.fillRect(leftX + 36, panelY + 34, panelW * 0.20, 6);
+  ctx.fillRect(leftX + 36, panelY + (extreme ? 31 : 34), panelW * 0.20, extreme ? 5 : 6);
   ctx.fillStyle = armorRatio > 0.5 ? "rgba(96,165,250,.96)" : "rgba(147,197,253,.92)";
-  ctx.fillRect(leftX + 36, panelY + 34, (panelW * 0.20) * armorRatio, 6);
+  ctx.fillRect(leftX + 36, panelY + (extreme ? 31 : 34), (panelW * 0.20) * armorRatio, extreme ? 5 : 6);
 
   ctx.fillStyle = "rgba(241,245,249,.86)";
-  ctx.fillText(`DIST ${Math.round(dist(S.me.x, S.me.y, t.x, t.y))}m`, rightX, panelY + 40);
+  ctx.fillText(`DIST ${Math.round(dist(S.me.x, S.me.y, t.x, t.y))}m`, rightX, panelY + (extreme ? 36 : 40));
   ctx.restore();
 }
 
@@ -14583,7 +14624,13 @@ function drawTiger(t){
   const bossTag = isBossTiger(t) ? ` • ${bossIdentityProfile(t)?.name || "Boss"}` : "";
   const fullLabel = t.type + bossTag + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
   const compactLabel = t.type + (t.tranqTagged ? " (tranq)" : "");
-  ctx.fillText(nonFocusBattle ? compactLabel : fullLabel, x-44*s, y-44*s);
+  const skipLabel =
+    visualReadabilityHeavyMode() &&
+    !tigerFocus &&
+    dist(S.me.x, S.me.y, t.x, t.y) > 220;
+  if(!skipLabel){
+    ctx.fillText(nonFocusBattle ? compactLabel : fullLabel, x-44*s, y-44*s);
+  }
   ctx.globalAlpha=1;
 }
 
