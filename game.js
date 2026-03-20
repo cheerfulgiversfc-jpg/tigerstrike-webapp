@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4444";
+const TS_BUILD = "4445";
 if(tg){
   try{
     tg.expand?.();
@@ -1391,6 +1391,7 @@ const IMPACT_PULSES = [];
 const DAMAGE_POPUP_RATE_MS = 82;
 const DAMAGE_POPUP_GATE = new Map();
 const CAMERA_SHAKE = { until:0, power:0 };
+const ENABLE_SCREEN_SHAKE = false;
 const BATTLE_CINE_ENTER_MS = 260;
 const BATTLE_CINE_EXIT_MS = 220;
 const BATTLE_CINEMATIC = {
@@ -11578,6 +11579,7 @@ function sampleBattleCinematic(){
 }
 
 function queueCameraShake(power=1, durationMs=120){
+  if(!ENABLE_SCREEN_SHAKE) return;
   const base = clamp(Number(power || 0), 0, 2);
   if(base <= 0) return;
   const modeScale = performanceMode() === "PERFORMANCE" ? 0.44 : (frameIsSlow() ? 0.62 : 1);
@@ -11588,6 +11590,11 @@ function queueCameraShake(power=1, durationMs=120){
 }
 
 function sampleCameraShake(){
+  if(!ENABLE_SCREEN_SHAKE){
+    CAMERA_SHAKE.power = 0;
+    CAMERA_SHAKE.until = 0;
+    return { x:0, y:0, active:false };
+  }
   const now = Date.now();
   if(now >= CAMERA_SHAKE.until || CAMERA_SHAKE.power <= 0.02){
     CAMERA_SHAKE.power = 0;
