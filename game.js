@@ -1556,6 +1556,7 @@ let __lastHudRender = 0;
 let __lastAutosave = 0;
 let __savePending = false;
 const __frameTaskGate = Object.create(null);
+const __frameTaskPhase = Object.create(null);
 const MAP_CACHE_INTERVAL_MS = 56;
 let __mapFrameCacheCanvas = null;
 let __mapFrameCacheCtx = null;
@@ -1753,6 +1754,30 @@ function runFrameTask(key, intervalMs, fn, options={}){
   const opts = options || {};
   const now = Date.now();
   if(now < (__frameTaskGate[key] || 0)) return false;
+  const cadenceBase = Math.max(1, Math.floor(Number(opts.cadence) || 1));
+  const cadenceSlow = Math.max(cadenceBase, Math.floor(Number(opts.slowCadence) || cadenceBase));
+  const cadenceHeavy = Math.max(cadenceSlow, Math.floor(Number(opts.heavyCadence) || cadenceSlow));
+  const cadenceExtreme = Math.max(cadenceHeavy, Math.floor(Number(opts.extremeCadence) || cadenceHeavy));
+  let cadence = cadenceBase;
+  if(frameIsSlow()) cadence = Math.max(cadence, cadenceSlow);
+  if(__frameDynamicLoadMul >= FRAME_LOAD_HIGH) cadence = Math.max(cadence, cadenceHeavy);
+  if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) cadence = Math.max(cadence, cadenceExtreme);
+  if(cadence > 1){
+    if(!Number.isFinite(__frameTaskPhase[key])){
+      let hash = 0;
+      const sk = String(key || "");
+      for(let i=0;i<sk.length;i++) hash = ((hash * 33) + sk.charCodeAt(i)) | 0;
+      __frameTaskPhase[key] = Math.abs(hash) % cadence;
+    }else{
+      __frameTaskPhase[key] = Math.abs(Math.floor(__frameTaskPhase[key])) % cadence;
+    }
+    const frameNo = Math.max(0, Math.floor(Number(__frameBudgetState.frameNo) || 0));
+    const phase = __frameTaskPhase[key] || 0;
+    if((frameNo % cadence) !== phase){
+      __frameTaskGate[key] = now + Math.min(intervalMs, 24);
+      return false;
+    }
+  }
   const costHint = Math.max(0, Number(opts.costHint) || 0);
   const critical = !!opts.critical;
   if(!critical && frameBudgetExceeded(costHint)){
@@ -1880,6 +1905,7 @@ function runStabilityRecovery(reason="stall"){
   __freezeRecoverState.history.push(now);
 
   for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
+  for(const k of Object.keys(__frameTaskPhase)) delete __frameTaskPhase[k];
   __frameSpikePending = false;
   __frameLagScore = 0;
   __frameBgFxFlip = 0;
@@ -12811,7 +12837,9 @@ function drawMapScene(){
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0
   ].join("|");
-  const cacheAgeCap = frameIsSlow() ? Math.max(MAP_CACHE_INTERVAL_MS, 120) : MAP_CACHE_INTERVAL_MS;
+  const cacheAgeCap = frameIsSlow()
+    ? (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 180 : 120)
+    : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 96 : MAP_CACHE_INTERVAL_MS);
   const canUseCache =
     !!__mapFrameCacheCanvas &&
     __mapFrameCacheSig === cacheSig &&
@@ -14206,6 +14234,7 @@ function drawEntities(){
   drawAbilityCooldownWheel();
   const perfMode = performanceMode();
   const isSlowFrame = frameIsSlow();
+  const frameBudgetTight = frameBudgetExceeded(0.85);
   const entityLoad =
     (S.tigers?.length || 0) +
     (S.civilians?.length || 0) +
@@ -14213,14 +14242,16 @@ function drawEntities(){
     (S.pickups?.length || 0);
   const heavyLoad = entityLoad > 34;
   __frameHeavyFxFlip = (__frameHeavyFxFlip + 1) % 6;
-  const drawFx = heavyLoad
-    ? (__frameHeavyFxFlip % (isSlowFrame ? 4 : 3) === 0)
-    : ((perfMode !== "PERFORMANCE" && !isSlowFrame)
-      || (perfMode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 === 0))
-      || (isSlowFrame && (__frameHeavyFxFlip % 3 === 0)));
-  if(drawFx || IMPACT_PULSES.length > 0) drawImpactPulses();
-  if(drawFx) drawCombatFx();
-  if(drawFx || __frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0) drawDamagePopups();
+  const drawFx = frameBudgetTight
+    ? (__frameHeavyFxFlip % 4 === 0)
+    : (heavyLoad
+      ? (__frameHeavyFxFlip % (isSlowFrame ? 4 : 3) === 0)
+      : ((perfMode !== "PERFORMANCE" && !isSlowFrame)
+        || (perfMode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 === 0))
+        || (isSlowFrame && (__frameHeavyFxFlip % 3 === 0))));
+  if(drawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight)) drawImpactPulses();
+  if(drawFx && !frameBudgetTight) drawCombatFx();
+  if(drawFx || (!frameBudgetTight && __frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0)) drawDamagePopups();
 }
 function drawMobileUiClearLane(){
   // Intentionally no overlay in the control lane; keep full map visibility.
@@ -14230,6 +14261,7 @@ function shouldDrawAtmosphericPass(){
   __frameBgFxFlip = (__frameBgFxFlip + 1) % 9;
   const score = frameActiveEntityLoadScore();
   if(performanceMode() === "PERFORMANCE") return (__frameBgFxFlip % 3) === 0;
+  if(frameBudgetExceeded(0.45)) return (__frameBgFxFlip % 4) === 0;
   if(frameIsSlow()) return (__frameBgFxFlip % 2) === 0;
   if(score >= 64) return (__frameBgFxFlip % 3) === 0;
   if(score >= 46) return (__frameBgFxFlip % 2) === 0;
@@ -14274,17 +14306,25 @@ function draw(){
         runFrameTask("tickPickups", frameInterval(46, 1.5), tickPickups, { costHint:1.0 });
       }
 
-      runFrameTask("roamTigers", frameInterval(34, 1.55), roamTigers, { costHint:2.6, critical:true });
+      runFrameTask("roamTigers", frameInterval(34, 1.55), roamTigers, {
+        costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+      });
       runFrameTask("bossIdentity", frameInterval(92, 1.45), bossIdentityTick, { costHint:0.9, critical:true });
       runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
-      runFrameTask("supportUnits", frameInterval(50, 1.8), supportUnitsTick, { costHint:2.4 });
+      runFrameTask("supportUnits", frameInterval(50, 1.8), supportUnitsTick, {
+        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+      });
       let usedKeyboard = false;
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
       if(!usedKeyboard) safeTick("movePlayer", movePlayer);
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
-      runFrameTask("followCivilians", frameInterval(40, 1.5), followCiviliansTick, { costHint:1.7, critical:S.mode!=="Survival" });
+      runFrameTask("followCivilians", frameInterval(40, 1.5), followCiviliansTick, {
+        costHint:1.7, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+      });
       runFrameTask("evacCheck", frameInterval(58, 1.5), evacCheck, { costHint:0.9 });
-      runFrameTask("civThreats", frameInterval(72, 1.5), tickCiviliansAndThreats, { costHint:1.6, critical:S.mode!=="Survival" });
+      runFrameTask("civThreats", frameInterval(72, 1.5), tickCiviliansAndThreats, {
+        costHint:1.6, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+      });
       runFrameTask("survivalPressure", frameInterval(86, 1.4), survivalPressureTick, { costHint:1.1 });
       runFrameTask("combatTick", frameInterval(S.inBattle ? 24 : 34, 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
       runFrameTask("checkMissionComplete", frameInterval(90, 1.4), checkMissionComplete, { costHint:0.8, critical:true });
