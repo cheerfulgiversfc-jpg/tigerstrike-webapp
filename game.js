@@ -4869,17 +4869,93 @@ function nextDailyCountdownText(){
 function storySaveStorageKey(){
   return `${STORY_SAVE_KEY_BASE}_${tgUserKey()}`;
 }
+function storySaveMissionFromPayload(payload){
+  if(!payload || typeof payload !== "object") return 1;
+  const fromResume = payload.resumeState && typeof payload.resumeState === "object"
+    ? (payload.resumeState.storyLevel ?? payload.resumeState.storyLastMission ?? payload.resumeState.mission)
+    : null;
+  const raw = payload.mission ?? payload.storyLevel ?? payload.storyLastMission ?? fromResume ?? 1;
+  return clamp(
+    Math.floor(Number(raw || 1)),
+    1,
+    STORY_CAMPAIGN_OBJECTIVES.length
+  );
+}
+function buildStoryResumeSnapshot(){
+  const snapshot = buildPersistedState();
+  const mission = clamp(
+    Math.max(
+      1,
+      Math.floor(Number(snapshot.storyLevel || 1)),
+      Math.floor(Number(snapshot.storyLastMission || 1))
+    ),
+    1,
+    STORY_CAMPAIGN_OBJECTIVES.length
+  );
+  snapshot.mode = "Story";
+  snapshot.storyLevel = mission;
+  snapshot.storyLastMission = Math.max(mission, Math.floor(Number(snapshot.storyLastMission || mission)));
+  const storyFunds = Math.max(0, Math.round(Number(getModeWallet("Story", snapshot) || snapshot.funds || 0)));
+  snapshot.modeWallets = normalizeModeWallets(snapshot.modeWallets, storyFunds, "Story");
+  if(snapshot.modeWallets && typeof snapshot.modeWallets === "object"){
+    snapshot.modeWallets.Story = storyFunds;
+  }
+  snapshot.funds = storyFunds;
+  snapshot.v = STORAGE_VERSION;
+  trimPersistentState(snapshot);
+  return snapshot;
+}
+function restoreStoryResumeSnapshot(slot, source="story-restore"){
+  const mission = storySaveMissionFromPayload(slot || {});
+  const resume = (slot && typeof slot.resumeState === "object") ? cloneState(slot.resumeState) : null;
+  if(!resume) return false;
+
+  resume.mode = "Story";
+  resume.storyLevel = clamp(Math.floor(Number(resume.storyLevel || mission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  resume.storyLastMission = clamp(
+    Math.max(
+      Math.floor(Number(resume.storyLastMission || 1)),
+      Math.floor(Number(resume.storyLevel || 1)),
+      mission
+    ),
+    1,
+    STORY_CAMPAIGN_OBJECTIVES.length
+  );
+  const storyFunds = Math.max(0, Math.round(Number(getModeWallet("Story", resume) || resume.funds || 0)));
+  resume.modeWallets = normalizeModeWallets(resume.modeWallets, storyFunds, "Story");
+  if(resume.modeWallets && typeof resume.modeWallets === "object"){
+    resume.modeWallets.Story = storyFunds;
+  }
+  resume.funds = storyFunds;
+  resume.v = STORAGE_VERSION;
+  trimPersistentState(resume);
+
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(resume));
+  }catch(e){}
+
+  S = load();
+  bindFundsWallet(S);
+  syncWindowState();
+  resizeCanvasForViewport();
+  applyTouchHudSettings();
+  applyModeTheme(S.mode);
+  invalidateMapCache();
+  transitionCleanupSweep(source);
+  clearTransientCombatVisuals();
+  updateEngage();
+  maybeRenderHUD(true);
+  try{ renderCombatControls(); }catch(e){}
+  save(true);
+  return true;
+}
 function readStorySaveData(){
   try{
     const raw = localStorage.getItem(storySaveStorageKey());
     if(!raw) return null;
     const parsed = JSON.parse(raw);
     if(!parsed || typeof parsed !== "object") return null;
-    const mission = clamp(
-      Math.floor(Number(parsed.mission ?? parsed.storyLevel ?? parsed.storyLastMission ?? 0)),
-      1,
-      STORY_CAMPAIGN_OBJECTIVES.length
-    );
+    const mission = storySaveMissionFromPayload(parsed);
     if(!Number.isFinite(mission) || mission < 1) return null;
     return {
       ...parsed,
@@ -4913,7 +4989,7 @@ function applyStorySaveToState(state, opts={}){
   return state;
 }
 function storyResumeMissionLevel(){
-  const slotMission = Math.floor(Number(readStorySaveData()?.mission || 1));
+  const slotMission = Math.floor(Number(storySaveMissionFromPayload(readStorySaveData() || {}) || 1));
   return clamp(
     Math.max(
       1,
@@ -4927,14 +5003,16 @@ function storyResumeMissionLevel(){
 }
 function writeStorySaveData(source="manual"){
   if(window.__TUTORIAL_MODE__) return null;
-  const mission = storyResumeMissionLevel();
+  const resumeState = buildStoryResumeSnapshot();
+  const mission = storySaveMissionFromPayload(resumeState);
   const payload = {
     mission,
     storyLevel: mission,
     storyLastMission: mission,
-    hp: clamp(Math.round(Number(S.hp || 100)), 0, 100),
-    armor: clamp(Math.round(Number(S.armor || 0)), 0, S.armorCap || 100),
-    funds: Math.max(0, Math.round(Number(getModeWallet("Story", S) || S.funds || 0))),
+    hp: clamp(Math.round(Number(resumeState.hp || S.hp || 100)), 0, 100),
+    armor: clamp(Math.round(Number(resumeState.armor || S.armor || 0)), 0, S.armorCap || 100),
+    funds: Math.max(0, Math.round(Number(getModeWallet("Story", resumeState) || resumeState.funds || S.funds || 0))),
+    resumeState,
     savedAt: Date.now(),
     source: String(source || "manual"),
   };
@@ -5124,7 +5202,7 @@ function saveGameNow(){
   S.storyLastMission = Math.max(Number(S.storyLastMission || 1), Number(slot.mission || 1));
   save(true);
   refreshLaunchIntroStatus();
-  toast(`Saved Story Mission ${slot.mission}.`);
+  toast(`Saved Story Mission ${slot.mission} with full progress snapshot.`);
 }
 function loadStorySaveFromLaunchIntro(){
   const slot = readStorySaveData();
@@ -5140,18 +5218,21 @@ function loadStorySaveFromLaunchIntro(){
   if(dailyOverlay) dailyOverlay.style.display = "none";
   __dailyRewardContinue = null;
 
-  setModeWallet(S.mode, S.funds, S);
-  S.mode = "Story";
-  applyModeTheme(S.mode);
-  S.funds = getModeWallet("Story", S);
-  const mission = clamp(Math.floor(Number(slot.mission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
-  S.storyLastMission = mission;
-  S.storyLevel = mission;
-  const nextHp = Number.isFinite(Number(slot.hp)) ? clamp(Number(slot.hp), 0, 100) : clamp(S.hp, 0, 100);
-  const nextArmor = Number.isFinite(Number(slot.armor)) ? clamp(Number(slot.armor), 0, S.armorCap || 100) : clamp(S.armor, 0, S.armorCap || 100);
-  deploy({ carryStats:true, hp:nextHp, armor:nextArmor });
-  save(true);
-  toast(`Loaded Story Mission ${mission}.`);
+  const mission = storySaveMissionFromPayload(slot);
+  const restored = restoreStoryResumeSnapshot(slot, "launch-load-story-slot");
+  if(!restored){
+    setModeWallet(S.mode, S.funds, S);
+    S.mode = "Story";
+    applyModeTheme(S.mode);
+    S.funds = getModeWallet("Story", S);
+    S.storyLastMission = mission;
+    S.storyLevel = mission;
+    const nextHp = Number.isFinite(Number(slot.hp)) ? clamp(Number(slot.hp), 0, 100) : clamp(S.hp, 0, 100);
+    const nextArmor = Number.isFinite(Number(slot.armor)) ? clamp(Number(slot.armor), 0, S.armorCap || 100) : clamp(S.armor, 0, S.armorCap || 100);
+    deploy({ carryStats:true, hp:nextHp, armor:nextArmor });
+    save(true);
+  }
+  toast(`Loaded Story save at Mission ${mission}.`);
   continueFromLaunchIntro(true);
 }
 function openDailyRewardOverlay(reward=null, onDone=null){
@@ -5224,8 +5305,15 @@ function maybeShowPendingDailyReward(onDone){
 function continueAfterLaunchIntro(allowStoryIntro=true){
   clearLaunchMusicLoop();
   if(S.mode === "Story"){
-    S.storyLevel = storyResumeMissionLevel();
-    S.storyLastMission = S.storyLevel;
+    const slot = readStorySaveData();
+    if(slot && restoreStoryResumeSnapshot(slot, "launch-continue-story-slot")){
+      const mission = storySaveMissionFromPayload(slot);
+      S.storyLevel = mission;
+      S.storyLastMission = Math.max(S.storyLastMission || mission, mission);
+    } else {
+      S.storyLevel = storyResumeMissionLevel();
+      S.storyLastMission = S.storyLevel;
+    }
     writeStorySaveData("continue-launch");
   }
   if(S.mode==="Story" && !window.__TUTORIAL_MODE__ && !S.storyIntroSeen){
