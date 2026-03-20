@@ -6698,16 +6698,36 @@ function buyArmor(id){
   save();
   renderShopList();
   renderHUD();
+  renderCombatControls();
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
 }
 function buyMed(id){
   const m=getMed(id); if(!m) return;
   if(S.funds < m.price) return toast("Not enough money.");
+  if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
   S.funds -= m.price;
   S.medkits[id] = (S.medkits[id]||0)+1;
-  toast(`${m.name} bought. ${medTierLabel(m.id)} owned: ${S.medkits[id]||0}.`);
+  let healed = 0;
+  let used = 0;
+  if(S.hp < 100){
+    const hpBefore = clamp(Number(S.hp) || 0, 0, 100);
+    S.medkits[id] = Math.max(0, (S.medkits[id] || 0) - 1);
+    S.hp = clamp(hpBefore + (m.heal || 0), 0, 100);
+    healed = Math.max(0, Math.round(S.hp - hpBefore));
+    used = 1;
+  }
+  const owned = S.medkits[id] || 0;
+  toast(
+    used > 0
+      ? `${m.name} bought and auto-used. Healed +${healed}. ${medTierLabel(m.id)} owned: ${owned}.`
+      : `${m.name} bought. ${medTierLabel(m.id)} owned: ${owned}.`
+  );
   sfx("ui"); hapticImpact("light");
-  save(); renderShopList(); renderHUD();
+  save();
+  renderShopList();
+  renderHUD();
+  renderCombatControls();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
 }
 function buyTool(id){
   const w=equippedWeapon();
@@ -7248,6 +7268,53 @@ function useArmorPlate(opts={}){
   }
   if(!silent) toast(`${lastPlateName} restored +${restoredTotal}${used > 1 ? ` (${used} plates)` : ""}.`);
   return restoredTotal;
+}
+
+function canQuickUseArmorPlate(){
+  if(S.inBattle) return false;
+  if(S.paused || S.missionEnded || S.gameOver) return false;
+  if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return false;
+  return totalArmorPlates() > 0 && S.armor < S.armorCap;
+}
+function protectActionMode(){
+  const tutorialNeedsShield = !!(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "shield");
+  if(!tutorialNeedsShield && canQuickUseArmorPlate()) return "armor";
+  return "shield";
+}
+function renderProtectActionButtons(){
+  const mode = protectActionMode();
+  const armorCount = totalArmorPlates();
+  const shieldCount = Math.max(0, S.shields || 0);
+  document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{
+    if(!btn) return;
+    const touch = btn.classList?.contains("touchBtn");
+    btn.classList.toggle("protectArmorMode", mode === "armor");
+    btn.classList.toggle("protectShieldMode", mode === "shield");
+    btn.dataset.protectMode = mode;
+    if(touch){
+      const iconEl = btn.querySelector(".touchBtnIcon");
+      const labelEl = btn.querySelector(".touchBtnLabel");
+      if(iconEl) iconEl.innerText = "🛡️";
+      if(labelEl) labelEl.innerText = mode === "armor" ? "Armor" : "Shield";
+      btn.title = mode === "armor"
+        ? `Use armor plate (${armorCount} available)`
+        : `Activate escort shield (${shieldCount} left)`;
+      return;
+    }
+    btn.innerText = mode === "armor"
+      ? `🛡️ Armor (${armorCount})`
+      : `🛡️ Shield (${shieldCount})`;
+    btn.dataset.baseText = btn.innerText;
+    btn.title = mode === "armor"
+      ? `Use armor plate (${armorCount} available)`
+      : `Activate escort shield (${shieldCount} left)`;
+  });
+}
+function useProtectAction(){
+  if(protectActionMode() === "armor"){
+    return useArmorPlate({ smart:true });
+  }
+  return activateShield();
 }
 
 // ===================== BACKUP =====================
@@ -9558,7 +9625,7 @@ function pollGamepadControls(){
   }
   if(gamepadButtonEdge("rs", gamepadButtonPressed(pad.buttons?.[11]))){
     if(S.inBattle) useArmorPlate({ smart:true });
-    else activateShield();
+    else useProtectAction();
   }
 
   return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
@@ -9806,6 +9873,7 @@ function activateShield(){
   sfx("ui");
   hapticImpact("medium");
   renderHUD();
+  renderCombatControls();
   save();
 }
 function rollCooldownLeftMs(now=Date.now()){
@@ -11296,8 +11364,14 @@ function paintAbilityCooldownButton(btn, key){
     return;
   }
 
-  btn.style.background = btn.dataset.baseBg;
-  btn.style.borderColor = btn.dataset.baseBorder;
+  resetAbilityCooldownButton(btn);
+}
+
+function resetAbilityCooldownButton(btn){
+  if(!btn) return;
+  const iconEl = btn.querySelector?.(".touchBtnIcon");
+  btn.style.background = btn.dataset.baseBg || "";
+  btn.style.borderColor = btn.dataset.baseBorder || "";
   btn.title = "";
   if(iconEl){
     iconEl.innerText = iconEl.dataset.baseIcon || iconEl.innerText;
@@ -11311,7 +11385,12 @@ function renderAbilityCooldownUi(){
   paintAbilityCooldownButton(document.getElementById("scanBtn"), "scan");
   paintAbilityCooldownButton(document.getElementById("touchScanBtn"), "scan");
   paintAbilityCooldownButton(document.getElementById("touchSprintBtn"), "sprint");
-  document.querySelectorAll("[data-shield-btn]").forEach((btn)=>paintAbilityCooldownButton(btn, "shield"));
+  renderProtectActionButtons();
+  if(protectActionMode() === "shield"){
+    document.querySelectorAll("[data-shield-btn]").forEach((btn)=>paintAbilityCooldownButton(btn, "shield"));
+  } else {
+    document.querySelectorAll("[data-shield-btn]").forEach((btn)=>resetAbilityCooldownButton(btn));
+  }
 }
 
 function renderCombatControls(){
@@ -11339,6 +11418,9 @@ function renderCombatControls(){
   const armorPlateCountAll = totalArmorPlates();
   const canMed = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && medCount > 0;
   const canArmorPlate = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && armorPlateCountAll > 0 && S.armor < S.armorCap;
+  const canShield = !S.paused && !S.missionEnded && !S.gameOver && (S.shields||0) > 0 && !abilityOnCooldown("shield");
+  const canQuickArmor = canQuickUseArmorPlate();
+  const protectDisabled = inCombat || !(canShield || canQuickArmor);
   const rollLeft = rollCooldownLabel();
   const canRoll = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && !rollLeft;
 
@@ -11358,6 +11440,7 @@ function renderCombatControls(){
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
+  document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = protectDisabled; });
   [["touchRollBtn", !canRoll], ["combatRollBtn", !canRoll]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
@@ -12268,8 +12351,11 @@ function renderHUD(){
   document.getElementById("shieldTxt").innerText = shieldLabel;
 
   document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
-  const shieldDisabled = S.paused || S.missionEnded || S.gameOver || (S.shields||0)<=0 || abilityOnCooldown("shield");
+  const canShieldUse = !S.paused && !S.missionEnded && !S.gameOver && (S.shields||0)>0 && !abilityOnCooldown("shield");
+  const canArmorQuickUse = canQuickUseArmorPlate();
+  const shieldDisabled = !(canShieldUse || canArmorQuickUse);
   document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = shieldDisabled; });
+  renderProtectActionButtons();
   const cacheBtn = document.getElementById("touchCacheBtn");
   if(cacheBtn){
     cacheBtn.disabled = S.paused || S.inBattle || S.missionEnded || S.gameOver || !nearestCacheInteractable(132);
@@ -14407,6 +14493,7 @@ window.placeTrap = placeTrap;
 window.callBackup = callBackup;
 window.sprint = sprint;
 window.activateShield = activateShield;
+window.useProtectAction = useProtectAction;
 window.takeoverEscort = takeoverEscort;
 window.useNearestCache = useNearestCache;
 
