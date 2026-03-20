@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4440";
+const TS_BUILD = "4444";
 if(tg){
   try{
     tg.expand?.();
@@ -1626,9 +1626,15 @@ function invalidateMapCache(){
 function flushSaveNow(){
   __lastSave = Date.now();
   __savePending = false;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistedState()));
+  let primarySaved = false;
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistedState()));
+    primarySaved = true;
+  }catch(e){
+    try{ console.warn("Primary save failed, using story save fallback:", e); }catch(err){}
+  }
   if(normalizeModeName(S.mode) === "Story"){
-    writeStorySaveData("autosave");
+    writeStorySaveData(primarySaved ? "autosave" : "autosave-story-only");
   }
 }
 
@@ -4975,6 +4981,40 @@ function nextDailyCountdownText(){
 function storySaveStorageKey(){
   return `${STORY_SAVE_KEY_BASE}_${tgUserKey()}`;
 }
+function storySaveStorageKeys(){
+  const keys = [];
+  const seen = new Set();
+  const pushKey = (k)=>{
+    const key = String(k || "").trim();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+  pushKey(storySaveStorageKey());
+  pushKey(`${STORY_SAVE_KEY_BASE}_local`);
+  pushKey(STORY_SAVE_KEY_BASE);
+  return keys;
+}
+function storySaveReadStorageKeys(){
+  const keys = storySaveStorageKeys().slice();
+  const seen = new Set(keys);
+  const pushKey = (k)=>{
+    const key = String(k || "").trim();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+  try{
+    for(let i=0; i<localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(!k) continue;
+      if(k === STORY_SAVE_KEY_BASE || k.startsWith(`${STORY_SAVE_KEY_BASE}_`)){
+        pushKey(k);
+      }
+    }
+  }catch(e){}
+  return keys;
+}
 function storySaveMissionFromPayload(payload){
   if(!payload || typeof payload !== "object") return 1;
   const fromResume = payload.resumeState && typeof payload.resumeState === "object"
@@ -5057,17 +5097,36 @@ function restoreStoryResumeSnapshot(slot, source="story-restore"){
 }
 function readStorySaveData(){
   try{
-    const raw = localStorage.getItem(storySaveStorageKey());
-    if(!raw) return null;
-    const parsed = JSON.parse(raw);
-    if(!parsed || typeof parsed !== "object") return null;
-    const mission = storySaveMissionFromPayload(parsed);
-    if(!Number.isFinite(mission) || mission < 1) return null;
-    return {
-      ...parsed,
-      mission,
-      savedAt: Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0,
-    };
+    let best = null;
+    for(const key of storySaveReadStorageKeys()){
+      const raw = localStorage.getItem(key);
+      if(!raw) continue;
+      let parsed = null;
+      try{
+        parsed = JSON.parse(raw);
+      }catch(e){
+        parsed = null;
+      }
+      if(!parsed || typeof parsed !== "object") continue;
+      const mission = storySaveMissionFromPayload(parsed);
+      if(!Number.isFinite(mission) || mission < 1) continue;
+      const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
+      const candidate = { ...parsed, mission, savedAt, storageKey:key };
+      if(!best){
+        best = candidate;
+        continue;
+      }
+      // Prefer higher mission to avoid accidental regressions to Mission 1.
+      if(candidate.mission > best.mission){
+        best = candidate;
+        continue;
+      }
+      // If missions tie, prefer newer timestamp.
+      if(candidate.mission === best.mission && candidate.savedAt > best.savedAt){
+        best = candidate;
+      }
+    }
+    return best;
   }catch(e){
     return null;
   }
@@ -5123,14 +5182,42 @@ function writeStorySaveData(source="manual"){
     source: String(source || "manual"),
   };
   try{
-    localStorage.setItem(storySaveStorageKey(), JSON.stringify(payload));
+    const raw = JSON.stringify(payload);
+    const writeKeys = storySaveStorageKeys();
+    for(const key of writeKeys){
+      localStorage.setItem(key, raw);
+    }
+    // Cleanup legacy duplicate slots that can bloat localStorage on mobile.
+    // Keep higher-mission legacy keys for safety until current progress catches up.
+    const writeKeySet = new Set(writeKeys);
+    for(const legacyKey of storySaveReadStorageKeys()){
+      if(writeKeySet.has(legacyKey)) continue;
+      const legacyRaw = localStorage.getItem(legacyKey);
+      if(!legacyRaw){
+        localStorage.removeItem(legacyKey);
+        continue;
+      }
+      let legacyMission = 1;
+      try{
+        legacyMission = storySaveMissionFromPayload(JSON.parse(legacyRaw));
+      }catch(e){
+        legacyMission = 1;
+      }
+      if(legacyMission <= mission){
+        localStorage.removeItem(legacyKey);
+      }
+    }
     return payload;
   }catch(e){
     return null;
   }
 }
 function clearStorySaveData(){
-  try{ localStorage.removeItem(storySaveStorageKey()); }catch(e){}
+  try{
+    for(const key of storySaveReadStorageKeys()){
+      localStorage.removeItem(key);
+    }
+  }catch(e){}
 }
 function previewNextDailyReward(){
   const info = readDaily();
