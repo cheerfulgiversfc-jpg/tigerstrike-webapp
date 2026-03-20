@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4438";
+const TS_BUILD = "4439";
 if(tg){
   try{
     tg.expand?.();
@@ -54,6 +54,7 @@ function writeDaily(obj){
 const STORAGE_VERSION = 4385;
 const STORAGE_KEY = `ts_v${STORAGE_VERSION}`;
 const STORAGE_FALLBACK_KEYS = ["ts_v4384", "ts_v4383", "ts_v4382", "ts_v4381", "ts_v4380", "ts_v4371"];
+const STORY_SAVE_KEY_BASE = "ts_story_save";
 
 function cloneState(obj){
   if(typeof structuredClone === "function"){
@@ -1434,7 +1435,11 @@ function load(){
         try{ localStorage.removeItem(key); }catch(err){}
       }
     }
-    if(!saved) return cloneState(DEFAULT);
+    if(!saved){
+      const fallback = cloneState(DEFAULT);
+      applyStorySaveToState(fallback, { allowModeSync:true });
+      return fallback;
+    }
     const m = { ...DEFAULT, ...saved };
     m.me = { ...DEFAULT.me, ...(saved.me||{}) };
     m.mag = { ...DEFAULT.mag, ...(saved.mag||{}) };
@@ -1462,6 +1467,7 @@ function load(){
     m.touchHud = normalizeTouchHudSettings(saved.touchHud ?? m.touchHud);
     m.mode = normalizeModeName(m.mode);
     m.storyLastMission = clamp(Math.floor(Number(saved.storyLastMission ?? m.storyLevel ?? 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+    applyStorySaveToState(m, { allowModeSync:true });
     m.modeWallets = normalizeModeWallets(saved.modeWallets, m.funds, m.mode);
     m.funds = getModeWallet(m.mode, m);
     if(m.lives==null) m.lives=5;
@@ -1597,6 +1603,9 @@ function flushSaveNow(){
   __lastSave = Date.now();
   __savePending = false;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistedState()));
+  if(normalizeModeName(S.mode) === "Story"){
+    writeStorySaveData("autosave");
+  }
 }
 
 function save(force=false){
@@ -4857,6 +4866,52 @@ function nextDailyCountdownText(){
   const mm = String(totalMin % 60).padStart(2, "0");
   return `${hh}h ${mm}m`;
 }
+function storySaveStorageKey(){
+  return `${STORY_SAVE_KEY_BASE}_${tgUserKey()}`;
+}
+function readStorySaveData(){
+  try{
+    const raw = localStorage.getItem(storySaveStorageKey());
+    if(!raw) return null;
+    const parsed = JSON.parse(raw);
+    if(!parsed || typeof parsed !== "object") return null;
+    const mission = clamp(
+      Math.floor(Number(parsed.mission ?? parsed.storyLevel ?? parsed.storyLastMission ?? 0)),
+      1,
+      STORY_CAMPAIGN_OBJECTIVES.length
+    );
+    if(!Number.isFinite(mission) || mission < 1) return null;
+    return {
+      ...parsed,
+      mission,
+      savedAt: Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0,
+    };
+  }catch(e){
+    return null;
+  }
+}
+function applyStorySaveToState(state, opts={}){
+  if(!state || typeof state !== "object") return state;
+  const allowModeSync = opts.allowModeSync !== false;
+  const slot = readStorySaveData();
+  if(!slot) return state;
+  const mission = clamp(
+    Math.floor(Number(slot.mission || 1)),
+    1,
+    STORY_CAMPAIGN_OBJECTIVES.length
+  );
+  state.storyLastMission = Math.max(
+    clamp(Math.floor(Number(state.storyLastMission || state.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
+    mission
+  );
+  if(allowModeSync && normalizeModeName(state.mode) === "Story"){
+    state.storyLevel = Math.max(
+      clamp(Math.floor(Number(state.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
+      state.storyLastMission
+    );
+  }
+  return state;
+}
 function storyResumeMissionLevel(){
   return clamp(
     Math.max(
@@ -4867,6 +4922,29 @@ function storyResumeMissionLevel(){
     1,
     STORY_CAMPAIGN_OBJECTIVES.length
   );
+}
+function writeStorySaveData(source="manual"){
+  if(window.__TUTORIAL_MODE__) return null;
+  const mission = storyResumeMissionLevel();
+  const payload = {
+    mission,
+    storyLevel: mission,
+    storyLastMission: mission,
+    hp: clamp(Math.round(Number(S.hp || 100)), 0, 100),
+    armor: clamp(Math.round(Number(S.armor || 0)), 0, S.armorCap || 100),
+    funds: Math.max(0, Math.round(Number(getModeWallet("Story", S) || S.funds || 0))),
+    savedAt: Date.now(),
+    source: String(source || "manual"),
+  };
+  try{
+    localStorage.setItem(storySaveStorageKey(), JSON.stringify(payload));
+    return payload;
+  }catch(e){
+    return null;
+  }
+}
+function clearStorySaveData(){
+  try{ localStorage.removeItem(storySaveStorageKey()); }catch(e){}
 }
 function previewNextDailyReward(){
   const info = readDaily();
@@ -4904,10 +4982,12 @@ function modeHasSavedProgress(mode=S.mode){
 function refreshLaunchStartButtons(){
   const continueBtn = document.getElementById("launchContinueBtn");
   const restartBtn = document.getElementById("launchRestartBtn");
+  const loadBtn = document.getElementById("launchLoadBtn");
   const hintEl = document.getElementById("launchProgressHint");
   const mode = normalizeModeName(S.mode);
   const progressLabel = launchProgressLabelForMode(mode);
   const hasProgress = modeHasSavedProgress(mode);
+  const slot = readStorySaveData();
 
   if(continueBtn){
     continueBtn.innerText = mode === "Story"
@@ -4915,10 +4995,24 @@ function refreshLaunchStartButtons(){
       : `▶ Continue (${progressLabel})`;
   }
   if(restartBtn) restartBtn.disabled = !hasProgress;
+  if(loadBtn){
+    const slotMission = slot?.mission || null;
+    const canLoad = mode === "Story" && !!slotMission;
+    loadBtn.disabled = !canLoad;
+    loadBtn.innerText = canLoad
+      ? `📂 Load Save (Story Mission ${slotMission})`
+      : "📂 Load Save";
+  }
   if(hintEl){
-    hintEl.innerText = hasProgress
-      ? `Saved progress found: ${progressLabel}. Continue where you left off, or restart from Mission 1.`
-      : `${mode} save is currently at Mission 1. Continue to start playing.`;
+    if(mode === "Story" && slot?.mission){
+      hintEl.innerText = hasProgress
+        ? `Saved progress found: ${progressLabel}. Continue where you left off, or load your Story save at Mission ${slot.mission}.`
+        : `Story save found at Mission ${slot.mission}. You can load it now.`;
+    } else {
+      hintEl.innerText = hasProgress
+        ? `Saved progress found: ${progressLabel}. Continue where you left off, or restart from Mission 1.`
+        : `${mode} save is currently at Mission 1. Continue to start playing.`;
+    }
   }
 }
 function bindLaunchIntroAudioGesture(){
@@ -5011,6 +5105,53 @@ function restartFromMission1FromLaunchIntro(){
   setPaused(false, null);
   syncGamepadFocus();
 }
+function saveGameNow(){
+  if(window.__TUTORIAL_MODE__){
+    toast("Save is disabled during tutorial.");
+    return;
+  }
+  if(normalizeModeName(S.mode) !== "Story"){
+    toast("Manual save currently supports Story mode.");
+    return;
+  }
+  const slot = writeStorySaveData("manual");
+  if(!slot){
+    toast("Save failed. Try again.");
+    return;
+  }
+  S.storyLastMission = Math.max(Number(S.storyLastMission || 1), Number(slot.mission || 1));
+  save(true);
+  refreshLaunchIntroStatus();
+  toast(`Saved Story Mission ${slot.mission}.`);
+}
+function loadStorySaveFromLaunchIntro(){
+  const slot = readStorySaveData();
+  if(!slot){
+    toast("No Story save found.");
+    return;
+  }
+  clearLaunchMusicLoop();
+  clearLaunchIntroAutoTimer();
+  const launchOverlay = document.getElementById("launchIntroOverlay");
+  if(launchOverlay) launchOverlay.style.display = "none";
+  const dailyOverlay = document.getElementById("dailyRewardOverlay");
+  if(dailyOverlay) dailyOverlay.style.display = "none";
+  __dailyRewardContinue = null;
+
+  setModeWallet(S.mode, S.funds, S);
+  S.mode = "Story";
+  applyModeTheme(S.mode);
+  S.funds = getModeWallet("Story", S);
+  const mission = clamp(Math.floor(Number(slot.mission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  S.storyLastMission = mission;
+  S.storyLevel = mission;
+  const nextHp = Number.isFinite(Number(slot.hp)) ? clamp(Number(slot.hp), 0, 100) : clamp(S.hp, 0, 100);
+  const nextArmor = Number.isFinite(Number(slot.armor)) ? clamp(Number(slot.armor), 0, S.armorCap || 100) : clamp(S.armor, 0, S.armorCap || 100);
+  deploy({ carryStats:true, hp:nextHp, armor:nextArmor });
+  save(true);
+  toast(`Loaded Story Mission ${mission}.`);
+  continueFromLaunchIntro(true);
+}
 function openDailyRewardOverlay(reward=null, onDone=null){
   const active = reward || __pendingDailyReward;
   const overlay = document.getElementById("dailyRewardOverlay");
@@ -5083,6 +5224,7 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
   if(S.mode === "Story"){
     S.storyLevel = storyResumeMissionLevel();
     S.storyLastMission = S.storyLevel;
+    writeStorySaveData("continue-launch");
   }
   if(S.mode==="Story" && !window.__TUTORIAL_MODE__ && !S.storyIntroSeen){
     if(allowStoryIntro){
@@ -8906,6 +9048,7 @@ function performResetGame(){
   for(const key of STORAGE_FALLBACK_KEYS){
     localStorage.removeItem(key);
   }
+  clearStorySaveData();
   S = cloneState(DEFAULT);
   bindFundsWallet(S);
   syncWindowState();
@@ -14222,6 +14365,8 @@ window.beginFromLaunchIntro = beginFromLaunchIntro;
 window.startQuickTutorialFromLaunchIntro = startQuickTutorialFromLaunchIntro;
 window.skipLaunchIntro = skipLaunchIntro;
 window.restartFromMission1FromLaunchIntro = restartFromMission1FromLaunchIntro;
+window.saveGameNow = saveGameNow;
+window.loadStorySaveFromLaunchIntro = loadStorySaveFromLaunchIntro;
 window.openDailyRewardOverlay = openDailyRewardOverlay;
 window.claimDailyRewardOverlay = claimDailyRewardOverlay;
 window.setLaunchArtwork = setLaunchArtwork;
