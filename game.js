@@ -224,8 +224,6 @@ const CASH_SUPPLY_BUNDLES = [
   },
 ];
 const STARS_TOPUP_GUIDE = [
-  { stars:50, label:"$0.99" },
-  { stars:75, label:"$1.49" },
   { stars:100, label:"$1.99" },
   { stars:150, label:"$2.99" },
   { stars:250, label:"$4.99" },
@@ -6251,7 +6249,7 @@ function renderShopList(){
   }
 
   if(currentShopTab==="stars"){
-    const quickTargets = [50, 100, 150, 250, 350];
+    const quickTargets = [100, 150, 250, 350];
     const quickButtons = quickTargets.map((stars)=>{
       const topupPack = starsTopupPackForTarget(stars);
       const label = topupPack ? `${topupPack.stars.toLocaleString()} Stars` : `${stars.toLocaleString()} Stars`;
