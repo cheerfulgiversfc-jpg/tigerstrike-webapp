@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4452";
+const TS_BUILD = "4453";
 if(tg){
   try{
     tg.expand?.();
@@ -1484,11 +1484,73 @@ function shouldPreferStorySlotResume(saved, storySlot){
   return slotQuality > savedQuality;
 }
 
+function storySnapshotMission(state){
+  if(!state || typeof state !== "object") return 1;
+  return clamp(
+    Math.floor(Number(state.storyLastMission ?? state.storyLevel ?? state.mission ?? 1)),
+    1,
+    STORY_CAMPAIGN_OBJECTIVES.length
+  );
+}
+
+function pickRicherStorySnapshot(list=[]){
+  let best = null;
+  for(const item of list){
+    if(!item || typeof item !== "object") continue;
+    if(!best){
+      best = item;
+      continue;
+    }
+    const bestQuality = storySnapshotQuality(best);
+    const nextQuality = storySnapshotQuality(item);
+    if(nextQuality > bestQuality){
+      best = item;
+      continue;
+    }
+    if(nextQuality < bestQuality) continue;
+
+    const bestMission = storySnapshotMission(best);
+    const nextMission = storySnapshotMission(item);
+    if(nextMission > bestMission){
+      best = item;
+      continue;
+    }
+    if(nextMission < bestMission) continue;
+
+    const bestSavedAt = Number.isFinite(Number(best.savedAt)) ? Number(best.savedAt) : 0;
+    const nextSavedAt = Number.isFinite(Number(item.savedAt)) ? Number(item.savedAt) : 0;
+    if(nextSavedAt > bestSavedAt){
+      best = item;
+    }
+  }
+  return best;
+}
+
+function resolveStoryProfileOverlay(storyProfile, storyProgress, currentState=null){
+  const best = pickRicherStorySnapshot([storyProfile, storyProgress]);
+  if(!best) return null;
+  if(!currentState || typeof currentState !== "object") return best;
+
+  const currentQuality = storySnapshotQuality(currentState);
+  const bestQuality = storySnapshotQuality(best);
+  const currentMission = storySnapshotMission(currentState);
+  const bestMission = storySnapshotMission(best);
+  const currentSavedAt = Number.isFinite(Number(currentState.savedAt)) ? Number(currentState.savedAt) : 0;
+  const bestSavedAt = Number.isFinite(Number(best.savedAt)) ? Number(best.savedAt) : 0;
+
+  // Stability lock: do not allow an older/weaker profile to overwrite a richer live snapshot.
+  if(bestQuality < currentQuality && bestMission <= currentMission && bestSavedAt <= currentSavedAt){
+    return null;
+  }
+  return best;
+}
+
 function load(){
   try{
     const storySlot = readStorySaveData();
     const storyProgress = readStoryProgressData();
-    const storyProfile = readStoryProfileData() || storyProgress;
+    const storyProfileRaw = readStoryProfileData();
+    const storyProfile = resolveStoryProfileOverlay(storyProfileRaw, storyProgress);
     let saved = null;
     let sourceKey = null;
     for(const key of [STORAGE_KEY, ...STORAGE_FALLBACK_KEYS]){
@@ -1549,13 +1611,15 @@ function load(){
     m.mode = normalizeModeName(m.mode);
     m.storyLastMission = clamp(Math.floor(Number(saved.storyLastMission ?? m.storyLevel ?? 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
     applyStorySaveToState(m, { allowModeSync:true });
-    applyStoryProfileToState(m, storyProfile);
-    const mergedModeWallets = (storyProfile && storyProfile.modeWallets && typeof storyProfile.modeWallets === "object")
-      ? { ...(saved.modeWallets || {}), ...storyProfile.modeWallets }
+    const profileOverlay = resolveStoryProfileOverlay(storyProfileRaw, storyProgress, m);
+    applyStoryProfileToState(m, profileOverlay);
+    const walletProfile = profileOverlay || storyProfile;
+    const mergedModeWallets = (walletProfile && walletProfile.modeWallets && typeof walletProfile.modeWallets === "object")
+      ? { ...(saved.modeWallets || {}), ...walletProfile.modeWallets }
       : saved.modeWallets;
     m.modeWallets = normalizeModeWallets(mergedModeWallets, m.funds, m.mode);
-    if(storyProfile && Number.isFinite(Number(storyProfile.funds))){
-      const profileFunds = Math.max(0, Math.round(Number(storyProfile.funds)));
+    if(walletProfile && Number.isFinite(Number(walletProfile.funds))){
+      const profileFunds = Math.max(0, Math.round(Number(walletProfile.funds)));
       if(m.modeWallets && typeof m.modeWallets === "object"){
         m.modeWallets[m.mode] = profileFunds;
       }
@@ -5869,7 +5933,7 @@ function saveGameNow(){
 function loadStorySaveFromLaunchIntro(){
   const slot = readStorySaveData();
   const progress = readStoryProgressData();
-  const profile = readStoryProfileData() || progress;
+  const profileRaw = readStoryProfileData();
   if(!slot && !progress){
     toast("No Story save found.");
     return;
@@ -5899,7 +5963,8 @@ function loadStorySaveFromLaunchIntro(){
     S.funds = Math.max(0, Math.round(nextFunds));
     S.storyLastMission = mission;
     S.storyLevel = mission;
-    applyStoryProfileToState(S, profile);
+    const profileOverlay = resolveStoryProfileOverlay(profileRaw, progress, S);
+    applyStoryProfileToState(S, profileOverlay);
     const nextHp = Number.isFinite(Number(slot?.hp))
       ? clamp(Number(slot.hp), 0, 100)
       : (Number.isFinite(Number(progress?.hp)) ? clamp(Number(progress.hp), 0, 100) : clamp(S.hp, 0, 100));
@@ -5916,7 +5981,8 @@ function loadStorySaveFromLaunchIntro(){
     S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
     deploy({ carryStats:true, hp:forceHp, armor:forceArmor });
   }
-  applyStoryProfileToState(S, profile);
+  const profileOverlay = resolveStoryProfileOverlay(profileRaw, progress, S);
+  applyStoryProfileToState(S, profileOverlay);
   S.mode = "Story";
   S.storyLevel = Math.max(mission, Math.floor(Number(S.storyLevel || 1)));
   S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
@@ -5997,7 +6063,7 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
   if(S.mode === "Story"){
     const slot = readStorySaveData();
     const progress = readStoryProgressData();
-    const profile = readStoryProfileData() || progress;
+    const profileRaw = readStoryProfileData();
     const beforeMission = storyProgressMissionFromState(S);
     const slotMission = storySaveMissionFromPayload(slot || {});
     const progressMission = Math.floor(Number(progress?.mission || 1));
@@ -6019,7 +6085,8 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
       if(Number.isFinite(Number(progress?.funds))){
         S.funds = Math.max(0, Math.round(Number(progress.funds || 0)));
       }
-      applyStoryProfileToState(S, profile);
+      const profileOverlay = resolveStoryProfileOverlay(profileRaw, progress, S);
+      applyStoryProfileToState(S, profileOverlay);
       deploy({ carryStats:true, hp:carryHp, armor:carryArmor });
     }
     if(storyProgressMissionFromState(S) < mission){
@@ -6030,7 +6097,8 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
       S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
       deploy({ carryStats:true, hp:forceHp, armor:forceArmor });
     }
-    applyStoryProfileToState(S, profile);
+    const profileOverlay = resolveStoryProfileOverlay(profileRaw, progress, S);
+    applyStoryProfileToState(S, profileOverlay);
     S.mode = "Story";
     S.storyLevel = Math.max(mission, Math.floor(Number(S.storyLevel || 1)));
     S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
@@ -15672,7 +15740,7 @@ function init(){
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.storyLastMission = clamp(Math.floor(S.storyLastMission || S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   const bootStoryProgress = readStoryProgressData();
-  const bootStoryProfile = readStoryProfileData() || bootStoryProgress;
+  const bootStoryProfile = resolveStoryProfileOverlay(readStoryProfileData(), bootStoryProgress, S);
   applyStoryProfileToState(S, bootStoryProfile);
   const bootResumeMission = storyResumeMissionLevel();
   if(bootResumeMission > S.storyLevel){
