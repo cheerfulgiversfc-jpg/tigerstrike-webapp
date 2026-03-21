@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4453";
+const TS_BUILD = "4454";
 if(tg){
   try{
     tg.expand?.();
@@ -1642,6 +1642,7 @@ const SAVE_AUTOSAVE_MS = 12000;
 const SAVE_AUTOSAVE_HEAVY_MS = 18000;
 const SAVE_AUTOSAVE_BATTLE_MS = 22000;
 const SAVE_AUTOSAVE_MAX_DEFER_MS = 42000;
+const SAVE_FULL_STORY_SNAPSHOT_MS = 70000;
 const STABILITY_SPIKE_GAP_MS = 520;
 const STABILITY_SPIKE_RECOVER_MS = 3200;
 const STABILITY_STALL_GAP_MS = 1600;
@@ -1712,7 +1713,7 @@ let __lastAutosave = 0;
 let __savePending = false;
 const __frameTaskGate = Object.create(null);
 const __frameTaskPhase = Object.create(null);
-const MAP_CACHE_INTERVAL_MS = 56;
+const MAP_CACHE_INTERVAL_MS = 84;
 let __mapFrameCacheCanvas = null;
 let __mapFrameCacheCtx = null;
 let __mapFrameCacheSig = "";
@@ -1722,6 +1723,8 @@ let __mapObstacleRects = [];
 let __mapObstacleCircles = [];
 let __mapWaterSig = "";
 let __mapWaterZones = [];
+let __mapDenseLandmarksSig = "";
+let __mapDenseLandmarks = [];
 let __frameSlowUntil = 0;
 let __frameLagScore = 0;
 let __lastFrameAt = 0;
@@ -1753,6 +1756,7 @@ const __stabilityMonitorState = {
   frameGaps: [],
   frameCosts: []
 };
+let __lastStoryFullSnapshotAt = 0;
 
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
@@ -1762,6 +1766,8 @@ function invalidateMapCache(){
   __mapObstacleCircles = [];
   __mapWaterSig = "";
   __mapWaterZones = [];
+  __mapDenseLandmarksSig = "";
+  __mapDenseLandmarks = [];
   __blockedAtCache.clear();
   __blockedAtCacheFrame = 0;
 }
@@ -1777,7 +1783,33 @@ function flushSaveNow(){
     try{ console.warn("Primary save failed, using story save fallback:", e); }catch(err){}
   }
   if(normalizeModeName(S.mode) === "Story"){
-    writeStorySaveData(primarySaved ? "autosave" : "autosave-story-only");
+    const snap = writeStorySaveData(primarySaved ? "autosave" : "autosave-story-only");
+    if(snap) __lastStoryFullSnapshotAt = Date.now();
+  }
+}
+
+function flushStoryLiteNow(source="autosave-lite"){
+  __lastSave = Date.now();
+  __savePending = false;
+  const mode = normalizeModeName(S.mode);
+  if(mode !== "Story"){
+    flushSaveNow();
+    return;
+  }
+  try{
+    const mission = storyProgressMissionFromState(S);
+    writeStoryProgressData({
+      mission,
+      storyLevel: S.storyLevel,
+      storyLastMission: S.storyLastMission,
+      hp: S.hp,
+      armor: S.armor,
+      funds: getModeWallet("Story", S),
+      source
+    });
+    writeStoryProfileData(source, S);
+  }catch(e){
+    flushSaveNow();
   }
 }
 
@@ -1790,7 +1822,9 @@ function save(force=false){
     }
     __savePending = true;
     if((now - __lastSave) < SAVE_MIN_INTERVAL_MS) return;
-    flushSaveNow();
+    if(S.paused || S.missionEnded || S.gameOver){
+      flushSaveNow();
+    }
   }
   catch(e){
     console.log("Save failed:", e);
@@ -1814,7 +1848,14 @@ function maybeAutosave(force=false){
   }
   if(__savePending){
     __lastAutosave = now;
-    save(true);
+    const inStory = normalizeModeName(S.mode) === "Story";
+    const liveGameplay = !(S.paused || S.gameOver || S.missionEnded);
+    const fullSnapshotDue = (now - (__lastStoryFullSnapshotAt || 0)) >= SAVE_FULL_STORY_SNAPSHOT_MS;
+    if(inStory && liveGameplay && !fullSnapshotDue){
+      flushStoryLiteNow("autosave-lite");
+    }else{
+      save(true);
+    }
   }
 }
 
@@ -4046,11 +4087,12 @@ function ensureMapObstacleCache(){
   const rects = [];
   const circles = [];
   const waters = buildMapWaterZones(key, chapter, w, h);
+  const denseLandmarks = buildDenseLandmarks(key, chapter, w, h);
   const family = mapFamilyKey(key);
   const sx = (v)=> v * (w / 960);
   const sy = (v)=> v * (h / 540);
 
-  for(const lm of buildDenseLandmarks(key, chapter, w, h)){
+  for(const lm of denseLandmarks){
     addMapObstacleForLandmark(rects, circles, lm);
   }
 
@@ -4101,6 +4143,8 @@ function ensureMapObstacleCache(){
   __mapObstacleCircles = circles;
   __mapWaterZones = waters;
   __mapWaterSig = sig;
+  __mapDenseLandmarks = denseLandmarks;
+  __mapDenseLandmarksSig = sig;
   __mapObstacleSig = sig;
 }
 function isPointInWater(x, y, radius=0){
@@ -13841,8 +13885,8 @@ function drawMapScene(){
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0
   ].join("|");
   const cacheAgeCap = frameIsSlow()
-    ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 280 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 220 : 140))
-    : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 130 : MAP_CACHE_INTERVAL_MS);
+    ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 360 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 260 : 180))
+    : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 160 : MAP_CACHE_INTERVAL_MS);
   const canUseCache =
     !!__mapFrameCacheCanvas &&
     __mapFrameCacheSig === cacheSig &&
@@ -13850,6 +13894,18 @@ function drawMapScene(){
   if(canUseCache){
     ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
     return;
+  }
+  const hasAnyCache =
+    !!__mapFrameCacheCanvas &&
+    Number.isFinite(__mapFrameCacheAt) &&
+    __mapFrameCacheAt > 0;
+  if(hasAnyCache){
+    const staleAge = frameNow - __mapFrameCacheAt;
+    const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
+    if(emergencyReuse && staleAge < 520){
+      ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
+      return;
+    }
   }
 
   const themeKey = mapFamilyKey(key);
@@ -14273,7 +14329,9 @@ function drawMapScene(){
   // realism props
   const props = MAP_REALISM_PROPS[themeKey] || [];
   for(const p of props) drawProp(p);
-  const denseLandmarks = buildDenseLandmarks(key, chapter, w, h);
+  const denseLandmarks = (__mapDenseLandmarksSig === __mapObstacleSig && Array.isArray(__mapDenseLandmarks))
+    ? __mapDenseLandmarks
+    : buildDenseLandmarks(key, chapter, w, h);
   const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
   for(const lm of denseLandmarks){
     drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
@@ -15604,9 +15662,12 @@ function drawMobileUiClearLane(){
 function shouldDrawAtmosphericPass(){
   __frameBgFxFlip = (__frameBgFxFlip + 1) % 9;
   const score = frameActiveEntityLoadScore();
+  if(__frameLagScore >= 7) return (__frameBgFxFlip % 6) === 0;
+  if(__frameLagScore >= 4) return (__frameBgFxFlip % 5) === 0;
   if(performanceMode() === "PERFORMANCE") return (__frameBgFxFlip % 3) === 0;
   if(frameBudgetExceeded(0.45)) return (__frameBgFxFlip % 4) === 0;
   if(frameIsSlow()) return (__frameBgFxFlip % 2) === 0;
+  if(isMobileViewport() && score >= 34) return (__frameBgFxFlip % 4) === 0;
   if(score >= 64) return (__frameBgFxFlip % 3) === 0;
   if(score >= 46) return (__frameBgFxFlip % 2) === 0;
   return true;
@@ -15740,8 +15801,12 @@ function init(){
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.storyLastMission = clamp(Math.floor(S.storyLastMission || S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   const bootStoryProgress = readStoryProgressData();
+  const bootStorySlot = readStorySaveData();
   const bootStoryProfile = resolveStoryProfileOverlay(readStoryProfileData(), bootStoryProgress, S);
   applyStoryProfileToState(S, bootStoryProfile);
+  __lastStoryFullSnapshotAt = Number.isFinite(Number(bootStorySlot?.savedAt))
+    ? Number(bootStorySlot.savedAt)
+    : Date.now();
   const bootResumeMission = storyResumeMissionLevel();
   if(bootResumeMission > S.storyLevel){
     S.storyLevel = bootResumeMission;
