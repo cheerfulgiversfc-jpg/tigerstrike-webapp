@@ -79,11 +79,22 @@ module.exports = async function handler(req, res){
 
     const privateCommands = [
       { command:"start", description:"Start Tiger Strike bot" },
+      { command:"menu", description:"Open smart button menu" },
       { command:"help", description:"Show command guide" },
-      { command:"settings", description:"Open bot settings shortcuts" },
       { command:"play", description:"Launch Tiger Strike Mini App" },
+      { command:"mystats", description:"Open your player stats panel" },
+      { command:"leaderboard", description:"Open leaderboard menu" },
+      { command:"events", description:"Current events/news/update" },
+      { command:"about", description:"What Tiger Strike is" },
+      { command:"howtoplay", description:"Quick gameplay guide" },
+      { command:"controls", description:"Game controls guide" },
+      { command:"faq", description:"Common questions" },
+      { command:"rewards", description:"Rewards and daily info" },
+      { command:"reportbug", description:"Report a bug" },
+      { command:"support", description:"Support options" },
       { command:"stars", description:"How to buy/spend Telegram Stars" },
       { command:"ref", description:"Get your personal referral link" },
+      { command:"settings", description:"Open bot settings shortcuts" },
       { command:"liveops_now", description:"Admin trigger liveops post" },
       { command:"stats_today", description:"Admin funnel stats (today)" },
       { command:"stats_7d", description:"Admin funnel stats (7d)" },
@@ -92,6 +103,7 @@ module.exports = async function handler(req, res){
     ];
     const groupCommands = [
       { command:"start", description:"Initialize in this chat" },
+      { command:"menu", description:"Open smart button menu" },
       { command:"help", description:"Show available commands" },
       { command:"play", description:"Open Tiger Strike Mini App" },
       { command:"status", description:"Check bot status" },

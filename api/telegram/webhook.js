@@ -106,31 +106,226 @@ function botLink(botUsername, startParam){
   return `https://t.me/${uname}`;
 }
 
-function buildStartKeyboard(botUsername){
-  const rows = [];
+function mainMenuText(){
+  return [
+    "Tiger Strike Main Menu",
+    "Choose an option below:",
+  ].join("\n");
+}
+
+function leaderboardMenuText(){
+  return [
+    "Leaderboard Menu",
+    "Pick a leaderboard view:",
+  ].join("\n");
+}
+
+function helpMenuText(){
+  return [
+    "Help Menu",
+    "Choose a topic:",
+  ].join("\n");
+}
+
+function howToPlayText(){
+  return [
+    "How to Play",
+    "- Escort civilians into the green EVAC SAFE ZONE.",
+    "- Tap a tiger to lock it, then fight when in range.",
+    "- Capture is available when tiger HP is at 25% or lower.",
+    "- Keep armor/health topped up and manage ammo.",
+  ].join("\n");
+}
+
+function controlsText(){
+  return [
+    "Controls",
+    "- Left stick: move",
+    "- Right buttons: attack/capture/medkit/armor/roll and abilities",
+    "- Mode/Map/Shop/Inventory buttons are in menu row",
+    "- Gamepad support is available when connected",
+  ].join("\n");
+}
+
+function faqText(){
+  return [
+    "FAQ",
+    "Q: How do I continue where I left off?",
+    "A: Use Continue Last Mission or Load Save on launch.",
+    "",
+    "Q: How do I capture a tiger?",
+    "A: Lower tiger HP to 25% or below, then use Capture.",
+    "",
+    "Q: Why can’t I post admin actions?",
+    "A: Your Telegram user id must be in TELEGRAM_ADMIN_IDS.",
+  ].join("\n");
+}
+
+function rewardsText(){
+  return [
+    "Rewards",
+    "- Daily reward appears on launch",
+    "- Mission clears grant cash and progression",
+    "- Chapter rewards unlock through Story progress",
+  ].join("\n");
+}
+
+function supportText(){
+  return [
+    "Support",
+    "Use /reportbug with details and a screenshot/video if possible.",
+    "You can also use /feedback for gameplay suggestions.",
+  ].join("\n");
+}
+
+function eventsText(){
+  return [
+    "Events",
+    "Live events and campaign drops are announced in-channel.",
+    "Use /news and /update for latest notices.",
+  ].join("\n");
+}
+
+function myStatsText(user){
+  const uid = String(user?.id || "-");
+  const uname = user?.username ? `@${user.username}` : "-";
+  return [
+    "My Stats",
+    `User: ${safeName(user)}`,
+    `Username: ${uname}`,
+    `User ID: ${uid}`,
+    "",
+    "Open the Mini App for full mission stats, inventory, and progression.",
+  ].join("\n");
+}
+
+function leaderboardSectionText(kind){
+  const label = {
+    global: "Global Top 10",
+    weekly: "Weekly Leaderboard",
+    monthly: "Monthly Leaderboard",
+    myposition: "My Position",
+    clan: "Clan Rankings",
+  }[String(kind || "").toLowerCase()] || "Leaderboard";
+  return [
+    label,
+    "Leaderboard backend is being expanded. Use this menu as your command hub.",
+    "Open the Mini App for current in-game rank/progression right now.",
+  ].join("\n");
+}
+
+function mainMenuKeyboard(botUsername){
   const appUrl = miniAppUrl();
-  const openBot = botLink(botUsername);
+  const playBtn = appUrl
+    ? { text: "Play Game", url: appUrl }
+    : { text: "Play Game", callback_data: "menu_play" };
+  return {
+    inline_keyboard: [
+      [playBtn],
+      [
+        { text: "My Stats", callback_data: "menu_mystats" },
+        { text: "Leaderboard", callback_data: "menu_leaderboard" },
+      ],
+      [
+        { text: "Events", callback_data: "menu_events" },
+        { text: "Help", callback_data: "menu_help" },
+      ],
+      [{ text: "Support", callback_data: "menu_support" }],
+    ],
+  };
+}
 
-  if(appUrl){
-    rows.push([{ text: "Play Tiger Strike", url: appUrl }]);
-  }else if(openBot){
-    rows.push([{ text: "Open Bot", url: openBot }]);
+function leaderboardMenuKeyboard(){
+  return {
+    inline_keyboard: [
+      [{ text: "Global Top 10", callback_data: "menu_lb_global" }],
+      [
+        { text: "Weekly", callback_data: "menu_lb_weekly" },
+        { text: "Monthly", callback_data: "menu_lb_monthly" },
+      ],
+      [
+        { text: "My Position", callback_data: "menu_lb_myposition" },
+        { text: "Clan Rankings", callback_data: "menu_lb_clan" },
+      ],
+      [{ text: "Back", callback_data: "menu_open" }],
+    ],
+  };
+}
+
+function helpMenuKeyboard(){
+  return {
+    inline_keyboard: [
+      [{ text: "How to Play", callback_data: "menu_help_howtoplay" }],
+      [{ text: "Controls", callback_data: "menu_help_controls" }],
+      [{ text: "FAQ", callback_data: "menu_help_faq" }],
+      [{ text: "Rewards", callback_data: "menu_help_rewards" }],
+      [{ text: "Report a Bug", callback_data: "menu_help_reportbug" }],
+      [{ text: "Back", callback_data: "menu_open" }],
+    ],
+  };
+}
+
+function supportMenuKeyboard(){
+  return {
+    inline_keyboard: [
+      [{ text: "Report a Bug", callback_data: "menu_help_reportbug" }],
+      [{ text: "Back", callback_data: "menu_open" }],
+    ],
+  };
+}
+
+function leafMenuKeyboard(back = "menu_open"){
+  return {
+    inline_keyboard: [
+      [{ text: "Back", callback_data: back }],
+      [{ text: "Main Menu", callback_data: "menu_open" }],
+    ],
+  };
+}
+
+async function editMenuMessage(botToken, callbackQuery, text, replyMarkup){
+  const chatId = callbackQuery?.message?.chat?.id;
+  const messageId = callbackQuery?.message?.message_id;
+  if(!chatId || !messageId){
+    if(chatId){
+      await sendMessage(botToken, chatId, text, { reply_markup: replyMarkup });
+    }
+    return;
   }
+  try{
+    await telegramBotApi("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      disable_web_page_preview: true,
+      reply_markup: replyMarkup,
+    }, botToken);
+  }catch(e){
+    await sendMessage(botToken, chatId, text, { reply_markup: replyMarkup });
+  }
+}
 
-  rows.push([
-    { text: "Help", callback_data: "help" },
-    { text: "Stars", callback_data: "stars" },
-  ]);
-
-  return { inline_keyboard: rows };
+function buildStartKeyboard(botUsername){
+  return mainMenuKeyboard(botUsername);
 }
 
 function helpText(){
   return [
     "Tiger Strike Bot Commands:",
+    "/menu - Open smart button menu",
     "/start - Start bot and quick actions",
     "/play - Open Tiger Strike mini app",
+    "/mystats - Open your player stats panel",
+    "/leaderboard - Open leaderboard menu",
+    "/events - Current game events/news",
     "/stars - Stars purchase/spend help",
+    "/about - What Tiger Strike is",
+    "/howtoplay - Quick gameplay guide",
+    "/controls - Control guide",
+    "/faq - Common questions",
+    "/rewards - Reward guide",
+    "/reportbug - Report a bug",
+    "/support - Support options",
     "/ref - Get your referral link",
     "/status - Check bot setup status",
     "/settings - Quick settings help",
@@ -455,6 +650,12 @@ async function handleCommand(botToken, update, source){
   };
 
   switch(parsed.command){
+    case "menu": {
+      await sendMessage(botToken, ctx.chat.id, mainMenuText(), {
+        reply_markup: mainMenuKeyboard(bot?.username || ""),
+      });
+      return true;
+    }
     case "start": {
       await handleStartCommand(botToken, ctx, parsed.args, bot?.username || "");
       return true;
@@ -463,6 +664,7 @@ async function handleCommand(botToken, update, source){
       await sendMessage(botToken, ctx.chat.id, helpText(), {
         reply_markup: {
           inline_keyboard: [
+            [{ text: "Open Menu", callback_data: "menu_open" }],
             [{ text: "Play", callback_data: "play" }, { text: "Stars", callback_data: "stars" }],
           ],
         },
@@ -484,6 +686,67 @@ async function handleCommand(botToken, update, source){
       }else{
         await sendMessage(botToken, ctx.chat.id, "Mini app URL is not configured yet. Set TELEGRAM_MINI_APP_URL.");
       }
+      return true;
+    }
+    case "mystats": {
+      await sendMessage(botToken, ctx.chat.id, myStatsText(ctx.from), {
+        reply_markup: leafMenuKeyboard("menu_open"),
+      });
+      return true;
+    }
+    case "leaderboard": {
+      await sendMessage(botToken, ctx.chat.id, leaderboardMenuText(), {
+        reply_markup: leaderboardMenuKeyboard(),
+      });
+      return true;
+    }
+    case "events":
+    case "news":
+    case "update":
+    case "season": {
+      await sendMessage(botToken, ctx.chat.id, eventsText(), {
+        reply_markup: leafMenuKeyboard("menu_open"),
+      });
+      return true;
+    }
+    case "about": {
+      await sendMessage(botToken, ctx.chat.id, "Tiger Strike is a civilian-rescue action strategy game set across 100 story missions.", {
+        reply_markup: leafMenuKeyboard("menu_help"),
+      });
+      return true;
+    }
+    case "howtoplay": {
+      await sendMessage(botToken, ctx.chat.id, howToPlayText(), {
+        reply_markup: leafMenuKeyboard("menu_help"),
+      });
+      return true;
+    }
+    case "controls": {
+      await sendMessage(botToken, ctx.chat.id, controlsText(), {
+        reply_markup: leafMenuKeyboard("menu_help"),
+      });
+      return true;
+    }
+    case "faq": {
+      await sendMessage(botToken, ctx.chat.id, faqText(), {
+        reply_markup: leafMenuKeyboard("menu_help"),
+      });
+      return true;
+    }
+    case "rewards":
+    case "daily": {
+      await sendMessage(botToken, ctx.chat.id, rewardsText(), {
+        reply_markup: leafMenuKeyboard("menu_help"),
+      });
+      return true;
+    }
+    case "reportbug":
+    case "feedback":
+    case "support":
+    case "contact": {
+      await sendMessage(botToken, ctx.chat.id, supportText(), {
+        reply_markup: supportMenuKeyboard(),
+      });
       return true;
     }
     case "stars": {
@@ -546,10 +809,11 @@ async function handleCallbackQuery(botToken, update){
 
   const data = String(q.data || "").trim().toLowerCase();
   const chatId = q?.message?.chat?.id;
+  let bot = null;
 
   if(data === "help"){
     await answerCallback(botToken, q.id, "Opening help");
-    if(chatId) await sendMessage(botToken, chatId, helpText());
+    await editMenuMessage(botToken, q, helpMenuText(), helpMenuKeyboard());
     return;
   }
 
@@ -568,6 +832,119 @@ async function handleCallbackQuery(botToken, update){
         reply_markup: { inline_keyboard: [[{ text: "Play Tiger Strike", url: appUrl }]] },
       });
     }
+    return;
+  }
+
+  if(data === "menu_open"){
+    if(!bot) bot = await getBotMeta(botToken);
+    await answerCallback(botToken, q.id, "Main menu");
+    await editMenuMessage(botToken, q, mainMenuText(), mainMenuKeyboard(bot?.username || ""));
+    return;
+  }
+
+  if(data === "menu_play"){
+    const appUrl = miniAppUrl();
+    await answerCallback(botToken, q.id, appUrl ? "Play Tiger Strike" : "Mini App URL missing");
+    if(appUrl){
+      await editMenuMessage(botToken, q, "Launch Tiger Strike:", {
+        inline_keyboard: [
+          [{ text: "Play Tiger Strike", url: appUrl }],
+          [{ text: "Back", callback_data: "menu_open" }],
+        ],
+      });
+    }else{
+      await editMenuMessage(botToken, q, "Mini app URL is not configured yet. Set TELEGRAM_MINI_APP_URL.", leafMenuKeyboard("menu_open"));
+    }
+    return;
+  }
+
+  if(data === "menu_mystats"){
+    await answerCallback(botToken, q.id, "My stats");
+    await editMenuMessage(botToken, q, myStatsText(q.from), leafMenuKeyboard("menu_open"));
+    return;
+  }
+
+  if(data === "menu_events"){
+    await answerCallback(botToken, q.id, "Events");
+    await editMenuMessage(botToken, q, eventsText(), leafMenuKeyboard("menu_open"));
+    return;
+  }
+
+  if(data === "menu_support"){
+    await answerCallback(botToken, q.id, "Support");
+    await editMenuMessage(botToken, q, supportText(), supportMenuKeyboard());
+    return;
+  }
+
+  if(data === "menu_leaderboard"){
+    await answerCallback(botToken, q.id, "Leaderboard");
+    await editMenuMessage(botToken, q, leaderboardMenuText(), leaderboardMenuKeyboard());
+    return;
+  }
+
+  if(data === "menu_lb_global"){
+    await answerCallback(botToken, q.id, "Global Top 10");
+    await editMenuMessage(botToken, q, leaderboardSectionText("global"), leafMenuKeyboard("menu_leaderboard"));
+    return;
+  }
+
+  if(data === "menu_lb_weekly"){
+    await answerCallback(botToken, q.id, "Weekly leaderboard");
+    await editMenuMessage(botToken, q, leaderboardSectionText("weekly"), leafMenuKeyboard("menu_leaderboard"));
+    return;
+  }
+
+  if(data === "menu_lb_monthly"){
+    await answerCallback(botToken, q.id, "Monthly leaderboard");
+    await editMenuMessage(botToken, q, leaderboardSectionText("monthly"), leafMenuKeyboard("menu_leaderboard"));
+    return;
+  }
+
+  if(data === "menu_lb_myposition"){
+    await answerCallback(botToken, q.id, "My position");
+    await editMenuMessage(botToken, q, leaderboardSectionText("myposition"), leafMenuKeyboard("menu_leaderboard"));
+    return;
+  }
+
+  if(data === "menu_lb_clan"){
+    await answerCallback(botToken, q.id, "Clan rankings");
+    await editMenuMessage(botToken, q, leaderboardSectionText("clan"), leafMenuKeyboard("menu_leaderboard"));
+    return;
+  }
+
+  if(data === "menu_help"){
+    await answerCallback(botToken, q.id, "Help menu");
+    await editMenuMessage(botToken, q, helpMenuText(), helpMenuKeyboard());
+    return;
+  }
+
+  if(data === "menu_help_howtoplay"){
+    await answerCallback(botToken, q.id, "How to play");
+    await editMenuMessage(botToken, q, howToPlayText(), leafMenuKeyboard("menu_help"));
+    return;
+  }
+
+  if(data === "menu_help_controls"){
+    await answerCallback(botToken, q.id, "Controls");
+    await editMenuMessage(botToken, q, controlsText(), leafMenuKeyboard("menu_help"));
+    return;
+  }
+
+  if(data === "menu_help_faq"){
+    await answerCallback(botToken, q.id, "FAQ");
+    await editMenuMessage(botToken, q, faqText(), leafMenuKeyboard("menu_help"));
+    return;
+  }
+
+  if(data === "menu_help_rewards"){
+    await answerCallback(botToken, q.id, "Rewards");
+    await editMenuMessage(botToken, q, rewardsText(), leafMenuKeyboard("menu_help"));
+    return;
+  }
+
+  if(data === "menu_help_reportbug"){
+    await answerCallback(botToken, q.id, "Report bug");
+    await editMenuMessage(botToken, q, supportText(), leafMenuKeyboard("menu_help"));
     return;
   }
 
