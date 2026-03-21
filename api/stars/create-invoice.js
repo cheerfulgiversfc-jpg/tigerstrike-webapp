@@ -4,6 +4,7 @@ const { validateTelegramInitData } = require("../_lib/telegram-auth");
 const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
 const { incrMetric } = require("../_lib/metrics-store");
+const { recordInvoiceCreated } = require("../_lib/player-stats");
 
 function makeOrderRef(sku, userId){
   const nonce = crypto.randomBytes(6).toString("hex");
@@ -105,6 +106,14 @@ module.exports = async function handler(req, res){
 
     await metric("create_invoice_ok");
     await metricSku("create_invoice_ok_sku", offer.sku);
+    try{
+      await recordInvoiceCreated({
+        user,
+        sku: offer.sku,
+        orderRef,
+        stars: Number(offer.stars || 0),
+      });
+    }catch(e){ /* best effort */ }
 
     return json(res, 200, {
       ok: true,

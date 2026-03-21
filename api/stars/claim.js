@@ -3,6 +3,11 @@ const { validateTelegramInitData } = require("../_lib/telegram-auth");
 const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
 const { incrMetric } = require("../_lib/metrics-store");
+const {
+  recordClaimPending,
+  recordClaimError,
+  recordClaimPaid,
+} = require("../_lib/player-stats");
 
 function parseOrderRef(orderRef){
   const ref = String(orderRef || "").trim();
@@ -195,6 +200,7 @@ module.exports = async function handler(req, res){
     return json(res, 405, { ok:false, error:"Method not allowed." });
   }
 
+  let claimUser = null;
   try{
     const body = readJsonBody(req);
     const orderMeta = parseOrderRef(body?.orderRef);
@@ -208,6 +214,7 @@ module.exports = async function handler(req, res){
     }
 
     const { user } = validateTelegramInitData(initData, botToken);
+    claimUser = user;
     if(Number(orderMeta.userId) !== Number(user.id)){
       await metric("claim_wrong_user");
       return json(res, 400, { ok:false, error:"Order does not belong to this user." });
@@ -234,6 +241,7 @@ module.exports = async function handler(req, res){
     if(!tx){
       await metric("claim_pending");
       await metricSku("claim_pending_sku", offer.sku);
+      try{ await recordClaimPending({ user, sku: offer.sku }); }catch(e){ /* best effort */ }
       return json(res, 200, { ok:true, status:"pending" });
     }
 
@@ -245,6 +253,17 @@ module.exports = async function handler(req, res){
 
     await metric("claim_paid");
     await metricSku("claim_paid_sku", offer.sku);
+    try{
+      await recordClaimPaid({
+        user,
+        sku: offer.sku,
+        stars: Number(offer.stars || 0),
+        funds: Number(offer.funds || 0),
+        kind: String(offer.kind || ""),
+        transactionId: String(tx.id || ""),
+        paidAt: Number(tx.date || 0),
+      });
+    }catch(e){ /* best effort */ }
 
     return json(res, 200, {
       ok: true,
@@ -259,6 +278,11 @@ module.exports = async function handler(req, res){
     });
   }catch(e){
     await metric("claim_error");
+    try{
+      if(claimUser && Number(claimUser.id) > 0){
+        await recordClaimError({ user: claimUser });
+      }
+    }catch(err){ /* best effort */ }
     return json(res, 500, { ok:false, error:e?.message || "Could not verify Stars purchase." });
   }
 };

@@ -2,6 +2,12 @@ const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
 const { incrMetric, summarizeMetrics, storageMode } = require("../_lib/metrics-store");
 const liveops = require("../_lib/liveops");
+const {
+  getPlayerStats,
+  touchPlayer,
+  recordReferralStart,
+  getLeaderboardSnapshot,
+} = require("../_lib/player-stats");
 
 let cachedBotMeta = null;
 let cachedBotMetaAt = 0;
@@ -186,32 +192,118 @@ function eventsText(){
   ].join("\n");
 }
 
-function myStatsText(user){
-  const uid = String(user?.id || "-");
+function fmtNum(value){
+  const n = Number(value || 0);
+  if(!Number.isFinite(n)) return "0";
+  return Math.round(n).toLocaleString();
+}
+
+function entryLabel(entry){
+  const display = String(entry?.displayName || "").trim();
+  if(display) return display;
+  const uname = String(entry?.username || "").trim();
+  if(uname) return `@${uname}`;
+  return `Player ${toInt(entry?.userId || 0)}`;
+}
+
+function formatLeaderboardRows(entries, rowText){
+  const list = Array.isArray(entries) ? entries : [];
+  if(!list.length){
+    return ["No ranked players yet. Play and complete purchases to appear here."];
+  }
+  return list.map((entry, idx)=>`#${idx + 1} ${entryLabel(entry)} — ${rowText(entry)}`);
+}
+
+function rankForUser(entries, userId){
+  const uid = toInt(userId || 0);
+  if(!uid) return null;
+  const idx = (Array.isArray(entries) ? entries : []).findIndex((row)=>toInt(row?.userId || 0) === uid);
+  return idx >= 0 ? (idx + 1) : null;
+}
+
+async function myStatsText(user){
+  const uid = toInt(user?.id || 0);
   const uname = user?.username ? `@${user.username}` : "-";
+  const stats = await getPlayerStats(user);
+  if(!stats){
+    return [
+      "My Stats",
+      `User: ${safeName(user)}`,
+      `Username: ${uname}`,
+      `User ID: ${uid || "-"}`,
+      "",
+      "No profile found yet. Play and complete an action to generate stats.",
+    ].join("\n");
+  }
+
+  const week = stats.weekly || {};
+  const month = stats.monthly || {};
+  const referredBy = toInt(stats.referredBy || 0);
+
   return [
-    "My Stats",
-    `User: ${safeName(user)}`,
-    `Username: ${uname}`,
-    `User ID: ${uid}`,
+    "My Stats (Live)",
+    `User: ${stats.displayName || safeName(user)}`,
+    `Username: ${stats.username ? `@${stats.username}` : uname}`,
+    `User ID: ${stats.userId || uid || "-"}`,
     "",
-    "Open the Mini App for full mission stats, inventory, and progression.",
+    `Orders created: ${fmtNum(stats.ordersCreated)}`,
+    `Claims paid: ${fmtNum(stats.claimsPaid)} • Pending: ${fmtNum(stats.claimsPending)} • Errors: ${fmtNum(stats.claimsError)}`,
+    `Stars spent (lifetime): ${fmtNum(stats.starsSpentTotal)} XTR`,
+    `Funds granted (lifetime): $${fmtNum(stats.fundsGrantedTotal)}`,
+    `Referrals started: ${fmtNum(stats.referralsStarted)}${referredBy > 0 ? ` • Referred by: ${referredBy}` : ""}`,
+    "",
+    `Weekly (${week.period || "-"}) • Score: ${fmtNum(week.score)} • Paid: ${fmtNum(week.claimsPaid)}`,
+    `Monthly (${month.period || "-"}) • Score: ${fmtNum(month.score)} • Paid: ${fmtNum(month.claimsPaid)}`,
+    `Lifetime Score: ${fmtNum(stats.lifetimeScore)}`,
   ].join("\n");
 }
 
-function leaderboardSectionText(kind){
-  const label = {
-    global: "Global Top 10",
-    weekly: "Weekly Leaderboard",
-    monthly: "Monthly Leaderboard",
-    myposition: "My Position",
-    clan: "Clan Rankings",
-  }[String(kind || "").toLowerCase()] || "Leaderboard";
-  return [
-    label,
-    "Leaderboard backend is being expanded. Use this menu as your command hub.",
-    "Open the Mini App for current in-game rank/progression right now.",
-  ].join("\n");
+async function leaderboardSectionText(kind, user){
+  const mode = String(kind || "").toLowerCase();
+  const snapshot = await getLeaderboardSnapshot(10);
+  const uid = toInt(user?.id || 0);
+
+  if(mode === "global"){
+    const rows = formatLeaderboardRows(snapshot.global, (entry)=>`${fmtNum(entry.score)} pts • ${fmtNum(entry.claimsPaid)} paid`);
+    return ["Global Top 10", ...rows].join("\n");
+  }
+
+  if(mode === "weekly"){
+    const rows = formatLeaderboardRows(snapshot.weekly, (entry)=>`${fmtNum(entry.score)} pts • ${fmtNum(entry.claimsPaid)} paid`);
+    return [`Weekly Leaderboard (${snapshot.periods?.weekly || "current"})`, ...rows].join("\n");
+  }
+
+  if(mode === "monthly"){
+    const rows = formatLeaderboardRows(snapshot.monthly, (entry)=>`${fmtNum(entry.score)} pts • ${fmtNum(entry.claimsPaid)} paid`);
+    return [`Monthly Leaderboard (${snapshot.periods?.monthly || "current"})`, ...rows].join("\n");
+  }
+
+  if(mode === "clan"){
+    const rows = formatLeaderboardRows(snapshot.clans, (entry)=>`${fmtNum(entry.referrals)} referrals`);
+    return [
+      "Clan Rankings (Recruiter Board)",
+      "Current clan-style ranking uses referral leadership.",
+      ...rows,
+    ].join("\n");
+  }
+
+  if(mode === "myposition"){
+    const g = rankForUser(snapshot.global, uid);
+    const w = rankForUser(snapshot.weekly, uid);
+    const m = rankForUser(snapshot.monthly, uid);
+    const c = rankForUser(snapshot.clans, uid);
+    return [
+      "My Position",
+      `Global: ${g ? `#${g}` : "Outside Top 10"}`,
+      `Weekly: ${w ? `#${w}` : "Outside Top 10"}`,
+      `Monthly: ${m ? `#${m}` : "Outside Top 10"}`,
+      `Clan/Recruiter: ${c ? `#${c}` : "Outside Top 10"}`,
+      "",
+      "Complete purchases and referrals to improve ranking.",
+    ].join("\n");
+  }
+
+  return "Leaderboard data unavailable.";
 }
 
 function mainMenuKeyboard(botUsername){
@@ -317,6 +409,11 @@ function helpText(){
     "/play - Open Tiger Strike mini app",
     "/mystats - Open your player stats panel",
     "/leaderboard - Open leaderboard menu",
+    "/top10 - Global top 10",
+    "/weeklyleaders - Weekly leaderboard",
+    "/monthlyleaders - Monthly leaderboard",
+    "/myposition - Your leaderboard rank",
+    "/clanboard - Clan/recruiter board",
     "/events - Current game events/news",
     "/stars - Stars purchase/spend help",
     "/about - What Tiger Strike is",
@@ -521,6 +618,7 @@ async function notifyReferralEvent(botToken, data){
 async function handleStartCommand(botToken, ctx, args, botUsername){
   const startParam = String(args?.[0] || "").trim();
   const first = safeName(ctx.from);
+  try{ await touchPlayer(ctx.from); }catch(e){ /* best effort */ }
 
   const lines = [
     `Welcome ${first}.`,
@@ -542,6 +640,15 @@ async function handleStartCommand(botToken, ctx, args, botUsername){
         ref,
         chatId: ctx.chat?.id,
       });
+      const refUserId = toInt(ref);
+      if(refUserId > 0){
+        try{
+          await recordReferralStart({
+            referredUser: ctx.from,
+            referrerId: refUserId,
+          });
+        }catch(e){ /* best effort */ }
+      }
     }
   }
 
@@ -648,6 +755,7 @@ async function handleCommand(botToken, update, source){
     from: source.from,
     message_id: source.message_id,
   };
+  try{ await touchPlayer(ctx.from); }catch(e){ /* best effort */ }
 
   switch(parsed.command){
     case "menu": {
@@ -689,7 +797,7 @@ async function handleCommand(botToken, update, source){
       return true;
     }
     case "mystats": {
-      await sendMessage(botToken, ctx.chat.id, myStatsText(ctx.from), {
+      await sendMessage(botToken, ctx.chat.id, await myStatsText(ctx.from), {
         reply_markup: leafMenuKeyboard("menu_open"),
       });
       return true;
@@ -697,6 +805,37 @@ async function handleCommand(botToken, update, source){
     case "leaderboard": {
       await sendMessage(botToken, ctx.chat.id, leaderboardMenuText(), {
         reply_markup: leaderboardMenuKeyboard(),
+      });
+      return true;
+    }
+    case "top10": {
+      await sendMessage(botToken, ctx.chat.id, await leaderboardSectionText("global", ctx.from), {
+        reply_markup: leafMenuKeyboard("menu_leaderboard"),
+      });
+      return true;
+    }
+    case "weeklyleaders": {
+      await sendMessage(botToken, ctx.chat.id, await leaderboardSectionText("weekly", ctx.from), {
+        reply_markup: leafMenuKeyboard("menu_leaderboard"),
+      });
+      return true;
+    }
+    case "monthlyleaders": {
+      await sendMessage(botToken, ctx.chat.id, await leaderboardSectionText("monthly", ctx.from), {
+        reply_markup: leafMenuKeyboard("menu_leaderboard"),
+      });
+      return true;
+    }
+    case "myposition":
+    case "rank": {
+      await sendMessage(botToken, ctx.chat.id, await leaderboardSectionText("myposition", ctx.from), {
+        reply_markup: leafMenuKeyboard("menu_leaderboard"),
+      });
+      return true;
+    }
+    case "clanboard": {
+      await sendMessage(botToken, ctx.chat.id, await leaderboardSectionText("clan", ctx.from), {
+        reply_markup: leafMenuKeyboard("menu_leaderboard"),
       });
       return true;
     }
@@ -810,6 +949,7 @@ async function handleCallbackQuery(botToken, update){
   const data = String(q.data || "").trim().toLowerCase();
   const chatId = q?.message?.chat?.id;
   let bot = null;
+  try{ await touchPlayer(q.from); }catch(e){ /* best effort */ }
 
   if(data === "help"){
     await answerCallback(botToken, q.id, "Opening help");
@@ -860,7 +1000,7 @@ async function handleCallbackQuery(botToken, update){
 
   if(data === "menu_mystats"){
     await answerCallback(botToken, q.id, "My stats");
-    await editMenuMessage(botToken, q, myStatsText(q.from), leafMenuKeyboard("menu_open"));
+    await editMenuMessage(botToken, q, await myStatsText(q.from), leafMenuKeyboard("menu_open"));
     return;
   }
 
@@ -884,31 +1024,31 @@ async function handleCallbackQuery(botToken, update){
 
   if(data === "menu_lb_global"){
     await answerCallback(botToken, q.id, "Global Top 10");
-    await editMenuMessage(botToken, q, leaderboardSectionText("global"), leafMenuKeyboard("menu_leaderboard"));
+    await editMenuMessage(botToken, q, await leaderboardSectionText("global", q.from), leafMenuKeyboard("menu_leaderboard"));
     return;
   }
 
   if(data === "menu_lb_weekly"){
     await answerCallback(botToken, q.id, "Weekly leaderboard");
-    await editMenuMessage(botToken, q, leaderboardSectionText("weekly"), leafMenuKeyboard("menu_leaderboard"));
+    await editMenuMessage(botToken, q, await leaderboardSectionText("weekly", q.from), leafMenuKeyboard("menu_leaderboard"));
     return;
   }
 
   if(data === "menu_lb_monthly"){
     await answerCallback(botToken, q.id, "Monthly leaderboard");
-    await editMenuMessage(botToken, q, leaderboardSectionText("monthly"), leafMenuKeyboard("menu_leaderboard"));
+    await editMenuMessage(botToken, q, await leaderboardSectionText("monthly", q.from), leafMenuKeyboard("menu_leaderboard"));
     return;
   }
 
   if(data === "menu_lb_myposition"){
     await answerCallback(botToken, q.id, "My position");
-    await editMenuMessage(botToken, q, leaderboardSectionText("myposition"), leafMenuKeyboard("menu_leaderboard"));
+    await editMenuMessage(botToken, q, await leaderboardSectionText("myposition", q.from), leafMenuKeyboard("menu_leaderboard"));
     return;
   }
 
   if(data === "menu_lb_clan"){
     await answerCallback(botToken, q.id, "Clan rankings");
-    await editMenuMessage(botToken, q, leaderboardSectionText("clan"), leafMenuKeyboard("menu_leaderboard"));
+    await editMenuMessage(botToken, q, await leaderboardSectionText("clan", q.from), leafMenuKeyboard("menu_leaderboard"));
     return;
   }
 
