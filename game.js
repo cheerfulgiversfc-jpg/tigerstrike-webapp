@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4450";
+const TS_BUILD = "4451";
 if(tg){
   try{
     tg.expand?.();
@@ -1433,6 +1433,7 @@ function clearTransientCombatVisuals(){
 
 function load(){
   try{
+    const storySlot = readStorySaveData();
     const storyProfile = readStoryProfileData();
     let saved = null;
     let sourceKey = null;
@@ -1451,6 +1452,10 @@ function load(){
       }catch(e){
         try{ localStorage.removeItem(key); }catch(err){}
       }
+    }
+    if(!saved && storySlot && typeof storySlot.resumeState === "object"){
+      saved = storySlot.resumeState;
+      sourceKey = "__story_resume__";
     }
     if(!saved){
       const fallback = cloneState(DEFAULT);
@@ -5132,10 +5137,29 @@ function writeStoryProfileData(source="autosave", state=S){
   const src = (state && typeof state === "object") ? state : S;
   if(!src || typeof src !== "object") return false;
   const payload = {
+    storyLevel: clamp(Math.floor(Number(src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
+    storyLastMission: clamp(Math.floor(Number(src.storyLastMission || src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
     funds: Math.max(0, Math.round(Number(src.funds || 0))),
+    modeWallets: normalizeModeWallets(src.modeWallets, src.funds, src.mode),
     hp: clamp(Math.round(Number(src.hp || 100)), 0, 100),
     armor: clamp(Math.round(Number(src.armor || 0)), 0, src.armorCap || 100),
     lives: clamp(Math.round(Number(src.lives || 5)), 0, 99),
+    score: Math.max(0, Math.round(Number(src.score || 0))),
+    trust: clamp(Math.round(Number(src.trust || 80)), 0, 100),
+    aggro: clamp(Math.round(Number(src.aggro || 10)), 0, 100),
+    stamina: clamp(Math.round(Number(src.stamina || 100)), 0, 100),
+    title: String(src.title || "Rookie"),
+    xp: Math.max(0, Math.floor(Number(src.xp || 0))),
+    level: Math.max(1, Math.floor(Number(src.level || 1))),
+    perkPoints: Math.max(0, Math.floor(Number(src.perkPoints || 0))),
+    perks: { ...(src.perks || {}) },
+    progressionUnlocks: { ...(src.progressionUnlocks || {}) },
+    metaBase: { ...(src.metaBase || {}) },
+    specialistPerks: { ...(src.specialistPerks || {}) },
+    specialistStarUnlocks: { ...(src.specialistStarUnlocks || {}) },
+    chapterRewardsUnlocked: { ...(src.chapterRewardsUnlocked || {}) },
+    achievements: { ...(src.achievements || {}) },
+    stats: { ...(src.stats || {}) },
     ownedWeapons: Array.isArray(src.ownedWeapons) ? src.ownedWeapons.filter((id)=>typeof id === "string") : [],
     equippedWeaponId: String(src.equippedWeaponId || ""),
     ammoReserve: { ...(src.ammoReserve || {}) },
@@ -5172,50 +5196,137 @@ function writeStoryProfileData(source="autosave", state=S){
     return false;
   }
 }
+function mergeCountMapsPreferHigher(currentMap, profileMap){
+  const out = { ...(currentMap || {}) };
+  if(!profileMap || typeof profileMap !== "object") return out;
+  for(const [key, value] of Object.entries(profileMap)){
+    const next = Math.max(0, Math.floor(Number(value || 0)));
+    if(!Number.isFinite(next)) continue;
+    const cur = Math.max(0, Math.floor(Number(out[key] || 0)));
+    out[key] = Math.max(cur, next);
+  }
+  return out;
+}
+
+function allValuesZero(obj){
+  if(!obj || typeof obj !== "object") return true;
+  const vals = Object.values(obj);
+  if(!vals.length) return true;
+  return vals.every((v)=>!Number.isFinite(Number(v)) || Number(v) === 0);
+}
+
 function applyStoryProfileToState(state, profile){
   if(!state || typeof state !== "object") return state;
   if(!profile || typeof profile !== "object") return state;
 
+  if(Number.isFinite(Number(profile.storyLevel))){
+    state.storyLevel = clamp(Math.max(Number(state.storyLevel || 1), Number(profile.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  }
+  if(Number.isFinite(Number(profile.storyLastMission))){
+    state.storyLastMission = clamp(Math.max(Number(state.storyLastMission || 1), Number(profile.storyLastMission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  }
+
   if(Array.isArray(profile.ownedWeapons) && profile.ownedWeapons.length){
-    const merged = [...new Set(profile.ownedWeapons.filter((id)=>typeof id === "string" && id.trim()))];
+    const merged = [...new Set([
+      ...(Array.isArray(state.ownedWeapons) ? state.ownedWeapons : []),
+      ...profile.ownedWeapons.filter((id)=>typeof id === "string" && id.trim()),
+    ])];
     if(merged.length) state.ownedWeapons = merged;
   }
   if(profile.ammoReserve && typeof profile.ammoReserve === "object"){
-    state.ammoReserve = { ...(state.ammoReserve || {}), ...profile.ammoReserve };
+    state.ammoReserve = mergeCountMapsPreferHigher(state.ammoReserve, profile.ammoReserve);
   }
   if(profile.durability && typeof profile.durability === "object"){
     state.durability = { ...(state.durability || {}), ...profile.durability };
   }
   if(profile.medkits && typeof profile.medkits === "object"){
-    state.medkits = { ...(state.medkits || {}), ...profile.medkits };
+    state.medkits = mergeCountMapsPreferHigher(state.medkits, profile.medkits);
   }
   if(profile.repairKits && typeof profile.repairKits === "object"){
-    state.repairKits = { ...(state.repairKits || {}), ...profile.repairKits };
+    state.repairKits = mergeCountMapsPreferHigher(state.repairKits, profile.repairKits);
   }
-  if(Number.isFinite(Number(profile.trapsOwned))) state.trapsOwned = Math.max(0, Math.floor(Number(profile.trapsOwned)));
-  if(Number.isFinite(Number(profile.shields))) state.shields = Math.max(0, Math.floor(Number(profile.shields)));
-  if(Number.isFinite(Number(profile.armorCap))) state.armorCap = clamp(Math.round(Number(profile.armorCap)), 100, 200);
+
+  if(Number.isFinite(Number(profile.trapsOwned))) state.trapsOwned = Math.max(Math.max(0, Math.floor(Number(state.trapsOwned || 0))), Math.max(0, Math.floor(Number(profile.trapsOwned))));
+  if(Number.isFinite(Number(profile.shields))) state.shields = Math.max(Math.max(0, Math.floor(Number(state.shields || 0))), Math.max(0, Math.floor(Number(profile.shields))));
+  if(Number.isFinite(Number(profile.armorCap))) state.armorCap = clamp(Math.max(Number(state.armorCap || 100), Number(profile.armorCap || 100)), 100, 200);
   if(Number.isFinite(Number(profile.funds))) state.funds = Math.max(Number(state.funds || 0), Math.round(Number(profile.funds)));
   if(Number.isFinite(Number(profile.hp))) state.hp = clamp(Math.round(Number(profile.hp)), 0, 100);
   if(Number.isFinite(Number(profile.armor))) state.armor = clamp(Math.round(Number(profile.armor)), 0, state.armorCap || 100);
-  if(Number.isFinite(Number(profile.lives))) state.lives = clamp(Math.round(Number(profile.lives)), 0, 99);
+  if(Number.isFinite(Number(profile.lives))) state.lives = Math.max(Math.round(Number(state.lives || 0)), clamp(Math.round(Number(profile.lives)), 0, 99));
+  if(Number.isFinite(Number(profile.score))) state.score = Math.max(Math.round(Number(state.score || 0)), Math.round(Number(profile.score || 0)));
+  if(Number.isFinite(Number(profile.trust))) state.trust = clamp(Math.round(Number(profile.trust)), 0, 100);
+  if(Number.isFinite(Number(profile.aggro))) state.aggro = clamp(Math.round(Number(profile.aggro)), 0, 100);
+  if(Number.isFinite(Number(profile.stamina))) state.stamina = clamp(Math.round(Number(profile.stamina)), 0, 100);
+  if(typeof profile.title === "string" && profile.title.trim()) state.title = profile.title;
 
-  state.armorPlates = normalizeArmorPlateInventory(profile.armorPlates ?? state.armorPlates);
-  state.armorPlatesFallback = normalizeArmorPlateInventory(profile.armorPlatesFallback ?? profile.armorPlates ?? state.armorPlatesFallback);
+  const stateLooksReset = Number(state.level || 1) <= 1 && Number(state.xp || 0) <= 0 && Number(state.perkPoints || 0) <= 0;
+  if(Number.isFinite(Number(profile.level)) && (stateLooksReset || Number(state.level || 1) <= 1)){
+    state.level = Math.max(1, Math.floor(Number(profile.level || 1)));
+  }
+  if(Number.isFinite(Number(profile.xp)) && (stateLooksReset || Number(state.xp || 0) <= 0)){
+    state.xp = Math.max(0, Math.floor(Number(profile.xp || 0)));
+  }
+  if(Number.isFinite(Number(profile.perkPoints)) && (stateLooksReset || Number(state.perkPoints || 0) <= 0)){
+    state.perkPoints = Math.max(0, Math.floor(Number(profile.perkPoints || 0)));
+  }
+
+  if(profile.perks && typeof profile.perks === "object" && (stateLooksReset || allValuesZero(state.perks))){
+    state.perks = { ...(state.perks || {}), ...profile.perks };
+  }
+  if(profile.progressionUnlocks && typeof profile.progressionUnlocks === "object" && (stateLooksReset || !Object.keys(state.progressionUnlocks || {}).length)){
+    state.progressionUnlocks = { ...(state.progressionUnlocks || {}), ...profile.progressionUnlocks };
+  }
+  if(profile.metaBase && typeof profile.metaBase === "object" && (stateLooksReset || !Object.keys(state.metaBase || {}).length)){
+    state.metaBase = { ...(state.metaBase || {}), ...profile.metaBase };
+  }
+  if(profile.specialistPerks && typeof profile.specialistPerks === "object" && (stateLooksReset || !Object.keys(state.specialistPerks || {}).length)){
+    state.specialistPerks = { ...(state.specialistPerks || {}), ...profile.specialistPerks };
+  }
+  if(profile.specialistStarUnlocks && typeof profile.specialistStarUnlocks === "object"){
+    state.specialistStarUnlocks = { ...(state.specialistStarUnlocks || {}), ...profile.specialistStarUnlocks };
+  }
+  if(profile.chapterRewardsUnlocked && typeof profile.chapterRewardsUnlocked === "object" && (stateLooksReset || !Object.keys(state.chapterRewardsUnlocked || {}).length)){
+    state.chapterRewardsUnlocked = { ...(state.chapterRewardsUnlocked || {}), ...profile.chapterRewardsUnlocked };
+  }
+  if(profile.achievements && typeof profile.achievements === "object" && (stateLooksReset || !Object.keys(state.achievements || {}).length)){
+    state.achievements = { ...(state.achievements || {}), ...profile.achievements };
+  }
+  if(profile.stats && typeof profile.stats === "object"){
+    const nextStats = { ...(state.stats || {}) };
+    for(const [k, v] of Object.entries(profile.stats)){
+      const current = Number(nextStats[k] || 0);
+      const incoming = Number(v || 0);
+      if(Number.isFinite(incoming)){
+        nextStats[k] = Math.max(current, incoming);
+      }
+    }
+    state.stats = nextStats;
+  }
+
+  state.armorPlates = normalizeArmorPlateInventory(mergeCountMapsPreferHigher(state.armorPlates, profile.armorPlates));
+  state.armorPlatesFallback = normalizeArmorPlateInventory(
+    mergeCountMapsPreferHigher(
+      state.armorPlatesFallback,
+      profile.armorPlatesFallback ?? profile.armorPlates
+    )
+  );
   if(typeof profile.armorPlateSelectedId === "string") state.armorPlateSelectedId = profile.armorPlateSelectedId;
   if(typeof profile.medkitSelectedId === "string") state.medkitSelectedId = profile.medkitSelectedId;
   if(typeof profile.repairSelectedId === "string") state.repairSelectedId = profile.repairSelectedId;
 
-  if(Number.isFinite(Number(profile.soldierAttackersOwned))) state.soldierAttackersOwned = Math.max(0, Math.floor(Number(profile.soldierAttackersOwned)));
-  if(Number.isFinite(Number(profile.soldierRescuersOwned))) state.soldierRescuersOwned = Math.max(0, Math.floor(Number(profile.soldierRescuersOwned)));
-  if(Number.isFinite(Number(profile.soldierAttackersDowned))) state.soldierAttackersDowned = Math.max(0, Math.floor(Number(profile.soldierAttackersDowned)));
-  if(Number.isFinite(Number(profile.soldierRescuersDowned))) state.soldierRescuersDowned = Math.max(0, Math.floor(Number(profile.soldierRescuersDowned)));
+  if(Number.isFinite(Number(profile.soldierAttackersOwned))) state.soldierAttackersOwned = Math.max(Math.floor(Number(state.soldierAttackersOwned || 0)), Math.max(0, Math.floor(Number(profile.soldierAttackersOwned))));
+  if(Number.isFinite(Number(profile.soldierRescuersOwned))) state.soldierRescuersOwned = Math.max(Math.floor(Number(state.soldierRescuersOwned || 0)), Math.max(0, Math.floor(Number(profile.soldierRescuersOwned))));
+  if(Number.isFinite(Number(profile.soldierAttackersDowned))) state.soldierAttackersDowned = Math.max(Math.floor(Number(state.soldierAttackersDowned || 0)), Math.max(0, Math.floor(Number(profile.soldierAttackersDowned))));
+  if(Number.isFinite(Number(profile.soldierRescuersDowned))) state.soldierRescuersDowned = Math.max(Math.floor(Number(state.soldierRescuersDowned || 0)), Math.max(0, Math.floor(Number(profile.soldierRescuersDowned))));
 
   if(typeof profile.equippedWeaponId === "string" && profile.equippedWeaponId && state.ownedWeapons?.includes(profile.equippedWeaponId)){
     state.equippedWeaponId = profile.equippedWeaponId;
   }
   if(profile.mag && typeof profile.mag === "object"){
     state.mag = { ...(state.mag || {}), ...profile.mag };
+  }
+  if(profile.modeWallets && typeof profile.modeWallets === "object"){
+    state.modeWallets = normalizeModeWallets({ ...(state.modeWallets || {}), ...profile.modeWallets }, state.funds, state.mode);
   }
   return state;
 }
