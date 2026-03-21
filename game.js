@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4448";
+const TS_BUILD = "4450";
 if(tg){
   try{
     tg.expand?.();
@@ -56,6 +56,7 @@ const STORAGE_KEY = `ts_v${STORAGE_VERSION}`;
 const STORAGE_FALLBACK_KEYS = ["ts_v4384", "ts_v4383", "ts_v4382", "ts_v4381", "ts_v4380", "ts_v4371"];
 const STORY_SAVE_KEY_BASE = "ts_story_save";
 const STORY_PROGRESS_KEY_BASE = "ts_story_progress";
+const STORY_PROFILE_KEY_BASE = "ts_story_profile";
 
 function cloneState(obj){
   if(typeof structuredClone === "function"){
@@ -1432,6 +1433,7 @@ function clearTransientCombatVisuals(){
 
 function load(){
   try{
+    const storyProfile = readStoryProfileData();
     let saved = null;
     let sourceKey = null;
     for(const key of [STORAGE_KEY, ...STORAGE_FALLBACK_KEYS]){
@@ -1453,6 +1455,7 @@ function load(){
     if(!saved){
       const fallback = cloneState(DEFAULT);
       applyStorySaveToState(fallback, { allowModeSync:true });
+      applyStoryProfileToState(fallback, storyProfile);
       return fallback;
     }
     const m = { ...DEFAULT, ...saved };
@@ -1483,7 +1486,15 @@ function load(){
     m.mode = normalizeModeName(m.mode);
     m.storyLastMission = clamp(Math.floor(Number(saved.storyLastMission ?? m.storyLevel ?? 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
     applyStorySaveToState(m, { allowModeSync:true });
+    applyStoryProfileToState(m, storyProfile);
     m.modeWallets = normalizeModeWallets(saved.modeWallets, m.funds, m.mode);
+    if(storyProfile && Number.isFinite(Number(storyProfile.funds))){
+      const profileFunds = Math.max(0, Math.round(Number(storyProfile.funds)));
+      const walletFunds = Math.max(getModeWallet(m.mode, m), profileFunds);
+      if(m.modeWallets && typeof m.modeWallets === "object"){
+        m.modeWallets[m.mode] = walletFunds;
+      }
+    }
     m.funds = getModeWallet(m.mode, m);
     if(m.lives==null) m.lives=5;
     m.v = STORAGE_VERSION;
@@ -5055,6 +5066,159 @@ function storyProgressReadStorageKeys(){
   }catch(e){}
   return keys;
 }
+function storyProfileStorageKey(){
+  return STORY_PROFILE_KEY_BASE;
+}
+function storyProfileStorageKeys(){
+  const keys = [];
+  const seen = new Set();
+  const pushKey = (k)=>{
+    const key = String(k || "").trim();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+  pushKey(storyProfileStorageKey());
+  pushKey(`${STORY_PROFILE_KEY_BASE}_local`);
+  pushKey(`${STORY_PROFILE_KEY_BASE}_${tgUserKey()}`);
+  return keys;
+}
+function storyProfileReadStorageKeys(){
+  const keys = storyProfileStorageKeys().slice();
+  const seen = new Set(keys);
+  const pushKey = (k)=>{
+    const key = String(k || "").trim();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+  try{
+    for(let i=0; i<localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(!k) continue;
+      if(k === STORY_PROFILE_KEY_BASE || k.startsWith(`${STORY_PROFILE_KEY_BASE}_`)){
+        pushKey(k);
+      }
+    }
+  }catch(e){}
+  return keys;
+}
+function readStoryProfileData(){
+  try{
+    let best = null;
+    for(const key of storyProfileReadStorageKeys()){
+      const raw = localStorage.getItem(key);
+      if(!raw) continue;
+      let parsed = null;
+      try{
+        parsed = JSON.parse(raw);
+      }catch(e){
+        parsed = null;
+      }
+      if(!parsed || typeof parsed !== "object") continue;
+      const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
+      const candidate = { ...parsed, savedAt, storageKey:key };
+      if(!best || candidate.savedAt >= best.savedAt){
+        best = candidate;
+      }
+    }
+    return best;
+  }catch(e){
+    return null;
+  }
+}
+function writeStoryProfileData(source="autosave", state=S){
+  if(window.__TUTORIAL_MODE__) return false;
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return false;
+  const payload = {
+    funds: Math.max(0, Math.round(Number(src.funds || 0))),
+    hp: clamp(Math.round(Number(src.hp || 100)), 0, 100),
+    armor: clamp(Math.round(Number(src.armor || 0)), 0, src.armorCap || 100),
+    lives: clamp(Math.round(Number(src.lives || 5)), 0, 99),
+    ownedWeapons: Array.isArray(src.ownedWeapons) ? src.ownedWeapons.filter((id)=>typeof id === "string") : [],
+    equippedWeaponId: String(src.equippedWeaponId || ""),
+    ammoReserve: { ...(src.ammoReserve || {}) },
+    durability: { ...(src.durability || {}) },
+    medkits: { ...(src.medkits || {}) },
+    repairKits: { ...(src.repairKits || {}) },
+    trapsOwned: Math.max(0, Math.floor(Number(src.trapsOwned || 0))),
+    shields: Math.max(0, Math.floor(Number(src.shields || 0))),
+    armorCap: clamp(Math.round(Number(src.armorCap || 100)), 100, 200),
+    armorPlates: normalizeArmorPlateInventory(src.armorPlates),
+    armorPlatesFallback: normalizeArmorPlateInventory(src.armorPlatesFallback ?? src.armorPlates),
+    armorPlateSelectedId: String(src.armorPlateSelectedId || ""),
+    medkitSelectedId: String(src.medkitSelectedId || ""),
+    repairSelectedId: String(src.repairSelectedId || ""),
+    mag: {
+      loaded: Math.max(0, Math.floor(Number(src.mag?.loaded || 0))),
+      cap: Math.max(0, Math.floor(Number(src.mag?.cap || 0))),
+    },
+    soldierAttackersOwned: Math.max(0, Math.floor(Number(src.soldierAttackersOwned || 0))),
+    soldierRescuersOwned: Math.max(0, Math.floor(Number(src.soldierRescuersOwned || 0))),
+    soldierAttackersDowned: Math.max(0, Math.floor(Number(src.soldierAttackersDowned || 0))),
+    soldierRescuersDowned: Math.max(0, Math.floor(Number(src.soldierRescuersDowned || 0))),
+    savedAt: Date.now(),
+    source: String(source || "autosave"),
+  };
+  try{
+    const raw = JSON.stringify(payload);
+    localStorage.setItem(storyProfileStorageKey(), raw);
+    for(const key of storyProfileReadStorageKeys()){
+      if(key !== storyProfileStorageKey()) localStorage.removeItem(key);
+    }
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+function applyStoryProfileToState(state, profile){
+  if(!state || typeof state !== "object") return state;
+  if(!profile || typeof profile !== "object") return state;
+
+  if(Array.isArray(profile.ownedWeapons) && profile.ownedWeapons.length){
+    const merged = [...new Set(profile.ownedWeapons.filter((id)=>typeof id === "string" && id.trim()))];
+    if(merged.length) state.ownedWeapons = merged;
+  }
+  if(profile.ammoReserve && typeof profile.ammoReserve === "object"){
+    state.ammoReserve = { ...(state.ammoReserve || {}), ...profile.ammoReserve };
+  }
+  if(profile.durability && typeof profile.durability === "object"){
+    state.durability = { ...(state.durability || {}), ...profile.durability };
+  }
+  if(profile.medkits && typeof profile.medkits === "object"){
+    state.medkits = { ...(state.medkits || {}), ...profile.medkits };
+  }
+  if(profile.repairKits && typeof profile.repairKits === "object"){
+    state.repairKits = { ...(state.repairKits || {}), ...profile.repairKits };
+  }
+  if(Number.isFinite(Number(profile.trapsOwned))) state.trapsOwned = Math.max(0, Math.floor(Number(profile.trapsOwned)));
+  if(Number.isFinite(Number(profile.shields))) state.shields = Math.max(0, Math.floor(Number(profile.shields)));
+  if(Number.isFinite(Number(profile.armorCap))) state.armorCap = clamp(Math.round(Number(profile.armorCap)), 100, 200);
+  if(Number.isFinite(Number(profile.funds))) state.funds = Math.max(Number(state.funds || 0), Math.round(Number(profile.funds)));
+  if(Number.isFinite(Number(profile.hp))) state.hp = clamp(Math.round(Number(profile.hp)), 0, 100);
+  if(Number.isFinite(Number(profile.armor))) state.armor = clamp(Math.round(Number(profile.armor)), 0, state.armorCap || 100);
+  if(Number.isFinite(Number(profile.lives))) state.lives = clamp(Math.round(Number(profile.lives)), 0, 99);
+
+  state.armorPlates = normalizeArmorPlateInventory(profile.armorPlates ?? state.armorPlates);
+  state.armorPlatesFallback = normalizeArmorPlateInventory(profile.armorPlatesFallback ?? profile.armorPlates ?? state.armorPlatesFallback);
+  if(typeof profile.armorPlateSelectedId === "string") state.armorPlateSelectedId = profile.armorPlateSelectedId;
+  if(typeof profile.medkitSelectedId === "string") state.medkitSelectedId = profile.medkitSelectedId;
+  if(typeof profile.repairSelectedId === "string") state.repairSelectedId = profile.repairSelectedId;
+
+  if(Number.isFinite(Number(profile.soldierAttackersOwned))) state.soldierAttackersOwned = Math.max(0, Math.floor(Number(profile.soldierAttackersOwned)));
+  if(Number.isFinite(Number(profile.soldierRescuersOwned))) state.soldierRescuersOwned = Math.max(0, Math.floor(Number(profile.soldierRescuersOwned)));
+  if(Number.isFinite(Number(profile.soldierAttackersDowned))) state.soldierAttackersDowned = Math.max(0, Math.floor(Number(profile.soldierAttackersDowned)));
+  if(Number.isFinite(Number(profile.soldierRescuersDowned))) state.soldierRescuersDowned = Math.max(0, Math.floor(Number(profile.soldierRescuersDowned)));
+
+  if(typeof profile.equippedWeaponId === "string" && profile.equippedWeaponId && state.ownedWeapons?.includes(profile.equippedWeaponId)){
+    state.equippedWeaponId = profile.equippedWeaponId;
+  }
+  if(profile.mag && typeof profile.mag === "object"){
+    state.mag = { ...(state.mag || {}), ...profile.mag };
+  }
+  return state;
+}
 function readStoryProgressData(){
   try{
     let best = null;
@@ -5301,12 +5465,13 @@ function writeStorySaveData(source="manual"){
     funds: payload.funds,
     source: payload.source,
   });
+  const profileOk = writeStoryProfileData(payload.source, resumeState);
   try{
     const raw = JSON.stringify(payload);
     localStorage.setItem(storySaveStorageKey(), raw);
     return payload;
   }catch(e){
-    return progressOk ? payload : null;
+    return (progressOk || profileOk) ? payload : null;
   }
 }
 function clearStorySaveData(){
@@ -5315,6 +5480,9 @@ function clearStorySaveData(){
       localStorage.removeItem(key);
     }
     for(const key of storyProgressReadStorageKeys()){
+      localStorage.removeItem(key);
+    }
+    for(const key of storyProfileReadStorageKeys()){
       localStorage.removeItem(key);
     }
   }catch(e){}
@@ -5503,6 +5671,7 @@ function saveGameNow(){
 function loadStorySaveFromLaunchIntro(){
   const slot = readStorySaveData();
   const progress = readStoryProgressData();
+  const profile = readStoryProfileData();
   if(!slot && !progress){
     toast("No Story save found.");
     return;
@@ -5532,6 +5701,7 @@ function loadStorySaveFromLaunchIntro(){
     S.funds = Math.max(0, Math.round(nextFunds));
     S.storyLastMission = mission;
     S.storyLevel = mission;
+    applyStoryProfileToState(S, profile);
     const nextHp = Number.isFinite(Number(slot?.hp))
       ? clamp(Number(slot.hp), 0, 100)
       : (Number.isFinite(Number(progress?.hp)) ? clamp(Number(progress.hp), 0, 100) : clamp(S.hp, 0, 100));
@@ -5539,7 +5709,6 @@ function loadStorySaveFromLaunchIntro(){
       ? clamp(Number(slot.armor), 0, S.armorCap || 100)
       : (Number.isFinite(Number(progress?.armor)) ? clamp(Number(progress.armor), 0, S.armorCap || 100) : clamp(S.armor, 0, S.armorCap || 100));
     deploy({ carryStats:true, hp:nextHp, armor:nextArmor });
-    save(true);
   }
   if(storyProgressMissionFromState(S) < mission){
     const forceHp = clamp(Number(S.hp || 100), 0, 100);
@@ -5548,8 +5717,13 @@ function loadStorySaveFromLaunchIntro(){
     S.storyLevel = mission;
     S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
     deploy({ carryStats:true, hp:forceHp, armor:forceArmor });
-    save(true);
   }
+  applyStoryProfileToState(S, profile);
+  S.mode = "Story";
+  S.storyLevel = Math.max(mission, Math.floor(Number(S.storyLevel || 1)));
+  S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
+  writeStorySaveData("load-launch");
+  save(true);
   toast(`Loaded Story save at Mission ${mission}.`);
   continueFromLaunchIntro(true);
 }
@@ -5625,6 +5799,7 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
   if(S.mode === "Story"){
     const slot = readStorySaveData();
     const progress = readStoryProgressData();
+    const profile = readStoryProfileData();
     const beforeMission = storyProgressMissionFromState(S);
     const slotMission = storySaveMissionFromPayload(slot || {});
     const progressMission = Math.floor(Number(progress?.mission || 1));
@@ -5646,6 +5821,7 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
       if(Number.isFinite(Number(progress?.funds))){
         S.funds = Math.max(Number(S.funds || 0), Number(progress.funds || 0));
       }
+      applyStoryProfileToState(S, profile);
       deploy({ carryStats:true, hp:carryHp, armor:carryArmor });
     }
     if(storyProgressMissionFromState(S) < mission){
@@ -5656,7 +5832,12 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
       S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
       deploy({ carryStats:true, hp:forceHp, armor:forceArmor });
     }
+    applyStoryProfileToState(S, profile);
+    S.mode = "Story";
+    S.storyLevel = Math.max(mission, Math.floor(Number(S.storyLevel || 1)));
+    S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
     writeStorySaveData("continue-launch");
+    save(true);
   }
   if(S.mode==="Story" && !window.__TUTORIAL_MODE__ && !S.storyIntroSeen){
     if(allowStoryIntro){
@@ -7701,7 +7882,6 @@ function useArmorPlate(opts={}){
 }
 
 function canQuickUseArmorPlate(){
-  if(S.inBattle) return false;
   if(S.paused || S.missionEnded || S.gameOver) return false;
   if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return false;
   return totalArmorPlates() > 0 && S.armor < S.armorCap;
