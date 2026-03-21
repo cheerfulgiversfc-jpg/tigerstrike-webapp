@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4447";
+const TS_BUILD = "4448";
 if(tg){
   try{
     tg.expand?.();
@@ -4982,7 +4982,7 @@ function nextDailyCountdownText(){
   return `${hh}h ${mm}m`;
 }
 function storySaveStorageKey(){
-  return `${STORY_SAVE_KEY_BASE}_${tgUserKey()}`;
+  return STORY_SAVE_KEY_BASE;
 }
 function storySaveStorageKeys(){
   const keys = [];
@@ -5019,7 +5019,7 @@ function storySaveReadStorageKeys(){
   return keys;
 }
 function storyProgressStorageKey(){
-  return `${STORY_PROGRESS_KEY_BASE}_${tgUserKey()}`;
+  return STORY_PROGRESS_KEY_BASE;
 }
 function storyProgressStorageKeys(){
   const keys = [];
@@ -5107,16 +5107,8 @@ function writeStoryProgressData(payload={}){
     source: String(payload.source || "autosave"),
   };
   try{
-    const keep = new Set(storyProgressStorageKeys());
-    for(const key of storyProgressReadStorageKeys()){
-      if(!keep.has(key)) localStorage.removeItem(key);
-    }
-  }catch(e){}
-  try{
     const raw = JSON.stringify(data);
-    for(const key of storyProgressStorageKeys()){
-      localStorage.setItem(key, raw);
-    }
+    localStorage.setItem(storyProgressStorageKey(), raw);
     return true;
   }catch(e){
     return false;
@@ -5310,35 +5302,8 @@ function writeStorySaveData(source="manual"){
     source: payload.source,
   });
   try{
-    const primary = storySaveStorageKey();
-    for(const key of storySaveReadStorageKeys()){
-      if(key !== primary) localStorage.removeItem(key);
-    }
-  }catch(e){}
-  try{
     const raw = JSON.stringify(payload);
-    const writeKey = storySaveStorageKey();
-    localStorage.setItem(writeKey, raw);
-    // Cleanup legacy duplicate slots that can bloat localStorage on mobile.
-    // Keep higher-mission legacy keys for safety until current progress catches up.
-    const writeKeySet = new Set([writeKey]);
-    for(const legacyKey of storySaveReadStorageKeys()){
-      if(writeKeySet.has(legacyKey)) continue;
-      const legacyRaw = localStorage.getItem(legacyKey);
-      if(!legacyRaw){
-        localStorage.removeItem(legacyKey);
-        continue;
-      }
-      let legacyMission = 1;
-      try{
-        legacyMission = storySaveMissionFromPayload(JSON.parse(legacyRaw));
-      }catch(e){
-        legacyMission = 1;
-      }
-      if(legacyMission <= mission){
-        localStorage.removeItem(legacyKey);
-      }
-    }
+    localStorage.setItem(storySaveStorageKey(), raw);
     return payload;
   }catch(e){
     return progressOk ? payload : null;
@@ -15328,6 +15293,17 @@ function init(){
   if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.storyLastMission = clamp(Math.floor(S.storyLastMission || S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  const bootStoryProgress = readStoryProgressData();
+  const bootResumeMission = storyResumeMissionLevel();
+  if(bootResumeMission > S.storyLevel){
+    S.storyLevel = bootResumeMission;
+    S.storyLastMission = Math.max(S.storyLastMission, bootResumeMission);
+  }
+  if(bootStoryProgress){
+    if(Number.isFinite(Number(bootStoryProgress.funds))){
+      S.funds = Math.max(Number(S.funds || 0), Number(bootStoryProgress.funds || 0));
+    }
+  }
   if(S.mode === "Story"){
     S.storyLevel = Math.max(S.storyLevel, S.storyLastMission);
   } else {
