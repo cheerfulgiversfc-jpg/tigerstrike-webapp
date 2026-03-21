@@ -224,6 +224,14 @@ function rankForUser(entries, userId){
 async function myStatsText(user){
   const uid = toInt(user?.id || 0);
   const uname = user?.username ? `@${user.username}` : "-";
+  if(!uid){
+    return [
+      "My Stats",
+      "",
+      "I couldn’t detect your player account in this chat.",
+      "Open a private chat with the bot, then run /mystats there.",
+    ].join("\n");
+  }
   const stats = await getPlayerStats(user);
   if(!stats){
     return [
@@ -530,6 +538,18 @@ function sourceMessageFromUpdate(update){
   );
 }
 
+function resolveActorUser(update, source){
+  return (
+    source?.from
+    || update?.message?.from
+    || update?.edited_message?.from
+    || update?.business_message?.from
+    || update?.edited_business_message?.from
+    || update?.callback_query?.from
+    || null
+  );
+}
+
 function targetChannelFrom(source){
   return liveops.targetChannelFrom(source);
 }
@@ -752,7 +772,7 @@ async function handleCommand(botToken, update, source){
 
   const ctx = {
     chat: source.chat,
-    from: source.from,
+    from: resolveActorUser(update, source),
     message_id: source.message_id,
   };
   try{ await touchPlayer(ctx.from); }catch(e){ /* best effort */ }
