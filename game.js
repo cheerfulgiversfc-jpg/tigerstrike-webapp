@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4446";
+const TS_BUILD = "4447";
 if(tg){
   try{
     tg.expand?.();
@@ -55,6 +55,7 @@ const STORAGE_VERSION = 4385;
 const STORAGE_KEY = `ts_v${STORAGE_VERSION}`;
 const STORAGE_FALLBACK_KEYS = ["ts_v4384", "ts_v4383", "ts_v4382", "ts_v4381", "ts_v4380", "ts_v4371"];
 const STORY_SAVE_KEY_BASE = "ts_story_save";
+const STORY_PROGRESS_KEY_BASE = "ts_story_progress";
 
 function cloneState(obj){
   if(typeof structuredClone === "function"){
@@ -1392,6 +1393,7 @@ const DAMAGE_POPUP_RATE_MS = 82;
 const DAMAGE_POPUP_GATE = new Map();
 const CAMERA_SHAKE = { until:0, power:0 };
 const ENABLE_SCREEN_SHAKE = false;
+const ENABLE_BATTLE_CINEMATIC = false;
 const BATTLE_CINE_ENTER_MS = 260;
 const BATTLE_CINE_EXIT_MS = 220;
 const BATTLE_CINEMATIC = {
@@ -5016,6 +5018,110 @@ function storySaveReadStorageKeys(){
   }catch(e){}
   return keys;
 }
+function storyProgressStorageKey(){
+  return `${STORY_PROGRESS_KEY_BASE}_${tgUserKey()}`;
+}
+function storyProgressStorageKeys(){
+  const keys = [];
+  const seen = new Set();
+  const pushKey = (k)=>{
+    const key = String(k || "").trim();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+  pushKey(storyProgressStorageKey());
+  pushKey(`${STORY_PROGRESS_KEY_BASE}_local`);
+  pushKey(STORY_PROGRESS_KEY_BASE);
+  return keys;
+}
+function storyProgressReadStorageKeys(){
+  const keys = storyProgressStorageKeys().slice();
+  const seen = new Set(keys);
+  const pushKey = (k)=>{
+    const key = String(k || "").trim();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+  try{
+    for(let i=0; i<localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(!k) continue;
+      if(k === STORY_PROGRESS_KEY_BASE || k.startsWith(`${STORY_PROGRESS_KEY_BASE}_`)){
+        pushKey(k);
+      }
+    }
+  }catch(e){}
+  return keys;
+}
+function readStoryProgressData(){
+  try{
+    let best = null;
+    for(const key of storyProgressReadStorageKeys()){
+      const raw = localStorage.getItem(key);
+      if(!raw) continue;
+      let parsed = null;
+      try{
+        parsed = JSON.parse(raw);
+      }catch(e){
+        parsed = null;
+      }
+      if(!parsed || typeof parsed !== "object") continue;
+      const mission = clamp(Math.floor(Number(parsed.mission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+      const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
+      const candidate = {
+        mission,
+        hp: clamp(Math.round(Number(parsed.hp || 100)), 0, 100),
+        armor: clamp(Math.round(Number(parsed.armor || 0)), 0, S?.armorCap || 100),
+        funds: Math.max(0, Math.round(Number(parsed.funds || 0))),
+        savedAt,
+        storageKey:key,
+      };
+      if(!best){
+        best = candidate;
+        continue;
+      }
+      if(candidate.mission > best.mission){
+        best = candidate;
+        continue;
+      }
+      if(candidate.mission === best.mission && candidate.savedAt > best.savedAt){
+        best = candidate;
+      }
+    }
+    return best;
+  }catch(e){
+    return null;
+  }
+}
+function writeStoryProgressData(payload={}){
+  if(window.__TUTORIAL_MODE__) return false;
+  const mission = clamp(Math.floor(Number(payload.mission || S.storyLevel || S.storyLastMission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  const data = {
+    mission,
+    hp: clamp(Math.round(Number(payload.hp ?? S.hp ?? 100)), 0, 100),
+    armor: clamp(Math.round(Number(payload.armor ?? S.armor ?? 0)), 0, S.armorCap || 100),
+    funds: Math.max(0, Math.round(Number(payload.funds ?? S.funds ?? 0))),
+    savedAt: Date.now(),
+    source: String(payload.source || "autosave"),
+  };
+  try{
+    const keep = new Set(storyProgressStorageKeys());
+    for(const key of storyProgressReadStorageKeys()){
+      if(!keep.has(key)) localStorage.removeItem(key);
+    }
+  }catch(e){}
+  try{
+    const raw = JSON.stringify(data);
+    for(const key of storyProgressStorageKeys()){
+      localStorage.setItem(key, raw);
+    }
+    return true;
+  }catch(e){
+    return false;
+  }
+}
 function storySaveMissionFromPayload(payload){
   if(!payload || typeof payload !== "object") return 1;
   const fromResume = payload.resumeState && typeof payload.resumeState === "object"
@@ -5156,12 +5262,14 @@ function applyStorySaveToState(state, opts={}){
 }
 function storyResumeMissionLevel(){
   const slotMission = Math.floor(Number(storySaveMissionFromPayload(readStorySaveData() || {}) || 1));
+  const progressMission = Math.floor(Number((readStoryProgressData() || {}).mission || 1));
   return clamp(
     Math.max(
       1,
       Math.floor(Number(S.storyLevel || 1)),
       Math.floor(Number(S.storyLastMission || 1)),
-      slotMission
+      slotMission,
+      progressMission
     ),
     1,
     STORY_CAMPAIGN_OBJECTIVES.length
@@ -5194,15 +5302,26 @@ function writeStorySaveData(source="manual"){
     savedAt: Date.now(),
     source: String(source || "manual"),
   };
+  const progressOk = writeStoryProgressData({
+    mission,
+    hp: payload.hp,
+    armor: payload.armor,
+    funds: payload.funds,
+    source: payload.source,
+  });
+  try{
+    const primary = storySaveStorageKey();
+    for(const key of storySaveReadStorageKeys()){
+      if(key !== primary) localStorage.removeItem(key);
+    }
+  }catch(e){}
   try{
     const raw = JSON.stringify(payload);
-    const writeKeys = storySaveStorageKeys();
-    for(const key of writeKeys){
-      localStorage.setItem(key, raw);
-    }
+    const writeKey = storySaveStorageKey();
+    localStorage.setItem(writeKey, raw);
     // Cleanup legacy duplicate slots that can bloat localStorage on mobile.
     // Keep higher-mission legacy keys for safety until current progress catches up.
-    const writeKeySet = new Set(writeKeys);
+    const writeKeySet = new Set([writeKey]);
     for(const legacyKey of storySaveReadStorageKeys()){
       if(writeKeySet.has(legacyKey)) continue;
       const legacyRaw = localStorage.getItem(legacyKey);
@@ -5222,12 +5341,15 @@ function writeStorySaveData(source="manual"){
     }
     return payload;
   }catch(e){
-    return null;
+    return progressOk ? payload : null;
   }
 }
 function clearStorySaveData(){
   try{
     for(const key of storySaveReadStorageKeys()){
+      localStorage.removeItem(key);
+    }
+    for(const key of storyProgressReadStorageKeys()){
       localStorage.removeItem(key);
     }
   }catch(e){}
@@ -5274,6 +5396,10 @@ function refreshLaunchStartButtons(){
   const progressLabel = launchProgressLabelForMode(mode);
   const hasProgress = modeHasSavedProgress(mode);
   const slot = readStorySaveData();
+  const progress = readStoryProgressData();
+  const slotMission = Number(slot?.mission || 0);
+  const progressMission = Number(progress?.mission || 0);
+  const loadMission = Math.max(slotMission, progressMission);
 
   if(continueBtn){
     continueBtn.innerText = mode === "Story"
@@ -5282,18 +5408,17 @@ function refreshLaunchStartButtons(){
   }
   if(restartBtn) restartBtn.disabled = !hasProgress;
   if(loadBtn){
-    const slotMission = slot?.mission || null;
-    const canLoad = mode === "Story" && !!slotMission;
+    const canLoad = mode === "Story" && loadMission > 0;
     loadBtn.disabled = !canLoad;
     loadBtn.innerText = canLoad
-      ? `📂 Load Save (Story Mission ${slotMission})`
+      ? `📂 Load Save (Story Mission ${loadMission})`
       : "📂 Load Save";
   }
   if(hintEl){
-    if(mode === "Story" && slot?.mission){
+    if(mode === "Story" && loadMission > 0){
       hintEl.innerText = hasProgress
-        ? `Saved progress found: ${progressLabel}. Continue where you left off, or load your Story save at Mission ${slot.mission}.`
-        : `Story save found at Mission ${slot.mission}. You can load it now.`;
+        ? `Saved progress found: ${progressLabel}. Continue where you left off, or load your Story save at Mission ${loadMission}.`
+        : `Story save found at Mission ${loadMission}. You can load it now.`;
     } else {
       hintEl.innerText = hasProgress
         ? `Saved progress found: ${progressLabel}. Continue where you left off, or restart from Mission 1.`
@@ -5412,7 +5537,8 @@ function saveGameNow(){
 }
 function loadStorySaveFromLaunchIntro(){
   const slot = readStorySaveData();
-  if(!slot){
+  const progress = readStoryProgressData();
+  if(!slot && !progress){
     toast("No Story save found.");
     return;
   }
@@ -5424,21 +5550,29 @@ function loadStorySaveFromLaunchIntro(){
   if(dailyOverlay) dailyOverlay.style.display = "none";
   __dailyRewardContinue = null;
 
-  const slotMission = storySaveMissionFromPayload(slot);
+  const slotMission = storySaveMissionFromPayload(slot || {});
+  const progressMission = Math.floor(Number(progress?.mission || 1));
   const beforeMission = storyProgressMissionFromState(S);
-  const mission = clamp(Math.max(slotMission, beforeMission), 1, STORY_CAMPAIGN_OBJECTIVES.length);
-  const restored = (slotMission >= beforeMission)
+  const mission = clamp(Math.max(slotMission, progressMission, beforeMission), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  const restored = !!slot && (slotMission >= beforeMission) && (slotMission >= progressMission)
     ? restoreStoryResumeSnapshot(slot, "launch-load-story-slot")
     : false;
   if(!restored){
     setModeWallet(S.mode, S.funds, S);
     S.mode = "Story";
     applyModeTheme(S.mode);
-    S.funds = getModeWallet("Story", S);
+    const nextFunds = Number.isFinite(Number(progress?.funds))
+      ? Math.max(getModeWallet("Story", S), Number(progress.funds))
+      : getModeWallet("Story", S);
+    S.funds = Math.max(0, Math.round(nextFunds));
     S.storyLastMission = mission;
     S.storyLevel = mission;
-    const nextHp = Number.isFinite(Number(slot.hp)) ? clamp(Number(slot.hp), 0, 100) : clamp(S.hp, 0, 100);
-    const nextArmor = Number.isFinite(Number(slot.armor)) ? clamp(Number(slot.armor), 0, S.armorCap || 100) : clamp(S.armor, 0, S.armorCap || 100);
+    const nextHp = Number.isFinite(Number(slot?.hp))
+      ? clamp(Number(slot.hp), 0, 100)
+      : (Number.isFinite(Number(progress?.hp)) ? clamp(Number(progress.hp), 0, 100) : clamp(S.hp, 0, 100));
+    const nextArmor = Number.isFinite(Number(slot?.armor))
+      ? clamp(Number(slot.armor), 0, S.armorCap || 100)
+      : (Number.isFinite(Number(progress?.armor)) ? clamp(Number(progress.armor), 0, S.armorCap || 100) : clamp(S.armor, 0, S.armorCap || 100));
     deploy({ carryStats:true, hp:nextHp, armor:nextArmor });
     save(true);
   }
@@ -5525,16 +5659,29 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
   clearLaunchMusicLoop();
   if(S.mode === "Story"){
     const slot = readStorySaveData();
+    const progress = readStoryProgressData();
     const beforeMission = storyProgressMissionFromState(S);
     const slotMission = storySaveMissionFromPayload(slot || {});
-    const mission = clamp(Math.max(beforeMission, slotMission), 1, STORY_CAMPAIGN_OBJECTIVES.length);
-    const shouldRestoreFromSlot = !!slot && (slotMission >= beforeMission);
+    const progressMission = Math.floor(Number(progress?.mission || 1));
+    const mission = clamp(Math.max(beforeMission, slotMission, progressMission), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+    const shouldRestoreFromSlot = !!slot && (slotMission >= beforeMission) && (slotMission >= progressMission);
     if(shouldRestoreFromSlot && restoreStoryResumeSnapshot(slot, "launch-continue-story-slot")){
       S.storyLevel = mission;
       S.storyLastMission = Math.max(S.storyLastMission || mission, mission);
     } else {
+      const carryHp = Number.isFinite(Number(progress?.hp))
+        ? clamp(Number(progress.hp), 0, 100)
+        : clamp(S.hp, 0, 100);
+      const carryArmor = Number.isFinite(Number(progress?.armor))
+        ? clamp(Number(progress.armor), 0, S.armorCap || 100)
+        : clamp(S.armor, 0, S.armorCap || 100);
+      S.mode = "Story";
       S.storyLevel = mission;
-      S.storyLastMission = S.storyLevel;
+      S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
+      if(Number.isFinite(Number(progress?.funds))){
+        S.funds = Math.max(Number(S.funds || 0), Number(progress.funds || 0));
+      }
+      deploy({ carryStats:true, hp:carryHp, armor:carryArmor });
     }
     if(storyProgressMissionFromState(S) < mission){
       const forceHp = clamp(Number(S.hp || 100), 0, 100);
@@ -11517,6 +11664,7 @@ function visualExtremeLoadMode(){
 }
 
 function currentBattleCinematicTargetScale(){
+  if(!ENABLE_BATTLE_CINEMATIC) return 1;
   const perfScale = (performanceMode() === "PERFORMANCE" || frameIsSlow()) ? 0.96 : 1;
   const base = isMobileViewport() ? (isLandscapeViewport() ? 1.10 : 1.16) : 1.14;
   return clamp(base * perfScale, 1.06, 1.18);
@@ -11558,6 +11706,10 @@ function resetBattleCinematic(){
 }
 
 function triggerBattleCinematic(kind="enter", focusTigerId=null){
+  if(!ENABLE_BATTLE_CINEMATIC){
+    resetBattleCinematic();
+    return;
+  }
   const now = Date.now();
   const focusTiger = focusTigerId != null ? tigerById(focusTigerId) : null;
   const focus = resolveBattleCinematicFocus(focusTiger || activeTiger() || tigerById(S.lockedTigerId));
@@ -11583,6 +11735,10 @@ function triggerBattleCinematic(kind="enter", focusTigerId=null){
 }
 
 function sampleBattleCinematic(){
+  if(!ENABLE_BATTLE_CINEMATIC){
+    resetBattleCinematic();
+    return { active:false, scale:1, x:cv.width * 0.5, y:cv.height * 0.5 };
+  }
   const now = Date.now();
   let scale = battleCinematicScaleNow(now);
   if(BATTLE_CINEMATIC.active){
