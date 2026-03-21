@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4451";
+const TS_BUILD = "4452";
 if(tg){
   try{
     tg.expand?.();
@@ -99,7 +99,7 @@ function awardDailyLogin(){
 
   toast(`🎁 Daily reward: +$${cash.toLocaleString()} • +${perkPts} perk point${perkPts>1?"s":""} • Streak: ${newStreak}`);
   try{ hapticNotif("success"); }catch(e){}
-  save();
+  __savePending = true;
   return {
     cash,
     perkPts,
@@ -1431,10 +1431,64 @@ function clearTransientCombatVisuals(){
   CAMERA_SHAKE.power = 0;
 }
 
+function sumNonNegativeIntValues(obj){
+  if(!obj || typeof obj !== "object") return 0;
+  let total = 0;
+  for(const value of Object.values(obj)){
+    const n = Math.floor(Number(value || 0));
+    if(Number.isFinite(n) && n > 0) total += n;
+  }
+  return total;
+}
+
+function storySnapshotQuality(state){
+  if(!state || typeof state !== "object") return -1;
+  const mission = Math.max(1, Math.floor(Number(state.storyLastMission || state.storyLevel || 1)));
+  const level = Math.max(1, Math.floor(Number(state.level || 1)));
+  const xp = Math.max(0, Math.floor(Number(state.xp || 0)));
+  const funds = Math.max(0, Math.floor(Number(state.funds || 0)));
+  const score = Math.max(0, Math.floor(Number(state.score || 0)));
+  const ownedWeapons = Array.isArray(state.ownedWeapons) ? state.ownedWeapons.length : 0;
+  const ammoTotal = sumNonNegativeIntValues(state.ammoReserve);
+  const medkitTotal = sumNonNegativeIntValues(state.medkits);
+  const repairTotal = sumNonNegativeIntValues(state.repairKits);
+  const armorPlateTotal = sumNonNegativeIntValues(state.armorPlates) + sumNonNegativeIntValues(state.armorPlatesFallback);
+  const trapsOwned = Math.max(0, Math.floor(Number(state.trapsOwned || 0)));
+  const shields = Math.max(0, Math.floor(Number(state.shields || 0)));
+  const perkPoints = Math.max(0, Math.floor(Number(state.perkPoints || 0)));
+  const perkRanks = sumNonNegativeIntValues(state.perks);
+  return (
+    (mission * 1_000_000) +
+    (level * 10_000) +
+    (xp * 10) +
+    funds +
+    score +
+    (ownedWeapons * 2_000) +
+    (ammoTotal * 8) +
+    (medkitTotal * 150) +
+    (repairTotal * 120) +
+    (armorPlateTotal * 130) +
+    (trapsOwned * 90) +
+    (shields * 90) +
+    (perkPoints * 50) +
+    (perkRanks * 220)
+  );
+}
+
+function shouldPreferStorySlotResume(saved, storySlot){
+  const resume = storySlot?.resumeState;
+  if(!resume || typeof resume !== "object") return false;
+  if(!saved || typeof saved !== "object") return true;
+  const slotQuality = storySnapshotQuality(resume);
+  const savedQuality = storySnapshotQuality(saved);
+  return slotQuality > savedQuality;
+}
+
 function load(){
   try{
     const storySlot = readStorySaveData();
-    const storyProfile = readStoryProfileData();
+    const storyProgress = readStoryProgressData();
+    const storyProfile = readStoryProfileData() || storyProgress;
     let saved = null;
     let sourceKey = null;
     for(const key of [STORAGE_KEY, ...STORAGE_FALLBACK_KEYS]){
@@ -1454,6 +1508,10 @@ function load(){
       }
     }
     if(!saved && storySlot && typeof storySlot.resumeState === "object"){
+      saved = storySlot.resumeState;
+      sourceKey = "__story_resume__";
+    }
+    if(saved && shouldPreferStorySlotResume(saved, storySlot)){
       saved = storySlot.resumeState;
       sourceKey = "__story_resume__";
     }
@@ -1492,12 +1550,14 @@ function load(){
     m.storyLastMission = clamp(Math.floor(Number(saved.storyLastMission ?? m.storyLevel ?? 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
     applyStorySaveToState(m, { allowModeSync:true });
     applyStoryProfileToState(m, storyProfile);
-    m.modeWallets = normalizeModeWallets(saved.modeWallets, m.funds, m.mode);
+    const mergedModeWallets = (storyProfile && storyProfile.modeWallets && typeof storyProfile.modeWallets === "object")
+      ? { ...(saved.modeWallets || {}), ...storyProfile.modeWallets }
+      : saved.modeWallets;
+    m.modeWallets = normalizeModeWallets(mergedModeWallets, m.funds, m.mode);
     if(storyProfile && Number.isFinite(Number(storyProfile.funds))){
       const profileFunds = Math.max(0, Math.round(Number(storyProfile.funds)));
-      const walletFunds = Math.max(getModeWallet(m.mode, m), profileFunds);
       if(m.modeWallets && typeof m.modeWallets === "object"){
-        m.modeWallets[m.mode] = walletFunds;
+        m.modeWallets[m.mode] = profileFunds;
       }
     }
     m.funds = getModeWallet(m.mode, m);
@@ -5196,23 +5256,15 @@ function writeStoryProfileData(source="autosave", state=S){
     return false;
   }
 }
-function mergeCountMapsPreferHigher(currentMap, profileMap){
+function mergeCountMapsFromProfile(currentMap, profileMap){
   const out = { ...(currentMap || {}) };
   if(!profileMap || typeof profileMap !== "object") return out;
   for(const [key, value] of Object.entries(profileMap)){
     const next = Math.max(0, Math.floor(Number(value || 0)));
     if(!Number.isFinite(next)) continue;
-    const cur = Math.max(0, Math.floor(Number(out[key] || 0)));
-    out[key] = Math.max(cur, next);
+    out[key] = next;
   }
   return out;
-}
-
-function allValuesZero(obj){
-  if(!obj || typeof obj !== "object") return true;
-  const vals = Object.values(obj);
-  if(!vals.length) return true;
-  return vals.every((v)=>!Number.isFinite(Number(v)) || Number(v) === 0);
 }
 
 function applyStoryProfileToState(state, profile){
@@ -5234,78 +5286,69 @@ function applyStoryProfileToState(state, profile){
     if(merged.length) state.ownedWeapons = merged;
   }
   if(profile.ammoReserve && typeof profile.ammoReserve === "object"){
-    state.ammoReserve = mergeCountMapsPreferHigher(state.ammoReserve, profile.ammoReserve);
+    state.ammoReserve = mergeCountMapsFromProfile(state.ammoReserve, profile.ammoReserve);
   }
   if(profile.durability && typeof profile.durability === "object"){
     state.durability = { ...(state.durability || {}), ...profile.durability };
   }
   if(profile.medkits && typeof profile.medkits === "object"){
-    state.medkits = mergeCountMapsPreferHigher(state.medkits, profile.medkits);
+    state.medkits = mergeCountMapsFromProfile(state.medkits, profile.medkits);
   }
   if(profile.repairKits && typeof profile.repairKits === "object"){
-    state.repairKits = mergeCountMapsPreferHigher(state.repairKits, profile.repairKits);
+    state.repairKits = mergeCountMapsFromProfile(state.repairKits, profile.repairKits);
   }
 
-  if(Number.isFinite(Number(profile.trapsOwned))) state.trapsOwned = Math.max(Math.max(0, Math.floor(Number(state.trapsOwned || 0))), Math.max(0, Math.floor(Number(profile.trapsOwned))));
-  if(Number.isFinite(Number(profile.shields))) state.shields = Math.max(Math.max(0, Math.floor(Number(state.shields || 0))), Math.max(0, Math.floor(Number(profile.shields))));
-  if(Number.isFinite(Number(profile.armorCap))) state.armorCap = clamp(Math.max(Number(state.armorCap || 100), Number(profile.armorCap || 100)), 100, 200);
-  if(Number.isFinite(Number(profile.funds))) state.funds = Math.max(Number(state.funds || 0), Math.round(Number(profile.funds)));
+  if(Number.isFinite(Number(profile.trapsOwned))) state.trapsOwned = Math.max(0, Math.floor(Number(profile.trapsOwned)));
+  if(Number.isFinite(Number(profile.shields))) state.shields = Math.max(0, Math.floor(Number(profile.shields)));
+  if(Number.isFinite(Number(profile.armorCap))) state.armorCap = clamp(Math.round(Number(profile.armorCap)), 100, 200);
+  if(Number.isFinite(Number(profile.funds))) state.funds = Math.max(0, Math.round(Number(profile.funds)));
   if(Number.isFinite(Number(profile.hp))) state.hp = clamp(Math.round(Number(profile.hp)), 0, 100);
   if(Number.isFinite(Number(profile.armor))) state.armor = clamp(Math.round(Number(profile.armor)), 0, state.armorCap || 100);
-  if(Number.isFinite(Number(profile.lives))) state.lives = Math.max(Math.round(Number(state.lives || 0)), clamp(Math.round(Number(profile.lives)), 0, 99));
-  if(Number.isFinite(Number(profile.score))) state.score = Math.max(Math.round(Number(state.score || 0)), Math.round(Number(profile.score || 0)));
+  if(Number.isFinite(Number(profile.lives))) state.lives = clamp(Math.round(Number(profile.lives)), 0, 99);
+  if(Number.isFinite(Number(profile.score))) state.score = Math.max(0, Math.round(Number(profile.score || 0)));
   if(Number.isFinite(Number(profile.trust))) state.trust = clamp(Math.round(Number(profile.trust)), 0, 100);
   if(Number.isFinite(Number(profile.aggro))) state.aggro = clamp(Math.round(Number(profile.aggro)), 0, 100);
   if(Number.isFinite(Number(profile.stamina))) state.stamina = clamp(Math.round(Number(profile.stamina)), 0, 100);
   if(typeof profile.title === "string" && profile.title.trim()) state.title = profile.title;
 
-  const stateLooksReset = Number(state.level || 1) <= 1 && Number(state.xp || 0) <= 0 && Number(state.perkPoints || 0) <= 0;
-  if(Number.isFinite(Number(profile.level)) && (stateLooksReset || Number(state.level || 1) <= 1)){
+  if(Number.isFinite(Number(profile.level))){
     state.level = Math.max(1, Math.floor(Number(profile.level || 1)));
   }
-  if(Number.isFinite(Number(profile.xp)) && (stateLooksReset || Number(state.xp || 0) <= 0)){
+  if(Number.isFinite(Number(profile.xp))){
     state.xp = Math.max(0, Math.floor(Number(profile.xp || 0)));
   }
-  if(Number.isFinite(Number(profile.perkPoints)) && (stateLooksReset || Number(state.perkPoints || 0) <= 0)){
+  if(Number.isFinite(Number(profile.perkPoints))){
     state.perkPoints = Math.max(0, Math.floor(Number(profile.perkPoints || 0)));
   }
 
-  if(profile.perks && typeof profile.perks === "object" && (stateLooksReset || allValuesZero(state.perks))){
+  if(profile.perks && typeof profile.perks === "object"){
     state.perks = { ...(state.perks || {}), ...profile.perks };
   }
-  if(profile.progressionUnlocks && typeof profile.progressionUnlocks === "object" && (stateLooksReset || !Object.keys(state.progressionUnlocks || {}).length)){
+  if(profile.progressionUnlocks && typeof profile.progressionUnlocks === "object"){
     state.progressionUnlocks = { ...(state.progressionUnlocks || {}), ...profile.progressionUnlocks };
   }
-  if(profile.metaBase && typeof profile.metaBase === "object" && (stateLooksReset || !Object.keys(state.metaBase || {}).length)){
+  if(profile.metaBase && typeof profile.metaBase === "object"){
     state.metaBase = { ...(state.metaBase || {}), ...profile.metaBase };
   }
-  if(profile.specialistPerks && typeof profile.specialistPerks === "object" && (stateLooksReset || !Object.keys(state.specialistPerks || {}).length)){
+  if(profile.specialistPerks && typeof profile.specialistPerks === "object"){
     state.specialistPerks = { ...(state.specialistPerks || {}), ...profile.specialistPerks };
   }
   if(profile.specialistStarUnlocks && typeof profile.specialistStarUnlocks === "object"){
     state.specialistStarUnlocks = { ...(state.specialistStarUnlocks || {}), ...profile.specialistStarUnlocks };
   }
-  if(profile.chapterRewardsUnlocked && typeof profile.chapterRewardsUnlocked === "object" && (stateLooksReset || !Object.keys(state.chapterRewardsUnlocked || {}).length)){
+  if(profile.chapterRewardsUnlocked && typeof profile.chapterRewardsUnlocked === "object"){
     state.chapterRewardsUnlocked = { ...(state.chapterRewardsUnlocked || {}), ...profile.chapterRewardsUnlocked };
   }
-  if(profile.achievements && typeof profile.achievements === "object" && (stateLooksReset || !Object.keys(state.achievements || {}).length)){
+  if(profile.achievements && typeof profile.achievements === "object"){
     state.achievements = { ...(state.achievements || {}), ...profile.achievements };
   }
   if(profile.stats && typeof profile.stats === "object"){
-    const nextStats = { ...(state.stats || {}) };
-    for(const [k, v] of Object.entries(profile.stats)){
-      const current = Number(nextStats[k] || 0);
-      const incoming = Number(v || 0);
-      if(Number.isFinite(incoming)){
-        nextStats[k] = Math.max(current, incoming);
-      }
-    }
-    state.stats = nextStats;
+    state.stats = { ...(state.stats || {}), ...profile.stats };
   }
 
-  state.armorPlates = normalizeArmorPlateInventory(mergeCountMapsPreferHigher(state.armorPlates, profile.armorPlates));
+  state.armorPlates = normalizeArmorPlateInventory(mergeCountMapsFromProfile(state.armorPlates, profile.armorPlates));
   state.armorPlatesFallback = normalizeArmorPlateInventory(
-    mergeCountMapsPreferHigher(
+    mergeCountMapsFromProfile(
       state.armorPlatesFallback,
       profile.armorPlatesFallback ?? profile.armorPlates
     )
@@ -5314,10 +5357,10 @@ function applyStoryProfileToState(state, profile){
   if(typeof profile.medkitSelectedId === "string") state.medkitSelectedId = profile.medkitSelectedId;
   if(typeof profile.repairSelectedId === "string") state.repairSelectedId = profile.repairSelectedId;
 
-  if(Number.isFinite(Number(profile.soldierAttackersOwned))) state.soldierAttackersOwned = Math.max(Math.floor(Number(state.soldierAttackersOwned || 0)), Math.max(0, Math.floor(Number(profile.soldierAttackersOwned))));
-  if(Number.isFinite(Number(profile.soldierRescuersOwned))) state.soldierRescuersOwned = Math.max(Math.floor(Number(state.soldierRescuersOwned || 0)), Math.max(0, Math.floor(Number(profile.soldierRescuersOwned))));
-  if(Number.isFinite(Number(profile.soldierAttackersDowned))) state.soldierAttackersDowned = Math.max(Math.floor(Number(state.soldierAttackersDowned || 0)), Math.max(0, Math.floor(Number(profile.soldierAttackersDowned))));
-  if(Number.isFinite(Number(profile.soldierRescuersDowned))) state.soldierRescuersDowned = Math.max(Math.floor(Number(state.soldierRescuersDowned || 0)), Math.max(0, Math.floor(Number(profile.soldierRescuersDowned))));
+  if(Number.isFinite(Number(profile.soldierAttackersOwned))) state.soldierAttackersOwned = Math.max(0, Math.floor(Number(profile.soldierAttackersOwned)));
+  if(Number.isFinite(Number(profile.soldierRescuersOwned))) state.soldierRescuersOwned = Math.max(0, Math.floor(Number(profile.soldierRescuersOwned)));
+  if(Number.isFinite(Number(profile.soldierAttackersDowned))) state.soldierAttackersDowned = Math.max(0, Math.floor(Number(profile.soldierAttackersDowned)));
+  if(Number.isFinite(Number(profile.soldierRescuersDowned))) state.soldierRescuersDowned = Math.max(0, Math.floor(Number(profile.soldierRescuersDowned)));
 
   if(typeof profile.equippedWeaponId === "string" && profile.equippedWeaponId && state.ownedWeapons?.includes(profile.equippedWeaponId)){
     state.equippedWeaponId = profile.equippedWeaponId;
@@ -5346,9 +5389,10 @@ function readStoryProgressData(){
       const mission = clamp(Math.floor(Number(parsed.mission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
       const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
       const candidate = {
+        ...parsed,
         mission,
         hp: clamp(Math.round(Number(parsed.hp || 100)), 0, 100),
-        armor: clamp(Math.round(Number(parsed.armor || 0)), 0, S?.armorCap || 100),
+        armor: clamp(Math.round(Number(parsed.armor || 0)), 0, DEFAULT?.armorCap || 100),
         funds: Math.max(0, Math.round(Number(parsed.funds || 0))),
         savedAt,
         storageKey:key,
@@ -5375,9 +5419,47 @@ function writeStoryProgressData(payload={}){
   const mission = clamp(Math.floor(Number(payload.mission || S.storyLevel || S.storyLastMission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   const data = {
     mission,
+    storyLevel: clamp(Math.floor(Number(payload.storyLevel || S.storyLevel || mission)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
+    storyLastMission: clamp(Math.floor(Number(payload.storyLastMission || S.storyLastMission || mission)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
     hp: clamp(Math.round(Number(payload.hp ?? S.hp ?? 100)), 0, 100),
     armor: clamp(Math.round(Number(payload.armor ?? S.armor ?? 0)), 0, S.armorCap || 100),
     funds: Math.max(0, Math.round(Number(payload.funds ?? S.funds ?? 0))),
+    score: Math.max(0, Math.round(Number(payload.score ?? S.score ?? 0))),
+    lives: clamp(Math.round(Number(payload.lives ?? S.lives ?? 5)), 0, 99),
+    modeWallets: normalizeModeWallets(payload.modeWallets ?? S.modeWallets, payload.funds ?? S.funds, S.mode),
+    ownedWeapons: Array.isArray(payload.ownedWeapons ?? S.ownedWeapons) ? (payload.ownedWeapons ?? S.ownedWeapons).filter((id)=>typeof id === "string") : [],
+    equippedWeaponId: String(payload.equippedWeaponId ?? S.equippedWeaponId ?? ""),
+    ammoReserve: { ...(payload.ammoReserve ?? S.ammoReserve ?? {}) },
+    durability: { ...(payload.durability ?? S.durability ?? {}) },
+    medkits: { ...(payload.medkits ?? S.medkits ?? {}) },
+    repairKits: { ...(payload.repairKits ?? S.repairKits ?? {}) },
+    armorPlates: normalizeArmorPlateInventory(payload.armorPlates ?? S.armorPlates),
+    armorPlatesFallback: normalizeArmorPlateInventory(payload.armorPlatesFallback ?? S.armorPlatesFallback ?? payload.armorPlates ?? S.armorPlates),
+    armorPlateSelectedId: String(payload.armorPlateSelectedId ?? S.armorPlateSelectedId ?? ""),
+    medkitSelectedId: String(payload.medkitSelectedId ?? S.medkitSelectedId ?? ""),
+    repairSelectedId: String(payload.repairSelectedId ?? S.repairSelectedId ?? ""),
+    trapsOwned: Math.max(0, Math.floor(Number(payload.trapsOwned ?? S.trapsOwned ?? 0))),
+    shields: Math.max(0, Math.floor(Number(payload.shields ?? S.shields ?? 0))),
+    armorCap: clamp(Math.round(Number(payload.armorCap ?? S.armorCap ?? 100)), 100, 200),
+    xp: Math.max(0, Math.floor(Number(payload.xp ?? S.xp ?? 0))),
+    level: Math.max(1, Math.floor(Number(payload.level ?? S.level ?? 1))),
+    perkPoints: Math.max(0, Math.floor(Number(payload.perkPoints ?? S.perkPoints ?? 0))),
+    perks: { ...(payload.perks ?? S.perks ?? {}) },
+    progressionUnlocks: { ...(payload.progressionUnlocks ?? S.progressionUnlocks ?? {}) },
+    metaBase: { ...(payload.metaBase ?? S.metaBase ?? {}) },
+    specialistPerks: { ...(payload.specialistPerks ?? S.specialistPerks ?? {}) },
+    specialistStarUnlocks: { ...(payload.specialistStarUnlocks ?? S.specialistStarUnlocks ?? {}) },
+    chapterRewardsUnlocked: { ...(payload.chapterRewardsUnlocked ?? S.chapterRewardsUnlocked ?? {}) },
+    achievements: { ...(payload.achievements ?? S.achievements ?? {}) },
+    stats: { ...(payload.stats ?? S.stats ?? {}) },
+    soldierAttackersOwned: Math.max(0, Math.floor(Number(payload.soldierAttackersOwned ?? S.soldierAttackersOwned ?? 0))),
+    soldierRescuersOwned: Math.max(0, Math.floor(Number(payload.soldierRescuersOwned ?? S.soldierRescuersOwned ?? 0))),
+    soldierAttackersDowned: Math.max(0, Math.floor(Number(payload.soldierAttackersDowned ?? S.soldierAttackersDowned ?? 0))),
+    soldierRescuersDowned: Math.max(0, Math.floor(Number(payload.soldierRescuersDowned ?? S.soldierRescuersDowned ?? 0))),
+    mag: {
+      loaded: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).loaded || 0))),
+      cap: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).cap || 0))),
+    },
     savedAt: Date.now(),
     source: String(payload.source || "autosave"),
   };
@@ -5463,6 +5545,11 @@ function restoreStoryResumeSnapshot(slot, source="story-restore"){
   invalidateMapCache();
   transitionCleanupSweep(source);
   clearTransientCombatVisuals();
+  if(missionStateLooksEmpty()){
+    const keepHp = clamp(Number(S.hp || 100), 0, 100);
+    const keepArmor = clamp(Number(S.armor || 0), 0, S.armorCap || 100);
+    deploy({ carryStats:true, hp:keepHp, armor:keepArmor });
+  }
   updateEngage();
   maybeRenderHUD(true);
   try{ renderCombatControls(); }catch(e){}
@@ -5782,7 +5869,7 @@ function saveGameNow(){
 function loadStorySaveFromLaunchIntro(){
   const slot = readStorySaveData();
   const progress = readStoryProgressData();
-  const profile = readStoryProfileData();
+  const profile = readStoryProfileData() || progress;
   if(!slot && !progress){
     toast("No Story save found.");
     return;
@@ -5807,7 +5894,7 @@ function loadStorySaveFromLaunchIntro(){
     S.mode = "Story";
     applyModeTheme(S.mode);
     const nextFunds = Number.isFinite(Number(progress?.funds))
-      ? Math.max(getModeWallet("Story", S), Number(progress.funds))
+      ? Number(progress.funds)
       : getModeWallet("Story", S);
     S.funds = Math.max(0, Math.round(nextFunds));
     S.storyLastMission = mission;
@@ -5910,7 +5997,7 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
   if(S.mode === "Story"){
     const slot = readStorySaveData();
     const progress = readStoryProgressData();
-    const profile = readStoryProfileData();
+    const profile = readStoryProfileData() || progress;
     const beforeMission = storyProgressMissionFromState(S);
     const slotMission = storySaveMissionFromPayload(slot || {});
     const progressMission = Math.floor(Number(progress?.mission || 1));
@@ -5930,7 +6017,7 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
       S.storyLevel = mission;
       S.storyLastMission = Math.max(Number(S.storyLastMission || 1), mission);
       if(Number.isFinite(Number(progress?.funds))){
-        S.funds = Math.max(Number(S.funds || 0), Number(progress.funds || 0));
+        S.funds = Math.max(0, Math.round(Number(progress.funds || 0)));
       }
       applyStoryProfileToState(S, profile);
       deploy({ carryStats:true, hp:carryHp, armor:carryArmor });
@@ -15585,6 +15672,8 @@ function init(){
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.storyLastMission = clamp(Math.floor(S.storyLastMission || S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   const bootStoryProgress = readStoryProgressData();
+  const bootStoryProfile = readStoryProfileData() || bootStoryProgress;
+  applyStoryProfileToState(S, bootStoryProfile);
   const bootResumeMission = storyResumeMissionLevel();
   if(bootResumeMission > S.storyLevel){
     S.storyLevel = bootResumeMission;
@@ -15592,7 +15681,7 @@ function init(){
   }
   if(bootStoryProgress){
     if(Number.isFinite(Number(bootStoryProgress.funds))){
-      S.funds = Math.max(Number(S.funds || 0), Number(bootStoryProgress.funds || 0));
+      S.funds = Math.max(0, Math.round(Number(bootStoryProgress.funds || 0)));
     }
   }
   if(S.mode === "Story"){
@@ -15795,38 +15884,73 @@ function bootstrap(){
   }catch(err){
     try{ console.error("Startup recovered from init error:", err); }catch(e){}
     try{
-      const keepMode = ["Story","Arcade","Survival"].includes(S?.mode) ? S.mode : DEFAULT.mode;
-      const keepMapIndex = Number.isFinite(S?.mapIndex) ? S.mapIndex : 0;
-      const keepWallets = normalizeModeWallets(S?.modeWallets, S?.funds, keepMode);
-      const keepStoryLevel = clamp(Math.floor(Number(S?.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
-      const keepStoryLastMission = clamp(Math.floor(Number(S?.storyLastMission || keepStoryLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
-      const keepArcadeLevel = clamp(Math.floor(Number(S?.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
-      const keepSurvivalWave = Math.max(1, Math.floor(Number(S?.survivalWave || 1)));
-      S = cloneState(DEFAULT);
-      S.mode = keepMode;
-      S.mapIndex = keepMapIndex;
-      S.modeWallets = keepWallets;
-      S.storyLevel = keepStoryLevel;
-      S.storyLastMission = Math.max(keepStoryLevel, keepStoryLastMission);
-      S.arcadeLevel = keepArcadeLevel;
-      S.survivalWave = keepSurvivalWave;
-      bindFundsWallet(S);
-      syncWindowState();
-      resizeCanvasForViewport();
-      applyTouchHudSettings();
-      deploy();
-      maybeRenderHUD(true);
-      safeTick("recoverDrawMapScene", drawMapScene);
-      safeTick("recoverDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
-      safeTick("recoverDrawEntities", drawEntities);
-      safeTick("recoverDrawUiLane", drawMobileUiClearLane);
-      if(!__drawLoopStarted){
-        __drawLoopStarted = true;
-        requestAnimationFrame(draw);
+      let recovered = false;
+      const preservedState = (S && typeof S === "object") ? cloneState(S) : null;
+      if(preservedState){
+        S = preservedState;
+        S.mode = ["Story","Arcade","Survival"].includes(S.mode) ? S.mode : DEFAULT.mode;
+        S.storyLevel = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+        S.storyLastMission = clamp(Math.floor(Number(S.storyLastMission || S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+        S.arcadeLevel = clamp(Math.floor(Number(S.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+        S.survivalWave = Math.max(1, Math.floor(Number(S.survivalWave || 1)));
+        S.modeWallets = normalizeModeWallets(S.modeWallets, S.funds, S.mode);
+        bindFundsWallet(S);
+        syncWindowState();
+        resizeCanvasForViewport();
+        applyTouchHudSettings();
+        if(missionStateLooksEmpty()){
+          const keepHp = clamp(Number(S.hp || 100), 0, 100);
+          const keepArmor = clamp(Number(S.armor || 0), 0, S.armorCap || 100);
+          deploy({ carryStats:true, hp:keepHp, armor:keepArmor });
+        }
+        maybeRenderHUD(true);
+        safeTick("recoverDrawMapScene", drawMapScene);
+        safeTick("recoverDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
+        safeTick("recoverDrawEntities", drawEntities);
+        safeTick("recoverDrawUiLane", drawMobileUiClearLane);
+        if(!__drawLoopStarted){
+          __drawLoopStarted = true;
+          requestAnimationFrame(draw);
+        }
+        window.__TS_BOOT_OK__ = true;
+        toast("Recovered from startup error using saved state.");
+        save(true);
+        recovered = true;
       }
-      window.__TS_BOOT_OK__ = true;
-      toast("Recovered from startup error. Mission reloaded.");
-      save(true);
+      if(!recovered){
+        const keepMode = ["Story","Arcade","Survival"].includes(S?.mode) ? S.mode : DEFAULT.mode;
+        const keepMapIndex = Number.isFinite(S?.mapIndex) ? S.mapIndex : 0;
+        const keepWallets = normalizeModeWallets(S?.modeWallets, S?.funds, keepMode);
+        const keepStoryLevel = clamp(Math.floor(Number(S?.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+        const keepStoryLastMission = clamp(Math.floor(Number(S?.storyLastMission || keepStoryLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+        const keepArcadeLevel = clamp(Math.floor(Number(S?.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+        const keepSurvivalWave = Math.max(1, Math.floor(Number(S?.survivalWave || 1)));
+        S = cloneState(DEFAULT);
+        S.mode = keepMode;
+        S.mapIndex = keepMapIndex;
+        S.modeWallets = keepWallets;
+        S.storyLevel = keepStoryLevel;
+        S.storyLastMission = Math.max(keepStoryLevel, keepStoryLastMission);
+        S.arcadeLevel = keepArcadeLevel;
+        S.survivalWave = keepSurvivalWave;
+        bindFundsWallet(S);
+        syncWindowState();
+        resizeCanvasForViewport();
+        applyTouchHudSettings();
+        deploy({ carryStats:true, hp:S.hp, armor:S.armor });
+        maybeRenderHUD(true);
+        safeTick("recoverDrawMapScene", drawMapScene);
+        safeTick("recoverDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
+        safeTick("recoverDrawEntities", drawEntities);
+        safeTick("recoverDrawUiLane", drawMobileUiClearLane);
+        if(!__drawLoopStarted){
+          __drawLoopStarted = true;
+          requestAnimationFrame(draw);
+        }
+        window.__TS_BOOT_OK__ = true;
+        toast("Recovered from startup error. Mission reloaded.");
+        save(true);
+      }
     }catch(recoverErr){
       try{ console.error("Startup recovery failed:", recoverErr); }catch(e){}
     }
