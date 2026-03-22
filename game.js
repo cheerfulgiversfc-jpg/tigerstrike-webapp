@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4457";
+const TS_BUILD = "4458";
 if(tg){
   try{
     tg.expand?.();
@@ -12722,6 +12722,34 @@ function setBattleMsg(msg){
   if(msgEl) msgEl.innerText = msg;
   renderBattleStatus();
 }
+function scheduleTigerRetaliationAfterShot(t){
+  const now = Date.now();
+  const boss = !!isBossTiger(t);
+  const band = weaponRangeBand(equippedWeaponRange());
+  let minMs = 420;
+  let maxMs = 780;
+  if(boss){
+    minMs = 280;
+    maxMs = 520;
+  } else if(band === "short"){
+    minMs = 360;
+    maxMs = 640;
+  } else if(band === "mid"){
+    minMs = 420;
+    maxMs = 760;
+  } else {
+    minMs = 520;
+    maxMs = 900;
+  }
+  const candidateAt = now + rand(minMs, maxMs);
+  const currentAt = Number(S._combatTigerAttackAt || 0);
+  if(!Number.isFinite(currentAt) || currentAt <= now){
+    S._combatTigerAttackAt = candidateAt;
+    return;
+  }
+  // Do not postpone tiger retaliation due to rapid player fire.
+  S._combatTigerAttackAt = Math.min(currentAt, candidateAt);
+}
 
 function startCombat(){
   if(!tutorialAllows("engage")) return toast(tutorialBlockMessage("engage"));
@@ -12735,7 +12763,7 @@ function startCombat(){
   S.inBattle = true;
   S.activeTigerId = t.id;
   S.lockedTigerId = t.id;
-  S._combatTigerAttackAt = Date.now() + 950;
+  S._combatTigerAttackAt = Date.now() + (isBossTiger(t) ? 680 : 950);
   t.aggroBoost = Math.max(t.aggroBoost || 0, 0.85);
   const overlay = document.getElementById("battleOverlay");
   if(overlay) overlay.style.display = "none";
@@ -13263,7 +13291,7 @@ function playerAction(action){
 
     updateBattleButtons();
     updateAttackButton();
-    S._combatTigerAttackAt = Date.now() + rand(420, 780);
+    scheduleTigerRetaliationAfterShot(t);
     save();
     return;
   }
