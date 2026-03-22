@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4454";
+const TS_BUILD = "4456";
 if(tg){
   try{
     tg.expand?.();
@@ -1669,6 +1669,8 @@ const FRAME_LOAD_LIGHT = 1;
 const FRAME_LOAD_MID = 1.15;
 const FRAME_LOAD_HIGH = 1.32;
 const FRAME_LOAD_EXTREME = 1.52;
+const FRAME_LAG_WARN_SCORE = 4;
+const FRAME_LAG_CRITICAL_SCORE = 8;
 
 function capTail(list, max){
   if(!Array.isArray(list)) return [];
@@ -1713,7 +1715,7 @@ let __lastAutosave = 0;
 let __savePending = false;
 const __frameTaskGate = Object.create(null);
 const __frameTaskPhase = Object.create(null);
-const MAP_CACHE_INTERVAL_MS = 84;
+const MAP_CACHE_INTERVAL_MS = 120;
 let __mapFrameCacheCanvas = null;
 let __mapFrameCacheCtx = null;
 let __mapFrameCacheSig = "";
@@ -1757,6 +1759,7 @@ const __stabilityMonitorState = {
   frameCosts: []
 };
 let __lastStoryFullSnapshotAt = 0;
+let __autoPerfEscalatedAt = 0;
 
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
@@ -1912,14 +1915,24 @@ function computeFrameLoadMultiplier(){
   if(score >= 38) return FRAME_LOAD_MID;
   return FRAME_LOAD_LIGHT;
 }
+function frameLagTier(){
+  const score = Math.max(0, Number(__frameLagScore || 0));
+  if(score >= FRAME_LAG_CRITICAL_SCORE) return 2;
+  if(score >= FRAME_LAG_WARN_SCORE) return 1;
+  return 0;
+}
 function beginFrameBudget(frameStartTs){
   const now = Number.isFinite(frameStartTs) ? frameStartTs : (performance.now ? performance.now() : Date.now());
   const mode = performanceMode();
   __frameDynamicLoadMul = computeFrameLoadMultiplier();
+  const lagTier = frameLagTier();
+  if(lagTier >= 1) __frameDynamicLoadMul = Math.max(__frameDynamicLoadMul, FRAME_LOAD_HIGH);
+  if(lagTier >= 2) __frameDynamicLoadMul = Math.max(__frameDynamicLoadMul, FRAME_LOAD_EXTREME);
   let limit = mode === "PERFORMANCE" ? 9.8 : 12.6;
   if(frameIsSlow(now)) limit -= 1.6;
   if(__frameDynamicLoadMul >= FRAME_LOAD_HIGH) limit -= 0.8;
   if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) limit -= 0.8;
+  if(lagTier >= 2) limit -= 0.9;
   if(now < (__frameRecoverUntil || 0)) limit = Math.min(limit, 8.2);
   __frameBudgetState.frameNo += 1;
   if(__blockedAtCacheFrame !== __frameBudgetState.frameNo){
@@ -2061,7 +2074,7 @@ function ensureStabilityMonitorNode(){
 function shouldShowStabilityMonitor(now=Date.now()){
   if(window.__TS_SHOW_MONITOR__ === true) return true;
   if(window.__TUTORIAL_MODE__) return false;
-  if(performanceMode() === "PERFORMANCE") return true;
+  if(performanceMode() === "PERFORMANCE" && !isMobileViewport()) return true;
   if(frameIsSlow()) return true;
   return (now - (__stabilityMonitorState.lastSpikeAt || 0)) < 9000;
 }
@@ -2162,6 +2175,9 @@ function updateFrameLoad(frameStartTs){
   __lastFrameAt = now;
   const frameCost = now - frameStartTs;
   noteFrameSample(frameGap, frameCost);
+  if(frameGap > 4200 || frameCost > 150){
+    runStabilityRecovery("critical-stall");
+  }
   if(frameGap > STABILITY_SPIKE_GAP_MS || frameCost > 46){
     __frameSpikePending = true;
   }
@@ -2175,9 +2191,21 @@ function updateFrameLoad(frameStartTs){
   } else {
     __frameLagScore = Math.max(0, (__frameLagScore || 0) - 1);
   }
-  if(__frameLagScore >= 6){
+  if(__frameLagScore >= FRAME_LAG_CRITICAL_SCORE){
+    __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 3600);
+    if(isMobileViewport() && performanceMode() !== "PERFORMANCE"){
+      const nowMs = Date.now();
+      if((__autoPerfEscalatedAt || 0) + 16000 < nowMs){
+        __autoPerfEscalatedAt = nowMs;
+        S.performanceMode = "PERFORMANCE";
+        updatePerformanceLabels();
+        setEventText("Performance mode auto-enabled for stability.", 1.8);
+      }
+    }
+    __frameLagScore = Math.max(FRAME_LAG_WARN_SCORE, __frameLagScore - 3);
+  } else if(__frameLagScore >= FRAME_LAG_WARN_SCORE){
     __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 2400);
-    __frameLagScore = 2;
+    __frameLagScore = Math.max(1, __frameLagScore - 1);
   }
 }
 
@@ -2188,6 +2216,7 @@ function recoverFromSpikeFrame(){
   __frameRecoverUntil = Math.max(__frameRecoverUntil || 0, now + 1800);
   if(COMBAT_FX.length > 24) COMBAT_FX.splice(0, COMBAT_FX.length - 24);
   if(DAMAGE_POPUPS.length > 24) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - 24);
+  if(IMPACT_PULSES.length > 18) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - 18);
   if(S && typeof S === "object"){
     S.scanPing = Math.min(42, Math.max(0, S.scanPing || 0));
     for(const t of (S.tigers || [])){
@@ -2248,9 +2277,11 @@ function stabilityHealthTick(){
   if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
 
   const slow = frameIsSlow();
-  const fxCap = slow ? 28 : 44;
-  const popupCap = slow ? 20 : 32;
-  const pulseCap = slow ? 18 : 28;
+  const mobile = isMobileViewport();
+  const lagTier = frameLagTier();
+  const fxCap = slow ? (mobile ? 18 : 28) : (lagTier >= 1 ? (mobile ? 20 : 26) : (mobile ? 30 : 44));
+  const popupCap = slow ? (mobile ? 12 : 20) : (lagTier >= 1 ? (mobile ? 14 : 18) : (mobile ? 20 : 32));
+  const pulseCap = slow ? (mobile ? 10 : 18) : (lagTier >= 1 ? (mobile ? 12 : 16) : (mobile ? 18 : 28));
   if(COMBAT_FX.length > fxCap) COMBAT_FX.splice(0, COMBAT_FX.length - fxCap);
   if(DAMAGE_POPUPS.length > popupCap) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - popupCap);
   if(IMPACT_PULSES.length > pulseCap) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - pulseCap);
@@ -10903,8 +10934,10 @@ function supportUnitsTick(){
   if(!S.supportUnits?.length) return;
 
   const now = Date.now();
+  const lagTier = frameLagTier();
+  const supportTickDelay = lagTier >= 2 ? 110 : (lagTier >= 1 ? 84 : 50);
   if(now < (S._supportTickAt || 0)) return;
-  S._supportTickAt = now + 50; // ~20fps for support AI to reduce mobile stalls
+  S._supportTickAt = now + supportTickDelay;
 
   const liveCivs = (S.mode==="Survival") ? [] : S.civilians.filter(c=>c.alive && !c.evac);
   const activeTigers = S.tigers.filter(t=>t.alive);
@@ -11367,7 +11400,14 @@ function tickCiviliansAndThreats(){
   let underAttack=0;
   let dangerPair={ civId:null, dist:1e9 };
 
-  for(const t of S.tigers){
+  let threatTigers = S.tigers || [];
+  if((frameIsSlow() || __frameLagScore >= FRAME_LAG_WARN_SCORE) && threatTigers.length > 8){
+    const stride = __frameLagScore >= FRAME_LAG_CRITICAL_SCORE ? 3 : 2;
+    const phase = Math.floor(Number(__frameBudgetState.frameNo || 0)) % stride;
+    threatTigers = threatTigers.filter((_, idx)=> (idx % stride) === phase);
+  }
+
+  for(const t of threatTigers){
     if(!t.alive) continue;
     if(t.holdUntil && now < t.holdUntil) continue;
 
@@ -11554,11 +11594,12 @@ function roamTigers(){
   }
 
   let tickTigers = aliveTigers;
-  if(aliveTigers.length > 12){
-    const underLoad = frameIsSlow() || performanceMode() === "PERFORMANCE";
-    const batchSize = underLoad
-      ? Math.max(6, Math.ceil(aliveTigers.length * 0.45))
-      : Math.max(8, Math.ceil(aliveTigers.length * 0.62));
+  const lagTier = frameLagTier();
+  if(aliveTigers.length > 12 || (lagTier >= 1 && aliveTigers.length > 6)){
+    const underLoad = frameIsSlow() || performanceMode() === "PERFORMANCE" || lagTier >= 1;
+    const batchRatio = lagTier >= 2 ? 0.40 : (underLoad ? 0.52 : 0.62);
+    const batchMin = lagTier >= 2 ? 4 : (underLoad ? 6 : 8);
+    const batchSize = Math.max(batchMin, Math.ceil(aliveTigers.length * batchRatio));
     const start = (S._tigerBatchStart || 0) % aliveTigers.length;
     tickTigers = [];
     for(let i=0; i<batchSize; i++){
@@ -13858,9 +13899,13 @@ function renderHUD(){
 function maybeRenderHUD(force=false){
   const now = performance.now ? performance.now() : Date.now();
   const loadScore = frameActiveEntityLoadScore();
+  const lagTier = frameLagTier();
   let minInterval = 240;
+  if(isMobileViewport()) minInterval = Math.max(minInterval, 280);
   if(frameIsSlow(now)) minInterval = 340;
   if(performanceMode() === "PERFORMANCE") minInterval = Math.max(minInterval, 320);
+  if(lagTier >= 1) minInterval = Math.max(minInterval, 420);
+  if(lagTier >= 2) minInterval = Math.max(minInterval, 520);
   if(loadScore >= 60) minInterval = Math.max(minInterval, 380);
   else if(loadScore >= 44) minInterval = Math.max(minInterval, 320);
   if(force || (now - __lastHudRender) >= minInterval){
@@ -13902,7 +13947,10 @@ function drawMapScene(){
   if(hasAnyCache){
     const staleAge = frameNow - __mapFrameCacheAt;
     const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
-    if(emergencyReuse && staleAge < 520){
+    const emergencyMaxAge = isMobileViewport()
+      ? (__frameLagScore >= FRAME_LAG_CRITICAL_SCORE ? 1400 : 1100)
+      : 780;
+    if(emergencyReuse && staleAge < emergencyMaxAge){
       ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
       return;
     }
@@ -15614,23 +15662,184 @@ function drawTiger(t){
   ctx.globalAlpha=1;
 }
 
-function drawEntities(){
-  // carcasses block movement
-  for(const c of S.carcasses) drawCarcass(c.x,c.y);
+function useLiteEntityRender(){
+  if(!isMobileViewport()) return false;
+  if(frameLagTier() >= 2) return true;
+  if(frameIsSlow() && (performanceMode() === "PERFORMANCE" || frameActiveEntityLoadScore() >= 34)) return true;
+  return false;
+}
+function drawEntitiesLite(){
+  ctx.fillStyle = "rgba(77,47,33,.64)";
+  for(const c of (S.carcasses || [])){
+    ctx.fillRect(c.x - 9, c.y - 4, 18, 8);
+  }
 
-  // pickups
-  for(const p of (S.pickups||[])) drawPickup(p);
+  for(const p of (S.pickups || [])){
+    let color = "rgba(147,197,253,.9)";
+    if(p.kind === "medkit") color = "rgba(34,197,94,.92)";
+    else if(p.kind === "ammo") color = "rgba(251,191,36,.92)";
+    else if(p.kind === "repair") color = "rgba(248,113,113,.92)";
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   for(const it of (S.mapInteractables || [])) drawMapInteractable(it);
-
   for(const site of (S.rescueSites || [])) drawRescueSite(site);
 
-  if(S.mode!=="Survival"){
-    for(const c of S.civilians){ if(c.alive) drawCivilian(c); }
+  if(S.mode !== "Survival"){
+    for(const c of (S.civilians || [])){
+      if(!c.alive) continue;
+      const smooth = smoothedDrawPoint(c, c.x, c.y, 0.30);
+      const x = smooth.x;
+      const y = smooth.y;
+      ctx.fillStyle = c.shirt || "rgba(248,113,113,.92)";
+      ctx.beginPath();
+      ctx.arc(x, y - 2, 8, 0, Math.PI * 2);
+      ctx.fill();
+      if(S.dangerCivId === c.id){
+        ctx.strokeStyle = "rgba(248,113,113,.94)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y - 2, 14, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      const pct = clamp((c.hp || 0) / Math.max(1, c.hpMax || 1), 0, 1);
+      ctx.fillStyle = "rgba(9,12,18,.84)";
+      ctx.fillRect(x - 16, y - 17, 32, 4);
+      ctx.fillStyle = pct > 0.5 ? "#4ade80" : (pct > 0.2 ? "#f59e0b" : "#fb7185");
+      ctx.fillRect(x - 16, y - 17, 32 * pct, 4);
+    }
   }
-  for(const unit of (S.supportUnits || [])) drawSupportUnit(unit);
-  for(const t of S.tigers){ if(t.alive) drawTiger(t); }
-  drawSoldier();
+
+  for(const unit of (S.supportUnits || [])){
+    if(!unit.alive) continue;
+    const smooth = smoothedDrawPoint(unit, unit.x, unit.y, 0.32);
+    const x = smooth.x;
+    const y = smooth.y;
+    ctx.fillStyle = unit.role === "rescue" ? "rgba(34,197,94,.92)" : "rgba(251,146,60,.92)";
+    ctx.fillRect(x - 7, y - 9, 14, 18);
+    const hpPct = clamp((unit.hp || 0) / Math.max(1, unit.hpMax || 1), 0, 1);
+    ctx.fillStyle = "rgba(9,12,18,.82)";
+    ctx.fillRect(x - 14, y - 15, 28, 3);
+    ctx.fillStyle = hpPct > 0.45 ? "#4ade80" : "#fb7185";
+    ctx.fillRect(x - 14, y - 15, 28 * hpPct, 3);
+  }
+
+  for(const t of (S.tigers || [])){
+    if(!t.alive) continue;
+    const smooth = smoothedDrawPoint(t, t.x, t.y, 0.38);
+    const x = smooth.x;
+    const y = smooth.y;
+    const theta = Number.isFinite(t.heading) ? t.heading : Math.atan2(t.vy || 0, t.vx || 1);
+    const focus = S.inBattle && (S.activeTigerId === t.id || S.lockedTigerId === t.id);
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(theta);
+    ctx.fillStyle = "rgba(245,158,11,.94)";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 13, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(20,20,24,.95)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-4, -7); ctx.lineTo(-4, 7);
+    ctx.moveTo(2, -7); ctx.lineTo(2, 7);
+    ctx.stroke();
+    ctx.restore();
+
+    const pct = clamp((t.hp || 0) / Math.max(1, t.hpMax || 1), 0, 1);
+    ctx.fillStyle = "rgba(9,12,18,.84)";
+    ctx.fillRect(x - 18, y - 18, 36, 4);
+    ctx.fillStyle = pct > 0.5 ? "#4ade80" : (pct > 0.2 ? "#f59e0b" : "#fb7185");
+    ctx.fillRect(x - 18, y - 18, 36 * pct, 4);
+    if(focus){
+      ctx.strokeStyle = "rgba(59,130,246,.96)";
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(x, y, 20, 0, Math.PI * 2);
+      ctx.stroke();
+      if(S.inBattle){
+        ctx.fillStyle = "rgba(9,12,18,.86)";
+        roundedRectFill(x - 28, y - 33, 56, 15, 5);
+        ctx.fillStyle = "rgba(245,247,255,.95)";
+        ctx.font = "800 9px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(`${Math.round(t.hp)}/${Math.round(t.hpMax)} (${Math.round(pct * 100)}%)`, x, y - 22);
+        ctx.textAlign = "start";
+      }
+    }
+  }
+
+  {
+    const smooth = smoothedDrawPoint(S.me, S.me.x, S.me.y, 0.42);
+    const x = smooth.x;
+    const y = smooth.y;
+    const ang = Number.isFinite(S.me.face) ? S.me.face : 0;
+    ctx.fillStyle = "rgba(226,232,240,.95)";
+    ctx.beginPath();
+    ctx.arc(x, y, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(30,41,59,.96)";
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(ang) * 13, y + Math.sin(ang) * 13);
+    ctx.stroke();
+    if(shieldActiveNow()){
+      ctx.save();
+      ctx.globalAlpha = 0.34;
+      ctx.strokeStyle = "rgba(96,165,250,.92)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, SHIELD_RADIUS, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if(S.inBattle){
+      const hpPct = Math.round(clamp((S.hp / 100) * 100, 0, 100));
+      const hpRatio = clamp(S.hp / 100, 0, 1);
+      const arRatio = clamp((S.armor || 0) / Math.max(1, Number(S.armorCap) || 100), 0, 1);
+      ctx.fillStyle = "rgba(9,12,18,.86)";
+      roundedRectFill(x - 30, y - 35, 60, 18, 6);
+      ctx.fillStyle = "rgba(245,247,255,.95)";
+      ctx.font = "900 9px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText(`HP ${hpPct}%`, x, y - 23);
+      ctx.fillStyle = "rgba(9,12,18,.88)";
+      ctx.fillRect(x - 24, y - 18, 48, 3.5);
+      ctx.fillStyle = hpRatio > 0.5 ? "#4ade80" : (hpRatio > 0.2 ? "#f59e0b" : "#fb7185");
+      ctx.fillRect(x - 24, y - 18, 48 * hpRatio, 3.5);
+      ctx.fillStyle = "rgba(96,165,250,.95)";
+      ctx.fillRect(x - 24, y - 13, 48 * arRatio, 3);
+      ctx.textAlign = "start";
+    }
+  }
+}
+function drawEntities(){
+  const liteRender = useLiteEntityRender();
+  if(liteRender){
+    drawEntitiesLite();
+  } else {
+    // carcasses block movement
+    for(const c of S.carcasses) drawCarcass(c.x,c.y);
+
+    // pickups
+    for(const p of (S.pickups||[])) drawPickup(p);
+
+    for(const it of (S.mapInteractables || [])) drawMapInteractable(it);
+
+    for(const site of (S.rescueSites || [])) drawRescueSite(site);
+
+    if(S.mode!=="Survival"){
+      for(const c of S.civilians){ if(c.alive) drawCivilian(c); }
+    }
+    for(const unit of (S.supportUnits || [])) drawSupportUnit(unit);
+    for(const t of S.tigers){ if(t.alive) drawTiger(t); }
+    drawSoldier();
+  }
   drawOnMapBattleReadability();
   drawOnMapBattleHud();
   drawAbilityCooldownWheel();
@@ -15644,16 +15853,18 @@ function drawEntities(){
     (S.pickups?.length || 0);
   const heavyLoad = entityLoad > 34;
   __frameHeavyFxFlip = (__frameHeavyFxFlip + 1) % 6;
-  const drawFx = frameBudgetTight
-    ? (__frameHeavyFxFlip % 4 === 0)
-    : (heavyLoad
-      ? (__frameHeavyFxFlip % (isSlowFrame ? 4 : 3) === 0)
-      : ((perfMode !== "PERFORMANCE" && !isSlowFrame)
-        || (perfMode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 === 0))
-        || (isSlowFrame && (__frameHeavyFxFlip % 3 === 0))));
+  const drawFx = liteRender
+    ? (!frameBudgetTight && (__frameHeavyFxFlip % 4 === 0))
+    : (frameBudgetTight
+      ? (__frameHeavyFxFlip % 4 === 0)
+      : (heavyLoad
+        ? (__frameHeavyFxFlip % (isSlowFrame ? 4 : 3) === 0)
+        : ((perfMode !== "PERFORMANCE" && !isSlowFrame)
+          || (perfMode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 === 0))
+          || (isSlowFrame && (__frameHeavyFxFlip % 3 === 0)))));
   if(drawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight)) drawImpactPulses();
-  if(drawFx && !frameBudgetTight) drawCombatFx();
-  if(drawFx || (!frameBudgetTight && __frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0)) drawDamagePopups();
+  if(!liteRender && drawFx && !frameBudgetTight) drawCombatFx();
+  if(!liteRender && (drawFx || (!frameBudgetTight && __frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0))) drawDamagePopups();
 }
 function drawMobileUiClearLane(){
   // Intentionally no overlay in the control lane; keep full map visibility.
@@ -15662,8 +15873,8 @@ function drawMobileUiClearLane(){
 function shouldDrawAtmosphericPass(){
   __frameBgFxFlip = (__frameBgFxFlip + 1) % 9;
   const score = frameActiveEntityLoadScore();
-  if(__frameLagScore >= 7) return (__frameBgFxFlip % 6) === 0;
-  if(__frameLagScore >= 4) return (__frameBgFxFlip % 5) === 0;
+  if(__frameLagScore >= FRAME_LAG_CRITICAL_SCORE) return (__frameBgFxFlip % 6) === 0;
+  if(__frameLagScore >= FRAME_LAG_WARN_SCORE) return (__frameBgFxFlip % 5) === 0;
   if(performanceMode() === "PERFORMANCE") return (__frameBgFxFlip % 3) === 0;
   if(frameBudgetExceeded(0.45)) return (__frameBgFxFlip % 4) === 0;
   if(frameIsSlow()) return (__frameBgFxFlip % 2) === 0;
@@ -15684,6 +15895,9 @@ function draw(){
       return;
     }
     beginFrameBudget(frameStart);
+    const lagTier = frameLagTier();
+    const lagHeavy = lagTier >= 1;
+    const lagCritical = lagTier >= 2;
     if(__frameSpikePending){
       safeTick("recoverFromSpikeFrame", recoverFromSpikeFrame);
     }
@@ -15696,51 +15910,52 @@ function draw(){
     runFrameTask("arcadeModeTick", frameInterval(220, 1.45), arcadeModeTick, { costHint:0.6, critical:S.mode==="Arcade" });
 
     if(!(S.gameOver || S.paused || S.missionEnded)){
-      runFrameTask("sanitizeState", frameInterval(150, 2.0), sanitizeRuntimeState, { costHint:1.3, critical:true });
-      runFrameTask("clampWorld", frameInterval(180, 1.3), clampWorldToCanvas, { costHint:0.9 });
-      runFrameTask("unstickEntities", frameInterval(84, 1.6), unstickEntitiesTick, { costHint:1.5, critical:true });
+      runFrameTask("sanitizeState", frameInterval(lagHeavy ? 170 : 150, 2.0), sanitizeRuntimeState, { costHint:1.3, critical:true });
+      runFrameTask("clampWorld", frameInterval(lagCritical ? 220 : 180, 1.3), clampWorldToCanvas, { costHint:0.9 });
+      runFrameTask("unstickEntities", frameInterval(lagCritical ? 188 : (lagHeavy ? 148 : 118), 1.8), unstickEntitiesTick, { costHint:1.5, critical:true, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3 });
       safeTick("regen", regen);
-      runFrameTask("backupTick", frameInterval(42, 1.5), backupTick, { costHint:1.1 });
-      runFrameTask("trapTick", frameInterval(34, 1.6), trapTick, { costHint:1.2 });
-      runFrameTask("mapInteractableTick", frameInterval(64, 1.5), mapInteractableTick, { costHint:1.1 });
-      runFrameTask("comboTick", frameInterval(110, 1.4), comboTick, { costHint:0.7 });
+      runFrameTask("backupTick", frameInterval(lagHeavy ? 62 : 42, 1.5), backupTick, { costHint:1.1 });
+      runFrameTask("trapTick", frameInterval(lagHeavy ? 48 : 34, 1.6), trapTick, { costHint:1.2 });
+      runFrameTask("mapInteractableTick", frameInterval(lagHeavy ? 92 : 64, 1.5), mapInteractableTick, { costHint:1.1 });
+      runFrameTask("comboTick", frameInterval(lagHeavy ? 132 : 110, 1.4), comboTick, { costHint:0.7 });
 
       if(!window.TigerTutorial?.isRunning){
-        runFrameTask("tickEvents", frameInterval(180, 1.5), tickEvents, { costHint:0.9 });
-        runFrameTask("ambientPickup", frameInterval(300, 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
-        runFrameTask("tickPickups", frameInterval(46, 1.5), tickPickups, { costHint:1.0 });
+        runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
+        runFrameTask("ambientPickup", frameInterval(lagHeavy ? 360 : 300, 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
+        runFrameTask("tickPickups", frameInterval(lagCritical ? 74 : (lagHeavy ? 62 : 46), 1.5), tickPickups, { costHint:1.0 });
       }
 
-      runFrameTask("roamTigers", frameInterval(34, 1.55), roamTigers, {
-        costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+      runFrameTask("roamTigers", frameInterval(lagCritical ? 52 : (lagHeavy ? 44 : 34), 1.55), roamTigers, {
+        costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
       runFrameTask("bossIdentity", frameInterval(92, 1.45), bossIdentityTick, { costHint:0.9, critical:true });
       runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
-      runFrameTask("supportUnits", frameInterval(50, 1.8), supportUnitsTick, {
-        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+      runFrameTask("supportUnits", frameInterval(lagCritical ? 74 : (lagHeavy ? 62 : 50), 1.8), supportUnitsTick, {
+        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
       let usedKeyboard = false;
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
       if(!usedKeyboard) safeTick("movePlayer", movePlayer);
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
-      runFrameTask("followCivilians", frameInterval(40, 1.5), followCiviliansTick, {
-        costHint:1.7, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+      runFrameTask("followCivilians", frameInterval(lagCritical ? 58 : (lagHeavy ? 50 : 40), 1.5), followCiviliansTick, {
+        costHint:1.7, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
-      runFrameTask("evacCheck", frameInterval(58, 1.5), evacCheck, { costHint:0.9 });
-      runFrameTask("civThreats", frameInterval(72, 1.5), tickCiviliansAndThreats, {
-        costHint:1.6, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+      runFrameTask("evacCheck", frameInterval(lagCritical ? 74 : (lagHeavy ? 64 : 58), 1.5), evacCheck, { costHint:0.9 });
+      runFrameTask("civThreats", frameInterval(lagCritical ? 104 : (lagHeavy ? 88 : 72), 1.5), tickCiviliansAndThreats, {
+        costHint:1.6, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
-      runFrameTask("survivalPressure", frameInterval(86, 1.4), survivalPressureTick, { costHint:1.1 });
-      runFrameTask("combatTick", frameInterval(S.inBattle ? 24 : 34, 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
-      runFrameTask("checkMissionComplete", frameInterval(90, 1.4), checkMissionComplete, { costHint:0.8, critical:true });
+      runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
+      runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 34 : (lagHeavy ? 30 : 24)) : (lagCritical ? 46 : (lagHeavy ? 40 : 34)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
+      runFrameTask("checkMissionComplete", frameInterval(lagCritical ? 120 : (lagHeavy ? 100 : 90), 1.4), checkMissionComplete, { costHint:0.8, critical:true });
     }
-    runFrameTask("combatFx", frameInterval(26, 1.5), tickCombatFx, { costHint:0.8 });
-    runFrameTask("damagePopups", frameInterval(26, 1.5), tickDamagePopups, { costHint:0.8 });
-    runFrameTask("impactPulses", frameInterval(24, 1.5), tickImpactPulses, { costHint:0.7 });
+    runFrameTask("combatFx", frameInterval(lagCritical ? 42 : (lagHeavy ? 34 : 26), 1.5), tickCombatFx, { costHint:0.8 });
+    runFrameTask("damagePopups", frameInterval(lagCritical ? 42 : (lagHeavy ? 34 : 26), 1.5), tickDamagePopups, { costHint:0.8 });
+    runFrameTask("impactPulses", frameInterval(lagCritical ? 40 : (lagHeavy ? 32 : 24), 1.5), tickImpactPulses, { costHint:0.7 });
 
     safeTick("drawSceneFrame", ()=>{
-      const shake = sampleCameraShake();
-      const cine = sampleBattleCinematic();
+      const liteRender = useLiteEntityRender();
+      const shake = liteRender ? { active:false, x:0, y:0 } : sampleCameraShake();
+      const cine = liteRender ? { active:false, x:0, y:0, scale:1 } : sampleBattleCinematic();
       const needsTransform = shake.active || cine.active;
       if(needsTransform){
         ctx.save();
