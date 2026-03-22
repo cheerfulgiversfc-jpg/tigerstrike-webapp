@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4456";
+const TS_BUILD = "4457";
 if(tg){
   try{
     tg.expand?.();
@@ -13404,7 +13404,8 @@ function combatTick(){
 
   const band = weaponRangeBand(rangeLimit);
   if(band === "short"){
-    if(d < 96 && now >= (S._combatTigerAttackAt || 0)){
+    const shortAttackRange = Math.min(rangeLimit, 108);
+    if(d <= shortAttackRange && now >= (S._combatTigerAttackAt || 0)){
       S._combatTigerAttackAt = now + rand(900, 1300);
       tigerTurn(t, S._protectTicks > 0, { kind:"strike", maxRange:108 });
     }
@@ -13412,7 +13413,8 @@ function combatTick(){
   }
 
   if(band === "mid"){
-    if(d < 170 && now >= (S._combatTigerAttackAt || 0)){
+    const midAttackRange = Math.min(rangeLimit, 170);
+    if(d <= midAttackRange && now >= (S._combatTigerAttackAt || 0)){
       S._combatTigerAttackAt = now + rand(1150, 1700);
       tigerTurn(t, S._protectTicks > 0, { kind:"pounce", dmgMul:1.12, maxRange:170 });
     }
@@ -13439,7 +13441,8 @@ function combatTick(){
     }
     return;
   }
-  if(now >= (S._combatTigerAttackAt || 0)){
+  const longAttackRange = Math.min(rangeLimit, 220);
+  if(d <= longAttackRange && now >= (S._combatTigerAttackAt || 0)){
     S._combatTigerAttackAt = now + rand(1700, 2400);
     t._chargeWindupUntil = now + rand(900, 1300);
     tigerTurn(t, S._protectTicks > 0, { kind:"charge", dmgMul:1.35, maxRange:220 });
