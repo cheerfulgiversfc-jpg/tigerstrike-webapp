@@ -57,6 +57,7 @@ const STORAGE_FALLBACK_KEYS = ["ts_v4384", "ts_v4383", "ts_v4382", "ts_v4381", "
 const STORY_SAVE_KEY_BASE = "ts_story_save";
 const STORY_PROGRESS_KEY_BASE = "ts_story_progress";
 const STORY_PROFILE_KEY_BASE = "ts_story_profile";
+const STORY_CHECKPOINT_KEY_BASE = "ts_story_checkpoint";
 
 function cloneState(obj){
   if(typeof structuredClone === "function"){
@@ -1801,6 +1802,7 @@ const __stabilityMonitorState = {
 };
 let __lastStoryFullSnapshotAt = 0;
 let __autoPerfEscalatedAt = 0;
+let __storyCheckpointCache = null;
 
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
@@ -5314,6 +5316,278 @@ function storySaveReadStorageKeys(){
     }
   }catch(e){}
   return keys;
+}
+function storyCheckpointStorageKey(){
+  return STORY_CHECKPOINT_KEY_BASE;
+}
+function storyCheckpointStorageKeys(){
+  const keys = [];
+  const seen = new Set();
+  const pushKey = (k)=>{
+    const key = String(k || "").trim();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+  pushKey(storyCheckpointStorageKey());
+  pushKey(`${STORY_CHECKPOINT_KEY_BASE}_local`);
+  pushKey(STORY_CHECKPOINT_KEY_BASE);
+  return keys;
+}
+function storyCheckpointReadStorageKeys(){
+  const keys = storyCheckpointStorageKeys().slice();
+  const seen = new Set(keys);
+  const pushKey = (k)=>{
+    const key = String(k || "").trim();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+  try{
+    for(let i=0; i<localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(!k) continue;
+      if(k === STORY_CHECKPOINT_KEY_BASE || k.startsWith(`${STORY_CHECKPOINT_KEY_BASE}_`)){
+        pushKey(k);
+      }
+    }
+  }catch(e){}
+  return keys;
+}
+function storyCheckpointMissionFromPayload(payload){
+  if(!payload || typeof payload !== "object") return 1;
+  const resume = (payload.resumeState && typeof payload.resumeState === "object") ? payload.resumeState : null;
+  const raw =
+    payload.mission ??
+    payload.storyLevel ??
+    payload.storyLastMission ??
+    (resume ? (resume.storyLevel ?? resume.storyLastMission) : 1);
+  return clamp(Math.floor(Number(raw || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+}
+function readStoryCheckpointData(){
+  if(__storyCheckpointCache && typeof __storyCheckpointCache === "object"){
+    return __storyCheckpointCache;
+  }
+  try{
+    let best = null;
+    for(const key of storyCheckpointReadStorageKeys()){
+      const raw = localStorage.getItem(key);
+      if(!raw) continue;
+      let parsed = null;
+      try{
+        parsed = JSON.parse(raw);
+      }catch(e){
+        parsed = null;
+      }
+      if(!parsed || typeof parsed !== "object") continue;
+      const mission = storyCheckpointMissionFromPayload(parsed);
+      const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
+      const candidate = { ...parsed, mission, savedAt, storageKey:key };
+      if(!best || candidate.savedAt >= best.savedAt){
+        best = candidate;
+      }
+    }
+    __storyCheckpointCache = best;
+    return best;
+  }catch(e){
+    return null;
+  }
+}
+function clearStoryCheckpointData(){
+  __storyCheckpointCache = null;
+  try{
+    for(const key of storyCheckpointReadStorageKeys()){
+      localStorage.removeItem(key);
+    }
+  }catch(e){}
+}
+function clearStoryCheckpointForMission(mission){
+  const slot = readStoryCheckpointData();
+  if(!slot) return;
+  const targetMission = clamp(Math.floor(Number(mission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  if(storyCheckpointMissionFromPayload(slot) === targetMission){
+    clearStoryCheckpointData();
+  }
+}
+function activeStoryCheckpointForMission(mission){
+  const slot = readStoryCheckpointData();
+  if(!slot) return null;
+  const targetMission = clamp(Math.floor(Number(mission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  if(storyCheckpointMissionFromPayload(slot) !== targetMission) return null;
+  if(!slot.resumeState || typeof slot.resumeState !== "object") return null;
+  return slot;
+}
+function buildStoryCheckpointSnapshot(trigger={}){
+  const mission = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  const resumeState = buildPersistedState();
+  resumeState.mode = "Story";
+  resumeState.storyLevel = mission;
+  resumeState.storyLastMission = Math.max(
+    mission,
+    clamp(Math.floor(Number(resumeState.storyLastMission || mission)), 1, STORY_CAMPAIGN_OBJECTIVES.length)
+  );
+  resumeState.missionEnded = false;
+  resumeState.gameOver = false;
+  resumeState.paused = false;
+  resumeState.pauseReason = null;
+  resumeState.inBattle = false;
+  resumeState.activeTigerId = null;
+  const storyFunds = Math.max(0, Math.round(Number(getModeWallet("Story", resumeState) || resumeState.funds || 0)));
+  resumeState.modeWallets = normalizeModeWallets(resumeState.modeWallets, storyFunds, "Story");
+  if(resumeState.modeWallets && typeof resumeState.modeWallets === "object"){
+    resumeState.modeWallets.Story = storyFunds;
+  }
+  resumeState.funds = storyFunds;
+  resumeState.v = STORAGE_VERSION;
+  trimPersistentState(resumeState);
+  return {
+    mission,
+    storyLevel: mission,
+    storyLastMission: Math.max(mission, Math.floor(Number(resumeState.storyLastMission || mission))),
+    trigger: {
+      evacDone: Math.max(0, Math.floor(Number(trigger.evacDone || 0))),
+      evacRequired: Math.max(1, Math.floor(Number(trigger.evacRequired || 1))),
+      civTotal: Math.max(1, Math.floor(Number(trigger.civTotal || 1))),
+      tigerDown: Math.max(0, Math.floor(Number(trigger.tigerDown || 0))),
+    },
+    source: "mission-checkpoint",
+    savedAt: Date.now(),
+    resumeState,
+  };
+}
+function writeStoryCheckpointData(trigger={}){
+  if(window.__TUTORIAL_MODE__) return null;
+  const payload = buildStoryCheckpointSnapshot(trigger);
+  try{
+    const raw = JSON.stringify(payload);
+    localStorage.setItem(storyCheckpointStorageKey(), raw);
+    __storyCheckpointCache = payload;
+    return payload;
+  }catch(e){
+    return null;
+  }
+}
+function updateGameOverCheckpointButton(){
+  const btn = document.getElementById("overCheckpointBtn");
+  if(!btn) return;
+  const slot =
+    normalizeModeName(S.mode) === "Story"
+      ? activeStoryCheckpointForMission(S.storyLevel)
+      : null;
+  if(!slot){
+    btn.style.display = "none";
+    btn.disabled = true;
+    btn.innerText = "Restart from Checkpoint";
+    return;
+  }
+  const trig = slot.trigger || {};
+  const evacDone = Math.max(0, Math.floor(Number(trig.evacDone || 0)));
+  const evacReq = Math.max(1, Math.floor(Number(trig.evacRequired || 1)));
+  btn.style.display = "";
+  btn.disabled = false;
+  btn.innerText = `Restart from Checkpoint (${evacDone}/${evacReq} evac)`;
+}
+function maybeCaptureStoryCheckpoint(){
+  if(window.__TUTORIAL_MODE__) return;
+  if(normalizeModeName(S.mode) !== "Story") return;
+  if(S.gameOver || S.missionEnded) return;
+  const mission = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  if(activeStoryCheckpointForMission(mission)) return;
+
+  const civTotal = Array.isArray(S.civilians) ? S.civilians.length : 0;
+  if(civTotal <= 0) return;
+  const evacRequired = Math.max(1, Math.ceil(civTotal * 0.5));
+  const evacDone = Math.max(0, Math.floor(Number(S.evacDone || 0)));
+  const tigerDown =
+    Math.max(0, Math.floor(Number(S.stats?.kills || 0))) +
+    Math.max(0, Math.floor(Number(S.stats?.captures || 0)));
+
+  if(evacDone < evacRequired || tigerDown < 1) return;
+  const slot = writeStoryCheckpointData({ evacDone, evacRequired, civTotal, tigerDown });
+  if(slot){
+    toast(`Checkpoint reached: ${evacDone}/${civTotal} civilians evac + tiger down.`);
+    hapticNotif("success");
+    updateGameOverCheckpointButton();
+  }
+}
+function restartFromStoryCheckpoint(){
+  if(normalizeModeName(S.mode) !== "Story"){
+    toast("Story checkpoints are only available in Story mode.");
+    return;
+  }
+  const slot = activeStoryCheckpointForMission(S.storyLevel);
+  if(!slot){
+    toast("No checkpoint available for this mission yet.");
+    updateGameOverCheckpointButton();
+    return;
+  }
+  const resume = (slot.resumeState && typeof slot.resumeState === "object")
+    ? cloneState(slot.resumeState)
+    : null;
+  if(!resume){
+    clearStoryCheckpointForMission(S.storyLevel);
+    toast("Checkpoint data was invalid and has been cleared.");
+    updateGameOverCheckpointButton();
+    return;
+  }
+
+  const mission = clamp(
+    Math.floor(Number(storyCheckpointMissionFromPayload(slot) || S.storyLevel || 1)),
+    1,
+    STORY_CAMPAIGN_OBJECTIVES.length
+  );
+  resume.mode = "Story";
+  resume.storyLevel = mission;
+  resume.storyLastMission = Math.max(
+    mission,
+    clamp(Math.floor(Number(resume.storyLastMission || mission)), 1, STORY_CAMPAIGN_OBJECTIVES.length)
+  );
+  resume.missionEnded = false;
+  resume.gameOver = false;
+  resume.paused = false;
+  resume.pauseReason = null;
+  resume.inBattle = false;
+  resume.activeTigerId = null;
+  const storyFunds = Math.max(0, Math.round(Number(getModeWallet("Story", resume) || resume.funds || 0)));
+  resume.modeWallets = normalizeModeWallets(resume.modeWallets, storyFunds, "Story");
+  if(resume.modeWallets && typeof resume.modeWallets === "object"){
+    resume.modeWallets.Story = storyFunds;
+  }
+  resume.funds = storyFunds;
+  resume.v = STORAGE_VERSION;
+  trimPersistentState(resume);
+
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(resume));
+  }catch(e){}
+
+  ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay"].forEach((id)=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = "none";
+  });
+  lastOverlay = null;
+
+  S = load();
+  bindFundsWallet(S);
+  syncWindowState();
+  resizeCanvasForViewport();
+  applyTouchHudSettings();
+  applyModeTheme(S.mode);
+  invalidateMapCache();
+  transitionCleanupSweep("story-checkpoint-restore");
+  clearTransientCombatVisuals();
+  if(missionStateLooksEmpty()){
+    const keepHp = clamp(Number(S.hp || 100), 0, 100);
+    const keepArmor = clamp(Number(S.armor || 0), 0, S.armorCap || 100);
+    deploy({ carryStats:true, hp:keepHp, armor:keepArmor });
+  }
+  updateEngage();
+  maybeRenderHUD(true);
+  try{ renderCombatControls(); }catch(e){}
+  try{ renderBattleStatus(); }catch(e){}
+  updateGameOverCheckpointButton();
+  toast(`Restarted from checkpoint (Story Mission ${mission}).`);
+  save(true);
 }
 function storyProgressStorageKey(){
   return STORY_PROGRESS_KEY_BASE;
@@ -9935,6 +10209,15 @@ function deploy(opts={}){
   invalidateMapCache();
   for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
   ensureStoryMetaState();
+  if(normalizeModeName(S.mode) !== "Story"){
+    clearStoryCheckpointData();
+  } else {
+    const slot = readStoryCheckpointData();
+    const mission = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+    if(slot && storyCheckpointMissionFromPayload(slot) !== mission){
+      clearStoryCheckpointData();
+    }
+  }
   syncSquadRosterBounds();
   S.gameOver=false;
   S.missionEnded=false;
@@ -10082,6 +10365,7 @@ function deploy(opts={}){
   if(shouldShowMissionBrief()) showMissionBrief(rand(2200, 3000));
   else closeMissionBrief(true);
 
+  updateGameOverCheckpointButton();
   save();
 }
 
@@ -10092,6 +10376,7 @@ function startNextMission(){
   const wasStoryFinal = (S.mode==="Story" && S.storyLevel >= STORY_CAMPAIGN_OBJECTIVES.length);
   const wasArcadeFinal = (S.mode==="Arcade" && S.arcadeLevel >= ARCADE_CAMPAIGN_OBJECTIVES.length);
   if(S.mode==="Story"){
+    clearStoryCheckpointForMission(S.storyLevel);
     S.storyLevel = Math.min(S.storyLevel + 1, STORY_CAMPAIGN_OBJECTIVES.length);
     S.storyLastMission = Math.max(storyResumeMissionLevel(), S.storyLevel);
   }
@@ -10131,6 +10416,7 @@ function restartModeFromMission1(){
   if(mode === "Story"){
     S.storyLevel = 1;
     S.storyLastMission = 1;
+    clearStoryCheckpointData();
     clearStorySaveData();
   }
   else if(mode === "Arcade") S.arcadeLevel = 1;
@@ -10161,6 +10447,7 @@ function performResetGame(){
     localStorage.removeItem(key);
   }
   clearStorySaveData();
+  clearStoryCheckpointData();
   S = cloneState(DEFAULT);
   bindFundsWallet(S);
   syncWindowState();
@@ -10192,6 +10479,7 @@ function gameOverChoice(msg){
   lastOverlay=null;
 
   document.getElementById("overText").innerText = msg + "\n\nChoose:";
+  updateGameOverCheckpointButton();
   document.getElementById("overOverlay").style.display="flex";
   sfx("hurt"); hapticNotif("error");
   save();
@@ -16117,6 +16405,7 @@ function draw(){
       });
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
       runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 38 : (lagHeavy ? 32 : 24)) : (lagCritical ? 50 : (lagHeavy ? 42 : 34)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
+      runFrameTask("storyCheckpoint", frameInterval(lagCritical ? 220 : (lagHeavy ? 170 : 124), 1.45), maybeCaptureStoryCheckpoint, { costHint:0.8, critical:S.mode==="Story" });
       runFrameTask("checkMissionComplete", frameInterval(lagCritical ? 140 : (lagHeavy ? 112 : 90), 1.4), checkMissionComplete, { costHint:0.8, critical:true });
     }
     runFrameTask("combatFx", frameInterval(lagCritical ? 42 : (lagHeavy ? 34 : 26), 1.5), tickCombatFx, { costHint:0.8 });
