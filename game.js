@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4458";
+const TS_BUILD = "4459";
 if(tg){
   try{
     tg.expand?.();
@@ -12146,6 +12146,7 @@ function keepBattleTigerBesidePlayer(t, now=Date.now()){
 }
 
 function visualEffectsHeavyMode(){
+  if(frameLagTier() >= 1) return true;
   if(performanceMode() === "PERFORMANCE") return true;
   return frameIsSlow();
 }
@@ -12154,6 +12155,7 @@ function visualReadabilityHeavyMode(){
   return __frameDynamicLoadMul >= FRAME_LOAD_HIGH;
 }
 function visualExtremeLoadMode(){
+  if(frameLagTier() >= 2) return true;
   if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) return true;
   if(frameIsSlow()) return frameBudgetExceeded(0.55);
   return false;
@@ -12466,11 +12468,15 @@ function drawImpactPulses(){
 function emitDamagePopup(x, y, text, kind="hit"){
   if(!Number.isFinite(x) || !Number.isFinite(y) || text == null) return;
   const now = Date.now();
+  const lagTier = frameLagTier();
   const cellX = Math.round(x / 22);
   const cellY = Math.round(y / 22);
   const gateKey = `${kind}:${String(text)}:${cellX}:${cellY}`;
   const lastAt = DAMAGE_POPUP_GATE.get(gateKey) || 0;
-  if(now - lastAt < DAMAGE_POPUP_RATE_MS) return;
+  const gateMs = lagTier >= 2
+    ? Math.round(DAMAGE_POPUP_RATE_MS * 2.8)
+    : (lagTier >= 1 ? Math.round(DAMAGE_POPUP_RATE_MS * 1.8) : DAMAGE_POPUP_RATE_MS);
+  if(now - lastAt < gateMs) return;
   DAMAGE_POPUP_GATE.set(gateKey, now);
   if(DAMAGE_POPUP_GATE.size > 260){
     for(const [k, at] of DAMAGE_POPUP_GATE){
@@ -12479,8 +12485,9 @@ function emitDamagePopup(x, y, text, kind="hit"){
     if(DAMAGE_POPUP_GATE.size > 320) DAMAGE_POPUP_GATE.clear();
   }
 
-  if(DAMAGE_POPUPS.length >= 34){
-    DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - 33);
+  const popupCap = lagTier >= 2 ? 16 : (lagTier >= 1 ? 24 : 34);
+  if(DAMAGE_POPUPS.length >= popupCap){
+    DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - (popupCap - 1));
   }
   DAMAGE_POPUPS.push({
     x, y,
@@ -12507,7 +12514,9 @@ function emitDamagePopup(x, y, text, kind="hit"){
 }
 
 function tickDamagePopups(){
-  const idleFade = (S.paused || S.missionEnded || S.gameOver || !S.inBattle) ? 2.6 : 1;
+  const lagTier = frameLagTier();
+  const lagFade = lagTier >= 2 ? 1.7 : (lagTier >= 1 ? 1.35 : 1);
+  const idleFade = (S.paused || S.missionEnded || S.gameOver || !S.inBattle) ? (3.2 * lagFade) : lagFade;
   for(const p of DAMAGE_POPUPS){
     p.ttl -= idleFade;
     p.y += p.vy;
@@ -13931,14 +13940,15 @@ function maybeRenderHUD(force=false){
   const now = performance.now ? performance.now() : Date.now();
   const loadScore = frameActiveEntityLoadScore();
   const lagTier = frameLagTier();
-  let minInterval = 240;
-  if(isMobileViewport()) minInterval = Math.max(minInterval, 280);
-  if(frameIsSlow(now)) minInterval = 340;
-  if(performanceMode() === "PERFORMANCE") minInterval = Math.max(minInterval, 320);
-  if(lagTier >= 1) minInterval = Math.max(minInterval, 420);
-  if(lagTier >= 2) minInterval = Math.max(minInterval, 520);
-  if(loadScore >= 60) minInterval = Math.max(minInterval, 380);
-  else if(loadScore >= 44) minInterval = Math.max(minInterval, 320);
+  const mobile = isMobileViewport();
+  let minInterval = 280;
+  if(mobile) minInterval = Math.max(minInterval, 340);
+  if(frameIsSlow(now)) minInterval = 420;
+  if(performanceMode() === "PERFORMANCE") minInterval = Math.max(minInterval, 380);
+  if(lagTier >= 1) minInterval = Math.max(minInterval, mobile ? 560 : 460);
+  if(lagTier >= 2) minInterval = Math.max(minInterval, mobile ? 720 : 560);
+  if(loadScore >= 60) minInterval = Math.max(minInterval, mobile ? 520 : 420);
+  else if(loadScore >= 44) minInterval = Math.max(minInterval, mobile ? 460 : 360);
   if(force || (now - __lastHudRender) >= minInterval){
     __lastHudRender = now;
     renderHUD();
@@ -13960,9 +13970,18 @@ function drawMapScene(){
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0
   ].join("|");
-  const cacheAgeCap = frameIsSlow()
+  const lagTier = frameLagTier();
+  const mobile = isMobileViewport();
+  let cacheAgeCap = frameIsSlow()
     ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 360 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 260 : 180))
     : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 160 : MAP_CACHE_INTERVAL_MS);
+  if(mobile){
+    if(lagTier >= 2){
+      cacheAgeCap = Math.max(cacheAgeCap, 520);
+    } else if(lagTier >= 1 || frameIsSlow()){
+      cacheAgeCap = Math.max(cacheAgeCap, 420);
+    }
+  }
   const canUseCache =
     !!__mapFrameCacheCanvas &&
     __mapFrameCacheSig === cacheSig &&
@@ -13978,9 +13997,9 @@ function drawMapScene(){
   if(hasAnyCache){
     const staleAge = frameNow - __mapFrameCacheAt;
     const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
-    const emergencyMaxAge = isMobileViewport()
-      ? (__frameLagScore >= FRAME_LAG_CRITICAL_SCORE ? 1400 : 1100)
-      : 780;
+    const emergencyMaxAge = mobile
+      ? (lagTier >= 2 ? 2400 : 1800)
+      : (lagTier >= 2 ? 1400 : 980);
     if(emergencyReuse && staleAge < emergencyMaxAge){
       ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
       return;
@@ -14577,7 +14596,10 @@ function drawMapScene(){
 function drawAtmosphericParallax(nowTs=Date.now()){
   const mode = performanceMode();
   const slow = frameIsSlow();
+  const lagTier = frameLagTier();
+  if(isMobileViewport() && lagTier >= 1) return;
   if(mode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 !== 0)) return;
+  if(lagTier >= 2 && (__frameHeavyFxFlip % 2 !== 0)) return;
   if(slow && (__frameHeavyFxFlip % 3 === 1)) return;
 
   const w = cv.width;
@@ -14912,7 +14934,12 @@ function drawOnMapBattleReadability(){
   const now = Date.now();
   const heavy = visualReadabilityHeavyMode();
   const extreme = visualExtremeLoadMode();
-  const minInterval = extreme ? 110 : (heavy ? 70 : 0);
+  const lagTier = frameLagTier();
+  const mobile = isMobileViewport();
+  let minInterval = mobile ? 34 : 0;
+  if(heavy) minInterval = Math.max(minInterval, mobile ? 88 : 70);
+  if(lagTier >= 1) minInterval = Math.max(minInterval, mobile ? 120 : 92);
+  if(extreme || lagTier >= 2) minInterval = Math.max(minInterval, mobile ? 150 : 120);
   if(minInterval > 0 && (now - (__battleReadabilityRenderAt || 0)) < minInterval) return;
   __battleReadabilityRenderAt = now;
   const p = currentDrawPoint(S.me, S.me.x, S.me.y);
@@ -14966,7 +14993,12 @@ function drawOnMapBattleHud(){
   const now = Date.now();
   const heavy = visualReadabilityHeavyMode();
   const extreme = visualExtremeLoadMode();
-  const minInterval = extreme ? 140 : (heavy ? 95 : 0);
+  const lagTier = frameLagTier();
+  const mobile = isMobileViewport();
+  let minInterval = mobile ? 40 : 0;
+  if(heavy) minInterval = Math.max(minInterval, mobile ? 120 : 95);
+  if(lagTier >= 1) minInterval = Math.max(minInterval, mobile ? 150 : 120);
+  if(extreme || lagTier >= 2) minInterval = Math.max(minInterval, mobile ? 190 : 150);
   if(minInterval > 0 && (now - (__battleHudRenderAt || 0)) < minInterval) return;
   __battleHudRenderAt = now;
   const panelW = Math.min(cv.width - 16, 320);
@@ -15695,7 +15727,7 @@ function drawTiger(t){
 
 function useLiteEntityRender(){
   if(!isMobileViewport()) return false;
-  if(frameLagTier() >= 2) return true;
+  if(frameLagTier() >= 1) return true;
   if(frameIsSlow() && (performanceMode() === "PERFORMANCE" || frameActiveEntityLoadScore() >= 34)) return true;
   return false;
 }
@@ -15875,6 +15907,8 @@ function drawEntities(){
   drawOnMapBattleHud();
   drawAbilityCooldownWheel();
   const perfMode = performanceMode();
+  const lagTier = frameLagTier();
+  const mobile = isMobileViewport();
   const isSlowFrame = frameIsSlow();
   const frameBudgetTight = frameBudgetExceeded(0.85);
   const entityLoad =
@@ -15893,9 +15927,20 @@ function drawEntities(){
         : ((perfMode !== "PERFORMANCE" && !isSlowFrame)
           || (perfMode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 === 0))
           || (isSlowFrame && (__frameHeavyFxFlip % 3 === 0)))));
-  if(drawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight)) drawImpactPulses();
-  if(!liteRender && drawFx && !frameBudgetTight) drawCombatFx();
-  if(!liteRender && (drawFx || (!frameBudgetTight && __frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0))) drawDamagePopups();
+  let shouldDrawFx = drawFx;
+  if(lagTier >= 2){
+    shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 7 : 6) === 0);
+  }else if(lagTier >= 1){
+    shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 5 : 4) === 0);
+  }
+  const shouldDrawPopups = lagTier >= 2
+    ? (__frameHeavyFxFlip % (mobile ? 7 : 6) === 0)
+    : (lagTier >= 1
+      ? (__frameHeavyFxFlip % (heavyLoad ? 5 : 4) === 0)
+      : (__frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0));
+  if(shouldDrawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight && lagTier === 0)) drawImpactPulses();
+  if(!liteRender && shouldDrawFx && !frameBudgetTight) drawCombatFx();
+  if(!liteRender && (shouldDrawFx || (!frameBudgetTight && shouldDrawPopups))) drawDamagePopups();
 }
 function drawMobileUiClearLane(){
   // Intentionally no overlay in the control lane; keep full map visibility.
@@ -15904,6 +15949,8 @@ function drawMobileUiClearLane(){
 function shouldDrawAtmosphericPass(){
   __frameBgFxFlip = (__frameBgFxFlip + 1) % 9;
   const score = frameActiveEntityLoadScore();
+  const lagTier = frameLagTier();
+  if(isMobileViewport() && lagTier >= 1) return false;
   if(__frameLagScore >= FRAME_LAG_CRITICAL_SCORE) return (__frameBgFxFlip % 6) === 0;
   if(__frameLagScore >= FRAME_LAG_WARN_SCORE) return (__frameBgFxFlip % 5) === 0;
   if(performanceMode() === "PERFORMANCE") return (__frameBgFxFlip % 3) === 0;
@@ -15945,39 +15992,39 @@ function draw(){
       runFrameTask("clampWorld", frameInterval(lagCritical ? 220 : 180, 1.3), clampWorldToCanvas, { costHint:0.9 });
       runFrameTask("unstickEntities", frameInterval(lagCritical ? 188 : (lagHeavy ? 148 : 118), 1.8), unstickEntitiesTick, { costHint:1.5, critical:true, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3 });
       safeTick("regen", regen);
-      runFrameTask("backupTick", frameInterval(lagHeavy ? 62 : 42, 1.5), backupTick, { costHint:1.1 });
-      runFrameTask("trapTick", frameInterval(lagHeavy ? 48 : 34, 1.6), trapTick, { costHint:1.2 });
-      runFrameTask("mapInteractableTick", frameInterval(lagHeavy ? 92 : 64, 1.5), mapInteractableTick, { costHint:1.1 });
-      runFrameTask("comboTick", frameInterval(lagHeavy ? 132 : 110, 1.4), comboTick, { costHint:0.7 });
+      runFrameTask("backupTick", frameInterval(lagCritical ? 84 : (lagHeavy ? 66 : 42), 1.5), backupTick, { costHint:1.1 });
+      runFrameTask("trapTick", frameInterval(lagCritical ? 70 : (lagHeavy ? 52 : 34), 1.6), trapTick, { costHint:1.2 });
+      runFrameTask("mapInteractableTick", frameInterval(lagCritical ? 116 : (lagHeavy ? 94 : 64), 1.5), mapInteractableTick, { costHint:1.1 });
+      runFrameTask("comboTick", frameInterval(lagCritical ? 154 : (lagHeavy ? 130 : 110), 1.4), comboTick, { costHint:0.7 });
 
       if(!window.TigerTutorial?.isRunning){
         runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
         runFrameTask("ambientPickup", frameInterval(lagHeavy ? 360 : 300, 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
-        runFrameTask("tickPickups", frameInterval(lagCritical ? 74 : (lagHeavy ? 62 : 46), 1.5), tickPickups, { costHint:1.0 });
+        runFrameTask("tickPickups", frameInterval(lagCritical ? 92 : (lagHeavy ? 74 : 52), 1.5), tickPickups, { costHint:1.0 });
       }
 
-      runFrameTask("roamTigers", frameInterval(lagCritical ? 52 : (lagHeavy ? 44 : 34), 1.55), roamTigers, {
-        costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      runFrameTask("roamTigers", frameInterval(lagCritical ? 66 : (lagHeavy ? 54 : 36), 1.55), roamTigers, {
+        costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:4, extremeCadence:5
       });
       runFrameTask("bossIdentity", frameInterval(92, 1.45), bossIdentityTick, { costHint:0.9, critical:true });
       runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
-      runFrameTask("supportUnits", frameInterval(lagCritical ? 74 : (lagHeavy ? 62 : 50), 1.8), supportUnitsTick, {
-        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      runFrameTask("supportUnits", frameInterval(lagCritical ? 92 : (lagHeavy ? 74 : 54), 1.8), supportUnitsTick, {
+        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:4, extremeCadence:5
       });
       let usedKeyboard = false;
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
       if(!usedKeyboard) safeTick("movePlayer", movePlayer);
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
-      runFrameTask("followCivilians", frameInterval(lagCritical ? 58 : (lagHeavy ? 50 : 40), 1.5), followCiviliansTick, {
-        costHint:1.7, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      runFrameTask("followCivilians", frameInterval(lagCritical ? 76 : (lagHeavy ? 62 : 44), 1.5), followCiviliansTick, {
+        costHint:1.7, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:4, extremeCadence:5
       });
-      runFrameTask("evacCheck", frameInterval(lagCritical ? 74 : (lagHeavy ? 64 : 58), 1.5), evacCheck, { costHint:0.9 });
-      runFrameTask("civThreats", frameInterval(lagCritical ? 104 : (lagHeavy ? 88 : 72), 1.5), tickCiviliansAndThreats, {
-        costHint:1.6, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
+      runFrameTask("civThreats", frameInterval(lagCritical ? 124 : (lagHeavy ? 102 : 76), 1.5), tickCiviliansAndThreats, {
+        costHint:1.6, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:4, extremeCadence:5
       });
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
-      runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 34 : (lagHeavy ? 30 : 24)) : (lagCritical ? 46 : (lagHeavy ? 40 : 34)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
-      runFrameTask("checkMissionComplete", frameInterval(lagCritical ? 120 : (lagHeavy ? 100 : 90), 1.4), checkMissionComplete, { costHint:0.8, critical:true });
+      runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 38 : (lagHeavy ? 32 : 24)) : (lagCritical ? 50 : (lagHeavy ? 42 : 34)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
+      runFrameTask("checkMissionComplete", frameInterval(lagCritical ? 140 : (lagHeavy ? 112 : 90), 1.4), checkMissionComplete, { costHint:0.8, critical:true });
     }
     runFrameTask("combatFx", frameInterval(lagCritical ? 42 : (lagHeavy ? 34 : 26), 1.5), tickCombatFx, { costHint:0.8 });
     runFrameTask("damagePopups", frameInterval(lagCritical ? 42 : (lagHeavy ? 34 : 26), 1.5), tickDamagePopups, { costHint:0.8 });
