@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4459";
+const TS_BUILD = "4460";
 if(tg){
   try{
     tg.expand?.();
@@ -415,14 +415,55 @@ function tigerPowerRank(t){
   if(isBossTiger(t)) return 6;
   return TIGER_POWER_ORDER[t.type] || 1;
 }
+function tigerLevelDamageMul(target="player"){
+  const lv = Math.max(1, currentCampaignLevel());
+  if(lv <= 1) return 1;
+  if(S.mode === "Story"){
+    if(target === "civilian") return clamp(1 + ((lv - 1) * 0.004), 1, 1.35);
+    if(target === "support") return clamp(1 + ((lv - 1) * 0.009), 1, 1.85);
+    return clamp(1 + ((lv - 1) * 0.010), 1, 1.95);
+  }
+  if(S.mode === "Arcade"){
+    if(target === "civilian") return clamp(1 + ((lv - 1) * 0.005), 1, 1.45);
+    if(target === "support") return clamp(1 + ((lv - 1) * 0.010), 1, 1.95);
+    return clamp(1 + ((lv - 1) * 0.011), 1, 2.05);
+  }
+  // Survival ramps fastest.
+  if(target === "civilian") return clamp(1 + ((lv - 1) * 0.006), 1, 1.55);
+  if(target === "support") return clamp(1 + ((lv - 1) * 0.012), 1, 2.10);
+  return clamp(1 + ((lv - 1) * 0.013), 1, 2.20);
+}
+function tigerLevelDefenseMul(t){
+  const lv = Math.max(1, currentCampaignLevel());
+  if(lv <= 1) return 1;
+  let base = 1;
+  if(S.mode === "Story") base = clamp(1 + ((lv - 1) * 0.014), 1, 2.10);
+  else if(S.mode === "Arcade") base = clamp(1 + ((lv - 1) * 0.016), 1, 2.25);
+  else base = clamp(1 + ((lv - 1) * 0.018), 1, 2.40);
+  if(isBossTiger(t)){
+    base *= clamp(1.12 + ((lv - 1) * 0.0025), 1.12, 1.38);
+  } else if(t?.type === "Alpha"){
+    base *= clamp(1.05 + ((lv - 1) * 0.0015), 1.05, 1.20);
+  }
+  return base;
+}
 function tigerDamageScale(t, target="player"){
   const table = TIGER_DAMAGE_SCALES[target] || TIGER_DAMAGE_SCALES.player;
   const idx = clamp(tigerPowerRank(t) - 1, 0, table.length - 1);
-  return table[idx];
+  let scale = table[idx] * tigerLevelDamageMul(target);
+  const lv = Math.max(1, currentCampaignLevel());
+  if(target === "civilian"){
+    if(isBossTiger(t)) scale *= clamp(1.16 + ((lv - 1) * 0.003), 1.16, 1.45);
+    else if(t?.type === "Alpha") scale *= clamp(1.08 + ((lv - 1) * 0.002), 1.08, 1.28);
+  } else {
+    if(isBossTiger(t)) scale *= clamp(1.08 + ((lv - 1) * 0.002), 1.08, 1.30);
+    else if(t?.type === "Alpha") scale *= clamp(1.04 + ((lv - 1) * 0.001), 1.04, 1.18);
+  }
+  return scale;
 }
 function tigerDefenseScale(t){
   const idx = clamp(tigerPowerRank(t) - 1, 0, TIGER_DEFENSE_SCALES.length - 1);
-  return TIGER_DEFENSE_SCALES[idx];
+  return TIGER_DEFENSE_SCALES[idx] * tigerLevelDefenseMul(t);
 }
 
 const TIGER_PERSONALITIES = {
@@ -3788,36 +3829,72 @@ function addXP(amount){
   save();
 }
 
+const CORE_PERK_KEYS = ["H_CRIT","H_DMG","H_JAM","G_CIV_GUARD","G_ARMOR","T_TRAPS","T_RELOAD"];
+const PERK_MAX_RANK = 6;
+const PERK_EFFECTS = Object.freeze({
+  H_CRIT: 0.0125,
+  H_DMG: 0.025,
+  H_JAM: 0.08,
+  G_CIV_GUARD: 0.08,
+  G_ARMOR: 0.03,
+  T_TRAPS: 0.06,
+  T_RELOAD: 0.06
+});
+
 function perkRank(k){
-  return S.perks?.[k] || 0;
+  return clamp(Math.floor(Number(S.perks?.[k] || 0)), 0, PERK_MAX_RANK);
+}
+
+function perkSpreadFloorRank(){
+  let floor = Infinity;
+  for(const key of CORE_PERK_KEYS){
+    floor = Math.min(floor, perkRank(key));
+  }
+  if(!Number.isFinite(floor)) return 0;
+  return Math.max(0, floor);
+}
+
+function perkUpgradeGate(key){
+  if(!CORE_PERK_KEYS.includes(key)){
+    return { ok:false, reason:"This perk cannot be upgraded." };
+  }
+  const rank = perkRank(key);
+  if(rank >= PERK_MAX_RANK){
+    return { ok:false, reason:`Max rank reached (${PERK_MAX_RANK}).` };
+  }
+  const floor = perkSpreadFloorRank();
+  if(rank > floor){
+    return { ok:false, reason:"Upgrade your lower-rank perks first." };
+  }
+  return { ok:true, reason:"" };
 }
 
 function perkCritBonus(){
-  return perkRank("H_CRIT") * 0.02;
+  return perkRank("H_CRIT") * PERK_EFFECTS.H_CRIT;
 }
 
 function perkDamageMul(){
-  return 1 + perkRank("H_DMG") * 0.05;
+  return 1 + (perkRank("H_DMG") * PERK_EFFECTS.H_DMG);
 }
 
 function perkJamMul(){
-  return 1 - perkRank("H_JAM") * 0.15;
+  return clamp(1 - (perkRank("H_JAM") * PERK_EFFECTS.H_JAM), 0.55, 1);
 }
 
 function perkArmorEff(){
-  return 1 + perkRank("G_ARMOR") * 0.05;
+  return 1 + (perkRank("G_ARMOR") * PERK_EFFECTS.G_ARMOR);
 }
 
 function perkCivMul(){
-  return 1 - perkRank("G_CIV_GUARD") * 0.15;
+  return clamp(1 - (perkRank("G_CIV_GUARD") * PERK_EFFECTS.G_CIV_GUARD), 0.55, 1);
 }
 
 function perkTrapScale(){
-  return 1 + perkRank("T_TRAPS") * 0.10;
+  return 1 + (perkRank("T_TRAPS") * PERK_EFFECTS.T_TRAPS);
 }
 
 function perkReloadBonus(){
-  return perkRank("T_RELOAD") * 0.10;
+  return perkRank("T_RELOAD") * PERK_EFFECTS.T_RELOAD;
 }
 
 function buyPerk(key){
@@ -3828,8 +3905,13 @@ function buyPerk(key){
     toast("No perk points.");
     return;
   }
+  const gate = perkUpgradeGate(key);
+  if(!gate.ok){
+    toast(gate.reason || "Perk is locked.");
+    return;
+  }
 
-  S.perks[key] = (S.perks[key] || 0) + 1;
+  S.perks[key] = perkRank(key) + 1;
   S.perkPoints = points - 1;
 
   save();
@@ -7936,24 +8018,28 @@ function renderInventory(){
 
   const civs = (S.mode==="Survival") ? [] : S.civilians.filter(c=>c.alive);
   const perkRows = [
-    { key:"H_CRIT", name:"Deadeye", detail:(r)=>`+${(r*5).toFixed(0)}% Crit Chance` },
-    { key:"H_DMG", name:"Damage Boost", detail:(r)=>`+${(r*8).toFixed(0)}% Weapon Damage` },
-    { key:"H_JAM", name:"Anti-Jam", detail:(r)=>`-${(r*10).toFixed(0)}% Jam Chance` },
-    { key:"G_CIV_GUARD", name:"Civilian Guard", detail:(r)=>`-${(r*15).toFixed(0)}% Civilian Damage Taken` },
-    { key:"G_ARMOR", name:"Armor Efficiency", detail:(r)=>`+${(r*5).toFixed(0)}% Armor Effectiveness` },
-    { key:"T_TRAPS", name:"Trap Expansion", detail:(r)=>`+${(r*10).toFixed(0)}% Trap Radius` },
-    { key:"T_RELOAD", name:"Reload Boost", detail:(r)=>`+${(r*10).toFixed(0)}% Reload Efficiency` },
+    { key:"H_CRIT", name:"Deadeye", detail:(r)=>`+${(r*1.25).toFixed(2)}% Crit Chance` },
+    { key:"H_DMG", name:"Damage Boost", detail:(r)=>`+${(r*2.5).toFixed(1)}% Weapon Damage` },
+    { key:"H_JAM", name:"Anti-Jam", detail:(r)=>`-${(r*8).toFixed(0)}% Jam Chance` },
+    { key:"G_CIV_GUARD", name:"Civilian Guard", detail:(r)=>`-${(r*8).toFixed(0)}% Civilian Damage Taken` },
+    { key:"G_ARMOR", name:"Armor Efficiency", detail:(r)=>`+${(r*3).toFixed(0)}% Armor Effectiveness` },
+    { key:"T_TRAPS", name:"Trap Expansion", detail:(r)=>`+${(r*6).toFixed(0)}% Trap Radius` },
+    { key:"T_RELOAD", name:"Reload Boost", detail:(r)=>`+${(r*6).toFixed(0)}% Reload Efficiency` },
   ];
   const perkHtml = perkRows.map((p)=>{
     const rank = perkRank(p.key);
+    const gate = perkUpgradeGate(p.key);
+    const canSpend = (S.perkPoints > 0) && gate.ok;
+    const lockNote = !gate.ok ? `<div class="itemDesc">${gate.reason}</div>` : "";
     return `
       <div class="item" style="padding:10px 12px;">
         <div>
-          <div class="itemName">${p.name} <span class="tag">Rank ${rank}</span></div>
+          <div class="itemName">${p.name} <span class="tag">Rank ${rank}/${PERK_MAX_RANK}</span></div>
           <div class="itemDesc">${p.detail(rank)}</div>
+          ${lockNote}
         </div>
         <div style="text-align:right">
-          <button ${S.perkPoints<=0?'disabled':''} onclick="buyPerk('${p.key}')">Upgrade</button>
+          <button ${canSpend?'':'disabled'} title="${gate.reason || ''}" onclick="buyPerk('${p.key}')">Upgrade</button>
         </div>
       </div>`;
   }).join("");
@@ -9656,7 +9742,7 @@ function spawnTigers(){
     let baseHp=115;
     if(S.mode==="Arcade") baseHp=125+(S.arcadeLevel-1)*8;
     if(S.mode==="Survival") baseHp=140+(S.survivalWave-1)*12;
-    if(S.mode==="Story") baseHp=118+(S.storyLevel-1)*4;
+    if(S.mode==="Story") baseHp=122+(S.storyLevel-1)*6;
 
     let hp=Math.round(baseHp*def.hpMul*diff);
     let bossPhases=0;
@@ -9750,7 +9836,7 @@ function spawnRogueTiger(options={}){
   let baseHp = 110;
   if(S.mode==="Arcade") baseHp = 122 + (S.arcadeLevel - 1) * 7;
   if(S.mode==="Survival") baseHp = 135 + (S.survivalWave - 1) * 10;
-  if(S.mode==="Story") baseHp = 116 + (S.storyLevel - 1) * 4;
+  if(S.mode==="Story") baseHp = 120 + (S.storyLevel - 1) * 6;
   const hp = Math.round(baseHp * def.hpMul * diff);
 
   let sx = 0;
@@ -11459,18 +11545,16 @@ function tickCiviliansAndThreats(){
   for(const c of S.civilians){
     if(c.alive && c.hp<=0){
       c.alive=false;
-      S.lives -= 1;
       breakCombo("civilian lost");
-
-      if(S.lives <= 0){
-        S.lives = 0;
-        return gameOverChoice("A civilian died and you ran out of lives.");
-      }
-
-      toast(`Civilian died. Lives left: ${S.lives}`);
+      c.following = false;
+      c.escortOwner = "";
+      c.escortUnitId = "";
+      S._underAttack = 0;
+      S.dangerCivId = null;
+      toast("Civilian lost. Mission failed.");
       hapticNotif("warning");
-      save();
-      return;
+      save(true);
+      return gameOverChoice("Mission failed: a civilian was killed. All civilians must survive.");
     }
   }
 }
@@ -13496,6 +13580,8 @@ function checkMissionComplete(){
   const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
   const activeMission = storyMission || arcadeMission;
   const tAlive = S.tigers.some(t=>t.alive);
+  const civTotal = S.civilians.length;
+  const civDead = S.civilians.filter(c=>!c.alive).length;
   const civAlive = S.civilians.filter(c=>c.alive).length;
   const civEvac = S.civilians.filter(c=>c.alive && c.evac).length;
   const evacReady = (civAlive===0 || civEvac===civAlive);
@@ -13503,6 +13589,13 @@ function checkMissionComplete(){
   const trapPlaceReady = !arcadeMission || (S.stats.trapsPlaced || 0) >= (arcadeMission.trapPlaceRequired || 0);
   const trapTriggerReady = !arcadeMission || (S.stats.trapsTriggered || 0) >= (arcadeMission.trapTriggerRequired || 0);
   const noKillReady = !arcadeMission || !arcadeMission.captureOnly || (S.stats.kills || 0) === 0;
+
+  if(S.mode!=="Survival" && civTotal > 0 && civDead > 0){
+    if(!S.missionEnded){
+      return gameOverChoice("Mission failed: a civilian was killed. All civilians must survive.");
+    }
+    return;
+  }
 
   if(arcadeMission?.captureOnly && (S.stats.kills||0) > 0 && !S._arcadeNoKillWarned){
     S._arcadeNoKillWarned = true;
