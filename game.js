@@ -259,6 +259,10 @@ const WEAPON_GRADE = {
   "Legendary": { wear:0.45, jamBase:0.008 },
   "Mythic":    { wear:0.35, jamBase:0.005 },
 };
+const WEAPON_MASTERY_THRESHOLDS = Object.freeze([0, 120, 320, 680, 1180, 1900]);
+const WEAPON_MASTERY_MAX_LEVEL = WEAPON_MASTERY_THRESHOLDS.length - 1;
+const WEAPON_MASTERY_JAM_REDUCTION_PER_LEVEL = 0.055;
+const WEAPON_MASTERY_RELOAD_SMOOTH_PER_LEVEL = 0.02;
 
 const TIGER_TYPES = [
   { key:"Standard",  hpMul:0.92, spd:3.00, civBias:0.42, stealth:0.00, rage:0.00 },
@@ -1295,6 +1299,7 @@ const DEFAULT = {
   ammoReserve:{ "TRANQ_DARTS":20, "9MM_STD":40 },
   mag:{ loaded:6, cap:6 },
   durability:{},
+  weaponMastery:{},
 
   medkits:{ "M_SMALL":1 },
   medkitSelectedId:"M_SMALL",
@@ -1630,6 +1635,7 @@ function load(){
     m.mag = { ...DEFAULT.mag, ...(saved.mag||{}) };
     m.ammoReserve = { ...DEFAULT.ammoReserve, ...(saved.ammoReserve||{}) };
     m.durability = { ...DEFAULT.durability, ...(saved.durability||{}) };
+    m.weaponMastery = normalizeWeaponMasteryMap(saved.weaponMastery ?? DEFAULT.weaponMastery);
     m.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
     m.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
     m.armorPlates = normalizeArmorPlateInventory(saved.armorPlates ?? m.armorPlates);
@@ -1757,7 +1763,7 @@ let __lastAutosave = 0;
 let __savePending = false;
 const __frameTaskGate = Object.create(null);
 const __frameTaskPhase = Object.create(null);
-const MAP_CACHE_INTERVAL_MS = 120;
+const MAP_CACHE_INTERVAL_MS = 200;
 let __mapFrameCacheCanvas = null;
 let __mapFrameCacheCtx = null;
 let __mapFrameCacheSig = "";
@@ -2014,6 +2020,19 @@ function runFrameTask(key, intervalMs, fn, options={}){
   const opts = options || {};
   const now = Date.now();
   if(now < (__frameTaskGate[key] || 0)) return false;
+  const lagTier = frameLagTier();
+  const mobile = isMobileViewport();
+  const critical = !!opts.critical;
+  let adjustedInterval = Math.max(8, Math.round(Number(intervalMs) || 16));
+  if(!critical){
+    let slowMul = 1;
+    if(lagTier >= 2) slowMul = mobile ? 1.85 : 1.55;
+    else if(lagTier >= 1) slowMul = mobile ? 1.45 : 1.25;
+    else if(frameIsSlow()) slowMul = mobile ? 1.24 : 1.14;
+    if(slowMul > 1){
+      adjustedInterval = Math.max(adjustedInterval, Math.round(adjustedInterval * slowMul));
+    }
+  }
   const cadenceBase = Math.max(1, Math.floor(Number(opts.cadence) || 1));
   const cadenceSlow = Math.max(cadenceBase, Math.floor(Number(opts.slowCadence) || cadenceBase));
   const cadenceHeavy = Math.max(cadenceSlow, Math.floor(Number(opts.heavyCadence) || cadenceSlow));
@@ -2039,9 +2058,8 @@ function runFrameTask(key, intervalMs, fn, options={}){
     }
   }
   const costHint = Math.max(0, Number(opts.costHint) || 0);
-  const critical = !!opts.critical;
   if(!critical && frameBudgetExceeded(costHint)){
-    __frameTaskGate[key] = now + Math.min(intervalMs, 40);
+    __frameTaskGate[key] = now + Math.max(48, Math.min(adjustedInterval, mobile ? 120 : 90));
     __frameBudgetState.dropped = (__frameBudgetState.dropped || 0) + 1;
     if(__frameBudgetState.dropped >= 6){
       const perfNow = performance.now ? performance.now() : now;
@@ -2049,7 +2067,7 @@ function runFrameTask(key, intervalMs, fn, options={}){
     }
     return false;
   }
-  __frameTaskGate[key] = now + intervalMs;
+  __frameTaskGate[key] = now + adjustedInterval;
   safeTick(key, fn);
   return true;
 }
@@ -2322,9 +2340,9 @@ function stabilityHealthTick(){
   const slow = frameIsSlow();
   const mobile = isMobileViewport();
   const lagTier = frameLagTier();
-  const fxCap = slow ? (mobile ? 18 : 28) : (lagTier >= 1 ? (mobile ? 20 : 26) : (mobile ? 30 : 44));
-  const popupCap = slow ? (mobile ? 12 : 20) : (lagTier >= 1 ? (mobile ? 14 : 18) : (mobile ? 20 : 32));
-  const pulseCap = slow ? (mobile ? 10 : 18) : (lagTier >= 1 ? (mobile ? 12 : 16) : (mobile ? 18 : 28));
+  const fxCap = slow ? (mobile ? 14 : 22) : (lagTier >= 1 ? (mobile ? 16 : 22) : (mobile ? 24 : 34));
+  const popupCap = slow ? (mobile ? 10 : 16) : (lagTier >= 1 ? (mobile ? 12 : 16) : (mobile ? 18 : 24));
+  const pulseCap = slow ? (mobile ? 8 : 14) : (lagTier >= 1 ? (mobile ? 10 : 14) : (mobile ? 14 : 22));
   if(COMBAT_FX.length > fxCap) COMBAT_FX.splice(0, COMBAT_FX.length - fxCap);
   if(DAMAGE_POPUPS.length > popupCap) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - popupCap);
   if(IMPACT_PULSES.length > pulseCap) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - pulseCap);
@@ -3928,6 +3946,79 @@ function getAmmo(id){ return AMMO.find(a=>a.id===id); }
 function getMed(id){ return MEDS.find(m=>m.id===id); }
 function getArmor(id){ return ARMORY.find(a=>a.id===id); }
 function getTool(id){ return TOOLS.find(t=>t.id===id); }
+function weaponMasteryLevelFromXp(xp){
+  const val = Math.max(0, Math.floor(Number(xp || 0)));
+  let level = 0;
+  for(let i=1; i<WEAPON_MASTERY_THRESHOLDS.length; i++){
+    if(val >= WEAPON_MASTERY_THRESHOLDS[i]) level = i;
+    else break;
+  }
+  return clamp(level, 0, WEAPON_MASTERY_MAX_LEVEL);
+}
+function normalizeWeaponMasteryMap(raw){
+  const out = {};
+  for(const w of WEAPONS){
+    out[w.id] = 0;
+  }
+  if(!raw || typeof raw !== "object") return out;
+  for(const [wid, xpRaw] of Object.entries(raw)){
+    if(!getWeapon(wid)) continue;
+    const xp = Math.max(0, Math.floor(Number(xpRaw || 0)));
+    if(Number.isFinite(xp)) out[wid] = xp;
+  }
+  return out;
+}
+function ensureWeaponMasteryState(state=S){
+  if(!state || typeof state !== "object") return;
+  state.weaponMastery = normalizeWeaponMasteryMap(state.weaponMastery);
+}
+function weaponMasteryXp(id){
+  ensureWeaponMasteryState();
+  if(!getWeapon(id)) return 0;
+  return Math.max(0, Math.floor(Number(S.weaponMastery?.[id] || 0)));
+}
+function weaponMasteryLevel(id){
+  return weaponMasteryLevelFromXp(weaponMasteryXp(id));
+}
+function weaponMasteryNextXp(level){
+  const lvl = clamp(Math.floor(Number(level || 0)), 0, WEAPON_MASTERY_MAX_LEVEL);
+  if(lvl >= WEAPON_MASTERY_MAX_LEVEL) return null;
+  return WEAPON_MASTERY_THRESHOLDS[lvl + 1];
+}
+function weaponMasteryProgress(id){
+  const xp = weaponMasteryXp(id);
+  const level = weaponMasteryLevelFromXp(xp);
+  const prevXp = WEAPON_MASTERY_THRESHOLDS[level] || 0;
+  const nextXp = weaponMasteryNextXp(level);
+  const span = nextXp ? Math.max(1, nextXp - prevXp) : 1;
+  const pct = nextXp ? clamp((xp - prevXp) / span, 0, 1) : 1;
+  return { xp, level, prevXp, nextXp, pct };
+}
+function weaponMasteryJamMul(id){
+  const level = weaponMasteryLevel(id);
+  const cut = level * WEAPON_MASTERY_JAM_REDUCTION_PER_LEVEL;
+  return clamp(1 - cut, 0.62, 1);
+}
+function weaponMasteryReloadBonus(id){
+  return weaponMasteryLevel(id) * WEAPON_MASTERY_RELOAD_SMOOTH_PER_LEVEL;
+}
+function addWeaponMasteryXp(id, amount, opts={}){
+  const gain = Math.max(0, Math.floor(Number(amount || 0)));
+  if(!gain) return;
+  if(!getWeapon(id)) return;
+  ensureWeaponMasteryState();
+  const beforeXp = weaponMasteryXp(id);
+  const beforeLevel = weaponMasteryLevelFromXp(beforeXp);
+  const capXp = WEAPON_MASTERY_THRESHOLDS[WEAPON_MASTERY_THRESHOLDS.length - 1] + 9999;
+  const afterXp = clamp(beforeXp + gain, 0, capXp);
+  S.weaponMastery[id] = afterXp;
+  const afterLevel = weaponMasteryLevelFromXp(afterXp);
+  if(afterLevel > beforeLevel){
+    const w = getWeapon(id);
+    toast(`🎯 ${w?.name || "Weapon"} mastery Lv ${afterLevel}: smoother handling.`);
+    if(opts?.notify !== false) hapticImpact("light");
+  }
+}
 function armorTierIndex(id){
   if(id === "A_TIER1") return 1;
   if(id === "A_TIER2") return 2;
@@ -5719,6 +5810,7 @@ function writeStoryProfileData(source="autosave", state=S){
     equippedWeaponId: String(src.equippedWeaponId || ""),
     ammoReserve: { ...(src.ammoReserve || {}) },
     durability: { ...(src.durability || {}) },
+    weaponMastery: normalizeWeaponMasteryMap(src.weaponMastery),
     medkits: { ...(src.medkits || {}) },
     repairKits: { ...(src.repairKits || {}) },
     trapsOwned: Math.max(0, Math.floor(Number(src.trapsOwned || 0))),
@@ -5785,6 +5877,15 @@ function applyStoryProfileToState(state, profile){
   }
   if(profile.durability && typeof profile.durability === "object"){
     state.durability = { ...(state.durability || {}), ...profile.durability };
+  }
+  if(profile.weaponMastery && typeof profile.weaponMastery === "object"){
+    ensureWeaponMasteryState(state);
+    const incoming = normalizeWeaponMasteryMap(profile.weaponMastery);
+    for(const [wid, xpRaw] of Object.entries(incoming)){
+      const currentXp = Math.max(0, Math.floor(Number(state.weaponMastery?.[wid] || 0)));
+      const nextXp = Math.max(0, Math.floor(Number(xpRaw || 0)));
+      state.weaponMastery[wid] = Math.max(currentXp, nextXp);
+    }
   }
   if(profile.medkits && typeof profile.medkits === "object"){
     state.medkits = mergeCountMapsFromProfile(state.medkits, profile.medkits);
@@ -5926,6 +6027,7 @@ function writeStoryProgressData(payload={}){
     equippedWeaponId: String(payload.equippedWeaponId ?? S.equippedWeaponId ?? ""),
     ammoReserve: { ...(payload.ammoReserve ?? S.ammoReserve ?? {}) },
     durability: { ...(payload.durability ?? S.durability ?? {}) },
+    weaponMastery: normalizeWeaponMasteryMap(payload.weaponMastery ?? S.weaponMastery),
     medkits: { ...(payload.medkits ?? S.medkits ?? {}) },
     repairKits: { ...(payload.repairKits ?? S.repairKits ?? {}) },
     armorPlates: normalizeArmorPlateInventory(payload.armorPlates ?? S.armorPlates),
@@ -7559,6 +7661,7 @@ function ownedMedCount(medId){ return S.medkits[medId]||0; }
 function ownedToolCount(toolId){ return S.repairKits[toolId]||0; }
 
 function renderShopList(){
+  ensureWeaponMasteryState();
   document.getElementById("shopMoney").innerText = S.funds.toLocaleString();
   const list=document.getElementById("shopList");
   const note=document.getElementById("shopNote");
@@ -7567,11 +7670,13 @@ function renderShopList(){
     note.innerText="Weapons show Owned/Not owned. Money updates live.";
     list.innerHTML = WEAPONS.map(w=>{
       const owned = S.ownedWeapons.includes(w.id);
+      const mastery = weaponMasteryProgress(w.id);
+      const masteryText = owned ? ` • Mastery Lv ${mastery.level}/${WEAPON_MASTERY_MAX_LEVEL}` : "";
       return `
         <div class="item">
           <div>
             <div class="itemName">${w.name} <span class="tag">${w.grade}</span> <span class="tag">${owned?'Owned':'Not owned'}</span></div>
-            <div class="itemDesc">Ammo: ${w.ammo} • Mag: ${w.mag} • Damage: ${w.dmg[0]}–${w.dmg[1]}</div>
+            <div class="itemDesc">Ammo: ${w.ammo} • Mag: ${w.mag} • Damage: ${w.dmg[0]}–${w.dmg[1]}${masteryText}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${w.price.toLocaleString()}</div>
@@ -7969,6 +8074,10 @@ function buyWeapon(id){
   S.funds -= w.price;
   S.ownedWeapons.push(id);
   if(S.durability[w.id]==null) S.durability[w.id]=100;
+  ensureWeaponMasteryState();
+  if(!Number.isFinite(Number(S.weaponMastery[w.id]))){
+    S.weaponMastery[w.id] = 0;
+  }
   if(!S.ammoReserve[w.ammo]) S.ammoReserve[w.ammo]=0;
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
@@ -8245,6 +8354,7 @@ function pickMostInjuredCivilian(){
 
 function renderInventory(){
   ensureStoryMetaState();
+  ensureWeaponMasteryState();
   syncSquadRosterBounds();
   const w=equippedWeapon();
   const ammoId=w.ammo;
@@ -8263,11 +8373,18 @@ function renderInventory(){
     const ww=getWeapon(id);
     const active=(id===S.equippedWeaponId);
     const dur=Math.round(weaponDurability(id));
+    const mastery = weaponMasteryProgress(id);
+    const jamCut = Math.round((1 - weaponMasteryJamMul(id)) * 100);
+    const reloadSmooth = Math.round(weaponMasteryReloadBonus(id) * 100);
+    const xpTxt = mastery.nextXp == null
+      ? `${mastery.xp} XP (MAX)`
+      : `${mastery.xp}/${mastery.nextXp} XP`;
     return `
       <div class="item">
         <div>
           <div class="itemName">${active?'✅ ':''}${ww.name} <span class="tag">${ww.grade}</span></div>
           <div class="itemDesc">Ammo: ${ww.ammo} • Mag: ${ww.mag} • Durability: ${dur}%</div>
+          <div class="itemDesc">Mastery Lv ${mastery.level}/${WEAPON_MASTERY_MAX_LEVEL} • ${xpTxt} • Anti-jam ${jamCut}% • Reload smooth +${reloadSmooth}%</div>
         </div>
         <div style="text-align:right">
           <button ${active?'disabled':''} onclick="equipWeapon('${id}')">Equip</button>
@@ -8722,7 +8839,7 @@ function jamChance(w){
   const g=WEAPON_GRADE[w.grade]||WEAPON_GRADE.Common;
   const dur=weaponDurability(w.id);
   const wearFactor = dur>=60?0.0:(60-dur)/60;
-  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul(), 0, 0.28);
+  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul() * weaponMasteryJamMul(w.id), 0, 0.28);
 }
 function autoReloadIfNeeded(force=false){
   const w=equippedWeapon();
@@ -8731,7 +8848,8 @@ function autoReloadIfNeeded(force=false){
   if(reserve<=0) return false;
   const need = S.mag.cap - S.mag.loaded;
   const take = Math.min(need, reserve);
-  const bonus = Math.min(need - take, Math.floor(take * perkReloadBonus()));
+  const handlingBonus = clamp(perkReloadBonus() + weaponMasteryReloadBonus(w.id), 0, 0.72);
+  const bonus = Math.min(need - take, Math.floor(take * handlingBonus));
   S.mag.loaded += take + bonus;
   S.ammoReserve[w.ammo] = reserve - take;
   sfx("reload"); hapticImpact("light");
@@ -13461,6 +13579,13 @@ function finishTigerKill(t){
   endBattle();
   checkMissionComplete();
 }
+function finishTigerKillWithWeapon(t, weaponId=""){
+  const wid = String(weaponId || S.equippedWeaponId || "");
+  finishTigerKill(t);
+  if(getWeapon(wid)){
+    addWeaponMasteryXp(wid, 4);
+  }
+}
 
 function findFriendlyFireVictim(targetTiger){
   if(S.mode==="Survival") return null;
@@ -13525,6 +13650,7 @@ function playerAction(action){
     }
     markStoryFinalBossOutcome("CAPTURE", t);
     t.alive=false;
+    addWeaponMasteryXp(req, 4);
     const pay=payout("CAPTURE");
     S.funds+=pay.cash; S.score+=pay.score;
     S.stats.captures += 1;
@@ -13545,7 +13671,7 @@ function playerAction(action){
 
   if(action==="KILL"){
     if(t.hp>captureWindowHp(t)) return toast("Tiger HP is still too high to finish.");
-    finishTigerKill(t);
+    finishTigerKillWithWeapon(t, S.equippedWeaponId);
     return;
   }
 
@@ -13587,6 +13713,7 @@ function playerAction(action){
     }
 
     if(Math.random()<jamChance(w)){
+      addWeaponMasteryXp(w.id, 1);
       applyWearOnShot(w);
       sfx("jam");
       setBattleMsg(`JAM! ${w.name} malfunctioned.`);
@@ -13597,6 +13724,7 @@ function playerAction(action){
 
     S.mag.loaded -= 1;
     S.stats.shots += 1;
+    addWeaponMasteryXp(w.id, 2);
     addXP(2);
     
     const eff=ammoEffectFor(w.ammo);
@@ -13652,13 +13780,14 @@ function playerAction(action){
         crit ? 4 : 3,
         (crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"))
       );
+      addWeaponMasteryXp(w.id, 2);
       emitDamagePopup(t.x, t.y - 44, `-${dmg}`, crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"));
       hapticImpact(crit ? "heavy" : "light");
       setBattleMsg(`${crit?'CRIT! ':''}Hit for ${dmg}. ${w.type==='tranq'?'(tranq applied)':''}`);
     }
 
     if(t.hp<=0){
-      finishTigerKill(t);
+      finishTigerKillWithWeapon(t, w.id);
       return;
     }
     try{
@@ -14322,14 +14451,14 @@ function maybeRenderHUD(force=false){
   const loadScore = frameActiveEntityLoadScore();
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
-  let minInterval = 280;
-  if(mobile) minInterval = Math.max(minInterval, 340);
-  if(frameIsSlow(now)) minInterval = 420;
-  if(performanceMode() === "PERFORMANCE") minInterval = Math.max(minInterval, 380);
-  if(lagTier >= 1) minInterval = Math.max(minInterval, mobile ? 560 : 460);
-  if(lagTier >= 2) minInterval = Math.max(minInterval, mobile ? 720 : 560);
-  if(loadScore >= 60) minInterval = Math.max(minInterval, mobile ? 520 : 420);
-  else if(loadScore >= 44) minInterval = Math.max(minInterval, mobile ? 460 : 360);
+  let minInterval = 340;
+  if(mobile) minInterval = Math.max(minInterval, 460);
+  if(frameIsSlow(now)) minInterval = Math.max(minInterval, mobile ? 620 : 520);
+  if(performanceMode() === "PERFORMANCE") minInterval = Math.max(minInterval, mobile ? 640 : 540);
+  if(lagTier >= 1) minInterval = Math.max(minInterval, mobile ? 760 : 620);
+  if(lagTier >= 2) minInterval = Math.max(minInterval, mobile ? 980 : 780);
+  if(loadScore >= 60) minInterval = Math.max(minInterval, mobile ? 780 : 640);
+  else if(loadScore >= 44) minInterval = Math.max(minInterval, mobile ? 680 : 560);
   if(force || (now - __lastHudRender) >= minInterval){
     __lastHudRender = now;
     renderHUD();
@@ -14354,13 +14483,15 @@ function drawMapScene(){
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
   let cacheAgeCap = frameIsSlow()
-    ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 360 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 260 : 180))
-    : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 160 : MAP_CACHE_INTERVAL_MS);
+    ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 640 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 520 : 360))
+    : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 320 : MAP_CACHE_INTERVAL_MS);
   if(mobile){
     if(lagTier >= 2){
-      cacheAgeCap = Math.max(cacheAgeCap, 520);
+      cacheAgeCap = Math.max(cacheAgeCap, 980);
     } else if(lagTier >= 1 || frameIsSlow()){
-      cacheAgeCap = Math.max(cacheAgeCap, 420);
+      cacheAgeCap = Math.max(cacheAgeCap, 820);
+    } else {
+      cacheAgeCap = Math.max(cacheAgeCap, 560);
     }
   }
   const canUseCache =
@@ -14379,8 +14510,8 @@ function drawMapScene(){
     const staleAge = frameNow - __mapFrameCacheAt;
     const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
     const emergencyMaxAge = mobile
-      ? (lagTier >= 2 ? 2400 : 1800)
-      : (lagTier >= 2 ? 1400 : 980);
+      ? (lagTier >= 2 ? 3600 : (lagTier >= 1 ? 3000 : 2600))
+      : (lagTier >= 2 ? 1800 : 1300);
     if(emergencyReuse && staleAge < emergencyMaxAge){
       ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
       return;
@@ -16310,14 +16441,14 @@ function drawEntities(){
           || (isSlowFrame && (__frameHeavyFxFlip % 3 === 0)))));
   let shouldDrawFx = drawFx;
   if(lagTier >= 2){
-    shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 7 : 6) === 0);
+    shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 9 : 8) === 0);
   }else if(lagTier >= 1){
-    shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 5 : 4) === 0);
+    shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 6 : 5) === 0);
   }
   const shouldDrawPopups = lagTier >= 2
-    ? (__frameHeavyFxFlip % (mobile ? 7 : 6) === 0)
+    ? (__frameHeavyFxFlip % (mobile ? 9 : 8) === 0)
     : (lagTier >= 1
-      ? (__frameHeavyFxFlip % (heavyLoad ? 5 : 4) === 0)
+      ? (__frameHeavyFxFlip % (heavyLoad ? 6 : 5) === 0)
       : (__frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0));
   if(shouldDrawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight && lagTier === 0)) drawImpactPulses();
   if(!liteRender && shouldDrawFx && !frameBudgetTight) drawCombatFx();
@@ -16369,13 +16500,17 @@ function draw(){
     runFrameTask("arcadeModeTick", frameInterval(220, 1.45), arcadeModeTick, { costHint:0.6, critical:S.mode==="Arcade" });
 
     if(!(S.gameOver || S.paused || S.missionEnded)){
-      runFrameTask("sanitizeState", frameInterval(lagHeavy ? 170 : 150, 2.0), sanitizeRuntimeState, { costHint:1.3, critical:true });
+      runFrameTask("sanitizeState", frameInterval(lagCritical ? 360 : (lagHeavy ? 300 : 240), 2.2), sanitizeRuntimeState, {
+        costHint:1.3, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
       runFrameTask("clampWorld", frameInterval(lagCritical ? 220 : 180, 1.3), clampWorldToCanvas, { costHint:0.9 });
-      runFrameTask("unstickEntities", frameInterval(lagCritical ? 188 : (lagHeavy ? 148 : 118), 1.8), unstickEntitiesTick, { costHint:1.5, critical:true, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3 });
+      runFrameTask("unstickEntities", frameInterval(lagCritical ? 280 : (lagHeavy ? 220 : 170), 1.9), unstickEntitiesTick, {
+        costHint:1.5, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
       safeTick("regen", regen);
-      runFrameTask("backupTick", frameInterval(lagCritical ? 84 : (lagHeavy ? 66 : 42), 1.5), backupTick, { costHint:1.1 });
-      runFrameTask("trapTick", frameInterval(lagCritical ? 70 : (lagHeavy ? 52 : 34), 1.6), trapTick, { costHint:1.2 });
-      runFrameTask("mapInteractableTick", frameInterval(lagCritical ? 116 : (lagHeavy ? 94 : 64), 1.5), mapInteractableTick, { costHint:1.1 });
+      runFrameTask("backupTick", frameInterval(lagCritical ? 120 : (lagHeavy ? 90 : 60), 1.5), backupTick, { costHint:1.1 });
+      runFrameTask("trapTick", frameInterval(lagCritical ? 104 : (lagHeavy ? 80 : 54), 1.6), trapTick, { costHint:1.2 });
+      runFrameTask("mapInteractableTick", frameInterval(lagCritical ? 148 : (lagHeavy ? 118 : 84), 1.5), mapInteractableTick, { costHint:1.1 });
       runFrameTask("comboTick", frameInterval(lagCritical ? 154 : (lagHeavy ? 130 : 110), 1.4), comboTick, { costHint:0.7 });
 
       if(!window.TigerTutorial?.isRunning){
@@ -16384,33 +16519,33 @@ function draw(){
         runFrameTask("tickPickups", frameInterval(lagCritical ? 92 : (lagHeavy ? 74 : 52), 1.5), tickPickups, { costHint:1.0 });
       }
 
-      runFrameTask("roamTigers", frameInterval(lagCritical ? 66 : (lagHeavy ? 54 : 36), 1.55), roamTigers, {
-        costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:4, extremeCadence:5
+      runFrameTask("roamTigers", frameInterval(lagCritical ? 74 : (lagHeavy ? 60 : 42), 1.55), roamTigers, {
+        costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
       });
       runFrameTask("bossIdentity", frameInterval(92, 1.45), bossIdentityTick, { costHint:0.9, critical:true });
       runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
-      runFrameTask("supportUnits", frameInterval(lagCritical ? 92 : (lagHeavy ? 74 : 54), 1.8), supportUnitsTick, {
-        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:4, extremeCadence:5
+      runFrameTask("supportUnits", frameInterval(lagCritical ? 112 : (lagHeavy ? 90 : 64), 1.8), supportUnitsTick, {
+        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
       });
       let usedKeyboard = false;
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
       if(!usedKeyboard) safeTick("movePlayer", movePlayer);
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
-      runFrameTask("followCivilians", frameInterval(lagCritical ? 76 : (lagHeavy ? 62 : 44), 1.5), followCiviliansTick, {
-        costHint:1.7, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:4, extremeCadence:5
+      runFrameTask("followCivilians", frameInterval(lagCritical ? 98 : (lagHeavy ? 78 : 56), 1.5), followCiviliansTick, {
+        costHint:1.7, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
-      runFrameTask("civThreats", frameInterval(lagCritical ? 124 : (lagHeavy ? 102 : 76), 1.5), tickCiviliansAndThreats, {
-        costHint:1.6, critical:S.mode!=="Survival", cadence:1, slowCadence:2, heavyCadence:4, extremeCadence:5
+      runFrameTask("civThreats", frameInterval(lagCritical ? 156 : (lagHeavy ? 126 : 92), 1.5), tickCiviliansAndThreats, {
+        costHint:1.6, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
       });
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
-      runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 38 : (lagHeavy ? 32 : 24)) : (lagCritical ? 50 : (lagHeavy ? 42 : 34)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
+      runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 44 : (lagHeavy ? 36 : 28)) : (lagCritical ? 56 : (lagHeavy ? 46 : 36)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
       runFrameTask("storyCheckpoint", frameInterval(lagCritical ? 220 : (lagHeavy ? 170 : 124), 1.45), maybeCaptureStoryCheckpoint, { costHint:0.8, critical:S.mode==="Story" });
       runFrameTask("checkMissionComplete", frameInterval(lagCritical ? 140 : (lagHeavy ? 112 : 90), 1.4), checkMissionComplete, { costHint:0.8, critical:true });
     }
-    runFrameTask("combatFx", frameInterval(lagCritical ? 42 : (lagHeavy ? 34 : 26), 1.5), tickCombatFx, { costHint:0.8 });
-    runFrameTask("damagePopups", frameInterval(lagCritical ? 42 : (lagHeavy ? 34 : 26), 1.5), tickDamagePopups, { costHint:0.8 });
-    runFrameTask("impactPulses", frameInterval(lagCritical ? 40 : (lagHeavy ? 32 : 24), 1.5), tickImpactPulses, { costHint:0.7 });
+    runFrameTask("combatFx", frameInterval(lagCritical ? 58 : (lagHeavy ? 46 : 34), 1.6), tickCombatFx, { costHint:0.7 });
+    runFrameTask("damagePopups", frameInterval(lagCritical ? 56 : (lagHeavy ? 44 : 32), 1.5), tickDamagePopups, { costHint:0.6, critical:true });
+    runFrameTask("impactPulses", frameInterval(lagCritical ? 52 : (lagHeavy ? 40 : 30), 1.5), tickImpactPulses, { costHint:0.6, critical:true });
 
     safeTick("drawSceneFrame", ()=>{
       const liteRender = useLiteEntityRender();
@@ -16511,6 +16646,7 @@ function init(){
   if(!S.mag || typeof S.mag !== "object") S.mag = { ...DEFAULT.mag };
   if(!S.medkits || typeof S.medkits !== "object") S.medkits = { ...DEFAULT.medkits };
   if(!S.repairKits || typeof S.repairKits !== "object") S.repairKits = { ...DEFAULT.repairKits };
+  ensureWeaponMasteryState();
   ensureArmorPlateInventoryState();
   ensureArmorPlateFallbackState();
   ensureSupplySelectionState();
