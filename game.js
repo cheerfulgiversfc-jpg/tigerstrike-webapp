@@ -2928,7 +2928,7 @@ function clampWorldToCanvas(){
   if(S.me){
     S.me.x = clamp(S.me.x, 40, cv.width - 40);
     S.me.y = clamp(S.me.y, 60, cv.height - 40);
-    if(inMobileNoBuildZone(S.me.x, S.me.y, 16)){
+    if(inMobileNoBuildZone(S.me.x, S.me.y, 16) || blockedAt(S.me.x, S.me.y, 16)){
       const mePt = safeSpawnPoint(S.me.x, S.me.y, 16, true, false);
       S.me.x = mePt.x;
       S.me.y = mePt.y;
@@ -2947,7 +2947,7 @@ function clampWorldToCanvas(){
   for(const civ of (S.civilians || [])){
     civ.x = clamp(civ.x, 50, cv.width - 50);
     civ.y = clamp(civ.y, 70, cv.height - 50);
-    if(inMobileNoBuildZone(civ.x, civ.y, 14)){
+    if(inMobileNoBuildZone(civ.x, civ.y, 14) || blockedAt(civ.x, civ.y, 14)){
       const civPt = safeSpawnPoint(civ.x, civ.y, 14, true, false);
       civ.x = civPt.x;
       civ.y = civPt.y;
@@ -2956,7 +2956,7 @@ function clampWorldToCanvas(){
   for(const tiger of (S.tigers || [])){
     tiger.x = clamp(tiger.x, 40, cv.width - 40);
     tiger.y = clamp(tiger.y, 60, cv.height - 40);
-    if(inMobileNoBuildZone(tiger.x, tiger.y, 16)){
+    if(inMobileNoBuildZone(tiger.x, tiger.y, 16) || blockedAt(tiger.x, tiger.y, 18)){
       const tigerPt = safeSpawnPoint(tiger.x, tiger.y, 16, true, false);
       tiger.x = tigerPt.x;
       tiger.y = tigerPt.y;
@@ -2979,7 +2979,7 @@ function clampWorldToCanvas(){
     ally.y = clamp(ally.y, 60, cv.height - 40);
     ally.homeX = clamp(ally.homeX ?? ally.x, 40, cv.width - 40);
     ally.homeY = clamp(ally.homeY ?? ally.y, 60, cv.height - 40);
-    if(inMobileNoBuildZone(ally.x, ally.y, 16)){
+    if(inMobileNoBuildZone(ally.x, ally.y, 16) || blockedAt(ally.x, ally.y, 16)){
       const allyPt = safeSpawnPoint(ally.x, ally.y, 16, true, false);
       ally.x = allyPt.x;
       ally.y = allyPt.y;
@@ -2990,7 +2990,10 @@ function clampWorldToCanvas(){
   for(const site of (S.rescueSites || [])){
     site.x = clamp(site.x, 70, cv.width - 70);
     site.y = clamp(site.y, 90, cv.height - 80);
-    if(inMapScenarioKeepout(site.x, site.y, Math.round((site.r || 44) * 0.42))){
+    if(
+      inMapScenarioKeepout(site.x, site.y, Math.round((site.r || 44) * 0.42)) ||
+      blockedAt(site.x, site.y, Math.round((site.r || 44) * 0.36))
+    ){
       const pt = safeSpawnPoint(site.x, site.y, Math.round((site.r || 44) * 0.42), true, true);
       site.x = pt.x;
       site.y = pt.y;
@@ -2999,7 +3002,10 @@ function clampWorldToCanvas(){
   for(const it of (S.mapInteractables || [])){
     it.x = clamp(it.x, 70, cv.width - 70);
     it.y = clamp(it.y, 90, cv.height - 80);
-    if(inMapScenarioKeepout(it.x, it.y, Math.round((it.r || 22) * 0.9))){
+    if(
+      inMapScenarioKeepout(it.x, it.y, Math.round((it.r || 22) * 0.9)) ||
+      blockedAt(it.x, it.y, Math.round((it.r || 22) * 0.5))
+    ){
       const pt = safeSpawnPoint(it.x, it.y, Math.round((it.r || 22) * 0.9), true, true);
       it.x = pt.x;
       it.y = pt.y;
@@ -3034,7 +3040,7 @@ function sanitizeRuntimeState(){
   if(!S.me || typeof S.me !== "object") S.me = { ...DEFAULT.me };
   S.me.x = clampX(S.me.x, 40, w - 40);
   S.me.y = clampY(S.me.y, 60, h - 40);
-  if(inMobileNoBuildZone(S.me.x, S.me.y, 16)){
+  if(inMobileNoBuildZone(S.me.x, S.me.y, 16) || blockedAt(S.me.x, S.me.y, 16)){
     const mePt = safeSpawnPoint(S.me.x, S.me.y, 16, true, false);
     S.me.x = mePt.x;
     S.me.y = mePt.y;
@@ -3072,7 +3078,7 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * Math.PI * 2;
     ensureTigerHuntState(t);
-    if(inMobileNoBuildZone(t.x, t.y, 16)){
+    if(inMobileNoBuildZone(t.x, t.y, 16) || blockedAt(t.x, t.y, 18)){
       const pt = safeSpawnPoint(t.x, t.y, 16, true, false);
       t.x = pt.x;
       t.y = pt.y;
@@ -3092,7 +3098,7 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(c.followGraceUntil)) c.followGraceUntil = 0;
     if(!Number.isFinite(c.face)) c.face = 0;
     if(!Number.isFinite(c.step)) c.step = 0;
-    if(inMobileNoBuildZone(c.x, c.y, 14)){
+    if(inMobileNoBuildZone(c.x, c.y, 14) || blockedAt(c.x, c.y, 14)){
       const pt = safeSpawnPoint(c.x, c.y, 14, true, false);
       c.x = pt.x;
       c.y = pt.y;
@@ -3114,7 +3120,7 @@ function sanitizeRuntimeState(){
     u.alive = u.alive !== false && u.hp > 0;
     if(!Number.isFinite(u.face)) u.face = 0;
     if(!Number.isFinite(u.step)) u.step = 0;
-    if(inMobileNoBuildZone(u.x, u.y, 16)){
+    if(inMobileNoBuildZone(u.x, u.y, 16) || blockedAt(u.x, u.y, 16)){
       const pt = safeSpawnPoint(u.x, u.y, 16, true, false);
       u.x = pt.x;
       u.y = pt.y;
@@ -3129,7 +3135,7 @@ function sanitizeRuntimeState(){
     p.x = clampX(p.x, 40, w - 40);
     p.y = clampY(p.y, 60, h - 40);
     p.ttl = Math.max(1, Math.round(Number.isFinite(p.ttl) ? p.ttl : 1));
-    if(inMapScenarioKeepout(p.x, p.y, 12)){
+    if(inMapScenarioKeepout(p.x, p.y, 12) || blockedAt(p.x, p.y, 12)){
       const pt = safeSpawnPoint(p.x, p.y, 12, true, false);
       p.x = pt.x;
       p.y = pt.y;
@@ -3152,7 +3158,7 @@ function sanitizeRuntimeState(){
     it.y = clampY(it.y, 90, h - 80);
     it.r = clamp(it.r, 12, 54);
     if(!Number.isFinite(it.uses)) it.uses = 0;
-    if(inMapScenarioKeepout(it.x, it.y, it.r)){
+    if(inMapScenarioKeepout(it.x, it.y, it.r) || blockedAt(it.x, it.y, Math.round(it.r * 0.5))){
       const pt = safeSpawnPoint(it.x, it.y, it.r, true, true);
       it.x = pt.x;
       it.y = pt.y;
@@ -3163,7 +3169,7 @@ function sanitizeRuntimeState(){
     site.x = clampX(site.x, 70, w - 70);
     site.y = clampY(site.y, 90, h - 80);
     site.r = clamp(site.r, 24, 96);
-    if(inMapScenarioKeepout(site.x, site.y, Math.round(site.r * 0.42))){
+    if(inMapScenarioKeepout(site.x, site.y, Math.round(site.r * 0.42)) || blockedAt(site.x, site.y, Math.round(site.r * 0.36))){
       const pt = safeSpawnPoint(site.x, site.y, Math.round(site.r * 0.42), true, true);
       site.x = pt.x;
       site.y = pt.y;
@@ -4235,6 +4241,10 @@ function addMapObstacleForLandmark(rects, circles, item){
   const profile = MAP_COLLIDER_PROFILES[item?.kind];
   if(!profile) return;
   const scale = Math.max(0.72, item?.s || 1);
+  const keepoutRadius = profile.type === "circle"
+    ? Math.max(26, (profile.r || 0) * scale * 1.1)
+    : Math.max(26, Math.max(profile.w || 0, profile.h || 0) * scale * 0.62);
+  if(inMapScenarioKeepout(item?.x, item?.y, keepoutRadius)) return;
   if(profile.type === "circle"){
     pushMapObstacleCircle(circles, item.x, item.y, profile.r * scale, profile.pad || 0);
     return;
@@ -4460,7 +4470,7 @@ function blockedAt(x, y, radius){
   const key = blockedCacheKey(x, y, radius);
   if(__blockedAtCache.has(key)) return __blockedAtCache.get(key);
   let blocked = false;
-  if(inMapScenarioKeepout(x, y, radius + 4)){
+  if(inMapScenarioKeepout(x, y, radius + 10)){
     __blockedAtCache.set(key, false);
     return false;
   }
@@ -4474,6 +4484,44 @@ function blockedAt(x, y, radius){
     __blockedAtCacheFrame = __frameBudgetState.frameNo;
   }
   return blocked;
+}
+function entityNeedsRecovery(ent, radius, opts={}){
+  if(!ent || !Number.isFinite(ent.x) || !Number.isFinite(ent.y)) return false;
+  if(blockedAt(ent.x, ent.y, radius)) return true;
+  if(opts.avoidKeepout && inMapScenarioKeepout(ent.x, ent.y, radius)) return true;
+  if(opts.avoidWater && isPointInWater(ent.x, ent.y, Math.max(2, radius * 0.45))) return true;
+  return false;
+}
+function forceEntityRecovery(ent, radius, opts={}){
+  if(!ent || !Number.isFinite(ent.x) || !Number.isFinite(ent.y)) return false;
+  const avoidKeepout = !!opts.avoidKeepout;
+  const avoidWater = !!opts.avoidWater;
+  const targetX = Number.isFinite(opts.targetX) ? opts.targetX : ent.x;
+  const targetY = Number.isFinite(opts.targetY) ? opts.targetY : ent.y;
+  const primary = findNearestOpenPoint(ent.x, ent.y, radius, {
+    avoidKeepout,
+    avoidWater,
+    targetX,
+    targetY
+  });
+  const secondary = primary || findNearestOpenPoint(targetX, targetY, radius, {
+    avoidKeepout,
+    avoidWater,
+    targetX,
+    targetY
+  });
+  const fallback = secondary || safeSpawnPoint(targetX, targetY, radius, avoidKeepout, avoidWater);
+  if(!fallback) return false;
+  ent.x = fallback.x;
+  ent.y = fallback.y;
+  ent._stuckTicks = 0;
+  ent._lastMoveX = ent.x;
+  ent._lastMoveY = ent.y;
+  ent._nextUnstickTryAt = 0;
+  ent._nextPathRecoverAt = 0;
+  ent._nextKeepoutRecoverAt = 0;
+  ent._pathStallCount = 0;
+  return true;
 }
 function findNearestOpenPoint(x, y, radius, opts={}){
   const avoidKeepout = !!opts.avoidKeepout;
@@ -4597,10 +4645,18 @@ function unstickEntitiesTick(){
     targetX:S.target?.x,
     targetY:S.target?.y
   });
+  if(entityNeedsRecovery(S.me, 16, { avoidKeepout:false })){
+    forceEntityRecovery(S.me, 16, {
+      avoidKeepout:false,
+      avoidWater:false,
+      targetX:S.target?.x,
+      targetY:S.target?.y
+    });
+  }
 
   for(const civ of (S.civilians || [])){
     if(!civ.alive || civ.evac) continue;
-    const civIntent = !!civ.following || (S.guideTargetId === civ.id);
+    const civIntent = !!civ.following || (S.guideTargetId === civ.id) || entityNeedsRecovery(civ, 14, { avoidKeepout:true });
     resolveEntityStuck(civ, 14, {
       avoidKeepout:true,
       movingIntent:civIntent,
@@ -4608,6 +4664,14 @@ function unstickEntitiesTick(){
       targetX:S.evacZone?.x,
       targetY:S.evacZone?.y
     });
+    if(entityNeedsRecovery(civ, 14, { avoidKeepout:true })){
+      forceEntityRecovery(civ, 14, {
+        avoidKeepout:true,
+        avoidWater:false,
+        targetX:S.evacZone?.x,
+        targetY:S.evacZone?.y
+      });
+    }
   }
   for(const unit of (S.supportUnits || [])){
     if(!unit.alive) continue;
@@ -4618,10 +4682,18 @@ function unstickEntitiesTick(){
       targetX:S.me?.x,
       targetY:S.me?.y
     });
+    if(entityNeedsRecovery(unit, 16, { avoidKeepout:true })){
+      forceEntityRecovery(unit, 16, {
+        avoidKeepout:true,
+        avoidWater:false,
+        targetX:S.me?.x,
+        targetY:S.me?.y
+      });
+    }
   }
   for(const tiger of (S.tigers || [])){
     if(!tiger.alive) continue;
-    const tigerIntent = Math.hypot(tiger.vx || 0, tiger.vy || 0) > 0.16 || !!tiger.targetCivId;
+    const tigerIntent = true;
     resolveEntityStuck(tiger, 16, {
       avoidKeepout:true,
       movingIntent:tigerIntent,
@@ -4629,11 +4701,19 @@ function unstickEntitiesTick(){
       targetX:S.me?.x,
       targetY:S.me?.y
     });
+    if(entityNeedsRecovery(tiger, 16, { avoidKeepout:true })){
+      forceEntityRecovery(tiger, 16, {
+        avoidKeepout:true,
+        avoidWater:false,
+        targetX:S.me?.x,
+        targetY:S.me?.y
+      });
+    }
   }
   for(const p of (S.pickups || [])){
     if(!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
-    if(!inMapScenarioKeepout(p.x, p.y, 12)) continue;
-    const free = findNearestOpenPoint(p.x, p.y, 12, { avoidKeepout:true, avoidWater:false });
+    if(!inMapScenarioKeepout(p.x, p.y, 12) && !blockedAt(p.x, p.y, 12)) continue;
+    const free = findNearestOpenPoint(p.x, p.y, 12, { avoidKeepout:true, avoidWater:false, targetX:S.me?.x, targetY:S.me?.y });
     if(free){
       p.x = free.x;
       p.y = free.y;
@@ -4642,7 +4722,7 @@ function unstickEntitiesTick(){
   for(const it of (S.mapInteractables || [])){
     if(!Number.isFinite(it.x) || !Number.isFinite(it.y)) continue;
     const rr = clamp(it.r, 12, 54);
-    if(!inMapScenarioKeepout(it.x, it.y, rr)) continue;
+    if(!inMapScenarioKeepout(it.x, it.y, rr) && !blockedAt(it.x, it.y, Math.round(rr * 0.5))) continue;
     const free = findNearestOpenPoint(it.x, it.y, rr, { avoidKeepout:true, avoidWater:true });
     if(free){
       it.x = free.x;
@@ -4734,6 +4814,35 @@ function tryMoveEntity(ent, nx, ny, radius, opts={}){
       ent.y = ty;
       break;
     }
+  }
+
+  const movedDist = dist(ent.x, ent.y, ox, oy);
+  if(wantedDist > 0.34 && movedDist < 0.24){
+    ent._pathStallCount = (ent._pathStallCount || 0) + 1;
+    const stallThreshold = frameIsSlow() ? 4 : 3;
+    if(ent._pathStallCount >= stallThreshold){
+      const recovery = findNearestOpenPoint(targetX, targetY, radius, {
+        avoidKeepout,
+        targetX,
+        targetY
+      }) || findNearestOpenPoint(ox, oy, radius, {
+        avoidKeepout,
+        targetX,
+        targetY
+      });
+      if(recovery){
+        ent.x = recovery.x;
+        ent.y = recovery.y;
+        ent._pathStallCount = 0;
+      } else {
+        ent._nextPathRecoverAt = now + (frameIsSlow() ? 220 : 140);
+        ent.x = clamp(ox, minX, maxX);
+        ent.y = clamp(oy, minY, maxY);
+        return false;
+      }
+    }
+  } else {
+    ent._pathStallCount = 0;
   }
 
   if(blockedAt(ent.x, ent.y, radius)){
