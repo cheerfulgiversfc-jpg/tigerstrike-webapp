@@ -317,6 +317,18 @@ const BOSS_IDENTITY_BY_CHAPTER = Object.freeze({
   9: { name:"Phantom Lord", cycle:["stealth","charge","pounce_chain"], cd:[7600, 10200] },
   10:{ name:"Ancient Tiger", cycle:["roar","stealth","pounce_chain","reinforce","charge"], cd:[7000, 9600], reinforce:[2,3] },
 });
+const BOSS_SIGNATURE_MOMENT_BY_CHAPTER = Object.freeze({
+  1: "Howl Call pressure — expect Standard reinforcement packs.",
+  2: "War Roar into Rage Charge — burst aggression spikes.",
+  3: "Shadow Fade into Pounce Chain — stealth lunge pattern.",
+  4: "Pounce Chain plus War Roar — rapid close-range pressure.",
+  5: "Rage Charge and Howl Call — split focus under reinforcement.",
+  6: "Mountain charge bursts with pounce follow-up windows.",
+  7: "Reinforcement marshal: Howl Call with roar-charge pacing.",
+  8: "Tiger King rotation: roar, pounce, reinforce, and charge.",
+  9: "Phantom cycle: stealth bait into charge and pounce.",
+  10: "Ancient Tiger multi-phase chain: roar, stealth, reinforce, charge.",
+});
 
 const TIGER_POWER_ORDER = {
   Standard: 1,
@@ -357,12 +369,67 @@ function bossIdentityProfile(t){
 function bossStealthActive(t, now=Date.now()){
   return !!(t && now < (t.bossStealthUntil || 0));
 }
+function bossSkillTelegraphText(skill, opts={}){
+  const incoming = opts.incoming !== false;
+  if(skill === "roar") return incoming ? "War Roar incoming — nearby tigers get buffed." : "War Roar active.";
+  if(skill === "stealth") return incoming ? "Shadow Fade incoming — watch for a stealth lunge." : "Shadow Fade active.";
+  if(skill === "pounce_chain") return incoming ? "Pounce Chain incoming — prepare for rapid leaps." : "Pounce Chain active.";
+  if(skill === "reinforce") return incoming ? "Howl Call incoming — reinforcements may arrive." : "Howl Call active.";
+  if(skill === "charge") return incoming ? "Rage Charge incoming — roll to dodge the hit." : "Rage Charge active.";
+  return incoming ? "Boss skill incoming." : "Boss skill active.";
+}
+function bossChapterSignatureSummary(chapter, profile){
+  const text = BOSS_SIGNATURE_MOMENT_BY_CHAPTER[clamp(chapter || 1, 1, 10)];
+  if(text) return text;
+  const cycle = Array.isArray(profile?.cycle) ? profile.cycle : [];
+  const preview = cycle.slice(0, 2).map((skill)=>bossCycleLabel(skill)).join(" -> ");
+  return preview ? `${preview}.` : "Signature pressure expected.";
+}
+function nextBossSkillInCycle(t, profile){
+  const cycle = Array.isArray(profile?.cycle) && profile.cycle.length ? profile.cycle : ["roar"];
+  const idx = Number.isFinite(t?.bossSkillStep) ? t.bossSkillStep : 0;
+  return cycle[idx % cycle.length];
+}
+function announceBossTelegraph(t, profile, skill, now=Date.now(), opts={}){
+  if(!t || !profile || !skill) return;
+  const tellKey = `${skill}|${opts.incoming ? "in" : "now"}`;
+  const minGap = opts.incoming ? 1200 : 700;
+  if(t._bossLastTellKey === tellKey && now < ((t._bossLastTellAt || 0) + minGap)) return;
+  t._bossLastTellKey = tellKey;
+  t._bossLastTellAt = now;
+  const chapter = clamp(t.bossIdentityChapter || bossChapterIndex(), 1, 10);
+  const msg = `⚠️ ${profile.name} (${chapter}): ${bossSkillTelegraphText(skill, opts)}`;
+  setTigerIntent(t, bossCycleLabel(skill), opts.incoming ? 880 : 640);
+  if(S.inBattle && S.activeTigerId === t.id){
+    setBattleMsg(msg);
+  } else {
+    setEventText(msg, opts.incoming ? 2.8 : 2.2);
+  }
+}
+function triggerBossPrefightWarning(t, profile, now=Date.now()){
+  if(!t || !profile || !isBossTiger(t)) return;
+  if((t._bossPrefightWarnedAt || 0) > 0 && now < ((t._bossPrefightWarnedAt || 0) + 25000)) return;
+  t._bossPrefightWarnedAt = now;
+  const chapter = clamp(t.bossIdentityChapter || bossChapterIndex(), 1, 10);
+  const summary = bossChapterSignatureSummary(chapter, profile);
+  const warning = `⚠️ Boss Signature — ${profile.name}: ${summary}`;
+  setEventText(warning, 4.5);
+  if(S.inBattle && S.activeTigerId === t.id){
+    setBattleMsg(warning);
+  }
+  if(!Number.isFinite(t.nextBossSkillAt) || t.nextBossSkillAt > (now + 5200)){
+    t.nextBossSkillAt = now + rand(1200, 1900);
+  }
+  t._bossWarnForSkillAt = 0;
+}
 function triggerBossIdentitySkill(t, profile, now=Date.now()){
   if(!t || !profile) return;
   const cycle = Array.isArray(profile.cycle) && profile.cycle.length ? profile.cycle : ["roar"];
   const idx = Number.isFinite(t.bossSkillStep) ? t.bossSkillStep : 0;
   const skill = cycle[idx % cycle.length];
   t.bossSkillStep = idx + 1;
+  t._bossWarnForSkillAt = 0;
+  announceBossTelegraph(t, profile, skill, now, { incoming:false });
 
   if(skill === "roar"){
     t.roarUntil = Math.max(t.roarUntil || 0, now + rand(2500, 3600));
@@ -409,6 +476,16 @@ function bossIdentityTick(){
       const cd = profile.cd || [9000, 13000];
       t.nextBossSkillAt = now + rand(cd[0], cd[1]);
       t.bossSkillStep = 0;
+      t._bossWarnForSkillAt = 0;
+      continue;
+    }
+    const warnAt = t.nextBossSkillAt - 900;
+    if(now >= warnAt && now < t.nextBossSkillAt){
+      if((t._bossWarnForSkillAt || 0) !== t.nextBossSkillAt){
+        const nextSkill = nextBossSkillInCycle(t, profile);
+        announceBossTelegraph(t, profile, nextSkill, now, { incoming:true });
+        t._bossWarnForSkillAt = t.nextBossSkillAt;
+      }
       continue;
     }
     if(now < t.nextBossSkillAt) continue;
@@ -3078,6 +3155,10 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * Math.PI * 2;
     ensureTigerHuntState(t);
+    if(!Number.isFinite(t._bossWarnForSkillAt)) t._bossWarnForSkillAt = 0;
+    if(!Number.isFinite(t._bossPrefightWarnedAt)) t._bossPrefightWarnedAt = 0;
+    if(!Number.isFinite(t._bossLastTellAt)) t._bossLastTellAt = 0;
+    if(typeof t._bossLastTellKey !== "string") t._bossLastTellKey = "";
     if(inMobileNoBuildZone(t.x, t.y, 16) || blockedAt(t.x, t.y, 18)){
       const pt = safeSpawnPoint(t.x, t.y, 16, true, false);
       t.x = pt.x;
@@ -10180,6 +10261,10 @@ function spawnTigers(){
       bossPounceCharges:0,
       bossPounceChainUntil:0,
       bossChargeUntil:0,
+      _bossWarnForSkillAt:0,
+      _bossPrefightWarnedAt:0,
+      _bossLastTellAt:0,
+      _bossLastTellKey:"",
       wanderAngle:Math.random()*(Math.PI*2),
       heading:0,
       drawDir:1,
@@ -10311,6 +10396,10 @@ function spawnTigers(){
       bossPounceCharges:0,
       bossPounceChainUntil:0,
       bossChargeUntil:0,
+      _bossWarnForSkillAt:0,
+      _bossPrefightWarnedAt:0,
+      _bossLastTellAt:0,
+      _bossLastTellKey:"",
       wanderAngle:Math.random()*(Math.PI*2),
       heading:Math.atan2(initialVy, initialVx),
       drawDir:initialVx >= 0 ? 1 : -1,
@@ -10415,6 +10504,10 @@ function spawnRogueTiger(options={}){
     bossPounceCharges:0,
     bossPounceChainUntil:0,
     bossChargeUntil:0,
+    _bossWarnForSkillAt:0,
+    _bossPrefightWarnedAt:0,
+    _bossLastTellAt:0,
+    _bossLastTellKey:"",
     wanderAngle:Math.random()*(Math.PI*2),
     heading:0,
     drawDir:1,
@@ -13381,6 +13474,9 @@ function startCombat(){
   renderCombatControls();
   triggerBattleCinematic("enter", t.id);
   setBattleMsg(`Engaged Tiger #${t.id}. Fight stays on the map.`);
+  if(isBossTiger(t)){
+    triggerBossPrefightWarning(t, bossIdentityProfile(t), Date.now());
+  }
   sfx("ui"); hapticImpact("light");
   save();
 }
@@ -16850,6 +16946,10 @@ function init(){
     if(!Number.isFinite(t.bossPounceCharges)) t.bossPounceCharges = 0;
     if(!Number.isFinite(t.bossPounceChainUntil)) t.bossPounceChainUntil = 0;
     if(!Number.isFinite(t.bossChargeUntil)) t.bossChargeUntil = 0;
+    if(!Number.isFinite(t._bossWarnForSkillAt)) t._bossWarnForSkillAt = 0;
+    if(!Number.isFinite(t._bossPrefightWarnedAt)) t._bossPrefightWarnedAt = 0;
+    if(!Number.isFinite(t._bossLastTellAt)) t._bossLastTellAt = 0;
+    if(typeof t._bossLastTellKey !== "string") t._bossLastTellKey = "";
     if(!Number.isFinite(t.attackAnimStart)) t.attackAnimStart = 0;
     if(!Number.isFinite(t.attackAnimUntil)) t.attackAnimUntil = 0;
     if(typeof t.attackAnimKind !== "string") t.attackAnimKind = "";
