@@ -3294,8 +3294,8 @@ const STAMINA_COST_SCAN = 8;
 const STAMINA_COST_SPRINT = 16;
 const STAMINA_DRAIN_WALK = 0.035;
 const STAMINA_DRAIN_SPRINT = 0.08;
-const PLAYER_WALK_SPEED = 2.45;
-const PLAYER_SPRINT_SPEED = 3.9;
+const PLAYER_WALK_SPEED = 2.38;
+const PLAYER_SPRINT_SPEED = 3.78;
 const SHIELD_DURATION_MS = 5000;
 const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
@@ -11601,7 +11601,7 @@ function damageSupportUnit(unit, dmg){
 function supportTigerHitDamage(tiger, role){
   const base = (role === "attacker") ? rand(2, 4) : rand(4, 7);
   const tier = tigerDamageScale(tiger, "support");
-  const roleMul = role === "attacker" ? 0.68 : 1.02;
+  const roleMul = role === "attacker" ? 0.52 : 0.88;
   let dmg = base * tier * roleMul;
   if(S.mode==="Story"){
     if(role === "attacker"){
@@ -11616,15 +11616,15 @@ function supportTigerHitDamage(tiger, role){
 
 function supportAttackDamage(unit, tiger, tigerDist){
   const rank = tigerPowerRank(tiger);
-  const base = rand(7, 12) + (tigerDist < 95 ? 4 : 1);
-  const antiTigerSkill = 1.14;
+  const base = rand(9, 15) + (tigerDist < 100 ? 5 : 2);
+  const antiTigerSkill = 1.30;
   const targetResist = 1 - ((rank - 1) * 0.06);
   const boost = storyAttackerDamageMul();
-  return Math.max(4, Math.round(base * antiTigerSkill * clamp(targetResist, 0.68, 1.0) * boost));
+  return Math.max(5, Math.round(base * antiTigerSkill * clamp(targetResist, 0.70, 1.0) * boost));
 }
 
 function supportUnitsTick(){
-  if(S.inBattle || S.paused || S.gameOver || S.missionEnded) return;
+  if(S.paused || S.gameOver || S.missionEnded) return;
   if(!S.supportUnits?.length) return;
 
   const now = Date.now();
@@ -11735,11 +11735,11 @@ function supportUnitsTick(){
             targetY = (targetCiv.y * 0.54) + (S.me.y * 0.24) + (S.evacZone.y * 0.22);
 
             if(now >= (unit.guideAt || 0)){
-              unit.guideAt = now + 120;
+              unit.guideAt = now + 100;
               const gdx = S.evacZone.x - targetCiv.x;
               const gdy = S.evacZone.y - targetCiv.y;
               const gd = Math.hypot(gdx, gdy) || 1;
-              const guideSpeed = Math.min(1.5, gd) * waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10);
+              const guideSpeed = Math.min(1.95, gd) * waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10);
               tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14, { avoidKeepout:false });
               targetCiv.hp = clamp(targetCiv.hp + 0.03, 0, targetCiv.hpMax);
             }
@@ -11775,8 +11775,8 @@ function supportUnitsTick(){
     const len = Math.hypot(dx, dy) || 1;
     const waterMul = waterSpeedMul("support", unit.x, unit.y, 12);
     const stepCap = unit.role === "attacker"
-      ? (2.05 * (S.mode==="Story" ? (1 + (storySpecialistRank("SP_ATK_DRILL") * 0.04)) : 1))
-      : (1.9 * storyRescueSpeedMul());
+      ? (2.30 * (S.mode==="Story" ? (1 + (storySpecialistRank("SP_ATK_DRILL") * 0.04)) : 1))
+      : (2.08 * storyRescueSpeedMul());
     const finalStepCap = stepCap * waterMul;
     const step = Math.min(finalStepCap, len);
     unit.face = Math.atan2(dy, dx);
@@ -11790,8 +11790,8 @@ function supportUnitsTick(){
       const allowEngage = isPriority || nearPlayer || nearDanger;
 
       if(unit.role === "attacker"){
-        if(allowEngage && tigerDist < 190 && now >= (unit.fireAt || 0)){
-          unit.fireAt = now + rand(340, 560);
+        if(allowEngage && tigerDist < 230 && now >= (unit.fireAt || 0)){
+          unit.fireAt = now + rand(260, 430);
           const shotDmg = supportAttackDamage(unit, tiger, tigerDist);
           tiger.hp = clamp(tiger.hp - shotDmg, 0, tiger.hpMax);
           tiger.aggroBoost = clamp((tiger.aggroBoost||0) + 0.05, 0, 1.4);
@@ -11818,12 +11818,20 @@ function supportUnitsTick(){
             break;
           }
         }
-        if(allowEngage && tigerDist < 74){
-          damageSupportUnit(unit, supportTigerHitDamage(tiger, "attacker"));
+        if(allowEngage && tigerDist < 90){
+          const hitKey = `_nextTigerHitAt_${tiger.id}`;
+          if(now >= (unit[hitKey] || 0)){
+            unit[hitKey] = now + rand(780, 1120);
+            damageSupportUnit(unit, supportTigerHitDamage(tiger, "attacker"));
+          }
         }
       } else if(unit.role === "rescue"){
-        if(tigerDist < 76){
-          damageSupportUnit(unit, supportTigerHitDamage(tiger, "rescue"));
+        if(tigerDist < 84){
+          const hitKey = `_nextTigerHitAt_${tiger.id}`;
+          if(now >= (unit[hitKey] || 0)){
+            unit[hitKey] = now + rand(900, 1280);
+            damageSupportUnit(unit, supportTigerHitDamage(tiger, "rescue"));
+          }
         }
       }
     }
@@ -11876,7 +11884,7 @@ function followCiviliansTick(){
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const escortBoost = storyRescueSpeedMul();
   const engageDist = 58;
-  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 470 : 410;
+  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 490 : 430;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
   const activeFollowers = [];
   const now = Date.now();
@@ -11939,9 +11947,9 @@ function followCiviliansTick(){
   }
 
   const cols = Math.min(4, Math.max(2, activeFollowers.length >= 6 ? 4 : 3));
-  const sideGap = 34;
-  const rowGap = 34;
-  const baseBehind = 58;
+  const sideGap = 32;
+  const rowGap = 32;
+  const baseBehind = 54;
   const anchors = [];
 
   for(let i=0;i<activeFollowers.length;i++){
@@ -12005,10 +12013,10 @@ function followCiviliansTick(){
     const dx = anchor.x - c.x;
     const dy = anchor.y - c.y;
     const dd = Math.hypot(dx,dy) || 1;
-    const catchup = clamp((dd - 16) * 0.04, 0, 3.3);
+    const catchup = clamp((dd - 14) * 0.05, 0, 4.1);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.02, 2.35) + catchup) * escortBoost * waterSpeedMul("civilian", c.x, c.y, 10)),
-      PLAYER_SPRINT_SPEED + 1.8
+      ((Math.max(playerSpeed * 1.10, 2.52) + catchup) * escortBoost * waterSpeedMul("civilian", c.x, c.y, 10)),
+      PLAYER_SPRINT_SPEED + 2.3
     );
     const vx = (dx/dd) * sp;
     const vy = (dy/dd) * sp;
@@ -14104,18 +14112,29 @@ function combatTick(){
 
   S.lockedTigerId = t.id;
   t.aggroBoost = Math.max(t.aggroBoost || 0, 0.95);
-  keepBattleTigerBesidePlayer(t, Date.now());
+  const now = Date.now();
+  keepBattleTigerBesidePlayer(t, now);
 
   const d = dist(S.me.x, S.me.y, t.x, t.y);
   const rangeLimit = equippedWeaponRange();
   if(d > rangeLimit){
-    endBattle("RETREAT");
-    S.lockedTigerId = null;
-    toast(`${equippedWeapon().name} lost range. Tap that tiger again when you get back in range.`);
-    save(true);
-    return;
+    const trappedHold = !!(t.holdUntil && now < t.holdUntil);
+    const shieldOn = shieldActiveNow();
+    if(trappedHold || shieldOn){
+      if((t._rangeGraceHintAt || 0) + 950 < now){
+        t._rangeGraceHintAt = now;
+        setBattleMsg(trappedHold
+          ? "Tiger is trapped. Keep firing while the trap holds."
+          : "Shield is active. You can keep attacking while pressure is up.");
+      }
+    } else {
+      endBattle("RETREAT");
+      S.lockedTigerId = null;
+      toast(`${equippedWeapon().name} lost range. Tap that tiger again when you get back in range.`);
+      save(true);
+      return;
+    }
   }
-  const now = Date.now();
   if(t.holdUntil && now < t.holdUntil){
     setBattleMsg(`Tiger #${t.id} is trapped. Attack while it is held.`);
     return;
