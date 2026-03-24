@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4460";
+const TS_BUILD = "4461";
 if(tg){
   try{
     tg.expand?.();
@@ -49,6 +49,485 @@ function readDaily(){
 function writeDaily(obj){
   const key = `ts_daily_${tgUserKey()}`;
   localStorage.setItem(key, JSON.stringify(obj));
+}
+
+const CONTRACTS_VERSION = 1;
+const CONTRACT_DAILY_COUNT = 3;
+const CONTRACT_WEEKLY_COUNT = 3;
+const CONTRACT_REFRESH_THROTTLE_MS = 15000;
+
+const DEFAULT_CONTRACT_TALLIES = Object.freeze({
+  missionsCleared:0,
+  kills:0,
+  captures:0,
+  evac:0,
+  shots:0,
+  trapsPlaced:0,
+  trapsTriggered:0,
+  cashEarned:0,
+});
+
+const DAILY_CONTRACT_POOL = Object.freeze([
+  Object.freeze({
+    id:"D_EVAC_3",
+    title:"Safe Corridor",
+    desc:"Evacuate 3 civilians.",
+    metric:"evac",
+    target:3,
+    reward:{ cash:650, perkPoints:1 }
+  }),
+  Object.freeze({
+    id:"D_CAPTURE_2",
+    title:"Live Capture",
+    desc:"Capture 2 tigers.",
+    metric:"captures",
+    target:2,
+    reward:{ cash:800, perkPoints:1 }
+  }),
+  Object.freeze({
+    id:"D_KILL_2",
+    title:"Threat Removal",
+    desc:"Kill 2 tigers.",
+    metric:"kills",
+    target:2,
+    reward:{ cash:700, perkPoints:1 }
+  }),
+  Object.freeze({
+    id:"D_MISSION_1",
+    title:"Duty Complete",
+    desc:"Clear 1 mission.",
+    metric:"missionsCleared",
+    target:1,
+    reward:{ cash:950, perkPoints:1 }
+  }),
+  Object.freeze({
+    id:"D_SHOTS_20",
+    title:"Weapons Drill",
+    desc:"Fire 20 shots.",
+    metric:"shots",
+    target:20,
+    reward:{ cash:550, perkPoints:1 }
+  }),
+  Object.freeze({
+    id:"D_TRAP_SET_2",
+    title:"Trap Layer",
+    desc:"Place 2 traps.",
+    metric:"trapsPlaced",
+    target:2,
+    reward:{ cash:500, perkPoints:1 }
+  }),
+  Object.freeze({
+    id:"D_TRAP_STOP_2",
+    title:"Containment",
+    desc:"Trap-stop 2 tigers.",
+    metric:"trapsTriggered",
+    target:2,
+    reward:{ cash:600, perkPoints:1 }
+  }),
+  Object.freeze({
+    id:"D_CASH_2500",
+    title:"Field Economy",
+    desc:"Earn $2,500 mission cash.",
+    metric:"cashEarned",
+    target:2500,
+    reward:{ cash:750, perkPoints:1 }
+  }),
+]);
+
+const WEEKLY_CONTRACT_POOL = Object.freeze([
+  Object.freeze({
+    id:"W_EVAC_22",
+    title:"Rescue Week",
+    desc:"Evacuate 22 civilians.",
+    metric:"evac",
+    target:22,
+    reward:{ cash:5000, perkPoints:3 }
+  }),
+  Object.freeze({
+    id:"W_CAPTURE_12",
+    title:"Research Pipeline",
+    desc:"Capture 12 tigers.",
+    metric:"captures",
+    target:12,
+    reward:{ cash:5600, perkPoints:3 }
+  }),
+  Object.freeze({
+    id:"W_KILL_14",
+    title:"Predator Control",
+    desc:"Kill 14 tigers.",
+    metric:"kills",
+    target:14,
+    reward:{ cash:5600, perkPoints:3 }
+  }),
+  Object.freeze({
+    id:"W_MISSION_8",
+    title:"Campaign Pace",
+    desc:"Clear 8 missions.",
+    metric:"missionsCleared",
+    target:8,
+    reward:{ cash:6800, perkPoints:4 }
+  }),
+  Object.freeze({
+    id:"W_SHOTS_220",
+    title:"Marksmanship Week",
+    desc:"Fire 220 shots.",
+    metric:"shots",
+    target:220,
+    reward:{ cash:3900, perkPoints:2 }
+  }),
+  Object.freeze({
+    id:"W_TRAPS_14",
+    title:"Field Engineer",
+    desc:"Place 14 traps.",
+    metric:"trapsPlaced",
+    target:14,
+    reward:{ cash:4100, perkPoints:2 }
+  }),
+  Object.freeze({
+    id:"W_STOPS_10",
+    title:"Net Control",
+    desc:"Trap-stop 10 tigers.",
+    metric:"trapsTriggered",
+    target:10,
+    reward:{ cash:4500, perkPoints:3 }
+  }),
+  Object.freeze({
+    id:"W_CASH_26000",
+    title:"War Chest",
+    desc:"Earn $26,000 mission cash.",
+    metric:"cashEarned",
+    target:26000,
+    reward:{ cash:7200, perkPoints:4 }
+  }),
+]);
+
+function defaultContractTallies(){
+  return { ...DEFAULT_CONTRACT_TALLIES };
+}
+
+function normalizeContractTalliesMap(raw){
+  const out = defaultContractTallies();
+  if(!raw || typeof raw !== "object") return out;
+  for(const [metric, fallback] of Object.entries(DEFAULT_CONTRACT_TALLIES)){
+    const n = Math.max(0, Math.floor(Number(raw[metric] ?? fallback ?? 0)));
+    out[metric] = Number.isFinite(n) ? n : Math.max(0, Math.floor(Number(fallback || 0)));
+  }
+  return out;
+}
+
+function contractDayKey(nowMs=Date.now()){
+  return ymdUTC(new Date(nowMs));
+}
+
+function contractWeekKey(nowMs=Date.now()){
+  const now = new Date(nowMs);
+  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const isoDay = dayStart.getUTCDay() || 7;
+  dayStart.setUTCDate(dayStart.getUTCDate() + 4 - isoDay);
+  const weekYear = dayStart.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(weekYear, 0, 1));
+  const week = Math.ceil((((dayStart - yearStart) / 86400000) + 1) / 7);
+  return `${weekYear}-W${String(week).padStart(2, "0")}`;
+}
+
+function nextUtcDayMs(nowMs=Date.now()){
+  const now = new Date(nowMs);
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0);
+}
+
+function nextUtcWeekMs(nowMs=Date.now()){
+  const now = new Date(nowMs);
+  const dayStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0);
+  const isoDay = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
+  const daysUntilNextMonday = 8 - isoDay;
+  return dayStartMs + (daysUntilNextMonday * 86400000);
+}
+
+function contractCountdownText(period, nowMs=Date.now()){
+  const nextAt = period === "weekly" ? nextUtcWeekMs(nowMs) : nextUtcDayMs(nowMs);
+  const remainMs = Math.max(0, nextAt - nowMs);
+  const totalMin = Math.max(0, Math.floor(remainMs / 60000));
+  const hh = String(Math.floor(totalMin / 60)).padStart(2, "0");
+  const mm = String(totalMin % 60).padStart(2, "0");
+  return `${hh}h ${mm}m`;
+}
+
+function contractHashInt(str=""){
+  let h = 2166136261;
+  for(let i=0; i<str.length; i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function contractSeededPick(pool, count, seed){
+  const arr = Array.isArray(pool) ? pool.slice() : [];
+  let s = (seed >>> 0) || 1;
+  const rand = ()=>{
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  for(let i=arr.length - 1; i>0; i--){
+    const j = Math.floor(rand() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr.slice(0, Math.max(0, Math.min(count, arr.length)));
+}
+
+function ensureContractTalliesState(state=S){
+  if(!state || typeof state !== "object") return defaultContractTallies();
+  state.contractTallies = normalizeContractTalliesMap(state.contractTallies);
+  return state.contractTallies;
+}
+
+function contractMetricValue(metric, state=S){
+  const tallies = ensureContractTalliesState(state);
+  return Math.max(0, Math.floor(Number(tallies?.[metric] || 0)));
+}
+
+function generateContracts(period, key, state=S){
+  const isWeekly = period === "weekly";
+  const pool = isWeekly ? WEEKLY_CONTRACT_POOL : DAILY_CONTRACT_POOL;
+  const take = isWeekly ? CONTRACT_WEEKLY_COUNT : CONTRACT_DAILY_COUNT;
+  const tallies = ensureContractTalliesState(state);
+  const seed = contractHashInt(`${period}|${key}|${tgUserKey()}`);
+  const picks = contractSeededPick(pool, take, seed);
+  const createdAt = Date.now();
+  return picks.map((tpl, idx)=>{
+    const baseline = contractMetricValue(tpl.metric, state);
+    return {
+      id: `${period}_${key}_${idx}_${tpl.id}`,
+      key: tpl.id,
+      title: tpl.title,
+      desc: tpl.desc,
+      metric: tpl.metric,
+      target: Math.max(1, Math.floor(Number(tpl.target || 1))),
+      baseline,
+      reward: {
+        cash: Math.max(0, Math.floor(Number(tpl.reward?.cash || 0))),
+        perkPoints: Math.max(0, Math.floor(Number(tpl.reward?.perkPoints || 0))),
+      },
+      claimed: false,
+      claimedAt: 0,
+      createdAt,
+      period,
+    };
+  });
+}
+
+function normalizeContractEntry(entry, state=S){
+  if(!entry || typeof entry !== "object") return null;
+  const metric = String(entry.metric || "").trim();
+  if(!metric || !Object.prototype.hasOwnProperty.call(DEFAULT_CONTRACT_TALLIES, metric)) return null;
+  const target = Math.max(1, Math.floor(Number(entry.target || 1)));
+  const baseline = Math.max(0, Math.floor(Number(entry.baseline ?? contractMetricValue(metric, state))));
+  return {
+    id: String(entry.id || `${entry.period || "daily"}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
+    key: String(entry.key || metric),
+    title: String(entry.title || "Contract"),
+    desc: String(entry.desc || "Complete this objective."),
+    metric,
+    target,
+    baseline,
+    reward: {
+      cash: Math.max(0, Math.floor(Number(entry.reward?.cash || 0))),
+      perkPoints: Math.max(0, Math.floor(Number(entry.reward?.perkPoints || 0))),
+    },
+    claimed: !!entry.claimed,
+    claimedAt: Math.max(0, Math.floor(Number(entry.claimedAt || 0))),
+    createdAt: Math.max(0, Math.floor(Number(entry.createdAt || Date.now()))),
+    period: String(entry.period || "daily"),
+  };
+}
+
+function ensureContractsState(state=S, opts={}){
+  if(!state || typeof state !== "object") return false;
+  ensureContractTalliesState(state);
+  const now = Number(opts.now || Date.now());
+  let changed = false;
+  if(!state.contracts || typeof state.contracts !== "object"){
+    state.contracts = {};
+    changed = true;
+  }
+  if(!state.contracts.daily || typeof state.contracts.daily !== "object"){
+    state.contracts.daily = {};
+    changed = true;
+  }
+  if(!state.contracts.weekly || typeof state.contracts.weekly !== "object"){
+    state.contracts.weekly = {};
+    changed = true;
+  }
+  const dayKey = contractDayKey(now);
+  const weekKey = contractWeekKey(now);
+  const refreshDaily = state.contracts.daily.key !== dayKey;
+  const refreshWeekly = state.contracts.weekly.key !== weekKey;
+
+  if(refreshDaily){
+    state.contracts.daily = {
+      key: dayKey,
+      resetAt: nextUtcDayMs(now),
+      entries: generateContracts("daily", dayKey, state),
+      refreshedAt: now,
+    };
+    changed = true;
+  } else {
+    state.contracts.daily.key = dayKey;
+    state.contracts.daily.resetAt = nextUtcDayMs(now);
+    const entries = Array.isArray(state.contracts.daily.entries) ? state.contracts.daily.entries : [];
+    const normalized = entries.map((entry)=>normalizeContractEntry({ ...entry, period:"daily" }, state)).filter(Boolean);
+    if(normalized.length !== entries.length){
+      state.contracts.daily.entries = normalized;
+      changed = true;
+    } else {
+      state.contracts.daily.entries = normalized;
+    }
+  }
+
+  if(refreshWeekly){
+    state.contracts.weekly = {
+      key: weekKey,
+      resetAt: nextUtcWeekMs(now),
+      entries: generateContracts("weekly", weekKey, state),
+      refreshedAt: now,
+    };
+    changed = true;
+  } else {
+    state.contracts.weekly.key = weekKey;
+    state.contracts.weekly.resetAt = nextUtcWeekMs(now);
+    const entries = Array.isArray(state.contracts.weekly.entries) ? state.contracts.weekly.entries : [];
+    const normalized = entries.map((entry)=>normalizeContractEntry({ ...entry, period:"weekly" }, state)).filter(Boolean);
+    if(normalized.length !== entries.length){
+      state.contracts.weekly.entries = normalized;
+      changed = true;
+    } else {
+      state.contracts.weekly.entries = normalized;
+    }
+  }
+
+  state.contracts.version = CONTRACTS_VERSION;
+  if(!Number.isFinite(Number(state.contracts.lastToastAt))) state.contracts.lastToastAt = 0;
+  return changed;
+}
+
+function contractEntryProgress(entry, state=S){
+  if(!entry || typeof entry !== "object") return 0;
+  const metricNow = contractMetricValue(entry.metric, state);
+  const baseline = Math.max(0, Math.floor(Number(entry.baseline || 0)));
+  return Math.max(0, metricNow - baseline);
+}
+
+function contractEntryIsReady(entry, state=S){
+  if(!entry || typeof entry !== "object") return false;
+  return !entry.claimed && contractEntryProgress(entry, state) >= Math.max(1, Math.floor(Number(entry.target || 1)));
+}
+
+function contractRewardText(reward={}){
+  const bits = [];
+  const cash = Math.max(0, Math.floor(Number(reward.cash || 0)));
+  const perks = Math.max(0, Math.floor(Number(reward.perkPoints || 0)));
+  if(cash > 0) bits.push(`$${cash.toLocaleString()}`);
+  if(perks > 0) bits.push(`+${perks} perk point${perks === 1 ? "" : "s"}`);
+  return bits.join(" • ") || "No reward";
+}
+
+function contractSummary(period="daily", state=S){
+  ensureContractsState(state);
+  const bucket = state?.contracts?.[period];
+  const entries = Array.isArray(bucket?.entries) ? bucket.entries : [];
+  const total = entries.length;
+  let claimed = 0;
+  let ready = 0;
+  for(const entry of entries){
+    if(entry.claimed) claimed += 1;
+    else if(contractEntryIsReady(entry, state)) ready += 1;
+  }
+  return {
+    total,
+    claimed,
+    ready,
+    remaining: Math.max(0, total - claimed),
+    resetAt: Math.max(0, Number(bucket?.resetAt || 0)),
+    key: String(bucket?.key || ""),
+  };
+}
+
+function launchContractsSummaryText(state=S){
+  const daily = contractSummary("daily", state);
+  const weekly = contractSummary("weekly", state);
+  const dailyReset = contractCountdownText("daily");
+  const weeklyReset = contractCountdownText("weekly");
+  return `Daily ${daily.claimed}/${daily.total} (${daily.ready} ready) • Weekly ${weekly.claimed}/${weekly.total} (${weekly.ready} ready) • Reset ${dailyReset}/${weeklyReset}`;
+}
+
+function claimContract(period="daily", contractId=""){
+  ensureContractsState(S);
+  const bucket = S?.contracts?.[period];
+  if(!bucket || !Array.isArray(bucket.entries)) return;
+  const entry = bucket.entries.find((c)=>c.id === contractId);
+  if(!entry) return toast("Contract not found.");
+  if(entry.claimed) return toast("Contract already claimed.");
+  if(!contractEntryIsReady(entry, S)){
+    return toast("Contract progress is not complete yet.");
+  }
+  const reward = entry.reward || {};
+  const cash = Math.max(0, Math.floor(Number(reward.cash || 0)));
+  const perks = Math.max(0, Math.floor(Number(reward.perkPoints || 0)));
+  if(cash > 0){
+    S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + cash;
+    if(S.stats) S.stats.cashEarned = Math.max(0, Math.floor(Number(S.stats.cashEarned || 0))) + cash;
+  }
+  if(perks > 0){
+    S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + perks;
+  }
+  entry.claimed = true;
+  entry.claimedAt = Date.now();
+  toast(`📜 ${entry.title} claimed: ${contractRewardText(entry.reward)}`);
+  hapticNotif("success");
+  sfx("win");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  refreshLaunchIntroStatus();
+}
+
+function claimAllContracts(period="daily"){
+  ensureContractsState(S);
+  const bucket = S?.contracts?.[period];
+  if(!bucket || !Array.isArray(bucket.entries)) return;
+  const ready = bucket.entries.filter((entry)=>contractEntryIsReady(entry, S));
+  if(!ready.length){
+    toast("No ready contracts to claim.");
+    return;
+  }
+  for(const entry of ready){
+    claimContract(period, entry.id);
+  }
+}
+
+function addContractTally(metric, delta=1, state=S){
+  if(!state || typeof state !== "object") return 0;
+  ensureContractTalliesState(state);
+  if(!Object.prototype.hasOwnProperty.call(DEFAULT_CONTRACT_TALLIES, metric)) return 0;
+  const add = Math.max(0, Math.floor(Number(delta || 0)));
+  if(add <= 0) return contractMetricValue(metric, state);
+  state.contractTallies[metric] = Math.max(0, Math.floor(Number(state.contractTallies[metric] || 0))) + add;
+  return state.contractTallies[metric];
+}
+
+let __contractsLastRefreshAt = 0;
+function contractsHeartbeatTick(){
+  const now = Date.now();
+  if((now - __contractsLastRefreshAt) < CONTRACT_REFRESH_THROTTLE_MS) return;
+  __contractsLastRefreshAt = now;
+  const changed = ensureContractsState(S, { now });
+  if(changed){
+    __savePending = true;
+    refreshLaunchIntroStatus();
+    if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  }
 }
 
 const STORAGE_VERSION = 4385;
@@ -1458,6 +1937,8 @@ const DEFAULT = {
   arcadeScoreBonus:0,
   _arcadeTimerWarn:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
+  contractTallies: defaultContractTallies(),
+  contracts: null,
   achievements:{},
   title:"Rookie",
 
@@ -1581,6 +2062,7 @@ function storySnapshotQuality(state){
   const shields = Math.max(0, Math.floor(Number(state.shields || 0)));
   const perkPoints = Math.max(0, Math.floor(Number(state.perkPoints || 0)));
   const perkRanks = sumNonNegativeIntValues(state.perks);
+  const contractProgress = sumNonNegativeIntValues(state.contractTallies);
   return (
     (mission * 1_000_000) +
     (level * 10_000) +
@@ -1595,7 +2077,8 @@ function storySnapshotQuality(state){
     (trapsOwned * 90) +
     (shields * 90) +
     (perkPoints * 50) +
-    (perkRanks * 220)
+    (perkRanks * 220) +
+    (contractProgress * 3)
   );
 }
 
@@ -1705,6 +2188,8 @@ function load(){
       const fallback = cloneState(DEFAULT);
       applyStorySaveToState(fallback, { allowModeSync:true });
       applyStoryProfileToState(fallback, storyProfile);
+      ensureContractTalliesState(fallback);
+      ensureContractsState(fallback);
       return fallback;
     }
     const m = { ...DEFAULT, ...saved };
@@ -1726,6 +2211,8 @@ function load(){
     m.mapInteractables = Array.isArray(saved.mapInteractables) ? saved.mapInteractables : [];
     m.achievements = saved.achievements || {};
     m.stats = { ...DEFAULT.stats, ...(saved.stats||{}) };
+    m.contractTallies = normalizeContractTalliesMap(saved.contractTallies);
+    m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
     m.progressionUnlocks = { ...DEFAULT.progressionUnlocks, ...(saved.progressionUnlocks||{}) };
     m.metaBase = { ...DEFAULT.metaBase, ...(saved.metaBase||{}) };
@@ -1750,6 +2237,8 @@ function load(){
       }
     }
     m.funds = getModeWallet(m.mode, m);
+    ensureContractTalliesState(m);
+    ensureContractsState(m);
     if(m.lives==null) m.lives=5;
     m.v = STORAGE_VERSION;
     trimPersistentState(m);
@@ -5050,6 +5539,7 @@ function tickEvents(){
       const bonus = rand(300, 900);
       S.funds += bonus;
       S.stats.cashEarned += bonus;
+      addContractTally("cashEarned", bonus);
       unlockAchv("gov_bonus","Gov Bonus");
       setEventText(`🏛️ Government Bonus: +$${bonus.toLocaleString()}`, 7);
       sfx("win"); hapticNotif("success");
@@ -5124,6 +5614,7 @@ function collectPickup(p){
     const amt = rand(80, 260);
     S.funds += amt;
     S.stats.cashEarned += amt;
+    addContractTally("cashEarned", amt);
     addXP(10);
     unlockAchv("pickup1","First Pickup");
     setEventText(`💵 Picked up cash +$${amt}`, 4);
@@ -5167,7 +5658,7 @@ function collectPickup(p){
     let msg="📦 Supply Crate: ";
     for(let k=0;k<items;k++){
       const r=Math.random();
-      if(r<0.35){ const amt=rand(200,600); S.funds+=amt; S.stats.cashEarned+=amt; msg += `+$${amt} `; }
+      if(r<0.35){ const amt=rand(200,600); S.funds+=amt; S.stats.cashEarned+=amt; addContractTally("cashEarned", amt); msg += `+$${amt} `; }
       else if(r<0.60){ const w=equippedWeapon(); const pack=rand(6,14); S.ammoReserve[w.ammo]=(S.ammoReserve[w.ammo]||0)+pack; msg += `+Ammo(${pack}) `; }
       else if(r<0.80){ const add=rand(12,28); S.armor=clamp(S.armor+add,0,S.armorCap); msg += `+Armor(${add}) `; }
       else { S.medkits["M_SMALL"]=(S.medkits["M_SMALL"]||0)+1; msg += `+Medkit `; }
@@ -5996,6 +6487,8 @@ function writeStoryProfileData(source="autosave", state=S){
     chapterRewardsUnlocked: { ...(src.chapterRewardsUnlocked || {}) },
     achievements: { ...(src.achievements || {}) },
     stats: { ...(src.stats || {}) },
+    contractTallies: { ...ensureContractTalliesState(src) },
+    contracts: (src.contracts && typeof src.contracts === "object") ? cloneState(src.contracts) : null,
     ownedWeapons: Array.isArray(src.ownedWeapons) ? src.ownedWeapons.filter((id)=>typeof id === "string") : [],
     equippedWeaponId: String(src.equippedWeaponId || ""),
     ammoReserve: { ...(src.ammoReserve || {}) },
@@ -6131,6 +6624,18 @@ function applyStoryProfileToState(state, profile){
   if(profile.stats && typeof profile.stats === "object"){
     state.stats = { ...(state.stats || {}), ...profile.stats };
   }
+  if(profile.contractTallies && typeof profile.contractTallies === "object"){
+    ensureContractTalliesState(state);
+    for(const [metric, fallback] of Object.entries(DEFAULT_CONTRACT_TALLIES)){
+      const current = Math.max(0, Math.floor(Number(state.contractTallies?.[metric] || fallback || 0)));
+      const incoming = Math.max(0, Math.floor(Number(profile.contractTallies?.[metric] || fallback || 0)));
+      state.contractTallies[metric] = Math.max(current, incoming);
+    }
+  }
+  if(profile.contracts && typeof profile.contracts === "object"){
+    state.contracts = cloneState(profile.contracts);
+    ensureContractsState(state);
+  }
 
   state.armorPlates = normalizeArmorPlateInventory(mergeCountMapsFromProfile(state.armorPlates, profile.armorPlates));
   state.armorPlatesFallback = normalizeArmorPlateInventory(
@@ -6239,6 +6744,10 @@ function writeStoryProgressData(payload={}){
     chapterRewardsUnlocked: { ...(payload.chapterRewardsUnlocked ?? S.chapterRewardsUnlocked ?? {}) },
     achievements: { ...(payload.achievements ?? S.achievements ?? {}) },
     stats: { ...(payload.stats ?? S.stats ?? {}) },
+    contractTallies: normalizeContractTalliesMap(payload.contractTallies ?? S.contractTallies),
+    contracts: (payload.contracts && typeof payload.contracts === "object")
+      ? cloneState(payload.contracts)
+      : ((S.contracts && typeof S.contracts === "object") ? cloneState(S.contracts) : null),
     soldierAttackersOwned: Math.max(0, Math.floor(Number(payload.soldierAttackersOwned ?? S.soldierAttackersOwned ?? 0))),
     soldierRescuersOwned: Math.max(0, Math.floor(Number(payload.soldierRescuersOwned ?? S.soldierRescuersOwned ?? 0))),
     soldierAttackersDowned: Math.max(0, Math.floor(Number(payload.soldierAttackersDowned ?? S.soldierAttackersDowned ?? 0))),
@@ -6556,11 +7065,13 @@ function bindLaunchIntroAudioGesture(){
   }, { passive:true });
 }
 function refreshLaunchIntroStatus(){
+  ensureContractsState(S);
   const streakEl = document.getElementById("launchIntroStreak");
   const dailyEl = document.getElementById("launchIntroDailyStatus");
   const commanderEl = document.getElementById("launchCommanderCard");
   const intelEl = document.getElementById("launchIntelCard");
   const dailyCardEl = document.getElementById("launchDailyCard");
+  const contractsCardEl = document.getElementById("launchContractsCard");
   const posterEl = document.getElementById("launchPoster");
   const info = readDaily();
   const streak = Math.max(0, Number(info?.streak || 0));
@@ -6609,6 +7120,9 @@ function refreshLaunchIntroStatus(){
       const next = previewNextDailyReward();
       dailyCardEl.innerText = `Next reward: +$${next.cash.toLocaleString()} • +${next.perkPts} perk in ${nextDailyCountdownText()}`;
     }
+  }
+  if(contractsCardEl){
+    contractsCardEl.innerText = launchContractsSummaryText(S);
   }
   refreshLaunchStartButtons();
 }
@@ -6890,6 +7404,19 @@ function startQuickTutorialFromLaunchIntro(){
   setPaused(false,null);
   syncGamepadFocus();
   window.startTutorial?.();
+}
+function openContractsFromLaunchIntro(){
+  clearLaunchIntroAutoTimer();
+  clearLaunchMusicLoop();
+  const overlay = document.getElementById("launchIntroOverlay");
+  if(overlay) overlay.style.display = "none";
+  openInventory();
+  requestAnimationFrame(()=>{
+    const anchor = document.getElementById("invContractsAnchor");
+    if(anchor && typeof anchor.scrollIntoView === "function"){
+      anchor.scrollIntoView({ block:"start", inline:"nearest" });
+    }
+  });
 }
 function skipLaunchIntro(){
   clearLaunchMusicLoop();
@@ -8649,6 +9176,42 @@ function renderInventory(){
   const medSelectedDef = getMed(medSelected) || MEDS[0];
   const armorSelected = selectedArmorPlateId();
   const armorSelectedDef = getArmor(armorSelected) || ARMORY[0];
+  ensureContractsState(S);
+  const contractSectionHtml = ["daily", "weekly"].map((period)=>{
+    const summary = contractSummary(period, S);
+    const entries = Array.isArray(S?.contracts?.[period]?.entries) ? S.contracts[period].entries : [];
+    const periodLabel = period === "weekly" ? "Weekly Contracts" : "Daily Contracts";
+    const resetTxt = contractCountdownText(period);
+    const rows = entries.map((entry)=>{
+      const progress = Math.min(entry.target, contractEntryProgress(entry, S));
+      const ready = !entry.claimed && progress >= entry.target;
+      const statusTag = entry.claimed ? "Claimed" : (ready ? "Ready" : `${progress}/${entry.target}`);
+      const claimDisabled = entry.claimed || !ready;
+      return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${entry.title} <span class="tag">${statusTag}</span></div>
+          <div class="itemDesc">${entry.desc}</div>
+          <div class="itemDesc">Reward: ${contractRewardText(entry.reward)}</div>
+        </div>
+        <div style="text-align:right">
+          <button ${claimDisabled ? "disabled" : ""} onclick="claimContract('${period}','${entry.id}')">${entry.claimed ? "Claimed" : "Claim"}</button>
+        </div>
+      </div>`;
+    }).join("");
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${periodLabel} <span class="tag">${summary.claimed}/${summary.total} claimed</span> <span class="tag">${summary.ready} ready</span></div>
+          <div class="itemDesc">Resets in ${resetTxt}.</div>
+        </div>
+        <div style="text-align:right">
+          <button class="ghost" ${summary.ready <= 0 ? "disabled" : ""} onclick="claimAllContracts('${period}')">Claim All Ready</button>
+        </div>
+      </div>
+      ${rows}
+    `;
+  }).join("");
 
   document.getElementById("invSupplies").innerHTML = `
     <div class="item">
@@ -8699,6 +9262,10 @@ function renderInventory(){
         <button ${S.trapsOwned<=0?'disabled':''} onclick="placeTrap()">Place</button>
       </div>
     </div>
+
+    <div class="divider"></div>
+    <div class="hudTitle" id="invContractsAnchor">Contracts</div>
+    ${contractSectionHtml}
 
     <div class="divider"></div>
     <div class="item" style="padding:10px 12px;">
@@ -8952,6 +9519,7 @@ function placeTrap(){
   if(S.trapsOwned<=0) return toast("No traps. Buy in shop.");
   S.trapsOwned -= 1;
   S.stats.trapsPlaced = (S.stats.trapsPlaced || 0) + 1;
+  addContractTally("trapsPlaced", 1);
   if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
   if(S.trapsPlaced.length >= MAX_PERSIST_TRAPS) S.trapsPlaced.shift();
 
@@ -9001,6 +9569,7 @@ function trapTick(){
     tr.used = true;
     tr.removeAt = tgt.holdUntil;
     S.stats.trapsTriggered = (S.stats.trapsTriggered || 0) + 1;
+    addContractTally("trapsTriggered", 1);
 
     toast("🪤 Tiger trapped!");
     sfx("trap"); hapticImpact("medium");
@@ -9899,6 +10468,7 @@ function activateMapInteractable(it){
     const cash = Math.round(rand(180, 520) * cacheRewardMul());
     S.funds += cash;
     S.stats.cashEarned += cash;
+    addContractTally("cashEarned", cash);
     const w = equippedWeapon();
     if(w){
       const refillBase = Math.max(2, Math.floor(w.mag * 0.6));
@@ -9996,6 +10566,7 @@ function awardCombo(kind){
 
   S.funds += bonusCash;
   S.stats.cashEarned += bonusCash;
+  addContractTally("cashEarned", bonusCash);
   addXP(bonusXp);
   let arcadeSuffix = "";
   if(S.mode==="Arcade"){
@@ -11803,12 +12374,14 @@ function supportUnitsTick(){
               markStoryFinalBossOutcome("CAPTURE", tiger);
               tiger.alive = false;
               S.stats.captures = (S.stats.captures || 0) + 1;
+              addContractTally("captures", 1);
               const pay = payout("CAPTURE");
               const cash = Math.round(pay.cash * 0.42);
               const score = Math.round(pay.score * 0.45);
               S.funds += cash;
               S.score += score;
               S.stats.cashEarned += cash;
+              addContractTally("cashEarned", cash);
               setEventText("Tiger specialist secured a capture.", 2.2);
               break;
             }
@@ -12066,6 +12639,7 @@ function evacCheck(){
       c.evac=true;
       S.evacDone += 1;
       S.stats.evac += 1;
+      addContractTally("evac", 1);
       addXP(35);
       awardCombo("rescue");
       toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length})`);
@@ -13782,8 +14356,10 @@ function finishTigerKill(t){
   const pay=payout("KILL");
   S.funds+=pay.cash; S.score+=pay.score;
   S.stats.kills += 1;
+  addContractTally("kills", 1);
   addXP(50);
   S.stats.cashEarned += pay.cash;
+  addContractTally("cashEarned", pay.cash);
   unlockAchv("kill1","First Kill");
   S.trust=clamp(S.trust+pay.trust,0,100);
   S.aggro=clamp(S.aggro+pay.aggro,0,100);
@@ -13867,9 +14443,11 @@ function playerAction(action){
     const pay=payout("CAPTURE");
     S.funds+=pay.cash; S.score+=pay.score;
     S.stats.captures += 1;
+    addContractTally("captures", 1);
     addXP(90);
     awardCombo("capture");
     S.stats.cashEarned += pay.cash;
+    addContractTally("cashEarned", pay.cash);
     unlockAchv("cap1","First Capture");
     S.trust=clamp(S.trust+pay.trust,0,100);
     S.aggro=clamp(S.aggro+pay.aggro,0,100);
@@ -13937,6 +14515,7 @@ function playerAction(action){
 
     S.mag.loaded -= 1;
     S.stats.shots += 1;
+    addContractTally("shots", 1);
     addWeaponMasteryXp(w.id, 2);
     addXP(2);
     
@@ -14258,6 +14837,7 @@ function checkMissionComplete(){
   if(!tAlive && evacReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady){
     if(!S.missionEnded){
       S.missionEnded=true;
+      addContractTally("missionsCleared", 1);
       setPaused(true,"complete");
       transitionCleanupSweep("mission-complete");
       clearTransientCombatVisuals();
@@ -14347,6 +14927,7 @@ function updateEngage(){
 function renderHUD(){
   try{
     syncSquadRosterBounds();
+    contractsHeartbeatTick();
     applyModeTheme(S.mode);
     // clear event text if expired
     if(S.eventTextUntil && Date.now()>S.eventTextUntil) S.eventText="";
@@ -16831,6 +17412,8 @@ function init(){
   ensureStarsDebugUi();
   pushStarsDebug("app:init", { user: tgUserKey(), build: TS_BUILD });
   ensureStoryMetaState();
+  ensureContractTalliesState(S);
+  ensureContractsState(S);
   if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.storyLastMission = clamp(Math.floor(S.storyLastMission || S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
@@ -16920,6 +17503,8 @@ function init(){
   if(!Number.isFinite(S.arcadeScoreBonus)) S.arcadeScoreBonus = 0;
   if(!Number.isFinite(S._arcadeTimerWarn)) S._arcadeTimerWarn = 0;
   if(!S.progressionUnlocks || typeof S.progressionUnlocks !== "object") S.progressionUnlocks = {};
+  ensureContractTalliesState(S);
+  ensureContractsState(S);
   if(S.paused && !S.gameOver && !S.missionEnded){
     S.paused = false;
     S.pauseReason = null;
@@ -17180,6 +17765,7 @@ window.setMode = setMode;
 window.openLaunchIntro = openLaunchIntro;
 window.beginFromLaunchIntro = beginFromLaunchIntro;
 window.startQuickTutorialFromLaunchIntro = startQuickTutorialFromLaunchIntro;
+window.openContractsFromLaunchIntro = openContractsFromLaunchIntro;
 window.skipLaunchIntro = skipLaunchIntro;
 window.restartFromMission1FromLaunchIntro = restartFromMission1FromLaunchIntro;
 window.saveGameNow = saveGameNow;
@@ -17261,6 +17847,8 @@ window.openQuickWeaponPicker = openQuickWeaponPicker;
 window.closeQuickWeaponPicker = closeQuickWeaponPicker;
 window.selectQuickWeapon = selectQuickWeapon;
 window.buyPerk = buyPerk;
+window.claimContract = claimContract;
+window.claimAllContracts = claimAllContracts;
 window.lockNearestTiger = lockNearestTiger;
 window.canAttemptCapture = canAttemptCapture;
 window.tutorialCaptureWindowReady = tutorialCaptureWindowReady;
