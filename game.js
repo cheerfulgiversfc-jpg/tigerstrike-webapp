@@ -4584,9 +4584,13 @@ const SQUAD_WHEEL_PROFILES = {
     icon: 14,
     ringInset: 19,
     cornerGap: 14,
-    anchorDx: -38,
-    anchorDy: -90,
+    anchorDx: -30,
+    anchorDy: -74,
     pad: 102,
+    zoneMinX: 0.56,
+    zoneMaxX: 0.90,
+    zoneMinY: 0.38,
+    zoneMaxY: 0.82,
   },
   B: {
     size: 204,
@@ -4597,9 +4601,13 @@ const SQUAD_WHEEL_PROFILES = {
     icon: 15,
     ringInset: 21,
     cornerGap: 15,
-    anchorDx: -48,
-    anchorDy: -102,
+    anchorDx: -40,
+    anchorDy: -82,
     pad: 114,
+    zoneMinX: 0.60,
+    zoneMaxX: 0.92,
+    zoneMinY: 0.34,
+    zoneMaxY: 0.80,
   },
 };
 let __squadWheelOpen = false;
@@ -4650,6 +4658,7 @@ function positionSquadCommandWheel(anchor){
   if(!stage) return;
   const stageRect = stage.getBoundingClientRect();
   if(!(stageRect.width > 0 && stageRect.height > 0)) return;
+  const profileKey = squadWheelProfileKey(stageRect);
   const profile = applySquadWheelProfile(stage, stageRect);
 
   let cx = stageRect.width * 0.84;
@@ -4668,6 +4677,18 @@ function positionSquadCommandWheel(anchor){
   const pad = profile.pad;
   cx = clamp(cx, pad, Math.max(pad, stageRect.width - pad));
   cy = clamp(cy, pad, Math.max(pad, stageRect.height - pad));
+  // Final thumb-reach clamp: keep wheel in right-hand "comfort zone" per profile.
+  const zoneMinX = stageRect.width * (profile.zoneMinX || 0.56);
+  const zoneMaxX = stageRect.width * (profile.zoneMaxX || 0.92);
+  const zoneMinY = stageRect.height * (profile.zoneMinY || 0.36);
+  const zoneMaxY = stageRect.height * (profile.zoneMaxY || 0.82);
+  cx = clamp(cx, zoneMinX, Math.max(zoneMinX, zoneMaxX));
+  cy = clamp(cy, zoneMinY, Math.max(zoneMinY, zoneMaxY));
+  if(profileKey === "A" && !anchorEl){
+    // Stable fallback for tall portrait phones if anchor is unavailable.
+    cx = clamp(stageRect.width * 0.76, zoneMinX, zoneMaxX);
+    cy = clamp(stageRect.height * 0.62, zoneMinY, zoneMaxY);
+  }
   stage.style.setProperty("--squad-wheel-x", `${Math.round(cx)}px`);
   stage.style.setProperty("--squad-wheel-y", `${Math.round(cy)}px`);
 }
