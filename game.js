@@ -2037,6 +2037,7 @@ const DEFAULT = {
   takeoverPromptUntil:0,
   takeoverCivId:null,
   takeoverUnitId:null,
+  squadCommand:"AUTO",
 
   me:{ x:160, y:420, face:0, step:0 },
   target:null,
@@ -4267,7 +4268,41 @@ function specialistRoleUnlocked(role){
   if(hasPremiumSpecialistUnlock(role)) return true;
   return soldierUnlockLevelReached();
 }
+const SQUAD_COMMAND_ORDER = ["AUTO", "ATTACK_TARGET", "RESCUE", "REGROUP", "HOLD"];
+const SQUAD_COMMAND_LABELS = {
+  AUTO: "Auto",
+  ATTACK_TARGET: "Attack Target",
+  RESCUE: "Rescue",
+  REGROUP: "Regroup",
+  HOLD: "Hold",
+};
+function normalizeSquadCommand(cmd){
+  const key = String(cmd || "").trim().toUpperCase();
+  return SQUAD_COMMAND_ORDER.includes(key) ? key : "AUTO";
+}
+function squadCommandLabel(cmd = S?.squadCommand){
+  const key = normalizeSquadCommand(cmd);
+  return SQUAD_COMMAND_LABELS[key] || SQUAD_COMMAND_LABELS.AUTO;
+}
+function setSquadCommand(cmd, opts={}){
+  const next = normalizeSquadCommand(cmd);
+  if(!S || typeof S !== "object") return next;
+  if(S.squadCommand === next && !opts.force) return next;
+  S.squadCommand = next;
+  if(opts.toast !== false){
+    toast(`Squad command: ${squadCommandLabel(next)}.`);
+  }
+  if(opts.save !== false) save();
+  return next;
+}
+function cycleSquadCommand(){
+  const current = normalizeSquadCommand(S?.squadCommand);
+  const idx = Math.max(0, SQUAD_COMMAND_ORDER.indexOf(current));
+  const next = SQUAD_COMMAND_ORDER[(idx + 1) % SQUAD_COMMAND_ORDER.length];
+  return setSquadCommand(next, { toast:true, save:true });
+}
 function syncSquadRosterBounds(){
+  S.squadCommand = normalizeSquadCommand(S.squadCommand);
   S.soldierAttackersOwned = clamp(Math.floor(Number(S.soldierAttackersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
   S.soldierRescuersOwned = clamp(Math.floor(Number(S.soldierRescuersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
   S.soldierAttackersDowned = clamp(Math.floor(Number(S.soldierAttackersDowned || 0)), 0, S.soldierAttackersOwned);
@@ -12511,6 +12546,12 @@ function supportUnitsTick(){
   const activeTigers = S.tigers.filter(t=>t.alive);
   const lockTiger = S.lockedTigerId ? activeTigers.find((t)=>t.id===S.lockedTigerId) : null;
   const dangerCiv = (S.mode==="Survival") ? null : liveCivs.find((c)=>c.id===S.dangerCivId) || null;
+  const squadCommand = normalizeSquadCommand(S.squadCommand);
+  const commandAuto = squadCommand === "AUTO";
+  const commandAttackTarget = squadCommand === "ATTACK_TARGET";
+  const commandRescue = squadCommand === "RESCUE";
+  const commandRegroup = squadCommand === "REGROUP";
+  const commandHold = squadCommand === "HOLD";
 
   const nearestTigerTo = (ux, uy) => {
     let best = null;
@@ -12532,10 +12573,10 @@ function supportUnitsTick(){
   };
 
   let priorityTiger = lockTiger || null;
-  if(!priorityTiger && dangerCiv){
+  if(!priorityTiger && (commandAuto || commandRescue || commandAttackTarget) && dangerCiv){
     priorityTiger = nearestTigerTo(dangerCiv.x, dangerCiv.y).tiger;
   }
-  if(!priorityTiger){
+  if(!priorityTiger && !commandHold){
     const nearPlayer = nearestTigerTo(S.me.x, S.me.y);
     if(nearPlayer.tiger && nearPlayer.d < 280) priorityTiger = nearPlayer.tiger;
   }
@@ -12549,11 +12590,15 @@ function supportUnitsTick(){
 
     let targetX = unit.homeX + Math.cos(unit.step * 0.6) * 18;
     let targetY = unit.homeY + Math.sin(unit.step * 0.7) * 14;
+    const leashMax = commandHold ? 120 : (commandRegroup ? 150 : 265);
 
-    if(unit.role === "rescue" && liveCivs.length){
+    if(unit.role === "rescue" && liveCivs.length && !commandHold && !commandRegroup){
       const ownTag = "rescue";
       const ownedByThisUnit = liveCivs.filter((c)=>c.following && c.escortOwner === ownTag && c.escortUnitId === unit.id);
-      const available = liveCivs.filter((c)=>!c.following && (c.escortOwner !== ownTag || !c.escortUnitId || c.escortUnitId === unit.id));
+      const canTakeNewAssignments = !commandAttackTarget;
+      const available = canTakeNewAssignments
+        ? liveCivs.filter((c)=>!c.following && (c.escortOwner !== ownTag || !c.escortUnitId || c.escortUnitId === unit.id))
+        : [];
       let targetCiv = null;
 
       if(dangerCiv && (dangerCiv.escortOwner !== ownTag || !dangerCiv.escortUnitId || dangerCiv.escortUnitId === unit.id)){
@@ -12581,7 +12626,7 @@ function supportUnitsTick(){
           }
         }
       }
-      if(!targetCiv){
+      if(!targetCiv && (commandRescue || !commandAttackTarget)){
         const nearest = nearestCivTo(unit.x, unit.y).civ;
         if(nearest && (nearest.escortOwner !== ownTag || !nearest.escortUnitId || nearest.escortUnitId === unit.id)){
           targetCiv = nearest;
@@ -12590,7 +12635,7 @@ function supportUnitsTick(){
 
       if(targetCiv){
         const civDist = dist(unit.x, unit.y, targetCiv.x, targetCiv.y);
-        const engageDist = 56;
+        const engageDist = commandRescue ? 62 : 56;
         if(!targetCiv.following){
           targetX = targetCiv.x;
           targetY = targetCiv.y;
@@ -12613,7 +12658,8 @@ function supportUnitsTick(){
               const gdx = S.evacZone.x - targetCiv.x;
               const gdy = S.evacZone.y - targetCiv.y;
               const gd = Math.hypot(gdx, gdy) || 1;
-              const guideSpeed = Math.min(1.95, gd) * waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10);
+              const guideSpeedBase = commandRescue ? 2.2 : 1.95;
+              const guideSpeed = Math.min(guideSpeedBase, gd) * waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10);
               tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14, { avoidKeepout:false });
               targetCiv.hp = clamp(targetCiv.hp + 0.03, 0, targetCiv.hpMax);
             }
@@ -12626,12 +12672,36 @@ function supportUnitsTick(){
       }
     } else if(unit.role === "attacker" && activeTigers.length){
       const fallback = nearestTigerTo(unit.x, unit.y);
-      const chaseTiger = priorityTiger || (fallback.d < 210 ? fallback.tiger : null);
+      let chaseTiger = null;
+      if(commandAttackTarget){
+        chaseTiger = lockTiger || null;
+        if(!chaseTiger && fallback.d < 170) chaseTiger = fallback.tiger;
+      } else if(commandRescue){
+        chaseTiger = dangerCiv ? nearestTigerTo(dangerCiv.x, dangerCiv.y).tiger : null;
+        if(!chaseTiger){
+          const nearPlayer = nearestTigerTo(S.me.x, S.me.y);
+          if(nearPlayer.tiger && nearPlayer.d < 230) chaseTiger = nearPlayer.tiger;
+        }
+      } else if(commandRegroup){
+        const nearPlayer = nearestTigerTo(S.me.x, S.me.y);
+        if(nearPlayer.tiger && nearPlayer.d < 150) chaseTiger = nearPlayer.tiger;
+      } else if(commandAuto){
+        chaseTiger = priorityTiger || (fallback.d < 210 ? fallback.tiger : null);
+      } else {
+        chaseTiger = fallback.d < 140 ? fallback.tiger : null;
+      }
       if(chaseTiger){
         const nearPlayer = dist(chaseTiger.x, chaseTiger.y, S.me.x, S.me.y) < 300;
         const nearDanger = dangerCiv ? dist(chaseTiger.x, chaseTiger.y, dangerCiv.x, dangerCiv.y) < 210 : false;
         const isLocked = !!lockTiger && chaseTiger.id === lockTiger.id;
-        if(isLocked || nearPlayer || nearDanger){
+        const allowChase = commandAttackTarget
+          ? (isLocked || (!lockTiger && nearPlayer))
+          : commandRegroup
+            ? nearPlayer
+            : commandRescue
+              ? (nearDanger || nearPlayer)
+              : (isLocked || nearPlayer || nearDanger);
+        if(allowChase){
           targetX = chaseTiger.x;
           targetY = chaseTiger.y;
         }
@@ -12639,7 +12709,7 @@ function supportUnitsTick(){
     }
 
     const homeDist = dist(unit.x, unit.y, unit.homeX, unit.homeY);
-    if(homeDist > 265){
+    if(homeDist > leashMax){
       targetX = unit.homeX + Math.cos(unit.step * 0.55) * 14;
       targetY = unit.homeY + Math.sin(unit.step * 0.62) * 12;
     }
@@ -12648,9 +12718,12 @@ function supportUnitsTick(){
     const dy = targetY - unit.y;
     const len = Math.hypot(dx, dy) || 1;
     const waterMul = waterSpeedMul("support", unit.x, unit.y, 12);
-    const stepCap = unit.role === "attacker"
+    let stepCap = unit.role === "attacker"
       ? (2.30 * (S.mode==="Story" ? (1 + (storySpecialistRank("SP_ATK_DRILL") * 0.04)) : 1))
       : (2.08 * storyRescueSpeedMul());
+    if(unit.role === "rescue" && commandRescue) stepCap *= 1.1;
+    if(commandRegroup) stepCap *= 1.06;
+    if(commandHold) stepCap *= 0.96;
     const finalStepCap = stepCap * waterMul;
     const step = Math.min(finalStepCap, len);
     unit.face = Math.atan2(dy, dx);
@@ -12661,10 +12734,29 @@ function supportUnitsTick(){
       const nearPlayer = dist(tiger.x, tiger.y, S.me.x, S.me.y) < 300;
       const nearDanger = dangerCiv ? dist(tiger.x, tiger.y, dangerCiv.x, dangerCiv.y) < 210 : false;
       const isPriority = !!priorityTiger && tiger.id === priorityTiger.id;
-      const allowEngage = isPriority || nearPlayer || nearDanger;
+      let allowEngage = isPriority || nearPlayer || nearDanger;
+      let shotRange = 230;
+      let clawRange = 90;
+      if(commandAttackTarget){
+        allowEngage = lockTiger ? tiger.id === lockTiger.id : nearPlayer;
+        shotRange = lockTiger ? 255 : 155;
+        clawRange = 96;
+      } else if(commandRescue){
+        allowEngage = nearDanger || nearPlayer;
+        shotRange = nearDanger ? 245 : 190;
+        clawRange = 98;
+      } else if(commandRegroup){
+        allowEngage = nearPlayer && tigerDist < 170;
+        shotRange = 165;
+        clawRange = 86;
+      } else if(commandHold){
+        allowEngage = nearPlayer && tigerDist < 130;
+        shotRange = 135;
+        clawRange = 82;
+      }
 
       if(unit.role === "attacker"){
-        if(allowEngage && tigerDist < 230 && now >= (unit.fireAt || 0)){
+        if(allowEngage && tigerDist < shotRange && now >= (unit.fireAt || 0)){
           unit.fireAt = now + rand(260, 430);
           const shotDmg = supportAttackDamage(unit, tiger, tigerDist);
           tiger.hp = clamp(tiger.hp - shotDmg, 0, tiger.hpMax);
@@ -12694,7 +12786,7 @@ function supportUnitsTick(){
             break;
           }
         }
-        if(allowEngage && tigerDist < 90){
+        if(allowEngage && tigerDist < clawRange){
           const hitKey = `_nextTigerHitAt_${tiger.id}`;
           if(now >= (unit[hitKey] || 0)){
             unit[hitKey] = now + rand(780, 1120);
@@ -15257,6 +15349,11 @@ function renderHUD(){
   if(soundLblMobile) soundLblMobile.innerText = S.soundOn ? "On" : "Off";
   const pauseLblMobile = document.getElementById("pauseLblMobile");
   if(pauseLblMobile) pauseLblMobile.innerText = S.paused ? "Resume" : "Pause";
+  const squadCmdLabel = squadCommandLabel();
+  const squadCmdBtn = document.getElementById("squadCmdBtn");
+  if(squadCmdBtn) squadCmdBtn.innerText = `🪖 ${squadCmdLabel}`;
+  const squadCmdBtnMobile = document.getElementById("squadCmdBtnMobile");
+  if(squadCmdBtnMobile) squadCmdBtnMobile.innerText = `🪖 ${squadCmdLabel}`;
   updatePerformanceLabels();
   document.getElementById("livesTxt").innerText = S.lives;
 
@@ -18156,6 +18253,8 @@ window.activateShield = activateShield;
 window.useProtectAction = useProtectAction;
 window.takeoverEscort = takeoverEscort;
 window.useNearestCache = useNearestCache;
+window.setSquadCommand = setSquadCommand;
+window.cycleSquadCommand = cycleSquadCommand;
 
 window.playerAction = playerAction;
 window.endBattle = endBattle;
