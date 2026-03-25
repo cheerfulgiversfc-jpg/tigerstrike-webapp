@@ -2072,6 +2072,18 @@ const DEFAULT = {
   fogUntil:0,
   eventText:"",
   eventCooldown:0,
+  director:{
+    phase:"CALM",
+    pressure:12,
+    phaseLockUntil:0,
+    nextSpawnAt:0,
+    lastSampleAt:0,
+    hardTrimAt:0,
+    phaseChangedAt:0,
+    lastNoticeAt:0
+  },
+  _directorAggroMul:1,
+  _directorSpeedMul:1,
   pickups:[],
   comboCount:0,
   comboBest:0,
@@ -2623,6 +2635,30 @@ const FRAME_LOAD_HIGH = 1.32;
 const FRAME_LOAD_EXTREME = 1.52;
 const FRAME_LAG_WARN_SCORE = 4;
 const FRAME_LAG_CRITICAL_SCORE = 8;
+const DIRECTOR_PHASES = {
+  CALM: "CALM",
+  PRESSURE: "PRESSURE",
+  PEAK: "PEAK",
+  RECOVER: "RECOVER",
+};
+const DIRECTOR_PHASE_LABELS = {
+  CALM: "Calm",
+  PRESSURE: "Pressure",
+  PEAK: "Peak",
+  RECOVER: "Recover",
+};
+const DIRECTOR_PHASE_CONFIG = {
+  CALM: { eventChance:0.08, eventCooldownTicks:760, spawnCd:[19000, 26000], aggroMul:0.92, speedMul:0.95 },
+  PRESSURE: { eventChance:0.12, eventCooldownTicks:620, spawnCd:[13000, 18500], aggroMul:1.00, speedMul:1.00 },
+  PEAK: { eventChance:0.17, eventCooldownTicks:470, spawnCd:[9000, 13000], aggroMul:1.10, speedMul:1.08 },
+  RECOVER: { eventChance:0.10, eventCooldownTicks:540, spawnCd:[15000, 22000], aggroMul:0.96, speedMul:0.98 },
+};
+const DIRECTOR_PHASE_MIN_LOCK_MS = 3600;
+const DIRECTOR_HARD_CAPS = {
+  Story: { tigers:20, civilians:24, pickups:20, carcasses:44, traps:22, support:16 },
+  Arcade: { tigers:20, civilians:24, pickups:20, carcasses:44, traps:22, support:16 },
+  Survival: { tigers:22, civilians:30, pickups:22, carcasses:48, traps:24, support:16 },
+};
 
 function capTail(list, max){
   if(!Array.isArray(list)) return [];
@@ -2875,6 +2911,239 @@ function frameLagTier(){
   if(score >= FRAME_LAG_CRITICAL_SCORE) return 2;
   if(score >= FRAME_LAG_WARN_SCORE) return 1;
   return 0;
+}
+function directorPhaseLabel(phase){
+  return DIRECTOR_PHASE_LABELS[phase] || DIRECTOR_PHASE_LABELS.CALM;
+}
+function ensureMissionDirectorState(state=S){
+  if(!state || typeof state !== "object"){
+    return {
+      phase:DIRECTOR_PHASES.CALM,
+      pressure:12,
+      phaseLockUntil:0,
+      nextSpawnAt:0,
+      lastSampleAt:0,
+      hardTrimAt:0,
+      phaseChangedAt:0,
+      lastNoticeAt:0
+    };
+  }
+  const cur = (state.director && typeof state.director === "object") ? state.director : {};
+  const next = {
+    phase: DIRECTOR_PHASES[cur.phase] ? cur.phase : DIRECTOR_PHASES.CALM,
+    pressure: clamp(Number.isFinite(cur.pressure) ? cur.pressure : 12, 0, 100),
+    phaseLockUntil: Number.isFinite(cur.phaseLockUntil) ? cur.phaseLockUntil : 0,
+    nextSpawnAt: Number.isFinite(cur.nextSpawnAt) ? cur.nextSpawnAt : 0,
+    lastSampleAt: Number.isFinite(cur.lastSampleAt) ? cur.lastSampleAt : 0,
+    hardTrimAt: Number.isFinite(cur.hardTrimAt) ? cur.hardTrimAt : 0,
+    phaseChangedAt: Number.isFinite(cur.phaseChangedAt) ? cur.phaseChangedAt : 0,
+    lastNoticeAt: Number.isFinite(cur.lastNoticeAt) ? cur.lastNoticeAt : 0
+  };
+  state.director = next;
+  if(!Number.isFinite(state._directorAggroMul)) state._directorAggroMul = 1;
+  if(!Number.isFinite(state._directorSpeedMul)) state._directorSpeedMul = 1;
+  return next;
+}
+function missionDirectorHardCaps(){
+  const modeKey = normalizeModeName(S?.mode);
+  const base = DIRECTOR_HARD_CAPS[modeKey] || DIRECTOR_HARD_CAPS.Story;
+  const caps = {
+    tigers: base.tigers,
+    civilians: base.civilians,
+    pickups: base.pickups,
+    carcasses: base.carcasses,
+    traps: base.traps,
+    support: base.support
+  };
+  const lagTier = frameLagTier();
+  const heavy = frameIsSlow() || performanceMode() === "PERFORMANCE";
+  if(heavy){
+    caps.tigers -= 1;
+    caps.pickups -= 2;
+    caps.carcasses -= 4;
+    caps.traps -= 2;
+  }
+  if(lagTier >= 1){
+    caps.tigers -= 1;
+    caps.pickups -= 2;
+    caps.carcasses -= 4;
+    caps.traps -= 2;
+  }
+  if(lagTier >= 2){
+    caps.tigers -= 2;
+    caps.pickups -= 3;
+    caps.carcasses -= 6;
+    caps.traps -= 3;
+  }
+  caps.tigers = clamp(Math.floor(caps.tigers), 14, STABILITY_SOFT_CAP_TIGERS);
+  caps.civilians = clamp(Math.floor(caps.civilians), 18, STABILITY_SOFT_CAP_CIVILIANS);
+  caps.pickups = clamp(Math.floor(caps.pickups), 10, STABILITY_SOFT_CAP_PICKUPS);
+  caps.carcasses = clamp(Math.floor(caps.carcasses), 20, STABILITY_SOFT_CAP_CARCASSES);
+  caps.traps = clamp(Math.floor(caps.traps), 8, STABILITY_SOFT_CAP_TRAPS);
+  caps.support = clamp(Math.floor(caps.support), 8, MAX_PERSIST_SUPPORT_UNITS);
+  return caps;
+}
+function missionDirectorAllowTigerSpawn(extra=1, opts={}){
+  if(!S || typeof S !== "object") return false;
+  const now = Date.now();
+  const director = ensureMissionDirectorState();
+  if(!opts.ignoreBudget && now < (director.nextSpawnAt || 0)) return false;
+  const alive = (S.tigers || []).reduce((n, t)=>n + (t?.alive ? 1 : 0), 0);
+  const caps = missionDirectorHardCaps();
+  return alive + Math.max(1, Math.floor(extra || 1)) <= caps.tigers;
+}
+function missionDirectorMarkTigerSpawn(opts={}){
+  const now = Date.now();
+  const director = ensureMissionDirectorState();
+  const phaseKey = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
+  const cfg = DIRECTOR_PHASE_CONFIG[phaseKey];
+  const minCd = Math.round(cfg.spawnCd?.[0] || 13000);
+  const maxCd = Math.round(cfg.spawnCd?.[1] || 19000);
+  const survivalMul = S.mode === "Survival" ? 0.76 : 1;
+  const cd = rand(Math.max(1200, Math.round(minCd * survivalMul)), Math.max(1600, Math.round(maxCd * survivalMul)));
+  director.nextSpawnAt = now + cd;
+}
+function missionDirectorTargetPressure(now=Date.now()){
+  const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
+  const aliveCivs = (S.mode === "Survival")
+    ? []
+    : (S.civilians || []).filter((c)=>c && c.alive && !c.evac);
+  const nearPlayer = aliveTigers.reduce((n, t)=>n + (dist(S.me.x, S.me.y, t.x, t.y) < 190 ? 1 : 0), 0);
+  let nearCivs = 0;
+  if(aliveCivs.length){
+    for(const t of aliveTigers){
+      for(const c of aliveCivs){
+        if(dist(t.x, t.y, c.x, c.y) < 150){
+          nearCivs += 1;
+          break;
+        }
+      }
+    }
+  }
+  const underAttack = Math.max(0, Number(S._underAttack || 0));
+  const inBattle = S.inBattle ? 1 : 0;
+  const hpStress = clamp((100 - Number(S.hp || 100)) / 100, 0, 1);
+  const levelStress = (() => {
+    if(S.mode === "Story") return clamp(((S.storyLevel || 1) - 1) / 99, 0, 1);
+    if(S.mode === "Arcade") return clamp(((S.arcadeLevel || 1) - 1) / 99, 0, 1);
+    return clamp(((S.survivalWave || 1) - 1) / 35, 0, 1);
+  })();
+  let target = 8;
+  target += aliveTigers.length * 2.5;
+  target += nearPlayer * 7.2;
+  target += nearCivs * 5.6;
+  target += underAttack * 8.5;
+  target += inBattle * 11;
+  target += hpStress * 14;
+  target += levelStress * (S.mode === "Survival" ? 20 : 14);
+  if(now < (S.civGraceUntil || 0)) target *= 0.72;
+  return clamp(target, 0, 100);
+}
+function missionDirectorResolvePhase(pressure, currentPhase){
+  const p = clamp(Number(pressure) || 0, 0, 100);
+  const cur = DIRECTOR_PHASE_CONFIG[currentPhase] ? currentPhase : DIRECTOR_PHASES.CALM;
+  if(cur === DIRECTOR_PHASES.PEAK){
+    if(p >= 58) return DIRECTOR_PHASES.PEAK;
+    if(p >= 28) return DIRECTOR_PHASES.RECOVER;
+    return DIRECTOR_PHASES.CALM;
+  }
+  if(cur === DIRECTOR_PHASES.RECOVER){
+    if(p >= 68) return DIRECTOR_PHASES.PEAK;
+    if(p >= 44) return DIRECTOR_PHASES.PRESSURE;
+    if(p >= 22) return DIRECTOR_PHASES.RECOVER;
+    return DIRECTOR_PHASES.CALM;
+  }
+  if(p >= 74) return DIRECTOR_PHASES.PEAK;
+  if(p >= 40) return DIRECTOR_PHASES.PRESSURE;
+  return DIRECTOR_PHASES.CALM;
+}
+function missionDirectorApplyHardCaps(){
+  if(!S || typeof S !== "object") return { trimmed:0 };
+  const caps = missionDirectorHardCaps();
+  let trimmed = 0;
+  if(Array.isArray(S.tigers) && S.tigers.length > caps.tigers){
+    const alive = S.tigers.filter((t)=>t && t.alive);
+    const dead = S.tigers.filter((t)=>!t?.alive);
+    const keepIds = new Set();
+    for(const t of alive){
+      if(isBossTiger(t) || t.id === S.activeTigerId || t.id === S.lockedTigerId){
+        keepIds.add(t.id);
+      }
+    }
+    if(S.dangerCivId){
+      const civ = (S.civilians || []).find((c)=>c?.alive && !c.evac && c.id === S.dangerCivId);
+      if(civ){
+        for(const t of alive){
+          if(dist(t.x, t.y, civ.x, civ.y) < 210) keepIds.add(t.id);
+        }
+      }
+    }
+    const keep = alive.filter((t)=>keepIds.has(t.id));
+    const overflow = alive.filter((t)=>!keepIds.has(t.id));
+    overflow.sort((a, b)=>dist(S.me.x, S.me.y, a.x, a.y) - dist(S.me.x, S.me.y, b.x, b.y));
+    const finalAlive = [...keep, ...overflow].slice(0, caps.tigers);
+    const before = S.tigers.length;
+    // Keep a tiny dead tail for FX continuity, but prioritize live entity cap.
+    const deadTail = dead.slice(-Math.min(2, Math.max(0, caps.tigers - finalAlive.length)));
+    S.tigers = [...finalAlive, ...deadTail];
+    trimmed += Math.max(0, before - S.tigers.length);
+  }
+  if(Array.isArray(S.pickups) && S.pickups.length > caps.pickups){
+    const before = S.pickups.length;
+    S.pickups = S.pickups.slice(-caps.pickups);
+    trimmed += Math.max(0, before - S.pickups.length);
+  }
+  if(Array.isArray(S.carcasses) && S.carcasses.length > caps.carcasses){
+    const before = S.carcasses.length;
+    S.carcasses = S.carcasses.slice(-caps.carcasses);
+    trimmed += Math.max(0, before - S.carcasses.length);
+  }
+  if(Array.isArray(S.trapsPlaced) && S.trapsPlaced.length > caps.traps){
+    const before = S.trapsPlaced.length;
+    S.trapsPlaced = S.trapsPlaced.slice(-caps.traps);
+    trimmed += Math.max(0, before - S.trapsPlaced.length);
+  }
+  if(Array.isArray(S.supportUnits) && S.supportUnits.length > caps.support){
+    const before = S.supportUnits.length;
+    S.supportUnits = S.supportUnits.slice(0, caps.support);
+    trimmed += Math.max(0, before - S.supportUnits.length);
+  }
+  return { trimmed, caps };
+}
+function missionDirectorTick(){
+  if(!S || typeof S !== "object") return;
+  if(window.__TUTORIAL_MODE__) return;
+  if(S.gameOver || S.missionEnded) return;
+  const now = Date.now();
+  const director = ensureMissionDirectorState();
+  if(S.paused) return;
+  if(now < (director.lastSampleAt || 0) + 140) return;
+  director.lastSampleAt = now;
+
+  const target = missionDirectorTargetPressure(now);
+  director.pressure = clamp((director.pressure || 0) * 0.82 + target * 0.18, 0, 100);
+  const resolved = missionDirectorResolvePhase(director.pressure, director.phase);
+  if(resolved !== director.phase && now >= (director.phaseLockUntil || 0)){
+    director.phase = resolved;
+    director.phaseChangedAt = now;
+    director.phaseLockUntil = now + DIRECTOR_PHASE_MIN_LOCK_MS;
+    if(!window.__TUTORIAL_MODE__ && now > (director.lastNoticeAt || 0) + 8200){
+      director.lastNoticeAt = now;
+      setEventText(`Mission Director: ${directorPhaseLabel(director.phase)} (${Math.round(director.pressure)}%)`, 2.2);
+    }
+  }
+  const phaseCfg = DIRECTOR_PHASE_CONFIG[director.phase] || DIRECTOR_PHASE_CONFIG.CALM;
+  S._directorAggroMul = clamp(Number(phaseCfg.aggroMul || 1), 0.82, 1.24);
+  S._directorSpeedMul = clamp(Number(phaseCfg.speedMul || 1), 0.88, 1.20);
+
+  if(now >= (director.hardTrimAt || 0)){
+    const trimRes = missionDirectorApplyHardCaps();
+    director.hardTrimAt = now + (frameLagTier() >= 1 ? 280 : 360);
+    if(trimRes.trimmed > 0 && now > (director.lastNoticeAt || 0) + 6200){
+      director.lastNoticeAt = now;
+      setEventText(`Director stabilized mission load (${trimRes.trimmed} cleanup).`, 1.8);
+    }
+  }
 }
 function beginFrameBudget(frameStartTs){
   const now = Number.isFinite(frameStartTs) ? frameStartTs : (performance.now ? performance.now() : Date.now());
@@ -3922,6 +4191,7 @@ function sanitizeRuntimeState(){
   if(!S || typeof S !== "object") return;
   ensureStoryMetaState();
   ensureTouchHudState();
+  ensureMissionDirectorState();
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
@@ -4102,6 +4372,8 @@ function sanitizeRuntimeState(){
     S.inBattle = false;
   }
   if(!Number.isFinite(S._tigerBatchStart)) S._tigerBatchStart = 0;
+  if(!Number.isFinite(S._directorAggroMul)) S._directorAggroMul = 1;
+  if(!Number.isFinite(S._directorSpeedMul)) S._directorSpeedMul = 1;
   if(COMBAT_FX.length > 96){
     COMBAT_FX.splice(0, COMBAT_FX.length - 96);
   }
@@ -5873,6 +6145,9 @@ function setEventText(txt, seconds=6){
 }
 function tickEvents(){
   if(!eventsEnabled() || S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
+  const director = ensureMissionDirectorState(S);
+  const phase = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
+  const phaseCfg = DIRECTOR_PHASE_CONFIG[phase] || DIRECTOR_PHASE_CONFIG.CALM;
 
   if(S.eventCooldown>0) S.eventCooldown--;
   if(S.eventCooldown>0) return;
@@ -5882,26 +6157,58 @@ function tickEvents(){
   if(S._evtTick < 180) return; // about every 3s check
   S._evtTick = 0;
 
-  const chance = 0.12; // not spammy
+  const chance = clamp(Number(phaseCfg.eventChance || 0.12), 0.04, 0.24);
   if(Math.random()>chance) return;
 
+  let supplyWeight = 0.28;
+  let rogueWeight = 0.24;
+  let fogWeight = 0.26;
+  let bonusWeight = 0.22;
+  if(phase === DIRECTOR_PHASES.CALM){
+    supplyWeight = 0.36;
+    rogueWeight = 0.14;
+    fogWeight = 0.20;
+    bonusWeight = 0.30;
+  } else if(phase === DIRECTOR_PHASES.PRESSURE){
+    supplyWeight = 0.24;
+    rogueWeight = 0.30;
+    fogWeight = 0.24;
+    bonusWeight = 0.22;
+  } else if(phase === DIRECTOR_PHASES.PEAK){
+    supplyWeight = 0.18;
+    rogueWeight = 0.44;
+    fogWeight = 0.20;
+    bonusWeight = 0.18;
+  } else if(phase === DIRECTOR_PHASES.RECOVER){
+    supplyWeight = 0.35;
+    rogueWeight = 0.16;
+    fogWeight = 0.19;
+    bonusWeight = 0.30;
+  }
+
   const roll = Math.random();
-  if(roll < 0.28){
+  if(roll < supplyWeight){
     // Supply Drop: spawn crate pickup
     spawnPickup("CRATE", rand(280,880), rand(120,500));
     setEventText("📦 Supply Drop spotted!", 7);
     sfx("event"); hapticImpact("medium");
-  } else if(roll < 0.52){
+  } else if(roll < (supplyWeight + rogueWeight)){
     // Rogue Pack: spawn 1 tiger
     if(hasAliveBossTiger()){
       setEventText("👑 Boss presence suppressed random rogue pack event.", 4);
       sfx("ui");
+    } else if(!missionDirectorAllowTigerSpawn(1)){
+      setEventText("Mission Director held rogue spawn for fair pacing.", 3.4);
     } else {
-      spawnRogueTiger();
-      setEventText("🚨 Rogue Pack entered the area!", 7);
-      sfx("event"); hapticImpact("heavy");
+      const spawned = spawnRogueTiger();
+      if(spawned){
+        setEventText("🚨 Rogue Pack entered the area!", 7);
+        sfx("event"); hapticImpact("heavy");
+      } else {
+        setEventText("Mission Director skipped rogue spawn (entity cap).", 3.4);
+      }
     }
-  } else if(roll < 0.78){
+  } else if(roll < (supplyWeight + rogueWeight + fogWeight)){
     // Fog
     S.fogUntil = Date.now() + rand(6000, 12000);
     setEventText("🌫️ Fog rolled in — visibility reduced.", 8);
@@ -5922,7 +6229,7 @@ function tickEvents(){
     }
   }
 
-  S.eventCooldown = 900; // ~15 seconds cooldown (at 60fps)
+  S.eventCooldown = Math.max(280, Math.round(Number(phaseCfg.eventCooldownTicks || 900)));
   save();
 }
 
@@ -5948,11 +6255,24 @@ function spawnPickup(type, x, y){
 }
 function maybeSpawnAmbientPickup(){
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
+  const caps = missionDirectorHardCaps();
+  if((S.pickups || []).length >= caps.pickups) return;
   S._pTick=(S._pTick||0)+1;
   if(S._pTick<120) return; // check ~2 seconds
   S._pTick=0;
 
-  const baseChance = 0.22; // overall
+  const director = ensureMissionDirectorState(S);
+  const phase = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
+  let chanceMul = 1;
+  if(phase === DIRECTOR_PHASES.CALM) chanceMul = 1.08;
+  else if(phase === DIRECTOR_PHASES.PRESSURE) chanceMul = 0.92;
+  else if(phase === DIRECTOR_PHASES.PEAK) chanceMul = 0.72;
+  else if(phase === DIRECTOR_PHASES.RECOVER) chanceMul = 0.98;
+  const lagTier = frameLagTier();
+  if(lagTier >= 1) chanceMul *= 0.86;
+  if(lagTier >= 2) chanceMul *= 0.70;
+
+  const baseChance = clamp(0.22 * chanceMul, 0.08, 0.28);
   if(Math.random()>baseChance) return;
 
   const x = rand(160, 900);
@@ -5960,11 +6280,25 @@ function maybeSpawnAmbientPickup(){
 
   // weighted loot
   const r = Math.random();
-  if(r<0.28) spawnPickup("CASH", x, y);
-  else if(r<0.52) spawnPickup("AMMO", x, y);
-  else if(r<0.70) spawnPickup("ARMOR", x, y);
-  else if(r<0.88) spawnPickup("MED", x, y);
-  else spawnPickup("TRAP", x, y);
+  if(phase === DIRECTOR_PHASES.PEAK){
+    if(r<0.20) spawnPickup("CASH", x, y);
+    else if(r<0.40) spawnPickup("AMMO", x, y);
+    else if(r<0.62) spawnPickup("ARMOR", x, y);
+    else if(r<0.84) spawnPickup("MED", x, y);
+    else spawnPickup("TRAP", x, y);
+  } else if(phase === DIRECTOR_PHASES.CALM){
+    if(r<0.33) spawnPickup("CASH", x, y);
+    else if(r<0.56) spawnPickup("AMMO", x, y);
+    else if(r<0.72) spawnPickup("ARMOR", x, y);
+    else if(r<0.89) spawnPickup("MED", x, y);
+    else spawnPickup("TRAP", x, y);
+  } else {
+    if(r<0.28) spawnPickup("CASH", x, y);
+    else if(r<0.52) spawnPickup("AMMO", x, y);
+    else if(r<0.70) spawnPickup("ARMOR", x, y);
+    else if(r<0.88) spawnPickup("MED", x, y);
+    else spawnPickup("TRAP", x, y);
+  }
 
   save();
 }
@@ -10283,7 +10617,11 @@ function validateMissionSpawnLayout(opts={}){
         }
       }
       if(tooClose){
-        const pt = pickTigerSpawnAwayFromEscort(tiger.x, tiger.y);
+        const pt = pickTigerSpawnAwayFromEscort(tiger.x, tiger.y, {
+          ignoreTigerId: tiger.id,
+          minTigerDist: 72,
+          anchorTight: false
+        });
         tiger.x = pt.x;
         tiger.y = pt.y;
         tiger.vx = clamp(Number(tiger.vx) || 0, -3.8, 3.8);
@@ -11095,29 +11433,101 @@ function pickTigerType(){
   return "Alpha";
 }
 
-function tigerSpawnTooCloseToEscort(x, y){
-  const minCivDist = 220;
-  const minPlayerDist = 170;
+function tigerSpawnTooCloseToEscort(x, y, opts={}){
+  const director = ensureMissionDirectorState(S);
+  const phase = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
+  const phaseMul = phase === DIRECTOR_PHASES.PEAK ? 1.12 : (phase === DIRECTOR_PHASES.RECOVER ? 1.04 : (phase === DIRECTOR_PHASES.PRESSURE ? 1.08 : 1));
+  const minPlayerDist = Math.max(130, Math.round(Number(opts.minPlayerDist ?? (170 * phaseMul))));
+  const minCivDist = Math.max(150, Math.round(Number(opts.minCivDist ?? (220 * phaseMul))));
+  const minEvacDist = Math.max(110, Math.round(Number(opts.minEvacDist ?? (150 * phaseMul))));
+  const minTigerDist = Math.max(42, Math.round(Number(opts.minTigerDist ?? 62)));
+  const ignoreTigerId = Number.isFinite(Number(opts.ignoreTigerId)) ? Number(opts.ignoreTigerId) : null;
+  const checkRescueSites = opts.checkRescueSites !== false;
+  const checkEvac = opts.checkEvac !== false;
+
   if(dist(x, y, S.me.x, S.me.y) < minPlayerDist) return true;
   if(S.mode !== "Survival"){
     for(const c of (S.civilians || [])){
       if(!c.alive || c.evac) continue;
       if(dist(x, y, c.x, c.y) < minCivDist) return true;
     }
+    if(checkEvac && S.evacZone && Number.isFinite(S.evacZone.x) && Number.isFinite(S.evacZone.y)){
+      if(dist(x, y, S.evacZone.x, S.evacZone.y) < minEvacDist) return true;
+    }
+    if(checkRescueSites){
+      for(const site of (S.rescueSites || [])){
+        if(!site || !Number.isFinite(site.x) || !Number.isFinite(site.y)) continue;
+        const siteR = Math.max(24, Number(site.r || 42) * 0.66);
+        if(dist(x, y, site.x, site.y) < siteR) return true;
+      }
+    }
+  }
+  for(const t of (S.tigers || [])){
+    if(!t || !t.alive) continue;
+    if(ignoreTigerId != null && Number(t.id) === ignoreTigerId) continue;
+    if(dist(x, y, t.x, t.y) < minTigerDist) return true;
   }
   return false;
 }
-function pickTigerSpawnAwayFromEscort(seedX, seedY){
-  let spot = safeSpawnPoint(seedX, seedY, 18, true, true);
-  if(!tigerSpawnTooCloseToEscort(spot.x, spot.y)) return spot;
+function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
+  const preferX = Number.isFinite(Number(opts.preferX)) ? Number(opts.preferX) : seedX;
+  const preferY = Number.isFinite(Number(opts.preferY)) ? Number(opts.preferY) : seedY;
+  const radius = Math.max(16, Number(opts.radius || 18));
+  const candidates = [];
+  const pushCandidate = (x, y)=>{
+    const px = clamp(Math.round(x), 70, cv.width - 70);
+    const py = clamp(Math.round(y), 90, cv.height - 70);
+    const pt = safeSpawnPoint(px, py, radius, true, true);
+    candidates.push(pt);
+  };
+
+  pushCandidate(seedX, seedY);
+  pushCandidate(preferX, preferY);
+
+  for(let i=0; i<28; i++){
+    const a = (Math.PI * 2 * i) / 28;
+    const rr = 60 + (i % 5) * 34;
+    pushCandidate(preferX + Math.cos(a) * rr, preferY + Math.sin(a) * rr);
+  }
   for(let i=0; i<40; i++){
     const biasRight = i % 2 === 0;
     const rx = biasRight ? rand(Math.round(cv.width * 0.55), cv.width - 70) : rand(70, Math.round(cv.width * 0.45));
     const ry = rand(90, cv.height - 70);
-    spot = safeSpawnPoint(rx, ry, 18, true, true);
-    if(!tigerSpawnTooCloseToEscort(spot.x, spot.y)) return spot;
+    pushCandidate(rx, ry);
   }
-  return spot;
+
+  let best = null;
+  let bestScore = -Infinity;
+  let fallback = candidates[0] || safeSpawnPoint(seedX, seedY, radius, true, true);
+  for(const pt of candidates){
+    fallback = pt || fallback;
+    if(!pt) continue;
+    const invalid = tigerSpawnTooCloseToEscort(pt.x, pt.y, opts);
+    const meDist = dist(pt.x, pt.y, S.me.x, S.me.y);
+    let nearestCiv = Infinity;
+    if(S.mode !== "Survival"){
+      for(const c of (S.civilians || [])){
+        if(!c.alive || c.evac) continue;
+        nearestCiv = Math.min(nearestCiv, dist(pt.x, pt.y, c.x, c.y));
+      }
+    }
+    let nearestTiger = Infinity;
+    for(const t of (S.tigers || [])){
+      if(!t || !t.alive) continue;
+      if(opts.ignoreTigerId != null && Number(t.id) === Number(opts.ignoreTigerId)) continue;
+      nearestTiger = Math.min(nearestTiger, dist(pt.x, pt.y, t.x, t.y));
+    }
+    const preferPenalty = dist(pt.x, pt.y, preferX, preferY) * (opts.anchorTight ? 0.34 : 0.20);
+    const civScore = Number.isFinite(nearestCiv) ? Math.min(nearestCiv, 360) : 260;
+    const tigerSpread = Number.isFinite(nearestTiger) ? Math.min(nearestTiger, 260) : 180;
+    let score = (meDist * 1.05) + (civScore * 1.25) + (tigerSpread * 0.58) - preferPenalty;
+    if(invalid) score -= 900;
+    if(score > bestScore){
+      bestScore = score;
+      best = pt;
+    }
+  }
+  return best || fallback;
 }
 
 
@@ -11255,7 +11665,13 @@ function spawnTigers(){
     const initialVy = (Math.random()<0.5?-1:1)*def.spd*0.50;
     const tigerSpawn = pickTigerSpawnAwayFromEscort(
       clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, cv.width - 50),
-      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, cv.height - 70)
+      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, cv.height - 70),
+      {
+        preferX: pack.x,
+        preferY: pack.y,
+        minTigerDist: 58,
+        anchorTight: true
+      }
     );
 
     S.tigers.push({
@@ -11320,9 +11736,12 @@ function spawnTigers(){
 function spawnRogueTiger(options={}){
   if(!Array.isArray(S.tigers)) S.tigers = [];
 
+  const ignoreDirectorBudget = !!options.ignoreDirectorBudget;
   const aliveCount = S.tigers.reduce((n, t)=>n + (t?.alive ? 1 : 0), 0);
-  const maxAlive = (S.mode === "Survival") ? 14 : 10;
+  const capFromDirector = missionDirectorHardCaps().tigers;
+  const maxAlive = Math.min((S.mode === "Survival") ? 14 : 10, capFromDirector);
   if(aliveCount >= maxAlive) return null;
+  if(!ignoreDirectorBudget && !missionDirectorAllowTigerSpawn(1)) return null;
 
   const forcedType = (typeof options.typeKey === "string" && TIGER_TYPES.some((t)=>t.key === options.typeKey))
     ? options.typeKey
@@ -11361,7 +11780,12 @@ function spawnRogueTiger(options={}){
     }
   }
 
-  const rogueSpawn = safeSpawnPoint(Math.round(sx), Math.round(sy), 18, true, true);
+  const rogueSpawn = pickTigerSpawnAwayFromEscort(Math.round(sx), Math.round(sy), {
+    preferX: sx,
+    preferY: sy,
+    minTigerDist: Number.isFinite(options.packId) ? 56 : 82,
+    anchorTight: !!options.anchorTight
+  });
   const nextId = (S.tigers.reduce((maxId, t)=>{
     const tid = Number(t?.id);
     return Number.isFinite(tid) ? Math.max(maxId, tid) : maxId;
@@ -11427,6 +11851,7 @@ function spawnRogueTiger(options={}){
   tiger.drawDir = tiger.vx >= 0 ? 1 : -1;
 
   S.tigers.push(tiger);
+  if(!ignoreDirectorBudget) missionDirectorMarkTigerSpawn();
   return tiger;
 }
 // ===================== DEPLOY / NEXT / RESTART =====================
@@ -11514,6 +11939,24 @@ function deploy(opts={}){
   S._survivalClearAt = 0;
   S._pressure = 0;
   S._pressTick = 0;
+  {
+    const d = ensureMissionDirectorState(S);
+    const startPressure = clamp(
+      10 + ((S.mode === "Story") ? ((S.storyLevel - 1) * 0.6) : ((S.mode === "Arcade") ? ((S.arcadeLevel - 1) * 0.7) : ((S.survivalWave - 1) * 1.1))),
+      8,
+      42
+    );
+    d.phase = DIRECTOR_PHASES.CALM;
+    d.pressure = startPressure;
+    d.phaseLockUntil = Date.now() + 1200;
+    d.lastSampleAt = 0;
+    d.hardTrimAt = 0;
+    d.phaseChangedAt = Date.now();
+    d.lastNoticeAt = 0;
+    d.nextSpawnAt = Date.now() + rand(2600, 4600);
+    S._directorAggroMul = 1;
+    S._directorSpeedMul = 1;
+  }
   checkProgressionUnlocks({ silent:true });
 
   spawnRescueSites();
@@ -13252,6 +13695,8 @@ function roamTigers(){
   if(S.backupActive>0) return;
 
   const now = Date.now();
+  const directorAggroMul = clamp(Number(S._directorAggroMul || 1), 0.82, 1.24);
+  const directorSpeedMul = clamp(Number(S._directorSpeedMul || 1), 0.88, 1.20);
   const barricades = activeBarricades(now);
   const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
   const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
@@ -13326,11 +13771,15 @@ function roamTigers(){
       t.enragedUntil = Math.max(t.enragedUntil || 0, now + rand(650, 1300));
     }
 
-    const closePlayerRange = 145 + (bloodScent * 85);
-    const closeCivRange = 130 + (bloodScent * 95);
+    const closePlayerRange = (145 + (bloodScent * 85)) * directorAggroMul;
+    const closeCivRange = (130 + (bloodScent * 95)) * directorAggroMul;
     const closeToPlayer = playerDist <= (closePlayerRange + (persona.playerBias * 120));
     const closeToCiv = closestCiv && closestCivDist <= closeCivRange;
-    const civFocusBias = clamp(t.civBias + bloodScent * 0.25 + (carcassDifficulty()-1)*0.10 + persona.civBiasDelta, 0.05, 0.95);
+    const civFocusBias = clamp(
+      (t.civBias + bloodScent * 0.25 + (carcassDifficulty()-1)*0.10 + persona.civBiasDelta) * (0.92 + (directorAggroMul - 1) * 1.1),
+      0.05,
+      0.98
+    );
 
     if(closeToCiv && (!closeToPlayer || Math.random() < civFocusBias)){
       targetX = closestCiv.x;
@@ -13374,13 +13823,13 @@ function roamTigers(){
     tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion);
 
     let chase = Number.isFinite(targetDist) && (
-      targetDist < motion.detect ||
-      (now < (t.enragedUntil||0) && targetDist < motion.detect + 80)
+      targetDist < (motion.detect * directorAggroMul) ||
+      (now < (t.enragedUntil||0) && targetDist < (motion.detect + 80) * directorAggroMul)
     );
-    if(isBossTiger(t) && now < (t.bossChargeUntil || 0) && Number.isFinite(targetDist) && targetDist < motion.detect + 190){
+    if(isBossTiger(t) && now < (t.bossChargeUntil || 0) && Number.isFinite(targetDist) && targetDist < (motion.detect + 190) * directorAggroMul){
       chase = true;
     }
-    if(t.type==="Stalker" && now < (t.fadeUntil||0) && Number.isFinite(targetDist) && targetDist < motion.detect + 90){
+    if(t.type==="Stalker" && now < (t.fadeUntil||0) && Number.isFinite(targetDist) && targetDist < (motion.detect + 90) * directorAggroMul){
       chase = true;
     }
     if(!chase){
@@ -13389,11 +13838,11 @@ function roamTigers(){
     if(t.huntState === TIGER_HUNT_STATES.PATROL){
       chase = Number.isFinite(targetDist) && targetDist < 88;
     } else if(t.huntState === TIGER_HUNT_STATES.STALK){
-      chase = Number.isFinite(targetDist) && targetDist < motion.detect + 120;
+      chase = Number.isFinite(targetDist) && targetDist < (motion.detect + 120) * directorAggroMul;
     } else if(t.huntState === TIGER_HUNT_STATES.POUNCE){
       chase = true;
     } else if(t.huntState === TIGER_HUNT_STATES.RECOVER){
-      chase = Number.isFinite(targetDist) && targetDist < motion.detect * 0.62;
+      chase = Number.isFinite(targetDist) && targetDist < (motion.detect * 0.62) * directorAggroMul;
     }
 
     const tx = targetX - t.x;
@@ -13508,6 +13957,7 @@ function roamTigers(){
     if(now < (t.burstUntil||0)) speedCap = Math.max(speedCap, motion.sprint);
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap = Math.max(speedCap, motion.sprint + 0.35);
     if(t.type==="Berserker" && t.rageOn) speedCap = Math.max(speedCap, motion.sprint * 1.06);
+    speedCap *= directorSpeedMul;
     speedCap *= waterSpeedMul("tiger", t.x, t.y, 14);
 
     const velNow = Math.hypot(t.vx, t.vy);
@@ -14690,7 +15140,14 @@ function bossReinforcementTick(){
   let spawned = 0;
   for(let i=0; i<want; i++){
     if((S.tigers || []).filter((t)=>t.alive && t.type==="Standard" && !isBossTiger(t)).length >= cap) break;
-    const spawnedTiger = spawnRogueTiger({ typeKey:"Standard", nearX:boss.x, nearY:boss.y, packId:boss.packId || 1 });
+    const spawnedTiger = spawnRogueTiger({
+      typeKey:"Standard",
+      nearX:boss.x,
+      nearY:boss.y,
+      packId:boss.packId || 1,
+      anchorTight:true,
+      ignoreDirectorBudget:true
+    });
     if(spawnedTiger){
       spawnedTiger.intent = "Boss Call";
       spawnedTiger.intentUntil = now + 700;
@@ -17728,6 +18185,9 @@ function draw(){
       runFrameTask("sanitizeState", frameInterval(lagCritical ? 360 : (lagHeavy ? 300 : 240), 2.2), sanitizeRuntimeState, {
         costHint:1.3, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
+      runFrameTask("missionDirector", frameInterval(lagCritical ? 136 : (lagHeavy ? 106 : 84), 1.45), missionDirectorTick, {
+        costHint:1.1, critical:true, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
       runFrameTask("clampWorld", frameInterval(lagCritical ? 220 : 180, 1.3), clampWorldToCanvas, { costHint:0.9 });
       runFrameTask("unstickEntities", frameInterval(lagCritical ? 280 : (lagHeavy ? 220 : 170), 1.9), unstickEntitiesTick, {
         costHint:1.5, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
@@ -17854,6 +18314,7 @@ function init(){
   ensureStoryMetaState();
   ensureContractTalliesState(S);
   ensureContractsState(S);
+  ensureMissionDirectorState(S);
   if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.storyLastMission = clamp(Math.floor(S.storyLastMission || S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
@@ -17942,6 +18403,8 @@ function init(){
   if(!Number.isFinite(S.arcadeComboPeak)) S.arcadeComboPeak = 0;
   if(!Number.isFinite(S.arcadeScoreBonus)) S.arcadeScoreBonus = 0;
   if(!Number.isFinite(S._arcadeTimerWarn)) S._arcadeTimerWarn = 0;
+  if(!Number.isFinite(S._directorAggroMul)) S._directorAggroMul = 1;
+  if(!Number.isFinite(S._directorSpeedMul)) S._directorSpeedMul = 1;
   if(!S.progressionUnlocks || typeof S.progressionUnlocks !== "object") S.progressionUnlocks = {};
   ensureContractTalliesState(S);
   ensureContractsState(S);
