@@ -12920,7 +12920,7 @@ function tickCiviliansAndThreats(){
       best.hp = clamp(best.hp - dmg, 0, best.hpMax);
       if(prevHp > best.hp && now >= (best._nextDmgPopupAt || 0)){
         const nearPlayer = dist(S.me.x, S.me.y, best.x, best.y) < 260;
-        const showPopup = S.inBattle || nearPlayer;
+        const showPopup = nearPlayer;
         best._nextDmgPopupAt = now + (showPopup ? 520 : 1350);
         if(showPopup){
           emitDamagePopup(best.x, best.y - 40, `-${Math.max(1, Math.round(prevHp - best.hp))}`, "civilian");
@@ -12944,7 +12944,7 @@ function tickCiviliansAndThreats(){
       S.dangerCivId = null;
       toast("Civilian lost. Mission failed.");
       hapticNotif("warning");
-      save(true);
+      save();
       return gameOverChoice("Mission failed: a civilian was killed. All civilians must survive.");
     }
   }
@@ -13452,6 +13452,7 @@ function pickRespawnPointAwayFromTigers(){
 function startRespawnCountdown(){
   const now = Date.now();
   const pt = pickRespawnPointAwayFromTigers();
+  clearTransientCombatVisuals();
   S.respawnPendingUntil = now + 3000;
   S.respawnNoticeAt = now;
   S.respawnTargetX = pt.x;
@@ -14911,7 +14912,7 @@ function combatTick(){
       endBattle("RETREAT");
       S.lockedTigerId = null;
       toast(`${equippedWeapon().name} lost range. Tap that tiger again when you get back in range.`);
-      save(true);
+      save();
       return;
     }
   }
@@ -17496,6 +17497,7 @@ function draw(){
     const lagTier = frameLagTier();
     const lagHeavy = lagTier >= 1;
     const lagCritical = lagTier >= 2;
+    const battleLoad = !!S.inBattle;
     if(__frameSpikePending){
       safeTick("recoverFromSpikeFrame", recoverFromSpikeFrame);
     }
@@ -17527,23 +17529,43 @@ function draw(){
         runFrameTask("tickPickups", frameInterval(lagCritical ? 92 : (lagHeavy ? 74 : 52), 1.5), tickPickups, { costHint:1.0 });
       }
 
-      runFrameTask("roamTigers", frameInterval(lagCritical ? 74 : (lagHeavy ? 60 : 42), 1.55), roamTigers, {
+      runFrameTask("roamTigers", frameInterval(
+        battleLoad
+          ? (lagCritical ? 108 : (lagHeavy ? 86 : 64))
+          : (lagCritical ? 74 : (lagHeavy ? 60 : 42)),
+        1.55
+      ), roamTigers, {
         costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
       });
       runFrameTask("bossIdentity", frameInterval(92, 1.45), bossIdentityTick, { costHint:0.9, critical:true });
       runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
-      runFrameTask("supportUnits", frameInterval(lagCritical ? 112 : (lagHeavy ? 90 : 64), 1.8), supportUnitsTick, {
+      runFrameTask("supportUnits", frameInterval(
+        battleLoad
+          ? (lagCritical ? 168 : (lagHeavy ? 132 : 104))
+          : (lagCritical ? 112 : (lagHeavy ? 90 : 64)),
+        1.8
+      ), supportUnitsTick, {
         costHint:2.4, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
       });
       let usedKeyboard = false;
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
       if(!usedKeyboard) safeTick("movePlayer", movePlayer);
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
-      runFrameTask("followCivilians", frameInterval(lagCritical ? 98 : (lagHeavy ? 78 : 56), 1.5), followCiviliansTick, {
+      runFrameTask("followCivilians", frameInterval(
+        battleLoad
+          ? (lagCritical ? 156 : (lagHeavy ? 128 : 96))
+          : (lagCritical ? 98 : (lagHeavy ? 78 : 56)),
+        1.5
+      ), followCiviliansTick, {
         costHint:1.7, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
-      runFrameTask("civThreats", frameInterval(lagCritical ? 156 : (lagHeavy ? 126 : 92), 1.5), tickCiviliansAndThreats, {
+      runFrameTask("civThreats", frameInterval(
+        battleLoad
+          ? (lagCritical ? 220 : (lagHeavy ? 180 : 138))
+          : (lagCritical ? 156 : (lagHeavy ? 126 : 92)),
+        1.5
+      ), tickCiviliansAndThreats, {
         costHint:1.6, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
       });
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
