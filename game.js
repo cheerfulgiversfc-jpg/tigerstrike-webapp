@@ -4555,6 +4555,13 @@ const SQUAD_COMMAND_LABELS = {
   REGROUP: "Regroup",
   HOLD: "Hold",
 };
+const SQUAD_COMMAND_SHORT_LABELS = {
+  AUTO: "Auto",
+  ATTACK_TARGET: "Target",
+  RESCUE: "Rescue",
+  REGROUP: "Group",
+  HOLD: "Hold",
+};
 function normalizeSquadCommand(cmd){
   const key = String(cmd || "").trim().toUpperCase();
   return SQUAD_COMMAND_ORDER.includes(key) ? key : "AUTO";
@@ -4562,6 +4569,99 @@ function normalizeSquadCommand(cmd){
 function squadCommandLabel(cmd = S?.squadCommand){
   const key = normalizeSquadCommand(cmd);
   return SQUAD_COMMAND_LABELS[key] || SQUAD_COMMAND_LABELS.AUTO;
+}
+function squadCommandShortLabel(cmd = S?.squadCommand){
+  const key = normalizeSquadCommand(cmd);
+  return SQUAD_COMMAND_SHORT_LABELS[key] || SQUAD_COMMAND_SHORT_LABELS.AUTO;
+}
+let __squadWheelOpen = false;
+let __squadWheelAnchorId = "touchSquadWheelBtn";
+function squadCommandWheelRoot(){
+  return document.getElementById("squadCommandWheel");
+}
+function isSquadCommandWheelOpen(){
+  const root = squadCommandWheelRoot();
+  return !!(root && root.classList.contains("open") && __squadWheelOpen);
+}
+function squadWheelAnchorEl(anchor){
+  if(anchor && anchor.nodeType === 1) return anchor;
+  const requested = typeof anchor === "string" ? anchor : "";
+  const ids = [requested, __squadWheelAnchorId, "touchSquadWheelBtn", "squadCmdBtnMobile", "squadCmdBtn"];
+  for(const id of ids){
+    if(!id) continue;
+    const el = document.getElementById(id);
+    if(el && el.getClientRects().length) return el;
+  }
+  return null;
+}
+function positionSquadCommandWheel(anchor){
+  const stage = document.querySelector(".mapStage");
+  if(!stage) return;
+  const stageRect = stage.getBoundingClientRect();
+  if(!(stageRect.width > 0 && stageRect.height > 0)) return;
+
+  let cx = stageRect.width * 0.84;
+  let cy = stageRect.height * 0.70;
+  const anchorEl = squadWheelAnchorEl(anchor);
+  if(anchorEl){
+    const a = anchorEl.getBoundingClientRect();
+    if(a.width > 0 && a.height > 0){
+      cx = (a.left + a.width * 0.5) - stageRect.left;
+      cy = (a.top + a.height * 0.5) - stageRect.top;
+      __squadWheelAnchorId = anchorEl.id || __squadWheelAnchorId;
+    }
+  }
+  const radius = 114;
+  const pad = radius + 10;
+  cx = clamp(cx, pad, Math.max(pad, stageRect.width - pad));
+  cy = clamp(cy, pad, Math.max(pad, stageRect.height - pad));
+  stage.style.setProperty("--squad-wheel-x", `${Math.round(cx)}px`);
+  stage.style.setProperty("--squad-wheel-y", `${Math.round(cy)}px`);
+}
+function syncSquadCommandWheelUi(){
+  const current = normalizeSquadCommand(S?.squadCommand);
+  document.querySelectorAll("#squadCommandWheel [data-cmd]").forEach((btn)=>{
+    btn.classList.toggle("active", btn.dataset.cmd === current);
+  });
+  const touchMini = document.getElementById("touchSquadCmdMini");
+  if(touchMini) touchMini.innerText = squadCommandShortLabel(current);
+  const touchBtn = document.getElementById("touchSquadWheelBtn");
+  if(touchBtn) touchBtn.title = `Squad: ${squadCommandLabel(current)}`;
+}
+function closeSquadCommandWheel(evt=null){
+  if(evt?.preventDefault) evt.preventDefault();
+  if(evt?.stopPropagation) evt.stopPropagation();
+  const root = squadCommandWheelRoot();
+  if(root){
+    root.classList.remove("open");
+    root.setAttribute("aria-hidden", "true");
+  }
+  __squadWheelOpen = false;
+  return false;
+}
+function openSquadCommandWheel(anchor=null){
+  if(!S || S.gameOver || S.missionEnded || S.paused || S.inBattle) return false;
+  const root = squadCommandWheelRoot();
+  if(!root) return false;
+  positionSquadCommandWheel(anchor);
+  syncSquadCommandWheelUi();
+  root.classList.add("open");
+  root.setAttribute("aria-hidden", "false");
+  __squadWheelOpen = true;
+  return true;
+}
+function toggleSquadCommandWheel(anchor=null){
+  if(anchor?.preventDefault) anchor.preventDefault();
+  if(anchor?.stopPropagation) anchor.stopPropagation();
+  if(isSquadCommandWheelOpen()) return closeSquadCommandWheel();
+  return openSquadCommandWheel(anchor);
+}
+function pickSquadCommand(cmd, evt=null){
+  if(evt?.preventDefault) evt.preventDefault();
+  if(evt?.stopPropagation) evt.stopPropagation();
+  setSquadCommand(cmd, { toast:true, save:true });
+  syncSquadCommandWheelUi();
+  closeSquadCommandWheel();
 }
 function setSquadCommand(cmd, opts={}){
   const next = normalizeSquadCommand(cmd);
@@ -4571,6 +4671,7 @@ function setSquadCommand(cmd, opts={}){
   if(opts.toast !== false){
     toast(`Squad command: ${squadCommandLabel(next)}.`);
   }
+  syncSquadCommandWheelUi();
   if(opts.save !== false) save();
   return next;
 }
@@ -4784,12 +4885,14 @@ window.addEventListener("resize", ()=>{
   resizeCanvasForViewport();
   applyMobileMenuState(__mobileMenuHiddenPref);
   applyTouchHudSettings();
+  if(isSquadCommandWheelOpen()) positionSquadCommandWheel();
   renderHUD();
 }, { passive:true });
 window.addEventListener("orientationchange", ()=>{
   resizeCanvasForViewport();
   applyMobileMenuState(__mobileMenuHiddenPref);
   applyTouchHudSettings();
+  if(isSquadCommandWheelOpen()) positionSquadCommandWheel();
   renderHUD();
 });
 initMobileMenuToggle();
@@ -6434,6 +6537,7 @@ function closeAbout(){ document.getElementById("aboutOverlay").style.display="no
 
 function setPaused(on, reason=null){
   S.paused=on; S.pauseReason=reason;
+  if(on) closeSquadCommandWheel();
   document.getElementById("pauseLbl").innerText = on?"Resume":"Pause";
   const mobileLbl = document.getElementById("pauseLblMobile");
   if(mobileLbl) mobileLbl.innerText = on ? "Resume" : "Pause";
@@ -12168,6 +12272,10 @@ function gameOverChoice(msg){
 cv.addEventListener("pointerdown",(e)=>{
   if(e.pointerType==="mouse" && e.button!==0) return;
   e.preventDefault();
+  if(isSquadCommandWheelOpen()){
+    closeSquadCommandWheel();
+    return;
+  }
 
   const rect=cv.getBoundingClientRect();
   const x=(e.clientX-rect.left)*(cv.width/rect.width);
@@ -14798,6 +14906,7 @@ function renderCombatControls(){
   const mapCluster = document.getElementById("mapTouchCluster");
   const combatCluster = document.getElementById("combatTouchCluster");
   const cacheBtn = document.getElementById("touchCacheBtn");
+  const squadWheelBtn = document.getElementById("touchSquadWheelBtn");
   const actionButtons = document.querySelector(".actionButtons");
   const combatButtons = document.getElementById("combatButtons");
   const inCombat = !!S.inBattle;
@@ -14807,8 +14916,12 @@ function renderCombatControls(){
   if(mapCluster) mapCluster.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "grid");
   if(combatCluster) combatCluster.style.display = hideTouchUi ? "none" : (inCombat ? "grid" : "none");
   if(cacheBtn) cacheBtn.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "flex");
+  if(squadWheelBtn) squadWheelBtn.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "flex");
   if(actionButtons) actionButtons.style.display = (hideTouchUi || inCombat) ? "none" : "";
   if(combatButtons) combatButtons.style.display = hideTouchUi ? "none" : (inCombat ? "flex" : "none");
+  if(hideTouchUi || inCombat || S.paused || S.gameOver || S.missionEnded){
+    closeSquadCommandWheel();
+  }
 
   const t = activeTiger();
   const canCap = canAttemptCapture(t);
@@ -14857,6 +14970,7 @@ function renderCombatControls(){
   if(nextDesktop) nextDesktop.innerText = `${nextLabel} ▶️`;
   if(medDesktop) medDesktop.innerText = `❤️ Medkit (${medCount})`;
   if(armorDesktop) armorDesktop.innerText = `🛡️ Armor (${armorPlateCountAll})`;
+  syncSquadCommandWheelUi();
   renderAbilityCooldownUi();
   if(controllerOwnsUi() || anyGamepadOverlayVisible()) syncGamepadFocus();
 }
@@ -15827,6 +15941,7 @@ function renderHUD(){
   if(squadCmdBtn) squadCmdBtn.innerText = `🪖 ${squadCmdLabel}`;
   const squadCmdBtnMobile = document.getElementById("squadCmdBtnMobile");
   if(squadCmdBtnMobile) squadCmdBtnMobile.innerText = `🪖 ${squadCmdLabel}`;
+  syncSquadCommandWheelUi();
   updatePerformanceLabels();
   document.getElementById("livesTxt").innerText = S.lives;
 
@@ -18742,6 +18857,10 @@ window.takeoverEscort = takeoverEscort;
 window.useNearestCache = useNearestCache;
 window.setSquadCommand = setSquadCommand;
 window.cycleSquadCommand = cycleSquadCommand;
+window.openSquadCommandWheel = openSquadCommandWheel;
+window.closeSquadCommandWheel = closeSquadCommandWheel;
+window.toggleSquadCommandWheel = toggleSquadCommandWheel;
+window.pickSquadCommand = pickSquadCommand;
 
 window.playerAction = playerAction;
 window.endBattle = endBattle;

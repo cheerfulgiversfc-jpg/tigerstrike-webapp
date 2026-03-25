@@ -89,7 +89,7 @@
     .mobileChip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;border:1px solid rgba(42,49,69,.9);background:rgba(16,22,38,.9);font-size:11px;font-weight:900;color:#eef2ff}
     .mobileChip.subtle{color:var(--muted);font-weight:800}
     .mobileStatusText{margin-top:8px;font-size:12px;line-height:1.3;color:rgba(245,247,255,.95)}
-    .mapStage{position:relative;background:
+    .mapStage{position:relative;--squad-wheel-x:84%;--squad-wheel-y:70%;background:
       radial-gradient(circle at 20% 18%, var(--mode-map-a), transparent 28%),
       radial-gradient(circle at 82% 14%, var(--mode-map-b), transparent 24%),
       linear-gradient(180deg, rgba(14,18,30,.95), rgba(7,10,18,.98))}
@@ -111,6 +111,81 @@
     .touchOverlay{display:none}
     .touchCluster,.touchStickShell,.touchPad,.touchBtn{pointer-events:auto}
     .touchHint{display:none}
+    .squadCommandWheel{
+      position:absolute;
+      inset:0;
+      z-index:7;
+      pointer-events:none;
+      display:none;
+    }
+    .squadCommandWheel.open{display:block}
+    .squadCommandWheelCore{
+      position:absolute;
+      left:var(--squad-wheel-x);
+      top:var(--squad-wheel-y);
+      width:208px;
+      height:208px;
+      transform:translate(-50%,-50%);
+      pointer-events:none;
+    }
+    .squadWheelRing{
+      position:absolute;
+      inset:22px;
+      border-radius:999px;
+      border:1px solid rgba(74,112,196,.55);
+      background:radial-gradient(circle, rgba(13,19,32,.46), rgba(8,12,22,.08));
+      box-shadow:0 10px 26px rgba(4,8,18,.36);
+      backdrop-filter:blur(4px);
+    }
+    .squadWheelCenter{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:72px;
+      height:72px;
+      transform:translate(-50%,-50%);
+      border-radius:999px;
+      border:1px solid rgba(95,126,204,.78);
+      background:rgba(14,20,34,.95);
+      color:#eef2ff;
+      font-size:13px;
+      font-weight:950;
+      letter-spacing:.01em;
+      pointer-events:auto;
+      box-shadow:0 10px 24px rgba(4,8,18,.4);
+    }
+    .squadWheelOption{
+      position:absolute;
+      width:74px;
+      min-height:48px;
+      border-radius:14px;
+      border:1px solid rgba(84,108,164,.82);
+      background:rgba(10,16,28,.94);
+      color:#f8fafc;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:2px;
+      font-size:11px;
+      font-weight:900;
+      letter-spacing:.01em;
+      pointer-events:auto;
+      box-shadow:0 8px 18px rgba(3,7,16,.34);
+      padding:4px 6px;
+    }
+    .squadWheelOption .icon{font-size:15px;line-height:1}
+    .squadWheelOption .txt{line-height:1.05}
+    .squadWheelOption.active{
+      border-color:rgba(74,222,128,.92);
+      background:rgba(20,36,28,.94);
+      box-shadow:0 0 0 1px rgba(74,222,128,.4), 0 8px 18px rgba(3,7,16,.34);
+    }
+    .squadWheelOption[data-cmd="AUTO"]{left:50%;top:0;transform:translate(-50%,0)}
+    .squadWheelOption[data-cmd="ATTACK_TARGET"]{right:0;top:50%;transform:translate(0,-50%)}
+    .squadWheelOption[data-cmd="RESCUE"]{right:16px;bottom:16px}
+    .squadWheelOption[data-cmd="REGROUP"]{left:16px;bottom:16px}
+    .squadWheelOption[data-cmd="HOLD"]{left:0;top:50%;transform:translate(0,-50%)}
 
     .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:200;padding:14px}
     .modal{width:min(980px,96vw);background:linear-gradient(180deg,#121622,#0b0d12);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;max-height:88vh;display:flex;flex-direction:column}
@@ -531,6 +606,27 @@
         transform:translate(var(--touch-cache-offset-x), var(--touch-cache-offset-y)) scale(var(--touch-ui-scale));
         transform-origin:left bottom;
       }
+      #touchSquadWheelBtn{
+        position:absolute;
+        right:10px;
+        bottom:300px;
+        z-index:6;
+        opacity:var(--touch-cache-opacity,.46);
+        transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
+        transform-origin:right bottom;
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+        gap:2px;
+      }
+      #touchSquadWheelBtn .touchBtnMini{
+        display:block;
+        font-size:9px;
+        font-weight:900;
+        letter-spacing:.02em;
+        line-height:1;
+        color:rgba(240,244,255,.95);
+      }
       #touchCacheBtn:disabled{
         opacity:.24;
       }
@@ -643,6 +739,11 @@
       .touchCluster{grid-template-columns:repeat(2,54px)}
       .touchBtn{width:54px;min-height:54px}
       #touchCacheBtn{left:10px;right:auto;bottom:286px}
+      #touchSquadWheelBtn{right:10px;bottom:274px}
+      #touchSquadWheelBtn .touchBtnMini{font-size:8px}
+      .squadCommandWheelCore{width:190px;height:190px}
+      .squadWheelOption{width:68px;min-height:44px;font-size:10px}
+      .squadWheelCenter{width:66px;height:66px;font-size:12px}
       .launchPoster{height:136px}
     }
 
@@ -772,6 +873,27 @@
         transform:translate(var(--touch-cache-offset-x), var(--touch-cache-offset-y)) scale(var(--touch-ui-scale));
         transform-origin:left bottom;
       }
+      #touchSquadWheelBtn{
+        position:absolute;
+        right:8px;
+        bottom:198px;
+        z-index:6;
+        opacity:var(--touch-cache-opacity,.46);
+        transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
+        transform-origin:right bottom;
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+        gap:2px;
+      }
+      #touchSquadWheelBtn .touchBtnMini{
+        display:block;
+        font-size:8px;
+        font-weight:900;
+        letter-spacing:.02em;
+        line-height:1;
+        color:rgba(240,244,255,.95);
+      }
       #combatTouchCluster{display:none;grid-template-columns:repeat(2,52px)}
       .touchHint{
         display:block;
@@ -779,6 +901,9 @@
         left:16px;
         bottom:114px;
       }
+      .squadCommandWheelCore{width:176px;height:176px}
+      .squadWheelOption{width:64px;min-height:40px;font-size:9px}
+      .squadWheelCenter{width:60px;height:60px;font-size:11px}
       .modal{max-height:86vh}
       .nav{
         padding:8px 8px calc(10px + env(safe-area-inset-bottom));
@@ -958,6 +1083,31 @@
           <span class="touchBtnIcon">📦</span>
           <span class="touchBtnLabel">Cache</span>
         </button>
+        <button class="touchBtn" id="touchSquadWheelBtn" onclick="toggleSquadCommandWheel(this)" title="Squad Commands">
+          <span class="touchBtnIcon">🪖</span>
+          <span class="touchBtnMini" id="touchSquadCmdMini">Auto</span>
+        </button>
+        <div class="squadCommandWheel" id="squadCommandWheel" aria-hidden="true">
+          <div class="squadCommandWheelCore" id="squadCommandWheelCore">
+            <div class="squadWheelRing"></div>
+            <button class="squadWheelCenter" type="button" onclick="closeSquadCommandWheel(event)">Close</button>
+            <button class="squadWheelOption" type="button" id="squadWheelCmdAuto" data-cmd="AUTO" onclick="pickSquadCommand('AUTO', event)">
+              <span class="icon">🤖</span><span class="txt">Auto</span>
+            </button>
+            <button class="squadWheelOption" type="button" id="squadWheelCmdAttack" data-cmd="ATTACK_TARGET" onclick="pickSquadCommand('ATTACK_TARGET', event)">
+              <span class="icon">🎯</span><span class="txt">Target</span>
+            </button>
+            <button class="squadWheelOption" type="button" id="squadWheelCmdRescue" data-cmd="RESCUE" onclick="pickSquadCommand('RESCUE', event)">
+              <span class="icon">🛟</span><span class="txt">Rescue</span>
+            </button>
+            <button class="squadWheelOption" type="button" id="squadWheelCmdRegroup" data-cmd="REGROUP" onclick="pickSquadCommand('REGROUP', event)">
+              <span class="icon">🧭</span><span class="txt">Regroup</span>
+            </button>
+            <button class="squadWheelOption" type="button" id="squadWheelCmdHold" data-cmd="HOLD" onclick="pickSquadCommand('HOLD', event)">
+              <span class="icon">🛑</span><span class="txt">Hold</span>
+            </button>
+          </div>
+        </div>
         <div class="touchCluster" id="combatTouchCluster">
           <button class="touchBtn warn" id="touchAttackBtn" data-attack-btn>
             <span class="touchBtnIcon">🔫</span>
