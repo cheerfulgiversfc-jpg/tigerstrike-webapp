@@ -2604,7 +2604,7 @@ function load(){
 const SAVE_MIN_INTERVAL_MS = 4200;
 const SAVE_AUTOSAVE_MS = 12000;
 const SAVE_AUTOSAVE_HEAVY_MS = 18000;
-const SAVE_AUTOSAVE_BATTLE_MS = 22000;
+const SAVE_AUTOSAVE_BATTLE_MS = 32000;
 const SAVE_AUTOSAVE_MAX_DEFER_MS = 42000;
 const SAVE_FULL_STORY_SNAPSHOT_MS = 70000;
 const STABILITY_SPIKE_GAP_MS = 520;
@@ -2801,7 +2801,9 @@ function flushStoryLiteNow(source="autosave-lite"){
       source
     });
     writeStoryProfileData(source, S);
-    requestGameplayCloudSync(source);
+    if(!S.inBattle){
+      requestGameplayCloudSync(source);
+    }
   }catch(e){
     flushSaveNow();
   }
@@ -2845,6 +2847,11 @@ function maybeAutosave(force=false){
     const inStory = normalizeModeName(S.mode) === "Story";
     const liveGameplay = !(S.paused || S.gameOver || S.missionEnded);
     const fullSnapshotDue = (now - (__lastStoryFullSnapshotAt || 0)) >= SAVE_FULL_STORY_SNAPSHOT_MS;
+    if(inStory && S.inBattle){
+      // Keep battle smooth: avoid full localStorage snapshot while combat is active.
+      flushStoryLiteNow("autosave-lite-battle");
+      return;
+    }
     if(inStory && liveGameplay && !fullSnapshotDue){
       flushStoryLiteNow("autosave-lite");
     }else{
@@ -14498,7 +14505,10 @@ function tickImpactPulses(){
 
 function drawCombatFx(){
   const heavy = visualEffectsHeavyMode();
-  const maxDraw = heavy ? (frameIsSlow() ? 16 : 24) : 56;
+  const lagTier = frameLagTier();
+  const maxDraw = heavy
+    ? (lagTier >= 2 ? 10 : (frameIsSlow() ? 16 : 24))
+    : (lagTier >= 2 ? 18 : (lagTier >= 1 ? 30 : 56));
   const startIdx = Math.max(0, COMBAT_FX.length - maxDraw);
   for(let i=startIdx; i<COMBAT_FX.length; i++){
     const fx = COMBAT_FX[i];
@@ -14549,7 +14559,10 @@ function drawCombatFx(){
 }
 
 function drawImpactPulses(){
-  const maxDraw = visualReadabilityHeavyMode() ? (frameIsSlow() ? 10 : 14) : 24;
+  const lagTier = frameLagTier();
+  const maxDraw = visualReadabilityHeavyMode()
+    ? (lagTier >= 2 ? 7 : (frameIsSlow() ? 10 : 14))
+    : (lagTier >= 2 ? 10 : (lagTier >= 1 ? 16 : 24));
   const startIdx = Math.max(0, IMPACT_PULSES.length - maxDraw);
   for(let i=startIdx; i<IMPACT_PULSES.length; i++){
     const pulse = IMPACT_PULSES[i];
@@ -14596,8 +14609,8 @@ function emitDamagePopup(x, y, text, kind="hit"){
   const gateKey = `${kind}:${String(text)}:${cellX}:${cellY}`;
   const lastAt = DAMAGE_POPUP_GATE.get(gateKey) || 0;
   const gateMs = lagTier >= 2
-    ? Math.round(DAMAGE_POPUP_RATE_MS * 2.8)
-    : (lagTier >= 1 ? Math.round(DAMAGE_POPUP_RATE_MS * 1.8) : DAMAGE_POPUP_RATE_MS);
+    ? Math.round(DAMAGE_POPUP_RATE_MS * 3.4)
+    : (lagTier >= 1 ? Math.round(DAMAGE_POPUP_RATE_MS * 2.3) : DAMAGE_POPUP_RATE_MS);
   if(now - lastAt < gateMs) return;
   DAMAGE_POPUP_GATE.set(gateKey, now);
   if(DAMAGE_POPUP_GATE.size > 260){
@@ -14607,7 +14620,7 @@ function emitDamagePopup(x, y, text, kind="hit"){
     if(DAMAGE_POPUP_GATE.size > 320) DAMAGE_POPUP_GATE.clear();
   }
 
-  const popupCap = lagTier >= 2 ? 16 : (lagTier >= 1 ? 24 : 34);
+  const popupCap = lagTier >= 2 ? 12 : (lagTier >= 1 ? 18 : 30);
   if(DAMAGE_POPUPS.length >= popupCap){
     DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - (popupCap - 1));
   }
@@ -14658,7 +14671,10 @@ function tickDamagePopups(){
 
 function drawDamagePopups(){
   const heavy = visualReadabilityHeavyMode();
-  const maxDraw = heavy ? (frameIsSlow() ? 8 : 12) : 24;
+  const lagTier = frameLagTier();
+  const maxDraw = heavy
+    ? (lagTier >= 2 ? 6 : (frameIsSlow() ? 8 : 12))
+    : (lagTier >= 2 ? 8 : (lagTier >= 1 ? 14 : 24));
   const startIdx = Math.max(0, DAMAGE_POPUPS.length - maxDraw);
   for(let i=startIdx; i<DAMAGE_POPUPS.length; i++){
     const p = DAMAGE_POPUPS[i];
@@ -16165,9 +16181,9 @@ function drawMapScene(){
     : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 320 : MAP_CACHE_INTERVAL_MS);
   if(mobile){
     if(lagTier >= 2){
-      cacheAgeCap = Math.max(cacheAgeCap, 980);
+      cacheAgeCap = Math.max(cacheAgeCap, 1500);
     } else if(lagTier >= 1 || frameIsSlow()){
-      cacheAgeCap = Math.max(cacheAgeCap, 820);
+      cacheAgeCap = Math.max(cacheAgeCap, 1150);
     } else {
       cacheAgeCap = Math.max(cacheAgeCap, 560);
     }
@@ -16188,7 +16204,7 @@ function drawMapScene(){
     const staleAge = frameNow - __mapFrameCacheAt;
     const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
     const emergencyMaxAge = mobile
-      ? (lagTier >= 2 ? 3600 : (lagTier >= 1 ? 3000 : 2600))
+      ? (lagTier >= 2 ? 4600 : (lagTier >= 1 ? 3600 : 2800))
       : (lagTier >= 2 ? 1800 : 1300);
     if(emergencyReuse && staleAge < emergencyMaxAge){
       ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
@@ -17121,6 +17137,7 @@ function drawOnMapBattleReadability(){
   if(!S.inBattle) return;
   const t = activeTiger();
   if(!t || !t.alive) return;
+  if(frameLagTier() >= 2 && (frameIsSlow() || frameBudgetExceeded(0.45))) return;
   const now = Date.now();
   const heavy = visualReadabilityHeavyMode();
   const extreme = visualExtremeLoadMode();
@@ -17180,6 +17197,7 @@ function drawOnMapBattleHud(){
   if(!S.inBattle) return;
   const t = activeTiger();
   if(!t || !t.alive) return;
+  if(frameLagTier() >= 2 && frameBudgetExceeded(0.55)) return;
   const now = Date.now();
   const heavy = visualReadabilityHeavyMode();
   const extreme = visualExtremeLoadMode();
@@ -18248,9 +18266,15 @@ function draw(){
       runFrameTask("storyCheckpoint", frameInterval(lagCritical ? 220 : (lagHeavy ? 170 : 124), 1.45), maybeCaptureStoryCheckpoint, { costHint:0.8, critical:S.mode==="Story" });
       runFrameTask("checkMissionComplete", frameInterval(lagCritical ? 140 : (lagHeavy ? 112 : 90), 1.4), checkMissionComplete, { costHint:0.8, critical:true });
     }
-    runFrameTask("combatFx", frameInterval(lagCritical ? 58 : (lagHeavy ? 46 : 34), 1.6), tickCombatFx, { costHint:0.7 });
-    runFrameTask("damagePopups", frameInterval(lagCritical ? 56 : (lagHeavy ? 44 : 32), 1.5), tickDamagePopups, { costHint:0.6, critical:true });
-    runFrameTask("impactPulses", frameInterval(lagCritical ? 52 : (lagHeavy ? 40 : 30), 1.5), tickImpactPulses, { costHint:0.6, critical:true });
+    runFrameTask("combatFx", frameInterval(lagCritical ? 94 : (lagHeavy ? 72 : 42), 1.8), tickCombatFx, {
+      costHint:0.5, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+    });
+    runFrameTask("damagePopups", frameInterval(lagCritical ? 88 : (lagHeavy ? 68 : 40), 1.8), tickDamagePopups, {
+      costHint:0.5, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+    });
+    runFrameTask("impactPulses", frameInterval(lagCritical ? 82 : (lagHeavy ? 62 : 36), 1.8), tickImpactPulses, {
+      costHint:0.45, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+    });
 
     safeTick("drawSceneFrame", ()=>{
       const liteRender = useLiteEntityRender();
