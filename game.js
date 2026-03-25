@@ -852,6 +852,11 @@ const BOSS_SIGNATURE_MOMENT_BY_CHAPTER = Object.freeze({
   9: "Phantom cycle: stealth bait into charge and pounce.",
   10: "Ancient Tiger multi-phase chain: roar, stealth, reinforce, charge.",
 });
+const BOSS_PHASE_PRESETS = Object.freeze({
+  1: { name:"Opening Pressure", cdMul:1.00, dmgMul:1.00, tempoMul:1.00, reinforceAdd:0, pounceExtra:0 },
+  2: { name:"Rage Escalation", cdMul:0.84, dmgMul:1.12, tempoMul:1.12, reinforceAdd:1, pounceExtra:1 },
+  3: { name:"Final Fury", cdMul:0.72, dmgMul:1.24, tempoMul:1.24, reinforceAdd:2, pounceExtra:1 },
+});
 
 const TIGER_POWER_ORDER = {
   Standard: 1,
@@ -892,6 +897,78 @@ function bossIdentityProfile(t){
 function bossStealthActive(t, now=Date.now()){
   return !!(t && now < (t.bossStealthUntil || 0));
 }
+function bossPhaseCount(t){
+  return clamp(Math.floor(Number(t?.bossPhases || 1)), 1, 3);
+}
+function bossPhaseFromHp(t){
+  if(!isBossTiger(t)) return 1;
+  const total = bossPhaseCount(t);
+  const hpMax = Math.max(1, Number(t?.hpMax || 1));
+  const ratio = clamp(Number(t?.hp || 0) / hpMax, 0, 1);
+  if(total >= 3){
+    if(ratio <= 0.35) return 3;
+    if(ratio <= 0.70) return 2;
+    return 1;
+  }
+  if(total === 2){
+    return ratio <= 0.55 ? 2 : 1;
+  }
+  return 1;
+}
+function bossPhasePreset(phase=1){
+  return BOSS_PHASE_PRESETS[clamp(Math.floor(Number(phase || 1)), 1, 3)] || BOSS_PHASE_PRESETS[1];
+}
+function bossPhaseSummaryText(phase, total){
+  if(phase >= total){
+    return "Final phase. Skill cadence and pressure are maxed.";
+  }
+  if(phase === 2){
+    return "Phase 2. Faster skill cadence and stronger retaliation.";
+  }
+  return "Phase 1. Learning pattern.";
+}
+function bossSkillCycleForPhase(profile, t){
+  const base = Array.isArray(profile?.cycle) && profile.cycle.length ? profile.cycle : ["roar"];
+  const total = bossPhaseCount(t);
+  const phase = clamp(Math.floor(Number(t?.bossPhaseIndex || bossPhaseFromHp(t))), 1, total);
+  if(phase <= 1) return base;
+  const cycle = base.slice();
+  const leadSkill = base.includes("charge")
+    ? "charge"
+    : (base.includes("pounce_chain") ? "pounce_chain" : "roar");
+  cycle.unshift(leadSkill);
+  if(phase >= 3){
+    const finisherSkill = base.includes("pounce_chain")
+      ? "pounce_chain"
+      : (base.includes("charge") ? "charge" : "roar");
+    cycle.unshift(finisherSkill);
+    if(base.includes("reinforce")) cycle.push("reinforce");
+  }
+  return cycle;
+}
+function ensureBossPhaseState(t, profile, now=Date.now(), opts={}){
+  if(!t || !isBossTiger(t)) return 1;
+  const total = bossPhaseCount(t);
+  const nextPhase = bossPhaseFromHp(t);
+  const prevPhase = clamp(Math.floor(Number(t.bossPhaseIndex || 1)), 1, total);
+  t.bossPhaseIndex = nextPhase;
+  if(prevPhase === nextPhase) return nextPhase;
+
+  t._bossWarnForSkillAt = 0;
+  if(!Number.isFinite(t.nextBossSkillAt) || t.nextBossSkillAt > (now + 1200)){
+    t.nextBossSkillAt = now + rand(520, 880);
+  }
+  setTigerIntent(t, `Phase ${nextPhase}`, 980);
+
+  if(!opts.silent){
+    const msg = `⚠️ ${profile?.name || "Boss"} Phase ${nextPhase}/${total}: ${bossPhaseSummaryText(nextPhase, total)}`;
+    setEventText(msg, nextPhase >= total ? 4.2 : 3.4);
+    if(S.inBattle && S.activeTigerId === t.id){
+      setBattleMsg(msg);
+    }
+  }
+  return nextPhase;
+}
 function bossSkillTelegraphText(skill, opts={}){
   const incoming = opts.incoming !== false;
   if(skill === "roar") return incoming ? "War Roar incoming — nearby tigers get buffed." : "War Roar active.";
@@ -909,7 +986,7 @@ function bossChapterSignatureSummary(chapter, profile){
   return preview ? `${preview}.` : "Signature pressure expected.";
 }
 function nextBossSkillInCycle(t, profile){
-  const cycle = Array.isArray(profile?.cycle) && profile.cycle.length ? profile.cycle : ["roar"];
+  const cycle = bossSkillCycleForPhase(profile, t);
   const idx = Number.isFinite(t?.bossSkillStep) ? t.bossSkillStep : 0;
   return cycle[idx % cycle.length];
 }
@@ -932,6 +1009,7 @@ function announceBossTelegraph(t, profile, skill, now=Date.now(), opts={}){
 function triggerBossPrefightWarning(t, profile, now=Date.now()){
   if(!t || !profile || !isBossTiger(t)) return;
   if((t._bossPrefightWarnedAt || 0) > 0 && now < ((t._bossPrefightWarnedAt || 0) + 25000)) return;
+  ensureBossPhaseState(t, profile, now, { silent:true });
   t._bossPrefightWarnedAt = now;
   const chapter = clamp(t.bossIdentityChapter || bossChapterIndex(), 1, 10);
   const summary = bossChapterSignatureSummary(chapter, profile);
@@ -947,7 +1025,9 @@ function triggerBossPrefightWarning(t, profile, now=Date.now()){
 }
 function triggerBossIdentitySkill(t, profile, now=Date.now()){
   if(!t || !profile) return;
-  const cycle = Array.isArray(profile.cycle) && profile.cycle.length ? profile.cycle : ["roar"];
+  const phase = ensureBossPhaseState(t, profile, now, { silent:true });
+  const phaseCfg = bossPhasePreset(phase);
+  const cycle = bossSkillCycleForPhase(profile, t);
   const idx = Number.isFinite(t.bossSkillStep) ? t.bossSkillStep : 0;
   const skill = cycle[idx % cycle.length];
   t.bossSkillStep = idx + 1;
@@ -955,36 +1035,42 @@ function triggerBossIdentitySkill(t, profile, now=Date.now()){
   announceBossTelegraph(t, profile, skill, now, { incoming:false });
 
   if(skill === "roar"){
-    t.roarUntil = Math.max(t.roarUntil || 0, now + rand(2500, 3600));
-    t.enragedUntil = Math.max(t.enragedUntil || 0, now + rand(3200, 4700));
+    const rageMul = phase >= 3 ? 1.28 : (phase >= 2 ? 1.14 : 1);
+    t.roarUntil = Math.max(t.roarUntil || 0, now + Math.round(rand(2500, 3600) * rageMul));
+    t.enragedUntil = Math.max(t.enragedUntil || 0, now + Math.round(rand(3200, 4700) * rageMul));
     setTigerIntent(t, "War Roar", 860);
     if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} uses War Roar.`);
   } else if(skill === "stealth"){
-    t.bossStealthUntil = Math.max(t.bossStealthUntil || 0, now + rand(1700, 2600));
+    const stealthMul = phase >= 3 ? 1.18 : (phase >= 2 ? 1.08 : 1);
+    t.bossStealthUntil = Math.max(t.bossStealthUntil || 0, now + Math.round(rand(1700, 2600) * stealthMul));
     t.burstUntil = Math.max(t.burstUntil || 0, (t.bossStealthUntil || 0) + rand(420, 760));
     setTigerIntent(t, "Shadow Fade", 860);
     if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} entered stealth phase.`);
   } else if(skill === "pounce_chain"){
-    t.bossPounceCharges = rand(2, 3);
+    const bonusCharges = Math.max(0, Math.floor(Number(phaseCfg.pounceExtra || 0)));
+    t.bossPounceCharges = rand(2 + bonusCharges, 3 + bonusCharges);
     t.bossPounceChainUntil = now + rand(2400, 3400);
     t.nextPounceAt = now + rand(120, 260);
     setTigerIntent(t, `Pounce x${t.bossPounceCharges}`, 900);
     if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} is chaining pounces.`);
   } else if(skill === "charge"){
-    t.bossChargeUntil = now + rand(2000, 3200);
+    const chargeMul = phase >= 3 ? 1.18 : (phase >= 2 ? 1.08 : 1);
+    t.bossChargeUntil = now + Math.round(rand(2000, 3200) * chargeMul);
     t.enragedUntil = Math.max(t.enragedUntil || 0, t.bossChargeUntil + 900);
     setTigerIntent(t, "Rage Charge", 860);
     if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} is charging.`);
   } else if(skill === "reinforce"){
-    t.nextReinforceAt = Math.min(t.nextReinforceAt || (now + 70), now + 70);
+    const phasePull = phase >= 3 ? 35 : (phase >= 2 ? 50 : 70);
+    t.nextReinforceAt = Math.min(t.nextReinforceAt || (now + phasePull), now + phasePull);
     setTigerIntent(t, "Howl Call", 820);
     if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} is calling reinforcements.`);
   }
 
   const cd = profile.cd || [9000, 13000];
   const levelScale = clamp(1 - (Math.max(1, currentCampaignLevel()) - 1) * 0.005, 0.68, 1);
-  const cdMin = Math.round(cd[0] * levelScale);
-  const cdMax = Math.max(cdMin + 250, Math.round(cd[1] * levelScale));
+  const phaseCdMul = clamp(Number(phaseCfg.cdMul || 1), 0.66, 1.05);
+  const cdMin = Math.round(cd[0] * levelScale * phaseCdMul);
+  const cdMax = Math.max(cdMin + 250, Math.round(cd[1] * levelScale * phaseCdMul));
   t.nextBossSkillAt = now + rand(cdMin, cdMax);
 }
 function bossIdentityTick(){
@@ -995,14 +1081,21 @@ function bossIdentityTick(){
     if(t.holdUntil && now < t.holdUntil) continue;
     const profile = bossIdentityProfile(t);
     if(!profile) continue;
+    const phase = ensureBossPhaseState(t, profile, now);
+    const phaseCfg = bossPhasePreset(phase);
     if(!Number.isFinite(t.nextBossSkillAt) || t.nextBossSkillAt <= 0){
       const cd = profile.cd || [9000, 13000];
-      t.nextBossSkillAt = now + rand(cd[0], cd[1]);
+      const phaseCdMul = clamp(Number(phaseCfg.cdMul || 1), 0.66, 1.05);
+      t.nextBossSkillAt = now + rand(
+        Math.round(cd[0] * phaseCdMul),
+        Math.round(cd[1] * phaseCdMul)
+      );
       t.bossSkillStep = 0;
       t._bossWarnForSkillAt = 0;
       continue;
     }
-    const warnAt = t.nextBossSkillAt - 900;
+    const warnLead = phase >= 3 ? 1200 : (phase >= 2 ? 1000 : 900);
+    const warnAt = t.nextBossSkillAt - warnLead;
     if(now >= warnAt && now < t.nextBossSkillAt){
       if((t._bossWarnForSkillAt || 0) !== t.nextBossSkillAt){
         const nextSkill = nextBossSkillInCycle(t, profile);
@@ -1063,6 +1156,13 @@ function tigerDamageScale(t, target="player"){
   } else {
     if(isBossTiger(t)) scale *= clamp(1.08 + ((lv - 1) * 0.002), 1.08, 1.30);
     else if(t?.type === "Alpha") scale *= clamp(1.04 + ((lv - 1) * 0.001), 1.04, 1.18);
+  }
+  if(isBossTiger(t)){
+    const phase = clamp(Math.floor(Number(t?.bossPhaseIndex || bossPhaseFromHp(t))), 1, bossPhaseCount(t));
+    const phaseCfg = bossPhasePreset(phase);
+    if(target === "civilian") scale *= (phase >= 3 ? 1.12 : (phase >= 2 ? 1.06 : 1));
+    else if(target === "support") scale *= (phase >= 3 ? 1.15 : (phase >= 2 ? 1.08 : 1));
+    else scale *= clamp(Number(phaseCfg.dmgMul || 1), 1, 1.30);
   }
   return scale;
 }
@@ -5933,12 +6033,13 @@ function openAbout(){
         <b>Note:</b> ${esc(tgHint)}
       </div>
     </div></div>
-    <div class="item"><div><div class="itemName">Tiger Abilities (Phase 1)</div>
+    <div class="item"><div><div class="itemName">Tiger Abilities + Boss Phases</div>
       <div class="itemDesc">
         <b>Scout:</b> Dash burst.<br>
         <b>Stalker:</b> Fade/ambush (harder to see).<br>
         <b>Berserker:</b> Rage at low HP (hits harder).<br>
-        <b>Alpha:</b> Roar buff nearby tigers.
+        <b>Alpha:</b> Roar buff nearby tigers.<br>
+        <b>Bosses:</b> Multi-phase pressure (Phase 1/2/3) with stronger cadence and telegraphed phase shifts.
       </div>
     </div></div>
     <div class="item"><div><div class="itemName">Random Events (Story/Arcade only)</div>
@@ -11008,6 +11109,7 @@ function spawnTigers(){
       rage:false,
       personality:"Hunter",
       bossPhases:0,
+      bossPhaseIndex:1,
       tranqTagged:false,
       intent:"",
       intentUntil:0,
@@ -11138,6 +11240,7 @@ function spawnTigers(){
       rage:def.rage,
       personality:pickTigerPersonality(def.key),
       bossPhases,
+      bossPhaseIndex:1,
       tranqTagged:false,
       intent:"",
       intentUntil:0,
@@ -11246,6 +11349,7 @@ function spawnRogueTiger(options={}){
     rage:def.rage,
     personality:pickTigerPersonality(def.key),
     bossPhases:0,
+    bossPhaseIndex:1,
     tranqTagged:false,
     intent:"",
     intentUntil:0,
@@ -14464,17 +14568,21 @@ function bossReinforcementTick(){
   if(!profile || !(profile.cycle || []).includes("reinforce")) return;
 
   const now = Date.now();
+  const phase = ensureBossPhaseState(boss, profile, now, { silent:true });
+  const phaseCfg = bossPhasePreset(phase);
   if(boss.holdUntil && now < boss.holdUntil) return;
   const aliveStandards = (S.tigers || []).filter((t)=>t.alive && t.type==="Standard" && !isBossTiger(t)).length;
   const capBoost = ((profile.reinforce && profile.reinforce[1]) || 1) > 1 ? 1 : 0;
-  const cap = bossStandardReinforcementCap() + capBoost;
+  const phaseCapBonus = phase >= 3 ? 1 : 0;
+  const cap = bossStandardReinforcementCap() + capBoost + phaseCapBonus;
   if(aliveStandards >= cap) return;
 
   const cd = profile.cd || [9000, 13000];
   const level = currentCampaignLevel();
   const levelScale = clamp(1 - (Math.max(1, level) - 1) * 0.005, 0.68, 1);
-  const minCd = Math.round(clamp(cd[0] * levelScale, 3600, 17000));
-  const maxCd = Math.round(clamp(cd[1] * levelScale, minCd + 250, 24000));
+  const phaseCdMul = clamp(Number(phaseCfg.cdMul || 1), 0.66, 1.05);
+  const minCd = Math.round(clamp(cd[0] * levelScale * phaseCdMul, 3200, 17000));
+  const maxCd = Math.round(clamp(cd[1] * levelScale * phaseCdMul, minCd + 250, 24000));
   if(!Number.isFinite(boss.nextReinforceAt) || boss.nextReinforceAt <= 0){
     boss.nextReinforceAt = now + rand(minCd, maxCd);
     return;
@@ -14482,7 +14590,11 @@ function bossReinforcementTick(){
   if(now < boss.nextReinforceAt) return;
 
   const reinfRange = profile.reinforce || [1, 1];
-  const want = clamp(rand(reinfRange[0], reinfRange[1]), 1, 3);
+  const want = clamp(
+    rand(reinfRange[0], reinfRange[1]) + Math.max(0, Math.floor(Number(phaseCfg.reinforceAdd || 0)) - 1),
+    1,
+    4
+  );
   let spawned = 0;
   for(let i=0; i<want; i++){
     if((S.tigers || []).filter((t)=>t.alive && t.type==="Standard" && !isBossTiger(t)).length >= cap) break;
@@ -14496,7 +14608,7 @@ function bossReinforcementTick(){
   boss.nextReinforceAt = now + rand(minCd, maxCd);
   if(spawned > 0){
     setTigerIntent(boss, "Pack Call", 900);
-    setEventText(`👑 ${profile.name} called ${spawned} Standard reinforcement${spawned>1?"s":""}.`, 3);
+    setEventText(`👑 ${profile.name} called ${spawned} Standard reinforcement${spawned>1?"s":""} (Phase ${phase}).`, 3);
     sfx("event");
   }
 }
@@ -14922,18 +15034,21 @@ function combatTick(){
   }
 
   if(isBossTiger(t)){
+    const bossPhase = ensureBossPhaseState(t, bossIdentityProfile(t), now, { silent:true });
+    const phaseCfg = bossPhasePreset(bossPhase);
+    const phaseTempo = clamp(Number(phaseCfg.tempoMul || 1), 1, 1.35);
     if(!Number.isFinite(t.nextBossSkillAt) || t.nextBossSkillAt <= now){
       triggerBossIdentitySkill(t, bossIdentityProfile(t), now);
     }
     if(now < (t.bossPounceChainUntil || 0) && (t.bossPounceCharges || 0) > 0 && d < 196 && now >= (S._combatTigerAttackAt || 0)){
-      S._combatTigerAttackAt = now + rand(620, 900);
+      S._combatTigerAttackAt = now + Math.max(360, Math.round(rand(620, 900) / phaseTempo));
       tigerTurn(t, S._protectTicks > 0, { kind:"pounce", dmgMul:1.24, maxRange:196 });
       t.bossPounceCharges = Math.max(0, (t.bossPounceCharges || 0) - 1);
       if(t.bossPounceCharges <= 0) t.bossPounceChainUntil = 0;
       return;
     }
     if(now < (t.bossChargeUntil || 0) && now >= (S._combatTigerAttackAt || 0)){
-      S._combatTigerAttackAt = now + rand(920, 1320);
+      S._combatTigerAttackAt = now + Math.max(520, Math.round(rand(920, 1320) / phaseTempo));
       tigerTurn(t, S._protectTicks > 0, { kind:"charge", dmgMul:1.46, maxRange:248 });
       return;
     }
@@ -17234,7 +17349,10 @@ function drawTiger(t){
     t.huntState === TIGER_HUNT_STATES.RECOVER ? " (RECOVER)" : "";
   const persona = t.personality ? ` • ${t.personality}` : "";
   const bossTag = isBossTiger(t) ? ` • ${bossIdentityProfile(t)?.name || "Boss"}` : "";
-  const fullLabel = t.type + bossTag + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
+  const bossPhaseTag = isBossTiger(t)
+    ? ` • P${clamp(Math.floor(Number(t.bossPhaseIndex || bossPhaseFromHp(t))), 1, bossPhaseCount(t))}/${bossPhaseCount(t)}`
+    : "";
+  const fullLabel = t.type + bossTag + bossPhaseTag + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
   const compactLabel = t.type + (t.tranqTagged ? " (tranq)" : "");
   const skipLabel =
     visualReadabilityHeavyMode() &&
@@ -17771,6 +17889,7 @@ function init(){
     if(!Number.isFinite(t.bossSkillStep)) t.bossSkillStep = 0;
     if(!Number.isFinite(t.nextBossSkillAt)) t.nextBossSkillAt = 0;
     if(!Number.isFinite(t.bossIdentityChapter)) t.bossIdentityChapter = 0;
+    if(!Number.isFinite(t.bossPhaseIndex)) t.bossPhaseIndex = 1;
     if(!Number.isFinite(t.bossStealthUntil)) t.bossStealthUntil = 0;
     if(!Number.isFinite(t.bossPounceCharges)) t.bossPounceCharges = 0;
     if(!Number.isFinite(t.bossPounceChainUntil)) t.bossPounceChainUntil = 0;
@@ -17779,6 +17898,8 @@ function init(){
     if(!Number.isFinite(t._bossPrefightWarnedAt)) t._bossPrefightWarnedAt = 0;
     if(!Number.isFinite(t._bossLastTellAt)) t._bossLastTellAt = 0;
     if(typeof t._bossLastTellKey !== "string") t._bossLastTellKey = "";
+    const phaseCap = bossPhaseCount(t);
+    t.bossPhaseIndex = clamp(Math.floor(Number(t.bossPhaseIndex || 1)), 1, phaseCap);
     if(!Number.isFinite(t.attackAnimStart)) t.attackAnimStart = 0;
     if(!Number.isFinite(t.attackAnimUntil)) t.attackAnimUntil = 0;
     if(typeof t.attackAnimKind !== "string") t.attackAnimKind = "";
