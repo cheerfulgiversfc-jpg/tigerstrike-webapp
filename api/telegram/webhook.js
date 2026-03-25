@@ -973,11 +973,18 @@ async function handlePublicQaMessage(botToken, source, botMeta){
     }
     : leafMenuKeyboard("menu_open");
 
-  await sendMessage(botToken, chatId, body, {
-    reply_markup: keyboard,
-    reply_to_message_id: source.message_id,
-    allow_sending_without_reply: true,
-  });
+  try{
+    await sendMessage(botToken, chatId, body, {
+      reply_markup: keyboard,
+      reply_to_message_id: source.message_id,
+      allow_sending_without_reply: true,
+    });
+  }catch(e){
+    // Some linked-channel/discussion message types reject reply threading.
+    await sendMessage(botToken, chatId, body, {
+      reply_markup: keyboard,
+    });
+  }
   await metric("public_qa_reply");
   await metricKind("public_qa_intent", intent || "help");
   return true;
