@@ -1432,6 +1432,7 @@
     <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLblMobile">Pause</span></button>
     <button class="ghost" onclick="togglePerformanceMode()">⚙️ <span id="perfLblMobile">Auto</span></button>
     <button class="ghost" onclick="saveGameNow()">💾 Save</button>
+    <button class="ghost" onclick="openAbout()">ℹ️ About</button>
     <button class="ghost" onclick="openHudCustomizer()">🎛️ HUD</button>
     <button class="ghost" onclick="startTutorial()">🧭 Tutorial</button>
     <button class="ghost" onclick="resetGame()">🔁 Reset</button>
@@ -1439,8 +1440,8 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4458"></script>
-<script src="./tutorial.js?v=4458"></script>
+<script src="./game.js?v=4462"></script>
+<script src="./tutorial.js?v=4462"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";

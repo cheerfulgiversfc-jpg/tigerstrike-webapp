@@ -31,6 +31,23 @@ function tgUserKey(){
   const uid = tg?.initDataUnsafe?.user?.id;
   return uid ? String(uid) : "local";
 }
+function tgUserInfo(){
+  const user = tg?.initDataUnsafe?.user || null;
+  const userId = Number(user?.id || 0);
+  const username = String(user?.username || "").trim().replace(/^@+/, "");
+  const firstName = String(user?.first_name || "").trim();
+  const lastName = String(user?.last_name || "").trim();
+  const fullName = `${firstName} ${lastName}`.trim();
+  const handle = username ? `@${username}` : (fullName || (userId > 0 ? `Player ${userId}` : "Guest"));
+  return {
+    userId: Number.isFinite(userId) && userId > 0 ? userId : 0,
+    username,
+    firstName,
+    lastName,
+    fullName,
+    handle,
+  };
+}
 // ...rest of daily reward helpers...
 
 function ymdUTC(d=new Date()){
@@ -531,12 +548,40 @@ function contractsHeartbeatTick(){
 }
 
 const STORAGE_VERSION = 4385;
-const STORAGE_KEY = `ts_v${STORAGE_VERSION}`;
-const STORAGE_FALLBACK_KEYS = ["ts_v4384", "ts_v4383", "ts_v4382", "ts_v4381", "ts_v4380", "ts_v4371"];
+const STORAGE_SCOPE = tgUserKey();
+const STORAGE_KEY_BASE = `ts_v${STORAGE_VERSION}`;
+const STORAGE_KEY = `${STORAGE_KEY_BASE}_${STORAGE_SCOPE}`;
+const STORAGE_FALLBACK_KEYS = (() => {
+  const versions = [4384, 4383, 4382, 4381, 4380, 4371];
+  const keys = [];
+  const seen = new Set();
+  const pushKey = (k)=>{
+    const key = String(k || "").trim();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+  for(const v of versions){
+    pushKey(`ts_v${v}_${STORAGE_SCOPE}`);
+  }
+  if(STORAGE_SCOPE !== "local"){
+    pushKey(`${STORAGE_KEY_BASE}_local`);
+    for(const v of versions){
+      pushKey(`ts_v${v}_local`);
+    }
+  }
+  pushKey(STORAGE_KEY_BASE);
+  for(const v of versions){
+    pushKey(`ts_v${v}`);
+  }
+  return keys;
+})();
 const STORY_SAVE_KEY_BASE = "ts_story_save";
 const STORY_PROGRESS_KEY_BASE = "ts_story_progress";
 const STORY_PROFILE_KEY_BASE = "ts_story_profile";
 const STORY_CHECKPOINT_KEY_BASE = "ts_story_checkpoint";
+const CLOUD_PROFILE_ENDPOINT = "/api/player/profile";
+const CLOUD_PROFILE_SAVE_MIN_MS = 15000;
 
 function cloneState(obj){
   if(typeof structuredClone === "function"){
@@ -1941,6 +1986,9 @@ const DEFAULT = {
   contracts: null,
   achievements:{},
   title:"Rookie",
+  playerHandle:"",
+  telegramUserId:0,
+  telegramUsername:"",
 
 // ===== PHASE 2 PROGRESSION =====
 xp: 0,
@@ -1980,7 +2028,31 @@ bindFundsWallet(S);
 function syncWindowState(){
   window.S = S;
 }
+function syncTelegramIdentity(state=S){
+  if(!state || typeof state !== "object") return state;
+  const info = tgUserInfo();
+  state.telegramUserId = info.userId;
+  state.telegramUsername = info.username || "";
+  const existing = String(state.playerHandle || "").trim();
+  if(existing){
+    state.playerHandle = existing.slice(0, 64);
+  } else {
+    state.playerHandle = String(info.handle || "").trim().slice(0, 64);
+  }
+  return state;
+}
+function currentPlayerHandle(state=S){
+  const src = (state && typeof state === "object") ? state : {};
+  const explicit = String(src.playerHandle || "").trim();
+  if(explicit) return explicit;
+  const username = String(src.telegramUsername || "").trim();
+  if(username) return `@${username.replace(/^@+/, "")}`;
+  const uid = Math.floor(Number(src.telegramUserId || 0));
+  if(uid > 0) return `Player ${uid}`;
+  return "Guest";
+}
 
+syncTelegramIdentity(S);
 syncWindowState();
 
 // ---- Tutorial support + global state ----
@@ -5673,8 +5745,29 @@ function collectPickup(p){
 // ===================== UI: About / Pause / Mode =====================
 function openAbout(){
   setPaused(true,"about");
+  const tgInfo = tgUserInfo();
+  const esc = (v)=>String(v || "").replace(/[&<>"']/g, (ch)=>({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    "\"":"&quot;",
+    "'":"&#39;",
+  }[ch]));
+  const tgIdText = tgInfo.userId > 0 ? String(tgInfo.userId) : "Not detected";
+  const tgUserText = tgInfo.username ? `@${tgInfo.username}` : (tgInfo.fullName || "-");
+  const tgHint = tgInfo.userId > 0
+    ? "Detected from your Telegram Mini App session."
+    : "Open Tiger Strike from Telegram to detect your ID automatically.";
   document.getElementById("aboutOverlay").style.display="flex";
   document.getElementById("aboutBody").innerHTML = `
+    <div class="item"><div><div class="itemName">Find your Telegram user ID</div>
+      <div class="itemDesc">
+        <b>In group/private chat:</b> send <code>/myid</code><br>
+        <b>In-game detected ID:</b> ${esc(tgIdText)}<br>
+        <b>Username:</b> ${esc(tgUserText)}<br>
+        <b>Note:</b> ${esc(tgHint)}
+      </div>
+    </div></div>
     <div class="item"><div><div class="itemName">Tiger Abilities (Phase 1)</div>
       <div class="itemDesc">
         <b>Scout:</b> Dash burst.<br>
@@ -6053,7 +6146,7 @@ function nextDailyCountdownText(){
   return `${hh}h ${mm}m`;
 }
 function storySaveStorageKey(){
-  return STORY_SAVE_KEY_BASE;
+  return `${STORY_SAVE_KEY_BASE}_${tgUserKey()}`;
 }
 function storySaveStorageKeys(){
   const keys = [];
@@ -6065,32 +6158,15 @@ function storySaveStorageKeys(){
     keys.push(key);
   };
   pushKey(storySaveStorageKey());
-  pushKey(`${STORY_SAVE_KEY_BASE}_local`);
-  pushKey(STORY_SAVE_KEY_BASE);
+  if(tgUserKey() !== "local") pushKey(`${STORY_SAVE_KEY_BASE}_local`);
+  pushKey(STORY_SAVE_KEY_BASE); // legacy migration
   return keys;
 }
 function storySaveReadStorageKeys(){
-  const keys = storySaveStorageKeys().slice();
-  const seen = new Set(keys);
-  const pushKey = (k)=>{
-    const key = String(k || "").trim();
-    if(!key || seen.has(key)) return;
-    seen.add(key);
-    keys.push(key);
-  };
-  try{
-    for(let i=0; i<localStorage.length; i++){
-      const k = localStorage.key(i);
-      if(!k) continue;
-      if(k === STORY_SAVE_KEY_BASE || k.startsWith(`${STORY_SAVE_KEY_BASE}_`)){
-        pushKey(k);
-      }
-    }
-  }catch(e){}
-  return keys;
+  return storySaveStorageKeys().slice();
 }
 function storyCheckpointStorageKey(){
-  return STORY_CHECKPOINT_KEY_BASE;
+  return `${STORY_CHECKPOINT_KEY_BASE}_${tgUserKey()}`;
 }
 function storyCheckpointStorageKeys(){
   const keys = [];
@@ -6102,29 +6178,12 @@ function storyCheckpointStorageKeys(){
     keys.push(key);
   };
   pushKey(storyCheckpointStorageKey());
-  pushKey(`${STORY_CHECKPOINT_KEY_BASE}_local`);
-  pushKey(STORY_CHECKPOINT_KEY_BASE);
+  if(tgUserKey() !== "local") pushKey(`${STORY_CHECKPOINT_KEY_BASE}_local`);
+  pushKey(STORY_CHECKPOINT_KEY_BASE); // legacy migration
   return keys;
 }
 function storyCheckpointReadStorageKeys(){
-  const keys = storyCheckpointStorageKeys().slice();
-  const seen = new Set(keys);
-  const pushKey = (k)=>{
-    const key = String(k || "").trim();
-    if(!key || seen.has(key)) return;
-    seen.add(key);
-    keys.push(key);
-  };
-  try{
-    for(let i=0; i<localStorage.length; i++){
-      const k = localStorage.key(i);
-      if(!k) continue;
-      if(k === STORY_CHECKPOINT_KEY_BASE || k.startsWith(`${STORY_CHECKPOINT_KEY_BASE}_`)){
-        pushKey(k);
-      }
-    }
-  }catch(e){}
-  return keys;
+  return storyCheckpointStorageKeys().slice();
 }
 function storyCheckpointMissionFromPayload(payload){
   if(!payload || typeof payload !== "object") return 1;
@@ -6168,7 +6227,7 @@ function readStoryCheckpointData(){
 function clearStoryCheckpointData(){
   __storyCheckpointCache = null;
   try{
-    for(const key of storyCheckpointReadStorageKeys()){
+    for(const key of storyCheckpointStorageKeys()){
       localStorage.removeItem(key);
     }
   }catch(e){}
@@ -6362,7 +6421,7 @@ function restartFromStoryCheckpoint(){
   save(true);
 }
 function storyProgressStorageKey(){
-  return STORY_PROGRESS_KEY_BASE;
+  return `${STORY_PROGRESS_KEY_BASE}_${tgUserKey()}`;
 }
 function storyProgressStorageKeys(){
   const keys = [];
@@ -6374,32 +6433,15 @@ function storyProgressStorageKeys(){
     keys.push(key);
   };
   pushKey(storyProgressStorageKey());
-  pushKey(`${STORY_PROGRESS_KEY_BASE}_local`);
-  pushKey(STORY_PROGRESS_KEY_BASE);
+  if(tgUserKey() !== "local") pushKey(`${STORY_PROGRESS_KEY_BASE}_local`);
+  pushKey(STORY_PROGRESS_KEY_BASE); // legacy migration
   return keys;
 }
 function storyProgressReadStorageKeys(){
-  const keys = storyProgressStorageKeys().slice();
-  const seen = new Set(keys);
-  const pushKey = (k)=>{
-    const key = String(k || "").trim();
-    if(!key || seen.has(key)) return;
-    seen.add(key);
-    keys.push(key);
-  };
-  try{
-    for(let i=0; i<localStorage.length; i++){
-      const k = localStorage.key(i);
-      if(!k) continue;
-      if(k === STORY_PROGRESS_KEY_BASE || k.startsWith(`${STORY_PROGRESS_KEY_BASE}_`)){
-        pushKey(k);
-      }
-    }
-  }catch(e){}
-  return keys;
+  return storyProgressStorageKeys().slice();
 }
 function storyProfileStorageKey(){
-  return STORY_PROFILE_KEY_BASE;
+  return `${STORY_PROFILE_KEY_BASE}_${tgUserKey()}`;
 }
 function storyProfileStorageKeys(){
   const keys = [];
@@ -6411,29 +6453,12 @@ function storyProfileStorageKeys(){
     keys.push(key);
   };
   pushKey(storyProfileStorageKey());
-  pushKey(`${STORY_PROFILE_KEY_BASE}_local`);
-  pushKey(`${STORY_PROFILE_KEY_BASE}_${tgUserKey()}`);
+  if(tgUserKey() !== "local") pushKey(`${STORY_PROFILE_KEY_BASE}_local`);
+  pushKey(STORY_PROFILE_KEY_BASE); // legacy migration
   return keys;
 }
 function storyProfileReadStorageKeys(){
-  const keys = storyProfileStorageKeys().slice();
-  const seen = new Set(keys);
-  const pushKey = (k)=>{
-    const key = String(k || "").trim();
-    if(!key || seen.has(key)) return;
-    seen.add(key);
-    keys.push(key);
-  };
-  try{
-    for(let i=0; i<localStorage.length; i++){
-      const k = localStorage.key(i);
-      if(!k) continue;
-      if(k === STORY_PROFILE_KEY_BASE || k.startsWith(`${STORY_PROFILE_KEY_BASE}_`)){
-        pushKey(k);
-      }
-    }
-  }catch(e){}
-  return keys;
+  return storyProfileStorageKeys().slice();
 }
 function readStoryProfileData(){
   try{

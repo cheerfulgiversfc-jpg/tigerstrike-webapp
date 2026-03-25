@@ -82,6 +82,7 @@ module.exports = async function handler(req, res){
       { command:"menu", description:"Open smart button menu" },
       { command:"help", description:"Show command guide" },
       { command:"play", description:"Launch Tiger Strike Mini App" },
+      { command:"myid", description:"Show your Telegram user ID" },
       { command:"mystats", description:"Open your player stats panel" },
       { command:"profile", description:"Profile summary" },
       { command:"history", description:"Recent account activity" },
@@ -123,6 +124,7 @@ module.exports = async function handler(req, res){
       { command:"menu", description:"Open smart button menu" },
       { command:"help", description:"Show available commands" },
       { command:"play", description:"Open Tiger Strike Mini App" },
+      { command:"myid", description:"Show your Telegram user ID" },
       { command:"status", description:"Check bot status" },
     ];
     await telegramBotApi("setMyCommands", {

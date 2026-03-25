@@ -173,6 +173,9 @@ function faqText(){
     "",
     "Q: Why can’t I post admin actions?",
     "A: Your Telegram user id must be in TELEGRAM_ADMIN_IDS.",
+    "",
+    "Q: How do I find my Telegram user id?",
+    "A: Send /myid in private or group chat with the bot.",
   ].join("\n");
 }
 
@@ -210,6 +213,24 @@ function supportText(){
     "Support",
     "Use /reportbug with details and a screenshot/video if possible.",
     "You can also use /feedback for gameplay suggestions.",
+  ].join("\n");
+}
+
+function myIdText(user){
+  const uid = toInt(user?.id || 0);
+  const username = String(user?.username || "").trim();
+  return [
+    "Telegram Account ID",
+    `User: ${safeName(user)}`,
+    `Username: ${username ? `@${username}` : "-"}`,
+    `User ID: ${uid || "-"}`,
+    "",
+    "How to find it later:",
+    "1) In group/private chat with this bot: send /myid",
+    "2) In-game: open About -> Find your Telegram user ID",
+    "",
+    "Admin setup note:",
+    "Add this User ID to TELEGRAM_ADMIN_IDS (comma-separated).",
   ].join("\n");
 }
 
@@ -255,6 +276,7 @@ function groupIntentFromText(text){
   if(/\b(leaderboard|rank|top ?10|weekly|monthly|position|clan)\b/.test(s)) return "leaderboard";
   if(/\b(mission|story|arcade|survival|objective|chapter)\b/.test(s)) return "missions";
   if(/\b(reward|daily|stars?|claim|bonus)\b/.test(s)) return "rewards";
+  if(/\b(telegram id|user id|my id|admin id)\b/.test(s)) return "user_id";
   if(/\b(control|controls|button|joystick|gamepad|move|hud)\b/.test(s)) return "controls";
   if(/\b(capture|kill|tranq|engage|hp)\b/.test(s)) return "capture";
   if(/\b(save|load|continue|progress|checkpoint)\b/.test(s)) return "save";
@@ -290,6 +312,13 @@ function groupIntentText(intent){
       "Rewards:",
       "Use /daily and /rewards for current reward info.",
       "Daily and mission rewards are tracked in your game profile.",
+    ].join("\n");
+  }
+  if(intent === "user_id"){
+    return [
+      "Telegram User ID:",
+      "Send /myid in this chat to get your exact User ID.",
+      "You can also open the game About panel to see it in-game.",
     ].join("\n");
   }
   if(intent === "controls"){
@@ -521,6 +550,7 @@ function helpMenuKeyboard(){
       [{ text: "Tips", callback_data: "menu_help_tips" }],
       [{ text: "FAQ", callback_data: "menu_help_faq" }],
       [{ text: "Rewards", callback_data: "menu_help_rewards" }],
+      [{ text: "Find Telegram ID", callback_data: "menu_help_myid" }],
       [{ text: "Report a Bug", callback_data: "menu_help_reportbug" }],
       [{ text: "Back", callback_data: "menu_open" }],
     ],
@@ -577,6 +607,7 @@ function helpText(){
     "/menu - Open smart button menu",
     "/start - Start bot and quick actions",
     "/play - Open Tiger Strike mini app",
+    "/myid - Show your Telegram user ID",
     "/mystats - Open your player stats panel",
     "/profile - Profile summary",
     "/history - Recent account activity",
@@ -1041,6 +1072,15 @@ async function handleCommand(botToken, update, source){
       }
       return true;
     }
+    case "myid":
+    case "my_id":
+    case "userid":
+    case "user_id": {
+      await sendMessage(botToken, ctx.chat.id, myIdText(ctx.from), {
+        reply_markup: leafMenuKeyboard("menu_help"),
+      });
+      return true;
+    }
     case "mystats":
     case "my_stats": {
       await sendMessage(botToken, ctx.chat.id, await myStatsText(ctx.from), {
@@ -1376,6 +1416,12 @@ async function handleCallbackQuery(botToken, update){
   if(data === "menu_help_rewards"){
     await answerCallback(botToken, q.id, "Rewards");
     await editMenuMessage(botToken, q, rewardsText(), leafMenuKeyboard("menu_help"));
+    return;
+  }
+
+  if(data === "menu_help_myid"){
+    await answerCallback(botToken, q.id, "Telegram ID");
+    await editMenuMessage(botToken, q, myIdText(q.from), leafMenuKeyboard("menu_help"));
     return;
   }
 
