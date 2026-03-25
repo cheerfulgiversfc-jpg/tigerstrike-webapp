@@ -372,7 +372,7 @@ function entryLabel(entry){
 function formatLeaderboardRows(entries, rowText){
   const list = Array.isArray(entries) ? entries : [];
   if(!list.length){
-    return ["No ranked players yet. Play and complete purchases to appear here."];
+    return ["No ranked players yet. Play missions and tap Save in-game to appear here."];
   }
   return list.map((entry, idx)=>`#${idx + 1} ${entryLabel(entry)} — ${rowText(entry)}`);
 }
@@ -407,25 +407,44 @@ async function myStatsText(user){
     ].join("\n");
   }
 
-  const week = stats.weekly || {};
-  const month = stats.monthly || {};
-  const referredBy = toInt(stats.referredBy || 0);
+  const day = (stats.daily && typeof stats.daily === "object") ? stats.daily : {};
+  const week = (stats.weekly && typeof stats.weekly === "object") ? stats.weekly : {};
+  const month = (stats.monthly && typeof stats.monthly === "object") ? stats.monthly : {};
+  const ops = (stats.ops && typeof stats.ops === "object") ? stats.ops : {};
+  const lastMode = String(ops.lastMode || "Story");
+  const lastMission = Math.max(1, toInt(ops.lastMission || 1));
+  const lastLevel = Math.max(1, toInt(ops.lastLevel || 1));
+  const lastFunds = fmtNum(ops.lastFunds || 0);
+  const lastHp = fmtNum(ops.lastHp || 0);
+  const lastArmor = fmtNum(ops.lastArmor || 0);
+  const lastSync = Number(ops.lastSyncAt || 0) > 0
+    ? new Date(Number(ops.lastSyncAt || 0) * 1000).toISOString()
+    : "-";
+  const totalOps =
+    toInt(ops.kills || 0) +
+    toInt(ops.captures || 0) +
+    toInt(ops.evac || 0) +
+    toInt(ops.missionsCleared || 0);
+  const noGameplayYet = totalOps <= 0;
 
   return [
-    "My Stats (Live)",
+    "My Stats (Gameplay Live)",
     `User: ${stats.displayName || safeName(user)}`,
     `Username: ${stats.username ? `@${stats.username}` : uname}`,
     `User ID: ${stats.userId || uid || "-"}`,
     "",
-    `Orders created: ${fmtNum(stats.ordersCreated)}`,
-    `Claims paid: ${fmtNum(stats.claimsPaid)} • Pending: ${fmtNum(stats.claimsPending)} • Errors: ${fmtNum(stats.claimsError)}`,
-    `Stars spent (lifetime): ${fmtNum(stats.starsSpentTotal)} XTR`,
-    `Funds granted (lifetime): $${fmtNum(stats.fundsGrantedTotal)}`,
-    `Referrals started: ${fmtNum(stats.referralsStarted)}${referredBy > 0 ? ` • Referred by: ${referredBy}` : ""}`,
+    `Today (${day.period || "-"})`,
+    `Kills: ${fmtNum(day.kills)} • Captures: ${fmtNum(day.captures)} • Civilians Saved: ${fmtNum(day.evac)} • Civilians Lost: ${fmtNum(day.civiliansLost)}`,
+    `Missions Cleared: ${fmtNum(day.missionsCleared)} • Cash Obtained: $${fmtNum(day.cashEarned)}`,
     "",
-    `Weekly (${week.period || "-"}) • Score: ${fmtNum(week.score)} • Paid: ${fmtNum(week.claimsPaid)}`,
-    `Monthly (${month.period || "-"}) • Score: ${fmtNum(month.score)} • Paid: ${fmtNum(month.claimsPaid)}`,
-    `Lifetime Score: ${fmtNum(stats.lifetimeScore)}`,
+    "Lifetime",
+    `Kills: ${fmtNum(ops.kills)} • Captures: ${fmtNum(ops.captures)} • Civilians Saved: ${fmtNum(ops.evac)} • Civilians Lost: ${fmtNum(ops.civiliansLost)}`,
+    `Missions Cleared: ${fmtNum(ops.missionsCleared)} • Cash Obtained: $${fmtNum(ops.cashEarned)}`,
+    "",
+    `Leaderboard Score • Daily: ${fmtNum(day.score)} • Weekly: ${fmtNum(week.score)} • Monthly: ${fmtNum(month.score)} • Lifetime: ${fmtNum(stats.lifetimeScore)}`,
+    `Last Synced Mission: ${lastMode} Mission ${lastMission} • Commander Lv ${lastLevel} • HP ${lastHp} • Armor ${lastArmor} • Funds $${lastFunds}`,
+    `Last Sync Time: ${lastSync}`,
+    noGameplayYet ? "Tip: play a mission, then tap Save in-game to sync gameplay stats to the bot." : "",
   ].join("\n");
 }
 
@@ -459,17 +478,26 @@ async function leaderboardSectionText(kind, user){
   const uid = toInt(user?.id || 0);
 
   if(mode === "global"){
-    const rows = formatLeaderboardRows(snapshot.global, (entry)=>`${fmtNum(entry.score)} pts • ${fmtNum(entry.claimsPaid)} paid`);
+    const rows = formatLeaderboardRows(
+      snapshot.global,
+      (entry)=>`${fmtNum(entry.score)} pts • K ${fmtNum(entry.kills)} • C ${fmtNum(entry.captures)} • Saved ${fmtNum(entry.evac)} • $${fmtNum(entry.cashEarned)}`
+    );
     return ["Global Top 10", ...rows].join("\n");
   }
 
   if(mode === "weekly"){
-    const rows = formatLeaderboardRows(snapshot.weekly, (entry)=>`${fmtNum(entry.score)} pts • ${fmtNum(entry.claimsPaid)} paid`);
+    const rows = formatLeaderboardRows(
+      snapshot.weekly,
+      (entry)=>`${fmtNum(entry.score)} pts • K ${fmtNum(entry.kills)} • C ${fmtNum(entry.captures)} • Saved ${fmtNum(entry.evac)} • $${fmtNum(entry.cashEarned)}`
+    );
     return [`Weekly Leaderboard (${snapshot.periods?.weekly || "current"})`, ...rows].join("\n");
   }
 
   if(mode === "monthly"){
-    const rows = formatLeaderboardRows(snapshot.monthly, (entry)=>`${fmtNum(entry.score)} pts • ${fmtNum(entry.claimsPaid)} paid`);
+    const rows = formatLeaderboardRows(
+      snapshot.monthly,
+      (entry)=>`${fmtNum(entry.score)} pts • K ${fmtNum(entry.kills)} • C ${fmtNum(entry.captures)} • Saved ${fmtNum(entry.evac)} • $${fmtNum(entry.cashEarned)}`
+    );
     return [`Monthly Leaderboard (${snapshot.periods?.monthly || "current"})`, ...rows].join("\n");
   }
 
@@ -494,7 +522,7 @@ async function leaderboardSectionText(kind, user){
       `Monthly: ${m ? `#${m}` : "Outside Top 10"}`,
       `Clan/Recruiter: ${c ? `#${c}` : "Outside Top 10"}`,
       "",
-      "Complete purchases and referrals to improve ranking.",
+      "Complete missions, captures, and evacuations to improve ranking.",
     ].join("\n");
   }
 

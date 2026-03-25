@@ -494,7 +494,7 @@ function claimContract(period="daily", contractId=""){
   const perks = Math.max(0, Math.floor(Number(reward.perkPoints || 0)));
   if(cash > 0){
     S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + cash;
-    if(S.stats) S.stats.cashEarned = Math.max(0, Math.floor(Number(S.stats.cashEarned || 0))) + cash;
+    trackCashEarned(cash);
   }
   if(perks > 0){
     S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + perks;
@@ -580,7 +580,7 @@ const STORY_SAVE_KEY_BASE = "ts_story_save";
 const STORY_PROGRESS_KEY_BASE = "ts_story_progress";
 const STORY_PROFILE_KEY_BASE = "ts_story_profile";
 const STORY_CHECKPOINT_KEY_BASE = "ts_story_checkpoint";
-const CLOUD_PROFILE_ENDPOINT = "/api/player/profile";
+const CLOUD_PROFILE_ENDPOINT = "/api/player/game-sync";
 const CLOUD_PROFILE_SAVE_MIN_MS = 15000;
 
 function cloneState(obj){
@@ -614,8 +614,7 @@ function awardDailyLogin(){
 
   S.funds = (S.funds||0) + cash;
   S.perkPoints = (Number(S.perkPoints||0) + perkPts);
-
-  if(S.stats) S.stats.cashEarned = (S.stats.cashEarned||0) + cash;
+  trackCashEarned(cash);
 
   info.last = today;
   info.streak = newStreak;
@@ -1982,6 +1981,7 @@ const DEFAULT = {
   arcadeScoreBonus:0,
   _arcadeTimerWarn:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
+  opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0 },
   contractTallies: defaultContractTallies(),
   contracts: null,
   achievements:{},
@@ -2053,6 +2053,7 @@ function currentPlayerHandle(state=S){
 }
 
 syncTelegramIdentity(S);
+ensureOpsTotalsState(S);
 syncWindowState();
 
 // ---- Tutorial support + global state ----
@@ -2116,6 +2117,167 @@ function sumNonNegativeIntValues(obj){
     if(Number.isFinite(n) && n > 0) total += n;
   }
   return total;
+}
+
+function ensureOpsTotalsState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return { ...DEFAULT.opsTotals };
+  const current = (src.opsTotals && typeof src.opsTotals === "object") ? src.opsTotals : {};
+  src.opsTotals = {
+    kills: Math.max(0, Math.floor(Number(current.kills || 0))),
+    captures: Math.max(0, Math.floor(Number(current.captures || 0))),
+    evac: Math.max(0, Math.floor(Number(current.evac || 0))),
+    civiliansLost: Math.max(0, Math.floor(Number(current.civiliansLost || 0))),
+    missionsCleared: Math.max(0, Math.floor(Number(current.missionsCleared || 0))),
+    cashEarned: Math.max(0, Math.floor(Number(current.cashEarned || 0))),
+  };
+  return src.opsTotals;
+}
+
+function addOpsTotal(metric, amount=1, state=S){
+  if(!metric) return 0;
+  const totals = ensureOpsTotalsState(state);
+  const inc = Math.max(0, Math.floor(Number(amount || 0)));
+  if(inc <= 0) return Math.max(0, Math.floor(Number(totals[metric] || 0)));
+  totals[metric] = Math.max(0, Math.floor(Number(totals[metric] || 0))) + inc;
+  return totals[metric];
+}
+
+function trackCashEarned(amount=0){
+  const cash = Math.max(0, Math.floor(Number(amount || 0)));
+  if(cash <= 0) return;
+  if(S.stats) S.stats.cashEarned = Math.max(0, Math.floor(Number(S.stats.cashEarned || 0))) + cash;
+  addContractTally("cashEarned", cash);
+  addOpsTotal("cashEarned", cash);
+}
+
+let __cloudProfileLastSyncAt = 0;
+let __cloudProfileLastSig = "";
+let __cloudProfileSyncInFlight = false;
+let __cloudProfileQueued = false;
+
+function gameplayCloudMission(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const mode = normalizeModeName(src.mode);
+  if(mode === "Story"){
+    return storyProgressMissionFromState(src);
+  }
+  if(mode === "Arcade"){
+    return clamp(Math.floor(Number(src.arcadeLevel || 1)), 1, 100);
+  }
+  return Math.max(1, Math.floor(Number(src.survivalWave || 1)));
+}
+
+function buildGameplayCloudSnapshot(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const totals = ensureOpsTotalsState(src);
+  const missionStats = (src.stats && typeof src.stats === "object") ? src.stats : {};
+  const kills = Math.max(
+    Math.max(0, Math.floor(Number(totals.kills || 0))),
+    Math.max(0, Math.floor(Number(missionStats.kills || 0)))
+  );
+  const captures = Math.max(
+    Math.max(0, Math.floor(Number(totals.captures || 0))),
+    Math.max(0, Math.floor(Number(missionStats.captures || 0)))
+  );
+  const evac = Math.max(
+    Math.max(0, Math.floor(Number(totals.evac || 0))),
+    Math.max(0, Math.floor(Number(missionStats.evac || 0)))
+  );
+  const cashEarned = Math.max(
+    Math.max(0, Math.floor(Number(totals.cashEarned || 0))),
+    Math.max(0, Math.floor(Number(missionStats.cashEarned || 0)))
+  );
+  return {
+    kills,
+    captures,
+    evac,
+    civiliansLost: Math.max(0, Math.floor(Number(totals.civiliansLost || 0))),
+    missionsCleared: Math.max(0, Math.floor(Number(totals.missionsCleared || 0))),
+    cashEarned,
+    mode: normalizeModeName(src.mode),
+    mission: gameplayCloudMission(src),
+    level: Math.max(1, Math.floor(Number(src.level || 1))),
+    funds: Math.max(0, Math.floor(Number(src.funds || 0))),
+    hp: clamp(Math.floor(Number(src.hp || 0)), 0, 100),
+    armor: clamp(Math.floor(Number(src.armor || 0)), 0, Math.max(100, Math.floor(Number(src.armorCap || 100)))),
+  };
+}
+
+function gameplayCloudSnapshotSig(snapshot){
+  const snap = (snapshot && typeof snapshot === "object") ? snapshot : {};
+  return [
+    normalizeModeName(snap.mode),
+    Math.max(1, Math.floor(Number(snap.mission || 1))),
+    Math.max(1, Math.floor(Number(snap.level || 1))),
+    Math.max(0, Math.floor(Number(snap.funds || 0))),
+    Math.max(0, Math.floor(Number(snap.hp || 0))),
+    Math.max(0, Math.floor(Number(snap.armor || 0))),
+    Math.max(0, Math.floor(Number(snap.kills || 0))),
+    Math.max(0, Math.floor(Number(snap.captures || 0))),
+    Math.max(0, Math.floor(Number(snap.evac || 0))),
+    Math.max(0, Math.floor(Number(snap.civiliansLost || 0))),
+    Math.max(0, Math.floor(Number(snap.missionsCleared || 0))),
+    Math.max(0, Math.floor(Number(snap.cashEarned || 0))),
+  ].join("|");
+}
+
+async function postGameplayCloudSnapshot(snapshot){
+  const initData = String(tg?.initData || "");
+  if(!initData) return false;
+  const controller = (typeof AbortController === "function") ? new AbortController() : null;
+  const timeout = controller ? setTimeout(()=>controller.abort(), 5500) : null;
+  try{
+    const res = await fetch(CLOUD_PROFILE_ENDPOINT, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ initData, snapshot }),
+      keepalive:true,
+      signal: controller ? controller.signal : undefined,
+    });
+    return !!res.ok;
+  }catch(e){
+    return false;
+  }finally{
+    if(timeout) clearTimeout(timeout);
+  }
+}
+
+function requestGameplayCloudSync(reason="autosave", opts={}){
+  if(window.__TUTORIAL_MODE__) return;
+  if(!String(tg?.initData || "").trim()) return;
+  if(__cloudProfileSyncInFlight){
+    __cloudProfileQueued = true;
+    return;
+  }
+  const now = Date.now();
+  const force = !!opts.force;
+  const snapshot = buildGameplayCloudSnapshot(S);
+  const sig = gameplayCloudSnapshotSig(snapshot);
+  if(!force){
+    if(sig === __cloudProfileLastSig && (now - __cloudProfileLastSyncAt) < (CLOUD_PROFILE_SAVE_MIN_MS * 3)){
+      return;
+    }
+    if((now - __cloudProfileLastSyncAt) < CLOUD_PROFILE_SAVE_MIN_MS){
+      __cloudProfileQueued = true;
+      return;
+    }
+  }
+  __cloudProfileSyncInFlight = true;
+  __cloudProfileLastSyncAt = now;
+  void postGameplayCloudSnapshot(snapshot)
+    .then((ok)=>{
+      if(ok){
+        __cloudProfileLastSig = sig;
+      }
+    })
+    .finally(()=>{
+      __cloudProfileSyncInFlight = false;
+      if(__cloudProfileQueued){
+        __cloudProfileQueued = false;
+        setTimeout(()=>requestGameplayCloudSync(reason || "queued", { force:true }), 320);
+      }
+    });
 }
 
 function storySnapshotQuality(state){
@@ -2262,6 +2424,7 @@ function load(){
       applyStoryProfileToState(fallback, storyProfile);
       ensureContractTalliesState(fallback);
       ensureContractsState(fallback);
+      ensureOpsTotalsState(fallback);
       return fallback;
     }
     const m = { ...DEFAULT, ...saved };
@@ -2283,6 +2446,7 @@ function load(){
     m.mapInteractables = Array.isArray(saved.mapInteractables) ? saved.mapInteractables : [];
     m.achievements = saved.achievements || {};
     m.stats = { ...DEFAULT.stats, ...(saved.stats||{}) };
+    m.opsTotals = { ...DEFAULT.opsTotals, ...((saved.opsTotals && typeof saved.opsTotals === "object") ? saved.opsTotals : {}) };
     m.contractTallies = normalizeContractTalliesMap(saved.contractTallies);
     m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
@@ -2311,6 +2475,7 @@ function load(){
     m.funds = getModeWallet(m.mode, m);
     ensureContractTalliesState(m);
     ensureContractsState(m);
+    ensureOpsTotalsState(m);
     if(m.lives==null) m.lives=5;
     m.v = STORAGE_VERSION;
     trimPersistentState(m);
@@ -2476,6 +2641,7 @@ function flushSaveNow(){
     const snap = writeStorySaveData(primarySaved ? "autosave" : "autosave-story-only");
     if(snap) __lastStoryFullSnapshotAt = Date.now();
   }
+  requestGameplayCloudSync("full-save");
 }
 
 function flushStoryLiteNow(source="autosave-lite"){
@@ -2498,6 +2664,7 @@ function flushStoryLiteNow(source="autosave-lite"){
       source
     });
     writeStoryProfileData(source, S);
+    requestGameplayCloudSync(source);
   }catch(e){
     flushSaveNow();
   }
@@ -4371,7 +4538,7 @@ function unlockStoryChapterReward(chapter, opts={}){
   const grantBits = [];
   if(def.cash){
     S.funds += def.cash;
-    S.stats.cashEarned = (S.stats.cashEarned || 0) + def.cash;
+    trackCashEarned(def.cash);
     grantBits.push(`+$${def.cash.toLocaleString()}`);
   }
   if(def.perkPoints){
@@ -5610,8 +5777,7 @@ function tickEvents(){
     if(safe){
       const bonus = rand(300, 900);
       S.funds += bonus;
-      S.stats.cashEarned += bonus;
-      addContractTally("cashEarned", bonus);
+      trackCashEarned(bonus);
       unlockAchv("gov_bonus","Gov Bonus");
       setEventText(`🏛️ Government Bonus: +$${bonus.toLocaleString()}`, 7);
       sfx("win"); hapticNotif("success");
@@ -5685,8 +5851,7 @@ function collectPickup(p){
   if(p.type==="CASH"){
     const amt = rand(80, 260);
     S.funds += amt;
-    S.stats.cashEarned += amt;
-    addContractTally("cashEarned", amt);
+    trackCashEarned(amt);
     addXP(10);
     unlockAchv("pickup1","First Pickup");
     setEventText(`💵 Picked up cash +$${amt}`, 4);
@@ -5730,7 +5895,7 @@ function collectPickup(p){
     let msg="📦 Supply Crate: ";
     for(let k=0;k<items;k++){
       const r=Math.random();
-      if(r<0.35){ const amt=rand(200,600); S.funds+=amt; S.stats.cashEarned+=amt; addContractTally("cashEarned", amt); msg += `+$${amt} `; }
+      if(r<0.35){ const amt=rand(200,600); S.funds+=amt; trackCashEarned(amt); msg += `+$${amt} `; }
       else if(r<0.60){ const w=equippedWeapon(); const pack=rand(6,14); S.ammoReserve[w.ammo]=(S.ammoReserve[w.ammo]||0)+pack; msg += `+Ammo(${pack}) `; }
       else if(r<0.80){ const add=rand(12,28); S.armor=clamp(S.armor+add,0,S.armorCap); msg += `+Armor(${add}) `; }
       else { S.medkits["M_SMALL"]=(S.medkits["M_SMALL"]||0)+1; msg += `+Medkit `; }
@@ -6512,6 +6677,7 @@ function writeStoryProfileData(source="autosave", state=S){
     chapterRewardsUnlocked: { ...(src.chapterRewardsUnlocked || {}) },
     achievements: { ...(src.achievements || {}) },
     stats: { ...(src.stats || {}) },
+    opsTotals: { ...ensureOpsTotalsState(src) },
     contractTallies: { ...ensureContractTalliesState(src) },
     contracts: (src.contracts && typeof src.contracts === "object") ? cloneState(src.contracts) : null,
     ownedWeapons: Array.isArray(src.ownedWeapons) ? src.ownedWeapons.filter((id)=>typeof id === "string") : [],
@@ -6649,6 +6815,15 @@ function applyStoryProfileToState(state, profile){
   if(profile.stats && typeof profile.stats === "object"){
     state.stats = { ...(state.stats || {}), ...profile.stats };
   }
+  if(profile.opsTotals && typeof profile.opsTotals === "object"){
+    const totals = ensureOpsTotalsState(state);
+    const incoming = ensureOpsTotalsState({ opsTotals: profile.opsTotals });
+    for(const [metric, fallback] of Object.entries(DEFAULT.opsTotals || {})){
+      const current = Math.max(0, Math.floor(Number(totals?.[metric] || fallback || 0)));
+      const next = Math.max(0, Math.floor(Number(incoming?.[metric] || fallback || 0)));
+      totals[metric] = Math.max(current, next);
+    }
+  }
   if(profile.contractTallies && typeof profile.contractTallies === "object"){
     ensureContractTalliesState(state);
     for(const [metric, fallback] of Object.entries(DEFAULT_CONTRACT_TALLIES)){
@@ -6769,6 +6944,7 @@ function writeStoryProgressData(payload={}){
     chapterRewardsUnlocked: { ...(payload.chapterRewardsUnlocked ?? S.chapterRewardsUnlocked ?? {}) },
     achievements: { ...(payload.achievements ?? S.achievements ?? {}) },
     stats: { ...(payload.stats ?? S.stats ?? {}) },
+    opsTotals: { ...ensureOpsTotalsState(payload.opsTotals ? { opsTotals: payload.opsTotals } : S) },
     contractTallies: normalizeContractTalliesMap(payload.contractTallies ?? S.contractTallies),
     contracts: (payload.contracts && typeof payload.contracts === "object")
       ? cloneState(payload.contracts)
@@ -10492,8 +10668,7 @@ function activateMapInteractable(it){
   if(it.kind==="cache"){
     const cash = Math.round(rand(180, 520) * cacheRewardMul());
     S.funds += cash;
-    S.stats.cashEarned += cash;
-    addContractTally("cashEarned", cash);
+    trackCashEarned(cash);
     const w = equippedWeapon();
     if(w){
       const refillBase = Math.max(2, Math.floor(w.mag * 0.6));
@@ -10590,8 +10765,7 @@ function awardCombo(kind){
   const bonusXp = Math.round(baseXp * (1 + ((chain - 1) * 0.22)));
 
   S.funds += bonusCash;
-  S.stats.cashEarned += bonusCash;
-  addContractTally("cashEarned", bonusCash);
+  trackCashEarned(bonusCash);
   addXP(bonusXp);
   let arcadeSuffix = "";
   if(S.mode==="Arcade"){
@@ -12400,13 +12574,13 @@ function supportUnitsTick(){
               tiger.alive = false;
               S.stats.captures = (S.stats.captures || 0) + 1;
               addContractTally("captures", 1);
+              addOpsTotal("captures", 1);
               const pay = payout("CAPTURE");
               const cash = Math.round(pay.cash * 0.42);
               const score = Math.round(pay.score * 0.45);
               S.funds += cash;
               S.score += score;
-              S.stats.cashEarned += cash;
-              addContractTally("cashEarned", cash);
+              trackCashEarned(cash);
               setEventText("Tiger specialist secured a capture.", 2.2);
               break;
             }
@@ -12665,6 +12839,7 @@ function evacCheck(){
       S.evacDone += 1;
       S.stats.evac += 1;
       addContractTally("evac", 1);
+      addOpsTotal("evac", 1);
       addXP(35);
       awardCombo("rescue");
       toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length})`);
@@ -12760,6 +12935,7 @@ function tickCiviliansAndThreats(){
   for(const c of S.civilians){
     if(c.alive && c.hp<=0){
       c.alive=false;
+      addOpsTotal("civiliansLost", 1);
       breakCombo("civilian lost");
       c.following = false;
       c.escortOwner = "";
@@ -14382,9 +14558,9 @@ function finishTigerKill(t){
   S.funds+=pay.cash; S.score+=pay.score;
   S.stats.kills += 1;
   addContractTally("kills", 1);
+  addOpsTotal("kills", 1);
   addXP(50);
-  S.stats.cashEarned += pay.cash;
-  addContractTally("cashEarned", pay.cash);
+  trackCashEarned(pay.cash);
   unlockAchv("kill1","First Kill");
   S.trust=clamp(S.trust+pay.trust,0,100);
   S.aggro=clamp(S.aggro+pay.aggro,0,100);
@@ -14469,10 +14645,10 @@ function playerAction(action){
     S.funds+=pay.cash; S.score+=pay.score;
     S.stats.captures += 1;
     addContractTally("captures", 1);
+    addOpsTotal("captures", 1);
     addXP(90);
     awardCombo("capture");
-    S.stats.cashEarned += pay.cash;
-    addContractTally("cashEarned", pay.cash);
+    trackCashEarned(pay.cash);
     unlockAchv("cap1","First Capture");
     S.trust=clamp(S.trust+pay.trust,0,100);
     S.aggro=clamp(S.aggro+pay.aggro,0,100);
@@ -14863,6 +15039,8 @@ function checkMissionComplete(){
     if(!S.missionEnded){
       S.missionEnded=true;
       addContractTally("missionsCleared", 1);
+      addOpsTotal("missionsCleared", 1);
+      requestGameplayCloudSync("mission-complete", { force:true });
       setPaused(true,"complete");
       transitionCleanupSweep("mission-complete");
       clearTransientCombatVisuals();

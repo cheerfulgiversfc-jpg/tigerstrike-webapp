@@ -41,6 +41,14 @@ function monthKeyUTC(tsMs = Date.now()){
   return `${y}-${m}`;
 }
 
+function dayKeyUTC(tsMs = Date.now()){
+  const d = new Date(Number(tsMs || Date.now()));
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function weekKeyUTC(tsMs = Date.now()){
   const d = new Date(Number(tsMs || Date.now()));
   const utcDate = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -75,23 +83,27 @@ function userSnapshot(user, fallbackUserId = 0){
 }
 
 function scoreFormula(parts){
-  const stars = clampNonNegative(parts?.starsSpent);
-  const funds = clampNonNegative(parts?.fundsGranted);
-  const paid = clampNonNegative(parts?.claimsPaid);
-  const refs = clampNonNegative(parts?.referrals);
-  const orders = clampNonNegative(parts?.ordersCreated);
-  return Math.round(
-    (stars * 100) +
-    funds +
-    (paid * 450) +
-    (refs * 2500) +
-    (orders * 40)
+  const kills = clampNonNegative(parts?.kills);
+  const captures = clampNonNegative(parts?.captures);
+  const evac = clampNonNegative(parts?.evac);
+  const missions = clampNonNegative(parts?.missionsCleared);
+  const civLost = clampNonNegative(parts?.civiliansLost);
+  const cashEarned = clampNonNegative(parts?.cashEarned);
+  const score = Math.round(
+    (kills * 120) +
+    (captures * 180) +
+    (evac * 110) +
+    (missions * 260) +
+    Math.round(cashEarned * 0.05) -
+    (civLost * 300)
   );
+  return score > 0 ? score : 0;
 }
 
 function defaultProfile(user, userId = 0){
   const snap = userSnapshot(user, userId);
   const ts = nowSec();
+  const day = dayKeyUTC();
   const week = weekKeyUTC();
   const month = monthKeyUTC();
   return {
@@ -125,6 +137,12 @@ function defaultProfile(user, userId = 0){
       starsSpent: 0,
       fundsGranted: 0,
       referrals: 0,
+      kills: 0,
+      captures: 0,
+      evac: 0,
+      civiliansLost: 0,
+      missionsCleared: 0,
+      cashEarned: 0,
       score: 0,
     },
     monthly: {
@@ -134,7 +152,38 @@ function defaultProfile(user, userId = 0){
       starsSpent: 0,
       fundsGranted: 0,
       referrals: 0,
+      kills: 0,
+      captures: 0,
+      evac: 0,
+      civiliansLost: 0,
+      missionsCleared: 0,
+      cashEarned: 0,
       score: 0,
+    },
+    daily: {
+      period: day,
+      kills: 0,
+      captures: 0,
+      evac: 0,
+      civiliansLost: 0,
+      missionsCleared: 0,
+      cashEarned: 0,
+      score: 0,
+    },
+    ops: {
+      kills: 0,
+      captures: 0,
+      evac: 0,
+      civiliansLost: 0,
+      missionsCleared: 0,
+      cashEarned: 0,
+      lastMode: "Story",
+      lastMission: 1,
+      lastLevel: 1,
+      lastFunds: 0,
+      lastHp: 100,
+      lastArmor: 20,
+      lastSyncAt: 0,
     },
     lifetimeScore: 0,
   };
@@ -181,6 +230,14 @@ function normalizeProfile(raw, user = null, fallbackUserId = 0){
     ...base.monthly,
     ...(out.monthly && typeof out.monthly === "object" ? out.monthly : {}),
   };
+  out.daily = {
+    ...base.daily,
+    ...(out.daily && typeof out.daily === "object" ? out.daily : {}),
+  };
+  out.ops = {
+    ...base.ops,
+    ...(out.ops && typeof out.ops === "object" ? out.ops : {}),
+  };
 
   out.weekly.period = safeText(out.weekly.period || base.weekly.period);
   out.weekly.ordersCreated = clampNonNegative(out.weekly.ordersCreated);
@@ -188,6 +245,12 @@ function normalizeProfile(raw, user = null, fallbackUserId = 0){
   out.weekly.starsSpent = clampNonNegative(out.weekly.starsSpent);
   out.weekly.fundsGranted = clampNonNegative(out.weekly.fundsGranted);
   out.weekly.referrals = clampNonNegative(out.weekly.referrals);
+  out.weekly.kills = clampNonNegative(out.weekly.kills);
+  out.weekly.captures = clampNonNegative(out.weekly.captures);
+  out.weekly.evac = clampNonNegative(out.weekly.evac);
+  out.weekly.civiliansLost = clampNonNegative(out.weekly.civiliansLost);
+  out.weekly.missionsCleared = clampNonNegative(out.weekly.missionsCleared);
+  out.weekly.cashEarned = clampNonNegative(out.weekly.cashEarned);
   out.weekly.score = clampNonNegative(out.weekly.score);
 
   out.monthly.period = safeText(out.monthly.period || base.monthly.period);
@@ -196,16 +259,58 @@ function normalizeProfile(raw, user = null, fallbackUserId = 0){
   out.monthly.starsSpent = clampNonNegative(out.monthly.starsSpent);
   out.monthly.fundsGranted = clampNonNegative(out.monthly.fundsGranted);
   out.monthly.referrals = clampNonNegative(out.monthly.referrals);
+  out.monthly.kills = clampNonNegative(out.monthly.kills);
+  out.monthly.captures = clampNonNegative(out.monthly.captures);
+  out.monthly.evac = clampNonNegative(out.monthly.evac);
+  out.monthly.civiliansLost = clampNonNegative(out.monthly.civiliansLost);
+  out.monthly.missionsCleared = clampNonNegative(out.monthly.missionsCleared);
+  out.monthly.cashEarned = clampNonNegative(out.monthly.cashEarned);
   out.monthly.score = clampNonNegative(out.monthly.score);
+
+  out.daily.period = safeText(out.daily.period || base.daily.period);
+  out.daily.kills = clampNonNegative(out.daily.kills);
+  out.daily.captures = clampNonNegative(out.daily.captures);
+  out.daily.evac = clampNonNegative(out.daily.evac);
+  out.daily.civiliansLost = clampNonNegative(out.daily.civiliansLost);
+  out.daily.missionsCleared = clampNonNegative(out.daily.missionsCleared);
+  out.daily.cashEarned = clampNonNegative(out.daily.cashEarned);
+  out.daily.score = clampNonNegative(out.daily.score);
+
+  out.ops.kills = clampNonNegative(out.ops.kills);
+  out.ops.captures = clampNonNegative(out.ops.captures);
+  out.ops.evac = clampNonNegative(out.ops.evac);
+  out.ops.civiliansLost = clampNonNegative(out.ops.civiliansLost);
+  out.ops.missionsCleared = clampNonNegative(out.ops.missionsCleared);
+  out.ops.cashEarned = clampNonNegative(out.ops.cashEarned);
+  out.ops.lastMode = safeText(out.ops.lastMode || "Story").slice(0, 20) || "Story";
+  out.ops.lastMission = Math.max(1, toInt(out.ops.lastMission, 1));
+  out.ops.lastLevel = Math.max(1, toInt(out.ops.lastLevel, 1));
+  out.ops.lastFunds = clampNonNegative(out.ops.lastFunds);
+  out.ops.lastHp = clampNonNegative(out.ops.lastHp);
+  out.ops.lastArmor = clampNonNegative(out.ops.lastArmor);
+  out.ops.lastSyncAt = clampNonNegative(out.ops.lastSyncAt);
 
   out.lifetimeScore = clampNonNegative(out.lifetimeScore);
   return out;
 }
 
 function ensurePeriodBuckets(profile){
+  const day = dayKeyUTC();
   const week = weekKeyUTC();
   const month = monthKeyUTC();
 
+  if(profile.daily.period !== day){
+    profile.daily = {
+      period: day,
+      kills: 0,
+      captures: 0,
+      evac: 0,
+      civiliansLost: 0,
+      missionsCleared: 0,
+      cashEarned: 0,
+      score: 0,
+    };
+  }
   if(profile.weekly.period !== week){
     profile.weekly = {
       period: week,
@@ -214,6 +319,12 @@ function ensurePeriodBuckets(profile){
       starsSpent: 0,
       fundsGranted: 0,
       referrals: 0,
+      kills: 0,
+      captures: 0,
+      evac: 0,
+      civiliansLost: 0,
+      missionsCleared: 0,
+      cashEarned: 0,
       score: 0,
     };
   }
@@ -225,6 +336,12 @@ function ensurePeriodBuckets(profile){
       starsSpent: 0,
       fundsGranted: 0,
       referrals: 0,
+      kills: 0,
+      captures: 0,
+      evac: 0,
+      civiliansLost: 0,
+      missionsCleared: 0,
+      cashEarned: 0,
       score: 0,
     };
   }
@@ -237,6 +354,20 @@ function recomputeScores(profile){
     claimsPaid: profile.claimsPaid,
     referrals: profile.referralsStarted,
     ordersCreated: profile.ordersCreated,
+    kills: profile.ops?.kills,
+    captures: profile.ops?.captures,
+    evac: profile.ops?.evac,
+    civiliansLost: profile.ops?.civiliansLost,
+    missionsCleared: profile.ops?.missionsCleared,
+    cashEarned: profile.ops?.cashEarned,
+  });
+  profile.daily.score = scoreFormula({
+    kills: profile.daily?.kills,
+    captures: profile.daily?.captures,
+    evac: profile.daily?.evac,
+    civiliansLost: profile.daily?.civiliansLost,
+    missionsCleared: profile.daily?.missionsCleared,
+    cashEarned: profile.daily?.cashEarned,
   });
   profile.weekly.score = scoreFormula({
     starsSpent: profile.weekly.starsSpent,
@@ -244,6 +375,12 @@ function recomputeScores(profile){
     claimsPaid: profile.weekly.claimsPaid,
     referrals: profile.weekly.referrals,
     ordersCreated: profile.weekly.ordersCreated,
+    kills: profile.weekly.kills,
+    captures: profile.weekly.captures,
+    evac: profile.weekly.evac,
+    civiliansLost: profile.weekly.civiliansLost,
+    missionsCleared: profile.weekly.missionsCleared,
+    cashEarned: profile.weekly.cashEarned,
   });
   profile.monthly.score = scoreFormula({
     starsSpent: profile.monthly.starsSpent,
@@ -251,6 +388,12 @@ function recomputeScores(profile){
     claimsPaid: profile.monthly.claimsPaid,
     referrals: profile.monthly.referrals,
     ordersCreated: profile.monthly.ordersCreated,
+    kills: profile.monthly.kills,
+    captures: profile.monthly.captures,
+    evac: profile.monthly.evac,
+    civiliansLost: profile.monthly.civiliansLost,
+    missionsCleared: profile.monthly.missionsCleared,
+    cashEarned: profile.monthly.cashEarned,
   });
 }
 
@@ -275,11 +418,18 @@ async function writeProfile(profile){
 
 function leaderboardEntryFromProfile(profile, scoreField = "lifetimeScore"){
   const score = clampNonNegative(profile?.[scoreField]);
+  const ops = (profile && profile.ops && typeof profile.ops === "object") ? profile.ops : {};
   return {
     userId: safeUserId(profile?.userId),
     username: safeUsername(profile?.username),
     displayName: safeText(profile?.displayName || "").slice(0, 80) || `Player ${safeUserId(profile?.userId)}`,
     score,
+    kills: clampNonNegative(ops.kills),
+    captures: clampNonNegative(ops.captures),
+    evac: clampNonNegative(ops.evac),
+    civiliansLost: clampNonNegative(ops.civiliansLost),
+    missionsCleared: clampNonNegative(ops.missionsCleared),
+    cashEarned: clampNonNegative(ops.cashEarned),
     starsSpent: clampNonNegative(profile?.starsSpentTotal),
     claimsPaid: clampNonNegative(profile?.claimsPaid),
     fundsGranted: clampNonNegative(profile?.fundsGrantedTotal),
@@ -295,6 +445,12 @@ function periodEntryFromProfile(profile, bucket = "weekly"){
     username: safeUsername(profile?.username),
     displayName: safeText(profile?.displayName || "").slice(0, 80) || `Player ${safeUserId(profile?.userId)}`,
     score: clampNonNegative(node.score),
+    kills: clampNonNegative(node.kills),
+    captures: clampNonNegative(node.captures),
+    evac: clampNonNegative(node.evac),
+    civiliansLost: clampNonNegative(node.civiliansLost),
+    missionsCleared: clampNonNegative(node.missionsCleared),
+    cashEarned: clampNonNegative(node.cashEarned),
     starsSpent: clampNonNegative(node.starsSpent),
     claimsPaid: clampNonNegative(node.claimsPaid),
     fundsGranted: clampNonNegative(node.fundsGranted),
@@ -319,6 +475,14 @@ function sortedTrimmed(entries, limit = LEADERBOARD_STORE_LIMIT){
   arr.sort((a, b)=>{
     const scoreDelta = clampNonNegative(b?.score) - clampNonNegative(a?.score);
     if(scoreDelta !== 0) return scoreDelta;
+    const missionDelta = clampNonNegative(b?.missionsCleared) - clampNonNegative(a?.missionsCleared);
+    if(missionDelta !== 0) return missionDelta;
+    const captureDelta = clampNonNegative(b?.captures) - clampNonNegative(a?.captures);
+    if(captureDelta !== 0) return captureDelta;
+    const killDelta = clampNonNegative(b?.kills) - clampNonNegative(a?.kills);
+    if(killDelta !== 0) return killDelta;
+    const evacDelta = clampNonNegative(b?.evac) - clampNonNegative(a?.evac);
+    if(evacDelta !== 0) return evacDelta;
     const starsDelta = clampNonNegative(b?.starsSpent) - clampNonNegative(a?.starsSpent);
     if(starsDelta !== 0) return starsDelta;
     const paidDelta = clampNonNegative(b?.claimsPaid) - clampNonNegative(a?.claimsPaid);
@@ -438,6 +602,68 @@ async function getPlayerStats(user){
     return upsertPlayerProfile(user, null);
   }
   return normalizeProfile(null, { id: uid }, uid);
+}
+
+function normalizeGameplaySnapshot(snapshot){
+  const src = (snapshot && typeof snapshot === "object") ? snapshot : {};
+  return {
+    kills: clampNonNegative(src.kills),
+    captures: clampNonNegative(src.captures),
+    evac: clampNonNegative(src.evac),
+    civiliansLost: clampNonNegative(src.civiliansLost),
+    missionsCleared: clampNonNegative(src.missionsCleared),
+    cashEarned: clampNonNegative(src.cashEarned),
+    mode: safeText(src.mode || "Story").slice(0, 20) || "Story",
+    mission: Math.max(1, toInt(src.mission, 1)),
+    level: Math.max(1, toInt(src.level, 1)),
+    funds: clampNonNegative(src.funds),
+    hp: clampNonNegative(src.hp),
+    armor: clampNonNegative(src.armor),
+  };
+}
+
+async function recordGameplaySnapshot({ user, snapshot }){
+  const snap = normalizeGameplaySnapshot(snapshot);
+  return upsertPlayerProfile(user, (profile)=>{
+    profile.ops = {
+      ...(profile.ops && typeof profile.ops === "object" ? profile.ops : {}),
+      kills: clampNonNegative(profile?.ops?.kills),
+      captures: clampNonNegative(profile?.ops?.captures),
+      evac: clampNonNegative(profile?.ops?.evac),
+      civiliansLost: clampNonNegative(profile?.ops?.civiliansLost),
+      missionsCleared: clampNonNegative(profile?.ops?.missionsCleared),
+      cashEarned: clampNonNegative(profile?.ops?.cashEarned),
+      lastMode: safeText(profile?.ops?.lastMode || "Story").slice(0, 20) || "Story",
+      lastMission: Math.max(1, toInt(profile?.ops?.lastMission, 1)),
+      lastLevel: Math.max(1, toInt(profile?.ops?.lastLevel, 1)),
+      lastFunds: clampNonNegative(profile?.ops?.lastFunds),
+      lastHp: clampNonNegative(profile?.ops?.lastHp),
+      lastArmor: clampNonNegative(profile?.ops?.lastArmor),
+      lastSyncAt: clampNonNegative(profile?.ops?.lastSyncAt),
+    };
+
+    const keys = ["kills", "captures", "evac", "civiliansLost", "missionsCleared", "cashEarned"];
+    for(const key of keys){
+      const current = clampNonNegative(profile.ops[key]);
+      const incoming = clampNonNegative(snap[key]);
+      const next = Math.max(current, incoming);
+      const delta = next - current;
+      profile.ops[key] = next;
+      if(delta > 0){
+        profile.daily[key] = clampNonNegative(profile.daily[key]) + delta;
+        profile.weekly[key] = clampNonNegative(profile.weekly[key]) + delta;
+        profile.monthly[key] = clampNonNegative(profile.monthly[key]) + delta;
+      }
+    }
+
+    profile.ops.lastMode = snap.mode;
+    profile.ops.lastMission = snap.mission;
+    profile.ops.lastLevel = snap.level;
+    profile.ops.lastFunds = snap.funds;
+    profile.ops.lastHp = snap.hp;
+    profile.ops.lastArmor = snap.armor;
+    profile.ops.lastSyncAt = nowSec();
+  });
 }
 
 async function recordInvoiceCreated({ user, sku = "", orderRef = "", stars = 0 }){
@@ -573,6 +799,7 @@ async function getLeaderboardSnapshot(limit = 10){
 module.exports = {
   getPlayerStats: async (user)=>stripPrivateFields(await getPlayerStats(user)),
   touchPlayer,
+  recordGameplaySnapshot,
   recordInvoiceCreated,
   recordClaimPending,
   recordClaimError,
@@ -580,4 +807,3 @@ module.exports = {
   recordReferralStart,
   getLeaderboardSnapshot,
 };
-
