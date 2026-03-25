@@ -11,6 +11,7 @@ const {
 
 let cachedBotMeta = null;
 let cachedBotMetaAt = 0;
+const GROUP_QA_LAST_REPLY_AT = new Map();
 
 function envText(name, fallback = ""){
   return String(process.env[name] || fallback).trim();
@@ -26,6 +27,14 @@ function webhookSecret(){
 
 function nowMs(){
   return Date.now();
+}
+
+function toBoolEnv(name, fallback = false){
+  const raw = String(process.env[name] || "").trim().toLowerCase();
+  if(!raw) return !!fallback;
+  if(raw === "1" || raw === "true" || raw === "yes" || raw === "on") return true;
+  if(raw === "0" || raw === "false" || raw === "no" || raw === "off") return false;
+  return !!fallback;
 }
 
 function toInt(value){
@@ -209,6 +218,111 @@ function eventsText(){
     "Events",
     "Live events and campaign drops are announced in-channel.",
     "Use /news and /update for latest notices.",
+  ].join("\n");
+}
+
+function isGroupChat(source){
+  const t = String(source?.chat?.type || "").toLowerCase();
+  return t === "group" || t === "supergroup";
+}
+
+function isQuestionLike(text){
+  const s = String(text || "").toLowerCase();
+  if(!s) return false;
+  if(s.includes("?")) return true;
+  return /\b(help|how|what|where|when|why|stuck|issue|bug)\b/.test(s);
+}
+
+function chatInCooldown(chatId){
+  const id = String(chatId || "").trim();
+  if(!id) return true;
+  const cooldownMsRaw = Number(envText("TELEGRAM_QA_COOLDOWN_MS"));
+  const cooldownMs = Number.isFinite(cooldownMsRaw) && cooldownMsRaw > 0
+    ? Math.min(120000, Math.max(2000, Math.trunc(cooldownMsRaw)))
+    : 12000;
+  const last = Number(GROUP_QA_LAST_REPLY_AT.get(id) || 0);
+  if(nowMs() - last < cooldownMs){
+    return true;
+  }
+  GROUP_QA_LAST_REPLY_AT.set(id, nowMs());
+  return false;
+}
+
+function groupIntentFromText(text){
+  const s = String(text || "").toLowerCase();
+  if(!s) return "";
+  if(/\b(bug|issue|error|freeze|frozen|lag|glitch|crash|broken|not working|support|contact)\b/.test(s)) return "support";
+  if(/\b(leaderboard|rank|top ?10|weekly|monthly|position|clan)\b/.test(s)) return "leaderboard";
+  if(/\b(mission|story|arcade|survival|objective|chapter)\b/.test(s)) return "missions";
+  if(/\b(reward|daily|stars?|claim|bonus)\b/.test(s)) return "rewards";
+  if(/\b(control|controls|button|joystick|gamepad|move|hud)\b/.test(s)) return "controls";
+  if(/\b(capture|kill|tranq|engage|hp)\b/.test(s)) return "capture";
+  if(/\b(save|load|continue|progress|checkpoint)\b/.test(s)) return "save";
+  if(/\b(play|start|launch|open)\b/.test(s)) return "play";
+  return "help";
+}
+
+function groupIntentText(intent){
+  if(intent === "support"){
+    return [
+      "Support:",
+      "Use /reportbug with steps + screenshot/video.",
+      "You can also send /feedback for gameplay suggestions.",
+      "For account-specific help, open a private chat with the bot.",
+    ].join("\n");
+  }
+  if(intent === "leaderboard"){
+    return [
+      "Leaderboard:",
+      "Use /leaderboard for menu view.",
+      "Quick commands: /top10, /weeklyleaders, /monthlyleaders, /myposition.",
+    ].join("\n");
+  }
+  if(intent === "missions"){
+    return [
+      "Missions:",
+      "Use /missions for mode summary.",
+      "Open the mini app with /play to continue Story/Arcade/Survival.",
+    ].join("\n");
+  }
+  if(intent === "rewards"){
+    return [
+      "Rewards:",
+      "Use /daily and /rewards for current reward info.",
+      "Daily and mission rewards are tracked in your game profile.",
+    ].join("\n");
+  }
+  if(intent === "controls"){
+    return [
+      "Controls:",
+      "Use /controls for full control map.",
+      "Quick tip: left stick moves, right buttons handle combat/tools.",
+    ].join("\n");
+  }
+  if(intent === "capture"){
+    return [
+      "Capture/Kill:",
+      "Lower tiger HP to 25% or less to capture.",
+      "Use /howtoplay for full combat flow.",
+    ].join("\n");
+  }
+  if(intent === "save"){
+    return [
+      "Save/Continue:",
+      "Use Save in-game, then choose Continue Last Mission or Load Save on launch.",
+      "If progress looks wrong, report with /reportbug and include mission number.",
+    ].join("\n");
+  }
+  if(intent === "play"){
+    return [
+      "Play:",
+      "Use /play to launch Tiger Strike.",
+      "Use /menu for quick buttons (stats, leaderboard, help, support).",
+    ].join("\n");
+  }
+  return [
+    "Tiger Strike Q&A",
+    "Try: /howtoplay, /controls, /missions, /leaderboard, /daily, /support.",
   ].join("\n");
 }
 
@@ -623,6 +737,7 @@ const FUNNEL_METRICS = Object.freeze([
   "pre_checkout_ok",
   "payment_success",
   "liveops_posted",
+  "public_qa_reply",
 ]);
 
 async function metric(name){
@@ -825,6 +940,49 @@ async function handleLiveopsNow(botToken, ctx, botUsername){
   }
 }
 
+async function handlePublicQaMessage(botToken, source, botMeta){
+  if(!toBoolEnv("TELEGRAM_PUBLIC_QA_ENABLED", true)) return false;
+  if(!isGroupChat(source)) return false;
+  if(source?.from?.is_bot) return false;
+
+  const text = String(source?.text || source?.caption || "").trim();
+  if(!text) return false;
+
+  const parsed = readCommand(text, botMeta?.username || "");
+  if(parsed) return false;
+
+  const lower = text.toLowerCase();
+  const mention = botMeta?.username ? lower.includes(`@${String(botMeta.username).toLowerCase()}`) : false;
+  const repliedToBot = !!(source?.reply_to_message?.from?.is_bot);
+  if(!mention && !repliedToBot && !isQuestionLike(text)) return false;
+
+  const chatId = source?.chat?.id;
+  if(!chatId || chatInCooldown(chatId)) return false;
+
+  const intent = groupIntentFromText(text);
+  const body = groupIntentText(intent);
+  const botUsername = String(botMeta?.username || "").trim();
+  const privateUrl = botUsername ? botLink(botUsername) : "";
+
+  const keyboard = privateUrl
+    ? {
+      inline_keyboard: [
+        [{ text: "Open Bot (Private Chat)", url: privateUrl }],
+        [{ text: "Main Menu", callback_data: "menu_open" }],
+      ],
+    }
+    : leafMenuKeyboard("menu_open");
+
+  await sendMessage(botToken, chatId, body, {
+    reply_markup: keyboard,
+    reply_to_message_id: source.message_id,
+    allow_sending_without_reply: true,
+  });
+  await metric("public_qa_reply");
+  await metricKind("public_qa_intent", intent || "help");
+  return true;
+}
+
 async function handleCommand(botToken, update, source){
   const bot = await getBotMeta(botToken);
   const parsed = readCommand(source?.text || source?.caption || "", bot?.username);
@@ -876,7 +1034,8 @@ async function handleCommand(botToken, update, source){
       }
       return true;
     }
-    case "mystats": {
+    case "mystats":
+    case "my_stats": {
       await sendMessage(botToken, ctx.chat.id, await myStatsText(ctx.from), {
         reply_markup: leafMenuKeyboard("menu_open"),
       });
@@ -912,13 +1071,15 @@ async function handleCommand(botToken, update, source){
       });
       return true;
     }
-    case "weeklyleaders": {
+    case "weeklyleaders":
+    case "weekly_leaders": {
       await sendMessage(botToken, ctx.chat.id, await leaderboardSectionText("weekly", ctx.from), {
         reply_markup: leafMenuKeyboard("menu_leaderboard"),
       });
       return true;
     }
-    case "monthlyleaders": {
+    case "monthlyleaders":
+    case "monthly_leaders": {
       await sendMessage(botToken, ctx.chat.id, await leaderboardSectionText("monthly", ctx.from), {
         reply_markup: leafMenuKeyboard("menu_leaderboard"),
       });
@@ -958,7 +1119,8 @@ async function handleCommand(botToken, update, source){
       });
       return true;
     }
-    case "howtoplay": {
+    case "howtoplay":
+    case "how_to_play": {
       await sendMessage(botToken, ctx.chat.id, howToPlayText(), {
         reply_markup: leafMenuKeyboard("menu_help"),
       });
@@ -984,6 +1146,7 @@ async function handleCommand(botToken, update, source){
       return true;
     }
     case "reportbug":
+    case "report_bug":
     case "feedback":
     case "support":
     case "contact": {
@@ -1045,8 +1208,15 @@ async function handleCommand(botToken, update, source){
       await handlePostCommand(botToken, ctx, bot?.username || "", "campaign");
       return true;
     }
-    default:
-      return false;
+    default: {
+      await sendMessage(botToken, ctx.chat.id, [
+        "I don’t recognize that command yet.",
+        "Try /menu or /help.",
+      ].join("\n"), {
+        reply_markup: leafMenuKeyboard("menu_open"),
+      });
+      return true;
+    }
   }
 }
 
@@ -1303,9 +1473,13 @@ module.exports = async function handler(req, res){
     await handlePreCheckout(botToken, update);
 
     const source = sourceMessageFromUpdate(update);
+    const botMeta = await getBotMeta(botToken);
     if(source){
       await handleSuccessfulPayment(botToken, source);
-      await handleCommand(botToken, update, source);
+      const handled = await handleCommand(botToken, update, source);
+      if(!handled){
+        await handlePublicQaMessage(botToken, source, botMeta);
+      }
     }
 
     if(update?.callback_query){
