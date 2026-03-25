@@ -176,6 +176,26 @@ function rewardsText(){
   ].join("\n");
 }
 
+function missionsText(){
+  return [
+    "Missions",
+    "- Story: 100-mission campaign with chapter bosses",
+    "- Arcade: repeatable action runs",
+    "- Survival: hold out as long as possible",
+    "- Open the Mini App and choose mode to continue.",
+  ].join("\n");
+}
+
+function tipsText(){
+  return [
+    "Tips",
+    "- Move civilians in groups to reduce backtracking.",
+    "- Use armor + medkits before a boss phase.",
+    "- Trap near choke points, not in open space.",
+    "- Capture at <= 25% tiger HP to avoid blood-aggro spikes.",
+  ].join("\n");
+}
+
 function supportText(){
   return [
     "Support",
@@ -266,6 +286,30 @@ async function myStatsText(user){
   ].join("\n");
 }
 
+async function historyText(user){
+  const uid = toInt(user?.id || 0);
+  if(!uid){
+    return [
+      "History",
+      "Open a private chat with the bot, then run /history there.",
+    ].join("\n");
+  }
+  const stats = await getPlayerStats(user);
+  if(!stats){
+    return [
+      "History",
+      "No recent account activity yet.",
+    ].join("\n");
+  }
+  return [
+    "Recent Activity",
+    `Last SKU: ${stats.lastSku || "-"}`,
+    `Last Order Ref: ${stats.lastOrderRef || "-"}`,
+    `Last Transaction: ${stats.lastTransactionId || "-"}`,
+    `Last Paid At: ${stats.lastPaidAt ? new Date(Number(stats.lastPaidAt) * 1000).toISOString() : "-"}`,
+  ].join("\n");
+}
+
 async function leaderboardSectionText(kind, user){
   const mode = String(kind || "").toLowerCase();
   const snapshot = await getLeaderboardSnapshot(10);
@@ -327,10 +371,13 @@ function mainMenuKeyboard(botUsername){
         { text: "Leaderboard", callback_data: "menu_leaderboard" },
       ],
       [
+        { text: "Missions", callback_data: "menu_missions" },
         { text: "Events", callback_data: "menu_events" },
-        { text: "Help", callback_data: "menu_help" },
       ],
-      [{ text: "Support", callback_data: "menu_support" }],
+      [
+        { text: "Help", callback_data: "menu_help" },
+        { text: "Support", callback_data: "menu_support" },
+      ],
     ],
   };
 }
@@ -357,6 +404,7 @@ function helpMenuKeyboard(){
     inline_keyboard: [
       [{ text: "How to Play", callback_data: "menu_help_howtoplay" }],
       [{ text: "Controls", callback_data: "menu_help_controls" }],
+      [{ text: "Tips", callback_data: "menu_help_tips" }],
       [{ text: "FAQ", callback_data: "menu_help_faq" }],
       [{ text: "Rewards", callback_data: "menu_help_rewards" }],
       [{ text: "Report a Bug", callback_data: "menu_help_reportbug" }],
@@ -416,20 +464,32 @@ function helpText(){
     "/start - Start bot and quick actions",
     "/play - Open Tiger Strike mini app",
     "/mystats - Open your player stats panel",
+    "/profile - Profile summary",
+    "/history - Recent account activity",
+    "/missions - Mission quick guide",
     "/leaderboard - Open leaderboard menu",
+    "/rank - Current leaderboard position",
     "/top10 - Global top 10",
     "/weeklyleaders - Weekly leaderboard",
     "/monthlyleaders - Monthly leaderboard",
     "/myposition - Your leaderboard rank",
     "/clanboard - Clan/recruiter board",
-    "/events - Current game events/news",
+    "/events - Current game events",
+    "/news - Latest game news",
+    "/update - Latest game updates",
+    "/season - Season info",
+    "/server - Bot/server status",
     "/stars - Stars purchase/spend help",
     "/about - What Tiger Strike is",
     "/howtoplay - Quick gameplay guide",
     "/controls - Control guide",
+    "/tips - Gameplay tips",
     "/faq - Common questions",
+    "/daily - Daily reward info",
     "/rewards - Reward guide",
     "/reportbug - Report a bug",
+    "/feedback - Send gameplay feedback",
+    "/contact - Support contact",
     "/support - Support options",
     "/ref - Get your referral link",
     "/status - Check bot setup status",
@@ -822,6 +882,24 @@ async function handleCommand(botToken, update, source){
       });
       return true;
     }
+    case "profile": {
+      await sendMessage(botToken, ctx.chat.id, await myStatsText(ctx.from), {
+        reply_markup: leafMenuKeyboard("menu_open"),
+      });
+      return true;
+    }
+    case "history": {
+      await sendMessage(botToken, ctx.chat.id, await historyText(ctx.from), {
+        reply_markup: leafMenuKeyboard("menu_open"),
+      });
+      return true;
+    }
+    case "missions": {
+      await sendMessage(botToken, ctx.chat.id, missionsText(), {
+        reply_markup: leafMenuKeyboard("menu_open"),
+      });
+      return true;
+    }
     case "leaderboard": {
       await sendMessage(botToken, ctx.chat.id, leaderboardMenuText(), {
         reply_markup: leaderboardMenuKeyboard(),
@@ -865,6 +943,12 @@ async function handleCommand(botToken, update, source){
     case "season": {
       await sendMessage(botToken, ctx.chat.id, eventsText(), {
         reply_markup: leafMenuKeyboard("menu_open"),
+      });
+      return true;
+    }
+    case "tips": {
+      await sendMessage(botToken, ctx.chat.id, tipsText(), {
+        reply_markup: leafMenuKeyboard("menu_help"),
       });
       return true;
     }
@@ -917,6 +1001,10 @@ async function handleCommand(botToken, update, source){
       return true;
     }
     case "status": {
+      await sendMessage(botToken, ctx.chat.id, statusText(ctx));
+      return true;
+    }
+    case "server": {
       await sendMessage(botToken, ctx.chat.id, statusText(ctx));
       return true;
     }
@@ -1024,6 +1112,12 @@ async function handleCallbackQuery(botToken, update){
     return;
   }
 
+  if(data === "menu_missions"){
+    await answerCallback(botToken, q.id, "Missions");
+    await editMenuMessage(botToken, q, missionsText(), leafMenuKeyboard("menu_open"));
+    return;
+  }
+
   if(data === "menu_events"){
     await answerCallback(botToken, q.id, "Events");
     await editMenuMessage(botToken, q, eventsText(), leafMenuKeyboard("menu_open"));
@@ -1087,6 +1181,12 @@ async function handleCallbackQuery(botToken, update){
   if(data === "menu_help_controls"){
     await answerCallback(botToken, q.id, "Controls");
     await editMenuMessage(botToken, q, controlsText(), leafMenuKeyboard("menu_help"));
+    return;
+  }
+
+  if(data === "menu_help_tips"){
+    await answerCallback(botToken, q.id, "Tips");
+    await editMenuMessage(botToken, q, tipsText(), leafMenuKeyboard("menu_help"));
     return;
   }
 
