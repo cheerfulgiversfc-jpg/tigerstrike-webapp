@@ -4574,8 +4574,59 @@ function squadCommandShortLabel(cmd = S?.squadCommand){
   const key = normalizeSquadCommand(cmd);
   return SQUAD_COMMAND_SHORT_LABELS[key] || SQUAD_COMMAND_SHORT_LABELS.AUTO;
 }
+const SQUAD_WHEEL_PROFILES = {
+  A: {
+    size: 186,
+    center: 64,
+    optionW: 66,
+    optionH: 42,
+    optionFont: 10,
+    icon: 14,
+    ringInset: 19,
+    cornerGap: 14,
+    anchorDx: -38,
+    anchorDy: -90,
+    pad: 102,
+  },
+  B: {
+    size: 204,
+    center: 70,
+    optionW: 72,
+    optionH: 46,
+    optionFont: 11,
+    icon: 15,
+    ringInset: 21,
+    cornerGap: 15,
+    anchorDx: -48,
+    anchorDy: -102,
+    pad: 114,
+  },
+};
 let __squadWheelOpen = false;
 let __squadWheelAnchorId = "touchSquadWheelBtn";
+function squadWheelProfileKey(stageRect){
+  const vw = Math.max(1, Math.floor(window.innerWidth || stageRect.width || 1));
+  const vh = Math.max(1, Math.floor(window.innerHeight || stageRect.height || 1));
+  const portrait = vh >= vw;
+  const veryTallPhone = portrait && (vh / vw) >= 1.95;
+  const compact = Math.min(vw, vh) <= 440;
+  if(portrait && (compact || veryTallPhone)) return "A";
+  return "B";
+}
+function applySquadWheelProfile(stage, stageRect){
+  const key = squadWheelProfileKey(stageRect);
+  const profile = SQUAD_WHEEL_PROFILES[key] || SQUAD_WHEEL_PROFILES.B;
+  if(!stage) return profile;
+  stage.style.setProperty("--squad-wheel-size", `${Math.round(profile.size)}px`);
+  stage.style.setProperty("--squad-wheel-center-size", `${Math.round(profile.center)}px`);
+  stage.style.setProperty("--squad-wheel-option-width", `${Math.round(profile.optionW)}px`);
+  stage.style.setProperty("--squad-wheel-option-height", `${Math.round(profile.optionH)}px`);
+  stage.style.setProperty("--squad-wheel-option-font-size", `${Math.round(profile.optionFont)}px`);
+  stage.style.setProperty("--squad-wheel-icon-size", `${Math.round(profile.icon)}px`);
+  stage.style.setProperty("--squad-wheel-ring-inset", `${Math.round(profile.ringInset)}px`);
+  stage.style.setProperty("--squad-wheel-corner-gap", `${Math.round(profile.cornerGap)}px`);
+  return profile;
+}
 function squadCommandWheelRoot(){
   return document.getElementById("squadCommandWheel");
 }
@@ -4599,6 +4650,7 @@ function positionSquadCommandWheel(anchor){
   if(!stage) return;
   const stageRect = stage.getBoundingClientRect();
   if(!(stageRect.width > 0 && stageRect.height > 0)) return;
+  const profile = applySquadWheelProfile(stage, stageRect);
 
   let cx = stageRect.width * 0.84;
   let cy = stageRect.height * 0.70;
@@ -4611,8 +4663,9 @@ function positionSquadCommandWheel(anchor){
       __squadWheelAnchorId = anchorEl.id || __squadWheelAnchorId;
     }
   }
-  const radius = 114;
-  const pad = radius + 10;
+  cx += profile.anchorDx;
+  cy += profile.anchorDy;
+  const pad = profile.pad;
   cx = clamp(cx, pad, Math.max(pad, stageRect.width - pad));
   cy = clamp(cy, pad, Math.max(pad, stageRect.height - pad));
   stage.style.setProperty("--squad-wheel-x", `${Math.round(cx)}px`);
@@ -4885,14 +4938,14 @@ window.addEventListener("resize", ()=>{
   resizeCanvasForViewport();
   applyMobileMenuState(__mobileMenuHiddenPref);
   applyTouchHudSettings();
-  if(isSquadCommandWheelOpen()) positionSquadCommandWheel();
+  positionSquadCommandWheel();
   renderHUD();
 }, { passive:true });
 window.addEventListener("orientationchange", ()=>{
   resizeCanvasForViewport();
   applyMobileMenuState(__mobileMenuHiddenPref);
   applyTouchHudSettings();
-  if(isSquadCommandWheelOpen()) positionSquadCommandWheel();
+  positionSquadCommandWheel();
   renderHUD();
 });
 initMobileMenuToggle();
@@ -14921,6 +14974,8 @@ function renderCombatControls(){
   if(combatButtons) combatButtons.style.display = hideTouchUi ? "none" : (inCombat ? "flex" : "none");
   if(hideTouchUi || inCombat || S.paused || S.gameOver || S.missionEnded){
     closeSquadCommandWheel();
+  } else if(isSquadCommandWheelOpen()){
+    positionSquadCommandWheel();
   }
 
   const t = activeTiger();

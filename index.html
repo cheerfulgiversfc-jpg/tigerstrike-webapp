@@ -89,10 +89,23 @@
     .mobileChip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;border:1px solid rgba(42,49,69,.9);background:rgba(16,22,38,.9);font-size:11px;font-weight:900;color:#eef2ff}
     .mobileChip.subtle{color:var(--muted);font-weight:800}
     .mobileStatusText{margin-top:8px;font-size:12px;line-height:1.3;color:rgba(245,247,255,.95)}
-    .mapStage{position:relative;--squad-wheel-x:84%;--squad-wheel-y:70%;background:
+    .mapStage{
+      position:relative;
+      --squad-wheel-x:84%;
+      --squad-wheel-y:70%;
+      --squad-wheel-size:208px;
+      --squad-wheel-center-size:72px;
+      --squad-wheel-option-width:74px;
+      --squad-wheel-option-height:48px;
+      --squad-wheel-option-font-size:11px;
+      --squad-wheel-icon-size:15px;
+      --squad-wheel-ring-inset:22px;
+      --squad-wheel-corner-gap:16px;
+      background:
       radial-gradient(circle at 20% 18%, var(--mode-map-a), transparent 28%),
       radial-gradient(circle at 82% 14%, var(--mode-map-b), transparent 24%),
-      linear-gradient(180deg, rgba(14,18,30,.95), rgba(7,10,18,.98))}
+      linear-gradient(180deg, rgba(14,18,30,.95), rgba(7,10,18,.98))
+    }
     .mapStage::after{
       content:"";
       position:absolute;
@@ -123,14 +136,14 @@
       position:absolute;
       left:var(--squad-wheel-x);
       top:var(--squad-wheel-y);
-      width:208px;
-      height:208px;
+      width:var(--squad-wheel-size);
+      height:var(--squad-wheel-size);
       transform:translate(-50%,-50%);
       pointer-events:none;
     }
     .squadWheelRing{
       position:absolute;
-      inset:22px;
+      inset:var(--squad-wheel-ring-inset);
       border-radius:999px;
       border:1px solid rgba(74,112,196,.55);
       background:radial-gradient(circle, rgba(13,19,32,.46), rgba(8,12,22,.08));
@@ -141,8 +154,8 @@
       position:absolute;
       left:50%;
       top:50%;
-      width:72px;
-      height:72px;
+      width:var(--squad-wheel-center-size);
+      height:var(--squad-wheel-center-size);
       transform:translate(-50%,-50%);
       border-radius:999px;
       border:1px solid rgba(95,126,204,.78);
@@ -156,8 +169,8 @@
     }
     .squadWheelOption{
       position:absolute;
-      width:74px;
-      min-height:48px;
+      width:var(--squad-wheel-option-width);
+      min-height:var(--squad-wheel-option-height);
       border-radius:14px;
       border:1px solid rgba(84,108,164,.82);
       background:rgba(10,16,28,.94);
@@ -167,14 +180,14 @@
       align-items:center;
       justify-content:center;
       gap:2px;
-      font-size:11px;
+      font-size:var(--squad-wheel-option-font-size);
       font-weight:900;
       letter-spacing:.01em;
       pointer-events:auto;
       box-shadow:0 8px 18px rgba(3,7,16,.34);
       padding:4px 6px;
     }
-    .squadWheelOption .icon{font-size:15px;line-height:1}
+    .squadWheelOption .icon{font-size:var(--squad-wheel-icon-size);line-height:1}
     .squadWheelOption .txt{line-height:1.05}
     .squadWheelOption.active{
       border-color:rgba(74,222,128,.92);
@@ -183,8 +196,8 @@
     }
     .squadWheelOption[data-cmd="AUTO"]{left:50%;top:0;transform:translate(-50%,0)}
     .squadWheelOption[data-cmd="ATTACK_TARGET"]{right:0;top:50%;transform:translate(0,-50%)}
-    .squadWheelOption[data-cmd="RESCUE"]{right:16px;bottom:16px}
-    .squadWheelOption[data-cmd="REGROUP"]{left:16px;bottom:16px}
+    .squadWheelOption[data-cmd="RESCUE"]{right:var(--squad-wheel-corner-gap);bottom:var(--squad-wheel-corner-gap)}
+    .squadWheelOption[data-cmd="REGROUP"]{left:var(--squad-wheel-corner-gap);bottom:var(--squad-wheel-corner-gap)}
     .squadWheelOption[data-cmd="HOLD"]{left:0;top:50%;transform:translate(0,-50%)}
 
     .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:200;padding:14px}
@@ -741,9 +754,16 @@
       #touchCacheBtn{left:10px;right:auto;bottom:286px}
       #touchSquadWheelBtn{right:10px;bottom:274px}
       #touchSquadWheelBtn .touchBtnMini{font-size:8px}
-      .squadCommandWheelCore{width:190px;height:190px}
-      .squadWheelOption{width:68px;min-height:44px;font-size:10px}
-      .squadWheelCenter{width:66px;height:66px;font-size:12px}
+      .mapStage{
+        --squad-wheel-size:190px;
+        --squad-wheel-center-size:66px;
+        --squad-wheel-option-width:68px;
+        --squad-wheel-option-height:44px;
+        --squad-wheel-option-font-size:10px;
+        --squad-wheel-icon-size:14px;
+        --squad-wheel-ring-inset:20px;
+        --squad-wheel-corner-gap:14px;
+      }
       .launchPoster{height:136px}
     }
 
@@ -901,9 +921,16 @@
         left:16px;
         bottom:114px;
       }
-      .squadCommandWheelCore{width:176px;height:176px}
-      .squadWheelOption{width:64px;min-height:40px;font-size:9px}
-      .squadWheelCenter{width:60px;height:60px;font-size:11px}
+      .mapStage{
+        --squad-wheel-size:176px;
+        --squad-wheel-center-size:60px;
+        --squad-wheel-option-width:64px;
+        --squad-wheel-option-height:40px;
+        --squad-wheel-option-font-size:9px;
+        --squad-wheel-icon-size:13px;
+        --squad-wheel-ring-inset:18px;
+        --squad-wheel-corner-gap:12px;
+      }
       .modal{max-height:86vh}
       .nav{
         padding:8px 8px calc(10px + env(safe-area-inset-bottom));
