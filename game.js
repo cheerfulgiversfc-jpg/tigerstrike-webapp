@@ -13520,6 +13520,10 @@ function supportUnitsTick(){
 function runCivilianFleeStep(c, now=Date.now()){
   if(!c || !c.alive || c.evac) return false;
   if(now >= (c.fleeUntil || 0)) return false;
+  const closeToEscort = c.following && c.escortOwner === "player" && dist(c.x, c.y, S.me.x, S.me.y) <= 116;
+  if(closeToEscort){
+    return false;
+  }
 
   let threat = null;
   if(Number.isFinite(c.fleeFromTigerId)){
@@ -13542,10 +13546,10 @@ function runCivilianFleeStep(c, now=Date.now()){
 
   const awayX = c.x - threat.x;
   const awayY = c.y - threat.y;
-  const awayLen = Math.hypot(awayX, awayY) || 1;
-  const jitter = ((c.id % 3) - 1) * 0.28;
+  const jitter = c.following ? 0 : (((c.id % 3) - 1) * 0.28);
   const ang = Math.atan2(awayY, awayX) + jitter;
-  const fleeSpeed = (c.following ? 2.55 : 2.25) * waterSpeedMul("civilian", c.x, c.y, 10);
+  const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
+  const fleeSpeed = (c.following ? 2.95 : 2.35) * (c.following ? Math.max(0.94, waterMul) : waterMul);
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -13560,8 +13564,12 @@ function followCiviliansTick(){
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const escortBoost = storyRescueSpeedMul();
   const engageDist = 58;
-  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 490 : 430;
+  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 520 : 450;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
+  if(!Number.isFinite(S._escortFace)) S._escortFace = face;
+  const faceDelta = normalizeAngle(face - S._escortFace);
+  S._escortFace = normalizeAngle(S._escortFace + clamp(faceDelta, -0.23, 0.23));
+  const escortFace = S._escortFace;
   const activeFollowers = [];
   const now = Date.now();
 
@@ -13636,8 +13644,8 @@ function followCiviliansTick(){
     const lateral = ((col - center) * sideGap) + ((row % 2) ? sideGap * 0.4 : 0);
     const back = baseBehind + (row * rowGap) + (Math.abs(lateral) * 0.16);
     anchors.push({
-      x: S.me.x - Math.cos(face) * back + Math.sin(face) * lateral,
-      y: S.me.y - Math.sin(face) * back - Math.cos(face) * lateral
+      x: S.me.x - Math.cos(escortFace) * back + Math.sin(escortFace) * lateral,
+      y: S.me.y - Math.sin(escortFace) * back - Math.cos(escortFace) * lateral
     });
   }
 
@@ -13689,10 +13697,26 @@ function followCiviliansTick(){
     const dx = anchor.x - c.x;
     const dy = anchor.y - c.y;
     const dd = Math.hypot(dx,dy) || 1;
-    const catchup = clamp((dd - 14) * 0.05, 0, 4.1);
+    if(dd > 245 && now > (c._lastEscortSnapAt || 0) + 1800){
+      const snap = findNearestOpenPoint(anchor.x, anchor.y, 14, {
+        avoidKeepout:false,
+        avoidWater:false,
+        targetX:S.me.x,
+        targetY:S.me.y
+      });
+      if(snap){
+        c.x = snap.x;
+        c.y = snap.y;
+        c._lastEscortSnapAt = now;
+      }
+    }
+    const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
+    const escortWaterMul = Math.max(0.93, waterMul);
+    const catchup = clamp((dd - 10) * 0.07, 0, 5.4);
+    const trailBoost = dd > 170 ? 0.72 : (dd > 120 ? 0.40 : 0);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.10, 2.52) + catchup) * escortBoost * waterSpeedMul("civilian", c.x, c.y, 10)),
-      PLAYER_SPRINT_SPEED + 2.3
+      ((Math.max(playerSpeed * 1.16, 2.86) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      PLAYER_SPRINT_SPEED + 3.0
     );
     const vx = (dx/dd) * sp;
     const vy = (dy/dd) * sp;
@@ -13803,8 +13827,15 @@ function tickCiviliansAndThreats(){
       underAttack++;
       if(now < (t._nextCivAttackAt || 0)) continue;
       t._nextCivAttackAt = now + rand(3000, 5000);
-      best.fleeUntil = now + rand(1300, 2200);
-      best.fleeFromTigerId = t.id;
+      const escortedByPlayer = best.following && best.escortOwner === "player";
+      const playerCover = escortedByPlayer && dist(best.x, best.y, S.me.x, S.me.y) <= 116;
+      if(!playerCover){
+        best.fleeUntil = now + rand(escortedByPlayer ? 520 : 1300, escortedByPlayer ? 1100 : 2200);
+        best.fleeFromTigerId = t.id;
+      } else {
+        best.fleeUntil = 0;
+        best.fleeFromTigerId = 0;
+      }
 
       const hitRange = tigerCivilianHitRange(t);
       const pct = hitRange[0] + (Math.random() * (hitRange[1] - hitRange[0]));
