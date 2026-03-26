@@ -73,11 +73,29 @@
     .hudBox{background:rgba(15,19,32,.7);border:1px solid rgba(35,42,62,.9);border-radius:14px;padding:10px}
     .hudTitle{font-weight:950}
     .hudLine{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.25}
+    .directorTag{
+      display:inline-flex;
+      align-items:center;
+      padding:2px 8px;
+      border-radius:999px;
+      border:1px solid rgba(90,116,176,.72);
+      background:linear-gradient(180deg, rgba(16,22,40,.96), rgba(10,14,24,.96));
+      color:#e6eefc;
+      font-size:11px;
+      font-weight:900;
+      letter-spacing:.03em;
+      line-height:1;
+    }
     .bar{height:10px;border-radius:999px;background:rgba(11,13,18,.9);border:1px solid rgba(35,42,62,.9);overflow:hidden;margin-top:6px}
+    .bar.directorMeter{height:8px}
     .fill{height:100%;width:50%;background:var(--blue);transition:width .15s linear}
     .fill.green{background:var(--good)}
     .fill.red{background:var(--bad)}
     .fill.orange{background:var(--warn)}
+    .fill.director{
+      background:linear-gradient(90deg, #34d399 0%, #f59e0b 55%, #f43f5e 100%);
+      box-shadow:0 0 12px rgba(52,211,153,.35);
+    }
 
     .screenCard{order:3;margin-top:12px;background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);position:relative}
     .mobileStatusPanel{display:none!important}
@@ -1211,6 +1229,8 @@
         <div class="hudLine">Target Tiger HP: <b id="tigerTxt"></b> • Capture at <b id="capturePctTxt">25%</b> HP or lower</div>
         <div class="bar"><div id="tigerBar" class="fill red"></div></div>
         <div class="hudLine">Civilians Alive: <b id="civTxt"></b> • Evac: <b id="evacTxt"></b> • Tigers left: <b id="tleftTxt"></b> • Threat: <b id="threatTxt"></b></div>
+        <div class="hudLine">Director: <span id="directorPhaseTag" class="directorTag">Calm</span> • Pressure: <b id="directorPressureTxt">0%</b></div>
+        <div class="bar directorMeter"><div id="directorPressureBar" class="fill director"></div></div>
         <div class="hudLine" id="objTxt"></div>
         <div class="hudLine" id="dangerTxt"></div>
         <div class="hudLine" id="storyOpsTxt"></div>

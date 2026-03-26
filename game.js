@@ -2922,6 +2922,38 @@ function frameLagTier(){
 function directorPhaseLabel(phase){
   return DIRECTOR_PHASE_LABELS[phase] || DIRECTOR_PHASE_LABELS.CALM;
 }
+function missionDirectorPhaseStyle(phase){
+  if(phase === DIRECTOR_PHASES.PEAK){
+    return {
+      tagBg:"linear-gradient(180deg, rgba(60,14,20,.96), rgba(36,10,14,.96))",
+      tagBorder:"rgba(244,63,94,.82)",
+      tagText:"#fecdd3",
+      bar:"linear-gradient(90deg, #fb7185 0%, #f43f5e 100%)"
+    };
+  }
+  if(phase === DIRECTOR_PHASES.PRESSURE){
+    return {
+      tagBg:"linear-gradient(180deg, rgba(62,32,8,.95), rgba(36,20,6,.95))",
+      tagBorder:"rgba(245,158,11,.82)",
+      tagText:"#fde68a",
+      bar:"linear-gradient(90deg, #f59e0b 0%, #f97316 100%)"
+    };
+  }
+  if(phase === DIRECTOR_PHASES.RECOVER){
+    return {
+      tagBg:"linear-gradient(180deg, rgba(16,40,36,.95), rgba(10,24,20,.95))",
+      tagBorder:"rgba(16,185,129,.82)",
+      tagText:"#a7f3d0",
+      bar:"linear-gradient(90deg, #34d399 0%, #10b981 100%)"
+    };
+  }
+  return {
+    tagBg:"linear-gradient(180deg, rgba(20,30,56,.95), rgba(12,18,34,.95))",
+    tagBorder:"rgba(96,165,250,.8)",
+    tagText:"#bfdbfe",
+    bar:"linear-gradient(90deg, #60a5fa 0%, #34d399 100%)"
+  };
+}
 function ensureMissionDirectorState(state=S){
   if(!state || typeof state !== "object"){
     return {
@@ -2995,6 +3027,20 @@ function missionDirectorAllowTigerSpawn(extra=1, opts={}){
   const now = Date.now();
   const director = ensureMissionDirectorState();
   if(!opts.ignoreBudget && now < (director.nextSpawnAt || 0)) return false;
+  if(!opts.ignoreFairness){
+    if(S.respawnPendingUntil && now < (S.respawnPendingUntil + 1200)) return false;
+    if(now < ((S.rollInvulnUntil || 0) + 700)) return false;
+    if(S.mode !== "Survival"){
+      const earlyGuardUntil = Math.max(0, Number(S.civGraceUntil || 0)) + 2400;
+      if(now < earlyGuardUntil) return false;
+      const aliveCivs = (S.civilians || []).reduce((n, c)=>n + (c?.alive && !c?.evac ? 1 : 0), 0);
+      const underAttack = Math.max(0, Number(S._underAttack || 0));
+      if(aliveCivs > 0 && underAttack >= Math.max(2, Math.ceil(aliveCivs * 0.5))){
+        const aliveNow = (S.tigers || []).reduce((n, t)=>n + (t?.alive ? 1 : 0), 0);
+        if(aliveNow >= 2) return false;
+      }
+    }
+  }
   const alive = (S.tigers || []).reduce((n, t)=>n + (t?.alive ? 1 : 0), 0);
   const caps = missionDirectorHardCaps();
   return alive + Math.max(1, Math.floor(extra || 1)) <= caps.tigers;
@@ -3011,6 +3057,9 @@ function missionDirectorMarkTigerSpawn(opts={}){
   director.nextSpawnAt = now + cd;
 }
 function missionDirectorTargetPressure(now=Date.now()){
+  if(S.respawnPendingUntil && now < S.respawnPendingUntil){
+    return 6;
+  }
   const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
   const aliveCivs = (S.mode === "Survival")
     ? []
@@ -3044,6 +3093,12 @@ function missionDirectorTargetPressure(now=Date.now()){
   target += hpStress * 14;
   target += levelStress * (S.mode === "Survival" ? 20 : 14);
   if(now < (S.civGraceUntil || 0)) target *= 0.72;
+  if(S.mode !== "Survival" && now < ((S.civGraceUntil || 0) + 2200)) target *= 0.62;
+  if(now < ((S.rollInvulnUntil || 0) + 850)) target *= 0.56;
+  if(S.mode !== "Survival" && aliveCivs.length){
+    const attackRatio = underAttack / Math.max(1, aliveCivs.length);
+    if(attackRatio >= 0.5) target = Math.min(target, 58);
+  }
   return clamp(target, 0, 100);
 }
 function missionDirectorResolvePhase(pressure, currentPhase){
@@ -12075,7 +12130,7 @@ function deploy(opts={}){
   S.target=null;
   S.lockedTigerId=null;
 
-  S.civGraceUntil = Date.now() + 1000;
+  S.civGraceUntil = Date.now() + 1800;
   S.dangerCivId = null;
   S.shields = Math.max(0, 1 + storyStartingShieldBonus());
   S.shieldUntil = 0;
@@ -12138,7 +12193,7 @@ function deploy(opts={}){
     d.hardTrimAt = 0;
     d.phaseChangedAt = Date.now();
     d.lastNoticeAt = 0;
-    d.nextSpawnAt = Date.now() + rand(2600, 4600);
+    d.nextSpawnAt = Date.now() + rand(4200, 6800);
     S._directorAggroMul = 1;
     S._directorSpeedMul = 1;
   }
@@ -14321,6 +14376,13 @@ function respawnTick(){
   S.respawnTargetX = 0;
   S.respawnTargetY = 0;
   S.rollInvulnUntil = now + 1200;
+  S.civGraceUntil = Math.max(S.civGraceUntil || 0, now + 1800);
+  {
+    const director = ensureMissionDirectorState(S);
+    director.nextSpawnAt = Math.max(director.nextSpawnAt || 0, now + rand(3200, 5200));
+    director.pressure = clamp((Number(director.pressure || 8) * 0.72), 8, 72);
+    director.phaseLockUntil = Math.max(director.phaseLockUntil || 0, now + 900);
+  }
   toast(`Respawned. Lives left: ${S.lives}`);
 }
 function applyPlayerDamage(dmg, showToast=false){
@@ -16078,13 +16140,32 @@ function renderHUD(){
   document.getElementById("tigerBar").style.width = t ? `${(t.hp/t.hpMax)*100}%` : "0%";
   const capturePctTxt = document.getElementById("capturePctTxt");
   if(capturePctTxt) capturePctTxt.innerText = captureWindowPctLabel();
+  const director = ensureMissionDirectorState(S);
+  const directorPhase = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
+  const directorPressure = clamp(Math.round(Number(director.pressure || 0)), 0, 100);
+  const directorStyle = missionDirectorPhaseStyle(directorPhase);
+  const directorPhaseTag = document.getElementById("directorPhaseTag");
+  const directorPressureTxt = document.getElementById("directorPressureTxt");
+  const directorPressureBar = document.getElementById("directorPressureBar");
+  if(directorPhaseTag){
+    directorPhaseTag.innerText = directorPhaseLabel(directorPhase);
+    directorPhaseTag.style.background = directorStyle.tagBg;
+    directorPhaseTag.style.borderColor = directorStyle.tagBorder;
+    directorPhaseTag.style.color = directorStyle.tagText;
+  }
+  if(directorPressureTxt) directorPressureTxt.innerText = `${directorPressure}%`;
+  if(directorPressureBar){
+    directorPressureBar.style.width = `${directorPressure}%`;
+    directorPressureBar.style.background = directorStyle.bar;
+  }
 
   const civAlive = (S.mode==="Survival") ? "—" : `${S.civilians.filter(c=>c.alive).length}/${S.civilians.length||0}`;
   document.getElementById("civTxt").innerText = civAlive;
   document.getElementById("evacTxt").innerText = (S.mode==="Survival") ? "—" : `${S.evacDone}/${S.civilians.length||0}`;
 
   document.getElementById("tleftTxt").innerText = S.tigers.filter(t=>t.alive).length;
-  document.getElementById("threatTxt").innerText = (S.mode==="Survival") ? "Pressure" : (S._underAttack ? `${S._underAttack} attacks` : "Low");
+  const threatBase = (S.mode==="Survival") ? "Pressure" : (S._underAttack ? `${S._underAttack} attacks` : "Low");
+  document.getElementById("threatTxt").innerText = `${threatBase} • ${directorPhaseLabel(directorPhase)} ${directorPressure}%`;
 
   const grace = (S.mode!=="Survival" && Date.now() < (S.civGraceUntil||0)) ? " • Civ Grace" : "";
   const storyMission = (S.mode==="Story") ? storyCampaignMission(S.storyLevel) : null;
@@ -16251,7 +16332,7 @@ function renderHUD(){
         : (S.mode==="Survival"
           ? "Pressure High"
           : (S._underAttack ? `Threat ${S._underAttack} attack` : "Threat Low"));
-    mobileThreatChip.innerText = threatText;
+    mobileThreatChip.innerText = `${threatText} • ${directorPhaseLabel(directorPhase)} ${directorPressure}%`;
   }
   if(mobilePromptTxt){
     let mobilePrompt =
