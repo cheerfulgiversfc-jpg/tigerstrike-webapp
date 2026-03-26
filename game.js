@@ -2648,10 +2648,10 @@ const DIRECTOR_PHASE_LABELS = {
   RECOVER: "Recover",
 };
 const DIRECTOR_PHASE_CONFIG = {
-  CALM: { eventChance:0.08, eventCooldownTicks:760, spawnCd:[19000, 26000], aggroMul:0.92, speedMul:0.95 },
-  PRESSURE: { eventChance:0.12, eventCooldownTicks:620, spawnCd:[13000, 18500], aggroMul:1.00, speedMul:1.00 },
-  PEAK: { eventChance:0.17, eventCooldownTicks:470, spawnCd:[9000, 13000], aggroMul:1.10, speedMul:1.08 },
-  RECOVER: { eventChance:0.10, eventCooldownTicks:540, spawnCd:[15000, 22000], aggroMul:0.96, speedMul:0.98 },
+  CALM: { eventChance:0.08, eventCooldownTicks:780, spawnCd:[20000, 27000], aggroMul:0.93, speedMul:0.96 },
+  PRESSURE: { eventChance:0.11, eventCooldownTicks:640, spawnCd:[13800, 19200], aggroMul:0.99, speedMul:1.00 },
+  PEAK: { eventChance:0.15, eventCooldownTicks:520, spawnCd:[9800, 13800], aggroMul:1.07, speedMul:1.05 },
+  RECOVER: { eventChance:0.10, eventCooldownTicks:560, spawnCd:[15800, 22800], aggroMul:0.95, speedMul:0.97 },
 };
 const DIRECTOR_PHASE_MIN_LOCK_MS = 3600;
 const DIRECTOR_HARD_CAPS = {
@@ -2922,6 +2922,12 @@ function frameLagTier(){
 function directorPhaseLabel(phase){
   return DIRECTOR_PHASE_LABELS[phase] || DIRECTOR_PHASE_LABELS.CALM;
 }
+function directorPhaseRank(phase){
+  if(phase === DIRECTOR_PHASES.PEAK) return 3;
+  if(phase === DIRECTOR_PHASES.PRESSURE) return 2;
+  if(phase === DIRECTOR_PHASES.RECOVER) return 1;
+  return 0;
+}
 function missionDirectorPhaseStyle(phase){
   if(phase === DIRECTOR_PHASES.PEAK){
     return {
@@ -3084,20 +3090,22 @@ function missionDirectorTargetPressure(now=Date.now()){
     if(S.mode === "Arcade") return clamp(((S.arcadeLevel || 1) - 1) / 99, 0, 1);
     return clamp(((S.survivalWave || 1) - 1) / 35, 0, 1);
   })();
-  let target = 8;
-  target += aliveTigers.length * 2.5;
-  target += nearPlayer * 7.2;
-  target += nearCivs * 5.6;
-  target += underAttack * 8.5;
-  target += inBattle * 11;
-  target += hpStress * 14;
-  target += levelStress * (S.mode === "Survival" ? 20 : 14);
+  let target = 7;
+  target += aliveTigers.length * 2.3;
+  target += nearPlayer * 6.2;
+  target += nearCivs * 5.0;
+  target += underAttack * 7.4;
+  target += inBattle * 9.4;
+  target += hpStress * 12;
+  target += levelStress * (S.mode === "Survival" ? 18 : 12);
   if(now < (S.civGraceUntil || 0)) target *= 0.72;
   if(S.mode !== "Survival" && now < ((S.civGraceUntil || 0) + 2200)) target *= 0.62;
   if(now < ((S.rollInvulnUntil || 0) + 850)) target *= 0.56;
   if(S.mode !== "Survival" && aliveCivs.length){
     const attackRatio = underAttack / Math.max(1, aliveCivs.length);
     if(attackRatio >= 0.5) target = Math.min(target, 58);
+    if(!inBattle && underAttack === 0) target -= 5;
+    if(!inBattle && underAttack === 0 && nearPlayer === 0) target -= 3;
   }
   return clamp(target, 0, 100);
 }
@@ -3105,18 +3113,24 @@ function missionDirectorResolvePhase(pressure, currentPhase){
   const p = clamp(Number(pressure) || 0, 0, 100);
   const cur = DIRECTOR_PHASE_CONFIG[currentPhase] ? currentPhase : DIRECTOR_PHASES.CALM;
   if(cur === DIRECTOR_PHASES.PEAK){
-    if(p >= 58) return DIRECTOR_PHASES.PEAK;
-    if(p >= 28) return DIRECTOR_PHASES.RECOVER;
+    if(p >= 66) return DIRECTOR_PHASES.PEAK;
+    if(p >= 38) return DIRECTOR_PHASES.RECOVER;
+    if(p >= 24) return DIRECTOR_PHASES.PRESSURE;
     return DIRECTOR_PHASES.CALM;
   }
-  if(cur === DIRECTOR_PHASES.RECOVER){
-    if(p >= 68) return DIRECTOR_PHASES.PEAK;
-    if(p >= 44) return DIRECTOR_PHASES.PRESSURE;
+  if(cur === DIRECTOR_PHASES.PRESSURE){
+    if(p >= 80) return DIRECTOR_PHASES.PEAK;
+    if(p >= 34) return DIRECTOR_PHASES.PRESSURE;
     if(p >= 22) return DIRECTOR_PHASES.RECOVER;
     return DIRECTOR_PHASES.CALM;
   }
-  if(p >= 74) return DIRECTOR_PHASES.PEAK;
-  if(p >= 40) return DIRECTOR_PHASES.PRESSURE;
+  if(cur === DIRECTOR_PHASES.RECOVER){
+    if(p >= 84) return DIRECTOR_PHASES.PEAK;
+    if(p >= 52) return DIRECTOR_PHASES.PRESSURE;
+    if(p >= 26) return DIRECTOR_PHASES.RECOVER;
+    return DIRECTOR_PHASES.CALM;
+  }
+  if(p >= 46) return DIRECTOR_PHASES.PRESSURE;
   return DIRECTOR_PHASES.CALM;
 }
 function missionDirectorApplyHardCaps(){
@@ -3183,12 +3197,19 @@ function missionDirectorTick(){
   director.lastSampleAt = now;
 
   const target = missionDirectorTargetPressure(now);
-  director.pressure = clamp((director.pressure || 0) * 0.82 + target * 0.18, 0, 100);
+  const current = clamp(Number(director.pressure || 0), 0, 100);
+  const riseAlpha = S.mode === "Survival" ? 0.14 : 0.13;
+  const fallAlpha = S.mode === "Survival" ? 0.18 : 0.22;
+  const alpha = target >= current ? riseAlpha : fallAlpha;
+  director.pressure = clamp(current + ((target - current) * alpha), 0, 100);
   const resolved = missionDirectorResolvePhase(director.pressure, director.phase);
   if(resolved !== director.phase && now >= (director.phaseLockUntil || 0)){
+    const currentRank = directorPhaseRank(director.phase);
+    const nextRank = directorPhaseRank(resolved);
+    const downshift = nextRank < currentRank;
     director.phase = resolved;
     director.phaseChangedAt = now;
-    director.phaseLockUntil = now + DIRECTOR_PHASE_MIN_LOCK_MS;
+    director.phaseLockUntil = now + (downshift ? 2200 : DIRECTOR_PHASE_MIN_LOCK_MS);
     if(!window.__TUTORIAL_MODE__ && now > (director.lastNoticeAt || 0) + 8200){
       director.lastNoticeAt = now;
       setEventText(`Mission Director: ${directorPhaseLabel(director.phase)} (${Math.round(director.pressure)}%)`, 2.2);
