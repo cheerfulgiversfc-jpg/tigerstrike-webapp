@@ -13520,8 +13520,10 @@ function supportUnitsTick(){
 function runCivilianFleeStep(c, now=Date.now()){
   if(!c || !c.alive || c.evac) return false;
   if(now >= (c.fleeUntil || 0)) return false;
-  const closeToEscort = c.following && c.escortOwner === "player" && dist(c.x, c.y, S.me.x, S.me.y) <= 116;
-  if(closeToEscort){
+  const escortedByPlayer = c.following && c.escortOwner === "player";
+  if(escortedByPlayer){
+    c.fleeUntil = 0;
+    c.fleeFromTigerId = 0;
     return false;
   }
 
@@ -13693,10 +13695,12 @@ function followCiviliansTick(){
     slotById[c.id] = slot;
     const anchor = anchors[slot];
     if(!anchor) continue;
+    c.fleeUntil = 0;
+    c.fleeFromTigerId = 0;
 
-    const dx = anchor.x - c.x;
-    const dy = anchor.y - c.y;
-    const dd = Math.hypot(dx,dy) || 1;
+    let dx = anchor.x - c.x;
+    let dy = anchor.y - c.y;
+    let dd = Math.hypot(dx,dy) || 1;
     if(dd > 245 && now > (c._lastEscortSnapAt || 0) + 1800){
       const snap = findNearestOpenPoint(anchor.x, anchor.y, 14, {
         avoidKeepout:false,
@@ -13708,6 +13712,9 @@ function followCiviliansTick(){
         c.x = snap.x;
         c.y = snap.y;
         c._lastEscortSnapAt = now;
+        dx = anchor.x - c.x;
+        dy = anchor.y - c.y;
+        dd = Math.hypot(dx,dy) || 1;
       }
     }
     const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
@@ -13724,7 +13731,19 @@ function followCiviliansTick(){
       c.face = Math.atan2(vy, vx);
       c.step = (c.step || 0) + clamp(Math.hypot(vx, vy) * 0.11, 0.04, 0.30);
     }
-    tryMoveEntity(c, c.x + vx, c.y + vy, 14, { avoidKeepout:false });
+    const moved = tryMoveEntity(c, c.x + vx, c.y + vy, 14, { avoidKeepout:false });
+    if(!moved){
+      const recover = findNearestOpenPoint(anchor.x, anchor.y, 14, {
+        avoidKeepout:false,
+        avoidWater:false,
+        targetX:S.me.x,
+        targetY:S.me.y
+      });
+      if(recover){
+        c.x = recover.x;
+        c.y = recover.y;
+      }
+    }
   }
 }
 
@@ -13828,7 +13847,7 @@ function tickCiviliansAndThreats(){
       if(now < (t._nextCivAttackAt || 0)) continue;
       t._nextCivAttackAt = now + rand(3000, 5000);
       const escortedByPlayer = best.following && best.escortOwner === "player";
-      const playerCover = escortedByPlayer && dist(best.x, best.y, S.me.x, S.me.y) <= 116;
+      const playerCover = escortedByPlayer && dist(best.x, best.y, S.me.x, S.me.y) <= 190;
       if(!playerCover){
         best.fleeUntil = now + rand(escortedByPlayer ? 520 : 1300, escortedByPlayer ? 1100 : 2200);
         best.fleeFromTigerId = t.id;
