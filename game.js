@@ -16624,11 +16624,70 @@ function drawMapScene(){
     }
     ctx.restore();
   }
+  function terrainPatches(seed=0, count=14, alpha=0.12, warm="rgba(255,245,210,.16)", cool="rgba(20,35,48,.20)"){
+    ctx.save();
+    for(let i=0;i<count;i++){
+      const n1 = seedNoise(i + 17, seed + 29, seed + 101);
+      const n2 = seedNoise(i + 43, seed + 71, seed + 149);
+      const x = clamp((n1 * w), 20, w - 20);
+      const y = clamp((n2 * h), 20, h - 20);
+      const rx = 28 + (seedNoise(i + 91, seed + 11, seed + 7) * 56);
+      const ry = 14 + (seedNoise(i + 13, seed + 53, seed + 19) * 34);
+      const rot = (seedNoise(i + 31, seed + 67, seed + 83) - 0.5) * 0.8;
+      const grad = ctx.createRadialGradient(x - (rx * 0.18), y - (ry * 0.14), 0, x, y, Math.max(rx, ry));
+      grad.addColorStop(0, (i % 2) ? warm : cool);
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.globalAlpha = alpha * (0.55 + (seedNoise(i + 57, seed + 89, seed + 211) * 0.8));
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+  function scatterPebbles(seed=0, count=120, alpha=0.20, light="rgba(232,236,245,.45)", dark="rgba(6,10,16,.45)"){
+    ctx.save();
+    for(let i=0;i<count;i++){
+      const n1 = seedNoise(i + 7, seed + 13, seed + 41);
+      const n2 = seedNoise(i + 37, seed + 61, seed + 83);
+      const x = n1 * w;
+      const y = n2 * h;
+      const r = 0.6 + (seedNoise(i + 79, seed + 97, seed + 109) * 1.6);
+      ctx.globalAlpha = alpha * (0.5 + (seedNoise(i + 131, seed + 173, seed + 197) * 0.9));
+      ctx.fillStyle = (i % 2) ? light : dark;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
   function roadLine(points,width,fill){
     ctx.strokeStyle=fill; ctx.lineWidth=width; ctx.lineCap="round"; ctx.lineJoin="round";
     ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
     for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0],points[i][1]);
     ctx.stroke();
+  }
+  function roadWear(points, width, seed=0){
+    ctx.save();
+    ctx.strokeStyle = "rgba(12,16,24,.16)";
+    ctx.lineWidth = Math.max(2, width * 0.08);
+    ctx.setLineDash([9 + (seed % 4), 11 + ((seed + 1) % 5)]);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0], points[i][1]);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(250,245,235,.08)";
+    ctx.lineWidth = Math.max(1.4, width * 0.045);
+    ctx.setLineDash([4 + (seed % 3), 10 + ((seed + 2) % 4)]);
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1] - Math.max(1, width * 0.06));
+    for(let i=1;i<points.length;i++) ctx.lineTo(points[i][0], points[i][1] - Math.max(1, width * 0.06));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
   }
   function roadShoulder(points, width){
     ctx.strokeStyle="rgba(12,16,24,.28)";
@@ -16700,6 +16759,13 @@ function drawMapScene(){
       ctx.ellipse(zone.x, zone.y, rx, ry, rot, 0, Math.PI * 2);
       ctx.fill();
 
+      ctx.globalAlpha = 0.26 * mul;
+      ctx.strokeStyle = "rgba(7,20,28,.62)";
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.ellipse(zone.x, zone.y, rx + 2, ry + 2, rot, 0, Math.PI * 2);
+      ctx.stroke();
+
       const centerGrad = ctx.createRadialGradient(zone.x - (rx * 0.18), zone.y - (ry * 0.16), 0, zone.x, zone.y, Math.max(rx, ry));
       centerGrad.addColorStop(0, "rgba(220,245,255,.20)");
       centerGrad.addColorStop(0.35, "rgba(155,216,245,.12)");
@@ -16739,6 +16805,19 @@ function drawMapScene(){
       ctx.beginPath();
       ctx.ellipse(zone.x, zone.y, Math.max(8, rx * ripple), Math.max(6, ry * ripple), rot, 0, Math.PI * 2);
       ctx.stroke();
+
+      ctx.globalAlpha = 0.22 * mul;
+      ctx.strokeStyle = "rgba(220,245,255,.52)";
+      ctx.lineWidth = 1;
+      const stripCount = 4;
+      for(let si=0; si<stripCount; si++){
+        const t = (si + 1) / (stripCount + 1);
+        const ly = zone.y - (ry * 0.55) + (ry * 1.1 * t) + (Math.sin(wavePhase + si + (zone.x * 0.002)) * 1.6);
+        ctx.beginPath();
+        ctx.moveTo(zone.x - (rx * 0.54), ly);
+        ctx.quadraticCurveTo(zone.x, ly + (Math.sin(wavePhase * 1.3 + si) * 2.2), zone.x + (rx * 0.54), ly);
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }
@@ -16793,6 +16872,9 @@ function drawMapScene(){
       rounded(px-(20*s), py-(9*s), 40*s, 18*s, 6*s, "rgba(92,120,156,.88)", "rgba(22,30,45,.95)");
       ctx.fillStyle="rgba(195,222,245,.46)";
       rounded(px-(11*s), py-(8*s), 22*s, 7*s, 3*s, "rgba(195,222,245,.46)");
+      ctx.fillStyle = "rgba(15,20,28,.86)";
+      ctx.beginPath(); ctx.arc(px - (10*s), py + (8*s), 3.2*s, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + (10*s), py + (8*s), 3.2*s, 0, Math.PI*2); ctx.fill();
       return;
     }
     if(p.kind==="truck"){
@@ -16800,6 +16882,9 @@ function drawMapScene(){
       rounded(px+(12*s), py-(8*s), 14*s, 16*s, 4*s, "rgba(150,165,180,.85)", "rgba(24,34,46,.9)");
       ctx.fillStyle="rgba(210,228,245,.42)";
       rounded(px+(14*s), py-(6*s), 10*s, 7*s, 2*s, "rgba(210,228,245,.42)");
+      ctx.fillStyle = "rgba(15,20,28,.86)";
+      ctx.beginPath(); ctx.arc(px - (12*s), py + (10*s), 3.6*s, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + (2*s), py + (10*s), 3.6*s, 0, Math.PI*2); ctx.fill();
       return;
     }
     if(p.kind==="bus"){
@@ -16808,6 +16893,9 @@ function drawMapScene(){
       for(let i=0;i<5;i++){
         rounded(px-(23*s)+(i*10*s), py-(8*s), 8*s, 6*s, 2*s, "rgba(210,232,255,.45)");
       }
+      ctx.fillStyle = "rgba(15,20,28,.86)";
+      ctx.beginPath(); ctx.arc(px - (18*s), py + (10*s), 3.6*s, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + (18*s), py + (10*s), 3.6*s, 0, Math.PI*2); ctx.fill();
       return;
     }
     if(p.kind==="house"){
@@ -16819,6 +16907,11 @@ function drawMapScene(){
       ctx.lineTo(px + (18*s), py - (10*s));
       ctx.closePath();
       ctx.fill();
+      ctx.fillStyle = "rgba(84,60,34,.92)";
+      rounded(px-(3*s), py-(2*s), 6*s, 12*s, 2*s, "rgba(84,60,34,.92)");
+      ctx.fillStyle = "rgba(230,235,245,.50)";
+      rounded(px-(11*s), py-(5*s), 6*s, 5*s, 2*s, "rgba(230,235,245,.50)");
+      rounded(px+(5*s), py-(5*s), 6*s, 5*s, 2*s, "rgba(230,235,245,.50)");
       return;
     }
     if(p.kind==="building"){
@@ -16829,6 +16922,7 @@ function drawMapScene(){
           ctx.fillRect(px - (13*s) + (col * 12*s), py - (12*s) + (row * 10*s), 6*s, 6*s);
         }
       }
+      rounded(px-(22*s), py-(20*s), 44*s, 5*s, 2*s, "rgba(28,36,50,.85)");
       return;
     }
     if(p.kind==="park"){
@@ -16875,6 +16969,8 @@ function drawMapScene(){
     ctx.fillRect(0,0,w,h);
     terrainTexture(11, 30, 0.09, "rgba(74,222,128,.10)", "rgba(0,0,0,.12)");
     terrainBands(11, 5, 0.07);
+    terrainPatches(11, 16, 0.11, "rgba(180,235,160,.14)", "rgba(15,38,20,.18)");
+    scatterPebbles(11, 86, 0.12, "rgba(168,212,156,.36)", "rgba(8,18,10,.34)");
     const upperRoad = h * 0.18;
     const midRoad = h * 0.43;
     const lowRoad = h * 0.72;
@@ -16884,6 +16980,9 @@ function drawMapScene(){
     roadShoulder(roadA, 48); roadLine(roadA, 48, "rgba(80,60,38,.85)");
     roadShoulder(roadB, 62); roadLine(roadB, 62, "rgba(90,70,45,.85)");
     roadShoulder(roadC, 56); roadLine(roadC, 56, "rgba(84,66,42,.82)");
+    roadWear(roadA, 48, 11);
+    roadWear(roadB, 62, 19);
+    roadWear(roadC, 56, 27);
     const trees = [
       [90,h*0.08],[140,h*0.11],[210,h*0.08],[300,h*0.13],[360,h*0.08],[420,h*0.14],[520,h*0.10],[610,h*0.13],[700,h*0.09],[780,h*0.14],[880,h*0.11],
       [120,h*0.24],[200,h*0.26],[280,h*0.24],[360,h*0.27],[440,h*0.24],[520,h*0.27],[600,h*0.24],[700,h*0.26],[820,h*0.24],
@@ -16901,13 +17000,18 @@ function drawMapScene(){
     fillSolid("#18402a");
     terrainTexture(19, 32, 0.08, "rgba(232,240,250,.05)", "rgba(0,0,0,.11)");
     terrainBands(19, 4, 0.065);
+    terrainPatches(19, 14, 0.10, "rgba(226,236,210,.14)", "rgba(20,28,34,.16)");
+    scatterPebbles(19, 94, 0.11, "rgba(214,224,236,.30)", "rgba(12,18,28,.30)");
     const main=[[0,280],[240,270],[480,300],[720,280],[960,300]];
     roadShoulder(main, 84); roadLine(main, 84, "rgba(75,78,86,.9)");
+    roadWear(main, 84, 9);
     dashed(main);
     const laneTop = [[120,120],[420,110],[760,120]];
     const laneLow = [[120,440],[420,430],[760,440]];
     roadShoulder(laneTop, 62); roadLine(laneTop, 62, "rgba(75,78,86,.9)");
     roadShoulder(laneLow, 62); roadLine(laneLow, 62, "rgba(75,78,86,.9)");
+    roadWear(laneTop, 62, 13);
+    roadWear(laneLow, 62, 15);
     const houses = [
       [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
       [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
@@ -16924,6 +17028,8 @@ function drawMapScene(){
     fillSolid("#1a1f2d");
     terrainTexture(29, 34, 0.07, "rgba(126,149,196,.06)", "rgba(0,0,0,.13)");
     terrainBands(29, 4, 0.055);
+    terrainPatches(29, 12, 0.08, "rgba(188,204,236,.12)", "rgba(8,12,20,.15)");
+    scatterPebbles(29, 110, 0.11, "rgba(220,228,246,.28)", "rgba(7,10,17,.32)");
     ctx.fillStyle="rgba(70,72,80,.95)";
     for(let x=80; x<w; x+=170) ctx.fillRect(x-46,0,92,h);
     for(let y=80; y<h; y+=150) ctx.fillRect(0,y-42,w,84);
@@ -16943,6 +17049,8 @@ function drawMapScene(){
     fillSolid("#2b2b30");
     terrainTexture(41, 32, 0.09, "rgba(230,210,170,.05)", "rgba(0,0,0,.14)");
     terrainBands(41, 4, 0.062);
+    terrainPatches(41, 14, 0.09, "rgba(226,196,150,.12)", "rgba(10,10,12,.16)");
+    scatterPebbles(41, 90, 0.12, "rgba(220,200,172,.32)", "rgba(8,8,10,.34)");
     rounded(90,90,260,130,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
     rounded(610,110,260,110,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
     rounded(240,340,340,140,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
@@ -17229,72 +17337,150 @@ function drawDangerMarker(x,y){
 function drawRescueSite(site){
   ctx.save();
   const palette = {
-    trail: ["rgba(96,165,250,.20)", "rgba(96,165,250,.85)"],
-    park: ["rgba(74,222,128,.18)", "rgba(74,222,128,.88)"],
-    car: ["rgba(251,191,36,.20)", "rgba(251,191,36,.88)"],
-    truck: ["rgba(248,113,113,.20)", "rgba(248,113,113,.88)"],
-    house: ["rgba(244,114,182,.18)", "rgba(244,114,182,.88)"],
-    cabin: ["rgba(245,158,11,.18)", "rgba(245,158,11,.88)"],
-    building: ["rgba(167,139,250,.18)", "rgba(167,139,250,.88)"],
+    trail: ["rgba(96,165,250,.18)", "rgba(96,165,250,.92)"],
+    park: ["rgba(74,222,128,.18)", "rgba(74,222,128,.92)"],
+    car: ["rgba(251,191,36,.20)", "rgba(251,191,36,.94)"],
+    truck: ["rgba(248,113,113,.20)", "rgba(248,113,113,.94)"],
+    house: ["rgba(244,114,182,.18)", "rgba(244,114,182,.92)"],
+    cabin: ["rgba(245,158,11,.20)", "rgba(245,158,11,.94)"],
+    building: ["rgba(167,139,250,.20)", "rgba(167,139,250,.94)"],
   };
   const [fill, stroke] = palette[site.kind] || palette.trail;
-  ctx.globalAlpha = 0.9;
+  const pulse = 0.82 + (Math.sin(Date.now() / 220 + (site.x * 0.01)) * 0.12);
+
+  ctx.globalAlpha = 0.90;
   ctx.fillStyle = fill;
   ctx.beginPath();
   ctx.arc(site.x, site.y, site.r, 0, Math.PI * 2);
   ctx.fill();
+
+  ctx.globalAlpha = 0.64 * pulse;
   ctx.strokeStyle = stroke;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 3.2;
   ctx.beginPath();
   ctx.arc(site.x, site.y, site.r, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.globalAlpha = 0.88;
-  ctx.fillStyle = stroke;
 
-  if(site.kind==="car"){
-    roundedRectFill(site.x - 16, site.y - 9, 32, 18, 7);
-  } else if(site.kind==="truck"){
-    roundedRectFill(site.x - 24, site.y - 10, 38, 20, 6);
-    roundedRectFill(site.x + 10, site.y - 6, 12, 12, 4);
-  } else if(site.kind==="house" || site.kind==="cabin"){
-    roundedRectFill(site.x - 15, site.y - 10, 30, 22, 6);
-    ctx.fillStyle = "rgba(90,50,35,.9)";
-    ctx.beginPath();
-    ctx.moveTo(site.x - 18, site.y - 10);
-    ctx.lineTo(site.x, site.y - 26);
-    ctx.lineTo(site.x + 18, site.y - 10);
-    ctx.closePath();
-    ctx.fill();
-  } else if(site.kind==="building"){
-    roundedRectFill(site.x - 17, site.y - 18, 34, 36, 6);
-    ctx.fillStyle = "rgba(230,235,245,.45)";
-    for(let row=0; row<3; row++){
-      for(let col=0; col<2; col++){
-        ctx.fillRect(site.x - 10 + col * 10, site.y - 11 + row * 10, 5, 6);
-      }
-    }
-  } else if(site.kind==="park"){
-    ctx.fillStyle = "rgba(24,100,58,.92)";
-    ctx.beginPath();
-    ctx.arc(site.x, site.y - 6, 16, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "rgba(85,55,30,.95)";
-    ctx.fillRect(site.x - 3, site.y + 4, 6, 16);
-  } else {
-    ctx.fillStyle = "rgba(231,245,255,.90)";
-    ctx.fillRect(site.x - 3, site.y - 18, 6, 26);
-    ctx.beginPath();
-    ctx.moveTo(site.x + 3, site.y - 18);
-    ctx.lineTo(site.x + 16, site.y - 10);
-    ctx.lineTo(site.x + 3, site.y - 4);
-    ctx.closePath();
-    ctx.fill();
+  ctx.globalAlpha = 0.42;
+  ctx.strokeStyle = "rgba(220,235,255,.88)";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(site.x, site.y, Math.max(12, site.r - 5), 0, Math.PI * 2);
+  ctx.stroke();
+
+  function drawWheel(wx, wy, rr=3.2){
+    ctx.fillStyle = "rgba(10,14,20,.95)";
+    ctx.beginPath(); ctx.arc(wx, wy, rr, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(150,162,180,.62)";
+    ctx.beginPath(); ctx.arc(wx, wy, rr * 0.45, 0, Math.PI * 2); ctx.fill();
   }
 
-  ctx.globalAlpha = 0.94;
-  ctx.fillStyle = "rgba(245,247,255,.9)";
-  ctx.font = "900 11px system-ui";
-  ctx.fillText(site.label, site.x - Math.min(40, site.label.length * 2.8), site.y + site.r + 14);
+  ctx.globalAlpha = 0.96;
+  if(site.kind==="car"){
+    ctx.fillStyle = "rgba(50,108,185,.95)";
+    roundedRectFill(site.x - 15, site.y - 7, 30, 14, 5);
+    ctx.fillStyle = "rgba(180,220,250,.55)";
+    roundedRectFill(site.x - 8, site.y - 10, 16, 6, 3);
+    ctx.fillStyle = "rgba(220,233,248,.40)";
+    roundedRectFill(site.x - 6, site.y - 9, 5, 4, 2);
+    roundedRectFill(site.x + 1, site.y - 9, 5, 4, 2);
+    drawWheel(site.x - 9, site.y + 7.2, 3.1);
+    drawWheel(site.x + 9, site.y + 7.2, 3.1);
+  } else if(site.kind==="truck"){
+    ctx.fillStyle = "rgba(112,126,146,.95)";
+    roundedRectFill(site.x - 20, site.y - 8, 26, 16, 4);
+    ctx.fillStyle = "rgba(156,173,194,.96)";
+    roundedRectFill(site.x + 7, site.y - 7, 13, 14, 3);
+    ctx.fillStyle = "rgba(208,228,248,.42)";
+    roundedRectFill(site.x + 10, site.y - 5, 7, 5, 2);
+    drawWheel(site.x - 12, site.y + 8.5, 3.2);
+    drawWheel(site.x - 1, site.y + 8.5, 3.2);
+    drawWheel(site.x + 13, site.y + 8.5, 3.2);
+  } else if(site.kind==="house"){
+    ctx.fillStyle = "rgba(206,188,160,.96)";
+    roundedRectFill(site.x - 13, site.y - 9, 26, 18, 4);
+    ctx.fillStyle = "rgba(110,66,38,.95)";
+    ctx.beginPath();
+    ctx.moveTo(site.x - 16, site.y - 9);
+    ctx.lineTo(site.x, site.y - 22);
+    ctx.lineTo(site.x + 16, site.y - 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(90,56,34,.95)";
+    roundedRectFill(site.x - 2, site.y - 1, 4, 10, 1.8);
+    ctx.fillStyle = "rgba(220,234,250,.50)";
+    roundedRectFill(site.x - 9, site.y - 5, 5, 5, 1.6);
+    roundedRectFill(site.x + 4, site.y - 5, 5, 5, 1.6);
+  } else if(site.kind==="cabin"){
+    ctx.fillStyle = "rgba(160,108,66,.96)";
+    roundedRectFill(site.x - 13, site.y - 9, 26, 18, 4);
+    ctx.fillStyle = "rgba(116,70,35,.96)";
+    ctx.beginPath();
+    ctx.moveTo(site.x - 16, site.y - 9);
+    ctx.lineTo(site.x, site.y - 21);
+    ctx.lineTo(site.x + 16, site.y - 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(134,88,52,.92)";
+    ctx.lineWidth = 1.1;
+    for(let i=-10;i<=10;i+=5){
+      ctx.beginPath();
+      ctx.moveTo(site.x - 12, site.y - 6 + (i * 0.2));
+      ctx.lineTo(site.x + 12, site.y - 6 + (i * 0.2));
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(86,52,28,.95)";
+    roundedRectFill(site.x - 2, site.y - 1, 4, 10, 1.8);
+  } else if(site.kind==="building"){
+    ctx.fillStyle = "rgba(96,108,132,.96)";
+    roundedRectFill(site.x - 14, site.y - 16, 28, 32, 4);
+    ctx.fillStyle = "rgba(28,36,52,.86)";
+    roundedRectFill(site.x - 14, site.y - 16, 28, 4, 2);
+    ctx.fillStyle = "rgba(214,228,245,.48)";
+    for(let row=0; row<3; row++){
+      for(let col=0; col<2; col++){
+        roundedRectFill(site.x - 9 + (col * 9), site.y - 11 + (row * 8), 5, 5, 1.2);
+      }
+    }
+    ctx.fillStyle = "rgba(38,48,66,.90)";
+    roundedRectFill(site.x - 2.2, site.y + 6, 4.4, 10, 1.8);
+  } else if(site.kind==="park"){
+    ctx.fillStyle = "rgba(27,121,70,.96)";
+    ctx.beginPath(); ctx.arc(site.x - 6, site.y - 6, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(site.x + 3, site.y - 8, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(92,58,30,.95)";
+    roundedRectFill(site.x - 3, site.y - 1, 4, 11, 1.6);
+    ctx.fillStyle = "rgba(117,84,54,.96)";
+    roundedRectFill(site.x + 6, site.y + 3, 11, 3, 1.2);
+    roundedRectFill(site.x + 6, site.y + 6, 2, 4, 0.8);
+    roundedRectFill(site.x + 15, site.y + 6, 2, 4, 0.8);
+  } else {
+    ctx.fillStyle = "rgba(231,245,255,.92)";
+    roundedRectFill(site.x - 2.2, site.y - 16, 4.4, 22, 1.6);
+    ctx.beginPath();
+    ctx.moveTo(site.x + 2.2, site.y - 15);
+    ctx.lineTo(site.x + 16, site.y - 9);
+    ctx.lineTo(site.x + 2.2, site.y - 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(18,38,64,.85)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(site.x - 9, site.y + 10);
+    ctx.lineTo(site.x + 11, site.y + 10);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 0.96;
+  const badgeW = Math.max(92, Math.min(150, site.label.length * 6.2));
+  roundedRectFill(site.x - (badgeW / 2), site.y + site.r + 6, badgeW, 16, 8);
+  ctx.fillStyle = "rgba(8,12,18,.88)";
+  roundedRectFill(site.x - (badgeW / 2) + 1.5, site.y + site.r + 7.5, badgeW - 3, 13, 6);
+  ctx.fillStyle = "rgba(240,246,255,.96)";
+  ctx.font = "900 10px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(site.label, site.x, site.y + site.r + 18);
+  ctx.textAlign = "start";
   ctx.restore();
 }
 
@@ -17635,6 +17821,9 @@ function drawCivilian(c){
   ctx.translate(bx, by);
   ctx.scale(dir, 1);
 
+  ctx.strokeStyle = "rgba(8,12,18,.42)";
+  ctx.lineWidth = 1.25;
+
   ctx.fillStyle="rgba(8,12,20,.30)";
   ctx.beginPath(); ctx.ellipse(0, 20, 15, 6.2, 0, 0, Math.PI*2); ctx.fill();
 
@@ -17650,10 +17839,15 @@ function drawCivilian(c){
   ctx.strokeStyle="rgba(9,12,18,.44)";
   ctx.lineWidth=1;
   ctx.strokeRect(-9, -12, 18, 24);
+  ctx.strokeRect(-9.5, -12.5, 19, 25);
   ctx.fillStyle="rgba(255,255,255,.16)";
   roundedRectFill(-7, -10, 14, 9, 4);
   ctx.fillStyle="rgba(20,28,40,.44)";
   roundedRectFill(-3, -8, 6, 14, 2);
+  ctx.fillStyle = "rgba(22,30,42,.56)";
+  roundedRectFill(-0.8, -9, 1.6, 18, 1);
+  ctx.fillStyle = "rgba(220,235,255,.14)";
+  roundedRectFill(-6, -11, 12, 3, 2);
 
   ctx.fillStyle="rgba(28,36,48,.92)";
   roundedRectFill(-13, -10, 4, 14, 2);
@@ -17666,9 +17860,13 @@ function drawCivilian(c){
   roundedRectFill(-11, -14, 6, 10, 3);
   ctx.fillStyle="rgba(124,208,255,.45)";
   roundedRectFill(-10, -11, 4, 4, 1.5);
+  ctx.fillStyle = "rgba(38,45,60,.88)";
+  roundedRectFill(5.6, -14, 5.4, 10, 2.5);
 
   ctx.fillStyle=c.skin;
   ctx.beginPath(); ctx.arc(0, -18, 8.5, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "rgba(255,232,210,.26)";
+  ctx.beginPath(); ctx.ellipse(-2, -20, 3.4, 2.1, -0.2, 0, Math.PI*2); ctx.fill();
 
   ctx.fillStyle="rgba(20,20,22,.78)";
   if(c.hair===0){
@@ -17687,6 +17885,10 @@ function drawCivilian(c){
   ctx.strokeStyle="rgba(70,42,32,.78)";
   ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(-2, -15); ctx.lineTo(2, -15); ctx.stroke();
+
+  ctx.fillStyle = "rgba(10,14,20,.85)";
+  roundedRectFill(-9, 12, 7, 2.6, 1.2);
+  roundedRectFill(2, 12, 7, 2.6, 1.2);
 
   ctx.restore();
 
