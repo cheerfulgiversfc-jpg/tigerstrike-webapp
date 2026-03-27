@@ -4,6 +4,14 @@ const PLAYER_STATE_PREFIX = "player_stats_u_";
 const LEADERBOARD_STATE_KEY = "player_leaderboards_v1";
 const LEADERBOARD_VERSION = 1;
 const LEADERBOARD_STORE_LIMIT = 120;
+const SEASON_TIER_LADDER = [
+  { name: "Bronze", minPoints: 0 },
+  { name: "Silver", minPoints: 2500 },
+  { name: "Gold", minPoints: 6000 },
+  { name: "Platinum", minPoints: 10000 },
+  { name: "Diamond", minPoints: 15000 },
+  { name: "Legend", minPoints: 22000 },
+];
 
 function toInt(value, fallback = 0){
   const n = Number(value);
@@ -100,6 +108,54 @@ function scoreFormula(parts){
   return score > 0 ? score : 0;
 }
 
+function seasonTierFromPoints(points){
+  const pts = clampNonNegative(points);
+  let idx = 0;
+  for(let i = 0; i < SEASON_TIER_LADDER.length; i += 1){
+    if(pts >= SEASON_TIER_LADDER[i].minPoints){
+      idx = i;
+    }else{
+      break;
+    }
+  }
+  const current = SEASON_TIER_LADDER[idx];
+  const next = SEASON_TIER_LADDER[idx + 1] || null;
+  const floor = current.minPoints;
+  const ceil = next ? next.minPoints : floor;
+  const span = Math.max(1, ceil - floor);
+  const progressRaw = next ? Math.floor(((pts - floor) / span) * 100) : 100;
+  return {
+    index: idx,
+    current: current.name,
+    next: next ? next.name : "MAX",
+    nextPoints: next ? next.minPoints : floor,
+    pointsToNext: next ? Math.max(0, next.minPoints - pts) : 0,
+    progressPct: Math.max(0, Math.min(100, progressRaw)),
+  };
+}
+
+function buildSeasonSnapshot(profile){
+  const weekly = (profile && profile.weekly && typeof profile.weekly === "object") ? profile.weekly : {};
+  const points = clampNonNegative(weekly.score);
+  const tier = seasonTierFromPoints(points);
+  return {
+    period: safeText(weekly.period || weekKeyUTC()),
+    points,
+    tier: tier.current,
+    tierIndex: tier.index,
+    nextTier: tier.next,
+    nextTierPoints: clampNonNegative(tier.nextPoints),
+    pointsToNext: clampNonNegative(tier.pointsToNext),
+    progressPct: clampNonNegative(tier.progressPct),
+    kills: clampNonNegative(weekly.kills),
+    captures: clampNonNegative(weekly.captures),
+    evac: clampNonNegative(weekly.evac),
+    civiliansLost: clampNonNegative(weekly.civiliansLost),
+    missionsCleared: clampNonNegative(weekly.missionsCleared),
+    cashEarned: clampNonNegative(weekly.cashEarned),
+  };
+}
+
 function defaultProfile(user, userId = 0){
   const snap = userSnapshot(user, userId);
   const ts = nowSec();
@@ -169,6 +225,22 @@ function defaultProfile(user, userId = 0){
       missionsCleared: 0,
       cashEarned: 0,
       score: 0,
+    },
+    season: {
+      period: week,
+      points: 0,
+      tier: "Bronze",
+      tierIndex: 0,
+      nextTier: "Silver",
+      nextTierPoints: 2500,
+      pointsToNext: 2500,
+      progressPct: 0,
+      kills: 0,
+      captures: 0,
+      evac: 0,
+      civiliansLost: 0,
+      missionsCleared: 0,
+      cashEarned: 0,
     },
     ops: {
       kills: 0,
@@ -275,6 +347,7 @@ function normalizeProfile(raw, user = null, fallbackUserId = 0){
   out.daily.missionsCleared = clampNonNegative(out.daily.missionsCleared);
   out.daily.cashEarned = clampNonNegative(out.daily.cashEarned);
   out.daily.score = clampNonNegative(out.daily.score);
+  out.season = buildSeasonSnapshot(out);
 
   out.ops.kills = clampNonNegative(out.ops.kills);
   out.ops.captures = clampNonNegative(out.ops.captures);
@@ -395,6 +468,7 @@ function recomputeScores(profile){
     missionsCleared: profile.monthly.missionsCleared,
     cashEarned: profile.monthly.cashEarned,
   });
+  profile.season = buildSeasonSnapshot(profile);
 }
 
 function profileStateKey(userId){
@@ -418,6 +492,7 @@ async function writeProfile(profile){
 
 function leaderboardEntryFromProfile(profile, scoreField = "lifetimeScore"){
   const score = clampNonNegative(profile?.[scoreField]);
+  const season = (profile && profile.season && typeof profile.season === "object") ? profile.season : {};
   const ops = (profile && profile.ops && typeof profile.ops === "object") ? profile.ops : {};
   return {
     userId: safeUserId(profile?.userId),
@@ -434,12 +509,15 @@ function leaderboardEntryFromProfile(profile, scoreField = "lifetimeScore"){
     claimsPaid: clampNonNegative(profile?.claimsPaid),
     fundsGranted: clampNonNegative(profile?.fundsGrantedTotal),
     referrals: clampNonNegative(profile?.referralsStarted),
+    seasonPoints: clampNonNegative(season.points),
+    seasonTier: safeText(season.tier || "Bronze"),
     updatedAt: toInt(profile?.updatedAt, nowSec()),
   };
 }
 
 function periodEntryFromProfile(profile, bucket = "weekly"){
   const node = (profile && profile[bucket] && typeof profile[bucket] === "object") ? profile[bucket] : {};
+  const season = (profile && profile.season && typeof profile.season === "object") ? profile.season : {};
   return {
     userId: safeUserId(profile?.userId),
     username: safeUsername(profile?.username),
@@ -455,6 +533,8 @@ function periodEntryFromProfile(profile, bucket = "weekly"){
     claimsPaid: clampNonNegative(node.claimsPaid),
     fundsGranted: clampNonNegative(node.fundsGranted),
     referrals: clampNonNegative(node.referrals),
+    seasonPoints: clampNonNegative(season.points || node.score),
+    seasonTier: safeText(season.tier || "Bronze"),
     updatedAt: toInt(profile?.updatedAt, nowSec()),
   };
 }
@@ -511,6 +591,7 @@ function defaultLeaderboardState(){
     updatedAt: nowSec(),
     global: { entries: [] },
     weekly: { period: weekKeyUTC(), entries: [] },
+    season: { period: weekKeyUTC(), entries: [] },
     monthly: { period: monthKeyUTC(), entries: [] },
     clans: { entries: [] },
   };
@@ -530,6 +611,10 @@ function normalizeLeaderboardState(raw){
       ...(base.weekly || {}),
       ...(src.weekly && typeof src.weekly === "object" ? src.weekly : {}),
     },
+    season: {
+      ...(base.season || {}),
+      ...(src.season && typeof src.season === "object" ? src.season : {}),
+    },
     monthly: {
       ...(base.monthly || {}),
       ...(src.monthly && typeof src.monthly === "object" ? src.monthly : {}),
@@ -541,9 +626,11 @@ function normalizeLeaderboardState(raw){
   };
   out.updatedAt = toInt(out.updatedAt, nowSec());
   out.weekly.period = safeText(out.weekly.period || weekKeyUTC());
+  out.season.period = safeText(out.season.period || weekKeyUTC());
   out.monthly.period = safeText(out.monthly.period || monthKeyUTC());
   out.global.entries = sortedTrimmed(out.global.entries, LEADERBOARD_STORE_LIMIT);
   out.weekly.entries = sortedTrimmed(out.weekly.entries, LEADERBOARD_STORE_LIMIT);
+  out.season.entries = sortedTrimmed(out.season.entries, LEADERBOARD_STORE_LIMIT);
   out.monthly.entries = sortedTrimmed(out.monthly.entries, LEADERBOARD_STORE_LIMIT);
   out.clans.entries = sortedTrimmed(out.clans.entries, LEADERBOARD_STORE_LIMIT);
   return out;
@@ -556,12 +643,16 @@ async function updateLeaderboardsFromProfile(profile){
   if(board.weekly.period !== week){
     board.weekly = { period: week, entries: [] };
   }
+  if(board.season.period !== week){
+    board.season = { period: week, entries: [] };
+  }
   if(board.monthly.period !== month){
     board.monthly = { period: month, entries: [] };
   }
 
   board.global.entries = upsertLeaderboardEntry(board.global.entries, leaderboardEntryFromProfile(profile), LEADERBOARD_STORE_LIMIT);
   board.weekly.entries = upsertLeaderboardEntry(board.weekly.entries, periodEntryFromProfile(profile, "weekly"), LEADERBOARD_STORE_LIMIT);
+  board.season.entries = upsertLeaderboardEntry(board.season.entries, periodEntryFromProfile(profile, "weekly"), LEADERBOARD_STORE_LIMIT);
   board.monthly.entries = upsertLeaderboardEntry(board.monthly.entries, periodEntryFromProfile(profile, "monthly"), LEADERBOARD_STORE_LIMIT);
   board.clans.entries = upsertLeaderboardEntry(board.clans.entries, recruiterEntryFromProfile(profile), LEADERBOARD_STORE_LIMIT);
   board.updatedAt = nowSec();
@@ -782,15 +873,18 @@ async function getLeaderboardSnapshot(limit = 10){
   const week = weekKeyUTC();
   const month = monthKeyUTC();
   const weeklyEntries = (board.weekly.period === week) ? board.weekly.entries : [];
+  const seasonEntries = (board.season.period === week) ? board.season.entries : [];
   const monthlyEntries = (board.monthly.period === month) ? board.monthly.entries : [];
   return {
     updatedAt: board.updatedAt,
     periods: {
       weekly: week,
+      season: week,
       monthly: month,
     },
     global: board.global.entries.slice(0, max),
     weekly: weeklyEntries.slice(0, max),
+    season: seasonEntries.slice(0, max),
     monthly: monthlyEntries.slice(0, max),
     clans: board.clans.entries.slice(0, max),
   };

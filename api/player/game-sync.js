@@ -31,6 +31,7 @@ module.exports = async function handler(req, res){
       userId: Number(profile.userId || 0),
       daily: profile.daily || null,
       weekly: profile.weekly || null,
+      season: profile.season || null,
       monthly: profile.monthly || null,
       lifetimeScore: Number(profile.lifetimeScore || 0),
     });
@@ -38,4 +39,3 @@ module.exports = async function handler(req, res){
     return json(res, 500, { ok:false, error:e?.message || "Gameplay sync failed." });
   }
 };
-

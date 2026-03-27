@@ -132,6 +132,7 @@ function leaderboardMenuText(){
   return [
     "Leaderboard Menu",
     "Pick a leaderboard view:",
+    "Season runs weekly in this MVP.",
   ].join("\n");
 }
 
@@ -239,6 +240,7 @@ function eventsText(){
     "Events",
     "Live events and campaign drops are announced in-channel.",
     "Use /news and /update for latest notices.",
+    "Use /season to check this week’s season points/tier.",
   ].join("\n");
 }
 
@@ -297,7 +299,7 @@ function groupIntentText(intent){
     return [
       "Leaderboard:",
       "Use /leaderboard for menu view.",
-      "Quick commands: /top10, /weeklyleaders, /monthlyleaders, /myposition.",
+      "Quick commands: /top10, /weeklyleaders, /monthlyleaders, /season, /myposition.",
     ].join("\n");
   }
   if(intent === "missions"){
@@ -409,6 +411,7 @@ async function myStatsText(user){
 
   const day = (stats.daily && typeof stats.daily === "object") ? stats.daily : {};
   const week = (stats.weekly && typeof stats.weekly === "object") ? stats.weekly : {};
+  const season = (stats.season && typeof stats.season === "object") ? stats.season : {};
   const month = (stats.monthly && typeof stats.monthly === "object") ? stats.monthly : {};
   const ops = (stats.ops && typeof stats.ops === "object") ? stats.ops : {};
   const lastMode = String(ops.lastMode || "Story");
@@ -440,6 +443,10 @@ async function myStatsText(user){
     "Lifetime",
     `Kills: ${fmtNum(ops.kills)} • Captures: ${fmtNum(ops.captures)} • Civilians Saved: ${fmtNum(ops.evac)} • Civilians Lost: ${fmtNum(ops.civiliansLost)}`,
     `Missions Cleared: ${fmtNum(ops.missionsCleared)} • Cash Obtained: $${fmtNum(ops.cashEarned)}`,
+    "",
+    `Season (${season.period || week.period || "-"})`,
+    `Points: ${fmtNum(season.points || week.score)} • Tier: ${season.tier || "Bronze"} • Progress: ${fmtNum(season.progressPct)}%`,
+    `Next Tier: ${season.nextTier || "MAX"}${Number(season.pointsToNext || 0) > 0 ? ` in ${fmtNum(season.pointsToNext)} pts` : ""}`,
     "",
     `Leaderboard Score • Daily: ${fmtNum(day.score)} • Weekly: ${fmtNum(week.score)} • Monthly: ${fmtNum(month.score)} • Lifetime: ${fmtNum(stats.lifetimeScore)}`,
     `Last Synced Mission: ${lastMode} Mission ${lastMission} • Commander Lv ${lastLevel} • HP ${lastHp} • Armor ${lastArmor} • Funds $${lastFunds}`,
@@ -493,6 +500,14 @@ async function leaderboardSectionText(kind, user){
     return [`Weekly Leaderboard (${snapshot.periods?.weekly || "current"})`, ...rows].join("\n");
   }
 
+  if(mode === "season"){
+    const rows = formatLeaderboardRows(
+      snapshot.season,
+      (entry)=>`${fmtNum(entry.seasonPoints || entry.score)} pts • Tier ${entry.seasonTier || "Bronze"} • Missions ${fmtNum(entry.missionsCleared)}`
+    );
+    return [`Season Leaderboard (${snapshot.periods?.season || "current"})`, ...rows].join("\n");
+  }
+
   if(mode === "monthly"){
     const rows = formatLeaderboardRows(
       snapshot.monthly,
@@ -513,12 +528,14 @@ async function leaderboardSectionText(kind, user){
   if(mode === "myposition"){
     const g = rankForUser(snapshot.global, uid);
     const w = rankForUser(snapshot.weekly, uid);
+    const s = rankForUser(snapshot.season, uid);
     const m = rankForUser(snapshot.monthly, uid);
     const c = rankForUser(snapshot.clans, uid);
     return [
       "My Position",
       `Global: ${g ? `#${g}` : "Outside Top 10"}`,
       `Weekly: ${w ? `#${w}` : "Outside Top 10"}`,
+      `Season: ${s ? `#${s}` : "Outside Top 10"}`,
       `Monthly: ${m ? `#${m}` : "Outside Top 10"}`,
       `Clan/Recruiter: ${c ? `#${c}` : "Outside Top 10"}`,
       "",
@@ -527,6 +544,43 @@ async function leaderboardSectionText(kind, user){
   }
 
   return "Leaderboard data unavailable.";
+}
+
+async function seasonText(user){
+  const uid = toInt(user?.id || 0);
+  if(!uid){
+    return [
+      "Season",
+      "Open a private chat with the bot, then run /season there.",
+    ].join("\n");
+  }
+  const stats = await getPlayerStats(user);
+  if(!stats){
+    return [
+      "Season",
+      "No gameplay profile found yet.",
+      "Play a mission and tap Save in-game first.",
+    ].join("\n");
+  }
+  const season = (stats.season && typeof stats.season === "object") ? stats.season : {};
+  const board = await getLeaderboardSnapshot(10);
+  const seasonRows = Array.isArray(board.season) ? board.season : [];
+  const rank = rankForUser(seasonRows, uid);
+  const top = seasonRows.slice(0, 3).map((entry, idx)=>`#${idx + 1} ${entryLabel(entry)} • ${fmtNum(entry.seasonPoints || entry.score)} pts`).join("\n");
+
+  return [
+    `Season (${season.period || board.periods?.season || "-"})`,
+    `Points: ${fmtNum(season.points || 0)}`,
+    `Tier: ${season.tier || "Bronze"} (${fmtNum(season.progressPct || 0)}%)`,
+    `Next: ${season.nextTier || "MAX"}${Number(season.pointsToNext || 0) > 0 ? ` in ${fmtNum(season.pointsToNext)} pts` : ""}`,
+    `Rank: ${rank ? `#${rank}` : "Outside Top 10"}`,
+    "",
+    "This Week",
+    `Kills: ${fmtNum(season.kills)} • Captures: ${fmtNum(season.captures)} • Saved: ${fmtNum(season.evac)} • Lost: ${fmtNum(season.civiliansLost)}`,
+    `Missions: ${fmtNum(season.missionsCleared)} • Cash: $${fmtNum(season.cashEarned)}`,
+    "",
+    top ? `Top 3\n${top}` : "Top 3\nNo ranked players yet.",
+  ].join("\n");
 }
 
 function mainMenuKeyboard(botUsername){
@@ -559,6 +613,7 @@ function leaderboardMenuKeyboard(){
       [{ text: "Global Top 10", callback_data: "menu_lb_global" }],
       [
         { text: "Weekly", callback_data: "menu_lb_weekly" },
+        { text: "Season", callback_data: "menu_lb_season" },
         { text: "Monthly", callback_data: "menu_lb_monthly" },
       ],
       [
@@ -1175,9 +1230,14 @@ async function handleCommand(botToken, update, source){
     }
     case "events":
     case "news":
-    case "update":
-    case "season": {
+    case "update": {
       await sendMessage(botToken, ctx.chat.id, eventsText(), {
+        reply_markup: leafMenuKeyboard("menu_open"),
+      });
+      return true;
+    }
+    case "season": {
+      await sendMessage(botToken, ctx.chat.id, await seasonText(ctx.from), {
         reply_markup: leafMenuKeyboard("menu_open"),
       });
       return true;
@@ -1390,6 +1450,12 @@ async function handleCallbackQuery(botToken, update){
   if(data === "menu_lb_weekly"){
     await answerCallback(botToken, q.id, "Weekly leaderboard");
     await editMenuMessage(botToken, q, await leaderboardSectionText("weekly", q.from), leafMenuKeyboard("menu_leaderboard"));
+    return;
+  }
+
+  if(data === "menu_lb_season"){
+    await answerCallback(botToken, q.id, "Season leaderboard");
+    await editMenuMessage(botToken, q, await leaderboardSectionText("season", q.from), leafMenuKeyboard("menu_leaderboard"));
     return;
   }
 
