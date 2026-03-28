@@ -3604,9 +3604,15 @@ function stabilityHealthTick(){
   const slow = frameIsSlow();
   const mobile = isMobileViewport();
   const lagTier = frameLagTier();
-  const fxCap = slow ? (mobile ? 14 : 22) : (lagTier >= 1 ? (mobile ? 16 : 22) : (mobile ? 24 : 34));
-  const popupCap = slow ? (mobile ? 10 : 16) : (lagTier >= 1 ? (mobile ? 12 : 16) : (mobile ? 18 : 24));
-  const pulseCap = slow ? (mobile ? 8 : 14) : (lagTier >= 1 ? (mobile ? 10 : 14) : (mobile ? 14 : 22));
+  const perfMode = performanceMode() === "PERFORMANCE";
+  let fxCap = slow ? (mobile ? 14 : 22) : (lagTier >= 1 ? (mobile ? 16 : 22) : (mobile ? 24 : 34));
+  let popupCap = slow ? (mobile ? 10 : 16) : (lagTier >= 1 ? (mobile ? 12 : 16) : (mobile ? 18 : 24));
+  let pulseCap = slow ? (mobile ? 8 : 14) : (lagTier >= 1 ? (mobile ? 10 : 14) : (mobile ? 14 : 22));
+  if(perfMode){
+    fxCap = Math.min(fxCap, mobile ? 12 : 18);
+    popupCap = Math.min(popupCap, mobile ? 9 : 14);
+    pulseCap = Math.min(pulseCap, mobile ? 7 : 12);
+  }
   if(COMBAT_FX.length > fxCap) COMBAT_FX.splice(0, COMBAT_FX.length - fxCap);
   if(DAMAGE_POPUPS.length > popupCap) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - popupCap);
   if(IMPACT_PULSES.length > pulseCap) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - pulseCap);
@@ -6112,6 +6118,12 @@ function safeSpawnPoint(x, y, radius=16, avoidKeepout=true, avoidWater=false){
     x: clamp(x, 30 + radius, cv.width - (30 + radius)),
     y: clamp(y, 48 + radius, cv.height - (22 + radius))
   };
+}
+function pointInViewportPad(x, y, pad=120){
+  if(!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const w = Number(cv?.width || 960);
+  const h = Number(cv?.height || 540);
+  return x >= -pad && x <= (w + pad) && y >= -pad && y <= (h + pad);
 }
 function unstickEntitiesTick(){
   if(!S || S.paused || S.gameOver || S.missionEnded) return;
@@ -14037,17 +14049,83 @@ function roamTigers(){
     const batchRatio = lagTier >= 2 ? 0.40 : (underLoad ? 0.52 : 0.62);
     const batchMin = lagTier >= 2 ? 4 : (underLoad ? 6 : 8);
     const batchSize = Math.max(batchMin, Math.ceil(aliveTigers.length * batchRatio));
-    const start = (S._tigerBatchStart || 0) % aliveTigers.length;
-    tickTigers = [];
-    for(let i=0; i<batchSize; i++){
-      tickTigers.push(aliveTigers[(start + i) % aliveTigers.length]);
+    const pinned = [];
+    const priority = [];
+    const background = [];
+    for(const tiger of aliveTigers){
+      const isPinned = tiger.id === S.lockedTigerId || tiger.id === S.activeTigerId;
+      if(isPinned){
+        pinned.push(tiger);
+        continue;
+      }
+      const nearPlayer = dist(tiger.x, tiger.y, S.me.x, S.me.y) <= 300;
+      const nearViewport = pointInViewportPad(tiger.x, tiger.y, 140);
+      let nearCiv = false;
+      if(liveCivs.length){
+        for(const civ of liveCivs){
+          if(dist(tiger.x, tiger.y, civ.x, civ.y) <= 176){
+            nearCiv = true;
+            break;
+          }
+        }
+      }
+      if(nearPlayer || nearViewport || nearCiv){
+        priority.push(tiger);
+      }else{
+        background.push(tiger);
+      }
     }
-    S._tigerBatchStart = (start + batchSize) % aliveTigers.length;
+
+    const maxPriority = lagTier >= 2 ? 8 : (underLoad ? 11 : 14);
+    priority.sort((a, b)=>dist(a.x, a.y, S.me.x, S.me.y) - dist(b.x, b.y, S.me.x, S.me.y));
+    const keepPriority = priority.slice(0, Math.max(0, maxPriority - pinned.length));
+    const overflowPriority = priority.slice(keepPriority.length);
+    if(overflowPriority.length) background.unshift(...overflowPriority);
+
+    const backgroundLen = background.length;
+    const start = backgroundLen > 0 ? ((S._tigerBatchStart || 0) % backgroundLen) : 0;
+    const batch = [];
+    if(backgroundLen > 0){
+      const dynamicBatch = Math.max(1, batchSize - pinned.length - keepPriority.length);
+      for(let i=0; i<dynamicBatch; i++){
+        batch.push(background[(start + i) % backgroundLen]);
+      }
+      S._tigerBatchStart = (start + dynamicBatch) % backgroundLen;
+    } else {
+      S._tigerBatchStart = 0;
+    }
+    tickTigers = [...pinned, ...keepPriority, ...batch];
   } else {
     S._tigerBatchStart = 0;
   }
 
   for(const t of tickTigers){
+    const playerDist = dist(t.x, t.y, S.me.x, S.me.y);
+    const keyTiger = t.id === S.lockedTigerId || t.id === S.activeTigerId || isBossTiger(t);
+    const nearViewport = pointInViewportPad(t.x, t.y, 150);
+    let nearCivilian = false;
+    if(liveCivs.length){
+      for(const civ of liveCivs){
+        if(dist(t.x, t.y, civ.x, civ.y) <= 180){
+          nearCivilian = true;
+          break;
+        }
+      }
+    }
+    const heavyFrame = lagTier >= 1 || frameIsSlow() || performanceMode() === "PERFORMANCE";
+    if(heavyFrame && !keyTiger && !nearViewport && !nearCivilian && playerDist > 360){
+      if(now < (t._nextFarThinkAt || 0)){
+        t.vx = (t.vx || 0) * 0.94;
+        t.vy = (t.vy || 0) * 0.94;
+        t.x = clamp(t.x + t.vx, 40, cv.width - 40);
+        t.y = clamp(t.y + t.vy, 60, cv.height - 40);
+        t.step = (t.step + 0.04) % (Math.PI * 2);
+        continue;
+      }
+      t._nextFarThinkAt = now + (lagTier >= 2 ? 130 : 90);
+    } else {
+      t._nextFarThinkAt = 0;
+    }
 
     abilityTick(t);
 
@@ -14068,7 +14146,6 @@ function roamTigers(){
     let targetX=t.x + Math.cos(t.wanderAngle) * 20;
     let targetY=t.y + Math.sin(t.wanderAngle) * 20;
     let targetDist=Infinity;
-    const playerDist = dist(t.x,t.y,S.me.x,S.me.y);
 
     let closestCiv=null, closestCivDist=1e9;
     for(const c of civs){
@@ -18820,7 +18897,7 @@ function draw(){
           : (lagCritical ? 74 : (lagHeavy ? 60 : 42)),
         1.55
       ), roamTigers, {
-        costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
+        costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
       runFrameTask("bossIdentity", frameInterval(92, 1.45), bossIdentityTick, { costHint:0.9, critical:true });
       runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
@@ -18830,7 +18907,7 @@ function draw(){
           : (lagCritical ? 112 : (lagHeavy ? 90 : 64)),
         1.8
       ), supportUnitsTick, {
-        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
+        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
       let usedKeyboard = false;
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
@@ -18842,7 +18919,7 @@ function draw(){
           : (lagCritical ? 98 : (lagHeavy ? 78 : 56)),
         1.5
       ), followCiviliansTick, {
-        costHint:1.7, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
+        costHint:1.7, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
       runFrameTask("civThreats", frameInterval(
@@ -18851,7 +18928,7 @@ function draw(){
           : (lagCritical ? 156 : (lagHeavy ? 126 : 92)),
         1.5
       ), tickCiviliansAndThreats, {
-        costHint:1.6, cadence:1, slowCadence:2, heavyCadence:5, extremeCadence:6
+        costHint:1.6, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
       runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 44 : (lagHeavy ? 36 : 28)) : (lagCritical ? 56 : (lagHeavy ? 46 : 36)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
