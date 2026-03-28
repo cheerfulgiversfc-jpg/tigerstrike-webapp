@@ -2725,6 +2725,9 @@ let __frameBgFxFlip = 0;
 let __frameDynamicLoadMul = FRAME_LOAD_LIGHT;
 let __battleHudRenderAt = 0;
 let __battleReadabilityRenderAt = 0;
+let __liteEntityRenderState = false;
+let __liteEntityRenderNeedSince = 0;
+let __liteEntityRenderRelaxUntil = 0;
 let __frameSpikePending = false;
 const __frameErrorGate = Object.create(null);
 const __blockedAtCache = new Map();
@@ -2879,6 +2882,9 @@ function updatePerformanceLabels(){
 function togglePerformanceMode(){
   const mode = performanceMode();
   S.performanceMode = mode === "PERFORMANCE" ? "AUTO" : "PERFORMANCE";
+  __liteEntityRenderNeedSince = 0;
+  __liteEntityRenderRelaxUntil = 0;
+  if(!isMobileViewport()) __liteEntityRenderState = false;
   updatePerformanceLabels();
   save();
   toast(S.performanceMode === "PERFORMANCE"
@@ -18482,10 +18488,51 @@ function drawTiger(t){
 }
 
 function useLiteEntityRender(){
-  if(!isMobileViewport()) return false;
-  if(frameLagTier() >= 1) return true;
-  if(frameIsSlow() && (performanceMode() === "PERFORMANCE" || frameActiveEntityLoadScore() >= 34)) return true;
-  return false;
+  if(!isMobileViewport()){
+    __liteEntityRenderState = false;
+    __liteEntityRenderNeedSince = 0;
+    __liteEntityRenderRelaxUntil = 0;
+    return false;
+  }
+
+  const now = performance.now ? performance.now() : Date.now();
+  const mode = performanceMode();
+  const lagTier = frameLagTier();
+  const loadScore = frameActiveEntityLoadScore();
+  const slow = frameIsSlow(now);
+
+  // Hard triggers switch immediately; soft triggers require sustained pressure.
+  const hardNeed = lagTier >= 2 || loadScore >= 62;
+  const softNeed =
+    lagTier >= 1 ||
+    (slow && loadScore >= 42) ||
+    (mode === "PERFORMANCE" && slow && loadScore >= 48);
+
+  if(hardNeed || softNeed){
+    if(!__liteEntityRenderNeedSince) __liteEntityRenderNeedSince = now;
+  } else {
+    __liteEntityRenderNeedSince = 0;
+  }
+
+  const engageDelayMs = mode === "PERFORMANCE" ? 320 : 520;
+  const releaseHoldMs = mode === "PERFORMANCE" ? 1100 : 1400;
+
+  if(!__liteEntityRenderState){
+    const needFor = __liteEntityRenderNeedSince ? (now - __liteEntityRenderNeedSince) : 0;
+    if(hardNeed || (softNeed && needFor >= engageDelayMs)){
+      __liteEntityRenderState = true;
+      __liteEntityRenderRelaxUntil = now + releaseHoldMs;
+    }
+  } else {
+    const stillNeed = hardNeed || softNeed;
+    if(stillNeed){
+      __liteEntityRenderRelaxUntil = now + releaseHoldMs;
+    } else if(now >= __liteEntityRenderRelaxUntil){
+      __liteEntityRenderState = false;
+    }
+  }
+
+  return __liteEntityRenderState;
 }
 function drawEntitiesLite(){
   ctx.fillStyle = "rgba(77,47,33,.64)";
