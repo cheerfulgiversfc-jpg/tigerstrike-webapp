@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4461";
+const TS_BUILD = "4462";
 if(tg){
   try{
     tg.expand?.();
@@ -72,6 +72,7 @@ const CONTRACTS_VERSION = 1;
 const CONTRACT_DAILY_COUNT = 3;
 const CONTRACT_WEEKLY_COUNT = 3;
 const CONTRACT_REFRESH_THROTTLE_MS = 15000;
+const LIVE_OPS_VERSION = 1;
 
 const DEFAULT_CONTRACT_TALLIES = Object.freeze({
   missionsCleared:0,
@@ -215,6 +216,54 @@ const WEEKLY_CONTRACT_POOL = Object.freeze([
     metric:"cashEarned",
     target:26000,
     reward:{ cash:7200, perkPoints:4 }
+  }),
+]);
+
+const LIVE_OPS_POOL = Object.freeze([
+  Object.freeze({
+    id:"OPS_GREEN_CORRIDOR",
+    title:"Operation Green Corridor",
+    desc:"Evacuate 18 civilians in Story/Arcade operations this week.",
+    metric:"evac",
+    target:18,
+    reward:{ cash:4600, perkPoints:2, medkits:2, shields:1 },
+    modifiers:{ eventChanceMul:1.04, supplyWeightMul:1.16, rogueWeightMul:0.90, payoutMul:1.04 }
+  }),
+  Object.freeze({
+    id:"OPS_IRON_NET",
+    title:"Operation Iron Net",
+    desc:"Trap-stop 9 tigers this week.",
+    metric:"trapsTriggered",
+    target:9,
+    reward:{ cash:4200, perkPoints:2, traps:2, armorPlates:2 },
+    modifiers:{ eventChanceMul:1.00, supplyWeightMul:0.96, rogueWeightMul:1.10, payoutMul:1.05 }
+  }),
+  Object.freeze({
+    id:"OPS_SILENT_FANG",
+    title:"Operation Silent Fang",
+    desc:"Capture 10 tigers this week.",
+    metric:"captures",
+    target:10,
+    reward:{ cash:5200, perkPoints:3, ammo:18 },
+    modifiers:{ eventChanceMul:0.96, supplyWeightMul:0.94, rogueWeightMul:1.12, fogWeightMul:1.10, payoutMul:1.08 }
+  }),
+  Object.freeze({
+    id:"OPS_SCORCHED_TRAIL",
+    title:"Operation Scorched Trail",
+    desc:"Kill 12 tigers this week.",
+    metric:"kills",
+    target:12,
+    reward:{ cash:5000, perkPoints:2, armorPlates:2, shields:1 },
+    modifiers:{ eventChanceMul:1.08, supplyWeightMul:0.88, rogueWeightMul:1.20, payoutMul:1.06 }
+  }),
+  Object.freeze({
+    id:"OPS_WAR_CHEST",
+    title:"Operation War Chest",
+    desc:"Earn $28,000 mission cash this week.",
+    metric:"cashEarned",
+    target:28000,
+    reward:{ cash:7400, perkPoints:3, medkits:2, traps:2, ammo:22 },
+    modifiers:{ eventChanceMul:1.02, supplyWeightMul:1.08, bonusWeightMul:1.16, payoutMul:1.10 }
   }),
 ]);
 
@@ -524,6 +573,206 @@ function claimAllContracts(period="daily"){
   }
 }
 
+function normalizeLiveOpsReward(raw={}){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  return {
+    cash: Math.max(0, Math.floor(Number(src.cash || 0))),
+    perkPoints: Math.max(0, Math.floor(Number(src.perkPoints || 0))),
+    medkits: Math.max(0, Math.floor(Number(src.medkits || 0))),
+    shields: Math.max(0, Math.floor(Number(src.shields || 0))),
+    traps: Math.max(0, Math.floor(Number(src.traps || 0))),
+    armorPlates: Math.max(0, Math.floor(Number(src.armorPlates || 0))),
+    ammo: Math.max(0, Math.floor(Number(src.ammo || 0))),
+  };
+}
+function normalizeLiveOpsModifiers(raw={}){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  return {
+    eventChanceMul: clamp(Number(src.eventChanceMul || 1), 0.72, 1.35),
+    supplyWeightMul: clamp(Number(src.supplyWeightMul || 1), 0.65, 1.45),
+    rogueWeightMul: clamp(Number(src.rogueWeightMul || 1), 0.65, 1.45),
+    fogWeightMul: clamp(Number(src.fogWeightMul || 1), 0.65, 1.45),
+    bonusWeightMul: clamp(Number(src.bonusWeightMul || 1), 0.65, 1.45),
+    payoutMul: clamp(Number(src.payoutMul || 1), 0.80, 1.22),
+  };
+}
+function generateLiveOpsEntry(weekKey, state=S){
+  const pool = Array.isArray(LIVE_OPS_POOL) ? LIVE_OPS_POOL : [];
+  if(!pool.length) return null;
+  const seed = contractHashInt(`liveops|${weekKey}|v${LIVE_OPS_VERSION}`);
+  const template = pool[seed % pool.length] || pool[0];
+  const metric = String(template.metric || "missionsCleared");
+  const target = Math.max(1, Math.floor(Number(template.target || 1)));
+  return {
+    id: `liveops_${weekKey}_${template.id}`,
+    key: template.id,
+    title: String(template.title || "Weekly Live Ops"),
+    desc: String(template.desc || "Complete this week's operation."),
+    metric,
+    target,
+    baseline: Math.max(0, Math.floor(Number(contractMetricValue(metric, state)))),
+    reward: normalizeLiveOpsReward(template.reward),
+    modifiers: normalizeLiveOpsModifiers(template.modifiers),
+    claimed: false,
+    claimedAt: 0,
+    createdAt: Date.now(),
+  };
+}
+function normalizeLiveOpsEntry(entry, state=S){
+  if(!entry || typeof entry !== "object") return null;
+  const metric = String(entry.metric || "").trim();
+  if(!metric || !Object.prototype.hasOwnProperty.call(DEFAULT_CONTRACT_TALLIES, metric)) return null;
+  const target = Math.max(1, Math.floor(Number(entry.target || 1)));
+  return {
+    id: String(entry.id || `liveops_${Date.now()}`),
+    key: String(entry.key || "LIVE_OPS"),
+    title: String(entry.title || "Weekly Live Ops"),
+    desc: String(entry.desc || "Complete this week's operation."),
+    metric,
+    target,
+    baseline: Math.max(0, Math.floor(Number(entry.baseline ?? contractMetricValue(metric, state)))),
+    reward: normalizeLiveOpsReward(entry.reward),
+    modifiers: normalizeLiveOpsModifiers(entry.modifiers),
+    claimed: !!entry.claimed,
+    claimedAt: Math.max(0, Math.floor(Number(entry.claimedAt || 0))),
+    createdAt: Math.max(0, Math.floor(Number(entry.createdAt || Date.now()))),
+  };
+}
+function ensureLiveOpsState(state=S, opts={}){
+  if(!state || typeof state !== "object") return false;
+  ensureContractTalliesState(state);
+  const now = Number(opts.now || Date.now());
+  const weekKey = contractWeekKey(now);
+  let changed = false;
+  if(!state.liveOps || typeof state.liveOps !== "object"){
+    state.liveOps = {};
+    changed = true;
+  }
+  const stale = state.liveOps.key !== weekKey || Number(state.liveOps.version || 0) !== LIVE_OPS_VERSION;
+  if(stale){
+    state.liveOps = {
+      version: LIVE_OPS_VERSION,
+      key: weekKey,
+      resetAt: nextUtcWeekMs(now),
+      entry: generateLiveOpsEntry(weekKey, state),
+      refreshedAt: now,
+      lastToastAt: 0,
+    };
+    changed = true;
+  } else {
+    state.liveOps.version = LIVE_OPS_VERSION;
+    state.liveOps.key = weekKey;
+    state.liveOps.resetAt = nextUtcWeekMs(now);
+    const normalized = normalizeLiveOpsEntry(state.liveOps.entry, state);
+    if(!normalized){
+      state.liveOps.entry = generateLiveOpsEntry(weekKey, state);
+      changed = true;
+    } else {
+      state.liveOps.entry = normalized;
+    }
+    if(!Number.isFinite(Number(state.liveOps.lastToastAt))){
+      state.liveOps.lastToastAt = 0;
+      changed = true;
+    }
+  }
+  return changed;
+}
+function liveOpsEntry(state=S){
+  ensureLiveOpsState(state);
+  return state?.liveOps?.entry || null;
+}
+function liveOpsEntryProgress(entry, state=S){
+  if(!entry || typeof entry !== "object") return 0;
+  const metricNow = contractMetricValue(entry.metric, state);
+  const baseline = Math.max(0, Math.floor(Number(entry.baseline || 0)));
+  return Math.max(0, metricNow - baseline);
+}
+function liveOpsEntryIsReady(entry, state=S){
+  if(!entry || typeof entry !== "object") return false;
+  return !entry.claimed && liveOpsEntryProgress(entry, state) >= Math.max(1, Math.floor(Number(entry.target || 1)));
+}
+function liveOpsRewardText(reward={}){
+  const r = normalizeLiveOpsReward(reward);
+  const bits = [];
+  if(r.cash > 0) bits.push(`$${r.cash.toLocaleString()}`);
+  if(r.perkPoints > 0) bits.push(`+${r.perkPoints} perk point${r.perkPoints===1?"":"s"}`);
+  if(r.medkits > 0) bits.push(`+${r.medkits} medkit${r.medkits===1?"":"s"}`);
+  if(r.shields > 0) bits.push(`+${r.shields} shield${r.shields===1?"":"s"}`);
+  if(r.traps > 0) bits.push(`+${r.traps} trap${r.traps===1?"":"s"}`);
+  if(r.armorPlates > 0) bits.push(`+${r.armorPlates} armor plate${r.armorPlates===1?"":"s"}`);
+  if(r.ammo > 0) bits.push(`+${r.ammo} ammo`);
+  return bits.join(" • ") || "No reward";
+}
+function launchLiveOpsSummaryText(state=S){
+  const entry = liveOpsEntry(state);
+  if(!entry){
+    return `Weekly operation unavailable • resets in ${contractCountdownText("weekly")}`;
+  }
+  const progress = Math.min(entry.target, liveOpsEntryProgress(entry, state));
+  const status = entry.claimed ? "Claimed" : (liveOpsEntryIsReady(entry, state) ? "Ready" : `${progress}/${entry.target}`);
+  return `${entry.title}: ${status} • Reset ${contractCountdownText("weekly")}`;
+}
+function liveOpsModifierValue(key, fallback=1, state=S){
+  const entry = liveOpsEntry(state);
+  const mods = normalizeLiveOpsModifiers(entry?.modifiers || {});
+  const val = Number(mods?.[key]);
+  return Number.isFinite(val) ? val : Number(fallback || 1);
+}
+function liveOpsActiveModifiers(state=S){
+  return normalizeLiveOpsModifiers(liveOpsEntry(state)?.modifiers || {});
+}
+function liveOpsPayoutMul(state=S){
+  return liveOpsModifierValue("payoutMul", 1, state);
+}
+function claimLiveOps(){
+  ensureLiveOpsState(S);
+  const entry = liveOpsEntry(S);
+  if(!entry) return toast("Live Ops unavailable right now.");
+  if(entry.claimed) return toast("Live Ops reward already claimed this week.");
+  if(!liveOpsEntryIsReady(entry, S)) return toast("Live Ops objective is not complete yet.");
+
+  const reward = normalizeLiveOpsReward(entry.reward);
+  if(reward.cash > 0){
+    S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + reward.cash;
+    trackCashEarned(reward.cash);
+  }
+  if(reward.perkPoints > 0){
+    S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + reward.perkPoints;
+  }
+  if(reward.medkits > 0){
+    S.medkits = { ...(S.medkits || {}) };
+    S.medkits.M_SMALL = Math.max(0, Math.floor(Number(S.medkits.M_SMALL || 0))) + reward.medkits;
+  }
+  if(reward.shields > 0){
+    S.shields = Math.max(0, Math.floor(Number(S.shields || 0))) + reward.shields;
+  }
+  if(reward.traps > 0){
+    S.trapsOwned = Math.max(0, Math.floor(Number(S.trapsOwned || 0))) + reward.traps;
+  }
+  if(reward.armorPlates > 0){
+    ensureArmorPlateInventoryState();
+    ensureArmorPlateFallbackState();
+    S.armorPlates.A_TIER1 = Math.max(0, Math.floor(Number(S.armorPlates.A_TIER1 || 0))) + reward.armorPlates;
+    S.armorPlatesFallback.A_TIER1 = Math.max(0, Math.floor(Number(S.armorPlatesFallback.A_TIER1 || 0))) + reward.armorPlates;
+  }
+  if(reward.ammo > 0){
+    const w = equippedWeapon();
+    if(w){
+      S.ammoReserve[w.ammo] = Math.max(0, Math.floor(Number(S.ammoReserve[w.ammo] || 0))) + reward.ammo;
+    }
+  }
+
+  entry.claimed = true;
+  entry.claimedAt = Date.now();
+  toast(`📡 Live Ops reward claimed: ${liveOpsRewardText(reward)}`);
+  hapticNotif("success");
+  sfx("win");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  refreshLaunchIntroStatus();
+}
+
 function addContractTally(metric, delta=1, state=S){
   if(!state || typeof state !== "object") return 0;
   ensureContractTalliesState(state);
@@ -539,8 +788,9 @@ function contractsHeartbeatTick(){
   const now = Date.now();
   if((now - __contractsLastRefreshAt) < CONTRACT_REFRESH_THROTTLE_MS) return;
   __contractsLastRefreshAt = now;
-  const changed = ensureContractsState(S, { now });
-  if(changed){
+  const contractsChanged = ensureContractsState(S, { now });
+  const liveOpsChanged = ensureLiveOpsState(S, { now });
+  if(contractsChanged || liveOpsChanged){
     __savePending = true;
     refreshLaunchIntroStatus();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
@@ -2097,6 +2347,7 @@ const DEFAULT = {
   opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0 },
   contractTallies: defaultContractTallies(),
   contracts: null,
+  liveOps: null,
   achievements:{},
   title:"Rookie",
   playerHandle:"",
@@ -2537,6 +2788,7 @@ function load(){
       applyStoryProfileToState(fallback, storyProfile);
       ensureContractTalliesState(fallback);
       ensureContractsState(fallback);
+      ensureLiveOpsState(fallback);
       ensureOpsTotalsState(fallback);
       return fallback;
     }
@@ -2562,6 +2814,7 @@ function load(){
     m.opsTotals = { ...DEFAULT.opsTotals, ...((saved.opsTotals && typeof saved.opsTotals === "object") ? saved.opsTotals : {}) };
     m.contractTallies = normalizeContractTalliesMap(saved.contractTallies);
     m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
+    m.liveOps = (saved.liveOps && typeof saved.liveOps === "object") ? saved.liveOps : null;
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
     m.progressionUnlocks = { ...DEFAULT.progressionUnlocks, ...(saved.progressionUnlocks||{}) };
     m.metaBase = { ...DEFAULT.metaBase, ...(saved.metaBase||{}) };
@@ -2588,6 +2841,7 @@ function load(){
     m.funds = getModeWallet(m.mode, m);
     ensureContractTalliesState(m);
     ensureContractsState(m);
+    ensureLiveOpsState(m);
     ensureOpsTotalsState(m);
     if(m.lives==null) m.lives=5;
     m.v = STORAGE_VERSION;
@@ -2598,7 +2852,14 @@ function load(){
       }catch(e){}
     }
     return m;
-  }catch(e){ return cloneState(DEFAULT); }
+  }catch(e){
+    const fallback = cloneState(DEFAULT);
+    ensureContractTalliesState(fallback);
+    ensureContractsState(fallback);
+    ensureLiveOpsState(fallback);
+    ensureOpsTotalsState(fallback);
+    return fallback;
+  }
 }
 // ===================== SAVE (THROTTLED — FIXES IOS FREEZE) =====================
 const SAVE_MIN_INTERVAL_MS = 4200;
@@ -6426,6 +6687,7 @@ function tickEvents(){
   const director = ensureMissionDirectorState(S);
   const phase = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
   const phaseCfg = DIRECTOR_PHASE_CONFIG[phase] || DIRECTOR_PHASE_CONFIG.CALM;
+  const liveOpsMods = liveOpsActiveModifiers(S);
 
   if(S.eventCooldown>0) S.eventCooldown--;
   if(S.eventCooldown>0) return;
@@ -6435,7 +6697,11 @@ function tickEvents(){
   if(S._evtTick < 180) return; // about every 3s check
   S._evtTick = 0;
 
-  const chance = clamp(Number(phaseCfg.eventChance || 0.12), 0.04, 0.24);
+  const chance = clamp(
+    Number(phaseCfg.eventChance || 0.12) * clamp(Number(liveOpsMods.eventChanceMul || 1), 0.72, 1.35),
+    0.04,
+    0.32
+  );
   if(Math.random()>chance) return;
 
   let supplyWeight = 0.28;
@@ -6463,6 +6729,23 @@ function tickEvents(){
     fogWeight = 0.19;
     bonusWeight = 0.30;
   }
+
+  supplyWeight *= clamp(Number(liveOpsMods.supplyWeightMul || 1), 0.65, 1.45);
+  rogueWeight *= clamp(Number(liveOpsMods.rogueWeightMul || 1), 0.65, 1.45);
+  fogWeight *= clamp(Number(liveOpsMods.fogWeightMul || 1), 0.65, 1.45);
+  bonusWeight *= clamp(Number(liveOpsMods.bonusWeightMul || 1), 0.65, 1.45);
+  let totalWeight = supplyWeight + rogueWeight + fogWeight + bonusWeight;
+  if(!Number.isFinite(totalWeight) || totalWeight <= 0){
+    supplyWeight = 0.28;
+    rogueWeight = 0.24;
+    fogWeight = 0.26;
+    bonusWeight = 0.22;
+    totalWeight = 1;
+  }
+  supplyWeight /= totalWeight;
+  rogueWeight /= totalWeight;
+  fogWeight /= totalWeight;
+  bonusWeight /= totalWeight;
 
   const roll = Math.random();
   if(roll < supplyWeight){
@@ -7429,6 +7712,7 @@ function writeStoryProfileData(source="autosave", state=S){
     opsTotals: { ...ensureOpsTotalsState(src) },
     contractTallies: { ...ensureContractTalliesState(src) },
     contracts: (src.contracts && typeof src.contracts === "object") ? cloneState(src.contracts) : null,
+    liveOps: (src.liveOps && typeof src.liveOps === "object") ? cloneState(src.liveOps) : null,
     ownedWeapons: Array.isArray(src.ownedWeapons) ? src.ownedWeapons.filter((id)=>typeof id === "string") : [],
     equippedWeaponId: String(src.equippedWeaponId || ""),
     ammoReserve: { ...(src.ammoReserve || {}) },
@@ -7585,6 +7869,10 @@ function applyStoryProfileToState(state, profile){
     state.contracts = cloneState(profile.contracts);
     ensureContractsState(state);
   }
+  if(profile.liveOps && typeof profile.liveOps === "object"){
+    state.liveOps = cloneState(profile.liveOps);
+    ensureLiveOpsState(state);
+  }
 
   state.armorPlates = normalizeArmorPlateInventory(mergeCountMapsFromProfile(state.armorPlates, profile.armorPlates));
   state.armorPlatesFallback = normalizeArmorPlateInventory(
@@ -7698,6 +7986,9 @@ function writeStoryProgressData(payload={}){
     contracts: (payload.contracts && typeof payload.contracts === "object")
       ? cloneState(payload.contracts)
       : ((S.contracts && typeof S.contracts === "object") ? cloneState(S.contracts) : null),
+    liveOps: (payload.liveOps && typeof payload.liveOps === "object")
+      ? cloneState(payload.liveOps)
+      : ((S.liveOps && typeof S.liveOps === "object") ? cloneState(S.liveOps) : null),
     soldierAttackersOwned: Math.max(0, Math.floor(Number(payload.soldierAttackersOwned ?? S.soldierAttackersOwned ?? 0))),
     soldierRescuersOwned: Math.max(0, Math.floor(Number(payload.soldierRescuersOwned ?? S.soldierRescuersOwned ?? 0))),
     soldierAttackersDowned: Math.max(0, Math.floor(Number(payload.soldierAttackersDowned ?? S.soldierAttackersDowned ?? 0))),
@@ -8016,12 +8307,14 @@ function bindLaunchIntroAudioGesture(){
 }
 function refreshLaunchIntroStatus(){
   ensureContractsState(S);
+  ensureLiveOpsState(S);
   const streakEl = document.getElementById("launchIntroStreak");
   const dailyEl = document.getElementById("launchIntroDailyStatus");
   const commanderEl = document.getElementById("launchCommanderCard");
   const intelEl = document.getElementById("launchIntelCard");
   const dailyCardEl = document.getElementById("launchDailyCard");
   const contractsCardEl = document.getElementById("launchContractsCard");
+  const liveOpsCardEl = document.getElementById("launchLiveOpsCard");
   const posterEl = document.getElementById("launchPoster");
   const info = readDaily();
   const streak = Math.max(0, Number(info?.streak || 0));
@@ -8073,6 +8366,9 @@ function refreshLaunchIntroStatus(){
   }
   if(contractsCardEl){
     contractsCardEl.innerText = launchContractsSummaryText(S);
+  }
+  if(liveOpsCardEl){
+    liveOpsCardEl.innerText = launchLiveOpsSummaryText(S);
   }
   refreshLaunchStartButtons();
 }
@@ -8363,6 +8659,19 @@ function openContractsFromLaunchIntro(){
   openInventory();
   requestAnimationFrame(()=>{
     const anchor = document.getElementById("invContractsAnchor");
+    if(anchor && typeof anchor.scrollIntoView === "function"){
+      anchor.scrollIntoView({ block:"start", inline:"nearest" });
+    }
+  });
+}
+function openLiveOpsFromLaunchIntro(){
+  clearLaunchIntroAutoTimer();
+  clearLaunchMusicLoop();
+  const overlay = document.getElementById("launchIntroOverlay");
+  if(overlay) overlay.style.display = "none";
+  openInventory();
+  requestAnimationFrame(()=>{
+    const anchor = document.getElementById("invLiveOpsAnchor");
     if(anchor && typeof anchor.scrollIntoView === "function"){
       anchor.scrollIntoView({ block:"start", inline:"nearest" });
     }
@@ -10127,6 +10436,34 @@ function renderInventory(){
   const armorSelected = selectedArmorPlateId();
   const armorSelectedDef = getArmor(armorSelected) || ARMORY[0];
   ensureContractsState(S);
+  ensureLiveOpsState(S);
+  const liveOpsCurrent = liveOpsEntry(S);
+  const liveOpsSectionHtml = (() => {
+    if(!liveOpsCurrent){
+      return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">Weekly Live Ops <span class="tag">Unavailable</span></div>
+          <div class="itemDesc">No active operation found. Check back in a moment.</div>
+        </div>
+      </div>`;
+    }
+    const progress = Math.min(liveOpsCurrent.target, liveOpsEntryProgress(liveOpsCurrent, S));
+    const ready = liveOpsEntryIsReady(liveOpsCurrent, S);
+    const statusTag = liveOpsCurrent.claimed ? "Claimed" : (ready ? "Ready" : `${progress}/${liveOpsCurrent.target}`);
+    const claimDisabled = liveOpsCurrent.claimed || !ready;
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${liveOpsCurrent.title} <span class="tag">${statusTag}</span></div>
+          <div class="itemDesc">${liveOpsCurrent.desc}</div>
+          <div class="itemDesc">Reward: ${liveOpsRewardText(liveOpsCurrent.reward)} • Reset in ${contractCountdownText("weekly")}</div>
+        </div>
+        <div style="text-align:right">
+          <button ${claimDisabled ? "disabled" : ""} onclick="claimLiveOps()">${liveOpsCurrent.claimed ? "Claimed" : "Claim"}</button>
+        </div>
+      </div>`;
+  })();
   const contractSectionHtml = ["daily", "weekly"].map((period)=>{
     const summary = contractSummary(period, S);
     const entries = Array.isArray(S?.contracts?.[period]?.entries) ? S.contracts[period].entries : [];
@@ -10212,6 +10549,10 @@ function renderInventory(){
         <button ${S.trapsOwned<=0?'disabled':''} onclick="placeTrap()">Place</button>
       </div>
     </div>
+
+    <div class="divider"></div>
+    <div class="hudTitle" id="invLiveOpsAnchor">Live Ops</div>
+    ${liveOpsSectionHtml}
 
     <div class="divider"></div>
     <div class="hudTitle" id="invContractsAnchor">Contracts</div>
@@ -15493,19 +15834,20 @@ function updateBattleButtons(){
 }
 
 function payout(outcome){
+  const liveOpsMul = liveOpsPayoutMul(S);
   if(S.mode==="Story"){
     const mul = storyPayoutMul();
-    if(outcome==="CAPTURE") return { cash: Math.round(rand(2500,5000) * mul), score: Math.round(220 * mul), trust:+6, aggro:-8 };
-    return { cash: Math.round(rand(500,1500) * mul), score: Math.round(100 * mul), trust:-4, aggro:+14 };
+    if(outcome==="CAPTURE") return { cash: Math.round(rand(2500,5000) * mul * liveOpsMul), score: Math.round(220 * mul), trust:+6, aggro:-8 };
+    return { cash: Math.round(rand(500,1500) * mul * liveOpsMul), score: Math.round(100 * mul), trust:-4, aggro:+14 };
   }
   if(S.mode==="Arcade"){
     const L=S.arcadeLevel||1;
-    if(outcome==="CAPTURE") return { cash: 900 + L*220, score: 180 + L*40, trust:+2, aggro:-4 };
-    return { cash: 450 + L*140, score: 90 + L*25, trust:-1, aggro:+6 };
+    if(outcome==="CAPTURE") return { cash: Math.round((900 + L*220) * liveOpsMul), score: 180 + L*40, trust:+2, aggro:-4 };
+    return { cash: Math.round((450 + L*140) * liveOpsMul), score: 90 + L*25, trust:-1, aggro:+6 };
   }
   const W=S.survivalWave||1;
-  if(outcome==="CAPTURE") return { cash: 700 + W*260, score: 180 + W*45, trust:0, aggro:-2 };
-  return { cash: 300 + W*170, score: 85 + W*28, trust:0, aggro:+5 };
+  if(outcome==="CAPTURE") return { cash: Math.round((700 + W*260) * liveOpsMul), score: 180 + W*45, trust:0, aggro:-2 };
+  return { cash: Math.round((300 + W*170) * liveOpsMul), score: 85 + W*28, trust:0, aggro:+5 };
 }
 
 function maybeReinforceOnKill(){
@@ -16387,6 +16729,15 @@ function renderHUD(){
       const introShort = storyBossIntroText(storyMission).replace(/^Boss Intro:\s*/i, "");
       assistParts.unshift(`Boss mission: ${introShort}`);
     }
+  }
+  const liveOpsNow = liveOpsEntry(S);
+  if(liveOpsNow){
+    const liveOpsDone = Math.min(liveOpsNow.target, liveOpsEntryProgress(liveOpsNow, S));
+    assistParts.push(
+      liveOpsNow.claimed
+        ? `Live Ops: ${liveOpsNow.title} claimed`
+        : `Live Ops: ${liveOpsNow.title} ${liveOpsDone}/${liveOpsNow.target}`
+    );
   }
   if(S.mode!=="Survival"){
     const civTargets = S.civilians.filter(c=>c.alive && !c.evac);
