@@ -93,7 +93,7 @@ module.exports = async function handler(req, res){
       { command:"weeklyleaders", description:"Show weekly leaders" },
       { command:"monthlyleaders", description:"Show monthly leaders" },
       { command:"myposition", description:"Show your leaderboard rank" },
-      { command:"clanboard", description:"Show clan/recruiter board" },
+      { command:"clanboard", description:"Show clan leaderboard" },
       { command:"events", description:"Current events/news/update" },
       { command:"news", description:"Latest game news" },
       { command:"update", description:"Latest game update" },

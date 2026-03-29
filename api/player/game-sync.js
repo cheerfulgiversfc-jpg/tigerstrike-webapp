@@ -1,6 +1,6 @@
 const { json, readJsonBody } = require("../_lib/http");
 const { validateTelegramInitData } = require("../_lib/telegram-auth");
-const { recordGameplaySnapshot } = require("../_lib/player-stats");
+const { recordGameplaySnapshot, getClanCloudSnapshot } = require("../_lib/player-stats");
 
 module.exports = async function handler(req, res){
   if(req.method !== "POST"){
@@ -25,6 +25,7 @@ module.exports = async function handler(req, res){
     if(!profile){
       return json(res, 400, { ok:false, error:"Could not update gameplay stats." });
     }
+    const clan = await getClanCloudSnapshot(user);
 
     return json(res, 200, {
       ok: true,
@@ -34,6 +35,7 @@ module.exports = async function handler(req, res){
       season: profile.season || null,
       monthly: profile.monthly || null,
       lifetimeScore: Number(profile.lifetimeScore || 0),
+      clan: clan || null,
     });
   }catch(e){
     return json(res, 500, { ok:false, error:e?.message || "Gameplay sync failed." });

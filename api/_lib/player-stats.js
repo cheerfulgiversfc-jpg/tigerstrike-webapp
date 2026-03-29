@@ -4,6 +4,8 @@ const PLAYER_STATE_PREFIX = "player_stats_u_";
 const LEADERBOARD_STATE_KEY = "player_leaderboards_v1";
 const LEADERBOARD_VERSION = 1;
 const LEADERBOARD_STORE_LIMIT = 120;
+const CLAN_LEADERBOARD_STORE_LIMIT = 500;
+const CLAN_MEMBER_STORE_LIMIT = 3000;
 const SEASON_TIER_LADDER = [
   { name: "Bronze", minPoints: 0 },
   { name: "Silver", minPoints: 2500 },
@@ -11,6 +13,44 @@ const SEASON_TIER_LADDER = [
   { name: "Platinum", minPoints: 10000 },
   { name: "Diamond", minPoints: 15000 },
   { name: "Legend", minPoints: 22000 },
+];
+const CLAN_CONTRACT_POOL = [
+  {
+    id: "C_EVAC_CONVOY",
+    title: "Clan Convoy",
+    desc: "Your clan evacuates civilians across operations this week.",
+    metric: "evac",
+    baseTarget: 22,
+    perMember: 6,
+    reward: { cash: 2600, perkPoints: 1 },
+  },
+  {
+    id: "C_CAPTURE_GRID",
+    title: "Capture Grid",
+    desc: "Coordinate clan captures for research output.",
+    metric: "captures",
+    baseTarget: 16,
+    perMember: 4,
+    reward: { cash: 2800, perkPoints: 1 },
+  },
+  {
+    id: "C_MISSION_DRIVE",
+    title: "Mission Drive",
+    desc: "Clear operations as a clan this week.",
+    metric: "missionsCleared",
+    baseTarget: 12,
+    perMember: 3,
+    reward: { cash: 3100, perkPoints: 2 },
+  },
+  {
+    id: "C_CASH_CHAIN",
+    title: "War Chest Chain",
+    desc: "Accumulate mission cash as a clan.",
+    metric: "cashEarned",
+    baseTarget: 22000,
+    perMember: 8500,
+    reward: { cash: 3600, perkPoints: 2 },
+  },
 ];
 
 function toInt(value, fallback = 0){
@@ -36,6 +76,18 @@ function safeUsername(value){
 function safeUserId(value){
   const n = toInt(value, 0);
   return n > 0 ? n : 0;
+}
+
+function normalizeClanTag(value){
+  const cleaned = String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return cleaned.slice(0, 10) || "SOLO";
+}
+
+function sanitizeClanName(value, fallbackTag = "SOLO"){
+  const raw = String(value || "").replace(/\s+/g, " ").trim();
+  if(raw) return raw.slice(0, 36);
+  const tag = normalizeClanTag(fallbackTag);
+  return tag === "SOLO" ? "Lone Tigers" : `${tag} Clan`;
 }
 
 function nowSec(){
@@ -65,6 +117,31 @@ function weekKeyUTC(tsMs = Date.now()){
   const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
   const weekNum = Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
   return `${utcDate.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+}
+
+function contractHashInt(str = ""){
+  let h = 2166136261;
+  for(let i = 0; i < str.length; i += 1){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function seededPick(pool, count, seed){
+  const arr = Array.isArray(pool) ? pool.slice() : [];
+  let s = (seed >>> 0) || 1;
+  const rand = ()=>{
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  for(let i = arr.length - 1; i > 0; i -= 1){
+    const j = Math.floor(rand() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr.slice(0, Math.max(0, Math.min(count, arr.length)));
 }
 
 function displayNameFromUser(user, userId = 0){
@@ -257,6 +334,12 @@ function defaultProfile(user, userId = 0){
       lastArmor: 20,
       lastSyncAt: 0,
     },
+    clan: {
+      tag: "SOLO",
+      name: "Lone Tigers",
+      raidEnabled: false,
+      updatedAt: ts,
+    },
     lifetimeScore: 0,
   };
 }
@@ -310,6 +393,10 @@ function normalizeProfile(raw, user = null, fallbackUserId = 0){
     ...base.ops,
     ...(out.ops && typeof out.ops === "object" ? out.ops : {}),
   };
+  out.clan = {
+    ...base.clan,
+    ...(out.clan && typeof out.clan === "object" ? out.clan : {}),
+  };
 
   out.weekly.period = safeText(out.weekly.period || base.weekly.period);
   out.weekly.ordersCreated = clampNonNegative(out.weekly.ordersCreated);
@@ -362,6 +449,11 @@ function normalizeProfile(raw, user = null, fallbackUserId = 0){
   out.ops.lastHp = clampNonNegative(out.ops.lastHp);
   out.ops.lastArmor = clampNonNegative(out.ops.lastArmor);
   out.ops.lastSyncAt = clampNonNegative(out.ops.lastSyncAt);
+
+  out.clan.tag = normalizeClanTag(out.clan.tag || base.clan.tag);
+  out.clan.name = sanitizeClanName(out.clan.name, out.clan.tag);
+  out.clan.raidEnabled = !!out.clan.raidEnabled;
+  out.clan.updatedAt = clampNonNegative(out.clan.updatedAt || out.updatedAt || nowSec());
 
   out.lifetimeScore = clampNonNegative(out.lifetimeScore);
   return out;
@@ -539,15 +631,134 @@ function periodEntryFromProfile(profile, bucket = "weekly"){
   };
 }
 
-function recruiterEntryFromProfile(profile){
+function clanContributionFromProfile(profile){
+  const weekly = (profile && profile.weekly && typeof profile.weekly === "object") ? profile.weekly : {};
+  const clan = (profile && profile.clan && typeof profile.clan === "object") ? profile.clan : {};
   return {
     userId: safeUserId(profile?.userId),
-    username: safeUsername(profile?.username),
-    displayName: safeText(profile?.displayName || "").slice(0, 80) || `Player ${safeUserId(profile?.userId)}`,
-    score: clampNonNegative(profile?.referralsStarted),
-    referrals: clampNonNegative(profile?.referralsStarted),
+    clanTag: normalizeClanTag(clan.tag || "SOLO"),
+    clanName: sanitizeClanName(clan.name, clan.tag || "SOLO"),
+    score: clampNonNegative(weekly.score),
+    kills: clampNonNegative(weekly.kills),
+    captures: clampNonNegative(weekly.captures),
+    evac: clampNonNegative(weekly.evac),
+    civiliansLost: clampNonNegative(weekly.civiliansLost),
+    missionsCleared: clampNonNegative(weekly.missionsCleared),
+    cashEarned: clampNonNegative(weekly.cashEarned),
     updatedAt: toInt(profile?.updatedAt, nowSec()),
   };
+}
+
+function normalizeClanMemberContribution(raw){
+  if(!raw || typeof raw !== "object") return null;
+  const userId = safeUserId(raw.userId);
+  if(!userId) return null;
+  const clanTag = normalizeClanTag(raw.clanTag || "SOLO");
+  return {
+    userId,
+    clanTag,
+    clanName: sanitizeClanName(raw.clanName, clanTag),
+    score: clampNonNegative(raw.score),
+    kills: clampNonNegative(raw.kills),
+    captures: clampNonNegative(raw.captures),
+    evac: clampNonNegative(raw.evac),
+    civiliansLost: clampNonNegative(raw.civiliansLost),
+    missionsCleared: clampNonNegative(raw.missionsCleared),
+    cashEarned: clampNonNegative(raw.cashEarned),
+    updatedAt: toInt(raw.updatedAt, nowSec()),
+  };
+}
+
+function normalizeClanLeaderboardEntry(raw){
+  if(!raw || typeof raw !== "object") return null;
+  const clanTag = normalizeClanTag(raw.clanTag || "SOLO");
+  return {
+    clanTag,
+    clanName: sanitizeClanName(raw.clanName, clanTag),
+    score: clampNonNegative(raw.score),
+    members: Math.max(1, toInt(raw.members, 1)),
+    kills: clampNonNegative(raw.kills),
+    captures: clampNonNegative(raw.captures),
+    evac: clampNonNegative(raw.evac),
+    civiliansLost: clampNonNegative(raw.civiliansLost),
+    missionsCleared: clampNonNegative(raw.missionsCleared),
+    cashEarned: clampNonNegative(raw.cashEarned),
+    updatedAt: toInt(raw.updatedAt, nowSec()),
+  };
+}
+
+function trimClanMembersMap(members){
+  const src = (members && typeof members === "object") ? members : {};
+  const rows = Object.values(src)
+    .map((entry)=>normalizeClanMemberContribution(entry))
+    .filter(Boolean)
+    .sort((a, b)=>toInt(b?.updatedAt) - toInt(a?.updatedAt));
+  const keep = rows.slice(0, CLAN_MEMBER_STORE_LIMIT);
+  const out = {};
+  for(const row of keep){
+    out[String(row.userId)] = row;
+  }
+  return out;
+}
+
+function clanEntriesSortedTrimmed(entries, limit = CLAN_LEADERBOARD_STORE_LIMIT){
+  const arr = Array.isArray(entries) ? entries.slice() : [];
+  arr.sort((a, b)=>{
+    const scoreDelta = clampNonNegative(b?.score) - clampNonNegative(a?.score);
+    if(scoreDelta !== 0) return scoreDelta;
+    const missionDelta = clampNonNegative(b?.missionsCleared) - clampNonNegative(a?.missionsCleared);
+    if(missionDelta !== 0) return missionDelta;
+    const captureDelta = clampNonNegative(b?.captures) - clampNonNegative(a?.captures);
+    if(captureDelta !== 0) return captureDelta;
+    const killDelta = clampNonNegative(b?.kills) - clampNonNegative(a?.kills);
+    if(killDelta !== 0) return killDelta;
+    const evacDelta = clampNonNegative(b?.evac) - clampNonNegative(a?.evac);
+    if(evacDelta !== 0) return evacDelta;
+    const memberDelta = clampNonNegative(b?.members) - clampNonNegative(a?.members);
+    if(memberDelta !== 0) return memberDelta;
+    const updatedDelta = toInt(b?.updatedAt) - toInt(a?.updatedAt);
+    if(updatedDelta !== 0) return updatedDelta;
+    return String(a?.clanTag || "").localeCompare(String(b?.clanTag || ""));
+  });
+  return arr.slice(0, Math.max(1, toInt(limit, CLAN_LEADERBOARD_STORE_LIMIT)));
+}
+
+function rebuildClanLeaderboardEntries(members){
+  const src = (members && typeof members === "object") ? members : {};
+  const byClan = new Map();
+  for(const value of Object.values(src)){
+    const row = normalizeClanMemberContribution(value);
+    if(!row) continue;
+    const key = row.clanTag;
+    const current = byClan.get(key) || {
+      clanTag: row.clanTag,
+      clanName: row.clanName,
+      score: 0,
+      members: 0,
+      kills: 0,
+      captures: 0,
+      evac: 0,
+      civiliansLost: 0,
+      missionsCleared: 0,
+      cashEarned: 0,
+      updatedAt: 0,
+    };
+    current.clanName = row.clanName || current.clanName;
+    current.members += 1;
+    current.score += row.score;
+    current.kills += row.kills;
+    current.captures += row.captures;
+    current.evac += row.evac;
+    current.civiliansLost += row.civiliansLost;
+    current.missionsCleared += row.missionsCleared;
+    current.cashEarned += row.cashEarned;
+    current.updatedAt = Math.max(current.updatedAt, row.updatedAt);
+    byClan.set(key, current);
+  }
+  return clanEntriesSortedTrimmed(
+    Array.from(byClan.values()).map((entry)=>normalizeClanLeaderboardEntry(entry)).filter(Boolean),
+    CLAN_LEADERBOARD_STORE_LIMIT
+  );
 }
 
 function sortedTrimmed(entries, limit = LEADERBOARD_STORE_LIMIT){
@@ -593,7 +804,7 @@ function defaultLeaderboardState(){
     weekly: { period: weekKeyUTC(), entries: [] },
     season: { period: weekKeyUTC(), entries: [] },
     monthly: { period: monthKeyUTC(), entries: [] },
-    clans: { entries: [] },
+    clans: { period: weekKeyUTC(), entries: [], members: {} },
   };
 }
 
@@ -628,11 +839,13 @@ function normalizeLeaderboardState(raw){
   out.weekly.period = safeText(out.weekly.period || weekKeyUTC());
   out.season.period = safeText(out.season.period || weekKeyUTC());
   out.monthly.period = safeText(out.monthly.period || monthKeyUTC());
+  out.clans.period = safeText(out.clans.period || weekKeyUTC());
   out.global.entries = sortedTrimmed(out.global.entries, LEADERBOARD_STORE_LIMIT);
   out.weekly.entries = sortedTrimmed(out.weekly.entries, LEADERBOARD_STORE_LIMIT);
   out.season.entries = sortedTrimmed(out.season.entries, LEADERBOARD_STORE_LIMIT);
   out.monthly.entries = sortedTrimmed(out.monthly.entries, LEADERBOARD_STORE_LIMIT);
-  out.clans.entries = sortedTrimmed(out.clans.entries, LEADERBOARD_STORE_LIMIT);
+  out.clans.members = trimClanMembersMap(out.clans.members);
+  out.clans.entries = rebuildClanLeaderboardEntries(out.clans.members);
   return out;
 }
 
@@ -649,12 +862,34 @@ async function updateLeaderboardsFromProfile(profile){
   if(board.monthly.period !== month){
     board.monthly = { period: month, entries: [] };
   }
+  if(board.clans.period !== week){
+    board.clans = { period: week, entries: [], members: {} };
+  }
 
   board.global.entries = upsertLeaderboardEntry(board.global.entries, leaderboardEntryFromProfile(profile), LEADERBOARD_STORE_LIMIT);
   board.weekly.entries = upsertLeaderboardEntry(board.weekly.entries, periodEntryFromProfile(profile, "weekly"), LEADERBOARD_STORE_LIMIT);
   board.season.entries = upsertLeaderboardEntry(board.season.entries, periodEntryFromProfile(profile, "weekly"), LEADERBOARD_STORE_LIMIT);
   board.monthly.entries = upsertLeaderboardEntry(board.monthly.entries, periodEntryFromProfile(profile, "monthly"), LEADERBOARD_STORE_LIMIT);
-  board.clans.entries = upsertLeaderboardEntry(board.clans.entries, recruiterEntryFromProfile(profile), LEADERBOARD_STORE_LIMIT);
+  const clanMember = clanContributionFromProfile(profile);
+  if(clanMember.userId > 0){
+    const currentMembers = (board.clans.members && typeof board.clans.members === "object") ? board.clans.members : {};
+    const nextMembers = { ...currentMembers };
+    delete nextMembers[String(clanMember.userId)];
+    const hasClanScore =
+      clanMember.score > 0 ||
+      clanMember.missionsCleared > 0 ||
+      clanMember.captures > 0 ||
+      clanMember.kills > 0 ||
+      clanMember.evac > 0 ||
+      clanMember.cashEarned > 0;
+    if(hasClanScore){
+      nextMembers[String(clanMember.userId)] = clanMember;
+    }
+    board.clans.members = trimClanMembersMap({
+      ...nextMembers,
+    });
+    board.clans.entries = rebuildClanLeaderboardEntries(board.clans.members);
+  }
   board.updatedAt = nowSec();
   board.version = LEADERBOARD_VERSION;
   await setState(LEADERBOARD_STATE_KEY, board);
@@ -697,6 +932,7 @@ async function getPlayerStats(user){
 
 function normalizeGameplaySnapshot(snapshot){
   const src = (snapshot && typeof snapshot === "object") ? snapshot : {};
+  const clanTag = normalizeClanTag(src.clanTag || "SOLO");
   return {
     kills: clampNonNegative(src.kills),
     captures: clampNonNegative(src.captures),
@@ -710,6 +946,9 @@ function normalizeGameplaySnapshot(snapshot){
     funds: clampNonNegative(src.funds),
     hp: clampNonNegative(src.hp),
     armor: clampNonNegative(src.armor),
+    clanTag,
+    clanName: sanitizeClanName(src.clanName, clanTag),
+    clanRaidEnabled: !!src.clanRaidEnabled,
   };
 }
 
@@ -754,6 +993,14 @@ async function recordGameplaySnapshot({ user, snapshot }){
     profile.ops.lastHp = snap.hp;
     profile.ops.lastArmor = snap.armor;
     profile.ops.lastSyncAt = nowSec();
+
+    profile.clan = {
+      ...(profile.clan && typeof profile.clan === "object" ? profile.clan : {}),
+      tag: normalizeClanTag(snap.clanTag || profile?.clan?.tag || "SOLO"),
+      name: sanitizeClanName(snap.clanName || profile?.clan?.name || "", snap.clanTag || profile?.clan?.tag || "SOLO"),
+      raidEnabled: !!snap.clanRaidEnabled,
+      updatedAt: nowSec(),
+    };
   });
 }
 
@@ -867,6 +1114,101 @@ function stripPrivateFields(profile){
   return out;
 }
 
+function clanContractTarget(baseTarget, perMember, members){
+  const base = Math.max(1, toInt(baseTarget, 1));
+  const per = Math.max(0, toInt(perMember, 0));
+  const team = Math.max(1, toInt(members, 1));
+  return Math.max(1, base + (Math.max(0, team - 1) * per));
+}
+
+function clanContractsForEntry(clanEntry, weekKey){
+  const entry = normalizeClanLeaderboardEntry(clanEntry) || normalizeClanLeaderboardEntry({
+    clanTag: "SOLO",
+    clanName: "Lone Tigers",
+    score: 0,
+    members: 1,
+  });
+  const period = safeText(weekKey || weekKeyUTC()) || weekKeyUTC();
+  const seed = contractHashInt(`clan_contracts|${period}|${entry.clanTag}`);
+  const picks = seededPick(CLAN_CONTRACT_POOL, Math.min(3, CLAN_CONTRACT_POOL.length), seed);
+  const progressByMetric = {
+    evac: clampNonNegative(entry.evac),
+    captures: clampNonNegative(entry.captures),
+    missionsCleared: clampNonNegative(entry.missionsCleared),
+    cashEarned: clampNonNegative(entry.cashEarned),
+  };
+  return picks.map((tpl, idx)=>{
+    const target = clanContractTarget(tpl.baseTarget, tpl.perMember, entry.members);
+    const metric = safeText(tpl.metric || "missionsCleared");
+    return {
+      id: `${period}_${idx}_${tpl.id}`,
+      key: tpl.id,
+      title: safeText(tpl.title || "Clan Contract"),
+      desc: safeText(tpl.desc || "Clan objective this week."),
+      metric,
+      target,
+      progress: clampNonNegative(progressByMetric[metric] || 0),
+      reward: {
+        cash: clampNonNegative(tpl.reward?.cash || 0),
+        perkPoints: clampNonNegative(tpl.reward?.perkPoints || 0),
+      },
+    };
+  });
+}
+
+async function getClanCloudSnapshot(user){
+  const uid = safeUserId(user?.id || user);
+  if(!uid) return null;
+  const profileRaw = await readProfile(uid);
+  const profile = normalizeProfile(profileRaw, (typeof user === "object" ? user : null), uid);
+  const board = normalizeLeaderboardState(await getState(LEADERBOARD_STATE_KEY));
+  const week = weekKeyUTC();
+
+  const myTag = normalizeClanTag(profile?.clan?.tag || "SOLO");
+  const myName = sanitizeClanName(profile?.clan?.name, myTag);
+  const clanEntriesPrimary = (board.clans.period === week && Array.isArray(board.clans.entries)) ? board.clans.entries : [];
+  const clanEntriesAll = clanEntriesPrimary.length
+    ? clanEntriesPrimary
+    : rebuildClanLeaderboardEntries(board?.clans?.members);
+
+  const rankIdx = clanEntriesAll.findIndex((row)=>normalizeClanTag(row?.clanTag) === myTag);
+  const rank = rankIdx >= 0 ? rankIdx + 1 : 0;
+  const found = rankIdx >= 0
+    ? normalizeClanLeaderboardEntry(clanEntriesAll[rankIdx])
+    : normalizeClanLeaderboardEntry({
+      clanTag: myTag,
+      clanName: myName,
+      score: 0,
+      members: 1,
+      kills: 0,
+      captures: 0,
+      evac: 0,
+      civiliansLost: 0,
+      missionsCleared: 0,
+      cashEarned: 0,
+      updatedAt: nowSec(),
+    });
+
+  const contracts = clanContractsForEntry(found, week);
+  return {
+    tag: found.clanTag,
+    name: found.clanName,
+    rank,
+    members: Math.max(1, toInt(found.members, 1)),
+    score: clampNonNegative(found.score),
+    kills: clampNonNegative(found.kills),
+    captures: clampNonNegative(found.captures),
+    evac: clampNonNegative(found.evac),
+    missionsCleared: clampNonNegative(found.missionsCleared),
+    cashEarned: clampNonNegative(found.cashEarned),
+    updatedAt: toInt(found.updatedAt, nowSec()),
+    contracts: {
+      period: week,
+      entries: contracts,
+    },
+  };
+}
+
 async function getLeaderboardSnapshot(limit = 10){
   const max = Math.max(1, Math.min(25, toInt(limit, 10)));
   const board = normalizeLeaderboardState(await getState(LEADERBOARD_STATE_KEY));
@@ -881,12 +1223,13 @@ async function getLeaderboardSnapshot(limit = 10){
       weekly: week,
       season: week,
       monthly: month,
+      clans: week,
     },
     global: board.global.entries.slice(0, max),
     weekly: weeklyEntries.slice(0, max),
     season: seasonEntries.slice(0, max),
     monthly: monthlyEntries.slice(0, max),
-    clans: board.clans.entries.slice(0, max),
+    clans: (board.clans.period === week ? board.clans.entries : []).slice(0, max),
   };
 }
 
@@ -900,4 +1243,5 @@ module.exports = {
   recordClaimPaid,
   recordReferralStart,
   getLeaderboardSnapshot,
+  getClanCloudSnapshot,
 };

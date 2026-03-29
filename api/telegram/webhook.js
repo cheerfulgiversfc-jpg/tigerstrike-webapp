@@ -386,6 +386,13 @@ function rankForUser(entries, userId){
   return idx >= 0 ? (idx + 1) : null;
 }
 
+function rankForClan(entries, clanTag){
+  const tag = String(clanTag || "").trim().toUpperCase();
+  if(!tag) return null;
+  const idx = (Array.isArray(entries) ? entries : []).findIndex((row)=>String(row?.clanTag || "").trim().toUpperCase() === tag);
+  return idx >= 0 ? (idx + 1) : null;
+}
+
 async function myStatsText(user){
   const uid = toInt(user?.id || 0);
   const uname = user?.username ? `@${user.username}` : "-";
@@ -414,6 +421,9 @@ async function myStatsText(user){
   const season = (stats.season && typeof stats.season === "object") ? stats.season : {};
   const month = (stats.monthly && typeof stats.monthly === "object") ? stats.monthly : {};
   const ops = (stats.ops && typeof stats.ops === "object") ? stats.ops : {};
+  const clan = (stats.clan && typeof stats.clan === "object") ? stats.clan : {};
+  const clanTag = String(clan.tag || "").trim().toUpperCase() || "SOLO";
+  const clanName = String(clan.name || "").trim() || "Lone Tigers";
   const lastMode = String(ops.lastMode || "Story");
   const lastMission = Math.max(1, toInt(ops.lastMission || 1));
   const lastLevel = Math.max(1, toInt(ops.lastLevel || 1));
@@ -435,6 +445,7 @@ async function myStatsText(user){
     `User: ${stats.displayName || safeName(user)}`,
     `Username: ${stats.username ? `@${stats.username}` : uname}`,
     `User ID: ${stats.userId || uid || "-"}`,
+    `Clan: ${clanName} [${clanTag}]`,
     "",
     `Today (${day.period || "-"})`,
     `Kills: ${fmtNum(day.kills)} • Captures: ${fmtNum(day.captures)} • Civilians Saved: ${fmtNum(day.evac)} • Civilians Lost: ${fmtNum(day.civiliansLost)}`,
@@ -517,10 +528,15 @@ async function leaderboardSectionText(kind, user){
   }
 
   if(mode === "clan"){
-    const rows = formatLeaderboardRows(snapshot.clans, (entry)=>`${fmtNum(entry.referrals)} referrals`);
+    const rows = (Array.isArray(snapshot.clans) ? snapshot.clans : []).length
+      ? snapshot.clans.map((entry, idx)=>{
+        const clanName = String(entry?.clanName || "").trim() || "Clan";
+        const clanTag = String(entry?.clanTag || "").trim().toUpperCase() || "SOLO";
+        return `#${idx + 1} ${clanName} [${clanTag}] — ${fmtNum(entry?.score)} pts • ${fmtNum(entry?.members)} members • M ${fmtNum(entry?.missionsCleared)} • C ${fmtNum(entry?.captures)} • Saved ${fmtNum(entry?.evac)}`;
+      })
+      : ["No ranked clans yet. Enable a clan tag in-game and play missions."];
     return [
-      "Clan Rankings (Recruiter Board)",
-      "Current clan-style ranking uses referral leadership.",
+      `Clan Leaderboard (${snapshot.periods?.clans || snapshot.periods?.weekly || "current"})`,
       ...rows,
     ].join("\n");
   }
@@ -530,14 +546,16 @@ async function leaderboardSectionText(kind, user){
     const w = rankForUser(snapshot.weekly, uid);
     const s = rankForUser(snapshot.season, uid);
     const m = rankForUser(snapshot.monthly, uid);
-    const c = rankForUser(snapshot.clans, uid);
+    const stats = uid ? await getPlayerStats(user) : null;
+    const clanTag = String(stats?.clan?.tag || "").trim().toUpperCase();
+    const c = clanTag ? rankForClan(snapshot.clans, clanTag) : null;
     return [
       "My Position",
       `Global: ${g ? `#${g}` : "Outside Top 10"}`,
       `Weekly: ${w ? `#${w}` : "Outside Top 10"}`,
       `Season: ${s ? `#${s}` : "Outside Top 10"}`,
       `Monthly: ${m ? `#${m}` : "Outside Top 10"}`,
-      `Clan/Recruiter: ${c ? `#${c}` : "Outside Top 10"}`,
+      `Clan${clanTag ? ` [${clanTag}]` : ""}: ${c ? `#${c}` : "Outside Top 10"}`,
       "",
       "Complete missions, captures, and evacuations to improve ranking.",
     ].join("\n");
@@ -701,7 +719,7 @@ function helpText(){
     "/weeklyleaders - Weekly leaderboard",
     "/monthlyleaders - Monthly leaderboard",
     "/myposition - Your leaderboard rank",
-    "/clanboard - Clan/recruiter board",
+    "/clanboard - Clan leaderboard",
     "/events - Current game events",
     "/news - Latest game news",
     "/update - Latest game updates",

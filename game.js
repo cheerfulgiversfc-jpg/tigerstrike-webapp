@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4462";
+const TS_BUILD = "4464";
 if(tg){
   try{
     tg.expand?.();
@@ -48,6 +48,45 @@ function tgUserInfo(){
     handle,
   };
 }
+
+function normalizeClanTag(tag){
+  const cleaned = String(tag || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return cleaned.slice(0, 10);
+}
+
+function sanitizeClanName(name, fallbackTag = "SOLO"){
+  const raw = String(name || "").replace(/\s+/g, " ").trim();
+  if(raw) return raw.slice(0, 36);
+  const tag = normalizeClanTag(fallbackTag) || "SOLO";
+  return tag === "SOLO" ? "Lone Tigers" : `${tag} Clan`;
+}
+
+function defaultClanTagFromTelegram(state = S){
+  const src = (state && typeof state === "object") ? state : S;
+  const user = String(src?.telegramUsername || "").replace(/^@+/, "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if(user.length >= 3) return user.slice(0, 6);
+  return "SOLO";
+}
+
+function ensureClanState(state = S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return { tag:"SOLO", name:"Lone Tigers" };
+  const tag = normalizeClanTag(src.clanTag || defaultClanTagFromTelegram(src)) || "SOLO";
+  src.clanTag = tag;
+  src.clanName = sanitizeClanName(src.clanName, tag);
+  src.clanRaidEnabled = !!src.clanRaidEnabled;
+  if(!src.clanContractClaims || typeof src.clanContractClaims !== "object"){
+    src.clanContractClaims = {};
+  }
+  if(!src.clanCloud || typeof src.clanCloud !== "object"){
+    src.clanCloud = null;
+  }
+  if(!Number.isFinite(Number(src.clanLastSyncAt))){
+    src.clanLastSyncAt = 0;
+  }
+  return { tag:src.clanTag, name:src.clanName };
+}
+
 // ...rest of daily reward helpers...
 
 function ymdUTC(d=new Date()){
@@ -216,6 +255,45 @@ const WEEKLY_CONTRACT_POOL = Object.freeze([
     metric:"cashEarned",
     target:26000,
     reward:{ cash:7200, perkPoints:4 }
+  }),
+]);
+
+const CLAN_CONTRACT_POOL = Object.freeze([
+  Object.freeze({
+    id:"C_EVAC_CONVOY",
+    title:"Clan Convoy",
+    desc:"Your clan evacuates civilians across operations this week.",
+    metric:"evac",
+    baseTarget:22,
+    perMember:6,
+    reward:{ cash:2600, perkPoints:1 }
+  }),
+  Object.freeze({
+    id:"C_CAPTURE_GRID",
+    title:"Capture Grid",
+    desc:"Coordinate clan captures for research output.",
+    metric:"captures",
+    baseTarget:16,
+    perMember:4,
+    reward:{ cash:2800, perkPoints:1 }
+  }),
+  Object.freeze({
+    id:"C_MISSION_DRIVE",
+    title:"Mission Drive",
+    desc:"Clear operations as a clan this week.",
+    metric:"missionsCleared",
+    baseTarget:12,
+    perMember:3,
+    reward:{ cash:3100, perkPoints:2 }
+  }),
+  Object.freeze({
+    id:"C_CASH_CHAIN",
+    title:"War Chest Chain",
+    desc:"Accumulate mission cash as a clan.",
+    metric:"cashEarned",
+    baseTarget:22000,
+    perMember:8500,
+    reward:{ cash:3600, perkPoints:2 }
   }),
 ]);
 
@@ -571,6 +649,207 @@ function claimAllContracts(period="daily"){
   for(const entry of ready){
     claimContract(period, entry.id);
   }
+}
+
+function normalizeClanContractClaimsMap(raw){
+  const out = {};
+  if(!raw || typeof raw !== "object") return out;
+  for(const [week, val] of Object.entries(raw)){
+    if(!week || typeof val !== "object" || !val) continue;
+    const row = {};
+    for(const [id, claimed] of Object.entries(val)){
+      if(id && claimed) row[id] = 1;
+    }
+    if(Object.keys(row).length) out[week] = row;
+  }
+  return out;
+}
+
+function ensureClanContractClaimsState(state=S){
+  if(!state || typeof state !== "object") return {};
+  state.clanContractClaims = normalizeClanContractClaimsMap(state.clanContractClaims);
+  return state.clanContractClaims;
+}
+
+function clanContractTarget(tpl, members=1){
+  const base = Math.max(1, Math.floor(Number(tpl?.baseTarget || 1)));
+  const per = Math.max(0, Math.floor(Number(tpl?.perMember || 0)));
+  const team = Math.max(1, Math.floor(Number(members || 1)));
+  return Math.max(1, base + (Math.max(0, team - 1) * per));
+}
+
+function clanContractsFromCloud(state=S){
+  const cloud = (state?.clanCloud && typeof state.clanCloud === "object") ? state.clanCloud : null;
+  const entries = Array.isArray(cloud?.contracts?.entries) ? cloud.contracts.entries : [];
+  if(!entries.length) return null;
+  const period = String(cloud?.contracts?.period || contractWeekKey()).trim() || contractWeekKey();
+  return entries.map((entry, idx)=>{
+    const key = String(entry?.key || entry?.id || `CLAN_${idx+1}`);
+    const id = String(entry?.id || `${period}_${key}`);
+    const title = String(entry?.title || "Clan Contract");
+    const desc = String(entry?.desc || "Clan objective this week.");
+    const target = Math.max(1, Math.floor(Number(entry?.target || 1)));
+    const progress = Math.max(0, Math.floor(Number(entry?.progress || 0)));
+    const reward = {
+      cash: Math.max(0, Math.floor(Number(entry?.reward?.cash || 0))),
+      perkPoints: Math.max(0, Math.floor(Number(entry?.reward?.perkPoints || 0))),
+    };
+    return {
+      id,
+      key,
+      title,
+      desc,
+      target,
+      progress,
+      period,
+      reward,
+      ready: progress >= target,
+      source:"cloud",
+    };
+  });
+}
+
+function clanContractsFromLocal(state=S){
+  ensureClanState(state);
+  const week = contractWeekKey();
+  const members = Math.max(1, Math.floor(Number(state?.clanCloud?.members || 1)));
+  const tallies = ensureContractTalliesState(state);
+  const seed = contractHashInt(`clan_contracts|${week}|${state.clanTag || "SOLO"}`);
+  const picks = contractSeededPick(CLAN_CONTRACT_POOL, Math.min(3, CLAN_CONTRACT_POOL.length), seed);
+  return picks.map((tpl, idx)=>{
+    const target = clanContractTarget(tpl, members);
+    const metric = String(tpl.metric || "missionsCleared");
+    const progress = Math.max(0, Math.floor(Number(tallies?.[metric] || 0)));
+    return {
+      id: `${week}_${idx}_${tpl.id}`,
+      key: tpl.id,
+      title: tpl.title,
+      desc: tpl.desc,
+      target,
+      progress,
+      period: week,
+      reward: {
+        cash: Math.max(0, Math.floor(Number(tpl.reward?.cash || 0))),
+        perkPoints: Math.max(0, Math.floor(Number(tpl.reward?.perkPoints || 0))),
+      },
+      ready: progress >= target,
+      source:"local",
+    };
+  });
+}
+
+function clanContractsForUi(state=S){
+  return clanContractsFromCloud(state) || clanContractsFromLocal(state);
+}
+
+function clanContractClaimed(period, id, state=S){
+  const claims = ensureClanContractClaimsState(state);
+  const week = String(period || contractWeekKey());
+  return !!(claims?.[week]?.[id]);
+}
+
+function claimClanContract(contractId=""){
+  const entries = clanContractsForUi(S);
+  const entry = entries.find((row)=>row.id === contractId);
+  if(!entry){
+    toast("Clan contract not found.");
+    return;
+  }
+  if(!entry.ready){
+    toast("Clan contract is not complete yet.");
+    return;
+  }
+  if(clanContractClaimed(entry.period, entry.id, S)){
+    toast("Clan contract already claimed this week.");
+    return;
+  }
+  const claims = ensureClanContractClaimsState(S);
+  if(!claims[entry.period]) claims[entry.period] = {};
+  claims[entry.period][entry.id] = 1;
+
+  const cash = Math.max(0, Math.floor(Number(entry.reward?.cash || 0)));
+  const perkPoints = Math.max(0, Math.floor(Number(entry.reward?.perkPoints || 0)));
+  if(cash > 0){
+    S.funds = Math.max(0, Math.floor(Number(S.funds || 0))) + cash;
+    trackCashEarned(cash);
+  }
+  if(perkPoints > 0){
+    S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + perkPoints;
+  }
+  toast(`🏁 Clan contract claimed: ${entry.title} • ${contractRewardText(entry.reward)}`);
+  hapticNotif("success");
+  sfx("win");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  refreshLaunchIntroStatus();
+}
+
+function setClanTagPrompt(){
+  ensureClanState(S);
+  const next = window.prompt("Set clan tag (2-10 letters/numbers):", S.clanTag || "");
+  if(next == null) return;
+  const tag = normalizeClanTag(next);
+  if(tag.length < 2){
+    toast("Clan tag must be 2-10 letters/numbers.");
+    return;
+  }
+  S.clanTag = tag;
+  S.clanName = sanitizeClanName(S.clanName, tag);
+  S.clanCloud = null;
+  S.clanLastSyncAt = 0;
+  requestGameplayCloudSync("clan-tag-change", { force:true });
+  save(true);
+  updateModeDesc();
+  refreshLaunchIntroStatus();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  toast(`Clan tag set: ${tag}`);
+}
+
+function setClanNamePrompt(){
+  ensureClanState(S);
+  const next = window.prompt("Set clan name (max 36 chars):", S.clanName || "");
+  if(next == null) return;
+  S.clanName = sanitizeClanName(next, S.clanTag);
+  S.clanCloud = null;
+  S.clanLastSyncAt = 0;
+  requestGameplayCloudSync("clan-name-change", { force:true });
+  save(true);
+  updateModeDesc();
+  refreshLaunchIntroStatus();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  toast(`Clan name set: ${S.clanName}`);
+}
+
+function raidModeActive(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  return !window.__TUTORIAL_MODE__ && normalizeModeName(src.mode) === "Arcade" && !!src.clanRaidEnabled;
+}
+
+function toggleRaidMode(){
+  ensureClanState(S);
+  S.clanRaidEnabled = !S.clanRaidEnabled;
+  if(!raidModeActive(S) && Array.isArray(S.supportUnits)){
+    S.supportUnits = S.supportUnits.filter((unit)=>!unit?.raidPartner);
+  }
+  save(true);
+  updateModeDesc();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  toast(`Co-op raid mode ${S.clanRaidEnabled ? "enabled" : "disabled"} (Arcade only).`);
+}
+
+function refreshClanCloudNow(){
+  requestGameplayCloudSync("clan-refresh", { force:true });
+  toast("Refreshing clan sync...");
+}
+
+function launchClanSummaryText(state=S){
+  ensureClanState(state);
+  const cloud = (state?.clanCloud && typeof state.clanCloud === "object") ? state.clanCloud : null;
+  const rankTxt = Number.isFinite(Number(cloud?.rank)) && Number(cloud.rank) > 0 ? `#${Number(cloud.rank)}` : "—";
+  const members = Math.max(1, Math.floor(Number(cloud?.members || 1)));
+  const score = Math.max(0, Math.floor(Number(cloud?.score || 0)));
+  return `${state.clanName} [${state.clanTag}] • Rank ${rankTxt} • ${members} member${members===1?"":"s"} • ${score.toLocaleString()} pts`;
 }
 
 function normalizeLiveOpsReward(raw={}){
@@ -2353,6 +2632,12 @@ const DEFAULT = {
   playerHandle:"",
   telegramUserId:0,
   telegramUsername:"",
+  clanTag:"SOLO",
+  clanName:"Lone Tigers",
+  clanRaidEnabled:false,
+  clanContractClaims:{},
+  clanCloud:null,
+  clanLastSyncAt:0,
 
 // ===== PHASE 2 PROGRESSION =====
 xp: 0,
@@ -2403,6 +2688,14 @@ function syncTelegramIdentity(state=S){
   } else {
     state.playerHandle = String(info.handle || "").trim().slice(0, 64);
   }
+  ensureClanState(state);
+  if((state.clanTag || "SOLO") === "SOLO"){
+    const autoTag = normalizeClanTag(defaultClanTagFromTelegram(state));
+    if(autoTag && autoTag !== "SOLO"){
+      state.clanTag = autoTag;
+      state.clanName = sanitizeClanName(state.clanName, autoTag);
+    }
+  }
   return state;
 }
 function currentPlayerHandle(state=S){
@@ -2417,6 +2710,7 @@ function currentPlayerHandle(state=S){
 }
 
 syncTelegramIdentity(S);
+ensureClanState(S);
 ensureOpsTotalsState(S);
 syncWindowState();
 
@@ -2534,6 +2828,7 @@ function gameplayCloudMission(state=S){
 
 function buildGameplayCloudSnapshot(state=S){
   const src = (state && typeof state === "object") ? state : S;
+  const clan = ensureClanState(src);
   const totals = ensureOpsTotalsState(src);
   const missionStats = (src.stats && typeof src.stats === "object") ? src.stats : {};
   const kills = Math.max(
@@ -2565,6 +2860,9 @@ function buildGameplayCloudSnapshot(state=S){
     funds: Math.max(0, Math.floor(Number(src.funds || 0))),
     hp: clamp(Math.floor(Number(src.hp || 0)), 0, 100),
     armor: clamp(Math.floor(Number(src.armor || 0)), 0, Math.max(100, Math.floor(Number(src.armorCap || 100)))),
+    clanTag: clan.tag,
+    clanName: clan.name,
+    clanRaidEnabled: !!src.clanRaidEnabled,
   };
 }
 
@@ -2583,6 +2881,9 @@ function gameplayCloudSnapshotSig(snapshot){
     Math.max(0, Math.floor(Number(snap.civiliansLost || 0))),
     Math.max(0, Math.floor(Number(snap.missionsCleared || 0))),
     Math.max(0, Math.floor(Number(snap.cashEarned || 0))),
+    normalizeClanTag(snap.clanTag || "SOLO"),
+    sanitizeClanName(snap.clanName || "", snap.clanTag || "SOLO"),
+    snap.clanRaidEnabled ? 1 : 0,
   ].join("|");
 }
 
@@ -2599,9 +2900,26 @@ async function postGameplayCloudSnapshot(snapshot){
       keepalive:true,
       signal: controller ? controller.signal : undefined,
     });
-    return !!res.ok;
+    let payload = null;
+    try{
+      payload = await res.json();
+    }catch(e){
+      payload = null;
+    }
+    if(res.ok && payload?.clan && typeof payload.clan === "object"){
+      S.clanCloud = payload.clan;
+      S.clanLastSyncAt = Date.now();
+      try{ updateModeDesc(); }catch(e){}
+      try{ refreshLaunchIntroStatus(); }catch(e){}
+      try{
+        if(document.getElementById("invOverlay")?.style?.display === "flex"){
+          renderInventory();
+        }
+      }catch(e){}
+    }
+    return { ok:!!res.ok, payload };
   }catch(e){
-    return false;
+    return { ok:false, payload:null };
   }finally{
     if(timeout) clearTimeout(timeout);
   }
@@ -2630,8 +2948,8 @@ function requestGameplayCloudSync(reason="autosave", opts={}){
   __cloudProfileSyncInFlight = true;
   __cloudProfileLastSyncAt = now;
   void postGameplayCloudSnapshot(snapshot)
-    .then((ok)=>{
-      if(ok){
+    .then((result)=>{
+      if(result?.ok){
         __cloudProfileLastSig = sig;
       }
     })
@@ -2790,6 +3108,7 @@ function load(){
       ensureContractsState(fallback);
       ensureLiveOpsState(fallback);
       ensureOpsTotalsState(fallback);
+      ensureClanState(fallback);
       return fallback;
     }
     const m = { ...DEFAULT, ...saved };
@@ -2843,6 +3162,7 @@ function load(){
     ensureContractsState(m);
     ensureLiveOpsState(m);
     ensureOpsTotalsState(m);
+    ensureClanState(m);
     if(m.lives==null) m.lives=5;
     m.v = STORAGE_VERSION;
     trimPersistentState(m);
@@ -2858,6 +3178,7 @@ function load(){
     ensureContractsState(fallback);
     ensureLiveOpsState(fallback);
     ensureOpsTotalsState(fallback);
+    ensureClanState(fallback);
     return fallback;
   }
 }
@@ -5141,6 +5462,7 @@ function syncActiveSupportToRoster(){
       idx += 1;
     }
   }
+  S.supportUnits = applyRaidPartnerSlots(S.supportUnits);
 }
 function applySquadUpkeepAfterMission(){
   if(window.__TUTORIAL_MODE__) return null;
@@ -5194,6 +5516,7 @@ function applySquadUpkeepAfterMission(){
     let dropR = unpaidRescuers;
     S.supportUnits = S.supportUnits.filter((unit)=>{
       if(!unit || !unit.alive) return false;
+      if(unit.raidPartner) return true;
       if(unit.role === "attacker" && dropA > 0){
         dropA--;
         return false;
@@ -5205,6 +5528,7 @@ function applySquadUpkeepAfterMission(){
       return true;
     });
   }
+  S.supportUnits = applyRaidPartnerSlots(S.supportUnits);
   syncSquadRosterBounds();
 
   const paid = (paidAttackers * upkeepA) + (paidRescuers * upkeepR);
@@ -7736,6 +8060,12 @@ function writeStoryProfileData(source="autosave", state=S){
     soldierRescuersOwned: Math.max(0, Math.floor(Number(src.soldierRescuersOwned || 0))),
     soldierAttackersDowned: Math.max(0, Math.floor(Number(src.soldierAttackersDowned || 0))),
     soldierRescuersDowned: Math.max(0, Math.floor(Number(src.soldierRescuersDowned || 0))),
+    clanTag: normalizeClanTag(src.clanTag || defaultClanTagFromTelegram(src)) || "SOLO",
+    clanName: sanitizeClanName(src.clanName, src.clanTag || defaultClanTagFromTelegram(src)),
+    clanRaidEnabled: !!src.clanRaidEnabled,
+    clanContractClaims: (src.clanContractClaims && typeof src.clanContractClaims === "object")
+      ? cloneState(src.clanContractClaims)
+      : {},
     savedAt: Date.now(),
     source: String(source || "autosave"),
   };
@@ -7889,6 +8219,13 @@ function applyStoryProfileToState(state, profile){
   if(Number.isFinite(Number(profile.soldierRescuersOwned))) state.soldierRescuersOwned = Math.max(0, Math.floor(Number(profile.soldierRescuersOwned)));
   if(Number.isFinite(Number(profile.soldierAttackersDowned))) state.soldierAttackersDowned = Math.max(0, Math.floor(Number(profile.soldierAttackersDowned)));
   if(Number.isFinite(Number(profile.soldierRescuersDowned))) state.soldierRescuersDowned = Math.max(0, Math.floor(Number(profile.soldierRescuersDowned)));
+  if(typeof profile.clanTag === "string") state.clanTag = normalizeClanTag(profile.clanTag || state.clanTag || "SOLO") || "SOLO";
+  if(typeof profile.clanName === "string") state.clanName = sanitizeClanName(profile.clanName, state.clanTag);
+  if(typeof profile.clanRaidEnabled === "boolean") state.clanRaidEnabled = !!profile.clanRaidEnabled;
+  if(profile.clanContractClaims && typeof profile.clanContractClaims === "object"){
+    state.clanContractClaims = cloneState(profile.clanContractClaims);
+  }
+  ensureClanState(state);
 
   if(typeof profile.equippedWeaponId === "string" && profile.equippedWeaponId && state.ownedWeapons?.includes(profile.equippedWeaponId)){
     state.equippedWeaponId = profile.equippedWeaponId;
@@ -7993,6 +8330,12 @@ function writeStoryProgressData(payload={}){
     soldierRescuersOwned: Math.max(0, Math.floor(Number(payload.soldierRescuersOwned ?? S.soldierRescuersOwned ?? 0))),
     soldierAttackersDowned: Math.max(0, Math.floor(Number(payload.soldierAttackersDowned ?? S.soldierAttackersDowned ?? 0))),
     soldierRescuersDowned: Math.max(0, Math.floor(Number(payload.soldierRescuersDowned ?? S.soldierRescuersDowned ?? 0))),
+    clanTag: normalizeClanTag(payload.clanTag ?? S.clanTag ?? defaultClanTagFromTelegram(S)) || "SOLO",
+    clanName: sanitizeClanName(payload.clanName ?? S.clanName, payload.clanTag ?? S.clanTag ?? "SOLO"),
+    clanRaidEnabled: !!(payload.clanRaidEnabled ?? S.clanRaidEnabled),
+    clanContractClaims: (payload.clanContractClaims && typeof payload.clanContractClaims === "object")
+      ? cloneState(payload.clanContractClaims)
+      : ((S.clanContractClaims && typeof S.clanContractClaims === "object") ? cloneState(S.clanContractClaims) : {}),
     mag: {
       loaded: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).loaded || 0))),
       cap: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).cap || 0))),
@@ -8308,6 +8651,7 @@ function bindLaunchIntroAudioGesture(){
 function refreshLaunchIntroStatus(){
   ensureContractsState(S);
   ensureLiveOpsState(S);
+  ensureClanState(S);
   const streakEl = document.getElementById("launchIntroStreak");
   const dailyEl = document.getElementById("launchIntroDailyStatus");
   const commanderEl = document.getElementById("launchCommanderCard");
@@ -8315,6 +8659,7 @@ function refreshLaunchIntroStatus(){
   const dailyCardEl = document.getElementById("launchDailyCard");
   const contractsCardEl = document.getElementById("launchContractsCard");
   const liveOpsCardEl = document.getElementById("launchLiveOpsCard");
+  const clanCardEl = document.getElementById("launchClanCard");
   const posterEl = document.getElementById("launchPoster");
   const info = readDaily();
   const streak = Math.max(0, Number(info?.streak || 0));
@@ -8369,6 +8714,9 @@ function refreshLaunchIntroStatus(){
   }
   if(liveOpsCardEl){
     liveOpsCardEl.innerText = launchLiveOpsSummaryText(S);
+  }
+  if(clanCardEl){
+    clanCardEl.innerText = launchClanSummaryText(S);
   }
   refreshLaunchStartButtons();
 }
@@ -8664,6 +9012,19 @@ function openContractsFromLaunchIntro(){
     }
   });
 }
+function openClanContractsFromLaunchIntro(){
+  clearLaunchIntroAutoTimer();
+  clearLaunchMusicLoop();
+  const overlay = document.getElementById("launchIntroOverlay");
+  if(overlay) overlay.style.display = "none";
+  openInventory();
+  requestAnimationFrame(()=>{
+    const anchor = document.getElementById("invClanAnchor");
+    if(anchor && typeof anchor.scrollIntoView === "function"){
+      anchor.scrollIntoView({ block:"start", inline:"nearest" });
+    }
+  });
+}
 function openLiveOpsFromLaunchIntro(){
   clearLaunchIntroAutoTimer();
   clearLaunchMusicLoop();
@@ -8773,10 +9134,24 @@ function markModeTabs(){
   if(S.mode==="Survival") document.getElementById("mSurvival").classList.add("active");
 }
 function updateModeDesc(){
+  ensureClanState(S);
   const el=document.getElementById("modeDesc");
   if(S.mode==="Story") el.innerText="Story Campaign: chapter-based operations with escort/protect pressure, boss intros, and steady chapter rewards.";
-  else if(S.mode==="Arcade") el.innerText="Arcade Campaign: score-attack missions with a live timer, combo multiplier pressure, and medal ranking on clear.";
+  else if(S.mode==="Arcade") el.innerText=`Arcade Campaign: score-attack missions with a live timer, combo multiplier pressure, and medal ranking on clear.${S.clanRaidEnabled ? " Co-op Raid is ON." : " Co-op Raid is OFF."}`;
   else el.innerText="Survival: no civilians. Tigers pressure-damage you. Events OFF.";
+  const clanStatus = document.getElementById("modeClanStatus");
+  if(clanStatus){
+    const cloud = (S.clanCloud && typeof S.clanCloud === "object") ? S.clanCloud : null;
+    const rankTxt = Number.isFinite(Number(cloud?.rank)) && Number(cloud.rank) > 0 ? `#${Number(cloud.rank)}` : "—";
+    const members = Math.max(1, Math.floor(Number(cloud?.members || 1)));
+    const score = Math.max(0, Math.floor(Number(cloud?.score || 0)));
+    clanStatus.innerText = `Clan ${S.clanName} [${S.clanTag}] • Rank ${rankTxt} • ${members} member${members===1?"":"s"} • ${score.toLocaleString()} pts`;
+  }
+  const raidBtn = document.getElementById("modeRaidBtn");
+  if(raidBtn){
+    raidBtn.innerText = `🤝 Co-op Raid: ${S.clanRaidEnabled ? "ON" : "OFF"}`;
+    raidBtn.className = S.clanRaidEnabled ? "good" : "ghost";
+  }
 }
 
 // ===================== Shop / Inventory =====================
@@ -10500,6 +10875,32 @@ function renderInventory(){
     `;
   }).join("");
 
+  ensureClanState(S);
+  const clanContracts = clanContractsForUi(S);
+  const clanCloud = (S.clanCloud && typeof S.clanCloud === "object") ? S.clanCloud : null;
+  const clanRankTxt = Number.isFinite(Number(clanCloud?.rank)) && Number(clanCloud.rank) > 0 ? `#${Number(clanCloud.rank)}` : "—";
+  const clanMembers = Math.max(1, Math.floor(Number(clanCloud?.members || 1)));
+  const clanScore = Math.max(0, Math.floor(Number(clanCloud?.score || 0)));
+  const clanPeriod = String(clanCloud?.contracts?.period || clanContracts?.[0]?.period || contractWeekKey());
+  const clanRowsHtml = clanContracts.map((entry)=>{
+    const progress = Math.max(0, Math.floor(Number(entry.progress || 0)));
+    const target = Math.max(1, Math.floor(Number(entry.target || 1)));
+    const ready = progress >= target;
+    const claimed = clanContractClaimed(entry.period, entry.id, S);
+    const status = claimed ? "Claimed" : (ready ? "Ready" : `${progress}/${target}`);
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${entry.title} <span class="tag">${status}</span></div>
+          <div class="itemDesc">${entry.desc}</div>
+          <div class="itemDesc">Reward: ${contractRewardText(entry.reward)}</div>
+        </div>
+        <div style="text-align:right">
+          <button ${(claimed || !ready) ? "disabled" : ""} onclick="claimClanContract('${entry.id}')">${claimed ? "Claimed" : "Claim"}</button>
+        </div>
+      </div>`;
+  }).join("");
+
   document.getElementById("invSupplies").innerHTML = `
     <div class="item">
       <div>
@@ -10549,6 +10950,24 @@ function renderInventory(){
         <button ${S.trapsOwned<=0?'disabled':''} onclick="placeTrap()">Place</button>
       </div>
     </div>
+
+    <div class="divider"></div>
+    <div class="hudTitle" id="invClanAnchor">Clan + Co-op Raid</div>
+    <div class="item" style="padding:10px 12px;">
+      <div>
+        <div class="itemName">${S.clanName} <span class="tag">[${S.clanTag}]</span> <span class="tag">Rank ${clanRankTxt}</span></div>
+        <div class="itemDesc">Clan score: ${clanScore.toLocaleString()} • Members: ${clanMembers}</div>
+        <div class="itemDesc">Co-op raid mode: <b>${S.clanRaidEnabled ? "ON" : "OFF"}</b> (Arcade only, deploys 2-player wingman support)</div>
+        <div class="itemDesc">Clan contract period: ${clanPeriod} • ${S.clanCloud ? "shared progress via cloud sync" : "local progress fallback"}</div>
+      </div>
+      <div style="text-align:right">
+        <button class="ghost" onclick="setClanTagPrompt()">Set Tag</button>
+        <button class="ghost" onclick="setClanNamePrompt()">Rename</button>
+        <button class="${S.clanRaidEnabled ? "good" : "ghost"}" onclick="toggleRaidMode()">${S.clanRaidEnabled ? "Raid ON" : "Raid OFF"}</button>
+        <button class="ghost" onclick="refreshClanCloudNow()">Refresh</button>
+      </div>
+    </div>
+    ${clanRowsHtml}
 
     <div class="divider"></div>
     <div class="hudTitle" id="invLiveOpsAnchor">Live Ops</div>
@@ -11901,6 +12320,55 @@ function createSupportUnit(role, slotIndex=0){
   };
 }
 
+const RAID_PARTNER_IDS = Object.freeze({
+  attacker:"RAID_PARTNER_ATTACK",
+  rescue:"RAID_PARTNER_RESCUE",
+});
+
+function createRaidPartnerUnit(role, slotIndex=0){
+  const base = createSupportUnit(role, slotIndex);
+  const attacker = role === "attacker";
+  base.id = attacker ? RAID_PARTNER_IDS.attacker : RAID_PARTNER_IDS.rescue;
+  base.name = attacker ? "Co-op Raider" : "Co-op Rescuer";
+  base.raidPartner = true;
+  base.hpMax = Math.max(base.hpMax, Math.round(base.hpMax * (attacker ? 1.34 : 1.22)));
+  base.hp = base.hpMax;
+  base.armor = Math.max(base.armor || 0, attacker ? 36 : 20);
+  base.guideAt = 0;
+  base.fireAt = 0;
+  return base;
+}
+
+function applyRaidPartnerSlots(units=[]){
+  const list = Array.isArray(units) ? units.filter(Boolean) : [];
+  if(!raidModeActive(S)){
+    return list.filter((unit)=>!unit.raidPartner);
+  }
+
+  const core = list.filter((unit)=>!unit.raidPartner);
+  const existingA = list.find((unit)=>unit?.id === RAID_PARTNER_IDS.attacker && unit.alive !== false);
+  const existingR = list.find((unit)=>unit?.id === RAID_PARTNER_IDS.rescue && unit.alive !== false);
+  const raidUnits = [
+    existingA || createRaidPartnerUnit("attacker", 0),
+    existingR || createRaidPartnerUnit("rescue", 0),
+  ];
+
+  raidUnits.forEach((unit, idx)=>{
+    const anchorX = S.me.x + (idx === 0 ? -44 : 48);
+    const anchorY = S.me.y + 26;
+    const pt = safeSpawnPoint(anchorX, anchorY, 16, true, true);
+    unit.x = pt.x;
+    unit.y = pt.y;
+    unit.homeX = S.me.x;
+    unit.homeY = S.me.y;
+    unit.alive = true;
+    if(!Number.isFinite(unit.step)) unit.step = rand(0, 1000);
+  });
+
+  const keep = Math.max(0, 16 - raidUnits.length);
+  return [...core.slice(0, keep), ...raidUnits];
+}
+
 function spawnSupportUnits(){
   if(window.__TUTORIAL_MODE__) return;
   syncSquadRosterBounds();
@@ -11920,7 +12388,8 @@ function spawnSupportUnits(){
     rescuers.push(createSupportUnit("rescue", rescuers.length));
   }
 
-  const merged = [...attackers, ...rescuers].slice(0, 16);
+  const coreCap = raidModeActive(S) ? 14 : 16;
+  const merged = [...attackers, ...rescuers].slice(0, coreCap);
   merged.forEach((unit, idx)=>{
     const lane = idx % 4;
     const row = Math.floor(idx / 4);
@@ -11946,7 +12415,7 @@ function spawnSupportUnits(){
     unit.armor = storySupportArmorBase(unit.role);
     unit.alive = unit.hp > 0;
   });
-  S.supportUnits = merged.filter((unit)=>unit.alive);
+  S.supportUnits = applyRaidPartnerSlots(merged.filter((unit)=>unit.alive));
 }
 
 
@@ -11987,11 +12456,13 @@ function spawnCivilians(){
     : (S.mode==="Arcade"
       ? clamp(arcadeMission?.civilians ?? (2 + (S.arcadeLevel-1)), 0, 14)
       : 0);
+  const raidBonusCivs = (S.mode === "Arcade" && raidModeActive(S)) ? 2 : 0;
+  const spawnCount = clamp(n + raidBonusCivs, 0, 16);
   const sites = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice();
 
   S.civilians = [];
 
-  for(let i=0;i<n;i++){
+  for(let i=0;i<spawnCount;i++){
     const site = sites[i % sites.length] || { x: rand(160, cv.width - 160), y: rand(140, cv.height - 120), kind:"trail", label:"Field Site" };
     const orbit = 16 + ((i % 3) * 14);
     const angle = (Math.PI * 2 * (i % Math.max(1, sites.length))) / Math.max(1, sites.length);
@@ -12222,6 +12693,7 @@ function spawnTigers(){
 
   if(S.mode==="Arcade"){
     count = clamp(arcadeMission?.tigers ?? (3 + Math.max(0,(S.arcadeLevel-1)-(7-2))), 1, 18);
+    if(raidModeActive(S)) count = clamp(count + 1, 1, 19);
   }
 
   if(S.mode==="Survival")
@@ -12628,6 +13100,7 @@ function deploy(opts={}){
     timeLimitSec += (mission.trapTriggerRequired || 0) * 5;
     if(mission.boss) timeLimitSec += mission.bossTwin ? 24 : 18;
     if(mission.finalBoss) timeLimitSec += 30;
+    if(raidModeActive(S)) timeLimitSec += 20;
     S.arcadeMissionLimitSec = clamp(Math.round(timeLimitSec), 90, 240);
     S.arcadeMissionStartAt = Date.now();
     S.arcadeComboPeak = 0;
@@ -19716,6 +20189,7 @@ window.openLaunchIntro = openLaunchIntro;
 window.beginFromLaunchIntro = beginFromLaunchIntro;
 window.startQuickTutorialFromLaunchIntro = startQuickTutorialFromLaunchIntro;
 window.openContractsFromLaunchIntro = openContractsFromLaunchIntro;
+window.openClanContractsFromLaunchIntro = openClanContractsFromLaunchIntro;
 window.skipLaunchIntro = skipLaunchIntro;
 window.restartFromMission1FromLaunchIntro = restartFromMission1FromLaunchIntro;
 window.saveGameNow = saveGameNow;
@@ -19796,6 +20270,11 @@ window.buyTrap = buyTrap;
 window.openStarsTopUp = openStarsTopUp;
 window.buyWithStars = buyWithStars;
 window.claimPendingStarsPurchase = claimPendingStarsPurchase;
+window.setClanTagPrompt = setClanTagPrompt;
+window.setClanNamePrompt = setClanNamePrompt;
+window.toggleRaidMode = toggleRaidMode;
+window.refreshClanCloudNow = refreshClanCloudNow;
+window.claimClanContract = claimClanContract;
 window.clearPendingStarsPurchase = clearPendingStarsPurchase;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
