@@ -143,6 +143,21 @@ const NEMESIS_NAME_PREFIX = Object.freeze([
 const NEMESIS_NAME_SUFFIX = Object.freeze([
   "claw","tooth","stalker","mane","hunter","shadow","snarl","reaper","prowler","maw"
 ]);
+const MISSION_TWIST_TYPES = Object.freeze(["bridge","hostage","fog","blackout"]);
+const MISSION_TWIST_ROLL_MIN_MS = 19000;
+const MISSION_TWIST_ROLL_MAX_MS = 34000;
+const MISSION_TWIST_COOLDOWN_MS = 12000;
+const MISSION_TWIST_MAX_PER_MISSION = 3;
+const MISSION_TWIST_BRIDGE_RADIUS_MIN = 58;
+const MISSION_TWIST_BRIDGE_RADIUS_MAX = 84;
+const MISSION_TWIST_BRIDGE_MIN_MS = 13000;
+const MISSION_TWIST_BRIDGE_MAX_MS = 19000;
+const MISSION_TWIST_HOSTAGE_MIN_MS = 14000;
+const MISSION_TWIST_HOSTAGE_MAX_MS = 22000;
+const MISSION_TWIST_FOG_MIN_MS = 10000;
+const MISSION_TWIST_FOG_MAX_MS = 17000;
+const MISSION_TWIST_BLACKOUT_MIN_MS = 10000;
+const MISSION_TWIST_BLACKOUT_MAX_MS = 15000;
 
 const DAILY_CONTRACT_POOL = Object.freeze([
   Object.freeze({
@@ -407,6 +422,121 @@ function defaultNemesisState(){
     lastBountyAt: 0,
     roster: [],
   };
+}
+
+function defaultMissionTwistsState(){
+  return {
+    enabled: true,
+    nextRollAt: 0,
+    cooldownUntil: 0,
+    triggerCount: 0,
+    activeType: "",
+    activeUntil: 0,
+    used: {
+      bridge: 0,
+      hostage: 0,
+      fog: 0,
+      blackout: 0
+    },
+    bridge: {
+      active: false,
+      x: 0,
+      y: 0,
+      r: 68,
+      until: 0
+    },
+    hostage: {
+      active: false,
+      siteId: 0,
+      civId: 0,
+      x: 0,
+      y: 0,
+      r: 48,
+      until: 0,
+      rescued: false,
+      penaltyApplied: false
+    },
+    blackout: {
+      active: false,
+      until: 0
+    }
+  };
+}
+
+function ensureMissionTwistState(state=S){
+  if(!state || typeof state !== "object"){
+    return defaultMissionTwistsState();
+  }
+  const tw = (state.missionTwists && typeof state.missionTwists === "object")
+    ? state.missionTwists
+    : {};
+  const base = defaultMissionTwistsState();
+  tw.enabled = tw.enabled !== false;
+  tw.nextRollAt = Math.max(0, Math.floor(Number(tw.nextRollAt || 0)));
+  tw.cooldownUntil = Math.max(0, Math.floor(Number(tw.cooldownUntil || 0)));
+  tw.triggerCount = clamp(Math.floor(Number(tw.triggerCount || 0)), 0, 99);
+  tw.activeType = MISSION_TWIST_TYPES.includes(String(tw.activeType || ""))
+    ? String(tw.activeType)
+    : "";
+  tw.activeUntil = Math.max(0, Math.floor(Number(tw.activeUntil || 0)));
+  tw.used = (tw.used && typeof tw.used === "object") ? tw.used : {};
+  for(const key of MISSION_TWIST_TYPES){
+    tw.used[key] = Math.max(0, Math.floor(Number(tw.used[key] || 0)));
+  }
+  tw.bridge = (tw.bridge && typeof tw.bridge === "object") ? tw.bridge : {};
+  tw.bridge.active = !!tw.bridge.active;
+  tw.bridge.x = Number.isFinite(Number(tw.bridge.x)) ? Number(tw.bridge.x) : 0;
+  tw.bridge.y = Number.isFinite(Number(tw.bridge.y)) ? Number(tw.bridge.y) : 0;
+  tw.bridge.r = clamp(Number.isFinite(Number(tw.bridge.r)) ? Number(tw.bridge.r) : base.bridge.r, 24, 160);
+  tw.bridge.until = Math.max(0, Math.floor(Number(tw.bridge.until || 0)));
+
+  tw.hostage = (tw.hostage && typeof tw.hostage === "object") ? tw.hostage : {};
+  tw.hostage.active = !!tw.hostage.active;
+  tw.hostage.siteId = Math.max(0, Math.floor(Number(tw.hostage.siteId || 0)));
+  tw.hostage.civId = Math.max(0, Math.floor(Number(tw.hostage.civId || 0)));
+  tw.hostage.x = Number.isFinite(Number(tw.hostage.x)) ? Number(tw.hostage.x) : 0;
+  tw.hostage.y = Number.isFinite(Number(tw.hostage.y)) ? Number(tw.hostage.y) : 0;
+  tw.hostage.r = clamp(Number.isFinite(Number(tw.hostage.r)) ? Number(tw.hostage.r) : base.hostage.r, 20, 140);
+  tw.hostage.until = Math.max(0, Math.floor(Number(tw.hostage.until || 0)));
+  tw.hostage.rescued = !!tw.hostage.rescued;
+  tw.hostage.penaltyApplied = !!tw.hostage.penaltyApplied;
+
+  tw.blackout = (tw.blackout && typeof tw.blackout === "object") ? tw.blackout : {};
+  tw.blackout.active = !!tw.blackout.active;
+  tw.blackout.until = Math.max(0, Math.floor(Number(tw.blackout.until || 0)));
+
+  state.missionTwists = tw;
+  return tw;
+}
+
+function resetMissionTwistsForDeploy(state=S, now=Date.now()){
+  const tw = ensureMissionTwistState(state);
+  tw.enabled = true;
+  tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
+  tw.cooldownUntil = now + rand(6200, 9800);
+  tw.triggerCount = 0;
+  tw.activeType = "";
+  tw.activeUntil = 0;
+  for(const key of MISSION_TWIST_TYPES){
+    tw.used[key] = 0;
+  }
+  tw.bridge.active = false;
+  tw.bridge.x = 0;
+  tw.bridge.y = 0;
+  tw.bridge.r = clamp(tw.bridge.r, MISSION_TWIST_BRIDGE_RADIUS_MIN, MISSION_TWIST_BRIDGE_RADIUS_MAX);
+  tw.bridge.until = 0;
+  tw.hostage.active = false;
+  tw.hostage.siteId = 0;
+  tw.hostage.civId = 0;
+  tw.hostage.x = 0;
+  tw.hostage.y = 0;
+  tw.hostage.r = clamp(tw.hostage.r, 32, 80);
+  tw.hostage.until = 0;
+  tw.hostage.rescued = false;
+  tw.hostage.penaltyApplied = false;
+  tw.blackout.active = false;
+  tw.blackout.until = 0;
+  return tw;
 }
 
 function normalizeContractTalliesMap(raw){
@@ -3749,6 +3879,7 @@ const DEFAULT = {
   opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0 },
   balanceStats: defaultBalanceStatsState(),
   nemesis: defaultNemesisState(),
+  missionTwists: defaultMissionTwistsState(),
   contractTallies: defaultContractTallies(),
   contracts: null,
   liveOps: null,
@@ -4927,6 +5058,7 @@ function load(){
       ensureOpsTotalsState(fallback);
       ensureBalanceStatsState(fallback);
       ensureNemesisState(fallback);
+      ensureMissionTwistState(fallback);
       ensureClanState(fallback);
       ensureSeasonPassState(fallback);
       return fallback;
@@ -4953,6 +5085,9 @@ function load(){
     m.opsTotals = { ...DEFAULT.opsTotals, ...((saved.opsTotals && typeof saved.opsTotals === "object") ? saved.opsTotals : {}) };
     m.balanceStats = { ...defaultBalanceStatsState(), ...((saved.balanceStats && typeof saved.balanceStats === "object") ? saved.balanceStats : {}) };
     m.nemesis = (saved.nemesis && typeof saved.nemesis === "object") ? cloneState(saved.nemesis) : defaultNemesisState();
+    m.missionTwists = (saved.missionTwists && typeof saved.missionTwists === "object")
+      ? cloneState(saved.missionTwists)
+      : defaultMissionTwistsState();
     m.contractTallies = normalizeContractTalliesMap(saved.contractTallies);
     m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
     m.liveOps = (saved.liveOps && typeof saved.liveOps === "object") ? saved.liveOps : null;
@@ -4991,6 +5126,7 @@ function load(){
     ensureOpsTotalsState(m);
     ensureBalanceStatsState(m);
     ensureNemesisState(m);
+    ensureMissionTwistState(m);
     ensureClanState(m);
     ensureSeasonPassState(m);
     ensureStoryEndgameState(m);
@@ -5012,6 +5148,7 @@ function load(){
     ensureOpsTotalsState(fallback);
     ensureBalanceStatsState(fallback);
     ensureNemesisState(fallback);
+    ensureMissionTwistState(fallback);
     ensureClanState(fallback);
     return fallback;
   }
@@ -6613,6 +6750,12 @@ function scaleWorldForViewportResize(oldW, oldH, newW, newH){
   if(Number.isFinite(S.rollAnimFromY)) S.rollAnimFromY *= sy;
   if(Number.isFinite(S.rollAnimToX)) S.rollAnimToX *= sx;
   if(Number.isFinite(S.rollAnimToY)) S.rollAnimToY *= sy;
+
+  const tw = ensureMissionTwistState(S);
+  scalePointXY(tw.bridge, sx, sy);
+  tw.bridge.r = clamp((Number(tw.bridge.r) || 68) * sr, 24, 180);
+  scalePointXY(tw.hostage, sx, sy);
+  tw.hostage.r = clamp((Number(tw.hostage.r) || 48) * sr, 20, 140);
 }
 function clampWorldToCanvas(){
   if(!S || typeof S !== "object") return;
@@ -6651,6 +6794,13 @@ function clampWorldToCanvas(){
       S.evacZone.y = zonePt.y;
     }
   }
+  const tw = ensureMissionTwistState(S);
+  tw.bridge.x = clamp(tw.bridge.x, 60, cv.width - 60);
+  tw.bridge.y = clamp(tw.bridge.y, 80, cv.height - 60);
+  tw.bridge.r = clamp(tw.bridge.r, 24, 180);
+  tw.hostage.x = clamp(tw.hostage.x, 60, cv.width - 60);
+  tw.hostage.y = clamp(tw.hostage.y, 80, cv.height - 60);
+  tw.hostage.r = clamp(tw.hostage.r, 20, 140);
   for(const civ of (S.civilians || [])){
     civ.x = clamp(civ.x, 50, cv.width - 50);
     civ.y = clamp(civ.y, 70, cv.height - 50);
@@ -6725,6 +6875,7 @@ function sanitizeRuntimeState(){
   ensureTouchHudState();
   ensureMissionDirectorState();
   ensureBalanceStatsState();
+  ensureMissionTwistState();
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
@@ -8417,6 +8568,17 @@ function blockedCacheKey(x, y, radius=0){
 function blockedAt(x, y, radius){
   const key = blockedCacheKey(x, y, radius);
   if(__blockedAtCache.has(key)) return __blockedAtCache.get(key);
+  const tw = S?.missionTwists;
+  const bridge = tw?.bridge;
+  if(
+    bridge &&
+    bridge.active &&
+    Date.now() < (bridge.until || 0) &&
+    dist(x, y, bridge.x || 0, bridge.y || 0) <= ((bridge.r || 0) + Math.max(2, Number(radius || 0)))
+  ){
+    __blockedAtCache.set(key, true);
+    return true;
+  }
   let blocked = false;
   if(inMapScenarioKeepout(x, y, radius + 10)){
     __blockedAtCache.set(key, false);
@@ -8880,6 +9042,294 @@ function setEventText(txt, seconds=6){
   S.eventText = txt;
   S.eventTextUntil = Date.now() + seconds*1000;
   __savePending = true;
+}
+function missionTwistsEnabled(){
+  return eventsEnabled() && !window.__TUTORIAL_MODE__;
+}
+function missionTwistBlackoutActive(now=Date.now()){
+  const tw = ensureMissionTwistState(S);
+  if(!tw.blackout.active) return false;
+  if(now >= (tw.blackout.until || 0)){
+    tw.blackout.active = false;
+    tw.blackout.until = 0;
+    if(tw.activeType === "blackout"){
+      tw.activeType = "";
+      tw.activeUntil = 0;
+    }
+    __savePending = true;
+    return false;
+  }
+  return true;
+}
+function clearMissionTwist(type="", opts={}){
+  const tw = ensureMissionTwistState(S);
+  const silent = !!opts.silent;
+  const now = Date.now();
+  const target = String(type || tw.activeType || "");
+  if(!type || type === "bridge"){
+    tw.bridge.active = false;
+    tw.bridge.until = 0;
+  }
+  if(!type || type === "hostage"){
+    tw.hostage.active = false;
+    tw.hostage.siteId = 0;
+    tw.hostage.civId = 0;
+    tw.hostage.until = 0;
+    tw.hostage.rescued = false;
+    tw.hostage.penaltyApplied = false;
+  }
+  if(!type || type === "blackout"){
+    tw.blackout.active = false;
+    tw.blackout.until = 0;
+  }
+  if(!type || tw.activeType === target){
+    tw.activeType = "";
+    tw.activeUntil = 0;
+  }
+  if(!silent && opts.notice){
+    setEventText(String(opts.notice), Number.isFinite(opts.seconds) ? Number(opts.seconds) : 3.2);
+  }
+  tw.cooldownUntil = Math.max(tw.cooldownUntil || 0, now + Math.round(MISSION_TWIST_COOLDOWN_MS * 0.45));
+  __savePending = true;
+  return tw;
+}
+function missionTwistPickBridgePoint(){
+  const minPlayerDist = 120;
+  const candidates = [];
+  const civs = (S.civilians || []).filter((c)=>c.alive && !c.evac);
+  const tigers = (S.tigers || []).filter((t)=>t.alive);
+  if(civs.length){
+    const nearestCiv = civs.reduce((best, civ)=>{
+      if(!best) return civ;
+      return dist(S.me.x, S.me.y, civ.x, civ.y) < dist(S.me.x, S.me.y, best.x, best.y) ? civ : best;
+    }, null);
+    if(nearestCiv){
+      candidates.push({ x:(S.me.x + nearestCiv.x) * 0.5, y:(S.me.y + nearestCiv.y) * 0.5 });
+    }
+  }
+  if(tigers.length){
+    const nearestTiger = tigers.reduce((best, tiger)=>{
+      if(!best) return tiger;
+      return dist(S.me.x, S.me.y, tiger.x, tiger.y) < dist(S.me.x, S.me.y, best.x, best.y) ? tiger : best;
+    }, null);
+    if(nearestTiger){
+      candidates.push({ x:(S.me.x + nearestTiger.x) * 0.5, y:(S.me.y + nearestTiger.y) * 0.5 });
+    }
+  }
+  candidates.push({ x:cv.width * 0.52, y:cv.height * 0.50 });
+  candidates.push({ x:cv.width * 0.48, y:cv.height * 0.64 });
+
+  const evaluate = (rawX, rawY)=>{
+    let pt = safeSpawnPoint(rawX, rawY, 22, true, true);
+    if(!pt) return null;
+    const open = findNearestOpenPoint(pt.x, pt.y, 22, {
+      avoidKeepout:true,
+      avoidWater:true,
+      targetX:cv.width * 0.5,
+      targetY:cv.height * 0.5
+    });
+    if(open) pt = open;
+    if(inMapScenarioKeepout(pt.x, pt.y, 26)) return null;
+    if(isPointInWater(pt.x, pt.y, 16)) return null;
+    if(dist(pt.x, pt.y, S.me.x, S.me.y) < minPlayerDist) return null;
+    if(S.evacZone && dist(pt.x, pt.y, S.evacZone.x, S.evacZone.y) < ((S.evacZone.r || 70) + 84)) return null;
+    return pt;
+  };
+
+  for(const c of candidates){
+    const point = evaluate(c.x, c.y);
+    if(point) return point;
+  }
+  for(let i=0; i<18; i++){
+    const point = evaluate(rand(110, cv.width - 110), rand(120, cv.height - 110));
+    if(point) return point;
+  }
+  return null;
+}
+function triggerMissionTwistBridge(now=Date.now()){
+  const aliveTigerCount = (S.tigers || []).filter((t)=>t.alive).length;
+  if(aliveTigerCount <= 0) return false;
+  const point = missionTwistPickBridgePoint();
+  if(!point) return false;
+  const tw = ensureMissionTwistState(S);
+  tw.bridge.active = true;
+  tw.bridge.x = point.x;
+  tw.bridge.y = point.y;
+  tw.bridge.r = rand(MISSION_TWIST_BRIDGE_RADIUS_MIN, MISSION_TWIST_BRIDGE_RADIUS_MAX);
+  tw.bridge.until = now + rand(MISSION_TWIST_BRIDGE_MIN_MS, MISSION_TWIST_BRIDGE_MAX_MS);
+  tw.activeType = "bridge";
+  tw.activeUntil = tw.bridge.until;
+  tw.cooldownUntil = now + MISSION_TWIST_COOLDOWN_MS;
+  tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
+  setEventText("🌉 Bridge collapse! Route blocked. Reroute now.", 5.5);
+  sfx("event");
+  hapticImpact("medium");
+  __savePending = true;
+  return true;
+}
+function missionTwistPickHostageTarget(){
+  const civs = (S.civilians || []).filter((c)=>c.alive && !c.evac);
+  if(!civs.length) return null;
+  const primaryPool = civs.filter((c)=>!c.following);
+  const pool = primaryPool.length ? primaryPool : civs;
+  pool.sort((a, b)=>dist(S.me.x, S.me.y, b.x, b.y) - dist(S.me.x, S.me.y, a.x, a.y));
+  const chosen = pool[Math.min(pool.length - 1, rand(0, Math.min(2, pool.length - 1)))];
+  const site = (S.rescueSites || []).find((s)=>s.id === chosen.siteId) || null;
+  return { civ:chosen, site };
+}
+function triggerMissionTwistHostage(now=Date.now()){
+  const picked = missionTwistPickHostageTarget();
+  if(!picked || !picked.civ) return false;
+  const { civ, site } = picked;
+  const tw = ensureMissionTwistState(S);
+  tw.hostage.active = true;
+  tw.hostage.siteId = site?.id || civ.siteId || 0;
+  tw.hostage.civId = civ.id;
+  tw.hostage.x = site?.x ?? civ.x;
+  tw.hostage.y = site?.y ?? civ.y;
+  tw.hostage.r = clamp(Math.round((site?.r || 44) * 0.74), 34, 80);
+  tw.hostage.until = now + rand(MISSION_TWIST_HOSTAGE_MIN_MS, MISSION_TWIST_HOSTAGE_MAX_MS);
+  tw.hostage.rescued = false;
+  tw.hostage.penaltyApplied = false;
+  tw.activeType = "hostage";
+  tw.activeUntil = tw.hostage.until;
+  tw.cooldownUntil = now + MISSION_TWIST_COOLDOWN_MS;
+  tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
+  S.dangerCivId = civ.id;
+  setEventText(`🚚 Hostage vehicle at ${site?.label || "field site"}! Escort civilian #${civ.id} before timer ends.`, 6.4);
+  sfx("event");
+  hapticImpact("heavy");
+  __savePending = true;
+  return true;
+}
+function triggerMissionTwistFog(now=Date.now()){
+  const tw = ensureMissionTwistState(S);
+  const dur = rand(MISSION_TWIST_FOG_MIN_MS, MISSION_TWIST_FOG_MAX_MS);
+  S.fogUntil = Math.max(S.fogUntil || 0, now + dur);
+  tw.activeType = "fog";
+  tw.activeUntil = now + dur;
+  tw.cooldownUntil = now + MISSION_TWIST_COOLDOWN_MS;
+  tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
+  setEventText("🌫️ Night fog burst! Visibility reduced.", 5.2);
+  sfx("event");
+  __savePending = true;
+  return true;
+}
+function triggerMissionTwistBlackout(now=Date.now()){
+  const tw = ensureMissionTwistState(S);
+  const dur = rand(MISSION_TWIST_BLACKOUT_MIN_MS, MISSION_TWIST_BLACKOUT_MAX_MS);
+  tw.blackout.active = true;
+  tw.blackout.until = now + dur;
+  tw.activeType = "blackout";
+  tw.activeUntil = tw.blackout.until;
+  tw.cooldownUntil = now + MISSION_TWIST_COOLDOWN_MS;
+  tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
+  S.scanPing = 0;
+  setEventText("📻 Radio blackout! Scan and map devices are offline.", 5.8);
+  sfx("event");
+  hapticImpact("medium");
+  __savePending = true;
+  return true;
+}
+function missionTwistChooseType(tw){
+  const aliveCivs = (S.civilians || []).filter((c)=>c.alive && !c.evac).length;
+  const available = MISSION_TWIST_TYPES.filter((type)=>{
+    if((tw.used?.[type] || 0) >= 1) return false;
+    if(type === "hostage" && aliveCivs <= 0) return false;
+    return true;
+  });
+  if(!available.length) return "";
+  const weights = {
+    bridge: 0.28,
+    hostage: aliveCivs > 0 ? 0.30 : 0,
+    fog: 0.23,
+    blackout: 0.19
+  };
+  let total = 0;
+  for(const type of available) total += Math.max(0.01, Number(weights[type] || 0.1));
+  let roll = Math.random() * total;
+  for(const type of available){
+    roll -= Math.max(0.01, Number(weights[type] || 0.1));
+    if(roll <= 0) return type;
+  }
+  return available[rand(0, available.length - 1)];
+}
+function tickMissionTwists(){
+  const tw = ensureMissionTwistState(S);
+  if(!missionTwistsEnabled()){
+    if(tw.activeType || tw.bridge.active || tw.hostage.active || tw.blackout.active){
+      clearMissionTwist("", { silent:true });
+    }
+    return;
+  }
+  if(!tw.enabled) return;
+  const now = Date.now();
+
+  if(tw.bridge.active && now >= (tw.bridge.until || 0)){
+    clearMissionTwist("bridge", { notice:"🛣️ Collapse cleared. Route reopened.", seconds:2.8 });
+  }
+  if(tw.blackout.active && now >= (tw.blackout.until || 0)){
+    clearMissionTwist("blackout", { notice:"📻 Radio signal restored.", seconds:2.8 });
+  }
+  if(tw.activeType === "fog" && now >= (tw.activeUntil || 0)){
+    clearMissionTwist("fog", { silent:true });
+  }
+  if(tw.hostage.active){
+    const civ = civilianById(tw.hostage.civId);
+    const site = (S.rescueSites || []).find((s)=>s.id === tw.hostage.siteId) || null;
+    if(site){
+      tw.hostage.x = site.x;
+      tw.hostage.y = site.y;
+      tw.hostage.r = clamp(Math.round((site.r || tw.hostage.r || 44) * 0.72), 30, 96);
+    } else if(civ){
+      tw.hostage.x = civ.x;
+      tw.hostage.y = civ.y;
+    }
+    if(civ && civ.evac){
+      tw.hostage.rescued = true;
+      const bonus = rand(260, 560);
+      S.funds += bonus;
+      trackCashEarned(bonus);
+      clearMissionTwist("hostage", { notice:`✅ Hostage secured! +$${bonus.toLocaleString()}`, seconds:4.4 });
+      sfx("win");
+      hapticNotif("success");
+    } else if(!civ || !civ.alive){
+      clearMissionTwist("hostage", { notice:"❌ Hostage target lost.", seconds:4.0 });
+    } else if(now >= (tw.hostage.until || 0)){
+      if(!tw.hostage.penaltyApplied){
+        const base = Math.max(18, Math.round((civ.hpMax || 100) * 0.38));
+        const dmg = civilianShielded(civ) ? Math.max(4, Math.round(base * 0.35)) : base;
+        civ.hp = clamp((civ.hp || 0) - dmg, 0, civ.hpMax || 100);
+        tw.hostage.penaltyApplied = true;
+        emitDamagePopup(civ.x, civ.y - 38, `-${Math.max(1, dmg)}`, "civilian");
+      }
+      clearMissionTwist("hostage", { notice:"⏱️ Hostage timer expired. Civilian took damage.", seconds:4.8 });
+    }
+  }
+  if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
+  if(tw.triggerCount >= MISSION_TWIST_MAX_PER_MISSION) return;
+  if(tw.activeType) return;
+  if(now < (tw.cooldownUntil || 0) || now < (tw.nextRollAt || 0)) return;
+
+  const type = missionTwistChooseType(tw);
+  if(!type){
+    tw.nextRollAt = now + rand(7000, 12000);
+    return;
+  }
+
+  let ok = false;
+  if(type === "bridge") ok = triggerMissionTwistBridge(now);
+  else if(type === "hostage") ok = triggerMissionTwistHostage(now);
+  else if(type === "fog") ok = triggerMissionTwistFog(now);
+  else if(type === "blackout") ok = triggerMissionTwistBlackout(now);
+
+  if(ok){
+    tw.used[type] = Math.max(0, Math.floor(Number(tw.used[type] || 0))) + 1;
+    tw.triggerCount = Math.max(0, Math.floor(Number(tw.triggerCount || 0))) + 1;
+  } else {
+    tw.nextRollAt = now + rand(6500, 11000);
+    tw.cooldownUntil = now + Math.round(MISSION_TWIST_COOLDOWN_MS * 0.45);
+  }
 }
 function tickEvents(){
   if(!eventsEnabled() || S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
@@ -14453,6 +14903,10 @@ function activeBarricades(now=Date.now()){
 function activateMapInteractable(it){
   if(!it) return false;
   const now = Date.now();
+  if(missionTwistBlackoutActive(now)){
+    toast("Radio blackout active. Map devices offline.");
+    return false;
+  }
   if((it.uses||0) <= 0){
     toast(`${it.label} already used.`);
     return false;
@@ -15384,6 +15838,7 @@ function deploy(opts={}){
 
   // phase 1
   S.fogUntil = 0;
+  resetMissionTwistsForDeploy(S);
   S._biomeFogPulseAt = 0;
   S.eventText = "";
   S.eventCooldown = 240;
@@ -16280,6 +16735,7 @@ function clearOutOfRangeLock(){
 function scan(){
   if(!tutorialAllows("scan")) return toast(tutorialBlockMessage("scan"));
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
+  if(missionTwistBlackoutActive(Date.now())) return toast("Radio blackout active. Scan unavailable.");
   if(abilityOnCooldown("scan")) return toast(`Scan cooling down (${abilityCooldownLabel("scan")}).`);
   const scanCost = Math.max(2, STAMINA_COST_SCAN * storyStaminaDrainMul());
   if(S.stamina < scanCost) return toast("Not enough stamina.");
@@ -19578,7 +20034,7 @@ function renderHUD(){
   renderProtectActionButtons();
   const cacheBtn = document.getElementById("touchCacheBtn");
   if(cacheBtn){
-    cacheBtn.disabled = S.paused || S.inBattle || S.missionEnded || S.gameOver || !nearestCacheInteractable(132);
+    cacheBtn.disabled = S.paused || S.inBattle || S.missionEnded || S.gameOver || missionTwistBlackoutActive(Date.now()) || !nearestCacheInteractable(132);
   }
 
   document.getElementById("mapTxt").innerText = currentMap().name;
@@ -19696,6 +20152,23 @@ function renderHUD(){
   if((S.comboCount || 0) > 0){
     const left = Math.max(0, Math.ceil(((S.comboExpireAt || 0) - Date.now()) / 1000));
     assistParts.push(`Combo x${S.comboCount}${left ? ` (${left}s)` : ""}`);
+  }
+  const twistNow = Date.now();
+  const tw = ensureMissionTwistState(S);
+  if(tw.bridge.active && twistNow < (tw.bridge.until || 0)){
+    const left = Math.max(1, Math.ceil(((tw.bridge.until || 0) - twistNow) / 1000));
+    assistParts.unshift(`Twist: Bridge collapse ${left}s`);
+  } else if(tw.hostage.active && twistNow < (tw.hostage.until || 0)){
+    const left = Math.max(1, Math.ceil(((tw.hostage.until || 0) - twistNow) / 1000));
+    const targetCiv = civilianById(tw.hostage.civId);
+    const label = targetCiv ? `Civ #${targetCiv.id}` : "target";
+    assistParts.unshift(`Twist: Hostage ${label} ${left}s`);
+  } else if(missionTwistBlackoutActive(twistNow)){
+    const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - twistNow) / 1000));
+    assistParts.unshift(`Twist: Radio blackout ${left}s`);
+  } else if(tw.activeType === "fog" && twistNow < (tw.activeUntil || 0)){
+    const left = Math.max(1, Math.ceil(((tw.activeUntil || 0) - twistNow) / 1000));
+    assistParts.unshift(`Twist: Night fog burst ${left}s`);
   }
   if(S.mode==="Arcade"){
     const limit = Math.max(0, Math.floor(Number(S.arcadeMissionLimitSec || 0)));
@@ -19934,6 +20407,77 @@ function maybeRenderHUD(force=false){
 }
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
+function drawMissionTwistOverlay(now=Date.now()){
+  const tw = ensureMissionTwistState(S);
+  ctx.save();
+  if(tw.bridge.active && now < (tw.bridge.until || 0)){
+    const left = Math.max(1, Math.ceil(((tw.bridge.until || 0) - now) / 1000));
+    const pulse = 0.82 + (Math.sin(now / 180) * 0.16);
+    ctx.globalAlpha = 0.22 + (pulse * 0.14);
+    ctx.fillStyle = "rgba(180,48,54,.85)";
+    ctx.beginPath();
+    ctx.arc(tw.bridge.x, tw.bridge.y, tw.bridge.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.92;
+    ctx.strokeStyle = "rgba(252,165,165,.96)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(tw.bridge.x, tw.bridge.y, tw.bridge.r + 1.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([7, 6]);
+    ctx.beginPath();
+    ctx.arc(tw.bridge.x, tw.bridge.y, Math.max(20, tw.bridge.r - 9), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(255,220,220,.92)";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(tw.bridge.x - (tw.bridge.r * 0.52), tw.bridge.y - (tw.bridge.r * 0.52));
+    ctx.lineTo(tw.bridge.x + (tw.bridge.r * 0.52), tw.bridge.y + (tw.bridge.r * 0.52));
+    ctx.moveTo(tw.bridge.x + (tw.bridge.r * 0.52), tw.bridge.y - (tw.bridge.r * 0.52));
+    ctx.lineTo(tw.bridge.x - (tw.bridge.r * 0.52), tw.bridge.y + (tw.bridge.r * 0.52));
+    ctx.stroke();
+    rounded(tw.bridge.x - 78, tw.bridge.y - tw.bridge.r - 34, 156, 24, 11, "rgba(44,8,12,.90)", "rgba(253,164,175,.82)");
+    ctx.fillStyle = "rgba(255,226,231,.98)";
+    ctx.textAlign = "center";
+    ctx.font = "900 11px system-ui";
+    ctx.fillText(`BRIDGE COLLAPSE ${left}s`, tw.bridge.x, tw.bridge.y - tw.bridge.r - 18);
+    ctx.textAlign = "start";
+  }
+  if(tw.hostage.active && now < (tw.hostage.until || 0)){
+    const left = Math.max(1, Math.ceil(((tw.hostage.until || 0) - now) / 1000));
+    const pulse = 0.84 + (Math.sin(now / 160) * 0.14);
+    ctx.globalAlpha = 0.18 + (pulse * 0.18);
+    ctx.fillStyle = "rgba(236,72,153,.72)";
+    ctx.beginPath();
+    ctx.arc(tw.hostage.x, tw.hostage.y, tw.hostage.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.95;
+    ctx.strokeStyle = "rgba(251,113,133,.98)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(tw.hostage.x, tw.hostage.y, tw.hostage.r + 1, 0, Math.PI * 2);
+    ctx.stroke();
+    rounded(tw.hostage.x - 74, tw.hostage.y - tw.hostage.r - 34, 148, 24, 11, "rgba(58,12,32,.92)", "rgba(251,113,133,.82)");
+    ctx.fillStyle = "rgba(255,228,236,.98)";
+    ctx.textAlign = "center";
+    ctx.font = "900 11px system-ui";
+    ctx.fillText(`HOSTAGE ${left}s`, tw.hostage.x, tw.hostage.y - tw.hostage.r - 18);
+    ctx.textAlign = "start";
+  }
+  if(tw.blackout.active && now < (tw.blackout.until || 0)){
+    const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - now) / 1000));
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = "rgba(6,9,16,.98)";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    rounded(16, 16, 194, 24, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.7)");
+    ctx.globalAlpha = 0.96;
+    ctx.fillStyle = "rgba(226,232,240,.96)";
+    ctx.font = "900 11px system-ui";
+    ctx.fillText(`📻 RADIO BLACKOUT ${left}s`, 26, 32);
+  }
+  ctx.restore();
+}
 function drawMapScene(){
   const frameNow = Date.now();
   const w=cv.width, h=cv.height;
@@ -19943,10 +20487,24 @@ function drawMapScene(){
   const chapter = chapterIndexForMode(S.mode);
   const chapterStyle = chapterVisualForMode(S.mode, chapter);
   const ez = S.evacZone || DEFAULT.evacZone;
+  const tw = ensureMissionTwistState(S);
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
-    (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0
+    (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0,
+    tw.activeType || "",
+    tw.bridge.active ? 1 : 0,
+    Math.round(tw.bridge.x || 0),
+    Math.round(tw.bridge.y || 0),
+    Math.round(tw.bridge.r || 0),
+    Math.max(0, Math.ceil(((tw.bridge.until || 0) - frameNow) / 1000)),
+    tw.hostage.active ? 1 : 0,
+    Math.round(tw.hostage.x || 0),
+    Math.round(tw.hostage.y || 0),
+    Math.round(tw.hostage.r || 0),
+    Math.max(0, Math.ceil(((tw.hostage.until || 0) - frameNow) / 1000)),
+    tw.blackout.active ? 1 : 0,
+    Math.max(0, Math.ceil(((tw.blackout.until || 0) - frameNow) / 1000))
   ].join("|");
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
@@ -20660,6 +21218,8 @@ function drawMapScene(){
     }
   }
 
+  drawMissionTwistOverlay(Date.now());
+
   if(Date.now() < (S.fogUntil||0)){
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = "#0b0d12";
@@ -21000,6 +21560,22 @@ function drawRescueSite(site){
   ctx.font = "900 10px system-ui";
   ctx.textAlign = "center";
   ctx.fillText(site.label, site.x, site.y + site.r + 18);
+  const hostageTw = S?.missionTwists?.hostage;
+  if(
+    hostageTw &&
+    hostageTw.active &&
+    Date.now() < (hostageTw.until || 0) &&
+    Number(hostageTw.siteId || 0) === Number(site.id || -1)
+  ){
+    const left = Math.max(1, Math.ceil(((hostageTw.until || 0) - Date.now()) / 1000));
+    ctx.fillStyle = "rgba(58,12,32,.95)";
+    roundedRectFill(site.x - 52, site.y - site.r - 24, 104, 16, 8);
+    ctx.fillStyle = "rgba(10,14,22,.90)";
+    roundedRectFill(site.x - 50.5, site.y - site.r - 22.5, 101, 13, 6);
+    ctx.fillStyle = "rgba(251,113,133,.98)";
+    ctx.font = "900 10px system-ui";
+    ctx.fillText(`HOSTAGE ${left}s`, site.x, site.y - site.r - 12);
+  }
   ctx.textAlign = "start";
   ctx.restore();
 }
@@ -22340,6 +22916,7 @@ function draw(){
       runFrameTask("comboTick", frameInterval(lagCritical ? 154 : (lagHeavy ? 130 : 110), 1.4), comboTick, { costHint:0.7 });
 
       if(!window.TigerTutorial?.isRunning){
+        runFrameTask("missionTwists", frameInterval(lagHeavy ? 236 : 176, 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
         runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
         runFrameTask("biomeHazard", frameInterval(lagHeavy ? 220 : 170, 1.45), biomeHazardTick, { costHint:0.6 });
         runFrameTask("ambientPickup", frameInterval(lagHeavy ? 360 : 300, 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
@@ -22464,6 +23041,7 @@ function init(){
   ensureBalanceStatsState(S);
   ensureContractsState(S);
   ensureMissionDirectorState(S);
+  ensureMissionTwistState(S);
   ensureSeasonPassState(S);
   if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
