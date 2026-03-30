@@ -1296,6 +1296,457 @@ const STARS_TOPUP_GUIDE = [
 ];
 const STARS_ALL_OFFERS = [...STARS_CASH_PACKS, ...STARS_PREMIUM_PACKS];
 
+// ===================== SEASON PASS (Cosmetic Only) =====================
+const SEASON_PASS_ID = "S1_JUNGLE_ASCENT";
+const SEASON_PASS_POINTS_PER_LEVEL = 100;
+const SEASON_PASS_MAX_LEVEL = 20;
+const SEASON_PASS_MAX_POINTS = (SEASON_PASS_MAX_LEVEL * SEASON_PASS_POINTS_PER_LEVEL) - 1;
+const SEASON_PASS_PREMIUM_PRICE = 15000;
+const SEASON_PASS_TYPE_ICON = Object.freeze({
+  skin: "🎨",
+  badge: "🏅",
+  banner: "🏳️",
+  finisher: "✨",
+});
+const SEASON_PASS_SKINS = Object.freeze({
+  SKIN_FIELD_STANDARD: {
+    name: "Field Standard",
+    palette: {
+      pants: "rgba(26,32,44,.95)",
+      boots: "rgba(17,22,31,.95)",
+      armorOuter: "rgba(48,58,72,.96)",
+      armorInner: "rgba(20,30,44,.97)",
+      arm: "rgba(28,36,48,.95)",
+      shoulder: "rgba(36,44,59,.9)",
+      helmet: "rgba(55,65,75,.95)",
+      visor: "rgba(180,210,235,.55)",
+      trim: "rgba(120,208,255,.46)",
+      lens: "rgba(22,26,38,.95)",
+    },
+  },
+  SKIN_FOREST_RANGER: {
+    name: "Forest Ranger",
+    palette: {
+      pants: "rgba(23,41,33,.95)",
+      boots: "rgba(13,23,18,.95)",
+      armorOuter: "rgba(43,77,58,.96)",
+      armorInner: "rgba(22,47,35,.97)",
+      arm: "rgba(24,52,38,.95)",
+      shoulder: "rgba(31,58,45,.92)",
+      helmet: "rgba(56,95,74,.95)",
+      visor: "rgba(170,235,198,.55)",
+      trim: "rgba(74,222,128,.56)",
+      lens: "rgba(16,29,24,.95)",
+    },
+  },
+  SKIN_DESERT_STORM: {
+    name: "Desert Storm",
+    palette: {
+      pants: "rgba(65,52,33,.95)",
+      boots: "rgba(32,25,15,.95)",
+      armorOuter: "rgba(125,95,55,.96)",
+      armorInner: "rgba(78,57,33,.97)",
+      arm: "rgba(92,68,39,.95)",
+      shoulder: "rgba(110,80,45,.92)",
+      helmet: "rgba(142,109,62,.95)",
+      visor: "rgba(255,220,165,.48)",
+      trim: "rgba(251,191,36,.52)",
+      lens: "rgba(40,32,20,.95)",
+    },
+  },
+  SKIN_CRIMSON_FANG: {
+    name: "Crimson Fang",
+    palette: {
+      pants: "rgba(62,18,24,.95)",
+      boots: "rgba(30,10,13,.95)",
+      armorOuter: "rgba(125,24,36,.96)",
+      armorInner: "rgba(82,15,25,.97)",
+      arm: "rgba(90,20,30,.95)",
+      shoulder: "rgba(108,24,37,.92)",
+      helmet: "rgba(140,30,44,.95)",
+      visor: "rgba(254,202,202,.48)",
+      trim: "rgba(248,113,113,.54)",
+      lens: "rgba(44,12,16,.95)",
+    },
+  },
+  SKIN_MIDNIGHT_OPS: {
+    name: "Midnight Ops",
+    palette: {
+      pants: "rgba(12,16,30,.95)",
+      boots: "rgba(8,10,20,.95)",
+      armorOuter: "rgba(24,36,72,.96)",
+      armorInner: "rgba(14,24,54,.97)",
+      arm: "rgba(18,28,62,.95)",
+      shoulder: "rgba(20,32,66,.92)",
+      helmet: "rgba(36,52,96,.95)",
+      visor: "rgba(191,219,254,.50)",
+      trim: "rgba(96,165,250,.58)",
+      lens: "rgba(10,16,34,.95)",
+    },
+  },
+  SKIN_EMERALD_GUARD: {
+    name: "Emerald Guard",
+    palette: {
+      pants: "rgba(16,38,34,.95)",
+      boots: "rgba(10,22,20,.95)",
+      armorOuter: "rgba(22,94,82,.96)",
+      armorInner: "rgba(17,64,57,.97)",
+      arm: "rgba(18,74,65,.95)",
+      shoulder: "rgba(20,86,74,.92)",
+      helmet: "rgba(24,120,104,.95)",
+      visor: "rgba(167,243,208,.50)",
+      trim: "rgba(45,212,191,.62)",
+      lens: "rgba(8,29,25,.95)",
+    },
+  },
+  SKIN_PANTHER_BLACK: {
+    name: "Panther Black",
+    palette: {
+      pants: "rgba(10,11,14,.95)",
+      boots: "rgba(5,6,8,.95)",
+      armorOuter: "rgba(21,24,31,.96)",
+      armorInner: "rgba(14,17,24,.97)",
+      arm: "rgba(17,20,28,.95)",
+      shoulder: "rgba(18,22,31,.92)",
+      helmet: "rgba(28,34,46,.95)",
+      visor: "rgba(203,213,225,.46)",
+      trim: "rgba(156,163,175,.52)",
+      lens: "rgba(20,23,30,.95)",
+    },
+  },
+  SKIN_GOLDEN_COMMAND: {
+    name: "Golden Command",
+    palette: {
+      pants: "rgba(58,49,26,.95)",
+      boots: "rgba(30,25,13,.95)",
+      armorOuter: "rgba(142,112,39,.96)",
+      armorInner: "rgba(94,72,24,.97)",
+      arm: "rgba(112,86,28,.95)",
+      shoulder: "rgba(129,98,32,.92)",
+      helmet: "rgba(168,132,44,.95)",
+      visor: "rgba(254,240,138,.52)",
+      trim: "rgba(250,204,21,.62)",
+      lens: "rgba(43,34,12,.95)",
+    },
+  },
+});
+const SEASON_PASS_BADGES = Object.freeze({
+  BADGE_RECRUIT: { name: "Recruit", icon: "🪖" },
+  BADGE_SCOUT: { name: "Scout", icon: "🛰️" },
+  BADGE_TRACKER: { name: "Tracker", icon: "🧭" },
+  BADGE_WARDEN: { name: "Warden", icon: "🛡️" },
+  BADGE_TAMER: { name: "Tamer", icon: "🐯" },
+  BADGE_SHARPSHOT: { name: "Sharpshot", icon: "🎯" },
+  BADGE_RESCUER: { name: "Rescuer", icon: "🚁" },
+  BADGE_COMMANDER: { name: "Commander", icon: "⭐" },
+});
+const SEASON_PASS_BANNERS = Object.freeze({
+  BANNER_FOREST_EDGE: { name: "Forest Edge" },
+  BANNER_TRAILBLAZER: { name: "Trailblazer" },
+  BANNER_STORM_LINE: { name: "Storm Line" },
+  BANNER_RED_DAWN: { name: "Red Dawn" },
+  BANNER_COBALT_MARK: { name: "Cobalt Mark" },
+  BANNER_EMERALD_WAVE: { name: "Emerald Wave" },
+  BANNER_SHADOW_FLAG: { name: "Shadow Flag" },
+  BANNER_LEGEND_HUNTER: { name: "Legend Hunter" },
+});
+const SEASON_PASS_FINISHERS = Object.freeze({
+  FINISHER_STANDARD: { name: "Standard Finish", text: "Clean Takedown", icon: "✨", popupKind: "crit" },
+  FINISHER_SHOCKWAVE: { name: "Shockwave", text: "Shock Finish", icon: "⚡", popupKind: "crit" },
+  FINISHER_CRESCENT: { name: "Crescent Slash", text: "Crescent Finish", icon: "🌙", popupKind: "crit" },
+  FINISHER_TRANQ_NET: { name: "Tranq Net", text: "Secure Capture", icon: "💉", popupKind: "tranq" },
+  FINISHER_PHANTOM: { name: "Phantom Break", text: "Phantom Finish", icon: "👤", popupKind: "crit" },
+  FINISHER_CROWN: { name: "Tiger Crown", text: "Crown Finish", icon: "👑", popupKind: "crit" },
+});
+const SEASON_PASS_TRACK = Object.freeze([
+  { level:1,  free:{ type:"badge", id:"BADGE_SCOUT" },           premium:{ type:"skin", id:"SKIN_PANTHER_BLACK" } },
+  { level:2,  free:{ type:"banner", id:"BANNER_TRAILBLAZER" },   premium:{ type:"finisher", id:"FINISHER_SHOCKWAVE" } },
+  { level:3,  free:{ type:"skin", id:"SKIN_FOREST_RANGER" },     premium:{ type:"badge", id:"BADGE_TRACKER" } },
+  { level:4,  free:{ type:"finisher", id:"FINISHER_TRANQ_NET" }, premium:{ type:"banner", id:"BANNER_STORM_LINE" } },
+  { level:5,  free:{ type:"badge", id:"BADGE_WARDEN" },          premium:{ type:"skin", id:"SKIN_DESERT_STORM" } },
+  { level:6,  free:{ type:"banner", id:"BANNER_RED_DAWN" },      premium:{ type:"finisher", id:"FINISHER_CRESCENT" } },
+  { level:7,  free:{ type:"skin", id:"SKIN_EMERALD_GUARD" },     premium:{ type:"badge", id:"BADGE_SHARPSHOT" } },
+  { level:8,  free:{ type:"finisher", id:"FINISHER_STANDARD" },  premium:{ type:"banner", id:"BANNER_COBALT_MARK" } },
+  { level:9,  free:{ type:"badge", id:"BADGE_TAMER" },           premium:{ type:"skin", id:"SKIN_CRIMSON_FANG" } },
+  { level:10, free:{ type:"banner", id:"BANNER_EMERALD_WAVE" },  premium:{ type:"finisher", id:"FINISHER_PHANTOM" } },
+  { level:11, free:{ type:"skin", id:"SKIN_MIDNIGHT_OPS" },      premium:{ type:"badge", id:"BADGE_RESCUER" } },
+  { level:12, free:{ type:"finisher", id:"FINISHER_SHOCKWAVE" }, premium:{ type:"banner", id:"BANNER_SHADOW_FLAG" } },
+  { level:13, free:{ type:"badge", id:"BADGE_COMMANDER" },       premium:{ type:"skin", id:"SKIN_GOLDEN_COMMAND" } },
+  { level:14, free:{ type:"banner", id:"BANNER_STORM_LINE" },    premium:{ type:"finisher", id:"FINISHER_CROWN" } },
+  { level:15, free:{ type:"skin", id:"SKIN_DESERT_STORM" },      premium:{ type:"badge", id:"BADGE_TAMER" } },
+  { level:16, free:{ type:"finisher", id:"FINISHER_TRANQ_NET" }, premium:{ type:"banner", id:"BANNER_LEGEND_HUNTER" } },
+  { level:17, free:{ type:"badge", id:"BADGE_RESCUER" },         premium:{ type:"skin", id:"SKIN_EMERALD_GUARD" } },
+  { level:18, free:{ type:"banner", id:"BANNER_COBALT_MARK" },   premium:{ type:"finisher", id:"FINISHER_PHANTOM" } },
+  { level:19, free:{ type:"skin", id:"SKIN_CRIMSON_FANG" },      premium:{ type:"badge", id:"BADGE_COMMANDER" } },
+  { level:20, free:{ type:"banner", id:"BANNER_LEGEND_HUNTER" }, premium:{ type:"finisher", id:"FINISHER_CROWN" } },
+]);
+function seasonCosmeticBucket(type){
+  if(type === "skin") return "skins";
+  if(type === "badge") return "badges";
+  if(type === "banner") return "banners";
+  if(type === "finisher") return "finishers";
+  return "";
+}
+function seasonCosmeticCatalog(type){
+  if(type === "skin") return SEASON_PASS_SKINS;
+  if(type === "badge") return SEASON_PASS_BADGES;
+  if(type === "banner") return SEASON_PASS_BANNERS;
+  if(type === "finisher") return SEASON_PASS_FINISHERS;
+  return null;
+}
+function seasonRewardDef(type, id){
+  const catalog = seasonCosmeticCatalog(type);
+  if(!catalog) return null;
+  return catalog[id] || null;
+}
+function seasonNormalizeStringList(list){
+  if(!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  for(const raw of list){
+    const id = String(raw || "").trim();
+    if(!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+function seasonNormalizeClaimMap(map){
+  const src = (map && typeof map === "object") ? map : {};
+  const out = {};
+  for(const [k, v] of Object.entries(src)){
+    if(!v) continue;
+    const tier = clamp(Math.floor(Number(k || 0)), 1, SEASON_PASS_MAX_LEVEL);
+    out[String(tier)] = true;
+  }
+  return out;
+}
+function defaultSeasonPassState(){
+  return {
+    seasonId: SEASON_PASS_ID,
+    points: 0,
+    premium: false,
+    claimedFree: {},
+    claimedPremium: {},
+    owned: {
+      skins: ["SKIN_FIELD_STANDARD"],
+      badges: ["BADGE_RECRUIT"],
+      banners: ["BANNER_FOREST_EDGE"],
+      finishers: ["FINISHER_STANDARD"],
+    },
+    equipped: {
+      skin: "SKIN_FIELD_STANDARD",
+      badge: "BADGE_RECRUIT",
+      banner: "BANNER_FOREST_EDGE",
+      finisher: "FINISHER_STANDARD",
+    },
+  };
+}
+function normalizeSeasonPassSnapshot(input){
+  const base = defaultSeasonPassState();
+  const src = (input && typeof input === "object") ? input : {};
+  const out = {
+    seasonId: String(src.seasonId || base.seasonId),
+    points: clamp(Math.floor(Number(src.points || 0)), 0, SEASON_PASS_MAX_POINTS),
+    premium: !!src.premium,
+    claimedFree: seasonNormalizeClaimMap(src.claimedFree),
+    claimedPremium: seasonNormalizeClaimMap(src.claimedPremium),
+    owned: {
+      skins: seasonNormalizeStringList(src.owned?.skins),
+      badges: seasonNormalizeStringList(src.owned?.badges),
+      banners: seasonNormalizeStringList(src.owned?.banners),
+      finishers: seasonNormalizeStringList(src.owned?.finishers),
+    },
+    equipped: {
+      skin: String(src.equipped?.skin || ""),
+      badge: String(src.equipped?.badge || ""),
+      banner: String(src.equipped?.banner || ""),
+      finisher: String(src.equipped?.finisher || ""),
+    },
+  };
+
+  for(const [type, fallbackId] of Object.entries(base.equipped)){
+    const bucket = seasonCosmeticBucket(type);
+    const catalog = seasonCosmeticCatalog(type);
+    if(!bucket || !catalog) continue;
+    if(!out.owned[bucket].includes(fallbackId)) out.owned[bucket].push(fallbackId);
+    const cleanOwned = out.owned[bucket].filter((id)=>!!catalog[id]);
+    out.owned[bucket] = cleanOwned.length ? cleanOwned : [fallbackId];
+    if(!catalog[out.equipped[type]] || !out.owned[bucket].includes(out.equipped[type])){
+      out.equipped[type] = out.owned[bucket][0] || fallbackId;
+    }
+  }
+  return out;
+}
+function ensureSeasonPassState(state=S){
+  if(!state || typeof state !== "object"){
+    return normalizeSeasonPassSnapshot(null);
+  }
+  state.seasonPass = normalizeSeasonPassSnapshot(state.seasonPass);
+  return state.seasonPass;
+}
+function mergeSeasonPassSnapshots(currentPass, incomingPass){
+  const current = normalizeSeasonPassSnapshot(currentPass);
+  const incoming = normalizeSeasonPassSnapshot(incomingPass);
+  const merged = normalizeSeasonPassSnapshot(current);
+  merged.seasonId = String(incoming.seasonId || current.seasonId || SEASON_PASS_ID);
+  merged.points = Math.max(current.points || 0, incoming.points || 0);
+  merged.premium = !!(current.premium || incoming.premium);
+  merged.claimedFree = { ...current.claimedFree, ...incoming.claimedFree };
+  merged.claimedPremium = { ...current.claimedPremium, ...incoming.claimedPremium };
+  for(const type of ["skin","badge","banner","finisher"]){
+    const bucket = seasonCosmeticBucket(type);
+    const owned = seasonNormalizeStringList([...(current.owned?.[bucket] || []), ...(incoming.owned?.[bucket] || [])]);
+    const catalog = seasonCosmeticCatalog(type);
+    merged.owned[bucket] = owned.filter((id)=>!!catalog?.[id]);
+    const fallback = defaultSeasonPassState().equipped[type];
+    if(!merged.owned[bucket].length) merged.owned[bucket] = [fallback];
+    const preferred = String(incoming.equipped?.[type] || current.equipped?.[type] || "");
+    merged.equipped[type] = merged.owned[bucket].includes(preferred) ? preferred : merged.owned[bucket][0];
+  }
+  return merged;
+}
+function seasonPassLevel(pass=ensureSeasonPassState()){
+  const points = Math.max(0, Math.floor(Number(pass?.points || 0)));
+  return clamp(Math.floor(points / SEASON_PASS_POINTS_PER_LEVEL) + 1, 1, SEASON_PASS_MAX_LEVEL);
+}
+function seasonPassProgressPct(pass=ensureSeasonPassState()){
+  const points = Math.max(0, Math.floor(Number(pass?.points || 0)));
+  const within = points % SEASON_PASS_POINTS_PER_LEVEL;
+  return clamp((within / SEASON_PASS_POINTS_PER_LEVEL) * 100, 0, 100);
+}
+function seasonPassOwnsCosmetic(pass, type, id){
+  const bucket = seasonCosmeticBucket(type);
+  if(!bucket) return false;
+  return !!pass?.owned?.[bucket]?.includes(id);
+}
+function seasonPassUnlockCosmetic(pass, type, id){
+  const catalog = seasonCosmeticCatalog(type);
+  const bucket = seasonCosmeticBucket(type);
+  if(!catalog || !bucket || !catalog[id]) return false;
+  if(!Array.isArray(pass.owned[bucket])) pass.owned[bucket] = [];
+  if(pass.owned[bucket].includes(id)) return false;
+  pass.owned[bucket].push(id);
+  return true;
+}
+function seasonPassTrackReward(level, track){
+  const tier = SEASON_PASS_TRACK.find((row)=>row.level === level);
+  if(!tier) return null;
+  return track === "premium" ? tier.premium : tier.free;
+}
+function seasonPassRewardLabel(reward){
+  if(!reward) return "Reward";
+  const info = seasonRewardDef(reward.type, reward.id);
+  const icon = SEASON_PASS_TYPE_ICON[reward.type] || "🎁";
+  const name = info?.name || reward.id;
+  return `${icon} ${name}`;
+}
+function seasonPassClaimed(pass, level, track){
+  const key = String(level);
+  if(track === "premium") return !!pass.claimedPremium[key];
+  return !!pass.claimedFree[key];
+}
+function seasonPassSetClaimed(pass, level, track){
+  const key = String(level);
+  if(track === "premium") pass.claimedPremium[key] = true;
+  else pass.claimedFree[key] = true;
+}
+function seasonPassBadgeDisplay(pass=ensureSeasonPassState()){
+  const badgeId = pass?.equipped?.badge || "BADGE_RECRUIT";
+  return SEASON_PASS_BADGES[badgeId] || SEASON_PASS_BADGES.BADGE_RECRUIT;
+}
+function seasonPassBannerDisplay(pass=ensureSeasonPassState()){
+  const bannerId = pass?.equipped?.banner || "BANNER_FOREST_EDGE";
+  return SEASON_PASS_BANNERS[bannerId] || SEASON_PASS_BANNERS.BANNER_FOREST_EDGE;
+}
+function seasonPassFinisherDisplay(pass=ensureSeasonPassState()){
+  const finisherId = pass?.equipped?.finisher || "FINISHER_STANDARD";
+  return SEASON_PASS_FINISHERS[finisherId] || SEASON_PASS_FINISHERS.FINISHER_STANDARD;
+}
+function seasonSoldierPalette(state=S){
+  const pass = ensureSeasonPassState(state);
+  const skinId = pass?.equipped?.skin || "SKIN_FIELD_STANDARD";
+  const skin = SEASON_PASS_SKINS[skinId] || SEASON_PASS_SKINS.SKIN_FIELD_STANDARD;
+  return skin.palette || SEASON_PASS_SKINS.SKIN_FIELD_STANDARD.palette;
+}
+function grantSeasonPassPoints(amount, source=""){
+  if(window.__TUTORIAL_MODE__) return;
+  const pass = ensureSeasonPassState();
+  const add = Math.max(0, Math.floor(Number(amount || 0)));
+  if(add <= 0) return;
+  const before = seasonPassLevel(pass);
+  const nextPoints = clamp((pass.points || 0) + add, 0, SEASON_PASS_MAX_POINTS);
+  if(nextPoints === pass.points) return;
+  pass.points = nextPoints;
+  const after = seasonPassLevel(pass);
+  if(after > before){
+    toast(`Season Pass Level ${after} reached! Claim rewards in Shop > Season.`);
+    hapticNotif("success");
+  } else if(source && add >= 10){
+    setEventText(`Season Pass +${add} • ${source}`, 1.7);
+  }
+  __savePending = true;
+}
+function unlockSeasonPremium(){
+  const pass = ensureSeasonPassState();
+  if(pass.premium) return toast("Season Pass Premium already unlocked.");
+  if(S.funds < SEASON_PASS_PREMIUM_PRICE) return toast("Not enough money.");
+  S.funds -= SEASON_PASS_PREMIUM_PRICE;
+  pass.premium = true;
+  sfx("ui"); hapticNotif("success");
+  toast("Season Pass Premium unlocked.");
+  save();
+  renderShopList();
+  renderHUD();
+}
+function claimSeasonPassReward(level, track="free"){
+  const pass = ensureSeasonPassState();
+  const tier = clamp(Math.floor(Number(level || 0)), 1, SEASON_PASS_MAX_LEVEL);
+  const path = track === "premium" ? "premium" : "free";
+  if(path === "premium" && !pass.premium) return toast("Unlock Premium Season Pass first.");
+  if(seasonPassClaimed(pass, tier, path)) return toast("Reward already claimed.");
+  if(seasonPassLevel(pass) < tier) return toast(`Reach Season Pass level ${tier} first.`);
+  const reward = seasonPassTrackReward(tier, path);
+  if(!reward) return toast("Reward data missing.");
+  const unlocked = seasonPassUnlockCosmetic(pass, reward.type, reward.id);
+  seasonPassSetClaimed(pass, tier, path);
+  const equippedType = reward.type;
+  if(!pass.equipped[equippedType] || unlocked){
+    pass.equipped[equippedType] = reward.id;
+  }
+  sfx("ui");
+  hapticImpact("light");
+  toast(`Claimed: ${seasonPassRewardLabel(reward)}.`);
+  save();
+  renderShopList();
+  renderHUD();
+}
+function equipSeasonPassCosmetic(type, id){
+  const pass = ensureSeasonPassState();
+  const bucket = seasonCosmeticBucket(type);
+  const catalog = seasonCosmeticCatalog(type);
+  if(!bucket || !catalog || !catalog[id]) return toast("Cosmetic not found.");
+  if(!seasonPassOwnsCosmetic(pass, type, id)) return toast("Claim this reward first.");
+  pass.equipped[type] = id;
+  sfx("ui");
+  hapticImpact("light");
+  toast(`Equipped ${catalog[id].name}.`);
+  save();
+  renderShopList();
+  renderHUD();
+}
+function applySeasonFinisherVisual(tiger, outcome="KILL"){
+  if(!tiger) return;
+  const finisher = seasonPassFinisherDisplay();
+  const popupKind = outcome === "CAPTURE" ? "tranq" : (finisher.popupKind || "crit");
+  const label = finisher.text || finisher.name || "Finish";
+  emitDamagePopup(tiger.x, tiger.y - 44, label, popupKind);
+  queueImpactPulse(tiger.x, tiger.y - 8, popupKind);
+  if(finisher.icon){
+    setEventText(`${finisher.icon} ${finisher.name}`, 1.8);
+  }
+}
+
 const AMMO_EFFECTS = {
   "Standard": { dmgMul:1.00, crit:0.04, pen:0.00, tranq:1.00 },
   "Rare":     { dmgMul:1.08, crit:0.07, pen:0.08, tranq:1.08 },
@@ -2627,6 +3078,7 @@ const DEFAULT = {
   contractTallies: defaultContractTallies(),
   contracts: null,
   liveOps: null,
+  seasonPass: defaultSeasonPassState(),
   achievements:{},
   title:"Rookie",
   playerHandle:"",
@@ -3109,6 +3561,7 @@ function load(){
       ensureLiveOpsState(fallback);
       ensureOpsTotalsState(fallback);
       ensureClanState(fallback);
+      ensureSeasonPassState(fallback);
       return fallback;
     }
     const m = { ...DEFAULT, ...saved };
@@ -3134,6 +3587,7 @@ function load(){
     m.contractTallies = normalizeContractTalliesMap(saved.contractTallies);
     m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
     m.liveOps = (saved.liveOps && typeof saved.liveOps === "object") ? saved.liveOps : null;
+    m.seasonPass = mergeSeasonPassSnapshots(DEFAULT.seasonPass, saved.seasonPass);
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
     m.progressionUnlocks = { ...DEFAULT.progressionUnlocks, ...(saved.progressionUnlocks||{}) };
     m.metaBase = { ...DEFAULT.metaBase, ...(saved.metaBase||{}) };
@@ -3163,6 +3617,7 @@ function load(){
     ensureLiveOpsState(m);
     ensureOpsTotalsState(m);
     ensureClanState(m);
+    ensureSeasonPassState(m);
     if(m.lives==null) m.lives=5;
     m.v = STORAGE_VERSION;
     trimPersistentState(m);
@@ -8009,6 +8464,7 @@ function writeStoryProfileData(source="autosave", state=S){
   if(window.__TUTORIAL_MODE__) return false;
   const src = (state && typeof state === "object") ? state : S;
   if(!src || typeof src !== "object") return false;
+  const seasonPass = ensureSeasonPassState(src);
   const payload = {
     storyLevel: clamp(Math.floor(Number(src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
     storyLastMission: clamp(Math.floor(Number(src.storyLastMission || src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
@@ -8066,6 +8522,7 @@ function writeStoryProfileData(source="autosave", state=S){
     clanContractClaims: (src.clanContractClaims && typeof src.clanContractClaims === "object")
       ? cloneState(src.clanContractClaims)
       : {},
+    seasonPass: cloneState(seasonPass),
     savedAt: Date.now(),
     source: String(source || "autosave"),
   };
@@ -8226,6 +8683,10 @@ function applyStoryProfileToState(state, profile){
     state.clanContractClaims = cloneState(profile.clanContractClaims);
   }
   ensureClanState(state);
+  if(profile.seasonPass && typeof profile.seasonPass === "object"){
+    state.seasonPass = mergeSeasonPassSnapshots(state.seasonPass, profile.seasonPass);
+  }
+  ensureSeasonPassState(state);
 
   if(typeof profile.equippedWeaponId === "string" && profile.equippedWeaponId && state.ownedWeapons?.includes(profile.equippedWeaponId)){
     state.equippedWeaponId = profile.equippedWeaponId;
@@ -8281,6 +8742,7 @@ function readStoryProgressData(){
 }
 function writeStoryProgressData(payload={}){
   if(window.__TUTORIAL_MODE__) return false;
+  const seasonPass = ensureSeasonPassState(S);
   const mission = clamp(Math.floor(Number(payload.mission || S.storyLevel || S.storyLastMission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   const data = {
     mission,
@@ -8336,6 +8798,9 @@ function writeStoryProgressData(payload={}){
     clanContractClaims: (payload.clanContractClaims && typeof payload.clanContractClaims === "object")
       ? cloneState(payload.clanContractClaims)
       : ((S.clanContractClaims && typeof S.clanContractClaims === "object") ? cloneState(S.clanContractClaims) : {}),
+    seasonPass: (payload.seasonPass && typeof payload.seasonPass === "object")
+      ? cloneState(payload.seasonPass)
+      : cloneState(seasonPass),
     mag: {
       loaded: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).loaded || 0))),
       cap: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).cap || 0))),
@@ -9838,6 +10303,7 @@ function openShop(){
   if(S.gameOver) return;
   const fromBattle = !!S.inBattle;
   ensureSquadShopTab();
+  ensureSeasonShopTab();
   if(S.missionEnded){
     lastOverlay="complete";
     document.getElementById("completeOverlay").style.display="none";
@@ -9969,12 +10435,34 @@ function ensureMetaShopTab(){
   }
   return tab;
 }
+function ensureSeasonShopTab(){
+  let tab = document.getElementById("tabSeason");
+  if(tab) return tab;
+  const tabsWrap = document.querySelector("#shopOverlay .tabs");
+  if(!tabsWrap) return null;
+
+  tab = document.createElement("button");
+  tab.className = "tab";
+  tab.id = "tabSeason";
+  tab.type = "button";
+  tab.innerText = "Season";
+  tab.addEventListener("click", ()=>shopTab("season"));
+
+  const metaTab = document.getElementById("tabMeta");
+  if(metaTab && metaTab.parentElement === tabsWrap){
+    tabsWrap.insertBefore(tab, metaTab.nextSibling);
+  } else {
+    tabsWrap.appendChild(tab);
+  }
+  return tab;
+}
 
 function shopTab(tab){
   ensureSquadShopTab();
   ensureMetaShopTab();
+  ensureSeasonShopTab();
   currentShopTab=tab;
-  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabStars","tabCash","tabPremium","tabTools","tabTraps"].forEach((id)=>{
+  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabSeason","tabStars","tabCash","tabPremium","tabTools","tabTraps"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.classList.remove("active");
   });
@@ -9985,6 +10473,7 @@ function shopTab(tab){
     meds:"tabMeds",
     squad:"tabSquad",
     meta:"tabMeta",
+    season:"tabSeason",
     stars:"tabStars",
     cash:"tabCash",
     premium:"tabPremium",
@@ -10229,6 +10718,77 @@ function renderShopList(){
       <div class="hudTitle">Chapter Rewards (${chapterRewardUnlockedCount()}/${STORY_CHAPTER_REWARDS.length})</div>
       ${rewardCards}
     `;
+    return;
+  }
+
+  if(currentShopTab==="season"){
+    const pass = ensureSeasonPassState();
+    const levelNow = seasonPassLevel(pass);
+    const progressPct = seasonPassProgressPct(pass);
+    const pointsNow = Math.max(0, Math.floor(Number(pass.points || 0)));
+    const pointsInLevel = pointsNow % SEASON_PASS_POINTS_PER_LEVEL;
+    const nextLevel = Math.min(SEASON_PASS_MAX_LEVEL, levelNow + 1);
+    const remainingForNext = levelNow >= SEASON_PASS_MAX_LEVEL
+      ? 0
+      : Math.max(0, SEASON_PASS_POINTS_PER_LEVEL - pointsInLevel);
+    const skin = SEASON_PASS_SKINS[pass.equipped.skin] || SEASON_PASS_SKINS.SKIN_FIELD_STANDARD;
+    const badge = seasonPassBadgeDisplay(pass);
+    const banner = seasonPassBannerDisplay(pass);
+    const finisher = seasonPassFinisherDisplay(pass);
+    note.innerText = "Season Pass is cosmetic-only: skins, badges, banners, and finisher effects. No stat boosts.";
+
+    const premiumHeader = `
+      <div class="item">
+        <div>
+          <div class="itemName">Season Pass: Jungle Ascent <span class="tag">Lv ${levelNow}/${SEASON_PASS_MAX_LEVEL}</span> <span class="tag">${pass.premium ? "Premium Unlocked" : "Free Track Active"}</span></div>
+          <div class="itemDesc">Points: ${pointsNow} • ${levelNow >= SEASON_PASS_MAX_LEVEL ? "Max level reached." : `${remainingForNext} points to Level ${nextLevel}.`}</div>
+          <div class="bar"><div class="fill green" style="width:${levelNow >= SEASON_PASS_MAX_LEVEL ? 100 : progressPct}%"></div></div>
+          <div class="itemDesc">Equipped: 🎨 ${skin.name} • ${badge.icon} ${badge.name} • 🏳️ ${banner.name} • ${finisher.icon || "✨"} ${finisher.name}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price">${pass.premium ? "Premium Active" : `$${SEASON_PASS_PREMIUM_PRICE.toLocaleString()}`}</div>
+          <button onclick="unlockSeasonPremium()" ${pass.premium ? "disabled" : ""}>${pass.premium ? "Unlocked" : "Unlock Premium"}</button>
+        </div>
+      </div>`;
+
+    const tierRows = SEASON_PASS_TRACK.map((tier)=>{
+      const freeReward = tier.free;
+      const premiumReward = tier.premium;
+      const freeInfo = seasonRewardDef(freeReward.type, freeReward.id);
+      const premiumInfo = seasonRewardDef(premiumReward.type, premiumReward.id);
+      const freeClaimed = seasonPassClaimed(pass, tier.level, "free");
+      const premiumClaimed = seasonPassClaimed(pass, tier.level, "premium");
+      const freeEquipped = pass.equipped?.[freeReward.type] === freeReward.id;
+      const premiumEquipped = pass.equipped?.[premiumReward.type] === premiumReward.id;
+      const freeCanClaim = !freeClaimed && levelNow >= tier.level;
+      const premiumCanClaim = pass.premium && !premiumClaimed && levelNow >= tier.level;
+      const premiumLockedText = !pass.premium
+        ? "Premium Locked"
+        : (levelNow >= tier.level ? "Claim Available" : `Unlocks Lv ${tier.level}`);
+
+      const freeButton = freeClaimed
+        ? `<button ${freeEquipped ? "disabled" : ""} onclick="equipSeasonPassCosmetic('${freeReward.type}','${freeReward.id}')">${freeEquipped ? "Equipped" : "Equip"}</button>`
+        : `<button ${freeCanClaim ? "" : "disabled"} onclick="claimSeasonPassReward(${tier.level},'free')">${freeCanClaim ? "Claim" : `Lv ${tier.level}`}</button>`;
+
+      const premiumButton = premiumClaimed
+        ? `<button ${premiumEquipped ? "disabled" : ""} onclick="equipSeasonPassCosmetic('${premiumReward.type}','${premiumReward.id}')">${premiumEquipped ? "Equipped" : "Equip"}</button>`
+        : `<button ${premiumCanClaim ? "" : "disabled"} onclick="claimSeasonPassReward(${tier.level},'premium')">${premiumCanClaim ? "Claim" : (pass.premium ? `Lv ${tier.level}` : "Premium")}</button>`;
+
+      return `
+        <div class="item">
+          <div>
+            <div class="itemName">Tier ${tier.level} <span class="tag">${levelNow >= tier.level ? "Unlocked" : "Locked"}</span></div>
+            <div class="itemDesc">FREE • ${(SEASON_PASS_TYPE_ICON[freeReward.type] || "🎁")} ${freeInfo?.name || freeReward.id} <span class="tag">${freeClaimed ? "Claimed" : (freeCanClaim ? "Ready" : "Pending")}</span></div>
+            <div class="itemDesc">PREMIUM • ${(SEASON_PASS_TYPE_ICON[premiumReward.type] || "🎁")} ${premiumInfo?.name || premiumReward.id} <span class="tag">${premiumClaimed ? "Claimed" : premiumLockedText}</span></div>
+          </div>
+          <div style="text-align:right;display:grid;gap:8px;justify-items:end;">
+            ${freeButton}
+            ${premiumButton}
+          </div>
+        </div>`;
+    }).join("");
+
+    list.innerHTML = premiumHeader + tierRows;
     return;
   }
 
@@ -16459,6 +17019,8 @@ function finishTigerKill(t){
   addContractTally("kills", 1);
   addOpsTotal("kills", 1);
   addXP(50);
+  grantSeasonPassPoints(8, "Tiger eliminated");
+  applySeasonFinisherVisual(t, "KILL");
   trackCashEarned(pay.cash);
   unlockAchv("kill1","First Kill");
   S.trust=clamp(S.trust+pay.trust,0,100);
@@ -16546,6 +17108,8 @@ function playerAction(action){
     addContractTally("captures", 1);
     addOpsTotal("captures", 1);
     addXP(90);
+    grantSeasonPassPoints(10, "Tiger captured");
+    applySeasonFinisherVisual(t, "CAPTURE");
     awardCombo("capture");
     trackCashEarned(pay.cash);
     unlockAchv("cap1","First Capture");
@@ -17015,6 +17579,8 @@ function checkMissionComplete(){
         `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
+      const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
+      grantSeasonPassPoints(missionSeasonPoints, (storyMission?.boss || arcadeMission?.boss) ? "Boss mission clear" : "Mission clear");
       sfx("win"); hapticNotif("success");
       save();
     }
@@ -17051,9 +17617,18 @@ function renderHUD(){
   syncSquadCommandWheelUi();
   updatePerformanceLabels();
   document.getElementById("livesTxt").innerText = S.lives;
+  const seasonPass = ensureSeasonPassState();
+  const seasonLevelNow = seasonPassLevel(seasonPass);
+  const seasonBadge = seasonPassBadgeDisplay(seasonPass);
+  const seasonBanner = seasonPassBannerDisplay(seasonPass);
+  const seasonFinisher = seasonPassFinisherDisplay(seasonPass);
 
-  document.getElementById("titleTxt").innerText = S.title || "Rookie";
-  document.getElementById("achvTxt").innerText = `${achvCount()}`;
+  document.getElementById("titleTxt").innerText = `${seasonBadge.icon} ${S.title || "Rookie"}`;
+  document.getElementById("achvTxt").innerText = `${achvCount()} • Pass Lv ${seasonLevelNow}`;
+  const seasonHudTxt = document.getElementById("seasonHudTxt");
+  if(seasonHudTxt){
+    seasonHudTxt.innerText = `Season: ${seasonBanner.name} • Finisher: ${(seasonFinisher.icon || "✨")} ${seasonFinisher.name}`;
+  }
 
   document.getElementById("hpTxt").innerText = Math.round(S.hp);
   document.getElementById("armorTxt").innerText = Math.round(S.armor);
@@ -18857,6 +19432,7 @@ function drawSoldier(){
   const meHitFlashAlpha = meHitFlashLeft > 0
     ? clamp((meHitFlashLeft / 190) * (Number(S.meHitFlashPower) || 0.7), 0.12, 0.86)
     : 0;
+  const palette = seasonSoldierPalette();
   ctx.save();
   ctx.globalAlpha = S.inBattle ? 0.40 : 0.26;
   ctx.strokeStyle = S.inBattle ? "rgba(56,189,248,.98)" : "rgba(226,232,240,.90)";
@@ -18915,41 +19491,41 @@ function drawSoldier(){
   ctx.beginPath(); ctx.ellipse(0,19,20,8,0,0,Math.PI*2); ctx.fill();
   ctx.globalAlpha=1;
 
-  ctx.fillStyle="rgba(26,32,44,.95)";
+  ctx.fillStyle = palette.pants;
   roundedRectFill(-9,9,7,10,3);
   roundedRectFill(2,9,7,10,3);
-  ctx.fillStyle="rgba(17,22,31,.95)";
+  ctx.fillStyle = palette.boots;
   roundedRectFill(-9 + (stride * 0.35), 18, 7, 4, 2);
   roundedRectFill(2 - (stride * 0.35), 18, 7, 4, 2);
 
-  ctx.fillStyle="rgba(48,58,72,.96)";
+  ctx.fillStyle = palette.armorOuter;
   roundedRectFill(-10,-16,20,27,7);
   ctx.strokeStyle="rgba(7,10,16,.42)";
   ctx.lineWidth=1;
   ctx.strokeRect(-10,-16,20,27);
-  ctx.fillStyle="rgba(20,30,44,.97)";
+  ctx.fillStyle = palette.armorInner;
   roundedRectFill(-8,-11,16,19,6);
   ctx.fillStyle="rgba(72,88,108,.45)";
   roundedRectFill(-4.5,-10,9,6,2);
-  ctx.fillStyle="rgba(28,36,48,.95)";
+  ctx.fillStyle = palette.arm;
   roundedRectFill(-14,-12,5,16,2);
   roundedRectFill(9,-12,5,16,2);
 
-  ctx.fillStyle="rgba(36,44,59,.9)";
+  ctx.fillStyle = palette.shoulder;
   roundedRectFill(-12,-14,6,12,3);
-  ctx.fillStyle="rgba(120,208,255,.46)";
+  ctx.fillStyle = palette.trim;
   roundedRectFill(-11,-11,4,4,1.5);
 
-  ctx.fillStyle="rgba(55,65,75,.95)";
+  ctx.fillStyle = palette.helmet;
   ctx.beginPath(); ctx.arc(0, -24, 9.5, Math.PI, Math.PI*2); ctx.fill();
-  ctx.fillStyle="rgba(35,45,55,.95)";
+  ctx.fillStyle = palette.arm;
   roundedRectFill(-10,-24,20,6,3);
-  ctx.fillStyle="rgba(180,210,235,.55)";
+  ctx.fillStyle = palette.visor;
   roundedRectFill(-6,-22,12,3,2);
 
   ctx.fillStyle="rgba(220,220,225,.90)";
   ctx.beginPath(); ctx.arc(0,-20,6.5,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle="rgba(22,26,38,.95)";
+  ctx.fillStyle = palette.lens;
   ctx.beginPath(); ctx.arc(-2,-20,1,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(2,-20,1,0,Math.PI*2); ctx.fill();
   ctx.restore();
@@ -19832,6 +20408,7 @@ function init(){
   ensureContractTalliesState(S);
   ensureContractsState(S);
   ensureMissionDirectorState(S);
+  ensureSeasonPassState(S);
   if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.storyLastMission = clamp(Math.floor(S.storyLastMission || S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
@@ -20266,6 +20843,9 @@ window.reviveSoldier = reviveSoldier;
 window.reviveAllSoldiers = reviveAllSoldiers;
 window.buyStoryBaseUpgrade = buyStoryBaseUpgrade;
 window.buyStorySpecialistPerk = buyStorySpecialistPerk;
+window.unlockSeasonPremium = unlockSeasonPremium;
+window.claimSeasonPassReward = claimSeasonPassReward;
+window.equipSeasonPassCosmetic = equipSeasonPassCosmetic;
 window.buyTrap = buyTrap;
 window.openStarsTopUp = openStarsTopUp;
 window.buyWithStars = buyWithStars;
