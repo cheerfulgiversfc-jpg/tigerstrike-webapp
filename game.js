@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4465";
+const TS_BUILD = "4466";
 if(tg){
   try{
     tg.expand?.();
@@ -123,6 +123,13 @@ const DEFAULT_CONTRACT_TALLIES = Object.freeze({
   trapsTriggered:0,
   cashEarned:0,
 });
+
+const BALANCE_RECENT_MISSION_MAX = 18;
+const BALANCE_FREEZE_WINDOW_MS = 10 * 60 * 1000;
+const BALANCE_DEATH_WINDOW_MS = 20 * 60 * 1000;
+const BALANCE_EVENT_HISTORY_MAX = 40;
+const BALANCE_AUTOTUNE_MIN = 0.88;
+const BALANCE_AUTOTUNE_MAX = 1.16;
 
 const DAILY_CONTRACT_POOL = Object.freeze([
   Object.freeze({
@@ -347,6 +354,36 @@ const LIVE_OPS_POOL = Object.freeze([
 
 function defaultContractTallies(){
   return { ...DEFAULT_CONTRACT_TALLIES };
+}
+
+function defaultBalanceStatsState(){
+  return {
+    deathsTotal:0,
+    missionFailsTotal:0,
+    freezeRecoverTotal:0,
+    freezeSpikeTotal:0,
+    missionsStartedTotal:0,
+    missionsWonTotal:0,
+    missionsFailedTotal:0,
+    recentMissionResults:[],
+    recentDeathAt:[],
+    recentFreezeRecoverAt:[],
+    recentFreezeSpikeAt:[],
+    autoTune:1,
+    lastMissionKey:"",
+    activeMissionKey:"",
+    missionStartAt:0,
+    lastMissionResult:"",
+    lastMissionResultAt:0,
+    lastFreezeSpikeAt:0,
+    lastFailRate:0,
+    lastWinStreak:0,
+    lastDeathsRecent:0,
+    lastFreezePerMin:0,
+    lastFreezeSpikesRecent:0,
+    lastOutcomeSample:0,
+    lastUpdatedAt:0,
+  };
 }
 
 function normalizeContractTalliesMap(raw){
@@ -3674,6 +3711,7 @@ const DEFAULT = {
   _arcadeTimerWarn:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
   opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0 },
+  balanceStats: defaultBalanceStatsState(),
   contractTallies: defaultContractTallies(),
   contracts: null,
   liveOps: null,
@@ -3766,6 +3804,7 @@ function currentPlayerHandle(state=S){
 syncTelegramIdentity(S);
 ensureClanState(S);
 ensureOpsTotalsState(S);
+ensureBalanceStatsState(S);
 syncWindowState();
 
 // ---- Tutorial support + global state ----
@@ -3855,6 +3894,262 @@ function addOpsTotal(metric, amount=1, state=S){
   return totals[metric];
 }
 
+function normalizeRecentTimestampList(list, max=32){
+  const out = [];
+  if(!Array.isArray(list)) return out;
+  for(const raw of list){
+    const ts = Math.floor(Number(raw || 0));
+    if(!Number.isFinite(ts) || ts <= 0) continue;
+    out.push(ts);
+  }
+  if(out.length > max){
+    return out.slice(out.length - max);
+  }
+  return out;
+}
+
+function normalizeMissionResultHistory(list, max=BALANCE_RECENT_MISSION_MAX){
+  const out = [];
+  if(!Array.isArray(list)) return out;
+  for(const entry of list){
+    if(!entry || typeof entry !== "object") continue;
+    const ts = Math.floor(Number(entry.ts || 0));
+    if(!Number.isFinite(ts) || ts <= 0) continue;
+    const key = String(entry.key || "").trim().slice(0, 40);
+    out.push({
+      ts,
+      ok: !!entry.ok,
+      key,
+      reason: String(entry.reason || "").trim().slice(0, 90),
+    });
+  }
+  if(out.length > max){
+    return out.slice(out.length - max);
+  }
+  return out;
+}
+
+function balanceMissionKey(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const mode = normalizeModeName(src.mode);
+  const mission = gameplayCloudMission(src);
+  return `${mode}:${Math.max(1, Math.floor(Number(mission || 1)))}`;
+}
+
+function clampAutoTuneValue(value){
+  const n = Number(value);
+  if(!Number.isFinite(n)) return 1;
+  return clamp(n, BALANCE_AUTOTUNE_MIN, BALANCE_AUTOTUNE_MAX);
+}
+
+function ensureBalanceStatsState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const base = defaultBalanceStatsState();
+  if(!src || typeof src !== "object"){
+    return { ...base };
+  }
+  const current = (src.balanceStats && typeof src.balanceStats === "object") ? src.balanceStats : {};
+  src.balanceStats = {
+    ...base,
+    ...current,
+    deathsTotal: Math.max(0, Math.floor(Number(current.deathsTotal || 0))),
+    missionFailsTotal: Math.max(0, Math.floor(Number(current.missionFailsTotal || 0))),
+    freezeRecoverTotal: Math.max(0, Math.floor(Number(current.freezeRecoverTotal || 0))),
+    freezeSpikeTotal: Math.max(0, Math.floor(Number(current.freezeSpikeTotal || 0))),
+    missionsStartedTotal: Math.max(0, Math.floor(Number(current.missionsStartedTotal || 0))),
+    missionsWonTotal: Math.max(0, Math.floor(Number(current.missionsWonTotal || 0))),
+    missionsFailedTotal: Math.max(0, Math.floor(Number(current.missionsFailedTotal || 0))),
+    recentMissionResults: normalizeMissionResultHistory(current.recentMissionResults),
+    recentDeathAt: normalizeRecentTimestampList(current.recentDeathAt, BALANCE_EVENT_HISTORY_MAX),
+    recentFreezeRecoverAt: normalizeRecentTimestampList(current.recentFreezeRecoverAt, BALANCE_EVENT_HISTORY_MAX),
+    recentFreezeSpikeAt: normalizeRecentTimestampList(current.recentFreezeSpikeAt, BALANCE_EVENT_HISTORY_MAX),
+    autoTune: clampAutoTuneValue(current.autoTune),
+    lastMissionKey: String(current.lastMissionKey || "").trim().slice(0, 40),
+    activeMissionKey: String(current.activeMissionKey || "").trim().slice(0, 40),
+    missionStartAt: Math.max(0, Math.floor(Number(current.missionStartAt || 0))),
+    lastMissionResult: String(current.lastMissionResult || "").trim().slice(0, 24),
+    lastMissionResultAt: Math.max(0, Math.floor(Number(current.lastMissionResultAt || 0))),
+    lastFreezeSpikeAt: Math.max(0, Math.floor(Number(current.lastFreezeSpikeAt || 0))),
+    lastFailRate: clamp(Number(current.lastFailRate || 0), 0, 1),
+    lastWinStreak: Math.max(0, Math.floor(Number(current.lastWinStreak || 0))),
+    lastDeathsRecent: Math.max(0, Math.floor(Number(current.lastDeathsRecent || 0))),
+    lastFreezePerMin: clamp(Number(current.lastFreezePerMin || 0), 0, 8),
+    lastFreezeSpikesRecent: Math.max(0, Math.floor(Number(current.lastFreezeSpikesRecent || 0))),
+    lastOutcomeSample: Math.max(0, Math.floor(Number(current.lastOutcomeSample || 0))),
+    lastUpdatedAt: Math.max(0, Math.floor(Number(current.lastUpdatedAt || 0))),
+  };
+  return src.balanceStats;
+}
+
+function pushBalanceHistory(list, item, max=32){
+  if(!Array.isArray(list)) list = [];
+  list.push(item);
+  if(list.length > max) return list.slice(list.length - max);
+  return list;
+}
+
+function pruneBalanceHistory(stats, now=Date.now()){
+  if(!stats || typeof stats !== "object") return;
+  const freezeCutoff = now - BALANCE_FREEZE_WINDOW_MS;
+  const deathCutoff = now - BALANCE_DEATH_WINDOW_MS;
+  stats.recentDeathAt = (stats.recentDeathAt || []).filter((ts)=>Number(ts || 0) >= deathCutoff);
+  stats.recentFreezeRecoverAt = (stats.recentFreezeRecoverAt || []).filter((ts)=>Number(ts || 0) >= freezeCutoff);
+  stats.recentFreezeSpikeAt = (stats.recentFreezeSpikeAt || []).filter((ts)=>Number(ts || 0) >= freezeCutoff);
+  stats.recentMissionResults = normalizeMissionResultHistory(stats.recentMissionResults, BALANCE_RECENT_MISSION_MAX);
+}
+
+function recomputeBalanceAutoTune(state=S, now=Date.now()){
+  const stats = ensureBalanceStatsState(state);
+  pruneBalanceHistory(stats, now);
+  const outcomes = (stats.recentMissionResults || []).slice(-8);
+  const failCount = outcomes.reduce((n, r)=>n + (r?.ok ? 0 : 1), 0);
+  const failRate = outcomes.length ? (failCount / outcomes.length) : 0;
+  const deathsRecent = (stats.recentDeathAt || []).length;
+  const freezeRecoverRecent = (stats.recentFreezeRecoverAt || []).length;
+  const freezeSpikesRecent = (stats.recentFreezeSpikeAt || []).length;
+  const freezePerMin = freezeRecoverRecent / Math.max(1, BALANCE_FREEZE_WINDOW_MS / 60000);
+  let winStreak = 0;
+  for(let i = outcomes.length - 1; i >= 0; i -= 1){
+    if(outcomes[i]?.ok) winStreak += 1;
+    else break;
+  }
+
+  let tune = 1;
+  if(failRate >= 0.6) tune -= 0.11;
+  else if(failRate >= 0.4) tune -= 0.08;
+  else if(failRate >= 0.25) tune -= 0.05;
+
+  if(deathsRecent >= 4) tune -= 0.07;
+  else if(deathsRecent >= 2) tune -= 0.04;
+  else if(deathsRecent >= 1) tune -= 0.02;
+
+  if(freezePerMin >= 0.35) tune -= 0.06;
+  else if(freezePerMin >= 0.2) tune -= 0.04;
+  else if(freezeSpikesRecent >= 4) tune -= 0.03;
+
+  if(winStreak >= 6 && failRate <= 0.15 && deathsRecent === 0 && freezePerMin < 0.12){
+    tune += 0.09;
+  }else if(winStreak >= 4 && failRate <= 0.20){
+    tune += 0.06;
+  }else if(winStreak >= 2 && failRate <= 0.25){
+    tune += 0.03;
+  }
+
+  stats.autoTune = clampAutoTuneValue(Math.round(tune * 1000) / 1000);
+  stats.lastFailRate = failRate;
+  stats.lastWinStreak = winStreak;
+  stats.lastDeathsRecent = deathsRecent;
+  stats.lastFreezePerMin = freezePerMin;
+  stats.lastFreezeSpikesRecent = freezeSpikesRecent;
+  stats.lastOutcomeSample = outcomes.length;
+  stats.lastUpdatedAt = now;
+  return stats;
+}
+
+function currentBalanceTuning(state=S, now=Date.now()){
+  const stats = recomputeBalanceAutoTune(state, now);
+  let autoTune = clampAutoTuneValue(stats.autoTune);
+  const lagTier = frameLagTier();
+  if(lagTier >= 2) autoTune = clampAutoTuneValue(autoTune - 0.03);
+  else if(lagTier >= 1) autoTune = clampAutoTuneValue(autoTune - 0.015);
+  const delta = autoTune - 1;
+  let pressureMul = clamp(1 + (delta * 0.85), 0.88, 1.14);
+  let spawnCdMul = clamp(1 - (delta * 0.75), 0.86, 1.18);
+  let aggroMul = clamp(1 + (delta * 0.90), 0.88, 1.14);
+  let speedMul = clamp(1 + (delta * 0.65), 0.90, 1.12);
+
+  if(stats.lastFreezePerMin >= 0.35){
+    pressureMul *= 0.94;
+    spawnCdMul *= 1.06;
+    aggroMul *= 0.95;
+    speedMul *= 0.96;
+  }else if(stats.lastFreezePerMin >= 0.20){
+    pressureMul *= 0.97;
+    spawnCdMul *= 1.03;
+    aggroMul *= 0.98;
+    speedMul *= 0.98;
+  }
+
+  return {
+    autoTune: clampAutoTuneValue(autoTune),
+    pressureMul: clamp(pressureMul, 0.86, 1.16),
+    spawnCdMul: clamp(spawnCdMul, 0.84, 1.22),
+    aggroMul: clamp(aggroMul, 0.86, 1.18),
+    speedMul: clamp(speedMul, 0.88, 1.14),
+  };
+}
+
+function markBalanceMissionStart(state=S){
+  const stats = ensureBalanceStatsState(state);
+  const now = Date.now();
+  const key = balanceMissionKey(state);
+  if(stats.activeMissionKey === key && (now - (stats.missionStartAt || 0)) < 2400){
+    return stats;
+  }
+  stats.activeMissionKey = key;
+  stats.missionStartAt = now;
+  stats.missionsStartedTotal = Math.max(0, Math.floor(Number(stats.missionsStartedTotal || 0))) + 1;
+  recomputeBalanceAutoTune(state, now);
+  return stats;
+}
+
+function markBalanceMissionResult(ok, reason="", state=S){
+  const stats = ensureBalanceStatsState(state);
+  const now = Date.now();
+  const key = stats.activeMissionKey || balanceMissionKey(state);
+  if((now - (stats.lastMissionResultAt || 0)) < 1200 && stats.lastMissionKey === key && String(stats.lastMissionResult || "") === (ok ? "win" : "fail")){
+    return stats;
+  }
+  stats.recentMissionResults = pushBalanceHistory(stats.recentMissionResults, {
+    ts: now,
+    key,
+    ok: !!ok,
+    reason: String(reason || "").trim().slice(0, 90),
+  }, BALANCE_RECENT_MISSION_MAX);
+  if(ok){
+    stats.missionsWonTotal = Math.max(0, Math.floor(Number(stats.missionsWonTotal || 0))) + 1;
+  }else{
+    stats.missionsFailedTotal = Math.max(0, Math.floor(Number(stats.missionsFailedTotal || 0))) + 1;
+    stats.missionFailsTotal = Math.max(0, Math.floor(Number(stats.missionFailsTotal || 0))) + 1;
+  }
+  stats.lastMissionResult = ok ? "win" : "fail";
+  stats.lastMissionResultAt = now;
+  stats.lastMissionKey = key;
+  stats.activeMissionKey = "";
+  stats.missionStartAt = 0;
+  recomputeBalanceAutoTune(state, now);
+  return stats;
+}
+
+function markBalanceDeath(state=S){
+  const stats = ensureBalanceStatsState(state);
+  const now = Date.now();
+  stats.deathsTotal = Math.max(0, Math.floor(Number(stats.deathsTotal || 0))) + 1;
+  stats.recentDeathAt = pushBalanceHistory(stats.recentDeathAt, now, BALANCE_EVENT_HISTORY_MAX);
+  recomputeBalanceAutoTune(state, now);
+  return stats;
+}
+
+function markBalanceFreezeSpike(frameGap=0, frameCost=0, state=S){
+  const stats = ensureBalanceStatsState(state);
+  const now = Date.now();
+  if((now - (stats.lastFreezeSpikeAt || 0)) < 800) return stats;
+  stats.lastFreezeSpikeAt = now;
+  stats.freezeSpikeTotal = Math.max(0, Math.floor(Number(stats.freezeSpikeTotal || 0))) + 1;
+  stats.recentFreezeSpikeAt = pushBalanceHistory(stats.recentFreezeSpikeAt, now, BALANCE_EVENT_HISTORY_MAX);
+  recomputeBalanceAutoTune(state, now);
+  return stats;
+}
+
+function markBalanceFreezeRecover(state=S){
+  const stats = ensureBalanceStatsState(state);
+  const now = Date.now();
+  stats.freezeRecoverTotal = Math.max(0, Math.floor(Number(stats.freezeRecoverTotal || 0))) + 1;
+  stats.recentFreezeRecoverAt = pushBalanceHistory(stats.recentFreezeRecoverAt, now, BALANCE_EVENT_HISTORY_MAX);
+  recomputeBalanceAutoTune(state, now);
+  return stats;
+}
+
 function trackCashEarned(amount=0){
   const cash = Math.max(0, Math.floor(Number(amount || 0)));
   if(cash <= 0) return;
@@ -3884,6 +4179,7 @@ function buildGameplayCloudSnapshot(state=S){
   const src = (state && typeof state === "object") ? state : S;
   const clan = ensureClanState(src);
   const totals = ensureOpsTotalsState(src);
+  const balance = recomputeBalanceAutoTune(src);
   const missionStats = (src.stats && typeof src.stats === "object") ? src.stats : {};
   const kills = Math.max(
     Math.max(0, Math.floor(Number(totals.kills || 0))),
@@ -3908,6 +4204,11 @@ function buildGameplayCloudSnapshot(state=S){
     civiliansLost: Math.max(0, Math.floor(Number(totals.civiliansLost || 0))),
     missionsCleared: Math.max(0, Math.floor(Number(totals.missionsCleared || 0))),
     cashEarned,
+    deaths: Math.max(0, Math.floor(Number(balance.deathsTotal || 0))),
+    missionFails: Math.max(0, Math.floor(Number(balance.missionFailsTotal || 0))),
+    freezeRecovers: Math.max(0, Math.floor(Number(balance.freezeRecoverTotal || 0))),
+    freezeSpikes: Math.max(0, Math.floor(Number(balance.freezeSpikeTotal || 0))),
+    autoTune: clampAutoTuneValue(balance.autoTune),
     mode: normalizeModeName(src.mode),
     mission: gameplayCloudMission(src),
     level: Math.max(1, Math.floor(Number(src.level || 1))),
@@ -3935,6 +4236,11 @@ function gameplayCloudSnapshotSig(snapshot){
     Math.max(0, Math.floor(Number(snap.civiliansLost || 0))),
     Math.max(0, Math.floor(Number(snap.missionsCleared || 0))),
     Math.max(0, Math.floor(Number(snap.cashEarned || 0))),
+    Math.max(0, Math.floor(Number(snap.deaths || 0))),
+    Math.max(0, Math.floor(Number(snap.missionFails || 0))),
+    Math.max(0, Math.floor(Number(snap.freezeRecovers || 0))),
+    Math.max(0, Math.floor(Number(snap.freezeSpikes || 0))),
+    Math.round(clampAutoTuneValue(snap.autoTune) * 1000),
     normalizeClanTag(snap.clanTag || "SOLO"),
     sanitizeClanName(snap.clanName || "", snap.clanTag || "SOLO"),
     snap.clanRaidEnabled ? 1 : 0,
@@ -3969,6 +4275,17 @@ async function postGameplayCloudSnapshot(snapshot){
       }
       if(payload?.eventDrop && typeof payload.eventDrop === "object"){
         S.telegramEventDrop = normalizeTelegramEventDrop(payload.eventDrop);
+      }
+      if(payload?.balance && typeof payload.balance === "object"){
+        const stats = ensureBalanceStatsState(S);
+        stats.deathsTotal = Math.max(stats.deathsTotal, Math.max(0, Math.floor(Number(payload.balance.deaths || 0))));
+        stats.missionFailsTotal = Math.max(stats.missionFailsTotal, Math.max(0, Math.floor(Number(payload.balance.missionFails || 0))));
+        stats.freezeRecoverTotal = Math.max(stats.freezeRecoverTotal, Math.max(0, Math.floor(Number(payload.balance.freezeRecovers || 0))));
+        stats.freezeSpikeTotal = Math.max(stats.freezeSpikeTotal, Math.max(0, Math.floor(Number(payload.balance.freezeSpikes || 0))));
+        if(Number.isFinite(Number(payload.balance.autoTune))){
+          stats.autoTune = clampAutoTuneValue(Number(payload.balance.autoTune || 1));
+        }
+        recomputeBalanceAutoTune(S);
       }
       S.clanLastSyncAt = Date.now();
       try{ updateModeDesc(); }catch(e){}
@@ -4171,6 +4488,7 @@ function load(){
       ensureContractsState(fallback);
       ensureLiveOpsState(fallback);
       ensureOpsTotalsState(fallback);
+      ensureBalanceStatsState(fallback);
       ensureClanState(fallback);
       ensureSeasonPassState(fallback);
       return fallback;
@@ -4195,6 +4513,7 @@ function load(){
     m.achievements = saved.achievements || {};
     m.stats = { ...DEFAULT.stats, ...(saved.stats||{}) };
     m.opsTotals = { ...DEFAULT.opsTotals, ...((saved.opsTotals && typeof saved.opsTotals === "object") ? saved.opsTotals : {}) };
+    m.balanceStats = { ...defaultBalanceStatsState(), ...((saved.balanceStats && typeof saved.balanceStats === "object") ? saved.balanceStats : {}) };
     m.contractTallies = normalizeContractTalliesMap(saved.contractTallies);
     m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
     m.liveOps = (saved.liveOps && typeof saved.liveOps === "object") ? saved.liveOps : null;
@@ -4231,6 +4550,7 @@ function load(){
     ensureContractsState(m);
     ensureLiveOpsState(m);
     ensureOpsTotalsState(m);
+    ensureBalanceStatsState(m);
     ensureClanState(m);
     ensureSeasonPassState(m);
     ensureStoryEndgameState(m);
@@ -4250,6 +4570,7 @@ function load(){
     ensureContractsState(fallback);
     ensureLiveOpsState(fallback);
     ensureOpsTotalsState(fallback);
+    ensureBalanceStatsState(fallback);
     ensureClanState(fallback);
     return fallback;
   }
@@ -4716,10 +5037,15 @@ function missionDirectorMarkTigerSpawn(opts={}){
   const director = ensureMissionDirectorState();
   const phaseKey = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
   const cfg = DIRECTOR_PHASE_CONFIG[phaseKey];
+  const tuning = currentBalanceTuning(S, now);
   const minCd = Math.round(cfg.spawnCd?.[0] || 13000);
   const maxCd = Math.round(cfg.spawnCd?.[1] || 19000);
   const survivalMul = S.mode === "Survival" ? 0.76 : 1;
-  const cd = rand(Math.max(1200, Math.round(minCd * survivalMul)), Math.max(1600, Math.round(maxCd * survivalMul)));
+  const cdMul = clamp(Number(tuning.spawnCdMul || 1), 0.84, 1.22);
+  const cd = rand(
+    Math.max(1200, Math.round(minCd * survivalMul * cdMul)),
+    Math.max(1600, Math.round(maxCd * survivalMul * cdMul))
+  );
   director.nextSpawnAt = now + cd;
 }
 function missionDirectorTargetPressure(now=Date.now()){
@@ -4771,6 +5097,8 @@ function missionDirectorTargetPressure(now=Date.now()){
     if(!inBattle && underAttack === 0) target -= 5;
     if(!inBattle && underAttack === 0 && nearPlayer === 0) target -= 3;
   }
+  const tuning = currentBalanceTuning(S, now);
+  target *= clamp(Number(tuning.pressureMul || 1), 0.86, 1.16);
   return clamp(target, 0, 100);
 }
 function missionDirectorResolvePhase(pressure, currentPhase){
@@ -4880,8 +5208,9 @@ function missionDirectorTick(){
     }
   }
   const phaseCfg = DIRECTOR_PHASE_CONFIG[director.phase] || DIRECTOR_PHASE_CONFIG.CALM;
-  S._directorAggroMul = clamp(Number(phaseCfg.aggroMul || 1), 0.82, 1.24);
-  S._directorSpeedMul = clamp(Number(phaseCfg.speedMul || 1), 0.88, 1.20);
+  const tuning = currentBalanceTuning(S, now);
+  S._directorAggroMul = clamp(Number(phaseCfg.aggroMul || 1) * clamp(Number(tuning.aggroMul || 1), 0.86, 1.18), 0.78, 1.28);
+  S._directorSpeedMul = clamp(Number(phaseCfg.speedMul || 1) * clamp(Number(tuning.speedMul || 1), 0.88, 1.14), 0.84, 1.22);
 
   if(now >= (director.hardTrimAt || 0)){
     const trimRes = missionDirectorApplyHardCaps();
@@ -5078,11 +5407,15 @@ function renderStabilityMonitor(force=false){
   const fps = avgGap > 0 ? (1000 / avgGap) : 0;
   const dropped = Number(__frameBudgetState.dropped || 0);
   const recoversMin = (__freezeRecoverState.history || []).filter((t)=>(now - t) < 60000).length;
+  const balance = ensureBalanceStatsState(S);
+  const tuning = currentBalanceTuning(S, now);
+  const failPct = Math.round(clamp(Number(balance.lastFailRate || 0), 0, 1) * 100);
   const mode = performanceMode() === "PERFORMANCE" ? "PERF" : "AUTO";
   node.innerText =
     `FPS ${fps.toFixed(0)} | gap ${avgGap.toFixed(1)}ms (max ${worstGap.toFixed(0)})` +
     `\nframe ${avgCost.toFixed(1)}ms (max ${worstCost.toFixed(0)}) | drop ${dropped}` +
-    `\nmode ${mode} | recov ${recoversMin}/min`;
+    `\nmode ${mode} | recov ${recoversMin}/min` +
+    `\nauto x${Number(tuning.autoTune || 1).toFixed(2)} | fail ${failPct}% | deaths ${Math.floor(Number(balance.lastDeathsRecent || 0))}`;
 }
 function noteFrameSample(frameGap, frameCost){
   __pushStabilitySample(__stabilityMonitorState.frameGaps, frameGap);
@@ -5103,6 +5436,7 @@ function runStabilityRecovery(reason="stall"){
   if(!canRunStabilityRecovery(now)) return false;
   __freezeRecoverState.lastRecoverAt = now;
   __freezeRecoverState.history.push(now);
+  markBalanceFreezeRecover(S);
 
   for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
   for(const k of Object.keys(__frameTaskPhase)) delete __frameTaskPhase[k];
@@ -5162,6 +5496,9 @@ function updateFrameLoad(frameStartTs){
     runStabilityRecovery("critical-stall");
   }
   if(frameGap > STABILITY_SPIKE_GAP_MS || frameCost > 46){
+    if(!__frameSpikePending){
+      markBalanceFreezeSpike(frameGap, frameCost, S);
+    }
     __frameSpikePending = true;
   }
   if(frameGap > STABILITY_STALL_HARD_GAP_MS || frameCost > STABILITY_STALL_COST_MS){
@@ -5946,6 +6283,7 @@ function sanitizeRuntimeState(){
   ensureStoryMetaState();
   ensureTouchHudState();
   ensureMissionDirectorState();
+  ensureBalanceStatsState();
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
@@ -9200,6 +9538,7 @@ function writeStoryProfileData(source="autosave", state=S){
     achievements: { ...(src.achievements || {}) },
     stats: { ...(src.stats || {}) },
     opsTotals: { ...ensureOpsTotalsState(src) },
+    balanceStats: cloneState(ensureBalanceStatsState(src)),
     contractTallies: { ...ensureContractTalliesState(src) },
     contracts: (src.contracts && typeof src.contracts === "object") ? cloneState(src.contracts) : null,
     liveOps: (src.liveOps && typeof src.liveOps === "object") ? cloneState(src.liveOps) : null,
@@ -9355,6 +9694,37 @@ function applyStoryProfileToState(state, profile){
       const next = Math.max(0, Math.floor(Number(incoming?.[metric] || fallback || 0)));
       totals[metric] = Math.max(current, next);
     }
+  }
+  if(profile.balanceStats && typeof profile.balanceStats === "object"){
+    const stats = ensureBalanceStatsState(state);
+    const incoming = ensureBalanceStatsState({ balanceStats: profile.balanceStats });
+    stats.deathsTotal = Math.max(stats.deathsTotal, incoming.deathsTotal);
+    stats.missionFailsTotal = Math.max(stats.missionFailsTotal, incoming.missionFailsTotal);
+    stats.freezeRecoverTotal = Math.max(stats.freezeRecoverTotal, incoming.freezeRecoverTotal);
+    stats.freezeSpikeTotal = Math.max(stats.freezeSpikeTotal, incoming.freezeSpikeTotal);
+    stats.missionsStartedTotal = Math.max(stats.missionsStartedTotal, incoming.missionsStartedTotal);
+    stats.missionsWonTotal = Math.max(stats.missionsWonTotal, incoming.missionsWonTotal);
+    stats.missionsFailedTotal = Math.max(stats.missionsFailedTotal, incoming.missionsFailedTotal);
+    stats.recentMissionResults = normalizeMissionResultHistory(
+      [...(stats.recentMissionResults || []), ...(incoming.recentMissionResults || [])],
+      BALANCE_RECENT_MISSION_MAX
+    );
+    stats.recentDeathAt = normalizeRecentTimestampList(
+      [...(stats.recentDeathAt || []), ...(incoming.recentDeathAt || [])],
+      BALANCE_EVENT_HISTORY_MAX
+    );
+    stats.recentFreezeRecoverAt = normalizeRecentTimestampList(
+      [...(stats.recentFreezeRecoverAt || []), ...(incoming.recentFreezeRecoverAt || [])],
+      BALANCE_EVENT_HISTORY_MAX
+    );
+    stats.recentFreezeSpikeAt = normalizeRecentTimestampList(
+      [...(stats.recentFreezeSpikeAt || []), ...(incoming.recentFreezeSpikeAt || [])],
+      BALANCE_EVENT_HISTORY_MAX
+    );
+    stats.autoTune = clampAutoTuneValue(Math.max(stats.autoTune || 1, incoming.autoTune || 1));
+    stats.lastMissionResultAt = Math.max(stats.lastMissionResultAt || 0, incoming.lastMissionResultAt || 0);
+    stats.lastUpdatedAt = Math.max(stats.lastUpdatedAt || 0, incoming.lastUpdatedAt || 0);
+    recomputeBalanceAutoTune(state);
   }
   if(profile.contractTallies && typeof profile.contractTallies === "object"){
     ensureContractTalliesState(state);
@@ -9518,6 +9888,7 @@ function writeStoryProgressData(payload={}){
     achievements: { ...(payload.achievements ?? S.achievements ?? {}) },
     stats: { ...(payload.stats ?? S.stats ?? {}) },
     opsTotals: { ...ensureOpsTotalsState(payload.opsTotals ? { opsTotals: payload.opsTotals } : S) },
+    balanceStats: cloneState(ensureBalanceStatsState(payload.balanceStats ? { balanceStats: payload.balanceStats } : S)),
     contractTallies: normalizeContractTalliesMap(payload.contractTallies ?? S.contractTallies),
     contracts: (payload.contracts && typeof payload.contracts === "object")
       ? cloneState(payload.contracts)
@@ -14651,6 +15022,7 @@ function deploy(opts={}){
   else closeMissionBrief(true);
 
   updateGameOverCheckpointButton();
+  markBalanceMissionStart(S);
   save();
 }
 
@@ -14775,6 +15147,10 @@ function resetGame(){
 
 // ===================== GAME OVER =====================
 function gameOverChoice(msg){
+  if(S.gameOver) return;
+  if(!S.missionEnded){
+    markBalanceMissionResult(false, msg, S);
+  }
   S.gameOver = true;
   S.paused = true;
   transitionCleanupSweep("game-over");
@@ -16924,6 +17300,7 @@ function applyPlayerDamage(dmg, showToast=false){
   }
   if(S.inBattle) renderBattleStatus();
   if(S.hp<=0 && S.armor<=0){
+    markBalanceDeath(S);
     S.lives -= 1;
 
     if(S.lives > 0){
@@ -18489,6 +18866,7 @@ function checkMissionComplete(){
       ensureStoryEndgameState(S);
       const storyVariant = normalizeStoryVariant(storyMission?.storyVariant || S.storyVariant);
       S.missionEnded=true;
+      markBalanceMissionResult(true, "mission-complete", S);
       addContractTally("missionsCleared", 1);
       addOpsTotal("missionsCleared", 1);
       requestGameplayCloudSync("mission-complete", { force:true });
@@ -21554,6 +21932,7 @@ function init(){
   pushStarsDebug("app:init", { user: tgUserKey(), build: TS_BUILD });
   ensureStoryMetaState();
   ensureContractTalliesState(S);
+  ensureBalanceStatsState(S);
   ensureContractsState(S);
   ensureMissionDirectorState(S);
   ensureSeasonPassState(S);
@@ -21766,6 +22145,9 @@ function init(){
     deploy({ carryStats:true, hp:S.hp, armor:S.armor });
   }
   checkProgressionUnlocks({ silent:true });
+  if(!S.gameOver && !S.missionEnded){
+    markBalanceMissionStart(S);
+  }
 
   __pendingDailyReward = awardDailyLogin();
   refreshLaunchIntroStatus();

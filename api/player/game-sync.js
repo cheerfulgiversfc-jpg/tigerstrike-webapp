@@ -46,6 +46,13 @@ module.exports = async function handler(req, res){
       season: profile.season || null,
       monthly: profile.monthly || null,
       lifetimeScore: Number(profile.lifetimeScore || 0),
+      balance: {
+        deaths: Math.max(0, Math.floor(Number(profile?.ops?.deaths || 0))),
+        missionFails: Math.max(0, Math.floor(Number(profile?.ops?.missionFails || 0))),
+        freezeRecovers: Math.max(0, Math.floor(Number(profile?.ops?.freezeRecovers || 0))),
+        freezeSpikes: Math.max(0, Math.floor(Number(profile?.ops?.freezeSpikes || 0))),
+        autoTune: Number.isFinite(Number(profile?.ops?.autoTune)) ? Number(profile.ops.autoTune) : 1,
+      },
       clan: clan || null,
       referral,
       eventDrop,

@@ -379,6 +379,11 @@ function defaultProfile(user, userId = 0){
       civiliansLost: 0,
       missionsCleared: 0,
       cashEarned: 0,
+      deaths: 0,
+      missionFails: 0,
+      freezeRecovers: 0,
+      freezeSpikes: 0,
+      autoTune: 1,
       lastMode: "Story",
       lastMission: 1,
       lastLevel: 1,
@@ -495,6 +500,11 @@ function normalizeProfile(raw, user = null, fallbackUserId = 0){
   out.ops.civiliansLost = clampNonNegative(out.ops.civiliansLost);
   out.ops.missionsCleared = clampNonNegative(out.ops.missionsCleared);
   out.ops.cashEarned = clampNonNegative(out.ops.cashEarned);
+  out.ops.deaths = clampNonNegative(out.ops.deaths);
+  out.ops.missionFails = clampNonNegative(out.ops.missionFails);
+  out.ops.freezeRecovers = clampNonNegative(out.ops.freezeRecovers);
+  out.ops.freezeSpikes = clampNonNegative(out.ops.freezeSpikes);
+  out.ops.autoTune = Math.max(0.5, Math.min(1.5, Number(out.ops.autoTune || 1))) || 1;
   out.ops.lastMode = safeText(out.ops.lastMode || "Story").slice(0, 20) || "Story";
   out.ops.lastMission = Math.max(1, toInt(out.ops.lastMission, 1));
   out.ops.lastLevel = Math.max(1, toInt(out.ops.lastLevel, 1));
@@ -993,6 +1003,11 @@ function normalizeGameplaySnapshot(snapshot){
     civiliansLost: clampNonNegative(src.civiliansLost),
     missionsCleared: clampNonNegative(src.missionsCleared),
     cashEarned: clampNonNegative(src.cashEarned),
+    deaths: clampNonNegative(src.deaths),
+    missionFails: clampNonNegative(src.missionFails),
+    freezeRecovers: clampNonNegative(src.freezeRecovers),
+    freezeSpikes: clampNonNegative(src.freezeSpikes),
+    autoTune: Math.max(0.5, Math.min(1.5, Number(src.autoTune || 1))) || 1,
     mode: safeText(src.mode || "Story").slice(0, 20) || "Story",
     mission: Math.max(1, toInt(src.mission, 1)),
     level: Math.max(1, toInt(src.level, 1)),
@@ -1016,6 +1031,11 @@ async function recordGameplaySnapshot({ user, snapshot }){
       civiliansLost: clampNonNegative(profile?.ops?.civiliansLost),
       missionsCleared: clampNonNegative(profile?.ops?.missionsCleared),
       cashEarned: clampNonNegative(profile?.ops?.cashEarned),
+      deaths: clampNonNegative(profile?.ops?.deaths),
+      missionFails: clampNonNegative(profile?.ops?.missionFails),
+      freezeRecovers: clampNonNegative(profile?.ops?.freezeRecovers),
+      freezeSpikes: clampNonNegative(profile?.ops?.freezeSpikes),
+      autoTune: Math.max(0.5, Math.min(1.5, Number(profile?.ops?.autoTune || 1))) || 1,
       lastMode: safeText(profile?.ops?.lastMode || "Story").slice(0, 20) || "Story",
       lastMission: Math.max(1, toInt(profile?.ops?.lastMission, 1)),
       lastLevel: Math.max(1, toInt(profile?.ops?.lastLevel, 1)),
@@ -1038,6 +1058,14 @@ async function recordGameplaySnapshot({ user, snapshot }){
         profile.monthly[key] = clampNonNegative(profile.monthly[key]) + delta;
       }
     }
+
+    const telemetryKeys = ["deaths", "missionFails", "freezeRecovers", "freezeSpikes"];
+    for(const key of telemetryKeys){
+      const current = clampNonNegative(profile.ops[key]);
+      const incoming = clampNonNegative(snap[key]);
+      profile.ops[key] = Math.max(current, incoming);
+    }
+    profile.ops.autoTune = Math.max(0.5, Math.min(1.5, Number(snap.autoTune || profile.ops.autoTune || 1))) || 1;
 
     profile.ops.lastMode = snap.mode;
     profile.ops.lastMission = snap.mission;
