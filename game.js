@@ -1856,7 +1856,7 @@ function isBossTiger(t){
   return !!(t && (t.bossPhases || 0) > 0);
 }
 function currentModeMission(){
-  if(S.mode==="Story") return storyCampaignMission(S.storyLevel);
+  if(S.mode==="Story") return storyMissionForState(S);
   if(S.mode==="Arcade") return arcadeCampaignMission(S.arcadeLevel);
   return null;
 }
@@ -3050,9 +3050,187 @@ function storyObjectiveProgressText(cfg){
   return bits.length ? ` • ${bits.join(" • ")}` : "";
 }
 
+const STORY_VARIANTS = Object.freeze({
+  CAMPAIGN: "CAMPAIGN",
+  GAUNTLET: "GAUNTLET",
+  ELITE_HUNT: "ELITE_HUNT",
+});
+const ELITE_HUNT_BOSS_TYPES = Object.freeze({
+  1: "Alpha",
+  2: "Berserker",
+  3: "Stalker",
+  4: "Alpha",
+  5: "Berserker",
+  6: "Alpha",
+  7: "Berserker",
+  8: "Alpha",
+  9: "Stalker",
+  10: "Alpha",
+});
+function normalizeStoryVariant(value){
+  const key = String(value || "").trim().toUpperCase();
+  return STORY_VARIANTS[key] || STORY_VARIANTS.CAMPAIGN;
+}
+function storyVariantLabel(variant=STORY_VARIANTS.CAMPAIGN){
+  const v = normalizeStoryVariant(variant);
+  if(v === STORY_VARIANTS.GAUNTLET) return "Endless Chapter Gauntlet";
+  if(v === STORY_VARIANTS.ELITE_HUNT) return "Elite Boss Hunts";
+  return "Story Campaign";
+}
+function ensureStoryEndgameState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return;
+  src.storyVariant = normalizeStoryVariant(src.storyVariant);
+  src.storyNgPlusTier = Math.max(0, Math.floor(Number(src.storyNgPlusTier || 0)));
+  src.gauntletDepth = Math.max(1, Math.floor(Number(src.gauntletDepth || 1)));
+  src.eliteHuntChapter = clamp(Math.floor(Number(src.eliteHuntChapter || 1)), 1, 10);
+  src.eliteHuntRuns = Math.max(1, Math.floor(Number(src.eliteHuntRuns || 1)));
+  src.eliteHuntsCleared = Math.max(0, Math.floor(Number(src.eliteHuntsCleared || 0)));
+  src.storyEndgameUnlocked = !!src.storyEndgameUnlocked;
+  if(Number(src.storyLastMission || src.storyLevel || 1) >= STORY_CAMPAIGN_OBJECTIVES.length){
+    src.storyEndgameUnlocked = true;
+  }
+}
+function applyStoryEndgameSnapshot(target=S, source=null){
+  const dst = (target && typeof target === "object") ? target : S;
+  const src = (source && typeof source === "object") ? source : null;
+  if(!dst || !src) return;
+  if(src.storyVariant != null) dst.storyVariant = normalizeStoryVariant(src.storyVariant);
+  if(Number.isFinite(Number(src.storyNgPlusTier))){
+    dst.storyNgPlusTier = Math.max(0, Math.floor(Number(src.storyNgPlusTier || 0)));
+  }
+  if(src.storyEndgameUnlocked != null) dst.storyEndgameUnlocked = !!src.storyEndgameUnlocked;
+  if(Number.isFinite(Number(src.gauntletDepth))){
+    dst.gauntletDepth = Math.max(1, Math.floor(Number(src.gauntletDepth || 1)));
+  }
+  if(Number.isFinite(Number(src.eliteHuntChapter))){
+    dst.eliteHuntChapter = clamp(Math.floor(Number(src.eliteHuntChapter || 1)), 1, 10);
+  }
+  if(Number.isFinite(Number(src.eliteHuntRuns))){
+    dst.eliteHuntRuns = Math.max(1, Math.floor(Number(src.eliteHuntRuns || 1)));
+  }
+  if(Number.isFinite(Number(src.eliteHuntsCleared))){
+    dst.eliteHuntsCleared = Math.max(0, Math.floor(Number(src.eliteHuntsCleared || 0)));
+  }
+  ensureStoryEndgameState(dst);
+}
+function storyEndgameUnlocked(state=S){
+  ensureStoryEndgameState(state);
+  const src = (state && typeof state === "object") ? state : S;
+  return !!src?.storyEndgameUnlocked;
+}
+function storyCampaignProgressLevel(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  return clamp(Math.floor(Number(src?.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+}
+function storyMissionLevelForState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  ensureStoryEndgameState(src);
+  const variant = normalizeStoryVariant(src.storyVariant);
+  if(variant === STORY_VARIANTS.GAUNTLET){
+    const depth = Math.max(1, Math.floor(Number(src.gauntletDepth || 1)));
+    return ((depth - 1) % STORY_CAMPAIGN_OBJECTIVES.length) + 1;
+  }
+  if(variant === STORY_VARIANTS.ELITE_HUNT){
+    const chapter = clamp(Math.floor(Number(src.eliteHuntChapter || 1)), 1, 10);
+    return clamp(chapter * 10, 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  }
+  return storyCampaignProgressLevel(src);
+}
+function storyRunIndexForState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  ensureStoryEndgameState(src);
+  const variant = normalizeStoryVariant(src.storyVariant);
+  if(variant === STORY_VARIANTS.GAUNTLET){
+    return Math.max(1, Math.floor(Number(src.gauntletDepth || 1)));
+  }
+  if(variant === STORY_VARIANTS.ELITE_HUNT){
+    return Math.max(1, Math.floor(Number(src.eliteHuntRuns || 1)));
+  }
+  return storyCampaignProgressLevel(src);
+}
+function storyMissionForState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  ensureStoryEndgameState(src);
+  const variant = normalizeStoryVariant(src.storyVariant);
+  const level = storyMissionLevelForState(src);
+  const cfg = { ...storyCampaignMission(level) };
+  cfg.storyVariant = variant;
+  cfg.runIndex = storyRunIndexForState(src);
+  cfg.displayNumber = cfg.runIndex;
+  cfg.displayTotal = variant === STORY_VARIANTS.CAMPAIGN ? STORY_CAMPAIGN_OBJECTIVES.length : null;
+  cfg.endgameHpMul = 1;
+  cfg.endgameAggroMul = 1;
+  cfg.endgamePayoutMul = 1;
+
+  if(variant === STORY_VARIANTS.GAUNTLET){
+    const depth = Math.max(1, Math.floor(Number(src.gauntletDepth || 1)));
+    const loop = Math.floor((depth - 1) / STORY_CAMPAIGN_OBJECTIVES.length);
+    cfg.gauntletDepth = depth;
+    cfg.gauntletLoop = loop + 1;
+    cfg.chapterName = `Endless Chapter Gauntlet • Loop ${cfg.gauntletLoop}`;
+    cfg.objective = `Gauntlet Run ${depth}: ${cfg.objective}`;
+    cfg.tigers = clamp(cfg.tigers + Math.floor((depth - 1) / 6), 1, 22);
+    cfg.captureRequired = clamp(cfg.captureRequired + Math.floor((depth - 1) / 30), 0, 7);
+    cfg.endgameHpMul = 1 + (loop * 0.12) + Math.min(0.55, (depth - 1) * 0.0055);
+    cfg.endgameAggroMul = 1 + (loop * 0.10) + Math.min(0.45, (depth - 1) * 0.004);
+    cfg.endgamePayoutMul = 1 + (loop * 0.14) + Math.min(0.65, (depth - 1) * 0.006);
+    if((depth % 10) === 0){
+      cfg.boss = true;
+      cfg.bossTwin = false;
+      cfg.tigers = 1;
+      cfg.bossType = ELITE_HUNT_BOSS_TYPES[cfg.chapter] || cfg.bossType || "Alpha";
+    }
+  }else if(variant === STORY_VARIANTS.ELITE_HUNT){
+    const chapter = clamp(Math.floor(Number(src.eliteHuntChapter || 1)), 1, 10);
+    const run = Math.max(1, Math.floor(Number(src.eliteHuntRuns || 1)));
+    cfg.chapter = chapter;
+    cfg.number = chapter * 10;
+    cfg.chapterName = `Elite Boss Hunt • Chapter ${chapter}`;
+    cfg.objective = `Elite Hunt ${run}: Defeat or capture Chapter ${chapter} boss.`;
+    cfg.civilians = 0;
+    cfg.captureRequired = 0;
+    cfg.tigers = 1;
+    cfg.boss = true;
+    cfg.bossTwin = false;
+    cfg.bossType = ELITE_HUNT_BOSS_TYPES[chapter] || cfg.bossType || "Alpha";
+    cfg.finalBoss = chapter === 10;
+    cfg.lowVisibility = cfg.lowVisibility || chapter === 7 || chapter === 9;
+    cfg.bloodAggro = true;
+    cfg.endgameHpMul = 1.55 + ((chapter - 1) * 0.10) + Math.min(0.70, (run - 1) * 0.055);
+    cfg.endgameAggroMul = 1.16 + ((chapter - 1) * 0.03) + Math.min(0.38, (run - 1) * 0.028);
+    cfg.endgamePayoutMul = 1.32 + ((chapter - 1) * 0.03) + Math.min(0.42, (run - 1) * 0.03);
+  }
+
+  const ngTier = Math.max(0, Math.floor(Number(src.storyNgPlusTier || 0)));
+  if(ngTier > 0){
+    cfg.ngPlusTier = ngTier;
+    cfg.ngPlus = true;
+    cfg.endgameHpMul *= 1 + (ngTier * 0.18);
+    cfg.endgameAggroMul *= 1 + (ngTier * 0.10);
+    cfg.endgamePayoutMul *= 1 + (ngTier * 0.14);
+    if(variant === STORY_VARIANTS.CAMPAIGN){
+      cfg.chapterName = `New Game+ ${ngTier} • ${cfg.chapterName}`;
+    }
+  }
+
+  return cfg;
+}
+function storyMissionDisplayLabel(state=S){
+  const mission = storyMissionForState(state);
+  if(mission.storyVariant === STORY_VARIANTS.GAUNTLET){
+    return `Gauntlet Run ${mission.runIndex}`;
+  }
+  if(mission.storyVariant === STORY_VARIANTS.ELITE_HUNT){
+    return `Elite Hunt ${mission.runIndex}`;
+  }
+  return `Story Mission ${mission.number}`;
+}
+
 function markStoryFinalBossOutcome(outcome, tiger){
   if(S.mode!=="Story") return;
-  const m = storyCampaignMission(S.storyLevel);
+  const m = storyMissionForState(S);
+  if(normalizeStoryVariant(m.storyVariant) !== STORY_VARIANTS.CAMPAIGN) return;
   if(!m || m.number !== 100) return;
   if(!tiger || !tiger.bossPhases) return;
   S._storyFinalOutcome = outcome;
@@ -3149,6 +3327,13 @@ const DEFAULT = {
   paused:false, pauseReason:null,
   mode:"Story", arcadeLevel:1, survivalWave:1, storyLevel:1, mapIndex:0,
   storyLastMission:1,
+  storyVariant:"CAMPAIGN",
+  storyNgPlusTier:0,
+  storyEndgameUnlocked:false,
+  gauntletDepth:1,
+  eliteHuntChapter:1,
+  eliteHuntRuns:1,
+  eliteHuntsCleared:0,
   modeWallets:{
     Story:1000,
     Arcade:1000,
@@ -3743,6 +3928,7 @@ function load(){
       const fallback = cloneState(DEFAULT);
       applyStorySaveToState(fallback, { allowModeSync:true });
       applyStoryProfileToState(fallback, storyProfile);
+      ensureStoryEndgameState(fallback);
       ensureContractTalliesState(fallback);
       ensureContractsState(fallback);
       ensureLiveOpsState(fallback);
@@ -3784,6 +3970,7 @@ function load(){
     m.touchHud = normalizeTouchHudSettings(saved.touchHud ?? m.touchHud);
     m.mode = normalizeModeName(m.mode);
     m.storyLastMission = clamp(Math.floor(Number(saved.storyLastMission ?? m.storyLevel ?? 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+    ensureStoryEndgameState(m);
     applyStorySaveToState(m, { allowModeSync:true });
     const profileOverlay = resolveStoryProfileOverlay(storyProfileRaw, storyProgress, m);
     applyStoryProfileToState(m, profileOverlay);
@@ -3805,6 +3992,7 @@ function load(){
     ensureOpsTotalsState(m);
     ensureClanState(m);
     ensureSeasonPassState(m);
+    ensureStoryEndgameState(m);
     if(m.lives==null) m.lives=5;
     m.v = STORAGE_VERSION;
     trimPersistentState(m);
@@ -3816,6 +4004,7 @@ function load(){
     return m;
   }catch(e){
     const fallback = cloneState(DEFAULT);
+    ensureStoryEndgameState(fallback);
     ensureContractTalliesState(fallback);
     ensureContractsState(fallback);
     ensureLiveOpsState(fallback);
@@ -4316,7 +4505,11 @@ function missionDirectorTargetPressure(now=Date.now()){
   const inBattle = S.inBattle ? 1 : 0;
   const hpStress = clamp((100 - Number(S.hp || 100)) / 100, 0, 1);
   const levelStress = (() => {
-    if(S.mode === "Story") return clamp(((S.storyLevel || 1) - 1) / 99, 0, 1);
+    if(S.mode === "Story"){
+      const storyMission = storyMissionForState(S);
+      const idx = Math.max(1, Number(storyMission?.number || S.storyLevel || 1));
+      return clamp((idx - 1) / 99, 0, 1);
+    }
     if(S.mode === "Arcade") return clamp(((S.arcadeLevel || 1) - 1) / 99, 0, 1);
     return clamp(((S.survivalWave || 1) - 1) / 35, 0, 1);
   })();
@@ -5824,12 +6017,12 @@ function isTypingContext(target){
   return el.isContentEditable || tag==="INPUT" || tag==="TEXTAREA" || tag==="SELECT";
 }
 function currentCampaignLevel(){
-  if(S.mode==="Story") return Math.max(1, S.storyLevel || 1);
+  if(S.mode==="Story") return Math.max(1, storyRunIndexForState(S));
   if(S.mode==="Arcade") return Math.max(1, S.arcadeLevel || 1);
   return Math.max(1, S.survivalWave || 1);
 }
 function missionIndexForMode(mode=S.mode){
-  if(mode==="Story") return clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  if(mode==="Story") return clamp(Math.floor(storyMissionLevelForState(S) || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   if(mode==="Arcade") return clamp(Math.floor(S.arcadeLevel || 1), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
   return Math.max(1, Math.floor(S.survivalWave || 1));
 }
@@ -8010,12 +8203,30 @@ function togglePause(){
 }
 
 function currentMissionLabel(){
-  if(S.mode==="Story") return `Story Mission ${clamp(S.storyLevel || 1, 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
+  if(S.mode==="Story"){
+    const mission = storyMissionForState(S);
+    if(normalizeStoryVariant(mission.storyVariant) === STORY_VARIANTS.GAUNTLET){
+      return `Gauntlet Run ${mission.runIndex}`;
+    }
+    if(normalizeStoryVariant(mission.storyVariant) === STORY_VARIANTS.ELITE_HUNT){
+      return `Elite Hunt ${mission.runIndex} (Chapter ${mission.chapter})`;
+    }
+    return `Story Mission ${clamp(mission.number || 1, 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
+  }
   if(S.mode==="Arcade") return `Arcade Mission ${clamp(S.arcadeLevel || 1, 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
   return `Survival Wave ${Math.max(1, S.survivalWave || 1)}`;
 }
 function nextMissionLabel(){
-  if(S.mode==="Story") return `Story Mission ${Math.min((S.storyLevel || 1) + 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
+  if(S.mode==="Story"){
+    const variant = normalizeStoryVariant(S.storyVariant);
+    if(variant === STORY_VARIANTS.GAUNTLET){
+      return `Gauntlet Run ${Math.max(1, Math.floor(Number(S.gauntletDepth || 1))) + 1}`;
+    }
+    if(variant === STORY_VARIANTS.ELITE_HUNT){
+      return `Elite Hunt ${Math.max(1, Math.floor(Number(S.eliteHuntRuns || 1))) + 1}`;
+    }
+    return `Story Mission ${Math.min((S.storyLevel || 1) + 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
+  }
   if(S.mode==="Arcade") return `Arcade Mission ${Math.min((S.arcadeLevel || 1) + 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
   return `Survival Wave ${Math.max(1, (S.survivalWave || 1) + 1)}`;
 }
@@ -8126,10 +8337,13 @@ function clearMissionBriefTimer(){
 }
 function currentMissionCardData(){
   if(S.mode==="Story"){
+    const mission = storyMissionForState(S);
     return {
       mode: "Story",
-      total: STORY_CAMPAIGN_OBJECTIVES.length,
-      mission: storyCampaignMission(S.storyLevel)
+      total: normalizeStoryVariant(mission.storyVariant) === STORY_VARIANTS.CAMPAIGN
+        ? STORY_CAMPAIGN_OBJECTIVES.length
+        : null,
+      mission
     };
   }
   if(S.mode==="Arcade"){
@@ -8142,7 +8356,7 @@ function currentMissionCardData(){
   return null;
 }
 function chapterRecapTextForCurrentStoryMission(){
-  const mission = storyCampaignMission(S.storyLevel);
+  const mission = storyMissionForState(S);
   const idx = clamp((mission?.chapter || 1) - 1, 0, STORY_CHAPTER_RECAPS.length - 1);
   return STORY_CHAPTER_RECAPS[idx] || STORY_CHAPTER_RECAPS[0];
 }
@@ -8255,8 +8469,18 @@ function showMissionBrief(durationMs=2600){
   const intelEl = document.getElementById("missionBriefIntel");
   const rewardEl = document.getElementById("missionBriefReward");
   const isStory = card.mode === "Story";
+  const storyVariant = isStory ? normalizeStoryVariant(card.mission?.storyVariant) : STORY_VARIANTS.CAMPAIGN;
   if(titleEl) titleEl.innerText = isStory ? "📖 Story Operations Brief" : "📋 Mission Brief";
-  if(nameEl) nameEl.innerText = `${card.mode} Mission ${card.mission.number}/${card.total} — ${card.mission.chapterName}`;
+  if(nameEl){
+    if(isStory && storyVariant === STORY_VARIANTS.GAUNTLET){
+      nameEl.innerText = `Gauntlet Run ${card.mission.runIndex} — ${card.mission.chapterName}`;
+    } else if(isStory && storyVariant === STORY_VARIANTS.ELITE_HUNT){
+      nameEl.innerText = `Elite Hunt ${card.mission.runIndex} — Chapter ${card.mission.chapter}`;
+    } else {
+      const totalTxt = Number.isFinite(Number(card.total)) && Number(card.total) > 0 ? `/${card.total}` : "";
+      nameEl.innerText = `${card.mode} Mission ${card.mission.number}${totalTxt} — ${card.mission.chapterName}`;
+    }
+  }
   if(objectiveEl){
     objectiveEl.innerText = isStory
       ? `Objective: ${card.mission.objective}`
@@ -8698,10 +8922,18 @@ function writeStoryProfileData(source="autosave", state=S){
   if(window.__TUTORIAL_MODE__) return false;
   const src = (state && typeof state === "object") ? state : S;
   if(!src || typeof src !== "object") return false;
+  ensureStoryEndgameState(src);
   const seasonPass = ensureSeasonPassState(src);
   const payload = {
     storyLevel: clamp(Math.floor(Number(src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
     storyLastMission: clamp(Math.floor(Number(src.storyLastMission || src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
+    storyVariant: normalizeStoryVariant(src.storyVariant),
+    storyNgPlusTier: Math.max(0, Math.floor(Number(src.storyNgPlusTier || 0))),
+    storyEndgameUnlocked: !!src.storyEndgameUnlocked,
+    gauntletDepth: Math.max(1, Math.floor(Number(src.gauntletDepth || 1))),
+    eliteHuntChapter: clamp(Math.floor(Number(src.eliteHuntChapter || 1)), 1, 10),
+    eliteHuntRuns: Math.max(1, Math.floor(Number(src.eliteHuntRuns || 1))),
+    eliteHuntsCleared: Math.max(0, Math.floor(Number(src.eliteHuntsCleared || 0))),
     funds: Math.max(0, Math.round(Number(src.funds || 0))),
     modeWallets: normalizeModeWallets(src.modeWallets, src.funds, src.mode),
     hp: clamp(Math.round(Number(src.hp || 100)), 0, 100),
@@ -8785,6 +9017,8 @@ function mergeCountMapsFromProfile(currentMap, profileMap){
 function applyStoryProfileToState(state, profile){
   if(!state || typeof state !== "object") return state;
   if(!profile || typeof profile !== "object") return state;
+  ensureStoryEndgameState(state);
+  applyStoryEndgameSnapshot(state, profile);
 
   if(Number.isFinite(Number(profile.storyLevel))){
     state.storyLevel = clamp(Math.max(Number(state.storyLevel || 1), Number(profile.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
@@ -8931,6 +9165,7 @@ function applyStoryProfileToState(state, profile){
   if(profile.modeWallets && typeof profile.modeWallets === "object"){
     state.modeWallets = normalizeModeWallets({ ...(state.modeWallets || {}), ...profile.modeWallets }, state.funds, state.mode);
   }
+  ensureStoryEndgameState(state);
   return state;
 }
 function readStoryProgressData(){
@@ -8951,12 +9186,22 @@ function readStoryProgressData(){
       const candidate = {
         ...parsed,
         mission,
+        storyVariant: normalizeStoryVariant(parsed.storyVariant),
+        storyNgPlusTier: Math.max(0, Math.floor(Number(parsed.storyNgPlusTier || 0))),
+        storyEndgameUnlocked: !!parsed.storyEndgameUnlocked,
+        gauntletDepth: Math.max(1, Math.floor(Number(parsed.gauntletDepth || 1))),
+        eliteHuntChapter: clamp(Math.floor(Number(parsed.eliteHuntChapter || 1)), 1, 10),
+        eliteHuntRuns: Math.max(1, Math.floor(Number(parsed.eliteHuntRuns || 1))),
+        eliteHuntsCleared: Math.max(0, Math.floor(Number(parsed.eliteHuntsCleared || 0))),
         hp: clamp(Math.round(Number(parsed.hp || 100)), 0, 100),
         armor: clamp(Math.round(Number(parsed.armor || 0)), 0, DEFAULT?.armorCap || 100),
         funds: Math.max(0, Math.round(Number(parsed.funds || 0))),
         savedAt,
         storageKey:key,
       };
+      if(mission >= STORY_CAMPAIGN_OBJECTIVES.length){
+        candidate.storyEndgameUnlocked = true;
+      }
       if(!best){
         best = candidate;
         continue;
@@ -8976,12 +9221,26 @@ function readStoryProgressData(){
 }
 function writeStoryProgressData(payload={}){
   if(window.__TUTORIAL_MODE__) return false;
+  ensureStoryEndgameState(S);
   const seasonPass = ensureSeasonPassState(S);
+  const storyVariant = normalizeStoryVariant(payload.storyVariant ?? S.storyVariant);
+  const storyNgPlusTier = Math.max(0, Math.floor(Number(payload.storyNgPlusTier ?? S.storyNgPlusTier ?? 0)));
+  const gauntletDepth = Math.max(1, Math.floor(Number(payload.gauntletDepth ?? S.gauntletDepth ?? 1)));
+  const eliteHuntChapter = clamp(Math.floor(Number(payload.eliteHuntChapter ?? S.eliteHuntChapter ?? 1)), 1, 10);
+  const eliteHuntRuns = Math.max(1, Math.floor(Number(payload.eliteHuntRuns ?? S.eliteHuntRuns ?? 1)));
+  const eliteHuntsCleared = Math.max(0, Math.floor(Number(payload.eliteHuntsCleared ?? S.eliteHuntsCleared ?? 0)));
   const mission = clamp(Math.floor(Number(payload.mission || S.storyLevel || S.storyLastMission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   const data = {
     mission,
     storyLevel: clamp(Math.floor(Number(payload.storyLevel || S.storyLevel || mission)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
     storyLastMission: clamp(Math.floor(Number(payload.storyLastMission || S.storyLastMission || mission)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
+    storyVariant,
+    storyNgPlusTier,
+    storyEndgameUnlocked: !!(payload.storyEndgameUnlocked ?? S.storyEndgameUnlocked ?? (mission >= STORY_CAMPAIGN_OBJECTIVES.length)),
+    gauntletDepth,
+    eliteHuntChapter,
+    eliteHuntRuns,
+    eliteHuntsCleared,
     hp: clamp(Math.round(Number(payload.hp ?? S.hp ?? 100)), 0, 100),
     armor: clamp(Math.round(Number(payload.armor ?? S.armor ?? 0)), 0, S.armorCap || 100),
     funds: Math.max(0, Math.round(Number(payload.funds ?? S.funds ?? 0))),
@@ -9064,6 +9323,7 @@ function storySaveMissionFromPayload(payload){
 }
 function buildStoryResumeSnapshot(){
   const snapshot = buildPersistedState();
+  ensureStoryEndgameState(snapshot);
   const mission = clamp(
     Math.max(
       1,
@@ -9090,6 +9350,7 @@ function restoreStoryResumeSnapshot(slot, source="story-restore"){
   const mission = storySaveMissionFromPayload(slot || {});
   const resume = (slot && typeof slot.resumeState === "object") ? cloneState(slot.resumeState) : null;
   if(!resume) return false;
+  ensureStoryEndgameState(resume);
 
   resume.mode = "Story";
   resume.storyLevel = clamp(Math.floor(Number(resume.storyLevel || mission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
@@ -9173,9 +9434,14 @@ function readStorySaveData(){
 }
 function applyStorySaveToState(state, opts={}){
   if(!state || typeof state !== "object") return state;
+  ensureStoryEndgameState(state);
   const allowModeSync = opts.allowModeSync !== false;
   const slot = readStorySaveData();
   if(!slot) return state;
+  applyStoryEndgameSnapshot(state, slot);
+  if(slot.resumeState && typeof slot.resumeState === "object"){
+    applyStoryEndgameSnapshot(state, slot.resumeState);
+  }
   const mission = clamp(
     Math.floor(Number(slot.mission || 1)),
     1,
@@ -9191,6 +9457,7 @@ function applyStorySaveToState(state, opts={}){
       state.storyLastMission
     );
   }
+  ensureStoryEndgameState(state);
   return state;
 }
 function storyResumeMissionLevel(){
@@ -9223,11 +9490,19 @@ function storyProgressMissionFromState(state=S){
 function writeStorySaveData(source="manual"){
   if(window.__TUTORIAL_MODE__) return null;
   const resumeState = buildStoryResumeSnapshot();
+  ensureStoryEndgameState(resumeState);
   const mission = storySaveMissionFromPayload(resumeState);
   const payload = {
     mission,
     storyLevel: mission,
     storyLastMission: mission,
+    storyVariant: normalizeStoryVariant(resumeState.storyVariant),
+    storyNgPlusTier: Math.max(0, Math.floor(Number(resumeState.storyNgPlusTier || 0))),
+    storyEndgameUnlocked: !!resumeState.storyEndgameUnlocked,
+    gauntletDepth: Math.max(1, Math.floor(Number(resumeState.gauntletDepth || 1))),
+    eliteHuntChapter: clamp(Math.floor(Number(resumeState.eliteHuntChapter || 1)), 1, 10),
+    eliteHuntRuns: Math.max(1, Math.floor(Number(resumeState.eliteHuntRuns || 1))),
+    eliteHuntsCleared: Math.max(0, Math.floor(Number(resumeState.eliteHuntsCleared || 0))),
     hp: clamp(Math.round(Number(resumeState.hp || S.hp || 100)), 0, 100),
     armor: clamp(Math.round(Number(resumeState.armor || S.armor || 0)), 0, S.armorCap || 100),
     funds: Math.max(0, Math.round(Number(getModeWallet("Story", resumeState) || resumeState.funds || S.funds || 0))),
@@ -9287,7 +9562,13 @@ function setLaunchArtwork(url=""){
 }
 function launchProgressLabelForMode(mode=S.mode){
   const m = normalizeModeName(mode);
-  if(m === "Story") return `Story Mission ${storyResumeMissionLevel()}`;
+  if(m === "Story"){
+    const mission = storyMissionForState(S);
+    const variant = normalizeStoryVariant(mission.storyVariant);
+    if(variant === STORY_VARIANTS.GAUNTLET) return `Gauntlet Run ${mission.runIndex}`;
+    if(variant === STORY_VARIANTS.ELITE_HUNT) return `Elite Hunt ${mission.runIndex} (Chapter ${mission.chapter})`;
+    return `Story Mission ${storyResumeMissionLevel()}`;
+  }
   if(m === "Arcade") return `Arcade Mission ${clamp(S.arcadeLevel || 1, 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
   return `Survival Wave ${Math.max(1, S.survivalWave || 1)}`;
 }
@@ -9395,7 +9676,14 @@ function refreshLaunchIntroStatus(){
     if(mission){
       const civ = Number(mission.civilians || 0);
       const tig = Number(mission.tigers || 0);
-      intelEl.innerText = `${missionCard.mode} Mission ${mission.number} • Civilians ${civ} • Tigers ${tig}`;
+      const variant = normalizeStoryVariant(mission.storyVariant);
+      if(missionCard.mode === "Story" && variant === STORY_VARIANTS.GAUNTLET){
+        intelEl.innerText = `Gauntlet Run ${mission.runIndex} • Civilians ${civ} • Tigers ${tig}`;
+      } else if(missionCard.mode === "Story" && variant === STORY_VARIANTS.ELITE_HUNT){
+        intelEl.innerText = `Elite Hunt ${mission.runIndex} • Chapter ${mission.chapter} • Boss ${mission.bossType || "Alpha"}`;
+      } else {
+        intelEl.innerText = `${missionCard.mode} Mission ${mission.number} • Civilians ${civ} • Tigers ${tig}`;
+      }
     } else {
       intelEl.innerText = `${S.mode} Ops • Prepare your squad and loadout.`;
     }
@@ -9808,6 +10096,7 @@ function startStoryIntroMission(){
 function setMode(m){
   const nextMode = normalizeModeName(m);
   const wantsStoryIntro = (nextMode==="Story" && !window.__TUTORIAL_MODE__);
+  ensureStoryEndgameState(S);
   setModeWallet(S.mode, S.funds, S);
   S.mode = nextMode;
   S.funds = getModeWallet(nextMode, S);
@@ -9819,12 +10108,147 @@ function setMode(m){
     // Keep Story progress when returning to Story mode.
     S.storyLevel = storyResumeMissionLevel();
     S.storyLastMission = S.storyLevel;
+    ensureStoryEndgameState(S);
   }
   S.mapIndex=0;
   deploy();
   updateModeDesc(); markModeTabs(); closeMode(); sfx("ui");
   if(wantsStoryIntro) openStoryIntro(false);
   save();
+}
+function setStoryCampaignMode(){
+  ensureStoryEndgameState(S);
+  S.mode = "Story";
+  S.storyVariant = STORY_VARIANTS.CAMPAIGN;
+  S.storyLevel = storyResumeMissionLevel();
+  S.storyLastMission = Math.max(S.storyLastMission || 1, S.storyLevel || 1);
+  S.funds = getModeWallet("Story", S);
+  S.mapIndex = 0;
+  deploy();
+  updateModeDesc();
+  markModeTabs();
+  toast(`Story Campaign ready (${storyMissionDisplayLabel(S)}).`);
+  save(true);
+}
+function startStoryNgPlus(){
+  ensureStoryEndgameState(S);
+  if(!storyEndgameUnlocked(S)){
+    toast("Complete Story Mission 100 to unlock New Game+.");
+    return;
+  }
+  S.mode = "Story";
+  S.storyVariant = STORY_VARIANTS.CAMPAIGN;
+  S.storyNgPlusTier = Math.max(0, Math.floor(Number(S.storyNgPlusTier || 0))) + 1;
+  S.storyLevel = 1;
+  S.storyLastMission = 1;
+  clearStoryCheckpointData();
+  clearStorySaveData();
+  S._storyFinalOutcome = "";
+  S.funds = getModeWallet("Story", S);
+  S.mapIndex = 0;
+  deploy();
+  updateModeDesc();
+  markModeTabs();
+  toast(`New Game+ ${S.storyNgPlusTier} started.`);
+  save(true);
+}
+function startEndlessGauntlet(){
+  ensureStoryEndgameState(S);
+  if(!storyEndgameUnlocked(S)){
+    toast("Complete Story Mission 100 to unlock Endless Gauntlet.");
+    return;
+  }
+  S.mode = "Story";
+  S.storyVariant = STORY_VARIANTS.GAUNTLET;
+  S.gauntletDepth = Math.max(1, Math.floor(Number(S.gauntletDepth || 1)));
+  S.storyLevel = storyMissionLevelForState(S);
+  S.storyLastMission = Math.max(S.storyLastMission || 1, S.storyLevel || 1);
+  S.funds = getModeWallet("Story", S);
+  S.mapIndex = 0;
+  deploy();
+  updateModeDesc();
+  markModeTabs();
+  toast(`Gauntlet active: Run ${S.gauntletDepth}.`);
+  save(true);
+}
+function startEliteBossHunt(chapter=null){
+  ensureStoryEndgameState(S);
+  if(!storyEndgameUnlocked(S)){
+    toast("Complete Story Mission 100 to unlock Elite Boss Hunts.");
+    return;
+  }
+  const nextChapter = Number.isFinite(Number(chapter))
+    ? clamp(Math.floor(Number(chapter)), 1, 10)
+    : clamp(Math.floor(Number(S.eliteHuntChapter || 1)), 1, 10);
+  S.mode = "Story";
+  S.storyVariant = STORY_VARIANTS.ELITE_HUNT;
+  S.eliteHuntChapter = nextChapter;
+  S.eliteHuntRuns = Math.max(1, Math.floor(Number(S.eliteHuntRuns || 1)));
+  S.storyLevel = storyMissionLevelForState(S);
+  S.storyLastMission = Math.max(S.storyLastMission || 1, S.storyLevel || 1);
+  S.funds = getModeWallet("Story", S);
+  S.mapIndex = 0;
+  deploy();
+  updateModeDesc();
+  markModeTabs();
+  toast(`Elite Boss Hunt ready: Chapter ${S.eliteHuntChapter}.`);
+  save(true);
+}
+function cycleEliteHuntChapter(){
+  ensureStoryEndgameState(S);
+  const next = (clamp(Math.floor(Number(S.eliteHuntChapter || 1)), 1, 10) % 10) + 1;
+  S.eliteHuntChapter = next;
+  if(normalizeStoryVariant(S.storyVariant) === STORY_VARIANTS.ELITE_HUNT){
+    startEliteBossHunt(next);
+    return;
+  }
+  updateModeDesc();
+  save();
+  toast(`Elite Hunt target chapter: ${next}.`);
+}
+function updateStoryEndgameControls(){
+  ensureStoryEndgameState(S);
+  const statusEl = document.getElementById("modeEndgameStatus");
+  const campaignBtn = document.getElementById("modeStoryCampaignBtn");
+  const ngBtn = document.getElementById("modeNgPlusBtn");
+  const gauntletBtn = document.getElementById("modeGauntletBtn");
+  const eliteBtn = document.getElementById("modeEliteHuntBtn");
+  const eliteChapterBtn = document.getElementById("modeEliteChapterBtn");
+  const unlocked = storyEndgameUnlocked(S);
+  const variant = normalizeStoryVariant(S.storyVariant);
+  const mission = storyMissionForState(S);
+  if(statusEl){
+    if(!unlocked){
+      statusEl.innerText = "Endgame unlocks after Story Mission 100.";
+    }else if(variant === STORY_VARIANTS.GAUNTLET){
+      statusEl.innerText = `Endgame: ${storyVariantLabel(variant)} • Run ${mission.runIndex} • Loop ${mission.gauntletLoop || 1} • NG+ ${Math.max(0, S.storyNgPlusTier || 0)}.`;
+    }else if(variant === STORY_VARIANTS.ELITE_HUNT){
+      statusEl.innerText = `Endgame: ${storyVariantLabel(variant)} • Chapter ${S.eliteHuntChapter} • Hunt ${mission.runIndex} • NG+ ${Math.max(0, S.storyNgPlusTier || 0)}.`;
+    }else{
+      statusEl.innerText = `Endgame unlocked. New Game+ Tier ${Math.max(0, S.storyNgPlusTier || 0)} available.`;
+    }
+  }
+  if(campaignBtn){
+    campaignBtn.className = variant === STORY_VARIANTS.CAMPAIGN ? "good" : "ghost";
+    campaignBtn.disabled = false;
+  }
+  if(ngBtn){
+    ngBtn.className = unlocked ? "ghost" : "bad";
+    ngBtn.disabled = !unlocked;
+    ngBtn.innerText = `🧬 New Game+ (${Math.max(0, S.storyNgPlusTier || 0)})`;
+  }
+  if(gauntletBtn){
+    gauntletBtn.className = variant === STORY_VARIANTS.GAUNTLET ? "good" : "ghost";
+    gauntletBtn.disabled = !unlocked;
+  }
+  if(eliteBtn){
+    eliteBtn.className = variant === STORY_VARIANTS.ELITE_HUNT ? "good" : "ghost";
+    eliteBtn.disabled = !unlocked;
+  }
+  if(eliteChapterBtn){
+    eliteChapterBtn.disabled = !unlocked;
+    eliteChapterBtn.innerText = `🗺️ Hunt Chapter ${clamp(Math.floor(Number(S.eliteHuntChapter || 1)), 1, 10)}`;
+  }
 }
 function markModeTabs(){
   ["mStory","mArcade","mSurvival"].forEach(id=>document.getElementById(id).classList.remove("active"));
@@ -9834,8 +10258,22 @@ function markModeTabs(){
 }
 function updateModeDesc(){
   ensureClanState(S);
+  ensureStoryEndgameState(S);
   const el=document.getElementById("modeDesc");
-  if(S.mode==="Story") el.innerText="Story Campaign: chapter-based operations with escort/protect pressure, boss intros, and steady chapter rewards.";
+  if(S.mode==="Story"){
+    const mission = storyMissionForState(S);
+    const variant = normalizeStoryVariant(mission.storyVariant);
+    if(variant === STORY_VARIANTS.GAUNTLET){
+      el.innerText = `Endless Chapter Gauntlet: looped chapter runs with rising pressure. Current Run ${mission.runIndex}, Loop ${mission.gauntletLoop || 1}.`;
+    } else if(variant === STORY_VARIANTS.ELITE_HUNT){
+      el.innerText = `Elite Boss Hunts: chapter-targeted boss encounters with high payouts. Current target: Chapter ${mission.chapter}.`;
+    } else {
+      const ngTier = Math.max(0, Math.floor(Number(S.storyNgPlusTier || 0)));
+      el.innerText = ngTier > 0
+        ? `Story Campaign New Game+ ${ngTier}: harder chapter operations with boosted rewards.`
+        : "Story Campaign: chapter-based operations with escort/protect pressure, boss intros, and steady chapter rewards.";
+    }
+  }
   else if(S.mode==="Arcade") el.innerText=`Arcade Campaign: score-attack missions with a live timer, combo multiplier pressure, and medal ranking on clear.${S.clanRaidEnabled ? " Co-op Raid is ON." : " Co-op Raid is OFF."}`;
   else el.innerText="Survival: no civilians. Tigers pressure-damage you. Events OFF.";
   const clanStatus = document.getElementById("modeClanStatus");
@@ -9851,6 +10289,7 @@ function updateModeDesc(){
     raidBtn.innerText = `🤝 Co-op Raid: ${S.clanRaidEnabled ? "ON" : "OFF"}`;
     raidBtn.className = S.clanRaidEnabled ? "good" : "ghost";
   }
+  updateStoryEndgameControls();
 }
 
 // ===================== Shop / Inventory =====================
@@ -12629,8 +13068,10 @@ function spawnRescueSites(){
   }
 
   const basePool = rescueSitePool();
+  const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
+  const storyIdx = Math.max(1, Number(storyMission?.number || S.storyLevel || 1));
   const wanted = (S.mode==="Story")
-    ? clamp(4 + Math.floor((S.storyLevel - 1) / 2), 4, 6)
+    ? clamp(4 + Math.floor((storyIdx - 1) / 2), 4, 6)
     : (S.mode==="Arcade")
       ? clamp(4 + Math.floor((S.arcadeLevel - 1) / 2), 4, 6)
       : 5;
@@ -13243,10 +13684,10 @@ function spawnCivilians(){
     return;
   }
 
-  const storyMission = (S.mode==="Story") ? storyCampaignMission(S.storyLevel) : null;
+  const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
   const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
   const n = (S.mode==="Story")
-    ? clamp(storyMission?.civilians ?? (3 + (S.storyLevel-1)), 0, 14)
+    ? clamp(storyMission?.civilians ?? (3 + ((storyMission?.number || S.storyLevel || 1)-1)), 0, 14)
     : (S.mode==="Arcade"
       ? clamp(arcadeMission?.civilians ?? (2 + (S.arcadeLevel-1)), 0, 14)
       : 0);
@@ -13477,12 +13918,12 @@ function spawnTigers(){
     return;
   }
 
-  const storyMission = (S.mode==="Story") ? storyCampaignMission(S.storyLevel) : null;
+  const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
   const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
   let count=2;
 
   if(S.mode==="Story"){
-    count = clamp(storyMission?.tigers ?? (2 + Math.max(0,(S.storyLevel-1)-(7-3))), 1, 18);
+    count = clamp(storyMission?.tigers ?? (2 + Math.max(0,((storyMission?.number || S.storyLevel || 1)-1)-(7-3))), 1, 18);
   }
 
   if(S.mode==="Arcade"){
@@ -13531,7 +13972,7 @@ function spawnTigers(){
     let baseHp=115;
     if(S.mode==="Arcade") baseHp=125+(S.arcadeLevel-1)*8;
     if(S.mode==="Survival") baseHp=140+(S.survivalWave-1)*12;
-    if(S.mode==="Story") baseHp=122+(S.storyLevel-1)*6;
+    if(S.mode==="Story") baseHp=122+((storyMission?.number || S.storyLevel || 1)-1)*6;
 
     let hp=Math.round(baseHp*def.hpMul*diff);
     let bossPhases=0;
@@ -13542,6 +13983,9 @@ function spawnTigers(){
     } else if(arcadeBoss && i < arcadeBossCount){
       hp = Math.round(hp * (arcadeMission.finalBoss ? 3.2 : 2.55));
       bossPhases = arcadeMission.finalBoss ? 3 : 2;
+    }
+    if(S.mode==="Story"){
+      hp = Math.round(hp * clamp(Number(storyMission?.endgameHpMul || 1), 1, 6));
     }
 
     const pack = packAnchors[i % packAnchors.length];
@@ -13571,7 +14015,9 @@ function spawnTigers(){
       hpMax:hp,
       alive:true,
       packId:pack.id,
-      aggroBoost:0,
+      aggroBoost:S.mode==="Story"
+        ? clamp((Number(storyMission?.endgameAggroMul || 1) - 1) * 0.26, 0, 0.55)
+        : 0,
       civBias:clamp(def.civBias+(diff-1)*0.18,0,0.98),
       stealth:def.stealth,
       rage:def.rage,
@@ -13601,7 +14047,7 @@ function spawnTigers(){
       pounceDirY:0,
       bossSkillStep:0,
       nextBossSkillAt:0,
-      bossIdentityChapter:0,
+      bossIdentityChapter:storyBoss && storyMission ? clamp(storyMission.chapter || 1, 1, 10) : 0,
       bossStealthUntil:0,
       bossPounceCharges:0,
       bossPounceChainUntil:0,
@@ -13635,12 +14081,13 @@ function spawnRogueTiger(options={}){
   const typeKey = forcedType || pickTigerType();
   const def = TIGER_TYPES.find((t)=>t.key===typeKey) || TIGER_TYPES[1];
   const diff = carcassDifficulty();
+  const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
 
   let baseHp = 110;
   if(S.mode==="Arcade") baseHp = 122 + (S.arcadeLevel - 1) * 7;
   if(S.mode==="Survival") baseHp = 135 + (S.survivalWave - 1) * 10;
-  if(S.mode==="Story") baseHp = 120 + (S.storyLevel - 1) * 6;
-  const hp = Math.round(baseHp * def.hpMul * diff);
+  if(S.mode==="Story") baseHp = 120 + ((storyMission?.number || S.storyLevel || 1) - 1) * 6;
+  const hp = Math.round(baseHp * def.hpMul * diff * (S.mode==="Story" ? clamp(Number(storyMission?.endgameHpMul || 1), 1, 6) : 1));
 
   let sx = 0;
   let sy = 0;
@@ -13733,6 +14180,13 @@ function spawnRogueTiger(options={}){
     gaitState:"walk",
     gaitBlend:0
   };
+  if(S.mode === "Story"){
+    tiger.aggroBoost = clamp(
+      Number(tiger.aggroBoost || 0) + ((Number(storyMission?.endgameAggroMul || 1) - 1) * 0.22),
+      0,
+      0.65
+    );
+  }
   tiger.heading = Math.atan2(tiger.vy, tiger.vx);
   tiger.drawDir = tiger.vx >= 0 ? 1 : -1;
 
@@ -13752,9 +14206,12 @@ function deploy(opts={}){
   if(normalizeModeName(S.mode) !== "Story"){
     clearStoryCheckpointData();
   } else {
+    const variant = normalizeStoryVariant(S.storyVariant);
     const slot = readStoryCheckpointData();
     const mission = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
-    if(slot && storyCheckpointMissionFromPayload(slot) !== mission){
+    if(variant !== STORY_VARIANTS.CAMPAIGN){
+      clearStoryCheckpointData();
+    } else if(slot && storyCheckpointMissionFromPayload(slot) !== mission){
       clearStoryCheckpointData();
     }
   }
@@ -13828,8 +14285,11 @@ function deploy(opts={}){
   S._pressTick = 0;
   {
     const d = ensureMissionDirectorState(S);
+    const storyMission = (S.mode === "Story") ? storyMissionForState(S) : null;
     const startPressure = clamp(
-      10 + ((S.mode === "Story") ? ((S.storyLevel - 1) * 0.6) : ((S.mode === "Arcade") ? ((S.arcadeLevel - 1) * 0.7) : ((S.survivalWave - 1) * 1.1))),
+      10 + ((S.mode === "Story")
+        ? (((storyMission?.number || S.storyLevel || 1) - 1) * 0.6 * clamp(Number(storyMission?.endgameAggroMul || 1), 1, 2.8))
+        : ((S.mode === "Arcade") ? ((S.arcadeLevel - 1) * 0.7) : ((S.survivalWave - 1) * 1.1))),
       8,
       42
     );
@@ -13872,14 +14332,19 @@ function deploy(opts={}){
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
 
   if(S.mode==="Story"){
-    const mission = storyCampaignMission(S.storyLevel);
+    const mission = storyMissionForState(S);
+    const variant = normalizeStoryVariant(mission.storyVariant);
     if(mission.lowVisibility){
       S.fogUntil = Date.now() + 120000;
     }
     if(mission.bloodAggro){
       setEventText("Story modifier active: tiger aggression is elevated this mission.", 8);
-    } else if(((mission.number - 1) % 10) === 0){
+    } else if(variant === STORY_VARIANTS.CAMPAIGN && ((mission.number - 1) % 10) === 0){
       setEventText(`Story chapter ${mission.chapter} deployed. ${storyChapterRewardPreviewText(mission)}`, 8);
+    } else if(variant === STORY_VARIANTS.GAUNTLET){
+      setEventText(`♾️ Gauntlet Run ${mission.runIndex} • Loop ${mission.gauntletLoop || 1} • Aggro x${(mission.endgameAggroMul || 1).toFixed(2)}`, 8);
+    } else if(variant === STORY_VARIANTS.ELITE_HUNT){
+      setEventText(`🎯 Elite Boss Hunt ${mission.runIndex}: Chapter ${mission.chapter} ${mission.bossType || "Alpha"} target`, 8);
     }
     if(mission.boss){
       setEventText(storyBossIntroText(mission), 9);
@@ -13936,14 +14401,27 @@ function deploy(opts={}){
 
 function startNextMission(){
   document.getElementById("completeOverlay").style.display="none";
+  ensureStoryEndgameState(S);
   const carryHp = clamp(S.hp, 0, 100);
   const carryArmor = clamp(S.armor, 0, S.armorCap || 100);
-  const wasStoryFinal = (S.mode==="Story" && S.storyLevel >= STORY_CAMPAIGN_OBJECTIVES.length);
+  const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
+  const storyVariant = normalizeStoryVariant(S.storyVariant);
+  const wasStoryFinal = !!(S.mode==="Story" && storyVariant === STORY_VARIANTS.CAMPAIGN && storyMission && storyMission.number >= STORY_CAMPAIGN_OBJECTIVES.length);
   const wasArcadeFinal = (S.mode==="Arcade" && S.arcadeLevel >= ARCADE_CAMPAIGN_OBJECTIVES.length);
   if(S.mode==="Story"){
-    clearStoryCheckpointForMission(S.storyLevel);
-    S.storyLevel = Math.min(S.storyLevel + 1, STORY_CAMPAIGN_OBJECTIVES.length);
-    S.storyLastMission = Math.max(storyResumeMissionLevel(), S.storyLevel);
+    if(storyVariant === STORY_VARIANTS.CAMPAIGN){
+      clearStoryCheckpointForMission(S.storyLevel);
+      S.storyLevel = Math.min(S.storyLevel + 1, STORY_CAMPAIGN_OBJECTIVES.length);
+      S.storyLastMission = Math.max(storyResumeMissionLevel(), S.storyLevel);
+    }else if(storyVariant === STORY_VARIANTS.GAUNTLET){
+      S.gauntletDepth = Math.max(1, Math.floor(Number(S.gauntletDepth || 1))) + 1;
+      S.storyLastMission = Math.max(S.storyLastMission || 1, storyMissionLevelForState(S));
+    }else if(storyVariant === STORY_VARIANTS.ELITE_HUNT){
+      S.eliteHuntRuns = Math.max(1, Math.floor(Number(S.eliteHuntRuns || 1))) + 1;
+      S.eliteHuntsCleared = Math.max(0, Math.floor(Number(S.eliteHuntsCleared || 0))) + 1;
+      S.eliteHuntChapter = (clamp(Math.floor(Number(S.eliteHuntChapter || 1)), 1, 10) % 10) + 1;
+      S.storyLastMission = Math.max(S.storyLastMission || 1, storyMissionLevelForState(S));
+    }
   }
   if(S.mode==="Arcade"){
     S.arcadeLevel = Math.min(S.arcadeLevel + 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
@@ -13951,6 +14429,8 @@ function startNextMission(){
   if(S.mode==="Survival") S.survivalWave += 1;
   deploy({ carryStats:true, hp:carryHp, armor:carryArmor });
   if(wasStoryFinal) toast("Story campaign complete. Replaying Mission 100.");
+  else if(S.mode==="Story" && storyVariant === STORY_VARIANTS.GAUNTLET) toast(`Gauntlet advanced to Run ${S.gauntletDepth}.`);
+  else if(S.mode==="Story" && storyVariant === STORY_VARIANTS.ELITE_HUNT) toast(`Elite Hunt advanced. Next target: Chapter ${S.eliteHuntChapter}.`);
   else if(wasArcadeFinal) toast("Arcade campaign complete. Replaying Mission 100.");
   else toast("Next mission started.");
   save(true);
@@ -13981,6 +14461,11 @@ function restartModeFromMission1(){
   if(mode === "Story"){
     S.storyLevel = 1;
     S.storyLastMission = 1;
+    S.storyVariant = STORY_VARIANTS.CAMPAIGN;
+    S.gauntletDepth = 1;
+    S.eliteHuntChapter = 1;
+    S.eliteHuntRuns = 1;
+    S.eliteHuntsCleared = 0;
     clearStoryCheckpointData();
     clearStorySaveData();
   }
@@ -17706,7 +18191,7 @@ function checkMissionComplete(){
   if(S.mode==="Survival") return;
   if(S.gameOver) return;
 
-  const storyMission = (S.mode==="Story") ? storyCampaignMission(S.storyLevel) : null;
+  const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
   const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
   const activeMission = storyMission || arcadeMission;
   const tAlive = S.tigers.some(t=>t.alive);
@@ -17746,6 +18231,8 @@ function checkMissionComplete(){
 
   if(!tAlive && evacReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady){
     if(!S.missionEnded){
+      ensureStoryEndgameState(S);
+      const storyVariant = normalizeStoryVariant(storyMission?.storyVariant || S.storyVariant);
       S.missionEnded=true;
       addContractTally("missionsCleared", 1);
       addOpsTotal("missionsCleared", 1);
@@ -17756,7 +18243,13 @@ function checkMissionComplete(){
       if(S._underAttack===0) unlockAchv("clear_clean","Clean Clear");
       let heading = "Mission complete!\n";
       if(storyMission){
-        heading = `Story Mission ${storyMission.number}/100 — ${storyMission.chapterName}\n${storyMission.objective}\n`;
+        if(storyVariant === STORY_VARIANTS.GAUNTLET){
+          heading = `Gauntlet Run ${storyMission.runIndex} — ${storyMission.chapterName}\n${storyMission.objective}\n`;
+        }else if(storyVariant === STORY_VARIANTS.ELITE_HUNT){
+          heading = `Elite Hunt ${storyMission.runIndex} — Chapter ${storyMission.chapter}\n${storyMission.objective}\n`;
+        }else{
+          heading = `Story Mission ${storyMission.number}/100 — ${storyMission.chapterName}\n${storyMission.objective}\n`;
+        }
       } else if(arcadeMission){
         heading = `Arcade Mission ${arcadeMission.number}/100 — ${arcadeMission.chapterName}\n${arcadeMission.objective}\n`;
       }
@@ -17775,12 +18268,12 @@ function checkMissionComplete(){
       }
 
       let chapterCutscene = "";
-      if(storyMission && STORY_CHAPTER_CUTSCENES[storyMission.number]){
+      if(storyMission && storyVariant === STORY_VARIANTS.CAMPAIGN && STORY_CHAPTER_CUTSCENES[storyMission.number]){
         chapterCutscene = `\nCutscene: ${STORY_CHAPTER_CUTSCENES[storyMission.number]}\n`;
       }
 
       let chapterRewardNote = "";
-      if(storyMission && (storyMission.number % 10 === 0)){
+      if(storyMission && storyVariant === STORY_VARIANTS.CAMPAIGN && (storyMission.number % 10 === 0)){
         const reward = unlockStoryChapterReward(storyMission.chapter);
         if(reward){
           chapterRewardNote = `\nChapter Reward Unlocked: ${reward.label}${reward.grants ? ` (${reward.grants})` : ""}\n${reward.desc}\n`;
@@ -17788,21 +18281,40 @@ function checkMissionComplete(){
       }
       let storyProgressNote = "";
       if(storyMission){
-        const rewardDef = storyChapterRewardDef(storyMission.chapter || 1);
-        if(rewardDef){
-          const until = Math.max(0, ((storyMission.chapter || 1) * 10) - (storyMission.number || 1));
-          storyProgressNote = until === 0
-            ? `\nProgression Track: Chapter ${storyMission.chapter} reward checkpoint reached (${rewardDef.label}).\n`
-            : `\nProgression Track: ${rewardDef.label} unlocks in ${until} mission${until===1?"":"s"}.\n`;
+        if(storyVariant === STORY_VARIANTS.CAMPAIGN){
+          const rewardDef = storyChapterRewardDef(storyMission.chapter || 1);
+          if(rewardDef){
+            const until = Math.max(0, ((storyMission.chapter || 1) * 10) - (storyMission.number || 1));
+            storyProgressNote = until === 0
+              ? `\nProgression Track: Chapter ${storyMission.chapter} reward checkpoint reached (${rewardDef.label}).\n`
+              : `\nProgression Track: ${rewardDef.label} unlocks in ${until} mission${until===1?"":"s"}.\n`;
+          }
+        }else if(storyVariant === STORY_VARIANTS.GAUNTLET){
+          storyProgressNote = `\nEndgame Loop: Gauntlet Loop ${storyMission.gauntletLoop || 1} • Difficulty x${(storyMission.endgameHpMul || 1).toFixed(2)}.\n`;
+        }else if(storyVariant === STORY_VARIANTS.ELITE_HUNT){
+          storyProgressNote = `\nEndgame Loop: Elite Hunts cleared ${Math.max(0, Math.floor(Number(S.eliteHuntsCleared || 0)))} • Next chapter target ${S.eliteHuntChapter}.\n`;
         }
       }
 
       let finalEnding = "";
-      if(storyMission?.number === 100){
+      if(storyMission?.number === 100 && storyVariant === STORY_VARIANTS.CAMPAIGN){
         const choseCapture = S._storyFinalOutcome === "CAPTURE";
         finalEnding = choseCapture
           ? "\nFinal Choice: You captured the Ancient Tiger.\nEnding: Preservation ending unlocked.\nRewards Unlocked: Legendary Commander Rank • Golden Soldier Skin • Endless Jungle Mode\n"
           : "\nFinal Choice: You killed the Ancient Tiger.\nEnding: Dominance ending unlocked.\nRewards Unlocked: Legendary Commander Rank • Golden Soldier Skin • Endless Jungle Mode\n";
+        S.storyEndgameUnlocked = true;
+      }
+      let endgamePayoutNote = "";
+      if(storyMission){
+        const payoutMul = clamp(Number(storyMission.endgamePayoutMul || 1), 1, 4);
+        if(payoutMul > 1.001){
+          const bonus = Math.round(500 + ((payoutMul - 1) * 900) + (storyMission.boss ? 240 : 0));
+          if(bonus > 0){
+            S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + bonus;
+            trackCashEarned(bonus);
+            endgamePayoutNote = `\nEndgame Bonus: +$${bonus.toLocaleString()} (x${payoutMul.toFixed(2)} payout).\n`;
+          }
+        }
       }
       let upkeepNote = "";
       const upkeep = applySquadUpkeepAfterMission();
@@ -17819,7 +18331,7 @@ function checkMissionComplete(){
       }
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
@@ -17916,7 +18428,21 @@ function renderHUD(){
   document.getElementById("mapTxt").innerText = currentMap().name;
 
   let modeLabel=S.mode, lvl="—";
-  if(S.mode==="Story"){ modeLabel="Story"; lvl=S.storyLevel; }
+  if(S.mode==="Story"){
+    const mission = storyMissionForState(S);
+    const variant = normalizeStoryVariant(mission.storyVariant);
+    const ngTier = Math.max(0, Math.floor(Number(S.storyNgPlusTier || 0)));
+    if(variant === STORY_VARIANTS.GAUNTLET){
+      modeLabel = "Gauntlet";
+      lvl = mission.runIndex;
+    }else if(variant === STORY_VARIANTS.ELITE_HUNT){
+      modeLabel = `Elite Hunt C${mission.chapter}`;
+      lvl = mission.runIndex;
+    }else{
+      modeLabel = ngTier > 0 ? `Story NG+${ngTier}` : "Story";
+      lvl = mission.number || S.storyLevel;
+    }
+  }
   if(S.mode==="Arcade"){ modeLabel="Arcade"; lvl=S.arcadeLevel; }
   if(S.mode==="Survival"){ modeLabel="Survival"; lvl=S.survivalWave; }
   document.getElementById("modeTxt").innerText = modeLabel;
@@ -17955,7 +18481,7 @@ function renderHUD(){
   document.getElementById("threatTxt").innerText = `${threatBase} • ${directorPhaseLabel(directorPhase)} ${directorPressure}%`;
 
   const grace = (S.mode!=="Survival" && Date.now() < (S.civGraceUntil||0)) ? " • Civ Grace" : "";
-  const storyMission = (S.mode==="Story") ? storyCampaignMission(S.storyLevel) : null;
+  const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
   const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
   const storyObjective = storyMission ? `${storyMission.objective}${storyObjectiveProgressText(storyMission)}` : "";
   const arcadeObjective = arcadeMission ? `${arcadeMission.objective}${arcadeObjectiveProgressText(arcadeMission)}` : "";
@@ -17976,14 +18502,21 @@ function renderHUD(){
   const storyOpsEl = document.getElementById("storyOpsTxt");
   if(storyOpsEl){
     if(S.mode==="Story" && storyMission){
+      const variant = normalizeStoryVariant(storyMission.storyVariant);
       const civNeed = S.civilians.filter(c=>c.alive && !c.evac).length;
       const captureNeed = Math.max(0, storyMission.captureRequired || 0);
       const captureDone = Math.min(S.stats.captures || 0, captureNeed);
-      const rewardTrack = storyChapterRewardPreviewText(storyMission).replace(/^Reward Track:\s*/i, "");
-      const focus = captureNeed > 0
-        ? `Story Ops: escort/protect civilians (${civNeed} pending) • Captures ${captureDone}/${captureNeed}`
-        : `Story Ops: escort/protect civilians (${civNeed} pending)`;
-      storyOpsEl.innerText = `${focus} • ${rewardTrack}`;
+      if(variant === STORY_VARIANTS.GAUNTLET){
+        storyOpsEl.innerText = `Gauntlet Ops: Run ${storyMission.runIndex} • Loop ${storyMission.gauntletLoop || 1} • Tigers ${S.tigers.filter(t=>t.alive).length}`;
+      } else if(variant === STORY_VARIANTS.ELITE_HUNT){
+        storyOpsEl.innerText = `Elite Hunt: Chapter ${storyMission.chapter} ${storyMission.bossType || "Alpha"} • Hunts cleared ${Math.max(0, Math.floor(Number(S.eliteHuntsCleared || 0)))}`;
+      } else {
+        const rewardTrack = storyChapterRewardPreviewText(storyMission).replace(/^Reward Track:\s*/i, "");
+        const focus = captureNeed > 0
+          ? `Story Ops: escort/protect civilians (${civNeed} pending) • Captures ${captureDone}/${captureNeed}`
+          : `Story Ops: escort/protect civilians (${civNeed} pending)`;
+        storyOpsEl.innerText = `${focus} • ${rewardTrack}`;
+      }
     } else {
       storyOpsEl.innerText = "";
     }
@@ -18014,12 +18547,19 @@ function renderHUD(){
     assistParts.push(`Arcade clock: ${arcadeLeft}s/${limit}s • Medal: ${arcadeMedal}`);
     assistParts.push(`Arcade combo multiplier: x${arcadeMult.toFixed(1)} • Peak combo x${peak}`);
   } else if(S.mode==="Story" && storyMission){
-    const reward = storyChapterRewardDef(storyMission.chapter || 1);
-    const until = Math.max(0, ((storyMission.chapter || 1) * 10) - (storyMission.number || 1));
-    if(reward && !storyChapterRewardUnlocked(storyMission.chapter || 1)){
-      assistParts.push(until===0
-        ? `Chapter reward ready after clear: ${reward.label}`
-        : `Chapter reward in ${until} mission${until===1?"":"s"}: ${reward.label}`);
+    const variant = normalizeStoryVariant(storyMission.storyVariant);
+    if(variant === STORY_VARIANTS.CAMPAIGN){
+      const reward = storyChapterRewardDef(storyMission.chapter || 1);
+      const until = Math.max(0, ((storyMission.chapter || 1) * 10) - (storyMission.number || 1));
+      if(reward && !storyChapterRewardUnlocked(storyMission.chapter || 1)){
+        assistParts.push(until===0
+          ? `Chapter reward ready after clear: ${reward.label}`
+          : `Chapter reward in ${until} mission${until===1?"":"s"}: ${reward.label}`);
+      }
+    } else if(variant === STORY_VARIANTS.GAUNTLET){
+      assistParts.push(`Gauntlet Loop ${storyMission.gauntletLoop || 1} • Difficulty x${clamp(Number(storyMission.endgameHpMul || 1), 1, 9).toFixed(2)}`);
+    } else if(variant === STORY_VARIANTS.ELITE_HUNT){
+      assistParts.push(`Elite Hunt Chapter ${storyMission.chapter} • Target ${storyMission.bossType || "Alpha"} • Cleared ${Math.max(0, Math.floor(Number(S.eliteHuntsCleared || 0)))}`);
     }
     if(storyMission.boss){
       const introShort = storyBossIntroText(storyMission).replace(/^Boss Intro:\s*/i, "");
@@ -18117,13 +18657,18 @@ function renderHUD(){
   if(mobileStamChip) mobileStamChip.innerText = `Stamina ${Math.round(S.stamina)}`;
   if(mobileAmmoChip) mobileAmmoChip.innerText = `Ammo ${S.mag.loaded}/${S.mag.cap}`;
   if(mobileMissionChip){
+    const storyVariant = storyMission ? normalizeStoryVariant(storyMission.storyVariant) : STORY_VARIANTS.CAMPAIGN;
     mobileMissionChip.innerText =
       S.mode==="Survival"
         ? `Wave ${S.survivalWave}`
         : (S.mode==="Story" && storyMission)
-          ? `Story ${storyMission.number}/100 • Ch ${storyMission.chapter}`
-        : (S.mode==="Arcade" && arcadeMission)
-          ? `Arcade ${arcadeMission.number}/100 • ${arcadeLeft}s • ${arcadeMedal}`
+          ? (storyVariant === STORY_VARIANTS.GAUNTLET
+            ? `Gauntlet Run ${storyMission.runIndex} • Loop ${storyMission.gauntletLoop || 1}`
+            : (storyVariant === STORY_VARIANTS.ELITE_HUNT
+              ? `Elite Hunt ${storyMission.runIndex} • Ch ${storyMission.chapter}`
+              : `Story ${storyMission.number}/100 • Ch ${storyMission.chapter}`))
+          : (S.mode==="Arcade" && arcadeMission)
+            ? `Arcade ${arcadeMission.number}/100 • ${arcadeLeft}s • ${arcadeMedal}`
           : `Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`;
   }
   if(mobileThreatChip){
@@ -21100,6 +21645,11 @@ window.openMode = openMode;
 window.closeMode = closeMode;
 window.pickProgressGuardAction = pickProgressGuardAction;
 window.setMode = setMode;
+window.setStoryCampaignMode = setStoryCampaignMode;
+window.startStoryNgPlus = startStoryNgPlus;
+window.startEndlessGauntlet = startEndlessGauntlet;
+window.startEliteBossHunt = startEliteBossHunt;
+window.cycleEliteHuntChapter = cycleEliteHuntChapter;
 window.openLaunchIntro = openLaunchIntro;
 window.beginFromLaunchIntro = beginFromLaunchIntro;
 window.startQuickTutorialFromLaunchIntro = startQuickTutorialFromLaunchIntro;

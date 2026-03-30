@@ -1268,6 +1268,16 @@
         <button class="ghost" id="modeClanTagBtn" onclick="setClanTagPrompt()">🏷️ Clan Tag</button>
         <button class="ghost" id="modeClanNameBtn" onclick="setClanNamePrompt()">✍️ Clan Name</button>
       </div>
+      <div class="divider"></div>
+      <div class="hudTitle">Story Endgame Loop</div>
+      <div class="hudLine" id="modeEndgameStatus">Endgame unlocks after Story Mission 100.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+        <button class="ghost" id="modeStoryCampaignBtn" onclick="setStoryCampaignMode()">📖 Campaign</button>
+        <button class="ghost" id="modeNgPlusBtn" onclick="startStoryNgPlus()">🧬 New Game+ (0)</button>
+        <button class="ghost" id="modeGauntletBtn" onclick="startEndlessGauntlet()">♾️ Gauntlet</button>
+        <button class="ghost" id="modeEliteHuntBtn" onclick="startEliteBossHunt()">👑 Elite Hunt</button>
+        <button class="ghost" id="modeEliteChapterBtn" onclick="cycleEliteHuntChapter()">🗺️ Hunt Chapter 1</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1658,8 +1668,8 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4462"></script>
-<script src="./tutorial.js?v=4462"></script>
+<script src="./game.js?v=4463"></script>
+<script src="./tutorial.js?v=4463"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";
