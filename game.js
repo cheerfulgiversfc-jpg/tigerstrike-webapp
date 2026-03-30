@@ -2336,6 +2336,192 @@ const CHAPTER_VISUALS = {
   ],
 };
 
+const BIOME_HAZARD_DEFAULTS = Object.freeze({
+  waterSpeedMul: 1,
+  staminaDrainMul: 1,
+  tigerAggroMul: 1,
+  tigerSpeedMul: 1,
+  fogPulseEveryMs: 0,
+  fogPulseDurationMs: 0,
+});
+
+const CHAPTER_BIOME_PROFILES = {
+  Story: [
+    {
+      biome: "Rainforest Fringe",
+      weather: "Monsoon Drizzle",
+      weatherFx: "rain",
+      weatherIntensity: 0.56,
+      hazardShort: "Muddy trails",
+      hazards: { waterSpeedMul:0.97, staminaDrainMul:1.02, tigerAggroMul:1.00, tigerSpeedMul:1.01, fogPulseEveryMs:0, fogPulseDurationMs:0 },
+    },
+    {
+      biome: "Blood Marsh",
+      weather: "Heavy Rain",
+      weatherFx: "rain",
+      weatherIntensity: 0.74,
+      hazardShort: "Blood scent carries farther",
+      hazards: { waterSpeedMul:0.93, staminaDrainMul:1.05, tigerAggroMul:1.05, tigerSpeedMul:1.03, fogPulseEveryMs:26000, fogPulseDurationMs:3000 },
+    },
+    {
+      biome: "Canopy Mist",
+      weather: "Dense Mist",
+      weatherFx: "mist",
+      weatherIntensity: 0.82,
+      hazardShort: "Fog banks reduce vision",
+      hazards: { waterSpeedMul:0.96, staminaDrainMul:1.03, tigerAggroMul:1.03, tigerSpeedMul:1.02, fogPulseEveryMs:16000, fogPulseDurationMs:5200 },
+    },
+    {
+      biome: "Ember Streets",
+      weather: "Smoke Haze",
+      weatherFx: "ash",
+      weatherIntensity: 0.54,
+      hazardShort: "Debris and smoke pockets",
+      hazards: { waterSpeedMul:1.00, staminaDrainMul:1.04, tigerAggroMul:1.06, tigerSpeedMul:1.03, fogPulseEveryMs:22000, fogPulseDurationMs:3400 },
+    },
+    {
+      biome: "Floodplain Delta",
+      weather: "River Squalls",
+      weatherFx: "rain",
+      weatherIntensity: 0.72,
+      hazardShort: "Floodwater drag",
+      hazards: { waterSpeedMul:0.90, staminaDrainMul:1.06, tigerAggroMul:1.04, tigerSpeedMul:1.04, fogPulseEveryMs:0, fogPulseDurationMs:0 },
+    },
+    {
+      biome: "Alpine Ridge",
+      weather: "Snow Gusts",
+      weatherFx: "snow",
+      weatherIntensity: 0.70,
+      hazardShort: "Cold drains stamina",
+      hazards: { waterSpeedMul:0.95, staminaDrainMul:1.10, tigerAggroMul:1.05, tigerSpeedMul:1.06, fogPulseEveryMs:18000, fogPulseDurationMs:2600 },
+    },
+    {
+      biome: "Cave Wilds",
+      weather: "Dust Drafts",
+      weatherFx: "dust",
+      weatherIntensity: 0.62,
+      hazardShort: "Echo ambush lanes",
+      hazards: { waterSpeedMul:0.98, staminaDrainMul:1.05, tigerAggroMul:1.08, tigerSpeedMul:1.08, fogPulseEveryMs:24000, fogPulseDurationMs:3000 },
+    },
+    {
+      biome: "Warfire Jungle",
+      weather: "Ashfall",
+      weatherFx: "ash",
+      weatherIntensity: 0.86,
+      hazardShort: "Heat fatigue",
+      hazards: { waterSpeedMul:1.00, staminaDrainMul:1.11, tigerAggroMul:1.10, tigerSpeedMul:1.10, fogPulseEveryMs:15000, fogPulseDurationMs:3600 },
+    },
+    {
+      biome: "Hidden Wetlands",
+      weather: "Thunderstorm",
+      weatherFx: "storm",
+      weatherIntensity: 0.94,
+      hazardShort: "Storm surge pressure",
+      hazards: { waterSpeedMul:0.92, staminaDrainMul:1.08, tigerAggroMul:1.14, tigerSpeedMul:1.13, fogPulseEveryMs:14000, fogPulseDurationMs:4300 },
+    },
+    {
+      biome: "Ancient Temple Storm",
+      weather: "Eclipse Tempest",
+      weatherFx: "storm",
+      weatherIntensity: 1.00,
+      hazardShort: "Relic storm frenzy",
+      hazards: { waterSpeedMul:0.94, staminaDrainMul:1.12, tigerAggroMul:1.18, tigerSpeedMul:1.16, fogPulseEveryMs:12000, fogPulseDurationMs:4600 },
+    },
+  ],
+  Arcade: [
+    {
+      biome: "Trial Savannah",
+      weather: "Dry Crosswinds",
+      weatherFx: "dust",
+      weatherIntensity: 0.40,
+      hazardShort: "Loose footing",
+      hazards: { waterSpeedMul:0.99, staminaDrainMul:1.02, tigerAggroMul:1.01, tigerSpeedMul:1.02, fogPulseEveryMs:0, fogPulseDurationMs:0 },
+    },
+    {
+      biome: "Red Monsoon",
+      weather: "Heavy Rain",
+      weatherFx: "rain",
+      weatherIntensity: 0.78,
+      hazardShort: "Slippery lanes",
+      hazards: { waterSpeedMul:0.92, staminaDrainMul:1.05, tigerAggroMul:1.06, tigerSpeedMul:1.04, fogPulseEveryMs:22000, fogPulseDurationMs:2800 },
+    },
+    {
+      biome: "Fogfang Grove",
+      weather: "Dense Mist",
+      weatherFx: "mist",
+      weatherIntensity: 0.80,
+      hazardShort: "Vision pockets",
+      hazards: { waterSpeedMul:0.96, staminaDrainMul:1.04, tigerAggroMul:1.05, tigerSpeedMul:1.04, fogPulseEveryMs:15500, fogPulseDurationMs:5000 },
+    },
+    {
+      biome: "Urban Ashbelt",
+      weather: "Smoke Drift",
+      weatherFx: "ash",
+      weatherIntensity: 0.62,
+      hazardShort: "Heat haze pressure",
+      hazards: { waterSpeedMul:1.00, staminaDrainMul:1.06, tigerAggroMul:1.08, tigerSpeedMul:1.06, fogPulseEveryMs:21000, fogPulseDurationMs:3200 },
+    },
+    {
+      biome: "Floodway Sector",
+      weather: "River Storm",
+      weatherFx: "rain",
+      weatherIntensity: 0.80,
+      hazardShort: "Floodwater slowdown",
+      hazards: { waterSpeedMul:0.89, staminaDrainMul:1.07, tigerAggroMul:1.08, tigerSpeedMul:1.07, fogPulseEveryMs:0, fogPulseDurationMs:0 },
+    },
+    {
+      biome: "Frost Pass",
+      weather: "Snow Gusts",
+      weatherFx: "snow",
+      weatherIntensity: 0.78,
+      hazardShort: "Cold burn stamina",
+      hazards: { waterSpeedMul:0.94, staminaDrainMul:1.11, tigerAggroMul:1.09, tigerSpeedMul:1.09, fogPulseEveryMs:17000, fogPulseDurationMs:2600 },
+    },
+    {
+      biome: "Dust Tunnel",
+      weather: "Sand Drafts",
+      weatherFx: "dust",
+      weatherIntensity: 0.68,
+      hazardShort: "Sandblast drift",
+      hazards: { waterSpeedMul:0.98, staminaDrainMul:1.07, tigerAggroMul:1.10, tigerSpeedMul:1.11, fogPulseEveryMs:23000, fogPulseDurationMs:2900 },
+    },
+    {
+      biome: "War Ember Basin",
+      weather: "Ashfall",
+      weatherFx: "ash",
+      weatherIntensity: 0.90,
+      hazardShort: "Heatwave spikes",
+      hazards: { waterSpeedMul:1.00, staminaDrainMul:1.12, tigerAggroMul:1.13, tigerSpeedMul:1.12, fogPulseEveryMs:14500, fogPulseDurationMs:3500 },
+    },
+    {
+      biome: "Tempest Frontier",
+      weather: "Thunderstorm",
+      weatherFx: "storm",
+      weatherIntensity: 0.98,
+      hazardShort: "Storm hunt pressure",
+      hazards: { waterSpeedMul:0.91, staminaDrainMul:1.09, tigerAggroMul:1.16, tigerSpeedMul:1.14, fogPulseEveryMs:13200, fogPulseDurationMs:4200 },
+    },
+    {
+      biome: "Rift Citadel",
+      weather: "Eclipse Tempest",
+      weatherFx: "storm",
+      weatherIntensity: 1.00,
+      hazardShort: "Final surge",
+      hazards: { waterSpeedMul:0.93, staminaDrainMul:1.12, tigerAggroMul:1.20, tigerSpeedMul:1.18, fogPulseEveryMs:11800, fogPulseDurationMs:4600 },
+    },
+  ],
+  Survival: [
+    {
+      biome: "Night Woods",
+      weather: "Fog Drift",
+      weatherFx: "mist",
+      weatherIntensity: 0.58,
+      hazardShort: "Roaming fog pockets",
+      hazards: { waterSpeedMul:0.98, staminaDrainMul:1.02, tigerAggroMul:1.02, tigerSpeedMul:1.02, fogPulseEveryMs:25000, fogPulseDurationMs:2500 },
+    },
+  ],
+};
+
 const MAP_DENSE_LANDMARKS = {
   ST_FOREST: [
     { kind:"house", nx:0.12, ny:0.13, s:0.95 },
@@ -3050,6 +3236,7 @@ const DEFAULT = {
 
   // Phase 1 systems
   fogUntil:0,
+  _biomeFogPulseAt:0,
   eventText:"",
   eventCooldown:0,
   director:{
@@ -5506,6 +5693,7 @@ function sanitizeRuntimeState(){
   if(!Number.isFinite(S._tigerBatchStart)) S._tigerBatchStart = 0;
   if(!Number.isFinite(S._directorAggroMul)) S._directorAggroMul = 1;
   if(!Number.isFinite(S._directorSpeedMul)) S._directorSpeedMul = 1;
+  if(!Number.isFinite(S._biomeFogPulseAt)) S._biomeFogPulseAt = 0;
   if(COMBAT_FX.length > 96){
     COMBAT_FX.splice(0, COMBAT_FX.length - 96);
   }
@@ -5658,6 +5846,21 @@ function mapFamilyKey(key){
 function chapterVisualForMode(mode=S.mode, chapter=chapterIndexForMode(mode)){
   const list = CHAPTER_VISUALS[mode] || CHAPTER_VISUALS.Survival;
   return list[clamp(chapter, 1, list.length) - 1] || list[0] || CHAPTER_VISUALS.Survival[0];
+}
+function chapterBiomeProfile(mode=S.mode, chapter=chapterIndexForMode(mode)){
+  const list = CHAPTER_BIOME_PROFILES[mode] || CHAPTER_BIOME_PROFILES.Survival;
+  return list[clamp(chapter, 1, list.length) - 1] || list[0] || CHAPTER_BIOME_PROFILES.Survival[0];
+}
+function currentBiomeProfile(){
+  return chapterBiomeProfile(S.mode, chapterIndexForMode(S.mode));
+}
+function biomeHazardModifiers(mode=S.mode, chapter=chapterIndexForMode(mode)){
+  const profile = chapterBiomeProfile(mode, chapter);
+  const hazards = (profile && profile.hazards && typeof profile.hazards === "object") ? profile.hazards : {};
+  return {
+    ...BIOME_HAZARD_DEFAULTS,
+    ...hazards,
+  };
 }
 function soldierUnlockLevelReached(){
   return currentCampaignLevel() >= SOLDIER_UNLOCK_LEVEL;
@@ -6168,10 +6371,11 @@ function storyCaptureWindowPct(){
   return clamp(0.25 + (capRank * 0.02) + chapterBonus, 0.25, 0.36);
 }
 function storyStaminaDrainMul(){
-  if(S.mode !== "Story") return 1;
+  const biomeMul = clamp(Number(biomeHazardModifiers(S.mode).staminaDrainMul || 1), 0.70, 1.35);
+  if(S.mode !== "Story") return biomeMul;
   const base = 1 - (storyBaseRank("BASE_ENDURANCE") * 0.08);
   const chapterMul = storyChapterRewardUnlocked(6) ? 0.95 : 1;
-  return clamp(base * chapterMul, 0.62, 1);
+  return clamp(base * chapterMul * biomeMul, 0.62, 1.35);
 }
 function storyPayoutMul(){
   if(S.mode !== "Story") return 1;
@@ -6901,11 +7105,13 @@ function isPointInWater(x, y, radius=0){
 }
 function waterSpeedMul(entityType, x, y, radius=0){
   if(!isPointInWater(x, y, radius)) return 1;
-  if(entityType === "tiger") return 0.96;
-  if(entityType === "soldier") return 0.90;
-  if(entityType === "support") return 0.88;
-  if(entityType === "civilian") return 0.86;
-  return 0.90;
+  const biomeMul = clamp(Number(biomeHazardModifiers(S.mode).waterSpeedMul || 1), 0.75, 1.15);
+  let base = 0.90;
+  if(entityType === "tiger") base = 0.96;
+  else if(entityType === "soldier") base = 0.90;
+  else if(entityType === "support") base = 0.88;
+  else if(entityType === "civilian") base = 0.86;
+  return clamp(base * biomeMul, 0.55, 1.15);
 }
 function blockedByMapObstacle(x, y, radius){
   ensureMapObstacleCache();
@@ -7573,6 +7779,30 @@ function tickEvents(){
   save();
 }
 
+function biomeHazardTick(){
+  if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
+  if(window.__TUTORIAL_MODE__) return;
+  const profile = currentBiomeProfile();
+  if(!profile) return;
+  const hazards = biomeHazardModifiers(S.mode);
+  const pulseEvery = Math.max(0, Math.floor(Number(hazards.fogPulseEveryMs || 0)));
+  const pulseDuration = Math.max(0, Math.floor(Number(hazards.fogPulseDurationMs || 0)));
+  if(pulseEvery <= 0 || pulseDuration <= 0) return;
+
+  const now = Date.now();
+  if(!Number.isFinite(S._biomeFogPulseAt) || S._biomeFogPulseAt <= 0){
+    S._biomeFogPulseAt = now + rand(Math.max(2200, Math.floor(pulseEvery * 0.60)), pulseEvery);
+    return;
+  }
+  if(now < S._biomeFogPulseAt) return;
+
+  S.fogUntil = Math.max(S.fogUntil || 0, now + pulseDuration);
+  S._biomeFogPulseAt = now + rand(Math.max(2400, Math.floor(pulseEvery * 0.72)), Math.max(2800, Math.floor(pulseEvery * 1.15)));
+  if(Math.random() < 0.30){
+    setEventText(`🌦️ ${profile.weather} shifted the battlefield. Stay on your route.`, 2.2);
+  }
+}
+
 // ===================== PICKUPS / LOOT =====================
 // Types: CASH, AMMO, ARMOR, MED, TRAP, CRATE
 function spawnPickup(type, x, y){
@@ -7931,6 +8161,7 @@ function missionObjectiveCountText(mode, mission){
 function missionSpecialRuleText(mode, mission){
   if(!mission) return "Special Rule: standard mission rules.";
   const rules = [];
+  const biomeProfile = chapterBiomeProfile(mode || S.mode, Math.ceil((mission.number || 1) / 10));
   if(mode==="Story" && (mission.civilians || 0) > 0) rules.push("escort/protect civilians");
   if((mission.captureRequired || 0) > 0) rules.push(`capture objective active`);
   if(mode==="Arcade" && mission.captureOnly) rules.push("capture-only (no kills)");
@@ -7940,6 +8171,7 @@ function missionSpecialRuleText(mode, mission){
   if(mission.lowVisibility) rules.push("reduced visibility");
   if(mission.bloodAggro) rules.push("blood increases aggression");
   if(mission.finalBoss) rules.push("final choice changes ending");
+  if(biomeProfile?.hazardShort) rules.push(`${biomeProfile.weather}: ${biomeProfile.hazardShort.toLowerCase()}`);
   if(!rules.length) return "Special Rule: standard mission rules.";
   return `Special Rule: ${rules[0]}.`;
 }
@@ -7967,11 +8199,13 @@ function storyChapterRewardPreviewText(mission){
 }
 function storyMissionIntelText(mission){
   if(!mission) return "Story Intel: hold evac lanes and minimize civilian risk.";
+  const biome = chapterBiomeProfile("Story", mission.chapter || 1);
   const focus = [];
   if((mission.civilians || 0) > 0) focus.push(`protect ${mission.civilians} civilian${mission.civilians===1?"":"s"}`);
   if((mission.captureRequired || 0) > 0) focus.push(`secure ${mission.captureRequired} capture${mission.captureRequired===1?"":"s"}`);
   if(mission.lowVisibility) focus.push("low visibility route");
   if(mission.bloodAggro) focus.push("lethal kills increase aggression");
+  if(biome?.hazardShort) focus.push(`${biome.weather.toLowerCase()} • ${biome.hazardShort.toLowerCase()}`);
   if(!focus.length) focus.push("clear tiger threats and secure evacuation");
   return `Story Intel: ${focus.join(" • ")}.`;
 }
@@ -13567,6 +13801,7 @@ function deploy(opts={}){
 
   // phase 1
   S.fogUntil = 0;
+  S._biomeFogPulseAt = 0;
   S.eventText = "";
   S.eventCooldown = 240;
   S.pickups = [];
@@ -13683,6 +13918,11 @@ function deploy(opts={}){
     if(mission.bloodAggro){
       setEventText("Blood mechanic active: kills increase tiger aggression.", 8);
     }
+  }
+
+  const biomeStart = currentBiomeProfile();
+  if(biomeStart && !S.eventText){
+    setEventText(`🌍 ${biomeStart.biome} • ${biomeStart.weather} • Hazard: ${biomeStart.hazardShort || "adaptive terrain"}`, 7.5);
   }
 
   if(S.mode==="Survival"){ S.survivalStart = Date.now(); S.surviveSeconds=0; }
@@ -15402,8 +15642,11 @@ function roamTigers(){
   if(S.backupActive>0) return;
 
   const now = Date.now();
-  const directorAggroMul = clamp(Number(S._directorAggroMul || 1), 0.82, 1.24);
-  const directorSpeedMul = clamp(Number(S._directorSpeedMul || 1), 0.88, 1.20);
+  const biomeHazards = biomeHazardModifiers(S.mode);
+  const biomeAggroMul = clamp(Number(biomeHazards.tigerAggroMul || 1), 0.82, 1.35);
+  const biomeSpeedMul = clamp(Number(biomeHazards.tigerSpeedMul || 1), 0.86, 1.35);
+  const directorAggroMul = clamp(Number(S._directorAggroMul || 1) * biomeAggroMul, 0.82, 1.36);
+  const directorSpeedMul = clamp(Number(S._directorSpeedMul || 1) * biomeSpeedMul, 0.88, 1.34);
   const barricades = activeBarricades(now);
   const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
   const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
@@ -17756,6 +17999,11 @@ function renderHUD(){
   }
 
   const assistParts = [];
+  const biomeProfile = currentBiomeProfile();
+  if(biomeProfile){
+    assistParts.push(`Biome: ${biomeProfile.biome} • ${biomeProfile.weather}`);
+    if(biomeProfile.hazardShort) assistParts.push(`Hazard: ${biomeProfile.hazardShort}`);
+  }
   if((S.comboCount || 0) > 0){
     const left = Math.max(0, Math.ceil(((S.comboExpireAt || 0) - Date.now()) / 1000));
     assistParts.push(`Combo x${S.comboCount}${left ? ` (${left}s)` : ""}`);
@@ -18743,12 +18991,32 @@ function drawAtmosphericParallax(nowTs=Date.now()){
 
   const w = cv.width;
   const h = cv.height;
-  const hazeLayers = mode === "PERFORMANCE" ? 1 : (slow ? 2 : 3);
-  const streakCount = mode === "PERFORMANCE" ? 6 : (slow ? 9 : 14);
+  const biome = currentBiomeProfile();
+  const weatherFx = String(biome?.weatherFx || "clear");
+  const weatherIntensity = clamp(Number(biome?.weatherIntensity || 0.45), 0.12, 1.25);
+  let hazeLayers = mode === "PERFORMANCE" ? 1 : (slow ? 2 : 3);
+  let streakCount = mode === "PERFORMANCE" ? 6 : (slow ? 9 : 14);
+  if(weatherFx === "mist" || weatherFx === "snow") hazeLayers += 1;
+  if(weatherFx === "rain" || weatherFx === "storm") streakCount += slow ? 2 : 4;
   const t = nowTs * 0.00006;
 
   ctx.save();
   ctx.globalCompositeOperation = "screen";
+  let hazeCore = "rgba(147,197,253,";
+  let hazeMid = "rgba(148,163,184,";
+  if(weatherFx === "ash"){
+    hazeCore = "rgba(251,191,36,";
+    hazeMid = "rgba(253,186,116,";
+  } else if(weatherFx === "snow"){
+    hazeCore = "rgba(219,234,254,";
+    hazeMid = "rgba(226,232,240,";
+  } else if(weatherFx === "mist" || weatherFx === "storm"){
+    hazeCore = "rgba(186,230,253,";
+    hazeMid = "rgba(203,213,225,";
+  } else if(weatherFx === "dust"){
+    hazeCore = "rgba(253,224,155,";
+    hazeMid = "rgba(251,191,36,";
+  }
   for(let i=0; i<hazeLayers; i++){
     const phase = (i * 1.67);
     const x = ((Math.sin((t * (0.8 + i * 0.12)) + phase) + 1) * 0.5) * w;
@@ -18756,14 +19024,20 @@ function drawAtmosphericParallax(nowTs=Date.now()){
     const rx = (w * (0.34 - (i * 0.06)));
     const ry = (h * (0.24 - (i * 0.04)));
     const grad = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry));
-    grad.addColorStop(0, `rgba(147,197,253,${0.11 - (i * 0.02)})`);
-    grad.addColorStop(0.52, `rgba(148,163,184,${0.05 - (i * 0.009)})`);
+    const coreA = Math.max(0.02, (0.11 - (i * 0.02)) * (0.72 + weatherIntensity * 0.4));
+    const midA = Math.max(0.01, (0.05 - (i * 0.009)) * (0.70 + weatherIntensity * 0.32));
+    grad.addColorStop(0, `${hazeCore}${coreA})`);
+    grad.addColorStop(0.52, `${hazeMid}${midA})`);
     grad.addColorStop(1, "rgba(15,23,42,0)");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
   }
   ctx.globalCompositeOperation = "source-over";
 
+  let streakColor = "rgba(226,232,240,.55)";
+  if(weatherFx === "rain" || weatherFx === "storm") streakColor = "rgba(186,230,253,.60)";
+  else if(weatherFx === "ash") streakColor = "rgba(253,186,116,.55)";
+  else if(weatherFx === "dust") streakColor = "rgba(253,224,155,.52)";
   for(let i=0; i<streakCount; i++){
     const p = ATMOS_PARTICLES[i % ATMOS_PARTICLES.length];
     const px = ((p.u * w) + ((t * (26 + (p.drift * 22)) * p.depth) % (w + 120))) % (w + 120) - 60;
@@ -18771,12 +19045,75 @@ function drawAtmosphericParallax(nowTs=Date.now()){
     const len = 22 + (p.size * 20);
     const alpha = p.alpha * (slow ? 0.7 : 1);
     ctx.globalAlpha = alpha;
-    ctx.strokeStyle = "rgba(226,232,240,.55)";
+    ctx.strokeStyle = streakColor;
     ctx.lineWidth = 1 + (p.size * 0.45);
     ctx.beginPath();
     ctx.moveTo(px, py);
     ctx.lineTo(px + len, py + (4 * p.depth));
     ctx.stroke();
+  }
+
+  const fxDensityBase = mode === "PERFORMANCE" ? 0.55 : (slow ? 0.78 : 1);
+  const fxCount = Math.max(8, Math.round((10 + (weatherIntensity * 22)) * fxDensityBase));
+  if(weatherFx === "rain" || weatherFx === "storm"){
+    const rainCount = weatherFx === "storm" ? Math.round(fxCount * 1.25) : fxCount;
+    const dropSpeed = weatherFx === "storm" ? 460 : 340;
+    ctx.globalAlpha = weatherFx === "storm" ? 0.54 : 0.46;
+    ctx.strokeStyle = weatherFx === "storm" ? "rgba(191,219,254,.78)" : "rgba(186,230,253,.72)";
+    ctx.lineWidth = weatherFx === "storm" ? 1.25 : 1.05;
+    for(let i=0; i<rainCount; i++){
+      const drift = (nowTs * 0.001 * dropSpeed) * (1 + ((i % 5) * 0.08));
+      const px = ((i * 73.17) + drift) % (w + 140) - 70;
+      const py = ((i * 51.71) + (drift * 1.78)) % (h + 120) - 60;
+      const len = 8 + ((i % 6) * 1.7) + (weatherIntensity * 4.2);
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px - (len * 0.32), py + len);
+      ctx.stroke();
+    }
+    if(weatherFx === "storm"){
+      const lightningPulse = Math.max(0, Math.sin(nowTs * 0.0049 + 0.8) + Math.sin(nowTs * 0.0073 + 2.1) - 1.72);
+      if(lightningPulse > 0){
+        ctx.globalAlpha = clamp(lightningPulse * 0.22, 0.04, 0.20);
+        ctx.fillStyle = "rgba(226,240,255,.95)";
+        ctx.fillRect(0, 0, w, h);
+      }
+    }
+  } else if(weatherFx === "snow"){
+    ctx.globalAlpha = 0.68;
+    ctx.fillStyle = "rgba(241,245,249,.90)";
+    for(let i=0; i<fxCount; i++){
+      const drift = (nowTs * 0.001 * (26 + (i % 7) * 6));
+      const px = ((i * 88.27) + drift) % (w + 90) - 45;
+      const py = ((i * 49.37) + (drift * 0.78)) % (h + 110) - 55;
+      const r = 0.8 + ((i % 4) * 0.34);
+      ctx.beginPath();
+      ctx.arc(px + (Math.sin((nowTs * 0.0012) + i) * 1.8), py, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if(weatherFx === "ash" || weatherFx === "dust"){
+    const ashCount = Math.round(fxCount * (weatherFx === "ash" ? 1.1 : 1));
+    ctx.globalAlpha = weatherFx === "ash" ? 0.50 : 0.44;
+    ctx.strokeStyle = weatherFx === "ash" ? "rgba(251,191,36,.72)" : "rgba(253,224,155,.70)";
+    ctx.lineWidth = weatherFx === "ash" ? 1.08 : 0.95;
+    for(let i=0; i<ashCount; i++){
+      const drift = (nowTs * 0.001 * (62 + (i % 9) * 10));
+      const px = ((i * 67.93) + drift) % (w + 100) - 50;
+      const py = ((i * 58.19) + (drift * 0.22)) % (h + 80) - 40;
+      const len = 2.5 + ((i % 5) * 0.9);
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + len, py + (weatherFx === "ash" ? len * 0.46 : len * 0.22));
+      ctx.stroke();
+    }
+  } else if(weatherFx === "mist"){
+    ctx.globalAlpha = 0.28 * (0.72 + weatherIntensity * 0.36);
+    const mist = ctx.createLinearGradient(0, h * 0.1, 0, h * 0.9);
+    mist.addColorStop(0, "rgba(203,213,225,.20)");
+    mist.addColorStop(0.45, "rgba(226,232,240,.28)");
+    mist.addColorStop(1, "rgba(148,163,184,.18)");
+    ctx.fillStyle = mist;
+    ctx.fillRect(0, 0, w, h);
   }
 
   ctx.globalAlpha = 1;
@@ -20287,6 +20624,7 @@ function draw(){
 
       if(!window.TigerTutorial?.isRunning){
         runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
+        runFrameTask("biomeHazard", frameInterval(lagHeavy ? 220 : 170, 1.45), biomeHazardTick, { costHint:0.6 });
         runFrameTask("ambientPickup", frameInterval(lagHeavy ? 360 : 300, 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
         runFrameTask("tickPickups", frameInterval(lagCritical ? 92 : (lagHeavy ? 74 : 52), 1.5), tickPickups, { costHint:1.0 });
       }
