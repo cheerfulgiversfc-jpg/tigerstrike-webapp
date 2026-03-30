@@ -130,6 +130,19 @@ const BALANCE_DEATH_WINDOW_MS = 20 * 60 * 1000;
 const BALANCE_EVENT_HISTORY_MAX = 40;
 const BALANCE_AUTOTUNE_MIN = 0.88;
 const BALANCE_AUTOTUNE_MAX = 1.16;
+const NEMESIS_ROSTER_MAX = 8;
+const NEMESIS_RETURN_BASE_CHANCE = 0.42;
+const NEMESIS_RETURN_MAX_CHANCE = 0.9;
+const NEMESIS_MIN_MISSION_GAP = 1;
+const NEMESIS_ESCAPED_BONUS_CASH_BASE = 500;
+const NEMESIS_CAPTURE_BONUS_XP = 130;
+const NEMESIS_KILL_BONUS_XP = 95;
+const NEMESIS_NAME_PREFIX = Object.freeze([
+  "Scar","Night","Ash","Iron","Dread","Ruin","Blood","Ghost","Storm","Fang"
+]);
+const NEMESIS_NAME_SUFFIX = Object.freeze([
+  "claw","tooth","stalker","mane","hunter","shadow","snarl","reaper","prowler","maw"
+]);
 
 const DAILY_CONTRACT_POOL = Object.freeze([
   Object.freeze({
@@ -383,6 +396,16 @@ function defaultBalanceStatsState(){
     lastFreezeSpikesRecent:0,
     lastOutcomeSample:0,
     lastUpdatedAt:0,
+  };
+}
+
+function defaultNemesisState(){
+  return {
+    seq: 0,
+    lastSpawnMission: 0,
+    lastSpawnId: "",
+    lastBountyAt: 0,
+    roster: [],
   };
 }
 
@@ -2393,6 +2416,12 @@ function tigerDamageScale(t, target="player"){
   const table = TIGER_DAMAGE_SCALES[target] || TIGER_DAMAGE_SCALES.player;
   const idx = clamp(tigerPowerRank(t) - 1, 0, table.length - 1);
   let scale = table[idx] * tigerLevelDamageMul(target);
+  const nemesisDamageMul = clamp(Number(t?.nemesisDamageMul || 1), 0.7, 2);
+  if(nemesisDamageMul > 1){
+    scale *= nemesisDamageMul;
+  } else if(Number(t?.nemesisPower || 0) > 0){
+    scale *= clamp(1 + (Number(t.nemesisPower || 0) * 0.04), 1, 1.42);
+  }
   const lv = Math.max(1, currentCampaignLevel());
   if(target === "civilian"){
     if(isBossTiger(t)) scale *= clamp(1.16 + ((lv - 1) * 0.003), 1.16, 1.45);
@@ -2412,7 +2441,14 @@ function tigerDamageScale(t, target="player"){
 }
 function tigerDefenseScale(t){
   const idx = clamp(tigerPowerRank(t) - 1, 0, TIGER_DEFENSE_SCALES.length - 1);
-  return TIGER_DEFENSE_SCALES[idx] * tigerLevelDefenseMul(t);
+  let scale = TIGER_DEFENSE_SCALES[idx] * tigerLevelDefenseMul(t);
+  const nemesisDefenseMul = clamp(Number(t?.nemesisDefenseMul || 1), 0.7, 2);
+  if(nemesisDefenseMul > 1){
+    scale *= nemesisDefenseMul;
+  } else if(Number(t?.nemesisPower || 0) > 0){
+    scale *= clamp(1 + (Number(t.nemesisPower || 0) * 0.03), 1, 1.35);
+  }
+  return scale;
 }
 
 const TIGER_PERSONALITIES = {
@@ -3712,6 +3748,7 @@ const DEFAULT = {
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
   opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0 },
   balanceStats: defaultBalanceStatsState(),
+  nemesis: defaultNemesisState(),
   contractTallies: defaultContractTallies(),
   contracts: null,
   liveOps: null,
@@ -3805,6 +3842,7 @@ syncTelegramIdentity(S);
 ensureClanState(S);
 ensureOpsTotalsState(S);
 ensureBalanceStatsState(S);
+ensureNemesisState(S);
 syncWindowState();
 
 // ---- Tutorial support + global state ----
@@ -3979,6 +4017,398 @@ function ensureBalanceStatsState(state=S){
     lastUpdatedAt: Math.max(0, Math.floor(Number(current.lastUpdatedAt || 0))),
   };
   return src.balanceStats;
+}
+
+function currentStoryMissionNumber(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const missionRaw = (normalizeModeName(src.mode) === "Story")
+    ? (storyMissionForState(src)?.number || src.storyLevel || src.storyLastMission || 1)
+    : (src.storyLevel || src.storyLastMission || 1);
+  const maxMission = Array.isArray(STORY_CAMPAIGN_OBJECTIVES) ? STORY_CAMPAIGN_OBJECTIVES.length : 100;
+  return clamp(Math.floor(Number(missionRaw || 1)), 1, maxMission);
+}
+
+function normalizeNemesisAlias(alias, fallback="Nemesis"){
+  const cleaned = String(alias || "").trim().replace(/[^a-zA-Z0-9\s\-']/g, "").slice(0, 28);
+  return cleaned || fallback;
+}
+
+function nemesisBehaviorForType(type="Standard"){
+  if(type === "Stalker") return "Shadow";
+  if(type === "Scout") return "Skirmisher";
+  if(type === "Berserker") return "Mauler";
+  if(type === "Alpha") return "Warlord";
+  return "Hunter";
+}
+
+function computeNemesisPower(entry, missionNo=1){
+  const escapes = Math.max(1, Math.floor(Number(entry?.escapes || 1)));
+  const returns = Math.max(0, Math.floor(Number(entry?.returns || 0)));
+  const missionTier = Math.max(0, Math.floor((Math.max(1, missionNo) - 1) / 20));
+  const seeded = Math.max(1, Math.floor(Number(entry?.power || 1)));
+  const evolved = 1 + Math.min(6, escapes - 1) + Math.floor(returns / 2) + missionTier;
+  return clamp(Math.max(seeded, evolved), 1, 10);
+}
+
+function computeNemesisBountyCash(entry, missionNo=1){
+  const power = computeNemesisPower(entry, missionNo);
+  const escapes = Math.max(1, Math.floor(Number(entry?.escapes || 1)));
+  const returns = Math.max(0, Math.floor(Number(entry?.returns || 0)));
+  return Math.round(clamp(
+    NEMESIS_ESCAPED_BONUS_CASH_BASE + (power * 260) + (escapes * 140) + (returns * 90) + (Math.max(1, missionNo) * 18),
+    NEMESIS_ESCAPED_BONUS_CASH_BASE,
+    24000
+  ));
+}
+
+function normalizeNemesisEntry(raw, fallbackId="", missionNo=1){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const id = String(src.id || fallbackId || "").trim().slice(0, 40);
+  if(!id) return null;
+  const tigerDefs = Array.isArray(TIGER_TYPES) ? TIGER_TYPES : [];
+  const typeRaw = String(src.type || "Standard");
+  const type = tigerDefs.some((def)=>def.key === typeRaw) ? typeRaw : "Standard";
+  const escapes = Math.max(1, Math.floor(Number(src.escapes || 1)));
+  const returns = Math.max(0, Math.floor(Number(src.returns || 0)));
+  const scars = clamp(Math.max(1, Math.floor(Number(src.scars || escapes))), 1, 9);
+  const alias = normalizeNemesisAlias(src.alias, `Nemesis ${id.replace(/^N/i, "") || "Tiger"}`);
+  const statusRaw = String(src.status || "escaped").toLowerCase();
+  const status = statusRaw === "resolved" ? "resolved" : (statusRaw === "active" ? "active" : "escaped");
+  const entry = {
+    id,
+    alias,
+    type,
+    behavior: String(src.behavior || nemesisBehaviorForType(type)).slice(0, 24),
+    escapes,
+    returns,
+    scars,
+    power: clamp(Math.max(1, Math.floor(Number(src.power || 1))), 1, 10),
+    bountyCash: Math.max(0, Math.floor(Number(src.bountyCash || 0))),
+    status,
+    lastEscapedMission: Math.max(0, Math.floor(Number(src.lastEscapedMission || 0))),
+    lastSpawnMission: Math.max(0, Math.floor(Number(src.lastSpawnMission || 0))),
+    lastSeenMission: Math.max(0, Math.floor(Number(src.lastSeenMission || 0))),
+    lastDefeatMission: Math.max(0, Math.floor(Number(src.lastDefeatMission || 0))),
+    lastOutcome: String(src.lastOutcome || "").slice(0, 16),
+    createdAt: Math.max(0, Math.floor(Number(src.createdAt || Date.now()))),
+    updatedAt: Math.max(0, Math.floor(Number(src.updatedAt || Date.now()))),
+  };
+  entry.power = computeNemesisPower(entry, missionNo);
+  if(entry.status !== "resolved"){
+    entry.bountyCash = Math.max(entry.bountyCash, computeNemesisBountyCash(entry, missionNo));
+  }
+  return entry;
+}
+
+function mergeNemesisEntries(current, incoming, missionNo=1){
+  const a = normalizeNemesisEntry(current, current?.id || incoming?.id || "", missionNo);
+  const b = normalizeNemesisEntry(incoming, incoming?.id || current?.id || "", missionNo);
+  if(!a) return b;
+  if(!b) return a;
+  const preferIncoming = Number(b.updatedAt || 0) >= Number(a.updatedAt || 0);
+  const merged = {
+    ...a,
+    ...b,
+    alias: preferIncoming ? b.alias : a.alias,
+    type: preferIncoming ? b.type : a.type,
+    behavior: preferIncoming ? b.behavior : a.behavior,
+    escapes: Math.max(a.escapes || 1, b.escapes || 1),
+    returns: Math.max(a.returns || 0, b.returns || 0),
+    scars: Math.max(a.scars || 1, b.scars || 1),
+    power: Math.max(a.power || 1, b.power || 1),
+    bountyCash: Math.max(a.bountyCash || 0, b.bountyCash || 0),
+    lastEscapedMission: Math.max(a.lastEscapedMission || 0, b.lastEscapedMission || 0),
+    lastSpawnMission: Math.max(a.lastSpawnMission || 0, b.lastSpawnMission || 0),
+    lastSeenMission: Math.max(a.lastSeenMission || 0, b.lastSeenMission || 0),
+    lastDefeatMission: Math.max(a.lastDefeatMission || 0, b.lastDefeatMission || 0),
+    status: preferIncoming ? b.status : a.status,
+    lastOutcome: preferIncoming ? b.lastOutcome : a.lastOutcome,
+    createdAt: Math.min(a.createdAt || Date.now(), b.createdAt || Date.now()),
+    updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0),
+  };
+  return normalizeNemesisEntry(merged, merged.id, missionNo);
+}
+
+function trimNemesisRoster(nemesisState){
+  if(!nemesisState || typeof nemesisState !== "object") return;
+  if(!Array.isArray(nemesisState.roster)) nemesisState.roster = [];
+  const statusScore = { active:3, escaped:2, resolved:1 };
+  nemesisState.roster.sort((a, b)=>{
+    const sa = statusScore[a?.status] || 0;
+    const sb = statusScore[b?.status] || 0;
+    if(sb !== sa) return sb - sa;
+    return Number(b?.updatedAt || 0) - Number(a?.updatedAt || 0);
+  });
+  if(nemesisState.roster.length > NEMESIS_ROSTER_MAX){
+    nemesisState.roster = nemesisState.roster.slice(0, NEMESIS_ROSTER_MAX);
+  }
+}
+
+function ensureNemesisState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const fallback = defaultNemesisState();
+  if(!src || typeof src !== "object") return fallback;
+  const missionNo = currentStoryMissionNumber(src);
+  const current = (src.nemesis && typeof src.nemesis === "object") ? src.nemesis : {};
+  const rosterRaw = Array.isArray(current.roster) ? current.roster : [];
+  const byId = new Map();
+  for(const raw of rosterRaw){
+    const normalized = normalizeNemesisEntry(raw, "", missionNo);
+    if(!normalized) continue;
+    const existing = byId.get(normalized.id);
+    byId.set(
+      normalized.id,
+      existing ? mergeNemesisEntries(existing, normalized, missionNo) : normalized
+    );
+  }
+  const roster = Array.from(byId.values());
+  src.nemesis = {
+    seq: Math.max(0, Math.floor(Number(current.seq || roster.length || 0))),
+    lastSpawnMission: Math.max(0, Math.floor(Number(current.lastSpawnMission || 0))),
+    lastSpawnId: String(current.lastSpawnId || "").slice(0, 40),
+    lastBountyAt: Math.max(0, Math.floor(Number(current.lastBountyAt || 0))),
+    roster,
+  };
+  if(src.nemesis.seq < roster.length){
+    src.nemesis.seq = roster.length;
+  }
+  trimNemesisRoster(src.nemesis);
+  return src.nemesis;
+}
+
+function nextNemesisAlias(nemesisState){
+  const nemesis = ensureNemesisState({ nemesis: nemesisState });
+  const used = new Set((nemesis.roster || []).map((entry)=>String(entry?.alias || "").toLowerCase()).filter(Boolean));
+  const total = Math.max(1, NEMESIS_NAME_PREFIX.length * NEMESIS_NAME_SUFFIX.length);
+  const start = Math.max(0, Math.floor(Number(nemesis.seq || 0)));
+  for(let offset=0; offset<total + 10; offset++){
+    const seq = start + offset;
+    const p = NEMESIS_NAME_PREFIX[seq % NEMESIS_NAME_PREFIX.length] || "Scar";
+    const sRaw = NEMESIS_NAME_SUFFIX[Math.floor(seq / NEMESIS_NAME_PREFIX.length) % NEMESIS_NAME_SUFFIX.length] || "claw";
+    const s = sRaw.charAt(0).toUpperCase() + sRaw.slice(1);
+    const candidate = `${p}${s}`;
+    if(!used.has(candidate.toLowerCase())){
+      return candidate;
+    }
+  }
+  return `Nemesis${start + 1}`;
+}
+
+function mergeNemesisState(currentNemesis, incomingNemesis, missionNo=1){
+  const base = ensureNemesisState({ nemesis: currentNemesis });
+  const incoming = ensureNemesisState({ nemesis: incomingNemesis });
+  const merged = {
+    seq: Math.max(base.seq || 0, incoming.seq || 0),
+    lastSpawnMission: Math.max(base.lastSpawnMission || 0, incoming.lastSpawnMission || 0),
+    lastSpawnId: (Number(incoming.lastSpawnMission || 0) >= Number(base.lastSpawnMission || 0))
+      ? String(incoming.lastSpawnId || "")
+      : String(base.lastSpawnId || ""),
+    lastBountyAt: Math.max(base.lastBountyAt || 0, incoming.lastBountyAt || 0),
+    roster: [],
+  };
+  const byId = new Map();
+  for(const entry of (base.roster || [])){
+    const normalized = normalizeNemesisEntry(entry, "", missionNo);
+    if(normalized) byId.set(normalized.id, normalized);
+  }
+  for(const entry of (incoming.roster || [])){
+    const normalized = normalizeNemesisEntry(entry, "", missionNo);
+    if(!normalized) continue;
+    const existing = byId.get(normalized.id);
+    byId.set(normalized.id, existing ? mergeNemesisEntries(existing, normalized, missionNo) : normalized);
+  }
+  merged.roster = Array.from(byId.values());
+  if(merged.seq < merged.roster.length){
+    merged.seq = merged.roster.length;
+  }
+  trimNemesisRoster(merged);
+  return merged;
+}
+
+function registerTigerEscapeNemesis(t, reason="RETREAT"){
+  if(window.__TUTORIAL_MODE__) return null;
+  if(normalizeModeName(S.mode) !== "Story") return null;
+  if(!t || !t.alive) return null;
+  const missionNo = currentStoryMissionNumber(S);
+  const nemesis = ensureNemesisState(S);
+  let entry = null;
+  let createdNow = false;
+  if(t.nemesisId){
+    entry = (nemesis.roster || []).find((item)=>item.id === t.nemesisId) || null;
+  }
+  if(!entry){
+    nemesis.seq = Math.max(0, Math.floor(Number(nemesis.seq || 0))) + 1;
+    const id = `N${nemesis.seq}`;
+    const alias = nextNemesisAlias(nemesis);
+    entry = normalizeNemesisEntry({
+      id,
+      alias,
+      type: t.type || "Standard",
+      behavior: nemesisBehaviorForType(t.type || "Standard"),
+      escapes: 1,
+      returns: 0,
+      scars: 1,
+      power: 1,
+      status: "escaped",
+      lastEscapedMission: missionNo,
+      lastSpawnMission: missionNo,
+      lastSeenMission: missionNo,
+      lastOutcome: "ESCAPED",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }, id, missionNo);
+    if(entry) nemesis.roster.unshift(entry);
+    createdNow = true;
+  }
+  if(!entry) return null;
+
+  entry.type = t.type || entry.type || "Standard";
+  entry.behavior = String(entry.behavior || nemesisBehaviorForType(entry.type)).slice(0, 24);
+  entry.escapes = Math.max(1, Math.floor(Number(entry.escapes || 0))) + (createdNow ? 0 : 1);
+  entry.scars = clamp(Math.max(1, Math.floor(Number(entry.scars || 1))) + (createdNow ? 0 : 1), 1, 9);
+  if(!createdNow && entry.escapes >= 3 && (entry.escapes % 2 === 1)){
+    entry.alias = normalizeNemesisAlias(nextNemesisAlias(nemesis), entry.alias || "Nemesis");
+  }
+  entry.status = "escaped";
+  entry.lastEscapedMission = missionNo;
+  entry.lastSeenMission = missionNo;
+  entry.lastSpawnMission = Math.max(entry.lastSpawnMission || 0, missionNo);
+  entry.lastOutcome = "ESCAPED";
+  entry.updatedAt = Date.now();
+  entry.power = computeNemesisPower(entry, missionNo);
+  entry.bountyCash = computeNemesisBountyCash(entry, missionNo);
+  t.nemesisId = entry.id;
+  t.nemesisAlias = entry.alias;
+  t.nemesisPower = entry.power;
+  t.nemesisScars = entry.scars;
+  t.nemesisBehavior = entry.behavior;
+  t.nemesisBountyCash = entry.bountyCash;
+  nemesis.lastSpawnMission = missionNo;
+  nemesis.lastSpawnId = entry.id;
+  trimNemesisRoster(nemesis);
+  setEventText(`☠️ Nemesis escaped: ${entry.alias} (Lv ${entry.power}) • Bounty now $${entry.bountyCash.toLocaleString()}`, 5.5);
+  if(reason === "RETREAT"){
+    toast(`Nemesis escaped: ${entry.alias} is getting stronger.`);
+  }
+  return entry;
+}
+
+function pickReturningNemesisForMission(missionNo=currentStoryMissionNumber(S)){
+  if(window.__TUTORIAL_MODE__) return null;
+  if(normalizeModeName(S.mode) !== "Story") return null;
+  const nemesis = ensureNemesisState(S);
+  if(!Array.isArray(nemesis.roster) || !nemesis.roster.length) return null;
+  if(Math.max(1, missionNo) <= 1) return null;
+  if(Math.floor(Number(nemesis.lastSpawnMission || 0)) === missionNo) return null;
+
+  const candidates = [];
+  for(const entry of nemesis.roster){
+    if(!entry) continue;
+    if(entry.status === "resolved") continue;
+    if(entry.status === "active" && missionNo > Math.max(0, Math.floor(Number(entry.lastSpawnMission || 0)))){
+      entry.status = "escaped";
+    }
+    if(entry.status !== "escaped") continue;
+    const anchorMission = Math.max(
+      Math.floor(Number(entry.lastEscapedMission || 0)),
+      Math.floor(Number(entry.lastSpawnMission || 0)),
+      Math.floor(Number(entry.lastSeenMission || 0))
+    );
+    const gap = missionNo - anchorMission;
+    if(gap < NEMESIS_MIN_MISSION_GAP) continue;
+    const staleBonus = Math.max(0, gap - NEMESIS_MIN_MISSION_GAP) * 0.035;
+    const chance = clamp(
+      NEMESIS_RETURN_BASE_CHANCE +
+        (Math.max(1, Math.floor(Number(entry.escapes || 1))) * 0.08) +
+        (Math.max(1, Math.floor(Number(entry.power || 1))) * 0.03) +
+        staleBonus,
+      NEMESIS_RETURN_BASE_CHANCE,
+      NEMESIS_RETURN_MAX_CHANCE
+    );
+    if(Math.random() > chance) continue;
+    const score = chance + (Math.max(1, Math.floor(Number(entry.power || 1))) * 0.12) + (gap * 0.03) + (Math.random() * 0.4);
+    candidates.push({ entry, score });
+  }
+  if(!candidates.length) return null;
+  candidates.sort((a, b)=>b.score - a.score);
+  const chosen = candidates[0].entry;
+  chosen.status = "active";
+  chosen.returns = Math.max(0, Math.floor(Number(chosen.returns || 0))) + 1;
+  chosen.lastSpawnMission = missionNo;
+  chosen.lastSeenMission = missionNo;
+  chosen.updatedAt = Date.now();
+  chosen.power = computeNemesisPower(chosen, missionNo);
+  chosen.bountyCash = computeNemesisBountyCash(chosen, missionNo);
+  nemesis.lastSpawnMission = missionNo;
+  nemesis.lastSpawnId = chosen.id;
+  trimNemesisRoster(nemesis);
+  return chosen;
+}
+
+function applyNemesisEntryToTiger(t, entry, missionNo=currentStoryMissionNumber(S)){
+  if(!t || !entry) return t;
+  const normalized = normalizeNemesisEntry(entry, entry.id || "", missionNo);
+  if(!normalized) return t;
+  const power = computeNemesisPower(normalized, missionNo);
+  const hpMul = clamp(1 + (power * 0.10), 1.08, 1.92);
+  t.nemesisId = normalized.id;
+  t.nemesisAlias = normalized.alias;
+  t.nemesisPower = power;
+  t.nemesisScars = normalized.scars;
+  t.nemesisBehavior = normalized.behavior;
+  t.nemesisBountyCash = normalized.bountyCash;
+  t.nemesisSpeedMul = clamp(1 + (power * 0.03), 1, 1.34);
+  t.nemesisDamageMul = clamp(1 + (power * 0.05), 1, 1.55);
+  t.nemesisDefenseMul = clamp(1 + (power * 0.04), 1, 1.44);
+  t.nemesisPounceMul = clamp(1 + (power * 0.03), 1, 1.42);
+  t.nemesisReturned = true;
+  t.hpMax = Math.max(12, Math.round(Number(t.hpMax || t.hp || 100) * hpMul));
+  t.hp = t.hpMax;
+  t.aggroBoost = clamp(Number(t.aggroBoost || 0) + 0.12 + (power * 0.06), 0, 2.4);
+  t.civBias = clamp(Number(t.civBias || 0.4) + 0.03, 0.02, 0.98);
+  if(normalized.behavior === "Shadow") t.personality = "Ambusher";
+  else if(normalized.behavior === "Warlord") t.personality = "Hunter";
+  else if(normalized.behavior === "Skirmisher") t.personality = "Sentinel";
+  else if(normalized.behavior === "Mauler") t.personality = "Hunter";
+  return t;
+}
+
+function resolveNemesisOutcome(t, outcome="KILL"){
+  if(window.__TUTORIAL_MODE__) return null;
+  if(normalizeModeName(S.mode) !== "Story") return null;
+  if(!t || !t.nemesisId || t._nemesisResolved) return null;
+  const nemesis = ensureNemesisState(S);
+  const entry = (nemesis.roster || []).find((item)=>item.id === t.nemesisId);
+  if(!entry) return null;
+  const missionNo = currentStoryMissionNumber(S);
+  const power = Math.max(
+    computeNemesisPower(entry, missionNo),
+    Math.max(1, Math.floor(Number(t.nemesisPower || 1)))
+  );
+  let bountyCash = computeNemesisBountyCash(entry, missionNo);
+  if(String(outcome).toUpperCase() === "CAPTURE"){
+    bountyCash = Math.round(bountyCash * 1.16);
+  }
+  const xpBonus = (String(outcome).toUpperCase() === "CAPTURE" ? NEMESIS_CAPTURE_BONUS_XP : NEMESIS_KILL_BONUS_XP) + (power * 8);
+  S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + bountyCash;
+  trackCashEarned(bountyCash);
+  S.score = Math.max(0, Math.round(Number(S.score || 0))) + Math.round(70 + (power * 28));
+  addXP(xpBonus);
+  entry.status = "resolved";
+  entry.lastOutcome = String(outcome || "KILL").toUpperCase();
+  entry.lastSeenMission = missionNo;
+  entry.lastDefeatMission = missionNo;
+  entry.updatedAt = Date.now();
+  entry.bountyCash = 0;
+  nemesis.lastBountyAt = Date.now();
+  t._nemesisResolved = true;
+  setEventText(
+    `🏆 Nemesis ${entry.alias} ${entry.lastOutcome === "CAPTURE" ? "captured" : "eliminated"} • Bounty +$${bountyCash.toLocaleString()}`,
+    5.2
+  );
+  toast(`Nemesis bounty claimed: +$${bountyCash.toLocaleString()}.`);
+  trimNemesisRoster(nemesis);
+  return entry;
 }
 
 function pushBalanceHistory(list, item, max=32){
@@ -4358,6 +4788,10 @@ function storySnapshotQuality(state){
   const perkPoints = Math.max(0, Math.floor(Number(state.perkPoints || 0)));
   const perkRanks = sumNonNegativeIntValues(state.perks);
   const contractProgress = sumNonNegativeIntValues(state.contractTallies);
+  const nemesisState = ensureNemesisState({ nemesis: state.nemesis || {} });
+  const nemesisActive = (nemesisState.roster || []).filter((entry)=>entry.status !== "resolved").length;
+  const nemesisResolved = (nemesisState.roster || []).filter((entry)=>entry.status === "resolved").length;
+  const nemesisPower = (nemesisState.roster || []).reduce((sum, entry)=>sum + Math.max(0, Math.floor(Number(entry?.power || 0))), 0);
   return (
     (mission * 1_000_000) +
     (level * 10_000) +
@@ -4373,7 +4807,10 @@ function storySnapshotQuality(state){
     (shields * 90) +
     (perkPoints * 50) +
     (perkRanks * 220) +
-    (contractProgress * 3)
+    (contractProgress * 3) +
+    (nemesisActive * 140) +
+    (nemesisResolved * 220) +
+    (nemesisPower * 16)
   );
 }
 
@@ -4489,6 +4926,7 @@ function load(){
       ensureLiveOpsState(fallback);
       ensureOpsTotalsState(fallback);
       ensureBalanceStatsState(fallback);
+      ensureNemesisState(fallback);
       ensureClanState(fallback);
       ensureSeasonPassState(fallback);
       return fallback;
@@ -4514,6 +4952,7 @@ function load(){
     m.stats = { ...DEFAULT.stats, ...(saved.stats||{}) };
     m.opsTotals = { ...DEFAULT.opsTotals, ...((saved.opsTotals && typeof saved.opsTotals === "object") ? saved.opsTotals : {}) };
     m.balanceStats = { ...defaultBalanceStatsState(), ...((saved.balanceStats && typeof saved.balanceStats === "object") ? saved.balanceStats : {}) };
+    m.nemesis = (saved.nemesis && typeof saved.nemesis === "object") ? cloneState(saved.nemesis) : defaultNemesisState();
     m.contractTallies = normalizeContractTalliesMap(saved.contractTallies);
     m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
     m.liveOps = (saved.liveOps && typeof saved.liveOps === "object") ? saved.liveOps : null;
@@ -4551,6 +4990,7 @@ function load(){
     ensureLiveOpsState(m);
     ensureOpsTotalsState(m);
     ensureBalanceStatsState(m);
+    ensureNemesisState(m);
     ensureClanState(m);
     ensureSeasonPassState(m);
     ensureStoryEndgameState(m);
@@ -4571,6 +5011,7 @@ function load(){
     ensureLiveOpsState(fallback);
     ensureOpsTotalsState(fallback);
     ensureBalanceStatsState(fallback);
+    ensureNemesisState(fallback);
     ensureClanState(fallback);
     return fallback;
   }
@@ -9506,6 +9947,7 @@ function writeStoryProfileData(source="autosave", state=S){
   if(!src || typeof src !== "object") return false;
   ensureStoryEndgameState(src);
   const seasonPass = ensureSeasonPassState(src);
+  const nemesis = ensureNemesisState(src);
   const payload = {
     storyLevel: clamp(Math.floor(Number(src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
     storyLastMission: clamp(Math.floor(Number(src.storyLastMission || src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
@@ -9539,6 +9981,7 @@ function writeStoryProfileData(source="autosave", state=S){
     stats: { ...(src.stats || {}) },
     opsTotals: { ...ensureOpsTotalsState(src) },
     balanceStats: cloneState(ensureBalanceStatsState(src)),
+    nemesis: cloneState(nemesis),
     contractTallies: { ...ensureContractTalliesState(src) },
     contracts: (src.contracts && typeof src.contracts === "object") ? cloneState(src.contracts) : null,
     liveOps: (src.liveOps && typeof src.liveOps === "object") ? cloneState(src.liveOps) : null,
@@ -9726,6 +10169,10 @@ function applyStoryProfileToState(state, profile){
     stats.lastUpdatedAt = Math.max(stats.lastUpdatedAt || 0, incoming.lastUpdatedAt || 0);
     recomputeBalanceAutoTune(state);
   }
+  if(profile.nemesis && typeof profile.nemesis === "object"){
+    state.nemesis = mergeNemesisState(state.nemesis, profile.nemesis, currentStoryMissionNumber(state));
+    ensureNemesisState(state);
+  }
   if(profile.contractTallies && typeof profile.contractTallies === "object"){
     ensureContractTalliesState(state);
     for(const [metric, fallback] of Object.entries(DEFAULT_CONTRACT_TALLIES)){
@@ -9837,6 +10284,7 @@ function writeStoryProgressData(payload={}){
   if(window.__TUTORIAL_MODE__) return false;
   ensureStoryEndgameState(S);
   const seasonPass = ensureSeasonPassState(S);
+  const nemesis = ensureNemesisState(S);
   const storyVariant = normalizeStoryVariant(payload.storyVariant ?? S.storyVariant);
   const storyNgPlusTier = Math.max(0, Math.floor(Number(payload.storyNgPlusTier ?? S.storyNgPlusTier ?? 0)));
   const gauntletDepth = Math.max(1, Math.floor(Number(payload.gauntletDepth ?? S.gauntletDepth ?? 1)));
@@ -9889,6 +10337,7 @@ function writeStoryProgressData(payload={}){
     stats: { ...(payload.stats ?? S.stats ?? {}) },
     opsTotals: { ...ensureOpsTotalsState(payload.opsTotals ? { opsTotals: payload.opsTotals } : S) },
     balanceStats: cloneState(ensureBalanceStatsState(payload.balanceStats ? { balanceStats: payload.balanceStats } : S)),
+    nemesis: cloneState(payload.nemesis && typeof payload.nemesis === "object" ? ensureNemesisState({ nemesis: payload.nemesis }) : nemesis),
     contractTallies: normalizeContractTalliesMap(payload.contractTallies ?? S.contractTallies),
     contracts: (payload.contracts && typeof payload.contracts === "object")
       ? cloneState(payload.contracts)
@@ -14534,6 +14983,17 @@ function spawnTigers(){
       _bossPrefightWarnedAt:0,
       _bossLastTellAt:0,
       _bossLastTellKey:"",
+      nemesisId:"",
+      nemesisAlias:"",
+      nemesisPower:0,
+      nemesisScars:0,
+      nemesisBehavior:"",
+      nemesisBountyCash:0,
+      nemesisSpeedMul:1,
+      nemesisDamageMul:1,
+      nemesisDefenseMul:1,
+      nemesisPounceMul:1,
+      nemesisReturned:false,
       wanderAngle:Math.random()*(Math.PI*2),
       heading:0,
       drawDir:1,
@@ -14565,6 +15025,13 @@ function spawnTigers(){
   const arcadeBoss=!!(arcadeMission && arcadeMission.boss);
   const arcadeBossCount = arcadeBoss ? 1 : 0;
   if(storyBoss || arcadeBoss) count = 1;
+  const storyMissionNo = (S.mode === "Story")
+    ? clamp(Math.floor(Number(storyMission?.number || S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length)
+    : 1;
+  const nemesisEntry = (S.mode === "Story" && !storyBoss && !window.__TUTORIAL_MODE__)
+    ? pickReturningNemesisForMission(storyMissionNo)
+    : null;
+  const nemesisSlot = nemesisEntry ? rand(Math.max(0, Math.floor(count * 0.45)), Math.max(0, count - 1)) : -1;
   const packCount = clamp(Math.ceil(count / 2), 1, 4);
   const sitePool = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice().reverse();
   const fallbackPacks = [
@@ -14592,6 +15059,9 @@ function spawnTigers(){
     let typeKey=pickTigerType();
     if(storyBoss && i < storyBossCount) typeKey = storyMission.bossType || "Alpha";
     if(arcadeBoss && i < arcadeBossCount) typeKey = arcadeMission.bossType || "Alpha";
+    if(nemesisEntry && i === nemesisSlot){
+      typeKey = nemesisEntry.type || typeKey;
+    }
 
     const def=TIGER_TYPES.find(t=>t.key===typeKey)||TIGER_TYPES[1];
 
@@ -14630,7 +15100,7 @@ function spawnTigers(){
       }
     );
 
-    S.tigers.push({
+    const tigerObj = {
       id:i+1,
       type:def.key,
       x:tigerSpawn.x,
@@ -14682,12 +15152,31 @@ function spawnTigers(){
       _bossPrefightWarnedAt:0,
       _bossLastTellAt:0,
       _bossLastTellKey:"",
+      nemesisId:"",
+      nemesisAlias:"",
+      nemesisPower:0,
+      nemesisScars:0,
+      nemesisBehavior:"",
+      nemesisBountyCash:0,
+      nemesisSpeedMul:1,
+      nemesisDamageMul:1,
+      nemesisDefenseMul:1,
+      nemesisPounceMul:1,
+      nemesisReturned:false,
       wanderAngle:Math.random()*(Math.PI*2),
       heading:Math.atan2(initialVy, initialVx),
       drawDir:initialVx >= 0 ? 1 : -1,
       gaitState:"walk",
       gaitBlend:0
-    });
+    };
+    if(nemesisEntry && i === nemesisSlot){
+      applyNemesisEntryToTiger(tigerObj, nemesisEntry, storyMissionNo);
+    }
+    S.tigers.push(tigerObj);
+  }
+  if(nemesisEntry){
+    setEventText(`☠️ Nemesis returned: ${nemesisEntry.alias} (Lv ${nemesisEntry.power}) • Bounty $${nemesisEntry.bountyCash.toLocaleString()}`, 6.2);
+    toast(`Nemesis returned: ${nemesisEntry.alias}`);
   }
 }
 
@@ -14800,6 +15289,17 @@ function spawnRogueTiger(options={}){
     _bossPrefightWarnedAt:0,
     _bossLastTellAt:0,
     _bossLastTellKey:"",
+    nemesisId:"",
+    nemesisAlias:"",
+    nemesisPower:0,
+    nemesisScars:0,
+    nemesisBehavior:"",
+    nemesisBountyCash:0,
+    nemesisSpeedMul:1,
+    nemesisDamageMul:1,
+    nemesisDefenseMul:1,
+    nemesisPounceMul:1,
+    nemesisReturned:false,
     wanderAngle:Math.random()*(Math.PI*2),
     heading:0,
     drawDir:1,
@@ -16661,10 +17161,12 @@ function tigerMotionProfile(t, def, now=Date.now()){
   const rage = (t.type==="Berserker" && t.rageOn) ? 1 : 0;
   const fading = ((t.type==="Stalker" && now < (t.fadeUntil||0)) || bossStealthActive(t, now)) ? 1 : 0;
   const scoutDash = (t.type==="Scout" && now < (t.dashUntil||0)) ? 1 : 0;
+  const nemesisSpeedMul = clamp(Number(t.nemesisSpeedMul || 1), 0.8, 1.45);
+  const nemesisPounceMul = clamp(Number(t.nemesisPounceMul || 1), 0.8, 1.45);
 
-  const walk = (base.walk + (def.spd * 0.15) + (hunter * 0.30) + (pack * 0.25)) * persona.speedMul;
-  const chase = (base.chase + (def.spd * 0.20) + (hunter * 0.85) + (pack * 0.55) + (rage * 0.35) + (fading * 0.22)) * persona.speedMul;
-  const sprint = (base.sprint + (def.spd * 0.24) + (hunter * 1.05) + (pack * 0.85) + (rage * 0.55) + (scoutDash * 0.35)) * persona.speedMul;
+  const walk = (base.walk + (def.spd * 0.15) + (hunter * 0.30) + (pack * 0.25)) * persona.speedMul * nemesisSpeedMul;
+  const chase = (base.chase + (def.spd * 0.20) + (hunter * 0.85) + (pack * 0.55) + (rage * 0.35) + (fading * 0.22)) * persona.speedMul * nemesisSpeedMul;
+  const sprint = (base.sprint + (def.spd * 0.24) + (hunter * 1.05) + (pack * 0.85) + (rage * 0.55) + (scoutDash * 0.35)) * persona.speedMul * nemesisSpeedMul;
   const turnBase = t.type==="Scout" ? 0.21 : (t.type==="Stalker" ? 0.18 : (t.type==="Berserker" ? 0.17 : 0.155));
   const steerBase = t.type==="Scout" ? 0.062 : (t.type==="Stalker" ? 0.054 : 0.048);
 
@@ -16679,7 +17181,7 @@ function tigerMotionProfile(t, def, now=Date.now()){
     burstMs: base.burstMs,
     pounceForce: base.pounceForce + (hunter * 0.35) + (pack * 0.18) + (rage * 0.25),
     pounceCd: base.pounceCd,
-    pounceChance: clamp((base.pounceChance + (hunter * 0.03) + (pack * 0.02) + (rage * 0.02)) * persona.pounceMul, 0, 0.24),
+    pounceChance: clamp((base.pounceChance + (hunter * 0.03) + (pack * 0.02) + (rage * 0.02)) * persona.pounceMul * nemesisPounceMul, 0, 0.30),
     turnRateWalk: turnBase * (0.60 + (hunter * 0.08)),
     turnRateChase: turnBase * (1.00 + (hunter * 0.12)),
     steerGain: steerBase + (hunter * 0.01),
@@ -18149,6 +18651,7 @@ function bindAttackButtonGestures(){
 
 function endBattle(reason){
   const focusTigerId = S.activeTigerId;
+  const focusTiger = focusTigerId ? tigerById(focusTigerId) : null;
   triggerBattleCinematic("exit", focusTigerId);
   const overlay = document.getElementById("battleOverlay");
   if(overlay) overlay.style.display="none";
@@ -18160,7 +18663,15 @@ function endBattle(reason){
   S.rollBufferedUntil = 0;
   transitionCleanupSweep("battle-end");
   clearTransientCombatVisuals();
-  if(reason==="RETREAT") S.aggro = clamp(S.aggro+4,0,100);
+  if(reason==="RETREAT"){
+    S.aggro = clamp(S.aggro+4,0,100);
+    if(focusTiger && focusTiger.alive){
+      const damaged = Number(focusTiger.hp || 0) < Number(focusTiger.hpMax || 0);
+      if(damaged || focusTiger.nemesisId){
+        registerTigerEscapeNemesis(focusTiger, "RETREAT");
+      }
+    }
+  }
   renderCombatControls();
   save();
 }
@@ -18382,6 +18893,7 @@ function finishTigerKill(t){
   grantSeasonPassPoints(8, "Tiger eliminated");
   applySeasonFinisherVisual(t, "KILL");
   trackCashEarned(pay.cash);
+  resolveNemesisOutcome(t, "KILL");
   unlockAchv("kill1","First Kill");
   S.trust=clamp(S.trust+pay.trust,0,100);
   S.aggro=clamp(S.aggro+pay.aggro,0,100);
@@ -18472,6 +18984,7 @@ function playerAction(action){
     applySeasonFinisherVisual(t, "CAPTURE");
     awardCombo("capture");
     trackCashEarned(pay.cash);
+    resolveNemesisOutcome(t, "CAPTURE");
     unlockAchv("cap1","First Capture");
     S.trust=clamp(S.trust+pay.trust,0,100);
     S.aggro=clamp(S.aggro+pay.aggro,0,100);
@@ -21323,6 +21836,19 @@ function drawTiger(t){
   ctx.lineWidth=1.2*s;
   ctx.beginPath(); ctx.moveTo(28*s, -4.8*s); ctx.lineTo(32*s, -5.6*s); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(28*s, -3.3*s); ctx.lineTo(32*s, -3.6*s); ctx.stroke();
+  if(Number(t.nemesisScars || 0) > 0){
+    const scarCount = clamp(Math.floor(Number(t.nemesisScars || 1)), 1, 7);
+    ctx.strokeStyle = "rgba(239,68,68,.75)";
+    ctx.lineWidth = 1.25 * s;
+    for(let i=0; i<scarCount; i++){
+      const sx = (-8 + (i * 3.6)) * s;
+      const sy = (-3 + ((i % 2) * 1.8)) * s;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + (5.4 * s), sy + (4.6 * s));
+      ctx.stroke();
+    }
+  }
   if(atkProgress > 0){
     const clawReach = (atkKind === "charge" ? 12 : (atkKind === "pounce" ? 10 : 8)) * atkSwing;
     const clawLift = (atkKind === "pounce" ? 3.2 : 2.2) * atkSwing;
@@ -21477,8 +22003,11 @@ function drawTiger(t){
   const bossPhaseTag = isBossTiger(t)
     ? ` • P${clamp(Math.floor(Number(t.bossPhaseIndex || bossPhaseFromHp(t))), 1, bossPhaseCount(t))}/${bossPhaseCount(t)}`
     : "";
-  const fullLabel = t.type + bossTag + bossPhaseTag + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
-  const compactLabel = t.type + (t.tranqTagged ? " (tranq)" : "");
+  const nemesisLabel = t.nemesisAlias
+    ? ` ☠ ${t.nemesisAlias}${Number(t.nemesisPower || 0) > 0 ? ` Lv${Math.floor(Number(t.nemesisPower || 0))}` : ""}`
+    : "";
+  const fullLabel = t.type + bossTag + bossPhaseTag + nemesisLabel + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
+  const compactLabel = (t.nemesisAlias ? `${t.type} • ${t.nemesisAlias}` : t.type) + (t.tranqTagged ? " (tranq)" : "");
   const skipLabel =
     visualReadabilityHeavyMode() &&
     !tigerFocus &&
@@ -22029,6 +22558,7 @@ function init(){
   if(!S.progressionUnlocks || typeof S.progressionUnlocks !== "object") S.progressionUnlocks = {};
   ensureContractTalliesState(S);
   ensureContractsState(S);
+  ensureNemesisState(S);
   if(S.paused && !S.gameOver && !S.missionEnded){
     S.paused = false;
     S.pauseReason = null;
@@ -22088,6 +22618,17 @@ function init(){
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(typeof t.gaitState !== "string") t.gaitState = "walk";
     if(!Number.isFinite(t.gaitBlend)) t.gaitBlend = 0;
+    if(typeof t.nemesisId !== "string") t.nemesisId = "";
+    if(typeof t.nemesisAlias !== "string") t.nemesisAlias = "";
+    if(!Number.isFinite(t.nemesisPower)) t.nemesisPower = 0;
+    if(!Number.isFinite(t.nemesisScars)) t.nemesisScars = 0;
+    if(typeof t.nemesisBehavior !== "string") t.nemesisBehavior = "";
+    if(!Number.isFinite(t.nemesisBountyCash)) t.nemesisBountyCash = 0;
+    if(!Number.isFinite(t.nemesisSpeedMul)) t.nemesisSpeedMul = 1;
+    if(!Number.isFinite(t.nemesisDamageMul)) t.nemesisDamageMul = 1;
+    if(!Number.isFinite(t.nemesisDefenseMul)) t.nemesisDefenseMul = 1;
+    if(!Number.isFinite(t.nemesisPounceMul)) t.nemesisPounceMul = 1;
+    if(typeof t.nemesisReturned !== "boolean") t.nemesisReturned = false;
     ensureTigerHuntState(t);
   }
   for(const civ of (S.civilians || [])){
