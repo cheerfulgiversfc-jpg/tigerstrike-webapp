@@ -52,6 +52,14 @@ const CLAN_CONTRACT_POOL = [
     reward: { cash: 3600, perkPoints: 2 },
   },
 ];
+const REFERRAL_MILESTONES = Object.freeze([
+  { target: 1, title: "Scout Recruit", reward: "Unlock referral streak tracking" },
+  { target: 3, title: "Field Recruiter", reward: "Early growth badge" },
+  { target: 5, title: "Pack Builder", reward: "Community bonus milestone" },
+  { target: 10, title: "Rescue Network", reward: "Major referral milestone" },
+  { target: 25, title: "Operations Driver", reward: "Elite referral milestone" },
+  { target: 50, title: "Legendary Recruiter", reward: "Top referral milestone" },
+]);
 
 function toInt(value, fallback = 0){
   const n = Number(value);
@@ -183,6 +191,51 @@ function scoreFormula(parts){
     (civLost * 300)
   );
   return score > 0 ? score : 0;
+}
+
+function referralMilestoneFromCount(count = 0){
+  const started = clampNonNegative(count);
+  const fallback = {
+    target: 0,
+    title: "No Milestone Yet",
+    reward: "Share your referral link to start milestone progress.",
+  };
+  let current = fallback;
+  for(const tier of REFERRAL_MILESTONES){
+    if(started >= tier.target){
+      current = tier;
+    }else{
+      break;
+    }
+  }
+  const next = REFERRAL_MILESTONES.find((tier)=>started < tier.target) || null;
+  const remaining = next ? Math.max(0, next.target - started) : 0;
+  const progressPct = next
+    ? Math.max(0, Math.min(100, Math.floor((started / Math.max(1, next.target)) * 100)))
+    : 100;
+  return {
+    started,
+    current: {
+      target: clampNonNegative(current.target),
+      title: safeText(current.title || fallback.title),
+      reward: safeText(current.reward || fallback.reward),
+    },
+    next: next
+      ? {
+        target: clampNonNegative(next.target),
+        title: safeText(next.title || ""),
+        reward: safeText(next.reward || ""),
+        remaining,
+      }
+      : null,
+    progressPct,
+    tiers: REFERRAL_MILESTONES.map((tier)=>({
+      target: clampNonNegative(tier.target),
+      title: safeText(tier.title || ""),
+      reward: safeText(tier.reward || ""),
+      reached: started >= clampNonNegative(tier.target),
+    })),
+  };
 }
 
 function seasonTierFromPoints(points){
@@ -1242,6 +1295,7 @@ module.exports = {
   recordClaimError,
   recordClaimPaid,
   recordReferralStart,
+  referralMilestoneFromCount,
   getLeaderboardSnapshot,
   getClanCloudSnapshot,
 };

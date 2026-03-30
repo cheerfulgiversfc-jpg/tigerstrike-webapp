@@ -1,3 +1,5 @@
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 function envText(name, fallback = ""){
   return String(process.env[name] || fallback).trim();
 }
@@ -112,6 +114,30 @@ function pickLiveopsKind(tsMs = Date.now()){
   return kinds[idx] || "campaign";
 }
 
+function liveopsKindLabel(kind){
+  const key = String(kind || "").trim().toLowerCase();
+  if(key === "play") return "Play Drive";
+  if(key === "stars") return "Stars Top-Up";
+  if(key === "premium") return "Premium Spotlight";
+  return "Campaign Push";
+}
+
+function eventDropSnapshot(tsMs = Date.now()){
+  const now = Number(tsMs || Date.now());
+  const safeNow = Number.isFinite(now) ? now : Date.now();
+  const kind = pickLiveopsKind(safeNow);
+  const nextAtMs = (Math.floor(safeNow / DAY_MS) + 1) * DAY_MS;
+  const nextKind = pickLiveopsKind(nextAtMs + 1000);
+  return {
+    kind,
+    label: liveopsKindLabel(kind),
+    nextKind,
+    nextLabel: liveopsKindLabel(nextKind),
+    nextAt: new Date(nextAtMs).toISOString(),
+    secondsToNext: Math.max(0, Math.floor((nextAtMs - safeNow) / 1000)),
+  };
+}
+
 function targetChannelFrom(source){
   if(source?.chat?.type === "channel") return source.chat.id;
   return normalizeChatId(envText("TELEGRAM_CHANNEL_ID"));
@@ -124,5 +150,7 @@ module.exports = {
   buildPostTemplate,
   liveopsKinds,
   pickLiveopsKind,
+  liveopsKindLabel,
+  eventDropSnapshot,
   targetChannelFrom,
 };

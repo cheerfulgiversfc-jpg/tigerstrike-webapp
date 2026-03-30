@@ -1338,6 +1338,16 @@
           <div class="launchHeroCardValue" id="launchClanCard">Clan status loading...</div>
           <button class="ghost" onclick="openClanContractsFromLaunchIntro()">🤝 Clan Contracts</button>
         </div>
+        <div class="launchHeroCard">
+          <div class="launchHeroCardTitle">Referral Milestone</div>
+          <div class="launchHeroCardValue" id="launchReferralCard">Referral progress loading...</div>
+          <button class="ghost" onclick="shareReferralFromLaunchIntro()">🔗 Invite Squad</button>
+        </div>
+        <div class="launchHeroCard">
+          <div class="launchHeroCardTitle">Telegram Event Drop</div>
+          <div class="launchHeroCardValue" id="launchEventDropCard">Event drop status loading...</div>
+          <button class="ghost" onclick="openLiveOpsFromLaunchIntro()">📣 View Event Drop</button>
+        </div>
       </div>
       <div class="hudLine" id="launchProgressHint">Continue where you left off, or restart from Mission 1.</div>
       <div class="row">
@@ -1581,10 +1591,16 @@
   <div class="modal">
     <div class="modalTop"><div class="modalTitle">✅ Mission Complete</div><button class="ghost" onclick="closeComplete()">Close</button></div>
     <div class="modalBody">
+      <div class="storyScene">
+        <div class="storySceneTitle">Shareable Mission Recap</div>
+        <div class="storySceneText" id="completeRecapCard">Mission recap preparing...</div>
+      </div>
       <div class="hudLine" id="completeText"></div>
       <div class="divider"></div>
       <div class="row">
         <button class="good" onclick="startNextMission()">Start Next Mission</button>
+        <button class="ghost" onclick="shareMissionRecap()">Share Recap</button>
+        <button class="ghost" onclick="shareReferralLinkFromGame()">Invite Friends</button>
         <button class="ghost" onclick="openShop()">Shop First</button>
         <button class="ghost" onclick="openInventory()">Inventory</button>
       </div>

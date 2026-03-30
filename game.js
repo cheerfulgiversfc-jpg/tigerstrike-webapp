@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4464";
+const TS_BUILD = "4465";
 if(tg){
   try{
     tg.expand?.();
@@ -850,6 +850,233 @@ function launchClanSummaryText(state=S){
   const members = Math.max(1, Math.floor(Number(cloud?.members || 1)));
   const score = Math.max(0, Math.floor(Number(cloud?.score || 0)));
   return `${state.clanName} [${state.clanTag}] • Rank ${rankTxt} • ${members} member${members===1?"":"s"} • ${score.toLocaleString()} pts`;
+}
+
+function normalizeReferralMilestoneSnapshot(raw={}){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const started = Math.max(0, Math.floor(Number(src.started || 0)));
+  const current = (src.current && typeof src.current === "object") ? src.current : {};
+  const next = (src.next && typeof src.next === "object") ? src.next : null;
+  return {
+    started,
+    current: {
+      target: Math.max(0, Math.floor(Number(current.target || 0))),
+      title: String(current.title || "No Milestone Yet"),
+      reward: String(current.reward || ""),
+    },
+    next: next
+      ? {
+        target: Math.max(0, Math.floor(Number(next.target || 0))),
+        title: String(next.title || ""),
+        reward: String(next.reward || ""),
+        remaining: Math.max(0, Math.floor(Number(next.remaining || 0))),
+      }
+      : null,
+    progressPct: clamp(Number(src.progressPct || 0), 0, 100),
+    link: String(src.link || "").trim(),
+    botLink: String(src.botLink || "").trim(),
+  };
+}
+
+function launchReferralSummaryText(state=S){
+  const ref = normalizeReferralMilestoneSnapshot(state?.referralMilestone || {});
+  if(ref.started <= 0 && !ref.next){
+    return "Use /ref in Telegram to generate your invite link.";
+  }
+  if(ref.next){
+    return `Referrals ${ref.started} • Next ${ref.next.title} (${ref.next.target}) in ${ref.next.remaining}`;
+  }
+  return `Referrals ${ref.started} • MAX milestone reached (${ref.current.title})`;
+}
+
+function countdownTextFromMs(ms){
+  const total = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if(h > 0) return `${h}h ${String(m).padStart(2,"0")}m`;
+  if(m > 0) return `${m}m ${String(s).padStart(2,"0")}s`;
+  return `${s}s`;
+}
+
+function normalizeTelegramEventDrop(raw={}){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const nextAtRaw = String(src.nextAt || "").trim();
+  const nextAtMs = nextAtRaw ? Date.parse(nextAtRaw) : NaN;
+  return {
+    kind: String(src.kind || "campaign"),
+    label: String(src.label || "Campaign Push"),
+    nextKind: String(src.nextKind || "campaign"),
+    nextLabel: String(src.nextLabel || "Campaign Push"),
+    nextAt: nextAtRaw,
+    nextAtMs: Number.isFinite(nextAtMs) ? nextAtMs : 0,
+    secondsToNext: Math.max(0, Math.floor(Number(src.secondsToNext || 0))),
+  };
+}
+
+function launchEventDropSummaryText(state=S){
+  const drop = normalizeTelegramEventDrop(state?.telegramEventDrop || {});
+  if(!drop.nextAtMs){
+    return `${drop.label} now • Next drop in daily rotation`;
+  }
+  const remainMs = Math.max(0, drop.nextAtMs - Date.now());
+  return `${drop.label} now • Next ${drop.nextLabel} in ${countdownTextFromMs(remainMs)}`;
+}
+
+function storyOrModeMissionLabel(state=S, missionMeta=null){
+  const mode = normalizeModeName(state?.mode);
+  if(mode === "Story"){
+    const variant = normalizeStoryVariant(missionMeta?.storyVariant || state?.storyVariant);
+    if(variant === STORY_VARIANTS.GAUNTLET){
+      return `Gauntlet Run ${Math.max(1, Math.floor(Number(missionMeta?.runIndex || state?.gauntletDepth || 1)))}`;
+    }
+    if(variant === STORY_VARIANTS.ELITE_HUNT){
+      return `Elite Hunt ${Math.max(1, Math.floor(Number(missionMeta?.runIndex || state?.eliteHuntRuns || 1)))}`;
+    }
+    return `Story Mission ${Math.max(1, Math.floor(Number(missionMeta?.number || state?.storyLevel || 1)))}`;
+  }
+  if(mode === "Arcade"){
+    return `Arcade Mission ${Math.max(1, Math.floor(Number(missionMeta?.number || state?.arcadeLevel || 1)))}`;
+  }
+  return `Survival Wave ${Math.max(1, Math.floor(Number(state?.survivalWave || 1)))}`;
+}
+
+function missionShareBaseUrl(){
+  try{
+    return `${window.location.origin}${window.location.pathname}`;
+  }catch(e){
+    return "https://tigerstrike-webapp.vercel.app/";
+  }
+}
+
+function buildMissionRecapPayload(meta={}){
+  const missionLabel = storyOrModeMissionLabel(S, meta);
+  const chapterName = String(meta?.chapterName || "").trim();
+  const chapterSuffix = chapterName ? ` — ${chapterName}` : "";
+  const kills = Math.max(0, Math.floor(Number(S.stats?.kills || 0)));
+  const captures = Math.max(0, Math.floor(Number(S.stats?.captures || 0)));
+  const evac = Math.max(0, Math.floor(Number(S.stats?.evac || 0)));
+  const trapsSet = Math.max(0, Math.floor(Number(S.stats?.trapsPlaced || 0)));
+  const trapsStop = Math.max(0, Math.floor(Number(S.stats?.trapsTriggered || 0)));
+  const shots = Math.max(0, Math.floor(Number(S.stats?.shots || 0)));
+  const cash = Math.max(0, Math.floor(Number(S.stats?.cashEarned || 0)));
+  const shareUrl = missionShareBaseUrl();
+  const card = [
+    `${missionLabel}${chapterSuffix}`,
+    `Civilians Saved: ${evac}`,
+    `Captures: ${captures} • Kills: ${kills}`,
+    `Traps Set/Stopped: ${trapsSet}/${trapsStop}`,
+    `Shots Fired: ${shots} • Cash Earned: $${cash.toLocaleString()}`,
+  ].join("\n");
+  const shareText = [
+    "🐯 TIGER STRIKE MISSION RECAP",
+    `${missionLabel}${chapterSuffix}`,
+    `🛟 Civilians Saved: ${evac}`,
+    `🎯 Captures: ${captures} • Eliminations: ${kills}`,
+    `🧰 Traps: ${trapsSet}/${trapsStop} • 🔫 Shots: ${shots}`,
+    `💵 Cash Earned: $${cash.toLocaleString()}`,
+    "#TigerStrike",
+  ].join("\n");
+  return {
+    missionLabel,
+    chapterName,
+    card,
+    shareText,
+    shareUrl,
+    createdAt: Date.now(),
+  };
+}
+
+function renderCompleteRecapCard(payload=null){
+  const cardEl = document.getElementById("completeRecapCard");
+  if(!cardEl) return;
+  const recap = (payload && typeof payload === "object")
+    ? payload
+    : ((S.lastMissionRecap && typeof S.lastMissionRecap === "object") ? S.lastMissionRecap : buildMissionRecapPayload());
+  cardEl.innerText = String(recap.card || "Mission recap is ready.");
+}
+
+function openShareUrl(url){
+  const safeUrl = String(url || "").trim();
+  if(!safeUrl) return false;
+  try{
+    if(typeof tg?.openTelegramLink === "function"){
+      tg.openTelegramLink(safeUrl);
+      return true;
+    }
+  }catch(e){}
+  try{
+    window.open(safeUrl, "_blank", "noopener,noreferrer");
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+async function shareFallbackText(text){
+  const body = String(text || "").trim();
+  if(!body) return false;
+  try{
+    if(navigator.share){
+      await navigator.share({ text: body });
+      return true;
+    }
+  }catch(e){}
+  try{
+    if(navigator.clipboard?.writeText){
+      await navigator.clipboard.writeText(body);
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+
+async function shareMissionRecap(){
+  const recap = buildMissionRecapPayload();
+  S.lastMissionRecap = recap;
+  renderCompleteRecapCard(recap);
+  const shareLink = `https://t.me/share/url?url=${encodeURIComponent(recap.shareUrl)}&text=${encodeURIComponent(recap.shareText)}`;
+  if(openShareUrl(shareLink)){
+    toast("Mission recap opened for sharing.");
+    return;
+  }
+  const ok = await shareFallbackText(`${recap.shareText}\n${recap.shareUrl}`);
+  toast(ok ? "Mission recap copied for sharing." : "Could not open share. Copy the recap manually.");
+}
+
+async function shareReferralLinkFromGame(){
+  const ref = normalizeReferralMilestoneSnapshot(S.referralMilestone || {});
+  const link = String(ref.link || "").trim();
+  const botLink = String(ref.botLink || "").trim();
+  if(!link){
+    const fallback = "Referral link not ready yet. Open Telegram bot and run /ref to generate your invite link.";
+    const copied = await shareFallbackText(fallback);
+    if(!copied && botLink){
+      openShareUrl(botLink);
+    }
+    toast(copied ? "Referral instructions copied." : "Run /ref in Telegram bot to get your invite link.");
+    return;
+  }
+  const nextLine = ref.next
+    ? `Next milestone: ${ref.next.title} at ${ref.next.target} (${ref.next.remaining} to go).`
+    : "MAX referral milestone reached.";
+  const text = [
+    "Join me in Tiger Strike.",
+    `Referral progress: ${ref.started} started.`,
+    nextLine,
+    link,
+  ].join("\n");
+  const shareLink = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
+  if(openShareUrl(shareLink)){
+    toast("Referral share opened.");
+    return;
+  }
+  const copied = await shareFallbackText(text);
+  toast(copied ? "Referral link copied." : "Could not share referral link.");
+}
+
+function shareReferralFromLaunchIntro(){
+  return shareReferralLinkFromGame();
 }
 
 function normalizeLiveOpsReward(raw={}){
@@ -3462,6 +3689,9 @@ const DEFAULT = {
   clanContractClaims:{},
   clanCloud:null,
   clanLastSyncAt:0,
+  referralMilestone:null,
+  telegramEventDrop:null,
+  lastMissionRecap:null,
 
 // ===== PHASE 2 PROGRESSION =====
 xp: 0,
@@ -3730,8 +3960,16 @@ async function postGameplayCloudSnapshot(snapshot){
     }catch(e){
       payload = null;
     }
-    if(res.ok && payload?.clan && typeof payload.clan === "object"){
-      S.clanCloud = payload.clan;
+    if(res.ok){
+      if(payload?.clan && typeof payload.clan === "object"){
+        S.clanCloud = payload.clan;
+      }
+      if(payload?.referral && typeof payload.referral === "object"){
+        S.referralMilestone = normalizeReferralMilestoneSnapshot(payload.referral);
+      }
+      if(payload?.eventDrop && typeof payload.eventDrop === "object"){
+        S.telegramEventDrop = normalizeTelegramEventDrop(payload.eventDrop);
+      }
       S.clanLastSyncAt = Date.now();
       try{ updateModeDesc(); }catch(e){}
       try{ refreshLaunchIntroStatus(); }catch(e){}
@@ -3960,6 +4198,9 @@ function load(){
     m.contractTallies = normalizeContractTalliesMap(saved.contractTallies);
     m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
     m.liveOps = (saved.liveOps && typeof saved.liveOps === "object") ? saved.liveOps : null;
+    m.referralMilestone = (saved.referralMilestone && typeof saved.referralMilestone === "object") ? saved.referralMilestone : null;
+    m.telegramEventDrop = (saved.telegramEventDrop && typeof saved.telegramEventDrop === "object") ? saved.telegramEventDrop : null;
+    m.lastMissionRecap = (saved.lastMissionRecap && typeof saved.lastMissionRecap === "object") ? saved.lastMissionRecap : null;
     m.seasonPass = mergeSeasonPassSnapshots(DEFAULT.seasonPass, saved.seasonPass);
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
     m.progressionUnlocks = { ...DEFAULT.progressionUnlocks, ...(saved.progressionUnlocks||{}) };
@@ -5480,6 +5721,7 @@ function closeHudCustomizer(){
   if(S.missionEnded){
     setPaused(true, "complete");
     const complete = document.getElementById("completeOverlay");
+    renderCompleteRecapCard();
     if(complete) complete.style.display = "flex";
     lastOverlay = null;
     syncGamepadFocus();
@@ -8255,6 +8497,7 @@ function closeMissionProgressGuard(restoreComplete=true){
   progressGuardSource = "";
   if(restoreComplete && S.missionEnded && !S.gameOver){
     setPaused(true,"complete");
+    renderCompleteRecapCard();
     document.getElementById("completeOverlay").style.display = "flex";
     return;
   }
@@ -8299,6 +8542,7 @@ function closeMode(){
   document.getElementById("modeOverlay").style.display="none";
   if(S.missionEnded && !S.gameOver){
     setPaused(true,"complete");
+    renderCompleteRecapCard();
     document.getElementById("completeOverlay").style.display="flex";
     return;
   }
@@ -9640,6 +9884,8 @@ function refreshLaunchIntroStatus(){
   const contractsCardEl = document.getElementById("launchContractsCard");
   const liveOpsCardEl = document.getElementById("launchLiveOpsCard");
   const clanCardEl = document.getElementById("launchClanCard");
+  const referralCardEl = document.getElementById("launchReferralCard");
+  const eventDropCardEl = document.getElementById("launchEventDropCard");
   const posterEl = document.getElementById("launchPoster");
   const info = readDaily();
   const streak = Math.max(0, Number(info?.streak || 0));
@@ -9704,6 +9950,12 @@ function refreshLaunchIntroStatus(){
   }
   if(clanCardEl){
     clanCardEl.innerText = launchClanSummaryText(S);
+  }
+  if(referralCardEl){
+    referralCardEl.innerText = launchReferralSummaryText(S);
+  }
+  if(eventDropCardEl){
+    eventDropCardEl.innerText = launchEventDropSummaryText(S);
   }
   refreshLaunchStartButtons();
 }
@@ -9961,6 +10213,7 @@ function openLaunchIntro(force=false){
   __dailyRewardContinue = null;
   bindLaunchIntroAudioGesture();
   refreshLaunchIntroStatus();
+  requestGameplayCloudSync("launch-intro", { force:true });
   setPaused(true,"launch-intro");
   overlay.style.display = "flex";
   clearLaunchMusicLoop();
@@ -10992,6 +11245,7 @@ function closeShop(){
   document.getElementById("shopOverlay").style.display="none";
   if(S.missionEnded){
     setPaused(true,"complete");
+    renderCompleteRecapCard();
     document.getElementById("completeOverlay").style.display="flex";
     lastOverlay=null; return;
   }
@@ -11018,6 +11272,7 @@ function closeInventory(){
   document.getElementById("invOverlay").style.display="none";
   if(S.missionEnded){
     setPaused(true,"complete");
+    renderCompleteRecapCard();
     document.getElementById("completeOverlay").style.display="flex";
     lastOverlay=null; return;
   }
@@ -18329,6 +18584,16 @@ function checkMissionComplete(){
           upkeepNote = `\nSquad upkeep paid: $${upkeep.paid.toLocaleString()} (all active specialists maintained)\n`;
         }
       }
+
+      const recapMeta = {
+        number: activeMission?.number || gameplayCloudMission(S),
+        chapterName: activeMission?.chapterName || "",
+        storyVariant,
+        runIndex: storyMission?.runIndex || 0,
+      };
+      const recap = buildMissionRecapPayload(recapMeta);
+      S.lastMissionRecap = recap;
+      renderCompleteRecapCard(recap);
 
       document.getElementById("completeText").innerText =
         `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;

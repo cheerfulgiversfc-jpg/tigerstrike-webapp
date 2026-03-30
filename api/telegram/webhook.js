@@ -6,6 +6,7 @@ const {
   getPlayerStats,
   touchPlayer,
   recordReferralStart,
+  referralMilestoneFromCount,
   getLeaderboardSnapshot,
 } = require("../_lib/player-stats");
 
@@ -235,9 +236,21 @@ function myIdText(user){
   ].join("\n");
 }
 
-function eventsText(){
+function eventsText(dropSnapshot = null){
+  const drop = (dropSnapshot && typeof dropSnapshot === "object")
+    ? dropSnapshot
+    : liveops.eventDropSnapshot(Date.now());
+  const kindLabel = String(drop?.label || "Campaign Push");
+  const kindKey = String(drop?.kind || "campaign").toUpperCase();
+  const nextLabel = String(drop?.nextLabel || "Campaign Push");
+  const nextAt = String(drop?.nextAt || "").trim();
+  const nextLine = nextAt
+    ? `${nextLabel} at ${nextAt} UTC`
+    : `${nextLabel} in next daily rotation`;
   return [
     "Events",
+    `Telegram Event Drop: ${kindLabel} (${kindKey})`,
+    `Next Drop: ${nextLine}`,
     "Live events and campaign drops are announced in-channel.",
     "Use /news and /update for latest notices.",
     "Use /season to check this week’s season points/tier.",
@@ -999,10 +1012,25 @@ async function handleRefCommand(botToken, ctx, botUsername){
   const startToken = `ref_${userId}`;
   const link = botLink(botUsername, startToken);
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Join me in Tiger Strike")}`;
+  let referralsStarted = 0;
+  try{
+    const stats = await getPlayerStats(ctx.from);
+    referralsStarted = Number(stats?.referralsStarted || 0);
+  }catch(e){
+    referralsStarted = 0;
+  }
+  const milestone = referralMilestoneFromCount(referralsStarted);
+  const nextLine = milestone?.next
+    ? `Next: ${milestone.next.title} at ${milestone.next.target} referrals (${milestone.next.remaining} to go).`
+    : "Next: MAX milestone reached.";
 
   await sendMessage(botToken, ctx.chat.id, [
     "Your referral link:",
     link,
+    "",
+    `Referrals started: ${fmtNum(milestone?.started || 0)}`,
+    `Current milestone: ${milestone?.current?.title || "No milestone yet"} (${fmtNum(milestone?.current?.target || 0)})`,
+    nextLine,
     "",
     "Share this link. When users start the bot with it, we log the referral.",
   ].join("\n"), {
@@ -1249,7 +1277,7 @@ async function handleCommand(botToken, update, source){
     case "events":
     case "news":
     case "update": {
-      await sendMessage(botToken, ctx.chat.id, eventsText(), {
+      await sendMessage(botToken, ctx.chat.id, eventsText(liveops.eventDropSnapshot(Date.now())), {
         reply_markup: leafMenuKeyboard("menu_open"),
       });
       return true;
