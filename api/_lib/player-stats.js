@@ -126,6 +126,12 @@ function weekKeyUTC(tsMs = Date.now()){
   const weekNum = Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
   return `${utcDate.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
 }
+function normalizeWeekSeedKey(value, fallback = weekKeyUTC()){
+  const raw = safeText(value || "");
+  const match = raw.match(/^(\d{4}-W\d{2})$/);
+  if(match) return match[1];
+  return safeText(fallback || weekKeyUTC());
+}
 
 function contractHashInt(str = ""){
   let h = 2166136261;
@@ -329,6 +335,11 @@ function defaultProfile(user, userId = 0){
       civiliansLost: 0,
       missionsCleared: 0,
       cashEarned: 0,
+      weeklySeedKey: week,
+      weeklySeedScore: 0,
+      weeklySeedClearSec: 0,
+      weeklySeedCiviliansSaved: 0,
+      weeklySeedCiviliansTotal: 0,
       score: 0,
     },
     monthly: {
@@ -390,6 +401,12 @@ function defaultProfile(user, userId = 0){
       lastFunds: 0,
       lastHp: 100,
       lastArmor: 20,
+      weeklySeedEnabled: false,
+      weeklySeedKey: week,
+      weeklySeedScore: 0,
+      weeklySeedClearSec: 0,
+      weeklySeedCiviliansSaved: 0,
+      weeklySeedCiviliansTotal: 0,
       lastSyncAt: 0,
     },
     clan: {
@@ -468,6 +485,11 @@ function normalizeProfile(raw, user = null, fallbackUserId = 0){
   out.weekly.civiliansLost = clampNonNegative(out.weekly.civiliansLost);
   out.weekly.missionsCleared = clampNonNegative(out.weekly.missionsCleared);
   out.weekly.cashEarned = clampNonNegative(out.weekly.cashEarned);
+  out.weekly.weeklySeedKey = normalizeWeekSeedKey(out.weekly.weeklySeedKey, out.weekly.period || weekKeyUTC());
+  out.weekly.weeklySeedScore = clampNonNegative(out.weekly.weeklySeedScore);
+  out.weekly.weeklySeedClearSec = clampNonNegative(out.weekly.weeklySeedClearSec);
+  out.weekly.weeklySeedCiviliansSaved = clampNonNegative(out.weekly.weeklySeedCiviliansSaved);
+  out.weekly.weeklySeedCiviliansTotal = clampNonNegative(out.weekly.weeklySeedCiviliansTotal);
   out.weekly.score = clampNonNegative(out.weekly.score);
 
   out.monthly.period = safeText(out.monthly.period || base.monthly.period);
@@ -511,6 +533,12 @@ function normalizeProfile(raw, user = null, fallbackUserId = 0){
   out.ops.lastFunds = clampNonNegative(out.ops.lastFunds);
   out.ops.lastHp = clampNonNegative(out.ops.lastHp);
   out.ops.lastArmor = clampNonNegative(out.ops.lastArmor);
+  out.ops.weeklySeedEnabled = !!out.ops.weeklySeedEnabled;
+  out.ops.weeklySeedKey = normalizeWeekSeedKey(out.ops.weeklySeedKey, out.weekly.period || weekKeyUTC());
+  out.ops.weeklySeedScore = clampNonNegative(out.ops.weeklySeedScore);
+  out.ops.weeklySeedClearSec = clampNonNegative(out.ops.weeklySeedClearSec);
+  out.ops.weeklySeedCiviliansSaved = clampNonNegative(out.ops.weeklySeedCiviliansSaved);
+  out.ops.weeklySeedCiviliansTotal = clampNonNegative(out.ops.weeklySeedCiviliansTotal);
   out.ops.lastSyncAt = clampNonNegative(out.ops.lastSyncAt);
 
   out.clan.tag = normalizeClanTag(out.clan.tag || base.clan.tag);
@@ -536,6 +564,11 @@ function ensurePeriodBuckets(profile){
       civiliansLost: 0,
       missionsCleared: 0,
       cashEarned: 0,
+      weeklySeedKey: week,
+      weeklySeedScore: 0,
+      weeklySeedClearSec: 0,
+      weeklySeedCiviliansSaved: 0,
+      weeklySeedCiviliansTotal: 0,
       score: 0,
     };
   }
@@ -649,6 +682,7 @@ function leaderboardEntryFromProfile(profile, scoreField = "lifetimeScore"){
   const score = clampNonNegative(profile?.[scoreField]);
   const season = (profile && profile.season && typeof profile.season === "object") ? profile.season : {};
   const ops = (profile && profile.ops && typeof profile.ops === "object") ? profile.ops : {};
+  const weekly = (profile && profile.weekly && typeof profile.weekly === "object") ? profile.weekly : {};
   return {
     userId: safeUserId(profile?.userId),
     username: safeUsername(profile?.username),
@@ -664,6 +698,11 @@ function leaderboardEntryFromProfile(profile, scoreField = "lifetimeScore"){
     claimsPaid: clampNonNegative(profile?.claimsPaid),
     fundsGranted: clampNonNegative(profile?.fundsGrantedTotal),
     referrals: clampNonNegative(profile?.referralsStarted),
+    weeklySeedKey: normalizeWeekSeedKey(weekly.weeklySeedKey, weekly.period || weekKeyUTC()),
+    weeklySeedScore: clampNonNegative(weekly.weeklySeedScore),
+    weeklySeedClearSec: clampNonNegative(weekly.weeklySeedClearSec),
+    weeklySeedCiviliansSaved: clampNonNegative(weekly.weeklySeedCiviliansSaved),
+    weeklySeedCiviliansTotal: clampNonNegative(weekly.weeklySeedCiviliansTotal),
     seasonPoints: clampNonNegative(season.points),
     seasonTier: safeText(season.tier || "Bronze"),
     updatedAt: toInt(profile?.updatedAt, nowSec()),
@@ -688,6 +727,11 @@ function periodEntryFromProfile(profile, bucket = "weekly"){
     claimsPaid: clampNonNegative(node.claimsPaid),
     fundsGranted: clampNonNegative(node.fundsGranted),
     referrals: clampNonNegative(node.referrals),
+    weeklySeedKey: normalizeWeekSeedKey(node.weeklySeedKey, node.period || weekKeyUTC()),
+    weeklySeedScore: clampNonNegative(node.weeklySeedScore),
+    weeklySeedClearSec: clampNonNegative(node.weeklySeedClearSec),
+    weeklySeedCiviliansSaved: clampNonNegative(node.weeklySeedCiviliansSaved),
+    weeklySeedCiviliansTotal: clampNonNegative(node.weeklySeedCiviliansTotal),
     seasonPoints: clampNonNegative(season.points || node.score),
     seasonTier: safeText(season.tier || "Bronze"),
     updatedAt: toInt(profile?.updatedAt, nowSec()),
@@ -996,6 +1040,7 @@ async function getPlayerStats(user){
 function normalizeGameplaySnapshot(snapshot){
   const src = (snapshot && typeof snapshot === "object") ? snapshot : {};
   const clanTag = normalizeClanTag(src.clanTag || "SOLO");
+  const weeklySeedKey = normalizeWeekSeedKey(src.weeklySeedKey || weekKeyUTC(), weekKeyUTC());
   return {
     kills: clampNonNegative(src.kills),
     captures: clampNonNegative(src.captures),
@@ -1014,6 +1059,12 @@ function normalizeGameplaySnapshot(snapshot){
     funds: clampNonNegative(src.funds),
     hp: clampNonNegative(src.hp),
     armor: clampNonNegative(src.armor),
+    weeklySeedEnabled: !!src.weeklySeedEnabled,
+    weeklySeedKey,
+    weeklySeedScore: clampNonNegative(src.weeklySeedScore),
+    weeklySeedClearSec: clampNonNegative(src.weeklySeedClearSec),
+    weeklySeedCiviliansSaved: clampNonNegative(src.weeklySeedCiviliansSaved),
+    weeklySeedCiviliansTotal: clampNonNegative(src.weeklySeedCiviliansTotal),
     clanTag,
     clanName: sanitizeClanName(src.clanName, clanTag),
     clanRaidEnabled: !!src.clanRaidEnabled,
@@ -1042,6 +1093,12 @@ async function recordGameplaySnapshot({ user, snapshot }){
       lastFunds: clampNonNegative(profile?.ops?.lastFunds),
       lastHp: clampNonNegative(profile?.ops?.lastHp),
       lastArmor: clampNonNegative(profile?.ops?.lastArmor),
+      weeklySeedEnabled: !!profile?.ops?.weeklySeedEnabled,
+      weeklySeedKey: normalizeWeekSeedKey(profile?.ops?.weeklySeedKey || profile?.weekly?.period || weekKeyUTC(), profile?.weekly?.period || weekKeyUTC()),
+      weeklySeedScore: clampNonNegative(profile?.ops?.weeklySeedScore),
+      weeklySeedClearSec: clampNonNegative(profile?.ops?.weeklySeedClearSec),
+      weeklySeedCiviliansSaved: clampNonNegative(profile?.ops?.weeklySeedCiviliansSaved),
+      weeklySeedCiviliansTotal: clampNonNegative(profile?.ops?.weeklySeedCiviliansTotal),
       lastSyncAt: clampNonNegative(profile?.ops?.lastSyncAt),
     };
 
@@ -1073,7 +1130,43 @@ async function recordGameplaySnapshot({ user, snapshot }){
     profile.ops.lastFunds = snap.funds;
     profile.ops.lastHp = snap.hp;
     profile.ops.lastArmor = snap.armor;
+    profile.ops.weeklySeedEnabled = !!snap.weeklySeedEnabled;
+    profile.ops.weeklySeedKey = normalizeWeekSeedKey(snap.weeklySeedKey || profile.weekly.period, profile.weekly.period);
+    profile.ops.weeklySeedScore = clampNonNegative(snap.weeklySeedScore);
+    profile.ops.weeklySeedClearSec = clampNonNegative(snap.weeklySeedClearSec);
+    profile.ops.weeklySeedCiviliansSaved = clampNonNegative(snap.weeklySeedCiviliansSaved);
+    profile.ops.weeklySeedCiviliansTotal = clampNonNegative(snap.weeklySeedCiviliansTotal);
     profile.ops.lastSyncAt = nowSec();
+
+    const incomingWeek = normalizeWeekSeedKey(snap.weeklySeedKey || profile.weekly.period, profile.weekly.period);
+    if(profile.weekly.period !== incomingWeek){
+      profile.weekly.weeklySeedKey = profile.weekly.period;
+      profile.weekly.weeklySeedScore = clampNonNegative(profile.weekly.weeklySeedScore);
+      profile.weekly.weeklySeedClearSec = clampNonNegative(profile.weekly.weeklySeedClearSec);
+      profile.weekly.weeklySeedCiviliansSaved = clampNonNegative(profile.weekly.weeklySeedCiviliansSaved);
+      profile.weekly.weeklySeedCiviliansTotal = clampNonNegative(profile.weekly.weeklySeedCiviliansTotal);
+    }else{
+      const nextSeedScore = clampNonNegative(snap.weeklySeedScore);
+      if(nextSeedScore > 0){
+        const nextSeedSaved = clampNonNegative(snap.weeklySeedCiviliansSaved);
+        const nextSeedTotal = clampNonNegative(snap.weeklySeedCiviliansTotal);
+        const nextSeedSec = clampNonNegative(snap.weeklySeedClearSec) || 999999;
+        const curSeedScore = clampNonNegative(profile.weekly.weeklySeedScore);
+        const curSeedSaved = clampNonNegative(profile.weekly.weeklySeedCiviliansSaved);
+        const curSeedSec = clampNonNegative(profile.weekly.weeklySeedClearSec) || 999999;
+        const better =
+          (nextSeedScore > curSeedScore) ||
+          (nextSeedScore === curSeedScore && nextSeedSaved > curSeedSaved) ||
+          (nextSeedScore === curSeedScore && nextSeedSaved === curSeedSaved && nextSeedSec < curSeedSec);
+        if(better){
+          profile.weekly.weeklySeedKey = incomingWeek;
+          profile.weekly.weeklySeedScore = nextSeedScore;
+          profile.weekly.weeklySeedClearSec = clampNonNegative(snap.weeklySeedClearSec);
+          profile.weekly.weeklySeedCiviliansSaved = nextSeedSaved;
+          profile.weekly.weeklySeedCiviliansTotal = nextSeedTotal;
+        }
+      }
+    }
 
     profile.clan = {
       ...(profile.clan && typeof profile.clan === "object" ? profile.clan : {}),

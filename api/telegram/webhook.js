@@ -452,6 +452,11 @@ async function myStatsText(user){
     toInt(ops.evac || 0) +
     toInt(ops.missionsCleared || 0);
   const noGameplayYet = totalOps <= 0;
+  const weeklySeedScore = fmtNum(week.weeklySeedScore || 0);
+  const weeklySeedSaved = fmtNum(week.weeklySeedCiviliansSaved || 0);
+  const weeklySeedTotal = fmtNum(week.weeklySeedCiviliansTotal || 0);
+  const weeklySeedTime = fmtNum(week.weeklySeedClearSec || 0);
+  const weeklySeedKey = String(week.weeklySeedKey || week.period || "-");
 
   return [
     "My Stats (Gameplay Live)",
@@ -472,6 +477,7 @@ async function myStatsText(user){
     `Points: ${fmtNum(season.points || week.score)} • Tier: ${season.tier || "Bronze"} • Progress: ${fmtNum(season.progressPct)}%`,
     `Next Tier: ${season.nextTier || "MAX"}${Number(season.pointsToNext || 0) > 0 ? ` in ${fmtNum(season.pointsToNext)} pts` : ""}`,
     "",
+    `Weekly Seed (${weeklySeedKey}) • Score ${weeklySeedScore} • Saved ${weeklySeedSaved}/${weeklySeedTotal} • Time ${weeklySeedTime}s`,
     `Leaderboard Score • Daily: ${fmtNum(day.score)} • Weekly: ${fmtNum(week.score)} • Monthly: ${fmtNum(month.score)} • Lifetime: ${fmtNum(stats.lifetimeScore)}`,
     `Last Synced Mission: ${lastMode} Mission ${lastMission} • Commander Lv ${lastLevel} • HP ${lastHp} • Armor ${lastArmor} • Funds $${lastFunds}`,
     `Last Sync Time: ${lastSync}`,
@@ -517,8 +523,35 @@ async function leaderboardSectionText(kind, user){
   }
 
   if(mode === "weekly"){
+    const weeklyRows = Array.isArray(snapshot.weekly) ? snapshot.weekly : [];
+    const challengeRows = weeklyRows
+      .filter((entry)=>Number(entry?.weeklySeedScore || 0) > 0)
+      .sort((a, b)=>{
+        const scoreDelta = Number(b?.weeklySeedScore || 0) - Number(a?.weeklySeedScore || 0);
+        if(scoreDelta !== 0) return scoreDelta;
+        const savedDelta = Number(b?.weeklySeedCiviliansSaved || 0) - Number(a?.weeklySeedCiviliansSaved || 0);
+        if(savedDelta !== 0) return savedDelta;
+        const ta = Number(a?.weeklySeedClearSec || 0) || 999999;
+        const tb = Number(b?.weeklySeedClearSec || 0) || 999999;
+        if(tb !== ta) return ta - tb;
+        return Number(b?.updatedAt || 0) - Number(a?.updatedAt || 0);
+      });
+    if(challengeRows.length){
+      const key = String(challengeRows.find((entry)=>entry?.weeklySeedKey)?.weeklySeedKey || snapshot.periods?.weekly || "current");
+      const rows = challengeRows.slice(0, 10).map((entry, idx)=>{
+        const total = Math.max(0, Number(entry?.weeklySeedCiviliansTotal || 0));
+        const saved = Math.max(0, Number(entry?.weeklySeedCiviliansSaved || 0));
+        const clearSec = Math.max(0, Number(entry?.weeklySeedClearSec || 0));
+        return `#${idx + 1} ${entryLabel(entry)} — Seed ${fmtNum(entry?.weeklySeedScore || 0)} • Saved ${fmtNum(saved)}/${fmtNum(total)} • Time ${fmtNum(clearSec)}s`;
+      });
+      return [
+        `Weekly Seed Challenge (${key})`,
+        "Same mission seed for all players this week.",
+        ...rows,
+      ].join("\n");
+    }
     const rows = formatLeaderboardRows(
-      snapshot.weekly,
+      weeklyRows,
       (entry)=>`${fmtNum(entry.score)} pts • K ${fmtNum(entry.kills)} • C ${fmtNum(entry.captures)} • Saved ${fmtNum(entry.evac)} • $${fmtNum(entry.cashEarned)}`
     );
     return [`Weekly Leaderboard (${snapshot.periods?.weekly || "current"})`, ...rows].join("\n");

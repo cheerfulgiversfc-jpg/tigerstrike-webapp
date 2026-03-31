@@ -1170,6 +1170,26 @@ function toggleRaidMode(){
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   toast(`Co-op raid mode ${S.clanRaidEnabled ? "enabled" : "disabled"} (Arcade only).`);
 }
+function toggleArcadeWeeklySeedChallenge(){
+  ensureArcadeWeeklySeedState(S);
+  if(normalizeModeName(S.mode) !== "Arcade"){
+    toast("Switch to Arcade mode first.");
+    return;
+  }
+  S.arcadeWeeklySeedEnabled = !S.arcadeWeeklySeedEnabled;
+  S.arcadeWeeklySeedKey = weeklyChallengeWeekKey();
+  S.arcadeWeeklyRunId = "";
+  S.arcadeWeeklyRunStartedAt = 0;
+  deploy();
+  save(true);
+  updateModeDesc();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  toast(
+    S.arcadeWeeklySeedEnabled
+      ? `Weekly Seed Challenge enabled (${S.arcadeWeeklySeedKey}).`
+      : "Weekly Seed Challenge disabled."
+  );
+}
 
 function refreshClanCloudNow(){
   requestGameplayCloudSync("clan-refresh", { force:true });
@@ -1269,6 +1289,10 @@ function storyOrModeMissionLabel(state=S, missionMeta=null){
     return `Story Mission ${Math.max(1, Math.floor(Number(missionMeta?.number || state?.storyLevel || 1)))}`;
   }
   if(mode === "Arcade"){
+    const weeklyEnabled = !!(missionMeta?.weeklySeed || state?.arcadeWeeklySeedEnabled);
+    if(weeklyEnabled){
+      return `Arcade Weekly Seed ${String(missionMeta?.weeklySeedKey || state?.arcadeWeeklySeedKey || weeklyChallengeWeekKey())}`;
+    }
     return `Arcade Mission ${Math.max(1, Math.floor(Number(missionMeta?.number || state?.arcadeLevel || 1)))}`;
   }
   return `Survival Wave ${Math.max(1, Math.floor(Number(state?.survivalWave || 1)))}`;
@@ -2417,7 +2441,7 @@ function isBossTiger(t){
 }
 function currentModeMission(){
   if(S.mode==="Story") return storyMissionForState(S);
-  if(S.mode==="Arcade") return arcadeCampaignMission(S.arcadeLevel);
+  if(S.mode==="Arcade") return activeArcadeMission(S);
   return null;
 }
 function bossChapterIndex(){
@@ -3423,6 +3447,163 @@ function arcadeCampaignMission(level){
   return cfg;
 }
 
+function weeklyChallengeWeekKey(nowMs=Date.now()){
+  return contractWeekKey(nowMs);
+}
+function weeklySeedRng(seedText){
+  let s = (contractHashInt(seedText) >>> 0) || 1;
+  return ()=>{
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+function ensureArcadeWeeklySeedState(state=S){
+  if(!state || typeof state !== "object"){
+    return {
+      arcadeWeeklySeedEnabled:false,
+      arcadeWeeklySeedKey:weeklyChallengeWeekKey(),
+      arcadeWeeklyBestByWeek:{},
+      arcadeWeeklyLastResult:null
+    };
+  }
+  state.arcadeWeeklySeedEnabled = !!state.arcadeWeeklySeedEnabled;
+  const currentWeek = weeklyChallengeWeekKey();
+  const rawWeek = String(state.arcadeWeeklySeedKey || "").trim();
+  state.arcadeWeeklySeedKey = rawWeek || currentWeek;
+  if(state.arcadeWeeklySeedKey !== currentWeek){
+    state.arcadeWeeklySeedKey = currentWeek;
+  }
+  const rawBest = (state.arcadeWeeklyBestByWeek && typeof state.arcadeWeeklyBestByWeek === "object")
+    ? state.arcadeWeeklyBestByWeek
+    : {};
+  const normalizedBest = {};
+  for(const [weekKey, row] of Object.entries(rawBest)){
+    if(!/^\d{4}-W\d{2}$/.test(String(weekKey || "").trim())) continue;
+    if(!row || typeof row !== "object") continue;
+    normalizedBest[weekKey] = {
+      weekKey:String(row.weekKey || weekKey),
+      score:Math.max(0, Math.floor(Number(row.score || 0))),
+      clearSec:Math.max(0, Math.floor(Number(row.clearSec || 0))),
+      civiliansSaved:Math.max(0, Math.floor(Number(row.civiliansSaved || 0))),
+      civiliansTotal:Math.max(0, Math.floor(Number(row.civiliansTotal || 0))),
+      missionSeedKey:String(row.missionSeedKey || weekKey),
+      runId:String(row.runId || ""),
+      updatedAt:Math.max(0, Math.floor(Number(row.updatedAt || 0))),
+    };
+  }
+  const keepKeys = Object.keys(normalizedBest).sort().reverse().slice(0, 24);
+  const trimmedBest = {};
+  for(const k of keepKeys) trimmedBest[k] = normalizedBest[k];
+  state.arcadeWeeklyBestByWeek = trimmedBest;
+  const last = (state.arcadeWeeklyLastResult && typeof state.arcadeWeeklyLastResult === "object")
+    ? state.arcadeWeeklyLastResult
+    : null;
+  state.arcadeWeeklyLastResult = last ? {
+    weekKey:String(last.weekKey || state.arcadeWeeklySeedKey),
+    score:Math.max(0, Math.floor(Number(last.score || 0))),
+    clearSec:Math.max(0, Math.floor(Number(last.clearSec || 0))),
+    civiliansSaved:Math.max(0, Math.floor(Number(last.civiliansSaved || 0))),
+    civiliansTotal:Math.max(0, Math.floor(Number(last.civiliansTotal || 0))),
+    missionSeedKey:String(last.missionSeedKey || state.arcadeWeeklySeedKey),
+    runId:String(last.runId || ""),
+    updatedAt:Math.max(0, Math.floor(Number(last.updatedAt || 0))),
+  } : null;
+  state.arcadeWeeklyRunId = String(state.arcadeWeeklyRunId || "");
+  state.arcadeWeeklyRunStartedAt = Math.max(0, Math.floor(Number(state.arcadeWeeklyRunStartedAt || 0)));
+  return state;
+}
+function weeklySeedResultIsBetter(nextResult, currentResult){
+  if(!currentResult) return true;
+  const nextScore = Math.max(0, Math.floor(Number(nextResult?.score || 0)));
+  const curScore = Math.max(0, Math.floor(Number(currentResult?.score || 0)));
+  if(nextScore !== curScore) return nextScore > curScore;
+  const nextSaved = Math.max(0, Math.floor(Number(nextResult?.civiliansSaved || 0)));
+  const curSaved = Math.max(0, Math.floor(Number(currentResult?.civiliansSaved || 0)));
+  if(nextSaved !== curSaved) return nextSaved > curSaved;
+  const nextSec = Math.max(0, Math.floor(Number(nextResult?.clearSec || 0))) || 999999;
+  const curSec = Math.max(0, Math.floor(Number(currentResult?.clearSec || 0))) || 999999;
+  if(nextSec !== curSec) return nextSec < curSec;
+  const nextAt = Math.max(0, Math.floor(Number(nextResult?.updatedAt || 0)));
+  const curAt = Math.max(0, Math.floor(Number(currentResult?.updatedAt || 0)));
+  return nextAt > curAt;
+}
+function arcadeWeeklyBestForWeek(state=S, weekKey=""){
+  ensureArcadeWeeklySeedState(state);
+  const wk = String(weekKey || state.arcadeWeeklySeedKey || weeklyChallengeWeekKey()).trim();
+  const map = (state.arcadeWeeklyBestByWeek && typeof state.arcadeWeeklyBestByWeek === "object")
+    ? state.arcadeWeeklyBestByWeek
+    : {};
+  return (wk && map[wk]) ? map[wk] : null;
+}
+function recordArcadeWeeklyResult(result, state=S){
+  ensureArcadeWeeklySeedState(state);
+  if(!result || typeof result !== "object") return null;
+  const wk = String(result.weekKey || state.arcadeWeeklySeedKey || weeklyChallengeWeekKey()).trim() || weeklyChallengeWeekKey();
+  const normalized = {
+    weekKey:wk,
+    score:Math.max(0, Math.floor(Number(result.score || 0))),
+    clearSec:Math.max(0, Math.floor(Number(result.clearSec || 0))),
+    civiliansSaved:Math.max(0, Math.floor(Number(result.civiliansSaved || 0))),
+    civiliansTotal:Math.max(0, Math.floor(Number(result.civiliansTotal || 0))),
+    missionSeedKey:String(result.missionSeedKey || wk),
+    runId:String(result.runId || state.arcadeWeeklyRunId || ""),
+    updatedAt:Math.max(0, Math.floor(Number(result.updatedAt || Date.now()))),
+  };
+  const current = arcadeWeeklyBestForWeek(state, wk);
+  const better = weeklySeedResultIsBetter(normalized, current);
+  if(better){
+    state.arcadeWeeklyBestByWeek[wk] = normalized;
+  }
+  state.arcadeWeeklyLastResult = normalized;
+  return {
+    better,
+    current:normalized,
+    best:arcadeWeeklyBestForWeek(state, wk) || normalized
+  };
+}
+function arcadeWeeklyChallengeMission(state=S){
+  ensureArcadeWeeklySeedState(state);
+  const weekKey = String(state.arcadeWeeklySeedKey || weeklyChallengeWeekKey()).trim() || weeklyChallengeWeekKey();
+  const weekNum = clamp(parseInt(weekKey.split("-W")[1], 10) || 1, 1, 53);
+  const chapter = clamp(((weekNum - 1) % 10) + 1, 1, 10);
+  const levelSeed = clamp(((chapter - 1) * 10) + ((contractHashInt(`${weekKey}|level`) % 10) + 1), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  const base = arcadeCampaignMission(levelSeed);
+  const rngCfg = weeklySeedRng(`arcade_weekly_cfg|${weekKey}`);
+  const civBump = Math.floor(rngCfg() * 3) - 1;
+  const tigerBump = Math.floor(rngCfg() * 3) - 1;
+  const forceCapture = rngCfg() > 0.62;
+  const forceTrap = rngCfg() > 0.70;
+  const cfg = {
+    ...base,
+    weeklySeed:true,
+    weeklySeedKey:weekKey,
+    weeklySeedChapter:chapter,
+    number:levelSeed,
+    chapter,
+    chapterName:`Weekly Seed C${chapter}`,
+  };
+  cfg.civilians = clamp((base.civilians || 3) + civBump, 2, 12);
+  cfg.tigers = clamp((base.tigers || 3) + tigerBump, 2, 16);
+  if(forceCapture && cfg.captureRequired <= 0) cfg.captureRequired = 1;
+  if(forceTrap && cfg.trapPlaceRequired <= 0) cfg.trapPlaceRequired = 1;
+  const directives = [
+    `${cfg.civilians} civilians`,
+    `${cfg.tigers} tigers`,
+  ];
+  if(cfg.captureRequired > 0) directives.push(`capture ${cfg.captureRequired}`);
+  if(cfg.captureOnly) directives.push("no tiger kills");
+  if(cfg.trapPlaceRequired > 0) directives.push(`set ${cfg.trapPlaceRequired} trap${cfg.trapPlaceRequired===1?"":"s"}`);
+  if(cfg.trapTriggerRequired > 0) directives.push(`trap-stop ${cfg.trapTriggerRequired}`);
+  cfg.objective = `Weekly Seed Challenge (${weekKey}): ${directives.join(" • ")}.`;
+  return cfg;
+}
+function activeArcadeMission(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(normalizeModeName(src.mode) !== "Arcade") return null;
+  ensureArcadeWeeklySeedState(src);
+  return src.arcadeWeeklySeedEnabled ? arcadeWeeklyChallengeMission(src) : arcadeCampaignMission(src.arcadeLevel);
+}
+
 function arcadeObjectiveProgressText(cfg){
   if(!cfg) return "";
   const bits = [];
@@ -3942,6 +4123,12 @@ const DEFAULT = {
   arcadeBuildcraftSelected:ARCADE_BUILDCRAFT_DEFAULT_ID,
   arcadeBuildcraftPending:ARCADE_BUILDCRAFT_DEFAULT_ID,
   arcadeBuildcraftAppliedKey:"",
+  arcadeWeeklySeedEnabled:false,
+  arcadeWeeklySeedKey:"",
+  arcadeWeeklyRunId:"",
+  arcadeWeeklyRunStartedAt:0,
+  arcadeWeeklyBestByWeek:{},
+  arcadeWeeklyLastResult:null,
   storyLastMission:1,
   storyVariant:"CAMPAIGN",
   storyNgPlusTier:0,
@@ -4160,6 +4347,7 @@ ensureClanState(S);
 ensureOpsTotalsState(S);
 ensureBalanceStatsState(S);
 ensureNemesisState(S);
+ensureArcadeWeeklySeedState(S);
 syncWindowState();
 
 // ---- Tutorial support + global state ----
@@ -4924,9 +5112,12 @@ function gameplayCloudMission(state=S){
 
 function buildGameplayCloudSnapshot(state=S){
   const src = (state && typeof state === "object") ? state : S;
+  ensureArcadeWeeklySeedState(src);
   const clan = ensureClanState(src);
   const totals = ensureOpsTotalsState(src);
   const balance = recomputeBalanceAutoTune(src);
+  const weeklyKey = String(src.arcadeWeeklySeedKey || weeklyChallengeWeekKey()).trim() || weeklyChallengeWeekKey();
+  const weeklyBest = arcadeWeeklyBestForWeek(src, weeklyKey);
   const missionStats = (src.stats && typeof src.stats === "object") ? src.stats : {};
   const kills = Math.max(
     Math.max(0, Math.floor(Number(totals.kills || 0))),
@@ -4962,6 +5153,12 @@ function buildGameplayCloudSnapshot(state=S){
     funds: Math.max(0, Math.floor(Number(src.funds || 0))),
     hp: clamp(Math.floor(Number(src.hp || 0)), 0, 100),
     armor: clamp(Math.floor(Number(src.armor || 0)), 0, Math.max(100, Math.floor(Number(src.armorCap || 100)))),
+    weeklySeedEnabled: !!src.arcadeWeeklySeedEnabled,
+    weeklySeedKey: weeklyKey,
+    weeklySeedScore: Math.max(0, Math.floor(Number(weeklyBest?.score || 0))),
+    weeklySeedClearSec: Math.max(0, Math.floor(Number(weeklyBest?.clearSec || 0))),
+    weeklySeedCiviliansSaved: Math.max(0, Math.floor(Number(weeklyBest?.civiliansSaved || 0))),
+    weeklySeedCiviliansTotal: Math.max(0, Math.floor(Number(weeklyBest?.civiliansTotal || 0))),
     clanTag: clan.tag,
     clanName: clan.name,
     clanRaidEnabled: !!src.clanRaidEnabled,
@@ -4977,6 +5174,12 @@ function gameplayCloudSnapshotSig(snapshot){
     Math.max(0, Math.floor(Number(snap.funds || 0))),
     Math.max(0, Math.floor(Number(snap.hp || 0))),
     Math.max(0, Math.floor(Number(snap.armor || 0))),
+    snap.weeklySeedEnabled ? 1 : 0,
+    String(snap.weeklySeedKey || ""),
+    Math.max(0, Math.floor(Number(snap.weeklySeedScore || 0))),
+    Math.max(0, Math.floor(Number(snap.weeklySeedClearSec || 0))),
+    Math.max(0, Math.floor(Number(snap.weeklySeedCiviliansSaved || 0))),
+    Math.max(0, Math.floor(Number(snap.weeklySeedCiviliansTotal || 0))),
     Math.max(0, Math.floor(Number(snap.kills || 0))),
     Math.max(0, Math.floor(Number(snap.captures || 0))),
     Math.max(0, Math.floor(Number(snap.evac || 0))),
@@ -5246,6 +5449,7 @@ function load(){
       ensureNemesisState(fallback);
       ensureMissionTwistState(fallback);
       ensureArcadeBuildcraftState(fallback);
+      ensureArcadeWeeklySeedState(fallback);
       ensureClanState(fallback);
       ensureSeasonPassState(fallback);
       return fallback;
@@ -5315,6 +5519,7 @@ function load(){
     ensureNemesisState(m);
     ensureMissionTwistState(m);
     ensureArcadeBuildcraftState(m);
+    ensureArcadeWeeklySeedState(m);
     ensureClanState(m);
     ensureSeasonPassState(m);
     ensureStoryEndgameState(m);
@@ -5338,6 +5543,7 @@ function load(){
     ensureNemesisState(fallback);
     ensureMissionTwistState(fallback);
     ensureArcadeBuildcraftState(fallback);
+    ensureArcadeWeeklySeedState(fallback);
     ensureClanState(fallback);
     return fallback;
   }
@@ -9885,7 +10091,13 @@ function currentMissionLabel(){
     }
     return `Story Mission ${clamp(mission.number || 1, 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
   }
-  if(S.mode==="Arcade") return `Arcade Mission ${clamp(S.arcadeLevel || 1, 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
+  if(S.mode==="Arcade"){
+    const mission = activeArcadeMission(S);
+    if(mission?.weeklySeed){
+      return `Arcade Weekly Seed ${String(mission.weeklySeedKey || S.arcadeWeeklySeedKey || weeklyChallengeWeekKey())}`;
+    }
+    return `Arcade Mission ${clamp(mission?.number || S.arcadeLevel || 1, 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
+  }
   return `Survival Wave ${Math.max(1, S.survivalWave || 1)}`;
 }
 function nextMissionLabel(){
@@ -9899,7 +10111,13 @@ function nextMissionLabel(){
     }
     return `Story Mission ${Math.min((S.storyLevel || 1) + 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
   }
-  if(S.mode==="Arcade") return `Arcade Mission ${Math.min((S.arcadeLevel || 1) + 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
+  if(S.mode==="Arcade"){
+    ensureArcadeWeeklySeedState(S);
+    if(S.arcadeWeeklySeedEnabled){
+      return `Arcade Weekly Seed ${S.arcadeWeeklySeedKey || weeklyChallengeWeekKey()}`;
+    }
+    return `Arcade Mission ${Math.min((S.arcadeLevel || 1) + 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
+  }
   return `Survival Wave ${Math.max(1, (S.survivalWave || 1) + 1)}`;
 }
 let progressGuardSource = "";
@@ -10021,10 +10239,11 @@ function currentMissionCardData(){
     };
   }
   if(S.mode==="Arcade"){
+    const mission = activeArcadeMission(S);
     return {
       mode: "Arcade",
       total: ARCADE_CAMPAIGN_OBJECTIVES.length,
-      mission: arcadeCampaignMission(S.arcadeLevel)
+      mission
     };
   }
   return null;
@@ -11337,7 +11556,13 @@ function launchProgressLabelForMode(mode=S.mode){
     if(variant === STORY_VARIANTS.ELITE_HUNT) return `Elite Hunt ${mission.runIndex} (Chapter ${mission.chapter})`;
     return `Story Mission ${storyResumeMissionLevel()}`;
   }
-  if(m === "Arcade") return `Arcade Mission ${clamp(S.arcadeLevel || 1, 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
+  if(m === "Arcade"){
+    ensureArcadeWeeklySeedState(S);
+    if(S.arcadeWeeklySeedEnabled){
+      return `Arcade Weekly Seed ${S.arcadeWeeklySeedKey || weeklyChallengeWeekKey()}`;
+    }
+    return `Arcade Mission ${clamp(S.arcadeLevel || 1, 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`;
+  }
   return `Survival Wave ${Math.max(1, S.survivalWave || 1)}`;
 }
 function modeHasSavedProgress(mode=S.mode){
@@ -11451,6 +11676,8 @@ function refreshLaunchIntroStatus(){
         intelEl.innerText = `Gauntlet Run ${mission.runIndex} • Civilians ${civ} • Tigers ${tig}`;
       } else if(missionCard.mode === "Story" && variant === STORY_VARIANTS.ELITE_HUNT){
         intelEl.innerText = `Elite Hunt ${mission.runIndex} • Chapter ${mission.chapter} • Boss ${mission.bossType || "Alpha"}`;
+      } else if(missionCard.mode === "Arcade" && mission.weeklySeed){
+        intelEl.innerText = `Weekly Seed ${mission.weeklySeedKey} • Civilians ${civ} • Tigers ${tig}`;
       } else {
         intelEl.innerText = `${missionCard.mode} Mission ${mission.number} • Civilians ${civ} • Tigers ${tig}`;
       }
@@ -12036,6 +12263,7 @@ function markModeTabs(){
 function updateModeDesc(){
   ensureClanState(S);
   ensureStoryEndgameState(S);
+  ensureArcadeWeeklySeedState(S);
   const el=document.getElementById("modeDesc");
   if(S.mode==="Story"){
     const mission = storyMissionForState(S);
@@ -12051,7 +12279,18 @@ function updateModeDesc(){
         : "Story Campaign: chapter-based operations with escort/protect pressure, boss intros, and steady chapter rewards.";
     }
   }
-  else if(S.mode==="Arcade") el.innerText=`Arcade Campaign: score-attack missions with a live timer, combo multiplier pressure, and medal ranking on clear.${S.clanRaidEnabled ? " Co-op Raid is ON." : " Co-op Raid is OFF."}`;
+  else if(S.mode==="Arcade"){
+    const wk = S.arcadeWeeklySeedKey || weeklyChallengeWeekKey();
+    const weeklyBest = arcadeWeeklyBestForWeek(S, wk);
+    if(S.arcadeWeeklySeedEnabled){
+      const bestText = weeklyBest
+        ? ` Best: ${weeklyBest.score.toLocaleString()} pts • ${weeklyBest.civiliansSaved}/${weeklyBest.civiliansTotal} saved • ${weeklyBest.clearSec}s.`
+        : " No run submitted yet this week.";
+      el.innerText = `Arcade Weekly Seed Challenge (${wk}): all players get the same mission seed and compete on score, clear time, and civilians saved.${bestText}${S.clanRaidEnabled ? " Co-op Raid is ON." : " Co-op Raid is OFF."}`;
+    }else{
+      el.innerText=`Arcade Campaign: score-attack missions with a live timer, combo multiplier pressure, and medal ranking on clear.${S.clanRaidEnabled ? " Co-op Raid is ON." : " Co-op Raid is OFF."}`;
+    }
+  }
   else el.innerText="Survival: no civilians. Tigers pressure-damage you. Events OFF.";
   const clanStatus = document.getElementById("modeClanStatus");
   if(clanStatus){
@@ -12065,6 +12304,11 @@ function updateModeDesc(){
   if(raidBtn){
     raidBtn.innerText = `🤝 Co-op Raid: ${S.clanRaidEnabled ? "ON" : "OFF"}`;
     raidBtn.className = S.clanRaidEnabled ? "good" : "ghost";
+  }
+  const weeklyBtn = document.getElementById("modeWeeklySeedBtn");
+  if(weeklyBtn){
+    weeklyBtn.innerText = `🎯 Weekly Seed Challenge: ${S.arcadeWeeklySeedEnabled ? "ON" : "OFF"}`;
+    weeklyBtn.className = (S.mode === "Arcade" && S.arcadeWeeklySeedEnabled) ? "good" : "ghost";
   }
   updateStoryEndgameControls();
 }
@@ -15468,7 +15712,7 @@ function spawnCivilians(){
   }
 
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
-  const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
+  const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
   const n = (S.mode==="Story")
     ? clamp(storyMission?.civilians ?? (3 + ((storyMission?.number || S.storyLevel || 1)-1)), 0, 14)
     : (S.mode==="Arcade"
@@ -15715,7 +15959,7 @@ function spawnTigers(){
   }
 
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
-  const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
+  const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
   let count=2;
 
   if(S.mode==="Story"){
@@ -16194,7 +16438,7 @@ function deploy(opts={}){
 
   if(S.mode==="Arcade"){
     prepareArcadeBuildcraftForMission(S);
-    const mission = arcadeCampaignMission(S.arcadeLevel);
+    const mission = activeArcadeMission(S);
     let timeLimitSec = 95 + (mission.chapter * 8);
     if(mission.captureOnly) timeLimitSec += 14;
     timeLimitSec += (mission.captureRequired || 0) * 6;
@@ -16205,6 +16449,13 @@ function deploy(opts={}){
     if(raidModeActive(S)) timeLimitSec += 20;
     S.arcadeMissionLimitSec = clamp(Math.round(timeLimitSec), 90, 240);
     S.arcadeMissionStartAt = Date.now();
+    if(mission.weeklySeed){
+      S.arcadeWeeklyRunStartedAt = S.arcadeMissionStartAt;
+      S.arcadeWeeklyRunId = `${mission.weeklySeedKey || weeklyChallengeWeekKey()}:${S.arcadeMissionStartAt}`;
+    }else{
+      S.arcadeWeeklyRunStartedAt = 0;
+      S.arcadeWeeklyRunId = "";
+    }
     S.arcadeComboPeak = 0;
     S.arcadeScoreBonus = 0;
     S._arcadeTimerWarn = 0;
@@ -16272,13 +16523,19 @@ function startNextMission(){
     }
   }
   if(S.mode==="Arcade"){
-    S.arcadeLevel = Math.min(S.arcadeLevel + 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+    ensureArcadeWeeklySeedState(S);
+    if(S.arcadeWeeklySeedEnabled){
+      S.arcadeWeeklySeedKey = weeklyChallengeWeekKey();
+    }else{
+      S.arcadeLevel = Math.min(S.arcadeLevel + 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+    }
   }
   if(S.mode==="Survival") S.survivalWave += 1;
   deploy({ carryStats:true, hp:carryHp, armor:carryArmor });
   if(wasStoryFinal) toast("Story campaign complete. Replaying Mission 100.");
   else if(S.mode==="Story" && storyVariant === STORY_VARIANTS.GAUNTLET) toast(`Gauntlet advanced to Run ${S.gauntletDepth}.`);
   else if(S.mode==="Story" && storyVariant === STORY_VARIANTS.ELITE_HUNT) toast(`Elite Hunt advanced. Next target: Chapter ${S.eliteHuntChapter}.`);
+  else if(S.mode==="Arcade" && S.arcadeWeeklySeedEnabled) toast(`Weekly Seed Challenge redeployed (${S.arcadeWeeklySeedKey}).`);
   else if(wasArcadeFinal) toast("Arcade campaign complete. Replaying Mission 100.");
   else toast("Next mission started.");
   save(true);
@@ -20073,7 +20330,7 @@ function checkMissionComplete(){
   if(S.gameOver) return;
 
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
-  const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
+  const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
   const activeMission = storyMission || arcadeMission;
   const tAlive = S.tigers.some(t=>t.alive);
   const civTotal = S.civilians.length;
@@ -20133,7 +20390,11 @@ function checkMissionComplete(){
           heading = `Story Mission ${storyMission.number}/100 — ${storyMission.chapterName}\n${storyMission.objective}\n`;
         }
       } else if(arcadeMission){
-        heading = `Arcade Mission ${arcadeMission.number}/100 — ${arcadeMission.chapterName}\n${arcadeMission.objective}\n`;
+        if(arcadeMission.weeklySeed){
+          heading = `Arcade Weekly Seed ${arcadeMission.weeklySeedKey}\n${arcadeMission.objective}\n`;
+        }else{
+          heading = `Arcade Mission ${arcadeMission.number}/100 — ${arcadeMission.chapterName}\n${arcadeMission.objective}\n`;
+        }
       }
       let arcadeSummary = "";
       if(arcadeMission){
@@ -20142,11 +20403,56 @@ function checkMissionComplete(){
         const peak = Math.max(Math.floor(Number(S.arcadeComboPeak || 0)), Math.floor(Number(S.comboCount || 0)));
         const medal = arcadeMissionMedal();
         const bonus = Math.max(0, Math.floor(Number(S.arcadeScoreBonus || 0)));
+        const missionClearSec = Math.max(
+          1,
+          Math.floor(
+            (Date.now() - Math.max(0, Number(S.arcadeWeeklyRunStartedAt || S.arcadeMissionStartAt || Date.now())))
+            / 1000
+          )
+        );
+        const weeklySeedScore = Math.max(
+          0,
+          Math.floor(
+            bonus +
+            (left * 12) +
+            (Math.max(0, civEvac) * 220) +
+            ((civTotal > 0 && civEvac >= civTotal) ? 600 : 0)
+          )
+        );
         arcadeSummary =
           `\nArcade Medal: ${medal}` +
           `\nArcade Time Left: ${left}s / ${limit}s` +
           `\nArcade Combo Peak: x${peak}` +
           `\nArcade Score Bonus: +${bonus.toLocaleString()}\n`;
+        if(arcadeMission.weeklySeed){
+          ensureArcadeWeeklySeedState(S);
+          const seedResult = recordArcadeWeeklyResult({
+            weekKey:arcadeMission.weeklySeedKey || weeklyChallengeWeekKey(),
+            missionSeedKey:arcadeMission.weeklySeedKey || weeklyChallengeWeekKey(),
+            score:weeklySeedScore,
+            clearSec:missionClearSec,
+            civiliansSaved:civEvac,
+            civiliansTotal:civTotal,
+            runId:S.arcadeWeeklyRunId || "",
+            updatedAt:Date.now()
+          }, S);
+          const bestResult = seedResult?.best || seedResult?.current || null;
+          if(seedResult?.better){
+            toast(`New weekly seed best: ${weeklySeedScore.toLocaleString()} pts.`);
+          }
+          arcadeSummary +=
+            `\nWeekly Seed Score: ${weeklySeedScore.toLocaleString()}` +
+            `\nWeekly Clear Time: ${missionClearSec}s` +
+            `\nWeekly Civilians Saved: ${civEvac}/${civTotal}`;
+          if(bestResult){
+            arcadeSummary +=
+              `\nWeekly Personal Best: ${Math.max(0, Number(bestResult.score || 0)).toLocaleString()} pts` +
+              ` • ${Math.max(0, Number(bestResult.civiliansSaved || 0))}/${Math.max(0, Number(bestResult.civiliansTotal || 0))} saved` +
+              ` • ${Math.max(0, Number(bestResult.clearSec || 0))}s`;
+          }
+          requestGameplayCloudSync("arcade-weekly-clear", { force:true });
+          arcadeSummary += "\n";
+        }
       }
 
       let chapterCutscene = "";
@@ -20335,7 +20641,16 @@ function renderHUD(){
       lvl = mission.number || S.storyLevel;
     }
   }
-  if(S.mode==="Arcade"){ modeLabel="Arcade"; lvl=S.arcadeLevel; }
+  if(S.mode==="Arcade"){
+    ensureArcadeWeeklySeedState(S);
+    if(S.arcadeWeeklySeedEnabled){
+      modeLabel = "Arcade Weekly";
+      lvl = S.arcadeWeeklySeedKey || weeklyChallengeWeekKey();
+    }else{
+      modeLabel = "Arcade";
+      lvl = S.arcadeLevel;
+    }
+  }
   if(S.mode==="Survival"){ modeLabel="Survival"; lvl=S.survivalWave; }
   document.getElementById("modeTxt").innerText = modeLabel;
   document.getElementById("lvlTxt").innerText = lvl;
@@ -20374,14 +20689,14 @@ function renderHUD(){
 
   const grace = (S.mode!=="Survival" && Date.now() < (S.civGraceUntil||0)) ? " • Civ Grace" : "";
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
-  const arcadeMission = (S.mode==="Arcade") ? arcadeCampaignMission(S.arcadeLevel) : null;
+  const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
   const storyObjective = storyMission ? `${storyMission.objective}${storyObjectiveProgressText(storyMission)}` : "";
   const arcadeObjective = arcadeMission ? `${arcadeMission.objective}${arcadeObjectiveProgressText(arcadeMission)}` : "";
   const arcadeLeft = (S.mode==="Arcade") ? arcadeMissionTimeLeftSec() : 0;
   const arcadeMult = (S.mode==="Arcade") ? arcadeComboMultiplier() : 1;
   const arcadeMedal = (S.mode==="Arcade") ? arcadeMissionMedal() : "";
   const arcadeHint = (S.mode==="Arcade")
-    ? ` • Timer ${arcadeLeft}s • Mult x${arcadeMult.toFixed(1)} • Medal ${arcadeMedal}`
+    ? ` • Timer ${arcadeLeft}s • Mult x${arcadeMult.toFixed(1)} • Medal ${arcadeMedal}${arcadeMission?.weeklySeed ? ` • Seed ${arcadeMission.weeklySeedKey}` : ""}`
     : "";
   document.getElementById("objTxt").innerText =
     (S.mode==="Survival")
@@ -20457,6 +20772,16 @@ function renderHUD(){
     assistParts.push(`Buildcraft: ${build.icon} ${build.name}`);
     assistParts.push(`Arcade clock: ${arcadeLeft}s/${limit}s • Medal: ${arcadeMedal}`);
     assistParts.push(`Arcade combo multiplier: x${arcadeMult.toFixed(1)} • Peak combo x${peak}`);
+    if(arcadeMission?.weeklySeed){
+      const wkBest = arcadeWeeklyBestForWeek(S, arcadeMission.weeklySeedKey);
+      if(wkBest){
+        assistParts.unshift(
+          `Weekly Seed ${arcadeMission.weeklySeedKey}: Best ${Math.max(0, Number(wkBest.score || 0)).toLocaleString()} pts • ${Math.max(0, Number(wkBest.civiliansSaved || 0))}/${Math.max(0, Number(wkBest.civiliansTotal || 0))} saved • ${Math.max(0, Number(wkBest.clearSec || 0))}s`
+        );
+      }else{
+        assistParts.unshift(`Weekly Seed ${arcadeMission.weeklySeedKey}: no run posted yet`);
+      }
+    }
   } else if(S.mode==="Story" && storyMission){
     const variant = normalizeStoryVariant(storyMission.storyVariant);
     if(variant === STORY_VARIANTS.CAMPAIGN){
