@@ -158,6 +158,60 @@ const MISSION_TWIST_FOG_MIN_MS = 10000;
 const MISSION_TWIST_FOG_MAX_MS = 17000;
 const MISSION_TWIST_BLACKOUT_MIN_MS = 10000;
 const MISSION_TWIST_BLACKOUT_MAX_MS = 15000;
+const ARCADE_BUILDCRAFT_DEFAULT_ID = "RESCUE";
+const ARCADE_BUILDCRAFT_LOADOUTS = Object.freeze([
+  Object.freeze({
+    id:"RESCUE",
+    icon:"🛟",
+    name:"Rescue",
+    summary:"Civilians move faster and take less damage.",
+    pros:"+18% civilian follow speed • -16% civilian damage",
+    cons:"-8% weapon damage",
+    damageOutMul:0.92,
+    critBonus:0.00,
+    staminaDrainMul:1.00,
+    civilianFollowMul:1.18,
+    civilianDamageMul:0.84,
+    trapRadiusMul:1.00,
+    trapHoldMul:1.00,
+    grant:{ medkits:{ M_SMALL:1 }, shields:1 }
+  }),
+  Object.freeze({
+    id:"HUNTER",
+    icon:"🎯",
+    name:"Hunter",
+    summary:"Higher damage and crit pressure for tiger takedowns.",
+    pros:"+14% weapon damage • +3% crit chance",
+    cons:"+8% stamina drain • civilians take +8% damage",
+    damageOutMul:1.14,
+    critBonus:0.03,
+    staminaDrainMul:1.08,
+    civilianFollowMul:0.96,
+    civilianDamageMul:1.08,
+    trapRadiusMul:0.96,
+    trapHoldMul:0.96,
+    grant:{ ammo:{ "9MM_STD":18, "556_STD":12 } }
+  }),
+  Object.freeze({
+    id:"TRAP_MASTER",
+    icon:"🪤",
+    name:"Trap Master",
+    summary:"Wider, longer trap control with utility supplies.",
+    pros:"+32% trap radius • +35% trap hold duration",
+    cons:"-6% weapon damage • +2% stamina drain",
+    damageOutMul:0.94,
+    critBonus:0.00,
+    staminaDrainMul:1.02,
+    civilianFollowMul:1.04,
+    civilianDamageMul:0.96,
+    trapRadiusMul:1.32,
+    trapHoldMul:1.35,
+    grant:{ traps:2, repairs:{ T_REPAIR:1 } }
+  }),
+]);
+const ARCADE_BUILDCRAFT_BY_ID = Object.freeze(Object.fromEntries(
+  ARCADE_BUILDCRAFT_LOADOUTS.map((def)=>[def.id, def])
+));
 
 const DAILY_CONTRACT_POOL = Object.freeze([
   Object.freeze({
@@ -422,6 +476,95 @@ function defaultNemesisState(){
     lastBountyAt: 0,
     roster: [],
   };
+}
+
+function arcadeBuildcraftDef(id){
+  return ARCADE_BUILDCRAFT_BY_ID[normalizeArcadeBuildcraftId(id)] || ARCADE_BUILDCRAFT_BY_ID[ARCADE_BUILDCRAFT_DEFAULT_ID];
+}
+
+function normalizeArcadeBuildcraftId(value){
+  const id = String(value || "").trim().toUpperCase();
+  return ARCADE_BUILDCRAFT_BY_ID[id] ? id : ARCADE_BUILDCRAFT_DEFAULT_ID;
+}
+
+function ensureArcadeBuildcraftState(state=S){
+  if(!state || typeof state !== "object"){
+    return ARCADE_BUILDCRAFT_DEFAULT_ID;
+  }
+  state.arcadeBuildcraftSelected = normalizeArcadeBuildcraftId(state.arcadeBuildcraftSelected || ARCADE_BUILDCRAFT_DEFAULT_ID);
+  state.arcadeBuildcraftPending = normalizeArcadeBuildcraftId(state.arcadeBuildcraftPending || state.arcadeBuildcraftSelected);
+  state.arcadeBuildcraftAppliedKey = String(state.arcadeBuildcraftAppliedKey || "");
+  return state.arcadeBuildcraftPending;
+}
+
+function activeArcadeBuildcraftDef(state=S){
+  ensureArcadeBuildcraftState(state);
+  return arcadeBuildcraftDef(state.arcadeBuildcraftSelected);
+}
+
+function arcadeBuildcraftMul(key, fallback=1){
+  if(normalizeModeName(S?.mode) !== "Arcade" || window.__TUTORIAL_MODE__) return fallback;
+  const def = activeArcadeBuildcraftDef(S);
+  const n = Number(def?.[key]);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function arcadeBuildcraftCritBonus(){
+  if(normalizeModeName(S?.mode) !== "Arcade" || window.__TUTORIAL_MODE__) return 0;
+  const def = activeArcadeBuildcraftDef(S);
+  return clamp(Number(def?.critBonus || 0), -0.05, 0.08);
+}
+
+function arcadeBuildcraftMissionKey(state=S){
+  if(!state || normalizeModeName(state.mode) !== "Arcade") return "";
+  const lvl = clamp(Math.floor(Number(state.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  const startedAt = Math.max(0, Math.floor(Number(state.arcadeMissionStartAt || 0)));
+  return `arcade:${lvl}:${startedAt}`;
+}
+
+function prepareArcadeBuildcraftForMission(state=S){
+  if(!state || normalizeModeName(state.mode) !== "Arcade" || window.__TUTORIAL_MODE__) return;
+  ensureArcadeBuildcraftState(state);
+  state.arcadeBuildcraftPending = normalizeArcadeBuildcraftId(state.arcadeBuildcraftSelected);
+  state.arcadeBuildcraftAppliedKey = "";
+}
+
+function applyArcadeBuildcraftForMission(opts={}){
+  if(normalizeModeName(S.mode) !== "Arcade" || window.__TUTORIAL_MODE__) return null;
+  ensureArcadeBuildcraftState(S);
+  const key = arcadeBuildcraftMissionKey(S);
+  if(!key) return null;
+  if(S.arcadeBuildcraftAppliedKey === key){
+    return activeArcadeBuildcraftDef(S);
+  }
+  const id = normalizeArcadeBuildcraftId(S.arcadeBuildcraftPending || S.arcadeBuildcraftSelected);
+  const def = arcadeBuildcraftDef(id);
+  S.arcadeBuildcraftSelected = id;
+  S.arcadeBuildcraftPending = id;
+  S.arcadeBuildcraftAppliedKey = key;
+
+  const grantRes = applyRewardGrant(def.grant || null);
+  const grantSummary = grantRes?.changed ? ` • ${grantRes.summary}` : "";
+  if(!opts.silent){
+    setEventText(`${def.icon} ${def.name} loadout active. ${def.summary}${grantSummary}`, 5.5);
+    toast(`Buildcraft active: ${def.name}.`);
+    sfx("ui");
+  }
+  __savePending = true;
+  return def;
+}
+
+function selectArcadeBuildcraft(id, opts={}){
+  if(normalizeModeName(S.mode) !== "Arcade" || window.__TUTORIAL_MODE__) return;
+  ensureArcadeBuildcraftState(S);
+  const next = normalizeArcadeBuildcraftId(id);
+  S.arcadeBuildcraftPending = next;
+  renderArcadeBuildcraftBrief();
+  if(!opts.silent){
+    const def = arcadeBuildcraftDef(next);
+    toast(`${def.icon} ${def.name} selected.`);
+    sfx("ui");
+  }
 }
 
 function defaultMissionTwistsState(){
@@ -3756,6 +3899,9 @@ const DEFAULT = {
   v: STORAGE_VERSION,
   paused:false, pauseReason:null,
   mode:"Story", arcadeLevel:1, survivalWave:1, storyLevel:1, mapIndex:0,
+  arcadeBuildcraftSelected:ARCADE_BUILDCRAFT_DEFAULT_ID,
+  arcadeBuildcraftPending:ARCADE_BUILDCRAFT_DEFAULT_ID,
+  arcadeBuildcraftAppliedKey:"",
   storyLastMission:1,
   storyVariant:"CAMPAIGN",
   storyNgPlusTier:0,
@@ -5059,6 +5205,7 @@ function load(){
       ensureBalanceStatsState(fallback);
       ensureNemesisState(fallback);
       ensureMissionTwistState(fallback);
+      ensureArcadeBuildcraftState(fallback);
       ensureClanState(fallback);
       ensureSeasonPassState(fallback);
       return fallback;
@@ -5127,6 +5274,7 @@ function load(){
     ensureBalanceStatsState(m);
     ensureNemesisState(m);
     ensureMissionTwistState(m);
+    ensureArcadeBuildcraftState(m);
     ensureClanState(m);
     ensureSeasonPassState(m);
     ensureStoryEndgameState(m);
@@ -5149,6 +5297,7 @@ function load(){
     ensureBalanceStatsState(fallback);
     ensureNemesisState(fallback);
     ensureMissionTwistState(fallback);
+    ensureArcadeBuildcraftState(fallback);
     ensureClanState(fallback);
     return fallback;
   }
@@ -6876,6 +7025,7 @@ function sanitizeRuntimeState(){
   ensureMissionDirectorState();
   ensureBalanceStatsState();
   ensureMissionTwistState();
+  ensureArcadeBuildcraftState(S);
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
@@ -7737,7 +7887,9 @@ function storyCaptureWindowPct(){
 }
 function storyStaminaDrainMul(){
   const biomeMul = clamp(Number(biomeHazardModifiers(S.mode).staminaDrainMul || 1), 0.70, 1.35);
-  if(S.mode !== "Story") return biomeMul;
+  if(S.mode !== "Story"){
+    return clamp(biomeMul * arcadeBuildcraftMul("staminaDrainMul", 1), 0.62, 1.45);
+  }
   const base = 1 - (storyBaseRank("BASE_ENDURANCE") * 0.08);
   const chapterMul = storyChapterRewardUnlocked(6) ? 0.95 : 1;
   return clamp(base * chapterMul * biomeMul, 0.62, 1.35);
@@ -7749,6 +7901,9 @@ function storyPayoutMul(){
   return base * chapterMul;
 }
 function storyCivilianDamageMul(){
+  if(S.mode === "Arcade"){
+    return clamp(arcadeBuildcraftMul("civilianDamageMul", 1), 0.65, 1.32);
+  }
   if(S.mode !== "Story") return 1;
   const rescueGuard = 1 - (storySpecialistRank("SP_RESCUE_GUARD") * 0.04);
   const chapterMul = storyChapterRewardUnlocked(4) ? 0.90 : 1;
@@ -7790,6 +7945,9 @@ function storyAttackerCaptureBonus(){
   return rankBonus + chapterBonus;
 }
 function storyRescueSpeedMul(){
+  if(S.mode === "Arcade"){
+    return clamp(arcadeBuildcraftMul("civilianFollowMul", 1), 0.82, 1.36);
+  }
   if(S.mode !== "Story") return 1;
   const escort = 1 + (storySpecialistRank("SP_RESCUE_ESCORT") * 0.10);
   const chapterMul = storyChapterRewardUnlocked(9) ? 1.10 : 1;
@@ -9927,6 +10085,35 @@ function shouldShowMissionBrief(){
   if(S.mode==="Story" && !S.storyIntroSeen) return false;
   return true;
 }
+function renderArcadeBuildcraftBrief(){
+  const wrap = document.getElementById("arcadeBuildcraftWrap");
+  const list = document.getElementById("arcadeBuildcraftBtns");
+  const tradeoff = document.getElementById("arcadeBuildcraftTradeoff");
+  const shouldShow = normalizeModeName(S.mode) === "Arcade" && !window.__TUTORIAL_MODE__;
+  if(wrap) wrap.style.display = shouldShow ? "block" : "none";
+  if(!shouldShow){
+    if(list) list.innerHTML = "";
+    if(tradeoff) tradeoff.innerText = "";
+    return;
+  }
+  ensureArcadeBuildcraftState(S);
+  const selected = normalizeArcadeBuildcraftId(S.arcadeBuildcraftPending || S.arcadeBuildcraftSelected);
+  if(list){
+    list.innerHTML = "";
+    for(const def of ARCADE_BUILDCRAFT_LOADOUTS){
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = def.id === selected ? "good" : "ghost";
+      btn.innerText = `${def.icon} ${def.name}`;
+      btn.onclick = ()=>selectArcadeBuildcraft(def.id);
+      list.appendChild(btn);
+    }
+  }
+  if(tradeoff){
+    const def = arcadeBuildcraftDef(selected);
+    tradeoff.innerText = `${def.summary} • ${def.pros} • Tradeoff: ${def.cons}`;
+  }
+}
 function showMissionBrief(durationMs=2600){
   const overlay = document.getElementById("missionBriefOverlay");
   if(!overlay || !shouldShowMissionBrief()) return false;
@@ -9941,9 +10128,16 @@ function showMissionBrief(durationMs=2600){
   const bossEl = document.getElementById("missionBriefBoss");
   const intelEl = document.getElementById("missionBriefIntel");
   const rewardEl = document.getElementById("missionBriefReward");
+  const hintEl = document.getElementById("missionBriefHint");
+  const startBtn = document.getElementById("missionBriefStartBtn");
   const isStory = card.mode === "Story";
+  const isArcade = card.mode === "Arcade";
   const storyVariant = isStory ? normalizeStoryVariant(card.mission?.storyVariant) : STORY_VARIANTS.CAMPAIGN;
-  if(titleEl) titleEl.innerText = isStory ? "📖 Story Operations Brief" : "📋 Mission Brief";
+  if(titleEl){
+    if(isStory) titleEl.innerText = "📖 Story Operations Brief";
+    else if(isArcade) titleEl.innerText = "🎛️ Arcade Buildcraft Brief";
+    else titleEl.innerText = "📋 Mission Brief";
+  }
   if(nameEl){
     if(isStory && storyVariant === STORY_VARIANTS.GAUNTLET){
       nameEl.innerText = `Gauntlet Run ${card.mission.runIndex} — ${card.mission.chapterName}`;
@@ -9971,11 +10165,24 @@ function showMissionBrief(durationMs=2600){
   }
   if(intelEl) intelEl.innerText = isStory ? storyMissionIntelText(card.mission) : "";
   if(rewardEl) rewardEl.innerText = isStory ? storyChapterRewardPreviewText(card.mission) : "";
+  if(hintEl){
+    hintEl.innerText = isArcade
+      ? "Pick one Buildcraft loadout for this Arcade mission, then tap Start Mission."
+      : "Auto-hide timing depends on mission flow. Tap Start anytime.";
+  }
+  if(startBtn){
+    startBtn.innerText = isArcade ? "Start Mission" : "Start";
+  }
+  renderArcadeBuildcraftBrief();
 
   clearMissionBriefTimer();
   setPaused(true,"mission-brief");
   overlay.style.display = "flex";
   syncGamepadFocus();
+  if(isArcade){
+    // Arcade buildcraft requires an explicit pre-mission choice.
+    return true;
+  }
   const requestedMs = Math.floor(durationMs || 0);
   let ms = requestedMs || 2600;
   if(requestedMs >= 9000){
@@ -9995,6 +10202,9 @@ function closeMissionBrief(fromTimer=false){
   clearMissionBriefTimer();
   const overlay = document.getElementById("missionBriefOverlay");
   if(overlay) overlay.style.display = "none";
+  if(normalizeModeName(S.mode) === "Arcade" && !window.__TUTORIAL_MODE__){
+    applyArcadeBuildcraftForMission({ silent: !!fromTimer });
+  }
   if(S.paused && S.pauseReason === "mission-brief"){
     setPaused(false,null);
   }
@@ -13995,7 +14205,7 @@ function placeTrap(){
     id: Date.now() + Math.random(),
     x: S.me.x,
     y: S.me.y,
-    r: 80 * perkTrapScale(),
+    r: 80 * perkTrapScale() * arcadeBuildcraftMul("trapRadiusMul", 1),
     ttl: 1800,
     used: false,
     removeAt: 0
@@ -14029,7 +14239,7 @@ function trapTick(){
     );
     if(!tgt) continue;
 
-    const holdMs = rand(3000, 5000);
+    const holdMs = Math.round(rand(3000, 5000) * arcadeBuildcraftMul("trapHoldMul", 1));
     tgt.holdUntil = now + holdMs;
     tgt.vx = 0; tgt.vy = 0;
     tgt._held = true;
@@ -15933,6 +16143,7 @@ function deploy(opts={}){
   }
 
   if(S.mode==="Arcade"){
+    prepareArcadeBuildcraftForMission(S);
     const mission = arcadeCampaignMission(S.arcadeLevel);
     let timeLimitSec = 95 + (mission.chapter * 8);
     if(mission.captureOnly) timeLimitSec += 14;
@@ -15974,7 +16185,12 @@ function deploy(opts={}){
   if(S.mode==="Survival"){ S.survivalStart = Date.now(); S.surviveSeconds=0; }
 
   if(shouldShowMissionBrief()) showMissionBrief(rand(2200, 3000));
-  else closeMissionBrief(true);
+  else {
+    if(normalizeModeName(S.mode) === "Arcade" && !window.__TUTORIAL_MODE__){
+      applyArcadeBuildcraftForMission({ silent:true });
+    }
+    closeMissionBrief(true);
+  }
 
   updateGameOverCheckpointButton();
   markBalanceMissionStart(S);
@@ -19515,7 +19731,8 @@ function playerAction(action){
     const eff=ammoEffectFor(w.ammo);
     let dmg=rand(w.dmg[0],w.dmg[1]);
     dmg *= perkDamageMul();
-    const crit=Math.random()<(eff.crit + perkCritBonus());
+    dmg *= arcadeBuildcraftMul("damageOutMul", 1);
+    const crit=Math.random()<(eff.crit + perkCritBonus() + arcadeBuildcraftCritBonus());
     if(crit) dmg=Math.round(dmg*1.6);
     dmg=Math.round(dmg*eff.dmgMul);
 
@@ -20173,6 +20390,8 @@ function renderHUD(){
   if(S.mode==="Arcade"){
     const limit = Math.max(0, Math.floor(Number(S.arcadeMissionLimitSec || 0)));
     const peak = Math.max(Math.floor(Number(S.arcadeComboPeak || 0)), Math.floor(Number(S.comboCount || 0)));
+    const build = activeArcadeBuildcraftDef(S);
+    assistParts.push(`Buildcraft: ${build.icon} ${build.name}`);
     assistParts.push(`Arcade clock: ${arcadeLeft}s/${limit}s • Medal: ${arcadeMedal}`);
     assistParts.push(`Arcade combo multiplier: x${arcadeMult.toFixed(1)} • Peak combo x${peak}`);
   } else if(S.mode==="Story" && storyMission){
@@ -23042,6 +23261,7 @@ function init(){
   ensureContractsState(S);
   ensureMissionDirectorState(S);
   ensureMissionTwistState(S);
+  ensureArcadeBuildcraftState(S);
   ensureSeasonPassState(S);
   if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
@@ -23435,6 +23655,7 @@ window.startQuickTutorialFromIntro = startQuickTutorialFromIntro;
 window.skipStoryIntro = skipStoryIntro;
 window.toggleChapterRecap = toggleChapterRecap;
 window.closeMissionBrief = closeMissionBrief;
+window.selectArcadeBuildcraft = selectArcadeBuildcraft;
 
 window.nextMap = nextMap;
 window.togglePause = togglePause;

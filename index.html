@@ -1437,9 +1437,16 @@
       <div class="hudLine" id="missionBriefBoss">Boss Warning</div>
       <div class="hudLine" id="missionBriefIntel"></div>
       <div class="hudLine" id="missionBriefReward"></div>
-      <div class="small">Auto-hide timing depends on mission flow. Tap Start anytime.</div>
+      <div id="arcadeBuildcraftWrap" style="display:none">
+        <div class="divider"></div>
+        <div class="hudLine"><b>Buildcraft Loadout (Arcade)</b></div>
+        <div class="small">Pick one tactical build before mission start.</div>
+        <div class="grid2" id="arcadeBuildcraftBtns" style="margin-top:8px"></div>
+        <div class="hudLine" id="arcadeBuildcraftTradeoff"></div>
+      </div>
+      <div class="small" id="missionBriefHint">Auto-hide timing depends on mission flow. Tap Start anytime.</div>
       <div class="row" style="margin-top:8px">
-        <button class="good" onclick="closeMissionBrief()">Start</button>
+        <button class="good" id="missionBriefStartBtn" onclick="closeMissionBrief()">Start</button>
       </div>
     </div>
   </div>
