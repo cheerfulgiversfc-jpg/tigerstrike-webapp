@@ -76,6 +76,7 @@
   const COMBAT_MIN_SEPARATION = 3.1;
   const TIGER_WINDUP_MS = 420;
   const TIGER_MELEE_WINDUP_MS = 220;
+  const SHOW_COMBAT_DUEL_CHIPS = false;
 
   const CIV_FOLLOW_DISTANCE = 7.2;
   const CIV_PICKUP_RADIUS = 8.2;
@@ -110,6 +111,7 @@
     chunkRoot:null,
     unitsRoot:null,
     effectsRoot:null,
+    vfxBursts:[],
     canvasHost:null,
     overlay:null,
     ui:{},
@@ -554,6 +556,155 @@
     return ring;
   }
 
+  function createClawArc(parent, color=0xf59e0b){
+    const THREE = state.three;
+    const arc = new THREE.Mesh(
+      new THREE.TorusGeometry(1.8, 0.12, 8, 22, Math.PI * 0.9),
+      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.86, depthWrite:false })
+    );
+    arc.position.set(1.95, 1.45, 0);
+    arc.rotation.y = Math.PI * 0.5;
+    arc.visible = false;
+    arc.renderOrder = 33;
+    parent.add(arc);
+    return arc;
+  }
+
+  function ensureFloatingLabel(unit, tint="#cfe8ff"){
+    if(!unit || !unit.mesh) return null;
+    if(unit.floatLabel) return unit.floatLabel;
+    const THREE = state.three;
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    if(!ctx) return null;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    if(THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map:tex,
+      transparent:true,
+      depthWrite:false,
+      depthTest:true,
+      opacity:0.95,
+    }));
+    sprite.scale.set(7.1, 1.75, 1);
+    sprite.position.set(0, unit.role === "player" ? 7.2 : 6.8, 0);
+    sprite.visible = false;
+    sprite.renderOrder = 54;
+    unit.mesh.add(sprite);
+    unit.floatLabel = {
+      canvas,
+      ctx,
+      tex,
+      sprite,
+      lastText:"",
+      lastTint:"",
+      tint,
+    };
+    return unit.floatLabel;
+  }
+
+  function drawFloatingLabel(unit, text, tint){
+    const label = ensureFloatingLabel(unit, tint || "#cfe8ff");
+    if(!label || !label.ctx) return;
+    const safeText = String(text || "");
+    const safeTint = String(tint || label.tint || "#cfe8ff");
+    if(label.lastText === safeText && label.lastTint === safeTint){
+      label.sprite.visible = true;
+      return;
+    }
+    label.lastText = safeText;
+    label.lastTint = safeTint;
+    label.ctx.clearRect(0, 0, label.canvas.width, label.canvas.height);
+    label.ctx.fillStyle = "rgba(7, 12, 21, 0.88)";
+    label.ctx.strokeStyle = "rgba(53, 98, 171, 0.9)";
+    label.ctx.lineWidth = 4;
+    if(typeof label.ctx.roundRect === "function"){
+      label.ctx.beginPath();
+      label.ctx.roundRect(6, 6, label.canvas.width - 12, label.canvas.height - 12, 20);
+      label.ctx.fill();
+      label.ctx.stroke();
+    }else{
+      label.ctx.fillRect(6, 6, label.canvas.width - 12, label.canvas.height - 12);
+      label.ctx.strokeRect(6, 6, label.canvas.width - 12, label.canvas.height - 12);
+    }
+    label.ctx.fillStyle = safeTint;
+    label.ctx.font = "bold 28px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+    label.ctx.textAlign = "center";
+    label.ctx.textBaseline = "middle";
+    label.ctx.fillText(safeText, label.canvas.width * 0.5, label.canvas.height * 0.54);
+    label.tex.needsUpdate = true;
+    label.sprite.visible = true;
+  }
+
+  function hideFloatingLabel(unit){
+    if(unit && unit.floatLabel && unit.floatLabel.sprite){
+      unit.floatLabel.sprite.visible = false;
+    }
+  }
+
+  function spawnImpactFx(unit, color=0xfbbf24, kind="hit"){
+    if(!unit || !unit.mesh || !state.effectsRoot) return;
+    const THREE = state.three;
+    const group = new THREE.Group();
+    group.position.copy(unit.mesh.position);
+    group.position.y += 1.25;
+
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 8, 6),
+      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.9, depthWrite:false })
+    );
+    core.renderOrder = 52;
+    group.add(core);
+
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.24, 0.42, 20),
+      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.8, depthWrite:false, side:THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI * 0.5;
+    ring.renderOrder = 53;
+    group.add(ring);
+
+    if(kind === "claw" || kind === "pounce"){
+      const slash = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.4, 0.2),
+        new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.76, depthWrite:false, side:THREE.DoubleSide })
+      );
+      slash.position.y = 0.16;
+      slash.rotation.y = Math.PI * 0.18;
+      slash.renderOrder = 53;
+      group.add(slash);
+    }
+
+    state.effectsRoot.add(group);
+    state.vfxBursts.push({
+      mesh:group,
+      core,
+      ring,
+      born:state.now || nowMs(),
+      duration:(kind === "pounce" ? 280 : 220),
+    });
+  }
+
+  function updateImpactFx(){
+    const now = state.now || nowMs();
+    for(let i=state.vfxBursts.length - 1; i>=0; i--){
+      const fx = state.vfxBursts[i];
+      const t = clamp((now - fx.born) / Math.max(1, fx.duration), 0, 1);
+      const k = 1 + t * 1.45;
+      fx.mesh.scale.set(k, k, k);
+      if(fx.core && fx.core.material) fx.core.material.opacity = 0.95 * (1 - t);
+      if(fx.ring && fx.ring.material) fx.ring.material.opacity = 0.84 * (1 - t);
+      fx.mesh.position.y += state.dt * 1.8;
+      if(t >= 1){
+        if(fx.mesh && fx.mesh.parent) fx.mesh.parent.remove(fx.mesh);
+        state.vfxBursts.splice(i, 1);
+      }
+    }
+  }
+
   function laneSideFromId(id){
     const s = String(id || "");
     let h = 0;
@@ -748,6 +899,7 @@
       t.nextAttackAt = nowMs() + 400;
       t.ring = createSelectionRing(t.mesh, 0x60a5fa, 2.6);
       t.telegraphRing = createTelegraphRing(t.mesh, 0xf59e0b, 2.62);
+      t.clawArc = createClawArc(t.mesh, 0xfb923c);
       addHealthBar(t, 0xfb7185);
       t.mesh.userData.__tiger = t;
       state.tigers.push(t);
@@ -763,6 +915,10 @@
     state.fx.nextAttackAt = 0;
     state.fx.nextCaptureAt = 0;
     state.selectedTiger = null;
+    for(const fx of state.vfxBursts){
+      if(fx && fx.mesh && fx.mesh.parent) fx.mesh.parent.remove(fx.mesh);
+    }
+    state.vfxBursts.length = 0;
     state.combat.active = false;
     state.combat.target = null;
     state.combat.targetStatus = "";
@@ -1177,6 +1333,7 @@
         left -= absorb;
       }
       if(left > 0) unit.hp = Math.max(0, unit.hp - left);
+      if(left > 0) spawnImpactFx(unit, 0xfca5a5, "hit");
       if(unit.hp <= 0){
         unit.hp = unit.maxHp;
         unit.armor = Math.max(40, unit.armor);
@@ -1189,6 +1346,7 @@
       if(protectedByShield(unit)) return;
       flashUnit(unit);
       unit.hp = Math.max(0, unit.hp - dmg);
+      spawnImpactFx(unit, 0xfb923c, "hit");
       if(unit.hp <= 0){
         unit.alive = false;
         unit.following = false;
@@ -1199,6 +1357,7 @@
     }
     flashUnit(unit);
     unit.hp = Math.max(0, unit.hp - dmg);
+    spawnImpactFx(unit, 0xfbbf24, "hit");
   }
 
   function cleanupDeadTiger(tiger, reason){
@@ -1225,6 +1384,7 @@
     const nearBonus = clamp((PLAYER_ATTACK_RANGE - d) / PLAYER_ATTACK_RANGE, 0, 1);
     const dmg = Math.round(12 + nearBonus * 16);
     damageTarget(t, dmg);
+    spawnImpactFx(t, 0xfef08a, "hit");
     const dirX = Math.sin(state.player.mesh.rotation.y);
     const dirZ = Math.cos(state.player.mesh.rotation.y);
     t.mesh.position.x += dirX * 0.36;
@@ -1253,6 +1413,7 @@
     }
     state.fx.nextCaptureAt = now + PLAYER_CAPTURE_COOLDOWN_MS;
     flashUnit(t);
+    spawnImpactFx(t, 0x6ee7b7, "hit");
     cleanupDeadTiger(t, "capture");
     setStatus(`${t.name} captured for research.`, 1600);
   }
@@ -1327,21 +1488,37 @@
   function updateSquad(){
     const p = state.player;
     if(!p) return;
+    const combatTiger = getActiveCombatTiger();
     for(const mate of state.squad){
       if(!mate || !mate.alive || !mate.followOffset) continue;
-      const targetX = p.mesh.position.x + mate.followOffset.x;
-      const targetZ = p.mesh.position.z + mate.followOffset.z;
-      const moveSpeed = moveToward(mate, targetX, targetZ, mate.speed);
+      let targetX = p.mesh.position.x + mate.followOffset.x;
+      let targetZ = p.mesh.position.z + mate.followOffset.z;
+      if(combatTiger){
+        const tp = combatTiger.mesh.position;
+        const pp = p.mesh.position;
+        let vx = pp.x - tp.x;
+        let vz = pp.z - tp.z;
+        const vd = Math.hypot(vx, vz) || 1;
+        vx /= vd;
+        vz /= vd;
+        const sx = -vz;
+        const sz = vx;
+        const flank = (mate === state.squad[0]) ? -1 : 1;
+        targetX = tp.x + vx * 3.6 + sx * flank * 3.4;
+        targetZ = tp.z + vz * 3.6 + sz * flank * 3.4;
+      }
+      const moveSpeed = moveToward(mate, targetX, targetZ, mate.speed * (combatTiger ? 1.08 : 1));
       animateHumanoid(mate, moveSpeed);
 
-      const targetTiger = state.selectedTiger && state.selectedTiger.alive ? state.selectedTiger : null;
-      if(targetTiger){
-        const d = horizontalDistance(mate, targetTiger);
-        if(d <= 26 && nowMs() > mate.nextAttackAt){
-          targetTiger.hp = Math.max(0, targetTiger.hp - 4);
-          mate.nextAttackAt = nowMs() + 560;
-          if(targetTiger.hp <= 0){
-            cleanupDeadTiger(targetTiger, "kill");
+      if(combatTiger){
+        const d = horizontalDistance(mate, combatTiger);
+        if(d <= 24 && nowMs() > mate.nextAttackAt){
+          const dmg = (mate === state.squad[0]) ? 7 : 5;
+          damageTarget(combatTiger, dmg);
+          spawnImpactFx(combatTiger, mate === state.squad[0] ? 0xfca5a5 : 0x93c5fd, "hit");
+          mate.nextAttackAt = nowMs() + (mate === state.squad[0] ? 490 : 620);
+          if(combatTiger.hp <= 0){
+            cleanupDeadTiger(combatTiger, "kill");
           }
         }
       }
@@ -1476,6 +1653,7 @@
         t.recoverUntil = t.pounceUntil + 520;
         t.telegraphPounceUntil = 0;
         state.combat.pounceFxUntil = now + 180;
+        spawnImpactFx(t, 0xfb7185, "pounce");
       }
       if(now < t.pounceUntil){
         mode = "pounce";
@@ -1502,7 +1680,13 @@
 
       if(t.attackHitAt > 0 && now >= t.attackHitAt){
         if(t.pendingAttackTarget && t.pendingAttackTarget.alive && horizontalDistance(t, t.pendingAttackTarget) <= 4.4){
-          damageTarget(t.pendingAttackTarget, t.pendingAttackDamage || t.tigerType.damage);
+          if(t.pendingAttackTarget.role === "player" && now < state.fx.rollUntil){
+            setStatus("Perfect dodge window hit!", 620);
+            spawnImpactFx(state.player, 0x34d399, "hit");
+          }else{
+            damageTarget(t.pendingAttackTarget, t.pendingAttackDamage || t.tigerType.damage);
+            spawnImpactFx(t.pendingAttackTarget, 0xfb923c, "claw");
+          }
         }
         t.attackHitAt = 0;
         t.pendingAttackTarget = null;
@@ -1552,6 +1736,21 @@
           }
         }else{
           t.telegraphRing.visible = false;
+        }
+      }
+      if(t.clawArc){
+        const meleeWindup = !!(t.telegraphMeleeUntil && now < t.telegraphMeleeUntil);
+        const pouncing = !!(t.pounceUntil && now < t.pounceUntil);
+        if(meleeWindup || pouncing){
+          t.clawArc.visible = true;
+          const pulse = 1 + Math.sin((now + (t.scoreValue || 0)) * 0.025) * 0.1;
+          t.clawArc.scale.set(pulse, pulse, pulse);
+          if(t.clawArc.material){
+            t.clawArc.material.opacity = meleeWindup ? 0.82 : 0.66;
+            t.clawArc.material.color.setHex(meleeWindup ? 0xf59e0b : 0xef4444);
+          }
+        }else{
+          t.clawArc.visible = false;
         }
       }
     }
@@ -1605,6 +1804,25 @@
     state.camera.position.z = smoothStep(state.camera.position.z, tz, 6.3, state.dt);
     const lookY = isLandscape ? 2.3 : 2.8;
     state.camera.lookAt(lookX, lookY, lookZ);
+  }
+
+  function updateCombatFloatingLabels(){
+    const tiger = state.combat.active ? state.combat.target : null;
+    const player = state.player;
+    if(player && tiger && tiger.alive){
+      const playerPct = Math.round((player.hp / Math.max(1, player.maxHp)) * 100);
+      const tigerPct = Math.round((tiger.hp / Math.max(1, tiger.maxHp)) * 100);
+      drawFloatingLabel(player, `YOU ${playerPct}%`, "#bbf7d0");
+      drawFloatingLabel(tiger, `${tiger.name.toUpperCase()} ${tigerPct}%`, "#fecdd3");
+    }else{
+      hideFloatingLabel(player);
+      hideFloatingLabel(tiger);
+    }
+    for(const u of state.squad) hideFloatingLabel(u);
+    for(const u of state.civilians) hideFloatingLabel(u);
+    for(const u of state.tigers){
+      if(!tiger || u !== tiger) hideFloatingLabel(u);
+    }
   }
 
   function setHudText(cacheKey, node, value){
@@ -1671,14 +1889,16 @@
 
     if(state.ui.duelHud){
       const engaged = !!(state.combat.active && state.combat.target && state.combat.target.alive);
-      state.ui.duelHud.classList.toggle("active", engaged);
+      state.ui.duelHud.classList.toggle("active", engaged && SHOW_COMBAT_DUEL_CHIPS);
       if(state.overlay) state.overlay.classList.toggle("combatLock", engaged);
       if(engaged){
-        const tiger = state.combat.target;
-        const youPct = Math.round((p.hp / Math.max(1, p.maxHp)) * 100);
-        const tigerPct = Math.round((tiger.hp / Math.max(1, tiger.maxHp)) * 100);
-        setHudText("duelYou", state.ui.duelYou, `YOU ${youPct}% • AR ${Math.round(p.armor)}%`);
-        setHudText("duelTiger", state.ui.duelTiger, `${tiger.name.toUpperCase()} ${tigerPct}% • ${tigerStatusText(tiger)}`);
+        if(SHOW_COMBAT_DUEL_CHIPS){
+          const tiger = state.combat.target;
+          const youPct = Math.round((p.hp / Math.max(1, p.maxHp)) * 100);
+          const tigerPct = Math.round((tiger.hp / Math.max(1, tiger.maxHp)) * 100);
+          setHudText("duelYou", state.ui.duelYou, `YOU ${youPct}% • AR ${Math.round(p.armor)}%`);
+          setHudText("duelTiger", state.ui.duelTiger, `${tiger.name.toUpperCase()} ${tigerPct}% • ${tigerStatusText(tiger)}`);
+        }
       }else{
         if(state.overlay) state.overlay.classList.remove("combatLock");
         setHudText("duelYou", state.ui.duelYou, "");
@@ -1688,8 +1908,12 @@
 
     if(state.ui.hint){
       if(state.statusUntil > now){
-        state.ui.hint.classList.remove("hidden");
-        setHudText("hint", state.ui.hint, state.statusText);
+        if(state.combat.active){
+          state.ui.hint.classList.add("hidden");
+        }else{
+          state.ui.hint.classList.remove("hidden");
+          setHudText("hint", state.ui.hint, state.statusText);
+        }
       }else{
         state.ui.hint.classList.add("hidden");
       }
@@ -1730,6 +1954,7 @@
     for(const u of state.tigers) updateHitFlash(u);
     updateSelectionRings();
     updateSafeZoneVisual();
+    updateImpactFx();
     const barsEvery = Math.max(1, Math.floor(qualityPreset().healthBarEveryNFrames || 1));
     if((state.perf.frameNo % barsEvery) === 0){
       updateHealthBar(state.player);
@@ -1739,6 +1964,7 @@
       orientHealthBarsToCamera();
     }
     updateCamera();
+    updateCombatFloatingLabels();
     updateHud();
 
     const missionClear = state.mission.rescued >= state.mission.totalCivilians && state.tigers.every((t)=>!t.alive);
@@ -1996,6 +2222,10 @@
   function forceDispose(){
     state.active = false;
     stopRenderLoop();
+    for(const fx of state.vfxBursts){
+      if(fx && fx.mesh && fx.mesh.parent) fx.mesh.parent.remove(fx.mesh);
+    }
+    state.vfxBursts.length = 0;
     unbindWorldEvents();
     unbindUiEvents();
     if(state.renderer){
