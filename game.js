@@ -2331,6 +2331,230 @@ function applySeasonFinisherVisual(tiger, outcome="KILL"){
   }
 }
 
+// ===================== LONG-TERM MASTERY REWARDS (Cosmetic Only) =====================
+const MASTERY_ELITE_TITLES = Object.freeze({
+  ELITE_FIELD_WARDEN: { name:"Field Warden", icon:"🛡️" },
+  ELITE_PREDATOR_HUNTER: { name:"Predator Hunter", icon:"🐯" },
+  ELITE_RESCUE_LEAD: { name:"Rescue Lead", icon:"🚁" },
+  ELITE_APEX_COMMANDER: { name:"Apex Commander", icon:"👑" },
+});
+const MASTERY_TRACKS = Object.freeze([
+  { id:"MR_SKIN_FOREST_RANGER", type:"skin", rewardId:"SKIN_FOREST_RANGER", name:"Forest Ops", desc:"Evacuate civilians across Story operations.", metric:"evac", target:18 },
+  { id:"MR_BANNER_TRAILBLAZER", type:"banner", rewardId:"BANNER_TRAILBLAZER", name:"Trail Network", desc:"Clear missions to earn command recognition.", metric:"missionsCleared", target:12 },
+  { id:"MR_FINISHER_SHOCKWAVE", type:"finisher", rewardId:"FINISHER_SHOCKWAVE", name:"Shock Impact", desc:"Eliminate hostile tigers in active operations.", metric:"kills", target:36 },
+  { id:"MR_TITLE_FIELD_WARDEN", type:"elite_title", rewardId:"ELITE_FIELD_WARDEN", name:"Field Warden Title", desc:"Build consistent rescue performance.", metric:"evac", target:60 },
+  { id:"MR_SKIN_MIDNIGHT_OPS", type:"skin", rewardId:"SKIN_MIDNIGHT_OPS", name:"Midnight Specialist", desc:"Capture tigers for research and control.", metric:"captures", target:45 },
+  { id:"MR_BANNER_COBALT_MARK", type:"banner", rewardId:"BANNER_COBALT_MARK", name:"Cobalt Command", desc:"Increase long-run mission completion.", metric:"missionsCleared", target:35 },
+  { id:"MR_FINISHER_CROWN", type:"finisher", rewardId:"FINISHER_CROWN", name:"Crown Takedown", desc:"Master precision captures.", metric:"captures", target:95 },
+  { id:"MR_TITLE_PREDATOR_HUNTER", type:"elite_title", rewardId:"ELITE_PREDATOR_HUNTER", name:"Predator Hunter Title", desc:"Raise tiger engagement mastery.", metric:"kills", target:140 },
+  { id:"MR_SKIN_GOLDEN_COMMAND", type:"skin", rewardId:"SKIN_GOLDEN_COMMAND", name:"Golden Command", desc:"Develop weapon handling mastery.", metric:"weaponMasteryTotal", target:16 },
+  { id:"MR_BANNER_LEGEND_HUNTER", type:"banner", rewardId:"BANNER_LEGEND_HUNTER", name:"Legend Banner", desc:"Complete chapter reward milestones.", metric:"chapterRewards", target:10 },
+  { id:"MR_TITLE_RESCUE_LEAD", type:"elite_title", rewardId:"ELITE_RESCUE_LEAD", name:"Rescue Lead Title", desc:"Deliver sustained civilian survival.", metric:"evac", target:160 },
+  { id:"MR_TITLE_APEX_COMMANDER", type:"elite_title", rewardId:"ELITE_APEX_COMMANDER", name:"Apex Commander Title", desc:"Reach full campaign mastery.", metric:"missionsCleared", target:100 },
+]);
+const MASTERY_TRACKS_BY_ID = Object.freeze(MASTERY_TRACKS.reduce((acc, row)=>{
+  if(row && row.id) acc[row.id] = row;
+  return acc;
+}, {}));
+function defaultMasteryRewardsState(){
+  return {
+    claimed: {},
+    ownedEliteTitles: [],
+    equippedEliteTitle: "",
+  };
+}
+function normalizeMasteryClaimMap(map){
+  const src = (map && typeof map === "object") ? map : {};
+  const out = {};
+  for(const [rawKey, rawVal] of Object.entries(src)){
+    if(!rawVal) continue;
+    const key = String(rawKey || "").trim();
+    if(!key || !MASTERY_TRACKS_BY_ID[key]) continue;
+    out[key] = true;
+  }
+  return out;
+}
+function normalizeMasteryTitleList(list){
+  if(!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  for(const raw of list){
+    const id = String(raw || "").trim();
+    if(!id || seen.has(id) || !MASTERY_ELITE_TITLES[id]) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+function normalizeMasteryRewardsSnapshot(input){
+  const base = defaultMasteryRewardsState();
+  const src = (input && typeof input === "object") ? input : {};
+  const ownedEliteTitles = normalizeMasteryTitleList(src.ownedEliteTitles);
+  const preferred = String(src.equippedEliteTitle || "").trim();
+  return {
+    claimed: normalizeMasteryClaimMap(src.claimed),
+    ownedEliteTitles,
+    equippedEliteTitle: ownedEliteTitles.includes(preferred) ? preferred : (ownedEliteTitles[0] || base.equippedEliteTitle),
+  };
+}
+function ensureMasteryRewardsState(state=S){
+  if(!state || typeof state !== "object"){
+    return normalizeMasteryRewardsSnapshot(null);
+  }
+  state.masteryRewards = normalizeMasteryRewardsSnapshot(state.masteryRewards);
+  return state.masteryRewards;
+}
+function mergeMasteryRewardsSnapshots(currentSnapshot, incomingSnapshot){
+  const current = normalizeMasteryRewardsSnapshot(currentSnapshot);
+  const incoming = normalizeMasteryRewardsSnapshot(incomingSnapshot);
+  const ownedEliteTitles = normalizeMasteryTitleList([
+    ...(current.ownedEliteTitles || []),
+    ...(incoming.ownedEliteTitles || []),
+  ]);
+  const preferred = String(incoming.equippedEliteTitle || current.equippedEliteTitle || "").trim();
+  return {
+    claimed: { ...current.claimed, ...incoming.claimed },
+    ownedEliteTitles,
+    equippedEliteTitle: ownedEliteTitles.includes(preferred) ? preferred : (ownedEliteTitles[0] || ""),
+  };
+}
+function masteryTrackDef(trackId){
+  const key = String(trackId || "").trim();
+  return MASTERY_TRACKS_BY_ID[key] || null;
+}
+function masteryMetricValue(metric, state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(metric === "kills") return Math.max(0, Math.floor(Number(ensureOpsTotalsState(src).kills || 0)));
+  if(metric === "captures") return Math.max(0, Math.floor(Number(ensureOpsTotalsState(src).captures || 0)));
+  if(metric === "evac") return Math.max(0, Math.floor(Number(ensureOpsTotalsState(src).evac || 0)));
+  if(metric === "missionsCleared") return Math.max(0, Math.floor(Number(ensureOpsTotalsState(src).missionsCleared || 0)));
+  if(metric === "chapterRewards") return chapterRewardUnlockedCount();
+  if(metric === "weaponMasteryTotal"){
+    ensureWeaponMasteryState(src);
+    let total = 0;
+    for(const wid of Object.keys(src.weaponMastery || {})){
+      total += weaponMasteryLevelFromXp(src.weaponMastery[wid]);
+    }
+    return Math.max(0, Math.floor(Number(total || 0)));
+  }
+  return 0;
+}
+function masteryMetricLabel(metric){
+  if(metric === "kills") return "Tiger kills";
+  if(metric === "captures") return "Tiger captures";
+  if(metric === "evac") return "Civilians evacuated";
+  if(metric === "missionsCleared") return "Missions cleared";
+  if(metric === "chapterRewards") return "Chapter rewards unlocked";
+  if(metric === "weaponMasteryTotal") return "Total weapon mastery levels";
+  return "Progress";
+}
+function masteryTrackProgress(track, state=S){
+  if(!track) return 0;
+  return masteryMetricValue(track.metric, state);
+}
+function masteryTrackClaimed(trackId, state=S){
+  const rewards = ensureMasteryRewardsState(state);
+  const key = String(trackId || "").trim();
+  if(!key) return false;
+  return !!rewards.claimed[key];
+}
+function masteryTrackSetClaimed(trackId, state=S){
+  const rewards = ensureMasteryRewardsState(state);
+  const key = String(trackId || "").trim();
+  if(!key) return;
+  rewards.claimed[key] = true;
+}
+function masteryRewardLabel(track){
+  if(!track) return "Reward";
+  if(track.type === "elite_title"){
+    const title = MASTERY_ELITE_TITLES[track.rewardId];
+    if(title) return `${title.icon} ${title.name}`;
+    return `Elite Title ${track.rewardId}`;
+  }
+  const def = seasonRewardDef(track.type, track.rewardId);
+  if(def){
+    const icon = SEASON_PASS_TYPE_ICON[track.type] || "🎁";
+    return `${icon} ${def.name}`;
+  }
+  return `${SEASON_PASS_TYPE_ICON[track.type] || "🎁"} ${track.rewardId}`;
+}
+function masteryClaimedCount(state=S){
+  const rewards = ensureMasteryRewardsState(state);
+  return Object.values(rewards.claimed || {}).filter(Boolean).length;
+}
+function masteryEliteTitleDisplay(state=S){
+  const rewards = ensureMasteryRewardsState(state);
+  const id = String(rewards.equippedEliteTitle || "").trim();
+  if(!id || !MASTERY_ELITE_TITLES[id]) return null;
+  return { id, ...MASTERY_ELITE_TITLES[id] };
+}
+function effectiveDisplayTitle(state=S){
+  const elite = masteryEliteTitleDisplay(state);
+  if(elite) return `${elite.icon} ${elite.name}`;
+  return String(state?.title || "Rookie");
+}
+function claimMasteryReward(trackId){
+  const track = masteryTrackDef(trackId);
+  if(!track) return toast("Mastery reward not found.");
+  if(masteryTrackClaimed(track.id)) return toast("Mastery reward already claimed.");
+  const progress = masteryTrackProgress(track, S);
+  if(progress < track.target){
+    return toast(`Not ready. ${masteryMetricLabel(track.metric)} ${progress}/${track.target}.`);
+  }
+
+  const rewards = ensureMasteryRewardsState(S);
+  const pass = ensureSeasonPassState(S);
+  let unlocked = false;
+  if(track.type === "elite_title"){
+    if(!rewards.ownedEliteTitles.includes(track.rewardId)){
+      rewards.ownedEliteTitles.push(track.rewardId);
+      unlocked = true;
+    }
+    rewards.equippedEliteTitle = track.rewardId;
+  }else{
+    unlocked = seasonPassUnlockCosmetic(pass, track.type, track.rewardId);
+    pass.equipped[track.type] = track.rewardId;
+  }
+
+  masteryTrackSetClaimed(track.id, S);
+  sfx("win");
+  hapticNotif("success");
+  toast(`Mastery unlocked: ${masteryRewardLabel(track)}${unlocked ? "" : " (already owned, now equipped)."}`);
+  setEventText(`🏆 Mastery unlocked • ${track.name}`, 2.3);
+  save();
+  renderHUD();
+  refreshLaunchIntroStatus();
+  if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
+  if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+}
+function equipMasteryEliteTitle(titleId=""){
+  const rewards = ensureMasteryRewardsState(S);
+  const id = String(titleId || "").trim();
+  if(!id){
+    rewards.equippedEliteTitle = "";
+    sfx("ui");
+    hapticImpact("light");
+    toast("Base title equipped.");
+    save();
+    renderHUD();
+    refreshLaunchIntroStatus();
+    if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
+    if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+    return;
+  }
+  if(!MASTERY_ELITE_TITLES[id]) return toast("Elite title not found.");
+  if(!rewards.ownedEliteTitles.includes(id)) return toast("Claim this elite title from Mastery first.");
+  rewards.equippedEliteTitle = id;
+  sfx("ui");
+  hapticImpact("light");
+  toast(`Equipped ${MASTERY_ELITE_TITLES[id].name}.`);
+  save();
+  renderHUD();
+  refreshLaunchIntroStatus();
+  if(document.getElementById("shopOverlay").style.display === "flex") renderShopList();
+  if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+}
+
 const AMMO_EFFECTS = {
   "Standard": { dmgMul:1.00, crit:0.04, pen:0.00, tranq:1.00 },
   "Rare":     { dmgMul:1.08, crit:0.07, pen:0.08, tranq:1.08 },
@@ -4257,6 +4481,7 @@ const DEFAULT = {
   contracts: null,
   liveOps: null,
   seasonPass: defaultSeasonPassState(),
+  masteryRewards: defaultMasteryRewardsState(),
   achievements:{},
   title:"Rookie",
   playerHandle:"",
@@ -4348,6 +4573,7 @@ ensureOpsTotalsState(S);
 ensureBalanceStatsState(S);
 ensureNemesisState(S);
 ensureArcadeWeeklySeedState(S);
+ensureMasteryRewardsState(S);
 syncWindowState();
 
 // ---- Tutorial support + global state ----
@@ -5452,6 +5678,7 @@ function load(){
       ensureArcadeWeeklySeedState(fallback);
       ensureClanState(fallback);
       ensureSeasonPassState(fallback);
+      ensureMasteryRewardsState(fallback);
       return fallback;
     }
     const m = { ...DEFAULT, ...saved };
@@ -5486,6 +5713,7 @@ function load(){
     m.telegramEventDrop = (saved.telegramEventDrop && typeof saved.telegramEventDrop === "object") ? saved.telegramEventDrop : null;
     m.lastMissionRecap = (saved.lastMissionRecap && typeof saved.lastMissionRecap === "object") ? saved.lastMissionRecap : null;
     m.seasonPass = mergeSeasonPassSnapshots(DEFAULT.seasonPass, saved.seasonPass);
+    m.masteryRewards = mergeMasteryRewardsSnapshots(DEFAULT.masteryRewards, saved.masteryRewards);
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
     m.progressionUnlocks = { ...DEFAULT.progressionUnlocks, ...(saved.progressionUnlocks||{}) };
     m.metaBase = { ...DEFAULT.metaBase, ...(saved.metaBase||{}) };
@@ -5522,6 +5750,7 @@ function load(){
     ensureArcadeWeeklySeedState(m);
     ensureClanState(m);
     ensureSeasonPassState(m);
+    ensureMasteryRewardsState(m);
     ensureStoryEndgameState(m);
     if(m.lives==null) m.lives=5;
     m.v = STORAGE_VERSION;
@@ -5545,6 +5774,8 @@ function load(){
     ensureArcadeBuildcraftState(fallback);
     ensureArcadeWeeklySeedState(fallback);
     ensureClanState(fallback);
+    ensureSeasonPassState(fallback);
+    ensureMasteryRewardsState(fallback);
     return fallback;
   }
 }
@@ -10870,6 +11101,7 @@ function writeStoryProfileData(source="autosave", state=S){
   if(!src || typeof src !== "object") return false;
   ensureStoryEndgameState(src);
   const seasonPass = ensureSeasonPassState(src);
+  const masteryRewards = ensureMasteryRewardsState(src);
   const nemesis = ensureNemesisState(src);
   const payload = {
     storyLevel: clamp(Math.floor(Number(src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
@@ -10938,6 +11170,7 @@ function writeStoryProfileData(source="autosave", state=S){
       ? cloneState(src.clanContractClaims)
       : {},
     seasonPass: cloneState(seasonPass),
+    masteryRewards: cloneState(masteryRewards),
     savedAt: Date.now(),
     source: String(source || "autosave"),
   };
@@ -11139,6 +11372,10 @@ function applyStoryProfileToState(state, profile){
     state.seasonPass = mergeSeasonPassSnapshots(state.seasonPass, profile.seasonPass);
   }
   ensureSeasonPassState(state);
+  if(profile.masteryRewards && typeof profile.masteryRewards === "object"){
+    state.masteryRewards = mergeMasteryRewardsSnapshots(state.masteryRewards, profile.masteryRewards);
+  }
+  ensureMasteryRewardsState(state);
 
   if(typeof profile.equippedWeaponId === "string" && profile.equippedWeaponId && state.ownedWeapons?.includes(profile.equippedWeaponId)){
     state.equippedWeaponId = profile.equippedWeaponId;
@@ -11207,6 +11444,7 @@ function writeStoryProgressData(payload={}){
   if(window.__TUTORIAL_MODE__) return false;
   ensureStoryEndgameState(S);
   const seasonPass = ensureSeasonPassState(S);
+  const masteryRewards = ensureMasteryRewardsState(S);
   const nemesis = ensureNemesisState(S);
   const storyVariant = normalizeStoryVariant(payload.storyVariant ?? S.storyVariant);
   const storyNgPlusTier = Math.max(0, Math.floor(Number(payload.storyNgPlusTier ?? S.storyNgPlusTier ?? 0)));
@@ -11281,6 +11519,9 @@ function writeStoryProgressData(payload={}){
     seasonPass: (payload.seasonPass && typeof payload.seasonPass === "object")
       ? cloneState(payload.seasonPass)
       : cloneState(seasonPass),
+    masteryRewards: (payload.masteryRewards && typeof payload.masteryRewards === "object")
+      ? cloneState(payload.masteryRewards)
+      : cloneState(masteryRewards),
     mag: {
       loaded: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).loaded || 0))),
       cap: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).cap || 0))),
@@ -11664,7 +11905,7 @@ function refreshLaunchIntroStatus(){
   }
   if(commanderEl){
     const lv = Math.max(1, Number(S.level || 1));
-    const title = S.title || "Rookie";
+    const title = effectiveDisplayTitle(S);
     commanderEl.innerText = `${title} • Lv ${lv} • Funds $${Number(S.funds||0).toLocaleString()}`;
   }
   if(intelEl){
@@ -13352,10 +13593,12 @@ function renderShopList(){
 
   if(currentShopTab==="meta"){
     ensureStoryMetaState();
+    const mastery = ensureMasteryRewardsState(S);
+    const pass = ensureSeasonPassState(S);
     const storyModeLive = S.mode === "Story";
     note.innerText = storyModeLive
-      ? "Meta progression is active. Base upgrades, specialist perks, and chapter rewards affect Story missions."
-      : "Meta progression purchases are persistent, but effects apply in Story missions.";
+      ? "Meta progression is active. Base upgrades, specialist perks, and chapter rewards affect Story missions. Mastery rewards are permanent cosmetics only."
+      : "Meta progression purchases are persistent, but effects apply in Story missions. Mastery rewards stay cosmetic-only.";
 
     const baseCards = STORY_BASE_UPGRADES.map((def)=>{
       const rank = storyBaseRank(def.key);
@@ -13404,6 +13647,46 @@ function renderShopList(){
         </div>`;
     }).join("");
 
+    const masteryCards = MASTERY_TRACKS.map((track)=>{
+      const progress = masteryTrackProgress(track, S);
+      const target = Math.max(1, Math.floor(Number(track.target || 1)));
+      const pct = clamp((progress / target) * 100, 0, 100);
+      const claimed = masteryTrackClaimed(track.id, S);
+      const ready = progress >= target;
+      const statusTag = claimed ? "Claimed" : (ready ? "Ready" : `${Math.min(progress, target)}/${target}`);
+      const metricText = `${masteryMetricLabel(track.metric)} ${Math.min(progress, target)}/${target}`;
+      const rewardText = masteryRewardLabel(track);
+
+      let actionBtn = "";
+      if(claimed){
+        if(track.type === "elite_title"){
+          const equipped = mastery.equippedEliteTitle === track.rewardId;
+          actionBtn = `<button ${equipped ? "disabled" : ""} onclick="equipMasteryEliteTitle('${track.rewardId}')">${equipped ? "Equipped" : "Equip Title"}</button>`;
+        }else{
+          const equipped = pass.equipped?.[track.type] === track.rewardId;
+          actionBtn = `<button ${equipped ? "disabled" : ""} onclick="equipSeasonPassCosmetic('${track.type}','${track.rewardId}')">${equipped ? "Equipped" : "Equip"}</button>`;
+        }
+      }else{
+        actionBtn = `<button ${ready ? "" : "disabled"} onclick="claimMasteryReward('${track.id}')">${ready ? "Claim" : "Locked"}</button>`;
+      }
+
+      return `
+        <div class="item">
+          <div>
+            <div class="itemName">${track.name} <span class="tag">${statusTag}</span></div>
+            <div class="itemDesc">${track.desc}</div>
+            <div class="itemDesc">Reward: ${rewardText}</div>
+            <div class="itemDesc">${metricText}</div>
+            <div class="bar"><div class="fill green" style="width:${pct}%"></div></div>
+          </div>
+          <div style="text-align:right">
+            ${actionBtn}
+          </div>
+        </div>`;
+    }).join("");
+    const eliteTitle = masteryEliteTitleDisplay(S);
+    const eliteName = eliteTitle ? `${eliteTitle.icon} ${eliteTitle.name}` : "Base title only";
+
     list.innerHTML = `
       <div class="hudTitle">Base Upgrades (Story)</div>
       ${baseCards}
@@ -13413,6 +13696,19 @@ function renderShopList(){
       <div class="divider"></div>
       <div class="hudTitle">Chapter Rewards (${chapterRewardUnlockedCount()}/${STORY_CHAPTER_REWARDS.length})</div>
       ${rewardCards}
+      <div class="divider"></div>
+      <div class="hudTitle">Mastery Rewards (${masteryClaimedCount(S)}/${MASTERY_TRACKS.length})</div>
+      <div class="item">
+        <div>
+          <div class="itemName">Long-Term Meta Goals <span class="tag">Cosmetic Only</span></div>
+          <div class="itemDesc">Permanent unlock tracks for skins, banners, finishers, and elite titles. No stat boosts.</div>
+          <div class="itemDesc">Equipped elite title: <b>${eliteName}</b></div>
+        </div>
+        <div style="text-align:right">
+          <button class="ghost" onclick="equipMasteryEliteTitle('')">Use Base Title</button>
+        </div>
+      </div>
+      ${masteryCards}
     `;
     return;
   }
@@ -13962,6 +14258,7 @@ function pickMostInjuredCivilian(){
 function renderInventory(){
   ensureStoryMetaState();
   ensureWeaponMasteryState();
+  const mastery = ensureMasteryRewardsState(S);
   syncSquadRosterBounds();
   const w=equippedWeapon();
   const ammoId=w.ammo;
@@ -13970,11 +14267,15 @@ function renderInventory(){
   const specialistRanks = STORY_SPECIALIST_PERKS.reduce((n, def)=>n + storySpecialistRank(def.key), 0);
   const specialistMaxRanks = STORY_SPECIALIST_PERKS.reduce((n, def)=>n + def.maxRank, 0);
   const chapterRewards = chapterRewardUnlockedCount();
+  const masteryCount = masteryClaimedCount(S);
+  const eliteTitle = masteryEliteTitleDisplay(S);
+  const eliteTitleTxt = eliteTitle ? `${eliteTitle.icon} ${eliteTitle.name}` : "Base title";
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
      <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
-     <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}`;
+     <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}<br>
+     <b>Mastery:</b> ${masteryCount}/${MASTERY_TRACKS.length} claimed • <b>Elite Title:</b> ${eliteTitleTxt}`;
 
   document.getElementById("invWeapons").innerHTML = S.ownedWeapons.map(id=>{
     const ww=getWeapon(id);
@@ -14240,8 +14541,12 @@ function renderInventory(){
         <div class="itemDesc"><b>Level:</b> ${S.level} • <b>XP:</b> ${S.xp}/${xpNeededForLevel(S.level)} • <b>Perk Points:</b> ${S.perkPoints}</div>
         <div class="itemDesc"><b>Unlocks:</b> ${progressionUnlockCount()}/${PROGRESSION_UNLOCKS.length} • ${progressText}</div>
         <div class="itemDesc"><b>Story Meta:</b> ${metaBits.join(" • ") || "No upgrades yet"} • Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}</div>
+        <div class="itemDesc"><b>Mastery Rewards:</b> ${masteryCount}/${MASTERY_TRACKS.length} • <b>Elite Title:</b> ${eliteTitleTxt}</div>
       </div>
-      <div style="text-align:right"><button class="ghost" onclick="openShopFromInventory('meta')">Meta Shop</button></div>
+      <div style="text-align:right">
+        <button class="ghost" onclick="openShopFromInventory('meta')">Meta Shop</button>
+        <button class="ghost" onclick="equipMasteryEliteTitle('')">Use Base Title</button>
+      </div>
     </div>
     ${unlockHtml}
 
@@ -20575,8 +20880,9 @@ function renderHUD(){
   const seasonBadge = seasonPassBadgeDisplay(seasonPass);
   const seasonBanner = seasonPassBannerDisplay(seasonPass);
   const seasonFinisher = seasonPassFinisherDisplay(seasonPass);
+  const displayTitle = effectiveDisplayTitle(S);
 
-  document.getElementById("titleTxt").innerText = `${seasonBadge.icon} ${S.title || "Rookie"}`;
+  document.getElementById("titleTxt").innerText = `${seasonBadge.icon} ${displayTitle}`;
   document.getElementById("achvTxt").innerText = `${achvCount()} • Pass Lv ${seasonLevelNow}`;
   const seasonHudTxt = document.getElementById("seasonHudTxt");
   if(seasonHudTxt){
@@ -24112,6 +24418,8 @@ window.buyStorySpecialistPerk = buyStorySpecialistPerk;
 window.unlockSeasonPremium = unlockSeasonPremium;
 window.claimSeasonPassReward = claimSeasonPassReward;
 window.equipSeasonPassCosmetic = equipSeasonPassCosmetic;
+window.claimMasteryReward = claimMasteryReward;
+window.equipMasteryEliteTitle = equipMasteryEliteTitle;
 window.buyTrap = buyTrap;
 window.openStarsTopUp = openStarsTopUp;
 window.buyWithStars = buyWithStars;
