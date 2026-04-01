@@ -5946,6 +5946,177 @@ function invalidateMapCache(){
   __blockedAtCacheFrame = 0;
 }
 
+const WORLD_BASE_WIDTH = 960;
+const WORLD_BASE_HEIGHT = 540;
+
+function missionProgressForWorld(state=S){
+  const mode = normalizeModeName(state?.mode || "Story");
+  if(mode === "Story"){
+    return clamp(Math.floor(storyMissionLevelForState(state) || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  }
+  if(mode === "Arcade"){
+    return clamp(Math.floor(state?.arcadeLevel || 1), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  }
+  return Math.max(1, Math.floor(state?.survivalWave || 1));
+}
+
+function worldScaleForModeMission(mode, mission){
+  const mobile = isMobileViewport();
+  const landscape = isLandscapeViewport();
+  const landscapeBoost = (mobile && landscape) ? 0.42 : 0;
+  if(window.__TUTORIAL_MODE__) return 1;
+  if(mobile && !landscape){
+    // Portrait stays compact; landscape is the primary large-map orientation.
+    if(mode === "Story") return clamp(1.02 + ((Math.max(1, mission) - 1) * 0.004), 1.02, 1.24);
+    if(mode === "Arcade") return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.003), 1.01, 1.18);
+    return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.010), 1.01, 1.22);
+  }
+  if(mode === "Story"){
+    return clamp(1.85 + ((Math.max(1, mission) - 1) * 0.012) + landscapeBoost, 1.85, 3.20);
+  }
+  if(mode === "Arcade"){
+    return clamp(1.70 + ((Math.max(1, mission) - 1) * 0.010) + landscapeBoost, 1.70, 2.85);
+  }
+  return clamp(1.75 + ((Math.max(1, mission) - 1) * 0.028) + landscapeBoost, 1.75, 2.70);
+}
+
+function desiredWorldLayout(state=S){
+  const mode = normalizeModeName(state?.mode || "Story");
+  const mission = missionProgressForWorld(state);
+  const scale = worldScaleForModeMission(mode, mission);
+  const viewportW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const mobile = isMobileViewport();
+  const landscape = isLandscapeViewport();
+  // Keep portrait close to viewport for stability; make landscape the primary expanded-map view.
+  const minPadW = mobile ? (landscape ? 120 : 20) : 40;
+  const minPadH = mobile ? (landscape ? 80 : 20) : 40;
+  const w = Math.max(viewportW + minPadW, Math.round(WORLD_BASE_WIDTH * scale));
+  const h = Math.max(viewportH + minPadH, Math.round(WORLD_BASE_HEIGHT * scale));
+  return { mode, mission, scale, w, h };
+}
+
+function ensureWorldLayout(state=S){
+  if(!state || typeof state !== "object"){
+    return { mode:"Story", mission:1, scale:1, w:(cv.width || WORLD_BASE_WIDTH), h:(cv.height || WORLD_BASE_HEIGHT) };
+  }
+  if(!state.world || typeof state.world !== "object") state.world = {};
+  const world = state.world;
+  const desired = desiredWorldLayout(state);
+  const needsReset =
+    !Number.isFinite(world.w) ||
+    !Number.isFinite(world.h) ||
+    !Number.isFinite(world.scale) ||
+    world.mode !== desired.mode ||
+    world.mission !== desired.mission ||
+    Math.abs(Number(world.scale || 1) - desired.scale) > 0.0001;
+  if(needsReset){
+    world.mode = desired.mode;
+    world.mission = desired.mission;
+    world.scale = desired.scale;
+    world.w = desired.w;
+    world.h = desired.h;
+  }
+  if(!state.camera || typeof state.camera !== "object"){
+    state.camera = { x: world.w * 0.5, y: world.h * 0.5 };
+  }
+  return world;
+}
+
+function worldWidth(state=S){
+  const world = ensureWorldLayout(state);
+  return Math.max(Number(cv?.width || WORLD_BASE_WIDTH), Math.round(Number(world?.w || WORLD_BASE_WIDTH)));
+}
+
+function worldHeight(state=S){
+  const world = ensureWorldLayout(state);
+  return Math.max(Number(cv?.height || WORLD_BASE_HEIGHT), Math.round(Number(world?.h || WORLD_BASE_HEIGHT)));
+}
+
+function worldBounds(radius=0, state=S){
+  const w = worldWidth(state);
+  const h = worldHeight(state);
+  const r = Math.max(0, Number(radius) || 0);
+  return {
+    minX: 30 + r,
+    maxX: w - (30 + r),
+    minY: 48 + r,
+    maxY: h - (22 + r),
+  };
+}
+
+function clampWorldX(v, radius=0, state=S){
+  const b = worldBounds(radius, state);
+  return clamp(v, b.minX, b.maxX);
+}
+
+function clampWorldY(v, radius=0, state=S){
+  const b = worldBounds(radius, state);
+  return clamp(v, b.minY, b.maxY);
+}
+
+function cameraClampCenter(x, y, state=S){
+  const world = ensureWorldLayout(state);
+  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const halfW = vw * 0.5;
+  const halfH = vh * 0.5;
+  const minX = halfW;
+  const maxX = Math.max(halfW, Number(world.w || vw) - halfW);
+  const minY = halfH;
+  const maxY = Math.max(halfH, Number(world.h || vh) - halfH);
+  return {
+    x: clamp(Number.isFinite(x) ? x : (state?.me?.x || (world.w * 0.5)), minX, maxX),
+    y: clamp(Number.isFinite(y) ? y : (state?.me?.y || (world.h * 0.5)), minY, maxY),
+  };
+}
+
+function cameraOffsetSnapshot(state=S){
+  const world = ensureWorldLayout(state);
+  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const camX = Number.isFinite(state?.camera?.x) ? state.camera.x : (state?.me?.x || world.w * 0.5);
+  const camY = Number.isFinite(state?.camera?.y) ? state.camera.y : (state?.me?.y || world.h * 0.5);
+  const clamped = cameraClampCenter(camX, camY, state);
+  return { x: clamped.x - (vw * 0.5), y: clamped.y - (vh * 0.5) };
+}
+
+function updateWorldCamera(state=S){
+  const world = ensureWorldLayout(state);
+  if(!state.camera || typeof state.camera !== "object"){
+    state.camera = { x: world.w * 0.5, y: world.h * 0.5 };
+  }
+  const target = cameraClampCenter(
+    Number.isFinite(state?.me?.x) ? state.me.x : (world.w * 0.5),
+    Number.isFinite(state?.me?.y) ? state.me.y : (world.h * 0.5),
+    state
+  );
+  const ease = state?.inBattle ? 0.25 : 0.18;
+  if(!Number.isFinite(state.camera.x) || !Number.isFinite(state.camera.y)){
+    state.camera.x = target.x;
+    state.camera.y = target.y;
+  } else {
+    state.camera.x += (target.x - state.camera.x) * ease;
+    state.camera.y += (target.y - state.camera.y) * ease;
+  }
+  const clamped = cameraClampCenter(state.camera.x, state.camera.y, state);
+  state.camera.x = clamped.x;
+  state.camera.y = clamped.y;
+  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  return { x: state.camera.x - (vw * 0.5), y: state.camera.y - (vh * 0.5) };
+}
+
+function worldToScreenPoint(x, y, state=S){
+  const off = cameraOffsetSnapshot(state);
+  return { x: x - off.x, y: y - off.y };
+}
+
+function screenToWorldPoint(x, y, state=S){
+  const off = cameraOffsetSnapshot(state);
+  return { x: x + off.x, y: y + off.y };
+}
+
 function flushSaveNow(){
   __lastSave = Date.now();
   __savePending = false;
@@ -7110,7 +7281,7 @@ function mobileCanvasHeight(){
   const vh = window.innerHeight || 844;
   const landscape = vw > vh;
   return landscape
-    ? Math.round(clamp(vh * 0.78, 280, 430))
+    ? Math.round(clamp(vh * 0.88, 320, 500))
     : Math.round(clamp(vh * 1.08, 820, 980));
 }
 function isMobileViewport(){
@@ -7342,6 +7513,16 @@ function scaleWorldForViewportResize(oldW, oldH, newW, newH){
   if(!S || typeof S !== "object") return;
   if(!(oldW > 0 && oldH > 0 && newW > 0 && newH > 0)) return;
   if(oldW === newW && oldH === newH) return;
+  ensureWorldLayout(S);
+  if(!window.__TUTORIAL_MODE__){
+    const cam = cameraClampCenter(S?.camera?.x, S?.camera?.y, S);
+    if(!S.camera || typeof S.camera !== "object") S.camera = { x:cam.x, y:cam.y };
+    else {
+      S.camera.x = cam.x;
+      S.camera.y = cam.y;
+    }
+    return;
+  }
   const sx = newW / oldW;
   const sy = newH / oldH;
   const sr = Math.sqrt(Math.max(0.01, sx * sy));
@@ -7385,6 +7566,9 @@ function scaleWorldForViewportResize(oldW, oldH, newW, newH){
 }
 function clampWorldToCanvas(){
   if(!S || typeof S !== "object") return;
+  ensureWorldLayout(S);
+  const w = worldWidth(S);
+  const h = worldHeight(S);
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.pickups)) S.pickups = [];
@@ -7402,8 +7586,8 @@ function clampWorldToCanvas(){
   S.rescueSites = S.rescueSites.filter((s)=>s && typeof s === "object");
   S.mapInteractables = S.mapInteractables.filter((i)=>i && typeof i === "object");
   if(S.me){
-    S.me.x = clamp(S.me.x, 40, cv.width - 40);
-    S.me.y = clamp(S.me.y, 60, cv.height - 40);
+    S.me.x = clamp(S.me.x, 40, w - 40);
+    S.me.y = clamp(S.me.y, 60, h - 40);
     if(inMobileNoBuildZone(S.me.x, S.me.y, 16) || blockedAt(S.me.x, S.me.y, 16)){
       const mePt = safeSpawnPoint(S.me.x, S.me.y, 16, true, false);
       S.me.x = mePt.x;
@@ -7412,8 +7596,8 @@ function clampWorldToCanvas(){
     }
   }
   if(S.evacZone){
-    S.evacZone.x = clamp(S.evacZone.x, 100, cv.width - 60);
-    S.evacZone.y = clamp(S.evacZone.y, 100, cv.height - 60);
+    S.evacZone.x = clamp(S.evacZone.x, 100, w - 60);
+    S.evacZone.y = clamp(S.evacZone.y, 100, h - 60);
     if(inMapScenarioKeepout(S.evacZone.x, S.evacZone.y, Math.round((S.evacZone.r || 70) * 0.90))){
       const zonePt = safeSpawnPoint(S.evacZone.x, S.evacZone.y, Math.round((S.evacZone.r || 70) * 0.45), true, true);
       S.evacZone.x = zonePt.x;
@@ -7421,15 +7605,15 @@ function clampWorldToCanvas(){
     }
   }
   const tw = ensureMissionTwistState(S);
-  tw.bridge.x = clamp(tw.bridge.x, 60, cv.width - 60);
-  tw.bridge.y = clamp(tw.bridge.y, 80, cv.height - 60);
+  tw.bridge.x = clamp(tw.bridge.x, 60, w - 60);
+  tw.bridge.y = clamp(tw.bridge.y, 80, h - 60);
   tw.bridge.r = clamp(tw.bridge.r, 24, 180);
-  tw.hostage.x = clamp(tw.hostage.x, 60, cv.width - 60);
-  tw.hostage.y = clamp(tw.hostage.y, 80, cv.height - 60);
+  tw.hostage.x = clamp(tw.hostage.x, 60, w - 60);
+  tw.hostage.y = clamp(tw.hostage.y, 80, h - 60);
   tw.hostage.r = clamp(tw.hostage.r, 20, 140);
   for(const civ of (S.civilians || [])){
-    civ.x = clamp(civ.x, 50, cv.width - 50);
-    civ.y = clamp(civ.y, 70, cv.height - 50);
+    civ.x = clamp(civ.x, 50, w - 50);
+    civ.y = clamp(civ.y, 70, h - 50);
     if(inMobileNoBuildZone(civ.x, civ.y, 14) || blockedAt(civ.x, civ.y, 14)){
       const civPt = safeSpawnPoint(civ.x, civ.y, 14, true, false);
       civ.x = civPt.x;
@@ -7437,8 +7621,8 @@ function clampWorldToCanvas(){
     }
   }
   for(const tiger of (S.tigers || [])){
-    tiger.x = clamp(tiger.x, 40, cv.width - 40);
-    tiger.y = clamp(tiger.y, 60, cv.height - 40);
+    tiger.x = clamp(tiger.x, 40, w - 40);
+    tiger.y = clamp(tiger.y, 60, h - 40);
     if(inMobileNoBuildZone(tiger.x, tiger.y, 16) || blockedAt(tiger.x, tiger.y, 18)){
       const tigerPt = safeSpawnPoint(tiger.x, tiger.y, 16, true, false);
       tiger.x = tigerPt.x;
@@ -7446,33 +7630,33 @@ function clampWorldToCanvas(){
     }
   }
   for(const pickup of (S.pickups || [])){
-    pickup.x = clamp(pickup.x, 40, cv.width - 40);
-    pickup.y = clamp(pickup.y, 60, cv.height - 40);
+    pickup.x = clamp(pickup.x, 40, w - 40);
+    pickup.y = clamp(pickup.y, 60, h - 40);
   }
   for(const carcass of (S.carcasses || [])){
-    carcass.x = clamp(carcass.x, 40, cv.width - 40);
-    carcass.y = clamp(carcass.y, 60, cv.height - 40);
+    carcass.x = clamp(carcass.x, 40, w - 40);
+    carcass.y = clamp(carcass.y, 60, h - 40);
   }
   for(const trap of (S.trapsPlaced || [])){
-    trap.x = clamp(trap.x, 40, cv.width - 40);
-    trap.y = clamp(trap.y, 60, cv.height - 40);
+    trap.x = clamp(trap.x, 40, w - 40);
+    trap.y = clamp(trap.y, 60, h - 40);
   }
   for(const ally of (S.supportUnits || [])){
-    ally.x = clamp(ally.x, 40, cv.width - 40);
-    ally.y = clamp(ally.y, 60, cv.height - 40);
-    ally.homeX = clamp(ally.homeX ?? ally.x, 40, cv.width - 40);
-    ally.homeY = clamp(ally.homeY ?? ally.y, 60, cv.height - 40);
+    ally.x = clamp(ally.x, 40, w - 40);
+    ally.y = clamp(ally.y, 60, h - 40);
+    ally.homeX = clamp(ally.homeX ?? ally.x, 40, w - 40);
+    ally.homeY = clamp(ally.homeY ?? ally.y, 60, h - 40);
     if(inMobileNoBuildZone(ally.x, ally.y, 16) || blockedAt(ally.x, ally.y, 16)){
       const allyPt = safeSpawnPoint(ally.x, ally.y, 16, true, false);
       ally.x = allyPt.x;
       ally.y = allyPt.y;
-      ally.homeX = clamp(ally.homeX ?? ally.x, 40, cv.width - 40);
-      ally.homeY = clamp(ally.homeY ?? ally.y, 60, cv.height - 40);
+      ally.homeX = clamp(ally.homeX ?? ally.x, 40, w - 40);
+      ally.homeY = clamp(ally.homeY ?? ally.y, 60, h - 40);
     }
   }
   for(const site of (S.rescueSites || [])){
-    site.x = clamp(site.x, 70, cv.width - 70);
-    site.y = clamp(site.y, 90, cv.height - 80);
+    site.x = clamp(site.x, 70, w - 70);
+    site.y = clamp(site.y, 90, h - 80);
     if(
       inMapScenarioKeepout(site.x, site.y, Math.round((site.r || 44) * 0.42)) ||
       blockedAt(site.x, site.y, Math.round((site.r || 44) * 0.36))
@@ -7483,8 +7667,8 @@ function clampWorldToCanvas(){
     }
   }
   for(const it of (S.mapInteractables || [])){
-    it.x = clamp(it.x, 70, cv.width - 70);
-    it.y = clamp(it.y, 90, cv.height - 80);
+    it.x = clamp(it.x, 70, w - 70);
+    it.y = clamp(it.y, 90, h - 80);
     if(
       inMapScenarioKeepout(it.x, it.y, Math.round((it.r || 22) * 0.9)) ||
       blockedAt(it.x, it.y, Math.round((it.r || 22) * 0.5))
@@ -7497,6 +7681,7 @@ function clampWorldToCanvas(){
 }
 function sanitizeRuntimeState(){
   if(!S || typeof S !== "object") return;
+  ensureWorldLayout(S);
   ensureStoryMetaState();
   ensureTouchHudState();
   ensureMissionDirectorState();
@@ -7519,8 +7704,8 @@ function sanitizeRuntimeState(){
 
   trimPersistentState(S);
 
-  const w = cv.width || 960;
-  const h = cv.height || 540;
+  const w = worldWidth(S);
+  const h = worldHeight(S);
   const clampX = (v, min=40, max=w-40)=>clamp(v, min, max);
   const clampY = (v, min=60, max=h-40)=>clamp(v, min, max);
 
@@ -7698,7 +7883,7 @@ function resizeCanvasForViewport(){
   const prevH = Number(cv.height || 0) || 540;
   const mobile = isMobileViewport();
   cv.width = mobile
-    ? (isLandscapeViewport() ? 900 : 820)
+    ? (isLandscapeViewport() ? 980 : 820)
     : 960;
   cv.height = mobile ? mobileCanvasHeight() : 540;
   try{ scaleWorldForViewportResize(prevW, prevH, cv.width, cv.height); }catch(e){}
@@ -8950,17 +9135,29 @@ function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr){
   const dy = cy - closestY;
   return (dx*dx + dy*dy) <= cr*cr;
 }
-function buildDenseLandmarks(mapKey, chapter, w=cv.width, h=cv.height){
+function buildDenseLandmarks(mapKey, chapter, w=worldWidth(S), h=worldHeight(S)){
   const family = mapFamilyKey(mapKey);
   const base = MAP_DENSE_LANDMARKS[family] || [];
   const ch = clamp(chapter || 1, 1, 10) - 1;
-  return base.map((lm, idx)=>{
-    const wobbleX = Math.sin((idx + 1) * 1.71 + ch * 0.93) * 0.012;
-    const wobbleY = Math.cos((idx + 1) * 1.37 + ch * 0.81) * 0.010;
-    const x = clamp(Math.round((lm.nx + wobbleX) * w), 52, w - 52);
-    const y = clamp(Math.round((lm.ny + wobbleY) * h), 70, h - 56);
-    return { ...lm, x, y };
-  });
+  const tileCols = clamp(Math.round(w / WORLD_BASE_WIDTH), 1, 4);
+  const tileRows = clamp(Math.round(h / WORLD_BASE_HEIGHT), 1, 4);
+  const out = [];
+  for(let ty=0; ty<tileRows; ty++){
+    for(let tx=0; tx<tileCols; tx++){
+      const tileSeed = (ty * tileCols) + tx + 1;
+      for(let idx=0; idx<base.length; idx++){
+        const lm = base[idx];
+        const wobbleX = Math.sin((idx + 1) * 1.71 + ch * 0.93 + tileSeed * 0.61) * 0.012;
+        const wobbleY = Math.cos((idx + 1) * 1.37 + ch * 0.81 + tileSeed * 0.49) * 0.010;
+        const nx = (tx + clamp(lm.nx + wobbleX, 0.04, 0.96)) / tileCols;
+        const ny = (ty + clamp(lm.ny + wobbleY, 0.05, 0.95)) / tileRows;
+        const x = clamp(Math.round(nx * w), 52, w - 52);
+        const y = clamp(Math.round(ny * h), 70, h - 56);
+        out.push({ ...lm, x, y });
+      }
+    }
+  }
+  return out;
 }
 function pushMapObstacleRect(rects, cx, cy, ww, hh, pad=0){
   const w = Math.max(6, ww + (pad * 2));
@@ -8986,7 +9183,7 @@ function addMapObstacleForLandmark(rects, circles, item){
   }
   pushMapObstacleRect(rects, item.x, item.y, profile.w * scale, profile.h * scale, profile.pad || 0);
 }
-function buildMapWaterZones(mapKey, chapter, w=cv.width, h=cv.height){
+function buildMapWaterZones(mapKey, chapter, w=worldWidth(S), h=worldHeight(S)){
   const family = mapFamilyKey(mapKey);
   const defs = MAP_WATER_LAYOUTS[family] || [];
   const riverChapter = (chapter === 5);
@@ -9030,8 +9227,8 @@ function ensureMapObstacleCache(){
   const map = currentMap();
   const key = map?.key || "ST_FOREST";
   const chapter = chapterIndexForMode(S.mode);
-  const w = cv.width || 960;
-  const h = cv.height || 540;
+  const w = worldWidth(S);
+  const h = worldHeight(S);
   const sig = [S.mode, key, chapter, w, h, window.__TUTORIAL_MODE__ ? 1 : 0].join("|");
   if(sig === __mapObstacleSig) return;
 
@@ -9176,17 +9373,19 @@ function mobileRightUiLaneRect(){
 function inMobileRightUiLane(x, y, radius=0){
   const rect = mobileRightUiLaneRect();
   if(!rect) return false;
+  const sp = worldToScreenPoint(x, y, S);
   const r = Math.max(0, radius || 0);
-  return rectCircleCollide(rect.x, rect.y, rect.w, rect.h, x, y, r);
+  return rectCircleCollide(rect.x, rect.y, rect.w, rect.h, sp.x, sp.y, r);
 }
 function inMobileControlKeepout(x, y, radius=0){
   const zones = mobileControlKeepoutZones();
   if(!zones.length) return false;
+  const sp = worldToScreenPoint(x, y, S);
   const rrBase = Math.max(0, radius || 0);
   for(const zone of zones){
     const rr = zone.r + rrBase;
-    const dx = x - zone.x;
-    const dy = y - zone.y;
+    const dx = sp.x - zone.x;
+    const dy = sp.y - zone.y;
     if((dx * dx + dy * dy) <= (rr * rr)) return true;
   }
   return false;
@@ -9223,7 +9422,8 @@ function blockedAt(x, y, radius){
     return false;
   }
   // Blood pools are visual hazards; they should never hard-block movement.
-  if(!(isMobileViewport() && x > (cv.width * 0.66) && y > (cv.height * 0.70))){
+  const sp = worldToScreenPoint(x, y, S);
+  if(!(isMobileViewport() && sp.x > (cv.width * 0.66) && sp.y > (cv.height * 0.70))){
     blocked = blockedByMapObstacle(x, y, radius);
   }
   __blockedAtCache.set(key, blocked);
@@ -9276,10 +9476,11 @@ function findNearestOpenPoint(x, y, radius, opts={}){
   const avoidWater = !!opts.avoidWater;
   const inPerfMode = performanceMode() === "PERFORMANCE";
   const slowFrame = frameIsSlow();
-  const minX = 30 + radius;
-  const maxX = cv.width - (30 + radius);
-  const minY = 48 + radius;
-  const maxY = cv.height - (22 + radius);
+  const bounds = worldBounds(radius, S);
+  const minX = bounds.minX;
+  const maxX = bounds.maxX;
+  const minY = bounds.minY;
+  const maxY = bounds.maxY;
   const ox = clamp(x, minX, maxX);
   const oy = clamp(y, minY, maxY);
   const targetX = Number.isFinite(opts.targetX) ? opts.targetX : ox;
@@ -9374,16 +9575,18 @@ function safeSpawnPoint(x, y, radius=16, avoidKeepout=true, avoidWater=false){
     targetY:y
   });
   if(free) return free;
+  const bounds = worldBounds(radius, S);
   return {
-    x: clamp(x, 30 + radius, cv.width - (30 + radius)),
-    y: clamp(y, 48 + radius, cv.height - (22 + radius))
+    x: clamp(x, bounds.minX, bounds.maxX),
+    y: clamp(y, bounds.minY, bounds.maxY)
   };
 }
 function pointInViewportPad(x, y, pad=120){
   if(!Number.isFinite(x) || !Number.isFinite(y)) return false;
-  const w = Number(cv?.width || 960);
-  const h = Number(cv?.height || 540);
-  return x >= -pad && x <= (w + pad) && y >= -pad && y <= (h + pad);
+  const sp = worldToScreenPoint(x, y, S);
+  const w = Number(cv?.width || WORLD_BASE_WIDTH);
+  const h = Number(cv?.height || WORLD_BASE_HEIGHT);
+  return sp.x >= -pad && sp.x <= (w + pad) && sp.y >= -pad && sp.y <= (h + pad);
 }
 function unstickEntitiesTick(){
   if(!S || S.paused || S.gameOver || S.missionEnded) return;
@@ -9536,10 +9739,11 @@ function tryCarcassEscape(ent, radius, minX, maxX, minY, maxY){
 }
 function tryMoveEntity(ent, nx, ny, radius, opts={}){
   const now = Date.now();
-  const minX = 30 + radius;
-  const maxX = cv.width - (30 + radius);
-  const minY = 48 + radius;
-  const maxY = cv.height - (22 + radius);
+  const bounds = worldBounds(radius, S);
+  const minX = bounds.minX;
+  const maxX = bounds.maxX;
+  const minY = bounds.minY;
+  const maxY = bounds.maxY;
   const avoidKeepout = opts.avoidKeepout === true;
   const targetX = Number.isFinite(nx) ? nx : ent.x;
   const targetY = Number.isFinite(ny) ? ny : ent.y;
@@ -15028,11 +15232,13 @@ window.exitTutorialMode = function () {
 
 function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
 function randomEvacZone(civilians=[]){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const r = 70;
   const minX = 110;
-  const maxX = cv.width - 90;
+  const maxX = worldW - 90;
   const minY = 120;
-  const maxY = cv.height - 90;
+  const maxY = worldH - 90;
   const validCivs = (Array.isArray(civilians) ? civilians : [])
     .filter((c)=>c && Number.isFinite(c.x) && Number.isFinite(c.y) && c.alive !== false && !c.evac);
 
@@ -15121,8 +15327,8 @@ function randomEvacZone(civilians=[]){
         const moved = findNearestOpenPoint(zx, zy, Math.round(r * 0.45), {
           avoidKeepout:true,
           avoidWater:true,
-          targetX:cv.width * 0.44,
-          targetY:cv.height * 0.56
+          targetX:worldW * 0.44,
+          targetY:worldH * 0.56
         });
         if(moved){
           zx = moved.x;
@@ -15140,8 +15346,8 @@ function randomEvacZone(civilians=[]){
     const dryPoint = findNearestOpenPoint(zonePoint.x, zonePoint.y, Math.round(r * 0.45), {
       avoidKeepout:true,
       avoidWater:true,
-      targetX:cv.width * 0.5,
-      targetY:cv.height * 0.5
+      targetX:worldW * 0.5,
+      targetY:worldH * 0.5
     });
     if(dryPoint) zonePoint = dryPoint;
   }
@@ -15149,8 +15355,8 @@ function randomEvacZone(civilians=[]){
     const clearPoint = findNearestOpenPoint(zonePoint.x, zonePoint.y, Math.round(r * 0.45), {
       avoidKeepout:true,
       avoidWater:true,
-      targetX:cv.width * 0.40,
-      targetY:cv.height * 0.55
+      targetX:worldW * 0.40,
+      targetY:worldH * 0.55
     });
     if(clearPoint) zonePoint = clearPoint;
   }
@@ -15160,7 +15366,9 @@ function randomEvacZone(civilians=[]){
 function validateMissionSpawnLayout(opts={}){
   const repair = opts?.repair !== false;
   if(!S || typeof S !== "object") return { fixed:0 };
-  if(!Number.isFinite(cv.width) || !Number.isFinite(cv.height) || cv.width < 100 || cv.height < 100) return { fixed:0 };
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  if(!(worldW > 100 && worldH > 100)) return { fixed:0 };
 
   let fixed = 0;
   const aliveCivs = (S.civilians || []).filter((c)=>c && c.alive !== false && !c.evac && Number.isFinite(c.x) && Number.isFinite(c.y));
@@ -15187,7 +15395,7 @@ function validateMissionSpawnLayout(opts={}){
       nearTiger = Math.min(nearTiger, dist(S.me.x, S.me.y, t.x, t.y));
     }
     if(nearTiger < 128 && repair){
-      const mePt = safeSpawnPoint(cv.width * 0.16, cv.height * 0.78, 16, true, false);
+      const mePt = safeSpawnPoint(worldW * 0.16, worldH * 0.78, 16, true, false);
       S.me.x = mePt.x;
       S.me.y = mePt.y;
       fixed += 1;
@@ -15280,7 +15488,12 @@ function currentMapKey(){
 }
 
 function rescueSitePool(){
-  const h = cv.height;
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const baseW = WORLD_BASE_WIDTH;
+  const h = WORLD_BASE_HEIGHT;
+  const toWorldX = (v)=> (v <= 1 ? (v * worldW) : (v * (worldW / baseW)));
+  const toWorldY = (v)=> (v <= 1 ? (v * worldH) : (v * (worldH / WORLD_BASE_HEIGHT)));
   const pools = {
     ST_FOREST: [
       { kind:"trail", label:"Trail Gate", x:140, y:h*0.18, r:42 },
@@ -15376,8 +15589,8 @@ function rescueSitePool(){
     id: idx + 1,
     kind: site.kind,
     label: site.label,
-    x: clamp(Math.round(site.x), 70, cv.width - 70),
-    y: clamp(Math.round(site.y), 90, cv.height - 80),
+    x: clamp(Math.round(toWorldX(site.x)), 70, worldW - 70),
+    y: clamp(Math.round(toWorldY(site.y)), 90, worldH - 80),
     r: site.r
   }));
 }
