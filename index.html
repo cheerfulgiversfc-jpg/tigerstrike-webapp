@@ -223,6 +223,257 @@
     .modalTop{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,.25);flex:0 0 auto}
     .modalTitle{font-weight:950}
     .modalBody{padding:14px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1 1 auto}
+    .proto3dOverlay{
+      padding:0;
+      z-index:380;
+      background:radial-gradient(circle at 50% 12%, rgba(24,48,40,.55), rgba(0,0,0,.92));
+    }
+    .proto3dShell{
+      position:relative;
+      width:100vw;
+      height:100dvh;
+      overflow:hidden;
+      background:
+        radial-gradient(circle at 20% 14%, rgba(52,211,153,.16), transparent 38%),
+        radial-gradient(circle at 78% 10%, rgba(59,130,246,.20), transparent 34%),
+        linear-gradient(180deg, rgba(10,16,24,.98), rgba(6,10,16,.99));
+    }
+    .proto3dCanvasHost{
+      position:absolute;
+      inset:0;
+      z-index:1;
+    }
+    .proto3dCanvas{
+      width:100%;
+      height:100%;
+      display:block;
+      touch-action:none;
+    }
+    .proto3dTopbar{
+      position:absolute;
+      left:10px;
+      right:10px;
+      top:10px;
+      z-index:4;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      pointer-events:none;
+    }
+    .proto3dTitleCard{
+      pointer-events:auto;
+      border:1px solid rgba(46,70,110,.92);
+      background:rgba(8,12,22,.88);
+      border-radius:12px;
+      padding:8px 10px;
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+      min-width:220px;
+    }
+    .proto3dTitle{
+      font-size:14px;
+      font-weight:950;
+      letter-spacing:.02em;
+    }
+    .proto3dSubtitle{
+      font-size:11px;
+      color:var(--muted);
+      line-height:1.2;
+    }
+    .proto3dTopActions{
+      display:flex;
+      gap:8px;
+      pointer-events:auto;
+    }
+    .proto3dTopActions button{
+      min-height:38px;
+      padding:8px 12px;
+      border-radius:10px;
+      font-size:12px;
+    }
+    .proto3dHud{
+      position:absolute;
+      left:10px;
+      right:10px;
+      top:68px;
+      z-index:4;
+      display:grid;
+      grid-template-columns:1fr 1fr 1fr;
+      gap:8px;
+      pointer-events:none;
+    }
+    .proto3dHudCard{
+      border:1px solid rgba(45,66,102,.92);
+      background:rgba(9,14,24,.75);
+      border-radius:12px;
+      padding:8px 10px;
+      backdrop-filter:blur(6px);
+      font-size:12px;
+      line-height:1.3;
+      color:#e6edf8;
+    }
+    .proto3dHint{
+      position:absolute;
+      left:10px;
+      right:10px;
+      bottom:calc(152px + env(safe-area-inset-bottom));
+      z-index:4;
+      border:1px solid rgba(45,66,102,.92);
+      background:rgba(9,14,24,.72);
+      border-radius:12px;
+      padding:8px 10px;
+      font-size:12px;
+      line-height:1.3;
+      color:#e6edf8;
+      pointer-events:none;
+    }
+    .proto3dControls{
+      position:absolute;
+      inset:0;
+      z-index:5;
+      pointer-events:none;
+    }
+    .proto3dJoyArea{
+      position:absolute;
+      left:10px;
+      bottom:14px;
+      width:140px;
+      height:140px;
+      pointer-events:auto;
+      touch-action:none;
+    }
+    .proto3dJoyBase{
+      position:absolute;
+      inset:0;
+      border-radius:999px;
+      border:2px solid rgba(226,232,240,.24);
+      background:rgba(8,12,22,.25);
+      box-shadow:0 12px 26px rgba(0,0,0,.34);
+      backdrop-filter:blur(4px);
+    }
+    .proto3dJoyKnob{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:58px;
+      height:58px;
+      margin-left:-29px;
+      margin-top:-29px;
+      border-radius:999px;
+      border:2px solid rgba(226,232,240,.42);
+      background:rgba(17,24,39,.54);
+      box-shadow:0 8px 18px rgba(0,0,0,.34);
+      pointer-events:none;
+      transition:transform .05s linear;
+    }
+    .proto3dBtnCluster{
+      position:absolute;
+      right:10px;
+      bottom:14px;
+      display:grid;
+      grid-template-columns:repeat(2,72px);
+      gap:10px;
+      pointer-events:auto;
+    }
+    .proto3dActionBtn{
+      min-height:62px;
+      border-radius:16px;
+      font-size:12px;
+      padding:6px;
+      border:1px solid rgba(78,106,162,.84);
+      background:rgba(8,12,22,.46);
+      backdrop-filter:blur(5px);
+      box-shadow:0 10px 22px rgba(0,0,0,.33);
+    }
+    .proto3dActionBtn.warn{
+      border-color:rgba(245,158,11,.9);
+      background:rgba(92,42,12,.54);
+    }
+    .proto3dActionBtn.good{
+      border-color:rgba(74,222,128,.92);
+      background:rgba(16,64,36,.55);
+    }
+    .proto3dActionBtn.ghost{
+      border-color:rgba(96,165,250,.8);
+      background:rgba(14,28,56,.52);
+    }
+    .proto3dLandscapeHint{
+      position:absolute;
+      top:50%;
+      left:50%;
+      transform:translate(-50%,-50%);
+      z-index:6;
+      border:1px solid rgba(59,130,246,.8);
+      background:rgba(8,12,22,.82);
+      border-radius:14px;
+      padding:10px 14px;
+      font-size:13px;
+      font-weight:900;
+      box-shadow:0 12px 26px rgba(0,0,0,.36);
+      pointer-events:none;
+      display:none;
+    }
+    @media (max-width:900px){
+      .proto3dHud{
+        grid-template-columns:1fr;
+        top:72px;
+      }
+      .proto3dHint{
+        bottom:calc(178px + env(safe-area-inset-bottom));
+      }
+    }
+    @media (max-width:540px){
+      .proto3dTopbar{
+        left:8px;
+        right:8px;
+        top:8px;
+      }
+      .proto3dTitleCard{
+        min-width:0;
+        flex:1 1 auto;
+      }
+      .proto3dTopActions{
+        flex-direction:column;
+      }
+      .proto3dTopActions button{
+        min-height:34px;
+        padding:7px 9px;
+        font-size:11px;
+      }
+      .proto3dHud{
+        left:8px;
+        right:8px;
+        top:90px;
+      }
+      .proto3dHint{
+        left:8px;
+        right:8px;
+      }
+      .proto3dJoyArea{
+        width:124px;
+        height:124px;
+        bottom:10px;
+      }
+      .proto3dJoyKnob{
+        width:52px;
+        height:52px;
+        margin-left:-26px;
+        margin-top:-26px;
+      }
+      .proto3dBtnCluster{
+        right:8px;
+        bottom:10px;
+        grid-template-columns:repeat(2,62px);
+        gap:8px;
+      }
+      .proto3dActionBtn{
+        min-height:54px;
+        border-radius:14px;
+        font-size:11px;
+      }
+    }
     .divider{height:1px;background:var(--border);margin:12px 0}
     .storyIntroBody{display:grid;gap:12px}
     .storyScene{border:1px solid rgba(35,42,62,.9);background:rgba(15,19,32,.72);border-radius:12px;padding:10px}
@@ -1258,9 +1509,11 @@
         <button class="tab" id="mStory" onclick="setMode('Story')">📖 Story</button>
         <button class="tab" id="mArcade" onclick="setMode('Arcade')">🕹️ Arcade</button>
         <button class="tab" id="mSurvival" onclick="setMode('Survival')">🔥 Survival</button>
+        <button class="tab" id="mPrototype3D" onclick="open3DPrototype()">🌎 3D Prototype</button>
       </div>
       <div class="divider"></div>
       <div class="hudLine" id="modeDesc"></div>
+      <div class="hudLine">3D Prototype is separate from Story/Arcade/Survival so your current game progress stays safe.</div>
       <div class="divider"></div>
       <div class="hudLine" id="modeClanStatus">Clan data loading...</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
@@ -1278,6 +1531,48 @@
         <button class="ghost" id="modeGauntletBtn" onclick="startEndlessGauntlet()">♾️ Gauntlet</button>
         <button class="ghost" id="modeEliteHuntBtn" onclick="startEliteBossHunt()">👑 Elite Hunt</button>
         <button class="ghost" id="modeEliteChapterBtn" onclick="cycleEliteHuntChapter()">🗺️ Hunt Chapter 1</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 3D Prototype -->
+<div class="overlay proto3dOverlay" id="proto3dOverlay">
+  <div class="proto3dShell">
+    <div class="proto3dTopbar">
+      <div class="proto3dTitleCard">
+        <div class="proto3dTitle">🌎 Tiger Strike 3D Prototype</div>
+        <div class="proto3dSubtitle">Open-world test layer. Story/Arcade/Survival progress is untouched.</div>
+      </div>
+      <div class="proto3dTopActions">
+        <button class="ghost" id="proto3dResetBtn">Reset Scenario</button>
+        <button class="ghost" id="proto3dCloseBtn">Back to 2D</button>
+      </div>
+    </div>
+
+    <div class="proto3dHud">
+      <div class="proto3dHudCard" id="proto3dHudMission">Mission: loading...</div>
+      <div class="proto3dHudCard" id="proto3dHudAgent">Agent: loading...</div>
+      <div class="proto3dHudCard" id="proto3dHudTiger">Target: loading...</div>
+    </div>
+
+    <div class="proto3dHint" id="proto3dHint">Move with joystick/WASD. Tap tiger to lock, then Attack or Capture.</div>
+    <div class="proto3dHint" id="proto3dHudStatus" style="bottom:calc(112px + env(safe-area-inset-bottom));opacity:.85;">Status: online</div>
+    <div class="proto3dLandscapeHint" id="proto3dLandscapeHint">Landscape mode is recommended for full map view.</div>
+
+    <div class="proto3dCanvasHost" id="proto3dCanvasHost"></div>
+
+    <div class="proto3dControls">
+      <div class="proto3dJoyArea" id="proto3dJoyArea">
+        <div class="proto3dJoyBase" id="proto3dJoyBase"></div>
+        <div class="proto3dJoyKnob" id="proto3dJoyKnob"></div>
+      </div>
+      <div class="proto3dBtnCluster">
+        <button class="proto3dActionBtn warn" id="proto3dAttackBtn">Attack</button>
+        <button class="proto3dActionBtn good" id="proto3dCaptureBtn">Capture</button>
+        <button class="proto3dActionBtn ghost" id="proto3dShieldBtn">Shield</button>
+        <button class="proto3dActionBtn ghost" id="proto3dRollBtn">Roll</button>
+        <button class="proto3dActionBtn ghost" id="proto3dSprintBtn">Sprint</button>
       </div>
     </div>
   </div>
@@ -1694,6 +1989,7 @@
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
 <script src="./game.js?v=4463"></script>
 <script src="./tutorial.js?v=4463"></script>
+<script src="./prototype3d.js?v=4464"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";
