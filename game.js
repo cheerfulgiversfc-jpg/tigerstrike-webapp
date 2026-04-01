@@ -5963,7 +5963,7 @@ function missionProgressForWorld(state=S){
 function worldScaleForModeMission(mode, mission){
   const mobile = isMobileViewport();
   const landscape = isLandscapeViewport();
-  const landscapeBoost = (mobile && landscape) ? 0.42 : 0;
+  const landscapeBoost = (mobile && landscape) ? 0.36 : (landscape ? 0.18 : 0);
   if(window.__TUTORIAL_MODE__) return 1;
   if(mobile && !landscape){
     // Portrait stays compact; landscape is the primary large-map orientation.
@@ -5972,12 +5972,12 @@ function worldScaleForModeMission(mode, mission){
     return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.010), 1.01, 1.22);
   }
   if(mode === "Story"){
-    return clamp(1.85 + ((Math.max(1, mission) - 1) * 0.012) + landscapeBoost, 1.85, 3.20);
+    return clamp(1.92 + ((Math.max(1, mission) - 1) * 0.010) + landscapeBoost, 1.92, 2.95);
   }
   if(mode === "Arcade"){
-    return clamp(1.70 + ((Math.max(1, mission) - 1) * 0.010) + landscapeBoost, 1.70, 2.85);
+    return clamp(1.84 + ((Math.max(1, mission) - 1) * 0.009) + landscapeBoost, 1.84, 2.78);
   }
-  return clamp(1.75 + ((Math.max(1, mission) - 1) * 0.028) + landscapeBoost, 1.75, 2.70);
+  return clamp(1.88 + ((Math.max(1, mission) - 1) * 0.017) + landscapeBoost, 1.88, 2.86);
 }
 
 function desiredWorldLayout(state=S){
@@ -6003,13 +6003,19 @@ function ensureWorldLayout(state=S){
   if(!state.world || typeof state.world !== "object") state.world = {};
   const world = state.world;
   const desired = desiredWorldLayout(state);
+  const worldW = Number(world?.w || 0);
+  const worldH = Number(world?.h || 0);
+  const needsViewportRefresh =
+    Math.abs(worldW - desired.w) > 2 ||
+    Math.abs(worldH - desired.h) > 2;
   const needsReset =
     !Number.isFinite(world.w) ||
     !Number.isFinite(world.h) ||
     !Number.isFinite(world.scale) ||
     world.mode !== desired.mode ||
     world.mission !== desired.mission ||
-    Math.abs(Number(world.scale || 1) - desired.scale) > 0.0001;
+    Math.abs(Number(world.scale || 1) - desired.scale) > 0.0001 ||
+    needsViewportRefresh;
   if(needsReset){
     world.mode = desired.mode;
     world.mission = desired.mission;
@@ -6924,8 +6930,8 @@ function recoverFromSpikeFrame(){
 
 function trimActiveEntityLoad(){
   if(!S || typeof S !== "object") return;
-  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
-  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
+  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (worldWidth(S) * 0.5);
+  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (worldHeight(S) * 0.5);
 
   if(Array.isArray(S.tigers) && S.tigers.length > STABILITY_SOFT_CAP_TIGERS){
     const keep = [];
@@ -7281,14 +7287,17 @@ function mobileCanvasHeight(){
   const vh = window.innerHeight || 844;
   const landscape = vw > vh;
   return landscape
-    ? Math.round(clamp(vh * 0.88, 320, 500))
-    : Math.round(clamp(vh * 1.08, 820, 980));
+    ? Math.round(clamp(vh * 0.90, 360, 640))
+    : Math.round(clamp(vh * 1.02, 760, 980));
 }
 function isMobileViewport(){
   const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches;
   const phoneLandscape = !!window.matchMedia?.("(max-width:960px) and (max-height:540px) and (orientation:landscape)")?.matches;
   const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
-  return narrow || (coarse && phoneLandscape);
+  const sw = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+  const lw = Math.max(window.innerWidth || 0, window.innerHeight || 0);
+  const phoneLike = (sw > 0 && lw > 0) && (sw <= 920) && (lw <= 1600);
+  return narrow || (coarse && (phoneLandscape || phoneLike));
 }
 function isLandscapeViewport(){
   return (window.innerWidth || 0) > (window.innerHeight || 0);
@@ -9936,6 +9945,8 @@ function clearMissionTwist(type="", opts={}){
   return tw;
 }
 function missionTwistPickBridgePoint(){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const minPlayerDist = 120;
   const candidates = [];
   const civs = (S.civilians || []).filter((c)=>c.alive && !c.evac);
@@ -9958,8 +9969,8 @@ function missionTwistPickBridgePoint(){
       candidates.push({ x:(S.me.x + nearestTiger.x) * 0.5, y:(S.me.y + nearestTiger.y) * 0.5 });
     }
   }
-  candidates.push({ x:cv.width * 0.52, y:cv.height * 0.50 });
-  candidates.push({ x:cv.width * 0.48, y:cv.height * 0.64 });
+  candidates.push({ x:worldW * 0.52, y:worldH * 0.50 });
+  candidates.push({ x:worldW * 0.48, y:worldH * 0.64 });
 
   const evaluate = (rawX, rawY)=>{
     let pt = safeSpawnPoint(rawX, rawY, 22, true, true);
@@ -9967,8 +9978,8 @@ function missionTwistPickBridgePoint(){
     const open = findNearestOpenPoint(pt.x, pt.y, 22, {
       avoidKeepout:true,
       avoidWater:true,
-      targetX:cv.width * 0.5,
-      targetY:cv.height * 0.5
+      targetX:worldW * 0.5,
+      targetY:worldH * 0.5
     });
     if(open) pt = open;
     if(inMapScenarioKeepout(pt.x, pt.y, 26)) return null;
@@ -9983,7 +9994,7 @@ function missionTwistPickBridgePoint(){
     if(point) return point;
   }
   for(let i=0; i<18; i++){
-    const point = evaluate(rand(110, cv.width - 110), rand(120, cv.height - 110));
+    const point = evaluate(rand(110, worldW - 110), rand(120, worldH - 110));
     if(point) return point;
   }
   return null;
@@ -10241,7 +10252,13 @@ function tickEvents(){
   const roll = Math.random();
   if(roll < supplyWeight){
     // Supply Drop: spawn crate pickup
-    spawnPickup("CRATE", rand(280,880), rand(120,500));
+    const worldW = worldWidth(S);
+    const worldH = worldHeight(S);
+    spawnPickup(
+      "CRATE",
+      rand(120, Math.max(140, worldW - 120)),
+      rand(90, Math.max(120, worldH - 90))
+    );
     setEventText("📦 Supply Drop spotted!", 7);
     sfx("event"); hapticImpact("medium");
   } else if(roll < (supplyWeight + rogueWeight)){
@@ -10314,9 +10331,11 @@ function biomeHazardTick(){
 function spawnPickup(type, x, y){
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(S.pickups.length >= MAX_PERSIST_PICKUPS) S.pickups.shift();
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const pt = safeSpawnPoint(
-    clamp(Number.isFinite(x) ? x : rand(80, cv.width - 80), 40, cv.width - 40),
-    clamp(Number.isFinite(y) ? y : rand(90, cv.height - 70), 60, cv.height - 40),
+    clamp(Number.isFinite(x) ? x : rand(80, worldW - 80), 40, worldW - 40),
+    clamp(Number.isFinite(y) ? y : rand(90, worldH - 70), 60, worldH - 40),
     12,
     true,
     false
@@ -10351,8 +10370,10 @@ function maybeSpawnAmbientPickup(){
   const baseChance = clamp(0.22 * chanceMul, 0.08, 0.28);
   if(Math.random()>baseChance) return;
 
-  const x = rand(160, 900);
-  const y = rand(90, 510);
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const x = rand(120, Math.max(140, worldW - 120));
+  const y = rand(90, Math.max(120, worldH - 90));
 
   // weighted loot
   const r = Math.random();
@@ -15625,11 +15646,13 @@ function spawnRescueSites(){
     .map((site)=>{
       let pt = safeSpawnPoint(site.x, site.y, Math.round((site.r || 44) * 0.42), true, true);
       if(inMapScenarioKeepout(pt.x, pt.y, Math.round((site.r || 44) * 0.42))){
+        const worldW = worldWidth(S);
+        const worldH = worldHeight(S);
         const clear = findNearestOpenPoint(pt.x, pt.y, Math.round((site.r || 44) * 0.42), {
           avoidKeepout:true,
           avoidWater:true,
-          targetX:cv.width * 0.48,
-          targetY:cv.height * 0.52
+          targetX:worldW * 0.48,
+          targetY:worldH * 0.52
         });
         if(clear) pt = clear;
       }
@@ -15783,8 +15806,8 @@ function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
 }
 
 function mapInteractablePool(){
-  const w = cv.width;
-  const h = cv.height;
+  const w = worldWidth(S);
+  const h = worldHeight(S);
   const key = currentMapKey();
   const pools = {
     ST_FOREST: [
@@ -15847,14 +15870,16 @@ function spawnMapInteractables(){
     return;
   }
   const base = mapInteractablePool();
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   S.mapInteractables = base.map((it, idx)=>{
     let pt = safeSpawnPoint(it.x, it.y, 22, true, true);
     if(inMapScenarioKeepout(pt.x, pt.y, 22)){
       const clear = findNearestOpenPoint(pt.x, pt.y, 22, {
         avoidKeepout:true,
         avoidWater:true,
-        targetX:cv.width * 0.48,
-        targetY:cv.height * 0.52
+        targetX:worldW * 0.48,
+        targetY:worldH * 0.52
       });
       if(clear) pt = clear;
     }
@@ -16077,6 +16102,8 @@ function createSupportUnit(role, slotIndex=0){
   const attacker = role === "attacker";
   const hpMax = storySupportHpMax(role);
   const armorBase = storySupportArmorBase(role);
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const lane = slotIndex % 3;
   const row = Math.floor(slotIndex / 3);
   const baseX = attacker ? (S.me.x - 34 - (lane * 20)) : (S.me.x + 36 + (lane * 20));
@@ -16085,8 +16112,8 @@ function createSupportUnit(role, slotIndex=0){
     id: `${attacker ? "A" : "R"}-${Date.now()}-${rand(100,999)}`,
     name: attacker ? "Tiger Specialist" : "Rescue Specialist",
     role,
-    x: clamp(baseX, 40, cv.width - 40),
-    y: clamp(baseY, 60, cv.height - 40),
+    x: clamp(baseX, 40, worldW - 40),
+    y: clamp(baseY, 60, worldH - 40),
     homeX: S.me.x,
     homeY: S.me.y,
     face:0,
@@ -16170,6 +16197,8 @@ function spawnSupportUnits(){
 
   const coreCap = raidModeActive(S) ? 14 : 16;
   const merged = [...attackers, ...rescuers].slice(0, coreCap);
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   merged.forEach((unit, idx)=>{
     const lane = idx % 4;
     const row = Math.floor(idx / 4);
@@ -16177,8 +16206,8 @@ function spawnSupportUnits(){
     unit.homeX = S.me.x;
     unit.homeY = S.me.y;
     const spawnPt = safeSpawnPoint(
-      clamp(S.me.x + side * (40 + lane * 22), 40, cv.width - 40),
-      clamp(S.me.y + 30 + row * 22, 60, cv.height - 40),
+      clamp(S.me.x + side * (40 + lane * 22), 40, worldW - 40),
+      clamp(S.me.y + 30 + row * 22, 60, worldH - 40),
       16,
       true,
       true
@@ -16239,18 +16268,20 @@ function spawnCivilians(){
   const raidBonusCivs = (S.mode === "Arcade" && raidModeActive(S)) ? 2 : 0;
   const spawnCount = clamp(n + raidBonusCivs, 0, 16);
   const sites = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice();
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
 
   S.civilians = [];
 
   for(let i=0;i<spawnCount;i++){
-    const site = sites[i % sites.length] || { x: rand(160, cv.width - 160), y: rand(140, cv.height - 120), kind:"trail", label:"Field Site" };
+    const site = sites[i % sites.length] || { x: rand(160, worldW - 160), y: rand(140, worldH - 120), kind:"trail", label:"Field Site" };
     const orbit = 16 + ((i % 3) * 14);
     const angle = (Math.PI * 2 * (i % Math.max(1, sites.length))) / Math.max(1, sites.length);
     const jitterX = Math.round(Math.cos(angle) * orbit + rand(-10, 10));
     const jitterY = Math.round(Math.sin(angle) * orbit + rand(-10, 10));
     const civSpawn = safeSpawnPoint(
-      clamp(site.x + jitterX, 60, cv.width - 60),
-      clamp(site.y + jitterY, 90, cv.height - 70),
+      clamp(site.x + jitterX, 60, worldW - 60),
+      clamp(site.y + jitterY, 90, worldH - 70),
       14,
       true,
       true
@@ -16341,13 +16372,15 @@ function tigerSpawnTooCloseToEscort(x, y, opts={}){
   return false;
 }
 function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const preferX = Number.isFinite(Number(opts.preferX)) ? Number(opts.preferX) : seedX;
   const preferY = Number.isFinite(Number(opts.preferY)) ? Number(opts.preferY) : seedY;
   const radius = Math.max(16, Number(opts.radius || 18));
   const candidates = [];
   const pushCandidate = (x, y)=>{
-    const px = clamp(Math.round(x), 70, cv.width - 70);
-    const py = clamp(Math.round(y), 90, cv.height - 70);
+    const px = clamp(Math.round(x), 70, worldW - 70);
+    const py = clamp(Math.round(y), 90, worldH - 70);
     const pt = safeSpawnPoint(px, py, radius, true, true);
     candidates.push(pt);
   };
@@ -16362,8 +16395,8 @@ function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
   }
   for(let i=0; i<40; i++){
     const biasRight = i % 2 === 0;
-    const rx = biasRight ? rand(Math.round(cv.width * 0.55), cv.width - 70) : rand(70, Math.round(cv.width * 0.45));
-    const ry = rand(90, cv.height - 70);
+    const rx = biasRight ? rand(Math.round(worldW * 0.55), worldW - 70) : rand(70, Math.round(worldW * 0.45));
+    const ry = rand(90, worldH - 70);
     pushCandidate(rx, ry);
   }
 
@@ -16505,17 +16538,19 @@ function spawnTigers(){
     : null;
   const nemesisSlot = nemesisEntry ? rand(Math.max(0, Math.floor(count * 0.45)), Math.max(0, count - 1)) : -1;
   const packCount = clamp(Math.ceil(count / 2), 1, 4);
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const sitePool = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice().reverse();
   const fallbackPacks = [
-    { x: cv.width * 0.68, y: cv.height * 0.22 },
-    { x: cv.width * 0.78, y: cv.height * 0.48 },
-    { x: cv.width * 0.64, y: cv.height * 0.76 },
-    { x: cv.width * 0.84, y: cv.height * 0.64 },
+    { x: worldW * 0.68, y: worldH * 0.22 },
+    { x: worldW * 0.78, y: worldH * 0.48 },
+    { x: worldW * 0.64, y: worldH * 0.76 },
+    { x: worldW * 0.84, y: worldH * 0.64 },
   ];
   const packAnchors = Array.from({ length: packCount }, (_, idx) => {
     const site = sitePool[idx];
     const anchor = site
-      ? { x: clamp(site.x + rand(90, 180), 160, cv.width - 70), y: clamp(site.y + rand(-110, 110), 100, cv.height - 70) }
+      ? { x: clamp(site.x + rand(90, 180), 160, worldW - 70), y: clamp(site.y + rand(-110, 110), 100, worldH - 70) }
       : fallbackPacks[idx % fallbackPacks.length];
     return {
       id: idx + 1,
@@ -16562,8 +16597,8 @@ function spawnTigers(){
     const initialVx = (Math.random()<0.5?-1:1)*def.spd*0.55;
     const initialVy = (Math.random()<0.5?-1:1)*def.spd*0.50;
     const tigerSpawn = pickTigerSpawnAwayFromEscort(
-      clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, cv.width - 50),
-      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, cv.height - 70),
+      clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, worldW - 50),
+      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, worldH - 70),
       {
         preferX: pack.x,
         preferY: pack.y,
@@ -16677,6 +16712,8 @@ function spawnRogueTiger(options={}){
   if(S.mode==="Survival") baseHp = 135 + (S.survivalWave - 1) * 10;
   if(S.mode==="Story") baseHp = 120 + ((storyMission?.number || S.storyLevel || 1) - 1) * 6;
   const hp = Math.round(baseHp * def.hpMul * diff * (S.mode==="Story" ? clamp(Number(storyMission?.endgameHpMul || 1), 1, 6) : 1));
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
 
   let sx = 0;
   let sy = 0;
@@ -16688,17 +16725,17 @@ function spawnRogueTiger(options={}){
   } else {
     const spawnEdge = rand(0, 3);
     if(spawnEdge === 0){ // top
-      sx = rand(90, cv.width - 90);
+      sx = rand(90, worldW - 90);
       sy = rand(72, 116);
     } else if(spawnEdge === 1){ // right
-      sx = rand(cv.width - 116, cv.width - 72);
-      sy = rand(90, cv.height - 90);
+      sx = rand(worldW - 116, worldW - 72);
+      sy = rand(90, worldH - 90);
     } else if(spawnEdge === 2){ // bottom
-      sx = rand(90, cv.width - 90);
-      sy = rand(cv.height - 116, cv.height - 72);
+      sx = rand(90, worldW - 90);
+      sy = rand(worldH - 116, worldH - 72);
     } else { // left
       sx = rand(72, 116);
-      sy = rand(90, cv.height - 90);
+      sy = rand(90, worldH - 90);
     }
   }
 
@@ -16831,7 +16868,9 @@ function deploy(opts={}){
     ? carryArmor
     : clamp(20 + storyStartingArmorBonus(), 0, S.armorCap || 100);
   S.stamina=100;
-  S.me={x:160,y:clamp(cv.height - 120, 240, 420),face:0,step:0};
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  S.me={x:160,y:clamp(worldH - 120, 240, 420),face:0,step:0};
   S.target=null;
   S.lockedTigerId=null;
 
@@ -16924,8 +16963,8 @@ function deploy(opts={}){
   transitionCleanupSweep("deploy-post");
 
   // spawn a couple guaranteed pickups early
-  spawnPickup("CASH", 260, clamp(cv.height - 150, 220, cv.height - 80));
-  spawnPickup("AMMO", 320, clamp(cv.height - 120, 240, cv.height - 70));
+  spawnPickup("CASH", clamp(260, 80, worldW - 80), clamp(worldH - 150, 220, worldH - 80));
+  spawnPickup("AMMO", clamp(320, 80, worldW - 80), clamp(worldH - 120, 240, worldH - 70));
 
   for(const wid of S.ownedWeapons){ if(S.durability[wid]==null) S.durability[wid]=100; }
 
@@ -17172,8 +17211,12 @@ cv.addEventListener("pointerdown",(e)=>{
   }
 
   const rect=cv.getBoundingClientRect();
-  const x=(e.clientX-rect.left)*(cv.width/rect.width);
-  const y=(e.clientY-rect.top)*(cv.height/rect.height);
+  updateWorldCamera(S);
+  const sx=(e.clientX-rect.left)*(cv.width/rect.width);
+  const sy=(e.clientY-rect.top)*(cv.height/rect.height);
+  const worldPt = screenToWorldPoint(sx, sy, S);
+  const x = worldPt.x;
+  const y = worldPt.y;
   const tappedInteractable = findInteractableAt(x,y);
   const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
 
@@ -18495,11 +18538,13 @@ function followCiviliansTick(){
 function moveCivilianInsideEvac(c){
   const ez = S.evacZone || DEFAULT.evacZone;
   if(!ez || !Number.isFinite(ez.x) || !Number.isFinite(ez.y)) return;
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const radius = Math.max(10, (ez.r || 70) - 14);
   const seed = ((Number(c.id || 1) * 97) % 360) * (Math.PI / 180);
   const laneR = Math.max(8, Math.min(radius * 0.56, 12 + ((Number(c.id || 1) % 5) * 6)));
-  const tx = clamp(ez.x + Math.cos(seed) * laneR, 24, cv.width - 24);
-  const ty = clamp(ez.y + Math.sin(seed) * laneR, 24, cv.height - 24);
+  const tx = clamp(ez.x + Math.cos(seed) * laneR, 24, worldW - 24);
+  const ty = clamp(ez.y + Math.sin(seed) * laneR, 24, worldH - 24);
   const spot = findNearestOpenPoint(tx, ty, 12, {
     avoidKeepout:false,
     avoidWater:false,
@@ -18765,6 +18810,11 @@ function roamTigers(){
   const barricades = activeBarricades(now);
   const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
   const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
+  const tigerBounds = worldBounds(18, S);
+  const tigerMinX = tigerBounds.minX;
+  const tigerMaxX = tigerBounds.maxX;
+  const tigerMinY = tigerBounds.minY;
+  const tigerMaxY = tigerBounds.maxY;
   const packStats = Object.create(null);
   for(const tiger of aliveTigers){
     if(!tiger.packId) continue;
@@ -18849,8 +18899,8 @@ function roamTigers(){
       if(now < (t._nextFarThinkAt || 0)){
         t.vx = (t.vx || 0) * 0.94;
         t.vy = (t.vy || 0) * 0.94;
-        t.x = clamp(t.x + t.vx, 40, cv.width - 40);
-        t.y = clamp(t.y + t.vy, 60, cv.height - 40);
+        t.x = clamp(t.x + t.vx, tigerMinX, tigerMaxX);
+        t.y = clamp(t.y + t.vy, tigerMinY, tigerMaxY);
         t.step = (t.step + 0.04) % (Math.PI * 2);
         continue;
       }
@@ -19062,8 +19112,8 @@ function roamTigers(){
       t.vx += nx * repel;
       t.vy += ny * repel;
       if(bd < fieldR * 0.64){
-        t.x = clamp(t.x + nx * 1.8, 40, cv.width - 40);
-        t.y = clamp(t.y + ny * 1.8, 60, cv.height - 40);
+        t.x = clamp(t.x + nx * 1.8, tigerMinX, tigerMaxX);
+        t.y = clamp(t.y + ny * 1.8, tigerMinY, tigerMaxY);
       }
     }
 
@@ -19109,10 +19159,10 @@ function roamTigers(){
     t.vx *= drag;
     t.vy *= drag;
 
-    if(t.x<40||t.x>cv.width-40) t.vx*=-1;
-    if(t.y<60||t.y>cv.height-40) t.vy*=-1;
-    t.x=clamp(t.x,40,cv.width-40);
-    t.y=clamp(t.y,60,cv.height-40);
+    if(t.x<tigerMinX||t.x>tigerMaxX) t.vx*=-1;
+    if(t.y<tigerMinY||t.y>tigerMaxY) t.vy*=-1;
+    t.x=clamp(t.x,tigerMinX,tigerMaxX);
+    t.y=clamp(t.y,tigerMinY,tigerMaxY);
     const gait = Math.hypot(t.vx, t.vy);
     const sprintingNow = (now < (t.burstUntil||0)) || (t.type==="Scout" && now < (t.dashUntil||0));
     const runMul = sprintingNow ? 1.35 : (gait > motion.chase * 0.84 ? 1.14 : (gait > motion.walk * 0.72 ? 0.94 : 0.70));
@@ -19181,10 +19231,11 @@ function survivalPressureTick(){
 // ===================== DAMAGE / RESPAWN =====================
 function pickRespawnPointAwayFromTigers(){
   const radius = 16;
-  const minX = 60;
-  const maxX = cv.width - 60;
-  const minY = 90;
-  const maxY = cv.height - 70;
+  const bounds = worldBounds(radius, S);
+  const minX = bounds.minX;
+  const maxX = bounds.maxX;
+  const minY = bounds.minY;
+  const maxY = bounds.maxY;
   const aliveTigers = (S.tigers || []).filter((t)=>t.alive);
 
   const candidates = [];
@@ -19223,7 +19274,7 @@ function pickRespawnPointAwayFromTigers(){
     }
   }
 
-  return best || safeSpawnPoint(cv.width * 0.16, cv.height * 0.78, radius, true, true);
+  return best || safeSpawnPoint(worldWidth(S) * 0.16, worldHeight(S) * 0.78, radius, true, true);
 }
 function startRespawnCountdown(){
   const now = Date.now();
@@ -19254,8 +19305,9 @@ function respawnTick(){
   S.hp = 100;
   S.armor = 20;
   S.stamina = 100;
-  S.me.x = clamp(S.respawnTargetX || (cv.width * 0.16), 60, cv.width - 60);
-  S.me.y = clamp(S.respawnTargetY || (cv.height * 0.78), 90, cv.height - 70);
+  const bounds = worldBounds(16, S);
+  S.me.x = clamp(S.respawnTargetX || (worldWidth(S) * 0.16), bounds.minX, bounds.maxX);
+  S.me.y = clamp(S.respawnTargetY || (worldHeight(S) * 0.78), bounds.minY, bounds.maxY);
   S.target = null;
   S.respawnPendingUntil = 0;
   S.respawnNoticeAt = 0;
@@ -19429,8 +19481,10 @@ function currentBattleCinematicTargetScale(){
 }
 
 function resolveBattleCinematicFocus(t){
-  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
-  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (worldW * 0.5);
+  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (worldH * 0.5);
   const tiger = t || activeTiger() || tigerById(S.lockedTigerId);
   let x = meX;
   let y = meY;
@@ -19439,8 +19493,8 @@ function resolveBattleCinematicFocus(t){
     y = (meY + tiger.y) * 0.5;
   }
   return {
-    x: clamp(x, 70, Math.max(70, cv.width - 70)),
-    y: clamp(y, 70, Math.max(70, cv.height - 70))
+    x: clamp(x, 70, Math.max(70, worldW - 70)),
+    y: clamp(y, 70, Math.max(70, worldH - 70))
   };
 }
 
@@ -19459,8 +19513,8 @@ function resetBattleCinematic(){
   BATTLE_CINEMATIC.fromScale = 1;
   BATTLE_CINEMATIC.toScale = 1;
   BATTLE_CINEMATIC.scale = 1;
-  BATTLE_CINEMATIC.focusX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
-  BATTLE_CINEMATIC.focusY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
+  BATTLE_CINEMATIC.focusX = Number.isFinite(S?.me?.x) ? S.me.x : (worldWidth(S) * 0.5);
+  BATTLE_CINEMATIC.focusY = Number.isFinite(S?.me?.y) ? S.me.y : (worldHeight(S) * 0.5);
 }
 
 function triggerBattleCinematic(kind="enter", focusTigerId=null){
@@ -19495,7 +19549,7 @@ function triggerBattleCinematic(kind="enter", focusTigerId=null){
 function sampleBattleCinematic(){
   if(!ENABLE_BATTLE_CINEMATIC){
     resetBattleCinematic();
-    return { active:false, scale:1, x:cv.width * 0.5, y:cv.height * 0.5 };
+    return { active:false, scale:1, x:worldWidth(S) * 0.5, y:worldHeight(S) * 0.5 };
   }
   const now = Date.now();
   let scale = battleCinematicScaleNow(now);
@@ -19523,8 +19577,8 @@ function sampleBattleCinematic(){
   return {
     active,
     scale: BATTLE_CINEMATIC.scale,
-    x: Number.isFinite(BATTLE_CINEMATIC.focusX) ? BATTLE_CINEMATIC.focusX : (cv.width * 0.5),
-    y: Number.isFinite(BATTLE_CINEMATIC.focusY) ? BATTLE_CINEMATIC.focusY : (cv.height * 0.5)
+    x: Number.isFinite(BATTLE_CINEMATIC.focusX) ? BATTLE_CINEMATIC.focusX : (worldWidth(S) * 0.5),
+    y: Number.isFinite(BATTLE_CINEMATIC.focusY) ? BATTLE_CINEMATIC.focusY : (worldHeight(S) * 0.5)
   };
 }
 
@@ -19783,6 +19837,8 @@ function tickDamagePopups(){
   const lagTier = frameLagTier();
   const lagFade = lagTier >= 2 ? 1.7 : (lagTier >= 1 ? 1.35 : 1);
   const idleFade = (S.paused || S.missionEnded || S.gameOver || !S.inBattle) ? (3.2 * lagFade) : lagFade;
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   for(const p of DAMAGE_POPUPS){
     p.ttl -= idleFade;
     p.y += p.vy;
@@ -19794,7 +19850,7 @@ function tickDamagePopups(){
       DAMAGE_POPUPS.splice(i, 1);
       continue;
     }
-    if(p.y < -40 || p.y > (cv.height + 120) || p.x < -120 || p.x > (cv.width + 120)){
+    if(p.y < -40 || p.y > (worldH + 120) || p.x < -120 || p.x > (worldW + 120)){
       DAMAGE_POPUPS.splice(i, 1);
     }
   }
@@ -21593,9 +21649,11 @@ function drawMissionTwistOverlay(now=Date.now()){
   }
   if(tw.blackout.active && now < (tw.blackout.until || 0)){
     const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - now) / 1000));
+    const worldW = worldWidth(S);
+    const worldH = worldHeight(S);
     ctx.globalAlpha = 0.16;
     ctx.fillStyle = "rgba(6,9,16,.98)";
-    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillRect(0, 0, worldW, worldH);
     rounded(16, 16, 194, 24, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.7)");
     ctx.globalAlpha = 0.96;
     ctx.fillStyle = "rgba(226,232,240,.96)";
@@ -21606,7 +21664,12 @@ function drawMissionTwistOverlay(now=Date.now()){
 }
 function drawMapScene(){
   const frameNow = Date.now();
-  const w=cv.width, h=cv.height;
+  const viewportW = cv.width;
+  const viewportH = cv.height;
+  const w = Math.max(viewportW, worldWidth(S));
+  const h = Math.max(viewportH, worldHeight(S));
+  const canCacheScene = (w === viewportW && h === viewportH);
+  const camSnap = cameraOffsetSnapshot(S);
   const mapInfo = currentMap();
   const key = mapInfo.key;
   const missionIndex = missionIndexForMode(S.mode);
@@ -21617,6 +21680,7 @@ function drawMapScene(){
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
+    Math.round(camSnap.x || 0), Math.round(camSnap.y || 0),
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0,
     tw.activeType || "",
     tw.bridge.active ? 1 : 0,
@@ -21647,6 +21711,7 @@ function drawMapScene(){
     }
   }
   const canUseCache =
+    canCacheScene &&
     !!__mapFrameCacheCanvas &&
     __mapFrameCacheSig === cacheSig &&
     (frameNow - __mapFrameCacheAt) < cacheAgeCap;
@@ -21655,6 +21720,7 @@ function drawMapScene(){
     return;
   }
   const hasAnyCache =
+    canCacheScene &&
     !!__mapFrameCacheCanvas &&
     Number.isFinite(__mapFrameCacheAt) &&
     __mapFrameCacheAt > 0;
@@ -21685,6 +21751,12 @@ function drawMapScene(){
     }
     return { fill:"rgba(25,90,105,.62)", edge:"rgba(147,217,247,.58)", glint:"rgba(186,230,253,.26)" };
   })();
+  const sxBase = (v)=> v * (w / WORLD_BASE_WIDTH);
+  const syBase = (v)=> v * (h / WORLD_BASE_HEIGHT);
+  const scalePoint = (x, y)=>[sxBase(x), syBase(y)];
+  const scalePath = (pts)=>pts.map(([x, y])=>scalePoint(x, y));
+  const scalePathX = (pts)=>pts.map(([x, y])=>[sxBase(x), y]);
+  const worldSizeMul = clamp(((w / WORLD_BASE_WIDTH) + (h / WORLD_BASE_HEIGHT)) * 0.5, 1, 1.75);
 
   function fillSolid(color){ ctx.fillStyle=color; ctx.fillRect(0,0,w,h); }
   function seedNoise(ix, iy, seed=0){
@@ -22089,15 +22161,16 @@ function drawMapScene(){
     const upperRoad = h * 0.18;
     const midRoad = h * 0.43;
     const lowRoad = h * 0.72;
-    const roadA = [[0,upperRoad],[240,upperRoad + 70],[470,upperRoad + 28],[720,upperRoad + 92],[960,upperRoad + 52]];
-    const roadB = [[60,midRoad],[260,midRoad - 40],[450,midRoad - 10],[610,midRoad - 70],[820,midRoad - 40],[940,midRoad - 100]];
-    const roadC = [[50,lowRoad],[260,lowRoad - 34],[450,lowRoad - 8],[610,lowRoad - 58],[820,lowRoad - 26],[940,lowRoad - 82]];
-    roadShoulder(roadA, 48); roadLine(roadA, 48, "rgba(80,60,38,.85)");
-    roadShoulder(roadB, 62); roadLine(roadB, 62, "rgba(90,70,45,.85)");
-    roadShoulder(roadC, 56); roadLine(roadC, 56, "rgba(84,66,42,.82)");
-    roadWear(roadA, 48, 11);
-    roadWear(roadB, 62, 19);
-    roadWear(roadC, 56, 27);
+    const roadA = scalePathX([[0,upperRoad],[240,upperRoad + syBase(70)],[470,upperRoad + syBase(28)],[720,upperRoad + syBase(92)],[960,upperRoad + syBase(52)]]);
+    const roadB = scalePathX([[60,midRoad],[260,midRoad - syBase(40)],[450,midRoad - syBase(10)],[610,midRoad - syBase(70)],[820,midRoad - syBase(40)],[940,midRoad - syBase(100)]]);
+    const roadC = scalePathX([[50,lowRoad],[260,lowRoad - syBase(34)],[450,lowRoad - syBase(8)],[610,lowRoad - syBase(58)],[820,lowRoad - syBase(26)],[940,lowRoad - syBase(82)]]);
+    const roadMul = clamp(worldSizeMul, 1, 1.4);
+    roadShoulder(roadA, 48 * roadMul); roadLine(roadA, 48 * roadMul, "rgba(80,60,38,.85)");
+    roadShoulder(roadB, 62 * roadMul); roadLine(roadB, 62 * roadMul, "rgba(90,70,45,.85)");
+    roadShoulder(roadC, 56 * roadMul); roadLine(roadC, 56 * roadMul, "rgba(84,66,42,.82)");
+    roadWear(roadA, 48 * roadMul, 11);
+    roadWear(roadB, 62 * roadMul, 19);
+    roadWear(roadC, 56 * roadMul, 27);
     const trees = [
       [90,h*0.08],[140,h*0.11],[210,h*0.08],[300,h*0.13],[360,h*0.08],[420,h*0.14],[520,h*0.10],[610,h*0.13],[700,h*0.09],[780,h*0.14],[880,h*0.11],
       [120,h*0.24],[200,h*0.26],[280,h*0.24],[360,h*0.27],[440,h*0.24],[520,h*0.27],[600,h*0.24],[700,h*0.26],[820,h*0.24],
@@ -22107,8 +22180,9 @@ function drawMapScene(){
       [90,h*0.88],[170,h*0.91],[290,h*0.88],[410,h*0.90],[520,h*0.87],[660,h*0.90],[780,h*0.88],[900,h*0.91],
     ];
     for(const [x,y] of trees){
-      const size = 6 + seedNoise((x/40)|0, (y/40)|0, 17) * 4;
-      treeDot(x,y,size);
+      const tx = sxBase(x);
+      const size = (6 + seedNoise((tx/40)|0, (y/40)|0, 17) * 4) * clamp(worldSizeMul * 0.92, 1, 1.45);
+      treeDot(tx,y,size);
     }
   }
   else if(themeKey==="ST_SUBURBS"){
@@ -22117,27 +22191,28 @@ function drawMapScene(){
     terrainBands(19, 4, 0.065);
     terrainPatches(19, 14, 0.10, "rgba(226,236,210,.14)", "rgba(20,28,34,.16)");
     scatterPebbles(19, 94, 0.11, "rgba(214,224,236,.30)", "rgba(12,18,28,.30)");
-    const main=[[0,280],[240,270],[480,300],[720,280],[960,300]];
-    roadShoulder(main, 84); roadLine(main, 84, "rgba(75,78,86,.9)");
-    roadWear(main, 84, 9);
+    const main = scalePath([[0,280],[240,270],[480,300],[720,280],[960,300]]);
+    const roadMul = clamp(worldSizeMul, 1, 1.38);
+    roadShoulder(main, 84 * roadMul); roadLine(main, 84 * roadMul, "rgba(75,78,86,.9)");
+    roadWear(main, 84 * roadMul, 9);
     dashed(main);
-    const laneTop = [[120,120],[420,110],[760,120]];
-    const laneLow = [[120,440],[420,430],[760,440]];
-    roadShoulder(laneTop, 62); roadLine(laneTop, 62, "rgba(75,78,86,.9)");
-    roadShoulder(laneLow, 62); roadLine(laneLow, 62, "rgba(75,78,86,.9)");
-    roadWear(laneTop, 62, 13);
-    roadWear(laneLow, 62, 15);
+    const laneTop = scalePath([[120,120],[420,110],[760,120]]);
+    const laneLow = scalePath([[120,440],[420,430],[760,440]]);
+    roadShoulder(laneTop, 62 * roadMul); roadLine(laneTop, 62 * roadMul, "rgba(75,78,86,.9)");
+    roadShoulder(laneLow, 62 * roadMul); roadLine(laneLow, 62 * roadMul, "rgba(75,78,86,.9)");
+    roadWear(laneTop, 62 * roadMul, 13);
+    roadWear(laneLow, 62 * roadMul, 15);
     const houses = [
       [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
       [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
       [140,360],[280,360],[420,360],[560,360],[700,360],[840,360],
       [120,450],[240,450],[360,450],[480,450],[600,450],[720,450],[840,450],
     ];
-    for(const [x,y] of houses) houseBlock(x,y);
-    rounded(120,210,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
-    rounded(670,320,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
+    for(const [x,y] of houses) houseBlock(sxBase(x), syBase(y));
+    rounded(sxBase(120), syBase(210), sxBase(170), syBase(90), 18, "rgba(40,140,70,.75)", "rgba(10,60,30,.8)");
+    rounded(sxBase(670), syBase(320), sxBase(170), syBase(90), 18, "rgba(40,140,70,.75)", "rgba(10,60,30,.8)");
     const trees = [[70,200],[90,240],[110,260],[930,220],[900,250],[880,280],[70,520],[930,520]];
-    for(const [x,y] of trees) treeDot(x,y,7.5);
+    for(const [x,y] of trees) treeDot(sxBase(x), syBase(y), 7.5 * clamp(worldSizeMul * 0.9, 1, 1.4));
   }
   else if(themeKey==="ST_DOWNTOWN"){
     fillSolid("#1a1f2d");
@@ -22153,11 +22228,11 @@ function drawMapScene(){
       [180,310,100,85],[360,320,90,80],[560,310,110,85],[760,320,90,80],[900,310,80,75],
       [150,470,90,70],[340,470,90,70],[540,470,100,70],[740,470,90,70],[900,470,80,70],
     ];
-    for(const [x,y,ww,hh] of blocks) buildingBlock(x,y,ww,hh);
+    for(const [x,y,ww,hh] of blocks) buildingBlock(sxBase(x), syBase(y), sxBase(ww), syBase(hh));
     ctx.fillStyle="rgba(240,240,245,.75)";
     for(let i=0;i<8;i++){
-      const cx=120+i*100;
-      for(let k=0;k<7;k++) ctx.fillRect(cx+k*9, 270, 5, 18);
+      const cx = sxBase(120 + (i * 100));
+      for(let k=0;k<7;k++) ctx.fillRect(cx + sxBase(k * 9), syBase(270), Math.max(2, sxBase(5)), Math.max(8, syBase(18)));
     }
   }
   else {
@@ -22166,20 +22241,20 @@ function drawMapScene(){
     terrainBands(41, 4, 0.062);
     terrainPatches(41, 14, 0.09, "rgba(226,196,150,.12)", "rgba(10,10,12,.16)");
     scatterPebbles(41, 90, 0.12, "rgba(220,200,172,.32)", "rgba(8,8,10,.34)");
-    rounded(90,90,260,130,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
-    rounded(610,110,260,110,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
-    rounded(240,340,340,140,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+    rounded(sxBase(90), syBase(90), sxBase(260), syBase(130), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
+    rounded(sxBase(610), syBase(110), sxBase(260), syBase(110), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
+    rounded(sxBase(240), syBase(340), sxBase(340), syBase(140), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
     ctx.strokeStyle="rgba(240,190,55,.55)";
     ctx.lineWidth=6;
     for(let k=0;k<260;k+=18){
-      ctx.beginPath(); ctx.moveTo(90+k,90); ctx.lineTo(90+k-45,220); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(610+k,110); ctx.lineTo(610+k-45,220); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sxBase(90 + k), syBase(90)); ctx.lineTo(sxBase(90 + k - 45), syBase(220)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sxBase(610 + k), syBase(110)); ctx.lineTo(sxBase(610 + k - 45), syBase(220)); ctx.stroke();
     }
-    buildingBlock(170,260,140,90);
-    buildingBlock(520,260,160,90);
-    buildingBlock(820,300,150,90);
+    buildingBlock(sxBase(170), syBase(260), sxBase(140), syBase(90));
+    buildingBlock(sxBase(520), syBase(260), sxBase(160), syBase(90));
+    buildingBlock(sxBase(820), syBase(300), sxBase(150), syBase(90));
     const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
-    for(const [x,y] of crates) crateBlock(x,y);
+    for(const [x,y] of crates) crateBlock(sxBase(x), syBase(y));
   }
   drawWaterBodies(1);
 
@@ -22353,17 +22428,21 @@ function drawMapScene(){
     ctx.globalAlpha = 1;
   }
 
-  if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== w || __mapFrameCacheCanvas.height !== h){
-    __mapFrameCacheCanvas = document.createElement("canvas");
-    __mapFrameCacheCanvas.width = w;
-    __mapFrameCacheCanvas.height = h;
-    __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
-  }
-  if(__mapFrameCacheCtx){
-    __mapFrameCacheCtx.clearRect(0, 0, w, h);
-    __mapFrameCacheCtx.drawImage(cv, 0, 0, w, h, 0, 0, w, h);
-    __mapFrameCacheSig = cacheSig;
-    __mapFrameCacheAt = frameNow;
+  if(canCacheScene){
+    if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== w || __mapFrameCacheCanvas.height !== h){
+      __mapFrameCacheCanvas = document.createElement("canvas");
+      __mapFrameCacheCanvas.width = w;
+      __mapFrameCacheCanvas.height = h;
+      __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
+    }
+    if(__mapFrameCacheCtx){
+      __mapFrameCacheCtx.clearRect(0, 0, w, h);
+      __mapFrameCacheCtx.drawImage(cv, 0, 0, viewportW, viewportH, 0, 0, w, h);
+      __mapFrameCacheSig = cacheSig;
+      __mapFrameCacheAt = frameNow;
+    }
+  } else {
+    __mapFrameCacheSig = "";
   }
 }
 
@@ -22376,8 +22455,8 @@ function drawAtmosphericParallax(nowTs=Date.now()){
   if(lagTier >= 2 && (__frameHeavyFxFlip % 2 !== 0)) return;
   if(slow && (__frameHeavyFxFlip % 3 === 1)) return;
 
-  const w = cv.width;
-  const h = cv.height;
+  const w = Math.max(cv.width, worldWidth(S));
+  const h = Math.max(cv.height, worldHeight(S));
   const biome = currentBiomeProfile();
   const weatherFx = String(biome?.weatherFx || "clear");
   const weatherIntensity = clamp(Number(biome?.weatherIntensity || 0.45), 0.12, 1.25);
@@ -22918,7 +22997,7 @@ function drawOnMapBattleReadability(){
     vignette.addColorStop(0.7, "rgba(8,12,18,.10)");
     vignette.addColorStop(1, "rgba(5,8,14,.34)");
     ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillRect(0, 0, worldWidth(S), worldHeight(S));
   }
 
   const beamAlpha = inRange ? (extreme ? 0.30 : 0.38) : (extreme ? 0.18 : 0.22);
@@ -23941,7 +24020,6 @@ function drawEntities(){
   }
   drawOnMapBattleReadability();
   drawOnMapBattleHud();
-  drawAbilityCooldownWheel();
   const perfMode = performanceMode();
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
@@ -23986,6 +24064,12 @@ function shouldDrawAtmosphericPass(){
   __frameBgFxFlip = (__frameBgFxFlip + 1) % 9;
   const score = frameActiveEntityLoadScore();
   const lagTier = frameLagTier();
+  const expandedWorld = (worldWidth(S) > (cv.width + 4)) || (worldHeight(S) > (cv.height + 4));
+  if(expandedWorld && isMobileViewport()){
+    if(lagTier >= 1) return false;
+    if(frameBudgetExceeded(0.35) || frameIsSlow()) return false;
+    return (__frameBgFxFlip % 4) === 0;
+  }
   if(isMobileViewport() && lagTier >= 1) return false;
   if(__frameLagScore >= FRAME_LAG_CRITICAL_SCORE) return (__frameBgFxFlip % 6) === 0;
   if(__frameLagScore >= FRAME_LAG_WARN_SCORE) return (__frameBgFxFlip % 5) === 0;
@@ -24105,28 +24189,36 @@ function draw(){
 
     safeTick("drawSceneFrame", ()=>{
       const liteRender = useLiteEntityRender();
+      const camOffsetRaw = updateWorldCamera(S);
+      const worldW = worldWidth(S);
+      const worldH = worldHeight(S);
+      const viewW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+      const viewH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+      const maxCamX = Math.max(0, worldW - viewW);
+      const maxCamY = Math.max(0, worldH - viewH);
+      const camX = clamp(Number(camOffsetRaw?.x) || 0, 0, maxCamX);
+      const camY = clamp(Number(camOffsetRaw?.y) || 0, 0, maxCamY);
       const shake = liteRender ? { active:false, x:0, y:0 } : sampleCameraShake();
       const cine = liteRender ? { active:false, x:0, y:0, scale:1 } : sampleBattleCinematic();
-      const needsTransform = shake.active || cine.active;
-      if(needsTransform){
-        ctx.save();
-        if(cine.active){
-          ctx.translate(cine.x, cine.y);
-          ctx.scale(cine.scale, cine.scale);
-          ctx.translate(-cine.x, -cine.y);
-        }
-        if(shake.active){
-          ctx.translate(shake.x, shake.y);
-        }
+      ctx.save();
+      if(camX !== 0 || camY !== 0){
+        ctx.translate(-camX, -camY);
+      }
+      if(cine.active){
+        ctx.translate(cine.x, cine.y);
+        ctx.scale(cine.scale, cine.scale);
+        ctx.translate(-cine.x, -cine.y);
+      }
+      if(shake.active){
+        ctx.translate(shake.x, shake.y);
       }
       drawMapScene();
       if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
         drawAtmosphericParallax();
       }
       drawEntities();
-      if(needsTransform){
-        ctx.restore();
-      }
+      ctx.restore();
+      drawAbilityCooldownWheel();
       drawMobileUiClearLane();
     });
     maybeAutosave();
