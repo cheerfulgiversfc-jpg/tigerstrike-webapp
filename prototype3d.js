@@ -71,6 +71,11 @@
   const PLAYER_CAPTURE_RANGE = 22;
   const PLAYER_ATTACK_COOLDOWN_MS = 340;
   const PLAYER_CAPTURE_COOLDOWN_MS = 460;
+  const COMBAT_LOCK_RANGE = 42;
+  const COMBAT_MELEE_LANE_RANGE = 10;
+  const COMBAT_MIN_SEPARATION = 3.1;
+  const TIGER_WINDUP_MS = 420;
+  const TIGER_MELEE_WINDUP_MS = 220;
 
   const CIV_FOLLOW_DISTANCE = 7.2;
   const CIV_PICKUP_RADIUS = 8.2;
@@ -140,6 +145,13 @@
       nextCaptureAt:0,
       dodgeAngle:0,
     },
+    combat:{
+      active:false,
+      target:null,
+      targetStatus:"",
+      lockBlend:0,
+      pounceFxUntil:0,
+    },
     mission:{
       totalCivilians:0,
       totalTigers:0,
@@ -165,6 +177,9 @@
         mission:"",
         agent:"",
         tiger:"",
+        duel:"",
+        duelYou:"",
+        duelTiger:"",
         status:"",
         hint:"",
         shieldLabel:"",
@@ -304,6 +319,9 @@
       hudMission: el("proto3dHudMission"),
       hudAgent: el("proto3dHudAgent"),
       hudTiger: el("proto3dHudTiger"),
+      duelHud: el("proto3dDuelHud"),
+      duelYou: el("proto3dDuelYou"),
+      duelTiger: el("proto3dDuelTiger"),
       landscapeHint: el("proto3dLandscapeHint"),
       attackBtn: el("proto3dAttackBtn"),
       captureBtn: el("proto3dCaptureBtn"),
@@ -522,6 +540,49 @@
     return ring;
   }
 
+  function createTelegraphRing(parent, color=0xf59e0b, r=2.55){
+    const THREE = state.three;
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(r, r + 0.42, 32),
+      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.72, depthWrite:false, side:THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI * 0.5;
+    ring.position.y = 0.06;
+    ring.visible = false;
+    ring.renderOrder = 31;
+    parent.add(ring);
+    return ring;
+  }
+
+  function laneSideFromId(id){
+    const s = String(id || "");
+    let h = 0;
+    for(let i=0;i<s.length;i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    return (Math.abs(h) % 2) ? 1 : -1;
+  }
+
+  function tigerStatusText(t){
+    if(!t || !t.alive) return "DOWN";
+    const n = state.now || nowMs();
+    if(t.telegraphPounceUntil && n < t.telegraphPounceUntil) return "WINDUP";
+    if(t.pounceUntil && n < t.pounceUntil) return "POUNCE";
+    if(t.recoverUntil && n < t.recoverUntil) return "RECOVER";
+    if(t.telegraphMeleeUntil && n < t.telegraphMeleeUntil) return "CLAW-UP";
+    return String(t.state || "stalk").toUpperCase();
+  }
+
+  function flashUnit(unit){
+    if(!unit || !unit.mesh) return;
+    unit.hitFlashUntil = (state.now || nowMs()) + 140;
+  }
+
+  function updateHitFlash(unit){
+    if(!unit || !unit.mesh) return;
+    const active = !!(unit.hitFlashUntil && (state.now || nowMs()) < unit.hitFlashUntil);
+    const pulse = active ? 1.04 : 1;
+    unit.mesh.scale.set(pulse, pulse, pulse);
+  }
+
   function createUnit(opts){
     const THREE = state.three;
     const unit = {
@@ -542,6 +603,11 @@
       nextPounceAt:0,
       pounceUntil:0,
       recoverUntil:0,
+      telegraphPounceUntil:0,
+      telegraphMeleeUntil:0,
+      pendingAttackTarget:null,
+      pendingAttackDamage:0,
+      attackHitAt:0,
       followOffset: opts.followOffset || null,
       following: !!opts.following,
       rescued:false,
@@ -552,6 +618,8 @@
       ring:null,
       healthBar:null,
       footstepT:Math.random() * 10,
+      laneSide:Number.isFinite(opts.laneSide) ? opts.laneSide : laneSideFromId(opts.id),
+      hitFlashUntil:0,
     };
     unit.mesh.position.copy(opts.position || new THREE.Vector3());
     unit.mesh.rotation.y = opts.yaw || 0;
@@ -679,6 +747,7 @@
       t.nextPounceAt = nowMs() + 1400 + Math.random() * 1400;
       t.nextAttackAt = nowMs() + 400;
       t.ring = createSelectionRing(t.mesh, 0x60a5fa, 2.6);
+      t.telegraphRing = createTelegraphRing(t.mesh, 0xf59e0b, 2.62);
       addHealthBar(t, 0xfb7185);
       t.mesh.userData.__tiger = t;
       state.tigers.push(t);
@@ -694,6 +763,11 @@
     state.fx.nextAttackAt = 0;
     state.fx.nextCaptureAt = 0;
     state.selectedTiger = null;
+    state.combat.active = false;
+    state.combat.target = null;
+    state.combat.targetStatus = "";
+    state.combat.lockBlend = 0;
+    state.combat.pounceFxUntil = 0;
     state.currentChunkX = null;
     state.currentChunkZ = null;
     state.chunkQueue.length = 0;
@@ -703,7 +777,7 @@
     ensureChunksAround(state.player.mesh.position.x, state.player.mesh.position.z);
     processChunkQueue();
     processChunkQueue();
-    setStatus("Open-world 3D active. Reach civilians and escort them into the safe zone.");
+    setStatus("3D ready. Rescue civilians and clear tigers.");
   }
 
   function createWorldScene(){
@@ -1035,7 +1109,11 @@
         const dx = pb.x - pa.x;
         const dz = pb.z - pa.z;
         const d = Math.hypot(dx, dz);
-        const minD = 2.2;
+        let minD = 2.2;
+        const tigerVsPlayer =
+          (a.role === "tiger" && b.role === "player") ||
+          (a.role === "player" && b.role === "tiger");
+        if(tigerVsPlayer) minD = COMBAT_MIN_SEPARATION;
         if(d > 0 && d < minD){
           const push = (minD - d) * 0.5;
           const nx = dx / d;
@@ -1091,6 +1169,7 @@
     if(unit.role === "player"){
       if(nowMs() < state.fx.rollUntil) return;
       if(protectedByShield(unit)) return;
+      flashUnit(unit);
       let left = dmg;
       if(unit.armor > 0){
         const absorb = Math.min(unit.armor, left);
@@ -1108,6 +1187,7 @@
     }
     if(unit.role === "civilian"){
       if(protectedByShield(unit)) return;
+      flashUnit(unit);
       unit.hp = Math.max(0, unit.hp - dmg);
       if(unit.hp <= 0){
         unit.alive = false;
@@ -1117,6 +1197,7 @@
       }
       return;
     }
+    flashUnit(unit);
     unit.hp = Math.max(0, unit.hp - dmg);
   }
 
@@ -1143,7 +1224,11 @@
     state.fx.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
     const nearBonus = clamp((PLAYER_ATTACK_RANGE - d) / PLAYER_ATTACK_RANGE, 0, 1);
     const dmg = Math.round(12 + nearBonus * 16);
-    t.hp = Math.max(0, t.hp - dmg);
+    damageTarget(t, dmg);
+    const dirX = Math.sin(state.player.mesh.rotation.y);
+    const dirZ = Math.cos(state.player.mesh.rotation.y);
+    t.mesh.position.x += dirX * 0.36;
+    t.mesh.position.z += dirZ * 0.36;
     setStatus(`Hit ${t.name} for ${dmg}.`, 900);
     if(t.hp <= 0){
       cleanupDeadTiger(t, "kill");
@@ -1167,6 +1252,7 @@
       return;
     }
     state.fx.nextCaptureAt = now + PLAYER_CAPTURE_COOLDOWN_MS;
+    flashUnit(t);
     cleanupDeadTiger(t, "capture");
     setStatus(`${t.name} captured for research.`, 1600);
   }
@@ -1319,6 +1405,46 @@
     return { target:best, dist:bestDist };
   }
 
+  function getActiveCombatTiger(){
+    const t = state.selectedTiger;
+    if(!t || !t.alive || !state.player || !state.player.alive) return null;
+    const d = horizontalDistance(state.player, t);
+    if(d > COMBAT_LOCK_RANGE) return null;
+    return t;
+  }
+
+  function updateCombatDirector(){
+    const activeTiger = getActiveCombatTiger();
+    if(activeTiger){
+      state.combat.active = true;
+      state.combat.target = activeTiger;
+      state.combat.targetStatus = tigerStatusText(activeTiger);
+      state.combat.lockBlend = clamp(state.combat.lockBlend + state.dt * 3.2, 0, 1);
+    }else{
+      state.combat.active = false;
+      state.combat.target = null;
+      state.combat.targetStatus = "";
+      state.combat.lockBlend = clamp(state.combat.lockBlend - state.dt * 4.6, 0, 1);
+    }
+  }
+
+  function tigerDesiredLane(t, target){
+    const tp = target.mesh.position;
+    const pp = state.player.mesh.position;
+    let vx = pp.x - tp.x;
+    let vz = pp.z - tp.z;
+    const vd = Math.hypot(vx, vz) || 1;
+    vx /= vd;
+    vz /= vd;
+    const sideX = -vz;
+    const sideZ = vx;
+    const sideSign = Number.isFinite(t.laneSide) ? t.laneSide : 1;
+    return {
+      x: pp.x + vx * 2.4 + sideX * (1.6 * sideSign),
+      z: pp.z + vz * 2.4 + sideZ * (1.6 * sideSign),
+    };
+  }
+
   function updateTigers(){
     const now = nowMs();
     for(const t of state.tigers){
@@ -1336,12 +1462,20 @@
       let mode = "patrol";
       if(dist < 52){
         mode = "stalk";
-        if(now > t.nextPounceAt && dist > 5 && dist < 26){
-          t.pounceUntil = now + 700;
-          t.recoverUntil = t.pounceUntil + 540;
-          t.nextPounceAt = now + 2500 + Math.random() * 900;
+        if(now > t.nextPounceAt && dist > 5 && dist < 26 && now > t.pounceUntil && now > t.recoverUntil){
+          t.telegraphPounceUntil = now + TIGER_WINDUP_MS;
+          t.nextPounceAt = now + 2400 + Math.random() * 1200;
           setStatus(`${t.name} pounce incoming!`, 700);
         }
+      }
+      if(now < t.telegraphPounceUntil){
+        mode = "windup";
+        speed *= 0.35;
+      }else if(t.telegraphPounceUntil > 0 && now >= t.telegraphPounceUntil && now > t.pounceUntil){
+        t.pounceUntil = now + 560;
+        t.recoverUntil = t.pounceUntil + 520;
+        t.telegraphPounceUntil = 0;
+        state.combat.pounceFxUntil = now + 180;
       }
       if(now < t.pounceUntil){
         mode = "pounce";
@@ -1353,15 +1487,34 @@
       t.state = mode;
 
       if(target && dist > 2.2){
-        const tp = target.mesh.position;
-        const moveSpeed = moveToward(t, tp.x, tp.z, speed);
+        let tx = target.mesh.position.x;
+        let tz = target.mesh.position.z;
+        if(target.role === "player" && dist <= COMBAT_MELEE_LANE_RANGE){
+          const lane = tigerDesiredLane(t, target);
+          tx = lane.x;
+          tz = lane.z;
+        }
+        const moveSpeed = moveToward(t, tx, tz, speed);
         animateTiger(t, moveSpeed);
       }else{
         animateTiger(t, 0.05);
       }
 
-      if(dist <= 3.6 && now >= t.nextAttackAt){
-        damageTarget(target, t.tigerType.damage);
+      if(t.attackHitAt > 0 && now >= t.attackHitAt){
+        if(t.pendingAttackTarget && t.pendingAttackTarget.alive && horizontalDistance(t, t.pendingAttackTarget) <= 4.4){
+          damageTarget(t.pendingAttackTarget, t.pendingAttackDamage || t.tigerType.damage);
+        }
+        t.attackHitAt = 0;
+        t.pendingAttackTarget = null;
+        t.pendingAttackDamage = 0;
+        t.telegraphMeleeUntil = 0;
+      }
+
+      if(dist <= 3.8 && now >= t.nextAttackAt && t.attackHitAt <= 0){
+        t.telegraphMeleeUntil = now + TIGER_MELEE_WINDUP_MS;
+        t.attackHitAt = t.telegraphMeleeUntil;
+        t.pendingAttackTarget = target;
+        t.pendingAttackDamage = t.tigerType.damage;
         t.nextAttackAt = now + (target.role === "civilian" ? 3200 : 1300);
       }
     }
@@ -1376,8 +1529,31 @@
   }
 
   function updateSelectionRings(){
+    const now = state.now || nowMs();
     for(const t of state.tigers){
       if(t.ring) t.ring.visible = (state.selectedTiger === t) && t.alive;
+      if(t.telegraphRing){
+        const pounceWindup = !!(t.telegraphPounceUntil && now < t.telegraphPounceUntil);
+        const meleeWindup = !!(t.telegraphMeleeUntil && now < t.telegraphMeleeUntil);
+        const pouncing = !!(t.pounceUntil && now < t.pounceUntil);
+        if(pounceWindup || meleeWindup || pouncing){
+          t.telegraphRing.visible = true;
+          const pulse = 1 + Math.sin((now + (t.scoreValue || 0)) * 0.02) * 0.08;
+          t.telegraphRing.scale.set(pulse, pulse, pulse);
+          if(pounceWindup){
+            t.telegraphRing.material.color.setHex(0xfb7185);
+            t.telegraphRing.material.opacity = 0.82;
+          }else if(meleeWindup){
+            t.telegraphRing.material.color.setHex(0xf59e0b);
+            t.telegraphRing.material.opacity = 0.74;
+          }else{
+            t.telegraphRing.material.color.setHex(0xef4444);
+            t.telegraphRing.material.opacity = 0.64;
+          }
+        }else{
+          t.telegraphRing.visible = false;
+        }
+      }
     }
     if(state.player && state.player.ring){
       state.player.ring.visible = true;
@@ -1392,16 +1568,43 @@
     const p = state.player;
     if(!p) return;
     const isLandscape = window.matchMedia("(orientation: landscape)").matches;
-    const followHeight = isLandscape ? 30 : 38;
-    const followBack = isLandscape ? 30 : 40;
-    const fwd = unitForward(p.mesh);
-    const tx = p.mesh.position.x - fwd.x * followBack;
-    const tz = p.mesh.position.z - fwd.z * followBack;
-    state.camera.position.x = smoothStep(state.camera.position.x, tx, 5.8, state.dt);
-    state.camera.position.y = smoothStep(state.camera.position.y, followHeight, 4.4, state.dt);
-    state.camera.position.z = smoothStep(state.camera.position.z, tz, 5.8, state.dt);
+    const lock = state.combat.active ? state.combat.target : null;
+    const blend = clamp(state.combat.lockBlend || 0, 0, 1);
+    const followHeightBase = isLandscape ? 30 : 38;
+    const followBackBase = isLandscape ? 30 : 40;
+    let tx;
+    let tz;
+    let lookX = p.mesh.position.x;
+    let lookZ = p.mesh.position.z;
+    let followHeight = followHeightBase;
+    let followBack = followBackBase;
+    if(lock && lock.alive){
+      const pp = p.mesh.position;
+      const tp = lock.mesh.position;
+      const dx = pp.x - tp.x;
+      const dz = pp.z - tp.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const nx = dx / d;
+      const nz = dz / d;
+      const midX = (pp.x + tp.x) * 0.5;
+      const midZ = (pp.z + tp.z) * 0.5;
+      const lockBack = clamp(18 + d * 0.5, 18, 34);
+      followBack = lerp(followBackBase, lockBack, blend);
+      followHeight = lerp(followHeightBase, isLandscape ? 25 : 30, blend);
+      tx = midX + nx * followBack;
+      tz = midZ + nz * followBack;
+      lookX = lerp(pp.x, midX, clamp(blend * 0.9, 0, 1));
+      lookZ = lerp(pp.z, midZ, clamp(blend * 0.9, 0, 1));
+    }else{
+      const fwd = unitForward(p.mesh);
+      tx = p.mesh.position.x - fwd.x * followBack;
+      tz = p.mesh.position.z - fwd.z * followBack;
+    }
+    state.camera.position.x = smoothStep(state.camera.position.x, tx, 6.3, state.dt);
+    state.camera.position.y = smoothStep(state.camera.position.y, followHeight, 4.8, state.dt);
+    state.camera.position.z = smoothStep(state.camera.position.z, tz, 6.3, state.dt);
     const lookY = isLandscape ? 2.3 : 2.8;
-    state.camera.lookAt(p.mesh.position.x, lookY, p.mesh.position.z);
+    state.camera.lookAt(lookX, lookY, lookZ);
   }
 
   function setHudText(cacheKey, node, value){
@@ -1447,23 +1650,40 @@
     setHudText(
       "mission",
       state.ui.hudMission,
-      `Civ ${rescued}/${state.mission.totalCivilians} • Pending ${aliveCivs} • Tigers ${aliveTigers}/${state.mission.totalTigers}`
+      `OBJ Civ ${rescued}/${state.mission.totalCivilians} • Pending ${aliveCivs} • Tigers ${aliveTigers}`
     );
     if(p){
       const staminaNow = Math.round(Number.isFinite(p.stamina) ? p.stamina : 100);
       setHudText(
         "agent",
         state.ui.hudAgent,
-        `HP ${Math.round(p.hp)}/${p.maxHp} • AR ${Math.round(p.armor)}/${p.maxArmor} • ST ${staminaNow}/${Math.round(p.maxStamina || 100)}`
+        `YOU HP ${Math.round(p.hp)}/${p.maxHp} • AR ${Math.round(p.armor)}/${p.maxArmor} • ST ${staminaNow}`
       );
     }
 
     const st = state.selectedTiger;
     if(st && st.alive){
       const pct = Math.round((st.hp / st.maxHp) * 100);
-      setHudText("tiger", state.ui.hudTiger, `Target: ${st.name} • HP ${Math.round(st.hp)}/${st.maxHp} (${pct}%) • ${st.state.toUpperCase()}`);
+      setHudText("tiger", state.ui.hudTiger, `LOCK ${st.name} • HP ${Math.round(st.hp)}/${st.maxHp} (${pct}%) • ${tigerStatusText(st)}`);
     }else{
-      setHudText("tiger", state.ui.hudTiger, "Target: Tap a tiger to engage.");
+      setHudText("tiger", state.ui.hudTiger, "LOCK: Tap tiger to engage.");
+    }
+
+    if(state.ui.duelHud){
+      const engaged = !!(state.combat.active && state.combat.target && state.combat.target.alive);
+      state.ui.duelHud.classList.toggle("active", engaged);
+      if(state.overlay) state.overlay.classList.toggle("combatLock", engaged);
+      if(engaged){
+        const tiger = state.combat.target;
+        const youPct = Math.round((p.hp / Math.max(1, p.maxHp)) * 100);
+        const tigerPct = Math.round((tiger.hp / Math.max(1, tiger.maxHp)) * 100);
+        setHudText("duelYou", state.ui.duelYou, `YOU ${youPct}% • AR ${Math.round(p.armor)}%`);
+        setHudText("duelTiger", state.ui.duelTiger, `${tiger.name.toUpperCase()} ${tigerPct}% • ${tigerStatusText(tiger)}`);
+      }else{
+        if(state.overlay) state.overlay.classList.remove("combatLock");
+        setHudText("duelYou", state.ui.duelYou, "");
+        setHudText("duelTiger", state.ui.duelTiger, "");
+      }
     }
 
     if(state.ui.hint){
@@ -1494,6 +1714,7 @@
     updateSquad();
     updateCivilians();
     updateTigers();
+    updateCombatDirector();
     const liveUnits = state.liveUnitsCache;
     liveUnits.length = 0;
     if(state.player && state.player.alive) liveUnits.push(state.player);
@@ -1503,6 +1724,10 @@
     if(state.perf.tier !== "low" || (state.perf.frameNo % 2) === 0){
       resolveSeparation(liveUnits);
     }
+    updateHitFlash(state.player);
+    for(const u of state.squad) updateHitFlash(u);
+    for(const u of state.civilians) updateHitFlash(u);
+    for(const u of state.tigers) updateHitFlash(u);
     updateSelectionRings();
     updateSafeZoneVisual();
     const barsEvery = Math.max(1, Math.floor(qualityPreset().healthBarEveryNFrames || 1));
@@ -1755,7 +1980,7 @@
     state.clock.getDelta();
     stopRenderLoop();
     state.raf = requestAnimationFrame(renderFrame);
-    setStatus("3D prototype online. Landscape mode is recommended.");
+    setStatus("3D online. Landscape recommended.");
   }
 
   function closePrototype(){
@@ -1763,6 +1988,7 @@
     stopRenderLoop();
     resetJoystick();
     if(state.overlay) state.overlay.style.display = "none";
+    if(state.overlay) state.overlay.classList.remove("combatLock");
     document.body.classList.remove("proto3dOpen");
     restorePauseState();
   }

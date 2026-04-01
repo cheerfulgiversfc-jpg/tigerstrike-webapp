@@ -339,6 +339,44 @@
     .proto3dHint.hidden{
       display:none;
     }
+    .proto3dDuelHud{
+      position:absolute;
+      left:50%;
+      top:12px;
+      transform:translateX(-50%);
+      z-index:6;
+      display:none;
+      align-items:center;
+      gap:8px;
+      pointer-events:none;
+      max-width:min(86vw, 720px);
+    }
+    .proto3dDuelHud.active{
+      display:flex;
+    }
+    .proto3dDuelChip{
+      border:1px solid rgba(46,84,140,.9);
+      background:rgba(6,12,20,.84);
+      border-radius:999px;
+      padding:6px 10px;
+      font-size:11px;
+      font-weight:900;
+      letter-spacing:.01em;
+      color:#e5ecf7;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      max-width:44vw;
+      backdrop-filter:blur(5px);
+    }
+    .proto3dDuelChip.you{
+      border-color:rgba(74,222,128,.86);
+      color:#bbf7d0;
+    }
+    .proto3dDuelChip.tiger{
+      border-color:rgba(251,113,133,.88);
+      color:#fecdd3;
+    }
     .proto3dControls{
       position:absolute;
       inset:0;
@@ -482,6 +520,17 @@
         border-radius:14px;
         font-size:11px;
       }
+      .proto3dDuelChip{
+        max-width:46vw;
+        font-size:10px;
+        padding:5px 8px;
+      }
+    }
+    .proto3dOverlay.combatLock .proto3dHud{
+      display:none;
+    }
+    .proto3dOverlay.combatLock .proto3dHint{
+      opacity:.56;
     }
     body.proto3dOpen .wrap{
       padding-bottom:0;
@@ -1574,8 +1623,12 @@
       <div class="proto3dHudCard" id="proto3dHudAgent">Agent: loading...</div>
       <div class="proto3dHudCard" id="proto3dHudTiger">Target: loading...</div>
     </div>
+    <div class="proto3dDuelHud" id="proto3dDuelHud">
+      <div class="proto3dDuelChip you" id="proto3dDuelYou"></div>
+      <div class="proto3dDuelChip tiger" id="proto3dDuelTiger"></div>
+    </div>
 
-    <div class="proto3dHint" id="proto3dHint">Move with joystick/WASD. Tap tiger to lock, then Attack or Capture.</div>
+    <div class="proto3dHint" id="proto3dHint">Move • Lock Tiger • Attack or Capture</div>
     <div class="proto3dLandscapeHint" id="proto3dLandscapeHint">Landscape mode is recommended for full map view.</div>
 
     <div class="proto3dCanvasHost" id="proto3dCanvasHost"></div>
