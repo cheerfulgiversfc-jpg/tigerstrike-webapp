@@ -12,6 +12,57 @@
   const CHUNK_SIZE = 120;
   const CHUNK_KEEP_RADIUS = 3;
   const CHUNK_DROP_RADIUS = 4;
+  const PERF_EVAL_MS = 1600;
+  const PERF_HUD_MIN_MS = 90;
+  const PERF_HUD_MAX_MS = 180;
+
+  const QUALITY_PRESETS = {
+    high:{
+      key:"high",
+      maxDpr:1.35,
+      keepRadius:3,
+      dropRadius:4,
+      chunkBuildPerFrame:2,
+      hudIntervalMs:90,
+      healthBarEveryNFrames:1,
+      antialias:true,
+      roadBase:1, roadVar:2,
+      houseBase:1, houseVar:2,
+      carBase:2, carVar:3,
+      treeBase:14, treeVar:12,
+      pondChance:0.38,
+    },
+    med:{
+      key:"med",
+      maxDpr:1.0,
+      keepRadius:3,
+      dropRadius:4,
+      chunkBuildPerFrame:1,
+      hudIntervalMs:120,
+      healthBarEveryNFrames:1,
+      antialias:true,
+      roadBase:1, roadVar:2,
+      houseBase:1, houseVar:2,
+      carBase:2, carVar:2,
+      treeBase:11, treeVar:8,
+      pondChance:0.26,
+    },
+    low:{
+      key:"low",
+      maxDpr:0.82,
+      keepRadius:2,
+      dropRadius:3,
+      chunkBuildPerFrame:1,
+      hudIntervalMs:180,
+      healthBarEveryNFrames:2,
+      antialias:false,
+      roadBase:1, roadVar:1,
+      houseBase:1, houseVar:1,
+      carBase:1, carVar:2,
+      treeBase:7, treeVar:6,
+      pondChance:0.16,
+    },
+  };
 
   const PLAYER_BASE_SPEED = 16;
   const PLAYER_SPRINT_SPEED = 26;
@@ -74,6 +125,12 @@
     selectedTiger:null,
     tigerPickRoots:[],
     chunks:new Map(),
+    chunkQueue:[],
+    chunkQueued:new Set(),
+    currentChunkX:null,
+    currentChunkZ:null,
+    nextChunkSweepAt:0,
+    liveUnitsCache:[],
     safeZone:null,
     fx:{
       shieldUntil:0,
@@ -93,6 +150,26 @@
     },
     statusText:"3D prototype loaded. Move to civilians, then escort to safe zone.",
     statusUntil:0,
+    perf:{
+      tier:"med",
+      preset:QUALITY_PRESETS.med,
+      frameAccumMs:0,
+      frameCount:0,
+      evalAt:0,
+      avgMs:16.7,
+      lowHits:0,
+      highHits:0,
+      frameNo:0,
+      hudLastAt:0,
+      lastHud:{
+        mission:"",
+        agent:"",
+        tiger:"",
+        status:"",
+        hint:"",
+        shieldLabel:"",
+      },
+    },
   };
 
   function el(id){ return document.getElementById(id); }
@@ -112,10 +189,83 @@
     return ((h >>> 0) % 10000) / 10000;
   }
 
+  function detectInitialQualityTier(){
+    const cores = Number(navigator.hardwareConcurrency || 4);
+    const mem = Number(navigator.deviceMemory || 4);
+    if(cores <= 4 || mem <= 3) return "low";
+    if(cores <= 6 || mem <= 6) return "med";
+    return "high";
+  }
+
+  function qualityPreset(){
+    return state.perf.preset || QUALITY_PRESETS.med;
+  }
+
+  function setRendererDprByQuality(){
+    if(!state.renderer) return;
+    const preset = qualityPreset();
+    const maxDpr = clamp(Number(preset.maxDpr || 1), 0.62, 1.5);
+    const target = Math.min(window.devicePixelRatio || 1, maxDpr);
+    state.renderer.setPixelRatio(target);
+  }
+
+  function applyQualityTier(tier, reason=""){
+    const next = QUALITY_PRESETS[tier] || QUALITY_PRESETS.med;
+    if(state.perf.tier === next.key && state.perf.preset === next) return;
+    state.perf.tier = next.key;
+    state.perf.preset = next;
+    setRendererDprByQuality();
+    state.perf.hudLastAt = 0;
+    if(reason){
+      setStatus(`3D performance mode: ${next.key.toUpperCase()}.`, 1200);
+    }
+  }
+
+  function evaluatePerformanceTier(){
+    const now = state.now;
+    if(!state.perf.evalAt) state.perf.evalAt = now;
+    state.perf.frameAccumMs += state.dt * 1000;
+    state.perf.frameCount += 1;
+    if((now - state.perf.evalAt) < PERF_EVAL_MS) return;
+
+    const avg = state.perf.frameAccumMs / Math.max(1, state.perf.frameCount);
+    state.perf.avgMs = avg;
+    state.perf.frameAccumMs = 0;
+    state.perf.frameCount = 0;
+    state.perf.evalAt = now;
+
+    if(avg > 24) state.perf.lowHits += 1;
+    else state.perf.lowHits = Math.max(0, state.perf.lowHits - 1);
+
+    if(avg < 17.2) state.perf.highHits += 1;
+    else state.perf.highHits = Math.max(0, state.perf.highHits - 1);
+
+    if(state.perf.tier === "high" && state.perf.lowHits >= 2){
+      state.perf.lowHits = 0;
+      applyQualityTier("med", "auto");
+      return;
+    }
+    if(state.perf.tier === "med" && state.perf.lowHits >= 3){
+      state.perf.lowHits = 0;
+      applyQualityTier("low", "auto");
+      return;
+    }
+    if(state.perf.tier === "low" && state.perf.highHits >= 4){
+      state.perf.highHits = 0;
+      applyQualityTier("med", "auto");
+      return;
+    }
+    if(state.perf.tier === "med" && state.perf.highHits >= 5){
+      state.perf.highHits = 0;
+      applyQualityTier("high", "auto");
+    }
+  }
+
   function setStatus(text, holdMs=1800){
     state.statusText = String(text || "");
     state.statusUntil = nowMs() + holdMs;
     if(state.ui.hint){
+      state.ui.hint.classList.remove("hidden");
       state.ui.hint.innerText = state.statusText;
     }
   }
@@ -154,7 +304,6 @@
       hudMission: el("proto3dHudMission"),
       hudAgent: el("proto3dHudAgent"),
       hudTiger: el("proto3dHudTiger"),
-      hudStatus: el("proto3dHudStatus"),
       landscapeHint: el("proto3dLandscapeHint"),
       attackBtn: el("proto3dAttackBtn"),
       captureBtn: el("proto3dCaptureBtn"),
@@ -381,6 +530,8 @@
       mesh: opts.mesh,
       maxHp: opts.maxHp || 100,
       hp: opts.hp == null ? (opts.maxHp || 100) : opts.hp,
+      maxStamina: Number.isFinite(opts.maxStamina) ? opts.maxStamina : 100,
+      stamina: Number.isFinite(opts.stamina) ? opts.stamina : 100,
       armor: opts.armor || 0,
       maxArmor: opts.maxArmor || 100,
       speed: opts.speed || 9,
@@ -543,11 +694,25 @@
     state.fx.nextAttackAt = 0;
     state.fx.nextCaptureAt = 0;
     state.selectedTiger = null;
+    state.currentChunkX = null;
+    state.currentChunkZ = null;
+    state.chunkQueue.length = 0;
+    state.chunkQueued.clear();
+    state.nextChunkSweepAt = 0;
+    state.now = nowMs();
+    ensureChunksAround(state.player.mesh.position.x, state.player.mesh.position.z);
+    processChunkQueue();
+    processChunkQueue();
     setStatus("Open-world 3D active. Reach civilians and escort them into the safe zone.");
   }
 
   function createWorldScene(){
     const THREE = state.three;
+    const initialTier = detectInitialQualityTier();
+    state.perf.tier = initialTier;
+    state.perf.preset = QUALITY_PRESETS[initialTier] || QUALITY_PRESETS.med;
+    state.perf.evalAt = nowMs();
+    state.perf.hudLastAt = 0;
     state.scene = new THREE.Scene();
     state.scene.background = new THREE.Color(0x112019);
     state.scene.fog = new THREE.FogExp2(0x15281f, 0.0032);
@@ -561,12 +726,12 @@
     state.clock = new THREE.Clock();
 
     state.renderer = new THREE.WebGLRenderer({
-      antialias:true,
+      antialias:!!qualityPreset().antialias,
       alpha:false,
       powerPreference:"high-performance",
       precision:"mediump",
     });
-    state.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    setRendererDprByQuality();
     state.renderer.setSize(100, 100, false);
     state.renderer.outputColorSpace = THREE.SRGBColorSpace || state.renderer.outputEncoding;
     state.renderer.domElement.className = "proto3dCanvas";
@@ -692,11 +857,12 @@
     return pond;
   }
 
-  function clearFarChunks(cx, cz){
+  function clearFarChunks(cx, cz, dropRadius){
+    const drop = Number.isFinite(dropRadius) ? dropRadius : CHUNK_DROP_RADIUS;
     for(const [key, chunk] of state.chunks){
       const dx = chunk.cx - cx;
       const dz = chunk.cz - cz;
-      if(Math.max(Math.abs(dx), Math.abs(dz)) > CHUNK_DROP_RADIUS){
+      if(Math.max(Math.abs(dx), Math.abs(dz)) > drop){
         state.chunkRoot.remove(chunk.group);
         state.chunks.delete(key);
       }
@@ -706,12 +872,13 @@
   function addChunk(cx, cz){
     const key = `${cx}:${cz}`;
     if(state.chunks.has(key)) return;
+    const preset = qualityPreset();
 
     const THREE = state.three;
     const group = new THREE.Group();
     group.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
 
-    const roadCount = 1 + Math.floor(hash01(cx, cz, 11) * 2);
+    const roadCount = preset.roadBase + Math.floor(hash01(cx, cz, 11) * preset.roadVar);
     for(let i=0;i<roadCount;i++){
       const road = makeRoadSegment(48 + hash01(cx, cz, 12 + i) * 24, 8 + hash01(cx, cz, 31 + i) * 4);
       road.position.set(
@@ -723,7 +890,7 @@
       group.add(road);
     }
 
-    const houseCount = 1 + Math.floor(hash01(cx, cz, 81) * 2);
+    const houseCount = preset.houseBase + Math.floor(hash01(cx, cz, 81) * preset.houseVar);
     for(let i=0;i<houseCount;i++){
       const h = makeHouse();
       h.position.set(
@@ -735,7 +902,7 @@
       group.add(h);
     }
 
-    const carCount = 2 + Math.floor(hash01(cx, cz, 121) * 3);
+    const carCount = preset.carBase + Math.floor(hash01(cx, cz, 121) * preset.carVar);
     for(let i=0;i<carCount;i++){
       const c = (hash01(cx, cz, 130 + i) > 0.75) ? makeTruck() : makeCar();
       c.position.set(
@@ -747,7 +914,7 @@
       group.add(c);
     }
 
-    const treeCount = 14 + Math.floor(hash01(cx, cz, 171) * 12);
+    const treeCount = preset.treeBase + Math.floor(hash01(cx, cz, 171) * preset.treeVar);
     for(let i=0;i<treeCount;i++){
       const t = makeTree();
       t.scale.setScalar(0.82 + hash01(cx, cz, 180 + i) * 0.5);
@@ -759,7 +926,7 @@
       group.add(t);
     }
 
-    if(hash01(cx, cz, 310) > 0.62){
+    if(hash01(cx, cz, 310) > (1 - preset.pondChance)){
       const pond = makePond();
       pond.scale.set(0.7 + hash01(cx, cz, 311) * 0.9, 1, 0.7 + hash01(cx, cz, 312) * 0.9);
       pond.position.set(
@@ -774,15 +941,58 @@
     state.chunks.set(key, { cx, cz, group });
   }
 
+  function queueChunk(cx, cz, priority){
+    const key = `${cx}:${cz}`;
+    if(state.chunks.has(key) || state.chunkQueued.has(key)) return;
+    state.chunkQueued.add(key);
+    if(priority <= 1) state.chunkQueue.unshift({ key, cx, cz });
+    else state.chunkQueue.push({ key, cx, cz });
+  }
+
+  function processChunkQueue(){
+    const preset = qualityPreset();
+    const budget = Math.max(1, Math.floor(preset.chunkBuildPerFrame || 1));
+    for(let i=0;i<budget;i++){
+      const next = state.chunkQueue.shift();
+      if(!next) break;
+      state.chunkQueued.delete(next.key);
+      addChunk(next.cx, next.cz);
+    }
+  }
+
   function ensureChunksAround(x, z){
+    const preset = qualityPreset();
+    const keepRadius = Number.isFinite(preset.keepRadius) ? preset.keepRadius : CHUNK_KEEP_RADIUS;
+    const dropRadius = Number.isFinite(preset.dropRadius) ? preset.dropRadius : CHUNK_DROP_RADIUS;
     const cx = Math.floor(x / CHUNK_SIZE);
     const cz = Math.floor(z / CHUNK_SIZE);
-    for(let dz=-CHUNK_KEEP_RADIUS; dz<=CHUNK_KEEP_RADIUS; dz++){
-      for(let dx=-CHUNK_KEEP_RADIUS; dx<=CHUNK_KEEP_RADIUS; dx++){
-        addChunk(cx + dx, cz + dz);
+
+    if(state.currentChunkX !== cx || state.currentChunkZ !== cz){
+      state.currentChunkX = cx;
+      state.currentChunkZ = cz;
+      const pending = [];
+      for(let dz=-keepRadius; dz<=keepRadius; dz++){
+        for(let dx=-keepRadius; dx<=keepRadius; dx++){
+          const tx = cx + dx;
+          const tz = cz + dz;
+          const dist = Math.max(Math.abs(dx), Math.abs(dz));
+          const key = `${tx}:${tz}`;
+          if(!state.chunks.has(key) && !state.chunkQueued.has(key)){
+            pending.push({ tx, tz, dist });
+          }
+        }
+      }
+      pending.sort((a,b)=>a.dist - b.dist);
+      for(const p of pending){
+        queueChunk(p.tx, p.tz, p.dist);
       }
     }
-    clearFarChunks(cx, cz);
+
+    processChunkQueue();
+    if(state.now >= state.nextChunkSweepAt){
+      clearFarChunks(cx, cz, dropRadius);
+      state.nextChunkSweepAt = state.now + 260;
+    }
   }
 
   function unitForward(mesh){
@@ -992,6 +1202,8 @@
   function updatePlayer(){
     const p = state.player;
     if(!p || !p.alive) return;
+    if(!Number.isFinite(p.stamina)) p.stamina = Number.isFinite(p.maxStamina) ? p.maxStamina : 100;
+    if(!Number.isFinite(p.maxStamina) || p.maxStamina <= 0) p.maxStamina = 100;
 
     const c = controlsVector();
     const mag = Math.hypot(c.x, c.y);
@@ -1022,7 +1234,7 @@
         state.controls.sprintHold = false;
       }
     }else{
-      p.stamina = Math.min(100, p.stamina + 16 * state.dt);
+      p.stamina = Math.min(p.maxStamina, p.stamina + 16 * state.dt);
     }
   }
 
@@ -1192,71 +1404,115 @@
     state.camera.lookAt(p.mesh.position.x, lookY, p.mesh.position.z);
   }
 
-  function updateHud(){
+  function setHudText(cacheKey, node, value){
+    if(!node) return;
+    const v = String(value || "");
+    if(state.perf.lastHud[cacheKey] === v) return;
+    state.perf.lastHud[cacheKey] = v;
+    node.innerText = v;
+  }
+
+  function updateHud(force=false){
     const p = state.player;
     const aliveTigers = state.tigers.filter((t)=>t.alive).length;
     const aliveCivs = state.civilians.filter((c)=>c.alive && !c.rescued).length;
     const rescued = state.mission.rescued;
+    const now = state.now || nowMs();
+    const preset = qualityPreset();
 
-    if(state.ui.hudMission){
-      state.ui.hudMission.innerText =
-        `Mission: Civilians ${rescued}/${state.mission.totalCivilians} rescued • ${aliveCivs} pending • Tigers ${aliveTigers}/${state.mission.totalTigers}`;
+    const attackEnabled = !!(state.selectedTiger && state.selectedTiger.alive);
+    if(state.ui.attackBtn){
+      const disabled = !attackEnabled;
+      if(state.ui.attackBtn.disabled !== disabled) state.ui.attackBtn.disabled = disabled;
     }
-    if(state.ui.hudAgent && p){
-      state.ui.hudAgent.innerText =
-        `Agent: HP ${Math.round(p.hp)}/${p.maxHp} • Armor ${Math.round(p.armor)}/${p.maxArmor} • Stamina ${Math.round(p.stamina)}/100`;
-    }
-    if(state.ui.hudTiger){
-      const st = state.selectedTiger;
-      if(st && st.alive){
-        const pct = Math.round((st.hp / st.maxHp) * 100);
-        state.ui.hudTiger.innerText = `Target: ${st.name} • HP ${Math.round(st.hp)}/${st.maxHp} (${pct}%) • ${st.state.toUpperCase()}`;
-      }else{
-        state.ui.hudTiger.innerText = "Target: Tap a tiger to engage.";
-      }
-    }
-    if(state.ui.hudStatus){
-      if(state.statusUntil > nowMs()) state.ui.hudStatus.innerText = state.statusText;
-      else state.ui.hudStatus.innerText = "Open world active. Rescue civilians and clear or capture tigers.";
-    }
-    if(state.ui.hint){
-      if(state.statusUntil > nowMs()) state.ui.hint.innerText = state.statusText;
-      else state.ui.hint.innerText = "Move with joystick/WASD. Tap tiger to lock, then Attack or Capture.";
-    }
-
-    if(state.ui.attackBtn) state.ui.attackBtn.disabled = !(state.selectedTiger && state.selectedTiger.alive);
     if(state.ui.captureBtn){
       const st = state.selectedTiger;
       const canCapture = !!(st && st.alive && (st.hp / st.maxHp) <= 0.25);
-      state.ui.captureBtn.disabled = !canCapture;
+      const disabled = !canCapture;
+      if(state.ui.captureBtn.disabled !== disabled) state.ui.captureBtn.disabled = disabled;
     }
     if(state.ui.shieldBtn){
-      const left = Math.max(0, state.fx.shieldUntil - nowMs());
-      state.ui.shieldBtn.innerText = left > 0 ? `Shield ${Math.ceil(left / 1000)}s` : "Shield";
+      const left = Math.max(0, state.fx.shieldUntil - now);
+      const shieldLabel = left > 0 ? `Shield ${Math.ceil(left / 1000)}s` : "Shield";
+      if(state.perf.lastHud.shieldLabel !== shieldLabel){
+        state.perf.lastHud.shieldLabel = shieldLabel;
+        state.ui.shieldBtn.innerText = shieldLabel;
+      }
+    }
+
+    const hudEvery = clamp(Number(preset.hudIntervalMs || 120), PERF_HUD_MIN_MS, PERF_HUD_MAX_MS);
+    if(!force && (now - state.perf.hudLastAt) < hudEvery) return;
+    state.perf.hudLastAt = now;
+
+    setHudText(
+      "mission",
+      state.ui.hudMission,
+      `Civ ${rescued}/${state.mission.totalCivilians} • Pending ${aliveCivs} • Tigers ${aliveTigers}/${state.mission.totalTigers}`
+    );
+    if(p){
+      const staminaNow = Math.round(Number.isFinite(p.stamina) ? p.stamina : 100);
+      setHudText(
+        "agent",
+        state.ui.hudAgent,
+        `HP ${Math.round(p.hp)}/${p.maxHp} • AR ${Math.round(p.armor)}/${p.maxArmor} • ST ${staminaNow}/${Math.round(p.maxStamina || 100)}`
+      );
+    }
+
+    const st = state.selectedTiger;
+    if(st && st.alive){
+      const pct = Math.round((st.hp / st.maxHp) * 100);
+      setHudText("tiger", state.ui.hudTiger, `Target: ${st.name} • HP ${Math.round(st.hp)}/${st.maxHp} (${pct}%) • ${st.state.toUpperCase()}`);
+    }else{
+      setHudText("tiger", state.ui.hudTiger, "Target: Tap a tiger to engage.");
+    }
+
+    if(state.ui.hint){
+      if(state.statusUntil > now){
+        state.ui.hint.classList.remove("hidden");
+        setHudText("hint", state.ui.hint, state.statusText);
+      }else{
+        state.ui.hint.classList.add("hidden");
+      }
     }
   }
 
   function updateGameState(){
     state.now = nowMs();
     state.dt = clamp(state.clock.getDelta(), 0.001, 0.050);
+    state.perf.frameNo += 1;
     if(!state.active) return;
     if(state.overlay && state.overlay.style.display !== "flex"){
       closePrototype();
       return;
     }
+    if(!state.player || !state.player.mesh){
+      return;
+    }
+    evaluatePerformanceTier();
     ensureChunksAround(state.player.mesh.position.x, state.player.mesh.position.z);
     updatePlayer();
     updateSquad();
     updateCivilians();
     updateTigers();
-    resolveSeparation([state.player, ...state.squad, ...state.civilians.filter((c)=>c.alive), ...state.tigers.filter((t)=>t.alive)]);
+    const liveUnits = state.liveUnitsCache;
+    liveUnits.length = 0;
+    if(state.player && state.player.alive) liveUnits.push(state.player);
+    for(const u of state.squad){ if(u && u.alive) liveUnits.push(u); }
+    for(const u of state.civilians){ if(u && u.alive && !u.rescued) liveUnits.push(u); }
+    for(const u of state.tigers){ if(u && u.alive) liveUnits.push(u); }
+    if(state.perf.tier !== "low" || (state.perf.frameNo % 2) === 0){
+      resolveSeparation(liveUnits);
+    }
     updateSelectionRings();
     updateSafeZoneVisual();
-    updateHealthBar(state.player);
-    for(const u of state.squad) updateHealthBar(u);
-    for(const u of state.civilians) updateHealthBar(u);
-    for(const u of state.tigers) updateHealthBar(u);
-    orientHealthBarsToCamera();
+    const barsEvery = Math.max(1, Math.floor(qualityPreset().healthBarEveryNFrames || 1));
+    if((state.perf.frameNo % barsEvery) === 0){
+      updateHealthBar(state.player);
+      for(const u of state.squad) updateHealthBar(u);
+      for(const u of state.civilians) updateHealthBar(u);
+      for(const u of state.tigers) updateHealthBar(u);
+      orientHealthBarsToCamera();
+    }
     updateCamera();
     updateHud();
 
@@ -1283,6 +1539,7 @@
 
   function resize3d(){
     if(!state.renderer || !state.camera || !state.canvasHost) return;
+    setRendererDprByQuality();
     const w = Math.max(2, state.canvasHost.clientWidth);
     const h = Math.max(2, state.canvasHost.clientHeight);
     state.renderer.setSize(w, h, false);
@@ -1291,6 +1548,21 @@
     const isLandscape = window.matchMedia("(orientation: landscape)").matches;
     if(state.ui.landscapeHint){
       state.ui.landscapeHint.style.display = isLandscape ? "none" : "block";
+    }
+  }
+
+  function onOrientationChanged(){
+    window.setTimeout(resize3d, 40);
+  }
+
+  function onVisibilityChanged(){
+    if(document.hidden){
+      stopRenderLoop();
+      return;
+    }
+    if(state.active && !state.raf){
+      state.clock.getDelta();
+      state.raf = requestAnimationFrame(renderFrame);
     }
   }
 
@@ -1426,7 +1698,8 @@
     }
 
     window.addEventListener("resize", resize3d, { passive:true });
-    window.addEventListener("orientationchange", ()=>setTimeout(resize3d, 40), { passive:true });
+    window.addEventListener("orientationchange", onOrientationChanged, { passive:true });
+    document.addEventListener("visibilitychange", onVisibilityChanged);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
   }
@@ -1435,7 +1708,8 @@
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("resize", resize3d);
-    window.removeEventListener("orientationchange", resize3d);
+    window.removeEventListener("orientationchange", onOrientationChanged);
+    document.removeEventListener("visibilitychange", onVisibilityChanged);
   }
 
   function bindWorldEvents(){
