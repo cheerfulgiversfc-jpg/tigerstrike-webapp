@@ -15,6 +15,10 @@
   const PERF_EVAL_MS = 1600;
   const PERF_HUD_MIN_MS = 90;
   const PERF_HUD_MAX_MS = 180;
+  const PERF_SPIKE_MS = 44;
+  const PERF_CRITICAL_SPIKE_MS = 68;
+  const FRAME_BUDGET_DEFAULT_MS = 11.8;
+  const VFX_POOL_MAX = 48;
 
   const QUALITY_PRESETS = {
     high:{
@@ -133,12 +137,13 @@
     unitsRoot:null,
     effectsRoot:null,
     vfxBursts:[],
+    vfxPool:[],
     cameraCtl:{
       mode:"third",
       zoomOffset:0,
       heightOffset:0,
       pitchOffset:0,
-      visualMode:"balanced",
+      visualMode:"auto",
     },
     canvasHost:null,
     overlay:null,
@@ -216,9 +221,18 @@
       frameCount:0,
       evalAt:0,
       avgMs:16.7,
+      lastFrameMs:16.7,
+      spikeHits:0,
+      criticalSpikeHits:0,
       lowHits:0,
       highHits:0,
       frameNo:0,
+      budget:{
+        frameStartAt:0,
+        limitMs:FRAME_BUDGET_DEFAULT_MS,
+        spentMs:0,
+        skipped:0,
+      },
       hudLastAt:0,
       lastHud:{
         mission:"",
@@ -241,6 +255,65 @@
 
   function nowMs(){
     return (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  }
+
+  function frameBudgetLimitForTier(){
+    const tier = state.perf.tier || "med";
+    const avg = Number(state.perf.avgMs || 16.7);
+    let base = 11.8;
+    if(tier === "high") base = 12.6;
+    else if(tier === "low") base = 9.6;
+    else if(tier === "clarity") base = 10.9;
+    if(avg > 24) base -= 2.0;
+    else if(avg > 20) base -= 1.2;
+    else if(avg > 18) base -= 0.6;
+    return clamp(base, 7.8, 14.5);
+  }
+
+  function beginFrameBudget(){
+    state.perf.budget.frameStartAt = nowMs();
+    state.perf.budget.limitMs = frameBudgetLimitForTier();
+    state.perf.budget.spentMs = 0;
+    state.perf.budget.skipped = 0;
+  }
+
+  function runFrameTask(fn, opts={}){
+    if(typeof fn !== "function") return false;
+    const critical = !!opts.critical;
+    const estimatedCost = Math.max(0, Number(opts.cost || 0));
+    const every = Math.max(1, Math.floor(Number(opts.every || 1)));
+    if(!critical && every > 1 && (state.perf.frameNo % every) !== 0){
+      state.perf.budget.skipped += 1;
+      return false;
+    }
+    if(!critical && (state.perf.budget.spentMs + estimatedCost) > state.perf.budget.limitMs){
+      state.perf.budget.skipped += 1;
+      return false;
+    }
+    const t0 = nowMs();
+    fn();
+    const elapsed = Math.max(0, nowMs() - t0);
+    state.perf.budget.spentMs += elapsed + estimatedCost;
+    return true;
+  }
+
+  function healthBarCullDistanceForTier(){
+    const tier = state.perf.tier || "med";
+    if(tier === "high" || tier === "clarity") return 360;
+    if(tier === "low") return 190;
+    return 260;
+  }
+
+  function unitInHealthBarRange(unit){
+    if(!unit || !unit.alive || !unit.healthBar) return false;
+    if(unit.role === "civilian" && unit.rescued) return false;
+    if(unit === state.player) return true;
+    const p = state.player;
+    if(!p || !p.mesh || !unit.mesh) return true;
+    const maxD = healthBarCullDistanceForTier();
+    const dx = unit.mesh.position.x - p.mesh.position.x;
+    const dz = unit.mesh.position.z - p.mesh.position.z;
+    return (dx * dx + dz * dz) <= (maxD * maxD);
   }
 
   function hash01(ix, iz, k){
@@ -326,29 +399,38 @@
     state.perf.frameAccumMs = 0;
     state.perf.frameCount = 0;
     state.perf.evalAt = now;
+    const spikeHits = Math.max(0, Math.floor(state.perf.spikeHits || 0));
+    const criticalSpikeHits = Math.max(0, Math.floor(state.perf.criticalSpikeHits || 0));
 
-    if(avg > 24) state.perf.lowHits += 1;
+    if(avg > 23.5) state.perf.lowHits += 1;
     else state.perf.lowHits = Math.max(0, state.perf.lowHits - 1);
 
-    if(avg < 17.2) state.perf.highHits += 1;
+    if(avg < 17.1) state.perf.highHits += 1;
     else state.perf.highHits = Math.max(0, state.perf.highHits - 1);
 
-    if(state.perf.tier === "high" && state.perf.lowHits >= 2){
+    if(criticalSpikeHits >= 2 || avg > 33){
+      state.perf.lowHits = 0;
+      state.perf.highHits = 0;
+      applyQualityTier("low", "auto");
+      return;
+    }
+
+    if(state.perf.tier === "high" && (state.perf.lowHits >= 2 || spikeHits >= 4 || avg > 26.5)){
       state.perf.lowHits = 0;
       applyQualityTier("med", "auto");
       return;
     }
-    if(state.perf.tier === "med" && state.perf.lowHits >= 3){
+    if(state.perf.tier === "med" && (state.perf.lowHits >= 2 || spikeHits >= 6 || avg > 29)){
       state.perf.lowHits = 0;
       applyQualityTier("low", "auto");
       return;
     }
-    if(state.perf.tier === "low" && state.perf.highHits >= 4){
+    if(state.perf.tier === "low" && state.perf.highHits >= 4 && spikeHits <= 1){
       state.perf.highHits = 0;
       applyQualityTier("med", "auto");
       return;
     }
-    if(state.perf.tier === "med" && state.perf.highHits >= 5){
+    if(state.perf.tier === "med" && state.perf.highHits >= 5 && spikeHits === 0 && avg < 16.5){
       state.perf.highHits = 0;
       applyQualityTier("high", "auto");
     }
@@ -798,6 +880,9 @@
 
   function updateHealthBar(unit){
     if(!unit || !unit.healthBar) return;
+    const visible = unitInHealthBarRange(unit);
+    if(unit.healthBar.root) unit.healthBar.root.visible = visible;
+    if(!visible) return;
     const hpPct = clamp(unit.hp / Math.max(1, unit.maxHp), 0, 1);
     const w = unit.healthBar.width;
     unit.healthBar.fill.scale.x = hpPct;
@@ -809,7 +894,7 @@
     const camQuat = state.camera.quaternion;
     const units = [state.player, ...state.squad, ...state.civilians, ...state.tigers];
     for(const unit of units){
-      if(unit && unit.healthBar && unit.healthBar.root){
+      if(unit && unit.healthBar && unit.healthBar.root && unit.healthBar.root.visible){
         unit.healthBar.root.quaternion.copy(camQuat);
       }
     }
@@ -1075,61 +1160,154 @@
     }
   }
 
-  function spawnImpactFx(unit, color=0xfbbf24, kind="hit"){
-    if(!unit || !unit.mesh || !state.effectsRoot) return;
+  function releaseImpactFx(fx){
+    if(!fx) return;
+    fx.active = false;
+    fx.born = 0;
+    fx.duration = 220;
+    fx.startY = 0;
+    if(fx.mesh){
+      fx.mesh.visible = false;
+      fx.mesh.scale.set(1, 1, 1);
+      fx.mesh.position.set(0, -9999, 0);
+    }
+    if(fx.core && fx.core.material){
+      fx.core.material.opacity = 0;
+    }
+    if(fx.ring && fx.ring.material){
+      fx.ring.material.opacity = 0;
+    }
+    if(fx.slash && fx.slash.material){
+      fx.slash.visible = false;
+      fx.slash.material.opacity = 0;
+    }
+  }
+
+  function makeImpactFxSlot(){
+    if(!state.three || !state.effectsRoot) return null;
     const THREE = state.three;
     const group = new THREE.Group();
-    group.position.copy(unit.mesh.position);
-    group.position.y += 1.25;
-
     const core = new THREE.Mesh(
       new THREE.SphereGeometry(0.2, 8, 6),
-      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.9, depthWrite:false })
+      new THREE.MeshBasicMaterial({ color:0xfbbf24, transparent:true, opacity:0, depthWrite:false })
     );
     core.renderOrder = 52;
-    group.add(core);
-
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.24, 0.42, 20),
-      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.8, depthWrite:false, side:THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color:0xfbbf24, transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide })
     );
     ring.rotation.x = -Math.PI * 0.5;
     ring.renderOrder = 53;
-    group.add(ring);
-
-    if(kind === "claw" || kind === "pounce"){
-      const slash = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.4, 0.2),
-        new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.76, depthWrite:false, side:THREE.DoubleSide })
-      );
-      slash.position.y = 0.16;
-      slash.rotation.y = Math.PI * 0.18;
-      slash.renderOrder = 53;
-      group.add(slash);
-    }
-
+    const slash = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.4, 0.2),
+      new THREE.MeshBasicMaterial({ color:0xfbbf24, transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide })
+    );
+    slash.position.y = 0.16;
+    slash.rotation.y = Math.PI * 0.18;
+    slash.visible = false;
+    slash.renderOrder = 53;
+    group.add(core, ring, slash);
+    group.visible = false;
+    group.position.set(0, -9999, 0);
     state.effectsRoot.add(group);
-    state.vfxBursts.push({
+    return {
       mesh:group,
       core,
       ring,
-      born:state.now || nowMs(),
-      duration:(kind === "pounce" ? 280 : 220),
-    });
+      slash,
+      born:0,
+      duration:220,
+      startY:0,
+      active:false,
+    };
+  }
+
+  function acquireImpactFx(){
+    for(const fx of state.vfxPool){
+      if(fx && !fx.active){
+        return fx;
+      }
+    }
+    if(state.vfxPool.length < VFX_POOL_MAX){
+      const created = makeImpactFxSlot();
+      if(created){
+        state.vfxPool.push(created);
+        return created;
+      }
+    }
+    const recycled = state.vfxBursts.shift();
+    if(recycled){
+      releaseImpactFx(recycled);
+      return recycled;
+    }
+    return null;
+  }
+
+  function spawnImpactFx(unit, color=0xfbbf24, kind="hit"){
+    if(!unit || !unit.mesh || !state.effectsRoot) return;
+    const fx = acquireImpactFx();
+    if(!fx) return;
+
+    const tier = state.perf.tier || "med";
+    const activeCap = (tier === "low") ? 18 : (tier === "med" ? 28 : (tier === "high" ? 40 : 44));
+    while(state.vfxBursts.length >= activeCap){
+      const old = state.vfxBursts.shift();
+      if(!old) break;
+      releaseImpactFx(old);
+    }
+
+    const born = state.now || nowMs();
+    const y = unit.mesh.position.y + 1.25;
+    fx.active = true;
+    fx.born = born;
+    fx.duration = (kind === "pounce") ? 300 : 220;
+    fx.startY = y;
+    fx.mesh.visible = true;
+    fx.mesh.position.set(unit.mesh.position.x, y, unit.mesh.position.z);
+    fx.mesh.scale.set(1, 1, 1);
+
+    if(fx.core && fx.core.material){
+      fx.core.material.color.setHex(color);
+      fx.core.material.opacity = 0.95;
+    }
+    if(fx.ring && fx.ring.material){
+      fx.ring.material.color.setHex(color);
+      fx.ring.material.opacity = 0.84;
+    }
+    if(fx.slash){
+      const showSlash = (kind === "claw" || kind === "pounce");
+      fx.slash.visible = showSlash;
+      if(fx.slash.material){
+        fx.slash.material.color.setHex(color);
+        fx.slash.material.opacity = showSlash ? 0.76 : 0;
+      }
+      if(showSlash){
+        fx.slash.position.y = (kind === "pounce") ? 0.2 : 0.16;
+        fx.slash.rotation.y = Math.PI * (kind === "pounce" ? 0.32 : 0.18) + (Math.random() - 0.5) * 0.22;
+        const s = (kind === "pounce") ? 1.2 : 1;
+        fx.slash.scale.set(s, 1, 1);
+      }
+    }
+    state.vfxBursts.push(fx);
   }
 
   function updateImpactFx(){
     const now = state.now || nowMs();
     for(let i=state.vfxBursts.length - 1; i>=0; i--){
       const fx = state.vfxBursts[i];
+      if(!fx || !fx.active){
+        state.vfxBursts.splice(i, 1);
+        continue;
+      }
       const t = clamp((now - fx.born) / Math.max(1, fx.duration), 0, 1);
       const k = 1 + t * 1.45;
       fx.mesh.scale.set(k, k, k);
+      fx.mesh.position.y = fx.startY + t * 0.42;
       if(fx.core && fx.core.material) fx.core.material.opacity = 0.95 * (1 - t);
       if(fx.ring && fx.ring.material) fx.ring.material.opacity = 0.84 * (1 - t);
-      fx.mesh.position.y += state.dt * 1.8;
+      if(fx.slash && fx.slash.material) fx.slash.material.opacity = (fx.slash.visible ? 0.72 : 0) * (1 - t);
       if(t >= 1){
-        if(fx.mesh && fx.mesh.parent) fx.mesh.parent.remove(fx.mesh);
+        releaseImpactFx(fx);
         state.vfxBursts.splice(i, 1);
       }
     }
@@ -1385,9 +1563,12 @@
     state.fx.nextCaptureAt = 0;
     state.selectedTiger = null;
     for(const fx of state.vfxBursts){
-      if(fx && fx.mesh && fx.mesh.parent) fx.mesh.parent.remove(fx.mesh);
+      releaseImpactFx(fx);
     }
     state.vfxBursts.length = 0;
+    for(const fx of state.vfxPool){
+      releaseImpactFx(fx);
+    }
     state.combat.active = false;
     state.combat.target = null;
     state.combat.targetStatus = "";
@@ -1412,6 +1593,15 @@
     state.perf.tier = initialTier;
     state.perf.preset = QUALITY_PRESETS[initialTier] || QUALITY_PRESETS.med;
     state.perf.evalAt = nowMs();
+    state.perf.avgMs = 16.7;
+    state.perf.lowHits = 0;
+    state.perf.highHits = 0;
+    state.perf.spikeHits = 0;
+    state.perf.criticalSpikeHits = 0;
+    state.perf.lastFrameMs = 16.7;
+    state.perf.frameAccumMs = 0;
+    state.perf.frameCount = 0;
+    state.perf.frameNo = 0;
     state.perf.hudLastAt = 0;
     state.scene = new THREE.Scene();
     state.scene.background = new THREE.Color(0x112019);
@@ -1676,12 +1866,21 @@
 
   function processChunkQueue(){
     const preset = qualityPreset();
-    const budget = Math.max(1, Math.floor(preset.chunkBuildPerFrame || 1));
+    let budget = Math.max(1, Math.floor(preset.chunkBuildPerFrame || 1));
+    const frameMs = Number(state.perf.lastFrameMs || 16.7);
+    if(frameMs > 26) budget -= 1;
+    if(frameMs > 38 || state.perf.criticalSpikeHits >= 2) budget = 0;
+    if(state.perf.tier === "low") budget = Math.min(budget, 1);
+    if(budget <= 0) return;
     for(let i=0;i<budget;i++){
-      const next = state.chunkQueue.shift();
+      const next = state.chunkQueue[0];
       if(!next) break;
+      const built = runFrameTask(()=>{
+        addChunk(next.cx, next.cz);
+      }, { cost:3.4, every:1 });
+      if(!built) break;
+      state.chunkQueue.shift();
       state.chunkQueued.delete(next.key);
-      addChunk(next.cx, next.cz);
     }
   }
 
@@ -2574,6 +2773,12 @@
   function updateGameState(){
     state.now = nowMs();
     state.dt = clamp(state.clock.getDelta(), 0.001, 0.050);
+    const frameMs = state.dt * 1000;
+    state.perf.lastFrameMs = frameMs;
+    if(frameMs >= PERF_SPIKE_MS) state.perf.spikeHits = Math.min(24, (state.perf.spikeHits || 0) + 1);
+    else state.perf.spikeHits = Math.max(0, (state.perf.spikeHits || 0) - 1);
+    if(frameMs >= PERF_CRITICAL_SPIKE_MS) state.perf.criticalSpikeHits = Math.min(12, (state.perf.criticalSpikeHits || 0) + 1);
+    else state.perf.criticalSpikeHits = Math.max(0, (state.perf.criticalSpikeHits || 0) - 1);
     state.perf.frameNo += 1;
     if(!state.active) return;
     if(state.overlay && state.overlay.style.display !== "flex"){
@@ -2583,41 +2788,55 @@
     if(!state.player || !state.player.mesh){
       return;
     }
+    beginFrameBudget();
     evaluatePerformanceTier();
-    ensureChunksAround(state.player.mesh.position.x, state.player.mesh.position.z);
+
+    const tier = state.perf.tier || "med";
+    const lowTier = tier === "low";
+    runFrameTask(()=>{
+      ensureChunksAround(state.player.mesh.position.x, state.player.mesh.position.z);
+    }, { cost:2.4, every:lowTier ? 2 : 1 });
+
     updatePlayer();
-    updateSquad();
-    updateCivilians();
+    runFrameTask(()=>{ updateSquad(); }, { cost:1.6, every:lowTier ? 2 : 1 });
+    runFrameTask(()=>{ updateCivilians(); }, { cost:1.9, every:lowTier ? 2 : 1 });
     updateTigers();
     updateCombatDirector();
+
     const liveUnits = state.liveUnitsCache;
     liveUnits.length = 0;
     if(state.player && state.player.alive) liveUnits.push(state.player);
     for(const u of state.squad){ if(u && u.alive) liveUnits.push(u); }
     for(const u of state.civilians){ if(u && u.alive && !u.rescued) liveUnits.push(u); }
     for(const u of state.tigers){ if(u && u.alive) liveUnits.push(u); }
-    if(state.perf.tier !== "low" || (state.perf.frameNo % 2) === 0){
+    runFrameTask(()=>{
       resolveSeparation(liveUnits);
-    }
-    updateHitFlash(state.player);
-    for(const u of state.squad) updateHitFlash(u);
-    for(const u of state.civilians) updateHitFlash(u);
-    for(const u of state.tigers) updateHitFlash(u);
-    updateSelectionRings();
-    updateSafeZoneVisual();
-    updateGuideArrow();
-    updateImpactFx();
+    }, { cost:2.2, every:lowTier ? 2 : 1 });
+
+    runFrameTask(()=>{
+      updateHitFlash(state.player);
+      for(const u of state.squad) updateHitFlash(u);
+      for(const u of state.civilians) updateHitFlash(u);
+      for(const u of state.tigers) updateHitFlash(u);
+    }, { cost:0.95, every:lowTier ? 2 : 1 });
+
+    runFrameTask(()=>{ updateSelectionRings(); }, { cost:0.55, every:lowTier ? 2 : 1 });
+    runFrameTask(()=>{ updateSafeZoneVisual(); }, { cost:0.2, every:lowTier ? 2 : 1 });
+    runFrameTask(()=>{ updateGuideArrow(); }, { cost:0.65, every:lowTier ? 2 : 1 });
+    runFrameTask(()=>{ updateImpactFx(); }, { cost:0.6, every:1 });
+
     const barsEvery = Math.max(1, Math.floor(qualityPreset().healthBarEveryNFrames || 1));
-    if((state.perf.frameNo % barsEvery) === 0){
+    runFrameTask(()=>{
       updateHealthBar(state.player);
       for(const u of state.squad) updateHealthBar(u);
       for(const u of state.civilians) updateHealthBar(u);
       for(const u of state.tigers) updateHealthBar(u);
       orientHealthBarsToCamera();
-    }
+    }, { cost:1.7, every:barsEvery });
+
     updateCamera();
-    updateCombatFloatingLabels();
-    updateHud();
+    runFrameTask(()=>{ updateCombatFloatingLabels(); }, { cost:0.45, every:lowTier ? 2 : 1 });
+    runFrameTask(()=>{ updateHud(); }, { cost:0.45, every:1 });
     syncCoreVitals();
     saveCoreProgress(false);
 
@@ -2684,21 +2903,29 @@
     return null;
   }
 
-  function onWorldPointerDown(ev){
-    if(!state.active || !state.renderer) return;
-    if(ev.target !== state.renderer.domElement) return;
-    const rect = state.renderer.domElement.getBoundingClientRect();
-    const x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+  function pickTigerAtScreen(clientX, clientY){
+    if(!state.active || !state.renderer || !state.camera) return null;
+    const canvas = state.renderer.domElement;
+    if(!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if(clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+    const x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    const y = -((clientY - rect.top) / rect.height) * 2 + 1;
     state.pointer2D.set(x, y);
     state.raycaster.setFromCamera(state.pointer2D, state.camera);
     const hits = state.raycaster.intersectObjects(state.tigerPickRoots, true);
-    if(hits && hits.length){
-      const tiger = tigerFromHit(hits[0].object);
-      if(tiger && tiger.alive){
-        state.selectedTiger = tiger;
-        setStatus(`${tiger.name} locked. Attack or capture when ready.`);
-      }
+    if(!hits || !hits.length) return null;
+    const tiger = tigerFromHit(hits[0].object);
+    return (tiger && tiger.alive) ? tiger : null;
+  }
+
+  function onWorldPointerDown(ev){
+    if(!state.active || !state.renderer) return;
+    if(ev.target !== state.renderer.domElement) return;
+    const tiger = pickTigerAtScreen(ev.clientX, ev.clientY);
+    if(tiger){
+      state.selectedTiger = tiger;
+      setStatus(`${tiger.name} locked. Attack or capture when ready.`);
     }
   }
 
@@ -2770,6 +2997,13 @@
   function onJoyPointerDown(ev){
     if(!state.active || !state.ui.joyBase) return;
     if(ev.clientX > window.innerWidth * JOY_LEFT_ZONE_RATIO) return;
+    const tappedTiger = pickTigerAtScreen(ev.clientX, ev.clientY);
+    if(tappedTiger){
+      ev.preventDefault();
+      state.selectedTiger = tappedTiger;
+      setStatus(`${tappedTiger.name} locked. Attack or capture when ready.`);
+      return;
+    }
     ev.preventDefault();
     const rect = state.ui.joyArea.getBoundingClientRect();
     state.controls.joystickCenterX = ev.clientX;
@@ -2924,9 +3158,15 @@
     state.active = false;
     stopRenderLoop();
     for(const fx of state.vfxBursts){
+      releaseImpactFx(fx);
       if(fx && fx.mesh && fx.mesh.parent) fx.mesh.parent.remove(fx.mesh);
     }
     state.vfxBursts.length = 0;
+    for(const fx of state.vfxPool){
+      releaseImpactFx(fx);
+      if(fx && fx.mesh && fx.mesh.parent) fx.mesh.parent.remove(fx.mesh);
+    }
+    state.vfxPool.length = 0;
     unbindWorldEvents();
     unbindUiEvents();
     if(state.renderer){
