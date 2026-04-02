@@ -19,7 +19,7 @@
   const QUALITY_PRESETS = {
     high:{
       key:"high",
-      maxDpr:1.35,
+      maxDpr:1.5,
       keepRadius:3,
       dropRadius:4,
       chunkBuildPerFrame:2,
@@ -34,7 +34,7 @@
     },
     med:{
       key:"med",
-      maxDpr:1.0,
+      maxDpr:1.15,
       keepRadius:3,
       dropRadius:4,
       chunkBuildPerFrame:1,
@@ -49,7 +49,7 @@
     },
     low:{
       key:"low",
-      maxDpr:0.82,
+      maxDpr:0.95,
       keepRadius:2,
       dropRadius:3,
       chunkBuildPerFrame:1,
@@ -61,6 +61,21 @@
       carBase:1, carVar:2,
       treeBase:7, treeVar:6,
       pondChance:0.16,
+    },
+    clarity:{
+      key:"clarity",
+      maxDpr:1.9,
+      keepRadius:3,
+      dropRadius:4,
+      chunkBuildPerFrame:1,
+      hudIntervalMs:90,
+      healthBarEveryNFrames:1,
+      antialias:true,
+      roadBase:1, roadVar:2,
+      houseBase:1, houseVar:2,
+      carBase:2, carVar:3,
+      treeBase:14, treeVar:12,
+      pondChance:0.4,
     },
   };
 
@@ -77,6 +92,10 @@
   const TIGER_WINDUP_MS = 420;
   const TIGER_MELEE_WINDUP_MS = 220;
   const SHOW_COMBAT_DUEL_CHIPS = false;
+  const JOY_BASE_SIZE = 124;
+  const JOY_KNOB_SIZE = 54;
+  const JOY_LEFT_ZONE_RATIO = 0.6;
+  const JOY_DEADZONE_PX = 10;
 
   const CIV_FOLLOW_DISTANCE = 7.2;
   const CIV_PICKUP_RADIUS = 8.2;
@@ -112,6 +131,13 @@
     unitsRoot:null,
     effectsRoot:null,
     vfxBursts:[],
+    cameraCtl:{
+      mode:"third",
+      zoomOffset:0,
+      heightOffset:0,
+      pitchOffset:0,
+      visualMode:"balanced",
+    },
     canvasHost:null,
     overlay:null,
     ui:{},
@@ -124,6 +150,9 @@
       joystickCenterX:0,
       joystickCenterY:0,
       joystickActive:false,
+      joystickAnchorX:0,
+      joystickAnchorY:0,
+      joystickRadius:42,
     },
     player:null,
     squad:[],
@@ -139,6 +168,7 @@
     nextChunkSweepAt:0,
     liveUnitsCache:[],
     safeZone:null,
+    guideArrow:null,
     fx:{
       shieldUntil:0,
       rollUntil:0,
@@ -167,6 +197,7 @@
     perf:{
       tier:"med",
       preset:QUALITY_PRESETS.med,
+      autoEnabled:true,
       frameAccumMs:0,
       frameCount:0,
       evalAt:0,
@@ -238,7 +269,38 @@
     }
   }
 
+  function currentVisualLabel(){
+    switch(state.cameraCtl.visualMode){
+      case "perf": return "Visual: Perf";
+      case "balanced": return "Visual: Balanced";
+      case "clarity": return "Visual: Clarity";
+      default: return "Visual: Auto";
+    }
+  }
+
+  function cameraModeLabel(){
+    return state.cameraCtl.mode === "first" ? "Cam: 1st" : "Cam: 3rd";
+  }
+
+  function applyVisualModeSetting(){
+    const mode = state.cameraCtl.visualMode || "auto";
+    if(mode === "auto"){
+      state.perf.autoEnabled = true;
+      return;
+    }
+    state.perf.autoEnabled = false;
+    if(mode === "perf") applyQualityTier("low");
+    else if(mode === "balanced") applyQualityTier("med");
+    else if(mode === "clarity") applyQualityTier("clarity");
+  }
+
+  function updateCameraButtons(){
+    if(state.ui.camModeBtn) state.ui.camModeBtn.innerText = cameraModeLabel();
+    if(state.ui.qualityBtn) state.ui.qualityBtn.innerText = currentVisualLabel();
+  }
+
   function evaluatePerformanceTier(){
+    if(!state.perf.autoEnabled) return;
     const now = state.now;
     if(!state.perf.evalAt) state.perf.evalAt = now;
     state.perf.frameAccumMs += state.dt * 1000;
@@ -330,6 +392,17 @@
       shieldBtn: el("proto3dShieldBtn"),
       rollBtn: el("proto3dRollBtn"),
       sprintBtn: el("proto3dSprintBtn"),
+      camModeBtn: el("proto3dCamModeBtn"),
+      zoomOutBtn: el("proto3dZoomOutBtn"),
+      zoomInBtn: el("proto3dZoomInBtn"),
+      pitchDownBtn: el("proto3dPitchDownBtn"),
+      pitchUpBtn: el("proto3dPitchUpBtn"),
+      heightDownBtn: el("proto3dHeightDownBtn"),
+      heightUpBtn: el("proto3dHeightUpBtn"),
+      qualityBtn: el("proto3dQualityBtn"),
+      menuBtn: el("proto3dMenuBtn"),
+      shopBtn: el("proto3dShopBtn"),
+      inventoryBtn: el("proto3dInventoryBtn"),
       resetBtn: el("proto3dResetBtn"),
       closeBtn: el("proto3dCloseBtn"),
       joyBase: el("proto3dJoyBase"),
@@ -526,6 +599,35 @@
     g.userData = { ring };
     state.effectsRoot.add(g);
     state.safeZone = { mesh:g, radius:SAFE_ZONE_RADIUS };
+  }
+
+  function createGuideArrow(){
+    const THREE = state.three;
+    const g = new THREE.Group();
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.12, 1.5, 10),
+      new THREE.MeshBasicMaterial({ color:0x60a5fa, transparent:true, opacity:0.92, depthWrite:false })
+    );
+    shaft.rotation.x = Math.PI * 0.5;
+    shaft.position.z = 0.64;
+    const head = new THREE.Mesh(
+      new THREE.ConeGeometry(0.34, 0.8, 10),
+      new THREE.MeshBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.95, depthWrite:false })
+    );
+    head.rotation.x = Math.PI * 0.5;
+    head.position.z = 1.4;
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.42, 0.62, 20),
+      new THREE.MeshBasicMaterial({ color:0x34d399, transparent:true, opacity:0.72, depthWrite:false, side:THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI * 0.5;
+    ring.position.y = -0.18;
+    ring.renderOrder = 27;
+    g.add(shaft, head, ring);
+    g.visible = false;
+    g.renderOrder = 28;
+    state.effectsRoot.add(g);
+    state.guideArrow = { mesh:g, ring };
   }
 
   function createSelectionRing(parent, color=0x60a5fa, r=2.1){
@@ -956,7 +1058,7 @@
     state.clock = new THREE.Clock();
 
     state.renderer = new THREE.WebGLRenderer({
-      antialias:!!qualityPreset().antialias,
+      antialias:true,
       alpha:false,
       powerPreference:"high-performance",
       precision:"mediump",
@@ -994,7 +1096,10 @@
     state.worldRoot.add(baseGround);
 
     createSafeZone();
+    createGuideArrow();
     resetScenario();
+    applyVisualModeSetting();
+    updateCameraButtons();
     resize3d();
   }
 
@@ -1446,6 +1551,52 @@
     setStatus("Sprint burst enabled.");
   }
 
+  function cycleCameraMode(){
+    state.cameraCtl.mode = (state.cameraCtl.mode === "third") ? "first" : "third";
+    updateCameraButtons();
+    setStatus(state.cameraCtl.mode === "first" ? "Camera: First-person." : "Camera: Third-person.", 900);
+  }
+
+  function adjustCameraZoom(step, quiet=false){
+    state.cameraCtl.zoomOffset = clamp(state.cameraCtl.zoomOffset + Number(step || 0), -18, 22);
+    if(!quiet){
+      setStatus(`Zoom ${state.cameraCtl.zoomOffset > 0 ? "+" : ""}${Math.round(state.cameraCtl.zoomOffset)}.`, 700);
+    }
+  }
+
+  function adjustCameraPitch(step){
+    state.cameraCtl.pitchOffset = clamp(state.cameraCtl.pitchOffset + Number(step || 0), -22, 30);
+    setStatus(`Pitch ${state.cameraCtl.pitchOffset > 0 ? "+" : ""}${Math.round(state.cameraCtl.pitchOffset)}.`, 700);
+  }
+
+  function adjustCameraHeight(step){
+    state.cameraCtl.heightOffset = clamp(state.cameraCtl.heightOffset + Number(step || 0), -14, 24);
+    setStatus(`Height ${state.cameraCtl.heightOffset > 0 ? "+" : ""}${Math.round(state.cameraCtl.heightOffset)}.`, 700);
+  }
+
+  function cycleVisualMode(){
+    const order = ["auto", "perf", "balanced", "clarity"];
+    const idx = Math.max(0, order.indexOf(state.cameraCtl.visualMode || "auto"));
+    const next = order[(idx + 1) % order.length];
+    state.cameraCtl.visualMode = next;
+    applyVisualModeSetting();
+    updateCameraButtons();
+    setStatus(`3D ${currentVisualLabel().replace("Visual: ", "")} mode.`, 1100);
+    resize3d();
+  }
+
+  function open3dModeOverlay(){
+    if(typeof window.openMode === "function") window.openMode();
+  }
+
+  function open3dShopOverlay(){
+    if(typeof window.openShop === "function") window.openShop();
+  }
+
+  function open3dInventoryOverlay(){
+    if(typeof window.openInventory === "function") window.openInventory();
+  }
+
   function updatePlayer(){
     const p = state.player;
     if(!p || !p.alive) return;
@@ -1712,6 +1863,37 @@
     }
   }
 
+  function updateGuideArrow(){
+    if(!state.guideArrow || !state.guideArrow.mesh || !state.player) return;
+    const p = state.player.mesh.position;
+    let target = null;
+    let best = Infinity;
+    for(const civ of state.civilians){
+      if(!civ || !civ.alive || civ.rescued) continue;
+      const d = horizontalDistance(state.player, civ);
+      if(d < best){
+        best = d;
+        target = civ;
+      }
+    }
+    if(!target){
+      state.guideArrow.mesh.visible = false;
+      return;
+    }
+    const tp = target.mesh.position;
+    const dx = tp.x - p.x;
+    const dz = tp.z - p.z;
+    const yaw = Math.atan2(dx, dz);
+    state.guideArrow.mesh.visible = true;
+    state.guideArrow.mesh.position.set(p.x, 5.5, p.z);
+    state.guideArrow.mesh.rotation.y = yaw;
+    const pulse = 1 + Math.sin((state.now || nowMs()) * 0.01) * 0.08;
+    state.guideArrow.mesh.scale.set(pulse, pulse, pulse);
+    if(state.guideArrow.ring){
+      state.guideArrow.ring.rotation.z += state.dt * 1.2;
+    }
+  }
+
   function updateSelectionRings(){
     const now = state.now || nowMs();
     for(const t of state.tigers){
@@ -1766,11 +1948,31 @@
   function updateCamera(){
     const p = state.player;
     if(!p) return;
+    const ctl = state.cameraCtl;
+    const cameraMode = ctl.mode || "third";
     const isLandscape = window.matchMedia("(orientation: landscape)").matches;
+    if(cameraMode === "first"){
+      const pp = p.mesh.position;
+      const yaw = p.mesh.rotation.y;
+      const pitch = clamp(-8 + ctl.pitchOffset, -24, 24) * (Math.PI / 180);
+      const eyeY = 4.05 + ctl.heightOffset * 0.1;
+      const lookDist = clamp(20 + ctl.zoomOffset * 0.8, 12, 34);
+      const fx = Math.sin(yaw) * Math.cos(pitch);
+      const fz = Math.cos(yaw) * Math.cos(pitch);
+      const fy = Math.sin(pitch);
+      state.camera.position.x = smoothStep(state.camera.position.x, pp.x, 10.5, state.dt);
+      state.camera.position.y = smoothStep(state.camera.position.y, eyeY, 10.5, state.dt);
+      state.camera.position.z = smoothStep(state.camera.position.z, pp.z, 10.5, state.dt);
+      const lx = pp.x + fx * lookDist;
+      const ly = eyeY + fy * lookDist;
+      const lz = pp.z + fz * lookDist;
+      state.camera.lookAt(lx, ly, lz);
+      return;
+    }
     const lock = state.combat.active ? state.combat.target : null;
     const blend = clamp(state.combat.lockBlend || 0, 0, 1);
-    const followHeightBase = isLandscape ? 30 : 38;
-    const followBackBase = isLandscape ? 30 : 40;
+    const followHeightBase = (isLandscape ? 30 : 38) + ctl.heightOffset * 0.42;
+    const followBackBase = (isLandscape ? 30 : 40) + ctl.zoomOffset;
     let tx;
     let tz;
     let lookX = p.mesh.position.x;
@@ -1787,9 +1989,9 @@
       const nz = dz / d;
       const midX = (pp.x + tp.x) * 0.5;
       const midZ = (pp.z + tp.z) * 0.5;
-      const lockBack = clamp(18 + d * 0.5, 18, 34);
+      const lockBack = clamp(18 + d * 0.5 + ctl.zoomOffset * 0.45, 16, 40);
       followBack = lerp(followBackBase, lockBack, blend);
-      followHeight = lerp(followHeightBase, isLandscape ? 25 : 30, blend);
+      followHeight = lerp(followHeightBase, (isLandscape ? 25 : 30) + ctl.heightOffset * 0.32, blend);
       tx = midX + nx * followBack;
       tz = midZ + nz * followBack;
       lookX = lerp(pp.x, midX, clamp(blend * 0.9, 0, 1));
@@ -1802,7 +2004,7 @@
     state.camera.position.x = smoothStep(state.camera.position.x, tx, 6.3, state.dt);
     state.camera.position.y = smoothStep(state.camera.position.y, followHeight, 4.8, state.dt);
     state.camera.position.z = smoothStep(state.camera.position.z, tz, 6.3, state.dt);
-    const lookY = isLandscape ? 2.3 : 2.8;
+    const lookY = (isLandscape ? 2.3 : 2.8) + ctl.pitchOffset * 0.06;
     state.camera.lookAt(lookX, lookY, lookZ);
   }
 
@@ -1954,6 +2156,7 @@
     for(const u of state.tigers) updateHitFlash(u);
     updateSelectionRings();
     updateSafeZoneVisual();
+    updateGuideArrow();
     updateImpactFx();
     const barsEvery = Math.max(1, Math.floor(qualityPreset().healthBarEveryNFrames || 1));
     if((state.perf.frameNo % barsEvery) === 0){
@@ -2044,6 +2247,13 @@
     }
   }
 
+  function onWorldWheel(ev){
+    if(!state.active) return;
+    ev.preventDefault();
+    const direction = ev.deltaY > 0 ? 1 : -1;
+    adjustCameraZoom(direction * 1.25, true);
+  }
+
   function onKeyDown(ev){
     if(!state.active) return;
     if(ev.code in state.controls.keyboard || /^Arrow|^Key[WASD]$/.test(ev.code)){
@@ -2077,11 +2287,20 @@
   }
 
   function updateJoystickVisual(nx, ny){
-    const maxR = 42;
+    const maxR = state.controls.joystickRadius || 42;
+    const baseHalf = JOY_BASE_SIZE * 0.5;
+    const knobHalf = JOY_KNOB_SIZE * 0.5;
+    const anchorX = state.controls.joystickAnchorX || 0;
+    const anchorY = state.controls.joystickAnchorY || 0;
     const x = clamp(nx, -1, 1) * maxR;
     const y = clamp(ny, -1, 1) * maxR;
+    if(state.ui.joyBase){
+      state.ui.joyBase.style.opacity = state.controls.joystickActive ? "1" : "0";
+      state.ui.joyBase.style.transform = `translate(${anchorX - baseHalf}px, ${anchorY - baseHalf}px)`;
+    }
     if(state.ui.joyKnob){
-      state.ui.joyKnob.style.transform = `translate(${x}px, ${y}px)`;
+      state.ui.joyKnob.style.opacity = state.controls.joystickActive ? "1" : "0";
+      state.ui.joyKnob.style.transform = `translate(${anchorX - knobHalf + x}px, ${anchorY - knobHalf + y}px)`;
     }
   }
 
@@ -2095,13 +2314,19 @@
 
   function onJoyPointerDown(ev){
     if(!state.active || !state.ui.joyBase) return;
+    if(ev.clientX > window.innerWidth * JOY_LEFT_ZONE_RATIO) return;
     ev.preventDefault();
-    const rect = state.ui.joyBase.getBoundingClientRect();
-    state.controls.joystickCenterX = rect.left + rect.width * 0.5;
-    state.controls.joystickCenterY = rect.top + rect.height * 0.5;
+    const rect = state.ui.joyArea.getBoundingClientRect();
+    state.controls.joystickCenterX = ev.clientX;
+    state.controls.joystickCenterY = ev.clientY;
+    state.controls.joystickAnchorX = ev.clientX - rect.left;
+    state.controls.joystickAnchorY = ev.clientY - rect.top;
     state.controls.joystickPointerId = ev.pointerId;
     state.controls.joystickActive = true;
-    onJoyPointerMove(ev);
+    state.controls.joystickRadius = 42;
+    state.controls.moveX = 0;
+    state.controls.moveY = 0;
+    updateJoystickVisual(0, 0);
     ev.target.setPointerCapture?.(ev.pointerId);
   }
 
@@ -2112,10 +2337,10 @@
     const dx = ev.clientX - state.controls.joystickCenterX;
     const dy = ev.clientY - state.controls.joystickCenterY;
     const r = Math.hypot(dx, dy);
-    const maxR = 42;
+    const maxR = state.controls.joystickRadius || 42;
     const nx = r > 0 ? dx / r : 0;
     const ny = r > 0 ? dy / r : 0;
-    const rr = clamp(r / maxR, 0, 1);
+    const rr = clamp((r - JOY_DEADZONE_PX) / Math.max(1, maxR - JOY_DEADZONE_PX), 0, 1);
     state.controls.moveX = nx * rr;
     state.controls.moveY = ny * rr;
     updateJoystickVisual(state.controls.moveX, state.controls.moveY);
@@ -2138,8 +2363,20 @@
       state.ui.sprintBtn.onpointerup = (ev)=>{ ev.preventDefault(); state.controls.sprintHold = false; };
       state.ui.sprintBtn.onpointercancel = ()=>{ state.controls.sprintHold = false; };
     }
+    if(state.ui.camModeBtn) state.ui.camModeBtn.onclick = ()=>cycleCameraMode();
+    if(state.ui.zoomOutBtn) state.ui.zoomOutBtn.onclick = ()=>adjustCameraZoom(2.5);
+    if(state.ui.zoomInBtn) state.ui.zoomInBtn.onclick = ()=>adjustCameraZoom(-2.5);
+    if(state.ui.pitchDownBtn) state.ui.pitchDownBtn.onclick = ()=>adjustCameraPitch(-3);
+    if(state.ui.pitchUpBtn) state.ui.pitchUpBtn.onclick = ()=>adjustCameraPitch(3);
+    if(state.ui.heightDownBtn) state.ui.heightDownBtn.onclick = ()=>adjustCameraHeight(-2);
+    if(state.ui.heightUpBtn) state.ui.heightUpBtn.onclick = ()=>adjustCameraHeight(2);
+    if(state.ui.qualityBtn) state.ui.qualityBtn.onclick = ()=>cycleVisualMode();
+    if(state.ui.menuBtn) state.ui.menuBtn.onclick = ()=>open3dModeOverlay();
+    if(state.ui.shopBtn) state.ui.shopBtn.onclick = ()=>open3dShopOverlay();
+    if(state.ui.inventoryBtn) state.ui.inventoryBtn.onclick = ()=>open3dInventoryOverlay();
     if(state.ui.resetBtn) state.ui.resetBtn.onclick = ()=>resetScenario();
     if(state.ui.closeBtn) state.ui.closeBtn.onclick = ()=>window.close3DPrototype();
+    updateCameraButtons();
 
     if(state.ui.joyArea){
       state.ui.joyArea.addEventListener("pointerdown", onJoyPointerDown, { passive:false });
@@ -2166,12 +2403,14 @@
   function bindWorldEvents(){
     if(state.renderer && state.renderer.domElement){
       state.renderer.domElement.addEventListener("pointerdown", onWorldPointerDown, { passive:true });
+      state.renderer.domElement.addEventListener("wheel", onWorldWheel, { passive:false });
     }
   }
 
   function unbindWorldEvents(){
     if(state.renderer && state.renderer.domElement){
       state.renderer.domElement.removeEventListener("pointerdown", onWorldPointerDown);
+      state.renderer.domElement.removeEventListener("wheel", onWorldWheel);
     }
   }
 
