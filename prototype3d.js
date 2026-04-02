@@ -96,6 +96,8 @@
   const JOY_KNOB_SIZE = 54;
   const JOY_LEFT_ZONE_RATIO = 0.6;
   const JOY_DEADZONE_PX = 10;
+  const CORE_SYNC_MS = 800;
+  const CORE_SAVE_MIN_MS = 3400;
 
   const CIV_FOLLOW_DISTANCE = 7.2;
   const CIV_PICKUP_RADIUS = 8.2;
@@ -191,6 +193,15 @@
       captured:0,
       killed:0,
       clearAnnounced:false,
+    },
+    core:{
+      enabled:false,
+      mode:"Story",
+      level:1,
+      nextSyncAt:0,
+      nextSaveAt:0,
+      saveDirty:false,
+      rewardCash:0,
     },
     statusText:"3D prototype loaded. Move to civilians, then escort to safe zone.",
     statusUntil:0,
@@ -347,6 +358,176 @@
       state.ui.hint.classList.remove("hidden");
       state.ui.hint.innerText = state.statusText;
     }
+  }
+
+  function coreState(){
+    const src = window.S;
+    return (src && typeof src === "object") ? src : null;
+  }
+
+  function coreModeName(core){
+    const mode = String(core?.mode || "Story");
+    if(mode === "Arcade" || mode === "Survival") return mode;
+    return "Story";
+  }
+
+  function coreModeLevel(core){
+    const mode = coreModeName(core);
+    if(mode === "Arcade"){
+      return Math.max(1, Math.floor(Number(core?.arcadeLevel || 1)));
+    }
+    if(mode === "Survival"){
+      return Math.max(1, Math.floor(Number(core?.survivalWave || 1)));
+    }
+    return Math.max(
+      1,
+      Math.floor(
+        Number(core?.storyLevel || core?.storyLastMission || 1)
+      )
+    );
+  }
+
+  function ensureCoreBuckets(core){
+    if(!core || typeof core !== "object") return;
+    if(!core.stats || typeof core.stats !== "object"){
+      core.stats = { shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 };
+    }
+    if(!core.opsTotals || typeof core.opsTotals !== "object"){
+      core.opsTotals = { kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0 };
+    }
+    if(!core.modeWallets || typeof core.modeWallets !== "object"){
+      const funds = Math.max(0, Math.round(Number(core.funds || 1000)));
+      core.modeWallets = { Story:funds, Arcade:funds, Survival:funds };
+    }
+    if(!Number.isFinite(Number(core.funds))) core.funds = 0;
+    if(!Number.isFinite(Number(core.hp))) core.hp = 100;
+    if(!Number.isFinite(Number(core.armorCap)) || Number(core.armorCap) <= 0) core.armorCap = 100;
+    if(!Number.isFinite(Number(core.armor))) core.armor = 0;
+    if(!Number.isFinite(Number(core.stamina))) core.stamina = 100;
+    if(!Number.isFinite(Number(core.shields))) core.shields = 0;
+    if(!core.abilityCooldowns || typeof core.abilityCooldowns !== "object"){
+      core.abilityCooldowns = { scan:0, sprint:0, shield:0 };
+    }
+  }
+
+  function coreMissionCivilianTarget(core){
+    const fromLive = Array.isArray(core?.civilians)
+      ? core.civilians.filter((c)=>c && c.alive !== false && !c.evac).length
+      : 0;
+    if(fromLive > 0) return clamp(fromLive, 2, 12);
+    const lv = coreModeLevel(core);
+    return clamp(2 + Math.floor((lv - 1) * 0.16), 2, 12);
+  }
+
+  function coreMissionTigerTarget(core){
+    const fromLive = Array.isArray(core?.tigers)
+      ? core.tigers.filter((t)=>t && t.alive !== false).length
+      : 0;
+    if(fromLive > 0) return clamp(fromLive, 2, 14);
+    const lv = coreModeLevel(core);
+    return clamp(2 + Math.floor((lv - 1) * 0.18), 2, 14);
+  }
+
+  function markCoreDirty(){
+    if(!state.core.enabled) return;
+    state.core.saveDirty = true;
+  }
+
+  function syncCoreVitals(force=false){
+    const core = coreState();
+    if(!core || !state.player) return;
+    const now = state.now || nowMs();
+    if(!force && now < state.core.nextSyncAt) return;
+    ensureCoreBuckets(core);
+    const hp = clamp(Math.round(Number(state.player.hp || 0)), 0, 100);
+    const armorCap = Math.max(100, Math.round(Number(state.player.maxArmor || core.armorCap || 100)));
+    const armor = clamp(Math.round(Number(state.player.armor || 0)), 0, armorCap);
+    const stamina = clamp(Math.round(Number(state.player.stamina || 0)), 0, 100);
+    const shieldUntil = Math.max(0, Math.floor(Number(state.fx.shieldUntil || 0)));
+    let changed = false;
+    if(core.hp !== hp){ core.hp = hp; changed = true; }
+    if(core.armorCap !== armorCap){ core.armorCap = armorCap; changed = true; }
+    if(core.armor !== armor){ core.armor = armor; changed = true; }
+    if(core.stamina !== stamina){ core.stamina = stamina; changed = true; }
+    if(core.shieldUntil !== shieldUntil){ core.shieldUntil = shieldUntil; changed = true; }
+    state.core.nextSyncAt = now + CORE_SYNC_MS;
+    if(changed) markCoreDirty();
+  }
+
+  function addCoreCash(amount){
+    const core = coreState();
+    if(!core) return;
+    const add = Math.max(0, Math.round(Number(amount || 0)));
+    if(add <= 0) return;
+    ensureCoreBuckets(core);
+    const mode = coreModeName(core);
+    const currentWallet = Math.max(0, Math.round(Number(core.modeWallets?.[mode] || core.funds || 0)));
+    const next = currentWallet + add;
+    core.modeWallets[mode] = next;
+    core.funds = next;
+    core.stats.cashEarned = Math.max(0, Math.round(Number(core.stats.cashEarned || 0))) + add;
+    core.opsTotals.cashEarned = Math.max(0, Math.round(Number(core.opsTotals.cashEarned || 0))) + add;
+    state.core.rewardCash += add;
+    markCoreDirty();
+  }
+
+  function addCoreStat(key, amount){
+    const core = coreState();
+    if(!core) return;
+    const add = Math.max(0, Math.floor(Number(amount || 0)));
+    if(add <= 0) return;
+    ensureCoreBuckets(core);
+    core.stats[key] = Math.max(0, Math.floor(Number(core.stats[key] || 0))) + add;
+    if(key === "kills" || key === "captures" || key === "evac"){
+      core.opsTotals[key] = Math.max(0, Math.floor(Number(core.opsTotals[key] || 0))) + add;
+    }
+    markCoreDirty();
+  }
+
+  function markCoreMissionClear(){
+    const core = coreState();
+    if(!core) return;
+    ensureCoreBuckets(core);
+    core.opsTotals.missionsCleared = Math.max(0, Math.floor(Number(core.opsTotals.missionsCleared || 0))) + 1;
+    markCoreDirty();
+  }
+
+  function saveCoreProgress(force=false){
+    if(!state.core.enabled) return;
+    const now = state.now || nowMs();
+    if(!force && !state.core.saveDirty) return;
+    if(!force && now < state.core.nextSaveAt) return;
+    syncCoreVitals(true);
+    state.core.nextSaveAt = now + CORE_SAVE_MIN_MS;
+    state.core.saveDirty = false;
+    try{
+      if(typeof window.forceSaveNow === "function"){
+        window.forceSaveNow();
+        return;
+      }
+      if(force){
+        const core = coreState();
+        if(core && coreModeName(core) === "Story" && typeof window.saveGameNow === "function"){
+          window.saveGameNow();
+        }
+      }
+    }catch(_){}
+  }
+
+  function beginCoreSession(){
+    const core = coreState();
+    state.core.enabled = !!core;
+    state.core.mode = "Story";
+    state.core.level = 1;
+    state.core.nextSyncAt = 0;
+    state.core.nextSaveAt = 0;
+    state.core.saveDirty = false;
+    state.core.rewardCash = 0;
+    if(!core) return null;
+    ensureCoreBuckets(core);
+    state.core.mode = coreModeName(core);
+    state.core.level = coreModeLevel(core);
+    return core;
   }
 
   function ensureThreeLoaded(){
@@ -905,61 +1086,84 @@
   function resetScenario(){
     clearWorldUnits();
     const THREE = state.three;
+    const core = beginCoreSession();
+    const missionLv = state.core.level;
+    const civTarget = coreMissionCivilianTarget(core);
+    const tigerTarget = coreMissionTigerTarget(core);
+    const startHp = core ? clamp(Math.round(Number(core.hp || 100)), 1, 100) : 100;
+    const startArmorCap = core ? Math.max(100, Math.round(Number(core.armorCap || 100))) : 100;
+    const startArmor = core ? clamp(Math.round(Number(core.armor || 20)), 0, startArmorCap) : 80;
+    const startStamina = core ? clamp(Math.round(Number(core.stamina || 100)), 0, 100) : 100;
+    const playerName = core && String(core.title || "").trim() ? String(core.title).trim() : "Commander";
 
     const player = createUnit({
       id:"player",
       role:"player",
       mesh:makeSoldierMesh(0x3b82f6),
       maxHp:100,
-      hp:100,
-      armor:80,
-      maxArmor:100,
+      hp:startHp,
+      maxStamina:100,
+      stamina:startStamina,
+      armor:startArmor,
+      maxArmor:startArmorCap,
       speed:PLAYER_BASE_SPEED,
       position:new THREE.Vector3(0, 0, 0),
-      name:"Commander",
+      name:playerName,
     });
     addHealthBar(player, 0x4ade80);
     player.ring = createSelectionRing(player.mesh, 0x22d3ee, 2.4);
     player.ring.visible = true;
     state.player = player;
 
-    const squadA = createUnit({
-      id:"squad-a",
-      role:"squad",
-      mesh:makeSoldierMesh(0x22c55e),
-      maxHp:130,
-      hp:130,
-      armor:110,
-      maxArmor:110,
-      speed:14,
-      followOffset:new THREE.Vector3(-5.2, 0, -4.4),
-      position:new THREE.Vector3(-5.2, 0, -4.4),
-      name:"Tiger Specialist",
-    });
-    addHealthBar(squadA, 0x34d399);
-    const squadB = createUnit({
-      id:"squad-b",
-      role:"squad",
-      mesh:makeSoldierMesh(0x0ea5e9),
-      maxHp:115,
-      hp:115,
-      armor:70,
-      maxArmor:70,
-      speed:13.2,
-      followOffset:new THREE.Vector3(5.4, 0, -3.8),
-      position:new THREE.Vector3(5.4, 0, -3.8),
-      name:"Rescue Specialist",
-    });
-    addHealthBar(squadB, 0x38bdf8);
-    state.squad.push(squadA, squadB);
+    const attackerOwned = core ? Math.max(0, Math.floor(Number(core.soldierAttackersOwned || 0))) : 1;
+    const rescuerOwned = core ? Math.max(0, Math.floor(Number(core.soldierRescuersOwned || 0))) : 1;
+    if(attackerOwned > 0){
+      const squadA = createUnit({
+        id:"squad-a",
+        role:"squad",
+        mesh:makeSoldierMesh(0x22c55e),
+        maxHp:130,
+        hp:130,
+        armor:110,
+        maxArmor:110,
+        speed:14,
+        followOffset:new THREE.Vector3(-5.2, 0, -4.4),
+        position:new THREE.Vector3(-5.2, 0, -4.4),
+        name:"Tiger Specialist",
+      });
+      addHealthBar(squadA, 0x34d399);
+      state.squad.push(squadA);
+    }
+    if(rescuerOwned > 0){
+      const squadB = createUnit({
+        id:"squad-b",
+        role:"squad",
+        mesh:makeSoldierMesh(0x0ea5e9),
+        maxHp:115,
+        hp:115,
+        armor:70,
+        maxArmor:70,
+        speed:13.2,
+        followOffset:new THREE.Vector3(5.4, 0, -3.8),
+        position:new THREE.Vector3(5.4, 0, -3.8),
+        name:"Rescue Specialist",
+      });
+      addHealthBar(squadB, 0x38bdf8);
+      state.squad.push(squadB);
+    }
 
-    const civilianSpawns = [
-      new THREE.Vector3(52, 0, 36),
-      new THREE.Vector3(-62, 0, 58),
-      new THREE.Vector3(44, 0, -62),
-      new THREE.Vector3(-84, 0, -48),
-    ];
-    for(let i=0;i<civilianSpawns.length;i++){
+    const civilianSpawns = [];
+    for(let i=0; i<civTarget; i++){
+      const t = (i + 1) / Math.max(1, civTarget);
+      const a = (Math.PI * 2 * t) + (hash01(missionLv, civTarget, i + 11) - 0.5) * 0.45;
+      const r = 76 + ((i % 4) * 22) + (hash01(missionLv, civTarget, i + 31) * 12);
+      civilianSpawns.push(new THREE.Vector3(
+        Math.cos(a) * r + (i % 2 ? 26 : -24),
+        0,
+        Math.sin(a) * r + (i % 3 ? 18 : -20)
+      ));
+    }
+    for(let i=0; i<civilianSpawns.length; i++){
       const civ = createUnit({
         id:`civ-${i+1}`,
         role:"civilian",
@@ -977,12 +1181,23 @@
       state.civilians.push(civ);
     }
 
-    const tigerSpawns = [
-      { pos:new THREE.Vector3(132, 0, 12),  type:TIGER_TYPES[0] },
-      { pos:new THREE.Vector3(-144,0,-20),  type:TIGER_TYPES[2] },
-      { pos:new THREE.Vector3(92, 0, -130), type:TIGER_TYPES[1] },
-      { pos:new THREE.Vector3(-130,0,130),  type:TIGER_TYPES[3] },
-    ];
+    const tigerSpawns = [];
+    const baseTier = clamp(Math.floor((missionLv - 1) / 14), 0, TIGER_TYPES.length - 1);
+    for(let i=0; i<tigerTarget; i++){
+      const t = (i + 1) / Math.max(1, tigerTarget);
+      const a = (Math.PI * 2 * t) + (hash01(missionLv, tigerTarget, i + 51) - 0.5) * 0.42;
+      const r = 128 + ((i % 5) * 26) + (hash01(missionLv, tigerTarget, i + 67) * 20);
+      const tierJitter = Math.floor(hash01(missionLv, tigerTarget, i + 83) * 3);
+      const typeIndex = clamp(baseTier + tierJitter, 0, TIGER_TYPES.length - 1);
+      tigerSpawns.push({
+        pos:new THREE.Vector3(
+          Math.cos(a) * r + (i % 2 ? -18 : 18),
+          0,
+          Math.sin(a) * r + (i % 3 ? -14 : 16)
+        ),
+        type:TIGER_TYPES[typeIndex],
+      });
+    }
     let tigerN = 1;
     for(const spawn of tigerSpawns){
       const t = createUnit({
@@ -1035,6 +1250,7 @@
     ensureChunksAround(state.player.mesh.position.x, state.player.mesh.position.z);
     processChunkQueue();
     processChunkQueue();
+    syncCoreVitals(true);
     setStatus("3D ready. Rescue civilians and clear tigers.");
   }
 
@@ -1440,6 +1656,12 @@
       if(left > 0) unit.hp = Math.max(0, unit.hp - left);
       if(left > 0) spawnImpactFx(unit, 0xfca5a5, "hit");
       if(unit.hp <= 0){
+        const core = coreState();
+        if(core){
+          const nextLives = Math.max(0, Math.floor(Number(core.lives || 5)) - 1);
+          core.lives = nextLives;
+          markCoreDirty();
+        }
         unit.hp = unit.maxHp;
         unit.armor = Math.max(40, unit.armor);
         unit.mesh.position.copy(state.safeZone.mesh.position).add(new state.three.Vector3(-18, 0, 16));
@@ -1456,6 +1678,12 @@
         unit.alive = false;
         unit.following = false;
         unit.mesh.visible = false;
+        const core = coreState();
+        if(core){
+          ensureCoreBuckets(core);
+          core.opsTotals.civiliansLost = Math.max(0, Math.floor(Number(core.opsTotals.civiliansLost || 0))) + 1;
+          markCoreDirty();
+        }
         setStatus(`${unit.name} was lost.`, 2200);
       }
       return;
@@ -1471,8 +1699,15 @@
     tiger.mesh.visible = false;
     tiger.ring.visible = false;
     if(state.selectedTiger === tiger) state.selectedTiger = null;
-    if(reason === "capture") state.mission.captured += 1;
-    else state.mission.killed += 1;
+    if(reason === "capture"){
+      state.mission.captured += 1;
+      addCoreStat("captures", 1);
+      addCoreCash(185);
+    }else{
+      state.mission.killed += 1;
+      addCoreStat("kills", 1);
+      addCoreCash(140);
+    }
   }
 
   function attackTiger(target){
@@ -1486,6 +1721,7 @@
       return;
     }
     state.fx.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
+    addCoreStat("shots", 1);
     const nearBonus = clamp((PLAYER_ATTACK_RANGE - d) / PLAYER_ATTACK_RANGE, 0, 1);
     const dmg = Math.round(12 + nearBonus * 16);
     damageTarget(t, dmg);
@@ -1530,7 +1766,24 @@
       setStatus(`Shield already active (${Math.ceil(current / 1000)}s).`);
       return;
     }
+    const core = coreState();
+    if(core){
+      ensureCoreBuckets(core);
+      const shieldsLeft = Math.max(0, Math.floor(Number(core.shields || 0)));
+      if(shieldsLeft <= 0){
+        setStatus("No shields left. Buy more in Shop.", 1400);
+        return;
+      }
+      core.shields = shieldsLeft - 1;
+      markCoreDirty();
+    }
     state.fx.shieldUntil = now + 5000;
+    if(core){
+      ensureCoreBuckets(core);
+      core.shieldUntil = state.fx.shieldUntil;
+      core.abilityCooldowns.shield = state.fx.shieldUntil;
+      markCoreDirty();
+    }
     setStatus("Escort shield active for 5 seconds.");
   }
 
@@ -1586,14 +1839,20 @@
   }
 
   function open3dModeOverlay(){
+    syncCoreVitals(true);
+    saveCoreProgress(true);
     if(typeof window.openMode === "function") window.openMode();
   }
 
   function open3dShopOverlay(){
+    syncCoreVitals(true);
+    saveCoreProgress(true);
     if(typeof window.openShop === "function") window.openShop();
   }
 
   function open3dInventoryOverlay(){
+    syncCoreVitals(true);
+    saveCoreProgress(true);
     if(typeof window.openInventory === "function") window.openInventory();
   }
 
@@ -1709,6 +1968,8 @@
         civ.following = false;
         civ.mesh.visible = false;
         state.mission.rescued += 1;
+        addCoreStat("evac", 1);
+        addCoreCash(120);
         setStatus(`${civ.name} evacuated.`, 1200);
       }
     }
@@ -2055,8 +2316,12 @@
       if(state.ui.captureBtn.disabled !== disabled) state.ui.captureBtn.disabled = disabled;
     }
     if(state.ui.shieldBtn){
+      const core = coreState();
+      const shieldCount = core ? Math.max(0, Math.floor(Number(core.shields || 0))) : 0;
       const left = Math.max(0, state.fx.shieldUntil - now);
-      const shieldLabel = left > 0 ? `Shield ${Math.ceil(left / 1000)}s` : "Shield";
+      const shieldLabel = left > 0
+        ? `Shield ${Math.ceil(left / 1000)}s`
+        : `Shield (${shieldCount})`;
       if(state.perf.lastHud.shieldLabel !== shieldLabel){
         state.perf.lastHud.shieldLabel = shieldLabel;
         state.ui.shieldBtn.innerText = shieldLabel;
@@ -2070,7 +2335,7 @@
     setHudText(
       "mission",
       state.ui.hudMission,
-      `OBJ Civ ${rescued}/${state.mission.totalCivilians} • Pending ${aliveCivs} • Tigers ${aliveTigers}`
+      `${state.core.mode} L${state.core.level} • Civ ${rescued}/${state.mission.totalCivilians} • Pending ${aliveCivs} • Tigers ${aliveTigers}`
     );
     if(p){
       const staminaNow = Math.round(Number.isFinite(p.stamina) ? p.stamina : 100);
@@ -2169,11 +2434,17 @@
     updateCamera();
     updateCombatFloatingLabels();
     updateHud();
+    syncCoreVitals();
+    saveCoreProgress(false);
 
     const missionClear = state.mission.rescued >= state.mission.totalCivilians && state.tigers.every((t)=>!t.alive);
     if(missionClear && !state.mission.clearAnnounced){
       state.mission.clearAnnounced = true;
-      setStatus("3D prototype mission clear. Reset scenario to run again.", 2200);
+      markCoreMissionClear();
+      const missionBonus = 320 + (state.mission.rescued * 90) + (state.mission.captured * 140) + (state.mission.killed * 110);
+      addCoreCash(missionBonus);
+      saveCoreProgress(true);
+      setStatus(`3D mission clear. +$${missionBonus.toLocaleString()} awarded.`, 2600);
     }
   }
 
@@ -2437,6 +2708,9 @@
     if(typeof window.closeMode === "function"){
       try{ window.closeMode(); }catch(_){}
     }
+    if(state.ready && state.player){
+      resetScenario();
+    }
     setPauseForPrototype(true);
     state.active = true;
     if(state.overlay) state.overlay.style.display = "flex";
@@ -2449,6 +2723,8 @@
   }
 
   function closePrototype(){
+    syncCoreVitals(true);
+    saveCoreProgress(true);
     state.active = false;
     stopRenderLoop();
     resetJoystick();
@@ -2459,6 +2735,8 @@
   }
 
   function forceDispose(){
+    syncCoreVitals(true);
+    saveCoreProgress(true);
     state.active = false;
     stopRenderLoop();
     for(const fx of state.vfxBursts){

@@ -24646,6 +24646,7 @@ window.openClanContractsFromLaunchIntro = openClanContractsFromLaunchIntro;
 window.skipLaunchIntro = skipLaunchIntro;
 window.restartFromMission1FromLaunchIntro = restartFromMission1FromLaunchIntro;
 window.saveGameNow = saveGameNow;
+window.forceSaveNow = ()=>{ try{ save(true); }catch(e){} };
 window.loadStorySaveFromLaunchIntro = loadStorySaveFromLaunchIntro;
 window.openDailyRewardOverlay = openDailyRewardOverlay;
 window.claimDailyRewardOverlay = claimDailyRewardOverlay;
