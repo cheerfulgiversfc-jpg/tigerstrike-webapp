@@ -1653,6 +1653,15 @@
       <div class="hudLine" id="modeDesc"></div>
       <div class="hudLine">3D Prototype is separate from Story/Arcade/Survival so your current game progress stays safe.</div>
       <div class="divider"></div>
+      <div class="hudTitle">3D Main-Mode Readiness Gate</div>
+      <div class="hudLine" id="mode3DGateStatus">Collecting 3D telemetry...</div>
+      <div class="hudLine" id="mode3DGateMetrics"></div>
+      <div class="hudLine" id="mode3DGateBlockers"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+        <button class="ghost" id="mode3DGateRefreshBtn" onclick="refresh3DReadinessGate()">🧪 Refresh Gate</button>
+        <button class="ghost" id="mode3DMainToggleBtn" onclick="toggle3DMainMode()">🌎 3D Main Mode: OFF</button>
+      </div>
+      <div class="divider"></div>
       <div class="hudLine" id="modeClanStatus">Clan data loading...</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
         <button class="ghost" id="modeWeeklySeedBtn" onclick="toggleArcadeWeeklySeedChallenge()">🎯 Weekly Seed Challenge: OFF</button>
@@ -2143,9 +2152,9 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4463"></script>
+<script src="./game.js?v=4467"></script>
 <script src="./tutorial.js?v=4463"></script>
-<script src="./prototype3d.js?v=4464"></script>
+<script src="./prototype3d.js?v=4467"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";

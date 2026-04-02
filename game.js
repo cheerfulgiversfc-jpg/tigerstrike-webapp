@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4466";
+const TS_BUILD = "4467";
 if(tg){
   try{
     tg.expand?.();
@@ -12401,6 +12401,12 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
     syncGamepadFocus();
     return;
   }
+  if(shouldOpen3DMainModeOnLaunch() && typeof window.open3DPrototype === "function"){
+    setPaused(false,null);
+    syncGamepadFocus();
+    window.open3DPrototype();
+    return;
+  }
   const shown = showMissionBrief(INTRO_BRIEF_MS);
   if(!shown) setPaused(false,null);
   syncGamepadFocus();
@@ -12726,6 +12732,122 @@ function markModeTabs(){
   if(S.mode==="Arcade") document.getElementById("mArcade").classList.add("active");
   if(S.mode==="Survival") document.getElementById("mSurvival").classList.add("active");
 }
+
+function read3DReadinessGateReport(){
+  try{
+    if(typeof window.get3DReadinessGateStatus === "function"){
+      return window.get3DReadinessGateStatus() || null;
+    }
+  }catch(e){}
+  return null;
+}
+
+function update3DReadinessGateUi(reportOverride = null){
+  const statusEl = document.getElementById("mode3DGateStatus");
+  const metricsEl = document.getElementById("mode3DGateMetrics");
+  const blockersEl = document.getElementById("mode3DGateBlockers");
+  const toggleBtn = document.getElementById("mode3DMainToggleBtn");
+  if(!statusEl && !metricsEl && !blockersEl && !toggleBtn) return null;
+
+  const report = reportOverride || read3DReadinessGateReport();
+  const prefOn = (()=>{ try{ return !!(typeof window.get3DMainModePreference === "function" && window.get3DMainModePreference()); }catch(_){ return false; } })();
+
+  if(!report){
+    if(statusEl) statusEl.innerText = "3D telemetry unavailable. Open 3D Prototype and play missions to collect readiness data.";
+    if(metricsEl) metricsEl.innerText = "";
+    if(blockersEl) blockersEl.innerText = "";
+    if(toggleBtn){
+      toggleBtn.innerText = `🌎 3D Main Mode: ${prefOn ? "ON" : "OFF"}`;
+      toggleBtn.className = prefOn ? "good" : "ghost";
+      toggleBtn.disabled = true;
+    }
+    return null;
+  }
+
+  const m = report.metrics || {};
+  const blockers = Array.isArray(report.blockers) ? report.blockers : [];
+  if(statusEl){
+    statusEl.innerText = report.passed
+      ? "PASS: 3D is ready for Main Mode."
+      : "LOCKED: 3D Main Mode stays off until readiness thresholds pass.";
+  }
+  if(metricsEl){
+    metricsEl.innerText =
+      `Sessions ${Number(m.sessions || 0)} • Starts ${Number(m.missionStarts || 0)} • Clears ${Number(m.missionClears || 0)} • Fails ${Number(m.missionFails || 0)} • Avg FPS ${Number(m.avgFps || 0)} • Critical ${Number(m.criticalSpikesPerMin || 0)}/min • Clear rate ${Number(m.clearRatePct || 0)}%`;
+  }
+  if(blockersEl){
+    blockersEl.innerText = blockers.length
+      ? `Blockers: ${blockers.join(" • ")}`
+      : "Blockers: none";
+  }
+  if(toggleBtn){
+    toggleBtn.innerText = `🌎 3D Main Mode: ${prefOn ? "ON" : "OFF"}`;
+    toggleBtn.className = prefOn ? "good" : (report.passed ? "ghost" : "bad");
+    toggleBtn.disabled = !prefOn && !report.passed;
+  }
+  return report;
+}
+
+function refresh3DReadinessGate(){
+  let report = null;
+  try{
+    if(typeof window.refresh3DReadinessGateTelemetry === "function"){
+      report = window.refresh3DReadinessGateTelemetry() || null;
+    }else{
+      report = read3DReadinessGateReport();
+    }
+  }catch(e){
+    report = null;
+  }
+  report = update3DReadinessGateUi(report) || report;
+  if(report){
+    const blockerText = Array.isArray(report.blockers) && report.blockers.length ? ` ${report.blockers[0]}` : "";
+    toast(report.passed ? "3D readiness gate: PASS." : `3D readiness gate: FAIL.${blockerText}`);
+  }else{
+    toast("3D readiness telemetry is unavailable right now.");
+  }
+}
+
+function toggle3DMainMode(){
+  if(typeof window.set3DMainModePreference !== "function"){
+    toast("3D readiness gate is not available yet.");
+    return;
+  }
+  const current = (()=>{ try{ return !!(typeof window.get3DMainModePreference === "function" && window.get3DMainModePreference()); }catch(_){ return false; } })();
+  if(current){
+    window.set3DMainModePreference(false);
+    update3DReadinessGateUi();
+    toast("3D Main Mode is OFF.");
+    return;
+  }
+  const report = read3DReadinessGateReport();
+  if(!report || !report.passed){
+    update3DReadinessGateUi(report);
+    toast("3D Main Mode is locked until readiness gate passes.");
+    return;
+  }
+  const res = window.set3DMainModePreference(true);
+  update3DReadinessGateUi(res?.report || report);
+  if(res && res.ok){
+    toast("3D Main Mode is ON. Launch will open 3D when gate stays passed.");
+  }else{
+    toast("3D Main Mode could not be enabled.");
+  }
+}
+
+function shouldOpen3DMainModeOnLaunch(){
+  if(window.__TUTORIAL_MODE__) return false;
+  try{
+    if(typeof window.get3DMainModePreference !== "function") return false;
+    if(!window.get3DMainModePreference()) return false;
+    if(typeof window.get3DReadinessGateStatus !== "function") return false;
+    const report = window.get3DReadinessGateStatus();
+    return !!(report && report.passed);
+  }catch(e){
+    return false;
+  }
+}
+
 function updateModeDesc(){
   ensureClanState(S);
   ensureStoryEndgameState(S);
@@ -12776,6 +12898,7 @@ function updateModeDesc(){
     weeklyBtn.innerText = `🎯 Weekly Seed Challenge: ${S.arcadeWeeklySeedEnabled ? "ON" : "OFF"}`;
     weeklyBtn.className = (S.mode === "Arcade" && S.arcadeWeeklySeedEnabled) ? "good" : "ghost";
   }
+  update3DReadinessGateUi();
   updateStoryEndgameControls();
 }
 

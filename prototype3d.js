@@ -102,6 +102,19 @@
   const JOY_DEADZONE_PX = 10;
   const CORE_SYNC_MS = 800;
   const CORE_SAVE_MIN_MS = 3400;
+  const READINESS_KEY_PREFIX = "ts_3d_readiness_v1";
+  const MAIN_MODE_PREF_PREFIX = "ts_3d_main_mode_pref_v1";
+  const READINESS_FLUSH_MS = 4000;
+  const READINESS_THRESHOLDS = Object.freeze({
+    minSessions:3,
+    minMissionStarts:8,
+    minResolvedMissions:6,
+    minActiveMinutes:12,
+    minAvgFps:52,
+    maxSpikesPerMin:8,
+    maxCriticalSpikesPerMin:0.9,
+    minClearRate:0.45,
+  });
 
   const CIV_FOLLOW_DISTANCE = 7.2;
   const CIV_PICKUP_RADIUS = 8.2;
@@ -354,6 +367,14 @@
         shieldLabel:"",
       },
     },
+    readiness:{
+      loaded:false,
+      dirty:false,
+      data:null,
+      lastFlushAt:0,
+      sessionStartAt:0,
+      missionActive:false,
+    },
   };
 
   function el(id){ return document.getElementById(id); }
@@ -363,6 +384,236 @@
 
   function nowMs(){
     return (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  }
+
+  function readinessUserKey(){
+    try{
+      if(typeof window.tgUserKey === "function"){
+        const key = String(window.tgUserKey() || "").trim();
+        if(key) return key;
+      }
+    }catch(_){}
+    return "local";
+  }
+
+  function readinessStorageKey(){
+    return `${READINESS_KEY_PREFIX}_${readinessUserKey()}`;
+  }
+
+  function mainModePrefKey(){
+    return `${MAIN_MODE_PREF_PREFIX}_${readinessUserKey()}`;
+  }
+
+  function defaultReadinessData(){
+    return {
+      version:1,
+      sessions:0,
+      missionStarts:0,
+      missionClears:0,
+      missionFails:0,
+      activeMs:0,
+      frameSamples:0,
+      frameMsTotal:0,
+      spikeFrames:0,
+      criticalFrames:0,
+      lastSessionAt:0,
+      lastMissionAt:0,
+      updatedAt:0,
+    };
+  }
+
+  function mergeReadinessData(raw){
+    const base = defaultReadinessData();
+    const src = (raw && typeof raw === "object") ? raw : {};
+    const out = { ...base };
+    out.version = 1;
+    out.sessions = Math.max(0, Math.floor(Number(src.sessions || 0)));
+    out.missionStarts = Math.max(0, Math.floor(Number(src.missionStarts || 0)));
+    out.missionClears = Math.max(0, Math.floor(Number(src.missionClears || 0)));
+    out.missionFails = Math.max(0, Math.floor(Number(src.missionFails || 0)));
+    out.activeMs = Math.max(0, Math.floor(Number(src.activeMs || 0)));
+    out.frameSamples = Math.max(0, Math.floor(Number(src.frameSamples || 0)));
+    out.frameMsTotal = Math.max(0, Number(src.frameMsTotal || 0));
+    out.spikeFrames = Math.max(0, Math.floor(Number(src.spikeFrames || 0)));
+    out.criticalFrames = Math.max(0, Math.floor(Number(src.criticalFrames || 0)));
+    out.lastSessionAt = Math.max(0, Math.floor(Number(src.lastSessionAt || 0)));
+    out.lastMissionAt = Math.max(0, Math.floor(Number(src.lastMissionAt || 0)));
+    out.updatedAt = Math.max(0, Math.floor(Number(src.updatedAt || 0)));
+    return out;
+  }
+
+  function ensureReadinessData(){
+    if(state.readiness.loaded && state.readiness.data) return state.readiness.data;
+    let raw = null;
+    try{
+      raw = JSON.parse(localStorage.getItem(readinessStorageKey()) || "null");
+    }catch(_){
+      raw = null;
+    }
+    state.readiness.data = mergeReadinessData(raw);
+    state.readiness.loaded = true;
+    state.readiness.dirty = false;
+    state.readiness.lastFlushAt = nowMs();
+    return state.readiness.data;
+  }
+
+  function flushReadinessData(force=false){
+    const data = ensureReadinessData();
+    if(!state.readiness.dirty && !force) return;
+    const now = nowMs();
+    if(!force && (now - state.readiness.lastFlushAt) < READINESS_FLUSH_MS) return;
+    data.updatedAt = Date.now();
+    try{
+      localStorage.setItem(readinessStorageKey(), JSON.stringify(data));
+      state.readiness.lastFlushAt = now;
+      state.readiness.dirty = false;
+    }catch(_){}
+  }
+
+  function markReadinessDirty(){
+    state.readiness.dirty = true;
+  }
+
+  function recordReadinessSessionStart(){
+    const data = ensureReadinessData();
+    data.sessions += 1;
+    data.lastSessionAt = Date.now();
+    state.readiness.sessionStartAt = nowMs();
+    state.readiness.missionActive = false;
+    markReadinessDirty();
+    flushReadinessData(false);
+  }
+
+  function recordReadinessMissionStart(){
+    const data = ensureReadinessData();
+    data.missionStarts += 1;
+    data.lastMissionAt = Date.now();
+    state.readiness.missionActive = true;
+    markReadinessDirty();
+  }
+
+  function recordReadinessMissionClear(){
+    const data = ensureReadinessData();
+    data.missionClears += 1;
+    state.readiness.missionActive = false;
+    markReadinessDirty();
+  }
+
+  function recordReadinessMissionFail(){
+    const data = ensureReadinessData();
+    data.missionFails += 1;
+    state.readiness.missionActive = false;
+    markReadinessDirty();
+  }
+
+  function sampleReadinessFrame(frameMs){
+    const data = ensureReadinessData();
+    const ms = Math.max(0, Number(frameMs || 0));
+    if(ms <= 0) return;
+    data.frameSamples += 1;
+    data.frameMsTotal += ms;
+    data.activeMs += ms;
+    if(ms >= PERF_SPIKE_MS) data.spikeFrames += 1;
+    if(ms >= PERF_CRITICAL_SPIKE_MS) data.criticalFrames += 1;
+    markReadinessDirty();
+  }
+
+  function closeReadinessSession(){
+    state.readiness.sessionStartAt = 0;
+    state.readiness.missionActive = false;
+    flushReadinessData(true);
+  }
+
+  function round1(v){
+    return Math.round(Number(v || 0) * 10) / 10;
+  }
+
+  function buildReadinessReport(dataInput){
+    const data = mergeReadinessData(dataInput || ensureReadinessData());
+    const activeMinutes = data.activeMs / 60000;
+    const avgFps = data.frameMsTotal > 0
+      ? (data.frameSamples * 1000) / data.frameMsTotal
+      : 0;
+    const spikesPerMin = activeMinutes > 0 ? (data.spikeFrames / activeMinutes) : 0;
+    const criticalPerMin = activeMinutes > 0 ? (data.criticalFrames / activeMinutes) : 0;
+    const resolved = Math.max(0, data.missionClears + data.missionFails);
+    const clearRate = resolved > 0 ? (data.missionClears / resolved) : 0;
+    const blockers = [];
+    const th = READINESS_THRESHOLDS;
+    if(data.sessions < th.minSessions){
+      blockers.push(`need ${th.minSessions}+ sessions (${data.sessions})`);
+    }
+    if(data.missionStarts < th.minMissionStarts){
+      blockers.push(`need ${th.minMissionStarts}+ mission starts (${data.missionStarts})`);
+    }
+    if(resolved < th.minResolvedMissions){
+      blockers.push(`need ${th.minResolvedMissions}+ resolved missions (${resolved})`);
+    }
+    if(activeMinutes < th.minActiveMinutes){
+      blockers.push(`need ${th.minActiveMinutes}+ active minutes (${round1(activeMinutes)})`);
+    }
+    if(avgFps < th.minAvgFps){
+      blockers.push(`avg FPS below ${th.minAvgFps} (${round1(avgFps)})`);
+    }
+    if(spikesPerMin > th.maxSpikesPerMin){
+      blockers.push(`spike rate above ${th.maxSpikesPerMin}/min (${round1(spikesPerMin)})`);
+    }
+    if(criticalPerMin > th.maxCriticalSpikesPerMin){
+      blockers.push(`critical spikes above ${th.maxCriticalSpikesPerMin}/min (${round1(criticalPerMin)})`);
+    }
+    if(clearRate < th.minClearRate){
+      blockers.push(`clear rate below ${Math.round(th.minClearRate * 100)}% (${Math.round(clearRate * 100)}%)`);
+    }
+    return {
+      passed:blockers.length === 0,
+      blockers,
+      thresholds:{ ...th },
+      metrics:{
+        sessions:data.sessions,
+        missionStarts:data.missionStarts,
+        missionClears:data.missionClears,
+        missionFails:data.missionFails,
+        resolvedMissions:resolved,
+        activeMinutes:round1(activeMinutes),
+        avgFps:round1(avgFps),
+        spikesPerMin:round1(spikesPerMin),
+        criticalSpikesPerMin:round1(criticalPerMin),
+        clearRatePct:Math.round(clearRate * 100),
+      },
+      updatedAt:data.updatedAt || 0,
+    };
+  }
+
+  function get3DReadinessGateStatus(){
+    flushReadinessData(false);
+    return buildReadinessReport(ensureReadinessData());
+  }
+
+  function refresh3DReadinessGateTelemetry(){
+    flushReadinessData(true);
+    return buildReadinessReport(ensureReadinessData());
+  }
+
+  function get3DMainModePreference(){
+    try{
+      return localStorage.getItem(mainModePrefKey()) === "1";
+    }catch(_){
+      return false;
+    }
+  }
+
+  function set3DMainModePreference(enabled){
+    const next = !!enabled;
+    if(next){
+      const report = get3DReadinessGateStatus();
+      if(!report.passed){
+        return { ok:false, enabled:false, report };
+      }
+    }
+    try{
+      localStorage.setItem(mainModePrefKey(), next ? "1" : "0");
+    }catch(_){}
+    return { ok:true, enabled:next, report:get3DReadinessGateStatus() };
   }
 
   function frameBudgetLimitForTier(){
@@ -1994,6 +2245,7 @@
     processChunkQueue();
     processChunkQueue();
     syncCoreVitals(true);
+    recordReadinessMissionStart();
     if(bossMission){
       setStatus(`Boss mission online: ${bossProfile.name}. Secure civilians, then defeat boss.`, 2200);
     }else{
@@ -2875,6 +3127,7 @@
       state.mission.failed = true;
       state.mission.failReason = "Civilian lost";
       state.mission.failAt = now + MISSION_FAIL_RESET_MS;
+      recordReadinessMissionFail();
       state.mission.objectiveText = missionObjectiveText();
       setStatus("Civilian lost. Mission restarting...", 1700);
       return true;
@@ -3398,6 +3651,7 @@
     state.dt = clamp(state.clock.getDelta(), 0.001, 0.050);
     const frameMs = state.dt * 1000;
     state.perf.lastFrameMs = frameMs;
+    sampleReadinessFrame(frameMs);
     if(frameMs >= PERF_SPIKE_MS) state.perf.spikeHits = Math.min(24, (state.perf.spikeHits || 0) + 1);
     else state.perf.spikeHits = Math.max(0, (state.perf.spikeHits || 0) - 1);
     if(frameMs >= PERF_CRITICAL_SPIKE_MS) state.perf.criticalSpikeHits = Math.min(12, (state.perf.criticalSpikeHits || 0) + 1);
@@ -3465,10 +3719,12 @@
     runFrameTask(()=>{ updateHud(); }, { cost:0.45, every:1 });
     syncCoreVitals();
     saveCoreProgress(false);
+    flushReadinessData(false);
 
     const missionClear = state.mission.rescued >= state.mission.totalCivilians && state.tigers.every((t)=>!t.alive);
     if(missionClear && !state.mission.clearAnnounced){
       state.mission.clearAnnounced = true;
+      recordReadinessMissionClear();
       markCoreMissionClear();
       const missionBonus = 320 + (state.mission.rescued * 90) + (state.mission.captured * 140) + (state.mission.killed * 110);
       addCoreCash(missionBonus);
@@ -3856,11 +4112,13 @@
     resize3d();
     state.clock.getDelta();
     stopRenderLoop();
+    recordReadinessSessionStart();
     state.raf = requestAnimationFrame(renderFrame);
     setStatus("3D online. Landscape recommended.");
   }
 
   function closePrototype(){
+    closeReadinessSession();
     syncCoreVitals(true);
     saveCoreProgress(true);
     state.active = false;
@@ -3873,6 +4131,7 @@
   }
 
   function forceDispose(){
+    closeReadinessSession();
     syncCoreVitals(true);
     saveCoreProgress(true);
     state.active = false;
@@ -3906,6 +4165,18 @@
       console.error("[TigerStrike3D] Failed to open prototype:", err);
       if(typeof window.toast === "function") window.toast("3D prototype failed to load.");
     });
+  };
+  window.get3DReadinessGateStatus = function(){
+    return get3DReadinessGateStatus();
+  };
+  window.refresh3DReadinessGateTelemetry = function(){
+    return refresh3DReadinessGateTelemetry();
+  };
+  window.get3DMainModePreference = function(){
+    return get3DMainModePreference();
+  };
+  window.set3DMainModePreference = function(enabled){
+    return set3DMainModePreference(enabled);
   };
   window.close3DPrototype = function(){ closePrototype(); };
   window.reset3DPrototype = function(){ resetScenario(); };
