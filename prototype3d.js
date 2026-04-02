@@ -106,6 +106,14 @@
   const CIV_FOLLOW_DISTANCE = 7.2;
   const CIV_PICKUP_RADIUS = 8.2;
   const SAFE_ZONE_RADIUS = 12;
+  const MISSION_DIRECTOR_TICK_MS = 220;
+  const MISSION_FAIL_RESET_MS = 1800;
+  const MISSION_SPAWN_MIN_CIV_TO_PLAYER = 28;
+  const MISSION_SPAWN_MIN_SAFEZONE_TO_CIV = 120;
+  const MISSION_SPAWN_MIN_TIGER_TO_PLAYER = 82;
+  const MISSION_SPAWN_MIN_TIGER_TO_CIV = 56;
+  const MISSION_SPAWN_MIN_TIGER_TO_SAFEZONE = 70;
+  const BOSS_REINFORCE_COOLDOWN_MS = 9800;
 
   const TIGER_TYPES = [
     { name:"Standard", maxHp:120, speed:10.6, damage:9,  color:0xf59e0b, pounce:1.8 },
@@ -113,6 +121,19 @@
     { name:"Stalker",  maxHp:138, speed:11.9, damage:11, color:0xf97316, pounce:2.15 },
     { name:"Berserker",maxHp:162, speed:11.2, damage:13, color:0xfb7185, pounce:2.35 },
     { name:"Alpha",    maxHp:196, speed:12.2, damage:16, color:0xf43f5e, pounce:2.55 },
+  ];
+
+  const BOSS_CHAPTER_PROFILES = [
+    { chapter:1,  name:"Alpha Commander", behavior:"roar" },
+    { chapter:2,  name:"Blood Commander", behavior:"frenzy" },
+    { chapter:3,  name:"Stealth Commander", behavior:"stealth" },
+    { chapter:4,  name:"Twin Alpha", behavior:"reinforce" },
+    { chapter:5,  name:"River Titan", behavior:"surge" },
+    { chapter:6,  name:"Mountain Alpha", behavior:"armor" },
+    { chapter:7,  name:"Legend Blood", behavior:"frenzy" },
+    { chapter:8,  name:"Tiger King", behavior:"reinforce" },
+    { chapter:9,  name:"Phantom King", behavior:"stealth" },
+    { chapter:10, name:"Ancient Tiger", behavior:"all" },
   ];
 
   const state = {
@@ -201,6 +222,24 @@
       captured:0,
       killed:0,
       clearAnnounced:false,
+      phase:"rescue",
+      objectiveText:"",
+      pendingCivilians:0,
+      aggressionMult:1,
+      failed:false,
+      failAt:0,
+      failReason:"",
+      directorTickAt:0,
+      chapter:1,
+      bossMission:false,
+      spawnGraceUntil:0,
+      bossUnit:null,
+      bossPhase:0,
+      bossReinforceAt:0,
+      bossRoarUntil:0,
+      bossPhase2Announced:false,
+      bossPhase3Announced:false,
+      lastPhase:"",
     },
     core:{
       enabled:false,
@@ -1406,13 +1445,192 @@
     state.mission.captured = 0;
     state.mission.killed = 0;
     state.mission.clearAnnounced = false;
+    state.mission.phase = "rescue";
+    state.mission.objectiveText = "";
+    state.mission.pendingCivilians = 0;
+    state.mission.aggressionMult = 1;
+    state.mission.failed = false;
+    state.mission.failAt = 0;
+    state.mission.failReason = "";
+    state.mission.directorTickAt = 0;
+    state.mission.chapter = 1;
+    state.mission.bossMission = false;
+    state.mission.spawnGraceUntil = 0;
+    state.mission.bossUnit = null;
+    state.mission.bossPhase = 0;
+    state.mission.bossReinforceAt = 0;
+    state.mission.bossRoarUntil = 0;
+    state.mission.bossPhase2Announced = false;
+    state.mission.bossPhase3Announced = false;
+    state.mission.lastPhase = "";
+  }
+
+  function missionLevel(){
+    return Math.max(1, Math.floor(Number(state.core.level || 1)));
+  }
+
+  function missionChapter(level){
+    return clamp(Math.floor((Math.max(1, Number(level || 1)) - 1) / 10) + 1, 1, 10);
+  }
+
+  function isStoryBossMission(core, level){
+    return coreModeName(core) === "Story" && (Math.max(1, Number(level || 1)) % 10 === 0);
+  }
+
+  function bossProfileForChapter(chapter){
+    const ch = clamp(Math.floor(Number(chapter || 1)), 1, 10);
+    return BOSS_CHAPTER_PROFILES[ch - 1] || BOSS_CHAPTER_PROFILES[0];
+  }
+
+  function distSqXZ(a, b){
+    const dx = Number(a.x || 0) - Number(b.x || 0);
+    const dz = Number(a.z || 0) - Number(b.z || 0);
+    return (dx * dx) + (dz * dz);
+  }
+
+  function minDistToList(pos, list){
+    if(!Array.isArray(list) || list.length === 0) return Infinity;
+    let best = Infinity;
+    for(const p of list){
+      const d2 = distSqXZ(pos, p);
+      if(d2 < best) best = d2;
+    }
+    return Math.sqrt(best);
+  }
+
+  function randomSpawnPoint(seedA, seedB, index, minR, maxR, jitter=20){
+    const t = hash01(seedA, seedB, 911 + (index * 7));
+    const a = (Math.PI * 2 * t) + ((hash01(seedA, seedB, 917 + (index * 9)) - 0.5) * 0.52);
+    const r = minR + (hash01(seedA, seedB, 923 + (index * 11)) * Math.max(1, maxR - minR));
+    const jx = (hash01(seedA, seedB, 929 + (index * 13)) - 0.5) * jitter;
+    const jz = (hash01(seedA, seedB, 937 + (index * 15)) - 0.5) * jitter;
+    return new state.three.Vector3(
+      Math.cos(a) * r + jx,
+      0,
+      Math.sin(a) * r + jz
+    );
+  }
+
+  function buildCivilianSpawns(civTarget, level){
+    const spots = [];
+    const playerPos = { x:0, z:0 };
+    for(let i=0; i<civTarget; i++){
+      let picked = null;
+      for(let tries=0; tries<56; tries++){
+        const idx = i * 67 + tries;
+        const candidate = randomSpawnPoint(level + 17, civTarget + 31, idx, 70, 205, 28);
+        const dPlayer = Math.sqrt(distSqXZ(candidate, playerPos));
+        if(dPlayer < MISSION_SPAWN_MIN_CIV_TO_PLAYER) continue;
+        const dCivs = minDistToList(candidate, spots);
+        if(dCivs < 14) continue;
+        picked = candidate;
+        break;
+      }
+      if(!picked){
+        picked = randomSpawnPoint(level + 41, civTarget + 53, i + 1, 80, 190, 16);
+      }
+      spots.push(picked);
+    }
+    return spots;
+  }
+
+  function chooseSafeZonePosition(civilianSpawns, level){
+    const playerPos = { x:0, z:0 };
+    const candidates = [];
+    for(let i=0; i<14; i++){
+      candidates.push(randomSpawnPoint(level + 71, civilianSpawns.length + 19, i + 1, 150, 280, 34));
+    }
+    let best = candidates[0] || new state.three.Vector3(180, 0, -180);
+    let bestScore = -Infinity;
+    for(const c of candidates){
+      const dCivs = minDistToList(c, civilianSpawns);
+      const dPlayer = Math.sqrt(distSqXZ(c, playerPos));
+      const score = (dCivs * 1.25) + (dPlayer * 0.8);
+      if(score > bestScore){
+        bestScore = score;
+        best = c;
+      }
+    }
+    if(minDistToList(best, civilianSpawns) < MISSION_SPAWN_MIN_SAFEZONE_TO_CIV){
+      best = randomSpawnPoint(level + 211, civilianSpawns.length + 101, 1, 220, 305, 10);
+    }
+    return best;
+  }
+
+  function selectTigerTypeForMission(level, i, bossMission){
+    const baseTier = clamp(Math.floor((Math.max(1, level) - 1) / 14), 0, TIGER_TYPES.length - 1);
+    const jitter = Math.floor(hash01(level, i + 1, 83 + i) * 3);
+    let typeIndex = clamp(baseTier + jitter, 0, TIGER_TYPES.length - 1);
+    if(bossMission && i === 0){
+      typeIndex = TIGER_TYPES.length - 1;
+    }
+    return TIGER_TYPES[typeIndex];
+  }
+
+  function buildTigerSpawnPlan(tigerTarget, level, civilianSpawns, safeZonePos, bossMission){
+    const plan = [];
+    const playerPos = { x:0, z:0 };
+    for(let i=0; i<tigerTarget; i++){
+      const type = selectTigerTypeForMission(level, i, bossMission);
+      let picked = null;
+      for(let tries=0; tries<80; tries++){
+        const idx = i * 131 + tries;
+        const minR = (bossMission && i === 0) ? 165 : 120;
+        const maxR = (bossMission && i === 0) ? 290 : 250;
+        const candidate = randomSpawnPoint(level + 137, tigerTarget + 47, idx, minR, maxR, 30);
+        const dPlayer = Math.sqrt(distSqXZ(candidate, playerPos));
+        const dCivs = minDistToList(candidate, civilianSpawns);
+        const dSafe = Math.sqrt(distSqXZ(candidate, safeZonePos));
+        const dOther = minDistToList(candidate, plan.map((p)=>p.pos));
+        if(dPlayer < MISSION_SPAWN_MIN_TIGER_TO_PLAYER) continue;
+        if(dCivs < MISSION_SPAWN_MIN_TIGER_TO_CIV) continue;
+        if(dSafe < MISSION_SPAWN_MIN_TIGER_TO_SAFEZONE) continue;
+        if(dOther < 18) continue;
+        picked = candidate;
+        break;
+      }
+      if(!picked){
+        picked = randomSpawnPoint(level + 177, tigerTarget + 59, i + 1, 160, 290, 20);
+      }
+      plan.push({ pos:picked, type, isBoss:(bossMission && i === 0) });
+    }
+    return plan;
+  }
+
+  function missionObjectiveText(){
+    if(state.mission.failed){
+      return `FAIL: ${state.mission.failReason || "Mission failed"}. Resetting...`;
+    }
+    const aliveTigers = state.tigers.filter((t)=>t.alive).length;
+    const pending = state.civilians.filter((c)=>c.alive && !c.rescued).length;
+    if(state.mission.phase === "rescue"){
+      return `Rescue civilians (${state.mission.rescued}/${state.mission.totalCivilians}). Pending ${pending}.`;
+    }
+    if(state.mission.phase === "clear"){
+      return `All civilians safe. Clear remaining tigers (${aliveTigers} left).`;
+    }
+    if(state.mission.phase === "boss"){
+      const boss = state.mission.bossUnit;
+      if(boss && boss.alive){
+        const hpPct = Math.round((boss.hp / Math.max(1, boss.maxHp)) * 100);
+        return `Boss ${boss.name} phase ${state.mission.bossPhase}/3 • HP ${hpPct}%`;
+      }
+      return `Boss down. Clean up remaining tigers (${aliveTigers} left).`;
+    }
+    if(state.mission.phase === "complete"){
+      return "Mission clear. Well done.";
+    }
+    return "Move out and secure the sector.";
   }
 
   function resetScenario(){
     clearWorldUnits();
     const THREE = state.three;
     const core = beginCoreSession();
-    const missionLv = state.core.level;
+    const missionLv = missionLevel();
+    const chapter = missionChapter(missionLv);
+    const bossMission = isStoryBossMission(core, missionLv);
+    const bossProfile = bossProfileForChapter(chapter);
     const civTarget = coreMissionCivilianTarget(core);
     const tigerTarget = coreMissionTigerTarget(core);
     const startHp = core ? clamp(Math.round(Number(core.hp || 100)), 1, 100) : 100;
@@ -1477,17 +1695,12 @@
       state.squad.push(squadB);
     }
 
-    const civilianSpawns = [];
-    for(let i=0; i<civTarget; i++){
-      const t = (i + 1) / Math.max(1, civTarget);
-      const a = (Math.PI * 2 * t) + (hash01(missionLv, civTarget, i + 11) - 0.5) * 0.45;
-      const r = 76 + ((i % 4) * 22) + (hash01(missionLv, civTarget, i + 31) * 12);
-      civilianSpawns.push(new THREE.Vector3(
-        Math.cos(a) * r + (i % 2 ? 26 : -24),
-        0,
-        Math.sin(a) * r + (i % 3 ? 18 : -20)
-      ));
+    const civilianSpawns = buildCivilianSpawns(civTarget, missionLv);
+    const safeZonePos = chooseSafeZonePosition(civilianSpawns, missionLv);
+    if(state.safeZone && state.safeZone.mesh){
+      state.safeZone.mesh.position.set(safeZonePos.x, 0, safeZonePos.z);
     }
+
     for(let i=0; i<civilianSpawns.length; i++){
       const civ = createUnit({
         id:`civ-${i+1}`,
@@ -1506,23 +1719,7 @@
       state.civilians.push(civ);
     }
 
-    const tigerSpawns = [];
-    const baseTier = clamp(Math.floor((missionLv - 1) / 14), 0, TIGER_TYPES.length - 1);
-    for(let i=0; i<tigerTarget; i++){
-      const t = (i + 1) / Math.max(1, tigerTarget);
-      const a = (Math.PI * 2 * t) + (hash01(missionLv, tigerTarget, i + 51) - 0.5) * 0.42;
-      const r = 128 + ((i % 5) * 26) + (hash01(missionLv, tigerTarget, i + 67) * 20);
-      const tierJitter = Math.floor(hash01(missionLv, tigerTarget, i + 83) * 3);
-      const typeIndex = clamp(baseTier + tierJitter, 0, TIGER_TYPES.length - 1);
-      tigerSpawns.push({
-        pos:new THREE.Vector3(
-          Math.cos(a) * r + (i % 2 ? -18 : 18),
-          0,
-          Math.sin(a) * r + (i % 3 ? -14 : 16)
-        ),
-        type:TIGER_TYPES[typeIndex],
-      });
-    }
+    const tigerSpawns = buildTigerSpawnPlan(tigerTarget, missionLv, civilianSpawns, safeZonePos, bossMission);
     let tigerN = 1;
     for(const spawn of tigerSpawns){
       const t = createUnit({
@@ -1533,10 +1730,22 @@
         hp:spawn.type.maxHp,
         speed:spawn.type.speed,
         tigerType:spawn.type,
-        scoreValue:Math.round(spawn.type.maxHp * 1.6),
+        scoreValue:Math.round(spawn.type.maxHp * (spawn.isBoss ? 2.4 : 1.6)),
         position:spawn.pos.clone(),
         name:spawn.type.name,
       });
+      if(spawn.isBoss){
+        t.isBoss = true;
+        t.name = `${bossProfile.name}`;
+        t.maxHp = Math.round(t.maxHp * 2.3);
+        t.hp = t.maxHp;
+        t.speed = t.speed * 1.1;
+        t.tigerType = {
+          ...t.tigerType,
+          damage:Math.round(Number(t.tigerType.damage || 14) * 1.4),
+          pounce:Number(t.tigerType.pounce || 2.2) * 1.18,
+        };
+      }
       t.nextPounceAt = nowMs() + 1400 + Math.random() * 1400;
       t.nextAttackAt = nowMs() + 400;
       t.ring = createSelectionRing(t.mesh, 0x60a5fa, 2.6);
@@ -1556,6 +1765,24 @@
     state.mission.totalCivilians = state.civilians.length;
     state.mission.totalTigers = state.tigers.length;
     state.mission.clearAnnounced = false;
+    state.mission.phase = bossMission ? "boss" : "rescue";
+    state.mission.pendingCivilians = state.civilians.length;
+    state.mission.aggressionMult = 1;
+    state.mission.failed = false;
+    state.mission.failAt = 0;
+    state.mission.failReason = "";
+    state.mission.directorTickAt = nowMs() + MISSION_DIRECTOR_TICK_MS;
+    state.mission.chapter = chapter;
+    state.mission.bossMission = bossMission;
+    state.mission.spawnGraceUntil = nowMs() + 4400;
+    state.mission.bossUnit = state.tigers.find((t)=>!!t.isBoss) || null;
+    state.mission.bossPhase = state.mission.bossUnit ? 1 : 0;
+    state.mission.bossReinforceAt = nowMs() + BOSS_REINFORCE_COOLDOWN_MS;
+    state.mission.bossRoarUntil = 0;
+    state.mission.bossPhase2Announced = false;
+    state.mission.bossPhase3Announced = false;
+    state.mission.lastPhase = state.mission.phase;
+    state.mission.objectiveText = missionObjectiveText();
     state.fx.shieldUntil = 0;
     state.fx.rollUntil = 0;
     state.fx.sprintUntil = 0;
@@ -1584,7 +1811,11 @@
     processChunkQueue();
     processChunkQueue();
     syncCoreVitals(true);
-    setStatus("3D ready. Rescue civilians and clear tigers.");
+    if(bossMission){
+      setStatus(`Boss mission online: ${bossProfile.name}. Secure civilians, then defeat boss.`, 2200);
+    }else{
+      setStatus("3D ready. Rescue civilians and clear tigers.");
+    }
   }
 
   function createWorldScene(){
@@ -2358,23 +2589,174 @@
     }
   }
 
+  function spawnDirectorReinforcement(boss){
+    if(!boss || !boss.mesh || !boss.alive) return false;
+    const THREE = state.three;
+    const alive = state.tigers.filter((t)=>t && t.alive).length;
+    const maxLive = state.mission.bossMission ? 9 : 7;
+    if(alive >= maxLive) return false;
+    const center = boss.mesh.position;
+    let pos = null;
+    for(let i=0; i<18; i++){
+      const a = (Math.PI * 2 * (i / 18)) + (hash01(state.mission.chapter, alive, i + 1) - 0.5) * 0.35;
+      const r = 18 + (hash01(state.mission.chapter, alive, i + 21) * 8);
+      const c = new THREE.Vector3(center.x + Math.cos(a) * r, 0, center.z + Math.sin(a) * r);
+      if(horizontalDistance({ position:c }, state.player) < 34) continue;
+      if(minDistToList(c, state.civilians.filter((x)=>x && x.alive && !x.rescued).map((x)=>x.mesh.position)) < 24) continue;
+      pos = c;
+      break;
+    }
+    if(!pos) return false;
+    const type = TIGER_TYPES[0];
+    const t = createUnit({
+      id:`tiger-rf-${Math.random().toString(36).slice(2, 7)}`,
+      role:"tiger",
+      mesh:makeTigerMesh(type.color),
+      maxHp:Math.round(type.maxHp * 1.06),
+      hp:Math.round(type.maxHp * 1.06),
+      speed:type.speed * 1.05,
+      tigerType:{ ...type, damage:Math.round(type.damage * 1.08), pounce:type.pounce * 1.06 },
+      scoreValue:Math.round(type.maxHp * 1.8),
+      position:pos,
+      name:`Reinforcement`,
+    });
+    t.nextPounceAt = nowMs() + 1200 + Math.random() * 700;
+    t.nextAttackAt = nowMs() + 300;
+    t.ring = createSelectionRing(t.mesh, 0x60a5fa, 2.6);
+    t.telegraphRing = createTelegraphRing(t.mesh, 0xf59e0b, 2.62);
+    t.clawArc = createClawArc(t.mesh, 0xfb923c);
+    addHealthBar(t, 0xfb7185);
+    t.mesh.userData.__tiger = t;
+    state.tigers.push(t);
+    state.tigerPickRoots.push(t.mesh);
+    resolveStaticOverlap(t);
+    state.mission.totalTigers += 1;
+    setStatus("Boss called reinforcements.", 900);
+    return true;
+  }
+
+  function updateBossDirector(now){
+    const boss = state.mission.bossUnit;
+    if(!boss || !boss.alive) return;
+    const hpPct = boss.hp / Math.max(1, boss.maxHp);
+    const profile = bossProfileForChapter(state.mission.chapter);
+    if(hpPct <= 0.66 && !state.mission.bossPhase2Announced){
+      state.mission.bossPhase = Math.max(2, state.mission.bossPhase || 1);
+      state.mission.bossPhase2Announced = true;
+      state.mission.bossRoarUntil = now + 6200;
+      setStatus(`${boss.name} used ${profile.behavior.toUpperCase()} phase.`, 1400);
+    }
+    if(hpPct <= 0.33 && !state.mission.bossPhase3Announced){
+      state.mission.bossPhase = Math.max(3, state.mission.bossPhase || 2);
+      state.mission.bossPhase3Announced = true;
+      state.mission.bossRoarUntil = now + 7000;
+      setStatus(`${boss.name} entered final phase.`, 1500);
+    }
+    if(state.mission.bossPhase >= 3 && now >= state.mission.bossReinforceAt){
+      if(spawnDirectorReinforcement(boss)){
+        const chapterBoost = Math.max(0, state.mission.chapter - 1);
+        state.mission.bossReinforceAt = now + Math.max(5600, BOSS_REINFORCE_COOLDOWN_MS - (chapterBoost * 240));
+      }else{
+        state.mission.bossReinforceAt = now + 2200;
+      }
+    }
+  }
+
+  function updateMissionDirector(){
+    const now = state.now || nowMs();
+    if(now < state.mission.directorTickAt) return true;
+    state.mission.directorTickAt = now + MISSION_DIRECTOR_TICK_MS;
+    const phaseBefore = String(state.mission.phase || "");
+
+    if(state.mission.failed){
+      if(state.mission.failAt > 0 && now >= state.mission.failAt){
+        resetScenario();
+        return false;
+      }
+      return true;
+    }
+
+    const aliveTigers = state.tigers.filter((t)=>t.alive).length;
+    const pendingCivs = state.civilians.filter((c)=>c.alive && !c.rescued).length;
+    const deadCivs = state.civilians.filter((c)=>!c.alive && !c.rescued).length;
+    state.mission.pendingCivilians = pendingCivs;
+
+    if(deadCivs > 0){
+      state.mission.failed = true;
+      state.mission.failReason = "Civilian lost";
+      state.mission.failAt = now + MISSION_FAIL_RESET_MS;
+      state.mission.objectiveText = missionObjectiveText();
+      setStatus("Civilian lost. Mission restarting...", 1700);
+      return true;
+    }
+
+    if(state.mission.bossMission){
+      if(pendingCivs > 0){
+        state.mission.phase = "boss";
+      }else if(state.mission.bossUnit && state.mission.bossUnit.alive){
+        state.mission.phase = "boss";
+      }else if(aliveTigers > 0){
+        state.mission.phase = "clear";
+      }else{
+        state.mission.phase = "complete";
+      }
+      updateBossDirector(now);
+    }else{
+      if(pendingCivs > 0) state.mission.phase = "rescue";
+      else if(aliveTigers > 0) state.mission.phase = "clear";
+      else state.mission.phase = "complete";
+    }
+
+    const lv = missionLevel();
+    const killPressure = Math.max(0, state.mission.killed - state.mission.captured);
+    const clearPressure = (state.mission.phase === "clear" || state.mission.phase === "boss") ? 0.18 : 0;
+    const roarBoost = now < state.mission.bossRoarUntil ? 0.2 : 0;
+    const chapterBoost = Math.max(0, (state.mission.chapter - 1) * 0.03);
+    const levelBoost = Math.max(0, (lv - 1) * 0.012);
+    state.mission.aggressionMult = clamp(1 + levelBoost + chapterBoost + (killPressure * 0.04) + clearPressure + roarBoost, 0.9, 3.2);
+    state.mission.objectiveText = missionObjectiveText();
+    if(phaseBefore !== state.mission.phase){
+      if(state.mission.phase === "clear"){
+        setStatus("All civilians rescued. Clear the remaining tigers.", 1200);
+      }else if(state.mission.phase === "boss"){
+        setStatus("Boss phase active. Watch telegraphs and hold formation.", 1100);
+      }else if(state.mission.phase === "complete"){
+        setStatus("Mission objectives complete.", 1000);
+      }
+      state.mission.lastPhase = state.mission.phase;
+    }
+    return true;
+  }
+
   function chooseTigerTarget(tiger){
+    const now = state.now || nowMs();
+    const phase = String(state.mission.phase || "rescue");
+    const preferPlayer = phase === "clear" || phase === "complete" || tiger?.isBoss;
+    const spawnGrace = now < Math.max(0, Number(state.mission.spawnGraceUntil || 0));
     let best = null;
-    let bestDist = Infinity;
+    let bestScore = Infinity;
     for(const civ of state.civilians){
       if(!civ.alive || civ.rescued) continue;
       const d = horizontalDistance(tiger, civ);
-      if(d < bestDist){
-        bestDist = d;
+      let score = d;
+      if(preferPlayer) score += 16;
+      if(spawnGrace) score += 42;
+      if(civ.following) score -= 7;
+      if(score < bestScore){
+        bestScore = score;
         best = civ;
       }
     }
     const dPlayer = horizontalDistance(tiger, state.player);
-    if(dPlayer < bestDist * 0.92 || best == null){
+    let playerScore = dPlayer;
+    if(preferPlayer) playerScore -= 14;
+    if(spawnGrace) playerScore -= 18;
+    if(tiger && tiger.isBoss) playerScore -= 6;
+    if(playerScore <= bestScore || best == null){
       best = state.player;
-      bestDist = dPlayer;
+      bestScore = playerScore;
     }
-    return { target:best, dist:bestDist };
+    return { target:best, dist:horizontalDistance(tiger, best || state.player) };
   }
 
   function getActiveCombatTiger(){
@@ -2419,6 +2801,9 @@
 
   function updateTigers(){
     const now = nowMs();
+    const aggro = Math.max(0.86, Number(state.mission.aggressionMult || 1));
+    const spawnGrace = now < Math.max(0, Number(state.mission.spawnGraceUntil || 0));
+    const roarBuff = now < Math.max(0, Number(state.mission.bossRoarUntil || 0));
     for(const t of state.tigers){
       if(!t.alive) continue;
       const pick = chooseTigerTarget(t);
@@ -2430,15 +2815,22 @@
       }
       t.target = target;
 
-      let speed = t.speed;
+      let speed = t.speed * aggro;
       let mode = "patrol";
       if(dist < 52){
         mode = "stalk";
         if(now > t.nextPounceAt && dist > 5 && dist < 26 && now > t.pounceUntil && now > t.recoverUntil){
           t.telegraphPounceUntil = now + TIGER_WINDUP_MS;
-          t.nextPounceAt = now + 2400 + Math.random() * 1200;
+          t.nextPounceAt = now + Math.max(980, 2400 / Math.max(0.75, aggro)) + Math.random() * 900;
           setStatus(`${t.name} pounce incoming!`, 700);
         }
+      }
+      if(spawnGrace && target && target.role === "civilian"){
+        mode = "patrol";
+        speed *= 0.62;
+      }
+      if(roarBuff){
+        speed *= t.isBoss ? 1.26 : 1.12;
       }
       if(now < t.telegraphPounceUntil){
         mode = "windup";
@@ -2493,8 +2885,12 @@
         t.telegraphMeleeUntil = now + TIGER_MELEE_WINDUP_MS;
         t.attackHitAt = t.telegraphMeleeUntil;
         t.pendingAttackTarget = target;
-        t.pendingAttackDamage = t.tigerType.damage;
-        t.nextAttackAt = now + (target.role === "civilian" ? 3200 : 1300);
+        const damageScale = t.isBoss ? 1.2 : 1;
+        t.pendingAttackDamage = Math.round((t.tigerType.damage || 10) * damageScale * Math.max(0.85, aggro));
+        const baseCd = (target.role === "civilian" ? 3200 : 1300);
+        const cd = baseCd / Math.max(0.8, aggro);
+        const minCd = (target.role === "civilian" ? 2200 : 680);
+        t.nextAttackAt = now + Math.max(minCd, cd);
       }
     }
   }
@@ -2718,7 +3114,7 @@
     setHudText(
       "mission",
       state.ui.hudMission,
-      `${state.core.mode} L${state.core.level} • Civ ${rescued}/${state.mission.totalCivilians} • Pending ${aliveCivs} • Tigers ${aliveTigers}`
+      `${state.core.mode} L${state.core.level} • ${String(state.mission.phase || "rescue").toUpperCase()} • Civ ${rescued}/${state.mission.totalCivilians} • Pending ${aliveCivs} • Tigers ${aliveTigers} • Aggro x${Number(state.mission.aggressionMult || 1).toFixed(2)} • ${state.mission.objectiveText || ""}`
     );
     if(p){
       const staminaNow = Math.round(Number.isFinite(p.stamina) ? p.stamina : 100);
@@ -2732,7 +3128,8 @@
     const st = state.selectedTiger;
     if(st && st.alive){
       const pct = Math.round((st.hp / st.maxHp) * 100);
-      setHudText("tiger", state.ui.hudTiger, `LOCK ${st.name} • HP ${Math.round(st.hp)}/${st.maxHp} (${pct}%) • ${tigerStatusText(st)}`);
+      const bossInfo = st.isBoss ? ` • BOSS P${Math.max(1, Math.floor(Number(state.mission.bossPhase || 1)))}` : "";
+      setHudText("tiger", state.ui.hudTiger, `LOCK ${st.name}${bossInfo} • HP ${Math.round(st.hp)}/${st.maxHp} (${pct}%) • ${tigerStatusText(st)}`);
     }else{
       setHudText("tiger", state.ui.hudTiger, "LOCK: Tap tiger to engage.");
     }
@@ -2800,6 +3197,8 @@
     updatePlayer();
     runFrameTask(()=>{ updateSquad(); }, { cost:1.6, every:lowTier ? 2 : 1 });
     runFrameTask(()=>{ updateCivilians(); }, { cost:1.9, every:lowTier ? 2 : 1 });
+    const directorOk = updateMissionDirector();
+    if(!directorOk) return;
     updateTigers();
     updateCombatDirector();
 
