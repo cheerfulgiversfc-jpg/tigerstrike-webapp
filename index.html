@@ -282,14 +282,14 @@
       display:none;
     }
     .proto3dTopActions{
-      position:absolute;
-      right:10px;
-      bottom:calc(194px + env(safe-area-inset-bottom));
-      display:grid;
-      grid-template-columns:minmax(0,1fr);
+      position:static;
+      margin-left:auto;
+      display:flex;
+      flex-wrap:wrap;
+      justify-content:flex-end;
       gap:8px;
       pointer-events:auto;
-      width:min(32vw, 180px);
+      width:min(58vw, 560px);
       max-width:none;
     }
     .proto3dTopActions button{
@@ -310,6 +310,9 @@
       grid-template-columns:repeat(3,minmax(0,1fr));
       gap:6px;
       pointer-events:auto;
+    }
+    .proto3dCamBar.hidden{
+      display:none !important;
     }
     .proto3dCamBar button{
       min-height:30px;
@@ -453,10 +456,20 @@
       right:10px;
       bottom:14px;
       display:grid;
-      grid-template-columns:repeat(2,72px);
-      gap:10px;
+      grid-template-columns:repeat(3,68px);
+      grid-template-rows:repeat(3,56px);
+      grid-template-areas:
+        ". attack ."
+        "shield roll capture"
+        ". sprint .";
+      gap:8px;
       pointer-events:auto;
     }
+    .proto3dActionBtn.attack{ grid-area:attack; }
+    .proto3dActionBtn.capture{ grid-area:capture; }
+    .proto3dActionBtn.shield{ grid-area:shield; }
+    .proto3dActionBtn.roll{ grid-area:roll; }
+    .proto3dActionBtn.sprint{ grid-area:sprint; }
     .proto3dActionBtn{
       min-height:62px;
       border-radius:16px;
@@ -519,8 +532,7 @@
         max-width:72vw;
       }
       .proto3dTopActions{
-        width:min(45vw, 176px);
-        bottom:calc(176px + env(safe-area-inset-bottom));
+        width:min(72vw, 460px);
       }
       .proto3dTopActions button{
         min-height:34px;
@@ -555,8 +567,9 @@
       .proto3dBtnCluster{
         right:8px;
         bottom:10px;
-        grid-template-columns:repeat(2,62px);
-        gap:8px;
+        grid-template-columns:repeat(3,58px);
+        grid-template-rows:repeat(3,52px);
+        gap:6px;
       }
       .proto3dActionBtn{
         min-height:54px;
@@ -1692,6 +1705,7 @@
         <div class="proto3dSubtitle">Open-world test layer. Story/Arcade/Survival progress is untouched.</div>
       </div>
       <div class="proto3dTopActions">
+        <button class="ghost" id="proto3dCamToggleBtn">Camera UI: OFF</button>
         <button class="ghost" id="proto3dMenuBtn">Menu</button>
         <button class="ghost" id="proto3dShopBtn">Shop</button>
         <button class="ghost" id="proto3dInventoryBtn">Inventory</button>
@@ -1733,11 +1747,11 @@
         <div class="proto3dJoyKnob" id="proto3dJoyKnob"></div>
       </div>
       <div class="proto3dBtnCluster">
-        <button class="proto3dActionBtn warn" id="proto3dAttackBtn">Attack</button>
-        <button class="proto3dActionBtn good" id="proto3dCaptureBtn">Capture</button>
-        <button class="proto3dActionBtn ghost" id="proto3dShieldBtn">Shield</button>
-        <button class="proto3dActionBtn ghost" id="proto3dRollBtn">Roll</button>
-        <button class="proto3dActionBtn ghost" id="proto3dSprintBtn">Sprint</button>
+        <button class="proto3dActionBtn warn attack" id="proto3dAttackBtn">Attack</button>
+        <button class="proto3dActionBtn good capture" id="proto3dCaptureBtn">Capture</button>
+        <button class="proto3dActionBtn ghost shield" id="proto3dShieldBtn">Shield</button>
+        <button class="proto3dActionBtn ghost roll" id="proto3dRollBtn">Roll</button>
+        <button class="proto3dActionBtn ghost sprint" id="proto3dSprintBtn">Sprint</button>
       </div>
     </div>
   </div>
@@ -2152,9 +2166,9 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4467"></script>
+<script src="./game.js?v=4468"></script>
 <script src="./tutorial.js?v=4463"></script>
-<script src="./prototype3d.js?v=4467"></script>
+<script src="./prototype3d.js?v=4468"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";

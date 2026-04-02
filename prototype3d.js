@@ -239,6 +239,7 @@
       pitchOffset:0,
       visualMode:"auto",
       hudMode:"auto",
+      camBarVisible:false,
     },
     canvasHost:null,
     overlay:null,
@@ -518,6 +519,28 @@
     markReadinessDirty();
   }
 
+  function shouldTrackReadinessFrame(){
+    const core = coreState();
+    const pauseReason = String(core?.pauseReason || "");
+    if(core?.paused && pauseReason && pauseReason !== "prototype3d"){
+      return false;
+    }
+    const overlays = [
+      "modeOverlay","shopOverlay","invOverlay","aboutOverlay","launchIntroOverlay",
+      "dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay",
+      "completeOverlay","weaponQuickOverlay","hudOverlay",
+    ];
+    for(const id of overlays){
+      const n = el(id);
+      if(!n) continue;
+      const display = String(n.style?.display || "").toLowerCase();
+      if(display === "flex" || display === "block"){
+        return false;
+      }
+    }
+    return true;
+  }
+
   function closeReadinessSession(){
     state.readiness.sessionStartAt = 0;
     state.readiness.missionActive = false;
@@ -788,6 +811,21 @@
     if(state.ui.camPresetBtn) state.ui.camPresetBtn.innerText = cameraPresetLabel();
     if(state.ui.hudModeBtn) state.ui.hudModeBtn.innerText = hudModeLabel();
     if(state.ui.qualityBtn) state.ui.qualityBtn.innerText = currentVisualLabel();
+    if(state.ui.camToggleBtn){
+      state.ui.camToggleBtn.innerText = state.cameraCtl.camBarVisible ? "Camera UI: ON" : "Camera UI: OFF";
+    }
+    if(state.ui.camBar){
+      state.ui.camBar.classList.toggle("hidden", !state.cameraCtl.camBarVisible);
+    }
+  }
+
+  function setCamBarVisible(on){
+    state.cameraCtl.camBarVisible = !!on;
+    updateCameraButtons();
+  }
+
+  function toggleCamBarVisible(){
+    setCamBarVisible(!state.cameraCtl.camBarVisible);
   }
 
   function evaluatePerformanceTier(){
@@ -1129,6 +1167,8 @@
       shieldBtn: el("proto3dShieldBtn"),
       rollBtn: el("proto3dRollBtn"),
       sprintBtn: el("proto3dSprintBtn"),
+      camBar: el("proto3dCamBar"),
+      camToggleBtn: el("proto3dCamToggleBtn"),
       camModeBtn: el("proto3dCamModeBtn"),
       camPresetBtn: el("proto3dCamPresetBtn"),
       hudModeBtn: el("proto3dHudModeBtn"),
@@ -1491,17 +1531,17 @@
     const THREE = state.three;
     const g = new THREE.Group();
     const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.12, 0.12, 1.5, 10),
-      new THREE.MeshBasicMaterial({ color:0x60a5fa, transparent:true, opacity:0.92, depthWrite:false })
+      new THREE.CylinderGeometry(0.16, 0.16, 1.95, 12),
+      new THREE.MeshBasicMaterial({ color:0x7dd3fc, transparent:true, opacity:0.95, depthWrite:false })
     );
     shaft.rotation.x = Math.PI * 0.5;
-    shaft.position.z = 0.64;
+    shaft.position.z = 0.86;
     const head = new THREE.Mesh(
-      new THREE.ConeGeometry(0.34, 0.8, 10),
-      new THREE.MeshBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.95, depthWrite:false })
+      new THREE.ConeGeometry(0.45, 1.05, 12),
+      new THREE.MeshBasicMaterial({ color:0xbfe6ff, transparent:true, opacity:0.98, depthWrite:false })
     );
     head.rotation.x = Math.PI * 0.5;
-    head.position.z = 1.4;
+    head.position.z = 1.82;
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.42, 0.62, 20),
       new THREE.MeshBasicMaterial({ color:0x34d399, transparent:true, opacity:0.72, depthWrite:false, side:THREE.DoubleSide })
@@ -2665,7 +2705,9 @@
     state.controls.moveSmoothY = lerp(state.controls.moveSmoothY || 0, rawY, lerpT);
     const x = Math.abs(state.controls.moveSmoothX) < 0.015 ? 0 : state.controls.moveSmoothX;
     const y = Math.abs(state.controls.moveSmoothY) < 0.015 ? 0 : state.controls.moveSmoothY;
-    return { x, y };
+    const turn = clamp(x, -1, 1);
+    const forward = clamp(-y, -1, 1);
+    return { x, y, turn, forward };
   }
 
   function moveToward(unit, targetX, targetZ, speed){
@@ -2845,11 +2887,14 @@
 
   function rollDodge(){
     const vec = controlsVector();
-    if(Math.hypot(vec.x, vec.y) < 0.1){
+    if(Math.hypot(vec.turn || 0, vec.forward || 0) < 0.1){
       const fwd = unitForward(state.player.mesh);
       state.fx.dodgeAngle = Math.atan2(fwd.x, fwd.z);
     }else{
-      state.fx.dodgeAngle = Math.atan2(vec.x, vec.y);
+      let yaw = Number(state.player?.mesh?.rotation?.y || 0);
+      yaw += (vec.turn || 0) * 0.95;
+      if((vec.forward || 0) < -0.35) yaw += Math.PI;
+      state.fx.dodgeAngle = normalizeAngle(yaw);
     }
     state.fx.rollUntil = nowMs() + 460;
     setStatus("Roll dodge active.");
@@ -2919,29 +2964,44 @@
     if(!Number.isFinite(p.maxStamina) || p.maxStamina <= 0) p.maxStamina = 100;
 
     const c = controlsVector();
-    const mag = Math.hypot(c.x, c.y);
-    const moving = mag > 0.06;
-    const normalizedX = moving ? c.x / mag : 0;
-    const normalizedY = moving ? c.y / mag : 0;
+    const turnIn = clamp(Number(c.turn || 0), -1, 1);
+    const fwdIn = clamp(Number(c.forward || 0), -1, 1);
+    const moving = Math.abs(fwdIn) > 0.06;
     const sprinting = state.controls.sprintHold || nowMs() < state.fx.sprintUntil;
     const rolling = nowMs() < state.fx.rollUntil;
     let speed = PLAYER_BASE_SPEED;
     if(rolling) speed = PLAYER_ROLL_SPEED;
     else if(sprinting && p.stamina > 2) speed = PLAYER_SPRINT_SPEED;
 
+    if(Math.abs(turnIn) > 0.04){
+      const turnRate = 2.55;
+      p.mesh.rotation.y = normalizeAngle(p.mesh.rotation.y + (turnIn * turnRate * state.dt));
+    }
+
     if(moving || rolling){
-      const angle = rolling ? state.fx.dodgeAngle : Math.atan2(normalizedX, normalizedY);
-      const moved = moveByAngleWithCollision(p, angle, speed * state.dt, {
+      let moveYaw = Number(p.mesh.rotation.y || 0);
+      const absFwd = Math.abs(fwdIn);
+      if(!rolling && fwdIn < -0.25){
+        // Pulling down turns the soldier around quickly, then moves out.
+        const desired = normalizeAngle(moveYaw + Math.PI);
+        p.mesh.rotation.y = lerpAngle(moveYaw, desired, clamp(1 - Math.exp(-13.5 * state.dt), 0.08, 0.34));
+        moveYaw = p.mesh.rotation.y;
+      }else if(!rolling){
+        moveYaw += turnIn * 0.32;
+      }else{
+        moveYaw = state.fx.dodgeAngle;
+      }
+      const moved = moveByAngleWithCollision(p, moveYaw, speed * state.dt * (rolling ? 1 : absFwd), {
         radius:unitNavRadius(p),
         allowSlide:true,
-        turnLerp:rolling ? clamp(1 - Math.exp(-18 * state.dt), 0.1, 1) : clamp(1 - Math.exp(-14 * state.dt), 0.08, 1)
+        turnLerp:rolling ? clamp(1 - Math.exp(-18 * state.dt), 0.1, 1) : clamp(1 - Math.exp(-14 * state.dt), 0.08, 1),
       });
       animateHumanoid(p, moved / Math.max(0.0001, state.dt));
     }else{
       animateHumanoid(p, 0.05);
     }
 
-    if(sprinting && moving){
+    if(sprinting && moving && fwdIn > 0){
       p.stamina = Math.max(0, p.stamina - 20 * state.dt);
       if(p.stamina <= 0){
         state.controls.sprintHold = false;
@@ -2991,8 +3051,23 @@
     }
   }
 
+  function nearestThreatTiger(civ){
+    let bestTiger = null;
+    let bestDist = Infinity;
+    for(const t of state.tigers){
+      if(!t || !t.alive) continue;
+      const d = horizontalDistance(civ, t);
+      if(d < bestDist){
+        bestDist = d;
+        bestTiger = t;
+      }
+    }
+    return { tiger:bestTiger, dist:bestDist };
+  }
+
   function updateCivilians(){
     const p = state.player;
+    const safePos = state.safeZone?.mesh?.position || null;
     for(let i=0;i<state.civilians.length;i++){
       const civ = state.civilians[i];
       if(!civ || !civ.alive || civ.rescued) continue;
@@ -3003,21 +3078,59 @@
         setStatus(`${civ.name} is following you.`, 1200);
       }
 
-      if(civ.following){
+      const threat = nearestThreatTiger(civ);
+      const threatTiger = threat.tiger;
+      const threatDist = Number(threat.dist || Infinity);
+      const panic = !!(threatTiger && threatDist <= 25);
+      let moveSpeed = 0;
+
+      if(panic && threatTiger && safePos){
+        const cp = civ.mesh.position;
+        const tp = threatTiger.mesh.position;
+        const away = { x:cp.x - tp.x, z:cp.z - tp.z };
+        const awayLen = Math.hypot(away.x, away.z) || 1;
+        away.x /= awayLen;
+        away.z /= awayLen;
+
+        const toPlayer = { x:p.mesh.position.x - cp.x, z:p.mesh.position.z - cp.z };
+        const toPlayerLen = Math.hypot(toPlayer.x, toPlayer.z) || 1;
+        toPlayer.x /= toPlayerLen;
+        toPlayer.z /= toPlayerLen;
+
+        const toSafe = { x:safePos.x - cp.x, z:safePos.z - cp.z };
+        const toSafeLen = Math.hypot(toSafe.x, toSafe.z) || 1;
+        toSafe.x /= toSafeLen;
+        toSafe.z /= toSafeLen;
+
+        let dirX = (away.x * 1.15) + (toPlayer.x * (civ.following ? 0.9 : 0.5)) + (toSafe.x * 0.38);
+        let dirZ = (away.z * 1.15) + (toPlayer.z * (civ.following ? 0.9 : 0.5)) + (toSafe.z * 0.38);
+        const dirLen = Math.hypot(dirX, dirZ) || 1;
+        dirX /= dirLen;
+        dirZ /= dirLen;
+
+        const fleeStep = 10 + clamp((25 - threatDist) * 0.7, 0, 8);
+        const tx = cp.x + dirX * fleeStep;
+        const tz = cp.z + dirZ * fleeStep;
+        const panicSpeed = civ.speed * (civ.following ? 1.38 : 1.28);
+        moveSpeed = moveToward(civ, tx, tz, panicSpeed);
+        animateHumanoid(civ, moveSpeed);
+      }else if(civ.following){
         const offsetIndex = i % 3;
-        const side = (offsetIndex - 1) * 2.8;
-        const back = 4.8 + Math.floor(i / 3) * 2.2;
+        const side = (offsetIndex - 1) * 2.2;
+        const back = 3.2 + Math.floor(i / 3) * 1.6;
         const fwd = unitForward(p.mesh);
         const rightX = Math.cos(p.mesh.rotation.y);
         const rightZ = -Math.sin(p.mesh.rotation.y);
         const tx = p.mesh.position.x - fwd.x * back + rightX * side;
         const tz = p.mesh.position.z - fwd.z * back + rightZ * side;
-        const moveSpeed = moveToward(civ, tx, tz, civ.speed);
+        const catchBoost = clamp((dToPlayer - 8) / 16, 0, 1);
+        moveSpeed = moveToward(civ, tx, tz, civ.speed * (1 + catchBoost * 0.62));
         animateHumanoid(civ, moveSpeed);
       }else{
         animateHumanoid(civ, 0.03);
       }
 
+      if(civ.ring) civ.ring.visible = !!civ.following;
       const dz = horizontalDistance(civ, state.safeZone);
       if(dz <= state.safeZone.radius - 0.8){
         civ.rescued = true;
@@ -3329,7 +3442,13 @@
         t.attackHitAt = t.telegraphMeleeUntil;
         t.pendingAttackTarget = target;
         const damageScale = t.isBoss ? 1.2 : 1;
-        t.pendingAttackDamage = Math.round((t.tigerType.damage || 10) * damageScale * Math.max(0.85, aggro));
+        let pendingDamage = (t.tigerType.damage || 10) * damageScale * Math.max(0.85, aggro);
+        if(target.role === "civilian"){
+          pendingDamage *= 0.46;
+          if(t.isBoss) pendingDamage *= 1.2;
+          pendingDamage = clamp(pendingDamage, 2, 8.5);
+        }
+        t.pendingAttackDamage = Math.round(pendingDamage);
         const baseCd = (target.role === "civilian" ? 3200 : 1300);
         const cd = baseCd / Math.max(0.8, aggro);
         const minCd = (target.role === "civilian" ? 2200 : 680);
@@ -3351,6 +3470,18 @@
     const p = state.player.mesh.position;
     let target = null;
     let best = Infinity;
+    // Prioritize civilians currently under direct pressure.
+    for(const civ of state.civilians){
+      if(!civ || !civ.alive || civ.rescued) continue;
+      const threat = nearestThreatTiger(civ);
+      if(threat.tiger && threat.dist <= 24){
+        const d = horizontalDistance(state.player, civ);
+        if(d < best){
+          best = d;
+          target = civ;
+        }
+      }
+    }
     for(const civ of state.civilians){
       if(!civ || !civ.alive || civ.rescued) continue;
       const d = horizontalDistance(state.player, civ);
@@ -3359,19 +3490,21 @@
         target = civ;
       }
     }
-    if(!target){
+    const tp = target
+      ? target.mesh.position
+      : (state.safeZone?.mesh?.position || null);
+    if(!tp){
       state.guideArrow.mesh.visible = false;
       return;
     }
-    const tp = target.mesh.position;
     const dx = tp.x - p.x;
     const dz = tp.z - p.z;
     const yaw = Math.atan2(dx, dz);
     state.guideArrow.mesh.visible = true;
-    state.guideArrow.mesh.position.set(p.x, 5.5, p.z);
+    state.guideArrow.mesh.position.set(p.x, 8.0, p.z);
     state.guideArrow.mesh.rotation.y = yaw;
-    const pulse = 1 + Math.sin((state.now || nowMs()) * 0.01) * 0.08;
-    state.guideArrow.mesh.scale.set(pulse, pulse, pulse);
+    const pulse = 1 + Math.sin((state.now || nowMs()) * 0.011) * 0.14;
+    state.guideArrow.mesh.scale.set(1.12 * pulse, 1.12 * pulse, 1.12 * pulse);
     if(state.guideArrow.ring){
       state.guideArrow.ring.rotation.z += state.dt * 1.2;
     }
@@ -3651,7 +3784,9 @@
     state.dt = clamp(state.clock.getDelta(), 0.001, 0.050);
     const frameMs = state.dt * 1000;
     state.perf.lastFrameMs = frameMs;
-    sampleReadinessFrame(frameMs);
+    if(shouldTrackReadinessFrame()){
+      sampleReadinessFrame(frameMs);
+    }
     if(frameMs >= PERF_SPIKE_MS) state.perf.spikeHits = Math.min(24, (state.perf.spikeHits || 0) + 1);
     else state.perf.spikeHits = Math.max(0, (state.perf.spikeHits || 0) - 1);
     if(frameMs >= PERF_CRITICAL_SPIKE_MS) state.perf.criticalSpikeHits = Math.min(12, (state.perf.criticalSpikeHits || 0) + 1);
@@ -4017,6 +4152,7 @@
     if(state.ui.captureBtn) state.ui.captureBtn.onclick = ()=>captureTiger();
     if(state.ui.shieldBtn) state.ui.shieldBtn.onclick = ()=>useShield();
     if(state.ui.rollBtn) state.ui.rollBtn.onclick = ()=>rollDodge();
+    if(state.ui.camToggleBtn) state.ui.camToggleBtn.onclick = ()=>toggleCamBarVisible();
     if(state.ui.sprintBtn){
       state.ui.sprintBtn.onpointerdown = (ev)=>{ ev.preventDefault(); state.controls.sprintHold = true; triggerSprint(); };
       state.ui.sprintBtn.onpointerup = (ev)=>{ ev.preventDefault(); state.controls.sprintHold = false; };
@@ -4109,6 +4245,7 @@
     state.active = true;
     if(state.overlay) state.overlay.style.display = "flex";
     document.body.classList.add("proto3dOpen");
+    setCamBarVisible(false);
     resize3d();
     state.clock.getDelta();
     stopRenderLoop();

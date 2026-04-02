@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4467";
+const TS_BUILD = "4468";
 if(tg){
   try{
     tg.expand?.();
@@ -12773,7 +12773,7 @@ function update3DReadinessGateUi(reportOverride = null){
   }
   if(metricsEl){
     metricsEl.innerText =
-      `Sessions ${Number(m.sessions || 0)} • Starts ${Number(m.missionStarts || 0)} • Clears ${Number(m.missionClears || 0)} • Fails ${Number(m.missionFails || 0)} • Avg FPS ${Number(m.avgFps || 0)} • Critical ${Number(m.criticalSpikesPerMin || 0)}/min • Clear rate ${Number(m.clearRatePct || 0)}%`;
+      `Launches ${Number(m.sessions || 0)} • Missions started ${Number(m.missionStarts || 0)} • Clears ${Number(m.missionClears || 0)} • Fails ${Number(m.missionFails || 0)} • Avg FPS ${Number(m.avgFps || 0)} • Critical ${Number(m.criticalSpikesPerMin || 0)}/min • Clear rate ${Number(m.clearRatePct || 0)}%`;
   }
   if(blockersEl){
     blockersEl.innerText = blockers.length
