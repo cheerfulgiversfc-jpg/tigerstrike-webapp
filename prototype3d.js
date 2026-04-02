@@ -169,6 +169,9 @@
     currentChunkZ:null,
     nextChunkSweepAt:0,
     liveUnitsCache:[],
+    nav:{
+      staticScratch:[],
+    },
     safeZone:null,
     guideArrow:null,
     fx:{
@@ -626,6 +629,150 @@
     const dx = pa.x - pb.x;
     const dz = pa.z - pb.z;
     return Math.hypot(dx, dz);
+  }
+
+  function normalizeAngle(a){
+    let out = Number(a || 0);
+    while(out > Math.PI) out -= Math.PI * 2;
+    while(out < -Math.PI) out += Math.PI * 2;
+    return out;
+  }
+
+  function lerpAngle(from, to, t){
+    const ff = Number(from || 0);
+    const tt = Number(to || 0);
+    const k = clamp(Number(t || 0), 0, 1);
+    const delta = normalizeAngle(tt - ff);
+    return ff + (delta * k);
+  }
+
+  function unitNavRadius(unit){
+    if(!unit) return 1.0;
+    if(unit.role === "player") return 1.12;
+    if(unit.role === "tiger") return 1.54;
+    if(unit.role === "civilian") return 0.96;
+    return 1.04;
+  }
+
+  function gatherNearbyStaticColliders(x, z, range=18){
+    const out = state.nav.staticScratch;
+    out.length = 0;
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cz = Math.floor(z / CHUNK_SIZE);
+    const ring = Math.max(1, Math.ceil(Math.max(4, Number(range || 18)) / CHUNK_SIZE) + 1);
+    for(let dz=-ring; dz<=ring; dz++){
+      for(let dx=-ring; dx<=ring; dx++){
+        const chunk = state.chunks.get(`${cx + dx}:${cz + dz}`);
+        if(!chunk || !Array.isArray(chunk.colliders) || !chunk.colliders.length) continue;
+        for(let i=0; i<chunk.colliders.length; i++){
+          out.push(chunk.colliders[i]);
+        }
+      }
+    }
+    return out;
+  }
+
+  function isBlockedByStatic(unit, x, z, opts={}){
+    const navR = Number.isFinite(opts.radius) ? opts.radius : unitNavRadius(unit);
+    const colliders = gatherNearbyStaticColliders(x, z, navR + 10);
+    for(let i=0; i<colliders.length; i++){
+      const c = colliders[i];
+      if(!c) continue;
+      const dx = x - c.x;
+      const dz = z - c.z;
+      const minD = navR + c.r;
+      if((dx * dx + dz * dz) < (minD * minD)){
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function freeClearanceAt(unit, x, z, opts={}){
+    const navR = Number.isFinite(opts.radius) ? opts.radius : unitNavRadius(unit);
+    const colliders = gatherNearbyStaticColliders(x, z, navR + 12);
+    let best = 9999;
+    for(let i=0; i<colliders.length; i++){
+      const c = colliders[i];
+      if(!c) continue;
+      const dx = x - c.x;
+      const dz = z - c.z;
+      const d = Math.hypot(dx, dz) - (navR + c.r);
+      if(d < best) best = d;
+    }
+    return best;
+  }
+
+  function resolveStaticOverlap(unit){
+    if(!unit || !unit.alive || !unit.mesh) return;
+    const navR = unitNavRadius(unit);
+    const pos = unit.mesh.position;
+    const colliders = gatherNearbyStaticColliders(pos.x, pos.z, navR + 10);
+    for(let iter=0; iter<2; iter++){
+      let nudged = false;
+      for(let i=0; i<colliders.length; i++){
+        const c = colliders[i];
+        if(!c) continue;
+        let dx = pos.x - c.x;
+        let dz = pos.z - c.z;
+        let d = Math.hypot(dx, dz);
+        const minD = navR + c.r;
+        if(d >= minD) continue;
+        if(d < 0.001){
+          const a = hash01(Math.floor(pos.x), Math.floor(pos.z), i + iter * 17) * Math.PI * 2;
+          dx = Math.cos(a);
+          dz = Math.sin(a);
+          d = 1;
+        }
+        const push = (minD - d) + 0.02;
+        pos.x += (dx / d) * push;
+        pos.z += (dz / d) * push;
+        nudged = true;
+      }
+      if(!nudged) break;
+    }
+  }
+
+  function moveByAngleWithCollision(unit, angle, step, opts={}){
+    if(!unit || !unit.mesh) return 0;
+    const dist = Math.max(0, Number(step || 0));
+    if(dist <= 0.0001) return 0;
+    const pos = unit.mesh.position;
+    const baseYaw = normalizeAngle(Number(angle || 0));
+    const offsets = [0, 0.20, -0.20, 0.42, -0.42, 0.74, -0.74, 1.02, -1.02];
+    let best = null;
+    let bestScore = -1e9;
+    for(let i=0; i<offsets.length; i++){
+      const yaw = normalizeAngle(baseYaw + offsets[i]);
+      const nx = Math.sin(yaw);
+      const nz = Math.cos(yaw);
+      const tx = pos.x + nx * dist;
+      const tz = pos.z + nz * dist;
+      if(isBlockedByStatic(unit, tx, tz, opts)) continue;
+      const align = Math.cos(normalizeAngle(yaw - baseYaw));
+      const clearance = freeClearanceAt(unit, tx, tz, opts);
+      const score = (align * 3.4) + Math.min(5.5, clearance * 0.18) - (Math.abs(offsets[i]) * 0.14);
+      if(score > bestScore){
+        bestScore = score;
+        best = { yaw, tx, tz };
+      }
+    }
+    if(!best){
+      if(opts.allowSlide){
+        const reduced = dist * 0.42;
+        if(reduced > 0.03){
+          return moveByAngleWithCollision(unit, baseYaw, reduced, { ...opts, allowSlide:false });
+        }
+      }
+      return 0;
+    }
+    const moved = Math.hypot(best.tx - pos.x, best.tz - pos.z);
+    pos.x = best.tx;
+    pos.z = best.tz;
+    const turnLerp = Number.isFinite(opts.turnLerp) ? clamp(opts.turnLerp, 0.05, 1) : clamp(1 - Math.exp(-14 * state.dt), 0.05, 1);
+    unit.mesh.rotation.y = lerpAngle(unit.mesh.rotation.y, best.yaw, turnLerp);
+    resolveStaticOverlap(unit);
+    return moved;
   }
 
   function addHealthBar(unit, color=0x4ade80){
@@ -1223,6 +1370,11 @@
       state.tigerPickRoots.push(t.mesh);
     }
 
+    resolveStaticOverlap(state.player);
+    for(const u of state.squad) resolveStaticOverlap(u);
+    for(const u of state.civilians) resolveStaticOverlap(u);
+    for(const u of state.tigers) resolveStaticOverlap(u);
+
     state.mission.totalCivilians = state.civilians.length;
     state.mission.totalTigers = state.tigers.length;
     state.mission.clearAnnounced = false;
@@ -1428,6 +1580,17 @@
     const THREE = state.three;
     const group = new THREE.Group();
     group.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
+    const colliders = [];
+    const worldX = group.position.x;
+    const worldZ = group.position.z;
+
+    const pushCollider = (lx, lz, r)=>{
+      colliders.push({
+        x: worldX + lx,
+        z: worldZ + lz,
+        r: Math.max(0.42, Number(r || 0.42))
+      });
+    };
 
     const roadCount = preset.roadBase + Math.floor(hash01(cx, cz, 11) * preset.roadVar);
     for(let i=0;i<roadCount;i++){
@@ -1451,11 +1614,13 @@
       );
       h.rotation.y = hash01(cx, cz, 110 + i) * Math.PI * 2;
       group.add(h);
+      pushCollider(h.position.x, h.position.z, 2.7);
     }
 
     const carCount = preset.carBase + Math.floor(hash01(cx, cz, 121) * preset.carVar);
     for(let i=0;i<carCount;i++){
-      const c = (hash01(cx, cz, 130 + i) > 0.75) ? makeTruck() : makeCar();
+      const isTruck = hash01(cx, cz, 130 + i) > 0.75;
+      const c = isTruck ? makeTruck() : makeCar();
       c.position.set(
         (hash01(cx, cz, 140 + i) - 0.5) * CHUNK_SIZE * 0.78,
         0,
@@ -1463,18 +1628,27 @@
       );
       c.rotation.y = hash01(cx, cz, 160 + i) * Math.PI * 2;
       group.add(c);
+      if(isTruck){
+        pushCollider(c.position.x - 1.25, c.position.z, 1.1);
+        pushCollider(c.position.x + 1.45, c.position.z, 1.2);
+      }else{
+        pushCollider(c.position.x - 0.75, c.position.z, 0.95);
+        pushCollider(c.position.x + 0.68, c.position.z, 0.95);
+      }
     }
 
     const treeCount = preset.treeBase + Math.floor(hash01(cx, cz, 171) * preset.treeVar);
     for(let i=0;i<treeCount;i++){
       const t = makeTree();
-      t.scale.setScalar(0.82 + hash01(cx, cz, 180 + i) * 0.5);
+      const treeScale = 0.82 + hash01(cx, cz, 180 + i) * 0.5;
+      t.scale.setScalar(treeScale);
       t.position.set(
         (hash01(cx, cz, 210 + i) - 0.5) * CHUNK_SIZE * 0.94,
         0,
         (hash01(cx, cz, 250 + i) - 0.5) * CHUNK_SIZE * 0.94
       );
       group.add(t);
+      pushCollider(t.position.x, t.position.z, 0.78 * treeScale);
     }
 
     if(hash01(cx, cz, 310) > (1 - preset.pondChance)){
@@ -1489,7 +1663,7 @@
     }
 
     state.chunkRoot.add(group);
-    state.chunks.set(key, { cx, cz, group });
+    state.chunks.set(key, { cx, cz, group, colliders });
   }
 
   function queueChunk(cx, cz, priority){
@@ -1586,13 +1760,21 @@
         const dx = pb.x - pa.x;
         const dz = pb.z - pa.z;
         const d = Math.hypot(dx, dz);
-        let minD = 2.2;
+        let minD = unitNavRadius(a) + unitNavRadius(b);
         const tigerVsPlayer =
           (a.role === "tiger" && b.role === "player") ||
           (a.role === "player" && b.role === "tiger");
-        if(tigerVsPlayer) minD = COMBAT_MIN_SEPARATION;
+        const tigerVsCivilian =
+          (a.role === "tiger" && b.role === "civilian") ||
+          (a.role === "civilian" && b.role === "tiger");
+        if(tigerVsPlayer) minD = Math.max(minD, COMBAT_MIN_SEPARATION);
+        if(tigerVsCivilian) minD = Math.max(minD, 2.15);
+        if(a.role === "civilian" && b.role === "civilian"){
+          minD *= 0.84;
+        }
         if(d > 0 && d < minD){
-          const push = (minD - d) * 0.5;
+          const pushScale = (a.role === "civilian" || b.role === "civilian") ? 0.34 : 0.5;
+          const push = (minD - d) * pushScale;
           const nx = dx / d;
           const nz = dz / d;
           pa.x -= nx * push;
@@ -1601,6 +1783,7 @@
           pb.z += nz * push;
         }
       }
+      resolveStaticOverlap(a);
     }
   }
 
@@ -1620,12 +1803,13 @@
     const d = Math.hypot(dx, dz);
     if(d < 0.01) return 0;
     const step = Math.min(d, speed * state.dt);
-    const nx = dx / d;
-    const nz = dz / d;
-    pos.x += nx * step;
-    pos.z += nz * step;
-    unit.mesh.rotation.y = Math.atan2(nx, nz);
-    return step / Math.max(0.0001, state.dt);
+    if(step <= 0.001) return 0;
+    const desiredYaw = Math.atan2(dx, dz);
+    const moved = moveByAngleWithCollision(unit, desiredYaw, step, {
+      radius:unitNavRadius(unit),
+      allowSlide:true
+    });
+    return moved / Math.max(0.0001, state.dt);
   }
 
   function isShieldActive(){
@@ -1875,12 +2059,12 @@
 
     if(moving || rolling){
       const angle = rolling ? state.fx.dodgeAngle : Math.atan2(normalizedX, normalizedY);
-      const vx = Math.sin(angle) * speed;
-      const vz = Math.cos(angle) * speed;
-      p.mesh.position.x += vx * state.dt;
-      p.mesh.position.z += vz * state.dt;
-      p.mesh.rotation.y = angle;
-      animateHumanoid(p, speed);
+      const moved = moveByAngleWithCollision(p, angle, speed * state.dt, {
+        radius:unitNavRadius(p),
+        allowSlide:true,
+        turnLerp:rolling ? clamp(1 - Math.exp(-18 * state.dt), 0.1, 1) : clamp(1 - Math.exp(-14 * state.dt), 0.08, 1)
+      });
+      animateHumanoid(p, moved / Math.max(0.0001, state.dt));
     }else{
       animateHumanoid(p, 0.05);
     }
