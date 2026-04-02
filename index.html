@@ -253,11 +253,11 @@
       position:absolute;
       left:8px;
       right:8px;
-      top:8px;
+      top:calc(8px + env(safe-area-inset-top));
       z-index:4;
       display:flex;
       align-items:center;
-      justify-content:space-between;
+      justify-content:flex-start;
       gap:6px;
       pointer-events:none;
     }
@@ -271,7 +271,7 @@
       flex-direction:column;
       gap:2px;
       min-width:0;
-      max-width:48vw;
+      max-width:62vw;
     }
     .proto3dTitle{
       font-size:13px;
@@ -282,46 +282,51 @@
       display:none;
     }
     .proto3dTopActions{
-      display:flex;
+      position:absolute;
+      right:10px;
+      bottom:calc(194px + env(safe-area-inset-bottom));
+      display:grid;
+      grid-template-columns:minmax(0,1fr);
       gap:8px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
       pointer-events:auto;
-      max-width:56vw;
+      width:min(32vw, 180px);
+      max-width:none;
     }
     .proto3dTopActions button{
-      min-height:34px;
-      padding:7px 10px;
+      min-height:32px;
+      padding:6px 8px;
       border-radius:10px;
-      font-size:11px;
+      font-size:10px;
     }
     .proto3dCamBar{
       position:absolute;
-      left:8px;
-      right:8px;
-      top:96px;
-      z-index:4;
-      display:flex;
+      left:10px;
+      right:auto;
+      top:auto;
+      bottom:calc(192px + env(safe-area-inset-bottom));
+      width:min(52vw, 520px);
+      z-index:5;
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
       gap:6px;
-      flex-wrap:wrap;
-      align-items:center;
       pointer-events:auto;
     }
     .proto3dCamBar button{
       min-height:30px;
-      padding:6px 9px;
+      padding:6px 7px;
       border-radius:10px;
       font-size:10px;
       border:1px solid rgba(78,106,162,.84);
       background:rgba(8,12,22,.58);
       color:var(--text);
       box-shadow:0 8px 16px rgba(0,0,0,.28);
+      text-align:center;
     }
     .proto3dHud{
       position:absolute;
       left:8px;
       right:8px;
-      top:132px;
+      top:calc(68px + env(safe-area-inset-top));
       z-index:4;
       display:flex;
       gap:6px;
@@ -492,10 +497,11 @@
     }
     @media (max-width:900px){
       .proto3dCamBar{
-        top:92px;
+        width:min(56vw, 460px);
+        bottom:calc(178px + env(safe-area-inset-bottom));
       }
       .proto3dHud{
-        top:126px;
+        top:calc(66px + env(safe-area-inset-top));
         flex-direction:column;
       }
       .proto3dHint{
@@ -506,14 +512,15 @@
       .proto3dTopbar{
         left:8px;
         right:8px;
-        top:8px;
+        top:calc(8px + env(safe-area-inset-top));
       }
       .proto3dTitleCard{
         min-width:0;
-        flex:1 1 auto;
+        max-width:72vw;
       }
       .proto3dTopActions{
-        flex-direction:column;
+        width:min(45vw, 176px);
+        bottom:calc(176px + env(safe-area-inset-bottom));
       }
       .proto3dTopActions button{
         min-height:34px;
@@ -521,7 +528,9 @@
         font-size:11px;
       }
       .proto3dCamBar{
-        top:88px;
+        width:min(68vw, 420px);
+        bottom:calc(170px + env(safe-area-inset-bottom));
+        grid-template-columns:repeat(2,minmax(0,1fr));
       }
       .proto3dCamBar button{
         min-height:28px;
@@ -531,7 +540,7 @@
       .proto3dHud{
         left:8px;
         right:8px;
-        top:154px;
+        top:calc(64px + env(safe-area-inset-top));
       }
       .proto3dHint{
         max-width:92vw;
@@ -565,6 +574,33 @@
     }
     .proto3dOverlay.combatLock .proto3dHint{
       opacity:.56;
+    }
+    .proto3dOverlay.hudCompact .proto3dHud{
+      top:calc(60px + env(safe-area-inset-top));
+      gap:4px;
+    }
+    .proto3dOverlay.hudCompact #proto3dHudMission{
+      display:none;
+    }
+    .proto3dOverlay.hudCompact .proto3dHudCard{
+      font-size:10px;
+      padding:4px 6px;
+      line-height:1.15;
+    }
+    .proto3dOverlay.hudCombat .proto3dHud{
+      top:calc(58px + env(safe-area-inset-top));
+      gap:4px;
+    }
+    .proto3dOverlay.hudCombat #proto3dHudMission{
+      display:none;
+    }
+    .proto3dOverlay.hudCombat .proto3dHudCard{
+      font-size:10px;
+      padding:4px 6px;
+      line-height:1.1;
+    }
+    .proto3dOverlay.hudCombat .proto3dHint{
+      display:none !important;
     }
     body.proto3dOpen .wrap{
       padding-bottom:0;
@@ -1656,6 +1692,8 @@
     </div>
     <div class="proto3dCamBar" id="proto3dCamBar">
       <button id="proto3dCamModeBtn">Cam: 3rd</button>
+      <button id="proto3dCamPresetBtn">Preset: Tactical</button>
+      <button id="proto3dHudModeBtn">HUD: Auto</button>
       <button id="proto3dZoomOutBtn">Zoom -</button>
       <button id="proto3dZoomInBtn">Zoom +</button>
       <button id="proto3dPitchDownBtn">Pitch -</button>

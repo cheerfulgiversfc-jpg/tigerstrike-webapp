@@ -114,6 +114,65 @@
   const MISSION_SPAWN_MIN_TIGER_TO_CIV = 56;
   const MISSION_SPAWN_MIN_TIGER_TO_SAFEZONE = 70;
   const BOSS_REINFORCE_COOLDOWN_MS = 9800;
+  const GAMEPAD_DEADZONE = 0.18;
+
+  const CAMERA_PRESETS = {
+    tactical:{
+      key:"tactical",
+      label:"Preset: Tactical",
+      third:{
+        backLandscape:34,
+        backPortrait:42,
+        heightLandscape:28,
+        heightPortrait:36,
+        smoothXZ:6.2,
+        smoothY:4.8,
+      },
+      first:{
+        eyeY:4.1,
+        pitch:-8,
+        lookDist:22,
+        smooth:10.5,
+      },
+    },
+    combat:{
+      key:"combat",
+      label:"Preset: Combat",
+      third:{
+        backLandscape:28,
+        backPortrait:34,
+        heightLandscape:23,
+        heightPortrait:29,
+        smoothXZ:7.2,
+        smoothY:5.5,
+      },
+      first:{
+        eyeY:4.0,
+        pitch:-6,
+        lookDist:19,
+        smooth:11.5,
+      },
+    },
+    cinematic:{
+      key:"cinematic",
+      label:"Preset: Cinematic",
+      third:{
+        backLandscape:40,
+        backPortrait:48,
+        heightLandscape:31,
+        heightPortrait:40,
+        smoothXZ:5.4,
+        smoothY:4.2,
+      },
+      first:{
+        eyeY:4.2,
+        pitch:-10,
+        lookDist:25,
+        smooth:9.6,
+      },
+    },
+  };
+  const CAMERA_PRESET_ORDER = ["tactical", "combat", "cinematic"];
 
   const TIGER_TYPES = [
     { name:"Standard", maxHp:120, speed:10.6, damage:9,  color:0xf59e0b, pounce:1.8 },
@@ -161,10 +220,12 @@
     vfxPool:[],
     cameraCtl:{
       mode:"third",
+      preset:"tactical",
       zoomOffset:0,
       heightOffset:0,
       pitchOffset:0,
       visualMode:"auto",
+      hudMode:"auto",
     },
     canvasHost:null,
     overlay:null,
@@ -181,6 +242,14 @@
       joystickAnchorX:0,
       joystickAnchorY:0,
       joystickRadius:42,
+      moveSmoothX:0,
+      moveSmoothY:0,
+      gamepad:{
+        connected:false,
+        moveX:0,
+        moveY:0,
+        lastButtons:Object.create(null),
+      },
     },
     player:null,
     squad:[],
@@ -404,8 +473,51 @@
     }
   }
 
+  function cameraPreset(){
+    return CAMERA_PRESETS[state.cameraCtl.preset] || CAMERA_PRESETS.tactical;
+  }
+
+  function cameraPresetLabel(){
+    const preset = cameraPreset();
+    return preset.label || "Preset: Tactical";
+  }
+
   function cameraModeLabel(){
     return state.cameraCtl.mode === "first" ? "Cam: 1st" : "Cam: 3rd";
+  }
+
+  function cycleCameraPreset(){
+    const current = String(state.cameraCtl.preset || "tactical");
+    const idx = Math.max(0, CAMERA_PRESET_ORDER.indexOf(current));
+    const next = CAMERA_PRESET_ORDER[(idx + 1) % CAMERA_PRESET_ORDER.length];
+    state.cameraCtl.preset = next;
+    updateCameraButtons();
+    setStatus(`${cameraPresetLabel()} selected.`, 1000);
+  }
+
+  function hudModeLabel(){
+    switch(state.cameraCtl.hudMode){
+      case "full": return "HUD: Full";
+      case "compact": return "HUD: Compact";
+      case "combat": return "HUD: Combat";
+      default: return "HUD: Auto";
+    }
+  }
+
+  function resolveHudMode(){
+    const mode = String(state.cameraCtl.hudMode || "auto");
+    if(mode !== "auto") return mode;
+    if(state.combat.active && state.combat.target && state.combat.target.alive) return "combat";
+    return "compact";
+  }
+
+  function cycleHudMode(){
+    const order = ["auto", "full", "compact", "combat"];
+    const current = String(state.cameraCtl.hudMode || "auto");
+    const idx = Math.max(0, order.indexOf(current));
+    state.cameraCtl.hudMode = order[(idx + 1) % order.length];
+    updateCameraButtons();
+    setStatus(`${hudModeLabel()} selected.`, 1000);
   }
 
   function applyVisualModeSetting(){
@@ -422,6 +534,8 @@
 
   function updateCameraButtons(){
     if(state.ui.camModeBtn) state.ui.camModeBtn.innerText = cameraModeLabel();
+    if(state.ui.camPresetBtn) state.ui.camPresetBtn.innerText = cameraPresetLabel();
+    if(state.ui.hudModeBtn) state.ui.hudModeBtn.innerText = hudModeLabel();
     if(state.ui.qualityBtn) state.ui.qualityBtn.innerText = currentVisualLabel();
   }
 
@@ -698,6 +812,8 @@
       rollBtn: el("proto3dRollBtn"),
       sprintBtn: el("proto3dSprintBtn"),
       camModeBtn: el("proto3dCamModeBtn"),
+      camPresetBtn: el("proto3dCamPresetBtn"),
+      hudModeBtn: el("proto3dHudModeBtn"),
       zoomOutBtn: el("proto3dZoomOutBtn"),
       zoomInBtn: el("proto3dZoomInBtn"),
       pitchDownBtn: el("proto3dPitchDownBtn"),
@@ -2221,8 +2337,15 @@
     const kb = state.controls.keyboard;
     const kx = (kb.ArrowRight || kb.KeyD ? 1 : 0) - (kb.ArrowLeft || kb.KeyA ? 1 : 0);
     const ky = (kb.ArrowDown || kb.KeyS ? 1 : 0) - (kb.ArrowUp || kb.KeyW ? 1 : 0);
-    const x = clamp(state.controls.moveX + kx, -1, 1);
-    const y = clamp(state.controls.moveY + ky, -1, 1);
+    const gx = clamp(Number(state.controls.gamepad.moveX || 0), -1, 1);
+    const gy = clamp(Number(state.controls.gamepad.moveY || 0), -1, 1);
+    const rawX = clamp(state.controls.moveX + gx + kx, -1, 1);
+    const rawY = clamp(state.controls.moveY + gy + ky, -1, 1);
+    const lerpT = clamp(1 - Math.exp(-18 * Math.max(0.001, state.dt || 0.016)), 0.15, 0.9);
+    state.controls.moveSmoothX = lerp(state.controls.moveSmoothX || 0, rawX, lerpT);
+    state.controls.moveSmoothY = lerp(state.controls.moveSmoothY || 0, rawY, lerpT);
+    const x = Math.abs(state.controls.moveSmoothX) < 0.015 ? 0 : state.controls.moveSmoothX;
+    const y = Math.abs(state.controls.moveSmoothY) < 0.015 ? 0 : state.controls.moveSmoothY;
     return { x, y };
   }
 
@@ -2989,20 +3112,24 @@
     const p = state.player;
     if(!p) return;
     const ctl = state.cameraCtl;
+    const preset = cameraPreset();
+    const presetThird = preset.third || CAMERA_PRESETS.tactical.third;
+    const presetFirst = preset.first || CAMERA_PRESETS.tactical.first;
     const cameraMode = ctl.mode || "third";
     const isLandscape = window.matchMedia("(orientation: landscape)").matches;
     if(cameraMode === "first"){
       const pp = p.mesh.position;
       const yaw = p.mesh.rotation.y;
-      const pitch = clamp(-8 + ctl.pitchOffset, -24, 24) * (Math.PI / 180);
-      const eyeY = 4.05 + ctl.heightOffset * 0.1;
-      const lookDist = clamp(20 + ctl.zoomOffset * 0.8, 12, 34);
+      const pitch = clamp(Number(presetFirst.pitch || -8) + ctl.pitchOffset, -24, 24) * (Math.PI / 180);
+      const eyeY = Number(presetFirst.eyeY || 4.05) + ctl.heightOffset * 0.1;
+      const lookDist = clamp(Number(presetFirst.lookDist || 20) + ctl.zoomOffset * 0.8, 11, 40);
+      const firstSmooth = clamp(Number(presetFirst.smooth || 10.5), 6.5, 14);
       const fx = Math.sin(yaw) * Math.cos(pitch);
       const fz = Math.cos(yaw) * Math.cos(pitch);
       const fy = Math.sin(pitch);
-      state.camera.position.x = smoothStep(state.camera.position.x, pp.x, 10.5, state.dt);
-      state.camera.position.y = smoothStep(state.camera.position.y, eyeY, 10.5, state.dt);
-      state.camera.position.z = smoothStep(state.camera.position.z, pp.z, 10.5, state.dt);
+      state.camera.position.x = smoothStep(state.camera.position.x, pp.x, firstSmooth, state.dt);
+      state.camera.position.y = smoothStep(state.camera.position.y, eyeY, firstSmooth, state.dt);
+      state.camera.position.z = smoothStep(state.camera.position.z, pp.z, firstSmooth, state.dt);
       const lx = pp.x + fx * lookDist;
       const ly = eyeY + fy * lookDist;
       const lz = pp.z + fz * lookDist;
@@ -3011,8 +3138,12 @@
     }
     const lock = state.combat.active ? state.combat.target : null;
     const blend = clamp(state.combat.lockBlend || 0, 0, 1);
-    const followHeightBase = (isLandscape ? 30 : 38) + ctl.heightOffset * 0.42;
-    const followBackBase = (isLandscape ? 30 : 40) + ctl.zoomOffset;
+    const followHeightBase =
+      Number(isLandscape ? presetThird.heightLandscape : presetThird.heightPortrait) + ctl.heightOffset * 0.42;
+    const followBackBase =
+      Number(isLandscape ? presetThird.backLandscape : presetThird.backPortrait) + ctl.zoomOffset;
+    const smoothXZ = clamp(Number(presetThird.smoothXZ || 6.3), 3.5, 9.5);
+    const smoothY = clamp(Number(presetThird.smoothY || 4.8), 2.5, 8);
     let tx;
     let tz;
     let lookX = p.mesh.position.x;
@@ -3031,7 +3162,7 @@
       const midZ = (pp.z + tp.z) * 0.5;
       const lockBack = clamp(18 + d * 0.5 + ctl.zoomOffset * 0.45, 16, 40);
       followBack = lerp(followBackBase, lockBack, blend);
-      followHeight = lerp(followHeightBase, (isLandscape ? 25 : 30) + ctl.heightOffset * 0.32, blend);
+      followHeight = lerp(followHeightBase, (isLandscape ? 24 : 29) + ctl.heightOffset * 0.32, blend);
       tx = midX + nx * followBack;
       tz = midZ + nz * followBack;
       lookX = lerp(pp.x, midX, clamp(blend * 0.9, 0, 1));
@@ -3041,9 +3172,9 @@
       tx = p.mesh.position.x - fwd.x * followBack;
       tz = p.mesh.position.z - fwd.z * followBack;
     }
-    state.camera.position.x = smoothStep(state.camera.position.x, tx, 6.3, state.dt);
-    state.camera.position.y = smoothStep(state.camera.position.y, followHeight, 4.8, state.dt);
-    state.camera.position.z = smoothStep(state.camera.position.z, tz, 6.3, state.dt);
+    state.camera.position.x = smoothStep(state.camera.position.x, tx, smoothXZ, state.dt);
+    state.camera.position.y = smoothStep(state.camera.position.y, followHeight, smoothY, state.dt);
+    state.camera.position.z = smoothStep(state.camera.position.z, tz, smoothXZ, state.dt);
     const lookY = (isLandscape ? 2.3 : 2.8) + ctl.pitchOffset * 0.06;
     state.camera.lookAt(lookX, lookY, lookZ);
   }
@@ -3110,26 +3241,54 @@
     const hudEvery = clamp(Number(preset.hudIntervalMs || 120), PERF_HUD_MIN_MS, PERF_HUD_MAX_MS);
     if(!force && (now - state.perf.hudLastAt) < hudEvery) return;
     state.perf.hudLastAt = now;
+    const hudMode = resolveHudMode();
+    if(state.overlay){
+      state.overlay.classList.toggle("hudCompact", hudMode === "compact");
+      state.overlay.classList.toggle("hudCombat", hudMode === "combat");
+      state.overlay.classList.toggle("hudFull", hudMode === "full");
+    }
 
-    setHudText(
-      "mission",
-      state.ui.hudMission,
-      `${state.core.mode} L${state.core.level} • ${String(state.mission.phase || "rescue").toUpperCase()} • Civ ${rescued}/${state.mission.totalCivilians} • Pending ${aliveCivs} • Tigers ${aliveTigers} • Aggro x${Number(state.mission.aggressionMult || 1).toFixed(2)} • ${state.mission.objectiveText || ""}`
-    );
+    if(hudMode === "combat" && state.combat.active && state.combat.target && state.combat.target.alive){
+      setHudText(
+        "mission",
+        state.ui.hudMission,
+        `COMBAT • ${state.combat.target.name.toUpperCase()} • Aggro x${Number(state.mission.aggressionMult || 1).toFixed(2)}`
+      );
+    }else if(hudMode === "compact"){
+      setHudText(
+        "mission",
+        state.ui.hudMission,
+        `${state.core.mode} L${state.core.level} • Civ ${rescued}/${state.mission.totalCivilians} • Tigers ${aliveTigers}`
+      );
+    }else{
+      setHudText(
+        "mission",
+        state.ui.hudMission,
+        `${state.core.mode} L${state.core.level} • ${String(state.mission.phase || "rescue").toUpperCase()} • Civ ${rescued}/${state.mission.totalCivilians} • Pending ${aliveCivs} • Tigers ${aliveTigers} • Aggro x${Number(state.mission.aggressionMult || 1).toFixed(2)}`
+      );
+    }
     if(p){
       const staminaNow = Math.round(Number.isFinite(p.stamina) ? p.stamina : 100);
-      setHudText(
-        "agent",
-        state.ui.hudAgent,
-        `YOU HP ${Math.round(p.hp)}/${p.maxHp} • AR ${Math.round(p.armor)}/${p.maxArmor} • ST ${staminaNow}`
-      );
+      if(hudMode === "compact"){
+        setHudText("agent", state.ui.hudAgent, `YOU HP ${Math.round(p.hp)} • AR ${Math.round(p.armor)} • ST ${staminaNow}`);
+      }else{
+        setHudText(
+          "agent",
+          state.ui.hudAgent,
+          `YOU HP ${Math.round(p.hp)}/${p.maxHp} • AR ${Math.round(p.armor)}/${p.maxArmor} • ST ${staminaNow}`
+        );
+      }
     }
 
     const st = state.selectedTiger;
     if(st && st.alive){
       const pct = Math.round((st.hp / st.maxHp) * 100);
       const bossInfo = st.isBoss ? ` • BOSS P${Math.max(1, Math.floor(Number(state.mission.bossPhase || 1)))}` : "";
-      setHudText("tiger", state.ui.hudTiger, `LOCK ${st.name}${bossInfo} • HP ${Math.round(st.hp)}/${st.maxHp} (${pct}%) • ${tigerStatusText(st)}`);
+      if(hudMode === "compact"){
+        setHudText("tiger", state.ui.hudTiger, `${st.name}${bossInfo} • ${pct}% • ${tigerStatusText(st)}`);
+      }else{
+        setHudText("tiger", state.ui.hudTiger, `LOCK ${st.name}${bossInfo} • HP ${Math.round(st.hp)}/${st.maxHp} (${pct}%) • ${tigerStatusText(st)}`);
+      }
     }else{
       setHudText("tiger", state.ui.hudTiger, "LOCK: Tap tiger to engage.");
     }
@@ -3143,7 +3302,7 @@
           const tiger = state.combat.target;
           const youPct = Math.round((p.hp / Math.max(1, p.maxHp)) * 100);
           const tigerPct = Math.round((tiger.hp / Math.max(1, tiger.maxHp)) * 100);
-          setHudText("duelYou", state.ui.duelYou, `YOU ${youPct}% • AR ${Math.round(p.armor)}%`);
+          setHudText("duelYou", state.ui.duelYou, `YOU ${youPct}% • AR ${Math.round((p.armor / Math.max(1, p.maxArmor || 100)) * 100)}%`);
           setHudText("duelTiger", state.ui.duelTiger, `${tiger.name.toUpperCase()} ${tigerPct}% • ${tigerStatusText(tiger)}`);
         }
       }else{
@@ -3187,6 +3346,7 @@
     }
     beginFrameBudget();
     evaluatePerformanceTier();
+    pollGamepadInput();
 
     const tier = state.perf.tier || "med";
     const lowTier = tier === "low";
@@ -3367,6 +3527,78 @@
     }
   }
 
+  function onGamepadConnected(){
+    state.controls.gamepad.connected = true;
+    setStatus("Gamepad connected.");
+  }
+
+  function onGamepadDisconnected(){
+    state.controls.gamepad.connected = false;
+    state.controls.gamepad.moveX = 0;
+    state.controls.gamepad.moveY = 0;
+    state.controls.sprintHold = false;
+    state.controls.gamepad.lastButtons = Object.create(null);
+    setStatus("Gamepad disconnected.");
+  }
+
+  function applyGamepadDeadzone(v){
+    const n = Number(v || 0);
+    const abs = Math.abs(n);
+    if(abs <= GAMEPAD_DEADZONE) return 0;
+    const norm = (abs - GAMEPAD_DEADZONE) / Math.max(0.0001, 1 - GAMEPAD_DEADZONE);
+    return Math.sign(n) * clamp(norm, 0, 1);
+  }
+
+  function gamepadButtonPressed(buttons, idx){
+    const b = buttons && buttons[idx];
+    return !!(b && (b.pressed || b.value > 0.5));
+  }
+
+  function pollGamepadInput(){
+    if(typeof navigator === "undefined" || typeof navigator.getGamepads !== "function"){
+      state.controls.gamepad.moveX = 0;
+      state.controls.gamepad.moveY = 0;
+      return;
+    }
+    const pads = navigator.getGamepads();
+    let gp = null;
+    for(let i=0; i<pads.length; i++){
+      if(pads[i] && pads[i].connected){
+        gp = pads[i];
+        break;
+      }
+    }
+    if(!gp){
+      state.controls.gamepad.connected = false;
+      state.controls.gamepad.moveX = 0;
+      state.controls.gamepad.moveY = 0;
+      state.controls.sprintHold = false;
+      return;
+    }
+
+    state.controls.gamepad.connected = true;
+    state.controls.gamepad.moveX = applyGamepadDeadzone(gp.axes?.[0] || 0);
+    state.controls.gamepad.moveY = applyGamepadDeadzone(gp.axes?.[1] || 0);
+
+    const buttons = gp.buttons || [];
+    const last = state.controls.gamepad.lastButtons || (state.controls.gamepad.lastButtons = Object.create(null));
+    const edge = (idx)=>{
+      const nowPressed = gamepadButtonPressed(buttons, idx);
+      const wasPressed = !!last[idx];
+      last[idx] = nowPressed;
+      return nowPressed && !wasPressed;
+    };
+
+    if(edge(0)) attackTiger(); // A / Cross
+    if(edge(2)) captureTiger(); // X / Square
+    if(edge(1)) rollDodge(); // B / Circle
+    if(edge(3)) useShield(); // Y / Triangle
+    if(edge(4)) triggerSprint(); // LB / L1 burst
+    if(edge(9)) cycleCameraMode(); // Start / Options
+
+    state.controls.sprintHold = gamepadButtonPressed(buttons, 5); // RB / R1 hold
+  }
+
   function updateJoystickVisual(nx, ny){
     const maxR = state.controls.joystickRadius || 42;
     const baseHalf = JOY_BASE_SIZE * 0.5;
@@ -3388,6 +3620,8 @@
   function resetJoystick(){
     state.controls.moveX = 0;
     state.controls.moveY = 0;
+    state.controls.moveSmoothX = 0;
+    state.controls.moveSmoothY = 0;
     state.controls.joystickPointerId = null;
     state.controls.joystickActive = false;
     updateJoystickVisual(0,0);
@@ -3422,10 +3656,23 @@
     if(!state.active || !state.controls.joystickActive) return;
     if(state.controls.joystickPointerId !== ev.pointerId) return;
     ev.preventDefault();
-    const dx = ev.clientX - state.controls.joystickCenterX;
-    const dy = ev.clientY - state.controls.joystickCenterY;
-    const r = Math.hypot(dx, dy);
     const maxR = state.controls.joystickRadius || 42;
+    const driftLimit = maxR * 0.92;
+    let dx = ev.clientX - state.controls.joystickCenterX;
+    let dy = ev.clientY - state.controls.joystickCenterY;
+    let r = Math.hypot(dx, dy);
+    if(r > driftLimit){
+      const pull = clamp((r - driftLimit) / Math.max(1, maxR), 0, 1) * 0.26;
+      state.controls.joystickCenterX += dx * pull;
+      state.controls.joystickCenterY += dy * pull;
+      const rect = state.ui.joyArea.getBoundingClientRect();
+      const baseHalf = JOY_BASE_SIZE * 0.5;
+      state.controls.joystickAnchorX = clamp(state.controls.joystickCenterX - rect.left, baseHalf, rect.width - baseHalf);
+      state.controls.joystickAnchorY = clamp(state.controls.joystickCenterY - rect.top, baseHalf, rect.height - baseHalf);
+      dx = ev.clientX - state.controls.joystickCenterX;
+      dy = ev.clientY - state.controls.joystickCenterY;
+      r = Math.hypot(dx, dy);
+    }
     const nx = r > 0 ? dx / r : 0;
     const ny = r > 0 ? dy / r : 0;
     const rr = clamp((r - JOY_DEADZONE_PX) / Math.max(1, maxR - JOY_DEADZONE_PX), 0, 1);
@@ -3452,6 +3699,8 @@
       state.ui.sprintBtn.onpointercancel = ()=>{ state.controls.sprintHold = false; };
     }
     if(state.ui.camModeBtn) state.ui.camModeBtn.onclick = ()=>cycleCameraMode();
+    if(state.ui.camPresetBtn) state.ui.camPresetBtn.onclick = ()=>cycleCameraPreset();
+    if(state.ui.hudModeBtn) state.ui.hudModeBtn.onclick = ()=>cycleHudMode();
     if(state.ui.zoomOutBtn) state.ui.zoomOutBtn.onclick = ()=>adjustCameraZoom(2.5);
     if(state.ui.zoomInBtn) state.ui.zoomInBtn.onclick = ()=>adjustCameraZoom(-2.5);
     if(state.ui.pitchDownBtn) state.ui.pitchDownBtn.onclick = ()=>adjustCameraPitch(-3);
@@ -3478,11 +3727,15 @@
     document.addEventListener("visibilitychange", onVisibilityChanged);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("gamepadconnected", onGamepadConnected);
+    window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
   }
 
   function unbindUiEvents(){
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
+    window.removeEventListener("gamepadconnected", onGamepadConnected);
+    window.removeEventListener("gamepaddisconnected", onGamepadDisconnected);
     window.removeEventListener("resize", resize3d);
     window.removeEventListener("orientationchange", onOrientationChanged);
     document.removeEventListener("visibilitychange", onVisibilityChanged);
