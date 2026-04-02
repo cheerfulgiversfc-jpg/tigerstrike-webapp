@@ -768,6 +768,73 @@
     return core;
   }
 
+  function manualAdvanceCoreProgressionFallback(){
+    const core = coreState();
+    if(!core) return;
+    ensureCoreBuckets(core);
+    const mode = coreModeName(core);
+    if(mode === "Story"){
+      const cap = 100;
+      const nextStory = clamp(
+        Math.floor(Number(core.storyLevel || core.storyLastMission || 1)) + 1,
+        1,
+        cap
+      );
+      core.storyLevel = nextStory;
+      core.storyLastMission = Math.max(
+        Math.floor(Number(core.storyLastMission || 1)),
+        nextStory
+      );
+      core.mode = "Story";
+    }else if(mode === "Arcade"){
+      const cap = 100;
+      core.arcadeLevel = clamp(Math.floor(Number(core.arcadeLevel || 1)) + 1, 1, cap);
+      core.mode = "Arcade";
+    }else{
+      core.survivalWave = Math.max(1, Math.floor(Number(core.survivalWave || 1)) + 1);
+      core.mode = "Survival";
+    }
+    markCoreDirty();
+    saveCoreProgress(true);
+  }
+
+  function advanceMissionParityAndReset3D(){
+    syncCoreVitals(true);
+    const coreBefore = coreState();
+    const beforeMode = coreModeName(coreBefore);
+    const beforeLevel = coreModeLevel(coreBefore);
+
+    let used2dFlow = false;
+    if(typeof window.startNextMission === "function"){
+      try{
+        window.startNextMission();
+        used2dFlow = true;
+      }catch(_){}
+    }
+    if(!used2dFlow){
+      manualAdvanceCoreProgressionFallback();
+    }
+
+    if(typeof window.closeMissionBrief === "function"){
+      try{ window.closeMissionBrief(true); }catch(_){}
+    }
+
+    setPauseForPrototype(true);
+    beginCoreSession();
+    const coreAfter = coreState();
+    const afterMode = coreModeName(coreAfter);
+    const afterLevel = coreModeLevel(coreAfter);
+    resetScenario();
+
+    const modeWord = afterMode === "Survival" ? "Wave" : "Mission";
+    const advanced = (afterMode !== beforeMode) || (afterLevel > beforeLevel);
+    if(advanced){
+      setStatus(`3D clear synced. ${afterMode} ${modeWord} ${afterLevel} is now active.`, 2600);
+    }else{
+      setStatus(`3D clear synced. ${afterMode} progression updated.`, 2200);
+    }
+  }
+
   function ensureThreeLoaded(){
     if(window.THREE) return Promise.resolve(window.THREE);
     if(state.threeLoadingPromise) return state.threeLoadingPromise;
@@ -3406,7 +3473,8 @@
       const missionBonus = 320 + (state.mission.rescued * 90) + (state.mission.captured * 140) + (state.mission.killed * 110);
       addCoreCash(missionBonus);
       saveCoreProgress(true);
-      setStatus(`3D mission clear. +$${missionBonus.toLocaleString()} awarded.`, 2600);
+      advanceMissionParityAndReset3D();
+      return;
     }
   }
 
