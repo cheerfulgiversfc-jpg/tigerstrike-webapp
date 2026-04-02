@@ -721,7 +721,7 @@
   function setRendererDprByQuality(){
     if(!state.renderer) return;
     const preset = qualityPreset();
-    const maxDpr = clamp(Number(preset.maxDpr || 1), 0.62, 1.5);
+    const maxDpr = clamp(Number(preset.maxDpr || 1), 0.62, 1.9);
     const target = Math.min(window.devicePixelRatio || 1, maxDpr);
     state.renderer.setPixelRatio(target);
   }
@@ -1530,30 +1530,71 @@
   function createGuideArrow(){
     const THREE = state.three;
     const g = new THREE.Group();
+    const shaftMat = new THREE.MeshBasicMaterial({ color:0x7dd3fc, transparent:true, opacity:0.98, depthWrite:false });
+    const headMat = new THREE.MeshBasicMaterial({ color:0xbfe6ff, transparent:true, opacity:1, depthWrite:false });
+    const ringMat = new THREE.MeshBasicMaterial({ color:0x34d399, transparent:true, opacity:0.78, depthWrite:false, side:THREE.DoubleSide });
+    const targetBeamMat = new THREE.MeshBasicMaterial({ color:0x60a5fa, transparent:true, opacity:0.36, depthWrite:false });
+    const targetCapMat = new THREE.MeshBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.9, depthWrite:false });
+    const targetRingMat = new THREE.MeshBasicMaterial({ color:0x60a5fa, transparent:true, opacity:0.85, depthWrite:false, side:THREE.DoubleSide });
     const shaft = new THREE.Mesh(
       new THREE.CylinderGeometry(0.16, 0.16, 1.95, 12),
-      new THREE.MeshBasicMaterial({ color:0x7dd3fc, transparent:true, opacity:0.95, depthWrite:false })
+      shaftMat
     );
     shaft.rotation.x = Math.PI * 0.5;
     shaft.position.z = 0.86;
     const head = new THREE.Mesh(
       new THREE.ConeGeometry(0.45, 1.05, 12),
-      new THREE.MeshBasicMaterial({ color:0xbfe6ff, transparent:true, opacity:0.98, depthWrite:false })
+      headMat
     );
     head.rotation.x = Math.PI * 0.5;
     head.position.z = 1.82;
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.42, 0.62, 20),
-      new THREE.MeshBasicMaterial({ color:0x34d399, transparent:true, opacity:0.72, depthWrite:false, side:THREE.DoubleSide })
+      ringMat
     );
     ring.rotation.x = -Math.PI * 0.5;
     ring.position.y = -0.18;
     ring.renderOrder = 27;
+    const targetBeam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.45, 0.45, 11.5, 16),
+      targetBeamMat
+    );
+    targetBeam.position.y = 5.75;
+    targetBeam.visible = false;
+    targetBeam.renderOrder = 24;
+    const targetCap = new THREE.Mesh(
+      new THREE.SphereGeometry(0.92, 14, 10),
+      targetCapMat
+    );
+    targetCap.position.y = 11.6;
+    targetCap.visible = false;
+    targetCap.renderOrder = 25;
+    const targetRing = new THREE.Mesh(
+      new THREE.RingGeometry(1.55, 2.12, 28),
+      targetRingMat
+    );
+    targetRing.rotation.x = -Math.PI * 0.5;
+    targetRing.position.y = 0.06;
+    targetRing.visible = false;
+    targetRing.renderOrder = 26;
     g.add(shaft, head, ring);
     g.visible = false;
     g.renderOrder = 28;
     state.effectsRoot.add(g);
-    state.guideArrow = { mesh:g, ring };
+    state.effectsRoot.add(targetBeam, targetCap, targetRing);
+    state.guideArrow = {
+      mesh:g,
+      ring,
+      targetBeam,
+      targetCap,
+      targetRing,
+      shaftMat,
+      headMat,
+      ringMat,
+      targetBeamMat,
+      targetCapMat,
+      targetRingMat,
+    };
   }
 
   function createSelectionRing(parent, color=0x60a5fa, r=2.1){
@@ -2310,8 +2351,8 @@
     state.perf.frameNo = 0;
     state.perf.hudLastAt = 0;
     state.scene = new THREE.Scene();
-    state.scene.background = new THREE.Color(0x112019);
-    state.scene.fog = new THREE.FogExp2(0x15281f, 0.0032);
+    state.scene.background = new THREE.Color(0x09130f);
+    state.scene.fog = new THREE.FogExp2(0x0d1b15, 0.0022);
 
     state.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 4000);
     state.camera.position.set(0, 34, 38);
@@ -2330,12 +2371,16 @@
     setRendererDprByQuality();
     state.renderer.setSize(100, 100, false);
     state.renderer.outputColorSpace = THREE.SRGBColorSpace || state.renderer.outputEncoding;
+    if(typeof THREE.ACESFilmicToneMapping === "number"){
+      state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      state.renderer.toneMappingExposure = 1.03;
+    }
     state.renderer.domElement.className = "proto3dCanvas";
     state.canvasHost.innerHTML = "";
     state.canvasHost.appendChild(state.renderer.domElement);
 
-    const hemi = new THREE.HemisphereLight(0xb9f5d0, 0x0c120f, 1.05);
-    const dir = new THREE.DirectionalLight(0xfff8e6, 0.92);
+    const hemi = new THREE.HemisphereLight(0x8cccb0, 0x070b09, 0.82);
+    const dir = new THREE.DirectionalLight(0xfff0d2, 1.12);
     dir.position.set(34, 68, 26);
     state.scene.add(hemi, dir);
 
@@ -2350,7 +2395,7 @@
     const baseGround = new THREE.Mesh(
       new THREE.PlaneGeometry(6000, 6000, 24, 24),
       new THREE.MeshStandardMaterial({
-        color:0x16402a,
+        color:0x103323,
         roughness:0.98,
         metalness:0.02,
       })
@@ -2370,9 +2415,9 @@
   function makeTree(){
     const THREE = state.three;
     const g = new THREE.Group();
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 2.3, 8), mat(0x8b5a2b, 0.95, 0.02));
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 2.3, 8), mat(0x7b4a24, 0.95, 0.02));
     trunk.position.y = 1.15;
-    const foliage = new THREE.Mesh(new THREE.SphereGeometry(1.35, 10, 8), mat(0x1e7b45, 0.85, 0.02));
+    const foliage = new THREE.Mesh(new THREE.SphereGeometry(1.35, 10, 8), mat(0x1a653a, 0.86, 0.02));
     foliage.position.y = 2.8;
     g.add(trunk, foliage);
     return g;
@@ -2381,9 +2426,9 @@
   function makeHouse(){
     const THREE = state.three;
     const g = new THREE.Group();
-    const base = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 3.5), mat(0xbba98a, 0.9, 0.01));
+    const base = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 3.5), mat(0xa79476, 0.9, 0.01));
     base.position.y = 1.2;
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.9, 1.6, 4), mat(0x8b3f2a, 0.72, 0.08));
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.9, 1.6, 4), mat(0x6e2f21, 0.74, 0.08));
     roof.position.y = 3.1;
     roof.rotation.y = Math.PI * 0.25;
     g.add(base, roof);
@@ -2393,9 +2438,9 @@
   function makeCar(){
     const THREE = state.three;
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.9, 1.6), mat(0x9ca3af, 0.5, 0.25));
+    const body = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.9, 1.6), mat(0x7f8b9c, 0.52, 0.25));
     body.position.y = 0.75;
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.7, 1.3), mat(0xd1d5db, 0.45, 0.2));
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.7, 1.3), mat(0xb4beca, 0.46, 0.2));
     cabin.position.set(-0.15, 1.35, 0);
     const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.32, 10);
     const wheelMat = mat(0x111827, 0.65, 0.05);
@@ -2415,9 +2460,9 @@
   function makeTruck(){
     const THREE = state.three;
     const g = new THREE.Group();
-    const trailer = new THREE.Mesh(new THREE.BoxGeometry(5.2, 1.2, 2.1), mat(0x64748b, 0.55, 0.16));
+    const trailer = new THREE.Mesh(new THREE.BoxGeometry(5.2, 1.2, 2.1), mat(0x4e5f79, 0.58, 0.16));
     trailer.position.y = 1.0;
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.3, 2.0), mat(0x94a3b8, 0.48, 0.2));
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.3, 2.0), mat(0x7f91aa, 0.5, 0.2));
     cab.position.set(2.8, 1.08, 0);
     g.add(trailer, cab);
     return g;
@@ -2428,12 +2473,12 @@
     const g = new THREE.Group();
     const road = new THREE.Mesh(
       new THREE.BoxGeometry(len, 0.05, width),
-      mat(0x6b5b3f, 0.95, 0.01)
+      mat(0x524734, 0.95, 0.01)
     );
     road.position.y = 0.02;
     const dash = new THREE.Mesh(
       new THREE.BoxGeometry(len * 0.76, 0.055, 0.3),
-      mat(0xd6c39f, 0.45, 0.01)
+      mat(0xc3b188, 0.45, 0.01)
     );
     dash.position.set(0, 0.06, 0);
     g.add(road, dash);
@@ -2445,11 +2490,11 @@
     const pond = new THREE.Mesh(
       new THREE.CylinderGeometry(6.2, 6.8, 0.18, 26),
       new THREE.MeshStandardMaterial({
-        color:0x1f7aa8,
-        roughness:0.25,
+        color:0x184f70,
+        roughness:0.3,
         metalness:0.05,
         transparent:true,
-        opacity:0.55,
+        opacity:0.5,
       })
     );
     pond.position.y = 0.01;
@@ -3468,45 +3513,92 @@
   function updateGuideArrow(){
     if(!state.guideArrow || !state.guideArrow.mesh || !state.player) return;
     const p = state.player.mesh.position;
-    let target = null;
-    let best = Infinity;
-    // Prioritize civilians currently under direct pressure.
+    const alivePending = [];
+    const loosePending = [];
+    const pressuredLoose = [];
     for(const civ of state.civilians){
       if(!civ || !civ.alive || civ.rescued) continue;
-      const threat = nearestThreatTiger(civ);
-      if(threat.tiger && threat.dist <= 24){
-        const d = horizontalDistance(state.player, civ);
-        if(d < best){
-          best = d;
-          target = civ;
+      alivePending.push(civ);
+      if(!civ.following){
+        loosePending.push(civ);
+        const threat = nearestThreatTiger(civ);
+        if(threat.tiger && threat.dist <= 24){
+          pressuredLoose.push(civ);
         }
       }
     }
-    for(const civ of state.civilians){
-      if(!civ || !civ.alive || civ.rescued) continue;
-      const d = horizontalDistance(state.player, civ);
-      if(d < best){
-        best = d;
-        target = civ;
+
+    let targetPos = null;
+    let targetType = "none";
+
+    const pickNearest = (list)=>{
+      let picked = null;
+      let nearest = Infinity;
+      for(const civ of list){
+        const d = horizontalDistance(state.player, civ);
+        if(d < nearest){
+          nearest = d;
+          picked = civ;
+        }
       }
+      return picked;
+    };
+
+    // Mission flow: lead to civilians first. Once all pending civilians follow, lead to safe zone.
+    const civTarget = pickNearest(pressuredLoose.length ? pressuredLoose : loosePending);
+    if(civTarget && civTarget.mesh){
+      targetPos = civTarget.mesh.position;
+      targetType = "civilian";
+    }else if(alivePending.length && state.safeZone?.mesh?.position){
+      targetPos = state.safeZone.mesh.position;
+      targetType = "safezone";
+    }else if(state.safeZone?.mesh?.position){
+      targetPos = state.safeZone.mesh.position;
+      targetType = "safezone";
     }
-    const tp = target
-      ? target.mesh.position
-      : (state.safeZone?.mesh?.position || null);
-    if(!tp){
+
+    if(!targetPos){
       state.guideArrow.mesh.visible = false;
+      if(state.guideArrow.targetBeam) state.guideArrow.targetBeam.visible = false;
+      if(state.guideArrow.targetCap) state.guideArrow.targetCap.visible = false;
+      if(state.guideArrow.targetRing) state.guideArrow.targetRing.visible = false;
       return;
     }
-    const dx = tp.x - p.x;
-    const dz = tp.z - p.z;
+
+    const isSafeZone = targetType === "safezone";
+    const beamColor = isSafeZone ? 0x34d399 : 0x60a5fa;
+    if(state.guideArrow.shaftMat) state.guideArrow.shaftMat.color.setHex(isSafeZone ? 0x34d399 : 0x7dd3fc);
+    if(state.guideArrow.headMat) state.guideArrow.headMat.color.setHex(isSafeZone ? 0x86efac : 0xbfe6ff);
+    if(state.guideArrow.ringMat) state.guideArrow.ringMat.color.setHex(isSafeZone ? 0x4ade80 : 0x34d399);
+    if(state.guideArrow.targetBeamMat) state.guideArrow.targetBeamMat.color.setHex(beamColor);
+    if(state.guideArrow.targetCapMat) state.guideArrow.targetCapMat.color.setHex(isSafeZone ? 0x86efac : 0x93c5fd);
+    if(state.guideArrow.targetRingMat) state.guideArrow.targetRingMat.color.setHex(beamColor);
+
+    const dx = targetPos.x - p.x;
+    const dz = targetPos.z - p.z;
     const yaw = Math.atan2(dx, dz);
     state.guideArrow.mesh.visible = true;
-    state.guideArrow.mesh.position.set(p.x, 8.0, p.z);
+    state.guideArrow.mesh.position.set(p.x, 9.2, p.z);
     state.guideArrow.mesh.rotation.y = yaw;
     const pulse = 1 + Math.sin((state.now || nowMs()) * 0.011) * 0.14;
-    state.guideArrow.mesh.scale.set(1.12 * pulse, 1.12 * pulse, 1.12 * pulse);
+    state.guideArrow.mesh.scale.set(1.24 * pulse, 1.24 * pulse, 1.24 * pulse);
     if(state.guideArrow.ring){
       state.guideArrow.ring.rotation.z += state.dt * 1.2;
+    }
+    if(state.guideArrow.targetBeam){
+      state.guideArrow.targetBeam.visible = true;
+      state.guideArrow.targetBeam.position.set(targetPos.x, 5.75, targetPos.z);
+    }
+    if(state.guideArrow.targetCap){
+      state.guideArrow.targetCap.visible = true;
+      state.guideArrow.targetCap.position.set(targetPos.x, 11.6 + Math.sin((state.now || nowMs()) * 0.008) * 0.45, targetPos.z);
+    }
+    if(state.guideArrow.targetRing){
+      state.guideArrow.targetRing.visible = true;
+      state.guideArrow.targetRing.position.set(targetPos.x, 0.08, targetPos.z);
+      state.guideArrow.targetRing.rotation.z += state.dt * 1.55;
+      const ringPulse = 1 + Math.sin((state.now || nowMs()) * 0.009) * 0.08;
+      state.guideArrow.targetRing.scale.set(ringPulse, ringPulse, ringPulse);
     }
   }
 
