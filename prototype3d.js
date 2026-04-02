@@ -91,6 +91,7 @@
   const PLAYER_ATTACK_COOLDOWN_MS = 340;
   const PLAYER_CAPTURE_COOLDOWN_MS = 460;
   const COMBAT_LOCK_RANGE = 42;
+  const COMBAT_LOCK_RANGE_MAX = 240;
   const COMBAT_MELEE_LANE_RANGE = 10;
   const COMBAT_MIN_SEPARATION = 3.1;
   const TIGER_WINDUP_MS = 420;
@@ -115,6 +116,63 @@
     maxCriticalSpikesPerMin:0.9,
     minClearRate:0.45,
   });
+
+  const CONTROL_PROFILE_STORAGE_KEY = "ts_3d_control_profile_v1";
+  const CONTROL_PROFILES = Object.freeze({
+    arcade:{
+      key:"arcade",
+      label:"Control: Arcade",
+      inputResponse:25,
+      inputDeadzone:0.012,
+      turnInputScale:1,
+      turnRate:3.3,
+      turnDeadzone:0.03,
+      moveTurnAssist:0.38,
+      backTurnSnap:15.2,
+      turnLerpRate:16.5,
+    },
+    balanced:{
+      key:"balanced",
+      label:"Control: Balanced",
+      inputResponse:20,
+      inputDeadzone:0.014,
+      turnInputScale:1,
+      turnRate:2.9,
+      turnDeadzone:0.04,
+      moveTurnAssist:0.30,
+      backTurnSnap:13.6,
+      turnLerpRate:14,
+    },
+    precision:{
+      key:"precision",
+      label:"Control: Precision",
+      inputResponse:16,
+      inputDeadzone:0.016,
+      turnInputScale:0.92,
+      turnRate:2.45,
+      turnDeadzone:0.045,
+      moveTurnAssist:0.22,
+      backTurnSnap:11.5,
+      turnLerpRate:12.5,
+    },
+  });
+  const CONTROL_PROFILE_ORDER = ["arcade", "balanced", "precision"];
+
+  const WEAPON_RANGE_BANDS_3D = Object.freeze({
+    short:110,
+    mid:180,
+  });
+
+  const PROTO3D_WEAPON_FALLBACKS = Object.freeze([
+    { id:"W_TRQ_PISTOL_MK1", name:"Tranq Pistol Mk I", type:"tranq", dmg:[8,12], range:112, mag:6 },
+    { id:"W_9MM_JUNK", name:"9mm Sidearm (Used)", type:"lethal", dmg:[10,14], range:124, mag:12 },
+    { id:"W_SHOTGUN", name:"Pump Shotgun", type:"lethal", dmg:[18,26], range:94, mag:5 },
+    { id:"W_TRQ_RIFLE", name:"Tranq Rifle", type:"tranq", dmg:[14,20], range:168, mag:5 },
+    { id:"W_AR_CARBINE", name:"AR Carbine", type:"lethal", dmg:[14,20], range:176, mag:30 },
+    { id:"W_DMR", name:"DMR Marksman", type:"lethal", dmg:[20,28], range:214, mag:10 },
+    { id:"W_TRQ_LAUNCHER", name:"Tranquilizer Launcher", type:"tranq", dmg:[30,42], range:188, mag:2 },
+    { id:"W_RAIL_PROTO", name:"Prototype Rail Rifle", type:"lethal", dmg:[40,60], range:236, mag:3 },
+  ]);
 
   const CIV_FOLLOW_DISTANCE = 7.2;
   const CIV_PICKUP_RADIUS = 8.2;
@@ -258,6 +316,7 @@
       joystickRadius:42,
       moveSmoothX:0,
       moveSmoothY:0,
+      profileKey:"balanced",
       gamepad:{
         connected:false,
         moveX:0,
@@ -760,6 +819,43 @@
     return state.cameraCtl.mode === "first" ? "Cam: 1st" : "Cam: 3rd";
   }
 
+  function controlProfile(){
+    const key = String(state.controls?.profileKey || "balanced");
+    return CONTROL_PROFILES[key] || CONTROL_PROFILES.balanced;
+  }
+
+  function controlProfileLabel(){
+    return controlProfile().label || "Control: Balanced";
+  }
+
+  function hydrateControlProfileFromStorage(){
+    let key = "balanced";
+    try{
+      const saved = localStorage.getItem(CONTROL_PROFILE_STORAGE_KEY);
+      if(saved) key = String(saved);
+    }catch(_){}
+    if(!CONTROL_PROFILES[key]) key = "balanced";
+    state.controls.profileKey = key;
+  }
+
+  function persistControlProfile(){
+    try{
+      localStorage.setItem(CONTROL_PROFILE_STORAGE_KEY, String(state.controls.profileKey || "balanced"));
+    }catch(_){}
+  }
+
+  function cycleControlProfile(){
+    const current = String(state.controls.profileKey || "balanced");
+    const idx = Math.max(0, CONTROL_PROFILE_ORDER.indexOf(current));
+    const next = CONTROL_PROFILE_ORDER[(idx + 1) % CONTROL_PROFILE_ORDER.length];
+    state.controls.profileKey = next;
+    persistControlProfile();
+    state.controls.moveSmoothX = 0;
+    state.controls.moveSmoothY = 0;
+    updateCameraButtons();
+    setStatus(`${controlProfileLabel()} selected.`, 1000);
+  }
+
   function cycleCameraPreset(){
     const current = String(state.cameraCtl.preset || "tactical");
     const idx = Math.max(0, CAMERA_PRESET_ORDER.indexOf(current));
@@ -809,6 +905,7 @@
   function updateCameraButtons(){
     if(state.ui.camModeBtn) state.ui.camModeBtn.innerText = cameraModeLabel();
     if(state.ui.camPresetBtn) state.ui.camPresetBtn.innerText = cameraPresetLabel();
+    if(state.ui.controlModeBtn) state.ui.controlModeBtn.innerText = controlProfileLabel();
     if(state.ui.hudModeBtn) state.ui.hudModeBtn.innerText = hudModeLabel();
     if(state.ui.qualityBtn) state.ui.qualityBtn.innerText = currentVisualLabel();
     if(state.ui.camToggleBtn){
@@ -953,6 +1050,114 @@
     if(fromLive > 0) return clamp(fromLive, 2, 14);
     const lv = coreModeLevel(core);
     return clamp(2 + Math.floor((lv - 1) * 0.18), 2, 14);
+  }
+
+  function weaponCatalog3D(){
+    try{
+      if(typeof WEAPONS !== "undefined" && Array.isArray(WEAPONS) && WEAPONS.length){
+        return WEAPONS;
+      }
+    }catch(_){}
+    if(Array.isArray(window.WEAPONS) && window.WEAPONS.length){
+      return window.WEAPONS;
+    }
+    return PROTO3D_WEAPON_FALLBACKS;
+  }
+
+  function getWeaponById3D(id){
+    const key = String(id || "");
+    if(typeof window.getWeapon === "function"){
+      try{
+        const w = window.getWeapon(key);
+        if(w && typeof w === "object") return w;
+      }catch(_){}
+    }
+    const list = weaponCatalog3D();
+    const found = list.find((w)=>w && String(w.id || "") === key);
+    return found || list[0];
+  }
+
+  function activeWeapon3D(){
+    const core = coreState();
+    const wid = String(core?.equippedWeaponId || "W_9MM_JUNK");
+    return getWeaponById3D(wid);
+  }
+
+  function activeWeaponRange3D(){
+    const w = activeWeapon3D();
+    return clamp(Math.round(Number(w?.range || PLAYER_ATTACK_RANGE)), 70, COMBAT_LOCK_RANGE_MAX);
+  }
+
+  function weaponRangeBand3D(range = activeWeaponRange3D()){
+    const r = Math.max(0, Number(range || 0));
+    if(r <= WEAPON_RANGE_BANDS_3D.short) return "short";
+    if(r <= WEAPON_RANGE_BANDS_3D.mid) return "mid";
+    return "long";
+  }
+
+  function storyCaptureWindowPct3D(){
+    try{
+      if(typeof window.storyCaptureWindowPct === "function"){
+        const pct = Number(window.storyCaptureWindowPct());
+        if(Number.isFinite(pct) && pct > 0 && pct <= 0.6){
+          return pct;
+        }
+      }
+    }catch(_){}
+    return 0.25;
+  }
+
+  function captureWindowHp3D(tiger){
+    const hpMax = Math.max(1, Math.round(Number(tiger?.maxHp || tiger?.hp || 1)));
+    return Math.max(1, Math.ceil(hpMax * storyCaptureWindowPct3D()));
+  }
+
+  function weaponAttackCooldownMs3D(w){
+    const weapon = w || activeWeapon3D();
+    const range = Math.max(70, Number(weapon?.range || PLAYER_ATTACK_RANGE));
+    const mag = Math.max(1, Math.floor(Number(weapon?.mag || 8)));
+    const isTranq = String(weapon?.type || "lethal") === "tranq";
+    const band = weaponRangeBand3D(range);
+    if(isTranq){
+      if(range >= 180) return 640;
+      if(range >= 150) return 520;
+      return 430;
+    }
+    if(band === "short") return mag <= 6 ? 520 : 340;
+    if(band === "mid") return mag >= 24 ? 220 : 300;
+    return mag <= 4 ? 820 : 560;
+  }
+
+  function weaponCaptureCooldownMs3D(w){
+    const weapon = w || activeWeapon3D();
+    const range = Math.max(70, Number(weapon?.range || PLAYER_CAPTURE_RANGE));
+    if(String(weapon?.type || "lethal") !== "tranq") return 520;
+    if(range >= 180) return 860;
+    if(range >= 150) return 740;
+    return 620;
+  }
+
+  function weaponDamageRoll3D(w, distance){
+    const weapon = w || activeWeapon3D();
+    const range = Math.max(70, Number(weapon?.range || PLAYER_ATTACK_RANGE));
+    const band = weaponRangeBand3D(range);
+    const dmgRange = Array.isArray(weapon?.dmg) ? weapon.dmg : [10, 14];
+    const low = Math.max(1, Number(dmgRange[0] || 10));
+    const high = Math.max(low, Number(dmgRange[1] || 14));
+    const rolled = low + ((high - low) * Math.random());
+    const nearRatio = clamp(1 - (Math.max(0, Number(distance || 0)) / range), 0.08, 1);
+    let out = rolled;
+    if(band === "short"){
+      out *= (nearRatio > 0.56 ? 1.12 : 0.95);
+    }else if(band === "mid"){
+      out *= (0.96 + nearRatio * 0.22);
+    }else{
+      out *= (0.84 + nearRatio * 0.34);
+    }
+    if(String(weapon?.type || "lethal") === "tranq"){
+      out *= 0.82;
+    }
+    return Math.max(1, Math.round(out));
   }
 
   function markCoreDirty(){
@@ -1171,6 +1376,7 @@
       camToggleBtn: el("proto3dCamToggleBtn"),
       camModeBtn: el("proto3dCamModeBtn"),
       camPresetBtn: el("proto3dCamPresetBtn"),
+      controlModeBtn: el("proto3dControlModeBtn"),
       hudModeBtn: el("proto3dHudModeBtn"),
       zoomOutBtn: el("proto3dZoomOutBtn"),
       zoomInBtn: el("proto3dZoomInBtn"),
@@ -2738,6 +2944,7 @@
   }
 
   function controlsVector(){
+    const profile = controlProfile();
     const kb = state.controls.keyboard;
     const kx = (kb.ArrowRight || kb.KeyD ? 1 : 0) - (kb.ArrowLeft || kb.KeyA ? 1 : 0);
     const ky = (kb.ArrowDown || kb.KeyS ? 1 : 0) - (kb.ArrowUp || kb.KeyW ? 1 : 0);
@@ -2745,12 +2952,14 @@
     const gy = clamp(Number(state.controls.gamepad.moveY || 0), -1, 1);
     const rawX = clamp(state.controls.moveX + gx + kx, -1, 1);
     const rawY = clamp(state.controls.moveY + gy + ky, -1, 1);
-    const lerpT = clamp(1 - Math.exp(-18 * Math.max(0.001, state.dt || 0.016)), 0.15, 0.9);
+    const response = clamp(Number(profile.inputResponse || 20), 10, 30);
+    const lerpT = clamp(1 - Math.exp(-response * Math.max(0.001, state.dt || 0.016)), 0.12, 0.92);
     state.controls.moveSmoothX = lerp(state.controls.moveSmoothX || 0, rawX, lerpT);
     state.controls.moveSmoothY = lerp(state.controls.moveSmoothY || 0, rawY, lerpT);
-    const x = Math.abs(state.controls.moveSmoothX) < 0.015 ? 0 : state.controls.moveSmoothX;
-    const y = Math.abs(state.controls.moveSmoothY) < 0.015 ? 0 : state.controls.moveSmoothY;
-    const turn = clamp(x, -1, 1);
+    const dead = clamp(Number(profile.inputDeadzone || 0.014), 0.008, 0.03);
+    const x = Math.abs(state.controls.moveSmoothX) < dead ? 0 : state.controls.moveSmoothX;
+    const y = Math.abs(state.controls.moveSmoothY) < dead ? 0 : state.controls.moveSmoothY;
+    const turn = clamp(x * clamp(Number(profile.turnInputScale || 1), 0.8, 1.25), -1, 1);
     const forward = clamp(-y, -1, 1);
     return { x, y, turn, forward };
   }
@@ -2856,24 +3065,31 @@
   function attackTiger(target){
     const t = target || state.selectedTiger;
     if(!t || !t.alive) return setStatus("Tap a tiger first to lock target.");
+    const weapon = activeWeapon3D();
+    const weaponName = String(weapon?.name || "Weapon");
+    const weaponRange = activeWeaponRange3D();
     const now = nowMs();
     if(now < state.fx.nextAttackAt) return;
     const d = horizontalDistance(state.player, t);
-    if(d > PLAYER_ATTACK_RANGE){
-      setStatus(`Out of range (${Math.round(d)}m). Move closer.`);
+    if(d > weaponRange){
+      setStatus(`${weaponName} out of range (${Math.round(d)}m/${Math.round(weaponRange)}m). Move closer.`);
       return;
     }
-    state.fx.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
+    state.fx.nextAttackAt = now + weaponAttackCooldownMs3D(weapon);
     addCoreStat("shots", 1);
-    const nearBonus = clamp((PLAYER_ATTACK_RANGE - d) / PLAYER_ATTACK_RANGE, 0, 1);
-    const dmg = Math.round(12 + nearBonus * 16);
+    const dmg = weaponDamageRoll3D(weapon, d);
     damageTarget(t, dmg);
-    spawnImpactFx(t, 0xfef08a, "hit");
+    const isTranq = String(weapon?.type || "lethal") === "tranq";
+    spawnImpactFx(t, isTranq ? 0x86efac : 0xfef08a, isTranq ? "tranq" : "hit");
     const dirX = Math.sin(state.player.mesh.rotation.y);
     const dirZ = Math.cos(state.player.mesh.rotation.y);
-    t.mesh.position.x += dirX * 0.36;
-    t.mesh.position.z += dirZ * 0.36;
-    setStatus(`Hit ${t.name} for ${dmg}.`, 900);
+    const shove = isTranq ? 0.28 : 0.42;
+    t.mesh.position.x += dirX * shove;
+    t.mesh.position.z += dirZ * shove;
+    setStatus(`${weaponName} hit ${t.name} for ${dmg}.`, 900);
+    if(isTranq && t.hp > 0 && t.hp <= captureWindowHp3D(t)){
+      setStatus(`${t.name} is subdued. Capture is now available.`, 1100);
+    }
     if(t.hp <= 0){
       cleanupDeadTiger(t, "kill");
       setStatus(`${t.name} neutralized.`, 1400);
@@ -2883,23 +3099,32 @@
   function captureTiger(target){
     const t = target || state.selectedTiger;
     if(!t || !t.alive) return setStatus("Tap a tiger first to lock target.");
+    const weapon = activeWeapon3D();
+    const weaponName = String(weapon?.name || "Weapon");
+    const isTranq = String(weapon?.type || "lethal") === "tranq";
+    if(!isTranq){
+      setStatus(`Capture requires a tranq weapon. Current: ${weaponName}.`, 1600);
+      return;
+    }
+    const captureRange = clamp(activeWeaponRange3D() * 0.78, PLAYER_CAPTURE_RANGE, 180);
     const now = nowMs();
     if(now < state.fx.nextCaptureAt) return;
     const d = horizontalDistance(state.player, t);
-    if(d > PLAYER_CAPTURE_RANGE){
-      setStatus(`Capture range is ${PLAYER_CAPTURE_RANGE}m. Move closer.`);
+    if(d > captureRange){
+      setStatus(`Capture range is ${Math.round(captureRange)}m. Move closer.`);
       return;
     }
-    const hpPct = t.hp / Math.max(1, t.maxHp);
-    if(hpPct > 0.25){
-      setStatus(`Lower tiger HP below 25% first (${Math.round(hpPct * 100)}%).`, 1400);
+    const capWindowHp = captureWindowHp3D(t);
+    if(t.hp > capWindowHp){
+      const hpPct = t.hp / Math.max(1, t.maxHp);
+      setStatus(`Lower tiger HP below ${Math.round(storyCaptureWindowPct3D() * 100)}% first (${Math.round(hpPct * 100)}%).`, 1400);
       return;
     }
-    state.fx.nextCaptureAt = now + PLAYER_CAPTURE_COOLDOWN_MS;
+    state.fx.nextCaptureAt = now + weaponCaptureCooldownMs3D(weapon);
     flashUnit(t);
     spawnImpactFx(t, 0x6ee7b7, "hit");
     cleanupDeadTiger(t, "capture");
-    setStatus(`${t.name} captured for research.`, 1600);
+    setStatus(`${t.name} captured with ${weaponName}.`, 1600);
   }
 
   function useShield(){
@@ -2931,13 +3156,14 @@
   }
 
   function rollDodge(){
+    const profile = controlProfile();
     const vec = controlsVector();
     if(Math.hypot(vec.turn || 0, vec.forward || 0) < 0.1){
       const fwd = unitForward(state.player.mesh);
       state.fx.dodgeAngle = Math.atan2(fwd.x, fwd.z);
     }else{
       let yaw = Number(state.player?.mesh?.rotation?.y || 0);
-      yaw += (vec.turn || 0) * 0.95;
+      yaw += (vec.turn || 0) * clamp(Number(profile.moveTurnAssist || 0.3), 0.12, 0.48) * 2.4;
       if((vec.forward || 0) < -0.35) yaw += Math.PI;
       state.fx.dodgeAngle = normalizeAngle(yaw);
     }
@@ -3005,6 +3231,7 @@
   function updatePlayer(){
     const p = state.player;
     if(!p || !p.alive) return;
+    const profile = controlProfile();
     if(!Number.isFinite(p.stamina)) p.stamina = Number.isFinite(p.maxStamina) ? p.maxStamina : 100;
     if(!Number.isFinite(p.maxStamina) || p.maxStamina <= 0) p.maxStamina = 100;
 
@@ -3018,8 +3245,9 @@
     if(rolling) speed = PLAYER_ROLL_SPEED;
     else if(sprinting && p.stamina > 2) speed = PLAYER_SPRINT_SPEED;
 
-    if(Math.abs(turnIn) > 0.04){
-      const turnRate = 2.55;
+    const turnDeadzone = clamp(Number(profile.turnDeadzone || 0.04), 0.02, 0.08);
+    if(Math.abs(turnIn) > turnDeadzone){
+      const turnRate = clamp(Number(profile.turnRate || 2.9), 1.8, 4.2);
       p.mesh.rotation.y = normalizeAngle(p.mesh.rotation.y + (turnIn * turnRate * state.dt));
     }
 
@@ -3029,17 +3257,20 @@
       if(!rolling && fwdIn < -0.25){
         // Pulling down turns the soldier around quickly, then moves out.
         const desired = normalizeAngle(moveYaw + Math.PI);
-        p.mesh.rotation.y = lerpAngle(moveYaw, desired, clamp(1 - Math.exp(-13.5 * state.dt), 0.08, 0.34));
+        const backSnap = clamp(Number(profile.backTurnSnap || 13.6), 9.5, 18);
+        p.mesh.rotation.y = lerpAngle(moveYaw, desired, clamp(1 - Math.exp(-backSnap * state.dt), 0.08, 0.4));
         moveYaw = p.mesh.rotation.y;
       }else if(!rolling){
-        moveYaw += turnIn * 0.32;
+        moveYaw += turnIn * clamp(Number(profile.moveTurnAssist || 0.3), 0.12, 0.48);
       }else{
         moveYaw = state.fx.dodgeAngle;
       }
       const moved = moveByAngleWithCollision(p, moveYaw, speed * state.dt * (rolling ? 1 : absFwd), {
         radius:unitNavRadius(p),
         allowSlide:true,
-        turnLerp:rolling ? clamp(1 - Math.exp(-18 * state.dt), 0.1, 1) : clamp(1 - Math.exp(-14 * state.dt), 0.08, 1),
+        turnLerp:rolling
+          ? clamp(1 - Math.exp(-18 * state.dt), 0.1, 1)
+          : clamp(1 - Math.exp(-(Number(profile.turnLerpRate || 14) * state.dt)), 0.08, 1),
       });
       animateHumanoid(p, moved / Math.max(0.0001, state.dt));
     }else{
@@ -3364,7 +3595,8 @@
     const t = state.selectedTiger;
     if(!t || !t.alive || !state.player || !state.player.alive) return null;
     const d = horizontalDistance(state.player, t);
-    if(d > COMBAT_LOCK_RANGE) return null;
+    const lockRange = clamp(activeWeaponRange3D() * 1.05, COMBAT_LOCK_RANGE, COMBAT_LOCK_RANGE_MAX);
+    if(d > lockRange) return null;
     return t;
   }
 
@@ -3405,6 +3637,8 @@
     const aggro = Math.max(0.86, Number(state.mission.aggressionMult || 1));
     const spawnGrace = now < Math.max(0, Number(state.mission.spawnGraceUntil || 0));
     const roarBuff = now < Math.max(0, Number(state.mission.bossRoarUntil || 0));
+    const playerRange = activeWeaponRange3D();
+    const playerBand = weaponRangeBand3D(playerRange);
     for(const t of state.tigers){
       if(!t.alive) continue;
       const pick = chooseTigerTarget(t);
@@ -3415,16 +3649,28 @@
         continue;
       }
       t.target = target;
+      const versusPlayer = target.role === "player";
 
       let speed = t.speed * aggro;
       let mode = "patrol";
       if(dist < 52){
         mode = "stalk";
-        if(now > t.nextPounceAt && dist > 5 && dist < 26 && now > t.pounceUntil && now > t.recoverUntil){
+        const pounceMinDist = versusPlayer ? 6 : 5;
+        const pounceMaxDist = versusPlayer
+          ? (playerBand === "long" ? 38 : (playerBand === "mid" ? 31 : 26))
+          : 26;
+        const pounceCdBase = versusPlayer
+          ? (playerBand === "long" ? 1900 : (playerBand === "mid" ? 2200 : 2500))
+          : 2400;
+        if(now > t.nextPounceAt && dist > pounceMinDist && dist < pounceMaxDist && now > t.pounceUntil && now > t.recoverUntil){
           t.telegraphPounceUntil = now + TIGER_WINDUP_MS;
-          t.nextPounceAt = now + Math.max(980, 2400 / Math.max(0.75, aggro)) + Math.random() * 900;
+          t.nextPounceAt = now + Math.max(840, pounceCdBase / Math.max(0.75, aggro)) + Math.random() * 900;
           setStatus(`${t.name} pounce incoming!`, 700);
         }
+      }
+      if(versusPlayer){
+        if(playerBand === "long") speed *= 1.14;
+        else if(playerBand === "mid") speed *= 1.07;
       }
       if(spawnGrace && target && target.role === "civilian"){
         mode = "patrol";
@@ -3467,7 +3713,10 @@
       }
 
       if(t.attackHitAt > 0 && now >= t.attackHitAt){
-        if(t.pendingAttackTarget && t.pendingAttackTarget.alive && horizontalDistance(t, t.pendingAttackTarget) <= 4.4){
+        const pendingReach = (t.pendingAttackTarget?.role === "player")
+          ? (playerBand === "long" ? 5.05 : (playerBand === "mid" ? 4.7 : 4.4))
+          : 4.4;
+        if(t.pendingAttackTarget && t.pendingAttackTarget.alive && horizontalDistance(t, t.pendingAttackTarget) <= pendingReach){
           if(t.pendingAttackTarget.role === "player" && now < state.fx.rollUntil){
             setStatus("Perfect dodge window hit!", 620);
             spawnImpactFx(state.player, 0x34d399, "hit");
@@ -3482,7 +3731,10 @@
         t.telegraphMeleeUntil = 0;
       }
 
-      if(dist <= 3.8 && now >= t.nextAttackAt && t.attackHitAt <= 0){
+      const meleeReach = versusPlayer
+        ? (playerBand === "long" ? 4.75 : (playerBand === "mid" ? 4.3 : 3.9))
+        : 3.8;
+      if(dist <= meleeReach && now >= t.nextAttackAt && t.attackHitAt <= 0){
         t.telegraphMeleeUntil = now + TIGER_MELEE_WINDUP_MS;
         t.attackHitAt = t.telegraphMeleeUntil;
         t.pendingAttackTarget = target;
@@ -3758,6 +4010,10 @@
     const rescued = state.mission.rescued;
     const now = state.now || nowMs();
     const preset = qualityPreset();
+    const weapon = activeWeapon3D();
+    const weaponName = String(weapon?.name || "Weapon");
+    const weaponRange = activeWeaponRange3D();
+    const weaponType = String(weapon?.type || "lethal");
 
     const attackEnabled = !!(state.selectedTiger && state.selectedTiger.alive);
     if(state.ui.attackBtn){
@@ -3766,7 +4022,12 @@
     }
     if(state.ui.captureBtn){
       const st = state.selectedTiger;
-      const canCapture = !!(st && st.alive && (st.hp / st.maxHp) <= 0.25);
+      const canCapture = !!(
+        st &&
+        st.alive &&
+        weaponType === "tranq" &&
+        st.hp <= captureWindowHp3D(st)
+      );
       const disabled = !canCapture;
       if(state.ui.captureBtn.disabled !== disabled) state.ui.captureBtn.disabled = disabled;
     }
@@ -3829,13 +4090,20 @@
     if(st && st.alive){
       const pct = Math.round((st.hp / st.maxHp) * 100);
       const bossInfo = st.isBoss ? ` • BOSS P${Math.max(1, Math.floor(Number(state.mission.bossPhase || 1)))}` : "";
+      const d = Math.round(horizontalDistance(state.player, st));
+      const inRange = d <= weaponRange;
+      const capHp = captureWindowHp3D(st);
       if(hudMode === "compact"){
-        setHudText("tiger", state.ui.hudTiger, `${st.name}${bossInfo} • ${pct}% • ${tigerStatusText(st)}`);
+        setHudText("tiger", state.ui.hudTiger, `${st.name}${bossInfo} • ${pct}% • ${Math.min(d, 999)}m • ${tigerStatusText(st)}`);
       }else{
-        setHudText("tiger", state.ui.hudTiger, `LOCK ${st.name}${bossInfo} • HP ${Math.round(st.hp)}/${st.maxHp} (${pct}%) • ${tigerStatusText(st)}`);
+        setHudText(
+          "tiger",
+          state.ui.hudTiger,
+          `LOCK ${st.name}${bossInfo} • HP ${Math.round(st.hp)}/${st.maxHp} (${pct}%) • ${weaponName} ${d}/${Math.round(weaponRange)}m ${inRange ? "IN" : "OUT"} • CAP ≤ ${capHp} (${Math.round(storyCaptureWindowPct3D() * 100)}%) • ${tigerStatusText(st)}`
+        );
       }
     }else{
-      setHudText("tiger", state.ui.hudTiger, "LOCK: Tap tiger to engage.");
+      setHudText("tiger", state.ui.hudTiger, `LOCK: Tap tiger to engage • ${weaponName} (${weaponType.toUpperCase()}) ${Math.round(weaponRange)}m`);
     }
 
     if(state.ui.duelHud){
@@ -4068,6 +4336,9 @@
     if(ev.code === "KeyQ"){
       useShield();
     }
+    if(ev.code === "KeyC"){
+      cycleControlProfile();
+    }
   }
 
   function onKeyUp(ev){
@@ -4252,6 +4523,7 @@
     }
     if(state.ui.camModeBtn) state.ui.camModeBtn.onclick = ()=>cycleCameraMode();
     if(state.ui.camPresetBtn) state.ui.camPresetBtn.onclick = ()=>cycleCameraPreset();
+    if(state.ui.controlModeBtn) state.ui.controlModeBtn.onclick = ()=>cycleControlProfile();
     if(state.ui.hudModeBtn) state.ui.hudModeBtn.onclick = ()=>cycleHudMode();
     if(state.ui.zoomOutBtn) state.ui.zoomOutBtn.onclick = ()=>adjustCameraZoom(2.5);
     if(state.ui.zoomInBtn) state.ui.zoomInBtn.onclick = ()=>adjustCameraZoom(-2.5);
@@ -4315,6 +4587,7 @@
       const THREE = await ensureThreeLoaded();
       state.three = THREE;
       setupUIRefs();
+      hydrateControlProfileFromStorage();
       createWorldScene();
       bindUiEvents();
       bindWorldEvents();
