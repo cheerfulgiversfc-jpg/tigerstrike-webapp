@@ -94,6 +94,7 @@
   const COMBAT_LOCK_RANGE_MAX = 240;
   const COMBAT_MELEE_LANE_RANGE = 10;
   const COMBAT_MIN_SEPARATION = 3.1;
+  const COMBAT_HARD_SEPARATION = 4.8;
   const TIGER_WINDUP_MS = 420;
   const TIGER_MELEE_WINDUP_MS = 220;
   const SHOW_COMBAT_DUEL_CHIPS = false;
@@ -101,6 +102,11 @@
   const JOY_KNOB_SIZE = 54;
   const JOY_LEFT_ZONE_RATIO = 0.6;
   const JOY_DEADZONE_PX = 10;
+  const TRAP_RADIUS_3D = 10.5;
+  const TRAP_TTL_MS_3D = 22000;
+  const TRAP_HOLD_MIN_MS_3D = 3000;
+  const TRAP_HOLD_MAX_MS_3D = 5200;
+  const TRAP_MAX_ACTIVE_3D = 6;
   const CORE_SYNC_MS = 800;
   const CORE_SAVE_MIN_MS = 3400;
   const READINESS_KEY_PREFIX = "ts_3d_readiness_v1";
@@ -244,6 +250,13 @@
     },
   };
   const CAMERA_PRESET_ORDER = ["tactical", "combat", "cinematic"];
+  const CAMERA_ENTRY_DEFAULTS = Object.freeze({
+    mode:"third",
+    preset:"tactical",
+    zoomOffset:8,
+    heightOffset:3,
+    pitchOffset:-1,
+  });
 
   const TIGER_TYPES = [
     { name:"Standard", maxHp:120, speed:10.6, damage:9,  color:0xf59e0b, pounce:1.8 },
@@ -328,6 +341,7 @@
     squad:[],
     civilians:[],
     tigers:[],
+    traps:[],
     selectedTiger:null,
     tigerPickRoots:[],
     chunks:new Map(),
@@ -425,6 +439,7 @@
         status:"",
         hint:"",
         shieldLabel:"",
+        trapLabel:"",
       },
     },
     readiness:{
@@ -791,6 +806,7 @@
     state.perf.tier = next.key;
     state.perf.preset = next;
     setRendererDprByQuality();
+    applySceneLookFromMode();
     state.perf.hudLastAt = 0;
     if(reason){
       setStatus(`3D performance mode: ${next.key.toUpperCase()}.`, 1200);
@@ -894,12 +910,58 @@
     const mode = state.cameraCtl.visualMode || "auto";
     if(mode === "auto"){
       state.perf.autoEnabled = true;
+      applySceneLookFromMode();
       return;
     }
     state.perf.autoEnabled = false;
     if(mode === "perf") applyQualityTier("low");
     else if(mode === "balanced") applyQualityTier("med");
     else if(mode === "clarity") applyQualityTier("clarity");
+    applySceneLookFromMode();
+  }
+
+  function applySceneLookFromMode(){
+    if(!state.scene || !state.renderer) return;
+    const mode = String(state.cameraCtl.visualMode || "auto");
+    const tier = String(state.perf.tier || "med");
+    let bg = 0x0d1f18;
+    let fog = 0x133629;
+    let fogDensity = 0.00162;
+    let exposure = 1.15;
+    if(mode === "perf" || tier === "low"){
+      bg = 0x0b1713;
+      fog = 0x143024;
+      fogDensity = 0.00195;
+      exposure = 1.03;
+    }else if(mode === "balanced" || tier === "med"){
+      bg = 0x0c1c16;
+      fog = 0x15362a;
+      fogDensity = 0.00172;
+      exposure = 1.1;
+    }else if(mode === "clarity" || tier === "clarity" || tier === "high"){
+      bg = 0x10241c;
+      fog = 0x184133;
+      fogDensity = 0.00138;
+      exposure = 1.24;
+    }
+    if(state.scene.background) state.scene.background.setHex(bg);
+    if(state.scene.fog){
+      state.scene.fog.color.setHex(fog);
+      state.scene.fog.density = fogDensity;
+    }
+    if("toneMappingExposure" in state.renderer){
+      state.renderer.toneMappingExposure = exposure;
+    }
+  }
+
+  function applyEntryCameraDefaults(){
+    state.cameraCtl.mode = CAMERA_ENTRY_DEFAULTS.mode;
+    state.cameraCtl.preset = CAMERA_ENTRY_DEFAULTS.preset;
+    state.cameraCtl.zoomOffset = CAMERA_ENTRY_DEFAULTS.zoomOffset;
+    state.cameraCtl.heightOffset = CAMERA_ENTRY_DEFAULTS.heightOffset;
+    state.cameraCtl.pitchOffset = CAMERA_ENTRY_DEFAULTS.pitchOffset;
+    state.cameraCtl.camBarVisible = false;
+    updateCameraButtons();
   }
 
   function updateCameraButtons(){
@@ -910,6 +972,9 @@
     if(state.ui.qualityBtn) state.ui.qualityBtn.innerText = currentVisualLabel();
     if(state.ui.camToggleBtn){
       state.ui.camToggleBtn.innerText = state.cameraCtl.camBarVisible ? "Camera UI: ON" : "Camera UI: OFF";
+    }
+    if(state.ui.quickCamBtn){
+      state.ui.quickCamBtn.innerText = state.cameraCtl.camBarVisible ? "🎥 Hide" : "🎥 Cam";
     }
     if(state.ui.camBar){
       state.ui.camBar.classList.toggle("hidden", !state.cameraCtl.camBarVisible);
@@ -1029,6 +1094,7 @@
     if(!Number.isFinite(Number(core.armor))) core.armor = 0;
     if(!Number.isFinite(Number(core.stamina))) core.stamina = 100;
     if(!Number.isFinite(Number(core.shields))) core.shields = 0;
+    if(!Number.isFinite(Number(core.trapsOwned))) core.trapsOwned = 0;
     if(!core.abilityCooldowns || typeof core.abilityCooldowns !== "object"){
       core.abilityCooldowns = { scan:0, sprint:0, shield:0 };
     }
@@ -1352,7 +1418,10 @@
   }
 
   function mat(color, roughness=0.9, metalness=0.03){
-    return new state.three.MeshStandardMaterial({ color, roughness, metalness });
+    const THREE = state.three;
+    const base = new THREE.Color(color);
+    const emissive = base.clone().multiplyScalar(0.025);
+    return new THREE.MeshStandardMaterial({ color:base, roughness, metalness, emissive });
   }
 
   function setupUIRefs(){
@@ -1372,8 +1441,10 @@
       shieldBtn: el("proto3dShieldBtn"),
       rollBtn: el("proto3dRollBtn"),
       sprintBtn: el("proto3dSprintBtn"),
+      trapBtn: el("proto3dTrapBtn"),
       camBar: el("proto3dCamBar"),
       camToggleBtn: el("proto3dCamToggleBtn"),
+      quickCamBtn: el("proto3dQuickCamBtn"),
       camModeBtn: el("proto3dCamModeBtn"),
       camPresetBtn: el("proto3dCamPresetBtn"),
       controlModeBtn: el("proto3dControlModeBtn"),
@@ -1803,6 +1874,45 @@
     };
   }
 
+  function makeTrapVisual(){
+    const THREE = state.three;
+    const g = new THREE.Group();
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.1, 1.25, 0.34, 12),
+      mat(0x3f2a15, 0.82, 0.08)
+    );
+    base.position.y = 0.18;
+    const jaw = new THREE.Mesh(
+      new THREE.TorusGeometry(1.3, 0.14, 10, 24),
+      mat(0x9ca3af, 0.46, 0.22)
+    );
+    jaw.rotation.x = Math.PI * 0.5;
+    jaw.position.y = 0.26;
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(TRAP_RADIUS_3D - 0.28, TRAP_RADIUS_3D, 42),
+      new THREE.MeshBasicMaterial({
+        color:0xf59e0b,
+        transparent:true,
+        opacity:0.28,
+        depthWrite:false,
+        side:THREE.DoubleSide,
+      })
+    );
+    ring.rotation.x = -Math.PI * 0.5;
+    ring.position.y = 0.04;
+    ring.renderOrder = 23;
+    g.add(base, jaw, ring);
+    g.userData = { ring };
+    return g;
+  }
+
+  function clearTrapVisuals(){
+    for(const trap of state.traps){
+      if(trap?.mesh?.parent) trap.mesh.parent.remove(trap.mesh);
+    }
+    state.traps.length = 0;
+  }
+
   function createSelectionRing(parent, color=0x60a5fa, r=2.1){
     const THREE = state.three;
     const ring = new THREE.Mesh(
@@ -2083,6 +2193,7 @@
   function tigerStatusText(t){
     if(!t || !t.alive) return "DOWN";
     const n = state.now || nowMs();
+    if(t.trappedUntil && n < t.trappedUntil) return "TRAPPED";
     if(t.telegraphPounceUntil && n < t.telegraphPounceUntil) return "WINDUP";
     if(t.pounceUntil && n < t.pounceUntil) return "POUNCE";
     if(t.recoverUntil && n < t.recoverUntil) return "RECOVER";
@@ -2139,6 +2250,7 @@
       footstepT:Math.random() * 10,
       laneSide:Number.isFinite(opts.laneSide) ? opts.laneSide : laneSideFromId(opts.id),
       hitFlashUntil:0,
+      trappedUntil:0,
     };
     unit.mesh.position.copy(opts.position || new THREE.Vector3());
     unit.mesh.rotation.y = opts.yaw || 0;
@@ -2158,6 +2270,7 @@
       state.player.mesh.parent.remove(state.player.mesh);
     }
     state.player = null;
+    clearTrapVisuals();
     state.selectedTiger = null;
     state.tigerPickRoots.length = 0;
     state.mission.totalCivilians = 0;
@@ -2557,8 +2670,8 @@
     state.perf.frameNo = 0;
     state.perf.hudLastAt = 0;
     state.scene = new THREE.Scene();
-    state.scene.background = new THREE.Color(0x09130f);
-    state.scene.fog = new THREE.FogExp2(0x0d1b15, 0.0022);
+    state.scene.background = new THREE.Color(0x0d1f18);
+    state.scene.fog = new THREE.FogExp2(0x133629, 0.00162);
 
     state.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 4000);
     state.camera.position.set(0, 34, 38);
@@ -2579,16 +2692,19 @@
     state.renderer.outputColorSpace = THREE.SRGBColorSpace || state.renderer.outputEncoding;
     if(typeof THREE.ACESFilmicToneMapping === "number"){
       state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      state.renderer.toneMappingExposure = 1.03;
+      state.renderer.toneMappingExposure = 1.15;
     }
     state.renderer.domElement.className = "proto3dCanvas";
     state.canvasHost.innerHTML = "";
     state.canvasHost.appendChild(state.renderer.domElement);
 
-    const hemi = new THREE.HemisphereLight(0x8cccb0, 0x070b09, 0.82);
-    const dir = new THREE.DirectionalLight(0xfff0d2, 1.12);
+    const hemi = new THREE.HemisphereLight(0xa7e3c7, 0x07120f, 1.02);
+    const dir = new THREE.DirectionalLight(0xfff0d2, 1.28);
     dir.position.set(34, 68, 26);
-    state.scene.add(hemi, dir);
+    const fill = new THREE.DirectionalLight(0x7dd3fc, 0.34);
+    fill.position.set(-42, 34, -28);
+    const ambient = new THREE.AmbientLight(0x5fa68e, 0.24);
+    state.scene.add(hemi, dir, fill, ambient);
 
     state.root = new THREE.Group();
     state.worldRoot = new THREE.Group();
@@ -2601,7 +2717,7 @@
     const baseGround = new THREE.Mesh(
       new THREE.PlaneGeometry(6000, 6000, 24, 24),
       new THREE.MeshStandardMaterial({
-        color:0x103323,
+        color:0x1a4b35,
         roughness:0.98,
         metalness:0.02,
       })
@@ -2614,6 +2730,7 @@
     createGuideArrow();
     resetScenario();
     applyVisualModeSetting();
+    applySceneLookFromMode();
     updateCameraButtons();
     resize3d();
   }
@@ -2905,41 +3022,57 @@
   }
 
   function resolveSeparation(units){
-    for(let i=0;i<units.length;i++){
-      const a = units[i];
-      if(!a || !a.alive) continue;
-      for(let j=i+1;j<units.length;j++){
-        const b = units[j];
-        if(!b || !b.alive) continue;
-        const pa = a.mesh.position;
-        const pb = b.mesh.position;
-        const dx = pb.x - pa.x;
-        const dz = pb.z - pa.z;
-        const d = Math.hypot(dx, dz);
-        let minD = unitNavRadius(a) + unitNavRadius(b);
-        const tigerVsPlayer =
-          (a.role === "tiger" && b.role === "player") ||
-          (a.role === "player" && b.role === "tiger");
-        const tigerVsCivilian =
-          (a.role === "tiger" && b.role === "civilian") ||
-          (a.role === "civilian" && b.role === "tiger");
-        if(tigerVsPlayer) minD = Math.max(minD, COMBAT_MIN_SEPARATION);
-        if(tigerVsCivilian) minD = Math.max(minD, 2.15);
-        if(a.role === "civilian" && b.role === "civilian"){
-          minD *= 0.84;
+    const activeTiger = state.combat.active ? state.combat.target : null;
+    for(let pass=0; pass<2; pass++){
+      for(let i=0;i<units.length;i++){
+        const a = units[i];
+        if(!a || !a.alive) continue;
+        for(let j=i+1;j<units.length;j++){
+          const b = units[j];
+          if(!b || !b.alive) continue;
+          const pa = a.mesh.position;
+          const pb = b.mesh.position;
+          const dx = pb.x - pa.x;
+          const dz = pb.z - pa.z;
+          const d = Math.hypot(dx, dz);
+          let minD = unitNavRadius(a) + unitNavRadius(b);
+          const tigerVsPlayer =
+            (a.role === "tiger" && b.role === "player") ||
+            (a.role === "player" && b.role === "tiger");
+          const tigerVsCivilian =
+            (a.role === "tiger" && b.role === "civilian") ||
+            (a.role === "civilian" && b.role === "tiger");
+          if(tigerVsPlayer) minD = Math.max(minD, COMBAT_MIN_SEPARATION);
+          if(tigerVsCivilian) minD = Math.max(minD, 2.15);
+          if(a.role === "civilian" && b.role === "civilian"){
+            minD *= 0.84;
+          }
+          if(activeTiger && activeTiger.alive){
+            const combatPair =
+              (a === state.player && b === activeTiger) ||
+              (b === state.player && a === activeTiger);
+            if(combatPair){
+              minD = Math.max(minD, COMBAT_HARD_SEPARATION);
+            }
+            const squadVsActiveTiger =
+              ((a.role === "squad" && b === activeTiger) || (b.role === "squad" && a === activeTiger));
+            if(squadVsActiveTiger){
+              minD = Math.max(minD, 3.8);
+            }
+          }
+          if(d > 0 && d < minD){
+            const pushScale = (a.role === "civilian" || b.role === "civilian") ? 0.34 : 0.52;
+            const push = (minD - d) * pushScale;
+            const nx = dx / d;
+            const nz = dz / d;
+            pa.x -= nx * push;
+            pa.z -= nz * push;
+            pb.x += nx * push;
+            pb.z += nz * push;
+          }
         }
-        if(d > 0 && d < minD){
-          const pushScale = (a.role === "civilian" || b.role === "civilian") ? 0.34 : 0.5;
-          const push = (minD - d) * pushScale;
-          const nx = dx / d;
-          const nz = dz / d;
-          pa.x -= nx * push;
-          pa.z -= nz * push;
-          pb.x += nx * push;
-          pb.z += nz * push;
-        }
+        resolveStaticOverlap(a);
       }
-      resolveStaticOverlap(a);
     }
   }
 
@@ -2959,7 +3092,7 @@
     const dead = clamp(Number(profile.inputDeadzone || 0.014), 0.008, 0.03);
     const x = Math.abs(state.controls.moveSmoothX) < dead ? 0 : state.controls.moveSmoothX;
     const y = Math.abs(state.controls.moveSmoothY) < dead ? 0 : state.controls.moveSmoothY;
-    const turn = clamp(x * clamp(Number(profile.turnInputScale || 1), 0.8, 1.25), -1, 1);
+    const turn = clamp((-x) * clamp(Number(profile.turnInputScale || 1), 0.8, 1.25), -1, 1);
     const forward = clamp(-y, -1, 1);
     return { x, y, turn, forward };
   }
@@ -3125,6 +3258,84 @@
     spawnImpactFx(t, 0x6ee7b7, "hit");
     cleanupDeadTiger(t, "capture");
     setStatus(`${t.name} captured with ${weaponName}.`, 1600);
+  }
+
+  function removeTrapAt(idx){
+    const trap = state.traps[idx];
+    if(!trap) return;
+    if(trap.mesh && trap.mesh.parent) trap.mesh.parent.remove(trap.mesh);
+    state.traps.splice(idx, 1);
+  }
+
+  function placeTrap3D(){
+    const core = coreState();
+    if(!state.player || !state.player.alive) return;
+    if(core){
+      ensureCoreBuckets(core);
+      const owned = Math.max(0, Math.floor(Number(core.trapsOwned ?? core.traps ?? 0)));
+      if(owned <= 0){
+        setStatus("No traps left. Buy more in Shop.", 1300);
+        return;
+      }
+      core.trapsOwned = owned - 1;
+      if(Number.isFinite(Number(core.traps))) core.traps = core.trapsOwned;
+      markCoreDirty();
+    }
+
+    if(state.traps.length >= TRAP_MAX_ACTIVE_3D){
+      removeTrapAt(0);
+    }
+
+    const fwd = unitForward(state.player.mesh);
+    const tx = state.player.mesh.position.x + fwd.x * 3.3;
+    const tz = state.player.mesh.position.z + fwd.z * 3.3;
+    const trapMesh = makeTrapVisual();
+    trapMesh.position.set(tx, 0, tz);
+    state.effectsRoot.add(trapMesh);
+    state.traps.push({
+      mesh:trapMesh,
+      x:tx,
+      z:tz,
+      radius:TRAP_RADIUS_3D,
+      expiresAt:nowMs() + TRAP_TTL_MS_3D,
+    });
+    addCoreStat("trapsPlaced", 1);
+    setStatus("🪤 Trap placed. Tigers held 3–5s when triggered.", 1300);
+  }
+
+  function updateTraps(){
+    const now = state.now || nowMs();
+    for(let i=state.traps.length - 1; i>=0; i--){
+      const trap = state.traps[i];
+      if(!trap) continue;
+      if(trap.mesh?.userData?.ring){
+        trap.mesh.userData.ring.rotation.z += state.dt * 0.95;
+      }
+      if(now >= Number(trap.expiresAt || 0)){
+        removeTrapAt(i);
+        continue;
+      }
+      for(const tiger of state.tigers){
+        if(!tiger || !tiger.alive) continue;
+        if(now < Number(tiger.trappedUntil || 0)) continue;
+        const dx = tiger.mesh.position.x - trap.x;
+        const dz = tiger.mesh.position.z - trap.z;
+        if((dx * dx + dz * dz) > (trap.radius * trap.radius)) continue;
+        const holdMs = Math.round(TRAP_HOLD_MIN_MS_3D + Math.random() * (TRAP_HOLD_MAX_MS_3D - TRAP_HOLD_MIN_MS_3D));
+        tiger.trappedUntil = now + holdMs;
+        tiger.nextAttackAt = Math.max(tiger.nextAttackAt, tiger.trappedUntil + 320);
+        tiger.telegraphPounceUntil = 0;
+        tiger.telegraphMeleeUntil = 0;
+        tiger.pounceUntil = 0;
+        tiger.recoverUntil = tiger.trappedUntil + 220;
+        tiger.attackHitAt = 0;
+        tiger.pendingAttackTarget = null;
+        tiger.pendingAttackDamage = 0;
+        addCoreStat("trapsTriggered", 1);
+        spawnImpactFx(tiger, 0xfbbf24, "hit");
+        setStatus(`🪤 ${tiger.name} trapped for ${Math.ceil(holdMs / 1000)}s.`, 1000);
+      }
+    }
   }
 
   function useShield(){
@@ -3650,6 +3861,16 @@
       }
       t.target = target;
       const versusPlayer = target.role === "player";
+      if(now < Number(t.trappedUntil || 0)){
+        t.state = "trapped";
+        t.telegraphPounceUntil = 0;
+        t.telegraphMeleeUntil = 0;
+        t.attackHitAt = 0;
+        t.pendingAttackTarget = null;
+        t.pendingAttackDamage = 0;
+        animateTiger(t, 0.04);
+        continue;
+      }
 
       let speed = t.speed * aggro;
       let mode = "patrol";
@@ -3818,7 +4039,7 @@
     }
 
     const isSafeZone = targetType === "safezone";
-    const beamColor = isSafeZone ? 0x34d399 : 0x60a5fa;
+    const beamColor = isSafeZone ? 0x4ade80 : 0x7dd3fc;
     if(state.guideArrow.shaftMat) state.guideArrow.shaftMat.color.setHex(isSafeZone ? 0x34d399 : 0x7dd3fc);
     if(state.guideArrow.headMat) state.guideArrow.headMat.color.setHex(isSafeZone ? 0x86efac : 0xbfe6ff);
     if(state.guideArrow.ringMat) state.guideArrow.ringMat.color.setHex(isSafeZone ? 0x4ade80 : 0x34d399);
@@ -3830,20 +4051,20 @@
     const dz = targetPos.z - p.z;
     const yaw = Math.atan2(dx, dz);
     state.guideArrow.mesh.visible = true;
-    state.guideArrow.mesh.position.set(p.x, 9.2, p.z);
+    state.guideArrow.mesh.position.set(p.x, 11.4, p.z);
     state.guideArrow.mesh.rotation.y = yaw;
     const pulse = 1 + Math.sin((state.now || nowMs()) * 0.011) * 0.14;
-    state.guideArrow.mesh.scale.set(1.24 * pulse, 1.24 * pulse, 1.24 * pulse);
+    state.guideArrow.mesh.scale.set(1.5 * pulse, 1.5 * pulse, 1.5 * pulse);
     if(state.guideArrow.ring){
       state.guideArrow.ring.rotation.z += state.dt * 1.2;
     }
     if(state.guideArrow.targetBeam){
       state.guideArrow.targetBeam.visible = true;
-      state.guideArrow.targetBeam.position.set(targetPos.x, 5.75, targetPos.z);
+      state.guideArrow.targetBeam.position.set(targetPos.x, 7.0, targetPos.z);
     }
     if(state.guideArrow.targetCap){
       state.guideArrow.targetCap.visible = true;
-      state.guideArrow.targetCap.position.set(targetPos.x, 11.6 + Math.sin((state.now || nowMs()) * 0.008) * 0.45, targetPos.z);
+      state.guideArrow.targetCap.position.set(targetPos.x, 13.4 + Math.sin((state.now || nowMs()) * 0.008) * 0.6, targetPos.z);
     }
     if(state.guideArrow.targetRing){
       state.guideArrow.targetRing.visible = true;
@@ -3859,14 +4080,18 @@
     for(const t of state.tigers){
       if(t.ring) t.ring.visible = (state.selectedTiger === t) && t.alive;
       if(t.telegraphRing){
+        const trapped = !!(t.trappedUntil && now < t.trappedUntil);
         const pounceWindup = !!(t.telegraphPounceUntil && now < t.telegraphPounceUntil);
         const meleeWindup = !!(t.telegraphMeleeUntil && now < t.telegraphMeleeUntil);
         const pouncing = !!(t.pounceUntil && now < t.pounceUntil);
-        if(pounceWindup || meleeWindup || pouncing){
+        if(trapped || pounceWindup || meleeWindup || pouncing){
           t.telegraphRing.visible = true;
           const pulse = 1 + Math.sin((now + (t.scoreValue || 0)) * 0.02) * 0.08;
           t.telegraphRing.scale.set(pulse, pulse, pulse);
-          if(pounceWindup){
+          if(trapped){
+            t.telegraphRing.material.color.setHex(0xfbbf24);
+            t.telegraphRing.material.opacity = 0.84;
+          }else if(pounceWindup){
             t.telegraphRing.material.color.setHex(0xfb7185);
             t.telegraphRing.material.opacity = 0.82;
           }else if(meleeWindup){
@@ -3976,6 +4201,27 @@
     state.camera.lookAt(lookX, lookY, lookZ);
   }
 
+  function snapCameraNow(){
+    const p = state.player;
+    if(!p || !state.camera) return;
+    const ctl = state.cameraCtl;
+    const preset = cameraPreset();
+    const isLandscape = window.matchMedia("(orientation: landscape)").matches;
+    const presetThird = preset.third || CAMERA_PRESETS.tactical.third;
+    const followHeight =
+      Number(isLandscape ? presetThird.heightLandscape : presetThird.heightPortrait) +
+      ctl.heightOffset * 0.42;
+    const followBack =
+      Number(isLandscape ? presetThird.backLandscape : presetThird.backPortrait) +
+      ctl.zoomOffset;
+    const fwd = unitForward(p.mesh);
+    const tx = p.mesh.position.x - fwd.x * followBack;
+    const tz = p.mesh.position.z - fwd.z * followBack;
+    const lookY = (isLandscape ? 2.3 : 2.8) + ctl.pitchOffset * 0.06;
+    state.camera.position.set(tx, followHeight, tz);
+    state.camera.lookAt(p.mesh.position.x, lookY, p.mesh.position.z);
+  }
+
   function updateCombatFloatingLabels(){
     const tiger = state.combat.active ? state.combat.target : null;
     const player = state.player;
@@ -4041,6 +4287,15 @@
       if(state.perf.lastHud.shieldLabel !== shieldLabel){
         state.perf.lastHud.shieldLabel = shieldLabel;
         state.ui.shieldBtn.innerText = shieldLabel;
+      }
+    }
+    if(state.ui.trapBtn){
+      const core = coreState();
+      const trapCount = core ? Math.max(0, Math.floor(Number(core.trapsOwned ?? core.traps ?? 0))) : 0;
+      const trapLabel = `Trap (${trapCount})`;
+      if(state.perf.lastHud.trapLabel !== trapLabel){
+        state.perf.lastHud.trapLabel = trapLabel;
+        state.ui.trapBtn.innerText = trapLabel;
       }
     }
 
@@ -4175,6 +4430,7 @@
     runFrameTask(()=>{ updateCivilians(); }, { cost:1.9, every:lowTier ? 2 : 1 });
     const directorOk = updateMissionDirector();
     if(!directorOk) return;
+    runFrameTask(()=>{ updateTraps(); }, { cost:0.55, every:1 });
     updateTigers();
     updateCombatDirector();
 
@@ -4421,6 +4677,22 @@
     state.controls.sprintHold = gamepadButtonPressed(buttons, 5); // RB / R1 hold
   }
 
+  function isUiTapReserved(clientX, clientY){
+    try{
+      const hit = document.elementFromPoint(clientX, clientY);
+      if(!hit) return false;
+      if(hit.closest(".proto3dBtnCluster")) return true;
+      if(hit.closest(".proto3dTopbar")) return true;
+      if(hit.closest(".proto3dCamBar")) return true;
+      if(hit.closest(".proto3dDuelHud")) return true;
+      if(hit.closest(".proto3dQuickCamBtn")) return true;
+      if(hit.closest("button")) return true;
+      return false;
+    }catch(_){
+      return false;
+    }
+  }
+
   function updateJoystickVisual(nx, ny){
     const maxR = state.controls.joystickRadius || 42;
     const baseHalf = JOY_BASE_SIZE * 0.5;
@@ -4452,6 +4724,7 @@
   function onJoyPointerDown(ev){
     if(!state.active || !state.ui.joyBase) return;
     if(ev.clientX > window.innerWidth * JOY_LEFT_ZONE_RATIO) return;
+    if(isUiTapReserved(ev.clientX, ev.clientY)) return;
     const tappedTiger = pickTigerAtScreen(ev.clientX, ev.clientY);
     if(tappedTiger){
       ev.preventDefault();
@@ -4514,8 +4787,10 @@
     if(state.ui.attackBtn) state.ui.attackBtn.onclick = ()=>attackTiger();
     if(state.ui.captureBtn) state.ui.captureBtn.onclick = ()=>captureTiger();
     if(state.ui.shieldBtn) state.ui.shieldBtn.onclick = ()=>useShield();
+    if(state.ui.trapBtn) state.ui.trapBtn.onclick = ()=>placeTrap3D();
     if(state.ui.rollBtn) state.ui.rollBtn.onclick = ()=>rollDodge();
     if(state.ui.camToggleBtn) state.ui.camToggleBtn.onclick = ()=>toggleCamBarVisible();
+    if(state.ui.quickCamBtn) state.ui.quickCamBtn.onclick = ()=>toggleCamBarVisible();
     if(state.ui.sprintBtn){
       state.ui.sprintBtn.onpointerdown = (ev)=>{ ev.preventDefault(); state.controls.sprintHold = true; triggerSprint(); };
       state.ui.sprintBtn.onpointerup = (ev)=>{ ev.preventDefault(); state.controls.sprintHold = false; };
@@ -4603,6 +4878,7 @@
     if(typeof window.closeMode === "function"){
       try{ window.closeMode(); }catch(_){}
     }
+    applyEntryCameraDefaults();
     if(state.ready && state.player){
       resetScenario();
     }
@@ -4612,6 +4888,7 @@
     document.body.classList.add("proto3dOpen");
     setCamBarVisible(false);
     resize3d();
+    snapCameraNow();
     state.clock.getDelta();
     stopRenderLoop();
     recordReadinessSessionStart();

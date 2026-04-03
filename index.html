@@ -254,7 +254,7 @@
       left:8px;
       right:8px;
       top:calc(8px + env(safe-area-inset-top));
-      z-index:4;
+      z-index:11;
       display:flex;
       align-items:center;
       justify-content:flex-start;
@@ -305,7 +305,7 @@
       top:auto;
       bottom:calc(192px + env(safe-area-inset-bottom));
       width:min(52vw, 520px);
-      z-index:5;
+      z-index:12;
       display:grid;
       grid-template-columns:repeat(3,minmax(0,1fr));
       gap:6px;
@@ -330,7 +330,7 @@
       left:8px;
       right:8px;
       top:calc(68px + env(safe-area-inset-top));
-      z-index:4;
+      z-index:10;
       display:flex;
       gap:6px;
       pointer-events:none;
@@ -413,15 +413,15 @@
     .proto3dControls{
       position:absolute;
       inset:0;
-      z-index:5;
+      z-index:9;
       pointer-events:none;
     }
     .proto3dJoyArea{
       position:absolute;
       left:0;
-      top:0;
+      top:calc(92px + env(safe-area-inset-top));
       bottom:0;
-      width:min(60vw, 680px);
+      width:min(58vw, 640px);
       pointer-events:auto;
       touch-action:none;
     }
@@ -456,12 +456,12 @@
       right:10px;
       bottom:14px;
       display:grid;
-      grid-template-columns:repeat(3,68px);
+      grid-template-columns:repeat(2,76px);
       grid-template-rows:repeat(3,56px);
       grid-template-areas:
-        ". attack ."
-        "shield roll capture"
-        ". sprint .";
+        "attack capture"
+        "shield roll"
+        "sprint trap";
       gap:8px;
       pointer-events:auto;
     }
@@ -470,6 +470,7 @@
     .proto3dActionBtn.shield{ grid-area:shield; }
     .proto3dActionBtn.roll{ grid-area:roll; }
     .proto3dActionBtn.sprint{ grid-area:sprint; }
+    .proto3dActionBtn.trap{ grid-area:trap; }
     .proto3dActionBtn{
       min-height:62px;
       border-radius:16px;
@@ -491,6 +492,22 @@
     .proto3dActionBtn.ghost{
       border-color:rgba(96,165,250,.8);
       background:rgba(14,28,56,.52);
+    }
+    .proto3dQuickCamBtn{
+      position:absolute;
+      left:14px;
+      bottom:calc(16px + env(safe-area-inset-bottom));
+      min-height:44px;
+      min-width:66px;
+      border-radius:14px;
+      border:1px solid rgba(78,106,162,.84);
+      background:rgba(8,12,22,.58);
+      color:var(--text);
+      font-weight:900;
+      letter-spacing:.01em;
+      padding:8px 10px;
+      box-shadow:0 10px 22px rgba(0,0,0,.33);
+      pointer-events:auto;
     }
     .proto3dLandscapeHint{
       position:absolute;
@@ -558,7 +575,8 @@
         max-width:92vw;
       }
       .proto3dJoyArea{
-        width:min(64vw, 520px);
+        top:calc(88px + env(safe-area-inset-top));
+        width:min(60vw, 500px);
       }
       .proto3dJoyKnob{
         width:54px;
@@ -567,13 +585,22 @@
       .proto3dBtnCluster{
         right:8px;
         bottom:10px;
-        grid-template-columns:repeat(3,58px);
+        grid-template-columns:repeat(2,62px);
         grid-template-rows:repeat(3,52px);
         gap:6px;
       }
       .proto3dActionBtn{
         min-height:54px;
         border-radius:14px;
+        font-size:11px;
+      }
+      .proto3dQuickCamBtn{
+        left:10px;
+        bottom:calc(10px + env(safe-area-inset-bottom));
+        min-height:40px;
+        min-width:58px;
+        border-radius:12px;
+        padding:6px 8px;
         font-size:11px;
       }
       .proto3dDuelChip{
@@ -1753,7 +1780,9 @@
         <button class="proto3dActionBtn ghost shield" id="proto3dShieldBtn">Shield</button>
         <button class="proto3dActionBtn ghost roll" id="proto3dRollBtn">Roll</button>
         <button class="proto3dActionBtn ghost sprint" id="proto3dSprintBtn">Sprint</button>
+        <button class="proto3dActionBtn ghost trap" id="proto3dTrapBtn">Trap</button>
       </div>
+      <button class="proto3dQuickCamBtn" id="proto3dQuickCamBtn">🎥 Cam</button>
     </div>
   </div>
 </div>
@@ -2167,9 +2196,9 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4470"></script>
+<script src="./game.js?v=4471"></script>
 <script src="./tutorial.js?v=4463"></script>
-<script src="./prototype3d.js?v=4470"></script>
+<script src="./prototype3d.js?v=4471"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";
