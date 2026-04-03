@@ -371,6 +371,8 @@
       targetStatus:"",
       lockBlend:0,
       pounceFxUntil:0,
+      outRangeSince:0,
+      lastOutRangeMsgAt:0,
     },
     mission:{
       totalCivilians:0,
@@ -4186,6 +4188,28 @@
   }
 
   function updateCombatDirector(){
+    const now = nowMs();
+    const selected = state.selectedTiger;
+    if(selected && selected.alive && state.player && state.player.alive){
+      const d = horizontalDistance(state.player, selected);
+      const lockRange = clamp(activeWeaponRange3D() * 1.05, COMBAT_LOCK_RANGE, COMBAT_LOCK_RANGE_MAX);
+      if(d > lockRange){
+        if(!state.combat.outRangeSince) state.combat.outRangeSince = now;
+        if((now - state.combat.outRangeSince) > 900){
+          state.selectedTiger = null;
+          state.combat.outRangeSince = 0;
+          if((now - Number(state.combat.lastOutRangeMsgAt || 0)) > 1200){
+            state.combat.lastOutRangeMsgAt = now;
+            setStatus("Lock lost. Move closer and tap tiger again.", 1000);
+          }
+        }
+      }else{
+        state.combat.outRangeSince = 0;
+      }
+    }else{
+      state.combat.outRangeSince = 0;
+    }
+
     const activeTiger = getActiveCombatTiger();
     if(activeTiger){
       state.combat.active = true;
@@ -4201,19 +4225,27 @@
   }
 
   function tigerDesiredLane(t, target){
-    const tp = target.mesh.position;
-    const pp = state.player.mesh.position;
+    const pp = target.mesh.position;
+    const tp = t.mesh.position;
     let vx = pp.x - tp.x;
     let vz = pp.z - tp.z;
-    const vd = Math.hypot(vx, vz) || 1;
+    let vd = Math.hypot(vx, vz);
+    if(vd < 0.001){
+      const yaw = Number(state.player?.mesh?.rotation?.y || 0);
+      vx = Math.sin(yaw);
+      vz = Math.cos(yaw);
+      vd = 1;
+    }
     vx /= vd;
     vz /= vd;
     const sideX = -vz;
     const sideZ = vx;
     const sideSign = Number.isFinite(t.laneSide) ? t.laneSide : 1;
+    const laneForward = COMBAT_HARD_SEPARATION + 0.35;
+    const sideOffset = 1.95;
     return {
-      x: pp.x + vx * 2.4 + sideX * (1.6 * sideSign),
-      z: pp.z + vz * 2.4 + sideZ * (1.6 * sideSign),
+      x: pp.x - vx * laneForward + sideX * (sideOffset * sideSign),
+      z: pp.z - vz * laneForward + sideZ * (sideOffset * sideSign),
     };
   }
 
@@ -4644,14 +4676,16 @@
     const weaponRange = activeWeaponRange3D();
     const weaponType = String(weapon?.type || "lethal");
 
-    const attackEnabled = !!(state.selectedTiger && state.selectedTiger.alive);
+    const st = state.selectedTiger;
+    const distToSelected = (st && st.alive && state.player) ? horizontalDistance(state.player, st) : Infinity;
+    const attackEnabled = !!(st && st.alive && distToSelected <= weaponRange);
     if(state.ui.attackBtn){
       const disabled = !attackEnabled;
       if(state.ui.attackBtn.disabled !== disabled) state.ui.attackBtn.disabled = disabled;
     }
     if(state.ui.captureBtn){
-      const st = state.selectedTiger;
-      const canCapture = !!(st && canAttemptCapture3D(st));
+      const captureRange = clamp(activeWeaponRange3D() * 0.95, PLAYER_CAPTURE_RANGE, COMBAT_LOCK_RANGE_MAX);
+      const canCapture = !!(st && canAttemptCapture3D(st) && distToSelected <= captureRange);
       const disabled = !canCapture;
       if(state.ui.captureBtn.disabled !== disabled) state.ui.captureBtn.disabled = disabled;
     }
@@ -4729,7 +4763,7 @@
     }
     if(p){
       const staminaNow = Math.round(Number.isFinite(p.stamina) ? p.stamina : 100);
-      if(hudMode === "compact"){
+      if(hudMode === "compact" || hudMode === "combat"){
         setHudText("agent", state.ui.hudAgent, `YOU HP ${Math.round(p.hp)} • AR ${Math.round(p.armor)} • ST ${staminaNow}`);
       }else{
         setHudText(
@@ -4740,14 +4774,13 @@
       }
     }
 
-    const st = state.selectedTiger;
     if(st && st.alive){
       const pct = Math.round((st.hp / st.maxHp) * 100);
       const bossInfo = st.isBoss ? ` • BOSS P${Math.max(1, Math.floor(Number(state.mission.bossPhase || 1)))}` : "";
-      const d = Math.round(horizontalDistance(state.player, st));
-      const inRange = d <= weaponRange;
+      const d = Math.round(distToSelected);
+      const inRange = distToSelected <= weaponRange;
       const capHp = captureWindowHp3D(st);
-      if(hudMode === "compact"){
+      if(hudMode === "compact" || hudMode === "combat"){
         setHudText("tiger", state.ui.hudTiger, `${st.name}${bossInfo} • ${pct}% • ${Math.min(d, 999)}m • ${tigerStatusText(st)}`);
       }else{
         setHudText(
