@@ -102,6 +102,7 @@
   const JOY_KNOB_SIZE = 54;
   const JOY_LEFT_ZONE_RATIO = 0.6;
   const JOY_DEADZONE_PX = 10;
+  const SHIELD_PX_TO_WORLD_RATIO = 13;
   const TRAP_RADIUS_3D = 10.5;
   const TRAP_TTL_MS_3D = 22000;
   const TRAP_HOLD_MIN_MS_3D = 3000;
@@ -1284,6 +1285,14 @@
 
   function weaponAttackCooldownMs3D(w){
     const weapon = w || activeWeapon3D();
+    try{
+      if(typeof window.coreCombatAttackCooldownMs === "function"){
+        const out = Number(window.coreCombatAttackCooldownMs(weapon));
+        if(Number.isFinite(out) && out > 0){
+          return Math.round(out);
+        }
+      }
+    }catch(_){}
     const range = Math.max(70, Number(weapon?.range || PLAYER_ATTACK_RANGE));
     const mag = Math.max(1, Math.floor(Number(weapon?.mag || 8)));
     const isTranq = String(weapon?.type || "lethal") === "tranq";
@@ -1300,6 +1309,14 @@
 
   function weaponCaptureCooldownMs3D(w){
     const weapon = w || activeWeapon3D();
+    try{
+      if(typeof window.coreCombatCaptureCooldownMs === "function"){
+        const out = Number(window.coreCombatCaptureCooldownMs(weapon));
+        if(Number.isFinite(out) && out > 0){
+          return Math.round(out);
+        }
+      }
+    }catch(_){}
     const range = Math.max(70, Number(weapon?.range || PLAYER_CAPTURE_RANGE));
     if(String(weapon?.type || "lethal") !== "tranq") return 520;
     if(range >= 180) return 860;
@@ -1309,6 +1326,17 @@
 
   function weaponDamageRoll3D(w, distance, tiger){
     const weapon = w || activeWeapon3D();
+    if(tiger){
+      try{
+        if(typeof window.coreCombatResolveAttackHit === "function"){
+          const out = window.coreCombatResolveAttackHit(weapon, parityTigerPayload3D(tiger));
+          const dmg = Number(out?.damage || 0);
+          if(Number.isFinite(dmg) && dmg > 0){
+            return Math.max(1, Math.round(dmg));
+          }
+        }
+      }catch(_){}
+    }
     const range = Math.max(70, Number(weapon?.range || PLAYER_ATTACK_RANGE));
     const band = weaponRangeBand3D(range);
     const dmgRange = Array.isArray(weapon?.dmg) ? weapon.dmg : [10, 14];
@@ -3359,9 +3387,19 @@
   }
 
   function protectedByShield(unit){
-    if(!isShieldActive() || !state.player || !unit) return false;
-    if(unit.role === "player") return true;
+    if(!state.player || !unit) return false;
     const d = horizontalDistance(unit, state.player);
+    try{
+      if(typeof window.coreShieldBlocksTarget === "function"){
+        return !!window.coreShieldBlocksTarget(
+          unit.role === "player" ? "player" : (unit.role === "civilian" ? "civilian" : "other"),
+          d * SHIELD_PX_TO_WORLD_RATIO,
+          !!unit.following
+        );
+      }
+    }catch(_){}
+    if(!isShieldActive()) return false;
+    if(unit.role === "player") return true;
     return d <= 11.5;
   }
 
@@ -3532,7 +3570,18 @@
   function placeTrap3D(){
     const core = coreState();
     if(!state.player || !state.player.alive) return;
-    if(core){
+    let consumedByCore = false;
+    try{
+      if(typeof window.coreConsumeTrapFor3D === "function"){
+        const result = window.coreConsumeTrapFor3D();
+        if(!result?.ok){
+          setStatus(result?.message || "No traps left. Buy more in Shop.", 1300);
+          return;
+        }
+        consumedByCore = true;
+      }
+    }catch(_){}
+    if(!consumedByCore && core){
       ensureCoreBuckets(core);
       const owned = Math.max(0, Math.floor(Number(core.trapsOwned ?? core.traps ?? 0)));
       if(owned <= 0){
@@ -3561,6 +3610,7 @@
       radius:TRAP_RADIUS_3D,
       expiresAt:nowMs() + TRAP_TTL_MS_3D,
     });
+    pullCoreVitals(true);
     addCoreStat("trapsPlaced", 1);
     setStatus("🪤 Trap placed. Tigers held 3–5s when triggered.", 1300);
   }
@@ -3583,7 +3633,15 @@
         const dx = tiger.mesh.position.x - trap.x;
         const dz = tiger.mesh.position.z - trap.z;
         if((dx * dx + dz * dz) > (trap.radius * trap.radius)) continue;
-        const holdMs = Math.round(TRAP_HOLD_MIN_MS_3D + Math.random() * (TRAP_HOLD_MAX_MS_3D - TRAP_HOLD_MIN_MS_3D));
+        let holdMs = 0;
+        try{
+          if(typeof window.coreCombatTrapHoldMs === "function"){
+            holdMs = Math.round(Number(window.coreCombatTrapHoldMs()));
+          }
+        }catch(_){}
+        if(!Number.isFinite(holdMs) || holdMs <= 0){
+          holdMs = Math.round(TRAP_HOLD_MIN_MS_3D + Math.random() * (TRAP_HOLD_MAX_MS_3D - TRAP_HOLD_MIN_MS_3D));
+        }
         tiger.trappedUntil = now + holdMs;
         tiger.nextAttackAt = Math.max(tiger.nextAttackAt, tiger.trappedUntil + 320);
         tiger.telegraphPounceUntil = 0;
@@ -3636,6 +3694,20 @@
       setStatus(`Shield already active (${Math.ceil(current / 1000)}s).`);
       return;
     }
+    try{
+      if(typeof window.coreActivateShieldFor3D === "function"){
+        const result = window.coreActivateShieldFor3D();
+        pullCoreVitals(true);
+        if(!result?.ok){
+          setStatus(result?.message || "Shield unavailable.", 1300);
+          return;
+        }
+        state.fx.shieldUntil = Math.max(Number(state.fx.shieldUntil || 0), Number(result.shieldUntil || 0));
+        const left = Math.max(0, Math.ceil((state.fx.shieldUntil - nowMs()) / 1000));
+        setStatus(`Escort shield active for ${Math.max(1, left)} seconds.`);
+        return;
+      }
+    }catch(_){}
     const core = coreState();
     if(core){
       ensureCoreBuckets(core);

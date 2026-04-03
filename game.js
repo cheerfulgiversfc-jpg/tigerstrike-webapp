@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4473";
+const TS_BUILD = "4474";
 if(tg){
   try{
     tg.expand?.();
@@ -20379,6 +20379,127 @@ function canCaptureTiger(t){
   if(w.type!=="tranq") return false;
   return S.mag.loaded > 0 || (S.ammoReserve[w.ammo]||0) > 0;
 }
+function coreNormalizeCombatWeapon(weaponLike){
+  if(weaponLike && typeof weaponLike === "object"){
+    if(weaponLike.id){
+      const byId = getWeapon(weaponLike.id);
+      if(byId) return byId;
+    }
+    return weaponLike;
+  }
+  if(typeof weaponLike === "string" && weaponLike){
+    return getWeapon(weaponLike) || equippedWeapon();
+  }
+  return equippedWeapon();
+}
+function coreNormalizeCombatTiger(tigerLike){
+  if(!tigerLike || typeof tigerLike !== "object") return null;
+  const t = { ...tigerLike };
+  if(!Number.isFinite(Number(t.hpMax || 0))){
+    t.hpMax = Math.max(1, Number(t.hp || 1));
+  }
+  if(!Number.isFinite(Number(t.hp || 0))){
+    t.hp = Math.max(0, Number(t.hpMax || 1));
+  }
+  if(!t.type){
+    t.type = t.isBoss ? "Boss" : "Standard";
+  }
+  if(!Number.isFinite(Number(t.bossPhases || 0))){
+    t.bossPhases = t.isBoss ? 3 : 0;
+  }else if(Number(t.bossPhases || 0) <= 0 && t.isBoss){
+    t.bossPhases = 3;
+  }
+  return t;
+}
+function coreCombatResolveAttackHit(weaponLike, tigerLike){
+  const w = coreNormalizeCombatWeapon(weaponLike);
+  const t = coreNormalizeCombatTiger(tigerLike);
+  if(!w || !t) return { damage:0, crit:false, isTranq:false, stealthReduced:false };
+  const eff = ammoEffectFor(w.ammo);
+  let dmg = rand(w.dmg?.[0] ?? 8, w.dmg?.[1] ?? 12);
+  dmg *= perkDamageMul();
+  dmg *= arcadeBuildcraftMul("damageOutMul", 1);
+  const crit = Math.random() < (eff.crit + perkCritBonus() + arcadeBuildcraftCritBonus());
+  if(crit) dmg = Math.round(dmg * 1.6);
+  dmg = Math.round(dmg * eff.dmgMul);
+
+  const isTranq = w.type === "tranq";
+  if(isTranq){
+    dmg = Math.round(dmg * eff.tranq);
+  }
+
+  dmg = Math.max(6, Math.round(dmg / carcassDifficulty()));
+  dmg = Math.max(4, Math.round(dmg / tigerDefenseScale(t)));
+  if(t.type === "Berserker" && (Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1))) < 0.35){
+    dmg = Math.max(4, Math.round(dmg * 0.88));
+  }
+  if(isBossTiger(t)){
+    dmg = Math.max(3, Math.round(dmg * 0.88));
+  }
+  let stealthReduced = false;
+  if(isBossTiger(t) && bossStealthActive(t)){
+    dmg = Math.max(2, Math.round(dmg * 0.62));
+    stealthReduced = true;
+  }
+  return { damage:dmg, crit, isTranq, stealthReduced };
+}
+function coreCombatAttackCooldownMs(weaponLike){
+  const w = coreNormalizeCombatWeapon(weaponLike);
+  const range = Math.max(70, Number(w?.range || 120));
+  const mag = Math.max(1, Math.floor(Number(w?.mag || 8)));
+  const isTranq = String(w?.type || "lethal") === "tranq";
+  if(isTranq){
+    if(range >= 180) return 640;
+    if(range >= 150) return 520;
+    return 430;
+  }
+  if(range <= 110) return mag <= 6 ? 520 : 340;
+  if(range <= 180) return mag >= 24 ? 220 : 300;
+  return mag <= 4 ? 820 : 560;
+}
+function coreCombatCaptureCooldownMs(weaponLike){
+  const w = coreNormalizeCombatWeapon(weaponLike);
+  const range = Math.max(70, Number(w?.range || 120));
+  if(String(w?.type || "lethal") !== "tranq") return 520;
+  if(range >= 180) return 860;
+  if(range >= 150) return 740;
+  return 620;
+}
+function coreCombatTrapHoldMs(){
+  return Math.round(rand(3000, 5000) * arcadeBuildcraftMul("trapHoldMul", 1));
+}
+function coreShieldBlocksTarget(targetType="player", distancePx=0, following=false){
+  if(!shieldActiveNow()) return false;
+  if(targetType === "player") return true;
+  if(targetType === "civilian"){
+    if(following) return true;
+    return Number(distancePx || 0) <= SHIELD_RADIUS;
+  }
+  return false;
+}
+function coreActivateShieldFor3D(){
+  if((S.shields || 0) <= 0){
+    return { ok:false, reason:"no_shields", message:"No shields left. Buy more in Shop." };
+  }
+  if(abilityOnCooldown("shield")){
+    return { ok:false, reason:"cooldown", message:`Shield cooling down (${abilityCooldownLabel("shield")}).` };
+  }
+  S.shields = Math.max(0, (S.shields || 0) - 1);
+  S.shieldUntil = Date.now() + SHIELD_DURATION_MS;
+  triggerAbilityCooldown("shield");
+  save();
+  return { ok:true, shieldUntil:S.shieldUntil, shields:S.shields };
+}
+function coreConsumeTrapFor3D(){
+  if((S.trapsOwned || 0) <= 0){
+    return { ok:false, reason:"no_traps", message:"No traps. Buy in shop." };
+  }
+  S.trapsOwned = Math.max(0, (S.trapsOwned || 0) - 1);
+  S.stats.trapsPlaced = (S.stats.trapsPlaced || 0) + 1;
+  addContractTally("trapsPlaced", 1);
+  save();
+  return { ok:true, trapsOwned:S.trapsOwned };
+}
 function tutorialCaptureWindowReady(){
   const t = tigerById(S.activeTigerId);
   if(!t || !t.alive) return false;
@@ -24869,5 +24990,14 @@ window.claimContract = claimContract;
 window.claimAllContracts = claimAllContracts;
 window.lockNearestTiger = lockNearestTiger;
 window.canAttemptCapture = canAttemptCapture;
+window.requiredTranqWeaponId = requiredTranqWeaponId;
+window.captureWindowHp = captureWindowHp;
+window.coreCombatResolveAttackHit = coreCombatResolveAttackHit;
+window.coreCombatAttackCooldownMs = coreCombatAttackCooldownMs;
+window.coreCombatCaptureCooldownMs = coreCombatCaptureCooldownMs;
+window.coreCombatTrapHoldMs = coreCombatTrapHoldMs;
+window.coreShieldBlocksTarget = coreShieldBlocksTarget;
+window.coreActivateShieldFor3D = coreActivateShieldFor3D;
+window.coreConsumeTrapFor3D = coreConsumeTrapFor3D;
 window.tutorialCaptureWindowReady = tutorialCaptureWindowReady;
 window.tutorialAnyCaptureWindowReady = tutorialAnyCaptureWindowReady;
