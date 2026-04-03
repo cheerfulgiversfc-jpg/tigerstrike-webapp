@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4471";
+const TS_BUILD = "4472";
 if(tg){
   try{
     tg.expand?.();

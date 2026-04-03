@@ -402,9 +402,12 @@
       mode:"Story",
       level:1,
       nextSyncAt:0,
+      nextPullAt:0,
       nextSaveAt:0,
       saveDirty:false,
       rewardCash:0,
+      bridgeHooksInstalled:false,
+      bridgeOriginals:null,
     },
     statusText:"3D prototype loaded. Move to civilians, then escort to safe zone.",
     statusUntil:0,
@@ -438,6 +441,8 @@
         duelTiger:"",
         status:"",
         hint:"",
+        medkitLabel:"",
+        armorLabel:"",
         shieldLabel:"",
         trapLabel:"",
       },
@@ -1178,6 +1183,65 @@
     return Math.max(1, Math.ceil(hpMax * storyCaptureWindowPct3D()));
   }
 
+  function tigerTypeName3D(tiger){
+    return String(tiger?.tigerType?.name || tiger?.name || "Standard");
+  }
+
+  function requiredTranqWeaponId3D(tiger){
+    if(tiger?.isBoss) return "W_TRQ_LAUNCHER";
+    const name = tigerTypeName3D(tiger);
+    if(name.includes("Stalker") || name.includes("Berserker")) return "W_TRQ_RIFLE";
+    return "W_TRQ_PISTOL_MK1";
+  }
+
+  function hasAmmoForWeaponId3D(id){
+    const core = coreState();
+    if(!core) return true;
+    const w = getWeaponById3D(id);
+    if(!w) return false;
+    const loaded = Math.max(0, Math.floor(Number(core.mag?.loaded || 0)));
+    if(String(core.equippedWeaponId || "") === String(id) && loaded > 0) return true;
+    const reserve = Math.max(0, Math.floor(Number(core.ammoReserve?.[w.ammo] || 0)));
+    return reserve > 0;
+  }
+
+  function canAttemptCapture3D(tiger){
+    if(!tiger || !tiger.alive) return false;
+    if(tiger.hp > captureWindowHp3D(tiger)) return false;
+    const core = coreState();
+    const reqId = requiredTranqWeaponId3D(tiger);
+    if(core && Array.isArray(core.ownedWeapons) && core.ownedWeapons.length){
+      if(!core.ownedWeapons.includes(reqId)) return false;
+      if(!hasAmmoForWeaponId3D(reqId)) return false;
+    }
+    return true;
+  }
+
+  function ensureCaptureWeaponReady3D(tiger){
+    const reqId = requiredTranqWeaponId3D(tiger);
+    const reqWeapon = getWeaponById3D(reqId);
+    const core = coreState();
+    if(core && Array.isArray(core.ownedWeapons) && core.ownedWeapons.length && !core.ownedWeapons.includes(reqId)){
+      return { ok:false, message:`${reqWeapon?.name || "Required tranq weapon"} is required for ${tigerTypeName3D(tiger)}.` };
+    }
+    if(core && !hasAmmoForWeaponId3D(reqId)){
+      return { ok:false, message:`${reqWeapon?.name || "Required tranq weapon"} is out of ammo.` };
+    }
+    if(typeof window.equipWeapon === "function"){
+      try{
+        if(String(core?.equippedWeaponId || "") !== reqId){
+          window.equipWeapon(reqId);
+        }
+      }catch(_){}
+    }
+    pullCoreVitals(true);
+    const active = activeWeapon3D();
+    if(String(active?.type || "lethal") !== "tranq"){
+      return { ok:false, message:`Capture requires a tranq weapon (${reqWeapon?.name || "Tranq"}).` };
+    }
+    return { ok:true, weapon:active };
+  }
+
   function weaponAttackCooldownMs3D(w){
     const weapon = w || activeWeapon3D();
     const range = Math.max(70, Number(weapon?.range || PLAYER_ATTACK_RANGE));
@@ -1250,6 +1314,104 @@
     if(core.shieldUntil !== shieldUntil){ core.shieldUntil = shieldUntil; changed = true; }
     state.core.nextSyncAt = now + CORE_SYNC_MS;
     if(changed) markCoreDirty();
+  }
+
+  function pullCoreVitals(force=false){
+    const core = coreState();
+    if(!core || !state.player) return false;
+    const now = state.now || nowMs();
+    if(!force && now < state.core.nextPullAt) return false;
+    ensureCoreBuckets(core);
+    state.core.nextPullAt = now + Math.max(220, Math.floor(CORE_SYNC_MS * 0.45));
+
+    const hp = clamp(Math.round(Number(core.hp || 0)), 0, 100);
+    const armorCap = Math.max(100, Math.round(Number(core.armorCap || state.player.maxArmor || 100)));
+    const armor = clamp(Math.round(Number(core.armor || 0)), 0, armorCap);
+    const stamina = clamp(Math.round(Number(core.stamina || 0)), 0, 100);
+    const shieldUntil = Math.max(
+      0,
+      Math.floor(Number(core.shieldUntil || core.abilityCooldowns?.shield || 0))
+    );
+
+    let changed = false;
+    if(Math.round(Number(state.player.hp || 0)) !== hp){
+      state.player.hp = hp;
+      changed = true;
+    }
+    if(Math.round(Number(state.player.maxArmor || 0)) !== armorCap){
+      state.player.maxArmor = armorCap;
+      changed = true;
+    }
+    if(Math.round(Number(state.player.armor || 0)) !== armor){
+      state.player.armor = armor;
+      changed = true;
+    }
+    if(Math.round(Number(state.player.stamina || 0)) !== stamina){
+      state.player.stamina = stamina;
+      changed = true;
+    }
+    if(Math.round(Number(state.fx.shieldUntil || 0)) !== shieldUntil){
+      state.fx.shieldUntil = shieldUntil;
+      changed = true;
+    }
+    return changed;
+  }
+
+  function run2dActionAndPull(name, args = []){
+    const fn = window?.[name];
+    if(typeof fn !== "function") return false;
+    try{
+      fn.apply(window, Array.isArray(args) ? args : [args]);
+    }catch(_){}
+    pullCoreVitals(true);
+    return true;
+  }
+
+  function installCoreActionBridges(){
+    if(state.core.bridgeHooksInstalled) return;
+    const names = [
+      "useMedkit",
+      "useArmorPlate",
+      "buyMed",
+      "buyArmor",
+      "buyShield",
+      "buyTrap",
+      "buyTool",
+      "buyAmmo",
+      "buyWeapon",
+      "equipWeapon",
+      "selectQuickWeapon",
+      "setSelectedMedkit",
+      "setSelectedArmorPlate",
+      "closeShop",
+      "closeInventory",
+    ];
+    state.core.bridgeOriginals = state.core.bridgeOriginals || Object.create(null);
+    for(const name of names){
+      const fn = window?.[name];
+      if(typeof fn !== "function") continue;
+      if(state.core.bridgeOriginals[name]) continue;
+      state.core.bridgeOriginals[name] = fn;
+      window[name] = function(...args){
+        const out = state.core.bridgeOriginals[name].apply(this, args);
+        if(state.active){
+          pullCoreVitals(true);
+        }
+        return out;
+      };
+    }
+    state.core.bridgeHooksInstalled = true;
+  }
+
+  function uninstallCoreActionBridges(){
+    if(!state.core.bridgeHooksInstalled || !state.core.bridgeOriginals) return;
+    for(const [name, fn] of Object.entries(state.core.bridgeOriginals)){
+      if(typeof fn === "function"){
+        window[name] = fn;
+      }
+    }
+    state.core.bridgeOriginals = null;
+    state.core.bridgeHooksInstalled = false;
   }
 
   function addCoreCash(amount){
@@ -1438,6 +1600,8 @@
       landscapeHint: el("proto3dLandscapeHint"),
       attackBtn: el("proto3dAttackBtn"),
       captureBtn: el("proto3dCaptureBtn"),
+      medkitBtn: el("proto3dMedkitBtn"),
+      armorBtn: el("proto3dArmorBtn"),
       shieldBtn: el("proto3dShieldBtn"),
       rollBtn: el("proto3dRollBtn"),
       sprintBtn: el("proto3dSprintBtn"),
@@ -3213,6 +3377,13 @@
     const dmg = weaponDamageRoll3D(weapon, d);
     damageTarget(t, dmg);
     const isTranq = String(weapon?.type || "lethal") === "tranq";
+    if(!isTranq){
+      const core = coreState();
+      if(core){
+        core.lastCombatLethalWeaponId = String(weapon?.id || core.lastCombatLethalWeaponId || "");
+        markCoreDirty();
+      }
+    }
     spawnImpactFx(t, isTranq ? 0x86efac : 0xfef08a, isTranq ? "tranq" : "hit");
     const dirX = Math.sin(state.player.mesh.rotation.y);
     const dirZ = Math.cos(state.player.mesh.rotation.y);
@@ -3232,14 +3403,14 @@
   function captureTiger(target){
     const t = target || state.selectedTiger;
     if(!t || !t.alive) return setStatus("Tap a tiger first to lock target.");
-    const weapon = activeWeapon3D();
-    const weaponName = String(weapon?.name || "Weapon");
-    const isTranq = String(weapon?.type || "lethal") === "tranq";
-    if(!isTranq){
-      setStatus(`Capture requires a tranq weapon. Current: ${weaponName}.`, 1600);
+    const prep = ensureCaptureWeaponReady3D(t);
+    if(!prep.ok){
+      setStatus(prep.message || "Capture requirements not met.", 1600);
       return;
     }
-    const captureRange = clamp(activeWeaponRange3D() * 0.78, PLAYER_CAPTURE_RANGE, 180);
+    const weapon = prep.weapon || activeWeapon3D();
+    const weaponName = String(weapon?.name || "Weapon");
+    const captureRange = clamp(activeWeaponRange3D() * 0.95, PLAYER_CAPTURE_RANGE, COMBAT_LOCK_RANGE_MAX);
     const now = nowMs();
     if(now < state.fx.nextCaptureAt) return;
     const d = horizontalDistance(state.player, t);
@@ -3257,6 +3428,20 @@
     flashUnit(t);
     spawnImpactFx(t, 0x6ee7b7, "hit");
     cleanupDeadTiger(t, "capture");
+    const core = coreState();
+    if(core){
+      const restoreId = String(core.lastCombatLethalWeaponId || "");
+      if(
+        restoreId &&
+        restoreId !== String(core.equippedWeaponId || "") &&
+        Array.isArray(core.ownedWeapons) &&
+        core.ownedWeapons.includes(restoreId) &&
+        typeof window.equipWeapon === "function"
+      ){
+        try{ window.equipWeapon(restoreId); }catch(_){}
+      }
+    }
+    pullCoreVitals(true);
     setStatus(`${t.name} captured with ${weaponName}.`, 1600);
   }
 
@@ -3335,6 +3520,35 @@
         spawnImpactFx(tiger, 0xfbbf24, "hit");
         setStatus(`🪤 ${tiger.name} trapped for ${Math.ceil(holdMs / 1000)}s.`, 1000);
       }
+    }
+  }
+
+  function useMedkit3D(){
+    const before = Math.round(Number(state.player?.hp || 0));
+    if(!run2dActionAndPull("useMedkit", [{ smart:true, autoFill:true, allowFull:true }])){
+      setStatus("Medkit action unavailable.", 1200);
+      return;
+    }
+    const after = Math.round(Number(state.player?.hp || 0));
+    if(after > before){
+      setStatus(`Medkit used. HP ${after}/100.`, 900);
+    }else{
+      setStatus("No medkit used (full HP or no kits).", 1000);
+    }
+  }
+
+  function useArmorPlate3D(){
+    const before = Math.round(Number(state.player?.armor || 0));
+    if(!run2dActionAndPull("useArmorPlate", [{ smart:true, autoFill:true }])){
+      setStatus("Armor action unavailable.", 1200);
+      return;
+    }
+    const after = Math.round(Number(state.player?.armor || 0));
+    const cap = Math.max(100, Math.round(Number(state.player?.maxArmor || 100)));
+    if(after > before){
+      setStatus(`Armor restored. ${after}/${cap}.`, 900);
+    }else{
+      setStatus("No armor used (full armor or no plates).", 1000);
     }
   }
 
@@ -3431,12 +3645,23 @@
     syncCoreVitals(true);
     saveCoreProgress(true);
     if(typeof window.openShop === "function") window.openShop();
+    window.setTimeout(()=>pullCoreVitals(true), 120);
   }
 
   function open3dInventoryOverlay(){
     syncCoreVitals(true);
     saveCoreProgress(true);
     if(typeof window.openInventory === "function") window.openInventory();
+    window.setTimeout(()=>pullCoreVitals(true), 120);
+  }
+
+  function isCoreOverlayOpen(){
+    const ids = ["shopOverlay", "invOverlay"];
+    for(const id of ids){
+      const node = document.getElementById(id);
+      if(node && node.style && node.style.display === "flex") return true;
+    }
+    return false;
   }
 
   function updatePlayer(){
@@ -4249,6 +4474,15 @@
     node.innerText = v;
   }
 
+  function sumCountMap3D(src){
+    if(!src || typeof src !== "object") return 0;
+    let total = 0;
+    for(const v of Object.values(src)){
+      total += Math.max(0, Math.floor(Number(v || 0)));
+    }
+    return total;
+  }
+
   function updateHud(force=false){
     const p = state.player;
     const aliveTigers = state.tigers.filter((t)=>t.alive).length;
@@ -4268,17 +4502,33 @@
     }
     if(state.ui.captureBtn){
       const st = state.selectedTiger;
-      const canCapture = !!(
-        st &&
-        st.alive &&
-        weaponType === "tranq" &&
-        st.hp <= captureWindowHp3D(st)
-      );
+      const canCapture = !!(st && canAttemptCapture3D(st));
       const disabled = !canCapture;
       if(state.ui.captureBtn.disabled !== disabled) state.ui.captureBtn.disabled = disabled;
     }
+    const core = coreState();
+    const medkitsOwned = core ? sumCountMap3D(core.medkits) : 0;
+    const armorPlatesOwned = core
+      ? Math.max(
+          sumCountMap3D(core.armorPlates),
+          sumCountMap3D(core.armorPlatesFallback)
+        )
+      : 0;
+    if(state.ui.medkitBtn){
+      const medkitLabel = `Medkit (${medkitsOwned})`;
+      if(state.perf.lastHud.medkitLabel !== medkitLabel){
+        state.perf.lastHud.medkitLabel = medkitLabel;
+        state.ui.medkitBtn.innerText = medkitLabel;
+      }
+    }
+    if(state.ui.armorBtn){
+      const armorLabel = `Armor (${armorPlatesOwned})`;
+      if(state.perf.lastHud.armorLabel !== armorLabel){
+        state.perf.lastHud.armorLabel = armorLabel;
+        state.ui.armorBtn.innerText = armorLabel;
+      }
+    }
     if(state.ui.shieldBtn){
-      const core = coreState();
       const shieldCount = core ? Math.max(0, Math.floor(Number(core.shields || 0))) : 0;
       const left = Math.max(0, state.fx.shieldUntil - now);
       const shieldLabel = left > 0
@@ -4418,6 +4668,9 @@
     beginFrameBudget();
     evaluatePerformanceTier();
     pollGamepadInput();
+    if(isCoreOverlayOpen()){
+      pullCoreVitals(true);
+    }
 
     const tier = state.perf.tier || "med";
     const lowTier = tier === "low";
@@ -4786,6 +5039,8 @@
   function bindUiEvents(){
     if(state.ui.attackBtn) state.ui.attackBtn.onclick = ()=>attackTiger();
     if(state.ui.captureBtn) state.ui.captureBtn.onclick = ()=>captureTiger();
+    if(state.ui.medkitBtn) state.ui.medkitBtn.onclick = ()=>useMedkit3D();
+    if(state.ui.armorBtn) state.ui.armorBtn.onclick = ()=>useArmorPlate3D();
     if(state.ui.shieldBtn) state.ui.shieldBtn.onclick = ()=>useShield();
     if(state.ui.trapBtn) state.ui.trapBtn.onclick = ()=>placeTrap3D();
     if(state.ui.rollBtn) state.ui.rollBtn.onclick = ()=>rollDodge();
@@ -4874,6 +5129,7 @@
 
   async function openPrototype(){
     await ensureReady();
+    installCoreActionBridges();
     rememberPauseState();
     if(typeof window.closeMode === "function"){
       try{ window.closeMode(); }catch(_){}
@@ -4890,6 +5146,7 @@
     resize3d();
     snapCameraNow();
     state.clock.getDelta();
+    pullCoreVitals(true);
     stopRenderLoop();
     recordReadinessSessionStart();
     state.raf = requestAnimationFrame(renderFrame);
@@ -4906,6 +5163,7 @@
     if(state.overlay) state.overlay.style.display = "none";
     if(state.overlay) state.overlay.classList.remove("combatLock");
     document.body.classList.remove("proto3dOpen");
+    uninstallCoreActionBridges();
     restorePauseState();
   }
 
@@ -4915,6 +5173,7 @@
     saveCoreProgress(true);
     state.active = false;
     stopRenderLoop();
+    uninstallCoreActionBridges();
     for(const fx of state.vfxBursts){
       releaseImpactFx(fx);
       if(fx && fx.mesh && fx.mesh.parent) fx.mesh.parent.remove(fx.mesh);

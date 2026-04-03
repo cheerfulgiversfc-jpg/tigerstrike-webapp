@@ -457,9 +457,10 @@
       bottom:14px;
       display:grid;
       grid-template-columns:repeat(2,76px);
-      grid-template-rows:repeat(3,56px);
+      grid-template-rows:repeat(4,56px);
       grid-template-areas:
         "attack capture"
+        "medkit armor"
         "shield roll"
         "sprint trap";
       gap:8px;
@@ -467,6 +468,8 @@
     }
     .proto3dActionBtn.attack{ grid-area:attack; }
     .proto3dActionBtn.capture{ grid-area:capture; }
+    .proto3dActionBtn.medkit{ grid-area:medkit; }
+    .proto3dActionBtn.armor{ grid-area:armor; }
     .proto3dActionBtn.shield{ grid-area:shield; }
     .proto3dActionBtn.roll{ grid-area:roll; }
     .proto3dActionBtn.sprint{ grid-area:sprint; }
@@ -586,7 +589,7 @@
         right:8px;
         bottom:10px;
         grid-template-columns:repeat(2,62px);
-        grid-template-rows:repeat(3,52px);
+        grid-template-rows:repeat(4,52px);
         gap:6px;
       }
       .proto3dActionBtn{
@@ -1777,6 +1780,8 @@
       <div class="proto3dBtnCluster">
         <button class="proto3dActionBtn warn attack" id="proto3dAttackBtn">Attack</button>
         <button class="proto3dActionBtn good capture" id="proto3dCaptureBtn">Capture</button>
+        <button class="proto3dActionBtn ghost medkit" id="proto3dMedkitBtn">Medkit</button>
+        <button class="proto3dActionBtn ghost armor" id="proto3dArmorBtn">Armor</button>
         <button class="proto3dActionBtn ghost shield" id="proto3dShieldBtn">Shield</button>
         <button class="proto3dActionBtn ghost roll" id="proto3dRollBtn">Roll</button>
         <button class="proto3dActionBtn ghost sprint" id="proto3dSprintBtn">Sprint</button>
@@ -2196,9 +2201,9 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4471"></script>
+<script src="./game.js?v=4472"></script>
 <script src="./tutorial.js?v=4463"></script>
-<script src="./prototype3d.js?v=4471"></script>
+<script src="./prototype3d.js?v=4472"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";
