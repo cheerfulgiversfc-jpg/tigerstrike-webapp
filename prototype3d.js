@@ -1180,6 +1180,15 @@
 
   function captureWindowHp3D(tiger){
     const hpMax = Math.max(1, Math.round(Number(tiger?.maxHp || tiger?.hp || 1)));
+    try{
+      if(typeof window.captureWindowHp === "function"){
+        const t2 = parityTigerPayload3D(tiger);
+        const out = Number(window.captureWindowHp(t2));
+        if(Number.isFinite(out) && out > 0){
+          return Math.max(1, Math.round(out));
+        }
+      }
+    }catch(_){}
     return Math.max(1, Math.ceil(hpMax * storyCaptureWindowPct3D()));
   }
 
@@ -1187,10 +1196,36 @@
     return String(tiger?.tigerType?.name || tiger?.name || "Standard");
   }
 
+  function tigerTypeCoreName3D(tiger){
+    const raw = tigerTypeName3D(tiger);
+    if(/\bBoss\b/i.test(raw)) return "Boss";
+    if(/\bAlpha\b/i.test(raw)) return "Alpha";
+    if(/\bBerserker\b/i.test(raw)) return "Berserker";
+    if(/\bStalker\b/i.test(raw)) return "Stalker";
+    if(/\bScout\b/i.test(raw)) return "Scout";
+    return "Standard";
+  }
+
+  function parityTigerPayload3D(tiger){
+    return {
+      alive: !!tiger?.alive,
+      hp: Math.max(0, Math.round(Number(tiger?.hp || 0))),
+      hpMax: Math.max(1, Math.round(Number(tiger?.maxHp || tiger?.hp || 1))),
+      type: tigerTypeCoreName3D(tiger),
+      isBoss: !!tiger?.isBoss,
+    };
+  }
+
   function requiredTranqWeaponId3D(tiger){
+    try{
+      if(typeof window.requiredTranqWeaponId === "function"){
+        const id = String(window.requiredTranqWeaponId(parityTigerPayload3D(tiger)) || "");
+        if(id) return id;
+      }
+    }catch(_){}
     if(tiger?.isBoss) return "W_TRQ_LAUNCHER";
-    const name = tigerTypeName3D(tiger);
-    if(name.includes("Stalker") || name.includes("Berserker")) return "W_TRQ_RIFLE";
+    const type = tigerTypeCoreName3D(tiger);
+    if(type === "Stalker" || type === "Berserker") return "W_TRQ_RIFLE";
     return "W_TRQ_PISTOL_MK1";
   }
 
@@ -1207,6 +1242,11 @@
 
   function canAttemptCapture3D(tiger){
     if(!tiger || !tiger.alive) return false;
+    try{
+      if(typeof window.canAttemptCapture === "function"){
+        return !!window.canAttemptCapture(parityTigerPayload3D(tiger));
+      }
+    }catch(_){}
     if(tiger.hp > captureWindowHp3D(tiger)) return false;
     const core = coreState();
     const reqId = requiredTranqWeaponId3D(tiger);
@@ -1267,7 +1307,7 @@
     return 620;
   }
 
-  function weaponDamageRoll3D(w, distance){
+  function weaponDamageRoll3D(w, distance, tiger){
     const weapon = w || activeWeapon3D();
     const range = Math.max(70, Number(weapon?.range || PLAYER_ATTACK_RANGE));
     const band = weaponRangeBand3D(range);
@@ -1286,6 +1326,33 @@
     }
     if(String(weapon?.type || "lethal") === "tranq"){
       out *= 0.82;
+    }
+    try{
+      if(typeof window.perkDamageMul === "function"){
+        out *= Math.max(0.5, Number(window.perkDamageMul()) || 1);
+      }
+      if(typeof window.arcadeBuildcraftMul === "function"){
+        out *= Math.max(0.5, Number(window.arcadeBuildcraftMul("damageOutMul", 1)) || 1);
+      }
+    }catch(_){}
+    if(tiger){
+      const t2 = parityTigerPayload3D(tiger);
+      try{
+        if(typeof window.carcassDifficulty === "function"){
+          out /= Math.max(0.45, Number(window.carcassDifficulty()) || 1);
+        }
+      }catch(_){}
+      try{
+        if(typeof window.tigerDefenseScale === "function"){
+          out /= Math.max(0.4, Number(window.tigerDefenseScale(t2)) || 1);
+        }
+      }catch(_){}
+      if(t2.type === "Berserker" && (Number(tiger.hp || 0) / Math.max(1, Number(tiger.maxHp || 1))) < 0.35){
+        out *= 0.88;
+      }
+      if(t2.isBoss){
+        out *= 0.88;
+      }
     }
     return Math.max(1, Math.round(out));
   }
@@ -1834,7 +1901,16 @@
 
   function updateHealthBar(unit){
     if(!unit || !unit.healthBar) return;
-    const visible = unitInHealthBarRange(unit);
+    let visible = unitInHealthBarRange(unit);
+    if(visible && state.combat.active){
+      const hudMode = effectiveHudMode();
+      if(hudMode === "combat"){
+        const duelTiger = state.combat.target;
+        if(unit !== state.player && (!duelTiger || unit !== duelTiger)){
+          visible = false;
+        }
+      }
+    }
     if(unit.healthBar.root) unit.healthBar.root.visible = visible;
     if(!visible) return;
     const hpPct = clamp(unit.hp / Math.max(1, unit.maxHp), 0, 1);
@@ -3256,7 +3332,8 @@
     const dead = clamp(Number(profile.inputDeadzone || 0.014), 0.008, 0.03);
     const x = Math.abs(state.controls.moveSmoothX) < dead ? 0 : state.controls.moveSmoothX;
     const y = Math.abs(state.controls.moveSmoothY) < dead ? 0 : state.controls.moveSmoothY;
-    const turn = clamp((-x) * clamp(Number(profile.turnInputScale || 1), 0.8, 1.25), -1, 1);
+    // 2D parity: push right => turn right, push left => turn left.
+    const turn = clamp(x * clamp(Number(profile.turnInputScale || 1), 0.8, 1.25), -1, 1);
     const forward = clamp(-y, -1, 1);
     return { x, y, turn, forward };
   }
@@ -3374,7 +3451,7 @@
     }
     state.fx.nextAttackAt = now + weaponAttackCooldownMs3D(weapon);
     addCoreStat("shots", 1);
-    const dmg = weaponDamageRoll3D(weapon, d);
+    const dmg = weaponDamageRoll3D(weapon, d, t);
     damageTarget(t, dmg);
     const isTranq = String(weapon?.type || "lethal") === "tranq";
     if(!isTranq){
@@ -4976,6 +5053,7 @@
 
   function onJoyPointerDown(ev){
     if(!state.active || !state.ui.joyBase) return;
+    if(state.controls.joystickActive && state.controls.joystickPointerId != null && state.controls.joystickPointerId !== ev.pointerId) return;
     if(ev.clientX > window.innerWidth * JOY_LEFT_ZONE_RATIO) return;
     if(isUiTapReserved(ev.clientX, ev.clientY)) return;
     const tappedTiger = pickTigerAtScreen(ev.clientX, ev.clientY);
@@ -5031,8 +5109,14 @@
 
   function onJoyPointerUp(ev){
     if(!state.active) return;
-    if(state.controls.joystickPointerId !== ev.pointerId) return;
+    if(state.controls.joystickPointerId != null && state.controls.joystickPointerId !== ev.pointerId) return;
     ev.preventDefault();
+    resetJoystick();
+  }
+
+  function onWindowPointerUp(ev){
+    if(!state.active || !state.controls.joystickActive) return;
+    if(state.controls.joystickPointerId != null && state.controls.joystickPointerId !== ev.pointerId) return;
     resetJoystick();
   }
 
@@ -5083,6 +5167,8 @@
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("gamepadconnected", onGamepadConnected);
     window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
+    window.addEventListener("pointerup", onWindowPointerUp, { passive:true });
+    window.addEventListener("pointercancel", onWindowPointerUp, { passive:true });
   }
 
   function unbindUiEvents(){
@@ -5090,6 +5176,8 @@
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("gamepadconnected", onGamepadConnected);
     window.removeEventListener("gamepaddisconnected", onGamepadDisconnected);
+    window.removeEventListener("pointerup", onWindowPointerUp);
+    window.removeEventListener("pointercancel", onWindowPointerUp);
     window.removeEventListener("resize", resize3d);
     window.removeEventListener("orientationchange", onOrientationChanged);
     document.removeEventListener("visibilitychange", onVisibilityChanged);
