@@ -286,10 +286,10 @@
   const CAMERA_PRESET_ORDER = ["tactical", "combat", "cinematic"];
   const CAMERA_ENTRY_DEFAULTS = Object.freeze({
     mode:"third",
-    preset:"tactical",
-    zoomOffset:8,
-    heightOffset:3,
-    pitchOffset:-1,
+    preset:"combat",
+    zoomOffset:-6,
+    heightOffset:-14,
+    pitchOffset:6,
   });
 
   const TIGER_TYPES = [
@@ -2281,7 +2281,7 @@
     pos.x = best.tx;
     pos.z = best.tz;
     const turnLerp = Number.isFinite(opts.turnLerp) ? clamp(opts.turnLerp, 0.05, 1) : clamp(1 - Math.exp(-14 * state.dt), 0.05, 1);
-    unit.mesh.rotation.y = lerpAngle(unit.mesh.rotation.y, best.yaw, turnLerp);
+    lerpUnitYaw(unit, best.yaw, turnLerp);
     resolveStaticOverlap(unit);
     return moved;
   }
@@ -2374,13 +2374,28 @@
     const foreR = foreL.clone();
     foreL.position.set(0, -0.62, 0.02);
     foreR.position.set(0, -0.62, 0.02);
+    const sleeveL = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.16, 0.26, 10), mat(0x23324a, 0.7, 0.05));
+    const sleeveR = sleeveL.clone();
+    sleeveL.position.set(0, -0.18, 0.02);
+    sleeveR.position.set(0, -0.18, 0.02);
+    const handGeo = new THREE.SphereGeometry(0.12, 10, 10);
+    const handL = new THREE.Mesh(handGeo, mat(0xf1d2b5, 0.84, 0.01));
+    const handR = handL.clone();
+    handL.position.set(0, -0.97, 0.08);
+    handR.position.set(0, -0.97, 0.08);
     armL.add(foreL);
     armR.add(foreR);
+    armL.add(sleeveL, handL);
+    armR.add(sleeveR, handR);
 
     const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 1.1, 8, 10), mat(0x1d3557, 0.78, 0.05));
     const legR = legL.clone();
     legL.position.set(-0.31, 1.06, 0.02);
     legR.position.set(0.31, 1.06, 0.02);
+    const kneeL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.18, 0.2), mat(0x1f2937, 0.5, 0.12));
+    const kneeR = kneeL.clone();
+    kneeL.position.set(0, -0.2, 0.2);
+    kneeR.position.set(0, -0.2, 0.2);
     const bootGeo = new THREE.BoxGeometry(0.32, 0.2, 0.54);
     const bootL = new THREE.Mesh(bootGeo, mat(0x0f172a, 0.52, 0.24));
     const bootR = bootL.clone();
@@ -2388,6 +2403,8 @@
     bootR.position.set(0, -0.73, 0.09);
     legL.add(bootL);
     legR.add(bootR);
+    legL.add(kneeL);
+    legR.add(kneeR);
 
     const rifle = new THREE.Group();
     const rifleBody = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.18, 0.15), mat(0x273244, 0.52, 0.38));
@@ -2431,6 +2448,19 @@
     const bag = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, 0.16), mat(0x9a3412, 0.62, 0.04));
     bag.position.set(0.44, 2.25, 0.26);
 
+    const armGeo = new THREE.CapsuleGeometry(0.13, 0.72, 6, 9);
+    const armL = new THREE.Mesh(armGeo, mat(color, 0.74, 0.02));
+    const armR = armL.clone();
+    armL.position.set(-0.62, 2.28, 0.01);
+    armR.position.set(0.62, 2.28, 0.01);
+    const handGeo = new THREE.SphereGeometry(0.11, 10, 10);
+    const handL = new THREE.Mesh(handGeo, mat(0xf3d7bf, 0.84, 0.01));
+    const handR = handL.clone();
+    handL.position.set(0, -0.58, 0.06);
+    handR.position.set(0, -0.58, 0.06);
+    armL.add(handL);
+    armR.add(handR);
+
     const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.78, 6, 9), mat(0x243247, 0.82, 0.05));
     const legR = legL.clone();
     legL.position.set(-0.28, 0.86, 0);
@@ -2443,8 +2473,8 @@
     legL.add(footL);
     legR.add(footR);
 
-    g.add(torso, jacket, scarf, head, hair, bag, legL, legR);
-    g.userData = { legL, legR, animT:Math.random() * 6.283 };
+    g.add(torso, jacket, scarf, head, hair, bag, armL, armR, legL, legR);
+    g.userData = { armL, armR, legL, legR, animT:Math.random() * 6.283 };
     return g;
   }
 
@@ -2529,7 +2559,11 @@
     legBR.add(pawBR);
 
     g.add(torso, shoulder, neck, head, snout, nose, earL, earR, eyeGlowL, eyeGlowR, tail, legFL, legFR, legBL, legBR);
-    g.userData = { legFL, legFR, legBL, legBR, tail, animT:Math.random() * 6.283 };
+    g.userData = {
+      legFL, legFR, legBL, legBR,
+      torso, shoulder, neck, head, tail,
+      animT:Math.random() * 6.283
+    };
     return g;
   }
 
@@ -3034,7 +3068,9 @@
       trappedUntil:0,
     };
     unit.mesh.position.copy(opts.position || new THREE.Vector3());
-    unit.mesh.rotation.y = opts.yaw || 0;
+    unit.mesh.userData = unit.mesh.userData || {};
+    unit.mesh.userData.yawOffset = Number.isFinite(opts.yawVisualOffset) ? Number(opts.yawVisualOffset) : 0;
+    setUnitYaw(unit, opts.yaw || 0);
     setShadowRecursive(unit.mesh, state.perf.tier !== "low");
     state.unitsRoot.add(unit.mesh);
     return unit;
@@ -3349,6 +3385,7 @@
         scoreValue:Math.round(spawn.type.maxHp * (spawn.isBoss ? 2.4 : 1.6)),
         position:spawn.pos.clone(),
         name:spawn.type.name,
+        yawVisualOffset:-Math.PI * 0.5,
       });
       if(spawn.isBoss){
         t.isBoss = true;
@@ -3919,8 +3956,30 @@
     }
   }
 
-  function unitForward(mesh){
-    return { x:Math.sin(mesh.rotation.y), z:Math.cos(mesh.rotation.y) };
+  function unitYawOffset(unitOrMesh){
+    const ud = unitOrMesh?.mesh ? (unitOrMesh.mesh.userData || {}) : (unitOrMesh?.userData || {});
+    return Number.isFinite(Number(ud.yawOffset)) ? Number(ud.yawOffset) : 0;
+  }
+
+  function getUnitYaw(unit){
+    if(!unit || !unit.mesh) return 0;
+    return normalizeAngle(Number(unit.mesh.rotation.y || 0) - unitYawOffset(unit));
+  }
+
+  function setUnitYaw(unit, yaw){
+    if(!unit || !unit.mesh) return;
+    unit.mesh.rotation.y = normalizeAngle(Number(yaw || 0) + unitYawOffset(unit));
+  }
+
+  function lerpUnitYaw(unit, targetYaw, t){
+    if(!unit || !unit.mesh) return;
+    const from = getUnitYaw(unit);
+    setUnitYaw(unit, lerpAngle(from, targetYaw, t));
+  }
+
+  function unitForward(mesh, yawOffset=0){
+    const yaw = Number(mesh?.rotation?.y || 0) - Number(yawOffset || 0);
+    return { x:Math.sin(yaw), z:Math.cos(yaw) };
   }
 
   function animateHumanoid(unit, moveSpeed){
@@ -3938,13 +3997,27 @@
 
   function animateTiger(unit, moveSpeed){
     const ud = unit.mesh.userData || {};
-    ud.animT = (ud.animT || 0) + state.dt * (4.5 + moveSpeed * 0.12);
-    const swing = Math.sin(ud.animT) * clamp(moveSpeed * 0.055, 0.05, 0.62);
+    const gaitSpeed = clamp(moveSpeed * 0.11, 0.18, 1.55);
+    ud.animT = (ud.animT || 0) + state.dt * (4.0 + gaitSpeed * 6.2);
+    const swing = Math.sin(ud.animT) * clamp(gaitSpeed * 0.56, 0.06, 0.72);
+    const antiSwing = Math.sin(ud.animT + Math.PI) * clamp(gaitSpeed * 0.48, 0.05, 0.64);
     if(ud.legFL) ud.legFL.rotation.x = swing;
-    if(ud.legFR) ud.legFR.rotation.x = -swing;
-    if(ud.legBL) ud.legBL.rotation.x = -swing;
+    if(ud.legFR) ud.legFR.rotation.x = antiSwing;
+    if(ud.legBL) ud.legBL.rotation.x = antiSwing;
     if(ud.legBR) ud.legBR.rotation.x = swing;
-    if(ud.tail) ud.tail.rotation.y = Math.sin(ud.animT * 0.6) * 0.35;
+    if(ud.torso){
+      ud.torso.position.y = 1.45 + Math.sin(ud.animT * 2.0) * clamp(gaitSpeed * 0.075, 0.01, 0.09);
+      ud.torso.rotation.x = Math.sin(ud.animT * 2.0) * clamp(gaitSpeed * 0.075, 0.01, 0.1);
+    }
+    if(ud.shoulder){
+      ud.shoulder.rotation.x = Math.sin(ud.animT * 1.7 + 0.5) * clamp(gaitSpeed * 0.085, 0.02, 0.13);
+    }
+    if(ud.head){
+      ud.head.rotation.x = Math.sin(ud.animT * 1.9 + 0.9) * clamp(gaitSpeed * 0.08, 0.01, 0.1);
+    }
+    if(ud.tail){
+      ud.tail.rotation.y = Math.sin(ud.animT * 1.2) * clamp(0.24 + gaitSpeed * 0.14, 0.2, 0.42);
+    }
   }
 
   function resolveSeparation(units){
@@ -4018,8 +4091,8 @@
     const dead = clamp(Number(profile.inputDeadzone || 0.014), 0.008, 0.03);
     const x = Math.abs(state.controls.moveSmoothX) < dead ? 0 : state.controls.moveSmoothX;
     const y = Math.abs(state.controls.moveSmoothY) < dead ? 0 : state.controls.moveSmoothY;
-    // 2D parity: push right => turn right, push left => turn left.
-    const turn = clamp(x * clamp(Number(profile.turnInputScale || 1), 0.8, 1.25), -1, 1);
+    // Camera-relative mobile parity: push left => turn left, push right => turn right.
+    const turn = clamp((-x) * clamp(Number(profile.turnInputScale || 1), 0.8, 1.25), -1, 1);
     const forward = clamp(-y, -1, 1);
     return { x, y, turn, forward };
   }
@@ -4491,18 +4564,18 @@
     const turnDeadzone = clamp(Number(profile.turnDeadzone || 0.04), 0.02, 0.08);
     if(Math.abs(turnIn) > turnDeadzone){
       const turnRate = clamp(Number(profile.turnRate || 2.9), 1.8, 4.2);
-      p.mesh.rotation.y = normalizeAngle(p.mesh.rotation.y + (turnIn * turnRate * state.dt));
+      setUnitYaw(p, normalizeAngle(getUnitYaw(p) + (turnIn * turnRate * state.dt)));
     }
 
     if(moving || rolling){
-      let moveYaw = Number(p.mesh.rotation.y || 0);
+      let moveYaw = getUnitYaw(p);
       const absFwd = Math.abs(fwdIn);
       if(!rolling && fwdIn < -0.25){
         // Pulling down turns the soldier around quickly, then moves out.
         const desired = normalizeAngle(moveYaw + Math.PI);
         const backSnap = clamp(Number(profile.backTurnSnap || 13.6), 9.5, 18);
-        p.mesh.rotation.y = lerpAngle(moveYaw, desired, clamp(1 - Math.exp(-backSnap * state.dt), 0.08, 0.4));
-        moveYaw = p.mesh.rotation.y;
+        setUnitYaw(p, lerpAngle(moveYaw, desired, clamp(1 - Math.exp(-backSnap * state.dt), 0.08, 0.4)));
+        moveYaw = getUnitYaw(p);
       }else if(!rolling){
         moveYaw += turnIn * clamp(Number(profile.moveTurnAssist || 0.3), 0.12, 0.48);
       }else{
@@ -4693,6 +4766,7 @@
       scoreValue:Math.round(type.maxHp * 1.8),
       position:pos,
       name:`Reinforcement`,
+      yawVisualOffset:-Math.PI * 0.5,
     });
     t.nextPounceAt = nowMs() + 1200 + Math.random() * 700;
     t.nextAttackAt = nowMs() + 300;
@@ -5866,6 +5940,13 @@
     if(state.controls.joystickActive && state.controls.joystickPointerId != null && state.controls.joystickPointerId !== ev.pointerId) return;
     if(ev.clientX > window.innerWidth * JOY_LEFT_ZONE_RATIO) return;
     if(isUiTapReserved(ev.clientX, ev.clientY)) return;
+    const tigerTap = pickTigerAtScreen(ev.clientX, ev.clientY);
+    if(tigerTap){
+      state.selectedTiger = tigerTap;
+      state.combat.outRangeSince = 0;
+      setStatus(`${tigerTap.name} locked. Attack or capture when ready.`, 900);
+      return;
+    }
     ev.preventDefault();
     const rect = state.ui.joyArea.getBoundingClientRect();
     state.controls.joystickCenterX = ev.clientX;
