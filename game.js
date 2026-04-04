@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4475";
+const TS_BUILD = "4476";
 if(tg){
   try{
     tg.expand?.();
@@ -1664,6 +1664,7 @@ const STORAGE_VERSION = 4385;
 const STORAGE_SCOPE = tgUserKey();
 const STORAGE_KEY_BASE = `ts_v${STORAGE_VERSION}`;
 const STORAGE_KEY = `${STORAGE_KEY_BASE}_${STORAGE_SCOPE}`;
+const STORAGE_MIRROR_KEY = `${STORAGE_KEY_BASE}_${STORAGE_SCOPE}_mirror`;
 const STORAGE_FALLBACK_KEYS = (() => {
   const versions = [4384, 4383, 4382, 4381, 4380, 4371];
   const keys = [];
@@ -1695,12 +1696,253 @@ const STORY_PROFILE_KEY_BASE = "ts_story_profile";
 const STORY_CHECKPOINT_KEY_BASE = "ts_story_checkpoint";
 const CLOUD_PROFILE_ENDPOINT = "/api/player/game-sync";
 const CLOUD_PROFILE_SAVE_MIN_MS = 15000;
+const SNAPSHOT_RECORD_TAG = "TS_SNAPSHOT_V1";
+const SNAPSHOT_RECORD_VERSION = 1;
+
+let __snapshotIntegrityIssueCount = 0;
+let __snapshotIntegrityLastReason = "";
 
 function cloneState(obj){
   if(typeof structuredClone === "function"){
     try{ return structuredClone(obj); }catch(e){}
   }
   return JSON.parse(JSON.stringify(obj));
+}
+
+function snapshotChecksum(payload){
+  let raw = "";
+  try{
+    raw = JSON.stringify(payload || null);
+  }catch(e){
+    raw = "";
+  }
+  if(!raw) return "";
+  let hash = 2166136261 >>> 0;
+  for(let i=0;i<raw.length;i++){
+    hash ^= raw.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function buildSnapshotRecord(kind, data){
+  const recordKind = String(kind || "state");
+  const payload = (data && typeof data === "object") ? cloneState(data) : {};
+  const savedAt = Number.isFinite(Number(payload.savedAt))
+    ? Math.floor(Number(payload.savedAt))
+    : Date.now();
+  if(!Number.isFinite(Number(payload.savedAt))){
+    payload.savedAt = savedAt;
+  }
+  const checksum = snapshotChecksum({ kind:recordKind, savedAt, data:payload });
+  return {
+    __tsSnapshot: SNAPSHOT_RECORD_TAG,
+    version: SNAPSHOT_RECORD_VERSION,
+    kind: recordKind,
+    savedAt,
+    checksum,
+    data: payload,
+  };
+}
+
+function noteSnapshotIntegrityIssue(reason="", key=""){
+  __snapshotIntegrityIssueCount += 1;
+  __snapshotIntegrityLastReason = `${String(reason || "invalid")}${key ? ` @ ${key}` : ""}`;
+  try{
+    console.warn("Snapshot integrity issue:", reason, key);
+  }catch(e){}
+}
+
+function unwrapSnapshotRecord(record, expectedKind=""){
+  if(!record || typeof record !== "object"){
+    return { ok:false, reason:"not-object", data:null };
+  }
+  if(record.__tsSnapshot !== SNAPSHOT_RECORD_TAG){
+    return { ok:true, legacy:true, data:record };
+  }
+  const version = Math.floor(Number(record.version || 0));
+  const kind = String(record.kind || "");
+  const savedAt = Number.isFinite(Number(record.savedAt))
+    ? Math.floor(Number(record.savedAt))
+    : 0;
+  const data = (record.data && typeof record.data === "object") ? record.data : null;
+  const checksum = String(record.checksum || "");
+  if(version !== SNAPSHOT_RECORD_VERSION){
+    return { ok:false, reason:"version-mismatch", data:null };
+  }
+  if(expectedKind && kind && kind !== expectedKind){
+    return { ok:false, reason:"kind-mismatch", data:null };
+  }
+  if(!data){
+    return { ok:false, reason:"missing-data", data:null };
+  }
+  const expectedChecksum = snapshotChecksum({ kind, savedAt, data });
+  if(!checksum || !expectedChecksum || checksum !== expectedChecksum){
+    return { ok:false, reason:"checksum-mismatch", data:null };
+  }
+  if(!Number.isFinite(Number(data.savedAt)) && savedAt > 0){
+    data.savedAt = savedAt;
+  }
+  return { ok:true, legacy:false, data };
+}
+
+function hasObject(value){
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasDefined(v){
+  return v !== undefined && v !== null;
+}
+
+function validatePersistedStateShape(data, opts={}){
+  const legacy = !!opts.legacy;
+  if(!hasObject(data)) return { ok:false, reason:"state-not-object" };
+  if(!legacy || hasDefined(data.mode)){
+    if(!["Story", "Arcade", "Survival"].includes(normalizeModeName(data.mode))) return { ok:false, reason:"mode" };
+  }
+  const numChecks = [
+    ["funds", 0, 9_999_999_999],
+    ["hp", 0, 100],
+    ["armor", 0, 300],
+    ["stamina", 0, 100],
+    ["lives", 0, 999],
+    ["storyLevel", 1, STORY_CAMPAIGN_OBJECTIVES.length],
+    ["storyLastMission", 1, STORY_CAMPAIGN_OBJECTIVES.length],
+    ["level", 1, 9999],
+    ["xp", 0, 9_999_999_999],
+    ["perkPoints", 0, 99999],
+    ["trapsOwned", 0, 99999],
+    ["shields", 0, 99999],
+  ];
+  for(const [key, lo, hi] of numChecks){
+    if(legacy && !hasDefined(data[key])) continue;
+    const raw = Number(data[key]);
+    if(!Number.isFinite(raw)) return { ok:false, reason:`${key}-nan` };
+    if(raw < lo || raw > hi) return { ok:false, reason:`${key}-range` };
+  }
+  const shapeChecks = [
+    ["ownedWeapons", Array.isArray],
+    ["ammoReserve", hasObject],
+    ["medkits", hasObject],
+    ["repairKits", hasObject],
+    ["armorPlates", hasObject],
+    ["perks", hasObject],
+    ["modeWallets", hasObject],
+    ["tigers", Array.isArray],
+    ["civilians", Array.isArray],
+    ["supportUnits", Array.isArray],
+  ];
+  for(const [key, check] of shapeChecks){
+    if(legacy && !hasDefined(data[key])) continue;
+    if(!check(data[key])) return { ok:false, reason:key };
+  }
+  return { ok:true };
+}
+
+function validateRecordByKind(kind, data, opts={}){
+  const legacy = !!opts.legacy;
+  if(!hasObject(data)) return { ok:false, reason:"payload-not-object" };
+  if(kind === "full-state"){
+    return validatePersistedStateShape(data, { legacy });
+  }
+  if(kind === "story-save-slot" || kind === "story-checkpoint"){
+    if(!legacy || hasDefined(data.mission) || hasDefined(data.storyLevel)){
+      if(!Number.isFinite(Number(data.mission || data.storyLevel || 1))) return { ok:false, reason:"mission" };
+    }
+    if(!hasObject(data.resumeState)) return { ok:false, reason:"resumeState" };
+    return validatePersistedStateShape(data.resumeState, { legacy });
+  }
+  if(kind === "story-profile" || kind === "story-progress"){
+    if((!legacy || hasDefined(data.storyLevel) || hasDefined(data.mission)) && !Number.isFinite(Number(data.storyLevel || data.mission || 1))){
+      return { ok:false, reason:"storyLevel" };
+    }
+    if((!legacy || hasDefined(data.funds)) && !Number.isFinite(Number(data.funds || 0))){
+      return { ok:false, reason:"funds" };
+    }
+    if((!legacy || hasDefined(data.modeWallets)) && !hasObject(data.modeWallets)) return { ok:false, reason:"modeWallets" };
+    if(
+      (!legacy || hasDefined(data.medkits) || hasDefined(data.armorPlates) || hasDefined(data.perks)) &&
+      (!hasObject(data.medkits) || !hasObject(data.armorPlates) || !hasObject(data.perks))
+    ){
+      return { ok:false, reason:"profile-core-fields" };
+    }
+    return { ok:true };
+  }
+  return { ok:true };
+}
+
+function parseSnapshotPayload(raw, expectedKind="", keyHint=""){
+  let parsed = null;
+  try{
+    parsed = JSON.parse(raw);
+  }catch(e){
+    noteSnapshotIntegrityIssue("parse-error", keyHint);
+    return null;
+  }
+  const unwrapped = unwrapSnapshotRecord(parsed, expectedKind);
+  if(!unwrapped.ok){
+    noteSnapshotIntegrityIssue(unwrapped.reason || "unwrap-failed", keyHint);
+    return null;
+  }
+  const data = unwrapped.data;
+  const validated = validateRecordByKind(expectedKind, data, { legacy:!!unwrapped.legacy });
+  if(!validated.ok){
+    noteSnapshotIntegrityIssue(validated.reason || "shape-invalid", keyHint);
+    return null;
+  }
+  return data;
+}
+
+function readSnapshotRecordFromStorage(key, expectedKind){
+  let raw = null;
+  try{
+    raw = localStorage.getItem(key);
+  }catch(e){
+    raw = null;
+  }
+  if(!raw) return null;
+  const data = parseSnapshotPayload(raw, expectedKind, key);
+  if(data) return data;
+  try{ localStorage.removeItem(key); }catch(e){}
+  return null;
+}
+
+function verifySnapshotRecordRaw(raw, expectedKind=""){
+  let parsed = null;
+  try{
+    parsed = JSON.parse(raw);
+  }catch(e){
+    return false;
+  }
+  const unwrapped = unwrapSnapshotRecord(parsed, expectedKind);
+  if(!unwrapped.ok) return false;
+  const validated = validateRecordByKind(expectedKind, unwrapped.data, { legacy:!!unwrapped.legacy });
+  return !!validated.ok;
+}
+
+function writeSnapshotRecordToStorage(key, kind, data){
+  const record = buildSnapshotRecord(kind, data);
+  const raw = JSON.stringify(record);
+  localStorage.setItem(key, raw);
+  const verifyRaw = localStorage.getItem(key);
+  if(!verifyRaw || !verifySnapshotRecordRaw(verifyRaw, kind)){
+    noteSnapshotIntegrityIssue("write-verify-failed", key);
+    throw new Error(`snapshot-write-verify-failed:${kind}`);
+  }
+  if(kind === "full-state" && key === STORAGE_KEY){
+    try{
+      const mirrorRecord = buildSnapshotRecord(kind, data);
+      const mirrorRaw = JSON.stringify(mirrorRecord);
+      localStorage.setItem(STORAGE_MIRROR_KEY, mirrorRaw);
+      const mirrorVerify = localStorage.getItem(STORAGE_MIRROR_KEY);
+      if(!mirrorVerify || !verifySnapshotRecordRaw(mirrorVerify, kind)){
+        noteSnapshotIntegrityIssue("mirror-write-verify-failed", STORAGE_MIRROR_KEY);
+      }
+    }catch(e){
+      noteSnapshotIntegrityIssue("mirror-write-failed", STORAGE_MIRROR_KEY);
+    }
+  }
+  return record;
 }
 
 function awardDailyLogin(){
@@ -5611,6 +5853,95 @@ function pickRicherStorySnapshot(list=[]){
   return best;
 }
 
+function fullStateProgressMissionScore(state){
+  if(!state || typeof state !== "object") return 0;
+  const mode = normalizeModeName(state.mode);
+  if(mode === "Story"){
+    const mission = clamp(
+      Math.floor(Number(state.storyLastMission ?? state.storyLevel ?? state.mission ?? 1)),
+      1,
+      STORY_CAMPAIGN_OBJECTIVES.length
+    );
+    return mission * 1_000_000;
+  }
+  if(mode === "Arcade"){
+    const mission = clamp(
+      Math.floor(Number(state.arcadeLevel ?? state.level ?? 1)),
+      1,
+      ARCADE_CAMPAIGN_OBJECTIVES.length
+    );
+    return mission * 1_000_000;
+  }
+  const wave = Math.max(1, Math.floor(Number(state.survivalWave ?? state.wave ?? 1)));
+  return wave * 1_000_000;
+}
+
+function fullStateSnapshotQuality(state){
+  if(!state || typeof state !== "object") return -1;
+  const level = Math.max(1, Math.floor(Number(state.level || 1)));
+  const xp = Math.max(0, Math.floor(Number(state.xp || 0)));
+  const funds = Math.max(0, Math.floor(Number(state.funds || 0)));
+  const score = Math.max(0, Math.floor(Number(state.score || 0)));
+  const ownedWeapons = Array.isArray(state.ownedWeapons) ? state.ownedWeapons.length : 0;
+  const ammoTotal = sumNonNegativeIntValues(state.ammoReserve);
+  const medkitTotal = sumNonNegativeIntValues(state.medkits);
+  const repairTotal = sumNonNegativeIntValues(state.repairKits);
+  const armorPlateTotal = sumNonNegativeIntValues(state.armorPlates) + sumNonNegativeIntValues(state.armorPlatesFallback);
+  const trapsOwned = Math.max(0, Math.floor(Number(state.trapsOwned || 0)));
+  const shields = Math.max(0, Math.floor(Number(state.shields || 0)));
+  const perkPoints = Math.max(0, Math.floor(Number(state.perkPoints || 0)));
+  const perkRanks = sumNonNegativeIntValues(state.perks);
+  const contractProgress = sumNonNegativeIntValues(state.contractTallies);
+  const supportAlive = Array.isArray(state.supportUnits) ? state.supportUnits.reduce((n, u)=>n + (u && u.alive ? 1 : 0), 0) : 0;
+  const civAlive = Array.isArray(state.civilians) ? state.civilians.reduce((n, c)=>n + (c && c.alive && !c.evac ? 1 : 0), 0) : 0;
+  const tigerAlive = Array.isArray(state.tigers) ? state.tigers.reduce((n, t)=>n + (t && t.alive ? 1 : 0), 0) : 0;
+  return (
+    fullStateProgressMissionScore(state) +
+    (level * 8_000) +
+    (xp * 8) +
+    funds +
+    score +
+    (ownedWeapons * 1_800) +
+    (ammoTotal * 8) +
+    (medkitTotal * 150) +
+    (repairTotal * 120) +
+    (armorPlateTotal * 130) +
+    (trapsOwned * 90) +
+    (shields * 90) +
+    (perkPoints * 50) +
+    (perkRanks * 220) +
+    (contractProgress * 3) +
+    (supportAlive * 220) +
+    (civAlive * 200) +
+    (tigerAlive * 140)
+  );
+}
+
+function pickBestPersistedStateCandidate(list=[]){
+  let best = null;
+  for(const item of list){
+    if(!item || typeof item !== "object" || !item.data || typeof item.data !== "object") continue;
+    if(!best){
+      best = item;
+      continue;
+    }
+    const bestQuality = fullStateSnapshotQuality(best.data);
+    const nextQuality = fullStateSnapshotQuality(item.data);
+    if(nextQuality > bestQuality){
+      best = item;
+      continue;
+    }
+    if(nextQuality < bestQuality) continue;
+
+    const bestSavedAt = Number.isFinite(Number(best.data.savedAt)) ? Number(best.data.savedAt) : 0;
+    const nextSavedAt = Number.isFinite(Number(item.data.savedAt)) ? Number(item.data.savedAt) : 0;
+    if(nextSavedAt > bestSavedAt){
+      best = item;
+    }
+  }
+  return best;
+}
+
 function resolveStoryProfileOverlay(storyProfile, storyProgress, currentState=null){
   const best = pickRicherStorySnapshot([storyProfile, storyProgress]);
   if(!best) return null;
@@ -5638,29 +5969,34 @@ function load(){
     const storyProfile = resolveStoryProfileOverlay(storyProfileRaw, storyProgress);
     let saved = null;
     let sourceKey = null;
-    for(const key of [STORAGE_KEY, ...STORAGE_FALLBACK_KEYS]){
-      let raw = null;
-      try{
-        raw = localStorage.getItem(key);
-      }catch(e){
-        raw = null;
-      }
-      if(!raw) continue;
-      try{
-        saved = JSON.parse(raw);
-        sourceKey = key;
-        break;
-      }catch(e){
-        try{ localStorage.removeItem(key); }catch(err){}
-      }
+    const fullStateCandidates = [];
+    for(const key of [STORAGE_KEY, STORAGE_MIRROR_KEY, ...STORAGE_FALLBACK_KEYS]){
+      const loaded = readSnapshotRecordFromStorage(key, "full-state");
+      if(!loaded) continue;
+      fullStateCandidates.push({ key, data:loaded });
+    }
+    const selectedState = pickBestPersistedStateCandidate(fullStateCandidates);
+    if(selectedState){
+      saved = selectedState.data;
+      sourceKey = selectedState.key;
     }
     if(!saved && storySlot && typeof storySlot.resumeState === "object"){
-      saved = storySlot.resumeState;
-      sourceKey = "__story_resume__";
+      const resumeValidation = validatePersistedStateShape(storySlot.resumeState);
+      if(resumeValidation.ok){
+        saved = storySlot.resumeState;
+        sourceKey = "__story_resume__";
+      }else{
+        noteSnapshotIntegrityIssue(`story-resume-${resumeValidation.reason}`, "__story_resume__");
+      }
     }
     if(saved && shouldPreferStorySlotResume(saved, storySlot)){
-      saved = storySlot.resumeState;
-      sourceKey = "__story_resume__";
+      const resumeValidation = validatePersistedStateShape(storySlot.resumeState);
+      if(resumeValidation.ok){
+        saved = storySlot.resumeState;
+        sourceKey = "__story_resume__";
+      }else{
+        noteSnapshotIntegrityIssue(`story-resume-${resumeValidation.reason}`, "__story_resume__");
+      }
     }
     if(!saved){
       const fallback = cloneState(DEFAULT);
@@ -5724,19 +6060,25 @@ function load(){
     m.mode = normalizeModeName(m.mode);
     m.storyLastMission = clamp(Math.floor(Number(saved.storyLastMission ?? m.storyLevel ?? 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
     ensureStoryEndgameState(m);
-    applyStorySaveToState(m, { allowModeSync:true });
-    const profileOverlay = resolveStoryProfileOverlay(storyProfileRaw, storyProgress, m);
-    applyStoryProfileToState(m, profileOverlay);
-    const walletProfile = profileOverlay || storyProfile;
-    const mergedModeWallets = (walletProfile && walletProfile.modeWallets && typeof walletProfile.modeWallets === "object")
-      ? { ...(saved.modeWallets || {}), ...walletProfile.modeWallets }
-      : saved.modeWallets;
-    m.modeWallets = normalizeModeWallets(mergedModeWallets, m.funds, m.mode);
-    if(walletProfile && Number.isFinite(Number(walletProfile.funds))){
-      const profileFunds = Math.max(0, Math.round(Number(walletProfile.funds)));
-      if(m.modeWallets && typeof m.modeWallets === "object"){
-        m.modeWallets[m.mode] = profileFunds;
+    const loadedFromStoryResume = sourceKey === "__story_resume__";
+    if(loadedFromStoryResume){
+      applyStorySaveToState(m, { allowModeSync:true });
+      const profileOverlay = resolveStoryProfileOverlay(storyProfileRaw, storyProgress, m);
+      applyStoryProfileToState(m, profileOverlay);
+      const walletProfile = profileOverlay || storyProfile;
+      const mergedModeWallets = (walletProfile && walletProfile.modeWallets && typeof walletProfile.modeWallets === "object")
+        ? { ...(saved.modeWallets || {}), ...walletProfile.modeWallets }
+        : saved.modeWallets;
+      m.modeWallets = normalizeModeWallets(mergedModeWallets, m.funds, m.mode);
+      if(walletProfile && Number.isFinite(Number(walletProfile.funds))){
+        const profileFunds = Math.max(0, Math.round(Number(walletProfile.funds)));
+        if(m.modeWallets && typeof m.modeWallets === "object"){
+          m.modeWallets[m.mode] = profileFunds;
+        }
       }
+    }else{
+      // Full-state snapshots are canonical and should not be partially overwritten by lite profile keys.
+      m.modeWallets = normalizeModeWallets(saved.modeWallets, saved.funds, m.mode);
     }
     m.funds = getModeWallet(m.mode, m);
     ensureContractTalliesState(m);
@@ -5757,7 +6099,7 @@ function load(){
     trimPersistentState(m);
     if(sourceKey && sourceKey !== STORAGE_KEY){
       try{
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(m));
+        writeSnapshotRecordToStorage(STORAGE_KEY, "full-state", m);
       }catch(e){}
     }
     return m;
@@ -6128,7 +6470,8 @@ function flushSaveNow(){
   __savePending = false;
   let primarySaved = false;
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistedState()));
+    const persisted = buildPersistedState();
+    writeSnapshotRecordToStorage(STORAGE_KEY, "full-state", persisted);
     primarySaved = true;
   }catch(e){
     try{ console.warn("Primary save failed, using story save fallback:", e); }catch(err){}
@@ -11022,6 +11365,10 @@ function storyCheckpointReadStorageKeys(){
   return storyCheckpointStorageKeys().slice();
 }
 function storyCheckpointMissionFromPayload(payload){
+  if(payload && typeof payload === "object" && payload.__tsSnapshot === SNAPSHOT_RECORD_TAG){
+    const decoded = unwrapSnapshotRecord(payload, "story-checkpoint");
+    if(decoded.ok) payload = decoded.data;
+  }
   if(!payload || typeof payload !== "object") return 1;
   const resume = (payload.resumeState && typeof payload.resumeState === "object") ? payload.resumeState : null;
   const raw =
@@ -11038,14 +11385,7 @@ function readStoryCheckpointData(){
   try{
     let best = null;
     for(const key of storyCheckpointReadStorageKeys()){
-      const raw = localStorage.getItem(key);
-      if(!raw) continue;
-      let parsed = null;
-      try{
-        parsed = JSON.parse(raw);
-      }catch(e){
-        parsed = null;
-      }
+      const parsed = readSnapshotRecordFromStorage(key, "story-checkpoint");
       if(!parsed || typeof parsed !== "object") continue;
       const mission = storyCheckpointMissionFromPayload(parsed);
       const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
@@ -11126,8 +11466,7 @@ function writeStoryCheckpointData(trigger={}){
   if(window.__TUTORIAL_MODE__) return null;
   const payload = buildStoryCheckpointSnapshot(trigger);
   try{
-    const raw = JSON.stringify(payload);
-    localStorage.setItem(storyCheckpointStorageKey(), raw);
+    writeSnapshotRecordToStorage(storyCheckpointStorageKey(), "story-checkpoint", payload);
     __storyCheckpointCache = payload;
     return payload;
   }catch(e){
@@ -11225,7 +11564,7 @@ function restartFromStoryCheckpoint(){
   trimPersistentState(resume);
 
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(resume));
+    writeSnapshotRecordToStorage(STORAGE_KEY, "full-state", resume);
   }catch(e){}
 
   ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay","proto3dOverlay"].forEach((id)=>{
@@ -11300,14 +11639,7 @@ function readStoryProfileData(){
   try{
     let best = null;
     for(const key of storyProfileReadStorageKeys()){
-      const raw = localStorage.getItem(key);
-      if(!raw) continue;
-      let parsed = null;
-      try{
-        parsed = JSON.parse(raw);
-      }catch(e){
-        parsed = null;
-      }
+      const parsed = readSnapshotRecordFromStorage(key, "story-profile");
       if(!parsed || typeof parsed !== "object") continue;
       const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
       const candidate = { ...parsed, savedAt, storageKey:key };
@@ -11400,8 +11732,7 @@ function writeStoryProfileData(source="autosave", state=S){
     source: String(source || "autosave"),
   };
   try{
-    const raw = JSON.stringify(payload);
-    localStorage.setItem(storyProfileStorageKey(), raw);
+    writeSnapshotRecordToStorage(storyProfileStorageKey(), "story-profile", payload);
     for(const key of storyProfileReadStorageKeys()){
       if(key !== storyProfileStorageKey()) localStorage.removeItem(key);
     }
@@ -11618,14 +11949,7 @@ function readStoryProgressData(){
   try{
     let best = null;
     for(const key of storyProgressReadStorageKeys()){
-      const raw = localStorage.getItem(key);
-      if(!raw) continue;
-      let parsed = null;
-      try{
-        parsed = JSON.parse(raw);
-      }catch(e){
-        parsed = null;
-      }
+      const parsed = readSnapshotRecordFromStorage(key, "story-progress");
       if(!parsed || typeof parsed !== "object") continue;
       const mission = clamp(Math.floor(Number(parsed.mission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
       const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
@@ -11755,14 +12079,17 @@ function writeStoryProgressData(payload={}){
     source: String(payload.source || "autosave"),
   };
   try{
-    const raw = JSON.stringify(data);
-    localStorage.setItem(storyProgressStorageKey(), raw);
+    writeSnapshotRecordToStorage(storyProgressStorageKey(), "story-progress", data);
     return true;
   }catch(e){
     return false;
   }
 }
 function storySaveMissionFromPayload(payload){
+  if(payload && typeof payload === "object" && payload.__tsSnapshot === SNAPSHOT_RECORD_TAG){
+    const decoded = unwrapSnapshotRecord(payload, "story-save-slot");
+    if(decoded.ok) payload = decoded.data;
+  }
   if(!payload || typeof payload !== "object") return 1;
   const fromResume = payload.resumeState && typeof payload.resumeState === "object"
     ? (payload.resumeState.storyLevel ?? payload.resumeState.storyLastMission ?? payload.resumeState.mission)
@@ -11826,7 +12153,7 @@ function restoreStoryResumeSnapshot(slot, source="story-restore"){
   trimPersistentState(resume);
 
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(resume));
+    writeSnapshotRecordToStorage(STORAGE_KEY, "full-state", resume);
   }catch(e){}
 
   S = load();
@@ -11853,14 +12180,7 @@ function readStorySaveData(){
   try{
     let best = null;
     for(const key of storySaveReadStorageKeys()){
-      const raw = localStorage.getItem(key);
-      if(!raw) continue;
-      let parsed = null;
-      try{
-        parsed = JSON.parse(raw);
-      }catch(e){
-        parsed = null;
-      }
+      const parsed = readSnapshotRecordFromStorage(key, "story-save-slot");
       if(!parsed || typeof parsed !== "object") continue;
       const mission = storySaveMissionFromPayload(parsed);
       if(!Number.isFinite(mission) || mission < 1) continue;
@@ -11972,8 +12292,7 @@ function writeStorySaveData(source="manual"){
   });
   const profileOk = writeStoryProfileData(payload.source, resumeState);
   try{
-    const raw = JSON.stringify(payload);
-    localStorage.setItem(storySaveStorageKey(), raw);
+    writeSnapshotRecordToStorage(storySaveStorageKey(), "story-save-slot", payload);
     return payload;
   }catch(e){
     return (progressOk || profileOk) ? payload : null;
@@ -17278,6 +17597,7 @@ function closeComplete(){
 
 function performResetGame(){
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(STORAGE_MIRROR_KEY);
   for(const key of STORAGE_FALLBACK_KEYS){
     localStorage.removeItem(key);
   }
@@ -24613,6 +24933,16 @@ function init(){
   updateTitle();
   ensureStabilityMonitorNode();
   renderStabilityMonitor(true);
+  if(__snapshotIntegrityIssueCount > 0){
+    __savePending = true;
+    setTimeout(()=>{
+      const label = __snapshotIntegrityIssueCount === 1 ? "snapshot" : "snapshots";
+      toast(`Recovered from ${__snapshotIntegrityIssueCount} invalid save ${label}.`);
+      if(__snapshotIntegrityLastReason){
+        try{ console.warn("Latest save integrity recovery reason:", __snapshotIntegrityLastReason); }catch(e){}
+      }
+    }, 600);
+  }
 
   for(const wid of S.ownedWeapons){
     if(S.durability[wid]==null) S.durability[wid]=100;

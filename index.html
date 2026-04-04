@@ -234,9 +234,9 @@
       height:100dvh;
       overflow:hidden;
       background:
-        radial-gradient(circle at 20% 14%, rgba(52,211,153,.16), transparent 38%),
-        radial-gradient(circle at 78% 10%, rgba(59,130,246,.20), transparent 34%),
-        linear-gradient(180deg, rgba(10,16,24,.98), rgba(6,10,16,.99));
+        radial-gradient(circle at 20% 14%, rgba(52,211,153,.10), transparent 34%),
+        radial-gradient(circle at 78% 10%, rgba(59,130,246,.14), transparent 30%),
+        linear-gradient(180deg, rgba(7,12,18,.99), rgba(4,7,12,.995));
     }
     .proto3dCanvasHost{
       position:absolute;
@@ -337,10 +337,10 @@
     }
     .proto3dHudCard{
       border:1px solid rgba(45,66,102,.92);
-      background:rgba(9,14,24,.66);
+      background:rgba(6,10,18,.84);
       border-radius:12px;
       padding:6px 8px;
-      backdrop-filter:blur(6px);
+      backdrop-filter:none;
       font-size:11px;
       line-height:1.2;
       color:#e6edf8;
@@ -357,7 +357,7 @@
       bottom:calc(14px + env(safe-area-inset-bottom));
       z-index:4;
       border:1px solid rgba(45,66,102,.92);
-      background:rgba(9,14,24,.72);
+      background:rgba(6,10,18,.86);
       border-radius:999px;
       padding:6px 10px;
       font-size:11px;
@@ -389,7 +389,7 @@
     }
     .proto3dDuelChip{
       border:1px solid rgba(46,84,140,.9);
-      background:rgba(6,12,20,.84);
+      background:rgba(5,10,18,.92);
       border-radius:999px;
       padding:6px 10px;
       font-size:11px;
@@ -400,7 +400,7 @@
       overflow:hidden;
       text-overflow:ellipsis;
       max-width:44vw;
-      backdrop-filter:blur(5px);
+      backdrop-filter:none;
     }
     .proto3dDuelChip.you{
       border-color:rgba(74,222,128,.86);
@@ -431,9 +431,9 @@
       height:124px;
       border-radius:50%;
       border:2px solid rgba(226,232,240,.24);
-      background:rgba(8,12,22,.25);
+      background:rgba(8,12,22,.34);
       box-shadow:0 12px 26px rgba(0,0,0,.34);
-      backdrop-filter:blur(4px);
+      backdrop-filter:none;
       opacity:0;
       transform:translate(-9999px,-9999px);
       transition:opacity .08s ease;
@@ -480,8 +480,8 @@
       font-size:12px;
       padding:6px;
       border:1px solid rgba(78,106,162,.84);
-      background:rgba(8,12,22,.46);
-      backdrop-filter:blur(5px);
+      background:rgba(8,12,22,.64);
+      backdrop-filter:none;
       box-shadow:0 10px 22px rgba(0,0,0,.33);
     }
     .proto3dActionBtn.warn{
@@ -2201,9 +2201,9 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4475"></script>
+<script src="./game.js?v=4482"></script>
 <script src="./tutorial.js?v=4463"></script>
-<script src="./prototype3d.js?v=4475"></script>
+<script src="./prototype3d.js?v=4482"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";

@@ -17,8 +17,17 @@
   const PERF_HUD_MAX_MS = 180;
   const PERF_SPIKE_MS = 44;
   const PERF_CRITICAL_SPIKE_MS = 68;
+  const PERF_WATCHDOG_WINDOW_MS = 4200;
+  const PERF_WATCHDOG_DEGRADE_COOLDOWN_MS = 6200;
+  const PERF_WATCHDOG_RECOVER_COOLDOWN_MS = 8400;
+  const PERF_WATCHDOG_FORCE_LOW_FRAME_MS = 115;
+  const PERF_WATCHDOG_SPIKE_LIMIT = 9;
+  const PERF_WATCHDOG_CRITICAL_LIMIT = 3;
+  const PERF_WATCHDOG_SKIP_LIMIT = 30;
   const FRAME_BUDGET_DEFAULT_MS = 11.8;
   const VFX_POOL_MAX = 48;
+  const PERF_DEVICE_PROFILE_PREFIX = "ts_3d_perf_profile_v1";
+  const PERF_DEVICE_PROFILE_TTL_MS = 1000 * 60 * 60 * 48;
 
   const QUALITY_PRESETS = {
     high:{
@@ -102,6 +111,8 @@
   const JOY_KNOB_SIZE = 54;
   const JOY_LEFT_ZONE_RATIO = 0.6;
   const JOY_DEADZONE_PX = 10;
+  const JOY_TAP_MAX_MS = 240;
+  const JOY_TAP_MAX_MOVE_PX = 14;
   const SHIELD_PX_TO_WORLD_RATIO = 13;
   const TRAP_RADIUS_3D = 10.5;
   const TRAP_TTL_MS_3D = 22000;
@@ -125,6 +136,12 @@
   });
 
   const CONTROL_PROFILE_STORAGE_KEY = "ts_3d_control_profile_v1";
+  const PERF_TIER_RANK = Object.freeze({
+    low:0,
+    med:1,
+    high:2,
+    clarity:2,
+  });
   const CONTROL_PROFILES = Object.freeze({
     arcade:{
       key:"arcade",
@@ -328,6 +345,10 @@
       joystickAnchorX:0,
       joystickAnchorY:0,
       joystickRadius:42,
+      joyStartX:0,
+      joyStartY:0,
+      joyStartAt:0,
+      joyDragged:false,
       moveSmoothX:0,
       moveSmoothY:0,
       profileKey:"balanced",
@@ -417,6 +438,7 @@
     perf:{
       tier:"med",
       preset:QUALITY_PRESETS.med,
+      deviceProfile:null,
       autoEnabled:true,
       frameAccumMs:0,
       frameCount:0,
@@ -428,11 +450,22 @@
       lowHits:0,
       highHits:0,
       frameNo:0,
+      lastQualityShiftAt:0,
       budget:{
         frameStartAt:0,
         limitMs:FRAME_BUDGET_DEFAULT_MS,
         spentMs:0,
         skipped:0,
+      },
+      watchdog:{
+        windowStartAt:0,
+        spikes:0,
+        critical:0,
+        skips:0,
+        worstFrameMs:0,
+        degradeCount:0,
+        recoverCount:0,
+        lastDegradeAt:0,
       },
       hudLastAt:0,
       lastHud:{
@@ -487,6 +520,139 @@
     return `${MAIN_MODE_PREF_PREFIX}_${readinessUserKey()}`;
   }
 
+  function perfDeviceProfileKey(){
+    const cores = Math.max(1, Math.floor(Number(navigator.hardwareConcurrency || 4)));
+    const mem = Math.max(1, Number(navigator.deviceMemory || 4));
+    const dpr = Math.round((window.devicePixelRatio || 1) * 100) / 100;
+    return `${PERF_DEVICE_PROFILE_PREFIX}_${readinessUserKey()}_${cores}c_${mem}g_${dpr}dpr`;
+  }
+
+  function defaultPerfDeviceProfile(){
+    return {
+      floorTier:"",
+      ceilingTier:"",
+      lastTier:"",
+      degradeHits:0,
+      recoverHits:0,
+      expiresAt:0,
+      updatedAt:0,
+    };
+  }
+
+  function readPerfDeviceProfile(){
+    let raw = null;
+    try{
+      raw = JSON.parse(localStorage.getItem(perfDeviceProfileKey()) || "null");
+    }catch(_){
+      raw = null;
+    }
+    const out = { ...defaultPerfDeviceProfile(), ...(raw && typeof raw === "object" ? raw : {}) };
+    out.floorTier = ["low","med","high","clarity"].includes(String(out.floorTier || "")) ? String(out.floorTier) : "";
+    out.ceilingTier = ["low","med","high","clarity"].includes(String(out.ceilingTier || "")) ? String(out.ceilingTier) : "";
+    out.lastTier = ["low","med","high","clarity"].includes(String(out.lastTier || "")) ? String(out.lastTier) : "";
+    out.degradeHits = Math.max(0, Math.floor(Number(out.degradeHits || 0)));
+    out.recoverHits = Math.max(0, Math.floor(Number(out.recoverHits || 0)));
+    out.expiresAt = Math.max(0, Math.floor(Number(out.expiresAt || 0)));
+    out.updatedAt = Math.max(0, Math.floor(Number(out.updatedAt || 0)));
+    if(out.expiresAt && Date.now() > out.expiresAt){
+      out.floorTier = "";
+      out.ceilingTier = "";
+      out.expiresAt = 0;
+    }
+    return out;
+  }
+
+  function writePerfDeviceProfile(profile){
+    const payload = { ...defaultPerfDeviceProfile(), ...(profile && typeof profile === "object" ? profile : {}) };
+    payload.updatedAt = Date.now();
+    try{
+      localStorage.setItem(perfDeviceProfileKey(), JSON.stringify(payload));
+    }catch(_){}
+    state.perf.deviceProfile = payload;
+    return payload;
+  }
+
+  function tierRank(key){
+    const k = String(key || "med");
+    return Number(PERF_TIER_RANK[k] ?? PERF_TIER_RANK.med);
+  }
+
+  function clampTierByDeviceCeiling(tier, ceilingTier){
+    const t = String(tier || "med");
+    const ceiling = String(ceilingTier || "");
+    if(!PERF_TIER_RANK.hasOwnProperty(ceiling)) return t;
+    if(tierRank(t) <= tierRank(ceiling)) return t;
+    return ceiling;
+  }
+
+  function clampTierByFloor(tier, floorTier){
+    const t = String(tier || "med");
+    const floor = String(floorTier || "");
+    if(!PERF_TIER_RANK.hasOwnProperty(floor)) return t;
+    if(tierRank(t) >= tierRank(floor)) return t;
+    return floor;
+  }
+
+  function qualityTierOneStepLower(tier){
+    const cur = String(tier || "med");
+    if(cur === "high" || cur === "clarity") return "med";
+    if(cur === "med") return "low";
+    return "low";
+  }
+
+  function qualityTierOneStepHigher(tier){
+    const cur = String(tier || "med");
+    if(cur === "low") return "med";
+    if(cur === "med") return "high";
+    return cur;
+  }
+
+  function updatePerfDeviceProfileAfterShift(type, nextTier){
+    if(!state.perf.deviceProfile){
+      state.perf.deviceProfile = readPerfDeviceProfile();
+    }
+    const profile = { ...(state.perf.deviceProfile || defaultPerfDeviceProfile()) };
+    const now = Date.now();
+    const safeTier = ["low","med","high","clarity"].includes(String(nextTier || "")) ? String(nextTier) : "med";
+    profile.lastTier = safeTier;
+    if(type === "degrade"){
+      profile.degradeHits = Math.max(0, Math.floor(Number(profile.degradeHits || 0))) + 1;
+    }else if(type === "recover"){
+      profile.recoverHits = Math.max(0, Math.floor(Number(profile.recoverHits || 0))) + 1;
+    }
+    const pressure = Math.max(0, profile.degradeHits - profile.recoverHits);
+    if(pressure >= 5){
+      profile.ceilingTier = "low";
+    }else if(pressure >= 2){
+      profile.ceilingTier = "med";
+    }else if(pressure <= 0){
+      profile.ceilingTier = "";
+    }
+    profile.expiresAt = now + PERF_DEVICE_PROFILE_TTL_MS;
+    writePerfDeviceProfile(profile);
+  }
+
+  function recordReadinessBudgetSkips(skips){
+    const add = Math.max(0, Math.floor(Number(skips || 0)));
+    if(add <= 0) return;
+    const data = ensureReadinessData();
+    data.budgetSkips += add;
+    markReadinessDirty();
+  }
+
+  function recordReadinessWatchdog(eventType, frameMs=0){
+    const kind = String(eventType || "");
+    const data = ensureReadinessData();
+    const worst = Math.max(0, Number(frameMs || 0));
+    data.worstFrameMs = Math.max(Number(data.worstFrameMs || 0), worst);
+    if(kind === "degrade"){
+      data.watchdogDegrades += 1;
+    }else if(kind === "recover"){
+      data.watchdogRecovers += 1;
+    }
+    markReadinessDirty();
+  }
+
   function defaultReadinessData(){
     return {
       version:1,
@@ -499,6 +665,10 @@
       frameMsTotal:0,
       spikeFrames:0,
       criticalFrames:0,
+      budgetSkips:0,
+      watchdogDegrades:0,
+      watchdogRecovers:0,
+      worstFrameMs:0,
       lastSessionAt:0,
       lastMissionAt:0,
       updatedAt:0,
@@ -519,6 +689,10 @@
     out.frameMsTotal = Math.max(0, Number(src.frameMsTotal || 0));
     out.spikeFrames = Math.max(0, Math.floor(Number(src.spikeFrames || 0)));
     out.criticalFrames = Math.max(0, Math.floor(Number(src.criticalFrames || 0)));
+    out.budgetSkips = Math.max(0, Math.floor(Number(src.budgetSkips || 0)));
+    out.watchdogDegrades = Math.max(0, Math.floor(Number(src.watchdogDegrades || 0)));
+    out.watchdogRecovers = Math.max(0, Math.floor(Number(src.watchdogRecovers || 0)));
+    out.worstFrameMs = Math.max(0, Number(src.worstFrameMs || 0));
     out.lastSessionAt = Math.max(0, Math.floor(Number(src.lastSessionAt || 0)));
     out.lastMissionAt = Math.max(0, Math.floor(Number(src.lastMissionAt || 0)));
     out.updatedAt = Math.max(0, Math.floor(Number(src.updatedAt || 0)));
@@ -596,6 +770,7 @@
     data.frameSamples += 1;
     data.frameMsTotal += ms;
     data.activeMs += ms;
+    data.worstFrameMs = Math.max(Number(data.worstFrameMs || 0), ms);
     if(ms >= PERF_SPIKE_MS) data.spikeFrames += 1;
     if(ms >= PERF_CRITICAL_SPIKE_MS) data.criticalFrames += 1;
     markReadinessDirty();
@@ -684,6 +859,10 @@
         spikesPerMin:round1(spikesPerMin),
         criticalSpikesPerMin:round1(criticalPerMin),
         clearRatePct:Math.round(clearRate * 100),
+        budgetSkips:data.budgetSkips,
+        watchdogDegrades:data.watchdogDegrades,
+        watchdogRecovers:data.watchdogRecovers,
+        worstFrameMs:round1(data.worstFrameMs),
       },
       updatedAt:data.updatedAt || 0,
     };
@@ -747,7 +926,6 @@
     const estimatedCost = Math.max(0, Number(opts.cost || 0));
     const every = Math.max(1, Math.floor(Number(opts.every || 1)));
     if(!critical && every > 1 && (state.perf.frameNo % every) !== 0){
-      state.perf.budget.skipped += 1;
       return false;
     }
     if(!critical && (state.perf.budget.spentMs + estimatedCost) > state.perf.budget.limitMs){
@@ -809,16 +987,27 @@
   }
 
   function applyQualityTier(tier, reason=""){
-    const next = QUALITY_PRESETS[tier] || QUALITY_PRESETS.med;
-    if(state.perf.tier === next.key && state.perf.preset === next) return;
+    if(!state.perf.deviceProfile){
+      state.perf.deviceProfile = readPerfDeviceProfile();
+    }
+    const profile = state.perf.deviceProfile || defaultPerfDeviceProfile();
+    const desired = QUALITY_PRESETS[tier] || QUALITY_PRESETS.med;
+    const cappedKey = clampTierByDeviceCeiling(desired.key, profile.ceilingTier || "");
+    const next = QUALITY_PRESETS[cappedKey] || desired;
+    if(state.perf.tier === next.key && state.perf.preset === next) return false;
     state.perf.tier = next.key;
     state.perf.preset = next;
+    state.perf.lastQualityShiftAt = nowMs();
     setRendererDprByQuality();
     applySceneLookFromMode();
     state.perf.hudLastAt = 0;
     if(reason){
-      setStatus(`3D performance mode: ${next.key.toUpperCase()}.`, 1200);
+      setStatus(`3D performance mode: ${next.key.toUpperCase()}.`, 1000);
     }
+    if(reason === "auto" || reason === "watchdog" || reason === "auto-recover"){
+      updatePerfDeviceProfileAfterShift(reason === "auto-recover" ? "recover" : "degrade", next.key);
+    }
+    return true;
   }
 
   function currentVisualLabel(){
@@ -932,25 +1121,25 @@
     if(!state.scene || !state.renderer) return;
     const mode = String(state.cameraCtl.visualMode || "auto");
     const tier = String(state.perf.tier || "med");
-    let bg = 0x0d1f18;
-    let fog = 0x133629;
-    let fogDensity = 0.00162;
-    let exposure = 1.15;
+    let bg = 0x09140f;
+    let fog = 0x0f2b20;
+    let fogDensity = 0.00105;
+    let exposure = 1.2;
     if(mode === "perf" || tier === "low"){
-      bg = 0x0b1713;
-      fog = 0x143024;
-      fogDensity = 0.00195;
-      exposure = 1.03;
+      bg = 0x08110d;
+      fog = 0x10271e;
+      fogDensity = 0.00124;
+      exposure = 1.08;
     }else if(mode === "balanced" || tier === "med"){
-      bg = 0x0c1c16;
-      fog = 0x15362a;
-      fogDensity = 0.00172;
-      exposure = 1.1;
+      bg = 0x0a1611;
+      fog = 0x113126;
+      fogDensity = 0.00108;
+      exposure = 1.17;
     }else if(mode === "clarity" || tier === "clarity" || tier === "high"){
-      bg = 0x10241c;
-      fog = 0x184133;
-      fogDensity = 0.00138;
-      exposure = 1.24;
+      bg = 0x0b1a14;
+      fog = 0x153b2e;
+      fogDensity = 0.00086;
+      exposure = 1.28;
     }
     if(state.scene.background) state.scene.background.setHex(bg);
     if(state.scene.fog){
@@ -959,6 +1148,60 @@
     }
     if("toneMappingExposure" in state.renderer){
       state.renderer.toneMappingExposure = exposure;
+    }
+  }
+
+  function evaluatePerformanceWatchdog(frameMs){
+    if(!state.perf.autoEnabled) return;
+    const now = state.now || nowMs();
+    const wd = state.perf.watchdog;
+    if(!wd.windowStartAt || (now - wd.windowStartAt) >= PERF_WATCHDOG_WINDOW_MS){
+      wd.windowStartAt = now;
+      wd.spikes = 0;
+      wd.critical = 0;
+      wd.skips = 0;
+      wd.worstFrameMs = 0;
+    }
+
+    wd.worstFrameMs = Math.max(Number(wd.worstFrameMs || 0), Number(frameMs || 0));
+    if(frameMs >= PERF_SPIKE_MS) wd.spikes += 1;
+    if(frameMs >= PERF_CRITICAL_SPIKE_MS) wd.critical += 1;
+    const budgetSkips = Math.max(0, Math.floor(Number(state.perf.budget?.skipped || 0)));
+    if(budgetSkips > 0){
+      wd.skips += budgetSkips;
+      recordReadinessBudgetSkips(budgetSkips);
+    }
+
+    const cooldownReady = (now - Number(wd.lastDegradeAt || 0)) >= PERF_WATCHDOG_DEGRADE_COOLDOWN_MS;
+    const severeFrame = frameMs >= PERF_WATCHDOG_FORCE_LOW_FRAME_MS;
+    const severeWindow = wd.critical >= PERF_WATCHDOG_CRITICAL_LIMIT || wd.spikes >= PERF_WATCHDOG_SPIKE_LIMIT || wd.skips >= PERF_WATCHDOG_SKIP_LIMIT;
+    if(cooldownReady && (severeFrame || severeWindow)){
+      const target = severeFrame ? "low" : qualityTierOneStepLower(state.perf.tier);
+      const changed = applyQualityTier(target, "watchdog");
+      if(changed){
+        wd.degradeCount += 1;
+        wd.lastDegradeAt = now;
+        recordReadinessWatchdog("degrade", frameMs);
+      }
+      return;
+    }
+
+    const recoverReady = (now - Number(wd.lastDegradeAt || 0)) >= PERF_WATCHDOG_RECOVER_COOLDOWN_MS;
+    const stableWindow =
+      wd.spikes === 0 &&
+      wd.critical === 0 &&
+      wd.skips <= 1 &&
+      frameMs < 19 &&
+      Number(state.perf.avgMs || 16.7) <= 16.8;
+    if(recoverReady && stableWindow){
+      const target = qualityTierOneStepHigher(state.perf.tier);
+      if(target !== state.perf.tier){
+        const changed = applyQualityTier(target, "auto-recover");
+        if(changed){
+          wd.recoverCount += 1;
+          recordReadinessWatchdog("recover", frameMs);
+        }
+      }
     }
   }
 
@@ -1001,6 +1244,9 @@
   function evaluatePerformanceTier(){
     if(!state.perf.autoEnabled) return;
     const now = state.now;
+    if((now - Number(state.perf.lastQualityShiftAt || 0)) < 900){
+      return;
+    }
     if(!state.perf.evalAt) state.perf.evalAt = now;
     state.perf.frameAccumMs += state.dt * 1000;
     state.perf.frameCount += 1;
@@ -1679,7 +1925,7 @@
   function mat(color, roughness=0.9, metalness=0.03){
     const THREE = state.three;
     const base = new THREE.Color(color);
-    const emissive = base.clone().multiplyScalar(0.025);
+    const emissive = base.clone().multiplyScalar(0.045);
     return new THREE.MeshStandardMaterial({ color:base, roughness, metalness, emissive });
   }
 
@@ -2187,7 +2433,7 @@
     const THREE = state.three;
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(r, r + 0.45, 32),
-      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.95, depthWrite:false, side:THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.98, depthWrite:false, side:THREE.DoubleSide })
     );
     ring.rotation.x = -Math.PI * 0.5;
     ring.position.y = 0.05;
@@ -2201,7 +2447,7 @@
     const THREE = state.three;
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(r, r + 0.42, 32),
-      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.72, depthWrite:false, side:THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.8, depthWrite:false, side:THREE.DoubleSide })
     );
     ring.rotation.x = -Math.PI * 0.5;
     ring.position.y = 0.06;
@@ -2479,7 +2725,7 @@
   function updateHitFlash(unit){
     if(!unit || !unit.mesh) return;
     const active = !!(unit.hitFlashUntil && (state.now || nowMs()) < unit.hitFlashUntil);
-    const pulse = active ? 1.04 : 1;
+    const pulse = active ? 1.06 : 1;
     unit.mesh.scale.set(pulse, pulse, pulse);
   }
 
@@ -2925,7 +3171,13 @@
 
   function createWorldScene(){
     const THREE = state.three;
-    const initialTier = detectInitialQualityTier();
+    const persistedProfile = readPerfDeviceProfile();
+    state.perf.deviceProfile = persistedProfile;
+    let initialTier = detectInitialQualityTier();
+    if(persistedProfile.lastTier){
+      initialTier = persistedProfile.lastTier;
+    }
+    initialTier = clampTierByDeviceCeiling(initialTier, persistedProfile.ceilingTier || "");
     state.perf.tier = initialTier;
     state.perf.preset = QUALITY_PRESETS[initialTier] || QUALITY_PRESETS.med;
     state.perf.evalAt = nowMs();
@@ -2939,9 +3191,15 @@
     state.perf.frameCount = 0;
     state.perf.frameNo = 0;
     state.perf.hudLastAt = 0;
+    state.perf.lastQualityShiftAt = 0;
+    state.perf.watchdog.windowStartAt = 0;
+    state.perf.watchdog.spikes = 0;
+    state.perf.watchdog.critical = 0;
+    state.perf.watchdog.skips = 0;
+    state.perf.watchdog.worstFrameMs = 0;
     state.scene = new THREE.Scene();
-    state.scene.background = new THREE.Color(0x0d1f18);
-    state.scene.fog = new THREE.FogExp2(0x133629, 0.00162);
+    state.scene.background = new THREE.Color(0x09140f);
+    state.scene.fog = new THREE.FogExp2(0x0f2b20, 0.00105);
 
     state.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 4000);
     state.camera.position.set(0, 34, 38);
@@ -2952,7 +3210,7 @@
     state.clock = new THREE.Clock();
 
     state.renderer = new THREE.WebGLRenderer({
-      antialias:true,
+      antialias: !!state.perf.preset.antialias,
       alpha:false,
       powerPreference:"high-performance",
       precision:"mediump",
@@ -2987,8 +3245,8 @@
     const baseGround = new THREE.Mesh(
       new THREE.PlaneGeometry(6000, 6000, 24, 24),
       new THREE.MeshStandardMaterial({
-        color:0x1a4b35,
-        roughness:0.98,
+        color:0x143826,
+        roughness:0.94,
         metalness:0.02,
       })
     );
@@ -4780,8 +5038,14 @@
       const d = Math.round(distToSelected);
       const inRange = distToSelected <= weaponRange;
       const capHp = captureWindowHp3D(st);
+      const captureRange = clamp(activeWeaponRange3D() * 0.95, PLAYER_CAPTURE_RANGE, COMBAT_LOCK_RANGE_MAX);
+      const capReady = !!(canAttemptCapture3D(st) && distToSelected <= captureRange);
       if(hudMode === "compact" || hudMode === "combat"){
-        setHudText("tiger", state.ui.hudTiger, `${st.name}${bossInfo} • ${pct}% • ${Math.min(d, 999)}m • ${tigerStatusText(st)}`);
+        setHudText(
+          "tiger",
+          state.ui.hudTiger,
+          `${st.name}${bossInfo} • ${pct}% • ${Math.min(d, 999)}m ${inRange ? "IN" : "OUT"} • ${capReady ? "CAP READY" : "CAP HOLD"} • ${tigerStatusText(st)}`
+        );
       }else{
         setHudText(
           "tiger",
@@ -4903,6 +5167,7 @@
     updateCamera();
     runFrameTask(()=>{ updateCombatFloatingLabels(); }, { cost:0.45, every:lowTier ? 2 : 1 });
     runFrameTask(()=>{ updateHud(); }, { cost:0.45, every:1 });
+    evaluatePerformanceWatchdog(frameMs);
     syncCoreVitals();
     saveCoreProgress(false);
     flushReadinessData(false);
@@ -5151,9 +5416,31 @@
     state.controls.moveY = 0;
     state.controls.moveSmoothX = 0;
     state.controls.moveSmoothY = 0;
+    state.controls.joyDragged = false;
+    state.controls.joyStartAt = 0;
     state.controls.joystickPointerId = null;
     state.controls.joystickActive = false;
     updateJoystickVisual(0,0);
+  }
+
+  function maybeSelectTigerFromJoyTap(ev){
+    if(!state.active) return;
+    const startedAt = Number(state.controls.joyStartAt || 0);
+    if(startedAt <= 0) return;
+    const heldMs = nowMs() - startedAt;
+    const sx = Number(state.controls.joyStartX || 0);
+    const sy = Number(state.controls.joyStartY || 0);
+    const ex = Number(ev?.clientX || sx);
+    const ey = Number(ev?.clientY || sy);
+    const drift = Math.hypot(ex - sx, ey - sy);
+    if(state.controls.joyDragged) return;
+    if(heldMs > JOY_TAP_MAX_MS) return;
+    if(drift > JOY_TAP_MAX_MOVE_PX) return;
+    const tiger = pickTigerAtScreen(ex, ey);
+    if(!tiger) return;
+    state.selectedTiger = tiger;
+    state.combat.outRangeSince = 0;
+    setStatus(`${tiger.name} locked. Attack or capture when ready.`, 900);
   }
 
   function onJoyPointerDown(ev){
@@ -5161,13 +5448,6 @@
     if(state.controls.joystickActive && state.controls.joystickPointerId != null && state.controls.joystickPointerId !== ev.pointerId) return;
     if(ev.clientX > window.innerWidth * JOY_LEFT_ZONE_RATIO) return;
     if(isUiTapReserved(ev.clientX, ev.clientY)) return;
-    const tappedTiger = pickTigerAtScreen(ev.clientX, ev.clientY);
-    if(tappedTiger){
-      ev.preventDefault();
-      state.selectedTiger = tappedTiger;
-      setStatus(`${tappedTiger.name} locked. Attack or capture when ready.`);
-      return;
-    }
     ev.preventDefault();
     const rect = state.ui.joyArea.getBoundingClientRect();
     state.controls.joystickCenterX = ev.clientX;
@@ -5177,6 +5457,10 @@
     state.controls.joystickPointerId = ev.pointerId;
     state.controls.joystickActive = true;
     state.controls.joystickRadius = 42;
+    state.controls.joyStartX = ev.clientX;
+    state.controls.joyStartY = ev.clientY;
+    state.controls.joyStartAt = nowMs();
+    state.controls.joyDragged = false;
     state.controls.moveX = 0;
     state.controls.moveY = 0;
     updateJoystickVisual(0, 0);
@@ -5204,6 +5488,11 @@
       dy = ev.clientY - state.controls.joystickCenterY;
       r = Math.hypot(dx, dy);
     }
+    const dragFromStart = Math.hypot(
+      ev.clientX - Number(state.controls.joyStartX || ev.clientX),
+      ev.clientY - Number(state.controls.joyStartY || ev.clientY)
+    );
+    if(dragFromStart > JOY_TAP_MAX_MOVE_PX) state.controls.joyDragged = true;
     const nx = r > 0 ? dx / r : 0;
     const ny = r > 0 ? dy / r : 0;
     const rr = clamp((r - JOY_DEADZONE_PX) / Math.max(1, maxR - JOY_DEADZONE_PX), 0, 1);
@@ -5216,12 +5505,14 @@
     if(!state.active) return;
     if(state.controls.joystickPointerId != null && state.controls.joystickPointerId !== ev.pointerId) return;
     ev.preventDefault();
+    maybeSelectTigerFromJoyTap(ev);
     resetJoystick();
   }
 
   function onWindowPointerUp(ev){
     if(!state.active || !state.controls.joystickActive) return;
     if(state.controls.joystickPointerId != null && state.controls.joystickPointerId !== ev.pointerId) return;
+    maybeSelectTigerFromJoyTap(ev);
     resetJoystick();
   }
 
