@@ -90,6 +90,21 @@
       treeBase:14, treeVar:12,
       pondChance:0.4,
     },
+    epic:{
+      key:"epic",
+      maxDpr:2.15,
+      keepRadius:4,
+      dropRadius:5,
+      chunkBuildPerFrame:2,
+      hudIntervalMs:90,
+      healthBarEveryNFrames:1,
+      antialias:true,
+      roadBase:2, roadVar:2,
+      houseBase:2, houseVar:3,
+      carBase:3, carVar:4,
+      treeBase:18, treeVar:14,
+      pondChance:0.45,
+    },
   };
 
   const PLAYER_BASE_SPEED = 16;
@@ -141,6 +156,7 @@
     med:1,
     high:2,
     clarity:2,
+    epic:3,
   });
   const CONTROL_PROFILES = Object.freeze({
     arcade:{
@@ -547,9 +563,9 @@
       raw = null;
     }
     const out = { ...defaultPerfDeviceProfile(), ...(raw && typeof raw === "object" ? raw : {}) };
-    out.floorTier = ["low","med","high","clarity"].includes(String(out.floorTier || "")) ? String(out.floorTier) : "";
-    out.ceilingTier = ["low","med","high","clarity"].includes(String(out.ceilingTier || "")) ? String(out.ceilingTier) : "";
-    out.lastTier = ["low","med","high","clarity"].includes(String(out.lastTier || "")) ? String(out.lastTier) : "";
+    out.floorTier = ["low","med","high","clarity","epic"].includes(String(out.floorTier || "")) ? String(out.floorTier) : "";
+    out.ceilingTier = ["low","med","high","clarity","epic"].includes(String(out.ceilingTier || "")) ? String(out.ceilingTier) : "";
+    out.lastTier = ["low","med","high","clarity","epic"].includes(String(out.lastTier || "")) ? String(out.lastTier) : "";
     out.degradeHits = Math.max(0, Math.floor(Number(out.degradeHits || 0)));
     out.recoverHits = Math.max(0, Math.floor(Number(out.recoverHits || 0)));
     out.expiresAt = Math.max(0, Math.floor(Number(out.expiresAt || 0)));
@@ -595,6 +611,7 @@
 
   function qualityTierOneStepLower(tier){
     const cur = String(tier || "med");
+    if(cur === "epic") return "high";
     if(cur === "high" || cur === "clarity") return "med";
     if(cur === "med") return "low";
     return "low";
@@ -604,6 +621,7 @@
     const cur = String(tier || "med");
     if(cur === "low") return "med";
     if(cur === "med") return "high";
+    if(cur === "high" || cur === "clarity") return "epic";
     return cur;
   }
 
@@ -613,7 +631,7 @@
     }
     const profile = { ...(state.perf.deviceProfile || defaultPerfDeviceProfile()) };
     const now = Date.now();
-    const safeTier = ["low","med","high","clarity"].includes(String(nextTier || "")) ? String(nextTier) : "med";
+    const safeTier = ["low","med","high","clarity","epic"].includes(String(nextTier || "")) ? String(nextTier) : "med";
     profile.lastTier = safeTier;
     if(type === "degrade"){
       profile.degradeHits = Math.max(0, Math.floor(Number(profile.degradeHits || 0))) + 1;
@@ -904,7 +922,8 @@
     const tier = state.perf.tier || "med";
     const avg = Number(state.perf.avgMs || 16.7);
     let base = 11.8;
-    if(tier === "high") base = 12.6;
+    if(tier === "epic") base = 13.2;
+    else if(tier === "high") base = 12.6;
     else if(tier === "low") base = 9.6;
     else if(tier === "clarity") base = 10.9;
     if(avg > 24) base -= 2.0;
@@ -941,6 +960,7 @@
 
   function healthBarCullDistanceForTier(){
     const tier = state.perf.tier || "med";
+    if(tier === "epic") return 440;
     if(tier === "high" || tier === "clarity") return 360;
     if(tier === "low") return 190;
     return 260;
@@ -966,9 +986,27 @@
     return ((h >>> 0) % 10000) / 10000;
   }
 
+  function isHighEndIPhoneClass(){
+    try{
+      const ua = String(navigator.userAgent || "");
+      if(!/iPhone/i.test(ua)) return false;
+      const dpr = Number(window.devicePixelRatio || 1);
+      const sw = Math.max(
+        Number(window.screen?.width || 0),
+        Number(window.screen?.height || 0)
+      );
+      const cores = Number(navigator.hardwareConcurrency || 4);
+      return dpr >= 3 && sw >= 920 && cores >= 6;
+    }catch(_){
+      return false;
+    }
+  }
+
   function detectInitialQualityTier(){
     const cores = Number(navigator.hardwareConcurrency || 4);
-    const mem = Number(navigator.deviceMemory || 4);
+    const memRaw = Number(navigator.deviceMemory);
+    const mem = Number.isFinite(memRaw) && memRaw > 0 ? memRaw : 6;
+    if(isHighEndIPhoneClass()) return "epic";
     if(cores <= 4 || mem <= 3) return "low";
     if(cores <= 6 || mem <= 6) return "med";
     return "high";
@@ -986,6 +1024,33 @@
     state.renderer.setPixelRatio(target);
   }
 
+  function applyShadowQualityFlags(){
+    if(!state.renderer || !state.three) return;
+    const THREE = state.three;
+    const enable = state.perf.tier !== "low";
+    if(state.renderer.shadowMap){
+      state.renderer.shadowMap.enabled = enable;
+      state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      state.renderer.shadowMap.autoUpdate = true;
+    }
+    if(state.mainSun){
+      state.mainSun.castShadow = enable;
+      if(state.mainSun.shadow?.mapSize){
+        const side = state.perf.tier === "epic" ? 1536 : ((state.perf.tier === "clarity" || state.perf.tier === "high") ? 1024 : 768);
+        state.mainSun.shadow.mapSize.set(side, side);
+      }
+      if(state.mainSun.shadow?.camera){
+        state.mainSun.shadow.camera.near = 2;
+        state.mainSun.shadow.camera.far = 180;
+        state.mainSun.shadow.camera.left = -80;
+        state.mainSun.shadow.camera.right = 80;
+        state.mainSun.shadow.camera.top = 80;
+        state.mainSun.shadow.camera.bottom = -80;
+      }
+      state.mainSun.shadow.bias = -0.00014;
+    }
+  }
+
   function applyQualityTier(tier, reason=""){
     if(!state.perf.deviceProfile){
       state.perf.deviceProfile = readPerfDeviceProfile();
@@ -999,6 +1064,7 @@
     state.perf.preset = next;
     state.perf.lastQualityShiftAt = nowMs();
     setRendererDprByQuality();
+    applyShadowQualityFlags();
     applySceneLookFromMode();
     state.perf.hudLastAt = 0;
     if(reason){
@@ -1015,6 +1081,7 @@
       case "perf": return "Visual: Perf";
       case "balanced": return "Visual: Balanced";
       case "clarity": return "Visual: Clarity";
+      case "cinematic": return "Visual: Cinematic";
       default: return "Visual: Auto";
     }
   }
@@ -1114,6 +1181,7 @@
     if(mode === "perf") applyQualityTier("low");
     else if(mode === "balanced") applyQualityTier("med");
     else if(mode === "clarity") applyQualityTier("clarity");
+    else if(mode === "cinematic") applyQualityTier("epic");
     applySceneLookFromMode();
   }
 
@@ -1121,25 +1189,30 @@
     if(!state.scene || !state.renderer) return;
     const mode = String(state.cameraCtl.visualMode || "auto");
     const tier = String(state.perf.tier || "med");
-    let bg = 0x09140f;
-    let fog = 0x0f2b20;
-    let fogDensity = 0.00105;
-    let exposure = 1.2;
+    let bg = 0x07100d;
+    let fog = 0x0f241c;
+    let fogDensity = 0.00078;
+    let exposure = 1.24;
     if(mode === "perf" || tier === "low"){
-      bg = 0x08110d;
-      fog = 0x10271e;
-      fogDensity = 0.00124;
-      exposure = 1.08;
+      bg = 0x060d0a;
+      fog = 0x0e2118;
+      fogDensity = 0.00098;
+      exposure = 1.1;
     }else if(mode === "balanced" || tier === "med"){
-      bg = 0x0a1611;
-      fog = 0x113126;
-      fogDensity = 0.00108;
-      exposure = 1.17;
+      bg = 0x08130f;
+      fog = 0x123128;
+      fogDensity = 0.0008;
+      exposure = 1.2;
+    }else if(mode === "cinematic" || tier === "epic"){
+      bg = 0x0b1713;
+      fog = 0x174737;
+      fogDensity = 0.0005;
+      exposure = 1.38;
     }else if(mode === "clarity" || tier === "clarity" || tier === "high"){
-      bg = 0x0b1a14;
-      fog = 0x153b2e;
-      fogDensity = 0.00086;
-      exposure = 1.28;
+      bg = 0x0a1712;
+      fog = 0x184234;
+      fogDensity = 0.00062;
+      exposure = 1.34;
     }
     if(state.scene.background) state.scene.background.setHex(bg);
     if(state.scene.fog){
@@ -1273,6 +1346,11 @@
       return;
     }
 
+    if(state.perf.tier === "epic" && (state.perf.lowHits >= 2 || spikeHits >= 4 || avg > 23.8)){
+      state.perf.lowHits = 0;
+      applyQualityTier("high", "auto");
+      return;
+    }
     if(state.perf.tier === "high" && (state.perf.lowHits >= 2 || spikeHits >= 4 || avg > 26.5)){
       state.perf.lowHits = 0;
       applyQualityTier("med", "auto");
@@ -1291,6 +1369,11 @@
     if(state.perf.tier === "med" && state.perf.highHits >= 5 && spikeHits === 0 && avg < 16.5){
       state.perf.highHits = 0;
       applyQualityTier("high", "auto");
+      return;
+    }
+    if((state.perf.tier === "high" || state.perf.tier === "clarity") && state.perf.highHits >= 6 && spikeHits === 0 && avg < 15.6){
+      state.perf.highHits = 0;
+      applyQualityTier("epic", "auto");
     }
   }
 
@@ -1922,11 +2005,60 @@
     return state.threeLoadingPromise;
   }
 
-  function mat(color, roughness=0.9, metalness=0.03){
+  const __materialCache = new Map();
+  function mat(color, roughness=0.9, metalness=0.03, opts={}){
     const THREE = state.three;
+    const key = [
+      Number(color || 0).toString(16),
+      Number(roughness || 0).toFixed(3),
+      Number(metalness || 0).toFixed(3),
+      Number.isFinite(opts.emissiveBoost) ? Number(opts.emissiveBoost).toFixed(3) : "0.045",
+      opts.side || "front",
+      opts.transparent ? "t" : "o",
+      Number.isFinite(opts.opacity) ? Number(opts.opacity).toFixed(3) : "1.000",
+    ].join("|");
+    if(!opts.unique && __materialCache.has(key)){
+      return __materialCache.get(key);
+    }
     const base = new THREE.Color(color);
-    const emissive = base.clone().multiplyScalar(0.045);
-    return new THREE.MeshStandardMaterial({ color:base, roughness, metalness, emissive });
+    const emissive = base.clone().multiplyScalar(Number.isFinite(opts.emissiveBoost) ? opts.emissiveBoost : 0.045);
+    const out = new THREE.MeshStandardMaterial({
+      color:base,
+      roughness,
+      metalness,
+      emissive,
+      side: opts.side === "double"
+        ? THREE.DoubleSide
+        : (opts.side === "back" ? THREE.BackSide : THREE.FrontSide),
+      transparent:!!opts.transparent,
+      opacity:Number.isFinite(opts.opacity) ? clamp(opts.opacity, 0, 1) : 1,
+    });
+    if(!opts.unique){
+      __materialCache.set(key, out);
+    }
+    return out;
+  }
+
+  function addMeshOutline(mesh, color=0x081019, scale=1.04){
+    if(!mesh || !mesh.geometry || !state.three) return null;
+    const THREE = state.three;
+    const outline = new THREE.Mesh(
+      mesh.geometry,
+      mat(color, 1, 0, { side:"back", emissiveBoost:0.005 })
+    );
+    outline.scale.setScalar(scale);
+    outline.renderOrder = (mesh.renderOrder || 0) - 1;
+    mesh.add(outline);
+    return outline;
+  }
+
+  function setShadowRecursive(node, enabled=true){
+    if(!node || typeof node.traverse !== "function") return;
+    node.traverse((child)=>{
+      if(!child || !child.isMesh) return;
+      child.castShadow = !!enabled;
+      child.receiveShadow = !!enabled;
+    });
   }
 
   function setupUIRefs(){
@@ -2209,24 +2341,69 @@
   function makeSoldierMesh(color=0x4f85ff){
     const THREE = state.three;
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.25, 0.9), mat(color, 0.72, 0.05));
-    body.position.y = 2.55;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 14), mat(0xf1d2b5, 0.8, 0.01));
-    head.position.y = 4.1;
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), mat(0x445067, 0.55, 0.2));
-    helmet.position.y = 4.28;
-    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.4, 0.42), mat(color, 0.72, 0.05));
+
+    const bodyGeo = new THREE.CapsuleGeometry(0.52, 1.15, 10, 14);
+    const body = new THREE.Mesh(bodyGeo, mat(color, 0.65, 0.06));
+    body.position.y = 2.65;
+    addMeshOutline(body, 0x091323, 1.035);
+
+    const vest = new THREE.Mesh(new THREE.BoxGeometry(1.24, 1.28, 0.78), mat(0x1f2937, 0.5, 0.12));
+    vest.position.set(0, 2.52, 0.02);
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.18, 0.72), mat(0x111827, 0.55, 0.2));
+    belt.position.set(0, 1.88, 0.04);
+
+    const headGeo = new THREE.SphereGeometry(0.52, 18, 16);
+    const head = new THREE.Mesh(headGeo, mat(0xf1d2b5, 0.85, 0.01));
+    head.position.y = 4.06;
+    addMeshOutline(head, 0x101828, 1.03);
+
+    const helmet = new THREE.Mesh(
+      new THREE.SphereGeometry(0.6, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.63),
+      mat(0x394861, 0.5, 0.22)
+    );
+    helmet.position.y = 4.25;
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.2, 0.08), mat(0x8ec7ff, 0.2, 0.2));
+    visor.position.set(0, 4.03, 0.47);
+
+    const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.92, 8, 10), mat(color, 0.68, 0.04));
     const armR = armL.clone();
-    armL.position.set(-1.02, 2.55, 0);
-    armR.position.set(1.02, 2.55, 0);
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.48, 1.65, 0.48), mat(0x1d3557, 0.8, 0.05));
+    armL.position.set(-0.78, 2.63, 0.02);
+    armR.position.set(0.78, 2.63, 0.02);
+    const foreGeo = new THREE.CapsuleGeometry(0.14, 0.72, 6, 9);
+    const foreL = new THREE.Mesh(foreGeo, mat(0x2e3f5a, 0.64, 0.05));
+    const foreR = foreL.clone();
+    foreL.position.set(0, -0.62, 0.02);
+    foreR.position.set(0, -0.62, 0.02);
+    armL.add(foreL);
+    armR.add(foreR);
+
+    const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 1.1, 8, 10), mat(0x1d3557, 0.78, 0.05));
     const legR = legL.clone();
-    legL.position.set(-0.42, 1.02, 0);
-    legR.position.set(0.42, 1.02, 0);
-    const rifle = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.18, 0.18), mat(0x2c384f, 0.55, 0.35));
-    rifle.position.set(0.66, 2.28, 0.56);
-    rifle.rotation.z = -0.3;
-    g.add(body, head, helmet, armL, armR, legL, legR, rifle);
+    legL.position.set(-0.31, 1.06, 0.02);
+    legR.position.set(0.31, 1.06, 0.02);
+    const bootGeo = new THREE.BoxGeometry(0.32, 0.2, 0.54);
+    const bootL = new THREE.Mesh(bootGeo, mat(0x0f172a, 0.52, 0.24));
+    const bootR = bootL.clone();
+    bootL.position.set(0, -0.73, 0.09);
+    bootR.position.set(0, -0.73, 0.09);
+    legL.add(bootL);
+    legR.add(bootR);
+
+    const rifle = new THREE.Group();
+    const rifleBody = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.18, 0.15), mat(0x273244, 0.52, 0.38));
+    const rifleBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.74, 10), mat(0x45556d, 0.42, 0.55));
+    rifleBarrel.rotation.z = Math.PI * 0.5;
+    rifleBarrel.position.set(0.86, 0, 0);
+    const rifleMag = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.3, 0.09), mat(0x151f2d, 0.55, 0.25));
+    rifleMag.position.set(-0.06, -0.2, 0);
+    rifle.add(rifleBody, rifleBarrel, rifleMag);
+    rifle.position.set(0.64, 2.3, 0.52);
+    rifle.rotation.z = -0.28;
+
+    const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.95, 0.32), mat(0x263142, 0.66, 0.07));
+    backpack.position.set(0, 2.42, -0.55);
+
+    g.add(body, vest, belt, head, helmet, visor, armL, armR, legL, legR, rifle, backpack);
     g.userData = { armL, armR, legL, legR, animT:Math.random() * 6.283 };
     return g;
   }
@@ -2234,15 +2411,39 @@
   function makeCivilianMesh(color=0xf472b6){
     const THREE = state.three;
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.4, 8, 12), mat(color, 0.75, 0.02));
-    body.position.y = 2.2;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.48, 14, 12), mat(0xf3d7bf, 0.85, 0.02));
-    head.position.y = 3.65;
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.1, 0.38), mat(0x243247, 0.8, 0.05));
+
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1.28, 8, 12), mat(color, 0.76, 0.02));
+    torso.position.y = 2.22;
+    addMeshOutline(torso, 0x0c1220, 1.03);
+    const jacket = new THREE.Mesh(new THREE.BoxGeometry(1.02, 1.0, 0.68), mat(0x374151, 0.62, 0.03));
+    jacket.position.set(0, 2.22, -0.02);
+    const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.06, 7, 20), mat(0xf59e0b, 0.7, 0.03));
+    scarf.position.set(0, 2.86, 0);
+    scarf.rotation.x = Math.PI * 0.5;
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.46, 16, 14), mat(0xf3d7bf, 0.86, 0.02));
+    head.position.y = 3.62;
+    const hair = new THREE.Mesh(
+      new THREE.SphereGeometry(0.48, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62),
+      mat(0x2f241a, 0.72, 0.03)
+    );
+    hair.position.y = 3.78;
+    const bag = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, 0.16), mat(0x9a3412, 0.62, 0.04));
+    bag.position.set(0.44, 2.25, 0.26);
+
+    const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.78, 6, 9), mat(0x243247, 0.82, 0.05));
     const legR = legL.clone();
-    legL.position.set(-0.32, 0.85, 0);
-    legR.position.set(0.32, 0.85, 0);
-    g.add(body, head, legL, legR);
+    legL.position.set(-0.28, 0.86, 0);
+    legR.position.set(0.28, 0.86, 0);
+    const footGeo = new THREE.BoxGeometry(0.27, 0.16, 0.42);
+    const footL = new THREE.Mesh(footGeo, mat(0x111827, 0.55, 0.2));
+    const footR = footL.clone();
+    footL.position.set(0, -0.58, 0.08);
+    footR.position.set(0, -0.58, 0.08);
+    legL.add(footL);
+    legR.add(footR);
+
+    g.add(torso, jacket, scarf, head, hair, bag, legL, legR);
     g.userData = { legL, legR, animT:Math.random() * 6.283 };
     return g;
   }
@@ -2250,40 +2451,84 @@
   function makeTigerMesh(color=0xf59e0b){
     const THREE = state.three;
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.85, 1.2, 1.15), mat(color, 0.68, 0.03));
-    body.position.y = 1.35;
-    const chest = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.05, 1.05), mat(color, 0.68, 0.03));
-    chest.position.set(1.52, 1.35, 0);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.9, 0.95), mat(0xf7b733, 0.68, 0.03));
-    head.position.set(2.34, 1.6, 0);
-    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.25, 0.65), mat(0xfde68a, 0.62, 0.02));
-    jaw.position.set(2.56, 1.25, 0);
-    const earL = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.22, 8), mat(0x111827, 0.7, 0.1));
+
+    const coatMat = mat(color, 0.62, 0.02);
+    const furLight = mat(0xf7b733, 0.66, 0.02);
+    const stripeMat = mat(0x172033, 0.78, 0.02);
+
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.63, 2.08, 9, 15), coatMat);
+    torso.rotation.z = Math.PI * 0.5;
+    torso.position.set(0.28, 1.45, 0);
+    addMeshOutline(torso, 0x0b101a, 1.03);
+
+    const shoulder = new THREE.Mesh(new THREE.CapsuleGeometry(0.46, 0.86, 8, 12), furLight);
+    shoulder.rotation.z = Math.PI * 0.5;
+    shoulder.position.set(1.56, 1.5, 0);
+
+    const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.56, 8, 10), furLight);
+    neck.rotation.z = Math.PI * 0.36;
+    neck.position.set(2.12, 1.7, 0);
+
+    const head = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.84, 0.82), furLight);
+    head.position.set(2.55, 1.75, 0);
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.28, 0.45), mat(0xfde68a, 0.6, 0.02));
+    snout.position.set(2.94, 1.52, 0);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.12), mat(0x111827, 0.7, 0.08));
+    nose.position.set(3.17, 1.58, 0);
+    const earL = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.24, 8), mat(0x111827, 0.72, 0.08));
     const earR = earL.clone();
-    earL.position.set(2.04, 2.1, 0.26);
-    earR.position.set(2.04, 2.1, -0.26);
+    earL.position.set(2.36, 2.2, 0.24);
+    earR.position.set(2.36, 2.2, -0.24);
     earL.rotation.z = -0.2;
     earR.rotation.z = -0.2;
-    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 1.75, 10), mat(0xf59e0b, 0.68, 0.03));
-    tail.position.set(-1.86, 1.55, 0);
-    tail.rotation.z = -1.1;
-    const stripeMat = mat(0x1f2937, 0.8, 0.02);
-    for(let i=0;i<5;i++){
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.88, 1.2), stripeMat);
-      stripe.position.set(-0.72 + i * 0.58, 1.58, 0);
-      stripe.rotation.z = (i % 2 ? -0.4 : 0.4);
+
+    const eyeGlowL = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), mat(0xfef08a, 0.2, 0.03));
+    const eyeGlowR = eyeGlowL.clone();
+    eyeGlowL.position.set(2.92, 1.82, 0.18);
+    eyeGlowR.position.set(2.92, 1.82, -0.18);
+
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.07, 1.95, 10), coatMat);
+    tail.position.set(-1.72, 1.55, 0);
+    tail.rotation.z = -1.06;
+
+    const stripeOffsets = [-0.66, -0.2, 0.24, 0.7, 1.16];
+    for(let i=0; i<stripeOffsets.length; i++){
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.82, 1.08), stripeMat);
+      stripe.position.set(stripeOffsets[i], 1.58, 0);
+      stripe.rotation.z = (i % 2 ? -0.36 : 0.36);
       g.add(stripe);
     }
-    const legGeom = new THREE.BoxGeometry(0.35, 0.85, 0.35);
-    const legFL = new THREE.Mesh(legGeom, mat(0xf7b733, 0.68, 0.03));
+    for(let i=0; i<3; i++){
+      const headStripe = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.36, 0.56), stripeMat);
+      headStripe.position.set(2.45 + (i * 0.12), 1.9 - (i * 0.05), 0);
+      headStripe.rotation.z = (i === 1 ? 0 : 0.22 * (i === 0 ? 1 : -1));
+      g.add(headStripe);
+    }
+
+    const legGeom = new THREE.CapsuleGeometry(0.16, 0.66, 7, 9);
+    const pawGeo = new THREE.SphereGeometry(0.16, 8, 8);
+    const legFL = new THREE.Mesh(legGeom, furLight);
     const legFR = legFL.clone();
     const legBL = legFL.clone();
     const legBR = legFL.clone();
-    legFL.position.set(1.05, 0.55, 0.4);
-    legFR.position.set(1.05, 0.55, -0.4);
-    legBL.position.set(-1.1, 0.55, 0.4);
-    legBR.position.set(-1.1, 0.55, -0.4);
-    g.add(body, chest, head, jaw, earL, earR, tail, legFL, legFR, legBL, legBR);
+    legFL.position.set(1.14, 0.62, 0.38);
+    legFR.position.set(1.14, 0.62, -0.38);
+    legBL.position.set(-1.08, 0.62, 0.38);
+    legBR.position.set(-1.08, 0.62, -0.38);
+    const pawFL = new THREE.Mesh(pawGeo, mat(0xfde68a, 0.58, 0.02));
+    const pawFR = pawFL.clone();
+    const pawBL = pawFL.clone();
+    const pawBR = pawFL.clone();
+    pawFL.position.y = -0.45;
+    pawFR.position.y = -0.45;
+    pawBL.position.y = -0.45;
+    pawBR.position.y = -0.45;
+    legFL.add(pawFL);
+    legFR.add(pawFR);
+    legBL.add(pawBL);
+    legBR.add(pawBR);
+
+    g.add(torso, shoulder, neck, head, snout, nose, earL, earR, eyeGlowL, eyeGlowR, tail, legFL, legFR, legBL, legBR);
     g.userData = { legFL, legFR, legBL, legBR, tail, animT:Math.random() * 6.283 };
     return g;
   }
@@ -2431,28 +2676,48 @@
 
   function createSelectionRing(parent, color=0x60a5fa, r=2.1){
     const THREE = state.three;
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(r, r + 0.45, 32),
+    const ring = new THREE.Group();
+    const core = new THREE.Mesh(
+      new THREE.RingGeometry(r, r + 0.34, 36),
       new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.98, depthWrite:false, side:THREE.DoubleSide })
     );
+    const glow = new THREE.Mesh(
+      new THREE.RingGeometry(r - 0.08, r + 0.56, 36),
+      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.28, depthWrite:false, side:THREE.DoubleSide })
+    );
+    core.renderOrder = 30;
+    glow.renderOrder = 29;
+    ring.add(core, glow);
+    ring.core = core;
+    ring.glow = glow;
+    ring.material = core.material;
     ring.rotation.x = -Math.PI * 0.5;
     ring.position.y = 0.05;
     ring.visible = false;
-    ring.renderOrder = 30;
     parent.add(ring);
     return ring;
   }
 
   function createTelegraphRing(parent, color=0xf59e0b, r=2.55){
     const THREE = state.three;
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(r, r + 0.42, 32),
+    const ring = new THREE.Group();
+    const core = new THREE.Mesh(
+      new THREE.RingGeometry(r, r + 0.38, 34),
       new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.8, depthWrite:false, side:THREE.DoubleSide })
     );
+    const glow = new THREE.Mesh(
+      new THREE.RingGeometry(r - 0.12, r + 0.64, 34),
+      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.22, depthWrite:false, side:THREE.DoubleSide })
+    );
+    core.renderOrder = 31;
+    glow.renderOrder = 30;
+    ring.add(core, glow);
+    ring.core = core;
+    ring.glow = glow;
+    ring.material = core.material;
     ring.rotation.x = -Math.PI * 0.5;
     ring.position.y = 0.06;
     ring.visible = false;
-    ring.renderOrder = 31;
     parent.add(ring);
     return ring;
   }
@@ -2635,7 +2900,7 @@
     if(!fx) return;
 
     const tier = state.perf.tier || "med";
-    const activeCap = (tier === "low") ? 18 : (tier === "med" ? 28 : (tier === "high" ? 40 : 44));
+    const activeCap = (tier === "low") ? 18 : (tier === "med" ? 28 : (tier === "high" ? 40 : (tier === "epic" ? 56 : 44)));
     while(state.vfxBursts.length >= activeCap){
       const old = state.vfxBursts.shift();
       if(!old) break;
@@ -2770,6 +3035,7 @@
     };
     unit.mesh.position.copy(opts.position || new THREE.Vector3());
     unit.mesh.rotation.y = opts.yaw || 0;
+    setShadowRecursive(unit.mesh, state.perf.tier !== "low");
     state.unitsRoot.add(unit.mesh);
     return unit;
   }
@@ -3222,17 +3488,21 @@
       state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
       state.renderer.toneMappingExposure = 1.15;
     }
+    applyShadowQualityFlags();
     state.renderer.domElement.className = "proto3dCanvas";
     state.canvasHost.innerHTML = "";
     state.canvasHost.appendChild(state.renderer.domElement);
 
-    const hemi = new THREE.HemisphereLight(0xa7e3c7, 0x07120f, 1.02);
-    const dir = new THREE.DirectionalLight(0xfff0d2, 1.28);
+    const hemi = new THREE.HemisphereLight(0x9fd9c0, 0x07120f, 0.96);
+    const dir = new THREE.DirectionalLight(0xfff0d2, 1.34);
     dir.position.set(34, 68, 26);
-    const fill = new THREE.DirectionalLight(0x7dd3fc, 0.34);
+    const fill = new THREE.DirectionalLight(0x7dd3fc, 0.44);
     fill.position.set(-42, 34, -28);
-    const ambient = new THREE.AmbientLight(0x5fa68e, 0.24);
+    const ambient = new THREE.AmbientLight(0x4d886f, 0.2);
+    state.mainSun = dir;
+    state.fillSun = fill;
     state.scene.add(hemi, dir, fill, ambient);
+    applyShadowQualityFlags();
 
     state.root = new THREE.Group();
     state.worldRoot = new THREE.Group();
@@ -3245,13 +3515,14 @@
     const baseGround = new THREE.Mesh(
       new THREE.PlaneGeometry(6000, 6000, 24, 24),
       new THREE.MeshStandardMaterial({
-        color:0x143826,
-        roughness:0.94,
+        color:0x122f22,
+        roughness:0.9,
         metalness:0.02,
       })
     );
     baseGround.rotation.x = -Math.PI * 0.5;
     baseGround.position.y = -0.01;
+    baseGround.receiveShadow = true;
     state.worldRoot.add(baseGround);
 
     createSafeZone();
@@ -3266,39 +3537,67 @@
   function makeTree(){
     const THREE = state.three;
     const g = new THREE.Group();
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 2.3, 8), mat(0x7b4a24, 0.95, 0.02));
-    trunk.position.y = 1.15;
-    const foliage = new THREE.Mesh(new THREE.SphereGeometry(1.35, 10, 8), mat(0x1a653a, 0.86, 0.02));
-    foliage.position.y = 2.8;
-    g.add(trunk, foliage);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 2.6, 8), mat(0x6b3e1f, 0.95, 0.02));
+    trunk.position.y = 1.28;
+    const trunkTop = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 0.9, 8), mat(0x754523, 0.92, 0.02));
+    trunkTop.position.y = 2.78;
+    const canopyA = new THREE.Mesh(new THREE.SphereGeometry(1.02, 10, 8), mat(0x1a653a, 0.82, 0.02));
+    canopyA.position.set(0, 3.28, 0);
+    const canopyB = new THREE.Mesh(new THREE.SphereGeometry(0.78, 10, 8), mat(0x2d7c4a, 0.8, 0.02));
+    canopyB.position.set(-0.5, 2.96, 0.28);
+    const canopyC = new THREE.Mesh(new THREE.SphereGeometry(0.72, 10, 8), mat(0x145233, 0.84, 0.02));
+    canopyC.position.set(0.52, 2.9, -0.24);
+    g.add(trunk, trunkTop, canopyA, canopyB, canopyC);
     return g;
   }
 
   function makeHouse(){
     const THREE = state.three;
     const g = new THREE.Group();
-    const base = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 3.5), mat(0xa79476, 0.9, 0.01));
+    const base = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 3.5), mat(0xae9a7a, 0.88, 0.02));
     base.position.y = 1.2;
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.9, 1.6, 4), mat(0x6e2f21, 0.74, 0.08));
+    const foundation = new THREE.Mesh(new THREE.BoxGeometry(4.46, 0.26, 3.76), mat(0x403d38, 0.94, 0.01));
+    foundation.position.y = 0.13;
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.9, 1.6, 4), mat(0x6e2f21, 0.72, 0.08));
     roof.position.y = 3.1;
     roof.rotation.y = Math.PI * 0.25;
-    g.add(base, roof);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.08, 0.08), mat(0x4d2f1d, 0.72, 0.04));
+    door.position.set(0, 0.72, 1.78);
+    const winGeo = new THREE.BoxGeometry(0.62, 0.46, 0.06);
+    const winL = new THREE.Mesh(winGeo, mat(0x9bd3ff, 0.32, 0.18));
+    const winR = winL.clone();
+    winL.position.set(-1.18, 1.44, 1.78);
+    winR.position.set(1.18, 1.44, 1.78);
+    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.05, 0.34), mat(0x5a3f33, 0.84, 0.02));
+    chimney.position.set(-0.96, 3.6, -0.86);
+    g.add(foundation, base, roof, door, winL, winR, chimney);
     return g;
   }
 
   function makeCar(){
     const THREE = state.three;
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.9, 1.6), mat(0x7f8b9c, 0.52, 0.25));
+    const body = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.9, 1.6), mat(0x7489a5, 0.5, 0.24));
     body.position.y = 0.75;
     const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.7, 1.3), mat(0xb4beca, 0.46, 0.2));
     cabin.position.set(-0.15, 1.35, 0);
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.42, 1.16), mat(0xaad7ff, 0.26, 0.18));
+    windshield.position.set(-0.2, 1.42, 0);
+    const bumperF = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.18, 1.45), mat(0x1f2937, 0.45, 0.55));
+    const bumperB = bumperF.clone();
+    bumperF.position.set(1.56, 0.56, 0);
+    bumperB.position.set(-1.56, 0.56, 0);
+    const lightGeo = new THREE.SphereGeometry(0.08, 8, 8);
+    const lightFL = new THREE.Mesh(lightGeo, mat(0xfef9c3, 0.2, 0.04));
+    const lightFR = lightFL.clone();
+    lightFL.position.set(1.55, 0.76, 0.54);
+    lightFR.position.set(1.55, 0.76, -0.54);
     const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.32, 10);
     const wheelMat = mat(0x111827, 0.65, 0.05);
     const wheelPos = [
       [1.02, 0.32, 0.8], [1.02, 0.32, -0.8], [-1.05, 0.32, 0.8], [-1.05, 0.32, -0.8]
     ];
-    g.add(body, cabin);
+    g.add(body, cabin, windshield, bumperF, bumperB, lightFL, lightFR);
     for(const p of wheelPos){
       const w = new THREE.Mesh(wheelGeo, wheelMat);
       w.rotation.z = Math.PI * 0.5;
@@ -3311,11 +3610,22 @@
   function makeTruck(){
     const THREE = state.three;
     const g = new THREE.Group();
-    const trailer = new THREE.Mesh(new THREE.BoxGeometry(5.2, 1.2, 2.1), mat(0x4e5f79, 0.58, 0.16));
+    const trailer = new THREE.Mesh(new THREE.BoxGeometry(5.2, 1.2, 2.1), mat(0x455a79, 0.58, 0.16));
     trailer.position.y = 1.0;
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.3, 2.0), mat(0x7f91aa, 0.5, 0.2));
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.3, 2.0), mat(0x7f91aa, 0.48, 0.22));
     cab.position.set(2.8, 1.08, 0);
-    g.add(trailer, cab);
+    const trailerBand = new THREE.Mesh(new THREE.BoxGeometry(5.0, 0.18, 2.18), mat(0x9ca3af, 0.52, 0.2));
+    trailerBand.position.set(0, 1.66, 0);
+    const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.34, 12);
+    const wheelMat = mat(0x111827, 0.64, 0.06);
+    const wheelPts = [[-1.7,0.34,0.98],[-0.2,0.34,0.98],[1.4,0.34,0.98],[-1.7,0.34,-0.98],[-0.2,0.34,-0.98],[1.4,0.34,-0.98]];
+    g.add(trailer, cab, trailerBand);
+    for(const pt of wheelPts){
+      const w = new THREE.Mesh(wheelGeo, wheelMat);
+      w.rotation.z = Math.PI * 0.5;
+      w.position.set(pt[0], pt[1], pt[2]);
+      g.add(w);
+    }
     return g;
   }
 
@@ -3327,12 +3637,21 @@
       mat(0x524734, 0.95, 0.01)
     );
     road.position.y = 0.02;
-    const dash = new THREE.Mesh(
-      new THREE.BoxGeometry(len * 0.76, 0.055, 0.3),
-      mat(0xc3b188, 0.45, 0.01)
-    );
-    dash.position.set(0, 0.06, 0);
-    g.add(road, dash);
+    const shoulderL = new THREE.Mesh(new THREE.BoxGeometry(len, 0.06, 0.46), mat(0x3d3023, 0.92, 0.01));
+    const shoulderR = shoulderL.clone();
+    shoulderL.position.set(0, 0.045, width * 0.5 - 0.14);
+    shoulderR.position.set(0, 0.045, -width * 0.5 + 0.14);
+    g.add(road, shoulderL, shoulderR);
+    const dashCount = Math.max(4, Math.floor(len / 5.8));
+    const dashSpan = len * 0.78;
+    for(let i=0; i<dashCount; i++){
+      const dash = new THREE.Mesh(
+        new THREE.BoxGeometry(1.36, 0.055, 0.22),
+        mat(0xd6c6a0, 0.45, 0.01)
+      );
+      dash.position.set((-dashSpan * 0.5) + (i * (dashSpan / Math.max(1, dashCount - 1))), 0.062, 0);
+      g.add(dash);
+    }
     return g;
   }
 
@@ -3341,7 +3660,7 @@
     const pond = new THREE.Mesh(
       new THREE.CylinderGeometry(6.2, 6.8, 0.18, 26),
       new THREE.MeshStandardMaterial({
-        color:0x184f70,
+        color:0x165676,
         roughness:0.3,
         metalness:0.05,
         transparent:true,
@@ -3349,7 +3668,42 @@
       })
     );
     pond.position.y = 0.01;
-    return pond;
+    const rim = new THREE.Mesh(
+      new THREE.TorusGeometry(6.45, 0.2, 8, 28),
+      mat(0x24453c, 0.82, 0.02)
+    );
+    rim.rotation.x = Math.PI * 0.5;
+    rim.position.y = 0.03;
+    const glint = new THREE.Mesh(
+      new THREE.CircleGeometry(2.1, 24),
+      new THREE.MeshBasicMaterial({ color:0xd9f6ff, transparent:true, opacity:0.18, depthWrite:false })
+    );
+    glint.rotation.x = -Math.PI * 0.5;
+    glint.position.set(-1.2, 0.05, 1.1);
+    const g = new THREE.Group();
+    g.add(pond, rim, glint);
+    return g;
+  }
+
+  function makeBush(){
+    const THREE = state.three;
+    const g = new THREE.Group();
+    const c1 = new THREE.Mesh(new THREE.SphereGeometry(0.44, 8, 6), mat(0x2f7a49, 0.86, 0.02));
+    const c2 = new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 6), mat(0x215f3b, 0.88, 0.02));
+    c1.position.set(-0.2, 0.36, 0.06);
+    c2.position.set(0.24, 0.3, -0.04);
+    g.add(c1, c2);
+    return g;
+  }
+
+  function makeRock(){
+    const THREE = state.three;
+    const rock = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.34, 0),
+      mat(0x5f6773, 0.92, 0.03)
+    );
+    rock.scale.set(1.15, 0.8, 0.9);
+    return rock;
   }
 
   function clearFarChunks(cx, cz, dropRadius){
@@ -3383,6 +3737,16 @@
         r: Math.max(0.42, Number(r || 0.42))
       });
     };
+
+    const tileTintA = 0x153824;
+    const tileTintB = 0x103021;
+    const tile = new THREE.Mesh(
+      new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, 1, 1),
+      mat(hash01(cx, cz, 4) > 0.5 ? tileTintA : tileTintB, 0.93, 0.01)
+    );
+    tile.rotation.x = -Math.PI * 0.5;
+    tile.position.y = 0.005;
+    group.add(tile);
 
     const roadCount = preset.roadBase + Math.floor(hash01(cx, cz, 11) * preset.roadVar);
     for(let i=0;i<roadCount;i++){
@@ -3443,6 +3807,39 @@
       pushCollider(t.position.x, t.position.z, 0.78 * treeScale);
     }
 
+    const detailMul = state.perf.tier === "epic" ? 1.35 : (state.perf.tier === "low" ? 0.35 : (state.perf.tier === "med" ? 0.68 : 1));
+    const bushCount = Math.floor((5 + (hash01(cx, cz, 334) * 7)) * detailMul);
+    for(let i=0; i<bushCount; i++){
+      const b = makeBush();
+      const s = 0.8 + hash01(cx, cz, 340 + i) * 0.65;
+      b.scale.setScalar(s);
+      b.position.set(
+        (hash01(cx, cz, 380 + i) - 0.5) * CHUNK_SIZE * 0.93,
+        0,
+        (hash01(cx, cz, 430 + i) - 0.5) * CHUNK_SIZE * 0.93
+      );
+      b.rotation.y = hash01(cx, cz, 460 + i) * Math.PI * 2;
+      group.add(b);
+    }
+
+    const rockCount = Math.floor((2 + (hash01(cx, cz, 471) * 4)) * detailMul);
+    for(let i=0; i<rockCount; i++){
+      const r = makeRock();
+      const sx = 0.82 + hash01(cx, cz, 490 + i) * 0.74;
+      r.scale.set(sx, sx * (0.72 + hash01(cx, cz, 500 + i) * 0.2), sx * 0.82);
+      r.position.set(
+        (hash01(cx, cz, 510 + i) - 0.5) * CHUNK_SIZE * 0.9,
+        0.18,
+        (hash01(cx, cz, 530 + i) - 0.5) * CHUNK_SIZE * 0.9
+      );
+      r.rotation.set(
+        hash01(cx, cz, 550 + i) * 0.25,
+        hash01(cx, cz, 570 + i) * Math.PI * 2,
+        hash01(cx, cz, 590 + i) * 0.25
+      );
+      group.add(r);
+    }
+
     if(hash01(cx, cz, 310) > (1 - preset.pondChance)){
       const pond = makePond();
       pond.scale.set(0.7 + hash01(cx, cz, 311) * 0.9, 1, 0.7 + hash01(cx, cz, 312) * 0.9);
@@ -3454,6 +3851,7 @@
       group.add(pond);
     }
 
+    setShadowRecursive(group, state.perf.tier !== "low");
     state.chunkRoot.add(group);
     state.chunks.set(key, { cx, cz, group, colliders });
   }
@@ -4034,7 +4432,7 @@
   }
 
   function cycleVisualMode(){
-    const order = ["auto", "perf", "balanced", "clarity"];
+    const order = ["auto", "perf", "balanced", "clarity", "cinematic"];
     const idx = Math.max(0, order.indexOf(state.cameraCtl.visualMode || "auto"));
     const next = order[(idx + 1) % order.length];
     state.cameraCtl.visualMode = next;
@@ -4755,15 +5153,31 @@
           if(trapped){
             t.telegraphRing.material.color.setHex(0xfbbf24);
             t.telegraphRing.material.opacity = 0.84;
+            if(t.telegraphRing.glow?.material){
+              t.telegraphRing.glow.material.color.setHex(0xfbbf24);
+              t.telegraphRing.glow.material.opacity = 0.32;
+            }
           }else if(pounceWindup){
             t.telegraphRing.material.color.setHex(0xfb7185);
             t.telegraphRing.material.opacity = 0.82;
+            if(t.telegraphRing.glow?.material){
+              t.telegraphRing.glow.material.color.setHex(0xfb7185);
+              t.telegraphRing.glow.material.opacity = 0.3;
+            }
           }else if(meleeWindup){
             t.telegraphRing.material.color.setHex(0xf59e0b);
             t.telegraphRing.material.opacity = 0.74;
+            if(t.telegraphRing.glow?.material){
+              t.telegraphRing.glow.material.color.setHex(0xf59e0b);
+              t.telegraphRing.glow.material.opacity = 0.28;
+            }
           }else{
             t.telegraphRing.material.color.setHex(0xef4444);
             t.telegraphRing.material.opacity = 0.64;
+            if(t.telegraphRing.glow?.material){
+              t.telegraphRing.glow.material.color.setHex(0xef4444);
+              t.telegraphRing.glow.material.opacity = 0.24;
+            }
           }
         }else{
           t.telegraphRing.visible = false;
@@ -4791,6 +5205,10 @@
     const shieldOn = isShieldActive();
     if(state.player && state.player.ring){
       state.player.ring.material.color.setHex(shieldOn ? 0x34d399 : 0x22d3ee);
+      if(state.player.ring.glow?.material){
+        state.player.ring.glow.material.color.setHex(shieldOn ? 0x34d399 : 0x22d3ee);
+        state.player.ring.glow.material.opacity = shieldOn ? 0.36 : 0.26;
+      }
     }
   }
 
