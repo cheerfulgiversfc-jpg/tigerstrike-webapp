@@ -128,6 +128,9 @@
   const JOY_DEADZONE_PX = 10;
   const JOY_TAP_MAX_MS = 240;
   const JOY_TAP_MAX_MOVE_PX = 14;
+  const TIGER_TAP_ASSIST_PX = 74;
+  const CAMERA_OCCLUSION_SAMPLE_MS = 84;
+  const CAMERA_OCCLUSION_OPACITY = 0.22;
   const SHIELD_PX_TO_WORLD_RATIO = 13;
   const TRAP_RADIUS_3D = 10.5;
   const TRAP_TTL_MS_3D = 22000;
@@ -391,6 +394,10 @@
     liveUnitsCache:[],
     nav:{
       staticScratch:[],
+    },
+    cameraOcclusion:{
+      lastAt:0,
+      faded:new Set(),
     },
     safeZone:null,
     guideArrow:null,
@@ -2061,6 +2068,15 @@
     });
   }
 
+  function setNoOcclusionFadeRecursive(node){
+    if(!node || typeof node.traverse !== "function") return;
+    node.traverse((child)=>{
+      if(!child || !child.isMesh) return;
+      child.userData = child.userData || {};
+      child.userData.noOcclusionFade = true;
+    });
+  }
+
   function setupUIRefs(){
     state.overlay = el("proto3dOverlay");
     state.canvasHost = el("proto3dCanvasHost");
@@ -3028,6 +3044,64 @@
     unit.mesh.scale.set(pulse, pulse, pulse);
   }
 
+  function occlusionMaterials(mesh){
+    if(!mesh || !mesh.material) return [];
+    return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  }
+
+  function ensureOcclusionMaterialIsolation(mesh){
+    if(!mesh || !mesh.material) return;
+    if(mesh.userData?.occlusionIsolated) return;
+    if(Array.isArray(mesh.material)){
+      mesh.material = mesh.material.map((m)=> (m && typeof m.clone === "function") ? m.clone() : m);
+    }else if(typeof mesh.material.clone === "function"){
+      mesh.material = mesh.material.clone();
+    }
+    mesh.userData = mesh.userData || {};
+    mesh.userData.occlusionIsolated = true;
+  }
+
+  function setMeshOccluded(mesh, on){
+    if(!mesh || !mesh.isMesh) return;
+    if(mesh.userData?.noOcclusionFade) return;
+    ensureOcclusionMaterialIsolation(mesh);
+    const mats = occlusionMaterials(mesh);
+    if(!mats.length) return;
+    mesh.userData = mesh.userData || {};
+    if(!mesh.userData.occlusionBase){
+      mesh.userData.occlusionBase = mats.map((m)=>({
+        opacity:Number.isFinite(Number(m?.opacity)) ? Number(m.opacity) : 1,
+        transparent:!!m?.transparent,
+        depthWrite:m?.depthWrite !== false,
+      }));
+    }
+    const base = mesh.userData.occlusionBase;
+    for(let i=0; i<mats.length; i++){
+      const m = mats[i];
+      if(!m) continue;
+      const b = base[i] || base[0] || { opacity:1, transparent:false, depthWrite:true };
+      if(on){
+        m.transparent = true;
+        m.opacity = clamp(Number(b.opacity || 1) * CAMERA_OCCLUSION_OPACITY, 0.08, 0.45);
+        m.depthWrite = false;
+      }else{
+        m.opacity = Number.isFinite(Number(b.opacity)) ? Number(b.opacity) : 1;
+        m.transparent = !!b.transparent || m.opacity < 0.999;
+        m.depthWrite = b.depthWrite !== false;
+      }
+      m.needsUpdate = true;
+    }
+  }
+
+  function clearCameraOcclusionFades(){
+    const faded = state.cameraOcclusion?.faded;
+    if(!faded || !faded.size) return;
+    for(const mesh of faded){
+      setMeshOccluded(mesh, false);
+    }
+    faded.clear();
+  }
+
   function createUnit(opts){
     const THREE = state.three;
     const unit = {
@@ -3053,6 +3127,9 @@
       pendingAttackTarget:null,
       pendingAttackDamage:0,
       attackHitAt:0,
+      attackWindowFrom:0,
+      attackWindowTo:0,
+      attackApplied:false,
       followOffset: opts.followOffset || null,
       following: !!opts.following,
       rescued:false,
@@ -3276,6 +3353,7 @@
   }
 
   function resetScenario(){
+    clearCameraOcclusionFades();
     clearWorldUnits();
     const THREE = state.three;
     const core = beginCoreSession();
@@ -3783,6 +3861,8 @@
     );
     tile.rotation.x = -Math.PI * 0.5;
     tile.position.y = 0.005;
+    tile.userData = tile.userData || {};
+    tile.userData.noOcclusionFade = true;
     group.add(tile);
 
     const roadCount = preset.roadBase + Math.floor(hash01(cx, cz, 11) * preset.roadVar);
@@ -3794,6 +3874,7 @@
         (hash01(cx, cz, 60 + i) - 0.5) * CHUNK_SIZE * 0.65
       );
       road.rotation.y = hash01(cx, cz, 70 + i) * Math.PI;
+      setNoOcclusionFadeRecursive(road);
       group.add(road);
     }
 
@@ -3885,6 +3966,7 @@
         0,
         (hash01(cx, cz, 314) - 0.5) * CHUNK_SIZE * 0.65
       );
+      setNoOcclusionFadeRecursive(pond);
       group.add(pond);
     }
 
@@ -4380,6 +4462,9 @@
         tiger.pounceUntil = 0;
         tiger.recoverUntil = tiger.trappedUntil + 220;
         tiger.attackHitAt = 0;
+        tiger.attackWindowFrom = 0;
+        tiger.attackWindowTo = 0;
+        tiger.attackApplied = false;
         tiger.pendingAttackTarget = null;
         tiger.pendingAttackDamage = 0;
         addCoreStat("trapsTriggered", 1);
@@ -4560,6 +4645,7 @@
     let speed = PLAYER_BASE_SPEED;
     if(rolling) speed = PLAYER_ROLL_SPEED;
     else if(sprinting && p.stamina > 2) speed = PLAYER_SPRINT_SPEED;
+    if(!Number.isFinite(Number(p.moveBlend))) p.moveBlend = 0;
 
     const turnDeadzone = clamp(Number(profile.turnDeadzone || 0.04), 0.02, 0.08);
     if(Math.abs(turnIn) > turnDeadzone){
@@ -4570,6 +4656,9 @@
     if(moving || rolling){
       let moveYaw = getUnitYaw(p);
       const absFwd = Math.abs(fwdIn);
+      const throttleTarget = rolling ? 1 : absFwd;
+      const throttleRate = throttleTarget > p.moveBlend ? 12.8 : 8.4;
+      p.moveBlend = smoothStep(p.moveBlend, throttleTarget, throttleRate, state.dt);
       if(!rolling && fwdIn < -0.25){
         // Pulling down turns the soldier around quickly, then moves out.
         const desired = normalizeAngle(moveYaw + Math.PI);
@@ -4581,7 +4670,7 @@
       }else{
         moveYaw = state.fx.dodgeAngle;
       }
-      const moved = moveByAngleWithCollision(p, moveYaw, speed * state.dt * (rolling ? 1 : absFwd), {
+      const moved = moveByAngleWithCollision(p, moveYaw, speed * state.dt * (rolling ? 1 : p.moveBlend), {
         radius:unitNavRadius(p),
         allowSlide:true,
         turnLerp:rolling
@@ -4590,7 +4679,12 @@
       });
       animateHumanoid(p, moved / Math.max(0.0001, state.dt));
     }else{
-      animateHumanoid(p, 0.05);
+      p.moveBlend = smoothStep(p.moveBlend, 0, 9.8, state.dt);
+      if(Math.abs(turnIn) > turnDeadzone){
+        animateHumanoid(p, 0.24 + Math.abs(turnIn) * 0.8);
+      }else{
+        animateHumanoid(p, 0.05);
+      }
     }
 
     if(sprinting && moving && fwdIn > 0){
@@ -5002,6 +5096,9 @@
         t.telegraphPounceUntil = 0;
         t.telegraphMeleeUntil = 0;
         t.attackHitAt = 0;
+        t.attackWindowFrom = 0;
+        t.attackWindowTo = 0;
+        t.attackApplied = false;
         t.pendingAttackTarget = null;
         t.pendingAttackDamage = 0;
         animateTiger(t, 0.04);
@@ -5069,23 +5166,35 @@
         animateTiger(t, 0.05);
       }
 
-      if(t.attackHitAt > 0 && now >= t.attackHitAt){
+      if(t.attackHitAt > 0){
         const pendingReach = (t.pendingAttackTarget?.role === "player")
           ? (playerBand === "long" ? 5.05 : (playerBand === "mid" ? 4.7 : 4.4))
           : 4.4;
-        if(t.pendingAttackTarget && t.pendingAttackTarget.alive && horizontalDistance(t, t.pendingAttackTarget) <= pendingReach){
-          if(t.pendingAttackTarget.role === "player" && now < state.fx.rollUntil){
-            setStatus("Perfect dodge window hit!", 620);
-            spawnImpactFx(state.player, 0x34d399, "hit");
-          }else{
-            damageTarget(t.pendingAttackTarget, t.pendingAttackDamage || t.tigerType.damage);
-            spawnImpactFx(t.pendingAttackTarget, 0xfb923c, "claw");
+        const windowStart = Number.isFinite(t.attackWindowFrom) && t.attackWindowFrom > 0 ? t.attackWindowFrom : t.attackHitAt;
+        const windowEnd = Number.isFinite(t.attackWindowTo) && t.attackWindowTo > 0 ? t.attackWindowTo : (windowStart + 120);
+        if(!t.attackApplied && now >= windowStart){
+          if(t.pendingAttackTarget && t.pendingAttackTarget.alive && horizontalDistance(t, t.pendingAttackTarget) <= pendingReach){
+            if(t.pendingAttackTarget.role === "player" && now < state.fx.rollUntil){
+              setStatus("Perfect dodge!", 620);
+              spawnImpactFx(state.player, 0x34d399, "hit");
+            }else{
+              damageTarget(t.pendingAttackTarget, t.pendingAttackDamage || t.tigerType.damage);
+              spawnImpactFx(t.pendingAttackTarget, 0xfb923c, "claw");
+            }
+          }else if(now <= windowEnd){
+            spawnImpactFx(t, 0xfde68a, "hit");
           }
+          t.attackApplied = true;
         }
-        t.attackHitAt = 0;
-        t.pendingAttackTarget = null;
-        t.pendingAttackDamage = 0;
-        t.telegraphMeleeUntil = 0;
+        if(now > windowEnd || t.attackApplied){
+          t.attackHitAt = 0;
+          t.attackWindowFrom = 0;
+          t.attackWindowTo = 0;
+          t.attackApplied = false;
+          t.pendingAttackTarget = null;
+          t.pendingAttackDamage = 0;
+          t.telegraphMeleeUntil = 0;
+        }
       }
 
       const meleeReach = versusPlayer
@@ -5094,6 +5203,9 @@
       if(dist <= meleeReach && now >= t.nextAttackAt && t.attackHitAt <= 0){
         t.telegraphMeleeUntil = now + TIGER_MELEE_WINDUP_MS;
         t.attackHitAt = t.telegraphMeleeUntil;
+        t.attackWindowFrom = t.attackHitAt - 70;
+        t.attackWindowTo = t.attackHitAt + 130;
+        t.attackApplied = false;
         t.pendingAttackTarget = target;
         const damageScale = t.isBoss ? 1.2 : 1;
         let pendingDamage = (t.tigerType.damage || 10) * damageScale * Math.max(0.85, aggro);
@@ -5286,6 +5398,56 @@
     }
   }
 
+  function updateCameraOcclusion(){
+    if(!state.camera || !state.raycaster || !state.chunkRoot) return;
+    if((state.perf.tier || "med") === "low"){
+      clearCameraOcclusionFades();
+      return;
+    }
+    const now = state.now || nowMs();
+    if((now - Number(state.cameraOcclusion.lastAt || 0)) < CAMERA_OCCLUSION_SAMPLE_MS) return;
+    state.cameraOcclusion.lastAt = now;
+
+    const fadedPrev = state.cameraOcclusion.faded;
+    const fadedNext = new Set();
+    const from = state.camera.position.clone();
+    const targets = [];
+    if(state.player?.mesh){
+      targets.push(state.player.mesh.position.clone().add(new state.three.Vector3(0, 2.0, 0)));
+    }
+    if(state.combat.active && state.combat.target?.alive && state.combat.target?.mesh){
+      targets.push(state.combat.target.mesh.position.clone().add(new state.three.Vector3(0, 1.8, 0)));
+    }
+
+    for(let ti=0; ti<targets.length; ti++){
+      const to = targets[ti];
+      const dir = to.clone().sub(from);
+      const dist = dir.length();
+      if(dist <= 2) continue;
+      dir.normalize();
+      state.raycaster.set(from, dir);
+      state.raycaster.near = 0.5;
+      state.raycaster.far = Math.max(1.2, dist - 1.0);
+      const hits = state.raycaster.intersectObjects(state.chunkRoot.children, true);
+      for(let i=0; i<hits.length; i++){
+        const mesh = hits[i]?.object;
+        if(!mesh || !mesh.isMesh) continue;
+        if(mesh.userData?.noOcclusionFade) continue;
+        fadedNext.add(mesh);
+        if(fadedNext.size >= 14) break;
+      }
+      if(fadedNext.size >= 14) break;
+    }
+
+    for(const mesh of fadedPrev){
+      if(!fadedNext.has(mesh)) setMeshOccluded(mesh, false);
+    }
+    for(const mesh of fadedNext){
+      if(!fadedPrev.has(mesh)) setMeshOccluded(mesh, true);
+    }
+    state.cameraOcclusion.faded = fadedNext;
+  }
+
   function updateCamera(){
     const p = state.player;
     if(!p) return;
@@ -5336,13 +5498,16 @@
       const d = Math.hypot(dx, dz) || 1;
       const nx = dx / d;
       const nz = dz / d;
+      const sideX = -nz;
+      const sideZ = nx;
       const midX = (pp.x + tp.x) * 0.5;
       const midZ = (pp.z + tp.z) * 0.5;
       const lockBack = clamp(18 + d * 0.5 + ctl.zoomOffset * 0.45, 16, 40);
+      const sideOrbit = clamp(2.6 + d * 0.14, 2.6, 8.4);
       followBack = lerp(followBackBase, lockBack, blend);
       followHeight = lerp(followHeightBase, (isLandscape ? 24 : 29) + ctl.heightOffset * 0.32, blend);
-      tx = midX + nx * followBack;
-      tz = midZ + nz * followBack;
+      tx = midX + nx * followBack + sideX * sideOrbit;
+      tz = midZ + nz * followBack + sideZ * sideOrbit;
       lookX = lerp(pp.x, midX, clamp(blend * 0.9, 0, 1));
       lookZ = lerp(pp.z, midZ, clamp(blend * 0.9, 0, 1));
     }else{
@@ -5657,6 +5822,7 @@
     }, { cost:1.7, every:barsEvery });
 
     updateCamera();
+    runFrameTask(()=>{ updateCameraOcclusion(); }, { cost:0.6, every:lowTier ? 2 : 1 });
     runFrameTask(()=>{ updateCombatFloatingLabels(); }, { cost:0.45, every:lowTier ? 2 : 1 });
     runFrameTask(()=>{ updateHud(); }, { cost:0.45, every:1 });
     evaluatePerformanceWatchdog(frameMs);
@@ -5740,9 +5906,30 @@
     state.pointer2D.set(x, y);
     state.raycaster.setFromCamera(state.pointer2D, state.camera);
     const hits = state.raycaster.intersectObjects(state.tigerPickRoots, true);
-    if(!hits || !hits.length) return null;
-    const tiger = tigerFromHit(hits[0].object);
-    return (tiger && tiger.alive) ? tiger : null;
+    if(hits && hits.length){
+      const tiger = tigerFromHit(hits[0].object);
+      return (tiger && tiger.alive) ? tiger : null;
+    }
+
+    // Tap-assist fallback: lock nearest on-screen tiger when tap is very close.
+    let bestTiger = null;
+    let bestD2 = TIGER_TAP_ASSIST_PX * TIGER_TAP_ASSIST_PX;
+    const v = new state.three.Vector3();
+    for(const tiger of state.tigers){
+      if(!tiger || !tiger.alive || !tiger.mesh) continue;
+      v.set(tiger.mesh.position.x, tiger.mesh.position.y + 1.7, tiger.mesh.position.z).project(state.camera);
+      if(v.z < -1 || v.z > 1) continue;
+      const sx = rect.left + ((v.x + 1) * 0.5 * rect.width);
+      const sy = rect.top + ((-v.y + 1) * 0.5 * rect.height);
+      const dx = sx - clientX;
+      const dy = sy - clientY;
+      const d2 = (dx * dx) + (dy * dy);
+      if(d2 < bestD2){
+        bestD2 = d2;
+        bestTiger = tiger;
+      }
+    }
+    return bestTiger;
   }
 
   function onWorldPointerDown(ev){
@@ -6143,6 +6330,7 @@
     state.active = false;
     stopRenderLoop();
     resetJoystick();
+    clearCameraOcclusionFades();
     if(state.overlay) state.overlay.style.display = "none";
     if(state.overlay) state.overlay.classList.remove("combatLock");
     document.body.classList.remove("proto3dOpen");
