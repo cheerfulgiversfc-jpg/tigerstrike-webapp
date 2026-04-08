@@ -17840,12 +17840,15 @@ cv.addEventListener("pointerdown",(e)=>{
   if(tapped && !S.inBattle){
     const d = dist(S.me.x,S.me.y,tapped.x,tapped.y);
     if(d > equippedWeaponRange()){
-      S.lockedTigerId = null;
-      toast(`${equippedWeapon().name} is out of range. Move closer before you lock that tiger.`);
+      S.lockedTigerId = tapped.id;
+      S._lockGraceUntil = Date.now() + 1200;
+      S.target = { x:tapped.x, y:tapped.y };
+      toast(`${equippedWeapon().name} out of range. Tiger #${tapped.id} locked — move closer and tap again.`);
       save();
       return;
     }
     S.lockedTigerId=tapped.id;
+    S._lockGraceUntil = Date.now() + 900;
     startCombat();
     if(!S.inBattle){
       sfx("ui");
@@ -18327,6 +18330,14 @@ document.addEventListener("keyup",(e)=>{
 });
 
 function tigerById(id){ return S.tigers.find(t=>t.id===id); }
+function lockEngageRange(baseRange){
+  const base = Math.max(44, Number(baseRange) || equippedWeaponRange() || 88);
+  return base + clamp(base * 0.08, 8, 26);
+}
+function lockDropRange(baseRange){
+  const base = Math.max(44, Number(baseRange) || equippedWeaponRange() || 88);
+  return Math.max(base + 220, base * 2.35);
+}
 function nearestTiger(){
   const alive=S.tigers.filter(t=>t.alive);
   if(!alive.length) return null;
@@ -18358,6 +18369,7 @@ function lockNearestTiger(opts={}){
     return null;
   }
   S.lockedTigerId=t.id;
+  S._lockGraceUntil = Date.now() + 1200;
   if(!silent){
     const d = Math.round(dist(S.me.x,S.me.y,t.x,t.y));
     toast(`Locked Tiger #${t.id} (${t.type}) • ${d}m`);
@@ -18370,14 +18382,27 @@ function lockNearestTiger(opts={}){
 function canEngage(){
   const t=lockedTiger();
   if(!t) return null;
-  return dist(S.me.x,S.me.y,t.x,t.y) <= equippedWeaponRange() ? t : null;
+  const now = Date.now();
+  const baseRange = Math.max(44, equippedWeaponRange());
+  const d = dist(S.me.x,S.me.y,t.x,t.y);
+  const engageRange = lockEngageRange(baseRange);
+  if(d <= engageRange){
+    S._lockGraceUntil = now + 900;
+    return t;
+  }
+  if(now < (S._lockGraceUntil || 0) && d <= (engageRange + 24)){
+    return t;
+  }
+  return null;
 }
 function clearOutOfRangeLock(){
   if(S.inBattle || window.TigerTutorial?.isRunning) return;
   const t = lockedTiger();
   if(!t) return;
-  if(dist(S.me.x,S.me.y,t.x,t.y) > equippedWeaponRange()){
+  const d = dist(S.me.x,S.me.y,t.x,t.y);
+  if(d > lockDropRange(equippedWeaponRange())){
     S.lockedTigerId = null;
+    S._lockGraceUntil = 0;
   }
 }
 
@@ -21906,7 +21931,11 @@ function renderHUD(){
   const shieldLabel = shieldActiveNow() ? `${S.shields||0} • ACTIVE (${shieldSecs}s)` : `${S.shields||0}`;
   document.getElementById("shieldTxt").innerText = shieldLabel;
 
-  document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
+  const compactHud = isMobileViewport();
+  const compactBattleHud = compactHud && S.inBattle;
+  const backupVerbose = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
+  const backupCompact = `Plates ${totalArmorPlates()} • A ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} • R ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")}`;
+  document.getElementById("backupTxt").innerText = compactHud ? backupCompact : backupVerbose;
   const canShieldUse = !S.paused && !S.missionEnded && !S.gameOver && (S.shields||0)>0 && !abilityOnCooldown("shield");
   const canArmorQuickUse = canQuickUseArmorPlate();
   const shieldDisabled = !(canShieldUse || canArmorQuickUse);
@@ -21993,13 +22022,25 @@ function renderHUD(){
     ? ` • Timer ${arcadeLeft}s • Mult x${arcadeMult.toFixed(1)} • Medal ${arcadeMedal}${arcadeMission?.weeklySeed ? ` • Seed ${arcadeMission.weeklySeedKey}` : ""}`
     : "";
   document.getElementById("objTxt").innerText =
-    (S.mode==="Survival")
-      ? `Objective: Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
-      : (S.mode==="Story")
-        ? `Objective: ${storyObjective}${grace}`
-      : (S.mode==="Arcade")
-        ? `Objective: ${arcadeObjective}${arcadeHint}${grace}`
-        : `Objective: Evacuate living civilians + clear ALL tigers${grace}`;
+    compactHud
+      ? (
+          (S.mode==="Survival")
+            ? `Wave ${S.survivalWave} • Survive pressure`
+            : (S.mode==="Story")
+              ? `Story ${storyMission?.number || S.storyLevel}/100 • Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}${grace}`
+            : (S.mode==="Arcade")
+              ? `Arcade ${arcadeMission?.number || S.arcadeLevel}/100 • ${arcadeLeft}s • x${arcadeMult.toFixed(1)}`
+              : `Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}${grace}`
+        )
+      : (
+          (S.mode==="Survival")
+            ? `Objective: Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
+            : (S.mode==="Story")
+              ? `Objective: ${storyObjective}${grace}`
+            : (S.mode==="Arcade")
+              ? `Objective: ${arcadeObjective}${arcadeHint}${grace}`
+              : `Objective: Evacuate living civilians + clear ALL tigers${grace}`
+        );
   const storyOpsEl = document.getElementById("storyOpsTxt");
   if(storyOpsEl){
     if(S.mode==="Story" && storyMission){
@@ -22027,7 +22068,9 @@ function renderHUD(){
   if(S.dangerCivId && S.mode!=="Survival"){
     const civ = S.civilians.find(c=>c.id===S.dangerCivId);
     const d = civ ? Math.round(dist(S.me.x,S.me.y,civ.x,civ.y)) : null;
-    document.getElementById("dangerTxt").innerText = civ ? `⚠️ Civilian #${civ.id} under attack near ${civ.rescueLabel || "the rescue site"}! Distance: ${d}` : "";
+    document.getElementById("dangerTxt").innerText = civ
+      ? (compactHud ? `⚠️ Civ #${civ.id} under attack (${d}m)` : `⚠️ Civilian #${civ.id} under attack near ${civ.rescueLabel || "the rescue site"}! Distance: ${d}`)
+      : "";
   } else {
     document.getElementById("dangerTxt").innerText = "";
   }
@@ -22166,8 +22209,17 @@ function renderHUD(){
   if(abilityOnCooldown("shield")) cooldownBits.push(`Shield ${abilityCooldownLabel("shield")}`);
   if(cooldownBits.length) assistParts.push(cooldownBits.join(" • "));
 
-  document.getElementById("assistTxt").innerText = assistParts.slice(0,3).join(" • ") || "Sweep the map, scan, and keep pressure off civilians.";
+  document.getElementById("assistTxt").innerText =
+    compactHud
+      ? (assistParts[0] || "Scan, lock a tiger, and keep civilians moving to evac.")
+      : (assistParts.slice(0,3).join(" • ") || "Sweep the map, scan, and keep pressure off civilians.");
   document.getElementById("eventTxt").innerText = S.eventText ? `EVENT: ${S.eventText}` : "";
+  const seasonHudLine = document.getElementById("seasonHudTxt");
+  const storyOpsLine = document.getElementById("storyOpsTxt");
+  const eventLine = document.getElementById("eventTxt");
+  if(seasonHudLine) seasonHudLine.style.display = compactBattleHud ? "none" : "";
+  if(storyOpsLine) storyOpsLine.style.display = compactBattleHud ? "none" : "";
+  if(eventLine) eventLine.style.display = compactBattleHud ? "none" : "";
 
   const mobilePlayerHpValue = document.getElementById("mobilePlayerHpValue");
   const mobilePlayerHpBar = document.getElementById("mobilePlayerHpBar");
@@ -23744,6 +23796,7 @@ function drawOnMapBattleReadability(){
 }
 function drawOnMapBattleHud(){
   if(!S.inBattle) return;
+  if(isMobileViewport()) return; // Mobile uses floating unit bars for cleaner combat view.
   const t = activeTiger();
   if(!t || !t.alive) return;
   if(frameLagTier() >= 2 && frameBudgetExceeded(0.55)) return;
@@ -24206,6 +24259,7 @@ function drawTiger(t){
   const headBob = Math.sin((t.step||0)*2.4 + 0.7) * (gaitState==="sprint" ? 1.7 : (gaitState==="run" ? 1.25 : 0.7));
   const shoulderRoll = Math.sin((t.step||0)*1.3) * (gaitState==="sprint" ? 0.06 : 0.04);
   const tigerFocus = S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id);
+  const showTigerVitals = !S.inBattle || tigerFocus;
   const hitFlashLeft = Math.max(0, (t.hitFlashUntil || 0) - now);
   const hitFlashAlpha = hitFlashLeft > 0 ? clamp(hitFlashLeft / 190, 0.12, 0.78) : 0;
   const hitFlashColor = t.hitFlashKind === "tranq"
@@ -24425,6 +24479,7 @@ function drawTiger(t){
     ctx.setLineDash([]);
   } else if(t.huntState === TIGER_HUNT_STATES.POUNCE){
     const windup = now < (t.pounceWindupUntil || 0);
+    const windupLeft = Math.max(0, (t.pounceWindupUntil || 0) - now);
     const pulse = 0.65 + (0.35 * Math.sin(now * 0.022));
     ctx.globalAlpha = clamp(alpha * pulse, 0.25, 1);
     ctx.strokeStyle = windup ? "rgba(251,191,36,.96)" : "rgba(248,113,113,.98)";
@@ -24434,6 +24489,25 @@ function drawTiger(t){
     ctx.arc(x, y, (windup ? 36 : 40) * s, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+    // Directional claw/pounce lane cue so dodge timing is easier to read.
+    const laneR = (windup ? 45 : 50) * s;
+    const laneStart = drawDir > 0 ? -0.88 : (Math.PI - 0.26);
+    const laneEnd = drawDir > 0 ? 0.88 : (Math.PI + 0.26);
+    ctx.strokeStyle = windup ? "rgba(251,191,36,.82)" : "rgba(248,113,113,.92)";
+    ctx.lineWidth = windup ? 2.1 : 2.7;
+    ctx.beginPath();
+    ctx.arc(x, y - (2 * s), laneR, laneStart, laneEnd, false);
+    ctx.stroke();
+    if(tigerFocus){
+      const cueText = windup
+        ? (windupLeft <= 420 ? "DODGE NOW" : `POUNCE ${Math.max(1, Math.ceil(windupLeft / 1000))}s`)
+        : "POUNCE!";
+      ctx.fillStyle = windupLeft <= 420 ? "rgba(248,113,113,.98)" : "rgba(251,191,36,.98)";
+      ctx.font = "900 10px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText(cueText, x, y - (57 * s));
+      ctx.textAlign = "start";
+    }
     ctx.globalAlpha = alpha;
   } else if(t.huntState === TIGER_HUNT_STATES.RECOVER){
     ctx.strokeStyle = "rgba(125,211,252,.72)";
@@ -24459,14 +24533,16 @@ function drawTiger(t){
   }
 
   const pct=t.hp/t.hpMax;
-  ctx.fillStyle="rgba(11,13,18,.85)";
-  ctx.fillRect(x-26*s,y-34*s,52*s,6);
-  ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
-  ctx.fillRect(x-26*s,y-34*s,52*s*pct,6);
-  ctx.strokeStyle = "rgba(241,245,249,.72)";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x-26*s,y-34*s,52*s,6);
-  if(S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id)){
+  if(showTigerVitals){
+    ctx.fillStyle="rgba(11,13,18,.85)";
+    ctx.fillRect(x-26*s,y-34*s,52*s,6);
+    ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
+    ctx.fillRect(x-26*s,y-34*s,52*s*pct,6);
+    ctx.strokeStyle = "rgba(241,245,249,.72)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x-26*s,y-34*s,52*s,6);
+  }
+  if(S.inBattle && tigerFocus){
     ctx.fillStyle="rgba(9,12,18,.88)";
     roundedRectFill(x - (36*s), y - (52*s), 72*s, 20*s, 6*s);
     ctx.fillStyle="rgba(245,247,255,.95)";
@@ -24486,34 +24562,36 @@ function drawTiger(t){
     }
   }
 
-  const nonFocusBattle = S.inBattle && !tigerFocus;
-  ctx.globalAlpha=(nonFocusBattle ? 0.55 : 0.85)*alpha;
-  ctx.fillStyle="rgba(245,247,255,.80)";
-  ctx.font= nonFocusBattle ? "800 11px system-ui" : "900 12px system-ui";
-  const dash = (t.type==="Scout" && now<(t.dashUntil||0)) ? " (DASH)" : "";
-  const fade = ((t.type==="Stalker" && now<(t.fadeUntil||0)) || bossStealth) ? " (FADE)" : "";
-  const roar = (now<(t.roarUntil||0)) ? " (ROAR)" : "";
-  const rage = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? " (RAGE)" : "";
-  const hunt =
-    t.huntState === TIGER_HUNT_STATES.POUNCE ? " (POUNCE)" :
-    t.huntState === TIGER_HUNT_STATES.STALK ? " (STALK)" :
-    t.huntState === TIGER_HUNT_STATES.RECOVER ? " (RECOVER)" : "";
-  const persona = t.personality ? ` • ${t.personality}` : "";
-  const bossTag = isBossTiger(t) ? ` • ${bossIdentityProfile(t)?.name || "Boss"}` : "";
-  const bossPhaseTag = isBossTiger(t)
-    ? ` • P${clamp(Math.floor(Number(t.bossPhaseIndex || bossPhaseFromHp(t))), 1, bossPhaseCount(t))}/${bossPhaseCount(t)}`
-    : "";
-  const nemesisLabel = t.nemesisAlias
-    ? ` ☠ ${t.nemesisAlias}${Number(t.nemesisPower || 0) > 0 ? ` Lv${Math.floor(Number(t.nemesisPower || 0))}` : ""}`
-    : "";
-  const fullLabel = t.type + bossTag + bossPhaseTag + nemesisLabel + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
-  const compactLabel = (t.nemesisAlias ? `${t.type} • ${t.nemesisAlias}` : t.type) + (t.tranqTagged ? " (tranq)" : "");
-  const skipLabel =
-    visualReadabilityHeavyMode() &&
-    !tigerFocus &&
-    dist(S.me.x, S.me.y, t.x, t.y) > 220;
-  if(!skipLabel){
-    ctx.fillText(nonFocusBattle ? compactLabel : fullLabel, x-44*s, y-44*s);
+  if(!S.inBattle || tigerFocus){
+    const nonFocusBattle = S.inBattle && !tigerFocus;
+    ctx.globalAlpha=(nonFocusBattle ? 0.55 : 0.85)*alpha;
+    ctx.fillStyle="rgba(245,247,255,.80)";
+    ctx.font= nonFocusBattle ? "800 11px system-ui" : "900 12px system-ui";
+    const dash = (t.type==="Scout" && now<(t.dashUntil||0)) ? " (DASH)" : "";
+    const fade = ((t.type==="Stalker" && now<(t.fadeUntil||0)) || bossStealth) ? " (FADE)" : "";
+    const roar = (now<(t.roarUntil||0)) ? " (ROAR)" : "";
+    const rage = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? " (RAGE)" : "";
+    const hunt =
+      t.huntState === TIGER_HUNT_STATES.POUNCE ? " (POUNCE)" :
+      t.huntState === TIGER_HUNT_STATES.STALK ? " (STALK)" :
+      t.huntState === TIGER_HUNT_STATES.RECOVER ? " (RECOVER)" : "";
+    const persona = t.personality ? ` • ${t.personality}` : "";
+    const bossTag = isBossTiger(t) ? ` • ${bossIdentityProfile(t)?.name || "Boss"}` : "";
+    const bossPhaseTag = isBossTiger(t)
+      ? ` • P${clamp(Math.floor(Number(t.bossPhaseIndex || bossPhaseFromHp(t))), 1, bossPhaseCount(t))}/${bossPhaseCount(t)}`
+      : "";
+    const nemesisLabel = t.nemesisAlias
+      ? ` ☠ ${t.nemesisAlias}${Number(t.nemesisPower || 0) > 0 ? ` Lv${Math.floor(Number(t.nemesisPower || 0))}` : ""}`
+      : "";
+    const fullLabel = t.type + bossTag + bossPhaseTag + nemesisLabel + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
+    const compactLabel = (t.nemesisAlias ? `${t.type} • ${t.nemesisAlias}` : t.type) + (t.tranqTagged ? " (tranq)" : "");
+    const skipLabel =
+      visualReadabilityHeavyMode() &&
+      !tigerFocus &&
+      dist(S.me.x, S.me.y, t.x, t.y) > 220;
+    if(!skipLabel){
+      ctx.fillText(nonFocusBattle ? compactLabel : fullLabel, x-44*s, y-44*s);
+    }
   }
   ctx.globalAlpha=1;
 }
@@ -24648,10 +24726,13 @@ function drawEntitiesLite(){
     ctx.restore();
 
     const pct = clamp((t.hp || 0) / Math.max(1, t.hpMax || 1), 0, 1);
-    ctx.fillStyle = "rgba(9,12,18,.84)";
-    ctx.fillRect(x - 18, y - 18, 36, 4);
-    ctx.fillStyle = pct > 0.5 ? "#4ade80" : (pct > 0.2 ? "#f59e0b" : "#fb7185");
-    ctx.fillRect(x - 18, y - 18, 36 * pct, 4);
+    const showVitals = !S.inBattle || focus;
+    if(showVitals){
+      ctx.fillStyle = "rgba(9,12,18,.84)";
+      ctx.fillRect(x - 18, y - 18, 36, 4);
+      ctx.fillStyle = pct > 0.5 ? "#4ade80" : (pct > 0.2 ? "#f59e0b" : "#fb7185");
+      ctx.fillRect(x - 18, y - 18, 36 * pct, 4);
+    }
     if(focus){
       ctx.strokeStyle = "rgba(59,130,246,.96)";
       ctx.lineWidth = 2.4;
