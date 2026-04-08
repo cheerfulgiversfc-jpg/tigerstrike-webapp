@@ -152,6 +152,8 @@ const MISSION_TWIST_BRIDGE_RADIUS_MIN = 58;
 const MISSION_TWIST_BRIDGE_RADIUS_MAX = 84;
 const MISSION_TWIST_BRIDGE_MIN_MS = 13000;
 const MISSION_TWIST_BRIDGE_MAX_MS = 19000;
+// Bridge collapse remains a visual/tactical event, but no longer hard-locks movement.
+const MISSION_TWIST_BRIDGE_BLOCKS_MOVEMENT = false;
 const MISSION_TWIST_HOSTAGE_MIN_MS = 14000;
 const MISSION_TWIST_HOSTAGE_MAX_MS = 22000;
 const MISSION_TWIST_FOG_MIN_MS = 10000;
@@ -7022,11 +7024,34 @@ function reportTickError(key, err){
   __frameRecoverUntil = (performance.now ? performance.now() : now) + 1800;
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, (performance.now ? performance.now() : now) + 2200);
 }
+function hardResetCanvasState(clear=false){
+  try{
+    if(!ctx || !cv) return;
+    if(typeof ctx.resetTransform === "function"){
+      ctx.resetTransform();
+    } else if(typeof ctx.setTransform === "function"){
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    if(typeof ctx.setLineDash === "function") ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+    if(clear){
+      ctx.clearRect(0, 0, Number(cv.width || 0), Number(cv.height || 0));
+    }
+  }catch(_err){
+    // If reset fails, keep recovery path alive.
+  }
+}
 function safeTick(key, fn){
   try{
     fn();
     return true;
   }catch(err){
+    if(key === "drawSceneFrame" || key === "bootDrawMapScene" || key === "recoverDrawMapScene"){
+      hardResetCanvasState(true);
+      invalidateMapCache();
+    }
     reportTickError(key, err);
     return false;
   }
@@ -9810,6 +9835,7 @@ function blockedAt(x, y, radius){
   const tw = S?.missionTwists;
   const bridge = tw?.bridge;
   if(
+    MISSION_TWIST_BRIDGE_BLOCKS_MOVEMENT &&
     bridge &&
     bridge.active &&
     Date.now() < (bridge.until || 0) &&
@@ -10480,7 +10506,7 @@ function triggerMissionTwistBridge(now=Date.now()){
   tw.activeUntil = tw.bridge.until;
   tw.cooldownUntil = now + MISSION_TWIST_COOLDOWN_MS;
   tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
-  setEventText("🌉 Bridge collapse! Route blocked. Reroute now.", 5.5);
+  setEventText("🌉 Bridge collapse hazard! Move carefully through the zone.", 5.5);
   sfx("event");
   hapticImpact("medium");
   __savePending = true;
@@ -25005,6 +25031,7 @@ function draw(){
     });
 
     safeTick("drawSceneFrame", ()=>{
+      hardResetCanvasState(true);
       const liteRender = useLiteEntityRender();
       const camOffsetRaw = updateWorldCamera(S);
       const worldW = worldWidth(S);
@@ -25018,23 +25045,26 @@ function draw(){
       const shake = liteRender ? { active:false, x:0, y:0 } : sampleCameraShake();
       const cine = liteRender ? { active:false, x:0, y:0, scale:1 } : sampleBattleCinematic();
       ctx.save();
-      if(camX !== 0 || camY !== 0){
-        ctx.translate(-camX, -camY);
+      try{
+        if(camX !== 0 || camY !== 0){
+          ctx.translate(-camX, -camY);
+        }
+        if(cine.active){
+          ctx.translate(cine.x, cine.y);
+          ctx.scale(cine.scale, cine.scale);
+          ctx.translate(-cine.x, -cine.y);
+        }
+        if(shake.active){
+          ctx.translate(shake.x, shake.y);
+        }
+        drawMapScene();
+        if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
+          drawAtmosphericParallax();
+        }
+        drawEntities();
+      }finally{
+        ctx.restore();
       }
-      if(cine.active){
-        ctx.translate(cine.x, cine.y);
-        ctx.scale(cine.scale, cine.scale);
-        ctx.translate(-cine.x, -cine.y);
-      }
-      if(shake.active){
-        ctx.translate(shake.x, shake.y);
-      }
-      drawMapScene();
-      if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
-        drawAtmosphericParallax();
-      }
-      drawEntities();
-      ctx.restore();
       drawAbilityCooldownWheel();
       drawMobileUiClearLane();
     });
