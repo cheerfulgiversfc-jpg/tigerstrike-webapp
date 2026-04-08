@@ -6156,6 +6156,12 @@ const FRAME_LOAD_HIGH = 1.32;
 const FRAME_LOAD_EXTREME = 1.52;
 const FRAME_LAG_WARN_SCORE = 4;
 const FRAME_LAG_CRITICAL_SCORE = 8;
+const CAMERA_KEEP_VISIBLE_X_FRAC = 0.34;
+const CAMERA_KEEP_VISIBLE_Y_FRAC = 0.30;
+const CAMERA_KEEP_VISIBLE_X_MIN = 96;
+const CAMERA_KEEP_VISIBLE_Y_MIN = 74;
+const CAMERA_RECENTER_PULL = 0.62;
+const CAMERA_RECENTER_PULL_BATTLE = 0.76;
 const DIRECTOR_PHASES = {
   CALM: "CALM",
   PRESSURE: "PRESSURE",
@@ -6419,6 +6425,39 @@ function cameraClampCenter(x, y, state=S){
   };
 }
 
+function keepPlayerVisibleInCamera(state=S){
+  if(!state || typeof state !== "object") return;
+  if(!state.camera || typeof state.camera !== "object") return;
+  const meX = Number(state?.me?.x);
+  const meY = Number(state?.me?.y);
+  if(!Number.isFinite(meX) || !Number.isFinite(meY)) return;
+  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const safeX = clamp(
+    Math.max(CAMERA_KEEP_VISIBLE_X_MIN, vw * CAMERA_KEEP_VISIBLE_X_FRAC),
+    56,
+    vw * 0.45
+  );
+  const safeY = clamp(
+    Math.max(CAMERA_KEEP_VISIBLE_Y_MIN, vh * CAMERA_KEEP_VISIBLE_Y_FRAC),
+    44,
+    vh * 0.45
+  );
+  let targetCamX = state.camera.x;
+  let targetCamY = state.camera.y;
+  if(meX < (state.camera.x - safeX)) targetCamX = meX + safeX;
+  else if(meX > (state.camera.x + safeX)) targetCamX = meX - safeX;
+  if(meY < (state.camera.y - safeY)) targetCamY = meY + safeY;
+  else if(meY > (state.camera.y + safeY)) targetCamY = meY - safeY;
+  const needsRecenter =
+    Math.abs(targetCamX - state.camera.x) > 0.01 ||
+    Math.abs(targetCamY - state.camera.y) > 0.01;
+  if(!needsRecenter) return;
+  const pull = state?.inBattle ? CAMERA_RECENTER_PULL_BATTLE : CAMERA_RECENTER_PULL;
+  state.camera.x += (targetCamX - state.camera.x) * pull;
+  state.camera.y += (targetCamY - state.camera.y) * pull;
+}
+
 function cameraOffsetSnapshot(state=S){
   const world = ensureWorldLayout(state);
   const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
@@ -6439,7 +6478,7 @@ function updateWorldCamera(state=S){
     Number.isFinite(state?.me?.y) ? state.me.y : (world.h * 0.5),
     state
   );
-  const ease = state?.inBattle ? 0.25 : 0.18;
+  const ease = state?.inBattle ? 0.32 : 0.24;
   if(!Number.isFinite(state.camera.x) || !Number.isFinite(state.camera.y)){
     state.camera.x = target.x;
     state.camera.y = target.y;
@@ -6447,6 +6486,7 @@ function updateWorldCamera(state=S){
     state.camera.x += (target.x - state.camera.x) * ease;
     state.camera.y += (target.y - state.camera.y) * ease;
   }
+  keepPlayerVisibleInCamera(state);
   const clamped = cameraClampCenter(state.camera.x, state.camera.y, state);
   state.camera.x = clamped.x;
   state.camera.y = clamped.y;
@@ -6995,15 +7035,20 @@ function runFrameTask(key, intervalMs, fn, options={}){
   const opts = options || {};
   const now = Date.now();
   if(now < (__frameTaskGate[key] || 0)) return false;
+  const perfNow = performance.now ? performance.now() : now;
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
   const critical = !!opts.critical;
+  const recoveryActive = perfNow < (__frameRecoverUntil || 0);
+  const battleActive = !!S?.inBattle;
   let adjustedInterval = Math.max(8, Math.round(Number(intervalMs) || 16));
   if(!critical){
     let slowMul = 1;
-    if(lagTier >= 2) slowMul = mobile ? 1.85 : 1.55;
-    else if(lagTier >= 1) slowMul = mobile ? 1.45 : 1.25;
-    else if(frameIsSlow()) slowMul = mobile ? 1.24 : 1.14;
+    if(recoveryActive) slowMul = Math.max(slowMul, mobile ? 2.3 : 1.9);
+    if(lagTier >= 2) slowMul = Math.max(slowMul, mobile ? 1.85 : 1.55);
+    else if(lagTier >= 1) slowMul = Math.max(slowMul, mobile ? 1.45 : 1.25);
+    else if(frameIsSlow()) slowMul = Math.max(slowMul, mobile ? 1.24 : 1.14);
+    if(battleActive && lagTier >= 1) slowMul = Math.max(slowMul, mobile ? 1.6 : 1.34);
     if(slowMul > 1){
       adjustedInterval = Math.max(adjustedInterval, Math.round(adjustedInterval * slowMul));
     }
@@ -7016,6 +7061,8 @@ function runFrameTask(key, intervalMs, fn, options={}){
   if(frameIsSlow()) cadence = Math.max(cadence, cadenceSlow);
   if(__frameDynamicLoadMul >= FRAME_LOAD_HIGH) cadence = Math.max(cadence, cadenceHeavy);
   if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) cadence = Math.max(cadence, cadenceExtreme);
+  if(!critical && recoveryActive) cadence = Math.max(cadence, mobile ? 3 : 2);
+  if(!critical && battleActive && lagTier >= 2) cadence = Math.max(cadence, mobile ? 4 : 3);
   if(cadence > 1){
     if(!Number.isFinite(__frameTaskPhase[key])){
       let hash = 0;
@@ -7034,9 +7081,12 @@ function runFrameTask(key, intervalMs, fn, options={}){
   }
   const costHint = Math.max(0, Number(opts.costHint) || 0);
   if(!critical && frameBudgetExceeded(costHint)){
-    __frameTaskGate[key] = now + Math.max(48, Math.min(adjustedInterval, mobile ? 120 : 90));
+    const backoffCap = (lagTier >= 2 || recoveryActive)
+      ? (mobile ? 180 : 140)
+      : (mobile ? 120 : 90);
+    __frameTaskGate[key] = now + Math.max(60, Math.min(adjustedInterval, backoffCap));
     __frameBudgetState.dropped = (__frameBudgetState.dropped || 0) + 1;
-    if(__frameBudgetState.dropped >= 6){
+    if(__frameBudgetState.dropped >= 4){
       const perfNow = performance.now ? performance.now() : now;
       __frameSlowUntil = Math.max(__frameSlowUntil || 0, perfNow + 1400);
     }
