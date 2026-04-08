@@ -9990,6 +9990,41 @@ function pointInViewportPad(x, y, pad=120){
   const h = Number(cv?.height || WORLD_BASE_HEIGHT);
   return sp.x >= -pad && sp.x <= (w + pad) && sp.y >= -pad && sp.y <= (h + pad);
 }
+function applyEdgeSafetyLeash(ent, radius, opts={}){
+  if(!ent || !Number.isFinite(ent.x) || !Number.isFinite(ent.y)) return false;
+  const bounds = worldBounds(radius, S);
+  const margin = clamp(Number(opts.margin || 64), 24, 180);
+  const minX = Math.min(bounds.maxX, bounds.minX + margin);
+  const maxX = Math.max(minX, bounds.maxX - margin);
+  const minY = Math.min(bounds.maxY, bounds.minY + margin);
+  const maxY = Math.max(minY, bounds.maxY - margin);
+
+  const targetX = Number.isFinite(opts.targetX) ? opts.targetX : (S.me?.x ?? ent.x);
+  const targetY = Number.isFinite(opts.targetY) ? opts.targetY : (S.me?.y ?? ent.y);
+  const requireVisible = !!opts.requireVisible;
+  const visiblePad = clamp(Number(opts.visiblePad || 240), 80, 520);
+  const outOfSafeBand = ent.x < minX || ent.x > maxX || ent.y < minY || ent.y > maxY;
+  const offView = requireVisible && !pointInViewportPad(ent.x, ent.y, visiblePad);
+  if(!outOfSafeBand && !offView) return false;
+
+  let nx = clamp(ent.x, minX, maxX);
+  let ny = clamp(ent.y, minY, maxY);
+  const free = findNearestOpenPoint(nx, ny, radius, {
+    avoidKeepout: opts.avoidKeepout !== false,
+    avoidWater: !!opts.avoidWater,
+    targetX,
+    targetY
+  }) || safeSpawnPoint(nx, ny, radius, opts.avoidKeepout !== false, !!opts.avoidWater);
+  if(!free) return false;
+  ent.x = free.x;
+  ent.y = free.y;
+  ent._stuckTicks = 0;
+  ent._pathStallCount = 0;
+  ent._nextUnstickTryAt = 0;
+  ent._nextPathRecoverAt = 0;
+  ent._nextKeepoutRecoverAt = 0;
+  return true;
+}
 function unstickEntitiesTick(){
   if(!S || S.paused || S.gameOver || S.missionEnded) return;
   const playerIntent =
@@ -10000,7 +10035,8 @@ function unstickEntitiesTick(){
   resolveEntityStuck(S.me, 16, {
     avoidKeepout:false,
     movingIntent:playerIntent,
-    stuckThreshold:36,
+    stuckThreshold:28,
+    moveEps:0.65,
     targetX:S.target?.x,
     targetY:S.target?.y
   });
@@ -10012,6 +10048,15 @@ function unstickEntitiesTick(){
       targetY:S.target?.y
     });
   }
+  applyEdgeSafetyLeash(S.me, 16, {
+    margin:92,
+    avoidKeepout:false,
+    avoidWater:false,
+    requireVisible:true,
+    visiblePad:160,
+    targetX:S.target?.x,
+    targetY:S.target?.y
+  });
 
   for(const civ of (S.civilians || [])){
     if(!civ.alive || civ.evac) continue;
@@ -10019,7 +10064,8 @@ function unstickEntitiesTick(){
     resolveEntityStuck(civ, 14, {
       avoidKeepout:true,
       movingIntent:civIntent,
-      stuckThreshold:20,
+      stuckThreshold:civ.following ? 14 : 18,
+      moveEps:civ.following ? 0.52 : 0.66,
       targetX:S.evacZone?.x,
       targetY:S.evacZone?.y
     });
@@ -10031,13 +10077,23 @@ function unstickEntitiesTick(){
         targetY:S.evacZone?.y
       });
     }
+    applyEdgeSafetyLeash(civ, 14, {
+      margin:civ.following ? 78 : 62,
+      avoidKeepout:true,
+      avoidWater:false,
+      requireVisible:!!civ.following,
+      visiblePad:civ.following ? 280 : 420,
+      targetX:civ.following ? S.me?.x : S.evacZone?.x,
+      targetY:civ.following ? S.me?.y : S.evacZone?.y
+    });
   }
   for(const unit of (S.supportUnits || [])){
     if(!unit.alive) continue;
     resolveEntityStuck(unit, 16, {
       avoidKeepout:true,
       movingIntent:true,
-      stuckThreshold:18,
+      stuckThreshold:15,
+      moveEps:0.62,
       targetX:S.me?.x,
       targetY:S.me?.y
     });
@@ -10049,6 +10105,14 @@ function unstickEntitiesTick(){
         targetY:S.me?.y
       });
     }
+    applyEdgeSafetyLeash(unit, 16, {
+      margin:72,
+      avoidKeepout:true,
+      avoidWater:false,
+      requireVisible:false,
+      targetX:S.me?.x,
+      targetY:S.me?.y
+    });
   }
   for(const tiger of (S.tigers || [])){
     if(!tiger.alive) continue;
@@ -10056,7 +10120,8 @@ function unstickEntitiesTick(){
     resolveEntityStuck(tiger, 16, {
       avoidKeepout:true,
       movingIntent:tigerIntent,
-      stuckThreshold:16,
+      stuckThreshold:13,
+      moveEps:0.62,
       targetX:S.me?.x,
       targetY:S.me?.y
     });
@@ -10068,6 +10133,14 @@ function unstickEntitiesTick(){
         targetY:S.me?.y
       });
     }
+    applyEdgeSafetyLeash(tiger, 16, {
+      margin:58,
+      avoidKeepout:true,
+      avoidWater:false,
+      requireVisible:false,
+      targetX:S.me?.x,
+      targetY:S.me?.y
+    });
   }
   for(const p of (S.pickups || [])){
     if(!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
@@ -18851,7 +18924,8 @@ function followCiviliansTick(){
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
   if(!Number.isFinite(S._escortFace)) S._escortFace = face;
   const faceDelta = normalizeAngle(face - S._escortFace);
-  S._escortFace = normalizeAngle(S._escortFace + clamp(faceDelta, -0.23, 0.23));
+  // Slightly smoother escort heading to prevent follower slot jitter on quick turns.
+  S._escortFace = normalizeAngle(S._escortFace + clamp(faceDelta, -0.18, 0.18));
   const escortFace = S._escortFace;
   const activeFollowers = [];
   const now = Date.now();
@@ -18874,6 +18948,10 @@ function followCiviliansTick(){
     }
 
     if(c.escortOwner === "rescue"){
+      c._followVx = 0;
+      c._followVy = 0;
+      c._escortAnchorX = NaN;
+      c._escortAnchorY = NaN;
       continue;
     }
 
@@ -18884,6 +18962,8 @@ function followCiviliansTick(){
         c.escortOwner = "player";
         c.escortUnitId = "";
         c.followGraceUntil = now + 2800;
+        c._followVx = 0;
+        c._followVy = 0;
       } else {
         continue;
       }
@@ -18897,6 +18977,10 @@ function followCiviliansTick(){
         c.following = false;
         c.escortOwner = "";
         c.escortUnitId = "";
+        c._followVx = 0;
+        c._followVy = 0;
+        c._escortAnchorX = NaN;
+        c._escortAnchorY = NaN;
         continue;
       }
     }
@@ -18905,6 +18989,8 @@ function followCiviliansTick(){
       c.escortOwner = "player";
       c.escortUnitId = "";
     }
+    if(!Number.isFinite(c._followVx)) c._followVx = 0;
+    if(!Number.isFinite(c._followVy)) c._followVy = 0;
     activeFollowers.push(c);
   }
 
@@ -18979,11 +19065,23 @@ function followCiviliansTick(){
     c.fleeUntil = 0;
     c.fleeFromTigerId = 0;
 
-    let dx = anchor.x - c.x;
-    let dy = anchor.y - c.y;
+    // Smooth anchor to reduce twitching when player/camera turns quickly.
+    if(!Number.isFinite(c._escortAnchorX) || !Number.isFinite(c._escortAnchorY)){
+      c._escortAnchorX = anchor.x;
+      c._escortAnchorY = anchor.y;
+    } else {
+      const anchorDist = dist(c._escortAnchorX, c._escortAnchorY, anchor.x, anchor.y);
+      const anchorBlend = anchorDist > 90 ? 0.56 : (anchorDist > 46 ? 0.40 : 0.28);
+      c._escortAnchorX += (anchor.x - c._escortAnchorX) * anchorBlend;
+      c._escortAnchorY += (anchor.y - c._escortAnchorY) * anchorBlend;
+    }
+    const smoothAnchorX = c._escortAnchorX;
+    const smoothAnchorY = c._escortAnchorY;
+    let dx = smoothAnchorX - c.x;
+    let dy = smoothAnchorY - c.y;
     let dd = Math.hypot(dx,dy) || 1;
     if(dd > 245 && now > (c._lastEscortSnapAt || 0) + 1800){
-      const snap = findNearestOpenPoint(anchor.x, anchor.y, 14, {
+      const snap = findNearestOpenPoint(smoothAnchorX, smoothAnchorY, 14, {
         avoidKeepout:false,
         avoidWater:false,
         targetX:S.me.x,
@@ -18993,28 +19091,35 @@ function followCiviliansTick(){
         c.x = snap.x;
         c.y = snap.y;
         c._lastEscortSnapAt = now;
-        dx = anchor.x - c.x;
-        dy = anchor.y - c.y;
+        dx = smoothAnchorX - c.x;
+        dy = smoothAnchorY - c.y;
         dd = Math.hypot(dx,dy) || 1;
       }
     }
     const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
-    const escortWaterMul = Math.max(0.93, waterMul);
-    const catchup = clamp((dd - 10) * 0.07, 0, 5.4);
-    const trailBoost = dd > 170 ? 0.72 : (dd > 120 ? 0.40 : 0);
+    const escortWaterMul = Math.max(0.95, waterMul);
+    const catchup = clamp((dd - 8) * 0.078, 0, 6.3);
+    const trailBoost = dd > 170 ? 0.88 : (dd > 120 ? 0.52 : 0);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.16, 2.86) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      ((Math.max(playerSpeed * 1.18, 3.08) + catchup + trailBoost) * escortBoost * escortWaterMul),
       PLAYER_SPRINT_SPEED + 3.0
     );
-    const vx = (dx/dd) * sp;
-    const vy = (dy/dd) * sp;
+    const desiredVx = (dx/dd) * sp;
+    const desiredVy = (dy/dd) * sp;
+    const velBlend = dd > 120 ? 0.52 : 0.38;
+    c._followVx += (desiredVx - c._followVx) * velBlend;
+    c._followVy += (desiredVy - c._followVy) * velBlend;
+    const vx = c._followVx;
+    const vy = c._followVy;
     if(Math.hypot(vx, vy) > 0.02){
       c.face = Math.atan2(vy, vx);
       c.step = (c.step || 0) + clamp(Math.hypot(vx, vy) * 0.11, 0.04, 0.30);
     }
     const moved = tryMoveEntity(c, c.x + vx, c.y + vy, 14, { avoidKeepout:false });
     if(!moved){
-      const recover = findNearestOpenPoint(anchor.x, anchor.y, 14, {
+      c._followVx *= 0.42;
+      c._followVy *= 0.42;
+      const recover = findNearestOpenPoint(smoothAnchorX, smoothAnchorY, 14, {
         avoidKeepout:false,
         avoidWater:false,
         targetX:S.me.x,
@@ -24639,6 +24744,7 @@ function drawEntities(){
   const mobile = isMobileViewport();
   const isSlowFrame = frameIsSlow();
   const frameBudgetTight = frameBudgetExceeded(0.85);
+  const battleHeavy = !!S.inBattle;
   const entityLoad =
     (S.tigers?.length || 0) +
     (S.civilians?.length || 0) +
@@ -24661,11 +24767,21 @@ function drawEntities(){
   }else if(lagTier >= 1){
     shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 6 : 5) === 0);
   }
-  const shouldDrawPopups = lagTier >= 2
+  let shouldDrawPopups = lagTier >= 2
     ? (__frameHeavyFxFlip % (mobile ? 9 : 8) === 0)
     : (lagTier >= 1
       ? (__frameHeavyFxFlip % (heavyLoad ? 6 : 5) === 0)
       : (__frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0));
+  if(battleHeavy && (lagTier >= 1 || frameBudgetTight || heavyLoad)){
+    // During heavy battle frames, aggressively shed non-critical VFX first.
+    if(lagTier >= 2 || frameBudgetTight){
+      shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 12 : 10) === 0);
+      shouldDrawPopups = (__frameHeavyFxFlip % (mobile ? 14 : 12) === 0);
+    } else {
+      shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 8 : 7) === 0);
+      shouldDrawPopups = (__frameHeavyFxFlip % (mobile ? 9 : 8) === 0);
+    }
+  }
   if(shouldDrawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight && lagTier === 0)) drawImpactPulses();
   if(!liteRender && shouldDrawFx && !frameBudgetTight) drawCombatFx();
   if(!liteRender && (shouldDrawFx || (!frameBudgetTight && shouldDrawPopups))) drawDamagePopups();
@@ -24678,6 +24794,11 @@ function shouldDrawAtmosphericPass(){
   __frameBgFxFlip = (__frameBgFxFlip + 1) % 9;
   const score = frameActiveEntityLoadScore();
   const lagTier = frameLagTier();
+  if(S?.inBattle){
+    if(isMobileViewport()) return false;
+    if(lagTier >= 1 || frameBudgetExceeded(0.28) || frameIsSlow()) return false;
+    return (__frameBgFxFlip % 6) === 0;
+  }
   const expandedWorld = (worldWidth(S) > (cv.width + 4)) || (worldHeight(S) > (cv.height + 4));
   if(expandedWorld && isMobileViewport()){
     if(lagTier >= 1) return false;
@@ -24740,10 +24861,11 @@ function draw(){
       runFrameTask("comboTick", frameInterval(lagCritical ? 154 : (lagHeavy ? 130 : 110), 1.4), comboTick, { costHint:0.7 });
 
       if(!window.TigerTutorial?.isRunning){
-        runFrameTask("missionTwists", frameInterval(lagHeavy ? 236 : 176, 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
-        runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
-        runFrameTask("biomeHazard", frameInterval(lagHeavy ? 220 : 170, 1.45), biomeHazardTick, { costHint:0.6 });
-        runFrameTask("ambientPickup", frameInterval(lagHeavy ? 360 : 300, 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
+        const nonCriticalBattleMul = battleLoad ? 1.42 : 1;
+        runFrameTask("missionTwists", frameInterval(Math.round((lagHeavy ? 236 : 176) * nonCriticalBattleMul), 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
+        runFrameTask("tickEvents", frameInterval(Math.round((lagHeavy ? 240 : 180) * nonCriticalBattleMul), 1.5), tickEvents, { costHint:0.9 });
+        runFrameTask("biomeHazard", frameInterval(Math.round((lagHeavy ? 220 : 170) * nonCriticalBattleMul), 1.45), biomeHazardTick, { costHint:0.6 });
+        runFrameTask("ambientPickup", frameInterval(Math.round((lagHeavy ? 360 : 300) * nonCriticalBattleMul), 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
         runFrameTask("tickPickups", frameInterval(lagCritical ? 92 : (lagHeavy ? 74 : 52), 1.5), tickPickups, { costHint:1.0 });
       }
 
