@@ -7712,10 +7712,12 @@ function isMobileViewport(){
   const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches;
   const phoneLandscape = !!window.matchMedia?.("(max-width:960px) and (max-height:540px) and (orientation:landscape)")?.matches;
   const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
+  const touchCapable = ("ontouchstart" in window) || ((typeof navigator !== "undefined") && Number(navigator.maxTouchPoints || 0) > 0);
   const sw = Math.min(window.innerWidth || 0, window.innerHeight || 0);
   const lw = Math.max(window.innerWidth || 0, window.innerHeight || 0);
   const phoneLike = (sw > 0 && lw > 0) && (sw <= 920) && (lw <= 1600);
-  return narrow || (coarse && (phoneLandscape || phoneLike));
+  const touchPrimary = coarse || touchCapable;
+  return narrow || (touchPrimary && (phoneLandscape || phoneLike));
 }
 function isLandscapeViewport(){
   return (window.innerWidth || 0) > (window.innerHeight || 0);
@@ -10570,7 +10572,7 @@ function triggerMissionTwistBlackout(now=Date.now()){
   tw.cooldownUntil = now + MISSION_TWIST_COOLDOWN_MS;
   tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
   S.scanPing = 0;
-  setEventText("📻 Radio blackout! Scan and map devices are offline.", 5.8);
+  setEventText("📻 Radio blackout! You can still move/fight, but Scan + map devices are offline.", 5.8);
   sfx("event");
   hapticImpact("medium");
   __savePending = true;
@@ -20639,15 +20641,17 @@ function renderCombatControls(){
   const combatButtons = document.getElementById("combatButtons");
   const inCombat = !!S.inBattle;
   const hideTouchUi = controllerOwnsUi();
-  if(touchOverlay) touchOverlay.style.display = hideTouchUi ? "none" : "block";
-  if(touchHint) touchHint.style.display = hideTouchUi ? "none" : "block";
-  if(mapCluster) mapCluster.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "grid");
-  if(combatCluster) combatCluster.style.display = hideTouchUi ? "none" : (inCombat ? "grid" : "none");
-  if(cacheBtn) cacheBtn.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "flex");
-  if(squadWheelBtn) squadWheelBtn.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "flex");
-  if(actionButtons) actionButtons.style.display = (hideTouchUi || inCombat) ? "none" : "";
-  if(combatButtons) combatButtons.style.display = hideTouchUi ? "none" : (inCombat ? "flex" : "none");
-  if(hideTouchUi || inCombat || S.paused || S.gameOver || S.missionEnded){
+  const touchMode = isMobileViewport();
+  const touchVisible = touchMode && !hideTouchUi;
+  if(touchOverlay) touchOverlay.style.display = touchVisible ? "block" : "none";
+  if(touchHint) touchHint.style.display = touchVisible ? "block" : "none";
+  if(mapCluster) mapCluster.style.display = touchVisible ? (inCombat ? "none" : "grid") : "none";
+  if(combatCluster) combatCluster.style.display = touchVisible ? (inCombat ? "grid" : "none") : "none";
+  if(cacheBtn) cacheBtn.style.display = touchVisible ? (inCombat ? "none" : "flex") : "none";
+  if(squadWheelBtn) squadWheelBtn.style.display = touchVisible ? (inCombat ? "none" : "flex") : "none";
+  if(actionButtons) actionButtons.style.display = (!touchMode && !hideTouchUi && !inCombat) ? "flex" : "none";
+  if(combatButtons) combatButtons.style.display = (!touchMode && !hideTouchUi && inCombat) ? "flex" : "none";
+  if(!touchVisible || inCombat || S.paused || S.gameOver || S.missionEnded){
     closeSquadCommandWheel();
   } else if(isSquadCommandWheelOpen()){
     positionSquadCommandWheel();
@@ -22448,14 +22452,29 @@ function drawMissionTwistOverlay(now=Date.now()){
     const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - now) / 1000));
     const worldW = worldWidth(S);
     const worldH = worldHeight(S);
-    ctx.globalAlpha = 0.16;
-    ctx.fillStyle = "rgba(6,9,16,.98)";
+    // Keep blackout readable/playable: light static + clear banner, not near-black screen.
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = "rgba(7,10,18,.96)";
     ctx.fillRect(0, 0, worldW, worldH);
-    rounded(16, 16, 194, 24, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.7)");
-    ctx.globalAlpha = 0.96;
+
+    ctx.globalAlpha = 0.12;
+    ctx.strokeStyle = "rgba(148,163,184,.34)";
+    ctx.lineWidth = 1;
+    for(let y=10; y<worldH; y+=22){
+      ctx.beginPath();
+      ctx.moveTo(0, y + (Math.sin((now * 0.003) + (y * 0.012)) * 1.4));
+      ctx.lineTo(worldW, y + (Math.sin((now * 0.003) + (y * 0.012)) * 1.4));
+      ctx.stroke();
+    }
+
+    rounded(16, 16, 360, 40, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.76)");
+    ctx.globalAlpha = 0.98;
     ctx.fillStyle = "rgba(226,232,240,.96)";
     ctx.font = "900 11px system-ui";
-    ctx.fillText(`📻 RADIO BLACKOUT ${left}s`, 26, 32);
+    ctx.fillText(`📻 RADIO BLACKOUT ${left}s`, 26, 35);
+    ctx.fillStyle = "rgba(186,198,214,.96)";
+    ctx.font = "700 10px system-ui";
+    ctx.fillText("Scan + map devices offline. Movement/combat still active.", 26, 52);
   }
   ctx.restore();
 }
@@ -23218,8 +23237,9 @@ function drawMapScene(){
 
   drawMissionTwistOverlay(Date.now());
 
-  if(Date.now() < (S.fogUntil||0)){
-    ctx.globalAlpha = 0.35;
+  const blackoutActive = tw.blackout.active && frameNow < (tw.blackout.until || 0);
+  if(frameNow < (S.fogUntil||0)){
+    ctx.globalAlpha = blackoutActive ? 0.14 : 0.35;
     ctx.fillStyle = "#0b0d12";
     ctx.fillRect(0,0,w,h);
     ctx.globalAlpha = 1;

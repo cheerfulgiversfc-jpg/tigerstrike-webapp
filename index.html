@@ -134,7 +134,20 @@
         linear-gradient(90deg, rgba(255,255,255,.03), transparent 12%, transparent 88%, rgba(0,0,0,.12));
     }
     canvas{display:block;width:100%;height:auto;touch-action:none;position:relative;z-index:1}
-    .actionStrip{border-top:1px solid var(--border);background:rgba(15,19,32,.88);padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+    .actionStrip{
+      border-top:1px solid var(--border);
+      background:rgba(15,19,32,.90);
+      padding:10px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:space-between;
+      position:sticky;
+      bottom:0;
+      z-index:6;
+      backdrop-filter:blur(8px);
+    }
     .small{font-size:12px;color:var(--muted)}
     .actionButtons{flex:1 1 560px}
     .combatButtons{display:none;flex:1 1 560px}
