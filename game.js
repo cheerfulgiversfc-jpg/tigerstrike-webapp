@@ -10590,7 +10590,8 @@ function missionTwistChooseType(tw){
     bridge: 0.28,
     hostage: aliveCivs > 0 ? 0.30 : 0,
     fog: 0.23,
-    blackout: 0.19
+    // Keep blackout rarer than other twists on mobile to reduce visual confusion.
+    blackout: 0.10
   };
   let total = 0;
   for(const type of available) total += Math.max(0.01, Number(weights[type] || 0.1));
@@ -22412,14 +22413,24 @@ function drawMissionTwistOverlay(now=Date.now()){
     ctx.arc(tw.bridge.x, tw.bridge.y, Math.max(20, tw.bridge.r - 9), 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.strokeStyle = "rgba(255,220,220,.92)";
-    ctx.lineWidth = 2.2;
+    // Smaller caution marker to avoid the "hard-stop error X" look on mobile.
+    ctx.fillStyle = "rgba(252,165,165,.92)";
     ctx.beginPath();
-    ctx.moveTo(tw.bridge.x - (tw.bridge.r * 0.52), tw.bridge.y - (tw.bridge.r * 0.52));
-    ctx.lineTo(tw.bridge.x + (tw.bridge.r * 0.52), tw.bridge.y + (tw.bridge.r * 0.52));
-    ctx.moveTo(tw.bridge.x + (tw.bridge.r * 0.52), tw.bridge.y - (tw.bridge.r * 0.52));
-    ctx.lineTo(tw.bridge.x - (tw.bridge.r * 0.52), tw.bridge.y + (tw.bridge.r * 0.52));
+    ctx.moveTo(tw.bridge.x, tw.bridge.y - (tw.bridge.r * 0.18));
+    ctx.lineTo(tw.bridge.x + (tw.bridge.r * 0.14), tw.bridge.y + (tw.bridge.r * 0.10));
+    ctx.lineTo(tw.bridge.x - (tw.bridge.r * 0.14), tw.bridge.y + (tw.bridge.r * 0.10));
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,235,235,.95)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(tw.bridge.x, tw.bridge.y - (tw.bridge.r * 0.10));
+    ctx.lineTo(tw.bridge.x, tw.bridge.y + (tw.bridge.r * 0.03));
     ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(tw.bridge.x, tw.bridge.y + (tw.bridge.r * 0.08), 1.4, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,235,235,.95)";
+    ctx.fill();
     rounded(tw.bridge.x - 78, tw.bridge.y - tw.bridge.r - 34, 156, 24, 11, "rgba(44,8,12,.90)", "rgba(253,164,175,.82)");
     ctx.fillStyle = "rgba(255,226,231,.98)";
     ctx.textAlign = "center";
@@ -22450,21 +22461,25 @@ function drawMissionTwistOverlay(now=Date.now()){
   }
   if(tw.blackout.active && now < (tw.blackout.until || 0)){
     const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - now) / 1000));
+    const mobile = isMobileViewport();
+    const heavy = mobile && (performanceMode() === "PERFORMANCE" || frameLagTier() >= 1 || frameIsSlow());
     const worldW = worldWidth(S);
     const worldH = worldHeight(S);
-    // Keep blackout readable/playable: light static + clear banner, not near-black screen.
-    ctx.globalAlpha = 0.06;
-    ctx.fillStyle = "rgba(7,10,18,.96)";
+    // Keep blackout readable/playable: hint of signal loss without obscuring the map.
+    ctx.globalAlpha = heavy ? 0.02 : 0.035;
+    ctx.fillStyle = "rgba(8,12,22,.90)";
     ctx.fillRect(0, 0, worldW, worldH);
 
-    ctx.globalAlpha = 0.12;
-    ctx.strokeStyle = "rgba(148,163,184,.34)";
-    ctx.lineWidth = 1;
-    for(let y=10; y<worldH; y+=22){
-      ctx.beginPath();
-      ctx.moveTo(0, y + (Math.sin((now * 0.003) + (y * 0.012)) * 1.4));
-      ctx.lineTo(worldW, y + (Math.sin((now * 0.003) + (y * 0.012)) * 1.4));
-      ctx.stroke();
+    if(!heavy){
+      ctx.globalAlpha = 0.10;
+      ctx.strokeStyle = "rgba(148,163,184,.28)";
+      ctx.lineWidth = 1;
+      for(let y=12; y<worldH; y+=30){
+        ctx.beginPath();
+        ctx.moveTo(0, y + (Math.sin((now * 0.003) + (y * 0.012)) * 1.2));
+        ctx.lineTo(worldW, y + (Math.sin((now * 0.003) + (y * 0.012)) * 1.2));
+        ctx.stroke();
+      }
     }
 
     rounded(16, 16, 360, 40, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.76)");
@@ -22485,7 +22500,6 @@ function drawMapScene(){
   const w = Math.max(viewportW, worldWidth(S));
   const h = Math.max(viewportH, worldHeight(S));
   const canCacheScene = (w === viewportW && h === viewportH);
-  const camSnap = cameraOffsetSnapshot(S);
   const mapInfo = currentMap();
   const key = mapInfo.key;
   const missionIndex = missionIndexForMode(S.mode);
@@ -22493,10 +22507,21 @@ function drawMapScene(){
   const chapterStyle = chapterVisualForMode(S.mode, chapter);
   const ez = S.evacZone || DEFAULT.evacZone;
   const tw = ensureMissionTwistState(S);
+  const mobile = isMobileViewport();
+  const lagTier = frameLagTier();
+  const perfMode = performanceMode() === "PERFORMANCE";
+  const slowFrame = frameIsSlow();
+  const mapLiteTier = (() => {
+    if(mobile && (lagTier >= 2 || (perfMode && slowFrame))) return 2;
+    if(mobile && (lagTier >= 1 || perfMode || slowFrame)) return 1;
+    return 0;
+  })();
+  const liteMap = mapLiteTier >= 1;
+  const ultraLiteMap = mapLiteTier >= 2;
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
-    Math.round(camSnap.x || 0), Math.round(camSnap.y || 0),
+    mapLiteTier,
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0,
     tw.activeType || "",
     tw.bridge.active ? 1 : 0,
@@ -22512,18 +22537,16 @@ function drawMapScene(){
     tw.blackout.active ? 1 : 0,
     Math.max(0, Math.ceil(((tw.blackout.until || 0) - frameNow) / 1000))
   ].join("|");
-  const lagTier = frameLagTier();
-  const mobile = isMobileViewport();
   let cacheAgeCap = frameIsSlow()
     ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 640 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 520 : 360))
     : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 320 : MAP_CACHE_INTERVAL_MS);
   if(mobile){
     if(lagTier >= 2){
-      cacheAgeCap = Math.max(cacheAgeCap, 1500);
+      cacheAgeCap = Math.max(cacheAgeCap, 2200);
     } else if(lagTier >= 1 || frameIsSlow()){
-      cacheAgeCap = Math.max(cacheAgeCap, 1150);
+      cacheAgeCap = Math.max(cacheAgeCap, 1650);
     } else {
-      cacheAgeCap = Math.max(cacheAgeCap, 560);
+      cacheAgeCap = Math.max(cacheAgeCap, 900);
     }
   }
   const canUseCache =
@@ -22542,7 +22565,9 @@ function drawMapScene(){
     __mapFrameCacheAt > 0;
   if(hasAnyCache){
     const staleAge = frameNow - __mapFrameCacheAt;
-    const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
+    // Mobile emergency stale-cache reuse can cause visible map ghosting/duplication.
+    // Prefer fresh draws there and only keep stale emergency path for desktop.
+    const emergencyReuse = (!mobile) && (frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4));
     const emergencyMaxAge = mobile
       ? (lagTier >= 2 ? 4600 : (lagTier >= 1 ? 3600 : 2800))
       : (lagTier >= 2 ? 1800 : 1300);
@@ -22666,6 +22691,15 @@ function drawMapScene(){
     ctx.globalAlpha = 1;
     ctx.restore();
   }
+  function detailCount(base, min=0){
+    const mul = ultraLiteMap ? 0.42 : (liteMap ? 0.70 : 1);
+    return Math.max(min, Math.round(base * mul));
+  }
+  function detailAlpha(base){
+    if(ultraLiteMap) return base * 0.55;
+    if(liteMap) return base * 0.78;
+    return base;
+  }
   function roadLine(points,width,fill){
     ctx.strokeStyle=fill; ctx.lineWidth=width; ctx.lineCap="round"; ctx.lineJoin="round";
     ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1]);
@@ -22748,6 +22782,8 @@ function drawMapScene(){
   function drawWaterBodies(alphaMul=1){
     if(!waterZones.length) return;
     const mul = clamp(alphaMul, 0.35, 1.2);
+    const lowDetail = ultraLiteMap;
+    const midDetail = liteMap && !ultraLiteMap;
     const wavePhase = (Date.now() * 0.00135);
     ctx.save();
     for(const zone of waterZones){
@@ -22779,47 +22815,49 @@ function drawMapScene(){
       ctx.ellipse(zone.x, zone.y, rx * 0.98, ry * 0.98, rot, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.globalAlpha = 0.56 * mul;
+      ctx.globalAlpha = (lowDetail ? 0.45 : 0.56) * mul;
       ctx.strokeStyle = waterPalette.edge;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = lowDetail ? 1.4 : 2;
       ctx.beginPath();
       ctx.ellipse(zone.x, zone.y, Math.max(8, rx - 2), Math.max(6, ry - 2), rot, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.globalAlpha = 0.42 * mul;
-      ctx.strokeStyle = waterPalette.glint;
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.ellipse(
-        zone.x - (rx * 0.12) + (Math.sin(wavePhase + (zone.x * 0.01)) * 2.4),
-        zone.y - (ry * 0.08) + (Math.cos(wavePhase + (zone.y * 0.01)) * 1.8),
-        Math.max(6, rx * 0.54),
-        Math.max(4, ry * 0.30),
-        rot,
-        0,
-        Math.PI * 2
-      );
-      ctx.stroke();
-
-      ctx.globalAlpha = 0.34 * mul;
-      ctx.strokeStyle = "rgba(186,230,253,.55)";
-      ctx.lineWidth = 1.2;
-      const ripple = 0.78 + (Math.sin(wavePhase * 2 + (zone.x * 0.006) + (zone.y * 0.004)) * 0.06);
-      ctx.beginPath();
-      ctx.ellipse(zone.x, zone.y, Math.max(8, rx * ripple), Math.max(6, ry * ripple), rot, 0, Math.PI * 2);
-      ctx.stroke();
-
-      ctx.globalAlpha = 0.22 * mul;
-      ctx.strokeStyle = "rgba(220,245,255,.52)";
-      ctx.lineWidth = 1;
-      const stripCount = 4;
-      for(let si=0; si<stripCount; si++){
-        const t = (si + 1) / (stripCount + 1);
-        const ly = zone.y - (ry * 0.55) + (ry * 1.1 * t) + (Math.sin(wavePhase + si + (zone.x * 0.002)) * 1.6);
+      if(!lowDetail){
+        ctx.globalAlpha = (midDetail ? 0.30 : 0.42) * mul;
+        ctx.strokeStyle = waterPalette.glint;
+        ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.moveTo(zone.x - (rx * 0.54), ly);
-        ctx.quadraticCurveTo(zone.x, ly + (Math.sin(wavePhase * 1.3 + si) * 2.2), zone.x + (rx * 0.54), ly);
+        ctx.ellipse(
+          zone.x - (rx * 0.12) + (Math.sin(wavePhase + (zone.x * 0.01)) * 2.4),
+          zone.y - (ry * 0.08) + (Math.cos(wavePhase + (zone.y * 0.01)) * 1.8),
+          Math.max(6, rx * 0.54),
+          Math.max(4, ry * 0.30),
+          rot,
+          0,
+          Math.PI * 2
+        );
         ctx.stroke();
+
+        ctx.globalAlpha = (midDetail ? 0.22 : 0.34) * mul;
+        ctx.strokeStyle = "rgba(186,230,253,.55)";
+        ctx.lineWidth = 1.2;
+        const ripple = 0.78 + (Math.sin(wavePhase * 2 + (zone.x * 0.006) + (zone.y * 0.004)) * 0.06);
+        ctx.beginPath();
+        ctx.ellipse(zone.x, zone.y, Math.max(8, rx * ripple), Math.max(6, ry * ripple), rot, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = (midDetail ? 0.14 : 0.22) * mul;
+        ctx.strokeStyle = "rgba(220,245,255,.52)";
+        ctx.lineWidth = 1;
+        const stripCount = midDetail ? 2 : 4;
+        for(let si=0; si<stripCount; si++){
+          const t = (si + 1) / (stripCount + 1);
+          const ly = zone.y - (ry * 0.55) + (ry * 1.1 * t) + (Math.sin(wavePhase + si + (zone.x * 0.002)) * 1.6);
+          ctx.beginPath();
+          ctx.moveTo(zone.x - (rx * 0.54), ly);
+          ctx.quadraticCurveTo(zone.x, ly + (Math.sin(wavePhase * 1.3 + si) * 2.2), zone.x + (rx * 0.54), ly);
+          ctx.stroke();
+        }
       }
     }
     ctx.restore();
@@ -22970,10 +23008,12 @@ function drawMapScene(){
     fillSolid("#0f2b1c");
     ctx.fillStyle="rgba(18,66,40,.34)";
     ctx.fillRect(0,0,w,h);
-    terrainTexture(11, 30, 0.09, "rgba(74,222,128,.10)", "rgba(0,0,0,.12)");
-    terrainBands(11, 5, 0.07);
-    terrainPatches(11, 16, 0.11, "rgba(180,235,160,.14)", "rgba(15,38,20,.18)");
-    scatterPebbles(11, 86, 0.12, "rgba(168,212,156,.36)", "rgba(8,18,10,.34)");
+    if(!ultraLiteMap){
+      terrainTexture(11, liteMap ? 42 : 30, detailAlpha(0.09), "rgba(74,222,128,.10)", "rgba(0,0,0,.12)");
+    }
+    terrainBands(11, detailCount(5, 2), detailAlpha(0.07));
+    terrainPatches(11, detailCount(16, 5), detailAlpha(0.11), "rgba(180,235,160,.14)", "rgba(15,38,20,.18)");
+    scatterPebbles(11, detailCount(86, 24), detailAlpha(0.12), "rgba(168,212,156,.36)", "rgba(8,18,10,.34)");
     const upperRoad = h * 0.18;
     const midRoad = h * 0.43;
     const lowRoad = h * 0.72;
@@ -22984,9 +23024,11 @@ function drawMapScene(){
     roadShoulder(roadA, 48 * roadMul); roadLine(roadA, 48 * roadMul, "rgba(80,60,38,.85)");
     roadShoulder(roadB, 62 * roadMul); roadLine(roadB, 62 * roadMul, "rgba(90,70,45,.85)");
     roadShoulder(roadC, 56 * roadMul); roadLine(roadC, 56 * roadMul, "rgba(84,66,42,.82)");
-    roadWear(roadA, 48 * roadMul, 11);
-    roadWear(roadB, 62 * roadMul, 19);
-    roadWear(roadC, 56 * roadMul, 27);
+    if(!ultraLiteMap){
+      roadWear(roadA, 48 * roadMul, 11);
+      roadWear(roadB, 62 * roadMul, 19);
+      roadWear(roadC, 56 * roadMul, 27);
+    }
     const trees = [
       [90,h*0.08],[140,h*0.11],[210,h*0.08],[300,h*0.13],[360,h*0.08],[420,h*0.14],[520,h*0.10],[610,h*0.13],[700,h*0.09],[780,h*0.14],[880,h*0.11],
       [120,h*0.24],[200,h*0.26],[280,h*0.24],[360,h*0.27],[440,h*0.24],[520,h*0.27],[600,h*0.24],[700,h*0.26],[820,h*0.24],
@@ -22995,29 +23037,34 @@ function drawMapScene(){
       [110,h*0.74],[210,h*0.72],[320,h*0.75],[420,h*0.73],[520,h*0.74],[650,h*0.72],[760,h*0.75],[880,h*0.73],
       [90,h*0.88],[170,h*0.91],[290,h*0.88],[410,h*0.90],[520,h*0.87],[660,h*0.90],[780,h*0.88],[900,h*0.91],
     ];
-    for(const [x,y] of trees){
+    for(let ti=0; ti<trees.length; ti += (ultraLiteMap ? 3 : (liteMap ? 2 : 1))){
+      const [x, y] = trees[ti];
       const tx = sxBase(x);
       const size = (6 + seedNoise((tx/40)|0, (y/40)|0, 17) * 4) * clamp(worldSizeMul * 0.92, 1, 1.45);
-      treeDot(tx,y,size);
+      treeDot(tx, y, size);
     }
   }
   else if(themeKey==="ST_SUBURBS"){
     fillSolid("#18402a");
-    terrainTexture(19, 32, 0.08, "rgba(232,240,250,.05)", "rgba(0,0,0,.11)");
-    terrainBands(19, 4, 0.065);
-    terrainPatches(19, 14, 0.10, "rgba(226,236,210,.14)", "rgba(20,28,34,.16)");
-    scatterPebbles(19, 94, 0.11, "rgba(214,224,236,.30)", "rgba(12,18,28,.30)");
+    if(!ultraLiteMap){
+      terrainTexture(19, liteMap ? 44 : 32, detailAlpha(0.08), "rgba(232,240,250,.05)", "rgba(0,0,0,.11)");
+    }
+    terrainBands(19, detailCount(4, 2), detailAlpha(0.065));
+    terrainPatches(19, detailCount(14, 5), detailAlpha(0.10), "rgba(226,236,210,.14)", "rgba(20,28,34,.16)");
+    scatterPebbles(19, detailCount(94, 26), detailAlpha(0.11), "rgba(214,224,236,.30)", "rgba(12,18,28,.30)");
     const main = scalePath([[0,280],[240,270],[480,300],[720,280],[960,300]]);
     const roadMul = clamp(worldSizeMul, 1, 1.38);
     roadShoulder(main, 84 * roadMul); roadLine(main, 84 * roadMul, "rgba(75,78,86,.9)");
-    roadWear(main, 84 * roadMul, 9);
+    if(!ultraLiteMap) roadWear(main, 84 * roadMul, 9);
     dashed(main);
     const laneTop = scalePath([[120,120],[420,110],[760,120]]);
     const laneLow = scalePath([[120,440],[420,430],[760,440]]);
     roadShoulder(laneTop, 62 * roadMul); roadLine(laneTop, 62 * roadMul, "rgba(75,78,86,.9)");
     roadShoulder(laneLow, 62 * roadMul); roadLine(laneLow, 62 * roadMul, "rgba(75,78,86,.9)");
-    roadWear(laneTop, 62 * roadMul, 13);
-    roadWear(laneLow, 62 * roadMul, 15);
+    if(!ultraLiteMap){
+      roadWear(laneTop, 62 * roadMul, 13);
+      roadWear(laneLow, 62 * roadMul, 15);
+    }
     const houses = [
       [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
       [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
@@ -23028,14 +23075,19 @@ function drawMapScene(){
     rounded(sxBase(120), syBase(210), sxBase(170), syBase(90), 18, "rgba(40,140,70,.75)", "rgba(10,60,30,.8)");
     rounded(sxBase(670), syBase(320), sxBase(170), syBase(90), 18, "rgba(40,140,70,.75)", "rgba(10,60,30,.8)");
     const trees = [[70,200],[90,240],[110,260],[930,220],[900,250],[880,280],[70,520],[930,520]];
-    for(const [x,y] of trees) treeDot(sxBase(x), syBase(y), 7.5 * clamp(worldSizeMul * 0.9, 1, 1.4));
+    for(let ti=0; ti<trees.length; ti += (ultraLiteMap ? 2 : 1)){
+      const [x, y] = trees[ti];
+      treeDot(sxBase(x), syBase(y), 7.5 * clamp(worldSizeMul * 0.9, 1, 1.4));
+    }
   }
   else if(themeKey==="ST_DOWNTOWN"){
     fillSolid("#1a1f2d");
-    terrainTexture(29, 34, 0.07, "rgba(126,149,196,.06)", "rgba(0,0,0,.13)");
-    terrainBands(29, 4, 0.055);
-    terrainPatches(29, 12, 0.08, "rgba(188,204,236,.12)", "rgba(8,12,20,.15)");
-    scatterPebbles(29, 110, 0.11, "rgba(220,228,246,.28)", "rgba(7,10,17,.32)");
+    if(!ultraLiteMap){
+      terrainTexture(29, liteMap ? 46 : 34, detailAlpha(0.07), "rgba(126,149,196,.06)", "rgba(0,0,0,.13)");
+    }
+    terrainBands(29, detailCount(4, 2), detailAlpha(0.055));
+    terrainPatches(29, detailCount(12, 4), detailAlpha(0.08), "rgba(188,204,236,.12)", "rgba(8,12,20,.15)");
+    scatterPebbles(29, detailCount(110, 30), detailAlpha(0.11), "rgba(220,228,246,.28)", "rgba(7,10,17,.32)");
     ctx.fillStyle="rgba(70,72,80,.95)";
     for(let x=80; x<w; x+=170) ctx.fillRect(x-46,0,92,h);
     for(let y=80; y<h; y+=150) ctx.fillRect(0,y-42,w,84);
@@ -23053,10 +23105,12 @@ function drawMapScene(){
   }
   else {
     fillSolid("#2b2b30");
-    terrainTexture(41, 32, 0.09, "rgba(230,210,170,.05)", "rgba(0,0,0,.14)");
-    terrainBands(41, 4, 0.062);
-    terrainPatches(41, 14, 0.09, "rgba(226,196,150,.12)", "rgba(10,10,12,.16)");
-    scatterPebbles(41, 90, 0.12, "rgba(220,200,172,.32)", "rgba(8,8,10,.34)");
+    if(!ultraLiteMap){
+      terrainTexture(41, liteMap ? 44 : 32, detailAlpha(0.09), "rgba(230,210,170,.05)", "rgba(0,0,0,.14)");
+    }
+    terrainBands(41, detailCount(4, 2), detailAlpha(0.062));
+    terrainPatches(41, detailCount(14, 5), detailAlpha(0.09), "rgba(226,196,150,.12)", "rgba(10,10,12,.16)");
+    scatterPebbles(41, detailCount(90, 24), detailAlpha(0.12), "rgba(220,200,172,.32)", "rgba(8,8,10,.34)");
     rounded(sxBase(90), syBase(90), sxBase(260), syBase(130), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
     rounded(sxBase(610), syBase(110), sxBase(260), syBase(110), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
     rounded(sxBase(240), syBase(340), sxBase(340), syBase(140), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
@@ -23072,7 +23126,7 @@ function drawMapScene(){
     const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
     for(const [x,y] of crates) crateBlock(sxBase(x), syBase(y));
   }
-  drawWaterBodies(1);
+  drawWaterBodies(ultraLiteMap ? 0.6 : (liteMap ? 0.78 : 1));
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -23089,13 +23143,21 @@ function drawMapScene(){
 
   // realism props
   const props = MAP_REALISM_PROPS[themeKey] || [];
-  for(const p of props) drawProp(p);
-  const denseLandmarks = (__mapDenseLandmarksSig === __mapObstacleSig && Array.isArray(__mapDenseLandmarks))
-    ? __mapDenseLandmarks
-    : buildDenseLandmarks(key, chapter, w, h);
-  const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
-  for(const lm of denseLandmarks){
-    drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
+  const propStep = ultraLiteMap ? 3 : (liteMap ? 2 : 1);
+  for(let pi=0; pi<props.length; pi += propStep){
+    drawProp(props[pi]);
+  }
+  if(!ultraLiteMap){
+    const denseLandmarks = (__mapDenseLandmarksSig === __mapObstacleSig && Array.isArray(__mapDenseLandmarks))
+      ? __mapDenseLandmarks
+      : buildDenseLandmarks(key, chapter, w, h);
+    const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
+    const denseStep = liteMap ? 2 : 1;
+    const denseLimit = liteMap ? Math.min(denseLandmarks.length, 140) : denseLandmarks.length;
+    for(let li=0; li<denseLimit; li += denseStep){
+      const lm = denseLandmarks[li];
+      drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
+    }
   }
 
   // subtle vignette to reduce flatness
@@ -23239,7 +23301,14 @@ function drawMapScene(){
 
   const blackoutActive = tw.blackout.active && frameNow < (tw.blackout.until || 0);
   if(frameNow < (S.fogUntil||0)){
-    ctx.globalAlpha = blackoutActive ? 0.14 : 0.35;
+    const mobile = isMobileViewport();
+    const lagTier = frameLagTier();
+    const perfMode = performanceMode() === "PERFORMANCE";
+    let fogAlpha = blackoutActive ? 0.06 : 0.32;
+    if(mobile && (perfMode || lagTier >= 1 || frameIsSlow())){
+      fogAlpha = blackoutActive ? 0.03 : 0.20;
+    }
+    ctx.globalAlpha = fogAlpha;
     ctx.fillStyle = "#0b0d12";
     ctx.fillRect(0,0,w,h);
     ctx.globalAlpha = 1;
