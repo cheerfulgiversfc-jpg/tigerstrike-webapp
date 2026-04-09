@@ -13204,7 +13204,14 @@ function markModeTabs(){
   if(S.mode==="Survival") document.getElementById("mSurvival").classList.add("active");
 }
 
+const THREE_D_PROTOTYPE_PAUSED = true;
+
+function open3DPrototypePaused(){
+  toast("3D Prototype is temporarily paused. We are focused on 2D updates right now.");
+}
+
 function read3DReadinessGateReport(){
+  if(THREE_D_PROTOTYPE_PAUSED) return null;
   try{
     if(typeof window.get3DReadinessGateStatus === "function"){
       return window.get3DReadinessGateStatus() || null;
@@ -13219,6 +13226,18 @@ function update3DReadinessGateUi(reportOverride = null){
   const blockersEl = document.getElementById("mode3DGateBlockers");
   const toggleBtn = document.getElementById("mode3DMainToggleBtn");
   if(!statusEl && !metricsEl && !blockersEl && !toggleBtn) return null;
+
+  if(THREE_D_PROTOTYPE_PAUSED){
+    if(statusEl) statusEl.innerText = "3D Prototype is paused while we focus on 2D stability/performance.";
+    if(metricsEl) metricsEl.innerText = "";
+    if(blockersEl) blockersEl.innerText = "";
+    if(toggleBtn){
+      toggleBtn.innerText = "🌎 3D Main Mode: OFF";
+      toggleBtn.className = "ghost";
+      toggleBtn.disabled = true;
+    }
+    return null;
+  }
 
   const report = reportOverride || read3DReadinessGateReport();
   const prefOn = (()=>{ try{ return !!(typeof window.get3DMainModePreference === "function" && window.get3DMainModePreference()); }catch(_){ return false; } })();
@@ -13260,6 +13279,11 @@ function update3DReadinessGateUi(reportOverride = null){
 }
 
 function refresh3DReadinessGate(){
+  if(THREE_D_PROTOTYPE_PAUSED){
+    update3DReadinessGateUi(null);
+    toast("3D Prototype is paused.");
+    return;
+  }
   let report = null;
   try{
     if(typeof window.refresh3DReadinessGateTelemetry === "function"){
@@ -13280,6 +13304,11 @@ function refresh3DReadinessGate(){
 }
 
 function toggle3DMainMode(){
+  if(THREE_D_PROTOTYPE_PAUSED){
+    update3DReadinessGateUi(null);
+    toast("3D Main Mode is unavailable while 3D is paused.");
+    return;
+  }
   if(typeof window.set3DMainModePreference !== "function"){
     toast("3D readiness gate is not available yet.");
     return;
@@ -13307,6 +13336,7 @@ function toggle3DMainMode(){
 }
 
 function shouldOpen3DMainModeOnLaunch(){
+  if(THREE_D_PROTOTYPE_PAUSED) return false;
   if(window.__TUTORIAL_MODE__) return false;
   try{
     if(typeof window.get3DMainModePreference !== "function") return false;
@@ -13323,6 +13353,13 @@ function updateModeDesc(){
   ensureClanState(S);
   ensureStoryEndgameState(S);
   ensureArcadeWeeklySeedState(S);
+  const mode3dBtn = document.getElementById("mPrototype3D");
+  if(mode3dBtn){
+    mode3dBtn.disabled = THREE_D_PROTOTYPE_PAUSED;
+    mode3dBtn.classList.toggle("active", false);
+    mode3dBtn.innerText = THREE_D_PROTOTYPE_PAUSED ? "🌎 3D Prototype (Paused)" : "🌎 3D Prototype";
+    mode3dBtn.title = THREE_D_PROTOTYPE_PAUSED ? "Temporarily disabled while 2D is prioritized." : "";
+  }
   const el=document.getElementById("modeDesc");
   if(S.mode==="Story"){
     const mission = storyMissionForState(S);

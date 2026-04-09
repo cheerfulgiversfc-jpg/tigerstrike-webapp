@@ -1703,19 +1703,21 @@
         <button class="tab" id="mStory" onclick="setMode('Story')">📖 Story</button>
         <button class="tab" id="mArcade" onclick="setMode('Arcade')">🕹️ Arcade</button>
         <button class="tab" id="mSurvival" onclick="setMode('Survival')">🔥 Survival</button>
-        <button class="tab" id="mPrototype3D" onclick="open3DPrototype()">🌎 3D Prototype</button>
+        <button class="tab" id="mPrototype3D" onclick="open3DPrototypePaused()" disabled title="3D Prototype is temporarily paused">🌎 3D Prototype (Paused)</button>
       </div>
       <div class="divider"></div>
       <div class="hudLine" id="modeDesc"></div>
-      <div class="hudLine">3D Prototype is separate from Story/Arcade/Survival so your current game progress stays safe.</div>
-      <div class="divider"></div>
-      <div class="hudTitle">3D Main-Mode Readiness Gate</div>
-      <div class="hudLine" id="mode3DGateStatus">Collecting 3D telemetry...</div>
-      <div class="hudLine" id="mode3DGateMetrics"></div>
-      <div class="hudLine" id="mode3DGateBlockers"></div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
-        <button class="ghost" id="mode3DGateRefreshBtn" onclick="refresh3DReadinessGate()">🧪 Refresh Gate</button>
-        <button class="ghost" id="mode3DMainToggleBtn" onclick="toggle3DMainMode()">🌎 3D Main Mode: OFF</button>
+      <div class="hudLine">3D Prototype is temporarily paused while we focus on 2D stability/performance. Story/Arcade/Survival are fully active.</div>
+      <div id="mode3dGateWrap" style="display:none">
+        <div class="divider"></div>
+        <div class="hudTitle">3D Main-Mode Readiness Gate</div>
+        <div class="hudLine" id="mode3DGateStatus">Collecting 3D telemetry...</div>
+        <div class="hudLine" id="mode3DGateMetrics"></div>
+        <div class="hudLine" id="mode3DGateBlockers"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+          <button class="ghost" id="mode3DGateRefreshBtn" onclick="refresh3DReadinessGate()">🧪 Refresh Gate</button>
+          <button class="ghost" id="mode3DMainToggleBtn" onclick="toggle3DMainMode()">🌎 3D Main Mode: OFF</button>
+        </div>
       </div>
       <div class="divider"></div>
       <div class="hudLine" id="modeClanStatus">Clan data loading...</div>
@@ -2214,9 +2216,8 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4482"></script>
+<script src="./game.js?v=4486"></script>
 <script src="./tutorial.js?v=4463"></script>
-<script src="./prototype3d.js?v=4485"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";
