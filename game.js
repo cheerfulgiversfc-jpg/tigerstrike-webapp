@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4476";
+const TS_BUILD = "4466";
 if(tg){
   try{
     tg.expand?.();
@@ -152,21 +152,12 @@ const MISSION_TWIST_BRIDGE_RADIUS_MIN = 58;
 const MISSION_TWIST_BRIDGE_RADIUS_MAX = 84;
 const MISSION_TWIST_BRIDGE_MIN_MS = 13000;
 const MISSION_TWIST_BRIDGE_MAX_MS = 19000;
-// Bridge collapse remains a visual/tactical event, but no longer hard-locks movement.
-const MISSION_TWIST_BRIDGE_BLOCKS_MOVEMENT = false;
 const MISSION_TWIST_HOSTAGE_MIN_MS = 14000;
 const MISSION_TWIST_HOSTAGE_MAX_MS = 22000;
 const MISSION_TWIST_FOG_MIN_MS = 10000;
 const MISSION_TWIST_FOG_MAX_MS = 17000;
 const MISSION_TWIST_BLACKOUT_MIN_MS = 10000;
 const MISSION_TWIST_BLACKOUT_MAX_MS = 15000;
-const MOBILE_2D_HARD_STABLE_MODE = true;
-const DISABLE_MISSION_TWISTS_ON_MOBILE_STORY = true;
-const DISABLE_BRIDGE_TWIST_ON_MOBILE = true;
-const DISABLE_BRIDGE_TWIST_IN_STORY = true;
-const DISABLE_BLACKOUT_TWIST_IN_STORY = true;
-const DISABLE_BLACKOUT_TWIST_ON_MOBILE = true;
-const BLACKOUT_VISUAL_MINIMAL_MODE = true;
 const ARCADE_BUILDCRAFT_DEFAULT_ID = "RESCUE";
 const ARCADE_BUILDCRAFT_LOADOUTS = Object.freeze([
   Object.freeze({
@@ -1673,7 +1664,6 @@ const STORAGE_VERSION = 4385;
 const STORAGE_SCOPE = tgUserKey();
 const STORAGE_KEY_BASE = `ts_v${STORAGE_VERSION}`;
 const STORAGE_KEY = `${STORAGE_KEY_BASE}_${STORAGE_SCOPE}`;
-const STORAGE_MIRROR_KEY = `${STORAGE_KEY_BASE}_${STORAGE_SCOPE}_mirror`;
 const STORAGE_FALLBACK_KEYS = (() => {
   const versions = [4384, 4383, 4382, 4381, 4380, 4371];
   const keys = [];
@@ -1705,253 +1695,12 @@ const STORY_PROFILE_KEY_BASE = "ts_story_profile";
 const STORY_CHECKPOINT_KEY_BASE = "ts_story_checkpoint";
 const CLOUD_PROFILE_ENDPOINT = "/api/player/game-sync";
 const CLOUD_PROFILE_SAVE_MIN_MS = 15000;
-const SNAPSHOT_RECORD_TAG = "TS_SNAPSHOT_V1";
-const SNAPSHOT_RECORD_VERSION = 1;
-
-let __snapshotIntegrityIssueCount = 0;
-let __snapshotIntegrityLastReason = "";
 
 function cloneState(obj){
   if(typeof structuredClone === "function"){
     try{ return structuredClone(obj); }catch(e){}
   }
   return JSON.parse(JSON.stringify(obj));
-}
-
-function snapshotChecksum(payload){
-  let raw = "";
-  try{
-    raw = JSON.stringify(payload || null);
-  }catch(e){
-    raw = "";
-  }
-  if(!raw) return "";
-  let hash = 2166136261 >>> 0;
-  for(let i=0;i<raw.length;i++){
-    hash ^= raw.charCodeAt(i);
-    hash = Math.imul(hash, 16777619) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
-}
-
-function buildSnapshotRecord(kind, data){
-  const recordKind = String(kind || "state");
-  const payload = (data && typeof data === "object") ? cloneState(data) : {};
-  const savedAt = Number.isFinite(Number(payload.savedAt))
-    ? Math.floor(Number(payload.savedAt))
-    : Date.now();
-  if(!Number.isFinite(Number(payload.savedAt))){
-    payload.savedAt = savedAt;
-  }
-  const checksum = snapshotChecksum({ kind:recordKind, savedAt, data:payload });
-  return {
-    __tsSnapshot: SNAPSHOT_RECORD_TAG,
-    version: SNAPSHOT_RECORD_VERSION,
-    kind: recordKind,
-    savedAt,
-    checksum,
-    data: payload,
-  };
-}
-
-function noteSnapshotIntegrityIssue(reason="", key=""){
-  __snapshotIntegrityIssueCount += 1;
-  __snapshotIntegrityLastReason = `${String(reason || "invalid")}${key ? ` @ ${key}` : ""}`;
-  try{
-    console.warn("Snapshot integrity issue:", reason, key);
-  }catch(e){}
-}
-
-function unwrapSnapshotRecord(record, expectedKind=""){
-  if(!record || typeof record !== "object"){
-    return { ok:false, reason:"not-object", data:null };
-  }
-  if(record.__tsSnapshot !== SNAPSHOT_RECORD_TAG){
-    return { ok:true, legacy:true, data:record };
-  }
-  const version = Math.floor(Number(record.version || 0));
-  const kind = String(record.kind || "");
-  const savedAt = Number.isFinite(Number(record.savedAt))
-    ? Math.floor(Number(record.savedAt))
-    : 0;
-  const data = (record.data && typeof record.data === "object") ? record.data : null;
-  const checksum = String(record.checksum || "");
-  if(version !== SNAPSHOT_RECORD_VERSION){
-    return { ok:false, reason:"version-mismatch", data:null };
-  }
-  if(expectedKind && kind && kind !== expectedKind){
-    return { ok:false, reason:"kind-mismatch", data:null };
-  }
-  if(!data){
-    return { ok:false, reason:"missing-data", data:null };
-  }
-  const expectedChecksum = snapshotChecksum({ kind, savedAt, data });
-  if(!checksum || !expectedChecksum || checksum !== expectedChecksum){
-    return { ok:false, reason:"checksum-mismatch", data:null };
-  }
-  if(!Number.isFinite(Number(data.savedAt)) && savedAt > 0){
-    data.savedAt = savedAt;
-  }
-  return { ok:true, legacy:false, data };
-}
-
-function hasObject(value){
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function hasDefined(v){
-  return v !== undefined && v !== null;
-}
-
-function validatePersistedStateShape(data, opts={}){
-  const legacy = !!opts.legacy;
-  if(!hasObject(data)) return { ok:false, reason:"state-not-object" };
-  if(!legacy || hasDefined(data.mode)){
-    if(!["Story", "Arcade", "Survival"].includes(normalizeModeName(data.mode))) return { ok:false, reason:"mode" };
-  }
-  const numChecks = [
-    ["funds", 0, 9_999_999_999],
-    ["hp", 0, 100],
-    ["armor", 0, 300],
-    ["stamina", 0, 100],
-    ["lives", 0, 999],
-    ["storyLevel", 1, STORY_CAMPAIGN_OBJECTIVES.length],
-    ["storyLastMission", 1, STORY_CAMPAIGN_OBJECTIVES.length],
-    ["level", 1, 9999],
-    ["xp", 0, 9_999_999_999],
-    ["perkPoints", 0, 99999],
-    ["trapsOwned", 0, 99999],
-    ["shields", 0, 99999],
-  ];
-  for(const [key, lo, hi] of numChecks){
-    if(legacy && !hasDefined(data[key])) continue;
-    const raw = Number(data[key]);
-    if(!Number.isFinite(raw)) return { ok:false, reason:`${key}-nan` };
-    if(raw < lo || raw > hi) return { ok:false, reason:`${key}-range` };
-  }
-  const shapeChecks = [
-    ["ownedWeapons", Array.isArray],
-    ["ammoReserve", hasObject],
-    ["medkits", hasObject],
-    ["repairKits", hasObject],
-    ["armorPlates", hasObject],
-    ["perks", hasObject],
-    ["modeWallets", hasObject],
-    ["tigers", Array.isArray],
-    ["civilians", Array.isArray],
-    ["supportUnits", Array.isArray],
-  ];
-  for(const [key, check] of shapeChecks){
-    if(legacy && !hasDefined(data[key])) continue;
-    if(!check(data[key])) return { ok:false, reason:key };
-  }
-  return { ok:true };
-}
-
-function validateRecordByKind(kind, data, opts={}){
-  const legacy = !!opts.legacy;
-  if(!hasObject(data)) return { ok:false, reason:"payload-not-object" };
-  if(kind === "full-state"){
-    return validatePersistedStateShape(data, { legacy });
-  }
-  if(kind === "story-save-slot" || kind === "story-checkpoint"){
-    if(!legacy || hasDefined(data.mission) || hasDefined(data.storyLevel)){
-      if(!Number.isFinite(Number(data.mission || data.storyLevel || 1))) return { ok:false, reason:"mission" };
-    }
-    if(!hasObject(data.resumeState)) return { ok:false, reason:"resumeState" };
-    return validatePersistedStateShape(data.resumeState, { legacy });
-  }
-  if(kind === "story-profile" || kind === "story-progress"){
-    if((!legacy || hasDefined(data.storyLevel) || hasDefined(data.mission)) && !Number.isFinite(Number(data.storyLevel || data.mission || 1))){
-      return { ok:false, reason:"storyLevel" };
-    }
-    if((!legacy || hasDefined(data.funds)) && !Number.isFinite(Number(data.funds || 0))){
-      return { ok:false, reason:"funds" };
-    }
-    if((!legacy || hasDefined(data.modeWallets)) && !hasObject(data.modeWallets)) return { ok:false, reason:"modeWallets" };
-    if(
-      (!legacy || hasDefined(data.medkits) || hasDefined(data.armorPlates) || hasDefined(data.perks)) &&
-      (!hasObject(data.medkits) || !hasObject(data.armorPlates) || !hasObject(data.perks))
-    ){
-      return { ok:false, reason:"profile-core-fields" };
-    }
-    return { ok:true };
-  }
-  return { ok:true };
-}
-
-function parseSnapshotPayload(raw, expectedKind="", keyHint=""){
-  let parsed = null;
-  try{
-    parsed = JSON.parse(raw);
-  }catch(e){
-    noteSnapshotIntegrityIssue("parse-error", keyHint);
-    return null;
-  }
-  const unwrapped = unwrapSnapshotRecord(parsed, expectedKind);
-  if(!unwrapped.ok){
-    noteSnapshotIntegrityIssue(unwrapped.reason || "unwrap-failed", keyHint);
-    return null;
-  }
-  const data = unwrapped.data;
-  const validated = validateRecordByKind(expectedKind, data, { legacy:!!unwrapped.legacy });
-  if(!validated.ok){
-    noteSnapshotIntegrityIssue(validated.reason || "shape-invalid", keyHint);
-    return null;
-  }
-  return data;
-}
-
-function readSnapshotRecordFromStorage(key, expectedKind){
-  let raw = null;
-  try{
-    raw = localStorage.getItem(key);
-  }catch(e){
-    raw = null;
-  }
-  if(!raw) return null;
-  const data = parseSnapshotPayload(raw, expectedKind, key);
-  if(data) return data;
-  try{ localStorage.removeItem(key); }catch(e){}
-  return null;
-}
-
-function verifySnapshotRecordRaw(raw, expectedKind=""){
-  let parsed = null;
-  try{
-    parsed = JSON.parse(raw);
-  }catch(e){
-    return false;
-  }
-  const unwrapped = unwrapSnapshotRecord(parsed, expectedKind);
-  if(!unwrapped.ok) return false;
-  const validated = validateRecordByKind(expectedKind, unwrapped.data, { legacy:!!unwrapped.legacy });
-  return !!validated.ok;
-}
-
-function writeSnapshotRecordToStorage(key, kind, data){
-  const record = buildSnapshotRecord(kind, data);
-  const raw = JSON.stringify(record);
-  localStorage.setItem(key, raw);
-  const verifyRaw = localStorage.getItem(key);
-  if(!verifyRaw || !verifySnapshotRecordRaw(verifyRaw, kind)){
-    noteSnapshotIntegrityIssue("write-verify-failed", key);
-    throw new Error(`snapshot-write-verify-failed:${kind}`);
-  }
-  if(kind === "full-state" && key === STORAGE_KEY){
-    try{
-      const mirrorRecord = buildSnapshotRecord(kind, data);
-      const mirrorRaw = JSON.stringify(mirrorRecord);
-      localStorage.setItem(STORAGE_MIRROR_KEY, mirrorRaw);
-      const mirrorVerify = localStorage.getItem(STORAGE_MIRROR_KEY);
-      if(!mirrorVerify || !verifySnapshotRecordRaw(mirrorVerify, kind)){
-        noteSnapshotIntegrityIssue("mirror-write-verify-failed", STORAGE_MIRROR_KEY);
-      }
-    }catch(e){
-      noteSnapshotIntegrityIssue("mirror-write-failed", STORAGE_MIRROR_KEY);
-    }
-  }
-  return record;
 }
 
 function awardDailyLogin(){
@@ -5862,95 +5611,6 @@ function pickRicherStorySnapshot(list=[]){
   return best;
 }
 
-function fullStateProgressMissionScore(state){
-  if(!state || typeof state !== "object") return 0;
-  const mode = normalizeModeName(state.mode);
-  if(mode === "Story"){
-    const mission = clamp(
-      Math.floor(Number(state.storyLastMission ?? state.storyLevel ?? state.mission ?? 1)),
-      1,
-      STORY_CAMPAIGN_OBJECTIVES.length
-    );
-    return mission * 1_000_000;
-  }
-  if(mode === "Arcade"){
-    const mission = clamp(
-      Math.floor(Number(state.arcadeLevel ?? state.level ?? 1)),
-      1,
-      ARCADE_CAMPAIGN_OBJECTIVES.length
-    );
-    return mission * 1_000_000;
-  }
-  const wave = Math.max(1, Math.floor(Number(state.survivalWave ?? state.wave ?? 1)));
-  return wave * 1_000_000;
-}
-
-function fullStateSnapshotQuality(state){
-  if(!state || typeof state !== "object") return -1;
-  const level = Math.max(1, Math.floor(Number(state.level || 1)));
-  const xp = Math.max(0, Math.floor(Number(state.xp || 0)));
-  const funds = Math.max(0, Math.floor(Number(state.funds || 0)));
-  const score = Math.max(0, Math.floor(Number(state.score || 0)));
-  const ownedWeapons = Array.isArray(state.ownedWeapons) ? state.ownedWeapons.length : 0;
-  const ammoTotal = sumNonNegativeIntValues(state.ammoReserve);
-  const medkitTotal = sumNonNegativeIntValues(state.medkits);
-  const repairTotal = sumNonNegativeIntValues(state.repairKits);
-  const armorPlateTotal = sumNonNegativeIntValues(state.armorPlates) + sumNonNegativeIntValues(state.armorPlatesFallback);
-  const trapsOwned = Math.max(0, Math.floor(Number(state.trapsOwned || 0)));
-  const shields = Math.max(0, Math.floor(Number(state.shields || 0)));
-  const perkPoints = Math.max(0, Math.floor(Number(state.perkPoints || 0)));
-  const perkRanks = sumNonNegativeIntValues(state.perks);
-  const contractProgress = sumNonNegativeIntValues(state.contractTallies);
-  const supportAlive = Array.isArray(state.supportUnits) ? state.supportUnits.reduce((n, u)=>n + (u && u.alive ? 1 : 0), 0) : 0;
-  const civAlive = Array.isArray(state.civilians) ? state.civilians.reduce((n, c)=>n + (c && c.alive && !c.evac ? 1 : 0), 0) : 0;
-  const tigerAlive = Array.isArray(state.tigers) ? state.tigers.reduce((n, t)=>n + (t && t.alive ? 1 : 0), 0) : 0;
-  return (
-    fullStateProgressMissionScore(state) +
-    (level * 8_000) +
-    (xp * 8) +
-    funds +
-    score +
-    (ownedWeapons * 1_800) +
-    (ammoTotal * 8) +
-    (medkitTotal * 150) +
-    (repairTotal * 120) +
-    (armorPlateTotal * 130) +
-    (trapsOwned * 90) +
-    (shields * 90) +
-    (perkPoints * 50) +
-    (perkRanks * 220) +
-    (contractProgress * 3) +
-    (supportAlive * 220) +
-    (civAlive * 200) +
-    (tigerAlive * 140)
-  );
-}
-
-function pickBestPersistedStateCandidate(list=[]){
-  let best = null;
-  for(const item of list){
-    if(!item || typeof item !== "object" || !item.data || typeof item.data !== "object") continue;
-    if(!best){
-      best = item;
-      continue;
-    }
-    const bestQuality = fullStateSnapshotQuality(best.data);
-    const nextQuality = fullStateSnapshotQuality(item.data);
-    if(nextQuality > bestQuality){
-      best = item;
-      continue;
-    }
-    if(nextQuality < bestQuality) continue;
-
-    const bestSavedAt = Number.isFinite(Number(best.data.savedAt)) ? Number(best.data.savedAt) : 0;
-    const nextSavedAt = Number.isFinite(Number(item.data.savedAt)) ? Number(item.data.savedAt) : 0;
-    if(nextSavedAt > bestSavedAt){
-      best = item;
-    }
-  }
-  return best;
-}
-
 function resolveStoryProfileOverlay(storyProfile, storyProgress, currentState=null){
   const best = pickRicherStorySnapshot([storyProfile, storyProgress]);
   if(!best) return null;
@@ -5978,34 +5638,29 @@ function load(){
     const storyProfile = resolveStoryProfileOverlay(storyProfileRaw, storyProgress);
     let saved = null;
     let sourceKey = null;
-    const fullStateCandidates = [];
-    for(const key of [STORAGE_KEY, STORAGE_MIRROR_KEY, ...STORAGE_FALLBACK_KEYS]){
-      const loaded = readSnapshotRecordFromStorage(key, "full-state");
-      if(!loaded) continue;
-      fullStateCandidates.push({ key, data:loaded });
-    }
-    const selectedState = pickBestPersistedStateCandidate(fullStateCandidates);
-    if(selectedState){
-      saved = selectedState.data;
-      sourceKey = selectedState.key;
+    for(const key of [STORAGE_KEY, ...STORAGE_FALLBACK_KEYS]){
+      let raw = null;
+      try{
+        raw = localStorage.getItem(key);
+      }catch(e){
+        raw = null;
+      }
+      if(!raw) continue;
+      try{
+        saved = JSON.parse(raw);
+        sourceKey = key;
+        break;
+      }catch(e){
+        try{ localStorage.removeItem(key); }catch(err){}
+      }
     }
     if(!saved && storySlot && typeof storySlot.resumeState === "object"){
-      const resumeValidation = validatePersistedStateShape(storySlot.resumeState);
-      if(resumeValidation.ok){
-        saved = storySlot.resumeState;
-        sourceKey = "__story_resume__";
-      }else{
-        noteSnapshotIntegrityIssue(`story-resume-${resumeValidation.reason}`, "__story_resume__");
-      }
+      saved = storySlot.resumeState;
+      sourceKey = "__story_resume__";
     }
     if(saved && shouldPreferStorySlotResume(saved, storySlot)){
-      const resumeValidation = validatePersistedStateShape(storySlot.resumeState);
-      if(resumeValidation.ok){
-        saved = storySlot.resumeState;
-        sourceKey = "__story_resume__";
-      }else{
-        noteSnapshotIntegrityIssue(`story-resume-${resumeValidation.reason}`, "__story_resume__");
-      }
+      saved = storySlot.resumeState;
+      sourceKey = "__story_resume__";
     }
     if(!saved){
       const fallback = cloneState(DEFAULT);
@@ -6069,25 +5724,19 @@ function load(){
     m.mode = normalizeModeName(m.mode);
     m.storyLastMission = clamp(Math.floor(Number(saved.storyLastMission ?? m.storyLevel ?? 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
     ensureStoryEndgameState(m);
-    const loadedFromStoryResume = sourceKey === "__story_resume__";
-    if(loadedFromStoryResume){
-      applyStorySaveToState(m, { allowModeSync:true });
-      const profileOverlay = resolveStoryProfileOverlay(storyProfileRaw, storyProgress, m);
-      applyStoryProfileToState(m, profileOverlay);
-      const walletProfile = profileOverlay || storyProfile;
-      const mergedModeWallets = (walletProfile && walletProfile.modeWallets && typeof walletProfile.modeWallets === "object")
-        ? { ...(saved.modeWallets || {}), ...walletProfile.modeWallets }
-        : saved.modeWallets;
-      m.modeWallets = normalizeModeWallets(mergedModeWallets, m.funds, m.mode);
-      if(walletProfile && Number.isFinite(Number(walletProfile.funds))){
-        const profileFunds = Math.max(0, Math.round(Number(walletProfile.funds)));
-        if(m.modeWallets && typeof m.modeWallets === "object"){
-          m.modeWallets[m.mode] = profileFunds;
-        }
+    applyStorySaveToState(m, { allowModeSync:true });
+    const profileOverlay = resolveStoryProfileOverlay(storyProfileRaw, storyProgress, m);
+    applyStoryProfileToState(m, profileOverlay);
+    const walletProfile = profileOverlay || storyProfile;
+    const mergedModeWallets = (walletProfile && walletProfile.modeWallets && typeof walletProfile.modeWallets === "object")
+      ? { ...(saved.modeWallets || {}), ...walletProfile.modeWallets }
+      : saved.modeWallets;
+    m.modeWallets = normalizeModeWallets(mergedModeWallets, m.funds, m.mode);
+    if(walletProfile && Number.isFinite(Number(walletProfile.funds))){
+      const profileFunds = Math.max(0, Math.round(Number(walletProfile.funds)));
+      if(m.modeWallets && typeof m.modeWallets === "object"){
+        m.modeWallets[m.mode] = profileFunds;
       }
-    }else{
-      // Full-state snapshots are canonical and should not be partially overwritten by lite profile keys.
-      m.modeWallets = normalizeModeWallets(saved.modeWallets, saved.funds, m.mode);
     }
     m.funds = getModeWallet(m.mode, m);
     ensureContractTalliesState(m);
@@ -6108,7 +5757,7 @@ function load(){
     trimPersistentState(m);
     if(sourceKey && sourceKey !== STORAGE_KEY){
       try{
-        writeSnapshotRecordToStorage(STORAGE_KEY, "full-state", m);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(m));
       }catch(e){}
     }
     return m;
@@ -6165,12 +5814,6 @@ const FRAME_LOAD_HIGH = 1.32;
 const FRAME_LOAD_EXTREME = 1.52;
 const FRAME_LAG_WARN_SCORE = 4;
 const FRAME_LAG_CRITICAL_SCORE = 8;
-const CAMERA_KEEP_VISIBLE_X_FRAC = 0.34;
-const CAMERA_KEEP_VISIBLE_Y_FRAC = 0.30;
-const CAMERA_KEEP_VISIBLE_X_MIN = 96;
-const CAMERA_KEEP_VISIBLE_Y_MIN = 74;
-const CAMERA_RECENTER_PULL = 0.62;
-const CAMERA_RECENTER_PULL_BATTLE = 0.76;
 const DIRECTOR_PHASES = {
   CALM: "CALM",
   PRESSURE: "PRESSURE",
@@ -6320,27 +5963,21 @@ function missionProgressForWorld(state=S){
 function worldScaleForModeMission(mode, mission){
   const mobile = isMobileViewport();
   const landscape = isLandscapeViewport();
-  const landscapeBoost = (mobile && landscape) ? 0.12 : (landscape ? 0.18 : 0);
+  const landscapeBoost = (mobile && landscape) ? 0.42 : 0;
   if(window.__TUTORIAL_MODE__) return 1;
   if(mobile && !landscape){
-    // Prioritize phone stability: keep portrait world very close to viewport.
-    if(mode === "Story") return clamp(1.00 + ((Math.max(1, mission) - 1) * 0.0012), 1.00, 1.08);
-    if(mode === "Arcade") return clamp(1.00 + ((Math.max(1, mission) - 1) * 0.0010), 1.00, 1.07);
-    return clamp(1.00 + ((Math.max(1, mission) - 1) * 0.0014), 1.00, 1.10);
-  }
-  if(mobile && landscape){
-    // Landscape can be larger, but keep under hard cap to avoid mobile frame collapse.
-    if(mode === "Story") return clamp(1.18 + ((Math.max(1, mission) - 1) * 0.0035) + landscapeBoost, 1.18, 1.46);
-    if(mode === "Arcade") return clamp(1.16 + ((Math.max(1, mission) - 1) * 0.0032) + landscapeBoost, 1.16, 1.40);
-    return clamp(1.18 + ((Math.max(1, mission) - 1) * 0.0042) + landscapeBoost, 1.18, 1.48);
+    // Portrait stays compact; landscape is the primary large-map orientation.
+    if(mode === "Story") return clamp(1.02 + ((Math.max(1, mission) - 1) * 0.004), 1.02, 1.24);
+    if(mode === "Arcade") return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.003), 1.01, 1.18);
+    return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.010), 1.01, 1.22);
   }
   if(mode === "Story"){
-    return clamp(1.92 + ((Math.max(1, mission) - 1) * 0.010) + landscapeBoost, 1.92, 2.95);
+    return clamp(1.85 + ((Math.max(1, mission) - 1) * 0.012) + landscapeBoost, 1.85, 3.20);
   }
   if(mode === "Arcade"){
-    return clamp(1.84 + ((Math.max(1, mission) - 1) * 0.009) + landscapeBoost, 1.84, 2.78);
+    return clamp(1.70 + ((Math.max(1, mission) - 1) * 0.010) + landscapeBoost, 1.70, 2.85);
   }
-  return clamp(1.88 + ((Math.max(1, mission) - 1) * 0.017) + landscapeBoost, 1.88, 2.86);
+  return clamp(1.75 + ((Math.max(1, mission) - 1) * 0.028) + landscapeBoost, 1.75, 2.70);
 }
 
 function desiredWorldLayout(state=S){
@@ -6350,13 +5987,10 @@ function desiredWorldLayout(state=S){
   const viewportW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
   const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const mobile = isMobileViewport();
-  if(MOBILE_2D_HARD_STABLE_MODE && mobile){
-    // Hard stability mode for 2D mobile:
-    // keep world exactly viewport-sized so map cache can be reused and camera never drifts.
-    return { mode, mission, scale:1, w:viewportW, h:viewportH };
-  }
-  const minPadW = mobile ? 0 : 40;
-  const minPadH = mobile ? 0 : 40;
+  const landscape = isLandscapeViewport();
+  // Keep portrait close to viewport for stability; make landscape the primary expanded-map view.
+  const minPadW = mobile ? (landscape ? 120 : 20) : 40;
+  const minPadH = mobile ? (landscape ? 80 : 20) : 40;
   const w = Math.max(viewportW + minPadW, Math.round(WORLD_BASE_WIDTH * scale));
   const h = Math.max(viewportH + minPadH, Math.round(WORLD_BASE_HEIGHT * scale));
   return { mode, mission, scale, w, h };
@@ -6369,19 +6003,13 @@ function ensureWorldLayout(state=S){
   if(!state.world || typeof state.world !== "object") state.world = {};
   const world = state.world;
   const desired = desiredWorldLayout(state);
-  const worldW = Number(world?.w || 0);
-  const worldH = Number(world?.h || 0);
-  const needsViewportRefresh =
-    Math.abs(worldW - desired.w) > 2 ||
-    Math.abs(worldH - desired.h) > 2;
   const needsReset =
     !Number.isFinite(world.w) ||
     !Number.isFinite(world.h) ||
     !Number.isFinite(world.scale) ||
     world.mode !== desired.mode ||
     world.mission !== desired.mission ||
-    Math.abs(Number(world.scale || 1) - desired.scale) > 0.0001 ||
-    needsViewportRefresh;
+    Math.abs(Number(world.scale || 1) - desired.scale) > 0.0001;
   if(needsReset){
     world.mode = desired.mode;
     world.mission = desired.mission;
@@ -6443,39 +6071,6 @@ function cameraClampCenter(x, y, state=S){
   };
 }
 
-function keepPlayerVisibleInCamera(state=S){
-  if(!state || typeof state !== "object") return;
-  if(!state.camera || typeof state.camera !== "object") return;
-  const meX = Number(state?.me?.x);
-  const meY = Number(state?.me?.y);
-  if(!Number.isFinite(meX) || !Number.isFinite(meY)) return;
-  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
-  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
-  const safeX = clamp(
-    Math.max(CAMERA_KEEP_VISIBLE_X_MIN, vw * CAMERA_KEEP_VISIBLE_X_FRAC),
-    56,
-    vw * 0.45
-  );
-  const safeY = clamp(
-    Math.max(CAMERA_KEEP_VISIBLE_Y_MIN, vh * CAMERA_KEEP_VISIBLE_Y_FRAC),
-    44,
-    vh * 0.45
-  );
-  let targetCamX = state.camera.x;
-  let targetCamY = state.camera.y;
-  if(meX < (state.camera.x - safeX)) targetCamX = meX + safeX;
-  else if(meX > (state.camera.x + safeX)) targetCamX = meX - safeX;
-  if(meY < (state.camera.y - safeY)) targetCamY = meY + safeY;
-  else if(meY > (state.camera.y + safeY)) targetCamY = meY - safeY;
-  const needsRecenter =
-    Math.abs(targetCamX - state.camera.x) > 0.01 ||
-    Math.abs(targetCamY - state.camera.y) > 0.01;
-  if(!needsRecenter) return;
-  const pull = state?.inBattle ? CAMERA_RECENTER_PULL_BATTLE : CAMERA_RECENTER_PULL;
-  state.camera.x += (targetCamX - state.camera.x) * pull;
-  state.camera.y += (targetCamY - state.camera.y) * pull;
-}
-
 function cameraOffsetSnapshot(state=S){
   const world = ensureWorldLayout(state);
   const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
@@ -6496,7 +6091,7 @@ function updateWorldCamera(state=S){
     Number.isFinite(state?.me?.y) ? state.me.y : (world.h * 0.5),
     state
   );
-  const ease = state?.inBattle ? 0.32 : 0.24;
+  const ease = state?.inBattle ? 0.25 : 0.18;
   if(!Number.isFinite(state.camera.x) || !Number.isFinite(state.camera.y)){
     state.camera.x = target.x;
     state.camera.y = target.y;
@@ -6504,7 +6099,6 @@ function updateWorldCamera(state=S){
     state.camera.x += (target.x - state.camera.x) * ease;
     state.camera.y += (target.y - state.camera.y) * ease;
   }
-  keepPlayerVisibleInCamera(state);
   const clamped = cameraClampCenter(state.camera.x, state.camera.y, state);
   state.camera.x = clamped.x;
   state.camera.y = clamped.y;
@@ -6528,8 +6122,7 @@ function flushSaveNow(){
   __savePending = false;
   let primarySaved = false;
   try{
-    const persisted = buildPersistedState();
-    writeSnapshotRecordToStorage(STORAGE_KEY, "full-state", persisted);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistedState()));
     primarySaved = true;
   }catch(e){
     try{ console.warn("Primary save failed, using story save fallback:", e); }catch(err){}
@@ -7040,102 +6633,11 @@ function reportTickError(key, err){
   __frameRecoverUntil = (performance.now ? performance.now() : now) + 1800;
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, (performance.now ? performance.now() : now) + 2200);
 }
-function hardResetCanvasState(clear=false, resetClip=false){
-  try{
-    if(!ctx || !cv) return;
-    if(resetClip){
-      // Resetting width/height clears any leaked clip path after draw exceptions.
-      const rw = Math.max(1, Math.floor(Number(cv.width || 0)));
-      const rh = Math.max(1, Math.floor(Number(cv.height || 0)));
-      cv.width = rw;
-      cv.height = rh;
-    }
-    if(typeof ctx.resetTransform === "function"){
-      ctx.resetTransform();
-    } else if(typeof ctx.setTransform === "function"){
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = "source-over";
-    if(typeof ctx.setLineDash === "function") ctx.setLineDash([]);
-    ctx.lineWidth = 1;
-    if(clear){
-      ctx.clearRect(0, 0, Number(cv.width || 0), Number(cv.height || 0));
-    }
-  }catch(_err){
-    // If reset fails, keep recovery path alive.
-  }
-}
-function drawEmergencyMapBase(w = Number(cv?.width || 0), h = Number(cv?.height || 0), opts = {}){
-  if(!ctx || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return;
-  const showNotice = !!opts.showNotice;
-  ctx.save();
-  try{
-    if(typeof ctx.resetTransform === "function") ctx.resetTransform();
-    else if(typeof ctx.setTransform === "function") ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = "source-over";
-    if(typeof ctx.setLineDash === "function") ctx.setLineDash([]);
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#0f2b1c";
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "rgba(34,84,56,.34)";
-    ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = "rgba(92,70,44,.88)";
-    ctx.lineWidth = Math.max(20, Math.min(64, h * 0.09));
-    ctx.lineCap = "round";
-    for(const yMul of [0.24, 0.50, 0.76]){
-      const y = h * yMul;
-      ctx.beginPath();
-      ctx.moveTo(w * 0.06, y);
-      ctx.lineTo(w * 0.28, y - (h * 0.05));
-      ctx.lineTo(w * 0.50, y - (h * 0.02));
-      ctx.lineTo(w * 0.72, y - (h * 0.06));
-      ctx.lineTo(w * 0.94, y - (h * 0.03));
-      ctx.stroke();
-    }
-    if(S.mode !== "Survival" && S.evacZone){
-      const ex = clamp(Number(S.evacZone.x || (w * 0.76)), 30, w - 30);
-      const ey = clamp(Number(S.evacZone.y || (h * 0.34)), 30, h - 30);
-      const er = clamp(Number(S.evacZone.r || 70), 24, Math.min(w, h) * 0.18);
-      ctx.strokeStyle = "rgba(74,222,128,.95)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(ex, ey, er, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = "rgba(74,222,128,.22)";
-      ctx.beginPath();
-      ctx.arc(ex, ey, er - 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    if(showNotice){
-      ctx.fillStyle = "rgba(7,12,18,.82)";
-      ctx.fillRect(12, h - 30, 196, 18);
-      ctx.fillStyle = "rgba(226,232,240,.95)";
-      ctx.font = "700 11px system-ui";
-      ctx.fillText("Recovering map visuals...", 18, h - 17);
-    }
-  }finally{
-    ctx.restore();
-  }
-}
-function drawEmergencyMapFallback(){
-  const w = Number(cv?.width || 0) || WORLD_BASE_WIDTH;
-  const h = Number(cv?.height || 0) || WORLD_BASE_HEIGHT;
-  drawEmergencyMapBase(w, h, { showNotice:true });
-}
 function safeTick(key, fn){
   try{
     fn();
     return true;
   }catch(err){
-    if(key === "drawSceneFrame" || key === "bootDrawMapScene" || key === "recoverDrawMapScene"){
-      hardResetCanvasState(true, true);
-      invalidateMapCache();
-      if(key === "drawSceneFrame"){
-        try{ drawEmergencyMapFallback(); }catch(_){}
-      }
-    }
     reportTickError(key, err);
     return false;
   }
@@ -7144,20 +6646,15 @@ function runFrameTask(key, intervalMs, fn, options={}){
   const opts = options || {};
   const now = Date.now();
   if(now < (__frameTaskGate[key] || 0)) return false;
-  const perfNow = performance.now ? performance.now() : now;
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
   const critical = !!opts.critical;
-  const recoveryActive = perfNow < (__frameRecoverUntil || 0);
-  const battleActive = !!S?.inBattle;
   let adjustedInterval = Math.max(8, Math.round(Number(intervalMs) || 16));
   if(!critical){
     let slowMul = 1;
-    if(recoveryActive) slowMul = Math.max(slowMul, mobile ? 2.3 : 1.9);
-    if(lagTier >= 2) slowMul = Math.max(slowMul, mobile ? 1.85 : 1.55);
-    else if(lagTier >= 1) slowMul = Math.max(slowMul, mobile ? 1.45 : 1.25);
-    else if(frameIsSlow()) slowMul = Math.max(slowMul, mobile ? 1.24 : 1.14);
-    if(battleActive && lagTier >= 1) slowMul = Math.max(slowMul, mobile ? 1.6 : 1.34);
+    if(lagTier >= 2) slowMul = mobile ? 1.85 : 1.55;
+    else if(lagTier >= 1) slowMul = mobile ? 1.45 : 1.25;
+    else if(frameIsSlow()) slowMul = mobile ? 1.24 : 1.14;
     if(slowMul > 1){
       adjustedInterval = Math.max(adjustedInterval, Math.round(adjustedInterval * slowMul));
     }
@@ -7170,8 +6667,6 @@ function runFrameTask(key, intervalMs, fn, options={}){
   if(frameIsSlow()) cadence = Math.max(cadence, cadenceSlow);
   if(__frameDynamicLoadMul >= FRAME_LOAD_HIGH) cadence = Math.max(cadence, cadenceHeavy);
   if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) cadence = Math.max(cadence, cadenceExtreme);
-  if(!critical && recoveryActive) cadence = Math.max(cadence, mobile ? 3 : 2);
-  if(!critical && battleActive && lagTier >= 2) cadence = Math.max(cadence, mobile ? 4 : 3);
   if(cadence > 1){
     if(!Number.isFinite(__frameTaskPhase[key])){
       let hash = 0;
@@ -7190,12 +6685,9 @@ function runFrameTask(key, intervalMs, fn, options={}){
   }
   const costHint = Math.max(0, Number(opts.costHint) || 0);
   if(!critical && frameBudgetExceeded(costHint)){
-    const backoffCap = (lagTier >= 2 || recoveryActive)
-      ? (mobile ? 180 : 140)
-      : (mobile ? 120 : 90);
-    __frameTaskGate[key] = now + Math.max(60, Math.min(adjustedInterval, backoffCap));
+    __frameTaskGate[key] = now + Math.max(48, Math.min(adjustedInterval, mobile ? 120 : 90));
     __frameBudgetState.dropped = (__frameBudgetState.dropped || 0) + 1;
-    if(__frameBudgetState.dropped >= 4){
+    if(__frameBudgetState.dropped >= 6){
       const perfNow = performance.now ? performance.now() : now;
       __frameSlowUntil = Math.max(__frameSlowUntil || 0, perfNow + 1400);
     }
@@ -7267,10 +6759,7 @@ function ensureStabilityMonitorNode(){
   return el;
 }
 function shouldShowStabilityMonitor(now=Date.now()){
-  // Keep monitor off on mobile play sessions to avoid blocking map readability.
-  if(isMobileViewport()) return false;
   if(window.__TS_SHOW_MONITOR__ === true) return true;
-  if(window.__TS_SHOW_MONITOR__ === false) return false;
   if(window.__TUTORIAL_MODE__) return false;
   if(performanceMode() === "PERFORMANCE" && !isMobileViewport()) return true;
   if(frameIsSlow()) return true;
@@ -7435,8 +6924,8 @@ function recoverFromSpikeFrame(){
 
 function trimActiveEntityLoad(){
   if(!S || typeof S !== "object") return;
-  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (worldWidth(S) * 0.5);
-  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (worldHeight(S) * 0.5);
+  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
+  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
 
   if(Array.isArray(S.tigers) && S.tigers.length > STABILITY_SOFT_CAP_TIGERS){
     const keep = [];
@@ -7792,19 +7281,14 @@ function mobileCanvasHeight(){
   const vh = window.innerHeight || 844;
   const landscape = vw > vh;
   return landscape
-    ? Math.round(clamp(vh * 0.90, 360, 640))
-    : Math.round(clamp(vh * 1.02, 760, 980));
+    ? Math.round(clamp(vh * 0.88, 320, 500))
+    : Math.round(clamp(vh * 1.08, 820, 980));
 }
 function isMobileViewport(){
   const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches;
   const phoneLandscape = !!window.matchMedia?.("(max-width:960px) and (max-height:540px) and (orientation:landscape)")?.matches;
   const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
-  const touchCapable = ("ontouchstart" in window) || ((typeof navigator !== "undefined") && Number(navigator.maxTouchPoints || 0) > 0);
-  const sw = Math.min(window.innerWidth || 0, window.innerHeight || 0);
-  const lw = Math.max(window.innerWidth || 0, window.innerHeight || 0);
-  const phoneLike = (sw > 0 && lw > 0) && (sw <= 920) && (lw <= 1600);
-  const touchPrimary = coarse || touchCapable;
-  return narrow || (touchPrimary && (phoneLandscape || phoneLike));
+  return narrow || (coarse && phoneLandscape);
 }
 function isLandscapeViewport(){
   return (window.innerWidth || 0) > (window.innerHeight || 0);
@@ -9924,7 +9408,6 @@ function blockedAt(x, y, radius){
   const tw = S?.missionTwists;
   const bridge = tw?.bridge;
   if(
-    MISSION_TWIST_BRIDGE_BLOCKS_MOVEMENT &&
     bridge &&
     bridge.active &&
     Date.now() < (bridge.until || 0) &&
@@ -10105,41 +9588,6 @@ function pointInViewportPad(x, y, pad=120){
   const h = Number(cv?.height || WORLD_BASE_HEIGHT);
   return sp.x >= -pad && sp.x <= (w + pad) && sp.y >= -pad && sp.y <= (h + pad);
 }
-function applyEdgeSafetyLeash(ent, radius, opts={}){
-  if(!ent || !Number.isFinite(ent.x) || !Number.isFinite(ent.y)) return false;
-  const bounds = worldBounds(radius, S);
-  const margin = clamp(Number(opts.margin || 64), 24, 180);
-  const minX = Math.min(bounds.maxX, bounds.minX + margin);
-  const maxX = Math.max(minX, bounds.maxX - margin);
-  const minY = Math.min(bounds.maxY, bounds.minY + margin);
-  const maxY = Math.max(minY, bounds.maxY - margin);
-
-  const targetX = Number.isFinite(opts.targetX) ? opts.targetX : (S.me?.x ?? ent.x);
-  const targetY = Number.isFinite(opts.targetY) ? opts.targetY : (S.me?.y ?? ent.y);
-  const requireVisible = !!opts.requireVisible;
-  const visiblePad = clamp(Number(opts.visiblePad || 240), 80, 520);
-  const outOfSafeBand = ent.x < minX || ent.x > maxX || ent.y < minY || ent.y > maxY;
-  const offView = requireVisible && !pointInViewportPad(ent.x, ent.y, visiblePad);
-  if(!outOfSafeBand && !offView) return false;
-
-  let nx = clamp(ent.x, minX, maxX);
-  let ny = clamp(ent.y, minY, maxY);
-  const free = findNearestOpenPoint(nx, ny, radius, {
-    avoidKeepout: opts.avoidKeepout !== false,
-    avoidWater: !!opts.avoidWater,
-    targetX,
-    targetY
-  }) || safeSpawnPoint(nx, ny, radius, opts.avoidKeepout !== false, !!opts.avoidWater);
-  if(!free) return false;
-  ent.x = free.x;
-  ent.y = free.y;
-  ent._stuckTicks = 0;
-  ent._pathStallCount = 0;
-  ent._nextUnstickTryAt = 0;
-  ent._nextPathRecoverAt = 0;
-  ent._nextKeepoutRecoverAt = 0;
-  return true;
-}
 function unstickEntitiesTick(){
   if(!S || S.paused || S.gameOver || S.missionEnded) return;
   const playerIntent =
@@ -10150,8 +9598,7 @@ function unstickEntitiesTick(){
   resolveEntityStuck(S.me, 16, {
     avoidKeepout:false,
     movingIntent:playerIntent,
-    stuckThreshold:28,
-    moveEps:0.65,
+    stuckThreshold:36,
     targetX:S.target?.x,
     targetY:S.target?.y
   });
@@ -10163,15 +9610,6 @@ function unstickEntitiesTick(){
       targetY:S.target?.y
     });
   }
-  applyEdgeSafetyLeash(S.me, 16, {
-    margin:92,
-    avoidKeepout:false,
-    avoidWater:false,
-    requireVisible:true,
-    visiblePad:160,
-    targetX:S.target?.x,
-    targetY:S.target?.y
-  });
 
   for(const civ of (S.civilians || [])){
     if(!civ.alive || civ.evac) continue;
@@ -10179,8 +9617,7 @@ function unstickEntitiesTick(){
     resolveEntityStuck(civ, 14, {
       avoidKeepout:true,
       movingIntent:civIntent,
-      stuckThreshold:civ.following ? 14 : 18,
-      moveEps:civ.following ? 0.52 : 0.66,
+      stuckThreshold:20,
       targetX:S.evacZone?.x,
       targetY:S.evacZone?.y
     });
@@ -10192,23 +9629,13 @@ function unstickEntitiesTick(){
         targetY:S.evacZone?.y
       });
     }
-    applyEdgeSafetyLeash(civ, 14, {
-      margin:civ.following ? 78 : 62,
-      avoidKeepout:true,
-      avoidWater:false,
-      requireVisible:!!civ.following,
-      visiblePad:civ.following ? 280 : 420,
-      targetX:civ.following ? S.me?.x : S.evacZone?.x,
-      targetY:civ.following ? S.me?.y : S.evacZone?.y
-    });
   }
   for(const unit of (S.supportUnits || [])){
     if(!unit.alive) continue;
     resolveEntityStuck(unit, 16, {
       avoidKeepout:true,
       movingIntent:true,
-      stuckThreshold:15,
-      moveEps:0.62,
+      stuckThreshold:18,
       targetX:S.me?.x,
       targetY:S.me?.y
     });
@@ -10220,14 +9647,6 @@ function unstickEntitiesTick(){
         targetY:S.me?.y
       });
     }
-    applyEdgeSafetyLeash(unit, 16, {
-      margin:72,
-      avoidKeepout:true,
-      avoidWater:false,
-      requireVisible:false,
-      targetX:S.me?.x,
-      targetY:S.me?.y
-    });
   }
   for(const tiger of (S.tigers || [])){
     if(!tiger.alive) continue;
@@ -10235,8 +9654,7 @@ function unstickEntitiesTick(){
     resolveEntityStuck(tiger, 16, {
       avoidKeepout:true,
       movingIntent:tigerIntent,
-      stuckThreshold:13,
-      moveEps:0.62,
+      stuckThreshold:16,
       targetX:S.me?.x,
       targetY:S.me?.y
     });
@@ -10248,14 +9666,6 @@ function unstickEntitiesTick(){
         targetY:S.me?.y
       });
     }
-    applyEdgeSafetyLeash(tiger, 16, {
-      margin:58,
-      avoidKeepout:true,
-      avoidWater:false,
-      requireVisible:false,
-      targetX:S.me?.x,
-      targetY:S.me?.y
-    });
   }
   for(const p of (S.pickups || [])){
     if(!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
@@ -10476,19 +9886,10 @@ function setEventText(txt, seconds=6){
   __savePending = true;
 }
 function missionTwistsEnabled(){
-  // Mobile safe-mode: disable mission twists to avoid blackout/bridge visual corruption
-  // and keep gameplay stable while 2D stabilization is prioritized.
-  if(isMobileViewport()) return false;
   return eventsEnabled() && !window.__TUTORIAL_MODE__;
 }
 function missionTwistBlackoutActive(now=Date.now()){
   const tw = ensureMissionTwistState(S);
-  if((DISABLE_BLACKOUT_TWIST_ON_MOBILE && isMobileViewport()) || (DISABLE_BLACKOUT_TWIST_IN_STORY && S.mode === "Story")){
-    if(tw.blackout.active || tw.activeType === "blackout"){
-      clearMissionTwist("blackout", { silent:true });
-    }
-    return false;
-  }
   if(!tw.blackout.active) return false;
   if(now >= (tw.blackout.until || 0)){
     tw.blackout.active = false;
@@ -10535,8 +9936,6 @@ function clearMissionTwist(type="", opts={}){
   return tw;
 }
 function missionTwistPickBridgePoint(){
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
   const minPlayerDist = 120;
   const candidates = [];
   const civs = (S.civilians || []).filter((c)=>c.alive && !c.evac);
@@ -10559,8 +9958,8 @@ function missionTwistPickBridgePoint(){
       candidates.push({ x:(S.me.x + nearestTiger.x) * 0.5, y:(S.me.y + nearestTiger.y) * 0.5 });
     }
   }
-  candidates.push({ x:worldW * 0.52, y:worldH * 0.50 });
-  candidates.push({ x:worldW * 0.48, y:worldH * 0.64 });
+  candidates.push({ x:cv.width * 0.52, y:cv.height * 0.50 });
+  candidates.push({ x:cv.width * 0.48, y:cv.height * 0.64 });
 
   const evaluate = (rawX, rawY)=>{
     let pt = safeSpawnPoint(rawX, rawY, 22, true, true);
@@ -10568,8 +9967,8 @@ function missionTwistPickBridgePoint(){
     const open = findNearestOpenPoint(pt.x, pt.y, 22, {
       avoidKeepout:true,
       avoidWater:true,
-      targetX:worldW * 0.5,
-      targetY:worldH * 0.5
+      targetX:cv.width * 0.5,
+      targetY:cv.height * 0.5
     });
     if(open) pt = open;
     if(inMapScenarioKeepout(pt.x, pt.y, 26)) return null;
@@ -10584,15 +9983,12 @@ function missionTwistPickBridgePoint(){
     if(point) return point;
   }
   for(let i=0; i<18; i++){
-    const point = evaluate(rand(110, worldW - 110), rand(120, worldH - 110));
+    const point = evaluate(rand(110, cv.width - 110), rand(120, cv.height - 110));
     if(point) return point;
   }
   return null;
 }
 function triggerMissionTwistBridge(now=Date.now()){
-  if((DISABLE_BRIDGE_TWIST_ON_MOBILE && isMobileViewport()) || (DISABLE_BRIDGE_TWIST_IN_STORY && S.mode === "Story")){
-    return false;
-  }
   const aliveTigerCount = (S.tigers || []).filter((t)=>t.alive).length;
   if(aliveTigerCount <= 0) return false;
   const point = missionTwistPickBridgePoint();
@@ -10607,7 +10003,7 @@ function triggerMissionTwistBridge(now=Date.now()){
   tw.activeUntil = tw.bridge.until;
   tw.cooldownUntil = now + MISSION_TWIST_COOLDOWN_MS;
   tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
-  setEventText("🌉 Bridge collapse hazard! Move carefully through the zone.", 5.5);
+  setEventText("🌉 Bridge collapse! Route blocked. Reroute now.", 5.5);
   sfx("event");
   hapticImpact("medium");
   __savePending = true;
@@ -10662,9 +10058,6 @@ function triggerMissionTwistFog(now=Date.now()){
   return true;
 }
 function triggerMissionTwistBlackout(now=Date.now()){
-  if((DISABLE_BLACKOUT_TWIST_ON_MOBILE && isMobileViewport()) || (DISABLE_BLACKOUT_TWIST_IN_STORY && S.mode === "Story")){
-    return false;
-  }
   const tw = ensureMissionTwistState(S);
   const dur = rand(MISSION_TWIST_BLACKOUT_MIN_MS, MISSION_TWIST_BLACKOUT_MAX_MS);
   tw.blackout.active = true;
@@ -10674,7 +10067,7 @@ function triggerMissionTwistBlackout(now=Date.now()){
   tw.cooldownUntil = now + MISSION_TWIST_COOLDOWN_MS;
   tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
   S.scanPing = 0;
-  setEventText("📻 Radio blackout! You can still move/fight, but Scan + map devices are offline.", 5.8);
+  setEventText("📻 Radio blackout! Scan and map devices are offline.", 5.8);
   sfx("event");
   hapticImpact("medium");
   __savePending = true;
@@ -10685,8 +10078,6 @@ function missionTwistChooseType(tw){
   const available = MISSION_TWIST_TYPES.filter((type)=>{
     if((tw.used?.[type] || 0) >= 1) return false;
     if(type === "hostage" && aliveCivs <= 0) return false;
-    if(type === "bridge" && ((DISABLE_BRIDGE_TWIST_ON_MOBILE && isMobileViewport()) || (DISABLE_BRIDGE_TWIST_IN_STORY && S.mode === "Story"))) return false;
-    if(type === "blackout" && ((DISABLE_BLACKOUT_TWIST_ON_MOBILE && isMobileViewport()) || (DISABLE_BLACKOUT_TWIST_IN_STORY && S.mode === "Story"))) return false;
     return true;
   });
   if(!available.length) return "";
@@ -10694,8 +10085,7 @@ function missionTwistChooseType(tw){
     bridge: 0.28,
     hostage: aliveCivs > 0 ? 0.30 : 0,
     fog: 0.23,
-    // Keep blackout rarer than other twists on mobile to reduce visual confusion.
-    blackout: 0.10
+    blackout: 0.19
   };
   let total = 0;
   for(const type of available) total += Math.max(0.01, Number(weights[type] || 0.1));
@@ -10711,11 +10101,6 @@ function tickMissionTwists(){
   if(!missionTwistsEnabled()){
     if(tw.activeType || tw.bridge.active || tw.hostage.active || tw.blackout.active){
       clearMissionTwist("", { silent:true });
-    }
-    if((S.fogUntil || 0) > 0) S.fogUntil = 0;
-    if(typeof S.eventText === "string" && /radio blackout|bridge collapse|hostage vehicle|night fog burst/i.test(S.eventText || "")){
-      S.eventText = "";
-      S.eventTextUntil = 0;
     }
     return;
   }
@@ -10856,13 +10241,7 @@ function tickEvents(){
   const roll = Math.random();
   if(roll < supplyWeight){
     // Supply Drop: spawn crate pickup
-    const worldW = worldWidth(S);
-    const worldH = worldHeight(S);
-    spawnPickup(
-      "CRATE",
-      rand(120, Math.max(140, worldW - 120)),
-      rand(90, Math.max(120, worldH - 90))
-    );
+    spawnPickup("CRATE", rand(280,880), rand(120,500));
     setEventText("📦 Supply Drop spotted!", 7);
     sfx("event"); hapticImpact("medium");
   } else if(roll < (supplyWeight + rogueWeight)){
@@ -10935,11 +10314,9 @@ function biomeHazardTick(){
 function spawnPickup(type, x, y){
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(S.pickups.length >= MAX_PERSIST_PICKUPS) S.pickups.shift();
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
   const pt = safeSpawnPoint(
-    clamp(Number.isFinite(x) ? x : rand(80, worldW - 80), 40, worldW - 40),
-    clamp(Number.isFinite(y) ? y : rand(90, worldH - 70), 60, worldH - 40),
+    clamp(Number.isFinite(x) ? x : rand(80, cv.width - 80), 40, cv.width - 40),
+    clamp(Number.isFinite(y) ? y : rand(90, cv.height - 70), 60, cv.height - 40),
     12,
     true,
     false
@@ -10974,10 +10351,8 @@ function maybeSpawnAmbientPickup(){
   const baseChance = clamp(0.22 * chanceMul, 0.08, 0.28);
   if(Math.random()>baseChance) return;
 
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
-  const x = rand(120, Math.max(140, worldW - 120));
-  const y = rand(90, Math.max(120, worldH - 90));
+  const x = rand(160, 900);
+  const y = rand(90, 510);
 
   // weighted loot
   const r = Math.random();
@@ -11626,10 +11001,6 @@ function storyCheckpointReadStorageKeys(){
   return storyCheckpointStorageKeys().slice();
 }
 function storyCheckpointMissionFromPayload(payload){
-  if(payload && typeof payload === "object" && payload.__tsSnapshot === SNAPSHOT_RECORD_TAG){
-    const decoded = unwrapSnapshotRecord(payload, "story-checkpoint");
-    if(decoded.ok) payload = decoded.data;
-  }
   if(!payload || typeof payload !== "object") return 1;
   const resume = (payload.resumeState && typeof payload.resumeState === "object") ? payload.resumeState : null;
   const raw =
@@ -11646,7 +11017,14 @@ function readStoryCheckpointData(){
   try{
     let best = null;
     for(const key of storyCheckpointReadStorageKeys()){
-      const parsed = readSnapshotRecordFromStorage(key, "story-checkpoint");
+      const raw = localStorage.getItem(key);
+      if(!raw) continue;
+      let parsed = null;
+      try{
+        parsed = JSON.parse(raw);
+      }catch(e){
+        parsed = null;
+      }
       if(!parsed || typeof parsed !== "object") continue;
       const mission = storyCheckpointMissionFromPayload(parsed);
       const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
@@ -11727,7 +11105,8 @@ function writeStoryCheckpointData(trigger={}){
   if(window.__TUTORIAL_MODE__) return null;
   const payload = buildStoryCheckpointSnapshot(trigger);
   try{
-    writeSnapshotRecordToStorage(storyCheckpointStorageKey(), "story-checkpoint", payload);
+    const raw = JSON.stringify(payload);
+    localStorage.setItem(storyCheckpointStorageKey(), raw);
     __storyCheckpointCache = payload;
     return payload;
   }catch(e){
@@ -11825,10 +11204,10 @@ function restartFromStoryCheckpoint(){
   trimPersistentState(resume);
 
   try{
-    writeSnapshotRecordToStorage(STORAGE_KEY, "full-state", resume);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(resume));
   }catch(e){}
 
-  ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay","proto3dOverlay"].forEach((id)=>{
+  ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -11900,7 +11279,14 @@ function readStoryProfileData(){
   try{
     let best = null;
     for(const key of storyProfileReadStorageKeys()){
-      const parsed = readSnapshotRecordFromStorage(key, "story-profile");
+      const raw = localStorage.getItem(key);
+      if(!raw) continue;
+      let parsed = null;
+      try{
+        parsed = JSON.parse(raw);
+      }catch(e){
+        parsed = null;
+      }
       if(!parsed || typeof parsed !== "object") continue;
       const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
       const candidate = { ...parsed, savedAt, storageKey:key };
@@ -11993,7 +11379,8 @@ function writeStoryProfileData(source="autosave", state=S){
     source: String(source || "autosave"),
   };
   try{
-    writeSnapshotRecordToStorage(storyProfileStorageKey(), "story-profile", payload);
+    const raw = JSON.stringify(payload);
+    localStorage.setItem(storyProfileStorageKey(), raw);
     for(const key of storyProfileReadStorageKeys()){
       if(key !== storyProfileStorageKey()) localStorage.removeItem(key);
     }
@@ -12210,7 +11597,14 @@ function readStoryProgressData(){
   try{
     let best = null;
     for(const key of storyProgressReadStorageKeys()){
-      const parsed = readSnapshotRecordFromStorage(key, "story-progress");
+      const raw = localStorage.getItem(key);
+      if(!raw) continue;
+      let parsed = null;
+      try{
+        parsed = JSON.parse(raw);
+      }catch(e){
+        parsed = null;
+      }
       if(!parsed || typeof parsed !== "object") continue;
       const mission = clamp(Math.floor(Number(parsed.mission || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
       const savedAt = Number.isFinite(Number(parsed.savedAt)) ? Number(parsed.savedAt) : 0;
@@ -12340,17 +11734,14 @@ function writeStoryProgressData(payload={}){
     source: String(payload.source || "autosave"),
   };
   try{
-    writeSnapshotRecordToStorage(storyProgressStorageKey(), "story-progress", data);
+    const raw = JSON.stringify(data);
+    localStorage.setItem(storyProgressStorageKey(), raw);
     return true;
   }catch(e){
     return false;
   }
 }
 function storySaveMissionFromPayload(payload){
-  if(payload && typeof payload === "object" && payload.__tsSnapshot === SNAPSHOT_RECORD_TAG){
-    const decoded = unwrapSnapshotRecord(payload, "story-save-slot");
-    if(decoded.ok) payload = decoded.data;
-  }
   if(!payload || typeof payload !== "object") return 1;
   const fromResume = payload.resumeState && typeof payload.resumeState === "object"
     ? (payload.resumeState.storyLevel ?? payload.resumeState.storyLastMission ?? payload.resumeState.mission)
@@ -12414,7 +11805,7 @@ function restoreStoryResumeSnapshot(slot, source="story-restore"){
   trimPersistentState(resume);
 
   try{
-    writeSnapshotRecordToStorage(STORAGE_KEY, "full-state", resume);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(resume));
   }catch(e){}
 
   S = load();
@@ -12441,7 +11832,14 @@ function readStorySaveData(){
   try{
     let best = null;
     for(const key of storySaveReadStorageKeys()){
-      const parsed = readSnapshotRecordFromStorage(key, "story-save-slot");
+      const raw = localStorage.getItem(key);
+      if(!raw) continue;
+      let parsed = null;
+      try{
+        parsed = JSON.parse(raw);
+      }catch(e){
+        parsed = null;
+      }
       if(!parsed || typeof parsed !== "object") continue;
       const mission = storySaveMissionFromPayload(parsed);
       if(!Number.isFinite(mission) || mission < 1) continue;
@@ -12553,7 +11951,8 @@ function writeStorySaveData(source="manual"){
   });
   const profileOk = writeStoryProfileData(payload.source, resumeState);
   try{
-    writeSnapshotRecordToStorage(storySaveStorageKey(), "story-save-slot", payload);
+    const raw = JSON.stringify(payload);
+    localStorage.setItem(storySaveStorageKey(), raw);
     return payload;
   }catch(e){
     return (progressOk || profileOk) ? payload : null;
@@ -12981,12 +12380,6 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
     syncGamepadFocus();
     return;
   }
-  if(shouldOpen3DMainModeOnLaunch() && typeof window.open3DPrototype === "function"){
-    setPaused(false,null);
-    syncGamepadFocus();
-    window.open3DPrototype();
-    return;
-  }
   const shown = showMissionBrief(INTRO_BRIEF_MS);
   if(!shown) setPaused(false,null);
   syncGamepadFocus();
@@ -13312,163 +12705,10 @@ function markModeTabs(){
   if(S.mode==="Arcade") document.getElementById("mArcade").classList.add("active");
   if(S.mode==="Survival") document.getElementById("mSurvival").classList.add("active");
 }
-
-const THREE_D_PROTOTYPE_PAUSED = true;
-
-function open3DPrototypePaused(){
-  toast("3D Prototype is temporarily paused. We are focused on 2D updates right now.");
-}
-
-function read3DReadinessGateReport(){
-  if(THREE_D_PROTOTYPE_PAUSED) return null;
-  try{
-    if(typeof window.get3DReadinessGateStatus === "function"){
-      return window.get3DReadinessGateStatus() || null;
-    }
-  }catch(e){}
-  return null;
-}
-
-function update3DReadinessGateUi(reportOverride = null){
-  const statusEl = document.getElementById("mode3DGateStatus");
-  const metricsEl = document.getElementById("mode3DGateMetrics");
-  const blockersEl = document.getElementById("mode3DGateBlockers");
-  const toggleBtn = document.getElementById("mode3DMainToggleBtn");
-  if(!statusEl && !metricsEl && !blockersEl && !toggleBtn) return null;
-
-  if(THREE_D_PROTOTYPE_PAUSED){
-    if(statusEl) statusEl.innerText = "3D Prototype is paused while we focus on 2D stability/performance.";
-    if(metricsEl) metricsEl.innerText = "";
-    if(blockersEl) blockersEl.innerText = "";
-    if(toggleBtn){
-      toggleBtn.innerText = "🌎 3D Main Mode: OFF";
-      toggleBtn.className = "ghost";
-      toggleBtn.disabled = true;
-    }
-    return null;
-  }
-
-  const report = reportOverride || read3DReadinessGateReport();
-  const prefOn = (()=>{ try{ return !!(typeof window.get3DMainModePreference === "function" && window.get3DMainModePreference()); }catch(_){ return false; } })();
-
-  if(!report){
-    if(statusEl) statusEl.innerText = "3D telemetry unavailable. Open 3D Prototype and play missions to collect readiness data.";
-    if(metricsEl) metricsEl.innerText = "";
-    if(blockersEl) blockersEl.innerText = "";
-    if(toggleBtn){
-      toggleBtn.innerText = `🌎 3D Main Mode: ${prefOn ? "ON" : "OFF"}`;
-      toggleBtn.className = prefOn ? "good" : "ghost";
-      toggleBtn.disabled = true;
-    }
-    return null;
-  }
-
-  const m = report.metrics || {};
-  const blockers = Array.isArray(report.blockers) ? report.blockers : [];
-  if(statusEl){
-    statusEl.innerText = report.passed
-      ? "PASS: 3D is ready for Main Mode."
-      : "LOCKED: 3D Main Mode stays off until readiness thresholds pass.";
-  }
-  if(metricsEl){
-    metricsEl.innerText =
-      `Launches ${Number(m.sessions || 0)} • Missions started ${Number(m.missionStarts || 0)} • Clears ${Number(m.missionClears || 0)} • Fails ${Number(m.missionFails || 0)} • Avg FPS ${Number(m.avgFps || 0)} • Critical ${Number(m.criticalSpikesPerMin || 0)}/min • Clear rate ${Number(m.clearRatePct || 0)}%`;
-  }
-  if(blockersEl){
-    blockersEl.innerText = blockers.length
-      ? `Blockers: ${blockers.join(" • ")}`
-      : "Blockers: none";
-  }
-  if(toggleBtn){
-    toggleBtn.innerText = `🌎 3D Main Mode: ${prefOn ? "ON" : "OFF"}`;
-    toggleBtn.className = prefOn ? "good" : (report.passed ? "ghost" : "bad");
-    toggleBtn.disabled = !prefOn && !report.passed;
-  }
-  return report;
-}
-
-function refresh3DReadinessGate(){
-  if(THREE_D_PROTOTYPE_PAUSED){
-    update3DReadinessGateUi(null);
-    toast("3D Prototype is paused.");
-    return;
-  }
-  let report = null;
-  try{
-    if(typeof window.refresh3DReadinessGateTelemetry === "function"){
-      report = window.refresh3DReadinessGateTelemetry() || null;
-    }else{
-      report = read3DReadinessGateReport();
-    }
-  }catch(e){
-    report = null;
-  }
-  report = update3DReadinessGateUi(report) || report;
-  if(report){
-    const blockerText = Array.isArray(report.blockers) && report.blockers.length ? ` ${report.blockers[0]}` : "";
-    toast(report.passed ? "3D readiness gate: PASS." : `3D readiness gate: FAIL.${blockerText}`);
-  }else{
-    toast("3D readiness telemetry is unavailable right now.");
-  }
-}
-
-function toggle3DMainMode(){
-  if(THREE_D_PROTOTYPE_PAUSED){
-    update3DReadinessGateUi(null);
-    toast("3D Main Mode is unavailable while 3D is paused.");
-    return;
-  }
-  if(typeof window.set3DMainModePreference !== "function"){
-    toast("3D readiness gate is not available yet.");
-    return;
-  }
-  const current = (()=>{ try{ return !!(typeof window.get3DMainModePreference === "function" && window.get3DMainModePreference()); }catch(_){ return false; } })();
-  if(current){
-    window.set3DMainModePreference(false);
-    update3DReadinessGateUi();
-    toast("3D Main Mode is OFF.");
-    return;
-  }
-  const report = read3DReadinessGateReport();
-  if(!report || !report.passed){
-    update3DReadinessGateUi(report);
-    toast("3D Main Mode is locked until readiness gate passes.");
-    return;
-  }
-  const res = window.set3DMainModePreference(true);
-  update3DReadinessGateUi(res?.report || report);
-  if(res && res.ok){
-    toast("3D Main Mode is ON. Launch will open 3D when gate stays passed.");
-  }else{
-    toast("3D Main Mode could not be enabled.");
-  }
-}
-
-function shouldOpen3DMainModeOnLaunch(){
-  if(THREE_D_PROTOTYPE_PAUSED) return false;
-  if(window.__TUTORIAL_MODE__) return false;
-  try{
-    if(typeof window.get3DMainModePreference !== "function") return false;
-    if(!window.get3DMainModePreference()) return false;
-    if(typeof window.get3DReadinessGateStatus !== "function") return false;
-    const report = window.get3DReadinessGateStatus();
-    return !!(report && report.passed);
-  }catch(e){
-    return false;
-  }
-}
-
 function updateModeDesc(){
   ensureClanState(S);
   ensureStoryEndgameState(S);
   ensureArcadeWeeklySeedState(S);
-  const mode3dBtn = document.getElementById("mPrototype3D");
-  if(mode3dBtn){
-    mode3dBtn.disabled = THREE_D_PROTOTYPE_PAUSED;
-    mode3dBtn.classList.toggle("active", false);
-    mode3dBtn.innerText = THREE_D_PROTOTYPE_PAUSED ? "🌎 3D Prototype (Paused)" : "🌎 3D Prototype";
-    mode3dBtn.title = THREE_D_PROTOTYPE_PAUSED ? "Temporarily disabled while 2D is prioritized." : "";
-  }
   const el=document.getElementById("modeDesc");
   if(S.mode==="Story"){
     const mission = storyMissionForState(S);
@@ -13515,7 +12755,6 @@ function updateModeDesc(){
     weeklyBtn.innerText = `🎯 Weekly Seed Challenge: ${S.arcadeWeeklySeedEnabled ? "ON" : "OFF"}`;
     weeklyBtn.className = (S.mode === "Arcade" && S.arcadeWeeklySeedEnabled) ? "good" : "ghost";
   }
-  update3DReadinessGateUi();
   updateStoryEndgameControls();
 }
 
@@ -15962,7 +15201,7 @@ window.exitTutorialMode = function () {
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
-  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","hudOverlay","proto3dOverlay"].forEach((id)=>{
+  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -16386,13 +15625,11 @@ function spawnRescueSites(){
     .map((site)=>{
       let pt = safeSpawnPoint(site.x, site.y, Math.round((site.r || 44) * 0.42), true, true);
       if(inMapScenarioKeepout(pt.x, pt.y, Math.round((site.r || 44) * 0.42))){
-        const worldW = worldWidth(S);
-        const worldH = worldHeight(S);
         const clear = findNearestOpenPoint(pt.x, pt.y, Math.round((site.r || 44) * 0.42), {
           avoidKeepout:true,
           avoidWater:true,
-          targetX:worldW * 0.48,
-          targetY:worldH * 0.52
+          targetX:cv.width * 0.48,
+          targetY:cv.height * 0.52
         });
         if(clear) pt = clear;
       }
@@ -16546,8 +15783,8 @@ function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
 }
 
 function mapInteractablePool(){
-  const w = worldWidth(S);
-  const h = worldHeight(S);
+  const w = cv.width;
+  const h = cv.height;
   const key = currentMapKey();
   const pools = {
     ST_FOREST: [
@@ -16610,16 +15847,14 @@ function spawnMapInteractables(){
     return;
   }
   const base = mapInteractablePool();
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
   S.mapInteractables = base.map((it, idx)=>{
     let pt = safeSpawnPoint(it.x, it.y, 22, true, true);
     if(inMapScenarioKeepout(pt.x, pt.y, 22)){
       const clear = findNearestOpenPoint(pt.x, pt.y, 22, {
         avoidKeepout:true,
         avoidWater:true,
-        targetX:worldW * 0.48,
-        targetY:worldH * 0.52
+        targetX:cv.width * 0.48,
+        targetY:cv.height * 0.52
       });
       if(clear) pt = clear;
     }
@@ -16842,8 +16077,6 @@ function createSupportUnit(role, slotIndex=0){
   const attacker = role === "attacker";
   const hpMax = storySupportHpMax(role);
   const armorBase = storySupportArmorBase(role);
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
   const lane = slotIndex % 3;
   const row = Math.floor(slotIndex / 3);
   const baseX = attacker ? (S.me.x - 34 - (lane * 20)) : (S.me.x + 36 + (lane * 20));
@@ -16852,8 +16085,8 @@ function createSupportUnit(role, slotIndex=0){
     id: `${attacker ? "A" : "R"}-${Date.now()}-${rand(100,999)}`,
     name: attacker ? "Tiger Specialist" : "Rescue Specialist",
     role,
-    x: clamp(baseX, 40, worldW - 40),
-    y: clamp(baseY, 60, worldH - 40),
+    x: clamp(baseX, 40, cv.width - 40),
+    y: clamp(baseY, 60, cv.height - 40),
     homeX: S.me.x,
     homeY: S.me.y,
     face:0,
@@ -16937,8 +16170,6 @@ function spawnSupportUnits(){
 
   const coreCap = raidModeActive(S) ? 14 : 16;
   const merged = [...attackers, ...rescuers].slice(0, coreCap);
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
   merged.forEach((unit, idx)=>{
     const lane = idx % 4;
     const row = Math.floor(idx / 4);
@@ -16946,8 +16177,8 @@ function spawnSupportUnits(){
     unit.homeX = S.me.x;
     unit.homeY = S.me.y;
     const spawnPt = safeSpawnPoint(
-      clamp(S.me.x + side * (40 + lane * 22), 40, worldW - 40),
-      clamp(S.me.y + 30 + row * 22, 60, worldH - 40),
+      clamp(S.me.x + side * (40 + lane * 22), 40, cv.width - 40),
+      clamp(S.me.y + 30 + row * 22, 60, cv.height - 40),
       16,
       true,
       true
@@ -17008,20 +16239,18 @@ function spawnCivilians(){
   const raidBonusCivs = (S.mode === "Arcade" && raidModeActive(S)) ? 2 : 0;
   const spawnCount = clamp(n + raidBonusCivs, 0, 16);
   const sites = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice();
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
 
   S.civilians = [];
 
   for(let i=0;i<spawnCount;i++){
-    const site = sites[i % sites.length] || { x: rand(160, worldW - 160), y: rand(140, worldH - 120), kind:"trail", label:"Field Site" };
+    const site = sites[i % sites.length] || { x: rand(160, cv.width - 160), y: rand(140, cv.height - 120), kind:"trail", label:"Field Site" };
     const orbit = 16 + ((i % 3) * 14);
     const angle = (Math.PI * 2 * (i % Math.max(1, sites.length))) / Math.max(1, sites.length);
     const jitterX = Math.round(Math.cos(angle) * orbit + rand(-10, 10));
     const jitterY = Math.round(Math.sin(angle) * orbit + rand(-10, 10));
     const civSpawn = safeSpawnPoint(
-      clamp(site.x + jitterX, 60, worldW - 60),
-      clamp(site.y + jitterY, 90, worldH - 70),
+      clamp(site.x + jitterX, 60, cv.width - 60),
+      clamp(site.y + jitterY, 90, cv.height - 70),
       14,
       true,
       true
@@ -17112,15 +16341,13 @@ function tigerSpawnTooCloseToEscort(x, y, opts={}){
   return false;
 }
 function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
   const preferX = Number.isFinite(Number(opts.preferX)) ? Number(opts.preferX) : seedX;
   const preferY = Number.isFinite(Number(opts.preferY)) ? Number(opts.preferY) : seedY;
   const radius = Math.max(16, Number(opts.radius || 18));
   const candidates = [];
   const pushCandidate = (x, y)=>{
-    const px = clamp(Math.round(x), 70, worldW - 70);
-    const py = clamp(Math.round(y), 90, worldH - 70);
+    const px = clamp(Math.round(x), 70, cv.width - 70);
+    const py = clamp(Math.round(y), 90, cv.height - 70);
     const pt = safeSpawnPoint(px, py, radius, true, true);
     candidates.push(pt);
   };
@@ -17135,8 +16362,8 @@ function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
   }
   for(let i=0; i<40; i++){
     const biasRight = i % 2 === 0;
-    const rx = biasRight ? rand(Math.round(worldW * 0.55), worldW - 70) : rand(70, Math.round(worldW * 0.45));
-    const ry = rand(90, worldH - 70);
+    const rx = biasRight ? rand(Math.round(cv.width * 0.55), cv.width - 70) : rand(70, Math.round(cv.width * 0.45));
+    const ry = rand(90, cv.height - 70);
     pushCandidate(rx, ry);
   }
 
@@ -17278,19 +16505,17 @@ function spawnTigers(){
     : null;
   const nemesisSlot = nemesisEntry ? rand(Math.max(0, Math.floor(count * 0.45)), Math.max(0, count - 1)) : -1;
   const packCount = clamp(Math.ceil(count / 2), 1, 4);
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
   const sitePool = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice().reverse();
   const fallbackPacks = [
-    { x: worldW * 0.68, y: worldH * 0.22 },
-    { x: worldW * 0.78, y: worldH * 0.48 },
-    { x: worldW * 0.64, y: worldH * 0.76 },
-    { x: worldW * 0.84, y: worldH * 0.64 },
+    { x: cv.width * 0.68, y: cv.height * 0.22 },
+    { x: cv.width * 0.78, y: cv.height * 0.48 },
+    { x: cv.width * 0.64, y: cv.height * 0.76 },
+    { x: cv.width * 0.84, y: cv.height * 0.64 },
   ];
   const packAnchors = Array.from({ length: packCount }, (_, idx) => {
     const site = sitePool[idx];
     const anchor = site
-      ? { x: clamp(site.x + rand(90, 180), 160, worldW - 70), y: clamp(site.y + rand(-110, 110), 100, worldH - 70) }
+      ? { x: clamp(site.x + rand(90, 180), 160, cv.width - 70), y: clamp(site.y + rand(-110, 110), 100, cv.height - 70) }
       : fallbackPacks[idx % fallbackPacks.length];
     return {
       id: idx + 1,
@@ -17337,8 +16562,8 @@ function spawnTigers(){
     const initialVx = (Math.random()<0.5?-1:1)*def.spd*0.55;
     const initialVy = (Math.random()<0.5?-1:1)*def.spd*0.50;
     const tigerSpawn = pickTigerSpawnAwayFromEscort(
-      clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, worldW - 50),
-      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, worldH - 70),
+      clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, cv.width - 50),
+      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, cv.height - 70),
       {
         preferX: pack.x,
         preferY: pack.y,
@@ -17452,8 +16677,6 @@ function spawnRogueTiger(options={}){
   if(S.mode==="Survival") baseHp = 135 + (S.survivalWave - 1) * 10;
   if(S.mode==="Story") baseHp = 120 + ((storyMission?.number || S.storyLevel || 1) - 1) * 6;
   const hp = Math.round(baseHp * def.hpMul * diff * (S.mode==="Story" ? clamp(Number(storyMission?.endgameHpMul || 1), 1, 6) : 1));
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
 
   let sx = 0;
   let sy = 0;
@@ -17465,17 +16688,17 @@ function spawnRogueTiger(options={}){
   } else {
     const spawnEdge = rand(0, 3);
     if(spawnEdge === 0){ // top
-      sx = rand(90, worldW - 90);
+      sx = rand(90, cv.width - 90);
       sy = rand(72, 116);
     } else if(spawnEdge === 1){ // right
-      sx = rand(worldW - 116, worldW - 72);
-      sy = rand(90, worldH - 90);
+      sx = rand(cv.width - 116, cv.width - 72);
+      sy = rand(90, cv.height - 90);
     } else if(spawnEdge === 2){ // bottom
-      sx = rand(90, worldW - 90);
-      sy = rand(worldH - 116, worldH - 72);
+      sx = rand(90, cv.width - 90);
+      sy = rand(cv.height - 116, cv.height - 72);
     } else { // left
       sx = rand(72, 116);
-      sy = rand(90, worldH - 90);
+      sy = rand(90, cv.height - 90);
     }
   }
 
@@ -17608,9 +16831,7 @@ function deploy(opts={}){
     ? carryArmor
     : clamp(20 + storyStartingArmorBonus(), 0, S.armorCap || 100);
   S.stamina=100;
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
-  S.me={x:160,y:clamp(worldH - 120, 240, 420),face:0,step:0};
+  S.me={x:160,y:clamp(cv.height - 120, 240, 420),face:0,step:0};
   S.target=null;
   S.lockedTigerId=null;
 
@@ -17703,8 +16924,8 @@ function deploy(opts={}){
   transitionCleanupSweep("deploy-post");
 
   // spawn a couple guaranteed pickups early
-  spawnPickup("CASH", clamp(260, 80, worldW - 80), clamp(worldH - 150, 220, worldH - 80));
-  spawnPickup("AMMO", clamp(320, 80, worldW - 80), clamp(worldH - 120, 240, worldH - 70));
+  spawnPickup("CASH", 260, clamp(cv.height - 150, 220, cv.height - 80));
+  spawnPickup("AMMO", 320, clamp(cv.height - 120, 240, cv.height - 70));
 
   for(const wid of S.ownedWeapons){ if(S.durability[wid]==null) S.durability[wid]=100; }
 
@@ -17853,7 +17074,7 @@ function restartCurrentMission(){
 
 function restartModeFromMission1(){
   const mode = normalizeModeName(S.mode);
-  ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay","modeOverlay","proto3dOverlay"].forEach((id)=>{
+  ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay","modeOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -17895,7 +17116,6 @@ function closeComplete(){
 
 function performResetGame(){
   localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem(STORAGE_MIRROR_KEY);
   for(const key of STORAGE_FALLBACK_KEYS){
     localStorage.removeItem(key);
   }
@@ -17904,7 +17124,7 @@ function performResetGame(){
   S = cloneState(DEFAULT);
   bindFundsWallet(S);
   syncWindowState();
-  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay","proto3dOverlay"].forEach((id)=>{
+  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -17952,12 +17172,8 @@ cv.addEventListener("pointerdown",(e)=>{
   }
 
   const rect=cv.getBoundingClientRect();
-  updateWorldCamera(S);
-  const sx=(e.clientX-rect.left)*(cv.width/rect.width);
-  const sy=(e.clientY-rect.top)*(cv.height/rect.height);
-  const worldPt = screenToWorldPoint(sx, sy, S);
-  const x = worldPt.x;
-  const y = worldPt.y;
+  const x=(e.clientX-rect.left)*(cv.width/rect.width);
+  const y=(e.clientY-rect.top)*(cv.height/rect.height);
   const tappedInteractable = findInteractableAt(x,y);
   const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
 
@@ -18015,15 +17231,12 @@ cv.addEventListener("pointerdown",(e)=>{
   if(tapped && !S.inBattle){
     const d = dist(S.me.x,S.me.y,tapped.x,tapped.y);
     if(d > equippedWeaponRange()){
-      S.lockedTigerId = tapped.id;
-      S._lockGraceUntil = Date.now() + 1200;
-      S.target = { x:tapped.x, y:tapped.y };
-      toast(`${equippedWeapon().name} out of range. Tiger #${tapped.id} locked — move closer and tap again.`);
+      S.lockedTigerId = null;
+      toast(`${equippedWeapon().name} is out of range. Move closer before you lock that tiger.`);
       save();
       return;
     }
     S.lockedTigerId=tapped.id;
-    S._lockGraceUntil = Date.now() + 900;
     startCombat();
     if(!S.inBattle){
       sfx("ui");
@@ -18176,7 +17389,7 @@ function gamepadUiContainers(){
   const tutorial = document.getElementById("tutorialOverlay");
   if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
 
-  const overlays = ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay","proto3dOverlay"]
+  const overlays = ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
     .map((id)=>document.getElementById(id))
     .filter((el)=>el && el.style.display === "flex");
   if(overlays.length) return overlays;
@@ -18265,7 +17478,7 @@ function activateGamepadFocus(){
 }
 
 function anyGamepadOverlayVisible(){
-  const ids = ["tutorialOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay","proto3dOverlay"];
+  const ids = ["tutorialOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
   return ids.some((id)=>{
     const el = document.getElementById(id);
     return !!(el && el.style.display === "flex");
@@ -18505,14 +17718,6 @@ document.addEventListener("keyup",(e)=>{
 });
 
 function tigerById(id){ return S.tigers.find(t=>t.id===id); }
-function lockEngageRange(baseRange){
-  const base = Math.max(44, Number(baseRange) || equippedWeaponRange() || 88);
-  return base + clamp(base * 0.08, 8, 26);
-}
-function lockDropRange(baseRange){
-  const base = Math.max(44, Number(baseRange) || equippedWeaponRange() || 88);
-  return Math.max(base + 220, base * 2.35);
-}
 function nearestTiger(){
   const alive=S.tigers.filter(t=>t.alive);
   if(!alive.length) return null;
@@ -18544,7 +17749,6 @@ function lockNearestTiger(opts={}){
     return null;
   }
   S.lockedTigerId=t.id;
-  S._lockGraceUntil = Date.now() + 1200;
   if(!silent){
     const d = Math.round(dist(S.me.x,S.me.y,t.x,t.y));
     toast(`Locked Tiger #${t.id} (${t.type}) • ${d}m`);
@@ -18557,27 +17761,14 @@ function lockNearestTiger(opts={}){
 function canEngage(){
   const t=lockedTiger();
   if(!t) return null;
-  const now = Date.now();
-  const baseRange = Math.max(44, equippedWeaponRange());
-  const d = dist(S.me.x,S.me.y,t.x,t.y);
-  const engageRange = lockEngageRange(baseRange);
-  if(d <= engageRange){
-    S._lockGraceUntil = now + 900;
-    return t;
-  }
-  if(now < (S._lockGraceUntil || 0) && d <= (engageRange + 24)){
-    return t;
-  }
-  return null;
+  return dist(S.me.x,S.me.y,t.x,t.y) <= equippedWeaponRange() ? t : null;
 }
 function clearOutOfRangeLock(){
   if(S.inBattle || window.TigerTutorial?.isRunning) return;
   const t = lockedTiger();
   if(!t) return;
-  const d = dist(S.me.x,S.me.y,t.x,t.y);
-  if(d > lockDropRange(equippedWeaponRange())){
+  if(dist(S.me.x,S.me.y,t.x,t.y) > equippedWeaponRange()){
     S.lockedTigerId = null;
-    S._lockGraceUntil = 0;
   }
 }
 
@@ -19105,8 +18296,7 @@ function runCivilianFleeStep(c, now=Date.now()){
   const jitter = c.following ? 0 : (((c.id % 3) - 1) * 0.28);
   const ang = Math.atan2(awayY, awayX) + jitter;
   const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
-  const tickMul = clamp(Number(S._civilianTickMul || 1), 0.68, 2.6);
-  const fleeSpeed = ((c.following ? 2.95 : 2.35) * (c.following ? Math.max(0.94, waterMul) : waterMul)) * tickMul;
+  const fleeSpeed = (c.following ? 2.95 : 2.35) * (c.following ? Math.max(0.94, waterMul) : waterMul);
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -19118,11 +18308,6 @@ function runCivilianFleeStep(c, now=Date.now()){
 // ===================== CIVILIANS FOLLOW-ONLY =====================
 function followCiviliansTick(){
   if(S.mode==="Survival") return;
-  const now = Date.now();
-  const prevTickAt = Number(S._civilianTickAt || now);
-  const tickMul = clamp((now - prevTickAt) / 16.6667, 0.68, 2.6);
-  S._civilianTickAt = now;
-  S._civilianTickMul = tickMul;
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const escortBoost = storyRescueSpeedMul();
   const engageDist = 58;
@@ -19130,10 +18315,11 @@ function followCiviliansTick(){
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
   if(!Number.isFinite(S._escortFace)) S._escortFace = face;
   const faceDelta = normalizeAngle(face - S._escortFace);
-  // Slightly smoother escort heading to prevent follower slot jitter on quick turns.
-  S._escortFace = normalizeAngle(S._escortFace + clamp(faceDelta, -0.18, 0.18));
+  S._escortFace = normalizeAngle(S._escortFace + clamp(faceDelta, -0.23, 0.23));
   const escortFace = S._escortFace;
   const activeFollowers = [];
+  const now = Date.now();
+
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
 
@@ -19152,10 +18338,6 @@ function followCiviliansTick(){
     }
 
     if(c.escortOwner === "rescue"){
-      c._followVx = 0;
-      c._followVy = 0;
-      c._escortAnchorX = NaN;
-      c._escortAnchorY = NaN;
       continue;
     }
 
@@ -19166,8 +18348,6 @@ function followCiviliansTick(){
         c.escortOwner = "player";
         c.escortUnitId = "";
         c.followGraceUntil = now + 2800;
-        c._followVx = 0;
-        c._followVy = 0;
       } else {
         continue;
       }
@@ -19181,10 +18361,6 @@ function followCiviliansTick(){
         c.following = false;
         c.escortOwner = "";
         c.escortUnitId = "";
-        c._followVx = 0;
-        c._followVy = 0;
-        c._escortAnchorX = NaN;
-        c._escortAnchorY = NaN;
         continue;
       }
     }
@@ -19193,8 +18369,6 @@ function followCiviliansTick(){
       c.escortOwner = "player";
       c.escortUnitId = "";
     }
-    if(!Number.isFinite(c._followVx)) c._followVx = 0;
-    if(!Number.isFinite(c._followVy)) c._followVy = 0;
     activeFollowers.push(c);
   }
 
@@ -19269,23 +18443,11 @@ function followCiviliansTick(){
     c.fleeUntil = 0;
     c.fleeFromTigerId = 0;
 
-    // Smooth anchor to reduce twitching when player/camera turns quickly.
-    if(!Number.isFinite(c._escortAnchorX) || !Number.isFinite(c._escortAnchorY)){
-      c._escortAnchorX = anchor.x;
-      c._escortAnchorY = anchor.y;
-    } else {
-      const anchorDist = dist(c._escortAnchorX, c._escortAnchorY, anchor.x, anchor.y);
-      const anchorBlend = anchorDist > 90 ? 0.56 : (anchorDist > 46 ? 0.40 : 0.28);
-      c._escortAnchorX += (anchor.x - c._escortAnchorX) * anchorBlend;
-      c._escortAnchorY += (anchor.y - c._escortAnchorY) * anchorBlend;
-    }
-    const smoothAnchorX = c._escortAnchorX;
-    const smoothAnchorY = c._escortAnchorY;
-    let dx = smoothAnchorX - c.x;
-    let dy = smoothAnchorY - c.y;
+    let dx = anchor.x - c.x;
+    let dy = anchor.y - c.y;
     let dd = Math.hypot(dx,dy) || 1;
     if(dd > 245 && now > (c._lastEscortSnapAt || 0) + 1800){
-      const snap = findNearestOpenPoint(smoothAnchorX, smoothAnchorY, 14, {
+      const snap = findNearestOpenPoint(anchor.x, anchor.y, 14, {
         avoidKeepout:false,
         avoidWater:false,
         targetX:S.me.x,
@@ -19295,36 +18457,28 @@ function followCiviliansTick(){
         c.x = snap.x;
         c.y = snap.y;
         c._lastEscortSnapAt = now;
-        dx = smoothAnchorX - c.x;
-        dy = smoothAnchorY - c.y;
+        dx = anchor.x - c.x;
+        dy = anchor.y - c.y;
         dd = Math.hypot(dx,dy) || 1;
       }
     }
     const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
-    const escortWaterMul = Math.max(0.95, waterMul);
-    const catchup = clamp((dd - 8) * 0.078, 0, 6.3);
-    const trailBoost = dd > 170 ? 0.88 : (dd > 120 ? 0.52 : 0);
-    const spBase = Math.min(
-      ((Math.max(playerSpeed * 1.45, 3.45) + catchup + trailBoost) * escortBoost * escortWaterMul),
-      PLAYER_SPRINT_SPEED + 4.0
+    const escortWaterMul = Math.max(0.93, waterMul);
+    const catchup = clamp((dd - 10) * 0.07, 0, 5.4);
+    const trailBoost = dd > 170 ? 0.72 : (dd > 120 ? 0.40 : 0);
+    const sp = Math.min(
+      ((Math.max(playerSpeed * 1.16, 2.86) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      PLAYER_SPRINT_SPEED + 3.0
     );
-    const sp = spBase * tickMul;
-    const desiredVx = (dx/dd) * sp;
-    const desiredVy = (dy/dd) * sp;
-    const velBlend = dd > 120 ? 0.52 : 0.38;
-    c._followVx += (desiredVx - c._followVx) * velBlend;
-    c._followVy += (desiredVy - c._followVy) * velBlend;
-    const vx = c._followVx;
-    const vy = c._followVy;
+    const vx = (dx/dd) * sp;
+    const vy = (dy/dd) * sp;
     if(Math.hypot(vx, vy) > 0.02){
       c.face = Math.atan2(vy, vx);
       c.step = (c.step || 0) + clamp(Math.hypot(vx, vy) * 0.11, 0.04, 0.30);
     }
     const moved = tryMoveEntity(c, c.x + vx, c.y + vy, 14, { avoidKeepout:false });
     if(!moved){
-      c._followVx *= 0.42;
-      c._followVy *= 0.42;
-      const recover = findNearestOpenPoint(smoothAnchorX, smoothAnchorY, 14, {
+      const recover = findNearestOpenPoint(anchor.x, anchor.y, 14, {
         avoidKeepout:false,
         avoidWater:false,
         targetX:S.me.x,
@@ -19341,13 +18495,11 @@ function followCiviliansTick(){
 function moveCivilianInsideEvac(c){
   const ez = S.evacZone || DEFAULT.evacZone;
   if(!ez || !Number.isFinite(ez.x) || !Number.isFinite(ez.y)) return;
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
   const radius = Math.max(10, (ez.r || 70) - 14);
   const seed = ((Number(c.id || 1) * 97) % 360) * (Math.PI / 180);
   const laneR = Math.max(8, Math.min(radius * 0.56, 12 + ((Number(c.id || 1) % 5) * 6)));
-  const tx = clamp(ez.x + Math.cos(seed) * laneR, 24, worldW - 24);
-  const ty = clamp(ez.y + Math.sin(seed) * laneR, 24, worldH - 24);
+  const tx = clamp(ez.x + Math.cos(seed) * laneR, 24, cv.width - 24);
+  const ty = clamp(ez.y + Math.sin(seed) * laneR, 24, cv.height - 24);
   const spot = findNearestOpenPoint(tx, ty, 12, {
     avoidKeepout:false,
     avoidWater:false,
@@ -19613,11 +18765,6 @@ function roamTigers(){
   const barricades = activeBarricades(now);
   const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
   const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
-  const tigerBounds = worldBounds(18, S);
-  const tigerMinX = tigerBounds.minX;
-  const tigerMaxX = tigerBounds.maxX;
-  const tigerMinY = tigerBounds.minY;
-  const tigerMaxY = tigerBounds.maxY;
   const packStats = Object.create(null);
   for(const tiger of aliveTigers){
     if(!tiger.packId) continue;
@@ -19702,8 +18849,8 @@ function roamTigers(){
       if(now < (t._nextFarThinkAt || 0)){
         t.vx = (t.vx || 0) * 0.94;
         t.vy = (t.vy || 0) * 0.94;
-        t.x = clamp(t.x + t.vx, tigerMinX, tigerMaxX);
-        t.y = clamp(t.y + t.vy, tigerMinY, tigerMaxY);
+        t.x = clamp(t.x + t.vx, 40, cv.width - 40);
+        t.y = clamp(t.y + t.vy, 60, cv.height - 40);
         t.step = (t.step + 0.04) % (Math.PI * 2);
         continue;
       }
@@ -19915,8 +19062,8 @@ function roamTigers(){
       t.vx += nx * repel;
       t.vy += ny * repel;
       if(bd < fieldR * 0.64){
-        t.x = clamp(t.x + nx * 1.8, tigerMinX, tigerMaxX);
-        t.y = clamp(t.y + ny * 1.8, tigerMinY, tigerMaxY);
+        t.x = clamp(t.x + nx * 1.8, 40, cv.width - 40);
+        t.y = clamp(t.y + ny * 1.8, 60, cv.height - 40);
       }
     }
 
@@ -19962,10 +19109,10 @@ function roamTigers(){
     t.vx *= drag;
     t.vy *= drag;
 
-    if(t.x<tigerMinX||t.x>tigerMaxX) t.vx*=-1;
-    if(t.y<tigerMinY||t.y>tigerMaxY) t.vy*=-1;
-    t.x=clamp(t.x,tigerMinX,tigerMaxX);
-    t.y=clamp(t.y,tigerMinY,tigerMaxY);
+    if(t.x<40||t.x>cv.width-40) t.vx*=-1;
+    if(t.y<60||t.y>cv.height-40) t.vy*=-1;
+    t.x=clamp(t.x,40,cv.width-40);
+    t.y=clamp(t.y,60,cv.height-40);
     const gait = Math.hypot(t.vx, t.vy);
     const sprintingNow = (now < (t.burstUntil||0)) || (t.type==="Scout" && now < (t.dashUntil||0));
     const runMul = sprintingNow ? 1.35 : (gait > motion.chase * 0.84 ? 1.14 : (gait > motion.walk * 0.72 ? 0.94 : 0.70));
@@ -20034,11 +19181,10 @@ function survivalPressureTick(){
 // ===================== DAMAGE / RESPAWN =====================
 function pickRespawnPointAwayFromTigers(){
   const radius = 16;
-  const bounds = worldBounds(radius, S);
-  const minX = bounds.minX;
-  const maxX = bounds.maxX;
-  const minY = bounds.minY;
-  const maxY = bounds.maxY;
+  const minX = 60;
+  const maxX = cv.width - 60;
+  const minY = 90;
+  const maxY = cv.height - 70;
   const aliveTigers = (S.tigers || []).filter((t)=>t.alive);
 
   const candidates = [];
@@ -20077,7 +19223,7 @@ function pickRespawnPointAwayFromTigers(){
     }
   }
 
-  return best || safeSpawnPoint(worldWidth(S) * 0.16, worldHeight(S) * 0.78, radius, true, true);
+  return best || safeSpawnPoint(cv.width * 0.16, cv.height * 0.78, radius, true, true);
 }
 function startRespawnCountdown(){
   const now = Date.now();
@@ -20108,9 +19254,8 @@ function respawnTick(){
   S.hp = 100;
   S.armor = 20;
   S.stamina = 100;
-  const bounds = worldBounds(16, S);
-  S.me.x = clamp(S.respawnTargetX || (worldWidth(S) * 0.16), bounds.minX, bounds.maxX);
-  S.me.y = clamp(S.respawnTargetY || (worldHeight(S) * 0.78), bounds.minY, bounds.maxY);
+  S.me.x = clamp(S.respawnTargetX || (cv.width * 0.16), 60, cv.width - 60);
+  S.me.y = clamp(S.respawnTargetY || (cv.height * 0.78), 90, cv.height - 70);
   S.target = null;
   S.respawnPendingUntil = 0;
   S.respawnNoticeAt = 0;
@@ -20284,10 +19429,8 @@ function currentBattleCinematicTargetScale(){
 }
 
 function resolveBattleCinematicFocus(t){
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
-  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (worldW * 0.5);
-  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (worldH * 0.5);
+  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
+  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
   const tiger = t || activeTiger() || tigerById(S.lockedTigerId);
   let x = meX;
   let y = meY;
@@ -20296,8 +19439,8 @@ function resolveBattleCinematicFocus(t){
     y = (meY + tiger.y) * 0.5;
   }
   return {
-    x: clamp(x, 70, Math.max(70, worldW - 70)),
-    y: clamp(y, 70, Math.max(70, worldH - 70))
+    x: clamp(x, 70, Math.max(70, cv.width - 70)),
+    y: clamp(y, 70, Math.max(70, cv.height - 70))
   };
 }
 
@@ -20316,8 +19459,8 @@ function resetBattleCinematic(){
   BATTLE_CINEMATIC.fromScale = 1;
   BATTLE_CINEMATIC.toScale = 1;
   BATTLE_CINEMATIC.scale = 1;
-  BATTLE_CINEMATIC.focusX = Number.isFinite(S?.me?.x) ? S.me.x : (worldWidth(S) * 0.5);
-  BATTLE_CINEMATIC.focusY = Number.isFinite(S?.me?.y) ? S.me.y : (worldHeight(S) * 0.5);
+  BATTLE_CINEMATIC.focusX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
+  BATTLE_CINEMATIC.focusY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
 }
 
 function triggerBattleCinematic(kind="enter", focusTigerId=null){
@@ -20352,7 +19495,7 @@ function triggerBattleCinematic(kind="enter", focusTigerId=null){
 function sampleBattleCinematic(){
   if(!ENABLE_BATTLE_CINEMATIC){
     resetBattleCinematic();
-    return { active:false, scale:1, x:worldWidth(S) * 0.5, y:worldHeight(S) * 0.5 };
+    return { active:false, scale:1, x:cv.width * 0.5, y:cv.height * 0.5 };
   }
   const now = Date.now();
   let scale = battleCinematicScaleNow(now);
@@ -20380,8 +19523,8 @@ function sampleBattleCinematic(){
   return {
     active,
     scale: BATTLE_CINEMATIC.scale,
-    x: Number.isFinite(BATTLE_CINEMATIC.focusX) ? BATTLE_CINEMATIC.focusX : (worldWidth(S) * 0.5),
-    y: Number.isFinite(BATTLE_CINEMATIC.focusY) ? BATTLE_CINEMATIC.focusY : (worldHeight(S) * 0.5)
+    x: Number.isFinite(BATTLE_CINEMATIC.focusX) ? BATTLE_CINEMATIC.focusX : (cv.width * 0.5),
+    y: Number.isFinite(BATTLE_CINEMATIC.focusY) ? BATTLE_CINEMATIC.focusY : (cv.height * 0.5)
   };
 }
 
@@ -20640,8 +19783,6 @@ function tickDamagePopups(){
   const lagTier = frameLagTier();
   const lagFade = lagTier >= 2 ? 1.7 : (lagTier >= 1 ? 1.35 : 1);
   const idleFade = (S.paused || S.missionEnded || S.gameOver || !S.inBattle) ? (3.2 * lagFade) : lagFade;
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
   for(const p of DAMAGE_POPUPS){
     p.ttl -= idleFade;
     p.y += p.vy;
@@ -20653,7 +19794,7 @@ function tickDamagePopups(){
       DAMAGE_POPUPS.splice(i, 1);
       continue;
     }
-    if(p.y < -40 || p.y > (worldH + 120) || p.x < -120 || p.x > (worldW + 120)){
+    if(p.y < -40 || p.y > (cv.height + 120) || p.x < -120 || p.x > (cv.width + 120)){
       DAMAGE_POPUPS.splice(i, 1);
     }
   }
@@ -20793,17 +19934,15 @@ function renderCombatControls(){
   const combatButtons = document.getElementById("combatButtons");
   const inCombat = !!S.inBattle;
   const hideTouchUi = controllerOwnsUi();
-  const touchMode = isMobileViewport();
-  const touchVisible = touchMode && !hideTouchUi;
-  if(touchOverlay) touchOverlay.style.display = touchVisible ? "block" : "none";
-  if(touchHint) touchHint.style.display = touchVisible ? "block" : "none";
-  if(mapCluster) mapCluster.style.display = touchVisible ? (inCombat ? "none" : "grid") : "none";
-  if(combatCluster) combatCluster.style.display = touchVisible ? (inCombat ? "grid" : "none") : "none";
-  if(cacheBtn) cacheBtn.style.display = touchVisible ? (inCombat ? "none" : "flex") : "none";
-  if(squadWheelBtn) squadWheelBtn.style.display = touchVisible ? (inCombat ? "none" : "flex") : "none";
-  if(actionButtons) actionButtons.style.display = (!touchMode && !hideTouchUi && !inCombat) ? "flex" : "none";
-  if(combatButtons) combatButtons.style.display = (!touchMode && !hideTouchUi && inCombat) ? "flex" : "none";
-  if(!touchVisible || inCombat || S.paused || S.gameOver || S.missionEnded){
+  if(touchOverlay) touchOverlay.style.display = hideTouchUi ? "none" : "block";
+  if(touchHint) touchHint.style.display = hideTouchUi ? "none" : "block";
+  if(mapCluster) mapCluster.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "grid");
+  if(combatCluster) combatCluster.style.display = hideTouchUi ? "none" : (inCombat ? "grid" : "none");
+  if(cacheBtn) cacheBtn.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "flex");
+  if(squadWheelBtn) squadWheelBtn.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "flex");
+  if(actionButtons) actionButtons.style.display = (hideTouchUi || inCombat) ? "none" : "";
+  if(combatButtons) combatButtons.style.display = hideTouchUi ? "none" : (inCombat ? "flex" : "none");
+  if(hideTouchUi || inCombat || S.paused || S.gameOver || S.missionEnded){
     closeSquadCommandWheel();
   } else if(isSquadCommandWheelOpen()){
     positionSquadCommandWheel();
@@ -21060,127 +20199,6 @@ function canCaptureTiger(t){
   const w=equippedWeapon();
   if(w.type!=="tranq") return false;
   return S.mag.loaded > 0 || (S.ammoReserve[w.ammo]||0) > 0;
-}
-function coreNormalizeCombatWeapon(weaponLike){
-  if(weaponLike && typeof weaponLike === "object"){
-    if(weaponLike.id){
-      const byId = getWeapon(weaponLike.id);
-      if(byId) return byId;
-    }
-    return weaponLike;
-  }
-  if(typeof weaponLike === "string" && weaponLike){
-    return getWeapon(weaponLike) || equippedWeapon();
-  }
-  return equippedWeapon();
-}
-function coreNormalizeCombatTiger(tigerLike){
-  if(!tigerLike || typeof tigerLike !== "object") return null;
-  const t = { ...tigerLike };
-  if(!Number.isFinite(Number(t.hpMax || 0))){
-    t.hpMax = Math.max(1, Number(t.hp || 1));
-  }
-  if(!Number.isFinite(Number(t.hp || 0))){
-    t.hp = Math.max(0, Number(t.hpMax || 1));
-  }
-  if(!t.type){
-    t.type = t.isBoss ? "Boss" : "Standard";
-  }
-  if(!Number.isFinite(Number(t.bossPhases || 0))){
-    t.bossPhases = t.isBoss ? 3 : 0;
-  }else if(Number(t.bossPhases || 0) <= 0 && t.isBoss){
-    t.bossPhases = 3;
-  }
-  return t;
-}
-function coreCombatResolveAttackHit(weaponLike, tigerLike){
-  const w = coreNormalizeCombatWeapon(weaponLike);
-  const t = coreNormalizeCombatTiger(tigerLike);
-  if(!w || !t) return { damage:0, crit:false, isTranq:false, stealthReduced:false };
-  const eff = ammoEffectFor(w.ammo);
-  let dmg = rand(w.dmg?.[0] ?? 8, w.dmg?.[1] ?? 12);
-  dmg *= perkDamageMul();
-  dmg *= arcadeBuildcraftMul("damageOutMul", 1);
-  const crit = Math.random() < (eff.crit + perkCritBonus() + arcadeBuildcraftCritBonus());
-  if(crit) dmg = Math.round(dmg * 1.6);
-  dmg = Math.round(dmg * eff.dmgMul);
-
-  const isTranq = w.type === "tranq";
-  if(isTranq){
-    dmg = Math.round(dmg * eff.tranq);
-  }
-
-  dmg = Math.max(6, Math.round(dmg / carcassDifficulty()));
-  dmg = Math.max(4, Math.round(dmg / tigerDefenseScale(t)));
-  if(t.type === "Berserker" && (Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1))) < 0.35){
-    dmg = Math.max(4, Math.round(dmg * 0.88));
-  }
-  if(isBossTiger(t)){
-    dmg = Math.max(3, Math.round(dmg * 0.88));
-  }
-  let stealthReduced = false;
-  if(isBossTiger(t) && bossStealthActive(t)){
-    dmg = Math.max(2, Math.round(dmg * 0.62));
-    stealthReduced = true;
-  }
-  return { damage:dmg, crit, isTranq, stealthReduced };
-}
-function coreCombatAttackCooldownMs(weaponLike){
-  const w = coreNormalizeCombatWeapon(weaponLike);
-  const range = Math.max(70, Number(w?.range || 120));
-  const mag = Math.max(1, Math.floor(Number(w?.mag || 8)));
-  const isTranq = String(w?.type || "lethal") === "tranq";
-  if(isTranq){
-    if(range >= 180) return 640;
-    if(range >= 150) return 520;
-    return 430;
-  }
-  if(range <= 110) return mag <= 6 ? 520 : 340;
-  if(range <= 180) return mag >= 24 ? 220 : 300;
-  return mag <= 4 ? 820 : 560;
-}
-function coreCombatCaptureCooldownMs(weaponLike){
-  const w = coreNormalizeCombatWeapon(weaponLike);
-  const range = Math.max(70, Number(w?.range || 120));
-  if(String(w?.type || "lethal") !== "tranq") return 520;
-  if(range >= 180) return 860;
-  if(range >= 150) return 740;
-  return 620;
-}
-function coreCombatTrapHoldMs(){
-  return Math.round(rand(3000, 5000) * arcadeBuildcraftMul("trapHoldMul", 1));
-}
-function coreShieldBlocksTarget(targetType="player", distancePx=0, following=false){
-  if(!shieldActiveNow()) return false;
-  if(targetType === "player") return true;
-  if(targetType === "civilian"){
-    if(following) return true;
-    return Number(distancePx || 0) <= SHIELD_RADIUS;
-  }
-  return false;
-}
-function coreActivateShieldFor3D(){
-  if((S.shields || 0) <= 0){
-    return { ok:false, reason:"no_shields", message:"No shields left. Buy more in Shop." };
-  }
-  if(abilityOnCooldown("shield")){
-    return { ok:false, reason:"cooldown", message:`Shield cooling down (${abilityCooldownLabel("shield")}).` };
-  }
-  S.shields = Math.max(0, (S.shields || 0) - 1);
-  S.shieldUntil = Date.now() + SHIELD_DURATION_MS;
-  triggerAbilityCooldown("shield");
-  save();
-  return { ok:true, shieldUntil:S.shieldUntil, shields:S.shields };
-}
-function coreConsumeTrapFor3D(){
-  if((S.trapsOwned || 0) <= 0){
-    return { ok:false, reason:"no_traps", message:"No traps. Buy in shop." };
-  }
-  S.trapsOwned = Math.max(0, (S.trapsOwned || 0) - 1);
-  S.stats.trapsPlaced = (S.stats.trapsPlaced || 0) + 1;
-  addContractTally("trapsPlaced", 1);
-  save();
-  return { ok:true, trapsOwned:S.trapsOwned };
 }
 function tutorialCaptureWindowReady(){
   const t = tigerById(S.activeTigerId);
@@ -22113,11 +21131,7 @@ function renderHUD(){
   const shieldLabel = shieldActiveNow() ? `${S.shields||0} • ACTIVE (${shieldSecs}s)` : `${S.shields||0}`;
   document.getElementById("shieldTxt").innerText = shieldLabel;
 
-  const compactHud = isMobileViewport();
-  const compactBattleHud = compactHud && S.inBattle;
-  const backupVerbose = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
-  const backupCompact = `Plates ${totalArmorPlates()} • A ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} • R ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")}`;
-  document.getElementById("backupTxt").innerText = compactHud ? backupCompact : backupVerbose;
+  document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
   const canShieldUse = !S.paused && !S.missionEnded && !S.gameOver && (S.shields||0)>0 && !abilityOnCooldown("shield");
   const canArmorQuickUse = canQuickUseArmorPlate();
   const shieldDisabled = !(canShieldUse || canArmorQuickUse);
@@ -22204,25 +21218,13 @@ function renderHUD(){
     ? ` • Timer ${arcadeLeft}s • Mult x${arcadeMult.toFixed(1)} • Medal ${arcadeMedal}${arcadeMission?.weeklySeed ? ` • Seed ${arcadeMission.weeklySeedKey}` : ""}`
     : "";
   document.getElementById("objTxt").innerText =
-    compactHud
-      ? (
-          (S.mode==="Survival")
-            ? `Wave ${S.survivalWave} • Survive pressure`
-            : (S.mode==="Story")
-              ? `Story ${storyMission?.number || S.storyLevel}/100 • Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}${grace}`
-            : (S.mode==="Arcade")
-              ? `Arcade ${arcadeMission?.number || S.arcadeLevel}/100 • ${arcadeLeft}s • x${arcadeMult.toFixed(1)}`
-              : `Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}${grace}`
-        )
-      : (
-          (S.mode==="Survival")
-            ? `Objective: Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
-            : (S.mode==="Story")
-              ? `Objective: ${storyObjective}${grace}`
-            : (S.mode==="Arcade")
-              ? `Objective: ${arcadeObjective}${arcadeHint}${grace}`
-              : `Objective: Evacuate living civilians + clear ALL tigers${grace}`
-        );
+    (S.mode==="Survival")
+      ? `Objective: Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
+      : (S.mode==="Story")
+        ? `Objective: ${storyObjective}${grace}`
+      : (S.mode==="Arcade")
+        ? `Objective: ${arcadeObjective}${arcadeHint}${grace}`
+        : `Objective: Evacuate living civilians + clear ALL tigers${grace}`;
   const storyOpsEl = document.getElementById("storyOpsTxt");
   if(storyOpsEl){
     if(S.mode==="Story" && storyMission){
@@ -22250,9 +21252,7 @@ function renderHUD(){
   if(S.dangerCivId && S.mode!=="Survival"){
     const civ = S.civilians.find(c=>c.id===S.dangerCivId);
     const d = civ ? Math.round(dist(S.me.x,S.me.y,civ.x,civ.y)) : null;
-    document.getElementById("dangerTxt").innerText = civ
-      ? (compactHud ? `⚠️ Civ #${civ.id} under attack (${d}m)` : `⚠️ Civilian #${civ.id} under attack near ${civ.rescueLabel || "the rescue site"}! Distance: ${d}`)
-      : "";
+    document.getElementById("dangerTxt").innerText = civ ? `⚠️ Civilian #${civ.id} under attack near ${civ.rescueLabel || "the rescue site"}! Distance: ${d}` : "";
   } else {
     document.getElementById("dangerTxt").innerText = "";
   }
@@ -22391,17 +21391,8 @@ function renderHUD(){
   if(abilityOnCooldown("shield")) cooldownBits.push(`Shield ${abilityCooldownLabel("shield")}`);
   if(cooldownBits.length) assistParts.push(cooldownBits.join(" • "));
 
-  document.getElementById("assistTxt").innerText =
-    compactHud
-      ? (assistParts[0] || "Scan, lock a tiger, and keep civilians moving to evac.")
-      : (assistParts.slice(0,3).join(" • ") || "Sweep the map, scan, and keep pressure off civilians.");
+  document.getElementById("assistTxt").innerText = assistParts.slice(0,3).join(" • ") || "Sweep the map, scan, and keep pressure off civilians.";
   document.getElementById("eventTxt").innerText = S.eventText ? `EVENT: ${S.eventText}` : "";
-  const seasonHudLine = document.getElementById("seasonHudTxt");
-  const storyOpsLine = document.getElementById("storyOpsTxt");
-  const eventLine = document.getElementById("eventTxt");
-  if(seasonHudLine) seasonHudLine.style.display = compactBattleHud ? "none" : "";
-  if(storyOpsLine) storyOpsLine.style.display = compactBattleHud ? "none" : "";
-  if(eventLine) eventLine.style.display = compactBattleHud ? "none" : "";
 
   const mobilePlayerHpValue = document.getElementById("mobilePlayerHpValue");
   const mobilePlayerHpBar = document.getElementById("mobilePlayerHpBar");
@@ -22542,22 +21533,6 @@ function maybeRenderHUD(force=false){
 }
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
-function rounded(x,y,ww,hh,r,fill,stroke=null){
-  ctx.beginPath();
-  ctx.moveTo(x+r,y);
-  ctx.arcTo(x+ww,y,x+ww,y+hh,r);
-  ctx.arcTo(x+ww,y+hh,x,y+hh,r);
-  ctx.arcTo(x,y+hh,x,y,r);
-  ctx.arcTo(x,y,x+ww,y,r);
-  ctx.closePath();
-  ctx.fillStyle=fill;
-  ctx.fill();
-  if(stroke){
-    ctx.strokeStyle=stroke;
-    ctx.lineWidth=2;
-    ctx.stroke();
-  }
-}
 function drawMissionTwistOverlay(now=Date.now()){
   const tw = ensureMissionTwistState(S);
   ctx.save();
@@ -22580,24 +21555,14 @@ function drawMissionTwistOverlay(now=Date.now()){
     ctx.arc(tw.bridge.x, tw.bridge.y, Math.max(20, tw.bridge.r - 9), 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
-    // Smaller caution marker to avoid the "hard-stop error X" look on mobile.
-    ctx.fillStyle = "rgba(252,165,165,.92)";
+    ctx.strokeStyle = "rgba(255,220,220,.92)";
+    ctx.lineWidth = 2.2;
     ctx.beginPath();
-    ctx.moveTo(tw.bridge.x, tw.bridge.y - (tw.bridge.r * 0.18));
-    ctx.lineTo(tw.bridge.x + (tw.bridge.r * 0.14), tw.bridge.y + (tw.bridge.r * 0.10));
-    ctx.lineTo(tw.bridge.x - (tw.bridge.r * 0.14), tw.bridge.y + (tw.bridge.r * 0.10));
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,235,235,.95)";
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(tw.bridge.x, tw.bridge.y - (tw.bridge.r * 0.10));
-    ctx.lineTo(tw.bridge.x, tw.bridge.y + (tw.bridge.r * 0.03));
+    ctx.moveTo(tw.bridge.x - (tw.bridge.r * 0.52), tw.bridge.y - (tw.bridge.r * 0.52));
+    ctx.lineTo(tw.bridge.x + (tw.bridge.r * 0.52), tw.bridge.y + (tw.bridge.r * 0.52));
+    ctx.moveTo(tw.bridge.x + (tw.bridge.r * 0.52), tw.bridge.y - (tw.bridge.r * 0.52));
+    ctx.lineTo(tw.bridge.x - (tw.bridge.r * 0.52), tw.bridge.y + (tw.bridge.r * 0.52));
     ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(tw.bridge.x, tw.bridge.y + (tw.bridge.r * 0.08), 1.4, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,235,235,.95)";
-    ctx.fill();
     rounded(tw.bridge.x - 78, tw.bridge.y - tw.bridge.r - 34, 156, 24, 11, "rgba(44,8,12,.90)", "rgba(253,164,175,.82)");
     ctx.fillStyle = "rgba(255,226,231,.98)";
     ctx.textAlign = "center";
@@ -22628,45 +21593,20 @@ function drawMissionTwistOverlay(now=Date.now()){
   }
   if(tw.blackout.active && now < (tw.blackout.until || 0)){
     const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - now) / 1000));
-    const mobile = isMobileViewport();
-    const heavy = mobile && (performanceMode() === "PERFORMANCE" || frameLagTier() >= 1 || frameIsSlow());
-    const minimalMode = BLACKOUT_VISUAL_MINIMAL_MODE && (mobile || heavy || performanceMode() === "PERFORMANCE");
-    const worldW = worldWidth(S);
-    const worldH = worldHeight(S);
-    // Keep blackout readable/playable: never obscure map on mobile.
-    if(!minimalMode){
-      ctx.globalAlpha = 0.03;
-      ctx.fillStyle = "rgba(8,12,22,.90)";
-      ctx.fillRect(0, 0, worldW, worldH);
-      ctx.globalAlpha = 0.10;
-      ctx.strokeStyle = "rgba(148,163,184,.28)";
-      ctx.lineWidth = 1;
-      for(let y=12; y<worldH; y+=30){
-        ctx.beginPath();
-        ctx.moveTo(0, y + (Math.sin((now * 0.003) + (y * 0.012)) * 1.2));
-        ctx.lineTo(worldW, y + (Math.sin((now * 0.003) + (y * 0.012)) * 1.2));
-        ctx.stroke();
-      }
-    }
-
-    rounded(16, 16, 360, 40, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.76)");
-    ctx.globalAlpha = 0.98;
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = "rgba(6,9,16,.98)";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    rounded(16, 16, 194, 24, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.7)");
+    ctx.globalAlpha = 0.96;
     ctx.fillStyle = "rgba(226,232,240,.96)";
     ctx.font = "900 11px system-ui";
-    ctx.fillText(`📻 RADIO BLACKOUT ${left}s`, 26, 35);
-    ctx.fillStyle = "rgba(186,198,214,.96)";
-    ctx.font = "700 10px system-ui";
-    ctx.fillText("Scan + map devices offline. Movement/combat still active.", 26, 52);
+    ctx.fillText(`📻 RADIO BLACKOUT ${left}s`, 26, 32);
   }
   ctx.restore();
 }
 function drawMapScene(){
   const frameNow = Date.now();
-  const viewportW = cv.width;
-  const viewportH = cv.height;
-  const w = Math.max(viewportW, worldWidth(S));
-  const h = Math.max(viewportH, worldHeight(S));
-  const canCacheScene = (w === viewportW && h === viewportH);
+  const w=cv.width, h=cv.height;
   const mapInfo = currentMap();
   const key = mapInfo.key;
   const missionIndex = missionIndexForMode(S.mode);
@@ -22674,32 +21614,9 @@ function drawMapScene(){
   const chapterStyle = chapterVisualForMode(S.mode, chapter);
   const ez = S.evacZone || DEFAULT.evacZone;
   const tw = ensureMissionTwistState(S);
-  const mobile = isMobileViewport();
-  const lagTier = frameLagTier();
-  const perfMode = performanceMode() === "PERFORMANCE";
-  const slowFrame = frameIsSlow();
-  const mapLiteTier = (() => {
-    if(MOBILE_2D_HARD_STABLE_MODE && mobile){
-      // Keep map render lightweight and deterministic on phones.
-      return 2;
-    }
-    if(mobile && (lagTier >= 2) && (slowFrame || __frameLagScore >= FRAME_LAG_CRITICAL_SCORE)) return 3;
-    if(mobile && (lagTier >= 2 || perfMode || slowFrame)) return 2;
-    if(mobile && lagTier >= 1) return 1;
-    return 0;
-  })();
-  const liteMap = mapLiteTier >= 1;
-  const ultraLiteMap = mapLiteTier >= 2;
-  const emergencyLiteMap = (mapLiteTier >= 3) && !(mobile && S.mode === "Story");
-  if(emergencyLiteMap){
-    // Draw in world space so camera offsets do not leave blank regions.
-    drawEmergencyMapBase(w, h, { showNotice:false });
-    return;
-  }
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
-    mapLiteTier,
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0,
     tw.activeType || "",
     tw.bridge.active ? 1 : 0,
@@ -22715,20 +21632,21 @@ function drawMapScene(){
     tw.blackout.active ? 1 : 0,
     Math.max(0, Math.ceil(((tw.blackout.until || 0) - frameNow) / 1000))
   ].join("|");
+  const lagTier = frameLagTier();
+  const mobile = isMobileViewport();
   let cacheAgeCap = frameIsSlow()
     ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 640 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 520 : 360))
     : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 320 : MAP_CACHE_INTERVAL_MS);
   if(mobile){
     if(lagTier >= 2){
-      cacheAgeCap = Math.max(cacheAgeCap, 2200);
+      cacheAgeCap = Math.max(cacheAgeCap, 1500);
     } else if(lagTier >= 1 || frameIsSlow()){
-      cacheAgeCap = Math.max(cacheAgeCap, 1650);
+      cacheAgeCap = Math.max(cacheAgeCap, 1150);
     } else {
-      cacheAgeCap = Math.max(cacheAgeCap, 900);
+      cacheAgeCap = Math.max(cacheAgeCap, 560);
     }
   }
   const canUseCache =
-    canCacheScene &&
     !!__mapFrameCacheCanvas &&
     __mapFrameCacheSig === cacheSig &&
     (frameNow - __mapFrameCacheAt) < cacheAgeCap;
@@ -22737,15 +21655,12 @@ function drawMapScene(){
     return;
   }
   const hasAnyCache =
-    canCacheScene &&
     !!__mapFrameCacheCanvas &&
     Number.isFinite(__mapFrameCacheAt) &&
     __mapFrameCacheAt > 0;
   if(hasAnyCache){
     const staleAge = frameNow - __mapFrameCacheAt;
-    // Mobile emergency stale-cache reuse can cause visible map ghosting/duplication.
-    // Prefer fresh draws there and only keep stale emergency path for desktop.
-    const emergencyReuse = (!mobile) && (frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4));
+    const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
     const emergencyMaxAge = mobile
       ? (lagTier >= 2 ? 4600 : (lagTier >= 1 ? 3600 : 2800))
       : (lagTier >= 2 ? 1800 : 1300);
@@ -22770,12 +21685,6 @@ function drawMapScene(){
     }
     return { fill:"rgba(25,90,105,.62)", edge:"rgba(147,217,247,.58)", glint:"rgba(186,230,253,.26)" };
   })();
-  const sxBase = (v)=> v * (w / WORLD_BASE_WIDTH);
-  const syBase = (v)=> v * (h / WORLD_BASE_HEIGHT);
-  const scalePoint = (x, y)=>[sxBase(x), syBase(y)];
-  const scalePath = (pts)=>pts.map(([x, y])=>scalePoint(x, y));
-  const scalePathX = (pts)=>pts.map(([x, y])=>[sxBase(x), y]);
-  const worldSizeMul = clamp(((w / WORLD_BASE_WIDTH) + (h / WORLD_BASE_HEIGHT)) * 0.5, 1, 1.75);
 
   function fillSolid(color){ ctx.fillStyle=color; ctx.fillRect(0,0,w,h); }
   function seedNoise(ix, iy, seed=0){
@@ -22794,6 +21703,17 @@ function drawMapScene(){
       }
     }
     ctx.globalAlpha = 1;
+  }
+  function rounded(x,y,ww,hh,r,fill,stroke=null){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+ww,y,x+ww,y+hh,r);
+    ctx.arcTo(x+ww,y+hh,x,y+hh,r);
+    ctx.arcTo(x,y+hh,x,y,r);
+    ctx.arcTo(x,y,x+ww,y,r);
+    ctx.closePath();
+    ctx.fillStyle=fill; ctx.fill();
+    if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.stroke(); }
   }
   function groundShadow(x, y, rx, ry, alpha=0.24){
     ctx.save();
@@ -22857,15 +21777,6 @@ function drawMapScene(){
     }
     ctx.globalAlpha = 1;
     ctx.restore();
-  }
-  function detailCount(base, min=0){
-    const mul = ultraLiteMap ? 0.42 : (liteMap ? 0.70 : 1);
-    return Math.max(min, Math.round(base * mul));
-  }
-  function detailAlpha(base){
-    if(ultraLiteMap) return base * 0.55;
-    if(liteMap) return base * 0.78;
-    return base;
   }
   function roadLine(points,width,fill){
     ctx.strokeStyle=fill; ctx.lineWidth=width; ctx.lineCap="round"; ctx.lineJoin="round";
@@ -22949,8 +21860,6 @@ function drawMapScene(){
   function drawWaterBodies(alphaMul=1){
     if(!waterZones.length) return;
     const mul = clamp(alphaMul, 0.35, 1.2);
-    const lowDetail = ultraLiteMap;
-    const midDetail = liteMap && !ultraLiteMap;
     const wavePhase = (Date.now() * 0.00135);
     ctx.save();
     for(const zone of waterZones){
@@ -22982,49 +21891,47 @@ function drawMapScene(){
       ctx.ellipse(zone.x, zone.y, rx * 0.98, ry * 0.98, rot, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.globalAlpha = (lowDetail ? 0.45 : 0.56) * mul;
+      ctx.globalAlpha = 0.56 * mul;
       ctx.strokeStyle = waterPalette.edge;
-      ctx.lineWidth = lowDetail ? 1.4 : 2;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.ellipse(zone.x, zone.y, Math.max(8, rx - 2), Math.max(6, ry - 2), rot, 0, Math.PI * 2);
       ctx.stroke();
 
-      if(!lowDetail){
-        ctx.globalAlpha = (midDetail ? 0.30 : 0.42) * mul;
-        ctx.strokeStyle = waterPalette.glint;
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.ellipse(
-          zone.x - (rx * 0.12) + (Math.sin(wavePhase + (zone.x * 0.01)) * 2.4),
-          zone.y - (ry * 0.08) + (Math.cos(wavePhase + (zone.y * 0.01)) * 1.8),
-          Math.max(6, rx * 0.54),
-          Math.max(4, ry * 0.30),
-          rot,
-          0,
-          Math.PI * 2
-        );
-        ctx.stroke();
+      ctx.globalAlpha = 0.42 * mul;
+      ctx.strokeStyle = waterPalette.glint;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(
+        zone.x - (rx * 0.12) + (Math.sin(wavePhase + (zone.x * 0.01)) * 2.4),
+        zone.y - (ry * 0.08) + (Math.cos(wavePhase + (zone.y * 0.01)) * 1.8),
+        Math.max(6, rx * 0.54),
+        Math.max(4, ry * 0.30),
+        rot,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
 
-        ctx.globalAlpha = (midDetail ? 0.22 : 0.34) * mul;
-        ctx.strokeStyle = "rgba(186,230,253,.55)";
-        ctx.lineWidth = 1.2;
-        const ripple = 0.78 + (Math.sin(wavePhase * 2 + (zone.x * 0.006) + (zone.y * 0.004)) * 0.06);
-        ctx.beginPath();
-        ctx.ellipse(zone.x, zone.y, Math.max(8, rx * ripple), Math.max(6, ry * ripple), rot, 0, Math.PI * 2);
-        ctx.stroke();
+      ctx.globalAlpha = 0.34 * mul;
+      ctx.strokeStyle = "rgba(186,230,253,.55)";
+      ctx.lineWidth = 1.2;
+      const ripple = 0.78 + (Math.sin(wavePhase * 2 + (zone.x * 0.006) + (zone.y * 0.004)) * 0.06);
+      ctx.beginPath();
+      ctx.ellipse(zone.x, zone.y, Math.max(8, rx * ripple), Math.max(6, ry * ripple), rot, 0, Math.PI * 2);
+      ctx.stroke();
 
-        ctx.globalAlpha = (midDetail ? 0.14 : 0.22) * mul;
-        ctx.strokeStyle = "rgba(220,245,255,.52)";
-        ctx.lineWidth = 1;
-        const stripCount = midDetail ? 2 : 4;
-        for(let si=0; si<stripCount; si++){
-          const t = (si + 1) / (stripCount + 1);
-          const ly = zone.y - (ry * 0.55) + (ry * 1.1 * t) + (Math.sin(wavePhase + si + (zone.x * 0.002)) * 1.6);
-          ctx.beginPath();
-          ctx.moveTo(zone.x - (rx * 0.54), ly);
-          ctx.quadraticCurveTo(zone.x, ly + (Math.sin(wavePhase * 1.3 + si) * 2.2), zone.x + (rx * 0.54), ly);
-          ctx.stroke();
-        }
+      ctx.globalAlpha = 0.22 * mul;
+      ctx.strokeStyle = "rgba(220,245,255,.52)";
+      ctx.lineWidth = 1;
+      const stripCount = 4;
+      for(let si=0; si<stripCount; si++){
+        const t = (si + 1) / (stripCount + 1);
+        const ly = zone.y - (ry * 0.55) + (ry * 1.1 * t) + (Math.sin(wavePhase + si + (zone.x * 0.002)) * 1.6);
+        ctx.beginPath();
+        ctx.moveTo(zone.x - (rx * 0.54), ly);
+        ctx.quadraticCurveTo(zone.x, ly + (Math.sin(wavePhase * 1.3 + si) * 2.2), zone.x + (rx * 0.54), ly);
+        ctx.stroke();
       }
     }
     ctx.restore();
@@ -23175,27 +22082,22 @@ function drawMapScene(){
     fillSolid("#0f2b1c");
     ctx.fillStyle="rgba(18,66,40,.34)";
     ctx.fillRect(0,0,w,h);
-    if(!ultraLiteMap){
-      terrainTexture(11, liteMap ? 42 : 30, detailAlpha(0.09), "rgba(74,222,128,.10)", "rgba(0,0,0,.12)");
-    }
-    terrainBands(11, detailCount(5, 2), detailAlpha(0.07));
-    terrainPatches(11, detailCount(16, 5), detailAlpha(0.11), "rgba(180,235,160,.14)", "rgba(15,38,20,.18)");
-    scatterPebbles(11, detailCount(86, 24), detailAlpha(0.12), "rgba(168,212,156,.36)", "rgba(8,18,10,.34)");
+    terrainTexture(11, 30, 0.09, "rgba(74,222,128,.10)", "rgba(0,0,0,.12)");
+    terrainBands(11, 5, 0.07);
+    terrainPatches(11, 16, 0.11, "rgba(180,235,160,.14)", "rgba(15,38,20,.18)");
+    scatterPebbles(11, 86, 0.12, "rgba(168,212,156,.36)", "rgba(8,18,10,.34)");
     const upperRoad = h * 0.18;
     const midRoad = h * 0.43;
     const lowRoad = h * 0.72;
-    const roadA = scalePathX([[0,upperRoad],[240,upperRoad + syBase(70)],[470,upperRoad + syBase(28)],[720,upperRoad + syBase(92)],[960,upperRoad + syBase(52)]]);
-    const roadB = scalePathX([[60,midRoad],[260,midRoad - syBase(40)],[450,midRoad - syBase(10)],[610,midRoad - syBase(70)],[820,midRoad - syBase(40)],[940,midRoad - syBase(100)]]);
-    const roadC = scalePathX([[50,lowRoad],[260,lowRoad - syBase(34)],[450,lowRoad - syBase(8)],[610,lowRoad - syBase(58)],[820,lowRoad - syBase(26)],[940,lowRoad - syBase(82)]]);
-    const roadMul = clamp(worldSizeMul, 1, 1.4);
-    roadShoulder(roadA, 48 * roadMul); roadLine(roadA, 48 * roadMul, "rgba(80,60,38,.85)");
-    roadShoulder(roadB, 62 * roadMul); roadLine(roadB, 62 * roadMul, "rgba(90,70,45,.85)");
-    roadShoulder(roadC, 56 * roadMul); roadLine(roadC, 56 * roadMul, "rgba(84,66,42,.82)");
-    if(!ultraLiteMap){
-      roadWear(roadA, 48 * roadMul, 11);
-      roadWear(roadB, 62 * roadMul, 19);
-      roadWear(roadC, 56 * roadMul, 27);
-    }
+    const roadA = [[0,upperRoad],[240,upperRoad + 70],[470,upperRoad + 28],[720,upperRoad + 92],[960,upperRoad + 52]];
+    const roadB = [[60,midRoad],[260,midRoad - 40],[450,midRoad - 10],[610,midRoad - 70],[820,midRoad - 40],[940,midRoad - 100]];
+    const roadC = [[50,lowRoad],[260,lowRoad - 34],[450,lowRoad - 8],[610,lowRoad - 58],[820,lowRoad - 26],[940,lowRoad - 82]];
+    roadShoulder(roadA, 48); roadLine(roadA, 48, "rgba(80,60,38,.85)");
+    roadShoulder(roadB, 62); roadLine(roadB, 62, "rgba(90,70,45,.85)");
+    roadShoulder(roadC, 56); roadLine(roadC, 56, "rgba(84,66,42,.82)");
+    roadWear(roadA, 48, 11);
+    roadWear(roadB, 62, 19);
+    roadWear(roadC, 56, 27);
     const trees = [
       [90,h*0.08],[140,h*0.11],[210,h*0.08],[300,h*0.13],[360,h*0.08],[420,h*0.14],[520,h*0.10],[610,h*0.13],[700,h*0.09],[780,h*0.14],[880,h*0.11],
       [120,h*0.24],[200,h*0.26],[280,h*0.24],[360,h*0.27],[440,h*0.24],[520,h*0.27],[600,h*0.24],[700,h*0.26],[820,h*0.24],
@@ -23204,57 +22106,45 @@ function drawMapScene(){
       [110,h*0.74],[210,h*0.72],[320,h*0.75],[420,h*0.73],[520,h*0.74],[650,h*0.72],[760,h*0.75],[880,h*0.73],
       [90,h*0.88],[170,h*0.91],[290,h*0.88],[410,h*0.90],[520,h*0.87],[660,h*0.90],[780,h*0.88],[900,h*0.91],
     ];
-    for(let ti=0; ti<trees.length; ti += (ultraLiteMap ? 3 : (liteMap ? 2 : 1))){
-      const [x, y] = trees[ti];
-      const tx = sxBase(x);
-      const size = (6 + seedNoise((tx/40)|0, (y/40)|0, 17) * 4) * clamp(worldSizeMul * 0.92, 1, 1.45);
-      treeDot(tx, y, size);
+    for(const [x,y] of trees){
+      const size = 6 + seedNoise((x/40)|0, (y/40)|0, 17) * 4;
+      treeDot(x,y,size);
     }
   }
   else if(themeKey==="ST_SUBURBS"){
     fillSolid("#18402a");
-    if(!ultraLiteMap){
-      terrainTexture(19, liteMap ? 44 : 32, detailAlpha(0.08), "rgba(232,240,250,.05)", "rgba(0,0,0,.11)");
-    }
-    terrainBands(19, detailCount(4, 2), detailAlpha(0.065));
-    terrainPatches(19, detailCount(14, 5), detailAlpha(0.10), "rgba(226,236,210,.14)", "rgba(20,28,34,.16)");
-    scatterPebbles(19, detailCount(94, 26), detailAlpha(0.11), "rgba(214,224,236,.30)", "rgba(12,18,28,.30)");
-    const main = scalePath([[0,280],[240,270],[480,300],[720,280],[960,300]]);
-    const roadMul = clamp(worldSizeMul, 1, 1.38);
-    roadShoulder(main, 84 * roadMul); roadLine(main, 84 * roadMul, "rgba(75,78,86,.9)");
-    if(!ultraLiteMap) roadWear(main, 84 * roadMul, 9);
+    terrainTexture(19, 32, 0.08, "rgba(232,240,250,.05)", "rgba(0,0,0,.11)");
+    terrainBands(19, 4, 0.065);
+    terrainPatches(19, 14, 0.10, "rgba(226,236,210,.14)", "rgba(20,28,34,.16)");
+    scatterPebbles(19, 94, 0.11, "rgba(214,224,236,.30)", "rgba(12,18,28,.30)");
+    const main=[[0,280],[240,270],[480,300],[720,280],[960,300]];
+    roadShoulder(main, 84); roadLine(main, 84, "rgba(75,78,86,.9)");
+    roadWear(main, 84, 9);
     dashed(main);
-    const laneTop = scalePath([[120,120],[420,110],[760,120]]);
-    const laneLow = scalePath([[120,440],[420,430],[760,440]]);
-    roadShoulder(laneTop, 62 * roadMul); roadLine(laneTop, 62 * roadMul, "rgba(75,78,86,.9)");
-    roadShoulder(laneLow, 62 * roadMul); roadLine(laneLow, 62 * roadMul, "rgba(75,78,86,.9)");
-    if(!ultraLiteMap){
-      roadWear(laneTop, 62 * roadMul, 13);
-      roadWear(laneLow, 62 * roadMul, 15);
-    }
+    const laneTop = [[120,120],[420,110],[760,120]];
+    const laneLow = [[120,440],[420,430],[760,440]];
+    roadShoulder(laneTop, 62); roadLine(laneTop, 62, "rgba(75,78,86,.9)");
+    roadShoulder(laneLow, 62); roadLine(laneLow, 62, "rgba(75,78,86,.9)");
+    roadWear(laneTop, 62, 13);
+    roadWear(laneLow, 62, 15);
     const houses = [
       [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
       [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
       [140,360],[280,360],[420,360],[560,360],[700,360],[840,360],
       [120,450],[240,450],[360,450],[480,450],[600,450],[720,450],[840,450],
     ];
-    for(const [x,y] of houses) houseBlock(sxBase(x), syBase(y));
-    rounded(sxBase(120), syBase(210), sxBase(170), syBase(90), 18, "rgba(40,140,70,.75)", "rgba(10,60,30,.8)");
-    rounded(sxBase(670), syBase(320), sxBase(170), syBase(90), 18, "rgba(40,140,70,.75)", "rgba(10,60,30,.8)");
+    for(const [x,y] of houses) houseBlock(x,y);
+    rounded(120,210,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
+    rounded(670,320,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
     const trees = [[70,200],[90,240],[110,260],[930,220],[900,250],[880,280],[70,520],[930,520]];
-    for(let ti=0; ti<trees.length; ti += (ultraLiteMap ? 2 : 1)){
-      const [x, y] = trees[ti];
-      treeDot(sxBase(x), syBase(y), 7.5 * clamp(worldSizeMul * 0.9, 1, 1.4));
-    }
+    for(const [x,y] of trees) treeDot(x,y,7.5);
   }
   else if(themeKey==="ST_DOWNTOWN"){
     fillSolid("#1a1f2d");
-    if(!ultraLiteMap){
-      terrainTexture(29, liteMap ? 46 : 34, detailAlpha(0.07), "rgba(126,149,196,.06)", "rgba(0,0,0,.13)");
-    }
-    terrainBands(29, detailCount(4, 2), detailAlpha(0.055));
-    terrainPatches(29, detailCount(12, 4), detailAlpha(0.08), "rgba(188,204,236,.12)", "rgba(8,12,20,.15)");
-    scatterPebbles(29, detailCount(110, 30), detailAlpha(0.11), "rgba(220,228,246,.28)", "rgba(7,10,17,.32)");
+    terrainTexture(29, 34, 0.07, "rgba(126,149,196,.06)", "rgba(0,0,0,.13)");
+    terrainBands(29, 4, 0.055);
+    terrainPatches(29, 12, 0.08, "rgba(188,204,236,.12)", "rgba(8,12,20,.15)");
+    scatterPebbles(29, 110, 0.11, "rgba(220,228,246,.28)", "rgba(7,10,17,.32)");
     ctx.fillStyle="rgba(70,72,80,.95)";
     for(let x=80; x<w; x+=170) ctx.fillRect(x-46,0,92,h);
     for(let y=80; y<h; y+=150) ctx.fillRect(0,y-42,w,84);
@@ -23263,37 +22153,35 @@ function drawMapScene(){
       [180,310,100,85],[360,320,90,80],[560,310,110,85],[760,320,90,80],[900,310,80,75],
       [150,470,90,70],[340,470,90,70],[540,470,100,70],[740,470,90,70],[900,470,80,70],
     ];
-    for(const [x,y,ww,hh] of blocks) buildingBlock(sxBase(x), syBase(y), sxBase(ww), syBase(hh));
+    for(const [x,y,ww,hh] of blocks) buildingBlock(x,y,ww,hh);
     ctx.fillStyle="rgba(240,240,245,.75)";
     for(let i=0;i<8;i++){
-      const cx = sxBase(120 + (i * 100));
-      for(let k=0;k<7;k++) ctx.fillRect(cx + sxBase(k * 9), syBase(270), Math.max(2, sxBase(5)), Math.max(8, syBase(18)));
+      const cx=120+i*100;
+      for(let k=0;k<7;k++) ctx.fillRect(cx+k*9, 270, 5, 18);
     }
   }
   else {
     fillSolid("#2b2b30");
-    if(!ultraLiteMap){
-      terrainTexture(41, liteMap ? 44 : 32, detailAlpha(0.09), "rgba(230,210,170,.05)", "rgba(0,0,0,.14)");
-    }
-    terrainBands(41, detailCount(4, 2), detailAlpha(0.062));
-    terrainPatches(41, detailCount(14, 5), detailAlpha(0.09), "rgba(226,196,150,.12)", "rgba(10,10,12,.16)");
-    scatterPebbles(41, detailCount(90, 24), detailAlpha(0.12), "rgba(220,200,172,.32)", "rgba(8,8,10,.34)");
-    rounded(sxBase(90), syBase(90), sxBase(260), syBase(130), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
-    rounded(sxBase(610), syBase(110), sxBase(260), syBase(110), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
-    rounded(sxBase(240), syBase(340), sxBase(340), syBase(140), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
+    terrainTexture(41, 32, 0.09, "rgba(230,210,170,.05)", "rgba(0,0,0,.14)");
+    terrainBands(41, 4, 0.062);
+    terrainPatches(41, 14, 0.09, "rgba(226,196,150,.12)", "rgba(10,10,12,.16)");
+    scatterPebbles(41, 90, 0.12, "rgba(220,200,172,.32)", "rgba(8,8,10,.34)");
+    rounded(90,90,260,130,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+    rounded(610,110,260,110,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+    rounded(240,340,340,140,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
     ctx.strokeStyle="rgba(240,190,55,.55)";
     ctx.lineWidth=6;
     for(let k=0;k<260;k+=18){
-      ctx.beginPath(); ctx.moveTo(sxBase(90 + k), syBase(90)); ctx.lineTo(sxBase(90 + k - 45), syBase(220)); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(sxBase(610 + k), syBase(110)); ctx.lineTo(sxBase(610 + k - 45), syBase(220)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(90+k,90); ctx.lineTo(90+k-45,220); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(610+k,110); ctx.lineTo(610+k-45,220); ctx.stroke();
     }
-    buildingBlock(sxBase(170), syBase(260), sxBase(140), syBase(90));
-    buildingBlock(sxBase(520), syBase(260), sxBase(160), syBase(90));
-    buildingBlock(sxBase(820), syBase(300), sxBase(150), syBase(90));
+    buildingBlock(170,260,140,90);
+    buildingBlock(520,260,160,90);
+    buildingBlock(820,300,150,90);
     const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
-    for(const [x,y] of crates) crateBlock(sxBase(x), syBase(y));
+    for(const [x,y] of crates) crateBlock(x,y);
   }
-  drawWaterBodies(ultraLiteMap ? 0.6 : (liteMap ? 0.78 : 1));
+  drawWaterBodies(1);
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -23310,21 +22198,13 @@ function drawMapScene(){
 
   // realism props
   const props = MAP_REALISM_PROPS[themeKey] || [];
-  const propStep = ultraLiteMap ? 3 : (liteMap ? 2 : 1);
-  for(let pi=0; pi<props.length; pi += propStep){
-    drawProp(props[pi]);
-  }
-  if(!ultraLiteMap){
-    const denseLandmarks = (__mapDenseLandmarksSig === __mapObstacleSig && Array.isArray(__mapDenseLandmarks))
-      ? __mapDenseLandmarks
-      : buildDenseLandmarks(key, chapter, w, h);
-    const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
-    const denseStep = liteMap ? 2 : 1;
-    const denseLimit = liteMap ? Math.min(denseLandmarks.length, 140) : denseLandmarks.length;
-    for(let li=0; li<denseLimit; li += denseStep){
-      const lm = denseLandmarks[li];
-      drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
-    }
+  for(const p of props) drawProp(p);
+  const denseLandmarks = (__mapDenseLandmarksSig === __mapObstacleSig && Array.isArray(__mapDenseLandmarks))
+    ? __mapDenseLandmarks
+    : buildDenseLandmarks(key, chapter, w, h);
+  const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
+  for(const lm of denseLandmarks){
+    drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
   }
 
   // subtle vignette to reduce flatness
@@ -23466,36 +22346,24 @@ function drawMapScene(){
 
   drawMissionTwistOverlay(Date.now());
 
-  const blackoutActive = tw.blackout.active && frameNow < (tw.blackout.until || 0);
-  if(frameNow < (S.fogUntil||0)){
-    const mobile = isMobileViewport();
-    const lagTier = frameLagTier();
-    const perfMode = performanceMode() === "PERFORMANCE";
-    let fogAlpha = blackoutActive ? 0.06 : 0.32;
-    if(mobile && (perfMode || lagTier >= 1 || frameIsSlow())){
-      fogAlpha = blackoutActive ? 0.03 : 0.20;
-    }
-    ctx.globalAlpha = fogAlpha;
+  if(Date.now() < (S.fogUntil||0)){
+    ctx.globalAlpha = 0.35;
     ctx.fillStyle = "#0b0d12";
     ctx.fillRect(0,0,w,h);
     ctx.globalAlpha = 1;
   }
 
-  if(canCacheScene){
-    if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== w || __mapFrameCacheCanvas.height !== h){
-      __mapFrameCacheCanvas = document.createElement("canvas");
-      __mapFrameCacheCanvas.width = w;
-      __mapFrameCacheCanvas.height = h;
-      __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
-    }
-    if(__mapFrameCacheCtx){
-      __mapFrameCacheCtx.clearRect(0, 0, w, h);
-      __mapFrameCacheCtx.drawImage(cv, 0, 0, viewportW, viewportH, 0, 0, w, h);
-      __mapFrameCacheSig = cacheSig;
-      __mapFrameCacheAt = frameNow;
-    }
-  } else {
-    __mapFrameCacheSig = "";
+  if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== w || __mapFrameCacheCanvas.height !== h){
+    __mapFrameCacheCanvas = document.createElement("canvas");
+    __mapFrameCacheCanvas.width = w;
+    __mapFrameCacheCanvas.height = h;
+    __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
+  }
+  if(__mapFrameCacheCtx){
+    __mapFrameCacheCtx.clearRect(0, 0, w, h);
+    __mapFrameCacheCtx.drawImage(cv, 0, 0, w, h, 0, 0, w, h);
+    __mapFrameCacheSig = cacheSig;
+    __mapFrameCacheAt = frameNow;
   }
 }
 
@@ -23508,8 +22376,8 @@ function drawAtmosphericParallax(nowTs=Date.now()){
   if(lagTier >= 2 && (__frameHeavyFxFlip % 2 !== 0)) return;
   if(slow && (__frameHeavyFxFlip % 3 === 1)) return;
 
-  const w = Math.max(cv.width, worldWidth(S));
-  const h = Math.max(cv.height, worldHeight(S));
+  const w = cv.width;
+  const h = cv.height;
   const biome = currentBiomeProfile();
   const weatherFx = String(biome?.weatherFx || "clear");
   const weatherIntensity = clamp(Number(biome?.weatherIntensity || 0.45), 0.12, 1.25);
@@ -24050,7 +22918,7 @@ function drawOnMapBattleReadability(){
     vignette.addColorStop(0.7, "rgba(8,12,18,.10)");
     vignette.addColorStop(1, "rgba(5,8,14,.34)");
     ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, worldWidth(S), worldHeight(S));
+    ctx.fillRect(0, 0, cv.width, cv.height);
   }
 
   const beamAlpha = inRange ? (extreme ? 0.30 : 0.38) : (extreme ? 0.18 : 0.22);
@@ -24078,7 +22946,6 @@ function drawOnMapBattleReadability(){
 }
 function drawOnMapBattleHud(){
   if(!S.inBattle) return;
-  if(isMobileViewport()) return; // Mobile uses floating unit bars for cleaner combat view.
   const t = activeTiger();
   if(!t || !t.alive) return;
   if(frameLagTier() >= 2 && frameBudgetExceeded(0.55)) return;
@@ -24541,7 +23408,6 @@ function drawTiger(t){
   const headBob = Math.sin((t.step||0)*2.4 + 0.7) * (gaitState==="sprint" ? 1.7 : (gaitState==="run" ? 1.25 : 0.7));
   const shoulderRoll = Math.sin((t.step||0)*1.3) * (gaitState==="sprint" ? 0.06 : 0.04);
   const tigerFocus = S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id);
-  const showTigerVitals = !S.inBattle || tigerFocus;
   const hitFlashLeft = Math.max(0, (t.hitFlashUntil || 0) - now);
   const hitFlashAlpha = hitFlashLeft > 0 ? clamp(hitFlashLeft / 190, 0.12, 0.78) : 0;
   const hitFlashColor = t.hitFlashKind === "tranq"
@@ -24761,7 +23627,6 @@ function drawTiger(t){
     ctx.setLineDash([]);
   } else if(t.huntState === TIGER_HUNT_STATES.POUNCE){
     const windup = now < (t.pounceWindupUntil || 0);
-    const windupLeft = Math.max(0, (t.pounceWindupUntil || 0) - now);
     const pulse = 0.65 + (0.35 * Math.sin(now * 0.022));
     ctx.globalAlpha = clamp(alpha * pulse, 0.25, 1);
     ctx.strokeStyle = windup ? "rgba(251,191,36,.96)" : "rgba(248,113,113,.98)";
@@ -24771,25 +23636,6 @@ function drawTiger(t){
     ctx.arc(x, y, (windup ? 36 : 40) * s, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
-    // Directional claw/pounce lane cue so dodge timing is easier to read.
-    const laneR = (windup ? 45 : 50) * s;
-    const laneStart = drawDir > 0 ? -0.88 : (Math.PI - 0.26);
-    const laneEnd = drawDir > 0 ? 0.88 : (Math.PI + 0.26);
-    ctx.strokeStyle = windup ? "rgba(251,191,36,.82)" : "rgba(248,113,113,.92)";
-    ctx.lineWidth = windup ? 2.1 : 2.7;
-    ctx.beginPath();
-    ctx.arc(x, y - (2 * s), laneR, laneStart, laneEnd, false);
-    ctx.stroke();
-    if(tigerFocus){
-      const cueText = windup
-        ? (windupLeft <= 420 ? "DODGE NOW" : `POUNCE ${Math.max(1, Math.ceil(windupLeft / 1000))}s`)
-        : "POUNCE!";
-      ctx.fillStyle = windupLeft <= 420 ? "rgba(248,113,113,.98)" : "rgba(251,191,36,.98)";
-      ctx.font = "900 10px system-ui";
-      ctx.textAlign = "center";
-      ctx.fillText(cueText, x, y - (57 * s));
-      ctx.textAlign = "start";
-    }
     ctx.globalAlpha = alpha;
   } else if(t.huntState === TIGER_HUNT_STATES.RECOVER){
     ctx.strokeStyle = "rgba(125,211,252,.72)";
@@ -24815,16 +23661,14 @@ function drawTiger(t){
   }
 
   const pct=t.hp/t.hpMax;
-  if(showTigerVitals){
-    ctx.fillStyle="rgba(11,13,18,.85)";
-    ctx.fillRect(x-26*s,y-34*s,52*s,6);
-    ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
-    ctx.fillRect(x-26*s,y-34*s,52*s*pct,6);
-    ctx.strokeStyle = "rgba(241,245,249,.72)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x-26*s,y-34*s,52*s,6);
-  }
-  if(S.inBattle && tigerFocus){
+  ctx.fillStyle="rgba(11,13,18,.85)";
+  ctx.fillRect(x-26*s,y-34*s,52*s,6);
+  ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
+  ctx.fillRect(x-26*s,y-34*s,52*s*pct,6);
+  ctx.strokeStyle = "rgba(241,245,249,.72)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x-26*s,y-34*s,52*s,6);
+  if(S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id)){
     ctx.fillStyle="rgba(9,12,18,.88)";
     roundedRectFill(x - (36*s), y - (52*s), 72*s, 20*s, 6*s);
     ctx.fillStyle="rgba(245,247,255,.95)";
@@ -24844,50 +23688,40 @@ function drawTiger(t){
     }
   }
 
-  if(!S.inBattle || tigerFocus){
-    const nonFocusBattle = S.inBattle && !tigerFocus;
-    ctx.globalAlpha=(nonFocusBattle ? 0.55 : 0.85)*alpha;
-    ctx.fillStyle="rgba(245,247,255,.80)";
-    ctx.font= nonFocusBattle ? "800 11px system-ui" : "900 12px system-ui";
-    const dash = (t.type==="Scout" && now<(t.dashUntil||0)) ? " (DASH)" : "";
-    const fade = ((t.type==="Stalker" && now<(t.fadeUntil||0)) || bossStealth) ? " (FADE)" : "";
-    const roar = (now<(t.roarUntil||0)) ? " (ROAR)" : "";
-    const rage = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? " (RAGE)" : "";
-    const hunt =
-      t.huntState === TIGER_HUNT_STATES.POUNCE ? " (POUNCE)" :
-      t.huntState === TIGER_HUNT_STATES.STALK ? " (STALK)" :
-      t.huntState === TIGER_HUNT_STATES.RECOVER ? " (RECOVER)" : "";
-    const persona = t.personality ? ` • ${t.personality}` : "";
-    const bossTag = isBossTiger(t) ? ` • ${bossIdentityProfile(t)?.name || "Boss"}` : "";
-    const bossPhaseTag = isBossTiger(t)
-      ? ` • P${clamp(Math.floor(Number(t.bossPhaseIndex || bossPhaseFromHp(t))), 1, bossPhaseCount(t))}/${bossPhaseCount(t)}`
-      : "";
-    const nemesisLabel = t.nemesisAlias
-      ? ` ☠ ${t.nemesisAlias}${Number(t.nemesisPower || 0) > 0 ? ` Lv${Math.floor(Number(t.nemesisPower || 0))}` : ""}`
-      : "";
-    const fullLabel = t.type + bossTag + bossPhaseTag + nemesisLabel + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
-    const compactLabel = (t.nemesisAlias ? `${t.type} • ${t.nemesisAlias}` : t.type) + (t.tranqTagged ? " (tranq)" : "");
-    const skipLabel =
-      visualReadabilityHeavyMode() &&
-      !tigerFocus &&
-      dist(S.me.x, S.me.y, t.x, t.y) > 220;
-    if(!skipLabel){
-      ctx.fillText(nonFocusBattle ? compactLabel : fullLabel, x-44*s, y-44*s);
-    }
+  const nonFocusBattle = S.inBattle && !tigerFocus;
+  ctx.globalAlpha=(nonFocusBattle ? 0.55 : 0.85)*alpha;
+  ctx.fillStyle="rgba(245,247,255,.80)";
+  ctx.font= nonFocusBattle ? "800 11px system-ui" : "900 12px system-ui";
+  const dash = (t.type==="Scout" && now<(t.dashUntil||0)) ? " (DASH)" : "";
+  const fade = ((t.type==="Stalker" && now<(t.fadeUntil||0)) || bossStealth) ? " (FADE)" : "";
+  const roar = (now<(t.roarUntil||0)) ? " (ROAR)" : "";
+  const rage = (t.type==="Berserker" && (t.hp/t.hpMax)<0.35) ? " (RAGE)" : "";
+  const hunt =
+    t.huntState === TIGER_HUNT_STATES.POUNCE ? " (POUNCE)" :
+    t.huntState === TIGER_HUNT_STATES.STALK ? " (STALK)" :
+    t.huntState === TIGER_HUNT_STATES.RECOVER ? " (RECOVER)" : "";
+  const persona = t.personality ? ` • ${t.personality}` : "";
+  const bossTag = isBossTiger(t) ? ` • ${bossIdentityProfile(t)?.name || "Boss"}` : "";
+  const bossPhaseTag = isBossTiger(t)
+    ? ` • P${clamp(Math.floor(Number(t.bossPhaseIndex || bossPhaseFromHp(t))), 1, bossPhaseCount(t))}/${bossPhaseCount(t)}`
+    : "";
+  const nemesisLabel = t.nemesisAlias
+    ? ` ☠ ${t.nemesisAlias}${Number(t.nemesisPower || 0) > 0 ? ` Lv${Math.floor(Number(t.nemesisPower || 0))}` : ""}`
+    : "";
+  const fullLabel = t.type + bossTag + bossPhaseTag + nemesisLabel + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
+  const compactLabel = (t.nemesisAlias ? `${t.type} • ${t.nemesisAlias}` : t.type) + (t.tranqTagged ? " (tranq)" : "");
+  const skipLabel =
+    visualReadabilityHeavyMode() &&
+    !tigerFocus &&
+    dist(S.me.x, S.me.y, t.x, t.y) > 220;
+  if(!skipLabel){
+    ctx.fillText(nonFocusBattle ? compactLabel : fullLabel, x-44*s, y-44*s);
   }
   ctx.globalAlpha=1;
 }
 
 function useLiteEntityRender(){
   if(!isMobileViewport()){
-    __liteEntityRenderState = false;
-    __liteEntityRenderNeedSince = 0;
-    __liteEntityRenderRelaxUntil = 0;
-    return false;
-  }
-  // Stability rollback path for 2D Story mobile: keep full entity visuals to avoid
-  // dot/flicker appearance during temporary lag spikes.
-  if(S.mode === "Story"){
     __liteEntityRenderState = false;
     __liteEntityRenderNeedSince = 0;
     __liteEntityRenderRelaxUntil = 0;
@@ -24901,11 +23735,11 @@ function useLiteEntityRender(){
   const slow = frameIsSlow(now);
 
   // Hard triggers switch immediately; soft triggers require sustained pressure.
-  const hardNeed = lagTier >= 2 || loadScore >= 66;
+  const hardNeed = lagTier >= 2 || loadScore >= 62;
   const softNeed =
-    (lagTier >= 1 && slow && loadScore >= 50) ||
-    (slow && loadScore >= 56) ||
-    (mode === "PERFORMANCE" && slow && loadScore >= 60);
+    lagTier >= 1 ||
+    (slow && loadScore >= 42) ||
+    (mode === "PERFORMANCE" && slow && loadScore >= 48);
 
   if(hardNeed || softNeed){
     if(!__liteEntityRenderNeedSince) __liteEntityRenderNeedSince = now;
@@ -24913,8 +23747,8 @@ function useLiteEntityRender(){
     __liteEntityRenderNeedSince = 0;
   }
 
-  const engageDelayMs = mode === "PERFORMANCE" ? 980 : 1280;
-  const releaseHoldMs = mode === "PERFORMANCE" ? 1800 : 2200;
+  const engageDelayMs = mode === "PERFORMANCE" ? 320 : 520;
+  const releaseHoldMs = mode === "PERFORMANCE" ? 1100 : 1400;
 
   if(!__liteEntityRenderState){
     const needFor = __liteEntityRenderNeedSince ? (now - __liteEntityRenderNeedSince) : 0;
@@ -25016,13 +23850,10 @@ function drawEntitiesLite(){
     ctx.restore();
 
     const pct = clamp((t.hp || 0) / Math.max(1, t.hpMax || 1), 0, 1);
-    const showVitals = !S.inBattle || focus;
-    if(showVitals){
-      ctx.fillStyle = "rgba(9,12,18,.84)";
-      ctx.fillRect(x - 18, y - 18, 36, 4);
-      ctx.fillStyle = pct > 0.5 ? "#4ade80" : (pct > 0.2 ? "#f59e0b" : "#fb7185");
-      ctx.fillRect(x - 18, y - 18, 36 * pct, 4);
-    }
+    ctx.fillStyle = "rgba(9,12,18,.84)";
+    ctx.fillRect(x - 18, y - 18, 36, 4);
+    ctx.fillStyle = pct > 0.5 ? "#4ade80" : (pct > 0.2 ? "#f59e0b" : "#fb7185");
+    ctx.fillRect(x - 18, y - 18, 36 * pct, 4);
     if(focus){
       ctx.strokeStyle = "rgba(59,130,246,.96)";
       ctx.lineWidth = 2.4;
@@ -25110,12 +23941,12 @@ function drawEntities(){
   }
   drawOnMapBattleReadability();
   drawOnMapBattleHud();
+  drawAbilityCooldownWheel();
   const perfMode = performanceMode();
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
   const isSlowFrame = frameIsSlow();
   const frameBudgetTight = frameBudgetExceeded(0.85);
-  const battleHeavy = !!S.inBattle;
   const entityLoad =
     (S.tigers?.length || 0) +
     (S.civilians?.length || 0) +
@@ -25138,21 +23969,11 @@ function drawEntities(){
   }else if(lagTier >= 1){
     shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 6 : 5) === 0);
   }
-  let shouldDrawPopups = lagTier >= 2
+  const shouldDrawPopups = lagTier >= 2
     ? (__frameHeavyFxFlip % (mobile ? 9 : 8) === 0)
     : (lagTier >= 1
       ? (__frameHeavyFxFlip % (heavyLoad ? 6 : 5) === 0)
       : (__frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0));
-  if(battleHeavy && (lagTier >= 1 || frameBudgetTight || heavyLoad)){
-    // During heavy battle frames, aggressively shed non-critical VFX first.
-    if(lagTier >= 2 || frameBudgetTight){
-      shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 12 : 10) === 0);
-      shouldDrawPopups = (__frameHeavyFxFlip % (mobile ? 14 : 12) === 0);
-    } else {
-      shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 8 : 7) === 0);
-      shouldDrawPopups = (__frameHeavyFxFlip % (mobile ? 9 : 8) === 0);
-    }
-  }
   if(shouldDrawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight && lagTier === 0)) drawImpactPulses();
   if(!liteRender && shouldDrawFx && !frameBudgetTight) drawCombatFx();
   if(!liteRender && (shouldDrawFx || (!frameBudgetTight && shouldDrawPopups))) drawDamagePopups();
@@ -25163,19 +23984,8 @@ function drawMobileUiClearLane(){
 }
 function shouldDrawAtmosphericPass(){
   __frameBgFxFlip = (__frameBgFxFlip + 1) % 9;
-  if(isMobileViewport()) return false;
   const score = frameActiveEntityLoadScore();
   const lagTier = frameLagTier();
-  if(S?.inBattle){
-    if(lagTier >= 1 || frameBudgetExceeded(0.28) || frameIsSlow()) return false;
-    return (__frameBgFxFlip % 6) === 0;
-  }
-  const expandedWorld = (worldWidth(S) > (cv.width + 4)) || (worldHeight(S) > (cv.height + 4));
-  if(expandedWorld && isMobileViewport()){
-    if(lagTier >= 1) return false;
-    if(frameBudgetExceeded(0.35) || frameIsSlow()) return false;
-    return (__frameBgFxFlip % 4) === 0;
-  }
   if(isMobileViewport() && lagTier >= 1) return false;
   if(__frameLagScore >= FRAME_LAG_CRITICAL_SCORE) return (__frameBgFxFlip % 6) === 0;
   if(__frameLagScore >= FRAME_LAG_WARN_SCORE) return (__frameBgFxFlip % 5) === 0;
@@ -25232,11 +24042,10 @@ function draw(){
       runFrameTask("comboTick", frameInterval(lagCritical ? 154 : (lagHeavy ? 130 : 110), 1.4), comboTick, { costHint:0.7 });
 
       if(!window.TigerTutorial?.isRunning){
-        const nonCriticalBattleMul = battleLoad ? 1.42 : 1;
-        runFrameTask("missionTwists", frameInterval(Math.round((lagHeavy ? 236 : 176) * nonCriticalBattleMul), 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
-        runFrameTask("tickEvents", frameInterval(Math.round((lagHeavy ? 240 : 180) * nonCriticalBattleMul), 1.5), tickEvents, { costHint:0.9 });
-        runFrameTask("biomeHazard", frameInterval(Math.round((lagHeavy ? 220 : 170) * nonCriticalBattleMul), 1.45), biomeHazardTick, { costHint:0.6 });
-        runFrameTask("ambientPickup", frameInterval(Math.round((lagHeavy ? 360 : 300) * nonCriticalBattleMul), 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
+        runFrameTask("missionTwists", frameInterval(lagHeavy ? 236 : 176, 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
+        runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
+        runFrameTask("biomeHazard", frameInterval(lagHeavy ? 220 : 170, 1.45), biomeHazardTick, { costHint:0.6 });
+        runFrameTask("ambientPickup", frameInterval(lagHeavy ? 360 : 300, 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
         runFrameTask("tickPickups", frameInterval(lagCritical ? 92 : (lagHeavy ? 74 : 52), 1.5), tickPickups, { costHint:1.0 });
       }
 
@@ -25262,17 +24071,13 @@ function draw(){
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
       if(!usedKeyboard) safeTick("movePlayer", movePlayer);
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
-      const mobileHardStable = MOBILE_2D_HARD_STABLE_MODE && isMobileViewport();
-      const followIntervalMs = mobileHardStable
-        ? (battleLoad ? 28 : 24)
-        : frameInterval(
-            battleLoad
-              ? (lagCritical ? 82 : (lagHeavy ? 68 : 52))
-              : (lagCritical ? 64 : (lagHeavy ? 52 : 40)),
-            1.5
-          );
-      runFrameTask("followCivilians", followIntervalMs, followCiviliansTick, {
-        costHint:1.2, critical:true, cadence:1, slowCadence:1, heavyCadence:2, extremeCadence:2
+      runFrameTask("followCivilians", frameInterval(
+        battleLoad
+          ? (lagCritical ? 156 : (lagHeavy ? 128 : 96))
+          : (lagCritical ? 98 : (lagHeavy ? 78 : 56)),
+        1.5
+      ), followCiviliansTick, {
+        costHint:1.7, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
       runFrameTask("civThreats", frameInterval(
@@ -25299,24 +24104,12 @@ function draw(){
     });
 
     safeTick("drawSceneFrame", ()=>{
-      hardResetCanvasState(true);
       const liteRender = useLiteEntityRender();
-      const camOffsetRaw = updateWorldCamera(S);
-      const worldW = worldWidth(S);
-      const worldH = worldHeight(S);
-      const viewW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
-      const viewH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
-      const maxCamX = Math.max(0, worldW - viewW);
-      const maxCamY = Math.max(0, worldH - viewH);
-      const camX = clamp(Number(camOffsetRaw?.x) || 0, 0, maxCamX);
-      const camY = clamp(Number(camOffsetRaw?.y) || 0, 0, maxCamY);
       const shake = liteRender ? { active:false, x:0, y:0 } : sampleCameraShake();
       const cine = liteRender ? { active:false, x:0, y:0, scale:1 } : sampleBattleCinematic();
-      ctx.save();
-      try{
-        if(camX !== 0 || camY !== 0){
-          ctx.translate(-camX, -camY);
-        }
+      const needsTransform = shake.active || cine.active;
+      if(needsTransform){
+        ctx.save();
         if(cine.active){
           ctx.translate(cine.x, cine.y);
           ctx.scale(cine.scale, cine.scale);
@@ -25325,15 +24118,15 @@ function draw(){
         if(shake.active){
           ctx.translate(shake.x, shake.y);
         }
-        drawMapScene();
-        if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
-          drawAtmosphericParallax();
-        }
-        drawEntities();
-      }finally{
+      }
+      drawMapScene();
+      if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
+        drawAtmosphericParallax();
+      }
+      drawEntities();
+      if(needsTransform){
         ctx.restore();
       }
-      drawAbilityCooldownWheel();
       drawMobileUiClearLane();
     });
     maybeAutosave();
@@ -25484,16 +24277,6 @@ function init(){
   updateTitle();
   ensureStabilityMonitorNode();
   renderStabilityMonitor(true);
-  if(__snapshotIntegrityIssueCount > 0){
-    __savePending = true;
-    setTimeout(()=>{
-      const label = __snapshotIntegrityIssueCount === 1 ? "snapshot" : "snapshots";
-      toast(`Recovered from ${__snapshotIntegrityIssueCount} invalid save ${label}.`);
-      if(__snapshotIntegrityLastReason){
-        try{ console.warn("Latest save integrity recovery reason:", __snapshotIntegrityLastReason); }catch(e){}
-      }
-    }, 600);
-  }
 
   for(const wid of S.ownedWeapons){
     if(S.durability[wid]==null) S.durability[wid]=100;
@@ -25620,7 +24403,7 @@ function init(){
   bindAttackButtonGestures();
   maybeRenderHUD(true);
   safeTick("bootDrawMapScene", drawMapScene);
-  safeTick("bootDrawAtmosphere", ()=>{ if(!isMobileViewport()) drawAtmosphericParallax(Date.now()); });
+  safeTick("bootDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
   safeTick("bootDrawEntities", drawEntities);
   safeTick("bootDrawMobileUiClearLane", drawMobileUiClearLane);
   if(!__drawLoopStarted){
@@ -25658,7 +24441,7 @@ function bootstrap(){
         }
         maybeRenderHUD(true);
         safeTick("recoverDrawMapScene", drawMapScene);
-        safeTick("recoverDrawAtmosphere", ()=>{ if(!isMobileViewport()) drawAtmosphericParallax(Date.now()); });
+        safeTick("recoverDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
         safeTick("recoverDrawEntities", drawEntities);
         safeTick("recoverDrawUiLane", drawMobileUiClearLane);
         if(!__drawLoopStarted){
@@ -25693,7 +24476,7 @@ function bootstrap(){
         deploy({ carryStats:true, hp:S.hp, armor:S.armor });
         maybeRenderHUD(true);
         safeTick("recoverDrawMapScene", drawMapScene);
-        safeTick("recoverDrawAtmosphere", ()=>{ if(!isMobileViewport()) drawAtmosphericParallax(Date.now()); });
+        safeTick("recoverDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
         safeTick("recoverDrawEntities", drawEntities);
         safeTick("recoverDrawUiLane", drawMobileUiClearLane);
         if(!__drawLoopStarted){
@@ -25771,7 +24554,6 @@ window.openClanContractsFromLaunchIntro = openClanContractsFromLaunchIntro;
 window.skipLaunchIntro = skipLaunchIntro;
 window.restartFromMission1FromLaunchIntro = restartFromMission1FromLaunchIntro;
 window.saveGameNow = saveGameNow;
-window.forceSaveNow = ()=>{ try{ save(true); }catch(e){} };
 window.loadStorySaveFromLaunchIntro = loadStorySaveFromLaunchIntro;
 window.openDailyRewardOverlay = openDailyRewardOverlay;
 window.claimDailyRewardOverlay = claimDailyRewardOverlay;
@@ -25871,14 +24653,5 @@ window.claimContract = claimContract;
 window.claimAllContracts = claimAllContracts;
 window.lockNearestTiger = lockNearestTiger;
 window.canAttemptCapture = canAttemptCapture;
-window.requiredTranqWeaponId = requiredTranqWeaponId;
-window.captureWindowHp = captureWindowHp;
-window.coreCombatResolveAttackHit = coreCombatResolveAttackHit;
-window.coreCombatAttackCooldownMs = coreCombatAttackCooldownMs;
-window.coreCombatCaptureCooldownMs = coreCombatCaptureCooldownMs;
-window.coreCombatTrapHoldMs = coreCombatTrapHoldMs;
-window.coreShieldBlocksTarget = coreShieldBlocksTarget;
-window.coreActivateShieldFor3D = coreActivateShieldFor3D;
-window.coreConsumeTrapFor3D = coreConsumeTrapFor3D;
 window.tutorialCaptureWindowReady = tutorialCaptureWindowReady;
 window.tutorialAnyCaptureWindowReady = tutorialAnyCaptureWindowReady;

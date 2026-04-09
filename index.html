@@ -134,20 +134,7 @@
         linear-gradient(90deg, rgba(255,255,255,.03), transparent 12%, transparent 88%, rgba(0,0,0,.12));
     }
     canvas{display:block;width:100%;height:auto;touch-action:none;position:relative;z-index:1}
-    .actionStrip{
-      border-top:1px solid var(--border);
-      background:rgba(15,19,32,.90);
-      padding:10px;
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-      justify-content:space-between;
-      position:sticky;
-      bottom:0;
-      z-index:6;
-      backdrop-filter:blur(8px);
-    }
+    .actionStrip{border-top:1px solid var(--border);background:rgba(15,19,32,.88);padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
     .small{font-size:12px;color:var(--muted)}
     .actionButtons{flex:1 1 560px}
     .combatButtons{display:none;flex:1 1 560px}
@@ -231,443 +218,11 @@
     .squadWheelOption[data-cmd="REGROUP"]{left:var(--squad-wheel-corner-gap);bottom:var(--squad-wheel-corner-gap)}
     .squadWheelOption[data-cmd="HOLD"]{left:0;top:50%;transform:translate(0,-50%)}
 
-    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:420;padding:14px}
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:200;padding:14px}
     .modal{width:min(980px,96vw);background:linear-gradient(180deg,#121622,#0b0d12);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;max-height:88vh;display:flex;flex-direction:column}
     .modalTop{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,.25);flex:0 0 auto}
     .modalTitle{font-weight:950}
     .modalBody{padding:14px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1 1 auto}
-    .proto3dOverlay{
-      padding:0;
-      z-index:380;
-      background:#04090e;
-    }
-    .proto3dShell{
-      position:relative;
-      width:100vw;
-      height:100dvh;
-      overflow:hidden;
-      background:
-        radial-gradient(circle at 20% 14%, rgba(52,211,153,.10), transparent 34%),
-        radial-gradient(circle at 78% 10%, rgba(59,130,246,.14), transparent 30%),
-        linear-gradient(180deg, rgba(7,12,18,.99), rgba(4,7,12,.995));
-    }
-    .proto3dCanvasHost{
-      position:absolute;
-      inset:0;
-      z-index:1;
-    }
-    .proto3dCanvas{
-      width:100%;
-      height:100%;
-      display:block;
-      touch-action:none;
-    }
-    .proto3dTopbar{
-      position:absolute;
-      left:8px;
-      right:8px;
-      top:calc(8px + env(safe-area-inset-top));
-      z-index:11;
-      display:flex;
-      align-items:center;
-      justify-content:flex-start;
-      gap:6px;
-      pointer-events:none;
-    }
-    .proto3dTitleCard{
-      pointer-events:auto;
-      border:1px solid rgba(46,70,110,.92);
-      background:rgba(8,12,22,.88);
-      border-radius:12px;
-      padding:6px 8px;
-      display:flex;
-      flex-direction:column;
-      gap:2px;
-      min-width:0;
-      max-width:62vw;
-    }
-    .proto3dTitle{
-      font-size:13px;
-      font-weight:950;
-      letter-spacing:.02em;
-    }
-    .proto3dSubtitle{
-      display:none;
-    }
-    .proto3dTopActions{
-      position:static;
-      margin-left:auto;
-      display:flex;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-      gap:8px;
-      pointer-events:auto;
-      width:min(58vw, 560px);
-      max-width:none;
-    }
-    .proto3dTopActions button{
-      min-height:32px;
-      padding:6px 8px;
-      border-radius:10px;
-      font-size:10px;
-    }
-    .proto3dCamBar{
-      position:absolute;
-      left:10px;
-      right:auto;
-      top:auto;
-      bottom:calc(192px + env(safe-area-inset-bottom));
-      width:min(52vw, 520px);
-      z-index:12;
-      display:grid;
-      grid-template-columns:repeat(3,minmax(0,1fr));
-      gap:6px;
-      pointer-events:auto;
-    }
-    .proto3dCamBar.hidden{
-      display:none !important;
-    }
-    .proto3dCamBar button{
-      min-height:30px;
-      padding:6px 7px;
-      border-radius:10px;
-      font-size:10px;
-      border:1px solid rgba(78,106,162,.84);
-      background:rgba(8,12,22,.58);
-      color:var(--text);
-      box-shadow:0 8px 16px rgba(0,0,0,.28);
-      text-align:center;
-    }
-    .proto3dHud{
-      position:absolute;
-      left:8px;
-      right:8px;
-      top:calc(68px + env(safe-area-inset-top));
-      z-index:10;
-      display:flex;
-      gap:6px;
-      pointer-events:none;
-    }
-    .proto3dHudCard{
-      border:1px solid rgba(45,66,102,.92);
-      background:rgba(6,10,18,.84);
-      border-radius:12px;
-      padding:6px 8px;
-      backdrop-filter:none;
-      font-size:11px;
-      line-height:1.2;
-      color:#e6edf8;
-      min-width:0;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      flex:1 1 0;
-    }
-    .proto3dHint{
-      position:absolute;
-      left:50%;
-      transform:translateX(-50%);
-      bottom:calc(14px + env(safe-area-inset-bottom));
-      z-index:4;
-      border:1px solid rgba(45,66,102,.92);
-      background:rgba(6,10,18,.86);
-      border-radius:999px;
-      padding:6px 10px;
-      font-size:11px;
-      line-height:1.2;
-      color:#e6edf8;
-      pointer-events:none;
-      max-width:min(74vw, 680px);
-      text-overflow:ellipsis;
-      white-space:nowrap;
-      overflow:hidden;
-    }
-    .proto3dHint.hidden{
-      display:none;
-    }
-    .proto3dDuelHud{
-      position:absolute;
-      left:50%;
-      top:12px;
-      transform:translateX(-50%);
-      z-index:6;
-      display:none;
-      align-items:center;
-      gap:8px;
-      pointer-events:none;
-      max-width:min(86vw, 720px);
-    }
-    .proto3dDuelHud.active{
-      display:flex;
-    }
-    .proto3dDuelChip{
-      border:1px solid rgba(46,84,140,.9);
-      background:rgba(5,10,18,.92);
-      border-radius:999px;
-      padding:6px 10px;
-      font-size:11px;
-      font-weight:900;
-      letter-spacing:.01em;
-      color:#e5ecf7;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      max-width:44vw;
-      backdrop-filter:none;
-    }
-    .proto3dDuelChip.you{
-      border-color:rgba(74,222,128,.86);
-      color:#bbf7d0;
-    }
-    .proto3dDuelChip.tiger{
-      border-color:rgba(251,113,133,.88);
-      color:#fecdd3;
-    }
-    .proto3dControls{
-      position:absolute;
-      inset:0;
-      z-index:9;
-      pointer-events:none;
-    }
-    .proto3dJoyArea{
-      position:absolute;
-      left:0;
-      top:calc(92px + env(safe-area-inset-top));
-      bottom:0;
-      width:min(58vw, 640px);
-      pointer-events:auto;
-      touch-action:none;
-    }
-    .proto3dJoyBase{
-      position:absolute;
-      width:124px;
-      height:124px;
-      border-radius:50%;
-      border:2px solid rgba(226,232,240,.24);
-      background:rgba(8,12,22,.34);
-      box-shadow:0 12px 26px rgba(0,0,0,.34);
-      backdrop-filter:none;
-      opacity:0;
-      transform:translate(-9999px,-9999px);
-      transition:opacity .08s ease;
-    }
-    .proto3dJoyKnob{
-      position:absolute;
-      width:54px;
-      height:54px;
-      border-radius:50%;
-      border:2px solid rgba(226,232,240,.42);
-      background:rgba(17,24,39,.54);
-      box-shadow:0 8px 18px rgba(0,0,0,.34);
-      pointer-events:none;
-      transition:transform .05s linear;
-      opacity:0;
-      transform:translate(-9999px,-9999px);
-    }
-    .proto3dBtnCluster{
-      position:absolute;
-      right:10px;
-      bottom:14px;
-      display:grid;
-      grid-template-columns:repeat(2,76px);
-      grid-template-rows:repeat(4,56px);
-      grid-template-areas:
-        "attack capture"
-        "medkit armor"
-        "shield roll"
-        "sprint trap";
-      gap:8px;
-      pointer-events:auto;
-    }
-    .proto3dActionBtn.attack{ grid-area:attack; }
-    .proto3dActionBtn.capture{ grid-area:capture; }
-    .proto3dActionBtn.medkit{ grid-area:medkit; }
-    .proto3dActionBtn.armor{ grid-area:armor; }
-    .proto3dActionBtn.shield{ grid-area:shield; }
-    .proto3dActionBtn.roll{ grid-area:roll; }
-    .proto3dActionBtn.sprint{ grid-area:sprint; }
-    .proto3dActionBtn.trap{ grid-area:trap; }
-    .proto3dActionBtn{
-      min-height:62px;
-      border-radius:16px;
-      font-size:12px;
-      padding:6px;
-      border:1px solid rgba(78,106,162,.84);
-      background:rgba(8,12,22,.64);
-      backdrop-filter:none;
-      box-shadow:0 10px 22px rgba(0,0,0,.33);
-    }
-    .proto3dActionBtn.warn{
-      border-color:rgba(245,158,11,.9);
-      background:rgba(92,42,12,.54);
-    }
-    .proto3dActionBtn.good{
-      border-color:rgba(74,222,128,.92);
-      background:rgba(16,64,36,.55);
-    }
-    .proto3dActionBtn.ghost{
-      border-color:rgba(96,165,250,.8);
-      background:rgba(14,28,56,.52);
-    }
-    .proto3dQuickCamBtn{
-      position:absolute;
-      left:14px;
-      bottom:calc(16px + env(safe-area-inset-bottom));
-      min-height:44px;
-      min-width:66px;
-      border-radius:14px;
-      border:1px solid rgba(78,106,162,.84);
-      background:rgba(8,12,22,.58);
-      color:var(--text);
-      font-weight:900;
-      letter-spacing:.01em;
-      padding:8px 10px;
-      box-shadow:0 10px 22px rgba(0,0,0,.33);
-      pointer-events:auto;
-    }
-    .proto3dLandscapeHint{
-      position:absolute;
-      top:50%;
-      left:50%;
-      transform:translate(-50%,-50%);
-      z-index:6;
-      border:1px solid rgba(59,130,246,.8);
-      background:rgba(8,12,22,.82);
-      border-radius:14px;
-      padding:10px 14px;
-      font-size:13px;
-      font-weight:900;
-      box-shadow:0 12px 26px rgba(0,0,0,.36);
-      pointer-events:none;
-      display:none;
-    }
-    @media (max-width:900px){
-      .proto3dCamBar{
-        width:min(56vw, 460px);
-        bottom:calc(178px + env(safe-area-inset-bottom));
-      }
-      .proto3dHud{
-        top:calc(66px + env(safe-area-inset-top));
-        flex-direction:column;
-      }
-      .proto3dHint{
-        max-width:min(92vw, 680px);
-      }
-    }
-    @media (max-width:540px){
-      .proto3dTopbar{
-        left:8px;
-        right:8px;
-        top:calc(8px + env(safe-area-inset-top));
-      }
-      .proto3dTitleCard{
-        min-width:0;
-        max-width:72vw;
-      }
-      .proto3dTopActions{
-        width:min(72vw, 460px);
-      }
-      .proto3dTopActions button{
-        min-height:34px;
-        padding:7px 9px;
-        font-size:11px;
-      }
-      .proto3dCamBar{
-        width:min(68vw, 420px);
-        bottom:calc(170px + env(safe-area-inset-bottom));
-        grid-template-columns:repeat(2,minmax(0,1fr));
-      }
-      .proto3dCamBar button{
-        min-height:28px;
-        padding:5px 8px;
-        font-size:10px;
-      }
-      .proto3dHud{
-        left:8px;
-        right:8px;
-        top:calc(64px + env(safe-area-inset-top));
-      }
-      .proto3dHint{
-        max-width:92vw;
-      }
-      .proto3dJoyArea{
-        top:calc(88px + env(safe-area-inset-top));
-        width:min(60vw, 500px);
-      }
-      .proto3dJoyKnob{
-        width:54px;
-        height:54px;
-      }
-      .proto3dBtnCluster{
-        right:8px;
-        bottom:10px;
-        grid-template-columns:repeat(2,62px);
-        grid-template-rows:repeat(4,52px);
-        gap:6px;
-      }
-      .proto3dActionBtn{
-        min-height:54px;
-        border-radius:14px;
-        font-size:11px;
-      }
-      .proto3dQuickCamBtn{
-        left:10px;
-        bottom:calc(10px + env(safe-area-inset-bottom));
-        min-height:40px;
-        min-width:58px;
-        border-radius:12px;
-        padding:6px 8px;
-        font-size:11px;
-      }
-      .proto3dDuelChip{
-        max-width:46vw;
-        font-size:10px;
-        padding:5px 8px;
-      }
-    }
-    .proto3dOverlay.combatLock .proto3dHud{
-      display:none;
-    }
-    .proto3dOverlay.combatLock .proto3dHint{
-      opacity:.56;
-    }
-    .proto3dOverlay.hudCompact .proto3dHud{
-      top:calc(60px + env(safe-area-inset-top));
-      gap:4px;
-    }
-    .proto3dOverlay.hudCompact #proto3dHudMission{
-      display:none;
-    }
-    .proto3dOverlay.hudCompact .proto3dHudCard{
-      font-size:10px;
-      padding:4px 6px;
-      line-height:1.15;
-    }
-    .proto3dOverlay.hudCombat .proto3dHud{
-      top:calc(58px + env(safe-area-inset-top));
-      gap:4px;
-    }
-    .proto3dOverlay.hudCombat #proto3dHudMission{
-      display:none;
-    }
-    .proto3dOverlay.hudCombat .proto3dHudCard{
-      font-size:10px;
-      padding:4px 6px;
-      line-height:1.1;
-    }
-    .proto3dOverlay.hudCombat .proto3dHint{
-      display:none !important;
-    }
-    body.proto3dOpen .wrap{
-      padding-bottom:0;
-    }
-    body.proto3dOpen .hud,
-    body.proto3dOpen .screenCard,
-    body.proto3dOpen .nav,
-    body.proto3dOpen .mobileMenuToggle{
-      visibility:hidden;
-      pointer-events:none;
-    }
     .divider{height:1px;background:var(--border);margin:12px 0}
     .storyIntroBody{display:grid;gap:12px}
     .storyScene{border:1px solid rgba(35,42,62,.9);background:rgba(15,19,32,.72);border-radius:12px;padding:10px}
@@ -1231,7 +786,7 @@
     }
 
     /* Phone landscape playability pass */
-    @media (pointer:coarse) and (orientation:landscape){
+    @media (max-width:960px) and (max-height:540px) and (orientation:landscape){
       body{min-height:100dvh}
       .wrap{min-height:100dvh;padding:6px 8px 114px}
       .top{order:1;flex-direction:row;align-items:flex-start;gap:6px}
@@ -1251,7 +806,7 @@
         border-right:none;
         border-radius:0;
       }
-      .mapStage{min-height:clamp(380px, 84vh, 760px)}
+      .mapStage{min-height:clamp(320px, 82vh, 520px)}
       .mapStage canvas{
         position:absolute;
         inset:0;
@@ -1703,22 +1258,9 @@
         <button class="tab" id="mStory" onclick="setMode('Story')">📖 Story</button>
         <button class="tab" id="mArcade" onclick="setMode('Arcade')">🕹️ Arcade</button>
         <button class="tab" id="mSurvival" onclick="setMode('Survival')">🔥 Survival</button>
-        <button class="tab" id="mPrototype3D" onclick="open3DPrototypePaused()" disabled title="3D Prototype is temporarily paused">🌎 3D Prototype (Paused)</button>
       </div>
       <div class="divider"></div>
       <div class="hudLine" id="modeDesc"></div>
-      <div class="hudLine">3D Prototype is temporarily paused while we focus on 2D stability/performance. Story/Arcade/Survival are fully active.</div>
-      <div id="mode3dGateWrap" style="display:none">
-        <div class="divider"></div>
-        <div class="hudTitle">3D Main-Mode Readiness Gate</div>
-        <div class="hudLine" id="mode3DGateStatus">Collecting 3D telemetry...</div>
-        <div class="hudLine" id="mode3DGateMetrics"></div>
-        <div class="hudLine" id="mode3DGateBlockers"></div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
-          <button class="ghost" id="mode3DGateRefreshBtn" onclick="refresh3DReadinessGate()">🧪 Refresh Gate</button>
-          <button class="ghost" id="mode3DMainToggleBtn" onclick="toggle3DMainMode()">🌎 3D Main Mode: OFF</button>
-        </div>
-      </div>
       <div class="divider"></div>
       <div class="hudLine" id="modeClanStatus">Clan data loading...</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
@@ -1737,72 +1279,6 @@
         <button class="ghost" id="modeEliteHuntBtn" onclick="startEliteBossHunt()">👑 Elite Hunt</button>
         <button class="ghost" id="modeEliteChapterBtn" onclick="cycleEliteHuntChapter()">🗺️ Hunt Chapter 1</button>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- 3D Prototype -->
-<div class="overlay proto3dOverlay" id="proto3dOverlay">
-  <div class="proto3dShell">
-    <div class="proto3dTopbar">
-      <div class="proto3dTitleCard">
-        <div class="proto3dTitle">🌎 Tiger Strike 3D Prototype</div>
-        <div class="proto3dSubtitle">Open-world test layer. Story/Arcade/Survival progress is untouched.</div>
-      </div>
-      <div class="proto3dTopActions">
-        <button class="ghost" id="proto3dCamToggleBtn">Camera UI: OFF</button>
-        <button class="ghost" id="proto3dMenuBtn">Menu</button>
-        <button class="ghost" id="proto3dShopBtn">Shop</button>
-        <button class="ghost" id="proto3dInventoryBtn">Inventory</button>
-        <button class="ghost" id="proto3dResetBtn">Reset Scenario</button>
-        <button class="ghost" id="proto3dCloseBtn">Back to 2D</button>
-      </div>
-    </div>
-    <div class="proto3dCamBar" id="proto3dCamBar">
-      <button id="proto3dCamModeBtn">Cam: 3rd</button>
-      <button id="proto3dCamPresetBtn">Preset: Tactical</button>
-      <button id="proto3dControlModeBtn">Control: Balanced</button>
-      <button id="proto3dHudModeBtn">HUD: Auto</button>
-      <button id="proto3dZoomOutBtn">Zoom -</button>
-      <button id="proto3dZoomInBtn">Zoom +</button>
-      <button id="proto3dPitchDownBtn">Pitch -</button>
-      <button id="proto3dPitchUpBtn">Pitch +</button>
-      <button id="proto3dHeightDownBtn">Down</button>
-      <button id="proto3dHeightUpBtn">Up</button>
-      <button id="proto3dQualityBtn">Visual: Auto</button>
-    </div>
-
-    <div class="proto3dHud">
-      <div class="proto3dHudCard" id="proto3dHudMission">Mission: loading...</div>
-      <div class="proto3dHudCard" id="proto3dHudAgent">Agent: loading...</div>
-      <div class="proto3dHudCard" id="proto3dHudTiger">Target: loading...</div>
-    </div>
-    <div class="proto3dDuelHud" id="proto3dDuelHud">
-      <div class="proto3dDuelChip you" id="proto3dDuelYou"></div>
-      <div class="proto3dDuelChip tiger" id="proto3dDuelTiger"></div>
-    </div>
-
-    <div class="proto3dHint" id="proto3dHint">Move • Lock Tiger • Attack or Capture</div>
-    <div class="proto3dLandscapeHint" id="proto3dLandscapeHint">Landscape mode is recommended for full map view.</div>
-
-    <div class="proto3dCanvasHost" id="proto3dCanvasHost"></div>
-
-    <div class="proto3dControls">
-      <div class="proto3dJoyArea" id="proto3dJoyArea">
-        <div class="proto3dJoyBase" id="proto3dJoyBase"></div>
-        <div class="proto3dJoyKnob" id="proto3dJoyKnob"></div>
-      </div>
-      <div class="proto3dBtnCluster">
-        <button class="proto3dActionBtn warn attack" id="proto3dAttackBtn">Attack</button>
-        <button class="proto3dActionBtn good capture" id="proto3dCaptureBtn">Capture</button>
-        <button class="proto3dActionBtn ghost medkit" id="proto3dMedkitBtn">Medkit</button>
-        <button class="proto3dActionBtn ghost armor" id="proto3dArmorBtn">Armor</button>
-        <button class="proto3dActionBtn ghost shield" id="proto3dShieldBtn">Shield</button>
-        <button class="proto3dActionBtn ghost roll" id="proto3dRollBtn">Roll</button>
-        <button class="proto3dActionBtn ghost sprint" id="proto3dSprintBtn">Sprint</button>
-        <button class="proto3dActionBtn ghost trap" id="proto3dTrapBtn">Trap</button>
-      </div>
-      <button class="proto3dQuickCamBtn" id="proto3dQuickCamBtn">🎥 Cam</button>
     </div>
   </div>
 </div>
@@ -2216,7 +1692,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4486"></script>
+<script src="./game.js?v=4463"></script>
 <script src="./tutorial.js?v=4463"></script>
 <script>
 (() => {
