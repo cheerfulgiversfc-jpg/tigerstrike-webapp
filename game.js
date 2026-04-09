@@ -160,6 +160,7 @@ const MISSION_TWIST_FOG_MIN_MS = 10000;
 const MISSION_TWIST_FOG_MAX_MS = 17000;
 const MISSION_TWIST_BLACKOUT_MIN_MS = 10000;
 const MISSION_TWIST_BLACKOUT_MAX_MS = 15000;
+const MOBILE_2D_HARD_STABLE_MODE = true;
 const DISABLE_MISSION_TWISTS_ON_MOBILE_STORY = true;
 const DISABLE_BRIDGE_TWIST_ON_MOBILE = true;
 const DISABLE_BRIDGE_TWIST_IN_STORY = true;
@@ -6349,8 +6350,11 @@ function desiredWorldLayout(state=S){
   const viewportW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
   const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const mobile = isMobileViewport();
-  const landscape = isLandscapeViewport();
-  // Mobile stability-first path: keep world at viewport size so map caching remains active.
+  if(MOBILE_2D_HARD_STABLE_MODE && mobile){
+    // Hard stability mode for 2D mobile:
+    // keep world exactly viewport-sized so map cache can be reused and camera never drifts.
+    return { mode, mission, scale:1, w:viewportW, h:viewportH };
+  }
   const minPadW = mobile ? 0 : 40;
   const minPadH = mobile ? 0 : 40;
   const w = Math.max(viewportW + minPadW, Math.round(WORLD_BASE_WIDTH * scale));
@@ -19301,8 +19305,8 @@ function followCiviliansTick(){
     const catchup = clamp((dd - 8) * 0.078, 0, 6.3);
     const trailBoost = dd > 170 ? 0.88 : (dd > 120 ? 0.52 : 0);
     const spBase = Math.min(
-      ((Math.max(playerSpeed * 1.30, 3.30) + catchup + trailBoost) * escortBoost * escortWaterMul),
-      PLAYER_SPRINT_SPEED + 3.5
+      ((Math.max(playerSpeed * 1.45, 3.45) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      PLAYER_SPRINT_SPEED + 4.0
     );
     const sp = spBase * tickMul;
     const desiredVx = (dx/dd) * sp;
@@ -22675,6 +22679,10 @@ function drawMapScene(){
   const perfMode = performanceMode() === "PERFORMANCE";
   const slowFrame = frameIsSlow();
   const mapLiteTier = (() => {
+    if(MOBILE_2D_HARD_STABLE_MODE && mobile){
+      // Keep map render lightweight and deterministic on phones.
+      return 2;
+    }
     if(mobile && (lagTier >= 2) && (slowFrame || __frameLagScore >= FRAME_LAG_CRITICAL_SCORE)) return 3;
     if(mobile && (lagTier >= 2 || perfMode || slowFrame)) return 2;
     if(mobile && lagTier >= 1) return 1;
@@ -25254,12 +25262,16 @@ function draw(){
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
       if(!usedKeyboard) safeTick("movePlayer", movePlayer);
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
-      runFrameTask("followCivilians", frameInterval(
-        battleLoad
-          ? (lagCritical ? 82 : (lagHeavy ? 68 : 52))
-          : (lagCritical ? 64 : (lagHeavy ? 52 : 40)),
-        1.5
-      ), followCiviliansTick, {
+      const mobileHardStable = MOBILE_2D_HARD_STABLE_MODE && isMobileViewport();
+      const followIntervalMs = mobileHardStable
+        ? (battleLoad ? 28 : 24)
+        : frameInterval(
+            battleLoad
+              ? (lagCritical ? 82 : (lagHeavy ? 68 : 52))
+              : (lagCritical ? 64 : (lagHeavy ? 52 : 40)),
+            1.5
+          );
+      runFrameTask("followCivilians", followIntervalMs, followCiviliansTick, {
         costHint:1.2, critical:true, cadence:1, slowCadence:1, heavyCadence:2, extremeCadence:2
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
