@@ -160,6 +160,12 @@ const MISSION_TWIST_FOG_MIN_MS = 10000;
 const MISSION_TWIST_FOG_MAX_MS = 17000;
 const MISSION_TWIST_BLACKOUT_MIN_MS = 10000;
 const MISSION_TWIST_BLACKOUT_MAX_MS = 15000;
+const DISABLE_MISSION_TWISTS_ON_MOBILE_STORY = true;
+const DISABLE_BRIDGE_TWIST_ON_MOBILE = true;
+const DISABLE_BRIDGE_TWIST_IN_STORY = true;
+const DISABLE_BLACKOUT_TWIST_IN_STORY = true;
+const DISABLE_BLACKOUT_TWIST_ON_MOBILE = true;
+const BLACKOUT_VISUAL_MINIMAL_MODE = true;
 const ARCADE_BUILDCRAFT_DEFAULT_ID = "RESCUE";
 const ARCADE_BUILDCRAFT_LOADOUTS = Object.freeze([
   Object.freeze({
@@ -6313,13 +6319,19 @@ function missionProgressForWorld(state=S){
 function worldScaleForModeMission(mode, mission){
   const mobile = isMobileViewport();
   const landscape = isLandscapeViewport();
-  const landscapeBoost = (mobile && landscape) ? 0.36 : (landscape ? 0.18 : 0);
+  const landscapeBoost = (mobile && landscape) ? 0.12 : (landscape ? 0.18 : 0);
   if(window.__TUTORIAL_MODE__) return 1;
   if(mobile && !landscape){
-    // Portrait stays compact; landscape is the primary large-map orientation.
-    if(mode === "Story") return clamp(1.02 + ((Math.max(1, mission) - 1) * 0.004), 1.02, 1.24);
-    if(mode === "Arcade") return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.003), 1.01, 1.18);
-    return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.010), 1.01, 1.22);
+    // Prioritize phone stability: keep portrait world very close to viewport.
+    if(mode === "Story") return clamp(1.00 + ((Math.max(1, mission) - 1) * 0.0012), 1.00, 1.08);
+    if(mode === "Arcade") return clamp(1.00 + ((Math.max(1, mission) - 1) * 0.0010), 1.00, 1.07);
+    return clamp(1.00 + ((Math.max(1, mission) - 1) * 0.0014), 1.00, 1.10);
+  }
+  if(mobile && landscape){
+    // Landscape can be larger, but keep under hard cap to avoid mobile frame collapse.
+    if(mode === "Story") return clamp(1.18 + ((Math.max(1, mission) - 1) * 0.0035) + landscapeBoost, 1.18, 1.46);
+    if(mode === "Arcade") return clamp(1.16 + ((Math.max(1, mission) - 1) * 0.0032) + landscapeBoost, 1.16, 1.40);
+    return clamp(1.18 + ((Math.max(1, mission) - 1) * 0.0042) + landscapeBoost, 1.18, 1.48);
   }
   if(mode === "Story"){
     return clamp(1.92 + ((Math.max(1, mission) - 1) * 0.010) + landscapeBoost, 1.92, 2.95);
@@ -7024,9 +7036,16 @@ function reportTickError(key, err){
   __frameRecoverUntil = (performance.now ? performance.now() : now) + 1800;
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, (performance.now ? performance.now() : now) + 2200);
 }
-function hardResetCanvasState(clear=false){
+function hardResetCanvasState(clear=false, resetClip=false){
   try{
     if(!ctx || !cv) return;
+    if(resetClip){
+      // Resetting width/height clears any leaked clip path after draw exceptions.
+      const rw = Math.max(1, Math.floor(Number(cv.width || 0)));
+      const rh = Math.max(1, Math.floor(Number(cv.height || 0)));
+      cv.width = rw;
+      cv.height = rh;
+    }
     if(typeof ctx.resetTransform === "function"){
       ctx.resetTransform();
     } else if(typeof ctx.setTransform === "function"){
@@ -7043,14 +7062,75 @@ function hardResetCanvasState(clear=false){
     // If reset fails, keep recovery path alive.
   }
 }
+function drawEmergencyMapBase(w = Number(cv?.width || 0), h = Number(cv?.height || 0), opts = {}){
+  if(!ctx || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return;
+  const showNotice = !!opts.showNotice;
+  ctx.save();
+  try{
+    if(typeof ctx.resetTransform === "function") ctx.resetTransform();
+    else if(typeof ctx.setTransform === "function") ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    if(typeof ctx.setLineDash === "function") ctx.setLineDash([]);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#0f2b1c";
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(34,84,56,.34)";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(92,70,44,.88)";
+    ctx.lineWidth = Math.max(20, Math.min(64, h * 0.09));
+    ctx.lineCap = "round";
+    for(const yMul of [0.24, 0.50, 0.76]){
+      const y = h * yMul;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.06, y);
+      ctx.lineTo(w * 0.28, y - (h * 0.05));
+      ctx.lineTo(w * 0.50, y - (h * 0.02));
+      ctx.lineTo(w * 0.72, y - (h * 0.06));
+      ctx.lineTo(w * 0.94, y - (h * 0.03));
+      ctx.stroke();
+    }
+    if(S.mode !== "Survival" && S.evacZone){
+      const ex = clamp(Number(S.evacZone.x || (w * 0.76)), 30, w - 30);
+      const ey = clamp(Number(S.evacZone.y || (h * 0.34)), 30, h - 30);
+      const er = clamp(Number(S.evacZone.r || 70), 24, Math.min(w, h) * 0.18);
+      ctx.strokeStyle = "rgba(74,222,128,.95)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(ex, ey, er, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(74,222,128,.22)";
+      ctx.beginPath();
+      ctx.arc(ex, ey, er - 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if(showNotice){
+      ctx.fillStyle = "rgba(7,12,18,.82)";
+      ctx.fillRect(12, h - 30, 196, 18);
+      ctx.fillStyle = "rgba(226,232,240,.95)";
+      ctx.font = "700 11px system-ui";
+      ctx.fillText("Recovering map visuals...", 18, h - 17);
+    }
+  }finally{
+    ctx.restore();
+  }
+}
+function drawEmergencyMapFallback(){
+  const w = Number(cv?.width || 0) || WORLD_BASE_WIDTH;
+  const h = Number(cv?.height || 0) || WORLD_BASE_HEIGHT;
+  drawEmergencyMapBase(w, h, { showNotice:true });
+}
 function safeTick(key, fn){
   try{
     fn();
     return true;
   }catch(err){
     if(key === "drawSceneFrame" || key === "bootDrawMapScene" || key === "recoverDrawMapScene"){
-      hardResetCanvasState(true);
+      hardResetCanvasState(true, true);
       invalidateMapCache();
+      if(key === "drawSceneFrame"){
+        try{ drawEmergencyMapFallback(); }catch(_){}
+      }
     }
     reportTickError(key, err);
     return false;
@@ -7183,7 +7263,10 @@ function ensureStabilityMonitorNode(){
   return el;
 }
 function shouldShowStabilityMonitor(now=Date.now()){
+  // Keep monitor off on mobile play sessions to avoid blocking map readability.
+  if(isMobileViewport()) return false;
   if(window.__TS_SHOW_MONITOR__ === true) return true;
+  if(window.__TS_SHOW_MONITOR__ === false) return false;
   if(window.__TUTORIAL_MODE__) return false;
   if(performanceMode() === "PERFORMANCE" && !isMobileViewport()) return true;
   if(frameIsSlow()) return true;
@@ -10389,10 +10472,17 @@ function setEventText(txt, seconds=6){
   __savePending = true;
 }
 function missionTwistsEnabled(){
+  if(DISABLE_MISSION_TWISTS_ON_MOBILE_STORY && isMobileViewport() && S.mode === "Story") return false;
   return eventsEnabled() && !window.__TUTORIAL_MODE__;
 }
 function missionTwistBlackoutActive(now=Date.now()){
   const tw = ensureMissionTwistState(S);
+  if((DISABLE_BLACKOUT_TWIST_ON_MOBILE && isMobileViewport()) || (DISABLE_BLACKOUT_TWIST_IN_STORY && S.mode === "Story")){
+    if(tw.blackout.active || tw.activeType === "blackout"){
+      clearMissionTwist("blackout", { silent:true });
+    }
+    return false;
+  }
   if(!tw.blackout.active) return false;
   if(now >= (tw.blackout.until || 0)){
     tw.blackout.active = false;
@@ -10494,6 +10584,9 @@ function missionTwistPickBridgePoint(){
   return null;
 }
 function triggerMissionTwistBridge(now=Date.now()){
+  if((DISABLE_BRIDGE_TWIST_ON_MOBILE && isMobileViewport()) || (DISABLE_BRIDGE_TWIST_IN_STORY && S.mode === "Story")){
+    return false;
+  }
   const aliveTigerCount = (S.tigers || []).filter((t)=>t.alive).length;
   if(aliveTigerCount <= 0) return false;
   const point = missionTwistPickBridgePoint();
@@ -10563,6 +10656,9 @@ function triggerMissionTwistFog(now=Date.now()){
   return true;
 }
 function triggerMissionTwistBlackout(now=Date.now()){
+  if((DISABLE_BLACKOUT_TWIST_ON_MOBILE && isMobileViewport()) || (DISABLE_BLACKOUT_TWIST_IN_STORY && S.mode === "Story")){
+    return false;
+  }
   const tw = ensureMissionTwistState(S);
   const dur = rand(MISSION_TWIST_BLACKOUT_MIN_MS, MISSION_TWIST_BLACKOUT_MAX_MS);
   tw.blackout.active = true;
@@ -10583,6 +10679,8 @@ function missionTwistChooseType(tw){
   const available = MISSION_TWIST_TYPES.filter((type)=>{
     if((tw.used?.[type] || 0) >= 1) return false;
     if(type === "hostage" && aliveCivs <= 0) return false;
+    if(type === "bridge" && ((DISABLE_BRIDGE_TWIST_ON_MOBILE && isMobileViewport()) || (DISABLE_BRIDGE_TWIST_IN_STORY && S.mode === "Story"))) return false;
+    if(type === "blackout" && ((DISABLE_BLACKOUT_TWIST_ON_MOBILE && isMobileViewport()) || (DISABLE_BLACKOUT_TWIST_IN_STORY && S.mode === "Story"))) return false;
     return true;
   });
   if(!available.length) return "";
@@ -10607,6 +10705,11 @@ function tickMissionTwists(){
   if(!missionTwistsEnabled()){
     if(tw.activeType || tw.bridge.active || tw.hostage.active || tw.blackout.active){
       clearMissionTwist("", { silent:true });
+    }
+    if((S.fogUntil || 0) > 0) S.fogUntil = 0;
+    if(typeof S.eventText === "string" && /radio blackout|bridge collapse|hostage vehicle|night fog burst/i.test(S.eventText || "")){
+      S.eventText = "";
+      S.eventTextUntil = 0;
     }
     return;
   }
@@ -22428,6 +22531,22 @@ function maybeRenderHUD(force=false){
 }
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
+function rounded(x,y,ww,hh,r,fill,stroke=null){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+ww,y,x+ww,y+hh,r);
+  ctx.arcTo(x+ww,y+hh,x,y+hh,r);
+  ctx.arcTo(x,y+hh,x,y,r);
+  ctx.arcTo(x,y,x+ww,y,r);
+  ctx.closePath();
+  ctx.fillStyle=fill;
+  ctx.fill();
+  if(stroke){
+    ctx.strokeStyle=stroke;
+    ctx.lineWidth=2;
+    ctx.stroke();
+  }
+}
 function drawMissionTwistOverlay(now=Date.now()){
   const tw = ensureMissionTwistState(S);
   ctx.save();
@@ -22500,14 +22619,14 @@ function drawMissionTwistOverlay(now=Date.now()){
     const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - now) / 1000));
     const mobile = isMobileViewport();
     const heavy = mobile && (performanceMode() === "PERFORMANCE" || frameLagTier() >= 1 || frameIsSlow());
+    const minimalMode = BLACKOUT_VISUAL_MINIMAL_MODE && (mobile || heavy || performanceMode() === "PERFORMANCE");
     const worldW = worldWidth(S);
     const worldH = worldHeight(S);
-    // Keep blackout readable/playable: hint of signal loss without obscuring the map.
-    ctx.globalAlpha = heavy ? 0.02 : 0.035;
-    ctx.fillStyle = "rgba(8,12,22,.90)";
-    ctx.fillRect(0, 0, worldW, worldH);
-
-    if(!heavy){
+    // Keep blackout readable/playable: never obscure map on mobile.
+    if(!minimalMode){
+      ctx.globalAlpha = 0.03;
+      ctx.fillStyle = "rgba(8,12,22,.90)";
+      ctx.fillRect(0, 0, worldW, worldH);
       ctx.globalAlpha = 0.10;
       ctx.strokeStyle = "rgba(148,163,184,.28)";
       ctx.lineWidth = 1;
@@ -22549,12 +22668,19 @@ function drawMapScene(){
   const perfMode = performanceMode() === "PERFORMANCE";
   const slowFrame = frameIsSlow();
   const mapLiteTier = (() => {
-    if(mobile && (lagTier >= 2 || (perfMode && slowFrame))) return 2;
-    if(mobile && (lagTier >= 1 || perfMode || slowFrame)) return 1;
+    if(mobile && (lagTier >= 2) && (slowFrame || __frameLagScore >= FRAME_LAG_CRITICAL_SCORE)) return 3;
+    if(mobile && (lagTier >= 2 || perfMode || slowFrame)) return 2;
+    if(mobile && lagTier >= 1) return 1;
     return 0;
   })();
   const liteMap = mapLiteTier >= 1;
   const ultraLiteMap = mapLiteTier >= 2;
+  const emergencyLiteMap = mapLiteTier >= 3;
+  if(emergencyLiteMap){
+    // Emergency render must be viewport-sized (not world-sized), otherwise camera offsets can make it appear blank.
+    drawEmergencyMapBase(viewportW, viewportH, { showNotice:false });
+    return;
+  }
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
@@ -22653,17 +22779,6 @@ function drawMapScene(){
       }
     }
     ctx.globalAlpha = 1;
-  }
-  function rounded(x,y,ww,hh,r,fill,stroke=null){
-    ctx.beginPath();
-    ctx.moveTo(x+r,y);
-    ctx.arcTo(x+ww,y,x+ww,y+hh,r);
-    ctx.arcTo(x+ww,y+hh,x,y+hh,r);
-    ctx.arcTo(x,y+hh,x,y,r);
-    ctx.arcTo(x,y,x+ww,y,r);
-    ctx.closePath();
-    ctx.fillStyle=fill; ctx.fill();
-    if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.stroke(); }
   }
   function groundShadow(x, y, rx, ry, alpha=0.24){
     ctx.save();
@@ -25025,10 +25140,10 @@ function drawMobileUiClearLane(){
 }
 function shouldDrawAtmosphericPass(){
   __frameBgFxFlip = (__frameBgFxFlip + 1) % 9;
+  if(isMobileViewport()) return false;
   const score = frameActiveEntityLoadScore();
   const lagTier = frameLagTier();
   if(S?.inBattle){
-    if(isMobileViewport()) return false;
     if(lagTier >= 1 || frameBudgetExceeded(0.28) || frameIsSlow()) return false;
     return (__frameBgFxFlip % 6) === 0;
   }
@@ -25478,7 +25593,7 @@ function init(){
   bindAttackButtonGestures();
   maybeRenderHUD(true);
   safeTick("bootDrawMapScene", drawMapScene);
-  safeTick("bootDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
+  safeTick("bootDrawAtmosphere", ()=>{ if(!isMobileViewport()) drawAtmosphericParallax(Date.now()); });
   safeTick("bootDrawEntities", drawEntities);
   safeTick("bootDrawMobileUiClearLane", drawMobileUiClearLane);
   if(!__drawLoopStarted){
@@ -25516,7 +25631,7 @@ function bootstrap(){
         }
         maybeRenderHUD(true);
         safeTick("recoverDrawMapScene", drawMapScene);
-        safeTick("recoverDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
+        safeTick("recoverDrawAtmosphere", ()=>{ if(!isMobileViewport()) drawAtmosphericParallax(Date.now()); });
         safeTick("recoverDrawEntities", drawEntities);
         safeTick("recoverDrawUiLane", drawMobileUiClearLane);
         if(!__drawLoopStarted){
@@ -25551,7 +25666,7 @@ function bootstrap(){
         deploy({ carryStats:true, hp:S.hp, armor:S.armor });
         maybeRenderHUD(true);
         safeTick("recoverDrawMapScene", drawMapScene);
-        safeTick("recoverDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
+        safeTick("recoverDrawAtmosphere", ()=>{ if(!isMobileViewport()) drawAtmosphericParallax(Date.now()); });
         safeTick("recoverDrawEntities", drawEntities);
         safeTick("recoverDrawUiLane", drawMobileUiClearLane);
         if(!__drawLoopStarted){
