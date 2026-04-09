@@ -6350,9 +6350,9 @@ function desiredWorldLayout(state=S){
   const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const mobile = isMobileViewport();
   const landscape = isLandscapeViewport();
-  // Keep portrait close to viewport for stability; make landscape the primary expanded-map view.
-  const minPadW = mobile ? (landscape ? 120 : 20) : 40;
-  const minPadH = mobile ? (landscape ? 80 : 20) : 40;
+  // Mobile stability-first path: keep world at viewport size so map caching remains active.
+  const minPadW = mobile ? 0 : 40;
+  const minPadH = mobile ? 0 : 40;
   const w = Math.max(viewportW + minPadW, Math.round(WORLD_BASE_WIDTH * scale));
   const h = Math.max(viewportH + minPadH, Math.round(WORLD_BASE_HEIGHT * scale));
   return { mode, mission, scale, w, h };
@@ -10472,7 +10472,9 @@ function setEventText(txt, seconds=6){
   __savePending = true;
 }
 function missionTwistsEnabled(){
-  if(DISABLE_MISSION_TWISTS_ON_MOBILE_STORY && isMobileViewport() && S.mode === "Story") return false;
+  // Mobile safe-mode: disable mission twists to avoid blackout/bridge visual corruption
+  // and keep gameplay stable while 2D stabilization is prioritized.
+  if(isMobileViewport()) return false;
   return eventsEnabled() && !window.__TUTORIAL_MODE__;
 }
 function missionTwistBlackoutActive(now=Date.now()){
@@ -19099,7 +19101,8 @@ function runCivilianFleeStep(c, now=Date.now()){
   const jitter = c.following ? 0 : (((c.id % 3) - 1) * 0.28);
   const ang = Math.atan2(awayY, awayX) + jitter;
   const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
-  const fleeSpeed = (c.following ? 2.95 : 2.35) * (c.following ? Math.max(0.94, waterMul) : waterMul);
+  const tickMul = clamp(Number(S._civilianTickMul || 1), 0.68, 2.6);
+  const fleeSpeed = ((c.following ? 2.95 : 2.35) * (c.following ? Math.max(0.94, waterMul) : waterMul)) * tickMul;
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -19111,6 +19114,11 @@ function runCivilianFleeStep(c, now=Date.now()){
 // ===================== CIVILIANS FOLLOW-ONLY =====================
 function followCiviliansTick(){
   if(S.mode==="Survival") return;
+  const now = Date.now();
+  const prevTickAt = Number(S._civilianTickAt || now);
+  const tickMul = clamp((now - prevTickAt) / 16.6667, 0.68, 2.6);
+  S._civilianTickAt = now;
+  S._civilianTickMul = tickMul;
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const escortBoost = storyRescueSpeedMul();
   const engageDist = 58;
@@ -19122,8 +19130,6 @@ function followCiviliansTick(){
   S._escortFace = normalizeAngle(S._escortFace + clamp(faceDelta, -0.18, 0.18));
   const escortFace = S._escortFace;
   const activeFollowers = [];
-  const now = Date.now();
-
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
 
@@ -19294,10 +19300,11 @@ function followCiviliansTick(){
     const escortWaterMul = Math.max(0.95, waterMul);
     const catchup = clamp((dd - 8) * 0.078, 0, 6.3);
     const trailBoost = dd > 170 ? 0.88 : (dd > 120 ? 0.52 : 0);
-    const sp = Math.min(
-      ((Math.max(playerSpeed * 1.18, 3.08) + catchup + trailBoost) * escortBoost * escortWaterMul),
-      PLAYER_SPRINT_SPEED + 3.0
+    const spBase = Math.min(
+      ((Math.max(playerSpeed * 1.30, 3.30) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      PLAYER_SPRINT_SPEED + 3.5
     );
+    const sp = spBase * tickMul;
     const desiredVx = (dx/dd) * sp;
     const desiredVy = (dy/dd) * sp;
     const velBlend = dd > 120 ? 0.52 : 0.38;
@@ -22675,10 +22682,10 @@ function drawMapScene(){
   })();
   const liteMap = mapLiteTier >= 1;
   const ultraLiteMap = mapLiteTier >= 2;
-  const emergencyLiteMap = mapLiteTier >= 3;
+  const emergencyLiteMap = (mapLiteTier >= 3) && !(mobile && S.mode === "Story");
   if(emergencyLiteMap){
-    // Emergency render must be viewport-sized (not world-sized), otherwise camera offsets can make it appear blank.
-    drawEmergencyMapBase(viewportW, viewportH, { showNotice:false });
+    // Draw in world space so camera offsets do not leave blank regions.
+    drawEmergencyMapBase(w, h, { showNotice:false });
     return;
   }
   const cacheSig = [
@@ -24870,6 +24877,14 @@ function useLiteEntityRender(){
     __liteEntityRenderRelaxUntil = 0;
     return false;
   }
+  // Stability rollback path for 2D Story mobile: keep full entity visuals to avoid
+  // dot/flicker appearance during temporary lag spikes.
+  if(S.mode === "Story"){
+    __liteEntityRenderState = false;
+    __liteEntityRenderNeedSince = 0;
+    __liteEntityRenderRelaxUntil = 0;
+    return false;
+  }
 
   const now = performance.now ? performance.now() : Date.now();
   const mode = performanceMode();
@@ -24878,11 +24893,11 @@ function useLiteEntityRender(){
   const slow = frameIsSlow(now);
 
   // Hard triggers switch immediately; soft triggers require sustained pressure.
-  const hardNeed = lagTier >= 2 || loadScore >= 62;
+  const hardNeed = lagTier >= 2 || loadScore >= 66;
   const softNeed =
-    lagTier >= 1 ||
-    (slow && loadScore >= 42) ||
-    (mode === "PERFORMANCE" && slow && loadScore >= 48);
+    (lagTier >= 1 && slow && loadScore >= 50) ||
+    (slow && loadScore >= 56) ||
+    (mode === "PERFORMANCE" && slow && loadScore >= 60);
 
   if(hardNeed || softNeed){
     if(!__liteEntityRenderNeedSince) __liteEntityRenderNeedSince = now;
@@ -24890,8 +24905,8 @@ function useLiteEntityRender(){
     __liteEntityRenderNeedSince = 0;
   }
 
-  const engageDelayMs = mode === "PERFORMANCE" ? 320 : 520;
-  const releaseHoldMs = mode === "PERFORMANCE" ? 1100 : 1400;
+  const engageDelayMs = mode === "PERFORMANCE" ? 980 : 1280;
+  const releaseHoldMs = mode === "PERFORMANCE" ? 1800 : 2200;
 
   if(!__liteEntityRenderState){
     const needFor = __liteEntityRenderNeedSince ? (now - __liteEntityRenderNeedSince) : 0;
@@ -25241,11 +25256,11 @@ function draw(){
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
       runFrameTask("followCivilians", frameInterval(
         battleLoad
-          ? (lagCritical ? 156 : (lagHeavy ? 128 : 96))
-          : (lagCritical ? 98 : (lagHeavy ? 78 : 56)),
+          ? (lagCritical ? 82 : (lagHeavy ? 68 : 52))
+          : (lagCritical ? 64 : (lagHeavy ? 52 : 40)),
         1.5
       ), followCiviliansTick, {
-        costHint:1.7, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+        costHint:1.2, critical:true, cadence:1, slowCadence:1, heavyCadence:2, extremeCadence:2
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
       runFrameTask("civThreats", frameInterval(
