@@ -5966,10 +5966,10 @@ function worldScaleForModeMission(mode, mission){
   const landscapeBoost = (mobile && landscape) ? 0.42 : 0;
   if(window.__TUTORIAL_MODE__) return 1;
   if(mobile && !landscape){
-    // Portrait stays compact; landscape is the primary large-map orientation.
-    if(mode === "Story") return clamp(1.02 + ((Math.max(1, mission) - 1) * 0.004), 1.02, 1.24);
-    if(mode === "Arcade") return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.003), 1.01, 1.18);
-    return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.010), 1.01, 1.22);
+    // Portrait still gets a true scrolling world, but with conservative scale for phone stability.
+    if(mode === "Story") return clamp(1.08 + ((Math.max(1, mission) - 1) * 0.005), 1.08, 1.42);
+    if(mode === "Arcade") return clamp(1.07 + ((Math.max(1, mission) - 1) * 0.004), 1.07, 1.34);
+    return clamp(1.08 + ((Math.max(1, mission) - 1) * 0.011), 1.08, 1.42);
   }
   if(mode === "Story"){
     return clamp(1.85 + ((Math.max(1, mission) - 1) * 0.012) + landscapeBoost, 1.85, 3.20);
@@ -5988,9 +5988,9 @@ function desiredWorldLayout(state=S){
   const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const mobile = isMobileViewport();
   const landscape = isLandscapeViewport();
-  // Keep portrait close to viewport for stability; make landscape the primary expanded-map view.
-  const minPadW = mobile ? (landscape ? 120 : 20) : 40;
-  const minPadH = mobile ? (landscape ? 80 : 20) : 40;
+  // Keep landscape as the primary large-map view, but ensure portrait is still clearly larger than one screen.
+  const minPadW = mobile ? (landscape ? 140 : 240) : 40;
+  const minPadH = mobile ? (landscape ? 96 : 220) : 40;
   const w = Math.max(viewportW + minPadW, Math.round(WORLD_BASE_WIDTH * scale));
   const h = Math.max(viewportH + minPadH, Math.round(WORLD_BASE_HEIGHT * scale));
   return { mode, mission, scale, w, h };
@@ -6115,6 +6115,13 @@ function worldToScreenPoint(x, y, state=S){
 function screenToWorldPoint(x, y, state=S){
   const off = cameraOffsetSnapshot(state);
   return { x: x + off.x, y: y + off.y };
+}
+
+function isWorldCameraActive(state=S){
+  if(window.__TUTORIAL_MODE__) return false;
+  if(!isMobileViewport()) return false;
+  ensureWorldLayout(state);
+  return true;
 }
 
 function flushSaveNow(){
@@ -6633,11 +6640,30 @@ function reportTickError(key, err){
   __frameRecoverUntil = (performance.now ? performance.now() : now) + 1800;
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, (performance.now ? performance.now() : now) + 2200);
 }
+function resetCanvasDrawState(){
+  if(!ctx) return;
+  try{
+    if(typeof ctx.resetTransform === "function") ctx.resetTransform();
+    else if(typeof ctx.setTransform === "function") ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }catch(e){}
+  try{ ctx.globalAlpha = 1; }catch(e){}
+  try{ ctx.globalCompositeOperation = "source-over"; }catch(e){}
+  try{ ctx.setLineDash([]); }catch(e){}
+  try{
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = "transparent";
+  }catch(e){}
+}
 function safeTick(key, fn){
   try{
     fn();
     return true;
   }catch(err){
+    const k = String(key || "");
+    if(/draw|render|scene|map/i.test(k)){
+      try{ resetCanvasDrawState(); }catch(e){}
+      try{ if(typeof invalidateMapCache === "function") invalidateMapCache(); }catch(e){}
+    }
     reportTickError(key, err);
     return false;
   }
@@ -6702,6 +6728,11 @@ function frameIsSlow(nowTs){
   const now = Number.isFinite(nowTs) ? nowTs : (performance.now ? performance.now() : Date.now());
   return now < (__frameSlowUntil || 0);
 }
+function frameTimeScale(){
+  const avgGap = __avgStabilitySample(__stabilityMonitorState.frameGaps);
+  if(!Number.isFinite(avgGap) || avgGap <= 0) return 1;
+  return clamp(avgGap / 16.7, 1, 2.8);
+}
 
 function frameInterval(baseMs, slowMul=1.45){
   const modeMul = performanceMode() === "PERFORMANCE" ? 1.24 : 1;
@@ -6760,6 +6791,7 @@ function ensureStabilityMonitorNode(){
 }
 function shouldShowStabilityMonitor(now=Date.now()){
   if(window.__TS_SHOW_MONITOR__ === true) return true;
+  if(isMobileViewport()) return false;
   if(window.__TUTORIAL_MODE__) return false;
   if(performanceMode() === "PERFORMANCE" && !isMobileViewport()) return true;
   if(frameIsSlow()) return true;
@@ -6769,9 +6801,10 @@ function renderStabilityMonitor(force=false){
   const now = Date.now();
   if(!force && (now - (__stabilityMonitorState.lastRenderAt || 0) < 260)) return;
   __stabilityMonitorState.lastRenderAt = now;
+  const visible = shouldShowStabilityMonitor(now);
+  if(!visible && !__stabilityMonitorState.node) return;
   const node = ensureStabilityMonitorNode();
   if(!node) return;
-  const visible = shouldShowStabilityMonitor(now);
   node.style.display = visible ? "block" : "none";
   if(!visible) return;
 
@@ -10058,6 +10091,7 @@ function triggerMissionTwistFog(now=Date.now()){
   return true;
 }
 function triggerMissionTwistBlackout(now=Date.now()){
+  if(isMobileViewport()) return false;
   const tw = ensureMissionTwistState(S);
   const dur = rand(MISSION_TWIST_BLACKOUT_MIN_MS, MISSION_TWIST_BLACKOUT_MAX_MS);
   tw.blackout.active = true;
@@ -10078,6 +10112,7 @@ function missionTwistChooseType(tw){
   const available = MISSION_TWIST_TYPES.filter((type)=>{
     if((tw.used?.[type] || 0) >= 1) return false;
     if(type === "hostage" && aliveCivs <= 0) return false;
+    if(type === "blackout" && isMobileViewport()) return false;
     return true;
   });
   if(!available.length) return "";
@@ -10098,6 +10133,14 @@ function missionTwistChooseType(tw){
 }
 function tickMissionTwists(){
   const tw = ensureMissionTwistState(S);
+  if(isMobileViewport() && (tw.blackout.active || tw.activeType === "blackout")){
+    tw.blackout.active = false;
+    tw.blackout.until = 0;
+    if(tw.activeType === "blackout"){
+      tw.activeType = "";
+      tw.activeUntil = 0;
+    }
+  }
   if(!missionTwistsEnabled()){
     if(tw.activeType || tw.bridge.active || tw.hostage.active || tw.blackout.active){
       clearMissionTwist("", { silent:true });
@@ -17172,8 +17215,11 @@ cv.addEventListener("pointerdown",(e)=>{
   }
 
   const rect=cv.getBoundingClientRect();
-  const x=(e.clientX-rect.left)*(cv.width/rect.width);
-  const y=(e.clientY-rect.top)*(cv.height/rect.height);
+  const sx=(e.clientX-rect.left)*(cv.width/rect.width);
+  const sy=(e.clientY-rect.top)*(cv.height/rect.height);
+  const wp = isWorldCameraActive(S) ? screenToWorldPoint(sx, sy, S) : { x:sx, y:sy };
+  const x = wp.x;
+  const y = wp.y;
   const tappedInteractable = findInteractableAt(x,y);
   const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
 
@@ -17822,6 +17868,7 @@ function keyboardMoveTick(){
     sprinting = true;
     S._sprintTicks--;
   }
+  speed *= frameTimeScale();
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
 
   S.target=null;
@@ -17847,6 +17894,7 @@ function movePlayer(){
   let speed=PLAYER_WALK_SPEED;
   let sprinting = false;
   if(S._sprintTicks && S._sprintTicks>0){ speed=PLAYER_SPRINT_SPEED; sprinting = true; S._sprintTicks--; }
+  speed *= frameTimeScale();
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
 
   S.me.face = Math.atan2(dy, dx);
@@ -18296,7 +18344,7 @@ function runCivilianFleeStep(c, now=Date.now()){
   const jitter = c.following ? 0 : (((c.id % 3) - 1) * 0.28);
   const ang = Math.atan2(awayY, awayX) + jitter;
   const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
-  const fleeSpeed = (c.following ? 2.95 : 2.35) * (c.following ? Math.max(0.94, waterMul) : waterMul);
+  const fleeSpeed = (c.following ? 2.95 : 2.35) * (c.following ? Math.max(0.94, waterMul) : waterMul) * frameTimeScale();
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -18469,7 +18517,7 @@ function followCiviliansTick(){
     const sp = Math.min(
       ((Math.max(playerSpeed * 1.16, 2.86) + catchup + trailBoost) * escortBoost * escortWaterMul),
       PLAYER_SPRINT_SPEED + 3.0
-    );
+    ) * frameTimeScale();
     const vx = (dx/dd) * sp;
     const vy = (dy/dd) * sp;
     if(Math.hypot(vx, vy) > 0.02){
@@ -21535,6 +21583,8 @@ function maybeRenderHUD(force=false){
 // ===================== CALM MAPS + FOG (no flashing) =====================
 function drawMissionTwistOverlay(now=Date.now()){
   const tw = ensureMissionTwistState(S);
+  const worldCam = isWorldCameraActive(S);
+  const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
   ctx.save();
   if(tw.bridge.active && now < (tw.bridge.until || 0)){
     const left = Math.max(1, Math.ceil(((tw.bridge.until || 0) - now) / 1000));
@@ -21593,20 +21643,35 @@ function drawMissionTwistOverlay(now=Date.now()){
   }
   if(tw.blackout.active && now < (tw.blackout.until || 0)){
     const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - now) / 1000));
-    ctx.globalAlpha = 0.16;
-    ctx.fillStyle = "rgba(6,9,16,.98)";
-    ctx.fillRect(0, 0, cv.width, cv.height);
-    rounded(16, 16, 194, 24, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.7)");
+    const heavyDim = !isMobileViewport() && frameLagTier() <= 0 && performanceMode() !== "PERFORMANCE";
+    if(heavyDim){
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = "rgba(6,9,16,.98)";
+      ctx.fillRect(camOff.x, camOff.y, cv.width, cv.height);
+    }
+    rounded(camOff.x + 16, camOff.y + 16, 194, 24, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.7)");
     ctx.globalAlpha = 0.96;
     ctx.fillStyle = "rgba(226,232,240,.96)";
     ctx.font = "900 11px system-ui";
-    ctx.fillText(`📻 RADIO BLACKOUT ${left}s`, 26, 32);
+    ctx.fillText(`📻 RADIO BLACKOUT ${left}s`, camOff.x + 26, camOff.y + 32);
   }
   ctx.restore();
 }
 function drawMapScene(){
   const frameNow = Date.now();
-  const w=cv.width, h=cv.height;
+  const viewportW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const worldCam = isWorldCameraActive(S);
+  const w = worldCam ? worldWidth(S) : viewportW;
+  const h = worldCam ? worldHeight(S) : viewportH;
+  const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
+  const viewPad = worldCam ? 88 : 0;
+  const drawMinX = worldCam ? clamp(Math.floor(camOff.x) - viewPad, 0, w) : 0;
+  const drawMinY = worldCam ? clamp(Math.floor(camOff.y) - viewPad, 0, h) : 0;
+  const drawMaxX = worldCam ? clamp(Math.ceil(camOff.x + viewportW) + viewPad, drawMinX, w) : w;
+  const drawMaxY = worldCam ? clamp(Math.ceil(camOff.y + viewportH) + viewPad, drawMinY, h) : h;
+  const drawSpanW = Math.max(2, drawMaxX - drawMinX);
+  const drawSpanH = Math.max(2, drawMaxY - drawMinY);
   const mapInfo = currentMap();
   const key = mapInfo.key;
   const missionIndex = missionIndexForMode(S.mode);
@@ -21617,23 +21682,14 @@ function drawMapScene(){
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
-    (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0,
     tw.activeType || "",
     tw.bridge.active ? 1 : 0,
-    Math.round(tw.bridge.x || 0),
-    Math.round(tw.bridge.y || 0),
-    Math.round(tw.bridge.r || 0),
-    Math.max(0, Math.ceil(((tw.bridge.until || 0) - frameNow) / 1000)),
     tw.hostage.active ? 1 : 0,
-    Math.round(tw.hostage.x || 0),
-    Math.round(tw.hostage.y || 0),
-    Math.round(tw.hostage.r || 0),
-    Math.max(0, Math.ceil(((tw.hostage.until || 0) - frameNow) / 1000)),
-    tw.blackout.active ? 1 : 0,
-    Math.max(0, Math.ceil(((tw.blackout.until || 0) - frameNow) / 1000))
+    tw.blackout.active ? 1 : 0
   ].join("|");
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
+  const mapLiteDetail = mobile && (worldCam || performanceMode() === "PERFORMANCE" || lagTier >= 1 || frameIsSlow());
   let cacheAgeCap = frameIsSlow()
     ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 640 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 520 : 360))
     : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 320 : MAP_CACHE_INTERVAL_MS);
@@ -21646,27 +21702,29 @@ function drawMapScene(){
       cacheAgeCap = Math.max(cacheAgeCap, 560);
     }
   }
-  const canUseCache =
-    !!__mapFrameCacheCanvas &&
-    __mapFrameCacheSig === cacheSig &&
-    (frameNow - __mapFrameCacheAt) < cacheAgeCap;
-  if(canUseCache){
-    ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
-    return;
-  }
-  const hasAnyCache =
-    !!__mapFrameCacheCanvas &&
-    Number.isFinite(__mapFrameCacheAt) &&
-    __mapFrameCacheAt > 0;
-  if(hasAnyCache){
-    const staleAge = frameNow - __mapFrameCacheAt;
-    const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
-    const emergencyMaxAge = mobile
-      ? (lagTier >= 2 ? 4600 : (lagTier >= 1 ? 3600 : 2800))
-      : (lagTier >= 2 ? 1800 : 1300);
-    if(emergencyReuse && staleAge < emergencyMaxAge){
+  if(!worldCam){
+    const canUseCache =
+      !!__mapFrameCacheCanvas &&
+      __mapFrameCacheSig === cacheSig &&
+      (frameNow - __mapFrameCacheAt) < cacheAgeCap;
+    if(canUseCache){
       ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
       return;
+    }
+    const hasAnyCache =
+      !!__mapFrameCacheCanvas &&
+      Number.isFinite(__mapFrameCacheAt) &&
+      __mapFrameCacheAt > 0;
+    if(hasAnyCache){
+      const staleAge = frameNow - __mapFrameCacheAt;
+      const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
+      const emergencyMaxAge = mobile
+        ? (lagTier >= 2 ? 950 : (lagTier >= 1 ? 760 : 560))
+        : (lagTier >= 2 ? 1800 : 1300);
+      if(emergencyReuse && staleAge < emergencyMaxAge){
+        ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
+        return;
+      }
     }
   }
 
@@ -21686,15 +21744,20 @@ function drawMapScene(){
     return { fill:"rgba(25,90,105,.62)", edge:"rgba(147,217,247,.58)", glint:"rgba(186,230,253,.26)" };
   })();
 
-  function fillSolid(color){ ctx.fillStyle=color; ctx.fillRect(0,0,w,h); }
+  function fillSolid(color){
+    ctx.fillStyle = color;
+    ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
+  }
   function seedNoise(ix, iy, seed=0){
     let n = (ix * 374761393) ^ (iy * 668265263) ^ (seed * 982451653);
     n = (n ^ (n >> 13)) * 1274126177;
     return ((n ^ (n >> 16)) >>> 0) / 4294967295;
   }
   function terrainTexture(seed, step=30, alpha=0.08, colorA="rgba(255,255,255,.05)", colorB="rgba(0,0,0,.08)"){
-    for(let y=0; y<h; y+=step){
-      for(let x=0; x<w; x+=step){
+    const sx = Math.floor(drawMinX / step) * step;
+    const sy = Math.floor(drawMinY / step) * step;
+    for(let y=sy; y<drawMaxY; y+=step){
+      for(let x=sx; x<drawMaxX; x+=step){
         const n = seedNoise((x/step)|0, (y/step)|0, seed);
         if(n < 0.30) continue;
         ctx.fillStyle = n > 0.62 ? colorA : colorB;
@@ -21735,13 +21798,14 @@ function drawMapScene(){
       grad.addColorStop(0.5, `rgba(0,0,0,${alpha})`);
       grad.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = grad;
-      ctx.fillRect(0, y - 26, w, 52);
+      ctx.fillRect(drawMinX, y - 26, drawSpanW, 52);
     }
     ctx.restore();
   }
   function terrainPatches(seed=0, count=14, alpha=0.12, warm="rgba(255,245,210,.16)", cool="rgba(20,35,48,.20)"){
     ctx.save();
-    for(let i=0;i<count;i++){
+    const loops = worldCam ? Math.max(8, Math.round(count * 0.65)) : count;
+    for(let i=0;i<loops;i++){
       const n1 = seedNoise(i + 17, seed + 29, seed + 101);
       const n2 = seedNoise(i + 43, seed + 71, seed + 149);
       const x = clamp((n1 * w), 20, w - 20);
@@ -21763,7 +21827,8 @@ function drawMapScene(){
   }
   function scatterPebbles(seed=0, count=120, alpha=0.20, light="rgba(232,236,245,.45)", dark="rgba(6,10,16,.45)"){
     ctx.save();
-    for(let i=0;i<count;i++){
+    const loops = worldCam ? Math.max(32, Math.round(count * 0.62)) : count;
+    for(let i=0;i<loops;i++){
       const n1 = seedNoise(i + 7, seed + 13, seed + 41);
       const n2 = seedNoise(i + 37, seed + 61, seed + 83);
       const x = n1 * w;
@@ -22198,12 +22263,25 @@ function drawMapScene(){
 
   // realism props
   const props = MAP_REALISM_PROPS[themeKey] || [];
-  for(const p of props) drawProp(p);
+  if(mapLiteDetail){
+    for(let i=0; i<props.length; i++){
+      const p = props[i];
+      if(!p || (i % 2 !== 0)) continue;
+      if(p.kind === "house" || p.kind === "car" || p.kind === "truck" || p.kind === "park" || p.kind === "building"){
+        drawProp(p);
+      }
+    }
+  } else {
+    for(const p of props) drawProp(p);
+  }
   const denseLandmarks = (__mapDenseLandmarksSig === __mapObstacleSig && Array.isArray(__mapDenseLandmarks))
     ? __mapDenseLandmarks
     : buildDenseLandmarks(key, chapter, w, h);
   const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
-  for(const lm of denseLandmarks){
+  for(let i=0; i<denseLandmarks.length; i++){
+    if(mapLiteDetail && (i % 3 !== 0)) continue;
+    const lm = denseLandmarks[i];
+    if(!lm) continue;
     drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
   }
 
@@ -22323,47 +22401,60 @@ function drawMapScene(){
     ctx.globalAlpha = 1;
   }
 
-  for(const tr of S.trapsPlaced){
-    ctx.globalAlpha=0.75;
-    ctx.strokeStyle="rgba(58,120,255,.55)";
-    ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.r,0,Math.PI*2); ctx.stroke();
-    ctx.globalAlpha=1;
-  }
-
-  if(S.scanPing>0){
-    S.scanPing--;
-    const t=currentTargetTiger();
-    if(t){
-      const r=40+(140-S.scanPing)*1.3;
-      ctx.globalAlpha=Math.max(0,S.scanPing/260);
-      ctx.strokeStyle="rgba(245,158,11,.18)";
-      ctx.lineWidth=3;
-      ctx.beginPath(); ctx.arc(t.x,t.y,r,0,Math.PI*2); ctx.stroke();
-      ctx.globalAlpha=1;
+  if(!worldCam){
+    if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== w || __mapFrameCacheCanvas.height !== h){
+      __mapFrameCacheCanvas = document.createElement("canvas");
+      __mapFrameCacheCanvas.width = w;
+      __mapFrameCacheCanvas.height = h;
+      __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
+    }
+    if(__mapFrameCacheCtx){
+      __mapFrameCacheCtx.clearRect(0, 0, w, h);
+      __mapFrameCacheCtx.drawImage(cv, 0, 0, w, h, 0, 0, w, h);
+      __mapFrameCacheSig = cacheSig;
+      __mapFrameCacheAt = frameNow;
     }
   }
-
-  drawMissionTwistOverlay(Date.now());
-
-  if(Date.now() < (S.fogUntil||0)){
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = "#0b0d12";
-    ctx.fillRect(0,0,w,h);
+}
+function drawMapDynamicOverlays(now=Date.now()){
+  const worldCam = isWorldCameraActive(S);
+  const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
+  for(const tr of (S.trapsPlaced || [])){
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = "rgba(58,120,255,.55)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(tr.x, tr.y, tr.r, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.globalAlpha = 1;
   }
 
-  if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== w || __mapFrameCacheCanvas.height !== h){
-    __mapFrameCacheCanvas = document.createElement("canvas");
-    __mapFrameCacheCanvas.width = w;
-    __mapFrameCacheCanvas.height = h;
-    __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
+  if(S.scanPing > 0){
+    S.scanPing = Math.max(0, S.scanPing - 1);
+    const t = currentTargetTiger();
+    if(t){
+      const r = 40 + (140 - S.scanPing) * 1.3;
+      ctx.globalAlpha = Math.max(0, S.scanPing / 260);
+      ctx.strokeStyle = "rgba(245,158,11,.18)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
   }
-  if(__mapFrameCacheCtx){
-    __mapFrameCacheCtx.clearRect(0, 0, w, h);
-    __mapFrameCacheCtx.drawImage(cv, 0, 0, w, h, 0, 0, w, h);
-    __mapFrameCacheSig = cacheSig;
-    __mapFrameCacheAt = frameNow;
+
+  drawMissionTwistOverlay(now);
+
+  if(now < (S.fogUntil || 0)){
+    const fogW = worldCam ? (cv.width || WORLD_BASE_WIDTH) : (cv.width || WORLD_BASE_WIDTH);
+    const fogH = worldCam ? (cv.height || WORLD_BASE_HEIGHT) : (cv.height || WORLD_BASE_HEIGHT);
+    const fogX = worldCam ? camOff.x : 0;
+    const fogY = worldCam ? camOff.y : 0;
+    ctx.globalAlpha = isMobileViewport() ? 0.20 : 0.35;
+    ctx.fillStyle = "#0b0d12";
+    ctx.fillRect(fogX, fogY, fogW, fogH);
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -24073,11 +24164,11 @@ function draw(){
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
       runFrameTask("followCivilians", frameInterval(
         battleLoad
-          ? (lagCritical ? 156 : (lagHeavy ? 128 : 96))
-          : (lagCritical ? 98 : (lagHeavy ? 78 : 56)),
+          ? (lagCritical ? 132 : (lagHeavy ? 110 : 86))
+          : (lagCritical ? 78 : (lagHeavy ? 62 : 50)),
         1.5
       ), followCiviliansTick, {
-        costHint:1.7, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+        costHint:1.2, cadence:1, slowCadence:1, heavyCadence:2, extremeCadence:2, critical:true
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
       runFrameTask("civThreats", frameInterval(
@@ -24104,30 +24195,66 @@ function draw(){
     });
 
     safeTick("drawSceneFrame", ()=>{
-      const liteRender = useLiteEntityRender();
-      const shake = liteRender ? { active:false, x:0, y:0 } : sampleCameraShake();
-      const cine = liteRender ? { active:false, x:0, y:0, scale:1 } : sampleBattleCinematic();
-      const needsTransform = shake.active || cine.active;
-      if(needsTransform){
-        ctx.save();
-        if(cine.active){
-          ctx.translate(cine.x, cine.y);
-          ctx.scale(cine.scale, cine.scale);
-          ctx.translate(-cine.x, -cine.y);
+      ctx.save();
+      let needsTransform = false;
+      let worldShifted = false;
+      try{
+        resetCanvasDrawState();
+        const liteRender = useLiteEntityRender();
+        const shake = liteRender ? { active:false, x:0, y:0 } : sampleCameraShake();
+        const cine = liteRender ? { active:false, x:0, y:0, scale:1 } : sampleBattleCinematic();
+        const worldCam = isWorldCameraActive(S);
+        const cam = updateWorldCamera(S);
+        needsTransform = shake.active || cine.active;
+        if(needsTransform){
+          ctx.save();
+          if(cine.active){
+            ctx.translate(cine.x, cine.y);
+            ctx.scale(cine.scale, cine.scale);
+            ctx.translate(-cine.x, -cine.y);
+          }
+          if(shake.active){
+            ctx.translate(shake.x, shake.y);
+          }
         }
-        if(shake.active){
-          ctx.translate(shake.x, shake.y);
+        if(worldCam){
+          ctx.save();
+          ctx.translate(-cam.x, -cam.y);
+          worldShifted = true;
         }
-      }
-      drawMapScene();
-      if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
-        drawAtmosphericParallax();
-      }
-      drawEntities();
-      if(needsTransform){
+        drawMapScene();
+        drawMapDynamicOverlays();
+        if(worldShifted){
+          ctx.restore();
+          worldShifted = false;
+        }
+        if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
+          drawAtmosphericParallax();
+        }
+        if(worldCam){
+          ctx.save();
+          ctx.translate(-cam.x, -cam.y);
+          worldShifted = true;
+        }
+        drawEntities();
+        if(worldShifted){
+          ctx.restore();
+          worldShifted = false;
+        }
+        if(needsTransform){
+          ctx.restore();
+          needsTransform = false;
+        }
+        drawMobileUiClearLane();
+      } finally {
+        if(worldShifted){
+          try{ ctx.restore(); }catch(e){}
+        }
+        if(needsTransform){
+          try{ ctx.restore(); }catch(e){}
+        }
         ctx.restore();
       }
-      drawMobileUiClearLane();
     });
     maybeAutosave();
   }catch(err){
@@ -24162,6 +24289,16 @@ function missionStateLooksEmpty(){
 function init(){
   ensureStarsDebugUi();
   pushStarsDebug("app:init", { user: tgUserKey(), build: TS_BUILD });
+  if(isMobileViewport()){
+    window.__TS_SHOW_MONITOR__ = false;
+    const twBoot = ensureMissionTwistState(S);
+    twBoot.blackout.active = false;
+    twBoot.blackout.until = 0;
+    if(twBoot.activeType === "blackout"){
+      twBoot.activeType = "";
+      twBoot.activeUntil = 0;
+    }
+  }
   ensureStoryMetaState();
   ensureContractTalliesState(S);
   ensureBalanceStatsState(S);
