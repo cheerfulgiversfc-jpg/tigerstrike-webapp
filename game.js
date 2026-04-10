@@ -6086,6 +6086,8 @@ function updateWorldCamera(state=S){
   if(!state.camera || typeof state.camera !== "object"){
     state.camera = { x: world.w * 0.5, y: world.h * 0.5 };
   }
+  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const target = cameraClampCenter(
     Number.isFinite(state?.me?.x) ? state.me.x : (world.w * 0.5),
     Number.isFinite(state?.me?.y) ? state.me.y : (world.h * 0.5),
@@ -6099,11 +6101,15 @@ function updateWorldCamera(state=S){
     state.camera.x += (target.x - state.camera.x) * ease;
     state.camera.y += (target.y - state.camera.y) * ease;
   }
+  const farDx = Math.abs(target.x - state.camera.x);
+  const farDy = Math.abs(target.y - state.camera.y);
+  if(farDx > (vw * 0.45) || farDy > (vh * 0.45)){
+    state.camera.x = target.x;
+    state.camera.y = target.y;
+  }
   const clamped = cameraClampCenter(state.camera.x, state.camera.y, state);
   state.camera.x = clamped.x;
   state.camera.y = clamped.y;
-  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
-  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   return { x: state.camera.x - (vw * 0.5), y: state.camera.y - (vh * 0.5) };
 }
 
@@ -10133,13 +10139,16 @@ function missionTwistChooseType(tw){
 }
 function tickMissionTwists(){
   const tw = ensureMissionTwistState(S);
-  if(isMobileViewport() && (tw.blackout.active || tw.activeType === "blackout")){
-    tw.blackout.active = false;
-    tw.blackout.until = 0;
-    if(tw.activeType === "blackout"){
-      tw.activeType = "";
-      tw.activeUntil = 0;
+  // Mobile stability guard: disable mission twists entirely on phone/tablet.
+  // Twists (bridge/fog/hostage/blackout) are high-variance and can create
+  // "broken map" visuals under load. Keep gameplay deterministic on mobile.
+  if(isMobileViewport()){
+    if(tw.activeType || tw.bridge.active || tw.hostage.active || tw.blackout.active){
+      clearMissionTwist("", { silent:true });
     }
+    tw.cooldownUntil = Date.now() + 12000;
+    tw.nextRollAt = tw.cooldownUntil;
+    return;
   }
   if(!missionTwistsEnabled()){
     if(tw.activeType || tw.bridge.active || tw.hostage.active || tw.blackout.active){
@@ -18515,8 +18524,8 @@ function followCiviliansTick(){
     const catchup = clamp((dd - 10) * 0.07, 0, 5.4);
     const trailBoost = dd > 170 ? 0.72 : (dd > 120 ? 0.40 : 0);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.16, 2.86) + catchup + trailBoost) * escortBoost * escortWaterMul),
-      PLAYER_SPRINT_SPEED + 3.0
+      ((Math.max(playerSpeed * 1.24, 3.25) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      PLAYER_SPRINT_SPEED + 3.35
     ) * frameTimeScale();
     const vx = (dx/dd) * sp;
     const vy = (dy/dd) * sp;
@@ -21582,6 +21591,7 @@ function maybeRenderHUD(force=false){
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
 function drawMissionTwistOverlay(now=Date.now()){
+  if(isMobileViewport()) return;
   const tw = ensureMissionTwistState(S);
   const worldCam = isWorldCameraActive(S);
   const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
@@ -21690,6 +21700,32 @@ function drawMapScene(){
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
   const mapLiteDetail = mobile && (worldCam || performanceMode() === "PERFORMANCE" || lagTier >= 1 || frameIsSlow());
+  const ultraLiteMap = mobile && (performanceMode() === "PERFORMANCE" || lagTier >= 1 || frameIsSlow(frameNow) || frameBudgetExceeded(0.85));
+  const propCullPad = worldCam ? 116 : 0;
+  const propCullMinX = drawMinX - propCullPad;
+  const propCullMinY = drawMinY - propCullPad;
+  const propCullMaxX = drawMaxX + propCullPad;
+  const propCullMaxY = drawMaxY + propCullPad;
+
+  function inVisiblePropRange(x, y, radius=24){
+    const r = Math.max(4, Number(radius) || 0);
+    return (x + r) >= propCullMinX &&
+      (x - r) <= propCullMaxX &&
+      (y + r) >= propCullMinY &&
+      (y - r) <= propCullMaxY;
+  }
+
+  function propCullRadius(kind, scale=1){
+    const s = Math.max(0.5, Number(scale) || 1);
+    if(kind === "building") return 48 * s;
+    if(kind === "bus") return 44 * s;
+    if(kind === "truck") return 40 * s;
+    if(kind === "house" || kind === "park") return 34 * s;
+    if(kind === "car") return 30 * s;
+    if(kind === "tree" || kind === "bush") return 22 * s;
+    if(kind === "fence") return 26 * s;
+    return 20 * s;
+  }
   let cacheAgeCap = frameIsSlow()
     ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 640 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 520 : 360))
     : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 320 : MAP_CACHE_INTERVAL_MS);
@@ -22005,6 +22041,7 @@ function drawMapScene(){
     const px = p._abs ? p.x : (p.x * (w / 960));
     const py = p._abs ? p.y : (p.y * (h / 540));
     const s = p.s || 1;
+    if(worldCam && !inVisiblePropRange(px, py, propCullRadius(p.kind, s))) return;
     if(inMapScenarioKeepout(px, py, 24 * s)) return;
     const shadowRx = (()=>{
       if(p.kind === "building") return 20 * s;
@@ -22143,7 +22180,25 @@ function drawMapScene(){
     }
   }
 
-  if(themeKey==="ST_FOREST"){
+  if(ultraLiteMap){
+    fillSolid("#123023");
+    const roadA = [[0,h*0.21],[250,h*0.30],[480,h*0.25],[740,h*0.34],[w,h*0.29]];
+    const roadB = [[40,h*0.56],[240,h*0.50],[460,h*0.54],[640,h*0.46],[840,h*0.50],[w,h*0.44]];
+    const roadC = [[40,h*0.84],[230,h*0.79],[430,h*0.82],[620,h*0.75],[820,h*0.80],[w,h*0.73]];
+    roadLine(roadA, 42, "rgba(84,66,42,.82)");
+    roadLine(roadB, 56, "rgba(88,70,46,.84)");
+    roadLine(roadC, 50, "rgba(84,66,42,.82)");
+    if(!frameBudgetExceeded(0.7)){
+      for(let y=drawMinY + 16; y<drawMaxY; y+=48){
+        for(let x=drawMinX + 20; x<drawMaxX; x+=54){
+          const n = seedNoise((x / 24) | 0, (y / 24) | 0, 17);
+          if(n < 0.72) continue;
+          treeDot(x + ((n - 0.5) * 8), y + ((0.5 - n) * 6), 5.2 + (n * 2.6));
+        }
+      }
+    }
+  }
+  else if(themeKey==="ST_FOREST"){
     fillSolid("#0f2b1c");
     ctx.fillStyle="rgba(18,66,40,.34)";
     ctx.fillRect(0,0,w,h);
@@ -22250,15 +22305,15 @@ function drawMapScene(){
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
-    ctx.fillRect(0,0,w,h);
+    ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
   }
   if(chapterStyle?.haze){
-    const haze = ctx.createLinearGradient(0,0,0,h);
+    const haze = ctx.createLinearGradient(0, drawMinY, 0, drawMaxY);
     haze.addColorStop(0, chapterStyle.haze);
     haze.addColorStop(0.45, "rgba(0,0,0,0)");
     haze.addColorStop(1, "rgba(0,0,0,.03)");
     ctx.fillStyle = haze;
-    ctx.fillRect(0,0,w,h);
+    ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
   }
 
   // realism props
@@ -22279,18 +22334,23 @@ function drawMapScene(){
     : buildDenseLandmarks(key, chapter, w, h);
   const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
   for(let i=0; i<denseLandmarks.length; i++){
-    if(mapLiteDetail && (i % 3 !== 0)) continue;
+    if(mapLiteDetail && (i % (ultraLiteMap ? 5 : 3) !== 0)) continue;
     const lm = denseLandmarks[i];
     if(!lm) continue;
+    if(worldCam && !inVisiblePropRange(lm.x, lm.y, 40 * extraScale)) continue;
     drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
   }
 
   // subtle vignette to reduce flatness
-  const vignette = ctx.createRadialGradient(w*0.5, h*0.48, h*0.25, w*0.5, h*0.5, h*0.85);
+  const vgX = worldCam ? (camOff.x + (viewportW * 0.5)) : (w * 0.5);
+  const vgY = worldCam ? (camOff.y + (viewportH * 0.48)) : (h * 0.48);
+  const vgNear = worldCam ? (Math.max(viewportW, viewportH) * 0.28) : (h * 0.25);
+  const vgFar = worldCam ? (Math.max(viewportW, viewportH) * 0.92) : (h * 0.85);
+  const vignette = ctx.createRadialGradient(vgX, vgY, vgNear, vgX, vgY, vgFar);
   vignette.addColorStop(0, "rgba(0,0,0,0)");
   vignette.addColorStop(1, "rgba(0,0,0,.22)");
   ctx.fillStyle = vignette;
-  ctx.fillRect(0,0,w,h);
+  ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
 
   if(S.mode==="Arcade"){
     ctx.save();
@@ -22299,20 +22359,20 @@ function drawMapScene(){
     arcadeTint.addColorStop(0, "rgba(34,211,238,.11)");
     arcadeTint.addColorStop(1, "rgba(192,132,252,.12)");
     ctx.fillStyle = arcadeTint;
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
     ctx.globalAlpha = 0.07;
     ctx.fillStyle = "rgba(255,255,255,.65)";
-    for(let y=8; y<h; y+=18){
-      ctx.fillRect(0, y, w, 1);
+    for(let y=Math.max(8, drawMinY); y<drawMaxY; y+=18){
+      ctx.fillRect(drawMinX, y, drawSpanW, 1);
     }
     ctx.restore();
   } else if(S.mode==="Story"){
     ctx.save();
-    const storyTint = ctx.createLinearGradient(0, 0, 0, h);
+    const storyTint = ctx.createLinearGradient(0, drawMinY, 0, drawMaxY);
     storyTint.addColorStop(0, "rgba(245,158,11,.06)");
     storyTint.addColorStop(1, "rgba(59,130,246,.05)");
     ctx.fillStyle = storyTint;
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
     ctx.restore();
   }
 
@@ -22451,7 +22511,7 @@ function drawMapDynamicOverlays(now=Date.now()){
     const fogH = worldCam ? (cv.height || WORLD_BASE_HEIGHT) : (cv.height || WORLD_BASE_HEIGHT);
     const fogX = worldCam ? camOff.x : 0;
     const fogY = worldCam ? camOff.y : 0;
-    ctx.globalAlpha = isMobileViewport() ? 0.20 : 0.35;
+    ctx.globalAlpha = isMobileViewport() ? 0.10 : 0.35;
     ctx.fillStyle = "#0b0d12";
     ctx.fillRect(fogX, fogY, fogW, fogH);
     ctx.globalAlpha = 1;
@@ -23859,12 +23919,26 @@ function useLiteEntityRender(){
   return __liteEntityRenderState;
 }
 function drawEntitiesLite(){
+  const worldCam = isWorldCameraActive(S);
+  const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
+  const visPad = 72;
+  const visMinX = camOff.x - visPad;
+  const visMinY = camOff.y - visPad;
+  const visMaxX = camOff.x + (cv.width || WORLD_BASE_WIDTH) + visPad;
+  const visMaxY = camOff.y + (cv.height || WORLD_BASE_HEIGHT) + visPad;
+  const inLiteView = (x, y, r=20)=>(
+    !worldCam ||
+    ((x + r) >= visMinX && (x - r) <= visMaxX && (y + r) >= visMinY && (y - r) <= visMaxY)
+  );
+
   ctx.fillStyle = "rgba(77,47,33,.64)";
   for(const c of (S.carcasses || [])){
+    if(!inLiteView(c.x, c.y, 16)) continue;
     ctx.fillRect(c.x - 9, c.y - 4, 18, 8);
   }
 
   for(const p of (S.pickups || [])){
+    if(!inLiteView(p.x, p.y, 16)) continue;
     let color = "rgba(147,197,253,.9)";
     if(p.kind === "medkit") color = "rgba(34,197,94,.92)";
     else if(p.kind === "ammo") color = "rgba(251,191,36,.92)";
@@ -24200,6 +24274,10 @@ function draw(){
       let worldShifted = false;
       try{
         resetCanvasDrawState();
+        // Hard clear each frame so old world-camera layers cannot ghost/stack on mobile.
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        ctx.fillStyle = "#0b111b";
+        ctx.fillRect(0, 0, cv.width, cv.height);
         const liteRender = useLiteEntityRender();
         const shake = liteRender ? { active:false, x:0, y:0 } : sampleCameraShake();
         const cine = liteRender ? { active:false, x:0, y:0, scale:1 } : sampleBattleCinematic();
