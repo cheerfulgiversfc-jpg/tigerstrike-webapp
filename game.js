@@ -648,13 +648,30 @@ function ensureMissionTwistState(state=S){
   tw.blackout.active = !!tw.blackout.active;
   tw.blackout.until = Math.max(0, Math.floor(Number(tw.blackout.until || 0)));
 
+  // Mobile safety: disable all mission twists to prevent map blackout/fog artifacts
+  // and reduce startup/transition CPU spikes.
+  if(isMobileViewport()){
+    tw.enabled = false;
+    tw.activeType = "";
+    tw.activeUntil = 0;
+    tw.bridge.active = false;
+    tw.bridge.until = 0;
+    tw.hostage.active = false;
+    tw.hostage.until = 0;
+    tw.blackout.active = false;
+    tw.blackout.until = 0;
+    if(state && typeof state === "object"){
+      state.fogUntil = 0;
+    }
+  }
+
   state.missionTwists = tw;
   return tw;
 }
 
 function resetMissionTwistsForDeploy(state=S, now=Date.now()){
   const tw = ensureMissionTwistState(state);
-  tw.enabled = true;
+  tw.enabled = !isMobileViewport();
   tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
   tw.cooldownUntil = now + rand(6200, 9800);
   tw.triggerCount = 0;
@@ -679,6 +696,9 @@ function resetMissionTwistsForDeploy(state=S, now=Date.now()){
   tw.hostage.penaltyApplied = false;
   tw.blackout.active = false;
   tw.blackout.until = 0;
+  if(isMobileViewport() && state && typeof state === "object"){
+    state.fogUntil = 0;
+  }
   return tw;
 }
 
@@ -5963,21 +5983,28 @@ function missionProgressForWorld(state=S){
 function worldScaleForModeMission(mode, mission){
   const mobile = isMobileViewport();
   const landscape = isLandscapeViewport();
-  const landscapeBoost = (mobile && landscape) ? 0.42 : 0;
   if(window.__TUTORIAL_MODE__) return 1;
-  if(mobile && !landscape){
-    // Portrait still gets a true scrolling world, but with conservative scale for phone stability.
-    if(mode === "Story") return clamp(1.08 + ((Math.max(1, mission) - 1) * 0.005), 1.08, 1.42);
-    if(mode === "Arcade") return clamp(1.07 + ((Math.max(1, mission) - 1) * 0.004), 1.07, 1.34);
-    return clamp(1.08 + ((Math.max(1, mission) - 1) * 0.011), 1.08, 1.42);
+  if(mobile){
+    // Mobile-safe world sizing: still larger than one screen and camera-following,
+    // but far smaller than desktop to avoid startup hitches and long empty traversals.
+    if(mode === "Story"){
+      if(landscape) return clamp(1.18 + ((Math.max(1, mission) - 1) * 0.0035), 1.18, 1.48);
+      return clamp(1.10 + ((Math.max(1, mission) - 1) * 0.004), 1.10, 1.36);
+    }
+    if(mode === "Arcade"){
+      if(landscape) return clamp(1.14 + ((Math.max(1, mission) - 1) * 0.003), 1.14, 1.40);
+      return clamp(1.08 + ((Math.max(1, mission) - 1) * 0.0035), 1.08, 1.30);
+    }
+    if(landscape) return clamp(1.16 + ((Math.max(1, mission) - 1) * 0.006), 1.16, 1.52);
+    return clamp(1.10 + ((Math.max(1, mission) - 1) * 0.0065), 1.10, 1.38);
   }
   if(mode === "Story"){
-    return clamp(1.85 + ((Math.max(1, mission) - 1) * 0.012) + landscapeBoost, 1.85, 3.20);
+    return clamp(1.85 + ((Math.max(1, mission) - 1) * 0.012), 1.85, 3.20);
   }
   if(mode === "Arcade"){
-    return clamp(1.70 + ((Math.max(1, mission) - 1) * 0.010) + landscapeBoost, 1.70, 2.85);
+    return clamp(1.70 + ((Math.max(1, mission) - 1) * 0.010), 1.70, 2.85);
   }
-  return clamp(1.75 + ((Math.max(1, mission) - 1) * 0.028) + landscapeBoost, 1.75, 2.70);
+  return clamp(1.75 + ((Math.max(1, mission) - 1) * 0.028), 1.75, 2.70);
 }
 
 function desiredWorldLayout(state=S){
@@ -6796,8 +6823,8 @@ function ensureStabilityMonitorNode(){
   return el;
 }
 function shouldShowStabilityMonitor(now=Date.now()){
-  if(window.__TS_SHOW_MONITOR__ === true) return true;
   if(isMobileViewport()) return false;
+  if(window.__TS_SHOW_MONITOR__ === true) return true;
   if(window.__TUTORIAL_MODE__) return false;
   if(performanceMode() === "PERFORMANCE" && !isMobileViewport()) return true;
   if(frameIsSlow()) return true;
@@ -6870,7 +6897,7 @@ function runStabilityRecovery(reason="stall"){
   try{ if(typeof sanitizeRuntimeState === "function") sanitizeRuntimeState(); }catch(e){}
   try{ if(typeof clampWorldToCanvas === "function") clampWorldToCanvas(); }catch(e){}
   try{
-    if(typeof validateMissionSpawnLayout === "function"){
+    if(!isMobileViewport() && typeof validateMissionSpawnLayout === "function"){
       const res = validateMissionSpawnLayout({ repair:true });
       if((res?.fixed || 0) > 0){
         setEventText(`Stability recovered • spawn fixes: ${res.fixed}`, 1.4);
@@ -6878,7 +6905,7 @@ function runStabilityRecovery(reason="stall"){
         setEventText("Stability recovered.", 1.1);
       }
     } else {
-      setEventText("Stability recovered.", 1.1);
+      setEventText("Stability recovered.", isMobileViewport() ? 0.8 : 1.1);
     }
   }catch(e){}
   try{ maybeRenderHUD(true); }catch(e){}
@@ -6905,8 +6932,13 @@ function updateFrameLoad(frameStartTs){
   const frameGap = now - __lastFrameAt;
   __lastFrameAt = now;
   const frameCost = now - frameStartTs;
+  const mobile = isMobileViewport();
   noteFrameSample(frameGap, frameCost);
-  if(frameGap > 4200 || frameCost > 150){
+  if(mobile){
+    if(frameGap > 6500 || frameCost > 380){
+      runStabilityRecovery("critical-stall");
+    }
+  } else if(frameGap > 4200 || frameCost > 150){
     runStabilityRecovery("critical-stall");
   }
   if(frameGap > STABILITY_SPIKE_GAP_MS || frameCost > 46){
@@ -6915,10 +6947,16 @@ function updateFrameLoad(frameStartTs){
     }
     __frameSpikePending = true;
   }
-  if(frameGap > STABILITY_STALL_HARD_GAP_MS || frameCost > STABILITY_STALL_COST_MS){
-    runStabilityRecovery(frameGap > STABILITY_STALL_HARD_GAP_MS ? "hard-gap" : "hard-cost");
-  } else if(frameGap > STABILITY_STALL_GAP_MS){
-    __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 3000);
+  if(mobile){
+    if(frameGap > 1100 || frameCost > 180){
+      __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 3200);
+    }
+  } else {
+    if(frameGap > STABILITY_STALL_HARD_GAP_MS || frameCost > STABILITY_STALL_COST_MS){
+      runStabilityRecovery(frameGap > STABILITY_STALL_HARD_GAP_MS ? "hard-gap" : "hard-cost");
+    } else if(frameGap > STABILITY_STALL_GAP_MS){
+      __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 3000);
+    }
   }
   if(frameGap > 70 || frameCost > 34){
     __frameLagScore = Math.min(20, (__frameLagScore || 0) + 2);
@@ -9925,7 +9963,7 @@ function setEventText(txt, seconds=6){
   __savePending = true;
 }
 function missionTwistsEnabled(){
-  return eventsEnabled() && !window.__TUTORIAL_MODE__;
+  return eventsEnabled() && !window.__TUTORIAL_MODE__ && !isMobileViewport();
 }
 function missionTwistBlackoutActive(now=Date.now()){
   const tw = ensureMissionTwistState(S);
@@ -10139,6 +10177,7 @@ function missionTwistChooseType(tw){
 }
 function tickMissionTwists(){
   const tw = ensureMissionTwistState(S);
+  const now = Date.now();
   // Mobile stability guard: disable mission twists entirely on phone/tablet.
   // Twists (bridge/fog/hostage/blackout) are high-variance and can create
   // "broken map" visuals under load. Keep gameplay deterministic on mobile.
@@ -10146,8 +10185,10 @@ function tickMissionTwists(){
     if(tw.activeType || tw.bridge.active || tw.hostage.active || tw.blackout.active){
       clearMissionTwist("", { silent:true });
     }
-    tw.cooldownUntil = Date.now() + 12000;
+    tw.enabled = false;
+    tw.cooldownUntil = now + 60000;
     tw.nextRollAt = tw.cooldownUntil;
+    S.fogUntil = 0;
     return;
   }
   if(!missionTwistsEnabled()){
@@ -10157,8 +10198,6 @@ function tickMissionTwists(){
     return;
   }
   if(!tw.enabled) return;
-  const now = Date.now();
-
   if(tw.bridge.active && now >= (tw.bridge.until || 0)){
     clearMissionTwist("bridge", { notice:"🛣️ Collapse cleared. Route reopened.", seconds:2.8 });
   }
@@ -10226,6 +10265,7 @@ function tickMissionTwists(){
   }
 }
 function tickEvents(){
+  if(isMobileViewport()) return;
   if(!eventsEnabled() || S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
   const director = ensureMissionDirectorState(S);
   const phase = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
@@ -10338,6 +10378,7 @@ function tickEvents(){
 }
 
 function biomeHazardTick(){
+  if(isMobileViewport()) return;
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
   if(window.__TUTORIAL_MODE__) return;
   const profile = currentBiomeProfile();
@@ -16853,6 +16894,7 @@ function deploy(opts={}){
   const carryStats = !!opts.carryStats;
   const carryHp = clamp(Number.isFinite(opts.hp) ? opts.hp : S.hp, 0, 100);
   const carryArmor = clamp(Number.isFinite(opts.armor) ? opts.armor : S.armor, 0, S.armorCap || 100);
+  S._mobileMissionStartedAt = Date.now();
   resizeCanvasForViewport();
   invalidateMapCache();
   for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
@@ -16884,6 +16926,10 @@ function deploy(opts={}){
     : clamp(20 + storyStartingArmorBonus(), 0, S.armorCap || 100);
   S.stamina=100;
   S.me={x:160,y:clamp(cv.height - 120, 240, 420),face:0,step:0};
+  {
+    const camSnap = cameraClampCenter(S.me.x, S.me.y, S);
+    S.camera = { x: camSnap.x, y: camSnap.y };
+  }
   S.target=null;
   S.lockedTigerId=null;
 
@@ -21699,8 +21745,9 @@ function drawMapScene(){
   ].join("|");
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
-  const mapLiteDetail = mobile && (worldCam || performanceMode() === "PERFORMANCE" || lagTier >= 1 || frameIsSlow());
-  const ultraLiteMap = mobile && (performanceMode() === "PERFORMANCE" || lagTier >= 1 || frameIsSlow(frameNow) || frameBudgetExceeded(0.85));
+  const forceMobileFastMap = mobile;
+  const mapLiteDetail = mobile && (forceMobileFastMap || worldCam || lagTier >= 1 || frameIsSlow());
+  const ultraLiteMap = mobile && (forceMobileFastMap || lagTier >= 1 || frameIsSlow(frameNow) || frameBudgetExceeded(0.85));
   const propCullPad = worldCam ? 116 : 0;
   const propCullMinX = drawMinX - propCullPad;
   const propCullMinY = drawMinY - propCullPad;
@@ -22301,7 +22348,9 @@ function drawMapScene(){
     const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
     for(const [x,y] of crates) crateBlock(x,y);
   }
-  drawWaterBodies(1);
+  if(!ultraLiteMap){
+    drawWaterBodies(1);
+  }
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -22316,29 +22365,31 @@ function drawMapScene(){
     ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
   }
 
-  // realism props
-  const props = MAP_REALISM_PROPS[themeKey] || [];
-  if(mapLiteDetail){
-    for(let i=0; i<props.length; i++){
-      const p = props[i];
-      if(!p || (i % 2 !== 0)) continue;
-      if(p.kind === "house" || p.kind === "car" || p.kind === "truck" || p.kind === "park" || p.kind === "building"){
-        drawProp(p);
+  // realism props (disabled in ultra-lite to keep mobile frame time stable)
+  if(!ultraLiteMap){
+    const props = MAP_REALISM_PROPS[themeKey] || [];
+    if(mapLiteDetail){
+      for(let i=0; i<props.length; i++){
+        const p = props[i];
+        if(!p || (i % 2 !== 0)) continue;
+        if(p.kind === "house" || p.kind === "car" || p.kind === "truck" || p.kind === "park" || p.kind === "building"){
+          drawProp(p);
+        }
       }
+    } else {
+      for(const p of props) drawProp(p);
     }
-  } else {
-    for(const p of props) drawProp(p);
-  }
-  const denseLandmarks = (__mapDenseLandmarksSig === __mapObstacleSig && Array.isArray(__mapDenseLandmarks))
-    ? __mapDenseLandmarks
-    : buildDenseLandmarks(key, chapter, w, h);
-  const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
-  for(let i=0; i<denseLandmarks.length; i++){
-    if(mapLiteDetail && (i % (ultraLiteMap ? 5 : 3) !== 0)) continue;
-    const lm = denseLandmarks[i];
-    if(!lm) continue;
-    if(worldCam && !inVisiblePropRange(lm.x, lm.y, 40 * extraScale)) continue;
-    drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
+    const denseLandmarks = (__mapDenseLandmarksSig === __mapObstacleSig && Array.isArray(__mapDenseLandmarks))
+      ? __mapDenseLandmarks
+      : buildDenseLandmarks(key, chapter, w, h);
+    const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
+    for(let i=0; i<denseLandmarks.length; i++){
+      if(mapLiteDetail && (i % 3 !== 0)) continue;
+      const lm = denseLandmarks[i];
+      if(!lm) continue;
+      if(worldCam && !inVisiblePropRange(lm.x, lm.y, 40 * extraScale)) continue;
+      drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
+    }
   }
 
   // subtle vignette to reduce flatness
@@ -22479,6 +22530,7 @@ function drawMapScene(){
 function drawMapDynamicOverlays(now=Date.now()){
   const worldCam = isWorldCameraActive(S);
   const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
+  const mobile = isMobileViewport();
   for(const tr of (S.trapsPlaced || [])){
     ctx.globalAlpha = 0.75;
     ctx.strokeStyle = "rgba(58,120,255,.55)";
@@ -22487,6 +22539,11 @@ function drawMapDynamicOverlays(now=Date.now()){
     ctx.arc(tr.x, tr.y, tr.r, 0, Math.PI * 2);
     ctx.stroke();
     ctx.globalAlpha = 1;
+  }
+
+  // Mobile stability: skip heavy dynamic overlays entirely.
+  if(mobile){
+    return;
   }
 
   if(S.scanPing > 0){
@@ -22522,7 +22579,7 @@ function drawAtmosphericParallax(nowTs=Date.now()){
   const mode = performanceMode();
   const slow = frameIsSlow();
   const lagTier = frameLagTier();
-  if(isMobileViewport() && lagTier >= 1) return;
+  if(isMobileViewport()) return;
   if(mode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 !== 0)) return;
   if(lagTier >= 2 && (__frameHeavyFxFlip % 2 !== 0)) return;
   if(slow && (__frameHeavyFxFlip % 3 === 1)) return;
@@ -23872,51 +23929,12 @@ function drawTiger(t){
 }
 
 function useLiteEntityRender(){
-  if(!isMobileViewport()){
-    __liteEntityRenderState = false;
-    __liteEntityRenderNeedSince = 0;
-    __liteEntityRenderRelaxUntil = 0;
-    return false;
-  }
-
-  const now = performance.now ? performance.now() : Date.now();
-  const mode = performanceMode();
-  const lagTier = frameLagTier();
-  const loadScore = frameActiveEntityLoadScore();
-  const slow = frameIsSlow(now);
-
-  // Hard triggers switch immediately; soft triggers require sustained pressure.
-  const hardNeed = lagTier >= 2 || loadScore >= 62;
-  const softNeed =
-    lagTier >= 1 ||
-    (slow && loadScore >= 42) ||
-    (mode === "PERFORMANCE" && slow && loadScore >= 48);
-
-  if(hardNeed || softNeed){
-    if(!__liteEntityRenderNeedSince) __liteEntityRenderNeedSince = now;
-  } else {
-    __liteEntityRenderNeedSince = 0;
-  }
-
-  const engageDelayMs = mode === "PERFORMANCE" ? 320 : 520;
-  const releaseHoldMs = mode === "PERFORMANCE" ? 1100 : 1400;
-
-  if(!__liteEntityRenderState){
-    const needFor = __liteEntityRenderNeedSince ? (now - __liteEntityRenderNeedSince) : 0;
-    if(hardNeed || (softNeed && needFor >= engageDelayMs)){
-      __liteEntityRenderState = true;
-      __liteEntityRenderRelaxUntil = now + releaseHoldMs;
-    }
-  } else {
-    const stillNeed = hardNeed || softNeed;
-    if(stillNeed){
-      __liteEntityRenderRelaxUntil = now + releaseHoldMs;
-    } else if(now >= __liteEntityRenderRelaxUntil){
-      __liteEntityRenderState = false;
-    }
-  }
-
-  return __liteEntityRenderState;
+  // Disable "dot mode" fallback on mobile so units stay readable.
+  // We now shed load from map/overlays instead of replacing entities.
+  __liteEntityRenderState = false;
+  __liteEntityRenderNeedSince = 0;
+  __liteEntityRenderRelaxUntil = 0;
+  return false;
 }
 function drawEntitiesLite(){
   const worldCam = isWorldCameraActive(S);
