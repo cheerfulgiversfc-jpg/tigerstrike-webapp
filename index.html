@@ -1697,22 +1697,37 @@
   const params = new URLSearchParams(window.location.search || "");
   const buildTagRaw = params.get("build") || "";
   const buildTag = buildTagRaw ? String(buildTagRaw).replace(/[^a-zA-Z0-9._-]/g, "") : "";
-  const baseVersion = "4473";
+  const baseVersion = "4474";
+  const effectiveBuildTag = buildTag || `mobile-stability-${baseVersion}`;
+  // Do not rely on hard redirect; Telegram webviews can block/ignore replace.
   if(!buildTag){
-    const u = new URL(window.location.href);
-    u.searchParams.set("build", `mobile-stability-${baseVersion}`);
-    u.searchParams.set("tsv", baseVersion);
-    window.location.replace(u.toString());
-    return;
+    try{
+      const u = new URL(window.location.href);
+      u.searchParams.set("build", effectiveBuildTag);
+      u.searchParams.set("tsv", baseVersion);
+      window.history.replaceState({}, "", u.toString());
+    }catch(e){}
   }
-  const ver = buildTag ? `${baseVersion}-${buildTag}` : baseVersion;
+  const ver = `${baseVersion}-${effectiveBuildTag}`;
   window.__TS_BUILD_VERSION__ = ver;
 
-  const load = (src, onload)=>{
+  const load = (src, onload, attempt = 0)=>{
     const s = document.createElement("script");
-    s.src = `${src}?v=${encodeURIComponent(ver)}`;
+    const retryBust = attempt > 0 ? `&retry=${Date.now()}` : "";
+    s.src = `${src}?v=${encodeURIComponent(ver)}${retryBust}`;
     s.defer = true;
-    if(typeof onload === "function") s.onload = onload;
+    s.onload = () => {
+      if(typeof onload === "function") onload();
+    };
+    s.onerror = () => {
+      if(attempt < 2){
+        load(src, onload, attempt + 1);
+      }else{
+        try{
+          console.error(`Failed to load ${src} after retries`);
+        }catch(e){}
+      }
+    };
     document.body.appendChild(s);
   };
   load("./game.js", ()=>load("./tutorial.js"));
@@ -1734,6 +1749,14 @@
   };
   window.setTimeout(tryRecover, 9000);
 })();
+</script>
+<script>
+// Fallback so About button never appears dead during script-load failures.
+window.openAbout = window.openAbout || function(){
+  try{
+    alert("Game is still loading. If this persists, close/reopen and use ?build=mobile-stability-4474");
+  }catch(e){}
+};
 </script>
 <!-- Tutorial Arrow Pointer -->
 <div id="tutorialArrow">👇</div>
