@@ -1692,8 +1692,32 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4463"></script>
-<script src="./tutorial.js?v=4463"></script>
+<script>
+(() => {
+  const params = new URLSearchParams(window.location.search || "");
+  const buildTagRaw = params.get("build") || "";
+  const buildTag = buildTagRaw ? String(buildTagRaw).replace(/[^a-zA-Z0-9._-]/g, "") : "";
+  const baseVersion = "4473";
+  if(!buildTag){
+    const u = new URL(window.location.href);
+    u.searchParams.set("build", `mobile-stability-${baseVersion}`);
+    u.searchParams.set("tsv", baseVersion);
+    window.location.replace(u.toString());
+    return;
+  }
+  const ver = buildTag ? `${baseVersion}-${buildTag}` : baseVersion;
+  window.__TS_BUILD_VERSION__ = ver;
+
+  const load = (src, onload)=>{
+    const s = document.createElement("script");
+    s.src = `${src}?v=${encodeURIComponent(ver)}`;
+    s.defer = true;
+    if(typeof onload === "function") s.onload = onload;
+    document.body.appendChild(s);
+  };
+  load("./game.js", ()=>load("./tutorial.js"));
+})();
+</script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once";

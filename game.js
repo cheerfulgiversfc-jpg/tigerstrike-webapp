@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4466";
+const TS_BUILD = "4473";
 if(tg){
   try{
     tg.expand?.();
@@ -650,7 +650,7 @@ function ensureMissionTwistState(state=S){
 
   // Mobile safety: disable all mission twists to prevent map blackout/fog artifacts
   // and reduce startup/transition CPU spikes.
-  if(isMobileViewport()){
+  if(isMobileGameplayRuntime()){
     tw.enabled = false;
     tw.activeType = "";
     tw.activeUntil = 0;
@@ -671,7 +671,7 @@ function ensureMissionTwistState(state=S){
 
 function resetMissionTwistsForDeploy(state=S, now=Date.now()){
   const tw = ensureMissionTwistState(state);
-  tw.enabled = !isMobileViewport();
+  tw.enabled = !isMobileGameplayRuntime();
   tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
   tw.cooldownUntil = now + rand(6200, 9800);
   tw.triggerCount = 0;
@@ -696,7 +696,7 @@ function resetMissionTwistsForDeploy(state=S, now=Date.now()){
   tw.hostage.penaltyApplied = false;
   tw.blackout.active = false;
   tw.blackout.until = 0;
-  if(isMobileViewport() && state && typeof state === "object"){
+  if(isMobileGameplayRuntime() && state && typeof state === "object"){
     state.fogUntil = 0;
   }
   return tw;
@@ -5907,6 +5907,8 @@ let __mapFrameCacheCanvas = null;
 let __mapFrameCacheCtx = null;
 let __mapFrameCacheSig = "";
 let __mapFrameCacheAt = 0;
+let __mapFrameCacheCamX = 0;
+let __mapFrameCacheCamY = 0;
 let __mapObstacleSig = "";
 let __mapObstacleRects = [];
 let __mapObstacleCircles = [];
@@ -5955,6 +5957,8 @@ let __storyCheckpointCache = null;
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
   __mapFrameCacheAt = 0;
+  __mapFrameCacheCamX = 0;
+  __mapFrameCacheCamY = 0;
   __mapObstacleSig = "";
   __mapObstacleRects = [];
   __mapObstacleCircles = [];
@@ -5981,22 +5985,21 @@ function missionProgressForWorld(state=S){
 }
 
 function worldScaleForModeMission(mode, mission){
-  const mobile = isMobileViewport();
+  const mobile = isMobileGameplayRuntime();
   const landscape = isLandscapeViewport();
   if(window.__TUTORIAL_MODE__) return 1;
   if(mobile){
-    // Mobile-safe world sizing: still larger than one screen and camera-following,
-    // but far smaller than desktop to avoid startup hitches and long empty traversals.
+    // Mobile-safe world sizing: keep camera-following but reduce world growth to avoid startup hitches.
     if(mode === "Story"){
-      if(landscape) return clamp(1.18 + ((Math.max(1, mission) - 1) * 0.0035), 1.18, 1.48);
-      return clamp(1.10 + ((Math.max(1, mission) - 1) * 0.004), 1.10, 1.36);
+      if(landscape) return clamp(1.05 + ((Math.max(1, mission) - 1) * 0.0018), 1.05, 1.22);
+      return clamp(1.03 + ((Math.max(1, mission) - 1) * 0.0019), 1.03, 1.18);
     }
     if(mode === "Arcade"){
-      if(landscape) return clamp(1.14 + ((Math.max(1, mission) - 1) * 0.003), 1.14, 1.40);
-      return clamp(1.08 + ((Math.max(1, mission) - 1) * 0.0035), 1.08, 1.30);
+      if(landscape) return clamp(1.04 + ((Math.max(1, mission) - 1) * 0.0016), 1.04, 1.18);
+      return clamp(1.02 + ((Math.max(1, mission) - 1) * 0.0017), 1.02, 1.14);
     }
-    if(landscape) return clamp(1.16 + ((Math.max(1, mission) - 1) * 0.006), 1.16, 1.52);
-    return clamp(1.10 + ((Math.max(1, mission) - 1) * 0.0065), 1.10, 1.38);
+    if(landscape) return clamp(1.05 + ((Math.max(1, mission) - 1) * 0.0030), 1.05, 1.24);
+    return clamp(1.03 + ((Math.max(1, mission) - 1) * 0.0034), 1.03, 1.20);
   }
   if(mode === "Story"){
     return clamp(1.85 + ((Math.max(1, mission) - 1) * 0.012), 1.85, 3.20);
@@ -6013,7 +6016,7 @@ function desiredWorldLayout(state=S){
   const scale = worldScaleForModeMission(mode, mission);
   const viewportW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
   const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
-  const mobile = isMobileViewport();
+  const mobile = isMobileGameplayRuntime();
   const landscape = isLandscapeViewport();
   // Keep landscape as the primary large-map view, but ensure portrait is still clearly larger than one screen.
   const minPadW = mobile ? (landscape ? 140 : 240) : 40;
@@ -6152,7 +6155,7 @@ function screenToWorldPoint(x, y, state=S){
 
 function isWorldCameraActive(state=S){
   if(window.__TUTORIAL_MODE__) return false;
-  if(!isMobileViewport()) return false;
+  if(!isMobileGameplayRuntime()) return false;
   ensureWorldLayout(state);
   return true;
 }
@@ -6282,6 +6285,12 @@ function togglePerformanceMode(){
     : "Performance mode set to Auto.");
 }
 function toggleLagMonitor(force){
+  if(isMobileGameplayRuntime()){
+    window.__TS_SHOW_MONITOR__ = false;
+    renderStabilityMonitor(true);
+    toast("Lag monitor is disabled on mobile.");
+    return;
+  }
   if(typeof force === "boolean"){
     window.__TS_SHOW_MONITOR__ = force;
   } else {
@@ -6823,12 +6832,10 @@ function ensureStabilityMonitorNode(){
   return el;
 }
 function shouldShowStabilityMonitor(now=Date.now()){
-  if(isMobileViewport()) return false;
-  if(window.__TS_SHOW_MONITOR__ === true) return true;
+  if(window.__TS_SHOW_MONITOR__ !== true) return false;
+  if(isMobileGameplayRuntime()) return false;
   if(window.__TUTORIAL_MODE__) return false;
-  if(performanceMode() === "PERFORMANCE" && !isMobileViewport()) return true;
-  if(frameIsSlow()) return true;
-  return (now - (__stabilityMonitorState.lastSpikeAt || 0)) < 9000;
+  return true;
 }
 function renderStabilityMonitor(force=false){
   const now = Date.now();
@@ -7235,6 +7242,59 @@ function copyStarsDebugLog(){
     toast("Copy failed.");
   }
 }
+function buildMobileDiagnosticsText(){
+  const now = Date.now();
+  const avgGap = __avgStabilitySample(__stabilityMonitorState.frameGaps);
+  const avgCost = __avgStabilitySample(__stabilityMonitorState.frameCosts);
+  const worstGap = __maxStabilitySample(__stabilityMonitorState.frameGaps);
+  const worstCost = __maxStabilitySample(__stabilityMonitorState.frameCosts);
+  const fps = avgGap > 0 ? (1000 / avgGap) : 0;
+  const recoversMin = (__freezeRecoverState.history || []).filter((t)=>(now - t) < 60000).length;
+  const parts = [
+    `build=${String(window.__TS_BUILD_VERSION__ || TS_BUILD)}`,
+    `mode=${String(S?.mode || "-")}`,
+    `story=${Math.floor(Number(S?.storyLevel || 1))}`,
+    `mobileViewport=${isMobileViewport() ? 1 : 0}`,
+    `mobileRuntime=${isMobileGameplayRuntime() ? 1 : 0}`,
+    `worldCam=${isWorldCameraActive(S) ? 1 : 0}`,
+    `vw=${Math.floor(Number(window.innerWidth || 0))}`,
+    `vh=${Math.floor(Number(window.innerHeight || 0))}`,
+    `cw=${Math.floor(Number(cv?.width || 0))}`,
+    `ch=${Math.floor(Number(cv?.height || 0))}`,
+    `fps=${fps.toFixed(1)}`,
+    `gap=${avgGap.toFixed(1)}`,
+    `frame=${avgCost.toFixed(1)}`,
+    `maxGap=${worstGap.toFixed(0)}`,
+    `maxFrame=${worstCost.toFixed(0)}`,
+    `lag=${Math.floor(Number(__frameLagScore || 0))}`,
+    `drops=${Math.floor(Number(__frameBudgetState?.dropped || 0))}`,
+    `recoverMin=${Math.floor(Number(recoversMin || 0))}`,
+    `perf=${performanceMode()}`,
+    `twist=${String(ensureMissionTwistState(S)?.activeType || "-")}`
+  ];
+  return `Tiger Strike Mobile Diagnostics\n${parts.join(" | ")}`;
+}
+function copyMobileDiagnostics(){
+  const text = buildMobileDiagnosticsText();
+  const done = ()=>toast("Diagnostics copied.");
+  if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
+    return;
+  }
+  try{
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    done();
+  }catch(e){
+    toast("Copy failed.");
+  }
+}
 function ensureStarsDebugUi(){
   if(typeof document === "undefined" || !document.body) return;
   if(document.getElementById("starsDebugToggle")) return;
@@ -7358,14 +7418,61 @@ function mobileCanvasHeight(){
   const vh = window.innerHeight || 844;
   const landscape = vw > vh;
   return landscape
-    ? Math.round(clamp(vh * 0.88, 320, 500))
-    : Math.round(clamp(vh * 1.08, 820, 980));
+    ? Math.round(clamp(vh * 0.84, 300, 460))
+    : Math.round(clamp(vh * 0.92, 620, 780));
+}
+function mobileCanvasWidth(){
+  const vw = window.innerWidth || 390;
+  const vh = window.innerHeight || 844;
+  const landscape = vw > vh;
+  return landscape
+    ? Math.round(clamp(vw * 1.06, 700, 900))
+    : Math.round(clamp(vw * 1.38, 500, 640));
+}
+let __mobileRuntimeSticky = null;
+function detectMobileRuntimeNow(){
+  const iw = Number(window.innerWidth || 0);
+  const ih = Number(window.innerHeight || 0);
+  const shortSide = Math.max(1, Math.min(iw || 9999, ih || 9999));
+  const longSide = Math.max(iw || 0, ih || 0);
+  const screenW = Number(window.screen?.width || 0);
+  const screenH = Number(window.screen?.height || 0);
+  const screenShort = Math.max(1, Math.min(screenW || 9999, screenH || 9999));
+  const screenLong = Math.max(screenW || 0, screenH || 0);
+  const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches || shortSide <= 760 || screenShort <= 760;
+  const phoneLandscape = !!window.matchMedia?.("(max-height:540px) and (orientation:landscape)")?.matches;
+  const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
+  const tgPlatform = String(window?.Telegram?.WebApp?.platform || "").toLowerCase();
+  const tgMobile = (tgPlatform === "ios" || tgPlatform === "android");
+  const touchPoints = Number((typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0) || 0);
+  const touchCapable = coarse || touchPoints > 0 || ("ontouchstart" in window);
+  const ua = String((typeof navigator !== "undefined" && navigator.userAgent) || "").toLowerCase();
+  const uaMobile = /(iphone|ipad|ipod|android|mobile)/i.test(ua);
+  const likelyDesktopUa = /(windows nt|macintosh|x11|linux x86_64)/i.test(ua) && !uaMobile;
+  const tabletishTouch = touchCapable &&
+    ((shortSide <= 1200 && longSide <= 1900) || (screenShort <= 1200 && screenLong <= 2200));
+  const touchDeviceHint = touchCapable && (!likelyDesktopUa || shortSide <= 1024 || screenShort <= 1024);
+  return tgMobile || uaMobile || narrow || (phoneLandscape && touchCapable) || (touchDeviceHint && tabletishTouch);
 }
 function isMobileViewport(){
-  const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches;
-  const phoneLandscape = !!window.matchMedia?.("(max-width:960px) and (max-height:540px) and (orientation:landscape)")?.matches;
-  const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
-  return narrow || (coarse && phoneLandscape);
+  return detectMobileRuntimeNow();
+}
+function isMobileGameplayRuntime(){
+  if(window.__TS_FORCE_MOBILE_RUNTIME__ === true){
+    __mobileRuntimeSticky = true;
+    return true;
+  }
+  if(window.__TS_FORCE_MOBILE_RUNTIME__ === false){
+    return false;
+  }
+  if(__mobileRuntimeSticky === true){
+    return true;
+  }
+  const detected = detectMobileRuntimeNow();
+  if(detected){
+    __mobileRuntimeSticky = true;
+  }
+  return detected;
 }
 function isLandscapeViewport(){
   return (window.innerWidth || 0) > (window.innerHeight || 0);
@@ -7956,13 +8063,19 @@ function sanitizeRuntimeState(){
   }
 }
 function resizeCanvasForViewport(){
+  if(!cv) return;
   const prevW = Number(cv.width || 0) || 960;
   const prevH = Number(cv.height || 0) || 540;
   const mobile = isMobileViewport();
-  cv.width = mobile
-    ? (isLandscapeViewport() ? 980 : 820)
-    : 960;
-  cv.height = mobile ? mobileCanvasHeight() : 540;
+  const nextW = mobile ? mobileCanvasWidth() : 960;
+  const nextH = mobile ? mobileCanvasHeight() : 540;
+  const dw = Math.abs(nextW - prevW);
+  const dh = Math.abs(nextH - prevH);
+  // iOS WebView can emit tiny, repeated viewport-height jitters while chrome animates.
+  // Ignore small resize noise to prevent expensive re-layout/re-cache loops.
+  if(mobile && dw <= 1 && dh <= 28) return;
+  cv.width = nextW;
+  cv.height = nextH;
   try{ scaleWorldForViewportResize(prevW, prevH, cv.width, cv.height); }catch(e){}
   try{ sanitizeRuntimeState(); }catch(e){}
   try{ clampWorldToCanvas(); }catch(e){}
@@ -8542,21 +8655,43 @@ function takeoverEscort(){
   save();
 }
 
+let __viewportResizeTimer = 0;
+function scheduleViewportResize(opts={}){
+  const delay = Number.isFinite(opts.delay) ? Math.max(0, opts.delay) : 120;
+  const force = !!opts.force;
+  if(__viewportResizeTimer) clearTimeout(__viewportResizeTimer);
+  __viewportResizeTimer = setTimeout(()=>{
+    __viewportResizeTimer = 0;
+    resizeCanvasForViewport();
+    if(force){
+      // Run a second pass shortly after orientation settle for iOS safe-area/layout finalization.
+      setTimeout(()=>{
+        resizeCanvasForViewport();
+        applyMobileMenuState(__mobileMenuHiddenPref);
+        applyTouchHudSettings();
+        positionSquadCommandWheel();
+        renderHUD();
+      }, 80);
+      return;
+    }
+    applyMobileMenuState(__mobileMenuHiddenPref);
+    applyTouchHudSettings();
+    positionSquadCommandWheel();
+    renderHUD();
+  }, delay);
+}
 try{ resizeCanvasForViewport(); }catch(e){ try{ console.warn("Initial viewport setup recovered:", e); }catch(err){} }
 window.addEventListener("resize", ()=>{
-  resizeCanvasForViewport();
-  applyMobileMenuState(__mobileMenuHiddenPref);
-  applyTouchHudSettings();
-  positionSquadCommandWheel();
-  renderHUD();
+  scheduleViewportResize({ delay:isMobileViewport() ? 150 : 80 });
 }, { passive:true });
 window.addEventListener("orientationchange", ()=>{
-  resizeCanvasForViewport();
-  applyMobileMenuState(__mobileMenuHiddenPref);
-  applyTouchHudSettings();
-  positionSquadCommandWheel();
-  renderHUD();
+  scheduleViewportResize({ force:true, delay:180 });
 });
+if(window.visualViewport){
+  window.visualViewport.addEventListener("resize", ()=>{
+    scheduleViewportResize({ delay:160 });
+  }, { passive:true });
+}
 initMobileMenuToggle();
 applyTouchHudSettings();
 // ================= PHASE 2 XP / PERKS =================
@@ -9963,7 +10098,7 @@ function setEventText(txt, seconds=6){
   __savePending = true;
 }
 function missionTwistsEnabled(){
-  return eventsEnabled() && !window.__TUTORIAL_MODE__ && !isMobileViewport();
+  return eventsEnabled() && !window.__TUTORIAL_MODE__ && !isMobileGameplayRuntime();
 }
 function missionTwistBlackoutActive(now=Date.now()){
   const tw = ensureMissionTwistState(S);
@@ -10135,7 +10270,7 @@ function triggerMissionTwistFog(now=Date.now()){
   return true;
 }
 function triggerMissionTwistBlackout(now=Date.now()){
-  if(isMobileViewport()) return false;
+  if(isMobileGameplayRuntime()) return false;
   const tw = ensureMissionTwistState(S);
   const dur = rand(MISSION_TWIST_BLACKOUT_MIN_MS, MISSION_TWIST_BLACKOUT_MAX_MS);
   tw.blackout.active = true;
@@ -10156,7 +10291,7 @@ function missionTwistChooseType(tw){
   const available = MISSION_TWIST_TYPES.filter((type)=>{
     if((tw.used?.[type] || 0) >= 1) return false;
     if(type === "hostage" && aliveCivs <= 0) return false;
-    if(type === "blackout" && isMobileViewport()) return false;
+    if(type === "blackout" && isMobileGameplayRuntime()) return false;
     return true;
   });
   if(!available.length) return "";
@@ -10181,7 +10316,7 @@ function tickMissionTwists(){
   // Mobile stability guard: disable mission twists entirely on phone/tablet.
   // Twists (bridge/fog/hostage/blackout) are high-variance and can create
   // "broken map" visuals under load. Keep gameplay deterministic on mobile.
-  if(isMobileViewport()){
+  if(isMobileGameplayRuntime()){
     if(tw.activeType || tw.bridge.active || tw.hostage.active || tw.blackout.active){
       clearMissionTwist("", { silent:true });
     }
@@ -10265,7 +10400,7 @@ function tickMissionTwists(){
   }
 }
 function tickEvents(){
-  if(isMobileViewport()) return;
+  if(isMobileGameplayRuntime()) return;
   if(!eventsEnabled() || S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
   const director = ensureMissionDirectorState(S);
   const phase = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
@@ -10378,7 +10513,7 @@ function tickEvents(){
 }
 
 function biomeHazardTick(){
-  if(isMobileViewport()) return;
+  if(isMobileGameplayRuntime()) return;
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
   if(window.__TUTORIAL_MODE__) return;
   const profile = currentBiomeProfile();
@@ -10563,6 +10698,13 @@ function openAbout(){
     : "Open Tiger Strike from Telegram to detect your ID automatically.";
   document.getElementById("aboutOverlay").style.display="flex";
   document.getElementById("aboutBody").innerHTML = `
+    <div class="item"><div><div class="itemName">Build + Diagnostics</div>
+      <div class="itemDesc">
+        <b>Loaded build:</b> ${esc(String(window.__TS_BUILD_VERSION__ || TS_BUILD))}<br>
+        If phone behavior looks different, copy diagnostics and send it here.
+      </div>
+      <button class="ghost" onclick="copyMobileDiagnostics()">Copy Mobile Diagnostics</button>
+    </div></div>
     <div class="item"><div><div class="itemName">Find your Telegram user ID</div>
       <div class="itemDesc">
         <b>In group/private chat:</b> send <code>/myid</code><br>
@@ -18598,11 +18740,13 @@ function followCiviliansTick(){
 function moveCivilianInsideEvac(c){
   const ez = S.evacZone || DEFAULT.evacZone;
   if(!ez || !Number.isFinite(ez.x) || !Number.isFinite(ez.y)) return;
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const radius = Math.max(10, (ez.r || 70) - 14);
   const seed = ((Number(c.id || 1) * 97) % 360) * (Math.PI / 180);
   const laneR = Math.max(8, Math.min(radius * 0.56, 12 + ((Number(c.id || 1) % 5) * 6)));
-  const tx = clamp(ez.x + Math.cos(seed) * laneR, 24, cv.width - 24);
-  const ty = clamp(ez.y + Math.sin(seed) * laneR, 24, cv.height - 24);
+  const tx = clamp(ez.x + Math.cos(seed) * laneR, 24, worldW - 24);
+  const ty = clamp(ez.y + Math.sin(seed) * laneR, 24, worldH - 24);
   const spot = findNearestOpenPoint(tx, ty, 12, {
     avoidKeepout:false,
     avoidWater:false,
@@ -18952,8 +19096,8 @@ function roamTigers(){
       if(now < (t._nextFarThinkAt || 0)){
         t.vx = (t.vx || 0) * 0.94;
         t.vy = (t.vy || 0) * 0.94;
-        t.x = clamp(t.x + t.vx, 40, cv.width - 40);
-        t.y = clamp(t.y + t.vy, 60, cv.height - 40);
+        t.x = clampWorldX(t.x + t.vx, 18, S);
+        t.y = clampWorldY(t.y + t.vy, 18, S);
         t.step = (t.step + 0.04) % (Math.PI * 2);
         continue;
       }
@@ -19165,8 +19309,8 @@ function roamTigers(){
       t.vx += nx * repel;
       t.vy += ny * repel;
       if(bd < fieldR * 0.64){
-        t.x = clamp(t.x + nx * 1.8, 40, cv.width - 40);
-        t.y = clamp(t.y + ny * 1.8, 60, cv.height - 40);
+        t.x = clampWorldX(t.x + nx * 1.8, 18, S);
+        t.y = clampWorldY(t.y + ny * 1.8, 18, S);
       }
     }
 
@@ -19212,10 +19356,11 @@ function roamTigers(){
     t.vx *= drag;
     t.vy *= drag;
 
-    if(t.x<40||t.x>cv.width-40) t.vx*=-1;
-    if(t.y<60||t.y>cv.height-40) t.vy*=-1;
-    t.x=clamp(t.x,40,cv.width-40);
-    t.y=clamp(t.y,60,cv.height-40);
+    const tigerBounds = worldBounds(18, S);
+    if(t.x < tigerBounds.minX || t.x > tigerBounds.maxX) t.vx *= -1;
+    if(t.y < tigerBounds.minY || t.y > tigerBounds.maxY) t.vy *= -1;
+    t.x = clamp(t.x, tigerBounds.minX, tigerBounds.maxX);
+    t.y = clamp(t.y, tigerBounds.minY, tigerBounds.maxY);
     const gait = Math.hypot(t.vx, t.vy);
     const sprintingNow = (now < (t.burstUntil||0)) || (t.type==="Scout" && now < (t.dashUntil||0));
     const runMul = sprintingNow ? 1.35 : (gait > motion.chase * 0.84 ? 1.14 : (gait > motion.walk * 0.72 ? 0.94 : 0.70));
@@ -19284,10 +19429,11 @@ function survivalPressureTick(){
 // ===================== DAMAGE / RESPAWN =====================
 function pickRespawnPointAwayFromTigers(){
   const radius = 16;
-  const minX = 60;
-  const maxX = cv.width - 60;
-  const minY = 90;
-  const maxY = cv.height - 70;
+  const bounds = worldBounds(radius, S);
+  const minX = bounds.minX;
+  const maxX = bounds.maxX;
+  const minY = bounds.minY;
+  const maxY = bounds.maxY;
   const aliveTigers = (S.tigers || []).filter((t)=>t.alive);
 
   const candidates = [];
@@ -19326,7 +19472,7 @@ function pickRespawnPointAwayFromTigers(){
     }
   }
 
-  return best || safeSpawnPoint(cv.width * 0.16, cv.height * 0.78, radius, true, true);
+  return best || safeSpawnPoint(worldWidth(S) * 0.16, worldHeight(S) * 0.78, radius, true, true);
 }
 function startRespawnCountdown(){
   const now = Date.now();
@@ -19357,8 +19503,9 @@ function respawnTick(){
   S.hp = 100;
   S.armor = 20;
   S.stamina = 100;
-  S.me.x = clamp(S.respawnTargetX || (cv.width * 0.16), 60, cv.width - 60);
-  S.me.y = clamp(S.respawnTargetY || (cv.height * 0.78), 90, cv.height - 70);
+  const respawnBounds = worldBounds(16, S);
+  S.me.x = clamp(S.respawnTargetX || (worldWidth(S) * 0.16), respawnBounds.minX, respawnBounds.maxX);
+  S.me.y = clamp(S.respawnTargetY || (worldHeight(S) * 0.78), respawnBounds.minY, respawnBounds.maxY);
   S.target = null;
   S.respawnPendingUntil = 0;
   S.respawnNoticeAt = 0;
@@ -19541,9 +19688,10 @@ function resolveBattleCinematicFocus(t){
     x = (meX + tiger.x) * 0.5;
     y = (meY + tiger.y) * 0.5;
   }
+  const bounds = worldBounds(70, S);
   return {
-    x: clamp(x, 70, Math.max(70, cv.width - 70)),
-    y: clamp(y, 70, Math.max(70, cv.height - 70))
+    x: clamp(x, bounds.minX, bounds.maxX),
+    y: clamp(y, bounds.minY, bounds.maxY)
   };
 }
 
@@ -21637,7 +21785,7 @@ function maybeRenderHUD(force=false){
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
 function drawMissionTwistOverlay(now=Date.now()){
-  if(isMobileViewport()) return;
+  if(isMobileGameplayRuntime()) return;
   const tw = ensureMissionTwistState(S);
   const worldCam = isWorldCameraActive(S);
   const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
@@ -21699,7 +21847,7 @@ function drawMissionTwistOverlay(now=Date.now()){
   }
   if(tw.blackout.active && now < (tw.blackout.until || 0)){
     const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - now) / 1000));
-    const heavyDim = !isMobileViewport() && frameLagTier() <= 0 && performanceMode() !== "PERFORMANCE";
+    const heavyDim = !isMobileGameplayRuntime() && frameLagTier() <= 0 && performanceMode() !== "PERFORMANCE";
     if(heavyDim){
       ctx.globalAlpha = 0.16;
       ctx.fillStyle = "rgba(6,9,16,.98)";
@@ -21720,7 +21868,10 @@ function drawMapScene(){
   const worldCam = isWorldCameraActive(S);
   const w = worldCam ? worldWidth(S) : viewportW;
   const h = worldCam ? worldHeight(S) : viewportH;
-  const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
+  let camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
+  if(worldCam && (!Number.isFinite(camOff.x) || !Number.isFinite(camOff.y))){
+    camOff = { x:0, y:0 };
+  }
   const viewPad = worldCam ? 88 : 0;
   const drawMinX = worldCam ? clamp(Math.floor(camOff.x) - viewPad, 0, w) : 0;
   const drawMinY = worldCam ? clamp(Math.floor(camOff.y) - viewPad, 0, h) : 0;
@@ -21744,7 +21895,7 @@ function drawMapScene(){
     tw.blackout.active ? 1 : 0
   ].join("|");
   const lagTier = frameLagTier();
-  const mobile = isMobileViewport();
+  const mobile = isMobileGameplayRuntime();
   const forceMobileFastMap = mobile;
   const mapLiteDetail = mobile && (forceMobileFastMap || worldCam || lagTier >= 1 || frameIsSlow());
   const ultraLiteMap = mobile && (forceMobileFastMap || lagTier >= 1 || frameIsSlow(frameNow) || frameBudgetExceeded(0.85));
@@ -21785,26 +21936,43 @@ function drawMapScene(){
       cacheAgeCap = Math.max(cacheAgeCap, 560);
     }
   }
-  if(!worldCam){
-    const canUseCache =
-      !!__mapFrameCacheCanvas &&
-      __mapFrameCacheSig === cacheSig &&
-      (frameNow - __mapFrameCacheAt) < cacheAgeCap;
-    if(canUseCache){
+  const hasFreshCache =
+    !!__mapFrameCacheCanvas &&
+    __mapFrameCacheSig === cacheSig &&
+    (frameNow - __mapFrameCacheAt) < cacheAgeCap;
+  if(hasFreshCache){
+    if(worldCam){
+      const camShift = Math.hypot((camOff.x || 0) - (__mapFrameCacheCamX || 0), (camOff.y || 0) - (__mapFrameCacheCamY || 0));
+      const maxShift = mobile ? 4 : 18;
+      if(camShift <= maxShift){
+        ctx.drawImage(__mapFrameCacheCanvas, camOff.x, camOff.y, viewportW, viewportH);
+        return;
+      }
+    } else {
       ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
       return;
     }
-    const hasAnyCache =
-      !!__mapFrameCacheCanvas &&
-      Number.isFinite(__mapFrameCacheAt) &&
-      __mapFrameCacheAt > 0;
-    if(hasAnyCache){
-      const staleAge = frameNow - __mapFrameCacheAt;
-      const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
-      const emergencyMaxAge = mobile
-        ? (lagTier >= 2 ? 950 : (lagTier >= 1 ? 760 : 560))
-        : (lagTier >= 2 ? 1800 : 1300);
-      if(emergencyReuse && staleAge < emergencyMaxAge){
+  }
+  const hasAnyCache =
+    !!__mapFrameCacheCanvas &&
+    Number.isFinite(__mapFrameCacheAt) &&
+    __mapFrameCacheAt > 0;
+  if(hasAnyCache){
+    const staleAge = frameNow - __mapFrameCacheAt;
+    const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
+    const emergencyMaxAge = mobile
+      ? (lagTier >= 2 ? 950 : (lagTier >= 1 ? 760 : 560))
+      : (lagTier >= 2 ? 1800 : 1300);
+    if(emergencyReuse && staleAge < emergencyMaxAge){
+      if(worldCam){
+        if(!mobile){
+          const camShift = Math.hypot((camOff.x || 0) - (__mapFrameCacheCamX || 0), (camOff.y || 0) - (__mapFrameCacheCamY || 0));
+          if(camShift <= 96){
+            ctx.drawImage(__mapFrameCacheCanvas, camOff.x, camOff.y, viewportW, viewportH);
+            return;
+          }
+        }
+      } else {
         ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
         return;
       }
@@ -22512,25 +22680,27 @@ function drawMapScene(){
     ctx.globalAlpha = 1;
   }
 
-  if(!worldCam){
-    if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== w || __mapFrameCacheCanvas.height !== h){
-      __mapFrameCacheCanvas = document.createElement("canvas");
-      __mapFrameCacheCanvas.width = w;
-      __mapFrameCacheCanvas.height = h;
-      __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
-    }
-    if(__mapFrameCacheCtx){
-      __mapFrameCacheCtx.clearRect(0, 0, w, h);
-      __mapFrameCacheCtx.drawImage(cv, 0, 0, w, h, 0, 0, w, h);
-      __mapFrameCacheSig = cacheSig;
-      __mapFrameCacheAt = frameNow;
-    }
+  const cacheW = worldCam ? viewportW : w;
+  const cacheH = worldCam ? viewportH : h;
+  if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== cacheW || __mapFrameCacheCanvas.height !== cacheH){
+    __mapFrameCacheCanvas = document.createElement("canvas");
+    __mapFrameCacheCanvas.width = cacheW;
+    __mapFrameCacheCanvas.height = cacheH;
+    __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
+  }
+  if(__mapFrameCacheCtx){
+    __mapFrameCacheCtx.clearRect(0, 0, cacheW, cacheH);
+    __mapFrameCacheCtx.drawImage(cv, 0, 0, cacheW, cacheH, 0, 0, cacheW, cacheH);
+    __mapFrameCacheSig = cacheSig;
+    __mapFrameCacheAt = frameNow;
+    __mapFrameCacheCamX = worldCam ? camOff.x : 0;
+    __mapFrameCacheCamY = worldCam ? camOff.y : 0;
   }
 }
 function drawMapDynamicOverlays(now=Date.now()){
   const worldCam = isWorldCameraActive(S);
   const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
-  const mobile = isMobileViewport();
+  const mobile = isMobileGameplayRuntime();
   for(const tr of (S.trapsPlaced || [])){
     ctx.globalAlpha = 0.75;
     ctx.strokeStyle = "rgba(58,120,255,.55)";
@@ -22568,7 +22738,7 @@ function drawMapDynamicOverlays(now=Date.now()){
     const fogH = worldCam ? (cv.height || WORLD_BASE_HEIGHT) : (cv.height || WORLD_BASE_HEIGHT);
     const fogX = worldCam ? camOff.x : 0;
     const fogY = worldCam ? camOff.y : 0;
-    ctx.globalAlpha = isMobileViewport() ? 0.10 : 0.35;
+    ctx.globalAlpha = isMobileGameplayRuntime() ? 0.10 : 0.35;
     ctx.fillStyle = "#0b0d12";
     ctx.fillRect(fogX, fogY, fogW, fogH);
     ctx.globalAlpha = 1;
@@ -22579,7 +22749,7 @@ function drawAtmosphericParallax(nowTs=Date.now()){
   const mode = performanceMode();
   const slow = frameIsSlow();
   const lagTier = frameLagTier();
-  if(isMobileViewport()) return;
+  if(isMobileGameplayRuntime()) return;
   if(mode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 !== 0)) return;
   if(lagTier >= 2 && (__frameHeavyFxFlip % 2 !== 0)) return;
   if(slow && (__frameHeavyFxFlip % 3 === 1)) return;
@@ -24385,8 +24555,9 @@ function missionStateLooksEmpty(){
 function init(){
   ensureStarsDebugUi();
   pushStarsDebug("app:init", { user: tgUserKey(), build: TS_BUILD });
-  if(isMobileViewport()){
+  if(isMobileGameplayRuntime()){
     window.__TS_SHOW_MONITOR__ = false;
+    S.performanceMode = "PERFORMANCE";
     const twBoot = ensureMissionTwistState(S);
     twBoot.blackout.active = false;
     twBoot.blackout.until = 0;
@@ -24435,6 +24606,9 @@ function init(){
   trimPersistentState(S);
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   S.performanceMode = normalizePerformanceMode(S.performanceMode);
+  if(isMobileGameplayRuntime()){
+    S.performanceMode = "PERFORMANCE";
+  }
   S.touchHud = normalizeTouchHudSettings(S.touchHud);
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
   if(!S.equippedWeaponId || !getWeapon(S.equippedWeaponId)) S.equippedWeaponId = DEFAULT.equippedWeaponId;
@@ -24762,6 +24936,7 @@ window.setPaused = setPaused;
 window.toggleSound = toggleSound;
 window.togglePerformanceMode = togglePerformanceMode;
 window.toggleLagMonitor = toggleLagMonitor;
+window.copyMobileDiagnostics = copyMobileDiagnostics;
 window.openHudCustomizer = openHudCustomizer;
 window.closeHudCustomizer = closeHudCustomizer;
 window.updateHudCustomizerSetting = updateHudCustomizerSetting;
