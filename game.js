@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4477";
+const TS_BUILD = "4479";
 if(tg){
   try{
     tg.expand?.();
@@ -143,8 +143,13 @@ const NEMESIS_NAME_PREFIX = Object.freeze([
 const NEMESIS_NAME_SUFFIX = Object.freeze([
   "claw","tooth","stalker","mane","hunter","shadow","snarl","reaper","prowler","maw"
 ]);
+// Temporary safety switches while we stabilize mobile performance.
+const ENABLE_BIOME_SYSTEM = false;
+const ENABLE_BIOME_TEXT = false;
+const ENABLE_MISSION_TWISTS = false;
 const ENABLE_TWIST_BRIDGE = false;
 const ENABLE_TWIST_BLACKOUT = false;
+const ENABLE_IPHONE_STABILITY_LOCK = true;
 const MISSION_TWIST_TYPES = Object.freeze([
   ...(ENABLE_TWIST_BRIDGE ? ["bridge"] : []),
   "hostage",
@@ -655,6 +660,33 @@ function ensureMissionTwistState(state=S){
   tw.blackout.active = !!tw.blackout.active;
   tw.blackout.until = Math.max(0, Math.floor(Number(tw.blackout.until || 0)));
 
+  if(!ENABLE_MISSION_TWISTS || isMobileViewport()){
+    tw.enabled = false;
+    tw.nextRollAt = 0;
+    tw.cooldownUntil = 0;
+    tw.triggerCount = 0;
+    tw.activeType = "";
+    tw.activeUntil = 0;
+    tw.bridge.active = false;
+    tw.bridge.until = 0;
+    tw.hostage.active = false;
+    tw.hostage.siteId = 0;
+    tw.hostage.civId = 0;
+    tw.hostage.until = 0;
+    tw.hostage.rescued = false;
+    tw.hostage.penaltyApplied = false;
+    tw.blackout.active = false;
+    tw.blackout.until = 0;
+    tw.used.bridge = 0;
+    tw.used.hostage = 0;
+    tw.used.fog = 0;
+    tw.used.blackout = 0;
+    if(state && typeof state === "object"){
+      state.fogUntil = 0;
+      state._biomeFogPulseAt = 0;
+    }
+  }
+
   // Hard disable selected twists to avoid runtime/map issues.
   if(!ENABLE_TWIST_BRIDGE){
     tw.bridge.active = false;
@@ -681,7 +713,27 @@ function ensureMissionTwistState(state=S){
 
 function resetMissionTwistsForDeploy(state=S, now=Date.now()){
   const tw = ensureMissionTwistState(state);
-  tw.enabled = true;
+  tw.enabled = ENABLE_MISSION_TWISTS && !isMobileViewport();
+  if(!tw.enabled){
+    tw.nextRollAt = 0;
+    tw.cooldownUntil = 0;
+    tw.triggerCount = 0;
+    tw.activeType = "";
+    tw.activeUntil = 0;
+    tw.bridge.active = false;
+    tw.bridge.until = 0;
+    tw.hostage.active = false;
+    tw.hostage.siteId = 0;
+    tw.hostage.civId = 0;
+    tw.hostage.until = 0;
+    tw.hostage.rescued = false;
+    tw.hostage.penaltyApplied = false;
+    tw.blackout.active = false;
+    tw.blackout.until = 0;
+    state.fogUntil = 0;
+    state._biomeFogPulseAt = 0;
+    return tw;
+  }
   tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
   tw.cooldownUntil = now + rand(6200, 9800);
   tw.triggerCount = 0;
@@ -6256,6 +6308,7 @@ function normalizePerformanceMode(mode){
 }
 function performanceMode(){
   if(!S || typeof S !== "object") return "AUTO";
+  if(iphoneStabilityModeActive()) return "PERFORMANCE";
   S.performanceMode = normalizePerformanceMode(S.performanceMode);
   return S.performanceMode;
 }
@@ -7328,6 +7381,7 @@ function mobileCanvasHeight(){
     : Math.round(clamp(vh * 0.92, 640, 820));
 }
 function isMobileViewport(){
+  if(iphoneStabilityModeActive()) return true;
   const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches;
   const phoneLandscape = !!window.matchMedia?.("(max-width:960px) and (max-height:540px) and (orientation:landscape)")?.matches;
   const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
@@ -7335,6 +7389,17 @@ function isMobileViewport(){
   const lw = Math.max(window.innerWidth || 0, window.innerHeight || 0);
   const phoneLike = (sw > 0 && lw > 0) && (sw <= 920) && (lw <= 1600);
   return narrow || (coarse && (phoneLandscape || phoneLike));
+}
+function isIphoneLikeDevice(){
+  try{
+    const ua = String(navigator?.userAgent || "");
+    return /iPhone|iPod/i.test(ua);
+  }catch(e){
+    return false;
+  }
+}
+function iphoneStabilityModeActive(){
+  return ENABLE_IPHONE_STABILITY_LOCK && isIphoneLikeDevice();
 }
 function isLandscapeViewport(){
   return (window.innerWidth || 0) > (window.innerHeight || 0);
@@ -8074,13 +8139,18 @@ function chapterVisualForMode(mode=S.mode, chapter=chapterIndexForMode(mode)){
   return list[clamp(chapter, 1, list.length) - 1] || list[0] || CHAPTER_VISUALS.Survival[0];
 }
 function chapterBiomeProfile(mode=S.mode, chapter=chapterIndexForMode(mode)){
+  if(!ENABLE_BIOME_SYSTEM) return null;
   const list = CHAPTER_BIOME_PROFILES[mode] || CHAPTER_BIOME_PROFILES.Survival;
   return list[clamp(chapter, 1, list.length) - 1] || list[0] || CHAPTER_BIOME_PROFILES.Survival[0];
 }
 function currentBiomeProfile(){
+  if(!ENABLE_BIOME_SYSTEM) return null;
   return chapterBiomeProfile(S.mode, chapterIndexForMode(S.mode));
 }
 function biomeHazardModifiers(mode=S.mode, chapter=chapterIndexForMode(mode)){
+  if(!ENABLE_BIOME_SYSTEM){
+    return { ...BIOME_HAZARD_DEFAULTS };
+  }
   const profile = chapterBiomeProfile(mode, chapter);
   const hazards = (profile && profile.hazards && typeof profile.hazards === "object") ? profile.hazards : {};
   return {
@@ -9932,6 +10002,7 @@ function setEventText(txt, seconds=6){
   __savePending = true;
 }
 function missionTwistsEnabled(){
+  if(!ENABLE_MISSION_TWISTS) return false;
   if(isMobileViewport()) return false;
   return eventsEnabled() && !window.__TUTORIAL_MODE__;
 }
@@ -10342,6 +10413,7 @@ function tickEvents(){
 }
 
 function biomeHazardTick(){
+  if(!ENABLE_BIOME_SYSTEM) return;
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
   if(window.__TUTORIAL_MODE__) return;
   const profile = currentBiomeProfile();
@@ -10773,7 +10845,7 @@ function missionSpecialRuleText(mode, mission){
   if(mission.lowVisibility) rules.push("reduced visibility");
   if(mission.bloodAggro) rules.push("blood increases aggression");
   if(mission.finalBoss) rules.push("final choice changes ending");
-  if(biomeProfile?.hazardShort) rules.push(`${biomeProfile.weather}: ${biomeProfile.hazardShort.toLowerCase()}`);
+  if(ENABLE_BIOME_TEXT && biomeProfile?.hazardShort) rules.push(`${biomeProfile.weather}: ${biomeProfile.hazardShort.toLowerCase()}`);
   if(!rules.length) return "Special Rule: standard mission rules.";
   return `Special Rule: ${rules[0]}.`;
 }
@@ -10808,7 +10880,7 @@ function storyMissionIntelText(mission){
   if((mission.captureRequired || 0) > 0) focus.push(`secure ${mission.captureRequired} capture${mission.captureRequired===1?"":"s"}`);
   if(mission.lowVisibility) focus.push("low visibility route");
   if(mission.bloodAggro) focus.push("lethal kills increase aggression");
-  if(biome?.hazardShort) focus.push(`${biome.weather.toLowerCase()} • ${biome.hazardShort.toLowerCase()}`);
+  if(ENABLE_BIOME_TEXT && biome?.hazardShort) focus.push(`${biome.weather.toLowerCase()} • ${biome.hazardShort.toLowerCase()}`);
   if(!focus.length) focus.push("clear tiger threats and secure evacuation");
   return `Story Intel: ${focus.join(" • ")}.`;
 }
@@ -17075,7 +17147,7 @@ function deploy(opts={}){
   }
 
   const biomeStart = currentBiomeProfile();
-  if(biomeStart && !S.eventText){
+  if(ENABLE_BIOME_TEXT && biomeStart && !S.eventText){
     setEventText(`🌍 ${biomeStart.biome} • ${biomeStart.weather} • Hazard: ${biomeStart.hazardShort || "adaptive terrain"}`, 7.5);
   }
 
@@ -19633,6 +19705,11 @@ function queueCameraShake(power=1, durationMs=120){
 }
 
 function sampleCameraShake(){
+  if(iphoneStabilityModeActive()){
+    CAMERA_SHAKE.power = 0;
+    CAMERA_SHAKE.until = 0;
+    return { x:0, y:0, active:false };
+  }
   if(!ENABLE_SCREEN_SHAKE){
     CAMERA_SHAKE.power = 0;
     CAMERA_SHAKE.until = 0;
@@ -19653,6 +19730,7 @@ function sampleCameraShake(){
 }
 
 function queueImpactPulse(x, y, kind="hit"){
+  if(iphoneStabilityModeActive()) return;
   if(!Number.isFinite(x) || !Number.isFinite(y)) return;
   if(IMPACT_PULSES.length >= 30){
     IMPACT_PULSES.splice(0, IMPACT_PULSES.length - 29);
@@ -19696,6 +19774,7 @@ function queueImpactPulse(x, y, kind="hit"){
 }
 
 function emitCombatFx(x1, y1, x2, y2, color, width=3, kind="hit"){
+  if(iphoneStabilityModeActive()) return;
   if(COMBAT_FX.length >= 64){
     COMBAT_FX.splice(0, COMBAT_FX.length - 63);
   }
@@ -19705,6 +19784,10 @@ function emitCombatFx(x1, y1, x2, y2, color, width=3, kind="hit"){
 }
 
 function tickCombatFx(){
+  if(iphoneStabilityModeActive()){
+    if(COMBAT_FX.length) COMBAT_FX.length = 0;
+    return;
+  }
   for(const fx of COMBAT_FX) fx.ttl -= 1;
   for(let i = COMBAT_FX.length - 1; i >= 0; i--){
     const fx = COMBAT_FX[i];
@@ -19713,6 +19796,10 @@ function tickCombatFx(){
 }
 
 function tickImpactPulses(){
+  if(iphoneStabilityModeActive()){
+    if(IMPACT_PULSES.length) IMPACT_PULSES.length = 0;
+    return;
+  }
   const fade = visualEffectsHeavyMode() ? 1.6 : 1.1;
   for(const pulse of IMPACT_PULSES){
     pulse.ttl -= fade;
@@ -19728,6 +19815,7 @@ function tickImpactPulses(){
 }
 
 function drawCombatFx(){
+  if(iphoneStabilityModeActive()) return;
   const heavy = visualEffectsHeavyMode();
   const lagTier = frameLagTier();
   const maxDraw = heavy
@@ -19783,6 +19871,7 @@ function drawCombatFx(){
 }
 
 function drawImpactPulses(){
+  if(iphoneStabilityModeActive()) return;
   const lagTier = frameLagTier();
   const maxDraw = visualReadabilityHeavyMode()
     ? (lagTier >= 2 ? 7 : (frameIsSlow() ? 10 : 14))
@@ -19825,6 +19914,7 @@ function drawImpactPulses(){
 }
 
 function emitDamagePopup(x, y, text, kind="hit"){
+  if(iphoneStabilityModeActive()) return;
   if(!Number.isFinite(x) || !Number.isFinite(y) || text == null) return;
   const now = Date.now();
   const lagTier = frameLagTier();
@@ -19873,6 +19963,11 @@ function emitDamagePopup(x, y, text, kind="hit"){
 }
 
 function tickDamagePopups(){
+  if(iphoneStabilityModeActive()){
+    if(DAMAGE_POPUPS.length) DAMAGE_POPUPS.length = 0;
+    if(DAMAGE_POPUP_GATE.size) DAMAGE_POPUP_GATE.clear();
+    return;
+  }
   const lagTier = frameLagTier();
   const lagFade = lagTier >= 2 ? 1.7 : (lagTier >= 1 ? 1.35 : 1);
   const idleFade = (S.paused || S.missionEnded || S.gameOver || !S.inBattle) ? (3.2 * lagFade) : lagFade;
@@ -19896,6 +19991,7 @@ function tickDamagePopups(){
 }
 
 function drawDamagePopups(){
+  if(iphoneStabilityModeActive()) return;
   const heavy = visualReadabilityHeavyMode();
   const lagTier = frameLagTier();
   const maxDraw = heavy
@@ -21354,7 +21450,7 @@ function renderHUD(){
 
   const assistParts = [];
   const biomeProfile = currentBiomeProfile();
-  if(biomeProfile){
+  if(ENABLE_BIOME_TEXT && biomeProfile){
     assistParts.push(`Biome: ${biomeProfile.biome} • ${biomeProfile.weather}`);
     if(biomeProfile.hazardShort) assistParts.push(`Hazard: ${biomeProfile.hazardShort}`);
   }
@@ -21362,22 +21458,24 @@ function renderHUD(){
     const left = Math.max(0, Math.ceil(((S.comboExpireAt || 0) - Date.now()) / 1000));
     assistParts.push(`Combo x${S.comboCount}${left ? ` (${left}s)` : ""}`);
   }
-  const twistNow = Date.now();
   const tw = ensureMissionTwistState(S);
-  if(tw.bridge.active && twistNow < (tw.bridge.until || 0)){
-    const left = Math.max(1, Math.ceil(((tw.bridge.until || 0) - twistNow) / 1000));
-    assistParts.unshift(`Twist: Bridge collapse ${left}s`);
-  } else if(tw.hostage.active && twistNow < (tw.hostage.until || 0)){
-    const left = Math.max(1, Math.ceil(((tw.hostage.until || 0) - twistNow) / 1000));
-    const targetCiv = civilianById(tw.hostage.civId);
-    const label = targetCiv ? `Civ #${targetCiv.id}` : "target";
-    assistParts.unshift(`Twist: Hostage ${label} ${left}s`);
-  } else if(missionTwistBlackoutActive(twistNow)){
-    const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - twistNow) / 1000));
-    assistParts.unshift(`Twist: Radio blackout ${left}s`);
-  } else if(tw.activeType === "fog" && twistNow < (tw.activeUntil || 0)){
-    const left = Math.max(1, Math.ceil(((tw.activeUntil || 0) - twistNow) / 1000));
-    assistParts.unshift(`Twist: Night fog burst ${left}s`);
+  if(ENABLE_MISSION_TWISTS){
+    const twistNow = Date.now();
+    if(tw.bridge.active && twistNow < (tw.bridge.until || 0)){
+      const left = Math.max(1, Math.ceil(((tw.bridge.until || 0) - twistNow) / 1000));
+      assistParts.unshift(`Twist: Bridge collapse ${left}s`);
+    } else if(tw.hostage.active && twistNow < (tw.hostage.until || 0)){
+      const left = Math.max(1, Math.ceil(((tw.hostage.until || 0) - twistNow) / 1000));
+      const targetCiv = civilianById(tw.hostage.civId);
+      const label = targetCiv ? `Civ #${targetCiv.id}` : "target";
+      assistParts.unshift(`Twist: Hostage ${label} ${left}s`);
+    } else if(missionTwistBlackoutActive(twistNow)){
+      const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - twistNow) / 1000));
+      assistParts.unshift(`Twist: Radio blackout ${left}s`);
+    } else if(tw.activeType === "fog" && twistNow < (tw.activeUntil || 0)){
+      const left = Math.max(1, Math.ceil(((tw.activeUntil || 0) - twistNow) / 1000));
+      assistParts.unshift(`Twist: Night fog burst ${left}s`);
+    }
   }
   if(S.mode==="Arcade"){
     const limit = Math.max(0, Math.floor(Number(S.arcadeMissionLimitSec || 0)));
@@ -21629,6 +21727,7 @@ function maybeRenderHUD(force=false){
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
 function drawMissionTwistOverlay(now=Date.now()){
+  if(!ENABLE_MISSION_TWISTS) return;
   const tw = ensureMissionTwistState(S);
   ctx.save();
   if(tw.bridge.active && now < (tw.bridge.until || 0)){
@@ -21837,13 +21936,16 @@ function drawMapScene(){
   const missionIndex = missionIndexForMode(S.mode);
   const chapter = chapterIndexForMode(S.mode);
   const chapterStyle = chapterVisualForMode(S.mode, chapter);
+  const tw = ensureMissionTwistState(S);
+  if(!ENABLE_BIOME_SYSTEM && (S.fogUntil || 0) > 0){
+    S.fogUntil = 0;
+  }
   const mobileFastPath = isMobileViewport();
   if(mobileFastPath){
     drawMapSceneMobileFast(frameNow, w, h, mapFamilyKey(key), chapterStyle);
     return;
   }
   const ez = S.evacZone || DEFAULT.evacZone;
-  const tw = ensureMissionTwistState(S);
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
@@ -22614,6 +22716,7 @@ function drawMapScene(){
 }
 
 function drawAtmosphericParallax(nowTs=Date.now()){
+  if(!ENABLE_BIOME_SYSTEM) return;
   const mode = performanceMode();
   const slow = frameIsSlow();
   const lagTier = frameLagTier();
@@ -24157,6 +24260,7 @@ function drawEntities(){
   const perfMode = performanceMode();
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
+  const iphoneStability = iphoneStabilityModeActive();
   const isSlowFrame = frameIsSlow();
   const frameBudgetTight = frameBudgetExceeded(0.85);
   const entityLoad =
@@ -24181,14 +24285,19 @@ function drawEntities(){
   }else if(lagTier >= 1){
     shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 6 : 5) === 0);
   }
+  if(iphoneStability){
+    shouldDrawFx = false;
+  }
   const shouldDrawPopups = lagTier >= 2
     ? (__frameHeavyFxFlip % (mobile ? 9 : 8) === 0)
     : (lagTier >= 1
       ? (__frameHeavyFxFlip % (heavyLoad ? 6 : 5) === 0)
       : (__frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0));
-  if(shouldDrawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight && lagTier === 0)) drawImpactPulses();
-  if(!liteRender && shouldDrawFx && !frameBudgetTight) drawCombatFx();
-  if(!liteRender && (shouldDrawFx || (!frameBudgetTight && shouldDrawPopups))) drawDamagePopups();
+  if(!iphoneStability){
+    if(shouldDrawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight && lagTier === 0)) drawImpactPulses();
+    if(!liteRender && shouldDrawFx && !frameBudgetTight) drawCombatFx();
+    if(!liteRender && (shouldDrawFx || (!frameBudgetTight && shouldDrawPopups))) drawDamagePopups();
+  }
 }
 function drawMobileUiClearLane(){
   // Intentionally no overlay in the control lane; keep full map visibility.
@@ -24312,15 +24421,21 @@ function draw(){
       runFrameTask("storyCheckpoint", frameInterval(lagCritical ? 220 : (lagHeavy ? 170 : 124), 1.45), maybeCaptureStoryCheckpoint, { costHint:0.8, critical:S.mode==="Story" });
       runFrameTask("checkMissionComplete", frameInterval(lagCritical ? 140 : (lagHeavy ? 112 : 90), 1.4), checkMissionComplete, { costHint:0.8, critical:true });
     }
-    runFrameTask("combatFx", frameInterval(lagCritical ? 94 : (lagHeavy ? 72 : 42), 1.8), tickCombatFx, {
-      costHint:0.5, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
-    });
-    runFrameTask("damagePopups", frameInterval(lagCritical ? 88 : (lagHeavy ? 68 : 40), 1.8), tickDamagePopups, {
-      costHint:0.5, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
-    });
-    runFrameTask("impactPulses", frameInterval(lagCritical ? 82 : (lagHeavy ? 62 : 36), 1.8), tickImpactPulses, {
-      costHint:0.45, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
-    });
+    if(!iphoneStabilityModeActive()){
+      runFrameTask("combatFx", frameInterval(lagCritical ? 94 : (lagHeavy ? 72 : 42), 1.8), tickCombatFx, {
+        costHint:0.5, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
+      runFrameTask("damagePopups", frameInterval(lagCritical ? 88 : (lagHeavy ? 68 : 40), 1.8), tickDamagePopups, {
+        costHint:0.5, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
+      runFrameTask("impactPulses", frameInterval(lagCritical ? 82 : (lagHeavy ? 62 : 36), 1.8), tickImpactPulses, {
+        costHint:0.45, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
+    } else {
+      if(COMBAT_FX.length) COMBAT_FX.length = 0;
+      if(DAMAGE_POPUPS.length) DAMAGE_POPUPS.length = 0;
+      if(IMPACT_PULSES.length) IMPACT_PULSES.length = 0;
+    }
 
     safeTick("drawSceneFrame", ()=>{
       const liteRender = useLiteEntityRender();
