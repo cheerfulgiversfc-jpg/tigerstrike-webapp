@@ -7941,8 +7941,8 @@ const STAMINA_COST_SCAN = 8;
 const STAMINA_COST_SPRINT = 16;
 const STAMINA_DRAIN_WALK = 0.035;
 const STAMINA_DRAIN_SPRINT = 0.08;
-const PLAYER_WALK_SPEED = 2.38;
-const PLAYER_SPRINT_SPEED = 3.78;
+const PLAYER_WALK_SPEED = 2.55;
+const PLAYER_SPRINT_SPEED = 4.05;
 const SHIELD_DURATION_MS = 5000;
 const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
@@ -18378,7 +18378,7 @@ function runCivilianFleeStep(c, now=Date.now()){
   const jitter = c.following ? 0 : (((c.id % 3) - 1) * 0.28);
   const ang = Math.atan2(awayY, awayX) + jitter;
   const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
-  const fleeSpeed = (c.following ? 2.95 : 2.35) * (c.following ? Math.max(0.94, waterMul) : waterMul);
+  const fleeSpeed = (c.following ? 3.14 : 2.52) * (c.following ? Math.max(0.94, waterMul) : waterMul);
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -18393,7 +18393,7 @@ function followCiviliansTick(){
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const escortBoost = storyRescueSpeedMul();
   const engageDist = 58;
-  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 520 : 450;
+  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 550 : 475;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
   if(!Number.isFinite(S._escortFace)) S._escortFace = face;
   const faceDelta = normalizeAngle(face - S._escortFace);
@@ -18546,11 +18546,11 @@ function followCiviliansTick(){
     }
     const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
     const escortWaterMul = Math.max(0.93, waterMul);
-    const catchup = clamp((dd - 10) * 0.07, 0, 5.4);
+    const catchup = clamp((dd - 10) * 0.072, 0, 5.8);
     const trailBoost = dd > 170 ? 0.72 : (dd > 120 ? 0.40 : 0);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.16, 2.86) + catchup + trailBoost) * escortBoost * escortWaterMul),
-      PLAYER_SPRINT_SPEED + 3.0
+      ((Math.max(playerSpeed * 1.18, 2.95) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      PLAYER_SPRINT_SPEED + 3.2
     );
     const vx = (dx/dd) * sp;
     const vy = (dy/dd) * sp;
