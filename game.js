@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4474";
+const TS_BUILD = "4475";
 if(tg){
   try{
     tg.expand?.();
@@ -5920,6 +5920,7 @@ let __frameSlowUntil = 0;
 let __frameLagScore = 0;
 let __lastFrameAt = 0;
 let __drawLoopStarted = false;
+let __mobileBlankRecoveryAt = 0;
 let __frameRecoverUntil = 0;
 let __frameHeavyFxFlip = 0;
 let __frameBgFxFlip = 0;
@@ -24362,6 +24363,21 @@ function draw(){
       return;
     }
     beginFrameBudget(frameStart);
+    if(isMobileGameplayRuntime()){
+      const nowMs = Date.now();
+      if(window.__TS_BOOT_OK__ && (nowMs - __mobileBlankRecoveryAt) > 2200 && missionStateLooksEmpty()){
+        __mobileBlankRecoveryAt = nowMs;
+        safeTick("mobileBlankStateRecover", ()=>{
+          deploy({
+            carryStats:true,
+            hp:clamp(Number(S.hp || 100), 0, 100),
+            armor:clamp(Number(S.armor || 0), 0, S.armorCap || 100)
+          });
+          maybeRenderHUD(true);
+          save(true);
+        });
+      }
+    }
     const lagTier = frameLagTier();
     const lagHeavy = lagTier >= 1;
     const lagCritical = lagTier >= 2;

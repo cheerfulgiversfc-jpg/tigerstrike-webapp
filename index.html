@@ -1073,7 +1073,7 @@
     </div>
     <div class="row topActions">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
-      <button class="ghost mobileCompactHide" onclick="openAbout()">ℹ️ About</button>
+      <button class="ghost mobileCompactHide" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
       <button class="ghost mobileCompactHide" onclick="openMode()">🎮 Mode</button>
       <button class="ghost mobileCompactHide" onclick="nextMap()">🗺️ Map</button>
       <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLbl">Pause</span></button>
@@ -1684,79 +1684,54 @@
     <button class="ghost" onclick="togglePerformanceMode()">⚙️ <span id="perfLblMobile">Auto</span></button>
     <button class="ghost" id="squadCmdBtnMobile" onclick="cycleSquadCommand()">🪖 Auto</button>
     <button class="ghost" onclick="saveGameNow()">💾 Save</button>
-    <button class="ghost" onclick="openAbout()">ℹ️ About</button>
+    <button class="ghost" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
     <button class="ghost" onclick="openHudCustomizer()">🎛️ HUD</button>
     <button class="ghost" onclick="startTutorial()">🧭 Tutorial</button>
     <button class="ghost" onclick="resetGame()">🔁 Reset</button>
   </div>
 </div>
 
-<!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
+<!-- IMPORTANT: static script loading is more reliable in Telegram mobile webview -->
 <script>
 (() => {
+  const baseVersion = "4475";
   const params = new URLSearchParams(window.location.search || "");
   const buildTagRaw = params.get("build") || "";
   const buildTag = buildTagRaw ? String(buildTagRaw).replace(/[^a-zA-Z0-9._-]/g, "") : "";
-  const baseVersion = "4474";
   const effectiveBuildTag = buildTag || `mobile-stability-${baseVersion}`;
-  // Do not rely on hard redirect; Telegram webviews can block/ignore replace.
-  if(!buildTag){
-    try{
-      const u = new URL(window.location.href);
-      u.searchParams.set("build", effectiveBuildTag);
-      u.searchParams.set("tsv", baseVersion);
-      window.history.replaceState({}, "", u.toString());
-    }catch(e){}
-  }
   const ver = `${baseVersion}-${effectiveBuildTag}`;
   window.__TS_BUILD_VERSION__ = ver;
-
-  const load = (src, onload, attempt = 0)=>{
-    const s = document.createElement("script");
-    const retryBust = attempt > 0 ? `&retry=${Date.now()}` : "";
-    s.src = `${src}?v=${encodeURIComponent(ver)}${retryBust}`;
-    s.defer = true;
-    s.onload = () => {
-      if(typeof onload === "function") onload();
-    };
-    s.onerror = () => {
-      if(attempt < 2){
-        load(src, onload, attempt + 1);
-      }else{
-        try{
-          console.error(`Failed to load ${src} after retries`);
-        }catch(e){}
-      }
-    };
-    document.body.appendChild(s);
+  window.__TS_BOOT_OK__ = false;
+  try{
+    const u = new URL(window.location.href);
+    u.searchParams.set("build", effectiveBuildTag);
+    u.searchParams.set("tsv", baseVersion);
+    window.history.replaceState({}, "", u.toString());
+  }catch(e){}
+  window.openAbout = window.openAbout || function(){
+    try{
+      alert(`Tiger Strike build ${ver} is loading. If this persists, close/reopen app.`);
+    }catch(err){}
   };
-  load("./game.js", ()=>load("./tutorial.js"));
 })();
 </script>
+<script src="./game.js?v=4475-mobile-safe"></script>
+<script src="./tutorial.js?v=4475-mobile-safe"></script>
 <script>
 (() => {
-  const recoverOnceKey = "ts_boot_recover_once";
-  const tryRecover = () => {
+  const recoverOnceKey = "ts_boot_recover_once_4475";
+  window.setTimeout(() => {
     try{
       if(window.__TS_BOOT_OK__) return;
       if(sessionStorage.getItem(recoverOnceKey) === "1") return;
       sessionStorage.setItem(recoverOnceKey, "1");
-      // Retry startup once without deleting local save progress.
       const u = new URL(window.location.href);
       u.searchParams.set("recover", String(Date.now()));
+      u.searchParams.set("tsv", "4475");
       window.location.replace(u.toString());
     }catch(e){}
-  };
-  window.setTimeout(tryRecover, 9000);
+  }, 9000);
 })();
-</script>
-<script>
-// Fallback so About button never appears dead during script-load failures.
-window.openAbout = window.openAbout || function(){
-  try{
-    alert("Game is still loading. If this persists, close/reopen and use ?build=mobile-stability-4474");
-  }catch(e){}
-};
 </script>
 <!-- Tutorial Arrow Pointer -->
 <div id="tutorialArrow">👇</div>
