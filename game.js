@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4476";
+const TS_BUILD = "4477";
 if(tg){
   try{
     tg.expand?.();
@@ -143,7 +143,14 @@ const NEMESIS_NAME_PREFIX = Object.freeze([
 const NEMESIS_NAME_SUFFIX = Object.freeze([
   "claw","tooth","stalker","mane","hunter","shadow","snarl","reaper","prowler","maw"
 ]);
-const MISSION_TWIST_TYPES = Object.freeze(["bridge","hostage","fog","blackout"]);
+const ENABLE_TWIST_BRIDGE = false;
+const ENABLE_TWIST_BLACKOUT = false;
+const MISSION_TWIST_TYPES = Object.freeze([
+  ...(ENABLE_TWIST_BRIDGE ? ["bridge"] : []),
+  "hostage",
+  "fog",
+  ...(ENABLE_TWIST_BLACKOUT ? ["blackout"] : [])
+]);
 const MISSION_TWIST_ROLL_MIN_MS = 19000;
 const MISSION_TWIST_ROLL_MAX_MS = 34000;
 const MISSION_TWIST_COOLDOWN_MS = 12000;
@@ -647,6 +654,26 @@ function ensureMissionTwistState(state=S){
   tw.blackout = (tw.blackout && typeof tw.blackout === "object") ? tw.blackout : {};
   tw.blackout.active = !!tw.blackout.active;
   tw.blackout.until = Math.max(0, Math.floor(Number(tw.blackout.until || 0)));
+
+  // Hard disable selected twists to avoid runtime/map issues.
+  if(!ENABLE_TWIST_BRIDGE){
+    tw.bridge.active = false;
+    tw.bridge.until = 0;
+    if(tw.activeType === "bridge"){
+      tw.activeType = "";
+      tw.activeUntil = 0;
+    }
+    tw.used.bridge = 0;
+  }
+  if(!ENABLE_TWIST_BLACKOUT){
+    tw.blackout.active = false;
+    tw.blackout.until = 0;
+    if(tw.activeType === "blackout"){
+      tw.activeType = "";
+      tw.activeUntil = 0;
+    }
+    tw.used.blackout = 0;
+  }
 
   state.missionTwists = tw;
   return tw;
