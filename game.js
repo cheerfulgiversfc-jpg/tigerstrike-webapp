@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4475";
+const TS_BUILD = "4476";
 if(tg){
   try{
     tg.expand?.();
@@ -648,30 +648,13 @@ function ensureMissionTwistState(state=S){
   tw.blackout.active = !!tw.blackout.active;
   tw.blackout.until = Math.max(0, Math.floor(Number(tw.blackout.until || 0)));
 
-  // Mobile safety: disable all mission twists to prevent map blackout/fog artifacts
-  // and reduce startup/transition CPU spikes.
-  if(isMobileGameplayRuntime()){
-    tw.enabled = false;
-    tw.activeType = "";
-    tw.activeUntil = 0;
-    tw.bridge.active = false;
-    tw.bridge.until = 0;
-    tw.hostage.active = false;
-    tw.hostage.until = 0;
-    tw.blackout.active = false;
-    tw.blackout.until = 0;
-    if(state && typeof state === "object"){
-      state.fogUntil = 0;
-    }
-  }
-
   state.missionTwists = tw;
   return tw;
 }
 
 function resetMissionTwistsForDeploy(state=S, now=Date.now()){
   const tw = ensureMissionTwistState(state);
-  tw.enabled = !isMobileGameplayRuntime();
+  tw.enabled = true;
   tw.nextRollAt = now + rand(MISSION_TWIST_ROLL_MIN_MS, MISSION_TWIST_ROLL_MAX_MS);
   tw.cooldownUntil = now + rand(6200, 9800);
   tw.triggerCount = 0;
@@ -696,9 +679,6 @@ function resetMissionTwistsForDeploy(state=S, now=Date.now()){
   tw.hostage.penaltyApplied = false;
   tw.blackout.active = false;
   tw.blackout.until = 0;
-  if(isMobileGameplayRuntime() && state && typeof state === "object"){
-    state.fogUntil = 0;
-  }
   return tw;
 }
 
@@ -5907,8 +5887,6 @@ let __mapFrameCacheCanvas = null;
 let __mapFrameCacheCtx = null;
 let __mapFrameCacheSig = "";
 let __mapFrameCacheAt = 0;
-let __mapFrameCacheCamX = 0;
-let __mapFrameCacheCamY = 0;
 let __mapObstacleSig = "";
 let __mapObstacleRects = [];
 let __mapObstacleCircles = [];
@@ -5920,7 +5898,6 @@ let __frameSlowUntil = 0;
 let __frameLagScore = 0;
 let __lastFrameAt = 0;
 let __drawLoopStarted = false;
-let __mobileBlankRecoveryAt = 0;
 let __frameRecoverUntil = 0;
 let __frameHeavyFxFlip = 0;
 let __frameBgFxFlip = 0;
@@ -5958,8 +5935,6 @@ let __storyCheckpointCache = null;
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
   __mapFrameCacheAt = 0;
-  __mapFrameCacheCamX = 0;
-  __mapFrameCacheCamY = 0;
   __mapObstacleSig = "";
   __mapObstacleRects = [];
   __mapObstacleCircles = [];
@@ -5986,29 +5961,23 @@ function missionProgressForWorld(state=S){
 }
 
 function worldScaleForModeMission(mode, mission){
-  const mobile = isMobileGameplayRuntime();
+  const mobile = isMobileViewport();
   const landscape = isLandscapeViewport();
+  const landscapeBoost = (mobile && landscape) ? 0.36 : (landscape ? 0.18 : 0);
   if(window.__TUTORIAL_MODE__) return 1;
-  if(mobile){
-    // Mobile-safe world sizing: keep camera-following but reduce world growth to avoid startup hitches.
-    if(mode === "Story"){
-      if(landscape) return clamp(1.05 + ((Math.max(1, mission) - 1) * 0.0018), 1.05, 1.22);
-      return clamp(1.03 + ((Math.max(1, mission) - 1) * 0.0019), 1.03, 1.18);
-    }
-    if(mode === "Arcade"){
-      if(landscape) return clamp(1.04 + ((Math.max(1, mission) - 1) * 0.0016), 1.04, 1.18);
-      return clamp(1.02 + ((Math.max(1, mission) - 1) * 0.0017), 1.02, 1.14);
-    }
-    if(landscape) return clamp(1.05 + ((Math.max(1, mission) - 1) * 0.0030), 1.05, 1.24);
-    return clamp(1.03 + ((Math.max(1, mission) - 1) * 0.0034), 1.03, 1.20);
+  if(mobile && !landscape){
+    // Portrait stays compact; landscape is the primary large-map orientation.
+    if(mode === "Story") return clamp(1.02 + ((Math.max(1, mission) - 1) * 0.004), 1.02, 1.24);
+    if(mode === "Arcade") return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.003), 1.01, 1.18);
+    return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.010), 1.01, 1.22);
   }
   if(mode === "Story"){
-    return clamp(1.85 + ((Math.max(1, mission) - 1) * 0.012), 1.85, 3.20);
+    return clamp(1.92 + ((Math.max(1, mission) - 1) * 0.010) + landscapeBoost, 1.92, 2.95);
   }
   if(mode === "Arcade"){
-    return clamp(1.70 + ((Math.max(1, mission) - 1) * 0.010), 1.70, 2.85);
+    return clamp(1.84 + ((Math.max(1, mission) - 1) * 0.009) + landscapeBoost, 1.84, 2.78);
   }
-  return clamp(1.75 + ((Math.max(1, mission) - 1) * 0.028), 1.75, 2.70);
+  return clamp(1.88 + ((Math.max(1, mission) - 1) * 0.017) + landscapeBoost, 1.88, 2.86);
 }
 
 function desiredWorldLayout(state=S){
@@ -6017,11 +5986,11 @@ function desiredWorldLayout(state=S){
   const scale = worldScaleForModeMission(mode, mission);
   const viewportW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
   const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
-  const mobile = isMobileGameplayRuntime();
+  const mobile = isMobileViewport();
   const landscape = isLandscapeViewport();
-  // Keep landscape as the primary large-map view, but ensure portrait is still clearly larger than one screen.
-  const minPadW = mobile ? (landscape ? 140 : 240) : 40;
-  const minPadH = mobile ? (landscape ? 96 : 220) : 40;
+  // Keep portrait close to viewport for stability; make landscape the primary expanded-map view.
+  const minPadW = mobile ? (landscape ? 120 : 20) : 40;
+  const minPadH = mobile ? (landscape ? 80 : 20) : 40;
   const w = Math.max(viewportW + minPadW, Math.round(WORLD_BASE_WIDTH * scale));
   const h = Math.max(viewportH + minPadH, Math.round(WORLD_BASE_HEIGHT * scale));
   return { mode, mission, scale, w, h };
@@ -6034,13 +6003,19 @@ function ensureWorldLayout(state=S){
   if(!state.world || typeof state.world !== "object") state.world = {};
   const world = state.world;
   const desired = desiredWorldLayout(state);
+  const worldW = Number(world?.w || 0);
+  const worldH = Number(world?.h || 0);
+  const needsViewportRefresh =
+    Math.abs(worldW - desired.w) > 2 ||
+    Math.abs(worldH - desired.h) > 2;
   const needsReset =
     !Number.isFinite(world.w) ||
     !Number.isFinite(world.h) ||
     !Number.isFinite(world.scale) ||
     world.mode !== desired.mode ||
     world.mission !== desired.mission ||
-    Math.abs(Number(world.scale || 1) - desired.scale) > 0.0001;
+    Math.abs(Number(world.scale || 1) - desired.scale) > 0.0001 ||
+    needsViewportRefresh;
   if(needsReset){
     world.mode = desired.mode;
     world.mission = desired.mission;
@@ -6117,8 +6092,6 @@ function updateWorldCamera(state=S){
   if(!state.camera || typeof state.camera !== "object"){
     state.camera = { x: world.w * 0.5, y: world.h * 0.5 };
   }
-  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
-  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const target = cameraClampCenter(
     Number.isFinite(state?.me?.x) ? state.me.x : (world.w * 0.5),
     Number.isFinite(state?.me?.y) ? state.me.y : (world.h * 0.5),
@@ -6132,15 +6105,11 @@ function updateWorldCamera(state=S){
     state.camera.x += (target.x - state.camera.x) * ease;
     state.camera.y += (target.y - state.camera.y) * ease;
   }
-  const farDx = Math.abs(target.x - state.camera.x);
-  const farDy = Math.abs(target.y - state.camera.y);
-  if(farDx > (vw * 0.45) || farDy > (vh * 0.45)){
-    state.camera.x = target.x;
-    state.camera.y = target.y;
-  }
   const clamped = cameraClampCenter(state.camera.x, state.camera.y, state);
   state.camera.x = clamped.x;
   state.camera.y = clamped.y;
+  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   return { x: state.camera.x - (vw * 0.5), y: state.camera.y - (vh * 0.5) };
 }
 
@@ -6152,13 +6121,6 @@ function worldToScreenPoint(x, y, state=S){
 function screenToWorldPoint(x, y, state=S){
   const off = cameraOffsetSnapshot(state);
   return { x: x + off.x, y: y + off.y };
-}
-
-function isWorldCameraActive(state=S){
-  if(window.__TUTORIAL_MODE__) return false;
-  if(!isMobileGameplayRuntime()) return false;
-  ensureWorldLayout(state);
-  return true;
 }
 
 function flushSaveNow(){
@@ -6286,12 +6248,6 @@ function togglePerformanceMode(){
     : "Performance mode set to Auto.");
 }
 function toggleLagMonitor(force){
-  if(isMobileGameplayRuntime()){
-    window.__TS_SHOW_MONITOR__ = false;
-    renderStabilityMonitor(true);
-    toast("Lag monitor is disabled on mobile.");
-    return;
-  }
   if(typeof force === "boolean"){
     window.__TS_SHOW_MONITOR__ = force;
   } else {
@@ -6683,30 +6639,11 @@ function reportTickError(key, err){
   __frameRecoverUntil = (performance.now ? performance.now() : now) + 1800;
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, (performance.now ? performance.now() : now) + 2200);
 }
-function resetCanvasDrawState(){
-  if(!ctx) return;
-  try{
-    if(typeof ctx.resetTransform === "function") ctx.resetTransform();
-    else if(typeof ctx.setTransform === "function") ctx.setTransform(1, 0, 0, 1, 0, 0);
-  }catch(e){}
-  try{ ctx.globalAlpha = 1; }catch(e){}
-  try{ ctx.globalCompositeOperation = "source-over"; }catch(e){}
-  try{ ctx.setLineDash([]); }catch(e){}
-  try{
-    ctx.shadowBlur = 0;
-    ctx.shadowColor = "transparent";
-  }catch(e){}
-}
 function safeTick(key, fn){
   try{
     fn();
     return true;
   }catch(err){
-    const k = String(key || "");
-    if(/draw|render|scene|map/i.test(k)){
-      try{ resetCanvasDrawState(); }catch(e){}
-      try{ if(typeof invalidateMapCache === "function") invalidateMapCache(); }catch(e){}
-    }
     reportTickError(key, err);
     return false;
   }
@@ -6771,11 +6708,6 @@ function frameIsSlow(nowTs){
   const now = Number.isFinite(nowTs) ? nowTs : (performance.now ? performance.now() : Date.now());
   return now < (__frameSlowUntil || 0);
 }
-function frameTimeScale(){
-  const avgGap = __avgStabilitySample(__stabilityMonitorState.frameGaps);
-  if(!Number.isFinite(avgGap) || avgGap <= 0) return 1;
-  return clamp(avgGap / 16.7, 1, 2.8);
-}
 
 function frameInterval(baseMs, slowMul=1.45){
   const modeMul = performanceMode() === "PERFORMANCE" ? 1.24 : 1;
@@ -6833,19 +6765,19 @@ function ensureStabilityMonitorNode(){
   return el;
 }
 function shouldShowStabilityMonitor(now=Date.now()){
-  if(window.__TS_SHOW_MONITOR__ !== true) return false;
-  if(isMobileGameplayRuntime()) return false;
+  if(window.__TS_SHOW_MONITOR__ === true) return true;
   if(window.__TUTORIAL_MODE__) return false;
-  return true;
+  if(performanceMode() === "PERFORMANCE" && !isMobileViewport()) return true;
+  if(frameIsSlow()) return true;
+  return (now - (__stabilityMonitorState.lastSpikeAt || 0)) < 9000;
 }
 function renderStabilityMonitor(force=false){
   const now = Date.now();
   if(!force && (now - (__stabilityMonitorState.lastRenderAt || 0) < 260)) return;
   __stabilityMonitorState.lastRenderAt = now;
-  const visible = shouldShowStabilityMonitor(now);
-  if(!visible && !__stabilityMonitorState.node) return;
   const node = ensureStabilityMonitorNode();
   if(!node) return;
+  const visible = shouldShowStabilityMonitor(now);
   node.style.display = visible ? "block" : "none";
   if(!visible) return;
 
@@ -6905,7 +6837,7 @@ function runStabilityRecovery(reason="stall"){
   try{ if(typeof sanitizeRuntimeState === "function") sanitizeRuntimeState(); }catch(e){}
   try{ if(typeof clampWorldToCanvas === "function") clampWorldToCanvas(); }catch(e){}
   try{
-    if(!isMobileViewport() && typeof validateMissionSpawnLayout === "function"){
+    if(typeof validateMissionSpawnLayout === "function"){
       const res = validateMissionSpawnLayout({ repair:true });
       if((res?.fixed || 0) > 0){
         setEventText(`Stability recovered • spawn fixes: ${res.fixed}`, 1.4);
@@ -6913,7 +6845,7 @@ function runStabilityRecovery(reason="stall"){
         setEventText("Stability recovered.", 1.1);
       }
     } else {
-      setEventText("Stability recovered.", isMobileViewport() ? 0.8 : 1.1);
+      setEventText("Stability recovered.", 1.1);
     }
   }catch(e){}
   try{ maybeRenderHUD(true); }catch(e){}
@@ -6940,13 +6872,8 @@ function updateFrameLoad(frameStartTs){
   const frameGap = now - __lastFrameAt;
   __lastFrameAt = now;
   const frameCost = now - frameStartTs;
-  const mobile = isMobileViewport();
   noteFrameSample(frameGap, frameCost);
-  if(mobile){
-    if(frameGap > 6500 || frameCost > 380){
-      runStabilityRecovery("critical-stall");
-    }
-  } else if(frameGap > 4200 || frameCost > 150){
+  if(frameGap > 4200 || frameCost > 150){
     runStabilityRecovery("critical-stall");
   }
   if(frameGap > STABILITY_SPIKE_GAP_MS || frameCost > 46){
@@ -6955,16 +6882,10 @@ function updateFrameLoad(frameStartTs){
     }
     __frameSpikePending = true;
   }
-  if(mobile){
-    if(frameGap > 1100 || frameCost > 180){
-      __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 3200);
-    }
-  } else {
-    if(frameGap > STABILITY_STALL_HARD_GAP_MS || frameCost > STABILITY_STALL_COST_MS){
-      runStabilityRecovery(frameGap > STABILITY_STALL_HARD_GAP_MS ? "hard-gap" : "hard-cost");
-    } else if(frameGap > STABILITY_STALL_GAP_MS){
-      __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 3000);
-    }
+  if(frameGap > STABILITY_STALL_HARD_GAP_MS || frameCost > STABILITY_STALL_COST_MS){
+    runStabilityRecovery(frameGap > STABILITY_STALL_HARD_GAP_MS ? "hard-gap" : "hard-cost");
+  } else if(frameGap > STABILITY_STALL_GAP_MS){
+    __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 3000);
   }
   if(frameGap > 70 || frameCost > 34){
     __frameLagScore = Math.min(20, (__frameLagScore || 0) + 2);
@@ -7009,8 +6930,8 @@ function recoverFromSpikeFrame(){
 
 function trimActiveEntityLoad(){
   if(!S || typeof S !== "object") return;
-  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
-  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
+  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (worldWidth(S) * 0.5);
+  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (worldHeight(S) * 0.5);
 
   if(Array.isArray(S.tigers) && S.tigers.length > STABILITY_SOFT_CAP_TIGERS){
     const keep = [];
@@ -7243,59 +7164,6 @@ function copyStarsDebugLog(){
     toast("Copy failed.");
   }
 }
-function buildMobileDiagnosticsText(){
-  const now = Date.now();
-  const avgGap = __avgStabilitySample(__stabilityMonitorState.frameGaps);
-  const avgCost = __avgStabilitySample(__stabilityMonitorState.frameCosts);
-  const worstGap = __maxStabilitySample(__stabilityMonitorState.frameGaps);
-  const worstCost = __maxStabilitySample(__stabilityMonitorState.frameCosts);
-  const fps = avgGap > 0 ? (1000 / avgGap) : 0;
-  const recoversMin = (__freezeRecoverState.history || []).filter((t)=>(now - t) < 60000).length;
-  const parts = [
-    `build=${String(window.__TS_BUILD_VERSION__ || TS_BUILD)}`,
-    `mode=${String(S?.mode || "-")}`,
-    `story=${Math.floor(Number(S?.storyLevel || 1))}`,
-    `mobileViewport=${isMobileViewport() ? 1 : 0}`,
-    `mobileRuntime=${isMobileGameplayRuntime() ? 1 : 0}`,
-    `worldCam=${isWorldCameraActive(S) ? 1 : 0}`,
-    `vw=${Math.floor(Number(window.innerWidth || 0))}`,
-    `vh=${Math.floor(Number(window.innerHeight || 0))}`,
-    `cw=${Math.floor(Number(cv?.width || 0))}`,
-    `ch=${Math.floor(Number(cv?.height || 0))}`,
-    `fps=${fps.toFixed(1)}`,
-    `gap=${avgGap.toFixed(1)}`,
-    `frame=${avgCost.toFixed(1)}`,
-    `maxGap=${worstGap.toFixed(0)}`,
-    `maxFrame=${worstCost.toFixed(0)}`,
-    `lag=${Math.floor(Number(__frameLagScore || 0))}`,
-    `drops=${Math.floor(Number(__frameBudgetState?.dropped || 0))}`,
-    `recoverMin=${Math.floor(Number(recoversMin || 0))}`,
-    `perf=${performanceMode()}`,
-    `twist=${String(ensureMissionTwistState(S)?.activeType || "-")}`
-  ];
-  return `Tiger Strike Mobile Diagnostics\n${parts.join(" | ")}`;
-}
-function copyMobileDiagnostics(){
-  const text = buildMobileDiagnosticsText();
-  const done = ()=>toast("Diagnostics copied.");
-  if(navigator.clipboard?.writeText){
-    navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
-    return;
-  }
-  try{
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    ta.remove();
-    done();
-  }catch(e){
-    toast("Copy failed.");
-  }
-}
 function ensureStarsDebugUi(){
   if(typeof document === "undefined" || !document.body) return;
   if(document.getElementById("starsDebugToggle")) return;
@@ -7419,61 +7287,17 @@ function mobileCanvasHeight(){
   const vh = window.innerHeight || 844;
   const landscape = vw > vh;
   return landscape
-    ? Math.round(clamp(vh * 0.84, 300, 460))
-    : Math.round(clamp(vh * 0.92, 620, 780));
-}
-function mobileCanvasWidth(){
-  const vw = window.innerWidth || 390;
-  const vh = window.innerHeight || 844;
-  const landscape = vw > vh;
-  return landscape
-    ? Math.round(clamp(vw * 1.06, 700, 900))
-    : Math.round(clamp(vw * 1.38, 500, 640));
-}
-let __mobileRuntimeSticky = null;
-function detectMobileRuntimeNow(){
-  const iw = Number(window.innerWidth || 0);
-  const ih = Number(window.innerHeight || 0);
-  const shortSide = Math.max(1, Math.min(iw || 9999, ih || 9999));
-  const longSide = Math.max(iw || 0, ih || 0);
-  const screenW = Number(window.screen?.width || 0);
-  const screenH = Number(window.screen?.height || 0);
-  const screenShort = Math.max(1, Math.min(screenW || 9999, screenH || 9999));
-  const screenLong = Math.max(screenW || 0, screenH || 0);
-  const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches || shortSide <= 760 || screenShort <= 760;
-  const phoneLandscape = !!window.matchMedia?.("(max-height:540px) and (orientation:landscape)")?.matches;
-  const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
-  const tgPlatform = String(window?.Telegram?.WebApp?.platform || "").toLowerCase();
-  const tgMobile = (tgPlatform === "ios" || tgPlatform === "android");
-  const touchPoints = Number((typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0) || 0);
-  const touchCapable = coarse || touchPoints > 0 || ("ontouchstart" in window);
-  const ua = String((typeof navigator !== "undefined" && navigator.userAgent) || "").toLowerCase();
-  const uaMobile = /(iphone|ipad|ipod|android|mobile)/i.test(ua);
-  const likelyDesktopUa = /(windows nt|macintosh|x11|linux x86_64)/i.test(ua) && !uaMobile;
-  const tabletishTouch = touchCapable &&
-    ((shortSide <= 1200 && longSide <= 1900) || (screenShort <= 1200 && screenLong <= 2200));
-  const touchDeviceHint = touchCapable && (!likelyDesktopUa || shortSide <= 1024 || screenShort <= 1024);
-  return tgMobile || uaMobile || narrow || (phoneLandscape && touchCapable) || (touchDeviceHint && tabletishTouch);
+    ? Math.round(clamp(vh * 0.90, 360, 640))
+    : Math.round(clamp(vh * 1.02, 760, 980));
 }
 function isMobileViewport(){
-  return detectMobileRuntimeNow();
-}
-function isMobileGameplayRuntime(){
-  if(window.__TS_FORCE_MOBILE_RUNTIME__ === true){
-    __mobileRuntimeSticky = true;
-    return true;
-  }
-  if(window.__TS_FORCE_MOBILE_RUNTIME__ === false){
-    return false;
-  }
-  if(__mobileRuntimeSticky === true){
-    return true;
-  }
-  const detected = detectMobileRuntimeNow();
-  if(detected){
-    __mobileRuntimeSticky = true;
-  }
-  return detected;
+  const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches;
+  const phoneLandscape = !!window.matchMedia?.("(max-width:960px) and (max-height:540px) and (orientation:landscape)")?.matches;
+  const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
+  const sw = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+  const lw = Math.max(window.innerWidth || 0, window.innerHeight || 0);
+  const phoneLike = (sw > 0 && lw > 0) && (sw <= 920) && (lw <= 1600);
+  return narrow || (coarse && (phoneLandscape || phoneLike));
 }
 function isLandscapeViewport(){
   return (window.innerWidth || 0) > (window.innerHeight || 0);
@@ -8064,19 +7888,13 @@ function sanitizeRuntimeState(){
   }
 }
 function resizeCanvasForViewport(){
-  if(!cv) return;
   const prevW = Number(cv.width || 0) || 960;
   const prevH = Number(cv.height || 0) || 540;
   const mobile = isMobileViewport();
-  const nextW = mobile ? mobileCanvasWidth() : 960;
-  const nextH = mobile ? mobileCanvasHeight() : 540;
-  const dw = Math.abs(nextW - prevW);
-  const dh = Math.abs(nextH - prevH);
-  // iOS WebView can emit tiny, repeated viewport-height jitters while chrome animates.
-  // Ignore small resize noise to prevent expensive re-layout/re-cache loops.
-  if(mobile && dw <= 1 && dh <= 28) return;
-  cv.width = nextW;
-  cv.height = nextH;
+  cv.width = mobile
+    ? (isLandscapeViewport() ? 980 : 820)
+    : 960;
+  cv.height = mobile ? mobileCanvasHeight() : 540;
   try{ scaleWorldForViewportResize(prevW, prevH, cv.width, cv.height); }catch(e){}
   try{ sanitizeRuntimeState(); }catch(e){}
   try{ clampWorldToCanvas(); }catch(e){}
@@ -8656,43 +8474,21 @@ function takeoverEscort(){
   save();
 }
 
-let __viewportResizeTimer = 0;
-function scheduleViewportResize(opts={}){
-  const delay = Number.isFinite(opts.delay) ? Math.max(0, opts.delay) : 120;
-  const force = !!opts.force;
-  if(__viewportResizeTimer) clearTimeout(__viewportResizeTimer);
-  __viewportResizeTimer = setTimeout(()=>{
-    __viewportResizeTimer = 0;
-    resizeCanvasForViewport();
-    if(force){
-      // Run a second pass shortly after orientation settle for iOS safe-area/layout finalization.
-      setTimeout(()=>{
-        resizeCanvasForViewport();
-        applyMobileMenuState(__mobileMenuHiddenPref);
-        applyTouchHudSettings();
-        positionSquadCommandWheel();
-        renderHUD();
-      }, 80);
-      return;
-    }
-    applyMobileMenuState(__mobileMenuHiddenPref);
-    applyTouchHudSettings();
-    positionSquadCommandWheel();
-    renderHUD();
-  }, delay);
-}
 try{ resizeCanvasForViewport(); }catch(e){ try{ console.warn("Initial viewport setup recovered:", e); }catch(err){} }
 window.addEventListener("resize", ()=>{
-  scheduleViewportResize({ delay:isMobileViewport() ? 150 : 80 });
+  resizeCanvasForViewport();
+  applyMobileMenuState(__mobileMenuHiddenPref);
+  applyTouchHudSettings();
+  positionSquadCommandWheel();
+  renderHUD();
 }, { passive:true });
 window.addEventListener("orientationchange", ()=>{
-  scheduleViewportResize({ force:true, delay:180 });
+  resizeCanvasForViewport();
+  applyMobileMenuState(__mobileMenuHiddenPref);
+  applyTouchHudSettings();
+  positionSquadCommandWheel();
+  renderHUD();
 });
-if(window.visualViewport){
-  window.visualViewport.addEventListener("resize", ()=>{
-    scheduleViewportResize({ delay:160 });
-  }, { passive:true });
-}
 initMobileMenuToggle();
 applyTouchHudSettings();
 // ================= PHASE 2 XP / PERKS =================
@@ -10099,7 +9895,7 @@ function setEventText(txt, seconds=6){
   __savePending = true;
 }
 function missionTwistsEnabled(){
-  return eventsEnabled() && !window.__TUTORIAL_MODE__ && !isMobileGameplayRuntime();
+  return eventsEnabled() && !window.__TUTORIAL_MODE__;
 }
 function missionTwistBlackoutActive(now=Date.now()){
   const tw = ensureMissionTwistState(S);
@@ -10149,6 +9945,8 @@ function clearMissionTwist(type="", opts={}){
   return tw;
 }
 function missionTwistPickBridgePoint(){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const minPlayerDist = 120;
   const candidates = [];
   const civs = (S.civilians || []).filter((c)=>c.alive && !c.evac);
@@ -10171,8 +9969,8 @@ function missionTwistPickBridgePoint(){
       candidates.push({ x:(S.me.x + nearestTiger.x) * 0.5, y:(S.me.y + nearestTiger.y) * 0.5 });
     }
   }
-  candidates.push({ x:cv.width * 0.52, y:cv.height * 0.50 });
-  candidates.push({ x:cv.width * 0.48, y:cv.height * 0.64 });
+  candidates.push({ x:worldW * 0.52, y:worldH * 0.50 });
+  candidates.push({ x:worldW * 0.48, y:worldH * 0.64 });
 
   const evaluate = (rawX, rawY)=>{
     let pt = safeSpawnPoint(rawX, rawY, 22, true, true);
@@ -10180,8 +9978,8 @@ function missionTwistPickBridgePoint(){
     const open = findNearestOpenPoint(pt.x, pt.y, 22, {
       avoidKeepout:true,
       avoidWater:true,
-      targetX:cv.width * 0.5,
-      targetY:cv.height * 0.5
+      targetX:worldW * 0.5,
+      targetY:worldH * 0.5
     });
     if(open) pt = open;
     if(inMapScenarioKeepout(pt.x, pt.y, 26)) return null;
@@ -10196,7 +9994,7 @@ function missionTwistPickBridgePoint(){
     if(point) return point;
   }
   for(let i=0; i<18; i++){
-    const point = evaluate(rand(110, cv.width - 110), rand(120, cv.height - 110));
+    const point = evaluate(rand(110, worldW - 110), rand(120, worldH - 110));
     if(point) return point;
   }
   return null;
@@ -10271,7 +10069,6 @@ function triggerMissionTwistFog(now=Date.now()){
   return true;
 }
 function triggerMissionTwistBlackout(now=Date.now()){
-  if(isMobileGameplayRuntime()) return false;
   const tw = ensureMissionTwistState(S);
   const dur = rand(MISSION_TWIST_BLACKOUT_MIN_MS, MISSION_TWIST_BLACKOUT_MAX_MS);
   tw.blackout.active = true;
@@ -10292,7 +10089,6 @@ function missionTwistChooseType(tw){
   const available = MISSION_TWIST_TYPES.filter((type)=>{
     if((tw.used?.[type] || 0) >= 1) return false;
     if(type === "hostage" && aliveCivs <= 0) return false;
-    if(type === "blackout" && isMobileGameplayRuntime()) return false;
     return true;
   });
   if(!available.length) return "";
@@ -10313,20 +10109,6 @@ function missionTwistChooseType(tw){
 }
 function tickMissionTwists(){
   const tw = ensureMissionTwistState(S);
-  const now = Date.now();
-  // Mobile stability guard: disable mission twists entirely on phone/tablet.
-  // Twists (bridge/fog/hostage/blackout) are high-variance and can create
-  // "broken map" visuals under load. Keep gameplay deterministic on mobile.
-  if(isMobileGameplayRuntime()){
-    if(tw.activeType || tw.bridge.active || tw.hostage.active || tw.blackout.active){
-      clearMissionTwist("", { silent:true });
-    }
-    tw.enabled = false;
-    tw.cooldownUntil = now + 60000;
-    tw.nextRollAt = tw.cooldownUntil;
-    S.fogUntil = 0;
-    return;
-  }
   if(!missionTwistsEnabled()){
     if(tw.activeType || tw.bridge.active || tw.hostage.active || tw.blackout.active){
       clearMissionTwist("", { silent:true });
@@ -10334,6 +10116,8 @@ function tickMissionTwists(){
     return;
   }
   if(!tw.enabled) return;
+  const now = Date.now();
+
   if(tw.bridge.active && now >= (tw.bridge.until || 0)){
     clearMissionTwist("bridge", { notice:"🛣️ Collapse cleared. Route reopened.", seconds:2.8 });
   }
@@ -10401,7 +10185,6 @@ function tickMissionTwists(){
   }
 }
 function tickEvents(){
-  if(isMobileGameplayRuntime()) return;
   if(!eventsEnabled() || S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
   const director = ensureMissionDirectorState(S);
   const phase = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
@@ -10469,7 +10252,13 @@ function tickEvents(){
   const roll = Math.random();
   if(roll < supplyWeight){
     // Supply Drop: spawn crate pickup
-    spawnPickup("CRATE", rand(280,880), rand(120,500));
+    const worldW = worldWidth(S);
+    const worldH = worldHeight(S);
+    spawnPickup(
+      "CRATE",
+      rand(120, Math.max(140, worldW - 120)),
+      rand(90, Math.max(120, worldH - 90))
+    );
     setEventText("📦 Supply Drop spotted!", 7);
     sfx("event"); hapticImpact("medium");
   } else if(roll < (supplyWeight + rogueWeight)){
@@ -10514,7 +10303,6 @@ function tickEvents(){
 }
 
 function biomeHazardTick(){
-  if(isMobileGameplayRuntime()) return;
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
   if(window.__TUTORIAL_MODE__) return;
   const profile = currentBiomeProfile();
@@ -10543,9 +10331,11 @@ function biomeHazardTick(){
 function spawnPickup(type, x, y){
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(S.pickups.length >= MAX_PERSIST_PICKUPS) S.pickups.shift();
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const pt = safeSpawnPoint(
-    clamp(Number.isFinite(x) ? x : rand(80, cv.width - 80), 40, cv.width - 40),
-    clamp(Number.isFinite(y) ? y : rand(90, cv.height - 70), 60, cv.height - 40),
+    clamp(Number.isFinite(x) ? x : rand(80, worldW - 80), 40, worldW - 40),
+    clamp(Number.isFinite(y) ? y : rand(90, worldH - 70), 60, worldH - 40),
     12,
     true,
     false
@@ -10580,8 +10370,10 @@ function maybeSpawnAmbientPickup(){
   const baseChance = clamp(0.22 * chanceMul, 0.08, 0.28);
   if(Math.random()>baseChance) return;
 
-  const x = rand(160, 900);
-  const y = rand(90, 510);
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const x = rand(120, Math.max(140, worldW - 120));
+  const y = rand(90, Math.max(120, worldH - 90));
 
   // weighted loot
   const r = Math.random();
@@ -10699,13 +10491,6 @@ function openAbout(){
     : "Open Tiger Strike from Telegram to detect your ID automatically.";
   document.getElementById("aboutOverlay").style.display="flex";
   document.getElementById("aboutBody").innerHTML = `
-    <div class="item"><div><div class="itemName">Build + Diagnostics</div>
-      <div class="itemDesc">
-        <b>Loaded build:</b> ${esc(String(window.__TS_BUILD_VERSION__ || TS_BUILD))}<br>
-        If phone behavior looks different, copy diagnostics and send it here.
-      </div>
-      <button class="ghost" onclick="copyMobileDiagnostics()">Copy Mobile Diagnostics</button>
-    </div></div>
     <div class="item"><div><div class="itemName">Find your Telegram user ID</div>
       <div class="itemDesc">
         <b>In group/private chat:</b> send <code>/myid</code><br>
@@ -15861,11 +15646,13 @@ function spawnRescueSites(){
     .map((site)=>{
       let pt = safeSpawnPoint(site.x, site.y, Math.round((site.r || 44) * 0.42), true, true);
       if(inMapScenarioKeepout(pt.x, pt.y, Math.round((site.r || 44) * 0.42))){
+        const worldW = worldWidth(S);
+        const worldH = worldHeight(S);
         const clear = findNearestOpenPoint(pt.x, pt.y, Math.round((site.r || 44) * 0.42), {
           avoidKeepout:true,
           avoidWater:true,
-          targetX:cv.width * 0.48,
-          targetY:cv.height * 0.52
+          targetX:worldW * 0.48,
+          targetY:worldH * 0.52
         });
         if(clear) pt = clear;
       }
@@ -16019,8 +15806,8 @@ function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
 }
 
 function mapInteractablePool(){
-  const w = cv.width;
-  const h = cv.height;
+  const w = worldWidth(S);
+  const h = worldHeight(S);
   const key = currentMapKey();
   const pools = {
     ST_FOREST: [
@@ -16083,14 +15870,16 @@ function spawnMapInteractables(){
     return;
   }
   const base = mapInteractablePool();
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   S.mapInteractables = base.map((it, idx)=>{
     let pt = safeSpawnPoint(it.x, it.y, 22, true, true);
     if(inMapScenarioKeepout(pt.x, pt.y, 22)){
       const clear = findNearestOpenPoint(pt.x, pt.y, 22, {
         avoidKeepout:true,
         avoidWater:true,
-        targetX:cv.width * 0.48,
-        targetY:cv.height * 0.52
+        targetX:worldW * 0.48,
+        targetY:worldH * 0.52
       });
       if(clear) pt = clear;
     }
@@ -16313,6 +16102,8 @@ function createSupportUnit(role, slotIndex=0){
   const attacker = role === "attacker";
   const hpMax = storySupportHpMax(role);
   const armorBase = storySupportArmorBase(role);
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const lane = slotIndex % 3;
   const row = Math.floor(slotIndex / 3);
   const baseX = attacker ? (S.me.x - 34 - (lane * 20)) : (S.me.x + 36 + (lane * 20));
@@ -16321,8 +16112,8 @@ function createSupportUnit(role, slotIndex=0){
     id: `${attacker ? "A" : "R"}-${Date.now()}-${rand(100,999)}`,
     name: attacker ? "Tiger Specialist" : "Rescue Specialist",
     role,
-    x: clamp(baseX, 40, cv.width - 40),
-    y: clamp(baseY, 60, cv.height - 40),
+    x: clamp(baseX, 40, worldW - 40),
+    y: clamp(baseY, 60, worldH - 40),
     homeX: S.me.x,
     homeY: S.me.y,
     face:0,
@@ -16406,6 +16197,8 @@ function spawnSupportUnits(){
 
   const coreCap = raidModeActive(S) ? 14 : 16;
   const merged = [...attackers, ...rescuers].slice(0, coreCap);
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   merged.forEach((unit, idx)=>{
     const lane = idx % 4;
     const row = Math.floor(idx / 4);
@@ -16413,8 +16206,8 @@ function spawnSupportUnits(){
     unit.homeX = S.me.x;
     unit.homeY = S.me.y;
     const spawnPt = safeSpawnPoint(
-      clamp(S.me.x + side * (40 + lane * 22), 40, cv.width - 40),
-      clamp(S.me.y + 30 + row * 22, 60, cv.height - 40),
+      clamp(S.me.x + side * (40 + lane * 22), 40, worldW - 40),
+      clamp(S.me.y + 30 + row * 22, 60, worldH - 40),
       16,
       true,
       true
@@ -16475,18 +16268,20 @@ function spawnCivilians(){
   const raidBonusCivs = (S.mode === "Arcade" && raidModeActive(S)) ? 2 : 0;
   const spawnCount = clamp(n + raidBonusCivs, 0, 16);
   const sites = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice();
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
 
   S.civilians = [];
 
   for(let i=0;i<spawnCount;i++){
-    const site = sites[i % sites.length] || { x: rand(160, cv.width - 160), y: rand(140, cv.height - 120), kind:"trail", label:"Field Site" };
+    const site = sites[i % sites.length] || { x: rand(160, worldW - 160), y: rand(140, worldH - 120), kind:"trail", label:"Field Site" };
     const orbit = 16 + ((i % 3) * 14);
     const angle = (Math.PI * 2 * (i % Math.max(1, sites.length))) / Math.max(1, sites.length);
     const jitterX = Math.round(Math.cos(angle) * orbit + rand(-10, 10));
     const jitterY = Math.round(Math.sin(angle) * orbit + rand(-10, 10));
     const civSpawn = safeSpawnPoint(
-      clamp(site.x + jitterX, 60, cv.width - 60),
-      clamp(site.y + jitterY, 90, cv.height - 70),
+      clamp(site.x + jitterX, 60, worldW - 60),
+      clamp(site.y + jitterY, 90, worldH - 70),
       14,
       true,
       true
@@ -16577,13 +16372,15 @@ function tigerSpawnTooCloseToEscort(x, y, opts={}){
   return false;
 }
 function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const preferX = Number.isFinite(Number(opts.preferX)) ? Number(opts.preferX) : seedX;
   const preferY = Number.isFinite(Number(opts.preferY)) ? Number(opts.preferY) : seedY;
   const radius = Math.max(16, Number(opts.radius || 18));
   const candidates = [];
   const pushCandidate = (x, y)=>{
-    const px = clamp(Math.round(x), 70, cv.width - 70);
-    const py = clamp(Math.round(y), 90, cv.height - 70);
+    const px = clamp(Math.round(x), 70, worldW - 70);
+    const py = clamp(Math.round(y), 90, worldH - 70);
     const pt = safeSpawnPoint(px, py, radius, true, true);
     candidates.push(pt);
   };
@@ -16598,8 +16395,8 @@ function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
   }
   for(let i=0; i<40; i++){
     const biasRight = i % 2 === 0;
-    const rx = biasRight ? rand(Math.round(cv.width * 0.55), cv.width - 70) : rand(70, Math.round(cv.width * 0.45));
-    const ry = rand(90, cv.height - 70);
+    const rx = biasRight ? rand(Math.round(worldW * 0.55), worldW - 70) : rand(70, Math.round(worldW * 0.45));
+    const ry = rand(90, worldH - 70);
     pushCandidate(rx, ry);
   }
 
@@ -16741,17 +16538,19 @@ function spawnTigers(){
     : null;
   const nemesisSlot = nemesisEntry ? rand(Math.max(0, Math.floor(count * 0.45)), Math.max(0, count - 1)) : -1;
   const packCount = clamp(Math.ceil(count / 2), 1, 4);
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   const sitePool = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice().reverse();
   const fallbackPacks = [
-    { x: cv.width * 0.68, y: cv.height * 0.22 },
-    { x: cv.width * 0.78, y: cv.height * 0.48 },
-    { x: cv.width * 0.64, y: cv.height * 0.76 },
-    { x: cv.width * 0.84, y: cv.height * 0.64 },
+    { x: worldW * 0.68, y: worldH * 0.22 },
+    { x: worldW * 0.78, y: worldH * 0.48 },
+    { x: worldW * 0.64, y: worldH * 0.76 },
+    { x: worldW * 0.84, y: worldH * 0.64 },
   ];
   const packAnchors = Array.from({ length: packCount }, (_, idx) => {
     const site = sitePool[idx];
     const anchor = site
-      ? { x: clamp(site.x + rand(90, 180), 160, cv.width - 70), y: clamp(site.y + rand(-110, 110), 100, cv.height - 70) }
+      ? { x: clamp(site.x + rand(90, 180), 160, worldW - 70), y: clamp(site.y + rand(-110, 110), 100, worldH - 70) }
       : fallbackPacks[idx % fallbackPacks.length];
     return {
       id: idx + 1,
@@ -16798,8 +16597,8 @@ function spawnTigers(){
     const initialVx = (Math.random()<0.5?-1:1)*def.spd*0.55;
     const initialVy = (Math.random()<0.5?-1:1)*def.spd*0.50;
     const tigerSpawn = pickTigerSpawnAwayFromEscort(
-      clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, cv.width - 50),
-      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, cv.height - 70),
+      clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, worldW - 50),
+      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, worldH - 70),
       {
         preferX: pack.x,
         preferY: pack.y,
@@ -16913,6 +16712,8 @@ function spawnRogueTiger(options={}){
   if(S.mode==="Survival") baseHp = 135 + (S.survivalWave - 1) * 10;
   if(S.mode==="Story") baseHp = 120 + ((storyMission?.number || S.storyLevel || 1) - 1) * 6;
   const hp = Math.round(baseHp * def.hpMul * diff * (S.mode==="Story" ? clamp(Number(storyMission?.endgameHpMul || 1), 1, 6) : 1));
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
 
   let sx = 0;
   let sy = 0;
@@ -16924,17 +16725,17 @@ function spawnRogueTiger(options={}){
   } else {
     const spawnEdge = rand(0, 3);
     if(spawnEdge === 0){ // top
-      sx = rand(90, cv.width - 90);
+      sx = rand(90, worldW - 90);
       sy = rand(72, 116);
     } else if(spawnEdge === 1){ // right
-      sx = rand(cv.width - 116, cv.width - 72);
-      sy = rand(90, cv.height - 90);
+      sx = rand(worldW - 116, worldW - 72);
+      sy = rand(90, worldH - 90);
     } else if(spawnEdge === 2){ // bottom
-      sx = rand(90, cv.width - 90);
-      sy = rand(cv.height - 116, cv.height - 72);
+      sx = rand(90, worldW - 90);
+      sy = rand(worldH - 116, worldH - 72);
     } else { // left
       sx = rand(72, 116);
-      sy = rand(90, cv.height - 90);
+      sy = rand(90, worldH - 90);
     }
   }
 
@@ -17037,7 +16838,6 @@ function deploy(opts={}){
   const carryStats = !!opts.carryStats;
   const carryHp = clamp(Number.isFinite(opts.hp) ? opts.hp : S.hp, 0, 100);
   const carryArmor = clamp(Number.isFinite(opts.armor) ? opts.armor : S.armor, 0, S.armorCap || 100);
-  S._mobileMissionStartedAt = Date.now();
   resizeCanvasForViewport();
   invalidateMapCache();
   for(const k of Object.keys(__frameTaskGate)) delete __frameTaskGate[k];
@@ -17068,11 +16868,9 @@ function deploy(opts={}){
     ? carryArmor
     : clamp(20 + storyStartingArmorBonus(), 0, S.armorCap || 100);
   S.stamina=100;
-  S.me={x:160,y:clamp(cv.height - 120, 240, 420),face:0,step:0};
-  {
-    const camSnap = cameraClampCenter(S.me.x, S.me.y, S);
-    S.camera = { x: camSnap.x, y: camSnap.y };
-  }
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  S.me={x:160,y:clamp(worldH - 120, 240, 420),face:0,step:0};
   S.target=null;
   S.lockedTigerId=null;
 
@@ -17165,8 +16963,8 @@ function deploy(opts={}){
   transitionCleanupSweep("deploy-post");
 
   // spawn a couple guaranteed pickups early
-  spawnPickup("CASH", 260, clamp(cv.height - 150, 220, cv.height - 80));
-  spawnPickup("AMMO", 320, clamp(cv.height - 120, 240, cv.height - 70));
+  spawnPickup("CASH", clamp(260, 80, worldW - 80), clamp(worldH - 150, 220, worldH - 80));
+  spawnPickup("AMMO", clamp(320, 80, worldW - 80), clamp(worldH - 120, 240, worldH - 70));
 
   for(const wid of S.ownedWeapons){ if(S.durability[wid]==null) S.durability[wid]=100; }
 
@@ -17413,11 +17211,12 @@ cv.addEventListener("pointerdown",(e)=>{
   }
 
   const rect=cv.getBoundingClientRect();
+  updateWorldCamera(S);
   const sx=(e.clientX-rect.left)*(cv.width/rect.width);
   const sy=(e.clientY-rect.top)*(cv.height/rect.height);
-  const wp = isWorldCameraActive(S) ? screenToWorldPoint(sx, sy, S) : { x:sx, y:sy };
-  const x = wp.x;
-  const y = wp.y;
+  const worldPt = screenToWorldPoint(sx, sy, S);
+  const x = worldPt.x;
+  const y = worldPt.y;
   const tappedInteractable = findInteractableAt(x,y);
   const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
 
@@ -18066,7 +17865,6 @@ function keyboardMoveTick(){
     sprinting = true;
     S._sprintTicks--;
   }
-  speed *= frameTimeScale();
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
 
   S.target=null;
@@ -18092,7 +17890,6 @@ function movePlayer(){
   let speed=PLAYER_WALK_SPEED;
   let sprinting = false;
   if(S._sprintTicks && S._sprintTicks>0){ speed=PLAYER_SPRINT_SPEED; sprinting = true; S._sprintTicks--; }
-  speed *= frameTimeScale();
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
 
   S.me.face = Math.atan2(dy, dx);
@@ -18542,7 +18339,7 @@ function runCivilianFleeStep(c, now=Date.now()){
   const jitter = c.following ? 0 : (((c.id % 3) - 1) * 0.28);
   const ang = Math.atan2(awayY, awayX) + jitter;
   const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
-  const fleeSpeed = (c.following ? 2.95 : 2.35) * (c.following ? Math.max(0.94, waterMul) : waterMul) * frameTimeScale();
+  const fleeSpeed = (c.following ? 2.95 : 2.35) * (c.following ? Math.max(0.94, waterMul) : waterMul);
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -18713,9 +18510,9 @@ function followCiviliansTick(){
     const catchup = clamp((dd - 10) * 0.07, 0, 5.4);
     const trailBoost = dd > 170 ? 0.72 : (dd > 120 ? 0.40 : 0);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.24, 3.25) + catchup + trailBoost) * escortBoost * escortWaterMul),
-      PLAYER_SPRINT_SPEED + 3.35
-    ) * frameTimeScale();
+      ((Math.max(playerSpeed * 1.16, 2.86) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      PLAYER_SPRINT_SPEED + 3.0
+    );
     const vx = (dx/dd) * sp;
     const vy = (dy/dd) * sp;
     if(Math.hypot(vx, vy) > 0.02){
@@ -19013,6 +18810,11 @@ function roamTigers(){
   const barricades = activeBarricades(now);
   const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
   const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
+  const tigerBounds = worldBounds(18, S);
+  const tigerMinX = tigerBounds.minX;
+  const tigerMaxX = tigerBounds.maxX;
+  const tigerMinY = tigerBounds.minY;
+  const tigerMaxY = tigerBounds.maxY;
   const packStats = Object.create(null);
   for(const tiger of aliveTigers){
     if(!tiger.packId) continue;
@@ -19097,8 +18899,8 @@ function roamTigers(){
       if(now < (t._nextFarThinkAt || 0)){
         t.vx = (t.vx || 0) * 0.94;
         t.vy = (t.vy || 0) * 0.94;
-        t.x = clampWorldX(t.x + t.vx, 18, S);
-        t.y = clampWorldY(t.y + t.vy, 18, S);
+        t.x = clamp(t.x + t.vx, tigerMinX, tigerMaxX);
+        t.y = clamp(t.y + t.vy, tigerMinY, tigerMaxY);
         t.step = (t.step + 0.04) % (Math.PI * 2);
         continue;
       }
@@ -19310,8 +19112,8 @@ function roamTigers(){
       t.vx += nx * repel;
       t.vy += ny * repel;
       if(bd < fieldR * 0.64){
-        t.x = clampWorldX(t.x + nx * 1.8, 18, S);
-        t.y = clampWorldY(t.y + ny * 1.8, 18, S);
+        t.x = clamp(t.x + nx * 1.8, tigerMinX, tigerMaxX);
+        t.y = clamp(t.y + ny * 1.8, tigerMinY, tigerMaxY);
       }
     }
 
@@ -19357,11 +19159,10 @@ function roamTigers(){
     t.vx *= drag;
     t.vy *= drag;
 
-    const tigerBounds = worldBounds(18, S);
-    if(t.x < tigerBounds.minX || t.x > tigerBounds.maxX) t.vx *= -1;
-    if(t.y < tigerBounds.minY || t.y > tigerBounds.maxY) t.vy *= -1;
-    t.x = clamp(t.x, tigerBounds.minX, tigerBounds.maxX);
-    t.y = clamp(t.y, tigerBounds.minY, tigerBounds.maxY);
+    if(t.x<tigerMinX||t.x>tigerMaxX) t.vx*=-1;
+    if(t.y<tigerMinY||t.y>tigerMaxY) t.vy*=-1;
+    t.x=clamp(t.x,tigerMinX,tigerMaxX);
+    t.y=clamp(t.y,tigerMinY,tigerMaxY);
     const gait = Math.hypot(t.vx, t.vy);
     const sprintingNow = (now < (t.burstUntil||0)) || (t.type==="Scout" && now < (t.dashUntil||0));
     const runMul = sprintingNow ? 1.35 : (gait > motion.chase * 0.84 ? 1.14 : (gait > motion.walk * 0.72 ? 0.94 : 0.70));
@@ -19504,9 +19305,9 @@ function respawnTick(){
   S.hp = 100;
   S.armor = 20;
   S.stamina = 100;
-  const respawnBounds = worldBounds(16, S);
-  S.me.x = clamp(S.respawnTargetX || (worldWidth(S) * 0.16), respawnBounds.minX, respawnBounds.maxX);
-  S.me.y = clamp(S.respawnTargetY || (worldHeight(S) * 0.78), respawnBounds.minY, respawnBounds.maxY);
+  const bounds = worldBounds(16, S);
+  S.me.x = clamp(S.respawnTargetX || (worldWidth(S) * 0.16), bounds.minX, bounds.maxX);
+  S.me.y = clamp(S.respawnTargetY || (worldHeight(S) * 0.78), bounds.minY, bounds.maxY);
   S.target = null;
   S.respawnPendingUntil = 0;
   S.respawnNoticeAt = 0;
@@ -19680,8 +19481,10 @@ function currentBattleCinematicTargetScale(){
 }
 
 function resolveBattleCinematicFocus(t){
-  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
-  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (worldW * 0.5);
+  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (worldH * 0.5);
   const tiger = t || activeTiger() || tigerById(S.lockedTigerId);
   let x = meX;
   let y = meY;
@@ -19689,10 +19492,9 @@ function resolveBattleCinematicFocus(t){
     x = (meX + tiger.x) * 0.5;
     y = (meY + tiger.y) * 0.5;
   }
-  const bounds = worldBounds(70, S);
   return {
-    x: clamp(x, bounds.minX, bounds.maxX),
-    y: clamp(y, bounds.minY, bounds.maxY)
+    x: clamp(x, 70, Math.max(70, worldW - 70)),
+    y: clamp(y, 70, Math.max(70, worldH - 70))
   };
 }
 
@@ -19711,8 +19513,8 @@ function resetBattleCinematic(){
   BATTLE_CINEMATIC.fromScale = 1;
   BATTLE_CINEMATIC.toScale = 1;
   BATTLE_CINEMATIC.scale = 1;
-  BATTLE_CINEMATIC.focusX = Number.isFinite(S?.me?.x) ? S.me.x : (cv.width * 0.5);
-  BATTLE_CINEMATIC.focusY = Number.isFinite(S?.me?.y) ? S.me.y : (cv.height * 0.5);
+  BATTLE_CINEMATIC.focusX = Number.isFinite(S?.me?.x) ? S.me.x : (worldWidth(S) * 0.5);
+  BATTLE_CINEMATIC.focusY = Number.isFinite(S?.me?.y) ? S.me.y : (worldHeight(S) * 0.5);
 }
 
 function triggerBattleCinematic(kind="enter", focusTigerId=null){
@@ -19747,7 +19549,7 @@ function triggerBattleCinematic(kind="enter", focusTigerId=null){
 function sampleBattleCinematic(){
   if(!ENABLE_BATTLE_CINEMATIC){
     resetBattleCinematic();
-    return { active:false, scale:1, x:cv.width * 0.5, y:cv.height * 0.5 };
+    return { active:false, scale:1, x:worldWidth(S) * 0.5, y:worldHeight(S) * 0.5 };
   }
   const now = Date.now();
   let scale = battleCinematicScaleNow(now);
@@ -19775,8 +19577,8 @@ function sampleBattleCinematic(){
   return {
     active,
     scale: BATTLE_CINEMATIC.scale,
-    x: Number.isFinite(BATTLE_CINEMATIC.focusX) ? BATTLE_CINEMATIC.focusX : (cv.width * 0.5),
-    y: Number.isFinite(BATTLE_CINEMATIC.focusY) ? BATTLE_CINEMATIC.focusY : (cv.height * 0.5)
+    x: Number.isFinite(BATTLE_CINEMATIC.focusX) ? BATTLE_CINEMATIC.focusX : (worldWidth(S) * 0.5),
+    y: Number.isFinite(BATTLE_CINEMATIC.focusY) ? BATTLE_CINEMATIC.focusY : (worldHeight(S) * 0.5)
   };
 }
 
@@ -20035,6 +19837,8 @@ function tickDamagePopups(){
   const lagTier = frameLagTier();
   const lagFade = lagTier >= 2 ? 1.7 : (lagTier >= 1 ? 1.35 : 1);
   const idleFade = (S.paused || S.missionEnded || S.gameOver || !S.inBattle) ? (3.2 * lagFade) : lagFade;
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
   for(const p of DAMAGE_POPUPS){
     p.ttl -= idleFade;
     p.y += p.vy;
@@ -20046,7 +19850,7 @@ function tickDamagePopups(){
       DAMAGE_POPUPS.splice(i, 1);
       continue;
     }
-    if(p.y < -40 || p.y > (cv.height + 120) || p.x < -120 || p.x > (cv.width + 120)){
+    if(p.y < -40 || p.y > (worldH + 120) || p.x < -120 || p.x > (worldW + 120)){
       DAMAGE_POPUPS.splice(i, 1);
     }
   }
@@ -21786,10 +21590,7 @@ function maybeRenderHUD(force=false){
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
 function drawMissionTwistOverlay(now=Date.now()){
-  if(isMobileGameplayRuntime()) return;
   const tw = ensureMissionTwistState(S);
-  const worldCam = isWorldCameraActive(S);
-  const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
   ctx.save();
   if(tw.bridge.active && now < (tw.bridge.until || 0)){
     const left = Math.max(1, Math.ceil(((tw.bridge.until || 0) - now) / 1000));
@@ -21848,38 +21649,27 @@ function drawMissionTwistOverlay(now=Date.now()){
   }
   if(tw.blackout.active && now < (tw.blackout.until || 0)){
     const left = Math.max(1, Math.ceil(((tw.blackout.until || 0) - now) / 1000));
-    const heavyDim = !isMobileGameplayRuntime() && frameLagTier() <= 0 && performanceMode() !== "PERFORMANCE";
-    if(heavyDim){
-      ctx.globalAlpha = 0.16;
-      ctx.fillStyle = "rgba(6,9,16,.98)";
-      ctx.fillRect(camOff.x, camOff.y, cv.width, cv.height);
-    }
-    rounded(camOff.x + 16, camOff.y + 16, 194, 24, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.7)");
+    const worldW = worldWidth(S);
+    const worldH = worldHeight(S);
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = "rgba(6,9,16,.98)";
+    ctx.fillRect(0, 0, worldW, worldH);
+    rounded(16, 16, 194, 24, 11, "rgba(8,14,24,.92)", "rgba(148,163,184,.7)");
     ctx.globalAlpha = 0.96;
     ctx.fillStyle = "rgba(226,232,240,.96)";
     ctx.font = "900 11px system-ui";
-    ctx.fillText(`📻 RADIO BLACKOUT ${left}s`, camOff.x + 26, camOff.y + 32);
+    ctx.fillText(`📻 RADIO BLACKOUT ${left}s`, 26, 32);
   }
   ctx.restore();
 }
 function drawMapScene(){
   const frameNow = Date.now();
-  const viewportW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
-  const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
-  const worldCam = isWorldCameraActive(S);
-  const w = worldCam ? worldWidth(S) : viewportW;
-  const h = worldCam ? worldHeight(S) : viewportH;
-  let camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
-  if(worldCam && (!Number.isFinite(camOff.x) || !Number.isFinite(camOff.y))){
-    camOff = { x:0, y:0 };
-  }
-  const viewPad = worldCam ? 88 : 0;
-  const drawMinX = worldCam ? clamp(Math.floor(camOff.x) - viewPad, 0, w) : 0;
-  const drawMinY = worldCam ? clamp(Math.floor(camOff.y) - viewPad, 0, h) : 0;
-  const drawMaxX = worldCam ? clamp(Math.ceil(camOff.x + viewportW) + viewPad, drawMinX, w) : w;
-  const drawMaxY = worldCam ? clamp(Math.ceil(camOff.y + viewportH) + viewPad, drawMinY, h) : h;
-  const drawSpanW = Math.max(2, drawMaxX - drawMinX);
-  const drawSpanH = Math.max(2, drawMaxY - drawMinY);
+  const viewportW = cv.width;
+  const viewportH = cv.height;
+  const w = Math.max(viewportW, worldWidth(S));
+  const h = Math.max(viewportH, worldHeight(S));
+  const canCacheScene = (w === viewportW && h === viewportH);
+  const camSnap = cameraOffsetSnapshot(S);
   const mapInfo = currentMap();
   const key = mapInfo.key;
   const missionIndex = missionIndexForMode(S.mode);
@@ -21890,41 +21680,24 @@ function drawMapScene(){
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
+    Math.round(camSnap.x || 0), Math.round(camSnap.y || 0),
+    (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0,
     tw.activeType || "",
     tw.bridge.active ? 1 : 0,
+    Math.round(tw.bridge.x || 0),
+    Math.round(tw.bridge.y || 0),
+    Math.round(tw.bridge.r || 0),
+    Math.max(0, Math.ceil(((tw.bridge.until || 0) - frameNow) / 1000)),
     tw.hostage.active ? 1 : 0,
-    tw.blackout.active ? 1 : 0
+    Math.round(tw.hostage.x || 0),
+    Math.round(tw.hostage.y || 0),
+    Math.round(tw.hostage.r || 0),
+    Math.max(0, Math.ceil(((tw.hostage.until || 0) - frameNow) / 1000)),
+    tw.blackout.active ? 1 : 0,
+    Math.max(0, Math.ceil(((tw.blackout.until || 0) - frameNow) / 1000))
   ].join("|");
   const lagTier = frameLagTier();
-  const mobile = isMobileGameplayRuntime();
-  const forceMobileFastMap = mobile;
-  const mapLiteDetail = mobile && (forceMobileFastMap || worldCam || lagTier >= 1 || frameIsSlow());
-  const ultraLiteMap = mobile && (forceMobileFastMap || lagTier >= 1 || frameIsSlow(frameNow) || frameBudgetExceeded(0.85));
-  const propCullPad = worldCam ? 116 : 0;
-  const propCullMinX = drawMinX - propCullPad;
-  const propCullMinY = drawMinY - propCullPad;
-  const propCullMaxX = drawMaxX + propCullPad;
-  const propCullMaxY = drawMaxY + propCullPad;
-
-  function inVisiblePropRange(x, y, radius=24){
-    const r = Math.max(4, Number(radius) || 0);
-    return (x + r) >= propCullMinX &&
-      (x - r) <= propCullMaxX &&
-      (y + r) >= propCullMinY &&
-      (y - r) <= propCullMaxY;
-  }
-
-  function propCullRadius(kind, scale=1){
-    const s = Math.max(0.5, Number(scale) || 1);
-    if(kind === "building") return 48 * s;
-    if(kind === "bus") return 44 * s;
-    if(kind === "truck") return 40 * s;
-    if(kind === "house" || kind === "park") return 34 * s;
-    if(kind === "car") return 30 * s;
-    if(kind === "tree" || kind === "bush") return 22 * s;
-    if(kind === "fence") return 26 * s;
-    return 20 * s;
-  }
+  const mobile = isMobileViewport();
   let cacheAgeCap = frameIsSlow()
     ? (__frameDynamicLoadMul >= FRAME_LOAD_EXTREME ? 640 : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 520 : 360))
     : (__frameDynamicLoadMul >= FRAME_LOAD_HIGH ? 320 : MAP_CACHE_INTERVAL_MS);
@@ -21937,24 +21710,17 @@ function drawMapScene(){
       cacheAgeCap = Math.max(cacheAgeCap, 560);
     }
   }
-  const hasFreshCache =
+  const canUseCache =
+    canCacheScene &&
     !!__mapFrameCacheCanvas &&
     __mapFrameCacheSig === cacheSig &&
     (frameNow - __mapFrameCacheAt) < cacheAgeCap;
-  if(hasFreshCache){
-    if(worldCam){
-      const camShift = Math.hypot((camOff.x || 0) - (__mapFrameCacheCamX || 0), (camOff.y || 0) - (__mapFrameCacheCamY || 0));
-      const maxShift = mobile ? 4 : 18;
-      if(camShift <= maxShift){
-        ctx.drawImage(__mapFrameCacheCanvas, camOff.x, camOff.y, viewportW, viewportH);
-        return;
-      }
-    } else {
-      ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
-      return;
-    }
+  if(canUseCache){
+    ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
+    return;
   }
   const hasAnyCache =
+    canCacheScene &&
     !!__mapFrameCacheCanvas &&
     Number.isFinite(__mapFrameCacheAt) &&
     __mapFrameCacheAt > 0;
@@ -21962,21 +21728,11 @@ function drawMapScene(){
     const staleAge = frameNow - __mapFrameCacheAt;
     const emergencyReuse = frameBudgetExceeded(1.1) || frameIsSlow() || (__frameLagScore >= 4);
     const emergencyMaxAge = mobile
-      ? (lagTier >= 2 ? 950 : (lagTier >= 1 ? 760 : 560))
+      ? (lagTier >= 2 ? 4600 : (lagTier >= 1 ? 3600 : 2800))
       : (lagTier >= 2 ? 1800 : 1300);
     if(emergencyReuse && staleAge < emergencyMaxAge){
-      if(worldCam){
-        if(!mobile){
-          const camShift = Math.hypot((camOff.x || 0) - (__mapFrameCacheCamX || 0), (camOff.y || 0) - (__mapFrameCacheCamY || 0));
-          if(camShift <= 96){
-            ctx.drawImage(__mapFrameCacheCanvas, camOff.x, camOff.y, viewportW, viewportH);
-            return;
-          }
-        }
-      } else {
-        ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
-        return;
-      }
+      ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
+      return;
     }
   }
 
@@ -21995,21 +21751,22 @@ function drawMapScene(){
     }
     return { fill:"rgba(25,90,105,.62)", edge:"rgba(147,217,247,.58)", glint:"rgba(186,230,253,.26)" };
   })();
+  const sxBase = (v)=> v * (w / WORLD_BASE_WIDTH);
+  const syBase = (v)=> v * (h / WORLD_BASE_HEIGHT);
+  const scalePoint = (x, y)=>[sxBase(x), syBase(y)];
+  const scalePath = (pts)=>pts.map(([x, y])=>scalePoint(x, y));
+  const scalePathX = (pts)=>pts.map(([x, y])=>[sxBase(x), y]);
+  const worldSizeMul = clamp(((w / WORLD_BASE_WIDTH) + (h / WORLD_BASE_HEIGHT)) * 0.5, 1, 1.75);
 
-  function fillSolid(color){
-    ctx.fillStyle = color;
-    ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
-  }
+  function fillSolid(color){ ctx.fillStyle=color; ctx.fillRect(0,0,w,h); }
   function seedNoise(ix, iy, seed=0){
     let n = (ix * 374761393) ^ (iy * 668265263) ^ (seed * 982451653);
     n = (n ^ (n >> 13)) * 1274126177;
     return ((n ^ (n >> 16)) >>> 0) / 4294967295;
   }
   function terrainTexture(seed, step=30, alpha=0.08, colorA="rgba(255,255,255,.05)", colorB="rgba(0,0,0,.08)"){
-    const sx = Math.floor(drawMinX / step) * step;
-    const sy = Math.floor(drawMinY / step) * step;
-    for(let y=sy; y<drawMaxY; y+=step){
-      for(let x=sx; x<drawMaxX; x+=step){
+    for(let y=0; y<h; y+=step){
+      for(let x=0; x<w; x+=step){
         const n = seedNoise((x/step)|0, (y/step)|0, seed);
         if(n < 0.30) continue;
         ctx.fillStyle = n > 0.62 ? colorA : colorB;
@@ -22050,14 +21807,13 @@ function drawMapScene(){
       grad.addColorStop(0.5, `rgba(0,0,0,${alpha})`);
       grad.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = grad;
-      ctx.fillRect(drawMinX, y - 26, drawSpanW, 52);
+      ctx.fillRect(0, y - 26, w, 52);
     }
     ctx.restore();
   }
   function terrainPatches(seed=0, count=14, alpha=0.12, warm="rgba(255,245,210,.16)", cool="rgba(20,35,48,.20)"){
     ctx.save();
-    const loops = worldCam ? Math.max(8, Math.round(count * 0.65)) : count;
-    for(let i=0;i<loops;i++){
+    for(let i=0;i<count;i++){
       const n1 = seedNoise(i + 17, seed + 29, seed + 101);
       const n2 = seedNoise(i + 43, seed + 71, seed + 149);
       const x = clamp((n1 * w), 20, w - 20);
@@ -22079,8 +21835,7 @@ function drawMapScene(){
   }
   function scatterPebbles(seed=0, count=120, alpha=0.20, light="rgba(232,236,245,.45)", dark="rgba(6,10,16,.45)"){
     ctx.save();
-    const loops = worldCam ? Math.max(32, Math.round(count * 0.62)) : count;
-    for(let i=0;i<loops;i++){
+    for(let i=0;i<count;i++){
       const n1 = seedNoise(i + 7, seed + 13, seed + 41);
       const n2 = seedNoise(i + 37, seed + 61, seed + 83);
       const x = n1 * w;
@@ -22257,7 +22012,6 @@ function drawMapScene(){
     const px = p._abs ? p.x : (p.x * (w / 960));
     const py = p._abs ? p.y : (p.y * (h / 540));
     const s = p.s || 1;
-    if(worldCam && !inVisiblePropRange(px, py, propCullRadius(p.kind, s))) return;
     if(inMapScenarioKeepout(px, py, 24 * s)) return;
     const shadowRx = (()=>{
       if(p.kind === "building") return 20 * s;
@@ -22396,25 +22150,7 @@ function drawMapScene(){
     }
   }
 
-  if(ultraLiteMap){
-    fillSolid("#123023");
-    const roadA = [[0,h*0.21],[250,h*0.30],[480,h*0.25],[740,h*0.34],[w,h*0.29]];
-    const roadB = [[40,h*0.56],[240,h*0.50],[460,h*0.54],[640,h*0.46],[840,h*0.50],[w,h*0.44]];
-    const roadC = [[40,h*0.84],[230,h*0.79],[430,h*0.82],[620,h*0.75],[820,h*0.80],[w,h*0.73]];
-    roadLine(roadA, 42, "rgba(84,66,42,.82)");
-    roadLine(roadB, 56, "rgba(88,70,46,.84)");
-    roadLine(roadC, 50, "rgba(84,66,42,.82)");
-    if(!frameBudgetExceeded(0.7)){
-      for(let y=drawMinY + 16; y<drawMaxY; y+=48){
-        for(let x=drawMinX + 20; x<drawMaxX; x+=54){
-          const n = seedNoise((x / 24) | 0, (y / 24) | 0, 17);
-          if(n < 0.72) continue;
-          treeDot(x + ((n - 0.5) * 8), y + ((0.5 - n) * 6), 5.2 + (n * 2.6));
-        }
-      }
-    }
-  }
-  else if(themeKey==="ST_FOREST"){
+  if(themeKey==="ST_FOREST"){
     fillSolid("#0f2b1c");
     ctx.fillStyle="rgba(18,66,40,.34)";
     ctx.fillRect(0,0,w,h);
@@ -22425,15 +22161,16 @@ function drawMapScene(){
     const upperRoad = h * 0.18;
     const midRoad = h * 0.43;
     const lowRoad = h * 0.72;
-    const roadA = [[0,upperRoad],[240,upperRoad + 70],[470,upperRoad + 28],[720,upperRoad + 92],[960,upperRoad + 52]];
-    const roadB = [[60,midRoad],[260,midRoad - 40],[450,midRoad - 10],[610,midRoad - 70],[820,midRoad - 40],[940,midRoad - 100]];
-    const roadC = [[50,lowRoad],[260,lowRoad - 34],[450,lowRoad - 8],[610,lowRoad - 58],[820,lowRoad - 26],[940,lowRoad - 82]];
-    roadShoulder(roadA, 48); roadLine(roadA, 48, "rgba(80,60,38,.85)");
-    roadShoulder(roadB, 62); roadLine(roadB, 62, "rgba(90,70,45,.85)");
-    roadShoulder(roadC, 56); roadLine(roadC, 56, "rgba(84,66,42,.82)");
-    roadWear(roadA, 48, 11);
-    roadWear(roadB, 62, 19);
-    roadWear(roadC, 56, 27);
+    const roadA = scalePathX([[0,upperRoad],[240,upperRoad + syBase(70)],[470,upperRoad + syBase(28)],[720,upperRoad + syBase(92)],[960,upperRoad + syBase(52)]]);
+    const roadB = scalePathX([[60,midRoad],[260,midRoad - syBase(40)],[450,midRoad - syBase(10)],[610,midRoad - syBase(70)],[820,midRoad - syBase(40)],[940,midRoad - syBase(100)]]);
+    const roadC = scalePathX([[50,lowRoad],[260,lowRoad - syBase(34)],[450,lowRoad - syBase(8)],[610,lowRoad - syBase(58)],[820,lowRoad - syBase(26)],[940,lowRoad - syBase(82)]]);
+    const roadMul = clamp(worldSizeMul, 1, 1.4);
+    roadShoulder(roadA, 48 * roadMul); roadLine(roadA, 48 * roadMul, "rgba(80,60,38,.85)");
+    roadShoulder(roadB, 62 * roadMul); roadLine(roadB, 62 * roadMul, "rgba(90,70,45,.85)");
+    roadShoulder(roadC, 56 * roadMul); roadLine(roadC, 56 * roadMul, "rgba(84,66,42,.82)");
+    roadWear(roadA, 48 * roadMul, 11);
+    roadWear(roadB, 62 * roadMul, 19);
+    roadWear(roadC, 56 * roadMul, 27);
     const trees = [
       [90,h*0.08],[140,h*0.11],[210,h*0.08],[300,h*0.13],[360,h*0.08],[420,h*0.14],[520,h*0.10],[610,h*0.13],[700,h*0.09],[780,h*0.14],[880,h*0.11],
       [120,h*0.24],[200,h*0.26],[280,h*0.24],[360,h*0.27],[440,h*0.24],[520,h*0.27],[600,h*0.24],[700,h*0.26],[820,h*0.24],
@@ -22443,8 +22180,9 @@ function drawMapScene(){
       [90,h*0.88],[170,h*0.91],[290,h*0.88],[410,h*0.90],[520,h*0.87],[660,h*0.90],[780,h*0.88],[900,h*0.91],
     ];
     for(const [x,y] of trees){
-      const size = 6 + seedNoise((x/40)|0, (y/40)|0, 17) * 4;
-      treeDot(x,y,size);
+      const tx = sxBase(x);
+      const size = (6 + seedNoise((tx/40)|0, (y/40)|0, 17) * 4) * clamp(worldSizeMul * 0.92, 1, 1.45);
+      treeDot(tx,y,size);
     }
   }
   else if(themeKey==="ST_SUBURBS"){
@@ -22453,27 +22191,28 @@ function drawMapScene(){
     terrainBands(19, 4, 0.065);
     terrainPatches(19, 14, 0.10, "rgba(226,236,210,.14)", "rgba(20,28,34,.16)");
     scatterPebbles(19, 94, 0.11, "rgba(214,224,236,.30)", "rgba(12,18,28,.30)");
-    const main=[[0,280],[240,270],[480,300],[720,280],[960,300]];
-    roadShoulder(main, 84); roadLine(main, 84, "rgba(75,78,86,.9)");
-    roadWear(main, 84, 9);
+    const main = scalePath([[0,280],[240,270],[480,300],[720,280],[960,300]]);
+    const roadMul = clamp(worldSizeMul, 1, 1.38);
+    roadShoulder(main, 84 * roadMul); roadLine(main, 84 * roadMul, "rgba(75,78,86,.9)");
+    roadWear(main, 84 * roadMul, 9);
     dashed(main);
-    const laneTop = [[120,120],[420,110],[760,120]];
-    const laneLow = [[120,440],[420,430],[760,440]];
-    roadShoulder(laneTop, 62); roadLine(laneTop, 62, "rgba(75,78,86,.9)");
-    roadShoulder(laneLow, 62); roadLine(laneLow, 62, "rgba(75,78,86,.9)");
-    roadWear(laneTop, 62, 13);
-    roadWear(laneLow, 62, 15);
+    const laneTop = scalePath([[120,120],[420,110],[760,120]]);
+    const laneLow = scalePath([[120,440],[420,430],[760,440]]);
+    roadShoulder(laneTop, 62 * roadMul); roadLine(laneTop, 62 * roadMul, "rgba(75,78,86,.9)");
+    roadShoulder(laneLow, 62 * roadMul); roadLine(laneLow, 62 * roadMul, "rgba(75,78,86,.9)");
+    roadWear(laneTop, 62 * roadMul, 13);
+    roadWear(laneLow, 62 * roadMul, 15);
     const houses = [
       [120,95],[240,95],[360,95],[480,95],[600,95],[720,95],[840,95],
       [160,170],[300,170],[440,170],[580,170],[720,170],[860,170],
       [140,360],[280,360],[420,360],[560,360],[700,360],[840,360],
       [120,450],[240,450],[360,450],[480,450],[600,450],[720,450],[840,450],
     ];
-    for(const [x,y] of houses) houseBlock(x,y);
-    rounded(120,210,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
-    rounded(670,320,170,90,18,"rgba(40,140,70,.75)","rgba(10,60,30,.8)");
+    for(const [x,y] of houses) houseBlock(sxBase(x), syBase(y));
+    rounded(sxBase(120), syBase(210), sxBase(170), syBase(90), 18, "rgba(40,140,70,.75)", "rgba(10,60,30,.8)");
+    rounded(sxBase(670), syBase(320), sxBase(170), syBase(90), 18, "rgba(40,140,70,.75)", "rgba(10,60,30,.8)");
     const trees = [[70,200],[90,240],[110,260],[930,220],[900,250],[880,280],[70,520],[930,520]];
-    for(const [x,y] of trees) treeDot(x,y,7.5);
+    for(const [x,y] of trees) treeDot(sxBase(x), syBase(y), 7.5 * clamp(worldSizeMul * 0.9, 1, 1.4));
   }
   else if(themeKey==="ST_DOWNTOWN"){
     fillSolid("#1a1f2d");
@@ -22489,11 +22228,11 @@ function drawMapScene(){
       [180,310,100,85],[360,320,90,80],[560,310,110,85],[760,320,90,80],[900,310,80,75],
       [150,470,90,70],[340,470,90,70],[540,470,100,70],[740,470,90,70],[900,470,80,70],
     ];
-    for(const [x,y,ww,hh] of blocks) buildingBlock(x,y,ww,hh);
+    for(const [x,y,ww,hh] of blocks) buildingBlock(sxBase(x), syBase(y), sxBase(ww), syBase(hh));
     ctx.fillStyle="rgba(240,240,245,.75)";
     for(let i=0;i<8;i++){
-      const cx=120+i*100;
-      for(let k=0;k<7;k++) ctx.fillRect(cx+k*9, 270, 5, 18);
+      const cx = sxBase(120 + (i * 100));
+      for(let k=0;k<7;k++) ctx.fillRect(cx + sxBase(k * 9), syBase(270), Math.max(2, sxBase(5)), Math.max(8, syBase(18)));
     }
   }
   else {
@@ -22502,75 +22241,53 @@ function drawMapScene(){
     terrainBands(41, 4, 0.062);
     terrainPatches(41, 14, 0.09, "rgba(226,196,150,.12)", "rgba(10,10,12,.16)");
     scatterPebbles(41, 90, 0.12, "rgba(220,200,172,.32)", "rgba(8,8,10,.34)");
-    rounded(90,90,260,130,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
-    rounded(610,110,260,110,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
-    rounded(240,340,340,140,16,"rgba(70,70,76,.95)","rgba(20,20,22,.95)");
+    rounded(sxBase(90), syBase(90), sxBase(260), syBase(130), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
+    rounded(sxBase(610), syBase(110), sxBase(260), syBase(110), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
+    rounded(sxBase(240), syBase(340), sxBase(340), syBase(140), 16, "rgba(70,70,76,.95)", "rgba(20,20,22,.95)");
     ctx.strokeStyle="rgba(240,190,55,.55)";
     ctx.lineWidth=6;
     for(let k=0;k<260;k+=18){
-      ctx.beginPath(); ctx.moveTo(90+k,90); ctx.lineTo(90+k-45,220); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(610+k,110); ctx.lineTo(610+k-45,220); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sxBase(90 + k), syBase(90)); ctx.lineTo(sxBase(90 + k - 45), syBase(220)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sxBase(610 + k), syBase(110)); ctx.lineTo(sxBase(610 + k - 45), syBase(220)); ctx.stroke();
     }
-    buildingBlock(170,260,140,90);
-    buildingBlock(520,260,160,90);
-    buildingBlock(820,300,150,90);
+    buildingBlock(sxBase(170), syBase(260), sxBase(140), syBase(90));
+    buildingBlock(sxBase(520), syBase(260), sxBase(160), syBase(90));
+    buildingBlock(sxBase(820), syBase(300), sxBase(150), syBase(90));
     const crates=[[110,480],[150,500],[190,470],[760,470],[800,500],[840,480],[520,500],[560,480]];
-    for(const [x,y] of crates) crateBlock(x,y);
+    for(const [x,y] of crates) crateBlock(sxBase(x), syBase(y));
   }
-  if(!ultraLiteMap){
-    drawWaterBodies(1);
-  }
+  drawWaterBodies(1);
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
-    ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
+    ctx.fillRect(0,0,w,h);
   }
   if(chapterStyle?.haze){
-    const haze = ctx.createLinearGradient(0, drawMinY, 0, drawMaxY);
+    const haze = ctx.createLinearGradient(0,0,0,h);
     haze.addColorStop(0, chapterStyle.haze);
     haze.addColorStop(0.45, "rgba(0,0,0,0)");
     haze.addColorStop(1, "rgba(0,0,0,.03)");
     ctx.fillStyle = haze;
-    ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
+    ctx.fillRect(0,0,w,h);
   }
 
-  // realism props (disabled in ultra-lite to keep mobile frame time stable)
-  if(!ultraLiteMap){
-    const props = MAP_REALISM_PROPS[themeKey] || [];
-    if(mapLiteDetail){
-      for(let i=0; i<props.length; i++){
-        const p = props[i];
-        if(!p || (i % 2 !== 0)) continue;
-        if(p.kind === "house" || p.kind === "car" || p.kind === "truck" || p.kind === "park" || p.kind === "building"){
-          drawProp(p);
-        }
-      }
-    } else {
-      for(const p of props) drawProp(p);
-    }
-    const denseLandmarks = (__mapDenseLandmarksSig === __mapObstacleSig && Array.isArray(__mapDenseLandmarks))
-      ? __mapDenseLandmarks
-      : buildDenseLandmarks(key, chapter, w, h);
-    const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
-    for(let i=0; i<denseLandmarks.length; i++){
-      if(mapLiteDetail && (i % 3 !== 0)) continue;
-      const lm = denseLandmarks[i];
-      if(!lm) continue;
-      if(worldCam && !inVisiblePropRange(lm.x, lm.y, 40 * extraScale)) continue;
-      drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
-    }
+  // realism props
+  const props = MAP_REALISM_PROPS[themeKey] || [];
+  for(const p of props) drawProp(p);
+  const denseLandmarks = (__mapDenseLandmarksSig === __mapObstacleSig && Array.isArray(__mapDenseLandmarks))
+    ? __mapDenseLandmarks
+    : buildDenseLandmarks(key, chapter, w, h);
+  const extraScale = 1 + (chapterStyle?.landmarkScale || 0);
+  for(const lm of denseLandmarks){
+    drawProp({ ...lm, _abs:true, s:(lm.s || 1) * extraScale });
   }
 
   // subtle vignette to reduce flatness
-  const vgX = worldCam ? (camOff.x + (viewportW * 0.5)) : (w * 0.5);
-  const vgY = worldCam ? (camOff.y + (viewportH * 0.48)) : (h * 0.48);
-  const vgNear = worldCam ? (Math.max(viewportW, viewportH) * 0.28) : (h * 0.25);
-  const vgFar = worldCam ? (Math.max(viewportW, viewportH) * 0.92) : (h * 0.85);
-  const vignette = ctx.createRadialGradient(vgX, vgY, vgNear, vgX, vgY, vgFar);
+  const vignette = ctx.createRadialGradient(w*0.5, h*0.48, h*0.25, w*0.5, h*0.5, h*0.85);
   vignette.addColorStop(0, "rgba(0,0,0,0)");
   vignette.addColorStop(1, "rgba(0,0,0,.22)");
   ctx.fillStyle = vignette;
-  ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
+  ctx.fillRect(0,0,w,h);
 
   if(S.mode==="Arcade"){
     ctx.save();
@@ -22579,20 +22296,20 @@ function drawMapScene(){
     arcadeTint.addColorStop(0, "rgba(34,211,238,.11)");
     arcadeTint.addColorStop(1, "rgba(192,132,252,.12)");
     ctx.fillStyle = arcadeTint;
-    ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
+    ctx.fillRect(0, 0, w, h);
     ctx.globalAlpha = 0.07;
     ctx.fillStyle = "rgba(255,255,255,.65)";
-    for(let y=Math.max(8, drawMinY); y<drawMaxY; y+=18){
-      ctx.fillRect(drawMinX, y, drawSpanW, 1);
+    for(let y=8; y<h; y+=18){
+      ctx.fillRect(0, y, w, 1);
     }
     ctx.restore();
   } else if(S.mode==="Story"){
     ctx.save();
-    const storyTint = ctx.createLinearGradient(0, drawMinY, 0, drawMaxY);
+    const storyTint = ctx.createLinearGradient(0, 0, 0, h);
     storyTint.addColorStop(0, "rgba(245,158,11,.06)");
     storyTint.addColorStop(1, "rgba(59,130,246,.05)");
     ctx.fillStyle = storyTint;
-    ctx.fillRect(drawMinX, drawMinY, drawSpanW, drawSpanH);
+    ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
 
@@ -22681,68 +22398,51 @@ function drawMapScene(){
     ctx.globalAlpha = 1;
   }
 
-  const cacheW = worldCam ? viewportW : w;
-  const cacheH = worldCam ? viewportH : h;
-  if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== cacheW || __mapFrameCacheCanvas.height !== cacheH){
-    __mapFrameCacheCanvas = document.createElement("canvas");
-    __mapFrameCacheCanvas.width = cacheW;
-    __mapFrameCacheCanvas.height = cacheH;
-    __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
-  }
-  if(__mapFrameCacheCtx){
-    __mapFrameCacheCtx.clearRect(0, 0, cacheW, cacheH);
-    __mapFrameCacheCtx.drawImage(cv, 0, 0, cacheW, cacheH, 0, 0, cacheW, cacheH);
-    __mapFrameCacheSig = cacheSig;
-    __mapFrameCacheAt = frameNow;
-    __mapFrameCacheCamX = worldCam ? camOff.x : 0;
-    __mapFrameCacheCamY = worldCam ? camOff.y : 0;
-  }
-}
-function drawMapDynamicOverlays(now=Date.now()){
-  const worldCam = isWorldCameraActive(S);
-  const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
-  const mobile = isMobileGameplayRuntime();
-  for(const tr of (S.trapsPlaced || [])){
-    ctx.globalAlpha = 0.75;
-    ctx.strokeStyle = "rgba(58,120,255,.55)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(tr.x, tr.y, tr.r, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+  for(const tr of S.trapsPlaced){
+    ctx.globalAlpha=0.75;
+    ctx.strokeStyle="rgba(58,120,255,.55)";
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.r,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=1;
   }
 
-  // Mobile stability: skip heavy dynamic overlays entirely.
-  if(mobile){
-    return;
-  }
-
-  if(S.scanPing > 0){
-    S.scanPing = Math.max(0, S.scanPing - 1);
-    const t = currentTargetTiger();
+  if(S.scanPing>0){
+    S.scanPing--;
+    const t=currentTargetTiger();
     if(t){
-      const r = 40 + (140 - S.scanPing) * 1.3;
-      ctx.globalAlpha = Math.max(0, S.scanPing / 260);
-      ctx.strokeStyle = "rgba(245,158,11,.18)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
+      const r=40+(140-S.scanPing)*1.3;
+      ctx.globalAlpha=Math.max(0,S.scanPing/260);
+      ctx.strokeStyle="rgba(245,158,11,.18)";
+      ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(t.x,t.y,r,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=1;
     }
   }
 
-  drawMissionTwistOverlay(now);
+  drawMissionTwistOverlay(Date.now());
 
-  if(now < (S.fogUntil || 0)){
-    const fogW = worldCam ? (cv.width || WORLD_BASE_WIDTH) : (cv.width || WORLD_BASE_WIDTH);
-    const fogH = worldCam ? (cv.height || WORLD_BASE_HEIGHT) : (cv.height || WORLD_BASE_HEIGHT);
-    const fogX = worldCam ? camOff.x : 0;
-    const fogY = worldCam ? camOff.y : 0;
-    ctx.globalAlpha = isMobileGameplayRuntime() ? 0.10 : 0.35;
+  if(Date.now() < (S.fogUntil||0)){
+    ctx.globalAlpha = 0.35;
     ctx.fillStyle = "#0b0d12";
-    ctx.fillRect(fogX, fogY, fogW, fogH);
+    ctx.fillRect(0,0,w,h);
     ctx.globalAlpha = 1;
+  }
+
+  if(canCacheScene){
+    if(!__mapFrameCacheCanvas || __mapFrameCacheCanvas.width !== w || __mapFrameCacheCanvas.height !== h){
+      __mapFrameCacheCanvas = document.createElement("canvas");
+      __mapFrameCacheCanvas.width = w;
+      __mapFrameCacheCanvas.height = h;
+      __mapFrameCacheCtx = __mapFrameCacheCanvas.getContext("2d");
+    }
+    if(__mapFrameCacheCtx){
+      __mapFrameCacheCtx.clearRect(0, 0, w, h);
+      __mapFrameCacheCtx.drawImage(cv, 0, 0, viewportW, viewportH, 0, 0, w, h);
+      __mapFrameCacheSig = cacheSig;
+      __mapFrameCacheAt = frameNow;
+    }
+  } else {
+    __mapFrameCacheSig = "";
   }
 }
 
@@ -22750,13 +22450,13 @@ function drawAtmosphericParallax(nowTs=Date.now()){
   const mode = performanceMode();
   const slow = frameIsSlow();
   const lagTier = frameLagTier();
-  if(isMobileGameplayRuntime()) return;
+  if(isMobileViewport() && lagTier >= 1) return;
   if(mode === "PERFORMANCE" && (__frameHeavyFxFlip % 2 !== 0)) return;
   if(lagTier >= 2 && (__frameHeavyFxFlip % 2 !== 0)) return;
   if(slow && (__frameHeavyFxFlip % 3 === 1)) return;
 
-  const w = cv.width;
-  const h = cv.height;
+  const w = Math.max(cv.width, worldWidth(S));
+  const h = Math.max(cv.height, worldHeight(S));
   const biome = currentBiomeProfile();
   const weatherFx = String(biome?.weatherFx || "clear");
   const weatherIntensity = clamp(Number(biome?.weatherIntensity || 0.45), 0.12, 1.25);
@@ -23297,7 +22997,7 @@ function drawOnMapBattleReadability(){
     vignette.addColorStop(0.7, "rgba(8,12,18,.10)");
     vignette.addColorStop(1, "rgba(5,8,14,.34)");
     ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillRect(0, 0, worldWidth(S), worldHeight(S));
   }
 
   const beamAlpha = inRange ? (extreme ? 0.30 : 0.38) : (extreme ? 0.18 : 0.22);
@@ -24100,34 +23800,59 @@ function drawTiger(t){
 }
 
 function useLiteEntityRender(){
-  // Disable "dot mode" fallback on mobile so units stay readable.
-  // We now shed load from map/overlays instead of replacing entities.
-  __liteEntityRenderState = false;
-  __liteEntityRenderNeedSince = 0;
-  __liteEntityRenderRelaxUntil = 0;
-  return false;
+  if(!isMobileViewport()){
+    __liteEntityRenderState = false;
+    __liteEntityRenderNeedSince = 0;
+    __liteEntityRenderRelaxUntil = 0;
+    return false;
+  }
+
+  const now = performance.now ? performance.now() : Date.now();
+  const mode = performanceMode();
+  const lagTier = frameLagTier();
+  const loadScore = frameActiveEntityLoadScore();
+  const slow = frameIsSlow(now);
+
+  // Hard triggers switch immediately; soft triggers require sustained pressure.
+  const hardNeed = lagTier >= 2 || loadScore >= 62;
+  const softNeed =
+    lagTier >= 1 ||
+    (slow && loadScore >= 42) ||
+    (mode === "PERFORMANCE" && slow && loadScore >= 48);
+
+  if(hardNeed || softNeed){
+    if(!__liteEntityRenderNeedSince) __liteEntityRenderNeedSince = now;
+  } else {
+    __liteEntityRenderNeedSince = 0;
+  }
+
+  const engageDelayMs = mode === "PERFORMANCE" ? 320 : 520;
+  const releaseHoldMs = mode === "PERFORMANCE" ? 1100 : 1400;
+
+  if(!__liteEntityRenderState){
+    const needFor = __liteEntityRenderNeedSince ? (now - __liteEntityRenderNeedSince) : 0;
+    if(hardNeed || (softNeed && needFor >= engageDelayMs)){
+      __liteEntityRenderState = true;
+      __liteEntityRenderRelaxUntil = now + releaseHoldMs;
+    }
+  } else {
+    const stillNeed = hardNeed || softNeed;
+    if(stillNeed){
+      __liteEntityRenderRelaxUntil = now + releaseHoldMs;
+    } else if(now >= __liteEntityRenderRelaxUntil){
+      __liteEntityRenderState = false;
+    }
+  }
+
+  return __liteEntityRenderState;
 }
 function drawEntitiesLite(){
-  const worldCam = isWorldCameraActive(S);
-  const camOff = worldCam ? cameraOffsetSnapshot(S) : { x:0, y:0 };
-  const visPad = 72;
-  const visMinX = camOff.x - visPad;
-  const visMinY = camOff.y - visPad;
-  const visMaxX = camOff.x + (cv.width || WORLD_BASE_WIDTH) + visPad;
-  const visMaxY = camOff.y + (cv.height || WORLD_BASE_HEIGHT) + visPad;
-  const inLiteView = (x, y, r=20)=>(
-    !worldCam ||
-    ((x + r) >= visMinX && (x - r) <= visMaxX && (y + r) >= visMinY && (y - r) <= visMaxY)
-  );
-
   ctx.fillStyle = "rgba(77,47,33,.64)";
   for(const c of (S.carcasses || [])){
-    if(!inLiteView(c.x, c.y, 16)) continue;
     ctx.fillRect(c.x - 9, c.y - 4, 18, 8);
   }
 
   for(const p of (S.pickups || [])){
-    if(!inLiteView(p.x, p.y, 16)) continue;
     let color = "rgba(147,197,253,.9)";
     if(p.kind === "medkit") color = "rgba(34,197,94,.92)";
     else if(p.kind === "ammo") color = "rgba(251,191,36,.92)";
@@ -24295,7 +24020,6 @@ function drawEntities(){
   }
   drawOnMapBattleReadability();
   drawOnMapBattleHud();
-  drawAbilityCooldownWheel();
   const perfMode = performanceMode();
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
@@ -24340,6 +24064,12 @@ function shouldDrawAtmosphericPass(){
   __frameBgFxFlip = (__frameBgFxFlip + 1) % 9;
   const score = frameActiveEntityLoadScore();
   const lagTier = frameLagTier();
+  const expandedWorld = (worldWidth(S) > (cv.width + 4)) || (worldHeight(S) > (cv.height + 4));
+  if(expandedWorld && isMobileViewport()){
+    if(lagTier >= 1) return false;
+    if(frameBudgetExceeded(0.35) || frameIsSlow()) return false;
+    return (__frameBgFxFlip % 4) === 0;
+  }
   if(isMobileViewport() && lagTier >= 1) return false;
   if(__frameLagScore >= FRAME_LAG_CRITICAL_SCORE) return (__frameBgFxFlip % 6) === 0;
   if(__frameLagScore >= FRAME_LAG_WARN_SCORE) return (__frameBgFxFlip % 5) === 0;
@@ -24363,21 +24093,6 @@ function draw(){
       return;
     }
     beginFrameBudget(frameStart);
-    if(isMobileGameplayRuntime()){
-      const nowMs = Date.now();
-      if(window.__TS_BOOT_OK__ && (nowMs - __mobileBlankRecoveryAt) > 2200 && missionStateLooksEmpty()){
-        __mobileBlankRecoveryAt = nowMs;
-        safeTick("mobileBlankStateRecover", ()=>{
-          deploy({
-            carryStats:true,
-            hp:clamp(Number(S.hp || 100), 0, 100),
-            armor:clamp(Number(S.armor || 0), 0, S.armorCap || 100)
-          });
-          maybeRenderHUD(true);
-          save(true);
-        });
-      }
-    }
     const lagTier = frameLagTier();
     const lagHeavy = lagTier >= 1;
     const lagCritical = lagTier >= 2;
@@ -24442,11 +24157,11 @@ function draw(){
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
       runFrameTask("followCivilians", frameInterval(
         battleLoad
-          ? (lagCritical ? 132 : (lagHeavy ? 110 : 86))
-          : (lagCritical ? 78 : (lagHeavy ? 62 : 50)),
+          ? (lagCritical ? 156 : (lagHeavy ? 128 : 96))
+          : (lagCritical ? 98 : (lagHeavy ? 78 : 56)),
         1.5
       ), followCiviliansTick, {
-        costHint:1.2, cadence:1, slowCadence:1, heavyCadence:2, extremeCadence:2, critical:true
+        costHint:1.7, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
       runFrameTask("civThreats", frameInterval(
@@ -24473,70 +24188,38 @@ function draw(){
     });
 
     safeTick("drawSceneFrame", ()=>{
+      const liteRender = useLiteEntityRender();
+      const camOffsetRaw = updateWorldCamera(S);
+      const worldW = worldWidth(S);
+      const worldH = worldHeight(S);
+      const viewW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+      const viewH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+      const maxCamX = Math.max(0, worldW - viewW);
+      const maxCamY = Math.max(0, worldH - viewH);
+      const camX = clamp(Number(camOffsetRaw?.x) || 0, 0, maxCamX);
+      const camY = clamp(Number(camOffsetRaw?.y) || 0, 0, maxCamY);
+      const shake = liteRender ? { active:false, x:0, y:0 } : sampleCameraShake();
+      const cine = liteRender ? { active:false, x:0, y:0, scale:1 } : sampleBattleCinematic();
       ctx.save();
-      let needsTransform = false;
-      let worldShifted = false;
-      try{
-        resetCanvasDrawState();
-        // Hard clear each frame so old world-camera layers cannot ghost/stack on mobile.
-        ctx.clearRect(0, 0, cv.width, cv.height);
-        ctx.fillStyle = "#0b111b";
-        ctx.fillRect(0, 0, cv.width, cv.height);
-        const liteRender = useLiteEntityRender();
-        const shake = liteRender ? { active:false, x:0, y:0 } : sampleCameraShake();
-        const cine = liteRender ? { active:false, x:0, y:0, scale:1 } : sampleBattleCinematic();
-        const worldCam = isWorldCameraActive(S);
-        const cam = updateWorldCamera(S);
-        needsTransform = shake.active || cine.active;
-        if(needsTransform){
-          ctx.save();
-          if(cine.active){
-            ctx.translate(cine.x, cine.y);
-            ctx.scale(cine.scale, cine.scale);
-            ctx.translate(-cine.x, -cine.y);
-          }
-          if(shake.active){
-            ctx.translate(shake.x, shake.y);
-          }
-        }
-        if(worldCam){
-          ctx.save();
-          ctx.translate(-cam.x, -cam.y);
-          worldShifted = true;
-        }
-        drawMapScene();
-        drawMapDynamicOverlays();
-        if(worldShifted){
-          ctx.restore();
-          worldShifted = false;
-        }
-        if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
-          drawAtmosphericParallax();
-        }
-        if(worldCam){
-          ctx.save();
-          ctx.translate(-cam.x, -cam.y);
-          worldShifted = true;
-        }
-        drawEntities();
-        if(worldShifted){
-          ctx.restore();
-          worldShifted = false;
-        }
-        if(needsTransform){
-          ctx.restore();
-          needsTransform = false;
-        }
-        drawMobileUiClearLane();
-      } finally {
-        if(worldShifted){
-          try{ ctx.restore(); }catch(e){}
-        }
-        if(needsTransform){
-          try{ ctx.restore(); }catch(e){}
-        }
-        ctx.restore();
+      if(camX !== 0 || camY !== 0){
+        ctx.translate(-camX, -camY);
       }
+      if(cine.active){
+        ctx.translate(cine.x, cine.y);
+        ctx.scale(cine.scale, cine.scale);
+        ctx.translate(-cine.x, -cine.y);
+      }
+      if(shake.active){
+        ctx.translate(shake.x, shake.y);
+      }
+      drawMapScene();
+      if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
+        drawAtmosphericParallax();
+      }
+      drawEntities();
+      ctx.restore();
+      drawAbilityCooldownWheel();
+      drawMobileUiClearLane();
     });
     maybeAutosave();
   }catch(err){
@@ -24571,17 +24254,6 @@ function missionStateLooksEmpty(){
 function init(){
   ensureStarsDebugUi();
   pushStarsDebug("app:init", { user: tgUserKey(), build: TS_BUILD });
-  if(isMobileGameplayRuntime()){
-    window.__TS_SHOW_MONITOR__ = false;
-    S.performanceMode = "PERFORMANCE";
-    const twBoot = ensureMissionTwistState(S);
-    twBoot.blackout.active = false;
-    twBoot.blackout.until = 0;
-    if(twBoot.activeType === "blackout"){
-      twBoot.activeType = "";
-      twBoot.activeUntil = 0;
-    }
-  }
   ensureStoryMetaState();
   ensureContractTalliesState(S);
   ensureBalanceStatsState(S);
@@ -24622,9 +24294,6 @@ function init(){
   trimPersistentState(S);
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   S.performanceMode = normalizePerformanceMode(S.performanceMode);
-  if(isMobileGameplayRuntime()){
-    S.performanceMode = "PERFORMANCE";
-  }
   S.touchHud = normalizeTouchHudSettings(S.touchHud);
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
   if(!S.equippedWeaponId || !getWeapon(S.equippedWeaponId)) S.equippedWeaponId = DEFAULT.equippedWeaponId;
@@ -24952,7 +24621,6 @@ window.setPaused = setPaused;
 window.toggleSound = toggleSound;
 window.togglePerformanceMode = togglePerformanceMode;
 window.toggleLagMonitor = toggleLagMonitor;
-window.copyMobileDiagnostics = copyMobileDiagnostics;
 window.openHudCustomizer = openHudCustomizer;
 window.closeHudCustomizer = closeHudCustomizer;
 window.updateHudCustomizerSetting = updateHudCustomizerSetting;

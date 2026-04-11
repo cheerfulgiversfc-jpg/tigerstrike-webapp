@@ -786,7 +786,7 @@
     }
 
     /* Phone landscape playability pass */
-    @media (max-width:960px) and (max-height:540px) and (orientation:landscape){
+    @media (pointer:coarse) and (orientation:landscape){
       body{min-height:100dvh}
       .wrap{min-height:100dvh;padding:6px 8px 114px}
       .top{order:1;flex-direction:row;align-items:flex-start;gap:6px}
@@ -806,7 +806,7 @@
         border-right:none;
         border-radius:0;
       }
-      .mapStage{min-height:clamp(320px, 82vh, 520px)}
+      .mapStage{min-height:clamp(380px, 84vh, 760px)}
       .mapStage canvas{
         position:absolute;
         inset:0;
@@ -1691,46 +1691,24 @@
   </div>
 </div>
 
-<!-- IMPORTANT: static script loading is more reliable in Telegram mobile webview -->
+<!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
+<script src="./game.js?v=4476-pre3d-stable"></script>
+<script src="./tutorial.js?v=4476-pre3d-stable"></script>
 <script>
 (() => {
-  const baseVersion = "4475";
-  const params = new URLSearchParams(window.location.search || "");
-  const buildTagRaw = params.get("build") || "";
-  const buildTag = buildTagRaw ? String(buildTagRaw).replace(/[^a-zA-Z0-9._-]/g, "") : "";
-  const effectiveBuildTag = buildTag || `mobile-stability-${baseVersion}`;
-  const ver = `${baseVersion}-${effectiveBuildTag}`;
-  window.__TS_BUILD_VERSION__ = ver;
-  window.__TS_BOOT_OK__ = false;
-  try{
-    const u = new URL(window.location.href);
-    u.searchParams.set("build", effectiveBuildTag);
-    u.searchParams.set("tsv", baseVersion);
-    window.history.replaceState({}, "", u.toString());
-  }catch(e){}
-  window.openAbout = window.openAbout || function(){
-    try{
-      alert(`Tiger Strike build ${ver} is loading. If this persists, close/reopen app.`);
-    }catch(err){}
-  };
-})();
-</script>
-<script src="./game.js?v=4475-mobile-safe"></script>
-<script src="./tutorial.js?v=4475-mobile-safe"></script>
-<script>
-(() => {
-  const recoverOnceKey = "ts_boot_recover_once_4475";
-  window.setTimeout(() => {
+  const recoverOnceKey = "ts_boot_recover_once_4476";
+  const tryRecover = () => {
     try{
       if(window.__TS_BOOT_OK__) return;
       if(sessionStorage.getItem(recoverOnceKey) === "1") return;
       sessionStorage.setItem(recoverOnceKey, "1");
+      // Retry startup once without deleting local save progress.
       const u = new URL(window.location.href);
       u.searchParams.set("recover", String(Date.now()));
-      u.searchParams.set("tsv", "4475");
       window.location.replace(u.toString());
     }catch(e){}
-  }, 9000);
+  };
+  window.setTimeout(tryRecover, 9000);
 })();
 </script>
 <!-- Tutorial Arrow Pointer -->
