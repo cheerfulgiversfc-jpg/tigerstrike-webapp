@@ -22155,28 +22155,58 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle, viewRect
     const ey = zone.y;
     const er = zone.r;
     const safeHue = chapterStyle?.safeHue || "rgba(74,222,128,.95)";
-    ctx.fillStyle = "rgba(16,56,34,.25)";
+    ctx.fillStyle = "rgba(16,56,34,.28)";
     ctx.beginPath();
     ctx.arc(ex, ey, er, 0, Math.PI * 2);
     ctx.fill();
+
+    // striped safe-zone floor (lighter on heavy frames)
+    if(!heavy){
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(ex, ey, Math.max(8, er - 2), 0, Math.PI * 2);
+      ctx.clip();
+      ctx.strokeStyle = "rgba(74,222,128,.28)";
+      ctx.lineWidth = 3;
+      for(let i = -er * 2; i < er * 2; i += 12){
+        ctx.beginPath();
+        ctx.moveTo(ex - er + i, ey - er);
+        ctx.lineTo(ex + er + i, ey + er);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     ctx.strokeStyle = safeHue;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(ex, ey, er, 0, Math.PI * 2);
     ctx.stroke();
-    if(!heavy){
-      ctx.strokeStyle = "rgba(167,243,208,.72)";
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.arc(ex, ey, Math.max(10, er - 8), 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = "rgba(220,255,235,.94)";
-      ctx.font = "900 10px system-ui";
-      ctx.textAlign = "center";
-      ctx.fillText("EVAC SAFE ZONE", ex, ey - er - 8);
-      ctx.textAlign = "start";
-    }
-    drawSafeHouseMarker(ex, ey, er, { compact:true, label:!heavy });
+
+    ctx.strokeStyle = "rgba(167,243,208,.78)";
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.arc(ex, ey, Math.max(10, er - 8), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // center marker (+)
+    rounded(ex - 13, ey - 13, 26, 26, 7, "rgba(74,222,128,.24)", safeHue);
+    ctx.fillStyle = "rgba(220,255,235,.96)";
+    ctx.fillRect(ex - 2, ey - 8, 4, 16);
+    ctx.fillRect(ex - 8, ey - 2, 16, 4);
+
+    // label signage restored on mobile too
+    rounded(ex - 72, ey - er - 34, 144, 26, 12, "rgba(16,56,34,.92)", safeHue);
+    ctx.fillStyle = "rgba(220,255,235,.98)";
+    ctx.textAlign = "center";
+    ctx.font = "900 10px system-ui";
+    ctx.fillText("EVAC SAFE ZONE", ex, ey - er - 16);
+    ctx.font = "800 9px system-ui";
+    ctx.fillStyle = "rgba(190,255,220,.9)";
+    ctx.fillText("FOLLOW MARKER", ex, ey - er - 4);
+    ctx.textAlign = "start";
   }
 
   for(const tr of (S.trapsPlaced || [])){
@@ -22209,50 +22239,6 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle, viewRect
     ctx.fillStyle = "#0b0d12";
     ctx.fillRect(vx, vy, vw, vh);
     ctx.globalAlpha = 1;
-  }
-}
-
-function drawSafeHouseMarker(x, y, zoneR=70, opts={}){
-  if(!Number.isFinite(x) || !Number.isFinite(y)) return;
-  const compact = !!opts.compact;
-  const label = opts.label !== false;
-  const baseW = compact ? 22 : 28;
-  const baseH = compact ? 14 : 18;
-  const roofH = compact ? 10 : 13;
-  const px = x - (baseW * 0.5);
-  const py = y - Math.max(12, Math.round(zoneR * 0.18));
-
-  ctx.save();
-  ctx.globalAlpha = 0.98;
-  ctx.fillStyle = "rgba(214,218,205,.98)";
-  roundedRectFill(px, py, baseW, baseH, 4);
-  ctx.fillStyle = "rgba(130,90,58,.98)";
-  ctx.beginPath();
-  ctx.moveTo(px - 2, py + 1);
-  ctx.lineTo(px + (baseW * 0.5), py - roofH);
-  ctx.lineTo(px + baseW + 2, py + 1);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = "rgba(94,72,52,.96)";
-  roundedRectFill(px + (baseW * 0.42), py + (compact ? 5 : 6), compact ? 6 : 7, compact ? 9 : 11, 2);
-  ctx.strokeStyle = "rgba(20,38,28,.50)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(px + 4, py);
-  ctx.arcTo(px + baseW, py, px + baseW, py + baseH, 4);
-  ctx.arcTo(px + baseW, py + baseH, px, py + baseH, 4);
-  ctx.arcTo(px, py + baseH, px, py, 4);
-  ctx.arcTo(px, py, px + baseW, py, 4);
-  ctx.closePath();
-  ctx.stroke();
-  ctx.restore();
-
-  if(label){
-    ctx.fillStyle = "rgba(218,255,236,.96)";
-    ctx.font = compact ? "900 9px system-ui" : "900 10px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText("SAFE HOUSE", x, py - 6);
-    ctx.textAlign = "start";
   }
 }
 
@@ -22970,8 +22956,6 @@ function drawMapScene(){
     ctx.fillStyle = "rgba(220,255,235,.95)";
     ctx.fillRect(ex-2, ey-9, 4, 18);
     ctx.fillRect(ex-9, ey-2, 18, 4);
-    drawSafeHouseMarker(ex, ey, er, { compact:false, label:false });
-
     for(let i=0;i<4;i++){
       const a = (Math.PI * 0.5 * i) + (Date.now() / 1300);
       const bx = ex + Math.cos(a) * (er + 14);
