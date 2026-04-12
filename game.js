@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4479";
+const TS_BUILD = "4480";
 if(tg){
   try{
     tg.expand?.();
@@ -145,11 +145,12 @@ const NEMESIS_NAME_SUFFIX = Object.freeze([
 ]);
 // Temporary safety switches while we stabilize mobile performance.
 const ENABLE_BIOME_SYSTEM = false;
-const ENABLE_BIOME_TEXT = false;
+const ENABLE_BIOME_TEXT = true;
 const ENABLE_MISSION_TWISTS = false;
 const ENABLE_TWIST_BRIDGE = false;
 const ENABLE_TWIST_BLACKOUT = false;
 const ENABLE_IPHONE_STABILITY_LOCK = true;
+const ENABLE_IPHONE_LITE_FEEDBACK = true;
 const MISSION_TWIST_TYPES = Object.freeze([
   ...(ENABLE_TWIST_BRIDGE ? ["bridge"] : []),
   "hostage",
@@ -7401,6 +7402,9 @@ function isIphoneLikeDevice(){
 function iphoneStabilityModeActive(){
   return ENABLE_IPHONE_STABILITY_LOCK && isIphoneLikeDevice();
 }
+function iphoneLiteCombatFeedbackEnabled(){
+  return ENABLE_IPHONE_LITE_FEEDBACK && iphoneStabilityModeActive();
+}
 function isLandscapeViewport(){
   return (window.innerWidth || 0) > (window.innerHeight || 0);
 }
@@ -8139,12 +8143,12 @@ function chapterVisualForMode(mode=S.mode, chapter=chapterIndexForMode(mode)){
   return list[clamp(chapter, 1, list.length) - 1] || list[0] || CHAPTER_VISUALS.Survival[0];
 }
 function chapterBiomeProfile(mode=S.mode, chapter=chapterIndexForMode(mode)){
-  if(!ENABLE_BIOME_SYSTEM) return null;
+  if(!ENABLE_BIOME_SYSTEM && !ENABLE_BIOME_TEXT) return null;
   const list = CHAPTER_BIOME_PROFILES[mode] || CHAPTER_BIOME_PROFILES.Survival;
   return list[clamp(chapter, 1, list.length) - 1] || list[0] || CHAPTER_BIOME_PROFILES.Survival[0];
 }
 function currentBiomeProfile(){
-  if(!ENABLE_BIOME_SYSTEM) return null;
+  if(!ENABLE_BIOME_SYSTEM && !ENABLE_BIOME_TEXT) return null;
   return chapterBiomeProfile(S.mode, chapterIndexForMode(S.mode));
 }
 function biomeHazardModifiers(mode=S.mode, chapter=chapterIndexForMode(mode)){
@@ -19730,10 +19734,12 @@ function sampleCameraShake(){
 }
 
 function queueImpactPulse(x, y, kind="hit"){
-  if(iphoneStabilityModeActive()) return;
+  const iphoneLite = iphoneLiteCombatFeedbackEnabled();
+  if(iphoneStabilityModeActive() && !iphoneLite) return;
   if(!Number.isFinite(x) || !Number.isFinite(y)) return;
-  if(IMPACT_PULSES.length >= 30){
-    IMPACT_PULSES.splice(0, IMPACT_PULSES.length - 29);
+  const pulseCap = iphoneLite ? 12 : 30;
+  if(IMPACT_PULSES.length >= pulseCap){
+    IMPACT_PULSES.splice(0, IMPACT_PULSES.length - (pulseCap - 1));
   }
   let color = "rgba(245,247,255,.88)";
   let maxR = 18;
@@ -19767,6 +19773,10 @@ function queueImpactPulse(x, y, kind="hit"){
     maxR *= 0.84;
     ttl = Math.max(12, Math.round(ttl * 0.78));
   }
+  if(iphoneLite){
+    maxR *= 0.58;
+    ttl = Math.max(9, Math.round(ttl * 0.60));
+  }
   IMPACT_PULSES.push({
     x, y, color, kind, ttl, maxTtl:ttl, r:2, maxR,
     spin: Math.random() * Math.PI * 2
@@ -19796,11 +19806,12 @@ function tickCombatFx(){
 }
 
 function tickImpactPulses(){
-  if(iphoneStabilityModeActive()){
+  const iphoneLite = iphoneLiteCombatFeedbackEnabled();
+  if(iphoneStabilityModeActive() && !iphoneLite){
     if(IMPACT_PULSES.length) IMPACT_PULSES.length = 0;
     return;
   }
-  const fade = visualEffectsHeavyMode() ? 1.6 : 1.1;
+  const fade = iphoneLite ? 1.9 : (visualEffectsHeavyMode() ? 1.6 : 1.1);
   for(const pulse of IMPACT_PULSES){
     pulse.ttl -= fade;
     const progress = 1 - clamp(pulse.ttl / pulse.maxTtl, 0, 1);
@@ -19871,15 +19882,29 @@ function drawCombatFx(){
 }
 
 function drawImpactPulses(){
-  if(iphoneStabilityModeActive()) return;
+  const iphoneLite = iphoneLiteCombatFeedbackEnabled();
+  if(iphoneStabilityModeActive() && !iphoneLite) return;
   const lagTier = frameLagTier();
-  const maxDraw = visualReadabilityHeavyMode()
-    ? (lagTier >= 2 ? 7 : (frameIsSlow() ? 10 : 14))
-    : (lagTier >= 2 ? 10 : (lagTier >= 1 ? 16 : 24));
+  const maxDraw = iphoneLite
+    ? (lagTier >= 2 ? 2 : (lagTier >= 1 ? 4 : 6))
+    : (visualReadabilityHeavyMode()
+      ? (lagTier >= 2 ? 7 : (frameIsSlow() ? 10 : 14))
+      : (lagTier >= 2 ? 10 : (lagTier >= 1 ? 16 : 24)));
   const startIdx = Math.max(0, IMPACT_PULSES.length - maxDraw);
   for(let i=startIdx; i<IMPACT_PULSES.length; i++){
     const pulse = IMPACT_PULSES[i];
     const life = clamp(pulse.ttl / pulse.maxTtl, 0, 1);
+    if(iphoneLite){
+      ctx.save();
+      ctx.globalAlpha = life * 0.42;
+      ctx.strokeStyle = pulse.color;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(pulse.x, pulse.y, pulse.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      continue;
+    }
     ctx.save();
     const spin = (pulse.spin || 0) + ((1 - life) * 2.6);
     ctx.globalAlpha = life * 0.55;
@@ -19914,7 +19939,8 @@ function drawImpactPulses(){
 }
 
 function emitDamagePopup(x, y, text, kind="hit"){
-  if(iphoneStabilityModeActive()) return;
+  const iphoneLite = iphoneLiteCombatFeedbackEnabled();
+  if(iphoneStabilityModeActive() && !iphoneLite) return;
   if(!Number.isFinite(x) || !Number.isFinite(y) || text == null) return;
   const now = Date.now();
   const lagTier = frameLagTier();
@@ -19925,7 +19951,8 @@ function emitDamagePopup(x, y, text, kind="hit"){
   const gateMs = lagTier >= 2
     ? Math.round(DAMAGE_POPUP_RATE_MS * 3.4)
     : (lagTier >= 1 ? Math.round(DAMAGE_POPUP_RATE_MS * 2.3) : DAMAGE_POPUP_RATE_MS);
-  if(now - lastAt < gateMs) return;
+  const gateMsFinal = iphoneLite ? Math.max(gateMs, 360) : gateMs;
+  if(now - lastAt < gateMsFinal) return;
   DAMAGE_POPUP_GATE.set(gateKey, now);
   if(DAMAGE_POPUP_GATE.size > 260){
     for(const [k, at] of DAMAGE_POPUP_GATE){
@@ -19934,42 +19961,51 @@ function emitDamagePopup(x, y, text, kind="hit"){
     if(DAMAGE_POPUP_GATE.size > 320) DAMAGE_POPUP_GATE.clear();
   }
 
-  const popupCap = lagTier >= 2 ? 12 : (lagTier >= 1 ? 18 : 30);
+  const popupCap = iphoneLite
+    ? (lagTier >= 1 ? 4 : 6)
+    : (lagTier >= 2 ? 12 : (lagTier >= 1 ? 18 : 30));
   if(DAMAGE_POPUPS.length >= popupCap){
     DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - (popupCap - 1));
   }
+  const popupTtl = iphoneLite ? 18 : 34;
+  const critTtl = iphoneLite ? 22 : 38;
   DAMAGE_POPUPS.push({
     x, y,
     text: String(text),
     kind,
-    ttl: (kind === "crit" ? 38 : 34),
-    maxTtl: (kind === "crit" ? 38 : 34),
+    ttl: (kind === "crit" ? critTtl : popupTtl),
+    maxTtl: (kind === "crit" ? critTtl : popupTtl),
     vy: kind === "player" ? -1.45 : -1.10,
     drift: (Math.random() - 0.5) * 0.28,
     scale: kind === "crit" ? 1.16 : (kind === "player" ? 1.10 : 1.0)
   });
   queueImpactPulse(x, y, kind);
-  if(kind === "crit"){
-    queueCameraShake(1.15, 180);
-  }else if(kind === "player"){
-    queueCameraShake(1.35, 210);
-  }else if(kind === "civilian"){
-    queueCameraShake(0.86, 150);
-  }else if(kind === "tranq"){
-    queueCameraShake(0.55, 110);
-  }else{
-    queueCameraShake(0.32, 90);
+  if(!iphoneLite){
+    if(kind === "crit"){
+      queueCameraShake(1.15, 180);
+    }else if(kind === "player"){
+      queueCameraShake(1.35, 210);
+    }else if(kind === "civilian"){
+      queueCameraShake(0.86, 150);
+    }else if(kind === "tranq"){
+      queueCameraShake(0.55, 110);
+    }else{
+      queueCameraShake(0.32, 90);
+    }
   }
 }
 
 function tickDamagePopups(){
-  if(iphoneStabilityModeActive()){
+  const iphoneLite = iphoneLiteCombatFeedbackEnabled();
+  if(iphoneStabilityModeActive() && !iphoneLite){
     if(DAMAGE_POPUPS.length) DAMAGE_POPUPS.length = 0;
     if(DAMAGE_POPUP_GATE.size) DAMAGE_POPUP_GATE.clear();
     return;
   }
   const lagTier = frameLagTier();
-  const lagFade = lagTier >= 2 ? 1.7 : (lagTier >= 1 ? 1.35 : 1);
+  const lagFade = iphoneLite
+    ? (lagTier >= 1 ? 2.2 : 1.8)
+    : (lagTier >= 2 ? 1.7 : (lagTier >= 1 ? 1.35 : 1));
   const idleFade = (S.paused || S.missionEnded || S.gameOver || !S.inBattle) ? (3.2 * lagFade) : lagFade;
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
@@ -19991,12 +20027,15 @@ function tickDamagePopups(){
 }
 
 function drawDamagePopups(){
-  if(iphoneStabilityModeActive()) return;
+  const iphoneLite = iphoneLiteCombatFeedbackEnabled();
+  if(iphoneStabilityModeActive() && !iphoneLite) return;
   const heavy = visualReadabilityHeavyMode();
   const lagTier = frameLagTier();
-  const maxDraw = heavy
-    ? (lagTier >= 2 ? 6 : (frameIsSlow() ? 8 : 12))
-    : (lagTier >= 2 ? 8 : (lagTier >= 1 ? 14 : 24));
+  const maxDraw = iphoneLite
+    ? (lagTier >= 1 ? 4 : 6)
+    : (heavy
+      ? (lagTier >= 2 ? 6 : (frameIsSlow() ? 8 : 12))
+      : (lagTier >= 2 ? 8 : (lagTier >= 1 ? 14 : 24)));
   const startIdx = Math.max(0, DAMAGE_POPUPS.length - maxDraw);
   for(let i=startIdx; i<DAMAGE_POPUPS.length; i++){
     const p = DAMAGE_POPUPS[i];
@@ -20016,6 +20055,21 @@ function drawDamagePopups(){
     else if(p.kind === "civilian"){ bg = "rgba(72,46,8,.88)"; icon = "CIV"; }
     else if(p.kind === "shield"){ bg = "rgba(14,44,86,.88)"; icon = "SHD"; }
     else if(p.kind === "dodge"){ bg = "rgba(86,64,10,.88)"; icon = "DGE"; }
+    if(iphoneLite){
+      ctx.save();
+      const sc = clamp(Number(p.scale) || 1, 0.8, 1.2);
+      const txt = String(p.text || "");
+      ctx.globalAlpha = a * 0.92;
+      ctx.font = `900 ${Math.round(10 * sc)}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.strokeStyle = "rgba(8,10,16,.68)";
+      ctx.lineWidth = 2.2;
+      ctx.strokeText(txt, p.x, p.y);
+      ctx.fillStyle = color;
+      ctx.fillText(txt, p.x, p.y);
+      ctx.restore();
+      continue;
+    }
     ctx.save();
     ctx.globalAlpha = a;
     const sc = clamp(Number(p.scale) || 1, 0.85, 1.35);
@@ -24261,6 +24315,7 @@ function drawEntities(){
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
   const iphoneStability = iphoneStabilityModeActive();
+  const iphoneLiteFeedback = iphoneLiteCombatFeedbackEnabled();
   const isSlowFrame = frameIsSlow();
   const frameBudgetTight = frameBudgetExceeded(0.85);
   const entityLoad =
@@ -24285,7 +24340,7 @@ function drawEntities(){
   }else if(lagTier >= 1){
     shouldDrawFx = !frameBudgetTight && (__frameHeavyFxFlip % (mobile ? 6 : 5) === 0);
   }
-  if(iphoneStability){
+  if(iphoneStability && !iphoneLiteFeedback){
     shouldDrawFx = false;
   }
   const shouldDrawPopups = lagTier >= 2
@@ -24293,7 +24348,13 @@ function drawEntities(){
     : (lagTier >= 1
       ? (__frameHeavyFxFlip % (heavyLoad ? 6 : 5) === 0)
       : (__frameHeavyFxFlip % (heavyLoad ? 3 : 2) === 0));
-  if(!iphoneStability){
+  if(iphoneLiteFeedback){
+    const liteTick = (__frameHeavyFxFlip % (lagTier >= 1 ? 8 : 6)) === 0;
+    if(liteTick && !frameBudgetTight){
+      if(IMPACT_PULSES.length > 0) drawImpactPulses();
+      if(!liteRender && DAMAGE_POPUPS.length > 0) drawDamagePopups();
+    }
+  } else if(!iphoneStability){
     if(shouldDrawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight && lagTier === 0)) drawImpactPulses();
     if(!liteRender && shouldDrawFx && !frameBudgetTight) drawCombatFx();
     if(!liteRender && (shouldDrawFx || (!frameBudgetTight && shouldDrawPopups))) drawDamagePopups();
@@ -24430,6 +24491,14 @@ function draw(){
       });
       runFrameTask("impactPulses", frameInterval(lagCritical ? 82 : (lagHeavy ? 62 : 36), 1.8), tickImpactPulses, {
         costHint:0.45, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
+    } else if(iphoneLiteCombatFeedbackEnabled()){
+      if(COMBAT_FX.length) COMBAT_FX.length = 0;
+      runFrameTask("damagePopups", frameInterval(lagCritical ? 130 : (lagHeavy ? 108 : 88), 2.2), tickDamagePopups, {
+        costHint:0.2, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
+      runFrameTask("impactPulses", frameInterval(lagCritical ? 126 : (lagHeavy ? 102 : 82), 2.2), tickImpactPulses, {
+        costHint:0.2, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
     } else {
       if(COMBAT_FX.length) COMBAT_FX.length = 0;
