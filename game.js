@@ -6186,24 +6186,56 @@ function updateWorldCamera(state=S){
   if(!state.camera || typeof state.camera !== "object"){
     state.camera = { x: world.w * 0.5, y: world.h * 0.5 };
   }
+  if(!Number.isFinite(state._cameraOutFrames)) state._cameraOutFrames = 0;
   const target = cameraClampCenter(
     Number.isFinite(state?.me?.x) ? state.me.x : (world.w * 0.5),
     Number.isFinite(state?.me?.y) ? state.me.y : (world.h * 0.5),
     state
   );
-  const ease = state?.inBattle ? 0.25 : 0.18;
+  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const mobile = isMobileViewport();
+  const ease = mobile
+    ? (state?.inBattle ? 0.42 : 0.34)
+    : (state?.inBattle ? 0.25 : 0.18);
   if(!Number.isFinite(state.camera.x) || !Number.isFinite(state.camera.y)){
     state.camera.x = target.x;
     state.camera.y = target.y;
   } else {
-    state.camera.x += (target.x - state.camera.x) * ease;
-    state.camera.y += (target.y - state.camera.y) * ease;
+    const dx = target.x - state.camera.x;
+    const dy = target.y - state.camera.y;
+    const distToTarget = Math.hypot(dx, dy);
+    const snapDistance = Math.max(vw, vh) * (mobile ? 0.44 : 0.62);
+    if(distToTarget >= snapDistance){
+      state.camera.x = target.x;
+      state.camera.y = target.y;
+    } else {
+      state.camera.x += dx * ease;
+      state.camera.y += dy * ease;
+    }
   }
   const clamped = cameraClampCenter(state.camera.x, state.camera.y, state);
   state.camera.x = clamped.x;
   state.camera.y = clamped.y;
-  const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
-  const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const px = target.x - (state.camera.x - (vw * 0.5));
+  const py = target.y - (state.camera.y - (vh * 0.5));
+  const marginX = Math.max(34, vw * (mobile ? 0.11 : 0.14));
+  const marginY = Math.max(28, vh * (mobile ? 0.12 : 0.16));
+  const playerNearEdge =
+    px < marginX ||
+    px > (vw - marginX) ||
+    py < marginY ||
+    py > (vh - marginY);
+  if(playerNearEdge){
+    state._cameraOutFrames = Math.min(12, (state._cameraOutFrames || 0) + 1);
+  } else {
+    state._cameraOutFrames = Math.max(0, (state._cameraOutFrames || 0) - 2);
+  }
+  if((state._cameraOutFrames || 0) >= 2){
+    state.camera.x = target.x;
+    state.camera.y = target.y;
+    state._cameraOutFrames = 0;
+  }
   return { x: state.camera.x - (vw * 0.5), y: state.camera.y - (vh * 0.5) };
 }
 
@@ -18539,8 +18571,8 @@ function followCiviliansTick(){
   if(S.mode==="Survival") return;
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const escortBoost = storyRescueSpeedMul();
-  const engageDist = 80;
-  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 660 : 560;
+  const engageDist = 86;
+  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 720 : 620;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
   if(!Number.isFinite(S._escortFace)) S._escortFace = face;
   const faceDelta = normalizeAngle(face - S._escortFace);
@@ -18692,21 +18724,36 @@ function followCiviliansTick(){
       }
     }
     const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
-    const escortWaterMul = Math.max(0.93, waterMul);
-    const catchup = clamp((dd - 10) * 0.072, 0, 5.8);
-    const trailBoost = dd > 170 ? 0.72 : (dd > 120 ? 0.40 : 0);
+    const escortWaterMul = Math.max(0.95, waterMul);
+    const catchup = clamp((dd - 8) * 0.078, 0, 6.5);
+    const trailBoost = dd > 180 ? 0.92 : (dd > 130 ? 0.52 : 0);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.26, 3.25) + catchup + trailBoost) * escortBoost * escortWaterMul),
-      PLAYER_SPRINT_SPEED + 3.2
+      ((Math.max(playerSpeed * 1.34, 3.45) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      PLAYER_SPRINT_SPEED + 3.9
     );
-    const vx = (dx/dd) * sp;
-    const vy = (dy/dd) * sp;
+    const targetVx = (dx/dd) * sp;
+    const targetVy = (dy/dd) * sp;
+    if(!Number.isFinite(c._followVx)) c._followVx = 0;
+    if(!Number.isFinite(c._followVy)) c._followVy = 0;
+    const smooth = dd > 130 ? 0.34 : 0.44;
+    c._followVx += (targetVx - c._followVx) * smooth;
+    c._followVy += (targetVy - c._followVy) * smooth;
+    const mag = Math.hypot(c._followVx, c._followVy) || 0;
+    if(mag > sp && mag > 0){
+      const m = sp / mag;
+      c._followVx *= m;
+      c._followVy *= m;
+    }
+    const vx = c._followVx;
+    const vy = c._followVy;
     if(Math.hypot(vx, vy) > 0.02){
       c.face = Math.atan2(vy, vx);
       c.step = (c.step || 0) + clamp(Math.hypot(vx, vy) * 0.11, 0.04, 0.30);
     }
     const moved = tryMoveEntity(c, c.x + vx, c.y + vy, 14, { avoidKeepout:false });
     if(!moved){
+      c._followVx *= 0.45;
+      c._followVy *= 0.45;
       const recover = findNearestOpenPoint(anchor.x, anchor.y, 14, {
         avoidKeepout:false,
         avoidWater:false,
@@ -18721,14 +18768,17 @@ function followCiviliansTick(){
   }
 }
 
-function moveCivilianInsideEvac(c){
+function moveCivilianInsideEvac(c, coreRadiusOverride=null){
   const ez = S.evacZone || DEFAULT.evacZone;
   if(!ez || !Number.isFinite(ez.x) || !Number.isFinite(ez.y)) return;
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
-  const radius = Math.max(10, (ez.r || 70) - 14);
+  const coreRadius = Number.isFinite(coreRadiusOverride)
+    ? Math.max(10, Number(coreRadiusOverride))
+    : Math.max(14, (ez.r || 70) - 6);
+  const radius = Math.max(8, Math.min((ez.r || 70) - 12, coreRadius - 2));
   const seed = ((Number(c.id || 1) * 97) % 360) * (Math.PI / 180);
-  const laneR = Math.max(8, Math.min(radius * 0.56, 12 + ((Number(c.id || 1) % 5) * 6)));
+  const laneR = Math.max(6, Math.min(radius * 0.56, Math.max(8, coreRadius - 6), 12 + ((Number(c.id || 1) % 5) * 6)));
   const tx = clamp(ez.x + Math.cos(seed) * laneR, 24, worldW - 24);
   const ty = clamp(ez.y + Math.sin(seed) * laneR, 24, worldH - 24);
   const spot = findNearestOpenPoint(tx, ty, 12, {
@@ -18737,24 +18787,38 @@ function moveCivilianInsideEvac(c){
     targetX:ez.x,
     targetY:ez.y
   }) || { x:tx, y:ty };
-  c.x = spot.x;
-  c.y = spot.y;
+  let sx = spot.x;
+  let sy = spot.y;
+  const d = dist(sx, sy, ez.x, ez.y);
+  if(d > coreRadius && d > 0.001){
+    const pull = Math.max(0.02, (coreRadius - 3) / d);
+    sx = ez.x + ((sx - ez.x) * pull);
+    sy = ez.y + ((sy - ez.y) * pull);
+  }
+  c.x = clamp(sx, 24, worldW - 24);
+  c.y = clamp(sy, 24, worldH - 24);
+  if(dist(c.x, c.y, ez.x, ez.y) > coreRadius){
+    c.x = ez.x;
+    c.y = ez.y;
+  }
   c.following = false;
   c.escortOwner = "";
   c.escortUnitId = "";
+  c._followVx = 0;
+  c._followVy = 0;
 }
 
 function evacCheck(){
   if(S.mode==="Survival") return;
   const ez = S.evacZone || DEFAULT.evacZone;
-  const evacOuterRadius = (ez.r || 70) + 18;
-  const evacCoreRadius = Math.max(14, (ez.r || 70) - 6);
+  const evacOuterRadius = (ez.r || 70) + 28;
+  const evacCoreRadius = Math.max(16, (ez.r || 70) - 4);
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
-    const followBonus = c.following ? 7 : 0;
+    const followBonus = c.following ? 14 : 6;
     const d = dist(c.x, c.y, ez.x, ez.y);
     if(d <= (evacOuterRadius + followBonus)){
-      moveCivilianInsideEvac(c);
+      moveCivilianInsideEvac(c, evacCoreRadius);
       if(dist(c.x, c.y, ez.x, ez.y) > evacCoreRadius){
         continue;
       }
@@ -22112,7 +22176,7 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle, viewRect
       ctx.fillText("EVAC SAFE ZONE", ex, ey - er - 8);
       ctx.textAlign = "start";
     }
-    drawSafeHouseMarker(ex, ey, er, { compact:true, label:true });
+    drawSafeHouseMarker(ex, ey, er, { compact:true, label:!heavy });
   }
 
   for(const tr of (S.trapsPlaced || [])){
@@ -22191,6 +22255,7 @@ function drawSafeHouseMarker(x, y, zoneR=70, opts={}){
     ctx.textAlign = "start";
   }
 }
+
 function drawMapScene(){
   const frameNow = Date.now();
   const viewportW = cv.width;
@@ -24732,6 +24797,97 @@ function noteRenderSuccess(){
   }
 }
 
+let __lastStartupIntegrityAt = 0;
+let __lastStartupIntegrityToastAt = 0;
+function missionEntityStateInvalid(state=S){
+  if(!state || typeof state !== "object") return "state-missing";
+  const mode = normalizeModeName(state.mode);
+  const meOk = !!(state.me && Number.isFinite(state.me.x) && Number.isFinite(state.me.y));
+  if(!meOk) return "player-missing";
+
+  if(!Array.isArray(state.tigers) || !state.tigers.length) return "tigers-empty";
+  const hasTiger = state.tigers.some((t)=>
+    t &&
+    t.alive !== false &&
+    Number.isFinite(t.x) &&
+    Number.isFinite(t.y) &&
+    Number.isFinite(t.hp)
+  );
+  if(!hasTiger) return "tigers-invalid";
+
+  if(mode === "Survival") return "";
+
+  const hasEvac = !!(
+    state.evacZone &&
+    Number.isFinite(state.evacZone.x) &&
+    Number.isFinite(state.evacZone.y) &&
+    Number.isFinite(state.evacZone.r)
+  );
+  if(!hasEvac) return "evac-invalid";
+
+  if(!Array.isArray(state.civilians) || !state.civilians.length) return "civilians-empty";
+  const hasActiveCivilian = state.civilians.some((c)=>
+    c &&
+    c.alive !== false &&
+    !c.evac &&
+    Number.isFinite(c.x) &&
+    Number.isFinite(c.y) &&
+    Number.isFinite(c.hp)
+  );
+  if(!hasActiveCivilian){
+    const total = Math.max(0, state.civilians.length | 0);
+    const evacDone = Math.max(0, Number(state.evacDone || 0));
+    const missionCompletePath = total > 0 && evacDone >= total;
+    if(!missionCompletePath && !state.missionEnded && !state.gameOver){
+      return "civilians-invalid";
+    }
+  }
+
+  return "";
+}
+
+function ensureMissionStartupIntegrity(opts={}){
+  const force = !!opts.force;
+  const reason = String(opts.reason || "startup");
+  const now = Date.now();
+  if(!force && (now - __lastStartupIntegrityAt) < 950){
+    return false;
+  }
+  __lastStartupIntegrityAt = now;
+  let invalid = missionEntityStateInvalid(S);
+  if(!invalid) return false;
+
+  try{
+    sanitizeRuntimeState();
+    clampWorldToCanvas();
+    validateMissionSpawnLayout({ repair:true });
+  }catch(e){}
+
+  invalid = missionEntityStateInvalid(S);
+  if(!invalid) return true;
+
+  if(!(S.gameOver || S.missionEnded)){
+    try{
+      const keepHp = clamp(Number(S.hp || 100), 0, 100);
+      const keepArmor = clamp(Number(S.armor || 0), 0, S.armorCap || 100);
+      deploy({ carryStats:true, hp:keepHp, armor:keepArmor });
+      sanitizeRuntimeState();
+      clampWorldToCanvas();
+    }catch(e){}
+  }
+
+  invalid = missionEntityStateInvalid(S);
+  if(invalid){
+    return false;
+  }
+  if((now - __lastStartupIntegrityToastAt) > 6000){
+    __lastStartupIntegrityToastAt = now;
+    try{ toast("Recovered mission state before start."); }catch(e){}
+  }
+  try{ setEventText(`🛠️ Recovered invalid mission state (${reason}).`, 2.6); }catch(e){}
+  return true;
+}
+
 // ===================== MISSION FLOW =====================
 
 // ===================== MAIN LOOP =====================
@@ -24764,6 +24920,9 @@ function draw(){
     if(!(S.gameOver || S.paused || S.missionEnded)){
       runFrameTask("sanitizeState", frameInterval(lagCritical ? 360 : (lagHeavy ? 300 : 240), 2.2), sanitizeRuntimeState, {
         costHint:1.3, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
+      runFrameTask("startupIntegrity", frameInterval(lagCritical ? 1500 : (lagHeavy ? 1250 : 980), 1.8), ()=>ensureMissionStartupIntegrity({ reason:"frame" }), {
+        costHint:0.8, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
       runFrameTask("missionDirector", frameInterval(lagCritical ? 136 : (lagHeavy ? 106 : 84), 1.45), missionDirectorTick, {
         costHint:1.1, critical:true, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
@@ -24940,13 +25099,7 @@ function draw(){
 
 // ===================== INIT =====================
 function missionStateLooksEmpty(){
-  if(!S || typeof S !== "object") return true;
-  const hasPlayer = !!(S.me && Number.isFinite(S.me.x) && Number.isFinite(S.me.y));
-  const hasTiger = Array.isArray(S.tigers) && S.tigers.some((t)=>t && t.alive !== false && Number.isFinite(t.x) && Number.isFinite(t.y));
-  if(S.mode === "Survival") return !(hasPlayer && hasTiger);
-  const hasCivilian = Array.isArray(S.civilians) && S.civilians.some((c)=>c && c.alive !== false && !c.evac && Number.isFinite(c.x) && Number.isFinite(c.y));
-  const hasEvac = !!(S.evacZone && Number.isFinite(S.evacZone.x) && Number.isFinite(S.evacZone.y) && Number.isFinite(S.evacZone.r));
-  return !(hasPlayer && hasTiger && hasCivilian && hasEvac);
+  return !!missionEntityStateInvalid(S);
 }
 
 function init(){
@@ -25180,6 +25333,7 @@ function init(){
   }
   validateMissionSpawnLayout({ repair:true });
   transitionCleanupSweep("init");
+  ensureMissionStartupIntegrity({ force:true, reason:"init" });
   if(missionStateLooksEmpty()){
     deploy({ carryStats:true, hp:S.hp, armor:S.armor });
   }
