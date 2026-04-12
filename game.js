@@ -5875,6 +5875,8 @@ const STABILITY_STALL_HARD_GAP_MS = 2600;
 const STABILITY_STALL_COST_MS = 84;
 const STABILITY_RECOVER_COOLDOWN_MS = 5200;
 const STABILITY_RECOVER_MAX_PER_MIN = 6;
+const RENDER_FAILSAFE_RECOVER_COOLDOWN_MS = 1800;
+const RENDER_FAILSAFE_HARD_RECOVER_AT = 3;
 const STABILITY_MONITOR_SAMPLE_MAX = 36;
 const BLOCKED_CACHE_QUANT = 2;
 const STABILITY_SOFT_CAP_TIGERS = 36;
@@ -6013,6 +6015,11 @@ const __stabilityMonitorState = {
 let __lastStoryFullSnapshotAt = 0;
 let __autoPerfEscalatedAt = 0;
 let __storyCheckpointCache = null;
+const __renderFailSafeState = {
+  consecutive: 0,
+  lastRecoverAt: 0,
+  lastReason: ""
+};
 
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
@@ -6693,11 +6700,16 @@ function missionDirectorTick(){
 function beginFrameBudget(frameStartTs){
   const now = Number.isFinite(frameStartTs) ? frameStartTs : (performance.now ? performance.now() : Date.now());
   const mode = performanceMode();
+  const iphoneLock = iphoneStabilityModeActive();
   __frameDynamicLoadMul = computeFrameLoadMultiplier();
   const lagTier = frameLagTier();
   if(lagTier >= 1) __frameDynamicLoadMul = Math.max(__frameDynamicLoadMul, FRAME_LOAD_HIGH);
   if(lagTier >= 2) __frameDynamicLoadMul = Math.max(__frameDynamicLoadMul, FRAME_LOAD_EXTREME);
   let limit = mode === "PERFORMANCE" ? 9.8 : 12.6;
+  if(iphoneLock){
+    // Mobile FPS lock: drop non-critical work earlier so touch/control stays responsive.
+    limit = Math.min(limit, lagTier >= 2 ? 7.0 : (lagTier >= 1 ? 7.6 : 8.4));
+  }
   if(frameIsSlow(now)) limit -= 1.6;
   if(__frameDynamicLoadMul >= FRAME_LOAD_HIGH) limit -= 0.8;
   if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) limit -= 0.8;
@@ -6742,6 +6754,7 @@ function runFrameTask(key, intervalMs, fn, options={}){
   if(now < (__frameTaskGate[key] || 0)) return false;
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
+  const iphoneLock = iphoneStabilityModeActive();
   const critical = !!opts.critical;
   let adjustedInterval = Math.max(8, Math.round(Number(intervalMs) || 16));
   if(!critical){
@@ -6749,8 +6762,16 @@ function runFrameTask(key, intervalMs, fn, options={}){
     if(lagTier >= 2) slowMul = mobile ? 1.85 : 1.55;
     else if(lagTier >= 1) slowMul = mobile ? 1.45 : 1.25;
     else if(frameIsSlow()) slowMul = mobile ? 1.24 : 1.14;
+    if(iphoneLock){
+      if(lagTier >= 2) slowMul = Math.max(slowMul, 2.25);
+      else if(lagTier >= 1) slowMul = Math.max(slowMul, 1.9);
+      else slowMul = Math.max(slowMul, frameIsSlow() ? 1.6 : 1.35);
+    }
     if(slowMul > 1){
       adjustedInterval = Math.max(adjustedInterval, Math.round(adjustedInterval * slowMul));
+    }
+    if(iphoneLock){
+      adjustedInterval = Math.max(adjustedInterval, lagTier >= 1 ? 88 : 70);
     }
   }
   const cadenceBase = Math.max(1, Math.floor(Number(opts.cadence) || 1));
@@ -6761,6 +6782,10 @@ function runFrameTask(key, intervalMs, fn, options={}){
   if(frameIsSlow()) cadence = Math.max(cadence, cadenceSlow);
   if(__frameDynamicLoadMul >= FRAME_LOAD_HIGH) cadence = Math.max(cadence, cadenceHeavy);
   if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) cadence = Math.max(cadence, cadenceExtreme);
+  if(!critical && iphoneLock){
+    const lockCadence = lagTier >= 2 ? 4 : (lagTier >= 1 ? 3 : 2);
+    cadence = Math.max(cadence, lockCadence);
+  }
   if(cadence > 1){
     if(!Number.isFinite(__frameTaskPhase[key])){
       let hash = 0;
@@ -6779,9 +6804,12 @@ function runFrameTask(key, intervalMs, fn, options={}){
   }
   const costHint = Math.max(0, Number(opts.costHint) || 0);
   if(!critical && frameBudgetExceeded(costHint)){
-    __frameTaskGate[key] = now + Math.max(48, Math.min(adjustedInterval, mobile ? 120 : 90));
+    const deferMax = iphoneLock
+      ? (lagTier >= 1 ? 220 : 180)
+      : (mobile ? 120 : 90);
+    __frameTaskGate[key] = now + Math.max(48, Math.min(adjustedInterval, deferMax));
     __frameBudgetState.dropped = (__frameBudgetState.dropped || 0) + 1;
-    if(__frameBudgetState.dropped >= 6){
+    if(__frameBudgetState.dropped >= (iphoneLock ? 4 : 6)){
       const perfNow = performance.now ? performance.now() : now;
       __frameSlowUntil = Math.max(__frameSlowUntil || 0, perfNow + 1400);
     }
@@ -21972,7 +22000,15 @@ function mobileWeatherTintSpec(){
   }
   return null;
 }
-function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
+function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle, viewRect=null){
+  const vx = clamp(Number(viewRect?.x) || 0, 0, Math.max(0, w - 1));
+  const vy = clamp(Number(viewRect?.y) || 0, 0, Math.max(0, h - 1));
+  const vw = clamp(Number(viewRect?.w) || w, 1, Math.max(1, w - vx));
+  const vh = clamp(Number(viewRect?.h) || h, 1, Math.max(1, h - vy));
+  const lagTier = frameLagTier();
+  const perfMode = performanceMode() === "PERFORMANCE";
+  const heavy = lagTier >= 1 || perfMode || frameIsSlow();
+  const zone = missionEvacZoneSafe(S);
   const roadColor = themeKey === "ST_DOWNTOWN"
     ? "rgba(80,86,96,.92)"
     : (themeKey === "ST_INDUSTRIAL" ? "rgba(96,80,56,.88)" : "rgba(92,74,48,.86)");
@@ -21984,17 +22020,19 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
     : (themeKey === "ST_SUBURBS" ? "#18432d" : "#123522");
 
   ctx.fillStyle = grass;
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(vx, vy, vw, vh);
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(vx, vy, vw, vh);
   }
   const weatherTint = mobileWeatherTintSpec();
   if(weatherTint){
     ctx.fillStyle = weatherTint.main;
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = weatherTint.top;
-    ctx.fillRect(0, 0, w, Math.max(80, h * 0.22));
+    ctx.fillRect(vx, vy, vw, vh);
+    if(!heavy){
+      ctx.fillStyle = weatherTint.top;
+      ctx.fillRect(vx, vy, vw, Math.max(80, vh * 0.22));
+    }
   }
 
   // Simple, stable road ribbons (mobile fast path).
@@ -22020,14 +22058,16 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
     for(let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
     ctx.stroke();
 
-    ctx.strokeStyle = "rgba(230,214,175,.20)";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([10, 10]);
-    ctx.beginPath();
-    ctx.moveTo(pts[0][0], pts[0][1]);
-    for(let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    if(!heavy){
+      ctx.strokeStyle = "rgba(230,214,175,.20)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 10]);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for(let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
 
   ensureMapObstacleCache();
@@ -22037,17 +22077,19 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
     ctx.beginPath();
     ctx.ellipse(zone.x, zone.y, radii.rx, radii.ry, zone.rot || 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(170,220,245,.48)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(zone.x, zone.y, Math.max(8, radii.rx - 1), Math.max(6, radii.ry - 1), zone.rot || 0, 0, Math.PI * 2);
-    ctx.stroke();
+    if(!heavy){
+      ctx.strokeStyle = "rgba(170,220,245,.48)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(zone.x, zone.y, Math.max(8, radii.rx - 1), Math.max(6, radii.ry - 1), zone.rot || 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   if(S.mode !== "Survival"){
-    const ex = S.evacZone.x;
-    const ey = S.evacZone.y;
-    const er = S.evacZone.r;
+    const ex = zone.x;
+    const ey = zone.y;
+    const er = zone.r;
     const safeHue = chapterStyle?.safeHue || "rgba(74,222,128,.95)";
     ctx.fillStyle = "rgba(16,56,34,.25)";
     ctx.beginPath();
@@ -22058,16 +22100,18 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
     ctx.beginPath();
     ctx.arc(ex, ey, er, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(167,243,208,.72)";
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    ctx.arc(ex, ey, Math.max(10, er - 8), 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = "rgba(220,255,235,.94)";
-    ctx.font = "900 10px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText("EVAC SAFE ZONE", ex, ey - er - 8);
-    ctx.textAlign = "start";
+    if(!heavy){
+      ctx.strokeStyle = "rgba(167,243,208,.72)";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(ex, ey, Math.max(10, er - 8), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(220,255,235,.94)";
+      ctx.font = "900 10px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("EVAC SAFE ZONE", ex, ey - er - 8);
+      ctx.textAlign = "start";
+    }
   }
 
   for(const tr of (S.trapsPlaced || [])){
@@ -22080,7 +22124,7 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
     ctx.globalAlpha = 1;
   }
 
-  if(S.scanPing > 0){
+  if(!heavy && S.scanPing > 0){
     S.scanPing--;
     const t = currentTargetTiger();
     if(t){
@@ -22098,7 +22142,7 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
   if(Date.now() < (S.fogUntil || 0)){
     ctx.globalAlpha = 0.22;
     ctx.fillStyle = "#0b0d12";
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(vx, vy, vw, vh);
     ctx.globalAlpha = 1;
   }
 }
@@ -22121,7 +22165,12 @@ function drawMapScene(){
   }
   const mobileFastPath = isMobileViewport();
   if(mobileFastPath){
-    drawMapSceneMobileFast(frameNow, w, h, mapFamilyKey(key), chapterStyle);
+    drawMapSceneMobileFast(frameNow, w, h, mapFamilyKey(key), chapterStyle, {
+      x: camSnap.x,
+      y: camSnap.y,
+      w: viewportW,
+      h: viewportH
+    });
     return;
   }
   const ez = S.evacZone || DEFAULT.evacZone;
@@ -22770,10 +22819,11 @@ function drawMapScene(){
   }
 
   if(S.mode!=="Survival"){
+    const safeZone = missionEvacZoneSafe(S);
     const pulse = 0.86 + Math.sin(Date.now() / 240) * 0.08;
-    const ex = S.evacZone.x;
-    const ey = S.evacZone.y;
-    const er = S.evacZone.r;
+    const ex = safeZone.x;
+    const ey = safeZone.y;
+    const er = safeZone.r;
     const safeHue = chapterStyle?.safeHue || "rgba(74,222,128,.95)";
 
     ctx.save();
@@ -22846,7 +22896,7 @@ function drawMapScene(){
     ctx.globalAlpha = 1;
   }
 
-  for(const tr of S.trapsPlaced){
+  for(const tr of (S.trapsPlaced || [])){
     ctx.globalAlpha=0.75;
     ctx.strokeStyle="rgba(58,120,255,.55)";
     ctx.lineWidth=2;
@@ -24511,6 +24561,130 @@ function shouldDrawAtmosphericPass(){
   if(score >= 46) return (__frameBgFxFlip % 2) === 0;
   return true;
 }
+function missionEvacZoneSafe(state=S){
+  const fallback = (DEFAULT && DEFAULT.evacZone) ? DEFAULT.evacZone : { x: 880, y: 460, r: 70 };
+  const ez = (state && state.evacZone && typeof state.evacZone === "object") ? state.evacZone : fallback;
+  const x = Number.isFinite(Number(ez.x)) ? Number(ez.x) : Number(fallback.x || 880);
+  const y = Number.isFinite(Number(ez.y)) ? Number(ez.y) : Number(fallback.y || 460);
+  const r = clamp(Number.isFinite(Number(ez.r)) ? Number(ez.r) : Number(fallback.r || 70), 26, 180);
+  return { x, y, r };
+}
+function drawFailSafeScene(camX=0, camY=0){
+  const viewW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const viewH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const zone = missionEvacZoneSafe(S);
+  const vx = clamp(Number(camX) || 0, 0, Math.max(0, worldW - viewW));
+  const vy = clamp(Number(camY) || 0, 0, Math.max(0, worldH - viewH));
+
+  try{
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.setLineDash([]);
+    ctx.clearRect(0, 0, viewW, viewH);
+    ctx.save();
+    ctx.translate(-vx, -vy);
+
+    // Never blank: fallback keeps a lightweight playable scene visible.
+    ctx.fillStyle = "#143624";
+    ctx.fillRect(vx, vy, viewW, viewH);
+    const horizon = Math.max(40, Math.round(viewH * 0.22));
+    const topGrad = ctx.createLinearGradient(vx, vy, vx, vy + horizon);
+    topGrad.addColorStop(0, "rgba(46,122,84,.24)");
+    topGrad.addColorStop(1, "rgba(16,44,31,.04)");
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(vx, vy, viewW, horizon);
+
+    if(S.mode !== "Survival"){
+      ctx.fillStyle = "rgba(16,56,34,.30)";
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, zone.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(74,222,128,.95)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, zone.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    for(const civ of (S.civilians || [])){
+      if(!civ || civ.alive === false || civ.evac) continue;
+      const x = Number(civ.x);
+      const y = Number(civ.y);
+      if(!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      ctx.fillStyle = "rgba(56,189,248,.95)";
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for(const t of (S.tigers || [])){
+      if(!t || t.alive === false) continue;
+      const x = Number(t.x);
+      const y = Number(t.y);
+      if(!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      ctx.fillStyle = "rgba(251,146,60,.95)";
+      ctx.beginPath();
+      ctx.arc(x, y, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if(S.me){
+      const mx = Number(S.me.x);
+      const my = Number(S.me.y);
+      if(Number.isFinite(mx) && Number.isFinite(my)){
+        ctx.fillStyle = "rgba(241,245,249,.98)";
+        ctx.beginPath();
+        ctx.arc(mx, my, 7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+    rounded(12, Math.max(10, viewH - 44), 236, 28, 10, "rgba(6,10,18,.72)", "rgba(148,163,184,.46)");
+    ctx.fillStyle = "rgba(226,232,240,.98)";
+    ctx.font = "700 11px system-ui";
+    ctx.fillText("Stability recovery: rendering simplified scene.", 22, Math.max(28, viewH - 26));
+  }catch(e){
+    try{
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "#163726";
+      ctx.fillRect(0, 0, viewW, viewH);
+    }catch(ignored){}
+  }finally{
+    try{
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = "transparent";
+      ctx.filter = "none";
+      ctx.textAlign = "start";
+      ctx.textBaseline = "alphabetic";
+      ctx.lineWidth = 1;
+    }catch(ignored){}
+  }
+}
+function noteRenderFailSafe(reason="render-failure"){
+  const now = Date.now();
+  __renderFailSafeState.consecutive = Math.max(0, Number(__renderFailSafeState.consecutive || 0)) + 1;
+  __renderFailSafeState.lastReason = reason;
+  const shouldRecover =
+    __renderFailSafeState.consecutive >= RENDER_FAILSAFE_HARD_RECOVER_AT &&
+    (now - (__renderFailSafeState.lastRecoverAt || 0)) > RENDER_FAILSAFE_RECOVER_COOLDOWN_MS;
+  if(shouldRecover){
+    __renderFailSafeState.lastRecoverAt = now;
+    try{ runStabilityRecovery("render-failsafe"); }catch(e){}
+  }
+}
+function noteRenderSuccess(){
+  if(__renderFailSafeState.consecutive > 0){
+    __renderFailSafeState.consecutive = 0;
+  }
+}
 
 // ===================== MISSION FLOW =====================
 
@@ -24527,6 +24701,9 @@ function draw(){
     const lagHeavy = lagTier >= 1;
     const lagCritical = lagTier >= 2;
     const battleLoad = !!S.inBattle;
+    const mobileViewport = isMobileViewport();
+    const iphoneLock = iphoneStabilityModeActive();
+    safeTick("ensureMissionTwistState", ()=>{ ensureMissionTwistState(S); });
     if(__frameSpikePending){
       safeTick("recoverFromSpikeFrame", recoverFromSpikeFrame);
     }
@@ -24556,10 +24733,12 @@ function draw(){
       runFrameTask("comboTick", frameInterval(lagCritical ? 154 : (lagHeavy ? 130 : 110), 1.4), comboTick, { costHint:0.7 });
 
       if(!window.TigerTutorial?.isRunning){
-        runFrameTask("missionTwists", frameInterval(lagHeavy ? 236 : 176, 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
-        runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
-        runFrameTask("biomeHazard", frameInterval(lagHeavy ? 220 : 170, 1.45), biomeHazardTick, { costHint:0.6 });
-        runFrameTask("ambientPickup", frameInterval(lagHeavy ? 360 : 300, 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
+        if(!mobileViewport){
+          runFrameTask("missionTwists", frameInterval(lagHeavy ? 236 : 176, 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
+          runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
+          runFrameTask("biomeHazard", frameInterval(lagHeavy ? 220 : 170, 1.45), biomeHazardTick, { costHint:0.6 });
+        }
+        runFrameTask("ambientPickup", frameInterval(lagHeavy ? 420 : 340, iphoneLock ? 1.9 : 1.35), maybeSpawnAmbientPickup, { costHint:0.6 });
         runFrameTask("tickPickups", frameInterval(lagCritical ? 92 : (lagHeavy ? 74 : 52), 1.5), tickPickups, { costHint:1.0 });
       }
 
@@ -24631,7 +24810,7 @@ function draw(){
       if(IMPACT_PULSES.length) IMPACT_PULSES.length = 0;
     }
 
-    safeTick("drawSceneFrame", ()=>{
+    {
       const liteRender = useLiteEntityRender();
       const camOffsetRaw = updateWorldCamera(S);
       const worldW = worldWidth(S);
@@ -24669,6 +24848,11 @@ function draw(){
           drawAtmosphericParallax();
         }
         drawEntities();
+        noteRenderSuccess();
+      }catch(renderErr){
+        reportTickError("drawSceneFrame", renderErr);
+        noteRenderFailSafe("drawSceneFrame");
+        drawFailSafeScene(camX, camY);
       } finally {
         if(ctxSaved){
           try{ ctx.restore(); }catch(e){}
@@ -24688,7 +24872,7 @@ function draw(){
       }
       drawAbilityCooldownWheel();
       drawMobileUiClearLane();
-    });
+    }
     maybeAutosave();
   }catch(err){
     const now = Date.now();
