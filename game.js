@@ -18539,8 +18539,8 @@ function followCiviliansTick(){
   if(S.mode==="Survival") return;
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const escortBoost = storyRescueSpeedMul();
-  const engageDist = 58;
-  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 550 : 475;
+  const engageDist = 80;
+  const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 660 : 560;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
   if(!Number.isFinite(S._escortFace)) S._escortFace = face;
   const faceDelta = normalizeAngle(face - S._escortFace);
@@ -18576,14 +18576,14 @@ function followCiviliansTick(){
         c.following = true;
         c.escortOwner = "player";
         c.escortUnitId = "";
-        c.followGraceUntil = now + 2800;
+        c.followGraceUntil = now + 3600;
       } else {
         continue;
       }
     }
 
     if(toPlayer <= 220){
-      c.followGraceUntil = now + 1700;
+      c.followGraceUntil = now + 2600;
     }
     if(toPlayer > followMaxDist){
       if(now > (c.followGraceUntil || 0)){
@@ -18696,7 +18696,7 @@ function followCiviliansTick(){
     const catchup = clamp((dd - 10) * 0.072, 0, 5.8);
     const trailBoost = dd > 170 ? 0.72 : (dd > 120 ? 0.40 : 0);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.18, 2.95) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      ((Math.max(playerSpeed * 1.26, 3.25) + catchup + trailBoost) * escortBoost * escortWaterMul),
       PLAYER_SPRINT_SPEED + 3.2
     );
     const vx = (dx/dd) * sp;
@@ -22112,6 +22112,7 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle, viewRect
       ctx.fillText("EVAC SAFE ZONE", ex, ey - er - 8);
       ctx.textAlign = "start";
     }
+    drawSafeHouseMarker(ex, ey, er, { compact:true, label:true });
   }
 
   for(const tr of (S.trapsPlaced || [])){
@@ -22144,6 +22145,50 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle, viewRect
     ctx.fillStyle = "#0b0d12";
     ctx.fillRect(vx, vy, vw, vh);
     ctx.globalAlpha = 1;
+  }
+}
+
+function drawSafeHouseMarker(x, y, zoneR=70, opts={}){
+  if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+  const compact = !!opts.compact;
+  const label = opts.label !== false;
+  const baseW = compact ? 22 : 28;
+  const baseH = compact ? 14 : 18;
+  const roofH = compact ? 10 : 13;
+  const px = x - (baseW * 0.5);
+  const py = y - Math.max(12, Math.round(zoneR * 0.18));
+
+  ctx.save();
+  ctx.globalAlpha = 0.98;
+  ctx.fillStyle = "rgba(214,218,205,.98)";
+  roundedRectFill(px, py, baseW, baseH, 4);
+  ctx.fillStyle = "rgba(130,90,58,.98)";
+  ctx.beginPath();
+  ctx.moveTo(px - 2, py + 1);
+  ctx.lineTo(px + (baseW * 0.5), py - roofH);
+  ctx.lineTo(px + baseW + 2, py + 1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(94,72,52,.96)";
+  roundedRectFill(px + (baseW * 0.42), py + (compact ? 5 : 6), compact ? 6 : 7, compact ? 9 : 11, 2);
+  ctx.strokeStyle = "rgba(20,38,28,.50)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(px + 4, py);
+  ctx.arcTo(px + baseW, py, px + baseW, py + baseH, 4);
+  ctx.arcTo(px + baseW, py + baseH, px, py + baseH, 4);
+  ctx.arcTo(px, py + baseH, px, py, 4);
+  ctx.arcTo(px, py, px + baseW, py, 4);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+
+  if(label){
+    ctx.fillStyle = "rgba(218,255,236,.96)";
+    ctx.font = compact ? "900 9px system-ui" : "900 10px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("SAFE HOUSE", x, py - 6);
+    ctx.textAlign = "start";
   }
 }
 function drawMapScene(){
@@ -22860,6 +22905,7 @@ function drawMapScene(){
     ctx.fillStyle = "rgba(220,255,235,.95)";
     ctx.fillRect(ex-2, ey-9, 4, 18);
     ctx.fillRect(ex-9, ey-2, 18, 4);
+    drawSafeHouseMarker(ex, ey, er, { compact:false, label:false });
 
     for(let i=0;i<4;i++){
       const a = (Math.PI * 0.5 * i) + (Date.now() / 1300);
@@ -24766,11 +24812,11 @@ function draw(){
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
       runFrameTask("followCivilians", frameInterval(
         battleLoad
-          ? (lagCritical ? 156 : (lagHeavy ? 128 : 96))
-          : (lagCritical ? 98 : (lagHeavy ? 78 : 56)),
-        1.5
+          ? (lagCritical ? 112 : (lagHeavy ? 90 : 70))
+          : (lagCritical ? 74 : (lagHeavy ? 60 : 44)),
+        1.35
       ), followCiviliansTick, {
-        costHint:1.7, cadence:1, slowCadence:2, heavyCadence:2, extremeCadence:3
+        costHint:1.3, critical:true, cadence:1, slowCadence:1, heavyCadence:2, extremeCadence:2
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
       runFrameTask("civThreats", frameInterval(
