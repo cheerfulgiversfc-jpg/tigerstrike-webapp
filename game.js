@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4481";
+const TS_BUILD = "4482";
 if(tg){
   try{
     tg.expand?.();
@@ -152,6 +152,7 @@ const ENABLE_TWIST_BLACKOUT = false;
 const ENABLE_IPHONE_STABILITY_LOCK = true;
 const ENABLE_IPHONE_LITE_FEEDBACK = true;
 const ENABLE_MOBILE_WEATHER_TINT = true;
+const ENABLE_MOBILE_COMPACT_INTEL = true;
 const MISSION_TWIST_TYPES = Object.freeze([
   ...(ENABLE_TWIST_BRIDGE ? ["bridge"] : []),
   "hostage",
@@ -8112,6 +8113,47 @@ function pickupLabel(type){
   if(type==="MED") return "Medkit";
   if(type==="TRAP") return "Trap";
   return "Supply";
+}
+function compactAssistChipText(raw){
+  let text = String(raw || "").trim();
+  if(!text) return "";
+  text = text
+    .replace(/^Nearest civilian:\s*/i, "Civ ")
+    .replace(/^Evac zone:\s*/i, "Evac ")
+    .replace(/^Tiger #(\d+):\s*/i, "Tiger#$1 ")
+    .replace(/\s+at\s+[^()]+?\s+\((\d+m)\)/i, " $1")
+    .replace(/\s*•\s*Engage ready/i, " • Ready")
+    .replace(/^Biome:\s*/i, "Biome ")
+    .replace(/^Hazard:\s*/i, "Hazard ")
+    .replace(/^Buildcraft:\s*/i, "Build ")
+    .replace(/^Arcade clock:\s*/i, "Clock ")
+    .replace(/^Arcade combo multiplier:\s*/i, "Combo ")
+    .replace(/^Chapter reward in\s*/i, "Reward in ")
+    .replace(/^Chapter reward ready after clear:\s*/i, "Reward ready: ")
+    .replace(/^Live Ops:\s*/i, "Ops ")
+    .replace(/^Out of ammo\./i, "Out of ammo")
+    .replace(/^Magazine empty\./i, "Reload");
+  text = text.replace(/\s+/g, " ").trim();
+  if(text.length > 74){
+    text = `${text.slice(0, 71).trimEnd()}...`;
+  }
+  return text;
+}
+function compactAssistPartsForMobile(parts){
+  if(!ENABLE_MOBILE_COMPACT_INTEL) return (parts || []).slice(0, 3);
+  const src = Array.isArray(parts) ? parts : [];
+  const out = [];
+  const seen = new Set();
+  for(const item of src){
+    const chip = compactAssistChipText(item);
+    if(!chip) continue;
+    const key = chip.toLowerCase();
+    if(seen.has(key)) continue;
+    seen.add(key);
+    out.push(chip);
+    if(out.length >= 4) break;
+  }
+  return out;
 }
 function isTypingContext(target){
   const el = target || document.activeElement;
@@ -19903,6 +19945,24 @@ function drawImpactPulses(){
       ctx.beginPath();
       ctx.arc(pulse.x, pulse.y, pulse.r, 0, Math.PI * 2);
       ctx.stroke();
+      if(pulse.kind === "crit" || pulse.kind === "player" || pulse.kind === "tranq"){
+        ctx.globalAlpha = life * 0.26;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(pulse.x, pulse.y, Math.max(2, pulse.r * 0.58), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if(pulse.kind === "dodge"){
+        const arm = Math.max(2, pulse.r * 0.28);
+        ctx.globalAlpha = life * 0.38;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(pulse.x - arm, pulse.y - arm);
+        ctx.lineTo(pulse.x + arm, pulse.y + arm);
+        ctx.moveTo(pulse.x + arm, pulse.y - arm);
+        ctx.lineTo(pulse.x - arm, pulse.y + arm);
+        ctx.stroke();
+      }
       ctx.restore();
       continue;
     }
@@ -20059,7 +20119,11 @@ function drawDamagePopups(){
     if(iphoneLite){
       ctx.save();
       const sc = clamp(Number(p.scale) || 1, 0.8, 1.2);
-      const txt = String(p.text || "");
+      let txt = String(p.text || "");
+      if(p.kind === "crit") txt = `✦ ${txt}`;
+      else if(p.kind === "tranq") txt = `💉 ${txt}`;
+      else if(p.kind === "player") txt = `HP ${txt}`;
+      else if(p.kind === "civilian") txt = `CIV ${txt}`;
       ctx.globalAlpha = a * 0.92;
       ctx.font = `900 ${Math.round(10 * sc)}px system-ui`;
       ctx.textAlign = "center";
@@ -21639,7 +21703,9 @@ function renderHUD(){
   if(abilityOnCooldown("shield")) cooldownBits.push(`Shield ${abilityCooldownLabel("shield")}`);
   if(cooldownBits.length) assistParts.push(cooldownBits.join(" • "));
 
-  document.getElementById("assistTxt").innerText = assistParts.slice(0,3).join(" • ") || "Sweep the map, scan, and keep pressure off civilians.";
+  const mobileHud = isMobileViewport();
+  const assistShown = mobileHud ? compactAssistPartsForMobile(assistParts) : assistParts.slice(0,3);
+  document.getElementById("assistTxt").innerText = assistShown.join(" • ") || "Sweep the map, scan, and keep pressure off civilians.";
   document.getElementById("eventTxt").innerText = S.eventText ? `EVENT: ${S.eventText}` : "";
 
   const mobilePlayerHpValue = document.getElementById("mobilePlayerHpValue");
@@ -21712,7 +21778,7 @@ function renderHUD(){
     } else if(nearInteract && nearInteractDist < 165){
       mobilePrompt = `${nearInteract.label} nearby. Tap it to activate.`;
     } else if(window.TigerTutorial?.isRunning){
-      mobilePrompt = assistParts[0] || "Follow the tutorial prompt and stay on the map.";
+      mobilePrompt = assistShown[0] || "Follow the tutorial prompt and stay on the map.";
     } else if(S.missionEnded){
       mobilePrompt = "Mission complete. Shop, inventory, or start the next mission.";
     }
@@ -21741,16 +21807,21 @@ function renderHUD(){
       if(!showTakeover) takeoverBtn.innerText = "Take Over Escort";
     }
 
+    const desktopPointer = !!window.matchMedia?.("(pointer:fine)")?.matches;
     document.getElementById("statusLine").innerText =
-      S.inBattle
-        ? (S.battleMsg || `On-map combat active. Use Attack, Capture, weapon swap, and Retreat while Tiger #${S.activeTigerId} stays locked.`)
-        : (S.mode==="Story"
-            ? ((storyMission && storyMission.boss)
-                ? "Story Ops: chapter boss mission. Keep civilians safe, stay mobile, and control aggression before committing to the boss."
-                : "Story Ops: escort/protect civilians first, then secure captures and clear routes to evacuation.")
-            : (window.matchMedia?.("(pointer:fine)")?.matches
-                ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Tap map devices to trigger alarms, barriers, and caches."
-                : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear. Tap map devices for alarms, barriers, and caches."));
+      mobileHud
+        ? (S.inBattle
+            ? (S.battleMsg || `Locked tiger #${S.activeTigerId || "—"} • Attack or Capture`)
+            : (mobilePromptTxt?.innerText || "Move, lock a tiger, and protect civilians."))
+        : (S.inBattle
+            ? (S.battleMsg || `On-map combat active. Use Attack, Capture, weapon swap, and Retreat while Tiger #${S.activeTigerId} stays locked.`)
+            : (S.mode==="Story"
+                ? ((storyMission && storyMission.boss)
+                    ? "Story Ops: chapter boss mission. Keep civilians safe, stay mobile, and control aggression before committing to the boss."
+                    : "Story Ops: escort/protect civilians first, then secure captures and clear routes to evacuation.")
+                : (desktopPointer
+                    ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Tap map devices to trigger alarms, barriers, and caches."
+                    : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear. Tap map devices for alarms, barriers, and caches.")));
     renderAbilityCooldownUi();
   }catch(err){
     const now = Date.now();
