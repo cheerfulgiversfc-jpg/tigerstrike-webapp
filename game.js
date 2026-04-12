@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4480";
+const TS_BUILD = "4481";
 if(tg){
   try{
     tg.expand?.();
@@ -151,6 +151,7 @@ const ENABLE_TWIST_BRIDGE = false;
 const ENABLE_TWIST_BLACKOUT = false;
 const ENABLE_IPHONE_STABILITY_LOCK = true;
 const ENABLE_IPHONE_LITE_FEEDBACK = true;
+const ENABLE_MOBILE_WEATHER_TINT = true;
 const MISSION_TWIST_TYPES = Object.freeze([
   ...(ENABLE_TWIST_BRIDGE ? ["bridge"] : []),
   "hostage",
@@ -21854,6 +21855,52 @@ function drawMissionTwistOverlay(now=Date.now()){
   }
   ctx.restore();
 }
+function mobileWeatherTintSpec(){
+  if(!ENABLE_MOBILE_WEATHER_TINT) return null;
+  const profile = currentBiomeProfile();
+  if(!profile) return null;
+  const fx = String(profile.weatherFx || "").trim().toLowerCase();
+  const intensity = clamp(Number(profile.weatherIntensity || 0.5), 0.2, 1);
+  const mainA = clamp(0.022 + (intensity * 0.045), 0.02, 0.072);
+  const topA = clamp(mainA + 0.012, 0.03, 0.09);
+  if(fx === "rain"){
+    return {
+      main:`rgba(34,84,132,${mainA})`,
+      top:`rgba(145,196,255,${topA})`,
+    };
+  }
+  if(fx === "storm"){
+    return {
+      main:`rgba(24,58,104,${Math.min(0.082, mainA + 0.01)})`,
+      top:`rgba(116,170,240,${Math.min(0.1, topA + 0.012)})`,
+    };
+  }
+  if(fx === "mist"){
+    return {
+      main:`rgba(84,108,138,${mainA})`,
+      top:`rgba(188,206,232,${topA})`,
+    };
+  }
+  if(fx === "snow"){
+    return {
+      main:`rgba(110,136,166,${Math.min(0.08, mainA + 0.008)})`,
+      top:`rgba(210,226,248,${Math.min(0.11, topA + 0.015)})`,
+    };
+  }
+  if(fx === "ash"){
+    return {
+      main:`rgba(108,78,70,${mainA})`,
+      top:`rgba(214,170,148,${topA})`,
+    };
+  }
+  if(fx === "dust"){
+    return {
+      main:`rgba(128,98,62,${mainA})`,
+      top:`rgba(224,192,150,${topA})`,
+    };
+  }
+  return null;
+}
 function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
   const roadColor = themeKey === "ST_DOWNTOWN"
     ? "rgba(80,86,96,.92)"
@@ -21870,6 +21917,13 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
     ctx.fillRect(0, 0, w, h);
+  }
+  const weatherTint = mobileWeatherTintSpec();
+  if(weatherTint){
+    ctx.fillStyle = weatherTint.main;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = weatherTint.top;
+    ctx.fillRect(0, 0, w, Math.max(80, h * 0.22));
   }
 
   // Simple, stable road ribbons (mobile fast path).
