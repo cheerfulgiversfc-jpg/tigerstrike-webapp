@@ -22064,11 +22064,7 @@ function mobileWeatherTintSpec(){
   }
   return null;
 }
-function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle, viewRect=null){
-  const vx = clamp(Number(viewRect?.x) || 0, 0, Math.max(0, w - 1));
-  const vy = clamp(Number(viewRect?.y) || 0, 0, Math.max(0, h - 1));
-  const vw = clamp(Number(viewRect?.w) || w, 1, Math.max(1, w - vx));
-  const vh = clamp(Number(viewRect?.h) || h, 1, Math.max(1, h - vy));
+function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
   const lagTier = frameLagTier();
   const perfMode = performanceMode() === "PERFORMANCE";
   const heavy = lagTier >= 1 || perfMode || frameIsSlow();
@@ -22084,18 +22080,18 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle, viewRect
     : (themeKey === "ST_SUBURBS" ? "#18432d" : "#123522");
 
   ctx.fillStyle = grass;
-  ctx.fillRect(vx, vy, vw, vh);
+  ctx.fillRect(0, 0, w, h);
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
-    ctx.fillRect(vx, vy, vw, vh);
+    ctx.fillRect(0, 0, w, h);
   }
   const weatherTint = mobileWeatherTintSpec();
   if(weatherTint){
     ctx.fillStyle = weatherTint.main;
-    ctx.fillRect(vx, vy, vw, vh);
+    ctx.fillRect(0, 0, w, h);
     if(!heavy){
       ctx.fillStyle = weatherTint.top;
-      ctx.fillRect(vx, vy, vw, Math.max(80, vh * 0.22));
+      ctx.fillRect(0, 0, w, Math.max(80, h * 0.22));
     }
   }
 
@@ -22237,7 +22233,7 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle, viewRect
   if(Date.now() < (S.fogUntil || 0)){
     ctx.globalAlpha = 0.22;
     ctx.fillStyle = "#0b0d12";
-    ctx.fillRect(vx, vy, vw, vh);
+    ctx.fillRect(0, 0, w, h);
     ctx.globalAlpha = 1;
   }
 }
@@ -22261,12 +22257,7 @@ function drawMapScene(){
   }
   const mobileFastPath = isMobileViewport();
   if(mobileFastPath){
-    drawMapSceneMobileFast(frameNow, w, h, mapFamilyKey(key), chapterStyle, {
-      x: camSnap.x,
-      y: camSnap.y,
-      w: viewportW,
-      h: viewportH
-    });
+    drawMapSceneMobileFast(frameNow, w, h, mapFamilyKey(key), chapterStyle);
     return;
   }
   const ez = S.evacZone || DEFAULT.evacZone;
