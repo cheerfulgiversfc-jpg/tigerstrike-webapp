@@ -663,7 +663,7 @@ function ensureMissionTwistState(state=S){
   tw.blackout.active = !!tw.blackout.active;
   tw.blackout.until = Math.max(0, Math.floor(Number(tw.blackout.until || 0)));
 
-  if(!ENABLE_MISSION_TWISTS || isMobileViewport()){
+  if(!ENABLE_MISSION_TWISTS || isMobileViewport() || iphoneStabilityModeActive()){
     tw.enabled = false;
     tw.nextRollAt = 0;
     tw.cooldownUntil = 0;
@@ -716,7 +716,7 @@ function ensureMissionTwistState(state=S){
 
 function resetMissionTwistsForDeploy(state=S, now=Date.now()){
   const tw = ensureMissionTwistState(state);
-  tw.enabled = ENABLE_MISSION_TWISTS && !isMobileViewport();
+  tw.enabled = ENABLE_MISSION_TWISTS && !isMobileViewport() && !iphoneStabilityModeActive();
   if(!tw.enabled){
     tw.nextRollAt = 0;
     tw.cooldownUntil = 0;
@@ -6914,8 +6914,8 @@ function ensureStabilityMonitorNode(){
   return el;
 }
 function shouldShowStabilityMonitor(now=Date.now()){
-  if(window.__TS_SHOW_MONITOR__ === true) return true;
   if(isMobileViewport()) return false;
+  if(window.__TS_SHOW_MONITOR__ === true) return true;
   if(window.__TUTORIAL_MODE__) return false;
   if(performanceMode() === "PERFORMANCE" && !isMobileViewport()) return true;
   if(frameIsSlow()) return true;
@@ -7868,7 +7868,13 @@ function clampWorldToCanvas(){
 function sanitizeRuntimeState(){
   if(!S || typeof S !== "object") return;
   ensureWorldLayout(S);
-  if(typeof S.mobileMapRenderer !== "string") S.mobileMapRenderer = "full";
+  if(typeof S.mobileMapRenderer !== "string"){
+    S.mobileMapRenderer = isMobileViewport() ? "fast" : "full";
+  }
+  if(isMobileViewport() && S.mobileMapRenderer !== "fast"){
+    // Force stable mobile map path; avoids heavy cache artifacts on phones.
+    S.mobileMapRenderer = "fast";
+  }
   ensureStoryMetaState();
   ensureTouchHudState();
   ensureMissionDirectorState();
@@ -10717,8 +10723,15 @@ function openAbout(){
   const tgHint = tgInfo.userId > 0
     ? "Detected from your Telegram Mini App session."
     : "Open Tiger Strike from Telegram to detect your ID automatically.";
-  document.getElementById("aboutOverlay").style.display="flex";
-  document.getElementById("aboutBody").innerHTML = `
+  const aboutOverlay = document.getElementById("aboutOverlay");
+  const aboutBody = document.getElementById("aboutBody");
+  if(aboutOverlay) aboutOverlay.style.display="flex";
+  if(aboutBody) aboutBody.innerHTML = `<div class="item"><div><div class="itemName">Loading…</div></div></div>`;
+  requestAnimationFrame(()=>{
+    if(document.getElementById("aboutOverlay")?.style.display !== "flex") return;
+    const bodyNode = document.getElementById("aboutBody");
+    if(!bodyNode) return;
+    bodyNode.innerHTML = `
     <div class="item"><div><div class="itemName">Find your Telegram user ID</div>
       <div class="itemDesc">
         <b>In group/private chat:</b> send <code>/myid</code><br>
@@ -10746,6 +10759,7 @@ function openAbout(){
     <div class="hudLine"><b>Traps:</b> one-time hold 3–5s (no damage).</div>
     <div class="hudLine"><b>Ammo in battle:</b> If current gun is empty, switch guns. Attack disables only if ALL guns have no ammo.</div>
   `;
+  });
   sfx("ui");
 }
 function closeAbout(){ document.getElementById("aboutOverlay").style.display="none"; setPaused(false,null); }
@@ -10756,7 +10770,8 @@ function setPaused(on, reason=null){
   document.getElementById("pauseLbl").innerText = on?"Resume":"Pause";
   const mobileLbl = document.getElementById("pauseLblMobile");
   if(mobileLbl) mobileLbl.innerText = on ? "Resume" : "Pause";
-  save(true);
+  // Avoid forcing synchronous localStorage writes on tap paths; this blocks menu popups on mobile.
+  save();
 }
 function togglePause(){
   if(S.gameOver) return;
@@ -13698,10 +13713,16 @@ function openShop(){
     currentShopTab = "squad";
   }
   setPaused(true, fromBattle ? "shop-battle" : "shop");
-  document.getElementById("shopOverlay").style.display="flex";
+  const overlay = document.getElementById("shopOverlay");
+  if(overlay) overlay.style.display="flex";
   if(fromBattle && !anyLethalWeaponHasAmmo()) currentShopTab = "ammo";
-  shopTab(currentShopTab); sfx("ui");
-  if(fromBattle) setBattleMsg("Combat paused in Shop. Buy ammo or weapons, then tap Resume.");
+  const tab = currentShopTab;
+  requestAnimationFrame(()=>{
+    if(document.getElementById("shopOverlay")?.style.display !== "flex") return;
+    shopTab(tab);
+    sfx("ui");
+    if(fromBattle) setBattleMsg("Combat paused in Shop. Buy ammo or weapons, then tap Resume.");
+  });
 }
 function closeShop(){
   document.getElementById("shopOverlay").style.display="none";
@@ -13727,8 +13748,13 @@ function openInventory(){
   if(S.gameOver) return;
   if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
   setPaused(true,"inv");
-  document.getElementById("invOverlay").style.display="flex";
-  renderInventory(); sfx("ui");
+  const overlay = document.getElementById("invOverlay");
+  if(overlay) overlay.style.display="flex";
+  requestAnimationFrame(()=>{
+    if(document.getElementById("invOverlay")?.style.display !== "flex") return;
+    renderInventory();
+    sfx("ui");
+  });
 }
 function closeInventory(){
   document.getElementById("invOverlay").style.display="none";
