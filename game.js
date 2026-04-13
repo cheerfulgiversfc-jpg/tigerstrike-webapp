@@ -5986,6 +5986,7 @@ let __frameRecoverUntil = 0;
 let __frameHeavyFxFlip = 0;
 let __frameBgFxFlip = 0;
 let __frameDynamicLoadMul = FRAME_LOAD_LIGHT;
+let __frameMotionMul = 1;
 let __battleHudRenderAt = 0;
 let __battleReadabilityRenderAt = 0;
 let __liteEntityRenderState = false;
@@ -7019,11 +7020,14 @@ function updateFrameLoad(frameStartTs){
   const now = performance.now ? performance.now() : Date.now();
   if(!Number.isFinite(__lastFrameAt) || __lastFrameAt <= 0){
     __lastFrameAt = now;
+    __frameMotionMul = 1;
     noteFrameSample(16.7, 0);
     return;
   }
   const frameGap = now - __lastFrameAt;
   __lastFrameAt = now;
+  const targetMul = clamp(frameGap / 16.7, 0.85, 1.8);
+  __frameMotionMul = clamp((__frameMotionMul * 0.7) + (targetMul * 0.3), 0.85, 1.8);
   const frameCost = now - frameStartTs;
   noteFrameSample(frameGap, frameCost);
   if(frameGap > 4200 || frameCost > 150){
@@ -7068,6 +7072,7 @@ function recoverFromSpikeFrame(){
   const now = performance.now ? performance.now() : Date.now();
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + STABILITY_SPIKE_RECOVER_MS);
   __frameRecoverUntil = Math.max(__frameRecoverUntil || 0, now + 1800);
+  __frameMotionMul = Math.max(1, __frameMotionMul * 0.94);
   if(COMBAT_FX.length > 24) COMBAT_FX.splice(0, COMBAT_FX.length - 24);
   if(DAMAGE_POPUPS.length > 24) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - 24);
   if(IMPACT_PULSES.length > 18) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - 18);
@@ -7079,6 +7084,10 @@ function recoverFromSpikeFrame(){
       if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || 0, t.vx || 1);
     }
   }
+}
+
+function frameMotionMul(){
+  return clamp(Number(__frameMotionMul || 1) || 1, 0.85, 1.8);
 }
 
 function trimActiveEntityLoad(){
@@ -18076,6 +18085,7 @@ function keyboardMoveTick(){
   const len = Math.hypot(dx,dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
+  const motionMul = frameMotionMul();
   let speed=PLAYER_WALK_SPEED;
   let sprinting = false;
 
@@ -18084,6 +18094,7 @@ function keyboardMoveTick(){
     sprinting = true;
     S._sprintTicks--;
   }
+  speed *= motionMul;
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
 
   S.target=null;
@@ -18094,7 +18105,11 @@ function keyboardMoveTick(){
   const ny = S.me.y + uy*speed;
   tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
 
-  S.stamina = clamp(S.stamina - ((sprinting ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()), 0, 100);
+  S.stamina = clamp(
+    S.stamina - (((sprinting ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()) * motionMul),
+    0,
+    100
+  );
   return true;
 }
 
@@ -18106,9 +18121,11 @@ function movePlayer(){
   if(d<6){ S.target=null; return; }
   if(S.stamina<=0) return;
 
+  const motionMul = frameMotionMul();
   let speed=PLAYER_WALK_SPEED;
   let sprinting = false;
   if(S._sprintTicks && S._sprintTicks>0){ speed=PLAYER_SPRINT_SPEED; sprinting = true; S._sprintTicks--; }
+  speed *= motionMul;
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
 
   S.me.face = Math.atan2(dy, dx);
@@ -18120,7 +18137,11 @@ function movePlayer(){
   const ok = tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
   if(!ok){ S.target=null; }
 
-  S.stamina = clamp(S.stamina - ((sprinting ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()), 0, 100);
+  S.stamina = clamp(
+    S.stamina - (((sprinting ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()) * motionMul),
+    0,
+    100
+  );
 }
 
 function sprint(){
@@ -18558,7 +18579,8 @@ function runCivilianFleeStep(c, now=Date.now()){
   const jitter = c.following ? 0 : (((c.id % 3) - 1) * 0.28);
   const ang = Math.atan2(awayY, awayX) + jitter;
   const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
-  const fleeSpeed = (c.following ? 3.38 : 2.74) * (c.following ? Math.max(0.94, waterMul) : waterMul);
+  const motionMul = frameMotionMul();
+  const fleeSpeed = (c.following ? 3.38 : 2.74) * (c.following ? Math.max(0.94, waterMul) : waterMul) * motionMul;
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -18571,6 +18593,7 @@ function runCivilianFleeStep(c, now=Date.now()){
 function followCiviliansTick(){
   if(S.mode==="Survival") return;
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
+  const motionMul = frameMotionMul();
   const escortBoost = storyRescueSpeedMul();
   const engageDist = 86;
   const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 720 : 620;
@@ -18731,7 +18754,7 @@ function followCiviliansTick(){
     const sp = Math.min(
       ((Math.max(playerSpeed * 1.4, 3.95) + catchup + trailBoost) * escortBoost * escortWaterMul),
       PLAYER_SPRINT_SPEED + 4.9
-    );
+    ) * motionMul;
     const targetVx = (dx/dd) * sp;
     const targetVy = (dy/dd) * sp;
     if(!Number.isFinite(c._followVx)) c._followVx = 0;
