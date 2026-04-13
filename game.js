@@ -8073,8 +8073,8 @@ const STAMINA_COST_SCAN = 8;
 const STAMINA_COST_SPRINT = 16;
 const STAMINA_DRAIN_WALK = 0.035;
 const STAMINA_DRAIN_SPRINT = 0.08;
-const PLAYER_WALK_SPEED = 2.55;
-const PLAYER_SPRINT_SPEED = 4.05;
+const PLAYER_WALK_SPEED = 2.95;
+const PLAYER_SPRINT_SPEED = 4.55;
 const SHIELD_DURATION_MS = 5000;
 const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
@@ -18558,7 +18558,7 @@ function runCivilianFleeStep(c, now=Date.now()){
   const jitter = c.following ? 0 : (((c.id % 3) - 1) * 0.28);
   const ang = Math.atan2(awayY, awayX) + jitter;
   const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
-  const fleeSpeed = (c.following ? 3.14 : 2.52) * (c.following ? Math.max(0.94, waterMul) : waterMul);
+  const fleeSpeed = (c.following ? 3.38 : 2.74) * (c.following ? Math.max(0.94, waterMul) : waterMul);
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -18726,11 +18726,11 @@ function followCiviliansTick(){
     }
     const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
     const escortWaterMul = Math.max(0.95, waterMul);
-    const catchup = clamp((dd - 8) * 0.078, 0, 6.5);
-    const trailBoost = dd > 180 ? 0.92 : (dd > 130 ? 0.52 : 0);
+    const catchup = clamp((dd - 8) * 0.084, 0, 7.2);
+    const trailBoost = dd > 180 ? 1.06 : (dd > 130 ? 0.62 : 0);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.34, 3.45) + catchup + trailBoost) * escortBoost * escortWaterMul),
-      PLAYER_SPRINT_SPEED + 3.9
+      ((Math.max(playerSpeed * 1.4, 3.95) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      PLAYER_SPRINT_SPEED + 4.9
     );
     const targetVx = (dx/dd) * sp;
     const targetVy = (dy/dd) * sp;
