@@ -7859,6 +7859,7 @@ function clampWorldToCanvas(){
 function sanitizeRuntimeState(){
   if(!S || typeof S !== "object") return;
   ensureWorldLayout(S);
+  if(typeof S.mobileMapRenderer !== "string") S.mobileMapRenderer = "full";
   ensureStoryMetaState();
   ensureTouchHudState();
   ensureMissionDirectorState();
@@ -22064,6 +22065,13 @@ function mobileWeatherTintSpec(){
   }
   return null;
 }
+
+function shouldUseMobileFastMapRenderer(state=S){
+  if(!isMobileViewport()) return false;
+  const pref = String(state?.mobileMapRenderer || "full").toLowerCase();
+  return pref === "fast";
+}
+
 function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
   const lagTier = frameLagTier();
   const perfMode = performanceMode() === "PERFORMANCE";
@@ -22255,7 +22263,7 @@ function drawMapScene(){
   if(!ENABLE_BIOME_SYSTEM && (S.fogUntil || 0) > 0){
     S.fogUntil = 0;
   }
-  const mobileFastPath = isMobileViewport();
+  const mobileFastPath = shouldUseMobileFastMapRenderer(S);
   if(mobileFastPath){
     drawMapSceneMobileFast(frameNow, w, h, mapFamilyKey(key), chapterStyle);
     return;
