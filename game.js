@@ -21248,11 +21248,13 @@ function combatTick(){
     const chargeStep = Math.min(7.4, len);
     tryMoveEntity(t, t.x + (dx / len) * chargeStep, t.y + (dy / len) * chargeStep, 18, { avoidKeepout:false });
   }
-  if(!Number.isFinite(t._chargeWindupUntil) || t._chargeWindupUntil <= now){
+  if(!Number.isFinite(t._chargeWindupUntil)){
     t._chargeWindupUntil = now + rand(800, 1200);
     t._chargePromptAt = 0;
   }
-  if(now < t._chargeWindupUntil){
+  const longAttackAt = Number(S._combatTigerAttackAt || 0);
+  const windupReadyAt = Math.max(t._chargeWindupUntil || 0, longAttackAt);
+  if(now < windupReadyAt){
     if((t._chargePromptAt || 0) + 900 < now){
       t._chargePromptAt = now;
       setBattleMsg("Tiger is charging. Roll to dodge.");
@@ -21260,7 +21262,7 @@ function combatTick(){
     return;
   }
   const longAttackRange = Math.min(rangeLimit, 220);
-  if(d <= longAttackRange && now >= (S._combatTigerAttackAt || 0)){
+  if(d <= longAttackRange && now >= longAttackAt){
     S._combatTigerAttackAt = now + rand(1700, 2400);
     t._chargeWindupUntil = now + rand(900, 1300);
     tigerTurn(t, S._protectTicks > 0, { kind:"charge", dmgMul:1.35, maxRange:220 });
