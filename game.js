@@ -5993,6 +5993,8 @@ let __savePending = false;
 const __frameTaskGate = Object.create(null);
 const __frameTaskPhase = Object.create(null);
 const MAP_CACHE_INTERVAL_MS = 200;
+const MOBILE_FAST_RENDERER_LAG_GAP_MS = 52;
+const MOBILE_FAST_RENDERER_LAG_COST_MS = 28;
 let __mapFrameCacheCanvas = null;
 let __mapFrameCacheCtx = null;
 let __mapFrameCacheSig = "";
@@ -6042,6 +6044,7 @@ const __stabilityMonitorState = {
 let __lastStoryFullSnapshotAt = 0;
 let __autoPerfEscalatedAt = 0;
 let __storyCheckpointCache = null;
+let __emptyViewportFrames = 0;
 const __renderFailSafeState = {
   consecutive: 0,
   lastRecoverAt: 0,
@@ -7066,6 +7069,12 @@ function updateFrameLoad(frameStartTs){
       markBalanceFreezeSpike(frameGap, frameCost, S);
     }
     __frameSpikePending = true;
+  }
+  if(isMobileViewport() && (frameGap > MOBILE_FAST_RENDERER_LAG_GAP_MS || frameCost > MOBILE_FAST_RENDERER_LAG_COST_MS || frameIsSlow(now))){
+    if(S && S.mobileMapRenderer !== "fast"){
+      S.mobileMapRenderer = "fast";
+      invalidateMapCache();
+    }
   }
   if(frameGap > STABILITY_STALL_HARD_GAP_MS || frameCost > STABILITY_STALL_COST_MS){
     runStabilityRecovery(frameGap > STABILITY_STALL_HARD_GAP_MS ? "hard-gap" : "hard-cost");
@@ -18799,16 +18808,16 @@ function followCiviliansTick(){
     const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
     const escortWaterMul = Math.max(0.95, waterMul);
     const catchup = clamp((dd - 8) * 0.084, 0, 7.2);
-    const trailBoost = dd > 180 ? 1.06 : (dd > 130 ? 0.62 : 0);
+    const trailBoost = dd > 200 ? 1.26 : (dd > 140 ? 0.84 : 0.14);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.4, 3.95) + catchup + trailBoost) * escortBoost * escortWaterMul),
-      PLAYER_SPRINT_SPEED + 4.9
+      ((Math.max(playerSpeed * 1.52, 4.25) + catchup + trailBoost) * escortBoost * escortWaterMul),
+      PLAYER_SPRINT_SPEED + 5.6
     ) * motionMul;
     const targetVx = (dx/dd) * sp;
     const targetVy = (dy/dd) * sp;
     if(!Number.isFinite(c._followVx)) c._followVx = 0;
     if(!Number.isFinite(c._followVy)) c._followVy = 0;
-    const smooth = dd > 130 ? 0.34 : 0.44;
+    const smooth = dd > 130 ? 0.40 : 0.54;
     c._followVx += (targetVx - c._followVx) * smooth;
     c._followVy += (targetVy - c._followVy) * smooth;
     const mag = Math.hypot(c._followVx, c._followVy) || 0;
@@ -22142,14 +22151,21 @@ function mobileWeatherTintSpec(){
 
 function shouldUseMobileFastMapRenderer(state=S){
   if(!isMobileViewport()) return false;
+  if(iphoneStabilityModeActive()) return true;
   const pref = String(state?.mobileMapRenderer || "full").toLowerCase();
   return pref === "fast";
 }
 
-function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
+function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey, chapterStyle, camX=0, camY=0){
   const lagTier = frameLagTier();
   const perfMode = performanceMode() === "PERFORMANCE";
   const heavy = lagTier >= 1 || perfMode || frameIsSlow();
+  const w = Math.max(1, Number(worldW || cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH);
+  const h = Math.max(1, Number(worldH || cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT);
+  const drawW = Math.max(1, Number(viewW || cv?.width || w) || w);
+  const drawH = Math.max(1, Number(viewH || cv?.height || h) || h);
+  const drawX = Number.isFinite(camX) ? Number(camX) : 0;
+  const drawY = Number.isFinite(camY) ? Number(camY) : 0;
   const zone = missionEvacZoneSafe(S);
   const roadColor = themeKey === "ST_DOWNTOWN"
     ? "rgba(80,86,96,.92)"
@@ -22162,18 +22178,18 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
     : (themeKey === "ST_SUBURBS" ? "#18432d" : "#123522");
 
   ctx.fillStyle = grass;
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(drawX, drawY, drawW, drawH);
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(drawX, drawY, drawW, drawH);
   }
   const weatherTint = mobileWeatherTintSpec();
   if(weatherTint){
     ctx.fillStyle = weatherTint.main;
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(drawX, drawY, drawW, drawH);
     if(!heavy){
       ctx.fillStyle = weatherTint.top;
-      ctx.fillRect(0, 0, w, Math.max(80, h * 0.22));
+      ctx.fillRect(drawX, drawY, drawW, Math.max(80, drawH * 0.22));
     }
   }
 
@@ -22315,7 +22331,7 @@ function drawMapSceneMobileFast(frameNow, w, h, themeKey, chapterStyle){
   if(Date.now() < (S.fogUntil || 0)){
     ctx.globalAlpha = 0.22;
     ctx.fillStyle = "#0b0d12";
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(drawX, drawY, drawW, drawH);
     ctx.globalAlpha = 1;
   }
 }
@@ -22339,7 +22355,7 @@ function drawMapScene(){
   }
   const mobileFastPath = shouldUseMobileFastMapRenderer(S);
   if(mobileFastPath){
-    drawMapSceneMobileFast(frameNow, w, h, mapFamilyKey(key), chapterStyle);
+    drawMapSceneMobileFast(frameNow, w, h, viewportW, viewportH, mapFamilyKey(key), chapterStyle, camSnap.x, camSnap.y);
     return;
   }
   const ez = S.evacZone || DEFAULT.evacZone;
@@ -24776,7 +24792,7 @@ function drawFailSafeScene(camX=0, camY=0){
       const mapInfo = currentMap();
       const chapter = chapterIndexForMode(S.mode);
       const chapterStyle = chapterVisualForMode(S.mode, chapter);
-      drawMapSceneMobileFast(Date.now(), worldW, worldH, mapFamilyKey(mapInfo.key), chapterStyle);
+      drawMapSceneMobileFast(Date.now(), worldW, worldH, viewW, viewH, mapFamilyKey(mapInfo.key), chapterStyle, vx, vy);
       drewFallbackMap = true;
     }catch(e){}
 
@@ -24879,6 +24895,82 @@ function noteRenderSuccess(){
   if(__renderFailSafeState.consecutive > 0){
     __renderFailSafeState.consecutive = 0;
   }
+}
+
+function countVisibleEntitiesInViewport(state=S, pad=26){
+  if(!state || typeof state !== "object") return 0;
+  const viewW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const viewH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const off = cameraOffsetSnapshot(state);
+  const inView = (x, y, radius=10)=>{
+    if(!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const sx = x - off.x;
+    const sy = y - off.y;
+    const r = Math.max(0, Number(radius) || 0) + pad;
+    return sx >= -r && sx <= (viewW + r) && sy >= -r && sy <= (viewH + r);
+  };
+  let visible = 0;
+  if(state.me && inView(state.me.x, state.me.y, 20)) visible++;
+  for(const civ of (state.civilians || [])){
+    if(!civ || civ.alive === false || civ.evac) continue;
+    if(inView(civ.x, civ.y, 18)){ visible++; if(visible >= 2) break; }
+  }
+  if(visible < 2){
+    for(const t of (state.tigers || [])){
+      if(!t || t.alive === false) continue;
+      if(inView(t.x, t.y, 22)){ visible++; if(visible >= 2) break; }
+    }
+  }
+  return visible;
+}
+
+function enforceVisibleMissionViewport(state=S){
+  if(!state || typeof state !== "object") return false;
+  if(state.paused || state.gameOver || state.missionEnded) return false;
+  if(!state.me || !Number.isFinite(state.me.x) || !Number.isFinite(state.me.y)){
+    return false;
+  }
+  const viewW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const viewH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const off = cameraOffsetSnapshot(state);
+  const mx = state.me.x - off.x;
+  const my = state.me.y - off.y;
+  const margin = 44;
+  const meOnScreen =
+    mx >= -margin &&
+    mx <= (viewW + margin) &&
+    my >= -margin &&
+    my <= (viewH + margin);
+  if(!meOnScreen){
+    const c = cameraClampCenter(state.me.x, state.me.y, state);
+    state.camera = state.camera || {};
+    state.camera.x = c.x;
+    state.camera.y = c.y;
+    __emptyViewportFrames = 0;
+    invalidateMapCache();
+    return true;
+  }
+  const visibleCount = countVisibleEntitiesInViewport(state, 26);
+  if(visibleCount <= 0){
+    __emptyViewportFrames = Math.min(60, (__emptyViewportFrames || 0) + 1);
+  } else {
+    __emptyViewportFrames = Math.max(0, (__emptyViewportFrames || 0) - 2);
+  }
+  if((__emptyViewportFrames || 0) >= 10){
+    __emptyViewportFrames = 0;
+    try{
+      ensureMissionStartupIntegrity({ force:true, reason:"viewport-empty" });
+      const c = cameraClampCenter(state.me.x, state.me.y, state);
+      state.camera = state.camera || {};
+      state.camera.x = c.x;
+      state.camera.y = c.y;
+      invalidateMapCache();
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+  return false;
 }
 
 let __lastStartupIntegrityAt = 0;
@@ -25019,6 +25111,7 @@ function draw(){
     if(emergencyInvalid){
       safeTick("startupIntegrityEmergency", ()=>ensureMissionStartupIntegrity({ force:true, reason:`frame-emergency:${emergencyInvalid}` }));
     }
+    safeTick("viewportVisibility", ()=>enforceVisibleMissionViewport(S));
     runFrameTask("stabilityHealth", frameInterval(220, 1.6), stabilityHealthTick, { costHint:0.9, critical:true });
     runFrameTask("arcadeModeTick", frameInterval(220, 1.45), arcadeModeTick, { costHint:0.6, critical:S.mode==="Arcade" });
 
@@ -25076,11 +25169,11 @@ function draw(){
       safeTick("clearOutOfRangeLock", clearOutOfRangeLock);
       runFrameTask("followCivilians", frameInterval(
         battleLoad
-          ? (lagCritical ? 112 : (lagHeavy ? 90 : 70))
-          : (lagCritical ? 74 : (lagHeavy ? 60 : 44)),
+          ? (lagCritical ? 88 : (lagHeavy ? 72 : 56))
+          : (lagCritical ? 58 : (lagHeavy ? 48 : 36)),
         1.35
       ), followCiviliansTick, {
-        costHint:1.3, critical:true, cadence:1, slowCadence:1, heavyCadence:2, extremeCadence:2
+        costHint:1.15, critical:true, cadence:1, slowCadence:1, heavyCadence:1, extremeCadence:1
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
       runFrameTask("civThreats", frameInterval(
@@ -25264,6 +25357,9 @@ function init(){
   trimPersistentState(S);
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   S.performanceMode = normalizePerformanceMode(S.performanceMode);
+  if(isMobileViewport()){
+    S.mobileMapRenderer = "fast";
+  }
   S.touchHud = normalizeTouchHudSettings(S.touchHud);
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
   if(!S.equippedWeaponId || !getWeapon(S.equippedWeaponId)) S.equippedWeaponId = DEFAULT.equippedWeaponId;
