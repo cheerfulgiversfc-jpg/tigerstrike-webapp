@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4482";
+const TS_BUILD = "4494";
 if(tg){
   try{
     tg.expand?.();
@@ -148,6 +148,8 @@ const ENABLE_BIOME_SYSTEM = false;
 const ENABLE_BIOME_TEXT = true;
 const ENABLE_MISSION_TWISTS = false;
 const ENABLE_TWIST_BRIDGE = false;
+const ENABLE_TWIST_HOSTAGE = false;
+const ENABLE_TWIST_FOG = false;
 const ENABLE_TWIST_BLACKOUT = false;
 const ENABLE_IPHONE_STABILITY_LOCK = false;
 const ENABLE_IPHONE_LITE_FEEDBACK = false;
@@ -155,8 +157,8 @@ const ENABLE_MOBILE_WEATHER_TINT = true;
 const ENABLE_MOBILE_COMPACT_INTEL = true;
 const MISSION_TWIST_TYPES = Object.freeze([
   ...(ENABLE_TWIST_BRIDGE ? ["bridge"] : []),
-  "hostage",
-  "fog",
+  ...(ENABLE_TWIST_HOSTAGE ? ["hostage"] : []),
+  ...(ENABLE_TWIST_FOG ? ["fog"] : []),
   ...(ENABLE_TWIST_BLACKOUT ? ["blackout"] : [])
 ]);
 const MISSION_TWIST_ROLL_MIN_MS = 19000;
@@ -699,6 +701,30 @@ function ensureMissionTwistState(state=S){
       tw.activeUntil = 0;
     }
     tw.used.bridge = 0;
+  }
+  if(!ENABLE_TWIST_HOSTAGE){
+    tw.hostage.active = false;
+    tw.hostage.siteId = 0;
+    tw.hostage.civId = 0;
+    tw.hostage.until = 0;
+    tw.hostage.rescued = false;
+    tw.hostage.penaltyApplied = false;
+    if(tw.activeType === "hostage"){
+      tw.activeType = "";
+      tw.activeUntil = 0;
+    }
+    tw.used.hostage = 0;
+  }
+  if(!ENABLE_TWIST_FOG){
+    if(tw.activeType === "fog"){
+      tw.activeType = "";
+      tw.activeUntil = 0;
+    }
+    tw.used.fog = 0;
+    if(state && typeof state === "object"){
+      state.fogUntil = 0;
+      state._biomeFogPulseAt = 0;
+    }
   }
   if(!ENABLE_TWIST_BLACKOUT){
     tw.blackout.active = false;
@@ -6218,8 +6244,10 @@ function updateWorldCamera(state=S){
   const clamped = cameraClampCenter(state.camera.x, state.camera.y, state);
   state.camera.x = clamped.x;
   state.camera.y = clamped.y;
-  const px = target.x - (state.camera.x - (vw * 0.5));
-  const py = target.y - (state.camera.y - (vh * 0.5));
+  const meX = Number.isFinite(state?.me?.x) ? state.me.x : target.x;
+  const meY = Number.isFinite(state?.me?.y) ? state.me.y : target.y;
+  const px = meX - (state.camera.x - (vw * 0.5));
+  const py = meY - (state.camera.y - (vh * 0.5));
   const marginX = Math.max(34, vw * (mobile ? 0.11 : 0.14));
   const marginY = Math.max(28, vh * (mobile ? 0.12 : 0.16));
   const playerNearEdge =
@@ -7868,13 +7896,14 @@ function clampWorldToCanvas(){
 function sanitizeRuntimeState(){
   if(!S || typeof S !== "object") return;
   ensureWorldLayout(S);
-  if(typeof S.mobileMapRenderer !== "string"){
-    S.mobileMapRenderer = isMobileViewport() ? "fast" : "full";
-  }
-  if(isMobileViewport() && S.mobileMapRenderer !== "fast"){
-    // Force stable mobile map path; avoids heavy cache artifacts on phones.
-    S.mobileMapRenderer = "fast";
-  }
+  S.mode = normalizeModeName(S.mode);
+  const rendererPref = String(S.mobileMapRenderer || "").toLowerCase();
+  S.mobileMapRenderer = (rendererPref === "fast" || rendererPref === "full") ? rendererPref : "full";
+  if(!Number.isFinite(S.storyLevel) || S.storyLevel < 1) S.storyLevel = 1;
+  if(!Number.isFinite(S.arcadeLevel) || S.arcadeLevel < 1) S.arcadeLevel = 1;
+  if(!Number.isFinite(S.survivalWave) || S.survivalWave < 1) S.survivalWave = 1;
+  if(!Number.isFinite(S.mapIndex) || S.mapIndex < 0) S.mapIndex = 0;
+  if(!Number.isFinite(S.funds) || S.funds < 0) S.funds = 0;
   ensureStoryMetaState();
   ensureTouchHudState();
   ensureMissionDirectorState();
@@ -10726,12 +10755,8 @@ function openAbout(){
   const aboutOverlay = document.getElementById("aboutOverlay");
   const aboutBody = document.getElementById("aboutBody");
   if(aboutOverlay) aboutOverlay.style.display="flex";
-  if(aboutBody) aboutBody.innerHTML = `<div class="item"><div><div class="itemName">Loading…</div></div></div>`;
-  requestAnimationFrame(()=>{
-    if(document.getElementById("aboutOverlay")?.style.display !== "flex") return;
-    const bodyNode = document.getElementById("aboutBody");
-    if(!bodyNode) return;
-    bodyNode.innerHTML = `
+  if(aboutBody){
+    aboutBody.innerHTML = `
     <div class="item"><div><div class="itemName">Find your Telegram user ID</div>
       <div class="itemDesc">
         <b>In group/private chat:</b> send <code>/myid</code><br>
@@ -10759,7 +10784,7 @@ function openAbout(){
     <div class="hudLine"><b>Traps:</b> one-time hold 3–5s (no damage).</div>
     <div class="hudLine"><b>Ammo in battle:</b> If current gun is empty, switch guns. Attack disables only if ALL guns have no ammo.</div>
   `;
-  });
+  }
   sfx("ui");
 }
 function closeAbout(){ document.getElementById("aboutOverlay").style.display="none"; setPaused(false,null); }
@@ -13717,12 +13742,11 @@ function openShop(){
   if(overlay) overlay.style.display="flex";
   if(fromBattle && !anyLethalWeaponHasAmmo()) currentShopTab = "ammo";
   const tab = currentShopTab;
-  requestAnimationFrame(()=>{
-    if(document.getElementById("shopOverlay")?.style.display !== "flex") return;
+  if(document.getElementById("shopOverlay")?.style.display === "flex"){
     shopTab(tab);
     sfx("ui");
     if(fromBattle) setBattleMsg("Combat paused in Shop. Buy ammo or weapons, then tap Resume.");
-  });
+  }
 }
 function closeShop(){
   document.getElementById("shopOverlay").style.display="none";
@@ -13750,11 +13774,10 @@ function openInventory(){
   setPaused(true,"inv");
   const overlay = document.getElementById("invOverlay");
   if(overlay) overlay.style.display="flex";
-  requestAnimationFrame(()=>{
-    if(document.getElementById("invOverlay")?.style.display !== "flex") return;
+  if(document.getElementById("invOverlay")?.style.display === "flex"){
     renderInventory();
     sfx("ui");
-  });
+  }
 }
 function closeInventory(){
   document.getElementById("invOverlay").style.display="none";
@@ -24608,29 +24631,46 @@ function drawEntitiesLite(){
   }
 }
 function drawEntities(){
+  const drawSafe = (label, fn)=>{
+    try{ fn(); }catch(err){ reportTickError(label, err); }
+  };
   const liteRender = useLiteEntityRender();
   if(liteRender){
-    drawEntitiesLite();
+    drawSafe("drawEntitiesLite", drawEntitiesLite);
   } else {
     // carcasses block movement
-    for(const c of S.carcasses) drawCarcass(c.x,c.y);
+    for(const c of S.carcasses){
+      drawSafe("drawCarcass", ()=>drawCarcass(c.x, c.y));
+    }
 
     // pickups
-    for(const p of (S.pickups||[])) drawPickup(p);
+    for(const p of (S.pickups||[])){
+      drawSafe("drawPickup", ()=>drawPickup(p));
+    }
 
-    for(const it of (S.mapInteractables || [])) drawMapInteractable(it);
+    for(const it of (S.mapInteractables || [])){
+      drawSafe("drawMapInteractable", ()=>drawMapInteractable(it));
+    }
 
-    for(const site of (S.rescueSites || [])) drawRescueSite(site);
+    for(const site of (S.rescueSites || [])){
+      drawSafe("drawRescueSite", ()=>drawRescueSite(site));
+    }
 
     if(S.mode!=="Survival"){
-      for(const c of S.civilians){ if(c.alive) drawCivilian(c); }
+      for(const c of S.civilians){
+        if(c.alive) drawSafe("drawCivilian", ()=>drawCivilian(c));
+      }
     }
-    for(const unit of (S.supportUnits || [])) drawSupportUnit(unit);
-    for(const t of S.tigers){ if(t.alive) drawTiger(t); }
-    drawSoldier();
+    for(const unit of (S.supportUnits || [])){
+      drawSafe("drawSupportUnit", ()=>drawSupportUnit(unit));
+    }
+    for(const t of S.tigers){
+      if(t.alive) drawSafe("drawTiger", ()=>drawTiger(t));
+    }
+    drawSafe("drawSoldier", drawSoldier);
   }
-  drawOnMapBattleReadability();
-  drawOnMapBattleHud();
+  drawSafe("drawOnMapBattleReadability", drawOnMapBattleReadability);
+  drawSafe("drawOnMapBattleHud", drawOnMapBattleHud);
   const perfMode = performanceMode();
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
@@ -24671,13 +24711,13 @@ function drawEntities(){
   if(iphoneLiteFeedback){
     const liteTick = (__frameHeavyFxFlip % (lagTier >= 1 ? 8 : 6)) === 0;
     if(liteTick && !frameBudgetTight){
-      if(IMPACT_PULSES.length > 0) drawImpactPulses();
-      if(!liteRender && DAMAGE_POPUPS.length > 0) drawDamagePopups();
+      if(IMPACT_PULSES.length > 0) drawSafe("drawImpactPulses", drawImpactPulses);
+      if(!liteRender && DAMAGE_POPUPS.length > 0) drawSafe("drawDamagePopups", drawDamagePopups);
     }
   } else if(!iphoneStability){
-    if(shouldDrawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight && lagTier === 0)) drawImpactPulses();
-    if(!liteRender && shouldDrawFx && !frameBudgetTight) drawCombatFx();
-    if(!liteRender && (shouldDrawFx || (!frameBudgetTight && shouldDrawPopups))) drawDamagePopups();
+    if(shouldDrawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight && lagTier === 0)) drawSafe("drawImpactPulses", drawImpactPulses);
+    if(!liteRender && shouldDrawFx && !frameBudgetTight) drawSafe("drawCombatFx", drawCombatFx);
+    if(!liteRender && (shouldDrawFx || (!frameBudgetTight && shouldDrawPopups))) drawSafe("drawDamagePopups", drawDamagePopups);
   }
 }
 function drawMobileUiClearLane(){
@@ -24731,16 +24771,26 @@ function drawFailSafeScene(camX=0, camY=0){
     ctx.clearRect(0, 0, viewW, viewH);
     ctx.save();
     ctx.translate(-vx, -vy);
+    let drewFallbackMap = false;
+    try{
+      const mapInfo = currentMap();
+      const chapter = chapterIndexForMode(S.mode);
+      const chapterStyle = chapterVisualForMode(S.mode, chapter);
+      drawMapSceneMobileFast(Date.now(), worldW, worldH, mapFamilyKey(mapInfo.key), chapterStyle);
+      drewFallbackMap = true;
+    }catch(e){}
 
-    // Never blank: fallback keeps a lightweight playable scene visible.
-    ctx.fillStyle = "#143624";
-    ctx.fillRect(vx, vy, viewW, viewH);
-    const horizon = Math.max(40, Math.round(viewH * 0.22));
-    const topGrad = ctx.createLinearGradient(vx, vy, vx, vy + horizon);
-    topGrad.addColorStop(0, "rgba(46,122,84,.24)");
-    topGrad.addColorStop(1, "rgba(16,44,31,.04)");
-    ctx.fillStyle = topGrad;
-    ctx.fillRect(vx, vy, viewW, horizon);
+    // Never blank: if fast map draw fails, paint a minimal emergency scene.
+    if(!drewFallbackMap){
+      ctx.fillStyle = "#143624";
+      ctx.fillRect(vx, vy, viewW, viewH);
+      const horizon = Math.max(40, Math.round(viewH * 0.22));
+      const topGrad = ctx.createLinearGradient(vx, vy, vx, vy + horizon);
+      topGrad.addColorStop(0, "rgba(46,122,84,.24)");
+      topGrad.addColorStop(1, "rgba(16,44,31,.04)");
+      ctx.fillStyle = topGrad;
+      ctx.fillRect(vx, vy, viewW, horizon);
+    }
 
     if(S.mode !== "Survival"){
       ctx.fillStyle = "rgba(16,56,34,.30)";
@@ -24836,15 +24886,23 @@ let __lastStartupIntegrityToastAt = 0;
 function missionEntityStateInvalid(state=S){
   if(!state || typeof state !== "object") return "state-missing";
   const mode = normalizeModeName(state.mode);
-  const meOk = !!(state.me && Number.isFinite(state.me.x) && Number.isFinite(state.me.y));
+  const w = Math.max(200, worldWidth(state));
+  const h = Math.max(200, worldHeight(state));
+  const inWorld = (x, y, pad=140)=>
+    Number.isFinite(x) &&
+    Number.isFinite(y) &&
+    x >= -pad &&
+    x <= (w + pad) &&
+    y >= -pad &&
+    y <= (h + pad);
+  const meOk = !!(state.me && inWorld(state.me.x, state.me.y, 180));
   if(!meOk) return "player-missing";
 
   if(!Array.isArray(state.tigers) || !state.tigers.length) return "tigers-empty";
   const hasTiger = state.tigers.some((t)=>
     t &&
     t.alive !== false &&
-    Number.isFinite(t.x) &&
-    Number.isFinite(t.y) &&
+    inWorld(t.x, t.y, 220) &&
     Number.isFinite(t.hp)
   );
   if(!hasTiger) return "tigers-invalid";
@@ -24853,9 +24911,9 @@ function missionEntityStateInvalid(state=S){
 
   const hasEvac = !!(
     state.evacZone &&
-    Number.isFinite(state.evacZone.x) &&
-    Number.isFinite(state.evacZone.y) &&
-    Number.isFinite(state.evacZone.r)
+    inWorld(state.evacZone.x, state.evacZone.y, 220) &&
+    Number.isFinite(state.evacZone.r) &&
+    Number(state.evacZone.r) > 10
   );
   if(!hasEvac) return "evac-invalid";
 
@@ -24864,8 +24922,7 @@ function missionEntityStateInvalid(state=S){
     c &&
     c.alive !== false &&
     !c.evac &&
-    Number.isFinite(c.x) &&
-    Number.isFinite(c.y) &&
+    inWorld(c.x, c.y, 220) &&
     Number.isFinite(c.hp)
   );
   if(!hasActiveCivilian){
@@ -24911,6 +24968,16 @@ function ensureMissionStartupIntegrity(opts={}){
   }
 
   invalid = missionEntityStateInvalid(S);
+  if(invalid && !(S.gameOver || S.missionEnded)){
+    try{
+      const keepHp = clamp(Number(S.hp || 100), 0, 100);
+      const keepArmor = clamp(Number(S.armor || 0), 0, S.armorCap || 100);
+      deploy({ carryStats:true, hp:keepHp, armor:keepArmor });
+      sanitizeRuntimeState();
+      clampWorldToCanvas();
+      invalid = missionEntityStateInvalid(S);
+    }catch(e){}
+  }
   if(invalid){
     return false;
   }
@@ -24948,6 +25015,10 @@ function draw(){
     safeTick("maybeRenderHUD", maybeRenderHUD);
     safeTick("updateEngage", updateEngage);
     safeTick("respawnTick", respawnTick);
+    const emergencyInvalid = missionEntityStateInvalid(S);
+    if(emergencyInvalid){
+      safeTick("startupIntegrityEmergency", ()=>ensureMissionStartupIntegrity({ force:true, reason:`frame-emergency:${emergencyInvalid}` }));
+    }
     runFrameTask("stabilityHealth", frameInterval(220, 1.6), stabilityHealthTick, { costHint:0.9, critical:true });
     runFrameTask("arcadeModeTick", frameInterval(220, 1.45), arcadeModeTick, { costHint:0.6, critical:S.mode==="Arcade" });
 
@@ -25091,6 +25162,20 @@ function draw(){
       }catch(renderErr){
         reportTickError("drawSceneFrame", renderErr);
         noteRenderFailSafe("drawSceneFrame");
+        try{
+          if((__renderFailSafeState.consecutive || 0) >= 2 && !(S.gameOver || S.missionEnded)){
+            const keepHp = clamp(Number(S.hp || 100), 0, 100);
+            const keepArmor = clamp(Number(S.armor || 0), 0, S.armorCap || 100);
+            deploy({ carryStats:true, hp:keepHp, armor:keepArmor });
+          }
+          ensureMissionStartupIntegrity({ force:true, reason:"draw-catch" });
+          sanitizeRuntimeState();
+          clampWorldToCanvas();
+          validateMissionSpawnLayout({ repair:true });
+          if(isMobileViewport()){
+            S.mobileMapRenderer = "fast";
+          }
+        }catch(e){}
         drawFailSafeScene(camX, camY);
       } finally {
         if(ctxSaved){
