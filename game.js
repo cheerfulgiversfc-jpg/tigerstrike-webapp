@@ -25303,10 +25303,10 @@ function draw(){
           safeTick("drawSceneAtmosphere", drawAtmosphericParallax);
         }
         const entityDrawOk = safeTick("drawSceneEntities", drawEntities);
-        if(mapDrawOk || entityDrawOk){
+        if(mapDrawOk){
           noteRenderSuccess();
         } else {
-          throw new Error("render-scene-failed");
+          throw new Error(`render-scene-failed map=${mapDrawOk ? "success" : "failure"} entities=${entityDrawOk ? "success" : "failure"}`);
         }
       }catch(renderErr){
         reportTickError("drawSceneFrame", renderErr);
