@@ -25280,12 +25280,34 @@ function draw(){
         if(shake.active){
           ctx.translate(shake.x, shake.y);
         }
-        drawMapScene();
-        if(shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
-          drawAtmosphericParallax();
+        let mapDrawOk = safeTick("drawSceneMap", drawMapScene);
+        if(!mapDrawOk){
+          mapDrawOk = safeTick("drawSceneMapFallback", ()=>{
+            const mapInfo = currentMap();
+            const chapter = chapterIndexForMode(S.mode);
+            const chapterStyle = chapterVisualForMode(S.mode, chapter);
+            drawMapSceneMobileFast(
+              Date.now(),
+              worldW,
+              worldH,
+              viewW,
+              viewH,
+              mapFamilyKey(mapInfo?.key),
+              chapterStyle,
+              camX,
+              camY
+            );
+          });
         }
-        drawEntities();
-        noteRenderSuccess();
+        if(mapDrawOk && shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
+          safeTick("drawSceneAtmosphere", drawAtmosphericParallax);
+        }
+        const entityDrawOk = safeTick("drawSceneEntities", drawEntities);
+        if(mapDrawOk){
+          noteRenderSuccess();
+        } else {
+          throw new Error(`render-scene-failed map=failure entities=${entityDrawOk ? "success" : "failure"}`);
+        }
       }catch(renderErr){
         reportTickError("drawSceneFrame", renderErr);
         noteRenderFailSafe("drawSceneFrame");
