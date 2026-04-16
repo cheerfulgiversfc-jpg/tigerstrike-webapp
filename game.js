@@ -10945,7 +10945,13 @@ function closeMode(){
     document.getElementById("completeOverlay").style.display="flex";
     return;
   }
-  setPaused(false,null);
+  // Only unpause if we were paused for the mode overlay itself.
+  // When deploy() shows a mission brief (Story/Arcade), the pause reason
+  // switches to "mission-brief" and must stay active so the brief's
+  // Start / Hide buttons can properly dismiss it.
+  if(!S.paused || S.pauseReason === "mode"){
+    setPaused(false,null);
+  }
 }
 let __storyIntroAutoTimer = 0;
 let __launchIntroAutoTimer = 0;
