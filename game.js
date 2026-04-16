@@ -24810,7 +24810,8 @@ function drawFailSafeScene(camX=0, camY=0){
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
     ctx.setLineDash([]);
-    ctx.clearRect(0, 0, viewW, viewH);
+    ctx.fillStyle = "#0b0d12";
+    ctx.fillRect(0, 0, viewW, viewH);
     ctx.save();
     ctx.translate(-vx, -vy);
     let drewFallbackMap = false;
@@ -24824,12 +24825,12 @@ function drawFailSafeScene(camX=0, camY=0){
 
     // Never blank: if fast map draw fails, paint a minimal emergency scene.
     if(!drewFallbackMap){
-      ctx.fillStyle = "#143624";
+      ctx.fillStyle = "#0b111b";
       ctx.fillRect(vx, vy, viewW, viewH);
       const horizon = Math.max(40, Math.round(viewH * 0.22));
       const topGrad = ctx.createLinearGradient(vx, vy, vx, vy + horizon);
-      topGrad.addColorStop(0, "rgba(46,122,84,.24)");
-      topGrad.addColorStop(1, "rgba(16,44,31,.04)");
+      topGrad.addColorStop(0, "rgba(0,0,0,.24)");
+      topGrad.addColorStop(1, "rgba(0,0,0,.04)");
       ctx.fillStyle = topGrad;
       ctx.fillRect(vx, vy, viewW, horizon);
     }
@@ -24887,7 +24888,7 @@ function drawFailSafeScene(camX=0, camY=0){
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = "#163726";
+      ctx.fillStyle = "#0b0d12";
       ctx.fillRect(0, 0, viewW, viewH);
     }catch(ignored){}
   }finally{
@@ -25262,11 +25263,13 @@ function draw(){
       const cine = liteRender ? { active:false, x:0, y:0, scale:1 } : sampleBattleCinematic();
       let ctxSaved = false;
       try{
+        if(!cv || !ctx) return;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = "source-over";
         ctx.setLineDash([]);
-        ctx.clearRect(0, 0, cv.width, cv.height);
+        ctx.fillStyle = "#0b0d12";
+        ctx.fillRect(0, 0, cv.width, cv.height);
         ctx.save();
         ctxSaved = true;
         if(camX !== 0 || camY !== 0){
@@ -25341,6 +25344,8 @@ function draw(){
           ctx.textAlign = "start";
           ctx.textBaseline = "alphabetic";
           ctx.lineWidth = 1;
+          ctx.fillStyle = "#0b0d12";
+          ctx.strokeStyle = "#ffffff";
         }catch(e){}
       }
       drawAbilityCooldownWheel();
