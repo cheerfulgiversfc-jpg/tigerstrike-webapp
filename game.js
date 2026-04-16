@@ -5744,6 +5744,8 @@ function load(){
     const storyProgress = readStoryProgressData();
     const storyProfileRaw = readStoryProfileData();
     const storyProfile = resolveStoryProfileOverlay(storyProfileRaw, storyProgress);
+    // Cache the three reads so init() can reuse them without re-reading localStorage.
+    __bootDataCache = { storySlot, storyProgress, storyProfileRaw, loadedAt: Date.now() };
     let saved = null;
     let sourceKey = null;
     for(const key of [STORAGE_KEY, ...STORAGE_FALLBACK_KEYS]){
@@ -6046,6 +6048,9 @@ let __autoPerfEscalatedAt = 0;
 let __storyCheckpointCache = null;
 let __emptyViewportFrames = 0;
 let __startupComplete = false;
+let __mobileViewportCache = null;
+let __mobileViewportCacheAt = 0;
+let __bootDataCache = null;
 const __renderFailSafeState = {
   consecutive: 0,
   lastRecoverAt: 0,
@@ -7491,14 +7496,24 @@ function mobileCanvasHeight(){
     : Math.round(clamp(vh * 0.92, 640, 820));
 }
 function isMobileViewport(){
-  if(iphoneStabilityModeActive()) return true;
+  const now = Date.now();
+  if(__mobileViewportCache !== null && (now - __mobileViewportCacheAt) < 120){
+    return __mobileViewportCache;
+  }
+  if(iphoneStabilityModeActive()){
+    __mobileViewportCache = true;
+    __mobileViewportCacheAt = now;
+    return true;
+  }
   const narrow = !!window.matchMedia?.("(max-width:760px)")?.matches;
   const phoneLandscape = !!window.matchMedia?.("(max-width:960px) and (max-height:540px) and (orientation:landscape)")?.matches;
   const coarse = !!window.matchMedia?.("(pointer:coarse)")?.matches;
   const sw = Math.min(window.innerWidth || 0, window.innerHeight || 0);
   const lw = Math.max(window.innerWidth || 0, window.innerHeight || 0);
   const phoneLike = (sw > 0 && lw > 0) && (sw <= 920) && (lw <= 1600);
-  return narrow || (coarse && (phoneLandscape || phoneLike));
+  __mobileViewportCache = narrow || (coarse && (phoneLandscape || phoneLike));
+  __mobileViewportCacheAt = now;
+  return __mobileViewportCache;
 }
 function isIphoneLikeDevice(){
   try{
@@ -8745,6 +8760,7 @@ function takeoverEscort(){
 
 try{ resizeCanvasForViewport(); }catch(e){ try{ console.warn("Initial viewport setup recovered:", e); }catch(err){} }
 window.addEventListener("resize", ()=>{
+  __mobileViewportCache = null;
   resizeCanvasForViewport();
   applyMobileMenuState(__mobileMenuHiddenPref);
   applyTouchHudSettings();
@@ -8752,6 +8768,7 @@ window.addEventListener("resize", ()=>{
   renderHUD();
 }, { passive:true });
 window.addEventListener("orientationchange", ()=>{
+  __mobileViewportCache = null;
   resizeCanvasForViewport();
   applyMobileMenuState(__mobileMenuHiddenPref);
   applyTouchHudSettings();
@@ -12191,9 +12208,11 @@ function applyStorySaveToState(state, opts={}){
   ensureStoryEndgameState(state);
   return state;
 }
-function storyResumeMissionLevel(){
-  const slotMission = Math.floor(Number(storySaveMissionFromPayload(readStorySaveData() || {}) || 1));
-  const progressMission = Math.floor(Number((readStoryProgressData() || {}).mission || 1));
+function storyResumeMissionLevel(cachedSlot, cachedProgress){
+  const slot = (cachedSlot !== undefined) ? cachedSlot : readStorySaveData();
+  const progress = (cachedProgress !== undefined) ? cachedProgress : readStoryProgressData();
+  const slotMission = Math.floor(Number(storySaveMissionFromPayload(slot || {}) || 1));
+  const progressMission = Math.floor(Number((progress || {}).mission || 1));
   return clamp(
     Math.max(
       1,
@@ -25337,14 +25356,15 @@ function init(){
   if(!["Story","Arcade","Survival"].includes(S.mode)) S.mode = DEFAULT.mode;
   S.storyLevel = clamp(Math.floor(S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   S.storyLastMission = clamp(Math.floor(S.storyLastMission || S.storyLevel || 1), 1, STORY_CAMPAIGN_OBJECTIVES.length);
-  const bootStoryProgress = readStoryProgressData();
-  const bootStorySlot = readStorySaveData();
-  const bootStoryProfile = resolveStoryProfileOverlay(readStoryProfileData(), bootStoryProgress, S);
+  const bootCache = (__bootDataCache && (Date.now() - (__bootDataCache.loadedAt || 0)) < 5000) ? __bootDataCache : null;
+  const bootStoryProgress = bootCache ? bootCache.storyProgress : readStoryProgressData();
+  const bootStorySlot = bootCache ? bootCache.storySlot : readStorySaveData();
+  const bootStoryProfile = resolveStoryProfileOverlay(bootCache ? bootCache.storyProfileRaw : readStoryProfileData(), bootStoryProgress, S);
   applyStoryProfileToState(S, bootStoryProfile);
   __lastStoryFullSnapshotAt = Number.isFinite(Number(bootStorySlot?.savedAt))
     ? Number(bootStorySlot.savedAt)
     : Date.now();
-  const bootResumeMission = storyResumeMissionLevel();
+  const bootResumeMission = storyResumeMissionLevel(bootStorySlot, bootStoryProgress);
   if(bootResumeMission > S.storyLevel){
     S.storyLevel = bootResumeMission;
     S.storyLastMission = Math.max(S.storyLastMission, bootResumeMission);
@@ -25567,10 +25587,6 @@ function init(){
   refreshLaunchIntroStatus();
   bindAttackButtonGestures();
   maybeRenderHUD(true);
-  safeTick("bootDrawMapScene", drawMapScene);
-  safeTick("bootDrawAtmosphere", ()=>drawAtmosphericParallax(Date.now()));
-  safeTick("bootDrawEntities", drawEntities);
-  safeTick("bootDrawMobileUiClearLane", drawMobileUiClearLane);
   if(!__drawLoopStarted){
     __drawLoopStarted = true;
     requestAnimationFrame(draw);
@@ -25659,7 +25675,10 @@ function bootstrap(){
   }
 }
 
-bootstrap();
+// Defer bootstrap by one event-loop tick so the browser can paint the initial
+// HTML (dark background, canvas placeholder) before the blocking init sequence
+// runs.  This eliminates the blank-screen freeze on first load.
+setTimeout(bootstrap, 0);
 
 // Flush progress when app is backgrounded/closed (important on mobile).
 window.addEventListener("pagehide", ()=>{
