@@ -24926,7 +24926,7 @@ function countVisibleEntitiesInViewport(state=S, pad=26){
 }
 
 function enforceVisibleMissionViewport(state=S){
-  if(!__startupComplete) return false;
+  if(!__startupComplete) return false; // skip during init to avoid startup freeze
   if(!state || typeof state !== "object") return false;
   if(state.paused || state.gameOver || state.missionEnded) return false;
   if(!state.me || !Number.isFinite(state.me.x) || !Number.isFinite(state.me.y)){
