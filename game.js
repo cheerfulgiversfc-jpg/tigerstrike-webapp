@@ -6045,6 +6045,7 @@ let __lastStoryFullSnapshotAt = 0;
 let __autoPerfEscalatedAt = 0;
 let __storyCheckpointCache = null;
 let __emptyViewportFrames = 0;
+let __startupComplete = false;
 const __renderFailSafeState = {
   consecutive: 0,
   lastRecoverAt: 0,
@@ -24925,6 +24926,7 @@ function countVisibleEntitiesInViewport(state=S, pad=26){
 }
 
 function enforceVisibleMissionViewport(state=S){
+  if(!__startupComplete) return false;
   if(!state || typeof state !== "object") return false;
   if(state.paused || state.gameOver || state.missionEnded) return false;
   if(!state.me || !Number.isFinite(state.me.x) || !Number.isFinite(state.me.y)){
@@ -24971,6 +24973,13 @@ function enforceVisibleMissionViewport(state=S){
     }
   }
   return false;
+}
+
+function onStartupComplete(){
+  __startupComplete = true;
+  if(isMobileViewport()){
+    S.mobileMapRenderer = "fast";
+  }
 }
 
 let __lastStartupIntegrityAt = 0;
@@ -25357,9 +25366,6 @@ function init(){
   trimPersistentState(S);
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   S.performanceMode = normalizePerformanceMode(S.performanceMode);
-  if(isMobileViewport()){
-    S.mobileMapRenderer = "fast";
-  }
   S.touchHud = normalizeTouchHudSettings(S.touchHud);
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
   if(!S.equippedWeaponId || !getWeapon(S.equippedWeaponId)) S.equippedWeaponId = DEFAULT.equippedWeaponId;
@@ -25570,6 +25576,7 @@ function init(){
     requestAnimationFrame(draw);
   }
   openLaunchIntro(true);
+  onStartupComplete();
 }
 
 function bootstrap(){
