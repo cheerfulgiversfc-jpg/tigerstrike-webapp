@@ -10949,7 +10949,7 @@ function closeMode(){
   // When deploy() shows a mission brief (Story/Arcade), the pause reason
   // switches to "mission-brief" and must stay active so the brief's
   // Start / Hide buttons can properly dismiss it.
-  if(!S.paused || S.pauseReason === "mode"){
+  if(S.paused && S.pauseReason === "mode"){
     setPaused(false,null);
   }
 }
