@@ -7076,12 +7076,6 @@ function updateFrameLoad(frameStartTs){
     }
     __frameSpikePending = true;
   }
-  if(isMobileViewport() && (frameGap > MOBILE_FAST_RENDERER_LAG_GAP_MS || frameCost > MOBILE_FAST_RENDERER_LAG_COST_MS || frameIsSlow(now))){
-    if(S && S.mobileMapRenderer !== "fast"){
-      S.mobileMapRenderer = "fast";
-      invalidateMapCache();
-    }
-  }
   if(frameGap > STABILITY_STALL_HARD_GAP_MS || frameCost > STABILITY_STALL_COST_MS){
     runStabilityRecovery(frameGap > STABILITY_STALL_HARD_GAP_MS ? "hard-gap" : "hard-cost");
   } else if(frameGap > STABILITY_STALL_GAP_MS){
@@ -7922,8 +7916,15 @@ function sanitizeRuntimeState(){
   if(!S || typeof S !== "object") return;
   ensureWorldLayout(S);
   S.mode = normalizeModeName(S.mode);
+  const mobileViewport = isMobileViewport();
   const rendererPref = String(S.mobileMapRenderer || "").toLowerCase();
-  S.mobileMapRenderer = (rendererPref === "fast" || rendererPref === "full") ? rendererPref : "full";
+  S.mobileMapRenderer = (rendererPref === "fast" || rendererPref === "full")
+    ? rendererPref
+    : "full";
+  if(mobileViewport){
+    // Keep phones on the same renderer path as laptop for consistent scene output.
+    S.mobileMapRenderer = "full";
+  }
   if(!Number.isFinite(S.storyLevel) || S.storyLevel < 1) S.storyLevel = 1;
   if(!Number.isFinite(S.arcadeLevel) || S.arcadeLevel < 1) S.arcadeLevel = 1;
   if(!Number.isFinite(S.survivalWave) || S.survivalWave < 1) S.survivalWave = 1;
@@ -22177,7 +22178,6 @@ function mobileWeatherTintSpec(){
 
 function shouldUseMobileFastMapRenderer(state=S){
   if(!isMobileViewport()) return false;
-  if(iphoneStabilityModeActive()) return true;
   const pref = String(state?.mobileMapRenderer || "full").toLowerCase();
   return pref === "fast";
 }
@@ -24799,78 +24799,119 @@ function missionEvacZoneSafe(state=S){
 function drawFailSafeScene(camX=0, camY=0){
   const viewW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
   const viewH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
-  const zone = missionEvacZoneSafe(S);
-  const vx = clamp(Number(camX) || 0, 0, Math.max(0, worldW - viewW));
-  const vy = clamp(Number(camY) || 0, 0, Math.max(0, worldH - viewH));
+  const safeNum = (v, fb=0)=>Number.isFinite(Number(v)) ? Number(v) : fb;
+  const vx = Math.max(0, safeNum(camX, 0));
+  const vy = Math.max(0, safeNum(camY, 0));
+  const ez = (S && S.evacZone && typeof S.evacZone === "object") ? S.evacZone : {};
+  const zoneR = Math.max(38, Math.min(120, safeNum(ez.r, 72)));
+  const zoneX = safeNum(ez.x, vx + viewW * 0.78) - vx;
+  const zoneY = safeNum(ez.y, vy + viewH * 0.34) - vy;
+  const mode = String(S?.mode || "Story");
+  const projectX = (x)=>safeNum(x, vx + viewW * 0.5) - vx;
+  const projectY = (y)=>safeNum(y, vy + viewH * 0.55) - vy;
+  const inView = (x, y, pad=24)=>x >= -pad && x <= (viewW + pad) && y >= -pad && y <= (viewH + pad);
 
   try{
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
     ctx.setLineDash([]);
-    ctx.fillStyle = "#0b0d12";
+    ctx.clearRect(0, 0, viewW, viewH);
+    ctx.fillStyle = "#143624";
     ctx.fillRect(0, 0, viewW, viewH);
-    ctx.save();
-    ctx.translate(-vx, -vy);
-    let drewFallbackMap = false;
-    try{
-      const mapInfo = currentMap();
-      const chapter = chapterIndexForMode(S.mode);
-      const chapterStyle = chapterVisualForMode(S.mode, chapter);
-      drawMapSceneMobileFast(Date.now(), worldW, worldH, viewW, viewH, mapFamilyKey(mapInfo.key), chapterStyle, vx, vy);
-      drewFallbackMap = true;
-    }catch(e){}
 
-    // Never blank: if fast map draw fails, paint a minimal emergency scene.
-    if(!drewFallbackMap){
-      ctx.fillStyle = "#0b111b";
-      ctx.fillRect(vx, vy, viewW, viewH);
-      const horizon = Math.max(40, Math.round(viewH * 0.22));
-      const topGrad = ctx.createLinearGradient(vx, vy, vx, vy + horizon);
-      topGrad.addColorStop(0, "rgba(0,0,0,.24)");
-      topGrad.addColorStop(1, "rgba(0,0,0,.04)");
-      ctx.fillStyle = topGrad;
-      ctx.fillRect(vx, vy, viewW, horizon);
+    const topGrad = ctx.createLinearGradient(0, 0, 0, Math.max(60, Math.round(viewH * 0.22)));
+    topGrad.addColorStop(0, "rgba(56,146,98,.26)");
+    topGrad.addColorStop(1, "rgba(16,44,31,.02)");
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, viewW, Math.max(60, Math.round(viewH * 0.22)));
+
+    const roadBands = [
+      [viewH * 0.28, viewH * 0.37],
+      [viewH * 0.56, viewH * 0.64],
+      [viewH * 0.80, viewH * 0.87],
+    ];
+    for(const band of roadBands){
+      ctx.fillStyle = "rgba(58,48,31,.78)";
+      ctx.beginPath();
+      ctx.moveTo(-20, band[0]);
+      ctx.lineTo(viewW * 0.26, band[0] + 18);
+      ctx.lineTo(viewW * 0.54, band[0] - 8);
+      ctx.lineTo(viewW * 0.80, band[1] + 10);
+      ctx.lineTo(viewW + 20, band[1] - 4);
+      ctx.lineTo(viewW + 20, band[1] + 46);
+      ctx.lineTo(-20, band[0] + 46);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(220,201,150,.16)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 10]);
+      ctx.beginPath();
+      ctx.moveTo(0, band[0] + 23);
+      ctx.lineTo(viewW, band[1] + 18);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
-    if(S.mode !== "Survival"){
-      ctx.fillStyle = "rgba(16,56,34,.30)";
+    if(mode !== "Survival" && inView(zoneX, zoneY, zoneR + 24)){
+      ctx.fillStyle = "rgba(16,56,34,.34)";
       ctx.beginPath();
-      ctx.arc(zone.x, zone.y, zone.r, 0, Math.PI * 2);
+      ctx.arc(zoneX, zoneY, zoneR, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = "rgba(74,222,128,.95)";
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(zone.x, zone.y, zone.r, 0, Math.PI * 2);
+      ctx.arc(zoneX, zoneY, zoneR, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.strokeStyle = "rgba(167,243,208,.74)";
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.arc(zoneX, zoneY, Math.max(10, zoneR - 8), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(220,255,235,.96)";
+      ctx.fillRect(zoneX - 2, zoneY - 8, 4, 16);
+      ctx.fillRect(zoneX - 8, zoneY - 2, 16, 4);
+      ctx.fillStyle = "rgba(16,56,34,.92)";
+      ctx.fillRect(zoneX - 72, zoneY - zoneR - 30, 144, 24);
+      ctx.strokeStyle = "rgba(74,222,128,.95)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(zoneX - 72, zoneY - zoneR - 30, 144, 24);
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(220,255,235,.98)";
+      ctx.font = "900 10px system-ui";
+      ctx.fillText("EVAC SAFE ZONE", zoneX, zoneY - zoneR - 14);
+      ctx.font = "800 9px system-ui";
+      ctx.fillStyle = "rgba(190,255,220,.9)";
+      ctx.fillText("FOLLOW MARKER", zoneX, zoneY - zoneR - 4);
+      ctx.textAlign = "start";
     }
 
-    for(const civ of (S.civilians || [])){
+    for(const civ of (Array.isArray(S?.civilians) ? S.civilians : [])){
       if(!civ || civ.alive === false || civ.evac) continue;
-      const x = Number(civ.x);
-      const y = Number(civ.y);
-      if(!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const x = projectX(civ.x);
+      const y = projectY(civ.y);
+      if(!inView(x, y)) continue;
       ctx.fillStyle = "rgba(56,189,248,.95)";
       ctx.beginPath();
       ctx.arc(x, y, 6, 0, Math.PI * 2);
       ctx.fill();
     }
-    for(const t of (S.tigers || [])){
+    for(const t of (Array.isArray(S?.tigers) ? S.tigers : [])){
       if(!t || t.alive === false) continue;
-      const x = Number(t.x);
-      const y = Number(t.y);
-      if(!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const x = projectX(t.x);
+      const y = projectY(t.y);
+      if(!inView(x, y)) continue;
       ctx.fillStyle = "rgba(251,146,60,.95)";
       ctx.beginPath();
       ctx.arc(x, y, 8, 0, Math.PI * 2);
       ctx.fill();
     }
-    if(S.me){
-      const mx = Number(S.me.x);
-      const my = Number(S.me.y);
-      if(Number.isFinite(mx) && Number.isFinite(my)){
+    if(S?.me){
+      const mx = projectX(S.me.x);
+      const my = projectY(S.me.y);
+      if(inView(mx, my, 32)){
         ctx.fillStyle = "rgba(241,245,249,.98)";
         ctx.beginPath();
         ctx.arc(mx, my, 7, 0, Math.PI * 2);
@@ -24878,11 +24919,14 @@ function drawFailSafeScene(camX=0, camY=0){
       }
     }
 
-    ctx.restore();
-    rounded(12, Math.max(10, viewH - 44), 236, 28, 10, "rgba(6,10,18,.72)", "rgba(148,163,184,.46)");
+    ctx.fillStyle = "rgba(6,10,18,.76)";
+    ctx.fillRect(12, Math.max(10, viewH - 46), 284, 30);
+    ctx.strokeStyle = "rgba(148,163,184,.42)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(12, Math.max(10, viewH - 46), 284, 30);
     ctx.fillStyle = "rgba(226,232,240,.98)";
     ctx.font = "700 11px system-ui";
-    ctx.fillText("Stability recovery: rendering simplified scene.", 22, Math.max(28, viewH - 26));
+    ctx.fillText("Stability recovery active. Mission still live.", 22, Math.max(28, viewH - 27));
   }catch(e){
     try{
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -24890,6 +24934,9 @@ function drawFailSafeScene(camX=0, camY=0){
       ctx.globalCompositeOperation = "source-over";
       ctx.fillStyle = "#0b0d12";
       ctx.fillRect(0, 0, viewW, viewH);
+      ctx.fillStyle = "rgba(245,247,255,.95)";
+      ctx.font = "700 12px system-ui";
+      ctx.fillText("Mission rendering recovered. Tap Reset if scene does not resume.", 18, Math.max(30, viewH - 24));
     }catch(ignored){}
   }finally{
     try{
@@ -25324,9 +25371,6 @@ function draw(){
           sanitizeRuntimeState();
           clampWorldToCanvas();
           validateMissionSpawnLayout({ repair:true });
-          if(isMobileViewport()){
-            S.mobileMapRenderer = "fast";
-          }
         }catch(e){}
         drawFailSafeScene(camX, camY);
       } finally {
@@ -25419,6 +25463,9 @@ function init(){
   trimPersistentState(S);
   if(typeof S.storyIntroSeen !== "boolean") S.storyIntroSeen = false;
   S.performanceMode = normalizePerformanceMode(S.performanceMode);
+  if(isMobileViewport()){
+    S.mobileMapRenderer = "full";
+  }
   S.touchHud = normalizeTouchHudSettings(S.touchHud);
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
   if(!S.equippedWeaponId || !getWeapon(S.equippedWeaponId)) S.equippedWeaponId = DEFAULT.equippedWeaponId;
