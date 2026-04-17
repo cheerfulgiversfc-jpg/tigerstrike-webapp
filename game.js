@@ -7005,7 +7005,10 @@ function ensureStabilityMonitorNode(){
   return el;
 }
 function shouldShowStabilityMonitor(now=Date.now()){
-  if(isMobileViewport()) return false;
+  const touchLikelyMobile = isMobileViewport()
+    || (window.matchMedia?.("(pointer:coarse)")?.matches)
+    || ((navigator?.maxTouchPoints || 0) > 1 && Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 1024);
+  if(touchLikelyMobile) return false;
   if(window.__TS_SHOW_MONITOR__ === true) return true;
   if(window.__TUTORIAL_MODE__) return false;
   if(performanceMode() === "PERFORMANCE" && !isMobileViewport()) return true;
@@ -20315,6 +20318,9 @@ function emitDamagePopup(x, y, text, kind="hit"){
   const iphoneLite = iphoneLiteCombatFeedbackEnabled();
   if(iphoneStabilityModeActive() && !iphoneLite) return;
   if(!Number.isFinite(x) || !Number.isFinite(y) || text == null) return;
+  const anchor = normalizeBattlePopupAnchor(x, y, kind);
+  x = anchor.x;
+  y = anchor.y;
   const now = Date.now();
   const lagTier = frameLagTier();
   const cellX = Math.round(x / 22);
@@ -20366,6 +20372,30 @@ function emitDamagePopup(x, y, text, kind="hit"){
       queueCameraShake(0.32, 90);
     }
   }
+}
+
+function normalizeBattlePopupAnchor(x, y, kind="hit"){
+  if(!S.inBattle){
+    return { x, y };
+  }
+  const t = tigerById(S.activeTigerId);
+  const me = S.me || { x, y };
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const inBounds = Number.isFinite(x) && Number.isFinite(y) && x >= -80 && y >= -80 && x <= (worldW + 80) && y <= (worldH + 80);
+  const nearMe = Number.isFinite(me.x) && Number.isFinite(me.y) ? dist(x, y, me.x, me.y) <= 300 : false;
+  const nearTiger = (t && Number.isFinite(t.x) && Number.isFinite(t.y)) ? dist(x, y, t.x, t.y) <= 300 : false;
+  if(inBounds && (nearMe || nearTiger)){
+    return { x, y };
+  }
+  // If the popup origin is invalid/off-corner during battle, force it over the engaged units.
+  if(kind === "player" || kind === "shield" || kind === "dodge"){
+    return { x: clamp(Number(me.x || x), 0, worldW), y: clamp(Number(me.y || y) - 18, 0, worldH) };
+  }
+  if(t){
+    return { x: clamp(Number(t.x || x), 0, worldW), y: clamp(Number(t.y || y) - 20, 0, worldH) };
+  }
+  return { x: clamp(Number(me.x || x), 0, worldW), y: clamp(Number(me.y || y) - 18, 0, worldH) };
 }
 
 function tickDamagePopups(){
