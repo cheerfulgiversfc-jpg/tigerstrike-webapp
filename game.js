@@ -9452,6 +9452,15 @@ function tigerCivilianHitRange(t){
 }
 function captureWindowPctLabel(){ return `${Math.round(storyCaptureWindowPct() * 100)}%`; }
 function captureWindowHp(t){ return Math.max(1, Math.ceil((t?.hpMax || 0) * storyCaptureWindowPct())); }
+function captureWindowMinHp(t){
+  // Capture window is 25% down to 5% HP.
+  return Math.max(1, Math.ceil((t?.hpMax || 0) * 0.05));
+}
+function tigerInCaptureHpWindow(t){
+  if(!t || !t.alive) return false;
+  const hp = Math.max(0, Number(t.hp || 0));
+  return hp <= captureWindowHp(t) && hp >= captureWindowMinHp(t);
+}
 
 function currentMap(){
   if(S.mode==="Story"){
@@ -19736,6 +19745,53 @@ function respawnTick(){
   }
   toast(`Respawned. Lives left: ${S.lives}`);
 }
+
+function clearLowHpAlertState(){
+  S._lowHpAlertTier = 0;
+  S._lowHpAlertAt = 0;
+  S._lowHpToastAt = 0;
+}
+
+function lowHpAlertTick(now=Date.now()){
+  if(S.gameOver || S.missionEnded || (S.respawnPendingUntil && now < S.respawnPendingUntil)){
+    clearLowHpAlertState();
+    return;
+  }
+  const hp = clamp(Number(S.hp || 0), 0, 100);
+  if(hp <= 0){
+    clearLowHpAlertState();
+    return;
+  }
+  let tier = 0;
+  if(hp <= 10) tier = 2;
+  else if(hp <= 25) tier = 1;
+
+  if(tier === 0){
+    clearLowHpAlertState();
+    return;
+  }
+  const prevTier = Math.max(0, Math.floor(Number(S._lowHpAlertTier || 0)));
+  const lastAt = Math.max(0, Math.floor(Number(S._lowHpAlertAt || 0)));
+  const pulseEveryMs = tier >= 2 ? 1800 : 3200;
+  const shouldPulse = tier !== prevTier || ((now - lastAt) >= pulseEveryMs);
+  if(!shouldPulse) return;
+
+  S._lowHpAlertTier = tier;
+  S._lowHpAlertAt = now;
+  S.meHitFlashUntil = Math.max(S.meHitFlashUntil || 0, now + 230);
+  S.meHitFlashPower = Math.max(Number(S.meHitFlashPower || 0), tier >= 2 ? 0.92 : 0.66);
+
+  const msg = tier >= 2
+    ? `🚨 CRITICAL HP ${Math.round(hp)}% • Heal now!`
+    : `⚠️ Low HP ${Math.round(hp)}% • Prepare to heal.`;
+  setEventText(msg, tier >= 2 ? 1.4 : 1.1);
+  if((now - Math.max(0, Math.floor(Number(S._lowHpToastAt || 0)))) >= 2600){
+    S._lowHpToastAt = now;
+    toast(msg);
+  }
+  try{ hapticNotif("warning"); }catch(e){}
+}
+
 function applyPlayerDamage(dmg, showToast=false){
   const now = Date.now();
   if(S.respawnPendingUntil && now < S.respawnPendingUntil) return;
@@ -19764,6 +19820,7 @@ function applyPlayerDamage(dmg, showToast=false){
   }
   if(S.inBattle) renderBattleStatus();
   if(S.hp<=0 && S.armor<=0){
+    clearLowHpAlertState();
     markBalanceDeath(S);
     S.lives -= 1;
 
@@ -20488,6 +20545,15 @@ function renderAbilityCooldownUi(){
   }
 }
 
+function setCaptureReadyVisual(ready=false){
+  [["touchCaptureBtn"], ["combatCaptureBtn"], ["capBtn"]].forEach(([id])=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(ready) el.classList.add("captureReady");
+    else el.classList.remove("captureReady");
+  });
+}
+
 function renderCombatControls(){
   const touchOverlay = document.querySelector(".touchOverlay");
   const touchHint = document.querySelector(".touchHint");
@@ -20515,6 +20581,7 @@ function renderCombatControls(){
 
   const t = activeTiger();
   const canCap = canAttemptCapture(t);
+  const captureReadyByHp = tigerInCaptureHpWindow(t);
   const canAtk = anyLethalWeaponHasAmmo();
   const medCount = totalMedkits();
   const armorPlateCountAll = totalArmorPlates();
@@ -20534,6 +20601,7 @@ function renderCombatControls(){
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
+  setCaptureReadyVisual(captureReadyByHp);
   [["touchCombatMedkitBtn", !canMed], ["combatMedkitBtn", !canMed]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
@@ -20649,7 +20717,7 @@ function renderBattleStatus(){
 
   agentMeta.innerText = `Armor ${Math.round(S.armor)} • Stamina ${Math.round(S.stamina)} • Ammo ${S.mag.loaded}/${S.mag.cap}`;
   tigerMeta.innerText = t
-    ? `${t.type} • Capture at ${captureWindowPctLabel()} HP or lower`
+    ? `${t.type} • Capture window ${captureWindowPctLabel()} to 5% HP`
     : "Target lost";
   renderCombatControls();
 }
@@ -20751,14 +20819,12 @@ function hasAmmoForWeaponId(id){
   return (S.ammoReserve[w.ammo]||0) > 0;
 }
 function canAttemptCapture(t){
-  if(!t || !t.alive) return false;
-  if(t.hp > captureWindowHp(t)) return false;
+  if(!tigerInCaptureHpWindow(t)) return false;
   const req = requiredTranqWeaponId(t);
   return S.ownedWeapons.includes(req) && hasAmmoForWeaponId(req);
 }
 function canCaptureTiger(t){
-  if(!t || !t.alive) return false;
-  if(t.hp > captureWindowHp(t)) return false;
+  if(!tigerInCaptureHpWindow(t)) return false;
   const req = requiredTranqWeaponId(t);
   if(S.equippedWeaponId !== req) return false;
   const w=equippedWeapon();
@@ -20767,13 +20833,11 @@ function canCaptureTiger(t){
 }
 function tutorialCaptureWindowReady(){
   const t = tigerById(S.activeTigerId);
-  if(!t || !t.alive) return false;
-  return t.hp <= captureWindowHp(t);
+  return tigerInCaptureHpWindow(t);
 }
 function tutorialAnyCaptureWindowReady(){
   for(const t of (S.tigers || [])){
-    if(!t || !t.alive) continue;
-    if(t.hp <= captureWindowHp(t)) return true;
+    if(tigerInCaptureHpWindow(t)) return true;
   }
   return false;
 }
@@ -20790,8 +20854,9 @@ function updateBattleButtons(){
   const capBtn = document.getElementById("capBtn");
   if(killBtn) killBtn.disabled = !(t && t.hp<=15);
   if(capBtn) capBtn.disabled = !canAttemptCapture(t);
+  setCaptureReadyVisual(tigerInCaptureHpWindow(t));
   try{
-    if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weaken_tiger" && t && t.alive && t.hp <= captureWindowHp(t)){
+    if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weaken_tiger" && tigerInCaptureHpWindow(t)){
       window.TigerTutorial.captureWindowReached = true;
     }
   }catch(e){}
@@ -21016,7 +21081,8 @@ function playerAction(action){
 
   if(action==="CAPTURE"){
     const preCaptureWeaponId = S.equippedWeaponId;
-    if(t.hp > captureWindowHp(t)) return toast(`Capture is available when the tiger is at ${captureWindowPctLabel()} HP or lower.`);
+    if(t.hp > captureWindowHp(t)) return toast(`Capture is available between ${captureWindowPctLabel()} and 5% HP.`);
+    if(t.hp < captureWindowMinHp(t)) return toast("Tiger HP is too low for capture. Finish the tiger.");
     const req = requiredTranqWeaponId(t);
     const reqWeapon = getWeapon(req);
     if(!reqWeapon) return toast("Required tranq weapon data missing.");
@@ -21189,11 +21255,11 @@ function playerAction(action){
       return;
     }
     try{
-      if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weaken_tiger" && t.hp <= captureWindowHp(t)){
+      if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weaken_tiger" && tigerInCaptureHpWindow(t)){
         window.TigerTutorial.captureWindowReached = true;
       }
     }catch(e){}
-    if(w.type==="tranq" && t.hp <= captureWindowHp(t)){
+    if(w.type==="tranq" && tigerInCaptureHpWindow(t)){
       setBattleMsg(`Tiger is subdued. Tap Capture to use ${getWeapon(requiredTranqWeaponId(t))?.name || "the required tranq gun"}.`);
     }
 
@@ -24453,14 +24519,17 @@ function drawTiger(t){
       }
     }
   }
-  if(t.alive && t.hp <= captureWindowHp(t)){
-    ctx.strokeStyle = "rgba(125,211,252,.86)";
-    ctx.lineWidth = 2.2;
-    ctx.setLineDash([7,6]);
+  if(tigerInCaptureHpWindow(t)){
+    ctx.strokeStyle = "rgba(248,113,113,.96)";
+    ctx.lineWidth = 2.4;
+    ctx.setLineDash([8,5]);
     ctx.beginPath();
     ctx.arc(x, y, 43*s, 0, Math.PI*2);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(254,202,202,.96)";
+    ctx.font = "900 12px system-ui";
+    ctx.fillText("💉", x-5*s, y-50*s);
   }
 
   if(t.huntState === TIGER_HUNT_STATES.STALK){
@@ -25270,6 +25339,7 @@ function draw(){
         costHint:1.5, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
       safeTick("regen", regen);
+      runFrameTask("lowHpAlert", frameInterval(120, 1.5), lowHpAlertTick, { costHint:0.35, critical:true });
       runFrameTask("backupTick", frameInterval(lagCritical ? 120 : (lagHeavy ? 90 : 60), 1.5), backupTick, { costHint:1.1 });
       runFrameTask("trapTick", frameInterval(lagCritical ? 104 : (lagHeavy ? 80 : 54), 1.6), trapTick, { costHint:1.2 });
       runFrameTask("mapInteractableTick", frameInterval(lagCritical ? 148 : (lagHeavy ? 118 : 84), 1.5), mapInteractableTick, { costHint:1.1 });

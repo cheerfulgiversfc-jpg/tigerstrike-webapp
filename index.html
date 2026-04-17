@@ -67,6 +67,21 @@
     .good{border-color:#14532d;background:#0f2416}
     .warn{border-color:#7c2d12;background:#2b140d}
     .danger{border-color:#7f1d1d;background:#2a0f13}
+    .captureReady{
+      border-color:rgba(220,38,38,.92)!important;
+      background:linear-gradient(180deg, rgba(127,29,29,.95), rgba(69,10,10,.95))!important;
+      box-shadow:0 0 0 1px rgba(248,113,113,.42), 0 10px 24px rgba(127,29,29,.34)!important;
+      color:#ffe4e6!important;
+    }
+    .touchBtn.captureReady{
+      border-color:rgba(248,113,113,.88)!important;
+      background:rgba(127,29,29,.42)!important;
+      opacity:.9!important;
+    }
+    .touchBtn.captureReady .touchBtnIcon{
+      color:#fecaca!important;
+      filter:drop-shadow(0 0 8px rgba(220,38,38,.65));
+    }
 
     .hud{order:2;margin-top:10px;background:rgba(18,22,34,.85);border:1px solid rgba(42,49,69,.9);border-radius:14px;padding:10px;backdrop-filter:blur(10px);box-shadow:var(--shadow)}
     .hudGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -666,7 +681,37 @@
         font-weight:900;
         letter-spacing:.2px;
       }
-      #combatTouchCluster{display:none;grid-template-columns:repeat(2,64px)}
+      #combatTouchCluster{
+        display:none;
+        grid-template-columns:1fr;
+        gap:10px;
+        position:absolute;
+        right:12px;
+        bottom:94px;
+        z-index:7;
+        width:92px;
+        opacity:var(--touch-cluster-opacity,.62);
+        transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
+        transform-origin:right bottom;
+      }
+      #combatTouchCluster .touchBtn.combatCore{
+        width:92px;
+        min-height:72px;
+        border-radius:20px;
+        opacity:var(--touch-btn-opacity,.62);
+      }
+      #combatTouchCluster .touchBtn.combatAux{
+        width:92px;
+        min-height:56px;
+        border-radius:16px;
+        opacity:var(--touch-btn-opacity,.46);
+      }
+      #combatTouchCluster .touchBtn.combatCore .touchBtnIcon{
+        font-size:26px;
+      }
+      #combatTouchCluster .touchBtn.combatAux .touchBtnIcon{
+        font-size:20px;
+      }
       .touchBtn{
         min-height:64px;
         width:64px;
@@ -932,7 +977,37 @@
         line-height:1;
         color:rgba(240,244,255,.95);
       }
-      #combatTouchCluster{display:none;grid-template-columns:repeat(2,52px)}
+      #combatTouchCluster{
+        display:none;
+        grid-template-columns:1fr;
+        gap:8px;
+        position:absolute;
+        right:8px;
+        bottom:74px;
+        z-index:7;
+        width:82px;
+        opacity:var(--touch-cluster-opacity,.62);
+        transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
+        transform-origin:right bottom;
+      }
+      #combatTouchCluster .touchBtn.combatCore{
+        width:82px;
+        min-height:62px;
+        border-radius:18px;
+        opacity:var(--touch-btn-opacity,.62);
+      }
+      #combatTouchCluster .touchBtn.combatAux{
+        width:82px;
+        min-height:48px;
+        border-radius:14px;
+        opacity:var(--touch-btn-opacity,.44);
+      }
+      #combatTouchCluster .touchBtn.combatCore .touchBtnIcon{
+        font-size:24px;
+      }
+      #combatTouchCluster .touchBtn.combatAux .touchBtnIcon{
+        font-size:18px;
+      }
       .touchHint{
         display:block;
         position:absolute;
@@ -1154,31 +1229,31 @@
           </div>
         </div>
         <div class="touchCluster" id="combatTouchCluster">
-          <button class="touchBtn warn" id="touchAttackBtn" data-attack-btn>
+          <button class="touchBtn warn combatCore" id="touchAttackBtn" data-attack-btn>
             <span class="touchBtnIcon">🔫</span>
             <span class="touchBtnLabel">Attack</span>
           </button>
-          <button class="touchBtn" id="touchCaptureBtn" onclick="playerAction('CAPTURE')">
+          <button class="touchBtn combatCore" id="touchCaptureBtn" onclick="playerAction('CAPTURE')">
             <span class="touchBtnIcon">💉</span>
             <span class="touchBtnLabel">Cap</span>
           </button>
-          <button class="touchBtn" id="touchCombatMedkitBtn" onclick="useMedkit()">
+          <button class="touchBtn combatCore" id="touchCombatMedkitBtn" onclick="useMedkit()">
             <span class="touchBtnIcon">❤️</span>
             <span class="touchBtnLabel">Med</span>
           </button>
-          <button class="touchBtn" id="touchCombatArmorBtn" onclick="useArmorPlate({ smart:true })">
+          <button class="touchBtn combatCore" id="touchCombatArmorBtn" onclick="useArmorPlate({ smart:true })">
             <span class="touchBtnIcon">🛡️</span>
             <span class="touchBtnLabel">Armor</span>
           </button>
-          <button class="touchBtn" id="touchPrevWeaponBtn" onclick="cycleWeapon(-1)">
+          <button class="touchBtn combatAux" id="touchPrevWeaponBtn" onclick="cycleWeapon(-1)">
             <span class="touchBtnIcon">◀️</span>
             <span class="touchBtnLabel">Prev</span>
           </button>
-          <button class="touchBtn" id="touchNextWeaponBtn" onclick="cycleWeapon(1)">
+          <button class="touchBtn combatAux" id="touchNextWeaponBtn" onclick="cycleWeapon(1)">
             <span class="touchBtnIcon">▶️</span>
             <span class="touchBtnLabel">Next</span>
           </button>
-          <button class="touchBtn" id="touchRollBtn" onclick="rollDodge()">
+          <button class="touchBtn combatAux" id="touchRollBtn" onclick="rollDodge()">
             <span class="touchBtnIcon">Roll</span>
             <span class="touchBtnLabel">Roll</span>
           </button>
