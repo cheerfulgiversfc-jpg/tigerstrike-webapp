@@ -122,6 +122,9 @@ const DEFAULT_CONTRACT_TALLIES = Object.freeze({
   trapsPlaced:0,
   trapsTriggered:0,
   cashEarned:0,
+  bossesDefeated:0,
+  nemesisReturns:0,
+  nemesisBountiesClaimed:0,
 });
 
 const BALANCE_RECENT_MISSION_MAX = 18;
@@ -295,6 +298,22 @@ const DAILY_CONTRACT_POOL = Object.freeze([
     target:2500,
     reward:{ cash:750, perkPoints:1 }
   }),
+  Object.freeze({
+    id:"D_BOSS_1",
+    title:"Apex Breaker",
+    desc:"Defeat 1 boss tiger.",
+    metric:"bossesDefeated",
+    target:1,
+    reward:{ cash:1200, perkPoints:2 }
+  }),
+  Object.freeze({
+    id:"D_NEM_BOUNTY_1",
+    title:"Rival Hunt",
+    desc:"Claim 1 Nemesis bounty.",
+    metric:"nemesisBountiesClaimed",
+    target:1,
+    reward:{ cash:1100, perkPoints:2 }
+  }),
 ]);
 
 const WEEKLY_CONTRACT_POOL = Object.freeze([
@@ -361,6 +380,30 @@ const WEEKLY_CONTRACT_POOL = Object.freeze([
     metric:"cashEarned",
     target:26000,
     reward:{ cash:7200, perkPoints:4 }
+  }),
+  Object.freeze({
+    id:"W_BOSS_4",
+    title:"Boss Breaker Week",
+    desc:"Defeat 4 boss tigers.",
+    metric:"bossesDefeated",
+    target:4,
+    reward:{ cash:7600, perkPoints:4 }
+  }),
+  Object.freeze({
+    id:"W_NEM_RET_3",
+    title:"Rival Pressure",
+    desc:"Survive 3 Nemesis return missions.",
+    metric:"nemesisReturns",
+    target:3,
+    reward:{ cash:6200, perkPoints:3 }
+  }),
+  Object.freeze({
+    id:"W_NEM_BOUNTY_4",
+    title:"Bounty Office",
+    desc:"Claim 4 Nemesis bounties.",
+    metric:"nemesisBountiesClaimed",
+    target:4,
+    reward:{ cash:7800, perkPoints:4 }
   }),
 ]);
 
@@ -448,6 +491,15 @@ const LIVE_OPS_POOL = Object.freeze([
     target:28000,
     reward:{ cash:7400, perkPoints:3, medkits:2, traps:2, ammo:22 },
     modifiers:{ eventChanceMul:1.02, supplyWeightMul:1.08, bonusWeightMul:1.16, payoutMul:1.10 }
+  }),
+  Object.freeze({
+    id:"OPS_NEMESIS_BOUNTY",
+    title:"Operation Rival Hunter",
+    desc:"Claim 3 Nemesis bounties this week.",
+    metric:"nemesisBountiesClaimed",
+    target:3,
+    reward:{ cash:6900, perkPoints:3, armorPlates:2, ammo:20 },
+    modifiers:{ eventChanceMul:1.00, supplyWeightMul:1.04, rogueWeightMul:1.08, payoutMul:1.07 }
   }),
 ]);
 
@@ -5178,6 +5230,7 @@ function pickReturningNemesisForMission(missionNo=currentStoryMissionNumber(S)){
   chosen.updatedAt = Date.now();
   chosen.power = computeNemesisPower(chosen, missionNo);
   chosen.bountyCash = computeNemesisBountyCash(chosen, missionNo);
+  addContractTally("nemesisReturns", 1);
   nemesis.lastSpawnMission = missionNo;
   nemesis.lastSpawnId = chosen.id;
   trimNemesisRoster(nemesis);
@@ -5229,6 +5282,7 @@ function resolveNemesisOutcome(t, outcome="KILL"){
     bountyCash = Math.round(bountyCash * 1.16);
   }
   const xpBonus = (String(outcome).toUpperCase() === "CAPTURE" ? NEMESIS_CAPTURE_BONUS_XP : NEMESIS_KILL_BONUS_XP) + (power * 8);
+  addContractTally("nemesisBountiesClaimed", 1);
   S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + bountyCash;
   trackCashEarned(bountyCash);
   S.score = Math.max(0, Math.round(Number(S.score || 0))) + Math.round(70 + (power * 28));
@@ -6232,7 +6286,7 @@ function updateWorldCamera(state=S){
   const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const mobile = isMobileViewport();
   const ease = mobile
-    ? (state?.inBattle ? 0.42 : 0.34)
+    ? (state?.inBattle ? 0.52 : 0.42)
     : (state?.inBattle ? 0.25 : 0.18);
   if(!Number.isFinite(state.camera.x) || !Number.isFinite(state.camera.y)){
     state.camera.x = target.x;
@@ -6241,7 +6295,7 @@ function updateWorldCamera(state=S){
     const dx = target.x - state.camera.x;
     const dy = target.y - state.camera.y;
     const distToTarget = Math.hypot(dx, dy);
-    const snapDistance = Math.max(vw, vh) * (mobile ? 0.44 : 0.62);
+    const snapDistance = Math.max(vw, vh) * (mobile ? 0.32 : 0.62);
     if(distToTarget >= snapDistance){
       state.camera.x = target.x;
       state.camera.y = target.y;
@@ -6257,8 +6311,8 @@ function updateWorldCamera(state=S){
   const meY = Number.isFinite(state?.me?.y) ? state.me.y : target.y;
   const px = meX - (state.camera.x - (vw * 0.5));
   const py = meY - (state.camera.y - (vh * 0.5));
-  const marginX = Math.max(34, vw * (mobile ? 0.11 : 0.14));
-  const marginY = Math.max(28, vh * (mobile ? 0.12 : 0.16));
+  const marginX = Math.max(34, vw * (mobile ? 0.16 : 0.14));
+  const marginY = Math.max(28, vh * (mobile ? 0.18 : 0.16));
   const playerNearEdge =
     px < marginX ||
     px > (vw - marginX) ||
@@ -20884,6 +20938,7 @@ function updateAttackButton(){
 
 function finishTigerKill(t){
   if(!t || !t.alive) return;
+  const bossKill = !!isBossTiger(t);
   if(window.TigerTutorial?.isRunning){
     window.TigerTutorial.combatOutcome = "KILL";
   }
@@ -20898,6 +20953,7 @@ function finishTigerKill(t){
   S.funds+=pay.cash; S.score+=pay.score;
   S.stats.kills += 1;
   addContractTally("kills", 1);
+  if(bossKill) addContractTally("bossesDefeated", 1);
   addOpsTotal("kills", 1);
   addXP(50);
   grantSeasonPassPoints(8, "Tiger eliminated");
@@ -20981,6 +21037,7 @@ function playerAction(action){
     if(window.TigerTutorial?.isRunning){
       window.TigerTutorial.combatOutcome = "CAPTURE";
     }
+    const bossCapture = !!isBossTiger(t);
     markStoryFinalBossOutcome("CAPTURE", t);
     t.alive=false;
     addWeaponMasteryXp(req, 4);
@@ -20988,6 +21045,7 @@ function playerAction(action){
     S.funds+=pay.cash; S.score+=pay.score;
     S.stats.captures += 1;
     addContractTally("captures", 1);
+    if(bossCapture) addContractTally("bossesDefeated", 1);
     addOpsTotal("captures", 1);
     addXP(90);
     grantSeasonPassPoints(10, "Tiger captured");
