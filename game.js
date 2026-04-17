@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4494";
+const TS_BUILD = "4495";
 if(tg){
   try{
     tg.expand?.();
@@ -154,7 +154,7 @@ const ENABLE_TWIST_BRIDGE = false;
 const ENABLE_TWIST_HOSTAGE = false;
 const ENABLE_TWIST_FOG = false;
 const ENABLE_TWIST_BLACKOUT = false;
-const ENABLE_IPHONE_STABILITY_LOCK = false;
+const ENABLE_IPHONE_STABILITY_LOCK = true;
 const ENABLE_IPHONE_LITE_FEEDBACK = false;
 const ENABLE_MOBILE_WEATHER_TINT = true;
 const ENABLE_MOBILE_COMPACT_INTEL = true;
@@ -7005,10 +7005,12 @@ function ensureStabilityMonitorNode(){
   return el;
 }
 function shouldShowStabilityMonitor(now=Date.now()){
+  const ua = String(navigator?.userAgent || "");
+  const iosLike = /iPhone|iPad|iPod/i.test(ua);
   const touchLikelyMobile = isMobileViewport()
     || (window.matchMedia?.("(pointer:coarse)")?.matches)
     || ((navigator?.maxTouchPoints || 0) > 1 && Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 1024);
-  if(touchLikelyMobile) return false;
+  if(touchLikelyMobile || iosLike) return false;
   if(window.__TS_SHOW_MONITOR__ === true) return true;
   if(window.__TUTORIAL_MODE__) return false;
   if(performanceMode() === "PERFORMANCE" && !isMobileViewport()) return true;
@@ -20713,6 +20715,7 @@ function startCombat(){
   S.activeTigerId = t.id;
   S.lockedTigerId = t.id;
   S._combatTigerAttackAt = Date.now() + (isBossTiger(t) ? 680 : 950);
+  S._battleHeartbeatAt = Date.now();
   t.aggroBoost = Math.max(t.aggroBoost || 0, 0.85);
   const overlay = document.getElementById("battleOverlay");
   if(overlay) overlay.style.display = "none";
@@ -20819,6 +20822,7 @@ function endBattle(reason){
   S.activeTigerId=null;
   S.battleMsg="";
   S._combatTigerAttackAt = 0;
+  S._battleHeartbeatAt = 0;
   S.rollBufferedDodges = 0;
   S.rollBufferedUntil = 0;
   transitionCleanupSweep("battle-end");
@@ -21098,6 +21102,7 @@ function playerAction(action){
   }
   const t=tigerById(S.activeTigerId);
   if(!t || !t.alive) return endBattle();
+  S._battleHeartbeatAt = Date.now();
 
   if(action==="PROTECT"){
     if(S.mode==="Survival"){ setBattleMsg("No civilians in Survival."); return; }
@@ -21304,6 +21309,7 @@ function playerAction(action){
 function tigerTurn(t, softened=false, opts={}){
   if(!t.alive) return;
   const now = Date.now();
+  S._battleHeartbeatAt = now;
   if(t.holdUntil && now < t.holdUntil){
     if(S.inBattle) setBattleMsg(`Tiger #${t.id} is trapped and cannot attack.`);
     return 0;
@@ -21394,6 +21400,12 @@ function combatTick(){
   S.lockedTigerId = t.id;
   t.aggroBoost = Math.max(t.aggroBoost || 0, 0.95);
   const now = Date.now();
+  if((now - Number(S._battleHeartbeatAt || now)) > 12000){
+    endBattle("RECOVERY");
+    S.lockedTigerId = null;
+    toast("Battle recovered. Tap tiger again to re-engage.");
+    return;
+  }
   keepBattleTigerBesidePlayer(t, now);
 
   const d = dist(S.me.x, S.me.y, t.x, t.y);
@@ -25110,6 +25122,48 @@ function drawFailSafeScene(camX=0, camY=0){
     }catch(ignored){}
   }
 }
+function drawUltraSafeMapFrame(viewW, viewH, camX=0, camY=0){
+  const vw = Math.max(1, Number(viewW || cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH);
+  const vh = Math.max(1, Number(viewH || cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT);
+  const zone = missionEvacZoneSafe(S);
+  const zx = Number.isFinite(Number(zone.x)) ? Number(zone.x) - (Number(camX) || 0) : Math.round(vw * 0.78);
+  const zy = Number.isFinite(Number(zone.y)) ? Number(zone.y) - (Number(camY) || 0) : Math.round(vh * 0.34);
+  const zr = clamp(Number(zone.r || 72), 34, 130);
+
+  ctx.fillStyle = "#143624";
+  ctx.fillRect(0, 0, vw, vh);
+
+  ctx.fillStyle = "rgba(58,48,31,.80)";
+  ctx.beginPath();
+  ctx.moveTo(-20, vh * 0.28);
+  ctx.lineTo(vw * 0.30, vh * 0.36);
+  ctx.lineTo(vw * 0.56, vh * 0.30);
+  ctx.lineTo(vw * 0.82, vh * 0.38);
+  ctx.lineTo(vw + 24, vh * 0.33);
+  ctx.lineTo(vw + 24, vh * 0.44);
+  ctx.lineTo(-20, vh * 0.39);
+  ctx.closePath();
+  ctx.fill();
+
+  if(S.mode !== "Survival"){
+    ctx.fillStyle = "rgba(16,56,34,.34)";
+    ctx.beginPath();
+    ctx.arc(zx, zy, zr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(74,222,128,.95)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(zx, zy, zr, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(167,243,208,.78)";
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.arc(zx, zy, Math.max(10, zr - 8), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
 function noteRenderFailSafe(reason="render-failure"){
   const now = Date.now();
   __renderFailSafeState.consecutive = Math.max(0, Number(__renderFailSafeState.consecutive || 0)) + 1;
@@ -25188,7 +25242,7 @@ function enforceVisibleMissionViewport(state=S){
   } else {
     __emptyViewportFrames = Math.max(0, (__emptyViewportFrames || 0) - 2);
   }
-  if((__emptyViewportFrames || 0) >= 10){
+  if((__emptyViewportFrames || 0) >= 6){
     __emptyViewportFrames = 0;
     try{
       ensureMissionStartupIntegrity({ force:true, reason:"viewport-empty" });
@@ -25196,6 +25250,11 @@ function enforceVisibleMissionViewport(state=S){
       state.camera = state.camera || {};
       state.camera.x = c.x;
       state.camera.y = c.y;
+      if(isMobileViewport() && !(state.gameOver || state.missionEnded)){
+        const keepHp = clamp(Number(state.hp || 100), 0, 100);
+        const keepArmor = clamp(Number(state.armor || 0), 0, state.armorCap || 100);
+        deploy({ carryStats:true, hp:keepHp, armor:keepArmor });
+      }
       invalidateMapCache();
       return true;
     }catch(e){
@@ -25208,7 +25267,8 @@ function enforceVisibleMissionViewport(state=S){
 function onStartupComplete(){
   __startupComplete = true;
   if(isMobileViewport()){
-    S.mobileMapRenderer = "fast";
+    // Keep phones on the same full renderer path as laptop.
+    S.mobileMapRenderer = "full";
   }
 }
 
@@ -25505,6 +25565,11 @@ function draw(){
               camX,
               camY
             );
+          });
+        }
+        if(!mapDrawOk){
+          mapDrawOk = safeTick("drawSceneMapUltraSafe", ()=>{
+            drawUltraSafeMapFrame(viewW, viewH, camX, camY);
           });
         }
         if(mapDrawOk && shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
