@@ -1511,6 +1511,76 @@ function renderCompleteRecapCard(payload=null){
     ? payload
     : ((S.lastMissionRecap && typeof S.lastMissionRecap === "object") ? S.lastMissionRecap : buildMissionRecapPayload());
   cardEl.innerText = String(recap.card || "Mission recap is ready.");
+  renderMissionPremiumSummaryCard();
+}
+
+function missionPremiumGrade(stats){
+  const s = stats || {};
+  const civiliansTotal = Math.max(0, Math.floor(Number(s.civTotal || 0)));
+  const civiliansEvac = Math.max(0, Math.floor(Number(s.evac || 0)));
+  const captures = Math.max(0, Math.floor(Number(s.captures || 0)));
+  const kills = Math.max(0, Math.floor(Number(s.kills || 0)));
+  const shots = Math.max(0, Math.floor(Number(s.shots || 0)));
+  const trapStops = Math.max(0, Math.floor(Number(s.trapsTriggered || 0)));
+  const flawlessCiv = civiliansTotal > 0 && civiliansEvac >= civiliansTotal;
+  const precision = shots <= 24 ? 1 : (shots <= 36 ? 0.5 : 0);
+  const control = trapStops >= 2 ? 1 : (trapStops >= 1 ? 0.5 : 0);
+  const research = captures >= kills ? 1 : 0.5;
+  const civScore = flawlessCiv ? 1 : (civiliansTotal > 0 ? clamp(civiliansEvac / civiliansTotal, 0, 1) : 0.75);
+  const score = (civScore * 0.45) + (research * 0.2) + (precision * 0.2) + (control * 0.15);
+  if(score >= 0.93) return "S";
+  if(score >= 0.84) return "A";
+  if(score >= 0.72) return "B";
+  if(score >= 0.58) return "C";
+  return "D";
+}
+
+function renderMissionPremiumSummaryCard(summary=null){
+  const root = document.getElementById("completePremiumSummary");
+  if(!root) return;
+  const base = summary && typeof summary === "object"
+    ? summary
+    : ((S.lastMissionPremiumSummary && typeof S.lastMissionPremiumSummary === "object") ? S.lastMissionPremiumSummary : {});
+
+  const mode = String(base.mode || S.mode || "Story");
+  const level = Math.max(1, Math.floor(Number(base.level || missionIndexForMode(mode) || 1)));
+  const chapterName = String(base.chapterName || "").trim();
+  const civiliansEvac = Math.max(0, Math.floor(Number(base.evac || S.stats?.evac || 0)));
+  const civiliansTotal = Math.max(0, Math.floor(Number(base.civTotal || S.civilians?.length || 0)));
+  const captures = Math.max(0, Math.floor(Number(base.captures || S.stats?.captures || 0)));
+  const kills = Math.max(0, Math.floor(Number(base.kills || S.stats?.kills || 0)));
+  const cashEarned = Math.max(0, Math.floor(Number(base.cashEarned || S.stats?.cashEarned || 0)));
+  const shots = Math.max(0, Math.floor(Number(base.shots || S.stats?.shots || 0)));
+  const trapStops = Math.max(0, Math.floor(Number(base.trapsTriggered || S.stats?.trapsTriggered || 0)));
+  const bossMission = !!base.bossMission;
+  const grade = missionPremiumGrade({
+    civTotal:civiliansTotal, evac:civiliansEvac, captures, kills, shots, trapsTriggered:trapStops
+  });
+
+  const gradeEl = document.getElementById("completePremiumGrade");
+  const subEl = document.getElementById("completePremiumSub");
+  const evacEl = document.getElementById("completePremiumEvac");
+  const tigerEl = document.getElementById("completePremiumTiger");
+  const cashEl = document.getElementById("completePremiumCash");
+  const tagsEl = document.getElementById("completePremiumTags");
+  if(gradeEl) gradeEl.innerText = grade;
+  if(subEl){
+    const chapterSuffix = chapterName ? ` • ${chapterName}` : "";
+    subEl.innerText = `${mode} Mission ${level}${chapterSuffix}${bossMission ? " • Boss Operation" : ""}`;
+  }
+  if(evacEl) evacEl.innerText = `${civiliansEvac}/${Math.max(1, civiliansTotal)}`;
+  if(tigerEl) tigerEl.innerText = `${captures}C • ${kills}K`;
+  if(cashEl) cashEl.innerText = `$${cashEarned.toLocaleString()}`;
+  if(tagsEl){
+    const tags = [];
+    if(civiliansTotal > 0 && civiliansEvac >= civiliansTotal) tags.push("🛟 Perfect Rescue");
+    if(captures > kills) tags.push("🎯 Capture Focus");
+    if(shots > 0 && shots <= 24) tags.push("🔫 Clean Precision");
+    if(trapStops >= 2) tags.push("🧰 Trap Control");
+    if(bossMission) tags.push("👑 Boss Clear");
+    if(tags.length === 0) tags.push("✅ Mission Completed");
+    tagsEl.innerHTML = tags.map((tag)=>`<span class="premiumSummaryTag">${tag}</span>`).join("");
+  }
 }
 
 function openShareUrl(url){
@@ -2730,6 +2800,13 @@ const WEAPON_GRADE = {
   "Legendary": { wear:0.45, jamBase:0.008 },
   "Mythic":    { wear:0.35, jamBase:0.005 },
 };
+// Weapon handling profiles add feel/identity without large raw power spikes.
+const WEAPON_HANDLING_TUNING = Object.freeze({
+  short:  { close:1.08, mid:0.92, long:0.78, reloadMul:0.90, jamMul:1.03, recoil:1.12, label:"close-range power" },
+  mid:    { close:0.98, mid:1.04, long:0.93, reloadMul:1.00, jamMul:1.00, recoil:1.00, label:"balanced control" },
+  long:   { close:0.90, mid:1.00, long:1.07, reloadMul:0.88, jamMul:1.05, recoil:1.07, label:"distance precision" },
+  tranq:  { close:0.98, mid:1.00, long:1.03, reloadMul:0.95, jamMul:0.95, recoil:0.86, label:"capture stability" },
+});
 const WEAPON_MASTERY_THRESHOLDS = Object.freeze([0, 120, 320, 680, 1180, 1900]);
 const WEAPON_MASTERY_MAX_LEVEL = WEAPON_MASTERY_THRESHOLDS.length - 1;
 const WEAPON_MASTERY_JAM_REDUCTION_PER_LEVEL = 0.055;
@@ -2777,28 +2854,28 @@ const TIGER_HUNT_STATES = Object.freeze({
   RECOVER: "recover",
 });
 const BOSS_IDENTITY_BY_CHAPTER = Object.freeze({
-  1: { name:"Pack Caller", cycle:["reinforce"], cd:[11500, 15500], reinforce:[1,1] },
-  2: { name:"Blood Herald", cycle:["roar","charge"], cd:[9800, 13200] },
-  3: { name:"Shadow Stalker", cycle:["stealth","pounce_chain"], cd:[9000, 12400] },
-  4: { name:"Twin Fang Prime", cycle:["pounce_chain","roar"], cd:[8800, 11800] },
-  5: { name:"River Breaker", cycle:["charge","reinforce"], cd:[9400, 12600], reinforce:[1,2] },
-  6: { name:"Mountain Crusher", cycle:["charge","pounce_chain"], cd:[8600, 11400] },
-  7: { name:"Territory Marshal", cycle:["reinforce","roar","charge"], cd:[8400, 11000], reinforce:[1,2] },
-  8: { name:"Tiger King", cycle:["roar","pounce_chain","reinforce","charge"], cd:[7800, 10400], reinforce:[1,2] },
-  9: { name:"Phantom Lord", cycle:["stealth","charge","pounce_chain"], cd:[7600, 10200] },
-  10:{ name:"Ancient Tiger", cycle:["roar","stealth","pounce_chain","reinforce","charge"], cd:[7000, 9600], reinforce:[2,3] },
+  1: { name:"Pack Caller", cycle:["reinforce","summon_window"], cd:[11200, 15200], reinforce:[1,1] },
+  2: { name:"Blood Herald", cycle:["roar","roar_shield_break","rage_phase","charge"], cd:[9600, 12900] },
+  3: { name:"Shadow Stalker", cycle:["stealth","fake_pounce","pounce_chain"], cd:[8900, 12100] },
+  4: { name:"Twin Fang Prime", cycle:["pounce_chain","fake_pounce","roar"], cd:[8600, 11600] },
+  5: { name:"River Breaker", cycle:["charge","summon_window","reinforce"], cd:[9200, 12300], reinforce:[1,2] },
+  6: { name:"Mountain Crusher", cycle:["charge","rage_phase","pounce_chain"], cd:[8400, 11100] },
+  7: { name:"Territory Marshal", cycle:["reinforce","summon_window","roar","charge"], cd:[8200, 10800], reinforce:[1,2] },
+  8: { name:"Tiger King", cycle:["roar","pounce_chain","fake_pounce","reinforce","charge"], cd:[7600, 10100], reinforce:[1,2] },
+  9: { name:"Phantom Lord", cycle:["stealth","fake_pounce","charge","pounce_chain"], cd:[7400, 9800] },
+  10:{ name:"Ancient Tiger", cycle:["roar","roar_shield_break","stealth","fake_pounce","pounce_chain","summon_window","reinforce","rage_phase","charge"], cd:[6800, 9400], reinforce:[2,3] },
 });
 const BOSS_SIGNATURE_MOMENT_BY_CHAPTER = Object.freeze({
-  1: "Howl Call pressure — expect Standard reinforcement packs.",
-  2: "War Roar into Rage Charge — burst aggression spikes.",
-  3: "Shadow Fade into Pounce Chain — stealth lunge pattern.",
-  4: "Pounce Chain plus War Roar — rapid close-range pressure.",
-  5: "Rage Charge and Howl Call — split focus under reinforcement.",
-  6: "Mountain charge bursts with pounce follow-up windows.",
-  7: "Reinforcement marshal: Howl Call with roar-charge pacing.",
-  8: "Tiger King rotation: roar, pounce, reinforce, and charge.",
-  9: "Phantom cycle: stealth bait into charge and pounce.",
-  10: "Ancient Tiger multi-phase chain: roar, stealth, reinforce, charge.",
+  1: "Howl Call pressure with summon windows — reinforcement packs spike in bursts.",
+  2: "War Roar can break shields, then rage-charge windows open.",
+  3: "Shadow Fade with fake pounce bait into true pounce chains.",
+  4: "Twin pressure pattern: fake pounce feints + chain pounces.",
+  5: "River boss opens summon windows before reinforcement calls.",
+  6: "Mountain rage phase accelerates charge + pounce cadence.",
+  7: "Territory marshal rotates roar-pressure and timed pack summons.",
+  8: "Tiger King mixes fake pounce, chain pounce, and reinforce windows.",
+  9: "Phantom cycles stealth bait, fake pounce, and charge punish.",
+  10: "Ancient Tiger: shield-break roar, fake pounce, summon window, full rage chain.",
 });
 const BOSS_PHASE_PRESETS = Object.freeze({
   1: { name:"Opening Pressure", cdMul:1.00, dmgMul:1.00, tempoMul:1.00, reinforceAdd:0, pounceExtra:0 },
@@ -2951,9 +3028,13 @@ function bossSkillTelegraphText(skill, opts={}){
   const incoming = opts.incoming !== false;
   if(skill === "stalk") return incoming ? "Stalk phase incoming — boss is circling for an opening." : "Stalk phase active.";
   if(skill === "roar") return incoming ? "War Roar incoming — nearby tigers get buffed." : "War Roar active.";
+  if(skill === "roar_shield_break") return incoming ? "Shield-Break Roar incoming — escort shield can be disrupted." : "Shield-Break Roar active.";
   if(skill === "stealth") return incoming ? "Shadow Fade incoming — watch for a stealth lunge." : "Shadow Fade active.";
+  if(skill === "fake_pounce") return incoming ? "Fake Pounce incoming — boss may feint before striking." : "Fake Pounce active.";
   if(skill === "pounce_chain") return incoming ? "Pounce Chain incoming — prepare for rapid leaps." : "Pounce Chain active.";
   if(skill === "reinforce") return incoming ? "Howl Call incoming — reinforcements may arrive." : "Howl Call active.";
+  if(skill === "summon_window") return incoming ? "Summon Window incoming — boss can call support briefly." : "Summon Window active.";
+  if(skill === "rage_phase") return incoming ? "Rage Phase incoming — boss damage and tempo are rising." : "Rage Phase active.";
   if(skill === "charge") return incoming ? "Rage Charge incoming — roll to dodge the hit." : "Rage Charge active.";
   return incoming ? "Boss skill incoming." : "Boss skill active.";
 }
@@ -3034,6 +3115,13 @@ function triggerBossIdentitySkill(t, profile, now=Date.now()){
     t.burstUntil = Math.max(t.burstUntil || 0, (t.bossStealthUntil || 0) + rand(420, 760));
     setTigerIntent(t, "Shadow Fade", 860);
     if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} entered stealth phase.`);
+  } else if(skill === "fake_pounce"){
+    const fakeMs = phase >= 3 ? rand(1300, 1900) : rand(1100, 1700);
+    t.bossFakePounceUntil = now + fakeMs;
+    t.bossFakePounceStrikeAt = now + Math.round(fakeMs * rand(0.48, 0.68));
+    t.burstUntil = Math.max(t.burstUntil || 0, now + fakeMs + 380);
+    setTigerIntent(t, "Fake Pounce", 860);
+    if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} feints a pounce. Hold your roll.`);
   } else if(skill === "pounce_chain"){
     const bonusCharges = Math.max(0, Math.floor(Number(phaseCfg.pounceExtra || 0)));
     t.bossPounceCharges = rand(2 + bonusCharges, 3 + bonusCharges);
@@ -3047,6 +3135,29 @@ function triggerBossIdentitySkill(t, profile, now=Date.now()){
     t.enragedUntil = Math.max(t.enragedUntil || 0, t.bossChargeUntil + 900);
     setTigerIntent(t, "Rage Charge", 860);
     if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} is charging.`);
+  } else if(skill === "roar_shield_break"){
+    const roarMs = phase >= 3 ? rand(2400, 3400) : rand(2200, 3000);
+    t.roarUntil = Math.max(t.roarUntil || 0, now + roarMs);
+    t.enragedUntil = Math.max(t.enragedUntil || 0, now + roarMs + 1100);
+    t.bossShieldBreakUntil = now + Math.round(roarMs * 0.56);
+    if(S.shieldUntil && now < S.shieldUntil){
+      S.shieldUntil = Math.min(S.shieldUntil, now + 380);
+    }
+    setTigerIntent(t, "Shield Break", 880);
+    if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} roars through shields.`);
+  } else if(skill === "summon_window"){
+    const summonWindowMs = phase >= 3 ? rand(2400, 3400) : rand(2000, 3000);
+    t.bossSummonWindowUntil = now + summonWindowMs;
+    t.nextReinforceAt = Math.min(Number(t.nextReinforceAt || (now + 220)), now + 220);
+    setTigerIntent(t, "Summon Window", 860);
+    if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} opened a summon window.`);
+  } else if(skill === "rage_phase"){
+    const rageMs = phase >= 3 ? rand(3400, 4600) : rand(2800, 3900);
+    t.bossRagePhaseUntil = now + rageMs;
+    t.enragedUntil = Math.max(t.enragedUntil || 0, now + rageMs);
+    t.burstUntil = Math.max(t.burstUntil || 0, now + Math.round(rageMs * 0.82));
+    setTigerIntent(t, "Rage Phase", 920);
+    if(S.inBattle && S.activeTigerId === t.id) setBattleMsg(`${profile.name} entered rage phase.`);
   } else if(skill === "reinforce"){
     const phasePull = phase >= 3 ? 0 : (phase >= 2 ? 35 : 70);
     t.nextReinforceAt = Math.min(t.nextReinforceAt || (now + phasePull), now + phasePull);
@@ -3542,6 +3653,92 @@ const CHAPTER_BIOME_PROFILES = {
     },
   ],
 };
+
+const CHAPTER_MAP_IDENTITIES = Object.freeze({
+  Story: Object.freeze([
+    { name:"Fog Route", pressureMul:0.96, civilianSpeedMul:0.98, eventWeight:{ fog:3, hostage:2, bridge:1, blackout:0 } },
+    { name:"River Crossing", pressureMul:1.04, civilianSpeedMul:0.96, eventWeight:{ fog:1, hostage:2, bridge:2, blackout:0 } },
+    { name:"Choke Point", pressureMul:1.08, civilianSpeedMul:0.94, eventWeight:{ fog:1, hostage:2, bridge:3, blackout:0 } },
+    { name:"Open Sprint", pressureMul:0.94, civilianSpeedMul:1.06, eventWeight:{ fog:0, hostage:3, bridge:1, blackout:0 } },
+    { name:"River Crossing", pressureMul:1.05, civilianSpeedMul:0.95, eventWeight:{ fog:1, hostage:3, bridge:2, blackout:0 } },
+    { name:"Choke Point", pressureMul:1.09, civilianSpeedMul:0.94, eventWeight:{ fog:1, hostage:2, bridge:3, blackout:0 } },
+    { name:"Fog Route", pressureMul:0.98, civilianSpeedMul:0.99, eventWeight:{ fog:3, hostage:2, bridge:1, blackout:0 } },
+    { name:"Open Sprint", pressureMul:0.95, civilianSpeedMul:1.07, eventWeight:{ fog:0, hostage:3, bridge:1, blackout:0 } },
+    { name:"Choke Point", pressureMul:1.10, civilianSpeedMul:0.93, eventWeight:{ fog:1, hostage:2, bridge:3, blackout:0 } },
+    { name:"Temple Gauntlet", pressureMul:1.12, civilianSpeedMul:0.92, eventWeight:{ fog:2, hostage:2, bridge:3, blackout:0 } },
+  ]),
+  Arcade: Object.freeze([
+    { name:"Arena Rotation", pressureMul:1.02, civilianSpeedMul:1.00, eventWeight:{ fog:1, hostage:2, bridge:2, blackout:0 } },
+    { name:"Speed Run", pressureMul:0.95, civilianSpeedMul:1.05, eventWeight:{ fog:0, hostage:3, bridge:1, blackout:0 } },
+    { name:"Control Lanes", pressureMul:1.06, civilianSpeedMul:0.96, eventWeight:{ fog:1, hostage:2, bridge:3, blackout:0 } },
+    { name:"Fog Route", pressureMul:0.97, civilianSpeedMul:0.98, eventWeight:{ fog:3, hostage:1, bridge:1, blackout:0 } },
+    { name:"Open Sprint", pressureMul:0.94, civilianSpeedMul:1.07, eventWeight:{ fog:0, hostage:3, bridge:1, blackout:0 } },
+    { name:"Choke Point", pressureMul:1.08, civilianSpeedMul:0.94, eventWeight:{ fog:1, hostage:2, bridge:3, blackout:0 } },
+    { name:"River Crossing", pressureMul:1.04, civilianSpeedMul:0.96, eventWeight:{ fog:1, hostage:2, bridge:2, blackout:0 } },
+    { name:"Fog Route", pressureMul:0.98, civilianSpeedMul:0.99, eventWeight:{ fog:3, hostage:1, bridge:1, blackout:0 } },
+    { name:"Open Sprint", pressureMul:0.95, civilianSpeedMul:1.07, eventWeight:{ fog:0, hostage:3, bridge:1, blackout:0 } },
+    { name:"Arena Rotation", pressureMul:1.03, civilianSpeedMul:1.00, eventWeight:{ fog:1, hostage:2, bridge:2, blackout:0 } },
+  ]),
+  Survival: Object.freeze([
+    { name:"Pressure Arena", pressureMul:1.05, civilianSpeedMul:1.00, eventWeight:{ fog:0, hostage:0, bridge:0, blackout:0 } },
+  ]),
+});
+
+function mapIdentityProfile(mode=S.mode, chapter=chapterIndexForMode(mode)){
+  const list = CHAPTER_MAP_IDENTITIES[normalizeModeName(mode)] || CHAPTER_MAP_IDENTITIES.Story;
+  if(!list?.length) return CHAPTER_MAP_IDENTITIES.Story[0];
+  const idx = clamp(Number(chapter || 1) - 1, 0, list.length - 1);
+  return list[idx] || list[0] || CHAPTER_MAP_IDENTITIES.Story[0];
+}
+const DEFAULT_MAP_EVENT_WEIGHT = Object.freeze({ fog:1, hostage:1, bridge:1, blackout:0 });
+function mapIdentityEventWeights(mode=S.mode, chapter=chapterIndexForMode(mode)){
+  const id = mapIdentityProfile(mode, chapter) || {};
+  const src = (id.eventWeight && typeof id.eventWeight === "object") ? id.eventWeight : {};
+  return {
+    fog: Math.max(0, Number(src.fog ?? DEFAULT_MAP_EVENT_WEIGHT.fog)),
+    hostage: Math.max(0, Number(src.hostage ?? DEFAULT_MAP_EVENT_WEIGHT.hostage)),
+    bridge: Math.max(0, Number(src.bridge ?? DEFAULT_MAP_EVENT_WEIGHT.bridge)),
+    blackout: Math.max(0, Number(src.blackout ?? DEFAULT_MAP_EVENT_WEIGHT.blackout)),
+  };
+}
+function mapIdentityCivilianSpeedMul(mode=S.mode, chapter=chapterIndexForMode(mode)){
+  const id = mapIdentityProfile(mode, chapter);
+  return clamp(Number(id?.civilianSpeedMul || 1), 0.90, 1.14);
+}
+function weightedChoiceFromObject(weights={}, allowed=[]){
+  let total = 0;
+  for(const key of allowed){
+    total += Math.max(0, Number(weights[key] || 0));
+  }
+  if(total <= 0){
+    return allowed.length ? allowed[rand(0, allowed.length - 1)] : "";
+  }
+  let roll = Math.random() * total;
+  for(const key of allowed){
+    roll -= Math.max(0, Number(weights[key] || 0));
+    if(roll <= 0) return key;
+  }
+  return allowed[allowed.length - 1] || "";
+}
+function missionDirectorReadableAlert(type){
+  const mapId = mapIdentityProfile(S.mode, chapterIndexForMode(S.mode));
+  const mapName = mapId?.name || "Current map";
+  if(type === "hostage"){
+    setEventText(`🚨 Mission Director: Hostage event on ${mapName}. Reroute and secure that civilian.`, 4.8);
+    return;
+  }
+  if(type === "bridge"){
+    setEventText(`⚠️ Mission Director: Route shift on ${mapName}. Bridge lane unstable.`, 4.6);
+    return;
+  }
+  if(type === "fog"){
+    setEventText(`🌫️ Mission Director: Fog pulse on ${mapName}. Tight escort spacing advised.`, 4.4);
+    return;
+  }
+  if(type === "blackout"){
+    setEventText(`📻 Mission Director: Radio blackout on ${mapName}. Move visually and stay grouped.`, 4.4);
+  }
+}
 
 const MAP_DENSE_LANDMARKS = {
   ST_FOREST: [
@@ -6698,7 +6895,9 @@ function missionDirectorTargetPressure(now=Date.now()){
     if(!inBattle && underAttack === 0 && nearPlayer === 0) target -= 3;
   }
   const tuning = currentBalanceTuning(S, now);
+  const mapId = mapIdentityProfile(S.mode, chapterIndexForMode(S.mode));
   target *= clamp(Number(tuning.pressureMul || 1), 0.86, 1.16);
+  target *= clamp(Number(mapId?.pressureMul || 1), 0.88, 1.18);
   return clamp(target, 0, 100);
 }
 function missionDirectorResolvePhase(pressure, currentPhase){
@@ -9451,6 +9650,33 @@ function weaponRangeBand(range=equippedWeaponRange()){
   if(range <= WEAPON_RANGE_BANDS.mid) return "mid";
   return "long";
 }
+function weaponHandlingProfile(w){
+  if(!w) return WEAPON_HANDLING_TUNING.mid;
+  const id = String(w.id || "").toLowerCase();
+  if(w.type === "tranq" || id.includes("tranq")) return WEAPON_HANDLING_TUNING.tranq;
+  if(id.includes("pistol") || id.includes("sidearm")){
+    return {
+      ...WEAPON_HANDLING_TUNING.mid,
+      close:1.02,
+      long:0.90,
+      reloadMul:1.05,
+      jamMul:0.97,
+      recoil:0.96,
+      label:"sidearm control"
+    };
+  }
+  const band = weaponRangeBand(w.range || 112);
+  if(band === "short") return WEAPON_HANDLING_TUNING.short;
+  if(band === "long") return WEAPON_HANDLING_TUNING.long;
+  return WEAPON_HANDLING_TUNING.mid;
+}
+function weaponDistanceMul(w, distToTarget=0){
+  const p = weaponHandlingProfile(w);
+  const d = Math.max(0, Number(distToTarget || 0));
+  if(d <= WEAPON_RANGE_BANDS.short) return p.close;
+  if(d <= WEAPON_RANGE_BANDS.mid) return p.mid;
+  return p.long;
+}
 function tigerCivilianHitRange(t){
   if(isBossTiger(t)) return CIVILIAN_HIT_PCT_BY_TIGER.Boss;
   return CIVILIAN_HIT_PCT_BY_TIGER[t?.type] || CIVILIAN_HIT_PCT_BY_TIGER.Standard;
@@ -10446,23 +10672,33 @@ function missionTwistChooseType(tw){
   const available = MISSION_TWIST_TYPES.filter((type)=>{
     if((tw.used?.[type] || 0) >= 1) return false;
     if(type === "hostage" && aliveCivs <= 0) return false;
+    if(type === "bridge" && !ENABLE_TWIST_BRIDGE) return false;
+    if(type === "hostage" && !ENABLE_TWIST_HOSTAGE) return false;
+    if(type === "fog" && !ENABLE_TWIST_FOG) return false;
+    if(type === "blackout" && !ENABLE_TWIST_BLACKOUT) return false;
     return true;
   });
   if(!available.length) return "";
+  const mapWeights = mapIdentityEventWeights(S.mode, chapterIndexForMode(S.mode));
+  const pressure = clamp(Number(ensureMissionDirectorState().pressure || 0), 0, 100);
+  const nearCivDanger = Math.max(0, Number(S._underAttack || 0));
   const weights = {
-    bridge: 0.28,
-    hostage: aliveCivs > 0 ? 0.30 : 0,
-    fog: 0.23,
-    blackout: 0.19
+    bridge: Math.max(0.05, mapWeights.bridge),
+    hostage: Math.max(0.05, mapWeights.hostage) + (aliveCivs > 0 ? (0.25 + (nearCivDanger * 0.08)) : 0),
+    fog: Math.max(0.05, mapWeights.fog) + (pressure >= 45 ? 0.18 : 0),
+    blackout: Math.max(0.01, mapWeights.blackout),
   };
-  let total = 0;
-  for(const type of available) total += Math.max(0.01, Number(weights[type] || 0.1));
-  let roll = Math.random() * total;
-  for(const type of available){
-    roll -= Math.max(0.01, Number(weights[type] || 0.1));
-    if(roll <= 0) return type;
+  // Keep event flow readable/fair: avoid chaining heavy route-control twists.
+  if((tw.lastType || "") === "bridge") weights.bridge *= 0.52;
+  if((tw.lastType || "") === "hostage") weights.hostage *= 0.56;
+  if(pressure >= 70){
+    weights.hostage *= 0.88;
+    weights.bridge *= 0.92;
   }
-  return available[rand(0, available.length - 1)];
+  if(nearCivDanger <= 0){
+    weights.hostage *= 0.76;
+  }
+  return weightedChoiceFromObject(weights, available);
 }
 function tickMissionTwists(){
   const tw = ensureMissionTwistState(S);
@@ -10536,6 +10772,8 @@ function tickMissionTwists(){
   if(ok){
     tw.used[type] = Math.max(0, Math.floor(Number(tw.used[type] || 0))) + 1;
     tw.triggerCount = Math.max(0, Math.floor(Number(tw.triggerCount || 0))) + 1;
+    tw.lastType = type;
+    missionDirectorReadableAlert(type);
   } else {
     tw.nextRollAt = now + rand(6500, 11000);
     tw.cooldownUntil = now + Math.round(MISSION_TWIST_COOLDOWN_MS * 0.45);
@@ -11111,9 +11349,13 @@ function missionSpecialRuleText(mode, mission){
 function bossCycleLabel(skill){
   if(skill==="stalk") return "Predator Stalk";
   if(skill==="roar") return "War Roar";
+  if(skill==="roar_shield_break") return "Shield-Break Roar";
   if(skill==="stealth") return "Shadow Fade";
+  if(skill==="fake_pounce") return "Fake Pounce";
   if(skill==="pounce_chain") return "Pounce Chain";
   if(skill==="reinforce") return "Howl Call";
+  if(skill==="summon_window") return "Summon Window";
+  if(skill==="rage_phase") return "Rage Phase";
   if(skill==="charge") return "Rage Charge";
   return "Boss Skill";
 }
@@ -15475,7 +15717,8 @@ function jamChance(w){
   const g=WEAPON_GRADE[w.grade]||WEAPON_GRADE.Common;
   const dur=weaponDurability(w.id);
   const wearFactor = dur>=60?0.0:(60-dur)/60;
-  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul() * weaponMasteryJamMul(w.id), 0, 0.28);
+  const handling = weaponHandlingProfile(w);
+  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul() * weaponMasteryJamMul(w.id) * handling.jamMul, 0, 0.28);
 }
 function autoReloadIfNeeded(force=false){
   const w=equippedWeapon();
@@ -15484,7 +15727,8 @@ function autoReloadIfNeeded(force=false){
   if(reserve<=0) return false;
   const need = S.mag.cap - S.mag.loaded;
   const take = Math.min(need, reserve);
-  const handlingBonus = clamp(perkReloadBonus() + weaponMasteryReloadBonus(w.id), 0, 0.72);
+  const handling = weaponHandlingProfile(w);
+  const handlingBonus = clamp((perkReloadBonus() + weaponMasteryReloadBonus(w.id)) * handling.reloadMul, 0, 0.72);
   const bonus = Math.min(need - take, Math.floor(take * handlingBonus));
   S.mag.loaded += take + bonus;
   S.ammoReserve[w.ammo] = reserve - take;
@@ -18727,13 +18971,61 @@ function runCivilianFleeStep(c, now=Date.now()){
   }
   if(!threat) return false;
 
+  const chooseCoverPoint = ()=>{
+    const points = [];
+    for(const site of (S.rescueSites || [])){
+      if(!site || !Number.isFinite(site.x) || !Number.isFinite(site.y)) continue;
+      points.push({ x:site.x, y:site.y, score:1.35 });
+    }
+    for(const obj of (S.mapInteractables || [])){
+      if(!obj || !Number.isFinite(obj.x) || !Number.isFinite(obj.y)) continue;
+      points.push({ x:obj.x, y:obj.y, score:1.0 });
+    }
+    if(S.evacZone && Number.isFinite(S.evacZone.x) && Number.isFinite(S.evacZone.y)){
+      points.push({ x:S.evacZone.x, y:S.evacZone.y, score:1.7 });
+    }
+    if(!points.length) return null;
+    let best = null;
+    let bestScore = -1e9;
+    for(const pt of points){
+      const dThreat = dist(pt.x, pt.y, threat.x, threat.y);
+      const dSelf = dist(pt.x, pt.y, c.x, c.y);
+      const lanePenalty = inMapScenarioKeepout(pt.x, pt.y, 12) ? 220 : 0;
+      const score = (dThreat * pt.score) - (dSelf * 0.55) - lanePenalty;
+      if(score > bestScore){
+        bestScore = score;
+        best = pt;
+      }
+    }
+    return best;
+  };
+  if(!Number.isFinite(c.panicCoverUntil) || now >= c.panicCoverUntil || !Number.isFinite(c.panicCoverX) || !Number.isFinite(c.panicCoverY)){
+    const cover = chooseCoverPoint();
+    if(cover){
+      c.panicCoverX = cover.x;
+      c.panicCoverY = cover.y;
+      c.panicCoverUntil = now + rand(900, 1900);
+    } else {
+      c.panicCoverX = NaN;
+      c.panicCoverY = NaN;
+      c.panicCoverUntil = now + rand(600, 1200);
+    }
+  }
+
+  const towardCover = Number.isFinite(c.panicCoverX) && Number.isFinite(c.panicCoverY)
+    ? { x:c.panicCoverX, y:c.panicCoverY }
+    : null;
   const awayX = c.x - threat.x;
   const awayY = c.y - threat.y;
-  const jitter = c.following ? 0 : (((c.id % 3) - 1) * 0.28);
-  const ang = Math.atan2(awayY, awayX) + jitter;
+  const fallbackAng = Math.atan2(awayY, awayX);
+  const jitter = c.following ? 0.06 : (((c.id % 3) - 1) * 0.22);
+  const ang = towardCover
+    ? (Math.atan2(towardCover.y - c.y, towardCover.x - c.x) + jitter)
+    : (fallbackAng + jitter);
   const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
   const motionMul = frameMotionMul();
-  const fleeSpeed = (c.following ? 3.38 : 2.74) * (c.following ? Math.max(0.94, waterMul) : waterMul) * motionMul;
+  const mapCivMul = mapIdentityCivilianSpeedMul(S.mode, chapterIndexForMode(S.mode));
+  const fleeSpeed = (c.following ? 3.58 : 2.94) * (c.following ? Math.max(0.95, waterMul) : waterMul) * motionMul * mapCivMul;
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -18748,6 +19040,7 @@ function followCiviliansTick(){
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const motionMul = frameMotionMul();
   const escortBoost = storyRescueSpeedMul();
+  const mapCivMul = mapIdentityCivilianSpeedMul(S.mode, chapterIndexForMode(S.mode));
   const engageDist = 86;
   const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 720 : 620;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
@@ -18902,17 +19195,18 @@ function followCiviliansTick(){
     }
     const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
     const escortWaterMul = Math.max(0.95, waterMul);
-    const catchup = clamp((dd - 8) * 0.084, 0, 7.2);
-    const trailBoost = dd > 200 ? 1.26 : (dd > 140 ? 0.84 : 0.14);
+    const stayCloseBoost = S._underAttack > 0 ? 1.08 : 1;
+    const catchup = clamp((dd - 8) * 0.089, 0, 7.6);
+    const trailBoost = dd > 200 ? 1.46 : (dd > 140 ? 0.94 : 0.18);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.52, 4.25) + catchup + trailBoost) * escortBoost * escortWaterMul),
-      PLAYER_SPRINT_SPEED + 5.6
+      ((Math.max(playerSpeed * 1.66, 4.45) + catchup + trailBoost) * escortBoost * escortWaterMul * stayCloseBoost * mapCivMul),
+      PLAYER_SPRINT_SPEED + 6.3
     ) * motionMul;
     const targetVx = (dx/dd) * sp;
     const targetVy = (dy/dd) * sp;
     if(!Number.isFinite(c._followVx)) c._followVx = 0;
     if(!Number.isFinite(c._followVy)) c._followVy = 0;
-    const smooth = dd > 130 ? 0.40 : 0.54;
+    const smooth = dd > 130 ? 0.44 : (dd < 44 ? 0.62 : 0.56);
     c._followVx += (targetVx - c._followVx) * smooth;
     c._followVy += (targetVy - c._followVy) * smooth;
     const mag = Math.hypot(c._followVx, c._followVy) || 0;
@@ -20585,6 +20879,27 @@ function setCaptureReadyVisual(ready=false){
     else el.classList.remove("captureReady");
   });
 }
+function updateCaptureReadyCue(t, ready){
+  if(!t || !t.alive || !S.inBattle){
+    S._captureReadyTigerId = 0;
+    S._captureReadyAt = 0;
+    return;
+  }
+  const key = Number(t.id || 0);
+  const lastKey = Number(S._captureReadyTigerId || 0);
+  if(ready){
+    if(lastKey !== key){
+      S._captureReadyTigerId = key;
+      S._captureReadyAt = Date.now();
+      setBattleMsg("🔴 Capture ready: tiger is in the 25%→5% capture window.");
+      setEventText("🔴 Capture-ready window active.", 1.6);
+      try{ hapticImpact("medium"); }catch(e){}
+    }
+  } else if(lastKey === key){
+    S._captureReadyTigerId = 0;
+    S._captureReadyAt = 0;
+  }
+}
 
 function renderCombatControls(){
   const touchOverlay = document.querySelector(".touchOverlay");
@@ -20634,6 +20949,7 @@ function renderCombatControls(){
     if(el) el.disabled = disabled;
   });
   setCaptureReadyVisual(captureReadyByHp);
+  updateCaptureReadyCue(t, captureReadyByHp);
   [["touchCombatMedkitBtn", !canMed], ["combatMedkitBtn", !canMed]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
@@ -21226,12 +21542,15 @@ function playerAction(action){
     addXP(2);
     
     const eff=ammoEffectFor(w.ammo);
+    const handling = weaponHandlingProfile(w);
+    const attackDist = dist(S.me.x, S.me.y, t.x, t.y);
     let dmg=rand(w.dmg[0],w.dmg[1]);
     dmg *= perkDamageMul();
     dmg *= arcadeBuildcraftMul("damageOutMul", 1);
     const crit=Math.random()<(eff.crit + perkCritBonus() + arcadeBuildcraftCritBonus());
     if(crit) dmg=Math.round(dmg*1.6);
     dmg=Math.round(dmg*eff.dmgMul);
+    dmg=Math.round(dmg * weaponDistanceMul(w, attackDist));
 
     if(w.type==="tranq"){
       t.tranqTagged = true;
@@ -21283,6 +21602,9 @@ function playerAction(action){
       emitDamagePopup(t.x, t.y - 44, `-${dmg}`, crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"));
       hapticImpact(crit ? "heavy" : "light");
       setBattleMsg(`${crit?'CRIT! ':''}Hit for ${dmg}. ${w.type==='tranq'?'(tranq applied)':''}`);
+      if(!crit && Math.random() < 0.12){
+        setEventText(`🎯 ${w.name}: ${handling.label}.`, 0.9);
+      }
     }
 
     if(t.hp<=0){
@@ -21319,7 +21641,8 @@ function tigerTurn(t, softened=false, opts={}){
   const distToPlayer = dist(t.x, t.y, S.me.x, S.me.y);
   if(distToPlayer > maxRange) return 0;
 
-  if(shieldActiveNow()){
+  const shieldBroken = isBossTiger(t) && now < (t.bossShieldBreakUntil || 0);
+  if(shieldActiveNow() && !shieldBroken){
     emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(96,165,250,.95)", 2, "shield");
     emitDamagePopup(S.me.x, S.me.y - 50, "BLOCK", "shield");
     if(S.inBattle) setBattleMsg("🛡️ Shield blocked the tiger attack.");
@@ -21327,6 +21650,10 @@ function tigerTurn(t, softened=false, opts={}){
     updateAttackButton();
     renderBattleStatus();
     return 0;
+  } else if(shieldActiveNow() && shieldBroken){
+    emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(251,113,133,.95)", 2, "crit");
+    emitDamagePopup(S.me.x, S.me.y - 50, "BREAK", "player");
+    if(S.inBattle) setBattleMsg("⚠️ Shield break! Boss roar pierced your shield.");
   }
   const rollInvulnActive = now < (S.rollInvulnUntil || 0);
   const rollBufferedActive = (S.rollBufferedDodges || 0) > 0 && now < (S.rollBufferedUntil || 0);
@@ -21437,8 +21764,28 @@ function combatTick(){
     const bossPhase = ensureBossPhaseState(t, bossIdentityProfile(t), now, { silent:true });
     const phaseCfg = bossPhasePreset(bossPhase);
     const phaseTempo = clamp(Number(phaseCfg.tempoMul || 1), 1, 1.35);
+    if(now < (t.bossRagePhaseUntil || 0)){
+      t.enragedUntil = Math.max(t.enragedUntil || 0, now + 420);
+      if((t._bossRagePromptAt || 0) + 1200 < now){
+        t._bossRagePromptAt = now;
+        setBattleMsg(`${bossIdentityProfile(t)?.name || "Boss"} rage phase active — attacks are heavier.`);
+      }
+    }
     if(!Number.isFinite(t.nextBossSkillAt) || t.nextBossSkillAt <= now){
       triggerBossIdentitySkill(t, bossIdentityProfile(t), now);
+    }
+    if(now < (t.bossFakePounceUntil || 0)){
+      if((t._bossFakePromptAt || 0) + 780 < now){
+        t._bossFakePromptAt = now;
+        setBattleMsg("Fake pounce! Wait for the true strike window.");
+      }
+      const strikeAt = Number(t.bossFakePounceStrikeAt || 0);
+      if(strikeAt > 0 && now >= strikeAt && now >= (S._combatTigerAttackAt || 0) && d < 188){
+        t.bossFakePounceStrikeAt = 0;
+        S._combatTigerAttackAt = now + Math.max(560, Math.round(rand(980, 1320) / phaseTempo));
+        tigerTurn(t, S._protectTicks > 0, { kind:"pounce", dmgMul:1.22, maxRange:188 });
+      }
+      return;
     }
     if(now < (t.bossStalkUntil || 0)){
       if((t._bossStalkPromptAt || 0) + 900 < now){
@@ -21724,6 +22071,21 @@ function checkMissionComplete(){
       const recap = buildMissionRecapPayload(recapMeta);
       S.lastMissionRecap = recap;
       renderCompleteRecapCard(recap);
+      const premiumSummary = {
+        mode:S.mode,
+        level:activeMission?.number || missionIndexForMode(S.mode),
+        chapterName:activeMission?.chapterName || "",
+        bossMission:!!(activeMission?.boss),
+        civTotal:civTotal,
+        evac:S.stats.evac || 0,
+        captures:S.stats.captures || 0,
+        kills:S.stats.kills || 0,
+        shots:S.stats.shots || 0,
+        cashEarned:S.stats.cashEarned || 0,
+        trapsTriggered:S.stats.trapsTriggered || 0,
+      };
+      S.lastMissionPremiumSummary = premiumSummary;
+      renderMissionPremiumSummaryCard(premiumSummary);
 
       document.getElementById("completeText").innerText =
         `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
@@ -22221,6 +22583,115 @@ function maybeRenderHUD(force=false){
 }
 
 // ===================== CALM MAPS + FOG (no flashing) =====================
+function activeBossArenaTiger(now=Date.now()){
+  const list = (S.tigers || []).filter((t)=>t && t.alive && isBossTiger(t));
+  if(!list.length) return null;
+  if(S.inBattle){
+    const active = list.find((t)=>Number(t.id) === Number(S.activeTigerId || 0));
+    if(active) return active;
+  }
+  const locked = list.find((t)=>Number(t.id) === Number(S.lockedTigerId || 0));
+  if(locked) return locked;
+  let nearest = null;
+  let best = Infinity;
+  for(const t of list){
+    const d = dist(S.me.x, S.me.y, t.x, t.y);
+    if(d < best){
+      best = d;
+      nearest = t;
+    }
+  }
+  return nearest;
+}
+
+function drawBossArenaMoments(now=Date.now()){
+  if(!ctx) return;
+  const t = activeBossArenaTiger(now);
+  if(!t) return;
+  if(!isBossTiger(t)) return;
+  const phase = clamp(Math.floor(Number(t.bossPhaseIndex || bossPhaseFromHp(t))), 1, bossPhaseCount(t));
+  const profile = bossIdentityProfile(t);
+  const pulse = 0.55 + (Math.sin(now / 180) * 0.22);
+  const baseR = 48 + (phase * 3);
+  ctx.save();
+
+  ctx.globalAlpha = 0.18 + (pulse * 0.14);
+  ctx.strokeStyle = "rgba(251,191,36,.88)";
+  ctx.lineWidth = 2.2;
+  ctx.setLineDash([8, 7]);
+  ctx.beginPath();
+  ctx.arc(t.x, t.y, baseR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const showRoar = now < Number(t.bossShieldBreakUntil || 0);
+  const showCharge = now < Number(t.bossChargeUntil || 0);
+  const showSummon = now < Number(t.bossSummonWindowUntil || 0);
+  const showRage = now < Number(t.bossRagePhaseUntil || 0);
+  const showFake = now < Number(t.bossFakePounceUntil || 0);
+  const showStealth = bossStealthActive(t, now);
+
+  if(showRoar){
+    ctx.globalAlpha = 0.2 + (pulse * 0.2);
+    ctx.strokeStyle = "rgba(96,165,250,.95)";
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, baseR + 14, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if(showCharge){
+    ctx.globalAlpha = 0.2 + (pulse * 0.24);
+    ctx.strokeStyle = "rgba(248,113,113,.96)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, baseR + 22, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if(showSummon){
+    ctx.globalAlpha = 0.22 + (pulse * 0.18);
+    ctx.strokeStyle = "rgba(74,222,128,.95)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 6]);
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, baseR + 30, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if(showRage){
+    ctx.globalAlpha = 0.16 + (pulse * 0.2);
+    ctx.fillStyle = "rgba(239,68,68,.78)";
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, baseR + 10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if(showFake || showStealth){
+    ctx.globalAlpha = 0.18 + (pulse * 0.16);
+    ctx.strokeStyle = "rgba(226,232,240,.9)";
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, baseR + 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  const label = `${profile?.name || "Boss"} • Phase ${phase}/${bossPhaseCount(t)}`;
+  const w = Math.max(126, Math.floor(label.length * 6.35));
+  const x = t.x - (w * 0.5);
+  const y = t.y - (baseR + 28);
+  ctx.globalAlpha = 0.95;
+  roundedRectFill(x, y, w, 19, 7);
+  ctx.strokeStyle = "rgba(251,191,36,.82)";
+  ctx.lineWidth = 1.3;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 18);
+  ctx.fillStyle = "rgba(255,245,209,.98)";
+  ctx.font = "900 10px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(label, t.x, y + 13);
+  ctx.textAlign = "start";
+  ctx.restore();
+}
+
 function drawMissionTwistOverlay(now=Date.now()){
   if(!ENABLE_MISSION_TWISTS) return;
   const tw = ensureMissionTwistState(S);
@@ -24880,6 +25351,7 @@ function drawEntities(){
     }
     drawSafe("drawSoldier", drawSoldier);
   }
+  drawSafe("drawBossArenaMoments", ()=>drawBossArenaMoments(Date.now()));
   drawSafe("drawOnMapBattleReadability", drawOnMapBattleReadability);
   drawSafe("drawOnMapBattleHud", drawOnMapBattleHud);
   const perfMode = performanceMode();
