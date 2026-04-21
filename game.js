@@ -2877,6 +2877,30 @@ const BOSS_SIGNATURE_MOMENT_BY_CHAPTER = Object.freeze({
   9: "Phantom cycles stealth bait, fake pounce, and charge punish.",
   10: "Ancient Tiger: shield-break roar, fake pounce, summon window, full rage chain.",
 });
+const BOSS_PERSONA_TRAIT_BY_CHAPTER = Object.freeze({
+  1: "Pack discipline",
+  2: "Blood frenzy",
+  3: "Stealth pressure",
+  4: "Twin feint cadence",
+  5: "River momentum",
+  6: "Mountain impact",
+  7: "Territory command",
+  8: "Royal pressure",
+  9: "Phantom control",
+  10: "Ancient dominance",
+});
+const BOSS_SKILL_COUNTER_HINT = Object.freeze({
+  stalk: "Stay moving. Don't over-commit.",
+  roar: "Expect buffed hits. Keep spacing.",
+  roar_shield_break: "Recast shield after roar lands.",
+  stealth: "Watch intent cue and distance ring.",
+  fake_pounce: "Hold roll until strike confirms.",
+  pounce_chain: "Roll late. Keep lateral movement.",
+  reinforce: "Clear adds quickly to reduce pressure.",
+  summon_window: "Deny summons with fast pressure.",
+  rage_phase: "Play safer until rage window ends.",
+  charge: "Side-step or roll at the last moment.",
+});
 const BOSS_PHASE_PRESETS = Object.freeze({
   1: { name:"Opening Pressure", cdMul:1.00, dmgMul:1.00, tempoMul:1.00, reinforceAdd:0, pounceExtra:0 },
   2: { name:"Rage Escalation", cdMul:0.84, dmgMul:1.12, tempoMul:1.12, reinforceAdd:1, pounceExtra:1 },
@@ -3045,6 +3069,12 @@ function bossChapterSignatureSummary(chapter, profile){
   const preview = cycle.slice(0, 2).map((skill)=>bossCycleLabel(skill)).join(" -> ");
   return preview ? `${preview}.` : "Signature pressure expected.";
 }
+function bossChapterTrait(chapter){
+  return BOSS_PERSONA_TRAIT_BY_CHAPTER[clamp(chapter || 1, 1, 10)] || "Predator pressure";
+}
+function bossSkillCounterHint(skill){
+  return BOSS_SKILL_COUNTER_HINT[String(skill || "")] || "";
+}
 function nextBossSkillInCycle(t, profile){
   const cycle = bossSkillCycleForPhase(profile, t);
   const idx = Number.isFinite(t?.bossSkillStep) ? t.bossSkillStep : 0;
@@ -3058,7 +3088,11 @@ function announceBossTelegraph(t, profile, skill, now=Date.now(), opts={}){
   t._bossLastTellKey = tellKey;
   t._bossLastTellAt = now;
   const chapter = clamp(t.bossIdentityChapter || bossChapterIndex(), 1, 10);
-  const msg = `⚠️ ${profile.name} (${chapter}): ${bossSkillTelegraphText(skill, opts)}`;
+  const tellText = bossSkillTelegraphText(skill, opts);
+  const counterHint = bossSkillCounterHint(skill);
+  const msg = counterHint
+    ? `⚠️ ${profile.name} (${chapter}): ${tellText} • ${counterHint}`
+    : `⚠️ ${profile.name} (${chapter}): ${tellText}`;
   setTigerIntent(t, bossCycleLabel(skill), opts.incoming ? 880 : 640);
   if(S.inBattle && S.activeTigerId === t.id){
     setBattleMsg(msg);
@@ -3073,7 +3107,8 @@ function triggerBossPrefightWarning(t, profile, now=Date.now()){
   t._bossPrefightWarnedAt = now;
   const chapter = clamp(t.bossIdentityChapter || bossChapterIndex(), 1, 10);
   const summary = bossChapterSignatureSummary(chapter, profile);
-  const warning = `⚠️ Boss Signature — ${profile.name}: ${summary}`;
+  const trait = bossChapterTrait(chapter);
+  const warning = `⚠️ Boss Signature — ${profile.name} [${trait}]: ${summary}`;
   setEventText(warning, 4.5);
   if(S.inBattle && S.activeTigerId === t.id){
     setBattleMsg(warning);
