@@ -2090,6 +2090,55 @@ const WEAPONS = [
   { id:"W_TRQ_LAUNCHER",  name:"Tranquilizer Launcher", grade:"Legendary", price:50000, type:"tranq", ammo:"TRANQ_HEAVY", mag:2, dmg:[30,42], range:188 },
   { id:"W_RAIL_PROTO",    name:"Prototype Rail Rifle", grade:"Mythic", price:100000,    type:"lethal", ammo:"RAIL_CELL",   mag:3, dmg:[40,60], range:236 },
 ];
+const ATTACHMENT_SLOTS = Object.freeze(["optic","tranq_chamber","suppressor","mag","stock"]);
+const WEAPON_ATTACHMENTS = Object.freeze([
+  Object.freeze({ id:"OPTIC_HOLO", slot:"optic", name:"Holo Optic", desc:"+range, faster target pickup, slightly higher jam risk.", rangeAdd:12, recoilMul:0.94, jamMul:1.03, critBonus:0.01 }),
+  Object.freeze({ id:"OPTIC_LPVO", slot:"optic", name:"LPVO 1-6x", desc:"+long range precision, slightly slower reload flow.", rangeAdd:24, recoilMul:0.90, reloadMul:0.94, critBonus:0.015 }),
+  Object.freeze({ id:"OPTIC_CQC", slot:"optic", name:"CQC Dot", desc:"+close control, lower long-range confidence.", rangeAdd:4, recoilMul:0.88, dmgMul:0.98 }),
+  Object.freeze({ id:"TRQ_STABLE", slot:"tranq_chamber", name:"Stable Tranq Chamber", desc:"Tranq pressure up, lethal throughput down.", allowedTypes:["tranq"], tranqMul:1.20, dmgMul:0.92, jamMul:0.95 }),
+  Object.freeze({ id:"TRQ_OVERDRIVE", slot:"tranq_chamber", name:"Overdrive Chamber", desc:"Stronger tranq impact with harsher recoil/reload.", allowedTypes:["tranq"], tranqMul:1.32, reloadMul:0.90, recoilMul:1.08 }),
+  Object.freeze({ id:"SUPP_HEAVY", slot:"suppressor", name:"Heavy Suppressor", desc:"Low signature, but range and damage drop.", dmgMul:0.94, rangeAdd:-10, noiseMul:0.62, recoilMul:0.92 }),
+  Object.freeze({ id:"SUPP_LIGHT", slot:"suppressor", name:"Light Suppressor", desc:"Moderate stealth with smaller penalties.", dmgMul:0.97, rangeAdd:-4, noiseMul:0.78, jamMul:1.01 }),
+  Object.freeze({ id:"MAG_EXT", slot:"mag", name:"Extended Mag", desc:"Larger mag, slower reload and slightly more jam pressure.", magMul:1.35, reloadMul:0.86, jamMul:1.05 }),
+  Object.freeze({ id:"MAG_QUICK", slot:"mag", name:"Quick Mag", desc:"Smaller mag but fast reload and cleaner feed.", magMul:0.82, reloadMul:1.24, jamMul:0.92 }),
+  Object.freeze({ id:"STOCK_STABLE", slot:"stock", name:"Stability Stock", desc:"Tighter recoil and reliability, slight mobility loss.", recoilMul:0.82, jamMul:0.95, dmgMul:0.99 }),
+  Object.freeze({ id:"STOCK_LIGHT", slot:"stock", name:"Light Stock", desc:"Quicker handling with increased recoil.", recoilMul:1.12, reloadMul:1.06, critBonus:0.008 }),
+]);
+const WEAPON_ATTACHMENTS_BY_ID = Object.freeze(Object.fromEntries(WEAPON_ATTACHMENTS.map((a)=>[a.id, a])));
+const WEAPON_LOADOUT_PRESETS = Object.freeze([
+  Object.freeze({
+    id:"PRESET_STORY_ESCORT",
+    name:"Story Escort",
+    missionType:"Story",
+    desc:"Prioritize safe escorts and reliable captures.",
+    weaponId:"W_TRQ_RIFLE",
+    attachments:{ optic:"OPTIC_HOLO", tranq_chamber:"TRQ_STABLE", suppressor:"SUPP_LIGHT", mag:"MAG_EXT", stock:"STOCK_STABLE" }
+  }),
+  Object.freeze({
+    id:"PRESET_BOSS_HUNT",
+    name:"Boss Hunt",
+    missionType:"Story",
+    desc:"Long-range lethal pressure for elite/boss fights.",
+    weaponId:"W_DMR",
+    attachments:{ optic:"OPTIC_LPVO", tranq_chamber:"", suppressor:"SUPP_HEAVY", mag:"MAG_QUICK", stock:"STOCK_STABLE" }
+  }),
+  Object.freeze({
+    id:"PRESET_ARCADE_SPEED",
+    name:"Arcade Speedrun",
+    missionType:"Arcade",
+    desc:"Fast reload loop to keep combo pressure.",
+    weaponId:"W_AR_CARBINE",
+    attachments:{ optic:"OPTIC_CQC", tranq_chamber:"", suppressor:"SUPP_LIGHT", mag:"MAG_QUICK", stock:"STOCK_LIGHT" }
+  }),
+  Object.freeze({
+    id:"PRESET_SURVIVAL_HOLD",
+    name:"Survival Hold",
+    missionType:"Survival",
+    desc:"Sustained holdout setup for waves.",
+    weaponId:"W_SHOTGUN",
+    attachments:{ optic:"OPTIC_CQC", tranq_chamber:"", suppressor:"", mag:"MAG_EXT", stock:"STOCK_STABLE" }
+  }),
+]);
 
 const AMMO = [
   { id:"TRANQ_DARTS",  name:"Tranq Darts", grade:"Standard", price:50,  pack:10, family:"TRANQ_DARTS" },
@@ -4886,6 +4935,8 @@ const DEFAULT = {
 
   ownedWeapons:["W_TRQ_PISTOL_MK1","W_9MM_JUNK","W_TRQ_RIFLE","W_TRQ_LAUNCHER"],
   equippedWeaponId:"W_TRQ_PISTOL_MK1",
+  weaponAttachments:{},
+  activeLoadoutPresetId:"",
   ammoReserve:{ "TRANQ_DARTS":20, "9MM_STD":40 },
   mag:{ loaded:6, cap:6 },
   durability:{},
@@ -6366,6 +6417,7 @@ function load(){
       ensureOpsTotalsState(fallback);
       ensureBalanceStatsState(fallback);
       ensureNemesisState(fallback);
+      ensureWeaponAttachmentState(fallback);
       ensureMissionTwistState(fallback);
       ensureArcadeBuildcraftState(fallback);
       ensureArcadeWeeklySeedState(fallback);
@@ -6380,6 +6432,8 @@ function load(){
     m.ammoReserve = { ...DEFAULT.ammoReserve, ...(saved.ammoReserve||{}) };
     m.durability = { ...DEFAULT.durability, ...(saved.durability||{}) };
     m.weaponMastery = normalizeWeaponMasteryMap(saved.weaponMastery ?? DEFAULT.weaponMastery);
+    m.weaponAttachments = normalizeWeaponAttachmentsMap(saved.weaponAttachments ?? DEFAULT.weaponAttachments);
+    m.activeLoadoutPresetId = String(saved.activeLoadoutPresetId || "");
     m.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
     m.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
     m.armorPlates = normalizeArmorPlateInventory(saved.armorPlates ?? m.armorPlates);
@@ -6438,6 +6492,7 @@ function load(){
     ensureOpsTotalsState(m);
     ensureBalanceStatsState(m);
     ensureNemesisState(m);
+    ensureWeaponAttachmentState(m);
     ensureMissionTwistState(m);
     ensureArcadeBuildcraftState(m);
     ensureArcadeWeeklySeedState(m);
@@ -6463,6 +6518,7 @@ function load(){
     ensureOpsTotalsState(fallback);
     ensureBalanceStatsState(fallback);
     ensureNemesisState(fallback);
+    ensureWeaponAttachmentState(fallback);
     ensureMissionTwistState(fallback);
     ensureArcadeBuildcraftState(fallback);
     ensureArcadeWeeklySeedState(fallback);
@@ -8524,6 +8580,7 @@ function sanitizeRuntimeState(){
   if(!Number.isFinite(S.mapIndex) || S.mapIndex < 0) S.mapIndex = 0;
   if(!Number.isFinite(S.funds) || S.funds < 0) S.funds = 0;
   ensureStoryMetaState();
+  ensureWeaponAttachmentState();
   ensureTouchHudState();
   ensureMissionDirectorState();
   ensureBalanceStatsState();
@@ -8542,6 +8599,7 @@ function sanitizeRuntimeState(){
   if(!Number.isFinite(S.soldierAttackersDowned)) S.soldierAttackersDowned = 0;
   if(!Number.isFinite(S.soldierRescuersDowned)) S.soldierRescuersDowned = 0;
   syncSquadRosterBounds();
+  syncEquippedMagCap({ refill:false });
 
   trimPersistentState(S);
 
@@ -9812,6 +9870,232 @@ function getAmmo(id){ return AMMO.find(a=>a.id===id); }
 function getMed(id){ return MEDS.find(m=>m.id===id); }
 function getArmor(id){ return ARMORY.find(a=>a.id===id); }
 function getTool(id){ return TOOLS.find(t=>t.id===id); }
+function getAttachment(id){
+  return WEAPON_ATTACHMENTS_BY_ID[String(id || "")] || null;
+}
+function attachmentSlotLabel(slot){
+  if(slot === "optic") return "Optic";
+  if(slot === "tranq_chamber") return "Tranq Chamber";
+  if(slot === "suppressor") return "Suppressor";
+  if(slot === "mag") return "Magazine";
+  if(slot === "stock") return "Stock";
+  return String(slot || "Slot");
+}
+function attachmentTradeoffSummary(attachment){
+  if(!attachment) return "";
+  const bits = [];
+  if(Number.isFinite(Number(attachment.rangeAdd)) && Number(attachment.rangeAdd) !== 0) bits.push(`Range ${Number(attachment.rangeAdd) > 0 ? "+" : ""}${Math.round(Number(attachment.rangeAdd))}`);
+  if(Number.isFinite(Number(attachment.dmgMul)) && Math.abs(Number(attachment.dmgMul) - 1) > 0.01) bits.push(`DMG x${Number(attachment.dmgMul).toFixed(2)}`);
+  if(Number.isFinite(Number(attachment.magMul)) && Math.abs(Number(attachment.magMul) - 1) > 0.01) bits.push(`Mag x${Number(attachment.magMul).toFixed(2)}`);
+  if(Number.isFinite(Number(attachment.reloadMul)) && Math.abs(Number(attachment.reloadMul) - 1) > 0.01) bits.push(`Reload x${Number(attachment.reloadMul).toFixed(2)}`);
+  if(Number.isFinite(Number(attachment.jamMul)) && Math.abs(Number(attachment.jamMul) - 1) > 0.01) bits.push(`Jam x${Number(attachment.jamMul).toFixed(2)}`);
+  if(Number.isFinite(Number(attachment.tranqMul)) && Math.abs(Number(attachment.tranqMul) - 1) > 0.01) bits.push(`Tranq x${Number(attachment.tranqMul).toFixed(2)}`);
+  return bits.join(" • ");
+}
+function defaultWeaponAttachmentBuild(){
+  return { optic:"", tranq_chamber:"", suppressor:"", mag:"", stock:"" };
+}
+function attachmentCompatible(attachment, weapon){
+  if(!attachment || !weapon) return false;
+  if(attachment.slot && !ATTACHMENT_SLOTS.includes(attachment.slot)) return false;
+  const allowedTypes = Array.isArray(attachment.allowedTypes) ? attachment.allowedTypes : null;
+  if(allowedTypes && allowedTypes.length && !allowedTypes.includes(String(weapon.type || ""))) return false;
+  if(Array.isArray(attachment.allowedWeapons) && attachment.allowedWeapons.length && !attachment.allowedWeapons.includes(weapon.id)) return false;
+  if(Array.isArray(attachment.blockedWeapons) && attachment.blockedWeapons.includes(weapon.id)) return false;
+  return true;
+}
+function normalizeWeaponAttachmentBuild(rawBuild, weapon){
+  const out = defaultWeaponAttachmentBuild();
+  const src = (rawBuild && typeof rawBuild === "object") ? rawBuild : {};
+  for(const slot of ATTACHMENT_SLOTS){
+    const id = String(src[slot] || "").trim();
+    if(!id) continue;
+    const attachment = getAttachment(id);
+    if(!attachment || attachment.slot !== slot) continue;
+    if(!attachmentCompatible(attachment, weapon)) continue;
+    out[slot] = id;
+  }
+  return out;
+}
+function normalizeWeaponAttachmentsMap(raw){
+  const out = {};
+  const src = (raw && typeof raw === "object") ? raw : {};
+  for(const w of WEAPONS){
+    out[w.id] = normalizeWeaponAttachmentBuild(src[w.id], w);
+  }
+  return out;
+}
+function ensureWeaponAttachmentState(state=S){
+  if(!state || typeof state !== "object") return;
+  state.weaponAttachments = normalizeWeaponAttachmentsMap(state.weaponAttachments);
+  if(!Array.isArray(state.ownedWeapons)) state.ownedWeapons = [];
+  if(typeof state.activeLoadoutPresetId !== "string") state.activeLoadoutPresetId = "";
+}
+function weaponAttachmentBuild(weaponId, state=S){
+  ensureWeaponAttachmentState(state);
+  const wid = String(weaponId || state?.equippedWeaponId || "");
+  const w = getWeapon(wid);
+  if(!w) return defaultWeaponAttachmentBuild();
+  return normalizeWeaponAttachmentBuild(state?.weaponAttachments?.[wid], w);
+}
+function weaponBuildStats(weaponId, state=S){
+  const w = getWeapon(weaponId);
+  if(!w){
+    return {
+      weapon:null,
+      build:defaultWeaponAttachmentBuild(),
+      dmg:[8, 12],
+      range:112,
+      magCap:6,
+      jamMul:1,
+      reloadMul:1,
+      recoilMul:1,
+      noiseMul:1,
+      tranqMul:1,
+      critBonus:0
+    };
+  }
+  const build = weaponAttachmentBuild(w.id, state);
+  let dmgMul = 1;
+  let rangeAdd = 0;
+  let magMul = 1;
+  let magAdd = 0;
+  let jamMul = 1;
+  let reloadMul = 1;
+  let recoilMul = 1;
+  let noiseMul = 1;
+  let tranqMul = 1;
+  let critBonus = 0;
+  for(const slot of ATTACHMENT_SLOTS){
+    const id = build[slot];
+    if(!id) continue;
+    const a = getAttachment(id);
+    if(!a || !attachmentCompatible(a, w)) continue;
+    dmgMul *= clamp(Number(a.dmgMul ?? 1), 0.55, 1.45);
+    rangeAdd += Number(a.rangeAdd || 0);
+    magMul *= clamp(Number(a.magMul ?? 1), 0.60, 1.85);
+    magAdd += Math.floor(Number(a.magAdd || 0));
+    jamMul *= clamp(Number(a.jamMul ?? 1), 0.70, 1.45);
+    reloadMul *= clamp(Number(a.reloadMul ?? 1), 0.68, 1.45);
+    recoilMul *= clamp(Number(a.recoilMul ?? 1), 0.65, 1.35);
+    noiseMul *= clamp(Number(a.noiseMul ?? 1), 0.45, 1.4);
+    tranqMul *= clamp(Number(a.tranqMul ?? 1), 0.70, 1.5);
+    critBonus += clamp(Number(a.critBonus || 0), -0.04, 0.06);
+  }
+  const dmg = [
+    Math.max(1, Math.round(w.dmg[0] * dmgMul)),
+    Math.max(1, Math.round(w.dmg[1] * dmgMul))
+  ];
+  if(dmg[1] < dmg[0]) dmg[1] = dmg[0];
+  const range = clamp(Math.round((w.range || 112) + rangeAdd), 70, 320);
+  const magCap = clamp(Math.round((w.mag || 1) * magMul + magAdd), 1, 90);
+  return {
+    weapon:w,
+    build,
+    dmg,
+    range,
+    magCap,
+    jamMul:clamp(jamMul, 0.62, 1.6),
+    reloadMul:clamp(reloadMul, 0.62, 1.6),
+    recoilMul:clamp(recoilMul, 0.60, 1.4),
+    noiseMul:clamp(noiseMul, 0.45, 1.6),
+    tranqMul:clamp(tranqMul, 0.62, 1.7),
+    critBonus:clamp(critBonus, -0.05, 0.08),
+  };
+}
+function attachmentBuildSummaryForWeapon(weaponId, state=S){
+  const stats = weaponBuildStats(weaponId, state);
+  const tags = [];
+  tags.push(`DMG ${stats.dmg[0]}-${stats.dmg[1]}`);
+  tags.push(`Range ${stats.range}`);
+  tags.push(`Mag ${stats.magCap}`);
+  if(Math.abs(stats.jamMul - 1) > 0.02) tags.push(`Jam x${stats.jamMul.toFixed(2)}`);
+  if(Math.abs(stats.reloadMul - 1) > 0.02) tags.push(`Reload x${stats.reloadMul.toFixed(2)}`);
+  if(Math.abs(stats.tranqMul - 1) > 0.02) tags.push(`Tranq x${stats.tranqMul.toFixed(2)}`);
+  return tags.join(" • ");
+}
+function syncEquippedMagCap(opts={}){
+  if(!S.mag || typeof S.mag !== "object") S.mag = { loaded:0, cap:0 };
+  const stats = weaponBuildStats(S.equippedWeaponId, S);
+  S.mag.cap = stats.magCap;
+  if(opts.refill){
+    S.mag.loaded = stats.magCap;
+  } else {
+    S.mag.loaded = clamp(Math.floor(Number(S.mag.loaded || 0)), 0, S.mag.cap);
+  }
+}
+function setWeaponAttachment(slot, attachmentId="", weaponId=S.equippedWeaponId, opts={}){
+  const slotKey = String(slot || "");
+  if(!ATTACHMENT_SLOTS.includes(slotKey)) return false;
+  const w = getWeapon(weaponId);
+  if(!w || !S.ownedWeapons.includes(w.id)) return false;
+  ensureWeaponAttachmentState(S);
+  const build = weaponAttachmentBuild(w.id, S);
+  const nextId = String(attachmentId || "").trim();
+  if(nextId){
+    const a = getAttachment(nextId);
+    if(!a || a.slot !== slotKey || !attachmentCompatible(a, w)) return false;
+    build[slotKey] = a.id;
+  } else {
+    build[slotKey] = "";
+  }
+  S.weaponAttachments[w.id] = build;
+  if(!opts.keepPreset) S.activeLoadoutPresetId = "";
+  if(w.id === S.equippedWeaponId){
+    syncEquippedMagCap({ refill:!!opts.refillMag });
+  }
+  if(!opts.silent){
+    const label = build[slotKey] ? (getAttachment(build[slotKey])?.name || "Attachment") : "None";
+    toast(`${w.name}: ${slotKey.replace(/_/g, " ")} -> ${label}`);
+    sfx("ui");
+  }
+  if(!opts.skipSave) save();
+  if(!opts.skipRefresh){
+    renderHUD();
+    if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+    if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
+  }
+  return true;
+}
+function attachmentOptionsForWeapon(slot, weaponId){
+  const w = getWeapon(weaponId);
+  if(!w) return [];
+  return WEAPON_ATTACHMENTS.filter((a)=>a.slot === slot && attachmentCompatible(a, w));
+}
+function loadoutPresetById(id){
+  return WEAPON_LOADOUT_PRESETS.find((p)=>p.id === String(id || "")) || null;
+}
+function applyLoadoutPreset(id, opts={}){
+  const preset = loadoutPresetById(id);
+  if(!preset) return false;
+  const owned = Array.isArray(S.ownedWeapons) ? S.ownedWeapons : [];
+  let targetWeapon = preset.weaponId;
+  if(!owned.includes(targetWeapon)){
+    targetWeapon = owned.find((wid)=>getWeapon(wid)) || "";
+  }
+  if(!targetWeapon){
+    toast("No owned weapons available for this loadout.");
+    return false;
+  }
+  equipWeapon(targetWeapon, { keepPreset:true });
+  const weapon = getWeapon(targetWeapon);
+  const normalized = normalizeWeaponAttachmentBuild(preset.attachments, weapon);
+  for(const slot of ATTACHMENT_SLOTS){
+    setWeaponAttachment(slot, normalized[slot] || "", targetWeapon, { silent:true, refillMag:false, skipSave:true, skipRefresh:true });
+  }
+  S.activeLoadoutPresetId = preset.id;
+  syncEquippedMagCap({ refill:false });
+  if(!opts.silent){
+    toast(`Loadout preset applied: ${preset.name}`);
+    setEventText(`🧩 ${preset.name} loadout ready • ${attachmentBuildSummaryForWeapon(targetWeapon)}`, 4.8);
+    sfx("ui");
+  }
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  if(document.getElementById("shopOverlay").style.display==="flex") renderShopList();
+  return true;
+}
 function weaponMasteryLevelFromXp(xp){
   const val = Math.max(0, Math.floor(Number(xp || 0)));
   let level = 0;
@@ -10030,7 +10314,9 @@ function pickSmartArmorPlateId(){
   return (exact || owned[owned.length - 1]).id;
 }
 function equippedWeapon(){ return getWeapon(S.equippedWeaponId) || WEAPONS[0]; }
-function equippedWeaponRange(){ return equippedWeapon()?.range || 112; }
+function equippedWeaponRange(){
+  return weaponBuildStats(S.equippedWeaponId, S).range || 112;
+}
 function weaponRangeBand(range=equippedWeaponRange()){
   if(range <= WEAPON_RANGE_BANDS.short) return "short";
   if(range <= WEAPON_RANGE_BANDS.mid) return "mid";
@@ -10052,9 +10338,16 @@ function weaponHandlingProfile(w){
     };
   }
   const band = weaponRangeBand(w.range || 112);
-  if(band === "short") return WEAPON_HANDLING_TUNING.short;
-  if(band === "long") return WEAPON_HANDLING_TUNING.long;
-  return WEAPON_HANDLING_TUNING.mid;
+  const base = band === "short"
+    ? WEAPON_HANDLING_TUNING.short
+    : (band === "long" ? WEAPON_HANDLING_TUNING.long : WEAPON_HANDLING_TUNING.mid);
+  const build = weaponBuildStats(w.id, S);
+  return {
+    ...base,
+    reloadMul: clamp(Number(base.reloadMul || 1) * Number(build.reloadMul || 1), 0.55, 1.7),
+    jamMul: clamp(Number(base.jamMul || 1) * Number(build.jamMul || 1), 0.55, 1.7),
+    recoil: clamp(Number(base.recoil || 1) * Number(build.recoilMul || 1), 0.5, 1.8),
+  };
 }
 function weaponDistanceMul(w, distToTarget=0){
   const p = weaponHandlingProfile(w);
@@ -12652,6 +12945,8 @@ function writeStoryProfileData(source="autosave", state=S){
     ammoReserve: { ...(src.ammoReserve || {}) },
     durability: { ...(src.durability || {}) },
     weaponMastery: normalizeWeaponMasteryMap(src.weaponMastery),
+    weaponAttachments: normalizeWeaponAttachmentsMap(src.weaponAttachments),
+    activeLoadoutPresetId: String(src.activeLoadoutPresetId || ""),
     medkits: { ...(src.medkits || {}) },
     repairKits: { ...(src.repairKits || {}) },
     trapsOwned: Math.max(0, Math.floor(Number(src.trapsOwned || 0))),
@@ -12737,6 +13032,18 @@ function applyStoryProfileToState(state, profile){
       const nextXp = Math.max(0, Math.floor(Number(xpRaw || 0)));
       state.weaponMastery[wid] = Math.max(currentXp, nextXp);
     }
+  }
+  if(profile.weaponAttachments && typeof profile.weaponAttachments === "object"){
+    ensureWeaponAttachmentState(state);
+    const incoming = normalizeWeaponAttachmentsMap(profile.weaponAttachments);
+    for(const w of WEAPONS){
+      const current = normalizeWeaponAttachmentBuild(state.weaponAttachments[w.id], w);
+      const next = normalizeWeaponAttachmentBuild(incoming[w.id], w);
+      state.weaponAttachments[w.id] = { ...current, ...next };
+    }
+  }
+  if(typeof profile.activeLoadoutPresetId === "string" && loadoutPresetById(profile.activeLoadoutPresetId)){
+    state.activeLoadoutPresetId = profile.activeLoadoutPresetId;
   }
   if(profile.medkits && typeof profile.medkits === "object"){
     state.medkits = mergeCountMapsFromProfile(state.medkits, profile.medkits);
@@ -12982,6 +13289,8 @@ function writeStoryProgressData(payload={}){
     ammoReserve: { ...(payload.ammoReserve ?? S.ammoReserve ?? {}) },
     durability: { ...(payload.durability ?? S.durability ?? {}) },
     weaponMastery: normalizeWeaponMasteryMap(payload.weaponMastery ?? S.weaponMastery),
+    weaponAttachments: normalizeWeaponAttachmentsMap(payload.weaponAttachments ?? S.weaponAttachments),
+    activeLoadoutPresetId: String(payload.activeLoadoutPresetId ?? S.activeLoadoutPresetId ?? ""),
     medkits: { ...(payload.medkits ?? S.medkits ?? {}) },
     repairKits: { ...(payload.repairKits ?? S.repairKits ?? {}) },
     armorPlates: normalizeArmorPlateInventory(payload.armorPlates ?? S.armorPlates),
@@ -14819,11 +15128,12 @@ function renderQuickWeaponPicker(){
   if(!box) return;
   box.innerHTML = S.ownedWeapons.map((id)=>{
     const w = getWeapon(id);
+    const build = weaponBuildStats(id, S);
     const active = id===S.equippedWeaponId;
     const reserve = S.ammoReserve[w.ammo]||0;
     const loaded = active ? S.mag.loaded : 0;
-    const range = w.range || 0;
-    return `<button ${active?'class="good"':''} onclick="selectQuickWeapon('${id}')">${active?'✅ ':''}${w.name}<br><span class="small">Ammo ${loaded}/${w.mag} • Reserve ${reserve} • Range ${range}</span></button>`;
+    const range = build.range || 0;
+    return `<button ${active?'class="good"':''} onclick="selectQuickWeapon('${id}')">${active?'✅ ':''}${w.name}<br><span class="small">Ammo ${loaded}/${build.magCap} • Reserve ${reserve} • Range ${range}</span></button>`;
   }).join("");
 }
 function openQuickWeaponPicker(){
@@ -14962,16 +15272,64 @@ function renderShopList(){
   const note=document.getElementById("shopNote");
 
   if(currentShopTab==="weapons"){
-    note.innerText="Weapons show Owned/Not owned. Money updates live.";
-    list.innerHTML = WEAPONS.map(w=>{
+    ensureWeaponAttachmentState(S);
+    note.innerText="Weapons now support modular builds. Attach optic/tranq/suppressor/mag/stock and use mission presets.";
+    const presetButtons = WEAPON_LOADOUT_PRESETS.map((preset)=>{
+      const active = S.activeLoadoutPresetId === preset.id;
+      return `<button class="${active ? "good" : "ghost"}" onclick="applyLoadoutPreset('${preset.id}')">${preset.name}</button>`;
+    }).join("");
+    const equipped = equippedWeapon();
+    const equippedBuild = weaponAttachmentBuild(equipped.id, S);
+    const equippedStats = weaponBuildStats(equipped.id, S);
+    const slotRows = ATTACHMENT_SLOTS.map((slot)=>{
+      const currentId = equippedBuild[slot] || "";
+      const current = getAttachment(currentId);
+      const options = attachmentOptionsForWeapon(slot, equipped.id);
+      const optionButtons = options.map((a)=>{
+        const isActive = a.id === currentId;
+        return `<button class="${isActive ? "good" : "ghost"}" onclick="setWeaponAttachment('${slot}','${a.id}')">${a.name}</button>`;
+      }).join("");
+      const clearButton = `<button class="${!currentId ? "good" : "ghost"}" onclick="setWeaponAttachment('${slot}','')">None</button>`;
+      return `
+        <div class="item" style="padding:10px 12px;">
+          <div>
+            <div class="itemName">${attachmentSlotLabel(slot)} <span class="tag">${current ? current.name : "None"}</span></div>
+            <div class="itemDesc">${current ? (current.desc || attachmentTradeoffSummary(current)) : "No attachment equipped."}</div>
+          </div>
+          <div style="text-align:right;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+            ${clearButton}
+            ${optionButtons}
+          </div>
+        </div>`;
+    }).join("");
+    list.innerHTML = `
+      <div class="item">
+        <div>
+          <div class="itemName">Loadout Presets <span class="tag">Mission Types</span></div>
+          <div class="itemDesc">Apply instant builds for Story, Arcade, Survival, and Boss hunts.</div>
+        </div>
+        <div style="text-align:right;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+          ${presetButtons}
+        </div>
+      </div>
+      <div class="item">
+        <div>
+          <div class="itemName">Current Build: ${equipped.name}</div>
+          <div class="itemDesc">${attachmentBuildSummaryForWeapon(equipped.id)}</div>
+          <div class="itemDesc">Crit bonus ${(equippedStats.critBonus*100).toFixed(1)}% • Noise x${equippedStats.noiseMul.toFixed(2)} • Recoil x${equippedStats.recoilMul.toFixed(2)}</div>
+        </div>
+      </div>
+      ${slotRows}
+      ${WEAPONS.map(w=>{
       const owned = S.ownedWeapons.includes(w.id);
+      const stats = weaponBuildStats(w.id, S);
       const mastery = weaponMasteryProgress(w.id);
       const masteryText = owned ? ` • Mastery Lv ${mastery.level}/${WEAPON_MASTERY_MAX_LEVEL}` : "";
       return `
         <div class="item">
           <div>
             <div class="itemName">${w.name} <span class="tag">${w.grade}</span> <span class="tag">${owned?'Owned':'Not owned'}</span></div>
-            <div class="itemDesc">Ammo: ${w.ammo} • Mag: ${w.mag} • Damage: ${w.dmg[0]}–${w.dmg[1]}${masteryText}</div>
+            <div class="itemDesc">Ammo: ${w.ammo} • Mag: ${stats.magCap} • Damage: ${stats.dmg[0]}–${stats.dmg[1]} • Range: ${stats.range}${masteryText}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${w.price.toLocaleString()}</div>
@@ -14979,7 +15337,8 @@ function renderShopList(){
             <button class="ghost" onclick="equipWeapon('${w.id}')" ${owned?'':'disabled'}>Equip</button>
           </div>
         </div>`;
-    }).join("");
+    }).join("")}
+    `;
     return;
   }
 
@@ -15524,8 +15883,10 @@ function buyWeapon(id){
   const w=getWeapon(id); if(!w) return;
   if(S.ownedWeapons.includes(id)) return toast("Already owned.");
   if(S.funds < w.price) return toast("Not enough money.");
+  ensureWeaponAttachmentState(S);
   S.funds -= w.price;
   S.ownedWeapons.push(id);
+  S.weaponAttachments[w.id] = normalizeWeaponAttachmentBuild(S.weaponAttachments[w.id], w);
   if(S.durability[w.id]==null) S.durability[w.id]=100;
   ensureWeaponMasteryState();
   if(!Number.isFinite(Number(S.weaponMastery[w.id]))){
@@ -15808,6 +16169,7 @@ function pickMostInjuredCivilian(){
 function renderInventory(){
   ensureStoryMetaState();
   ensureWeaponMasteryState();
+  ensureWeaponAttachmentState(S);
   const mastery = ensureMasteryRewardsState(S);
   syncSquadRosterBounds();
   const w=equippedWeapon();
@@ -15822,13 +16184,16 @@ function renderInventory(){
   const eliteTitleTxt = eliteTitle ? `${eliteTitle.icon} ${eliteTitle.name}` : "Base title";
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
-     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
+     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Build:</b> ${attachmentBuildSummaryForWeapon(w.id)} • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
      <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}<br>
      <b>Mastery:</b> ${masteryCount}/${MASTERY_TRACKS.length} claimed • <b>Elite Title:</b> ${eliteTitleTxt}`;
 
   document.getElementById("invWeapons").innerHTML = S.ownedWeapons.map(id=>{
     const ww=getWeapon(id);
+    const buildStats = weaponBuildStats(id, S);
+    const build = weaponAttachmentBuild(id, S);
+    const equippedSlots = ATTACHMENT_SLOTS.filter((slot)=>!!build[slot]).map((slot)=>attachmentSlotLabel(slot)).join(", ");
     const active=(id===S.equippedWeaponId);
     const dur=Math.round(weaponDurability(id));
     const mastery = weaponMasteryProgress(id);
@@ -15841,7 +16206,8 @@ function renderInventory(){
       <div class="item">
         <div>
           <div class="itemName">${active?'✅ ':''}${ww.name} <span class="tag">${ww.grade}</span></div>
-          <div class="itemDesc">Ammo: ${ww.ammo} • Mag: ${ww.mag} • Durability: ${dur}%</div>
+          <div class="itemDesc">Ammo: ${ww.ammo} • Mag: ${buildStats.magCap} • Damage: ${buildStats.dmg[0]}-${buildStats.dmg[1]} • Range: ${buildStats.range} • Durability: ${dur}%</div>
+          <div class="itemDesc">Attachments: ${equippedSlots || "None"}.</div>
           <div class="itemDesc">Mastery Lv ${mastery.level}/${WEAPON_MASTERY_MAX_LEVEL} • ${xpTxt} • Anti-jam ${jamCut}% • Reload smooth +${reloadSmooth}%</div>
         </div>
         <div style="text-align:right">
@@ -16420,29 +16786,31 @@ function jamChance(w){
   const dur=weaponDurability(w.id);
   const wearFactor = dur>=60?0.0:(60-dur)/60;
   const handling = weaponHandlingProfile(w);
-  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul() * weaponMasteryJamMul(w.id) * handling.jamMul, 0, 0.28);
+  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul() * weaponMasteryJamMul(w.id) * handling.jamMul, 0, 0.32);
 }
 function autoReloadIfNeeded(force=false){
   const w=equippedWeapon();
   if(!force && S.mag.loaded>0) return true;
   const reserve = S.ammoReserve[w.ammo] || 0;
   if(reserve<=0) return false;
+  syncEquippedMagCap({ refill:false });
   const need = S.mag.cap - S.mag.loaded;
   const take = Math.min(need, reserve);
   const handling = weaponHandlingProfile(w);
-  const handlingBonus = clamp((perkReloadBonus() + weaponMasteryReloadBonus(w.id)) * handling.reloadMul, 0, 0.72);
+  const handlingBonus = clamp((perkReloadBonus() + weaponMasteryReloadBonus(w.id)) * handling.reloadMul, 0, 0.78);
   const bonus = Math.min(need - take, Math.floor(take * handlingBonus));
   S.mag.loaded += take + bonus;
   S.ammoReserve[w.ammo] = reserve - take;
   sfx("reload"); hapticImpact("light");
   return true;
 }
-function equipWeapon(id){
+function equipWeapon(id, opts={}){
   if(!S.ownedWeapons.includes(id)) return;
   const w=getWeapon(id); if(!w) return;
+  ensureWeaponAttachmentState(S);
   S.equippedWeaponId=id;
-  S.mag.cap=w.mag;
-  S.mag.loaded=clamp(S.mag.loaded,0,S.mag.cap);
+  if(!opts.keepPreset) S.activeLoadoutPresetId = "";
+  syncEquippedMagCap({ refill:false });
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
   sfx("ui"); hapticImpact("light");
   save();
@@ -17316,7 +17684,8 @@ function activateMapInteractable(it){
     trackCashEarned(cash);
     const w = equippedWeapon();
     if(w){
-      const refillBase = Math.max(2, Math.floor(w.mag * 0.6));
+      const build = weaponBuildStats(w.id, S);
+      const refillBase = Math.max(2, Math.floor(build.magCap * 0.6));
       const refill = Math.round(refillBase * (hasProgressionUnlock("cache_boost") ? 1.25 : 1));
       S.ammoReserve[w.ammo] = (S.ammoReserve[w.ammo] || 0) + refill;
     }
@@ -18297,8 +18666,8 @@ function deploy(opts={}){
   for(const wid of S.ownedWeapons){ if(S.durability[wid]==null) S.durability[wid]=100; }
 
   const w=equippedWeapon();
-  S.mag.cap = w.mag;
-  S.mag.loaded = clamp(S.mag.loaded || w.mag, 0, S.mag.cap);
+  syncEquippedMagCap({ refill:false });
+  if(S.mag.loaded <= 0) S.mag.loaded = clamp(S.mag.loaded || Math.max(1, Math.floor(S.mag.cap * 0.6)), 0, S.mag.cap);
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
 
   if(S.mode==="Story"){
@@ -18351,11 +18720,12 @@ function deploy(opts={}){
       for(const wid of S.ownedWeapons){
         const ww = getWeapon(wid);
         if(!ww) continue;
-        const keep = Math.max(ww.mag, Math.round(ww.mag * 1.4));
+        const wwBuild = weaponBuildStats(ww.id, S);
+        const keep = Math.max(wwBuild.magCap, Math.round(wwBuild.magCap * 1.4));
         S.ammoReserve[ww.ammo] = Math.min(S.ammoReserve[ww.ammo] || 0, keep);
       }
       if((S.ammoReserve[w.ammo] || 0) <= 0 && S.mag.loaded <= 0){
-        S.mag.loaded = Math.max(1, Math.floor(w.mag * 0.5));
+        S.mag.loaded = Math.max(1, Math.floor(S.mag.cap * 0.5));
       }
     }
     if(mission.bloodAggro){
@@ -22404,18 +22774,19 @@ function playerAction(action){
     
     const eff=ammoEffectFor(w.ammo);
     const handling = weaponHandlingProfile(w);
+    const build = weaponBuildStats(w.id, S);
     const attackDist = dist(S.me.x, S.me.y, t.x, t.y);
-    let dmg=rand(w.dmg[0],w.dmg[1]);
+    let dmg=rand(build.dmg[0],build.dmg[1]);
     dmg *= perkDamageMul();
     dmg *= arcadeBuildcraftMul("damageOutMul", 1);
-    const crit=Math.random()<(eff.crit + perkCritBonus() + arcadeBuildcraftCritBonus());
+    const crit=Math.random()<(eff.crit + perkCritBonus() + arcadeBuildcraftCritBonus() + build.critBonus);
     if(crit) dmg=Math.round(dmg*1.6);
     dmg=Math.round(dmg*eff.dmgMul);
     dmg=Math.round(dmg * weaponDistanceMul(w, attackDist));
 
     if(w.type==="tranq"){
       t.tranqTagged = true;
-      dmg = Math.round(dmg * eff.tranq);
+      dmg = Math.round(dmg * eff.tranq * build.tranqMul);
       sfx("tranq");
     } else {
       sfx("hit");
@@ -22463,7 +22834,7 @@ function playerAction(action){
       emitDamagePopup(t.x, t.y - 44, `-${dmg}`, crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"));
       hapticImpact(crit ? "heavy" : "light");
       setBattleMsg(`${crit?'CRIT! ':''}Hit for ${dmg}. ${w.type==='tranq'?'(tranq applied)':''}`);
-      if(!crit && Math.random() < 0.12){
+      if(!crit && Math.random() < (0.08 + (Math.max(0, 1 - build.recoilMul) * 0.2))){
         setEventText(`🎯 ${w.name}: ${handling.label}.`, 0.9);
       }
     }
@@ -27165,10 +27536,8 @@ function init(){
     if(S.durability[wid]==null) S.durability[wid]=100;
   }
 
-  const w = equippedWeapon();
-  S.mag.cap = w.mag;
-
-  if(S.mag.loaded==null) S.mag.loaded = w.mag;
+  syncEquippedMagCap({ refill:false });
+  if(S.mag.loaded==null) S.mag.loaded = S.mag.cap;
   S.mag.loaded = clamp(S.mag.loaded,0,S.mag.cap);
 
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
@@ -27531,6 +27900,8 @@ window.claimClanContract = claimClanContract;
 window.clearPendingStarsPurchase = clearPendingStarsPurchase;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
+window.setWeaponAttachment = setWeaponAttachment;
+window.applyLoadoutPreset = applyLoadoutPreset;
 window.openQuickWeaponPicker = openQuickWeaponPicker;
 window.closeQuickWeaponPicker = closeQuickWeaponPicker;
 window.selectQuickWeapon = selectQuickWeapon;
