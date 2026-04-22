@@ -4831,6 +4831,7 @@ const DEFAULT = {
   takeoverCivId:null,
   takeoverUnitId:null,
   squadCommand:"AUTO",
+  squadFormation:"WEDGE",
 
   me:{ x:160, y:420, face:0, step:0 },
   target:null,
@@ -8868,6 +8869,31 @@ function squadCommandShortLabel(cmd = S?.squadCommand){
   const key = normalizeSquadCommand(cmd);
   return SQUAD_COMMAND_SHORT_LABELS[key] || SQUAD_COMMAND_SHORT_LABELS.AUTO;
 }
+const SQUAD_FORMATION_ORDER = ["WEDGE", "LINE", "SPLIT_ESCORT", "FLANK"];
+const SQUAD_FORMATION_LABELS = {
+  WEDGE: "Wedge",
+  LINE: "Line",
+  SPLIT_ESCORT: "Split Escort",
+  FLANK: "Flank",
+};
+const SQUAD_FORMATION_SHORT_LABELS = {
+  WEDGE: "Wedge",
+  LINE: "Line",
+  SPLIT_ESCORT: "Split",
+  FLANK: "Flank",
+};
+function normalizeSquadFormation(formation){
+  const key = String(formation || "").trim().toUpperCase();
+  return SQUAD_FORMATION_ORDER.includes(key) ? key : "WEDGE";
+}
+function squadFormationLabel(formation = S?.squadFormation){
+  const key = normalizeSquadFormation(formation);
+  return SQUAD_FORMATION_LABELS[key] || SQUAD_FORMATION_LABELS.WEDGE;
+}
+function squadFormationShortLabel(formation = S?.squadFormation){
+  const key = normalizeSquadFormation(formation);
+  return SQUAD_FORMATION_SHORT_LABELS[key] || SQUAD_FORMATION_SHORT_LABELS.WEDGE;
+}
 const SQUAD_WHEEL_PROFILES = {
   A: {
     size: 186,
@@ -8988,13 +9014,20 @@ function positionSquadCommandWheel(anchor){
 }
 function syncSquadCommandWheelUi(){
   const current = normalizeSquadCommand(S?.squadCommand);
+  const formation = normalizeSquadFormation(S?.squadFormation);
   document.querySelectorAll("#squadCommandWheel [data-cmd]").forEach((btn)=>{
     btn.classList.toggle("active", btn.dataset.cmd === current);
   });
   const touchMini = document.getElementById("touchSquadCmdMini");
   if(touchMini) touchMini.innerText = squadCommandShortLabel(current);
   const touchBtn = document.getElementById("touchSquadWheelBtn");
-  if(touchBtn) touchBtn.title = `Squad: ${squadCommandLabel(current)}`;
+  if(touchBtn) touchBtn.title = `Squad: ${squadCommandLabel(current)} • Formation: ${squadFormationLabel(formation)}`;
+  const squadFormBtn = document.getElementById("squadFormBtn");
+  if(squadFormBtn) squadFormBtn.innerText = `🧩 ${squadFormationShortLabel(formation)}`;
+  const squadFormBtnMobile = document.getElementById("squadFormBtnMobile");
+  if(squadFormBtnMobile) squadFormBtnMobile.innerText = `🧩 ${squadFormationShortLabel(formation)}`;
+  const squadWheelCenterBtn = document.getElementById("squadWheelCenterBtn");
+  if(squadWheelCenterBtn) squadWheelCenterBtn.innerText = `Form\n${squadFormationShortLabel(formation)}`;
 }
 function closeSquadCommandWheel(evt=null){
   if(evt?.preventDefault) evt.preventDefault();
@@ -9049,8 +9082,27 @@ function cycleSquadCommand(){
   const next = SQUAD_COMMAND_ORDER[(idx + 1) % SQUAD_COMMAND_ORDER.length];
   return setSquadCommand(next, { toast:true, save:true });
 }
+function setSquadFormation(formation, opts={}){
+  const next = normalizeSquadFormation(formation);
+  if(!S || typeof S !== "object") return next;
+  if(S.squadFormation === next && !opts.force) return next;
+  S.squadFormation = next;
+  if(opts.toast !== false){
+    toast(`Squad formation: ${squadFormationLabel(next)}.`);
+  }
+  syncSquadCommandWheelUi();
+  if(opts.save !== false) save();
+  return next;
+}
+function cycleSquadFormation(){
+  const current = normalizeSquadFormation(S?.squadFormation);
+  const idx = Math.max(0, SQUAD_FORMATION_ORDER.indexOf(current));
+  const next = SQUAD_FORMATION_ORDER[(idx + 1) % SQUAD_FORMATION_ORDER.length];
+  return setSquadFormation(next, { toast:true, save:true });
+}
 function syncSquadRosterBounds(){
   S.squadCommand = normalizeSquadCommand(S.squadCommand);
+  S.squadFormation = normalizeSquadFormation(S.squadFormation);
   S.soldierAttackersOwned = clamp(Math.floor(Number(S.soldierAttackersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
   S.soldierRescuersOwned = clamp(Math.floor(Number(S.soldierRescuersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
   S.soldierAttackersDowned = clamp(Math.floor(Number(S.soldierAttackersDowned || 0)), 0, S.soldierAttackersOwned);
@@ -18948,6 +19000,94 @@ function supportShouldForceKill(unit, tiger, tigerDist, threatRange=104){
   return hpRatio <= 0.34 && (closeThreat || dangerTier);
 }
 
+function squadFormationBehaviorProfile(formation){
+  const key = normalizeSquadFormation(formation);
+  if(key === "LINE"){
+    return {
+      leashMul:0.94,
+      attackerMoveMul:0.98,
+      rescueMoveMul:1.08,
+      rescueGuideMul:1.20,
+      attackerRangeMul:0.94,
+      flankSplit:0.0,
+      prioritizeDanger:1.00,
+    };
+  }
+  if(key === "SPLIT_ESCORT"){
+    return {
+      leashMul:1.08,
+      attackerMoveMul:1.04,
+      rescueMoveMul:1.12,
+      rescueGuideMul:1.30,
+      attackerRangeMul:1.06,
+      flankSplit:0.22,
+      prioritizeDanger:1.28,
+    };
+  }
+  if(key === "FLANK"){
+    return {
+      leashMul:1.12,
+      attackerMoveMul:1.10,
+      rescueMoveMul:0.98,
+      rescueGuideMul:1.02,
+      attackerRangeMul:1.18,
+      flankSplit:1.00,
+      prioritizeDanger:1.14,
+    };
+  }
+  return {
+    leashMul:1.00,
+    attackerMoveMul:1.04,
+    rescueMoveMul:1.00,
+    rescueGuideMul:1.08,
+    attackerRangeMul:1.05,
+    flankSplit:0.36,
+    prioritizeDanger:1.10,
+  };
+}
+
+function squadFormationAnchor(unit, slotIndex, roleCounts, formation, step){
+  const face = Number.isFinite(S?.me?.face) ? S.me.face : 0;
+  const fx = Math.cos(face);
+  const fy = Math.sin(face);
+  const sx = -Math.sin(face);
+  const sy = Math.cos(face);
+  const role = unit?.role === "rescue" ? "rescue" : "attacker";
+  const count = Math.max(1, Math.floor(Number(roleCounts?.[role] || 1)));
+  const cols = role === "attacker" ? 3 : 2;
+  const col = slotIndex % cols;
+  const row = Math.floor(slotIndex / cols);
+  const center = (Math.min(cols, count) - 1) * 0.5;
+  const lateralBase = (col - center) * (role === "attacker" ? 34 : 32);
+  const bob = Math.sin((step || 0) * 0.65 + (slotIndex * 0.42)) * 5.5;
+
+  let forward = 0;
+  let lateral = lateralBase;
+  const key = normalizeSquadFormation(formation);
+  if(key === "LINE"){
+    forward = role === "attacker" ? (20 - (row * 14)) : (-18 - (row * 18));
+    lateral = lateralBase * (role === "attacker" ? 1.3 : 1.15);
+  } else if(key === "SPLIT_ESCORT"){
+    forward = role === "attacker" ? (12 - (row * 12)) : (-40 - (row * 18));
+    lateral = role === "attacker" ? (lateralBase * 1.18) : (lateralBase * 0.9);
+  } else if(key === "FLANK"){
+    forward = role === "attacker" ? (18 - (row * 10)) : (-34 - (row * 16));
+    if(role === "attacker"){
+      const side = (slotIndex % 2 === 0) ? -1 : 1;
+      lateral = side * (64 + (Math.floor(slotIndex / 2) * 14));
+    } else {
+      lateral = lateralBase * 0.64;
+    }
+  } else { // WEDGE
+    forward = role === "attacker" ? (30 - (row * 12)) : (-28 - (row * 16));
+    lateral = lateralBase * (role === "attacker" ? 1.05 : 0.86);
+  }
+
+  const x = S.me.x + (fx * forward) + (sx * lateral) + (sx * bob * 0.45);
+  const y = S.me.y + (fy * forward) + (sy * lateral) + (sy * bob * 0.45);
+  return { x, y };
+}
+
 function supportUnitsTick(){
   if(S.paused || S.gameOver || S.missionEnded) return;
   if(!S.supportUnits?.length) return;
@@ -18965,6 +19105,8 @@ function supportUnitsTick(){
   const lockTiger = S.lockedTigerId ? activeTigers.find((t)=>t.id===S.lockedTigerId) : null;
   const dangerCiv = (S.mode==="Survival") ? null : liveCivs.find((c)=>c.id===S.dangerCivId) || null;
   const squadCommand = normalizeSquadCommand(S.squadCommand);
+  const squadFormation = normalizeSquadFormation(S.squadFormation);
+  const formationProfile = squadFormationBehaviorProfile(squadFormation);
   const commandAuto = squadCommand === "AUTO";
   const commandAttackTarget = squadCommand === "ATTACK_TARGET";
   const commandRescue = squadCommand === "RESCUE";
@@ -18999,6 +19141,19 @@ function supportUnitsTick(){
     if(nearPlayer.tiger && nearPlayer.d < 280) priorityTiger = nearPlayer.tiger;
   }
 
+  const aliveUnits = (S.supportUnits || []).filter((unit)=>unit?.alive);
+  const roleCounts = {
+    attacker: aliveUnits.filter((unit)=>unit.role === "attacker").length,
+    rescue: aliveUnits.filter((unit)=>unit.role === "rescue").length,
+  };
+  const roleIndexMap = new Map();
+  const roleCursor = { attacker:0, rescue:0 };
+  for(const unit of aliveUnits){
+    const role = unit.role === "rescue" ? "rescue" : "attacker";
+    roleIndexMap.set(unit.id, roleCursor[role]);
+    roleCursor[role] += 1;
+  }
+
   for(const unit of (S.supportUnits || [])){
     if(!unit.alive) continue;
 
@@ -19007,14 +19162,16 @@ function supportUnitsTick(){
     unit.homeY = S.me.y;
     const playerBaseSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
 
-    let targetX = unit.homeX + Math.cos(unit.step * 0.6) * 18;
-    let targetY = unit.homeY + Math.sin(unit.step * 0.7) * 14;
-    const leashMax = commandHold ? 120 : (commandRegroup ? 150 : 265);
+    const slotIndex = Math.max(0, Math.floor(Number(roleIndexMap.get(unit.id) || 0)));
+    const anchor = squadFormationAnchor(unit, slotIndex, roleCounts, squadFormation, unit.step || 0);
+    let targetX = anchor.x;
+    let targetY = anchor.y;
+    const leashMax = (commandHold ? 120 : (commandRegroup ? 150 : 265)) * formationProfile.leashMul;
 
     if(unit.role === "rescue" && liveCivs.length && !commandHold && !commandRegroup){
       const ownTag = "rescue";
       const ownedByThisUnit = liveCivs.filter((c)=>c.following && c.escortOwner === ownTag && c.escortUnitId === unit.id);
-      const canTakeNewAssignments = !commandAttackTarget;
+      const canTakeNewAssignments = !commandAttackTarget || squadFormation === "SPLIT_ESCORT";
       const available = canTakeNewAssignments
         ? liveCivs.filter((c)=>!c.following && (c.escortOwner !== ownTag || !c.escortUnitId || c.escortUnitId === unit.id))
         : [];
@@ -19079,7 +19236,7 @@ function supportUnitsTick(){
               const gd = Math.hypot(gdx, gdy) || 1;
               const escortWaterMul = Math.max(0.95, waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10));
               const catchup = clamp((gd - 14) * 0.06, 0, 6.4);
-              const rescueGuideMul = commandRescue ? 1.20 : 1.08;
+              const rescueGuideMul = (commandRescue ? 1.20 : 1.08) * formationProfile.rescueGuideMul;
               const guideSpeed = Math.min(
                 (Math.max(playerBaseSpeed * 1.62, 4.5) + catchup) * storyRescueSpeedMul() * rescueGuideMul * escortWaterMul * motionMul * supportTickMul,
                 playerBaseSpeed * 2.95
@@ -19104,7 +19261,7 @@ function supportUnitsTick(){
         chaseTiger = dangerCiv ? nearestTigerTo(dangerCiv.x, dangerCiv.y).tiger : null;
         if(!chaseTiger){
           const nearPlayer = nearestTigerTo(S.me.x, S.me.y);
-          if(nearPlayer.tiger && nearPlayer.d < 230) chaseTiger = nearPlayer.tiger;
+          if(nearPlayer.tiger && nearPlayer.d < 230 * formationProfile.prioritizeDanger) chaseTiger = nearPlayer.tiger;
         }
       } else if(commandRegroup){
         const nearPlayer = nearestTigerTo(S.me.x, S.me.y);
@@ -19131,8 +19288,20 @@ function supportUnitsTick(){
               ? (nearDanger || nearPlayer)
               : (isLocked || nearPlayer || nearDanger);
         if(allowChase){
-          targetX = chaseTiger.x;
-          targetY = chaseTiger.y;
+          if(unit.role === "attacker" && formationProfile.flankSplit > 0.12){
+            const side = (slotIndex % 2 === 0) ? -1 : 1;
+            const flank = 14 + (26 * formationProfile.flankSplit);
+            const tx = chaseTiger.x - S.me.x;
+            const ty = chaseTiger.y - S.me.y;
+            const tlen = Math.hypot(tx, ty) || 1;
+            const px = -ty / tlen;
+            const py = tx / tlen;
+            targetX = chaseTiger.x + (px * side * flank);
+            targetY = chaseTiger.y + (py * side * flank);
+          } else {
+            targetX = chaseTiger.x;
+            targetY = chaseTiger.y;
+          }
         }
       }
     }
@@ -19150,6 +19319,8 @@ function supportUnitsTick(){
     let stepCap = unit.role === "attacker"
       ? (playerBaseSpeed * 1.02 * (S.mode==="Story" ? (1 + (storySpecialistRank("SP_ATK_DRILL") * 0.04)) : 1))
       : (playerBaseSpeed * 1.00 * storyRescueSpeedMul());
+    if(unit.role === "attacker") stepCap *= formationProfile.attackerMoveMul;
+    else stepCap *= formationProfile.rescueMoveMul;
     if(unit.role === "rescue" && commandRescue) stepCap *= 1.1;
     if(commandRegroup) stepCap *= 1.06;
     if(commandHold) stepCap *= 0.92;
@@ -19182,6 +19353,9 @@ function supportUnitsTick(){
         allowEngage = nearPlayer && tigerDist < 120;
         shotRange = 135;
         clawRange = 82;
+      }
+      if(unit.role === "attacker"){
+        shotRange *= formationProfile.attackerRangeMul;
       }
 
       if(unit.role === "attacker"){
@@ -22422,10 +22596,15 @@ function renderHUD(){
   const pauseLblMobile = document.getElementById("pauseLblMobile");
   if(pauseLblMobile) pauseLblMobile.innerText = S.paused ? "Resume" : "Pause";
   const squadCmdLabel = squadCommandLabel();
+  const squadFormLabel = squadFormationShortLabel();
   const squadCmdBtn = document.getElementById("squadCmdBtn");
   if(squadCmdBtn) squadCmdBtn.innerText = `🪖 ${squadCmdLabel}`;
   const squadCmdBtnMobile = document.getElementById("squadCmdBtnMobile");
   if(squadCmdBtnMobile) squadCmdBtnMobile.innerText = `🪖 ${squadCmdLabel}`;
+  const squadFormBtn = document.getElementById("squadFormBtn");
+  if(squadFormBtn) squadFormBtn.innerText = `🧩 ${squadFormLabel}`;
+  const squadFormBtnMobile = document.getElementById("squadFormBtnMobile");
+  if(squadFormBtnMobile) squadFormBtnMobile.innerText = `🧩 ${squadFormLabel}`;
   syncSquadCommandWheelUi();
   updatePerformanceLabels();
   document.getElementById("livesTxt").innerText = S.lives;
@@ -22472,7 +22651,7 @@ function renderHUD(){
   const shieldLabel = shieldActiveNow() ? `${S.shields||0} • ACTIVE (${shieldSecs}s)` : `${S.shields||0}`;
   document.getElementById("shieldTxt").innerText = shieldLabel;
 
-  document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})`;
+  document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")}) • Form ${squadFormationLabel()}`;
   const canShieldUse = !S.paused && !S.missionEnded && !S.gameOver && (S.shields||0)>0 && !abilityOnCooldown("shield");
   const canArmorQuickUse = canQuickUseArmorPlate();
   const shieldDisabled = !(canShieldUse || canArmorQuickUse);
@@ -26863,6 +27042,8 @@ window.takeoverEscort = takeoverEscort;
 window.useNearestCache = useNearestCache;
 window.setSquadCommand = setSquadCommand;
 window.cycleSquadCommand = cycleSquadCommand;
+window.setSquadFormation = setSquadFormation;
+window.cycleSquadFormation = cycleSquadFormation;
 window.openSquadCommandWheel = openSquadCommandWheel;
 window.closeSquadCommandWheel = closeSquadCommandWheel;
 window.toggleSquadCommandWheel = toggleSquadCommandWheel;

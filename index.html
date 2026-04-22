@@ -1245,6 +1245,7 @@
       <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLbl">Pause</span></button>
       <button class="ghost" onclick="togglePerformanceMode()">⚙️ <span id="perfLbl">Auto</span></button>
       <button class="ghost" id="squadCmdBtn" onclick="cycleSquadCommand()">🪖 Auto</button>
+      <button class="ghost" id="squadFormBtn" onclick="cycleSquadFormation()">🧩 Wedge</button>
       <button class="ghost" onclick="openHudCustomizer()">🎛️ HUD</button>
 
       <!-- IDs added for tutorial highlighting -->
@@ -1301,7 +1302,7 @@
         <div class="squadCommandWheel" id="squadCommandWheel" aria-hidden="true">
           <div class="squadCommandWheelCore" id="squadCommandWheelCore">
             <div class="squadWheelRing"></div>
-            <button class="squadWheelCenter" type="button" onclick="closeSquadCommandWheel(event)">Close</button>
+            <button class="squadWheelCenter" type="button" id="squadWheelCenterBtn" onclick="cycleSquadFormation(); closeSquadCommandWheel(event)">Form</button>
             <button class="squadWheelOption" type="button" id="squadWheelCmdAuto" data-cmd="AUTO" onclick="pickSquadCommand('AUTO', event)">
               <span class="icon">🤖</span><span class="txt">Auto</span>
             </button>
@@ -1871,6 +1872,7 @@
     <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLblMobile">Pause</span></button>
     <button class="ghost" onclick="togglePerformanceMode()">⚙️ <span id="perfLblMobile">Auto</span></button>
     <button class="ghost" id="squadCmdBtnMobile" onclick="cycleSquadCommand()">🪖 Auto</button>
+    <button class="ghost" id="squadFormBtnMobile" onclick="cycleSquadFormation()">🧩 Wedge</button>
     <button class="ghost" onclick="saveGameNow()">💾 Save</button>
     <button class="ghost" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
     <button class="ghost" onclick="openHudCustomizer()">🎛️ HUD</button>
