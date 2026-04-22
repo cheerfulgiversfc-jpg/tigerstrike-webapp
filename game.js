@@ -1127,6 +1127,66 @@ const LIVE_OPS_POOL = Object.freeze([
     modifiers:{ eventChanceMul:1.00, supplyWeightMul:1.04, rogueWeightMul:1.08, payoutMul:1.07 }
   }),
 ]);
+const LIVE_OPS_MODIFIER_POSITIVE_CARDS = Object.freeze([
+  Object.freeze({
+    id:"POS_SUPPLY_WIND",
+    name:"Supply Wind",
+    desc:"+Payout and faster civilian flow.",
+    bonusMul:1.05,
+    mods:{ payoutMul:1.08, civilianSpeedMul:1.10, rescueSpeedMul:1.06 }
+  }),
+  Object.freeze({
+    id:"POS_HUNTER_DRILL",
+    name:"Hunter Drill",
+    desc:"+Player damage and steadier stamina.",
+    bonusMul:1.04,
+    mods:{ playerDamageMul:1.10, staminaDrainMul:0.92 }
+  }),
+  Object.freeze({
+    id:"POS_INTEL_SWEEP",
+    name:"Intel Sweep",
+    desc:"Lower tiger pressure and cleaner routes.",
+    bonusMul:1.05,
+    mods:{ tigerAggroMul:0.88, tigerSpeedMul:0.94, eventChanceMul:0.92 }
+  }),
+  Object.freeze({
+    id:"POS_MEDBAY_CHAIN",
+    name:"Medbay Chain",
+    desc:"Rescue tempo and civilian protection.",
+    bonusMul:1.04,
+    mods:{ rescueSpeedMul:1.12, civilianDamageMul:0.90, civilianSpeedMul:1.06 }
+  }),
+]);
+const LIVE_OPS_MODIFIER_NEGATIVE_CARDS = Object.freeze([
+  Object.freeze({
+    id:"NEG_PREDATOR_FRENZY",
+    name:"Predator Frenzy",
+    desc:"Tigers are faster, angrier, and hit harder.",
+    bonusMul:1.16,
+    mods:{ tigerAggroMul:1.18, tigerSpeedMul:1.12, tigerDamageMul:1.12 }
+  }),
+  Object.freeze({
+    id:"NEG_FOG_OF_WAR",
+    name:"Fog of War",
+    desc:"Reduced visibility and slower escorts.",
+    bonusMul:1.15,
+    mods:{ fogWeightMul:1.18, civilianSpeedMul:0.88, rescueSpeedMul:0.92 }
+  }),
+  Object.freeze({
+    id:"NEG_LOGISTICS_DROUGHT",
+    name:"Logistics Drought",
+    desc:"Lower payout quality and heavier stamina tax.",
+    bonusMul:1.18,
+    mods:{ payoutMul:0.92, staminaDrainMul:1.10, playerDamageMul:0.94 }
+  }),
+  Object.freeze({
+    id:"NEG_ROGUE_RUSH",
+    name:"Rogue Rush",
+    desc:"Extra chaos from rogue tiger behavior.",
+    bonusMul:1.17,
+    mods:{ rogueWeightMul:1.22, eventChanceMul:1.12, tigerAggroMul:1.08 }
+  }),
+]);
 
 function defaultContractTallies(){
   return { ...DEFAULT_CONTRACT_TALLIES };
@@ -2422,6 +2482,191 @@ function normalizeLiveOpsModifiers(raw={}){
     payoutMul: clamp(Number(src.payoutMul || 1), 0.80, 1.22),
   };
 }
+function normalizeLiveOpsMissionModifiers(raw={}){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  return {
+    payoutMul: clamp(Number(src.payoutMul || 1), 0.78, 1.30),
+    playerDamageMul: clamp(Number(src.playerDamageMul || 1), 0.82, 1.25),
+    tigerDamageMul: clamp(Number(src.tigerDamageMul || 1), 0.82, 1.30),
+    tigerAggroMul: clamp(Number(src.tigerAggroMul || 1), 0.75, 1.35),
+    tigerSpeedMul: clamp(Number(src.tigerSpeedMul || 1), 0.84, 1.25),
+    civilianSpeedMul: clamp(Number(src.civilianSpeedMul || 1), 0.78, 1.24),
+    civilianDamageMul: clamp(Number(src.civilianDamageMul || 1), 0.75, 1.30),
+    rescueSpeedMul: clamp(Number(src.rescueSpeedMul || 1), 0.82, 1.24),
+    staminaDrainMul: clamp(Number(src.staminaDrainMul || 1), 0.80, 1.25),
+    eventChanceMul: clamp(Number(src.eventChanceMul || 1), 0.72, 1.35),
+    supplyWeightMul: clamp(Number(src.supplyWeightMul || 1), 0.65, 1.45),
+    rogueWeightMul: clamp(Number(src.rogueWeightMul || 1), 0.65, 1.45),
+    fogWeightMul: clamp(Number(src.fogWeightMul || 1), 0.65, 1.45),
+    bonusWeightMul: clamp(Number(src.bonusWeightMul || 1), 0.65, 1.45),
+  };
+}
+function defaultLiveOpsModifierCardsState(weekKey=contractWeekKey()){
+  return {
+    weekKey: String(weekKey || contractWeekKey()),
+    missionKey: "",
+    positiveChoices: [],
+    negativeChoices: [],
+    selectedPositive: "",
+    selectedNegative: "",
+    activePositive: "",
+    activeNegative: "",
+    activeMods: normalizeLiveOpsMissionModifiers({}),
+    activeBonusMul: 1,
+    appliedMissionKey: "",
+    lastUpdatedAt: 0,
+  };
+}
+function missionModifierCardLookup(kind, id){
+  const pool = kind === "negative" ? LIVE_OPS_MODIFIER_NEGATIVE_CARDS : LIVE_OPS_MODIFIER_POSITIVE_CARDS;
+  const key = String(id || "").trim();
+  return pool.find((row)=>row.id === key) || null;
+}
+function normalizeLiveOpsModifierCardsState(raw, weekKey=contractWeekKey()){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const out = {
+    ...defaultLiveOpsModifierCardsState(weekKey),
+    weekKey: String(weekKey || src.weekKey || contractWeekKey()),
+    missionKey: String(src.missionKey || ""),
+    selectedPositive: String(src.selectedPositive || ""),
+    selectedNegative: String(src.selectedNegative || ""),
+    activePositive: String(src.activePositive || ""),
+    activeNegative: String(src.activeNegative || ""),
+    activeMods: normalizeLiveOpsMissionModifiers(src.activeMods || {}),
+    activeBonusMul: clamp(Number(src.activeBonusMul || 1), 0.75, 1.65),
+    appliedMissionKey: String(src.appliedMissionKey || ""),
+    lastUpdatedAt: Math.max(0, Math.floor(Number(src.lastUpdatedAt || 0))),
+  };
+  out.positiveChoices = Array.isArray(src.positiveChoices)
+    ? src.positiveChoices.map((id)=>String(id || "")).filter((id)=>!!missionModifierCardLookup("positive", id)).slice(0, 4)
+    : [];
+  out.negativeChoices = Array.isArray(src.negativeChoices)
+    ? src.negativeChoices.map((id)=>String(id || "")).filter((id)=>!!missionModifierCardLookup("negative", id)).slice(0, 4)
+    : [];
+  if(out.selectedPositive && !out.positiveChoices.includes(out.selectedPositive)) out.selectedPositive = "";
+  if(out.selectedNegative && !out.negativeChoices.includes(out.selectedNegative)) out.selectedNegative = "";
+  if(out.activePositive && !missionModifierCardLookup("positive", out.activePositive)) out.activePositive = "";
+  if(out.activeNegative && !missionModifierCardLookup("negative", out.activeNegative)) out.activeNegative = "";
+  return out;
+}
+function currentMissionModifierCards(state=S){
+  if(!state || typeof state !== "object") return defaultLiveOpsModifierCardsState();
+  const weekKey = contractWeekKey();
+  state.liveOpsModifierCards = normalizeLiveOpsModifierCardsState(state.liveOpsModifierCards, weekKey);
+  return state.liveOpsModifierCards;
+}
+function missionModifierMissionKey(state=S){
+  if(!state || typeof state !== "object") return "none:1";
+  const mode = normalizeModeName(state.mode);
+  const serial = Math.max(1, Math.floor(Number(state?.balanceStats?.missionsStartedTotal || 0)) + 1);
+  if(mode === "Story"){
+    const mission = storyMissionForState(state);
+    return `${mode}:${mission.number}:${normalizeStoryVariant(mission.storyVariant)}:${serial}`;
+  }
+  if(mode === "Arcade"){
+    const mission = activeArcadeMission(state);
+    const week = mission.weeklySeed ? String(mission.weeklySeedKey || contractWeekKey()) : "normal";
+    return `${mode}:${mission.number}:${week}:${mission.boss ? "boss" : "std"}:${serial}`;
+  }
+  return `${mode}:${Math.max(1, Math.floor(Number(state.survivalWave || 1)))}:${serial}`;
+}
+function prepareLiveOpsModifierCardsForMission(state=S){
+  if(!state || typeof state !== "object") return null;
+  const mode = normalizeModeName(state.mode);
+  const cards = currentMissionModifierCards(state);
+  if(mode === "Survival" || window.__TUTORIAL_MODE__){
+    cards.missionKey = missionModifierMissionKey(state);
+    cards.selectedPositive = "";
+    cards.selectedNegative = "";
+    cards.activePositive = "";
+    cards.activeNegative = "";
+    cards.activeMods = normalizeLiveOpsMissionModifiers({});
+    cards.activeBonusMul = 1;
+    cards.appliedMissionKey = cards.missionKey;
+    cards.lastUpdatedAt = Date.now();
+    return cards;
+  }
+  const missionKey = missionModifierMissionKey(state);
+  const weekKey = contractWeekKey();
+  const changed = cards.weekKey !== weekKey || cards.missionKey !== missionKey;
+  if(changed){
+    cards.weekKey = weekKey;
+    cards.missionKey = missionKey;
+    const posSeed = contractHashInt(`ops-mod|pos|${weekKey}|${missionKey}`);
+    const negSeed = contractHashInt(`ops-mod|neg|${weekKey}|${missionKey}`);
+    const posPool = [...LIVE_OPS_MODIFIER_POSITIVE_CARDS];
+    const negPool = [...LIVE_OPS_MODIFIER_NEGATIVE_CARDS];
+    posPool.sort((a, b)=>contractHashInt(`${a.id}|${posSeed}`) - contractHashInt(`${b.id}|${posSeed}`));
+    negPool.sort((a, b)=>contractHashInt(`${a.id}|${negSeed}`) - contractHashInt(`${b.id}|${negSeed}`));
+    cards.positiveChoices = posPool.slice(0, 3).map((row)=>row.id);
+    cards.negativeChoices = negPool.slice(0, 3).map((row)=>row.id);
+    cards.selectedPositive = "";
+    cards.selectedNegative = "";
+    cards.activePositive = "";
+    cards.activeNegative = "";
+    cards.activeMods = normalizeLiveOpsMissionModifiers({});
+    cards.activeBonusMul = 1;
+    cards.appliedMissionKey = "";
+  }
+  cards.lastUpdatedAt = Date.now();
+  return cards;
+}
+function liveOpsModifierCardsReady(state=S){
+  const cards = currentMissionModifierCards(state);
+  return !!cards.selectedPositive && !!cards.selectedNegative;
+}
+function liveOpsSelectModifierCard(kind="positive", id=""){
+  const cards = currentMissionModifierCards(S);
+  const bucket = kind === "negative" ? "negative" : "positive";
+  const key = String(id || "").trim();
+  const list = bucket === "negative" ? cards.negativeChoices : cards.positiveChoices;
+  if(!list.includes(key)) return;
+  if(bucket === "negative") cards.selectedNegative = key;
+  else cards.selectedPositive = key;
+  cards.lastUpdatedAt = Date.now();
+  renderPreMissionBriefControls();
+  const def = missionModifierCardLookup(bucket, key);
+  if(def) toast(`${bucket === "negative" ? "Negative" : "Positive"} card selected: ${def.name}`);
+}
+function liveOpsApplySelectedModifierCards(state=S){
+  const cards = currentMissionModifierCards(state);
+  if(!liveOpsModifierCardsReady(state)) return false;
+  const pos = missionModifierCardLookup("positive", cards.selectedPositive);
+  const neg = missionModifierCardLookup("negative", cards.selectedNegative);
+  if(!pos || !neg) return false;
+  const merged = normalizeLiveOpsMissionModifiers({
+    payoutMul: (pos.mods?.payoutMul || 1) * (neg.mods?.payoutMul || 1),
+    playerDamageMul: (pos.mods?.playerDamageMul || 1) * (neg.mods?.playerDamageMul || 1),
+    tigerDamageMul: (pos.mods?.tigerDamageMul || 1) * (neg.mods?.tigerDamageMul || 1),
+    tigerAggroMul: (pos.mods?.tigerAggroMul || 1) * (neg.mods?.tigerAggroMul || 1),
+    tigerSpeedMul: (pos.mods?.tigerSpeedMul || 1) * (neg.mods?.tigerSpeedMul || 1),
+    civilianSpeedMul: (pos.mods?.civilianSpeedMul || 1) * (neg.mods?.civilianSpeedMul || 1),
+    civilianDamageMul: (pos.mods?.civilianDamageMul || 1) * (neg.mods?.civilianDamageMul || 1),
+    rescueSpeedMul: (pos.mods?.rescueSpeedMul || 1) * (neg.mods?.rescueSpeedMul || 1),
+    staminaDrainMul: (pos.mods?.staminaDrainMul || 1) * (neg.mods?.staminaDrainMul || 1),
+    eventChanceMul: (pos.mods?.eventChanceMul || 1) * (neg.mods?.eventChanceMul || 1),
+    supplyWeightMul: (pos.mods?.supplyWeightMul || 1) * (neg.mods?.supplyWeightMul || 1),
+    rogueWeightMul: (pos.mods?.rogueWeightMul || 1) * (neg.mods?.rogueWeightMul || 1),
+    fogWeightMul: (pos.mods?.fogWeightMul || 1) * (neg.mods?.fogWeightMul || 1),
+    bonusWeightMul: (pos.mods?.bonusWeightMul || 1) * (neg.mods?.bonusWeightMul || 1),
+  });
+  cards.activePositive = pos.id;
+  cards.activeNegative = neg.id;
+  cards.activeMods = merged;
+  cards.activeBonusMul = clamp((Number(pos.bonusMul || 1) * Number(neg.bonusMul || 1)), 0.75, 1.65);
+  cards.appliedMissionKey = cards.missionKey;
+  cards.lastUpdatedAt = Date.now();
+  return true;
+}
+function liveOpsMissionModifierValue(key, fallback=1, state=S){
+  const cards = currentMissionModifierCards(state);
+  const val = Number(cards.activeMods?.[key]);
+  return Number.isFinite(val) ? val : Number(fallback || 1);
+}
+function liveOpsMissionBonusMul(state=S){
+  const cards = currentMissionModifierCards(state);
+  return clamp(Number(cards.activeBonusMul || 1), 0.75, 1.65);
+}
 function generateLiveOpsEntry(weekKey, state=S){
   const pool = Array.isArray(LIVE_OPS_POOL) ? LIVE_OPS_POOL : [];
   if(!pool.length) return null;
@@ -2541,11 +2786,21 @@ function launchLiveOpsSummaryText(state=S){
 function liveOpsModifierValue(key, fallback=1, state=S){
   const entry = liveOpsEntry(state);
   const mods = normalizeLiveOpsModifiers(entry?.modifiers || {});
-  const val = Number(mods?.[key]);
+  const missionMods = normalizeLiveOpsMissionModifiers(currentMissionModifierCards(state)?.activeMods || {});
+  const val = Number((mods?.[key] ?? 1) * (missionMods?.[key] ?? 1));
   return Number.isFinite(val) ? val : Number(fallback || 1);
 }
 function liveOpsActiveModifiers(state=S){
-  return normalizeLiveOpsModifiers(liveOpsEntry(state)?.modifiers || {});
+  const base = normalizeLiveOpsModifiers(liveOpsEntry(state)?.modifiers || {});
+  const mission = normalizeLiveOpsMissionModifiers(currentMissionModifierCards(state)?.activeMods || {});
+  return {
+    eventChanceMul: clamp(Number(base.eventChanceMul || 1) * Number(mission.eventChanceMul || 1), 0.65, 1.45),
+    supplyWeightMul: clamp(Number(base.supplyWeightMul || 1) * Number(mission.supplyWeightMul || 1), 0.60, 1.55),
+    rogueWeightMul: clamp(Number(base.rogueWeightMul || 1) * Number(mission.rogueWeightMul || 1), 0.60, 1.55),
+    fogWeightMul: clamp(Number(base.fogWeightMul || 1) * Number(mission.fogWeightMul || 1), 0.60, 1.55),
+    bonusWeightMul: clamp(Number(base.bonusWeightMul || 1) * Number(mission.bonusWeightMul || 1), 0.60, 1.55),
+    payoutMul: clamp(Number(base.payoutMul || 1) * Number(mission.payoutMul || 1), 0.72, 1.35),
+  };
 }
 function liveOpsPayoutMul(state=S){
   return liveOpsModifierValue("payoutMul", 1, state);
@@ -5882,6 +6137,7 @@ const DEFAULT = {
   contractTallies: defaultContractTallies(),
   contracts: null,
   liveOps: null,
+  liveOpsModifierCards: null,
   seasonPass: defaultSeasonPassState(),
   masteryRewards: defaultMasteryRewardsState(),
   achievements:{},
@@ -7519,6 +7775,9 @@ function load(){
     m.contractTallies = normalizeContractTalliesMap(saved.contractTallies);
     m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
     m.liveOps = (saved.liveOps && typeof saved.liveOps === "object") ? saved.liveOps : null;
+    m.liveOpsModifierCards = (saved.liveOpsModifierCards && typeof saved.liveOpsModifierCards === "object")
+      ? cloneState(saved.liveOpsModifierCards)
+      : null;
     m.coopStrikeOps = (saved.coopStrikeOps && typeof saved.coopStrikeOps === "object") ? cloneState(saved.coopStrikeOps) : null;
     m.clanWarfront = (saved.clanWarfront && typeof saved.clanWarfront === "object") ? cloneState(saved.clanWarfront) : null;
     m.referralMilestone = (saved.referralMilestone && typeof saved.referralMilestone === "object") ? saved.referralMilestone : null;
@@ -7555,6 +7814,7 @@ function load(){
     ensureContractTalliesState(m);
     ensureContractsState(m);
     ensureLiveOpsState(m);
+    currentMissionModifierCards(m);
     ensureCoopStrikeOpsState(m);
     ensureOpsTotalsState(m);
     ensureBalanceStatsState(m);
@@ -10668,12 +10928,13 @@ function storyCaptureWindowPct(){
 }
 function storyStaminaDrainMul(){
   const biomeMul = clamp(Number(biomeHazardModifiers(S.mode).staminaDrainMul || 1), 0.70, 1.35);
+  const missionMul = liveOpsMissionModifierValue("staminaDrainMul", 1, S);
   if(S.mode !== "Story"){
-    return clamp(biomeMul * arcadeBuildcraftMul("staminaDrainMul", 1), 0.62, 1.45);
+    return clamp(biomeMul * missionMul * arcadeBuildcraftMul("staminaDrainMul", 1), 0.62, 1.45);
   }
   const base = 1 - (storyBaseRank("BASE_ENDURANCE") * 0.08);
   const chapterMul = storyChapterRewardUnlocked(6) ? 0.95 : 1;
-  return clamp(base * chapterMul * biomeMul, 0.62, 1.35);
+  return clamp(base * chapterMul * biomeMul * missionMul, 0.62, 1.35);
 }
 function storyPayoutMul(){
   if(S.mode !== "Story") return 1;
@@ -13564,34 +13825,101 @@ function shouldShowMissionBrief(){
   if(S.mode==="Story" && !S.storyIntroSeen) return false;
   return true;
 }
-function renderArcadeBuildcraftBrief(){
+function renderPreMissionBriefControls(){
   const wrap = document.getElementById("arcadeBuildcraftWrap");
   const list = document.getElementById("arcadeBuildcraftBtns");
   const tradeoff = document.getElementById("arcadeBuildcraftTradeoff");
-  const shouldShow = normalizeModeName(S.mode) === "Arcade" && !window.__TUTORIAL_MODE__;
+  const mode = normalizeModeName(S.mode);
+  const shouldShow = (mode === "Arcade" || mode === "Story") && !window.__TUTORIAL_MODE__;
   if(wrap) wrap.style.display = shouldShow ? "block" : "none";
   if(!shouldShow){
     if(list) list.innerHTML = "";
     if(tradeoff) tradeoff.innerText = "";
+    const startBtn = document.getElementById("missionBriefStartBtn");
+    if(startBtn) startBtn.disabled = false;
     return;
   }
-  ensureArcadeBuildcraftState(S);
-  const selected = normalizeArcadeBuildcraftId(S.arcadeBuildcraftPending || S.arcadeBuildcraftSelected);
+  prepareLiveOpsModifierCardsForMission(S);
+  const cards = currentMissionModifierCards(S);
   if(list){
     list.innerHTML = "";
-    for(const def of ARCADE_BUILDCRAFT_LOADOUTS){
+    if(mode === "Arcade"){
+      ensureArcadeBuildcraftState(S);
+      const selected = normalizeArcadeBuildcraftId(S.arcadeBuildcraftPending || S.arcadeBuildcraftSelected);
+      const buildLabel = document.createElement("div");
+      buildLabel.style.fontSize = "12px";
+      buildLabel.style.opacity = "0.85";
+      buildLabel.style.margin = "0 0 6px 0";
+      buildLabel.innerText = "Arcade Buildcraft";
+      list.appendChild(buildLabel);
+      for(const def of ARCADE_BUILDCRAFT_LOADOUTS){
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = def.id === selected ? "good" : "ghost";
+        btn.innerText = `${def.icon} ${def.name}`;
+        btn.onclick = ()=>selectArcadeBuildcraft(def.id);
+        list.appendChild(btn);
+      }
+      const sep = document.createElement("div");
+      sep.style.width = "100%";
+      sep.style.height = "1px";
+      sep.style.margin = "8px 0";
+      sep.style.background = "rgba(148,163,184,.25)";
+      list.appendChild(sep);
+    }
+    const posLabel = document.createElement("div");
+    posLabel.style.fontSize = "12px";
+    posLabel.style.opacity = "0.85";
+    posLabel.style.margin = "0 0 6px 0";
+    posLabel.innerText = "Live Ops Positive Card (pick 1)";
+    list.appendChild(posLabel);
+    for(const id of cards.positiveChoices || []){
+      const card = missionModifierCardLookup("positive", id);
+      if(!card) continue;
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = def.id === selected ? "good" : "ghost";
-      btn.innerText = `${def.icon} ${def.name}`;
-      btn.onclick = ()=>selectArcadeBuildcraft(def.id);
+      btn.className = cards.selectedPositive === id ? "good" : "ghost";
+      btn.innerText = `+ ${card.name}`;
+      btn.onclick = ()=>liveOpsSelectModifierCard("positive", id);
+      list.appendChild(btn);
+    }
+    const negLabel = document.createElement("div");
+    negLabel.style.fontSize = "12px";
+    negLabel.style.opacity = "0.85";
+    negLabel.style.margin = "8px 0 6px 0";
+    negLabel.innerText = "Live Ops Negative Card (pick 1)";
+    list.appendChild(negLabel);
+    for(const id of cards.negativeChoices || []){
+      const card = missionModifierCardLookup("negative", id);
+      if(!card) continue;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = cards.selectedNegative === id ? "bad" : "ghost";
+      btn.innerText = `- ${card.name}`;
+      btn.onclick = ()=>liveOpsSelectModifierCard("negative", id);
       list.appendChild(btn);
     }
   }
   if(tradeoff){
-    const def = arcadeBuildcraftDef(selected);
-    tradeoff.innerText = `${def.summary} • ${def.pros} • Tradeoff: ${def.cons}`;
+    const pos = missionModifierCardLookup("positive", cards.selectedPositive);
+    const neg = missionModifierCardLookup("negative", cards.selectedNegative);
+    const cardTxt = (pos && neg)
+      ? `Modifier Pair: +${pos.name} / -${neg.name} • Mission Bonus x${(Number(pos.bonusMul || 1) * Number(neg.bonusMul || 1)).toFixed(2)}`
+      : "Pick 1 positive and 1 negative Live Ops card to unlock mission bonus multipliers.";
+    if(mode === "Arcade"){
+      const def = arcadeBuildcraftDef(normalizeArcadeBuildcraftId(S.arcadeBuildcraftPending || S.arcadeBuildcraftSelected));
+      tradeoff.innerText = `${def.summary} • ${def.pros} • Tradeoff: ${def.cons} • ${cardTxt}`;
+    } else {
+      tradeoff.innerText = cardTxt;
+    }
   }
+  const startBtn = document.getElementById("missionBriefStartBtn");
+  if(startBtn){
+    startBtn.disabled = !liveOpsModifierCardsReady(S);
+  }
+}
+function renderArcadeBuildcraftBrief(){
+  renderPreMissionBriefControls();
 }
 function showMissionBrief(durationMs=2600){
   const overlay = document.getElementById("missionBriefOverlay");
@@ -13646,20 +13974,19 @@ function showMissionBrief(durationMs=2600){
   if(rewardEl) rewardEl.innerText = isStory ? storyChapterRewardPreviewText(card.mission) : "";
   if(hintEl){
     hintEl.innerText = isArcade
-      ? "Pick one Buildcraft loadout for this Arcade mission, then tap Start Mission."
-      : "Auto-hide timing depends on mission flow. Tap Start anytime.";
+      ? "Pick one Buildcraft loadout plus 1 positive and 1 negative Live Ops card, then tap Start Mission."
+      : "Pick 1 positive and 1 negative Live Ops card, then tap Start Mission.";
   }
-  if(startBtn){
-    startBtn.innerText = isArcade ? "Start Mission" : "Start";
-  }
+  if(startBtn) startBtn.innerText = isArcade ? "Start Mission" : "Start Mission";
   renderArcadeBuildcraftBrief();
 
   clearMissionBriefTimer();
   setPaused(true,"mission-brief");
   overlay.style.display = "flex";
   syncGamepadFocus();
-  if(isArcade){
-    // Arcade buildcraft requires an explicit pre-mission choice.
+  if(isArcade || isStory){
+    // Buildcraft (Arcade) and Live Ops modifier cards (Story/Arcade)
+    // require explicit pre-mission confirmation.
     return true;
   }
   const requestedMs = Math.floor(durationMs || 0);
@@ -13680,8 +14007,28 @@ function showMissionBrief(durationMs=2600){
 function closeMissionBrief(fromTimer=false){
   clearMissionBriefTimer();
   const overlay = document.getElementById("missionBriefOverlay");
+  const mode = normalizeModeName(S.mode);
+  const enforceCards = !window.__TUTORIAL_MODE__ && (mode === "Story" || mode === "Arcade");
+  if(enforceCards && overlay && overlay.style.display === "flex"){
+    if(!liveOpsModifierCardsReady(S)){
+      toast("Pick 1 positive and 1 negative Live Ops card first.");
+      renderPreMissionBriefControls();
+      return;
+    }
+    if(!liveOpsApplySelectedModifierCards(S)){
+      toast("Live Ops modifier cards are not ready yet.");
+      renderPreMissionBriefControls();
+      return;
+    }
+    const cards = currentMissionModifierCards(S);
+    const pos = missionModifierCardLookup("positive", cards.activePositive);
+    const neg = missionModifierCardLookup("negative", cards.activeNegative);
+    if(pos && neg){
+      setEventText(`Live Ops cards active: +${pos.name} / -${neg.name} • Bonus x${liveOpsMissionBonusMul(S).toFixed(2)}`, 5.4);
+    }
+  }
   if(overlay) overlay.style.display = "none";
-  if(normalizeModeName(S.mode) === "Arcade" && !window.__TUTORIAL_MODE__){
+  if(mode === "Arcade" && !window.__TUTORIAL_MODE__){
     applyArcadeBuildcraftForMission({ silent: !!fromTimer });
   }
   if(S.paused && S.pauseReason === "mission-brief"){
@@ -14126,6 +14473,7 @@ function writeStoryProfileData(source="autosave", state=S){
     contractTallies: { ...ensureContractTalliesState(src) },
     contracts: (src.contracts && typeof src.contracts === "object") ? cloneState(src.contracts) : null,
     liveOps: (src.liveOps && typeof src.liveOps === "object") ? cloneState(src.liveOps) : null,
+    liveOpsModifierCards: (src.liveOpsModifierCards && typeof src.liveOpsModifierCards === "object") ? cloneState(src.liveOpsModifierCards) : null,
     coopStrikeOps: (src.coopStrikeOps && typeof src.coopStrikeOps === "object") ? cloneState(src.coopStrikeOps) : null,
     clanWarfront: (src.clanWarfront && typeof src.clanWarfront === "object") ? cloneState(src.clanWarfront) : null,
     ownedWeapons: Array.isArray(src.ownedWeapons) ? src.ownedWeapons.filter((id)=>typeof id === "string") : [],
@@ -14356,6 +14704,10 @@ function applyStoryProfileToState(state, profile){
     state.liveOps = cloneState(profile.liveOps);
     ensureLiveOpsState(state);
   }
+  if(profile.liveOpsModifierCards && typeof profile.liveOpsModifierCards === "object"){
+    state.liveOpsModifierCards = cloneState(profile.liveOpsModifierCards);
+    currentMissionModifierCards(state);
+  }
   if(profile.coopStrikeOps && typeof profile.coopStrikeOps === "object"){
     state.coopStrikeOps = cloneState(profile.coopStrikeOps);
     ensureCoopStrikeOpsState(state);
@@ -14543,6 +14895,9 @@ function writeStoryProgressData(payload={}){
     liveOps: (payload.liveOps && typeof payload.liveOps === "object")
       ? cloneState(payload.liveOps)
       : ((S.liveOps && typeof S.liveOps === "object") ? cloneState(S.liveOps) : null),
+    liveOpsModifierCards: (payload.liveOpsModifierCards && typeof payload.liveOpsModifierCards === "object")
+      ? cloneState(payload.liveOpsModifierCards)
+      : ((S.liveOpsModifierCards && typeof S.liveOpsModifierCards === "object") ? cloneState(S.liveOpsModifierCards) : null),
     coopStrikeOps: (payload.coopStrikeOps && typeof payload.coopStrikeOps === "object")
       ? cloneState(payload.coopStrikeOps)
       : ((S.coopStrikeOps && typeof S.coopStrikeOps === "object") ? cloneState(S.coopStrikeOps) : null),
@@ -17580,6 +17935,12 @@ function renderInventory(){
   const armorSelectedDef = getArmor(armorSelected) || ARMORY[0];
   ensureContractsState(S);
   ensureLiveOpsState(S);
+  const missionCards = currentMissionModifierCards(S);
+  const activePosCard = missionModifierCardLookup("positive", missionCards.activePositive);
+  const activeNegCard = missionModifierCardLookup("negative", missionCards.activeNegative);
+  const activeCardTxt = (activePosCard && activeNegCard)
+    ? `Active pair: +${activePosCard.name} / -${activeNegCard.name} • Mission bonus x${liveOpsMissionBonusMul(S).toFixed(2)}`
+    : "Active pair: choose cards at mission brief.";
   const liveOpsCurrent = liveOpsEntry(S);
   const liveOpsSectionHtml = (() => {
     if(!liveOpsCurrent){
@@ -17600,6 +17961,7 @@ function renderInventory(){
         <div>
           <div class="itemName">${liveOpsCurrent.title} <span class="tag">${statusTag}</span></div>
           <div class="itemDesc">${liveOpsCurrent.desc}</div>
+          <div class="itemDesc">${activeCardTxt}</div>
           <div class="itemDesc">Reward: ${liveOpsRewardText(liveOpsCurrent.reward)} • Reset in ${contractCountdownText("weekly")}</div>
         </div>
         <div style="text-align:right">
@@ -20255,6 +20617,7 @@ function deploy(opts={}){
 
   if(S.mode==="Survival"){ S.survivalStart = Date.now(); S.surviveSeconds=0; }
 
+  prepareLiveOpsModifierCardsForMission(S);
   if(shouldShowMissionBrief()) showMissionBrief(rand(2200, 3000));
   else {
     if(normalizeModeName(S.mode) === "Arcade" && !window.__TUTORIAL_MODE__){
@@ -21806,7 +22169,7 @@ function runCivilianFleeStep(c, now=Date.now()){
   const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
   const motionMul = frameMotionMul();
   const mapCivMul = mapIdentityCivilianSpeedMul(S.mode, chapterIndexForMode(S.mode));
-  const worldCivMul = clamp(Number(worldEventMotionMods(now).civilianSpeedMul || 1), 0.7, 1.2);
+  const worldCivMul = clamp(Number(worldEventMotionMods(now).civilianSpeedMul || 1), 0.7, 1.2) * liveOpsMissionModifierValue("civilianSpeedMul", 1, S);
   const fleeBase = c.following ? 3.58 : 2.94;
   const fleeSpeed = (fleeBase * (civDef.fleeMul || 1)) * (c.following ? Math.max(0.95, waterMul) : waterMul) * motionMul * mapCivMul * worldCivMul;
   const nx = c.x + Math.cos(ang) * fleeSpeed;
@@ -21822,9 +22185,9 @@ function followCiviliansTick(){
   if(S.mode==="Survival") return;
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const motionMul = frameMotionMul();
-  const escortBoost = storyRescueSpeedMul();
+  const escortBoost = storyRescueSpeedMul() * liveOpsMissionModifierValue("rescueSpeedMul", 1, S);
   const mapCivMul = mapIdentityCivilianSpeedMul(S.mode, chapterIndexForMode(S.mode));
-  const worldCivMul = clamp(Number(worldEventMotionMods(Date.now()).civilianSpeedMul || 1), 0.7, 1.2);
+  const worldCivMul = clamp(Number(worldEventMotionMods(Date.now()).civilianSpeedMul || 1), 0.7, 1.2) * liveOpsMissionModifierValue("civilianSpeedMul", 1, S);
   const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 720 : 620;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
   if(!Number.isFinite(S._escortFace)) S._escortFace = face;
@@ -22191,7 +22554,7 @@ function tickCiviliansAndThreats(){
       const smokeMult = squadAbilityActive("smoke_screen", now, S) ? 0.56 : 1;
       const shieldMult = civilianShielded(best) ? 0 : 1;
       const personaDmgMul = best.aiState === "panicked" ? 1.08 : (best.aiState === "cooperative" ? 0.94 : 1.12);
-      const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * smokeMult * personaDmgMul * perkCivMul() * storyCivilianDamageMul();
+      const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * smokeMult * personaDmgMul * perkCivMul() * storyCivilianDamageMul() * liveOpsMissionModifierValue("civilianDamageMul", 1, S);
       const dmg = shieldMult ? Math.max(1, Math.round(scaled)) : 0;
       const prevHp = best.hp;
       best.hp = clamp(best.hp - dmg, 0, best.hpMax);
@@ -22344,8 +22707,10 @@ function roamTigers(){
   const biomeAggroMul = clamp(Number(biomeHazards.tigerAggroMul || 1), 0.82, 1.35);
   const biomeSpeedMul = clamp(Number(biomeHazards.tigerSpeedMul || 1), 0.86, 1.35);
   const worldMods = worldEventMotionMods(now);
-  const directorAggroMul = clamp(Number(S._directorAggroMul || 1) * biomeAggroMul * clamp(Number(worldMods.tigerAggroMul || 1), 0.8, 1.35), 0.82, 1.44);
-  const directorSpeedMul = clamp(Number(S._directorSpeedMul || 1) * biomeSpeedMul * clamp(Number(worldMods.tigerSpeedMul || 1), 0.8, 1.35), 0.88, 1.42);
+  const missionAggroMul = liveOpsMissionModifierValue("tigerAggroMul", 1, S);
+  const missionSpeedMul = liveOpsMissionModifierValue("tigerSpeedMul", 1, S);
+  const directorAggroMul = clamp(Number(S._directorAggroMul || 1) * biomeAggroMul * clamp(Number(worldMods.tigerAggroMul || 1), 0.8, 1.35) * missionAggroMul, 0.72, 1.55);
+  const directorSpeedMul = clamp(Number(S._directorSpeedMul || 1) * biomeSpeedMul * clamp(Number(worldMods.tigerSpeedMul || 1), 0.8, 1.35) * missionSpeedMul, 0.82, 1.48);
   const barricades = activeBarricades(now);
   const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
   const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
@@ -24034,19 +24399,20 @@ function updateBattleButtons(){
 
 function payout(outcome){
   const liveOpsMul = liveOpsPayoutMul(S);
+  const missionBonusMul = liveOpsMissionBonusMul(S);
   if(S.mode==="Story"){
     const mul = storyPayoutMul();
-    if(outcome==="CAPTURE") return { cash: Math.round(rand(2500,5000) * mul * liveOpsMul), score: Math.round(220 * mul), trust:+6, aggro:-8 };
-    return { cash: Math.round(rand(500,1500) * mul * liveOpsMul), score: Math.round(100 * mul), trust:-4, aggro:+14 };
+    if(outcome==="CAPTURE") return { cash: Math.round(rand(2500,5000) * mul * liveOpsMul * missionBonusMul), score: Math.round(220 * mul * missionBonusMul), trust:+6, aggro:-8 };
+    return { cash: Math.round(rand(500,1500) * mul * liveOpsMul * missionBonusMul), score: Math.round(100 * mul * missionBonusMul), trust:-4, aggro:+14 };
   }
   if(S.mode==="Arcade"){
     const L=S.arcadeLevel||1;
-    if(outcome==="CAPTURE") return { cash: Math.round((900 + L*220) * liveOpsMul), score: 180 + L*40, trust:+2, aggro:-4 };
-    return { cash: Math.round((450 + L*140) * liveOpsMul), score: 90 + L*25, trust:-1, aggro:+6 };
+    if(outcome==="CAPTURE") return { cash: Math.round((900 + L*220) * liveOpsMul * missionBonusMul), score: Math.round((180 + L*40) * missionBonusMul), trust:+2, aggro:-4 };
+    return { cash: Math.round((450 + L*140) * liveOpsMul * missionBonusMul), score: Math.round((90 + L*25) * missionBonusMul), trust:-1, aggro:+6 };
   }
   const W=S.survivalWave||1;
-  if(outcome==="CAPTURE") return { cash: Math.round((700 + W*260) * liveOpsMul), score: 180 + W*45, trust:0, aggro:-2 };
-  return { cash: Math.round((300 + W*170) * liveOpsMul), score: 85 + W*28, trust:0, aggro:+5 };
+  if(outcome==="CAPTURE") return { cash: Math.round((700 + W*260) * liveOpsMul * missionBonusMul), score: Math.round((180 + W*45) * missionBonusMul), trust:0, aggro:-2 };
+  return { cash: Math.round((300 + W*170) * liveOpsMul * missionBonusMul), score: Math.round((85 + W*28) * missionBonusMul), trust:0, aggro:+5 };
 }
 
 function maybeReinforceOnKill(){
@@ -24370,6 +24736,7 @@ function playerAction(action){
     let dmg=rand(build.dmg[0],build.dmg[1]);
     dmg *= perkDamageMul();
     dmg *= arcadeBuildcraftMul("damageOutMul", 1);
+    dmg *= liveOpsMissionModifierValue("playerDamageMul", 1, S);
     const crit=Math.random()<(eff.crit + perkCritBonus() + arcadeBuildcraftCritBonus() + build.critBonus);
     if(crit) dmg=Math.round(dmg*1.6);
     dmg=Math.round(dmg*eff.dmgMul);
@@ -24514,6 +24881,7 @@ function tigerTurn(t, softened=false, opts={}){
   if(persona.key==="Fury" && (t.hp/t.hpMax) < 0.55) dmg = Math.round(dmg * 1.10);
   if(persona.key==="Ambusher" && Date.now() < (t.burstUntil||0)) dmg = Math.round(dmg * 1.08);
   dmg = Math.round(dmg * clamp(Number(worldEventMotionMods(now).tigerDamageMul || 1), 0.8, 1.35));
+  dmg = Math.round(dmg * liveOpsMissionModifierValue("tigerDamageMul", 1, S));
   if(Number.isFinite(opts.dmgMul)) dmg = Math.round(dmg * opts.dmgMul);
   if(softened) dmg=Math.floor(dmg*0.85);
   const maxDamage = (opts.kind === "charge") ? 92 : 75;
@@ -29124,6 +29492,8 @@ function init(){
   if(!S.progressionUnlocks || typeof S.progressionUnlocks !== "object") S.progressionUnlocks = {};
   ensureContractTalliesState(S);
   ensureContractsState(S);
+  ensureLiveOpsState(S);
+  currentMissionModifierCards(S);
   ensureNemesisState(S);
   if(S.paused && !S.gameOver && !S.missionEnded){
     S.paused = false;
