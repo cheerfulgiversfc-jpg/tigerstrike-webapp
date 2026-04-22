@@ -157,6 +157,7 @@ const ENABLE_TWIST_BRIDGE = false;
 const ENABLE_TWIST_HOSTAGE = false;
 const ENABLE_TWIST_FOG = false;
 const ENABLE_TWIST_BLACKOUT = false;
+const ENABLE_DYNAMIC_WORLD_EVENTS = true;
 const ENABLE_IPHONE_STABILITY_LOCK = true;
 const ENABLE_IPHONE_LITE_FEEDBACK = false;
 const ENABLE_MOBILE_WEATHER_TINT = true;
@@ -181,6 +182,11 @@ const MISSION_TWIST_FOG_MIN_MS = 10000;
 const MISSION_TWIST_FOG_MAX_MS = 17000;
 const MISSION_TWIST_BLACKOUT_MIN_MS = 10000;
 const MISSION_TWIST_BLACKOUT_MAX_MS = 15000;
+const WORLD_EVENT_TYPES = Object.freeze(["ambush_convoy","night_storm","flooded_route","helicopter_crash"]);
+const WORLD_EVENT_ROLL_MIN_MS = 125000;
+const WORLD_EVENT_ROLL_MAX_MS = 205000;
+const WORLD_EVENT_COOLDOWN_MS = 50000;
+const WORLD_EVENT_MAX_PER_MISSION = 4;
 const ARCADE_BUILDCRAFT_DEFAULT_ID = "RESCUE";
 const ARCADE_BUILDCRAFT_LOADOUTS = Object.freeze([
   Object.freeze({
@@ -694,6 +700,23 @@ function defaultMissionTwistsState(){
     blackout: {
       active: false,
       until: 0
+    },
+    worldEvent: {
+      active: false,
+      type: "",
+      x: 0,
+      y: 0,
+      r: 84,
+      until: 0,
+      nextRollAt: 0,
+      cooldownUntil: 0,
+      triggerCount: 0,
+      rewardCash: 0,
+      rewardScore: 0,
+      startEvac: 0,
+      startCivs: 0,
+      siteSecured: false,
+      lastType: ""
     }
   };
 }
@@ -739,6 +762,26 @@ function ensureMissionTwistState(state=S){
   tw.blackout = (tw.blackout && typeof tw.blackout === "object") ? tw.blackout : {};
   tw.blackout.active = !!tw.blackout.active;
   tw.blackout.until = Math.max(0, Math.floor(Number(tw.blackout.until || 0)));
+  tw.worldEvent = (tw.worldEvent && typeof tw.worldEvent === "object") ? tw.worldEvent : {};
+  tw.worldEvent.active = !!tw.worldEvent.active;
+  tw.worldEvent.type = WORLD_EVENT_TYPES.includes(String(tw.worldEvent.type || ""))
+    ? String(tw.worldEvent.type)
+    : "";
+  tw.worldEvent.x = Number.isFinite(Number(tw.worldEvent.x)) ? Number(tw.worldEvent.x) : 0;
+  tw.worldEvent.y = Number.isFinite(Number(tw.worldEvent.y)) ? Number(tw.worldEvent.y) : 0;
+  tw.worldEvent.r = clamp(Number.isFinite(Number(tw.worldEvent.r)) ? Number(tw.worldEvent.r) : base.worldEvent.r, 42, 170);
+  tw.worldEvent.until = Math.max(0, Math.floor(Number(tw.worldEvent.until || 0)));
+  tw.worldEvent.nextRollAt = Math.max(0, Math.floor(Number(tw.worldEvent.nextRollAt || 0)));
+  tw.worldEvent.cooldownUntil = Math.max(0, Math.floor(Number(tw.worldEvent.cooldownUntil || 0)));
+  tw.worldEvent.triggerCount = clamp(Math.floor(Number(tw.worldEvent.triggerCount || 0)), 0, 99);
+  tw.worldEvent.rewardCash = Math.max(0, Math.floor(Number(tw.worldEvent.rewardCash || 0)));
+  tw.worldEvent.rewardScore = Math.max(0, Math.floor(Number(tw.worldEvent.rewardScore || 0)));
+  tw.worldEvent.startEvac = Math.max(0, Math.floor(Number(tw.worldEvent.startEvac || 0)));
+  tw.worldEvent.startCivs = Math.max(0, Math.floor(Number(tw.worldEvent.startCivs || 0)));
+  tw.worldEvent.siteSecured = !!tw.worldEvent.siteSecured;
+  tw.worldEvent.lastType = WORLD_EVENT_TYPES.includes(String(tw.worldEvent.lastType || ""))
+    ? String(tw.worldEvent.lastType)
+    : "";
 
   if(!ENABLE_MISSION_TWISTS || isMobileViewport() || iphoneStabilityModeActive()){
     tw.enabled = false;
@@ -810,6 +853,17 @@ function ensureMissionTwistState(state=S){
     }
     tw.used.blackout = 0;
   }
+  if(!ENABLE_DYNAMIC_WORLD_EVENTS){
+    tw.worldEvent.active = false;
+    tw.worldEvent.type = "";
+    tw.worldEvent.until = 0;
+    tw.worldEvent.nextRollAt = 0;
+    tw.worldEvent.cooldownUntil = 0;
+    tw.worldEvent.triggerCount = 0;
+    tw.worldEvent.rewardCash = 0;
+    tw.worldEvent.rewardScore = 0;
+    tw.worldEvent.siteSecured = false;
+  }
 
   state.missionTwists = tw;
   return tw;
@@ -834,6 +888,18 @@ function resetMissionTwistsForDeploy(state=S, now=Date.now()){
     tw.hostage.penaltyApplied = false;
     tw.blackout.active = false;
     tw.blackout.until = 0;
+    tw.worldEvent.active = false;
+    tw.worldEvent.type = "";
+    tw.worldEvent.until = 0;
+    tw.worldEvent.nextRollAt = now + rand(WORLD_EVENT_ROLL_MIN_MS, WORLD_EVENT_ROLL_MAX_MS);
+    tw.worldEvent.cooldownUntil = now + Math.round(WORLD_EVENT_COOLDOWN_MS * 0.45);
+    tw.worldEvent.triggerCount = 0;
+    tw.worldEvent.rewardCash = 0;
+    tw.worldEvent.rewardScore = 0;
+    tw.worldEvent.startEvac = Math.max(0, Math.floor(Number(state?.evacDone || 0)));
+    tw.worldEvent.startCivs = Math.max(0, (state?.civilians || []).filter((c)=>c && c.alive && !c.evac).length);
+    tw.worldEvent.siteSecured = false;
+    tw.worldEvent.lastType = "";
     state.fogUntil = 0;
     state._biomeFogPulseAt = 0;
     return tw;
@@ -862,6 +928,21 @@ function resetMissionTwistsForDeploy(state=S, now=Date.now()){
   tw.hostage.penaltyApplied = false;
   tw.blackout.active = false;
   tw.blackout.until = 0;
+  tw.worldEvent.active = false;
+  tw.worldEvent.type = "";
+  tw.worldEvent.x = 0;
+  tw.worldEvent.y = 0;
+  tw.worldEvent.r = clamp(tw.worldEvent.r, 42, 170);
+  tw.worldEvent.until = 0;
+  tw.worldEvent.nextRollAt = now + rand(WORLD_EVENT_ROLL_MIN_MS, WORLD_EVENT_ROLL_MAX_MS);
+  tw.worldEvent.cooldownUntil = now + Math.round(WORLD_EVENT_COOLDOWN_MS * 0.45);
+  tw.worldEvent.triggerCount = 0;
+  tw.worldEvent.rewardCash = 0;
+  tw.worldEvent.rewardScore = 0;
+  tw.worldEvent.startEvac = Math.max(0, Math.floor(Number(state?.evacDone || 0)));
+  tw.worldEvent.startCivs = Math.max(0, (state?.civilians || []).filter((c)=>c && c.alive && !c.evac).length);
+  tw.worldEvent.siteSecured = false;
+  tw.worldEvent.lastType = "";
   return tw;
 }
 
@@ -3795,6 +3876,22 @@ function missionDirectorReadableAlert(type){
   }
   if(type === "blackout"){
     setEventText(`📻 Mission Director: Radio blackout on ${mapName}. Move visually and stay grouped.`, 4.4);
+    return;
+  }
+  if(type === "ambush_convoy"){
+    setEventText(`🚛 Mission Director: Convoy ambush on ${mapName}. Tigers are swarming escort routes.`, 4.8);
+    return;
+  }
+  if(type === "night_storm"){
+    setEventText(`⛈️ Mission Director: Night storm over ${mapName}. Escorts slow down and visibility drops.`, 4.6);
+    return;
+  }
+  if(type === "flooded_route"){
+    setEventText(`🌊 Mission Director: Flooded route on ${mapName}. Main lane is compromised.`, 4.8);
+    return;
+  }
+  if(type === "helicopter_crash"){
+    setEventText(`🚁 Mission Director: Helicopter crash on ${mapName}. Secure the site for bonus intel.`, 4.8);
   }
 }
 
@@ -8337,6 +8434,9 @@ function clampWorldToCanvas(){
   tw.hostage.x = clamp(tw.hostage.x, 60, w - 60);
   tw.hostage.y = clamp(tw.hostage.y, 80, h - 60);
   tw.hostage.r = clamp(tw.hostage.r, 20, 140);
+  tw.worldEvent.x = clamp(tw.worldEvent.x, 60, w - 60);
+  tw.worldEvent.y = clamp(tw.worldEvent.y, 80, h - 60);
+  tw.worldEvent.r = clamp(tw.worldEvent.r, 42, 170);
   for(const civ of (S.civilians || [])){
     civ.x = clamp(civ.x, 50, w - 50);
     civ.y = clamp(civ.y, 70, h - 50);
@@ -10272,7 +10372,7 @@ function inMobileNoBuildZone(x, y, radius=0){
   return inMobileControlKeepout(x, y, Math.max(0, radius) + 6);
 }
 function inMapScenarioKeepout(x, y, radius=0){
-  return inMobileNoBuildZone(x, y, radius) || inMobileUiScenarioZone(x, y, radius);
+  return inMobileNoBuildZone(x, y, radius) || inMobileUiScenarioZone(x, y, radius) || worldEventKeepoutContains(x, y, radius, Date.now());
 }
 function blockedCacheKey(x, y, radius=0){
   const q = BLOCKED_CACHE_QUANT;
@@ -10288,6 +10388,17 @@ function blockedAt(x, y, radius){
     bridge.active &&
     Date.now() < (bridge.until || 0) &&
     dist(x, y, bridge.x || 0, bridge.y || 0) <= ((bridge.r || 0) + Math.max(2, Number(radius || 0)))
+  ){
+    __blockedAtCache.set(key, true);
+    return true;
+  }
+  const we = tw?.worldEvent;
+  if(
+    we &&
+    we.active &&
+    we.type === "flooded_route" &&
+    Date.now() < (we.until || 0) &&
+    dist(x, y, we.x || 0, we.y || 0) <= ((we.r || 0) + Math.max(2, Number(radius || 0)))
   ){
     __blockedAtCache.set(key, true);
     return true;
@@ -10766,6 +10877,102 @@ function missionTwistsEnabled(){
   if(isMobileViewport()) return false;
   return eventsEnabled() && !window.__TUTORIAL_MODE__;
 }
+function dynamicWorldEventsEnabled(){
+  if(!ENABLE_DYNAMIC_WORLD_EVENTS) return false;
+  if(window.__TUTORIAL_MODE__) return false;
+  return eventsEnabled() || S.mode === "Survival";
+}
+function worldEventTypeDef(type){
+  if(type === "ambush_convoy"){
+    return {
+      type,
+      icon:"🚛",
+      label:"Ambush Convoy",
+      duration:[42000, 68000],
+      radius:[72, 116],
+      tigerAggroMul:1.18,
+      tigerSpeedMul:1.12,
+      tigerDamageMul:1.08,
+      civilianSpeedMul:0.94,
+      rewardCash:[800, 1550],
+      rewardScore:[95, 170]
+    };
+  }
+  if(type === "night_storm"){
+    return {
+      type,
+      icon:"⛈️",
+      label:"Night Storm",
+      duration:[46000, 76000],
+      radius:[0, 0],
+      tigerAggroMul:1.06,
+      tigerSpeedMul:0.96,
+      tigerDamageMul:1.02,
+      civilianSpeedMul:0.84,
+      rewardCash:[720, 1380],
+      rewardScore:[85, 145]
+    };
+  }
+  if(type === "flooded_route"){
+    return {
+      type,
+      icon:"🌊",
+      label:"Flooded Route",
+      duration:[42000, 70000],
+      radius:[84, 132],
+      tigerAggroMul:1.03,
+      tigerSpeedMul:0.93,
+      tigerDamageMul:0.97,
+      civilianSpeedMul:0.88,
+      rewardCash:[760, 1480],
+      rewardScore:[90, 160]
+    };
+  }
+  if(type === "helicopter_crash"){
+    return {
+      type,
+      icon:"🚁",
+      label:"Helicopter Crash",
+      duration:[50000, 82000],
+      radius:[58, 96],
+      tigerAggroMul:1.14,
+      tigerSpeedMul:1.08,
+      tigerDamageMul:1.06,
+      civilianSpeedMul:0.96,
+      rewardCash:[900, 1700],
+      rewardScore:[100, 190]
+    };
+  }
+  return null;
+}
+function activeWorldEvent(state=S, now=Date.now()){
+  const tw = ensureMissionTwistState(state);
+  const we = tw.worldEvent;
+  if(!we.active || !WORLD_EVENT_TYPES.includes(we.type)) return null;
+  if(now >= (we.until || 0)) return null;
+  return we;
+}
+function worldEventMotionMods(now=Date.now()){
+  const we = activeWorldEvent(S, now);
+  if(!we) return { civilianSpeedMul:1, tigerAggroMul:1, tigerSpeedMul:1, tigerDamageMul:1 };
+  const def = worldEventTypeDef(we.type);
+  if(!def) return { civilianSpeedMul:1, tigerAggroMul:1, tigerSpeedMul:1, tigerDamageMul:1 };
+  return {
+    civilianSpeedMul: clamp(Number(def.civilianSpeedMul || 1), 0.7, 1.2),
+    tigerAggroMul: clamp(Number(def.tigerAggroMul || 1), 0.8, 1.35),
+    tigerSpeedMul: clamp(Number(def.tigerSpeedMul || 1), 0.8, 1.35),
+    tigerDamageMul: clamp(Number(def.tigerDamageMul || 1), 0.8, 1.35),
+  };
+}
+function worldEventKeepoutContains(x, y, radius=0, now=Date.now()){
+  const we = S?.missionTwists?.worldEvent;
+  if(!we || !we.active) return false;
+  if(!WORLD_EVENT_TYPES.includes(String(we.type || ""))) return false;
+  if(now >= (we.until || 0)) return false;
+  if(we.type !== "flooded_route" && we.type !== "helicopter_crash") return false;
+  const rr = (we.r || 0) + Math.max(2, Number(radius || 0));
+  return rr > 0 && dist(x, y, we.x || 0, we.y || 0) <= rr;
+}
 function missionTwistBlackoutActive(now=Date.now()){
   const tw = ensureMissionTwistState(S);
   if(!tw.blackout.active) return false;
@@ -11063,6 +11270,183 @@ function tickMissionTwists(){
   } else {
     tw.nextRollAt = now + rand(6500, 11000);
     tw.cooldownUntil = now + Math.round(MISSION_TWIST_COOLDOWN_MS * 0.45);
+  }
+}
+function dynamicWorldEventPickPoint(type){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const candidates = [];
+  const me = S.me || { x:worldW * 0.5, y:worldH * 0.5 };
+  const civs = (S.civilians || []).filter((c)=>c && c.alive && !c.evac);
+  if(civs.length){
+    const nearCiv = civs.reduce((best, civ)=>{
+      if(!best) return civ;
+      return dist(me.x, me.y, civ.x, civ.y) < dist(me.x, me.y, best.x, best.y) ? civ : best;
+    }, null);
+    if(nearCiv) candidates.push({ x:(me.x + nearCiv.x) * 0.5, y:(me.y + nearCiv.y) * 0.5 });
+  }
+  if(S.evacZone) candidates.push({ x:(me.x + S.evacZone.x) * 0.5, y:(me.y + S.evacZone.y) * 0.5 });
+  candidates.push({ x:worldW * 0.5, y:worldH * 0.52 });
+
+  const zoneRadius = type === "flooded_route" ? 16 : 20;
+  const evalPoint = (rawX, rawY)=>{
+    const safe = safeSpawnPoint(rawX, rawY, zoneRadius, true, true);
+    if(!safe) return null;
+    if(S.evacZone && dist(safe.x, safe.y, S.evacZone.x, S.evacZone.y) < ((S.evacZone.r || 70) + 76)) return null;
+    if(dist(safe.x, safe.y, me.x, me.y) < 86) return null;
+    return safe;
+  };
+  for(const c of candidates){
+    const pt = evalPoint(c.x, c.y);
+    if(pt) return pt;
+  }
+  for(let i=0; i<16; i++){
+    const pt = evalPoint(rand(100, worldW - 100), rand(110, worldH - 100));
+    if(pt) return pt;
+  }
+  return null;
+}
+function clearDynamicWorldEvent(opts={}){
+  const tw = ensureMissionTwistState(S);
+  const we = tw.worldEvent;
+  const silent = !!opts.silent;
+  const now = Date.now();
+  const eventType = we.type;
+  const success = !!opts.success;
+  const cash = Math.max(0, Math.floor(Number(opts.cash || 0)));
+  const score = Math.max(0, Math.floor(Number(opts.score || 0)));
+  if(success && cash > 0){
+    S.funds += cash;
+    trackCashEarned(cash);
+  }
+  if(success && score > 0){
+    S.score = Math.max(0, Math.floor(Number(S.score || 0))) + score;
+  }
+  we.active = false;
+  we.type = "";
+  we.until = 0;
+  we.rewardCash = 0;
+  we.rewardScore = 0;
+  we.siteSecured = false;
+  we.startEvac = Math.max(0, Math.floor(Number(S.evacDone || 0)));
+  we.startCivs = Math.max(0, (S.civilians || []).filter((c)=>c && c.alive && !c.evac).length);
+  we.cooldownUntil = now + WORLD_EVENT_COOLDOWN_MS;
+  we.nextRollAt = now + rand(WORLD_EVENT_ROLL_MIN_MS, WORLD_EVENT_ROLL_MAX_MS);
+  if(eventType) we.lastType = eventType;
+  if(!silent && opts.notice){
+    setEventText(String(opts.notice), Number.isFinite(opts.seconds) ? Number(opts.seconds) : 4.8);
+  }
+  __blockedAtCache.clear();
+  __blockedAtCacheFrame = __frameBudgetState.frameNo;
+  __savePending = true;
+}
+function triggerDynamicWorldEvent(type, now=Date.now()){
+  const def = worldEventTypeDef(type);
+  if(!def) return false;
+  const tw = ensureMissionTwistState(S);
+  const we = tw.worldEvent;
+  const point = dynamicWorldEventPickPoint(type);
+  if((type === "flooded_route" || type === "helicopter_crash") && !point) return false;
+
+  we.active = true;
+  we.type = type;
+  we.x = point?.x || 0;
+  we.y = point?.y || 0;
+  we.r = rand(def.radius[0], def.radius[1]) || 84;
+  we.until = now + rand(def.duration[0], def.duration[1]);
+  we.cooldownUntil = now + WORLD_EVENT_COOLDOWN_MS;
+  we.nextRollAt = now + rand(WORLD_EVENT_ROLL_MIN_MS, WORLD_EVENT_ROLL_MAX_MS);
+  we.triggerCount = Math.max(0, Math.floor(Number(we.triggerCount || 0))) + 1;
+  we.rewardCash = rand(def.rewardCash[0], def.rewardCash[1]);
+  we.rewardScore = rand(def.rewardScore[0], def.rewardScore[1]);
+  we.startEvac = Math.max(0, Math.floor(Number(S.evacDone || 0)));
+  we.startCivs = Math.max(0, (S.civilians || []).filter((c)=>c && c.alive && !c.evac).length);
+  we.siteSecured = false;
+  const left = Math.max(1, Math.ceil((we.until - now) / 1000));
+  setEventText(`${def.icon} ${def.label} live event started (${left}s).`, 5.2);
+  missionDirectorReadableAlert(type);
+  sfx("event");
+  hapticImpact("medium");
+  __blockedAtCache.clear();
+  __blockedAtCacheFrame = __frameBudgetState.frameNo;
+  __savePending = true;
+  return true;
+}
+function chooseDynamicWorldEventType(){
+  const tw = ensureMissionTwistState(S);
+  const we = tw.worldEvent;
+  const pressure = clamp(Number(ensureMissionDirectorState().pressure || 0), 0, 100);
+  const mapWeights = mapIdentityEventWeights(S.mode, chapterIndexForMode(S.mode));
+  const aliveCivs = (S.civilians || []).filter((c)=>c && c.alive && !c.evac).length;
+  const available = WORLD_EVENT_TYPES.filter((type)=>type !== we.lastType);
+  if(!available.length) return "";
+  const weights = {
+    ambush_convoy: 0.8 + (aliveCivs > 0 ? (0.5 + Math.min(0.7, aliveCivs * 0.06)) : 0.2),
+    night_storm: 0.78 + (Math.max(0.2, Number(mapWeights.fog || 0) * 0.20)) + (pressure >= 55 ? 0.2 : 0),
+    flooded_route: 0.74 + (Math.max(0.2, Number(mapWeights.bridge || 0) * 0.22)) + (aliveCivs > 0 ? 0.14 : 0),
+    helicopter_crash: 0.7 + (pressure >= 45 ? 0.22 : 0.08) + (aliveCivs > 0 ? 0.08 : 0.04)
+  };
+  return weightedChoiceFromObject(weights, available);
+}
+function tickDynamicWorldEvents(){
+  const tw = ensureMissionTwistState(S);
+  const we = tw.worldEvent;
+  if(!dynamicWorldEventsEnabled()){
+    if(we.active) clearDynamicWorldEvent({ silent:true });
+    return;
+  }
+  const now = Date.now();
+  if(S.paused || S.inBattle || S.gameOver || S.missionEnded){
+    if(we.active && (S.gameOver || S.missionEnded)) clearDynamicWorldEvent({ silent:true });
+    return;
+  }
+  if(we.active){
+    const aliveCivs = (S.civilians || []).filter((c)=>c && c.alive && !c.evac).length;
+    if(we.type === "helicopter_crash" && !we.siteSecured){
+      if(dist(S.me.x, S.me.y, we.x || 0, we.y || 0) <= Math.max(26, (we.r || 0) * 0.58)){
+        we.siteSecured = true;
+        setEventText("📡 Crash site secured. Hold until extraction for bonus payout.", 4.2);
+        sfx("pickup");
+      }
+    }
+    if(now >= (we.until || 0)){
+      let success = true;
+      if(we.type === "ambush_convoy" && S.mode !== "Survival"){
+        success = aliveCivs >= Math.max(1, Math.min(we.startCivs || 0, 1));
+      } else if(we.type === "flooded_route" && S.mode !== "Survival"){
+        success = Math.max(0, Math.floor(Number(S.evacDone || 0))) > Math.max(0, Math.floor(Number(we.startEvac || 0)));
+      } else if(we.type === "helicopter_crash"){
+        success = !!we.siteSecured;
+      }
+      if(success){
+        clearDynamicWorldEvent({
+          success:true,
+          cash:we.rewardCash,
+          score:we.rewardScore,
+          notice:`✅ ${worldEventTypeDef(we.type)?.label || "World event"} complete! +$${Math.max(0, we.rewardCash).toLocaleString()} • +${Math.max(0, we.rewardScore)} score`,
+          seconds:5.2
+        });
+      } else {
+        clearDynamicWorldEvent({
+          success:false,
+          notice:`❌ ${worldEventTypeDef(we.type)?.label || "World event"} expired. Bonus lost.`,
+          seconds:4.6
+        });
+      }
+    }
+    return;
+  }
+
+  if(we.triggerCount >= WORLD_EVENT_MAX_PER_MISSION) return;
+  if(now < (we.cooldownUntil || 0) || now < (we.nextRollAt || 0)) return;
+  const type = chooseDynamicWorldEventType();
+  if(!type){
+    we.nextRollAt = now + rand(45000, 76000);
+    return;
+  }
+  if(!triggerDynamicWorldEvent(type, now)){
+    we.nextRollAt = now + rand(42000, 70000);
+    we.cooldownUntil = now + Math.round(WORLD_EVENT_COOLDOWN_MS * 0.42);
   }
 }
 function tickEvents(){
@@ -19499,7 +19883,8 @@ function runCivilianFleeStep(c, now=Date.now()){
   const waterMul = waterSpeedMul("civilian", c.x, c.y, 10);
   const motionMul = frameMotionMul();
   const mapCivMul = mapIdentityCivilianSpeedMul(S.mode, chapterIndexForMode(S.mode));
-  const fleeSpeed = (c.following ? 3.58 : 2.94) * (c.following ? Math.max(0.95, waterMul) : waterMul) * motionMul * mapCivMul;
+  const worldCivMul = clamp(Number(worldEventMotionMods(now).civilianSpeedMul || 1), 0.7, 1.2);
+  const fleeSpeed = (c.following ? 3.58 : 2.94) * (c.following ? Math.max(0.95, waterMul) : waterMul) * motionMul * mapCivMul * worldCivMul;
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -19515,6 +19900,7 @@ function followCiviliansTick(){
   const motionMul = frameMotionMul();
   const escortBoost = storyRescueSpeedMul();
   const mapCivMul = mapIdentityCivilianSpeedMul(S.mode, chapterIndexForMode(S.mode));
+  const worldCivMul = clamp(Number(worldEventMotionMods(Date.now()).civilianSpeedMul || 1), 0.7, 1.2);
   const engageDist = 86;
   const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 720 : 620;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
@@ -19673,7 +20059,7 @@ function followCiviliansTick(){
     const catchup = clamp((dd - 8) * 0.089, 0, 7.6);
     const trailBoost = dd > 200 ? 1.46 : (dd > 140 ? 0.94 : 0.18);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.66, 4.45) + catchup + trailBoost) * escortBoost * escortWaterMul * stayCloseBoost * mapCivMul),
+      ((Math.max(playerSpeed * 1.66, 4.45) + catchup + trailBoost) * escortBoost * escortWaterMul * stayCloseBoost * mapCivMul * worldCivMul),
       PLAYER_SPRINT_SPEED + 6.3
     ) * motionMul;
     const targetVx = (dx/dd) * sp;
@@ -20000,8 +20386,9 @@ function roamTigers(){
   const biomeHazards = biomeHazardModifiers(S.mode);
   const biomeAggroMul = clamp(Number(biomeHazards.tigerAggroMul || 1), 0.82, 1.35);
   const biomeSpeedMul = clamp(Number(biomeHazards.tigerSpeedMul || 1), 0.86, 1.35);
-  const directorAggroMul = clamp(Number(S._directorAggroMul || 1) * biomeAggroMul, 0.82, 1.36);
-  const directorSpeedMul = clamp(Number(S._directorSpeedMul || 1) * biomeSpeedMul, 0.88, 1.34);
+  const worldMods = worldEventMotionMods(now);
+  const directorAggroMul = clamp(Number(S._directorAggroMul || 1) * biomeAggroMul * clamp(Number(worldMods.tigerAggroMul || 1), 0.8, 1.35), 0.82, 1.44);
+  const directorSpeedMul = clamp(Number(S._directorSpeedMul || 1) * biomeSpeedMul * clamp(Number(worldMods.tigerSpeedMul || 1), 0.8, 1.35), 0.88, 1.42);
   const barricades = activeBarricades(now);
   const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive);
   const liveCivs = (S.mode!=="Survival") ? (S.civilians || []).filter((c)=>c && c.alive && !c.evac) : [];
@@ -22164,6 +22551,7 @@ function tigerTurn(t, softened=false, opts={}){
   if(persona.key==="Sentinel") dmg = Math.round(dmg * 0.94);
   if(persona.key==="Fury" && (t.hp/t.hpMax) < 0.55) dmg = Math.round(dmg * 1.10);
   if(persona.key==="Ambusher" && Date.now() < (t.burstUntil||0)) dmg = Math.round(dmg * 1.08);
+  dmg = Math.round(dmg * clamp(Number(worldEventMotionMods(now).tigerDamageMul || 1), 0.8, 1.35));
   if(Number.isFinite(opts.dmgMul)) dmg = Math.round(dmg * opts.dmgMul);
   if(softened) dmg=Math.floor(dmg*0.85);
   const maxDamage = (opts.kind === "charge") ? 92 : 75;
@@ -22811,6 +23199,17 @@ function renderHUD(){
       assistParts.unshift(`Twist: Night fog burst ${left}s`);
     }
   }
+  const activeWorld = activeWorldEvent(S, Date.now());
+  if(activeWorld){
+    const left = Math.max(1, Math.ceil(((activeWorld.until || 0) - Date.now()) / 1000));
+    const def = worldEventTypeDef(activeWorld.type);
+    const label = def?.label || "World Event";
+    if(activeWorld.type === "helicopter_crash"){
+      assistParts.unshift(`World: ${label} ${left}s${activeWorld.siteSecured ? " • Site secured" : " • Reach crash site"}`);
+    } else {
+      assistParts.unshift(`World: ${label} ${left}s`);
+    }
+  }
   if(S.mode==="Arcade"){
     const limit = Math.max(0, Math.floor(Number(S.arcadeMissionLimitSec || 0)));
     const peak = Math.max(Math.floor(Number(S.arcadeComboPeak || 0)), Math.floor(Number(S.comboCount || 0)));
@@ -23177,7 +23576,7 @@ function drawBossArenaMoments(now=Date.now()){
 }
 
 function drawMissionTwistOverlay(now=Date.now()){
-  if(!ENABLE_MISSION_TWISTS) return;
+  if(!ENABLE_MISSION_TWISTS && !ENABLE_DYNAMIC_WORLD_EVENTS) return;
   const tw = ensureMissionTwistState(S);
   ctx.save();
   if(tw.bridge.active && now < (tw.bridge.until || 0)){
@@ -23247,6 +23646,46 @@ function drawMissionTwistOverlay(now=Date.now()){
     ctx.fillStyle = "rgba(226,232,240,.96)";
     ctx.font = "900 11px system-ui";
     ctx.fillText(`📻 RADIO BLACKOUT ${left}s`, 26, 32);
+  }
+  const we = activeWorldEvent(S, now);
+  if(we){
+    const def = worldEventTypeDef(we.type);
+    const left = Math.max(1, Math.ceil(((we.until || 0) - now) / 1000));
+    const label = (def?.label || "WORLD EVENT").toUpperCase();
+    if(we.type === "night_storm"){
+      const worldW = worldWidth(S);
+      const worldH = worldHeight(S);
+      const pulse = 0.18 + ((Math.sin(now / 220) + 1) * 0.07);
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = "rgba(20,34,58,.96)";
+      ctx.fillRect(0, 0, worldW, worldH);
+      rounded(16, 44, 216, 24, 11, "rgba(12,20,34,.92)", "rgba(125,211,252,.65)");
+      ctx.globalAlpha = 0.98;
+      ctx.fillStyle = "rgba(224,242,254,.98)";
+      ctx.font = "900 11px system-ui";
+      ctx.fillText(`⛈️ NIGHT STORM ${left}s`, 26, 60);
+    } else {
+      const fill = we.type === "flooded_route" ? "rgba(37,99,235,.20)" : (we.type === "ambush_convoy" ? "rgba(244,114,182,.18)" : "rgba(34,197,94,.16)");
+      const stroke = we.type === "flooded_route" ? "rgba(147,197,253,.92)" : (we.type === "ambush_convoy" ? "rgba(251,113,133,.92)" : "rgba(134,239,172,.92)");
+      ctx.globalAlpha = 0.96;
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.arc(we.x || 0, we.y || 0, Math.max(22, we.r || 84), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2.7;
+      ctx.setLineDash([7, 6]);
+      ctx.beginPath();
+      ctx.arc(we.x || 0, we.y || 0, Math.max(24, (we.r || 84) + 1), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      rounded((we.x || 0) - 90, (we.y || 0) - (we.r || 84) - 34, 180, 24, 11, "rgba(12,18,28,.90)", "rgba(196,221,255,.78)");
+      ctx.fillStyle = "rgba(235,245,255,.98)";
+      ctx.textAlign = "center";
+      ctx.font = "900 11px system-ui";
+      ctx.fillText(`${label} ${left}s`, we.x || 0, (we.y || 0) - (we.r || 84) - 18);
+      ctx.textAlign = "start";
+    }
   }
   ctx.restore();
 }
@@ -26392,6 +26831,7 @@ function draw(){
       runFrameTask("comboTick", frameInterval(lagCritical ? 154 : (lagHeavy ? 130 : 110), 1.4), comboTick, { costHint:0.7 });
 
       if(!window.TigerTutorial?.isRunning){
+        runFrameTask("worldEvents", frameInterval(lagHeavy ? 286 : 214, 1.55), tickDynamicWorldEvents, { costHint:0.9, critical:S.mode!=="Survival" });
         if(!mobileViewport){
           runFrameTask("missionTwists", frameInterval(lagHeavy ? 236 : 176, 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
           runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
