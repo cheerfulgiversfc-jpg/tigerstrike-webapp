@@ -3848,6 +3848,13 @@ const WEAPON_MASTERY_THRESHOLDS = Object.freeze([0, 120, 320, 680, 1180, 1900]);
 const WEAPON_MASTERY_MAX_LEVEL = WEAPON_MASTERY_THRESHOLDS.length - 1;
 const WEAPON_MASTERY_JAM_REDUCTION_PER_LEVEL = 0.055;
 const WEAPON_MASTERY_RELOAD_SMOOTH_PER_LEVEL = 0.02;
+const WEAPON_MASTERY_TREE_BRANCHES = Object.freeze([
+  Object.freeze({ key:"STABILITY", name:"Stability", short:"STB" }),
+  Object.freeze({ key:"CONTROL", name:"Control", short:"CTL" }),
+  Object.freeze({ key:"SILENT_CAPTURE", name:"Silent Capture", short:"SIL" }),
+  Object.freeze({ key:"BURST_LETHALITY", name:"Burst Lethality", short:"BST" }),
+]);
+const WEAPON_MASTERY_TREE_BRANCH_MAX = 3;
 
 const TIGER_TYPES = [
   { key:"Standard",  hpMul:0.92, spd:3.00, civBias:0.42, stealth:0.00, rage:0.00 },
@@ -6032,6 +6039,7 @@ const DEFAULT = {
   mag:{ loaded:6, cap:6 },
   durability:{},
   weaponMastery:{},
+  weaponMasteryTrees:{},
 
   medkits:{ "M_SMALL":1 },
   medkitSelectedId:"M_SMALL",
@@ -7751,6 +7759,7 @@ function load(){
     m.ammoReserve = { ...DEFAULT.ammoReserve, ...(saved.ammoReserve||{}) };
     m.durability = { ...DEFAULT.durability, ...(saved.durability||{}) };
     m.weaponMastery = normalizeWeaponMasteryMap(saved.weaponMastery ?? DEFAULT.weaponMastery);
+    m.weaponMasteryTrees = normalizeWeaponMasteryTreeMap(saved.weaponMasteryTrees ?? DEFAULT.weaponMasteryTrees);
     m.weaponAttachments = normalizeWeaponAttachmentsMap(saved.weaponAttachments ?? DEFAULT.weaponAttachments);
     m.activeLoadoutPresetId = String(saved.activeLoadoutPresetId || "");
     m.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
@@ -11385,6 +11394,7 @@ function weaponAttachmentBuild(weaponId, state=S){
   return normalizeWeaponAttachmentBuild(state?.weaponAttachments?.[wid], w);
 }
 function weaponBuildStats(weaponId, state=S){
+  ensureWeaponMasteryState(state);
   const w = getWeapon(weaponId);
   if(!w){
     return {
@@ -11428,6 +11438,15 @@ function weaponBuildStats(weaponId, state=S){
     tranqMul *= clamp(Number(a.tranqMul ?? 1), 0.70, 1.5);
     critBonus += clamp(Number(a.critBonus || 0), -0.04, 0.06);
   }
+  const masteryFx = weaponMasteryTreeEffects(w.id, state);
+  dmgMul *= clamp(Number(masteryFx.dmgMul || 1), 0.7, 1.6);
+  rangeAdd += Math.round(Number(masteryFx.rangeAdd || 0));
+  jamMul *= clamp(Number(masteryFx.jamMul || 1), 0.7, 1.45);
+  reloadMul *= clamp(Number(masteryFx.reloadMul || 1), 0.7, 1.45);
+  recoilMul *= clamp(Number(masteryFx.recoilMul || 1), 0.65, 1.35);
+  noiseMul *= clamp(Number(masteryFx.noiseMul || 1), 0.45, 1.45);
+  tranqMul *= clamp(Number(masteryFx.tranqMul || 1), 0.75, 1.6);
+  critBonus += clamp(Number(masteryFx.critBonus || 0), -0.02, 0.08);
   const dmg = [
     Math.max(1, Math.round(w.dmg[0] * dmgMul)),
     Math.max(1, Math.round(w.dmg[1] * dmgMul))
@@ -11564,9 +11583,143 @@ function normalizeWeaponMasteryMap(raw){
   }
   return out;
 }
+function weaponMasteryTreeBranchDefaults(){
+  const out = {};
+  for(const branch of WEAPON_MASTERY_TREE_BRANCHES){
+    out[branch.key] = 0;
+  }
+  return out;
+}
+function weaponMasteryTreePointsByLevel(level){
+  return clamp(Math.floor(Number(level || 0)), 0, WEAPON_MASTERY_MAX_LEVEL);
+}
+function weaponMasteryTreePointsForWeapon(weaponId, state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const xp = Math.max(0, Math.floor(Number(src?.weaponMastery?.[weaponId] || 0)));
+  return weaponMasteryTreePointsByLevel(weaponMasteryLevelFromXp(xp));
+}
+function normalizeWeaponMasteryTreeBuild(rawBuild, maxPoints=null){
+  const out = weaponMasteryTreeBranchDefaults();
+  const src = (rawBuild && typeof rawBuild === "object") ? rawBuild : {};
+  for(const branch of WEAPON_MASTERY_TREE_BRANCHES){
+    out[branch.key] = clamp(Math.floor(Number(src[branch.key] || 0)), 0, WEAPON_MASTERY_TREE_BRANCH_MAX);
+  }
+  if(maxPoints == null) return out;
+  let remaining = Math.max(0, Math.floor(Number(maxPoints || 0)));
+  for(const branch of WEAPON_MASTERY_TREE_BRANCHES){
+    const key = branch.key;
+    if(out[key] > remaining){
+      out[key] = remaining;
+    }
+    remaining -= out[key];
+    if(remaining <= 0){
+      remaining = 0;
+    }
+  }
+  return out;
+}
+function normalizeWeaponMasteryTreeMap(raw, masteryMap=null){
+  const out = {};
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const mastery = (masteryMap && typeof masteryMap === "object") ? masteryMap : null;
+  for(const w of WEAPONS){
+    const maxPoints = mastery
+      ? weaponMasteryTreePointsByLevel(weaponMasteryLevelFromXp(mastery[w.id]))
+      : null;
+    out[w.id] = normalizeWeaponMasteryTreeBuild(src[w.id], maxPoints);
+  }
+  return out;
+}
+function weaponMasteryTreePointsSpent(weaponId, state=S){
+  const ranks = weaponMasteryTreeRanks(weaponId, state);
+  let spent = 0;
+  for(const branch of WEAPON_MASTERY_TREE_BRANCHES){
+    spent += Math.max(0, Math.floor(Number(ranks[branch.key] || 0)));
+  }
+  return spent;
+}
+function weaponMasteryTreePointsLeft(weaponId, state=S){
+  const available = weaponMasteryTreePointsForWeapon(weaponId, state);
+  const spent = weaponMasteryTreePointsSpent(weaponId, state);
+  return Math.max(0, available - spent);
+}
+function ensureWeaponMasteryTreeState(state=S){
+  if(!state || typeof state !== "object") return;
+  const masteryMap = normalizeWeaponMasteryMap(state.weaponMastery);
+  state.weaponMastery = masteryMap;
+  state.weaponMasteryTrees = normalizeWeaponMasteryTreeMap(state.weaponMasteryTrees, masteryMap);
+}
+function weaponMasteryTreeRanks(weaponId, state=S){
+  ensureWeaponMasteryTreeState(state);
+  const wid = String(weaponId || "");
+  if(!getWeapon(wid)) return weaponMasteryTreeBranchDefaults();
+  return normalizeWeaponMasteryTreeBuild(
+    state?.weaponMasteryTrees?.[wid],
+    weaponMasteryTreePointsForWeapon(wid, state)
+  );
+}
+function weaponMasteryTreeEffects(weaponId, state=S){
+  const ranks = weaponMasteryTreeRanks(weaponId, state);
+  const stability = Math.max(0, Number(ranks.STABILITY || 0));
+  const control = Math.max(0, Number(ranks.CONTROL || 0));
+  const silent = Math.max(0, Number(ranks.SILENT_CAPTURE || 0));
+  const burst = Math.max(0, Number(ranks.BURST_LETHALITY || 0));
+  return {
+    stability,
+    control,
+    silent,
+    burst,
+    dmgMul: clamp(1 + burst * 0.05, 1, 1.2),
+    rangeAdd: Math.round(control * 3),
+    jamMul: clamp((1 - (stability * 0.04)) * (1 + (burst * 0.03)), 0.74, 1.2),
+    reloadMul: clamp(1 - (control * 0.035), 0.86, 1),
+    recoilMul: clamp(1 - (stability * 0.06), 0.8, 1),
+    noiseMul: clamp((1 - (silent * 0.1)) * (1 + (burst * 0.05)), 0.62, 1.2),
+    tranqMul: clamp(1 + (silent * 0.06), 1, 1.18),
+    critBonus: clamp((control * 0.005) + (burst * 0.015), 0, 0.06),
+    captureCashMul: clamp(1 + (silent * 0.04), 1, 1.14),
+    captureTrustAdd: Math.round(silent),
+    captureAggroMul: clamp(1 - (silent * 0.10), 0.7, 1),
+  };
+}
+function allocateWeaponMasteryTreePoint(weaponId, branchKey){
+  const wid = String(weaponId || "");
+  const branch = WEAPON_MASTERY_TREE_BRANCHES.find((row)=>row.key === String(branchKey || ""));
+  if(!branch) return false;
+  if(!getWeapon(wid) || !S.ownedWeapons.includes(wid)){
+    toast("You must own this weapon first.");
+    return false;
+  }
+  ensureWeaponMasteryTreeState(S);
+  const left = weaponMasteryTreePointsLeft(wid, S);
+  if(left <= 0){
+    toast("No mastery points available for this weapon.");
+    return false;
+  }
+  const ranks = weaponMasteryTreeRanks(wid, S);
+  const current = Math.max(0, Number(ranks[branch.key] || 0));
+  if(current >= WEAPON_MASTERY_TREE_BRANCH_MAX){
+    toast(`${branch.name} is already maxed.`);
+    return false;
+  }
+  ranks[branch.key] = current + 1;
+  S.weaponMasteryTrees[wid] = normalizeWeaponMasteryTreeBuild(
+    ranks,
+    weaponMasteryTreePointsForWeapon(wid, S)
+  );
+  toast(`${getWeapon(wid)?.name || "Weapon"} • ${branch.name} rank ${S.weaponMasteryTrees[wid][branch.key]}.`);
+  sfx("ui");
+  hapticImpact("light");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display === "flex") renderInventory();
+  if(document.getElementById("shopOverlay")?.style?.display === "flex") renderShopList();
+  return true;
+}
 function ensureWeaponMasteryState(state=S){
   if(!state || typeof state !== "object") return;
   state.weaponMastery = normalizeWeaponMasteryMap(state.weaponMastery);
+  ensureWeaponMasteryTreeState(state);
 }
 function weaponMasteryXp(id){
   ensureWeaponMasteryState();
@@ -11609,9 +11762,12 @@ function addWeaponMasteryXp(id, amount, opts={}){
   const afterXp = clamp(beforeXp + gain, 0, capXp);
   S.weaponMastery[id] = afterXp;
   const afterLevel = weaponMasteryLevelFromXp(afterXp);
+  ensureWeaponMasteryTreeState(S);
   if(afterLevel > beforeLevel){
     const w = getWeapon(id);
-    toast(`🎯 ${w?.name || "Weapon"} mastery Lv ${afterLevel}: smoother handling.`);
+    const unspent = weaponMasteryTreePointsLeft(id, S);
+    const pointTxt = unspent > 0 ? ` (${unspent} tree point${unspent === 1 ? "" : "s"} ready)` : "";
+    toast(`🎯 ${w?.name || "Weapon"} mastery Lv ${afterLevel}: smoother handling${pointTxt}.`);
     if(opts?.notify !== false) hapticImpact("light");
   }
 }
@@ -14481,6 +14637,7 @@ function writeStoryProfileData(source="autosave", state=S){
     ammoReserve: { ...(src.ammoReserve || {}) },
     durability: { ...(src.durability || {}) },
     weaponMastery: normalizeWeaponMasteryMap(src.weaponMastery),
+    weaponMasteryTrees: normalizeWeaponMasteryTreeMap(src.weaponMasteryTrees, src.weaponMastery),
     weaponAttachments: normalizeWeaponAttachmentsMap(src.weaponAttachments),
     activeLoadoutPresetId: String(src.activeLoadoutPresetId || ""),
     medkits: { ...(src.medkits || {}) },
@@ -14574,6 +14731,24 @@ function applyStoryProfileToState(state, profile){
       const nextXp = Math.max(0, Math.floor(Number(xpRaw || 0)));
       state.weaponMastery[wid] = Math.max(currentXp, nextXp);
     }
+  }
+  if(profile.weaponMasteryTrees && typeof profile.weaponMasteryTrees === "object"){
+    ensureWeaponMasteryTreeState(state);
+    const incoming = normalizeWeaponMasteryTreeMap(profile.weaponMasteryTrees, state.weaponMastery);
+    const merged = {};
+    for(const w of WEAPONS){
+      const current = normalizeWeaponMasteryTreeBuild(state.weaponMasteryTrees?.[w.id], weaponMasteryTreePointsForWeapon(w.id, state));
+      const next = normalizeWeaponMasteryTreeBuild(incoming[w.id], weaponMasteryTreePointsForWeapon(w.id, state));
+      const blend = {};
+      for(const branch of WEAPON_MASTERY_TREE_BRANCHES){
+        blend[branch.key] = Math.max(
+          Math.max(0, Math.floor(Number(current[branch.key] || 0))),
+          Math.max(0, Math.floor(Number(next[branch.key] || 0)))
+        );
+      }
+      merged[w.id] = normalizeWeaponMasteryTreeBuild(blend, weaponMasteryTreePointsForWeapon(w.id, state));
+    }
+    state.weaponMasteryTrees = merged;
   }
   if(profile.weaponAttachments && typeof profile.weaponAttachments === "object"){
     ensureWeaponAttachmentState(state);
@@ -14861,6 +15036,7 @@ function writeStoryProgressData(payload={}){
     ammoReserve: { ...(payload.ammoReserve ?? S.ammoReserve ?? {}) },
     durability: { ...(payload.durability ?? S.durability ?? {}) },
     weaponMastery: normalizeWeaponMasteryMap(payload.weaponMastery ?? S.weaponMastery),
+    weaponMasteryTrees: normalizeWeaponMasteryTreeMap(payload.weaponMasteryTrees ?? S.weaponMasteryTrees, payload.weaponMastery ?? S.weaponMastery),
     weaponAttachments: normalizeWeaponAttachmentsMap(payload.weaponAttachments ?? S.weaponAttachments),
     activeLoadoutPresetId: String(payload.activeLoadoutPresetId ?? S.activeLoadoutPresetId ?? ""),
     medkits: { ...(payload.medkits ?? S.medkits ?? {}) },
@@ -16914,12 +17090,18 @@ function renderShopList(){
       const owned = S.ownedWeapons.includes(w.id);
       const stats = weaponBuildStats(w.id, S);
       const mastery = weaponMasteryProgress(w.id);
+      const tree = weaponMasteryTreeRanks(w.id, S);
+      const treeSpent = weaponMasteryTreePointsSpent(w.id, S);
+      const treeAvail = weaponMasteryTreePointsForWeapon(w.id, S);
       const masteryText = owned ? ` • Mastery Lv ${mastery.level}/${WEAPON_MASTERY_MAX_LEVEL}` : "";
+      const treeText = owned
+        ? ` • Tree ${treeSpent}/${treeAvail} [STB ${tree.STABILITY} | CTL ${tree.CONTROL} | SIL ${tree.SILENT_CAPTURE} | BST ${tree.BURST_LETHALITY}]`
+        : "";
       return `
         <div class="item">
           <div>
             <div class="itemName">${w.name} <span class="tag">${w.grade}</span> <span class="tag">${owned?'Owned':'Not owned'}</span></div>
-            <div class="itemDesc">Ammo: ${w.ammo} • Mag: ${stats.magCap} • Damage: ${stats.dmg[0]}–${stats.dmg[1]} • Range: ${stats.range}${masteryText}</div>
+            <div class="itemDesc">Ammo: ${w.ammo} • Mag: ${stats.magCap} • Damage: ${stats.dmg[0]}–${stats.dmg[1]} • Range: ${stats.range}${masteryText}${treeText}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${w.price.toLocaleString()}</div>
@@ -17847,6 +18029,15 @@ function renderInventory(){
     const mastery = weaponMasteryProgress(id);
     const jamCut = Math.round((1 - weaponMasteryJamMul(id)) * 100);
     const reloadSmooth = Math.round(weaponMasteryReloadBonus(id) * 100);
+    const treeRanks = weaponMasteryTreeRanks(id, S);
+    const treeAvail = weaponMasteryTreePointsForWeapon(id, S);
+    const treeSpent = weaponMasteryTreePointsSpent(id, S);
+    const treeLeft = weaponMasteryTreePointsLeft(id, S);
+    const treeButtons = WEAPON_MASTERY_TREE_BRANCHES.map((branch)=>{
+      const rank = Math.max(0, Number(treeRanks[branch.key] || 0));
+      const disabled = treeLeft <= 0 || rank >= WEAPON_MASTERY_TREE_BRANCH_MAX;
+      return `<button class="ghost" ${disabled ? "disabled" : ""} onclick="allocateWeaponMasteryTreePoint('${id}','${branch.key}')">+ ${branch.short} (${rank}/${WEAPON_MASTERY_TREE_BRANCH_MAX})</button>`;
+    }).join("");
     const xpTxt = mastery.nextXp == null
       ? `${mastery.xp} XP (MAX)`
       : `${mastery.xp}/${mastery.nextXp} XP`;
@@ -17857,9 +18048,11 @@ function renderInventory(){
           <div class="itemDesc">Ammo: ${ww.ammo} • Mag: ${buildStats.magCap} • Damage: ${buildStats.dmg[0]}-${buildStats.dmg[1]} • Range: ${buildStats.range} • Durability: ${dur}%</div>
           <div class="itemDesc">Attachments: ${equippedSlots || "None"}.</div>
           <div class="itemDesc">Mastery Lv ${mastery.level}/${WEAPON_MASTERY_MAX_LEVEL} • ${xpTxt} • Anti-jam ${jamCut}% • Reload smooth +${reloadSmooth}%</div>
+          <div class="itemDesc">Tree points ${treeSpent}/${treeAvail} (${treeLeft} available) • STB ${treeRanks.STABILITY} • CTL ${treeRanks.CONTROL} • SIL ${treeRanks.SILENT_CAPTURE} • BST ${treeRanks.BURST_LETHALITY}</div>
         </div>
         <div style="text-align:right">
           <button ${active?'disabled':''} onclick="equipWeapon('${id}')">Equip</button>
+          <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${treeButtons}</div>
         </div>
       </div>`;
   }).join("");
@@ -24641,10 +24834,14 @@ function playerAction(action){
       window.TigerTutorial.combatOutcome = "CAPTURE";
     }
     const bossCapture = !!isBossTiger(t);
+    const captureTreeFx = weaponMasteryTreeEffects(req, S);
     markStoryFinalBossOutcome("CAPTURE", t);
     t.alive=false;
     addWeaponMasteryXp(req, 4);
     const pay=payout("CAPTURE");
+    pay.cash = Math.max(0, Math.round(Number(pay.cash || 0) * Number(captureTreeFx.captureCashMul || 1)));
+    pay.trust = Math.round(Number(pay.trust || 0) + Number(captureTreeFx.captureTrustAdd || 0));
+    pay.aggro = Math.round(Number(pay.aggro || 0) * Number(captureTreeFx.captureAggroMul || 1));
     S.funds+=pay.cash; S.score+=pay.score;
     S.stats.captures += 1;
     addContractTally("captures", 1);
@@ -29894,6 +30091,7 @@ window.clearPendingStarsPurchase = clearPendingStarsPurchase;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
 window.setWeaponAttachment = setWeaponAttachment;
+window.allocateWeaponMasteryTreePoint = allocateWeaponMasteryTreePoint;
 window.applyLoadoutPreset = applyLoadoutPreset;
 window.openQuickWeaponPicker = openQuickWeaponPicker;
 window.closeQuickWeaponPicker = closeQuickWeaponPicker;
