@@ -140,6 +140,9 @@ const NEMESIS_MIN_MISSION_GAP = 1;
 const NEMESIS_ESCAPED_BONUS_CASH_BASE = 500;
 const NEMESIS_CAPTURE_BONUS_XP = 130;
 const NEMESIS_KILL_BONUS_XP = 95;
+const NEMESIS_SEASON_HUNT_BONUS_CASH_BASE = 1400;
+const NEMESIS_SEASON_HUNT_BONUS_XP = 120;
+const NEMESIS_SEASON_PASS_POINTS = 16;
 const NEMESIS_NAME_PREFIX = Object.freeze([
   "Scar","Night","Ash","Iron","Dread","Ruin","Blood","Ghost","Storm","Fang"
 ]);
@@ -543,7 +546,27 @@ function defaultNemesisState(){
     lastSpawnMission: 0,
     lastSpawnId: "",
     lastBountyAt: 0,
+    season: defaultNemesisSeasonState(),
     roster: [],
+  };
+}
+
+function defaultNemesisSeasonState(weekKey=weeklyChallengeWeekKey()){
+  return {
+    weekKey: String(weekKey || weeklyChallengeWeekKey()),
+    targetId: "",
+    targetAlias: "",
+    targetType: "",
+    targetPower: 0,
+    targetStatus: "idle",
+    attempts: 0,
+    completed: 0,
+    bestClearSec: 0,
+    lastClearSec: 0,
+    lastCompletedAt: 0,
+    lastOutcome: "",
+    lifetimeClears: 0,
+    allTimeBestClearSec: 0,
   };
 }
 
@@ -5267,6 +5290,96 @@ function trimNemesisRoster(nemesisState){
   }
 }
 
+function nemesisSeasonTargetFromRoster(roster=[]){
+  const list = Array.isArray(roster) ? roster : [];
+  let best = null;
+  let bestScore = -1e9;
+  for(const entry of list){
+    if(!entry || entry.status === "resolved") continue;
+    const power = Math.max(1, Math.floor(Number(entry.power || 1)));
+    const escapes = Math.max(1, Math.floor(Number(entry.escapes || 1)));
+    const returns = Math.max(0, Math.floor(Number(entry.returns || 0)));
+    const freshness = Math.max(
+      Number(entry.updatedAt || 0),
+      Number(entry.lastSpawnMission || 0) * 1000,
+      Number(entry.lastEscapedMission || 0) * 1000
+    );
+    const statusBoost = entry.status === "active" ? 3.2 : (entry.status === "escaped" ? 2.2 : 0.4);
+    const score = (power * 7.5) + (escapes * 2.4) + (returns * 1.8) + statusBoost + (freshness * 0.000001);
+    if(score > bestScore){
+      bestScore = score;
+      best = entry;
+    }
+  }
+  return best;
+}
+
+function normalizeNemesisSeasonState(raw, roster=[], missionNo=1){
+  const weekKey = String(weeklyChallengeWeekKey()).trim() || "week";
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const previousWeekKey = String(src.weekKey || weekKey).trim() || weekKey;
+  const changedWeek = previousWeekKey !== weekKey;
+  const out = {
+    ...defaultNemesisSeasonState(weekKey),
+    weekKey,
+    lifetimeClears: Math.max(0, Math.floor(Number(src.lifetimeClears || 0))),
+    allTimeBestClearSec: Math.max(0, Math.floor(Number(src.allTimeBestClearSec || 0))),
+  };
+  if(!changedWeek){
+    out.attempts = Math.max(0, Math.floor(Number(src.attempts || 0)));
+    out.completed = Math.max(0, Math.floor(Number(src.completed || 0)));
+    out.bestClearSec = Math.max(0, Math.floor(Number(src.bestClearSec || 0)));
+    out.lastClearSec = Math.max(0, Math.floor(Number(src.lastClearSec || 0)));
+    out.lastCompletedAt = Math.max(0, Math.floor(Number(src.lastCompletedAt || 0)));
+    out.lastOutcome = String(src.lastOutcome || "").slice(0, 16);
+  }
+
+  const validStatuses = new Set(["idle", "tracked", "active", "completed"]);
+  const carryStatus = String(src.targetStatus || "idle").toLowerCase();
+  out.targetStatus = validStatuses.has(carryStatus) ? carryStatus : "idle";
+
+  const list = Array.isArray(roster) ? roster : [];
+  let target = null;
+  const targetId = String(src.targetId || "").trim();
+  if(targetId){
+    target = list.find((entry)=>entry && entry.id === targetId) || null;
+  }
+  if(target && target.status === "resolved"){
+    target = null;
+  }
+  if(!target){
+    target = nemesisSeasonTargetFromRoster(list);
+  }
+  if(target){
+    out.targetId = String(target.id || "");
+    out.targetAlias = String(target.alias || "Nemesis");
+    out.targetType = String(target.type || "Standard");
+    out.targetPower = Math.max(1, computeNemesisPower(target, missionNo));
+    out.targetStatus = target.status === "active" ? "active" : "tracked";
+  } else {
+    out.targetId = "";
+    out.targetAlias = "";
+    out.targetType = "";
+    out.targetPower = 0;
+    if(out.targetStatus !== "completed") out.targetStatus = "idle";
+  }
+
+  if(out.bestClearSec > 0){
+    if(out.allTimeBestClearSec <= 0) out.allTimeBestClearSec = out.bestClearSec;
+    else out.allTimeBestClearSec = Math.min(out.allTimeBestClearSec, out.bestClearSec);
+  }
+  return out;
+}
+
+function ensureNemesisSeasonState(nemesisState, missionNo=currentStoryMissionNumber(S)){
+  const base = (nemesisState && typeof nemesisState === "object")
+    ? nemesisState
+    : ensureNemesisState(S);
+  if(!Array.isArray(base.roster)) base.roster = [];
+  base.season = normalizeNemesisSeasonState(base.season, base.roster, missionNo);
+  return base.season;
+}
+
 function ensureNemesisState(state=S){
   const src = (state && typeof state === "object") ? state : S;
   const fallback = defaultNemesisState();
@@ -5290,6 +5403,7 @@ function ensureNemesisState(state=S){
     lastSpawnMission: Math.max(0, Math.floor(Number(current.lastSpawnMission || 0))),
     lastSpawnId: String(current.lastSpawnId || "").slice(0, 40),
     lastBountyAt: Math.max(0, Math.floor(Number(current.lastBountyAt || 0))),
+    season: normalizeNemesisSeasonState(current.season, roster, missionNo),
     roster,
   };
   if(src.nemesis.seq < roster.length){
@@ -5327,6 +5441,7 @@ function mergeNemesisState(currentNemesis, incomingNemesis, missionNo=1){
       ? String(incoming.lastSpawnId || "")
       : String(base.lastSpawnId || ""),
     lastBountyAt: Math.max(base.lastBountyAt || 0, incoming.lastBountyAt || 0),
+    season: null,
     roster: [],
   };
   const byId = new Map();
@@ -5344,6 +5459,34 @@ function mergeNemesisState(currentNemesis, incomingNemesis, missionNo=1){
   if(merged.seq < merged.roster.length){
     merged.seq = merged.roster.length;
   }
+  const baseSeason = normalizeNemesisSeasonState(base.season, base.roster, missionNo);
+  const incomingSeason = normalizeNemesisSeasonState(incoming.season, incoming.roster, missionNo);
+  merged.season = normalizeNemesisSeasonState({
+    ...baseSeason,
+    ...incomingSeason,
+    lifetimeClears: Math.max(
+      Math.floor(Number(baseSeason.lifetimeClears || 0)),
+      Math.floor(Number(incomingSeason.lifetimeClears || 0))
+    ),
+    allTimeBestClearSec: (()=>{
+      const a = Math.floor(Number(baseSeason.allTimeBestClearSec || 0));
+      const b = Math.floor(Number(incomingSeason.allTimeBestClearSec || 0));
+      if(a <= 0) return Math.max(0, b);
+      if(b <= 0) return Math.max(0, a);
+      return Math.min(a, b);
+    })(),
+    completed: Math.max(
+      Math.floor(Number(baseSeason.completed || 0)),
+      Math.floor(Number(incomingSeason.completed || 0))
+    ),
+    bestClearSec: (()=>{
+      const a = Math.floor(Number(baseSeason.bestClearSec || 0));
+      const b = Math.floor(Number(incomingSeason.bestClearSec || 0));
+      if(a <= 0) return Math.max(0, b);
+      if(b <= 0) return Math.max(0, a);
+      return Math.min(a, b);
+    })(),
+  }, merged.roster, missionNo);
   trimNemesisRoster(merged);
   return merged;
 }
@@ -5354,6 +5497,7 @@ function registerTigerEscapeNemesis(t, reason="RETREAT"){
   if(!t || !t.alive) return null;
   const missionNo = currentStoryMissionNumber(S);
   const nemesis = ensureNemesisState(S);
+  const season = ensureNemesisSeasonState(nemesis, missionNo);
   let entry = null;
   let createdNow = false;
   if(t.nemesisId){
@@ -5408,6 +5552,13 @@ function registerTigerEscapeNemesis(t, reason="RETREAT"){
   t.nemesisBountyCash = entry.bountyCash;
   nemesis.lastSpawnMission = missionNo;
   nemesis.lastSpawnId = entry.id;
+  if(!season.targetId || season.targetId === entry.id){
+    season.targetId = entry.id;
+    season.targetAlias = entry.alias;
+    season.targetType = entry.type;
+    season.targetPower = entry.power;
+    season.targetStatus = "tracked";
+  }
   trimNemesisRoster(nemesis);
   setEventText(`☠️ Nemesis escaped: ${entry.alias} (Lv ${entry.power}) • Bounty now $${entry.bountyCash.toLocaleString()}`, 5.5);
   if(reason === "RETREAT"){
@@ -5420,11 +5571,27 @@ function pickReturningNemesisForMission(missionNo=currentStoryMissionNumber(S)){
   if(window.__TUTORIAL_MODE__) return null;
   if(normalizeModeName(S.mode) !== "Story") return null;
   const nemesis = ensureNemesisState(S);
+  const season = ensureNemesisSeasonState(nemesis, missionNo);
   if(!Array.isArray(nemesis.roster) || !nemesis.roster.length) return null;
   if(Math.max(1, missionNo) <= 1) return null;
   if(Math.floor(Number(nemesis.lastSpawnMission || 0)) === missionNo) return null;
 
   const candidates = [];
+  let forcedTarget = null;
+  if(season.targetId){
+    const seasonEntry = nemesis.roster.find((entry)=>entry?.id === season.targetId) || null;
+    if(seasonEntry && seasonEntry.status !== "resolved"){
+      const anchorMission = Math.max(
+        Math.floor(Number(seasonEntry.lastEscapedMission || 0)),
+        Math.floor(Number(seasonEntry.lastSpawnMission || 0)),
+        Math.floor(Number(seasonEntry.lastSeenMission || 0))
+      );
+      const gap = missionNo - anchorMission;
+      if(gap >= NEMESIS_MIN_MISSION_GAP && seasonEntry.status === "escaped"){
+        forcedTarget = seasonEntry;
+      }
+    }
+  }
   for(const entry of nemesis.roster){
     if(!entry) continue;
     if(entry.status === "resolved") continue;
@@ -5452,6 +5619,9 @@ function pickReturningNemesisForMission(missionNo=currentStoryMissionNumber(S)){
     const score = chance + (Math.max(1, Math.floor(Number(entry.power || 1))) * 0.12) + (gap * 0.03) + (Math.random() * 0.4);
     candidates.push({ entry, score });
   }
+  if(forcedTarget){
+    candidates.push({ entry: forcedTarget, score: 1e9 });
+  }
   if(!candidates.length) return null;
   candidates.sort((a, b)=>b.score - a.score);
   const chosen = candidates[0].entry;
@@ -5462,6 +5632,13 @@ function pickReturningNemesisForMission(missionNo=currentStoryMissionNumber(S)){
   chosen.updatedAt = Date.now();
   chosen.power = computeNemesisPower(chosen, missionNo);
   chosen.bountyCash = computeNemesisBountyCash(chosen, missionNo);
+  if(chosen.id === season.targetId){
+    season.targetAlias = chosen.alias;
+    season.targetType = chosen.type;
+    season.targetPower = chosen.power;
+    season.targetStatus = "active";
+    season.attempts = Math.max(0, Math.floor(Number(season.attempts || 0))) + 1;
+  }
   addContractTally("nemesisReturns", 1);
   nemesis.lastSpawnMission = missionNo;
   nemesis.lastSpawnId = chosen.id;
@@ -5505,6 +5682,7 @@ function resolveNemesisOutcome(t, outcome="KILL"){
   const entry = (nemesis.roster || []).find((item)=>item.id === t.nemesisId);
   if(!entry) return null;
   const missionNo = currentStoryMissionNumber(S);
+  const season = ensureNemesisSeasonState(nemesis, missionNo);
   const power = Math.max(
     computeNemesisPower(entry, missionNo),
     Math.max(1, Math.floor(Number(t.nemesisPower || 1)))
@@ -5527,6 +5705,27 @@ function resolveNemesisOutcome(t, outcome="KILL"){
   entry.bountyCash = 0;
   nemesis.lastBountyAt = Date.now();
   t._nemesisResolved = true;
+  if(season.targetId && season.targetId === entry.id){
+    const missionStartAt = Math.max(0, Math.floor(Number(S._missionStartAt || 0)));
+    const clearSec = missionStartAt > 0 ? Math.max(1, Math.round((Date.now() - missionStartAt) / 1000)) : 0;
+    const seasonBonusCash = Math.round(NEMESIS_SEASON_HUNT_BONUS_CASH_BASE + (power * 140));
+    const seasonBonusXp = Math.round(NEMESIS_SEASON_HUNT_BONUS_XP + (power * 12));
+    season.targetStatus = "completed";
+    season.completed = Math.max(0, Math.floor(Number(season.completed || 0))) + 1;
+    season.lifetimeClears = Math.max(0, Math.floor(Number(season.lifetimeClears || 0))) + 1;
+    season.lastOutcome = entry.lastOutcome;
+    season.lastCompletedAt = Date.now();
+    if(clearSec > 0){
+      season.lastClearSec = clearSec;
+      season.bestClearSec = season.bestClearSec > 0 ? Math.min(season.bestClearSec, clearSec) : clearSec;
+      season.allTimeBestClearSec = season.allTimeBestClearSec > 0 ? Math.min(season.allTimeBestClearSec, clearSec) : clearSec;
+    }
+    S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + seasonBonusCash;
+    trackCashEarned(seasonBonusCash);
+    addXP(seasonBonusXp);
+    grantSeasonPassPoints(NEMESIS_SEASON_PASS_POINTS, "Nemesis season hunt clear");
+    toast(`Season Hunt clear: +$${seasonBonusCash.toLocaleString()} • +${seasonBonusXp}XP${clearSec > 0 ? ` • ${clearSec}s` : ""}`);
+  }
   setEventText(
     `🏆 Nemesis ${entry.alias} ${entry.lastOutcome === "CAPTURE" ? "captured" : "eliminated"} • Bounty +$${bountyCash.toLocaleString()}`,
     5.2
@@ -14605,6 +14804,8 @@ function renderShopList(){
 
   if(currentShopTab==="season"){
     const pass = ensureSeasonPassState();
+    const nemesisState = ensureNemesisState(S);
+    const nemesisSeason = ensureNemesisSeasonState(nemesisState, currentStoryMissionNumber(S));
     const levelNow = seasonPassLevel(pass);
     const progressPct = seasonPassProgressPct(pass);
     const pointsNow = Math.max(0, Math.floor(Number(pass.points || 0)));
@@ -14618,6 +14819,29 @@ function renderShopList(){
     const banner = seasonPassBannerDisplay(pass);
     const finisher = seasonPassFinisherDisplay(pass);
     note.innerText = "Season Pass is cosmetic-only: skins, badges, banners, and finisher effects. No stat boosts.";
+
+    const huntStatus = nemesisSeason.targetId
+      ? `${nemesisSeason.targetAlias || "Nemesis"} • ${nemesisSeason.targetType || "Standard"} • Lv ${Math.max(1, Math.floor(Number(nemesisSeason.targetPower || 1)))}`
+      : "No active target yet";
+    const weeklyBestTxt = Math.max(0, Math.floor(Number(nemesisSeason.bestClearSec || 0))) > 0
+      ? `${Math.max(1, Math.floor(Number(nemesisSeason.bestClearSec || 0)))}s`
+      : "—";
+    const allTimeBestTxt = Math.max(0, Math.floor(Number(nemesisSeason.allTimeBestClearSec || 0))) > 0
+      ? `${Math.max(1, Math.floor(Number(nemesisSeason.allTimeBestClearSec || 0)))}s`
+      : "—";
+    const lastClearTxt = Math.max(0, Math.floor(Number(nemesisSeason.lastClearSec || 0))) > 0
+      ? `${Math.max(1, Math.floor(Number(nemesisSeason.lastClearSec || 0)))}s`
+      : "—";
+    const nemesisSeasonCard = `
+      <div class="item">
+        <div>
+          <div class="itemName">Nemesis Season Hunt <span class="tag">Week ${String(nemesisSeason.weekKey || "").trim() || "active"}</span> <span class="tag">${String(nemesisSeason.targetStatus || "idle").toUpperCase()}</span></div>
+          <div class="itemDesc">Target: ${huntStatus}</div>
+          <div class="itemDesc">Weekly Clears: ${Math.max(0, Math.floor(Number(nemesisSeason.completed || 0)))} • Attempts: ${Math.max(0, Math.floor(Number(nemesisSeason.attempts || 0)))}</div>
+          <div class="itemDesc">Best Time: ${weeklyBestTxt} (weekly) • ${allTimeBestTxt} (all-time) • Last: ${lastClearTxt}</div>
+          <div class="itemDesc">Lifetime Clears: ${Math.max(0, Math.floor(Number(nemesisSeason.lifetimeClears || 0)))}</div>
+        </div>
+      </div>`;
 
     const premiumHeader = `
       <div class="item">
@@ -14670,7 +14894,7 @@ function renderShopList(){
         </div>`;
     }).join("");
 
-    list.innerHTML = premiumHeader + tierRows;
+    list.innerHTML = nemesisSeasonCard + premiumHeader + tierRows;
     return;
   }
 
@@ -17582,6 +17806,7 @@ function deploy(opts={}){
   S.stats.cashEarned = 0;
   S.stats.trapsPlaced = 0;
   S.stats.trapsTriggered = 0;
+  S._missionStartAt = Date.now();
   S.arcadeMissionStartAt = 0;
   S.arcadeMissionLimitSec = 0;
   S.arcadeComboPeak = 0;
@@ -22357,7 +22582,12 @@ function renderHUD(){
         const focus = captureNeed > 0
           ? `Story Ops: escort/protect civilians (${civNeed} pending) • Captures ${captureDone}/${captureNeed}`
           : `Story Ops: escort/protect civilians (${civNeed} pending)`;
-        storyOpsEl.innerText = `${focus} • ${rewardTrack}`;
+        const nemesis = ensureNemesisState(S);
+        const season = ensureNemesisSeasonState(nemesis, currentStoryMissionNumber(S));
+        const seasonLabel = season.targetId
+          ? `Season Hunt: ${season.targetAlias || "Nemesis"} Lv${Math.max(1, Math.floor(Number(season.targetPower || 1)))} (${season.targetStatus})`
+          : "Season Hunt: scouting target";
+        storyOpsEl.innerText = `${focus} • ${rewardTrack} • ${seasonLabel}`;
       }
     } else {
       storyOpsEl.innerText = "";
