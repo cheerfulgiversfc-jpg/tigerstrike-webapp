@@ -4439,6 +4439,184 @@ const CHAPTER_BIOME_PROFILES = {
   ],
 };
 
+const ENDGAME_BIOME_CYCLE = Object.freeze([
+  Object.freeze({
+    key:"RIFT_MONSOON",
+    biome:"Rift Monsoon",
+    weather:"Black Rainfront",
+    weatherFx:"storm",
+    weatherIntensity:1.02,
+    hazardShort:"Lightning corridors and surge pressure",
+    hazards:{ waterSpeedMul:0.91, staminaDrainMul:1.10, tigerAggroMul:1.16, tigerSpeedMul:1.14, fogPulseEveryMs:12800, fogPulseDurationMs:4200 },
+    hpMul:1.03,
+    aggroMul:1.06,
+    payoutMul:1.08,
+    mapIdentity:{ name:"Storm Chokepoints", pressureMul:1.12, civilianSpeedMul:0.92, eventWeight:{ fog:2, hostage:3, bridge:3, blackout:1 } },
+  }),
+  Object.freeze({
+    key:"ASHEN_VEINS",
+    biome:"Ashen Veins",
+    weather:"Volcanic Ashfall",
+    weatherFx:"ash",
+    weatherIntensity:0.95,
+    hazardShort:"Heat fatigue and drifting embers",
+    hazards:{ waterSpeedMul:1.00, staminaDrainMul:1.13, tigerAggroMul:1.14, tigerSpeedMul:1.12, fogPulseEveryMs:15200, fogPulseDurationMs:3600 },
+    hpMul:1.04,
+    aggroMul:1.05,
+    payoutMul:1.07,
+    mapIdentity:{ name:"Burnline Sectors", pressureMul:1.10, civilianSpeedMul:0.93, eventWeight:{ fog:1, hostage:3, bridge:3, blackout:1 } },
+  }),
+  Object.freeze({
+    key:"GLACIER_HOWL",
+    biome:"Glacier Howl",
+    weather:"Polar Whiteout",
+    weatherFx:"snow",
+    weatherIntensity:0.90,
+    hazardShort:"Cold drag with visibility spikes",
+    hazards:{ waterSpeedMul:0.95, staminaDrainMul:1.12, tigerAggroMul:1.12, tigerSpeedMul:1.13, fogPulseEveryMs:14600, fogPulseDurationMs:3400 },
+    hpMul:1.05,
+    aggroMul:1.04,
+    payoutMul:1.08,
+    mapIdentity:{ name:"Frost Lanes", pressureMul:1.11, civilianSpeedMul:0.91, eventWeight:{ fog:3, hostage:2, bridge:2, blackout:1 } },
+  }),
+  Object.freeze({
+    key:"DELTA_BLACKWATER",
+    biome:"Delta Blackwater",
+    weather:"Tide Squall",
+    weatherFx:"rain",
+    weatherIntensity:0.92,
+    hazardShort:"Flood pull on escort routes",
+    hazards:{ waterSpeedMul:0.88, staminaDrainMul:1.09, tigerAggroMul:1.13, tigerSpeedMul:1.12, fogPulseEveryMs:0, fogPulseDurationMs:0 },
+    hpMul:1.04,
+    aggroMul:1.05,
+    payoutMul:1.09,
+    mapIdentity:{ name:"Flooded Arteries", pressureMul:1.13, civilianSpeedMul:0.89, eventWeight:{ fog:1, hostage:3, bridge:4, blackout:0 } },
+  }),
+  Object.freeze({
+    key:"OBSIDIAN_MIST",
+    biome:"Obsidian Mist",
+    weather:"Nocturne Fog",
+    weatherFx:"mist",
+    weatherIntensity:0.96,
+    hazardShort:"Stealth-heavy ambush windows",
+    hazards:{ waterSpeedMul:0.97, staminaDrainMul:1.08, tigerAggroMul:1.15, tigerSpeedMul:1.14, fogPulseEveryMs:11600, fogPulseDurationMs:5200 },
+    hpMul:1.05,
+    aggroMul:1.06,
+    payoutMul:1.10,
+    mapIdentity:{ name:"Blind Corners", pressureMul:1.12, civilianSpeedMul:0.92, eventWeight:{ fog:4, hostage:2, bridge:2, blackout:2 } },
+  }),
+  Object.freeze({
+    key:"SAND_REQUIEM",
+    biome:"Sand Requiem",
+    weather:"Scouring Crosswinds",
+    weatherFx:"dust",
+    weatherIntensity:0.88,
+    hazardShort:"Sandblast drift and route erosion",
+    hazards:{ waterSpeedMul:0.98, staminaDrainMul:1.11, tigerAggroMul:1.14, tigerSpeedMul:1.15, fogPulseEveryMs:16600, fogPulseDurationMs:3000 },
+    hpMul:1.06,
+    aggroMul:1.05,
+    payoutMul:1.11,
+    mapIdentity:{ name:"Eroded Channels", pressureMul:1.12, civilianSpeedMul:0.90, eventWeight:{ fog:2, hostage:3, bridge:3, blackout:1 } },
+  }),
+  Object.freeze({
+    key:"THUNDER_SPINE",
+    biome:"Thunder Spine",
+    weather:"Hyperstorm",
+    weatherFx:"storm",
+    weatherIntensity:1.06,
+    hazardShort:"Constant electrical pressure waves",
+    hazards:{ waterSpeedMul:0.90, staminaDrainMul:1.12, tigerAggroMul:1.17, tigerSpeedMul:1.16, fogPulseEveryMs:10800, fogPulseDurationMs:4400 },
+    hpMul:1.07,
+    aggroMul:1.07,
+    payoutMul:1.12,
+    mapIdentity:{ name:"Tempest Grid", pressureMul:1.14, civilianSpeedMul:0.90, eventWeight:{ fog:2, hostage:3, bridge:3, blackout:2 } },
+  }),
+  Object.freeze({
+    key:"CITADEL_NIGHTFALL",
+    biome:"Citadel Nightfall",
+    weather:"Eclipse Tempest",
+    weatherFx:"storm",
+    weatherIntensity:1.10,
+    hazardShort:"Final-tier frenzy and collapsing lanes",
+    hazards:{ waterSpeedMul:0.92, staminaDrainMul:1.14, tigerAggroMul:1.20, tigerSpeedMul:1.18, fogPulseEveryMs:9800, fogPulseDurationMs:4700 },
+    hpMul:1.08,
+    aggroMul:1.08,
+    payoutMul:1.13,
+    mapIdentity:{ name:"Citadel Collapse", pressureMul:1.16, civilianSpeedMul:0.88, eventWeight:{ fog:2, hostage:4, bridge:4, blackout:2 } },
+  }),
+]);
+
+function isStoryEndgameVariant(variant){
+  const v = normalizeStoryVariant(variant);
+  return v === STORY_VARIANTS.GAUNTLET || v === STORY_VARIANTS.ELITE_HUNT;
+}
+
+function endgameBiomeProfileForStoryVariant(variant=STORY_VARIANTS.CAMPAIGN, runIndex=1, chapter=1){
+  if(!isStoryEndgameVariant(variant)) return null;
+  const list = ENDGAME_BIOME_CYCLE;
+  if(!list?.length) return null;
+  const run = Math.max(1, Math.floor(Number(runIndex || 1)));
+  const chap = clamp(Math.floor(Number(chapter || 1)), 1, 10);
+  const seed = variant === STORY_VARIANTS.ELITE_HUNT
+    ? ((run - 1) + (chap - 1))
+    : (run - 1);
+  const idx = ((seed % list.length) + list.length) % list.length;
+  const base = list[idx] || list[0];
+  const cycle = Math.floor(seed / list.length);
+  const tier = variant === STORY_VARIANTS.ELITE_HUNT
+    ? Math.max(0, cycle + Math.floor((run - 1) / 3))
+    : Math.max(0, cycle + Math.floor((run - 1) / 10));
+  const tierMul = 1 + Math.min(0.44, tier * 0.042);
+  const hazardsBase = (base.hazards && typeof base.hazards === "object") ? base.hazards : {};
+  const mapBase = (base.mapIdentity && typeof base.mapIdentity === "object") ? base.mapIdentity : {};
+  const eventWeight = (mapBase.eventWeight && typeof mapBase.eventWeight === "object") ? mapBase.eventWeight : {};
+  return {
+    key: String(base.key || `ENDGAME_${idx+1}`),
+    biome: String(base.biome || "Endgame Frontier"),
+    weather: String(base.weather || "Adaptive Weather"),
+    weatherFx: String(base.weatherFx || "storm"),
+    weatherIntensity: clamp(Number(base.weatherIntensity || 0.9) * (1 + Math.min(0.18, tier * 0.02)), 0.35, 1.25),
+    hazardShort: `${String(base.hazardShort || "Escalating hazards")} • Tier ${tier + 1}`,
+    tier: tier + 1,
+    hpMul: clamp(Number(base.hpMul || 1) * (1 + Math.min(0.36, tier * 0.03)), 1, 2.4),
+    aggroMul: clamp(Number(base.aggroMul || 1) * (1 + Math.min(0.34, tier * 0.028)), 1, 2.3),
+    payoutMul: clamp(Number(base.payoutMul || 1) * (1 + Math.min(0.40, tier * 0.034)), 1, 2.8),
+    hazards: {
+      waterSpeedMul: clamp(Number(hazardsBase.waterSpeedMul || 1) - Math.min(0.16, tier * 0.012), 0.78, 1.08),
+      staminaDrainMul: clamp(Number(hazardsBase.staminaDrainMul || 1) * (1 + Math.min(0.26, tier * 0.024)), 0.90, 1.55),
+      tigerAggroMul: clamp(Number(hazardsBase.tigerAggroMul || 1) * tierMul, 1, 1.85),
+      tigerSpeedMul: clamp(Number(hazardsBase.tigerSpeedMul || 1) * (1 + Math.min(0.30, tier * 0.024)), 1, 1.75),
+      fogPulseEveryMs: Math.max(7600, Math.floor(Number(hazardsBase.fogPulseEveryMs || 0) * Math.max(0.58, 1 - (tier * 0.028)))),
+      fogPulseDurationMs: Math.max(2200, Math.floor(Number(hazardsBase.fogPulseDurationMs || 0) * (1 + Math.min(0.32, tier * 0.026)))),
+    },
+    mapIdentity: {
+      name: String(mapBase.name || "Endgame Routes"),
+      pressureMul: clamp(Number(mapBase.pressureMul || 1) * (1 + Math.min(0.32, tier * 0.026)), 0.9, 1.9),
+      civilianSpeedMul: clamp(Number(mapBase.civilianSpeedMul || 1) - Math.min(0.14, tier * 0.01), 0.82, 1.08),
+      eventWeight: {
+        fog: Math.max(0, Number(eventWeight.fog ?? 1)),
+        hostage: Math.max(0, Number(eventWeight.hostage ?? 1)),
+        bridge: Math.max(0, Number(eventWeight.bridge ?? 1)),
+        blackout: Math.max(0, Number(eventWeight.blackout ?? 0)),
+      },
+    },
+  };
+}
+
+function endgameBiomeProfileForStoryState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || normalizeModeName(src.mode) !== "Story") return null;
+  const variant = normalizeStoryVariant(src.storyVariant);
+  if(!isStoryEndgameVariant(variant)) return null;
+  const runIndex = variant === STORY_VARIANTS.GAUNTLET
+    ? Math.max(1, Math.floor(Number(src.gauntletDepth || 1)))
+    : Math.max(1, Math.floor(Number(src.eliteHuntRuns || 1)));
+  const chapter = variant === STORY_VARIANTS.ELITE_HUNT
+    ? clamp(Math.floor(Number(src.eliteHuntChapter || 1)), 1, 10)
+    : clamp(Math.ceil((((runIndex - 1) % STORY_CAMPAIGN_OBJECTIVES.length) + 1) / 10), 1, 10);
+  return endgameBiomeProfileForStoryVariant(variant, runIndex, chapter);
+}
+
 const CHAPTER_MAP_IDENTITIES = Object.freeze({
   Story: Object.freeze([
     { name:"Fog Route", pressureMul:0.96, civilianSpeedMul:0.98, eventWeight:{ fog:3, hostage:2, bridge:1, blackout:0 } },
@@ -4470,6 +4648,12 @@ const CHAPTER_MAP_IDENTITIES = Object.freeze({
 });
 
 function mapIdentityProfile(mode=S.mode, chapter=chapterIndexForMode(mode)){
+  if(normalizeModeName(mode) === "Story"){
+    const endgameBiome = endgameBiomeProfileForStoryState(S);
+    if(endgameBiome?.mapIdentity){
+      return endgameBiome.mapIdentity;
+    }
+  }
   const list = CHAPTER_MAP_IDENTITIES[normalizeModeName(mode)] || CHAPTER_MAP_IDENTITIES.Story;
   if(!list?.length) return CHAPTER_MAP_IDENTITIES.Story[0];
   const idx = clamp(Number(chapter || 1) - 1, 0, list.length - 1);
@@ -5376,6 +5560,23 @@ function storyMissionForState(state=S){
     cfg.endgameHpMul = 1.55 + ((chapter - 1) * 0.10) + Math.min(0.70, (run - 1) * 0.055);
     cfg.endgameAggroMul = 1.16 + ((chapter - 1) * 0.03) + Math.min(0.38, (run - 1) * 0.028);
     cfg.endgamePayoutMul = 1.32 + ((chapter - 1) * 0.03) + Math.min(0.42, (run - 1) * 0.03);
+  }
+
+  if(isStoryEndgameVariant(variant)){
+    const endlessBiome = endgameBiomeProfileForStoryVariant(variant, cfg.runIndex, cfg.chapter);
+    if(endlessBiome){
+      cfg.endgameBiomeKey = String(endlessBiome.key || "");
+      cfg.endgameBiome = {
+        key: String(endlessBiome.key || ""),
+        biome: String(endlessBiome.biome || ""),
+        weather: String(endlessBiome.weather || ""),
+        tier: Math.max(1, Math.floor(Number(endlessBiome.tier || 1))),
+        hazardShort: String(endlessBiome.hazardShort || ""),
+      };
+      cfg.endgameHpMul *= clamp(Number(endlessBiome.hpMul || 1), 1, 3);
+      cfg.endgameAggroMul *= clamp(Number(endlessBiome.aggroMul || 1), 1, 3);
+      cfg.endgamePayoutMul *= clamp(Number(endlessBiome.payoutMul || 1), 1, 3);
+    }
   }
 
   const ngTier = Math.max(0, Math.floor(Number(src.storyNgPlusTier || 0)));
@@ -9668,9 +9869,21 @@ function chapterBiomeProfile(mode=S.mode, chapter=chapterIndexForMode(mode)){
 }
 function currentBiomeProfile(){
   if(!ENABLE_BIOME_SYSTEM && !ENABLE_BIOME_TEXT) return null;
+  const endgameBiome = endgameBiomeProfileForStoryState(S);
+  if(endgameBiome) return endgameBiome;
   return chapterBiomeProfile(S.mode, chapterIndexForMode(S.mode));
 }
 function biomeHazardModifiers(mode=S.mode, chapter=chapterIndexForMode(mode)){
+  const normalizedMode = normalizeModeName(mode);
+  if(normalizedMode === "Story"){
+    const endgameBiome = endgameBiomeProfileForStoryState(S);
+    if(endgameBiome?.hazards && typeof endgameBiome.hazards === "object"){
+      return {
+        ...BIOME_HAZARD_DEFAULTS,
+        ...endgameBiome.hazards,
+      };
+    }
+  }
   if(!ENABLE_BIOME_SYSTEM){
     return { ...BIOME_HAZARD_DEFAULTS };
   }
@@ -15080,9 +15293,11 @@ function updateStoryEndgameControls(){
     if(!unlocked){
       statusEl.innerText = "Endgame unlocks after Story Mission 100.";
     }else if(variant === STORY_VARIANTS.GAUNTLET){
-      statusEl.innerText = `Endgame: ${storyVariantLabel(variant)} • Run ${mission.runIndex} • Loop ${mission.gauntletLoop || 1} • NG+ ${Math.max(0, S.storyNgPlusTier || 0)}.`;
+      const biomeLabel = mission.endgameBiome?.biome ? ` • Biome ${mission.endgameBiome.biome} T${Math.max(1, Math.floor(Number(mission.endgameBiome.tier || 1)))}` : "";
+      statusEl.innerText = `Endgame: ${storyVariantLabel(variant)} • Run ${mission.runIndex} • Loop ${mission.gauntletLoop || 1}${biomeLabel} • NG+ ${Math.max(0, S.storyNgPlusTier || 0)}.`;
     }else if(variant === STORY_VARIANTS.ELITE_HUNT){
-      statusEl.innerText = `Endgame: ${storyVariantLabel(variant)} • Chapter ${S.eliteHuntChapter} • Hunt ${mission.runIndex} • NG+ ${Math.max(0, S.storyNgPlusTier || 0)}.`;
+      const biomeLabel = mission.endgameBiome?.biome ? ` • Biome ${mission.endgameBiome.biome} T${Math.max(1, Math.floor(Number(mission.endgameBiome.tier || 1)))}` : "";
+      statusEl.innerText = `Endgame: ${storyVariantLabel(variant)} • Chapter ${S.eliteHuntChapter} • Hunt ${mission.runIndex}${biomeLabel} • NG+ ${Math.max(0, S.storyNgPlusTier || 0)}.`;
     }else{
       statusEl.innerText = `Endgame unlocked. New Game+ Tier ${Math.max(0, S.storyNgPlusTier || 0)} available.`;
     }
@@ -19565,9 +19780,11 @@ function deploy(opts={}){
     } else if(variant === STORY_VARIANTS.CAMPAIGN && ((mission.number - 1) % 10) === 0){
       setEventText(`Story chapter ${mission.chapter} deployed. ${storyChapterRewardPreviewText(mission)}`, 8);
     } else if(variant === STORY_VARIANTS.GAUNTLET){
-      setEventText(`♾️ Gauntlet Run ${mission.runIndex} • Loop ${mission.gauntletLoop || 1} • Aggro x${(mission.endgameAggroMul || 1).toFixed(2)}`, 8);
+      const biomeTag = mission.endgameBiome?.biome ? ` • Biome ${mission.endgameBiome.biome} T${Math.max(1, Math.floor(Number(mission.endgameBiome.tier || 1)))}` : "";
+      setEventText(`♾️ Gauntlet Run ${mission.runIndex} • Loop ${mission.gauntletLoop || 1} • Aggro x${(mission.endgameAggroMul || 1).toFixed(2)}${biomeTag}`, 8);
     } else if(variant === STORY_VARIANTS.ELITE_HUNT){
-      setEventText(`🎯 Elite Boss Hunt ${mission.runIndex}: Chapter ${mission.chapter} ${mission.bossType || "Alpha"} target`, 8);
+      const biomeTag = mission.endgameBiome?.biome ? ` • Biome ${mission.endgameBiome.biome} T${Math.max(1, Math.floor(Number(mission.endgameBiome.tier || 1)))}` : "";
+      setEventText(`🎯 Elite Boss Hunt ${mission.runIndex}: Chapter ${mission.chapter} ${mission.bossType || "Alpha"} target${biomeTag}`, 8);
     }
     if(mission.boss){
       setEventText(storyBossIntroText(mission), 9);
@@ -24195,9 +24412,11 @@ function checkMissionComplete(){
               : `\nProgression Track: ${rewardDef.label} unlocks in ${until} mission${until===1?"":"s"}.\n`;
           }
         }else if(storyVariant === STORY_VARIANTS.GAUNTLET){
-          storyProgressNote = `\nEndgame Loop: Gauntlet Loop ${storyMission.gauntletLoop || 1} • Difficulty x${(storyMission.endgameHpMul || 1).toFixed(2)}.\n`;
+          const biomeLabel = storyMission.endgameBiome?.biome ? `${storyMission.endgameBiome.biome} T${Math.max(1, Math.floor(Number(storyMission.endgameBiome.tier || 1)))}` : "Adaptive Rotation";
+          storyProgressNote = `\nEndgame Loop: Gauntlet Loop ${storyMission.gauntletLoop || 1} • Difficulty x${(storyMission.endgameHpMul || 1).toFixed(2)} • Biome ${biomeLabel}.\n`;
         }else if(storyVariant === STORY_VARIANTS.ELITE_HUNT){
-          storyProgressNote = `\nEndgame Loop: Elite Hunts cleared ${Math.max(0, Math.floor(Number(S.eliteHuntsCleared || 0)))} • Next chapter target ${S.eliteHuntChapter}.\n`;
+          const biomeLabel = storyMission.endgameBiome?.biome ? `${storyMission.endgameBiome.biome} T${Math.max(1, Math.floor(Number(storyMission.endgameBiome.tier || 1)))}` : "Adaptive Rotation";
+          storyProgressNote = `\nEndgame Loop: Elite Hunts cleared ${Math.max(0, Math.floor(Number(S.eliteHuntsCleared || 0)))} • Next chapter target ${S.eliteHuntChapter} • Biome ${biomeLabel}.\n`;
         }
       }
 
@@ -24454,10 +24673,13 @@ function renderHUD(){
       const civNeed = S.civilians.filter(c=>c.alive && !c.evac).length;
       const captureNeed = Math.max(0, storyMission.captureRequired || 0);
       const captureDone = Math.min(S.stats.captures || 0, captureNeed);
+      const endBiomeTxt = storyMission.endgameBiome?.biome
+        ? `${storyMission.endgameBiome.biome} T${Math.max(1, Math.floor(Number(storyMission.endgameBiome.tier || 1)))}`
+        : "";
       if(variant === STORY_VARIANTS.GAUNTLET){
-        storyOpsEl.innerText = `Gauntlet Ops: Run ${storyMission.runIndex} • Loop ${storyMission.gauntletLoop || 1} • Tigers ${S.tigers.filter(t=>t.alive).length}`;
+        storyOpsEl.innerText = `Gauntlet Ops: Run ${storyMission.runIndex} • Loop ${storyMission.gauntletLoop || 1} • Tigers ${S.tigers.filter(t=>t.alive).length}${endBiomeTxt ? ` • ${endBiomeTxt}` : ""}`;
       } else if(variant === STORY_VARIANTS.ELITE_HUNT){
-        storyOpsEl.innerText = `Elite Hunt: Chapter ${storyMission.chapter} ${storyMission.bossType || "Alpha"} • Hunts cleared ${Math.max(0, Math.floor(Number(S.eliteHuntsCleared || 0)))}`;
+        storyOpsEl.innerText = `Elite Hunt: Chapter ${storyMission.chapter} ${storyMission.bossType || "Alpha"} • Hunts cleared ${Math.max(0, Math.floor(Number(S.eliteHuntsCleared || 0)))}${endBiomeTxt ? ` • ${endBiomeTxt}` : ""}`;
       } else {
         const rewardTrack = storyChapterRewardPreviewText(storyMission).replace(/^Reward Track:\s*/i, "");
         const focus = captureNeed > 0
