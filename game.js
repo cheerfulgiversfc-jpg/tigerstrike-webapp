@@ -85,6 +85,7 @@ function ensureClanState(state = S){
     src.clanLastSyncAt = 0;
   }
   ensureCoopStrikeOpsState(src);
+  ensureClanWarfrontState(src);
   return { tag:src.clanTag, name:src.clanName };
 }
 
@@ -346,6 +347,320 @@ function claimCoopStrikeHotspot(hotspotId=""){
   if(document.getElementById("invOverlay")?.style?.display==="flex") renderInventory();
 }
 
+function normalizeClanWarfrontClaimsMap(raw){
+  const out = {};
+  if(!raw || typeof raw !== "object") return out;
+  for(const [week, val] of Object.entries(raw)){
+    if(!week || typeof val !== "object" || !val) continue;
+    const row = {};
+    for(const [id, claimed] of Object.entries(val)){
+      if(id && claimed) row[id] = 1;
+    }
+    if(Object.keys(row).length) out[week] = row;
+  }
+  return out;
+}
+
+function defaultClanWarfrontState(now=Date.now()){
+  return {
+    version: CLAN_WARFRONT_VERSION,
+    key: contractWeekKey(now),
+    territories: [],
+    claims: {},
+    chestClaims: {},
+    pointsTotal: 0,
+    capturePoints: 0,
+    missionPoints: 0,
+    rescuePoints: 0,
+    updatedAt: now,
+    lastTickAt: now,
+    lastToastAt: 0,
+  };
+}
+
+function normalizeClanWarfrontTerritoryEntry(entry={}, period=contractWeekKey()){
+  const src = (entry && typeof entry === "object") ? entry : {};
+  const rewardSrc = (src.reward && typeof src.reward === "object") ? src.reward : {};
+  return {
+    id: String(src.id || ""),
+    key: String(src.key || ""),
+    title: String(src.title || "Warfront Sector"),
+    desc: String(src.desc || "Clan-controlled operational lane."),
+    target: Math.max(1, Math.floor(Number(src.target || 180))),
+    progress: Math.max(0, Math.floor(Number(src.progress || 0))),
+    personal: Math.max(0, Math.floor(Number(src.personal || 0))),
+    control: clamp(Number(src.control || 50), 0, 100),
+    pressure: clamp(Number(src.pressure || 8), 2, 24),
+    period: String(src.period || period || contractWeekKey()),
+    reward: {
+      cash: Math.max(0, Math.floor(Number(rewardSrc.cash || 0))),
+      perkPoints: Math.max(0, Math.floor(Number(rewardSrc.perkPoints || 0))),
+      seasonPoints: Math.max(0, Math.floor(Number(rewardSrc.seasonPoints || 0))),
+    },
+    source: String(src.source || "local"),
+  };
+}
+
+function clanWarfrontFromLocal(state=S, warState=null){
+  const clanTag = normalizeClanTag(state?.clanTag || defaultClanTagFromTelegram(state)) || "SOLO";
+  const wf = (warState && typeof warState === "object")
+    ? warState
+    : ((state?.clanWarfront && typeof state.clanWarfront === "object") ? state.clanWarfront : defaultClanWarfrontState());
+  const period = String(wf.key || contractWeekKey()).trim() || contractWeekKey();
+  const cloudMembers = Math.max(1, Math.floor(Number(state?.clanCloud?.members || 1)));
+  const seed = contractHashInt(`warfront|${period}|${clanTag}`);
+  const picks = contractSeededPick(CLAN_WARFRONT_TEMPLATES, Math.min(CLAN_WARFRONT_TERRITORY_COUNT, CLAN_WARFRONT_TEMPLATES.length), seed);
+  const byId = Object.fromEntries((Array.isArray(wf.territories) ? wf.territories : []).map((row)=>[String(row.id || ""), row]));
+  return picks.map((tpl, idx)=>{
+    const id = `${period}_${idx}_${tpl.key}`;
+    const prev = normalizeClanWarfrontTerritoryEntry(byId[id], period);
+    const target = Math.max(160, Math.floor(190 + (cloudMembers * 34) + (idx * 24)));
+    const rewardCash = Math.max(1200, Math.floor(1300 + (cloudMembers * 210) + (idx * 260)));
+    const rewardPerks = Math.max(1, Math.floor(2 + Math.min(3, Math.floor(cloudMembers / 2)) + (idx > 1 ? 1 : 0)));
+    const rewardSeason = Math.max(10, 12 + idx * 3);
+    return normalizeClanWarfrontTerritoryEntry({
+      id,
+      key: tpl.key,
+      title: tpl.name,
+      desc: tpl.desc,
+      target,
+      progress: prev.progress,
+      personal: prev.personal,
+      control: prev.control,
+      pressure: clamp(6 + idx * 1.6 + cloudMembers * 0.65, 4, 20),
+      period,
+      reward:{ cash:rewardCash, perkPoints:rewardPerks, seasonPoints:rewardSeason },
+      source:"local",
+    }, period);
+  });
+}
+
+function clanWarfrontFromCloud(state=S){
+  const cloud = (state?.clanCloud && typeof state.clanCloud === "object") ? state.clanCloud : null;
+  const block = (cloud?.warfront && typeof cloud.warfront === "object") ? cloud.warfront : null;
+  const entries = Array.isArray(block?.entries) ? block.entries : [];
+  if(!entries.length) return null;
+  const period = String(block?.period || contractWeekKey()).trim() || contractWeekKey();
+  const localRows = Array.isArray(state?.clanWarfront?.territories) ? state.clanWarfront.territories : [];
+  const personalMap = Object.fromEntries(localRows.map((row)=>[String(row.id || ""), normalizeClanWarfrontTerritoryEntry(row, period)]));
+  return entries.map((entry, idx)=>{
+    const row = normalizeClanWarfrontTerritoryEntry({
+      id: String(entry?.id || `${period}_${idx}_${entry?.key || "SECTOR"}`),
+      key: String(entry?.key || `SECTOR_${idx+1}`),
+      title: String(entry?.title || "Warfront Sector"),
+      desc: String(entry?.desc || "Clan-controlled operational lane."),
+      target: Number(entry?.target || 180),
+      progress: Number(entry?.progress || 0),
+      control: Number(entry?.control || 50),
+      pressure: Number(entry?.pressure || 8),
+      period,
+      reward: entry?.reward || {},
+      source:"cloud",
+    }, period);
+    const personal = personalMap[row.id]?.personal || 0;
+    row.personal = Math.max(0, personal);
+    return row;
+  });
+}
+
+function updateClanWarfrontTick(state=S, now=Date.now()){
+  const src = (state && typeof state === "object") ? state : S;
+  const wf = (src?.clanWarfront && typeof src.clanWarfront === "object") ? src.clanWarfront : null;
+  if(!wf || !Array.isArray(wf.territories) || !wf.territories.length) return wf;
+  const tickNow = Math.max(0, Math.floor(Number(now || Date.now())));
+  const last = Math.max(0, Math.floor(Number(wf.lastTickAt || tickNow)));
+  const mins = clamp((tickNow - last) / 60000, 0, 240);
+  if(mins < 0.1){
+    wf.lastTickAt = tickNow;
+    return wf;
+  }
+  for(const row of wf.territories){
+    const target = Math.max(1, Number(row.target || 1));
+    const progressRatio = clamp((Number(row.progress || 0)) / target, 0, 1.6);
+    const personalRatio = clamp((Number(row.personal || 0)) / target, 0, 1.2);
+    const defense = clamp(0.12 + progressRatio * 0.72 + personalRatio * 0.28, 0.12, 1.35);
+    const pressure = clamp(Number(row.pressure || 8), 2, 24);
+    const decay = mins * pressure * 0.045 * Math.max(0.18, 1 - (defense * 0.55));
+    row.control = clamp(Number(row.control || 50) - decay, 0, 100);
+    if(row.control < 35){
+      row.progress = Math.max(0, Math.floor(Number(row.progress || 0) - (mins * 0.65)));
+    }else if(row.control > 78){
+      row.progress = Math.max(0, Math.floor(Number(row.progress || 0) + (mins * 0.18)));
+    }
+  }
+  wf.lastTickAt = tickNow;
+  wf.updatedAt = tickNow;
+  return wf;
+}
+
+function ensureClanWarfrontState(state=S, opts={}){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return defaultClanWarfrontState();
+  const now = Number.isFinite(Number(opts.now)) ? Number(opts.now) : Date.now();
+  const base = defaultClanWarfrontState(now);
+  const incoming = (src.clanWarfront && typeof src.clanWarfront === "object") ? src.clanWarfront : {};
+  const key = String(incoming.key || contractWeekKey(now)).trim() || contractWeekKey(now);
+  const claims = normalizeClanWarfrontClaimsMap(incoming.claims);
+  const chestClaims = normalizeClanWarfrontClaimsMap(incoming.chestClaims);
+  let territories = Array.isArray(incoming.territories)
+    ? incoming.territories.map((entry)=>normalizeClanWarfrontTerritoryEntry(entry, key)).filter((row)=>row.id)
+    : [];
+  const weekChanged = key !== contractWeekKey(now);
+  if(weekChanged){
+    territories = [];
+  }
+  const wf = {
+    version: CLAN_WARFRONT_VERSION,
+    key: weekChanged ? contractWeekKey(now) : key,
+    territories,
+    claims,
+    chestClaims,
+    pointsTotal: Math.max(0, Math.floor(Number(incoming.pointsTotal || 0))),
+    capturePoints: Math.max(0, Math.floor(Number(incoming.capturePoints || 0))),
+    missionPoints: Math.max(0, Math.floor(Number(incoming.missionPoints || 0))),
+    rescuePoints: Math.max(0, Math.floor(Number(incoming.rescuePoints || 0))),
+    updatedAt: Math.max(0, Math.floor(Number(incoming.updatedAt || now))),
+    lastTickAt: Math.max(0, Math.floor(Number(incoming.lastTickAt || now))),
+    lastToastAt: Math.max(0, Math.floor(Number(incoming.lastToastAt || 0))),
+  };
+  const cloudRows = clanWarfrontFromCloud(src);
+  const localRows = clanWarfrontFromLocal(src, wf);
+  const rows = cloudRows || localRows;
+  wf.territories = rows.map((entry)=>normalizeClanWarfrontTerritoryEntry(entry, wf.key));
+  src.clanWarfront = wf;
+  if(!opts.skipTick) updateClanWarfrontTick(src, now);
+  return wf;
+}
+
+function clanWarfrontTerritoryClaimed(period, id, state=S){
+  const wf = ensureClanWarfrontState(state, { skipTick:true });
+  const week = String(period || wf.key || contractWeekKey());
+  const claims = normalizeClanWarfrontClaimsMap(wf.claims);
+  return !!(claims?.[week]?.[id]);
+}
+
+function clanWarfrontSeasonChestClaimed(period, state=S){
+  const wf = ensureClanWarfrontState(state, { skipTick:true });
+  const week = String(period || wf.key || contractWeekKey());
+  const claims = normalizeClanWarfrontClaimsMap(wf.chestClaims);
+  return !!(claims?.[week]?.season_chest);
+}
+
+function clanWarfrontAllTerritoriesReady(state=S){
+  const wf = ensureClanWarfrontState(state);
+  const rows = Array.isArray(wf.territories) ? wf.territories : [];
+  if(!rows.length) return false;
+  return rows.every((row)=>{
+    const progressReady = Math.max(0, Number(row.progress || 0)) >= Math.max(1, Number(row.target || 1));
+    const controlReady = Number(row.control || 0) >= 64;
+    return progressReady && controlReady;
+  });
+}
+
+function addClanWarfrontContribution(kind="capture", basePoints=10, opts={}){
+  if(window.__TUTORIAL_MODE__) return;
+  const wf = ensureClanWarfrontState(S);
+  if(!Array.isArray(wf.territories) || !wf.territories.length) return;
+  const period = String(wf.key || contractWeekKey()).trim() || contractWeekKey();
+  const modifier = coopSynergyBonusMul(kind, opts);
+  const points = Math.max(1, Math.round(Math.max(1, Number(basePoints || 1)) * modifier));
+  const hash = contractHashInt(`${period}|warfront|${kind}|${gameplayCloudMission(S)}|${S.stats?.captures || 0}|${S.stats?.kills || 0}|${S.stats?.evac || 0}`);
+  const row = wf.territories[Math.max(0, hash % wf.territories.length)];
+  if(!row) return;
+  row.personal = Math.max(0, Math.floor(Number(row.personal || 0))) + points;
+  row.progress = Math.max(0, Math.floor(Number(row.progress || 0))) + points;
+  const target = Math.max(1, Number(row.target || 1));
+  const controlGain = clamp((points / target) * 180 + (opts?.boss ? 1.8 : 0), 0.2, 6.5);
+  row.control = clamp(Number(row.control || 50) + controlGain, 0, 100);
+  wf.pointsTotal = Math.max(0, Math.floor(Number(wf.pointsTotal || 0))) + points;
+  if(kind === "capture") wf.capturePoints = Math.max(0, Math.floor(Number(wf.capturePoints || 0))) + points;
+  if(kind === "mission") wf.missionPoints = Math.max(0, Math.floor(Number(wf.missionPoints || 0))) + points;
+  if(kind === "rescue") wf.rescuePoints = Math.max(0, Math.floor(Number(wf.rescuePoints || 0))) + points;
+  wf.updatedAt = Date.now();
+  if(!opts?.silent && Date.now() > (wf.lastToastAt || 0) + 4200){
+    wf.lastToastAt = Date.now();
+    setEventText(`🛡️ Warfront sector stabilized: +${points} influence (${row.title})`, 2.2);
+  }
+  requestGameplayCloudSync(`warfront-${kind}`);
+}
+
+function claimClanWarfrontTerritory(territoryId=""){
+  const wf = ensureClanWarfrontState(S);
+  const row = (wf.territories || []).find((entry)=>entry.id === territoryId);
+  if(!row){
+    toast("Warfront territory not found.");
+    return;
+  }
+  const target = Math.max(1, Number(row.target || 1));
+  const ready = Math.max(0, Number(row.progress || 0)) >= target && Number(row.control || 0) >= 62;
+  if(!ready){
+    toast("Territory needs more progress and control to claim.");
+    return;
+  }
+  if(clanWarfrontTerritoryClaimed(row.period, row.id, S)){
+    toast("Warfront territory reward already claimed.");
+    return;
+  }
+  const claims = normalizeClanWarfrontClaimsMap(wf.claims);
+  if(!claims[row.period]) claims[row.period] = {};
+  claims[row.period][row.id] = 1;
+  wf.claims = claims;
+
+  const cash = Math.max(0, Math.floor(Number(row.reward?.cash || 0)));
+  const perks = Math.max(0, Math.floor(Number(row.reward?.perkPoints || 0)));
+  const seasonPts = Math.max(0, Math.floor(Number(row.reward?.seasonPoints || 0)));
+  if(cash > 0){
+    S.funds = Math.max(0, Math.floor(Number(S.funds || 0))) + cash;
+    trackCashEarned(cash);
+  }
+  if(perks > 0){
+    S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + perks;
+  }
+  if(seasonPts > 0){
+    grantSeasonPassPoints(seasonPts, "Clan Warfront territory");
+  }
+  requestGameplayCloudSync("warfront-claim", { force:true });
+  toast(`🏁 Territory secured: ${row.title} • +$${cash.toLocaleString()} • +${perks} perk • +${seasonPts} pass pts`);
+  hapticNotif("success");
+  sfx("win");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display==="flex") renderInventory();
+}
+
+function claimClanWarfrontSeasonChest(){
+  const wf = ensureClanWarfrontState(S);
+  if(!clanWarfrontAllTerritoriesReady(S)){
+    toast("Season chest unlocks when all territories are secured.");
+    return;
+  }
+  if(clanWarfrontSeasonChestClaimed(wf.key, S)){
+    toast("Season chest already claimed this week.");
+    return;
+  }
+  const claims = normalizeClanWarfrontClaimsMap(wf.chestClaims);
+  if(!claims[wf.key]) claims[wf.key] = {};
+  claims[wf.key].season_chest = 1;
+  wf.chestClaims = claims;
+
+  const rows = Array.isArray(wf.territories) ? wf.territories : [];
+  const cash = Math.max(1600, rows.reduce((sum, row)=>sum + Math.floor(Number(row.reward?.cash || 0) * 0.35), 0));
+  const perks = Math.max(3, rows.reduce((sum, row)=>sum + Math.max(1, Math.floor(Number(row.reward?.perkPoints || 0) * 0.45)), 0));
+  const seasonPts = Math.max(24, rows.reduce((sum, row)=>sum + Math.max(2, Math.floor(Number(row.reward?.seasonPoints || 0) * 0.45)), 0));
+
+  S.funds = Math.max(0, Math.floor(Number(S.funds || 0))) + cash;
+  trackCashEarned(cash);
+  S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + perks;
+  grantSeasonPassPoints(seasonPts, "Clan Warfront season chest");
+  requestGameplayCloudSync("warfront-season-chest", { force:true });
+  toast(`🏆 Clan Warfront chest claimed • +$${cash.toLocaleString()} • +${perks} perk • +${seasonPts} pass pts`);
+  hapticNotif("success");
+  sfx("win");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display==="flex") renderInventory();
+}
+
 // ...rest of daily reward helpers...
 
 function ymdUTC(d=new Date()){
@@ -374,6 +689,8 @@ const LIVE_OPS_VERSION = 1;
 const COOP_STRIKE_OPS_VERSION = 1;
 const COOP_STRIKE_OPS_HOTSPOT_COUNT = 3;
 const COOP_STRIKE_OPS_ROLE_PREFS = Object.freeze(["hunter","rescuer","support"]);
+const CLAN_WARFRONT_VERSION = 1;
+const CLAN_WARFRONT_TERRITORY_COUNT = 4;
 const COOP_STRIKE_OPS_TEMPLATES = Object.freeze([
   Object.freeze({ key:"RED_MANGROVE", name:"Red Mangrove Run", desc:"Delta lanes under tiger pressure.", flavor:"mangrove" }),
   Object.freeze({ key:"NIGHT_CONVOY", name:"Night Convoy Route", desc:"Convoy extraction path needs coordinated captures.", flavor:"highway" }),
@@ -381,6 +698,16 @@ const COOP_STRIKE_OPS_TEMPLATES = Object.freeze([
   Object.freeze({ key:"CLIFF_RELAY", name:"Cliff Relay Zone", desc:"Mountain relay corridor with rotating tiger packs.", flavor:"mountain" }),
   Object.freeze({ key:"JUNGLE_GRID", name:"Jungle Grid Sector", desc:"Dense jungle lanes with ambush risk.", flavor:"jungle" }),
   Object.freeze({ key:"TOWN_EGRESS", name:"Town Egress Lane", desc:"Urban exit routes requiring synchronized pushes.", flavor:"urban" }),
+]);
+const CLAN_WARFRONT_TEMPLATES = Object.freeze([
+  Object.freeze({ key:"IRON_GATE", name:"Iron Gate Corridor", desc:"Primary stronghold route with high tiger pressure." }),
+  Object.freeze({ key:"DELTA_LOCK", name:"Delta Lockline", desc:"Floodplain crossings that need capture discipline." }),
+  Object.freeze({ key:"RUINS_RING", name:"Ruins Ring", desc:"Ancient ruins perimeter contested by elite packs." }),
+  Object.freeze({ key:"SKY_BRIDGE", name:"Sky Bridge", desc:"Highland bridge lane that favors coordinated flanks." }),
+  Object.freeze({ key:"CITADEL_WEST", name:"Citadel West", desc:"Industrial west route with repeated ambush waves." }),
+  Object.freeze({ key:"JUNGLE_SPINE", name:"Jungle Spine", desc:"Deep-jungle spine where rescues and takedowns collide." }),
+  Object.freeze({ key:"HARBOR_CHAIN", name:"Harbor Chain", desc:"Coastal evacuation chain requiring escort control." }),
+  Object.freeze({ key:"MONSOON_PATH", name:"Monsoon Path", desc:"Weather-hit route with constant map pressure shifts." }),
 ]);
 
 const DEFAULT_CONTRACT_TALLIES = Object.freeze({
@@ -5233,6 +5560,8 @@ const DEFAULT = {
   rollAnimToX:0,
   rollAnimToY:0,
   abilityCooldowns:{ scan:0, sprint:0, shield:0 },
+  squadAbilityCooldowns:{ tranq_burst:0, smoke_screen:0 },
+  squadAbilityActiveUntil:{ tranq_burst:0, smoke_screen:0 },
   soldierAttackersOwned:0,
   soldierRescuersOwned:0,
   soldierAttackersDowned:0,
@@ -5326,6 +5655,7 @@ const DEFAULT = {
   clanRaidEnabled:false,
   clanContractClaims:{},
   coopStrikeOps: null,
+  clanWarfront: null,
   clanCloud:null,
   clanLastSyncAt:0,
   referralMilestone:null,
@@ -6358,6 +6688,7 @@ function buildGameplayCloudSnapshot(state=S){
   const weeklyKey = String(src.arcadeWeeklySeedKey || weeklyChallengeWeekKey()).trim() || weeklyChallengeWeekKey();
   const weeklyBest = arcadeWeeklyBestForWeek(src, weeklyKey);
   const coop = ensureCoopStrikeOpsState(src);
+  const warfront = ensureClanWarfrontState(src);
   const coopHotspots = (Array.isArray(coop.hotspots) ? coop.hotspots : []).map((row)=>({
     id: String(row.id || ""),
     key: String(row.key || ""),
@@ -6366,6 +6697,15 @@ function buildGameplayCloudSnapshot(state=S){
     target: Math.max(1, Math.floor(Number(row.target || 1))),
     coordinatedCaptures: Math.max(0, Math.floor(Number(row.coordinatedCaptures || 0))),
     period: String(row.period || coop.key || contractWeekKey()),
+  }));
+  const warfrontTerritories = (Array.isArray(warfront.territories) ? warfront.territories : []).map((row)=>({
+    id: String(row.id || ""),
+    key: String(row.key || ""),
+    personal: Math.max(0, Math.floor(Number(row.personal || 0))),
+    progress: Math.max(0, Math.floor(Number(row.progress || 0))),
+    target: Math.max(1, Math.floor(Number(row.target || 1))),
+    control: Math.round(clamp(Number(row.control || 0), 0, 100)),
+    period: String(row.period || warfront.key || contractWeekKey()),
   }));
   const missionStats = (src.stats && typeof src.stats === "object") ? src.stats : {};
   const kills = Math.max(
@@ -6418,6 +6758,12 @@ function buildGameplayCloudSnapshot(state=S){
     coopMissionPoints: Math.max(0, Math.floor(Number(coop.missionPoints || 0))),
     coopRescuePoints: Math.max(0, Math.floor(Number(coop.rescuePoints || 0))),
     coopHotspots,
+    warfrontWeekKey: String(warfront.key || contractWeekKey()),
+    warfrontPointsTotal: Math.max(0, Math.floor(Number(warfront.pointsTotal || 0))),
+    warfrontCapturePoints: Math.max(0, Math.floor(Number(warfront.capturePoints || 0))),
+    warfrontMissionPoints: Math.max(0, Math.floor(Number(warfront.missionPoints || 0))),
+    warfrontRescuePoints: Math.max(0, Math.floor(Number(warfront.rescuePoints || 0))),
+    warfrontTerritories,
   };
 }
 
@@ -6463,6 +6809,18 @@ function gameplayCloudSnapshotSig(snapshot){
       Math.max(1, Math.floor(Number(row?.target || 1))),
       Math.max(0, Math.floor(Number(row?.coordinatedCaptures || 0))),
     ].join(":")) : []),
+    String(snap.warfrontWeekKey || ""),
+    Math.max(0, Math.floor(Number(snap.warfrontPointsTotal || 0))),
+    Math.max(0, Math.floor(Number(snap.warfrontCapturePoints || 0))),
+    Math.max(0, Math.floor(Number(snap.warfrontMissionPoints || 0))),
+    Math.max(0, Math.floor(Number(snap.warfrontRescuePoints || 0))),
+    ...(Array.isArray(snap.warfrontTerritories) ? snap.warfrontTerritories.map((row)=>[
+      String(row?.id || ""),
+      Math.max(0, Math.floor(Number(row?.personal || 0))),
+      Math.max(0, Math.floor(Number(row?.progress || 0))),
+      Math.max(1, Math.floor(Number(row?.target || 1))),
+      Math.round(clamp(Number(row?.control || 0), 0, 100)),
+    ].join(":")) : []),
   ].join("|");
 }
 
@@ -6498,6 +6856,16 @@ async function postGameplayCloudSnapshot(snapshot){
           S.coopStrikeOps = cloneState(payload.clan.coopStrikeOps);
         }
         ensureCoopStrikeOpsState(S);
+      }
+      if(payload?.clanWarfront && typeof payload.clanWarfront === "object"){
+        S.clanWarfront = cloneState(payload.clanWarfront);
+        ensureClanWarfrontState(S);
+      }
+      if(payload?.clan?.warfront && typeof payload.clan.warfront === "object"){
+        if(!payload?.clanWarfront){
+          S.clanWarfront = cloneState(payload.clan.warfront);
+        }
+        ensureClanWarfrontState(S);
       }
       if(payload?.referral && typeof payload.referral === "object"){
         S.referralMilestone = normalizeReferralMilestoneSnapshot(payload.referral);
@@ -6768,6 +7136,7 @@ function load(){
     m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
     m.liveOps = (saved.liveOps && typeof saved.liveOps === "object") ? saved.liveOps : null;
     m.coopStrikeOps = (saved.coopStrikeOps && typeof saved.coopStrikeOps === "object") ? cloneState(saved.coopStrikeOps) : null;
+    m.clanWarfront = (saved.clanWarfront && typeof saved.clanWarfront === "object") ? cloneState(saved.clanWarfront) : null;
     m.referralMilestone = (saved.referralMilestone && typeof saved.referralMilestone === "object") ? saved.referralMilestone : null;
     m.telegramEventDrop = (saved.telegramEventDrop && typeof saved.telegramEventDrop === "object") ? saved.telegramEventDrop : null;
     m.lastMissionRecap = (saved.lastMissionRecap && typeof saved.lastMissionRecap === "object") ? saved.lastMissionRecap : null;
@@ -8900,6 +9269,8 @@ function sanitizeRuntimeState(){
   ensureBalanceStatsState();
   ensureMissionTwistState();
   ensureCoopStrikeOpsState();
+  ensureClanWarfrontState();
+  ensureSquadAbilityState();
   ensureArcadeBuildcraftState(S);
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
@@ -9141,6 +9512,14 @@ const CIVILIAN_HIT_PCT_BY_TIGER = {
   Boss:[0.12,0.15],
 };
 const ABILITY_COOLDOWN_MS = { scan:6800, sprint:5200, shield:12000 };
+const SQUAD_ABILITY_COOLDOWN_MS = Object.freeze({
+  tranq_burst: 30000,
+  smoke_screen: 26000,
+});
+const SQUAD_ABILITY_ACTIVE_MS = Object.freeze({
+  tranq_burst: 5000,
+  smoke_screen: 7000,
+});
 const ABILITY_WHEEL = [
   { key:"scan", icon:"🛰️", color:"rgba(96,165,250,.95)" },
   { key:"sprint", icon:"⚡", color:"rgba(245,158,11,.95)" },
@@ -10042,6 +10421,65 @@ function triggerAbilityCooldown(key){
   const ms = abilityCooldownDuration(key);
   if(ms <= 0) return;
   S.abilityCooldowns[key] = Date.now() + ms;
+}
+
+function ensureSquadAbilityState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return;
+  if(!src.squadAbilityCooldowns || typeof src.squadAbilityCooldowns !== "object"){
+    src.squadAbilityCooldowns = { tranq_burst:0, smoke_screen:0 };
+  }
+  if(!src.squadAbilityActiveUntil || typeof src.squadAbilityActiveUntil !== "object"){
+    src.squadAbilityActiveUntil = { tranq_burst:0, smoke_screen:0 };
+  }
+  for(const key of Object.keys(SQUAD_ABILITY_COOLDOWN_MS)){
+    if(!Number.isFinite(Number(src.squadAbilityCooldowns[key]))){
+      src.squadAbilityCooldowns[key] = 0;
+    }
+    if(!Number.isFinite(Number(src.squadAbilityActiveUntil[key]))){
+      src.squadAbilityActiveUntil[key] = 0;
+    }
+  }
+}
+
+function squadAbilityCooldownLeftMs(key, now=Date.now(), state=S){
+  ensureSquadAbilityState(state);
+  const src = (state && typeof state === "object") ? state : S;
+  return Math.max(0, Number(src.squadAbilityCooldowns?.[key] || 0) - now);
+}
+
+function squadAbilityActiveLeftMs(key, now=Date.now(), state=S){
+  ensureSquadAbilityState(state);
+  const src = (state && typeof state === "object") ? state : S;
+  return Math.max(0, Number(src.squadAbilityActiveUntil?.[key] || 0) - now);
+}
+
+function squadAbilityReady(key, now=Date.now(), state=S){
+  return squadAbilityCooldownLeftMs(key, now, state) <= 0;
+}
+
+function squadAbilityActive(key, now=Date.now(), state=S){
+  return squadAbilityActiveLeftMs(key, now, state) > 0;
+}
+
+function triggerSquadAbility(key, opts={}){
+  const now = Number.isFinite(Number(opts.now)) ? Number(opts.now) : Date.now();
+  const state = (opts.state && typeof opts.state === "object") ? opts.state : S;
+  ensureSquadAbilityState(state);
+  const cdMs = Math.max(500, Math.floor(Number(SQUAD_ABILITY_COOLDOWN_MS[key] || 0)));
+  const activeBase = (opts.activeMs ?? SQUAD_ABILITY_ACTIVE_MS[key] ?? 0);
+  const activeMs = Math.max(400, Math.floor(Number(activeBase)));
+  state.squadAbilityCooldowns[key] = now + cdMs;
+  state.squadAbilityActiveUntil[key] = now + activeMs;
+  return { cooldownMs:cdMs, activeMs };
+}
+
+function squadAbilityStatusLabel(key, now=Date.now(), state=S){
+  const activeLeft = squadAbilityActiveLeftMs(key, now, state);
+  if(activeLeft > 0) return `ACTIVE ${Math.max(1, Math.ceil(activeLeft / 1000))}s`;
+  const cdLeft = squadAbilityCooldownLeftMs(key, now, state);
+  if(cdLeft > 0) return `${Math.max(1, Math.ceil(cdLeft / 1000))}s`;
+  return "READY";
 }
 
 function checkProgressionUnlocks(opts={}){
@@ -13256,6 +13694,7 @@ function writeStoryProfileData(source="autosave", state=S){
     contracts: (src.contracts && typeof src.contracts === "object") ? cloneState(src.contracts) : null,
     liveOps: (src.liveOps && typeof src.liveOps === "object") ? cloneState(src.liveOps) : null,
     coopStrikeOps: (src.coopStrikeOps && typeof src.coopStrikeOps === "object") ? cloneState(src.coopStrikeOps) : null,
+    clanWarfront: (src.clanWarfront && typeof src.clanWarfront === "object") ? cloneState(src.clanWarfront) : null,
     ownedWeapons: Array.isArray(src.ownedWeapons) ? src.ownedWeapons.filter((id)=>typeof id === "string") : [],
     equippedWeaponId: String(src.equippedWeaponId || ""),
     ammoReserve: { ...(src.ammoReserve || {}) },
@@ -13287,6 +13726,12 @@ function writeStoryProfileData(source="autosave", state=S){
     clanContractClaims: (src.clanContractClaims && typeof src.clanContractClaims === "object")
       ? cloneState(src.clanContractClaims)
       : {},
+    squadAbilityCooldowns: (src.squadAbilityCooldowns && typeof src.squadAbilityCooldowns === "object")
+      ? cloneState(src.squadAbilityCooldowns)
+      : { tranq_burst:0, smoke_screen:0 },
+    squadAbilityActiveUntil: (src.squadAbilityActiveUntil && typeof src.squadAbilityActiveUntil === "object")
+      ? cloneState(src.squadAbilityActiveUntil)
+      : { tranq_burst:0, smoke_screen:0 },
     seasonPass: cloneState(seasonPass),
     masteryRewards: cloneState(masteryRewards),
     savedAt: Date.now(),
@@ -13479,6 +13924,10 @@ function applyStoryProfileToState(state, profile){
     state.coopStrikeOps = cloneState(profile.coopStrikeOps);
     ensureCoopStrikeOpsState(state);
   }
+  if(profile.clanWarfront && typeof profile.clanWarfront === "object"){
+    state.clanWarfront = cloneState(profile.clanWarfront);
+    ensureClanWarfrontState(state);
+  }
 
   state.armorPlates = normalizeArmorPlateInventory(mergeCountMapsFromProfile(state.armorPlates, profile.armorPlates));
   state.armorPlatesFallback = normalizeArmorPlateInventory(
@@ -13501,6 +13950,21 @@ function applyStoryProfileToState(state, profile){
   if(profile.clanContractClaims && typeof profile.clanContractClaims === "object"){
     state.clanContractClaims = cloneState(profile.clanContractClaims);
   }
+  if(profile.squadAbilityCooldowns && typeof profile.squadAbilityCooldowns === "object"){
+    ensureSquadAbilityState(state);
+    state.squadAbilityCooldowns = {
+      ...state.squadAbilityCooldowns,
+      ...cloneState(profile.squadAbilityCooldowns),
+    };
+  }
+  if(profile.squadAbilityActiveUntil && typeof profile.squadAbilityActiveUntil === "object"){
+    ensureSquadAbilityState(state);
+    state.squadAbilityActiveUntil = {
+      ...state.squadAbilityActiveUntil,
+      ...cloneState(profile.squadAbilityActiveUntil),
+    };
+  }
+  ensureSquadAbilityState(state);
   ensureClanState(state);
   if(profile.seasonPass && typeof profile.seasonPass === "object"){
     state.seasonPass = mergeSeasonPassSnapshots(state.seasonPass, profile.seasonPass);
@@ -13645,6 +14109,9 @@ function writeStoryProgressData(payload={}){
     coopStrikeOps: (payload.coopStrikeOps && typeof payload.coopStrikeOps === "object")
       ? cloneState(payload.coopStrikeOps)
       : ((S.coopStrikeOps && typeof S.coopStrikeOps === "object") ? cloneState(S.coopStrikeOps) : null),
+    clanWarfront: (payload.clanWarfront && typeof payload.clanWarfront === "object")
+      ? cloneState(payload.clanWarfront)
+      : ((S.clanWarfront && typeof S.clanWarfront === "object") ? cloneState(S.clanWarfront) : null),
     soldierAttackersOwned: Math.max(0, Math.floor(Number(payload.soldierAttackersOwned ?? S.soldierAttackersOwned ?? 0))),
     soldierRescuersOwned: Math.max(0, Math.floor(Number(payload.soldierRescuersOwned ?? S.soldierRescuersOwned ?? 0))),
     soldierAttackersDowned: Math.max(0, Math.floor(Number(payload.soldierAttackersDowned ?? S.soldierAttackersDowned ?? 0))),
@@ -13655,6 +14122,12 @@ function writeStoryProgressData(payload={}){
     clanContractClaims: (payload.clanContractClaims && typeof payload.clanContractClaims === "object")
       ? cloneState(payload.clanContractClaims)
       : ((S.clanContractClaims && typeof S.clanContractClaims === "object") ? cloneState(S.clanContractClaims) : {}),
+    squadAbilityCooldowns: (payload.squadAbilityCooldowns && typeof payload.squadAbilityCooldowns === "object")
+      ? cloneState(payload.squadAbilityCooldowns)
+      : ((S.squadAbilityCooldowns && typeof S.squadAbilityCooldowns === "object") ? cloneState(S.squadAbilityCooldowns) : { tranq_burst:0, smoke_screen:0 }),
+    squadAbilityActiveUntil: (payload.squadAbilityActiveUntil && typeof payload.squadAbilityActiveUntil === "object")
+      ? cloneState(payload.squadAbilityActiveUntil)
+      : ((S.squadAbilityActiveUntil && typeof S.squadAbilityActiveUntil === "object") ? cloneState(S.squadAbilityActiveUntil) : { tranq_burst:0, smoke_screen:0 }),
     seasonPass: (payload.seasonPass && typeof payload.seasonPass === "object")
       ? cloneState(payload.seasonPass)
       : cloneState(seasonPass),
@@ -16505,10 +16978,14 @@ function renderInventory(){
   const masteryCount = masteryClaimedCount(S);
   const eliteTitle = masteryEliteTitleDisplay(S);
   const eliteTitleTxt = eliteTitle ? `${eliteTitle.icon} ${eliteTitle.name}` : "Base title";
+  ensureSquadAbilityState(S);
+  const squadTranqStatus = squadAbilityStatusLabel("tranq_burst");
+  const squadSmokeStatus = squadAbilityStatusLabel("smoke_screen");
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
      <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Build:</b> ${attachmentBuildSummaryForWeapon(w.id)} • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
+     <b>Squad Abilities:</b> Tranq Burst ${squadTranqStatus} • Smoke Screen ${squadSmokeStatus}<br>
      <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}<br>
      <b>Mastery:</b> ${masteryCount}/${MASTERY_TRACKS.length} claimed • <b>Elite Title:</b> ${eliteTitleTxt}`;
 
@@ -16698,6 +17175,13 @@ function renderInventory(){
   }).join("");
   const coop = ensureCoopStrikeOpsState(S);
   const coopRole = coopRoleLabel(coop.rolePref);
+  const warfront = ensureClanWarfrontState(S);
+  updateClanWarfrontTick(S);
+  const warfrontRows = Array.isArray(warfront.territories) ? warfront.territories : [];
+  const warfrontAvgControl = warfrontRows.length
+    ? Math.round(warfrontRows.reduce((sum, row)=>sum + clamp(Number(row.control || 0), 0, 100), 0) / warfrontRows.length)
+    : 0;
+  const warfrontSeasonReady = clanWarfrontAllTerritoriesReady(S);
   const coopRowsHtml = (Array.isArray(coop.hotspots) ? coop.hotspots : []).map((entry)=>{
     const progress = Math.max(0, Math.floor(Number(entry.progress || 0)));
     const target = Math.max(1, Math.floor(Number(entry.target || 1)));
@@ -16718,6 +17202,30 @@ function renderInventory(){
         </div>
         <div style="text-align:right">
           <button ${(claimed || !ready) ? "disabled" : ""} onclick="claimCoopStrikeHotspot('${entry.id}')">${claimed ? "Claimed" : "Claim"}</button>
+        </div>
+      </div>`;
+  }).join("");
+  const warfrontRowsHtml = warfrontRows.map((entry)=>{
+    const progress = Math.max(0, Math.floor(Number(entry.progress || 0)));
+    const target = Math.max(1, Math.floor(Number(entry.target || 1)));
+    const personal = Math.max(0, Math.floor(Number(entry.personal || 0)));
+    const control = Math.round(clamp(Number(entry.control || 0), 0, 100));
+    const controlPct = clamp(control, 0, 100);
+    const ready = progress >= target && control >= 62;
+    const claimed = clanWarfrontTerritoryClaimed(entry.period, entry.id, S);
+    const status = claimed ? "Claimed" : (ready ? "Ready" : `${progress}/${target}`);
+    const reward = entry.reward || {};
+    const rewardText = `+$${Math.max(0, Math.floor(Number(reward.cash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(reward.perkPoints || 0)))} perk • +${Math.max(0, Math.floor(Number(reward.seasonPoints || 0)))} pass pts`;
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${entry.title} <span class="tag">${status}</span> <span class="tag">Control ${control}%</span> <span class="tag">You ${personal} pts</span></div>
+          <div class="itemDesc">${entry.desc}</div>
+          <div class="itemDesc">Reward: ${rewardText}</div>
+          <div class="bar"><div class="fill green" style="width:${controlPct}%"></div></div>
+        </div>
+        <div style="text-align:right">
+          <button ${(claimed || !ready) ? "disabled" : ""} onclick="claimClanWarfrontTerritory('${entry.id}')">${claimed ? "Claimed" : "Claim"}</button>
         </div>
       </div>`;
   }).join("");
@@ -16781,12 +17289,14 @@ function renderInventory(){
         <div class="itemDesc">Co-op raid mode: <b>${S.clanRaidEnabled ? "ON" : "OFF"}</b> (Arcade only, deploys 2-player wingman support)</div>
         <div class="itemDesc">Clan contract period: ${clanPeriod} • ${S.clanCloud ? "shared progress via cloud sync" : "local progress fallback"}</div>
         <div class="itemDesc">Co-op Strike Ops role: <b>${coopRole}</b> • Total points ${Math.max(0, Math.floor(Number(coop.pointsTotal || 0))).toLocaleString()} • Capture synergy pts ${Math.max(0, Math.floor(Number(coop.capturePoints || 0))).toLocaleString()}</div>
+        <div class="itemDesc">Warfront season: <b>${warfront.key}</b> • Influence ${Math.max(0, Math.floor(Number(warfront.pointsTotal || 0))).toLocaleString()} • Avg control ${warfrontAvgControl}%</div>
       </div>
       <div style="text-align:right">
         <button class="ghost" onclick="setClanTagPrompt()">Set Tag</button>
         <button class="ghost" onclick="setClanNamePrompt()">Rename</button>
         <button class="${S.clanRaidEnabled ? "good" : "ghost"}" onclick="toggleRaidMode()">${S.clanRaidEnabled ? "Raid ON" : "Raid OFF"}</button>
         <button class="ghost" onclick="cycleCoopRolePref()">Role: ${coopRole}</button>
+        <button class="ghost" ${(warfrontSeasonReady && !clanWarfrontSeasonChestClaimed(warfront.key, S)) ? "" : "disabled"} onclick="claimClanWarfrontSeasonChest()">Season Chest</button>
         <button class="ghost" onclick="refreshClanCloudNow()">Refresh</button>
       </div>
     </div>
@@ -16798,6 +17308,13 @@ function renderInventory(){
       </div>
     </div>
     ${coopRowsHtml}
+    <div class="item" style="padding:10px 12px;">
+      <div>
+        <div class="itemName">Clan Warfront Seasons <span class="tag">Territory Control</span> <span class="tag">${warfrontSeasonReady ? "Season Chest Ready" : "Season Chest Locked"}</span></div>
+        <div class="itemDesc">Control sectors by capturing tigers, completing missions, and keeping pressure low. Claim each secured territory for rewards.</div>
+      </div>
+    </div>
+    ${warfrontRowsHtml}
 
     <div class="divider"></div>
     <div class="hudTitle" id="invLiveOpsAnchor">Live Ops</div>
@@ -17237,6 +17754,16 @@ window.enterTutorialMode = function () {
   S.abilityCooldowns.scan = 0;
   S.abilityCooldowns.sprint = 0;
   S.abilityCooldowns.shield = 0;
+  ensureSquadAbilityState();
+  S.squadAbilityCooldowns.tranq_burst = 0;
+  S.squadAbilityCooldowns.smoke_screen = 0;
+  S.squadAbilityActiveUntil.tranq_burst = 0;
+  S.squadAbilityActiveUntil.smoke_screen = 0;
+  ensureSquadAbilityState();
+  S.squadAbilityCooldowns.tranq_burst = 0;
+  S.squadAbilityCooldowns.smoke_screen = 0;
+  S.squadAbilityActiveUntil.tranq_burst = 0;
+  S.squadAbilityActiveUntil.smoke_screen = 0;
 
   // Tutorial loadout guarantees Attack and Capture steps can proceed.
   if(!S.ownedWeapons.includes("W_9MM_JUNK")) S.ownedWeapons.push("W_9MM_JUNK");
@@ -20082,6 +20609,7 @@ function supportTigerHitDamage(tiger, role){
   if(tiger?.type === "Stalker") dmg *= 1.06;
   if(isBossTiger(tiger)) dmg *= 1.18;
   if(role === "rescue") dmg *= 1.04;
+  if(role === "rescue" && squadAbilityActive("smoke_screen")) dmg *= 0.82;
   if(S.mode==="Story"){
     if(role === "attacker"){
       const resist = clamp(1 - (storySpecialistRank("SP_ATK_DRILL") * 0.06), 0.72, 1);
@@ -20100,7 +20628,8 @@ function supportAttackDamage(unit, tiger, tigerDist){
   const antiTigerSkill = 1.30;
   const targetResist = 1 - ((rank - 1) * 0.06);
   const boost = storyAttackerDamageMul();
-  return Math.max(5, Math.round(base * antiTigerSkill * clamp(targetResist, 0.70, 1.0) * boost));
+  const burstMul = squadAbilityActive("tranq_burst") ? 1.18 : 1;
+  return Math.max(5, Math.round(base * antiTigerSkill * clamp(targetResist, 0.70, 1.0) * boost * burstMul));
 }
 
 function supportShouldForceKill(unit, tiger, tigerDist, threatRange=104){
@@ -20257,6 +20786,42 @@ function supportUnitsTick(){
     attacker: aliveUnits.filter((unit)=>unit.role === "attacker").length,
     rescue: aliveUnits.filter((unit)=>unit.role === "rescue").length,
   };
+  ensureSquadAbilityState(S);
+  const squadHasAttackers = roleCounts.attacker > 0;
+  const squadHasRescuers = roleCounts.rescue > 0;
+  if(
+    squadHasAttackers &&
+    activeTigers.length &&
+    (commandAuto || commandAttackTarget || commandRegroup) &&
+    squadAbilityReady("tranq_burst", now, S)
+  ){
+    const burstTarget = priorityTiger || lockTiger || nearestTigerTo(S.me.x, S.me.y).tiger;
+    if(burstTarget && burstTarget.alive){
+      triggerSquadAbility("tranq_burst", { now, state:S });
+      burstTarget.tranqTagged = true;
+      burstTarget._squadTranqBurstUntil = now + SQUAD_ABILITY_ACTIVE_MS.tranq_burst;
+      const burstDmg = Math.max(
+        4,
+        Math.round(
+          Math.min(
+            Math.max(6, burstTarget.hpMax * (isBossTiger(burstTarget) ? 0.05 : 0.09)),
+            Math.max(6, burstTarget.hp - 1)
+          )
+        )
+      );
+      burstTarget.hp = clamp(burstTarget.hp - burstDmg, 1, burstTarget.hpMax);
+      setEventText(`🧪 Squad Ability: Tranq Burst on ${burstTarget.type}.`, 2.4);
+    }
+  }
+  if(
+    squadHasRescuers &&
+    liveCivs.length &&
+    (commandRescue || S._underAttack > 0 || !!dangerCiv) &&
+    squadAbilityReady("smoke_screen", now, S)
+  ){
+    triggerSquadAbility("smoke_screen", { now, state:S });
+    setEventText("🌫️ Squad Ability: Smoke Screen deployed for civilian cover.", 2.4);
+  }
   const roleIndexMap = new Map();
   const roleCursor = { attacker:0, rescue:0 };
   for(const unit of aliveUnits){
@@ -20479,7 +21044,8 @@ function supportUnitsTick(){
           if(captureFirst){
             tiger.tranqTagged = true;
             tiger.hp = Math.max(1, tiger.hp - Math.max(1, Math.round(shotDmg * 0.35)));
-            const capChance = clamp(0.62 + storyAttackerCaptureBonus(), 0.62, 0.95);
+            const burstBonus = (squadAbilityActive("tranq_burst", now, S) || now < Number(tiger._squadTranqBurstUntil || 0)) ? 0.12 : 0;
+            const capChance = clamp(0.62 + storyAttackerCaptureBonus() + burstBonus, 0.62, 0.97);
             if(Math.random() < capChance){
               markStoryFinalBossOutcome("CAPTURE", tiger);
               tiger.alive = false;
@@ -20487,6 +21053,7 @@ function supportUnitsTick(){
               addContractTally("captures", 1);
               addOpsTotal("captures", 1);
               addCoopStrikeContribution("capture", 12, { coordinated:true, silent:true });
+              addClanWarfrontContribution("capture", 10, { coordinated:true, silent:true });
               const pay = payout("CAPTURE");
               const cash = Math.round(pay.cash * 0.42);
               const score = Math.round(pay.score * 0.45);
@@ -20887,6 +21454,7 @@ function evacCheck(){
       addContractTally("evac", 1);
       addOpsTotal("evac", 1);
       addCoopStrikeContribution("rescue", 9, { coordinated:c.following });
+      addClanWarfrontContribution("rescue", 8, { coordinated:c.following });
       addXP(35);
       awardCombo("rescue");
       toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length})`);
@@ -20967,8 +21535,9 @@ function tickCiviliansAndThreats(){
       const nearbySupport = (S.supportUnits || []).filter(unit => dist(unit.x, unit.y, best.x, best.y) < 96).length;
       const guardMult = nearbySupport ? clamp(1 - nearbySupport * 0.35, 0.3, 1) : 1;
       const protectMult = S._protectTicks > 0 ? 0.45 : 1;
+      const smokeMult = squadAbilityActive("smoke_screen", now, S) ? 0.56 : 1;
       const shieldMult = civilianShielded(best) ? 0 : 1;
-      const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * perkCivMul() * storyCivilianDamageMul();
+      const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * smokeMult * perkCivMul() * storyCivilianDamageMul();
       const dmg = shieldMult ? Math.max(1, Math.round(scaled)) : 0;
       const prevHp = best.hp;
       best.hp = clamp(best.hp - dmg, 0, best.hpMax);
@@ -22961,6 +23530,7 @@ function finishTigerKill(t){
   if(bossKill) addContractTally("bossesDefeated", 1);
   addOpsTotal("kills", 1);
   addCoopStrikeContribution("kill", bossKill ? 8 : 5, { boss:bossKill, silent:true });
+  addClanWarfrontContribution("kill", bossKill ? 7 : 4, { boss:bossKill, silent:true });
   addXP(50);
   grantSeasonPassPoints(8, "Tiger eliminated");
   applySeasonFinisherVisual(t, "KILL");
@@ -23056,6 +23626,7 @@ function playerAction(action){
     if(bossCapture) addContractTally("bossesDefeated", 1);
     addOpsTotal("captures", 1);
     addCoopStrikeContribution("capture", bossCapture ? 20 : 14, { boss:bossCapture, coordinated:true });
+    addClanWarfrontContribution("capture", bossCapture ? 17 : 12, { boss:bossCapture, coordinated:true });
     addXP(90);
     grantSeasonPassPoints(10, "Tiger captured");
     applySeasonFinisherVisual(t, "CAPTURE");
@@ -23517,6 +24088,10 @@ function checkMissionComplete(){
         coordinated:(squadAliveCount("attacker") > 0 && squadAliveCount("rescue") > 0),
         boss: !!storyMission?.boss
       });
+      addClanWarfrontContribution("mission", 34, {
+        coordinated:(squadAliveCount("attacker") > 0 && squadAliveCount("rescue") > 0),
+        boss: !!storyMission?.boss
+      });
       requestGameplayCloudSync("mission-complete", { force:true });
       setPaused(true,"complete");
       transitionCleanupSweep("mission-complete");
@@ -23775,7 +24350,10 @@ function renderHUD(){
   const shieldLabel = shieldActiveNow() ? `${S.shields||0} • ACTIVE (${shieldSecs}s)` : `${S.shields||0}`;
   document.getElementById("shieldTxt").innerText = shieldLabel;
 
-  document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")}) • Form ${squadFormationLabel()}`;
+  ensureSquadAbilityState(S);
+  const tranqHud = squadAbilityStatusLabel("tranq_burst");
+  const smokeHud = squadAbilityStatusLabel("smoke_screen");
+  document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")}) • Form ${squadFormationLabel()} • Skills Tranq ${tranqHud} / Smoke ${smokeHud}`;
   const canShieldUse = !S.paused && !S.missionEnded && !S.gameOver && (S.shields||0)>0 && !abilityOnCooldown("shield");
   const canArmorQuickUse = canQuickUseArmorPlate();
   const shieldDisabled = !(canShieldUse || canArmorQuickUse);
@@ -28264,6 +28842,8 @@ window.refreshClanCloudNow = refreshClanCloudNow;
 window.claimClanContract = claimClanContract;
 window.cycleCoopRolePref = cycleCoopRolePref;
 window.claimCoopStrikeHotspot = claimCoopStrikeHotspot;
+window.claimClanWarfrontTerritory = claimClanWarfrontTerritory;
+window.claimClanWarfrontSeasonChest = claimClanWarfrontSeasonChest;
 window.clearPendingStarsPurchase = clearPendingStarsPurchase;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
