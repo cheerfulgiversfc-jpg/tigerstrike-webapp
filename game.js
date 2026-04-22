@@ -740,6 +740,14 @@ const NEMESIS_KILL_BONUS_XP = 95;
 const NEMESIS_SEASON_HUNT_BONUS_CASH_BASE = 1400;
 const NEMESIS_SEASON_HUNT_BONUS_XP = 120;
 const NEMESIS_SEASON_PASS_POINTS = 16;
+const NEMESIS_HUNTBOARD_POINT_MAX = 9999;
+const NEMESIS_HUNTBOARD_LADDER = Object.freeze([
+  Object.freeze({ id:"RUNG_1", target:60, reward:{ cash:4200, perkPoints:1, seasonPoints:10 } }),
+  Object.freeze({ id:"RUNG_2", target:140, reward:{ cash:9800, perkPoints:2, seasonPoints:18 } }),
+  Object.freeze({ id:"RUNG_3", target:260, reward:{ cash:18200, perkPoints:2, seasonPoints:30 } }),
+  Object.freeze({ id:"RUNG_4", target:420, reward:{ cash:28600, perkPoints:3, seasonPoints:44 } }),
+  Object.freeze({ id:"RUNG_5", target:620, reward:{ cash:42000, perkPoints:4, seasonPoints:60 } }),
+]);
 const NEMESIS_NAME_PREFIX = Object.freeze([
   "Scar","Night","Ash","Iron","Dread","Ruin","Blood","Ghost","Storm","Fang"
 ]);
@@ -1150,6 +1158,7 @@ function defaultNemesisState(){
     lastSpawnId: "",
     lastBountyAt: 0,
     season: defaultNemesisSeasonState(),
+    huntboard: defaultNemesisHuntboardState(),
     roster: [],
   };
 }
@@ -1170,6 +1179,18 @@ function defaultNemesisSeasonState(weekKey=weeklyChallengeWeekKey()){
     lastOutcome: "",
     lifetimeClears: 0,
     allTimeBestClearSec: 0,
+  };
+}
+
+function defaultNemesisHuntboardState(weekKey=weeklyChallengeWeekKey()){
+  return {
+    weekKey: String(weekKey || weeklyChallengeWeekKey()),
+    points: 0,
+    claimed: {},
+    lifetimePoints: 0,
+    lifetimeClaims: 0,
+    lastEventAt: 0,
+    lastSource: "",
   };
 }
 
@@ -6322,6 +6343,81 @@ function normalizeNemesisSeasonState(raw, roster=[], missionNo=1){
   return out;
 }
 
+function normalizeNemesisHuntboardState(raw, weekKey=weeklyChallengeWeekKey()){
+  const activeWeek = String(weekKey || weeklyChallengeWeekKey()).trim() || "week";
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const prevWeek = String(src.weekKey || activeWeek).trim() || activeWeek;
+  const changedWeek = prevWeek !== activeWeek;
+  const claimedRaw = (!changedWeek && src.claimed && typeof src.claimed === "object") ? src.claimed : {};
+  const claimed = {};
+  for(const tier of NEMESIS_HUNTBOARD_LADDER){
+    claimed[tier.id] = !!claimedRaw[tier.id];
+  }
+  return {
+    ...defaultNemesisHuntboardState(activeWeek),
+    weekKey: activeWeek,
+    points: changedWeek ? 0 : clamp(Math.floor(Number(src.points || 0)), 0, NEMESIS_HUNTBOARD_POINT_MAX),
+    claimed,
+    lifetimePoints: Math.max(0, Math.floor(Number(src.lifetimePoints || 0))),
+    lifetimeClaims: Math.max(0, Math.floor(Number(src.lifetimeClaims || 0))),
+    lastEventAt: Math.max(0, Math.floor(Number(src.lastEventAt || 0))),
+    lastSource: String(src.lastSource || "").slice(0, 48),
+  };
+}
+
+function ensureNemesisHuntboardState(nemesisState, weekKey=weeklyChallengeWeekKey()){
+  const base = (nemesisState && typeof nemesisState === "object")
+    ? nemesisState
+    : ensureNemesisState(S);
+  base.huntboard = normalizeNemesisHuntboardState(base.huntboard, weekKey);
+  return base.huntboard;
+}
+
+function nemesisTraitChips(entry, missionNo=1){
+  if(!entry) return [];
+  const power = Math.max(1, computeNemesisPower(entry, missionNo));
+  const chips = [];
+  if(entry.behavior) chips.push(String(entry.behavior).toUpperCase());
+  if(entry.type === "Stalker") chips.push("AMBUSH");
+  if(entry.type === "Scout") chips.push("EVADE");
+  if(entry.type === "Berserker") chips.push("FRENZY");
+  if(entry.type === "Alpha") chips.push("PACKCALL");
+  if(Math.max(1, Math.floor(Number(entry.escapes || 1))) >= 3) chips.push("ESCAPE ARTIST");
+  if(Math.max(0, Math.floor(Number(entry.returns || 0))) >= 2) chips.push("RELENTLESS");
+  if(power >= 7) chips.push("APEX HUNTER");
+  return Array.from(new Set(chips)).slice(0, 4);
+}
+
+function addNemesisHuntboardPoints(points=0, source="", options={}){
+  const add = Math.max(0, Math.floor(Number(points || 0)));
+  if(add <= 0) return 0;
+  const opts = (options && typeof options === "object") ? options : {};
+  const nemesis = ensureNemesisState(S);
+  const board = ensureNemesisHuntboardState(nemesis);
+  const before = clamp(Math.floor(Number(board.points || 0)), 0, NEMESIS_HUNTBOARD_POINT_MAX);
+  const after = clamp(before + add, 0, NEMESIS_HUNTBOARD_POINT_MAX);
+  const gained = Math.max(0, after - before);
+  if(gained <= 0) return 0;
+  board.points = after;
+  board.lifetimePoints = Math.max(0, Math.floor(Number(board.lifetimePoints || 0))) + gained;
+  board.lastEventAt = Date.now();
+  board.lastSource = String(source || "Nemesis").slice(0, 48);
+  if(opts.toast !== false){
+    toast(`Nemesis Huntboard +${gained} pts${source ? ` (${source})` : ""}`);
+  }
+  return gained;
+}
+
+function nemesisWeeklyLadderProgress(board){
+  const src = (board && typeof board === "object") ? board : ensureNemesisHuntboardState(ensureNemesisState(S));
+  const points = clamp(Math.floor(Number(src.points || 0)), 0, NEMESIS_HUNTBOARD_POINT_MAX);
+  return NEMESIS_HUNTBOARD_LADDER.map((tier)=>{
+    const claimed = !!src.claimed?.[tier.id];
+    const ready = points >= tier.target;
+    return { ...tier, points, claimed, ready };
+  });
+}
+
 function ensureNemesisSeasonState(nemesisState, missionNo=currentStoryMissionNumber(S)){
   const base = (nemesisState && typeof nemesisState === "object")
     ? nemesisState
@@ -6355,6 +6451,7 @@ function ensureNemesisState(state=S){
     lastSpawnId: String(current.lastSpawnId || "").slice(0, 40),
     lastBountyAt: Math.max(0, Math.floor(Number(current.lastBountyAt || 0))),
     season: normalizeNemesisSeasonState(current.season, roster, missionNo),
+    huntboard: normalizeNemesisHuntboardState(current.huntboard, weeklyChallengeWeekKey()),
     roster,
   };
   if(src.nemesis.seq < roster.length){
@@ -6393,6 +6490,7 @@ function mergeNemesisState(currentNemesis, incomingNemesis, missionNo=1){
       : String(base.lastSpawnId || ""),
     lastBountyAt: Math.max(base.lastBountyAt || 0, incoming.lastBountyAt || 0),
     season: null,
+    huntboard: null,
     roster: [],
   };
   const byId = new Map();
@@ -6438,8 +6536,70 @@ function mergeNemesisState(currentNemesis, incomingNemesis, missionNo=1){
       return Math.min(a, b);
     })(),
   }, merged.roster, missionNo);
+  const weekKey = weeklyChallengeWeekKey();
+  const baseBoard = normalizeNemesisHuntboardState(base.huntboard, weekKey);
+  const incomingBoard = normalizeNemesisHuntboardState(incoming.huntboard, weekKey);
+  const mergedClaimed = {};
+  for(const tier of NEMESIS_HUNTBOARD_LADDER){
+    mergedClaimed[tier.id] = !!(baseBoard.claimed?.[tier.id] || incomingBoard.claimed?.[tier.id]);
+  }
+  merged.huntboard = normalizeNemesisHuntboardState({
+    weekKey,
+    points: Math.max(
+      Math.floor(Number(baseBoard.points || 0)),
+      Math.floor(Number(incomingBoard.points || 0))
+    ),
+    claimed: mergedClaimed,
+    lifetimePoints: Math.max(
+      Math.floor(Number(baseBoard.lifetimePoints || 0)),
+      Math.floor(Number(incomingBoard.lifetimePoints || 0))
+    ),
+    lifetimeClaims: Math.max(
+      Math.floor(Number(baseBoard.lifetimeClaims || 0)),
+      Math.floor(Number(incomingBoard.lifetimeClaims || 0))
+    ),
+    lastEventAt: Math.max(
+      Math.floor(Number(baseBoard.lastEventAt || 0)),
+      Math.floor(Number(incomingBoard.lastEventAt || 0))
+    ),
+    lastSource: Number(incomingBoard.lastEventAt || 0) >= Number(baseBoard.lastEventAt || 0)
+      ? String(incomingBoard.lastSource || "")
+      : String(baseBoard.lastSource || ""),
+  }, weekKey);
   trimNemesisRoster(merged);
   return merged;
+}
+
+function claimNemesisHuntboardTier(tierId){
+  const nemesis = ensureNemesisState(S);
+  const board = ensureNemesisHuntboardState(nemesis);
+  const tier = NEMESIS_HUNTBOARD_LADDER.find((row)=>row.id === String(tierId || "").trim());
+  if(!tier) return toast("Unknown bounty rung.");
+  if(board.claimed?.[tier.id]) return toast("Bounty rung already claimed this week.");
+  if(Math.floor(Number(board.points || 0)) < tier.target){
+    return toast(`Need ${tier.target} Huntboard points first.`);
+  }
+  board.claimed[tier.id] = true;
+  board.lifetimeClaims = Math.max(0, Math.floor(Number(board.lifetimeClaims || 0))) + 1;
+  const cash = Math.max(0, Math.floor(Number(tier.reward?.cash || 0)));
+  const perks = Math.max(0, Math.floor(Number(tier.reward?.perkPoints || 0)));
+  const seasonPts = Math.max(0, Math.floor(Number(tier.reward?.seasonPoints || 0)));
+  if(cash > 0){
+    S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + cash;
+    trackCashEarned(cash);
+  }
+  if(perks > 0){
+    S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + perks;
+  }
+  if(seasonPts > 0){
+    grantSeasonPassPoints(seasonPts, "Nemesis Huntboard ladder");
+  }
+  toast(`🏆 Huntboard rung claimed: +$${cash.toLocaleString()} • +${perks} perk • +${seasonPts} pass pts`);
+  sfx("ui");
+  hapticImpact("light");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display === "flex") renderInventory();
 }
 
 function registerTigerEscapeNemesis(t, reason="RETREAT"){
@@ -6511,6 +6671,7 @@ function registerTigerEscapeNemesis(t, reason="RETREAT"){
     season.targetStatus = "tracked";
   }
   trimNemesisRoster(nemesis);
+  addNemesisHuntboardPoints(12 + Math.max(0, Math.floor(Number(entry.power || 1))), "escape", { toast:false });
   setEventText(`☠️ Nemesis escaped: ${entry.alias} (Lv ${entry.power}) • Bounty now $${entry.bountyCash.toLocaleString()}`, 5.5);
   if(reason === "RETREAT"){
     toast(`Nemesis escaped: ${entry.alias} is getting stronger.`);
@@ -6594,6 +6755,7 @@ function pickReturningNemesisForMission(missionNo=currentStoryMissionNumber(S)){
   nemesis.lastSpawnMission = missionNo;
   nemesis.lastSpawnId = chosen.id;
   trimNemesisRoster(nemesis);
+  addNemesisHuntboardPoints(18 + Math.max(0, Math.floor(Number(chosen.power || 1))), "return", { toast:false });
   return chosen;
 }
 
@@ -6656,6 +6818,8 @@ function resolveNemesisOutcome(t, outcome="KILL"){
   entry.bountyCash = 0;
   nemesis.lastBountyAt = Date.now();
   t._nemesisResolved = true;
+  const isCapture = String(outcome).toUpperCase() === "CAPTURE";
+  addNemesisHuntboardPoints((isCapture ? 55 : 40) + Math.round(power * 1.5), isCapture ? "capture" : "kill", { toast:false });
   if(season.targetId && season.targetId === entry.id){
     const missionStartAt = Math.max(0, Math.floor(Number(S._missionStartAt || 0)));
     const clearSec = missionStartAt > 0 ? Math.max(1, Math.round((Date.now() - missionStartAt) / 1000)) : 0;
@@ -6675,6 +6839,7 @@ function resolveNemesisOutcome(t, outcome="KILL"){
     trackCashEarned(seasonBonusCash);
     addXP(seasonBonusXp);
     grantSeasonPassPoints(NEMESIS_SEASON_PASS_POINTS, "Nemesis season hunt clear");
+    addNemesisHuntboardPoints(25 + Math.round(power * 1.2), "season clear", { toast:false });
     toast(`Season Hunt clear: +$${seasonBonusCash.toLocaleString()} • +${seasonBonusXp}XP${clearSec > 0 ? ` • ${clearSec}s` : ""}`);
   }
   setEventText(
@@ -17444,6 +17609,58 @@ function renderInventory(){
         </div>
       </div>`;
   }).join("");
+  const nemesisState = ensureNemesisState(S);
+  const nemesisSeason = ensureNemesisSeasonState(nemesisState, currentStoryMissionNumber(S));
+  const nemesisBoard = ensureNemesisHuntboardState(nemesisState);
+  const nemesisTargets = (Array.isArray(nemesisState.roster) ? nemesisState.roster : [])
+    .filter((entry)=>entry && entry.status !== "resolved")
+    .sort((a, b)=>{
+      const pa = Math.max(1, Math.floor(Number(a?.power || 1)));
+      const pb = Math.max(1, Math.floor(Number(b?.power || 1)));
+      if(pb !== pa) return pb - pa;
+      return Number(b?.updatedAt || 0) - Number(a?.updatedAt || 0);
+    })
+    .slice(0, 4);
+  const nemesisTargetsHtml = nemesisTargets.length
+    ? nemesisTargets.map((entry)=>{
+      const power = Math.max(1, computeNemesisPower(entry, currentStoryMissionNumber(S)));
+      const bounty = Math.max(0, Math.floor(Number(entry.bountyCash || computeNemesisBountyCash(entry, currentStoryMissionNumber(S)))));
+      const traits = nemesisTraitChips(entry, currentStoryMissionNumber(S));
+      const status = String(entry.status || "escaped").toUpperCase();
+      return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${entry.alias || "Nemesis"} <span class="tag">${entry.type || "Standard"}</span> <span class="tag">Lv ${power}</span> <span class="tag">${status}</span></div>
+          <div class="itemDesc">${traits.length ? `Traits: ${traits.join(" • ")}` : "Traits: Hunter"}</div>
+          <div class="itemDesc">Escapes ${Math.max(1, Math.floor(Number(entry.escapes || 1)))} • Returns ${Math.max(0, Math.floor(Number(entry.returns || 0)))} • Bounty $${bounty.toLocaleString()}</div>
+        </div>
+      </div>`;
+    }).join("")
+    : `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">No active Nemesis target</div>
+          <div class="itemDesc">Let a tiger escape in Story mode to seed the first Huntboard boss.</div>
+        </div>
+      </div>`;
+  const nemesisLadderRowsHtml = nemesisWeeklyLadderProgress(nemesisBoard).map((tier, idx)=>{
+    const reward = tier.reward || {};
+    const rewardText = `+$${Math.max(0, Math.floor(Number(reward.cash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(reward.perkPoints || 0)))} perk • +${Math.max(0, Math.floor(Number(reward.seasonPoints || 0)))} pass pts`;
+    const status = tier.claimed ? "Claimed" : (tier.ready ? "Ready" : `${tier.points}/${tier.target}`);
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">Weekly Bounty Rung ${idx + 1} <span class="tag">${status}</span></div>
+          <div class="itemDesc">Target: ${tier.target} Huntboard pts • Reward: ${rewardText}</div>
+        </div>
+        <div style="text-align:right">
+          <button ${(tier.claimed || !tier.ready) ? "disabled" : ""} onclick="claimNemesisHuntboardTier('${tier.id}')">${tier.claimed ? "Claimed" : "Claim"}</button>
+        </div>
+      </div>`;
+  }).join("");
+  const nemesisSeasonStatus = nemesisSeason.targetId
+    ? `${nemesisSeason.targetAlias || "Nemesis"} • ${nemesisSeason.targetType || "Standard"} • Lv ${Math.max(1, Math.floor(Number(nemesisSeason.targetPower || 1)))}`
+    : "No tracked target";
 
   document.getElementById("invSupplies").innerHTML = `
     <div class="item">
@@ -17530,6 +17747,18 @@ function renderInventory(){
       </div>
     </div>
     ${warfrontRowsHtml}
+
+    <div class="divider"></div>
+    <div class="hudTitle" id="invNemesisAnchor">Nemesis Huntboard</div>
+    <div class="item" style="padding:10px 12px;">
+      <div>
+        <div class="itemName">Weekly Huntboard <span class="tag">Week ${String(nemesisBoard.weekKey || weeklyChallengeWeekKey())}</span> <span class="tag">${Math.max(0, Math.floor(Number(nemesisBoard.points || 0)))} pts</span></div>
+        <div class="itemDesc">Season target: ${nemesisSeasonStatus}</div>
+        <div class="itemDesc">Clears ${Math.max(0, Math.floor(Number(nemesisSeason.completed || 0)))} • Attempts ${Math.max(0, Math.floor(Number(nemesisSeason.attempts || 0)))} • Lifetime points ${Math.max(0, Math.floor(Number(nemesisBoard.lifetimePoints || 0))).toLocaleString()}</div>
+      </div>
+    </div>
+    ${nemesisTargetsHtml}
+    ${nemesisLadderRowsHtml}
 
     <div class="divider"></div>
     <div class="hudTitle" id="invLiveOpsAnchor">Live Ops</div>
@@ -29066,6 +29295,7 @@ window.cycleCoopRolePref = cycleCoopRolePref;
 window.claimCoopStrikeHotspot = claimCoopStrikeHotspot;
 window.claimClanWarfrontTerritory = claimClanWarfrontTerritory;
 window.claimClanWarfrontSeasonChest = claimClanWarfrontSeasonChest;
+window.claimNemesisHuntboardTier = claimNemesisHuntboardTier;
 window.clearPendingStarsPurchase = clearPendingStarsPurchase;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
