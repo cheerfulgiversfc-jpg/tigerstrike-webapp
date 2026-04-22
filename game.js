@@ -18780,6 +18780,7 @@ function supportUnitsTick(){
     unit.step = (unit.step || 0) + 0.08;
     unit.homeX = S.me.x;
     unit.homeY = S.me.y;
+    const playerBaseSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
 
     let targetX = unit.homeX + Math.cos(unit.step * 0.6) * 18;
     let targetY = unit.homeY + Math.sin(unit.step * 0.7) * 14;
@@ -18847,12 +18848,17 @@ function supportUnitsTick(){
             targetY = (targetCiv.y * 0.54) + (S.me.y * 0.24) + (S.evacZone.y * 0.22);
 
             if(now >= (unit.guideAt || 0)){
-              unit.guideAt = now + 100;
+              unit.guideAt = now + 40;
               const gdx = S.evacZone.x - targetCiv.x;
               const gdy = S.evacZone.y - targetCiv.y;
               const gd = Math.hypot(gdx, gdy) || 1;
-              const guideSpeedBase = commandRescue ? 2.2 : 1.95;
-              const guideSpeed = Math.min(guideSpeedBase, gd) * waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10);
+              const escortWaterMul = Math.max(0.95, waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10));
+              const catchup = clamp((gd - 14) * 0.06, 0, 6.4);
+              const rescueGuideMul = commandRescue ? 1.20 : 1.08;
+              const guideSpeed = Math.min(
+                (Math.max(playerBaseSpeed * 1.62, 4.5) + catchup) * storyRescueSpeedMul() * rescueGuideMul * escortWaterMul * motionMul * supportTickMul,
+                playerBaseSpeed * 2.95
+              );
               tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14, { avoidKeepout:false });
               targetCiv.hp = clamp(targetCiv.hp + 0.03, 0, targetCiv.hpMax);
             }
@@ -18916,7 +18922,6 @@ function supportUnitsTick(){
     const dy = targetY - unit.y;
     const len = Math.hypot(dx, dy) || 1;
     const waterMul = waterSpeedMul("support", unit.x, unit.y, 12);
-    const playerBaseSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
     let stepCap = unit.role === "attacker"
       ? (playerBaseSpeed * 1.02 * (S.mode==="Story" ? (1 + (storySpecialistRank("SP_ATK_DRILL") * 0.04)) : 1))
       : (playerBaseSpeed * 1.00 * storyRescueSpeedMul());
