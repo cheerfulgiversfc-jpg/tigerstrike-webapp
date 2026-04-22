@@ -2061,7 +2061,7 @@ const STARS_PREMIUM_PACKS = [
   {
     sku:"premium_tiger_specialist_unlock",
     name:"Tiger Specialist Unlock",
-    stars:5000,
+    stars:500,
     desc:"Instant unlock + recruitment of a Tiger Specialist.",
     preview:"+1 Tiger Specialist • Unlocks Tiger Specialist purchases anytime",
     grant:{ specialists:{ attacker:1 }, specialistUnlocks:{ attacker:true } },
@@ -2069,7 +2069,7 @@ const STARS_PREMIUM_PACKS = [
   {
     sku:"premium_rescue_specialist_unlock",
     name:"Rescue Specialist Unlock",
-    stars:5000,
+    stars:500,
     desc:"Instant unlock + recruitment of a Rescue Specialist.",
     preview:"+1 Rescue Specialist • Unlocks Rescue Specialist purchases anytime",
     grant:{ specialists:{ rescue:1 }, specialistUnlocks:{ rescue:true } },
@@ -8441,15 +8441,15 @@ const PLAYER_SPRINT_SPEED = 4.80;
 const SHIELD_DURATION_MS = 5000;
 const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
-const SOLDIER_PRICE = 50000;
-const REINFORCEMENT_BUNDLE_PRICE = 80000;
+const SOLDIER_PRICE = 100000;
+const REINFORCEMENT_BUNDLE_PRICE = 175000;
 const SQUAD_MAX_PER_ROLE = 8;
 const SQUAD_UPKEEP_ATTACKER = 1400;
 const SQUAD_UPKEEP_RESCUE = 1100;
-const SQUAD_REVIVE_ATTACKER = 18000;
-const SQUAD_REVIVE_RESCUE = 15000;
+const SQUAD_REVIVE_ATTACKER = 150000;
+const SQUAD_REVIVE_RESCUE = 150000;
 const SQUAD_REVIVE_ALL_DISCOUNT = 0.90;
-const SQUAD_REVIVE_ALL_FLAT = 30000;
+const SQUAD_REVIVE_ALL_FLAT = 150000;
 const SOLDIER_UNLOCK_LEVEL = 15;
 const ROLL_COOLDOWN_MS = 2800;
 const ROLL_INVULN_MS = 520;
@@ -14420,9 +14420,14 @@ function renderShopList(){
     const aliveR = squadAliveCount("rescue");
     const reviveAllCost = squadReviveAllCost();
     const totalDowned = downA + downR;
+    const starsReason = starsUnavailableReason();
+    const starsBusy = starsCheckoutBusy;
     note.innerText = unlockedAny
-      ? `${spawnNow ? "Buy now to spawn immediately." : "Buy now and they join on next mission deploy."} Upkeep per mission: Tiger Specialist $${SQUAD_UPKEEP_ATTACKER.toLocaleString()} • Rescue Specialist $${SQUAD_UPKEEP_RESCUE.toLocaleString()}. ${premiumUnlockedA || premiumUnlockedR ? "Premium specialist unlock active." : `Level unlock: ${SOLDIER_UNLOCK_LEVEL}.`}`
+      ? `${spawnNow ? "Buy now to spawn immediately." : "Buy now and they join on next mission deploy."} Upkeep per mission: Tiger Specialist $${SQUAD_UPKEEP_ATTACKER.toLocaleString()} • Rescue Specialist $${SQUAD_UPKEEP_RESCUE.toLocaleString()}. ${premiumUnlockedA || premiumUnlockedR ? "Stars specialist unlock active." : `Level unlock: ${SOLDIER_UNLOCK_LEVEL}.`}`
       : `Locked until level ${SOLDIER_UNLOCK_LEVEL}. Current level: ${level}.`;
+    if(starsReason){
+      note.innerText += ` Stars checkout unavailable: ${starsReason}`;
+    }
 
     const attackerCard = `
       <div class="item">
@@ -14433,6 +14438,7 @@ function renderShopList(){
         <div style="text-align:right">
           <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
           <button onclick="buyTigerSpecialist()" ${unlockedA && ownA < SQUAD_MAX_PER_ROLE ? "" : "disabled"}>${unlockedA ? (ownA < SQUAD_MAX_PER_ROLE ? "Buy" : "Roster Full") : "Locked"}</button>
+          <button class="ghost" onclick="buyWithStars('premium_tiger_specialist_unlock')" ${premiumUnlockedA || starsBusy || !!starsReason ? "disabled" : ""}>${premiumUnlockedA ? "Stars Unlock Active" : (starsBusy ? "Processing..." : "Unlock Anytime (500⭐)")}</button>
           <button class="ghost" onclick="reviveSoldier('attacker')" ${downA > 0 ? "" : "disabled"}>Revive ($${SQUAD_REVIVE_ATTACKER.toLocaleString()})</button>
         </div>
       </div>`;
@@ -14445,6 +14451,7 @@ function renderShopList(){
         <div style="text-align:right">
           <div class="price">$${SOLDIER_PRICE.toLocaleString()}</div>
           <button onclick="buyRescueSpecialist()" ${unlockedR && ownR < SQUAD_MAX_PER_ROLE ? "" : "disabled"}>${unlockedR ? (ownR < SQUAD_MAX_PER_ROLE ? "Buy" : "Roster Full") : "Locked"}</button>
+          <button class="ghost" onclick="buyWithStars('premium_rescue_specialist_unlock')" ${premiumUnlockedR || starsBusy || !!starsReason ? "disabled" : ""}>${premiumUnlockedR ? "Stars Unlock Active" : (starsBusy ? "Processing..." : "Unlock Anytime (500⭐)")}</button>
           <button class="ghost" onclick="reviveSoldier('rescue')" ${downR > 0 ? "" : "disabled"}>Revive ($${SQUAD_REVIVE_RESCUE.toLocaleString()})</button>
         </div>
       </div>`;
@@ -14966,7 +14973,7 @@ function buyCashBundle(id){
   toast(`${bundle.name} applied: ${applied.summary}`);
 }
 function buyTigerSpecialist(){
-  if(!specialistRoleUnlocked("attacker")) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}, or unlock instantly in Premium.`);
+  if(!specialistRoleUnlocked("attacker")) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}, or unlock anytime in Squad for 500 Stars.`);
   syncSquadRosterBounds();
   if(squadOwnedCount("attacker") >= SQUAD_MAX_PER_ROLE) return toast("Tiger specialist roster is full.");
   if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
@@ -14982,7 +14989,7 @@ function buyTigerSpecialist(){
   save(); renderShopList(); renderHUD();
 }
 function buyRescueSpecialist(){
-  if(!specialistRoleUnlocked("rescue")) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}, or unlock instantly in Premium.`);
+  if(!specialistRoleUnlocked("rescue")) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}, or unlock anytime in Squad for 500 Stars.`);
   syncSquadRosterBounds();
   if(squadOwnedCount("rescue") >= SQUAD_MAX_PER_ROLE) return toast("Rescue specialist roster is full.");
   if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
@@ -14999,7 +15006,7 @@ function buyRescueSpecialist(){
 }
 function buyReinforcementBundle(){
   if(!specialistRoleUnlocked("attacker") || !specialistRoleUnlocked("rescue")){
-    return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}, or unlock both roles in Premium.`);
+    return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}, or unlock both roles in Squad for 500 Stars each.`);
   }
   syncSquadRosterBounds();
   const attackersOwned = squadOwnedCount("attacker");

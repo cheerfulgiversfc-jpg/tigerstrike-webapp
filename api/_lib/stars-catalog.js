@@ -164,8 +164,8 @@ const STARS_OFFERS = Object.freeze({
     sku: "premium_tiger_specialist_unlock",
     kind: "bundle",
     name: "Tiger Specialist Unlock",
-    stars: 5000,
-    acceptedStars: Object.freeze([5000]),
+    stars: 500,
+    acceptedStars: Object.freeze([500, 1000, 250]),
     desc: "Instant unlock + recruitment of a Tiger Specialist.",
     grant: Object.freeze({
       specialists: Object.freeze({ attacker: 1 }),
@@ -176,8 +176,8 @@ const STARS_OFFERS = Object.freeze({
     sku: "premium_rescue_specialist_unlock",
     kind: "bundle",
     name: "Rescue Specialist Unlock",
-    stars: 5000,
-    acceptedStars: Object.freeze([5000]),
+    stars: 500,
+    acceptedStars: Object.freeze([500, 1000, 250]),
     desc: "Instant unlock + recruitment of a Rescue Specialist.",
     grant: Object.freeze({
       specialists: Object.freeze({ rescue: 1 }),
