@@ -754,6 +754,17 @@ const NEMESIS_NAME_PREFIX = Object.freeze([
 const NEMESIS_NAME_SUFFIX = Object.freeze([
   "claw","tooth","stalker","mane","hunter","shadow","snarl","reaper","prowler","maw"
 ]);
+const CIVILIAN_PERSONALITY_KEYS = Object.freeze(["cooperative","panicked","injured"]);
+const CIVILIAN_PERSONALITY_DEF = Object.freeze({
+  cooperative: Object.freeze({ engageMul:1.16, followMul:1.10, fleeMul:0.88, bravery:0.72, riskValue:1.12 }),
+  panicked: Object.freeze({ engageMul:0.82, followMul:0.92, fleeMul:1.18, bravery:0.38, riskValue:1.38 }),
+  injured: Object.freeze({ engageMul:0.92, followMul:0.74, fleeMul:0.86, bravery:0.56, riskValue:1.42 }),
+});
+const CIVILIAN_RISK_REWARD_MULT = Object.freeze({
+  calm: 1.00,
+  threatened: 1.16,
+  critical: 1.34,
+});
 // Temporary safety switches while we stabilize mobile performance.
 const ENABLE_BIOME_SYSTEM = false;
 const ENABLE_BIOME_TEXT = true;
@@ -19253,6 +19264,64 @@ function spawnSupportUnits(){
 
 
 // ===================== CIVILIANS =====================
+function civilianPersonalityDef(key){
+  const id = String(key || "cooperative").toLowerCase();
+  return CIVILIAN_PERSONALITY_DEF[id] || CIVILIAN_PERSONALITY_DEF.cooperative;
+}
+
+function assignCivilianPersonality(civ, seed=0){
+  if(!civ || typeof civ !== "object") return "cooperative";
+  const n = Math.max(0, Number(seed || civ.id || 0));
+  const roll = (Math.sin((n * 12.9898) + 78.233) * 43758.5453) % 1;
+  const pct = Math.abs(roll);
+  const kind = pct < 0.16
+    ? "injured"
+    : (pct < 0.42 ? "panicked" : "cooperative");
+  civ.personality = kind;
+  civ.aiState = kind;
+  civ.riskState = "calm";
+  civ.riskLevel = 0;
+  civ.riskValue = civilianPersonalityDef(kind).riskValue;
+  return kind;
+}
+
+function refreshCivilianAiState(c, now=Date.now()){
+  if(!c || !c.alive || c.evac) return;
+  const hpMax = Math.max(1, Number(c.hpMax || 100));
+  const hpRatio = clamp(Number(c.hp || hpMax) / hpMax, 0, 1);
+  if(!c.personality || !CIVILIAN_PERSONALITY_DEF[c.personality]){
+    assignCivilianPersonality(c, c.id || 0);
+  }
+  const nearbyTiger = (S.tigers || []).find((t)=>t.alive && dist(t.x, t.y, c.x, c.y) < 92);
+  const underThreat = !!nearbyTiger || Date.now() < (c.fleeUntil || 0);
+  const critical = hpRatio <= 0.35 || (underThreat && hpRatio <= 0.58);
+  const baseState = c.personality === "injured" ? "injured" : c.personality;
+  const nextState = critical ? "injured" : (underThreat ? "panicked" : baseState);
+  c.aiState = nextState;
+  c.riskState = critical ? "critical" : (underThreat ? "threatened" : "calm");
+  c.riskLevel = c.riskState === "critical" ? 2 : (c.riskState === "threatened" ? 1 : 0);
+  const pDef = civilianPersonalityDef(c.aiState);
+  c.riskValue = clamp((pDef.riskValue || 1) * (1 + (c.riskLevel * 0.18)), 1, 2.2);
+  if(nextState === "injured"){
+    c.followGraceUntil = Math.max(Number(c.followGraceUntil || 0), now + 3200);
+  }
+}
+
+function civilianEscortPriorityScore(c, unit=null, now=Date.now()){
+  if(!c || !c.alive || c.evac) return -1e9;
+  refreshCivilianAiState(c, now);
+  const toUnit = unit ? dist(unit.x, unit.y, c.x, c.y) : 140;
+  const toEvac = S.evacZone ? dist(c.x, c.y, S.evacZone.x, S.evacZone.y) : 220;
+  const hpMax = Math.max(1, Number(c.hpMax || 100));
+  const hpRatio = clamp(Number(c.hp || hpMax) / hpMax, 0, 1);
+  const escortOwnedPenalty = (c.escortOwner === "rescue" && c.escortUnitId && unit && c.escortUnitId !== unit.id) ? 0.34 : 1;
+  const riskMul = CIVILIAN_RISK_REWARD_MULT[c.riskState] || 1;
+  const hpUrgency = clamp(1.2 - hpRatio, 0, 1.2);
+  const distPenalty = clamp(toUnit / 250, 0, 1.4);
+  const evacBonus = clamp((220 - toEvac) / 220, -0.2, 0.8);
+  return ((c.riskValue || 1) * riskMul * (1 + hpUrgency) * escortOwnedPenalty) + evacBonus - distPenalty;
+}
+
 function spawnCivilians(){
 
   // ✅ TUTORIAL SPAWN (FORCED)
@@ -19276,7 +19345,12 @@ function spawnCivilians(){
       skin:SKIN_TONES[2],
       shirt:"#22c55e",
       pants:"#1f2937",
-      hair:1
+      hair:1,
+      personality:"cooperative",
+      aiState:"cooperative",
+      riskState:"calm",
+      riskLevel:0,
+      riskValue:1.12
     }];
     S.evacDone = 0;
     return;
@@ -19310,7 +19384,7 @@ function spawnCivilians(){
       true,
       true
     );
-    S.civilians.push({
+    const civObj = {
       id:i+1,
       x:civSpawn.x,
       y:civSpawn.y,
@@ -19332,8 +19406,15 @@ function spawnCivilians(){
       skin:SKIN_TONES[rand(0,SKIN_TONES.length-1)],
       shirt:SHIRT_COLS[rand(0,SHIRT_COLS.length-1)],
       pants:PANTS_COLS[rand(0,PANTS_COLS.length-1)],
-      hair:rand(0,3)
-    });
+      hair:rand(0,3),
+      personality:"",
+      aiState:"",
+      riskState:"calm",
+      riskLevel:0,
+      riskValue:1
+    };
+    assignCivilianPersonality(civObj, ((storyMission?.number || S.storyLevel || 1) * 100) + i + 1);
+    S.civilians.push(civObj);
   }
 
   S.evacDone=0;
@@ -21298,42 +21379,37 @@ function supportUnitsTick(){
         ? liveCivs.filter((c)=>!c.following && (c.escortOwner !== ownTag || !c.escortUnitId || c.escortUnitId === unit.id))
         : [];
       let targetCiv = null;
-
+      const candidateSet = new Set();
       if(dangerCiv && (dangerCiv.escortOwner !== ownTag || !dangerCiv.escortUnitId || dangerCiv.escortUnitId === unit.id)){
-        targetCiv = dangerCiv;
+        candidateSet.add(dangerCiv);
       }
-      if(!targetCiv && ownedByThisUnit.length){
-        targetCiv = ownedByThisUnit[0];
-        let bestD = dist(unit.x, unit.y, targetCiv.x, targetCiv.y);
-        for(const civ of ownedByThisUnit){
-          const d = dist(unit.x, unit.y, civ.x, civ.y);
-          if(d < bestD){
-            bestD = d;
-            targetCiv = civ;
-          }
-        }
-      }
-      if(!targetCiv && available.length){
-        targetCiv = available[0];
-        let bestD = dist(unit.x, unit.y, targetCiv.x, targetCiv.y);
-        for(const civ of available){
-          const d = dist(unit.x, unit.y, civ.x, civ.y);
-          if(d < bestD){
-            bestD = d;
-            targetCiv = civ;
-          }
-        }
-      }
-      if(!targetCiv && (commandRescue || !commandAttackTarget)){
+      for(const civ of ownedByThisUnit) candidateSet.add(civ);
+      for(const civ of available) candidateSet.add(civ);
+      if(commandRescue || !commandAttackTarget){
         const nearest = nearestCivTo(unit.x, unit.y).civ;
         if(nearest && (nearest.escortOwner !== ownTag || !nearest.escortUnitId || nearest.escortUnitId === unit.id)){
-          targetCiv = nearest;
+          candidateSet.add(nearest);
+        }
+      }
+      let bestScore = -1e9;
+      for(const civ of candidateSet){
+        if(!civ || !civ.alive || civ.evac) continue;
+        let score = civilianEscortPriorityScore(civ, unit, now);
+        if(civ === dangerCiv) score += 1.1;
+        if(civ.escortOwner === ownTag && civ.escortUnitId === unit.id) score += 0.55;
+        if(commandRescue) score += 0.65;
+        if(commandAttackTarget && squadFormation !== "SPLIT_ESCORT" && civ !== dangerCiv) score -= 0.34;
+        if(score > bestScore){
+          bestScore = score;
+          targetCiv = civ;
         }
       }
 
       if(targetCiv){
+        refreshCivilianAiState(targetCiv, now);
+        const civDef = civilianPersonalityDef(targetCiv.aiState || targetCiv.personality);
         const civDist = dist(unit.x, unit.y, targetCiv.x, targetCiv.y);
-        const engageDist = commandRescue ? 62 : 56;
+        const engageDist = clamp((commandRescue ? 62 : 56) * (civDef.engageMul || 1), 44, 98);
         if(!targetCiv.following){
           targetX = targetCiv.x;
           targetY = targetCiv.y;
@@ -21360,7 +21436,7 @@ function supportUnitsTick(){
               const catchup = clamp((gd - 14) * 0.06, 0, 6.4);
               const rescueGuideMul = (commandRescue ? 1.20 : 1.08) * formationProfile.rescueGuideMul;
               const guideSpeed = Math.min(
-                (Math.max(playerBaseSpeed * 1.62, 4.5) + catchup) * storyRescueSpeedMul() * rescueGuideMul * escortWaterMul * motionMul * supportTickMul,
+                (Math.max(playerBaseSpeed * 1.62, 4.5) + catchup) * storyRescueSpeedMul() * (civDef.followMul || 1) * rescueGuideMul * escortWaterMul * motionMul * supportTickMul,
                 playerBaseSpeed * 2.95
               );
               tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14, { avoidKeepout:false });
@@ -21544,6 +21620,8 @@ function supportUnitsTick(){
 function runCivilianFleeStep(c, now=Date.now()){
   if(!c || !c.alive || c.evac) return false;
   if(now >= (c.fleeUntil || 0)) return false;
+  refreshCivilianAiState(c, now);
+  const civDef = civilianPersonalityDef(c.aiState || c.personality);
   const escortedByPlayer = c.following && c.escortOwner === "player";
   if(escortedByPlayer){
     c.fleeUntil = 0;
@@ -21625,7 +21703,8 @@ function runCivilianFleeStep(c, now=Date.now()){
   const motionMul = frameMotionMul();
   const mapCivMul = mapIdentityCivilianSpeedMul(S.mode, chapterIndexForMode(S.mode));
   const worldCivMul = clamp(Number(worldEventMotionMods(now).civilianSpeedMul || 1), 0.7, 1.2);
-  const fleeSpeed = (c.following ? 3.58 : 2.94) * (c.following ? Math.max(0.95, waterMul) : waterMul) * motionMul * mapCivMul * worldCivMul;
+  const fleeBase = c.following ? 3.58 : 2.94;
+  const fleeSpeed = (fleeBase * (civDef.fleeMul || 1)) * (c.following ? Math.max(0.95, waterMul) : waterMul) * motionMul * mapCivMul * worldCivMul;
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -21642,7 +21721,6 @@ function followCiviliansTick(){
   const escortBoost = storyRescueSpeedMul();
   const mapCivMul = mapIdentityCivilianSpeedMul(S.mode, chapterIndexForMode(S.mode));
   const worldCivMul = clamp(Number(worldEventMotionMods(Date.now()).civilianSpeedMul || 1), 0.7, 1.2);
-  const engageDist = 86;
   const followMaxDist = (S._sprintTicks && S._sprintTicks > 0) ? 720 : 620;
   const face = Number.isFinite(S.me.face) ? S.me.face : 0;
   if(!Number.isFinite(S._escortFace)) S._escortFace = face;
@@ -21654,6 +21732,8 @@ function followCiviliansTick(){
 
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
+    refreshCivilianAiState(c, now);
+    const civDef = civilianPersonalityDef(c.aiState || c.personality);
 
     const ownerIsRescue = c.escortOwner === "rescue" && !!c.escortUnitId;
     if(ownerIsRescue && !rescueUnitById(c.escortUnitId)){
@@ -21674,6 +21754,8 @@ function followCiviliansTick(){
     }
 
     const toPlayer = dist(c.x, c.y, S.me.x, S.me.y);
+    const engageDist = clamp(86 * (civDef.engageMul || 1), 58, 128);
+    const civFollowMaxDist = clamp(followMaxDist * (0.88 + ((civDef.bravery || 0.5) * 0.26)), 420, 760);
     if(!c.following){
       if(toPlayer <= engageDist){
         c.following = true;
@@ -21688,7 +21770,7 @@ function followCiviliansTick(){
     if(toPlayer <= 220){
       c.followGraceUntil = now + 2600;
     }
-    if(toPlayer > followMaxDist){
+    if(toPlayer > civFollowMaxDist){
       if(now > (c.followGraceUntil || 0)){
         c.following = false;
         c.escortOwner = "";
@@ -21799,8 +21881,9 @@ function followCiviliansTick(){
     const stayCloseBoost = S._underAttack > 0 ? 1.08 : 1;
     const catchup = clamp((dd - 8) * 0.089, 0, 7.6);
     const trailBoost = dd > 200 ? 1.46 : (dd > 140 ? 0.94 : 0.18);
+    const cDef = civilianPersonalityDef(c.aiState || c.personality);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.66, 4.45) + catchup + trailBoost) * escortBoost * escortWaterMul * stayCloseBoost * mapCivMul * worldCivMul),
+      ((Math.max(playerSpeed * 1.66, 4.45) + catchup + trailBoost) * escortBoost * (cDef.followMul || 1) * escortWaterMul * stayCloseBoost * mapCivMul * worldCivMul),
       PLAYER_SPRINT_SPEED + 6.3
     ) * motionMul;
     const targetVx = (dx/dd) * sp;
@@ -21887,9 +21970,15 @@ function evacCheck(){
   const evacCoreRadius = Math.max(16, (ez.r || 70) - 4);
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
+    refreshCivilianAiState(c, Date.now());
     const followBonus = c.following ? 14 : 6;
     const d = dist(c.x, c.y, ez.x, ez.y);
     if(d <= (evacOuterRadius + followBonus)){
+      const riskState = String(c.riskState || "calm");
+      const rewardMul = CIVILIAN_RISK_REWARD_MULT[riskState] || 1;
+      const pDef = civilianPersonalityDef(c.aiState || c.personality);
+      const xpGain = Math.max(30, Math.round((35 * rewardMul) + ((pDef.riskValue || 1) * 3)));
+      const cashGain = Math.max(0, Math.round((riskState === "critical" ? 220 : (riskState === "threatened" ? 120 : 60)) * (pDef.riskValue || 1)));
       moveCivilianInsideEvac(c, evacCoreRadius);
       if(dist(c.x, c.y, ez.x, ez.y) > evacCoreRadius){
         continue;
@@ -21901,9 +21990,15 @@ function evacCheck(){
       addOpsTotal("evac", 1);
       addCoopStrikeContribution("rescue", 9, { coordinated:c.following });
       addClanWarfrontContribution("rescue", 8, { coordinated:c.following });
-      addXP(35);
+      addXP(xpGain);
+      if(cashGain > 0){
+        S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + cashGain;
+        trackCashEarned(cashGain);
+      }
       awardCombo("rescue");
-      toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length})`);
+      const roleTag = c.aiState === "injured" ? "injured" : c.aiState;
+      const riskTag = riskState === "critical" ? "high-risk" : (riskState === "threatened" ? "threatened" : "stable");
+      toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length}) • ${roleTag}/${riskTag} +$${cashGain} +${xpGain}XP`);
       unlockAchv("evac1","First Evac");
       hapticNotif("success");
     }
@@ -21933,6 +22028,9 @@ function tickCiviliansAndThreats(){
     S.dangerCivId=null;
     return;
   }
+  for(const civ of aliveCivsAll){
+    refreshCivilianAiState(civ, now);
+  }
 
   let underAttack=0;
   let dangerPair={ civId:null, dist:1e9 };
@@ -21960,11 +22058,16 @@ function tickCiviliansAndThreats(){
       underAttack++;
       if(now < (t._nextCivAttackAt || 0)) continue;
       t._nextCivAttackAt = now + rand(3000, 5000);
+      const bestDef = civilianPersonalityDef(best.aiState || best.personality);
       const escortedByPlayer = best.following && best.escortOwner === "player";
       const playerCover = escortedByPlayer && dist(best.x, best.y, S.me.x, S.me.y) <= 190;
       if(!playerCover){
-        best.fleeUntil = now + rand(escortedByPlayer ? 520 : 1300, escortedByPlayer ? 1100 : 2200);
+        const fleeLow = Math.round((escortedByPlayer ? 520 : 1300) * (bestDef.fleeMul || 1));
+        const fleeHigh = Math.round((escortedByPlayer ? 1100 : 2200) * (bestDef.fleeMul || 1.05));
+        best.fleeUntil = now + rand(Math.max(280, fleeLow), Math.max(Math.max(300, fleeLow + 80), fleeHigh));
         best.fleeFromTigerId = t.id;
+        best.aiState = "panicked";
+        best.riskState = "threatened";
       } else {
         best.fleeUntil = 0;
         best.fleeFromTigerId = 0;
@@ -21983,10 +22086,16 @@ function tickCiviliansAndThreats(){
       const protectMult = S._protectTicks > 0 ? 0.45 : 1;
       const smokeMult = squadAbilityActive("smoke_screen", now, S) ? 0.56 : 1;
       const shieldMult = civilianShielded(best) ? 0 : 1;
-      const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * smokeMult * perkCivMul() * storyCivilianDamageMul();
+      const personaDmgMul = best.aiState === "panicked" ? 1.08 : (best.aiState === "cooperative" ? 0.94 : 1.12);
+      const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * smokeMult * personaDmgMul * perkCivMul() * storyCivilianDamageMul();
       const dmg = shieldMult ? Math.max(1, Math.round(scaled)) : 0;
       const prevHp = best.hp;
       best.hp = clamp(best.hp - dmg, 0, best.hpMax);
+      if(best.hp > 0 && (best.hp / Math.max(1, best.hpMax)) <= 0.55){
+        best.aiState = "injured";
+        best.riskState = (best.hp / Math.max(1, best.hpMax)) <= 0.35 ? "critical" : "threatened";
+        best.riskLevel = best.riskState === "critical" ? 2 : 1;
+      }
       if(prevHp > best.hp && now >= (best._nextDmgPopupAt || 0)){
         const nearPlayer = dist(S.me.x, S.me.y, best.x, best.y) < 260;
         const showPopup = nearPlayer;
@@ -28996,6 +29105,16 @@ function init(){
     if(!Number.isFinite(civ._takeoverPromptLockUntil)) civ._takeoverPromptLockUntil = 0;
     if(!Number.isFinite(civ.face)) civ.face = 0;
     if(!Number.isFinite(civ.step)) civ.step = 0;
+    if(typeof civ.personality !== "string" || !CIVILIAN_PERSONALITY_DEF[civ.personality]){
+      assignCivilianPersonality(civ, civ.id || 0);
+    }
+    if(typeof civ.aiState !== "string" || !CIVILIAN_PERSONALITY_DEF[civ.aiState]){
+      civ.aiState = civ.personality;
+    }
+    if(typeof civ.riskState !== "string") civ.riskState = "calm";
+    if(!Number.isFinite(civ.riskLevel)) civ.riskLevel = 0;
+    if(!Number.isFinite(civ.riskValue)) civ.riskValue = civilianPersonalityDef(civ.aiState || civ.personality).riskValue;
+    refreshCivilianAiState(civ, Date.now());
   }
   for(const unit of (S.supportUnits || [])){
     if(!unit.role) unit.role = "attacker";
