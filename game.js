@@ -84,7 +84,266 @@ function ensureClanState(state = S){
   if(!Number.isFinite(Number(src.clanLastSyncAt))){
     src.clanLastSyncAt = 0;
   }
+  ensureCoopStrikeOpsState(src);
   return { tag:src.clanTag, name:src.clanName };
+}
+
+function normalizeCoopStrikeClaimsMap(raw){
+  const out = {};
+  if(!raw || typeof raw !== "object") return out;
+  for(const [week, val] of Object.entries(raw)){
+    if(!week || typeof val !== "object" || !val) continue;
+    const row = {};
+    for(const [id, claimed] of Object.entries(val)){
+      if(id && claimed) row[id] = 1;
+    }
+    if(Object.keys(row).length) out[week] = row;
+  }
+  return out;
+}
+
+function defaultCoopStrikeOpsState(now=Date.now()){
+  return {
+    version: COOP_STRIKE_OPS_VERSION,
+    key: contractWeekKey(now),
+    rolePref: "support",
+    hotspots: [],
+    claims: {},
+    pointsTotal: 0,
+    capturePoints: 0,
+    missionPoints: 0,
+    rescuePoints: 0,
+    updatedAt: now,
+    lastToastAt: 0,
+  };
+}
+
+function normalizeCoopHotspotEntry(entry={}, period=contractWeekKey()){
+  const src = (entry && typeof entry === "object") ? entry : {};
+  const rewardSrc = (src.reward && typeof src.reward === "object") ? src.reward : {};
+  return {
+    id: String(src.id || ""),
+    key: String(src.key || ""),
+    title: String(src.title || "Strike Hotspot"),
+    desc: String(src.desc || "Shared co-op operation."),
+    target: Math.max(1, Math.floor(Number(src.target || 120))),
+    progress: Math.max(0, Math.floor(Number(src.progress || 0))),
+    personal: Math.max(0, Math.floor(Number(src.personal || 0))),
+    coordinatedCaptures: Math.max(0, Math.floor(Number(src.coordinatedCaptures || 0))),
+    period: String(src.period || period || contractWeekKey()),
+    reward: {
+      cash: Math.max(0, Math.floor(Number(rewardSrc.cash || 0))),
+      perkPoints: Math.max(0, Math.floor(Number(rewardSrc.perkPoints || 0))),
+      seasonPoints: Math.max(0, Math.floor(Number(rewardSrc.seasonPoints || 0))),
+    },
+    source: String(src.source || "local"),
+  };
+}
+
+function coopStrikeOpsFromLocal(state=S, coopState=null){
+  const clanTag = normalizeClanTag(state?.clanTag || defaultClanTagFromTelegram(state)) || "SOLO";
+  const coop = (coopState && typeof coopState === "object") ? coopState : ((state?.coopStrikeOps && typeof state.coopStrikeOps === "object") ? state.coopStrikeOps : defaultCoopStrikeOpsState());
+  const period = String(coop.key || contractWeekKey()).trim() || contractWeekKey();
+  const cloudMembers = Math.max(1, Math.floor(Number(state?.clanCloud?.members || 1)));
+  const seed = contractHashInt(`coop_ops|${period}|${clanTag}`);
+  const picks = contractSeededPick(COOP_STRIKE_OPS_TEMPLATES, Math.min(COOP_STRIKE_OPS_HOTSPOT_COUNT, COOP_STRIKE_OPS_TEMPLATES.length), seed);
+  const byId = Object.fromEntries((Array.isArray(coop.hotspots) ? coop.hotspots : []).map((row)=>[String(row.id || ""), row]));
+  return picks.map((tpl, idx)=>{
+    const id = `${period}_${idx}_${tpl.key}`;
+    const prev = normalizeCoopHotspotEntry(byId[id], period);
+    const target = Math.max(90, Math.floor(110 + (cloudMembers * 28) + (idx * 16)));
+    const rewardCash = Math.max(700, Math.floor(850 + (cloudMembers * 180) + (idx * 120)));
+    const rewardPerks = Math.max(1, Math.floor(1 + Math.min(3, Math.floor(cloudMembers / 2)) + (idx > 1 ? 1 : 0)));
+    const rewardSeason = Math.max(6, 8 + idx * 2);
+    return normalizeCoopHotspotEntry({
+      id,
+      key: tpl.key,
+      title: tpl.name,
+      desc: tpl.desc,
+      target,
+      progress: prev.progress,
+      personal: prev.personal,
+      coordinatedCaptures: prev.coordinatedCaptures,
+      period,
+      reward:{ cash:rewardCash, perkPoints:rewardPerks, seasonPoints:rewardSeason },
+      source:"local",
+    }, period);
+  });
+}
+
+function coopStrikeOpsFromCloud(state=S){
+  const cloud = (state?.clanCloud && typeof state.clanCloud === "object") ? state.clanCloud : null;
+  const block = (cloud?.coopStrikeOps && typeof cloud.coopStrikeOps === "object") ? cloud.coopStrikeOps : null;
+  const entries = Array.isArray(block?.entries) ? block.entries : [];
+  if(!entries.length) return null;
+  const period = String(block?.period || contractWeekKey()).trim() || contractWeekKey();
+  const localHotspots = Array.isArray(state?.coopStrikeOps?.hotspots) ? state.coopStrikeOps.hotspots : [];
+  const personalMap = Object.fromEntries(localHotspots.map((row)=>[String(row.id || ""), normalizeCoopHotspotEntry(row, period)]));
+  return entries.map((entry, idx)=>{
+    const row = normalizeCoopHotspotEntry({
+      id: String(entry?.id || `${period}_${idx}_${entry?.key || "HOTSPOT"}`),
+      key: String(entry?.key || `HOTSPOT_${idx+1}`),
+      title: String(entry?.title || "Strike Hotspot"),
+      desc: String(entry?.desc || "Shared co-op operation."),
+      target: Number(entry?.target || 120),
+      progress: Number(entry?.progress || 0),
+      coordinatedCaptures: Number(entry?.coordinatedCaptures || 0),
+      period,
+      reward: entry?.reward || {},
+      source:"cloud",
+    }, period);
+    const personal = personalMap[row.id]?.personal || 0;
+    row.personal = Math.max(0, personal);
+    return row;
+  });
+}
+
+function ensureCoopStrikeOpsState(state=S, opts={}){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return defaultCoopStrikeOpsState();
+  const now = Number.isFinite(Number(opts.now)) ? Number(opts.now) : Date.now();
+  const base = defaultCoopStrikeOpsState(now);
+  const incoming = (src.coopStrikeOps && typeof src.coopStrikeOps === "object") ? src.coopStrikeOps : {};
+  const key = String(incoming.key || contractWeekKey(now)).trim() || contractWeekKey(now);
+  const rolePref = String(incoming.rolePref || base.rolePref).trim().toLowerCase();
+  const normalizedRole = COOP_STRIKE_OPS_ROLE_PREFS.includes(rolePref) ? rolePref : "support";
+  const claims = normalizeCoopStrikeClaimsMap(incoming.claims);
+  let hotspots = Array.isArray(incoming.hotspots)
+    ? incoming.hotspots.map((entry)=>normalizeCoopHotspotEntry(entry, key)).filter((row)=>row.id)
+    : [];
+  const weekChanged = key !== contractWeekKey(now);
+  if(weekChanged){
+    hotspots = [];
+  }
+  const co = {
+    version: COOP_STRIKE_OPS_VERSION,
+    key: weekChanged ? contractWeekKey(now) : key,
+    rolePref: normalizedRole,
+    hotspots,
+    claims,
+    pointsTotal: Math.max(0, Math.floor(Number(incoming.pointsTotal || 0))),
+    capturePoints: Math.max(0, Math.floor(Number(incoming.capturePoints || 0))),
+    missionPoints: Math.max(0, Math.floor(Number(incoming.missionPoints || 0))),
+    rescuePoints: Math.max(0, Math.floor(Number(incoming.rescuePoints || 0))),
+    updatedAt: Math.max(0, Math.floor(Number(incoming.updatedAt || now))),
+    lastToastAt: Math.max(0, Math.floor(Number(incoming.lastToastAt || 0))),
+  };
+  const cloudRows = coopStrikeOpsFromCloud(src);
+  const localRows = coopStrikeOpsFromLocal(src, co);
+  const rows = cloudRows || localRows;
+  co.hotspots = rows.map((entry)=>normalizeCoopHotspotEntry(entry, co.key));
+  src.coopStrikeOps = co;
+  return co;
+}
+
+function coopRoleLabel(role){
+  if(role === "hunter") return "Hunter";
+  if(role === "rescuer") return "Rescuer";
+  return "Support";
+}
+
+function cycleCoopRolePref(){
+  const co = ensureCoopStrikeOpsState(S);
+  const idx = Math.max(0, COOP_STRIKE_OPS_ROLE_PREFS.indexOf(co.rolePref));
+  const next = COOP_STRIKE_OPS_ROLE_PREFS[(idx + 1) % COOP_STRIKE_OPS_ROLE_PREFS.length];
+  co.rolePref = next;
+  toast(`Co-op role set: ${coopRoleLabel(next)}`);
+  sfx("ui");
+  save();
+  if(document.getElementById("invOverlay")?.style?.display === "flex") renderInventory();
+}
+
+function coopSynergyBonusMul(kind="capture", opts={}){
+  const co = ensureCoopStrikeOpsState(S);
+  let mul = 1;
+  const role = String(co.rolePref || "support");
+  const aliveAttackers = squadAliveCount("attacker");
+  const aliveRescuers = squadAliveCount("rescue");
+  if(aliveAttackers > 0) mul += 0.10;
+  if(aliveRescuers > 0) mul += 0.10;
+  if(aliveAttackers > 0 && aliveRescuers > 0) mul += 0.14;
+  if(raidModeActive(S)) mul += 0.08;
+  if(kind === "capture" && role === "hunter") mul += 0.12;
+  if((kind === "rescue" || kind === "mission") && role === "rescuer") mul += 0.12;
+  if(role === "support") mul += 0.06;
+  if(opts?.boss) mul += 0.08;
+  if(opts?.coordinated) mul += 0.06;
+  return clamp(mul, 1, 1.7);
+}
+
+function addCoopStrikeContribution(kind="capture", basePoints=6, opts={}){
+  if(window.__TUTORIAL_MODE__) return;
+  const co = ensureCoopStrikeOpsState(S);
+  if(!Array.isArray(co.hotspots) || !co.hotspots.length) return;
+  const period = String(co.key || contractWeekKey()).trim() || contractWeekKey();
+  const modifier = coopSynergyBonusMul(kind, opts);
+  const points = Math.max(1, Math.round(Math.max(1, Number(basePoints || 1)) * modifier));
+  const hash = contractHashInt(`${period}|${kind}|${gameplayCloudMission(S)}|${S.stats?.captures || 0}|${S.stats?.kills || 0}|${S.stats?.evac || 0}`);
+  const hotspot = co.hotspots[Math.max(0, hash % co.hotspots.length)];
+  if(!hotspot) return;
+  hotspot.personal = Math.max(0, Math.floor(Number(hotspot.personal || 0))) + points;
+  hotspot.progress = Math.max(0, Math.floor(Number(hotspot.progress || 0))) + points;
+  if(kind === "capture") hotspot.coordinatedCaptures = Math.max(0, Math.floor(Number(hotspot.coordinatedCaptures || 0))) + 1;
+  co.pointsTotal = Math.max(0, Math.floor(Number(co.pointsTotal || 0))) + points;
+  if(kind === "capture") co.capturePoints = Math.max(0, Math.floor(Number(co.capturePoints || 0))) + points;
+  if(kind === "mission") co.missionPoints = Math.max(0, Math.floor(Number(co.missionPoints || 0))) + points;
+  if(kind === "rescue") co.rescuePoints = Math.max(0, Math.floor(Number(co.rescuePoints || 0))) + points;
+  co.updatedAt = Date.now();
+  if(!opts?.silent && Date.now() > (co.lastToastAt || 0) + 3200){
+    co.lastToastAt = Date.now();
+    setEventText(`🤝 Co-op hotspot: +${points} pts (${hotspot.title})`, 2.2);
+  }
+  requestGameplayCloudSync(`coop-${kind}`);
+}
+
+function coopStrikeHotspotClaimed(period, id, state=S){
+  const co = ensureCoopStrikeOpsState(state);
+  const week = String(period || co.key || contractWeekKey());
+  const claims = normalizeCoopStrikeClaimsMap(co.claims);
+  return !!(claims?.[week]?.[id]);
+}
+
+function claimCoopStrikeHotspot(hotspotId=""){
+  const co = ensureCoopStrikeOpsState(S);
+  const row = (co.hotspots || []).find((entry)=>entry.id === hotspotId);
+  if(!row){
+    toast("Strike hotspot not found.");
+    return;
+  }
+  const ready = Math.max(0, Number(row.progress || 0)) >= Math.max(1, Number(row.target || 1));
+  if(!ready){
+    toast("Hotspot target not complete yet.");
+    return;
+  }
+  if(coopStrikeHotspotClaimed(row.period, row.id, S)){
+    toast("Hotspot reward already claimed.");
+    return;
+  }
+  const claims = normalizeCoopStrikeClaimsMap(co.claims);
+  if(!claims[row.period]) claims[row.period] = {};
+  claims[row.period][row.id] = 1;
+  co.claims = claims;
+
+  const cash = Math.max(0, Math.floor(Number(row.reward?.cash || 0)));
+  const perks = Math.max(0, Math.floor(Number(row.reward?.perkPoints || 0)));
+  const seasonPts = Math.max(0, Math.floor(Number(row.reward?.seasonPoints || 0)));
+  if(cash > 0){
+    S.funds = Math.max(0, Math.floor(Number(S.funds || 0))) + cash;
+    trackCashEarned(cash);
+  }
+  if(perks > 0){
+    S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + perks;
+  }
+  if(seasonPts > 0){
+    grantSeasonPassPoints(seasonPts, "Co-op Strike Ops hotspot");
+  }
+  requestGameplayCloudSync("coop-claim", { force:true });
+  toast(`🏆 Co-op hotspot claimed: ${row.title} • +$${cash.toLocaleString()} • +${perks} perk • +${seasonPts} pass pts`);
+  hapticNotif("success");
+  sfx("win");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display==="flex") renderInventory();
 }
 
 // ...rest of daily reward helpers...
@@ -112,6 +371,17 @@ const CONTRACT_DAILY_COUNT = 3;
 const CONTRACT_WEEKLY_COUNT = 3;
 const CONTRACT_REFRESH_THROTTLE_MS = 15000;
 const LIVE_OPS_VERSION = 1;
+const COOP_STRIKE_OPS_VERSION = 1;
+const COOP_STRIKE_OPS_HOTSPOT_COUNT = 3;
+const COOP_STRIKE_OPS_ROLE_PREFS = Object.freeze(["hunter","rescuer","support"]);
+const COOP_STRIKE_OPS_TEMPLATES = Object.freeze([
+  Object.freeze({ key:"RED_MANGROVE", name:"Red Mangrove Run", desc:"Delta lanes under tiger pressure.", flavor:"mangrove" }),
+  Object.freeze({ key:"NIGHT_CONVOY", name:"Night Convoy Route", desc:"Convoy extraction path needs coordinated captures.", flavor:"highway" }),
+  Object.freeze({ key:"RIVER_CHOKE", name:"River Chokeline", desc:"Floodplain hotspot with mixed rescue/combat pressure.", flavor:"river" }),
+  Object.freeze({ key:"CLIFF_RELAY", name:"Cliff Relay Zone", desc:"Mountain relay corridor with rotating tiger packs.", flavor:"mountain" }),
+  Object.freeze({ key:"JUNGLE_GRID", name:"Jungle Grid Sector", desc:"Dense jungle lanes with ambush risk.", flavor:"jungle" }),
+  Object.freeze({ key:"TOWN_EGRESS", name:"Town Egress Lane", desc:"Urban exit routes requiring synchronized pushes.", flavor:"urban" }),
+]);
 
 const DEFAULT_CONTRACT_TALLIES = Object.freeze({
   missionsCleared:0,
@@ -5055,6 +5325,7 @@ const DEFAULT = {
   clanName:"Lone Tigers",
   clanRaidEnabled:false,
   clanContractClaims:{},
+  coopStrikeOps: null,
   clanCloud:null,
   clanLastSyncAt:0,
   referralMilestone:null,
@@ -6086,6 +6357,16 @@ function buildGameplayCloudSnapshot(state=S){
   const balance = recomputeBalanceAutoTune(src);
   const weeklyKey = String(src.arcadeWeeklySeedKey || weeklyChallengeWeekKey()).trim() || weeklyChallengeWeekKey();
   const weeklyBest = arcadeWeeklyBestForWeek(src, weeklyKey);
+  const coop = ensureCoopStrikeOpsState(src);
+  const coopHotspots = (Array.isArray(coop.hotspots) ? coop.hotspots : []).map((row)=>({
+    id: String(row.id || ""),
+    key: String(row.key || ""),
+    personal: Math.max(0, Math.floor(Number(row.personal || 0))),
+    progress: Math.max(0, Math.floor(Number(row.progress || 0))),
+    target: Math.max(1, Math.floor(Number(row.target || 1))),
+    coordinatedCaptures: Math.max(0, Math.floor(Number(row.coordinatedCaptures || 0))),
+    period: String(row.period || coop.key || contractWeekKey()),
+  }));
   const missionStats = (src.stats && typeof src.stats === "object") ? src.stats : {};
   const kills = Math.max(
     Math.max(0, Math.floor(Number(totals.kills || 0))),
@@ -6130,6 +6411,13 @@ function buildGameplayCloudSnapshot(state=S){
     clanTag: clan.tag,
     clanName: clan.name,
     clanRaidEnabled: !!src.clanRaidEnabled,
+    coopRolePref: String(coop.rolePref || "support"),
+    coopWeekKey: String(coop.key || contractWeekKey()),
+    coopPointsTotal: Math.max(0, Math.floor(Number(coop.pointsTotal || 0))),
+    coopCapturePoints: Math.max(0, Math.floor(Number(coop.capturePoints || 0))),
+    coopMissionPoints: Math.max(0, Math.floor(Number(coop.missionPoints || 0))),
+    coopRescuePoints: Math.max(0, Math.floor(Number(coop.rescuePoints || 0))),
+    coopHotspots,
   };
 }
 
@@ -6162,6 +6450,19 @@ function gameplayCloudSnapshotSig(snapshot){
     normalizeClanTag(snap.clanTag || "SOLO"),
     sanitizeClanName(snap.clanName || "", snap.clanTag || "SOLO"),
     snap.clanRaidEnabled ? 1 : 0,
+    String(snap.coopRolePref || "support"),
+    String(snap.coopWeekKey || ""),
+    Math.max(0, Math.floor(Number(snap.coopPointsTotal || 0))),
+    Math.max(0, Math.floor(Number(snap.coopCapturePoints || 0))),
+    Math.max(0, Math.floor(Number(snap.coopMissionPoints || 0))),
+    Math.max(0, Math.floor(Number(snap.coopRescuePoints || 0))),
+    ...(Array.isArray(snap.coopHotspots) ? snap.coopHotspots.map((row)=>[
+      String(row?.id || ""),
+      Math.max(0, Math.floor(Number(row?.personal || 0))),
+      Math.max(0, Math.floor(Number(row?.progress || 0))),
+      Math.max(1, Math.floor(Number(row?.target || 1))),
+      Math.max(0, Math.floor(Number(row?.coordinatedCaptures || 0))),
+    ].join(":")) : []),
   ].join("|");
 }
 
@@ -6187,6 +6488,16 @@ async function postGameplayCloudSnapshot(snapshot){
     if(res.ok){
       if(payload?.clan && typeof payload.clan === "object"){
         S.clanCloud = payload.clan;
+      }
+      if(payload?.coopStrikeOps && typeof payload.coopStrikeOps === "object"){
+        S.coopStrikeOps = cloneState(payload.coopStrikeOps);
+        ensureCoopStrikeOpsState(S);
+      }
+      if(payload?.clan?.coopStrikeOps && typeof payload.clan.coopStrikeOps === "object"){
+        if(!payload?.coopStrikeOps){
+          S.coopStrikeOps = cloneState(payload.clan.coopStrikeOps);
+        }
+        ensureCoopStrikeOpsState(S);
       }
       if(payload?.referral && typeof payload.referral === "object"){
         S.referralMilestone = normalizeReferralMilestoneSnapshot(payload.referral);
@@ -6456,6 +6767,7 @@ function load(){
     m.contractTallies = normalizeContractTalliesMap(saved.contractTallies);
     m.contracts = (saved.contracts && typeof saved.contracts === "object") ? saved.contracts : null;
     m.liveOps = (saved.liveOps && typeof saved.liveOps === "object") ? saved.liveOps : null;
+    m.coopStrikeOps = (saved.coopStrikeOps && typeof saved.coopStrikeOps === "object") ? cloneState(saved.coopStrikeOps) : null;
     m.referralMilestone = (saved.referralMilestone && typeof saved.referralMilestone === "object") ? saved.referralMilestone : null;
     m.telegramEventDrop = (saved.telegramEventDrop && typeof saved.telegramEventDrop === "object") ? saved.telegramEventDrop : null;
     m.lastMissionRecap = (saved.lastMissionRecap && typeof saved.lastMissionRecap === "object") ? saved.lastMissionRecap : null;
@@ -6489,6 +6801,7 @@ function load(){
     ensureContractTalliesState(m);
     ensureContractsState(m);
     ensureLiveOpsState(m);
+    ensureCoopStrikeOpsState(m);
     ensureOpsTotalsState(m);
     ensureBalanceStatsState(m);
     ensureNemesisState(m);
@@ -6515,6 +6828,7 @@ function load(){
     ensureContractTalliesState(fallback);
     ensureContractsState(fallback);
     ensureLiveOpsState(fallback);
+    ensureCoopStrikeOpsState(fallback);
     ensureOpsTotalsState(fallback);
     ensureBalanceStatsState(fallback);
     ensureNemesisState(fallback);
@@ -8585,6 +8899,7 @@ function sanitizeRuntimeState(){
   ensureMissionDirectorState();
   ensureBalanceStatsState();
   ensureMissionTwistState();
+  ensureCoopStrikeOpsState();
   ensureArcadeBuildcraftState(S);
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
@@ -12940,6 +13255,7 @@ function writeStoryProfileData(source="autosave", state=S){
     contractTallies: { ...ensureContractTalliesState(src) },
     contracts: (src.contracts && typeof src.contracts === "object") ? cloneState(src.contracts) : null,
     liveOps: (src.liveOps && typeof src.liveOps === "object") ? cloneState(src.liveOps) : null,
+    coopStrikeOps: (src.coopStrikeOps && typeof src.coopStrikeOps === "object") ? cloneState(src.coopStrikeOps) : null,
     ownedWeapons: Array.isArray(src.ownedWeapons) ? src.ownedWeapons.filter((id)=>typeof id === "string") : [],
     equippedWeaponId: String(src.equippedWeaponId || ""),
     ammoReserve: { ...(src.ammoReserve || {}) },
@@ -13159,6 +13475,10 @@ function applyStoryProfileToState(state, profile){
     state.liveOps = cloneState(profile.liveOps);
     ensureLiveOpsState(state);
   }
+  if(profile.coopStrikeOps && typeof profile.coopStrikeOps === "object"){
+    state.coopStrikeOps = cloneState(profile.coopStrikeOps);
+    ensureCoopStrikeOpsState(state);
+  }
 
   state.armorPlates = normalizeArmorPlateInventory(mergeCountMapsFromProfile(state.armorPlates, profile.armorPlates));
   state.armorPlatesFallback = normalizeArmorPlateInventory(
@@ -13322,6 +13642,9 @@ function writeStoryProgressData(payload={}){
     liveOps: (payload.liveOps && typeof payload.liveOps === "object")
       ? cloneState(payload.liveOps)
       : ((S.liveOps && typeof S.liveOps === "object") ? cloneState(S.liveOps) : null),
+    coopStrikeOps: (payload.coopStrikeOps && typeof payload.coopStrikeOps === "object")
+      ? cloneState(payload.coopStrikeOps)
+      : ((S.coopStrikeOps && typeof S.coopStrikeOps === "object") ? cloneState(S.coopStrikeOps) : null),
     soldierAttackersOwned: Math.max(0, Math.floor(Number(payload.soldierAttackersOwned ?? S.soldierAttackersOwned ?? 0))),
     soldierRescuersOwned: Math.max(0, Math.floor(Number(payload.soldierRescuersOwned ?? S.soldierRescuersOwned ?? 0))),
     soldierAttackersDowned: Math.max(0, Math.floor(Number(payload.soldierAttackersDowned ?? S.soldierAttackersDowned ?? 0))),
@@ -16373,6 +16696,31 @@ function renderInventory(){
         </div>
       </div>`;
   }).join("");
+  const coop = ensureCoopStrikeOpsState(S);
+  const coopRole = coopRoleLabel(coop.rolePref);
+  const coopRowsHtml = (Array.isArray(coop.hotspots) ? coop.hotspots : []).map((entry)=>{
+    const progress = Math.max(0, Math.floor(Number(entry.progress || 0)));
+    const target = Math.max(1, Math.floor(Number(entry.target || 1)));
+    const personal = Math.max(0, Math.floor(Number(entry.personal || 0)));
+    const pct = clamp((progress / target) * 100, 0, 100);
+    const ready = progress >= target;
+    const claimed = coopStrikeHotspotClaimed(entry.period, entry.id, S);
+    const status = claimed ? "Claimed" : (ready ? "Ready" : `${progress}/${target}`);
+    const reward = entry.reward || {};
+    const rewardText = `+$${Math.max(0, Math.floor(Number(reward.cash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(reward.perkPoints || 0)))} perk • +${Math.max(0, Math.floor(Number(reward.seasonPoints || 0)))} pass pts`;
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${entry.title} <span class="tag">${status}</span> <span class="tag">You ${personal} pts</span></div>
+          <div class="itemDesc">${entry.desc}</div>
+          <div class="itemDesc">Reward: ${rewardText} • Coordinated captures: ${Math.max(0, Math.floor(Number(entry.coordinatedCaptures || 0)))}</div>
+          <div class="bar"><div class="fill green" style="width:${pct}%"></div></div>
+        </div>
+        <div style="text-align:right">
+          <button ${(claimed || !ready) ? "disabled" : ""} onclick="claimCoopStrikeHotspot('${entry.id}')">${claimed ? "Claimed" : "Claim"}</button>
+        </div>
+      </div>`;
+  }).join("");
 
   document.getElementById("invSupplies").innerHTML = `
     <div class="item">
@@ -16432,15 +16780,24 @@ function renderInventory(){
         <div class="itemDesc">Clan score: ${clanScore.toLocaleString()} • Members: ${clanMembers}</div>
         <div class="itemDesc">Co-op raid mode: <b>${S.clanRaidEnabled ? "ON" : "OFF"}</b> (Arcade only, deploys 2-player wingman support)</div>
         <div class="itemDesc">Clan contract period: ${clanPeriod} • ${S.clanCloud ? "shared progress via cloud sync" : "local progress fallback"}</div>
+        <div class="itemDesc">Co-op Strike Ops role: <b>${coopRole}</b> • Total points ${Math.max(0, Math.floor(Number(coop.pointsTotal || 0))).toLocaleString()} • Capture synergy pts ${Math.max(0, Math.floor(Number(coop.capturePoints || 0))).toLocaleString()}</div>
       </div>
       <div style="text-align:right">
         <button class="ghost" onclick="setClanTagPrompt()">Set Tag</button>
         <button class="ghost" onclick="setClanNamePrompt()">Rename</button>
         <button class="${S.clanRaidEnabled ? "good" : "ghost"}" onclick="toggleRaidMode()">${S.clanRaidEnabled ? "Raid ON" : "Raid OFF"}</button>
+        <button class="ghost" onclick="cycleCoopRolePref()">Role: ${coopRole}</button>
         <button class="ghost" onclick="refreshClanCloudNow()">Refresh</button>
       </div>
     </div>
     ${clanRowsHtml}
+    <div class="item" style="padding:10px 12px;">
+      <div>
+        <div class="itemName">Co-op Strike Ops <span class="tag">2–4 players async/live-lite</span></div>
+        <div class="itemDesc">Contribute to shared tiger hotspots. Coordinated captures and mixed squad roles increase your point gain.</div>
+      </div>
+    </div>
+    ${coopRowsHtml}
 
     <div class="divider"></div>
     <div class="hudTitle" id="invLiveOpsAnchor">Live Ops</div>
@@ -20129,6 +20486,7 @@ function supportUnitsTick(){
               S.stats.captures = (S.stats.captures || 0) + 1;
               addContractTally("captures", 1);
               addOpsTotal("captures", 1);
+              addCoopStrikeContribution("capture", 12, { coordinated:true, silent:true });
               const pay = payout("CAPTURE");
               const cash = Math.round(pay.cash * 0.42);
               const score = Math.round(pay.score * 0.45);
@@ -20528,6 +20886,7 @@ function evacCheck(){
       S.stats.evac += 1;
       addContractTally("evac", 1);
       addOpsTotal("evac", 1);
+      addCoopStrikeContribution("rescue", 9, { coordinated:c.following });
       addXP(35);
       awardCombo("rescue");
       toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length})`);
@@ -22601,6 +22960,7 @@ function finishTigerKill(t){
   addContractTally("kills", 1);
   if(bossKill) addContractTally("bossesDefeated", 1);
   addOpsTotal("kills", 1);
+  addCoopStrikeContribution("kill", bossKill ? 8 : 5, { boss:bossKill, silent:true });
   addXP(50);
   grantSeasonPassPoints(8, "Tiger eliminated");
   applySeasonFinisherVisual(t, "KILL");
@@ -22695,6 +23055,7 @@ function playerAction(action){
     addContractTally("captures", 1);
     if(bossCapture) addContractTally("bossesDefeated", 1);
     addOpsTotal("captures", 1);
+    addCoopStrikeContribution("capture", bossCapture ? 20 : 14, { boss:bossCapture, coordinated:true });
     addXP(90);
     grantSeasonPassPoints(10, "Tiger captured");
     applySeasonFinisherVisual(t, "CAPTURE");
@@ -23152,6 +23513,10 @@ function checkMissionComplete(){
       markBalanceMissionResult(true, "mission-complete", S);
       addContractTally("missionsCleared", 1);
       addOpsTotal("missionsCleared", 1);
+      addCoopStrikeContribution("mission", 42, {
+        coordinated:(squadAliveCount("attacker") > 0 && squadAliveCount("rescue") > 0),
+        boss: !!storyMission?.boss
+      });
       requestGameplayCloudSync("mission-complete", { force:true });
       setPaused(true,"complete");
       transitionCleanupSweep("mission-complete");
@@ -27897,6 +28262,8 @@ window.setClanNamePrompt = setClanNamePrompt;
 window.toggleRaidMode = toggleRaidMode;
 window.refreshClanCloudNow = refreshClanCloudNow;
 window.claimClanContract = claimClanContract;
+window.cycleCoopRolePref = cycleCoopRolePref;
+window.claimCoopStrikeHotspot = claimCoopStrikeHotspot;
 window.clearPendingStarsPurchase = clearPendingStarsPurchase;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
