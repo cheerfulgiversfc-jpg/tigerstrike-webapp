@@ -4156,6 +4156,12 @@ const STORY_BASE_UPGRADES = [
   { key:"BASE_ENDURANCE", name:"Endurance Program", maxRank:3, costs:[3800,7000,10600], desc:"-8% stamina drain per rank in Story missions." },
   { key:"BASE_FINANCE", name:"Operations Finance", maxRank:3, costs:[6000,10200,15400], desc:"+8% Story payout cash per rank." },
 ];
+const STORY_HQ_MODULES = [
+  { key:"HQ_RD", name:"R&D Lab", maxRank:4, costs:[7800,12800,19400,27800], desc:"+3% Story payout per rank and wider capture research window." },
+  { key:"HQ_MEDBAY", name:"Medbay", maxRank:4, costs:[7600,12200,18600,26800], desc:"Stronger escort survivability and rescue movement efficiency." },
+  { key:"HQ_INTEL", name:"Intel Center", maxRank:4, costs:[8000,13400,19800,28600], desc:"Lowers tiger pressure and improves mission control stability." },
+  { key:"HQ_ARMORY", name:"Armory Deck", maxRank:4, costs:[8200,13800,20600,29400], desc:"More starting armor/shields and specialist combat edge." },
+];
 
 const STORY_SPECIALIST_PERKS = [
   { key:"SP_ATK_DRILL", role:"attacker", name:"Tiger Specialist Drill", maxRank:3, costs:[6800,11600,17200], desc:"Tiger specialists gain damage, HP, and armor." },
@@ -5913,6 +5919,7 @@ perks: {
 },
 progressionUnlocks: {},
 metaBase: {},
+metaHQ: {},
 specialistPerks: {},
 chapterRewardsUnlocked: {},
   touchHud:{
@@ -7522,6 +7529,7 @@ function load(){
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
     m.progressionUnlocks = { ...DEFAULT.progressionUnlocks, ...(saved.progressionUnlocks||{}) };
     m.metaBase = { ...DEFAULT.metaBase, ...(saved.metaBase||{}) };
+    m.metaHQ = { ...DEFAULT.metaHQ, ...(saved.metaHQ||{}) };
     m.specialistPerks = { ...DEFAULT.specialistPerks, ...(saved.specialistPerks||{}) };
     m.specialistStarUnlocks = { ...DEFAULT.specialistStarUnlocks, ...(saved.specialistStarUnlocks||{}) };
     m.chapterRewardsUnlocked = { ...DEFAULT.chapterRewardsUnlocked, ...(saved.chapterRewardsUnlocked||{}) };
@@ -8456,7 +8464,8 @@ function missionDirectorTick(){
   }
   const phaseCfg = DIRECTOR_PHASE_CONFIG[director.phase] || DIRECTOR_PHASE_CONFIG.CALM;
   const tuning = currentBalanceTuning(S, now);
-  S._directorAggroMul = clamp(Number(phaseCfg.aggroMul || 1) * clamp(Number(tuning.aggroMul || 1), 0.86, 1.18), 0.78, 1.28);
+  const intelMul = (S.mode === "Story") ? clamp(1 - (storyHQRank("HQ_INTEL") * 0.04), 0.78, 1) : 1;
+  S._directorAggroMul = clamp(Number(phaseCfg.aggroMul || 1) * clamp(Number(tuning.aggroMul || 1), 0.86, 1.18) * intelMul, 0.72, 1.28);
   S._directorSpeedMul = clamp(Number(phaseCfg.speedMul || 1) * clamp(Number(tuning.speedMul || 1), 0.88, 1.14), 0.84, 1.22);
 
   if(now >= (director.hardTrimAt || 0)){
@@ -10593,11 +10602,16 @@ function storyChapterRewardDef(chapter){
 }
 function ensureStoryMetaState(){
   if(!S.metaBase || typeof S.metaBase !== "object") S.metaBase = {};
+  if(!S.metaHQ || typeof S.metaHQ !== "object") S.metaHQ = {};
   if(!S.specialistPerks || typeof S.specialistPerks !== "object") S.specialistPerks = {};
   if(!S.chapterRewardsUnlocked || typeof S.chapterRewardsUnlocked !== "object") S.chapterRewardsUnlocked = {};
   for(const def of STORY_BASE_UPGRADES){
     const rank = Math.floor(S.metaBase[def.key] || 0);
     S.metaBase[def.key] = clamp(rank, 0, def.maxRank);
+  }
+  for(const def of STORY_HQ_MODULES){
+    const rank = Math.floor(S.metaHQ[def.key] || 0);
+    S.metaHQ[def.key] = clamp(rank, 0, def.maxRank);
   }
   for(const def of STORY_SPECIALIST_PERKS){
     const rank = Math.floor(S.specialistPerks[def.key] || 0);
@@ -10612,8 +10626,28 @@ function storySpecialistRank(key){
   ensureStoryMetaState();
   return Math.max(0, Math.floor(S.specialistPerks[key] || 0));
 }
+function storyHQRank(key){
+  ensureStoryMetaState();
+  return Math.max(0, Math.floor(S.metaHQ[key] || 0));
+}
 function storyMetaNextCost(def, rank){
   return def.costs[Math.min(rank, def.costs.length - 1)];
+}
+function storyHQIdentityLabel(){
+  ensureStoryMetaState();
+  const defs = STORY_HQ_MODULES.map((def)=>({ key:def.key, name:def.name, rank:storyHQRank(def.key) }));
+  const total = defs.reduce((n, row)=>n + row.rank, 0);
+  if(total <= 0) return "Forward Outpost";
+  defs.sort((a, b)=>b.rank - a.rank);
+  const lead = defs[0];
+  const map = {
+    HQ_RD: "Research Vanguard",
+    HQ_MEDBAY: "Guardian Triage Command",
+    HQ_INTEL: "Shadow Intel Bureau",
+    HQ_ARMORY: "Iron Armory Command",
+  };
+  const tier = total >= 14 ? "Legendary" : (total >= 8 ? "Advanced" : "Emerging");
+  return `${tier} ${map[lead.key] || "Field Command"}`;
 }
 function storyChapterRewardUnlocked(chapter){
   ensureStoryMetaState();
@@ -10629,7 +10663,8 @@ function storyCaptureWindowPct(){
   if(S.mode !== "Story") return 0.25;
   const capRank = storySpecialistRank("SP_ATK_CAPTURE");
   const chapterBonus = storyChapterRewardUnlocked(2) ? 0.03 : 0;
-  return clamp(0.25 + (capRank * 0.02) + chapterBonus, 0.25, 0.36);
+  const hqBonus = storyHQRank("HQ_RD") * 0.01;
+  return clamp(0.25 + (capRank * 0.02) + chapterBonus + hqBonus, 0.25, 0.40);
 }
 function storyStaminaDrainMul(){
   const biomeMul = clamp(Number(biomeHazardModifiers(S.mode).staminaDrainMul || 1), 0.70, 1.35);
@@ -10644,7 +10679,8 @@ function storyPayoutMul(){
   if(S.mode !== "Story") return 1;
   const base = 1 + (storyBaseRank("BASE_FINANCE") * 0.08);
   const chapterMul = storyChapterRewardUnlocked(8) ? 1.08 : 1;
-  return base * chapterMul;
+  const hqMul = 1 + (storyHQRank("HQ_RD") * 0.03);
+  return base * chapterMul * hqMul;
 }
 function storyCivilianDamageMul(){
   if(S.mode === "Arcade"){
@@ -10653,36 +10689,41 @@ function storyCivilianDamageMul(){
   if(S.mode !== "Story") return 1;
   const rescueGuard = 1 - (storySpecialistRank("SP_RESCUE_GUARD") * 0.04);
   const chapterMul = storyChapterRewardUnlocked(4) ? 0.90 : 1;
-  return clamp(rescueGuard * chapterMul, 0.68, 1);
+  const hqMul = 1 - (storyHQRank("HQ_MEDBAY") * 0.04);
+  return clamp(rescueGuard * chapterMul * hqMul, 0.58, 1);
 }
 function storyStartingArmorBonus(){
   if(S.mode !== "Story") return 0;
-  return (storyBaseRank("BASE_ARMORY") * 8) + (storyChapterRewardUnlocked(5) ? 6 : 0);
+  return (storyBaseRank("BASE_ARMORY") * 8) + (storyHQRank("HQ_ARMORY") * 6) + (storyChapterRewardUnlocked(5) ? 6 : 0);
 }
 function storyStartingShieldBonus(){
   if(S.mode !== "Story") return 0;
-  return storyBaseRank("BASE_SHIELD_NET") + (storyChapterRewardUnlocked(3) ? 1 : 0);
+  return storyBaseRank("BASE_SHIELD_NET") + Math.floor(storyHQRank("HQ_ARMORY") / 2) + (storyChapterRewardUnlocked(3) ? 1 : 0);
 }
 function storyMissionSupplyMinimums(){
   if(S.mode !== "Story") return { medkits:1, traps:2, repair:1 };
   const logistics = storyBaseRank("BASE_LOGISTICS");
+  const medbay = storyHQRank("HQ_MEDBAY");
+  const armory = storyHQRank("HQ_ARMORY");
   return {
-    medkits: 1 + logistics,
+    medkits: 1 + logistics + (medbay >= 2 ? 1 : 0),
     traps: 2 + Math.floor((logistics + 1) / 2),
-    repair: 1 + (logistics >= 2 ? 1 : 0)
+    repair: 1 + (logistics >= 2 ? 1 : 0) + (armory >= 3 ? 1 : 0)
   };
 }
 function storyAttackerDamageMul(){
   if(S.mode !== "Story") return 1;
   const drill = 1 + (storySpecialistRank("SP_ATK_DRILL") * 0.12);
   const chapterMul = storyChapterRewardUnlocked(7) ? 1.08 : 1;
-  return drill * chapterMul;
+  const hqMul = 1 + (storyHQRank("HQ_ARMORY") * 0.03) + (storyHQRank("HQ_RD") * 0.015);
+  return drill * chapterMul * hqMul;
 }
 function storyAttackerDurabilityMul(){
   if(S.mode !== "Story") return 1;
   const drill = 1 + (storySpecialistRank("SP_ATK_DRILL") * 0.10);
   const chapterMul = storyChapterRewardUnlocked(7) ? 1.08 : 1;
-  return drill * chapterMul;
+  const hqMul = 1 + (storyHQRank("HQ_ARMORY") * 0.035);
+  return drill * chapterMul * hqMul;
 }
 function storyAttackerCaptureBonus(){
   if(S.mode !== "Story") return 0;
@@ -10697,12 +10738,14 @@ function storyRescueSpeedMul(){
   if(S.mode !== "Story") return 1;
   const escort = 1 + (storySpecialistRank("SP_RESCUE_ESCORT") * 0.10);
   const chapterMul = storyChapterRewardUnlocked(9) ? 1.10 : 1;
-  return escort * chapterMul;
+  const hqMul = 1 + (storyHQRank("HQ_MEDBAY") * 0.03);
+  return escort * chapterMul * hqMul;
 }
 function storyRescueDamageMul(){
   if(S.mode !== "Story") return 1;
   const guard = 1 - (storySpecialistRank("SP_RESCUE_GUARD") * 0.08);
-  return clamp(guard, 0.62, 1);
+  const hqMul = 1 - (storyHQRank("HQ_MEDBAY") * 0.03);
+  return clamp(guard * hqMul, 0.54, 1);
 }
 function storySupportHpMax(role){
   const base = role === "rescue" ? 220 : 280;
@@ -10710,14 +10753,14 @@ function storySupportHpMax(role){
   if(role === "attacker"){
     return Math.round(base * storyAttackerDurabilityMul());
   }
-  const escort = 1 + (storySpecialistRank("SP_RESCUE_ESCORT") * 0.10);
+  const escort = 1 + (storySpecialistRank("SP_RESCUE_ESCORT") * 0.10) + (storyHQRank("HQ_MEDBAY") * 0.03);
   return Math.round(base * escort);
 }
 function storySupportArmorBase(role){
   if(role === "rescue") return 0;
   const base = 170;
   if(S.mode !== "Story") return base;
-  return Math.round(base + (storySpecialistRank("SP_ATK_DRILL") * 16) + (storyChapterRewardUnlocked(7) ? 18 : 0));
+  return Math.round(base + (storySpecialistRank("SP_ATK_DRILL") * 16) + (storyHQRank("HQ_ARMORY") * 12) + (storyChapterRewardUnlocked(7) ? 18 : 0));
 }
 function unlockStoryChapterReward(chapter, opts={}){
   const silent = !!opts.silent;
@@ -14071,6 +14114,7 @@ function writeStoryProfileData(source="autosave", state=S){
     perks: { ...(src.perks || {}) },
     progressionUnlocks: { ...(src.progressionUnlocks || {}) },
     metaBase: { ...(src.metaBase || {}) },
+    metaHQ: { ...(src.metaHQ || {}) },
     specialistPerks: { ...(src.specialistPerks || {}) },
     specialistStarUnlocks: { ...(src.specialistStarUnlocks || {}) },
     chapterRewardsUnlocked: { ...(src.chapterRewardsUnlocked || {}) },
@@ -14233,6 +14277,9 @@ function applyStoryProfileToState(state, profile){
   }
   if(profile.metaBase && typeof profile.metaBase === "object"){
     state.metaBase = { ...(state.metaBase || {}), ...profile.metaBase };
+  }
+  if(profile.metaHQ && typeof profile.metaHQ === "object"){
+    state.metaHQ = { ...(state.metaHQ || {}), ...profile.metaHQ };
   }
   if(profile.specialistPerks && typeof profile.specialistPerks === "object"){
     state.specialistPerks = { ...(state.specialistPerks || {}), ...profile.specialistPerks };
@@ -14480,6 +14527,7 @@ function writeStoryProgressData(payload={}){
     perks: { ...(payload.perks ?? S.perks ?? {}) },
     progressionUnlocks: { ...(payload.progressionUnlocks ?? S.progressionUnlocks ?? {}) },
     metaBase: { ...(payload.metaBase ?? S.metaBase ?? {}) },
+    metaHQ: { ...(payload.metaHQ ?? S.metaHQ ?? {}) },
     specialistPerks: { ...(payload.specialistPerks ?? S.specialistPerks ?? {}) },
     specialistStarUnlocks: { ...(payload.specialistStarUnlocks ?? S.specialistStarUnlocks ?? {}) },
     chapterRewardsUnlocked: { ...(payload.chapterRewardsUnlocked ?? S.chapterRewardsUnlocked ?? {}) },
@@ -16668,8 +16716,8 @@ function renderShopList(){
     const pass = ensureSeasonPassState(S);
     const storyModeLive = S.mode === "Story";
     note.innerText = storyModeLive
-      ? "Meta progression is active. Base upgrades, specialist perks, and chapter rewards affect Story missions. Mastery rewards are permanent cosmetics only."
-      : "Meta progression purchases are persistent, but effects apply in Story missions. Mastery rewards stay cosmetic-only.";
+      ? "Meta progression is active. Base upgrades, HQ modules, specialist perks, and chapter rewards affect Story missions. Mastery rewards are permanent cosmetics only."
+      : "Meta progression purchases are persistent, but effects apply in Story missions. HQ modules shape long-term identity and passive bonuses.";
 
     const baseCards = STORY_BASE_UPGRADES.map((def)=>{
       const rank = storyBaseRank(def.key);
@@ -16704,6 +16752,25 @@ function renderShopList(){
           </div>
         </div>`;
     }).join("");
+    const hqCards = STORY_HQ_MODULES.map((def)=>{
+      const rank = storyHQRank(def.key);
+      const maxed = rank >= def.maxRank;
+      const nextCost = maxed ? null : storyMetaNextCost(def, rank);
+      return `
+        <div class="item">
+          <div>
+            <div class="itemName">${def.name} <span class="tag">Rank ${rank}/${def.maxRank}</span></div>
+            <div class="itemDesc">${def.desc}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">${maxed ? "MAX" : `$${nextCost.toLocaleString()}`}</div>
+            <button ${maxed ? "disabled" : ""} onclick="buyStoryHQModule('${def.key}')">${maxed ? "Maxed" : "Upgrade"}</button>
+          </div>
+        </div>`;
+    }).join("");
+    const hqTotal = STORY_HQ_MODULES.reduce((n, def)=>n + storyHQRank(def.key), 0);
+    const hqMax = STORY_HQ_MODULES.reduce((n, def)=>n + def.maxRank, 0);
+    const hqIdentity = storyHQIdentityLabel();
 
     const completedChapter = Math.floor(Math.max(0, (S.storyLevel || 1) - 1) / 10);
     const rewardCards = STORY_CHAPTER_REWARDS.map((def)=>{
@@ -16761,6 +16828,15 @@ function renderShopList(){
     list.innerHTML = `
       <div class="hudTitle">Base Upgrades (Story)</div>
       ${baseCards}
+      <div class="divider"></div>
+      <div class="hudTitle">Base HQ Progression (${hqTotal}/${hqMax})</div>
+      <div class="item">
+        <div>
+          <div class="itemName">HQ Identity <span class="tag">${hqIdentity}</span></div>
+          <div class="itemDesc">Upgrade R&D, Medbay, Intel, and Armory modules to define long-term account identity and mission modifiers.</div>
+        </div>
+      </div>
+      ${hqCards}
       <div class="divider"></div>
       <div class="hudTitle">Specialist Perks (Story)</div>
       ${specialistCards}
@@ -17289,6 +17365,9 @@ function storyBaseUpgradeDef(key){
 function storySpecialistPerkDef(key){
   return STORY_SPECIALIST_PERKS.find((def)=>def.key === key) || null;
 }
+function storyHQModuleDef(key){
+  return STORY_HQ_MODULES.find((def)=>def.key === key) || null;
+}
 function buyStoryBaseUpgrade(key){
   ensureStoryMetaState();
   const def = storyBaseUpgradeDef(key);
@@ -17316,6 +17395,26 @@ function buyStorySpecialistPerk(key){
   if(S.funds < cost) return toast("Not enough money.");
   S.funds -= cost;
   S.specialistPerks[key] = rank + 1;
+  if(!window.__TUTORIAL_MODE__ && Array.isArray(S.supportUnits) && S.supportUnits.length){
+    spawnSupportUnits();
+  }
+  toast(`${def.name} upgraded to Rank ${rank + 1}.`);
+  sfx("ui"); hapticImpact("light");
+  save();
+  renderShopList();
+  renderHUD();
+  if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+}
+function buyStoryHQModule(key){
+  ensureStoryMetaState();
+  const def = storyHQModuleDef(key);
+  if(!def) return;
+  const rank = storyHQRank(key);
+  if(rank >= def.maxRank) return toast("HQ module already maxed.");
+  const cost = storyMetaNextCost(def, rank);
+  if(S.funds < cost) return toast("Not enough money.");
+  S.funds -= cost;
+  S.metaHQ[key] = rank + 1;
   if(!window.__TUTORIAL_MODE__ && Array.isArray(S.supportUnits) && S.supportUnits.length){
     spawnSupportUnits();
   }
@@ -17363,6 +17462,8 @@ function renderInventory(){
   const ammoId=w.ammo;
   const baseRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + storyBaseRank(def.key), 0);
   const baseMaxRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + def.maxRank, 0);
+  const hqRanks = STORY_HQ_MODULES.reduce((n, def)=>n + storyHQRank(def.key), 0);
+  const hqMaxRanks = STORY_HQ_MODULES.reduce((n, def)=>n + def.maxRank, 0);
   const specialistRanks = STORY_SPECIALIST_PERKS.reduce((n, def)=>n + storySpecialistRank(def.key), 0);
   const specialistMaxRanks = STORY_SPECIALIST_PERKS.reduce((n, def)=>n + def.maxRank, 0);
   const chapterRewards = chapterRewardUnlockedCount();
@@ -17377,7 +17478,8 @@ function renderInventory(){
      <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Build:</b> ${attachmentBuildSummaryForWeapon(w.id)} • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
      <b>Squad Abilities:</b> Tranq Burst ${squadTranqStatus} • Smoke Screen ${squadSmokeStatus}<br>
-     <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}<br>
+     <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • HQ ${hqRanks}/${hqMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}<br>
+     <b>HQ Identity:</b> ${storyHQIdentityLabel()}<br>
      <b>Mastery:</b> ${masteryCount}/${MASTERY_TRACKS.length} claimed • <b>Elite Title:</b> ${eliteTitleTxt}`;
 
   document.getElementById("invWeapons").innerHTML = S.ownedWeapons.map(id=>{
@@ -17465,9 +17567,11 @@ function renderInventory(){
     ? `Next unlock at Level ${nextUnlock.level}: ${nextUnlock.label}`
     : "All progression unlocks completed.";
   const topBase = [...STORY_BASE_UPGRADES].sort((a,b)=>storyBaseRank(b.key)-storyBaseRank(a.key)).slice(0,2);
+  const topHq = [...STORY_HQ_MODULES].sort((a,b)=>storyHQRank(b.key)-storyHQRank(a.key)).slice(0,2);
   const topSpec = [...STORY_SPECIALIST_PERKS].sort((a,b)=>storySpecialistRank(b.key)-storySpecialistRank(a.key)).slice(0,2);
   const metaBits = [
     ...topBase.map((d)=>`${d.name} R${storyBaseRank(d.key)}/${d.maxRank}`),
+    ...topHq.map((d)=>`${d.name} R${storyHQRank(d.key)}/${d.maxRank}`),
     ...topSpec.map((d)=>`${d.name} R${storySpecialistRank(d.key)}/${d.maxRank}`)
   ].filter(Boolean);
   const medSelected = selectedMedkitId();
@@ -29395,6 +29499,7 @@ window.buyReinforcementBundle = buyReinforcementBundle;
 window.reviveSoldier = reviveSoldier;
 window.reviveAllSoldiers = reviveAllSoldiers;
 window.buyStoryBaseUpgrade = buyStoryBaseUpgrade;
+window.buyStoryHQModule = buyStoryHQModule;
 window.buyStorySpecialistPerk = buyStorySpecialistPerk;
 window.unlockSeasonPremium = unlockSeasonPremium;
 window.claimSeasonPassReward = claimSeasonPassReward;
