@@ -21796,6 +21796,9 @@ function damageSupportUnit(unit, dmg){
   if(unit.hp > 0) return;
 
   unit.alive = false;
+  if(unit.raidPartner){
+    return;
+  }
   if(!unit._downedApplied){
     unit._downedApplied = true;
     if(unit.role === "attacker"){
@@ -21945,6 +21948,24 @@ function squadFormationAnchor(unit, slotIndex, roleCounts, formation, step){
   const y = S.me.y + (fy * forward) + (sy * lateral) + (sy * bob * 0.45);
   return { x, y };
 }
+function supportRetreatAnchor(unit, threatTiger, hpRatio=1){
+  const ux = Number(unit?.x || S.me.x);
+  const uy = Number(unit?.y || S.me.y);
+  const tx = Number(threatTiger?.x || S.me.x);
+  const ty = Number(threatTiger?.y || S.me.y);
+  const awayX = ux - tx;
+  const awayY = uy - ty;
+  const awayLen = Math.hypot(awayX, awayY) || 1;
+  const hardRetreat = hpRatio <= 0.30;
+  const retreatStep = hardRetreat ? 122 : 92;
+  const fallbackX = S.me.x + ((unit?.role === "attacker") ? -34 : 34);
+  const fallbackY = S.me.y + 44;
+  const blend = hardRetreat ? 0.72 : 0.56;
+  return {
+    x: (fallbackX * (1 - blend)) + ((ux + (awayX / awayLen) * retreatStep) * blend),
+    y: (fallbackY * (1 - blend)) + ((uy + (awayY / awayLen) * retreatStep) * blend),
+  };
+}
 
 function supportUnitsTick(){
   if(S.paused || S.gameOver || S.missionEnded) return;
@@ -22061,11 +22082,28 @@ function supportUnitsTick(){
     let targetX = anchor.x;
     let targetY = anchor.y;
     const leashMax = (commandHold ? 120 : (commandRegroup ? 150 : 265)) * formationProfile.leashMul;
+    const hpRatio = clamp((Number(unit.hp || 0) / Math.max(1, Number(unit.hpMax || 1))), 0, 1);
+    const nearestThreatNow = nearestTigerTo(unit.x, unit.y);
+    const nearestThreatTiger = nearestThreatNow.tiger;
+    const nearestThreatDist = Number.isFinite(nearestThreatNow.d) ? nearestThreatNow.d : Infinity;
+    const highThreatTiger = !!nearestThreatTiger && (isBossTiger(nearestThreatTiger) || nearestThreatTiger.type === "Alpha" || nearestThreatTiger.type === "Berserker");
+    const retreatCritical = hpRatio <= (unit.role === "attacker" ? 0.30 : 0.36);
+    const retreatCaution = hpRatio <= (unit.role === "attacker" ? 0.46 : 0.54);
+    const retreatThreatRange = highThreatTiger ? 220 : 150;
+    const retreatNow = !!nearestThreatTiger && (retreatCritical || (retreatCaution && nearestThreatDist <= retreatThreatRange));
+    if(retreatNow){
+      const fallback = supportRetreatAnchor(unit, nearestThreatTiger, hpRatio);
+      targetX = fallback.x;
+      targetY = fallback.y;
+      unit._retreating = true;
+    } else {
+      unit._retreating = false;
+    }
 
-    if(unit.role === "rescue" && liveCivs.length && !commandHold && !commandRegroup){
+    if(unit.role === "rescue" && liveCivs.length && !commandHold && !commandRegroup && !retreatNow){
       const ownTag = "rescue";
       const ownedByThisUnit = liveCivs.filter((c)=>c.following && c.escortOwner === ownTag && c.escortUnitId === unit.id);
-      const canTakeNewAssignments = !commandAttackTarget || squadFormation === "SPLIT_ESCORT";
+      const canTakeNewAssignments = commandRescue || commandAuto || squadFormation === "SPLIT_ESCORT";
       const available = canTakeNewAssignments
         ? liveCivs.filter((c)=>!c.following && (c.escortOwner !== ownTag || !c.escortUnitId || c.escortUnitId === unit.id))
         : [];
@@ -22089,7 +22127,7 @@ function supportUnitsTick(){
         if(civ === dangerCiv) score += 1.1;
         if(civ.escortOwner === ownTag && civ.escortUnitId === unit.id) score += 0.55;
         if(commandRescue) score += 0.65;
-        if(commandAttackTarget && squadFormation !== "SPLIT_ESCORT" && civ !== dangerCiv) score -= 0.34;
+        if(commandAttackTarget && squadFormation !== "SPLIT_ESCORT" && civ !== dangerCiv) score -= 0.90;
         if(score > bestScore){
           bestScore = score;
           targetCiv = civ;
@@ -22140,12 +22178,11 @@ function supportUnitsTick(){
           }
         }
       }
-    } else if(unit.role === "attacker" && activeTigers.length){
+    } else if(unit.role === "attacker" && activeTigers.length && !retreatNow){
       const fallback = nearestTigerTo(unit.x, unit.y);
       let chaseTiger = null;
       if(commandAttackTarget){
         chaseTiger = lockTiger || null;
-        if(!chaseTiger && fallback.d < 170) chaseTiger = fallback.tiger;
       } else if(commandRescue){
         chaseTiger = dangerCiv ? nearestTigerTo(dangerCiv.x, dangerCiv.y).tiger : null;
         if(!chaseTiger){
@@ -22168,7 +22205,7 @@ function supportUnitsTick(){
         const nearDanger = dangerCiv ? dist(chaseTiger.x, chaseTiger.y, dangerCiv.x, dangerCiv.y) < 210 : false;
         const isLocked = !!lockTiger && chaseTiger.id === lockTiger.id;
         const allowChase = commandAttackTarget
-          ? (isLocked || (!lockTiger && nearPlayer))
+          ? !!(lockTiger && isLocked)
           : commandRegroup
             ? nearPlayer
             : commandHold
@@ -22246,6 +22283,10 @@ function supportUnitsTick(){
       if(unit.role === "attacker"){
         shotRange *= formationProfile.attackerRangeMul;
       }
+      if(unit._retreating){
+        allowEngage = false;
+      }
+      const hostileMeleeRange = (isBossTiger(tiger) || tiger.type === "Alpha") ? 112 : clawRange;
 
       if(unit.role === "attacker"){
         if(allowEngage && tigerDist < shotRange && now >= (unit.fireAt || 0)){
@@ -22285,18 +22326,19 @@ function supportUnitsTick(){
             break;
           }
         }
-        if(allowEngage && tigerDist < clawRange){
+        if(tigerDist < hostileMeleeRange){
           const hitKey = `_nextTigerHitAt_${tiger.id}`;
           if(now >= (unit[hitKey] || 0)){
-            unit[hitKey] = now + rand(780, 1120);
+            unit[hitKey] = now + rand(720, 1060);
             damageSupportUnit(unit, supportTigerHitDamage(tiger, "attacker"));
           }
         }
       } else if(unit.role === "rescue"){
-        if(tigerDist < 84){
+        const rescueMeleeRange = (isBossTiger(tiger) || tiger.type === "Alpha") ? 102 : 84;
+        if(tigerDist < rescueMeleeRange){
           const hitKey = `_nextTigerHitAt_${tiger.id}`;
           if(now >= (unit[hitKey] || 0)){
-            unit[hitKey] = now + rand(900, 1280);
+            unit[hitKey] = now + rand(860, 1240);
             damageSupportUnit(unit, supportTigerHitDamage(tiger, "rescue"));
           }
         }
