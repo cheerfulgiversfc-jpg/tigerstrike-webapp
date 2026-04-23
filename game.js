@@ -19876,10 +19876,9 @@ function applyRaidPartnerSlots(units=[]){
   const core = list.filter((unit)=>!unit.raidPartner);
   const existingA = list.find((unit)=>unit?.id === RAID_PARTNER_IDS.attacker && unit.alive !== false);
   const existingR = list.find((unit)=>unit?.id === RAID_PARTNER_IDS.rescue && unit.alive !== false);
-  const raidUnits = [
-    existingA || createRaidPartnerUnit("attacker", 0),
-    existingR || createRaidPartnerUnit("rescue", 0),
-  ];
+  const raidUnits = [];
+  if(existingA) raidUnits.push(existingA);
+  if(existingR) raidUnits.push(existingR);
 
   raidUnits.forEach((unit, idx)=>{
     const anchorX = S.me.x + (idx === 0 ? -44 : 48);
@@ -21823,7 +21822,11 @@ function supportTigerHitDamage(tiger, role){
   }
   if(tiger?.type === "Stalker") dmg *= 1.06;
   if(isBossTiger(tiger)) dmg *= 1.18;
+  if(tiger?.type === "Alpha" || isBossTiger(tiger)) dmg *= 1.35;
+  if(tiger?.type === "Berserker") dmg *= 1.15;
   if(role === "rescue") dmg *= 1.04;
+  if(role === "attacker") dmg *= 1.28;
+  if(role === "rescue") dmg *= 1.10;
   if(role === "rescue" && squadAbilityActive("smoke_screen")) dmg *= 0.82;
   if(S.mode==="Story"){
     if(role === "attacker"){
@@ -21833,7 +21836,7 @@ function supportTigerHitDamage(tiger, role){
       dmg *= storyRescueDamageMul();
     }
   }
-  const cap = role === "attacker" ? 72 : 78;
+  const cap = role === "attacker" ? 92 : 86;
   return clamp(Math.round(dmg), 6, cap);
 }
 
@@ -25324,6 +25327,13 @@ function checkMissionComplete(){
       if(!trapTriggerReady) missing.push("trap stop objective not met");
       if(!noKillReady) missing.push("no-kill objective failed");
       return gameOverChoice(`Mission failed: ${missing.join(" • ")}.`);
+    }
+    return;
+  }
+  if(!tAlive && !evacReady && !S.missionEnded && !S.gameOver){
+    if(Date.now() > (S._noTigerEvacHintAt || 0) + 3200){
+      S._noTigerEvacHintAt = Date.now();
+      setEventText("All tigers are down. Evacuate remaining civilians to complete mission.", 2.4);
     }
     return;
   }
@@ -29255,14 +29265,14 @@ function missionEntityStateInvalid(state=S){
   const meOk = !!(state.me && inWorld(state.me.x, state.me.y, 180));
   if(!meOk) return "player-missing";
 
-  if(!Array.isArray(state.tigers) || !state.tigers.length) return "tigers-empty";
+  if(!Array.isArray(state.tigers) || !state.tigers.length) return "";
   const hasTiger = state.tigers.some((t)=>
     t &&
     t.alive !== false &&
     inWorld(t.x, t.y, 220) &&
     Number.isFinite(t.hp)
   );
-  if(!hasTiger) return "tigers-invalid";
+  if(!hasTiger) return "";
 
   if(mode === "Survival") return "";
 
