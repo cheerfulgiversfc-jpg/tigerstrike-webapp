@@ -8036,6 +8036,8 @@ const __renderFailSafeState = {
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
   __mapFrameCacheAt = 0;
+  __mapFrameCacheCanvas = null;
+  __mapFrameCacheCtx = null;
   __mapObstacleSig = "";
   __mapObstacleRects = [];
   __mapObstacleCircles = [];
@@ -8045,6 +8047,29 @@ function invalidateMapCache(){
   __mapDenseLandmarks = [];
   __blockedAtCache.clear();
   __blockedAtCacheFrame = 0;
+}
+function reconcileSupportDownedFromUnits(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || !Array.isArray(src.supportUnits)) return;
+  let addA = 0;
+  let addR = 0;
+  for(const unit of src.supportUnits){
+    if(!unit || typeof unit !== "object") continue;
+    const dead = (unit.alive === false) || (Number(unit.hp || 0) <= 0);
+    if(!dead) continue;
+    unit.alive = false;
+    if(unit.raidPartner) continue;
+    if(unit._downedApplied) continue;
+    unit._downedApplied = true;
+    if(unit.role === "attacker") addA += 1;
+    else if(unit.role === "rescue") addR += 1;
+  }
+  if(addA > 0){
+    src.soldierAttackersDowned = clamp((src.soldierAttackersDowned || 0) + addA, 0, src.soldierAttackersOwned || 0);
+  }
+  if(addR > 0){
+    src.soldierRescuersDowned = clamp((src.soldierRescuersDowned || 0) + addR, 0, src.soldierRescuersOwned || 0);
+  }
 }
 
 const WORLD_BASE_WIDTH = 960;
@@ -10048,6 +10073,8 @@ function sanitizeRuntimeState(){
     }
     return true;
   }).slice(0, MAX_PERSIST_SUPPORT_UNITS);
+  reconcileSupportDownedFromUnits(S);
+  syncSquadRosterBounds();
 
   S.pickups = S.pickups.filter((p)=>p && typeof p === "object" && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(-MAX_PERSIST_PICKUPS);
   for(const p of S.pickups){
@@ -19862,7 +19889,6 @@ function applyRaidPartnerSlots(units=[]){
     unit.y = pt.y;
     unit.homeX = S.me.x;
     unit.homeY = S.me.y;
-    unit.alive = true;
     if(!Number.isFinite(unit.step)) unit.step = rand(0, 1000);
   });
 
@@ -19874,6 +19900,8 @@ function spawnSupportUnits(){
   if(window.__TUTORIAL_MODE__) return;
   syncSquadRosterBounds();
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
+  reconcileSupportDownedFromUnits(S);
+  syncSquadRosterBounds();
 
   const alive = S.supportUnits.filter((unit)=>unit && unit.alive !== false);
   const attackersWanted = clamp(squadAliveCount("attacker"), 0, SQUAD_MAX_PER_ROLE);
@@ -29795,8 +29823,10 @@ function init(){
     if(!Number.isFinite(unit.hp)) unit.hp = unit.hpMax;
     unit.hp = clamp(unit.hp, 0, unit.hpMax);
     unit.armor = storySupportArmorBase(unit.role);
-    if(unit.alive == null) unit.alive = true;
+    if(unit.alive == null) unit.alive = unit.hp > 0;
+    if(unit.hp <= 0) unit.alive = false;
   }
+  reconcileSupportDownedFromUnits(S);
   if((S.soldierAttackersOwned || 0) + (S.soldierRescuersOwned || 0) + (S.soldierAttackersDowned || 0) + (S.soldierRescuersDowned || 0) <= 0 && Array.isArray(S.supportUnits) && S.supportUnits.length){
     S.soldierAttackersOwned = S.supportUnits.filter((unit)=>unit.alive && unit.role === "attacker").length;
     S.soldierRescuersOwned = S.supportUnits.filter((unit)=>unit.alive && unit.role === "rescue").length;
@@ -29933,13 +29963,29 @@ function bootstrap(){
 setTimeout(bootstrap, 0);
 
 // Flush progress when app is backgrounded/closed (important on mobile).
+let __foregroundRefreshAt = 0;
+function refreshSceneAfterForeground(){
+  const now = Date.now();
+  if(now - (__foregroundRefreshAt || 0) < 350) return;
+  __foregroundRefreshAt = now;
+  try{ resizeCanvasForViewport(); }catch(e){}
+  try{ sanitizeRuntimeState(); }catch(e){}
+  try{ clampWorldToCanvas(); }catch(e){}
+  try{ invalidateMapCache(); }catch(e){}
+}
 window.addEventListener("pagehide", ()=>{
   try{ save(true); }catch(e){}
 }, { capture:true });
 document.addEventListener("visibilitychange", ()=>{
-  if(document.visibilityState !== "hidden") return;
-  try{ save(true); }catch(e){}
+  if(document.visibilityState === "hidden"){
+    try{ save(true); }catch(e){}
+    return;
+  }
+  refreshSceneAfterForeground();
 });
+window.addEventListener("pageshow", ()=>{
+  refreshSceneAfterForeground();
+}, { capture:true });
 
 
 // ===================== TUTORIAL ACCESS =====================
