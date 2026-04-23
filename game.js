@@ -3964,6 +3964,90 @@ const TIGER_DAMAGE_SCALES = {
   support: [0.78, 0.90, 1.05, 1.22, 1.42, 1.72],
 };
 const TIGER_DEFENSE_SCALES = [0.92, 0.98, 1.08, 1.18, 1.32, 1.58];
+const TIGER_PACK_ROLES = Object.freeze({
+  ALPHA: "alpha",
+  PROTECTOR: "protector",
+  SCOUT: "scout",
+  FLANKER: "flanker",
+  HUNTER: "hunter",
+});
+const TIGER_PACK_TERRITORY_BASE_RADIUS = 210;
+const TIGER_PACK_REINFORCE_COOLDOWN_MS = 28000;
+
+function defaultTigerPackIntelState(){
+  return {
+    packs: Object.create(null),
+    lastEventAt: 0,
+  };
+}
+function ensureTigerPackIntelState(){
+  if(!S || typeof S !== "object") return defaultTigerPackIntelState();
+  if(!S._packIntel || typeof S._packIntel !== "object"){
+    S._packIntel = defaultTigerPackIntelState();
+  }
+  if(!S._packIntel.packs || typeof S._packIntel.packs !== "object"){
+    S._packIntel.packs = Object.create(null);
+  }
+  if(!Number.isFinite(S._packIntel.lastEventAt)) S._packIntel.lastEventAt = 0;
+  return S._packIntel;
+}
+function resetTigerPackIntelState(){
+  S._packIntel = defaultTigerPackIntelState();
+  return S._packIntel;
+}
+function ensureTigerPackState(packId, seedX=0, seedY=0){
+  const id = Math.max(1, Math.floor(Number(packId || 1)));
+  const intel = ensureTigerPackIntelState();
+  if(!intel.packs[id] || typeof intel.packs[id] !== "object"){
+    intel.packs[id] = {
+      id,
+      losses: 0,
+      morale: 1,
+      lastLossAt: 0,
+      lastReinforceAt: 0,
+      threatUntil: 0,
+      territoryX: Number.isFinite(seedX) ? Number(seedX) : 0,
+      territoryY: Number.isFinite(seedY) ? Number(seedY) : 0,
+    };
+  }
+  const state = intel.packs[id];
+  if(!Number.isFinite(state.territoryX) && Number.isFinite(seedX)) state.territoryX = Number(seedX);
+  if(!Number.isFinite(state.territoryY) && Number.isFinite(seedY)) state.territoryY = Number(seedY);
+  state.losses = Math.max(0, Math.floor(Number(state.losses || 0)));
+  state.morale = clamp(Number(state.morale || 1), 0.40, 1.1);
+  state.lastLossAt = Math.max(0, Math.floor(Number(state.lastLossAt || 0)));
+  state.lastReinforceAt = Math.max(0, Math.floor(Number(state.lastReinforceAt || 0)));
+  state.threatUntil = Math.max(0, Math.floor(Number(state.threatUntil || 0)));
+  return state;
+}
+function tigerPackOnSpawn(tiger){
+  if(!tiger || !Number.isFinite(tiger.packId)) return;
+  ensureTigerPackState(tiger.packId, tiger.x, tiger.y);
+}
+function tigerPackMoraleNow(state, now=Date.now()){
+  if(!state) return 1;
+  const lossDecay = Math.max(0, Number(state.losses || 0)) * 0.115;
+  const timeRecover = state.lastLossAt > 0 ? clamp((now - state.lastLossAt) / 42000, 0, 0.22) : 0;
+  const pressure = now < (state.threatUntil || 0) ? 0.04 : 0;
+  return clamp(1 - lossDecay + timeRecover - pressure, 0.42, 1.06);
+}
+function tigerPackRecordLoss(tiger, outcome="KILL"){
+  if(!tiger || !Number.isFinite(tiger.packId)) return;
+  const now = Date.now();
+  const state = ensureTigerPackState(tiger.packId, tiger.x, tiger.y);
+  state.losses = Math.max(0, Math.floor(Number(state.losses || 0))) + 1;
+  state.lastLossAt = now;
+  state.threatUntil = Math.max(state.threatUntil || 0, now + 12000);
+  state.morale = tigerPackMoraleNow(state, now);
+  const intel = ensureTigerPackIntelState();
+  if(now - (intel.lastEventAt || 0) >= 5200){
+    intel.lastEventAt = now;
+    setEventText(
+      `🐅 Pack ${state.id} ${String(outcome || "KILL").toLowerCase()} loss • morale ${Math.round(state.morale * 100)}%`,
+      2.1
+    );
+  }
+}
 
 function isBossTiger(t){
   return !!(t && (t.bossPhases || 0) > 0);
@@ -20228,6 +20312,7 @@ function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
 
 // ===================== TIGERS =====================
 function spawnTigers(){
+  resetTigerPackIntelState();
 
   // ✅ TUTORIAL TIGER (FORCED)
   if(window.__TUTORIAL_MODE__){
@@ -20243,6 +20328,7 @@ function spawnTigers(){
       hp:120,
       hpMax:120,
       alive:true,
+      packId:1,
       aggroBoost:0,
       civBias:0.3,
       stealth:false,
@@ -20296,6 +20382,7 @@ function spawnTigers(){
       gaitState:"walk",
       gaitBlend:0
     }];
+    tigerPackOnSpawn(S.tigers[0]);
 
     return;
   }
@@ -20473,6 +20560,7 @@ function spawnTigers(){
       applyNemesisEntryToTiger(tigerObj, nemesisEntry, storyMissionNo);
     }
     S.tigers.push(tigerObj);
+    tigerPackOnSpawn(tigerObj);
   }
   if(nemesisEntry){
     setEventText(`☠️ Nemesis returned: ${nemesisEntry.alias} (Lv ${nemesisEntry.power}) • Bounty $${nemesisEntry.bountyCash.toLocaleString()}`, 6.2);
@@ -20621,6 +20709,7 @@ function spawnRogueTiger(options={}){
   tiger.drawDir = tiger.vx >= 0 ? 1 : -1;
 
   S.tigers.push(tiger);
+  tigerPackOnSpawn(tiger);
   if(!ignoreDirectorBudget) missionDirectorMarkTigerSpawn();
   return tiger;
 }
@@ -22303,6 +22392,7 @@ function supportUnitsTick(){
             if(Math.random() < capChance){
               markStoryFinalBossOutcome("CAPTURE", tiger);
               tiger.alive = false;
+              tigerPackRecordLoss(tiger, "CAPTURE");
               S.stats.captures = (S.stats.captures || 0) + 1;
               addContractTally("captures", 1);
               addOpsTotal("captures", 1);
@@ -22985,13 +23075,120 @@ function roamTigers(){
   const tigerMaxX = tigerBounds.maxX;
   const tigerMinY = tigerBounds.minY;
   const tigerMaxY = tigerBounds.maxY;
+  const packIntel = ensureTigerPackIntelState();
   const packStats = Object.create(null);
   for(const tiger of aliveTigers){
     if(!tiger.packId) continue;
-    if(!packStats[tiger.packId]) packStats[tiger.packId] = { x:0, y:0, n:0 };
-    packStats[tiger.packId].x += tiger.x;
-    packStats[tiger.packId].y += tiger.y;
-    packStats[tiger.packId].n += 1;
+    const packId = Math.max(1, Math.floor(Number(tiger.packId || 1)));
+    const packState = ensureTigerPackState(packId, tiger.x, tiger.y);
+    if(!packStats[packId]){
+      packStats[packId] = {
+        id: packId,
+        x: 0,
+        y: 0,
+        n: 0,
+        members: [],
+        alpha: null,
+        alphaScore: -Infinity,
+        territoryX: packState.territoryX,
+        territoryY: packState.territoryY,
+        territoryR: TIGER_PACK_TERRITORY_BASE_RADIUS,
+        playerInTerritory: false,
+        civiliansInTerritory: false,
+        packState,
+      };
+    }
+    const pack = packStats[packId];
+    pack.x += tiger.x;
+    pack.y += tiger.y;
+    pack.n += 1;
+    pack.members.push(tiger);
+    const alphaScore = (tiger.type === "Alpha" ? 100 : 0)
+      + (isBossTiger(tiger) ? 38 : 0)
+      + (Number(TIGER_POWER_ORDER[tiger.type] || 1) * 7)
+      + clamp((Number(tiger.hp || 0) / Math.max(1, Number(tiger.hpMax || 1))), 0, 1) * 12;
+    if(alphaScore > pack.alphaScore){
+      pack.alphaScore = alphaScore;
+      pack.alpha = tiger;
+    }
+  }
+  for(const packIdRaw of Object.keys(packStats)){
+    const packId = Number(packIdRaw);
+    const pack = packStats[packId];
+    const packState = pack.packState || ensureTigerPackState(packId, pack.x, pack.y);
+    const cx = pack.n > 0 ? (pack.x / pack.n) : (packState.territoryX || S.me.x);
+    const cy = pack.n > 0 ? (pack.y / pack.n) : (packState.territoryY || S.me.y);
+    pack.territoryX = Number.isFinite(packState.territoryX)
+      ? ((packState.territoryX * 0.86) + (cx * 0.14))
+      : cx;
+    pack.territoryY = Number.isFinite(packState.territoryY)
+      ? ((packState.territoryY * 0.86) + (cy * 0.14))
+      : cy;
+    packState.territoryX = pack.territoryX;
+    packState.territoryY = pack.territoryY;
+    packState.morale = tigerPackMoraleNow(packState, now);
+    const moralePenalty = (1 - packState.morale) * 56;
+    pack.territoryR = clamp(TIGER_PACK_TERRITORY_BASE_RADIUS + (pack.n * 22) - moralePenalty, 166, 344);
+    pack.playerInTerritory = dist(S.me.x, S.me.y, pack.territoryX, pack.territoryY) <= pack.territoryR;
+    if(liveCivs.length){
+      for(const civ of liveCivs){
+        if(dist(civ.x, civ.y, pack.territoryX, pack.territoryY) <= (pack.territoryR * 0.92)){
+          pack.civiliansInTerritory = true;
+          break;
+        }
+      }
+    }
+    const canReinforce = !!pack.alpha
+      && (pack.playerInTerritory || pack.civiliansInTerritory || now < (packState.threatUntil || 0))
+      && now >= ((packState.lastReinforceAt || 0) + TIGER_PACK_REINFORCE_COOLDOWN_MS)
+      && pack.n <= 4
+      && aliveTigers.length < 14;
+    if(canReinforce){
+      const reinforceType = (Math.random() < 0.35) ? "Scout" : "Standard";
+      const reinforcement = spawnRogueTiger({
+        packId: pack.id,
+        nearX: pack.territoryX,
+        nearY: pack.territoryY,
+        anchorTight: true,
+        typeKey: reinforceType,
+      });
+      if(reinforcement){
+        tigerPackOnSpawn(reinforcement);
+        packState.lastReinforceAt = now;
+        packState.threatUntil = Math.max(packState.threatUntil || 0, now + 12000);
+        if(now - (packIntel.lastEventAt || 0) >= 6500){
+          packIntel.lastEventAt = now;
+          setEventText(`🐅 Pack ${pack.id} called reinforcement (${reinforceType}).`, 2.4);
+        }
+      }
+    }
+    const ranked = [...pack.members].sort((a, b)=>{
+      const pa = Number(TIGER_POWER_ORDER[a.type] || 1);
+      const pb = Number(TIGER_POWER_ORDER[b.type] || 1);
+      if(pb !== pa) return pb - pa;
+      const ar = clamp((Number(a.hp || 0) / Math.max(1, Number(a.hpMax || 1))), 0, 1);
+      const br = clamp((Number(b.hp || 0) / Math.max(1, Number(b.hpMax || 1))), 0, 1);
+      return br - ar;
+    });
+    let scoutAssigned = false;
+    let protectorAssigned = false;
+    for(const tiger of ranked){
+      let role = TIGER_PACK_ROLES.HUNTER;
+      if(pack.alpha && tiger.id === pack.alpha.id){
+        role = TIGER_PACK_ROLES.ALPHA;
+      } else if(!scoutAssigned && tiger.type === "Scout"){
+        role = TIGER_PACK_ROLES.SCOUT;
+        scoutAssigned = true;
+      } else if(!protectorAssigned && (tiger.type === "Berserker" || tiger.type === "Alpha")){
+        role = TIGER_PACK_ROLES.PROTECTOR;
+        protectorAssigned = true;
+      } else if(tiger.type === "Stalker"){
+        role = TIGER_PACK_ROLES.FLANKER;
+      }
+      tiger.packRole = role;
+      tiger.packMorale = packState.morale;
+      tiger.packTerritoryR = pack.territoryR;
+    }
   }
 
   let tickTigers = aliveTigers;
@@ -23165,21 +23362,72 @@ function roamTigers(){
       t.wanderAngle += (Math.random() - 0.5) * 0.22;
     }
 
+    const pack = t.packId ? packStats[t.packId] : null;
+    if(pack){
+      const role = t.packRole || TIGER_PACK_ROLES.HUNTER;
+      const morale = clamp(Number(t.packMorale || pack.packState?.morale || 1), 0.42, 1.08);
+      const territoryHot = !!pack.playerInTerritory || !!pack.civiliansInTerritory || now < Number(pack.packState?.threatUntil || 0);
+      const alpha = pack.alpha;
+      if(role === TIGER_PACK_ROLES.PROTECTOR && alpha && alpha.id !== t.id){
+        const guardDist = dist(t.x, t.y, alpha.x, alpha.y);
+        if(!closeToPlayer && !closeToCiv && guardDist > 64){
+          const guardA = (now * 0.0012) + (t.id * 0.85);
+          targetX = alpha.x + Math.cos(guardA) * 38;
+          targetY = alpha.y + Math.sin(guardA) * 32;
+          targetDist = dist(t.x, t.y, targetX, targetY);
+        }
+      } else if(role === TIGER_PACK_ROLES.SCOUT){
+        if(territoryHot && playerDist < motion.detect + 170){
+          const orbitA = Math.atan2(S.me.y - pack.territoryY, S.me.x - pack.territoryX) + ((t.id % 2 ? 1 : -1) * 0.72);
+          targetX = S.me.x + Math.cos(orbitA) * 46;
+          targetY = S.me.y + Math.sin(orbitA) * 46;
+          targetDist = dist(t.x, t.y, targetX, targetY);
+        } else if(!closeToPlayer && !closeToCiv){
+          const patrolA = (now * 0.00065) + (t.id * 1.31);
+          const patrolR = Math.max(54, pack.territoryR * 0.60);
+          targetX = pack.territoryX + Math.cos(patrolA) * patrolR;
+          targetY = pack.territoryY + Math.sin(patrolA) * patrolR;
+          targetDist = dist(t.x, t.y, targetX, targetY);
+        }
+      } else if(role === TIGER_PACK_ROLES.FLANKER && closeToPlayer && Number.isFinite(playerDist)){
+        const side = (t.id % 2 === 0) ? 1 : -1;
+        const flankA = Math.atan2(S.me.y - t.y, S.me.x - t.x) + (side * (0.58 + ((1 - morale) * 0.40)));
+        const flankR = clamp(34 + (playerDist * 0.28), 34, 92);
+        targetX = S.me.x + Math.cos(flankA) * flankR;
+        targetY = S.me.y + Math.sin(flankA) * flankR;
+        targetDist = dist(t.x, t.y, targetX, targetY);
+      } else if(role === TIGER_PACK_ROLES.ALPHA && territoryHot && !closeToPlayer && !closeToCiv){
+        const anchorDist = dist(t.x, t.y, pack.territoryX, pack.territoryY);
+        if(anchorDist > 74){
+          targetX = pack.territoryX;
+          targetY = pack.territoryY;
+          targetDist = anchorDist;
+        }
+      }
+      t._packAggroMul = clamp((0.86 + (morale * 0.34) + (territoryHot ? 0.12 : 0)), 0.74, 1.36);
+      t._packSpeedMul = clamp((0.90 + (morale * 0.16) + ((role === TIGER_PACK_ROLES.SCOUT) ? 0.05 : 0)), 0.82, 1.22);
+    } else {
+      t._packAggroMul = 1;
+      t._packSpeedMul = 1;
+    }
+
     if(S.lockedTigerId===t.id && playerDist < motion.detect + 90){
       targetX=S.me.x;
       targetY=S.me.y;
       targetDist=playerDist;
     }
     tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion);
+    const packAggroMul = clamp(Number(t._packAggroMul || 1), 0.74, 1.36);
+    const packSpeedMul = clamp(Number(t._packSpeedMul || 1), 0.82, 1.22);
 
     let chase = Number.isFinite(targetDist) && (
-      targetDist < (motion.detect * directorAggroMul) ||
-      (now < (t.enragedUntil||0) && targetDist < (motion.detect + 80) * directorAggroMul)
+      targetDist < (motion.detect * directorAggroMul * packAggroMul) ||
+      (now < (t.enragedUntil||0) && targetDist < (motion.detect + 80) * directorAggroMul * packAggroMul)
     );
-    if(isBossTiger(t) && now < (t.bossChargeUntil || 0) && Number.isFinite(targetDist) && targetDist < (motion.detect + 190) * directorAggroMul){
+    if(isBossTiger(t) && now < (t.bossChargeUntil || 0) && Number.isFinite(targetDist) && targetDist < (motion.detect + 190) * directorAggroMul * packAggroMul){
       chase = true;
     }
-    if(t.type==="Stalker" && now < (t.fadeUntil||0) && Number.isFinite(targetDist) && targetDist < (motion.detect + 90) * directorAggroMul){
+    if(t.type==="Stalker" && now < (t.fadeUntil||0) && Number.isFinite(targetDist) && targetDist < (motion.detect + 90) * directorAggroMul * packAggroMul){
       chase = true;
     }
     if(!chase){
@@ -23188,11 +23436,11 @@ function roamTigers(){
     if(t.huntState === TIGER_HUNT_STATES.PATROL){
       chase = Number.isFinite(targetDist) && targetDist < 88;
     } else if(t.huntState === TIGER_HUNT_STATES.STALK){
-      chase = Number.isFinite(targetDist) && targetDist < (motion.detect + 120) * directorAggroMul;
+      chase = Number.isFinite(targetDist) && targetDist < (motion.detect + 120) * directorAggroMul * packAggroMul;
     } else if(t.huntState === TIGER_HUNT_STATES.POUNCE){
       chase = true;
     } else if(t.huntState === TIGER_HUNT_STATES.RECOVER){
-      chase = Number.isFinite(targetDist) && targetDist < (motion.detect * 0.62) * directorAggroMul;
+      chase = Number.isFinite(targetDist) && targetDist < (motion.detect * 0.62) * directorAggroMul * packAggroMul;
     }
 
     const tx = targetX - t.x;
@@ -23260,15 +23508,38 @@ function roamTigers(){
     }
 
     if(t.packId){
-      const pack = packStats[t.packId];
-      if(pack && pack.n > 1){
-        const matesCount = pack.n - 1;
-        const packX = (pack.x - t.x) / matesCount;
-        const packY = (pack.y - t.y) / matesCount;
-        const pullBase = dist(t.x, t.y, packX, packY) > 58 ? 0.055 : 0.018;
+      const tigerPack = packStats[t.packId];
+      if(tigerPack && tigerPack.n > 1){
+        const matesCount = tigerPack.n - 1;
+        const packX = (tigerPack.x - t.x) / matesCount;
+        const packY = (tigerPack.y - t.y) / matesCount;
+        const role = t.packRole || TIGER_PACK_ROLES.HUNTER;
+        const desiredSep = role === TIGER_PACK_ROLES.PROTECTOR
+          ? 42
+          : role === TIGER_PACK_ROLES.SCOUT
+            ? 92
+            : role === TIGER_PACK_ROLES.FLANKER
+              ? 76
+              : 60;
+        const packDist = dist(t.x, t.y, packX, packY);
+        const pullBase = packDist > desiredSep ? 0.062 : 0.014;
         const pull = pullBase * (persona.packPullMul || 1);
         t.vx += (packX > t.x ? pull : -pull);
         t.vy += (packY > t.y ? pull : -pull);
+        if(packDist < (desiredSep * 0.55)){
+          const repulse = 0.044;
+          t.vx += (t.x > packX ? repulse : -repulse);
+          t.vy += (t.y > packY ? repulse : -repulse);
+        }
+        if(role === TIGER_PACK_ROLES.PROTECTOR && tigerPack.alpha && tigerPack.alpha.id !== t.id){
+          const ax = tigerPack.alpha.x - t.x;
+          const ay = tigerPack.alpha.y - t.y;
+          const ad = Math.hypot(ax, ay) || 1;
+          if(ad > 58){
+            t.vx += (ax / ad) * 0.07;
+            t.vy += (ay / ad) * 0.07;
+          }
+        }
       }
     }
 
@@ -23308,6 +23579,7 @@ function roamTigers(){
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap = Math.max(speedCap, motion.sprint + 0.35);
     if(t.type==="Berserker" && t.rageOn) speedCap = Math.max(speedCap, motion.sprint * 1.06);
     speedCap *= directorSpeedMul;
+    speedCap *= packSpeedMul;
     speedCap *= waterSpeedMul("tiger", t.x, t.y, 14);
 
     const velNow = Math.hypot(t.vx, t.vy);
@@ -24809,6 +25081,7 @@ function finishTigerKill(t){
   }
   markStoryFinalBossOutcome("KILL", t);
   t.alive=false;
+  tigerPackRecordLoss(t, "KILL");
   breakCombo("tiger killed");
   S.carcasses.push({ x:t.x, y:t.y, bornAt:Date.now() });
   if(S.carcasses.length > MAX_PERSIST_CARCASSES){
@@ -24910,6 +25183,7 @@ function playerAction(action){
     const captureTreeFx = weaponMasteryTreeEffects(req, S);
     markStoryFinalBossOutcome("CAPTURE", t);
     t.alive=false;
+    tigerPackRecordLoss(t, "CAPTURE");
     addWeaponMasteryXp(req, 4);
     const pay=payout("CAPTURE");
     pay.cash = Math.max(0, Math.round(Number(pay.cash || 0) * Number(captureTreeFx.captureCashMul || 1)));
