@@ -21266,6 +21266,10 @@ function deploy(opts={}){
   S.me={x:160,y:clamp(worldH - 120, 240, 420),face:0,step:0};
   S.target=null;
   S.lockedTigerId=null;
+  S.respawnPendingUntil = 0;
+  S.respawnNoticeAt = 0;
+  S.respawnTargetX = 0;
+  S.respawnTargetY = 0;
 
   S.civGraceUntil = Date.now() + 1800;
   S.dangerCivId = null;
@@ -30645,6 +30649,24 @@ function init(){
   if(!Number.isFinite(S.respawnTargetX)) S.respawnTargetX = 0;
   if(!Number.isFinite(S.respawnTargetY)) S.respawnTargetY = 0;
   if(!Number.isFinite(S.respawnNoticeAt)) S.respawnNoticeAt = 0;
+  if(!Number.isFinite(S._respawnLockRecoveredAt)) S._respawnLockRecoveredAt = 0;
+  if(S.respawnPendingUntil > 0){
+    const now = Date.now();
+    const lockLeftMs = Number(S.respawnPendingUntil || 0) - now;
+    const staleFutureLock = lockLeftMs > 10000;
+    const stalePastLock = lockLeftMs < -1800;
+    if(staleFutureLock || stalePastLock){
+      S.respawnPendingUntil = 0;
+      S.respawnNoticeAt = 0;
+      S.respawnTargetX = 0;
+      S.respawnTargetY = 0;
+      S.rollInvulnUntil = Math.max(Number(S.rollInvulnUntil || 0), now + 500);
+      if(now > Number(S._respawnLockRecoveredAt || 0) + 4500){
+        S._respawnLockRecoveredAt = now;
+        setEventText("Recovered movement lock after restart.", 1.9);
+      }
+    }
+  }
   if(!Number.isFinite(S.takeoverPromptUntil)) S.takeoverPromptUntil = 0;
   if(S.takeoverCivId != null){
     const civIdNum = Number(S.takeoverCivId);
