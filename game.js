@@ -6653,6 +6653,8 @@ const DEFAULT = {
   _convoyRouteChoiceLocked:"",
   _convoySplitThreatAt:0,
   _convoySplitThreatWaves:0,
+  respawnLockRecoverCount:0,
+  _respawnLockRecoverCountSession:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
   opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0 },
   balanceStats: defaultBalanceStatsState(),
@@ -9512,6 +9514,7 @@ function renderStabilityMonitor(force=false){
   const fps = avgGap > 0 ? (1000 / avgGap) : 0;
   const dropped = Number(__frameBudgetState.dropped || 0);
   const recoversMin = (__freezeRecoverState.history || []).filter((t)=>(now - t) < 60000).length;
+  const controlsRecov = Math.max(0, Math.floor(Number(S?.respawnLockRecoverCount || 0)));
   const balance = ensureBalanceStatsState(S);
   const tuning = currentBalanceTuning(S, now);
   const failPct = Math.round(clamp(Number(balance.lastFailRate || 0), 0, 1) * 100);
@@ -9519,7 +9522,7 @@ function renderStabilityMonitor(force=false){
   node.innerText =
     `FPS ${fps.toFixed(0)} | gap ${avgGap.toFixed(1)}ms (max ${worstGap.toFixed(0)})` +
     `\nframe ${avgCost.toFixed(1)}ms (max ${worstCost.toFixed(0)}) | drop ${dropped}` +
-    `\nmode ${mode} | recov ${recoversMin}/min` +
+    `\nmode ${mode} | recov ${recoversMin}/min | ctrl ${controlsRecov}` +
     `\nauto x${Number(tuning.autoTune || 1).toFixed(2)} | fail ${failPct}% | deaths ${Math.floor(Number(balance.lastDeathsRecent || 0))}`;
 }
 function noteFrameSample(frameGap, frameCost){
@@ -9985,12 +9988,14 @@ function renderStarsDebugPanel(){
   if(!toggle || !panel || !log || !status || !toggleLog) return;
 
   const enabled = starsDebugEnabled();
+  const recoverTotal = Math.max(0, Math.floor(Number(S?.respawnLockRecoverCount || 0)));
+  const recoverSession = Math.max(0, Math.floor(Number(S?._respawnLockRecoverCountSession || 0)));
   panel.style.display = starsDebugPanelOpen ? "flex" : "none";
   toggle.style.background = enabled ? "rgba(22,101,52,.84)" : "rgba(12,22,42,.82)";
   toggle.style.borderColor = enabled ? "rgba(134,239,172,.72)" : "rgba(255,255,255,.35)";
   toggleLog.textContent = `Log: ${enabled ? "ON" : "OFF"}`;
   toggleLog.style.background = enabled ? "rgba(37,99,235,.55)" : "rgba(55,65,81,.55)";
-  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())}`;
+  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession})`;
   log.textContent = starsDebugEntries.length ? starsDebugEntries.join("\n") : "No Stars events yet.";
   log.scrollTop = log.scrollHeight;
 }
@@ -30656,14 +30661,24 @@ function init(){
     const staleFutureLock = lockLeftMs > 10000;
     const stalePastLock = lockLeftMs < -1800;
     if(staleFutureLock || stalePastLock){
+      const staleKind = staleFutureLock ? "future-lock" : "past-lock";
       S.respawnPendingUntil = 0;
       S.respawnNoticeAt = 0;
       S.respawnTargetX = 0;
       S.respawnTargetY = 0;
       S.rollInvulnUntil = Math.max(Number(S.rollInvulnUntil || 0), now + 500);
+      S.respawnLockRecoverCount = Math.max(0, Math.floor(Number(S.respawnLockRecoverCount || 0))) + 1;
+      S._respawnLockRecoverCountSession = Math.max(0, Math.floor(Number(S._respawnLockRecoverCountSession || 0))) + 1;
+      pushStarsDebug("movement-lock-recovered", {
+        kind: staleKind,
+        lockLeftMs: Math.round(lockLeftMs),
+        total: S.respawnLockRecoverCount,
+        session: S._respawnLockRecoverCountSession
+      });
       if(now > Number(S._respawnLockRecoveredAt || 0) + 4500){
         S._respawnLockRecoveredAt = now;
         setEventText("Recovered movement lock after restart.", 1.9);
+        toast("Controls recovered.");
       }
     }
   }
@@ -30690,6 +30705,8 @@ function init(){
   if(typeof S._convoyRouteChoiceLocked !== "string") S._convoyRouteChoiceLocked = "";
   if(!Number.isFinite(S._convoySplitThreatAt)) S._convoySplitThreatAt = 0;
   if(!Number.isFinite(S._convoySplitThreatWaves)) S._convoySplitThreatWaves = 0;
+  if(!Number.isFinite(S.respawnLockRecoverCount)) S.respawnLockRecoverCount = 0;
+  if(!Number.isFinite(S._respawnLockRecoverCountSession)) S._respawnLockRecoverCountSession = 0;
   if(!Number.isFinite(S._directorAggroMul)) S._directorAggroMul = 1;
   if(!Number.isFinite(S._directorSpeedMul)) S._directorSpeedMul = 1;
   if(!S.progressionUnlocks || typeof S.progressionUnlocks !== "object") S.progressionUnlocks = {};
