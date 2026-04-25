@@ -5987,6 +5987,7 @@ function storyRunIndexForState(state=S){
 function storyMissionForState(state=S){
   const src = (state && typeof state === "object") ? state : S;
   ensureStoryEndgameState(src);
+  const storyBranching = ensureStoryBranchingState(src);
   const variant = normalizeStoryVariant(src.storyVariant);
   const level = storyMissionLevelForState(src);
   const cfg = { ...storyCampaignMission(level) };
@@ -6066,6 +6067,26 @@ function storyMissionForState(state=S){
     }
   }
 
+  if(variant === STORY_VARIANTS.CAMPAIGN){
+    const path = normalizeStoryBranchPath(storyBranching.path);
+    cfg.storyBranchPath = path;
+    cfg.storyBranchLabel = storyBranchPathLabel(path);
+    if(path === STORY_BRANCH_PATHS.PRESERVATION){
+      cfg.captureRequired = clamp(cfg.captureRequired + (cfg.boss ? 1 : 0), 0, 7);
+      cfg.endgameAggroMul *= 0.95;
+      cfg.endgamePayoutMul *= 1.03;
+      cfg.objective = `${cfg.objective} Route: prioritize captures.`;
+    }else if(path === STORY_BRANCH_PATHS.DOMINANCE){
+      cfg.tigers = clamp(cfg.tigers + (cfg.boss ? 0 : 1), 1, 22);
+      cfg.endgameAggroMul *= 1.08;
+      cfg.endgamePayoutMul *= 1.07;
+      cfg.objective = `${cfg.objective} Route: apply lethal pressure.`;
+    }else{
+      cfg.endgamePayoutMul *= 1.02;
+      cfg.objective = `${cfg.objective} Route: maintain capture/kill balance.`;
+    }
+  }
+
   return cfg;
 }
 function storyMissionDisplayLabel(state=S){
@@ -6079,12 +6100,212 @@ function storyMissionDisplayLabel(state=S){
   return `Story Mission ${mission.number}`;
 }
 
+const STORY_BRANCH_PATHS = Object.freeze({
+  PRESERVATION: "PRESERVATION",
+  DOMINANCE: "DOMINANCE",
+  BALANCED: "BALANCED",
+});
+const STORY_ENDING_KEY_MAP = Object.freeze({
+  PRESERVATION_CAPTURE: {
+    key: "SANCTUARY_PROTOCOL",
+    title: "Sanctuary Protocol",
+    ending: "Preservation Prime",
+    summary: "You captured key alpha targets and stabilized the jungle hierarchy.",
+    rewardCash: 18000,
+    rewardPerks: 4,
+    rewardTitle: "Sanctuary Commander",
+  },
+  PRESERVATION_KILL: {
+    key: "WARDEN_OF_ASH",
+    title: "Warden of Ash",
+    ending: "Hard Mercy",
+    summary: "You sought preservation but chose lethal force in the final crisis.",
+    rewardCash: 15000,
+    rewardPerks: 3,
+    rewardTitle: "Jungle Warden",
+  },
+  DOMINANCE_CAPTURE: {
+    key: "CHAIN_OF_FANGS",
+    title: "Chain of Fangs",
+    ending: "Iron Control",
+    summary: "You ruled by force but captured the apex threat to control the packs.",
+    rewardCash: 16500,
+    rewardPerks: 3,
+    rewardTitle: "Iron Commander",
+  },
+  DOMINANCE_KILL: {
+    key: "CRIMSON_CROWN",
+    title: "Crimson Crown",
+    ending: "Dominance Prime",
+    summary: "You ended the apex line and claimed total battlefield dominance.",
+    rewardCash: 20000,
+    rewardPerks: 4,
+    rewardTitle: "Crimson Marshal",
+  },
+  BALANCED_CAPTURE: {
+    key: "EQUILIBRIUM_VOW",
+    title: "Equilibrium Vow",
+    ending: "Balance Prime",
+    summary: "You kept both sides in check and secured the ancient tiger alive.",
+    rewardCash: 17000,
+    rewardPerks: 4,
+    rewardTitle: "Equilibrium Ranger",
+  },
+  BALANCED_KILL: {
+    key: "LAST_RESORT",
+    title: "Last Resort",
+    ending: "Balance Break",
+    summary: "You held balance until the final strike demanded lethal resolution.",
+    rewardCash: 15500,
+    rewardPerks: 3,
+    rewardTitle: "Last Resort Commander",
+  },
+});
+function normalizeStoryBranchPath(path){
+  const key = String(path || "").trim().toUpperCase();
+  return STORY_BRANCH_PATHS[key] || STORY_BRANCH_PATHS.BALANCED;
+}
+function defaultStoryBranchingState(){
+  return {
+    path: STORY_BRANCH_PATHS.BALANCED,
+    captureVotes: 0,
+    killVotes: 0,
+    chapterChoices: {},
+    endingsUnlocked: {},
+    endingRewardsClaimed: {},
+    lastEndingKey: "",
+    lastUpdatedAt: 0,
+  };
+}
+function normalizeStoryChoiceMap(raw){
+  const out = {};
+  if(!raw || typeof raw !== "object") return out;
+  for(const [chapterRaw, choiceRaw] of Object.entries(raw)){
+    const chapter = clamp(Math.floor(Number(chapterRaw || 0)), 1, 10);
+    const choice = String(choiceRaw || "").trim().toUpperCase();
+    if(!chapter) continue;
+    if(choice === "CAPTURE" || choice === "KILL"){
+      out[String(chapter)] = choice;
+    }
+  }
+  return out;
+}
+function normalizeStoryBoolMap(raw){
+  const out = {};
+  if(!raw || typeof raw !== "object") return out;
+  for(const [keyRaw, val] of Object.entries(raw)){
+    const key = String(keyRaw || "").trim();
+    if(!key || !val) continue;
+    out[key] = 1;
+  }
+  return out;
+}
+function storyBranchPathFromVotes(captures=0, kills=0){
+  const c = Math.max(0, Math.floor(Number(captures || 0)));
+  const k = Math.max(0, Math.floor(Number(kills || 0)));
+  const delta = c - k;
+  if(delta >= 2) return STORY_BRANCH_PATHS.PRESERVATION;
+  if(delta <= -2) return STORY_BRANCH_PATHS.DOMINANCE;
+  return STORY_BRANCH_PATHS.BALANCED;
+}
+function normalizeStoryBranchingState(raw){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const chapterChoices = normalizeStoryChoiceMap(src.chapterChoices);
+  let captureVotes = 0;
+  let killVotes = 0;
+  for(const choice of Object.values(chapterChoices)){
+    if(choice === "CAPTURE") captureVotes += 1;
+    else if(choice === "KILL") killVotes += 1;
+  }
+  return {
+    path: normalizeStoryBranchPath(src.path || storyBranchPathFromVotes(captureVotes, killVotes)),
+    captureVotes,
+    killVotes,
+    chapterChoices,
+    endingsUnlocked: normalizeStoryBoolMap(src.endingsUnlocked),
+    endingRewardsClaimed: normalizeStoryBoolMap(src.endingRewardsClaimed),
+    lastEndingKey: String(src.lastEndingKey || "").trim(),
+    lastUpdatedAt: Math.max(0, Math.floor(Number(src.lastUpdatedAt || 0))),
+  };
+}
+function ensureStoryBranchingState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return defaultStoryBranchingState();
+  src.storyBranching = normalizeStoryBranchingState(src.storyBranching);
+  return src.storyBranching;
+}
+function mergeStoryBranchingSnapshots(primaryRaw, secondaryRaw){
+  const primary = normalizeStoryBranchingState(primaryRaw);
+  const secondary = normalizeStoryBranchingState(secondaryRaw);
+  const chapterChoices = {
+    ...(secondary.chapterChoices || {}),
+    ...(primary.chapterChoices || {}),
+  };
+  const endingsUnlocked = {
+    ...(secondary.endingsUnlocked || {}),
+    ...(primary.endingsUnlocked || {}),
+  };
+  const endingRewardsClaimed = {
+    ...(secondary.endingRewardsClaimed || {}),
+    ...(primary.endingRewardsClaimed || {}),
+  };
+  const hasChapterChoices = Object.keys(chapterChoices).length > 0;
+  const mergedRaw = {
+    path: hasChapterChoices ? "" : (primary.path || secondary.path || STORY_BRANCH_PATHS.BALANCED),
+    chapterChoices,
+    endingsUnlocked,
+    endingRewardsClaimed,
+    lastEndingKey: String(primary.lastEndingKey || secondary.lastEndingKey || "").trim(),
+    lastUpdatedAt: Math.max(
+      0,
+      Math.floor(Number(primary.lastUpdatedAt || 0)),
+      Math.floor(Number(secondary.lastUpdatedAt || 0))
+    ),
+  };
+  return normalizeStoryBranchingState(mergedRaw);
+}
+function storyBranchPathLabel(path){
+  const key = normalizeStoryBranchPath(path);
+  if(key === STORY_BRANCH_PATHS.PRESERVATION) return "Preservation Route";
+  if(key === STORY_BRANCH_PATHS.DOMINANCE) return "Dominance Route";
+  return "Balanced Route";
+}
+function resolveStoryEndingFromState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const branch = ensureStoryBranchingState(src);
+  const finalChoice = String(src._storyFinalOutcome || "").trim().toUpperCase() === "CAPTURE" ? "CAPTURE" : "KILL";
+  const path = normalizeStoryBranchPath(branch.path);
+  const descriptor = STORY_ENDING_KEY_MAP[`${path}_${finalChoice}`] || STORY_ENDING_KEY_MAP.BALANCED_KILL;
+  return { ...descriptor, path, finalChoice };
+}
+function recordStoryChapterBossChoice(chapter=1, choice="KILL", state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return;
+  const branch = ensureStoryBranchingState(src);
+  const ch = clamp(Math.floor(Number(chapter || 1)), 1, 10);
+  const next = String(choice || "").trim().toUpperCase() === "CAPTURE" ? "CAPTURE" : "KILL";
+  branch.chapterChoices[String(ch)] = next;
+  let captureVotes = 0;
+  let killVotes = 0;
+  for(const val of Object.values(branch.chapterChoices)){
+    if(val === "CAPTURE") captureVotes += 1;
+    else if(val === "KILL") killVotes += 1;
+  }
+  branch.captureVotes = captureVotes;
+  branch.killVotes = killVotes;
+  branch.path = storyBranchPathFromVotes(captureVotes, killVotes);
+  branch.lastUpdatedAt = Date.now();
+}
+
 function markStoryFinalBossOutcome(outcome, tiger){
   if(S.mode!=="Story") return;
   const m = storyMissionForState(S);
   if(normalizeStoryVariant(m.storyVariant) !== STORY_VARIANTS.CAMPAIGN) return;
-  if(!m || m.number !== 100) return;
   if(!tiger || !tiger.bossPhases) return;
+  if(Number(m.number || 0) % 10 === 0 && Number(m.number || 0) < 100){
+    recordStoryChapterBossChoice(m.chapter || Math.ceil(Number(m.number || 1) / 10), outcome, S);
+  }
+  if(!m || m.number !== 100) return;
   S._storyFinalOutcome = outcome;
 }
 
@@ -6191,6 +6412,16 @@ const DEFAULT = {
   storyVariant:"CAMPAIGN",
   storyNgPlusTier:0,
   storyEndgameUnlocked:false,
+  storyBranching:{
+    path:"BALANCED",
+    captureVotes:0,
+    killVotes:0,
+    chapterChoices:{},
+    endingsUnlocked:{},
+    endingRewardsClaimed:{},
+    lastEndingKey:"",
+    lastUpdatedAt:0,
+  },
   gauntletDepth:1,
   eliteHuntChapter:1,
   eliteHuntRuns:1,
@@ -14837,6 +15068,7 @@ function writeStoryProfileData(source="autosave", state=S){
   const src = (state && typeof state === "object") ? state : S;
   if(!src || typeof src !== "object") return false;
   ensureStoryEndgameState(src);
+  const storyBranching = ensureStoryBranchingState(src);
   const seasonPass = ensureSeasonPassState(src);
   const masteryRewards = ensureMasteryRewardsState(src);
   const nemesis = ensureNemesisState(src);
@@ -14846,6 +15078,7 @@ function writeStoryProfileData(source="autosave", state=S){
     storyVariant: normalizeStoryVariant(src.storyVariant),
     storyNgPlusTier: Math.max(0, Math.floor(Number(src.storyNgPlusTier || 0))),
     storyEndgameUnlocked: !!src.storyEndgameUnlocked,
+    storyBranching: cloneState(storyBranching),
     gauntletDepth: Math.max(1, Math.floor(Number(src.gauntletDepth || 1))),
     eliteHuntChapter: clamp(Math.floor(Number(src.eliteHuntChapter || 1)), 1, 10),
     eliteHuntRuns: Math.max(1, Math.floor(Number(src.eliteHuntRuns || 1))),
@@ -14951,6 +15184,10 @@ function applyStoryProfileToState(state, profile){
   if(!profile || typeof profile !== "object") return state;
   ensureStoryEndgameState(state);
   applyStoryEndgameSnapshot(state, profile);
+  if(profile.storyBranching && typeof profile.storyBranching === "object"){
+    state.storyBranching = mergeStoryBranchingSnapshots(profile.storyBranching, state.storyBranching);
+  }
+  ensureStoryBranchingState(state);
 
   if(Number.isFinite(Number(profile.storyLevel))){
     state.storyLevel = clamp(Math.max(Number(state.storyLevel || 1), Number(profile.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
@@ -15202,6 +15439,7 @@ function applyStoryProfileToState(state, profile){
     state.modeWallets = normalizeModeWallets({ ...(state.modeWallets || {}), ...profile.modeWallets }, state.funds, state.mode);
   }
   ensureStoryEndgameState(state);
+  ensureStoryBranchingState(state);
   return state;
 }
 function readStoryProgressData(){
@@ -15225,6 +15463,7 @@ function readStoryProgressData(){
         storyVariant: normalizeStoryVariant(parsed.storyVariant),
         storyNgPlusTier: Math.max(0, Math.floor(Number(parsed.storyNgPlusTier || 0))),
         storyEndgameUnlocked: !!parsed.storyEndgameUnlocked,
+        storyBranching: normalizeStoryBranchingState(parsed.storyBranching),
         gauntletDepth: Math.max(1, Math.floor(Number(parsed.gauntletDepth || 1))),
         eliteHuntChapter: clamp(Math.floor(Number(parsed.eliteHuntChapter || 1)), 1, 10),
         eliteHuntRuns: Math.max(1, Math.floor(Number(parsed.eliteHuntRuns || 1))),
@@ -15258,6 +15497,7 @@ function readStoryProgressData(){
 function writeStoryProgressData(payload={}){
   if(window.__TUTORIAL_MODE__) return false;
   ensureStoryEndgameState(S);
+  const storyBranching = normalizeStoryBranchingState(payload.storyBranching ?? S.storyBranching);
   const seasonPass = ensureSeasonPassState(S);
   const masteryRewards = ensureMasteryRewardsState(S);
   const nemesis = ensureNemesisState(S);
@@ -15275,6 +15515,7 @@ function writeStoryProgressData(payload={}){
     storyVariant,
     storyNgPlusTier,
     storyEndgameUnlocked: !!(payload.storyEndgameUnlocked ?? S.storyEndgameUnlocked ?? (mission >= STORY_CAMPAIGN_OBJECTIVES.length)),
+    storyBranching: cloneState(storyBranching),
     gauntletDepth,
     eliteHuntChapter,
     eliteHuntRuns,
@@ -25908,6 +26149,20 @@ function checkMissionComplete(){
       let storyProgressNote = "";
       if(storyMission){
         if(storyVariant === STORY_VARIANTS.CAMPAIGN){
+          if(storyMission.boss && (storyMission.number % 10 === 0) && storyMission.number < 100){
+            const branch = ensureStoryBranchingState(S);
+            const chapter = clamp(Math.floor(Number(storyMission.chapter || Math.ceil(Number(storyMission.number || 1) / 10))), 1, 10);
+            const chapterKey = String(chapter);
+            if(!branch.chapterChoices[chapterKey]){
+              const captures = Math.max(0, Math.floor(Number(S.stats.captures || 0)));
+              const kills = Math.max(0, Math.floor(Number(S.stats.kills || 0)));
+              const inferredChoice = captures >= kills ? "CAPTURE" : "KILL";
+              recordStoryChapterBossChoice(chapter, inferredChoice, S);
+            }
+          }
+          const branchState = ensureStoryBranchingState(S);
+          const branchPath = branchState.path;
+          const branchLabel = storyBranchPathLabel(branchPath);
           const rewardDef = storyChapterRewardDef(storyMission.chapter || 1);
           if(rewardDef){
             const until = Math.max(0, ((storyMission.chapter || 1) * 10) - (storyMission.number || 1));
@@ -25915,6 +26170,7 @@ function checkMissionComplete(){
               ? `\nProgression Track: Chapter ${storyMission.chapter} reward checkpoint reached (${rewardDef.label}).\n`
               : `\nProgression Track: ${rewardDef.label} unlocks in ${until} mission${until===1?"":"s"}.\n`;
           }
+          storyProgressNote += `Route Status: ${branchLabel} (${Math.max(0, Number(branchState.captureVotes || 0))} capture vs ${Math.max(0, Number(branchState.killVotes || 0))} lethal chapter choices).\n`;
         }else if(storyVariant === STORY_VARIANTS.GAUNTLET){
           const biomeLabel = storyMission.endgameBiome?.biome ? `${storyMission.endgameBiome.biome} T${Math.max(1, Math.floor(Number(storyMission.endgameBiome.tier || 1)))}` : "Adaptive Rotation";
           storyProgressNote = `\nEndgame Loop: Gauntlet Loop ${storyMission.gauntletLoop || 1} • Difficulty x${(storyMission.endgameHpMul || 1).toFixed(2)} • Biome ${biomeLabel}.\n`;
@@ -25926,10 +26182,32 @@ function checkMissionComplete(){
 
       let finalEnding = "";
       if(storyMission?.number === 100 && storyVariant === STORY_VARIANTS.CAMPAIGN){
-        const choseCapture = S._storyFinalOutcome === "CAPTURE";
-        finalEnding = choseCapture
-          ? "\nFinal Choice: You captured the Ancient Tiger.\nEnding: Preservation ending unlocked.\nRewards Unlocked: Legendary Commander Rank • Golden Soldier Skin • Endless Jungle Mode\n"
-          : "\nFinal Choice: You killed the Ancient Tiger.\nEnding: Dominance ending unlocked.\nRewards Unlocked: Legendary Commander Rank • Golden Soldier Skin • Endless Jungle Mode\n";
+        const endingInfo = resolveStoryEndingFromState(S);
+        const branch = ensureStoryBranchingState(S);
+        branch.endingsUnlocked[endingInfo.key] = 1;
+        branch.lastEndingKey = endingInfo.key;
+        branch.lastUpdatedAt = Date.now();
+        const alreadyClaimed = !!branch.endingRewardsClaimed[endingInfo.key];
+        if(!alreadyClaimed){
+          const rewardCash = Math.max(0, Math.floor(Number(endingInfo.rewardCash || 0)));
+          const rewardPerks = Math.max(0, Math.floor(Number(endingInfo.rewardPerks || 0)));
+          if(rewardCash > 0){
+            S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + rewardCash;
+            trackCashEarned(rewardCash);
+          }
+          if(rewardPerks > 0){
+            S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + rewardPerks;
+          }
+          branch.endingRewardsClaimed[endingInfo.key] = 1;
+        }
+        finalEnding =
+          `\nFinal Choice: ${endingInfo.finalChoice === "CAPTURE" ? "You captured the Ancient Tiger." : "You killed the Ancient Tiger."}` +
+          `\nRoute: ${storyBranchPathLabel(endingInfo.path)}` +
+          `\nEnding Unlocked: ${endingInfo.ending} (${endingInfo.title})` +
+          `\nSummary: ${endingInfo.summary}` +
+          `\nCommander Title: ${endingInfo.rewardTitle}` +
+          `\nReward Claim: ${alreadyClaimed ? "Already claimed" : `+$${Math.max(0, Math.floor(Number(endingInfo.rewardCash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(endingInfo.rewardPerks || 0)))} perk points`}` +
+          "\nRewards Unlocked: Legendary Commander Rank • Golden Soldier Skin • Endless Jungle Mode\n";
         S.storyEndgameUnlocked = true;
       }
       let endgamePayoutNote = "";
