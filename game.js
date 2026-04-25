@@ -103,6 +103,34 @@ function normalizeCoopStrikeClaimsMap(raw){
   return out;
 }
 
+function mergeClaimMaps(primaryRaw, secondaryRaw, normalizer=normalizeCoopStrikeClaimsMap){
+  const primary = normalizer(primaryRaw);
+  const secondary = normalizer(secondaryRaw);
+  const out = {};
+  const weeks = new Set([
+    ...Object.keys(secondary || {}),
+    ...Object.keys(primary || {}),
+  ]);
+  for(const week of weeks){
+    if(!week) continue;
+    const row = {};
+    const fromSecondary = secondary?.[week];
+    const fromPrimary = primary?.[week];
+    if(fromSecondary && typeof fromSecondary === "object"){
+      for(const [id, claimed] of Object.entries(fromSecondary)){
+        if(id && claimed) row[id] = 1;
+      }
+    }
+    if(fromPrimary && typeof fromPrimary === "object"){
+      for(const [id, claimed] of Object.entries(fromPrimary)){
+        if(id && claimed) row[id] = 1;
+      }
+    }
+    if(Object.keys(row).length) out[week] = row;
+  }
+  return out;
+}
+
 function defaultCoopStrikeOpsState(now=Date.now()){
   return {
     version: COOP_STRIKE_OPS_VERSION,
@@ -7576,26 +7604,38 @@ async function postGameplayCloudSnapshot(snapshot){
       payload = null;
     }
     if(res.ok){
+      const prevCoop = (S.coopStrikeOps && typeof S.coopStrikeOps === "object") ? cloneState(S.coopStrikeOps) : null;
+      const prevWarfront = (S.clanWarfront && typeof S.clanWarfront === "object") ? cloneState(S.clanWarfront) : null;
       if(payload?.clan && typeof payload.clan === "object"){
         S.clanCloud = payload.clan;
       }
       if(payload?.coopStrikeOps && typeof payload.coopStrikeOps === "object"){
-        S.coopStrikeOps = cloneState(payload.coopStrikeOps);
+        const merged = cloneState(payload.coopStrikeOps);
+        merged.claims = mergeClaimMaps(merged.claims, prevCoop?.claims, normalizeCoopStrikeClaimsMap);
+        S.coopStrikeOps = merged;
         ensureCoopStrikeOpsState(S);
       }
       if(payload?.clan?.coopStrikeOps && typeof payload.clan.coopStrikeOps === "object"){
         if(!payload?.coopStrikeOps){
-          S.coopStrikeOps = cloneState(payload.clan.coopStrikeOps);
+          const merged = cloneState(payload.clan.coopStrikeOps);
+          merged.claims = mergeClaimMaps(merged.claims, prevCoop?.claims, normalizeCoopStrikeClaimsMap);
+          S.coopStrikeOps = merged;
         }
         ensureCoopStrikeOpsState(S);
       }
       if(payload?.clanWarfront && typeof payload.clanWarfront === "object"){
-        S.clanWarfront = cloneState(payload.clanWarfront);
+        const merged = cloneState(payload.clanWarfront);
+        merged.claims = mergeClaimMaps(merged.claims, prevWarfront?.claims, normalizeClanWarfrontClaimsMap);
+        merged.chestClaims = mergeClaimMaps(merged.chestClaims, prevWarfront?.chestClaims, normalizeClanWarfrontClaimsMap);
+        S.clanWarfront = merged;
         ensureClanWarfrontState(S);
       }
       if(payload?.clan?.warfront && typeof payload.clan.warfront === "object"){
         if(!payload?.clanWarfront){
-          S.clanWarfront = cloneState(payload.clan.warfront);
+          const merged = cloneState(payload.clan.warfront);
+          merged.claims = mergeClaimMaps(merged.claims, prevWarfront?.claims, normalizeClanWarfrontClaimsMap);
+          merged.chestClaims = mergeClaimMaps(merged.chestClaims, prevWarfront?.chestClaims, normalizeClanWarfrontClaimsMap);
+          S.clanWarfront = merged;
         }
         ensureClanWarfrontState(S);
       }
@@ -14995,11 +15035,16 @@ function applyStoryProfileToState(state, profile){
     currentMissionModifierCards(state);
   }
   if(profile.coopStrikeOps && typeof profile.coopStrikeOps === "object"){
-    state.coopStrikeOps = cloneState(profile.coopStrikeOps);
+    const merged = cloneState(profile.coopStrikeOps);
+    merged.claims = mergeClaimMaps(merged.claims, state.coopStrikeOps?.claims, normalizeCoopStrikeClaimsMap);
+    state.coopStrikeOps = merged;
     ensureCoopStrikeOpsState(state);
   }
   if(profile.clanWarfront && typeof profile.clanWarfront === "object"){
-    state.clanWarfront = cloneState(profile.clanWarfront);
+    const merged = cloneState(profile.clanWarfront);
+    merged.claims = mergeClaimMaps(merged.claims, state.clanWarfront?.claims, normalizeClanWarfrontClaimsMap);
+    merged.chestClaims = mergeClaimMaps(merged.chestClaims, state.clanWarfront?.chestClaims, normalizeClanWarfrontClaimsMap);
+    state.clanWarfront = merged;
     ensureClanWarfrontState(state);
   }
 
@@ -30153,9 +30198,18 @@ function init(){
     if(unit.hp <= 0) unit.alive = false;
   }
   reconcileSupportDownedFromUnits(S);
-  if((S.soldierAttackersOwned || 0) + (S.soldierRescuersOwned || 0) + (S.soldierAttackersDowned || 0) + (S.soldierRescuersDowned || 0) <= 0 && Array.isArray(S.supportUnits) && S.supportUnits.length){
-    S.soldierAttackersOwned = S.supportUnits.filter((unit)=>unit.alive && unit.role === "attacker").length;
-    S.soldierRescuersOwned = S.supportUnits.filter((unit)=>unit.alive && unit.role === "rescue").length;
+  if(
+    (S.soldierAttackersOwned || 0) + (S.soldierRescuersOwned || 0) + (S.soldierAttackersDowned || 0) + (S.soldierRescuersDowned || 0) <= 0 &&
+    Array.isArray(S.supportUnits) &&
+    S.supportUnits.length
+  ){
+    // Never infer owned specialists from stale runtime units; roster is source-of-truth.
+    S.supportUnits = S.supportUnits.filter((unit)=>!!unit?.raidPartner);
+    if(!raidModeActive(S)){
+      S.supportUnits = [];
+    }
+    S.soldierAttackersOwned = 0;
+    S.soldierRescuersOwned = 0;
     S.soldierAttackersDowned = 0;
     S.soldierRescuersDowned = 0;
   }
