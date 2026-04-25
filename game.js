@@ -388,6 +388,63 @@ function normalizeClanWarfrontClaimsMap(raw){
   }
   return out;
 }
+function warfrontClaimLedgerKey(){
+  return `ts_warfront_claim_ledger_${tgUserKey()}`;
+}
+function readWarfrontClaimLedger(){
+  try{
+    const raw = localStorage.getItem(warfrontClaimLedgerKey());
+    const parsed = raw ? JSON.parse(raw) : {};
+    if(!parsed || typeof parsed !== "object") return {};
+    const out = {};
+    for(const [k, v] of Object.entries(parsed)){
+      const key = String(k || "").trim();
+      if(!key || !v) continue;
+      out[key] = 1;
+    }
+    return out;
+  }catch(e){
+    return {};
+  }
+}
+function writeWarfrontClaimLedger(ledger){
+  try{
+    const src = (ledger && typeof ledger === "object") ? ledger : {};
+    const out = {};
+    for(const [k, v] of Object.entries(src)){
+      const key = String(k || "").trim();
+      if(!key || !v) continue;
+      out[key] = 1;
+    }
+    localStorage.setItem(warfrontClaimLedgerKey(), JSON.stringify(out));
+  }catch(e){}
+}
+function warfrontClaimLedgerToken(period="", id="", key=""){
+  const week = String(period || contractWeekKey()).trim() || contractWeekKey();
+  const idToken = String(id || "").trim();
+  const keyToken = String(key || "").trim();
+  if(keyToken) return `${week}|key:${keyToken}`;
+  if(idToken) return `${week}|id:${idToken}`;
+  return "";
+}
+function warfrontClaimLedgerHas(period="", id="", key=""){
+  const token = warfrontClaimLedgerToken(period, id, key);
+  if(!token) return false;
+  const ledger = readWarfrontClaimLedger();
+  if(ledger[token]) return true;
+  if(id && key){
+    const alt = `${String(period || contractWeekKey())}|id:${String(id).trim()}`;
+    if(ledger[alt]) return true;
+  }
+  return false;
+}
+function warfrontClaimLedgerMark(period="", id="", key=""){
+  const ledger = readWarfrontClaimLedger();
+  const token = warfrontClaimLedgerToken(period, id, key);
+  if(token) ledger[token] = 1;
+  if(id) ledger[`${String(period || contractWeekKey())}|id:${String(id).trim()}`] = 1;
+  writeWarfrontClaimLedger(ledger);
+}
 
 function defaultClanWarfrontState(now=Date.now()){
   return {
@@ -567,6 +624,7 @@ function clanWarfrontTerritoryClaimed(period, id, state=S, key=""){
   if(claims?.[week]?.[id]) return true;
   const keyToken = String(key || "").trim();
   if(keyToken && claims?.[week]?.[`key:${keyToken}`]) return true;
+  if(warfrontClaimLedgerHas(week, id, keyToken)) return true;
   return false;
 }
 
@@ -637,6 +695,7 @@ function claimClanWarfrontTerritory(territoryId=""){
   claims[row.period][row.id] = 1;
   if(row.key) claims[row.period][`key:${row.key}`] = 1;
   wf.claims = claims;
+  warfrontClaimLedgerMark(row.period, row.id, row.key);
 
   const cash = Math.max(0, Math.floor(Number(row.reward?.cash || 0)));
   const perks = Math.max(0, Math.floor(Number(row.reward?.perkPoints || 0)));
@@ -10803,6 +10862,14 @@ function pruneSupportUnitsToRoster(){
 function syncSquadRosterBounds(){
   S.squadCommand = normalizeSquadCommand(S.squadCommand);
   S.squadFormation = normalizeSquadFormation(S.squadFormation);
+  if(!specialistRoleUnlocked("attacker")){
+    S.soldierAttackersOwned = 0;
+    S.soldierAttackersDowned = 0;
+  }
+  if(!specialistRoleUnlocked("rescue")){
+    S.soldierRescuersOwned = 0;
+    S.soldierRescuersDowned = 0;
+  }
   S.soldierAttackersOwned = clamp(Math.floor(Number(S.soldierAttackersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
   S.soldierRescuersOwned = clamp(Math.floor(Number(S.soldierRescuersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
   S.soldierAttackersDowned = clamp(Math.floor(Number(S.soldierAttackersDowned || 0)), 0, S.soldierAttackersOwned);
