@@ -5485,6 +5485,13 @@ function arcadeCampaignMission(level){
     else cfg.bossType = "Alpha";
   }
 
+  const convoyText = /convoy|caravan|evacuation chain|supply convoy/i.test(objective);
+  const convoyPattern = !cfg.boss && !cfg.finalBoss && cfg.civilians >= 4 && ((n % 7) === 0 || (chapter >= 4 && (n % 5) === 0));
+  if(convoyText || convoyPattern){
+    cfg.convoyMission = true;
+    cfg.civilians = clamp(Math.max(cfg.civilians, 4 + Math.floor(chapter / 2)), 4, 16);
+  }
+
   return cfg;
 }
 
@@ -5642,7 +5649,8 @@ function activeArcadeMission(state=S){
   const src = (state && typeof state === "object") ? state : S;
   if(normalizeModeName(src.mode) !== "Arcade") return null;
   ensureArcadeWeeklySeedState(src);
-  return src.arcadeWeeklySeedEnabled ? arcadeWeeklyChallengeMission(src) : arcadeCampaignMission(src.arcadeLevel);
+  const mission = src.arcadeWeeklySeedEnabled ? arcadeWeeklyChallengeMission(src) : arcadeCampaignMission(src.arcadeLevel);
+  return applyConvoyMissionProfile(mission, src);
 }
 
 function arcadeObjectiveProgressText(cfg){
@@ -5652,6 +5660,10 @@ function arcadeObjectiveProgressText(cfg){
   if(cfg.trapPlaceRequired > 0) bits.push(`Traps set ${Math.min(S.stats.trapsPlaced||0, cfg.trapPlaceRequired)}/${cfg.trapPlaceRequired}`);
   if(cfg.trapTriggerRequired > 0) bits.push(`Trap stops ${Math.min(S.stats.trapsTriggered||0, cfg.trapTriggerRequired)}/${cfg.trapTriggerRequired}`);
   if(cfg.captureOnly) bits.push(`Kills ${S.stats.kills||0}/0`);
+  if(cfg.convoyMission){
+    bits.push(`Convoy route ${String(cfg.convoyRouteLabel || "Balanced")}`);
+    bits.push(`Split waves ${Math.max(0, Math.floor(Number(S._convoySplitThreatWaves || 0)))}`);
+  }
   return bits.length ? ` • ${bits.join(" • ")}` : "";
 }
 
@@ -5875,6 +5887,13 @@ function storyCampaignMission(level){
     cfg.civilians = 0;
   }
 
+  const convoyText = /convoy|caravan|evacuation chain|supply convoy/i.test(objective);
+  const convoyPattern = !cfg.boss && !cfg.finalBoss && cfg.civilians >= 4 && ((n % 8) === 0 || (chapter >= 4 && (n % 6) === 0));
+  if(convoyText || convoyPattern){
+    cfg.convoyMission = true;
+    cfg.civilians = clamp(Math.max(cfg.civilians, 4 + Math.floor(chapter / 2)), 4, 16);
+  }
+
   return cfg;
 }
 
@@ -5882,7 +5901,87 @@ function storyObjectiveProgressText(cfg){
   if(!cfg) return "";
   const bits = [];
   if(cfg.captureRequired > 0) bits.push(`Capture ${Math.min(S.stats.captures||0, cfg.captureRequired)}/${cfg.captureRequired}`);
+  if(cfg.convoyMission){
+    bits.push(`Convoy route ${String(cfg.convoyRouteLabel || "Balanced")}`);
+    bits.push(`Split waves ${Math.max(0, Math.floor(Number(S._convoySplitThreatWaves || 0)))}`);
+  }
   return bits.length ? ` • ${bits.join(" • ")}` : "";
+}
+
+const CONVOY_ROUTE_PROFILES = Object.freeze({
+  SAFE: Object.freeze({
+    key:"SAFE",
+    label:"Safe",
+    tigerDelta:-1,
+    payoutMul:1.08,
+    splitThreatCount:1,
+    splitThreatIntervalMs:20000,
+    splitThreatMaxWaves:3,
+    zeroLossCashMul:1.05,
+    zeroLossXpMul:1.10,
+  }),
+  BALANCED: Object.freeze({
+    key:"BALANCED",
+    label:"Balanced",
+    tigerDelta:0,
+    payoutMul:1.14,
+    splitThreatCount:2,
+    splitThreatIntervalMs:16500,
+    splitThreatMaxWaves:4,
+    zeroLossCashMul:1.12,
+    zeroLossXpMul:1.16,
+  }),
+  RISKY: Object.freeze({
+    key:"RISKY",
+    label:"Risky",
+    tigerDelta:2,
+    payoutMul:1.22,
+    splitThreatCount:2,
+    splitThreatIntervalMs:13000,
+    splitThreatMaxWaves:5,
+    zeroLossCashMul:1.20,
+    zeroLossXpMul:1.25,
+  }),
+});
+function convoyRouteChoiceFromSquadCommand(command=S?.squadCommand){
+  const cmd = normalizeSquadCommand(command);
+  if(cmd === "ATTACK_TARGET") return "RISKY";
+  if(cmd === "RESCUE" || cmd === "REGROUP" || cmd === "HOLD") return "SAFE";
+  return "BALANCED";
+}
+function currentConvoyRouteChoice(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const locked = String(src?._convoyRouteChoiceLocked || "").trim().toUpperCase();
+  if(CONVOY_ROUTE_PROFILES[locked]) return locked;
+  return convoyRouteChoiceFromSquadCommand(src?.squadCommand);
+}
+function convoyRouteProfile(choice="BALANCED"){
+  const key = String(choice || "").trim().toUpperCase();
+  return CONVOY_ROUTE_PROFILES[key] || CONVOY_ROUTE_PROFILES.BALANCED;
+}
+function applyConvoyMissionProfile(cfg, state=S){
+  if(!cfg || !cfg.convoyMission) return cfg;
+  const routeChoice = currentConvoyRouteChoice(state);
+  const route = convoyRouteProfile(routeChoice);
+  cfg.convoyRouteChoice = route.key;
+  cfg.convoyRouteLabel = route.label;
+  cfg.civilians = clamp(Math.max(Number(cfg.civilians || 0), 4), 0, 16);
+  cfg.tigers = clamp(Math.max(1, Number(cfg.tigers || 1) + Number(route.tigerDelta || 0)), 1, 24);
+  cfg.convoySplitThreat = true;
+  cfg.convoySplitThreatCount = Math.max(1, Math.floor(Number(route.splitThreatCount || 1)));
+  cfg.convoySplitThreatIntervalMs = Math.max(8000, Math.floor(Number(route.splitThreatIntervalMs || 16000)));
+  cfg.convoySplitThreatMaxWaves = Math.max(2, Math.floor(Number(route.splitThreatMaxWaves || 3)));
+  cfg.convoyPayoutMul = clamp(Number(route.payoutMul || 1), 1, 2.2);
+  cfg.convoyZeroLossBonusCash = Math.max(
+    600,
+    Math.round((600 + ((Number(cfg.chapter || 1) - 1) * 130) + (Number(cfg.boss || false) ? 260 : 0)) * cfg.convoyPayoutMul * Number(route.zeroLossCashMul || 1))
+  );
+  cfg.convoyZeroLossBonusXp = Math.max(
+    40,
+    Math.round((50 + ((Number(cfg.chapter || 1) - 1) * 8)) * Number(route.zeroLossXpMul || 1))
+  );
+  cfg.objective = `${String(cfg.objective || "").trim()} Convoy Route: ${route.label} • split-threat protocol active.`;
+  return cfg;
 }
 
 const STORY_VARIANTS = Object.freeze({
@@ -6084,6 +6183,13 @@ function storyMissionForState(state=S){
     }else{
       cfg.endgamePayoutMul *= 1.02;
       cfg.objective = `${cfg.objective} Route: maintain capture/kill balance.`;
+    }
+  }
+
+  if(cfg.convoyMission){
+    applyConvoyMissionProfile(cfg, src);
+    if(variant === STORY_VARIANTS.CAMPAIGN){
+      cfg.endgamePayoutMul *= clamp(Number(cfg.convoyPayoutMul || 1), 1, 2.3);
     }
   }
 
@@ -6543,6 +6649,10 @@ const DEFAULT = {
   arcadeComboPeak:0,
   arcadeScoreBonus:0,
   _arcadeTimerWarn:0,
+  _arcadeNoKillWarned:false,
+  _convoyRouteChoiceLocked:"",
+  _convoySplitThreatAt:0,
+  _convoySplitThreatWaves:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
   opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0 },
   balanceStats: defaultBalanceStatsState(),
@@ -20512,6 +20622,7 @@ function spawnCivilians(){
 
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
   const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
+  const activeMission = storyMission || arcadeMission;
   const n = (S.mode==="Story")
     ? clamp(storyMission?.civilians ?? (3 + ((storyMission?.number || S.storyLevel || 1)-1)), 0, 14)
     : (S.mode==="Arcade"
@@ -20569,6 +20680,24 @@ function spawnCivilians(){
     };
     assignCivilianPersonality(civObj, ((storyMission?.number || S.storyLevel || 1) * 100) + i + 1);
     S.civilians.push(civObj);
+  }
+
+  if(activeMission?.convoyMission && S.civilians.length){
+    const rescueUnits = (S.supportUnits || []).filter((unit)=>unit && unit.alive && unit.role === "rescue");
+    const splitIndex = Math.max(1, Math.floor(S.civilians.length / 2));
+    const convoyRows = [S.civilians.slice(0, splitIndex), S.civilians.slice(splitIndex)];
+    convoyRows.forEach((group, groupIdx)=>{
+      group.forEach((civ)=>{
+        civ.following = true;
+        if(groupIdx > 0 && rescueUnits[groupIdx - 1]){
+          civ.escortOwner = "rescue";
+          civ.escortUnitId = rescueUnits[groupIdx - 1].id;
+        }else{
+          civ.escortOwner = "player";
+          civ.escortUnitId = "";
+        }
+      });
+    });
   }
 
   S.evacDone=0;
@@ -21184,6 +21313,9 @@ function deploy(opts={}){
   S.arcadeMissionLimitSec = 0;
   S.arcadeComboPeak = 0;
   S.arcadeScoreBonus = 0;
+  S._convoyRouteChoiceLocked = "";
+  S._convoySplitThreatAt = 0;
+  S._convoySplitThreatWaves = 0;
   S._arcadeTimerWarn = 0;
   S._arcadeNoKillWarned = false;
   S._storyFinalOutcome = null;
@@ -21241,6 +21373,11 @@ function deploy(opts={}){
   if(S.mode==="Story"){
     const mission = storyMissionForState(S);
     const variant = normalizeStoryVariant(mission.storyVariant);
+    if(mission.convoyMission){
+      S._convoyRouteChoiceLocked = currentConvoyRouteChoice(S);
+      S._convoySplitThreatAt = Date.now() + rand(5500, 9000);
+      S._convoySplitThreatWaves = 0;
+    }
     if(mission.lowVisibility){
       S.fogUntil = Date.now() + 120000;
     }
@@ -21257,12 +21394,19 @@ function deploy(opts={}){
     }
     if(mission.boss){
       setEventText(storyBossIntroText(mission), 9);
+    }else if(mission.convoyMission){
+      setEventText(`🚐 Convoy mission active: ${mission.convoyRouteLabel || "Balanced"} route • protect both civilian lanes.`, 8);
     }
   }
 
   if(S.mode==="Arcade"){
     prepareArcadeBuildcraftForMission(S);
     const mission = activeArcadeMission(S);
+    if(mission?.convoyMission){
+      S._convoyRouteChoiceLocked = currentConvoyRouteChoice(S);
+      S._convoySplitThreatAt = Date.now() + rand(5000, 8200);
+      S._convoySplitThreatWaves = 0;
+    }
     let timeLimitSec = 95 + (mission.chapter * 8);
     if(mission.captureOnly) timeLimitSec += 14;
     timeLimitSec += (mission.captureRequired || 0) * 6;
@@ -21279,6 +21423,9 @@ function deploy(opts={}){
     }else{
       S.arcadeWeeklyRunStartedAt = 0;
       S.arcadeWeeklyRunId = "";
+    }
+    if(mission?.convoyMission){
+      setEventText(`🚐 Arcade convoy op: ${mission.convoyRouteLabel || "Balanced"} route • split threats expected.`, 8);
     }
     S.arcadeComboPeak = 0;
     S.arcadeScoreBonus = 0;
@@ -25988,6 +26135,42 @@ function combatTick(){
 }
 
 // ===================== MISSION COMPLETE =====================
+function convoyMissionTick(){
+  if(window.__TUTORIAL_MODE__) return;
+  if(S.mode === "Survival" || S.paused || S.gameOver || S.missionEnded) return;
+  const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
+  const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
+  const activeMission = storyMission || arcadeMission;
+  if(!activeMission?.convoyMission || !activeMission?.convoySplitThreat) return;
+  const now = Date.now();
+  const capWaves = Math.max(1, Math.floor(Number(activeMission.convoySplitThreatMaxWaves || 3)));
+  if(Math.max(0, Number(S._convoySplitThreatWaves || 0)) >= capWaves) return;
+  if(now < Math.max(0, Number(S._convoySplitThreatAt || 0))) return;
+  const liveCivs = (S.civilians || []).filter((c)=>c && c.alive && !c.evac);
+  if(!liveCivs.length) return;
+  const escortA = liveCivs.filter((c)=>c.escortOwner === "player");
+  const escortB = liveCivs.filter((c)=>c.escortOwner === "rescue");
+  const targetA = escortA.length ? escortA[rand(0, escortA.length - 1)] : liveCivs[rand(0, liveCivs.length - 1)];
+  const targetB = escortB.length ? escortB[rand(0, escortB.length - 1)] : liveCivs[rand(0, liveCivs.length - 1)];
+  const spawnCount = Math.max(1, Math.floor(Number(activeMission.convoySplitThreatCount || 1)));
+  let spawned = 0;
+  if(targetA){
+    if(spawnRogueTiger({ nearX:targetA.x, nearY:targetA.y, anchorTight:true })) spawned += 1;
+  }
+  if(spawnCount > 1 && targetB && targetB !== targetA){
+    if(spawnRogueTiger({ nearX:targetB.x, nearY:targetB.y, anchorTight:true })) spawned += 1;
+  }else if(spawnCount > 1 && liveCivs.length > 1){
+    const alt = liveCivs.find((c)=>c !== targetA);
+    if(alt && spawnRogueTiger({ nearX:alt.x, nearY:alt.y, anchorTight:true })) spawned += 1;
+  }
+  if(spawned > 0){
+    S._convoySplitThreatWaves = Math.max(0, Math.floor(Number(S._convoySplitThreatWaves || 0))) + 1;
+    setEventText(`🚨 Convoy split threat wave ${S._convoySplitThreatWaves}: protect both lanes.`, 2.6);
+  }
+  const cadence = Math.max(7000, Math.floor(Number(activeMission.convoySplitThreatIntervalMs || 16000)));
+  S._convoySplitThreatAt = now + cadence + rand(1200, 4600);
+}
+
 function checkMissionComplete(){
   if(window.__TUTORIAL_MODE__) return;
   if(S.mode==="Survival") return;
@@ -26222,6 +26405,26 @@ function checkMissionComplete(){
           }
         }
       }
+      let convoyBonusNote = "";
+      if(activeMission?.convoyMission){
+        const zeroLoss = civTotal > 0 && civDead === 0 && civEvac >= civTotal;
+        if(zeroLoss){
+          const routeMul = clamp(Number(activeMission.convoyPayoutMul || 1), 1, 2.2);
+          const bonusCash = Math.max(0, Math.round(Number(activeMission.convoyZeroLossBonusCash || 0) * routeMul));
+          const bonusXp = Math.max(0, Math.round(Number(activeMission.convoyZeroLossBonusXp || 0)));
+          if(bonusCash > 0){
+            S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + bonusCash;
+            trackCashEarned(bonusCash);
+          }
+          if(bonusXp > 0){
+            addXP(bonusXp);
+          }
+          convoyBonusNote =
+            `\nConvoy Zero-Loss Bonus: +$${bonusCash.toLocaleString()} • +${bonusXp}XP` +
+            `\nConvoy Route: ${activeMission.convoyRouteLabel || "Balanced"} • Split waves handled: ${Math.max(0, Math.floor(Number(S._convoySplitThreatWaves || 0)))}` +
+            "\n";
+        }
+      }
       let upkeepNote = "";
       const upkeep = applySquadUpkeepAfterMission();
       if(upkeep){
@@ -26262,7 +26465,7 @@ function checkMissionComplete(){
       renderMissionPremiumSummaryCard(premiumSummary);
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
@@ -30198,6 +30401,9 @@ function draw(){
       ), tickCiviliansAndThreats, {
         costHint:1.6, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
+      runFrameTask("convoyMissionTick", frameInterval(lagCritical ? 188 : (lagHeavy ? 154 : 120), 1.45), convoyMissionTick, {
+        costHint:0.8, critical:S.mode!=="Survival"
+      });
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
       runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 44 : (lagHeavy ? 36 : 28)) : (lagCritical ? 56 : (lagHeavy ? 46 : 36)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
       runFrameTask("storyCheckpoint", frameInterval(lagCritical ? 220 : (lagHeavy ? 170 : 124), 1.45), maybeCaptureStoryCheckpoint, { costHint:0.8, critical:S.mode==="Story" });
@@ -30459,6 +30665,9 @@ function init(){
   if(!Number.isFinite(S.arcadeComboPeak)) S.arcadeComboPeak = 0;
   if(!Number.isFinite(S.arcadeScoreBonus)) S.arcadeScoreBonus = 0;
   if(!Number.isFinite(S._arcadeTimerWarn)) S._arcadeTimerWarn = 0;
+  if(typeof S._convoyRouteChoiceLocked !== "string") S._convoyRouteChoiceLocked = "";
+  if(!Number.isFinite(S._convoySplitThreatAt)) S._convoySplitThreatAt = 0;
+  if(!Number.isFinite(S._convoySplitThreatWaves)) S._convoySplitThreatWaves = 0;
   if(!Number.isFinite(S._directorAggroMul)) S._directorAggroMul = 1;
   if(!Number.isFinite(S._directorSpeedMul)) S._directorSpeedMul = 1;
   if(!S.progressionUnlocks || typeof S.progressionUnlocks !== "object") S.progressionUnlocks = {};
