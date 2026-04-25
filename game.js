@@ -560,11 +560,14 @@ function ensureClanWarfrontState(state=S, opts={}){
   return wf;
 }
 
-function clanWarfrontTerritoryClaimed(period, id, state=S){
+function clanWarfrontTerritoryClaimed(period, id, state=S, key=""){
   const wf = ensureClanWarfrontState(state, { skipTick:true });
   const week = String(period || wf.key || contractWeekKey());
   const claims = normalizeClanWarfrontClaimsMap(wf.claims);
-  return !!(claims?.[week]?.[id]);
+  if(claims?.[week]?.[id]) return true;
+  const keyToken = String(key || "").trim();
+  if(keyToken && claims?.[week]?.[`key:${keyToken}`]) return true;
+  return false;
 }
 
 function clanWarfrontSeasonChestClaimed(period, state=S){
@@ -625,13 +628,14 @@ function claimClanWarfrontTerritory(territoryId=""){
     toast("Territory needs more progress and control to claim.");
     return;
   }
-  if(clanWarfrontTerritoryClaimed(row.period, row.id, S)){
+  if(clanWarfrontTerritoryClaimed(row.period, row.id, S, row.key)){
     toast("Warfront territory reward already claimed.");
     return;
   }
   const claims = normalizeClanWarfrontClaimsMap(wf.claims);
   if(!claims[row.period]) claims[row.period] = {};
   claims[row.period][row.id] = 1;
+  if(row.key) claims[row.period][`key:${row.key}`] = 1;
   wf.claims = claims;
 
   const cash = Math.max(0, Math.floor(Number(row.reward?.cash || 0)));
@@ -10770,6 +10774,32 @@ function cycleSquadFormation(){
   const next = SQUAD_FORMATION_ORDER[(idx + 1) % SQUAD_FORMATION_ORDER.length];
   return setSquadFormation(next, { toast:true, save:true });
 }
+function pruneSupportUnitsToRoster(){
+  if(!Array.isArray(S.supportUnits)) return;
+  let keepAttackers = squadAliveCount("attacker");
+  let keepRescuers = squadAliveCount("rescue");
+  const keep = [];
+  for(const unit of S.supportUnits){
+    if(!unit || unit.alive === false) continue;
+    if(unit.raidPartner){
+      if(raidModeActive(S)) keep.push(unit);
+      continue;
+    }
+    if(unit.role === "attacker"){
+      if(keepAttackers <= 0) continue;
+      keep.push(unit);
+      keepAttackers--;
+      continue;
+    }
+    if(unit.role === "rescue"){
+      if(keepRescuers <= 0) continue;
+      keep.push(unit);
+      keepRescuers--;
+      continue;
+    }
+  }
+  S.supportUnits = keep.slice(0, 16);
+}
 function syncSquadRosterBounds(){
   S.squadCommand = normalizeSquadCommand(S.squadCommand);
   S.squadFormation = normalizeSquadFormation(S.squadFormation);
@@ -10777,6 +10807,7 @@ function syncSquadRosterBounds(){
   S.soldierRescuersOwned = clamp(Math.floor(Number(S.soldierRescuersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
   S.soldierAttackersDowned = clamp(Math.floor(Number(S.soldierAttackersDowned || 0)), 0, S.soldierAttackersOwned);
   S.soldierRescuersDowned = clamp(Math.floor(Number(S.soldierRescuersDowned || 0)), 0, S.soldierRescuersOwned);
+  pruneSupportUnitsToRoster();
 }
 function squadOwnedCount(role){
   return role === "attacker" ? (S.soldierAttackersOwned || 0) : (S.soldierRescuersOwned || 0);
@@ -18418,7 +18449,7 @@ function renderInventory(){
     const control = Math.round(clamp(Number(entry.control || 0), 0, 100));
     const controlPct = clamp(control, 0, 100);
     const ready = progress >= target && control >= 62;
-    const claimed = clanWarfrontTerritoryClaimed(entry.period, entry.id, S);
+    const claimed = clanWarfrontTerritoryClaimed(entry.period, entry.id, S, entry.key);
     const status = claimed ? "Claimed" : (ready ? "Ready" : `${progress}/${target}`);
     const reward = entry.reward || {};
     const rewardText = `+$${Math.max(0, Math.floor(Number(reward.cash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(reward.perkPoints || 0)))} perk • +${Math.max(0, Math.floor(Number(reward.seasonPoints || 0)))} pass pts`;
