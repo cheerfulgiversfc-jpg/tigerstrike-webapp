@@ -856,6 +856,90 @@ const CIVILIAN_RISK_REWARD_MULT = Object.freeze({
   threatened: 1.16,
   critical: 1.34,
 });
+const WEAPON_FORGE_MATERIAL_DEF = Object.freeze({
+  alloy: Object.freeze({ name:"Alloy Shards", icon:"🔩" }),
+  bio_resin: Object.freeze({ name:"Bio Resin", icon:"🧪" }),
+  ion_dust: Object.freeze({ name:"Ion Dust", icon:"✨" }),
+});
+const WEAPON_FORGE_MATERIAL_KEYS = Object.freeze(Object.keys(WEAPON_FORGE_MATERIAL_DEF));
+const WEAPON_FORGE_SEASON_KEY = "S26_RISING_HEAT";
+const WEAPON_FORGE_SEASON_ENDS_AT = Date.parse("2026-06-30T23:59:59Z");
+const WEAPON_FORGE_SKINS = Object.freeze([
+  Object.freeze({
+    id:"SKIN_BASE",
+    name:"Field Standard",
+    rarity:"Common",
+    desc:"Default CRU issue finish.",
+    cost:{ alloy:0, bio_resin:0, ion_dust:0 },
+    palette:Object.freeze({ primary:"#d1d5db", accent:"#93c5fd" }),
+  }),
+  Object.freeze({
+    id:"SKIN_COBALT_STRIKE",
+    name:"Cobalt Strike",
+    rarity:"Rare",
+    desc:"Cold-blue shell with reinforced trim.",
+    cost:{ alloy:32, bio_resin:14, ion_dust:2 },
+    palette:Object.freeze({ primary:"#60a5fa", accent:"#e0f2fe" }),
+  }),
+  Object.freeze({
+    id:"SKIN_EMBERFANG",
+    name:"Emberfang",
+    rarity:"Epic",
+    desc:"Heat-treated barrel and ember plate highlights.",
+    cost:{ alloy:64, bio_resin:28, ion_dust:9 },
+    palette:Object.freeze({ primary:"#fb923c", accent:"#fdba74" }),
+  }),
+  Object.freeze({
+    id:"SKIN_SOLAR_VEIL",
+    name:"Solar Veil",
+    rarity:"Legendary",
+    desc:"Season limited radiant frame from the Rising Heat set.",
+    cost:{ alloy:110, bio_resin:50, ion_dust:22 },
+    palette:Object.freeze({ primary:"#facc15", accent:"#fef08a" }),
+    seasonal:true,
+    seasonKey:WEAPON_FORGE_SEASON_KEY,
+    seasonEndsAt:WEAPON_FORGE_SEASON_ENDS_AT,
+  }),
+]);
+const WEAPON_FORGE_EFFECTS = Object.freeze([
+  Object.freeze({
+    id:"FX_BASE",
+    name:"No Effect",
+    rarity:"Common",
+    desc:"Default projectile trail.",
+    cost:{ alloy:0, bio_resin:0, ion_dust:0 },
+    style:Object.freeze({ color:"#f5f7ff", tranqColor:"#60a5fa", width:3, critColor:"#fbbf24" }),
+  }),
+  Object.freeze({
+    id:"FX_ION_STREAK",
+    name:"Ion Streak",
+    rarity:"Rare",
+    desc:"Bright electric streak with sharper impact arcs.",
+    cost:{ alloy:24, bio_resin:20, ion_dust:4 },
+    style:Object.freeze({ color:"#22d3ee", tranqColor:"#67e8f9", width:3.6, critColor:"#a5f3fc" }),
+  }),
+  Object.freeze({
+    id:"FX_JADE_COMET",
+    name:"Jade Comet",
+    rarity:"Epic",
+    desc:"Emerald comet trail tuned for capture loadouts.",
+    cost:{ alloy:46, bio_resin:34, ion_dust:10 },
+    style:Object.freeze({ color:"#34d399", tranqColor:"#6ee7b7", width:4.1, critColor:"#bbf7d0" }),
+  }),
+  Object.freeze({
+    id:"FX_PHOENIX_ARC",
+    name:"Phoenix Arc",
+    rarity:"Legendary",
+    desc:"Season limited arc trail from the Rising Heat set.",
+    cost:{ alloy:88, bio_resin:52, ion_dust:24 },
+    style:Object.freeze({ color:"#fb7185", tranqColor:"#fda4af", width:4.7, critColor:"#fecdd3" }),
+    seasonal:true,
+    seasonKey:WEAPON_FORGE_SEASON_KEY,
+    seasonEndsAt:WEAPON_FORGE_SEASON_ENDS_AT,
+  }),
+]);
+const WEAPON_FORGE_SKINS_BY_ID = Object.freeze(Object.fromEntries(WEAPON_FORGE_SKINS.map((row)=>[row.id, row])));
+const WEAPON_FORGE_EFFECTS_BY_ID = Object.freeze(Object.fromEntries(WEAPON_FORGE_EFFECTS.map((row)=>[row.id, row])));
 // Temporary safety switches while we stabilize mobile performance.
 const ENABLE_BIOME_SYSTEM = false;
 const ENABLE_BIOME_TEXT = true;
@@ -6546,6 +6630,7 @@ const DEFAULT = {
   ownedWeapons:["W_TRQ_PISTOL_MK1","W_9MM_JUNK","W_TRQ_RIFLE","W_TRQ_LAUNCHER"],
   equippedWeaponId:"W_TRQ_PISTOL_MK1",
   weaponAttachments:{},
+  weaponForge: defaultWeaponForgeState(),
   activeLoadoutPresetId:"",
   ammoReserve:{ "TRANQ_DARTS":20, "9MM_STD":40 },
   mag:{ loaded:6, cap:6 },
@@ -6761,6 +6846,7 @@ ensureBalanceStatsState(S);
 ensureNemesisState(S);
 ensureArcadeWeeklySeedState(S);
 ensureMasteryRewardsState(S);
+ensureWeaponForgeState(S);
 syncWindowState();
 
 // ---- Tutorial support + global state ----
@@ -8275,6 +8361,7 @@ function load(){
       ensureBalanceStatsState(fallback);
       ensureNemesisState(fallback);
       ensureWeaponAttachmentState(fallback);
+      ensureWeaponForgeState(fallback);
       ensureMissionTwistState(fallback);
       ensureArcadeBuildcraftState(fallback);
       ensureArcadeWeeklySeedState(fallback);
@@ -8291,6 +8378,7 @@ function load(){
     m.weaponMastery = normalizeWeaponMasteryMap(saved.weaponMastery ?? DEFAULT.weaponMastery);
     m.weaponMasteryTrees = normalizeWeaponMasteryTreeMap(saved.weaponMasteryTrees ?? DEFAULT.weaponMasteryTrees);
     m.weaponAttachments = normalizeWeaponAttachmentsMap(saved.weaponAttachments ?? DEFAULT.weaponAttachments);
+    m.weaponForge = normalizeWeaponForgeState(saved.weaponForge ?? DEFAULT.weaponForge);
     m.activeLoadoutPresetId = String(saved.activeLoadoutPresetId || "");
     m.medkits = { ...DEFAULT.medkits, ...(saved.medkits||{}) };
     m.repairKits = { ...DEFAULT.repairKits, ...(saved.repairKits||{}) };
@@ -8359,6 +8447,7 @@ function load(){
     ensureBalanceStatsState(m);
     ensureNemesisState(m);
     ensureWeaponAttachmentState(m);
+    ensureWeaponForgeState(m);
     ensureMissionTwistState(m);
     ensureArcadeBuildcraftState(m);
     ensureArcadeWeeklySeedState(m);
@@ -8386,6 +8475,7 @@ function load(){
     ensureBalanceStatsState(fallback);
     ensureNemesisState(fallback);
     ensureWeaponAttachmentState(fallback);
+    ensureWeaponForgeState(fallback);
     ensureMissionTwistState(fallback);
     ensureArcadeBuildcraftState(fallback);
     ensureArcadeWeeklySeedState(fallback);
@@ -11923,6 +12013,247 @@ function getTool(id){ return TOOLS.find(t=>t.id===id); }
 function getAttachment(id){
   return WEAPON_ATTACHMENTS_BY_ID[String(id || "")] || null;
 }
+function defaultWeaponForgeState(){
+  return {
+    materials:{ alloy:0, bio_resin:0, ion_dust:0 },
+    unlocks:{
+      skins:{ SKIN_BASE:1 },
+      effects:{ FX_BASE:1 },
+    },
+    equipped:{},
+  };
+}
+function normalizeWeaponForgeMaterialMap(raw){
+  const out = {};
+  const src = (raw && typeof raw === "object") ? raw : {};
+  for(const key of WEAPON_FORGE_MATERIAL_KEYS){
+    out[key] = Math.max(0, Math.floor(Number(src[key] || 0)));
+  }
+  return out;
+}
+function normalizeWeaponForgeUnlockMap(raw, catalogById, baseId){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const out = {};
+  for(const id of Object.keys(src)){
+    if(!catalogById[id]) continue;
+    out[id] = src[id] ? 1 : 0;
+  }
+  out[baseId] = 1;
+  return out;
+}
+function normalizeWeaponForgeEquippedMap(raw, unlocks){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const out = {};
+  for(const [weaponId, loadout] of Object.entries(src)){
+    const wid = String(weaponId || "");
+    if(!getWeapon(wid)) continue;
+    const skinId = String(loadout?.skinId || "");
+    const effectId = String(loadout?.effectId || "");
+    out[wid] = {
+      skinId: (skinId && unlocks?.skins?.[skinId]) ? skinId : "SKIN_BASE",
+      effectId: (effectId && unlocks?.effects?.[effectId]) ? effectId : "FX_BASE",
+    };
+  }
+  return out;
+}
+function normalizeWeaponForgeState(raw){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const unlocksSrc = (src.unlocks && typeof src.unlocks === "object") ? src.unlocks : {};
+  const unlocks = {
+    skins: normalizeWeaponForgeUnlockMap(unlocksSrc.skins, WEAPON_FORGE_SKINS_BY_ID, "SKIN_BASE"),
+    effects: normalizeWeaponForgeUnlockMap(unlocksSrc.effects, WEAPON_FORGE_EFFECTS_BY_ID, "FX_BASE"),
+  };
+  return {
+    materials: normalizeWeaponForgeMaterialMap(src.materials),
+    unlocks,
+    equipped: normalizeWeaponForgeEquippedMap(src.equipped, unlocks),
+  };
+}
+function ensureWeaponForgeState(state=S){
+  if(!state || typeof state !== "object") return;
+  state.weaponForge = normalizeWeaponForgeState(state.weaponForge);
+}
+function weaponForgeLoadoutForWeapon(weaponId=S.equippedWeaponId, state=S){
+  ensureWeaponForgeState(state);
+  const wid = String(weaponId || "");
+  if(!getWeapon(wid)){
+    return {
+      skin: WEAPON_FORGE_SKINS_BY_ID.SKIN_BASE,
+      effect: WEAPON_FORGE_EFFECTS_BY_ID.FX_BASE,
+      skinId:"SKIN_BASE",
+      effectId:"FX_BASE",
+    };
+  }
+  const unlocked = state.weaponForge.unlocks;
+  const row = state.weaponForge.equipped?.[wid] || {};
+  const skinId = (row.skinId && unlocked.skins[row.skinId]) ? row.skinId : "SKIN_BASE";
+  const effectId = (row.effectId && unlocked.effects[row.effectId]) ? row.effectId : "FX_BASE";
+  return {
+    skin: WEAPON_FORGE_SKINS_BY_ID[skinId] || WEAPON_FORGE_SKINS_BY_ID.SKIN_BASE,
+    effect: WEAPON_FORGE_EFFECTS_BY_ID[effectId] || WEAPON_FORGE_EFFECTS_BY_ID.FX_BASE,
+    skinId,
+    effectId,
+  };
+}
+function forgeEntrySeasonLocked(entry, now=Date.now()){
+  if(!entry?.seasonal) return false;
+  const endAt = Number(entry.seasonEndsAt || 0);
+  return Number.isFinite(endAt) && endAt > 0 && now > endAt;
+}
+function forgeSeasonLabel(entry){
+  if(!entry?.seasonal) return "";
+  const endAt = Number(entry.seasonEndsAt || 0);
+  if(Number.isFinite(endAt) && endAt > 0){
+    const d = new Date(endAt);
+    const month = d.toLocaleString("en-US", { month:"short", timeZone:"UTC" });
+    return `Limited • Ends ${month} ${d.getUTCDate()}`;
+  }
+  return "Limited";
+}
+function weaponForgeCostLabel(cost){
+  const src = (cost && typeof cost === "object") ? cost : {};
+  const bits = [];
+  for(const key of WEAPON_FORGE_MATERIAL_KEYS){
+    const n = Math.max(0, Math.floor(Number(src[key] || 0)));
+    if(n <= 0) continue;
+    const def = WEAPON_FORGE_MATERIAL_DEF[key];
+    bits.push(`${n} ${def.icon}`);
+  }
+  return bits.length ? bits.join(" • ") : "Free";
+}
+function weaponForgeWalletLabel(state=S){
+  ensureWeaponForgeState(state);
+  return WEAPON_FORGE_MATERIAL_KEYS.map((key)=>{
+    const def = WEAPON_FORGE_MATERIAL_DEF[key];
+    const count = Math.max(0, Math.floor(Number(state.weaponForge.materials?.[key] || 0)));
+    return `${def.icon} ${def.name}: ${count}`;
+  }).join(" • ");
+}
+function weaponForgeCanAfford(cost, state=S){
+  ensureWeaponForgeState(state);
+  const src = (cost && typeof cost === "object") ? cost : {};
+  for(const key of WEAPON_FORGE_MATERIAL_KEYS){
+    const need = Math.max(0, Math.floor(Number(src[key] || 0)));
+    if(need <= 0) continue;
+    const have = Math.max(0, Math.floor(Number(state.weaponForge.materials?.[key] || 0)));
+    if(have < need) return false;
+  }
+  return true;
+}
+function spendWeaponForgeMaterials(cost, state=S){
+  if(!weaponForgeCanAfford(cost, state)) return false;
+  const src = (cost && typeof cost === "object") ? cost : {};
+  for(const key of WEAPON_FORGE_MATERIAL_KEYS){
+    const need = Math.max(0, Math.floor(Number(src[key] || 0)));
+    if(need <= 0) continue;
+    state.weaponForge.materials[key] = Math.max(0, Math.floor(Number(state.weaponForge.materials[key] || 0)) - need);
+  }
+  return true;
+}
+function grantWeaponForgeMaterials(materials, opts={}){
+  ensureWeaponForgeState(S);
+  const src = (materials && typeof materials === "object") ? materials : {};
+  const gained = {};
+  let any = false;
+  for(const key of WEAPON_FORGE_MATERIAL_KEYS){
+    const amount = Math.max(0, Math.floor(Number(src[key] || 0)));
+    if(amount <= 0) continue;
+    gained[key] = amount;
+    S.weaponForge.materials[key] = Math.max(0, Math.floor(Number(S.weaponForge.materials[key] || 0))) + amount;
+    any = true;
+  }
+  if(!any) return "";
+  const summary = WEAPON_FORGE_MATERIAL_KEYS
+    .filter((key)=>gained[key] > 0)
+    .map((key)=>`+${gained[key]} ${WEAPON_FORGE_MATERIAL_DEF[key].icon}`)
+    .join(" ");
+  if(!opts.silent){
+    setEventText(`🛠️ Forge materials ${summary}`, 2.8);
+  }
+  return summary;
+}
+function weaponForgeDropForTiger(t, outcome="KILL"){
+  const type = String(t?.type || "Standard");
+  const out = { alloy:2, bio_resin:1, ion_dust:0 };
+  if(outcome === "CAPTURE"){
+    out.alloy += 1;
+    out.bio_resin += 2;
+  } else {
+    out.alloy += 2;
+  }
+  if(type === "Scout") out.bio_resin += 1;
+  if(type === "Stalker") out.bio_resin += 2;
+  if(type === "Berserker") out.alloy += 2;
+  if(type === "Alpha") out.alloy += 3;
+  if(isBossTiger(t)){
+    out.alloy += 5;
+    out.bio_resin += 4;
+    out.ion_dust += 3;
+  } else if(type === "Alpha"){
+    out.ion_dust += 1;
+  }
+  return out;
+}
+function grantWeaponForgeDropFromTiger(t, outcome="KILL"){
+  const drop = weaponForgeDropForTiger(t, outcome);
+  return grantWeaponForgeMaterials(drop, { silent:false });
+}
+function craftWeaponForgeItem(kind, id){
+  ensureWeaponForgeState(S);
+  const group = kind === "effects" ? WEAPON_FORGE_EFFECTS_BY_ID : WEAPON_FORGE_SKINS_BY_ID;
+  const unlockGroup = kind === "effects" ? S.weaponForge.unlocks.effects : S.weaponForge.unlocks.skins;
+  const def = group[String(id || "")];
+  if(!def) return toast("Forge item not found.");
+  if(forgeEntrySeasonLocked(def)) return toast("This limited forge item has expired.");
+  if(unlockGroup[def.id]) return toast("Already crafted.");
+  if(!weaponForgeCanAfford(def.cost, S)) return toast("Not enough forge materials.");
+  spendWeaponForgeMaterials(def.cost, S);
+  unlockGroup[def.id] = 1;
+  toast(`${def.name} crafted.`);
+  sfx("ui");
+  hapticImpact("light");
+  save();
+  renderShopList();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display === "flex") renderInventory();
+}
+function equipWeaponForge(kind, id, weaponId=S.equippedWeaponId){
+  ensureWeaponForgeState(S);
+  const w = getWeapon(weaponId);
+  if(!w) return toast("Pick a valid weapon first.");
+  const isEffect = kind === "effects";
+  const group = isEffect ? WEAPON_FORGE_EFFECTS_BY_ID : WEAPON_FORGE_SKINS_BY_ID;
+  const unlockGroup = isEffect ? S.weaponForge.unlocks.effects : S.weaponForge.unlocks.skins;
+  const def = group[String(id || "")];
+  if(!def) return toast("Forge item not found.");
+  if(!unlockGroup[def.id]) return toast("Craft this forge item first.");
+  if(!S.weaponForge.equipped[w.id]){
+    S.weaponForge.equipped[w.id] = { skinId:"SKIN_BASE", effectId:"FX_BASE" };
+  }
+  if(isEffect){
+    S.weaponForge.equipped[w.id].effectId = def.id;
+  } else {
+    S.weaponForge.equipped[w.id].skinId = def.id;
+  }
+  toast(`${w.name}: ${isEffect ? "effect" : "skin"} equipped (${def.name}).`);
+  sfx("ui");
+  save();
+  renderShopList();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display === "flex") renderInventory();
+}
+function weaponForgeTrailVisualForWeapon(weaponId=S.equippedWeaponId, state=S){
+  const loadout = weaponForgeLoadoutForWeapon(weaponId, state);
+  const skinPalette = loadout.skin?.palette || WEAPON_FORGE_SKINS_BY_ID.SKIN_BASE.palette;
+  const fxStyle = loadout.effect?.style || WEAPON_FORGE_EFFECTS_BY_ID.FX_BASE.style;
+  const effectIsBase = loadout.effectId === "FX_BASE";
+  return {
+    color: effectIsBase ? (skinPalette?.accent || fxStyle.color) : fxStyle.color,
+    tranqColor: effectIsBase ? (skinPalette?.primary || fxStyle.tranqColor || fxStyle.color) : (fxStyle.tranqColor || fxStyle.color),
+    critColor: fxStyle.critColor || skinPalette?.accent || fxStyle.color,
+    width: clamp(Number(fxStyle.width || 3), 2, 6),
+  };
+}
 function attachmentSlotLabel(slot){
   if(slot === "optic") return "Optic";
   if(slot === "tranq_chamber") return "Tranq Chamber";
@@ -15236,6 +15567,7 @@ function writeStoryProfileData(source="autosave", state=S){
     weaponMastery: normalizeWeaponMasteryMap(src.weaponMastery),
     weaponMasteryTrees: normalizeWeaponMasteryTreeMap(src.weaponMasteryTrees, src.weaponMastery),
     weaponAttachments: normalizeWeaponAttachmentsMap(src.weaponAttachments),
+    weaponForge: cloneState(normalizeWeaponForgeState(src.weaponForge)),
     activeLoadoutPresetId: String(src.activeLoadoutPresetId || ""),
     medkits: { ...(src.medkits || {}) },
     repairKits: { ...(src.repairKits || {}) },
@@ -15359,6 +15691,39 @@ function applyStoryProfileToState(state, profile){
       const next = normalizeWeaponAttachmentBuild(incoming[w.id], w);
       state.weaponAttachments[w.id] = { ...current, ...next };
     }
+  }
+  if(profile.weaponForge && typeof profile.weaponForge === "object"){
+    ensureWeaponForgeState(state);
+    const current = normalizeWeaponForgeState(state.weaponForge);
+    const incoming = normalizeWeaponForgeState(profile.weaponForge);
+    const merged = normalizeWeaponForgeState(current);
+    for(const key of WEAPON_FORGE_MATERIAL_KEYS){
+      merged.materials[key] = Math.max(
+        Math.max(0, Math.floor(Number(current.materials?.[key] || 0))),
+        Math.max(0, Math.floor(Number(incoming.materials?.[key] || 0)))
+      );
+    }
+    merged.unlocks.skins = {
+      ...merged.unlocks.skins,
+      ...incoming.unlocks.skins,
+      SKIN_BASE:1,
+    };
+    merged.unlocks.effects = {
+      ...merged.unlocks.effects,
+      ...incoming.unlocks.effects,
+      FX_BASE:1,
+    };
+    for(const w of WEAPONS){
+      const wid = w.id;
+      const currentRow = current.equipped?.[wid] || { skinId:"SKIN_BASE", effectId:"FX_BASE" };
+      const incomingRow = incoming.equipped?.[wid] || null;
+      const nextRow = incomingRow || currentRow;
+      merged.equipped[wid] = {
+        skinId: merged.unlocks.skins[nextRow.skinId] ? nextRow.skinId : (merged.unlocks.skins[currentRow.skinId] ? currentRow.skinId : "SKIN_BASE"),
+        effectId: merged.unlocks.effects[nextRow.effectId] ? nextRow.effectId : (merged.unlocks.effects[currentRow.effectId] ? currentRow.effectId : "FX_BASE"),
+      };
+    }
+    state.weaponForge = merged;
   }
   if(typeof profile.activeLoadoutPresetId === "string" && loadoutPresetById(profile.activeLoadoutPresetId)){
     state.activeLoadoutPresetId = profile.activeLoadoutPresetId;
@@ -15553,6 +15918,7 @@ function applyStoryProfileToState(state, profile){
   if(profile.modeWallets && typeof profile.modeWallets === "object"){
     state.modeWallets = normalizeModeWallets({ ...(state.modeWallets || {}), ...profile.modeWallets }, state.funds, state.mode);
   }
+  ensureWeaponForgeState(state);
   ensureStoryEndgameState(state);
   ensureStoryBranchingState(state);
   return state;
@@ -17433,6 +17799,7 @@ function openShop(){
   const fromBattle = !!S.inBattle;
   ensureSquadShopTab();
   ensureSeasonShopTab();
+  ensureForgeShopTab();
   if(S.missionEnded){
     lastOverlay="complete";
     document.getElementById("completeOverlay").style.display="none";
@@ -17597,13 +17964,35 @@ function ensureSeasonShopTab(){
   }
   return tab;
 }
+function ensureForgeShopTab(){
+  let tab = document.getElementById("tabForge");
+  if(tab) return tab;
+  const tabsWrap = document.querySelector("#shopOverlay .tabs");
+  if(!tabsWrap) return null;
+
+  tab = document.createElement("button");
+  tab.className = "tab";
+  tab.id = "tabForge";
+  tab.type = "button";
+  tab.innerText = "Forge";
+  tab.addEventListener("click", ()=>shopTab("forge"));
+
+  const seasonTab = document.getElementById("tabSeason");
+  if(seasonTab && seasonTab.parentElement === tabsWrap){
+    tabsWrap.insertBefore(tab, seasonTab.nextSibling);
+  } else {
+    tabsWrap.appendChild(tab);
+  }
+  return tab;
+}
 
 function shopTab(tab){
   ensureSquadShopTab();
   ensureMetaShopTab();
   ensureSeasonShopTab();
+  ensureForgeShopTab();
   currentShopTab=tab;
-  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabSeason","tabStars","tabCash","tabPremium","tabTools","tabTraps"].forEach((id)=>{
+  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabSeason","tabForge","tabStars","tabCash","tabPremium","tabTools","tabTraps"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.classList.remove("active");
   });
@@ -17615,6 +18004,7 @@ function shopTab(tab){
     squad:"tabSquad",
     meta:"tabMeta",
     season:"tabSeason",
+    forge:"tabForge",
     stars:"tabStars",
     cash:"tabCash",
     premium:"tabPremium",
@@ -17854,6 +18244,95 @@ function renderShopList(){
         </div>
       </div>`;
     list.innerHTML = attackerCard + rescueCard + bundleCard + reviveAllCard;
+    return;
+  }
+
+  if(currentShopTab==="forge"){
+    ensureWeaponForgeState(S);
+    const owned = Array.isArray(S.ownedWeapons) ? S.ownedWeapons.filter((id)=>getWeapon(id)) : [];
+    const selectedWeaponId = (getWeapon(S.equippedWeaponId) && owned.includes(S.equippedWeaponId))
+      ? S.equippedWeaponId
+      : (owned[0] || "W_TRQ_PISTOL_MK1");
+    const selectedWeapon = getWeapon(selectedWeaponId) || equippedWeapon();
+    const selectedLoadout = weaponForgeLoadoutForWeapon(selectedWeapon.id, S);
+
+    note.innerText = `Craft weapon skins and trail effects from combat materials. Seasonal set: ${WEAPON_FORGE_SEASON_KEY}.`;
+    const weaponButtons = owned.map((wid)=>{
+      const w = getWeapon(wid);
+      const active = wid === selectedWeapon.id;
+      return `<button class="${active ? "good" : "ghost"}" onclick="equipWeapon('${wid}')">${w.name}</button>`;
+    }).join("");
+
+    const materialCard = `
+      <div class="item">
+        <div>
+          <div class="itemName">Forge Materials <span class="tag">Earned in combat</span></div>
+          <div class="itemDesc">${weaponForgeWalletLabel(S)}</div>
+        </div>
+      </div>
+      <div class="item">
+        <div>
+          <div class="itemName">Target Weapon <span class="tag">${selectedWeapon.name}</span></div>
+          <div class="itemDesc">Forge loadout applies per weapon. Switch weapon to set different skin/effect builds.</div>
+        </div>
+        <div style="text-align:right;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+          ${weaponButtons || `<button class="ghost" disabled>No owned weapons</button>`}
+        </div>
+      </div>`;
+
+    const skinCards = WEAPON_FORGE_SKINS.map((row)=>{
+      const unlocked = !!S.weaponForge.unlocks.skins?.[row.id];
+      const equipped = selectedLoadout.skinId === row.id;
+      const seasonLocked = forgeEntrySeasonLocked(row);
+      const canCraft = unlocked || (!seasonLocked && weaponForgeCanAfford(row.cost, S));
+      const statusTag = equipped ? "Equipped" : (unlocked ? "Crafted" : (seasonLocked ? "Expired" : row.rarity));
+      return `
+        <div class="item">
+          <div>
+            <div class="itemName">${row.name} <span class="tag">${statusTag}</span>${row.seasonal ? ` <span class="tag">${forgeSeasonLabel(row)}</span>` : ""}</div>
+            <div class="itemDesc">${row.desc}</div>
+            <div class="itemDesc">Cost: ${weaponForgeCostLabel(row.cost)}</div>
+            <div class="itemDesc">Palette: ${row.palette?.primary || "#d1d5db"} / ${row.palette?.accent || "#93c5fd"}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">${unlocked ? "Crafted" : weaponForgeCostLabel(row.cost)}</div>
+            <button onclick="craftWeaponForgeItem('skins','${row.id}')" ${(!unlocked && !seasonLocked && canCraft) ? "" : "disabled"}>${unlocked ? "Crafted" : (seasonLocked ? "Expired" : "Craft")}</button>
+            <button class="ghost" onclick="equipWeaponForge('skins','${row.id}','${selectedWeapon.id}')" ${(unlocked && !equipped) ? "" : "disabled"}>${equipped ? "Equipped" : "Equip"}</button>
+          </div>
+        </div>`;
+    }).join("");
+
+    const effectCards = WEAPON_FORGE_EFFECTS.map((row)=>{
+      const unlocked = !!S.weaponForge.unlocks.effects?.[row.id];
+      const equipped = selectedLoadout.effectId === row.id;
+      const seasonLocked = forgeEntrySeasonLocked(row);
+      const canCraft = unlocked || (!seasonLocked && weaponForgeCanAfford(row.cost, S));
+      const statusTag = equipped ? "Equipped" : (unlocked ? "Crafted" : (seasonLocked ? "Expired" : row.rarity));
+      return `
+        <div class="item">
+          <div>
+            <div class="itemName">${row.name} <span class="tag">${statusTag}</span>${row.seasonal ? ` <span class="tag">${forgeSeasonLabel(row)}</span>` : ""}</div>
+            <div class="itemDesc">${row.desc}</div>
+            <div class="itemDesc">Cost: ${weaponForgeCostLabel(row.cost)}</div>
+            <div class="itemDesc">Trail: ${row.style?.color || "#f5f7ff"} • Tranq: ${row.style?.tranqColor || row.style?.color || "#60a5fa"} • Width ${Number(row.style?.width || 3).toFixed(1)}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">${unlocked ? "Crafted" : weaponForgeCostLabel(row.cost)}</div>
+            <button onclick="craftWeaponForgeItem('effects','${row.id}')" ${(!unlocked && !seasonLocked && canCraft) ? "" : "disabled"}>${unlocked ? "Crafted" : (seasonLocked ? "Expired" : "Craft")}</button>
+            <button class="ghost" onclick="equipWeaponForge('effects','${row.id}','${selectedWeapon.id}')" ${(unlocked && !equipped) ? "" : "disabled"}>${equipped ? "Equipped" : "Equip"}</button>
+          </div>
+        </div>`;
+    }).join("");
+
+    list.innerHTML = `
+      ${materialCard}
+      <div class="divider"></div>
+      <div class="hudTitle">Weapon Skins</div>
+      ${skinCards}
+      <div class="divider"></div>
+      <div class="hudTitle">Trail Effects</div>
+      ${effectCards}
+    `;
     return;
   }
 
@@ -18603,9 +19082,11 @@ function renderInventory(){
   ensureStoryMetaState();
   ensureWeaponMasteryState();
   ensureWeaponAttachmentState(S);
+  ensureWeaponForgeState(S);
   const mastery = ensureMasteryRewardsState(S);
   syncSquadRosterBounds();
   const w=equippedWeapon();
+  const forgeLoadout = weaponForgeLoadoutForWeapon(w.id, S);
   const ammoId=w.ammo;
   const baseRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + storyBaseRank(def.key), 0);
   const baseMaxRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + def.maxRank, 0);
@@ -18623,6 +19104,7 @@ function renderInventory(){
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
      <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Build:</b> ${attachmentBuildSummaryForWeapon(w.id)} • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
+     <b>Forge:</b> ${forgeLoadout.skin?.name || "Field Standard"} skin • ${forgeLoadout.effect?.name || "No Effect"} trail • ${weaponForgeWalletLabel(S)}<br>
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
      <b>Squad Abilities:</b> Tranq Burst ${squadTranqStatus} • Smoke Screen ${squadSmokeStatus}<br>
      <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • HQ ${hqRanks}/${hqMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}<br>
@@ -25640,6 +26122,7 @@ function finishTigerKill(t){
   applySeasonFinisherVisual(t, "KILL");
   trackCashEarned(pay.cash);
   resolveNemesisOutcome(t, "KILL");
+  grantWeaponForgeDropFromTiger(t, "KILL");
   unlockAchv("kill1","First Kill");
   S.trust=clamp(S.trust+pay.trust,0,100);
   S.aggro=clamp(S.aggro+pay.aggro,0,100);
@@ -25742,6 +26225,7 @@ function playerAction(action){
     awardCombo("capture");
     trackCashEarned(pay.cash);
     resolveNemesisOutcome(t, "CAPTURE");
+    grantWeaponForgeDropFromTiger(t, "CAPTURE");
     unlockAchv("cap1","First Capture");
     S.trust=clamp(S.trust+pay.trust,0,100);
     S.aggro=clamp(S.aggro+pay.aggro,0,100);
@@ -25816,6 +26300,7 @@ function playerAction(action){
     const eff=ammoEffectFor(w.ammo);
     const handling = weaponHandlingProfile(w);
     const build = weaponBuildStats(w.id, S);
+    const forgeTrail = weaponForgeTrailVisualForWeapon(w.id, S);
     const attackDist = dist(S.me.x, S.me.y, t.x, t.y);
     let dmg=rand(build.dmg[0],build.dmg[1]);
     dmg *= perkDamageMul();
@@ -25866,10 +26351,15 @@ function playerAction(action){
       }else{
         t.hp = clamp(t.hp - dmg, 0, t.hpMax);
       }
+      const trailBaseColor = w.type==="tranq"
+        ? (forgeTrail?.tranqColor || "rgba(96,165,250,.96)")
+        : (forgeTrail?.color || "rgba(245,247,255,.96)");
+      const trailColor = crit ? (forgeTrail?.critColor || trailBaseColor) : trailBaseColor;
+      const trailWidth = clamp((crit ? 4 : 3) + Math.max(0, Number((forgeTrail?.width || 3) - 3)), 2, 6);
       emitCombatFx(
         S.me.x, S.me.y - 6, t.x, t.y,
-        w.type==="tranq" ? "rgba(96,165,250,.96)" : "rgba(245,247,255,.96)",
-        crit ? 4 : 3,
+        trailColor,
+        trailWidth,
         (crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"))
       );
       addWeaponMasteryXp(w.id, 2);
