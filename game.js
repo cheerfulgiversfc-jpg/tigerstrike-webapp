@@ -856,6 +856,41 @@ const CIVILIAN_RISK_REWARD_MULT = Object.freeze({
   threatened: 1.16,
   critical: 1.34,
 });
+const RIVAL_FACTION_DEFS = Object.freeze([
+  Object.freeze({
+    key:"POACHER_RING",
+    name:"Poacher Ring",
+    desc:"Prioritizes tiger trophies and civilian intimidation.",
+    color:"#ef4444",
+    accent:"#fda4af",
+    tigerBias:0.86,
+    civBias:0.56,
+    captureBias:0.26,
+    moveMul:1.00,
+    dmgMul:1.00,
+    hpMul:1.00,
+  }),
+  Object.freeze({
+    key:"MERC_HUNTERS",
+    name:"Merc Hunter Cell",
+    desc:"Targets high-value tigers and only pressures civilians opportunistically.",
+    color:"#f97316",
+    accent:"#fdba74",
+    tigerBias:0.92,
+    civBias:0.28,
+    captureBias:0.34,
+    moveMul:1.08,
+    dmgMul:1.06,
+    hpMul:1.06,
+  }),
+]);
+const RIVAL_FACTION_BY_KEY = Object.freeze(Object.fromEntries(RIVAL_FACTION_DEFS.map((row)=>[row.key, row])));
+const RIVAL_MAX_UNITS = 4;
+const RIVAL_MIN_SPAWN_LEVEL = 6;
+const RIVAL_BASE_AGGRO_RANGE = 320;
+const RIVAL_FIRE_RANGE = 210;
+const RIVAL_CIV_ATTACK_RANGE = 84;
+const RIVAL_TIGER_MELEE_RANGE = 100;
 const WEAPON_FORGE_MATERIAL_DEF = Object.freeze({
   alloy: Object.freeze({ name:"Alloy Shards", icon:"🔩" }),
   bio_resin: Object.freeze({ name:"Bio Resin", icon:"🧪" }),
@@ -6685,6 +6720,7 @@ const DEFAULT = {
   tigers:[],
   carcasses:[],
   supportUnits:[],
+  rivalHunters:[],
   rescueSites:[],
   mapInteractables:[],
 
@@ -6738,6 +6774,8 @@ const DEFAULT = {
   _convoyRouteChoiceLocked:"",
   _convoySplitThreatAt:0,
   _convoySplitThreatWaves:0,
+  _rivalLastIntelDropAt:0,
+  _rivalFactionName:"",
   respawnLockRecoverCount:0,
   _respawnLockRecoverCountSession:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
@@ -8389,6 +8427,7 @@ function load(){
     m.carcasses = Array.isArray(saved.carcasses) ? saved.carcasses : [];
     m.pickups = Array.isArray(saved.pickups) ? saved.pickups : [];
     m.supportUnits = Array.isArray(saved.supportUnits) ? saved.supportUnits : [];
+    m.rivalHunters = Array.isArray(saved.rivalHunters) ? saved.rivalHunters : [];
     m.rescueSites = Array.isArray(saved.rescueSites) ? saved.rescueSites : [];
     m.mapInteractables = Array.isArray(saved.mapInteractables) ? saved.mapInteractables : [];
     m.achievements = saved.achievements || {};
@@ -8513,6 +8552,7 @@ const MAX_PERSIST_PICKUPS = 26;
 const MAX_PERSIST_TRAPS = 24;
 const MAX_PERSIST_RESCUE_SITES = 12;
 const MAX_PERSIST_SUPPORT_UNITS = 16;
+const MAX_PERSIST_RIVAL_HUNTERS = 8;
 const MAX_PERSIST_INTERACTABLES = 10;
 const MAX_PERSIST_TIGERS = 24;
 const MAX_PERSIST_CIVILIANS = 24;
@@ -8564,6 +8604,7 @@ function trimPersistentState(state){
   state.trapsPlaced = capTail(state.trapsPlaced, MAX_PERSIST_TRAPS);
   state.rescueSites = capHead(state.rescueSites, MAX_PERSIST_RESCUE_SITES);
   state.supportUnits = capHead(state.supportUnits, MAX_PERSIST_SUPPORT_UNITS);
+  state.rivalHunters = capHead(state.rivalHunters, MAX_PERSIST_RIVAL_HUNTERS);
   state.mapInteractables = capHead(state.mapInteractables, MAX_PERSIST_INTERACTABLES);
   state.tigers = capHead(state.tigers, MAX_PERSIST_TIGERS);
   state.civilians = capHead(state.civilians, MAX_PERSIST_CIVILIANS);
@@ -8578,6 +8619,7 @@ function buildPersistedState(){
   out.trapsPlaced = capTail(S.trapsPlaced, MAX_PERSIST_TRAPS);
   out.rescueSites = capHead(S.rescueSites, MAX_PERSIST_RESCUE_SITES);
   out.supportUnits = capHead(S.supportUnits, MAX_PERSIST_SUPPORT_UNITS);
+  out.rivalHunters = capHead(S.rivalHunters, MAX_PERSIST_RIVAL_HUNTERS);
   out.mapInteractables = capHead(S.mapInteractables, MAX_PERSIST_INTERACTABLES);
   out.tigers = capHead(S.tigers, MAX_PERSIST_TIGERS);
   out.civilians = capHead(S.civilians, MAX_PERSIST_CIVILIANS);
@@ -9047,12 +9089,13 @@ function frameActiveEntityLoadScore(){
   const tigerLoad = (S.tigers || []).reduce((n, t)=>n + (t?.alive ? 1 : 0), 0);
   const civLoad = (S.civilians || []).reduce((n, c)=>n + (c?.alive && !c?.evac ? 1 : 0), 0);
   const supportLoad = (S.supportUnits || []).reduce((n, u)=>n + (u?.alive ? 1 : 0), 0);
+  const rivalLoad = (S.rivalHunters || []).reduce((n, u)=>n + (u?.alive ? 1 : 0), 0);
   const pickupLoad = Math.max(0, (S.pickups || []).length);
   const trapLoad = Math.max(0, (S.trapsPlaced || []).length);
   const carcassLoad = Math.max(0, Math.round(((S.carcasses || []).length || 0) * 0.5));
   const interactLoad = Math.max(0, Math.round(((S.mapInteractables || []).length || 0) * 0.5));
   const battleBoost = S.inBattle ? 8 : 0;
-  return tigerLoad + civLoad + supportLoad + pickupLoad + trapLoad + carcassLoad + interactLoad + battleBoost;
+  return tigerLoad + civLoad + supportLoad + rivalLoad + pickupLoad + trapLoad + carcassLoad + interactLoad + battleBoost;
 }
 function computeFrameLoadMultiplier(){
   const score = frameActiveEntityLoadScore();
@@ -10578,6 +10621,7 @@ function sanitizeRuntimeState(){
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
+  if(!Array.isArray(S.rivalHunters)) S.rivalHunters = [];
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(!Array.isArray(S.carcasses)) S.carcasses = [];
   if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
@@ -10696,6 +10740,35 @@ function sanitizeRuntimeState(){
     }
     return true;
   }).slice(0, MAX_PERSIST_SUPPORT_UNITS);
+  S.rivalHunters = S.rivalHunters.filter((u)=>{
+    if(!u || typeof u !== "object") return false;
+    u.x = clampX(u.x, 40, w - 40);
+    u.y = clampY(u.y, 60, h - 40);
+    u.homeX = clampX(u.homeX ?? u.x, 40, w - 40);
+    u.homeY = clampY(u.homeY ?? u.y, 60, h - 40);
+    u.hpMax = Math.max(1, Math.round(Number.isFinite(u.hpMax) ? u.hpMax : 100));
+    u.hp = clamp(Number.isFinite(u.hp) ? u.hp : u.hpMax, 0, u.hpMax);
+    u.armor = clamp(Number.isFinite(u.armor) ? u.armor : 0, 0, 260);
+    u.alive = u.alive !== false && u.hp > 0;
+    if(!Number.isFinite(u.face)) u.face = 0;
+    if(!Number.isFinite(u.step)) u.step = 0;
+    if(typeof u.factionKey !== "string" || !RIVAL_FACTION_BY_KEY[u.factionKey]){
+      u.factionKey = RIVAL_FACTION_DEFS[0].key;
+    }
+    if(typeof u.factionName !== "string" || !u.factionName) u.factionName = RIVAL_FACTION_BY_KEY[u.factionKey]?.name || "Rival Hunters";
+    if(typeof u.callsign !== "string" || !u.callsign) u.callsign = `Rival ${Math.max(1, Math.floor(Number(u.id || 1) % 99))}`;
+    if(!Number.isFinite(u.fireAt)) u.fireAt = 0;
+    if(!Number.isFinite(u.actionAt)) u.actionAt = 0;
+    if(!Number.isFinite(u.targetTigerId)) u.targetTigerId = 0;
+    if(inMobileNoBuildZone(u.x, u.y, 16) || blockedAt(u.x, u.y, 16)){
+      const pt = safeSpawnPoint(u.x, u.y, 16, true, false);
+      u.x = pt.x;
+      u.y = pt.y;
+      u.homeX = clampX(u.homeX ?? u.x, 40, w - 40);
+      u.homeY = clampY(u.homeY ?? u.y, 60, h - 40);
+    }
+    return true;
+  }).slice(0, MAX_PERSIST_RIVAL_HUNTERS);
   reconcileSupportDownedFromUnits(S);
   syncSquadRosterBounds();
 
@@ -10761,6 +10834,9 @@ function sanitizeRuntimeState(){
     S.inBattle = false;
   }
   if(!Number.isFinite(S._tigerBatchStart)) S._tigerBatchStart = 0;
+  if(!Number.isFinite(S._rivalTickAt)) S._rivalTickAt = 0;
+  if(!Number.isFinite(S._rivalLastIntelDropAt)) S._rivalLastIntelDropAt = 0;
+  if(typeof S._rivalFactionName !== "string") S._rivalFactionName = "";
   if(!Number.isFinite(S._directorAggroMul)) S._directorAggroMul = 1;
   if(!Number.isFinite(S._directorSpeedMul)) S._directorSpeedMul = 1;
   if(!Number.isFinite(S._biomeFogPulseAt)) S._biomeFogPulseAt = 0;
@@ -19939,6 +20015,7 @@ window.enterTutorialMode = function () {
   S.target = null;
   S.pickups = [];
   S.supportUnits = [];
+  S.rivalHunters = [];
   S.mapInteractables = [];
   S.eventText = "";
   S.fogUntil = 0;
@@ -19986,6 +20063,7 @@ window.enterTutorialMode = function () {
   // reset battlefield
   S.tigers = [];
   S.civilians = [];
+  S.rivalHunters = [];
 
   spawnCivilians();
   spawnTigers();
@@ -20257,6 +20335,7 @@ function transitionCleanupSweep(reason=""){
   if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
+  if(!Array.isArray(S.rivalHunters)) S.rivalHunters = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.tigers)) S.tigers = [];
   S.scanPing = clamp(Number(S.scanPing) || 0, 0, 42);
@@ -21011,6 +21090,73 @@ function spawnSupportUnits(){
     unit.alive = unit.hp > 0;
   });
   S.supportUnits = applyRaidPartnerSlots(merged.filter((unit)=>unit.alive));
+}
+
+function createRivalHunter(faction, slotIndex=0){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const f = faction || RIVAL_FACTION_DEFS[0];
+  const sideLeft = (slotIndex % 2) === 0;
+  const edgeX = sideLeft ? rand(70, 170) : rand(worldW - 170, worldW - 70);
+  const edgeY = rand(94, worldH - 82);
+  const spawn = safeSpawnPoint(edgeX, edgeY, 16, true, true);
+  const hpMax = Math.max(72, Math.round((100 + rand(-8, 20)) * (f.hpMul || 1)));
+  return {
+    id: `RV-${Date.now()}-${rand(100, 999)}-${slotIndex}`,
+    x: spawn.x,
+    y: spawn.y,
+    homeX: spawn.x,
+    homeY: spawn.y,
+    face: sideLeft ? 0 : Math.PI,
+    step: rand(0, 1000),
+    hp: hpMax,
+    hpMax,
+    armor: Math.round(18 + (slotIndex * 4)),
+    alive:true,
+    factionKey: f.key,
+    factionName: f.name,
+    callsign: `Rival ${String(slotIndex + 1).padStart(2, "0")}`,
+    fireAt:0,
+    actionAt:0,
+    targetTigerId:0,
+    targetCivId:0,
+  };
+}
+
+function spawnRivalHunters(){
+  if(window.__TUTORIAL_MODE__){
+    S.rivalHunters = [];
+    S._rivalFactionName = "";
+    return;
+  }
+  if(S.mode === "Survival"){
+    S.rivalHunters = [];
+    S._rivalFactionName = "";
+    return;
+  }
+  const storyLevel = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  const arcadeLevel = clamp(Math.floor(Number(S.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  const missionLevel = S.mode === "Story" ? storyLevel : arcadeLevel;
+  if(missionLevel < RIVAL_MIN_SPAWN_LEVEL){
+    S.rivalHunters = [];
+    S._rivalFactionName = "";
+    return;
+  }
+  const baseChance = S.mode === "Story" ? 0.30 : 0.45;
+  const bonus = clamp((missionLevel - RIVAL_MIN_SPAWN_LEVEL) * 0.04, 0, 0.34);
+  const spawnChance = clamp(baseChance + bonus, 0, 0.92);
+  if(Math.random() > spawnChance){
+    S.rivalHunters = [];
+    S._rivalFactionName = "";
+    return;
+  }
+
+  const countBase = missionLevel >= 22 ? 3 : (missionLevel >= 12 ? 2 : 1);
+  const count = clamp(countBase + (Math.random() < 0.26 ? 1 : 0), 1, RIVAL_MAX_UNITS);
+  const faction = RIVAL_FACTION_DEFS[rand(0, RIVAL_FACTION_DEFS.length - 1)] || RIVAL_FACTION_DEFS[0];
+  S.rivalHunters = Array.from({ length: count }, (_, idx)=>createRivalHunter(faction, idx));
+  S._rivalFactionName = faction.name;
+  setEventText(`⚠️ Rival faction spotted: ${faction.name}.`, 3.2);
 }
 
 
@@ -21790,6 +21936,7 @@ function deploy(opts={}){
   S.pickups = [];
   S.rescueSites = [];
   S.mapInteractables = [];
+  S.rivalHunters = [];
   S.comboCount = 0;
   S.comboExpireAt = 0;
   S.stats.shots = 0;
@@ -21807,6 +21954,8 @@ function deploy(opts={}){
   S._convoyRouteChoiceLocked = "";
   S._convoySplitThreatAt = 0;
   S._convoySplitThreatWaves = 0;
+  S._rivalLastIntelDropAt = 0;
+  S._rivalFactionName = "";
   S._arcadeTimerWarn = 0;
   S._arcadeNoKillWarned = false;
   S._storyFinalOutcome = null;
@@ -21841,6 +21990,7 @@ function deploy(opts={}){
   spawnSupportUnits();
   spawnCivilians();
   spawnTigers();
+  spawnRivalHunters();
   if(S.mode!=="Survival" && !window.__TUTORIAL_MODE__){
     S.evacZone = randomEvacZone(S.civilians);
   }
@@ -23076,6 +23226,190 @@ function supportRetreatAnchor(unit, threatTiger, hpRatio=1){
     x: (fallbackX * (1 - blend)) + ((ux + (awayX / awayLen) * retreatStep) * blend),
     y: (fallbackY * (1 - blend)) + ((uy + (awayY / awayLen) * retreatStep) * blend),
   };
+}
+
+function damageRivalHunter(unit, dmg){
+  if(!unit || !unit.alive || dmg <= 0) return false;
+  let left = Math.max(0, Number(dmg || 0));
+  if(unit.armor > 0){
+    const absorb = Math.min(unit.armor, left * 0.65);
+    unit.armor = Math.max(0, unit.armor - absorb);
+    left = Math.max(0, left - absorb);
+  }
+  if(left > 0){
+    unit.hp = Math.max(0, Number(unit.hp || 0) - left);
+  }
+  if(unit.hp > 0) return false;
+  unit.alive = false;
+  return true;
+}
+
+function rivalResolveTigerOutcome(tiger, outcome="kill", actor=null){
+  if(!tiger || !tiger.alive) return false;
+  const now = Date.now();
+  const mode = String(outcome || "kill").toLowerCase();
+  tiger.alive = false;
+  tigerPackRecordLoss(tiger, mode === "capture" ? "CAPTURE" : "KILL");
+  if(mode !== "capture"){
+    S.carcasses.push({ x:tiger.x, y:tiger.y, bornAt:now });
+    if(S.carcasses.length > MAX_PERSIST_CARCASSES){
+      S.carcasses = S.carcasses.slice(-MAX_PERSIST_CARCASSES);
+    }
+  }
+  if(Math.random() < 0.7){
+    const cashKind = Math.random() < 0.5 ? "CASH" : "AMMO";
+    spawnPickup(cashKind, tiger.x + rand(-14, 14), tiger.y + rand(-14, 14));
+    const faction = actor?.factionName || "Rival faction";
+    setEventText(`🎯 ${faction} ${mode === "capture" ? "captured" : "dropped"} tiger intel. Grab the pickup.`, 2.8);
+    S._rivalLastIntelDropAt = now;
+  }
+  if(S.inBattle && (S.activeTigerId === tiger.id || S.lockedTigerId === tiger.id)){
+    endBattle("RETREAT");
+    toast("Rival faction interrupted the tiger fight.");
+  }
+  return true;
+}
+
+function rivalHuntersTick(){
+  if(S.paused || S.gameOver || S.missionEnded) return;
+  if(!Array.isArray(S.rivalHunters) || !S.rivalHunters.length) return;
+
+  const now = Date.now();
+  const lagTier = frameLagTier();
+  const tickDelay = lagTier >= 2 ? 140 : (lagTier >= 1 ? 104 : 70);
+  if(now < (S._rivalTickAt || 0)) return;
+  S._rivalTickAt = now + tickDelay;
+  const tickMul = clamp(tickDelay / (1000 / 60), 1.4, 8);
+  const motionMul = frameMotionMul();
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+
+  const activeTigers = (S.tigers || []).filter((t)=>t && t.alive);
+  const activeCivs = (S.mode === "Survival")
+    ? []
+    : (S.civilians || []).filter((c)=>c && c.alive && !c.evac);
+  const livingRivals = S.rivalHunters.filter((u)=>u && u.alive);
+
+  const nearestTigerTo = (x, y) => {
+    let best = null;
+    let bestD = Infinity;
+    for(const tiger of activeTigers){
+      const d = dist(x, y, tiger.x, tiger.y);
+      if(d < bestD){ bestD = d; best = tiger; }
+    }
+    return { tiger:best, d:bestD };
+  };
+  const nearestCivTo = (x, y) => {
+    let best = null;
+    let bestD = Infinity;
+    for(const civ of activeCivs){
+      const d = dist(x, y, civ.x, civ.y);
+      if(d < bestD){ bestD = d; best = civ; }
+    }
+    return { civ:best, d:bestD };
+  };
+
+  for(const unit of livingRivals){
+    const faction = RIVAL_FACTION_BY_KEY[unit.factionKey] || RIVAL_FACTION_DEFS[0];
+    unit.step = (Number(unit.step || 0) + 0.08) % (Math.PI * 2);
+    if(!Number.isFinite(unit.homeX) || !Number.isFinite(unit.homeY)){
+      unit.homeX = unit.x;
+      unit.homeY = unit.y;
+    }
+
+    const nearTiger = nearestTigerTo(unit.x, unit.y);
+    const nearCiv = nearestCivTo(unit.x, unit.y);
+    const pickTiger = !!nearTiger.tiger && (
+      nearTiger.d < (RIVAL_BASE_AGGRO_RANGE + (Number(faction.tigerBias || 0.85) * 130)) ||
+      Math.random() < Number(faction.tigerBias || 0.85)
+    );
+    const pickCiv = !!nearCiv.civ && !pickTiger && Math.random() < Number(faction.civBias || 0.3);
+
+    let targetX = unit.homeX;
+    let targetY = unit.homeY;
+    if(pickTiger){
+      targetX = nearTiger.tiger.x;
+      targetY = nearTiger.tiger.y;
+      unit.targetTigerId = nearTiger.tiger.id;
+      unit.targetCivId = 0;
+    } else if(pickCiv){
+      targetX = nearCiv.civ.x;
+      targetY = nearCiv.civ.y;
+      unit.targetCivId = nearCiv.civ.id;
+      unit.targetTigerId = 0;
+    } else {
+      unit.targetTigerId = 0;
+      unit.targetCivId = 0;
+      if(now >= (unit.actionAt || 0)){
+        unit.actionAt = now + rand(1100, 1800);
+        unit.homeX = clamp(unit.homeX + rand(-120, 120), 70, worldW - 70);
+        unit.homeY = clamp(unit.homeY + rand(-90, 90), 90, worldH - 80);
+      }
+      targetX = unit.homeX;
+      targetY = unit.homeY;
+    }
+
+    const dx = targetX - unit.x;
+    const dy = targetY - unit.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const speed = clamp((2.1 * Number(faction.moveMul || 1)) * waterSpeedMul("support", unit.x, unit.y, 12) * motionMul * tickMul, 1.1, 11.5);
+    const step = Math.min(speed, len);
+    unit.face = Math.atan2(dy, dx);
+    tryMoveEntity(unit, unit.x + (dx / len) * step, unit.y + (dy / len) * step, 16, { avoidKeepout:false });
+
+    if(nearTiger.tiger && nearTiger.d <= RIVAL_FIRE_RANGE && now >= (unit.fireAt || 0)){
+      unit.fireAt = now + rand(320, 540);
+      const tiger = nearTiger.tiger;
+      const tigerDist = dist(unit.x, unit.y, tiger.x, tiger.y);
+      const shot = Math.max(4, Math.round(rand(8, 14) * Number(faction.dmgMul || 1) * clamp(1 - ((tigerPowerRank(tiger) - 1) * 0.06), 0.65, 1)));
+      const hpRatio = clamp(Number(unit.hp || 0) / Math.max(1, Number(unit.hpMax || 1)), 0, 1);
+      const captureReady = tiger.hp > captureWindowMinHp(tiger) && tiger.hp <= captureWindowHp(tiger);
+      const forceKill = hpRatio <= 0.30 || tigerDist <= 88 || isBossTiger(tiger);
+      const canCapture = captureReady && !forceKill;
+      if(canCapture && Math.random() < clamp(Number(faction.captureBias || 0.26), 0.12, 0.62)){
+        rivalResolveTigerOutcome(tiger, "capture", unit);
+      } else {
+        tiger.hp = clamp(tiger.hp - shot, 0, tiger.hpMax);
+        tiger.aggroBoost = clamp((tiger.aggroBoost || 0) + 0.05, 0, 1.5);
+        emitCombatFx(unit.x, unit.y - 5, tiger.x, tiger.y, faction.accent || "rgba(248,113,113,.95)", 2.8, "hit");
+        emitDamagePopup(tiger.x, tiger.y - 40, `-${shot}`, "hit");
+        if(tiger.hp <= 0){
+          rivalResolveTigerOutcome(tiger, "kill", unit);
+        }
+      }
+    }
+
+    if(nearCiv.civ && nearCiv.d <= RIVAL_CIV_ATTACK_RANGE && now >= (unit._nextCivHitAt || 0)){
+      unit._nextCivHitAt = now + rand(880, 1340);
+      const civ = nearCiv.civ;
+      const civDmg = Math.max(3, Math.round(rand(5, 11) * Number(faction.dmgMul || 1) * liveOpsMissionModifierValue("civilianDamageMul", 1, S)));
+      civ.hp = clamp(civ.hp - civDmg, 0, civ.hpMax);
+      civ.fleeUntil = now + rand(1200, 2200);
+      civ.fleeFromTigerId = 0;
+      civ.aiState = "panicked";
+      civ.riskState = "critical";
+      civ.riskLevel = 2;
+      emitCombatFx(unit.x, unit.y - 4, civ.x, civ.y, "rgba(248,113,113,.90)", 2.3, "civilian");
+      emitDamagePopup(civ.x, civ.y - 38, `-${civDmg}`, "civilian");
+    }
+
+    if(nearTiger.tiger && nearTiger.d <= RIVAL_TIGER_MELEE_RANGE && now >= (unit._nextTigerHitAt || 0)){
+      unit._nextTigerHitAt = now + rand(700, 1040);
+      const retaliate = Math.max(6, Math.round(supportTigerHitDamage(nearTiger.tiger, "attacker") * 0.86));
+      const downed = damageRivalHunter(unit, retaliate);
+      emitCombatFx(nearTiger.tiger.x, nearTiger.tiger.y, unit.x, unit.y - 4, "rgba(251,113,133,.95)", 2.7, "player");
+      emitDamagePopup(unit.x, unit.y - 38, `-${retaliate}`, "player");
+      if(downed){
+        if(now - Number(S._rivalLastIntelDropAt || 0) > 1400){
+          spawnPickup("CASH", unit.x + rand(-10, 10), unit.y + rand(-10, 10));
+          S._rivalLastIntelDropAt = now;
+        }
+        setEventText(`🧩 ${unit.factionName || "Rival faction"} downed. Opportunistic loot dropped.`, 2.4);
+      }
+    }
+  }
+
+  S.rivalHunters = (S.rivalHunters || []).filter((unit)=>unit && unit.alive).slice(0, MAX_PERSIST_RIVAL_HUNTERS);
 }
 
 function supportUnitsTick(){
@@ -29741,6 +30075,76 @@ function drawSupportUnit(unit){
   ctx.fillText(label, x - Math.min(26, label.length * 2.2), y - 28);
 }
 
+function drawRivalHunter(unit){
+  if(!unit || !unit.alive) return;
+  const smooth = smoothedDrawPoint(unit, unit.x, unit.y, 0.36);
+  const bob = Math.sin(unit.step || 0) * 1.05;
+  const x = smooth.x;
+  const y = smooth.y + bob;
+  const faction = RIVAL_FACTION_BY_KEY[unit.factionKey] || RIVAL_FACTION_DEFS[0];
+  const ang = unit.face || 0;
+  const dir = Math.cos(ang) >= 0 ? 1 : -1;
+  const stride = Math.sin((unit.step || 0) * 1.9) * 1.4;
+
+  drawWaterRipple(x, y, 15, 0.46);
+  ctx.save();
+  ctx.globalAlpha = 0.24;
+  ctx.strokeStyle = faction.accent || "rgba(253,164,175,.88)";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(x, y - 2, 16, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir, 1);
+  ctx.fillStyle = "rgba(10,14,20,.24)";
+  ctx.beginPath();
+  ctx.ellipse(0, 17, 14, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(21,27,36,.95)";
+  roundedRectFill(-7, 8, 5.5, 9, 2.5);
+  roundedRectFill(1.5, 8, 5.5, 9, 2.5);
+  roundedRectFill(-7 + (stride * 0.35), 16, 5.5, 4, 2);
+  roundedRectFill(1.5 - (stride * 0.35), 16, 5.5, 4, 2);
+
+  ctx.fillStyle = faction.color || "rgba(239,68,68,.95)";
+  roundedRectFill(-8, -14, 16, 23, 5);
+  ctx.strokeStyle = "rgba(8,12,18,.50)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-8, -14, 16, 23);
+  ctx.fillStyle = "rgba(253,242,248,.14)";
+  roundedRectFill(-6, -10, 12, 8, 2.5);
+
+  ctx.fillStyle = "rgba(220,220,225,.90)";
+  ctx.beginPath();
+  ctx.arc(0, -17, 6.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(20,24,32,.94)";
+  roundedRectFill(-8, -24, 16, 5, 2.5);
+  ctx.fillStyle = faction.accent || "rgba(254,205,211,.90)";
+  roundedRectFill(-5, -21.6, 10, 2.2, 1.5);
+  ctx.restore();
+
+  ctx.strokeStyle = faction.accent || "rgba(254,205,211,.92)";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 2);
+  ctx.lineTo(x + Math.cos(ang) * 10, y + Math.sin(ang) * 10);
+  ctx.stroke();
+
+  const hpPct = clamp((unit.hp || 0) / Math.max(1, unit.hpMax || 1), 0, 1);
+  ctx.fillStyle = "rgba(9,12,18,.84)";
+  ctx.fillRect(x - 16, y - 18, 32, 4);
+  ctx.fillStyle = hpPct > 0.5 ? "#4ade80" : (hpPct > 0.2 ? "#f59e0b" : "#fb7185");
+  ctx.fillRect(x - 16, y - 18, 32 * hpPct, 4);
+  ctx.fillStyle = "rgba(245,247,255,.86)";
+  ctx.font = "800 9px system-ui";
+  ctx.fillText(unit.callsign || "Rival", x - 16, y - 24);
+}
+
 function tigerColors(type){
   if(type==="Scout") return { body:"#f7b24a", stripe:"#1c1917", belly:"#ffd9a3" };
   if(type==="Standard") return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
@@ -30164,6 +30568,21 @@ function drawEntitiesLite(){
     ctx.fillRect(x - 14, y - 15, 28 * hpPct, 3);
   }
 
+  for(const unit of (S.rivalHunters || [])){
+    if(!unit.alive) continue;
+    const smooth = smoothedDrawPoint(unit, unit.x, unit.y, 0.32);
+    const x = smooth.x;
+    const y = smooth.y;
+    const faction = RIVAL_FACTION_BY_KEY[unit.factionKey] || RIVAL_FACTION_DEFS[0];
+    ctx.fillStyle = faction.color || "rgba(239,68,68,.92)";
+    ctx.fillRect(x - 7, y - 9, 14, 18);
+    const hpPct = clamp((unit.hp || 0) / Math.max(1, unit.hpMax || 1), 0, 1);
+    ctx.fillStyle = "rgba(9,12,18,.82)";
+    ctx.fillRect(x - 14, y - 15, 28, 3);
+    ctx.fillStyle = hpPct > 0.45 ? "#4ade80" : "#fb7185";
+    ctx.fillRect(x - 14, y - 15, 28 * hpPct, 3);
+  }
+
   for(const t of (S.tigers || [])){
     if(!t.alive) continue;
     const smooth = smoothedDrawPoint(t, t.x, t.y, 0.38);
@@ -30288,6 +30707,9 @@ function drawEntities(){
     }
     for(const unit of (S.supportUnits || [])){
       drawSafe("drawSupportUnit", ()=>drawSupportUnit(unit));
+    }
+    for(const unit of (S.rivalHunters || [])){
+      if(unit.alive) drawSafe("drawRivalHunter", ()=>drawRivalHunter(unit));
     }
     for(const t of S.tigers){
       if(t.alive) drawSafe("drawTiger", ()=>drawTiger(t));
@@ -30879,6 +31301,14 @@ function draw(){
       ), supportUnitsTick, {
         costHint:2.4, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
+      runFrameTask("rivalHunters", frameInterval(
+        battleLoad
+          ? (lagCritical ? 210 : (lagHeavy ? 168 : 132))
+          : (lagCritical ? 160 : (lagHeavy ? 128 : 96)),
+        1.8
+      ), rivalHuntersTick, {
+        costHint:1.8, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
       let usedKeyboard = false;
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
       if(!usedKeyboard) safeTick("movePlayer", movePlayer);
@@ -31195,6 +31625,8 @@ function init(){
   if(typeof S._convoyRouteChoiceLocked !== "string") S._convoyRouteChoiceLocked = "";
   if(!Number.isFinite(S._convoySplitThreatAt)) S._convoySplitThreatAt = 0;
   if(!Number.isFinite(S._convoySplitThreatWaves)) S._convoySplitThreatWaves = 0;
+  if(!Number.isFinite(S._rivalLastIntelDropAt)) S._rivalLastIntelDropAt = 0;
+  if(typeof S._rivalFactionName !== "string") S._rivalFactionName = "";
   if(!Number.isFinite(S.respawnLockRecoverCount)) S.respawnLockRecoverCount = 0;
   if(!Number.isFinite(S._respawnLockRecoverCountSession)) S._respawnLockRecoverCountSession = 0;
   if(!Number.isFinite(S._directorAggroMul)) S._directorAggroMul = 1;
@@ -31311,6 +31743,22 @@ function init(){
     if(unit.alive == null) unit.alive = unit.hp > 0;
     if(unit.hp <= 0) unit.alive = false;
   }
+  for(const unit of (S.rivalHunters || [])){
+    if(!Number.isFinite(unit.hpMax)) unit.hpMax = 104;
+    unit.hpMax = clamp(Math.round(unit.hpMax), 60, 220);
+    if(!Number.isFinite(unit.hp)) unit.hp = unit.hpMax;
+    unit.hp = clamp(unit.hp, 0, unit.hpMax);
+    unit.armor = clamp(Number(unit.armor || 0), 0, 260);
+    unit.alive = unit.alive !== false && unit.hp > 0;
+    if(!Number.isFinite(unit.face)) unit.face = 0;
+    if(!Number.isFinite(unit.step)) unit.step = 0;
+    if(typeof unit.factionKey !== "string" || !RIVAL_FACTION_BY_KEY[unit.factionKey]){
+      unit.factionKey = RIVAL_FACTION_DEFS[0].key;
+    }
+    if(typeof unit.factionName !== "string" || !unit.factionName){
+      unit.factionName = RIVAL_FACTION_BY_KEY[unit.factionKey]?.name || "Rival Hunters";
+    }
+  }
   reconcileSupportDownedFromUnits(S);
   if(
     (S.soldierAttackersOwned || 0) + (S.soldierRescuersOwned || 0) + (S.soldierAttackersDowned || 0) + (S.soldierRescuersDowned || 0) <= 0 &&
@@ -31344,6 +31792,7 @@ function init(){
 
   if(!S.tigers || !S.tigers.length) spawnTigers();
   if(!S.civilians || !S.civilians.length) spawnCivilians();
+  if(!Array.isArray(S.rivalHunters)) S.rivalHunters = [];
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(!window.__TUTORIAL_MODE__ && (!Array.isArray(S.mapInteractables) || !S.mapInteractables.length)){
     spawnMapInteractables();
