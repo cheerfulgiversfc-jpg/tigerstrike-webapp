@@ -8689,6 +8689,7 @@ let __startupComplete = false;
 let __mobileViewportCache = null;
 let __mobileViewportCacheAt = 0;
 let __bootDataCache = null;
+let __lastRuntimeMemoryCleanupAt = 0;
 const __renderFailSafeState = {
   consecutive: 0,
   lastRecoverAt: 0,
@@ -9800,6 +9801,160 @@ function recoverFromSpikeFrame(){
 
 function frameMotionMul(){
   return clamp(Number(__frameMotionMul || 1) || 1, 0.85, 1.8);
+}
+
+function budgetedEntitySlice(list, opts={}){
+  const source = Array.isArray(list) ? list : [];
+  const len = source.length;
+  if(len <= 1) return source;
+  const lagTier = frameLagTier();
+  const mobile = isMobileViewport();
+  const slow = frameIsSlow();
+  const perf = performanceMode() === "PERFORMANCE";
+  const tightBudget = frameBudgetExceeded(0.55);
+  const heavy = lagTier >= 1 || slow || perf || tightBudget;
+  const lightCap = Math.max(1, Math.floor(Number(opts.lightCap || len)));
+  if(!heavy && len <= lightCap) return source;
+  const pinFn = (typeof opts.pin === "function") ? opts.pin : null;
+  const pinned = [];
+  const others = [];
+  for(const item of source){
+    if(pinFn && pinFn(item)) pinned.push(item);
+    else others.push(item);
+  }
+  if(!others.length) return pinned;
+
+  const ratioBase = Number(opts.baseRatio || 0.66);
+  const ratioSlow = Number(opts.slowRatio || 0.50);
+  const ratioCritical = Number(opts.criticalRatio || 0.36);
+  const ratio = lagTier >= 2
+    ? ratioCritical
+    : (heavy ? ratioSlow : ratioBase);
+  const minBase = Math.max(1, Math.floor(Number(opts.min || 2)));
+  const min = lagTier >= 2
+    ? Math.max(1, Math.min(minBase, Number(opts.minCritical || minBase)))
+    : minBase;
+  const max = Math.max(min, Math.floor(Number(opts.max || len)));
+  const targetTotal = clamp(Math.ceil(len * clamp(ratio, 0.2, 1)), min, max);
+  const dynamicNeed = Math.max(1, targetTotal - pinned.length);
+  const cursorKey = String(opts.cursorKey || "");
+  if(!cursorKey || !S || typeof S !== "object"){
+    return [...pinned, ...others.slice(0, dynamicNeed)];
+  }
+  const n = others.length;
+  const start = Math.max(0, Math.floor(Number(S[cursorKey] || 0))) % n;
+  const batch = [];
+  for(let i=0; i<dynamicNeed; i++){
+    batch.push(others[(start + i) % n]);
+  }
+  S[cursorKey] = (start + dynamicNeed) % n;
+  return [...pinned, ...batch];
+}
+
+function viewportCullEntities(list, opts={}){
+  const source = Array.isArray(list) ? list : [];
+  if(!source.length) return source;
+  const pad = Math.max(40, Number(opts.pad || 120));
+  const pinFn = (typeof opts.pin === "function") ? opts.pin : null;
+  const max = Math.max(1, Math.floor(Number(opts.max || source.length)));
+  const visible = [];
+  const pinned = [];
+  for(const ent of source){
+    if(!ent || typeof ent !== "object") continue;
+    if(pinFn && pinFn(ent)){
+      pinned.push(ent);
+      continue;
+    }
+    const hasPos = Number.isFinite(ent.x) && Number.isFinite(ent.y);
+    if(!hasPos || pointInViewportPad(ent.x, ent.y, pad)){
+      visible.push(ent);
+    }
+  }
+  const merged = [...pinned, ...visible];
+  if(merged.length <= max) return merged;
+  const meX = Number.isFinite(S?.me?.x) ? S.me.x : (worldWidth(S) * 0.5);
+  const meY = Number.isFinite(S?.me?.y) ? S.me.y : (worldHeight(S) * 0.5);
+  merged.sort((a, b)=>dist(a.x, a.y, meX, meY) - dist(b.x, b.y, meX, meY));
+  return merged.slice(0, max);
+}
+
+function clearEntityDrawCache(ent){
+  if(!ent || typeof ent !== "object") return;
+  delete ent.__drawX;
+  delete ent.__drawY;
+  delete ent.__drawAt;
+}
+
+function runtimeMemoryCleanupTick(now=Date.now()){
+  if((now - (__lastRuntimeMemoryCleanupAt || 0)) < 900) return;
+  __lastRuntimeMemoryCleanupAt = now;
+  const lagTier = frameLagTier();
+  const mobile = isMobileViewport();
+  const cleanupBudget = lagTier >= 2 ? 56 : (mobile ? 78 : 108);
+  let used = 0;
+
+  for(const key of Object.keys(__frameTaskGate)){
+    const at = Number(__frameTaskGate[key] || 0);
+    if(!Number.isFinite(at) || at <= 0 || at + 30000 < now){
+      delete __frameTaskGate[key];
+      delete __frameTaskPhase[key];
+      used += 1;
+      if(used >= cleanupBudget) break;
+    }
+  }
+  if(used < cleanupBudget){
+    for(const key of Object.keys(__frameErrorGate)){
+      const at = Number(__frameErrorGate[key] || 0);
+      if(!Number.isFinite(at) || at + 24000 < now){
+        delete __frameErrorGate[key];
+        used += 1;
+        if(used >= cleanupBudget) break;
+      }
+    }
+  }
+  if(DAMAGE_POPUP_GATE.size > 220){
+    for(const [k, at] of DAMAGE_POPUP_GATE){
+      if((Number(at) || 0) + 2000 < now){
+        DAMAGE_POPUP_GATE.delete(k);
+        used += 1;
+        if(used >= cleanupBudget) break;
+      }
+    }
+    if(DAMAGE_POPUP_GATE.size > 340){
+      DAMAGE_POPUP_GATE.clear();
+    }
+  }
+  if(Array.isArray(__stabilityMonitorState.frameGaps) && __stabilityMonitorState.frameGaps.length > STABILITY_MONITOR_SAMPLE_MAX){
+    __stabilityMonitorState.frameGaps = __stabilityMonitorState.frameGaps.slice(-STABILITY_MONITOR_SAMPLE_MAX);
+  }
+  if(Array.isArray(__stabilityMonitorState.frameCosts) && __stabilityMonitorState.frameCosts.length > STABILITY_MONITOR_SAMPLE_MAX){
+    __stabilityMonitorState.frameCosts = __stabilityMonitorState.frameCosts.slice(-STABILITY_MONITOR_SAMPLE_MAX);
+  }
+  if(!S || typeof S !== "object") return;
+  const pruneFarDrawCache = (list, keepAlive=true)=>{
+    if(!Array.isArray(list)) return;
+    for(const ent of list){
+      if(!ent || typeof ent !== "object") continue;
+      const alive = ent.alive !== false;
+      if(keepAlive && alive){
+        if(!Number.isFinite(ent.x) || !Number.isFinite(ent.y)){
+          clearEntityDrawCache(ent);
+          used += 1;
+        } else if(!pointInViewportPad(ent.x, ent.y, 420) && (now - Number(ent.__drawAt || 0)) > 2600){
+          clearEntityDrawCache(ent);
+          used += 1;
+        }
+      } else {
+        clearEntityDrawCache(ent);
+        used += 1;
+      }
+      if(used >= cleanupBudget) break;
+    }
+  };
+  pruneFarDrawCache(S.tigers, true);
+  if(used < cleanupBudget) pruneFarDrawCache(S.civilians, true);
+  if(used < cleanupBudget) pruneFarDrawCache(S.supportUnits, false);
+  if(used < cleanupBudget) pruneFarDrawCache(S.rivalHunters, false);
 }
 
 function trimActiveEntityLoad(){
@@ -23340,6 +23495,21 @@ function rivalHuntersTick(){
     ? []
     : (S.civilians || []).filter((c)=>c && c.alive && !c.evac);
   const livingRivals = S.rivalHunters.filter((u)=>u && u.alive);
+  const tickRivals = budgetedEntitySlice(livingRivals, {
+    cursorKey: "_rivalBatchCursor",
+    lightCap: 6,
+    min: 2,
+    max: 6,
+    baseRatio: 0.72,
+    slowRatio: 0.56,
+    criticalRatio: 0.40,
+    pin: (unit)=>{
+      if(!unit || !Number.isFinite(unit.x) || !Number.isFinite(unit.y)) return false;
+      const meX = Number.isFinite(S?.me?.x) ? S.me.x : unit.x;
+      const meY = Number.isFinite(S?.me?.y) ? S.me.y : unit.y;
+      return pointInViewportPad(unit.x, unit.y, 150) || dist(unit.x, unit.y, meX, meY) <= 220;
+    }
+  });
 
   const nearestTigerTo = (x, y) => {
     let best = null;
@@ -23360,7 +23530,7 @@ function rivalHuntersTick(){
     return { civ:best, d:bestD };
   };
 
-  for(const unit of livingRivals){
+  for(const unit of tickRivals){
     const faction = RIVAL_FACTION_BY_KEY[unit.factionKey] || RIVAL_FACTION_DEFS[0];
     unit.step = (Number(unit.step || 0) + 0.08) % (Math.PI * 2);
     if(!Number.isFinite(unit.homeX) || !Number.isFinite(unit.homeY)){
@@ -23517,6 +23687,21 @@ function supportUnitsTick(){
   }
 
   const aliveUnits = (S.supportUnits || []).filter((unit)=>unit?.alive);
+  const tickUnits = budgetedEntitySlice(aliveUnits, {
+    cursorKey: "_supportBatchCursor",
+    lightCap: 8,
+    min: 3,
+    max: 10,
+    baseRatio: 0.74,
+    slowRatio: 0.58,
+    criticalRatio: 0.42,
+    pin: (unit)=>{
+      if(!unit || !Number.isFinite(unit.x) || !Number.isFinite(unit.y)) return false;
+      const meX = Number.isFinite(S?.me?.x) ? S.me.x : unit.x;
+      const meY = Number.isFinite(S?.me?.y) ? S.me.y : unit.y;
+      return pointInViewportPad(unit.x, unit.y, 160) || dist(unit.x, unit.y, meX, meY) <= 250;
+    }
+  });
   const roleCounts = {
     attacker: aliveUnits.filter((unit)=>unit.role === "attacker").length,
     rescue: aliveUnits.filter((unit)=>unit.role === "rescue").length,
@@ -23565,8 +23750,7 @@ function supportUnitsTick(){
     roleCursor[role] += 1;
   }
 
-  for(const unit of (S.supportUnits || [])){
-    if(!unit.alive) continue;
+  for(const unit of tickUnits){
 
     unit.step = (unit.step || 0) + 0.08;
     unit.homeX = S.me.x;
@@ -24258,14 +24442,38 @@ function tickCiviliansAndThreats(){
     S.dangerCivId=null;
     return;
   }
-  for(const civ of aliveCivsAll){
+  const aliveCivs = budgetedEntitySlice(aliveCivsAll, {
+    cursorKey: "_civThreatBatchCursor",
+    lightCap: 12,
+    min: 6,
+    max: 16,
+    baseRatio: 0.82,
+    slowRatio: 0.66,
+    criticalRatio: 0.48,
+    pin: (civ)=>{
+      if(!civ || !Number.isFinite(civ.x) || !Number.isFinite(civ.y)) return false;
+      const meX = Number.isFinite(S?.me?.x) ? S.me.x : civ.x;
+      const meY = Number.isFinite(S?.me?.y) ? S.me.y : civ.y;
+      return civ.id === S.dangerCivId || civ.following === true || dist(civ.x, civ.y, meX, meY) <= 240;
+    }
+  });
+  for(const civ of aliveCivs){
     refreshCivilianAiState(civ, now);
   }
 
   let underAttack=0;
   let dangerPair={ civId:null, dist:1e9 };
 
-  let threatTigers = S.tigers || [];
+  let threatTigers = budgetedEntitySlice((S.tigers || []).filter((t)=>t && t.alive), {
+    cursorKey: "_tigerThreatBatchCursor",
+    lightCap: 10,
+    min: 5,
+    max: 14,
+    baseRatio: 0.78,
+    slowRatio: 0.62,
+    criticalRatio: 0.46,
+    pin: (t)=>!!t && (t.id === S.activeTigerId || t.id === S.lockedTigerId || pointInViewportPad(t.x, t.y, 180))
+  });
   if((frameIsSlow() || __frameLagScore >= FRAME_LAG_WARN_SCORE) && threatTigers.length > 8){
     const stride = __frameLagScore >= FRAME_LAG_CRITICAL_SCORE ? 3 : 2;
     const phase = Math.floor(Number(__frameBudgetState.frameNo || 0)) % stride;
@@ -24276,8 +24484,8 @@ function tickCiviliansAndThreats(){
     if(!t.alive) continue;
     if(t.holdUntil && now < t.holdUntil) continue;
 
-    let best=aliveCivsAll[0], bd=1e9;
-    for(const c of aliveCivsAll){
+    let best=aliveCivs[0], bd=1e9;
+    for(const c of aliveCivs){
       const d=dist(t.x,t.y,c.x,c.y);
       if(d<bd){bd=d; best=c;}
     }
@@ -30561,12 +30769,36 @@ function useLiteEntityRender(){
   return false;
 }
 function drawEntitiesLite(){
+  const mobile = isMobileViewport();
+  const lagTier = frameLagTier();
+  const perfMode = performanceMode() === "PERFORMANCE";
+  const tight = frameBudgetExceeded(0.42) || frameIsSlow();
+  const pickupMax = mobile ? (lagTier >= 2 ? 8 : (lagTier >= 1 ? 12 : 18)) : 30;
+  const civMax = mobile ? (lagTier >= 2 ? 10 : (lagTier >= 1 ? 14 : 20)) : 24;
+  const supportMax = mobile ? (lagTier >= 2 ? 4 : 6) : 10;
+  const tigerMax = mobile ? (lagTier >= 2 ? 8 : (lagTier >= 1 ? 12 : 18)) : 26;
+  const interactableMax = mobile ? (lagTier >= 2 ? 4 : 6) : 10;
+  const rescueSiteMax = mobile ? (lagTier >= 2 ? 3 : 5) : 8;
+  const pickupPad = tight ? 70 : 120;
+  const actorPad = tight ? 120 : 180;
+  const pickupsDraw = viewportCullEntities(S.pickups || [], { pad:pickupPad, max:pickupMax });
+  const civsDraw = viewportCullEntities(S.civilians || [], { pad:actorPad, max:civMax, pin:(c)=>c?.id === S.dangerCivId || c?.following });
+  const supportDraw = viewportCullEntities(S.supportUnits || [], { pad:actorPad, max:supportMax });
+  const rivalsDraw = viewportCullEntities(S.rivalHunters || [], { pad:actorPad, max:Math.max(3, supportMax) });
+  const tigersDraw = viewportCullEntities(S.tigers || [], {
+    pad:actorPad,
+    max:tigerMax,
+    pin:(t)=>t?.id === S.activeTigerId || t?.id === S.lockedTigerId || isBossTiger(t)
+  });
+  const interactablesDraw = viewportCullEntities(S.mapInteractables || [], { pad:pickupPad, max:interactableMax });
+  const rescueSitesDraw = viewportCullEntities(S.rescueSites || [], { pad:pickupPad, max:rescueSiteMax });
+
   ctx.fillStyle = "rgba(77,47,33,.64)";
   for(const c of (S.carcasses || [])){
     ctx.fillRect(c.x - 9, c.y - 4, 18, 8);
   }
 
-  for(const p of (S.pickups || [])){
+  for(const p of pickupsDraw){
     let color = "rgba(147,197,253,.9)";
     if(p.kind === "medkit") color = "rgba(34,197,94,.92)";
     else if(p.kind === "ammo") color = "rgba(251,191,36,.92)";
@@ -30577,11 +30809,11 @@ function drawEntitiesLite(){
     ctx.fill();
   }
 
-  for(const it of (S.mapInteractables || [])) drawMapInteractable(it);
-  for(const site of (S.rescueSites || [])) drawRescueSite(site);
+  for(const it of interactablesDraw) drawMapInteractable(it);
+  for(const site of rescueSitesDraw) drawRescueSite(site);
 
   if(S.mode !== "Survival"){
-    for(const c of (S.civilians || [])){
+    for(const c of civsDraw){
       if(!c.alive) continue;
       const smooth = smoothedDrawPoint(c, c.x, c.y, 0.30);
       const x = smooth.x;
@@ -30605,7 +30837,7 @@ function drawEntitiesLite(){
     }
   }
 
-  for(const unit of (S.supportUnits || [])){
+  for(const unit of supportDraw){
     if(!unit.alive) continue;
     const smooth = smoothedDrawPoint(unit, unit.x, unit.y, 0.32);
     const x = smooth.x;
@@ -30619,7 +30851,7 @@ function drawEntitiesLite(){
     ctx.fillRect(x - 14, y - 15, 28 * hpPct, 3);
   }
 
-  for(const unit of (S.rivalHunters || [])){
+  for(const unit of rivalsDraw){
     if(!unit.alive) continue;
     const smooth = smoothedDrawPoint(unit, unit.x, unit.y, 0.32);
     const x = smooth.x;
@@ -30634,7 +30866,7 @@ function drawEntitiesLite(){
     ctx.fillRect(x - 14, y - 15, 28 * hpPct, 3);
   }
 
-  for(const t of (S.tigers || [])){
+  for(const t of tigersDraw){
     if(!t.alive) continue;
     const smooth = smoothedDrawPoint(t, t.x, t.y, 0.38);
     const x = smooth.x;
@@ -30730,6 +30962,44 @@ function drawEntities(){
     try{ fn(); }catch(err){ reportTickError(label, err); }
   };
   const liteRender = useLiteEntityRender();
+  const mobile = isMobileViewport();
+  const lagTier = frameLagTier();
+  const perfMode = performanceMode();
+  const isSlowFrame = frameIsSlow();
+  const frameBudgetTight = frameBudgetExceeded(0.85);
+  const actorPad = frameBudgetTight ? 130 : 190;
+  const propsPad = frameBudgetTight ? 80 : 130;
+  const drawCivs = viewportCullEntities(S.civilians || [], {
+    pad:actorPad,
+    max: mobile ? (lagTier >= 2 ? 12 : (lagTier >= 1 ? 18 : 24)) : 32,
+    pin:(c)=>c?.id === S.dangerCivId || c?.following
+  });
+  const drawSupport = viewportCullEntities(S.supportUnits || [], {
+    pad:actorPad,
+    max: mobile ? (lagTier >= 2 ? 5 : 8) : 14
+  });
+  const drawRivals = viewportCullEntities(S.rivalHunters || [], {
+    pad:actorPad,
+    max: mobile ? (lagTier >= 2 ? 4 : 7) : 12
+  });
+  const drawTigers = viewportCullEntities(S.tigers || [], {
+    pad:actorPad,
+    max: mobile ? (lagTier >= 2 ? 10 : (lagTier >= 1 ? 16 : 22)) : 32,
+    pin:(t)=>t?.id === S.activeTigerId || t?.id === S.lockedTigerId || isBossTiger(t)
+  });
+  const drawPickups = viewportCullEntities(S.pickups || [], {
+    pad:propsPad,
+    max: mobile ? (lagTier >= 2 ? 12 : (lagTier >= 1 ? 16 : 22)) : 32
+  });
+  const drawInteractables = viewportCullEntities(S.mapInteractables || [], {
+    pad:propsPad,
+    max: mobile ? (lagTier >= 2 ? 5 : 8) : 12
+  });
+  const drawRescueSites = viewportCullEntities(S.rescueSites || [], {
+    pad:propsPad,
+    max: mobile ? (lagTier >= 2 ? 4 : 6) : 10
+  });
+
   if(liteRender){
     drawSafe("drawEntitiesLite", drawEntitiesLite);
   } else {
@@ -30739,30 +31009,30 @@ function drawEntities(){
     }
 
     // pickups
-    for(const p of (S.pickups||[])){
+    for(const p of drawPickups){
       drawSafe("drawPickup", ()=>drawPickup(p));
     }
 
-    for(const it of (S.mapInteractables || [])){
+    for(const it of drawInteractables){
       drawSafe("drawMapInteractable", ()=>drawMapInteractable(it));
     }
 
-    for(const site of (S.rescueSites || [])){
+    for(const site of drawRescueSites){
       drawSafe("drawRescueSite", ()=>drawRescueSite(site));
     }
 
     if(S.mode!=="Survival"){
-      for(const c of S.civilians){
+      for(const c of drawCivs){
         if(c.alive) drawSafe("drawCivilian", ()=>drawCivilian(c));
       }
     }
-    for(const unit of (S.supportUnits || [])){
+    for(const unit of drawSupport){
       drawSafe("drawSupportUnit", ()=>drawSupportUnit(unit));
     }
-    for(const unit of (S.rivalHunters || [])){
+    for(const unit of drawRivals){
       if(unit.alive) drawSafe("drawRivalHunter", ()=>drawRivalHunter(unit));
     }
-    for(const t of S.tigers){
+    for(const t of drawTigers){
       if(t.alive) drawSafe("drawTiger", ()=>drawTiger(t));
     }
     drawSafe("drawSoldier", drawSoldier);
@@ -30770,13 +31040,8 @@ function drawEntities(){
   drawSafe("drawBossArenaMoments", ()=>drawBossArenaMoments(Date.now()));
   drawSafe("drawOnMapBattleReadability", drawOnMapBattleReadability);
   drawSafe("drawOnMapBattleHud", drawOnMapBattleHud);
-  const perfMode = performanceMode();
-  const lagTier = frameLagTier();
-  const mobile = isMobileViewport();
   const iphoneStability = iphoneStabilityModeActive();
   const iphoneLiteFeedback = iphoneLiteCombatFeedbackEnabled();
-  const isSlowFrame = frameIsSlow();
-  const frameBudgetTight = frameBudgetExceeded(0.85);
   const entityLoad =
     (S.tigers?.length || 0) +
     (S.civilians?.length || 0) +
@@ -31369,6 +31634,9 @@ function draw(){
     }
     safeTick("viewportVisibility", ()=>enforceVisibleMissionViewport(S));
     runFrameTask("stabilityHealth", frameInterval(220, 1.6), stabilityHealthTick, { costHint:0.9, critical:true });
+    runFrameTask("runtimeMemoryCleanup", frameInterval(lagCritical ? 1320 : (lagHeavy ? 1080 : 880), 1.5), runtimeMemoryCleanupTick, {
+      costHint:0.35, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+    });
     runFrameTask("arcadeModeTick", frameInterval(220, 1.45), arcadeModeTick, { costHint:0.6, critical:S.mode==="Arcade" });
 
     if(!(S.gameOver || S.paused || S.missionEnded)){
@@ -31419,7 +31687,7 @@ function draw(){
           : (lagCritical ? 112 : (lagHeavy ? 90 : 64)),
         1.8
       ), supportUnitsTick, {
-        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:5
       });
       runFrameTask("rivalHunters", frameInterval(
         battleLoad
@@ -31427,7 +31695,7 @@ function draw(){
           : (lagCritical ? 160 : (lagHeavy ? 128 : 96)),
         1.8
       ), rivalHuntersTick, {
-        costHint:1.8, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+        costHint:1.8, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:5
       });
       let usedKeyboard = false;
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
@@ -31448,7 +31716,7 @@ function draw(){
           : (lagCritical ? 156 : (lagHeavy ? 126 : 92)),
         1.5
       ), tickCiviliansAndThreats, {
-        costHint:1.6, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+        costHint:1.6, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:5
       });
       runFrameTask("convoyMissionTick", frameInterval(lagCritical ? 188 : (lagHeavy ? 154 : 120), 1.45), convoyMissionTick, {
         costHint:0.8, critical:S.mode!=="Survival"
