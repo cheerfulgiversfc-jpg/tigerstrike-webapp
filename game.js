@@ -9692,6 +9692,7 @@ function runStabilityRecovery(reason="stall"){
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, perfNow + 2600);
 
   try{ if(typeof clearTransientCombatVisuals === "function") clearTransientCombatVisuals(); }catch(e){}
+  try{ if(typeof resetControlInputState === "function") resetControlInputState("stability-recover"); }catch(e){}
   try{ if(typeof invalidateMapCache === "function") invalidateMapCache(); }catch(e){}
   try{ if(typeof transitionCleanupSweep === "function") transitionCleanupSweep(`recover:${reason}`); }catch(e){}
   try{ if(typeof sanitizeRuntimeState === "function") sanitizeRuntimeState(); }catch(e){}
@@ -9715,6 +9716,7 @@ function runStabilityRecovery(reason="stall"){
   try{ maybeRenderHUD(true); }catch(e){}
   try{ renderCombatControls(); }catch(e){}
   try{ updateAttackButton(); }catch(e){}
+  try{ if(typeof recoverMissionInputLock === "function") recoverMissionInputLock(`recover:${reason}`); }catch(e){}
   return true;
 }
 
@@ -9843,6 +9845,7 @@ function trimActiveEntityLoad(){
 
 function stabilityHealthTick(){
   if(!S || typeof S !== "object") return;
+  recoverMissionInputLock("stability");
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.pickups)) S.pickups = [];
@@ -21860,7 +21863,15 @@ function spawnRogueTiger(options={}){
   return tiger;
 }
 // ===================== DEPLOY / NEXT / RESTART =====================
+let __deployInProgress = false;
+let __queuedDeployOpts = null;
 function deploy(opts={}){
+  if(__deployInProgress){
+    __queuedDeployOpts = { ...(opts || {}) };
+    return;
+  }
+  __deployInProgress = true;
+  try{
   const carryStats = !!opts.carryStats;
   const carryHp = clamp(Number.isFinite(opts.hp) ? opts.hp : S.hp, 0, 100);
   const carryArmor = clamp(Number.isFinite(opts.armor) ? opts.armor : S.armor, 0, S.armorCap || 100);
@@ -21898,6 +21909,7 @@ function deploy(opts={}){
   const worldH = worldHeight(S);
   S.me={x:160,y:clamp(worldH - 120, 240, 420),face:0,step:0};
   S.target=null;
+  resetControlInputState("deploy");
   S.lockedTigerId=null;
   S.respawnPendingUntil = 0;
   S.respawnNoticeAt = 0;
@@ -22110,6 +22122,14 @@ function deploy(opts={}){
   updateGameOverCheckpointButton();
   markBalanceMissionStart(S);
   save();
+  } finally {
+    __deployInProgress = false;
+    if(__queuedDeployOpts){
+      const queued = __queuedDeployOpts;
+      __queuedDeployOpts = null;
+      setTimeout(()=>deploy(queued), 0);
+    }
+  }
 }
 
 function startNextMission(){
@@ -22354,7 +22374,7 @@ cv.addEventListener("pointerdown",(e)=>{
 
 const touchStickShellEl = document.getElementById("touchStickShell");
 const touchStickEl = document.getElementById("touchStick");
-const TOUCH_STICK = { active:false, pointerId:null, touchId:null, dx:0, dy:0, max:34 };
+const TOUCH_STICK = { active:false, pointerId:null, touchId:null, dx:0, dy:0, max:34, lastUpdateAt:0 };
 
 function renderTouchStick(){
   if(!touchStickEl) return;
@@ -22367,6 +22387,7 @@ function resetTouchStick(){
   TOUCH_STICK.touchId = null;
   TOUCH_STICK.dx = 0;
   TOUCH_STICK.dy = 0;
+  TOUCH_STICK.lastUpdateAt = Date.now();
   renderTouchStick();
 }
 
@@ -22382,6 +22403,7 @@ function updateTouchStick(clientX, clientY){
   const clampedLen = Math.min(len, limit);
   TOUCH_STICK.dx = rawX / len * (clampedLen / limit);
   TOUCH_STICK.dy = rawY / len * (clampedLen / limit);
+  TOUCH_STICK.lastUpdateAt = Date.now();
   renderTouchStick();
 }
 
@@ -22469,6 +22491,12 @@ function setupTouchControls(){
 }
 
 setupTouchControls();
+window.addEventListener("blur", ()=>{ try{ resetControlInputState("window-blur"); }catch(e){} });
+document.addEventListener("visibilitychange", ()=>{
+  if(document.hidden){
+    try{ resetControlInputState("visibility-hidden"); }catch(e){}
+  }
+});
 
 const GAMEPAD_STATE = {
   connected: false,
@@ -22897,6 +22925,29 @@ function setMoveKey(key, on){
   if(key==="a" || key==="arrowleft"){ KEY_STATE.left = on; return true; }
   if(key==="d" || key==="arrowright"){ KEY_STATE.right = on; return true; }
   return false;
+}
+function resetControlInputState(reason=""){
+  KEY_STATE.up = false;
+  KEY_STATE.down = false;
+  KEY_STATE.left = false;
+  KEY_STATE.right = false;
+  if(typeof GAMEPAD_STATE === "object" && GAMEPAD_STATE){
+    GAMEPAD_STATE.lx = 0;
+    GAMEPAD_STATE.ly = 0;
+    GAMEPAD_STATE.activeAt = 0;
+  }
+  if(typeof resetTouchStick === "function"){
+    try{ resetTouchStick(); }catch(e){}
+  }
+  if(S && typeof S === "object"){
+    S.target = null;
+  }
+  if(reason){
+    const now = Date.now();
+    if((now - __lastControlRecoverAt) > 1200){
+      __lastControlRecoverAt = now;
+    }
+  }
 }
 
 function keyboardMoveTick(){
@@ -31111,6 +31162,75 @@ function onStartupComplete(){
 
 let __lastStartupIntegrityAt = 0;
 let __lastStartupIntegrityToastAt = 0;
+let __lastControlRecoverAt = 0;
+function missionBlockingOverlayVisible(){
+  const ids = [
+    "missionBriefOverlay",
+    "modeOverlay",
+    "shopOverlay",
+    "invOverlay",
+    "weaponQuickOverlay",
+    "aboutOverlay",
+    "progressGuardOverlay",
+    "completeOverlay",
+    "overOverlay",
+    "storyIntroOverlay",
+    "launchIntroOverlay",
+    "dailyRewardOverlay"
+  ];
+  for(const id of ids){
+    const el = document.getElementById(id);
+    if(!el) continue;
+    const display = String(el.style?.display || "").toLowerCase();
+    if(display === "flex" || display === "block"){
+      return id;
+    }
+  }
+  return "";
+}
+function recoverMissionInputLock(reason="watchdog"){
+  if(!S || typeof S !== "object") return false;
+  const now = Date.now();
+  let recovered = false;
+  const blockingOverlay = missionBlockingOverlayVisible();
+  const pauseReason = String(S.pauseReason || "");
+  const missionBriefShown = (() => {
+    const el = document.getElementById("missionBriefOverlay");
+    const display = String(el?.style?.display || "").toLowerCase();
+    return display === "flex" || display === "block";
+  })();
+  if(S.paused){
+    const stickyReason = pauseReason === "manual" || pauseReason === "complete" || pauseReason === "mode";
+    const staleMissionBriefPause = pauseReason === "mission-brief" && !missionBriefShown;
+    const staleOverlayPause = !!pauseReason && !blockingOverlay && !stickyReason;
+    if(staleMissionBriefPause || staleOverlayPause){
+      setPaused(false, null);
+      recovered = true;
+    }
+  }
+  if(typeof TOUCH_STICK === "object" && TOUCH_STICK?.active){
+    const lastInputAt = Math.max(0, Number(TOUCH_STICK.lastUpdateAt || 0));
+    if(lastInputAt > 0 && (now - lastInputAt) > 2200){
+      try{ resetTouchStick(); }catch(e){}
+      recovered = true;
+    }
+  }
+  if((S.respawnPendingUntil || 0) > 0 && now > (S.respawnPendingUntil + 12000)){
+    S.respawnPendingUntil = 0;
+    S.respawnNoticeAt = 0;
+    S.respawnTargetX = 0;
+    S.respawnTargetY = 0;
+    recovered = true;
+  }
+  if(!recovered) return false;
+  if((now - __lastControlRecoverAt) > 1600){
+    __lastControlRecoverAt = now;
+    S.respawnLockRecoverCount = Math.max(0, Math.floor(Number(S.respawnLockRecoverCount || 0))) + 1;
+    S._respawnLockRecoverCountSession = Math.max(0, Math.floor(Number(S._respawnLockRecoverCountSession || 0))) + 1;
+    try{ setEventText("Controls recovered.", 1.2); }catch(e){}
+  }
+  return true;
+}
 function missionEntityStateInvalid(state=S){
   if(!state || typeof state !== "object") return "state-missing";
   const mode = normalizeModeName(state.mode);
