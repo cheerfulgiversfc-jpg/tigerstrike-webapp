@@ -29468,6 +29468,82 @@ function drawAtmosphericParallax(nowTs=Date.now()){
   ctx.restore();
 }
 
+function drawSceneCinematicGrade(nowTs=Date.now(), layer="overlay"){
+  if(!ctx || !cv) return;
+  const lagTier = frameLagTier();
+  const mobile = isMobileViewport();
+  const perf = performanceMode() === "PERFORMANCE";
+  const slow = frameIsSlow();
+  if(lagTier >= 2 && mobile) return;
+  if(frameBudgetExceeded(0.55) && (mobile || perf)) return;
+  const w = Math.max(cv.width, worldWidth(S));
+  const h = Math.max(cv.height, worldHeight(S));
+  const biome = currentBiomeProfile();
+  const hazard = String(biome?.hazard || "").toLowerCase();
+  const weather = String(biome?.weatherFx || "clear").toLowerCase();
+  const intensity = clamp(Number(biome?.weatherIntensity || 0.48), 0.12, 1.2);
+
+  let topTint = "rgba(86,140,214,";
+  let bottomTint = "rgba(5,10,20,";
+  let edgeTint = "rgba(2,6,14,";
+  if(weather === "ash" || hazard.includes("debris")){
+    topTint = "rgba(212,138,76,";
+    bottomTint = "rgba(38,18,10,";
+    edgeTint = "rgba(22,10,6,";
+  } else if(weather === "mist" || hazard.includes("fog")){
+    topTint = "rgba(158,188,222,";
+    bottomTint = "rgba(8,16,30,";
+    edgeTint = "rgba(6,12,24,";
+  } else if(weather === "snow"){
+    topTint = "rgba(186,210,240,";
+    bottomTint = "rgba(14,22,40,";
+    edgeTint = "rgba(7,13,24,";
+  }
+
+  const underlay = String(layer || "overlay") === "underlay";
+  const topAlpha = clamp((slow ? 0.10 : 0.13) + (intensity * 0.06), 0.08, 0.22) * (underlay ? 0.72 : 0.44);
+  const bottomAlpha = clamp((slow ? 0.15 : 0.20) + (intensity * 0.08), 0.14, 0.30) * (underlay ? 0.56 : 0.38);
+  const edgeAlpha = clamp((mobile ? 0.17 : 0.22) + (intensity * 0.07), 0.16, 0.34) * (underlay ? 0 : 0.62);
+  const pulse = 0.92 + (Math.sin(nowTs * 0.0011) * 0.08);
+
+  ctx.save();
+  const topGrad = ctx.createLinearGradient(0, 0, 0, h * 0.75);
+  topGrad.addColorStop(0, `${topTint}${topAlpha * pulse})`);
+  topGrad.addColorStop(1, "rgba(10,18,34,0)");
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(0, 0, w, h);
+
+  const bottomGrad = ctx.createLinearGradient(0, h * 0.32, 0, h);
+  bottomGrad.addColorStop(0, "rgba(8,14,28,0)");
+  bottomGrad.addColorStop(1, `${bottomTint}${bottomAlpha})`);
+  ctx.fillStyle = bottomGrad;
+  ctx.fillRect(0, 0, w, h);
+
+  if(!underlay){
+    const vignette = ctx.createRadialGradient(w * 0.5, h * 0.52, Math.min(w, h) * 0.16, w * 0.5, h * 0.52, Math.max(w, h) * 0.86);
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(0.62, "rgba(3,8,18,0)");
+    vignette.addColorStop(1, `${edgeTint}${edgeAlpha})`);
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  if(!underlay && !slow && !perf && lagTier === 0 && !mobile){
+    ctx.globalAlpha = 0.06;
+    ctx.strokeStyle = "rgba(186,220,255,.55)";
+    ctx.lineWidth = 1;
+    const band = 44;
+    const shift = (nowTs * 0.016) % band;
+    for(let x = -band + shift; x < w + band; x += band){
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x - (h * 0.08), h);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 // ===================== DRAW ENTITIES =====================
 function roundedRectFill(x,y,w,h,r){
   ctx.beginPath();
@@ -31812,7 +31888,13 @@ function draw(){
         if(mapDrawOk && shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
           safeTick("drawSceneAtmosphere", drawAtmosphericParallax);
         }
+        if(mapDrawOk && !frameBudgetExceeded(0.92)){
+          safeTick("drawSceneGradeUnderlay", ()=>drawSceneCinematicGrade(Date.now(), "underlay"));
+        }
         const entityDrawOk = safeTick("drawSceneEntities", drawEntities);
+        if(entityDrawOk && !frameBudgetExceeded(0.78)){
+          safeTick("drawSceneGradeOverlay", ()=>drawSceneCinematicGrade(Date.now(), "overlay"));
+        }
         if(mapDrawOk){
           noteRenderSuccess();
         } else {
