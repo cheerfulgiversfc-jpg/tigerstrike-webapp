@@ -6761,7 +6761,9 @@ const DEFAULT = {
     safetyWindowUntil:0,
     recoveryUntil:0,
     spawnSoftLockUntil:0,
-    lastThrottleAt:0
+    lastThrottleAt:0,
+    laneHeat:[0,0,0],
+    laneHeatUpdatedAt:0
   },
   _directorAggroMul:1,
   _directorSpeedMul:1,
@@ -9170,10 +9172,18 @@ function ensureMissionDirectorState(state=S){
       safetyWindowUntil:0,
       recoveryUntil:0,
       spawnSoftLockUntil:0,
-      lastThrottleAt:0
+      lastThrottleAt:0,
+      laneHeat:[0,0,0],
+      laneHeatUpdatedAt:0
     };
   }
   const cur = (state.director && typeof state.director === "object") ? state.director : {};
+  const laneHeatRaw = Array.isArray(cur.laneHeat) ? cur.laneHeat : [0,0,0];
+  const laneHeat = [
+    clamp(Number(laneHeatRaw[0] || 0), 0, 12),
+    clamp(Number(laneHeatRaw[1] || 0), 0, 12),
+    clamp(Number(laneHeatRaw[2] || 0), 0, 12)
+  ];
   const next = {
     phase: DIRECTOR_PHASES[cur.phase] ? cur.phase : DIRECTOR_PHASES.CALM,
     pressure: clamp(Number.isFinite(cur.pressure) ? cur.pressure : 12, 0, 100),
@@ -9186,7 +9196,9 @@ function ensureMissionDirectorState(state=S){
     safetyWindowUntil: Number.isFinite(cur.safetyWindowUntil) ? cur.safetyWindowUntil : 0,
     recoveryUntil: Number.isFinite(cur.recoveryUntil) ? cur.recoveryUntil : 0,
     spawnSoftLockUntil: Number.isFinite(cur.spawnSoftLockUntil) ? cur.spawnSoftLockUntil : 0,
-    lastThrottleAt: Number.isFinite(cur.lastThrottleAt) ? cur.lastThrottleAt : 0
+    lastThrottleAt: Number.isFinite(cur.lastThrottleAt) ? cur.lastThrottleAt : 0,
+    laneHeat,
+    laneHeatUpdatedAt: Number.isFinite(cur.laneHeatUpdatedAt) ? cur.laneHeatUpdatedAt : 0
   };
   state.director = next;
   if(!Number.isFinite(state._directorAggroMul)) state._directorAggroMul = 1;
@@ -21580,6 +21592,48 @@ function tigerSpawnTooCloseToEscort(x, y, opts={}){
   }
   return false;
 }
+function missionDirectorLaneIndex(x){
+  const worldW = Math.max(360, worldWidth(S));
+  const nx = clamp(Number(x || 0), 0, worldW);
+  if(nx < worldW * 0.34) return 0;
+  if(nx < worldW * 0.67) return 1;
+  return 2;
+}
+function missionDirectorLaneHeatNow(now=Date.now()){
+  const director = ensureMissionDirectorState(S);
+  if(!Array.isArray(director.laneHeat)) director.laneHeat = [0,0,0];
+  if(director.laneHeat.length < 3){
+    while(director.laneHeat.length < 3) director.laneHeat.push(0);
+  }
+  const last = Number(director.laneHeatUpdatedAt || 0);
+  if(last > 0 && now > last){
+    const steps = Math.min(10, Math.floor((now - last) / 1800));
+    if(steps > 0){
+      const decay = Math.pow(0.84, steps);
+      for(let i=0; i<3; i++){
+        director.laneHeat[i] = clamp(Number(director.laneHeat[i] || 0) * decay, 0, 12);
+      }
+    }
+  }
+  director.laneHeatUpdatedAt = now;
+  return director.laneHeat;
+}
+function missionDirectorLaneHeatPenalty(x, now=Date.now()){
+  const lane = missionDirectorLaneIndex(x);
+  const heat = missionDirectorLaneHeatNow(now);
+  const laneHeat = clamp(Number(heat[lane] || 0), 0, 12);
+  let aliveInLane = 0;
+  for(const t of (S.tigers || [])){
+    if(!t?.alive) continue;
+    if(missionDirectorLaneIndex(t.x) === lane) aliveInLane += 1;
+  }
+  return (laneHeat * 120) + (aliveInLane * 42);
+}
+function missionDirectorMarkLaneSpawn(x, weight=1, now=Date.now()){
+  const lane = missionDirectorLaneIndex(x);
+  const heat = missionDirectorLaneHeatNow(now);
+  heat[lane] = clamp(Number(heat[lane] || 0) + clamp(Number(weight || 1), 0.4, 2.2), 0, 12);
+}
 function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
@@ -21633,7 +21687,8 @@ function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
     const preferPenalty = dist(pt.x, pt.y, preferX, preferY) * (opts.anchorTight ? 0.34 : 0.20);
     const civScore = Number.isFinite(nearestCiv) ? Math.min(nearestCiv, 360) : 260;
     const tigerSpread = Number.isFinite(nearestTiger) ? Math.min(nearestTiger, 260) : 180;
-    let score = (meDist * 1.05) + (civScore * 1.25) + (tigerSpread * 0.58) - preferPenalty;
+    const lanePenalty = missionDirectorLaneHeatPenalty(pt.x);
+    let score = (meDist * 1.05) + (civScore * 1.25) + (tigerSpread * 0.58) - preferPenalty - lanePenalty;
     if(invalid) score -= 900;
     if(score > bestScore){
       bestScore = score;
@@ -21895,6 +21950,7 @@ function spawnTigers(){
     }
     S.tigers.push(tigerObj);
     tigerPackOnSpawn(tigerObj);
+    missionDirectorMarkLaneSpawn(tigerObj.x, storyBoss && i < storyBossCount ? 1.35 : 1);
   }
   if(nemesisEntry){
     setEventText(`☠️ Nemesis returned: ${nemesisEntry.alias} (Lv ${nemesisEntry.power}) • Bounty $${nemesisEntry.bountyCash.toLocaleString()}`, 6.2);
@@ -22044,6 +22100,7 @@ function spawnRogueTiger(options={}){
 
   S.tigers.push(tiger);
   tigerPackOnSpawn(tiger);
+  missionDirectorMarkLaneSpawn(tiger.x, 1);
   if(!ignoreDirectorBudget) missionDirectorMarkTigerSpawn();
   return tiger;
 }
@@ -22181,6 +22238,8 @@ function deploy(opts={}){
     d.recoveryUntil = Date.now() + 1800;
     d.spawnSoftLockUntil = Date.now() + 1600;
     d.lastThrottleAt = 0;
+    d.laneHeat = [0,0,0];
+    d.laneHeatUpdatedAt = Date.now();
     S._directorAggroMul = 1;
     S._directorSpeedMul = 1;
   }
