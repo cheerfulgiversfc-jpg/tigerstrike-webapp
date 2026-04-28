@@ -25731,32 +25731,32 @@ function queueImpactPulse(x, y, kind="hit"){
   if(IMPACT_PULSES.length >= pulseCap){
     IMPACT_PULSES.splice(0, IMPACT_PULSES.length - (pulseCap - 1));
   }
-  let color = "rgba(245,247,255,.88)";
+  let color = "rgba(245,247,255,.92)";
   let maxR = 18;
   let ttl = 18;
   if(kind === "crit"){
-    color = "rgba(251,191,36,.95)";
-    maxR = 24;
-    ttl = 22;
+    color = "rgba(255,220,94,.98)";
+    maxR = 28;
+    ttl = 24;
   }else if(kind === "player"){
-    color = "rgba(248,113,113,.92)";
-    maxR = 22;
-    ttl = 20;
+    color = "rgba(255,110,132,.96)";
+    maxR = 26;
+    ttl = 22;
   }else if(kind === "dodge"){
-    color = "rgba(250,204,21,.92)";
+    color = "rgba(255,226,115,.94)";
     maxR = 21;
     ttl = 19;
   }else if(kind === "shield"){
-    color = "rgba(96,165,250,.95)";
-    maxR = 22;
+    color = "rgba(124,192,255,.96)";
+    maxR = 24;
     ttl = 20;
   }else if(kind === "tranq"){
-    color = "rgba(125,211,252,.92)";
-    maxR = 20;
+    color = "rgba(144,236,255,.95)";
+    maxR = 22;
     ttl = 19;
   }else if(kind === "civilian"){
-    color = "rgba(251,191,36,.90)";
-    maxR = 19;
+    color = "rgba(255,178,95,.95)";
+    maxR = 22;
     ttl = 17;
   }
   if(visualEffectsHeavyMode()){
@@ -25836,8 +25836,8 @@ function drawCombatFx(){
     ctx.save();
     ctx.globalAlpha = alpha;
     if(!heavy){
-      ctx.strokeStyle = "rgba(255,255,255,.24)";
-      ctx.lineWidth = fx.width + 3.2;
+      ctx.strokeStyle = "rgba(255,255,255,.36)";
+      ctx.lineWidth = fx.width + 4.4;
       ctx.beginPath();
       ctx.moveTo(fx.x1, fx.y1);
       ctx.lineTo(fx.x2, fx.y2);
@@ -25850,15 +25850,15 @@ function drawCombatFx(){
     ctx.lineTo(fx.x2, fx.y2);
     ctx.stroke();
     if(!heavy){
-      ctx.globalAlpha = alpha * 0.72;
+      ctx.globalAlpha = alpha * 0.86;
       ctx.fillStyle = fx.color;
       ctx.beginPath();
-      ctx.arc(tipX, tipY, Math.max(1.6, fx.width * 0.95), 0, Math.PI * 2);
+      ctx.arc(tipX, tipY, Math.max(2.0, fx.width * 1.15), 0, Math.PI * 2);
       ctx.fill();
       if(fx.kind === "crit" || fx.kind === "player"){
-        const cross = (fx.width * 1.6) + 2;
+        const cross = (fx.width * 2.0) + 3;
         ctx.strokeStyle = fx.kind === "crit" ? "rgba(252,211,77,.98)" : "rgba(248,113,113,.96)";
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.9;
         ctx.beginPath();
         ctx.moveTo(tipX - (uy * cross), tipY + (ux * cross));
         ctx.lineTo(tipX + (uy * cross), tipY - (ux * cross));
@@ -25886,9 +25886,9 @@ function drawImpactPulses(){
     const life = clamp(pulse.ttl / pulse.maxTtl, 0, 1);
     if(iphoneLite){
       ctx.save();
-      ctx.globalAlpha = life * 0.42;
+      ctx.globalAlpha = life * 0.56;
       ctx.strokeStyle = pulse.color;
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = 1.9;
       ctx.beginPath();
       ctx.arc(pulse.x, pulse.y, pulse.r, 0, Math.PI * 2);
       ctx.stroke();
@@ -25915,9 +25915,9 @@ function drawImpactPulses(){
     }
     ctx.save();
     const spin = (pulse.spin || 0) + ((1 - life) * 2.6);
-    ctx.globalAlpha = life * 0.55;
+    ctx.globalAlpha = life * 0.72;
     ctx.strokeStyle = pulse.color;
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 2.9;
     ctx.beginPath();
     ctx.arc(pulse.x, pulse.y, pulse.r, 0, Math.PI * 2);
     ctx.stroke();
@@ -25991,6 +25991,9 @@ function emitDamagePopup(x, y, text, kind="hit"){
     scale: kind === "crit" ? 1.16 : (kind === "player" ? 1.10 : 1.0)
   });
   queueImpactPulse(x, y, kind);
+  if(kind === "crit" || kind === "player"){
+    queueImpactPulse(x, y, kind);
+  }
   if(!iphoneLite){
     if(kind === "crit"){
       queueCameraShake(1.15, 180);
@@ -26098,11 +26101,11 @@ function drawDamagePopups(){
       else if(p.kind === "tranq") txt = `💉 ${txt}`;
       else if(p.kind === "player") txt = `HP ${txt}`;
       else if(p.kind === "civilian") txt = `CIV ${txt}`;
-      ctx.globalAlpha = a * 0.92;
-      ctx.font = `900 ${Math.round(10 * sc)}px system-ui`;
+      ctx.globalAlpha = a * 0.98;
+      ctx.font = `900 ${Math.round(11 * sc)}px system-ui`;
       ctx.textAlign = "center";
-      ctx.strokeStyle = "rgba(8,10,16,.68)";
-      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = "rgba(8,10,16,.84)";
+      ctx.lineWidth = 2.8;
       ctx.strokeText(txt, p.x, p.y);
       ctx.fillStyle = color;
       ctx.fillText(txt, p.x, p.y);
@@ -26114,7 +26117,7 @@ function drawDamagePopups(){
     const sc = clamp(Number(p.scale) || 1, 0.85, 1.35);
     const txt = String(p.text || "");
     const width = Math.max(34, Math.min(72, 18 + (txt.length * 8) + (icon ? 22 : 0)));
-    const h = 16;
+    const h = 18;
     const x = p.x - (width * 0.5);
     const y = p.y - 11;
     ctx.fillStyle = bg;
@@ -26124,7 +26127,7 @@ function drawDamagePopups(){
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, h - 1);
     if(icon){
       ctx.fillStyle = "rgba(255,255,255,.64)";
-      ctx.font = "800 8px system-ui";
+      ctx.font = "900 8px system-ui";
       ctx.textAlign = "left";
       ctx.fillText(icon, x + 5, y + 11);
     }
@@ -30009,9 +30012,9 @@ function drawOnMapBattleHud(){
   const lowHpPulse = hpRatio <= 0.28 ? (0.62 + (Math.sin(Date.now() / 110) * 0.28)) : 0;
 
   ctx.save();
-  ctx.fillStyle = "rgba(8,12,18,.78)";
+  ctx.fillStyle = "rgba(8,12,18,.86)";
   roundedRectFill(panelX, panelY, panelW, panelH, 10);
-  ctx.strokeStyle = lowHpPulse > 0 ? `rgba(248,113,113,${clamp(lowHpPulse, 0.25, 0.95)})` : "rgba(148,163,184,.42)";
+  ctx.strokeStyle = lowHpPulse > 0 ? `rgba(255,118,138,${clamp(lowHpPulse, 0.32, 0.98)})` : "rgba(184,210,245,.58)";
   ctx.lineWidth = lowHpPulse > 0 ? 2 : 1.2;
   ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
 
