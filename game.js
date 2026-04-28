@@ -6757,7 +6757,11 @@ const DEFAULT = {
     lastSampleAt:0,
     hardTrimAt:0,
     phaseChangedAt:0,
-    lastNoticeAt:0
+    lastNoticeAt:0,
+    safetyWindowUntil:0,
+    recoveryUntil:0,
+    spawnSoftLockUntil:0,
+    lastThrottleAt:0
   },
   _directorAggroMul:1,
   _directorSpeedMul:1,
@@ -9162,7 +9166,11 @@ function ensureMissionDirectorState(state=S){
       lastSampleAt:0,
       hardTrimAt:0,
       phaseChangedAt:0,
-      lastNoticeAt:0
+      lastNoticeAt:0,
+      safetyWindowUntil:0,
+      recoveryUntil:0,
+      spawnSoftLockUntil:0,
+      lastThrottleAt:0
     };
   }
   const cur = (state.director && typeof state.director === "object") ? state.director : {};
@@ -9174,7 +9182,11 @@ function ensureMissionDirectorState(state=S){
     lastSampleAt: Number.isFinite(cur.lastSampleAt) ? cur.lastSampleAt : 0,
     hardTrimAt: Number.isFinite(cur.hardTrimAt) ? cur.hardTrimAt : 0,
     phaseChangedAt: Number.isFinite(cur.phaseChangedAt) ? cur.phaseChangedAt : 0,
-    lastNoticeAt: Number.isFinite(cur.lastNoticeAt) ? cur.lastNoticeAt : 0
+    lastNoticeAt: Number.isFinite(cur.lastNoticeAt) ? cur.lastNoticeAt : 0,
+    safetyWindowUntil: Number.isFinite(cur.safetyWindowUntil) ? cur.safetyWindowUntil : 0,
+    recoveryUntil: Number.isFinite(cur.recoveryUntil) ? cur.recoveryUntil : 0,
+    spawnSoftLockUntil: Number.isFinite(cur.spawnSoftLockUntil) ? cur.spawnSoftLockUntil : 0,
+    lastThrottleAt: Number.isFinite(cur.lastThrottleAt) ? cur.lastThrottleAt : 0
   };
   state.director = next;
   if(!Number.isFinite(state._directorAggroMul)) state._directorAggroMul = 1;
@@ -9224,6 +9236,11 @@ function missionDirectorAllowTigerSpawn(extra=1, opts={}){
   if(!S || typeof S !== "object") return false;
   const now = Date.now();
   const director = ensureMissionDirectorState();
+  if(!opts.ignoreFairness){
+    if(now < (director.safetyWindowUntil || 0)) return false;
+    if(now < (director.recoveryUntil || 0)) return false;
+    if(now < (director.spawnSoftLockUntil || 0)) return false;
+  }
   if(!opts.ignoreBudget && now < (director.nextSpawnAt || 0)) return false;
   if(!opts.ignoreFairness){
     if(S.respawnPendingUntil && now < (S.respawnPendingUntil + 1200)) return false;
@@ -9260,6 +9277,7 @@ function missionDirectorMarkTigerSpawn(opts={}){
   director.nextSpawnAt = now + cd;
 }
 function missionDirectorTargetPressure(now=Date.now()){
+  const director = ensureMissionDirectorState();
   if(S.respawnPendingUntil && now < S.respawnPendingUntil){
     return 6;
   }
@@ -9308,6 +9326,8 @@ function missionDirectorTargetPressure(now=Date.now()){
     if(!inBattle && underAttack === 0) target -= 5;
     if(!inBattle && underAttack === 0 && nearPlayer === 0) target -= 3;
   }
+  if(now < (director.safetyWindowUntil || 0)) target *= 0.48;
+  else if(now < (director.recoveryUntil || 0)) target *= 0.72;
   const tuning = currentBalanceTuning(S, now);
   const mapId = mapIdentityProfile(S.mode, chapterIndexForMode(S.mode));
   target *= clamp(Number(tuning.pressureMul || 1), 0.86, 1.16);
@@ -9400,6 +9420,16 @@ function missionDirectorTick(){
   if(S.paused) return;
   if(now < (director.lastSampleAt || 0) + 140) return;
   director.lastSampleAt = now;
+  const lagTier = frameLagTier();
+  if(lagTier >= 2 && now > (director.lastThrottleAt || 0) + 3200){
+    director.lastThrottleAt = now;
+    director.spawnSoftLockUntil = Math.max(director.spawnSoftLockUntil || 0, now + rand(900, 1600));
+    director.nextSpawnAt = Math.max(director.nextSpawnAt || 0, now + rand(1000, 1700));
+  } else if(lagTier >= 1 && now > (director.lastThrottleAt || 0) + 4200){
+    director.lastThrottleAt = now;
+    director.spawnSoftLockUntil = Math.max(director.spawnSoftLockUntil || 0, now + rand(520, 980));
+    director.nextSpawnAt = Math.max(director.nextSpawnAt || 0, now + rand(600, 1200));
+  }
 
   const target = missionDirectorTargetPressure(now);
   const current = clamp(Number(director.pressure || 0), 0, 100);
@@ -9428,7 +9458,7 @@ function missionDirectorTick(){
 
   if(now >= (director.hardTrimAt || 0)){
     const trimRes = missionDirectorApplyHardCaps();
-    director.hardTrimAt = now + (frameLagTier() >= 1 ? 280 : 360);
+    director.hardTrimAt = now + (lagTier >= 1 ? 280 : 360);
     if(trimRes.trimmed > 0 && now > (director.lastNoticeAt || 0) + 6200){
       director.lastNoticeAt = now;
       setEventText(`Director stabilized mission load (${trimRes.trimmed} cleanup).`, 1.8);
@@ -22147,6 +22177,10 @@ function deploy(opts={}){
     d.phaseChangedAt = Date.now();
     d.lastNoticeAt = 0;
     d.nextSpawnAt = Date.now() + rand(4200, 6800);
+    d.safetyWindowUntil = Date.now() + 3200;
+    d.recoveryUntil = Date.now() + 1800;
+    d.spawnSoftLockUntil = Date.now() + 1600;
+    d.lastThrottleAt = 0;
     S._directorAggroMul = 1;
     S._directorSpeedMul = 1;
   }
@@ -25377,6 +25411,8 @@ function respawnTick(){
     director.nextSpawnAt = Math.max(director.nextSpawnAt || 0, now + rand(3200, 5200));
     director.pressure = clamp((Number(director.pressure || 8) * 0.72), 8, 72);
     director.phaseLockUntil = Math.max(director.phaseLockUntil || 0, now + 900);
+    director.recoveryUntil = Math.max(director.recoveryUntil || 0, now + 2200);
+    director.spawnSoftLockUntil = Math.max(director.spawnSoftLockUntil || 0, now + 1800);
   }
   toast(`Respawned. Lives left: ${S.lives}`);
 }
