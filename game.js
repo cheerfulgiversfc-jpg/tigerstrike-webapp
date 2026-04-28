@@ -10205,6 +10205,32 @@ function shortDebugRef(ref){
   if(txt.length <= 28) return txt;
   return `${txt.slice(0,14)}…${txt.slice(-10)}`;
 }
+function liveDebugSnapshotLines(){
+  const now = Date.now();
+  const d = ensureMissionDirectorState(S);
+  const phase = DIRECTOR_PHASE_CONFIG[d.phase] ? d.phase : DIRECTOR_PHASES.CALM;
+  const pressure = clamp(Math.round(Number(d.pressure || 0)), 0, 100);
+  const laneHeat = missionDirectorLaneHeatNow(now).map((v)=>Number(v || 0).toFixed(1)).join("/");
+  const dom = missionDirectorDominanceScore(now);
+  const aliveTigers = (S.tigers || []).reduce((n, t)=>n + (t?.alive ? 1 : 0), 0);
+  const aliveCivs = (S.mode === "Survival")
+    ? 0
+    : (S.civilians || []).reduce((n, c)=>n + (c?.alive && !c?.evac ? 1 : 0), 0);
+  const atk = Math.max(0, Number(S._underAttack || 0));
+  const spawnLockMs = Math.max(0, Math.round(Math.max(Number(d.spawnSoftLockUntil || 0), Number(d.nextSpawnAt || 0)) - now));
+  const recoveryMs = Math.max(0, Math.round(Number(d.recoveryUntil || 0) - now));
+  const dominanceMs = Math.max(0, Math.round(Number(d.dominanceLockUntil || 0) - now));
+  const lagTier = frameLagTier();
+  const loadScore = Math.max(0, Math.round(frameActiveEntityLoadScore()));
+  const avgGap = __avgStabilitySample(__stabilityMonitorState.frameGaps);
+  const fps = avgGap > 0 ? Math.round(1000 / avgGap) : 0;
+  return [
+    `Dir ${directorPhaseLabel(phase)} ${pressure}% • A${Number(S._directorAggroMul || 1).toFixed(2)} S${Number(S._directorSpeedMul || 1).toFixed(2)}`,
+    `LaneHeat ${laneHeat} • Dom ${Math.round(dom.score)} (${Math.round(dom.laneLoad * 100)}% lane, hot ${dom.hotLane})`,
+    `Locks spawn ${Math.ceil(spawnLockMs/1000)}s • rec ${Math.ceil(recoveryMs/1000)}s • dom ${Math.ceil(dominanceMs/1000)}s`,
+    `Entities T${aliveTigers} C${aliveCivs} atk${atk} • Lag T${lagTier} Load ${loadScore} FPS ${fps || "—"}`
+  ];
+}
 function sanitizeDebugDetails(details){
   if(!details || typeof details !== "object") return "";
   const out = {};
@@ -10239,12 +10265,13 @@ function pushStarsDebug(event, details){
 }
 function copyStarsDebugLog(){
   const lines = starsDebugEntries.join("\n");
-  if(!lines){
-    toast("No Stars debug logs yet.");
+  const snapshot = liveDebugSnapshotLines().join("\n");
+  if(!lines && !snapshot){
+    toast("No debug logs yet.");
     return;
   }
   const status = `pending=${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | user=${tgUserKey()}`;
-  const text = `Tiger Strike Stars Debug\n${status}\n\n${lines}`;
+  const text = `Tiger Strike Live Debug HUD\n${status}\n\n${snapshot}\n\n${lines}`;
   const done = ()=>toast("Stars debug copied.");
   if(navigator.clipboard?.writeText){
     navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
@@ -10285,7 +10312,7 @@ function ensureStarsDebugUi(){
   toggle.style.background = "rgba(12,22,42,.82)";
   toggle.style.boxShadow = "0 4px 14px rgba(0,0,0,.4)";
   toggle.style.cursor = "pointer";
-  toggle.setAttribute("aria-label", "Open Stars debug panel");
+  toggle.setAttribute("aria-label", "Open live debug HUD");
 
   const panel = document.createElement("div");
   panel.id = "starsDebugPanel";
@@ -10305,9 +10332,10 @@ function ensureStarsDebugUi(){
   panel.style.overflow = "hidden";
   panel.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(38,93,182,.2);font-size:12px;font-weight:700;">
-      <span>Stars Debug</span>
+      <span>Live Debug HUD</span>
       <button id="starsDebugClose" type="button" style="border:1px solid rgba(255,255,255,.35);border-radius:8px;background:rgba(17,24,39,.65);color:#e5eefc;padding:2px 8px;font-size:11px;cursor:pointer;">Close</button>
     </div>
+    <div id="starsDebugLive" style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.35;white-space:pre-wrap;color:#d9ebff;"></div>
     <div id="starsDebugStatus" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07);font-size:11px;line-height:1.35;"></div>
     <div id="starsDebugLog" style="padding:8px 10px;overflow:auto;max-height:26vh;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;"></div>
     <div style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);">
@@ -10345,8 +10373,9 @@ function renderStarsDebugPanel(){
   const panel = document.getElementById("starsDebugPanel");
   const log = document.getElementById("starsDebugLog");
   const status = document.getElementById("starsDebugStatus");
+  const live = document.getElementById("starsDebugLive");
   const toggleLog = document.getElementById("starsDebugToggleLog");
-  if(!toggle || !panel || !log || !status || !toggleLog) return;
+  if(!toggle || !panel || !log || !status || !toggleLog || !live) return;
 
   const enabled = starsDebugEnabled();
   const recoverTotal = Math.max(0, Math.floor(Number(S?.respawnLockRecoverCount || 0)));
@@ -10356,6 +10385,7 @@ function renderStarsDebugPanel(){
   toggle.style.borderColor = enabled ? "rgba(134,239,172,.72)" : "rgba(255,255,255,.35)";
   toggleLog.textContent = `Log: ${enabled ? "ON" : "OFF"}`;
   toggleLog.style.background = enabled ? "rgba(37,99,235,.55)" : "rgba(55,65,81,.55)";
+  live.textContent = liveDebugSnapshotLines().join("\n");
   status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession})`;
   log.textContent = starsDebugEntries.length ? starsDebugEntries.join("\n") : "No Stars events yet.";
   log.scrollTop = log.scrollHeight;
@@ -28207,6 +28237,9 @@ function renderHUD(){
                 : (desktopPointer
                     ? "Desktop: click the tiger you want. If it is close enough, combat starts right away. WASD or arrows move. Q locks nearest. Space scans. E engages the locked tiger. Tap map devices to trigger alarms, barriers, and caches."
                     : "Agent and Mission stay above the map. Use the joystick to move, then tap the tiger you want. If it is in range, the fight starts and your combat buttons appear. Tap map devices for alarms, barriers, and caches.")));
+    if(starsDebugPanelOpen){
+      renderStarsDebugPanel();
+    }
     renderAbilityCooldownUi();
   }catch(err){
     const now = Date.now();
