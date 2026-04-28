@@ -6763,7 +6763,9 @@ const DEFAULT = {
     spawnSoftLockUntil:0,
     lastThrottleAt:0,
     laneHeat:[0,0,0],
-    laneHeatUpdatedAt:0
+    laneHeatUpdatedAt:0,
+    dominanceLockUntil:0,
+    dominanceCount:0
   },
   _directorAggroMul:1,
   _directorSpeedMul:1,
@@ -9174,7 +9176,9 @@ function ensureMissionDirectorState(state=S){
       spawnSoftLockUntil:0,
       lastThrottleAt:0,
       laneHeat:[0,0,0],
-      laneHeatUpdatedAt:0
+      laneHeatUpdatedAt:0,
+      dominanceLockUntil:0,
+      dominanceCount:0
     };
   }
   const cur = (state.director && typeof state.director === "object") ? state.director : {};
@@ -9198,7 +9202,9 @@ function ensureMissionDirectorState(state=S){
     spawnSoftLockUntil: Number.isFinite(cur.spawnSoftLockUntil) ? cur.spawnSoftLockUntil : 0,
     lastThrottleAt: Number.isFinite(cur.lastThrottleAt) ? cur.lastThrottleAt : 0,
     laneHeat,
-    laneHeatUpdatedAt: Number.isFinite(cur.laneHeatUpdatedAt) ? cur.laneHeatUpdatedAt : 0
+    laneHeatUpdatedAt: Number.isFinite(cur.laneHeatUpdatedAt) ? cur.laneHeatUpdatedAt : 0,
+    dominanceLockUntil: Number.isFinite(cur.dominanceLockUntil) ? cur.dominanceLockUntil : 0,
+    dominanceCount: Number.isFinite(cur.dominanceCount) ? Math.max(0, Math.floor(cur.dominanceCount)) : 0
   };
   state.director = next;
   if(!Number.isFinite(state._directorAggroMul)) state._directorAggroMul = 1;
@@ -9442,6 +9448,25 @@ function missionDirectorTick(){
     director.spawnSoftLockUntil = Math.max(director.spawnSoftLockUntil || 0, now + rand(520, 980));
     director.nextSpawnAt = Math.max(director.nextSpawnAt || 0, now + rand(600, 1200));
   }
+  const dom = missionDirectorDominanceScore(now);
+  if(dom.score >= 64 && now >= (director.dominanceLockUntil || 0)){
+    const lockMs = 2600 + Math.min(1800, dom.hotLane * 180);
+    director.dominanceLockUntil = now + lockMs;
+    director.dominanceCount = Math.max(0, Number(director.dominanceCount || 0)) + 1;
+    director.recoveryUntil = Math.max(director.recoveryUntil || 0, now + lockMs + 1200);
+    director.spawnSoftLockUntil = Math.max(director.spawnSoftLockUntil || 0, now + lockMs);
+    director.nextSpawnAt = Math.max(director.nextSpawnAt || 0, now + lockMs + rand(800, 1600));
+    director.pressure = clamp(Math.min(Number(director.pressure || 0), 54) * 0.86, 16, 58);
+    director.phase = DIRECTOR_PHASES.RECOVER;
+    director.phaseChangedAt = now;
+    director.phaseLockUntil = Math.max(director.phaseLockUntil || 0, now + 1800);
+    if(now > (director.lastNoticeAt || 0) + 6200){
+      director.lastNoticeAt = now;
+      setEventText("Mission Director: dominance break engaged. Rebalancing lanes.", 2.2);
+    }
+  } else if(dom.score <= 28 && Number(director.dominanceCount || 0) > 0){
+    director.dominanceCount = Math.max(0, Number(director.dominanceCount || 0) - 1);
+  }
 
   const target = missionDirectorTargetPressure(now);
   const current = clamp(Number(director.pressure || 0), 0, 100);
@@ -9449,6 +9474,9 @@ function missionDirectorTick(){
   const fallAlpha = S.mode === "Survival" ? 0.18 : 0.22;
   const alpha = target >= current ? riseAlpha : fallAlpha;
   director.pressure = clamp(current + ((target - current) * alpha), 0, 100);
+  if(now < (director.recoveryUntil || 0)){
+    director.pressure = Math.min(director.pressure, 62);
+  }
   const resolved = missionDirectorResolvePhase(director.pressure, director.phase);
   if(resolved !== director.phase && now >= (director.phaseLockUntil || 0)){
     const currentRank = directorPhaseRank(director.phase);
@@ -21634,6 +21662,36 @@ function missionDirectorMarkLaneSpawn(x, weight=1, now=Date.now()){
   const heat = missionDirectorLaneHeatNow(now);
   heat[lane] = clamp(Number(heat[lane] || 0) + clamp(Number(weight || 1), 0.4, 2.2), 0, 12);
 }
+function missionDirectorDominanceScore(now=Date.now()){
+  const aliveCivs = (S.mode === "Survival")
+    ? 0
+    : (S.civilians || []).reduce((n, c)=>n + (c?.alive && !c?.evac ? 1 : 0), 0);
+  const underAttack = Math.max(0, Number(S._underAttack || 0));
+  const alive = (S.tigers || []).filter((t)=>t && t.alive);
+  if(!alive.length) return { score:0, hotLane:0, aliveCount:0, laneLoad:0, underAttack, aliveCivs };
+  const laneCounts = [0,0,0];
+  for(const t of alive){
+    laneCounts[missionDirectorLaneIndex(t.x)] += 1;
+  }
+  const hotLane = Math.max(laneCounts[0], laneCounts[1], laneCounts[2]);
+  const laneLoad = hotLane / Math.max(1, alive.length);
+  const heat = missionDirectorLaneHeatNow(now);
+  const heatPeak = Math.max(Number(heat[0] || 0), Number(heat[1] || 0), Number(heat[2] || 0));
+  const attackRatio = aliveCivs > 0 ? (underAttack / Math.max(1, aliveCivs)) : 0;
+  let score = 0;
+  score += clamp((laneLoad - 0.40) * 120, 0, 60);
+  score += clamp((heatPeak - 4.2) * 5.8, 0, 36);
+  score += clamp((attackRatio - 0.34) * 120, 0, 34);
+  score += clamp((alive.length - 6) * 3.1, 0, 28);
+  return {
+    score: clamp(score, 0, 100),
+    hotLane,
+    aliveCount: alive.length,
+    laneLoad,
+    underAttack,
+    aliveCivs
+  };
+}
 function pickTigerSpawnAwayFromEscort(seedX, seedY, opts={}){
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
@@ -22240,6 +22298,8 @@ function deploy(opts={}){
     d.lastThrottleAt = 0;
     d.laneHeat = [0,0,0];
     d.laneHeatUpdatedAt = Date.now();
+    d.dominanceLockUntil = 0;
+    d.dominanceCount = 0;
     S._directorAggroMul = 1;
     S._directorSpeedMul = 1;
   }
