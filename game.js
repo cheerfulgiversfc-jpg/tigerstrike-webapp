@@ -1013,6 +1013,11 @@ const WORLD_EVENT_ROLL_MIN_MS = 125000;
 const WORLD_EVENT_ROLL_MAX_MS = 205000;
 const WORLD_EVENT_COOLDOWN_MS = 50000;
 const WORLD_EVENT_MAX_PER_MISSION = 4;
+const DYNAMIC_OBJECTIVE_ROLL_MIN_MS = 90000;
+const DYNAMIC_OBJECTIVE_ROLL_MAX_MS = 155000;
+const DYNAMIC_OBJECTIVE_ACTIVE_MIN_MS = 50000;
+const DYNAMIC_OBJECTIVE_ACTIVE_MAX_MS = 88000;
+const DYNAMIC_OBJECTIVE_TYPES = Object.freeze(["escort_lane","intercept_scout","pack_break"]);
 const ARCADE_BUILDCRAFT_DEFAULT_ID = "RESCUE";
 const ARCADE_BUILDCRAFT_LOADOUTS = Object.freeze([
   Object.freeze({
@@ -1766,6 +1771,72 @@ function ensureMissionTwistState(state=S){
 
   state.missionTwists = tw;
   return tw;
+}
+
+function defaultDynamicObjectiveState(){
+  return {
+    active: false,
+    type: "",
+    title: "",
+    desc: "",
+    startedAt: 0,
+    until: 0,
+    nextRollAt: 0,
+    rewardCash: 0,
+    rewardScore: 0,
+    progress: 0,
+    target: 0,
+    startEvac: 0,
+    startKills: 0,
+    startCaptures: 0,
+    startScoutTakedowns: 0,
+    startCivAlive: 0,
+    completed: false,
+  };
+}
+function ensureDynamicObjectiveState(state=S){
+  if(!state || typeof state !== "object") return defaultDynamicObjectiveState();
+  if(!state.dynamicObjective || typeof state.dynamicObjective !== "object"){
+    state.dynamicObjective = defaultDynamicObjectiveState();
+  }
+  const d = state.dynamicObjective;
+  d.active = !!d.active;
+  d.type = DYNAMIC_OBJECTIVE_TYPES.includes(String(d.type || "")) ? String(d.type) : "";
+  d.title = String(d.title || "");
+  d.desc = String(d.desc || "");
+  d.startedAt = Math.max(0, Math.floor(Number(d.startedAt || 0)));
+  d.until = Math.max(0, Math.floor(Number(d.until || 0)));
+  d.nextRollAt = Math.max(0, Math.floor(Number(d.nextRollAt || 0)));
+  d.rewardCash = Math.max(0, Math.floor(Number(d.rewardCash || 0)));
+  d.rewardScore = Math.max(0, Math.floor(Number(d.rewardScore || 0)));
+  d.progress = Math.max(0, Math.floor(Number(d.progress || 0)));
+  d.target = Math.max(0, Math.floor(Number(d.target || 0)));
+  d.startEvac = Math.max(0, Math.floor(Number(d.startEvac || 0)));
+  d.startKills = Math.max(0, Math.floor(Number(d.startKills || 0)));
+  d.startCaptures = Math.max(0, Math.floor(Number(d.startCaptures || 0)));
+  d.startScoutTakedowns = Math.max(0, Math.floor(Number(d.startScoutTakedowns || 0)));
+  d.startCivAlive = Math.max(0, Math.floor(Number(d.startCivAlive || 0)));
+  d.completed = !!d.completed;
+  return d;
+}
+function clearDynamicObjective(state=S){
+  const d = ensureDynamicObjectiveState(state);
+  d.active = false;
+  d.type = "";
+  d.title = "";
+  d.desc = "";
+  d.startedAt = 0;
+  d.until = 0;
+  d.progress = 0;
+  d.target = 0;
+  d.completed = false;
+  state._dynamicTigerCivBiasMul = 1;
+  state._dynamicTigerPlayerBiasMul = 1;
+}
+function resetDynamicObjectiveForDeploy(state=S){
+  const d = ensureDynamicObjectiveState(state);
+  clearDynamicObjective(state);
+  d.nextRollAt = Date.now() + rand(22000, 36000);
 }
 
 function resetMissionTwistsForDeploy(state=S, now=Date.now()){
@@ -4179,6 +4250,7 @@ const TIGER_PACK_ROLES = Object.freeze({
   PROTECTOR: "protector",
   SCOUT: "scout",
   FLANKER: "flanker",
+  DISRUPTOR: "disruptor",
   HUNTER: "hunter",
 });
 const TIGER_PACK_TERRITORY_BASE_RADIUS = 210;
@@ -6792,6 +6864,7 @@ const DEFAULT = {
   _convoySplitThreatWaves:0,
   _rivalLastIntelDropAt:0,
   _rivalFactionName:"",
+  _scoutTakedownsMission:0,
   respawnLockRecoverCount:0,
   _respawnLockRecoverCountSession:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
@@ -6799,6 +6872,7 @@ const DEFAULT = {
   balanceStats: defaultBalanceStatsState(),
   nemesis: defaultNemesisState(),
   missionTwists: defaultMissionTwistsState(),
+  dynamicObjective: defaultDynamicObjectiveState(),
   contractTallies: defaultContractTallies(),
   contracts: null,
   liveOps: null,
@@ -22546,6 +22620,7 @@ function deploy(opts={}){
   // phase 1
   S.fogUntil = 0;
   resetMissionTwistsForDeploy(S);
+  resetDynamicObjectiveForDeploy(S);
   S._biomeFogPulseAt = 0;
   S.eventText = "";
   S.eventCooldown = 240;
@@ -22572,6 +22647,7 @@ function deploy(opts={}){
   S._convoySplitThreatWaves = 0;
   S._rivalLastIntelDropAt = 0;
   S._rivalFactionName = "";
+  S._scoutTakedownsMission = 0;
   S._arcadeTimerWarn = 0;
   S._arcadeNoKillWarned = false;
   S._storyFinalOutcome = null;
@@ -23796,6 +23872,13 @@ function supportAttackDamage(unit, tiger, tigerDist){
   return Math.max(5, Math.round(base * antiTigerSkill * clamp(targetResist, 0.70, 1.0) * boost * burstMul));
 }
 
+function noteTigerOutcomeForObjective(tiger){
+  if(!tiger) return;
+  if(String(tiger.type || "") === "Scout"){
+    S._scoutTakedownsMission = Math.max(0, Math.floor(Number(S._scoutTakedownsMission || 0))) + 1;
+  }
+}
+
 function supportShouldForceKill(unit, tiger, tigerDist, threatRange=104){
   if(!unit || !tiger) return false;
   const hpRatio = clamp((Number(unit.hp || 0) / Math.max(1, Number(unit.hpMax || 1))), 0, 1);
@@ -24457,6 +24540,7 @@ function supportUnitsTick(){
             const burstBonus = (squadAbilityActive("tranq_burst", now, S) || now < Number(tiger._squadTranqBurstUntil || 0)) ? 0.12 : 0;
             const capChance = clamp(0.62 + storyAttackerCaptureBonus() + burstBonus, 0.62, 0.97);
             if(Math.random() < capChance){
+              noteTigerOutcomeForObjective(tiger);
               markStoryFinalBossOutcome("CAPTURE", tiger);
               tiger.alive = false;
               tigerPackRecordLoss(tiger, "CAPTURE");
@@ -25388,6 +25472,7 @@ function roamTigers(){
     });
     let scoutAssigned = false;
     let protectorAssigned = false;
+    let disruptorAssigned = false;
     for(const tiger of ranked){
       let role = TIGER_PACK_ROLES.HUNTER;
       if(pack.alpha && tiger.id === pack.alpha.id){
@@ -25395,6 +25480,9 @@ function roamTigers(){
       } else if(!scoutAssigned && tiger.type === "Scout"){
         role = TIGER_PACK_ROLES.SCOUT;
         scoutAssigned = true;
+      } else if(!disruptorAssigned && tiger.type === "Standard"){
+        role = TIGER_PACK_ROLES.DISRUPTOR;
+        disruptorAssigned = true;
       } else if(!protectorAssigned && (tiger.type === "Berserker" || tiger.type === "Alpha")){
         role = TIGER_PACK_ROLES.PROTECTOR;
         protectorAssigned = true;
@@ -25538,13 +25626,16 @@ function roamTigers(){
     const closeCivRange = (130 + (bloodScent * 95)) * directorAggroMul;
     const closeToPlayer = playerDist <= (closePlayerRange + (persona.playerBias * 120));
     const closeToCiv = closestCiv && closestCivDist <= closeCivRange;
+    const dynCivBiasMul = clamp(Number(S._dynamicTigerCivBiasMul || 1), 0.85, 1.35);
+    const dynPlayerBiasMul = clamp(Number(S._dynamicTigerPlayerBiasMul || 1), 0.85, 1.35);
     const civFocusBias = clamp(
       (t.civBias + bloodScent * 0.25 + (carcassDifficulty()-1)*0.10 + persona.civBiasDelta) * (0.92 + (directorAggroMul - 1) * 1.1),
       0.05,
       0.98
-    );
+    ) * dynCivBiasMul;
+    const civFocusChance = clamp(civFocusBias, 0.05, 0.99);
 
-    if(closeToCiv && (!closeToPlayer || Math.random() < civFocusBias)){
+    if(closeToCiv && (!closeToPlayer || Math.random() < civFocusChance)){
       targetX = closestCiv.x;
       targetY = closestCiv.y;
       targetDist = closestCivDist;
@@ -25558,7 +25649,7 @@ function roamTigers(){
       targetDist = closestCivDist;
     }
 
-    if(persona.key === "Hunter" && playerDist < motion.detect + 110){
+    if(persona.key === "Hunter" && playerDist < (motion.detect + 110) * dynPlayerBiasMul){
       targetX = S.me.x;
       targetY = S.me.y;
       targetDist = playerDist;
@@ -25612,6 +25703,19 @@ function roamTigers(){
         targetX = S.me.x + Math.cos(flankA) * flankR;
         targetY = S.me.y + Math.sin(flankA) * flankR;
         targetDist = dist(t.x, t.y, targetX, targetY);
+      } else if(role === TIGER_PACK_ROLES.DISRUPTOR && liveCivs.length){
+        let escort = null;
+        let escortD = Infinity;
+        for(const civ of liveCivs){
+          if(!(civ.following && (civ.escortOwner === "player" || civ.escortOwner === "rescue"))) continue;
+          const d = dist(t.x, t.y, civ.x, civ.y);
+          if(d < escortD){ escortD = d; escort = civ; }
+        }
+        if(escort){
+          targetX = escort.x;
+          targetY = escort.y;
+          targetDist = escortD;
+        }
       } else if(role === TIGER_PACK_ROLES.ALPHA && territoryHot && !closeToPlayer && !closeToCiv){
         const anchorDist = dist(t.x, t.y, pack.territoryX, pack.territoryY);
         if(anchorDist > 74){
@@ -25648,6 +25752,19 @@ function roamTigers(){
     }
     if(!chase){
       t.aggroBoost = Math.max(0, (t.aggroBoost||0) - 0.004);
+    }
+    const hpRatio = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
+    if(chase && hpRatio < 0.30 && playerDist < 165 && now > Number(t._nextFeintAt || 0) && Math.random() < 0.24){
+      t._feintUntil = now + rand(600, 980);
+      t._nextFeintAt = now + rand(5200, 9000);
+      setTigerIntent(t, "Feign Retreat", 520);
+    }
+    if(now < Number(t._feintUntil || 0)){
+      chase = false;
+      t.wanderAngle = Math.atan2(t.y - S.me.y, t.x - S.me.x);
+      targetX = t.x + Math.cos(t.wanderAngle) * 96;
+      targetY = t.y + Math.sin(t.wanderAngle) * 96;
+      targetDist = dist(t.x, t.y, targetX, targetY);
     }
     if(t.huntState === TIGER_HUNT_STATES.PATROL){
       chase = Number.isFinite(targetDist) && targetDist < 88;
@@ -27296,6 +27413,7 @@ function updateAttackButton(){
 
 function finishTigerKill(t){
   if(!t || !t.alive) return;
+  noteTigerOutcomeForObjective(t);
   const bossKill = !!isBossTiger(t);
   if(window.TigerTutorial?.isRunning){
     window.TigerTutorial.combatOutcome = "KILL";
@@ -27401,6 +27519,7 @@ function playerAction(action){
     if(window.TigerTutorial?.isRunning){
       window.TigerTutorial.combatOutcome = "CAPTURE";
     }
+    noteTigerOutcomeForObjective(t);
     const bossCapture = !!isBossTiger(t);
     const captureTreeFx = weaponMasteryTreeEffects(req, S);
     markStoryFinalBossOutcome("CAPTURE", t);
@@ -27825,6 +27944,107 @@ function combatTick(){
     S._combatTigerAttackAt = now + rand(1700, 2400);
     t._chargeWindupUntil = now + rand(900, 1300);
     tigerTurn(t, S._protectTicks > 0, { kind:"charge", dmgMul:1.35, maxRange:220 });
+  }
+}
+
+function startDynamicObjective(type){
+  const d = ensureDynamicObjectiveState(S);
+  const now = Date.now();
+  const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
+  const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
+  const missionLevel = Math.max(1, Math.floor(Number(storyMission?.number || arcadeMission?.number || missionIndexForMode(S.mode) || 1)));
+  d.active = true;
+  d.completed = false;
+  d.type = type;
+  d.startedAt = now;
+  d.until = now + rand(DYNAMIC_OBJECTIVE_ACTIVE_MIN_MS, DYNAMIC_OBJECTIVE_ACTIVE_MAX_MS);
+  d.startEvac = Math.max(0, Math.floor(Number(S.stats?.evac || 0)));
+  d.startKills = Math.max(0, Math.floor(Number(S.stats?.kills || 0)));
+  d.startCaptures = Math.max(0, Math.floor(Number(S.stats?.captures || 0)));
+  d.startScoutTakedowns = Math.max(0, Math.floor(Number(S._scoutTakedownsMission || 0)));
+  d.startCivAlive = (S.civilians || []).filter((c)=>c && c.alive && !c.evac).length;
+  d.progress = 0;
+  d.target = 1;
+  d.rewardCash = Math.max(650, Math.round((800 + missionLevel * 45) * liveOpsPayoutMul(S)));
+  d.rewardScore = Math.max(80, Math.round(95 + missionLevel * 6));
+  S._dynamicTigerCivBiasMul = 1;
+  S._dynamicTigerPlayerBiasMul = 1;
+  if(type === "escort_lane"){
+    d.title = "Convoy Priority";
+    d.desc = "Evacuate 2 civilians before the timer ends.";
+    d.target = 2;
+    d.rewardCash = Math.round(d.rewardCash * 1.15);
+    d.rewardScore = Math.round(d.rewardScore * 1.12);
+    S._dynamicTigerCivBiasMul = 1.18;
+  } else if(type === "intercept_scout"){
+    d.title = "Scout Intercept";
+    d.desc = "Eliminate or capture 1 Scout tiger before it reroutes.";
+    d.target = 1;
+    d.rewardCash = Math.round(d.rewardCash * 1.08);
+    d.rewardScore = Math.round(d.rewardScore * 1.06);
+    S._dynamicTigerPlayerBiasMul = 1.16;
+  } else {
+    d.title = "Pack Break";
+    d.desc = "Take down 2 tigers (kill/capture) while pack pressure is high.";
+    d.target = 2;
+    d.rewardCash = Math.round(d.rewardCash * 1.22);
+    d.rewardScore = Math.round(d.rewardScore * 1.18);
+    S._dynamicTigerPlayerBiasMul = 1.12;
+  }
+  setEventText(`🎯 Dynamic Objective: ${d.title} • ${d.desc}`, 4.2);
+}
+
+function grantDynamicObjectiveReward(){
+  const d = ensureDynamicObjectiveState(S);
+  if(!d.active || d.completed) return;
+  d.completed = true;
+  if(d.rewardCash > 0){
+    S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + d.rewardCash;
+    trackCashEarned(d.rewardCash);
+  }
+  if(d.rewardScore > 0){
+    S.score = Math.max(0, Math.round(Number(S.score || 0))) + d.rewardScore;
+  }
+  addXP(18);
+  grantSeasonPassPoints(4, "Dynamic objective clear");
+  toast(`Objective complete: +$${d.rewardCash.toLocaleString()} • +${d.rewardScore} score`);
+  setEventText(`✅ ${d.title} completed. Tactical bonus awarded.`, 2.8);
+  d.nextRollAt = Date.now() + rand(DYNAMIC_OBJECTIVE_ROLL_MIN_MS, DYNAMIC_OBJECTIVE_ROLL_MAX_MS);
+  clearDynamicObjective(S);
+}
+
+function dynamicObjectiveTick(){
+  if(window.__TUTORIAL_MODE__) return;
+  if(S.mode === "Survival" || S.paused || S.gameOver || S.missionEnded) return;
+  const d = ensureDynamicObjectiveState(S);
+  const now = Date.now();
+  if(!d.active){
+    if(now < Math.max(0, Number(d.nextRollAt || 0))) return;
+    const types = [...DYNAMIC_OBJECTIVE_TYPES];
+    const pick = types[rand(0, types.length - 1)];
+    startDynamicObjective(pick);
+    return;
+  }
+
+  if(d.type === "escort_lane"){
+    d.progress = Math.max(0, Math.floor(Number(S.stats?.evac || 0))) - d.startEvac;
+  } else if(d.type === "intercept_scout"){
+    d.progress = Math.max(0, Math.floor(Number(S._scoutTakedownsMission || 0))) - Math.max(0, Math.floor(Number(d.startScoutTakedowns || 0)));
+  } else if(d.type === "pack_break"){
+    const deltaKills = Math.max(0, Math.floor(Number(S.stats?.kills || 0))) - d.startKills;
+    const deltaCaps = Math.max(0, Math.floor(Number(S.stats?.captures || 0))) - d.startCaptures;
+    d.progress = Math.max(0, deltaKills + deltaCaps);
+  }
+
+  if(d.progress >= d.target){
+    grantDynamicObjectiveReward();
+    return;
+  }
+
+  if(now >= d.until){
+    setEventText(`⏱️ Objective expired: ${d.title}. Re-tasking...`, 2.4);
+    d.nextRollAt = now + rand(Math.round(DYNAMIC_OBJECTIVE_ROLL_MIN_MS * 0.6), DYNAMIC_OBJECTIVE_ROLL_MAX_MS);
+    clearDynamicObjective(S);
   }
 }
 
@@ -28332,6 +28552,11 @@ function renderHUD(){
   const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
   const storyObjective = storyMission ? `${storyMission.objective}${storyObjectiveProgressText(storyMission)}` : "";
   const arcadeObjective = arcadeMission ? `${arcadeMission.objective}${arcadeObjectiveProgressText(arcadeMission)}` : "";
+  const dynObjective = ensureDynamicObjectiveState(S);
+  const dynLeft = dynObjective.active ? Math.max(0, Math.ceil((Number(dynObjective.until || 0) - Date.now()) / 1000)) : 0;
+  const dynInline = dynObjective.active
+    ? ` • Dynamic: ${dynObjective.title} ${Math.min(dynObjective.progress, dynObjective.target)}/${dynObjective.target}${dynLeft ? ` (${dynLeft}s)` : ""}`
+    : "";
   const arcadeLeft = (S.mode==="Arcade") ? arcadeMissionTimeLeftSec() : 0;
   const arcadeMult = (S.mode==="Arcade") ? arcadeComboMultiplier() : 1;
   const arcadeMedal = (S.mode==="Arcade") ? arcadeMissionMedal() : "";
@@ -28342,9 +28567,9 @@ function renderHUD(){
     (S.mode==="Survival")
       ? `Objective: Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
       : (S.mode==="Story")
-        ? `Objective: ${storyObjective}${grace}`
+        ? `Objective: ${storyObjective}${dynInline}${grace}`
       : (S.mode==="Arcade")
-        ? `Objective: ${arcadeObjective}${arcadeHint}${grace}`
+        ? `Objective: ${arcadeObjective}${arcadeHint}${dynInline}${grace}`
         : `Objective: Evacuate living civilians + clear ALL tigers${grace}`;
   const storyOpsEl = document.getElementById("storyOpsTxt");
   if(storyOpsEl){
@@ -28425,6 +28650,9 @@ function renderHUD(){
     } else {
       assistParts.unshift(`World: ${label} ${left}s`);
     }
+  }
+  if(dynObjective.active){
+    assistParts.unshift(`Dynamic: ${dynObjective.title} ${Math.min(dynObjective.progress, dynObjective.target)}/${dynObjective.target} • ${dynLeft}s`);
   }
   if(S.mode==="Arcade"){
     const limit = Math.max(0, Math.floor(Number(S.arcadeMissionLimitSec || 0)));
@@ -32403,6 +32631,9 @@ function draw(){
       runFrameTask("convoyMissionTick", frameInterval(lagCritical ? 188 : (lagHeavy ? 154 : 120), 1.45), convoyMissionTick, {
         costHint:0.8, critical:S.mode!=="Survival"
       });
+      runFrameTask("dynamicObjectiveTick", frameInterval(lagCritical ? 240 : (lagHeavy ? 196 : 150), 1.45), dynamicObjectiveTick, {
+        costHint:0.7, critical:S.mode!=="Survival"
+      });
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
       runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 44 : (lagHeavy ? 36 : 28)) : (lagCritical ? 56 : (lagHeavy ? 46 : 36)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
       runFrameTask("storyCheckpoint", frameInterval(lagCritical ? 220 : (lagHeavy ? 170 : 124), 1.45), maybeCaptureStoryCheckpoint, { costHint:0.8, critical:S.mode==="Story" });
@@ -32703,6 +32934,10 @@ function init(){
   if(!Number.isFinite(S._convoySplitThreatWaves)) S._convoySplitThreatWaves = 0;
   if(!Number.isFinite(S._rivalLastIntelDropAt)) S._rivalLastIntelDropAt = 0;
   if(typeof S._rivalFactionName !== "string") S._rivalFactionName = "";
+  if(!Number.isFinite(S._scoutTakedownsMission)) S._scoutTakedownsMission = 0;
+  ensureDynamicObjectiveState(S);
+  if(!Number.isFinite(S._dynamicTigerCivBiasMul)) S._dynamicTigerCivBiasMul = 1;
+  if(!Number.isFinite(S._dynamicTigerPlayerBiasMul)) S._dynamicTigerPlayerBiasMul = 1;
   if(!Number.isFinite(S.respawnLockRecoverCount)) S.respawnLockRecoverCount = 0;
   if(!Number.isFinite(S._respawnLockRecoverCountSession)) S._respawnLockRecoverCountSession = 0;
   if(!Number.isFinite(S._directorAggroMul)) S._directorAggroMul = 1;
