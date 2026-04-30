@@ -24592,10 +24592,120 @@ function runCivilianFleeStep(c, now=Date.now()){
   const fleeSpeed = (fleeBase * (civDef.fleeMul || 1)) * (c.following ? Math.max(0.95, waterMul) : waterMul) * motionMul * mapCivMul * worldCivMul;
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
-  tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
+  const moved = tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
+  if(!moved){
+    resolveEntityStuck(c, 14, {
+      avoidKeepout:false,
+      movingIntent:true,
+      targetX:threat ? (c.x + (c.x - threat.x)) : c.x,
+      targetY:threat ? (c.y + (c.y - threat.y)) : c.y,
+      stuckThreshold:10
+    });
+  }
   c.face = ang;
   c.step = (c.step || 0) + 0.20;
   return true;
+}
+
+function civilianUpdatePathMemory(c, now=Date.now()){
+  if(!c) return;
+  if(!Number.isFinite(c._pathLastX)) c._pathLastX = c.x;
+  if(!Number.isFinite(c._pathLastY)) c._pathLastY = c.y;
+  const moved = dist(c.x, c.y, c._pathLastX, c._pathLastY);
+  c._pathStallCount = moved <= 0.9 ? ((c._pathStallCount || 0) + 1) : Math.max(0, (c._pathStallCount || 0) - 2);
+  c._pathLastX = c.x;
+  c._pathLastY = c.y;
+  if(Number.isFinite(c._pathRerouteUntil) && now > c._pathRerouteUntil){
+    c._pathRerouteX = NaN;
+    c._pathRerouteY = NaN;
+    c._pathRerouteUntil = 0;
+  }
+}
+function civilianAntiClumpOffset(c, followers){
+  if(!c || !Array.isArray(followers) || !followers.length) return { x:0, y:0 };
+  let ox = 0;
+  let oy = 0;
+  let n = 0;
+  for(const other of followers){
+    if(!other || other.id === c.id || !other.alive || other.evac) continue;
+    const dx = c.x - other.x;
+    const dy = c.y - other.y;
+    const d = Math.hypot(dx, dy) || 0;
+    if(d <= 0.001 || d > 28) continue;
+    const push = (28 - d) / 28;
+    ox += (dx / d) * push;
+    oy += (dy / d) * push;
+    n += 1;
+  }
+  if(!n) return { x:0, y:0 };
+  const scale = Math.min(22, 10 + (n * 4));
+  return { x:(ox / n) * scale, y:(oy / n) * scale };
+}
+function civilianEvacEdgeBypassTarget(c, tx, ty){
+  if(!c || !S?.evacZone) return { x:tx, y:ty };
+  const ez = S.evacZone;
+  const dToEvac = dist(c.x, c.y, ez.x, ez.y);
+  const ringOuter = (ez.r || 70) + 42;
+  const ringInner = Math.max(12, (ez.r || 70) - 10);
+  if(dToEvac < ringInner || dToEvac > ringOuter) return { x:tx, y:ty };
+  const toTarget = dist(tx, ty, ez.x, ez.y);
+  if(toTarget <= (ez.r || 70) + 10) return { x:tx, y:ty };
+  const dir = ((Number(c.id || 0) % 2) === 0) ? 1 : -1;
+  const angle = Math.atan2(c.y - ez.y, c.x - ez.x) + (dir * 0.52);
+  const laneR = clamp((ez.r || 70) + 16, 28, 120);
+  const px = clamp(ez.x + Math.cos(angle) * laneR, 24, worldWidth(S) - 24);
+  const py = clamp(ez.y + Math.sin(angle) * laneR, 24, worldHeight(S) - 24);
+  const open = findNearestOpenPoint(px, py, 14, {
+    avoidKeepout:false,
+    avoidWater:false,
+    targetX:tx,
+    targetY:ty
+  });
+  return open || { x:tx, y:ty };
+}
+function civilianSmartRerouteTarget(c, anchor, now=Date.now()){
+  if(!c || !anchor) return anchor;
+  const stall = Math.max(0, Math.floor(Number(c._pathStallCount || 0)));
+  if(Number.isFinite(c._pathRerouteUntil) && now < c._pathRerouteUntil && Number.isFinite(c._pathRerouteX) && Number.isFinite(c._pathRerouteY)){
+    return { x:c._pathRerouteX, y:c._pathRerouteY };
+  }
+  if(stall < 8 && now < (c._nextPathRerouteAt || 0)) return anchor;
+  const candidates = [];
+  candidates.push({ x:anchor.x, y:anchor.y, weight:1.0 });
+  candidates.push({ x:(anchor.x * 0.72) + (S.me.x * 0.28), y:(anchor.y * 0.72) + (S.me.y * 0.28), weight:0.88 });
+  if(S.evacZone){
+    const ez = S.evacZone;
+    const angle = Math.atan2(c.y - ez.y, c.x - ez.x) + ((((Number(c.id || 0) % 3) - 1) * 0.36));
+    const laneR = clamp((ez.r || 70) + 20, 24, 130);
+    candidates.push({ x:ez.x + Math.cos(angle) * laneR, y:ez.y + Math.sin(angle) * laneR, weight:0.82 });
+  }
+  let best = null;
+  let bestScore = Infinity;
+  for(const cand of candidates){
+    const open = findNearestOpenPoint(cand.x, cand.y, 14, {
+      avoidKeepout:false,
+      avoidWater:false,
+      targetX:anchor.x,
+      targetY:anchor.y
+    });
+    if(!open) continue;
+    const blockPenalty = blockedAt(open.x, open.y, 14) ? 160 : 0;
+    const keepoutPenalty = inMapScenarioKeepout(open.x, open.y, 14) ? 120 : 0;
+    const s = (dist(open.x, open.y, anchor.x, anchor.y) * cand.weight) + (dist(open.x, open.y, c.x, c.y) * 0.36) + blockPenalty + keepoutPenalty;
+    if(s < bestScore){
+      bestScore = s;
+      best = open;
+    }
+  }
+  if(best){
+    c._pathRerouteX = best.x;
+    c._pathRerouteY = best.y;
+    c._pathRerouteUntil = now + clamp(700 + (stall * 40), 700, 1800);
+    c._nextPathRerouteAt = now + 320;
+    return best;
+  }
+  c._nextPathRerouteAt = now + 260;
+  return anchor;
 }
 
 // ===================== CIVILIANS FOLLOW-ONLY =====================
@@ -24741,12 +24851,17 @@ function followCiviliansTick(){
     if(!anchor) continue;
     c.fleeUntil = 0;
     c.fleeFromTigerId = 0;
+    civilianUpdatePathMemory(c, now);
+    const antiClump = civilianAntiClumpOffset(c, activeFollowers);
+    const anchorWithSpread = { x:anchor.x + antiClump.x, y:anchor.y + antiClump.y };
+    const rerouteAnchor = civilianSmartRerouteTarget(c, anchorWithSpread, now);
+    const bypassAnchor = civilianEvacEdgeBypassTarget(c, rerouteAnchor.x, rerouteAnchor.y);
 
-    let dx = anchor.x - c.x;
-    let dy = anchor.y - c.y;
+    let dx = bypassAnchor.x - c.x;
+    let dy = bypassAnchor.y - c.y;
     let dd = Math.hypot(dx,dy) || 1;
     if(dd > 245 && now > (c._lastEscortSnapAt || 0) + 1800){
-      const snap = findNearestOpenPoint(anchor.x, anchor.y, 14, {
+      const snap = findNearestOpenPoint(bypassAnchor.x, bypassAnchor.y, 14, {
         avoidKeepout:false,
         avoidWater:false,
         targetX:S.me.x,
@@ -24756,8 +24871,8 @@ function followCiviliansTick(){
         c.x = snap.x;
         c.y = snap.y;
         c._lastEscortSnapAt = now;
-        dx = anchor.x - c.x;
-        dy = anchor.y - c.y;
+        dx = bypassAnchor.x - c.x;
+        dy = bypassAnchor.y - c.y;
         dd = Math.hypot(dx,dy) || 1;
       }
     }
@@ -24794,7 +24909,8 @@ function followCiviliansTick(){
     if(!moved){
       c._followVx *= 0.45;
       c._followVy *= 0.45;
-      const recover = findNearestOpenPoint(anchor.x, anchor.y, 14, {
+      c._pathStallCount = Math.max(0, Number(c._pathStallCount || 0)) + 2;
+      const recover = findNearestOpenPoint(bypassAnchor.x, bypassAnchor.y, 14, {
         avoidKeepout:false,
         avoidWater:false,
         targetX:S.me.x,
@@ -24804,6 +24920,15 @@ function followCiviliansTick(){
         c.x = recover.x;
         c.y = recover.y;
       }
+      resolveEntityStuck(c, 14, {
+        avoidKeepout:false,
+        movingIntent:true,
+        targetX:bypassAnchor.x,
+        targetY:bypassAnchor.y,
+        stuckThreshold:10
+      });
+    } else {
+      c._pathStallCount = Math.max(0, Number(c._pathStallCount || 0) - 2);
     }
   }
 }
