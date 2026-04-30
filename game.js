@@ -20620,6 +20620,75 @@ function transitionCleanupSweep(reason=""){
   clearEscortTakeoverPrompt();
   try{ sanitizeRuntimeState(); }catch(e){}
 }
+let __missionTransitionGuardUntil = 0;
+function missionTransitionGuardActive(now=Date.now()){
+  return now < (__missionTransitionGuardUntil || 0);
+}
+function beginMissionTransitionGuard(reason="transition", holdMs=1400){
+  const now = Date.now();
+  __missionTransitionGuardUntil = Math.max(__missionTransitionGuardUntil || 0, now + Math.max(240, Math.floor(Number(holdMs) || 0)));
+  try{ resetControlInputState(`guard:${reason}`); }catch(e){}
+  if(S && typeof S === "object"){
+    S.target = null;
+    S.inBattle = false;
+    S.activeTigerId = null;
+    S._combatTigerAttackAt = 0;
+    S.scanPing = 0;
+    S.paused = true;
+    S.pauseReason = "mission-transition";
+  }
+}
+function endMissionTransitionGuard(reason="transition-end"){
+  const now = Date.now();
+  __missionTransitionGuardUntil = Math.max(__missionTransitionGuardUntil || 0, now + 60);
+  if(S && typeof S === "object" && S.pauseReason === "mission-transition"){
+    S.paused = false;
+    S.pauseReason = null;
+  }
+  try{ resetControlInputState(`guard-end:${reason}`); }catch(e){}
+}
+function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
+  if(!S || typeof S !== "object") return;
+  const now = Date.now();
+  S.target = null;
+  S.inBattle = false;
+  S.activeTigerId = null;
+  S.lockedTigerId = null;
+  S.scanPing = 0;
+  S._underAttack = 0;
+  S._combatTigerAttackAt = 0;
+  S.eventTextUntil = 0;
+  S.eventCooldown = Math.max(0, Math.floor(Number(S.eventCooldown || 0)));
+  S.meHitFlashUntil = 0;
+  S.meHitFlashPower = 0;
+  S.rollInvulnUntil = Math.max(0, Number(S.rollInvulnUntil || 0));
+  S.rollBufferedUntil = 0;
+  S.rollBufferedDodges = 0;
+  S.rollAnimStart = 0;
+  S.rollAnimUntil = 0;
+  S.takeoverPromptUntil = 0;
+  S.takeoverCivId = null;
+  S.takeoverUnitId = null;
+  S._cameraOutFrames = 0;
+  S.respawnPendingUntil = 0;
+  S.respawnNoticeAt = 0;
+  S.respawnTargetX = 0;
+  S.respawnTargetY = 0;
+  S._survivalClearAt = 0;
+  S._pressTick = 0;
+  S._pressure = 0;
+  if(Number.isFinite(S?.me?.x) && Number.isFinite(S?.me?.y)){
+    const cam = cameraClampCenter(S.me.x, S.me.y, S);
+    if(!S.camera || typeof S.camera !== "object") S.camera = { x:cam.x, y:cam.y };
+    S.camera.x = cam.x;
+    S.camera.y = cam.y;
+  }
+  try{ transitionCleanupSweep(reason); }catch(e){}
+  try{ resetControlInputState(reason); }catch(e){}
+  if(now > (__lastControlRecoverAt || 0) + 60){
+    __lastControlRecoverAt = now;
+  }
+}
 
 const SKIN_TONES = ["#f6d7c3","#eac0a6","#d9a07f","#c9865c","#a86a44","#7a4a2c","#4b2f1f"];
 const SHIRT_COLS = ["#4aa3ff","#3ddc97","#f59e0b","#fb7185","#a78bfa","#f97316","#eab308","#22c55e","#60a5fa"];
@@ -22201,6 +22270,7 @@ function deploy(opts={}){
     return;
   }
   __deployInProgress = true;
+  beginMissionTransitionGuard("deploy-begin", 1600);
   try{
   const carryStats = !!opts.carryStats;
   const carryHp = clamp(Number.isFinite(opts.hp) ? opts.hp : S.hp, 0, 100);
@@ -22229,6 +22299,7 @@ function deploy(opts={}){
   S.paused=false; S.pauseReason=null;
   clearTransientCombatVisuals();
   transitionCleanupSweep("deploy-pre");
+  hardResetMissionRuntimeState("deploy-runtime-reset");
 
   S.hp = carryStats ? carryHp : 100;
   S.armor = carryStats
@@ -22462,6 +22533,9 @@ function deploy(opts={}){
   save();
   } finally {
     __deployInProgress = false;
+    setTimeout(()=>{
+      try{ endMissionTransitionGuard("deploy-finish"); }catch(e){}
+    }, 140);
     if(__queuedDeployOpts){
       const queued = __queuedDeployOpts;
       __queuedDeployOpts = null;
@@ -22471,6 +22545,7 @@ function deploy(opts={}){
 }
 
 function startNextMission(){
+  beginMissionTransitionGuard("next-mission", 1200);
   document.getElementById("completeOverlay").style.display="none";
   ensureStoryEndgameState(S);
   const carryHp = clamp(S.hp, 0, 100);
@@ -22514,6 +22589,7 @@ function startNextMission(){
 }
 
 function restartCurrentMission(){
+  beginMissionTransitionGuard("restart-current", 1300);
   document.getElementById("battleOverlay").style.display="none";
   document.getElementById("completeOverlay").style.display="none";
   document.getElementById("overOverlay").style.display="none";
@@ -22527,6 +22603,7 @@ function restartCurrentMission(){
 }
 
 function restartModeFromMission1(){
+  beginMissionTransitionGuard("restart-mode-m1", 1500);
   const mode = normalizeModeName(S.mode);
   ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay","modeOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
@@ -22569,6 +22646,7 @@ function closeComplete(){
 }
 
 function performResetGame(){
+  beginMissionTransitionGuard("reset-game", 1700);
   localStorage.removeItem(STORAGE_KEY);
   for(const key of STORAGE_FALLBACK_KEYS){
     localStorage.removeItem(key);
@@ -22671,6 +22749,7 @@ cv.addEventListener("pointerdown",(e)=>{
   }
 
   // --- NORMAL GAMEPLAY ---
+  if(missionTransitionGuardActive()) return;
   if(S.gameOver || S.missionEnded) return;
   if(S.paused) return;
 
@@ -23023,6 +23102,11 @@ function pollGamepadControls(){
     }
     return { x:0, y:0 };
   }
+  if(missionTransitionGuardActive()){
+    GAMEPAD_STATE.lx = 0;
+    GAMEPAD_STATE.ly = 0;
+    return { x:0, y:0 };
+  }
 
   GAMEPAD_STATE.connected = true;
   GAMEPAD_STATE.id = pad.id || "Controller";
@@ -23289,6 +23373,7 @@ function resetControlInputState(reason=""){
 }
 
 function keyboardMoveTick(){
+  if(missionTransitionGuardActive()) return false;
   const touchActive = Math.abs(TOUCH_STICK.dx) > 0.04 || Math.abs(TOUCH_STICK.dy) > 0.04;
   const gamepadActive = Math.abs(GAMEPAD_STATE.lx) > 0.04 || Math.abs(GAMEPAD_STATE.ly) > 0.04;
   if(window.TigerTutorial?.isRunning && !touchActive && !gamepadActive) return false;
