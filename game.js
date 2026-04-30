@@ -20624,9 +20624,24 @@ let __missionTransitionGuardUntil = 0;
 function missionTransitionGuardActive(now=Date.now()){
   return now < (__missionTransitionGuardUntil || 0);
 }
+function missionTransitionGuardRemainingMs(now=Date.now()){
+  return Math.max(0, Math.round((__missionTransitionGuardUntil || 0) - now));
+}
+function updateMissionTransitionIndicator(now=Date.now()){
+  const chip = document.getElementById("transitionGuardChip");
+  if(!chip) return;
+  const leftMs = missionTransitionGuardRemainingMs(now);
+  if(leftMs <= 0){
+    chip.style.display = "none";
+    return;
+  }
+  chip.style.display = "inline-flex";
+  chip.innerText = `Transition... ${Math.max(1, Math.ceil(leftMs / 1000))}s`;
+}
 function beginMissionTransitionGuard(reason="transition", holdMs=1400){
   const now = Date.now();
   __missionTransitionGuardUntil = Math.max(__missionTransitionGuardUntil || 0, now + Math.max(240, Math.floor(Number(holdMs) || 0)));
+  updateMissionTransitionIndicator(now);
   try{ resetControlInputState(`guard:${reason}`); }catch(e){}
   if(S && typeof S === "object"){
     S.target = null;
@@ -20646,6 +20661,7 @@ function endMissionTransitionGuard(reason="transition-end"){
     S.pauseReason = null;
   }
   try{ resetControlInputState(`guard-end:${reason}`); }catch(e){}
+  updateMissionTransitionIndicator(now);
 }
 function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
   if(!S || typeof S !== "object") return;
@@ -27851,6 +27867,7 @@ function updateEngage(){
 
 function renderHUD(){
   try{
+    updateMissionTransitionIndicator();
     syncSquadRosterBounds();
     contractsHeartbeatTick();
     applyModeTheme(S.mode);

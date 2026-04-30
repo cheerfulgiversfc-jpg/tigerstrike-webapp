@@ -638,6 +638,23 @@
     .weaponGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 
     .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#101626;border:1px solid var(--border);padding:10px 12px;border-radius:12px;font-size:13px;box-shadow:var(--shadow);display:none;max-width:92vw;z-index:240}
+    .transitionGuardChip{
+      position:fixed;
+      right:12px;
+      top:12px;
+      z-index:260;
+      display:none;
+      border:1px solid rgba(251,191,36,.78);
+      background:linear-gradient(180deg, rgba(68,35,8,.95), rgba(46,24,6,.95));
+      color:#fde68a;
+      border-radius:999px;
+      padding:6px 10px;
+      font-size:11px;
+      font-weight:900;
+      letter-spacing:.02em;
+      box-shadow:0 10px 20px rgba(0,0,0,.35);
+      pointer-events:none;
+    }
     .nav{position:fixed;left:0;right:0;bottom:0;background:rgba(11,13,18,.92);border-top:1px solid var(--border);backdrop-filter:blur(10px);padding:10px 10px 14px;z-index:100}
     .navInner{max-width:1020px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
     .navBtn{padding:10px 8px;border-radius:12px;border:1px solid var(--border2);background:rgba(18,22,34,.75);color:#fff;font-weight:900;font-size:12px}
@@ -1924,6 +1941,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="transitionGuardChip" id="transitionGuardChip">Transition...</div>
 <button class="mobileMenuToggle" id="mobileMenuToggle" onclick="toggleMobileMenu()">Hide Menu</button>
 
 <div class="nav">
