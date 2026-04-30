@@ -23732,12 +23732,9 @@ function damageSupportUnit(unit, dmg){
     unit.hp = Math.max(0, unit.hp - dmg);
   }
   if(unit.hp > 0) return;
-
+  unit.hp = 0;
   unit.alive = false;
-  if(unit.raidPartner){
-    return;
-  }
-  if(!unit._downedApplied){
+  if(!unit.raidPartner && !unit._downedApplied){
     unit._downedApplied = true;
     if(unit.role === "attacker"){
       S.soldierAttackersDowned = clamp((S.soldierAttackersDowned || 0) + 1, 0, S.soldierAttackersOwned || 0);
@@ -23752,6 +23749,16 @@ function damageSupportUnit(unit, dmg){
   save();
 }
 
+function applyTigerDamage(tiger, dmg, opts={}){
+  if(!tiger || !tiger.alive || dmg <= 0) return { dealt:0, defeated:false, hp:Number(tiger?.hp || 0) };
+  const hpMax = Math.max(1, Number(tiger.hpMax || 1));
+  const floorHp = opts.floorOne ? 1 : 0;
+  const before = clamp(Number(tiger.hp || hpMax), floorHp, hpMax);
+  const after = clamp(before - Math.max(0, Number(dmg || 0)), floorHp, hpMax);
+  tiger.hp = after;
+  return { dealt:Math.max(0, before - after), defeated:after <= 0, hp:after };
+}
+
 function supportTigerHitDamage(tiger, role){
   const tier = tigerDamageScale(tiger, "player");
   let dmg = rand(10, 18) * tier;
@@ -23764,10 +23771,8 @@ function supportTigerHitDamage(tiger, role){
   if(tiger?.type === "Stalker") dmg *= 1.06;
   if(isBossTiger(tiger)) dmg *= 1.18;
   if(tiger?.type === "Alpha" || isBossTiger(tiger)) dmg *= 1.35;
-  if(tiger?.type === "Berserker") dmg *= 1.15;
-  if(role === "rescue") dmg *= 1.04;
   if(role === "attacker") dmg *= 1.28;
-  if(role === "rescue") dmg *= 1.10;
+  if(role === "rescue") dmg *= 1.14;
   if(role === "rescue" && squadAbilityActive("smoke_screen")) dmg *= 0.82;
   if(S.mode==="Story"){
     if(role === "attacker"){
@@ -24061,11 +24066,11 @@ function rivalHuntersTick(){
       if(canCapture && Math.random() < clamp(Number(faction.captureBias || 0.26), 0.12, 0.62)){
         rivalResolveTigerOutcome(tiger, "capture", unit);
       } else {
-        tiger.hp = clamp(tiger.hp - shot, 0, tiger.hpMax);
+        const tigerHit = applyTigerDamage(tiger, shot);
         tiger.aggroBoost = clamp((tiger.aggroBoost || 0) + 0.05, 0, 1.5);
         emitCombatFx(unit.x, unit.y - 5, tiger.x, tiger.y, faction.accent || "rgba(248,113,113,.95)", 2.8, "hit");
-        emitDamagePopup(tiger.x, tiger.y - 40, `-${shot}`, "hit");
-        if(tiger.hp <= 0){
+        emitDamagePopup(tiger.x, tiger.y - 40, `-${tigerHit.dealt}`, "hit");
+        if(tigerHit.defeated){
           rivalResolveTigerOutcome(tiger, "kill", unit);
         }
       }
@@ -24448,7 +24453,7 @@ function supportUnitsTick(){
           const captureFirst = captureReady && !forceKill;
           if(captureFirst){
             tiger.tranqTagged = true;
-            tiger.hp = Math.max(1, tiger.hp - Math.max(1, Math.round(shotDmg * 0.35)));
+            applyTigerDamage(tiger, Math.max(1, Math.round(shotDmg * 0.35)), { floorOne:true });
             const burstBonus = (squadAbilityActive("tranq_burst", now, S) || now < Number(tiger._squadTranqBurstUntil || 0)) ? 0.12 : 0;
             const capChance = clamp(0.62 + storyAttackerCaptureBonus() + burstBonus, 0.62, 0.97);
             if(Math.random() < capChance){
@@ -24470,7 +24475,7 @@ function supportUnitsTick(){
               break;
             }
           } else {
-            tiger.hp = clamp(tiger.hp - shotDmg, 0, tiger.hpMax);
+            applyTigerDamage(tiger, shotDmg);
           }
           tiger.aggroBoost = clamp((tiger.aggroBoost||0) + 0.05, 0, 1.4);
           if(tiger.hp <= 0){
@@ -27540,11 +27545,7 @@ function playerAction(action){
       t.hitFlashUntil = Date.now() + 190;
       t.hitFlashKind = crit ? "crit" : (w.type === "tranq" ? "tranq" : "hit");
       t.lastHitDamage = dmg;
-      if(w.type==="tranq"){
-        t.hp = clamp(t.hp - dmg, 1, t.hpMax);
-      }else{
-        t.hp = clamp(t.hp - dmg, 0, t.hpMax);
-      }
+      const tigerHit = applyTigerDamage(t, dmg, { floorOne:w.type==="tranq" });
       const trailBaseColor = w.type==="tranq"
         ? (forgeTrail?.tranqColor || "rgba(96,165,250,.96)")
         : (forgeTrail?.color || "rgba(245,247,255,.96)");
@@ -27557,9 +27558,9 @@ function playerAction(action){
         (crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"))
       );
       addWeaponMasteryXp(w.id, 2);
-      emitDamagePopup(t.x, t.y - 44, `-${dmg}`, crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"));
+      emitDamagePopup(t.x, t.y - 44, `-${tigerHit.dealt}`, crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"));
       hapticImpact(crit ? "heavy" : "light");
-      setBattleMsg(`${crit?'CRIT! ':''}Hit for ${dmg}. ${w.type==='tranq'?'(tranq applied)':''}`);
+      setBattleMsg(`${crit?'CRIT! ':''}Hit for ${tigerHit.dealt}. ${w.type==='tranq'?'(tranq applied)':''}`);
       if(!crit && Math.random() < (0.08 + (Math.max(0, 1 - build.recoilMul) * 0.2))){
         setEventText(`🎯 ${w.name}: ${handling.label}.`, 0.9);
       }
