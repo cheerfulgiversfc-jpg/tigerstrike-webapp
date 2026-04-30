@@ -6767,6 +6767,14 @@ const DEFAULT = {
     dominanceLockUntil:0,
     dominanceCount:0
   },
+  directorTuning:{
+    pressureEnter:46,
+    peakEnter:80,
+    recoverExit:26,
+    spawnCdMul:1.00,
+    dominanceTrigger:64,
+    recoveryMul:1.00
+  },
   _directorAggroMul:1,
   _directorSpeedMul:1,
   pickups:[],
@@ -9181,6 +9189,7 @@ function ensureMissionDirectorState(state=S){
       dominanceCount:0
     };
   }
+  ensureDirectorTuningState(state);
   const cur = (state.director && typeof state.director === "object") ? state.director : {};
   const laneHeatRaw = Array.isArray(cur.laneHeat) ? cur.laneHeat : [0,0,0];
   const laneHeat = [
@@ -9281,13 +9290,14 @@ function missionDirectorAllowTigerSpawn(extra=1, opts={}){
 function missionDirectorMarkTigerSpawn(opts={}){
   const now = Date.now();
   const director = ensureMissionDirectorState();
+  const liveTune = ensureDirectorTuningState(S);
   const phaseKey = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
   const cfg = DIRECTOR_PHASE_CONFIG[phaseKey];
   const tuning = currentBalanceTuning(S, now);
   const minCd = Math.round(cfg.spawnCd?.[0] || 13000);
   const maxCd = Math.round(cfg.spawnCd?.[1] || 19000);
   const survivalMul = S.mode === "Survival" ? 0.76 : 1;
-  const cdMul = clamp(Number(tuning.spawnCdMul || 1), 0.84, 1.22);
+  const cdMul = clamp(Number(tuning.spawnCdMul || 1), 0.84, 1.22) * clamp(Number(liveTune.spawnCdMul || 1), 0.70, 1.60);
   const cd = rand(
     Math.max(1200, Math.round(minCd * survivalMul * cdMul)),
     Math.max(1600, Math.round(maxCd * survivalMul * cdMul))
@@ -9353,27 +9363,37 @@ function missionDirectorTargetPressure(now=Date.now()){
   return clamp(target, 0, 100);
 }
 function missionDirectorResolvePhase(pressure, currentPhase){
+  const liveTune = ensureDirectorTuningState(S);
   const p = clamp(Number(pressure) || 0, 0, 100);
   const cur = DIRECTOR_PHASE_CONFIG[currentPhase] ? currentPhase : DIRECTOR_PHASES.CALM;
+  const pressureEnter = clamp(Number(liveTune.pressureEnter || 46), 30, 70);
+  const peakEnter = clamp(Math.max(pressureEnter + 9, Number(liveTune.peakEnter || 80)), 58, 96);
+  const recoverExit = clamp(Math.min(pressureEnter - 4, Number(liveTune.recoverExit || 26)), 10, 45);
+  const pressureStay = clamp(Math.max(recoverExit + 6, pressureEnter - 12), recoverExit + 4, 88);
+  const pressureToRecover = clamp(Math.max(recoverExit + 2, pressureEnter - 24), recoverExit + 1, 84);
+  const peakStay = clamp(Math.max(pressureEnter + 16, peakEnter - 14), pressureEnter + 8, 98);
+  const peakToRecover = clamp(Math.max(recoverExit + 8, pressureEnter - 8), recoverExit + 4, 92);
+  const peakToPressure = clamp(Math.max(pressureStay, pressureEnter - 22), pressureStay, 90);
+  const recoverToPressure = clamp(Math.max(pressureEnter + 6, pressureStay + 4), pressureEnter + 2, 96);
   if(cur === DIRECTOR_PHASES.PEAK){
-    if(p >= 66) return DIRECTOR_PHASES.PEAK;
-    if(p >= 38) return DIRECTOR_PHASES.RECOVER;
-    if(p >= 24) return DIRECTOR_PHASES.PRESSURE;
+    if(p >= peakStay) return DIRECTOR_PHASES.PEAK;
+    if(p >= peakToRecover) return DIRECTOR_PHASES.RECOVER;
+    if(p >= peakToPressure) return DIRECTOR_PHASES.PRESSURE;
     return DIRECTOR_PHASES.CALM;
   }
   if(cur === DIRECTOR_PHASES.PRESSURE){
-    if(p >= 80) return DIRECTOR_PHASES.PEAK;
-    if(p >= 34) return DIRECTOR_PHASES.PRESSURE;
-    if(p >= 22) return DIRECTOR_PHASES.RECOVER;
+    if(p >= peakEnter) return DIRECTOR_PHASES.PEAK;
+    if(p >= pressureStay) return DIRECTOR_PHASES.PRESSURE;
+    if(p >= pressureToRecover) return DIRECTOR_PHASES.RECOVER;
     return DIRECTOR_PHASES.CALM;
   }
   if(cur === DIRECTOR_PHASES.RECOVER){
-    if(p >= 84) return DIRECTOR_PHASES.PEAK;
-    if(p >= 52) return DIRECTOR_PHASES.PRESSURE;
-    if(p >= 26) return DIRECTOR_PHASES.RECOVER;
+    if(p >= peakEnter + 4) return DIRECTOR_PHASES.PEAK;
+    if(p >= recoverToPressure) return DIRECTOR_PHASES.PRESSURE;
+    if(p >= recoverExit) return DIRECTOR_PHASES.RECOVER;
     return DIRECTOR_PHASES.CALM;
   }
-  if(p >= 46) return DIRECTOR_PHASES.PRESSURE;
+  if(p >= pressureEnter) return DIRECTOR_PHASES.PRESSURE;
   return DIRECTOR_PHASES.CALM;
 }
 function missionDirectorApplyHardCaps(){
@@ -9435,6 +9455,7 @@ function missionDirectorTick(){
   if(S.gameOver || S.missionEnded) return;
   const now = Date.now();
   const director = ensureMissionDirectorState();
+  const liveTune = ensureDirectorTuningState(S);
   if(S.paused) return;
   if(now < (director.lastSampleAt || 0) + 140) return;
   director.lastSampleAt = now;
@@ -9449,11 +9470,14 @@ function missionDirectorTick(){
     director.nextSpawnAt = Math.max(director.nextSpawnAt || 0, now + rand(600, 1200));
   }
   const dom = missionDirectorDominanceScore(now);
-  if(dom.score >= 64 && now >= (director.dominanceLockUntil || 0)){
-    const lockMs = 2600 + Math.min(1800, dom.hotLane * 180);
+  const dominanceTrigger = clamp(Number(liveTune.dominanceTrigger || 64), 35, 90);
+  const recoveryMul = clamp(Number(liveTune.recoveryMul || 1), 0.60, 1.80);
+  if(dom.score >= dominanceTrigger && now >= (director.dominanceLockUntil || 0)){
+    const baseLockMs = 2600 + Math.min(1800, dom.hotLane * 180);
+    const lockMs = Math.round(baseLockMs * recoveryMul);
     director.dominanceLockUntil = now + lockMs;
     director.dominanceCount = Math.max(0, Number(director.dominanceCount || 0)) + 1;
-    director.recoveryUntil = Math.max(director.recoveryUntil || 0, now + lockMs + 1200);
+    director.recoveryUntil = Math.max(director.recoveryUntil || 0, now + lockMs + Math.round(1200 * recoveryMul));
     director.spawnSoftLockUntil = Math.max(director.spawnSoftLockUntil || 0, now + lockMs);
     director.nextSpawnAt = Math.max(director.nextSpawnAt || 0, now + lockMs + rand(800, 1600));
     director.pressure = clamp(Math.min(Number(director.pressure || 0), 54) * 0.86, 16, 58);
@@ -10178,8 +10202,17 @@ function toast(msg){
   window.__toastTimer=setTimeout(()=>t.style.display="none",2200);
 }
 const STARS_DEBUG_ENABLED_KEY = "ts_stars_debug_enabled";
+const DIRECTOR_TUNE_PRESETS_KEY = "ts_director_tune_presets_v1";
 let starsDebugPanelOpen = false;
 let starsDebugEntries = [];
+const DIRECTOR_TUNE_DEFAULT = Object.freeze({
+  pressureEnter:46,
+  peakEnter:80,
+  recoverExit:26,
+  spawnCdMul:1.00,
+  dominanceTrigger:64,
+  recoveryMul:1.00
+});
 function starsDebugEnabled(){
   try{
     const v = localStorage.getItem(STARS_DEBUG_ENABLED_KEY);
@@ -10205,6 +10238,88 @@ function shortDebugRef(ref){
   if(txt.length <= 28) return txt;
   return `${txt.slice(0,14)}…${txt.slice(-10)}`;
 }
+function normalizeDirectorTuning(src){
+  const inSrc = (src && typeof src === "object") ? src : {};
+  return {
+    pressureEnter: clamp(Math.round(Number(inSrc.pressureEnter ?? DIRECTOR_TUNE_DEFAULT.pressureEnter)), 30, 70),
+    peakEnter: clamp(Math.round(Number(inSrc.peakEnter ?? DIRECTOR_TUNE_DEFAULT.peakEnter)), 58, 96),
+    recoverExit: clamp(Math.round(Number(inSrc.recoverExit ?? DIRECTOR_TUNE_DEFAULT.recoverExit)), 10, 45),
+    spawnCdMul: clamp(Number(inSrc.spawnCdMul ?? DIRECTOR_TUNE_DEFAULT.spawnCdMul), 0.70, 1.60),
+    dominanceTrigger: clamp(Math.round(Number(inSrc.dominanceTrigger ?? DIRECTOR_TUNE_DEFAULT.dominanceTrigger)), 35, 90),
+    recoveryMul: clamp(Number(inSrc.recoveryMul ?? DIRECTOR_TUNE_DEFAULT.recoveryMul), 0.60, 1.80)
+  };
+}
+function ensureDirectorTuningState(state=S){
+  if(!state || typeof state !== "object") return normalizeDirectorTuning(DIRECTOR_TUNE_DEFAULT);
+  state.directorTuning = normalizeDirectorTuning(state.directorTuning);
+  if(state.directorTuning.peakEnter <= state.directorTuning.pressureEnter + 8){
+    state.directorTuning.peakEnter = clamp(state.directorTuning.pressureEnter + 9, 58, 96);
+  }
+  if(state.directorTuning.recoverExit >= state.directorTuning.pressureEnter - 3){
+    state.directorTuning.recoverExit = clamp(state.directorTuning.pressureEnter - 4, 10, 45);
+  }
+  return state.directorTuning;
+}
+function directorTunePresetStoreRead(){
+  try{
+    const raw = localStorage.getItem(DIRECTOR_TUNE_PRESETS_KEY);
+    if(!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === "object") ? parsed : {};
+  }catch(e){
+    return {};
+  }
+}
+function directorTunePresetStoreWrite(store){
+  try{
+    localStorage.setItem(DIRECTOR_TUNE_PRESETS_KEY, JSON.stringify(store && typeof store === "object" ? store : {}));
+  }catch(e){}
+}
+function saveDirectorTunePreset(slot="A"){
+  const key = String(slot || "A").toUpperCase();
+  const tune = ensureDirectorTuningState(S);
+  const store = directorTunePresetStoreRead();
+  store[key] = normalizeDirectorTuning(tune);
+  directorTunePresetStoreWrite(store);
+  pushStarsDebug("director_tune_preset_save", { slot:key, tune:store[key] });
+  toast(`Director preset ${key} saved.`);
+}
+function loadDirectorTunePreset(slot="A"){
+  const key = String(slot || "A").toUpperCase();
+  const store = directorTunePresetStoreRead();
+  const found = store[key];
+  if(!found){
+    toast(`Preset ${key} is empty.`);
+    return false;
+  }
+  S.directorTuning = normalizeDirectorTuning(found);
+  ensureDirectorTuningState(S);
+  pushStarsDebug("director_tune_preset_load", { slot:key, tune:S.directorTuning });
+  save();
+  renderStarsDebugPanel();
+  toast(`Director preset ${key} loaded.`);
+  return true;
+}
+function resetDirectorTuneDefaults(){
+  S.directorTuning = normalizeDirectorTuning(DIRECTOR_TUNE_DEFAULT);
+  ensureDirectorTuningState(S);
+  pushStarsDebug("director_tune_reset_defaults", { tune:S.directorTuning });
+  save();
+  renderStarsDebugPanel();
+  toast("Director tuning reset.");
+}
+function updateDirectorTuneValue(key, raw){
+  const tune = ensureDirectorTuningState(S);
+  if(!(key in tune)) return;
+  tune[key] = raw;
+  S.directorTuning = normalizeDirectorTuning(tune);
+  ensureDirectorTuningState(S);
+  save();
+  renderStarsDebugPanel();
+}
+function directorTuningHudLabel(tune=ensureDirectorTuningState(S)){
+  return `Tune P${tune.pressureEnter}/${tune.peakEnter}/${tune.recoverExit} • CD x${tune.spawnCdMul.toFixed(2)} • Dom ${tune.dominanceTrigger} • Rec x${tune.recoveryMul.toFixed(2)}`;
+}
 function liveDebugSnapshotLines(){
   const now = Date.now();
   const d = ensureMissionDirectorState(S);
@@ -10224,8 +10339,10 @@ function liveDebugSnapshotLines(){
   const loadScore = Math.max(0, Math.round(frameActiveEntityLoadScore()));
   const avgGap = __avgStabilitySample(__stabilityMonitorState.frameGaps);
   const fps = avgGap > 0 ? Math.round(1000 / avgGap) : 0;
+  const tune = ensureDirectorTuningState(S);
   return [
     `Dir ${directorPhaseLabel(phase)} ${pressure}% • A${Number(S._directorAggroMul || 1).toFixed(2)} S${Number(S._directorSpeedMul || 1).toFixed(2)}`,
+    directorTuningHudLabel(tune),
     `LaneHeat ${laneHeat} • Dom ${Math.round(dom.score)} (${Math.round(dom.laneLoad * 100)}% lane, hot ${dom.hotLane})`,
     `Locks spawn ${Math.ceil(spawnLockMs/1000)}s • rec ${Math.ceil(recoveryMs/1000)}s • dom ${Math.ceil(dominanceMs/1000)}s`,
     `Entities T${aliveTigers} C${aliveCivs} atk${atk} • Lag T${lagTier} Load ${loadScore} FPS ${fps || "—"}`
@@ -10319,8 +10436,8 @@ function ensureStarsDebugUi(){
   panel.style.position = "fixed";
   panel.style.right = "10px";
   panel.style.bottom = "42px";
-  panel.style.width = "min(92vw, 320px)";
-  panel.style.maxHeight = "42vh";
+  panel.style.width = "min(94vw, 360px)";
+  panel.style.maxHeight = "68vh";
   panel.style.zIndex = "9999";
   panel.style.display = "none";
   panel.style.flexDirection = "column";
@@ -10336,8 +10453,37 @@ function ensureStarsDebugUi(){
       <button id="starsDebugClose" type="button" style="border:1px solid rgba(255,255,255,.35);border-radius:8px;background:rgba(17,24,39,.65);color:#e5eefc;padding:2px 8px;font-size:11px;cursor:pointer;">Close</button>
     </div>
     <div id="starsDebugLive" style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.35;white-space:pre-wrap;color:#d9ebff;"></div>
+    <div id="directorTuneBox" style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(10,19,34,.86);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-weight:800;margin-bottom:6px;">
+        <span>Director Tuning (Live)</span>
+        <span id="directorTuneSummary" style="color:#93c5fd;font-weight:700;"></span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:4px 8px;font-size:10px;line-height:1.25;">
+        <label for="directorTunePressure">Pressure Enter</label><span id="directorTunePressureVal">46</span>
+        <input id="directorTunePressure" type="range" min="30" max="70" step="1" style="grid-column:1 / -1;">
+        <label for="directorTunePeak">Peak Enter</label><span id="directorTunePeakVal">80</span>
+        <input id="directorTunePeak" type="range" min="58" max="96" step="1" style="grid-column:1 / -1;">
+        <label for="directorTuneRecover">Recover Exit</label><span id="directorTuneRecoverVal">26</span>
+        <input id="directorTuneRecover" type="range" min="10" max="45" step="1" style="grid-column:1 / -1;">
+        <label for="directorTuneSpawnCd">Spawn CD Mult</label><span id="directorTuneSpawnCdVal">1.00</span>
+        <input id="directorTuneSpawnCd" type="range" min="0.70" max="1.60" step="0.01" style="grid-column:1 / -1;">
+        <label for="directorTuneDom">Dominance Trigger</label><span id="directorTuneDomVal">64</span>
+        <input id="directorTuneDom" type="range" min="35" max="90" step="1" style="grid-column:1 / -1;">
+        <label for="directorTuneRecoveryMul">Recovery Mult</label><span id="directorTuneRecoveryMulVal">1.00</span>
+        <input id="directorTuneRecoveryMul" type="range" min="0.60" max="1.80" step="0.01" style="grid-column:1 / -1;">
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+        <button id="directorTuneSaveA" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(37,99,235,.42);color:#e5eefc;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;">Save A</button>
+        <button id="directorTuneLoadA" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(30,64,175,.42);color:#e5eefc;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;">Load A</button>
+        <button id="directorTuneSaveB" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(37,99,235,.42);color:#e5eefc;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;">Save B</button>
+        <button id="directorTuneLoadB" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(30,64,175,.42);color:#e5eefc;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;">Load B</button>
+        <button id="directorTuneSaveC" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(37,99,235,.42);color:#e5eefc;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;">Save C</button>
+        <button id="directorTuneLoadC" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(30,64,175,.42);color:#e5eefc;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;">Load C</button>
+        <button id="directorTuneReset" type="button" style="flex:1 1 100%;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(127,29,29,.58);color:#fee2e2;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;">Reset Defaults</button>
+      </div>
+    </div>
     <div id="starsDebugStatus" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07);font-size:11px;line-height:1.35;"></div>
-    <div id="starsDebugLog" style="padding:8px 10px;overflow:auto;max-height:26vh;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;"></div>
+    <div id="starsDebugLog" style="padding:8px 10px;overflow:auto;max-height:18vh;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;"></div>
     <div style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);">
       <button id="starsDebugCopy" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(30,64,175,.45);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
       <button id="starsDebugClear" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(55,65,81,.55);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Clear</button>
@@ -10366,6 +10512,26 @@ function ensureStarsDebugUi(){
     setStarsDebugEnabled(!starsDebugEnabled());
     toast(`Stars debug logging ${starsDebugEnabled() ? "ON" : "OFF"}.`);
   });
+  const bindSlider = (id, key, caster=(v)=>v)=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener("input", ()=>{
+      updateDirectorTuneValue(key, caster(el.value));
+    });
+  };
+  bindSlider("directorTunePressure", "pressureEnter", (v)=>Math.round(Number(v)));
+  bindSlider("directorTunePeak", "peakEnter", (v)=>Math.round(Number(v)));
+  bindSlider("directorTuneRecover", "recoverExit", (v)=>Math.round(Number(v)));
+  bindSlider("directorTuneSpawnCd", "spawnCdMul", (v)=>Number(v));
+  bindSlider("directorTuneDom", "dominanceTrigger", (v)=>Math.round(Number(v)));
+  bindSlider("directorTuneRecoveryMul", "recoveryMul", (v)=>Number(v));
+  document.getElementById("directorTuneSaveA")?.addEventListener("click", ()=>saveDirectorTunePreset("A"));
+  document.getElementById("directorTuneLoadA")?.addEventListener("click", ()=>loadDirectorTunePreset("A"));
+  document.getElementById("directorTuneSaveB")?.addEventListener("click", ()=>saveDirectorTunePreset("B"));
+  document.getElementById("directorTuneLoadB")?.addEventListener("click", ()=>loadDirectorTunePreset("B"));
+  document.getElementById("directorTuneSaveC")?.addEventListener("click", ()=>saveDirectorTunePreset("C"));
+  document.getElementById("directorTuneLoadC")?.addEventListener("click", ()=>loadDirectorTunePreset("C"));
+  document.getElementById("directorTuneReset")?.addEventListener("click", resetDirectorTuneDefaults);
   renderStarsDebugPanel();
 }
 function renderStarsDebugPanel(){
@@ -10386,9 +10552,30 @@ function renderStarsDebugPanel(){
   toggleLog.textContent = `Log: ${enabled ? "ON" : "OFF"}`;
   toggleLog.style.background = enabled ? "rgba(37,99,235,.55)" : "rgba(55,65,81,.55)";
   live.textContent = liveDebugSnapshotLines().join("\n");
+  renderDirectorTuneUi();
   status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession})`;
   log.textContent = starsDebugEntries.length ? starsDebugEntries.join("\n") : "No Stars events yet.";
   log.scrollTop = log.scrollHeight;
+}
+function renderDirectorTuneUi(){
+  const tune = ensureDirectorTuningState(S);
+  const bind = (id, valId, value, fmt)=>{
+    const input = document.getElementById(id);
+    const out = document.getElementById(valId);
+    if(input){
+      const next = typeof value === "number" ? value : 0;
+      if(Number(input.value) !== Number(next)) input.value = String(next);
+    }
+    if(out) out.innerText = typeof fmt === "function" ? fmt(value) : String(value);
+  };
+  bind("directorTunePressure", "directorTunePressureVal", tune.pressureEnter, (v)=>`${Math.round(v)}`);
+  bind("directorTunePeak", "directorTunePeakVal", tune.peakEnter, (v)=>`${Math.round(v)}`);
+  bind("directorTuneRecover", "directorTuneRecoverVal", tune.recoverExit, (v)=>`${Math.round(v)}`);
+  bind("directorTuneSpawnCd", "directorTuneSpawnCdVal", tune.spawnCdMul, (v)=>Number(v).toFixed(2));
+  bind("directorTuneDom", "directorTuneDomVal", tune.dominanceTrigger, (v)=>`${Math.round(v)}`);
+  bind("directorTuneRecoveryMul", "directorTuneRecoveryMulVal", tune.recoveryMul, (v)=>Number(v).toFixed(2));
+  const summary = document.getElementById("directorTuneSummary");
+  if(summary) summary.innerText = `P${tune.pressureEnter}/${tune.peakEnter}/${tune.recoverExit} • D${tune.dominanceTrigger}`;
 }
 function clamp(n,min,max){
   const lo = Number.isFinite(min) ? min : 0;
