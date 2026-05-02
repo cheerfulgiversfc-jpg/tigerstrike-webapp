@@ -26498,8 +26498,17 @@ function emitCombatFx(x1, y1, x2, y2, color, width=3, kind="hit"){
   if(COMBAT_FX.length >= 64){
     COMBAT_FX.splice(0, COMBAT_FX.length - 63);
   }
-  const ttl = visualEffectsHeavyMode() ? 6 : 8;
-  COMBAT_FX.push({ x1, y1, x2, y2, color, width, kind, ttl, maxTtl:ttl, spin:Math.random() * Math.PI * 2 });
+  const ttlBase = visualEffectsHeavyMode() ? 6 : 8;
+  const ttl = (kind === "crit" || kind === "tranq" || kind === "shield" || kind === "dodge")
+    ? (ttlBase + 2)
+    : ttlBase;
+  const widthBoost = (kind === "crit") ? 1.35 : ((kind === "shield" || kind === "dodge") ? 1.2 : (kind === "tranq" ? 1.12 : 1));
+  COMBAT_FX.push({
+    x1, y1, x2, y2, color,
+    width: Math.max(1.8, width * widthBoost),
+    kind, ttl, maxTtl:ttl,
+    spin:Math.random() * Math.PI * 2
+  });
   queueImpactPulse(x2, y2, kind);
 }
 
@@ -26569,6 +26578,19 @@ function drawCombatFx(){
     ctx.moveTo(fx.x1, fx.y1);
     ctx.lineTo(fx.x2, fx.y2);
     ctx.stroke();
+    if(!heavy && (fx.kind === "tranq" || fx.kind === "shield" || fx.kind === "dodge")){
+      ctx.globalAlpha = alpha * 0.62;
+      ctx.strokeStyle = fx.kind === "tranq"
+        ? "rgba(125,211,252,.98)"
+        : (fx.kind === "shield" ? "rgba(147,197,253,.98)" : "rgba(250,204,21,.98)");
+      ctx.lineWidth = Math.max(1.8, fx.width * 0.72);
+      ctx.setLineDash([4,3]);
+      ctx.beginPath();
+      ctx.moveTo(fx.x1, fx.y1);
+      ctx.lineTo(fx.x2, fx.y2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     if(!heavy){
       ctx.globalAlpha = alpha * 0.86;
       ctx.fillStyle = fx.color;
@@ -30909,6 +30931,8 @@ function drawCivilian(c){
   const breath = Math.sin((Date.now() * 0.0042) + (c.id * 0.9)) * 0.45;
   const bx = cx;
   const by = cy + breath;
+  const riskState = String(c.riskState || "");
+  const atRisk = (S.dangerCivId===c.id) || riskState === "threatened" || riskState === "critical";
 
   ctx.save();
   ctx.translate(bx, by);
@@ -30996,6 +31020,17 @@ function drawCivilian(c){
   }
 
   if(S.dangerCivId===c.id) drawDangerMarker(bx, by-58);
+  if(atRisk){
+    const pulse = 0.48 + (Math.sin(Date.now() / 120) * 0.22);
+    ctx.save();
+    ctx.globalAlpha = clamp(pulse, 0.24, 0.72);
+    ctx.strokeStyle = riskState === "critical" ? "rgba(248,113,113,.98)" : "rgba(251,191,36,.96)";
+    ctx.lineWidth = riskState === "critical" ? 2.9 : 2.3;
+    ctx.beginPath();
+    ctx.arc(bx, by - 4, riskState === "critical" ? 24 : 21, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   const pct=c.hp/c.hpMax;
   ctx.fillStyle="rgba(11,13,18,.80)";
@@ -31193,6 +31228,7 @@ function drawSupportUnit(unit){
   const ang = unit.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
   const stride = Math.sin((unit.step || 0) * 1.8) * 1.6;
+  const hpRatio = clamp(Number(unit.hp || 0) / Math.max(1, Number(unit.hpMax || 1)), 0, 1);
 
   ctx.save();
   ctx.translate(x, y);
@@ -31242,6 +31278,13 @@ function drawSupportUnit(unit){
   ctx.font = "900 10px system-ui";
   const label = unit.name || (attacker ? "Tiger Specialist" : "Rescue Specialist");
   ctx.fillText(label, x - Math.min(26, label.length * 2.2), y - 28);
+  ctx.fillStyle = "rgba(11,13,18,.84)";
+  ctx.fillRect(x - 18, y - 22, 36, 4);
+  ctx.fillStyle = hpRatio > 0.5 ? "#4ade80" : (hpRatio > 0.25 ? "#f59e0b" : "#fb7185");
+  ctx.fillRect(x - 18, y - 22, 36 * hpRatio, 4);
+  ctx.strokeStyle = "rgba(241,245,249,.62)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - 18, y - 22, 36, 4);
 }
 
 function drawRivalHunter(unit){
@@ -31360,6 +31403,7 @@ function drawTiger(t){
     : 0;
   const atkKind = t.attackAnimKind || "";
   const atkSwing = atkProgress > 0 ? Math.sin(atkProgress * Math.PI) : 0;
+  const telegraphHeavy = visualReadabilityHeavyMode();
   ctx.save();
   ctx.globalAlpha = tigerFocus ? 0.50 : 0.28;
   ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.99)" : "rgba(254,215,170,.88)";
@@ -31380,6 +31424,32 @@ function drawTiger(t){
     ctx.strokeStyle="rgba(251,113,133,.95)";
     ctx.lineWidth=10;
     ctx.beginPath(); ctx.arc(x,y,34*s,0,Math.PI*2); ctx.stroke();
+  }
+  const roarActive = now < Number(t.roarUntil || 0);
+  const fadeActive = ((t.type==="Stalker" && now < Number(t.fadeUntil || 0)) || bossStealth);
+  const chargeActive = now < Number(t.bossChargeUntil || 0);
+  const fakePounceActive = now < Number(t.bossFakePounceUntil || 0);
+  const ragePhaseActive = now < Number(t.bossRagePhaseUntil || 0);
+  const telePulse = 0.54 + (Math.sin(now * 0.018) * 0.28);
+  if(roarActive || fadeActive || chargeActive || fakePounceActive || ragePhaseActive){
+    ctx.save();
+    ctx.globalAlpha = clamp(telePulse * alpha, 0.26, 0.88);
+    let tgColor = "rgba(248,113,113,.95)";
+    if(roarActive) tgColor = "rgba(251,191,36,.96)";
+    if(fadeActive) tgColor = "rgba(125,211,252,.96)";
+    if(chargeActive) tgColor = "rgba(248,113,113,.98)";
+    if(fakePounceActive) tgColor = "rgba(196,181,253,.98)";
+    if(ragePhaseActive) tgColor = "rgba(251,113,133,.98)";
+    ctx.strokeStyle = tgColor;
+    ctx.lineWidth = telegraphHeavy ? 2.2 : 2.9;
+    if(fadeActive || fakePounceActive) ctx.setLineDash([5,4]);
+    if(chargeActive) ctx.setLineDash([8,5]);
+    const rad = (chargeActive ? 50 : (roarActive ? 46 : 42)) * s;
+    ctx.beginPath();
+    ctx.arc(x, y, rad, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
   }
   if(hitFlashAlpha > 0){
     ctx.save();
