@@ -7000,6 +7000,7 @@ const DEFAULT = {
   _rivalLastIntelDropAt:0,
   _rivalFactionName:"",
   _scoutTakedownsMission:0,
+  sectorStreaming: defaultSectorStreamingState(),
   respawnLockRecoverCount:0,
   _respawnLockRecoverCountSession:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
@@ -8962,6 +8963,132 @@ function reconcileSupportDownedFromUnits(state=S){
 
 const WORLD_BASE_WIDTH = 960;
 const WORLD_BASE_HEIGHT = 540;
+const STREAM_SECTOR_SIZE = 320;
+const STREAM_ACTIVE_RADIUS = 1;
+const STREAM_EXPAND_MAX_SECTORS = 28;
+const STREAM_EXPAND_STEP = 0.018;
+const STREAM_MIN_AMBIENT_EDGE = 46;
+
+function defaultSectorStreamingState(){
+  return {
+    enabled:true,
+    size:STREAM_SECTOR_SIZE,
+    activeRadius:STREAM_ACTIVE_RADIUS,
+    activeKeys:[],
+    discoveredKeys:[],
+    centerKey:"0:0",
+    lastUpdateAt:0
+  };
+}
+function ensureSectorStreamingState(state=S){
+  if(!state || typeof state !== "object") return defaultSectorStreamingState();
+  if(!state.sectorStreaming || typeof state.sectorStreaming !== "object"){
+    state.sectorStreaming = defaultSectorStreamingState();
+  }
+  const ss = state.sectorStreaming;
+  ss.enabled = ss.enabled !== false;
+  ss.size = clamp(Math.floor(Number(ss.size || STREAM_SECTOR_SIZE)), 220, 520);
+  ss.activeRadius = clamp(Math.floor(Number(ss.activeRadius || STREAM_ACTIVE_RADIUS)), 1, 2);
+  ss.activeKeys = Array.isArray(ss.activeKeys) ? ss.activeKeys.map((v)=>String(v || "")).filter(Boolean).slice(-64) : [];
+  ss.discoveredKeys = Array.isArray(ss.discoveredKeys) ? ss.discoveredKeys.map((v)=>String(v || "")).filter(Boolean).slice(-220) : [];
+  ss.centerKey = String(ss.centerKey || "0:0");
+  ss.lastUpdateAt = Math.max(0, Math.floor(Number(ss.lastUpdateAt || 0)));
+  return ss;
+}
+function streamSectorKeyForPoint(x, y, state=S){
+  const ss = ensureSectorStreamingState(state);
+  const size = Math.max(1, Math.floor(Number(ss.size || STREAM_SECTOR_SIZE)));
+  const sx = Math.max(0, Math.floor((Number(x) || 0) / size));
+  const sy = Math.max(0, Math.floor((Number(y) || 0) / size));
+  return `${sx}:${sy}`;
+}
+function streamSectorPointFromKey(key, state=S){
+  const ss = ensureSectorStreamingState(state);
+  const size = Math.max(1, Math.floor(Number(ss.size || STREAM_SECTOR_SIZE)));
+  const [sxRaw, syRaw] = String(key || "0:0").split(":");
+  const sx = Math.max(0, Math.floor(Number(sxRaw || 0)));
+  const sy = Math.max(0, Math.floor(Number(syRaw || 0)));
+  return { sx, sy, size };
+}
+function streamSectorBounds(key, state=S){
+  const worldW = worldWidth(state);
+  const worldH = worldHeight(state);
+  const p = streamSectorPointFromKey(key, state);
+  const minX = clamp(p.sx * p.size, 0, worldW);
+  const minY = clamp(p.sy * p.size, 0, worldH);
+  const maxX = clamp(minX + p.size, 0, worldW);
+  const maxY = clamp(minY + p.size, 0, worldH);
+  return { minX, minY, maxX, maxY };
+}
+function streamSectorDistanceKeys(aKey, bKey){
+  const [ax, ay] = String(aKey || "0:0").split(":").map((v)=>Math.max(0, Math.floor(Number(v || 0))));
+  const [bx, by] = String(bKey || "0:0").split(":").map((v)=>Math.max(0, Math.floor(Number(v || 0))));
+  return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+}
+function streamedWorldScaleBonus(state=S){
+  const ss = ensureSectorStreamingState(state);
+  if(!ss.enabled) return 0;
+  const discovered = Math.max(0, Math.min(STREAM_EXPAND_MAX_SECTORS, ss.discoveredKeys.length));
+  return clamp(discovered * STREAM_EXPAND_STEP, 0, 0.42);
+}
+function streamActiveSectorAnchorPoint(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const me = src?.me || {};
+  const x = Number.isFinite(me.x) ? me.x : (worldWidth(src) * 0.5);
+  const y = Number.isFinite(me.y) ? me.y : (worldHeight(src) * 0.5);
+  return { x, y };
+}
+function updateStreamedSectors(state=S, now=Date.now()){
+  const src = (state && typeof state === "object") ? state : S;
+  const ss = ensureSectorStreamingState(src);
+  if(!ss.enabled) return ss;
+  const anchor = streamActiveSectorAnchorPoint(src);
+  const centerKey = streamSectorKeyForPoint(anchor.x, anchor.y, src);
+  if(!centerKey) return ss;
+  ss.centerKey = centerKey;
+  const center = streamSectorPointFromKey(centerKey, src);
+  const next = [];
+  for(let dy=-ss.activeRadius; dy<=ss.activeRadius; dy++){
+    for(let dx=-ss.activeRadius; dx<=ss.activeRadius; dx++){
+      const sx = Math.max(0, center.sx + dx);
+      const sy = Math.max(0, center.sy + dy);
+      next.push(`${sx}:${sy}`);
+    }
+  }
+  ss.activeKeys = Array.from(new Set(next));
+  const discovered = new Set(ss.discoveredKeys);
+  discovered.add(centerKey);
+  for(const k of ss.activeKeys){
+    if(discovered.size >= 220) break;
+    discovered.add(k);
+  }
+  ss.discoveredKeys = Array.from(discovered).slice(-220);
+  ss.lastUpdateAt = now;
+  return ss;
+}
+function sectorStreamingTick(now=Date.now()){
+  if(!S || typeof S !== "object") return;
+  if(S.paused || S.missionEnded || S.gameOver) return;
+  updateStreamedSectors(S, now);
+}
+function streamRandomPointInActiveSectors(state=S, pad=80){
+  const src = (state && typeof state === "object") ? state : S;
+  const worldW = worldWidth(src);
+  const worldH = worldHeight(src);
+  const ss = updateStreamedSectors(src, Date.now());
+  const keys = (Array.isArray(ss.activeKeys) && ss.activeKeys.length) ? ss.activeKeys : [ss.centerKey];
+  const key = keys[rand(0, keys.length - 1)] || ss.centerKey || "0:0";
+  const b = streamSectorBounds(key, src);
+  const edge = Math.max(STREAM_MIN_AMBIENT_EDGE, Math.floor(Number(pad || 80)));
+  const minX = clamp(Math.round(b.minX + edge), 40, worldW - 40);
+  const maxX = clamp(Math.round(b.maxX - edge), 40, worldW - 40);
+  const minY = clamp(Math.round(b.minY + edge), 60, worldH - 40);
+  const maxY = clamp(Math.round(b.maxY - edge), 60, worldH - 40);
+  return {
+    x: rand(Math.min(minX, maxX), Math.max(minX, maxX)),
+    y: rand(Math.min(minY, maxY), Math.max(minY, maxY))
+  };
+}
 
 function missionProgressForWorld(state=S){
   const mode = normalizeModeName(state?.mode || "Story");
@@ -9002,7 +9129,7 @@ function worldScaleForModeMission(mode, mission){
 function desiredWorldLayout(state=S){
   const mode = normalizeModeName(state?.mode || "Story");
   const mission = missionProgressForWorld(state);
-  const scale = worldScaleForModeMission(mode, mission);
+  const scale = worldScaleForModeMission(mode, mission) + streamedWorldScaleBonus(state);
   const viewportW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
   const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const mobile = isMobileViewport();
@@ -9020,6 +9147,7 @@ function ensureWorldLayout(state=S){
     return { mode:"Story", mission:1, scale:1, w:(cv.width || WORLD_BASE_WIDTH), h:(cv.height || WORLD_BASE_HEIGHT) };
   }
   if(!state.world || typeof state.world !== "object") state.world = {};
+  ensureSectorStreamingState(state);
   const world = state.world;
   const desired = desiredWorldLayout(state);
   const worldW = Number(world?.w || 0);
@@ -11409,6 +11537,7 @@ function clampWorldToCanvas(){
 function sanitizeRuntimeState(){
   if(!S || typeof S !== "object") return;
   ensureWorldLayout(S);
+  ensureSectorStreamingState(S);
   S.mode = normalizeModeName(S.mode);
   const mobileViewport = isMobileViewport();
   const rendererPref = String(S.mobileMapRenderer || "").toLowerCase();
@@ -15231,12 +15360,11 @@ function tickEvents(){
   const roll = Math.random();
   if(roll < supplyWeight){
     // Supply Drop: spawn crate pickup
-    const worldW = worldWidth(S);
-    const worldH = worldHeight(S);
+    const p = streamRandomPointInActiveSectors(S, 96);
     spawnPickup(
       "CRATE",
-      rand(120, Math.max(140, worldW - 120)),
-      rand(90, Math.max(120, worldH - 90))
+      p.x,
+      p.y
     );
     setEventText("📦 Supply Drop spotted!", 7);
     sfx("event"); hapticImpact("medium");
@@ -22723,20 +22851,9 @@ function spawnRogueTiger(options={}){
     sx = options.nearX + Math.cos(a) * r;
     sy = options.nearY + Math.sin(a) * r;
   } else {
-    const spawnEdge = rand(0, 3);
-    if(spawnEdge === 0){ // top
-      sx = rand(90, worldW - 90);
-      sy = rand(72, 116);
-    } else if(spawnEdge === 1){ // right
-      sx = rand(worldW - 116, worldW - 72);
-      sy = rand(90, worldH - 90);
-    } else if(spawnEdge === 2){ // bottom
-      sx = rand(90, worldW - 90);
-      sy = rand(worldH - 116, worldH - 72);
-    } else { // left
-      sx = rand(72, 116);
-      sy = rand(90, worldH - 90);
-    }
+    const p = streamRandomPointInActiveSectors(S, 92);
+    sx = p.x;
+    sy = p.y;
   }
 
   const rogueSpawn = pickTigerSpawnAwayFromEscort(Math.round(sx), Math.round(sy), {
@@ -22883,6 +23000,13 @@ function deploy(opts={}){
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
   S.me={x:160,y:clamp(worldH - 120, 240, 420),face:0,step:0};
+  {
+    const ss = ensureSectorStreamingState(S);
+    ss.activeKeys = [];
+    ss.discoveredKeys = [];
+    ss.centerKey = streamSectorKeyForPoint(S.me.x, S.me.y, S);
+    updateStreamedSectors(S, Date.now());
+  }
   S.target=null;
   resetControlInputState("deploy");
   S.lockedTigerId=null;
@@ -33043,6 +33167,9 @@ function draw(){
         costHint:1.15, critical:true, cadence:1, slowCadence:1, heavyCadence:1, extremeCadence:1
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
+      runFrameTask("sectorStreaming", frameInterval(lagCritical ? 280 : (lagHeavy ? 220 : 170), 1.35), sectorStreamingTick, {
+        costHint:0.55, critical:true
+      });
       runFrameTask("civThreats", frameInterval(
         battleLoad
           ? (lagCritical ? 220 : (lagHeavy ? 180 : 138))
