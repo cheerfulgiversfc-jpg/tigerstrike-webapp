@@ -10219,10 +10219,22 @@ function stabilityHealthTick(){
 
 // ===================== AUDIO =====================
 let AC=null;
+let __audioMasterGain=null;
+let __adaptiveAudio=null;
+let __adaptiveAudioTickAt=0;
+let __adaptiveAudioLastPressure=-1;
+let __adaptiveAudioLastPhase="";
+let __adaptiveAudioLastBossAt=0;
+let __adaptiveAudioLastDangerAt=0;
 function ensureAudio(){
   if(!S.soundOn) return;
   if(!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
   if(AC.state==="suspended") AC.resume();
+  if(!__audioMasterGain && AC){
+    __audioMasterGain = AC.createGain();
+    __audioMasterGain.gain.value = 0.92;
+    __audioMasterGain.connect(AC.destination);
+  }
   S.audioUnlocked=true;
 }
 document.addEventListener("pointerdown", ()=>{ if(!S.audioUnlocked) ensureAudio(); }, {once:true});
@@ -10230,9 +10242,10 @@ function beep(f=440,ms=80,type="sine",vol=0.06){
   if(!S.soundOn) return;
   try{
     ensureAudio();
+    if(!AC || !__audioMasterGain) return;
     const o=AC.createOscillator(), g=AC.createGain();
     o.type=type; o.frequency.value=f; g.gain.value=vol;
-    o.connect(g); g.connect(AC.destination);
+    o.connect(g); g.connect(__audioMasterGain);
     o.start(); setTimeout(()=>o.stop(), ms);
   }catch(e){}
 }
@@ -10256,16 +10269,165 @@ function toggleSound(){
   const mobileLbl = document.getElementById("soundLblMobile");
   if(mobileLbl) mobileLbl.innerText = S.soundOn ? "On" : "Off";
   if(!S.soundOn){
+    stopAdaptiveAudioDirector();
     clearLaunchMusicLoop();
   }
   save();
   if(S.soundOn){
     sfx("ui");
+    ensureAudio();
+    startAdaptiveAudioDirector();
     if(introOverlayVisible()){
       playLaunchTheme(true);
       startLaunchMusicLoop(true);
     }
   }
+}
+
+function stopAdaptiveAudioDirector(){
+  if(!__adaptiveAudio) return;
+  try{
+    const at = AC ? AC.currentTime : 0;
+    const out = __adaptiveAudio.out;
+    if(out?.gain){
+      out.gain.cancelScheduledValues(at);
+      out.gain.setTargetAtTime(0.0001, at, 0.08);
+    }
+    for(const key of ["bed","tension","pulse"]){
+      const node = __adaptiveAudio[key];
+      if(node?.osc){
+        try{ node.osc.stop((AC ? AC.currentTime : 0) + 0.1); }catch(e){}
+      }
+    }
+  }catch(e){}
+  __adaptiveAudio = null;
+}
+function startAdaptiveAudioDirector(){
+  if(!S.soundOn) return;
+  try{
+    ensureAudio();
+    if(!AC || !__audioMasterGain) return;
+    if(__adaptiveAudio) return;
+    const mkLayer = (type, hz, gainVal=0.0001)=>{
+      const osc = AC.createOscillator();
+      const gain = AC.createGain();
+      osc.type = type;
+      osc.frequency.value = hz;
+      gain.gain.value = gainVal;
+      osc.connect(gain);
+      return { osc, gain };
+    };
+    const out = AC.createGain();
+    out.gain.value = 0.0001;
+    const bed = mkLayer("triangle", 72, 0.0001);
+    const tension = mkLayer("sawtooth", 128, 0.0001);
+    const pulse = mkLayer("square", 44, 0.0001);
+    bed.gain.connect(out);
+    tension.gain.connect(out);
+    pulse.gain.connect(out);
+    out.connect(__audioMasterGain);
+    const now = AC.currentTime;
+    bed.osc.start(now);
+    tension.osc.start(now);
+    pulse.osc.start(now);
+    __adaptiveAudio = { out, bed, tension, pulse };
+    __adaptiveAudioTickAt = 0;
+    __adaptiveAudioLastPressure = -1;
+    __adaptiveAudioLastPhase = "";
+    __adaptiveAudioLastBossAt = 0;
+    __adaptiveAudioLastDangerAt = 0;
+  }catch(e){}
+}
+function adaptiveAudioStinger(kind="danger"){
+  if(!S.soundOn) return;
+  if(kind === "boss"){
+    beep(196, 90, "triangle", 0.05);
+    setTimeout(()=>beep(246, 110, "sawtooth", 0.055), 90);
+    setTimeout(()=>beep(329, 120, "triangle", 0.05), 210);
+    return;
+  }
+  if(kind === "peak"){
+    beep(320, 80, "square", 0.045);
+    setTimeout(()=>beep(440, 90, "triangle", 0.048), 70);
+    return;
+  }
+  if(kind === "recover"){
+    beep(262, 80, "sine", 0.04);
+    setTimeout(()=>beep(330, 80, "sine", 0.038), 85);
+    return;
+  }
+  beep(220, 70, "sawtooth", 0.04);
+  setTimeout(()=>beep(294, 80, "triangle", 0.042), 70);
+}
+function adaptiveAudioDirectorTick(){
+  if(!S.soundOn) return;
+  if(!__adaptiveAudio) startAdaptiveAudioDirector();
+  if(!__adaptiveAudio || !AC) return;
+  const at = AC.currentTime;
+  if(introOverlayVisible()){
+    __adaptiveAudio.bed.gain.gain.setTargetAtTime(0.0001, at, 0.12);
+    __adaptiveAudio.tension.gain.gain.setTargetAtTime(0.0001, at, 0.12);
+    __adaptiveAudio.pulse.gain.gain.setTargetAtTime(0.0001, at, 0.12);
+    if(__audioMasterGain?.gain) __audioMasterGain.gain.setTargetAtTime(0.88, at, 0.25);
+    return;
+  }
+  if(iphoneStabilityModeActive() && frameLagTier() >= 2){
+    __adaptiveAudio.bed.gain.gain.setTargetAtTime(0.0001, at, 0.16);
+    __adaptiveAudio.tension.gain.gain.setTargetAtTime(0.0001, at, 0.16);
+    __adaptiveAudio.pulse.gain.gain.setTargetAtTime(0.0001, at, 0.16);
+    return;
+  }
+  const nowMs = Date.now();
+  if(nowMs < __adaptiveAudioTickAt) return;
+  __adaptiveAudioTickAt = nowMs + 220;
+
+  const director = ensureMissionDirectorState(S);
+  const phase = String(director.phase || DIRECTOR_PHASES.CALM);
+  const pressure = clamp(Number(director.pressure || 0), 0, 100);
+  const combatMul = S.inBattle ? 1.22 : 0.96;
+  const underAttackMul = S._underAttack > 0 ? 1.10 : 0.94;
+  const bossActive = hasAliveBossTiger();
+  const pausedMul = (S.paused || S.missionEnded || S.gameOver) ? 0.24 : 1;
+  const intensity = clamp(((pressure / 100) * 0.78 + (S.inBattle ? 0.22 : 0.08)) * combatMul * underAttackMul * pausedMul, 0.04, 1.25);
+
+  const phaseMul = phase === DIRECTOR_PHASES.PEAK ? 1.22 : (phase === DIRECTOR_PHASES.PRESSURE ? 1.0 : (phase === DIRECTOR_PHASES.RECOVER ? 0.72 : 0.62));
+  const bedTarget = clamp(0.02 + intensity * 0.07 * phaseMul, 0.008, 0.105);
+  const tensionTarget = clamp(intensity * 0.058 * (phase === DIRECTOR_PHASES.PEAK ? 1.35 : 1), 0.004, 0.092);
+  const pulseTarget = clamp((S.inBattle ? 0.03 : 0.012) + intensity * 0.043, 0.003, 0.076);
+  const masterTarget = clamp((S.paused ? 0.26 : 0.88) * (bossActive ? 1.04 : 1), 0.2, 0.98);
+
+  const sweep = (n, target, tau=0.25)=>{
+    if(!n?.gain) return;
+    n.gain.cancelScheduledValues(at);
+    n.gain.setTargetAtTime(target, at, tau);
+  };
+  sweep(__adaptiveAudio.bed.gain, bedTarget, 0.28);
+  sweep(__adaptiveAudio.tension.gain, tensionTarget, 0.23);
+  sweep(__adaptiveAudio.pulse.gain, pulseTarget, 0.19);
+  sweep(__adaptiveAudio.out, 0.86, 0.4);
+  if(__audioMasterGain?.gain){
+    __audioMasterGain.gain.cancelScheduledValues(at);
+    __audioMasterGain.gain.setTargetAtTime(masterTarget, at, 0.35);
+  }
+
+  __adaptiveAudio.bed.osc.frequency.setTargetAtTime(68 + (pressure * 0.22), at, 0.25);
+  __adaptiveAudio.tension.osc.frequency.setTargetAtTime(120 + (pressure * 0.9), at, 0.20);
+  __adaptiveAudio.pulse.osc.frequency.setTargetAtTime((S.inBattle ? 52 : 42) + (pressure * 0.18), at, 0.16);
+
+  if(phase !== __adaptiveAudioLastPhase){
+    if(phase === DIRECTOR_PHASES.PEAK) adaptiveAudioStinger("peak");
+    else if(phase === DIRECTOR_PHASES.RECOVER) adaptiveAudioStinger("recover");
+    __adaptiveAudioLastPhase = phase;
+  }
+  if(bossActive && (nowMs - __adaptiveAudioLastBossAt) > 12000){
+    adaptiveAudioStinger("boss");
+    __adaptiveAudioLastBossAt = nowMs;
+  }
+  if(S._underAttack > 0 && pressure >= 60 && (nowMs - __adaptiveAudioLastDangerAt) > 6500){
+    adaptiveAudioStinger("danger");
+    __adaptiveAudioLastDangerAt = nowMs;
+  }
+  __adaptiveAudioLastPressure = pressure;
 }
 
 // ===================== HELPERS =====================
@@ -32667,6 +32829,9 @@ function draw(){
     }
     safeTick("viewportVisibility", ()=>enforceVisibleMissionViewport(S));
     runFrameTask("stabilityHealth", frameInterval(220, 1.6), stabilityHealthTick, { costHint:0.9, critical:true });
+    runFrameTask("adaptiveAudio", frameInterval(240, 1.4), adaptiveAudioDirectorTick, {
+      costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+    });
     runFrameTask("runtimeMemoryCleanup", frameInterval(lagCritical ? 1320 : (lagHeavy ? 1080 : 880), 1.5), runtimeMemoryCleanupTick, {
       costHint:0.35, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
     });
