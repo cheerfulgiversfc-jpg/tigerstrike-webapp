@@ -5841,6 +5841,7 @@ function activeArcadeMission(state=S){
   if(normalizeModeName(src.mode) !== "Arcade") return null;
   ensureArcadeWeeklySeedState(src);
   const mission = src.arcadeWeeklySeedEnabled ? arcadeWeeklyChallengeMission(src) : arcadeCampaignMission(src.arcadeLevel);
+  applyMissionVarietyProfile(mission, src, "Arcade");
   return applyConvoyMissionProfile(mission, src);
 }
 
@@ -6134,6 +6135,139 @@ const CONVOY_ROUTE_PROFILES = Object.freeze({
     zeroLossXpMul:1.25,
   }),
 });
+const MISSION_VARIETY_LANES = Object.freeze([
+  Object.freeze({ key:"ASSAULT", label:"Assault Lane", tigerDelta:2, civilianDelta:-1, tigerSpeedMul:1.06, payoutMul:1.08 }),
+  Object.freeze({ key:"RESCUE", label:"Rescue Lane", tigerDelta:-1, civilianDelta:2, rescueSpeedMul:1.08, payoutMul:1.06 }),
+  Object.freeze({ key:"CONTROL", label:"Control Lane", tigerDelta:1, civilianDelta:0, trapPlaceDelta:1, payoutMul:1.07 }),
+  Object.freeze({ key:"STEALTH", label:"Stealth Lane", tigerDelta:0, civilianDelta:1, lowVisibility:true, payoutMul:1.09 }),
+  Object.freeze({ key:"PURSUIT", label:"Pursuit Lane", tigerDelta:2, civilianDelta:1, bloodAggro:true, payoutMul:1.10 }),
+]);
+const MISSION_VARIETY_PRESSURE = Object.freeze([
+  Object.freeze({ key:"CALM", label:"Stabilized", tigerMul:0.92, civMul:1.10, payoutMul:1.04 }),
+  Object.freeze({ key:"BALANCED", label:"Balanced", tigerMul:1.00, civMul:1.00, payoutMul:1.00 }),
+  Object.freeze({ key:"HIGH", label:"High Pressure", tigerMul:1.12, civMul:0.96, payoutMul:1.10 }),
+  Object.freeze({ key:"CRISIS", label:"Crisis Spike", tigerMul:1.20, civMul:0.92, payoutMul:1.14 }),
+]);
+function defaultMissionVarietyState(){
+  return {
+    version:2,
+    recentSignatures:[],
+    lastMissionKey:"",
+    lastProfile:null
+  };
+}
+function ensureMissionVarietyState(state=S){
+  if(!state || typeof state !== "object") return defaultMissionVarietyState();
+  if(!state.missionVariety || typeof state.missionVariety !== "object"){
+    state.missionVariety = defaultMissionVarietyState();
+  }
+  const mv = state.missionVariety;
+  mv.version = 2;
+  mv.lastMissionKey = String(mv.lastMissionKey || "");
+  mv.recentSignatures = Array.isArray(mv.recentSignatures)
+    ? mv.recentSignatures.map((v)=>String(v || "")).filter(Boolean).slice(-8)
+    : [];
+  mv.lastProfile = (mv.lastProfile && typeof mv.lastProfile === "object") ? mv.lastProfile : null;
+  return mv;
+}
+function missionVarietyMissionKey(cfg, state=S, mode=""){
+  const src = (state && typeof state === "object") ? state : S;
+  const modeKey = normalizeModeName(mode || src.mode);
+  const variant = normalizeStoryVariant(cfg?.storyVariant || src?.storyVariant || "");
+  const number = Math.max(1, Math.floor(Number(cfg?.number || 1)));
+  const chapter = Math.max(1, Math.floor(Number(cfg?.chapter || 1)));
+  const run = Math.max(1, Math.floor(Number(cfg?.runIndex || cfg?.gauntletDepth || src?.gauntletDepth || 1)));
+  const weekly = cfg?.weeklySeed ? String(cfg?.weeklySeedKey || "") : "";
+  const convoy = cfg?.convoyMission ? "convoy" : "std";
+  return [modeKey, number, chapter, variant, run, weekly, convoy].join("|");
+}
+function missionVarietyPickWithAntiRepeat(pool, seedBase, recentSet, salt){
+  if(!Array.isArray(pool) || !pool.length) return null;
+  let best = pool[0];
+  let bestScore = -999;
+  for(let i=0; i<pool.length; i++){
+    const item = pool[i];
+    const scoreSeed = contractHashInt(`${seedBase}|${salt}|${item.key}|${i}`);
+    const jitter = (scoreSeed % 1000) / 1000;
+    const repeatPenalty = recentSet.has(String(item.key || "")) ? 1.25 : 0;
+    const score = jitter - repeatPenalty;
+    if(score > bestScore){
+      bestScore = score;
+      best = item;
+    }
+  }
+  return best;
+}
+function buildMissionVarietyProfile(cfg, state=S, mode=""){
+  const src = (state && typeof state === "object") ? state : S;
+  const mv = ensureMissionVarietyState(src);
+  const key = missionVarietyMissionKey(cfg, src, mode);
+  if(mv.lastMissionKey === key && mv.lastProfile){
+    return mv.lastProfile;
+  }
+  const recent = mv.recentSignatures.slice(-4);
+  const recentSet = new Set(recent);
+  const seedBase = `mission_variety_v2|${key}`;
+  const lane = missionVarietyPickWithAntiRepeat(MISSION_VARIETY_LANES, seedBase, recentSet, "lane") || MISSION_VARIETY_LANES[0];
+  const pressure = missionVarietyPickWithAntiRepeat(MISSION_VARIETY_PRESSURE, seedBase, recentSet, "pressure") || MISSION_VARIETY_PRESSURE[1];
+  const signature = `${lane.key}:${pressure.key}`;
+  const profile = {
+    key,
+    signature,
+    laneKey: lane.key,
+    laneLabel: lane.label,
+    pressureKey: pressure.key,
+    pressureLabel: pressure.label,
+    tigerDelta: Number(lane.tigerDelta || 0),
+    civilianDelta: Number(lane.civilianDelta || 0),
+    trapPlaceDelta: Number(lane.trapPlaceDelta || 0),
+    tigerMul: Number(pressure.tigerMul || 1),
+    civMul: Number(pressure.civMul || 1),
+    payoutMul: clamp(Number(lane.payoutMul || 1) * Number(pressure.payoutMul || 1), 0.9, 1.35),
+    lowVisibility: !!lane.lowVisibility,
+    bloodAggro: !!lane.bloodAggro,
+    rescueSpeedMul: Number(lane.rescueSpeedMul || 1),
+    tigerSpeedMul: Number(lane.tigerSpeedMul || 1),
+  };
+  mv.lastMissionKey = key;
+  mv.lastProfile = profile;
+  if(!mv.recentSignatures.includes(signature)){
+    mv.recentSignatures.push(signature);
+    mv.recentSignatures = mv.recentSignatures.slice(-8);
+  }else{
+    mv.recentSignatures = mv.recentSignatures.filter((s)=>s !== signature).concat(signature).slice(-8);
+  }
+  return profile;
+}
+function applyMissionVarietyProfile(cfg, state=S, mode=""){
+  if(!cfg || typeof cfg !== "object") return cfg;
+  const profile = buildMissionVarietyProfile(cfg, state, mode);
+  cfg.varietyEngine = {
+    version:2,
+    lane: profile.laneLabel,
+    pressure: profile.pressureLabel,
+    signature: profile.signature
+  };
+  if(!cfg.boss && !cfg.finalBoss){
+    cfg.tigers = clamp(Math.round((Number(cfg.tigers || 1) + profile.tigerDelta) * profile.tigerMul), 1, 26);
+  }else{
+    cfg.tigers = clamp(Number(cfg.tigers || 1), 1, 4);
+  }
+  cfg.civilians = clamp(Math.round((Number(cfg.civilians || 0) + profile.civilianDelta) * profile.civMul), 0, 18);
+  if(profile.trapPlaceDelta > 0){
+    cfg.trapPlaceRequired = Math.max(0, Math.floor(Number(cfg.trapPlaceRequired || 0)) + profile.trapPlaceDelta);
+  }
+  if(profile.lowVisibility) cfg.lowVisibility = true;
+  if(profile.bloodAggro) cfg.bloodAggro = true;
+  cfg.varietyPayoutMul = clamp((Number(cfg.varietyPayoutMul || 1) * Number(profile.payoutMul || 1)), 0.9, 1.4);
+  cfg.varietyRescueSpeedMul = clamp((Number(cfg.varietyRescueSpeedMul || 1) * Number(profile.rescueSpeedMul || 1)), 0.84, 1.45);
+  cfg.varietyTigerSpeedMul = clamp((Number(cfg.varietyTigerSpeedMul || 1) * Number(profile.tigerSpeedMul || 1)), 0.84, 1.45);
+  const tag = `Variety: ${profile.laneLabel} • ${profile.pressureLabel}`;
+  if(!String(cfg.objective || "").includes("Variety:")){
+    cfg.objective = `${String(cfg.objective || "").trim()} ${tag}`.trim();
+  }
+  return cfg;
+}
 function convoyRouteChoiceFromSquadCommand(command=S?.squadCommand){
   const cmd = normalizeSquadCommand(command);
   if(cmd === "ATTACK_TARGET") return "RISKY";
@@ -6376,6 +6510,7 @@ function storyMissionForState(state=S){
       cfg.objective = `${cfg.objective} Route: maintain capture/kill balance.`;
     }
   }
+  applyMissionVarietyProfile(cfg, src, "Story");
 
   if(cfg.convoyMission){
     applyConvoyMissionProfile(cfg, src);
