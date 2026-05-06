@@ -23661,7 +23661,11 @@ function keyboardMoveTick(){
 
   const dx = ((KEY_STATE.right ? 1 : 0) - (KEY_STATE.left ? 1 : 0)) + TOUCH_STICK.dx + GAMEPAD_STATE.lx;
   const dy = ((KEY_STATE.down ? 1 : 0) - (KEY_STATE.up ? 1 : 0)) + TOUCH_STICK.dy + GAMEPAD_STATE.ly;
-  if(!dx && !dy) return false;
+  if(!dx && !dy){
+    if(Number.isFinite(S.me._moveVx)) S.me._moveVx *= 0.52;
+    if(Number.isFinite(S.me._moveVy)) S.me._moveVy *= 0.52;
+    return false;
+  }
   if(S.stamina<=0) return false;
 
   const len = Math.hypot(dx,dy) || 1;
@@ -23678,14 +23682,33 @@ function keyboardMoveTick(){
   }
   speed *= motionMul;
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
+  const targetVx = ux * speed;
+  const targetVy = uy * speed;
+  if(!Number.isFinite(S.me._moveVx)) S.me._moveVx = 0;
+  if(!Number.isFinite(S.me._moveVy)) S.me._moveVy = 0;
+  const accel = sprinting ? 0.34 : 0.26;
+  S.me._moveVx += (targetVx - S.me._moveVx) * accel;
+  S.me._moveVy += (targetVy - S.me._moveVy) * accel;
+  const moveMag = Math.hypot(S.me._moveVx, S.me._moveVy) || 0;
+  if(moveMag > speed && moveMag > 0){
+    const cap = speed / moveMag;
+    S.me._moveVx *= cap;
+    S.me._moveVy *= cap;
+  }
 
   S.target=null;
-  S.me.face = Math.atan2(uy, ux);
-  S.me.step = (S.me.step + speed*0.35) % (Math.PI*2);
+  const nextFace = Math.atan2(S.me._moveVy || uy, S.me._moveVx || ux);
+  const faceDelta = normalizeAngle(nextFace - (S.me.face || 0));
+  S.me.face = normalizeAngle((S.me.face || 0) + clamp(faceDelta, -0.18, 0.18));
+  S.me.step = (S.me.step + Math.max(0.6, moveMag * 0.34)) % (Math.PI*2);
 
-  const nx = S.me.x + ux*speed;
-  const ny = S.me.y + uy*speed;
-  tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
+  const nx = S.me.x + S.me._moveVx;
+  const ny = S.me.y + S.me._moveVy;
+  const ok = tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
+  if(!ok){
+    S.me._moveVx *= 0.35;
+    S.me._moveVy *= 0.35;
+  }
 
   S.stamina = clamp(
     S.stamina - (((sprinting ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()) * motionMul),
@@ -23696,7 +23719,11 @@ function keyboardMoveTick(){
 }
 
 function movePlayer(){
-  if(!S.target) return;
+  if(!S.target){
+    if(Number.isFinite(S.me._moveVx)) S.me._moveVx *= 0.58;
+    if(Number.isFinite(S.me._moveVy)) S.me._moveVy *= 0.58;
+    return;
+  }
   if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return;
   const dx=S.target.x-S.me.x, dy=S.target.y-S.me.y;
   const d=Math.hypot(dx,dy);
@@ -23709,15 +23736,35 @@ function movePlayer(){
   if(S._sprintTicks && S._sprintTicks>0){ speed=PLAYER_SPRINT_SPEED; sprinting = true; S._sprintTicks--; }
   speed *= motionMul;
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
+  const ux = dx / d;
+  const uy = dy / d;
+  const targetVx = ux * speed;
+  const targetVy = uy * speed;
+  if(!Number.isFinite(S.me._moveVx)) S.me._moveVx = 0;
+  if(!Number.isFinite(S.me._moveVy)) S.me._moveVy = 0;
+  const accel = sprinting ? 0.32 : 0.24;
+  S.me._moveVx += (targetVx - S.me._moveVx) * accel;
+  S.me._moveVy += (targetVy - S.me._moveVy) * accel;
+  const moveMag = Math.hypot(S.me._moveVx, S.me._moveVy) || 0;
+  if(moveMag > speed && moveMag > 0){
+    const cap = speed / moveMag;
+    S.me._moveVx *= cap;
+    S.me._moveVy *= cap;
+  }
+  const nextFace = Math.atan2(S.me._moveVy || uy, S.me._moveVx || ux);
+  const faceDelta = normalizeAngle(nextFace - (S.me.face || 0));
+  S.me.face = normalizeAngle((S.me.face || 0) + clamp(faceDelta, -0.16, 0.16));
+  S.me.step = (S.me.step + Math.max(0.55, moveMag * 0.34)) % (Math.PI*2);
 
-  S.me.face = Math.atan2(dy, dx);
-  S.me.step = (S.me.step + speed*0.35) % (Math.PI*2);
-
-  const nx = S.me.x + (dx/d)*speed;
-  const ny = S.me.y + (dy/d)*speed;
+  const nx = S.me.x + S.me._moveVx;
+  const ny = S.me.y + S.me._moveVy;
 
   const ok = tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
-  if(!ok){ S.target=null; }
+  if(!ok){
+    S.target=null;
+    S.me._moveVx *= 0.35;
+    S.me._moveVy *= 0.35;
+  }
 
   S.stamina = clamp(
     S.stamina - (((sprinting ? STAMINA_DRAIN_SPRINT : STAMINA_DRAIN_WALK) * storyStaminaDrainMul()) * motionMul),
@@ -24490,7 +24537,10 @@ function supportUnitsTick(){
     if(commandRegroup) stepCap *= 1.06;
     if(commandHold) stepCap *= 0.92;
     const finalStepCap = stepCap * waterMul * motionMul * supportTickMul;
-    const step = Math.min(finalStepCap, len);
+    if(!Number.isFinite(unit._moveSpeed)) unit._moveSpeed = finalStepCap * 0.42;
+    const speedBlend = unit._retreating ? 0.34 : (len > 120 ? 0.28 : 0.22);
+    unit._moveSpeed += (finalStepCap - unit._moveSpeed) * speedBlend;
+    const step = Math.min(Math.max(0.01, unit._moveSpeed), len);
     unit.face = Math.atan2(dy, dx);
     tryMoveEntity(unit, unit.x + (dx / len) * step, unit.y + (dy / len) * step, 16, { avoidKeepout:false });
 
@@ -24979,7 +25029,7 @@ function followCiviliansTick(){
     const targetVy = (dy/dd) * sp;
     if(!Number.isFinite(c._followVx)) c._followVx = 0;
     if(!Number.isFinite(c._followVy)) c._followVy = 0;
-    const smooth = dd > 130 ? 0.44 : (dd < 44 ? 0.62 : 0.56);
+    const smooth = dd > 130 ? 0.40 : (dd < 44 ? 0.68 : 0.54);
     c._followVx += (targetVx - c._followVx) * smooth;
     c._followVy += (targetVy - c._followVy) * smooth;
     const mag = Math.hypot(c._followVx, c._followVy) || 0;
@@ -25915,9 +25965,12 @@ function roamTigers(){
     speedCap *= packSpeedMul;
     speedCap *= waterSpeedMul("tiger", t.x, t.y, 14);
 
+    if(!Number.isFinite(t._speedNow)) t._speedNow = Math.hypot(t.vx || 0, t.vy || 0);
+    t._speedNow += (speedCap - t._speedNow) * (chase ? 0.24 : 0.16);
+    const accelCap = Math.max(0.2, t._speedNow);
     const velNow = Math.hypot(t.vx, t.vy);
-    if(velNow > speedCap){
-      const s = speedCap / (velNow || 1);
+    if(velNow > accelCap){
+      const s = accelCap / (velNow || 1);
       t.vx *= s;
       t.vy *= s;
     }
@@ -25930,7 +25983,7 @@ function roamTigers(){
       t.wanderAngle += Math.PI * 0.58;
       t.burstUntil = 0;
     }
-    const drag = chase ? motion.chaseDrag : motion.wanderDrag;
+    const drag = chase ? clamp(motion.chaseDrag + 0.012, 0.92, 0.98) : clamp(motion.wanderDrag + 0.008, 0.88, 0.95);
     t.vx *= drag;
     t.vy *= drag;
 
