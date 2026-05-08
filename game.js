@@ -7000,7 +7000,7 @@ const DEFAULT = {
   _rivalLastIntelDropAt:0,
   _rivalFactionName:"",
   _scoutTakedownsMission:0,
-  sectorStreaming: defaultSectorStreamingState(),
+  sectorStreaming: null,
   respawnLockRecoverCount:0,
   _respawnLockRecoverCountSession:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
