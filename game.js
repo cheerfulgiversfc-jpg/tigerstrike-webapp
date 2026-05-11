@@ -21020,6 +21020,46 @@ window.enterTutorialMode = function () {
     tiger.vy = 0;
     tiger.holdUntil = Date.now() + 86400000;
   }
+
+  // Seed tutorial interactables so the interactables step is always completable.
+  S.mapInteractables = [
+    {
+      id: "TUT-ALARM",
+      kind: "alarm",
+      label: "Tutorial Alarm",
+      x: 250,
+      y: 205,
+      r: 22,
+      uses: 99,
+      cooldownUntil: 0,
+      activeUntil: 0,
+      effectR: 0
+    },
+    {
+      id: "TUT-BARRIER",
+      kind: "barricade",
+      label: "Tutorial Barrier",
+      x: 515,
+      y: 318,
+      r: 22,
+      uses: 99,
+      cooldownUntil: 0,
+      activeUntil: 0,
+      effectR: barricadeEffectRadius()
+    },
+    {
+      id: "TUT-CACHE",
+      kind: "cache",
+      label: "Tutorial Cache",
+      x: 335,
+      y: 438,
+      r: 22,
+      uses: 1,
+      cooldownUntil: 0,
+      activeUntil: 0,
+      effectR: 0
+    }
+  ];
 };
 
 window.exitTutorialMode = function () {

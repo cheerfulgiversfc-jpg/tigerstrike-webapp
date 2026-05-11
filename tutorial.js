@@ -115,9 +115,16 @@
     const S = getS();
 
     if(S){
+      if(Number.isFinite(T.startX) && Number.isFinite(T.startY) && Number.isFinite(S?.me?.x) && Number.isFinite(S?.me?.y)){
+        const dx = Number(S.me.x) - Number(T.startX);
+        const dy = Number(S.me.y) - Number(T.startY);
+        if(Math.hypot(dx, dy) >= 36) T.movedOnce = true;
+      }
       if(S.inBattle) T.engagedOnce = true;
       const shots = Number(S.stats?.shots || 0);
       if(shots > (T.baseShots || 0)) T.attackedOnce = true;
+      if(Number(S.scanPing || 0) > 0) T.scanUsed = true;
+      if(Number(S.lockedTigerId || 0) > 0) T.lockedOnce = true;
       const activeTigerId = Number(S.activeTigerId || 0);
       const tiger = activeTigerId > 0 ? (S.tigers || []).find((it)=>it && it.id === activeTigerId && it.alive) : null;
       if(!T.captureWindowReached){
@@ -138,6 +145,25 @@
       const shieldUntil = Number(S.shieldUntil || 0);
       if(shieldUntil > Date.now() && shieldUntil > (T.lastShieldUntil || 0)) T.shieldUsed = true;
       T.lastShieldUntil = shieldUntil;
+
+      // Any interactable activation should count (alarm, barricade, cache).
+      if(Array.isArray(S.mapInteractables)){
+        for(const it of S.mapInteractables){
+          if(!it || !it.id) continue;
+          const key = String(it.id);
+          const baseline = T.baseInteractables?.[key] || {};
+          const curUses = Number.isFinite(Number(it.uses)) ? Number(it.uses) : null;
+          const baseUses = Number.isFinite(Number(baseline.uses)) ? Number(baseline.uses) : null;
+          const curCd = Number(it.cooldownUntil || 0);
+          const baseCd = Number(baseline.cooldownUntil || 0);
+          const curActive = Number(it.activeUntil || 0);
+          const baseActive = Number(baseline.activeUntil || 0);
+          if((baseUses != null && curUses != null && curUses < baseUses) || curCd > baseCd || curActive > baseActive){
+            T.interactableUsed = true;
+            break;
+          }
+        }
+      }
     }
 
     const shop = byId("shopOverlay");
@@ -244,9 +270,9 @@
         key:"move",
         title:"Move",
         text:"Tap anywhere on the map to move your agent.",
-        hint:"Tap the map once.",
+        hint:"Move your agent a short distance.",
         arrow:"cv",
-        canNext: () => window.TigerTutorial.mapClicked === true
+        canNext: () => window.TigerTutorial.movedOnce === true
       },
       {
         key:"escort",
@@ -262,7 +288,7 @@
         text:"Press Scan to locate the tiger.",
         hint:"Tap Scan once.",
         arrow:"scanBtn",
-        canNext: () => (getS()?.scanPing || 0) > 0
+        canNext: () => window.TigerTutorial.scanUsed === true
       },
       {
         key:"lock",
@@ -270,10 +296,7 @@
         text:"Tap a tiger on the map to lock it.",
         hint:"Blue ring = locked.",
         arrow:"tiger",
-        canNext: () => {
-          const S = getS();
-          return !!(S && S.lockedTigerId);
-        }
+        canNext: () => window.TigerTutorial.lockedOnce === true
       },
       {
         key:"engage",
@@ -310,9 +333,9 @@
         key:"interactables",
         title:"Map Interactables",
         text:"Story maps include interactables:\n• Alarm (stagger/reveal)\n• Barricade (block zone)\n• Cache (supplies/cash).",
-        hint:"Tap Next.",
+        hint:"Use any one interactable once (Alarm, Barricade, or Cache).",
         arrow:"cv",
-        canNext: () => true
+        canNext: () => window.TigerTutorial.interactableUsed === true
       },
       {
         key:"shield",
@@ -376,10 +399,17 @@
     step:0,
     currentKey:null,
     mapClicked:false,
+    movedOnce:false,
     lastLockedTigerId:null,
     baseShots:0,
     engagedOnce:false,
     attackedOnce:false,
+    scanUsed:false,
+    lockedOnce:false,
+    interactableUsed:false,
+    startX:0,
+    startY:0,
+    baseInteractables:null,
     captureWindowReached:false,
     combatOutcome:null,
     shieldUsed:false,
@@ -486,10 +516,25 @@
     T.step = 0;
     T.currentKey = "intro";
     T.mapClicked = false;
+    T.movedOnce = false;
     T.lastLockedTigerId = null;
     T.baseShots = Number(getS()?.stats?.shots || 0);
     T.engagedOnce = false;
     T.attackedOnce = false;
+    T.scanUsed = false;
+    T.lockedOnce = false;
+    T.interactableUsed = false;
+    T.startX = Number(getS()?.me?.x || 0);
+    T.startY = Number(getS()?.me?.y || 0);
+    T.baseInteractables = {};
+    for(const it of (getS()?.mapInteractables || [])){
+      if(!it?.id) continue;
+      T.baseInteractables[String(it.id)] = {
+        uses: Number.isFinite(Number(it.uses)) ? Number(it.uses) : null,
+        cooldownUntil: Number(it.cooldownUntil || 0),
+        activeUntil: Number(it.activeUntil || 0)
+      };
+    }
     T.captureWindowReached = false;
     T.combatOutcome = null;
     T.shieldUsed = false;
@@ -515,10 +560,17 @@
     T.step = 0;
     T.currentKey = null;
     T.mapClicked = false;
+    T.movedOnce = false;
     T.lastLockedTigerId = null;
     T.baseShots = 0;
     T.engagedOnce = false;
     T.attackedOnce = false;
+    T.scanUsed = false;
+    T.lockedOnce = false;
+    T.interactableUsed = false;
+    T.startX = 0;
+    T.startY = 0;
+    T.baseInteractables = null;
     T.captureWindowReached = false;
     T.combatOutcome = null;
     T.shieldUsed = false;
@@ -551,6 +603,7 @@
 
     const steps = getStepList();
     const step = steps[T.step];
+    if(!step.canNext || !step.canNext()) return;
 
     if(step.finish){
       endTutorial(true);
