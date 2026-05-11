@@ -2,6 +2,8 @@ const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
 const { incrMetric, summarizeMetrics, storageMode } = require("../_lib/metrics-store");
 const liveops = require("../_lib/liveops");
+const fs = require("fs");
+const path = require("path");
 const {
   getPlayerStats,
   touchPlayer,
@@ -774,6 +776,7 @@ function helpText(){
     "/stars - Stars purchase/spend help",
     "/about - What Tiger Strike is",
     "/howtoplay - Quick gameplay guide",
+    "/game_guide - Full game systems/items guide",
     "/controls - Control guide",
     "/tips - Gameplay tips",
     "/faq - Common questions",
@@ -796,6 +799,28 @@ function helpText(){
     "/post_stars",
     "/post_premium",
     "/post_campaign",
+  ].join("\n");
+}
+
+function gameGuideText(){
+  try{
+    const p = path.resolve(process.cwd(), "TELEGRAM_GAME_GUIDE.md");
+    if(fs.existsSync(p)){
+      const raw = String(fs.readFileSync(p, "utf8") || "").trim();
+      if(raw){
+        // Telegram plain-text friendly conversion.
+        return raw
+          .replace(/^#\s+/gm, "")
+          .replace(/^##\s+/gm, "")
+          .replace(/^###\s+/gm, "")
+          .replace(/^\s*-\s+/gm, "• ")
+          .trim();
+      }
+    }
+  }catch(e){ /* fallback below */ }
+  return [
+    "Tiger Strike Game Guide",
+    "Use /howtoplay for quick basics, or ask an admin to redeploy guide file if this fallback appears.",
   ].join("\n");
 }
 
@@ -870,6 +895,29 @@ async function sendMessage(botToken, chatId, text, extra = {}){
     disable_web_page_preview: true,
     ...extra,
   }, botToken);
+}
+
+async function sendLongMessage(botToken, chatId, text, extra = {}){
+  const max = 3500;
+  const raw = String(text || "");
+  if(raw.length <= max){
+    return sendMessage(botToken, chatId, raw, extra);
+  }
+  const parts = [];
+  let i = 0;
+  while(i < raw.length){
+    let end = Math.min(raw.length, i + max);
+    if(end < raw.length){
+      const cut = raw.lastIndexOf("\n", end);
+      if(cut > i + 120) end = cut;
+    }
+    parts.push(raw.slice(i, end).trim());
+    i = end;
+  }
+  for(let idx=0; idx<parts.length; idx++){
+    const chunk = `(${idx + 1}/${parts.length})\n${parts[idx]}`;
+    await sendMessage(botToken, chatId, chunk, idx === parts.length - 1 ? extra : {});
+  }
 }
 
 async function answerCallback(botToken, callbackQueryId, text, showAlert){
@@ -1336,6 +1384,13 @@ async function handleCommand(botToken, update, source){
     case "howtoplay":
     case "how_to_play": {
       await sendMessage(botToken, ctx.chat.id, howToPlayText(), {
+        reply_markup: leafMenuKeyboard("menu_help"),
+      });
+      return true;
+    }
+    case "game_guide":
+    case "gameguide": {
+      await sendLongMessage(botToken, ctx.chat.id, gameGuideText(), {
         reply_markup: leafMenuKeyboard("menu_help"),
       });
       return true;
