@@ -20967,14 +20967,17 @@ window.enterTutorialMode = function () {
   S.activeTigerId = null;
   S.comboCount = 0;
   S.comboExpireAt = 0;
-  S.me = { x:230, y:330, face:0, step:0 };
-  S.evacZone = { x:160, y:140, r:70 };
+  const tutWorldW = worldWidth(S);
+  const tutWorldH = worldHeight(S);
+  S.me = { x:Math.round(tutWorldW * 0.30), y:Math.round(tutWorldH * 0.60), face:0, step:0 };
+  S.evacZone = { x:Math.round(tutWorldW * 0.54), y:Math.round(tutWorldH * 0.52), r:72 };
   S.stats.shots = 0;
   S.stats.captures = 0;
   S.stats.kills = 0;
   S.stats.evac = 0;
   S.stats.trapsPlaced = 0;
   S.stats.trapsTriggered = 0;
+  S.stamina = Math.max(80, Number(S.stamina || 0));
   S.shields = Math.max(1, S.shields || 0);
   S.shieldUntil = 0;
   ensureAbilityCooldownState();
@@ -21011,6 +21014,12 @@ window.enterTutorialMode = function () {
 
   spawnCivilians();
   spawnTigers();
+  for(const c of (S.civilians || [])){
+    if(!c) continue;
+    c.following = false;
+    c.escortOwner = "";
+    c.escortUnitId = "";
+  }
 
   const tiger = S.tigers[0];
   if(tiger){
@@ -24065,14 +24074,20 @@ function clearOutOfRangeLock(){
 // ===================== SCAN =====================
 function scan(){
   if(!tutorialAllows("scan")) return toast(tutorialBlockMessage("scan"));
+  const tutorialRun = !!window.TigerTutorial?.isRunning;
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
-  if(missionTwistBlackoutActive(Date.now())) return toast("Radio blackout active. Scan unavailable.");
-  if(abilityOnCooldown("scan")) return toast(`Scan cooling down (${abilityCooldownLabel("scan")}).`);
+  if(!tutorialRun && missionTwistBlackoutActive(Date.now())) return toast("Radio blackout active. Scan unavailable.");
+  if(!tutorialRun && abilityOnCooldown("scan")) return toast(`Scan cooling down (${abilityCooldownLabel("scan")}).`);
   const scanCost = Math.max(2, STAMINA_COST_SCAN * storyStaminaDrainMul());
-  if(S.stamina < scanCost) return toast("Not enough stamina.");
-  S.stamina -= scanCost;
-  S.scanPing=140;
-  triggerAbilityCooldown("scan");
+  if(!tutorialRun){
+    if(S.stamina < scanCost) return toast("Not enough stamina.");
+    S.stamina -= scanCost;
+    triggerAbilityCooldown("scan");
+  }
+  S.scanPing = tutorialRun ? 220 : 140;
+  if(tutorialRun && window.TigerTutorial){
+    window.TigerTutorial.scanUsed = true;
+  }
   if(!window.TigerTutorial?.isRunning) lockNearestTiger({ silent:true });
   sfx("scan"); hapticImpact("light"); save();
   unlockAchv("scan1","First Scan");
@@ -25311,6 +25326,8 @@ function civilianSmartRerouteTarget(c, anchor, now=Date.now()){
 // ===================== CIVILIANS FOLLOW-ONLY =====================
 function followCiviliansTick(){
   if(S.mode==="Survival") return;
+  const tutorialRun = !!window.TigerTutorial?.isRunning;
+  const tutorialEscortStep = window.TigerTutorial?.currentKey === "escort";
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
   const motionMul = frameMotionMul();
   const escortBoost = storyRescueSpeedMul() * liveOpsMissionModifierValue("rescueSpeedMul", 1, S);
@@ -25352,6 +25369,12 @@ function followCiviliansTick(){
     const engageDist = clamp(86 * (civDef.engageMul || 1), 58, 128);
     const civFollowMaxDist = clamp(followMaxDist * (0.88 + ((civDef.bravery || 0.5) * 0.26)), 420, 760);
     if(!c.following){
+      if(tutorialRun && !tutorialEscortStep){
+        c.following = false;
+        c.escortOwner = "";
+        c.escortUnitId = "";
+        continue;
+      }
       if(toPlayer <= engageDist){
         c.following = true;
         c.escortOwner = "player";
@@ -25454,8 +25477,15 @@ function followCiviliansTick(){
     civilianUpdatePathMemory(c, now);
     const antiClump = civilianAntiClumpOffset(c, activeFollowers);
     const anchorWithSpread = { x:anchor.x + antiClump.x, y:anchor.y + antiClump.y };
-    const rerouteAnchor = civilianSmartRerouteTarget(c, anchorWithSpread, now);
-    const bypassAnchor = civilianEvacEdgeBypassTarget(c, rerouteAnchor.x, rerouteAnchor.y);
+    const nearEvac = !!S.evacZone && dist(c.x, c.y, S.evacZone.x, S.evacZone.y) <= ((S.evacZone.r || 70) + 34);
+    let bypassAnchor;
+    if(nearEvac){
+      // When escort is close to evac, drive civilians straight toward evac core to avoid orbit loops.
+      bypassAnchor = { x:S.evacZone.x, y:S.evacZone.y };
+    } else {
+      const rerouteAnchor = civilianSmartRerouteTarget(c, anchorWithSpread, now);
+      bypassAnchor = civilianEvacEdgeBypassTarget(c, rerouteAnchor.x, rerouteAnchor.y);
+    }
 
     let dx = bypassAnchor.x - c.x;
     let dy = bypassAnchor.y - c.y;
