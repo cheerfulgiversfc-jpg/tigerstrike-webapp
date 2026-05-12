@@ -125,6 +125,7 @@
       if(shots > (T.baseShots || 0)) T.attackedOnce = true;
       if(Number(S.scanPing || 0) > 0) T.scanUsed = true;
       if(Number(S.lockedTigerId || 0) > 0) T.lockedOnce = true;
+      if(Number(T.lastLockedTigerId || 0) > 0) T.lockedOnce = true;
       const activeTigerId = Number(S.activeTigerId || 0);
       const tiger = activeTigerId > 0 ? (S.tigers || []).find((it)=>it && it.id === activeTigerId && it.alive) : null;
       if(!T.captureWindowReached){
@@ -280,7 +281,14 @@
         text:"Move close to the civilian, then guide them into the green SAFE ZONE.",
         hint:"Stay near them so they follow you.",
         arrow:"evacZone",
-        canNext: () => (getS()?.evacDone || 0) >= 1
+        canNext: () => {
+          const S = getS();
+          if((S?.evacDone || 0) >= 1) return true;
+          if(!S?.evacZone || !Array.isArray(S?.civilians)) return false;
+          const ez = S.evacZone;
+          const outer = (ez.r || 70) + 42;
+          return S.civilians.some((c)=>c && c.alive && !c.evac && dist(c.x, c.y, ez.x, ez.y) <= outer);
+        }
       },
       {
         key:"scan",
@@ -296,7 +304,15 @@
         text:"Tap a tiger on the map to lock it.",
         hint:"Blue ring = locked.",
         arrow:"tiger",
-        canNext: () => window.TigerTutorial.lockedOnce === true
+        canNext: () => {
+          const S = getS();
+          const T = window.TigerTutorial;
+          return !!(
+            T?.lockedOnce ||
+            Number(S?.lockedTigerId || 0) > 0 ||
+            Number(T?.lastLockedTigerId || 0) > 0
+          );
+        }
       },
       {
         key:"engage",
@@ -316,7 +332,14 @@
         text:`Attack until the tiger is at ${capturePct}% HP or lower.`,
         hint:"Keep attacking until the tiger health bar reaches capture range.",
         arrow:"tiger",
-        canNext: () => window.TigerTutorial.captureWindowReached === true || captureReadyFromUi() || !!window.TigerTutorial.combatOutcome
+        canNext: () => {
+          const T = window.TigerTutorial;
+          const S = getS();
+          const activeTigerId = Number(S?.activeTigerId || 0);
+          const tiger = activeTigerId > 0 ? (S?.tigers || []).find((it)=>it && it.id === activeTigerId && it.alive) : null;
+          const hpWindowReady = !!(tiger && tiger.hpMax > 0 && (tiger.hp / tiger.hpMax) <= 0.34);
+          return !!(T?.captureWindowReached || captureReadyFromUi() || hpWindowReady || T?.combatOutcome);
+        }
       },
       {
         key:"resolve_tiger",

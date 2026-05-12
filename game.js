@@ -23482,6 +23482,7 @@ cv.addEventListener("pointerdown",(e)=>{
       if(tutorialAllows("lock")){
         S.lockedTigerId=tapped.id;
         window.TigerTutorial.lastLockedTigerId = tapped.id;
+        window.TigerTutorial.lockedOnce = true;
         sfx("ui");
         hapticImpact("light");
         save();
@@ -25560,6 +25561,11 @@ function followCiviliansTick(){
     } else {
       c._pathStallCount = Math.max(0, Number(c._pathStallCount || 0) - 2);
     }
+  }
+
+  // Tutorial escort step should register evac immediately after movement updates.
+  if(tutorialRun && tutorialEscortStep){
+    evacCheck();
   }
 }
 
