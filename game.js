@@ -10583,8 +10583,8 @@ function startAdaptiveAudioDirector(){
     const out = AC.createGain();
     out.gain.value = 0.0001;
     const bed = mkLayer("triangle", 72, 0.0001);
-    const tension = mkLayer("sawtooth", 128, 0.0001);
-    const pulse = mkLayer("square", 44, 0.0001);
+    const tension = mkLayer("triangle", 128, 0.0001);
+    const pulse = mkLayer("sine", 44, 0.0001);
     bed.gain.connect(out);
     tension.gain.connect(out);
     pulse.gain.connect(out);
@@ -10656,7 +10656,7 @@ function adaptiveAudioDirectorTick(){
   const phaseMul = phase === DIRECTOR_PHASES.PEAK ? 1.22 : (phase === DIRECTOR_PHASES.PRESSURE ? 1.0 : (phase === DIRECTOR_PHASES.RECOVER ? 0.72 : 0.62));
   const bedTarget = clamp(0.02 + intensity * 0.07 * phaseMul, 0.008, 0.105);
   const tensionTarget = clamp(intensity * 0.058 * (phase === DIRECTOR_PHASES.PEAK ? 1.35 : 1), 0.004, 0.092);
-  const pulseTarget = clamp((S.inBattle ? 0.03 : 0.012) + intensity * 0.043, 0.003, 0.076);
+  const pulseTarget = clamp((S.inBattle ? 0.014 : 0.008) + intensity * 0.024, 0.002, 0.042);
   const masterTarget = clamp((S.paused ? 0.26 : 0.88) * (bossActive ? 1.04 : 1), 0.2, 0.98);
 
   const sweep = (n, target, tau=0.25)=>{
@@ -23479,6 +23479,7 @@ cv.addEventListener("pointerdown",(e)=>{
       }
       const changed = activateMapInteractable(tappedInteractable);
       if(changed){
+        window.TigerTutorial.interactableUsed = true;
         sfx("ui");
         hapticImpact("light");
         save();
