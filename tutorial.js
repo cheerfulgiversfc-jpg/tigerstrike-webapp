@@ -355,7 +355,7 @@
       {
         key:"interactables",
         title:"Map Interactables",
-        text:"Story maps include interactables:\n• Alarm (stagger/reveal)\n• Barricade (block zone)\n• Cache (supplies/cash).",
+        text:"Story maps include interactables:\n• Alarm: reveals nearby tigers and briefly staggers them\n• Barricade: creates a temporary block zone\n• Cache: gives cash + ammo.",
         hint:"Use any one interactable once (Alarm, Barricade, or Cache).",
         arrow:"cv",
         canNext: () => window.TigerTutorial.interactableUsed === true

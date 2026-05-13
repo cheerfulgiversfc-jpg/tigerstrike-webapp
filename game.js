@@ -12449,6 +12449,7 @@ function tutorialAllows(action){
   const key = tutorialKey();
   if(!key) return true;
   const allow = {
+    interact:["interactables","shield","shop","squad","inventory","done"],
     scan:["scan","lock","engage","weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
     lock:["lock","engage","weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
     engage:["engage","weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
@@ -12461,6 +12462,7 @@ function tutorialAllows(action){
   return !allow[action] || allow[action].includes(key);
 }
 function tutorialBlockMessage(action){
+  if(action==="interact") return "Use Alarm, Barrier, or Cache during the Interactables step.";
   if(action==="scan") return "Escort the civilian to the green safe zone first.";
   if(action==="lock") return "Scan first, then tap the tiger to lock it.";
   if(action==="engage") return "Scan and lock the tiger before engaging.";
@@ -23470,6 +23472,19 @@ cv.addEventListener("pointerdown",(e)=>{
   // Stop normal gameplay while tutorial controls flow
   if (window.TigerTutorial?.isRunning){
     ensureAudio();
+    if(tappedInteractable && !S.inBattle){
+      if(!tutorialAllows("interact")){
+        toast(tutorialBlockMessage("interact"));
+        return;
+      }
+      const changed = activateMapInteractable(tappedInteractable);
+      if(changed){
+        sfx("ui");
+        hapticImpact("light");
+        save();
+      }
+      return;
+    }
     if(tapped){
       if(tapped.id===S.lockedTigerId && tutorialAllows("engage")){
         if(canEngage()){
