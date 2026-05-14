@@ -9251,6 +9251,13 @@ function updateWorldCamera(state=S){
   const ease = mobile
     ? (state?.inBattle ? 0.52 : 0.42)
     : (state?.inBattle ? 0.25 : 0.18);
+  const tutorialRun = !!window.TigerTutorial?.isRunning;
+  if(tutorialRun){
+    state.camera.x = target.x;
+    state.camera.y = target.y;
+    state._cameraOutFrames = 0;
+    return { x: state.camera.x - (vw * 0.5), y: state.camera.y - (vh * 0.5) };
+  }
   if(!Number.isFinite(state.camera.x) || !Number.isFinite(state.camera.y)){
     state.camera.x = target.x;
     state.camera.y = target.y;
@@ -21016,8 +21023,17 @@ window.enterTutorialMode = function () {
 
   spawnCivilians();
   spawnTigers();
+  if(Array.isArray(S.civilians) && S.civilians.length){
+    S.civilians = [S.civilians[0]];
+  }
+  if(Array.isArray(S.tigers) && S.tigers.length){
+    S.tigers = [S.tigers[0]];
+  }
   for(const c of (S.civilians || [])){
     if(!c) continue;
+    c.x = Math.round(tutWorldW * 0.40);
+    c.y = Math.round(tutWorldH * 0.56);
+    c.hp = c.hpMax || 100;
     c.following = false;
     c.escortOwner = "";
     c.escortUnitId = "";
@@ -21025,10 +21041,11 @@ window.enterTutorialMode = function () {
 
   const tiger = S.tigers[0];
   if(tiger){
-    tiger.x = 760;
-    tiger.y = 160;
+    tiger.x = Math.round(tutWorldW * 0.64);
+    tiger.y = Math.round(tutWorldH * 0.40);
     tiger.vx = 0;
     tiger.vy = 0;
+    tiger.hp = tiger.hpMax || tiger.hp || 100;
     tiger.holdUntil = Date.now() + 86400000;
   }
 
@@ -23012,7 +23029,7 @@ function deploy(opts={}){
     return;
   }
   __deployInProgress = true;
-  beginMissionTransitionGuard("deploy-begin", 1600);
+  beginMissionTransitionGuard("deploy-begin", 2200);
   try{
   const carryStats = !!opts.carryStats;
   const carryHp = clamp(Number.isFinite(opts.hp) ? opts.hp : S.hp, 0, 100);
@@ -24284,6 +24301,9 @@ function activateShield(){
   if((S.shields||0) <= 0) return toast("No shields left. Buy more in Shop.");
   S.shields = Math.max(0, (S.shields||0) - 1);
   S.shieldUntil = Date.now() + SHIELD_DURATION_MS;
+  if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "shield"){
+    window.TigerTutorial.shieldUsed = true;
+  }
   triggerAbilityCooldown("shield");
   S.eventText = "🛡️ Escort Shield active for 5 seconds.";
   S.eventTextUntil = Date.now() + 1500;
@@ -33151,6 +33171,29 @@ function ensureMissionStartupIntegrity(opts={}){
 // ===================== MISSION FLOW =====================
 
 // ===================== MAIN LOOP =====================
+function drawTutorialStepWorldHighlight(now=Date.now()){
+  const marker = window.__tutorialTigerHighlight;
+  if(!window.TigerTutorial?.isRunning || !marker) return;
+  const tx = Number(marker.x);
+  const ty = Number(marker.y);
+  if(!Number.isFinite(tx) || !Number.isFinite(ty)) return;
+  const pulse = 1 + (Math.sin(now / 190) * 0.08);
+  const r1 = 30 * pulse;
+  const r2 = 44 * pulse;
+  ctx.save();
+  ctx.strokeStyle = "rgba(96,165,250,0.96)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(tx, ty, r1, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(34,211,238,0.78)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(tx, ty, r2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function draw(){
   const frameStart = performance.now ? performance.now() : Date.now();
   try{
@@ -33371,6 +33414,9 @@ function draw(){
           safeTick("drawSceneGradeUnderlay", ()=>drawSceneCinematicGrade(Date.now(), "underlay"));
         }
         const entityDrawOk = safeTick("drawSceneEntities", drawEntities);
+        if(entityDrawOk && window.TigerTutorial?.isRunning){
+          safeTick("drawTutorialStepWorldHighlight", ()=>drawTutorialStepWorldHighlight(Date.now()));
+        }
         if(entityDrawOk && !frameBudgetExceeded(0.78)){
           safeTick("drawSceneGradeOverlay", ()=>drawSceneCinematicGrade(Date.now(), "overlay"));
         }

@@ -10,6 +10,7 @@
   const nextBtn = document.getElementById("tutorialNext");
   const skipBtn = document.getElementById("tutorialSkip");
   const arrow = document.getElementById("tutorialArrow");
+  let highlightedEl = null;
 
   function byId(id){ return document.getElementById(id); }
   function visibleEl(id){
@@ -331,7 +332,7 @@
         title:"Weaken Tiger",
         text:`Attack until the tiger is at ${capturePct}% HP or lower.`,
         hint:"Keep attacking until the tiger health bar reaches capture range.",
-        arrow:"tiger",
+        arrow:"atkBtn",
         canNext: () => {
           const T = window.TigerTutorial;
           const S = getS();
@@ -462,6 +463,29 @@
   function hideArrow(){
     arrow.style.display = "none";
   }
+  function clearStepHighlight(){
+    if(highlightedEl){
+      highlightedEl.classList.remove("tutorialStepPulse");
+      highlightedEl = null;
+    }
+    window.__tutorialTigerHighlight = null;
+  }
+  function applyStepHighlight(step, S){
+    clearStepHighlight();
+    if(!step) return;
+    if(step.arrow === "tiger"){
+      const tiger = pickTutorialTiger(S);
+      if(tiger && Number.isFinite(tiger.x) && Number.isFinite(tiger.y)){
+        window.__tutorialTigerHighlight = { x:tiger.x, y:tiger.y, at:Date.now() };
+      }
+      return;
+    }
+    if(typeof step.arrow !== "string") return;
+    const target = tutorialTarget(step.arrow);
+    if(!target) return;
+    target.classList.add("tutorialStepPulse");
+    highlightedEl = target;
+  }
 
   function open(){
     overlay.style.display = "flex";
@@ -470,6 +494,7 @@
   function close(){
     overlay.style.display = "none";
     hideArrow();
+    clearStepHighlight();
     clearInterval(window.__tutTimer);
   }
 
@@ -519,6 +544,7 @@
     } else {
       hideArrow();
     }
+    applyStepHighlight(step, S);
 
     setNextEnabled(!!step.canNext());
     clearInterval(window.__tutTimer);
@@ -601,6 +627,7 @@
     T.squadOpened = false;
     T.inventoryOpened = false;
     T.lastShieldUntil = 0;
+    clearStepHighlight();
 
     try{ window.closeShop?.(); }catch(e){}
     try{ window.closeInventory?.(); }catch(e){}
