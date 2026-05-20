@@ -31523,6 +31523,20 @@ function drawCivilian(c){
   const smooth = smoothedDrawPoint(c, c.x, c.y, c.following ? 0.44 : 0.34);
   const cx = smooth.x;
   const cy = smooth.y;
+  // Phase 2 readability: stronger local separation from terrain.
+  ctx.save();
+  ctx.globalAlpha = 0.30;
+  ctx.fillStyle = "rgba(5,8,14,.90)";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 19, 16, 6.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.60;
+  ctx.strokeStyle = "rgba(236,253,245,.92)";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.arc(cx, cy - 4, 14.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
   drawWaterRipple(cx, cy, 16, 0.50);
   ctx.save();
   ctx.globalAlpha = S.inBattle ? 0.34 : 0.24;
@@ -31694,6 +31708,20 @@ function drawSoldier(){
   const bob = rolling ? 0 : (Math.sin(step) * 1.5) + (Math.sin(step * 2.2) * 0.45);
   const x = px;
   const y = py + bob;
+  // Phase 2 readability: stronger local separation from terrain.
+  ctx.save();
+  ctx.globalAlpha = 0.34;
+  ctx.fillStyle = "rgba(5,8,14,.95)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 19, 20.5, 8.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.66;
+  ctx.strokeStyle = S.inBattle ? "rgba(56,189,248,.98)" : "rgba(226,232,240,.92)";
+  ctx.lineWidth = S.inBattle ? 2.4 : 2.0;
+  ctx.beginPath();
+  ctx.arc(x, y - 2, S.inBattle ? 21 : 18, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
   const meHitFlashLeft = Math.max(0, (S.meHitFlashUntil || 0) - now);
   const meHitFlashAlpha = meHitFlashLeft > 0
     ? clamp((meHitFlashLeft / 190) * (Number(S.meHitFlashPower) || 0.7), 0.12, 0.86)
@@ -31843,8 +31871,22 @@ function drawSupportUnit(unit){
   const bob = Math.sin(unit.step || 0) * 1.2;
   const x = smooth.x;
   const y = smooth.y + bob;
-  drawWaterRipple(x, y, 17, 0.52);
   const attacker = unit.role === "attacker";
+  // Phase 2 readability: stronger local separation from terrain.
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = "rgba(5,8,14,.90)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 17.5, 16.5, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.56;
+  ctx.strokeStyle = attacker ? "rgba(255,214,170,.90)" : "rgba(210,240,255,.90)";
+  ctx.lineWidth = 1.9;
+  ctx.beginPath();
+  ctx.arc(x, y - 2, 15.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+  drawWaterRipple(x, y, 17, 0.52);
   const ang = unit.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
   const stride = Math.sin((unit.step || 0) * 1.8) * 1.6;
@@ -32009,6 +32051,24 @@ function drawTiger(t){
   const strideBounce = Math.abs(Math.sin((t.step||0)*2.2)) * (gaitState==="sprint" ? 1.35 : (gaitState==="run" ? 0.95 : 0.58));
   const bodyLift = clamp(gaitBlend * 2.4 + (sprinting ? 1.35 : 0), 0, 3.8);
   const x=smooth.x, y=smooth.y + bob - bodyLift + (strideBounce * 0.36);
+  // Phase 2 readability: stronger local separation from terrain.
+  let s=1.0;
+  if(t.type==="Scout") s=0.85;
+  if(t.type==="Alpha") s=1.22;
+  if(t.type==="Berserker") s=1.10;
+  ctx.save();
+  ctx.globalAlpha = 0.34 * alpha;
+  ctx.fillStyle = "rgba(5,8,14,.96)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + (18 * s), (24 * s) + (speed * 0.9), 8.6 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = tigerFocus ? 0.72 : 0.56;
+  ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.99)" : "rgba(254,229,184,.90)";
+  ctx.lineWidth = tigerFocus ? 2.4 : 2.0;
+  ctx.beginPath();
+  ctx.arc(x, y, tigerFocus ? 33 * s : 28 * s, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
   const headBob = Math.sin((t.step||0)*2.4 + 0.7) * (gaitState==="sprint" ? 1.7 : (gaitState==="run" ? 1.25 : 0.7));
   const shoulderRoll = Math.sin((t.step||0)*1.3) * (gaitState==="sprint" ? 0.06 : 0.04);
   const tigerFocus = S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id);
@@ -32032,10 +32092,6 @@ function drawTiger(t){
   ctx.arc(x, y, tigerFocus ? 38 : 30, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
-  let s=1.0;
-  if(t.type==="Scout") s=0.85;
-  if(t.type==="Alpha") s=1.22;
-  if(t.type==="Berserker") s=1.10;
   drawWaterRipple(x, y, 20 * s, 0.58);
   const drawDir = Number.isFinite(t.drawDir) ? (t.drawDir >= 0 ? 1 : -1) : ((Math.cos(t.heading || 0) >= 0) ? 1 : -1);
 
