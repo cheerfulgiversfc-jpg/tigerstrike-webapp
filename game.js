@@ -30612,6 +30612,40 @@ function drawMapScene(){
   ctx.fillStyle = vignette;
   ctx.fillRect(0,0,w,h);
 
+  // Phase 1 visual polish: cinematic directional light + soft bloom.
+  // Kept lightweight so mobile frame-time stays stable.
+  const nowLight = Date.now();
+  const lightDrift = Math.sin(nowLight * 0.00022) * 0.02;
+  const topGlow = ctx.createLinearGradient(0, 0, 0, h * 0.62);
+  topGlow.addColorStop(0, "rgba(255,236,185,.17)");
+  topGlow.addColorStop(0.42, "rgba(255,224,170,.07)");
+  topGlow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = topGlow;
+  ctx.fillRect(0, 0, w, h * 0.62);
+
+  ctx.save();
+  ctx.globalAlpha = 0.10;
+  ctx.translate(w * (0.06 + lightDrift), h * 0.04);
+  ctx.rotate(-0.26);
+  const shaftCount = 5;
+  for(let si=0; si<shaftCount; si++){
+    const width = (w * 0.08) + (si * w * 0.03);
+    const shaftGrad = ctx.createLinearGradient(0, 0, width, 0);
+    shaftGrad.addColorStop(0, "rgba(255,246,214,.00)");
+    shaftGrad.addColorStop(0.45, "rgba(255,241,205,.42)");
+    shaftGrad.addColorStop(1, "rgba(255,246,214,.00)");
+    ctx.fillStyle = shaftGrad;
+    ctx.fillRect((si * w * 0.10), -20, width, h * 0.88);
+  }
+  ctx.restore();
+
+  const bloom = ctx.createRadialGradient(w * 0.23, h * 0.12, 0, w * 0.23, h * 0.12, Math.max(w, h) * 0.75);
+  bloom.addColorStop(0, "rgba(255,237,190,.16)");
+  bloom.addColorStop(0.34, "rgba(255,227,176,.08)");
+  bloom.addColorStop(1, "rgba(255,220,170,0)");
+  ctx.fillStyle = bloom;
+  ctx.fillRect(0, 0, w, h);
+
   if(S.mode==="Arcade"){
     ctx.save();
     ctx.globalCompositeOperation = "screen";
