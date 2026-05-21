@@ -24129,6 +24129,20 @@ function scan(){
 
 // ===================== MOVEMENT =====================
 const KEY_STATE = { up:false, down:false, left:false, right:false };
+const PHASE3_FEEL = Object.freeze({
+  keyboardAccelWalk: 0.29,
+  keyboardAccelSprint: 0.36,
+  clickAccelWalk: 0.27,
+  clickAccelSprint: 0.34,
+  idleDampingKeyboard: 0.60,
+  idleDampingClick: 0.64,
+  collisionDamping: 0.40,
+  faceClampKeyboard: 0.22,
+  faceClampClick: 0.20,
+  stepBiasKeyboard: 0.68,
+  stepBiasClick: 0.62,
+  stepScale: 0.36
+});
 
 function setMoveKey(key, on){
   if(key==="w" || key==="arrowup"){ KEY_STATE.up = on; return true; }
@@ -24172,8 +24186,8 @@ function keyboardMoveTick(){
   const dx = ((KEY_STATE.right ? 1 : 0) - (KEY_STATE.left ? 1 : 0)) + TOUCH_STICK.dx + GAMEPAD_STATE.lx;
   const dy = ((KEY_STATE.down ? 1 : 0) - (KEY_STATE.up ? 1 : 0)) + TOUCH_STICK.dy + GAMEPAD_STATE.ly;
   if(!dx && !dy){
-    if(Number.isFinite(S.me._moveVx)) S.me._moveVx *= 0.52;
-    if(Number.isFinite(S.me._moveVy)) S.me._moveVy *= 0.52;
+    if(Number.isFinite(S.me._moveVx)) S.me._moveVx *= PHASE3_FEEL.idleDampingKeyboard;
+    if(Number.isFinite(S.me._moveVy)) S.me._moveVy *= PHASE3_FEEL.idleDampingKeyboard;
     return false;
   }
   if(S.stamina<=0) return false;
@@ -24196,7 +24210,7 @@ function keyboardMoveTick(){
   const targetVy = uy * speed;
   if(!Number.isFinite(S.me._moveVx)) S.me._moveVx = 0;
   if(!Number.isFinite(S.me._moveVy)) S.me._moveVy = 0;
-  const accel = sprinting ? 0.34 : 0.26;
+  const accel = sprinting ? PHASE3_FEEL.keyboardAccelSprint : PHASE3_FEEL.keyboardAccelWalk;
   S.me._moveVx += (targetVx - S.me._moveVx) * accel;
   S.me._moveVy += (targetVy - S.me._moveVy) * accel;
   const moveMag = Math.hypot(S.me._moveVx, S.me._moveVy) || 0;
@@ -24209,15 +24223,15 @@ function keyboardMoveTick(){
   S.target=null;
   const nextFace = Math.atan2(S.me._moveVy || uy, S.me._moveVx || ux);
   const faceDelta = normalizeAngle(nextFace - (S.me.face || 0));
-  S.me.face = normalizeAngle((S.me.face || 0) + clamp(faceDelta, -0.18, 0.18));
-  S.me.step = (S.me.step + Math.max(0.6, moveMag * 0.34)) % (Math.PI*2);
+  S.me.face = normalizeAngle((S.me.face || 0) + clamp(faceDelta, -PHASE3_FEEL.faceClampKeyboard, PHASE3_FEEL.faceClampKeyboard));
+  S.me.step = (S.me.step + Math.max(PHASE3_FEEL.stepBiasKeyboard, moveMag * PHASE3_FEEL.stepScale)) % (Math.PI*2);
 
   const nx = S.me.x + S.me._moveVx;
   const ny = S.me.y + S.me._moveVy;
   const ok = tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
   if(!ok){
-    S.me._moveVx *= 0.35;
-    S.me._moveVy *= 0.35;
+    S.me._moveVx *= PHASE3_FEEL.collisionDamping;
+    S.me._moveVy *= PHASE3_FEEL.collisionDamping;
   }
 
   S.stamina = clamp(
@@ -24230,8 +24244,8 @@ function keyboardMoveTick(){
 
 function movePlayer(){
   if(!S.target){
-    if(Number.isFinite(S.me._moveVx)) S.me._moveVx *= 0.58;
-    if(Number.isFinite(S.me._moveVy)) S.me._moveVy *= 0.58;
+    if(Number.isFinite(S.me._moveVx)) S.me._moveVx *= PHASE3_FEEL.idleDampingClick;
+    if(Number.isFinite(S.me._moveVy)) S.me._moveVy *= PHASE3_FEEL.idleDampingClick;
     return;
   }
   if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return;
@@ -24252,7 +24266,7 @@ function movePlayer(){
   const targetVy = uy * speed;
   if(!Number.isFinite(S.me._moveVx)) S.me._moveVx = 0;
   if(!Number.isFinite(S.me._moveVy)) S.me._moveVy = 0;
-  const accel = sprinting ? 0.32 : 0.24;
+  const accel = sprinting ? PHASE3_FEEL.clickAccelSprint : PHASE3_FEEL.clickAccelWalk;
   S.me._moveVx += (targetVx - S.me._moveVx) * accel;
   S.me._moveVy += (targetVy - S.me._moveVy) * accel;
   const moveMag = Math.hypot(S.me._moveVx, S.me._moveVy) || 0;
@@ -24263,8 +24277,8 @@ function movePlayer(){
   }
   const nextFace = Math.atan2(S.me._moveVy || uy, S.me._moveVx || ux);
   const faceDelta = normalizeAngle(nextFace - (S.me.face || 0));
-  S.me.face = normalizeAngle((S.me.face || 0) + clamp(faceDelta, -0.16, 0.16));
-  S.me.step = (S.me.step + Math.max(0.55, moveMag * 0.34)) % (Math.PI*2);
+  S.me.face = normalizeAngle((S.me.face || 0) + clamp(faceDelta, -PHASE3_FEEL.faceClampClick, PHASE3_FEEL.faceClampClick));
+  S.me.step = (S.me.step + Math.max(PHASE3_FEEL.stepBiasClick, moveMag * PHASE3_FEEL.stepScale)) % (Math.PI*2);
 
   const nx = S.me.x + S.me._moveVx;
   const ny = S.me.y + S.me._moveVy;
@@ -24272,8 +24286,8 @@ function movePlayer(){
   const ok = tryMoveEntity(S.me, nx, ny, 16, { avoidKeepout:false });
   if(!ok){
     S.target=null;
-    S.me._moveVx *= 0.35;
-    S.me._moveVy *= 0.35;
+    S.me._moveVx *= PHASE3_FEEL.collisionDamping;
+    S.me._moveVy *= PHASE3_FEEL.collisionDamping;
   }
 
   S.stamina = clamp(
@@ -27064,6 +27078,10 @@ function queueImpactPulse(x, y, kind="hit"){
     color = "rgba(255,178,95,.95)";
     maxR = 22;
     ttl = 17;
+  }else if(kind === "capture"){
+    color = "rgba(110,231,183,.96)";
+    maxR = 30;
+    ttl = 24;
   }
   if(visualEffectsHeavyMode()){
     maxR *= 0.84;
@@ -27085,10 +27103,14 @@ function emitCombatFx(x1, y1, x2, y2, color, width=3, kind="hit"){
     COMBAT_FX.splice(0, COMBAT_FX.length - 63);
   }
   const ttlBase = visualEffectsHeavyMode() ? 6 : 8;
-  const ttl = (kind === "crit" || kind === "tranq" || kind === "shield" || kind === "dodge")
+  const ttl = (kind === "crit" || kind === "tranq" || kind === "shield" || kind === "dodge" || kind === "capture")
     ? (ttlBase + 2)
     : ttlBase;
-  const widthBoost = (kind === "crit") ? 1.35 : ((kind === "shield" || kind === "dodge") ? 1.2 : (kind === "tranq" ? 1.12 : 1));
+  const widthBoost = (kind === "crit")
+    ? 1.35
+    : ((kind === "shield" || kind === "dodge")
+      ? 1.2
+      : ((kind === "capture") ? 1.26 : (kind === "tranq" ? 1.12 : 1)));
   COMBAT_FX.push({
     x1, y1, x2, y2, color,
     width: Math.max(1.8, width * widthBoost),
@@ -27164,11 +27186,13 @@ function drawCombatFx(){
     ctx.moveTo(fx.x1, fx.y1);
     ctx.lineTo(fx.x2, fx.y2);
     ctx.stroke();
-    if(!heavy && (fx.kind === "tranq" || fx.kind === "shield" || fx.kind === "dodge")){
+    if(!heavy && (fx.kind === "tranq" || fx.kind === "shield" || fx.kind === "dodge" || fx.kind === "capture")){
       ctx.globalAlpha = alpha * 0.62;
       ctx.strokeStyle = fx.kind === "tranq"
         ? "rgba(125,211,252,.98)"
-        : (fx.kind === "shield" ? "rgba(147,197,253,.98)" : "rgba(250,204,21,.98)");
+        : (fx.kind === "shield"
+          ? "rgba(147,197,253,.98)"
+          : (fx.kind === "capture" ? "rgba(74,222,128,.98)" : "rgba(250,204,21,.98)"));
       ctx.lineWidth = Math.max(1.8, fx.width * 0.72);
       ctx.setLineDash([4,3]);
       ctx.beginPath();
@@ -27183,9 +27207,11 @@ function drawCombatFx(){
       ctx.beginPath();
       ctx.arc(tipX, tipY, Math.max(2.0, fx.width * 1.15), 0, Math.PI * 2);
       ctx.fill();
-      if(fx.kind === "crit" || fx.kind === "player"){
+      if(fx.kind === "crit" || fx.kind === "player" || fx.kind === "capture"){
         const cross = (fx.width * 2.0) + 3;
-        ctx.strokeStyle = fx.kind === "crit" ? "rgba(252,211,77,.98)" : "rgba(248,113,113,.96)";
+        ctx.strokeStyle = fx.kind === "crit"
+          ? "rgba(252,211,77,.98)"
+          : (fx.kind === "capture" ? "rgba(134,239,172,.96)" : "rgba(248,113,113,.96)");
         ctx.lineWidth = 1.9;
         ctx.beginPath();
         ctx.moveTo(tipX - (uy * cross), tipY + (ux * cross));
@@ -27220,7 +27246,7 @@ function drawImpactPulses(){
       ctx.beginPath();
       ctx.arc(pulse.x, pulse.y, pulse.r, 0, Math.PI * 2);
       ctx.stroke();
-      if(pulse.kind === "crit" || pulse.kind === "player" || pulse.kind === "tranq"){
+      if(pulse.kind === "crit" || pulse.kind === "player" || pulse.kind === "tranq" || pulse.kind === "capture"){
         ctx.globalAlpha = life * 0.26;
         ctx.lineWidth = 1.2;
         ctx.beginPath();
@@ -27249,7 +27275,7 @@ function drawImpactPulses(){
     ctx.beginPath();
     ctx.arc(pulse.x, pulse.y, pulse.r, 0, Math.PI * 2);
     ctx.stroke();
-    if(pulse.kind === "crit" || pulse.kind === "player"){
+    if(pulse.kind === "crit" || pulse.kind === "player" || pulse.kind === "capture"){
       ctx.globalAlpha = life * 0.44;
       ctx.lineWidth = 1.7;
       const spoke = Math.max(4, pulse.r * 0.46);
@@ -27319,7 +27345,7 @@ function emitDamagePopup(x, y, text, kind="hit"){
     scale: kind === "crit" ? 1.16 : (kind === "player" ? 1.10 : 1.0)
   });
   queueImpactPulse(x, y, kind);
-  if(kind === "crit" || kind === "player"){
+  if(kind === "crit" || kind === "player" || kind === "capture"){
     queueImpactPulse(x, y, kind);
   }
   if(!iphoneLite){
@@ -27331,6 +27357,8 @@ function emitDamagePopup(x, y, text, kind="hit"){
       queueCameraShake(0.86, 150);
     }else if(kind === "tranq"){
       queueCameraShake(0.55, 110);
+    }else if(kind === "capture"){
+      queueCameraShake(0.78, 140);
     }else{
       queueCameraShake(0.32, 90);
     }
@@ -27415,12 +27443,14 @@ function drawDamagePopups(){
     else if(p.kind === "civilian") color = "rgba(251,191,36,.96)";
     else if(p.kind === "shield") color = "rgba(96,165,250,.98)";
     else if(p.kind === "dodge") color = "rgba(250,204,21,.98)";
+    else if(p.kind === "capture") color = "rgba(74,222,128,.98)";
     if(p.kind === "crit"){ bg = "rgba(74,50,8,.86)"; icon = "CRIT"; }
     else if(p.kind === "player"){ bg = "rgba(82,24,24,.88)"; icon = "HP"; }
     else if(p.kind === "tranq"){ bg = "rgba(18,48,78,.86)"; icon = "TRQ"; }
     else if(p.kind === "civilian"){ bg = "rgba(72,46,8,.88)"; icon = "CIV"; }
     else if(p.kind === "shield"){ bg = "rgba(14,44,86,.88)"; icon = "SHD"; }
     else if(p.kind === "dodge"){ bg = "rgba(86,64,10,.88)"; icon = "DGE"; }
+    else if(p.kind === "capture"){ bg = "rgba(12,58,32,.88)"; icon = "CAP"; }
     if(iphoneLite){
       ctx.save();
       const sc = clamp(Number(p.scale) || 1, 0.8, 1.2);
@@ -27429,6 +27459,7 @@ function drawDamagePopups(){
       else if(p.kind === "tranq") txt = `💉 ${txt}`;
       else if(p.kind === "player") txt = `HP ${txt}`;
       else if(p.kind === "civilian") txt = `CIV ${txt}`;
+      else if(p.kind === "capture") txt = `CAP ${txt}`;
       ctx.globalAlpha = a * 0.98;
       ctx.font = `900 ${Math.round(11 * sc)}px system-ui`;
       ctx.textAlign = "center";
@@ -28155,6 +28186,9 @@ function playerAction(action){
     unlockAchv("cap1","First Capture");
     S.trust=clamp(S.trust+pay.trust,0,100);
     S.aggro=clamp(S.aggro+pay.aggro,0,100);
+    emitCombatFx(S.me.x, S.me.y - 6, t.x, t.y, "rgba(74,222,128,.98)", 4.2, "capture");
+    queueImpactPulse(t.x, t.y - 8, "capture");
+    emitDamagePopup(t.x, t.y - 44, "CAPTURE", "capture");
     sfx("win"); hapticNotif("success");
     endBattle();
     if(!restorePostCaptureWeapon(req) && preCaptureWeaponId && preCaptureWeaponId !== req && S.ownedWeapons.includes(preCaptureWeaponId)){
