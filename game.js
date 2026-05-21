@@ -10491,6 +10491,7 @@ function stabilityHealthTick(){
 let AC=null;
 let __audioMasterGain=null;
 let __adaptiveAudio=null;
+let __sfxLastAt = Object.create(null);
 let __adaptiveAudioTickAt=0;
 let __adaptiveAudioLastPressure=-1;
 let __adaptiveAudioLastPhase="";
@@ -10519,19 +10520,62 @@ function beep(f=440,ms=80,type="sine",vol=0.06){
     o.start(); setTimeout(()=>o.stop(), ms);
   }catch(e){}
 }
+function sfxGate(name, minMs=36){
+  const now = Date.now();
+  const last = Number(__sfxLastAt[name] || 0);
+  if((now - last) < minMs) return false;
+  __sfxLastAt[name] = now;
+  return true;
+}
 function sfx(name){
   if(!S.soundOn) return;
-  if(name==="ui"){ beep(420,70,"sine",0.05); }
-  if(name==="scan"){ beep(520,70,"triangle",0.05); setTimeout(()=>beep(740,70,"triangle",0.05),80); }
-  if(name==="hit"){ beep(620,70,"square",0.05); }
-  if(name==="tranq"){ beep(520,90,"triangle",0.05); }
-  if(name==="hurt"){ beep(220,120,"sawtooth",0.05); }
-  if(name==="win"){ beep(660,60,"triangle",0.05); setTimeout(()=>beep(980,80,"triangle",0.05),70); }
-  if(name==="reload"){ beep(360,60,"sine",0.05); setTimeout(()=>beep(420,60,"sine",0.05),70); }
-  if(name==="jam"){ beep(180,140,"sawtooth",0.06); }
-  if(name==="trap"){ beep(300,80,"triangle",0.05); setTimeout(()=>beep(240,110,"triangle",0.04),70); }
-  if(name==="loot"){ beep(780,60,"triangle",0.04); }
-  if(name==="event"){ beep(520,70,"triangle",0.05); setTimeout(()=>beep(980,90,"triangle",0.05),80); }
+  if(name==="ui"){ beep(420,64,"sine",0.042); }
+  if(name==="scan"){
+    if(!sfxGate("scan", 120)) return;
+    beep(520,66,"triangle",0.042);
+    setTimeout(()=>beep(740,66,"triangle",0.038),78);
+  }
+  if(name==="hit"){
+    if(!sfxGate("hit", 48)) return;
+    beep(600,52,"triangle",0.034);
+    setTimeout(()=>beep(740,40,"sine",0.02),30);
+  }
+  if(name==="tranq"){
+    if(!sfxGate("tranq", 72)) return;
+    beep(500,78,"triangle",0.036);
+    setTimeout(()=>beep(620,52,"sine",0.02),44);
+  }
+  if(name==="hurt"){
+    if(!sfxGate("hurt", 78)) return;
+    beep(220,96,"triangle",0.034);
+    setTimeout(()=>beep(176,72,"sine",0.022),60);
+  }
+  if(name==="win"){
+    if(!sfxGate("win", 180)) return;
+    beep(660,58,"triangle",0.046);
+    setTimeout(()=>beep(980,74,"triangle",0.042),66);
+  }
+  if(name==="reload"){
+    if(!sfxGate("reload", 84)) return;
+    beep(360,56,"sine",0.038);
+    setTimeout(()=>beep(420,54,"sine",0.034),64);
+  }
+  if(name==="jam"){
+    if(!sfxGate("jam", 160)) return;
+    beep(170,104,"triangle",0.03);
+    setTimeout(()=>beep(148,86,"sine",0.02),54);
+  }
+  if(name==="trap"){
+    if(!sfxGate("trap", 120)) return;
+    beep(300,74,"triangle",0.04);
+    setTimeout(()=>beep(240,90,"triangle",0.032),64);
+  }
+  if(name==="loot"){ beep(780,56,"triangle",0.034); }
+  if(name==="event"){
+    if(!sfxGate("event", 120)) return;
+    beep(520,66,"triangle",0.04);
+    setTimeout(()=>beep(880,82,"triangle",0.036),76);
+  }
 }
 function toggleSound(){
   S.soundOn=!S.soundOn;
@@ -10611,23 +10655,27 @@ function startAdaptiveAudioDirector(){
 function adaptiveAudioStinger(kind="danger"){
   if(!S.soundOn) return;
   if(kind === "boss"){
-    beep(196, 90, "triangle", 0.05);
-    setTimeout(()=>beep(246, 110, "sawtooth", 0.055), 90);
-    setTimeout(()=>beep(329, 120, "triangle", 0.05), 210);
+    if(!sfxGate("stinger_boss", 1200)) return;
+    beep(196, 84, "triangle", 0.038);
+    setTimeout(()=>beep(246, 98, "triangle", 0.04), 84);
+    setTimeout(()=>beep(329, 108, "sine", 0.034), 188);
     return;
   }
   if(kind === "peak"){
-    beep(320, 80, "square", 0.045);
-    setTimeout(()=>beep(440, 90, "triangle", 0.048), 70);
+    if(!sfxGate("stinger_peak", 700)) return;
+    beep(320, 72, "triangle", 0.032);
+    setTimeout(()=>beep(440, 82, "sine", 0.034), 64);
     return;
   }
   if(kind === "recover"){
-    beep(262, 80, "sine", 0.04);
-    setTimeout(()=>beep(330, 80, "sine", 0.038), 85);
+    if(!sfxGate("stinger_recover", 700)) return;
+    beep(262, 74, "sine", 0.03);
+    setTimeout(()=>beep(330, 74, "sine", 0.028), 80);
     return;
   }
-  beep(220, 70, "sawtooth", 0.04);
-  setTimeout(()=>beep(294, 80, "triangle", 0.042), 70);
+  if(!sfxGate("stinger_danger", 700)) return;
+  beep(220, 64, "triangle", 0.03);
+  setTimeout(()=>beep(294, 72, "sine", 0.03), 68);
 }
 function adaptiveAudioDirectorTick(){
   if(!S.soundOn) return;
