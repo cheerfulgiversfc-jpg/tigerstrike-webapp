@@ -8902,6 +8902,7 @@ const __freezeRecoverState = {
 };
 const STABILITY_EVENT_LOG_MAX = 48;
 let __stabilityEventLog = [];
+const STABILITY_INCIDENT_STORAGE_KEY = "ts_stability_incident_v1";
 const STABILITY_INCIDENT_COOLDOWN_MS = 45000;
 let __stabilityIncident = {
   id: "",
@@ -8910,6 +8911,7 @@ let __stabilityIncident = {
   reason: "",
   count: 0
 };
+let __stabilityIncidentLoaded = false;
 const __stabilityMonitorState = {
   node: null,
   lastRenderAt: 0,
@@ -8933,6 +8935,7 @@ const __renderFailSafeState = {
 };
 
 function pushStabilityEvent(type="event", detail={}){
+  ensureStabilityIncidentLoaded();
   const now = Date.now();
   const typ = String(type || "event");
   const shouldOpenIncident =
@@ -8968,6 +8971,35 @@ function pushStabilityEvent(type="event", detail={}){
   if(__stabilityEventLog.length > STABILITY_EVENT_LOG_MAX){
     __stabilityEventLog.splice(0, __stabilityEventLog.length - STABILITY_EVENT_LOG_MAX);
   }
+  persistStabilityIncident();
+}
+function sanitizeStabilityIncident(raw){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  return {
+    id: String(src.id || ""),
+    openedAt: Math.max(0, Math.floor(Number(src.openedAt || 0))),
+    lastAt: Math.max(0, Math.floor(Number(src.lastAt || 0))),
+    reason: String(src.reason || ""),
+    count: Math.max(0, Math.floor(Number(src.count || 0)))
+  };
+}
+function persistStabilityIncident(){
+  try{
+    localStorage.setItem(STABILITY_INCIDENT_STORAGE_KEY, JSON.stringify(sanitizeStabilityIncident(__stabilityIncident)));
+  }catch(e){}
+}
+function ensureStabilityIncidentLoaded(){
+  if(__stabilityIncidentLoaded) return;
+  __stabilityIncidentLoaded = true;
+  try{
+    const raw = localStorage.getItem(STABILITY_INCIDENT_STORAGE_KEY);
+    if(!raw) return;
+    __stabilityIncident = sanitizeStabilityIncident(JSON.parse(raw));
+  }catch(e){}
+}
+function resetStabilityIncident(){
+  __stabilityIncident = { id:"", openedAt:0, lastAt:0, reason:"", count:0 };
+  persistStabilityIncident();
 }
 
 function invalidateMapCache(){
@@ -11004,6 +11036,7 @@ function stabilityEventLines(limit=10){
   });
 }
 function stabilityIncidentSummary(){
+  ensureStabilityIncidentLoaded();
   const id = String(__stabilityIncident.id || "");
   if(!id) return "none";
   const openedAt = Number(__stabilityIncident.openedAt || 0);
@@ -11013,6 +11046,34 @@ function stabilityIncidentSummary(){
   const reason = String(__stabilityIncident.reason || "");
   const count = Math.max(0, Math.floor(Number(__stabilityIncident.count || 0)));
   return `${id} • count ${count} • reason ${reason || "-"} • open ${openTxt} • last ${lastTxt}`;
+}
+function buildStabilityIncidentReportText(){
+  const status = `pending=${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | user=${tgUserKey()}`;
+  const snapshot = liveDebugSnapshotLines().join("\n");
+  const incidentLine = stabilityIncidentSummary();
+  const stabilityLines = stabilityEventLines(16).join("\n");
+  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}`;
+}
+function copyStabilityIncidentReport(){
+  const text = buildStabilityIncidentReportText();
+  const done = ()=>toast("Incident report copied.");
+  if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
+    return;
+  }
+  try{
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    done();
+  }catch(e){
+    toast("Copy failed.");
+  }
 }
 function sanitizeDebugDetails(details){
   if(!details || typeof details !== "object") return "";
@@ -11155,6 +11216,7 @@ function ensureStarsDebugUi(){
     <div id="starsDebugLog" style="padding:8px 10px;overflow:auto;max-height:18vh;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;"></div>
     <div style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);">
       <button id="starsDebugCopy" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(30,64,175,.45);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
+      <button id="starsDebugCopyIncident" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(180,83,9,.55);color:#fff7ed;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy Incident</button>
       <button id="starsDebugClearStability" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(127,29,29,.52);color:#fee2e2;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Clear Stability</button>
       <button id="starsDebugClear" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(55,65,81,.55);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Clear</button>
       <button id="starsDebugToggleLog" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(37,99,235,.55);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Log: ON</button>
@@ -11173,9 +11235,10 @@ function ensureStarsDebugUi(){
     renderStarsDebugPanel();
   });
   document.getElementById("starsDebugCopy")?.addEventListener("click", copyStarsDebugLog);
+  document.getElementById("starsDebugCopyIncident")?.addEventListener("click", copyStabilityIncidentReport);
   document.getElementById("starsDebugClearStability")?.addEventListener("click", ()=>{
     __stabilityEventLog = [];
-    __stabilityIncident = { id:"", openedAt:0, lastAt:0, reason:"", count:0 };
+    resetStabilityIncident();
     renderStarsDebugPanel();
     toast("Stability events cleared.");
   });
@@ -11211,6 +11274,7 @@ function ensureStarsDebugUi(){
   renderStarsDebugPanel();
 }
 function renderStarsDebugPanel(){
+  ensureStabilityIncidentLoaded();
   const toggle = document.getElementById("starsDebugToggle");
   const panel = document.getElementById("starsDebugPanel");
   const log = document.getElementById("starsDebugLog");
@@ -21625,7 +21689,7 @@ function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
   S._pressure = 0;
   __sfxLastAt = Object.create(null);
   __stabilityEventLog = [];
-  __stabilityIncident = { id:"", openedAt:0, lastAt:0, reason:"", count:0 };
+  resetStabilityIncident();
   if(Number.isFinite(S?.me?.x) && Number.isFinite(S?.me?.y)){
     const cam = cameraClampCenter(S.me.x, S.me.y, S);
     if(!S.camera || typeof S.camera !== "object") S.camera = { x:cam.x, y:cam.y };
