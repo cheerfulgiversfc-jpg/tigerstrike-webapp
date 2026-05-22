@@ -30860,6 +30860,14 @@ function drawMapScene(){
     }
   }
 
+  drawEnvironmentArtPass({
+    nowTs: Date.now(),
+    w,
+    h,
+    themeKey,
+    chapterStyle
+  });
+
   drawMissionTwistOverlay(Date.now());
 
   if(Date.now() < (S.fogUntil||0)){
@@ -30885,6 +30893,101 @@ function drawMapScene(){
   } else {
     __mapFrameCacheSig = "";
   }
+}
+
+function drawEnvironmentArtPass(opts={}){
+  if(!ctx || !ENABLE_BIOME_SYSTEM) return;
+  const w = Math.max(1, Math.round(Number(opts.w || cv?.width || worldWidth(S) || 1)));
+  const h = Math.max(1, Math.round(Number(opts.h || cv?.height || worldHeight(S) || 1)));
+  const nowTs = Number(opts.nowTs || Date.now());
+  const themeKey = String(opts.themeKey || mapFamilyKey(currentMap()?.key || ""));
+  const chapterStyle = opts.chapterStyle || chapterVisualForMode(S.mode, chapterIndexForMode(S.mode));
+  const lagTier = frameLagTier();
+  const slow = frameIsSlow();
+  const perf = performanceMode() === "PERFORMANCE";
+  const mobile = isMobileViewport();
+
+  if(lagTier >= 2 && (mobile || perf)) return;
+  if(frameBudgetExceeded(0.7) && (slow || mobile)) return;
+
+  const biome = currentBiomeProfile();
+  const weather = String(biome?.weatherFx || "clear").toLowerCase();
+  const intensity = clamp(Number(biome?.weatherIntensity || 0.5), 0.15, 1.2);
+  const pulse = 0.92 + (Math.sin(nowTs * 0.0012) * 0.08);
+
+  let skyTint = "rgba(140,190,235,";
+  let groundTint = "rgba(8,20,36,";
+  let rimTint = "rgba(5,10,18,";
+  if(themeKey === "ST_DOWNTOWN"){
+    skyTint = "rgba(158,176,214,";
+    groundTint = "rgba(10,16,30,";
+    rimTint = "rgba(6,10,20,";
+  }else if(themeKey === "ST_INDUSTRIAL"){
+    skyTint = "rgba(204,168,126,";
+    groundTint = "rgba(28,18,10,";
+    rimTint = "rgba(22,10,6,";
+  }else if(themeKey === "ST_SUBURBS"){
+    skyTint = "rgba(170,215,176,";
+    groundTint = "rgba(10,22,14,";
+    rimTint = "rgba(6,14,8,";
+  }
+  if(weather === "ash" || weather === "dust"){
+    skyTint = "rgba(236,167,98,";
+    groundTint = "rgba(35,16,8,";
+    rimTint = "rgba(24,9,5,";
+  }else if(weather === "snow"){
+    skyTint = "rgba(198,220,244,";
+    groundTint = "rgba(10,18,34,";
+    rimTint = "rgba(8,12,24,";
+  }else if(weather === "mist" || weather === "storm"){
+    skyTint = "rgba(176,204,236,";
+    groundTint = "rgba(9,16,29,";
+    rimTint = "rgba(7,12,22,";
+  }
+
+  const chapterBoost = clamp(Number(chapterStyle?.threatBoost || 0), 0, 1.5);
+  const topAlpha = clamp((0.07 + (intensity * 0.05) + (chapterBoost * 0.03)) * (slow ? 0.9 : 1), 0.05, 0.18);
+  const bottomAlpha = clamp((0.10 + (intensity * 0.07) + (chapterBoost * 0.03)) * (slow ? 0.9 : 1), 0.08, 0.24);
+  const rimAlpha = clamp((0.09 + (intensity * 0.06)) * (mobile ? 0.82 : 1), 0.07, 0.22);
+
+  ctx.save();
+  const topGrad = ctx.createLinearGradient(0, 0, 0, h * 0.78);
+  topGrad.addColorStop(0, `${skyTint}${topAlpha * pulse})`);
+  topGrad.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(0, 0, w, h);
+
+  const bottomGrad = ctx.createLinearGradient(0, h * 0.35, 0, h);
+  bottomGrad.addColorStop(0, "rgba(0,0,0,0)");
+  bottomGrad.addColorStop(1, `${groundTint}${bottomAlpha})`);
+  ctx.fillStyle = bottomGrad;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.globalCompositeOperation = "multiply";
+  ctx.globalAlpha = rimAlpha;
+  const edge = ctx.createRadialGradient(w * 0.5, h * 0.54, Math.min(w, h) * 0.24, w * 0.5, h * 0.54, Math.max(w, h) * 0.92);
+  edge.addColorStop(0, "rgba(0,0,0,0)");
+  edge.addColorStop(0.66, "rgba(0,0,0,0)");
+  edge.addColorStop(1, `${rimTint}1)`);
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+
+  if(!mobile && !perf && !slow && lagTier === 0){
+    const shafts = 4;
+    for(let i=0; i<shafts; i++){
+      const sx = ((w * 0.12) + (i * w * 0.23) + Math.sin((nowTs * 0.00022) + (i * 0.9)) * 28);
+      const grad = ctx.createLinearGradient(sx, 0, sx + (w * 0.12), h);
+      grad.addColorStop(0, "rgba(255,255,255,.055)");
+      grad.addColorStop(0.5, "rgba(255,255,255,.018)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(sx - 26, 0, Math.max(42, w * 0.15), h);
+    }
+  }
+
+  ctx.restore();
 }
 
 function drawAtmosphericParallax(nowTs=Date.now()){
