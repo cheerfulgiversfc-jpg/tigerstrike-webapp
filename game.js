@@ -8903,6 +8903,8 @@ const __freezeRecoverState = {
 const STABILITY_EVENT_LOG_MAX = 48;
 let __stabilityEventLog = [];
 const STABILITY_INCIDENT_STORAGE_KEY = "ts_stability_incident_v1";
+const STABILITY_INCIDENT_HISTORY_STORAGE_KEY = "ts_stability_incident_history_v1";
+const STABILITY_INCIDENT_HISTORY_MAX = 24;
 const STABILITY_INCIDENT_COOLDOWN_MS = 45000;
 let __stabilityIncident = {
   id: "",
@@ -8912,6 +8914,8 @@ let __stabilityIncident = {
   count: 0
 };
 let __stabilityIncidentLoaded = false;
+let __stabilityIncidentHistoryLoaded = false;
+let __stabilityIncidentHistory = [];
 const __stabilityMonitorState = {
   node: null,
   lastRenderAt: 0,
@@ -8936,6 +8940,7 @@ const __renderFailSafeState = {
 
 function pushStabilityEvent(type="event", detail={}){
   ensureStabilityIncidentLoaded();
+  ensureStabilityIncidentHistoryLoaded();
   const now = Date.now();
   const typ = String(type || "event");
   const shouldOpenIncident =
@@ -8945,6 +8950,9 @@ function pushStabilityEvent(type="event", detail={}){
   if(shouldOpenIncident){
     const stale = (now - Number(__stabilityIncident.lastAt || 0)) > STABILITY_INCIDENT_COOLDOWN_MS;
     if(!__stabilityIncident.id || stale){
+      if(__stabilityIncident.id){
+        appendStabilityIncidentHistory(__stabilityIncident, "rolled");
+      }
       const seed = Math.random().toString(36).slice(2, 8).toUpperCase();
       __stabilityIncident.id = `INC-${new Date(now).toISOString().slice(0, 10).replace(/-/g, "")}-${seed}`;
       __stabilityIncident.openedAt = now;
@@ -8983,6 +8991,59 @@ function sanitizeStabilityIncident(raw){
     count: Math.max(0, Math.floor(Number(src.count || 0)))
   };
 }
+function sanitizeStabilityIncidentHistoryRow(raw){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  return {
+    id: String(src.id || ""),
+    openedAt: Math.max(0, Math.floor(Number(src.openedAt || 0))),
+    lastAt: Math.max(0, Math.floor(Number(src.lastAt || 0))),
+    reason: String(src.reason || ""),
+    count: Math.max(0, Math.floor(Number(src.count || 0))),
+    closedAt: Math.max(0, Math.floor(Number(src.closedAt || 0))),
+    closeReason: String(src.closeReason || "")
+  };
+}
+function persistStabilityIncidentHistory(){
+  try{
+    const rows = (Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory : [])
+      .map((row)=>sanitizeStabilityIncidentHistoryRow(row))
+      .filter((row)=>!!row.id)
+      .slice(-STABILITY_INCIDENT_HISTORY_MAX);
+    __stabilityIncidentHistory = rows;
+    localStorage.setItem(STABILITY_INCIDENT_HISTORY_STORAGE_KEY, JSON.stringify(rows));
+  }catch(e){}
+}
+function ensureStabilityIncidentHistoryLoaded(){
+  if(__stabilityIncidentHistoryLoaded) return;
+  __stabilityIncidentHistoryLoaded = true;
+  try{
+    const raw = localStorage.getItem(STABILITY_INCIDENT_HISTORY_STORAGE_KEY);
+    if(!raw){
+      __stabilityIncidentHistory = [];
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    __stabilityIncidentHistory = Array.isArray(parsed)
+      ? parsed.map((row)=>sanitizeStabilityIncidentHistoryRow(row)).filter((row)=>!!row.id).slice(-STABILITY_INCIDENT_HISTORY_MAX)
+      : [];
+  }catch(e){
+    __stabilityIncidentHistory = [];
+  }
+}
+function appendStabilityIncidentHistory(incident, closeReason="closed"){
+  const row = sanitizeStabilityIncidentHistoryRow({
+    ...sanitizeStabilityIncident(incident),
+    closedAt: Date.now(),
+    closeReason: String(closeReason || "closed")
+  });
+  if(!row.id) return;
+  ensureStabilityIncidentHistoryLoaded();
+  __stabilityIncidentHistory.push(row);
+  if(__stabilityIncidentHistory.length > STABILITY_INCIDENT_HISTORY_MAX){
+    __stabilityIncidentHistory = __stabilityIncidentHistory.slice(-STABILITY_INCIDENT_HISTORY_MAX);
+  }
+  persistStabilityIncidentHistory();
+}
 function persistStabilityIncident(){
   try{
     localStorage.setItem(STABILITY_INCIDENT_STORAGE_KEY, JSON.stringify(sanitizeStabilityIncident(__stabilityIncident)));
@@ -8998,6 +9059,11 @@ function ensureStabilityIncidentLoaded(){
   }catch(e){}
 }
 function resetStabilityIncident(){
+  ensureStabilityIncidentLoaded();
+  ensureStabilityIncidentHistoryLoaded();
+  if(__stabilityIncident.id){
+    appendStabilityIncidentHistory(__stabilityIncident, "reset");
+  }
   __stabilityIncident = { id:"", openedAt:0, lastAt:0, reason:"", count:0 };
   persistStabilityIncident();
 }
@@ -11047,12 +11113,27 @@ function stabilityIncidentSummary(){
   const count = Math.max(0, Math.floor(Number(__stabilityIncident.count || 0)));
   return `${id} • count ${count} • reason ${reason || "-"} • open ${openTxt} • last ${lastTxt}`;
 }
+function stabilityIncidentHistoryLines(limit=8){
+  ensureStabilityIncidentHistoryLoaded();
+  const rows = Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory : [];
+  const pick = rows.slice(-Math.max(1, Math.floor(Number(limit || 8))));
+  if(!pick.length) return ["No incident history yet."];
+  return pick.map((row)=>{
+    const close = Number(row?.closedAt || 0);
+    const d = close ? new Date(close) : null;
+    const hhmmss = d
+      ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`
+      : "--:--:--";
+    return `[${hhmmss}] ${String(row?.id || "-")} • x${Math.max(0, Number(row?.count || 0))} • ${String(row?.reason || "-")} • close:${String(row?.closeReason || "-")}`;
+  });
+}
 function buildStabilityIncidentReportText(){
   const status = `pending=${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | user=${tgUserKey()}`;
   const snapshot = liveDebugSnapshotLines().join("\n");
   const incidentLine = stabilityIncidentSummary();
   const stabilityLines = stabilityEventLines(16).join("\n");
-  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}`;
+  const historyLines = stabilityIncidentHistoryLines(10).join("\n");
+  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}`;
 }
 function copyStabilityIncidentReport(){
   const text = buildStabilityIncidentReportText();
@@ -11112,12 +11193,13 @@ function copyStarsDebugLog(){
   const snapshot = liveDebugSnapshotLines().join("\n");
   const stabilityLines = stabilityEventLines(16).join("\n");
   const incidentLine = stabilityIncidentSummary();
+  const historyLines = stabilityIncidentHistoryLines(10).join("\n");
   if(!lines && !snapshot){
     toast("No debug logs yet.");
     return;
   }
   const status = `pending=${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | user=${tgUserKey()}`;
-  const text = `Tiger Strike Live Debug HUD\n${status}\nIncident: ${incidentLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nStars Events:\n${lines || "No Stars events yet."}`;
+  const text = `Tiger Strike Live Debug HUD\n${status}\nIncident: ${incidentLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}\n\nStars Events:\n${lines || "No Stars events yet."}`;
   const done = ()=>toast("Stars debug copied.");
   if(navigator.clipboard?.writeText){
     navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
@@ -11275,6 +11357,7 @@ function ensureStarsDebugUi(){
 }
 function renderStarsDebugPanel(){
   ensureStabilityIncidentLoaded();
+  ensureStabilityIncidentHistoryLoaded();
   const toggle = document.getElementById("starsDebugToggle");
   const panel = document.getElementById("starsDebugPanel");
   const log = document.getElementById("starsDebugLog");
@@ -11294,7 +11377,7 @@ function renderStarsDebugPanel(){
   toggleLog.style.background = enabled ? "rgba(37,99,235,.55)" : "rgba(55,65,81,.55)";
   live.textContent = liveDebugSnapshotLines().join("\n");
   renderDirectorTuneUi();
-  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession}) | Incident: ${stabilityIncidentSummary()}`;
+  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession}) | Incident: ${stabilityIncidentSummary()} | Hist: ${Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory.length : 0}`;
   stability.textContent = stabilityEventLines(12).join("\n");
   stability.scrollTop = stability.scrollHeight;
   log.textContent = starsDebugEntries.length ? starsDebugEntries.join("\n") : "No Stars events yet.";
