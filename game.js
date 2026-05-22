@@ -10362,6 +10362,31 @@ function runtimeMemoryCleanupTick(now=Date.now()){
       DAMAGE_POPUP_GATE.clear();
     }
   }
+  if(__sfxLastAt && typeof __sfxLastAt === "object"){
+    let sfxCount = 0;
+    for(const key of Object.keys(__sfxLastAt)){
+      const at = Number(__sfxLastAt[key] || 0);
+      if(!Number.isFinite(at) || at <= 0 || (now - at) > 10000){
+        delete __sfxLastAt[key];
+        used += 1;
+        if(used >= cleanupBudget) break;
+      } else {
+        sfxCount += 1;
+      }
+    }
+    if(sfxCount > 72){
+      __sfxLastAt = Object.create(null);
+    }
+  }
+  if(__mapFrameCacheCanvas && Number.isFinite(__mapFrameCacheAt) && __mapFrameCacheAt > 0){
+    const cacheIdleMs = now - __mapFrameCacheAt;
+    if(cacheIdleMs > 12000){
+      __mapFrameCacheCanvas = null;
+      __mapFrameCacheCtx = null;
+      __mapFrameCacheSig = "";
+      __mapFrameCacheAt = 0;
+    }
+  }
   if(Array.isArray(__stabilityMonitorState.frameGaps) && __stabilityMonitorState.frameGaps.length > STABILITY_MONITOR_SAMPLE_MAX){
     __stabilityMonitorState.frameGaps = __stabilityMonitorState.frameGaps.slice(-STABILITY_MONITOR_SAMPLE_MAX);
   }
@@ -21416,6 +21441,9 @@ function transitionCleanupSweep(reason=""){
     __battleHudRenderAt = 0;
     __battleReadabilityRenderAt = 0;
     resetBattleCinematic();
+    if(r.includes("deploy") || r.includes("init")){
+      invalidateMapCache();
+    }
   }
   if(r.includes("battle-end")) clearTransientCombatVisuals();
 
@@ -21495,6 +21523,7 @@ function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
   S._survivalClearAt = 0;
   S._pressTick = 0;
   S._pressure = 0;
+  __sfxLastAt = Object.create(null);
   if(Number.isFinite(S?.me?.x) && Number.isFinite(S?.me?.y)){
     const cam = cameraClampCenter(S.me.x, S.me.y, S);
     if(!S.camera || typeof S.camera !== "object") S.camera = { x:cam.x, y:cam.y };
