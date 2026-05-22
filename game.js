@@ -8911,7 +8911,8 @@ let __stabilityIncident = {
   openedAt: 0,
   lastAt: 0,
   reason: "",
-  count: 0
+  count: 0,
+  severity: "low"
 };
 let __stabilityIncidentLoaded = false;
 let __stabilityIncidentHistoryLoaded = false;
@@ -8957,10 +8958,12 @@ function pushStabilityEvent(type="event", detail={}){
       __stabilityIncident.id = `INC-${new Date(now).toISOString().slice(0, 10).replace(/-/g, "")}-${seed}`;
       __stabilityIncident.openedAt = now;
       __stabilityIncident.count = 0;
+      __stabilityIncident.severity = "low";
     }
     __stabilityIncident.lastAt = now;
     __stabilityIncident.reason = String(detail?.reason || typ);
     __stabilityIncident.count = Math.max(0, Math.floor(Number(__stabilityIncident.count || 0))) + 1;
+    __stabilityIncident.severity = stabilitySeverityForEvent(typ, __stabilityIncident.count, Math.max(0, Math.round(Number(__frameLagScore || 0))));
   }
   const row = {
     at: now,
@@ -8988,8 +8991,19 @@ function sanitizeStabilityIncident(raw){
     openedAt: Math.max(0, Math.floor(Number(src.openedAt || 0))),
     lastAt: Math.max(0, Math.floor(Number(src.lastAt || 0))),
     reason: String(src.reason || ""),
-    count: Math.max(0, Math.floor(Number(src.count || 0)))
+    count: Math.max(0, Math.floor(Number(src.count || 0))),
+    severity: String(src.severity || "low")
   };
+}
+function stabilitySeverityForEvent(type="event", count=1, frameLag=0){
+  const typ = String(type || "event");
+  const c = Math.max(1, Math.floor(Number(count || 1)));
+  const lag = Math.max(0, Math.floor(Number(frameLag || 0)));
+  if(typ === "render-failsafe" && (lag >= 70 || c >= 4)) return "critical";
+  if(typ === "recovery-start" && (lag >= 55 || c >= 3)) return "high";
+  if(typ === "input-recover" && (lag >= 36 || c >= 2)) return "medium";
+  if(lag >= 42 || c >= 3) return "medium";
+  return "low";
 }
 function sanitizeStabilityIncidentHistoryRow(raw){
   const src = (raw && typeof raw === "object") ? raw : {};
@@ -8999,6 +9013,7 @@ function sanitizeStabilityIncidentHistoryRow(raw){
     lastAt: Math.max(0, Math.floor(Number(src.lastAt || 0))),
     reason: String(src.reason || ""),
     count: Math.max(0, Math.floor(Number(src.count || 0))),
+    severity: String(src.severity || "low"),
     closedAt: Math.max(0, Math.floor(Number(src.closedAt || 0))),
     closeReason: String(src.closeReason || "")
   };
@@ -9064,7 +9079,7 @@ function resetStabilityIncident(){
   if(__stabilityIncident.id){
     appendStabilityIncidentHistory(__stabilityIncident, "reset");
   }
-  __stabilityIncident = { id:"", openedAt:0, lastAt:0, reason:"", count:0 };
+  __stabilityIncident = { id:"", openedAt:0, lastAt:0, reason:"", count:0, severity:"low" };
   persistStabilityIncident();
 }
 
@@ -11111,7 +11126,19 @@ function stabilityIncidentSummary(){
   const lastTxt = lastAt ? new Date(lastAt).toISOString() : "-";
   const reason = String(__stabilityIncident.reason || "");
   const count = Math.max(0, Math.floor(Number(__stabilityIncident.count || 0)));
-  return `${id} • count ${count} • reason ${reason || "-"} • open ${openTxt} • last ${lastTxt}`;
+  const severity = String(__stabilityIncident.severity || "low").toUpperCase();
+  return `${id} • ${severity} • count ${count} • reason ${reason || "-"} • open ${openTxt} • last ${lastTxt}`;
+}
+function stabilityIncidentHistorySeverityCounts(){
+  ensureStabilityIncidentHistoryLoaded();
+  const out = { low:0, medium:0, high:0, critical:0 };
+  const rows = Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory : [];
+  for(const row of rows){
+    const key = String(row?.severity || "low").toLowerCase();
+    if(Object.prototype.hasOwnProperty.call(out, key)) out[key] += 1;
+    else out.low += 1;
+  }
+  return out;
 }
 function stabilityIncidentHistoryLines(limit=8){
   ensureStabilityIncidentHistoryLoaded();
@@ -11124,7 +11151,8 @@ function stabilityIncidentHistoryLines(limit=8){
     const hhmmss = d
       ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`
       : "--:--:--";
-    return `[${hhmmss}] ${String(row?.id || "-")} • x${Math.max(0, Number(row?.count || 0))} • ${String(row?.reason || "-")} • close:${String(row?.closeReason || "-")}`;
+    const sev = String(row?.severity || "low").toUpperCase();
+    return `[${hhmmss}] ${String(row?.id || "-")} • ${sev} • x${Math.max(0, Number(row?.count || 0))} • ${String(row?.reason || "-")} • close:${String(row?.closeReason || "-")}`;
   });
 }
 function buildStabilityIncidentReportText(){
@@ -11133,7 +11161,9 @@ function buildStabilityIncidentReportText(){
   const incidentLine = stabilityIncidentSummary();
   const stabilityLines = stabilityEventLines(16).join("\n");
   const historyLines = stabilityIncidentHistoryLines(10).join("\n");
-  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}`;
+  const sev = stabilityIncidentHistorySeverityCounts();
+  const sevLine = `History Severity L/M/H/C: ${sev.low}/${sev.medium}/${sev.high}/${sev.critical}`;
+  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\n${sevLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}`;
 }
 function copyStabilityIncidentReport(){
   const text = buildStabilityIncidentReportText();
@@ -11370,6 +11400,7 @@ function renderStarsDebugPanel(){
   const enabled = starsDebugEnabled();
   const recoverTotal = Math.max(0, Math.floor(Number(S?.respawnLockRecoverCount || 0)));
   const recoverSession = Math.max(0, Math.floor(Number(S?._respawnLockRecoverCountSession || 0)));
+  const sev = stabilityIncidentHistorySeverityCounts();
   panel.style.display = starsDebugPanelOpen ? "flex" : "none";
   toggle.style.background = enabled ? "rgba(22,101,52,.84)" : "rgba(12,22,42,.82)";
   toggle.style.borderColor = enabled ? "rgba(134,239,172,.72)" : "rgba(255,255,255,.35)";
@@ -11377,7 +11408,7 @@ function renderStarsDebugPanel(){
   toggleLog.style.background = enabled ? "rgba(37,99,235,.55)" : "rgba(55,65,81,.55)";
   live.textContent = liveDebugSnapshotLines().join("\n");
   renderDirectorTuneUi();
-  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession}) | Incident: ${stabilityIncidentSummary()} | Hist: ${Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory.length : 0}`;
+  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession}) | Incident: ${stabilityIncidentSummary()} | Hist: ${Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory.length : 0} | Sev L/M/H/C ${sev.low}/${sev.medium}/${sev.high}/${sev.critical}`;
   stability.textContent = stabilityEventLines(12).join("\n");
   stability.scrollTop = stability.scrollHeight;
   log.textContent = starsDebugEntries.length ? starsDebugEntries.join("\n") : "No Stars events yet.";
