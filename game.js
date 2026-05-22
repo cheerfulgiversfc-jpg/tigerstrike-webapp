@@ -10954,6 +10954,28 @@ function liveDebugSnapshotLines(){
     `Entities T${aliveTigers} C${aliveCivs} atk${atk} • Lag T${lagTier} Load ${loadScore} FPS ${fps || "—"}`
   ];
 }
+function stabilityEventLines(limit=10){
+  const rows = Array.isArray(__stabilityEventLog) ? __stabilityEventLog : [];
+  const max = Math.max(1, Math.floor(Number(limit || 10)));
+  const pick = rows.slice(-max);
+  if(!pick.length) return ["No stability events yet."];
+  return pick.map((row)=>{
+    const at = new Date(Number(row?.at || 0));
+    const hh = String(at.getHours() || 0).padStart(2, "0");
+    const mm = String(at.getMinutes() || 0).padStart(2, "0");
+    const ss = String(at.getSeconds() || 0).padStart(2, "0");
+    const type = String(row?.type || "event");
+    const reason = String(row?.reason || "");
+    const mode = String(row?.mode || "-");
+    const hp = Math.max(0, Math.round(Number(row?.hp || 0)));
+    const lag = Math.max(0, Math.round(Number(row?.frameLag || 0)));
+    const tigers = Math.max(0, Math.round(Number(row?.tigers || 0)));
+    const civs = Math.max(0, Math.round(Number(row?.civilians || 0)));
+    const battle = row?.battle ? "B1" : "B0";
+    const paused = row?.paused ? "P1" : "P0";
+    return `[${hh}:${mm}:${ss}] ${type}${reason ? ` (${reason})` : ""} • ${mode} ${battle}/${paused} hp${hp} lag${lag} T${tigers} C${civs}`;
+  });
+}
 function sanitizeDebugDetails(details){
   if(!details || typeof details !== "object") return "";
   const out = {};
@@ -10989,12 +11011,13 @@ function pushStarsDebug(event, details){
 function copyStarsDebugLog(){
   const lines = starsDebugEntries.join("\n");
   const snapshot = liveDebugSnapshotLines().join("\n");
+  const stabilityLines = stabilityEventLines(16).join("\n");
   if(!lines && !snapshot){
     toast("No debug logs yet.");
     return;
   }
   const status = `pending=${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | user=${tgUserKey()}`;
-  const text = `Tiger Strike Live Debug HUD\n${status}\n\n${snapshot}\n\n${lines}`;
+  const text = `Tiger Strike Live Debug HUD\n${status}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nStars Events:\n${lines || "No Stars events yet."}`;
   const done = ()=>toast("Stars debug copied.");
   if(navigator.clipboard?.writeText){
     navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
@@ -11089,9 +11112,11 @@ function ensureStarsDebugUi(){
       </div>
     </div>
     <div id="starsDebugStatus" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07);font-size:11px;line-height:1.35;"></div>
+    <div id="stabilityDebugLog" style="padding:8px 10px;overflow:auto;max-height:16vh;border-bottom:1px solid rgba(255,255,255,.07);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;color:#bde9ff;"></div>
     <div id="starsDebugLog" style="padding:8px 10px;overflow:auto;max-height:18vh;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;"></div>
     <div style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);">
       <button id="starsDebugCopy" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(30,64,175,.45);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
+      <button id="starsDebugClearStability" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(127,29,29,.52);color:#fee2e2;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Clear Stability</button>
       <button id="starsDebugClear" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(55,65,81,.55);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Clear</button>
       <button id="starsDebugToggleLog" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(37,99,235,.55);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Log: ON</button>
     </div>
@@ -11109,6 +11134,11 @@ function ensureStarsDebugUi(){
     renderStarsDebugPanel();
   });
   document.getElementById("starsDebugCopy")?.addEventListener("click", copyStarsDebugLog);
+  document.getElementById("starsDebugClearStability")?.addEventListener("click", ()=>{
+    __stabilityEventLog = [];
+    renderStarsDebugPanel();
+    toast("Stability events cleared.");
+  });
   document.getElementById("starsDebugClear")?.addEventListener("click", ()=>{
     starsDebugEntries = [];
     renderStarsDebugPanel();
@@ -11145,9 +11175,10 @@ function renderStarsDebugPanel(){
   const panel = document.getElementById("starsDebugPanel");
   const log = document.getElementById("starsDebugLog");
   const status = document.getElementById("starsDebugStatus");
+  const stability = document.getElementById("stabilityDebugLog");
   const live = document.getElementById("starsDebugLive");
   const toggleLog = document.getElementById("starsDebugToggleLog");
-  if(!toggle || !panel || !log || !status || !toggleLog || !live) return;
+  if(!toggle || !panel || !log || !status || !toggleLog || !live || !stability) return;
 
   const enabled = starsDebugEnabled();
   const recoverTotal = Math.max(0, Math.floor(Number(S?.respawnLockRecoverCount || 0)));
@@ -11160,6 +11191,8 @@ function renderStarsDebugPanel(){
   live.textContent = liveDebugSnapshotLines().join("\n");
   renderDirectorTuneUi();
   status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession})`;
+  stability.textContent = stabilityEventLines(12).join("\n");
+  stability.scrollTop = stability.scrollHeight;
   log.textContent = starsDebugEntries.length ? starsDebugEntries.join("\n") : "No Stars events yet.";
   log.scrollTop = log.scrollHeight;
 }
