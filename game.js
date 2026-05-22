@@ -29164,7 +29164,7 @@ function renderHUD(){
   ensureSquadAbilityState(S);
   const tranqHud = squadAbilityStatusLabel("tranq_burst");
   const smokeHud = squadAbilityStatusLabel("smoke_screen");
-  document.getElementById("backupTxt").innerText = `Armor Plates: ${totalArmorPlates()} • Shop Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • Squad A:${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • R:${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")}) • Form ${squadFormationLabel()} • Skills Tranq ${tranqHud} / Smoke ${smokeHud}`;
+  document.getElementById("backupTxt").innerText = `🧱 Armor ${totalArmorPlates()} • 🛒 Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • 🪖 A ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • 🚑 R ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")}) • 🧩 ${squadFormationLabel()} • ⚙️ Tranq ${tranqHud} / Smoke ${smokeHud}`;
   const canShieldUse = !S.paused && !S.missionEnded && !S.gameOver && (S.shields||0)>0 && !abilityOnCooldown("shield");
   const canArmorQuickUse = canQuickUseArmorPlate();
   const shieldDisabled = !(canShieldUse || canArmorQuickUse);
@@ -29255,14 +29255,15 @@ function renderHUD(){
   const arcadeHint = (S.mode==="Arcade")
     ? ` • Timer ${arcadeLeft}s • Mult x${arcadeMult.toFixed(1)} • Medal ${arcadeMedal}${arcadeMission?.weeklySeed ? ` • Seed ${arcadeMission.weeklySeedKey}` : ""}`
     : "";
-  document.getElementById("objTxt").innerText =
+  const objEl = document.getElementById("objTxt");
+  if(objEl) objEl.innerText =
     (S.mode==="Survival")
-      ? `Objective: Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
+      ? `🎯 Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
       : (S.mode==="Story")
-        ? `Objective: ${storyObjective}${dynInline}${grace}`
+        ? `🎯 ${storyObjective}${dynInline}${grace}`
       : (S.mode==="Arcade")
-        ? `Objective: ${arcadeObjective}${arcadeHint}${dynInline}${grace}`
-        : `Objective: Evacuate living civilians + clear ALL tigers${grace}`;
+        ? `🎯 ${arcadeObjective}${arcadeHint}${dynInline}${grace}`
+        : `🎯 Evacuate living civilians + clear ALL tigers${grace}`;
   const storyOpsEl = document.getElementById("storyOpsTxt");
   if(storyOpsEl){
     if(S.mode==="Story" && storyMission){
@@ -29295,12 +29296,25 @@ function renderHUD(){
   }
 
   // danger ping
-  if(S.dangerCivId && S.mode!=="Survival"){
+  const dangerEl = document.getElementById("dangerTxt");
+  if(dangerEl && S.dangerCivId && S.mode!=="Survival"){
     const civ = S.civilians.find(c=>c.id===S.dangerCivId);
     const d = civ ? Math.round(dist(S.me.x,S.me.y,civ.x,civ.y)) : null;
-    document.getElementById("dangerTxt").innerText = civ ? `⚠️ Civilian #${civ.id} under attack near ${civ.rescueLabel || "the rescue site"}! Distance: ${d}` : "";
-  } else {
-    document.getElementById("dangerTxt").innerText = "";
+    dangerEl.innerText = civ ? `⚠️ Civilian #${civ.id} under attack near ${civ.rescueLabel || "the rescue site"} • Distance ${d}m` : "";
+    dangerEl.style.color = "rgba(254,202,202,.98)";
+    dangerEl.style.fontWeight = "900";
+    dangerEl.style.background = "linear-gradient(90deg, rgba(95,20,32,.55), rgba(45,16,22,.30))";
+    dangerEl.style.border = "1px solid rgba(248,113,133,.72)";
+    dangerEl.style.borderRadius = "10px";
+    dangerEl.style.padding = "4px 8px";
+  } else if(dangerEl){
+    dangerEl.innerText = "";
+    dangerEl.style.color = "";
+    dangerEl.style.fontWeight = "";
+    dangerEl.style.background = "";
+    dangerEl.style.border = "";
+    dangerEl.style.borderRadius = "";
+    dangerEl.style.padding = "";
   }
 
   const assistParts = [];
@@ -29455,8 +29469,25 @@ function renderHUD(){
 
   const mobileHud = isMobileViewport();
   const assistShown = mobileHud ? compactAssistPartsForMobile(assistParts) : assistParts.slice(0,3);
-  document.getElementById("assistTxt").innerText = assistShown.join(" • ") || "Sweep the map, scan, and keep pressure off civilians.";
-  document.getElementById("eventTxt").innerText = S.eventText ? `EVENT: ${S.eventText}` : "";
+  const assistEl = document.getElementById("assistTxt");
+  if(assistEl) assistEl.innerText = assistShown.join(" • ") || "Sweep the map, scan, and keep pressure off civilians.";
+  const eventEl = document.getElementById("eventTxt");
+  if(eventEl) eventEl.innerText = S.eventText ? `LIVE: ${S.eventText}` : "";
+  if(eventEl && S.eventText){
+    eventEl.style.color = "rgba(191,219,254,.98)";
+    eventEl.style.fontWeight = "850";
+    eventEl.style.background = "linear-gradient(90deg, rgba(20,44,86,.52), rgba(14,26,56,.28))";
+    eventEl.style.border = "1px solid rgba(96,165,250,.60)";
+    eventEl.style.borderRadius = "10px";
+    eventEl.style.padding = "4px 8px";
+  } else if(eventEl){
+    eventEl.style.color = "";
+    eventEl.style.fontWeight = "";
+    eventEl.style.background = "";
+    eventEl.style.border = "";
+    eventEl.style.borderRadius = "";
+    eventEl.style.padding = "";
+  }
 
   const mobilePlayerHpValue = document.getElementById("mobilePlayerHpValue");
   const mobilePlayerHpBar = document.getElementById("mobilePlayerHpBar");
@@ -29472,9 +29503,9 @@ function renderHUD(){
   if(mobilePlayerHpBar) mobilePlayerHpBar.style.width = `${clamp(S.hp, 0, 100)}%`;
   if(mobileTigerHpValue) mobileTigerHpValue.innerText = t ? `${Math.round(t.hp)} / ${Math.round(t.hpMax)}` : "No target";
   if(mobileTigerHpBar) mobileTigerHpBar.style.width = t ? `${clamp((t.hp/t.hpMax) * 100, 0, 100)}%` : "0%";
-  if(mobileArmorChip) mobileArmorChip.innerText = `Armor ${Math.round(S.armor)}`;
-  if(mobileStamChip) mobileStamChip.innerText = `Stamina ${Math.round(S.stamina)}`;
-  if(mobileAmmoChip) mobileAmmoChip.innerText = `Ammo ${S.mag.loaded}/${S.mag.cap}`;
+  if(mobileArmorChip) mobileArmorChip.innerText = `🛡️ Armor ${Math.round(S.armor)}`;
+  if(mobileStamChip) mobileStamChip.innerText = `⚡ Stamina ${Math.round(S.stamina)}`;
+  if(mobileAmmoChip) mobileAmmoChip.innerText = `🔫 Ammo ${S.mag.loaded}/${S.mag.cap}`;
   if(mobileMissionChip){
     const storyVariant = storyMission ? normalizeStoryVariant(storyMission.storyVariant) : STORY_VARIANTS.CAMPAIGN;
     mobileMissionChip.innerText =
@@ -29497,7 +29528,7 @@ function renderHUD(){
         : (S.mode==="Survival"
           ? "Pressure High"
           : (S._underAttack ? `Threat ${S._underAttack} attack` : "Threat Low"));
-    mobileThreatChip.innerText = `${threatText} • ${directorPhaseLabel(directorPhase)} ${directorPressure}%`;
+    mobileThreatChip.innerText = `🔥 ${threatText} • ${directorPhaseLabel(directorPhase)} ${directorPressure}%`;
   }
   if(mobilePromptTxt){
     let mobilePrompt =
@@ -29518,15 +29549,15 @@ function renderHUD(){
     }
     if(S.dangerCivId){
       const civ = S.civilians.find(c=>c.id===S.dangerCivId);
-      mobilePrompt = civ ? `Civilian #${civ.id} is under attack. Move there now.` : mobilePrompt;
+      mobilePrompt = civ ? `⚠️ Civilian #${civ.id} is under attack. Move there now.` : mobilePrompt;
     } else if(!anyWeaponHasAmmo()){
-      mobilePrompt = "Out of ammo. Open Shop before the next fight.";
+      mobilePrompt = "⚠️ Out of ammo. Open Shop before the next fight.";
     } else if(t && canEngage()){
       mobilePrompt = `Tiger #${t.id} locked. Tap it to fight.`;
     } else if(t){
       mobilePrompt = `Tiger #${t.id} locked. Move closer and tap it to fight.`;
     } else if(nearInteract && nearInteractDist < 165){
-      mobilePrompt = `${nearInteract.label} nearby. Tap it to activate.`;
+      mobilePrompt = `🛰️ ${nearInteract.label} nearby. Tap to activate.`;
     } else if(window.TigerTutorial?.isRunning){
       mobilePrompt = assistShown[0] || "Follow the tutorial prompt and stay on the map.";
     } else if(S.missionEnded){
