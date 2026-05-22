@@ -32133,6 +32133,7 @@ function drawTiger(t){
   const strideBounce = Math.abs(Math.sin((t.step||0)*2.2)) * (gaitState==="sprint" ? 1.35 : (gaitState==="run" ? 0.95 : 0.58));
   const bodyLift = clamp(gaitBlend * 2.4 + (sprinting ? 1.35 : 0), 0, 3.8);
   const x=smooth.x, y=smooth.y + bob - bodyLift + (strideBounce * 0.36);
+  const tigerFocus = S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id);
   // Phase 2 readability: stronger local separation from terrain.
   let s=1.0;
   if(t.type==="Scout") s=0.85;
@@ -32153,7 +32154,6 @@ function drawTiger(t){
   ctx.restore();
   const headBob = Math.sin((t.step||0)*2.4 + 0.7) * (gaitState==="sprint" ? 1.7 : (gaitState==="run" ? 1.25 : 0.7));
   const shoulderRoll = Math.sin((t.step||0)*1.3) * (gaitState==="sprint" ? 0.06 : 0.04);
-  const tigerFocus = S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id);
   const hitFlashLeft = Math.max(0, (t.hitFlashUntil || 0) - now);
   const hitFlashAlpha = hitFlashLeft > 0 ? clamp(hitFlashLeft / 190, 0.12, 0.78) : 0;
   const hitFlashColor = t.hitFlashKind === "tranq"
@@ -32207,6 +32207,32 @@ function drawTiger(t){
     ctx.arc(x, y, rad, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.restore();
+  }
+  if(chargeActive || (t.huntState === TIGER_HUNT_STATES.POUNCE)){
+    const teleA = Math.atan2((S.me?.y || y) - y, (S.me?.x || x) - x);
+    const teleLen = (chargeActive ? 62 : 52) * s;
+    const spread = chargeActive ? 0.22 : 0.30;
+    const pulse = 0.56 + (0.34 * Math.sin(now * 0.02));
+    ctx.save();
+    ctx.globalAlpha = clamp(alpha * pulse, 0.22, 0.78);
+    ctx.strokeStyle = chargeActive ? "rgba(248,113,113,.98)" : "rgba(251,191,36,.95)";
+    ctx.lineWidth = chargeActive ? 2.8 : 2.2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(teleA - spread) * teleLen, y + Math.sin(teleA - spread) * teleLen);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(teleA + spread) * teleLen, y + Math.sin(teleA + spread) * teleLen);
+    ctx.stroke();
+    if(chargeActive){
+      ctx.fillStyle = "rgba(248,113,113,.90)";
+      ctx.font = "900 11px system-ui";
+      ctx.fillText("!!", x - 6, y - (50 * s));
+    }else{
+      ctx.fillStyle = "rgba(251,191,36,.92)";
+      ctx.font = "900 11px system-ui";
+      ctx.fillText("!", x - 3, y - (46 * s));
+    }
     ctx.restore();
   }
   if(hitFlashAlpha > 0){
@@ -32377,6 +32403,14 @@ function drawTiger(t){
     }
   }
   if(tigerInCaptureHpWindow(t)){
+    const capPulse = 0.56 + (0.34 * Math.sin(now * 0.019));
+    ctx.save();
+    ctx.globalAlpha = clamp(alpha * capPulse, 0.2, 0.74);
+    ctx.fillStyle = "rgba(110,231,183,.16)";
+    ctx.beginPath();
+    ctx.arc(x, y, 43*s, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
     ctx.strokeStyle = "rgba(248,113,113,.96)";
     ctx.lineWidth = 2.4;
     ctx.setLineDash([8,5]);
