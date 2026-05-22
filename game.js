@@ -10630,6 +10630,7 @@ function trimActiveEntityLoad(){
 function stabilityHealthTick(){
   if(!S || typeof S !== "object") return;
   recoverMissionInputLock("stability");
+  runSafeSelfHealSweep("stability");
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.civilians)) S.civilians = [];
   if(!Array.isArray(S.pickups)) S.pickups = [];
@@ -11163,7 +11164,9 @@ function buildStabilityIncidentReportText(){
   const historyLines = stabilityIncidentHistoryLines(10).join("\n");
   const sev = stabilityIncidentHistorySeverityCounts();
   const sevLine = `History Severity L/M/H/C: ${sev.low}/${sev.medium}/${sev.high}/${sev.critical}`;
-  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\n${sevLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}`;
+  const healRuns = Math.max(0, Math.floor(Number(__phase15SelfHealState?.runCount || 0)));
+  const healLast = String(__phase15SelfHealState?.lastSummary || "-");
+  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\n${sevLine}\nSelf-Heal: runs=${healRuns} last=${healLast}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}`;
 }
 function copyStabilityIncidentReport(){
   const text = buildStabilityIncidentReportText();
@@ -11327,6 +11330,7 @@ function ensureStarsDebugUi(){
     <div id="stabilityDebugLog" style="padding:8px 10px;overflow:auto;max-height:16vh;border-bottom:1px solid rgba(255,255,255,.07);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;color:#bde9ff;"></div>
     <div id="starsDebugLog" style="padding:8px 10px;overflow:auto;max-height:18vh;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;"></div>
     <div style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);">
+      <button id="starsDebugSafeRecover" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(22,101,52,.60);color:#dcfce7;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Safe Recover</button>
       <button id="starsDebugCopy" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(30,64,175,.45);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
       <button id="starsDebugCopyIncident" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(180,83,9,.55);color:#fff7ed;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy Incident</button>
       <button id="starsDebugClearStability" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(127,29,29,.52);color:#fee2e2;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Clear Stability</button>
@@ -11344,6 +11348,14 @@ function ensureStarsDebugUi(){
 
   document.getElementById("starsDebugClose")?.addEventListener("click", ()=>{
     starsDebugPanelOpen = false;
+    renderStarsDebugPanel();
+  });
+  document.getElementById("starsDebugSafeRecover")?.addEventListener("click", ()=>{
+    const fixed = runSafeSelfHealSweep("manual", { force:true });
+    if(!fixed){
+      pushStabilityEvent("self-heal", { reason:"manual:no-op" });
+      phase15SelfHealToast("No fixes needed", true);
+    }
     renderStarsDebugPanel();
   });
   document.getElementById("starsDebugCopy")?.addEventListener("click", copyStarsDebugLog);
@@ -11408,7 +11420,9 @@ function renderStarsDebugPanel(){
   toggleLog.style.background = enabled ? "rgba(37,99,235,.55)" : "rgba(55,65,81,.55)";
   live.textContent = liveDebugSnapshotLines().join("\n");
   renderDirectorTuneUi();
-  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession}) | Incident: ${stabilityIncidentSummary()} | Hist: ${Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory.length : 0} | Sev L/M/H/C ${sev.low}/${sev.medium}/${sev.high}/${sev.critical}`;
+  const healRuns = Math.max(0, Math.floor(Number(__phase15SelfHealState?.runCount || 0)));
+  const healLast = String(__phase15SelfHealState?.lastSummary || "-");
+  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession}) | Incident: ${stabilityIncidentSummary()} | Hist: ${Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory.length : 0} | Sev L/M/H/C ${sev.low}/${sev.medium}/${sev.high}/${sev.critical} | Heal ${healRuns} (${healLast})`;
   stability.textContent = stabilityEventLines(12).join("\n");
   stability.scrollTop = stability.scrollHeight;
   log.textContent = starsDebugEntries.length ? starsDebugEntries.join("\n") : "No Stars events yet.";
@@ -21803,6 +21817,7 @@ function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
   S._pressure = 0;
   __sfxLastAt = Object.create(null);
   __stabilityEventLog = [];
+  __phase15SelfHealState = { lastAt:0, lastToastAt:0, lastSummary:"", runCount:0 };
   resetStabilityIncident();
   if(Number.isFinite(S?.me?.x) && Number.isFinite(S?.me?.y)){
     const cam = cameraClampCenter(S.me.x, S.me.y, S);
@@ -33665,6 +33680,13 @@ function onStartupComplete(){
 let __lastStartupIntegrityAt = 0;
 let __lastStartupIntegrityToastAt = 0;
 let __lastControlRecoverAt = 0;
+const PHASE15_SELF_HEAL_COOLDOWN_MS = 2400;
+let __phase15SelfHealState = {
+  lastAt: 0,
+  lastToastAt: 0,
+  lastSummary: "",
+  runCount: 0
+};
 function missionBlockingOverlayVisible(){
   const ids = [
     "missionBriefOverlay",
@@ -33732,6 +33754,89 @@ function recoverMissionInputLock(reason="watchdog"){
     S._respawnLockRecoverCountSession = Math.max(0, Math.floor(Number(S._respawnLockRecoverCountSession || 0))) + 1;
     try{ setEventText("Controls recovered.", 1.2); }catch(e){}
   }
+  return true;
+}
+function phase15SelfHealToast(msg, force=false){
+  const now = Date.now();
+  const due = (now - Number(__phase15SelfHealState.lastToastAt || 0)) > 1800;
+  if(!force && !due) return;
+  __phase15SelfHealState.lastToastAt = now;
+  try{ setEventText(`Recovered: ${msg}`, 1.15); }catch(e){}
+}
+function runSafeSelfHealSweep(reason="auto", opts={}){
+  if(!S || typeof S !== "object") return false;
+  const now = Date.now();
+  const force = !!opts?.force;
+  if(!force && (now - Number(__phase15SelfHealState.lastAt || 0)) < PHASE15_SELF_HEAL_COOLDOWN_MS){
+    return false;
+  }
+  __phase15SelfHealState.lastAt = now;
+  const fixes = [];
+
+  const note = (action, ok, detail="")=>{
+    const status = ok ? "ok" : "fail";
+    const why = detail ? `${action}:${status}:${detail}` : `${action}:${status}`;
+    pushStabilityEvent("self-heal", { reason: `${reason}:${why}` });
+    try{ if(typeof pushStarsDebug === "function") pushStarsDebug("self_heal", { reason, action, status, detail }); }catch(e){}
+  };
+
+  try{
+    const did = recoverMissionInputLock(`phase15-${reason}`);
+    if(did){
+      fixes.push("Input Lock");
+      note("input-lock", true);
+    }
+  }catch(e){
+    note("input-lock", false, "exception");
+  }
+
+  try{
+    const meX = Number(S?.me?.x);
+    const meY = Number(S?.me?.y);
+    if(Number.isFinite(meX) && Number.isFinite(meY)){
+      const c = cameraClampCenter(meX, meY, S);
+      if(!S.camera || typeof S.camera !== "object") S.camera = { x:c.x, y:c.y };
+      const dx = Math.abs(Number(S.camera.x || 0) - c.x);
+      const dy = Math.abs(Number(S.camera.y || 0) - c.y);
+      const invalid = !Number.isFinite(S.camera.x) || !Number.isFinite(S.camera.y);
+      if(invalid || dx > 320 || dy > 260){
+        S.camera.x = c.x;
+        S.camera.y = c.y;
+        S._cameraOutFrames = 0;
+        fixes.push("Camera");
+        note("camera-recenter", true);
+      }
+    }
+  }catch(e){
+    note("camera-recenter", false, "exception");
+  }
+
+  try{
+    const vis = enforceVisibleMissionViewport(S);
+    if(vis){
+      fixes.push("Viewport");
+      note("viewport-repair", true);
+    }
+  }catch(e){
+    note("viewport-repair", false, "exception");
+  }
+
+  try{
+    const invalidReason = missionEntityStateInvalid(S);
+    if(invalidReason){
+      sanitizeRuntimeState();
+      transitionCleanupSweep(`phase15-${reason}`);
+      fixes.push("Entity State");
+      note("entity-sanitize", true, invalidReason);
+    }
+  }catch(e){
+    note("entity-sanitize", false, "exception");
+  }
+
+  if(!fixes.length) return false;
+  __phase15SelfHealState.runCount = Math.max(0, Math.floor(Number(__phase15SelfHealState.runCount || 0))) + 1;
+  __phase15SelfHealState.lastSummary = fixes.join(", ");
+  phase15SelfHealToast(fixes.join(" + "), force);
   return true;
 }
 function missionEntityStateInvalid(state=S){
