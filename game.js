@@ -25155,6 +25155,7 @@ function supportUnitsTick(){
       if(unit.role === "attacker"){
         if(allowEngage && tigerDist < shotRange && now >= (unit.fireAt || 0)){
           unit.fireAt = now + rand(260, 430);
+          unit.shotKickUntil = now + 130;
           const shotDmg = supportAttackDamage(unit, tiger, tigerDist);
           const forceKill = supportShouldForceKill(unit, tiger, tigerDist, clawRange + 14);
           const captureReady = tiger.hp > 0 && tiger.hp <= captureWindowHp(tiger);
@@ -28301,6 +28302,7 @@ function playerAction(action){
 
     S.mag.loaded -= 1;
     S.stats.shots += 1;
+    S.meShotKickUntil = Date.now() + 140;
     addContractTally("shots", 1);
     addWeaponMasteryXp(w.id, 2);
     addXP(2);
@@ -31601,8 +31603,17 @@ function drawOnMapBattleHud(){
   ctx.restore();
 }
 
+function animMoveBlend(entity, expectedTopSpeed=2.4){
+  if(!entity || typeof entity !== "object") return 0;
+  const vx = Number(entity.vx || entity._moveVx || 0);
+  const vy = Number(entity.vy || entity._moveVy || 0);
+  const speed = Math.hypot(vx, vy);
+  return clamp(speed / Math.max(0.25, Number(expectedTopSpeed) || 2.4), 0, 1);
+}
+
 function drawCivilian(c){
-  const smooth = smoothedDrawPoint(c, c.x, c.y, c.following ? 0.44 : 0.34);
+  const moveBlend = animMoveBlend(c, c.following ? 2.1 : 1.4);
+  const smooth = smoothedDrawPoint(c, c.x, c.y, c.following ? (0.40 + (moveBlend * 0.08)) : (0.30 + (moveBlend * 0.07)));
   const cx = smooth.x;
   const cy = smooth.y;
   // Phase 2 readability: stronger local separation from terrain.
@@ -31642,9 +31653,9 @@ function drawCivilian(c){
 
   const face = Number.isFinite(c.face) ? c.face : 0;
   const dir = Math.cos(face) >= 0 ? 1 : -1;
-  const strideAmp = c.following ? 2.2 : 0.7;
+  const strideAmp = (c.following ? 1.6 : 0.45) + ((c.following ? 1.35 : 0.65) * moveBlend);
   const stride = Math.sin(((c.step || 0) * 2.3) + (c.id * 0.4)) * strideAmp;
-  const breath = Math.sin((Date.now() * 0.0042) + (c.id * 0.9)) * 0.45;
+  const breath = Math.sin((Date.now() * 0.0042) + (c.id * 0.9)) * (0.52 - (0.28 * moveBlend));
   const bx = cx;
   const by = cy + breath;
   const riskState = String(c.riskState || "");
@@ -31778,8 +31789,9 @@ function drawSoldier(){
     px = fromX + ((toX - fromX) * rollProgress);
     py = fromY + ((toY - fromY) * rollProgress);
   }
+  const moveBlend = animMoveBlend(S.me, 3.0);
   if(!rolling){
-    const smooth = smoothedDrawPoint(S.me, px, py, 0.50);
+    const smooth = smoothedDrawPoint(S.me, px, py, 0.44 + (moveBlend * 0.12));
     px = smooth.x;
     py = smooth.y;
   } else {
@@ -31787,7 +31799,8 @@ function drawSoldier(){
     S.me.__drawY = py;
     S.me.__drawAt = performance.now ? performance.now() : Date.now();
   }
-  const bob = rolling ? 0 : (Math.sin(step) * 1.5) + (Math.sin(step * 2.2) * 0.45);
+  const bobAmp = 0.55 + (1.05 * moveBlend);
+  const bob = rolling ? 0 : (Math.sin(step) * (1.15 * bobAmp)) + (Math.sin(step * 2.2) * (0.30 * bobAmp));
   const x = px;
   const y = py + bob;
   // Phase 2 readability: stronger local separation from terrain.
@@ -31830,9 +31843,11 @@ function drawSoldier(){
   }
   const ang = S.me.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
-  const stride = rolling ? 0 : (Math.sin(step * 1.9) * 2.1);
+  const stride = rolling ? 0 : (Math.sin(step * 1.9) * (0.95 + (1.55 * moveBlend)));
   const shoulderShift = rolling ? 0 : (Math.sin(step * 2.1) * 0.7);
-  const lean = rolling ? 0 : clamp(Math.sin(ang) * 0.06, -0.1, 0.1);
+  const lean = rolling ? 0 : clamp(Math.sin(ang) * (0.04 + (0.03 * moveBlend)), -0.11, 0.11);
+  const shotKickLeft = Math.max(0, Number(S.meShotKickUntil || 0) - now);
+  const shotKick = shotKickLeft > 0 ? Math.sin((1 - clamp(shotKickLeft / 140, 0, 1)) * Math.PI) : 0;
 
   if(shieldActiveNow()){
     const pulse = 0.78 + Math.sin(Date.now()/130) * 0.16;
@@ -31907,8 +31922,8 @@ function drawSoldier(){
   ctx.restore();
 
   if(!rolling){
-    const wx = x + Math.cos(ang) * 14;
-    const wy = y + Math.sin(ang) * 13 + (shoulderShift * 0.25);
+    const wx = x + Math.cos(ang) * (14 + (shotKick * 2.6));
+    const wy = y + Math.sin(ang) * 13 + (shoulderShift * 0.25) - (shotKick * 1.2);
     const gripX = x + Math.cos(ang) * 5;
     const gripY = y + Math.sin(ang) * 2 + (shoulderShift * 0.35);
     ctx.strokeStyle="rgba(18,22,28,.96)";
@@ -31949,7 +31964,8 @@ function drawSoldier(){
 }
 
 function drawSupportUnit(unit){
-  const smooth = smoothedDrawPoint(unit, unit.x, unit.y, 0.42);
+  const moveBlend = animMoveBlend(unit, 2.5);
+  const smooth = smoothedDrawPoint(unit, unit.x, unit.y, 0.36 + (moveBlend * 0.10));
   const bob = Math.sin(unit.step || 0) * 1.2;
   const x = smooth.x;
   const y = smooth.y + bob;
@@ -31971,7 +31987,9 @@ function drawSupportUnit(unit){
   drawWaterRipple(x, y, 17, 0.52);
   const ang = unit.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
-  const stride = Math.sin((unit.step || 0) * 1.8) * 1.6;
+  const stride = Math.sin((unit.step || 0) * 1.8) * (0.8 + (1.25 * moveBlend));
+  const shotKickLeft = Math.max(0, Number(unit.shotKickUntil || 0) - Date.now());
+  const shotKick = shotKickLeft > 0 ? Math.sin((1 - clamp(shotKickLeft / 130, 0, 1)) * Math.PI) : 0;
   const hpRatio = clamp(Number(unit.hp || 0) / Math.max(1, Number(unit.hpMax || 1)), 0, 1);
 
   ctx.save();
@@ -32015,7 +32033,10 @@ function drawSupportUnit(unit){
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(x, y - 2);
-  ctx.lineTo(x + Math.cos(ang) * 11, y + Math.sin(ang) * 11);
+  ctx.lineTo(
+    x + Math.cos(ang) * (11 + (shotKick * 2.1)),
+    y + Math.sin(ang) * 11 - (shotKick * 0.95)
+  );
   ctx.stroke();
 
   ctx.fillStyle = attacker ? "rgba(255,233,205,.86)" : "rgba(245,247,255,.78)";
