@@ -8900,6 +8900,8 @@ const __freezeRecoverState = {
   lastRecoverAt: 0,
   history: []
 };
+const STABILITY_EVENT_LOG_MAX = 48;
+let __stabilityEventLog = [];
 const __stabilityMonitorState = {
   node: null,
   lastRenderAt: 0,
@@ -8921,6 +8923,26 @@ const __renderFailSafeState = {
   lastRecoverAt: 0,
   lastReason: ""
 };
+
+function pushStabilityEvent(type="event", detail={}){
+  const now = Date.now();
+  const row = {
+    at: now,
+    type: String(type || "event"),
+    mode: String(S?.mode || ""),
+    battle: !!S?.inBattle,
+    paused: !!S?.paused,
+    reason: String(detail?.reason || ""),
+    frameLag: Math.max(0, Math.round(Number(__frameLagScore || 0))),
+    hp: Math.max(0, Math.round(Number(S?.hp || 0))),
+    tigers: Array.isArray(S?.tigers) ? S.tigers.length : 0,
+    civilians: Array.isArray(S?.civilians) ? S.civilians.length : 0,
+  };
+  __stabilityEventLog.push(row);
+  if(__stabilityEventLog.length > STABILITY_EVENT_LOG_MAX){
+    __stabilityEventLog.splice(0, __stabilityEventLog.length - STABILITY_EVENT_LOG_MAX);
+  }
+}
 
 function invalidateMapCache(){
   __mapFrameCacheSig = "";
@@ -10114,6 +10136,7 @@ function canRunStabilityRecovery(now=Date.now()){
 function runStabilityRecovery(reason="stall"){
   const now = Date.now();
   if(!canRunStabilityRecovery(now)) return false;
+  pushStabilityEvent("recovery-start", { reason });
   __freezeRecoverState.lastRecoverAt = now;
   __freezeRecoverState.history.push(now);
   markBalanceFreezeRecover(S);
@@ -10156,6 +10179,7 @@ function runStabilityRecovery(reason="stall"){
   try{ renderCombatControls(); }catch(e){}
   try{ updateAttackButton(); }catch(e){}
   try{ if(typeof recoverMissionInputLock === "function") recoverMissionInputLock(`recover:${reason}`); }catch(e){}
+  pushStabilityEvent("recovery-end", { reason });
   return true;
 }
 
@@ -10392,6 +10416,9 @@ function runtimeMemoryCleanupTick(now=Date.now()){
   }
   if(Array.isArray(__stabilityMonitorState.frameCosts) && __stabilityMonitorState.frameCosts.length > STABILITY_MONITOR_SAMPLE_MAX){
     __stabilityMonitorState.frameCosts = __stabilityMonitorState.frameCosts.slice(-STABILITY_MONITOR_SAMPLE_MAX);
+  }
+  if(Array.isArray(__stabilityEventLog) && __stabilityEventLog.length > STABILITY_EVENT_LOG_MAX){
+    __stabilityEventLog = __stabilityEventLog.slice(-STABILITY_EVENT_LOG_MAX);
   }
   if(!S || typeof S !== "object") return;
   const pruneFarDrawCache = (list, keepAlive=true)=>{
@@ -21524,6 +21551,7 @@ function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
   S._pressTick = 0;
   S._pressure = 0;
   __sfxLastAt = Object.create(null);
+  __stabilityEventLog = [];
   if(Number.isFinite(S?.me?.x) && Number.isFinite(S?.me?.y)){
     const cam = cameraClampCenter(S.me.x, S.me.y, S);
     if(!S.camera || typeof S.camera !== "object") S.camera = { x:cam.x, y:cam.y };
@@ -33277,6 +33305,7 @@ function noteRenderFailSafe(reason="render-failure"){
   const now = Date.now();
   __renderFailSafeState.consecutive = Math.max(0, Number(__renderFailSafeState.consecutive || 0)) + 1;
   __renderFailSafeState.lastReason = reason;
+  pushStabilityEvent("render-failsafe", { reason });
   const shouldRecover =
     __renderFailSafeState.consecutive >= RENDER_FAILSAFE_HARD_RECOVER_AT &&
     (now - (__renderFailSafeState.lastRecoverAt || 0)) > RENDER_FAILSAFE_RECOVER_COOLDOWN_MS;
@@ -33444,6 +33473,7 @@ function recoverMissionInputLock(reason="watchdog"){
     recovered = true;
   }
   if(!recovered) return false;
+  pushStabilityEvent("input-recover", { reason });
   if((now - __lastControlRecoverAt) > 1600){
     __lastControlRecoverAt = now;
     S.respawnLockRecoverCount = Math.max(0, Math.floor(Number(S.respawnLockRecoverCount || 0))) + 1;
