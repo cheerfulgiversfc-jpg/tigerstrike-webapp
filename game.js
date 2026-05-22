@@ -8902,6 +8902,14 @@ const __freezeRecoverState = {
 };
 const STABILITY_EVENT_LOG_MAX = 48;
 let __stabilityEventLog = [];
+const STABILITY_INCIDENT_COOLDOWN_MS = 45000;
+let __stabilityIncident = {
+  id: "",
+  openedAt: 0,
+  lastAt: 0,
+  reason: "",
+  count: 0
+};
 const __stabilityMonitorState = {
   node: null,
   lastRenderAt: 0,
@@ -8926,13 +8934,31 @@ const __renderFailSafeState = {
 
 function pushStabilityEvent(type="event", detail={}){
   const now = Date.now();
+  const typ = String(type || "event");
+  const shouldOpenIncident =
+    typ === "recovery-start" ||
+    typ === "render-failsafe" ||
+    typ === "input-recover";
+  if(shouldOpenIncident){
+    const stale = (now - Number(__stabilityIncident.lastAt || 0)) > STABILITY_INCIDENT_COOLDOWN_MS;
+    if(!__stabilityIncident.id || stale){
+      const seed = Math.random().toString(36).slice(2, 8).toUpperCase();
+      __stabilityIncident.id = `INC-${new Date(now).toISOString().slice(0, 10).replace(/-/g, "")}-${seed}`;
+      __stabilityIncident.openedAt = now;
+      __stabilityIncident.count = 0;
+    }
+    __stabilityIncident.lastAt = now;
+    __stabilityIncident.reason = String(detail?.reason || typ);
+    __stabilityIncident.count = Math.max(0, Math.floor(Number(__stabilityIncident.count || 0))) + 1;
+  }
   const row = {
     at: now,
-    type: String(type || "event"),
+    type: typ,
     mode: String(S?.mode || ""),
     battle: !!S?.inBattle,
     paused: !!S?.paused,
     reason: String(detail?.reason || ""),
+    incidentId: String(__stabilityIncident.id || ""),
     frameLag: Math.max(0, Math.round(Number(__frameLagScore || 0))),
     hp: Math.max(0, Math.round(Number(S?.hp || 0))),
     tigers: Array.isArray(S?.tigers) ? S.tigers.length : 0,
@@ -10966,6 +10992,7 @@ function stabilityEventLines(limit=10){
     const ss = String(at.getSeconds() || 0).padStart(2, "0");
     const type = String(row?.type || "event");
     const reason = String(row?.reason || "");
+    const incidentId = String(row?.incidentId || "");
     const mode = String(row?.mode || "-");
     const hp = Math.max(0, Math.round(Number(row?.hp || 0)));
     const lag = Math.max(0, Math.round(Number(row?.frameLag || 0)));
@@ -10973,8 +11000,19 @@ function stabilityEventLines(limit=10){
     const civs = Math.max(0, Math.round(Number(row?.civilians || 0)));
     const battle = row?.battle ? "B1" : "B0";
     const paused = row?.paused ? "P1" : "P0";
-    return `[${hh}:${mm}:${ss}] ${type}${reason ? ` (${reason})` : ""} • ${mode} ${battle}/${paused} hp${hp} lag${lag} T${tigers} C${civs}`;
+    return `[${hh}:${mm}:${ss}] ${type}${reason ? ` (${reason})` : ""}${incidentId ? ` [${incidentId}]` : ""} • ${mode} ${battle}/${paused} hp${hp} lag${lag} T${tigers} C${civs}`;
   });
+}
+function stabilityIncidentSummary(){
+  const id = String(__stabilityIncident.id || "");
+  if(!id) return "none";
+  const openedAt = Number(__stabilityIncident.openedAt || 0);
+  const lastAt = Number(__stabilityIncident.lastAt || 0);
+  const openTxt = openedAt ? new Date(openedAt).toISOString() : "-";
+  const lastTxt = lastAt ? new Date(lastAt).toISOString() : "-";
+  const reason = String(__stabilityIncident.reason || "");
+  const count = Math.max(0, Math.floor(Number(__stabilityIncident.count || 0)));
+  return `${id} • count ${count} • reason ${reason || "-"} • open ${openTxt} • last ${lastTxt}`;
 }
 function sanitizeDebugDetails(details){
   if(!details || typeof details !== "object") return "";
@@ -11012,12 +11050,13 @@ function copyStarsDebugLog(){
   const lines = starsDebugEntries.join("\n");
   const snapshot = liveDebugSnapshotLines().join("\n");
   const stabilityLines = stabilityEventLines(16).join("\n");
+  const incidentLine = stabilityIncidentSummary();
   if(!lines && !snapshot){
     toast("No debug logs yet.");
     return;
   }
   const status = `pending=${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | user=${tgUserKey()}`;
-  const text = `Tiger Strike Live Debug HUD\n${status}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nStars Events:\n${lines || "No Stars events yet."}`;
+  const text = `Tiger Strike Live Debug HUD\n${status}\nIncident: ${incidentLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nStars Events:\n${lines || "No Stars events yet."}`;
   const done = ()=>toast("Stars debug copied.");
   if(navigator.clipboard?.writeText){
     navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
@@ -11136,6 +11175,7 @@ function ensureStarsDebugUi(){
   document.getElementById("starsDebugCopy")?.addEventListener("click", copyStarsDebugLog);
   document.getElementById("starsDebugClearStability")?.addEventListener("click", ()=>{
     __stabilityEventLog = [];
+    __stabilityIncident = { id:"", openedAt:0, lastAt:0, reason:"", count:0 };
     renderStarsDebugPanel();
     toast("Stability events cleared.");
   });
@@ -11190,7 +11230,7 @@ function renderStarsDebugPanel(){
   toggleLog.style.background = enabled ? "rgba(37,99,235,.55)" : "rgba(55,65,81,.55)";
   live.textContent = liveDebugSnapshotLines().join("\n");
   renderDirectorTuneUi();
-  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession})`;
+  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession}) | Incident: ${stabilityIncidentSummary()}`;
   stability.textContent = stabilityEventLines(12).join("\n");
   stability.scrollTop = stability.scrollHeight;
   log.textContent = starsDebugEntries.length ? starsDebugEntries.join("\n") : "No Stars events yet.";
@@ -21585,6 +21625,7 @@ function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
   S._pressure = 0;
   __sfxLastAt = Object.create(null);
   __stabilityEventLog = [];
+  __stabilityIncident = { id:"", openedAt:0, lastAt:0, reason:"", count:0 };
   if(Number.isFinite(S?.me?.x) && Number.isFinite(S?.me?.y)){
     const cam = cameraClampCenter(S.me.x, S.me.y, S);
     if(!S.camera || typeof S.camera !== "object") S.camera = { x:cam.x, y:cam.y };
