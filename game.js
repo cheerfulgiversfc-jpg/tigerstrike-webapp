@@ -8873,6 +8873,23 @@ let __mapWaterSig = "";
 let __mapWaterZones = [];
 let __mapDenseLandmarksSig = "";
 let __mapDenseLandmarks = [];
+const STARTUP_LOADING_MAX_MS = 60000;
+const STARTUP_LOADING_MIN_MS = 900;
+const STARTUP_LOADING_READY_FRAMES = 3;
+let __startupLoadingGuard = {
+  active:false,
+  startedAt:0,
+  readyFrames:0,
+  releasedAt:0,
+  reason:"",
+  lastTextAt:0,
+  node:null,
+  textNode:null,
+  subNode:null,
+  barNode:null
+};
+let __phase18CinematicEvents = [];
+const PHASE18_CINEMATIC_EVENT_MAX = 18;
 let __frameSlowUntil = 0;
 let __frameLagScore = 0;
 let __lastFrameAt = 0;
@@ -22458,6 +22475,130 @@ function setTigerIntent(t, label, ms=520){
   if(!t) return;
   t.intent = label;
   t.intentUntil = Date.now() + ms;
+  const intent = String(label || "").toLowerCase();
+  if(intent.includes("charge") || intent.includes("pounce") || intent.includes("roar") || intent.includes("pack call")){
+    triggerPhase18TigerMoment(t, intent.includes("roar") ? "roar" : (intent.includes("pack") ? "boss" : "threat"), label);
+  }
+}
+
+function phase18TigerMomentLabel(t, kind, label){
+  if(label) return String(label);
+  if(kind === "capture") return "Captured";
+  if(kind === "finish") return "Eliminated";
+  if(kind === "roar") return "Alpha Roar";
+  if(kind === "boss") return "Boss Move";
+  if(kind === "intro") return isBossTiger(t) ? "Boss Encounter" : "Alpha Encounter";
+  return "Tiger Strike";
+}
+
+function triggerPhase18TigerMoment(t, kind="threat", label=""){
+  if(!t || !t.alive) return;
+  if(!Number.isFinite(t.x) || !Number.isFinite(t.y)) return;
+  const now = Date.now();
+  const k = String(kind || "threat");
+  const cooldown = k === "intro" ? 9000 : (k === "finish" || k === "capture" ? 1800 : 950);
+  const key = `_phase18_${k}At`;
+  if(now - Number(t[key] || 0) < cooldown) return;
+  t[key] = now;
+  const text = phase18TigerMomentLabel(t, k, label);
+  if(__phase18CinematicEvents.length >= PHASE18_CINEMATIC_EVENT_MAX){
+    __phase18CinematicEvents.splice(0, __phase18CinematicEvents.length - (PHASE18_CINEMATIC_EVENT_MAX - 1));
+  }
+  __phase18CinematicEvents.push({
+    x:t.x,
+    y:t.y,
+    tx:S?.me?.x,
+    ty:S?.me?.y,
+    kind:k,
+    label:text,
+    bornAt:now,
+    until:now + (k === "intro" ? 1550 : 980)
+  });
+  if(k === "intro" || k === "boss"){
+    queueCameraShake(k === "intro" ? 0.58 : 0.38, k === "intro" ? 260 : 190);
+    adaptiveAudioStinger("boss");
+  }else if(k === "finish" || k === "capture"){
+    queueCameraShake(0.28, 150);
+    adaptiveAudioStinger("peak");
+  }else{
+    queueCameraShake(0.22, 120);
+    adaptiveAudioStinger("danger");
+  }
+  queueImpactPulse(t.x, t.y - 7, k === "capture" ? "tranq" : (k === "finish" ? "crit" : "player"));
+  if(k === "intro" || k === "boss" || k === "roar"){
+    emitDamagePopup(t.x, t.y - 52, text, k === "roar" ? "player" : "crit");
+  }
+}
+
+function phase18CinematicTick(){
+  const now = Date.now();
+  for(const t of (S.tigers || [])){
+    if(!t?.alive) continue;
+    if((isBossTiger(t) || t.type === "Alpha") && !t._phase18IntroSeen){
+      t._phase18IntroSeen = true;
+      triggerPhase18TigerMoment(t, "intro", isBossTiger(t) ? "Boss Encounter" : "Alpha Encounter");
+    }
+    if(now < (t.roarUntil || 0) && (now - Number(t._phase18RoarAt || 0)) > 1200){
+      triggerPhase18TigerMoment(t, "roar", "Alpha Roar");
+    }
+  }
+  if(__phase18CinematicEvents.length){
+    __phase18CinematicEvents = __phase18CinematicEvents.filter(e=>now < (e.until || 0));
+  }
+}
+
+function drawPhase18CinematicEvents(now=Date.now()){
+  if(!ctx || !__phase18CinematicEvents.length) return;
+  if(frameLagTier() >= 2 || frameBudgetExceeded(0.88)) return;
+  ctx.save();
+  for(const e of __phase18CinematicEvents){
+    const span = Math.max(1, (e.until || now) - (e.bornAt || now));
+    const p = clamp((now - (e.bornAt || now)) / span, 0, 1);
+    const fade = 1 - p;
+    const intro = e.kind === "intro" || e.kind === "boss";
+    const finish = e.kind === "finish" || e.kind === "capture";
+    const color = e.kind === "capture"
+      ? "74,222,128"
+      : (finish ? "250,204,21" : (intro ? "251,146,60" : "248,113,113"));
+    const r = (intro ? 44 : 26) + p * (intro ? 52 : 34);
+    ctx.globalAlpha = 0.22 * fade;
+    ctx.fillStyle = `rgba(${color},.35)`;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.78 * fade;
+    ctx.strokeStyle = `rgba(${color},.95)`;
+    ctx.lineWidth = intro ? 4 : 3;
+    ctx.setLineDash(finish ? [] : [10, 8]);
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, r + 6, 0, Math.PI * 2);
+    ctx.stroke();
+    if(Number.isFinite(e.tx) && Number.isFinite(e.ty) && !finish){
+      ctx.globalAlpha = 0.34 * fade;
+      ctx.setLineDash([16, 12]);
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(e.x, e.y);
+      ctx.lineTo(e.tx, e.ty);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.92 * fade;
+    ctx.fillStyle = "rgba(8,12,20,.84)";
+    const text = String(e.label || "Tiger Strike");
+    ctx.font = intro ? "900 15px system-ui" : "900 12px system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const w = Math.min(180, Math.max(84, ctx.measureText(text).width + 24));
+    const y = e.y - r - 18;
+    roundedRectFill(e.x - w / 2, y - 14, w, 28, 12);
+    ctx.strokeStyle = `rgba(${color},.82)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(245,247,255,.96)";
+    ctx.fillText(text, e.x, y);
+  }
+  ctx.restore();
 }
 
 function ensureTigerHuntState(t, now=Date.now()){
@@ -28842,6 +28983,7 @@ function updateAttackButton(){
 
 function finishTigerKill(t){
   if(!t || !t.alive) return;
+  triggerPhase18TigerMoment(t, "finish", "Eliminated");
   noteTigerOutcomeForObjective(t);
   const bossKill = !!isBossTiger(t);
   if(window.TigerTutorial?.isRunning){
@@ -28903,6 +29045,7 @@ function findFriendlyFireVictim(targetTiger){
 }
 
 function playerAction(action){
+  if(startupLoadingGuardActive()) return toast("Mission map is still loading.");
   if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return;
   if(window.TigerTutorial?.isRunning){
     if(action==="ATTACK" && !tutorialAllows("attack")) return toast(tutorialBlockMessage("attack"));
@@ -28952,6 +29095,7 @@ function playerAction(action){
     const bossCapture = !!isBossTiger(t);
     const captureTreeFx = weaponMasteryTreeEffects(req, S);
     markStoryFinalBossOutcome("CAPTURE", t);
+    triggerPhase18TigerMoment(t, "capture", "Captured");
     t.alive=false;
     tigerPackRecordLoss(t, "CAPTURE");
     addWeaponMasteryXp(req, 4);
@@ -29210,6 +29354,7 @@ function tigerTurn(t, softened=false, opts={}){
   if(opts.kind === "charge") setTigerIntent(t, "Charge", 520);
   else if(opts.kind === "pounce") setTigerIntent(t, "Pounce", 480);
   else setTigerIntent(t, "Strike", 440);
+  triggerPhase18TigerMoment(t, opts.kind === "charge" ? "threat" : (opts.kind === "pounce" ? "threat" : "strike"), opts.kind === "charge" ? "Charge" : (opts.kind === "pounce" ? "Pounce" : "Strike"));
   t.attackAnimKind = opts.kind || "strike";
   t.attackAnimStart = now;
   t.attackAnimUntil = now + ((opts.kind === "charge") ? 360 : (opts.kind === "pounce" ? 320 : 260));
@@ -33829,6 +33974,7 @@ function drawEntities(){
     drawSafe("drawSoldier", drawSoldier);
   }
   drawSafe("drawBossArenaMoments", ()=>drawBossArenaMoments(Date.now()));
+  drawSafe("drawPhase18CinematicEvents", ()=>drawPhase18CinematicEvents(Date.now()));
   drawSafe("drawOnMapBattleReadability", drawOnMapBattleReadability);
   drawSafe("drawOnMapBattleHud", drawOnMapBattleHud);
   const iphoneStability = iphoneStabilityModeActive();
@@ -34124,6 +34270,111 @@ function noteRenderFailSafe(reason="render-failure"){
 function noteRenderSuccess(){
   if(__renderFailSafeState.consecutive > 0){
     __renderFailSafeState.consecutive = 0;
+  }
+}
+
+function ensureStartupLoadingOverlay(){
+  if(typeof document === "undefined") return null;
+  if(!document.body) return null;
+  if(__startupLoadingGuard.node?.isConnected) return __startupLoadingGuard.node;
+  const node = document.createElement("div");
+  node.id = "startupLoadingGuard";
+  node.setAttribute("aria-live", "polite");
+  node.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "z-index:9998",
+    "display:none",
+    "align-items:center",
+    "justify-content:center",
+    "padding:24px",
+    "background:radial-gradient(circle at 50% 28%, rgba(22,101,52,.96), rgba(5,10,18,.98) 58%, rgba(2,6,23,.99))",
+    "color:#f8fafc",
+    "font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    "pointer-events:auto",
+    "touch-action:none"
+  ].join(";");
+  node.innerHTML = `
+    <div style="width:min(420px,92vw);border:1px solid rgba(148,163,184,.35);border-radius:24px;padding:24px;background:rgba(15,23,42,.78);box-shadow:0 24px 80px rgba(0,0,0,.45);text-align:center;">
+      <div style="font-size:15px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#86efac;">Tiger Strike</div>
+      <div data-load-title style="margin-top:8px;font-size:28px;font-weight:950;line-height:1.05;">Loading Mission Map</div>
+      <div data-load-sub style="margin-top:12px;font-size:14px;font-weight:750;color:#cbd5e1;line-height:1.45;">Preparing terrain, route data, civilians, and tiger zones...</div>
+      <div style="margin-top:20px;height:10px;border-radius:999px;background:rgba(15,23,42,.95);overflow:hidden;border:1px solid rgba(148,163,184,.24);">
+        <div data-load-bar style="height:100%;width:16%;border-radius:999px;background:linear-gradient(90deg,#22c55e,#a3e635,#facc15);transition:width .22s ease;"></div>
+      </div>
+      <div style="margin-top:12px;font-size:12px;font-weight:800;color:#94a3b8;">Gameplay starts as soon as the background is ready.</div>
+    </div>
+  `;
+  document.body.appendChild(node);
+  __startupLoadingGuard.node = node;
+  __startupLoadingGuard.textNode = node.querySelector("[data-load-title]");
+  __startupLoadingGuard.subNode = node.querySelector("[data-load-sub]");
+  __startupLoadingGuard.barNode = node.querySelector("[data-load-bar]");
+  return node;
+}
+
+function beginStartupLoadingGuard(reason="startup"){
+  const now = Date.now();
+  __startupLoadingGuard.active = true;
+  __startupLoadingGuard.startedAt = now;
+  __startupLoadingGuard.readyFrames = 0;
+  __startupLoadingGuard.releasedAt = 0;
+  __startupLoadingGuard.reason = reason;
+  updateStartupLoadingOverlay(true);
+}
+
+function releaseStartupLoadingGuard(reason="ready"){
+  if(!__startupLoadingGuard.active) return;
+  __startupLoadingGuard.active = false;
+  __startupLoadingGuard.releasedAt = Date.now();
+  __startupLoadingGuard.reason = reason;
+  updateStartupLoadingOverlay(true);
+}
+
+function startupLoadingGuardActive(now=Date.now()){
+  if(!__startupLoadingGuard.active) return false;
+  const elapsed = now - Number(__startupLoadingGuard.startedAt || now);
+  if(elapsed >= STARTUP_LOADING_MAX_MS){
+    releaseStartupLoadingGuard("timeout");
+    return false;
+  }
+  return true;
+}
+
+function noteStartupMapFrameReady(){
+  if(!__startupLoadingGuard.active) return;
+  const now = Date.now();
+  const elapsed = now - Number(__startupLoadingGuard.startedAt || now);
+  __startupLoadingGuard.readyFrames = Math.min(STARTUP_LOADING_READY_FRAMES, Number(__startupLoadingGuard.readyFrames || 0) + 1);
+  if(elapsed >= STARTUP_LOADING_MIN_MS && __startupLoadingGuard.readyFrames >= STARTUP_LOADING_READY_FRAMES){
+    releaseStartupLoadingGuard("map-ready");
+  }else{
+    updateStartupLoadingOverlay();
+  }
+}
+
+function updateStartupLoadingOverlay(force=false){
+  const node = ensureStartupLoadingOverlay();
+  if(!node) return;
+  const active = !!__startupLoadingGuard.active;
+  node.style.display = active ? "flex" : "none";
+  if(!active) return;
+  const now = Date.now();
+  if(!force && now - Number(__startupLoadingGuard.lastTextAt || 0) < 160) return;
+  __startupLoadingGuard.lastTextAt = now;
+  const elapsed = Math.max(0, now - Number(__startupLoadingGuard.startedAt || now));
+  const readyFrames = clamp(Number(__startupLoadingGuard.readyFrames || 0), 0, STARTUP_LOADING_READY_FRAMES);
+  const frameProgress = readyFrames / STARTUP_LOADING_READY_FRAMES;
+  const timeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_MAX_MS), 0, 1);
+  const progress = clamp(Math.max(timeProgress * 0.82, frameProgress * 0.92), 0.12, 0.98);
+  if(__startupLoadingGuard.subNode){
+    const seconds = Math.ceil(Math.max(0, STARTUP_LOADING_MAX_MS - elapsed) / 1000);
+    __startupLoadingGuard.subNode.textContent = readyFrames > 0
+      ? `Map render check ${readyFrames}/${STARTUP_LOADING_READY_FRAMES}. Background is warming up now.`
+      : `Preparing terrain, route data, civilians, and tiger zones. Timeout safety: ${seconds}s.`;
+  }
+  if(__startupLoadingGuard.barNode){
+    __startupLoadingGuard.barNode.style.width = `${Math.round(progress * 100)}%`;
   }
 }
 
@@ -34519,6 +34770,8 @@ function draw(){
       return;
     }
     beginFrameBudget(frameStart);
+    const startupLoading = startupLoadingGuardActive();
+    updateStartupLoadingOverlay();
     const lagTier = frameLagTier();
     const lagHeavy = lagTier >= 1;
     const lagCritical = lagTier >= 2;
@@ -34529,11 +34782,11 @@ function draw(){
     if(__frameSpikePending){
       safeTick("recoverFromSpikeFrame", recoverFromSpikeFrame);
     }
-    safeTick("pollGamepadControls", pollGamepadControls);
+    if(!startupLoading) safeTick("pollGamepadControls", pollGamepadControls);
     safeTick("refreshControllerUi", refreshControllerUi);
     safeTick("maybeRenderHUD", maybeRenderHUD);
-    safeTick("updateEngage", updateEngage);
-    safeTick("respawnTick", respawnTick);
+    if(!startupLoading) safeTick("updateEngage", updateEngage);
+    if(!startupLoading) safeTick("respawnTick", respawnTick);
     const emergencyInvalid = missionEntityStateInvalid(S);
     if(emergencyInvalid){
       safeTick("startupIntegrityEmergency", ()=>ensureMissionStartupIntegrity({ force:true, reason:`frame-emergency:${emergencyInvalid}` }));
@@ -34553,7 +34806,7 @@ function draw(){
     });
     runFrameTask("arcadeModeTick", frameInterval(220, 1.45), arcadeModeTick, { costHint:0.6, critical:S.mode==="Arcade" });
 
-    if(!(S.gameOver || S.paused || S.missionEnded)){
+    if(!startupLoading && !(S.gameOver || S.paused || S.missionEnded)){
       runFrameTask("sanitizeState", frameInterval(lagCritical ? 360 : (lagHeavy ? 300 : 240), 2.2), sanitizeRuntimeState, {
         costHint:1.3, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
@@ -34597,6 +34850,9 @@ function draw(){
       });
       runFrameTask("bossIdentity", frameInterval(92, 1.45), bossIdentityTick, { costHint:0.9, critical:true });
       runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
+      runFrameTask("phase18CinematicTick", frameInterval(lagCritical ? 340 : (lagHeavy ? 260 : 180), 1.5), phase18CinematicTick, {
+        costHint:0.4, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
       if(liveOpsCommandFlag("supportAI")){
         runFrameTask("supportUnits", frameInterval(
           battleLoad
@@ -34753,6 +35009,7 @@ function draw(){
           safeTick("drawSceneGradeOverlay", ()=>drawSceneCinematicGrade(Date.now(), "overlay"));
         }
         if(mapDrawOk){
+          noteStartupMapFrameReady();
           noteRenderSuccess();
         } else {
           throw new Error(`render-scene-failed map=failure entities=${entityDrawOk ? "success" : "failure"}`);
@@ -34820,6 +35077,7 @@ function missionStateLooksEmpty(){
 
 function init(){
   ensureStarsDebugUi();
+  beginStartupLoadingGuard("init");
   pushStarsDebug("app:init", { user: tgUserKey(), build: TS_BUILD });
   ensureStoryMetaState();
   ensureContractTalliesState(S);
