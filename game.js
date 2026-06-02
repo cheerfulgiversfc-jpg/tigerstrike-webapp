@@ -8068,6 +8068,7 @@ function recomputeBalanceAutoTune(state=S, now=Date.now()){
 
 function currentBalanceTuning(state=S, now=Date.now()){
   const stats = recomputeBalanceAutoTune(state, now);
+  const liveCmd = liveOpsCommandTuning();
   let autoTune = clampAutoTuneValue(stats.autoTune);
   const lagTier = frameLagTier();
   if(lagTier >= 2) autoTune = clampAutoTuneValue(autoTune - 0.03);
@@ -8092,10 +8093,10 @@ function currentBalanceTuning(state=S, now=Date.now()){
 
   return {
     autoTune: clampAutoTuneValue(autoTune),
-    pressureMul: clamp(pressureMul, 0.86, 1.16),
-    spawnCdMul: clamp(spawnCdMul, 0.84, 1.22),
-    aggroMul: clamp(aggroMul, 0.86, 1.18),
-    speedMul: clamp(speedMul, 0.88, 1.14),
+    pressureMul: clamp(pressureMul * liveCmd.pressureMul, 0.76, 1.28),
+    spawnCdMul: clamp(spawnCdMul * liveCmd.spawnCdMul, 0.72, 1.42),
+    aggroMul: clamp(aggroMul * liveCmd.aggroMul, 0.76, 1.30),
+    speedMul: clamp(speedMul * liveCmd.speedMul, 0.78, 1.26),
   };
 }
 
@@ -11131,8 +11132,12 @@ function toast(msg){
 }
 const STARS_DEBUG_ENABLED_KEY = "ts_stars_debug_enabled";
 const DIRECTOR_TUNE_PRESETS_KEY = "ts_director_tune_presets_v1";
+const LIVE_OPS_COMMAND_CONFIG_KEY = "ts_live_ops_command_config_v1";
+const LIVE_OPS_COMMAND_PREVIOUS_KEY = "ts_live_ops_command_previous_v1";
 let starsDebugPanelOpen = false;
 let starsDebugEntries = [];
+let __liveOpsCommandCache = null;
+let __liveOpsCommandCacheAt = 0;
 const DIRECTOR_TUNE_DEFAULT = Object.freeze({
   pressureEnter:46,
   peakEnter:80,
@@ -11140,6 +11145,25 @@ const DIRECTOR_TUNE_DEFAULT = Object.freeze({
   spawnCdMul:1.00,
   dominanceTrigger:64,
   recoveryMul:1.00
+});
+const LIVE_OPS_COMMAND_DEFAULT = Object.freeze({
+  version:"local-default",
+  updatedAt:0,
+  flags:Object.freeze({
+    worldEvents:true,
+    missionTwists:true,
+    supportAI:true,
+    rivalHunters:true,
+    convoyMissions:true,
+    dynamicObjectives:true,
+    replayRecorder:true
+  }),
+  tuning:Object.freeze({
+    pressureMul:1.00,
+    spawnCdMul:1.00,
+    aggroMul:1.00,
+    speedMul:1.00
+  })
 });
 function starsDebugEnabled(){
   try{
@@ -11165,6 +11189,119 @@ function shortDebugRef(ref){
   if(!txt) return "-";
   if(txt.length <= 28) return txt;
   return `${txt.slice(0,14)}…${txt.slice(-10)}`;
+}
+function normalizeLiveOpsCommandConfig(src){
+  const inSrc = (src && typeof src === "object") ? src : {};
+  const flags = (inSrc.flags && typeof inSrc.flags === "object") ? inSrc.flags : {};
+  const tuning = (inSrc.tuning && typeof inSrc.tuning === "object") ? inSrc.tuning : {};
+  return {
+    version: String(inSrc.version || LIVE_OPS_COMMAND_DEFAULT.version),
+    updatedAt: Math.max(0, Math.floor(Number(inSrc.updatedAt || 0))),
+    flags: {
+      worldEvents: flags.worldEvents !== false,
+      missionTwists: flags.missionTwists !== false,
+      supportAI: flags.supportAI !== false,
+      rivalHunters: flags.rivalHunters !== false,
+      convoyMissions: flags.convoyMissions !== false,
+      dynamicObjectives: flags.dynamicObjectives !== false,
+      replayRecorder: flags.replayRecorder !== false
+    },
+    tuning: {
+      pressureMul: clamp(Number(tuning.pressureMul ?? LIVE_OPS_COMMAND_DEFAULT.tuning.pressureMul), 0.70, 1.35),
+      spawnCdMul: clamp(Number(tuning.spawnCdMul ?? LIVE_OPS_COMMAND_DEFAULT.tuning.spawnCdMul), 0.70, 1.60),
+      aggroMul: clamp(Number(tuning.aggroMul ?? LIVE_OPS_COMMAND_DEFAULT.tuning.aggroMul), 0.70, 1.35),
+      speedMul: clamp(Number(tuning.speedMul ?? LIVE_OPS_COMMAND_DEFAULT.tuning.speedMul), 0.70, 1.35)
+    }
+  };
+}
+function readLiveOpsCommandConfig(){
+  try{
+    const raw = localStorage.getItem(LIVE_OPS_COMMAND_CONFIG_KEY);
+    if(!raw) return normalizeLiveOpsCommandConfig(LIVE_OPS_COMMAND_DEFAULT);
+    return normalizeLiveOpsCommandConfig(JSON.parse(raw));
+  }catch(e){
+    return normalizeLiveOpsCommandConfig(LIVE_OPS_COMMAND_DEFAULT);
+  }
+}
+function writeLiveOpsCommandConfig(config, opts={}){
+  const next = normalizeLiveOpsCommandConfig({
+    ...config,
+    updatedAt: Date.now(),
+    version: String(config?.version || `local-${Date.now().toString(36)}`)
+  });
+  try{
+    if(!opts.skipPrevious){
+      localStorage.setItem(LIVE_OPS_COMMAND_PREVIOUS_KEY, JSON.stringify(readLiveOpsCommandConfig()));
+    }
+    localStorage.setItem(LIVE_OPS_COMMAND_CONFIG_KEY, JSON.stringify(next));
+  }catch(e){}
+  __liveOpsCommandCache = next;
+  __liveOpsCommandCacheAt = Date.now();
+  try{ pushStarsDebug("live_ops_command_update", { version:next.version, flags:next.flags, tuning:next.tuning }); }catch(e){}
+  renderStarsDebugPanel();
+  return next;
+}
+function liveOpsCommandConfig(){
+  const now = Date.now();
+  if(__liveOpsCommandCache && (now - __liveOpsCommandCacheAt) < 900){
+    return __liveOpsCommandCache;
+  }
+  __liveOpsCommandCache = readLiveOpsCommandConfig();
+  __liveOpsCommandCacheAt = now;
+  return __liveOpsCommandCache;
+}
+function liveOpsCommandFlag(key){
+  const cfg = liveOpsCommandConfig();
+  return cfg.flags[String(key || "")] !== false;
+}
+function liveOpsCommandTuning(){
+  return liveOpsCommandConfig().tuning;
+}
+function liveOpsCommandSummary(){
+  const cfg = liveOpsCommandConfig();
+  const flagVals = Object.values(cfg.flags);
+  const on = flagVals.filter(Boolean).length;
+  const t = cfg.tuning;
+  return `Cmd ${cfg.version} • flags ${on}/${flagVals.length} • P${t.pressureMul.toFixed(2)} CD${t.spawnCdMul.toFixed(2)} A${t.aggroMul.toFixed(2)} S${t.speedMul.toFixed(2)}`;
+}
+function setLiveOpsCommandFlag(key, value){
+  const cfg = liveOpsCommandConfig();
+  cfg.flags[String(key || "")] = !!value;
+  cfg.version = `local-${Date.now().toString(36)}`;
+  writeLiveOpsCommandConfig(cfg);
+}
+function setLiveOpsCommandTuning(key, value){
+  const cfg = liveOpsCommandConfig();
+  if(!(key in cfg.tuning)) return;
+  cfg.tuning[key] = Number(value);
+  cfg.version = `local-${Date.now().toString(36)}`;
+  writeLiveOpsCommandConfig(cfg);
+}
+function resetLiveOpsCommandConfig(){
+  writeLiveOpsCommandConfig({
+    ...LIVE_OPS_COMMAND_DEFAULT,
+    version:`reset-${Date.now().toString(36)}`
+  });
+  toast("Live Ops command reset.");
+}
+function rollbackLiveOpsCommandConfig(){
+  try{
+    const raw = localStorage.getItem(LIVE_OPS_COMMAND_PREVIOUS_KEY);
+    if(!raw){
+      toast("No Live Ops rollback saved.");
+      return false;
+    }
+    const prev = normalizeLiveOpsCommandConfig(JSON.parse(raw));
+    writeLiveOpsCommandConfig({
+      ...prev,
+      version:`rollback-${Date.now().toString(36)}`
+    }, { skipPrevious:true });
+    toast("Live Ops command rolled back.");
+    return true;
+  }catch(e){
+    toast("Live Ops rollback failed.");
+    return false;
+  }
 }
 function normalizeDirectorTuning(src){
   const inSrc = (src && typeof src === "object") ? src : {};
@@ -11271,6 +11408,7 @@ function liveDebugSnapshotLines(){
   return [
     `Dir ${directorPhaseLabel(phase)} ${pressure}% • A${Number(S._directorAggroMul || 1).toFixed(2)} S${Number(S._directorSpeedMul || 1).toFixed(2)}`,
     directorTuningHudLabel(tune),
+    liveOpsCommandSummary(),
     `LaneHeat ${laneHeat} • Dom ${Math.round(dom.score)} (${Math.round(dom.laneLoad * 100)}% lane, hot ${dom.hotLane})`,
     `Locks spawn ${Math.ceil(spawnLockMs/1000)}s • rec ${Math.ceil(recoveryMs/1000)}s • dom ${Math.ceil(dominanceMs/1000)}s`,
     `Entities T${aliveTigers} C${aliveCivs} atk${atk} • Lag T${lagTier} Load ${loadScore} FPS ${fps || "—"}`
@@ -11349,7 +11487,7 @@ function buildStabilityIncidentReportText(){
   const healRuns = Math.max(0, Math.floor(Number(__phase15SelfHealState?.runCount || 0)));
   const healLast = String(__phase15SelfHealState?.lastSummary || "-");
   const replayLine = `Replay: ${replaySnapshotSummary()}`;
-  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\n${sevLine}\nSelf-Heal: runs=${healRuns} last=${healLast}\n${replayLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}`;
+  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\nLive Ops Command: ${liveOpsCommandSummary()}\n${sevLine}\nSelf-Heal: runs=${healRuns} last=${healLast}\n${replayLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}`;
 }
 function copyStabilityIncidentReport(){
   const text = buildStabilityIncidentReportText();
@@ -11415,7 +11553,7 @@ function copyStarsDebugLog(){
     return;
   }
   const status = `pending=${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | user=${tgUserKey()}`;
-  const text = `Tiger Strike Live Debug HUD\n${status}\nIncident: ${incidentLine}\nReplay: ${replaySnapshotSummary()}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}\n\nStars Events:\n${lines || "No Stars events yet."}`;
+  const text = `Tiger Strike Live Debug HUD\n${status}\nIncident: ${incidentLine}\nLive Ops Command: ${liveOpsCommandSummary()}\nReplay: ${replaySnapshotSummary()}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}\n\nStars Events:\n${lines || "No Stars events yet."}`;
   const done = ()=>toast("Stars debug copied.");
   if(navigator.clipboard?.writeText){
     navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
@@ -11509,10 +11647,39 @@ function ensureStarsDebugUi(){
         <button id="directorTuneReset" type="button" style="flex:1 1 100%;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(127,29,29,.58);color:#fee2e2;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;">Reset Defaults</button>
       </div>
     </div>
+    <div id="liveOpsCommandBox" style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(13,24,28,.9);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-weight:800;margin-bottom:6px;">
+        <span>Live Ops Command</span>
+        <span id="liveOpsCommandSummary" style="color:#67e8f9;font-weight:700;"></span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 8px;font-size:10px;line-height:1.25;margin-bottom:7px;">
+        <label><input id="liveOpsFlagWorldEvents" type="checkbox"> World Events</label>
+        <label><input id="liveOpsFlagMissionTwists" type="checkbox"> Twists</label>
+        <label><input id="liveOpsFlagSupportAI" type="checkbox"> Squad AI</label>
+        <label><input id="liveOpsFlagRivalHunters" type="checkbox"> Rival AI</label>
+        <label><input id="liveOpsFlagConvoy" type="checkbox"> Convoy</label>
+        <label><input id="liveOpsFlagDynamicObjectives" type="checkbox"> Objectives</label>
+        <label><input id="liveOpsFlagReplay" type="checkbox"> Replay</label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:4px 8px;font-size:10px;line-height:1.25;">
+        <label for="liveOpsPressureMul">Pressure</label><span id="liveOpsPressureMulVal">1.00</span>
+        <input id="liveOpsPressureMul" type="range" min="0.70" max="1.35" step="0.01" style="grid-column:1 / -1;">
+        <label for="liveOpsSpawnCdMul">Spawn CD</label><span id="liveOpsSpawnCdMulVal">1.00</span>
+        <input id="liveOpsSpawnCdMul" type="range" min="0.70" max="1.60" step="0.01" style="grid-column:1 / -1;">
+        <label for="liveOpsAggroMul">Aggro</label><span id="liveOpsAggroMulVal">1.00</span>
+        <input id="liveOpsAggroMul" type="range" min="0.70" max="1.35" step="0.01" style="grid-column:1 / -1;">
+        <label for="liveOpsSpeedMul">Speed</label><span id="liveOpsSpeedMulVal">1.00</span>
+        <input id="liveOpsSpeedMul" type="range" min="0.70" max="1.35" step="0.01" style="grid-column:1 / -1;">
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+        <button id="liveOpsCommandRollback" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(14,116,144,.45);color:#ecfeff;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;">Rollback</button>
+        <button id="liveOpsCommandReset" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(127,29,29,.58);color:#fee2e2;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;">Reset</button>
+      </div>
+    </div>
     <div id="starsDebugStatus" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07);font-size:11px;line-height:1.35;"></div>
     <div id="stabilityDebugLog" style="padding:8px 10px;overflow:auto;max-height:16vh;border-bottom:1px solid rgba(255,255,255,.07);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;color:#bde9ff;"></div>
     <div id="starsDebugLog" style="padding:8px 10px;overflow:auto;max-height:18vh;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.35;"></div>
-    <div style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px;border-top:1px solid rgba(255,255,255,.07);">
       <button id="starsDebugSafeRecover" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(22,101,52,.60);color:#dcfce7;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Safe Recover</button>
       <button id="starsDebugCopy" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(30,64,175,.45);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
       <button id="starsDebugCopyIncident" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(180,83,9,.55);color:#fff7ed;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy Incident</button>
@@ -11577,6 +11744,29 @@ function ensureStarsDebugUi(){
   bindSlider("directorTuneSpawnCd", "spawnCdMul", (v)=>Number(v));
   bindSlider("directorTuneDom", "dominanceTrigger", (v)=>Math.round(Number(v)));
   bindSlider("directorTuneRecoveryMul", "recoveryMul", (v)=>Number(v));
+  const bindLiveFlag = (id, key)=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener("change", ()=>setLiveOpsCommandFlag(key, !!el.checked));
+  };
+  const bindLiveSlider = (id, key)=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener("input", ()=>setLiveOpsCommandTuning(key, Number(el.value)));
+  };
+  bindLiveFlag("liveOpsFlagWorldEvents", "worldEvents");
+  bindLiveFlag("liveOpsFlagMissionTwists", "missionTwists");
+  bindLiveFlag("liveOpsFlagSupportAI", "supportAI");
+  bindLiveFlag("liveOpsFlagRivalHunters", "rivalHunters");
+  bindLiveFlag("liveOpsFlagConvoy", "convoyMissions");
+  bindLiveFlag("liveOpsFlagDynamicObjectives", "dynamicObjectives");
+  bindLiveFlag("liveOpsFlagReplay", "replayRecorder");
+  bindLiveSlider("liveOpsPressureMul", "pressureMul");
+  bindLiveSlider("liveOpsSpawnCdMul", "spawnCdMul");
+  bindLiveSlider("liveOpsAggroMul", "aggroMul");
+  bindLiveSlider("liveOpsSpeedMul", "speedMul");
+  document.getElementById("liveOpsCommandRollback")?.addEventListener("click", rollbackLiveOpsCommandConfig);
+  document.getElementById("liveOpsCommandReset")?.addEventListener("click", resetLiveOpsCommandConfig);
   document.getElementById("directorTuneSaveA")?.addEventListener("click", ()=>saveDirectorTunePreset("A"));
   document.getElementById("directorTuneLoadA")?.addEventListener("click", ()=>loadDirectorTunePreset("A"));
   document.getElementById("directorTuneSaveB")?.addEventListener("click", ()=>saveDirectorTunePreset("B"));
@@ -11609,6 +11799,7 @@ function renderStarsDebugPanel(){
   toggleLog.style.background = enabled ? "rgba(37,99,235,.55)" : "rgba(55,65,81,.55)";
   live.textContent = liveDebugSnapshotLines().join("\n");
   renderDirectorTuneUi();
+  renderLiveOpsCommandUi();
   const healRuns = Math.max(0, Math.floor(Number(__phase15SelfHealState?.runCount || 0)));
   const healLast = String(__phase15SelfHealState?.lastSummary || "-");
   status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession}) | Incident: ${stabilityIncidentSummary()} | Hist: ${Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory.length : 0} | Sev L/M/H/C ${sev.low}/${sev.medium}/${sev.high}/${sev.critical} | Heal ${healRuns} (${healLast}) | Replay ${__phase16ReplayBuffer.length} (${replaySnapshotSummary()})`;
@@ -11636,6 +11827,33 @@ function renderDirectorTuneUi(){
   bind("directorTuneRecoveryMul", "directorTuneRecoveryMulVal", tune.recoveryMul, (v)=>Number(v).toFixed(2));
   const summary = document.getElementById("directorTuneSummary");
   if(summary) summary.innerText = `P${tune.pressureEnter}/${tune.peakEnter}/${tune.recoverExit} • D${tune.dominanceTrigger}`;
+}
+function renderLiveOpsCommandUi(){
+  const cfg = liveOpsCommandConfig();
+  const setChecked = (id, val)=>{
+    const el = document.getElementById(id);
+    if(el) el.checked = !!val;
+  };
+  const bind = (id, valId, value)=>{
+    const input = document.getElementById(id);
+    const out = document.getElementById(valId);
+    const next = Number(value) || 1;
+    if(input && Number(input.value) !== next) input.value = String(next);
+    if(out) out.innerText = next.toFixed(2);
+  };
+  setChecked("liveOpsFlagWorldEvents", cfg.flags.worldEvents);
+  setChecked("liveOpsFlagMissionTwists", cfg.flags.missionTwists);
+  setChecked("liveOpsFlagSupportAI", cfg.flags.supportAI);
+  setChecked("liveOpsFlagRivalHunters", cfg.flags.rivalHunters);
+  setChecked("liveOpsFlagConvoy", cfg.flags.convoyMissions);
+  setChecked("liveOpsFlagDynamicObjectives", cfg.flags.dynamicObjectives);
+  setChecked("liveOpsFlagReplay", cfg.flags.replayRecorder);
+  bind("liveOpsPressureMul", "liveOpsPressureMulVal", cfg.tuning.pressureMul);
+  bind("liveOpsSpawnCdMul", "liveOpsSpawnCdMulVal", cfg.tuning.spawnCdMul);
+  bind("liveOpsAggroMul", "liveOpsAggroMulVal", cfg.tuning.aggroMul);
+  bind("liveOpsSpeedMul", "liveOpsSpeedMulVal", cfg.tuning.speedMul);
+  const summary = document.getElementById("liveOpsCommandSummary");
+  if(summary) summary.innerText = `${cfg.version} • ${Object.values(cfg.flags).filter(Boolean).length}/${Object.values(cfg.flags).length}`;
 }
 function clamp(n,min,max){
   const lo = Number.isFinite(min) ? min : 0;
@@ -15286,11 +15504,13 @@ function emitRescueFeedback(civ, cashGain=0, xpGain=0){
 }
 function missionTwistsEnabled(){
   if(!ENABLE_MISSION_TWISTS) return false;
+  if(!liveOpsCommandFlag("missionTwists")) return false;
   if(isMobileViewport()) return false;
   return eventsEnabled() && !window.__TUTORIAL_MODE__;
 }
 function dynamicWorldEventsEnabled(){
   if(!ENABLE_DYNAMIC_WORLD_EVENTS) return false;
+  if(!liveOpsCommandFlag("worldEvents")) return false;
   if(window.__TUTORIAL_MODE__) return false;
   return eventsEnabled() || S.mode === "Survival";
 }
@@ -34320,9 +34540,11 @@ function draw(){
     }
     safeTick("viewportVisibility", ()=>enforceVisibleMissionViewport(S));
     runFrameTask("stabilityHealth", frameInterval(220, 1.6), stabilityHealthTick, { costHint:0.9, critical:true });
-    runFrameTask("phase16Replay", frameInterval(lagCritical ? 920 : (lagHeavy ? 720 : 520), 1.35), phase16ReplayTick, {
-      costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
-    });
+    if(liveOpsCommandFlag("replayRecorder")){
+      runFrameTask("phase16Replay", frameInterval(lagCritical ? 920 : (lagHeavy ? 720 : 520), 1.35), phase16ReplayTick, {
+        costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
+    }
     runFrameTask("adaptiveAudio", frameInterval(240, 1.4), adaptiveAudioDirectorTick, {
       costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
     });
@@ -34353,8 +34575,10 @@ function draw(){
       runFrameTask("comboTick", frameInterval(lagCritical ? 154 : (lagHeavy ? 130 : 110), 1.4), comboTick, { costHint:0.7 });
 
       if(!window.TigerTutorial?.isRunning){
-        runFrameTask("worldEvents", frameInterval(lagHeavy ? 286 : 214, 1.55), tickDynamicWorldEvents, { costHint:0.9, critical:S.mode!=="Survival" });
-        if(!mobileViewport){
+        if(liveOpsCommandFlag("worldEvents")){
+          runFrameTask("worldEvents", frameInterval(lagHeavy ? 286 : 214, 1.55), tickDynamicWorldEvents, { costHint:0.9, critical:S.mode!=="Survival" });
+        }
+        if(!mobileViewport && liveOpsCommandFlag("missionTwists")){
           runFrameTask("missionTwists", frameInterval(lagHeavy ? 236 : 176, 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
           runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
           runFrameTask("biomeHazard", frameInterval(lagHeavy ? 220 : 170, 1.45), biomeHazardTick, { costHint:0.6 });
@@ -34373,22 +34597,26 @@ function draw(){
       });
       runFrameTask("bossIdentity", frameInterval(92, 1.45), bossIdentityTick, { costHint:0.9, critical:true });
       runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
-      runFrameTask("supportUnits", frameInterval(
-        battleLoad
-          ? (lagCritical ? 168 : (lagHeavy ? 132 : 104))
-          : (lagCritical ? 112 : (lagHeavy ? 90 : 64)),
-        1.8
-      ), supportUnitsTick, {
-        costHint:2.4, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:5
-      });
-      runFrameTask("rivalHunters", frameInterval(
-        battleLoad
-          ? (lagCritical ? 210 : (lagHeavy ? 168 : 132))
-          : (lagCritical ? 160 : (lagHeavy ? 128 : 96)),
-        1.8
-      ), rivalHuntersTick, {
-        costHint:1.8, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:5
-      });
+      if(liveOpsCommandFlag("supportAI")){
+        runFrameTask("supportUnits", frameInterval(
+          battleLoad
+            ? (lagCritical ? 168 : (lagHeavy ? 132 : 104))
+            : (lagCritical ? 112 : (lagHeavy ? 90 : 64)),
+          1.8
+        ), supportUnitsTick, {
+          costHint:2.4, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:5
+        });
+      }
+      if(liveOpsCommandFlag("rivalHunters")){
+        runFrameTask("rivalHunters", frameInterval(
+          battleLoad
+            ? (lagCritical ? 210 : (lagHeavy ? 168 : 132))
+            : (lagCritical ? 160 : (lagHeavy ? 128 : 96)),
+          1.8
+        ), rivalHuntersTick, {
+          costHint:1.8, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:5
+        });
+      }
       let usedKeyboard = false;
       safeTick("keyboardMoveTick", ()=>{ usedKeyboard = keyboardMoveTick(); });
       if(!usedKeyboard) safeTick("movePlayer", movePlayer);
@@ -34413,12 +34641,16 @@ function draw(){
       ), tickCiviliansAndThreats, {
         costHint:1.6, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:5
       });
-      runFrameTask("convoyMissionTick", frameInterval(lagCritical ? 188 : (lagHeavy ? 154 : 120), 1.45), convoyMissionTick, {
-        costHint:0.8, critical:S.mode!=="Survival"
-      });
-      runFrameTask("dynamicObjectiveTick", frameInterval(lagCritical ? 240 : (lagHeavy ? 196 : 150), 1.45), dynamicObjectiveTick, {
-        costHint:0.7, critical:S.mode!=="Survival"
-      });
+      if(liveOpsCommandFlag("convoyMissions")){
+        runFrameTask("convoyMissionTick", frameInterval(lagCritical ? 188 : (lagHeavy ? 154 : 120), 1.45), convoyMissionTick, {
+          costHint:0.8, critical:S.mode!=="Survival"
+        });
+      }
+      if(liveOpsCommandFlag("dynamicObjectives")){
+        runFrameTask("dynamicObjectiveTick", frameInterval(lagCritical ? 240 : (lagHeavy ? 196 : 150), 1.45), dynamicObjectiveTick, {
+          costHint:0.7, critical:S.mode!=="Survival"
+        });
+      }
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
       runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 44 : (lagHeavy ? 36 : 28)) : (lagCritical ? 56 : (lagHeavy ? 46 : 36)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
       runFrameTask("storyCheckpoint", frameInterval(lagCritical ? 220 : (lagHeavy ? 170 : 124), 1.45), maybeCaptureStoryCheckpoint, { costHint:0.8, critical:S.mode==="Story" });
