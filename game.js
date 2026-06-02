@@ -8906,6 +8906,10 @@ const STABILITY_INCIDENT_STORAGE_KEY = "ts_stability_incident_v1";
 const STABILITY_INCIDENT_HISTORY_STORAGE_KEY = "ts_stability_incident_history_v1";
 const STABILITY_INCIDENT_HISTORY_MAX = 24;
 const STABILITY_INCIDENT_COOLDOWN_MS = 45000;
+const REPLAY_SNAPSHOT_STORAGE_KEY = "ts_replay_snapshot_v1";
+const REPLAY_BUFFER_MAX = 90;
+const REPLAY_BUFFER_WINDOW_MS = 42000;
+const REPLAY_INCIDENT_CAPTURE_COOLDOWN_MS = 6000;
 let __stabilityIncident = {
   id: "",
   openedAt: 0,
@@ -8917,6 +8921,11 @@ let __stabilityIncident = {
 let __stabilityIncidentLoaded = false;
 let __stabilityIncidentHistoryLoaded = false;
 let __stabilityIncidentHistory = [];
+let __phase16ReplayBuffer = [];
+let __phase16LatestSnapshot = null;
+let __phase16ReplayLoaded = false;
+let __phase16LastCaptureAt = 0;
+let __phase16LastCaptureIncidentId = "";
 const __stabilityMonitorState = {
   node: null,
   lastRenderAt: 0,
@@ -8964,6 +8973,7 @@ function pushStabilityEvent(type="event", detail={}){
     __stabilityIncident.reason = String(detail?.reason || typ);
     __stabilityIncident.count = Math.max(0, Math.floor(Number(__stabilityIncident.count || 0))) + 1;
     __stabilityIncident.severity = stabilitySeverityForEvent(typ, __stabilityIncident.count, Math.max(0, Math.round(Number(__frameLagScore || 0))));
+    maybeCaptureReplaySnapshotForIncident(typ, __stabilityIncident.severity, String(detail?.reason || ""));
   }
   const row = {
     at: now,
@@ -9004,6 +9014,13 @@ function stabilitySeverityForEvent(type="event", count=1, frameLag=0){
   if(typ === "input-recover" && (lag >= 36 || c >= 2)) return "medium";
   if(lag >= 42 || c >= 3) return "medium";
   return "low";
+}
+function stabilitySeverityRank(name){
+  const key = String(name || "low").toLowerCase();
+  if(key === "critical") return 4;
+  if(key === "high") return 3;
+  if(key === "medium") return 2;
+  return 1;
 }
 function sanitizeStabilityIncidentHistoryRow(raw){
   const src = (raw && typeof raw === "object") ? raw : {};
@@ -9081,6 +9098,171 @@ function resetStabilityIncident(){
   }
   __stabilityIncident = { id:"", openedAt:0, lastAt:0, reason:"", count:0, severity:"low" };
   persistStabilityIncident();
+}
+function replayRound(n){
+  return Number.isFinite(Number(n)) ? Math.round(Number(n)) : 0;
+}
+function replayCompactEntity(ent, extraKeys=[]){
+  if(!ent || typeof ent !== "object") return null;
+  const out = {
+    id: ent.id ?? ent.uid ?? "",
+    x: replayRound(ent.x),
+    y: replayRound(ent.y)
+  };
+  if("alive" in ent) out.alive = !!ent.alive;
+  if("hp" in ent) out.hp = replayRound(ent.hp);
+  if("life" in ent) out.life = replayRound(ent.life);
+  for(const key of extraKeys){
+    if(ent[key] == null) continue;
+    const value = ent[key];
+    out[key] = typeof value === "number" ? replayRound(value) : String(value).slice(0, 32);
+  }
+  return out;
+}
+function buildReplayFrame(now=Date.now()){
+  const d = (()=>{ try{ return ensureMissionDirectorState(S); }catch(e){ return {}; } })();
+  const me = S?.me ? replayCompactEntity(S.me, ["dir"]) : null;
+  const tigers = Array.isArray(S?.tigers)
+    ? S.tigers.filter((t)=>t && t.alive !== false).slice(0, 8).map((t)=>replayCompactEntity(t, ["kind", "trait", "state", "role"]))
+    : [];
+  const civilians = Array.isArray(S?.civilians)
+    ? S.civilians.filter((c)=>c && c.alive !== false && !c.evac).slice(0, 8).map((c)=>replayCompactEntity(c, ["type", "state", "escortBy"]))
+    : [];
+  const support = Array.isArray(S?.supportUnits)
+    ? S.supportUnits.filter((u)=>u && u.alive !== false).slice(0, 5).map((u)=>replayCompactEntity(u, ["role", "cmd", "mode"]))
+    : [];
+  return {
+    at: now,
+    mode: String(S?.mode || ""),
+    mission: Math.max(0, Math.floor(Number(S?.mission || S?.storyMission || S?.level || 0))),
+    paused: !!S?.paused,
+    battle: !!S?.inBattle,
+    gameOver: !!S?.gameOver,
+    missionEnded: !!S?.missionEnded,
+    hp: replayRound(S?.hp),
+    target: S?.target ? { x:replayRound(S.target.x), y:replayRound(S.target.y) } : null,
+    lockedTigerId: S?.lockedTigerId ?? null,
+    activeTigerId: S?.activeTigerId ?? null,
+    camera: S?.camera ? { x:replayRound(S.camera.x), y:replayRound(S.camera.y) } : null,
+    player: me,
+    counts: {
+      tigers: Array.isArray(S?.tigers) ? S.tigers.length : 0,
+      civilians: Array.isArray(S?.civilians) ? S.civilians.length : 0,
+      support: Array.isArray(S?.supportUnits) ? S.supportUnits.length : 0,
+      pickups: Array.isArray(S?.pickups) ? S.pickups.length : 0
+    },
+    director: {
+      phase: String(d?.phase || ""),
+      pressure: replayRound(d?.pressure),
+      nextSpawnMs: Math.max(0, replayRound(Number(d?.nextSpawnAt || 0) - now))
+    },
+    lag: Math.max(0, Math.round(Number(__frameLagScore || 0))),
+    entities: { tigers, civilians, support }
+  };
+}
+function phase16ReplayTick(){
+  if(!S || typeof S !== "object") return;
+  const now = Date.now();
+  __phase16ReplayBuffer.push(buildReplayFrame(now));
+  const minAt = now - REPLAY_BUFFER_WINDOW_MS;
+  if(__phase16ReplayBuffer.length > REPLAY_BUFFER_MAX || __phase16ReplayBuffer[0]?.at < minAt){
+    __phase16ReplayBuffer = __phase16ReplayBuffer
+      .filter((row)=>row && Number(row.at || 0) >= minAt)
+      .slice(-REPLAY_BUFFER_MAX);
+  }
+}
+function sanitizeReplaySnapshot(raw){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const frames = Array.isArray(src.frames) ? src.frames.slice(-REPLAY_BUFFER_MAX) : [];
+  return {
+    v: 1,
+    capturedAt: Math.max(0, Math.floor(Number(src.capturedAt || 0))),
+    reason: String(src.reason || ""),
+    severity: String(src.severity || "low"),
+    incident: sanitizeStabilityIncident(src.incident),
+    eventCount: Math.max(0, Math.floor(Number(src.eventCount || 0))),
+    frameCount: frames.length,
+    frames,
+    latest: src.latest && typeof src.latest === "object" ? src.latest : null
+  };
+}
+function persistReplaySnapshot(snapshot){
+  try{
+    __phase16LatestSnapshot = sanitizeReplaySnapshot(snapshot);
+    localStorage.setItem(REPLAY_SNAPSHOT_STORAGE_KEY, JSON.stringify(__phase16LatestSnapshot));
+  }catch(e){}
+}
+function ensureReplaySnapshotLoaded(){
+  if(__phase16ReplayLoaded) return;
+  __phase16ReplayLoaded = true;
+  try{
+    const raw = localStorage.getItem(REPLAY_SNAPSHOT_STORAGE_KEY);
+    if(!raw) return;
+    __phase16LatestSnapshot = sanitizeReplaySnapshot(JSON.parse(raw));
+  }catch(e){}
+}
+function replaySnapshotSummary(){
+  ensureReplaySnapshotLoaded();
+  const snap = __phase16LatestSnapshot;
+  if(!snap || !snap.capturedAt) return "none";
+  const d = new Date(snap.capturedAt);
+  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+  return `${String(snap.severity || "low").toUpperCase()} ${snap.frameCount || 0}f ${time} ${String(snap.reason || "-").slice(0, 42)}`;
+}
+function captureReplaySnapshot(reason="manual", severity="manual"){
+  ensureReplaySnapshotLoaded();
+  const now = Date.now();
+  if(!__phase16ReplayBuffer.length) phase16ReplayTick();
+  const frames = __phase16ReplayBuffer.slice(-REPLAY_BUFFER_MAX);
+  const snapshot = sanitizeReplaySnapshot({
+    capturedAt: now,
+    reason,
+    severity,
+    incident: __stabilityIncident,
+    eventCount: Array.isArray(__stabilityEventLog) ? __stabilityEventLog.length : 0,
+    frames,
+    latest: buildReplayFrame(now)
+  });
+  persistReplaySnapshot(snapshot);
+  try{ if(typeof pushStarsDebug === "function") pushStarsDebug("replay_snapshot", { reason, severity, frames:snapshot.frameCount }); }catch(e){}
+  return snapshot;
+}
+function maybeCaptureReplaySnapshotForIncident(type="event", severity="low", reason=""){
+  if(stabilitySeverityRank(severity) < 3) return false;
+  const now = Date.now();
+  const incidentId = String(__stabilityIncident?.id || "");
+  const recent = (now - Number(__phase16LastCaptureAt || 0)) < REPLAY_INCIDENT_CAPTURE_COOLDOWN_MS;
+  if(recent && incidentId && incidentId === __phase16LastCaptureIncidentId) return false;
+  __phase16LastCaptureAt = now;
+  __phase16LastCaptureIncidentId = incidentId;
+  captureReplaySnapshot(`${type}:${reason || "incident"}`, severity);
+  return true;
+}
+function buildReplayPayloadText(){
+  ensureReplaySnapshotLoaded();
+  const snap = __phase16LatestSnapshot || captureReplaySnapshot("manual-copy", "manual");
+  return JSON.stringify(sanitizeReplaySnapshot(snap), null, 2);
+}
+function copyReplayPayload(){
+  const text = buildReplayPayloadText();
+  const done = ()=>toast("Replay payload copied.");
+  if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
+    return;
+  }
+  try{
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    done();
+  }catch(e){
+    toast("Copy failed.");
+  }
 }
 
 function invalidateMapCache(){
@@ -11166,7 +11348,8 @@ function buildStabilityIncidentReportText(){
   const sevLine = `History Severity L/M/H/C: ${sev.low}/${sev.medium}/${sev.high}/${sev.critical}`;
   const healRuns = Math.max(0, Math.floor(Number(__phase15SelfHealState?.runCount || 0)));
   const healLast = String(__phase15SelfHealState?.lastSummary || "-");
-  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\n${sevLine}\nSelf-Heal: runs=${healRuns} last=${healLast}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}`;
+  const replayLine = `Replay: ${replaySnapshotSummary()}`;
+  return `Tiger Strike Incident Report\n${status}\nIncident: ${incidentLine}\n${sevLine}\nSelf-Heal: runs=${healRuns} last=${healLast}\n${replayLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}`;
 }
 function copyStabilityIncidentReport(){
   const text = buildStabilityIncidentReportText();
@@ -11232,7 +11415,7 @@ function copyStarsDebugLog(){
     return;
   }
   const status = `pending=${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | user=${tgUserKey()}`;
-  const text = `Tiger Strike Live Debug HUD\n${status}\nIncident: ${incidentLine}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}\n\nStars Events:\n${lines || "No Stars events yet."}`;
+  const text = `Tiger Strike Live Debug HUD\n${status}\nIncident: ${incidentLine}\nReplay: ${replaySnapshotSummary()}\n\n${snapshot}\n\nStability Events:\n${stabilityLines}\n\nIncident History:\n${historyLines}\n\nStars Events:\n${lines || "No Stars events yet."}`;
   const done = ()=>toast("Stars debug copied.");
   if(navigator.clipboard?.writeText){
     navigator.clipboard.writeText(text).then(done).catch(()=>toast("Copy failed."));
@@ -11333,6 +11516,7 @@ function ensureStarsDebugUi(){
       <button id="starsDebugSafeRecover" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(22,101,52,.60);color:#dcfce7;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Safe Recover</button>
       <button id="starsDebugCopy" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(30,64,175,.45);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
       <button id="starsDebugCopyIncident" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(180,83,9,.55);color:#fff7ed;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy Incident</button>
+      <button id="starsDebugCopyReplay" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(14,116,144,.55);color:#ecfeff;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy Replay</button>
       <button id="starsDebugClearStability" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(127,29,29,.52);color:#fee2e2;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Clear Stability</button>
       <button id="starsDebugClear" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(55,65,81,.55);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Clear</button>
       <button id="starsDebugToggleLog" type="button" style="flex:1;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:rgba(37,99,235,.55);color:#e5eefc;padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer;">Log: ON</button>
@@ -11360,6 +11544,11 @@ function ensureStarsDebugUi(){
   });
   document.getElementById("starsDebugCopy")?.addEventListener("click", copyStarsDebugLog);
   document.getElementById("starsDebugCopyIncident")?.addEventListener("click", copyStabilityIncidentReport);
+  document.getElementById("starsDebugCopyReplay")?.addEventListener("click", ()=>{
+    captureReplaySnapshot("manual-copy", "manual");
+    copyReplayPayload();
+    renderStarsDebugPanel();
+  });
   document.getElementById("starsDebugClearStability")?.addEventListener("click", ()=>{
     __stabilityEventLog = [];
     resetStabilityIncident();
@@ -11422,7 +11611,7 @@ function renderStarsDebugPanel(){
   renderDirectorTuneUi();
   const healRuns = Math.max(0, Math.floor(Number(__phase15SelfHealState?.runCount || 0)));
   const healLast = String(__phase15SelfHealState?.lastSummary || "-");
-  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession}) | Incident: ${stabilityIncidentSummary()} | Hist: ${Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory.length : 0} | Sev L/M/H/C ${sev.low}/${sev.medium}/${sev.high}/${sev.critical} | Heal ${healRuns} (${healLast})`;
+  status.textContent = `User: ${tgUserKey()} | Pending: ${shortDebugRef(starsPendingOrderRef || readStarsPendingOrderRef())} | CtrlRecov: ${recoverTotal} (sess ${recoverSession}) | Incident: ${stabilityIncidentSummary()} | Hist: ${Array.isArray(__stabilityIncidentHistory) ? __stabilityIncidentHistory.length : 0} | Sev L/M/H/C ${sev.low}/${sev.medium}/${sev.high}/${sev.critical} | Heal ${healRuns} (${healLast}) | Replay ${__phase16ReplayBuffer.length} (${replaySnapshotSummary()})`;
   stability.textContent = stabilityEventLines(12).join("\n");
   stability.scrollTop = stability.scrollHeight;
   log.textContent = starsDebugEntries.length ? starsDebugEntries.join("\n") : "No Stars events yet.";
@@ -34131,6 +34320,9 @@ function draw(){
     }
     safeTick("viewportVisibility", ()=>enforceVisibleMissionViewport(S));
     runFrameTask("stabilityHealth", frameInterval(220, 1.6), stabilityHealthTick, { costHint:0.9, critical:true });
+    runFrameTask("phase16Replay", frameInterval(lagCritical ? 920 : (lagHeavy ? 720 : 520), 1.35), phase16ReplayTick, {
+      costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+    });
     runFrameTask("adaptiveAudio", frameInterval(240, 1.4), adaptiveAudioDirectorTick, {
       costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
     });
