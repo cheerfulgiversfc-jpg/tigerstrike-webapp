@@ -15088,6 +15088,13 @@ function setEventText(txt, seconds=6){
   S.eventTextUntil = Date.now() + seconds*1000;
   __savePending = true;
 }
+function emitRescueFeedback(civ, cashGain=0, xpGain=0){
+  if(!civ || !Number.isFinite(civ.x) || !Number.isFinite(civ.y)) return;
+  queueImpactPulse(civ.x, civ.y - 8, "capture");
+  queueImpactPulse(civ.x, civ.y - 8, "shield");
+  emitDamagePopup(civ.x, civ.y - 30, `RESCUE +$${cashGain} +${xpGain}XP`, "capture");
+  queueCameraShake(0.55, 130);
+}
 function missionTwistsEnabled(){
   if(!ENABLE_MISSION_TWISTS) return false;
   if(isMobileViewport()) return false;
@@ -26065,6 +26072,7 @@ function evacCheck(){
         trackCashEarned(cashGain);
       }
       awardCombo("rescue");
+      emitRescueFeedback(c, cashGain, xpGain);
       const roleTag = c.aiState === "injured" ? "injured" : c.aiState;
       const riskTag = riskState === "critical" ? "high-risk" : (riskState === "threatened" ? "threatened" : "stable");
       toast(`Civilian evacuated (${S.evacDone}/${S.civilians.length}) • ${roleTag}/${riskTag} +$${cashGain} +${xpGain}XP`);
@@ -30370,6 +30378,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
     ctx.fillStyle = "rgba(220,255,235,.96)";
     ctx.fillRect(ex - 2, ey - 8, 4, 16);
     ctx.fillRect(ex - 8, ey - 2, 16, 4);
+    drawEvacSafeHouseMarker(ex, ey, er, safeHue, { heavy });
 
     // label signage restored on mobile too
     rounded(ex - 72, ey - er - 34, 144, 26, 12, "rgba(16,56,34,.92)", safeHue);
@@ -31159,6 +31168,7 @@ function drawMapScene(){
     ctx.fillStyle = "rgba(220,255,235,.95)";
     ctx.fillRect(ex-2, ey-9, 4, 18);
     ctx.fillRect(ex-9, ey-2, 18, 4);
+    drawEvacSafeHouseMarker(ex, ey, er, safeHue);
     for(let i=0;i<4;i++){
       const a = (Math.PI * 0.5 * i) + (Date.now() / 1300);
       const bx = ex + Math.cos(a) * (er + 14);
@@ -31572,6 +31582,125 @@ function roundedRectFill(x,y,w,h,r){
   ctx.arcTo(x,y,x+w,y,r);
   ctx.closePath();
   ctx.fill();
+}
+function drawEvacSafeHouseMarker(ex, ey, er, safeHue="rgba(74,222,128,.95)", opts={}){
+  if(S.mode === "Survival") return;
+  if(!Number.isFinite(ex) || !Number.isFinite(ey) || !Number.isFinite(er)) return;
+  const heavy = !!opts.heavy || visualReadabilityHeavyMode();
+  const rescued = Math.max(0, Math.floor(Number(S.evacDone || 0)));
+  const total = Math.max(0, Array.isArray(S.civilians) ? S.civilians.length : 0);
+  const pulse = 0.86 + Math.sin(Date.now() / 260) * 0.10;
+  const houseW = heavy ? 46 : 58;
+  const houseH = heavy ? 32 : 40;
+  const hx = ex - (houseW / 2);
+  const hy = ey - (houseH / 2) - 2;
+
+  ctx.save();
+  ctx.globalAlpha = 0.30 * pulse;
+  ctx.fillStyle = "rgba(74,222,128,.42)";
+  ctx.beginPath();
+  ctx.arc(ex, ey, Math.max(18, er * 0.34), 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = heavy ? 0.88 : 0.96;
+  ctx.fillStyle = "rgba(5,12,10,.32)";
+  ctx.beginPath();
+  ctx.ellipse(ex, ey + 24, houseW * 0.62, 9, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(20,83,45,.96)";
+  roundedRectFill(hx, hy, houseW, houseH, 7);
+  ctx.strokeStyle = safeHue;
+  ctx.lineWidth = heavy ? 2 : 2.5;
+  ctx.strokeRect(hx + 0.5, hy + 0.5, houseW - 1, houseH - 1);
+
+  ctx.fillStyle = "rgba(15,118,70,.98)";
+  ctx.beginPath();
+  ctx.moveTo(ex - (houseW * 0.58), hy + 3);
+  ctx.lineTo(ex, hy - (heavy ? 18 : 23));
+  ctx.lineTo(ex + (houseW * 0.58), hy + 3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(187,247,208,.86)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(220,255,235,.96)";
+  roundedRectFill(ex - 5, hy + houseH - 17, 10, 17, 2.5);
+  ctx.fillStyle = "rgba(187,247,208,.80)";
+  roundedRectFill(ex - 20, hy + 10, 10, 9, 2);
+  roundedRectFill(ex + 10, hy + 10, 10, 9, 2);
+
+  ctx.fillStyle = "rgba(8,18,14,.92)";
+  roundedRectFill(ex - 28, hy - 34, 56, 16, 8);
+  ctx.strokeStyle = "rgba(187,247,208,.76)";
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(ex - 27.5, hy - 33.5, 55, 15);
+  ctx.fillStyle = "rgba(220,255,235,.98)";
+  ctx.font = heavy ? "900 8px system-ui" : "900 9px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText("SAFE HOUSE", ex, hy - 22);
+
+  if(total > 0 && !heavy){
+    const meterW = 72;
+    const pct = clamp(rescued / Math.max(1, total), 0, 1);
+    ctx.fillStyle = "rgba(8,18,14,.90)";
+    roundedRectFill(ex - (meterW / 2), ey + er + 10, meterW, 8, 4);
+    ctx.fillStyle = "rgba(74,222,128,.95)";
+    roundedRectFill(ex - (meterW / 2), ey + er + 10, meterW * pct, 8, 4);
+    ctx.fillStyle = "rgba(220,255,235,.94)";
+    ctx.font = "800 9px system-ui";
+    ctx.fillText(`${rescued}/${total} rescued`, ex, ey + er + 28);
+  }
+  ctx.textAlign = "start";
+  ctx.restore();
+}
+function drawEscortRouteLines(){
+  if(S.mode === "Survival" || !S.evacZone) return;
+  if(frameLagTier() >= 2 || frameBudgetExceeded(0.72)) return;
+  const followers = (S.civilians || []).filter((c)=>c && c.alive && !c.evac && c.following);
+  if(!followers.length) return;
+  const ez = missionEvacZoneSafe(S);
+  const now = Date.now();
+  const max = isMobileViewport() ? 3 : 5;
+  ctx.save();
+  for(const c of followers.slice(0, max)){
+    const p = currentDrawPoint(c, c.x, c.y);
+    const d = dist(p.x, p.y, ez.x, ez.y);
+    if(d < 80) continue;
+    const alpha = clamp(0.26 + (d / 900), 0.28, 0.58);
+    const dashOffset = -((now / 55) % 18);
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = c.riskState === "critical" ? "rgba(248,113,113,.96)" : "rgba(134,239,172,.96)";
+    ctx.lineWidth = c.riskState === "critical" ? 3.2 : 2.4;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = dashOffset;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y - 5);
+    ctx.quadraticCurveTo((p.x + ez.x) * 0.5, (p.y + ez.y) * 0.5 - 42, ez.x, ez.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const ux = (ez.x - p.x) / Math.max(1, d);
+    const uy = (ez.y - p.y) / Math.max(1, d);
+    const ax = p.x + ux * clamp(d * 0.42, 42, 170);
+    const ay = p.y + uy * clamp(d * 0.42, 42, 170);
+    const ang = Math.atan2(uy, ux);
+    ctx.globalAlpha = clamp(alpha + 0.20, 0.42, 0.78);
+    ctx.fillStyle = "rgba(220,255,235,.96)";
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(ang);
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(-8, -6);
+    ctx.lineTo(-5, 0);
+    ctx.lineTo(-8, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
 }
 function drawCarcass(x,y){
   ctx.globalAlpha=0.55;
@@ -33271,6 +33400,8 @@ function drawEntities(){
     for(const site of drawRescueSites){
       drawSafe("drawRescueSite", ()=>drawRescueSite(site));
     }
+
+    drawSafe("drawEscortRouteLines", drawEscortRouteLines);
 
     if(S.mode!=="Survival"){
       for(const c of drawCivs){
