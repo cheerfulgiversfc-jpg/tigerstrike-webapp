@@ -8874,12 +8874,13 @@ let __mapWaterZones = [];
 let __mapDenseLandmarksSig = "";
 let __mapDenseLandmarks = [];
 const STARTUP_LOADING_MAX_MS = 60000;
-const STARTUP_LOADING_MIN_MS = 900;
-const STARTUP_LOADING_READY_FRAMES = 3;
+const STARTUP_LOADING_MIN_MS = 6500;
+const STARTUP_LOADING_READY_FRAMES = 14;
 let __startupLoadingGuard = {
   active:false,
   startedAt:0,
   readyFrames:0,
+  detailedFrames:0,
   releasedAt:0,
   reason:"",
   lastTextAt:0,
@@ -8888,6 +8889,8 @@ let __startupLoadingGuard = {
   subNode:null,
   barNode:null
 };
+let __startupLastDetailedMapAt = 0;
+let __gameplayLoadingGuardArmed = false;
 let __phase18CinematicEvents = [];
 const PHASE18_CINEMATIC_EVENT_MAX = 18;
 let __frameSlowUntil = 0;
@@ -16943,6 +16946,7 @@ function closeMissionBrief(fromTimer=false){
   if(S.paused && S.pauseReason === "mission-brief"){
     setPaused(false,null);
   }
+  beginGameplayMapLoadingGuard("mission-brief-start");
   if(!fromTimer) sfx("ui");
   syncGamepadFocus();
 }
@@ -18506,6 +18510,7 @@ function maybeShowPendingDailyReward(onDone){
   return openDailyRewardOverlay(__pendingDailyReward, onDone);
 }
 function continueAfterLaunchIntro(allowStoryIntro=true){
+  __gameplayLoadingGuardArmed = true;
   clearLaunchMusicLoop();
   if(S.mode === "Story"){
     const slot = readStorySaveData();
@@ -24217,8 +24222,8 @@ function deploy(opts={}){
   if(S.mode==="Survival"){ S.survivalStart = Date.now(); S.surviveSeconds=0; }
 
   prepareLiveOpsModifierCardsForMission(S);
-  if(shouldShowMissionBrief()) showMissionBrief(rand(2200, 3000));
-  else {
+  const missionBriefShown = shouldShowMissionBrief() ? showMissionBrief(rand(2200, 3000)) : false;
+  if(!missionBriefShown) {
     if(normalizeModeName(S.mode) === "Arcade" && !window.__TUTORIAL_MODE__){
       applyArcadeBuildcraftForMission({ silent:true });
     }
@@ -31779,13 +31784,14 @@ function drawMapScene(){
     }
   }
 
-  drawEnvironmentArtPass({
+  const detailPassOk = drawEnvironmentArtPass({
     nowTs: Date.now(),
     w,
     h,
     themeKey,
     chapterStyle
   });
+  if(detailPassOk) __startupLastDetailedMapAt = Date.now();
 
   drawMissionTwistOverlay(Date.now());
 
@@ -31815,7 +31821,8 @@ function drawMapScene(){
 }
 
 function drawEnvironmentArtPass(opts={}){
-  if(!ctx || !ENABLE_BIOME_SYSTEM) return;
+  if(!ctx) return false;
+  if(!ENABLE_BIOME_SYSTEM) return true;
   const w = Math.max(1, Math.round(Number(opts.w || cv?.width || worldWidth(S) || 1)));
   const h = Math.max(1, Math.round(Number(opts.h || cv?.height || worldHeight(S) || 1)));
   const nowTs = Number(opts.nowTs || Date.now());
@@ -31825,9 +31832,10 @@ function drawEnvironmentArtPass(opts={}){
   const slow = frameIsSlow();
   const perf = performanceMode() === "PERFORMANCE";
   const mobile = isMobileViewport();
+  const startupLoading = !!__startupLoadingGuard.active;
 
-  if(lagTier >= 2 && (mobile || perf)) return;
-  if(frameBudgetExceeded(0.7) && (slow || mobile)) return;
+  if(!startupLoading && lagTier >= 2 && (mobile || perf)) return false;
+  if(!startupLoading && frameBudgetExceeded(0.7) && (slow || mobile)) return false;
 
   const biome = currentBiomeProfile();
   const weather = String(biome?.weatherFx || "clear").toLowerCase();
@@ -31907,6 +31915,7 @@ function drawEnvironmentArtPass(opts={}){
   }
 
   ctx.restore();
+  return true;
 }
 
 function drawAtmosphericParallax(nowTs=Date.now()){
@@ -34318,9 +34327,28 @@ function beginStartupLoadingGuard(reason="startup"){
   __startupLoadingGuard.active = true;
   __startupLoadingGuard.startedAt = now;
   __startupLoadingGuard.readyFrames = 0;
+  __startupLoadingGuard.detailedFrames = 0;
   __startupLoadingGuard.releasedAt = 0;
   __startupLoadingGuard.reason = reason;
+  __startupLastDetailedMapAt = 0;
   updateStartupLoadingOverlay(true);
+}
+
+function beginGameplayMapLoadingGuard(reason="gameplay"){
+  if(!__gameplayLoadingGuardArmed) return false;
+  if(window.__TUTORIAL_MODE__) return false;
+  const launch = document.getElementById("launchIntroOverlay");
+  const story = document.getElementById("storyIntroOverlay");
+  const daily = document.getElementById("dailyRewardOverlay");
+  const brief = document.getElementById("missionBriefOverlay");
+  const blocked =
+    (launch && launch.style.display === "flex") ||
+    (story && story.style.display === "flex") ||
+    (daily && daily.style.display === "flex") ||
+    (brief && brief.style.display === "flex");
+  if(blocked) return false;
+  beginStartupLoadingGuard(reason);
+  return true;
 }
 
 function releaseStartupLoadingGuard(reason="ready"){
@@ -34346,7 +34374,12 @@ function noteStartupMapFrameReady(){
   const now = Date.now();
   const elapsed = now - Number(__startupLoadingGuard.startedAt || now);
   __startupLoadingGuard.readyFrames = Math.min(STARTUP_LOADING_READY_FRAMES, Number(__startupLoadingGuard.readyFrames || 0) + 1);
-  if(elapsed >= STARTUP_LOADING_MIN_MS && __startupLoadingGuard.readyFrames >= STARTUP_LOADING_READY_FRAMES){
+  if(__startupLastDetailedMapAt >= Number(__startupLoadingGuard.startedAt || 0)){
+    __startupLoadingGuard.detailedFrames = Math.min(STARTUP_LOADING_READY_FRAMES, Number(__startupLoadingGuard.detailedFrames || 0) + 1);
+  }
+  const enoughFrames = __startupLoadingGuard.readyFrames >= STARTUP_LOADING_READY_FRAMES;
+  const enoughDetail = __startupLoadingGuard.detailedFrames >= Math.max(6, Math.floor(STARTUP_LOADING_READY_FRAMES * 0.65));
+  if(elapsed >= STARTUP_LOADING_MIN_MS && enoughFrames && enoughDetail){
     releaseStartupLoadingGuard("map-ready");
   }else{
     updateStartupLoadingOverlay();
@@ -34364,14 +34397,14 @@ function updateStartupLoadingOverlay(force=false){
   __startupLoadingGuard.lastTextAt = now;
   const elapsed = Math.max(0, now - Number(__startupLoadingGuard.startedAt || now));
   const readyFrames = clamp(Number(__startupLoadingGuard.readyFrames || 0), 0, STARTUP_LOADING_READY_FRAMES);
-  const frameProgress = readyFrames / STARTUP_LOADING_READY_FRAMES;
+  const detailFrames = clamp(Number(__startupLoadingGuard.detailedFrames || 0), 0, STARTUP_LOADING_READY_FRAMES);
+  const frameProgress = Math.min(readyFrames, detailFrames + 4) / STARTUP_LOADING_READY_FRAMES;
   const timeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_MAX_MS), 0, 1);
   const progress = clamp(Math.max(timeProgress * 0.82, frameProgress * 0.92), 0.12, 0.98);
   if(__startupLoadingGuard.subNode){
-    const seconds = Math.ceil(Math.max(0, STARTUP_LOADING_MAX_MS - elapsed) / 1000);
-    __startupLoadingGuard.subNode.textContent = readyFrames > 0
-      ? `Map render check ${readyFrames}/${STARTUP_LOADING_READY_FRAMES}. Background is warming up now.`
-      : `Preparing terrain, route data, civilians, and tiger zones. Timeout safety: ${seconds}s.`;
+    __startupLoadingGuard.subNode.textContent = detailFrames > 0
+      ? `Map detail check ${detailFrames}/${STARTUP_LOADING_READY_FRAMES}. Roads, fog, water, and props are warming up.`
+      : "Preparing terrain, route data, civilians, and tiger zones...";
   }
   if(__startupLoadingGuard.barNode){
     __startupLoadingGuard.barNode.style.width = `${Math.round(progress * 100)}%`;
@@ -35077,7 +35110,6 @@ function missionStateLooksEmpty(){
 
 function init(){
   ensureStarsDebugUi();
-  beginStartupLoadingGuard("init");
   pushStarsDebug("app:init", { user: tgUserKey(), build: TS_BUILD });
   ensureStoryMetaState();
   ensureContractTalliesState(S);
