@@ -8905,6 +8905,7 @@ let __startupLoadingGuard = {
 let __startupLastDetailedMapAt = 0;
 let __startupPreloadSig = "";
 let __gameplayLoadingGuardArmed = false;
+let __forceFullMapRepaintUntil = 0;
 const STARTUP_LOADING_TIPS = [
   "Scout first: scan before you rush an Alpha.",
   "Capture pays better, but survival comes first.",
@@ -9602,6 +9603,10 @@ function ensureWorldLayout(state=S){
     world.scale = desired.scale;
     world.w = desired.w;
     world.h = desired.h;
+    if(typeof invalidateMapCache === "function"){
+      invalidateMapCache();
+    }
+    __forceFullMapRepaintUntil = Math.max(Number(__forceFullMapRepaintUntil || 0), Date.now() + 1200);
   }
   if(!state.camera || typeof state.camera !== "object"){
     state.camera = { x: world.w * 0.5, y: world.h * 0.5 };
@@ -31079,6 +31084,7 @@ function drawMapScene(){
     drawMapSceneMobileFast(frameNow, w, h, viewportW, viewportH, mapFamilyKey(key), chapterStyle, camSnap.x, camSnap.y);
     return;
   }
+  const forceFullRepaint = frameNow < Number(__forceFullMapRepaintUntil || 0);
   const ez = S.evacZone || DEFAULT.evacZone;
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
@@ -31114,6 +31120,7 @@ function drawMapScene(){
     }
   }
   const canUseCache =
+    !forceFullRepaint &&
     canCacheScene &&
     !!__mapFrameCacheCanvas &&
     __mapFrameCacheSig === cacheSig &&
@@ -31133,7 +31140,7 @@ function drawMapScene(){
     const emergencyMaxAge = mobile
       ? (lagTier >= 2 ? 4600 : (lagTier >= 1 ? 3600 : 2800))
       : (lagTier >= 2 ? 1800 : 1300);
-    if(emergencyReuse && staleAge < emergencyMaxAge){
+    if(!forceFullRepaint && emergencyReuse && staleAge < emergencyMaxAge){
       ctx.drawImage(__mapFrameCacheCanvas, 0, 0, w, h);
       return;
     }
@@ -34527,6 +34534,8 @@ function releaseStartupLoadingGuard(reason="ready"){
   __startupLoadingGuard.active = false;
   __startupLoadingGuard.releasedAt = Date.now();
   __startupLoadingGuard.reason = reason;
+  __forceFullMapRepaintUntil = Math.max(Number(__forceFullMapRepaintUntil || 0), Date.now() + 2200);
+  try{ invalidateMapCache(); }catch(e){}
   updateStartupLoadingOverlay(true);
 }
 
