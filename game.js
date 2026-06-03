@@ -8873,24 +8873,36 @@ let __mapWaterSig = "";
 let __mapWaterZones = [];
 let __mapDenseLandmarksSig = "";
 let __mapDenseLandmarks = [];
-const STARTUP_LOADING_MAX_MS = 60000;
-const STARTUP_LOADING_MIN_MS = 6500;
-const STARTUP_LOADING_READY_FRAMES = 14;
+const STARTUP_LOADING_MAX_MS = 120000;
+const STARTUP_LOADING_MIN_MS = 28000;
+const STARTUP_LOADING_READY_FRAMES = 90;
 let __startupLoadingGuard = {
   active:false,
   startedAt:0,
   readyFrames:0,
   detailedFrames:0,
+  percent:0,
+  tipIndex:0,
   releasedAt:0,
   reason:"",
   lastTextAt:0,
   node:null,
   textNode:null,
   subNode:null,
-  barNode:null
+  barNode:null,
+  percentNode:null,
+  tipNode:null
 };
 let __startupLastDetailedMapAt = 0;
 let __gameplayLoadingGuardArmed = false;
+const STARTUP_LOADING_TIPS = [
+  "Scout first: scan before you rush an Alpha.",
+  "Capture pays better, but survival comes first.",
+  "Use Barrier to slow danger near evac routes.",
+  "Rescue civilians after the safe zone marker is visible.",
+  "Boss roars mean the pack is about to get aggressive.",
+  "Keep squad members alive: revive costs add up fast."
+];
 let __phase18CinematicEvents = [];
 const PHASE18_CINEMATIC_EVENT_MAX = 18;
 let __frameSlowUntil = 0;
@@ -16919,6 +16931,7 @@ function showMissionBrief(durationMs=2600){
 function closeMissionBrief(fromTimer=false){
   clearMissionBriefTimer();
   const overlay = document.getElementById("missionBriefOverlay");
+  const wasBriefVisible = !!(overlay && overlay.style.display === "flex");
   const mode = normalizeModeName(S.mode);
   const enforceCards = !window.__TUTORIAL_MODE__ && (mode === "Story" || mode === "Arcade");
   if(enforceCards && overlay && overlay.style.display === "flex"){
@@ -16946,7 +16959,7 @@ function closeMissionBrief(fromTimer=false){
   if(S.paused && S.pauseReason === "mission-brief"){
     setPaused(false,null);
   }
-  beginGameplayMapLoadingGuard("mission-brief-start");
+  if(wasBriefVisible) beginGameplayMapLoadingGuard("mission-brief-start");
   if(!fromTimer) sfx("ui");
   syncGamepadFocus();
 }
@@ -23963,6 +23976,7 @@ function deploy(opts={}){
     return;
   }
   __deployInProgress = true;
+  if(__startupComplete && !window.__TUTORIAL_MODE__) __gameplayLoadingGuardArmed = true;
   beginMissionTransitionGuard("deploy-begin", 2200);
   try{
   const carryStats = !!opts.carryStats;
@@ -24228,6 +24242,7 @@ function deploy(opts={}){
       applyArcadeBuildcraftForMission({ silent:true });
     }
     closeMissionBrief(true);
+    beginGameplayMapLoadingGuard("deploy-start");
   }
 
   updateGameOverCheckpointButton();
@@ -34304,14 +34319,16 @@ function ensureStartupLoadingOverlay(){
     "touch-action:none"
   ].join(";");
   node.innerHTML = `
-    <div style="width:min(420px,92vw);border:1px solid rgba(148,163,184,.35);border-radius:24px;padding:24px;background:rgba(15,23,42,.78);box-shadow:0 24px 80px rgba(0,0,0,.45);text-align:center;">
+    <div style="width:min(430px,92vw);border:1px solid rgba(148,163,184,.35);border-radius:24px;padding:24px;background:rgba(15,23,42,.82);box-shadow:0 24px 80px rgba(0,0,0,.45);text-align:center;">
       <div style="font-size:15px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#86efac;">Tiger Strike</div>
       <div data-load-title style="margin-top:8px;font-size:28px;font-weight:950;line-height:1.05;">Loading Mission Map</div>
       <div data-load-sub style="margin-top:12px;font-size:14px;font-weight:750;color:#cbd5e1;line-height:1.45;">Preparing terrain, route data, civilians, and tiger zones...</div>
+      <div data-load-percent style="margin-top:18px;font-size:38px;font-weight:1000;letter-spacing:-.04em;color:#f8fafc;">0%</div>
       <div style="margin-top:20px;height:10px;border-radius:999px;background:rgba(15,23,42,.95);overflow:hidden;border:1px solid rgba(148,163,184,.24);">
         <div data-load-bar style="height:100%;width:16%;border-radius:999px;background:linear-gradient(90deg,#22c55e,#a3e635,#facc15);transition:width .22s ease;"></div>
       </div>
-      <div style="margin-top:12px;font-size:12px;font-weight:800;color:#94a3b8;">Gameplay starts as soon as the background is ready.</div>
+      <div data-load-tip style="margin-top:16px;min-height:36px;font-size:13px;font-weight:850;color:#d9f99d;line-height:1.35;">Scout first: scan before you rush an Alpha.</div>
+      <div style="margin-top:10px;font-size:12px;font-weight:800;color:#94a3b8;">Gameplay starts after the board is fully prepared.</div>
     </div>
   `;
   document.body.appendChild(node);
@@ -34319,6 +34336,8 @@ function ensureStartupLoadingOverlay(){
   __startupLoadingGuard.textNode = node.querySelector("[data-load-title]");
   __startupLoadingGuard.subNode = node.querySelector("[data-load-sub]");
   __startupLoadingGuard.barNode = node.querySelector("[data-load-bar]");
+  __startupLoadingGuard.percentNode = node.querySelector("[data-load-percent]");
+  __startupLoadingGuard.tipNode = node.querySelector("[data-load-tip]");
   return node;
 }
 
@@ -34328,6 +34347,8 @@ function beginStartupLoadingGuard(reason="startup"){
   __startupLoadingGuard.startedAt = now;
   __startupLoadingGuard.readyFrames = 0;
   __startupLoadingGuard.detailedFrames = 0;
+  __startupLoadingGuard.percent = 0;
+  __startupLoadingGuard.tipIndex = Math.abs(Math.floor(Number(S?.storyLevel || S?.arcadeLevel || S?.survivalWave || 1))) % STARTUP_LOADING_TIPS.length;
   __startupLoadingGuard.releasedAt = 0;
   __startupLoadingGuard.reason = reason;
   __startupLastDetailedMapAt = 0;
@@ -34351,8 +34372,17 @@ function beginGameplayMapLoadingGuard(reason="gameplay"){
   return true;
 }
 
+function missionMapWarmupTick(now=Date.now()){
+  if(!__startupLoadingGuard.active) return;
+  try{ resizeCanvasForViewport(); }catch(e){}
+  try{ updateStreamedSectors(S, now); }catch(e){}
+  try{ ensureMapObstacleCache(); }catch(e){}
+  try{ ensureMissionTwistState(S); }catch(e){}
+}
+
 function releaseStartupLoadingGuard(reason="ready"){
   if(!__startupLoadingGuard.active) return;
+  __startupLoadingGuard.percent = 100;
   __startupLoadingGuard.active = false;
   __startupLoadingGuard.releasedAt = Date.now();
   __startupLoadingGuard.reason = reason;
@@ -34378,7 +34408,7 @@ function noteStartupMapFrameReady(){
     __startupLoadingGuard.detailedFrames = Math.min(STARTUP_LOADING_READY_FRAMES, Number(__startupLoadingGuard.detailedFrames || 0) + 1);
   }
   const enoughFrames = __startupLoadingGuard.readyFrames >= STARTUP_LOADING_READY_FRAMES;
-  const enoughDetail = __startupLoadingGuard.detailedFrames >= Math.max(6, Math.floor(STARTUP_LOADING_READY_FRAMES * 0.65));
+  const enoughDetail = __startupLoadingGuard.detailedFrames >= Math.max(45, Math.floor(STARTUP_LOADING_READY_FRAMES * 0.72));
   if(elapsed >= STARTUP_LOADING_MIN_MS && enoughFrames && enoughDetail){
     releaseStartupLoadingGuard("map-ready");
   }else{
@@ -34398,13 +34428,28 @@ function updateStartupLoadingOverlay(force=false){
   const elapsed = Math.max(0, now - Number(__startupLoadingGuard.startedAt || now));
   const readyFrames = clamp(Number(__startupLoadingGuard.readyFrames || 0), 0, STARTUP_LOADING_READY_FRAMES);
   const detailFrames = clamp(Number(__startupLoadingGuard.detailedFrames || 0), 0, STARTUP_LOADING_READY_FRAMES);
-  const frameProgress = Math.min(readyFrames, detailFrames + 4) / STARTUP_LOADING_READY_FRAMES;
-  const timeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_MAX_MS), 0, 1);
-  const progress = clamp(Math.max(timeProgress * 0.82, frameProgress * 0.92), 0.12, 0.98);
+  const timeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_MIN_MS), 0, 1);
+  const detailProgress = clamp((Math.min(readyFrames, detailFrames + 10) / STARTUP_LOADING_READY_FRAMES), 0, 1);
+  const rawPercent = Math.floor((timeProgress * 62) + (detailProgress * 34));
+  const readyToFinish =
+    elapsed >= STARTUP_LOADING_MIN_MS &&
+    readyFrames >= STARTUP_LOADING_READY_FRAMES &&
+    detailFrames >= Math.max(45, Math.floor(STARTUP_LOADING_READY_FRAMES * 0.72));
+  const cappedPercent = readyToFinish ? 100 : Math.min(95, rawPercent);
+  __startupLoadingGuard.percent = Math.max(Number(__startupLoadingGuard.percent || 0), cappedPercent);
+  const pct = clamp(Math.round(__startupLoadingGuard.percent || 0), 0, 100);
+  const progress = pct / 100;
   if(__startupLoadingGuard.subNode){
     __startupLoadingGuard.subNode.textContent = detailFrames > 0
-      ? `Map detail check ${detailFrames}/${STARTUP_LOADING_READY_FRAMES}. Roads, fog, water, and props are warming up.`
+      ? `Building board details: roads, fog, water, safe zone, civilians, and tiger routes.`
       : "Preparing terrain, route data, civilians, and tiger zones...";
+  }
+  if(__startupLoadingGuard.percentNode){
+    __startupLoadingGuard.percentNode.textContent = `${pct}%`;
+  }
+  if(__startupLoadingGuard.tipNode){
+    const tipIndex = (Math.floor(elapsed / 5200) + Math.floor(Number(__startupLoadingGuard.tipIndex || 0))) % STARTUP_LOADING_TIPS.length;
+    __startupLoadingGuard.tipNode.textContent = STARTUP_LOADING_TIPS[tipIndex] || STARTUP_LOADING_TIPS[0];
   }
   if(__startupLoadingGuard.barNode){
     __startupLoadingGuard.barNode.style.width = `${Math.round(progress * 100)}%`;
@@ -34812,6 +34857,11 @@ function draw(){
     const mobileViewport = isMobileViewport();
     const iphoneLock = iphoneStabilityModeActive();
     safeTick("ensureMissionTwistState", ()=>{ ensureMissionTwistState(S); });
+    if(startupLoading){
+      runFrameTask("missionMapWarmup", frameInterval(120, 1.15), missionMapWarmupTick, {
+        costHint:0.55, critical:true
+      });
+    }
     if(__frameSpikePending){
       safeTick("recoverFromSpikeFrame", recoverFromSpikeFrame);
     }
