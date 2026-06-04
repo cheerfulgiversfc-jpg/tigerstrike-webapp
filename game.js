@@ -3403,12 +3403,180 @@ const CASH_SUPPLY_BUNDLES = [
     grant:{ shields:2, traps:4, medkits:{ M_SMALL:2 }, repairs:{ T_REPAIR:1 } },
   },
   {
+    id:"cash_elite_ammo_pack",
+    name:"Elite Ammo Pack",
+    price:25000,
+    desc:"High reserve ammo for every common combat lane.",
+    preview:"+360 mixed ammo",
+    grant:{ ammo:{ "9MM_STD":120, "12GA_STD":48, "556_STD":90, "762_STD":54, "TRANQ_DARTS":48 } },
+  },
+  {
+    id:"cash_advanced_medkit_pack",
+    name:"Advanced Medkit Pack",
+    price:35000,
+    desc:"Deep healing stock for hard missions and boss runs.",
+    preview:"+5 Large Med Kits • +2 Trauma Kits",
+    grant:{ medkits:{ M_LARGE:5, M_TRAUMA:2 } },
+  },
+  {
+    id:"cash_heavy_armor_plates",
+    name:"Heavy Armor Plates x10",
+    price:40000,
+    desc:"Ten heavy armor plates for long survival streaks.",
+    preview:"+10 Tier III Armor Plates",
+    grant:{ armorPlates:{ A_TIER3:10 } },
+  },
+  {
+    id:"cash_field_repair_pack",
+    name:"Field Repair Kit x3",
+    price:45000,
+    desc:"Weapon maintenance bundle for extended missions.",
+    preview:"+3 Repair Kits",
+    grant:{ repairs:{ T_REPAIR:3 } },
+  },
+  {
+    id:"cash_sprint_shield_prep",
+    name:"Shield Battery Pack",
+    price:95000,
+    desc:"Extra shields for emergency civilian protection.",
+    preview:"+8 Shields",
+    grant:{ shields:8 },
+  },
+  {
+    id:"cash_tranq_ammo_crate",
+    name:"Tranq Ammo Crate",
+    price:60000,
+    desc:"Capture-focused ammo crate for non-lethal runs.",
+    preview:"+120 Tranq Darts • +12 Heavy Tranq",
+    grant:{ ammo:{ TRANQ_DARTS:120, TRANQ_HEAVY:12 } },
+  },
+  {
+    id:"cash_reinforced_trap_pack",
+    name:"Reinforced Trap Pack x12",
+    price:80000,
+    desc:"Large trap stock for control-heavy missions.",
+    preview:"+12 Traps",
+    grant:{ traps:12 },
+  },
+  {
+    id:"cash_heavy_tranq_darts",
+    name:"Heavy Tranq Darts",
+    price:90000,
+    desc:"Premium capture ammo for Alpha and boss pressure.",
+    preview:"+32 Heavy Tranq Canisters",
+    grant:{ ammo:{ TRANQ_HEAVY:32 } },
+  },
+  {
+    id:"cash_scope_service",
+    name:"Scope Calibration",
+    price:85000,
+    desc:"Practical prep pack for precision weapons.",
+    preview:"+70 7.62 Ammo • +70 5.56 Ammo • +1 Pro Repair",
+    grant:{ ammo:{ "762_STD":70, "556_STD":70 }, repairs:{ T_REPAIR_PRO:1 } },
+  },
+  {
+    id:"cash_shock_trap_pack",
+    name:"Shock Trap Pack x15",
+    price:110000,
+    desc:"Control bundle with traps and shields for safe routes.",
+    preview:"+15 Traps • +3 Shields",
+    grant:{ traps:15, shields:3 },
+  },
+  {
+    id:"cash_full_weapon_repair",
+    name:"Full Weapon Repair Pack",
+    price:130000,
+    desc:"High-end repair stock for rare and mythic weapons.",
+    preview:"+3 Pro Repair Kits",
+    grant:{ repairs:{ T_REPAIR_PRO:3 } },
+  },
+  {
+    id:"cash_rescue_flare_pack",
+    name:"Rescue Flare Pack",
+    price:140000,
+    desc:"Rescue route prep using medkits, armor, and shields.",
+    preview:"+4 Shields • +4 Large Med Kits • +4 Tier II Armor",
+    grant:{ shields:4, medkits:{ M_LARGE:4 }, armorPlates:{ A_TIER2:4 } },
+  },
+  {
+    id:"cash_civilian_escort_kit",
+    name:"Civilian Escort Kit",
+    price:120000,
+    desc:"Escort safety bundle for civilian-heavy story missions.",
+    preview:"+6 Shields • +6 Traps • +4 Med Kits",
+    grant:{ shields:6, traps:6, medkits:{ M_MED:4 } },
+  },
+  {
+    id:"cash_civilian_armor_vests",
+    name:"Civilian Armor Vests",
+    price:160000,
+    desc:"Armor-heavy prep for missions where civilians get pressured fast.",
+    preview:"+8 Tier II Armor • +4 Shields",
+    grant:{ armorPlates:{ A_TIER2:8 }, shields:4 },
+  },
+  {
+    id:"cash_weapon_durability_shield",
+    name:"Weapon Durability Shield",
+    price:175000,
+    desc:"Repair-heavy bundle to prevent running dry on durability.",
+    preview:"+4 Pro Repairs • +2 Repair Kits",
+    grant:{ repairs:{ T_REPAIR_PRO:4, T_REPAIR:2 } },
+  },
+  {
+    id:"cash_advanced_radar_sweep",
+    name:"Advanced Radar Sweep",
+    price:180000,
+    desc:"Ammo and control prep for scouting dangerous boards.",
+    preview:"+100 Tranq Darts • +8 Traps • +6 Shields",
+    grant:{ ammo:{ TRANQ_DARTS:100 }, traps:8, shields:6 },
+  },
+  {
+    id:"cash_squad_combat_boost",
+    name:"Squad Combat Boost",
+    price:200000,
+    desc:"Support bundle for keeping specialists alive and supplied.",
+    preview:"+8 Shields • +6 Trauma Kits • +6 Tier III Armor",
+    grant:{ shields:8, medkits:{ M_TRAUMA:6 }, armorPlates:{ A_TIER3:6 } },
+  },
+  {
+    id:"cash_capture_net_launcher",
+    name:"Capture Net Launcher Kit",
+    price:220000,
+    desc:"Capture-focused high-tier supply package.",
+    preview:"+40 Heavy Tranq • +12 Traps • +4 Shields",
+    grant:{ ammo:{ TRANQ_HEAVY:40 }, traps:12, shields:4 },
+  },
+  {
+    id:"cash_boss_intel_report",
+    name:"Boss Intel Report",
+    price:250000,
+    desc:"Boss prep bundle with repairs, shields, and heavy ammo.",
+    preview:"+6 Shields • +5 Pro Repairs • +120 AP/Heavy Ammo",
+    grant:{ shields:6, repairs:{ T_REPAIR_PRO:5 }, ammo:{ "556_AP":50, "762_AP":40, TRANQ_HEAVY:30 } },
+  },
+  {
+    id:"cash_emergency_evac_support",
+    name:"Emergency Evac Support",
+    price:300000,
+    desc:"Top-tier civilian rescue survival stock.",
+    preview:"+10 Shields • +10 Traps • +8 Trauma Kits • +8 Tier III Armor",
+    grant:{ shields:10, traps:10, medkits:{ M_TRAUMA:8 }, armorPlates:{ A_TIER3:8 } },
+  },
+  {
     id:"cash_war_loadout",
     name:"War Loadout Bundle",
     price:15000,
     desc:"Heavy loadout for long missions and boss pushes.",
     preview:"+6 Shields • +8 Traps • +2 Trauma Kits • +2 Pro Repairs • +140 Ammo",
     grant:{ shields:6, traps:8, medkits:{ M_TRAUMA:2 }, repairs:{ T_REPAIR_PRO:2 }, ammo:{ "9MM_STD":60, "556_STD":40, "TRANQ_DARTS":40 } },
+  },
+  {
+    id:"cash_hq_supply_drop",
+    name:"HQ Supply Drop",
+    price:400000,
+    desc:"Big mixed bundle for wealthy players preparing for multiple missions.",
+    preview:"+20 Shields • +24 Traps • +10 Trauma Kits • +10 Pro Repairs • +380 Ammo",
+    grant:{ shields:20, traps:24, medkits:{ M_TRAUMA:10 }, repairs:{ T_REPAIR_PRO:10 }, ammo:{ "9MM_STD":120, "12GA_STD":60, "556_STD":90, "762_STD":60, TRANQ_DARTS:50 } },
   },
 ];
 const STARS_TOPUP_GUIDE = [
@@ -19057,7 +19225,7 @@ function starsTopupPackForTarget(targetStars){
   return higher || list[list.length - 1];
 }
 function cashBundleById(id){
-  return CASH_SUPPLY_BUNDLES.find((bundle)=>bundle.id === id) || null;
+  return cashShopBundles().find((bundle)=>bundle.id === id) || null;
 }
 function setStarsOrderStatus(orderRef, status){
   const ref = String(orderRef || "").trim();
@@ -19272,6 +19440,29 @@ function applyRewardGrant(grantInput){
   }
   if(repairAdded > 0){
     bits.push(`+${repairAdded} repair kits`);
+  }
+
+  let armorPlateAdded = 0;
+  if(grant.armorPlates){
+    ensureArmorPlateInventoryState();
+    ensureArmorPlateFallbackState();
+    const armorGrant = typeof grant.armorPlates === "object" && !Array.isArray(grant.armorPlates)
+      ? grant.armorPlates
+      : { A_TIER1:grant.armorPlates };
+    for(const [id, rawQty] of Object.entries(armorGrant)){
+      if(!getArmor(id)) continue;
+      const qty = positiveInt(rawQty);
+      if(qty <= 0) continue;
+      const before = armorPlateCount(id);
+      const next = clamp(before + qty, 0, 999);
+      S.armorPlates[id] = next;
+      S.armorPlatesFallback[id] = next;
+      armorPlateAdded += qty;
+      changed = true;
+    }
+  }
+  if(armorPlateAdded > 0){
+    bits.push(`+${armorPlateAdded} armor plates`);
   }
 
   let ammoAdded = 0;
@@ -19945,6 +20136,56 @@ function ammoPriceCapped(a){
 function ownedAmmoCount(ammoId){ return S.ammoReserve[ammoId]||0; }
 function ownedMedCount(medId){ return S.medkits[medId]||0; }
 function ownedToolCount(toolId){ return S.repairKits[toolId]||0; }
+
+function cashBundleValidationErrors(bundle){
+  const errors = [];
+  if(!bundle || typeof bundle !== "object") return ["missing bundle"];
+  if(!bundle.id) errors.push("missing id");
+  if(!bundle.name) errors.push("missing name");
+  if(!Number.isFinite(Number(bundle.price)) || Number(bundle.price) <= 0) errors.push("invalid price");
+  const grant = bundle.grant && typeof bundle.grant === "object" ? bundle.grant : null;
+  if(!grant) errors.push("missing grant");
+  let effectCount = 0;
+  if(positiveInt(grant?.funds) > 0) effectCount += 1;
+  if(positiveInt(grant?.shields) > 0) effectCount += 1;
+  if(positiveInt(grant?.traps) > 0) effectCount += 1;
+  for(const [id, rawQty] of Object.entries(grant?.medkits || {})){
+    if(!getMed(id)) errors.push(`unknown medkit ${id}`);
+    if(positiveInt(rawQty) > 0) effectCount += 1;
+  }
+  for(const [id, rawQty] of Object.entries(grant?.repairs || {})){
+    if(!getTool(id)) errors.push(`unknown repair ${id}`);
+    if(positiveInt(rawQty) > 0) effectCount += 1;
+  }
+  for(const [id, rawQty] of Object.entries(grant?.ammo || {})){
+    if(!getAmmo(id)) errors.push(`unknown ammo ${id}`);
+    if(positiveInt(rawQty) > 0) effectCount += 1;
+  }
+  const armorGrant = grant?.armorPlates && typeof grant.armorPlates === "object" && !Array.isArray(grant.armorPlates)
+    ? grant.armorPlates
+    : (grant?.armorPlates ? { A_TIER1:grant.armorPlates } : {});
+  for(const [id, rawQty] of Object.entries(armorGrant)){
+    if(!getArmor(id)) errors.push(`unknown armor ${id}`);
+    if(positiveInt(rawQty) > 0) effectCount += 1;
+  }
+  if(effectCount <= 0) errors.push("grant has no usable effect");
+  return errors;
+}
+function cashShopBundles(){
+  const valid = [];
+  const seen = new Set();
+  for(const bundle of CASH_SUPPLY_BUNDLES){
+    const errors = cashBundleValidationErrors(bundle);
+    if(seen.has(bundle?.id)) errors.push(`duplicate id ${bundle?.id}`);
+    if(bundle?.id) seen.add(bundle.id);
+    if(errors.length){
+      console.warn("Cash shop bundle disabled:", bundle?.id || bundle?.name || "unknown", errors);
+      continue;
+    }
+    valid.push(bundle);
+  }
+  return valid.sort((a, b)=>Number(a.price || 0) - Number(b.price || 0));
+}
 
 function renderShopList(){
   ensureWeaponMasteryState();
@@ -20626,8 +20867,9 @@ function renderShopList(){
   }
 
   if(currentShopTab==="tools"){
-    note.innerText="Cash utility bundles are optional prep packs. Repair kits restore weapon durability. Shield protects escorts.";
-    const bundleCards = CASH_SUPPLY_BUNDLES.map((bundle)=>{
+    const cashBundles = cashShopBundles();
+    note.innerText=`Cash utility bundles are optional prep packs. ${cashBundles.length} validated cash bundles are available. Repair kits restore weapon durability. Shield protects escorts.`;
+    const bundleCards = cashBundles.map((bundle)=>{
       return `
         <div class="item">
           <div>
@@ -20784,12 +21026,14 @@ function buyShield(){
 function buyCashBundle(id){
   const bundle = cashBundleById(id);
   if(!bundle) return toast("Unknown bundle.");
+  const errors = cashBundleValidationErrors(bundle);
+  if(errors.length) return toast(`Bundle disabled: ${errors[0]}`);
   if(S.funds < bundle.price) return toast("Not enough money.");
-  S.funds -= bundle.price;
   const applied = applyRewardGrant(bundle.grant);
   if(!applied.changed){
     return toast("Bundle has no configured rewards.");
   }
+  S.funds -= bundle.price;
   sfx("ui"); hapticImpact("medium");
   save();
   renderShopList();
