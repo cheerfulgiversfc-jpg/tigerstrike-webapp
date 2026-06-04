@@ -22699,6 +22699,7 @@ function ensureTigerHuntState(t, now=Date.now()){
     t.huntStateUntil = now + rand(900, 1500);
   }
   if(!Number.isFinite(t.pounceWindupUntil)) t.pounceWindupUntil = 0;
+  if(!Number.isFinite(t.pounceWindupStart)) t.pounceWindupStart = 0;
   if(!Number.isFinite(t.pounceDirX)) t.pounceDirX = 0;
   if(!Number.isFinite(t.pounceDirY)) t.pounceDirY = 0;
 }
@@ -22709,6 +22710,7 @@ function setTigerHuntState(t, nextState, now=Date.now(), durationMs=640){
   t.huntStateUntil = now + Math.max(120, durationMs);
   if(nextState !== TIGER_HUNT_STATES.POUNCE){
     t.pounceWindupUntil = 0;
+    t.pounceWindupStart = 0;
   }
 }
 
@@ -22771,7 +22773,11 @@ function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
       const dd = Math.hypot(dx, dy) || 1;
       t.pounceDirX = dx / dd;
       t.pounceDirY = dy / dd;
+      t.pounceWindupStart = now;
       t.pounceWindupUntil = now + rand(200, 340);
+      t.attackTelegraphKind = "pounce";
+      t.attackTelegraphStart = now;
+      t.attackTelegraphUntil = t.pounceWindupUntil + 420;
       setTigerHuntState(t, TIGER_HUNT_STATES.POUNCE, now, (t.pounceWindupUntil - now) + rand(420, 660));
       t.burstUntil = Math.max(t.burstUntil || 0, t.huntStateUntil + 80);
       setTigerIntent(t, "Pounce!", Math.max(200, t.pounceWindupUntil - now));
@@ -29446,6 +29452,9 @@ function tigerTurn(t, softened=false, opts={}){
   else if(opts.kind === "pounce") setTigerIntent(t, "Pounce", 480);
   else setTigerIntent(t, "Strike", 440);
   triggerPhase18TigerMoment(t, opts.kind === "charge" ? "threat" : (opts.kind === "pounce" ? "threat" : "strike"), opts.kind === "charge" ? "Charge" : (opts.kind === "pounce" ? "Pounce" : "Strike"));
+  t.attackTelegraphKind = opts.kind || "strike";
+  t.attackTelegraphStart = now;
+  t.attackTelegraphUntil = now + ((opts.kind === "charge") ? 560 : (opts.kind === "pounce" ? 500 : 380));
   t.attackAnimKind = opts.kind || "strike";
   t.attackAnimStart = now;
   t.attackAnimUntil = now + ((opts.kind === "charge") ? 360 : (opts.kind === "pounce" ? 320 : 260));
@@ -33368,6 +33377,108 @@ function tigerColors(type){
   return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
 }
 
+function tigerTelegraphStyle(kind, danger=false){
+  const k = String(kind || "").toLowerCase();
+  if(k.includes("charge")) return { color:"248,113,113", label:"CHARGE", icon:"!!", lane:88, spread:0.18, danger:true };
+  if(k.includes("pounce")) return { color:"251,191,36", label:"POUNCE", icon:"!", lane:76, spread:0.26, danger:true };
+  if(k.includes("roar")) return { color:"250,204,21", label:"ROAR", icon:"!", lane:62, spread:0.34, danger:true };
+  if(k.includes("fade")) return { color:"125,211,252", label:"FADE", icon:"?", lane:54, spread:0.34, danger:false };
+  if(k.includes("recover")) return { color:"125,211,252", label:"RECOVER", icon:"", lane:42, spread:0.38, danger:false };
+  if(k.includes("stalk")) return { color:"250,204,21", label:"STALK", icon:"", lane:50, spread:0.34, danger };
+  return { color: danger ? "248,113,113" : "254,215,170", label:"STRIKE", icon:"!", lane:58, spread:0.30, danger };
+}
+
+function drawTigerAttackTelegraph(t, x, y, s, alpha, now){
+  if(!ctx || !t) return;
+  const windupActive = t.huntState === TIGER_HUNT_STATES.POUNCE && now < Number(t.pounceWindupUntil || 0);
+  const activePounce = t.huntState === TIGER_HUNT_STATES.POUNCE && !windupActive;
+  const chargeActive = now < Number(t.bossChargeUntil || 0);
+  const roarActive = now < Number(t.roarUntil || 0);
+  const genericTelegraph = now < Number(t.attackTelegraphUntil || 0);
+  if(!windupActive && !activePounce && !chargeActive && !roarActive && !genericTelegraph) return;
+
+  const kind = chargeActive ? "charge" : (windupActive || activePounce ? "pounce" : (roarActive ? "roar" : (t.attackTelegraphKind || "strike")));
+  const style = tigerTelegraphStyle(kind, true);
+  const spanStart = windupActive
+    ? Number(t.pounceWindupStart || now - 1)
+    : Number(t.attackTelegraphStart || now - 1);
+  const spanEnd = windupActive
+    ? Number(t.pounceWindupUntil || now + 1)
+    : Number(t.attackTelegraphUntil || now + 1);
+  const progress = clamp((now - spanStart) / Math.max(1, spanEnd - spanStart), 0, 1);
+  const remaining = clamp(1 - progress, 0, 1);
+  const pdx = Number(t.pounceDirX || 0);
+  const pdy = Number(t.pounceDirY || 0);
+  const aimA = (Math.abs(pdx) + Math.abs(pdy)) > 0.01
+    ? Math.atan2(pdy, pdx)
+    : Math.atan2((S.me?.y || y) - y, (S.me?.x || x) - x);
+  const lane = style.lane * s * (chargeActive ? 1.22 : 1);
+  const spread = style.spread;
+  const pulse = 0.64 + (Math.sin(now * 0.026) * 0.28);
+  const color = style.color;
+
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha * (0.18 + pulse * 0.38), 0.18, 0.86);
+  ctx.fillStyle = `rgba(${color},.18)`;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + Math.cos(aimA - spread) * lane, y + Math.sin(aimA - spread) * lane);
+  ctx.lineTo(x + Math.cos(aimA + spread) * lane, y + Math.sin(aimA + spread) * lane);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalAlpha = clamp(alpha * (0.42 + pulse * 0.36), 0.28, 0.92);
+  ctx.strokeStyle = `rgba(${color},.98)`;
+  ctx.lineWidth = chargeActive ? 3.4 : 2.6;
+  ctx.setLineDash(windupActive ? [5, 4] : [11, 7]);
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + Math.cos(aimA - spread) * lane, y + Math.sin(aimA - spread) * lane);
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + Math.cos(aimA + spread) * lane, y + Math.sin(aimA + spread) * lane);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const ringR = (windupActive ? 46 : (chargeActive ? 54 : 42)) * s;
+  ctx.globalAlpha = clamp(alpha * 0.26, 0.14, 0.42);
+  ctx.fillStyle = `rgba(${color},.22)`;
+  ctx.beginPath();
+  ctx.arc(x, y, ringR, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * (windupActive ? progress : pulse)));
+  ctx.lineTo(x, y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalAlpha = clamp(alpha * 0.78, 0.32, 0.96);
+  ctx.strokeStyle = `rgba(${color},.98)`;
+  ctx.lineWidth = windupActive ? 4.2 : 3.1;
+  ctx.beginPath();
+  ctx.arc(x, y, ringR, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * (windupActive ? progress : 1)));
+  ctx.stroke();
+  ctx.globalAlpha = clamp(alpha * 0.62, 0.26, 0.84);
+  ctx.strokeStyle = `rgba(${color},.46)`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, ringR + (8 * pulse), 0, Math.PI * 2);
+  ctx.stroke();
+
+  if(style.label){
+    const chip = windupActive ? `${style.label} ${Math.max(1, Math.ceil(remaining * 3))}` : style.label;
+    ctx.font = "900 10px system-ui";
+    const tw = Math.max(58, Math.min(104, ctx.measureText(chip).width + 18));
+    ctx.globalAlpha = clamp(alpha * 0.94, 0.42, 0.98);
+    ctx.fillStyle = "rgba(9,12,18,.88)";
+    roundedRectFill(x - tw / 2, y - ringR - 31, tw, 21, 9);
+    ctx.strokeStyle = `rgba(${color},.78)`;
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    ctx.fillStyle = `rgba(${color},.98)`;
+    ctx.textAlign = "center";
+    ctx.fillText(chip, x, y - ringR - 17);
+    ctx.textAlign = "start";
+  }
+  ctx.restore();
+}
+
 function drawTiger(t){
   let alpha=1.0;
   const now = Date.now();
@@ -33388,6 +33499,8 @@ function drawTiger(t){
   const gaitBlend = Number.isFinite(t.gaitBlend) ? t.gaitBlend : clamp(speed / 6, 0, 1);
   const smoothStiff = sprinting ? 0.72 : (gaitState === "run" ? 0.62 : 0.52);
   const smooth = smoothedDrawPoint(t, t.x, t.y, smoothStiff);
+  const lifePhase = (now * 0.004) + ((Number(t.id || 0) % 17) * 0.73);
+  const breathe = Math.sin(lifePhase) * (speed < 0.6 ? 1.45 : 0.55);
   const bob = Math.sin((t.step||0)*2.2)*0.34*Math.max(0.62, speed*0.90);
   const strideBounce = Math.abs(Math.sin((t.step||0)*2.2)) * (gaitState==="sprint" ? 1.35 : (gaitState==="run" ? 0.95 : 0.58));
   const bodyLift = clamp(gaitBlend * 2.4 + (sprinting ? 1.35 : 0), 0, 3.8);
@@ -33425,6 +33538,7 @@ function drawTiger(t){
   const atkKind = t.attackAnimKind || "";
   const atkSwing = atkProgress > 0 ? Math.sin(atkProgress * Math.PI) : 0;
   const telegraphHeavy = visualReadabilityHeavyMode();
+  drawTigerAttackTelegraph(t, x, y, s, alpha, now);
   ctx.save();
   ctx.globalAlpha = tigerFocus ? 0.50 : 0.28;
   ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.99)" : "rgba(254,215,170,.88)";
@@ -33512,31 +33626,55 @@ function drawTiger(t){
   ctx.fill();
   ctx.globalAlpha=alpha;
 
+  if(speed > 1.15 || atkProgress > 0 || t.huntState === TIGER_HUNT_STATES.POUNCE){
+    const trailA = Math.atan2(t.vy || Math.sin(t.heading || 0), t.vx || Math.cos(t.heading || 0)) + Math.PI;
+    const trailCount = t.huntState === TIGER_HUNT_STATES.POUNCE ? 4 : (sprinting ? 3 : 2);
+    ctx.save();
+    ctx.lineCap = "round";
+    for(let i=0; i<trailCount; i++){
+      const offset = (i + 1) * (8 + speed * 2.2) * s;
+      const side = ((i % 2) ? -1 : 1) * (4 + i * 1.6) * s;
+      const sx = x + Math.cos(trailA) * offset + Math.cos(trailA + Math.PI / 2) * side;
+      const sy = y + Math.sin(trailA) * offset + Math.sin(trailA + Math.PI / 2) * side;
+      ctx.globalAlpha = clamp(alpha * (0.22 - i * 0.04), 0.05, 0.24);
+      ctx.strokeStyle = t.huntState === TIGER_HUNT_STATES.POUNCE ? "rgba(251,191,36,.78)" : "rgba(254,215,170,.62)";
+      ctx.lineWidth = Math.max(1.2, (3.4 - i * 0.45) * s);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + Math.cos(trailA) * (10 + speed * 3.5) * s, sy + Math.sin(trailA) * (10 + speed * 3.5) * s);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalAlpha = alpha;
+  }
+
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(drawDir, 1);
   ctx.rotate(clamp((t.vy || 0) * 0.018, -0.09, 0.09) + shoulderRoll);
 
   ctx.fillStyle=c.body;
-  ctx.beginPath(); ctx.ellipse(0, 2*s, 22*s, 13*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, (2 + breathe * 0.20)*s, (22 + breathe * 0.16)*s, (13 + breathe * 0.20)*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(255,255,255,.14)";
   ctx.beginPath(); ctx.ellipse(-2*s, -2*s, 14*s, 5*s, -0.15, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle=c.belly;
-  ctx.beginPath(); ctx.ellipse(3*s, 6*s, 14*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(3*s, (6 + breathe * 0.12)*s, 14*s, (8 + breathe * 0.16)*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle=c.body;
-  ctx.beginPath(); ctx.ellipse(20*s, (-6 + (headBob * 0.55))*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(26*s, (-14 + (headBob * 0.35))*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(16*s, (-14 + (headBob * 0.35))*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+  const attackPosture = atkSwing * (atkKind === "charge" ? 3.8 : (atkKind === "pounce" ? 3.1 : 1.6));
+  ctx.beginPath(); ctx.ellipse((20 + attackPosture)*s, (-6 + (headBob * 0.55) - attackPosture * 0.16)*s, 12*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
+  const earTwitch = Math.sin(lifePhase * 2.3) * (speed < 0.8 ? 1.4 : 0.45);
+  ctx.beginPath(); ctx.ellipse((26 + attackPosture)*s, (-14 + (headBob * 0.35) + earTwitch)*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse((16 + attackPosture)*s, (-14 + (headBob * 0.35) - earTwitch * 0.45)*s, 4.5*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(240,220,190,.88)";
-  ctx.beginPath(); ctx.ellipse(22*s, (-4.5 + (headBob * 0.55))*s, 6.5*s, 4.4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse((22 + attackPosture)*s, (-4.5 + (headBob * 0.55))*s, 6.5*s, 4.4*s, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="#12161f";
-  ctx.beginPath(); ctx.arc(24*s, (-8.4 + (headBob * 0.52))*s, 1.1*s, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(18.5*s, (-8.6 + (headBob * 0.52))*s, 1.1*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc((24 + attackPosture)*s, (-8.4 + (headBob * 0.52))*s, 1.1*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc((18.5 + attackPosture)*s, (-8.6 + (headBob * 0.52))*s, 1.1*s, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle="rgba(15,15,15,.88)";
   ctx.beginPath();
-  ctx.moveTo(22*s, (-4.4 + (headBob * 0.50))*s);
-  ctx.lineTo(20.5*s, (-2.3 + (headBob * 0.50))*s);
-  ctx.lineTo(23.5*s, (-2.3 + (headBob * 0.50))*s);
+  ctx.moveTo((22 + attackPosture)*s, (-4.4 + (headBob * 0.50))*s);
+  ctx.lineTo((20.5 + attackPosture)*s, (-2.3 + (headBob * 0.50))*s);
+  ctx.lineTo((23.5 + attackPosture)*s, (-2.3 + (headBob * 0.50))*s);
   ctx.closePath();
   ctx.fill();
   if(atkProgress > 0){
@@ -33545,17 +33683,17 @@ function drawTiger(t){
     ctx.strokeStyle = "rgba(18,18,18,.95)";
     ctx.lineWidth = 1.3*s;
     ctx.beginPath();
-    ctx.moveTo(20.4*s, (-3.0 + (headBob * 0.50))*s);
-    ctx.lineTo(22.2*s, (-1.0 + jawDrop + (headBob * 0.50))*s);
-    ctx.lineTo(24.1*s, (-3.0 + (headBob * 0.50))*s);
+    ctx.moveTo((20.4 + attackPosture)*s, (-3.0 + (headBob * 0.50))*s);
+    ctx.lineTo((22.2 + attackPosture)*s, (-1.0 + jawDrop + (headBob * 0.50))*s);
+    ctx.lineTo((24.1 + attackPosture)*s, (-3.0 + (headBob * 0.50))*s);
     ctx.stroke();
     ctx.strokeStyle = "rgba(250,250,250,.85)";
     ctx.lineWidth = 0.95*s;
     ctx.beginPath();
-    ctx.moveTo(21.3*s, (-2.3 + (headBob * 0.50))*s);
-    ctx.lineTo(21.9*s, (-0.6 + jawDrop + (headBob * 0.50))*s);
-    ctx.moveTo(22.6*s, (-2.3 + (headBob * 0.50))*s);
-    ctx.lineTo(22.2*s, (-0.6 + jawDrop + (headBob * 0.50))*s);
+    ctx.moveTo((21.3 + attackPosture)*s, (-2.3 + (headBob * 0.50))*s);
+    ctx.lineTo((21.9 + attackPosture)*s, (-0.6 + jawDrop + (headBob * 0.50))*s);
+    ctx.moveTo((22.6 + attackPosture)*s, (-2.3 + (headBob * 0.50))*s);
+    ctx.lineTo((22.2 + attackPosture)*s, (-0.6 + jawDrop + (headBob * 0.50))*s);
     ctx.stroke();
   }
 
@@ -33577,8 +33715,9 @@ function drawTiger(t){
 
   ctx.strokeStyle=c.body; ctx.lineWidth=5*s;
   ctx.beginPath();
+  const tailWhip = Math.sin((t.step||0) + 1.4) * 6 * gaitMul + Math.sin(lifePhase * 1.4) * (speed < 0.9 ? 3.5 : 1.2);
   ctx.moveTo(-20*s, 2*s);
-  ctx.quadraticCurveTo(-34*s, -2*s + Math.sin((t.step||0)+1.4)*6*s*gaitMul, -40*s, -10*s);
+  ctx.quadraticCurveTo(-34*s, (-2 + tailWhip)*s, -40*s, (-10 + tailWhip * 0.34)*s);
   ctx.stroke();
 
   ctx.strokeStyle=c.stripe; ctx.lineWidth=3*s;
@@ -33590,8 +33729,8 @@ function drawTiger(t){
   }
   ctx.strokeStyle="rgba(28,30,35,.78)";
   ctx.lineWidth=1.2*s;
-  ctx.beginPath(); ctx.moveTo(28*s, -4.8*s); ctx.lineTo(32*s, -5.6*s); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(28*s, -3.3*s); ctx.lineTo(32*s, -3.6*s); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo((28 + attackPosture)*s, -4.8*s); ctx.lineTo((32 + attackPosture)*s, -5.6*s); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo((28 + attackPosture)*s, -3.3*s); ctx.lineTo((32 + attackPosture)*s, -3.6*s); ctx.stroke();
   if(Number(t.nemesisScars || 0) > 0){
     const scarCount = clamp(Math.floor(Number(t.nemesisScars || 1)), 1, 7);
     ctx.strokeStyle = "rgba(239,68,68,.75)";
@@ -35555,6 +35694,10 @@ function init(){
     if(!Number.isFinite(t.attackAnimStart)) t.attackAnimStart = 0;
     if(!Number.isFinite(t.attackAnimUntil)) t.attackAnimUntil = 0;
     if(typeof t.attackAnimKind !== "string") t.attackAnimKind = "";
+    if(!Number.isFinite(t.attackTelegraphStart)) t.attackTelegraphStart = 0;
+    if(!Number.isFinite(t.attackTelegraphUntil)) t.attackTelegraphUntil = 0;
+    if(typeof t.attackTelegraphKind !== "string") t.attackTelegraphKind = "";
+    if(!Number.isFinite(t.pounceWindupStart)) t.pounceWindupStart = 0;
     if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || Math.sin(t.wanderAngle || 0), t.vx || Math.cos(t.wanderAngle || 0));
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(typeof t.gaitState !== "string") t.gaitState = "walk";
