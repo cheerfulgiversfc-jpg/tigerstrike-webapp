@@ -19904,6 +19904,7 @@ function openShop(){
   if(S.gameOver) return;
   const fromBattle = !!S.inBattle;
   ensureSquadShopTab();
+  ensureBundlesShopTab();
   ensureSeasonShopTab();
   ensureForgeShopTab();
   if(S.missionEnded){
@@ -20049,6 +20050,29 @@ function ensureMetaShopTab(){
   }
   return tab;
 }
+function ensureBundlesShopTab(){
+  let tab = document.getElementById("tabBundles");
+  if(tab) return tab;
+  const tabsWrap = document.querySelector("#shopOverlay .tabs");
+  if(!tabsWrap) return null;
+
+  tab = document.createElement("button");
+  tab.className = "tab";
+  tab.id = "tabBundles";
+  tab.type = "button";
+  tab.innerText = "Bundles";
+  tab.addEventListener("click", ()=>shopTab("bundles"));
+
+  const toolsTab = document.getElementById("tabTools");
+  if(toolsTab && toolsTab.parentElement === tabsWrap){
+    tabsWrap.insertBefore(tab, toolsTab);
+  } else {
+    const squadTab = document.getElementById("tabSquad");
+    if(squadTab && squadTab.parentElement === tabsWrap) tabsWrap.insertBefore(tab, squadTab.nextSibling);
+    else tabsWrap.appendChild(tab);
+  }
+  return tab;
+}
 function ensureSeasonShopTab(){
   let tab = document.getElementById("tabSeason");
   if(tab) return tab;
@@ -20095,10 +20119,11 @@ function ensureForgeShopTab(){
 function shopTab(tab){
   ensureSquadShopTab();
   ensureMetaShopTab();
+  ensureBundlesShopTab();
   ensureSeasonShopTab();
   ensureForgeShopTab();
   currentShopTab=tab;
-  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabSeason","tabForge","tabStars","tabCash","tabPremium","tabTools","tabTraps"].forEach((id)=>{
+  ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabBundles","tabSeason","tabForge","tabStars","tabCash","tabPremium","tabTools","tabTraps"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.classList.remove("active");
   });
@@ -20109,6 +20134,7 @@ function shopTab(tab){
     meds:"tabMeds",
     squad:"tabSquad",
     meta:"tabMeta",
+    bundles:"tabBundles",
     season:"tabSeason",
     forge:"tabForge",
     stars:"tabStars",
@@ -20866,10 +20892,10 @@ function renderShopList(){
     return;
   }
 
-  if(currentShopTab==="tools"){
+  if(currentShopTab==="bundles"){
     const cashBundles = cashShopBundles();
-    note.innerText=`Cash utility bundles are optional prep packs. ${cashBundles.length} validated cash bundles are available. Repair kits restore weapon durability. Shield protects escorts.`;
-    const bundleCards = cashBundles.map((bundle)=>{
+    note.innerText=`High-value cash bundles for players with extra money. ${cashBundles.length} validated bundles are available; purchases only charge after rewards apply.`;
+    list.innerHTML = cashBundles.map((bundle)=>{
       return `
         <div class="item">
           <div>
@@ -20882,6 +20908,11 @@ function renderShopList(){
           </div>
         </div>`;
     }).join("");
+    return;
+  }
+
+  if(currentShopTab==="tools"){
+    note.innerText="Tools are individual utility items. Repair kits restore weapon durability. Escort Shield protects you and nearby civilians.";
     const repairCards = TOOLS.map(t=>{
       const owned=ownedToolCount(t.id);
       return `
@@ -20907,7 +20938,7 @@ function renderShopList(){
           <button onclick="buyShield()">Buy</button>
         </div>
       </div>`;
-    list.innerHTML = bundleCards + shieldCard + repairCards;
+    list.innerHTML = shieldCard + repairCards;
     return;
   }
 
