@@ -8873,9 +8873,11 @@ let __mapWaterSig = "";
 let __mapWaterZones = [];
 let __mapDenseLandmarksSig = "";
 let __mapDenseLandmarks = [];
-const STARTUP_LOADING_MAX_MS = 120000;
-const STARTUP_LOADING_MIN_MS = 28000;
-const STARTUP_LOADING_READY_FRAMES = 90;
+const STARTUP_LOADING_MAX_MS = 45000;
+const STARTUP_LOADING_PLAYABLE_MS = 30000;
+const STARTUP_LOADING_MIN_MS = 18000;
+const STARTUP_LOADING_READY_FRAMES = 48;
+const STARTUP_LOADING_DETAIL_READY_FRAMES = 22;
 const STARTUP_PRELOAD_STAGE_WEIGHTS = Object.freeze({
   terrain:18,
   sectors:18,
@@ -8912,7 +8914,8 @@ const STARTUP_LOADING_TIPS = [
   "Use Barrier to slow danger near evac routes.",
   "Rescue civilians after the safe zone marker is visible.",
   "Boss roars mean the pack is about to get aggressive.",
-  "Keep squad members alive: revive costs add up fast."
+  "Keep squad members alive: revive costs add up fast.",
+  "Only the first playable area blocks loading; deeper map detail streams in while you play."
 ];
 let __phase18CinematicEvents = [];
 const PHASE18_CINEMATIC_EVENT_MAX = 18;
@@ -9415,8 +9418,13 @@ function streamSectorDistanceKeys(aKey, bKey){
 function streamedWorldScaleBonus(state=S){
   const ss = ensureSectorStreamingState(state);
   if(!ss.enabled) return 0;
-  const discovered = Math.max(0, Math.min(STREAM_EXPAND_MAX_SECTORS, ss.discoveredKeys.length));
-  return clamp(discovered * STREAM_EXPAND_STEP, 0, 0.42);
+  const mobile = isMobileViewport();
+  const landscape = isLandscapeViewport();
+  const maxSectors = mobile ? (landscape ? 18 : 12) : STREAM_EXPAND_MAX_SECTORS;
+  const step = mobile ? (landscape ? 0.014 : 0.010) : STREAM_EXPAND_STEP;
+  const maxBonus = mobile ? (landscape ? 0.24 : 0.12) : 0.42;
+  const discovered = Math.max(0, Math.min(maxSectors, ss.discoveredKeys.length));
+  return clamp(discovered * step, 0, maxBonus);
 }
 function streamActiveSectorAnchorPoint(state=S){
   const src = (state && typeof state === "object") ? state : S;
@@ -9472,10 +9480,10 @@ function preloadMissionBoardSectors(state=S, now=Date.now()){
   pushPoint(cam.x + viewW, cam.y);
   pushPoint(cam.x, cam.y + viewH);
   pushPoint(cam.x + viewW, cam.y + viewH);
-  for(const civ of (src.civilians || []).slice(0, 10)) pushPoint(civ?.x, civ?.y);
-  for(const tiger of (src.tigers || []).slice(0, 12)) pushPoint(tiger?.x, tiger?.y);
-  for(const site of (src.rescueSites || []).slice(0, 8)) pushPoint(site?.x, site?.y);
-  for(const it of (src.mapInteractables || []).slice(0, 8)) pushPoint(it?.x, it?.y);
+  for(const civ of (src.civilians || []).slice(0, 5)) pushPoint(civ?.x, civ?.y);
+  for(const tiger of (src.tigers || []).slice(0, 6)) pushPoint(tiger?.x, tiger?.y);
+  for(const site of (src.rescueSites || []).slice(0, 4)) pushPoint(site?.x, site?.y);
+  for(const it of (src.mapInteractables || []).slice(0, 4)) pushPoint(it?.x, it?.y);
 
   const discovered = new Set(ss.discoveredKeys || []);
   const active = new Set(ss.activeKeys || []);
@@ -9485,13 +9493,13 @@ function preloadMissionBoardSectors(state=S, now=Date.now()){
     discovered.add(centerKey);
     active.add(centerKey);
     const center = streamSectorPointFromKey(centerKey, src);
-    for(let dy=-2; dy<=2; dy++){
-      for(let dx=-2; dx<=2; dx++){
+    for(let dy=-1; dy<=1; dy++){
+      for(let dx=-1; dx<=1; dx++){
         const sx = Math.max(0, center.sx + dx);
         const sy = Math.max(0, center.sy + dy);
         const key = `${sx}:${sy}`;
         discovered.add(key);
-        if(Math.max(Math.abs(dx), Math.abs(dy)) <= 1) active.add(key);
+        active.add(key);
       }
     }
   }
@@ -34393,7 +34401,7 @@ function ensureStartupLoadingOverlay(){
         <div data-load-bar style="height:100%;width:16%;border-radius:999px;background:linear-gradient(90deg,#22c55e,#a3e635,#facc15);transition:width .22s ease;"></div>
       </div>
       <div data-load-tip style="margin-top:16px;min-height:36px;font-size:13px;font-weight:850;color:#d9f99d;line-height:1.35;">Scout first: scan before you rush an Alpha.</div>
-      <div style="margin-top:10px;font-size:12px;font-weight:800;color:#94a3b8;">Gameplay starts after the board is fully prepared.</div>
+      <div style="margin-top:10px;font-size:12px;font-weight:800;color:#94a3b8;">Gameplay starts once the nearby mission area is playable.</div>
     </div>
   `;
   document.body.appendChild(node);
@@ -34452,9 +34460,9 @@ function missionMapWarmupTick(now=Date.now()){
 
 function startupPreloadExpectedSectorCount(state=S){
   const src = (state && typeof state === "object") ? state : S;
-  const actorCount = Math.min(10, (src.civilians || []).length) + Math.min(12, (src.tigers || []).length);
-  const siteCount = Math.min(8, (src.rescueSites || []).length) + Math.min(8, (src.mapInteractables || []).length);
-  return clamp(9 + Math.ceil(actorCount * 0.55) + Math.ceil(siteCount * 0.35), 9, 34);
+  const actorCount = Math.min(5, (src.civilians || []).length) + Math.min(6, (src.tigers || []).length);
+  const siteCount = Math.min(4, (src.rescueSites || []).length) + Math.min(4, (src.mapInteractables || []).length);
+  return clamp(7 + Math.ceil(actorCount * 0.45) + Math.ceil(siteCount * 0.25), 7, 18);
 }
 
 function computeStartupPreloadProgress(now=Date.now()){
@@ -34506,7 +34514,7 @@ function computeStartupPreloadProgress(now=Date.now()){
   const directorReady = !!ensureMissionDirectorState(S);
   scores.hazards = Math.max(scores.hazards || 0, Math.round(([twistReady, biomeReady, directorReady].filter(Boolean).length / 3) * 100));
 
-  const detailed = clamp(Number(g.detailedFrames || 0) / STARTUP_LOADING_READY_FRAMES, 0, 1);
+  const detailed = clamp(Number(g.detailedFrames || 0) / STARTUP_LOADING_DETAIL_READY_FRAMES, 0, 1);
   const cacheReady = !!(__mapFrameCacheCanvas && __mapFrameCacheAt >= Number(g.startedAt || 0));
   const recentDetail = (now - Number(__startupLastDetailedMapAt || 0)) < 900;
   scores.visual = Math.max(scores.visual || 0, Math.round((detailed * 70) + (cacheReady ? 18 : 0) + (recentDetail ? 12 : 0)));
@@ -34526,6 +34534,37 @@ function startupPreloadWeightedPercent(){
     weight += w;
   }
   return weight > 0 ? clamp(total / weight, 0, 100) : 0;
+}
+
+function startupCriticalPreloadReady(){
+  const scores = __startupLoadingGuard.stageScores || {};
+  return (
+    Number(scores.terrain || 0) >= 68 &&
+    Number(scores.sectors || 0) >= 68 &&
+    Number(scores.entities || 0) >= 80 &&
+    Number(scores.hazards || 0) >= 66
+  );
+}
+
+function startupPlayablePreloadReady(){
+  const scores = __startupLoadingGuard.stageScores || {};
+  return startupCriticalPreloadReady() && Number(scores.visual || 0) >= 35;
+}
+
+function startupLoadCanRelease(now=Date.now()){
+  if(!__startupLoadingGuard.active) return false;
+  const elapsed = now - Number(__startupLoadingGuard.startedAt || now);
+  const readyFrames = Number(__startupLoadingGuard.readyFrames || 0);
+  const detailFrames = Number(__startupLoadingGuard.detailedFrames || 0);
+  const enoughFrames = readyFrames >= Math.floor(STARTUP_LOADING_READY_FRAMES * 0.78);
+  const enoughDetail = detailFrames >= STARTUP_LOADING_DETAIL_READY_FRAMES;
+  const criticalReady = startupCriticalPreloadReady();
+  const playableReady = startupPlayablePreloadReady();
+  return (
+    (elapsed >= STARTUP_LOADING_MIN_MS && enoughFrames && enoughDetail && playableReady) ||
+    (elapsed >= STARTUP_LOADING_PLAYABLE_MS && enoughFrames && criticalReady) ||
+    elapsed >= STARTUP_LOADING_MAX_MS
+  );
 }
 
 function releaseStartupLoadingGuard(reason="ready"){
@@ -34552,16 +34591,12 @@ function startupLoadingGuardActive(now=Date.now()){
 function noteStartupMapFrameReady(){
   if(!__startupLoadingGuard.active) return;
   const now = Date.now();
-  const elapsed = now - Number(__startupLoadingGuard.startedAt || now);
   computeStartupPreloadProgress(now);
   __startupLoadingGuard.readyFrames = Math.min(STARTUP_LOADING_READY_FRAMES, Number(__startupLoadingGuard.readyFrames || 0) + 1);
   if(__startupLastDetailedMapAt >= Number(__startupLoadingGuard.startedAt || 0)){
     __startupLoadingGuard.detailedFrames = Math.min(STARTUP_LOADING_READY_FRAMES, Number(__startupLoadingGuard.detailedFrames || 0) + 1);
   }
-  const enoughFrames = __startupLoadingGuard.readyFrames >= STARTUP_LOADING_READY_FRAMES;
-  const enoughDetail = __startupLoadingGuard.detailedFrames >= Math.max(45, Math.floor(STARTUP_LOADING_READY_FRAMES * 0.72));
-  const weightedReady = startupPreloadWeightedPercent() >= 94;
-  if(elapsed >= STARTUP_LOADING_MIN_MS && enoughFrames && enoughDetail && weightedReady){
+  if(startupLoadCanRelease(now)){
     releaseStartupLoadingGuard("map-ready");
   }else{
     updateStartupLoadingOverlay();
@@ -34579,17 +34614,13 @@ function updateStartupLoadingOverlay(force=false){
   __startupLoadingGuard.lastTextAt = now;
   const elapsed = Math.max(0, now - Number(__startupLoadingGuard.startedAt || now));
   computeStartupPreloadProgress(now);
-  const readyFrames = clamp(Number(__startupLoadingGuard.readyFrames || 0), 0, STARTUP_LOADING_READY_FRAMES);
-  const detailFrames = clamp(Number(__startupLoadingGuard.detailedFrames || 0), 0, STARTUP_LOADING_READY_FRAMES);
-  const timeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_MIN_MS), 0, 1);
+  const timeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_PLAYABLE_MS), 0, 1);
+  const maxTimeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_MAX_MS), 0, 1);
   const stageProgress = startupPreloadWeightedPercent() / 100;
-  const rawPercent = Math.floor((timeProgress * 48) + (stageProgress * 48));
-  const readyToFinish =
-    elapsed >= STARTUP_LOADING_MIN_MS &&
-    readyFrames >= STARTUP_LOADING_READY_FRAMES &&
-    detailFrames >= Math.max(45, Math.floor(STARTUP_LOADING_READY_FRAMES * 0.72)) &&
-    startupPreloadWeightedPercent() >= 94;
-  const cappedPercent = readyToFinish ? 100 : Math.min(95, rawPercent);
+  const criticalBonus = startupCriticalPreloadReady() ? 10 : 0;
+  const rawPercent = Math.floor((timeProgress * 48) + (stageProgress * 42) + criticalBonus);
+  const readyToFinish = startupLoadCanRelease(now);
+  const cappedPercent = readyToFinish ? 100 : Math.min(maxTimeProgress >= 1 ? 99 : 96, rawPercent);
   __startupLoadingGuard.percent = Math.max(Number(__startupLoadingGuard.percent || 0), cappedPercent);
   const pct = clamp(Math.round(__startupLoadingGuard.percent || 0), 0, 100);
   const progress = pct / 100;
@@ -34599,7 +34630,7 @@ function updateStartupLoadingOverlay(force=false){
       sectors:"Streaming board sectors",
       entities:"Placing civilians and tigers",
       hazards:"Preparing hazards and events",
-      visual:"Building final visual cache",
+      visual:"Polishing nearby map detail",
       ready:"Finalizing mission board"
     }[__startupLoadingGuard.stage || "terrain"] || "Preparing mission board";
     __startupLoadingGuard.subNode.textContent = `${stageLabel}...`;
