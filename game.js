@@ -3578,6 +3578,86 @@ const CASH_SUPPLY_BUNDLES = [
     preview:"+20 Shields • +24 Traps • +10 Trauma Kits • +10 Pro Repairs • +380 Ammo",
     grant:{ shields:20, traps:24, medkits:{ M_TRAUMA:10 }, repairs:{ T_REPAIR_PRO:10 }, ammo:{ "9MM_STD":120, "12GA_STD":60, "556_STD":90, "762_STD":60, TRANQ_DARTS:50 } },
   },
+  {
+    id:"cash_soldier_training_manual",
+    name:"Soldier Training Manual",
+    price:150000,
+    desc:"Late-game training spend that converts cash into real perk progress and squad supplies.",
+    preview:"+3 Perk Points • +4 Shields • +4 Tier II Armor",
+    grant:{ perkPoints:3, shields:4, armorPlates:{ A_TIER2:4 } },
+  },
+  {
+    id:"cash_rescue_doctrine_manual",
+    name:"Rescue Doctrine Manual",
+    price:150000,
+    desc:"Rescue-focused training package for civilian-heavy missions.",
+    preview:"+3 Perk Points • +6 Med Kits • +4 Shields",
+    grant:{ perkPoints:3, shields:4, medkits:{ M_MED:6 } },
+  },
+  {
+    id:"cash_tiger_specialist_armor_kit",
+    name:"Tiger Specialist Armor Kit",
+    price:175000,
+    desc:"Durability package for dangerous tiger specialist deployments.",
+    preview:"+8 Tier III Armor • +4 Trauma Kits • +4 Shields",
+    grant:{ armorPlates:{ A_TIER3:8 }, medkits:{ M_TRAUMA:4 }, shields:4 },
+  },
+  {
+    id:"cash_squad_field_payroll",
+    name:"Squad Field Payroll",
+    price:250000,
+    desc:"Squad sustainment reserve for missions where specialists take pressure.",
+    preview:"+5 Perk Points • +8 Shields • +6 Pro Repairs",
+    grant:{ perkPoints:5, shields:8, repairs:{ T_REPAIR_PRO:6 } },
+  },
+  {
+    id:"cash_elite_capture_license",
+    name:"Elite Capture License",
+    price:300000,
+    desc:"High-end capture preparation for Alpha and boss routes.",
+    preview:"+64 Heavy Tranq • +160 Tranq Darts • +16 Traps",
+    grant:{ ammo:{ TRANQ_HEAVY:64, TRANQ_DARTS:160 }, traps:16 },
+  },
+  {
+    id:"cash_boss_hunt_contract",
+    name:"Boss Hunt Contract",
+    price:500000,
+    desc:"Boss-grade combat reserve with AP ammo, heavy tranq, repairs, and shields.",
+    preview:"+18 Shields • +14 Pro Repairs • +240 AP/Heavy Ammo",
+    grant:{ shields:18, repairs:{ T_REPAIR_PRO:14 }, ammo:{ "556_AP":90, "762_AP":70, TRANQ_HEAVY:80 } },
+  },
+  {
+    id:"cash_nemesis_hunt_contract",
+    name:"Nemesis Hunt Contract",
+    price:650000,
+    desc:"Endgame tiger hunt package for named tiger pressure.",
+    preview:"+8 Perk Points • +24 Shields • +24 Traps • +260 AP/Tranq Ammo",
+    grant:{ perkPoints:8, shields:24, traps:24, ammo:{ "556_AP":90, "762_AP":70, TRANQ_HEAVY:100 } },
+  },
+  {
+    id:"cash_endgame_expedition_crate",
+    name:"Endgame Expedition Crate",
+    price:750000,
+    desc:"Large multi-mission crate for players deep into the campaign.",
+    preview:"+30 Shields • +32 Traps • +15 Trauma Kits • +15 Pro Repairs • +500 Ammo",
+    grant:{ shields:30, traps:32, medkits:{ M_TRAUMA:15 }, repairs:{ T_REPAIR_PRO:15 }, ammo:{ "9MM_STD":140, "12GA_STD":80, "556_STD":120, "762_STD":80, TRANQ_DARTS:80, TRANQ_HEAVY:20 } },
+  },
+  {
+    id:"cash_legendary_armory_shipment",
+    name:"Legendary Armory Shipment",
+    price:900000,
+    desc:"Massive late-game armory shipment with armor, ammo, repairs, and shields.",
+    preview:"+40 Shields • +20 Tier IV Armor • +20 Pro Repairs • +620 Ammo",
+    grant:{ shields:40, armorPlates:{ A_TIER4:20 }, repairs:{ T_REPAIR_PRO:20 }, ammo:{ "9MM_STD":160, "12GA_STD":100, "556_AP":110, "762_AP":90, TRANQ_DARTS:100, TRANQ_HEAVY:70, RAIL_CELL:90 } },
+  },
+  {
+    id:"cash_black_ops_reserve_vault",
+    name:"Black Ops Reserve Vault",
+    price:1200000,
+    desc:"Ultimate millionaire cash sink for long-term Tiger Strike dominance.",
+    preview:"+12 Perk Points • +60 Shields • +50 Traps • +25 Trauma Kits • +25 Pro Repairs • +900 Ammo",
+    grant:{ perkPoints:12, shields:60, traps:50, medkits:{ M_TRAUMA:25 }, repairs:{ T_REPAIR_PRO:25 }, armorPlates:{ A_TIER4:25 }, ammo:{ "9MM_STD":200, "12GA_STD":130, "556_AP":160, "762_AP":130, TRANQ_DARTS:160, TRANQ_HEAVY:120, RAIL_CELL:130 } },
+  },
 ];
 const STARS_TOPUP_GUIDE = [
   { stars:100, label:"$1.99" },
@@ -19412,6 +19492,13 @@ function applyRewardGrant(grantInput){
     bits.push(`+${traps} traps`);
   }
 
+  const perkPoints = positiveInt(grant.perkPoints);
+  if(perkPoints > 0){
+    S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + perkPoints;
+    changed = true;
+    bits.push(`+${perkPoints} perk point${perkPoints === 1 ? "" : "s"}`);
+  }
+
   let medAdded = 0;
   if(grant.medkits && typeof grant.medkits === "object"){
     for(const [id, rawQty] of Object.entries(grant.medkits)){
@@ -20175,6 +20262,7 @@ function cashBundleValidationErrors(bundle){
   if(positiveInt(grant?.funds) > 0) effectCount += 1;
   if(positiveInt(grant?.shields) > 0) effectCount += 1;
   if(positiveInt(grant?.traps) > 0) effectCount += 1;
+  if(positiveInt(grant?.perkPoints) > 0) effectCount += 1;
   for(const [id, rawQty] of Object.entries(grant?.medkits || {})){
     if(!getMed(id)) errors.push(`unknown medkit ${id}`);
     if(positiveInt(rawQty) > 0) effectCount += 1;
