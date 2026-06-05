@@ -4669,6 +4669,13 @@ const TIGER_HUNT_STATES = Object.freeze({
   POUNCE: "pounce",
   RECOVER: "recover",
 });
+const TIGER_AI2_PROFILES = Object.freeze({
+  Standard: Object.freeze({ role:"Balanced", flank:0.10, ambush:0.08, civPressure:0.08, packCommand:0.00 }),
+  Scout: Object.freeze({ role:"Flanker", flank:0.74, ambush:0.18, civPressure:0.16, packCommand:0.00 }),
+  Stalker: Object.freeze({ role:"Ambusher", flank:0.42, ambush:0.84, civPressure:0.18, packCommand:0.00 }),
+  Berserker: Object.freeze({ role:"Civilian Breaker", flank:0.16, ambush:0.10, civPressure:0.78, packCommand:0.00 }),
+  Alpha: Object.freeze({ role:"Pack Commander", flank:0.22, ambush:0.12, civPressure:0.36, packCommand:0.88 }),
+});
 const BOSS_IDENTITY_BY_CHAPTER = Object.freeze({
   1: { name:"Pack Caller", cycle:["reinforce","summon_window"], cd:[11200, 15200], reinforce:[1,1] },
   2: { name:"Blood Herald", cycle:["roar","roar_shield_break","rage_phase","charge"], cd:[9600, 12900] },
@@ -23437,6 +23444,60 @@ function tigerPersonalityProfile(t, now=Date.now()){
   };
 }
 
+function tigerAi2Profile(t){
+  return TIGER_AI2_PROFILES[t?.type] || TIGER_AI2_PROFILES.Standard;
+}
+
+function selectTigerCivilianTarget(t, civs=[]){
+  if(!t || !Array.isArray(civs) || !civs.length) return { civ:null, dist:Infinity, score:-Infinity };
+  let best = null;
+  let bestDist = Infinity;
+  let bestScore = -Infinity;
+  const profile = tigerAi2Profile(t);
+  for(const civ of civs){
+    if(!civ || !civ.alive || civ.evac) continue;
+    const d = dist(t.x, t.y, civ.x, civ.y);
+    const risk = String(civ.riskState || "calm");
+    const riskScore = risk === "critical" ? 180 : (risk === "threatened" ? 92 : 0);
+    const escortScore = civ.following ? 58 : 0;
+    const injuredScore = civ.aiState === "injured" ? 86 : 0;
+    const breaker = profile.civPressure || 0;
+    const score = riskScore + injuredScore + escortScore + (breaker * 95) - (d * (0.58 - breaker * 0.18));
+    if(score > bestScore){
+      bestScore = score;
+      bestDist = d;
+      best = civ;
+    }
+  }
+  return { civ:best, dist:bestDist, score:bestScore };
+}
+
+function tigerAi2FlankAnchor(t, targetX, targetY, targetDist, side=1, radiusMul=0.34){
+  const baseA = Math.atan2(targetY - t.y, targetX - t.x);
+  const flankA = baseA + (side * (Math.PI * 0.46));
+  const r = clamp(42 + (Math.max(0, Number(targetDist || 0)) * radiusMul), 48, 132);
+  return {
+    x: clamp(targetX + Math.cos(flankA) * r, 18, worldWidth(S) - 18),
+    y: clamp(targetY + Math.sin(flankA) * r, 18, worldHeight(S) - 18),
+  };
+}
+
+function tigerAi2SetIntent(t, label, ms=540, eventCooldown=5200){
+  const now = Date.now();
+  setTigerIntent(t, label, ms);
+  if(now < Number(t._ai2NextNoticeAt || 0)) return;
+  t._ai2NextNoticeAt = now + eventCooldown;
+  if(label === "Flank"){
+    setEventText("Scout is flanking your route.", 1.8);
+  } else if(label === "Ambush"){
+    setEventText("Stalker is setting an ambush.", 1.8);
+  } else if(label === "Civilian Rush"){
+    setEventText("Berserker is rushing civilians.", 1.8);
+  } else if(label === "Pack Command"){
+    setEventText("Alpha is commanding the pack.", 2.0);
+  }
+}
+
 function setTigerIntent(t, label, ms=520){
   if(!t) return;
   t.intent = label;
@@ -28098,16 +28159,23 @@ function roamTigers(){
     const def=TIGER_TYPES.find(x=>x.key===t.type) || TIGER_TYPES[1];
     const motion = tigerMotionProfile(t, def, now);
     const persona = motion.personality || tigerPersonalityProfile(t, now);
+    const ai2 = tigerAi2Profile(t);
     const civs = liveCivs;
     let targetX=t.x + Math.cos(t.wanderAngle) * 20;
     let targetY=t.y + Math.sin(t.wanderAngle) * 20;
     let targetDist=Infinity;
+    if(!Number.isFinite(t._ai2FlankSide) || t._ai2FlankSide === 0){
+      t._ai2FlankSide = (t.id % 2 === 0) ? 1 : -1;
+    }
 
     let closestCiv=null, closestCivDist=1e9;
     for(const c of civs){
       const d=dist(t.x,t.y,c.x,c.y);
       if(d<closestCivDist){ closestCivDist=d; closestCiv=c; }
     }
+    const priorityCivInfo = selectTigerCivilianTarget(t, civs);
+    const priorityCiv = priorityCivInfo.civ;
+    const priorityCivDist = priorityCivInfo.dist;
 
     let nearestCarcassDist = 1e9;
     for(const carcass of (S.carcasses || [])){
@@ -28232,6 +28300,85 @@ function roamTigers(){
     } else {
       t._packAggroMul = 1;
       t._packSpeedMul = 1;
+    }
+
+    const ai2ThinkReady = now >= Number(t._ai2NextDecisionAt || 0);
+    if(ai2ThinkReady){
+      t._ai2NextDecisionAt = now + rand(420, 780);
+      if(t.type === "Alpha" && pack){
+        const territoryHot = !!pack.playerInTerritory || !!pack.civiliansInTerritory || playerDist < (motion.detect + 180 + ai2.packCommand * 70);
+        if(territoryHot){
+          pack.packState.threatUntil = Math.max(pack.packState.threatUntil || 0, now + 5200);
+          for(const mate of pack.members || []){
+            if(!mate || mate.id === t.id || !mate.alive) continue;
+            mate.enragedUntil = Math.max(mate.enragedUntil || 0, now + rand(650, 1450));
+            if(mate.type === "Scout" || mate.packRole === TIGER_PACK_ROLES.FLANKER){
+              mate.burstUntil = Math.max(mate.burstUntil || 0, now + rand(520, 950));
+            }
+          }
+          t._ai2Behavior = "pack_command";
+          t._ai2BehaviorUntil = now + 1100;
+          tigerAi2SetIntent(t, "Pack Command", 780, 7200);
+        }
+      } else if(t.type === "Berserker" && priorityCiv && priorityCivDist < (motion.detect + 150 + ai2.civPressure * 150) * directorAggroMul){
+        t._ai2Behavior = "civilian_rush";
+        t._ai2TargetCivId = priorityCiv.id;
+        t._ai2BehaviorUntil = now + rand(1250, 2100);
+        t.enragedUntil = Math.max(t.enragedUntil || 0, now + rand(1000, 1800));
+        t.burstUntil = Math.max(t.burstUntil || 0, now + rand(520, 980));
+        tigerAi2SetIntent(t, "Civilian Rush", 760, 5200);
+      } else if(t.type === "Scout" && playerDist < (motion.detect + 120 + ai2.flank * 150) * dynPlayerBiasMul){
+        t._ai2Behavior = "flank_player";
+        t._ai2BehaviorUntil = now + rand(980, 1680);
+        t._ai2FlankSide *= -1;
+        t.burstUntil = Math.max(t.burstUntil || 0, now + rand(420, 820));
+        tigerAi2SetIntent(t, "Flank", 720, 5200);
+      } else if(t.type === "Stalker" && Number.isFinite(targetDist) && targetDist > 96 && targetDist < (motion.detect + 90 + ai2.ambush * 150) * directorAggroMul){
+        t._ai2Behavior = "ambush";
+        t._ai2BehaviorUntil = now + rand(1100, 1900);
+        if(now < Number(t.fadeUntil || 0)) t.burstUntil = Math.max(t.burstUntil || 0, now + rand(420, 760));
+        tigerAi2SetIntent(t, "Ambush", 760, 5400);
+      }
+    }
+
+    if(now < Number(t._ai2BehaviorUntil || 0)){
+      if(t._ai2Behavior === "civilian_rush"){
+        const civ = (S.civilians || []).find((c)=>c && c.id === t._ai2TargetCivId && c.alive && !c.evac) || priorityCiv;
+        if(civ){
+          targetX = civ.x;
+          targetY = civ.y;
+          targetDist = dist(t.x, t.y, targetX, targetY);
+        }
+      } else if(t._ai2Behavior === "flank_player"){
+        const flank = tigerAi2FlankAnchor(t, S.me.x, S.me.y, playerDist, t._ai2FlankSide, 0.30);
+        targetX = flank.x;
+        targetY = flank.y;
+        targetDist = dist(t.x, t.y, targetX, targetY);
+      } else if(t._ai2Behavior === "ambush" && Number.isFinite(targetDist)){
+        const flank = tigerAi2FlankAnchor(t, targetX, targetY, targetDist, t._ai2FlankSide, 0.22);
+        targetX = flank.x;
+        targetY = flank.y;
+        targetDist = dist(t.x, t.y, targetX, targetY);
+        t.wanderAngle += (Math.random() - 0.5) * 0.10;
+      } else if(t._ai2Behavior === "pack_command" && pack){
+        const commandCiv = priorityCiv && priorityCivDist < playerDist + 85 ? priorityCiv : null;
+        if(commandCiv){
+          targetX = commandCiv.x;
+          targetY = commandCiv.y;
+          targetDist = priorityCivDist;
+        } else if(playerDist < (motion.detect + 260)){
+          targetX = S.me.x;
+          targetY = S.me.y;
+          targetDist = playerDist;
+        } else {
+          targetX = pack.territoryX;
+          targetY = pack.territoryY;
+          targetDist = dist(t.x, t.y, targetX, targetY);
+        }
+      }
+    } else if(t._ai2Behavior){
+      t._ai2Behavior = "";
+      t._ai2TargetCivId = 0;
     }
 
     if(S.lockedTigerId===t.id && playerDist < motion.detect + 90){
@@ -28412,6 +28559,11 @@ function roamTigers(){
       speedCap *= 0.84;
     }
     if(now < (t.burstUntil||0)) speedCap = Math.max(speedCap, motion.sprint);
+    if(now < Number(t._ai2BehaviorUntil || 0)){
+      if(t._ai2Behavior === "flank_player") speedCap = Math.max(speedCap, motion.sprint * 1.02);
+      if(t._ai2Behavior === "civilian_rush") speedCap = Math.max(speedCap, motion.sprint * 1.08);
+      if(t._ai2Behavior === "ambush") speedCap = Math.max(speedCap, motion.chase * 1.08);
+    }
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap = Math.max(speedCap, motion.sprint + 0.35);
     if(t.type==="Berserker" && t.rageOn) speedCap = Math.max(speedCap, motion.sprint * 1.06);
     speedCap *= directorSpeedMul;
