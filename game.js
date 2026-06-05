@@ -2586,6 +2586,7 @@ function renderCompleteRecapCard(payload=null){
     : ((S.lastMissionRecap && typeof S.lastMissionRecap === "object") ? S.lastMissionRecap : buildMissionRecapPayload());
   cardEl.innerText = String(recap.card || "Mission recap is ready.");
   renderMissionPremiumSummaryCard();
+  renderMissionRewards2Card();
 }
 
 function missionPremiumGrade(stats){
@@ -2654,6 +2655,152 @@ function renderMissionPremiumSummaryCard(summary=null){
     if(bossMission) tags.push("👑 Boss Clear");
     if(tags.length === 0) tags.push("✅ Mission Completed");
     tagsEl.innerHTML = tags.map((tag)=>`<span class="premiumSummaryTag">${tag}</span>`).join("");
+  }
+}
+
+function missionRewardLine(label, amount=0, reason=""){
+  return {
+    label:String(label || "Bonus"),
+    amount:Math.max(0, Math.floor(Number(amount || 0))),
+    reason:String(reason || "").trim()
+  };
+}
+
+function rewardEscapeHtml(value=""){
+  return String(value ?? "").replace(/[&<>"']/g, (ch)=>({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#39;"
+  }[ch] || ch));
+}
+
+function missionRewards2Build({ activeMission=null, storyMission=null, arcadeMission=null, civTotal=0, civDead=0, civEvac=0, storyVariant="" }={}){
+  const mode = normalizeModeName(S.mode);
+  const level = Math.max(1, Math.floor(Number(activeMission?.number || missionIndexForMode(mode) || 1)));
+  const captures = Math.max(0, Math.floor(Number(S.stats?.captures || 0)));
+  const kills = Math.max(0, Math.floor(Number(S.stats?.kills || 0)));
+  const shots = Math.max(0, Math.floor(Number(S.stats?.shots || 0)));
+  const trapStops = Math.max(0, Math.floor(Number(S.stats?.trapsTriggered || 0)));
+  const cashEarnedBefore = Math.max(0, Math.floor(Number(S.stats?.cashEarned || 0)));
+  const perfectRescue = civTotal > 0 && civDead === 0 && civEvac >= civTotal;
+  const captureFocus = captures > 0 && captures >= Math.max(1, kills);
+  const cleanPrecision = shots > 0 && shots <= Math.max(18, 18 + level);
+  const bossMission = !!(activeMission?.boss || activeMission?.finalBoss || activeMission?.bossTwin);
+  const convoyMission = !!activeMission?.convoyMission;
+  const liveOpsMul = liveOpsPayoutMul(S);
+  const currentStreak = Math.max(0, Math.floor(Number(S.missionRewardStreak || 0)));
+  const nextStreak = currentStreak + 1;
+  const baseClear = Math.round((650 + level * 70 + (bossMission ? 900 : 0)) * liveOpsMul);
+  const lines = [
+    missionRewardLine("Mission Clear", baseClear, `${mode} level ${level}${bossMission ? " boss operation" : ""}`)
+  ];
+  if(perfectRescue){
+    lines.push(missionRewardLine("Perfect Rescue Bonus", Math.round((420 + civTotal * 135 + level * 24) * liveOpsMul), `${civEvac}/${civTotal} civilians saved with zero losses`));
+  } else if(civEvac > 0){
+    lines.push(missionRewardLine("Civilian Rescue Bonus", Math.round((civEvac * 70 + level * 12) * liveOpsMul), `${civEvac}/${Math.max(1, civTotal)} civilians evacuated`));
+  }
+  if(captures > 0){
+    lines.push(missionRewardLine("Capture Bonus", Math.round((captures * (260 + level * 18)) * liveOpsMul), `${captures} tiger${captures===1 ? "" : "s"} captured for research`));
+  }
+  if(captureFocus){
+    lines.push(missionRewardLine("Capture Focus Bonus", Math.round((360 + captures * 120 + level * 12) * liveOpsMul), "Captures matched or beat lethal takedowns"));
+  }
+  if(cleanPrecision){
+    lines.push(missionRewardLine("Clean Precision Bonus", Math.round((220 + level * 16) * liveOpsMul), `${shots} shot${shots===1 ? "" : "s"} fired`));
+  }
+  if(trapStops > 0){
+    lines.push(missionRewardLine("Trap Control Bonus", Math.round((trapStops * (180 + level * 10)) * liveOpsMul), `${trapStops} tiger stop${trapStops===1 ? "" : "s"} from traps`));
+  }
+  if(convoyMission && perfectRescue){
+    lines.push(missionRewardLine("Convoy Command Bonus", Math.round((500 + level * 28) * liveOpsMul), "Convoy cleared without civilian loss"));
+  }
+  if(bossMission){
+    lines.push(missionRewardLine("Boss Threat Bonus", Math.round((850 + level * 45) * liveOpsMul), "High-value tiger threat neutralized"));
+  }
+  const preStreakTotal = lines.reduce((sum, line)=>sum + Math.max(0, Number(line.amount || 0)), 0);
+  const streakMul = clamp(1 + Math.min(0.28, Math.max(0, nextStreak - 1) * 0.04), 1, 1.28);
+  const streakBonus = Math.round(preStreakTotal * (streakMul - 1));
+  if(streakBonus > 0){
+    lines.push(missionRewardLine("Win Streak Multiplier", streakBonus, `Streak ${nextStreak} • x${streakMul.toFixed(2)}`));
+  }
+  const totalCash = lines.reduce((sum, line)=>sum + Math.max(0, Number(line.amount || 0)), 0);
+  const bonusXp = Math.max(80, Math.round(80 + level * 4 + (perfectRescue ? 70 : 0) + captures * 18 + (bossMission ? 90 : 0)));
+  const tags = [];
+  if(perfectRescue) tags.push("Perfect Rescue");
+  if(captures > 0) tags.push("Capture Bonus");
+  if(nextStreak > 1) tags.push(`Streak ${nextStreak}`);
+  if(bossMission) tags.push("Boss Clear");
+  if(liveOpsMul > 1.01) tags.push(`Live Ops x${liveOpsMul.toFixed(2)}`);
+  if(convoyMission) tags.push("Convoy");
+  return {
+    mode,
+    level,
+    storyVariant,
+    nextStreak,
+    totalCash,
+    bonusXp,
+    cashEarnedBefore,
+    cashEarnedAfter: cashEarnedBefore + totalCash,
+    lines,
+    tags,
+    createdAt:Date.now()
+  };
+}
+
+function grantMissionRewards2(breakdown){
+  if(!breakdown || typeof breakdown !== "object") return null;
+  const totalCash = Math.max(0, Math.floor(Number(breakdown.totalCash || 0)));
+  if(totalCash > 0){
+    S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + totalCash;
+    trackCashEarned(totalCash);
+  }
+  const bonusXp = Math.max(0, Math.floor(Number(breakdown.bonusXp || 0)));
+  if(bonusXp > 0) addXP(bonusXp);
+  S.missionRewardStreak = Math.max(1, Math.floor(Number(breakdown.nextStreak || 1)));
+  S.lastMissionRewardBreakdown = breakdown;
+  return breakdown;
+}
+
+function renderMissionRewards2Card(breakdown=null){
+  const root = document.getElementById("completeRewardBreakdown");
+  if(!root) return;
+  const data = (breakdown && typeof breakdown === "object")
+    ? breakdown
+    : ((S.lastMissionRewardBreakdown && typeof S.lastMissionRewardBreakdown === "object") ? S.lastMissionRewardBreakdown : null);
+  const totalEl = document.getElementById("completeRewardTotal");
+  const subEl = document.getElementById("completeRewardSub");
+  const rowsEl = document.getElementById("completeRewardRows");
+  const tagsEl = document.getElementById("completeRewardTags");
+  if(!data){
+    if(totalEl) totalEl.innerText = "$0";
+    if(subEl) subEl.innerText = "Complete a mission to see reward details.";
+    if(rowsEl) rowsEl.innerHTML = "";
+    if(tagsEl) tagsEl.innerHTML = "";
+    return;
+  }
+  const totalCash = Math.max(0, Math.floor(Number(data.totalCash || 0)));
+  const bonusXp = Math.max(0, Math.floor(Number(data.bonusXp || 0)));
+  if(totalEl) totalEl.innerText = `$${totalCash.toLocaleString()}`;
+  if(subEl){
+    const fieldCash = Math.max(0, Math.floor(Number(data.cashEarnedBefore || 0)));
+    subEl.innerText = `Awarded now: +$${totalCash.toLocaleString()} • +${bonusXp}XP • Field earnings: $${fieldCash.toLocaleString()} • Clear streak ${Math.max(1, Math.floor(Number(data.nextStreak || 1)))}`;
+  }
+  if(rowsEl){
+    const lines = Array.isArray(data.lines) ? data.lines : [];
+    rowsEl.innerHTML = lines.map((line)=>{
+      const label = rewardEscapeHtml(line?.label || "Bonus");
+      const reason = rewardEscapeHtml(line?.reason || "");
+      const amount = Math.max(0, Math.floor(Number(line?.amount || 0)));
+      return `<div class="rewardBreakdownRow"><div><b>${label}</b>${reason ? `<br><span>${reason}</span>` : ""}</div><div class="rewardBreakdownValue">+$${amount.toLocaleString()}</div></div>`;
+    }).join("");
+  }
+  if(tagsEl){
+    const tags = Array.isArray(data.tags) ? data.tags : [];
+    tagsEl.innerHTML = (tags.length ? tags : ["Mission Clear"])
+      .map((tag)=>`<span class="premiumSummaryTag">${rewardEscapeHtml(tag)}</span>`)
+      .join("");
   }
 }
 
@@ -7375,6 +7522,8 @@ const DEFAULT = {
   referralMilestone:null,
   telegramEventDrop:null,
   lastMissionRecap:null,
+  lastMissionRewardBreakdown:null,
+  missionRewardStreak:0,
 
 // ===== PHASE 2 PROGRESSION =====
 xp: 0,
@@ -9020,6 +9169,8 @@ function load(){
     m.referralMilestone = (saved.referralMilestone && typeof saved.referralMilestone === "object") ? saved.referralMilestone : null;
     m.telegramEventDrop = (saved.telegramEventDrop && typeof saved.telegramEventDrop === "object") ? saved.telegramEventDrop : null;
     m.lastMissionRecap = (saved.lastMissionRecap && typeof saved.lastMissionRecap === "object") ? saved.lastMissionRecap : null;
+    m.lastMissionRewardBreakdown = (saved.lastMissionRewardBreakdown && typeof saved.lastMissionRewardBreakdown === "object") ? saved.lastMissionRewardBreakdown : null;
+    m.missionRewardStreak = Math.max(0, Math.floor(Number(saved.missionRewardStreak || 0)));
     m.seasonPass = mergeSeasonPassSnapshots(DEFAULT.seasonPass, saved.seasonPass);
     m.masteryRewards = mergeMasteryRewardsSnapshots(DEFAULT.masteryRewards, saved.masteryRewards);
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
@@ -25072,6 +25223,7 @@ function gameOverChoice(msg){
   if(!S.missionEnded){
     markBalanceMissionResult(false, msg, S);
   }
+  S.missionRewardStreak = 0;
   S.gameOver = true;
   S.paused = true;
   transitionCleanupSweep("game-over");
@@ -30629,6 +30781,18 @@ function checkMissionComplete(){
           upkeepNote = `\nSquad upkeep paid: $${upkeep.paid.toLocaleString()} (all active specialists maintained)\n`;
         }
       }
+      const rewards2 = grantMissionRewards2(missionRewards2Build({
+        activeMission,
+        storyMission,
+        arcadeMission,
+        civTotal,
+        civDead,
+        civEvac,
+        storyVariant
+      }));
+      const rewards2Note = rewards2
+        ? `\nMission Rewards 2.0: +$${Math.max(0, Math.floor(Number(rewards2.totalCash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(rewards2.bonusXp || 0)))}XP • Streak ${Math.max(1, Math.floor(Number(rewards2.nextStreak || 1)))}\n`
+        : "";
 
       const recapMeta = {
         number: activeMission?.number || gameplayCloudMission(S),
@@ -30654,9 +30818,10 @@ function checkMissionComplete(){
       };
       S.lastMissionPremiumSummary = premiumSummary;
       renderMissionPremiumSummaryCard(premiumSummary);
+      renderMissionRewards2Card(rewards2);
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${upkeepNote}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${upkeepNote}${rewards2Note}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);

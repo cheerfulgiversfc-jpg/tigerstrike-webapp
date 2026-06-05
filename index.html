@@ -401,6 +401,39 @@
       font-weight:900;
       letter-spacing:.01em;
     }
+    .rewardBreakdownCard{
+      border-color:rgba(248,177,50,.76);
+      background:
+        radial-gradient(circle at 12% 12%, rgba(248,177,50,.20), transparent 44%),
+        radial-gradient(circle at 88% 84%, rgba(65,216,141,.14), transparent 44%),
+        linear-gradient(180deg, rgba(18,22,30,.94), rgba(9,13,22,.96));
+    }
+    .rewardBreakdownList{
+      display:grid;
+      gap:6px;
+      margin-top:10px;
+    }
+    .rewardBreakdownRow{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      gap:10px;
+      align-items:center;
+      border:1px solid rgba(48,65,102,.72);
+      border-radius:10px;
+      padding:8px;
+      background:rgba(7,12,22,.56);
+      font-size:12px;
+      color:var(--muted);
+    }
+    .rewardBreakdownRow b{
+      color:#f8fafc;
+      font-weight:950;
+    }
+    .rewardBreakdownValue{
+      color:#bbf7d0;
+      font-weight:950;
+      white-space:nowrap;
+    }
     .storyIntroFooter{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
     .launchIntroModal{width:min(660px,95vw)}
     .launchHero{
@@ -1890,6 +1923,15 @@
           </div>
         </div>
         <div class="premiumSummaryTags" id="completePremiumTags"></div>
+      </div>
+      <div class="premiumSummaryCard rewardBreakdownCard" id="completeRewardBreakdown">
+        <div class="premiumSummaryTop">
+          <div class="premiumSummaryTitle">Mission Rewards 2.0</div>
+          <div class="premiumSummaryGrade" id="completeRewardTotal">$0</div>
+        </div>
+        <div class="premiumSummarySub" id="completeRewardSub">Payout breakdown preparing...</div>
+        <div class="rewardBreakdownList" id="completeRewardRows"></div>
+        <div class="premiumSummaryTags" id="completeRewardTags"></div>
       </div>
       <div class="hudLine" id="completeText"></div>
       <div class="divider"></div>
