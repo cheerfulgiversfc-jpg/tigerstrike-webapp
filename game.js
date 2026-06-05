@@ -9289,6 +9289,10 @@ const FRAME_LOAD_LIGHT = 1;
 const FRAME_LOAD_MID = 1.15;
 const FRAME_LOAD_HIGH = 1.32;
 const FRAME_LOAD_EXTREME = 1.52;
+const PERF_GUARD_LEVEL_NONE = 0;
+const PERF_GUARD_LEVEL_LIGHT = 1;
+const PERF_GUARD_LEVEL_STRONG = 2;
+const PERF_GUARD_LEVEL_EMERGENCY = 3;
 const FRAME_LAG_WARN_SCORE = 4;
 const FRAME_LAG_CRITICAL_SCORE = 8;
 const DIRECTOR_PHASES = {
@@ -9430,6 +9434,14 @@ let __frameHeavyFxFlip = 0;
 let __frameBgFxFlip = 0;
 let __frameDynamicLoadMul = FRAME_LOAD_LIGHT;
 let __frameMotionMul = 1;
+let __performanceGuardState = {
+  level: PERF_GUARD_LEVEL_NONE,
+  lastChangeAt: 0,
+  lastReason: "idle",
+  relaxedAt: 0,
+  evalFrame: -1,
+  evalAt: 0
+};
 let __battleHudRenderAt = 0;
 let __battleReadabilityRenderAt = 0;
 let __liteEntityRenderState = false;
@@ -10413,6 +10425,131 @@ function computeFrameLoadMultiplier(){
   if(score >= 38) return FRAME_LOAD_MID;
   return FRAME_LOAD_LIGHT;
 }
+function performanceGuardLevel(now=Date.now()){
+  if(!S || typeof S !== "object") return PERF_GUARD_LEVEL_NONE;
+  const frameNo = Math.max(0, Math.floor(Number(__frameBudgetState?.frameNo || 0)));
+  if(__performanceGuardState.evalFrame === frameNo && (now - Number(__performanceGuardState.evalAt || 0)) < 80){
+    return Math.max(0, Math.floor(Number(__performanceGuardState.level || 0)));
+  }
+  __performanceGuardState.evalFrame = frameNo;
+  __performanceGuardState.evalAt = now;
+  const score = frameActiveEntityLoadScore();
+  const lagTier = frameLagTier();
+  const mobile = isMobileViewport();
+  const perf = performanceMode() === "PERFORMANCE";
+  const slow = frameIsSlow();
+  let target = PERF_GUARD_LEVEL_NONE;
+  let reason = "clear";
+  if(lagTier >= 2 || score >= 82 || (mobile && slow && score >= 48)){
+    target = PERF_GUARD_LEVEL_EMERGENCY;
+    reason = lagTier >= 2 ? "critical-lag" : "extreme-load";
+  } else if(lagTier >= 1 || score >= 62 || (perf && score >= 46) || (mobile && slow && score >= 34)){
+    target = PERF_GUARD_LEVEL_STRONG;
+    reason = lagTier >= 1 ? "lag" : (perf ? "perf-load" : "high-load");
+  } else if(score >= 42 || perf || slow || (mobile && score >= 32)){
+    target = PERF_GUARD_LEVEL_LIGHT;
+    reason = slow ? "slow-frame" : (perf ? "perf-mode" : "mid-load");
+  }
+
+  const cur = Math.max(0, Math.floor(Number(__performanceGuardState.level || 0)));
+  if(target < cur && now < Number(__performanceGuardState.relaxedAt || 0)){
+    return cur;
+  }
+  if(target !== cur){
+    __performanceGuardState.level = target;
+    __performanceGuardState.lastChangeAt = now;
+    __performanceGuardState.lastReason = reason;
+    __performanceGuardState.relaxedAt = now + (target > cur ? 2400 : 900);
+  } else if(target > PERF_GUARD_LEVEL_NONE){
+    __performanceGuardState.relaxedAt = Math.max(__performanceGuardState.relaxedAt || 0, now + 1400);
+  }
+  return __performanceGuardState.level;
+}
+function performanceGuardFxScale(){
+  const level = performanceGuardLevel();
+  return level >= PERF_GUARD_LEVEL_EMERGENCY ? 0.38 : (level >= PERF_GUARD_LEVEL_STRONG ? 0.56 : (level >= PERF_GUARD_LEVEL_LIGHT ? 0.78 : 1));
+}
+function performanceGuardDrawScale(){
+  const level = performanceGuardLevel();
+  return level >= PERF_GUARD_LEVEL_EMERGENCY ? 0.52 : (level >= PERF_GUARD_LEVEL_STRONG ? 0.68 : (level >= PERF_GUARD_LEVEL_LIGHT ? 0.84 : 1));
+}
+function performanceGuardTickMul(){
+  const level = performanceGuardLevel();
+  return level >= PERF_GUARD_LEVEL_EMERGENCY ? 1.68 : (level >= PERF_GUARD_LEVEL_STRONG ? 1.36 : (level >= PERF_GUARD_LEVEL_LIGHT ? 1.16 : 1));
+}
+function performanceGuardCleanupMul(){
+  const level = performanceGuardLevel();
+  return level >= PERF_GUARD_LEVEL_EMERGENCY ? 1.8 : (level >= PERF_GUARD_LEVEL_STRONG ? 1.45 : (level >= PERF_GUARD_LEVEL_LIGHT ? 1.18 : 1));
+}
+function performanceGuardCap(max, min=1, scale=performanceGuardDrawScale()){
+  const raw = Math.max(min, Math.floor(Number(max || min)));
+  return Math.max(min, Math.floor(raw * clamp(Number(scale || 1), 0.25, 1)));
+}
+function performanceGuardPad(pad){
+  const level = performanceGuardLevel();
+  const scale = level >= PERF_GUARD_LEVEL_EMERGENCY ? 0.66 : (level >= PERF_GUARD_LEVEL_STRONG ? 0.78 : (level >= PERF_GUARD_LEVEL_LIGHT ? 0.90 : 1));
+  return Math.max(46, Math.round(Math.max(40, Number(pad || 120)) * scale));
+}
+function performanceGuardSkipWorldFx(x, y, kind="hit"){
+  const level = performanceGuardLevel();
+  if(level <= PERF_GUARD_LEVEL_NONE) return false;
+  if(kind === "player" || kind === "capture" || kind === "crit") return false;
+  const nearView = Number.isFinite(x) && Number.isFinite(y) && pointInViewportPad(x, y, level >= PERF_GUARD_LEVEL_STRONG ? 70 : 110);
+  if(!nearView) return true;
+  if(level >= PERF_GUARD_LEVEL_EMERGENCY && kind !== "tranq" && kind !== "shield") return (__frameBudgetState.frameNo % 2) !== 0;
+  return false;
+}
+function performanceGuardClampFxLists(){
+  const scale = performanceGuardFxScale();
+  const fxCap = performanceGuardCap(64, 10, scale);
+  const popupCap = performanceGuardCap(30, 5, scale);
+  const pulseCap = performanceGuardCap(30, 5, scale);
+  if(COMBAT_FX.length > fxCap) COMBAT_FX.splice(0, COMBAT_FX.length - fxCap);
+  if(DAMAGE_POPUPS.length > popupCap) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - popupCap);
+  if(IMPACT_PULSES.length > pulseCap) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - pulseCap);
+  if(__phase18CinematicEvents.length > performanceGuardCap(PHASE18_CINEMATIC_EVENT_MAX, 4, scale)){
+    __phase18CinematicEvents.splice(0, __phase18CinematicEvents.length - performanceGuardCap(PHASE18_CINEMATIC_EVENT_MAX, 4, scale));
+  }
+}
+function performanceGuardCleanupRuntime(now=Date.now()){
+  const level = performanceGuardLevel(now);
+  if(level <= PERF_GUARD_LEVEL_NONE || !S || typeof S !== "object") return 0;
+  let trimmed = 0;
+  performanceGuardClampFxLists();
+  const trimDeadTail = (key, keepAlive, keepTail)=>{
+    const list = S[key];
+    if(!Array.isArray(list) || list.length <= keepTail) return;
+    const live = [];
+    const stale = [];
+    for(const ent of list){
+      if(ent && keepAlive(ent)) live.push(ent);
+      else stale.push(ent);
+    }
+    const staleKeep = stale.slice(-Math.max(0, keepTail - live.length));
+    const next = [...live, ...staleKeep];
+    if(next.length < list.length){
+      S[key] = next;
+      trimmed += list.length - next.length;
+    }
+  };
+  trimDeadTail("tigers", (t)=>t?.alive || isBossTiger(t) || t?.id === S.activeTigerId || t?.id === S.lockedTigerId, level >= PERF_GUARD_LEVEL_EMERGENCY ? 16 : 22);
+  trimDeadTail("civilians", (c)=>c?.alive && !c?.evac, level >= PERF_GUARD_LEVEL_EMERGENCY ? 18 : 24);
+  if(Array.isArray(S.carcasses)){
+    const cap = level >= PERF_GUARD_LEVEL_EMERGENCY ? 16 : 24;
+    if(S.carcasses.length > cap){
+      trimmed += S.carcasses.length - cap;
+      S.carcasses = S.carcasses.slice(-cap);
+    }
+  }
+  if(Array.isArray(S.pickups)){
+    const cap = level >= PERF_GUARD_LEVEL_EMERGENCY ? 10 : 16;
+    if(S.pickups.length > cap){
+      trimmed += S.pickups.length - cap;
+      S.pickups = S.pickups.slice(-cap);
+    }
+  }
+  return trimmed;
+}
 function frameLagTier(){
   const score = Math.max(0, Number(__frameLagScore || 0));
   if(score >= FRAME_LAG_CRITICAL_SCORE) return 2;
@@ -10827,8 +10964,11 @@ function beginFrameBudget(frameStartTs){
   const iphoneLock = iphoneStabilityModeActive();
   __frameDynamicLoadMul = computeFrameLoadMultiplier();
   const lagTier = frameLagTier();
+  const guardLevel = performanceGuardLevel(Date.now());
   if(lagTier >= 1) __frameDynamicLoadMul = Math.max(__frameDynamicLoadMul, FRAME_LOAD_HIGH);
   if(lagTier >= 2) __frameDynamicLoadMul = Math.max(__frameDynamicLoadMul, FRAME_LOAD_EXTREME);
+  if(guardLevel >= PERF_GUARD_LEVEL_STRONG) __frameDynamicLoadMul = Math.max(__frameDynamicLoadMul, FRAME_LOAD_HIGH);
+  if(guardLevel >= PERF_GUARD_LEVEL_EMERGENCY) __frameDynamicLoadMul = Math.max(__frameDynamicLoadMul, FRAME_LOAD_EXTREME);
   let limit = mode === "PERFORMANCE" ? 9.8 : 12.6;
   if(iphoneLock){
     // Mobile FPS lock: drop non-critical work earlier so touch/control stays responsive.
@@ -10837,6 +10977,8 @@ function beginFrameBudget(frameStartTs){
   if(frameIsSlow(now)) limit -= 1.6;
   if(__frameDynamicLoadMul >= FRAME_LOAD_HIGH) limit -= 0.8;
   if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) limit -= 0.8;
+  if(guardLevel >= PERF_GUARD_LEVEL_STRONG) limit -= 0.7;
+  if(guardLevel >= PERF_GUARD_LEVEL_EMERGENCY) limit -= 0.8;
   if(lagTier >= 2) limit -= 0.9;
   if(now < (__frameRecoverUntil || 0)) limit = Math.min(limit, 8.2);
   __frameBudgetState.frameNo += 1;
@@ -10879,6 +11021,7 @@ function runFrameTask(key, intervalMs, fn, options={}){
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
   const iphoneLock = iphoneStabilityModeActive();
+  const guardLevel = performanceGuardLevel(now);
   const critical = !!opts.critical;
   let adjustedInterval = Math.max(8, Math.round(Number(intervalMs) || 16));
   if(!critical){
@@ -10891,6 +11034,7 @@ function runFrameTask(key, intervalMs, fn, options={}){
       else if(lagTier >= 1) slowMul = Math.max(slowMul, 1.9);
       else slowMul = Math.max(slowMul, frameIsSlow() ? 1.6 : 1.35);
     }
+    slowMul = Math.max(slowMul, performanceGuardTickMul());
     if(slowMul > 1){
       adjustedInterval = Math.max(adjustedInterval, Math.round(adjustedInterval * slowMul));
     }
@@ -10909,6 +11053,11 @@ function runFrameTask(key, intervalMs, fn, options={}){
   if(!critical && iphoneLock){
     const lockCadence = lagTier >= 2 ? 4 : (lagTier >= 1 ? 3 : 2);
     cadence = Math.max(cadence, lockCadence);
+  }
+  if(!critical && guardLevel >= PERF_GUARD_LEVEL_STRONG){
+    cadence = Math.max(cadence, guardLevel >= PERF_GUARD_LEVEL_EMERGENCY ? 4 : 3);
+  } else if(!critical && guardLevel >= PERF_GUARD_LEVEL_LIGHT){
+    cadence = Math.max(cadence, 2);
   }
   if(cadence > 1){
     if(!Number.isFinite(__frameTaskPhase[key])){
@@ -10952,7 +11101,7 @@ function frameIsSlow(nowTs){
 function frameInterval(baseMs, slowMul=1.45){
   const modeMul = performanceMode() === "PERFORMANCE" ? 1.24 : 1;
   const dynamicMul = Math.max(FRAME_LOAD_LIGHT, Number(__frameDynamicLoadMul || FRAME_LOAD_LIGHT));
-  const blendedMul = Math.max(modeMul, dynamicMul);
+  const blendedMul = Math.max(modeMul, dynamicMul, performanceGuardTickMul());
   if(frameIsSlow()) return Math.max(baseMs + 1, Math.round(baseMs * Math.max(slowMul, blendedMul)));
   if(blendedMul > 1) return Math.max(baseMs + 1, Math.round(baseMs * blendedMul));
   return baseMs;
@@ -11039,10 +11188,12 @@ function renderStabilityMonitor(force=false){
   const tuning = currentBalanceTuning(S, now);
   const failPct = Math.round(clamp(Number(balance.lastFailRate || 0), 0, 1) * 100);
   const mode = performanceMode() === "PERFORMANCE" ? "PERF" : "AUTO";
+  const guard = performanceGuardLevel(now);
+  const guardReason = __performanceGuardState.lastReason || "clear";
   node.innerText =
     `FPS ${fps.toFixed(0)} | gap ${avgGap.toFixed(1)}ms (max ${worstGap.toFixed(0)})` +
     `\nframe ${avgCost.toFixed(1)}ms (max ${worstCost.toFixed(0)}) | drop ${dropped}` +
-    `\nmode ${mode} | recov ${recoversMin}/min | ctrl ${controlsRecov}` +
+    `\nmode ${mode} | guard ${guard} ${guardReason} | recov ${recoversMin}/min | ctrl ${controlsRecov}` +
     `\nauto x${Number(tuning.autoTune || 1).toFixed(2)} | fail ${failPct}% | deaths ${Math.floor(Number(balance.lastDeathsRecent || 0))}`;
 }
 function noteFrameSample(frameGap, frameCost){
@@ -11150,6 +11301,10 @@ function updateFrameLoad(frameStartTs){
   } else {
     __frameLagScore = Math.max(0, (__frameLagScore || 0) - 1);
   }
+  performanceGuardLevel(Date.now());
+  if((__performanceGuardState.level || 0) >= PERF_GUARD_LEVEL_STRONG){
+    performanceGuardClampFxLists();
+  }
   if(__frameLagScore >= FRAME_LAG_CRITICAL_SCORE){
     __frameSlowUntil = Math.max(__frameSlowUntil || 0, now + 3600);
     if(isMobileViewport() && performanceMode() !== "PERFORMANCE"){
@@ -11242,9 +11397,9 @@ function budgetedEntitySlice(list, opts={}){
 function viewportCullEntities(list, opts={}){
   const source = Array.isArray(list) ? list : [];
   if(!source.length) return source;
-  const pad = Math.max(40, Number(opts.pad || 120));
+  const pad = performanceGuardPad(Math.max(40, Number(opts.pad || 120)));
   const pinFn = (typeof opts.pin === "function") ? opts.pin : null;
-  const max = Math.max(1, Math.floor(Number(opts.max || source.length)));
+  const max = performanceGuardCap(Math.max(1, Math.floor(Number(opts.max || source.length))), Math.max(1, Math.floor(Number(opts.min || 1))));
   const visible = [];
   const pinned = [];
   for(const ent of source){
@@ -11274,12 +11429,15 @@ function clearEntityDrawCache(ent){
 }
 
 function runtimeMemoryCleanupTick(now=Date.now()){
-  if((now - (__lastRuntimeMemoryCleanupAt || 0)) < 900) return;
+  const guardLevel = performanceGuardLevel(now);
+  const cleanupEvery = guardLevel >= PERF_GUARD_LEVEL_EMERGENCY ? 360 : (guardLevel >= PERF_GUARD_LEVEL_STRONG ? 520 : 900);
+  if((now - (__lastRuntimeMemoryCleanupAt || 0)) < cleanupEvery) return;
   __lastRuntimeMemoryCleanupAt = now;
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
-  const cleanupBudget = lagTier >= 2 ? 56 : (mobile ? 78 : 108);
+  const cleanupBudget = Math.round((lagTier >= 2 ? 56 : (mobile ? 78 : 108)) * performanceGuardCleanupMul());
   let used = 0;
+  used += performanceGuardCleanupRuntime(now);
 
   for(const key of Object.keys(__frameTaskGate)){
     const at = Number(__frameTaskGate[key] || 0);
@@ -11436,6 +11594,9 @@ function stabilityHealthTick(){
     popupCap = Math.min(popupCap, mobile ? 9 : 14);
     pulseCap = Math.min(pulseCap, mobile ? 7 : 12);
   }
+  fxCap = performanceGuardCap(fxCap, mobile ? 6 : 10, performanceGuardFxScale());
+  popupCap = performanceGuardCap(popupCap, mobile ? 4 : 6, performanceGuardFxScale());
+  pulseCap = performanceGuardCap(pulseCap, mobile ? 4 : 6, performanceGuardFxScale());
   if(COMBAT_FX.length > fxCap) COMBAT_FX.splice(0, COMBAT_FX.length - fxCap);
   if(DAMAGE_POPUPS.length > popupCap) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - popupCap);
   if(IMPACT_PULSES.length > pulseCap) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - pulseCap);
@@ -28941,6 +29102,7 @@ function keepBattleTigerBesidePlayer(t, now=Date.now()){
 }
 
 function visualEffectsHeavyMode(){
+  if(performanceGuardLevel() >= PERF_GUARD_LEVEL_LIGHT) return true;
   if(frameLagTier() >= 1) return true;
   if(performanceMode() === "PERFORMANCE") return true;
   return frameIsSlow();
@@ -28950,6 +29112,7 @@ function visualReadabilityHeavyMode(){
   return __frameDynamicLoadMul >= FRAME_LOAD_HIGH;
 }
 function visualExtremeLoadMode(){
+  if(performanceGuardLevel() >= PERF_GUARD_LEVEL_EMERGENCY) return true;
   if(frameLagTier() >= 2) return true;
   if(__frameDynamicLoadMul >= FRAME_LOAD_EXTREME) return true;
   if(frameIsSlow()) return frameBudgetExceeded(0.55);
@@ -29105,7 +29268,8 @@ function queueImpactPulse(x, y, kind="hit"){
   const iphoneLite = iphoneLiteCombatFeedbackEnabled();
   if(iphoneStabilityModeActive() && !iphoneLite) return;
   if(!Number.isFinite(x) || !Number.isFinite(y)) return;
-  const pulseCap = iphoneLite ? 12 : 30;
+  if(performanceGuardSkipWorldFx(x, y, kind)) return;
+  const pulseCap = performanceGuardCap(iphoneLite ? 12 : 30, iphoneLite ? 3 : 5, performanceGuardFxScale());
   if(IMPACT_PULSES.length >= pulseCap){
     IMPACT_PULSES.splice(0, IMPACT_PULSES.length - (pulseCap - 1));
   }
@@ -29157,8 +29321,10 @@ function queueImpactPulse(x, y, kind="hit"){
 
 function emitCombatFx(x1, y1, x2, y2, color, width=3, kind="hit"){
   if(iphoneStabilityModeActive()) return;
-  if(COMBAT_FX.length >= 64){
-    COMBAT_FX.splice(0, COMBAT_FX.length - 63);
+  if(performanceGuardSkipWorldFx(x2, y2, kind)) return;
+  const fxCap = performanceGuardCap(64, 10, performanceGuardFxScale());
+  if(COMBAT_FX.length >= fxCap){
+    COMBAT_FX.splice(0, COMBAT_FX.length - (fxCap - 1));
   }
   const ttlBase = visualEffectsHeavyMode() ? 6 : 8;
   const ttl = (kind === "crit" || kind === "tranq" || kind === "shield" || kind === "dodge" || kind === "capture")
@@ -29214,9 +29380,10 @@ function drawCombatFx(){
   if(iphoneStabilityModeActive()) return;
   const heavy = visualEffectsHeavyMode();
   const lagTier = frameLagTier();
-  const maxDraw = heavy
+  const maxDrawRaw = heavy
     ? (lagTier >= 2 ? 10 : (frameIsSlow() ? 16 : 24))
     : (lagTier >= 2 ? 18 : (lagTier >= 1 ? 30 : 56));
+  const maxDraw = performanceGuardCap(maxDrawRaw, 4, performanceGuardFxScale());
   const startIdx = Math.max(0, COMBAT_FX.length - maxDraw);
   for(let i=startIdx; i<COMBAT_FX.length; i++){
     const fx = COMBAT_FX[i];
@@ -29287,11 +29454,12 @@ function drawImpactPulses(){
   const iphoneLite = iphoneLiteCombatFeedbackEnabled();
   if(iphoneStabilityModeActive() && !iphoneLite) return;
   const lagTier = frameLagTier();
-  const maxDraw = iphoneLite
+  const maxDrawRaw = iphoneLite
     ? (lagTier >= 2 ? 2 : (lagTier >= 1 ? 4 : 6))
     : (visualReadabilityHeavyMode()
       ? (lagTier >= 2 ? 7 : (frameIsSlow() ? 10 : 14))
       : (lagTier >= 2 ? 10 : (lagTier >= 1 ? 16 : 24)));
+  const maxDraw = performanceGuardCap(maxDrawRaw, iphoneLite ? 2 : 4, performanceGuardFxScale());
   const startIdx = Math.max(0, IMPACT_PULSES.length - maxDraw);
   for(let i=startIdx; i<IMPACT_PULSES.length; i++){
     const pulse = IMPACT_PULSES[i];
@@ -29387,8 +29555,9 @@ function emitDamagePopup(x, y, text, kind="hit"){
   const popupCap = iphoneLite
     ? (lagTier >= 1 ? 4 : 6)
     : (lagTier >= 2 ? 12 : (lagTier >= 1 ? 18 : 30));
-  if(DAMAGE_POPUPS.length >= popupCap){
-    DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - (popupCap - 1));
+  const popupCapFinal = performanceGuardCap(popupCap, iphoneLite ? 3 : 5, performanceGuardFxScale());
+  if(DAMAGE_POPUPS.length >= popupCapFinal){
+    DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - (popupCapFinal - 1));
   }
   const popupTtl = iphoneLite ? 18 : 34;
   const critTtl = iphoneLite ? 22 : 38;
@@ -29483,11 +29652,12 @@ function drawDamagePopups(){
   if(iphoneStabilityModeActive() && !iphoneLite) return;
   const heavy = visualReadabilityHeavyMode();
   const lagTier = frameLagTier();
-  const maxDraw = iphoneLite
+  const maxDrawRaw = iphoneLite
     ? (lagTier >= 1 ? 4 : 6)
     : (heavy
       ? (lagTier >= 2 ? 6 : (frameIsSlow() ? 8 : 12))
       : (lagTier >= 2 ? 8 : (lagTier >= 1 ? 14 : 24)));
+  const maxDraw = performanceGuardCap(maxDrawRaw, iphoneLite ? 2 : 4, performanceGuardFxScale());
   const startIdx = Math.max(0, DAMAGE_POPUPS.length - maxDraw);
   for(let i=startIdx; i<DAMAGE_POPUPS.length; i++){
     const p = DAMAGE_POPUPS[i];
@@ -35069,7 +35239,11 @@ function drawEntitiesLite(){
   const rescueSitesDraw = viewportCullEntities(S.rescueSites || [], { pad:pickupPad, max:rescueSiteMax });
 
   ctx.fillStyle = "rgba(77,47,33,.64)";
-  for(const c of (S.carcasses || [])){
+  const carcassesLite = viewportCullEntities(S.carcasses || [], {
+    pad:pickupPad,
+    max: mobile ? (lagTier >= 2 ? 8 : 14) : 24
+  });
+  for(const c of carcassesLite){
     ctx.fillRect(c.x - 9, c.y - 4, 18, 8);
   }
 
@@ -35279,7 +35453,11 @@ function drawEntities(){
     drawSafe("drawEntitiesLite", drawEntitiesLite);
   } else {
     // carcasses block movement
-    for(const c of S.carcasses){
+    const drawCarcasses = viewportCullEntities(S.carcasses || [], {
+      pad:propsPad,
+      max: mobile ? (lagTier >= 2 ? 10 : (lagTier >= 1 ? 16 : 24)) : 34
+    });
+    for(const c of drawCarcasses){
       drawSafe("drawCarcass", ()=>drawCarcass(c.x, c.y));
     }
 
