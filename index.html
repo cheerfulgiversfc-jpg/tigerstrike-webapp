@@ -597,6 +597,52 @@
       background:linear-gradient(180deg, rgba(48,68,116,.94), rgba(28,44,84,.92));
       box-shadow:0 0 0 1px var(--mode-glow) inset;
     }
+    .shopFilterPanel{
+      display:none;
+      margin-top:10px;
+      padding:10px;
+      border:1px solid rgba(48,65,102,.82);
+      border-radius:14px;
+      background:
+        radial-gradient(circle at 12% 18%, rgba(83,162,255,.14), transparent 42%),
+        linear-gradient(180deg, rgba(11,18,34,.78), rgba(8,13,24,.82));
+    }
+    .shopFilterPanel.active{display:block}
+    .shopFilterTop{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-bottom:8px;
+    }
+    .shopFilterTitle{
+      font-weight:950;
+      font-size:13px;
+      letter-spacing:.02em;
+    }
+    .shopFilterMeta{
+      color:var(--muted);
+      font-size:12px;
+      font-weight:800;
+    }
+    .shopFilterChips{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .shopFilterChip{
+      min-height:34px;
+      padding:7px 10px;
+      border-radius:999px;
+      font-size:12px;
+      box-shadow:none;
+    }
+    .shopFilterChip.active{
+      border-color:#f8b132;
+      background:linear-gradient(180deg, rgba(111,76,23,.96), rgba(62,42,16,.96));
+      color:#fff7ed;
+    }
     .list{display:grid;gap:10px;margin-top:10px}
     .item{
       border:1px solid rgba(58,77,120,.88);
@@ -1820,6 +1866,13 @@
         <button class="tab" id="tabPremium" onclick="shopTab('premium')">Premium</button>
         <button class="tab" id="tabTools" onclick="shopTab('tools')">Tools</button>
         <button class="tab" id="tabTraps" onclick="shopTab('traps')">Traps</button>
+      </div>
+      <div class="shopFilterPanel" id="shopFilterPanel">
+        <div class="shopFilterTop">
+          <div class="shopFilterTitle" id="shopFilterTitle">Shop Filters</div>
+          <div class="shopFilterMeta" id="shopFilterMeta"></div>
+        </div>
+        <div class="shopFilterChips" id="shopFilterChips"></div>
       </div>
       <div class="hudLine" id="shopNote"></div>
       <div class="list" id="shopList"></div>

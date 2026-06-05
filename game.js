@@ -17649,6 +17649,7 @@ function openMissionBriefShop(tab="bundles", bundleId=""){
     __returnToMissionBriefAfterShop = true;
   }
   currentShopTab = tab || "bundles";
+  if((tab || "bundles") === "bundles") currentShopFilter = bundleId ? "recommended" : "all";
   openShop();
   if(document.getElementById("shopOverlay")?.style?.display === "flex"){
     shopTab(tab || "bundles");
@@ -19654,6 +19655,7 @@ function updateModeDesc(){
 
 // ===================== Shop / Inventory =====================
 let currentShopTab="weapons";
+let currentShopFilter="all";
 let starsCheckoutBusy = false;
 let starsTopupBusy = false;
 const starsClaimInFlight = new Map();
@@ -20596,6 +20598,7 @@ function shopTab(tab){
   ensureBundlesShopTab();
   ensureSeasonShopTab();
   ensureForgeShopTab();
+  if(currentShopTab !== tab) currentShopFilter = "all";
   currentShopTab=tab;
   ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabBundles","tabSeason","tabForge","tabStars","tabCash","tabPremium","tabTools","tabTraps"].forEach((id)=>{
     const el = document.getElementById(id);
@@ -20688,11 +20691,84 @@ function cashShopBundles(){
   return valid.sort((a, b)=>Number(a.price || 0) - Number(b.price || 0));
 }
 
+function recommendedShopBundleIds(){
+  const card = currentMissionCardData();
+  if(!card?.mission) return new Set();
+  const profile = missionBriefRecommendationProfile(card.mode, card.mission);
+  return new Set(Array.isArray(profile.bundleIds) ? profile.bundleIds : []);
+}
+
+function cashBundleCategorySet(bundle, recommendedIds=recommendedShopBundleIds()){
+  const text = `${bundle?.id || ""} ${bundle?.name || ""} ${bundle?.desc || ""} ${bundle?.preview || ""}`.toLowerCase();
+  const price = Math.max(0, Math.floor(Number(bundle?.price || 0)));
+  const cats = new Set(["all"]);
+  if(recommendedIds.has(bundle?.id)) cats.add("recommended");
+  if(price <= Math.max(0, Number(S.funds || 0))) cats.add("affordable");
+  if(price <= 100000) cats.add("starter");
+  else if(price <= 400000) cats.add("midgame");
+  else cats.add("endgame");
+  if(/capture|tranq|net|license|non-lethal/.test(text)) cats.add("capture");
+  if(/boss|nemesis|apex|predator|hunt|hunter|dossier|weakness/.test(text)) cats.add("boss");
+  if(/civilian|rescue|evac|escort|flare/.test(text)) cats.add("rescue");
+  if(/squad|soldier|specialist|deployment|payroll|training|doctrine/.test(text)) cats.add("squad");
+  if(/trap|control/.test(text)) cats.add("control");
+  if(/ammo|armory|weapon|repair|durability|scope/.test(text)) cats.add("armory");
+  return cats;
+}
+
+function shopFiltersForTab(tab=currentShopTab){
+  if(tab !== "bundles") return [];
+  return [
+    { id:"all", label:"All" },
+    { id:"recommended", label:"Recommended" },
+    { id:"affordable", label:"Can Buy" },
+    { id:"starter", label:"Starter" },
+    { id:"midgame", label:"Midgame" },
+    { id:"endgame", label:"Endgame" },
+    { id:"capture", label:"Capture" },
+    { id:"boss", label:"Boss" },
+    { id:"rescue", label:"Rescue" },
+    { id:"squad", label:"Squad" },
+    { id:"control", label:"Control" },
+    { id:"armory", label:"Armory" },
+  ];
+}
+
+function setShopFilter(filter="all"){
+  currentShopFilter = String(filter || "all");
+  renderShopList();
+}
+
+function renderShopFilterPanel(total=0, shown=0){
+  const panel = document.getElementById("shopFilterPanel");
+  const title = document.getElementById("shopFilterTitle");
+  const meta = document.getElementById("shopFilterMeta");
+  const chips = document.getElementById("shopFilterChips");
+  if(!panel || !title || !meta || !chips) return;
+  const filters = shopFiltersForTab(currentShopTab);
+  if(!filters.length){
+    panel.classList.remove("active");
+    chips.innerHTML = "";
+    meta.innerText = "";
+    return;
+  }
+  const validIds = new Set(filters.map((f)=>f.id));
+  if(!validIds.has(currentShopFilter)) currentShopFilter = "all";
+  panel.classList.add("active");
+  title.innerText = currentShopTab === "bundles" ? "Bundle Filters" : "Shop Filters";
+  meta.innerText = `${shown}/${total} shown`;
+  chips.innerHTML = filters.map((filter)=>{
+    const active = currentShopFilter === filter.id;
+    return `<button class="shopFilterChip ${active ? "active" : "ghost"}" onclick="setShopFilter('${filter.id}')">${filter.label}</button>`;
+  }).join("");
+}
+
 function renderShopList(){
   ensureWeaponMasteryState();
   document.getElementById("shopMoney").innerText = S.funds.toLocaleString();
   const list=document.getElementById("shopList");
   const note=document.getElementById("shopNote");
+  renderShopFilterPanel(0, 0);
 
   if(currentShopTab==="weapons"){
     ensureWeaponAttachmentState(S);
@@ -21369,17 +21445,57 @@ function renderShopList(){
 
   if(currentShopTab==="bundles"){
     const cashBundles = cashShopBundles();
-    note.innerText=`High-value cash bundles for players with extra money. ${cashBundles.length} validated bundles are available; purchases only charge after rewards apply.`;
-    list.innerHTML = cashBundles.map((bundle)=>{
+    const recommendedIds = recommendedShopBundleIds();
+    const activeFilter = currentShopFilter || "all";
+    const filteredBundles = cashBundles.filter((bundle)=>cashBundleCategorySet(bundle, recommendedIds).has(activeFilter));
+    renderShopFilterPanel(cashBundles.length, filteredBundles.length);
+    const filterLabel = (shopFiltersForTab("bundles").find((f)=>f.id === activeFilter)?.label || "All");
+    note.innerText=`Bundles are validated before display and purchases only charge after rewards apply. Filter: ${filterLabel}. ${filteredBundles.length}/${cashBundles.length} bundles shown.`;
+    if(!filteredBundles.length){
+      list.innerHTML = `
+        <div class="item">
+          <div>
+            <div class="itemName">No bundles match this filter</div>
+            <div class="itemDesc">Try All, Can Buy, or Recommended. Recommended depends on the current Story/Arcade mission briefing.</div>
+          </div>
+          <div style="text-align:right">
+            <button class="ghost" onclick="setShopFilter('all')">Show All</button>
+          </div>
+        </div>`;
+      return;
+    }
+    list.innerHTML = filteredBundles.map((bundle)=>{
+      const cats = cashBundleCategorySet(bundle, recommendedIds);
+      const tagOrder = ["recommended","affordable","starter","midgame","endgame","capture","boss","rescue","squad","control","armory"];
+      const tagLabels = {
+        recommended:"Recommended",
+        affordable:"Can Buy",
+        starter:"Starter",
+        midgame:"Midgame",
+        endgame:"Endgame",
+        capture:"Capture",
+        boss:"Boss",
+        rescue:"Rescue",
+        squad:"Squad",
+        control:"Control",
+        armory:"Armory",
+      };
+      const tags = tagOrder
+        .filter((id)=>cats.has(id))
+        .slice(0, 4)
+        .map((id)=>`<span class="tag">${tagLabels[id]}</span>`)
+        .join("");
+      const canAfford = Number(S.funds || 0) >= Number(bundle.price || 0);
       return `
         <div class="item">
           <div>
-            <div class="itemName">${bundle.name} <span class="tag">Bundle</span></div>
+            <div class="itemName">${bundle.name} <span class="tag">Bundle</span>${tags}</div>
             <div class="itemDesc">${bundle.desc}</div>
+            <div class="itemDesc">${canAfford ? "Ready to buy now." : `Need $${Math.max(0, Number(bundle.price || 0) - Number(S.funds || 0)).toLocaleString()} more.`}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${bundle.price.toLocaleString()} • ${bundle.preview}</div>
-            <button onclick="buyCashBundle('${bundle.id}')">Buy Bundle</button>
+            <button onclick="buyCashBundle('${bundle.id}')" ${canAfford ? "" : "disabled"}>${canAfford ? "Buy Bundle" : "Need Cash"}</button>
           </div>
         </div>`;
     }).join("");
@@ -36768,6 +36884,7 @@ window.togglePause = togglePause;
 window.openShop = openShop;
 window.closeShop = closeShop;
 window.shopTab = shopTab;
+window.setShopFilter = setShopFilter;
 
 window.openInventory = openInventory;
 window.closeInventory = closeInventory;
