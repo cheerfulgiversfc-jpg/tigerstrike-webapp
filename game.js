@@ -16099,6 +16099,18 @@ function emitRescueFeedback(civ, cashGain=0, xpGain=0){
   emitDamagePopup(civ.x, civ.y - 30, `RESCUE +$${cashGain} +${xpGain}XP`, "capture");
   queueCameraShake(0.55, 130);
 }
+function markCivilianRescueFeedback(civ, cashGain=0, xpGain=0){
+  if(!civ || typeof civ !== "object") return;
+  const now = Date.now();
+  civ._rescuedAt = now;
+  civ._rescuedCash = Math.max(0, Math.floor(Number(cashGain || 0)));
+  civ._rescuedXp = Math.max(0, Math.floor(Number(xpGain || 0)));
+  civ._safeZoneArrivedAt = now;
+  if(S.evacZone && Number.isFinite(S.evacZone.x) && Number.isFinite(S.evacZone.y)){
+    queueImpactPulse(S.evacZone.x, S.evacZone.y, "capture");
+  }
+  setEventText(`✅ Civilian rescued instantly: +$${civ._rescuedCash.toLocaleString()} • +${civ._rescuedXp}XP`, 1.8);
+}
 function missionTwistsEnabled(){
   if(!ENABLE_MISSION_TWISTS) return false;
   if(!liveOpsCommandFlag("missionTwists")) return false;
@@ -27507,10 +27519,8 @@ function followCiviliansTick(){
     }
   }
 
-  // Tutorial escort step should register evac immediately after movement updates.
-  if(tutorialRun && tutorialEscortStep){
-    evacCheck();
-  }
+  // Register safe-zone arrivals immediately after movement, so rescues feel instant.
+  evacCheck();
 }
 
 function moveCivilianInsideEvac(c, coreRadiusOverride=null){
@@ -27586,6 +27596,7 @@ function evacCheck(){
         trackCashEarned(cashGain);
       }
       awardCombo("rescue");
+      markCivilianRescueFeedback(c, cashGain, xpGain);
       emitRescueFeedback(c, cashGain, xpGain);
       const roleTag = c.aiState === "injured" ? "injured" : c.aiState;
       const riskTag = riskState === "critical" ? "high-risk" : (riskState === "threatened" ? "threatened" : "stable");
@@ -33739,6 +33750,7 @@ function animMoveBlend(entity, expectedTopSpeed=2.4){
 }
 
 function drawCivilian(c){
+  const nowMs = Date.now();
   const moveBlend = animMoveBlend(c, c.following ? 2.1 : 1.4);
   const smooth = smoothedDrawPoint(c, c.x, c.y, c.following ? (0.40 + (moveBlend * 0.08)) : (0.30 + (moveBlend * 0.07)));
   const cx = smooth.x;
@@ -33862,6 +33874,67 @@ function drawCivilian(c){
   roundedRectFill(2, 12, 7, 2.6, 1.2);
 
   ctx.restore();
+
+  const rescuedAge = nowMs - Math.max(0, Number(c._rescuedAt || 0));
+  if(c.evac && rescuedAge >= 0 && rescuedAge < 1800){
+    const life = 1 - clamp(rescuedAge / 1800, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = 0.70 * life;
+    ctx.strokeStyle = "rgba(74,222,128,.98)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(bx, by - 4, 20 + ((1 - life) * 18), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(12,58,32,.92)";
+    roundedRectFill(bx - 42, by - 58, 84, 20, 9);
+    ctx.strokeStyle = "rgba(134,239,172,.82)";
+    ctx.strokeRect(bx - 41.5, by - 57.5, 83, 19);
+    ctx.fillStyle = "rgba(220,255,235,.98)";
+    ctx.font = "900 10px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("RESCUED", bx, by - 44);
+    ctx.textAlign = "start";
+    ctx.restore();
+  }
+
+  if(!c.evac){
+    let label = "";
+    let labelBg = "";
+    let labelBorder = "";
+    if(riskState === "critical"){
+      label = "HELP";
+      labelBg = "rgba(82,24,24,.92)";
+      labelBorder = "rgba(248,113,113,.92)";
+    }else if(riskState === "threatened"){
+      label = "PANIC";
+      labelBg = "rgba(74,50,8,.92)";
+      labelBorder = "rgba(251,191,36,.92)";
+    }else if(c.aiState === "injured"){
+      label = "INJURED";
+      labelBg = "rgba(56,38,74,.90)";
+      labelBorder = "rgba(216,180,254,.88)";
+    }else if(c.following){
+      label = "FOLLOW";
+      labelBg = "rgba(14,44,86,.82)";
+      labelBorder = "rgba(96,165,250,.76)";
+    }
+    if(label){
+      const pulse = riskState === "critical" ? (0.84 + Math.sin(nowMs / 95) * 0.12) : 0.86;
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      const w = label === "INJURED" ? 58 : 48;
+      ctx.fillStyle = labelBg;
+      roundedRectFill(bx - (w * 0.5), by - 58, w, 18, 8);
+      ctx.strokeStyle = labelBorder;
+      ctx.strokeRect(bx - (w * 0.5) + 0.5, by - 57.5, w - 1, 17);
+      ctx.fillStyle = "rgba(255,255,255,.94)";
+      ctx.font = "900 9px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText(label, bx, by - 46);
+      ctx.textAlign = "start";
+      ctx.restore();
+    }
+  }
 
   if(c.evac){
     ctx.fillStyle="rgba(74,222,128,.85)";
