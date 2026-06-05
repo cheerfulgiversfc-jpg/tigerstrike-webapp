@@ -17015,6 +17015,7 @@ let __pendingDailyReward = null;
 let __dailyRewardContinue = null;
 let __launchThemeAt = 0;
 let __launchMusicLoopTimer = 0;
+let __returnToMissionBriefAfterShop = false;
 
 const INTRO_LAUNCH_MS = 10000;
 const INTRO_STORY_MS = 10000;
@@ -17156,6 +17157,118 @@ function missionBossWarningText(mission){
   if(mission.finalBoss) return "Boss Warning: Final boss mission.";
   if(mission.bossTwin) return `Boss Warning: Twin ${mission.bossType || "Alpha"} Tigers.${sig}`;
   return `Boss Warning: ${mission.bossType || "Alpha"} Tiger.${sig}`;
+}
+function missionBriefRecommendationProfile(mode, mission){
+  const m = mission || {};
+  let score = 1;
+  const tags = [];
+  const bundleIds = [];
+  const addBundle = (id)=>{
+    if(!id || bundleIds.includes(id)) return;
+    if(cashBundleById(id)) bundleIds.push(id);
+  };
+
+  const civs = Math.max(0, Math.floor(Number(m.civilians || 0)));
+  const tigers = Math.max(0, Math.floor(Number(m.tigers || 0)));
+  const captureReq = Math.max(0, Math.floor(Number(m.captureRequired || 0)));
+  const chapter = Math.max(1, Math.floor(Number(m.chapter || Math.ceil((Number(m.number || 1)) / 10) || 1)));
+  score += Math.min(4, Math.floor(tigers / 2));
+  score += Math.min(3, Math.floor(civs / 3));
+  score += Math.min(3, Math.floor(chapter / 3));
+
+  if(civs >= 5 || m.convoyMission){
+    score += 2;
+    tags.push("Civilian rescue pressure");
+    addBundle("cash_civilian_priority_contract");
+    addBundle("cash_evac_command_cache");
+  } else if(civs > 0){
+    tags.push("Escort route");
+    addBundle("cash_civilian_escort_kit");
+  }
+  if(captureReq > 0 || m.captureOnly){
+    score += 2;
+    tags.push("Capture objective");
+    addBundle("cash_elite_capture_license");
+    addBundle("cash_legendary_tranq_shipment");
+  }
+  if(m.boss || m.finalBoss || m.bossTwin){
+    score += m.finalBoss ? 5 : (m.bossTwin ? 4 : 3);
+    tags.push(m.finalBoss ? "Final boss" : (m.bossTwin ? "Twin boss" : "Boss threat"));
+    addBundle("cash_boss_weakness_dossier");
+    addBundle("cash_boss_hunt_contract");
+  }
+  if(m.trapPlaceRequired > 0 || m.trapTriggerRequired > 0){
+    score += 2;
+    tags.push("Trap objective");
+    addBundle("cash_elite_trap_shipment");
+  }
+  if(m.lowVisibility){
+    score += 1;
+    tags.push("Low visibility");
+    addBundle("cash_advanced_radar_sweep");
+  }
+  if(m.limitedAmmo){
+    score += 2;
+    tags.push("Limited ammo");
+    addBundle("cash_elite_ammo_pack");
+    addBundle("cash_mobile_armory_truck");
+  }
+  if(m.bloodAggro){
+    score += 1;
+    tags.push("Aggression risk");
+    addBundle("cash_mission_insurance");
+  }
+  if(chapter >= 8 || normalizeStoryVariant(m.storyVariant) !== STORY_VARIANTS.CAMPAIGN){
+    score += 2;
+    tags.push("Endgame route");
+    addBundle("cash_nemesis_hunt_contract");
+    addBundle("cash_apex_predator_permit");
+  }
+  if(mode === "Arcade"){
+    tags.push("Timed arcade");
+    addBundle("cash_war_loadout");
+  }
+  if(bundleIds.length < 3){
+    addBundle(score >= 9 ? "cash_hq_supply_drop" : "cash_quick_prep");
+    addBundle(score >= 12 ? "cash_endgame_expedition_crate" : "cash_war_loadout");
+  }
+
+  const threat =
+    score >= 15 ? "Extreme" :
+    score >= 11 ? "High" :
+    score >= 7 ? "Elevated" :
+    "Standard";
+  const gear = [];
+  if(captureReq > 0 || m.captureOnly) gear.push("Tranq Rifle/Launcher + Heavy Tranq");
+  if(m.boss || m.finalBoss || m.bossTwin) gear.push("AP ammo + shields + pro repairs");
+  if(civs > 0) gear.push("Shields, traps, and medkits for escorts");
+  if(m.lowVisibility) gear.push("Scan often and keep a flare/radar-style prep bundle ready");
+  if(m.limitedAmmo) gear.push("Buy ammo before starting");
+  if(!gear.length) gear.push("Balanced ammo, shields, and traps");
+
+  return {
+    threat,
+    score,
+    tags: tags.length ? tags.slice(0, 5) : ["Balanced mission"],
+    gear: gear.slice(0, 4),
+    bundleIds: bundleIds.slice(0, 4)
+  };
+}
+function renderMissionBriefRecommendations(mode, mission){
+  const wrap = document.getElementById("missionBriefRecommendations");
+  const threatEl = document.getElementById("missionBriefThreat");
+  const gearEl = document.getElementById("missionBriefGear");
+  const bundlesEl = document.getElementById("missionBriefBundles");
+  if(!wrap || !threatEl || !gearEl || !bundlesEl) return;
+  const profile = missionBriefRecommendationProfile(mode, mission);
+  wrap.style.display = "block";
+  threatEl.innerText = `Threat Rating: ${profile.threat} (${profile.score}) • ${profile.tags.join(" • ")}`;
+  gearEl.innerText = `Recommended Gear: ${profile.gear.join(" • ")}`;
+  bundlesEl.innerHTML = profile.bundleIds.map((id)=>{
+    const bundle = cashBundleById(id);
+    if(!bundle) return "";
+    return `<button class="ghost" onclick="openMissionBriefShop('bundles','${bundle.id}')">${bundle.name}<br><span class="small">$${bundle.price.toLocaleString()} • ${bundle.preview}</span></button>`;
+  }).join("") || `<button class="ghost" onclick="openMissionBriefShop('bundles')">Open Bundles</button>`;
 }
 function shouldShowMissionBrief(){
   if(window.__TUTORIAL_MODE__) return false;
@@ -17310,10 +17423,11 @@ function showMissionBrief(durationMs=2600){
   }
   if(intelEl) intelEl.innerText = isStory ? storyMissionIntelText(card.mission) : "";
   if(rewardEl) rewardEl.innerText = isStory ? storyChapterRewardPreviewText(card.mission) : "";
+  renderMissionBriefRecommendations(card.mode, card.mission);
   if(hintEl){
     hintEl.innerText = isArcade
       ? "Pick one Buildcraft loadout plus 1 positive and 1 negative Live Ops card, then tap Start Mission."
-      : "Pick 1 positive and 1 negative Live Ops card, then tap Start Mission.";
+      : "Review recommended prep, pick 1 positive and 1 negative Live Ops card, then tap Start Mission.";
   }
   if(startBtn) startBtn.innerText = isArcade ? "Start Mission" : "Start Mission";
   renderArcadeBuildcraftBrief();
@@ -17376,6 +17490,20 @@ function closeMissionBrief(fromTimer=false){
   if(wasBriefVisible) beginGameplayMapLoadingGuard("mission-brief-start");
   if(!fromTimer) sfx("ui");
   syncGamepadFocus();
+}
+function openMissionBriefShop(tab="bundles", bundleId=""){
+  const overlay = document.getElementById("missionBriefOverlay");
+  if(overlay && overlay.style.display === "flex"){
+    overlay.style.display = "none";
+    __returnToMissionBriefAfterShop = true;
+  }
+  currentShopTab = tab || "bundles";
+  openShop();
+  if(document.getElementById("shopOverlay")?.style?.display === "flex"){
+    shopTab(tab || "bundles");
+    const bundle = bundleId ? cashBundleById(bundleId) : null;
+    if(bundle) toast(`Recommended: ${bundle.name}`);
+  }
 }
 function playLaunchTheme(force=false){
   if(!S.soundOn) return;
@@ -20108,6 +20236,18 @@ function openShop(){
 }
 function closeShop(){
   document.getElementById("shopOverlay").style.display="none";
+  if(__returnToMissionBriefAfterShop && !S.missionEnded && !S.inBattle && !S.gameOver){
+    __returnToMissionBriefAfterShop = false;
+    const overlay = document.getElementById("missionBriefOverlay");
+    if(overlay && shouldShowMissionBrief()){
+      renderArcadeBuildcraftBrief();
+      overlay.style.display = "flex";
+      setPaused(true, "mission-brief");
+      syncGamepadFocus();
+      return;
+    }
+  }
+  __returnToMissionBriefAfterShop = false;
   if(S.missionEnded){
     setPaused(true,"complete");
     renderCompleteRecapCard();
@@ -36467,6 +36607,7 @@ window.shopTab = shopTab;
 window.openInventory = openInventory;
 window.closeInventory = closeInventory;
 window.openShopFromInventory = openShopFromInventory;
+window.openMissionBriefShop = openMissionBriefShop;
 window.toggleMobileMenu = toggleMobileMenu;
 
 window.resetGame = resetGame;
