@@ -4618,6 +4618,181 @@ function applySeasonFinisherVisual(tiger, outcome="KILL"){
   }
 }
 
+// ===================== COSMETIC COLLECTION HUB =====================
+const SAFE_ZONE_COSMETICS = Object.freeze({
+  SAFE_FIELD: { name:"Field Beacon", desc:"Classic rescue-green safe house.", unlock:"Default", minEvac:0, color:"rgba(74,222,128,.96)", glow:"rgba(74,222,128,.34)", accent:"rgba(220,255,235,.98)", icon:"🏕️" },
+  SAFE_COBALT: { name:"Cobalt Landing", desc:"Blue command landing beacon.", unlock:"Rescue 20 civilians", minEvac:20, color:"rgba(96,165,250,.98)", glow:"rgba(59,130,246,.34)", accent:"rgba(219,234,254,.98)", icon:"🔷" },
+  SAFE_SUNRISE: { name:"Sunrise Haven", desc:"Warm gold high-visibility refuge.", unlock:"Rescue 60 civilians", minEvac:60, color:"rgba(251,191,36,.98)", glow:"rgba(245,158,11,.32)", accent:"rgba(254,243,199,.98)", icon:"🌅" },
+  SAFE_APEX: { name:"Apex Sanctuary", desc:"Elite crimson-and-gold command zone.", unlock:"Rescue 150 civilians", minEvac:150, color:"rgba(251,113,133,.98)", glow:"rgba(244,63,94,.34)", accent:"rgba(254,240,138,.98)", icon:"👑" },
+});
+const MOVEMENT_TRAIL_COSMETICS = Object.freeze({
+  TRAIL_NONE: { name:"No Trail", desc:"Clean movement with no trail effect.", unlock:"Default", minMissions:0, color:"rgba(226,232,240,.0)", icon:"➖" },
+  TRAIL_SCOUT: { name:"Scout Wake", desc:"A crisp blue navigation wake.", unlock:"Clear 5 missions", minMissions:5, color:"rgba(96,165,250,.82)", icon:"💨" },
+  TRAIL_RESCUE: { name:"Rescue Pulse", desc:"A green rescue-team pulse trail.", unlock:"Clear 15 missions", minMissions:15, color:"rgba(74,222,128,.82)", icon:"🛟" },
+  TRAIL_PREDATOR: { name:"Predator Ember", desc:"An amber trail earned through captures.", unlock:"Capture 40 tigers", minCaptures:40, color:"rgba(251,146,60,.84)", icon:"🐯" },
+  TRAIL_APEX: { name:"Apex Starlight", desc:"A gold elite-command trail.", unlock:"Clear 75 missions", minMissions:75, color:"rgba(250,204,21,.90)", icon:"⭐" },
+});
+const TIGER_TROPHY_TYPES = Object.freeze(["Legacy","Standard","Scout","Stalker","Berserker","Alpha","Boss"]);
+const __cosmeticCollectionReadyStates = new WeakSet();
+function defaultCosmeticCollectionState(){
+  return { equippedSafeZone:"SAFE_FIELD", equippedMovementTrail:"TRAIL_NONE", trophies:{}, recentTrophies:[] };
+}
+function normalizeCosmeticCollectionState(raw){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const trophies = {};
+  for(const type of TIGER_TROPHY_TYPES){
+    trophies[type] = Math.max(0, Math.floor(Number(src.trophies?.[type] || 0)));
+  }
+  return {
+    equippedSafeZone: SAFE_ZONE_COSMETICS[src.equippedSafeZone] ? src.equippedSafeZone : "SAFE_FIELD",
+    equippedMovementTrail: MOVEMENT_TRAIL_COSMETICS[src.equippedMovementTrail] ? src.equippedMovementTrail : "TRAIL_NONE",
+    trophies,
+    recentTrophies: Array.isArray(src.recentTrophies) ? src.recentTrophies.slice(-12) : [],
+  };
+}
+function cosmeticWorldUnlocked(def, state=S){
+  const totals = ensureOpsTotalsState(state);
+  return Math.max(0, Number(totals.evac || 0)) >= Math.max(0, Number(def?.minEvac || 0)) &&
+    Math.max(0, Number(totals.captures || 0)) >= Math.max(0, Number(def?.minCaptures || 0)) &&
+    Math.max(0, Number(totals.missionsCleared || 0)) >= Math.max(0, Number(def?.minMissions || 0));
+}
+function ensureCosmeticCollectionState(state=S){
+  const current = state.cosmeticCollection;
+  if(current && typeof current === "object" && __cosmeticCollectionReadyStates.has(state)) return current;
+  const needsNormalize =
+    !current ||
+    typeof current !== "object" ||
+    !current.trophies ||
+    typeof current.trophies !== "object" ||
+    !Array.isArray(current.recentTrophies) ||
+    !SAFE_ZONE_COSMETICS[current.equippedSafeZone] ||
+    !MOVEMENT_TRAIL_COSMETICS[current.equippedMovementTrail];
+  if(needsNormalize) state.cosmeticCollection = normalizeCosmeticCollectionState(current);
+  const trophyCount = Object.values(state.cosmeticCollection.trophies).reduce((sum, value)=>sum + Math.max(0, Number(value || 0)), 0);
+  const priorCaptures = Math.max(0, Math.floor(Number(ensureOpsTotalsState(state).captures || 0)));
+  if(trophyCount <= 0 && priorCaptures > 0) state.cosmeticCollection.trophies.Legacy = priorCaptures;
+  if(!cosmeticWorldUnlocked(SAFE_ZONE_COSMETICS[state.cosmeticCollection.equippedSafeZone], state)) state.cosmeticCollection.equippedSafeZone = "SAFE_FIELD";
+  if(!cosmeticWorldUnlocked(MOVEMENT_TRAIL_COSMETICS[state.cosmeticCollection.equippedMovementTrail], state)) state.cosmeticCollection.equippedMovementTrail = "TRAIL_NONE";
+  __cosmeticCollectionReadyStates.add(state);
+  return state.cosmeticCollection;
+}
+function equipWorldCosmetic(kind, id){
+  const collection = ensureCosmeticCollectionState(S);
+  const catalog = kind === "safe" ? SAFE_ZONE_COSMETICS : MOVEMENT_TRAIL_COSMETICS;
+  const def = catalog[id];
+  if(!def) return toast("Cosmetic not found.");
+  if(!cosmeticWorldUnlocked(def, S)) return toast(`Locked: ${def.unlock}.`);
+  if(kind === "safe") collection.equippedSafeZone = id;
+  else collection.equippedMovementTrail = id;
+  toast(`${def.name} equipped.`);
+  sfx("ui");
+  save(true);
+  renderInventory();
+}
+function activeSafeZoneCosmetic(state=S){
+  const collection = ensureCosmeticCollectionState(state);
+  return SAFE_ZONE_COSMETICS[collection.equippedSafeZone] || SAFE_ZONE_COSMETICS.SAFE_FIELD;
+}
+function activeSafeZoneHue(fallback="rgba(74,222,128,.95)", state=S){
+  return activeSafeZoneCosmetic(state)?.color || fallback;
+}
+function activeMovementTrailCosmetic(state=S){
+  const collection = ensureCosmeticCollectionState(state);
+  return MOVEMENT_TRAIL_COSMETICS[collection.equippedMovementTrail] || MOVEMENT_TRAIL_COSMETICS.TRAIL_NONE;
+}
+function recordCapturedTigerTrophy(tiger, source="player"){
+  if(!tiger || source === "rival") return;
+  const collection = ensureCosmeticCollectionState(S);
+  const type = isBossTiger(tiger) ? "Boss" : (TIGER_TROPHY_TYPES.includes(String(tiger.type)) ? String(tiger.type) : "Standard");
+  collection.trophies[type] = Math.max(0, Number(collection.trophies[type] || 0)) + 1;
+  collection.recentTrophies.push({ type, name:String(tiger.alias || tiger.name || type), capturedAt:Date.now(), source });
+  collection.recentTrophies = collection.recentTrophies.slice(-12);
+  __savePending = true;
+}
+function cosmeticCollectionStats(){
+  const pass = ensureSeasonPassState(S);
+  ensureWeaponForgeState(S);
+  const mastery = ensureMasteryRewardsState(S);
+  const collection = ensureCosmeticCollectionState(S);
+  const seasonOwned = ["skins","badges","banners","finishers"].reduce((n, key)=>n + (pass.owned?.[key]?.length || 0), 0);
+  const seasonTotal = Object.keys(SEASON_PASS_SKINS).length + Object.keys(SEASON_PASS_BADGES).length + Object.keys(SEASON_PASS_BANNERS).length + Object.keys(SEASON_PASS_FINISHERS).length;
+  const forgeOwned = Object.values(S.weaponForge.unlocks?.skins || {}).filter(Boolean).length + Object.values(S.weaponForge.unlocks?.effects || {}).filter(Boolean).length;
+  const forgeTotal = WEAPON_FORGE_SKINS.length + WEAPON_FORGE_EFFECTS.length;
+  const worldOwned = Object.values(SAFE_ZONE_COSMETICS).filter((def)=>cosmeticWorldUnlocked(def, S)).length + Object.values(MOVEMENT_TRAIL_COSMETICS).filter((def)=>cosmeticWorldUnlocked(def, S)).length;
+  const worldTotal = Object.keys(SAFE_ZONE_COSMETICS).length + Object.keys(MOVEMENT_TRAIL_COSMETICS).length;
+  const titleOwned = mastery.ownedEliteTitles.length;
+  const titleTotal = Object.keys(MASTERY_ELITE_TITLES).length;
+  const trophyOwned = TIGER_TROPHY_TYPES.filter((type)=>Number(collection.trophies[type] || 0) > 0).length;
+  return { owned:seasonOwned + forgeOwned + worldOwned + titleOwned + trophyOwned, total:seasonTotal + forgeTotal + worldTotal + titleTotal + TIGER_TROPHY_TYPES.length, seasonOwned, seasonTotal, forgeOwned, forgeTotal, worldOwned, worldTotal, titleOwned, titleTotal, trophyOwned, trophyTotal:TIGER_TROPHY_TYPES.length };
+}
+function cosmeticCard(name, desc, icon, owned, equipped, action=""){
+  return `<div class="item" style="${owned ? "" : "opacity:.62;"}">
+    <div><div class="itemName">${owned ? (equipped ? "✅" : "🔓") : "🔒"} ${icon || "🎨"} ${name}</div><div class="itemDesc">${desc}</div></div>
+    <div style="text-align:right">${action}</div>
+  </div>`;
+}
+function renderCosmeticCollection(){
+  const root = document.getElementById("invCosmetics");
+  const summary = document.getElementById("invCosmeticSummary");
+  if(!root || !summary) return;
+  const pass = ensureSeasonPassState(S);
+  const mastery = ensureMasteryRewardsState(S);
+  const collection = ensureCosmeticCollectionState(S);
+  ensureWeaponForgeState(S);
+  const stats = cosmeticCollectionStats();
+  const pct = Math.round((stats.owned / Math.max(1, stats.total)) * 100);
+  summary.innerHTML = `<b>Cosmetic Collection:</b> ${stats.owned}/${stats.total} (${pct}%)<br><b>Season:</b> ${stats.seasonOwned}/${stats.seasonTotal} • <b>Forge:</b> ${stats.forgeOwned}/${stats.forgeTotal} • <b>World:</b> ${stats.worldOwned}/${stats.worldTotal} • <b>Titles:</b> ${stats.titleOwned}/${stats.titleTotal} • <b>Trophies:</b> ${stats.trophyOwned}/${stats.trophyTotal}`;
+  const seasonGroups = [["skin",SEASON_PASS_SKINS],["badge",SEASON_PASS_BADGES],["banner",SEASON_PASS_BANNERS],["finisher",SEASON_PASS_FINISHERS]];
+  const seasonHtml = seasonGroups.map(([type,catalog])=>Object.entries(catalog).map(([id,def])=>{
+    const owned = seasonPassOwnsCosmetic(pass, type, id);
+    const equipped = pass.equipped?.[type] === id;
+    return cosmeticCard(def.name, `${type} • ${owned ? "Owned" : "Unlock through Season or Mastery rewards."}`, SEASON_PASS_TYPE_ICON[type], owned, equipped, owned ? `<button ${equipped ? "disabled" : ""} onclick="equipSeasonPassCosmetic('${type}','${id}');renderInventory()">Equip</button>` : "");
+  }).join("")).join("");
+  const forgeHtml = [...WEAPON_FORGE_SKINS.map((def)=>["skins",def]), ...WEAPON_FORGE_EFFECTS.map((def)=>["effects",def])].map(([kind,def])=>{
+    const owned = !!S.weaponForge.unlocks?.[kind]?.[def.id];
+    const loadout = weaponForgeLoadoutForWeapon(S.equippedWeaponId, S);
+    const equipped = kind === "skins" ? loadout.skinId === def.id : loadout.effectId === def.id;
+    return cosmeticCard(def.name, `${kind === "skins" ? "Weapon skin" : "Weapon effect"} • ${owned ? "Owned" : "Craft in Shop > Forge."}`, kind === "skins" ? "🎨" : "✨", owned, equipped, owned ? `<button ${equipped ? "disabled" : ""} onclick="equipWeaponForge('${kind}','${def.id}')">Equip</button>` : "");
+  }).join("");
+  const safeHtml = Object.entries(SAFE_ZONE_COSMETICS).map(([id,def])=>{
+    const owned = cosmeticWorldUnlocked(def, S);
+    const equipped = collection.equippedSafeZone === id;
+    return cosmeticCard(def.name, `${def.desc} • ${owned ? "Owned" : def.unlock}`, def.icon, owned, equipped, owned ? `<button ${equipped ? "disabled" : ""} onclick="equipWorldCosmetic('safe','${id}')">Equip</button>` : "");
+  }).join("");
+  const trailHtml = Object.entries(MOVEMENT_TRAIL_COSMETICS).map(([id,def])=>{
+    const owned = cosmeticWorldUnlocked(def, S);
+    const equipped = collection.equippedMovementTrail === id;
+    return cosmeticCard(def.name, `${def.desc} • ${owned ? "Owned" : def.unlock}`, def.icon, owned, equipped, owned ? `<button ${equipped ? "disabled" : ""} onclick="equipWorldCosmetic('trail','${id}')">Equip</button>` : "");
+  }).join("");
+  const titleHtml = Object.entries(MASTERY_ELITE_TITLES).map(([id,def])=>{
+    const owned = mastery.ownedEliteTitles.includes(id);
+    const equipped = mastery.equippedEliteTitle === id;
+    return cosmeticCard(def.name, owned ? "Elite title owned." : "Unlock through Mastery rewards.", def.icon, owned, equipped, owned ? `<button ${equipped ? "disabled" : ""} onclick="equipMasteryEliteTitle('${id}')">Equip</button>` : "");
+  }).join("");
+  const trophyHtml = TIGER_TROPHY_TYPES.map((type)=>{
+    const count = Math.max(0, Number(collection.trophies[type] || 0));
+    const desc = type === "Legacy"
+      ? (count ? `${count} captures completed before the trophy gallery opened.` : "Complete captures to build the trophy gallery.")
+      : (count ? `${count} captured and secured.` : "Capture this tiger class to unlock its trophy.");
+    return cosmeticCard(`${type} Tiger Trophy`, desc, type === "Boss" ? "👑" : "🐯", count > 0, false, `<span class="tag">x${count}</span>`);
+  }).join("");
+  root.innerHTML = `<div class="hudTitle">Safe-Zone Styles</div>${safeHtml}<div class="divider"></div><div class="hudTitle">Movement Trails</div>${trailHtml}<div class="divider"></div><div class="hudTitle">Soldier Skins, Badges, Banners + Finishers</div>${seasonHtml}<div class="divider"></div><div class="hudTitle">Weapon Skins + Effects</div>${forgeHtml}<div class="divider"></div><div class="hudTitle">Elite Titles</div>${titleHtml}<div class="divider"></div><div class="hudTitle">Captured Tiger Trophy Gallery</div>${trophyHtml}`;
+}
+let __inventoryActiveTab = "gear";
+function inventoryTab(tab="gear"){
+  __inventoryActiveTab = tab === "cosmetics" ? "cosmetics" : "gear";
+  const cosmetics = __inventoryActiveTab === "cosmetics";
+  const gearPage = document.getElementById("invGearPage");
+  const cosmeticPage = document.getElementById("invCosmeticsPage");
+  const gearTab = document.getElementById("invTabGear");
+  const cosmeticTab = document.getElementById("invTabCosmetics");
+  if(gearPage) gearPage.style.display = cosmetics ? "none" : "block";
+  if(cosmeticPage) cosmeticPage.style.display = cosmetics ? "block" : "none";
+  gearTab?.classList.toggle("active", !cosmetics);
+  cosmeticTab?.classList.toggle("active", cosmetics);
+  if(cosmetics) renderCosmeticCollection();
+}
+
 // ===================== LONG-TERM MASTERY REWARDS (Cosmetic Only) =====================
 const MASTERY_ELITE_TITLES = Object.freeze({
   ELITE_FIELD_WARDEN: { name:"Field Warden", icon:"🛡️" },
@@ -7766,6 +7941,7 @@ const DEFAULT = {
   liveOpsModifierCards: null,
   seasonPass: defaultSeasonPassState(),
   masteryRewards: defaultMasteryRewardsState(),
+  cosmeticCollection: defaultCosmeticCollectionState(),
   achievements:{},
   title:"Rookie",
   playerHandle:"",
@@ -9386,6 +9562,7 @@ function load(){
       ensureClanState(fallback);
       ensureSeasonPassState(fallback);
       ensureMasteryRewardsState(fallback);
+      ensureCosmeticCollectionState(fallback);
       return fallback;
     }
     const m = { ...DEFAULT, ...saved };
@@ -9433,6 +9610,7 @@ function load(){
     m.missionRewardStreak = Math.max(0, Math.floor(Number(saved.missionRewardStreak || 0)));
     m.seasonPass = mergeSeasonPassSnapshots(DEFAULT.seasonPass, saved.seasonPass);
     m.masteryRewards = mergeMasteryRewardsSnapshots(DEFAULT.masteryRewards, saved.masteryRewards);
+    m.cosmeticCollection = normalizeCosmeticCollectionState(saved.cosmeticCollection ?? DEFAULT.cosmeticCollection);
     m.perks = { ...DEFAULT.perks, ...(saved.perks||{}) };
     m.progressionUnlocks = { ...DEFAULT.progressionUnlocks, ...(saved.progressionUnlocks||{}) };
     m.metaBase = { ...DEFAULT.metaBase, ...(saved.metaBase||{}) };
@@ -9468,6 +9646,7 @@ function load(){
     ensureBalanceStatsState(m);
     ensureNemesisState(m);
     ensureWeaponAttachmentState(m);
+    ensureCosmeticCollectionState(m);
     ensureWeaponForgeState(m);
     ensureMissionTwistState(m);
     ensureArcadeBuildcraftState(m);
@@ -9503,6 +9682,7 @@ function load(){
     ensureClanState(fallback);
     ensureSeasonPassState(fallback);
     ensureMasteryRewardsState(fallback);
+    ensureCosmeticCollectionState(fallback);
     return fallback;
   }
 }
@@ -22310,6 +22490,7 @@ function renderInventory(){
   ensureWeaponMasteryState();
   ensureWeaponAttachmentState(S);
   ensureWeaponForgeState(S);
+  ensureCosmeticCollectionState(S);
   const mastery = ensureMasteryRewardsState(S);
   syncSquadRosterBounds();
   const w=equippedWeapon();
@@ -22338,6 +22519,8 @@ function renderInventory(){
      <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • HQ ${hqRanks}/${hqMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}<br>
      <b>HQ Identity:</b> ${storyHQIdentityLabel()}<br>
      <b>Mastery:</b> ${masteryCount}/${MASTERY_TRACKS.length} claimed • <b>Elite Title:</b> ${eliteTitleTxt}`;
+  renderCosmeticCollection();
+  inventoryTab(__inventoryActiveTab);
 
   document.getElementById("invWeapons").innerHTML = S.ownedWeapons.map(id=>{
     const ww=getWeapon(id);
@@ -27574,6 +27757,7 @@ function supportUnitsTick(){
               markStoryFinalBossOutcome("CAPTURE", tiger);
               tiger.alive = false;
               tigerPackRecordLoss(tiger, "CAPTURE");
+              recordCapturedTigerTrophy(tiger, "specialist");
               S.stats.captures = (S.stats.captures || 0) + 1;
               addContractTally("captures", 1);
               addOpsTotal("captures", 1);
@@ -30725,6 +30909,7 @@ function playerAction(action){
     triggerPhase18TigerMoment(t, "capture", "Captured");
     t.alive=false;
     tigerPackRecordLoss(t, "CAPTURE");
+    recordCapturedTigerTrophy(t, "player");
     addWeaponMasteryXp(req, 4);
     const pay=payout("CAPTURE");
     pay.cash = Math.max(0, Math.round(Number(pay.cash || 0) * Number(captureTreeFx.captureCashMul || 1)));
@@ -32539,7 +32724,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
     const ex = zone.x;
     const ey = zone.y;
     const er = zone.r;
-    const safeHue = chapterStyle?.safeHue || "rgba(74,222,128,.95)";
+    const safeHue = activeSafeZoneHue(chapterStyle?.safeHue || "rgba(74,222,128,.95)", S);
     ctx.fillStyle = "rgba(16,56,34,.28)";
     ctx.beginPath();
     ctx.arc(ex, ey, er, 0, Math.PI * 2);
@@ -33337,7 +33522,7 @@ function drawMapScene(){
     const ex = safeZone.x;
     const ey = safeZone.y;
     const er = safeZone.r;
-    const safeHue = chapterStyle?.safeHue || "rgba(74,222,128,.95)";
+    const safeHue = activeSafeZoneHue(chapterStyle?.safeHue || "rgba(74,222,128,.95)", S);
 
     ctx.save();
     ctx.globalAlpha = 0.95;
@@ -33796,6 +33981,8 @@ function drawEvacSafeHouseMarker(ex, ey, er, safeHue="rgba(74,222,128,.95)", opt
   if(S.mode === "Survival") return;
   if(!Number.isFinite(ex) || !Number.isFinite(ey) || !Number.isFinite(er)) return;
   const heavy = !!opts.heavy || visualReadabilityHeavyMode();
+  const safeStyle = activeSafeZoneCosmetic(S);
+  safeHue = safeStyle.color || safeHue;
   const rescued = Math.max(0, Math.floor(Number(S.evacDone || 0)));
   const total = Math.max(0, Array.isArray(S.civilians) ? S.civilians.length : 0);
   const pulse = 0.86 + Math.sin(Date.now() / 260) * 0.10;
@@ -33806,7 +33993,7 @@ function drawEvacSafeHouseMarker(ex, ey, er, safeHue="rgba(74,222,128,.95)", opt
 
   ctx.save();
   ctx.globalAlpha = 0.30 * pulse;
-  ctx.fillStyle = "rgba(74,222,128,.42)";
+  ctx.fillStyle = safeStyle.glow || "rgba(74,222,128,.42)";
   ctx.beginPath();
   ctx.arc(ex, ey, Math.max(18, er * 0.34), 0, Math.PI * 2);
   ctx.fill();
@@ -33817,13 +34004,13 @@ function drawEvacSafeHouseMarker(ex, ey, er, safeHue="rgba(74,222,128,.95)", opt
   ctx.ellipse(ex, ey + 24, houseW * 0.62, 9, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "rgba(20,83,45,.96)";
+  ctx.fillStyle = safeStyle.glow || "rgba(20,83,45,.96)";
   roundedRectFill(hx, hy, houseW, houseH, 7);
   ctx.strokeStyle = safeHue;
   ctx.lineWidth = heavy ? 2 : 2.5;
   ctx.strokeRect(hx + 0.5, hy + 0.5, houseW - 1, houseH - 1);
 
-  ctx.fillStyle = "rgba(15,118,70,.98)";
+  ctx.fillStyle = safeStyle.color || "rgba(15,118,70,.98)";
   ctx.beginPath();
   ctx.moveTo(ex - (houseW * 0.58), hy + 3);
   ctx.lineTo(ex, hy - (heavy ? 18 : 23));
@@ -33834,7 +34021,7 @@ function drawEvacSafeHouseMarker(ex, ey, er, safeHue="rgba(74,222,128,.95)", opt
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  ctx.fillStyle = "rgba(220,255,235,.96)";
+  ctx.fillStyle = safeStyle.accent || "rgba(220,255,235,.96)";
   roundedRectFill(ex - 5, hy + houseH - 17, 10, 17, 2.5);
   ctx.fillStyle = "rgba(187,247,208,.80)";
   roundedRectFill(ex - 20, hy + 10, 10, 9, 2);
@@ -33845,7 +34032,7 @@ function drawEvacSafeHouseMarker(ex, ey, er, safeHue="rgba(74,222,128,.95)", opt
   ctx.strokeStyle = "rgba(187,247,208,.76)";
   ctx.lineWidth = 1.2;
   ctx.strokeRect(ex - 27.5, hy - 33.5, 55, 15);
-  ctx.fillStyle = "rgba(220,255,235,.98)";
+  ctx.fillStyle = safeStyle.accent || "rgba(220,255,235,.98)";
   ctx.font = heavy ? "900 8px system-ui" : "900 9px system-ui";
   ctx.textAlign = "center";
   ctx.fillText("SAFE HOUSE", ex, hy - 22);
@@ -34821,6 +35008,35 @@ function drawSoldier(){
   }
 }
 
+let __playerCosmeticTrail = [];
+let __playerCosmeticTrailAt = 0;
+function drawPlayerCosmeticTrail(){
+  const def = activeMovementTrailCosmetic(S);
+  if(!def || def === MOVEMENT_TRAIL_COSMETICS.TRAIL_NONE){
+    __playerCosmeticTrail.length = 0;
+    return;
+  }
+  if(frameLagTier() >= 2 || frameBudgetExceeded(0.78)) return;
+  const now = Date.now();
+  const speed = Math.hypot(Number(S.me?._moveVx || 0), Number(S.me?._moveVy || 0));
+  if(speed > 0.35 && now - __playerCosmeticTrailAt >= 95){
+    __playerCosmeticTrailAt = now;
+    __playerCosmeticTrail.push({ x:Number(S.me.x), y:Number(S.me.y) + 12, bornAt:now });
+    if(__playerCosmeticTrail.length > 10) __playerCosmeticTrail.shift();
+  }
+  __playerCosmeticTrail = __playerCosmeticTrail.filter((p)=>now - p.bornAt < 850);
+  ctx.save();
+  for(const p of __playerCosmeticTrail){
+    const life = clamp(1 - ((now - p.bornAt) / 850), 0, 1);
+    ctx.globalAlpha = life * 0.52;
+    ctx.fillStyle = def.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3 + (life * 5), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawSupportUnit(unit){
   const moveBlend = animMoveBlend(unit, 2.5);
   const smooth = smoothedDrawPoint(unit, unit.x, unit.y, 0.36 + (moveBlend * 0.10));
@@ -35785,6 +36001,7 @@ function drawEntities(){
     max: mobile ? (lagTier >= 2 ? 4 : 6) : 10
   });
 
+  drawSafe("drawPlayerCosmeticTrail", drawPlayerCosmeticTrail);
   if(liteRender){
     drawSafe("drawEntitiesLite", drawEntitiesLite);
   } else {
@@ -37636,6 +37853,9 @@ window.setShopFilter = setShopFilter;
 window.openInventory = openInventory;
 window.closeInventory = closeInventory;
 window.openShopFromInventory = openShopFromInventory;
+window.inventoryTab = inventoryTab;
+window.equipWorldCosmetic = equipWorldCosmetic;
+window.equipWeaponForge = equipWeaponForge;
 window.openMissionBriefShop = openMissionBriefShop;
 window.toggleMobileMenu = toggleMobileMenu;
 

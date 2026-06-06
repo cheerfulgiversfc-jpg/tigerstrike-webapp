@@ -1885,6 +1885,15 @@
   <div class="modal">
     <div class="modalTop"><div class="modalTitle">Inventory (Paused)</div><button class="ghost" onclick="closeInventory()">Resume</button></div>
     <div class="modalBody">
+      <div class="tabs">
+        <button class="tab active" id="invTabGear" onclick="inventoryTab('gear')">Gear + Operations</button>
+        <button class="tab" id="invTabCosmetics" onclick="inventoryTab('cosmetics')">Cosmetics</button>
+      </div>
+      <div id="invCosmeticsPage" style="display:none">
+        <div class="hudLine" id="invCosmeticSummary"></div>
+        <div class="list" id="invCosmetics"></div>
+      </div>
+      <div id="invGearPage">
       <div class="hudLine" id="invSummary"></div>
       <div class="divider"></div>
       <div class="hudTitle">Weapons Owned</div>
@@ -1895,6 +1904,7 @@
       <div class="divider"></div>
       <div class="hudTitle">Supplies</div>
       <div class="list" id="invSupplies"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -2077,7 +2087,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4499-warfront-ledger-hardlock"></script>
+<script src="./game.js?v=4500-cosmetic-collection"></script>
 <script src="./tutorial.js?v=4499-warfront-ledger-hardlock"></script>
 <script>
 (() => {
