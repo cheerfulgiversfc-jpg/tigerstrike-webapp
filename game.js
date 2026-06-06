@@ -5225,7 +5225,12 @@ function ensureTigerPackState(packId, seedX=0, seedY=0){
 }
 function tigerPackOnSpawn(tiger){
   if(!tiger || !Number.isFinite(tiger.packId)) return;
-  ensureTigerPackState(tiger.packId, tiger.x, tiger.y);
+  const packState = ensureTigerPackState(tiger.packId, tiger.x, tiger.y);
+  const territory = tigerEcosystemApplyPackState(packState, tiger.packId, S);
+  if(territory){
+    tiger.ecosystemKey = territory.key;
+    tiger.ecosystemDenStrength = territory.denStrength;
+  }
 }
 function tigerPackMoraleNow(state, now=Date.now()){
   if(!state) return 1;
@@ -5242,6 +5247,7 @@ function tigerPackRecordLoss(tiger, outcome="KILL"){
   state.lastLossAt = now;
   state.threatUntil = Math.max(state.threatUntil || 0, now + 12000);
   state.morale = tigerPackMoraleNow(state, now);
+  recordTigerEcosystemOutcome(tiger, outcome);
   const intel = ensureTigerPackIntelState();
   if(now - (intel.lastEventAt || 0) >= 5200){
     intel.lastEventAt = now;
@@ -5250,6 +5256,211 @@ function tigerPackRecordLoss(tiger, outcome="KILL"){
       2.1
     );
   }
+}
+
+// ===================== TIGER ECOSYSTEM + TERRITORIES =====================
+const TIGER_ECOSYSTEM_MAX_TERRITORIES = 28;
+const TIGER_ECOSYSTEM_PACK_NAMES = Object.freeze(["Ember Fang","River Claw","Night Stripe","Iron Roar"]);
+const TIGER_ECOSYSTEM_PACK_COLORS = Object.freeze([
+  "rgba(251,146,60,.82)",
+  "rgba(56,189,248,.82)",
+  "rgba(167,139,250,.82)",
+  "rgba(248,113,113,.82)",
+]);
+function defaultTigerEcosystemState(){
+  return { territories:{}, lastSimAt:0, lastEventAt:0, migrations:0, conflicts:0, territoryChanges:0 };
+}
+function normalizeTigerEcosystemState(raw){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const territories = {};
+  const rows = Object.entries((src.territories && typeof src.territories === "object") ? src.territories : {}).slice(-TIGER_ECOSYSTEM_MAX_TERRITORIES);
+  for(const [key, item] of rows){
+    if(!item || typeof item !== "object") continue;
+    territories[String(key)] = {
+      key:String(key),
+      ownerPack:clamp(Math.floor(Number(item.ownerPack || 1)), 1, 4),
+      strength:clamp(Number(item.strength || 55), 0, 100),
+      denStrength:clamp(Number(item.denStrength || 45), 0, 100),
+      prey:clamp(Number(item.prey || 55), 0, 100),
+      conflict:clamp(Number(item.conflict || 0), 0, 100),
+      playerPressure:clamp(Number(item.playerPressure || 0), 0, 100),
+      captures:Math.max(0, Math.floor(Number(item.captures || 0))),
+      kills:Math.max(0, Math.floor(Number(item.kills || 0))),
+      lastChangedAt:Math.max(0, Math.floor(Number(item.lastChangedAt || 0))),
+    };
+  }
+  return {
+    territories,
+    lastSimAt:Math.max(0, Math.floor(Number(src.lastSimAt || 0))),
+    lastEventAt:Math.max(0, Math.floor(Number(src.lastEventAt || 0))),
+    migrations:Math.max(0, Math.floor(Number(src.migrations || 0))),
+    conflicts:Math.max(0, Math.floor(Number(src.conflicts || 0))),
+    territoryChanges:Math.max(0, Math.floor(Number(src.territoryChanges || 0))),
+  };
+}
+function ensureTigerEcosystemState(state=S){
+  if(!state.tigerEcosystem || typeof state.tigerEcosystem !== "object" || !state.tigerEcosystem.territories){
+    state.tigerEcosystem = normalizeTigerEcosystemState(state.tigerEcosystem);
+  }
+  return state.tigerEcosystem;
+}
+function tigerEcosystemTerritoryKey(x, y, state=S){
+  const sector = streamSectorKeyForPoint(x, y, state) || "0:0";
+  return `${normalizeModeName(state.mode)}:${state.mapIndex || 0}:${sector}`;
+}
+function tigerEcosystemSeed(key){
+  let h = 2166136261;
+  for(const ch of String(key || "")){
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h >>> 0);
+}
+function ensureTigerEcosystemTerritory(key, state=S){
+  const eco = ensureTigerEcosystemState(state);
+  const cleanKey = String(key || tigerEcosystemTerritoryKey(state.me?.x || 0, state.me?.y || 0, state));
+  if(!eco.territories[cleanKey]){
+    const seed = tigerEcosystemSeed(cleanKey);
+    eco.territories[cleanKey] = {
+      key:cleanKey,
+      ownerPack:(seed % 4) + 1,
+      strength:48 + (seed % 37),
+      denStrength:34 + ((seed >>> 4) % 48),
+      prey:38 + ((seed >>> 8) % 56),
+      conflict:(seed >>> 12) % 24,
+      playerPressure:0,
+      captures:0,
+      kills:0,
+      lastChangedAt:Date.now(),
+    };
+    const keys = Object.keys(eco.territories);
+    if(keys.length > TIGER_ECOSYSTEM_MAX_TERRITORIES) delete eco.territories[keys[0]];
+  }
+  return eco.territories[cleanKey];
+}
+function tigerEcosystemTerritoryAt(x, y, state=S){
+  return ensureTigerEcosystemTerritory(tigerEcosystemTerritoryKey(x, y, state), state);
+}
+function tigerEcosystemPackName(packId){
+  return TIGER_ECOSYSTEM_PACK_NAMES[(Math.max(1, Number(packId || 1)) - 1) % TIGER_ECOSYSTEM_PACK_NAMES.length];
+}
+function tigerEcosystemPackColor(packId){
+  return TIGER_ECOSYSTEM_PACK_COLORS[(Math.max(1, Number(packId || 1)) - 1) % TIGER_ECOSYSTEM_PACK_COLORS.length];
+}
+function tigerEcosystemTerritoryCenter(key, state=S){
+  const sectorKey = String(key || "").split(":").slice(-2).join(":");
+  return streamSectorPointFromKey(sectorKey, state);
+}
+function tigerEcosystemSeedActiveTerritories(state=S){
+  const ss = updateStreamedSectors(state, Date.now());
+  for(const sectorKey of (ss.activeKeys || []).slice(0, 12)){
+    ensureTigerEcosystemTerritory(`${normalizeModeName(state.mode)}:${state.mapIndex || 0}:${sectorKey}`, state);
+  }
+}
+function recordTigerEcosystemOutcome(tiger, outcome="KILL"){
+  if(!tiger || window.__TUTORIAL_MODE__) return;
+  const territory = tigerEcosystemTerritoryAt(tiger.x, tiger.y, S);
+  const capture = String(outcome || "").toUpperCase() === "CAPTURE";
+  if(capture){
+    territory.captures += 1;
+    territory.strength = clamp(territory.strength - (isBossTiger(tiger) ? 18 : 10), 0, 100);
+    territory.denStrength = clamp(territory.denStrength - 6, 0, 100);
+    territory.playerPressure = clamp(territory.playerPressure + 10, 0, 100);
+    territory.conflict = clamp(territory.conflict - 5, 0, 100);
+  } else {
+    territory.kills += 1;
+    territory.strength = clamp(territory.strength - (isBossTiger(tiger) ? 22 : 8), 0, 100);
+    territory.denStrength = clamp(territory.denStrength - 4, 0, 100);
+    territory.playerPressure = clamp(territory.playerPressure + 13, 0, 100);
+    territory.conflict = clamp(territory.conflict + 12, 0, 100);
+  }
+  territory.lastChangedAt = Date.now();
+  __savePending = true;
+}
+function tigerEcosystemPackTerritory(packId, state=S){
+  const eco = ensureTigerEcosystemState(state);
+  let best = null;
+  let bestScore = -Infinity;
+  for(const row of Object.values(eco.territories)){
+    if(row.ownerPack !== Number(packId)) continue;
+    const score = row.prey + row.denStrength - row.playerPressure;
+    if(score > bestScore){
+      best = row;
+      bestScore = score;
+    }
+  }
+  return best || tigerEcosystemTerritoryAt(state.me?.x || 0, state.me?.y || 0, state);
+}
+function tigerEcosystemApplyPackState(packState, packId, state=S){
+  if(!packState) return null;
+  const territory = tigerEcosystemPackTerritory(packId, state);
+  const center = tigerEcosystemTerritoryCenter(territory.key, state);
+  if(center && (!Number.isFinite(packState.territoryX) || !Number.isFinite(packState.territoryY) || packState.ecosystemKey !== territory.key)){
+    packState.territoryX = center.x;
+    packState.territoryY = center.y;
+  }
+  packState.ecosystemKey = territory.key;
+  packState.ecosystemStrength = territory.strength;
+  packState.ecosystemDen = territory.denStrength;
+  packState.ecosystemConflict = territory.conflict;
+  return territory;
+}
+function tigerEcosystemSimTick(now=Date.now(), opts={}){
+  if(window.__TUTORIAL_MODE__) return;
+  const eco = ensureTigerEcosystemState(S);
+  tigerEcosystemSeedActiveTerritories(S);
+  const interval = opts.missionAdvance ? 0 : 4200;
+  if(!opts.force && now - eco.lastSimAt < interval) return;
+  eco.lastSimAt = now;
+  const rows = Object.values(eco.territories);
+  if(!rows.length) return;
+  for(const row of rows){
+    const step = opts.missionAdvance ? 3.5 : 0.22;
+    row.prey = clamp(row.prey + step - (row.strength * 0.010 * step), 10, 100);
+    row.strength = clamp(row.strength + (row.prey > 55 ? step * 0.45 : -step * 0.20) - (row.playerPressure * 0.006 * step), 0, 100);
+    row.denStrength = clamp(row.denStrength + (row.strength > 45 ? step * 0.34 : -step * 0.22), 0, 100);
+    row.conflict = clamp(row.conflict - step * 0.32, 0, 100);
+    row.playerPressure = clamp(row.playerPressure - step * 0.30, 0, 100);
+  }
+  const active = rows.filter((row)=>String(row.key).startsWith(`${normalizeModeName(S.mode)}:${S.mapIndex || 0}:`));
+  if(active.length >= 2 && (opts.missionAdvance || Math.random() < 0.08)){
+    const weak = [...active].sort((a,b)=>a.strength-b.strength)[0];
+    const strong = [...active].sort((a,b)=>(b.strength+b.prey)-(a.strength+a.prey))[0];
+    if(weak && strong && weak.key !== strong.key && weak.ownerPack !== strong.ownerPack){
+      weak.conflict = clamp(weak.conflict + 16, 0, 100);
+      strong.conflict = clamp(strong.conflict + 8, 0, 100);
+      eco.conflicts += 1;
+      if((strong.strength - weak.strength) > 22 || weak.strength < 22){
+        weak.ownerPack = strong.ownerPack;
+        weak.strength = clamp((strong.strength + weak.strength) * 0.42, 22, 68);
+        weak.denStrength = clamp(weak.denStrength * 0.58, 12, 70);
+        weak.lastChangedAt = now;
+        eco.territoryChanges += 1;
+        if(now - eco.lastEventAt > 8000){
+          eco.lastEventAt = now;
+          setEventText(`🐅 ${tigerEcosystemPackName(strong.ownerPack)} seized a weakened territory.`, 4);
+        }
+      }
+    }
+  }
+  if(active.length >= 2 && (opts.missionAdvance || Math.random() < 0.06)){
+    const hungry = [...active].sort((a,b)=>a.prey-b.prey)[0];
+    const rich = [...active].sort((a,b)=>b.prey-a.prey)[0];
+    if(hungry && rich && hungry.key !== rich.key && rich.prey - hungry.prey > 22){
+      hungry.strength = clamp(hungry.strength - 4, 0, 100);
+      rich.conflict = clamp(rich.conflict + 10, 0, 100);
+      eco.migrations += 1;
+    }
+  }
+  __savePending = true;
+}
+function tigerEcosystemMissionAdvance(){
+  tigerEcosystemSimTick(Date.now(), { force:true, missionAdvance:true });
+}
+function tigerEcosystemCurrentSummary(state=S){
+  const territory = tigerEcosystemTerritoryAt(state.me?.x || 0, state.me?.y || 0, state);
+  const status = territory.conflict >= 60 ? "WARZONE" : (territory.playerPressure >= 55 ? "DISRUPTED" : (territory.denStrength >= 70 ? "FORTIFIED DEN" : "PATROL"));
+  return `${tigerEcosystemPackName(territory.ownerPack)} • ${status} • Control ${Math.round(territory.strength)}% • Prey ${Math.round(territory.prey)}%`;
 }
 
 function isBossTiger(t){
@@ -7934,6 +8145,7 @@ const DEFAULT = {
   balanceStats: defaultBalanceStatsState(),
   nemesis: defaultNemesisState(),
   missionTwists: defaultMissionTwistsState(),
+  tigerEcosystem: defaultTigerEcosystemState(),
   dynamicObjective: defaultDynamicObjectiveState(),
   contractTallies: defaultContractTallies(),
   contracts: null,
@@ -9554,6 +9766,7 @@ function load(){
       ensureOpsTotalsState(fallback);
       ensureBalanceStatsState(fallback);
       ensureNemesisState(fallback);
+      ensureTigerEcosystemState(fallback);
       ensureWeaponAttachmentState(fallback);
       ensureWeaponForgeState(fallback);
       ensureMissionTwistState(fallback);
@@ -9592,6 +9805,7 @@ function load(){
     m.opsTotals = { ...DEFAULT.opsTotals, ...((saved.opsTotals && typeof saved.opsTotals === "object") ? saved.opsTotals : {}) };
     m.balanceStats = { ...defaultBalanceStatsState(), ...((saved.balanceStats && typeof saved.balanceStats === "object") ? saved.balanceStats : {}) };
     m.nemesis = (saved.nemesis && typeof saved.nemesis === "object") ? cloneState(saved.nemesis) : defaultNemesisState();
+    m.tigerEcosystem = normalizeTigerEcosystemState(saved.tigerEcosystem ?? DEFAULT.tigerEcosystem);
     m.missionTwists = (saved.missionTwists && typeof saved.missionTwists === "object")
       ? cloneState(saved.missionTwists)
       : defaultMissionTwistsState();
@@ -9645,6 +9859,7 @@ function load(){
     ensureOpsTotalsState(m);
     ensureBalanceStatsState(m);
     ensureNemesisState(m);
+    ensureTigerEcosystemState(m);
     ensureWeaponAttachmentState(m);
     ensureCosmeticCollectionState(m);
     ensureWeaponForgeState(m);
@@ -9674,6 +9889,7 @@ function load(){
     ensureOpsTotalsState(fallback);
     ensureBalanceStatsState(fallback);
     ensureNemesisState(fallback);
+    ensureTigerEcosystemState(fallback);
     ensureWeaponAttachmentState(fallback);
     ensureWeaponForgeState(fallback);
     ensureMissionTwistState(fallback);
@@ -25362,6 +25578,7 @@ function spawnTigers(){
   const packCount = clamp(Math.ceil(count / 2), 1, 4);
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
+  tigerEcosystemSeedActiveTerritories(S);
   const sitePool = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice().reverse();
   const fallbackPacks = [
     { x: worldW * 0.68, y: worldH * 0.22 },
@@ -25371,7 +25588,11 @@ function spawnTigers(){
   ];
   const packAnchors = Array.from({ length: packCount }, (_, idx) => {
     const site = sitePool[idx];
-    const anchor = site
+    const territory = tigerEcosystemPackTerritory(idx + 1, S);
+    const territoryCenter = territory ? tigerEcosystemTerritoryCenter(territory.key, S) : null;
+    const anchor = territoryCenter
+      ? { x:clamp(territoryCenter.x, 160, worldW - 70), y:clamp(territoryCenter.y, 100, worldH - 70) }
+      : site
       ? { x: clamp(site.x + rand(90, 180), 160, worldW - 70), y: clamp(site.y + rand(-110, 110), 100, worldH - 70) }
       : fallbackPacks[idx % fallbackPacks.length];
     return {
@@ -25705,6 +25926,9 @@ function deploy(opts={}){
     updateStreamedSectors(S, Date.now());
     preloadMissionBoardSectors(S, Date.now());
   }
+  ensureTigerEcosystemState(S);
+  tigerEcosystemSeedActiveTerritories(S);
+  tigerEcosystemSimTick(Date.now(), { force:true });
   S.target=null;
   resetControlInputState("deploy");
   S.lockedTigerId=null;
@@ -25946,6 +26170,7 @@ function deploy(opts={}){
 
 function startNextMission(){
   beginMissionTransitionGuard("next-mission", 1200);
+  tigerEcosystemMissionAdvance();
   document.getElementById("completeOverlay").style.display="none";
   ensureStoryEndgameState(S);
   const carryHp = clamp(S.hp, 0, 100);
@@ -28652,6 +28877,7 @@ function roamTigers(){
     const packId = Number(packIdRaw);
     const pack = packStats[packId];
     const packState = pack.packState || ensureTigerPackState(packId, pack.x, pack.y);
+    const ecosystemTerritory = tigerEcosystemApplyPackState(packState, packId, S);
     const cx = pack.n > 0 ? (pack.x / pack.n) : (packState.territoryX || S.me.x);
     const cy = pack.n > 0 ? (pack.y / pack.n) : (packState.territoryY || S.me.y);
     pack.territoryX = Number.isFinite(packState.territoryX)
@@ -28664,7 +28890,8 @@ function roamTigers(){
     packState.territoryY = pack.territoryY;
     packState.morale = tigerPackMoraleNow(packState, now);
     const moralePenalty = (1 - packState.morale) * 56;
-    pack.territoryR = clamp(TIGER_PACK_TERRITORY_BASE_RADIUS + (pack.n * 22) - moralePenalty, 166, 344);
+    const denRadiusBonus = ecosystemTerritory ? ecosystemTerritory.denStrength * 0.32 : 0;
+    pack.territoryR = clamp(TIGER_PACK_TERRITORY_BASE_RADIUS + (pack.n * 22) + denRadiusBonus - moralePenalty, 166, 372);
     pack.playerInTerritory = dist(S.me.x, S.me.y, pack.territoryX, pack.territoryY) <= pack.territoryR;
     if(liveCivs.length){
       for(const civ of liveCivs){
@@ -28677,10 +28904,12 @@ function roamTigers(){
     const canReinforce = !!pack.alpha
       && (pack.playerInTerritory || pack.civiliansInTerritory || now < (packState.threatUntil || 0))
       && now >= ((packState.lastReinforceAt || 0) + TIGER_PACK_REINFORCE_COOLDOWN_MS)
-      && pack.n <= 4
+      && pack.n <= (ecosystemTerritory?.denStrength >= 70 ? 5 : 4)
       && aliveTigers.length < 14;
     if(canReinforce){
-      const reinforceType = (Math.random() < 0.35) ? "Scout" : "Standard";
+      const reinforceType = ecosystemTerritory?.denStrength >= 72
+        ? ((Math.random() < 0.45) ? "Stalker" : "Scout")
+        : ((Math.random() < 0.35) ? "Scout" : "Standard");
       const reinforcement = spawnRogueTiger({
         packId: pack.id,
         nearX: pack.territoryX,
@@ -28728,6 +28957,9 @@ function roamTigers(){
       tiger.packRole = role;
       tiger.packMorale = packState.morale;
       tiger.packTerritoryR = pack.territoryR;
+      tiger.ecosystemKey = ecosystemTerritory?.key || "";
+      tiger.ecosystemDenStrength = ecosystemTerritory?.denStrength || 0;
+      tiger.ecosystemConflict = ecosystemTerritory?.conflict || 0;
     }
   }
 
@@ -28967,8 +29199,10 @@ function roamTigers(){
           targetDist = anchorDist;
         }
       }
-      t._packAggroMul = clamp((0.86 + (morale * 0.34) + (territoryHot ? 0.12 : 0)), 0.74, 1.36);
-      t._packSpeedMul = clamp((0.90 + (morale * 0.16) + ((role === TIGER_PACK_ROLES.SCOUT) ? 0.05 : 0)), 0.82, 1.22);
+      const ecoConflict = clamp(Number(t.ecosystemConflict || 0) / 100, 0, 1);
+      const ecoDen = clamp(Number(t.ecosystemDenStrength || 0) / 100, 0, 1);
+      t._packAggroMul = clamp((0.86 + (morale * 0.34) + (territoryHot ? 0.12 : 0) + (ecoConflict * 0.16) + (ecoDen * 0.06)), 0.74, 1.52);
+      t._packSpeedMul = clamp((0.90 + (morale * 0.16) + ((role === TIGER_PACK_ROLES.SCOUT) ? 0.05 : 0) + (ecoConflict * 0.06)), 0.82, 1.28);
     } else {
       t._packAggroMul = 1;
       t._packSpeedMul = 1;
@@ -32034,6 +32268,9 @@ function renderHUD(){
   }
 
   const assistParts = [];
+  if(!window.__TUTORIAL_MODE__){
+    assistParts.push(`Territory: ${tigerEcosystemCurrentSummary(S)}`);
+  }
   const biomeProfile = currentBiomeProfile();
   if(ENABLE_BIOME_TEXT && biomeProfile){
     assistParts.push(`Biome: ${biomeProfile.biome} • ${biomeProfile.weather}`);
@@ -35958,6 +36195,35 @@ function drawEntitiesLite(){
     }
   }
 }
+function drawTigerEcosystemTerritories(){
+  if(window.__TUTORIAL_MODE__ || frameLagTier() >= 2 || frameBudgetExceeded(0.68)) return;
+  const eco = ensureTigerEcosystemState(S);
+  const prefix = `${normalizeModeName(S.mode)}:${S.mapIndex || 0}:`;
+  const rows = Object.values(eco.territories).filter((row)=>String(row.key).startsWith(prefix)).slice(0, 8);
+  for(const row of rows){
+    const center = tigerEcosystemTerritoryCenter(row.key, S);
+    if(!center || !pointInViewportPad(center.x, center.y, 210)) continue;
+    const radius = 54 + (row.strength * 0.42);
+    ctx.save();
+    ctx.globalAlpha = 0.30;
+    ctx.strokeStyle = tigerEcosystemPackColor(row.ownerPack);
+    ctx.lineWidth = row.conflict >= 60 ? 4 : 2;
+    ctx.setLineDash(row.conflict >= 60 ? [12, 8] : [5, 9]);
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.76;
+    ctx.fillStyle = "rgba(7,13,18,.78)";
+    roundedRectFill(center.x - 61, center.y - radius - 25, 122, 18, 7);
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "900 9px system-ui";
+    ctx.textAlign = "center";
+    const den = row.denStrength >= 70 ? " • DEN" : "";
+    ctx.fillText(`${tigerEcosystemPackName(row.ownerPack)} ${Math.round(row.strength)}%${den}`, center.x, center.y - radius - 13);
+    ctx.restore();
+  }
+}
 function drawEntities(){
   const drawSafe = (label, fn)=>{
     try{ fn(); }catch(err){ reportTickError(label, err); }
@@ -36001,6 +36267,7 @@ function drawEntities(){
     max: mobile ? (lagTier >= 2 ? 4 : 6) : 10
   });
 
+  drawSafe("drawTigerEcosystemTerritories", drawTigerEcosystemTerritories);
   drawSafe("drawPlayerCosmeticTrail", drawPlayerCosmeticTrail);
   if(liteRender){
     drawSafe("drawEntitiesLite", drawEntitiesLite);
@@ -37098,6 +37365,9 @@ function draw(){
         1.55
       ), roamTigers, {
         costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
+      runFrameTask("tigerEcosystem", frameInterval(4200, 1.5), tigerEcosystemSimTick, {
+        costHint:0.35, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
       runFrameTask("bossIdentity", frameInterval(92, 1.45), bossIdentityTick, { costHint:0.9, critical:true });
       runFrameTask("bossReinforce", frameInterval(110, 1.45), bossReinforcementTick, { costHint:0.8 });
