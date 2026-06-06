@@ -5466,6 +5466,66 @@ function tigerEcosystemCurrentSummary(state=S){
 function isBossTiger(t){
   return !!(t && (t.bossPhases || 0) > 0);
 }
+const BOSS_ENCOUNTER_3_STRATEGIES = Object.freeze(["BREAK_AND_TRANQ","ISOLATE_PACK","EXHAUST_ENRAGE"]);
+function ensureBossEncounter3State(t){
+  if(!t || !isBossTiger(t)) return null;
+  if(!Number.isFinite(t.bossArmorMax) || t.bossArmorMax <= 0){
+    const nemesisBonus = t.nemesisId ? 1.18 : 1;
+    t.bossArmorMax = Math.max(40, Math.round(Number(t.hpMax || 100) * 0.30 * nemesisBonus));
+  }
+  if(!Number.isFinite(t.bossArmor)) t.bossArmor = t.bossArmorMax;
+  t.bossArmor = clamp(t.bossArmor, 0, t.bossArmorMax);
+  if(typeof t.bossArmorBroken !== "boolean") t.bossArmorBroken = t.bossArmor <= 0;
+  if(!t.bossCaptureStrategy){
+    const seed = Math.max(1, Math.floor(Number(t.bossIdentityChapter || bossChapterIndex() || 1))) + Math.max(0, Math.floor(Number(t.nemesisPower || 0)));
+    t.bossCaptureStrategy = BOSS_ENCOUNTER_3_STRATEGIES[(seed - 1) % BOSS_ENCOUNTER_3_STRATEGIES.length];
+  }
+  if(!Number.isFinite(t.bossArmorBreakAt)) t.bossArmorBreakAt = 0;
+  if(!Number.isFinite(t.bossEncounterRewarded)) t.bossEncounterRewarded = 0;
+  return t;
+}
+function bossEncounter3PackEscorts(t){
+  if(!t) return 0;
+  return (S.tigers || []).filter((other)=>other?.alive && other.id !== t.id && !isBossTiger(other) && Number(other.packId || 0) === Number(t.packId || 0)).length;
+}
+function bossCaptureStrategyLabel(t){
+  ensureBossEncounter3State(t);
+  if(t?.bossCaptureStrategy === "ISOLATE_PACK") return "Break armor, clear pack escorts, then tranquilize";
+  if(t?.bossCaptureStrategy === "EXHAUST_ENRAGE") return "Break armor, survive final enrage, then tranquilize";
+  return "Break armor and tag with tranquilizer";
+}
+function bossCaptureStrategyReady(t, now=Date.now()){
+  if(!isBossTiger(t)) return true;
+  ensureBossEncounter3State(t);
+  if(!t.bossArmorBroken) return false;
+  if(bossPhaseFromHp(t) < bossPhaseCount(t)) return false;
+  if(t.bossCaptureStrategy === "ISOLATE_PACK") return bossEncounter3PackEscorts(t) <= 0;
+  if(t.bossCaptureStrategy === "EXHAUST_ENRAGE") return now >= Number(t.enragedUntil || 0) && now >= Number(t.bossRagePhaseUntil || 0);
+  return true;
+}
+function bossCaptureStrategyStatus(t){
+  if(!isBossTiger(t)) return "";
+  ensureBossEncounter3State(t);
+  if(!t.bossArmorBroken) return `Armor ${Math.ceil(t.bossArmor)}/${Math.ceil(t.bossArmorMax)}`;
+  if(bossPhaseFromHp(t) < bossPhaseCount(t)) return "Reach final phase";
+  if(t.bossCaptureStrategy === "ISOLATE_PACK" && bossEncounter3PackEscorts(t) > 0) return `Clear ${bossEncounter3PackEscorts(t)} pack escort${bossEncounter3PackEscorts(t)>1?"s":""}`;
+  if(t.bossCaptureStrategy === "EXHAUST_ENRAGE" && !bossCaptureStrategyReady(t)) return "Survive enrage";
+  return "CAPTURE READY";
+}
+function grantBossEncounter3Reward(t, outcome="KILL"){
+  if(!isBossTiger(t)) return;
+  ensureBossEncounter3State(t);
+  if(t.bossEncounterRewarded) return;
+  t.bossEncounterRewarded = 1;
+  const capture = String(outcome).toUpperCase() === "CAPTURE";
+  const cash = Math.round((capture ? 14500 : 8500) * storyPayoutMul());
+  S.funds += cash;
+  S.score += capture ? 900 : 540;
+  trackCashEarned(cash);
+  addXP(capture ? 180 : 110);
+  grantSeasonPassPoints(capture ? 18 : 12, `Boss 3.0 ${capture ? "capture" : "clear"}`);
+  setEventText(`👑 Boss Encounter 3.0 ${capture ? "capture" : "clear"} bonus +$${cash.toLocaleString()}`, 4);
+}
 function currentModeMission(){
   if(S.mode==="Story") return storyMissionForState(S);
   if(S.mode==="Arcade") return activeArcadeMission(S);
@@ -5568,6 +5628,7 @@ function bossSkillCycleForPhase(profile, t){
 }
 function ensureBossPhaseState(t, profile, now=Date.now(), opts={}){
   if(!t || !isBossTiger(t)) return 1;
+  ensureBossEncounter3State(t);
   const total = bossPhaseCount(t);
   const nextPhase = bossPhaseFromHp(t);
   const prevPhase = clamp(Math.floor(Number(t.bossPhaseIndex || 1)), 1, total);
@@ -5580,6 +5641,11 @@ function ensureBossPhaseState(t, profile, now=Date.now(), opts={}){
     t.nextBossSkillAt = now + rand(520, 880);
   }
   setTigerIntent(t, `Phase ${nextPhase}`, 980);
+  if(nextPhase >= total){
+    t.enragedUntil = Math.max(Number(t.enragedUntil || 0), now + 7000);
+    t.bossRagePhaseUntil = Math.max(Number(t.bossRagePhaseUntil || 0), now + 7000);
+    t.nextReinforceAt = Math.min(Number(t.nextReinforceAt || now + 300), now + 300);
+  }
 
   if(!opts.silent){
     const msg = `⚠️ ${profile?.name || "Boss"} Phase ${nextPhase}/${total}: ${bossPhaseSummaryText(nextPhase, total)}`;
@@ -5650,7 +5716,7 @@ function triggerBossPrefightWarning(t, profile, now=Date.now()){
   const chapter = clamp(t.bossIdentityChapter || bossChapterIndex(), 1, 10);
   const summary = bossChapterSignatureSummary(chapter, profile);
   const trait = bossChapterTrait(chapter);
-  const warning = `⚠️ Boss Signature — ${profile.name} [${trait}]: ${summary}`;
+  const warning = `⚠️ Boss Signature — ${profile.name} [${trait}]: ${summary} • Capture: ${bossCaptureStrategyLabel(t)}`;
   setEventText(warning, 4.5);
   if(S.inBattle && S.activeTigerId === t.id){
     setBattleMsg(warning);
@@ -9067,8 +9133,11 @@ function applyNemesisEntryToTiger(t, entry, missionNo=currentStoryMissionNumber(
   t.nemesisDefenseMul = clamp(1 + (power * 0.04), 1, 1.44);
   t.nemesisPounceMul = clamp(1 + (power * 0.03), 1, 1.42);
   t.nemesisReturned = true;
+  t.bossPhases = Math.max(3, Math.floor(Number(t.bossPhases || 0)));
+  t.bossPhaseIndex = 1;
   t.hpMax = Math.max(12, Math.round(Number(t.hpMax || t.hp || 100) * hpMul));
   t.hp = t.hpMax;
+  ensureBossEncounter3State(t);
   t.aggroBoost = clamp(Number(t.aggroBoost || 0) + 0.12 + (power * 0.06), 0, 2.4);
   t.civBias = clamp(Number(t.civBias || 0.4) + 0.03, 0.02, 0.98);
   if(normalized.behavior === "Shadow") t.personality = "Ambusher";
@@ -13822,6 +13891,7 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * Math.PI * 2;
     ensureTigerHuntState(t);
     if(isBossTiger(t) && Number(t.bossPhases || 0) < 3) t.bossPhases = 3;
+    if(isBossTiger(t)) ensureBossEncounter3State(t);
     if(!Number.isFinite(t.bossStalkUntil)) t.bossStalkUntil = 0;
     if(!Number.isFinite(t._bossStalkPromptAt)) t._bossStalkPromptAt = 0;
     if(!Number.isFinite(t._bossWarnForSkillAt)) t._bossWarnForSkillAt = 0;
@@ -27261,6 +27331,26 @@ function damageSupportUnit(unit, dmg){
 
 function applyTigerDamage(tiger, dmg, opts={}){
   if(!tiger || !tiger.alive || dmg <= 0) return { dealt:0, defeated:false, hp:Number(tiger?.hp || 0) };
+  if(isBossTiger(tiger)){
+    ensureBossEncounter3State(tiger);
+    if(tiger.bossArmor > 0){
+      const armorBefore = tiger.bossArmor;
+      const armorDamage = Math.max(1, Number(dmg || 0) * 0.72);
+      tiger.bossArmor = Math.max(0, armorBefore - armorDamage);
+      const absorbed = Math.min(Number(dmg || 0) * 0.72, armorBefore);
+      dmg = Math.max(1, Number(dmg || 0) - absorbed);
+      if(tiger.bossArmor <= 0 && !tiger.bossArmorBroken){
+        tiger.bossArmorBroken = true;
+        tiger.bossArmorBreakAt = Date.now();
+        tiger.enragedUntil = Math.max(Number(tiger.enragedUntil || 0), Date.now() + 4200);
+        setTigerIntent(tiger, "ARMOR BROKEN", 1200);
+        setEventText(`💥 ${bossIdentityProfile(tiger)?.name || "Boss"} armor destroyed. Enrage triggered!`, 4);
+        if(S.inBattle && S.activeTigerId === tiger.id) setBattleMsg(`Armor broken. ${bossCaptureStrategyLabel(tiger)}.`);
+        queueImpactPulse(tiger.x, tiger.y - 8, "crit");
+        hapticImpact("heavy");
+      }
+    }
+  }
   const hpMax = Math.max(1, Number(tiger.hpMax || 1));
   const floorHp = opts.floorOne ? 1 : 0;
   const before = clamp(Number(tiger.hp || hpMax), floorHp, hpMax);
@@ -27970,7 +28060,7 @@ function supportUnitsTick(){
           unit.shotKickUntil = now + 130;
           const shotDmg = supportAttackDamage(unit, tiger, tigerDist);
           const forceKill = supportShouldForceKill(unit, tiger, tigerDist, clawRange + 14);
-          const captureReady = tiger.hp > 0 && tiger.hp <= captureWindowHp(tiger);
+          const captureReady = tiger.hp > 0 && tiger.hp <= captureWindowHp(tiger) && (!isBossTiger(tiger) || bossCaptureStrategyReady(tiger, now));
           const captureFirst = captureReady && !forceKill;
           if(captureFirst){
             tiger.tranqTagged = true;
@@ -30737,7 +30827,7 @@ function renderBattleStatus(){
 
   agentMeta.innerText = `Armor ${Math.round(S.armor)} • Stamina ${Math.round(S.stamina)} • Ammo ${S.mag.loaded}/${S.mag.cap}`;
   tigerMeta.innerText = t
-    ? `${t.type} • Capture window ${captureWindowPctLabel()} to 5% HP`
+    ? `${t.type} • Capture window ${captureWindowPctLabel()} to 5% HP${isBossTiger(t) ? ` • ${bossCaptureStrategyStatus(t)}` : ""}`
     : "Target lost";
   renderCombatControls();
 }
@@ -30842,11 +30932,13 @@ function hasAmmoForWeaponId(id){
 }
 function canAttemptCapture(t){
   if(!tigerInCaptureHpWindow(t)) return false;
+  if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return false;
   const req = requiredTranqWeaponId(t);
   return S.ownedWeapons.includes(req) && hasAmmoForWeaponId(req);
 }
 function canCaptureTiger(t){
   if(!tigerInCaptureHpWindow(t)) return false;
+  if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return false;
   const req = requiredTranqWeaponId(t);
   if(S.equippedWeaponId !== req) return false;
   const w=equippedWeapon();
@@ -30938,7 +31030,7 @@ function bossReinforcementTick(){
   const phaseCycle = bossSkillCycleForPhase(profile, boss);
   if(!phaseCycle.includes("reinforce")) return;
   if(boss.holdUntil && now < boss.holdUntil) return;
-  const aliveStandards = (S.tigers || []).filter((t)=>t.alive && t.type==="Standard" && !isBossTiger(t)).length;
+  const aliveStandards = (S.tigers || []).filter((t)=>t.alive && !isBossTiger(t) && Number(t.packId || 0) === Number(boss.packId || 0)).length;
   const capBoost = ((profile.reinforce && profile.reinforce[1]) || 1) > 1 ? 1 : 0;
   const phaseCapBonus = phase >= 3 ? 1 : 0;
   const cap = bossStandardReinforcementCap() + capBoost + phaseCapBonus;
@@ -30964,9 +31056,12 @@ function bossReinforcementTick(){
   );
   let spawned = 0;
   for(let i=0; i<want; i++){
-    if((S.tigers || []).filter((t)=>t.alive && t.type==="Standard" && !isBossTiger(t)).length >= cap) break;
+    if((S.tigers || []).filter((t)=>t.alive && !isBossTiger(t) && Number(t.packId || 0) === Number(boss.packId || 0)).length >= cap) break;
+    const reinforcementType = phase >= 3
+      ? (Math.random() < 0.45 ? "Berserker" : "Stalker")
+      : (phase >= 2 && Math.random() < 0.45 ? "Scout" : "Standard");
     const spawnedTiger = spawnRogueTiger({
-      typeKey:"Standard",
+      typeKey:reinforcementType,
       nearX:boss.x,
       nearY:boss.y,
       packId:boss.packId || 1,
@@ -30982,7 +31077,7 @@ function bossReinforcementTick(){
   boss.nextReinforceAt = now + rand(minCd, maxCd);
   if(spawned > 0){
     setTigerIntent(boss, "Pack Call", 900);
-    setEventText(`👑 ${profile.name} called ${spawned} Standard reinforcement${spawned>1?"s":""} (Phase ${phase}).`, 3);
+    setEventText(`👑 ${profile.name} called ${spawned} phase-${phase} reinforcement${spawned>1?"s":""}.`, 3);
     sfx("event");
   }
 }
@@ -31032,6 +31127,7 @@ function finishTigerKill(t){
   triggerPhase18TigerMoment(t, "finish", "Eliminated");
   noteTigerOutcomeForObjective(t);
   const bossKill = !!isBossTiger(t);
+  if(bossKill) grantBossEncounter3Reward(t, "KILL");
   if(window.TigerTutorial?.isRunning){
     window.TigerTutorial.combatOutcome = "KILL";
   }
@@ -31117,6 +31213,7 @@ function playerAction(action){
     const preCaptureWeaponId = S.equippedWeaponId;
     if(t.hp > captureWindowHp(t)) return toast(`Capture is available between ${captureWindowPctLabel()} and 5% HP.`);
     if(t.hp < captureWindowMinHp(t)) return toast("Tiger HP is too low for capture. Finish the tiger.");
+    if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return toast(`Boss capture locked: ${bossCaptureStrategyStatus(t)}.`);
     const req = requiredTranqWeaponId(t);
     const reqWeapon = getWeapon(req);
     if(!reqWeapon) return toast("Required tranq weapon data missing.");
@@ -31138,6 +31235,7 @@ function playerAction(action){
     }
     noteTigerOutcomeForObjective(t);
     const bossCapture = !!isBossTiger(t);
+    if(bossCapture) grantBossEncounter3Reward(t, "CAPTURE");
     const captureTreeFx = weaponMasteryTreeEffects(req, S);
     markStoryFinalBossOutcome("CAPTURE", t);
     triggerPhase18TigerMoment(t, "capture", "Captured");
@@ -32158,7 +32256,9 @@ function renderHUD(){
   document.getElementById("lvlTxt").innerText = lvl;
 
   const t=currentTargetTiger();
-  document.getElementById("tigerTxt").innerText = t ? `${Math.round(t.hp)}/${Math.round(t.hpMax)} (${t.type})` : "—";
+  document.getElementById("tigerTxt").innerText = t
+    ? `${Math.round(t.hp)}/${Math.round(t.hpMax)} (${t.type})${isBossTiger(t) ? ` • ARM ${Math.ceil(ensureBossEncounter3State(t).bossArmor)}/${Math.ceil(t.bossArmorMax)} • ${bossCaptureStrategyStatus(t)}` : ""}`
+    : "—";
   document.getElementById("tigerBar").style.width = t ? `${(t.hp/t.hpMax)*100}%` : "0%";
   const capturePctTxt = document.getElementById("capturePctTxt");
   if(capturePctTxt) capturePctTxt.innerText = captureWindowPctLabel();
@@ -35929,6 +36029,17 @@ function drawTiger(t){
   }
 
   const pct=t.hp/t.hpMax;
+  if(isBossTiger(t)){
+    ensureBossEncounter3State(t);
+    const armorPct = clamp(t.bossArmor / Math.max(1, t.bossArmorMax), 0, 1);
+    ctx.fillStyle="rgba(11,13,18,.86)";
+    ctx.fillRect(x-26*s,y-43*s,52*s,5);
+    ctx.fillStyle=t.bossArmorBroken ? "rgba(248,113,113,.90)" : "rgba(96,165,250,.96)";
+    ctx.fillRect(x-26*s,y-43*s,52*s*armorPct,5);
+    ctx.strokeStyle="rgba(241,245,249,.66)";
+    ctx.lineWidth=1;
+    ctx.strokeRect(x-26*s,y-43*s,52*s,5);
+  }
   ctx.fillStyle="rgba(11,13,18,.85)";
   ctx.fillRect(x-26*s,y-34*s,52*s,6);
   ctx.fillStyle=pct>0.5?"#4ade80":(pct>0.2?"#f59e0b":"#fb7185");
