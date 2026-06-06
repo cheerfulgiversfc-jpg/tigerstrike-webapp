@@ -2540,17 +2540,56 @@ function missionShareBaseUrl(){
   }
 }
 
+const MISSION_STAT_KEYS = Object.freeze(["shots","captures","kills","evac","cashEarned","trapsPlaced","trapsTriggered"]);
+function missionStatSnapshot(src=S.stats){
+  const s = src && typeof src === "object" ? src : {};
+  const out = {};
+  for(const key of MISSION_STAT_KEYS){
+    out[key] = Math.max(0, Math.floor(Number(s[key] || 0)));
+  }
+  return out;
+}
+function beginMissionStatRun(reason="deploy"){
+  S._missionStatsStart = missionStatSnapshot(S.stats);
+  S._missionStatsFinal = null;
+  S._missionRunId = [
+    normalizeModeName(S.mode),
+    missionIndexForMode(S.mode),
+    Date.now(),
+    Math.floor(Math.random() * 100000)
+  ].join(":");
+  S._missionStatsReason = reason;
+}
+function currentMissionStatsSnapshot(){
+  if(S._missionStatsFinal && typeof S._missionStatsFinal === "object"){
+    return missionStatSnapshot(S._missionStatsFinal);
+  }
+  const start = missionStatSnapshot(S._missionStatsStart || {});
+  const now = missionStatSnapshot(S.stats || {});
+  const out = {};
+  for(const key of MISSION_STAT_KEYS){
+    out[key] = Math.max(0, Math.floor(Number(now[key] || 0) - Number(start[key] || 0)));
+  }
+  return out;
+}
+function finalizeMissionStatsSnapshot(){
+  const finalStats = currentMissionStatsSnapshot();
+  S._missionStatsFinal = finalStats;
+  return finalStats;
+}
+
 function buildMissionRecapPayload(meta={}){
   const missionLabel = storyOrModeMissionLabel(S, meta);
   const chapterName = String(meta?.chapterName || "").trim();
   const chapterSuffix = chapterName ? ` — ${chapterName}` : "";
-  const kills = Math.max(0, Math.floor(Number(S.stats?.kills || 0)));
-  const captures = Math.max(0, Math.floor(Number(S.stats?.captures || 0)));
-  const evac = Math.max(0, Math.floor(Number(S.stats?.evac || 0)));
-  const trapsSet = Math.max(0, Math.floor(Number(S.stats?.trapsPlaced || 0)));
-  const trapsStop = Math.max(0, Math.floor(Number(S.stats?.trapsTriggered || 0)));
-  const shots = Math.max(0, Math.floor(Number(S.stats?.shots || 0)));
-  const cash = Math.max(0, Math.floor(Number(S.stats?.cashEarned || 0)));
+  const missionStats = missionStatSnapshot(meta?.missionStats || currentMissionStatsSnapshot());
+  const kills = missionStats.kills;
+  const captures = missionStats.captures;
+  const evac = missionStats.evac;
+  const trapsSet = missionStats.trapsPlaced;
+  const trapsStop = missionStats.trapsTriggered;
+  const shots = missionStats.shots;
+  const cash = missionStats.cashEarned;
   const shareUrl = missionShareBaseUrl();
   const card = [
     `${missionLabel}${chapterSuffix}`,
@@ -2574,6 +2613,7 @@ function buildMissionRecapPayload(meta={}){
     card,
     shareText,
     shareUrl,
+    missionStats,
     createdAt: Date.now(),
   };
 }
@@ -2616,17 +2656,18 @@ function renderMissionPremiumSummaryCard(summary=null){
   const base = summary && typeof summary === "object"
     ? summary
     : ((S.lastMissionPremiumSummary && typeof S.lastMissionPremiumSummary === "object") ? S.lastMissionPremiumSummary : {});
+  const missionStats = currentMissionStatsSnapshot();
 
   const mode = String(base.mode || S.mode || "Story");
   const level = Math.max(1, Math.floor(Number(base.level || missionIndexForMode(mode) || 1)));
   const chapterName = String(base.chapterName || "").trim();
-  const civiliansEvac = Math.max(0, Math.floor(Number(base.evac || S.stats?.evac || 0)));
+  const civiliansEvac = Math.max(0, Math.floor(Number(base.evac ?? missionStats.evac ?? 0)));
   const civiliansTotal = Math.max(0, Math.floor(Number(base.civTotal || S.civilians?.length || 0)));
-  const captures = Math.max(0, Math.floor(Number(base.captures || S.stats?.captures || 0)));
-  const kills = Math.max(0, Math.floor(Number(base.kills || S.stats?.kills || 0)));
-  const cashEarned = Math.max(0, Math.floor(Number(base.cashEarned || S.stats?.cashEarned || 0)));
-  const shots = Math.max(0, Math.floor(Number(base.shots || S.stats?.shots || 0)));
-  const trapStops = Math.max(0, Math.floor(Number(base.trapsTriggered || S.stats?.trapsTriggered || 0)));
+  const captures = Math.max(0, Math.floor(Number(base.captures ?? missionStats.captures ?? 0)));
+  const kills = Math.max(0, Math.floor(Number(base.kills ?? missionStats.kills ?? 0)));
+  const cashEarned = Math.max(0, Math.floor(Number(base.cashEarned ?? missionStats.cashEarned ?? 0)));
+  const shots = Math.max(0, Math.floor(Number(base.shots ?? missionStats.shots ?? 0)));
+  const trapStops = Math.max(0, Math.floor(Number(base.trapsTriggered ?? missionStats.trapsTriggered ?? 0)));
   const bossMission = !!base.bossMission;
   const grade = missionPremiumGrade({
     civTotal:civiliansTotal, evac:civiliansEvac, captures, kills, shots, trapsTriggered:trapStops
@@ -2679,11 +2720,12 @@ function rewardEscapeHtml(value=""){
 function missionRewards2Build({ activeMission=null, storyMission=null, arcadeMission=null, civTotal=0, civDead=0, civEvac=0, storyVariant="" }={}){
   const mode = normalizeModeName(S.mode);
   const level = Math.max(1, Math.floor(Number(activeMission?.number || missionIndexForMode(mode) || 1)));
-  const captures = Math.max(0, Math.floor(Number(S.stats?.captures || 0)));
-  const kills = Math.max(0, Math.floor(Number(S.stats?.kills || 0)));
-  const shots = Math.max(0, Math.floor(Number(S.stats?.shots || 0)));
-  const trapStops = Math.max(0, Math.floor(Number(S.stats?.trapsTriggered || 0)));
-  const cashEarnedBefore = Math.max(0, Math.floor(Number(S.stats?.cashEarned || 0)));
+  const missionStats = currentMissionStatsSnapshot();
+  const captures = Math.max(0, Math.floor(Number(missionStats.captures || 0)));
+  const kills = Math.max(0, Math.floor(Number(missionStats.kills || 0)));
+  const shots = Math.max(0, Math.floor(Number(missionStats.shots || 0)));
+  const trapStops = Math.max(0, Math.floor(Number(missionStats.trapsTriggered || 0)));
+  const cashEarnedBefore = Math.max(0, Math.floor(Number(missionStats.cashEarned || 0)));
   const perfectRescue = civTotal > 0 && civDead === 0 && civEvac >= civTotal;
   const captureFocus = captures > 0 && captures >= Math.max(1, kills);
   const cleanPrecision = shots > 0 && shots <= Math.max(18, 18 + level);
@@ -7369,11 +7411,13 @@ const DEFAULT = {
 
   ownedWeapons:["W_TRQ_PISTOL_MK1","W_9MM_JUNK","W_TRQ_RIFLE","W_TRQ_LAUNCHER"],
   equippedWeaponId:"W_TRQ_PISTOL_MK1",
+  preferredWeaponId:"W_TRQ_PISTOL_MK1",
+  preferredLethalWeaponId:"W_9MM_JUNK",
   weaponAttachments:{},
   weaponForge: defaultWeaponForgeState(),
   activeLoadoutPresetId:"",
   ammoReserve:{ "TRANQ_DARTS":20, "9MM_STD":40 },
-  mag:{ loaded:6, cap:6 },
+  mag:{ loaded:6, cap:6, weaponId:"W_TRQ_PISTOL_MK1", ammoId:"TRANQ_DARTS" },
   durability:{},
   weaponMastery:{},
   weaponMasteryTrees:{},
@@ -7502,6 +7546,9 @@ const DEFAULT = {
   respawnLockRecoverCount:0,
   _respawnLockRecoverCountSession:0,
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
+  _missionStatsStart:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
+  _missionStatsFinal:null,
+  _missionRunId:"",
   opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0 },
   balanceStats: defaultBalanceStatsState(),
   nemesis: defaultNemesisState(),
@@ -9379,11 +9426,11 @@ let __mapWaterSig = "";
 let __mapWaterZones = [];
 let __mapDenseLandmarksSig = "";
 let __mapDenseLandmarks = [];
-const STARTUP_LOADING_MAX_MS = 45000;
-const STARTUP_LOADING_PLAYABLE_MS = 30000;
-const STARTUP_LOADING_MIN_MS = 18000;
-const STARTUP_LOADING_READY_FRAMES = 48;
-const STARTUP_LOADING_DETAIL_READY_FRAMES = 22;
+const STARTUP_LOADING_MAX_MS = 30000;
+const STARTUP_LOADING_PLAYABLE_MS = 16000;
+const STARTUP_LOADING_MIN_MS = 7500;
+const STARTUP_LOADING_READY_FRAMES = 24;
+const STARTUP_LOADING_DETAIL_READY_FRAMES = 10;
 const STARTUP_PRELOAD_STAGE_WEIGHTS = Object.freeze({
   terrain:18,
   sectors:18,
@@ -9975,10 +10022,11 @@ function updateStreamedSectors(state=S, now=Date.now()){
   ss.lastUpdateAt = now;
   return ss;
 }
-function preloadMissionBoardSectors(state=S, now=Date.now()){
+function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
   const src = (state && typeof state === "object") ? state : S;
   const ss = ensureSectorStreamingState(src);
   if(!ss.enabled) return ss;
+  const radius = clamp(Math.floor(Number(opts.radius ?? 1)), 1, 3);
   const points = [];
   const pushPoint = (x, y)=>{
     if(Number.isFinite(Number(x)) && Number.isFinite(Number(y))){
@@ -10007,8 +10055,8 @@ function preloadMissionBoardSectors(state=S, now=Date.now()){
     discovered.add(centerKey);
     active.add(centerKey);
     const center = streamSectorPointFromKey(centerKey, src);
-    for(let dy=-1; dy<=1; dy++){
-      for(let dx=-1; dx<=1; dx++){
+    for(let dy=-radius; dy<=radius; dy++){
+      for(let dx=-radius; dx<=radius; dx++){
         const sx = Math.max(0, center.sx + dx);
         const sy = Math.max(0, center.sy + dy);
         const key = `${sx}:${sy}`;
@@ -14973,13 +15021,21 @@ function attachmentBuildSummaryForWeapon(weaponId, state=S){
   return tags.join(" • ");
 }
 function syncEquippedMagCap(opts={}){
-  if(!S.mag || typeof S.mag !== "object") S.mag = { loaded:0, cap:0 };
+  if(!S.mag || typeof S.mag !== "object") S.mag = { loaded:0, cap:0, weaponId:"", ammoId:"" };
   const stats = weaponBuildStats(S.equippedWeaponId, S);
+  const previousWeaponId = String(S.mag.weaponId || "");
+  if(previousWeaponId && previousWeaponId !== S.equippedWeaponId){
+    S.mag.loaded = 0;
+    S.mag.ammoId = "";
+  }
+  S.mag.weaponId = S.equippedWeaponId;
   S.mag.cap = stats.magCap;
   if(opts.refill){
     S.mag.loaded = stats.magCap;
+    S.mag.ammoId = stats.weapon?.ammo || "";
   } else {
     S.mag.loaded = clamp(Math.floor(Number(S.mag.loaded || 0)), 0, S.mag.cap);
+    if(S.mag.loaded <= 0) S.mag.ammoId = "";
   }
 }
 function setWeaponAttachment(slot, attachmentId="", weaponId=S.equippedWeaponId, opts={}){
@@ -20636,10 +20692,11 @@ function renderQuickWeaponPicker(){
     const w = getWeapon(id);
     const build = weaponBuildStats(id, S);
     const active = id===S.equippedWeaponId;
-    const reserve = S.ammoReserve[w.ammo]||0;
+    const reserve = compatibleAmmoReserveForWeapon(w);
     const loaded = active ? S.mag.loaded : 0;
     const range = build.range || 0;
-    return `<button ${active?'class="good"':''} onclick="selectQuickWeapon('${id}')">${active?'✅ ':''}${w.name}<br><span class="small">Ammo ${loaded}/${build.magCap} • Reserve ${reserve} • Range ${range}</span></button>`;
+    const bestAmmo = active && loaded > 0 ? loadedAmmoIdForEquippedWeapon() : (bestAvailableAmmoIdForWeapon(w) || w.ammo);
+    return `<button ${active?'class="good"':''} onclick="selectQuickWeapon('${id}')">${active?'✅ ':''}${w.name}<br><span class="small">Ammo ${loaded}/${build.magCap} • ${bestAmmo} reserve ${reserve} • Range ${range}</span></button>`;
   }).join("");
 }
 function openQuickWeaponPicker(){
@@ -22048,7 +22105,8 @@ function renderInventory(){
   syncSquadRosterBounds();
   const w=equippedWeapon();
   const forgeLoadout = weaponForgeLoadoutForWeapon(w.id, S);
-  const ammoId=w.ammo;
+  const ammoId=loadedAmmoIdForEquippedWeapon() || w.ammo;
+  const equippedReserve = compatibleAmmoReserveForWeapon(w);
   const baseRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + storyBaseRank(def.key), 0);
   const baseMaxRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + def.maxRank, 0);
   const hqRanks = STORY_HQ_MODULES.reduce((n, def)=>n + storyHQRank(def.key), 0);
@@ -22064,7 +22122,7 @@ function renderInventory(){
   const squadSmokeStatus = squadAbilityStatusLabel("smoke_screen");
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
-     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[ammoId]||0}) • <b>Build:</b> ${attachmentBuildSummaryForWeapon(w.id)} • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
+     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} ${ammoId} (reserve ${equippedReserve}) • <b>Build:</b> ${attachmentBuildSummaryForWeapon(w.id)} • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
      <b>Forge:</b> ${forgeLoadout.skin?.name || "Field Standard"} skin • ${forgeLoadout.effect?.name || "No Effect"} trail • ${weaponForgeWalletLabel(S)}<br>
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
      <b>Squad Abilities:</b> Tranq Burst ${squadTranqStatus} • Smoke Screen ${squadSmokeStatus}<br>
@@ -22816,6 +22874,50 @@ function ammoEffectFor(ammoId){
   const grade=a?.grade||"Standard";
   return AMMO_EFFECTS[grade] || AMMO_EFFECTS.Standard;
 }
+function ammoGradeRank(ammoId){
+  const grade = String(getAmmo(ammoId)?.grade || "Standard");
+  if(grade === "Mythic") return 4;
+  if(grade === "Epic") return 3;
+  if(grade === "Rare") return 2;
+  return 1;
+}
+function ammoFamilyFor(ammoId){
+  const ammo = getAmmo(ammoId);
+  return String(ammo?.family || ammoId || "");
+}
+function compatibleAmmoIdsForWeapon(w){
+  if(!w) return [];
+  const family = ammoFamilyFor(w.ammo);
+  return AMMO
+    .filter((ammo)=>ammo && ammoFamilyFor(ammo.id) === family)
+    .sort((a,b)=>{
+      const eb = ammoEffectFor(b.id);
+      const ea = ammoEffectFor(a.id);
+      const powerB = (Number(eb.dmgMul || 1) * 100) + (Number(eb.tranq || 1) * 36) + (Number(eb.crit || 0) * 80) + ammoGradeRank(b.id);
+      const powerA = (Number(ea.dmgMul || 1) * 100) + (Number(ea.tranq || 1) * 36) + (Number(ea.crit || 0) * 80) + ammoGradeRank(a.id);
+      return powerB - powerA;
+    })
+    .map((ammo)=>ammo.id);
+}
+function compatibleAmmoReserveForWeapon(w){
+  if(!w) return 0;
+  return compatibleAmmoIdsForWeapon(w).reduce((sum, ammoId)=>sum + Math.max(0, Math.floor(Number(S.ammoReserve?.[ammoId] || 0))), 0);
+}
+function bestAvailableAmmoIdForWeapon(w){
+  if(!w) return "";
+  for(const ammoId of compatibleAmmoIdsForWeapon(w)){
+    if(Math.max(0, Math.floor(Number(S.ammoReserve?.[ammoId] || 0))) > 0) return ammoId;
+  }
+  return "";
+}
+function loadedAmmoIdForEquippedWeapon(){
+  const w = equippedWeapon();
+  if(!w) return "";
+  if(S.mag?.weaponId === w.id && S.mag?.ammoId && S.mag.loaded > 0){
+    return S.mag.ammoId;
+  }
+  return w.ammo;
+}
 function weaponDurability(id){ if(S.durability[id]==null) S.durability[id]=100; return S.durability[id]; }
 function applyWearOnShot(w){
   const g=WEAPON_GRADE[w.grade]||WEAPON_GRADE.Common;
@@ -22831,17 +22933,20 @@ function jamChance(w){
 }
 function autoReloadIfNeeded(force=false){
   const w=equippedWeapon();
-  if(!force && S.mag.loaded>0) return true;
-  const reserve = S.ammoReserve[w.ammo] || 0;
-  if(reserve<=0) return false;
   syncEquippedMagCap({ refill:false });
+  if(!force && S.mag.loaded>0) return true;
+  const ammoId = bestAvailableAmmoIdForWeapon(w);
+  if(!ammoId) return false;
+  const reserve = S.ammoReserve[ammoId] || 0;
   const need = S.mag.cap - S.mag.loaded;
   const take = Math.min(need, reserve);
   const handling = weaponHandlingProfile(w);
   const handlingBonus = clamp((perkReloadBonus() + weaponMasteryReloadBonus(w.id)) * handling.reloadMul, 0, 0.78);
   const bonus = Math.min(need - take, Math.floor(take * handlingBonus));
   S.mag.loaded += take + bonus;
-  S.ammoReserve[w.ammo] = reserve - take;
+  S.mag.weaponId = w.id;
+  S.mag.ammoId = ammoId;
+  S.ammoReserve[ammoId] = reserve - take;
   sfx("reload"); hapticImpact("light");
   return true;
 }
@@ -22850,6 +22955,13 @@ function equipWeapon(id, opts={}){
   const w=getWeapon(id); if(!w) return;
   ensureWeaponAttachmentState(S);
   S.equippedWeaponId=id;
+  if(!opts.system){
+    S.preferredWeaponId = id;
+    if(w.type === "lethal"){
+      S.preferredLethalWeaponId = id;
+      S.lastCombatLethalWeaponId = id;
+    }
+  }
   if(!opts.keepPreset) S.activeLoadoutPresetId = "";
   syncEquippedMagCap({ refill:false });
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
@@ -25251,6 +25363,7 @@ function deploy(opts={}){
   S.stats.cashEarned = 0;
   S.stats.trapsPlaced = 0;
   S.stats.trapsTriggered = 0;
+  beginMissionStatRun("deploy");
   S._missionStartAt = Date.now();
   S.arcadeMissionStartAt = 0;
   S.arcadeMissionLimitSec = 0;
@@ -30002,9 +30115,10 @@ function renderWeaponGrid(){
     const w=getWeapon(id);
     const active=(id===S.equippedWeaponId);
     const dur=Math.round(weaponDurability(id));
-    const reserve = S.ammoReserve[w.ammo]||0;
+    const reserve = compatibleAmmoReserveForWeapon(w);
     const badge = (reserve<=0 && S.mag.loaded<=0 && active) ? " (NO AMMO)" : "";
-    return `<button ${active?'class="good"':''} onclick="equipWeapon('${id}')">${active?'✅ ':''}${w.name} (${dur}%)${badge}</button>`;
+    const bestAmmo = active && S.mag.loaded > 0 ? loadedAmmoIdForEquippedWeapon() : (bestAvailableAmmoIdForWeapon(w) || w.ammo);
+    return `<button ${active?'class="good"':''} onclick="equipWeapon('${id}')">${active?'✅ ':''}${w.name} (${dur}%)${badge}<br><span class="small">${bestAmmo} • Reserve ${reserve}</span></button>`;
   }).join("");
 }
 const ATTACK_HOLD = { timer:0, longPress:false };
@@ -30091,8 +30205,8 @@ function requiredTranqWeaponId(t){
 function hasAmmoForWeaponId(id){
   const w = getWeapon(id);
   if(!w) return false;
-  if(S.equippedWeaponId === id && S.mag.loaded > 0) return true;
-  return (S.ammoReserve[w.ammo]||0) > 0;
+  if(S.equippedWeaponId === id && S.mag?.weaponId === id && S.mag.loaded > 0) return true;
+  return compatibleAmmoReserveForWeapon(w) > 0;
 }
 function canAttemptCapture(t){
   if(!tigerInCaptureHpWindow(t)) return false;
@@ -30105,7 +30219,7 @@ function canCaptureTiger(t){
   if(S.equippedWeaponId !== req) return false;
   const w=equippedWeapon();
   if(w.type!=="tranq") return false;
-  return S.mag.loaded > 0 || (S.ammoReserve[w.ammo]||0) > 0;
+  return (S.mag?.weaponId === w.id && S.mag.loaded > 0) || compatibleAmmoReserveForWeapon(w) > 0;
 }
 function tutorialCaptureWindowReady(){
   const t = tigerById(S.activeTigerId);
@@ -30117,11 +30231,16 @@ function tutorialAnyCaptureWindowReady(){
   }
   return false;
 }
-function restorePostCaptureWeapon(requiredTranqId){
-  const restoreId = (typeof S.lastCombatLethalWeaponId === "string") ? S.lastCombatLethalWeaponId : "";
+function restorePostCaptureWeapon(requiredTranqId, fallbackId=""){
+  const candidates = [
+    fallbackId,
+    S.preferredWeaponId,
+    S.preferredLethalWeaponId,
+    S.lastCombatLethalWeaponId
+  ].map((id)=>String(id || "")).filter(Boolean);
+  const restoreId = candidates.find((id)=>id !== requiredTranqId && S.ownedWeapons?.includes(id) && getWeapon(id));
   if(!restoreId || restoreId === requiredTranqId) return false;
-  if(!S.ownedWeapons?.includes(restoreId)) return false;
-  equipWeapon(restoreId);
+  equipWeapon(restoreId, { system:true, keepPreset:true });
   return true;
 }
 function updateBattleButtons(){
@@ -30238,13 +30357,10 @@ function bossReinforcementTick(){
 
 // ---- Ammo availability helpers (Phase 1 fix) ----
 function anyWeaponHasAmmo(){
-  // If any owned weapon has either loaded>0 when equipped OR reserve>0 that could reload
-  // We approximate by checking reserves; also if the equipped mag has bullets.
-  if(S.mag.loaded>0) return true;
+  if(S.mag?.loaded>0) return true;
   for(const id of S.ownedWeapons){
     const w=getWeapon(id);
-    const res = S.ammoReserve[w.ammo]||0;
-    if(res>0) return true;
+    if(compatibleAmmoReserveForWeapon(w)>0) return true;
   }
   return false;
 }
@@ -30259,18 +30375,19 @@ function anyLethalWeaponHasAmmo(){
 function preferredAttackWeaponId(){
   const current = equippedWeapon();
   if(current?.type==="lethal" && hasAmmoForWeaponId(current.id)) return current.id;
-  for(const id of S.ownedWeapons){
-    const w=getWeapon(id);
-    if(!w || w.type!=="lethal") continue;
-    if(hasAmmoForWeaponId(id)) return id;
+  const preferredIds = [S.preferredLethalWeaponId, S.lastCombatLethalWeaponId]
+    .map((id)=>String(id || ""))
+    .filter(Boolean);
+  for(const id of preferredIds){
+    const w = getWeapon(id);
+    if(w?.type === "lethal" && S.ownedWeapons?.includes(id) && hasAmmoForWeaponId(id)) return id;
   }
   return null;
 }
 function equippedWeaponHasAmmoNow(){
   const w=equippedWeapon();
-  if(S.mag.loaded>0) return true;
-  const res = S.ammoReserve[w.ammo]||0;
-  return res>0;
+  if(S.mag?.weaponId === w.id && S.mag.loaded>0) return true;
+  return compatibleAmmoReserveForWeapon(w)>0;
 }
 function updateAttackButton(){
   const btn = document.getElementById("atkBtn");
@@ -30373,13 +30490,12 @@ function playerAction(action){
     if(!reqWeapon) return toast("Required tranq weapon data missing.");
     if(!S.ownedWeapons.includes(req)) return toast(`${reqWeapon.name} is required to capture this ${t.type}.`);
     const magReady = (S.equippedWeaponId === req && S.mag.loaded > 0);
-    const reserveReady = (S.ammoReserve[reqWeapon.ammo]||0) > 0;
+    const reserveReady = compatibleAmmoReserveForWeapon(reqWeapon) > 0;
     if(!magReady && !reserveReady){
       return toast(`${reqWeapon.name} is out of ammo for this ${t.type}.`);
     }
     if(S.equippedWeaponId !== req){
-      equipWeapon(req);
-      S.mag.loaded = 0;
+      equipWeapon(req, { system:true, keepPreset:true });
     }
     if(S.mag.loaded <= 0 && !autoReloadIfNeeded(true)){
       return toast(`${reqWeapon.name} is out of ammo for this ${t.type}.`);
@@ -30422,8 +30538,8 @@ function playerAction(action){
     emitDamagePopup(t.x, t.y - 44, "CAPTURE", "capture");
     sfx("win"); hapticNotif("success");
     endBattle();
-    if(!restorePostCaptureWeapon(req) && preCaptureWeaponId && preCaptureWeaponId !== req && S.ownedWeapons.includes(preCaptureWeaponId)){
-      equipWeapon(preCaptureWeaponId);
+    if(!restorePostCaptureWeapon(req, preCaptureWeaponId) && preCaptureWeaponId && preCaptureWeaponId !== req && S.ownedWeapons.includes(preCaptureWeaponId)){
+      equipWeapon(preCaptureWeaponId, { system:true, keepPreset:true });
     }
     checkMissionComplete();
     return;
@@ -30445,8 +30561,7 @@ function playerAction(action){
     }
     S.lastCombatLethalWeaponId = attackWeaponId;
     if(S.equippedWeaponId !== attackWeaponId){
-      equipWeapon(attackWeaponId);
-      S.mag.loaded = 0;
+      equipWeapon(attackWeaponId, { system:true, keepPreset:true });
     }
 
     const w=equippedWeapon();
@@ -30489,7 +30604,8 @@ function playerAction(action){
     addWeaponMasteryXp(w.id, 2);
     addXP(2);
     
-    const eff=ammoEffectFor(w.ammo);
+    const shotAmmoId = loadedAmmoIdForEquippedWeapon() || w.ammo;
+    const eff=ammoEffectFor(shotAmmoId);
     const handling = weaponHandlingProfile(w);
     const build = weaponBuildStats(w.id, S);
     const forgeTrail = weaponForgeTrailVisualForWeapon(w.id, S);
@@ -31242,12 +31358,14 @@ function checkMissionComplete(){
       const rewards2Note = rewards2
         ? `\nMission Rewards 2.0: +$${Math.max(0, Math.floor(Number(rewards2.totalCash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(rewards2.bonusXp || 0)))}XP • Streak ${Math.max(1, Math.floor(Number(rewards2.nextStreak || 1)))}\n`
         : "";
+      const missionStats = finalizeMissionStatsSnapshot();
 
       const recapMeta = {
         number: activeMission?.number || gameplayCloudMission(S),
         chapterName: activeMission?.chapterName || "",
         storyVariant,
         runIndex: storyMission?.runIndex || 0,
+        missionStats,
       };
       const recap = buildMissionRecapPayload(recapMeta);
       S.lastMissionRecap = recap;
@@ -31258,19 +31376,19 @@ function checkMissionComplete(){
         chapterName:activeMission?.chapterName || "",
         bossMission:!!(activeMission?.boss),
         civTotal:civTotal,
-        evac:S.stats.evac || 0,
-        captures:S.stats.captures || 0,
-        kills:S.stats.kills || 0,
-        shots:S.stats.shots || 0,
-        cashEarned:S.stats.cashEarned || 0,
-        trapsTriggered:S.stats.trapsTriggered || 0,
+        evac:missionStats.evac || 0,
+        captures:missionStats.captures || 0,
+        kills:missionStats.kills || 0,
+        shots:missionStats.shots || 0,
+        cashEarned:missionStats.cashEarned || 0,
+        trapsTriggered:missionStats.trapsTriggered || 0,
       };
       S.lastMissionPremiumSummary = premiumSummary;
       renderMissionPremiumSummaryCard(premiumSummary);
       renderMissionRewards2Card(rewards2);
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${upkeepNote}${rewards2Note}\n• Tigers Killed: ${S.stats.kills}\n• Tigers Captured: ${S.stats.captures}\n• Civilians Evacuated: ${S.stats.evac}\n• Traps Set: ${S.stats.trapsPlaced||0}\n• Trap Stops: ${S.stats.trapsTriggered||0}\n• Cash Earned: $${S.stats.cashEarned.toLocaleString()}\n• Shots Fired: ${S.stats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${upkeepNote}${rewards2Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
@@ -31352,7 +31470,7 @@ function renderHUD(){
   const w=equippedWeapon();
   document.getElementById("weaponTxt").innerText = w.name;
   document.getElementById("durTxt").innerText = Math.round(weaponDurability(w.id));
-  document.getElementById("ammoTxt").innerText = `${S.mag.loaded}/${S.mag.cap} (reserve ${S.ammoReserve[w.ammo]||0})`;
+  document.getElementById("ammoTxt").innerText = `${S.mag.loaded}/${S.mag.cap} ${loadedAmmoIdForEquippedWeapon() || w.ammo} (reserve ${compatibleAmmoReserveForWeapon(w)})`;
   document.getElementById("medTxt").innerText = totalMedkits();
   document.getElementById("repTxt").innerText = totalRepairKits();
   document.getElementById("trapTxt").innerText = S.trapsOwned;
@@ -32107,6 +32225,10 @@ function mobileWeatherTintSpec(){
 
 function shouldUseMobileFastMapRenderer(state=S){
   if(!isMobileViewport()) return false;
+  const now = Date.now();
+  if(__startupLoadingGuard?.active) return false;
+  if(now < Number(__forceFullMapRepaintUntil || 0)) return false;
+  if(__startupLoadingGuard?.releasedAt && (now - Number(__startupLoadingGuard.releasedAt || 0)) < 90000) return false;
   const pref = String(state?.mobileMapRenderer || "full").toLowerCase();
   return pref === "fast";
 }
@@ -35874,7 +35996,7 @@ function missionMapWarmupTick(now=Date.now()){
   if(!__startupLoadingGuard.active) return;
   try{ resizeCanvasForViewport(); }catch(e){}
   try{ updateStreamedSectors(S, now); }catch(e){}
-  try{ preloadMissionBoardSectors(S, now); }catch(e){}
+  try{ preloadMissionBoardSectors(S, now, { radius:2 }); }catch(e){}
   try{ ensureMapObstacleCache(); }catch(e){}
   try{ ensureMissionTwistState(S); }catch(e){}
   try{ computeStartupPreloadProgress(now); }catch(e){}
@@ -35970,7 +36092,10 @@ function startupCriticalPreloadReady(){
 
 function startupPlayablePreloadReady(){
   const scores = __startupLoadingGuard.stageScores || {};
-  return startupCriticalPreloadReady() && Number(scores.visual || 0) >= 35;
+  return (
+    startupCriticalPreloadReady() &&
+    Number(scores.visual || 0) >= 78
+  );
 }
 
 function startupLoadCanRelease(now=Date.now()){
@@ -35980,11 +36105,10 @@ function startupLoadCanRelease(now=Date.now()){
   const detailFrames = Number(__startupLoadingGuard.detailedFrames || 0);
   const enoughFrames = readyFrames >= Math.floor(STARTUP_LOADING_READY_FRAMES * 0.78);
   const enoughDetail = detailFrames >= STARTUP_LOADING_DETAIL_READY_FRAMES;
-  const criticalReady = startupCriticalPreloadReady();
   const playableReady = startupPlayablePreloadReady();
   return (
     (elapsed >= STARTUP_LOADING_MIN_MS && enoughFrames && enoughDetail && playableReady) ||
-    (elapsed >= STARTUP_LOADING_PLAYABLE_MS && enoughFrames && criticalReady) ||
+    (elapsed >= STARTUP_LOADING_PLAYABLE_MS && enoughFrames && enoughDetail && playableReady) ||
     elapsed >= STARTUP_LOADING_MAX_MS
   );
 }
@@ -35995,7 +36119,7 @@ function releaseStartupLoadingGuard(reason="ready"){
   __startupLoadingGuard.active = false;
   __startupLoadingGuard.releasedAt = Date.now();
   __startupLoadingGuard.reason = reason;
-  __forceFullMapRepaintUntil = Math.max(Number(__forceFullMapRepaintUntil || 0), Date.now() + 2200);
+  __forceFullMapRepaintUntil = Math.max(Number(__forceFullMapRepaintUntil || 0), Date.now() + 90000);
   try{ invalidateMapCache(); }catch(e){}
   updateStartupLoadingOverlay(true);
 }
@@ -36016,7 +36140,7 @@ function noteStartupMapFrameReady(){
   computeStartupPreloadProgress(now);
   __startupLoadingGuard.readyFrames = Math.min(STARTUP_LOADING_READY_FRAMES, Number(__startupLoadingGuard.readyFrames || 0) + 1);
   if(__startupLastDetailedMapAt >= Number(__startupLoadingGuard.startedAt || 0)){
-    __startupLoadingGuard.detailedFrames = Math.min(STARTUP_LOADING_READY_FRAMES, Number(__startupLoadingGuard.detailedFrames || 0) + 1);
+    __startupLoadingGuard.detailedFrames = Math.min(STARTUP_LOADING_DETAIL_READY_FRAMES, Number(__startupLoadingGuard.detailedFrames || 0) + 1);
   }
   if(startupLoadCanRelease(now)){
     releaseStartupLoadingGuard("map-ready");
@@ -36821,6 +36945,12 @@ function init(){
   S.touchHud = normalizeTouchHudSettings(S.touchHud);
   if(!Array.isArray(S.ownedWeapons) || !S.ownedWeapons.length) S.ownedWeapons = [...DEFAULT.ownedWeapons];
   if(!S.equippedWeaponId || !getWeapon(S.equippedWeaponId)) S.equippedWeaponId = DEFAULT.equippedWeaponId;
+  if(!S.preferredWeaponId || !getWeapon(S.preferredWeaponId) || !S.ownedWeapons.includes(S.preferredWeaponId)){
+    S.preferredWeaponId = S.equippedWeaponId;
+  }
+  if(!S.preferredLethalWeaponId || !getWeapon(S.preferredLethalWeaponId) || !S.ownedWeapons.includes(S.preferredLethalWeaponId) || getWeapon(S.preferredLethalWeaponId)?.type !== "lethal"){
+    S.preferredLethalWeaponId = S.ownedWeapons.find((id)=>getWeapon(id)?.type === "lethal") || DEFAULT.preferredLethalWeaponId;
+  }
   if(!S.ammoReserve || typeof S.ammoReserve !== "object") S.ammoReserve = { ...DEFAULT.ammoReserve };
   if(!S.mag || typeof S.mag !== "object") S.mag = { ...DEFAULT.mag };
   if(!S.medkits || typeof S.medkits !== "object") S.medkits = { ...DEFAULT.medkits };
