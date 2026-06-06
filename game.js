@@ -1371,6 +1371,90 @@ const LIVE_OPS_MODIFIER_POSITIVE_CARDS = Object.freeze([
     bonusMul:1.04,
     mods:{ rescueSpeedMul:1.12, civilianDamageMul:0.90, civilianSpeedMul:1.06 }
   }),
+  Object.freeze({
+    id:"POS_RAPID_EVAC",
+    name:"Rapid Evac",
+    desc:"Civilians and rescue escorts move 18% faster.",
+    bonusMul:1.04,
+    mods:{ civilianSpeedMul:1.18, rescueSpeedMul:1.12 }
+  }),
+  Object.freeze({
+    id:"POS_FIELD_INTEL",
+    name:"Field Intel",
+    desc:"Scan cooldown reduced and scan pulse lasts longer.",
+    bonusMul:1.03,
+    mods:{ abilityCooldownMul:0.75, scanDurationMul:1.20 }
+  }),
+  Object.freeze({
+    id:"POS_TRANQ_SURGE",
+    name:"Tranq Surge",
+    desc:"Tranq weapons gain 15% capture pressure.",
+    bonusMul:1.04,
+    mods:{ tranqDamageMul:1.15 }
+  }),
+  Object.freeze({
+    id:"POS_ARMOR_DROP",
+    name:"Armor Drop",
+    desc:"Deploy with 25 bonus armor.",
+    bonusMul:1.03,
+    mods:{ startArmorAdd:25 }
+  }),
+  Object.freeze({
+    id:"POS_CLEAN_ROUTES",
+    name:"Clean Routes",
+    desc:"Safe-zone rescue radius is increased.",
+    bonusMul:1.04,
+    mods:{ rescueRadiusMul:1.20 }
+  }),
+  Object.freeze({
+    id:"POS_CALM_CIVILIANS",
+    name:"Calm Civilians",
+    desc:"Civilian panic and flee duration are reduced.",
+    bonusMul:1.04,
+    mods:{ civilianPanicMul:0.72, civilianDamageMul:0.96 }
+  }),
+  Object.freeze({
+    id:"POS_SUPPLY_WINDFALL",
+    name:"Supply Windfall",
+    desc:"Pickups give better rewards and supplies appear more often.",
+    bonusMul:1.04,
+    mods:{ pickupRewardMul:1.30, supplyWeightMul:1.18 }
+  }),
+  Object.freeze({
+    id:"POS_HUNTER_FOCUS",
+    name:"Hunter Focus",
+    desc:"Lethal weapons gain 10% damage.",
+    bonusMul:1.04,
+    mods:{ playerDamageMul:1.10 }
+  }),
+  Object.freeze({
+    id:"POS_TRAP_NETWORK",
+    name:"Trap Network",
+    desc:"Traps have wider range and hold tigers longer.",
+    bonusMul:1.04,
+    mods:{ trapRadiusMul:1.24, trapHoldMul:1.24 }
+  }),
+  Object.freeze({
+    id:"POS_MEDIC_ESCORT",
+    name:"Medic Escort",
+    desc:"Civilians take 16% less damage.",
+    bonusMul:1.04,
+    mods:{ civilianDamageMul:0.84 }
+  }),
+  Object.freeze({
+    id:"POS_COMMANDER_RALLY",
+    name:"Commander Rally",
+    desc:"Squad ability cooldowns recharge 22% faster.",
+    bonusMul:1.04,
+    mods:{ squadCooldownMul:0.78 }
+  }),
+  Object.freeze({
+    id:"POS_PERFECT_RESCUE",
+    name:"Perfect Rescue Bonus",
+    desc:"Civilian rescue cash rewards increase by 35%.",
+    bonusMul:1.05,
+    mods:{ rescuePayoutMul:1.35 }
+  }),
 ]);
 const LIVE_OPS_MODIFIER_NEGATIVE_CARDS = Object.freeze([
   Object.freeze({
@@ -1400,6 +1484,90 @@ const LIVE_OPS_MODIFIER_NEGATIVE_CARDS = Object.freeze([
     desc:"Extra chaos from rogue tiger behavior.",
     bonusMul:1.17,
     mods:{ rogueWeightMul:1.22, eventChanceMul:1.12, tigerAggroMul:1.08 }
+  }),
+  Object.freeze({
+    id:"NEG_ALPHA_PRESSURE",
+    name:"Alpha Pressure",
+    desc:"Alpha pressure makes tiger packs angrier and stronger.",
+    bonusMul:1.15,
+    mods:{ tigerAggroMul:1.18, tigerDamageMul:1.10 }
+  }),
+  Object.freeze({
+    id:"NEG_DENSE_FOG",
+    name:"Dense Fog",
+    desc:"Fog thickens and scan pulses fade faster.",
+    bonusMul:1.14,
+    mods:{ fogWeightMul:1.25, scanDurationMul:0.72 }
+  }),
+  Object.freeze({
+    id:"NEG_AMMO_SCARCITY",
+    name:"Ammo Scarcity",
+    desc:"Ammo pickups give fewer rounds and supplies are rarer.",
+    bonusMul:1.16,
+    mods:{ ammoPickupMul:0.55, supplyWeightMul:0.78 }
+  }),
+  Object.freeze({
+    id:"NEG_CIVILIAN_PANIC",
+    name:"Civilian Panic",
+    desc:"Civilians panic longer and move less efficiently.",
+    bonusMul:1.15,
+    mods:{ civilianPanicMul:1.35, civilianSpeedMul:0.88 }
+  }),
+  Object.freeze({
+    id:"NEG_TIGER_AMBUSH",
+    name:"Tiger Ambush",
+    desc:"Stalker and rogue ambush pressure increases.",
+    bonusMul:1.16,
+    mods:{ rogueWeightMul:1.28, eventChanceMul:1.16, tigerAggroMul:1.08 }
+  }),
+  Object.freeze({
+    id:"NEG_MUDDY_GROUND",
+    name:"Muddy Ground",
+    desc:"Player and civilian movement is slowed.",
+    bonusMul:1.14,
+    mods:{ playerSpeedMul:0.90, civilianSpeedMul:0.90 }
+  }),
+  Object.freeze({
+    id:"NEG_BROKEN_COMMS",
+    name:"Broken Comms",
+    desc:"Squad abilities take longer to recharge.",
+    bonusMul:1.15,
+    mods:{ squadCooldownMul:1.28 }
+  }),
+  Object.freeze({
+    id:"NEG_UNSTABLE_GEAR",
+    name:"Unstable Gear",
+    desc:"Weapon jam chance is increased.",
+    bonusMul:1.14,
+    mods:{ jamChanceMul:1.35 }
+  }),
+  Object.freeze({
+    id:"NEG_FLOODED_ROADS",
+    name:"Flooded Roads",
+    desc:"Escort routes and civilians move slower.",
+    bonusMul:1.15,
+    mods:{ rescueSpeedMul:0.86, civilianSpeedMul:0.84 }
+  }),
+  Object.freeze({
+    id:"NEG_PREDATOR_PACK",
+    name:"Predator Pack",
+    desc:"Extra tiger spawn and pack pressure chance.",
+    bonusMul:1.17,
+    mods:{ rogueWeightMul:1.30, eventChanceMul:1.18, tigerSpeedMul:1.06 }
+  }),
+  Object.freeze({
+    id:"NEG_MEDICAL_SHORTAGE",
+    name:"Medical Shortage",
+    desc:"Medkits restore 30% less health.",
+    bonusMul:1.14,
+    mods:{ healingMul:0.70 }
+  }),
+  Object.freeze({
+    id:"NEG_HIGH_ALERT",
+    name:"High Alert",
+    desc:"Tigers detect players and rescues from farther away.",
+    bonusMul:1.16,
+    mods:{ tigerDetectMul:1.22, tigerAggroMul:1.08 }
   }),
 ]);
 
@@ -2969,6 +3137,22 @@ function normalizeLiveOpsMissionModifiers(raw={}){
     rogueWeightMul: clamp(Number(src.rogueWeightMul || 1), 0.65, 1.45),
     fogWeightMul: clamp(Number(src.fogWeightMul || 1), 0.65, 1.45),
     bonusWeightMul: clamp(Number(src.bonusWeightMul || 1), 0.65, 1.45),
+    abilityCooldownMul: clamp(Number(src.abilityCooldownMul || 1), 0.60, 1.45),
+    scanDurationMul: clamp(Number(src.scanDurationMul || 1), 0.60, 1.45),
+    tranqDamageMul: clamp(Number(src.tranqDamageMul || 1), 0.75, 1.35),
+    startArmorAdd: clamp(Number(src.startArmorAdd || 0), 0, 60),
+    rescueRadiusMul: clamp(Number(src.rescueRadiusMul || 1), 0.72, 1.40),
+    civilianPanicMul: clamp(Number(src.civilianPanicMul || 1), 0.60, 1.50),
+    pickupRewardMul: clamp(Number(src.pickupRewardMul || 1), 0.60, 1.50),
+    trapRadiusMul: clamp(Number(src.trapRadiusMul || 1), 0.70, 1.50),
+    trapHoldMul: clamp(Number(src.trapHoldMul || 1), 0.70, 1.50),
+    squadCooldownMul: clamp(Number(src.squadCooldownMul || 1), 0.60, 1.50),
+    rescuePayoutMul: clamp(Number(src.rescuePayoutMul || 1), 0.70, 1.55),
+    ammoPickupMul: clamp(Number(src.ammoPickupMul || 1), 0.40, 1.60),
+    playerSpeedMul: clamp(Number(src.playerSpeedMul || 1), 0.75, 1.25),
+    jamChanceMul: clamp(Number(src.jamChanceMul || 1), 0.65, 1.60),
+    healingMul: clamp(Number(src.healingMul || 1), 0.55, 1.35),
+    tigerDetectMul: clamp(Number(src.tigerDetectMul || 1), 0.75, 1.45),
   };
 }
 function defaultLiveOpsModifierCardsState(weekKey=contractWeekKey()){
@@ -3119,11 +3303,33 @@ function liveOpsApplySelectedModifierCards(state=S){
     rogueWeightMul: (pos.mods?.rogueWeightMul || 1) * (neg.mods?.rogueWeightMul || 1),
     fogWeightMul: (pos.mods?.fogWeightMul || 1) * (neg.mods?.fogWeightMul || 1),
     bonusWeightMul: (pos.mods?.bonusWeightMul || 1) * (neg.mods?.bonusWeightMul || 1),
+    abilityCooldownMul: (pos.mods?.abilityCooldownMul || 1) * (neg.mods?.abilityCooldownMul || 1),
+    scanDurationMul: (pos.mods?.scanDurationMul || 1) * (neg.mods?.scanDurationMul || 1),
+    tranqDamageMul: (pos.mods?.tranqDamageMul || 1) * (neg.mods?.tranqDamageMul || 1),
+    startArmorAdd: (pos.mods?.startArmorAdd || 0) + (neg.mods?.startArmorAdd || 0),
+    rescueRadiusMul: (pos.mods?.rescueRadiusMul || 1) * (neg.mods?.rescueRadiusMul || 1),
+    civilianPanicMul: (pos.mods?.civilianPanicMul || 1) * (neg.mods?.civilianPanicMul || 1),
+    pickupRewardMul: (pos.mods?.pickupRewardMul || 1) * (neg.mods?.pickupRewardMul || 1),
+    trapRadiusMul: (pos.mods?.trapRadiusMul || 1) * (neg.mods?.trapRadiusMul || 1),
+    trapHoldMul: (pos.mods?.trapHoldMul || 1) * (neg.mods?.trapHoldMul || 1),
+    squadCooldownMul: (pos.mods?.squadCooldownMul || 1) * (neg.mods?.squadCooldownMul || 1),
+    rescuePayoutMul: (pos.mods?.rescuePayoutMul || 1) * (neg.mods?.rescuePayoutMul || 1),
+    ammoPickupMul: (pos.mods?.ammoPickupMul || 1) * (neg.mods?.ammoPickupMul || 1),
+    playerSpeedMul: (pos.mods?.playerSpeedMul || 1) * (neg.mods?.playerSpeedMul || 1),
+    jamChanceMul: (pos.mods?.jamChanceMul || 1) * (neg.mods?.jamChanceMul || 1),
+    healingMul: (pos.mods?.healingMul || 1) * (neg.mods?.healingMul || 1),
+    tigerDetectMul: (pos.mods?.tigerDetectMul || 1) * (neg.mods?.tigerDetectMul || 1),
   });
   cards.activePositive = pos.id;
   cards.activeNegative = neg.id;
   cards.activeMods = merged;
   cards.activeBonusMul = clamp((Number(pos.bonusMul || 1) * Number(neg.bonusMul || 1)), 0.75, 1.65);
+  if(cards.appliedMissionKey !== cards.missionKey){
+    const armorAdd = Math.max(0, Math.round(Number(merged.startArmorAdd || 0)));
+    if(armorAdd > 0){
+      state.armor = clamp(Number(state.armor || 0) + armorAdd, 0, Number(state.armorCap || 100));
+    }
+  }
   cards.appliedMissionKey = cards.missionKey;
   cards.lastUpdatedAt = Date.now();
   return true;
@@ -14392,7 +14598,7 @@ function abilityCooldownMul(){
 function abilityCooldownDuration(key){
   const base = ABILITY_COOLDOWN_MS[key] || 0;
   if(base <= 0) return 0;
-  return Math.max(500, Math.round(base * abilityCooldownMul()));
+  return Math.max(500, Math.round(base * abilityCooldownMul() * liveOpsMissionModifierValue("abilityCooldownMul", 1, S)));
 }
 
 function ensureAbilityCooldownState(){
@@ -14468,7 +14674,7 @@ function triggerSquadAbility(key, opts={}){
   const now = Number.isFinite(Number(opts.now)) ? Number(opts.now) : Date.now();
   const state = (opts.state && typeof opts.state === "object") ? opts.state : S;
   ensureSquadAbilityState(state);
-  const cdMs = Math.max(500, Math.floor(Number(SQUAD_ABILITY_COOLDOWN_MS[key] || 0)));
+  const cdMs = Math.max(500, Math.floor(Number(SQUAD_ABILITY_COOLDOWN_MS[key] || 0) * liveOpsMissionModifierValue("squadCooldownMul", 1, state)));
   const activeBase = (opts.activeMs ?? SQUAD_ABILITY_ACTIVE_MS[key] ?? 0);
   const activeMs = Math.max(400, Math.floor(Number(activeBase)));
   state.squadAbilityCooldowns[key] = now + cdMs;
@@ -17145,8 +17351,9 @@ function tickPickups(){
   }
 }
 function collectPickup(p){
+  const pickupMul = liveOpsMissionModifierValue("pickupRewardMul", 1, S);
   if(p.type==="CASH"){
-    const amt = rand(80, 260);
+    const amt = Math.max(1, Math.round(rand(80, 260) * pickupMul));
     S.funds += amt;
     trackCashEarned(amt);
     addXP(10);
@@ -17157,14 +17364,14 @@ function collectPickup(p){
   else if(p.type==="AMMO"){
     // add ammo for equipped weapon
     const w=equippedWeapon();
-    const pack = (w.ammo==="TRANQ_HEAVY") ? 1 : 6;
+    const pack = Math.max(1, Math.round(((w.ammo==="TRANQ_HEAVY") ? 1 : 6) * pickupMul * liveOpsMissionModifierValue("ammoPickupMul", 1, S)));
     S.ammoReserve[w.ammo] = (S.ammoReserve[w.ammo]||0) + pack;
     setEventText(`📦 Ammo picked up (+${pack} ${w.ammo})`, 4);
     sfx("loot");
     unlockAchv("ammo_pick","Ammo Scavenger");
   }
   else if(p.type==="ARMOR"){
-    const add = rand(8, 18);
+    const add = Math.max(1, Math.round(rand(8, 18) * pickupMul));
     if(S.armor < S.armorCap){
       S.armor = clamp(S.armor + add, 0, S.armorCap);
       setEventText(`🛡️ Armor plate +${add}`, 4);
@@ -17175,14 +17382,16 @@ function collectPickup(p){
     unlockAchv("armor_pick","Armored Up");
   }
   else if(p.type==="MED"){
-    S.medkits["M_SMALL"] = (S.medkits["M_SMALL"]||0) + 1;
-    setEventText(`❤️ Found Small Med Kit (+1)`, 4);
+    const medCount = Math.max(1, Math.round(pickupMul));
+    S.medkits["M_SMALL"] = (S.medkits["M_SMALL"]||0) + medCount;
+    setEventText(`❤️ Found Small Med Kit (+${medCount})`, 4);
     sfx("loot");
     unlockAchv("med_pick","Medic");
   }
   else if(p.type==="TRAP"){
-    S.trapsOwned += 1;
-    setEventText(`🪤 Found Trap (+1)`, 4);
+    const trapCount = Math.max(1, Math.round(pickupMul));
+    S.trapsOwned += trapCount;
+    setEventText(`🪤 Found Trap (+${trapCount})`, 4);
     sfx("loot");
     unlockAchv("trap_pick","Trapper");
   }
@@ -17192,9 +17401,9 @@ function collectPickup(p){
     let msg="📦 Supply Crate: ";
     for(let k=0;k<items;k++){
       const r=Math.random();
-      if(r<0.35){ const amt=rand(200,600); S.funds+=amt; trackCashEarned(amt); msg += `+$${amt} `; }
-      else if(r<0.60){ const w=equippedWeapon(); const pack=rand(6,14); S.ammoReserve[w.ammo]=(S.ammoReserve[w.ammo]||0)+pack; msg += `+Ammo(${pack}) `; }
-      else if(r<0.80){ const add=rand(12,28); S.armor=clamp(S.armor+add,0,S.armorCap); msg += `+Armor(${add}) `; }
+      if(r<0.35){ const amt=Math.max(1, Math.round(rand(200,600) * pickupMul)); S.funds+=amt; trackCashEarned(amt); msg += `+$${amt} `; }
+      else if(r<0.60){ const w=equippedWeapon(); const pack=Math.max(1, Math.round(rand(6,14) * pickupMul * liveOpsMissionModifierValue("ammoPickupMul", 1, S))); S.ammoReserve[w.ammo]=(S.ammoReserve[w.ammo]||0)+pack; msg += `+Ammo(${pack}) `; }
+      else if(r<0.80){ const add=Math.max(1, Math.round(rand(12,28) * pickupMul)); S.armor=clamp(S.armor+add,0,S.armorCap); msg += `+Armor(${add}) `; }
       else { S.medkits["M_SMALL"]=(S.medkits["M_SMALL"]||0)+1; msg += `+Medkit `; }
     }
     setEventText(msg.trim(), 7);
@@ -22606,7 +22815,8 @@ function useMedkit(opts={}){
       const m = getMed(pick);
       if(!m) break;
       S.medkits[pick] = Math.max(0, (S.medkits[pick] || 0) - 1);
-      const hpAfter = clamp(hpNow + m.heal, 0, maxHp);
+      const healAmount = Math.max(1, Math.round(Number(m.heal || 0) * liveOpsMissionModifierValue("healingMul", 1, S)));
+      const hpAfter = clamp(hpNow + healAmount, 0, maxHp);
       setHp(hpAfter);
       healed += Math.max(0, Math.round(hpAfter - hpNow));
       used += 1;
@@ -22813,7 +23023,7 @@ function placeTrap(){
     id: Date.now() + Math.random(),
     x: S.me.x,
     y: S.me.y,
-    r: 80 * perkTrapScale() * arcadeBuildcraftMul("trapRadiusMul", 1),
+    r: 80 * perkTrapScale() * arcadeBuildcraftMul("trapRadiusMul", 1) * liveOpsMissionModifierValue("trapRadiusMul", 1, S),
     ttl: 1800,
     used: false,
     removeAt: 0
@@ -22847,7 +23057,7 @@ function trapTick(){
     );
     if(!tgt) continue;
 
-    const holdMs = Math.round(rand(3000, 5000) * arcadeBuildcraftMul("trapHoldMul", 1));
+    const holdMs = Math.round(rand(3000, 5000) * arcadeBuildcraftMul("trapHoldMul", 1) * liveOpsMissionModifierValue("trapHoldMul", 1, S));
     tgt.holdUntil = now + holdMs;
     tgt.vx = 0; tgt.vy = 0;
     tgt._held = true;
@@ -22929,7 +23139,7 @@ function jamChance(w){
   const dur=weaponDurability(w.id);
   const wearFactor = dur>=60?0.0:(60-dur)/60;
   const handling = weaponHandlingProfile(w);
-  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul() * weaponMasteryJamMul(w.id) * handling.jamMul, 0, 0.32);
+  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul() * weaponMasteryJamMul(w.id) * handling.jamMul * liveOpsMissionModifierValue("jamChanceMul", 1, S), 0, 0.42);
 }
 function autoReloadIfNeeded(force=false){
   const w=equippedWeapon();
@@ -26358,7 +26568,7 @@ function scan(){
     S.stamina -= scanCost;
     triggerAbilityCooldown("scan");
   }
-  S.scanPing = tutorialRun ? 220 : 140;
+  S.scanPing = tutorialRun ? 220 : Math.max(70, Math.round(140 * liveOpsMissionModifierValue("scanDurationMul", 1, S)));
   if(tutorialRun && window.TigerTutorial){
     window.TigerTutorial.scanUsed = true;
   }
@@ -26446,6 +26656,7 @@ function keyboardMoveTick(){
   }
   speed *= motionMul;
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
+  speed *= liveOpsMissionModifierValue("playerSpeedMul", 1, S);
   const targetVx = ux * speed;
   const targetVy = uy * speed;
   if(!Number.isFinite(S.me._moveVx)) S.me._moveVx = 0;
@@ -26500,6 +26711,7 @@ function movePlayer(){
   if(S._sprintTicks && S._sprintTicks>0){ speed=PLAYER_SPRINT_SPEED; sprinting = true; S._sprintTicks--; }
   speed *= motionMul;
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
+  speed *= liveOpsMissionModifierValue("playerSpeedMul", 1, S);
   const ux = dx / d;
   const uy = dy / d;
   const targetVx = ux * speed;
@@ -27901,7 +28113,8 @@ function moveCivilianInsideEvac(c, coreRadiusOverride=null){
 function evacCheck(){
   if(S.mode==="Survival") return;
   const ez = S.evacZone || DEFAULT.evacZone;
-  const evacOuterRadius = (ez.r || 70) + 28;
+  const rescueRadiusMul = liveOpsMissionModifierValue("rescueRadiusMul", 1, S);
+  const evacOuterRadius = ((ez.r || 70) + 28) * rescueRadiusMul;
   const evacCoreRadius = Math.max(16, (ez.r || 70) - 4);
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
@@ -27913,7 +28126,7 @@ function evacCheck(){
       const rewardMul = CIVILIAN_RISK_REWARD_MULT[riskState] || 1;
       const pDef = civilianPersonalityDef(c.aiState || c.personality);
       const xpGain = Math.max(30, Math.round((35 * rewardMul) + ((pDef.riskValue || 1) * 3)));
-      const cashGain = Math.max(0, Math.round((riskState === "critical" ? 220 : (riskState === "threatened" ? 120 : 60)) * (pDef.riskValue || 1)));
+      const cashGain = Math.max(0, Math.round((riskState === "critical" ? 220 : (riskState === "threatened" ? 120 : 60)) * (pDef.riskValue || 1) * liveOpsMissionModifierValue("rescuePayoutMul", 1, S)));
       moveCivilianInsideEvac(c, evacCoreRadius);
       if(dist(c.x, c.y, ez.x, ez.y) > evacCoreRadius){
         continue;
@@ -28023,8 +28236,9 @@ function tickCiviliansAndThreats(){
       const escortedByPlayer = best.following && best.escortOwner === "player";
       const playerCover = escortedByPlayer && dist(best.x, best.y, S.me.x, S.me.y) <= 190;
       if(!playerCover){
-        const fleeLow = Math.round((escortedByPlayer ? 520 : 1300) * (bestDef.fleeMul || 1));
-        const fleeHigh = Math.round((escortedByPlayer ? 1100 : 2200) * (bestDef.fleeMul || 1.05));
+        const panicMul = liveOpsMissionModifierValue("civilianPanicMul", 1, S);
+        const fleeLow = Math.round((escortedByPlayer ? 520 : 1300) * (bestDef.fleeMul || 1) * panicMul);
+        const fleeHigh = Math.round((escortedByPlayer ? 1100 : 2200) * (bestDef.fleeMul || 1.05) * panicMul);
         best.fleeUntil = now + rand(Math.max(280, fleeLow), Math.max(Math.max(300, fleeLow + 80), fleeHigh));
         best.fleeFromTigerId = t.id;
         best.aiState = "panicked";
@@ -28112,7 +28326,7 @@ function tigerMotionProfile(t, def, now=Date.now()){
     chase,
     sprint,
     minChase: (base.minChase + (hunter * 0.55) + (pack * 0.30) + (rage * 0.35) + (fading * 0.20)) * Math.max(0.95, persona.speedMul),
-    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul,
+    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul * liveOpsMissionModifierValue("tigerDetectMul", 1, S),
     chaseAccel: base.chaseAccel + (hunter * 0.04) + (pack * 0.02) + (rage * 0.03),
     wanderAccel: base.wanderAccel,
     burstMs: base.burstMs,
@@ -30621,7 +30835,7 @@ function playerAction(action){
 
     if(w.type==="tranq"){
       t.tranqTagged = true;
-      dmg = Math.round(dmg * eff.tranq * build.tranqMul);
+      dmg = Math.round(dmg * eff.tranq * build.tranqMul * liveOpsMissionModifierValue("tranqDamageMul", 1, S));
       sfx("tranq");
     } else {
       sfx("hit");
