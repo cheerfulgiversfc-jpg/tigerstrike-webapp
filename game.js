@@ -13793,7 +13793,7 @@ function clampWorldToCanvas(){
     it.y = clamp(it.y, 90, h - 80);
     if(
       inMapScenarioKeepout(it.x, it.y, Math.round((it.r || 22) * 0.9)) ||
-      blockedAt(it.x, it.y, Math.round((it.r || 22) * 0.5))
+      (!interactiveObjectBlocksRoute(it) && blockedAt(it.x, it.y, Math.round((it.r || 22) * 0.5)))
     ){
       const pt = safeSpawnPoint(it.x, it.y, Math.round((it.r || 22) * 0.9), true, true);
       it.x = pt.x;
@@ -14016,7 +14016,7 @@ function sanitizeRuntimeState(){
     it.y = clampY(it.y, 90, h - 80);
     it.r = clamp(it.r, 12, 54);
     if(!Number.isFinite(it.uses)) it.uses = 0;
-    if(inMapScenarioKeepout(it.x, it.y, it.r) || blockedAt(it.x, it.y, Math.round(it.r * 0.5))){
+    if(inMapScenarioKeepout(it.x, it.y, it.r) || (!interactiveObjectBlocksRoute(it) && blockedAt(it.x, it.y, Math.round(it.r * 0.5)))){
       const pt = safeSpawnPoint(it.x, it.y, it.r, true, true);
       it.x = pt.x;
       it.y = pt.y;
@@ -16666,6 +16666,14 @@ function blockedAt(x, y, radius){
     __blockedAtCache.set(key, true);
     return true;
   }
+  for(const it of (S.mapInteractables || [])){
+    if(!interactiveObjectBlocksRoute(it)) continue;
+    const blockR = it.kind === "bridge" ? 62 : 48;
+    if(dist(x, y, it.x, it.y) <= blockR + Math.max(2, Number(radius || 0))){
+      __blockedAtCache.set(key, true);
+      return true;
+    }
+  }
   const we = tw?.worldEvent;
   if(
     we &&
@@ -16940,7 +16948,7 @@ function unstickEntitiesTick(){
   for(const it of (S.mapInteractables || [])){
     if(!Number.isFinite(it.x) || !Number.isFinite(it.y)) continue;
     const rr = clamp(it.r, 12, 54);
-    if(!inMapScenarioKeepout(it.x, it.y, rr) && !blockedAt(it.x, it.y, Math.round(rr * 0.5))) continue;
+    if(!inMapScenarioKeepout(it.x, it.y, rr) && (interactiveObjectBlocksRoute(it) || !blockedAt(it.x, it.y, Math.round(rr * 0.5)))) continue;
     const free = findNearestOpenPoint(it.x, it.y, rr, { avoidKeepout:true, avoidWater:true });
     if(free){
       it.x = free.x;
@@ -24912,7 +24920,15 @@ function mapInteractablePool(){
     { kind:"barricade", label:"Barrier Node", x:w*0.56, y:h*0.54 },
     { kind:"cache", label:"Supply Cache", x:w*0.34, y:h*0.70 }
   ];
-  return (pools[key] || fallback).map((it)=>({
+  const core = (pools[key] || fallback);
+  const interactiveRoutes = [
+    { kind:"bridge", label:"Route Bridge", x:w*0.47, y:h*0.34 },
+    { kind:"vehicle", label:"Rescue Vehicle", x:w*0.74, y:h*0.68 },
+    { kind:"generator", label:"Field Generator", x:w*0.72, y:h*0.27 },
+    { kind:"gate", label:"Route Gate", x:w*0.47, y:h*0.72 },
+    { kind:"route_trap", label:"Route Trap", x:w*0.77, y:h*0.48 },
+  ];
+  return [...core, ...interactiveRoutes].map((it)=>({
     kind: it.kind,
     label: it.label,
     x: clamp(Math.round(it.x), 70, w - 70),
@@ -24949,9 +24965,53 @@ function spawnMapInteractables(){
       uses: it.kind === "cache" ? 1 : 99,
       cooldownUntil: 0,
       activeUntil: 0,
-      effectR: it.kind === "barricade" ? barricadeEffectRadius() : 0
+      effectR: it.kind === "barricade" ? barricadeEffectRadius() : (it.kind === "route_trap" ? 112 : 0),
+      routeOpen: it.kind === "bridge" || it.kind === "gate",
+      repaired: false,
+      powered: false,
+      triggered: false,
+      rewardClaimed: false
     };
   });
+}
+
+function ensureInteractiveMapObjectSet(){
+  if(window.__TUTORIAL_MODE__ || S.mode==="Survival") return;
+  if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
+  const existingKinds = new Set(S.mapInteractables.map((it)=>it?.kind).filter(Boolean));
+  const missing = mapInteractablePool().filter((it)=>!existingKinds.has(it.kind));
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  for(const it of missing){
+    let pt = safeSpawnPoint(it.x, it.y, 22, true, true);
+    if(inMapScenarioKeepout(pt.x, pt.y, 22)){
+      pt = findNearestOpenPoint(pt.x, pt.y, 22, {
+        avoidKeepout:true,
+        avoidWater:true,
+        targetX:worldW * 0.48,
+        targetY:worldH * 0.52
+      }) || pt;
+    }
+    S.mapInteractables.push({
+      id:`INT-${it.kind}-${Date.now()}-${S.mapInteractables.length + 1}`,
+      kind:it.kind,
+      label:it.label,
+      x:pt.x,
+      y:pt.y,
+      r:22,
+      uses:it.kind === "cache" ? 1 : 99,
+      cooldownUntil:0,
+      activeUntil:0,
+      effectR:it.kind === "barricade" ? barricadeEffectRadius() : (it.kind === "route_trap" ? 112 : 0),
+      routeOpen:it.kind === "bridge" || it.kind === "gate",
+      repaired:false,
+      powered:false,
+      triggered:false,
+      rewardClaimed:false
+    });
+  }
+  S.mapInteractables = S.mapInteractables.slice(0, MAX_PERSIST_INTERACTABLES);
+  if(missing.length) __savePending = true;
 }
 
 function findInteractableAt(x,y){
@@ -24995,6 +25055,29 @@ function useNearestCache(){
 
 function activeBarricades(now=Date.now()){
   return (S.mapInteractables || []).filter((it)=>it.kind==="barricade" && now < (it.activeUntil || 0));
+}
+function consumeInteractiveRepairKit(){
+  const id = (S.repairKits?.T_REPAIR_PRO || 0) > 0 ? "T_REPAIR_PRO" : ((S.repairKits?.T_REPAIR || 0) > 0 ? "T_REPAIR" : "");
+  if(!id) return false;
+  S.repairKits[id] = Math.max(0, Number(S.repairKits[id] || 0) - 1);
+  return true;
+}
+function activeInteractiveRouteObjects(kind="", now=Date.now()){
+  return (S.mapInteractables || []).filter((it)=>it && (!kind || it.kind === kind) && now < Number(it.activeUntil || 0));
+}
+function interactiveRouteSpeedMul(entityType, x, y, now=Date.now()){
+  let mul = 1;
+  for(const it of activeInteractiveRouteObjects("", now)){
+    const d = dist(x, y, it.x, it.y);
+    if(it.kind === "vehicle" && it.repaired && d < 230 && (entityType === "civilian" || entityType === "support")) mul *= 1.20;
+    if(it.kind === "generator" && it.powered && d < 250 && (entityType === "civilian" || entityType === "support")) mul *= 1.08;
+    if(it.kind === "gate" && it.routeOpen && d < 190 && (entityType === "civilian" || entityType === "support")) mul *= 1.10;
+  }
+  return clamp(mul, 0.70, 1.36);
+}
+function interactiveObjectBlocksRoute(it){
+  if(!it) return false;
+  return (it.kind === "bridge" || it.kind === "gate") && it.routeOpen === false;
 }
 
 function activateMapInteractable(it){
@@ -25066,6 +25149,76 @@ function activateMapInteractable(it){
     return true;
   }
 
+  if(it.kind==="bridge"){
+    if(it.routeOpen){
+      it.routeOpen = false;
+      it.activeUntil = now + 30000;
+      it.cooldownUntil = now + 3500;
+      setEventText("🌉 Bridge destroyed: main route blocked and tigers must reroute.", 4);
+    }else{
+      if(!consumeInteractiveRepairKit()) return toast("A repair kit is required to rebuild the bridge."), false;
+      it.routeOpen = true;
+      it.activeUntil = now + 30000;
+      it.cooldownUntil = now + 3500;
+      setEventText("🌉 Bridge repaired: alternate rescue route reopened.", 4);
+    }
+    __blockedAtCache.clear();
+    invalidateMapCache();
+    __savePending = true;
+    return true;
+  }
+
+  if(it.kind==="vehicle"){
+    if(it.repaired){
+      it.activeUntil = now + 30000;
+      setEventText("🚙 Rescue vehicle route extended: civilians and squad move faster nearby.", 4);
+      return true;
+    }
+    if(!consumeInteractiveRepairKit()) return toast("A repair kit is required to repair this vehicle."), false;
+    it.repaired = true;
+    it.activeUntil = now + 30000;
+    it.cooldownUntil = now + 5000;
+    addXP(28);
+    setEventText("🚙 Rescue vehicle repaired: fast escort route active.", 4);
+    __savePending = true;
+    return true;
+  }
+
+  if(it.kind==="generator"){
+    it.powered = !it.powered;
+    it.activeUntil = it.powered ? now + 30000 : 0;
+    it.cooldownUntil = now + 2500;
+    if(it.powered){
+      S.scanPing = Math.max(S.scanPing || 0, 320);
+      setEventText("⚡ Generator online: devices powered, civilians calmed, scan range boosted.", 4);
+    }else{
+      setEventText("⚡ Generator shut down: stealth route restored.", 3);
+    }
+    __savePending = true;
+    return true;
+  }
+
+  if(it.kind==="gate"){
+    it.routeOpen = !it.routeOpen;
+    it.activeUntil = now + 30000;
+    it.cooldownUntil = now + 2500;
+    __blockedAtCache.clear();
+    invalidateMapCache();
+    setEventText(it.routeOpen ? "🚪 Route gate opened: escort shortcut active." : "🚪 Route gate closed: chokepoint blocks movement.", 4);
+    __savePending = true;
+    return true;
+  }
+
+  if(it.kind==="route_trap"){
+    it.activeUntil = now + 22000;
+    it.cooldownUntil = now + 30000;
+    it.triggered = false;
+    it.effectR = 112;
+    setEventText("🪤 Route trap armed: first tiger entering the lane will be stunned.", 4);
+    __savePending = true;
+    return true;
+  }
+
   return false;
 }
 
@@ -25075,6 +25228,34 @@ function mapInteractableTick(){
   for(const it of S.mapInteractables){
     if(it.activeUntil && now >= it.activeUntil && it.kind !== "barricade"){
       it.activeUntil = 0;
+      if(it.kind === "generator") it.powered = false;
+    }
+    if(it.kind === "generator" && it.powered && now < Number(it.activeUntil || 0)){
+      for(const civ of (S.civilians || [])){
+        if(civ?.alive && !civ.evac && dist(civ.x, civ.y, it.x, it.y) < 250){
+          civ.panic = Math.max(0, Number(civ.panic || 0) - 0.8);
+          civ.fleeUntil = Math.min(Number(civ.fleeUntil || 0), now + 250);
+        }
+      }
+      for(const device of S.mapInteractables){
+        if(device === it || dist(device.x, device.y, it.x, it.y) > 300) continue;
+        if(Number(device.cooldownUntil || 0) > now){
+          device.cooldownUntil = Math.max(now, Number(device.cooldownUntil || 0) - 100);
+        }
+      }
+    }
+    if(it.kind === "route_trap" && !it.triggered && now < Number(it.activeUntil || 0)){
+      const tiger = (S.tigers || []).find((t)=>t?.alive && dist(t.x, t.y, it.x, it.y) <= Number(it.effectR || 112));
+      if(tiger){
+        tiger.holdUntil = Math.max(Number(tiger.holdUntil || 0), now + 4200);
+        tiger.tranqTagged = true;
+        it.triggered = true;
+        it.activeUntil = now + 900;
+        S.stats.trapsTriggered = Math.max(0, Number(S.stats.trapsTriggered || 0)) + 1;
+        addContractTally("trapsTriggered", 1);
+        setEventText(`🪤 Route trap stopped a ${tiger.type} tiger.`, 3);
+        __savePending = true;
+      }
     }
   }
 }
@@ -28125,8 +28306,9 @@ function supportUnitsTick(){
               const escortWaterMul = Math.max(0.95, waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10));
               const catchup = clamp((gd - 14) * 0.06, 0, 6.4);
               const rescueGuideMul = (commandRescue ? 1.20 : 1.08) * formationProfile.rescueGuideMul;
+              const routeMul = interactiveRouteSpeedMul("civilian", targetCiv.x, targetCiv.y, now);
               const guideSpeed = Math.min(
-                (Math.max(playerBaseSpeed * 1.62, 4.5) + catchup) * storyRescueSpeedMul() * (civDef.followMul || 1) * rescueGuideMul * escortWaterMul * motionMul * supportTickMul,
+                (Math.max(playerBaseSpeed * 1.62, 4.5) + catchup) * storyRescueSpeedMul() * (civDef.followMul || 1) * rescueGuideMul * escortWaterMul * routeMul * motionMul * supportTickMul,
                 playerBaseSpeed * 2.95
               );
               tryMoveEntity(targetCiv, targetCiv.x + (gdx / gd) * guideSpeed, targetCiv.y + (gdy / gd) * guideSpeed, 14, { avoidKeepout:false });
@@ -28212,6 +28394,7 @@ function supportUnitsTick(){
     if(unit.role === "rescue" && commandRescue) stepCap *= 1.1;
     if(commandRegroup) stepCap *= 1.06;
     if(commandHold) stepCap *= 0.92;
+    stepCap *= interactiveRouteSpeedMul("support", unit.x, unit.y, now);
     const finalStepCap = stepCap * waterMul * motionMul * supportTickMul;
     if(!Number.isFinite(unit._moveSpeed)) unit._moveSpeed = finalStepCap * 0.42;
     const speedBlend = unit._retreating ? 0.34 : (len > 120 ? 0.28 : 0.22);
@@ -28722,8 +28905,9 @@ function followCiviliansTick(){
     const catchup = clamp((dd - 8) * 0.089, 0, 7.6);
     const trailBoost = dd > 200 ? 1.46 : (dd > 140 ? 0.94 : 0.18);
     const cDef = civilianPersonalityDef(c.aiState || c.personality);
+    const interactiveRouteMul = interactiveRouteSpeedMul("civilian", c.x, c.y, now);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.66, 4.45) + catchup + trailBoost) * escortBoost * (cDef.followMul || 1) * escortWaterMul * stayCloseBoost * mapCivMul * worldCivMul),
+      ((Math.max(playerSpeed * 1.66, 4.45) + catchup + trailBoost) * escortBoost * (cDef.followMul || 1) * escortWaterMul * stayCloseBoost * mapCivMul * worldCivMul * interactiveRouteMul),
       PLAYER_SPRINT_SPEED + 6.3
     ) * motionMul;
     const targetVx = (dx/dd) * sp;
@@ -33006,6 +33190,25 @@ function drawBossArenaMoments(now=Date.now()){
   ctx.restore();
 }
 
+// Shared by mission overlays and the fast mobile renderer; the full map renderer
+// also keeps a local copy for its terrain drawing hot path.
+function rounded(x,y,ww,hh,r,fill,stroke=null){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+ww,y,x+ww,y+hh,r);
+  ctx.arcTo(x+ww,y+hh,x,y+hh,r);
+  ctx.arcTo(x,y+hh,x,y,r);
+  ctx.arcTo(x,y,x+ww,y,r);
+  ctx.closePath();
+  ctx.fillStyle=fill;
+  ctx.fill();
+  if(stroke){
+    ctx.strokeStyle=stroke;
+    ctx.lineWidth=2;
+    ctx.stroke();
+  }
+}
+
 function drawMissionTwistOverlay(now=Date.now()){
   if(!ENABLE_MISSION_TWISTS && !ENABLE_DYNAMIC_WORLD_EVENTS) return;
   const tw = ensureMissionTwistState(S);
@@ -34837,24 +35040,52 @@ function drawMapInteractable(it){
   const cooling = now < (it.cooldownUntil || 0);
   const spent = (it.uses || 0) <= 0;
   const pulse = 0.8 + Math.sin(now / 180) * 0.18;
-  const icon = it.kind==="alarm" ? "A" : (it.kind==="barricade" ? "B" : "S");
-  const label = it.kind==="alarm" ? "Alarm" : (it.kind==="barricade" ? "Barrier" : "Cache");
-  const palette = it.kind==="alarm"
-    ? ["rgba(96,165,250,.24)","rgba(96,165,250,.95)"]
-    : (it.kind==="barricade"
-      ? ["rgba(251,191,36,.24)","rgba(251,191,36,.96)"]
-      : ["rgba(74,222,128,.22)","rgba(74,222,128,.95)"]);
+  const iconByKind = { alarm:"A", barricade:"B", cache:"S", bridge:"BR", vehicle:"V", generator:"P", gate:"G", route_trap:"T" };
+  const labelByKind = {
+    alarm:"Alarm",
+    barricade:"Barrier",
+    cache:"Cache",
+    bridge:it.routeOpen ? "Bridge Open" : "Repair Bridge",
+    vehicle:it.repaired ? (active ? "Fast Route" : "Vehicle Ready") : "Repair Vehicle",
+    generator:it.powered ? "Power On" : "Generator",
+    gate:it.routeOpen ? "Gate Open" : "Gate Closed",
+    route_trap:active && !it.triggered ? "Trap Armed" : "Route Trap"
+  };
+  const palettes = {
+    alarm:["rgba(96,165,250,.24)","rgba(96,165,250,.95)"],
+    barricade:["rgba(251,191,36,.24)","rgba(251,191,36,.96)"],
+    cache:["rgba(74,222,128,.22)","rgba(74,222,128,.95)"],
+    bridge:it.routeOpen ? ["rgba(34,211,238,.22)","rgba(34,211,238,.96)"] : ["rgba(248,113,113,.24)","rgba(248,113,113,.96)"],
+    vehicle:["rgba(52,211,153,.22)","rgba(52,211,153,.96)"],
+    generator:["rgba(250,204,21,.23)","rgba(250,204,21,.98)"],
+    gate:it.routeOpen ? ["rgba(96,165,250,.22)","rgba(96,165,250,.96)"] : ["rgba(251,113,133,.23)","rgba(251,113,133,.96)"],
+    route_trap:["rgba(244,114,182,.22)","rgba(244,114,182,.96)"]
+  };
+  const icon = iconByKind[it.kind] || "?";
+  const label = labelByKind[it.kind] || it.label || "Object";
+  const palette = palettes[it.kind] || palettes.cache;
 
   ctx.save();
   if(spent) ctx.globalAlpha = 0.35;
 
-  if(it.kind==="barricade" && active){
+  if((it.kind==="barricade" || it.kind==="route_trap") && active){
     ctx.globalAlpha = 0.18 + (pulse * 0.14);
-    ctx.strokeStyle = "rgba(251,191,36,.95)";
+    ctx.strokeStyle = palette[1];
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(it.x, it.y, it.effectR || 128, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.globalAlpha = spent ? 0.35 : 1;
+  }
+  if((it.kind==="vehicle" || it.kind==="generator") && active){
+    ctx.globalAlpha = 0.12 + (pulse * 0.10);
+    ctx.strokeStyle = palette[1];
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.arc(it.x, it.y, it.kind === "vehicle" ? 88 : 72, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
     ctx.globalAlpha = spent ? 0.35 : 1;
   }
 
@@ -34869,7 +35100,7 @@ function drawMapInteractable(it){
   ctx.stroke();
 
   ctx.fillStyle = "rgba(242,247,255,.95)";
-  ctx.font = "900 12px system-ui";
+  ctx.font = icon.length > 1 ? "900 9px system-ui" : "900 12px system-ui";
   ctx.textAlign = "center";
   ctx.fillText(icon, it.x, it.y + 4);
 
@@ -38221,13 +38452,19 @@ function init(){
   syncSquadRosterBounds();
   for(const it of (S.mapInteractables || [])){
     if(!it.kind) it.kind = "cache";
-    if(!it.label) it.label = it.kind === "barricade" ? "Barrier" : (it.kind === "alarm" ? "Alarm" : "Cache");
+    const defaultLabels = { alarm:"Alarm", barricade:"Barrier", cache:"Cache", bridge:"Route Bridge", vehicle:"Rescue Vehicle", generator:"Field Generator", gate:"Route Gate", route_trap:"Route Trap" };
+    if(!it.label) it.label = defaultLabels[it.kind] || "Map Object";
     if(!Number.isFinite(it.r)) it.r = 22;
     if(!Number.isFinite(it.uses)) it.uses = it.kind === "cache" ? 1 : 99;
     if(!Number.isFinite(it.cooldownUntil)) it.cooldownUntil = 0;
     if(!Number.isFinite(it.activeUntil)) it.activeUntil = 0;
-    if(!Number.isFinite(it.effectR)) it.effectR = it.kind === "barricade" ? barricadeEffectRadius() : 0;
+    if(!Number.isFinite(it.effectR)) it.effectR = it.kind === "barricade" ? barricadeEffectRadius() : (it.kind === "route_trap" ? 112 : 0);
     if(it.kind === "barricade") it.effectR = barricadeEffectRadius();
+    if(typeof it.routeOpen !== "boolean") it.routeOpen = it.kind === "bridge" || it.kind === "gate";
+    if(typeof it.repaired !== "boolean") it.repaired = false;
+    if(typeof it.powered !== "boolean") it.powered = false;
+    if(typeof it.triggered !== "boolean") it.triggered = false;
+    if(typeof it.rewardClaimed !== "boolean") it.rewardClaimed = false;
   }
   if(Array.isArray(S.supportUnits) && S.supportUnits.length > 16){
     S.supportUnits = S.supportUnits.slice(0,16);
@@ -38240,6 +38477,7 @@ function init(){
   if(!window.__TUTORIAL_MODE__ && (!Array.isArray(S.mapInteractables) || !S.mapInteractables.length)){
     spawnMapInteractables();
   }
+  ensureInteractiveMapObjectSet();
   validateMissionSpawnLayout({ repair:true });
   transitionCleanupSweep("init");
   ensureMissionStartupIntegrity({ force:true, reason:"init" });
