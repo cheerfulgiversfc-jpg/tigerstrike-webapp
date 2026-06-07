@@ -1887,7 +1887,12 @@
     <div class="modalBody">
       <div class="tabs">
         <button class="tab active" id="invTabGear" onclick="inventoryTab('gear')">Gear + Operations</button>
+        <button class="tab" id="invTabSettlement" onclick="inventoryTab('settlement')">Settlement</button>
         <button class="tab" id="invTabCosmetics" onclick="inventoryTab('cosmetics')">Cosmetics</button>
+      </div>
+      <div id="invSettlementPage" style="display:none">
+        <div class="hudLine" id="invSettlementSummary"></div>
+        <div class="list" id="invSettlement"></div>
       </div>
       <div id="invCosmeticsPage" style="display:none">
         <div class="hudLine" id="invCosmeticSummary"></div>
@@ -2087,7 +2092,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4506-squad-personalities"></script>
+<script src="./game.js?v=4507-civilian-settlements"></script>
 <script src="./tutorial.js?v=4499-warfront-ledger-hardlock"></script>
 <script>
 (() => {

@@ -4780,17 +4780,215 @@ function renderCosmeticCollection(){
 }
 let __inventoryActiveTab = "gear";
 function inventoryTab(tab="gear"){
-  __inventoryActiveTab = tab === "cosmetics" ? "cosmetics" : "gear";
+  __inventoryActiveTab = tab === "cosmetics" ? "cosmetics" : (tab === "settlement" ? "settlement" : "gear");
   const cosmetics = __inventoryActiveTab === "cosmetics";
+  const settlement = __inventoryActiveTab === "settlement";
   const gearPage = document.getElementById("invGearPage");
   const cosmeticPage = document.getElementById("invCosmeticsPage");
+  const settlementPage = document.getElementById("invSettlementPage");
   const gearTab = document.getElementById("invTabGear");
   const cosmeticTab = document.getElementById("invTabCosmetics");
-  if(gearPage) gearPage.style.display = cosmetics ? "none" : "block";
+  const settlementTab = document.getElementById("invTabSettlement");
+  if(gearPage) gearPage.style.display = (cosmetics || settlement) ? "none" : "block";
   if(cosmeticPage) cosmeticPage.style.display = cosmetics ? "block" : "none";
-  gearTab?.classList.toggle("active", !cosmetics);
+  if(settlementPage) settlementPage.style.display = settlement ? "block" : "none";
+  gearTab?.classList.toggle("active", !cosmetics && !settlement);
   cosmeticTab?.classList.toggle("active", cosmetics);
+  settlementTab?.classList.toggle("active", settlement);
   if(cosmetics) renderCosmeticCollection();
+  if(settlement) renderCivilianSettlement();
+}
+
+// ===================== CIVILIAN SETTLEMENT SYSTEM =====================
+const SETTLEMENT_SERVICES = Object.freeze([
+  { key:"merchant", population:5, icon:"🛒", name:"Trading Post", desc:"Adds settlement cash to passive collections and mission-clear payouts." },
+  { key:"clinic", population:10, icon:"🏥", name:"Field Clinic", desc:"Provides one small med kit after successful rescue missions." },
+  { key:"scouts", population:20, icon:"🔭", name:"Scout Post", desc:"Starts missions with stronger map scan intel." },
+  { key:"workshop", population:35, icon:"🧰", name:"Repair Workshop", desc:"Provides repair supplies after every third cleared mission." },
+  { key:"command", population:50, icon:"🏛️", name:"Settlement Command", desc:"Maximizes passive income and settlement job rewards." },
+]);
+const SETTLEMENT_JOB_DEFS = Object.freeze([
+  { key:"rescue", label:"Safe Passage", metric:"rescues", target:12, cash:7200, perks:1, desc:"Evacuate civilians into the settlement network." },
+  { key:"capture", label:"Research Exchange", metric:"captures", target:10, cash:8800, perks:1, desc:"Capture tigers for settlement research teams." },
+  { key:"clear", label:"Secure the Roads", metric:"missions", target:5, cash:10500, perks:2, desc:"Complete operations to protect settlement routes." },
+]);
+function defaultCivilianSettlementState(){
+  return {
+    population:0,
+    totalRescued:0,
+    missionsSupported:0,
+    rescues:0,
+    captures:0,
+    missions:0,
+    lastPassiveAt:Date.now(),
+    passiveClaimed:0,
+    jobCycle:1,
+    jobClaims:{},
+    lastArrival:"",
+  };
+}
+function ensureCivilianSettlementState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src.civilianSettlement || typeof src.civilianSettlement !== "object") src.civilianSettlement = defaultCivilianSettlementState();
+  const st = src.civilianSettlement;
+  st.population = Math.max(0, Math.floor(Number(st.population || 0)));
+  st.totalRescued = Math.max(st.population, Math.floor(Number(st.totalRescued || 0)));
+  st.missionsSupported = Math.max(0, Math.floor(Number(st.missionsSupported || 0)));
+  st.rescues = Math.max(0, Math.floor(Number(st.rescues || 0)));
+  st.captures = Math.max(0, Math.floor(Number(st.captures || 0)));
+  st.missions = Math.max(0, Math.floor(Number(st.missions || 0)));
+  st.lastPassiveAt = Math.max(0, Number(st.lastPassiveAt || Date.now()));
+  st.passiveClaimed = Math.max(0, Math.floor(Number(st.passiveClaimed || 0)));
+  st.jobCycle = Math.max(1, Math.floor(Number(st.jobCycle || 1)));
+  if(!st.jobClaims || typeof st.jobClaims !== "object") st.jobClaims = {};
+  st.lastArrival = String(st.lastArrival || "");
+  return st;
+}
+function mergeCivilianSettlementState(currentRaw, incomingRaw){
+  if(!currentRaw || typeof currentRaw !== "object"){
+    const holder = { civilianSettlement:cloneState(incomingRaw || defaultCivilianSettlementState()) };
+    return cloneState(ensureCivilianSettlementState(holder));
+  }
+  if(!incomingRaw || typeof incomingRaw !== "object"){
+    const holder = { civilianSettlement:cloneState(currentRaw) };
+    return cloneState(ensureCivilianSettlementState(holder));
+  }
+  const currentHolder = { civilianSettlement:cloneState(currentRaw || defaultCivilianSettlementState()) };
+  const incomingHolder = { civilianSettlement:cloneState(incomingRaw || defaultCivilianSettlementState()) };
+  const current = ensureCivilianSettlementState(currentHolder);
+  const incoming = ensureCivilianSettlementState(incomingHolder);
+  return {
+    ...current,
+    population:Math.max(current.population, incoming.population),
+    totalRescued:Math.max(current.totalRescued, incoming.totalRescued),
+    missionsSupported:Math.max(current.missionsSupported, incoming.missionsSupported),
+    rescues:Math.max(current.rescues, incoming.rescues),
+    captures:Math.max(current.captures, incoming.captures),
+    missions:Math.max(current.missions, incoming.missions),
+    passiveClaimed:Math.max(current.passiveClaimed, incoming.passiveClaimed),
+    jobCycle:Math.max(current.jobCycle, incoming.jobCycle),
+    jobClaims:{ ...(current.jobClaims || {}), ...(incoming.jobClaims || {}) },
+    lastPassiveAt:Math.max(current.lastPassiveAt, incoming.lastPassiveAt),
+    lastArrival:incoming.lastArrival || current.lastArrival,
+  };
+}
+function settlementServiceUnlocked(key, state=S){
+  const service = SETTLEMENT_SERVICES.find((entry)=>entry.key === key);
+  return !!service && ensureCivilianSettlementState(state).population >= service.population;
+}
+function settlementTierLabel(state=S){
+  const pop = ensureCivilianSettlementState(state).population;
+  if(pop >= 50) return "Regional Haven";
+  if(pop >= 35) return "Fortified Community";
+  if(pop >= 20) return "Growing Village";
+  if(pop >= 10) return "Rescue Camp";
+  if(pop >= 5) return "Survivor Outpost";
+  return "Field Shelter";
+}
+function settlementPassiveRate(state=S){
+  const st = ensureCivilianSettlementState(state);
+  let rate = 90 + (st.population * 14);
+  if(settlementServiceUnlocked("merchant", state)) rate += 180;
+  if(settlementServiceUnlocked("command", state)) rate += 420;
+  return Math.max(90, Math.floor(rate));
+}
+function settlementPassiveAvailable(state=S, now=Date.now()){
+  const st = ensureCivilianSettlementState(state);
+  const elapsedHours = clamp((now - st.lastPassiveAt) / 3600000, 0, 8);
+  return Math.floor(elapsedHours * settlementPassiveRate(state));
+}
+function claimSettlementPassive(){
+  const st = ensureCivilianSettlementState(S);
+  const cash = settlementPassiveAvailable(S);
+  if(cash <= 0) return toast("Settlement supplies are still being prepared.");
+  S.funds += cash;
+  trackCashEarned(cash);
+  st.passiveClaimed += cash;
+  st.lastPassiveAt = Date.now();
+  toast(`Settlement income collected: +$${cash.toLocaleString()}.`);
+  save();
+  renderInventory();
+  renderHUD();
+}
+function settlementJobProgress(def, state=S){
+  const st = ensureCivilianSettlementState(state);
+  return Math.max(0, Math.floor(Number(st[def.metric] || 0)));
+}
+function settlementJobClaimKey(def, state=S){
+  return `${ensureCivilianSettlementState(state).jobCycle}:${def.key}`;
+}
+function claimSettlementJob(key){
+  const st = ensureCivilianSettlementState(S);
+  const def = SETTLEMENT_JOB_DEFS.find((job)=>job.key === key);
+  if(!def) return;
+  const claimKey = settlementJobClaimKey(def, S);
+  if(st.jobClaims[claimKey]) return toast("Settlement job already claimed.");
+  if(settlementJobProgress(def, S) < def.target) return toast("Settlement job is not complete yet.");
+  const rewardMul = settlementServiceUnlocked("command") ? 1.25 : 1;
+  const cash = Math.round(def.cash * rewardMul);
+  const perks = Math.max(0, Math.floor(def.perks || 0));
+  S.funds += cash;
+  S.perkPoints = Math.max(0, Number(S.perkPoints || 0)) + perks;
+  trackCashEarned(cash);
+  st.jobClaims[claimKey] = Date.now();
+  const cycleComplete = SETTLEMENT_JOB_DEFS.every((job)=>!!st.jobClaims[settlementJobClaimKey(job, S)]);
+  if(cycleComplete){
+    st.jobCycle += 1;
+    st.rescues = 0;
+    st.captures = 0;
+    st.missions = 0;
+  }
+  toast(`${def.label} claimed: +$${cash.toLocaleString()} +${perks} perk.`);
+  save();
+  renderInventory();
+  renderHUD();
+}
+function recordCivilianSettlementMission(civEvac=0){
+  const rescued = Math.max(0, Math.floor(Number(civEvac || 0)));
+  const st = ensureCivilianSettlementState(S);
+  const populationBefore = st.population;
+  st.population += rescued;
+  st.totalRescued += rescued;
+  st.rescues += rescued;
+  st.captures += Math.max(0, Math.floor(Number(S.stats?.captures || 0)));
+  st.missions += 1;
+  st.missionsSupported += 1;
+  st.lastArrival = rescued > 0 ? `${rescued} civilians arrived after mission ${gameplayCloudMission(S)}.` : `Routes secured after mission ${gameplayCloudMission(S)}.`;
+  let cash = rescued * (settlementServiceUnlocked("merchant") ? 260 : 140);
+  if(cash > 0){
+    S.funds += cash;
+    trackCashEarned(cash);
+  }
+  if(rescued > 0 && settlementServiceUnlocked("clinic")){
+    S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
+  }
+  if(settlementServiceUnlocked("workshop") && st.missions % 3 === 0){
+    S.repairKits.T_REPAIR = Math.max(0, Number(S.repairKits.T_REPAIR || 0)) + 1;
+  }
+  const unlockedNow = SETTLEMENT_SERVICES.filter((service)=>populationBefore < service.population && st.population >= service.population);
+  if(unlockedNow.length) toast(`Settlement unlocked: ${unlockedNow.map((service)=>service.name).join(" • ")}.`);
+  __savePending = true;
+  return rescued > 0 ? `\nSettlement: +${rescued} population • +$${cash.toLocaleString()} support${settlementServiceUnlocked("clinic") ? " • +1 med kit" : ""}\n` : "";
+}
+function renderCivilianSettlement(){
+  const root = document.getElementById("invSettlement");
+  const summary = document.getElementById("invSettlementSummary");
+  if(!root || !summary) return;
+  const st = ensureCivilianSettlementState(S);
+  const passive = settlementPassiveAvailable(S);
+  const next = SETTLEMENT_SERVICES.find((service)=>st.population < service.population);
+  summary.innerHTML = `<b>${settlementTierLabel(S)}</b> • Population ${st.population} • Total rescued ${st.totalRescued}<br><b>Passive income:</b> $${settlementPassiveRate(S).toLocaleString()}/hour • Available $${passive.toLocaleString()}${next ? `<br><b>Next unlock:</b> ${next.name} at ${next.population} population` : "<br><b>All settlement services unlocked.</b>"}`;
+  const serviceRows = SETTLEMENT_SERVICES.map((service)=>{
+    const unlocked = settlementServiceUnlocked(service.key);
+    return `<div class="item"><div><div class="itemName">${service.icon} ${service.name} <span class="tag">${unlocked ? "Unlocked" : `${st.population}/${service.population}`}</span></div><div class="itemDesc">${service.desc}</div></div></div>`;
+  }).join("");
+  const jobRows = SETTLEMENT_JOB_DEFS.map((def)=>{
+    const progress = settlementJobProgress(def, S);
+    const claimed = !!st.jobClaims[settlementJobClaimKey(def, S)];
+    const ready = progress >= def.target;
+    return `<div class="item"><div><div class="itemName">${def.label} <span class="tag">${claimed ? "Claimed" : `${Math.min(progress, def.target)}/${def.target}`}</span></div><div class="itemDesc">${def.desc} Reward: $${Math.round(def.cash * (settlementServiceUnlocked("command") ? 1.25 : 1)).toLocaleString()} • +${def.perks} perk</div></div><div style="text-align:right"><button ${claimed || !ready ? "disabled" : ""} onclick="claimSettlementJob('${def.key}')">${claimed ? "Claimed" : "Claim"}</button></div></div>`;
+  }).join("");
+  root.innerHTML = `<div class="item"><div><div class="itemName">Settlement Supply Cache <span class="tag">8-hour cap</span></div><div class="itemDesc">${st.lastArrival || "Rescue civilians to begin growing the settlement."}</div></div><div style="text-align:right"><button ${passive <= 0 ? "disabled" : ""} onclick="claimSettlementPassive()">Collect $${passive.toLocaleString()}</button></div></div><div class="divider"></div><div class="hudTitle">Settlement Services</div>${serviceRows}<div class="divider"></div><div class="hudTitle">Settlement Jobs</div>${jobRows}`;
 }
 
 // ===================== LONG-TERM MASTERY REWARDS (Cosmetic Only) =====================
@@ -8108,6 +8306,7 @@ const DEFAULT = {
   soldierAttackersDowned:0,
   soldierRescuersDowned:0,
   squadProgression:{ profiles:{} },
+  civilianSettlement:null,
   specialistStarUnlocks:{ attacker:false, rescue:false },
   lastCombatLethalWeaponId:"",
 
@@ -9879,6 +10078,9 @@ function load(){
     m.squadProgression = (saved.squadProgression && typeof saved.squadProgression === "object")
       ? cloneState(saved.squadProgression)
       : cloneState(DEFAULT.squadProgression);
+    m.civilianSettlement = (saved.civilianSettlement && typeof saved.civilianSettlement === "object")
+      ? cloneState(saved.civilianSettlement)
+      : null;
     m.missionTwists = (saved.missionTwists && typeof saved.missionTwists === "object")
       ? cloneState(saved.missionTwists)
       : defaultMissionTwistsState();
@@ -19268,6 +19470,7 @@ function writeStoryProfileData(source="autosave", state=S){
     soldierAttackersDowned: Math.max(0, Math.floor(Number(src.soldierAttackersDowned || 0))),
     soldierRescuersDowned: Math.max(0, Math.floor(Number(src.soldierRescuersDowned || 0))),
     squadProgression: cloneState(ensureSquadProgressionState(src)),
+    civilianSettlement: cloneState(ensureCivilianSettlementState(src)),
     clanTag: normalizeClanTag(src.clanTag || defaultClanTagFromTelegram(src)) || "SOLO",
     clanName: sanitizeClanName(src.clanName, src.clanTag || defaultClanTagFromTelegram(src)),
     clanRaidEnabled: !!src.clanRaidEnabled,
@@ -19563,6 +19766,9 @@ function applyStoryProfileToState(state, profile){
     state.squadProgression = cloneState(profile.squadProgression);
     ensureSquadProgressionState(state);
   }
+  if(profile.civilianSettlement && typeof profile.civilianSettlement === "object"){
+    state.civilianSettlement = mergeCivilianSettlementState(state.civilianSettlement, profile.civilianSettlement);
+  }
   if(typeof profile.clanTag === "string") state.clanTag = normalizeClanTag(profile.clanTag || state.clanTag || "SOLO") || "SOLO";
   if(typeof profile.clanName === "string") state.clanName = sanitizeClanName(profile.clanName, state.clanTag);
   if(typeof profile.clanRaidEnabled === "boolean") state.clanRaidEnabled = !!profile.clanRaidEnabled;
@@ -19746,6 +19952,7 @@ function writeStoryProgressData(payload={}){
     soldierAttackersDowned: Math.max(0, Math.floor(Number(payload.soldierAttackersDowned ?? S.soldierAttackersDowned ?? 0))),
     soldierRescuersDowned: Math.max(0, Math.floor(Number(payload.soldierRescuersDowned ?? S.soldierRescuersDowned ?? 0))),
     squadProgression: cloneState((payload.squadProgression && typeof payload.squadProgression === "object") ? payload.squadProgression : ensureSquadProgressionState(S)),
+    civilianSettlement: cloneState((payload.civilianSettlement && typeof payload.civilianSettlement === "object") ? payload.civilianSettlement : ensureCivilianSettlementState(S)),
     clanTag: normalizeClanTag(payload.clanTag ?? S.clanTag ?? defaultClanTagFromTelegram(S)) || "SOLO",
     clanName: sanitizeClanName(payload.clanName ?? S.clanName, payload.clanTag ?? S.clanTag ?? "SOLO"),
     clanRaidEnabled: !!(payload.clanRaidEnabled ?? S.clanRaidEnabled),
@@ -23051,6 +23258,7 @@ function renderInventory(){
   ensureSquadAbilityState(S);
   const squadTranqStatus = squadAbilityStatusLabel("tranq_burst");
   const squadSmokeStatus = squadAbilityStatusLabel("smoke_screen");
+  const settlementState = ensureCivilianSettlementState(S);
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
      <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} ${ammoId} (reserve ${equippedReserve}) • <b>Build:</b> ${attachmentBuildSummaryForWeapon(w.id)} • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
@@ -23058,6 +23266,7 @@ function renderInventory(){
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
      <b>Squad Abilities:</b> Tranq Burst ${squadTranqStatus} • Smoke Screen ${squadSmokeStatus}<br>
      <b>Named Squad:</b> ${Object.values(ensureSquadProgressionState(S).profiles).slice(0,6).map((p)=>`${p.name} Lv${p.level} (${squadProfileTrait(p).label})`).join(" • ") || "No specialists hired"}<br>
+     <b>Settlement:</b> ${settlementTierLabel(S)} • Population ${settlementState.population} • Passive $${settlementPassiveAvailable(S).toLocaleString()} ready<br>
      <b>Story Meta:</b> Base ${baseRanks}/${baseMaxRanks} • HQ ${hqRanks}/${hqMaxRanks} • Specialist ${specialistRanks}/${specialistMaxRanks} • Chapter Rewards ${chapterRewards}/${STORY_CHAPTER_REWARDS.length}<br>
      <b>HQ Identity:</b> ${storyHQIdentityLabel()}<br>
      <b>Mastery:</b> ${masteryCount}/${MASTERY_TRACKS.length} claimed • <b>Elite Title:</b> ${eliteTitleTxt}`;
@@ -26540,6 +26749,9 @@ function deploy(opts={}){
   spawnCivilians();
   spawnTigers();
   spawnRivalHunters();
+  if(settlementServiceUnlocked("scouts")){
+    S.scanPing = Math.max(Number(S.scanPing || 0), 260);
+  }
   if(S.mode!=="Survival" && !window.__TUTORIAL_MODE__){
     S.evacZone = randomEvacZone(S.civilians);
   }
@@ -32547,6 +32759,7 @@ function checkMissionComplete(){
         }
       }
       let upkeepNote = "";
+      const settlementNote = recordCivilianSettlementMission(civEvac);
       const squadProgressNote = awardSquadMissionProgress();
       const upkeep = applySquadUpkeepAfterMission();
       if(upkeep){
@@ -32602,7 +32815,7 @@ function checkMissionComplete(){
       renderMissionRewards2Card(rewards2);
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${squadProgressNote}${upkeepNote}${rewards2Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
@@ -38253,6 +38466,7 @@ function init(){
   ensureStarsDebugUi();
   pushStarsDebug("app:init", { user: tgUserKey(), build: TS_BUILD });
   ensureStoryMetaState();
+  ensureCivilianSettlementState(S);
   ensureContractTalliesState(S);
   ensureBalanceStatsState(S);
   ensureContractsState(S);
@@ -38784,6 +38998,8 @@ window.openInventory = openInventory;
 window.closeInventory = closeInventory;
 window.openShopFromInventory = openShopFromInventory;
 window.inventoryTab = inventoryTab;
+window.claimSettlementPassive = claimSettlementPassive;
+window.claimSettlementJob = claimSettlementJob;
 window.equipWorldCosmetic = equipWorldCosmetic;
 window.equipWeaponForge = equipWeaponForge;
 window.openMissionBriefShop = openMissionBriefShop;
