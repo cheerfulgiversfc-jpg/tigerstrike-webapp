@@ -14567,14 +14567,24 @@ const SQUAD_PROGRESSION_NAMES = Object.freeze({
 });
 const SQUAD_PERSONALITIES = Object.freeze({
   attacker:[
-    { key:"fearless", label:"Fearless", damageMul:1.12, hpMul:0.96, desc:"Deals more damage but accepts greater frontline risk." },
-    { key:"patient", label:"Patient Hunter", captureBonus:0.10, fireRateMul:1.08, desc:"Improves captures with slower, deliberate shots." },
-    { key:"guardian", label:"Guardian", hpMul:1.12, damageMul:0.96, desc:"Tougher specialist who protects the squad." },
+    { key:"fearless", label:"Fearless", damageMul:1.12, hpMul:0.96, retreatHpAdd:-0.08, desc:"Deals more damage and holds the frontline longer." },
+    { key:"patient", label:"Patient Hunter", captureBonus:0.10, fireRateMul:1.08, rangeMul:1.08, desc:"Improves captures with slower, deliberate long-range shots." },
+    { key:"guardian", label:"Guardian", hpMul:1.12, damageMul:0.96, damageTakenMul:0.94, desc:"Tougher specialist who protects the squad." },
+    { key:"alpha_breaker", label:"Alpha Breaker", bossDamageMul:1.16, damageTakenMul:1.04, desc:"Hits Alpha and boss tigers harder, but draws greater risk." },
+    { key:"tranq_ace", label:"Tranq Ace", captureBonus:0.14, damageMul:0.94, desc:"Specializes in bringing dangerous tigers back alive." },
+    { key:"skirmisher", label:"Skirmisher", speedMul:1.10, fireRateMul:0.90, hpMul:0.96, desc:"Moves and fires quickly while flanking targets." },
+    { key:"survivor", label:"Survivor", hpMul:1.08, damageTakenMul:0.88, retreatHpAdd:0.06, desc:"Retreats early and is difficult for powerful tigers to down." },
+    { key:"steady", label:"Steady Shot", damageMul:1.05, rangeMul:1.12, captureBonus:0.04, desc:"Reliable at range with balanced lethal and capture skills." },
   ],
   rescue:[
-    { key:"calm", label:"Calm Leader", speedMul:1.10, damageTakenMul:0.94, desc:"Guides civilians faster and stays composed." },
-    { key:"medic", label:"Field Medic", hpMul:1.12, damageTakenMul:0.92, desc:"Survives longer while escorting civilians." },
-    { key:"scout", label:"Route Scout", speedMul:1.14, hpMul:0.96, desc:"Moves quickly to civilians and safe zones." },
+    { key:"calm", label:"Calm Leader", speedMul:1.10, damageTakenMul:0.94, panicCalm:1.6, desc:"Guides civilians faster and lowers nearby panic." },
+    { key:"medic", label:"Field Medic", hpMul:1.12, damageTakenMul:0.92, civilianHeal:0.12, desc:"Survives longer and stabilizes injured civilians." },
+    { key:"scout", label:"Route Scout", speedMul:1.14, hpMul:0.96, rescueGuideMul:1.12, desc:"Moves quickly to civilians and safe zones." },
+    { key:"protector", label:"Shield Bearer", hpMul:1.16, damageTakenMul:0.88, speedMul:0.96, desc:"Absorbs danger while escorting civilians through tiger attacks." },
+    { key:"pathfinder", label:"Pathfinder", speedMul:1.08, rescueGuideMul:1.18, desc:"Finds faster escort routes and keeps civilians moving." },
+    { key:"first_responder", label:"First Responder", speedMul:1.12, civilianHeal:0.08, retreatHpAdd:-0.04, desc:"Rushes into danger to reach injured civilians quickly." },
+    { key:"steady_voice", label:"Steady Voice", panicCalm:2.2, rescueGuideMul:1.06, desc:"Prevents panic and keeps civilian groups together." },
+    { key:"survivor", label:"Rescue Survivor", hpMul:1.10, damageTakenMul:0.86, retreatHpAdd:0.06, desc:"Knows when to withdraw and survives difficult rescue routes." },
   ],
 });
 const SQUAD_UNIFORMS = Object.freeze(["Field Standard","Veteran Stripe","Elite Gold","Legend Black"]);
@@ -14611,6 +14621,11 @@ function ensureSquadProfile(role, slotIndex=0, state=S){
       rescues:0,
       downs:0,
       revives:0,
+      bond:0,
+      survivalStreak:0,
+      medals:0,
+      bossWins:0,
+      perfectRescues:0,
       lastMemory:"New recruit",
     };
   }
@@ -14623,6 +14638,11 @@ function ensureSquadProfile(role, slotIndex=0, state=S){
   profile.rescues = Math.max(0, Math.floor(Number(profile.rescues || 0)));
   profile.downs = Math.max(0, Math.floor(Number(profile.downs || 0)));
   profile.revives = Math.max(0, Math.floor(Number(profile.revives || 0)));
+  profile.bond = clamp(Math.floor(Number(profile.bond || 0)), 0, 100);
+  profile.survivalStreak = Math.max(0, Math.floor(Number(profile.survivalStreak || 0)));
+  profile.medals = Math.max(0, Math.floor(Number(profile.medals || 0)));
+  profile.bossWins = Math.max(0, Math.floor(Number(profile.bossWins || 0)));
+  profile.perfectRescues = Math.max(0, Math.floor(Number(profile.perfectRescues || 0)));
   if(profile.level >= 15) profile.uniform = "Legend Black";
   else if(profile.level >= 10) profile.uniform = "Elite Gold";
   else if(profile.level >= 5) profile.uniform = "Veteran Stripe";
@@ -14645,6 +14665,24 @@ function squadUnlockedAbilityLabel(profile){
   if(level >= 5) return "Tranq Burst I";
   return "Tranq Burst Training";
 }
+function squadProfileRankLabel(profile){
+  const level = Math.max(1, Number(profile?.level || 1));
+  if(level >= 15) return "Legend";
+  if(level >= 10) return "Elite";
+  if(level >= 5) return "Veteran";
+  return "Recruit";
+}
+function squadXpForNextLevel(profile){
+  const level = Math.max(1, Number(profile?.level || 1));
+  if(level >= 20) return 0;
+  return Math.max(0, Math.ceil((level * level * 90) - Number(profile?.xp || 0)));
+}
+function squadProfilePassiveSummary(profile){
+  const level = Math.max(1, Number(profile?.level || 1));
+  const bond = clamp(Number(profile?.bond || 0), 0, 100);
+  const abilityBoost = level >= 15 ? "Ability Tier III" : (level >= 10 ? "Ability Tier II" : (level >= 5 ? "Ability Tier I" : "Ability training"));
+  return `${abilityBoost} • Bond ${bond}% • Survival streak ${Math.max(0, Number(profile?.survivalStreak || 0))}`;
+}
 function syncUnitSquadProgression(unit, slotIndex=0){
   if(!unit || unit.raidPartner) return unit;
   const profile = ensureSquadProfile(unit.role, Number.isFinite(unit.progressionSlot) ? unit.progressionSlot : slotIndex);
@@ -14665,7 +14703,8 @@ function addSquadProfileXp(unit, amount=0, memory=""){
   const profile = squadProfileForUnit(unit);
   if(!profile) return;
   const before = profile.level;
-  profile.xp += Math.max(0, Math.floor(Number(amount || 0)));
+  const bondMul = 1 + (clamp(Number(profile.bond || 0), 0, 100) * 0.002);
+  profile.xp += Math.max(0, Math.floor(Number(amount || 0) * bondMul));
   profile.level = squadLevelFromXp(profile.xp);
   if(memory) profile.lastMemory = String(memory).slice(0, 90);
   syncUnitSquadProgression(unit, profile.slot);
@@ -14682,11 +14721,36 @@ function awardSquadMissionProgress(){
     const profile = squadProfileForUnit(unit);
     if(!profile) continue;
     profile.missions += 1;
+    const civs = Array.isArray(S.civilians) ? S.civilians : [];
+    const perfectRescue = civs.length > 0 && civs.every((c)=>c && c.alive !== false && c.evac);
+    const bossWin = !!S._squadBossWinMission;
+    if(unit.alive){
+      profile.survivalStreak += 1;
+      profile.bond = clamp(profile.bond + 3 + (profile.survivalStreak >= 3 ? 1 : 0), 0, 100);
+    }else{
+      profile.survivalStreak = 0;
+      profile.bond = clamp(profile.bond - 4, 0, 100);
+    }
+    if(perfectRescue && profile.role === "rescue"){
+      profile.perfectRescues += 1;
+      profile.medals += 1;
+    }
+    if(bossWin && profile.role === "attacker"){
+      profile.bossWins += 1;
+      profile.medals += 1;
+    }
     if(profile.role === "rescue"){
       profile.rescues += Math.max(0, Math.floor(Number(S.stats?.evac || 0)));
     }
     const xp = 30 + (unit.alive ? 20 : 0) + Math.min(40, Number(S.stats?.captures || 0) * 4 + Number(S.stats?.evac || 0) * 3);
-    addSquadProfileXp(unit, xp, unit.alive ? `Completed mission ${gameplayCloudMission(S)}.` : `Downed during mission ${gameplayCloudMission(S)}.`);
+    const memory = !unit.alive
+      ? `Downed during mission ${gameplayCloudMission(S)}.`
+      : (bossWin && profile.role === "attacker"
+        ? `Helped defeat a boss on mission ${gameplayCloudMission(S)}.`
+        : (perfectRescue && profile.role === "rescue"
+          ? `Completed a perfect rescue on mission ${gameplayCloudMission(S)}.`
+          : `Completed mission ${gameplayCloudMission(S)}.`));
+    addSquadProfileXp(unit, xp + (perfectRescue ? 15 : 0) + (bossWin ? 20 : 0), memory);
     lines.push(`${profile.name} Lv${profile.level}`);
   }
   return lines.length ? `\nSquad Progression: ${lines.join(" • ")}\n` : "";
@@ -14698,7 +14762,8 @@ function squadProgressionSummaryHtml(){
     for(let slot=0; slot<squadOwnedCount(role); slot++){
       const p = ensureSquadProfile(role, slot);
       const trait = squadProfileTrait(p);
-      rows.push(`<div class="item"><div><div class="itemName">${role === "attacker" ? "🪖" : "🚑"} ${p.name} <span class="tag">Lv ${p.level}</span> <span class="tag">${p.uniform}</span> <span class="tag">${squadUnlockedAbilityLabel(p)}</span></div><div class="itemDesc">${trait.label}: ${trait.desc}</div><div class="itemDesc">XP ${p.xp} • Missions ${p.missions} • Captures ${p.captures} • Kills ${p.kills} • Rescues ${p.rescues} • Downs ${p.downs} • Revives ${p.revives}</div><div class="itemDesc">Memory: ${p.lastMemory}</div></div></div>`);
+      const nextXp = squadXpForNextLevel(p);
+      rows.push(`<div class="item"><div><div class="itemName">${role === "attacker" ? "🪖" : "🚑"} ${p.name} <span class="tag">${squadProfileRankLabel(p)} Lv ${p.level}</span> <span class="tag">${p.uniform}</span> <span class="tag">${squadUnlockedAbilityLabel(p)}</span></div><div class="itemDesc">${trait.label}: ${trait.desc}</div><div class="itemDesc">${squadProfilePassiveSummary(p)} • Medals ${p.medals} • Boss wins ${p.bossWins} • Perfect rescues ${p.perfectRescues}</div><div class="itemDesc">XP ${p.xp}${nextXp ? ` • ${nextXp} to next level` : " • Max level"} • Missions ${p.missions} • Captures ${p.captures} • Kills ${p.kills} • Rescues ${p.rescues} • Downs ${p.downs} • Revives ${p.revives}</div><div class="itemDesc">Memory: ${p.lastMemory}</div></div></div>`);
     }
   }
   return rows.length ? rows.join("") : `<div class="item"><div><div class="itemName">No named specialists yet</div><div class="itemDesc">Hire specialists in Shop &gt; Squad to begin their progression.</div></div></div>`;
@@ -22839,6 +22904,7 @@ function reviveSoldier(role){
     .sort((a,b)=>(b.downs - b.revives) - (a.downs - a.revives))[0];
   if(revivedProfile){
     revivedProfile.revives += 1;
+    revivedProfile.bond = clamp(Number(revivedProfile.bond || 0) + 2, 0, 100);
     revivedProfile.lastMemory = `Revived for duty before mission ${gameplayCloudMission(S)}.`;
   }
   toast(revivedProfile ? `${revivedProfile.name} revived.` : (role === "attacker" ? "Tiger specialist revived." : "Rescue specialist revived."));
@@ -22857,6 +22923,7 @@ function reviveAllSoldiers(){
   for(const profile of Object.values(ensureSquadProgressionState(S).profiles)){
     if((profile.downs || 0) > (profile.revives || 0)){
       profile.revives += 1;
+      profile.bond = clamp(Number(profile.bond || 0) + 2, 0, 100);
       profile.lastMemory = `Revived with the full squad before mission ${gameplayCloudMission(S)}.`;
     }
   }
@@ -26429,6 +26496,7 @@ function deploy(opts={}){
   S._rivalLastIntelDropAt = 0;
   S._rivalFactionName = "";
   S._scoutTakedownsMission = 0;
+  S._squadBossWinMission = false;
   S._arcadeTimerWarn = 0;
   S._arcadeNoKillWarned = false;
   S._storyFinalOutcome = null;
@@ -27670,6 +27738,7 @@ function damageSupportUnit(unit, dmg){
   const profile = squadProfileForUnit(unit);
   const trait = squadProfileTrait(profile);
   dmg *= Number(trait.damageTakenMul || 1);
+  dmg *= clamp(1 - (Number(profile?.bond || 0) * 0.0008), 0.92, 1);
   if(unit.role === "rescue"){
     unit.armor = 0;
   }
@@ -27686,6 +27755,8 @@ function damageSupportUnit(unit, dmg){
   unit.alive = false;
   if(profile){
     profile.downs += 1;
+    profile.survivalStreak = 0;
+    profile.bond = clamp(Number(profile.bond || 0) - 5, 0, 100);
     profile.lastMemory = `Downed by a powerful tiger on mission ${gameplayCloudMission(S)}.`;
   }
   if(!unit.raidPartner && !unit._downedApplied){
@@ -27767,7 +27838,9 @@ function supportAttackDamage(unit, tiger, tigerDist){
   const targetResist = 1 - ((rank - 1) * 0.06);
   const profile = squadProfileForUnit(unit);
   const trait = squadProfileTrait(profile);
-  const boost = storyAttackerDamageMul() * (1 + ((profile?.level || 1) - 1) * 0.018) * Number(trait.damageMul || 1);
+  const bondMul = 1 + (clamp(Number(profile?.bond || 0), 0, 100) * 0.001);
+  const bossMul = (isBossTiger(tiger) || tiger?.type === "Alpha") ? Number(trait.bossDamageMul || 1) : 1;
+  const boost = storyAttackerDamageMul() * (1 + ((profile?.level || 1) - 1) * 0.018) * Number(trait.damageMul || 1) * bondMul * bossMul;
   const burstMul = squadAbilityActive("tranq_burst") ? 1.18 : 1;
   return Math.max(5, Math.round(base * antiTigerSkill * clamp(targetResist, 0.70, 1.0) * boost * burstMul));
 }
@@ -28229,8 +28302,9 @@ function supportUnitsTick(){
     const nearestThreatTiger = nearestThreatNow.tiger;
     const nearestThreatDist = Number.isFinite(nearestThreatNow.d) ? nearestThreatNow.d : Infinity;
     const highThreatTiger = !!nearestThreatTiger && (isBossTiger(nearestThreatTiger) || nearestThreatTiger.type === "Alpha" || nearestThreatTiger.type === "Berserker");
-    const retreatCritical = hpRatio <= (unit.role === "attacker" ? 0.30 : 0.36);
-    const retreatCaution = hpRatio <= (unit.role === "attacker" ? 0.46 : 0.54);
+    const retreatShift = clamp(Number(unitTrait.retreatHpAdd || 0), -0.12, 0.14);
+    const retreatCritical = hpRatio <= clamp((unit.role === "attacker" ? 0.30 : 0.36) + retreatShift, 0.18, 0.62);
+    const retreatCaution = hpRatio <= clamp((unit.role === "attacker" ? 0.46 : 0.54) + retreatShift, 0.28, 0.74);
     const retreatThreatRange = highThreatTiger ? 220 : 150;
     const retreatNow = !!nearestThreatTiger && (retreatCritical || (retreatCaution && nearestThreatDist <= retreatThreatRange));
     if(retreatNow){
@@ -28243,6 +28317,15 @@ function supportUnitsTick(){
     }
 
     if(unit.role === "rescue" && liveCivs.length && !commandHold && !commandRegroup && !retreatNow){
+      if(now >= Number(unit._personalityAidAt || 0)){
+        unit._personalityAidAt = now + 650;
+        const aidLevelMul = 1 + (Math.max(0, Number(unitProfile?.level || 1) - 1) * 0.025);
+        for(const civ of liveCivs){
+          if(dist(unit.x, unit.y, civ.x, civ.y) > 105) continue;
+          if(Number(unitTrait.panicCalm || 0) > 0) civ.panic = Math.max(0, Number(civ.panic || 0) - (Number(unitTrait.panicCalm) * aidLevelMul));
+          if(Number(unitTrait.civilianHeal || 0) > 0) civ.hp = clamp(Number(civ.hp || 0) + (Number(unitTrait.civilianHeal) * aidLevelMul), 0, Number(civ.hpMax || 100));
+        }
+      }
       const ownTag = "rescue";
       const ownedByThisUnit = liveCivs.filter((c)=>c.following && c.escortOwner === ownTag && c.escortUnitId === unit.id);
       const canTakeNewAssignments = commandRescue || commandAuto || squadFormation === "SPLIT_ESCORT";
@@ -28305,7 +28388,7 @@ function supportUnitsTick(){
               const gd = Math.hypot(gdx, gdy) || 1;
               const escortWaterMul = Math.max(0.95, waterSpeedMul("civilian", targetCiv.x, targetCiv.y, 10));
               const catchup = clamp((gd - 14) * 0.06, 0, 6.4);
-              const rescueGuideMul = (commandRescue ? 1.20 : 1.08) * formationProfile.rescueGuideMul;
+              const rescueGuideMul = (commandRescue ? 1.20 : 1.08) * formationProfile.rescueGuideMul * Number(unitTrait.rescueGuideMul || 1);
               const routeMul = interactiveRouteSpeedMul("civilian", targetCiv.x, targetCiv.y, now);
               const guideSpeed = Math.min(
                 (Math.max(playerBaseSpeed * 1.62, 4.5) + catchup) * storyRescueSpeedMul() * (civDef.followMul || 1) * rescueGuideMul * escortWaterMul * routeMul * motionMul * supportTickMul,
@@ -28429,7 +28512,7 @@ function supportUnitsTick(){
         clawRange = 82;
       }
       if(unit.role === "attacker"){
-        shotRange *= formationProfile.attackerRangeMul;
+        shotRange *= formationProfile.attackerRangeMul * Number(unitTrait.rangeMul || 1);
       }
       if(unit._retreating){
         allowEngage = false;
@@ -28468,6 +28551,7 @@ function supportUnitsTick(){
               trackCashEarned(cash);
               if(unitProfile){
                 unitProfile.captures += 1;
+                if(isBossTiger(tiger)) S._squadBossWinMission = true;
                 addSquadProfileXp(unit, isBossTiger(tiger) ? 70 : 28, `Captured a ${tiger.type} tiger on mission ${gameplayCloudMission(S)}.`);
               }
               setEventText(`${unit.name || "Tiger specialist"} secured a capture.`, 2.2);
@@ -28480,6 +28564,7 @@ function supportUnitsTick(){
           if(tiger.hp <= 0){
             if(unitProfile){
               unitProfile.kills += 1;
+              if(isBossTiger(tiger)) S._squadBossWinMission = true;
               addSquadProfileXp(unit, isBossTiger(tiger) ? 55 : 20, `Defeated a ${tiger.type} tiger on mission ${gameplayCloudMission(S)}.`);
             }
             finishTigerKill(tiger);
@@ -31518,7 +31603,10 @@ function finishTigerKill(t){
   triggerPhase18TigerMoment(t, "finish", "Eliminated");
   noteTigerOutcomeForObjective(t);
   const bossKill = !!isBossTiger(t);
-  if(bossKill) grantBossEncounter3Reward(t, "KILL");
+  if(bossKill){
+    S._squadBossWinMission = true;
+    grantBossEncounter3Reward(t, "KILL");
+  }
   if(window.TigerTutorial?.isRunning){
     window.TigerTutorial.combatOutcome = "KILL";
   }
@@ -31626,7 +31714,10 @@ function playerAction(action){
     }
     noteTigerOutcomeForObjective(t);
     const bossCapture = !!isBossTiger(t);
-    if(bossCapture) grantBossEncounter3Reward(t, "CAPTURE");
+    if(bossCapture){
+      S._squadBossWinMission = true;
+      grantBossEncounter3Reward(t, "CAPTURE");
+    }
     const captureTreeFx = weaponMasteryTreeEffects(req, S);
     markStoryFinalBossOutcome("CAPTURE", t);
     triggerPhase18TigerMoment(t, "capture", "Captured");
@@ -35898,6 +35989,13 @@ function drawSupportUnit(unit){
   ctx.font = "900 10px system-ui";
   const label = `${unit.name || (attacker ? "Tiger Specialist" : "Rescue Specialist")} Lv${unit.squadLevel || 1}`;
   ctx.fillText(label, x - Math.min(26, label.length * 2.2), y - 28);
+  if(squadProfile && frameLagTier() < 2){
+    const trait = squadProfileTrait(squadProfile);
+    const badge = `${trait.label} • Bond ${Math.round(Number(squadProfile.bond || 0))}%`;
+    ctx.fillStyle = attacker ? "rgba(255,210,160,.72)" : "rgba(180,238,255,.72)";
+    ctx.font = "800 8px system-ui";
+    ctx.fillText(badge, x - Math.min(30, badge.length * 1.7), y - 36);
+  }
   ctx.fillStyle = "rgba(11,13,18,.84)";
   ctx.fillRect(x - 18, y - 22, 36, 4);
   ctx.fillStyle = hpRatio > 0.5 ? "#4ade80" : (hpRatio > 0.25 ? "#f59e0b" : "#fb7185");
