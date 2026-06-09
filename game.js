@@ -4650,6 +4650,25 @@ function normalizeCosmeticCollectionState(raw){
     recentTrophies: Array.isArray(src.recentTrophies) ? src.recentTrophies.slice(-12) : [],
   };
 }
+function mergeCosmeticCollectionStates(currentRaw, incomingRaw){
+  const current = normalizeCosmeticCollectionState(currentRaw);
+  const incoming = normalizeCosmeticCollectionState(incomingRaw);
+  const trophies = {};
+  for(const type of TIGER_TROPHY_TYPES){
+    trophies[type] = Math.max(Number(current.trophies[type] || 0), Number(incoming.trophies[type] || 0));
+  }
+  const recentByKey = new Map();
+  for(const row of [...current.recentTrophies, ...incoming.recentTrophies]){
+    const key = `${row?.type || ""}:${row?.name || ""}:${row?.capturedAt || 0}`;
+    recentByKey.set(key, row);
+  }
+  return normalizeCosmeticCollectionState({
+    equippedSafeZone:incoming.equippedSafeZone || current.equippedSafeZone,
+    equippedMovementTrail:incoming.equippedMovementTrail || current.equippedMovementTrail,
+    trophies,
+    recentTrophies:[...recentByKey.values()].sort((a,b)=>Number(a?.capturedAt || 0)-Number(b?.capturedAt || 0)).slice(-12),
+  });
+}
 function cosmeticWorldUnlocked(def, state=S){
   const totals = ensureOpsTotalsState(state);
   return Math.max(0, Number(totals.evac || 0)) >= Math.max(0, Number(def?.minEvac || 0)) &&
@@ -4778,25 +4797,172 @@ function renderCosmeticCollection(){
   }).join("");
   root.innerHTML = `<div class="hudTitle">Safe-Zone Styles</div>${safeHtml}<div class="divider"></div><div class="hudTitle">Movement Trails</div>${trailHtml}<div class="divider"></div><div class="hudTitle">Soldier Skins, Badges, Banners + Finishers</div>${seasonHtml}<div class="divider"></div><div class="hudTitle">Weapon Skins + Effects</div>${forgeHtml}<div class="divider"></div><div class="hudTitle">Elite Titles</div>${titleHtml}<div class="divider"></div><div class="hudTitle">Captured Tiger Trophy Gallery</div>${trophyHtml}`;
 }
+
+// ===================== ACHIEVEMENT + PRESTIGE SHOWCASE =====================
+const PRESTIGE_SHOWCASE_TIERS = Object.freeze([
+  { name:"Field Recruit", icon:"🎖️", min:0 },
+  { name:"Rescue Guardian", icon:"🛡️", min:180 },
+  { name:"Tiger Warden", icon:"🐯", min:520 },
+  { name:"Apex Commander", icon:"👑", min:1100 },
+  { name:"Living Legend", icon:"🌟", min:2200 },
+]);
+const SHOWCASE_ACHIEVEMENTS = Object.freeze([
+  { id:"first_rescue", icon:"🛟", name:"First Safe Arrival", desc:"Rescue a civilian.", metric:"evac", target:1 },
+  { id:"rescue_25", icon:"🚑", name:"Rescue Guardian", desc:"Rescue 25 civilians.", metric:"evac", target:25 },
+  { id:"rescue_100", icon:"🏥", name:"Sanctuary Builder", desc:"Rescue 100 civilians.", metric:"evac", target:100 },
+  { id:"perfect_1", icon:"✨", name:"Flawless Escort", desc:"Complete a perfect rescue mission.", metric:"perfectRescues", target:1 },
+  { id:"perfect_10", icon:"💎", name:"No One Left Behind", desc:"Complete 10 perfect rescue missions.", metric:"perfectRescues", target:10 },
+  { id:"capture_1", icon:"🎯", name:"First Capture", desc:"Capture a tiger.", metric:"captures", target:1 },
+  { id:"capture_50", icon:"🔬", name:"Research Vanguard", desc:"Capture 50 tigers.", metric:"captures", target:50 },
+  { id:"capture_200", icon:"🧬", name:"Master Conservator", desc:"Capture 200 tigers.", metric:"captures", target:200 },
+  { id:"kill_100", icon:"⚔️", name:"Predator Breaker", desc:"Defeat 100 tigers.", metric:"kills", target:100 },
+  { id:"missions_10", icon:"📍", name:"Field Veteran", desc:"Clear 10 missions.", metric:"missionsCleared", target:10 },
+  { id:"missions_50", icon:"🗺️", name:"Campaign Vanguard", desc:"Clear 50 missions.", metric:"missionsCleared", target:50 },
+  { id:"missions_100", icon:"🏆", name:"Century Commander", desc:"Clear 100 missions.", metric:"missionsCleared", target:100 },
+  { id:"boss_1", icon:"👑", name:"Alpha Tested", desc:"Defeat or capture a boss tiger.", metric:"bossesDefeated", target:1 },
+  { id:"boss_20", icon:"🔥", name:"Apex Breaker", desc:"Defeat or capture 20 boss tigers.", metric:"bossesDefeated", target:20 },
+  { id:"nemesis_1", icon:"☠️", name:"Rival Settled", desc:"Resolve a Nemesis bounty.", metric:"nemesisResolved", target:1 },
+  { id:"nemesis_capture", icon:"🧪", name:"Nemesis Conservator", desc:"Capture a Nemesis tiger.", metric:"nemesisCaptured", target:1 },
+  { id:"trophy_5", icon:"🏛️", name:"Trophy Hall", desc:"Own five tiger trophy classes.", metric:"trophyClasses", target:5 },
+  { id:"cosmetic_20", icon:"🎨", name:"Collector", desc:"Own 20 showcase collectibles.", metric:"cosmeticsOwned", target:20 },
+  { id:"titles_2", icon:"🎖️", name:"Decorated Commander", desc:"Own two elite titles.", metric:"titlesOwned", target:2 },
+  { id:"settlement_50", icon:"🏙️", name:"Settlement Founder", desc:"Grow settlement population to 50.", metric:"settlementPopulation", target:50 },
+]);
+const LEGACY_ACHIEVEMENT_LABELS = Object.freeze({
+  clear_clean:"Clean Clear", pickup1:"First Pickup", ammo_pick:"Ammo Scavenger", armor_pick:"Armored Up",
+  med_pick:"Medic", trap_pick:"Trapper", crate1:"Supply Runner", scan1:"First Scan", sprint1:"Sprint",
+  evac1:"First Evac", kill1:"First Kill", cap1:"First Capture", gov_bonus:"Government Bonus"
+});
+function showcaseNemesisRecords(state=S){
+  const nemesis = ensureNemesisState(state);
+  const resolved = (nemesis.roster || []).filter((entry)=>entry?.status === "resolved");
+  return {
+    resolved,
+    captured:resolved.filter((entry)=>String(entry.lastOutcome || "").toUpperCase() === "CAPTURE"),
+    killed:resolved.filter((entry)=>String(entry.lastOutcome || "").toUpperCase() === "KILL"),
+  };
+}
+function showcaseMetricValue(metric, state=S){
+  const totals = ensureOpsTotalsState(state);
+  if(metric === "bossesDefeated"){
+    return Math.max(
+      Math.max(0, Math.floor(Number(totals.bossesDefeated || 0))),
+      Math.max(0, Math.floor(Number(ensureContractTalliesState(state).bossesDefeated || 0)))
+    );
+  }
+  if(metric === "perfectRescues"){
+    const squadBest = Object.values(ensureSquadProgressionState(state).profiles || {}).reduce(
+      (best, profile)=>Math.max(best, Math.max(0, Math.floor(Number(profile?.perfectRescues || 0)))),
+      0
+    );
+    return Math.max(Math.max(0, Math.floor(Number(totals.perfectRescues || 0))), squadBest);
+  }
+  if(Object.prototype.hasOwnProperty.call(totals, metric)) return Math.max(0, Math.floor(Number(totals[metric] || 0)));
+  const nemesis = showcaseNemesisRecords(state);
+  if(metric === "nemesisResolved") return nemesis.resolved.length;
+  if(metric === "nemesisCaptured") return nemesis.captured.length;
+  if(metric === "trophyClasses") return cosmeticCollectionStats().trophyOwned;
+  if(metric === "cosmeticsOwned") return cosmeticCollectionStats().owned;
+  if(metric === "titlesOwned") return ensureMasteryRewardsState(state).ownedEliteTitles.length;
+  if(metric === "settlementPopulation") return ensureCivilianSettlementState(state).population;
+  return 0;
+}
+function syncShowcaseAchievements(state=S){
+  if(!state.achievements || typeof state.achievements !== "object") state.achievements = {};
+  for(const def of SHOWCASE_ACHIEVEMENTS){
+    if(showcaseMetricValue(def.metric, state) >= def.target) state.achievements[`showcase_${def.id}`] = true;
+  }
+  return state.achievements;
+}
+function prestigeShowcaseScore(state=S){
+  syncShowcaseAchievements(state);
+  const totals = ensureOpsTotalsState(state);
+  const nemesis = showcaseNemesisRecords(state);
+  const collection = cosmeticCollectionStats();
+  const showcaseCount = SHOWCASE_ACHIEVEMENTS.filter((def)=>state.achievements?.[`showcase_${def.id}`]).length;
+  return Math.max(0, Math.floor(
+    showcaseCount * 45 +
+    Math.min(500, totals.missionsCleared * 5) +
+    Math.min(500, totals.evac * 2) +
+    Math.min(500, totals.captures * 2) +
+    Math.min(300, showcaseMetricValue("perfectRescues", state) * 18) +
+    Math.min(300, showcaseMetricValue("bossesDefeated", state) * 20) +
+    Math.min(300, nemesis.resolved.length * 35) +
+    collection.owned * 4
+  ));
+}
+function prestigeShowcaseTier(state=S){
+  const score = prestigeShowcaseScore(state);
+  let current = PRESTIGE_SHOWCASE_TIERS[0];
+  for(const tier of PRESTIGE_SHOWCASE_TIERS){
+    if(score >= tier.min) current = tier;
+  }
+  const index = PRESTIGE_SHOWCASE_TIERS.indexOf(current);
+  return { score, current, next:PRESTIGE_SHOWCASE_TIERS[index + 1] || null };
+}
+function renderAchievementPrestigeShowcase(){
+  const root = document.getElementById("invShowcase");
+  const summary = document.getElementById("invShowcaseSummary");
+  if(!root || !summary) return;
+  syncShowcaseAchievements(S);
+  const totals = ensureOpsTotalsState(S);
+  const collection = ensureCosmeticCollectionState(S);
+  const cosmetics = cosmeticCollectionStats();
+  const mastery = ensureMasteryRewardsState(S);
+  const nemesis = showcaseNemesisRecords(S);
+  const prestige = prestigeShowcaseTier(S);
+  const showcaseUnlocked = SHOWCASE_ACHIEVEMENTS.filter((def)=>S.achievements?.[`showcase_${def.id}`]).length;
+  const commander = String(S.playerHandle || S.telegramUsername || "Tiger Strike Commander");
+  const progress = prestige.next ? `${prestige.score}/${prestige.next.min} to ${prestige.next.icon} ${prestige.next.name}` : `${prestige.score} prestige • Maximum rank`;
+  summary.innerHTML = `<b>${prestige.current.icon} ${prestige.current.name}</b> • ${commander} • [${normalizeClanTag(S.clanTag || "SOLO")}]<br><b>Prestige:</b> ${progress}<br><b>Showcase:</b> ${showcaseUnlocked}/${SHOWCASE_ACHIEVEMENTS.length} achievements • ${cosmetics.owned}/${cosmetics.total} collectibles`;
+  const achievementRows = SHOWCASE_ACHIEVEMENTS.map((def)=>{
+    const value = showcaseMetricValue(def.metric, S);
+    const unlocked = !!S.achievements?.[`showcase_${def.id}`];
+    return cosmeticCard(def.name, `${def.desc} • ${Math.min(value, def.target)}/${def.target}`, def.icon, unlocked, false, `<span class="tag">${unlocked ? "Earned" : "Locked"}</span>`);
+  }).join("");
+  const legacyRows = Object.entries(LEGACY_ACHIEVEMENT_LABELS).map(([id,label])=>
+    cosmeticCard(label, S.achievements?.[id] ? "Legacy field achievement earned." : "Complete its field action to unlock.", "🏅", !!S.achievements?.[id], false)
+  ).join("");
+  const trophyRows = TIGER_TROPHY_TYPES.map((type)=>{
+    const count = Math.max(0, Math.floor(Number(collection.trophies[type] || 0)));
+    return cosmeticCard(`${type} Tiger`, count ? `${count} secured in the trophy hall.` : "No trophy secured yet.", type === "Boss" ? "👑" : "🐯", count > 0, false, `<span class="tag">x${count}</span>`);
+  }).join("");
+  const nemesisRows = nemesis.resolved.length ? nemesis.resolved.map((entry)=>{
+    const captured = String(entry.lastOutcome || "").toUpperCase() === "CAPTURE";
+    return cosmeticCard(entry.alias, `${entry.type} • Power ${entry.power} • ${entry.behavior} • ${captured ? "Captured alive" : "Eliminated"} • Mission ${entry.lastDefeatMission || "?"}`, captured ? "🧪" : "☠️", true, false);
+  }).join("") : `<div class="item"><div><div class="itemName">☠️ No resolved Nemesis records yet</div><div class="itemDesc">Named rivals will appear here after their bounties are resolved.</div></div></div>`;
+  const titleRows = Object.entries(MASTERY_ELITE_TITLES).map(([id,def])=>{
+    const owned = mastery.ownedEliteTitles.includes(id);
+    const equipped = mastery.equippedEliteTitle === id;
+    return cosmeticCard(def.name, owned ? "Elite title owned." : "Unlock through Mastery.", def.icon, owned, equipped, owned ? `<button ${equipped ? "disabled" : ""} onclick="equipMasteryEliteTitle('${id}')">${equipped ? "Featured" : "Feature"}</button>` : "");
+  }).join("");
+  root.innerHTML = `<div class="item"><div><div class="itemName">${prestige.current.icon} Commander Profile • ${effectiveDisplayTitle(S)}</div><div class="itemDesc">Missions ${totals.missionsCleared} • Rescues ${totals.evac} • Perfect rescues ${showcaseMetricValue("perfectRescues", S)} • Captures ${totals.captures} • Boss wins ${showcaseMetricValue("bossesDefeated", S)} • Nemesis resolved ${nemesis.resolved.length}</div><div class="itemDesc">Captured Nemesis ${nemesis.captured.length} • Nemesis eliminated ${nemesis.killed.length} • Lifetime cash earned $${totals.cashEarned.toLocaleString()}</div></div></div><div class="divider"></div><div class="hudTitle">Achievement Wall</div>${achievementRows}<div class="divider"></div><div class="hudTitle">Legacy Field Medals</div>${legacyRows}<div class="divider"></div><div class="hudTitle">Featured Elite Titles</div>${titleRows}<div class="divider"></div><div class="hudTitle">Captured Tiger Trophy Hall</div>${trophyRows}<div class="divider"></div><div class="hudTitle">Nemesis Hall</div>${nemesisRows}`;
+}
 let __inventoryActiveTab = "gear";
 function inventoryTab(tab="gear"){
-  __inventoryActiveTab = tab === "cosmetics" ? "cosmetics" : (tab === "settlement" ? "settlement" : "gear");
+  __inventoryActiveTab = tab === "showcase" ? "showcase" : (tab === "cosmetics" ? "cosmetics" : (tab === "settlement" ? "settlement" : "gear"));
   const cosmetics = __inventoryActiveTab === "cosmetics";
   const settlement = __inventoryActiveTab === "settlement";
+  const showcase = __inventoryActiveTab === "showcase";
   const gearPage = document.getElementById("invGearPage");
   const cosmeticPage = document.getElementById("invCosmeticsPage");
   const settlementPage = document.getElementById("invSettlementPage");
+  const showcasePage = document.getElementById("invShowcasePage");
   const gearTab = document.getElementById("invTabGear");
   const cosmeticTab = document.getElementById("invTabCosmetics");
   const settlementTab = document.getElementById("invTabSettlement");
-  if(gearPage) gearPage.style.display = (cosmetics || settlement) ? "none" : "block";
+  const showcaseTab = document.getElementById("invTabShowcase");
+  if(gearPage) gearPage.style.display = (cosmetics || settlement || showcase) ? "none" : "block";
   if(cosmeticPage) cosmeticPage.style.display = cosmetics ? "block" : "none";
   if(settlementPage) settlementPage.style.display = settlement ? "block" : "none";
-  gearTab?.classList.toggle("active", !cosmetics && !settlement);
+  if(showcasePage) showcasePage.style.display = showcase ? "block" : "none";
+  gearTab?.classList.toggle("active", !cosmetics && !settlement && !showcase);
   cosmeticTab?.classList.toggle("active", cosmetics);
   settlementTab?.classList.toggle("active", settlement);
+  showcaseTab?.classList.toggle("active", showcase);
   if(cosmetics) renderCosmeticCollection();
   if(settlement) renderCivilianSettlement();
+  if(showcase) renderAchievementPrestigeShowcase();
 }
 
 // ===================== CIVILIAN SETTLEMENT SYSTEM =====================
@@ -8407,7 +8573,7 @@ const DEFAULT = {
   _missionStatsStart:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
   _missionStatsFinal:null,
   _missionRunId:"",
-  opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0 },
+  opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0, perfectRescues:0, bossesDefeated:0 },
   balanceStats: defaultBalanceStatsState(),
   nemesis: defaultNemesisState(),
   missionTwists: defaultMissionTwistsState(),
@@ -8594,6 +8760,8 @@ function ensureOpsTotalsState(state=S){
     civiliansLost: Math.max(0, Math.floor(Number(current.civiliansLost || 0))),
     missionsCleared: Math.max(0, Math.floor(Number(current.missionsCleared || 0))),
     cashEarned: Math.max(0, Math.floor(Number(current.cashEarned || 0))),
+    perfectRescues: Math.max(0, Math.floor(Number(current.perfectRescues || 0))),
+    bossesDefeated: Math.max(0, Math.floor(Number(current.bossesDefeated || 0))),
   };
   return src.opsTotals;
 }
@@ -17389,6 +17557,7 @@ function tryMoveEntity(ent, nx, ny, radius, opts={}){
 
 // ===================== ACHIEVEMENTS / TITLE =====================
 function achvCount(){
+  syncShowcaseAchievements(S);
   return Object.values(S.achievements||{}).filter(Boolean).length;
 }
 function unlockAchv(key, label){
@@ -19486,6 +19655,7 @@ function writeStoryProfileData(source="autosave", state=S){
       : { tranq_burst:0, smoke_screen:0 },
     seasonPass: cloneState(seasonPass),
     masteryRewards: cloneState(masteryRewards),
+    cosmeticCollection: cloneState(ensureCosmeticCollectionState(src)),
     savedAt: Date.now(),
     source: String(source || "autosave"),
   };
@@ -19800,6 +19970,10 @@ function applyStoryProfileToState(state, profile){
     state.masteryRewards = mergeMasteryRewardsSnapshots(state.masteryRewards, profile.masteryRewards);
   }
   ensureMasteryRewardsState(state);
+  if(profile.cosmeticCollection && typeof profile.cosmeticCollection === "object"){
+    state.cosmeticCollection = mergeCosmeticCollectionStates(state.cosmeticCollection, profile.cosmeticCollection);
+  }
+  ensureCosmeticCollectionState(state);
 
   if(typeof profile.equippedWeaponId === "string" && profile.equippedWeaponId && state.ownedWeapons?.includes(profile.equippedWeaponId)){
     state.equippedWeaponId = profile.equippedWeaponId;
@@ -31819,6 +31993,7 @@ function finishTigerKill(t){
   if(bossKill){
     S._squadBossWinMission = true;
     grantBossEncounter3Reward(t, "KILL");
+    addOpsTotal("bossesDefeated", 1);
   }
   if(window.TigerTutorial?.isRunning){
     window.TigerTutorial.combatOutcome = "KILL";
@@ -31930,6 +32105,7 @@ function playerAction(action){
     if(bossCapture){
       S._squadBossWinMission = true;
       grantBossEncounter3Reward(t, "CAPTURE");
+      addOpsTotal("bossesDefeated", 1);
     }
     const captureTreeFx = weaponMasteryTreeEffects(req, S);
     markStoryFinalBossOutcome("CAPTURE", t);
@@ -32563,6 +32739,8 @@ function checkMissionComplete(){
       markBalanceMissionResult(true, "mission-complete", S);
       addContractTally("missionsCleared", 1);
       addOpsTotal("missionsCleared", 1);
+      if(civTotal > 0 && civDead === 0 && civEvac >= civTotal) addOpsTotal("perfectRescues", 1);
+      syncShowcaseAchievements(S);
       addCoopStrikeContribution("mission", 42, {
         coordinated:(squadAliveCount("attacker") > 0 && squadAliveCount("rescue") > 0),
         boss: !!storyMission?.boss
@@ -38757,6 +38935,7 @@ function init(){
 
   // achievements defaults
   if(!S.achievements) S.achievements={};
+  syncShowcaseAchievements(S);
   applyModeTheme(S.mode);
   updatePerformanceLabels();
   applyTouchHudSettings();

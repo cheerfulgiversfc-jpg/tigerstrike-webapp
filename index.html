@@ -1889,6 +1889,11 @@
         <button class="tab active" id="invTabGear" onclick="inventoryTab('gear')">Gear + Operations</button>
         <button class="tab" id="invTabSettlement" onclick="inventoryTab('settlement')">Settlement</button>
         <button class="tab" id="invTabCosmetics" onclick="inventoryTab('cosmetics')">Cosmetics</button>
+        <button class="tab" id="invTabShowcase" onclick="inventoryTab('showcase')">Showcase</button>
+      </div>
+      <div id="invShowcasePage" style="display:none">
+        <div class="hudLine" id="invShowcaseSummary"></div>
+        <div class="list" id="invShowcase"></div>
       </div>
       <div id="invSettlementPage" style="display:none">
         <div class="hudLine" id="invSettlementSummary"></div>
@@ -2092,7 +2097,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4508-tiger-visual-variety"></script>
+<script src="./game.js?v=4509-achievement-prestige-showcase"></script>
 <script src="./tutorial.js?v=4499-warfront-ledger-hardlock"></script>
 <script>
 (() => {
