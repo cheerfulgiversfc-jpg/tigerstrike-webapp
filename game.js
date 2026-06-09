@@ -14095,6 +14095,7 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(t.heading)) t.heading = Math.atan2(t.vy || 0, t.vx || 1);
     if(!Number.isFinite(t.drawDir)) t.drawDir = (Math.cos(t.heading) >= 0 ? 1 : -1);
     if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * Math.PI * 2;
+    ensureTigerVisualProfile(t);
     ensureTigerHuntState(t);
     if(isBossTiger(t) && Number(t.bossPhases || 0) < 3) t.bossPhases = 3;
     if(isBossTiger(t)) ensureBossEncounter3State(t);
@@ -36288,12 +36289,88 @@ function drawRivalHunter(unit){
   ctx.fillText(unit.callsign || "Rival", x - 16, y - 24);
 }
 
-function tigerColors(type){
-  if(type==="Scout") return { body:"#f7b24a", stripe:"#1c1917", belly:"#ffd9a3" };
-  if(type==="Standard") return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
-  if(type==="Stalker") return { body:"#c77c2f", stripe:"#0b0d12", belly:"#d9b18a" };
-  if(type==="Berserker") return { body:"#f08a24", stripe:"#111827", belly:"#ffd1a1" };
-  return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1" };
+const TIGER_VISUAL_PALETTES = Object.freeze([
+  Object.freeze({ key:"sunfire", label:"Sunfire", body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1", accent:"#fbbf24" }),
+  Object.freeze({ key:"amber", label:"Amber", body:"#d98722", stripe:"#17130f", belly:"#eac49a", accent:"#f5a94c" }),
+  Object.freeze({ key:"golden", label:"Golden", body:"#eab94f", stripe:"#2b2116", belly:"#f6dfb7", accent:"#fde68a" }),
+  Object.freeze({ key:"rust", label:"Rust", body:"#b9662c", stripe:"#1b1110", belly:"#d9a986", accent:"#e99152" }),
+  Object.freeze({ key:"pale", label:"Pale", body:"#d9c18f", stripe:"#3a3027", belly:"#f1e2c5", accent:"#f8e7bd" }),
+  Object.freeze({ key:"ember", label:"Ember", body:"#c84f24", stripe:"#160f12", belly:"#e9a47f", accent:"#fb7b45" })
+]);
+const TIGER_VISUAL_AGES = Object.freeze([
+  Object.freeze({ key:"young", label:"Young", scale:0.91, bodyX:0.96, bodyY:0.91 }),
+  Object.freeze({ key:"prime", label:"Prime", scale:1.00, bodyX:1.00, bodyY:1.00 }),
+  Object.freeze({ key:"veteran", label:"Veteran", scale:1.07, bodyX:1.04, bodyY:1.05 }),
+  Object.freeze({ key:"ancient", label:"Ancient", scale:1.12, bodyX:1.08, bodyY:1.08 })
+]);
+const TIGER_VISUAL_STRIPES = Object.freeze(["classic","broken","swept","dense","shoulder"]);
+
+function tigerVisualHash(input){
+  const str = String(input || "tiger");
+  let h = 2166136261;
+  for(let i=0; i<str.length; i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function ensureTigerVisualProfile(t){
+  if(!t || typeof t !== "object") return null;
+  if(t.visualProfile && typeof t.visualProfile === "object" && t.visualProfile.version === 1){
+    t.visualProfile.scarCount = Math.max(
+      clamp(Math.floor(Number(t.visualProfile.scarCount || 0)), 0, 7),
+      clamp(Math.floor(Number(t.nemesisScars || 0)), 0, 7)
+    );
+    t.visualProfile.alphaMantle = !!(t.visualProfile.alphaMantle || t.type === "Alpha" || isBossTiger(t));
+    return t.visualProfile;
+  }
+  const missionKey = `${normalizeModeName(S?.mode)}:${S?.storyLevel || S?.arcadeLevel || S?.survivalWave || 1}:${S?.mapIndex || 0}`;
+  const seed = tigerVisualHash(`${missionKey}:${t.id || 0}:${t.packId || 0}:${t.type || "Standard"}:${t.nemesisId || ""}`);
+  let paletteIndex = seed % TIGER_VISUAL_PALETTES.length;
+  if(t.type === "Stalker") paletteIndex = [1,3,4][seed % 3];
+  if(t.type === "Berserker") paletteIndex = [0,3,5][seed % 3];
+  if(t.type === "Alpha" || isBossTiger(t)) paletteIndex = [0,2,5][seed % 3];
+  let ageIndex = (seed >>> 4) % TIGER_VISUAL_AGES.length;
+  if(t.type === "Scout") ageIndex = seed % 2;
+  if(t.type === "Alpha" || isBossTiger(t)) ageIndex = 2 + (seed % 2);
+  const naturalScars = (t.type === "Alpha" || isBossTiger(t))
+    ? 2 + ((seed >>> 11) % 3)
+    : ((seed >>> 11) % 5 === 0 ? 1 + ((seed >>> 15) % 2) : 0);
+  t.visualProfile = {
+    version:1,
+    paletteIndex,
+    ageIndex,
+    stripeIndex:(seed >>> 7) % TIGER_VISUAL_STRIPES.length,
+    scarCount:Math.max(naturalScars, clamp(Math.floor(Number(t.nemesisScars || 0)), 0, 7)),
+    earNotch:((seed >>> 17) % 4) === 0 || !!t.nemesisReturned,
+    eyeMark:((seed >>> 19) % 5) === 0 || isBossTiger(t),
+    injuredLeg:(seed >>> 21) % 4,
+    build:0.94 + (((seed >>> 23) % 13) * 0.01),
+    alphaMantle:t.type === "Alpha" || isBossTiger(t),
+    tailBands:2 + ((seed >>> 27) % 4)
+  };
+  return t.visualProfile;
+}
+
+function tigerVisualScale(t){
+  const v = ensureTigerVisualProfile(t);
+  const age = TIGER_VISUAL_AGES[v?.ageIndex] || TIGER_VISUAL_AGES[1];
+  return clamp(Number(age.scale || 1) * Number(v?.build || 1), 0.82, 1.25);
+}
+
+function tigerColors(tigerOrType){
+  const t = tigerOrType && typeof tigerOrType === "object" ? tigerOrType : null;
+  const type = t ? t.type : tigerOrType;
+  if(t){
+    const v = ensureTigerVisualProfile(t);
+    const palette = TIGER_VISUAL_PALETTES[v?.paletteIndex] || TIGER_VISUAL_PALETTES[0];
+    return palette;
+  }
+  if(type==="Scout") return { body:"#f7b24a", stripe:"#1c1917", belly:"#ffd9a3", accent:"#fde68a" };
+  if(type==="Stalker") return { body:"#c77c2f", stripe:"#0b0d12", belly:"#d9b18a", accent:"#e9a66c" };
+  if(type==="Berserker") return { body:"#f08a24", stripe:"#111827", belly:"#ffd1a1", accent:"#fb923c" };
+  return { body:"#f59e0b", stripe:"#111827", belly:"#ffd6a1", accent:"#fbbf24" };
 }
 
 function tigerTelegraphStyle(kind, danger=false){
@@ -36411,7 +36488,9 @@ function drawTiger(t){
     alpha *= near ? 0.85 : 0.55;
   }
 
-  const c=tigerColors(t.type);
+  const visual = ensureTigerVisualProfile(t);
+  const visualAge = TIGER_VISUAL_AGES[visual?.ageIndex] || TIGER_VISUAL_AGES[1];
+  const c=tigerColors(t);
   const speed = Math.min(2.9, Math.hypot(t.vx||0, t.vy||0));
   const sprinting = (now < (t.burstUntil||0)) || (t.type==="Scout" && now < (t.dashUntil||0));
   const gaitState = t.gaitState || (sprinting ? "sprint" : (speed > 2.1 ? "run" : (speed > 1.0 ? "trot" : "walk")));
@@ -36430,6 +36509,7 @@ function drawTiger(t){
   if(t.type==="Scout") s=0.85;
   if(t.type==="Alpha") s=1.22;
   if(t.type==="Berserker") s=1.10;
+  s *= tigerVisualScale(t);
   ctx.save();
   ctx.globalAlpha = 0.34 * alpha;
   ctx.fillStyle = "rgba(5,8,14,.96)";
@@ -36573,7 +36653,16 @@ function drawTiger(t){
   ctx.rotate(clamp((t.vy || 0) * 0.018, -0.09, 0.09) + shoulderRoll);
 
   ctx.fillStyle=c.body;
-  ctx.beginPath(); ctx.ellipse(0, (2 + breathe * 0.20)*s, (22 + breathe * 0.16)*s, (13 + breathe * 0.20)*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, (2 + breathe * 0.20)*s, (22 + breathe * 0.16)*s*visualAge.bodyX, (13 + breathe * 0.20)*s*visualAge.bodyY, 0, 0, Math.PI*2); ctx.fill();
+  if(visual?.alphaMantle){
+    ctx.fillStyle=c.accent || c.body;
+    ctx.globalAlpha=0.78*alpha;
+    ctx.beginPath(); ctx.ellipse(12*s, -4*s, 13*s, 12*s, -0.08, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha=alpha;
+    ctx.strokeStyle="rgba(255,232,180,.68)";
+    ctx.lineWidth=1.3*s;
+    ctx.beginPath(); ctx.arc(12*s, -4*s, 12*s, -1.55, 1.55); ctx.stroke();
+  }
   ctx.fillStyle="rgba(255,255,255,.14)";
   ctx.beginPath(); ctx.ellipse(-2*s, -2*s, 14*s, 5*s, -0.15, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle=c.belly;
@@ -36631,6 +36720,18 @@ function drawTiger(t){
     ctx.ellipse(offset*s + swing*0.18, 21.5*s, 1.8*s, 1.05*s, 0, 0, Math.PI*2);
     ctx.fill();
   });
+  if((t.hp / Math.max(1, t.hpMax)) < 0.58){
+    const injuredOffsets = [-10,-2,8,16];
+    const injuredOffset = injuredOffsets[clamp(Math.floor(Number(visual?.injuredLeg || 0)), 0, 3)];
+    ctx.strokeStyle="rgba(244,226,190,.94)";
+    ctx.lineWidth=2.6*s;
+    ctx.beginPath();
+    ctx.moveTo((injuredOffset-2)*s,14*s);
+    ctx.lineTo((injuredOffset+2)*s,17*s);
+    ctx.moveTo((injuredOffset+2)*s,14*s);
+    ctx.lineTo((injuredOffset-2)*s,17*s);
+    ctx.stroke();
+  }
 
   ctx.strokeStyle=c.body; ctx.lineWidth=5*s;
   ctx.beginPath();
@@ -36639,20 +36740,36 @@ function drawTiger(t){
   ctx.quadraticCurveTo(-34*s, (-2 + tailWhip)*s, -40*s, (-10 + tailWhip * 0.34)*s);
   ctx.stroke();
 
-  ctx.strokeStyle=c.stripe; ctx.lineWidth=3*s;
-  for(let i=-2;i<=2;i++){
+  ctx.strokeStyle=c.stripe;
+  ctx.lineWidth=(visual?.stripeIndex === 3 ? 2.2 : 3)*s;
+  const stripeCount = visual?.stripeIndex === 3 ? 7 : (visual?.stripeIndex === 4 ? 4 : 5);
+  for(let i=0;i<stripeCount;i++){
+    const stripePos = stripeCount <= 1 ? 0 : -12 + ((24 * i) / (stripeCount - 1));
+    const swept = visual?.stripeIndex === 2 ? (i - stripeCount / 2) * 1.2 : 0;
+    const broken = visual?.stripeIndex === 1 && (i % 2 === 0);
     ctx.beginPath();
-    ctx.moveTo(-8*s + i*6*s, -6*s);
-    ctx.lineTo(-2*s + i*6*s, 10*s);
+    ctx.moveTo(stripePos*s, -7*s);
+    ctx.lineTo((stripePos + 5 + swept)*s, (broken ? 2 : 10)*s);
     ctx.stroke();
+    if(broken){
+      ctx.beginPath();
+      ctx.moveTo((stripePos + 7 + swept)*s, 5*s);
+      ctx.lineTo((stripePos + 9 + swept)*s, 10*s);
+      ctx.stroke();
+    }
+  }
+  ctx.lineWidth=1.8*s;
+  for(let i=0;i<Number(visual?.tailBands || 0);i++){
+    const bx=(-27-(i*3.2))*s;
+    ctx.beginPath(); ctx.moveTo(bx,(-4+i*0.7)*s); ctx.lineTo(bx+1.5*s,(3+i*0.7)*s); ctx.stroke();
   }
   ctx.strokeStyle="rgba(28,30,35,.78)";
   ctx.lineWidth=1.2*s;
   ctx.beginPath(); ctx.moveTo((28 + attackPosture)*s, -4.8*s); ctx.lineTo((32 + attackPosture)*s, -5.6*s); ctx.stroke();
   ctx.beginPath(); ctx.moveTo((28 + attackPosture)*s, -3.3*s); ctx.lineTo((32 + attackPosture)*s, -3.6*s); ctx.stroke();
-  if(Number(t.nemesisScars || 0) > 0){
-    const scarCount = clamp(Math.floor(Number(t.nemesisScars || 1)), 1, 7);
-    ctx.strokeStyle = "rgba(239,68,68,.75)";
+  if(Number(visual?.scarCount || 0) > 0){
+    const scarCount = clamp(Math.floor(Number(visual.scarCount || 1)), 1, 7);
+    ctx.strokeStyle = "rgba(120,43,36,.82)";
     ctx.lineWidth = 1.25 * s;
     for(let i=0; i<scarCount; i++){
       const sx = (-8 + (i * 3.6)) * s;
@@ -36662,6 +36779,18 @@ function drawTiger(t){
       ctx.lineTo(sx + (5.4 * s), sy + (4.6 * s));
       ctx.stroke();
     }
+  }
+  if(visual?.earNotch){
+    ctx.fillStyle="rgba(30,22,20,.86)";
+    ctx.beginPath(); ctx.arc((27 + attackPosture)*s, (-14 + headBob*0.35)*s, 1.7*s, 0, Math.PI*2); ctx.fill();
+  }
+  if(visual?.eyeMark){
+    ctx.strokeStyle="rgba(245,245,235,.82)";
+    ctx.lineWidth=0.9*s;
+    ctx.beginPath();
+    ctx.moveTo((17 + attackPosture)*s,(-11 + headBob*0.52)*s);
+    ctx.lineTo((21 + attackPosture)*s,(-6 + headBob*0.52)*s);
+    ctx.stroke();
   }
   if(atkProgress > 0){
     const clawReach = (atkKind === "charge" ? 12 : (atkKind === "pounce" ? 10 : 8)) * atkSwing;
@@ -36981,11 +37110,13 @@ function drawEntitiesLite(){
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(theta);
-    ctx.fillStyle = "rgba(245,158,11,.94)";
+    const tigerLiteColors = tigerColors(t);
+    const tigerLiteScale = tigerVisualScale(t);
+    ctx.fillStyle = tigerLiteColors.body;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 13, 9, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 13 * tigerLiteScale, 9 * tigerLiteScale, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(20,20,24,.95)";
+    ctx.strokeStyle = tigerLiteColors.stripe;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(-4, -7); ctx.lineTo(-4, 7);
