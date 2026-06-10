@@ -8529,6 +8529,7 @@ const DEFAULT = {
 
   scanPing:0,
   lockedTigerId:null,
+  lockedRivalId:null,
 
   civilians:[],
   evacZone:{ x:880, y:460, r:70 },
@@ -14377,6 +14378,8 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(u.fireAt)) u.fireAt = 0;
     if(!Number.isFinite(u.actionAt)) u.actionAt = 0;
     if(!Number.isFinite(u.targetTigerId)) u.targetTigerId = 0;
+    if(!Number.isFinite(u.hostileUntil)) u.hostileUntil = 0;
+    if(!Number.isFinite(u._nextPlayerHitAt)) u._nextPlayerHitAt = 0;
     if(inMobileNoBuildZone(u.x, u.y, 16) || blockedAt(u.x, u.y, 16)){
       const pt = safeSpawnPoint(u.x, u.y, 16, true, false);
       u.x = pt.x;
@@ -14445,6 +14448,9 @@ function sanitizeRuntimeState(){
   if(typeof S.lastCombatLethalWeaponId !== "string") S.lastCombatLethalWeaponId = "";
   if(S.lockedTigerId != null && !S.tigers.some((t)=>t.id === S.lockedTigerId && t.alive)){
     S.lockedTigerId = null;
+  }
+  if(S.lockedRivalId != null && !S.rivalHunters.some((u)=>u.id === S.lockedRivalId && u.alive)){
+    S.lockedRivalId = null;
   }
   if(S.activeTigerId != null && !S.tigers.some((t)=>t.id === S.activeTigerId && t.alive)){
     S.activeTigerId = null;
@@ -24440,6 +24446,7 @@ window.enterTutorialMode = function () {
   S.surviveSeconds = 0;
   S.scanPing = 0;
   S.lockedTigerId = null;
+  S.lockedRivalId = null;
   S.target = null;
   S.pickups = [];
   S.supportUnits = [];
@@ -24902,6 +24909,7 @@ function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
   S.inBattle = false;
   S.activeTigerId = null;
   S.lockedTigerId = null;
+  S.lockedRivalId = null;
   S.scanPing = 0;
   S._underAttack = 0;
   S._combatTigerAttackAt = 0;
@@ -26932,6 +26940,7 @@ function deploy(opts={}){
   S.target=null;
   resetControlInputState("deploy");
   S.lockedTigerId=null;
+  S.lockedRivalId=null;
   S.respawnPendingUntil = 0;
   S.respawnNoticeAt = 0;
   S.respawnTargetX = 0;
@@ -27343,6 +27352,7 @@ cv.addEventListener("pointerdown",(e)=>{
   const y = worldPt.y;
   const tappedInteractable = findInteractableAt(x,y);
   const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
+  const tappedRival = (S.rivalHunters || []).find((u)=>u.alive && dist(x,y,u.x,u.y) < 34);
 
   // --- Tutorial: capture map click so tutorial can advance ---
   if (window.TigerTutorial?.isRunning) {
@@ -27420,6 +27430,7 @@ cv.addEventListener("pointerdown",(e)=>{
       return;
     }
     S.lockedTigerId=tapped.id;
+    S.lockedRivalId=null;
     startCombat();
     if(!S.inBattle){
       sfx("ui");
@@ -27429,6 +27440,20 @@ cv.addEventListener("pointerdown",(e)=>{
     return;
   }
 
+  if(tappedRival && !S.inBattle){
+    S.lockedRivalId = tappedRival.id;
+    S.lockedTigerId = null;
+    tappedRival.hostileUntil = Math.max(Number(tappedRival.hostileUntil || 0), Date.now() + 18000);
+    const d = Math.round(dist(S.me.x, S.me.y, tappedRival.x, tappedRival.y));
+    toast(`Locked ${tappedRival.callsign || "rival"} • ${d}m • Tap Attack to engage`);
+    sfx("ui");
+    hapticImpact("light");
+    updateAttackButton();
+    save();
+    return;
+  }
+
+  S.lockedRivalId = null;
   S.target={x,y};
   sfx("ui");
   hapticImpact("light");
@@ -27789,6 +27814,7 @@ function pollGamepadControls(){
     if(uiVisible || gamepadUiOwnsInput()){
       if(activateGamepadFocus()) return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
     }
+    if(!S.inBattle && playerAttackLockedRival()) return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
     if(S.inBattle) playerAction("ATTACK");
     else if(canEngage()) startCombat();
     else lockNearestTiger({ silent:true });
@@ -27816,6 +27842,7 @@ function pollGamepadControls(){
     placeTrap();
   }
   if(gamepadButtonEdge("rt", gamepadButtonPressed(pad.buttons?.[7]))){
+    if(!S.inBattle && playerAttackLockedRival()) return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
     if(S.inBattle) playerAction("ATTACK");
     else if(canEngage()) startCombat();
     else lockNearestTiger({ silent:true });
@@ -28484,6 +28511,75 @@ function damageRivalHunter(unit, dmg){
   return true;
 }
 
+function rivalById(id){
+  return (S.rivalHunters || []).find((unit)=>unit && unit.id === id) || null;
+}
+function lockedRival(){
+  const unit = rivalById(S.lockedRivalId);
+  return unit && unit.alive ? unit : null;
+}
+function defeatRivalHunter(unit){
+  if(!unit) return;
+  const cash = rand(650, 1450);
+  S.funds += cash;
+  S.score += 90;
+  trackCashEarned(cash);
+  addXP(35);
+  spawnPickup(Math.random() < 0.5 ? "AMMO" : "CASH", unit.x + rand(-10, 10), unit.y + rand(-10, 10));
+  setEventText(`✅ ${unit.callsign || "Rival"} defeated. Sabotage stopped • +$${cash.toLocaleString()}`, 3.6);
+  if(S.lockedRivalId === unit.id) S.lockedRivalId = null;
+  updateAttackButton();
+  renderCombatControls();
+  sfx("win");
+  hapticNotif("success");
+  __savePending = true;
+}
+function playerAttackLockedRival(){
+  if(S.paused || S.gameOver || S.missionEnded || S.inBattle) return false;
+  const unit = lockedRival();
+  if(!unit) return false;
+  const targetDist = dist(S.me.x, S.me.y, unit.x, unit.y);
+  if(targetDist > equippedWeaponRange()){
+    toast(`${unit.callsign || "Rival"} is out of range. Move closer.`);
+    return true;
+  }
+  const attackWeaponId = preferredAttackWeaponId();
+  if(!attackWeaponId){
+    toast("No lethal ammo available to fight the rival.");
+    sfx("jam");
+    return true;
+  }
+  if(S.equippedWeaponId !== attackWeaponId) equipWeapon(attackWeaponId, { system:true, keepPreset:true });
+  const w = equippedWeapon();
+  if(S.mag.loaded <= 0 && !autoReloadIfNeeded(true)){
+    toast("No reserve ammo for this weapon.");
+    return true;
+  }
+  if(Math.random() < jamChance(w)){
+    applyWearOnShot(w);
+    sfx("jam");
+    toast(`${w.name} jammed!`);
+    return true;
+  }
+  const shotAmmoId = loadedAmmoIdForEquippedWeapon() || w.ammo;
+  S.mag.loaded -= 1;
+  S.stats.shots += 1;
+  applyWearOnShot(w);
+  const build = weaponBuildStats(w.id, S);
+  const ammo = ammoEffectFor(shotAmmoId);
+  let dmg = rand(build.dmg[0], build.dmg[1]) * perkDamageMul() * Number(ammo.dmgMul || 1);
+  dmg = Math.max(5, Math.round(dmg * weaponDistanceMul(w, targetDist) * 0.72));
+  unit.hostileUntil = Date.now() + 24000;
+  const defeated = damageRivalHunter(unit, dmg);
+  emitCombatFx(S.me.x, S.me.y - 5, unit.x, unit.y, "rgba(248,113,113,.96)", 3, "hit");
+  emitDamagePopup(unit.x, unit.y - 40, `-${dmg}`, "hit");
+  sfx("hit");
+  hapticImpact("light");
+  if(defeated) defeatRivalHunter(unit);
+  save();
+  return true;
+}
+
 function rivalResolveTigerOutcome(tiger, outcome="kill", actor=null){
   if(!tiger || !tiger.alive) return false;
   const now = Date.now();
@@ -28574,6 +28670,8 @@ function rivalHuntersTick(){
 
     const nearTiger = nearestTigerTo(unit.x, unit.y);
     const nearCiv = nearestCivTo(unit.x, unit.y);
+    const playerD = dist(unit.x, unit.y, S.me.x, S.me.y);
+    const huntPlayer = now < Number(unit.hostileUntil || 0) || playerD <= 145;
     const pickTiger = !!nearTiger.tiger && (
       nearTiger.d < (RIVAL_BASE_AGGRO_RANGE + (Number(faction.tigerBias || 0.85) * 130)) ||
       Math.random() < Number(faction.tigerBias || 0.85)
@@ -28582,7 +28680,12 @@ function rivalHuntersTick(){
 
     let targetX = unit.homeX;
     let targetY = unit.homeY;
-    if(pickTiger){
+    if(huntPlayer){
+      targetX = S.me.x;
+      targetY = S.me.y;
+      unit.targetTigerId = 0;
+      unit.targetCivId = 0;
+    } else if(pickTiger){
       targetX = nearTiger.tiger.x;
       targetY = nearTiger.tiger.y;
       unit.targetTigerId = nearTiger.tiger.id;
@@ -28611,6 +28714,18 @@ function rivalHuntersTick(){
     const step = Math.min(speed, len);
     unit.face = Math.atan2(dy, dx);
     tryMoveEntity(unit, unit.x + (dx / len) * step, unit.y + (dy / len) * step, 16, { avoidKeepout:false });
+
+    if(huntPlayer && playerD <= RIVAL_FIRE_RANGE && now >= Number(unit._nextPlayerHitAt || 0)){
+      unit._nextPlayerHitAt = now + rand(850, 1320);
+      const rivalDmg = Math.max(4, Math.round(rand(7, 13) * Number(faction.dmgMul || 1)));
+      applyPlayerDamage(rivalDmg, false);
+      emitCombatFx(unit.x, unit.y - 4, S.me.x, S.me.y - 5, faction.accent || "rgba(248,113,113,.95)", 2.8, "player");
+      emitDamagePopup(S.me.x, S.me.y - 44, `-${rivalDmg}`, "player");
+      if(now >= Number(unit._nextThreatNoticeAt || 0)){
+        unit._nextThreatNoticeAt = now + 3500;
+        setEventText(`⚠️ ${unit.callsign || "Rival"} is attacking you. Return fire!`, 2.4);
+      }
+    }
 
     if(nearTiger.tiger && nearTiger.d <= RIVAL_FIRE_RANGE && now >= (unit.fireAt || 0)){
       unit.fireAt = now + rand(320, 540);
@@ -31650,7 +31765,7 @@ function renderCombatControls(){
   const squadWheelBtn = document.getElementById("touchSquadWheelBtn");
   const actionButtons = document.querySelector(".actionButtons");
   const combatButtons = document.getElementById("combatButtons");
-  const inCombat = !!S.inBattle;
+  const inCombat = !!S.inBattle || !!lockedRival();
   const hideTouchUi = controllerOwnsUi();
   if(touchOverlay) touchOverlay.style.display = hideTouchUi ? "none" : "block";
   if(touchHint) touchHint.style.display = hideTouchUi ? "none" : "block";
@@ -31853,6 +31968,7 @@ function onAttackClick(e){
     ATTACK_HOLD.longPress = false;
     return;
   }
+  if(!S.inBattle && playerAttackLockedRival()) return;
   playerAction("ATTACK");
 }
 
@@ -32097,7 +32213,10 @@ function equippedWeaponHasAmmoNow(){
 }
 function updateAttackButton(){
   const btn = document.getElementById("atkBtn");
-  if(btn) btn.disabled = !anyLethalWeaponHasAmmo();
+  if(btn){
+    btn.disabled = !anyLethalWeaponHasAmmo();
+    btn.innerText = lockedRival() && !S.inBattle ? "Attack Rival" : "Attack";
+  }
   renderCombatControls();
 }
 
@@ -36547,6 +36666,17 @@ function drawRivalHunter(unit){
   const stride = Math.sin((unit.step || 0) * 1.9) * 1.4;
 
   drawWaterRipple(x, y, 15, 0.46);
+  if(S.lockedRivalId === unit.id){
+    ctx.save();
+    ctx.strokeStyle = "rgba(248,113,113,.98)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([7, 5]);
+    ctx.beginPath();
+    ctx.arc(x, y - 2, 24 + (Math.sin(Date.now() * 0.008) * 2), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
   ctx.save();
   ctx.globalAlpha = 0.24;
   ctx.strokeStyle = faction.accent || "rgba(253,164,175,.88)";
