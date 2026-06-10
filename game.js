@@ -1737,6 +1737,15 @@ function selectArcadeBuildcraft(id, opts={}){
   }
 }
 
+const DYNAMIC_WEATHER_2_FRONTS = Object.freeze({
+  calm:{ icon:"🌤️", label:"Calm Window", fx:"clear", intensity:0.34, duration:[36000,56000], playerSpeedMul:1.04, staminaDrainMul:0.92, civilianSpeedMul:1.05, tigerSpeedMul:0.98, tigerAggroMul:0.96, tigerDetectMul:0.96, tigerDamageMul:0.98, playerDamageMul:1.03, jamChanceMul:0.72 },
+  rain:{ icon:"🌧️", label:"Driving Rain", fx:"rain", intensity:0.78, duration:[43000,68000], playerSpeedMul:0.95, staminaDrainMul:1.08, civilianSpeedMul:0.93, tigerSpeedMul:0.96, tigerAggroMul:0.98, tigerDetectMul:0.88, tigerDamageMul:0.98, playerDamageMul:0.96, jamChanceMul:1.22 },
+  fog:{ icon:"🌫️", label:"Dense Fog", fx:"mist", intensity:0.94, duration:[40000,64000], playerSpeedMul:0.98, staminaDrainMul:1.00, civilianSpeedMul:0.96, tigerSpeedMul:1.00, tigerAggroMul:1.05, tigerDetectMul:0.72, tigerDamageMul:1.02, playerDamageMul:0.94, jamChanceMul:1.00 },
+  wildfire:{ icon:"🔥", label:"Wildfire Heat", fx:"ash", intensity:0.90, duration:[39000,62000], playerSpeedMul:0.96, staminaDrainMul:1.24, civilianSpeedMul:0.90, tigerSpeedMul:1.04, tigerAggroMul:1.18, tigerDetectMul:1.08, tigerDamageMul:1.08, playerDamageMul:1.02, jamChanceMul:1.08, localMul:0.72 },
+  flood:{ icon:"🌊", label:"Flood Surge", fx:"rain", intensity:0.90, duration:[42000,68000], playerSpeedMul:0.92, staminaDrainMul:1.14, civilianSpeedMul:0.84, tigerSpeedMul:0.90, tigerAggroMul:0.98, tigerDetectMul:0.92, tigerDamageMul:0.96, playerDamageMul:0.96, jamChanceMul:1.18, localMul:0.60 },
+  storm:{ icon:"⛈️", label:"Thunderstorm", fx:"storm", intensity:1.02, duration:[38000,60000], playerSpeedMul:0.91, staminaDrainMul:1.18, civilianSpeedMul:0.86, tigerSpeedMul:1.03, tigerAggroMul:1.12, tigerDetectMul:0.82, tigerDamageMul:1.10, playerDamageMul:0.95, jamChanceMul:1.30 }
+});
+
 function defaultMissionTwistsState(){
   return {
     enabled: true,
@@ -1788,6 +1797,17 @@ function defaultMissionTwistsState(){
       startEvac: 0,
       startCivs: 0,
       siteSecured: false,
+      lastType: ""
+    },
+    weather2: {
+      active: false,
+      type: "",
+      startedAt: 0,
+      until: 0,
+      nextAt: 0,
+      x: 0,
+      y: 0,
+      r: 0,
       lastType: ""
     }
   };
@@ -1854,6 +1874,16 @@ function ensureMissionTwistState(state=S){
   tw.worldEvent.lastType = WORLD_EVENT_TYPES.includes(String(tw.worldEvent.lastType || ""))
     ? String(tw.worldEvent.lastType)
     : "";
+  tw.weather2 = (tw.weather2 && typeof tw.weather2 === "object") ? tw.weather2 : {};
+  tw.weather2.active = !!tw.weather2.active;
+  tw.weather2.type = dynamicWeather2TypeDef(String(tw.weather2.type || "")) ? String(tw.weather2.type) : "";
+  tw.weather2.startedAt = Math.max(0, Math.floor(Number(tw.weather2.startedAt || 0)));
+  tw.weather2.until = Math.max(0, Math.floor(Number(tw.weather2.until || 0)));
+  tw.weather2.nextAt = Math.max(0, Math.floor(Number(tw.weather2.nextAt || 0)));
+  tw.weather2.x = Number.isFinite(Number(tw.weather2.x)) ? Number(tw.weather2.x) : 0;
+  tw.weather2.y = Number.isFinite(Number(tw.weather2.y)) ? Number(tw.weather2.y) : 0;
+  tw.weather2.r = clamp(Number.isFinite(Number(tw.weather2.r)) ? Number(tw.weather2.r) : 0, 0, 240);
+  tw.weather2.lastType = dynamicWeather2TypeDef(String(tw.weather2.lastType || "")) ? String(tw.weather2.lastType) : "";
 
   if(!ENABLE_MISSION_TWISTS || isMobileViewport() || iphoneStabilityModeActive()){
     tw.enabled = false;
@@ -15498,13 +15528,14 @@ function storyCaptureWindowPct(){
 }
 function storyStaminaDrainMul(){
   const biomeMul = clamp(Number(biomeHazardModifiers(S.mode).staminaDrainMul || 1), 0.70, 1.35);
+  const weatherMul = clamp(Number(dynamicWeather2Mods().staminaDrainMul || 1), 0.82, 1.28);
   const missionMul = liveOpsMissionModifierValue("staminaDrainMul", 1, S);
   if(S.mode !== "Story"){
-    return clamp(biomeMul * missionMul * arcadeBuildcraftMul("staminaDrainMul", 1), 0.62, 1.45);
+    return clamp(biomeMul * weatherMul * missionMul * arcadeBuildcraftMul("staminaDrainMul", 1), 0.62, 1.55);
   }
   const base = 1 - (storyBaseRank("BASE_ENDURANCE") * 0.08);
   const chapterMul = storyChapterRewardUnlocked(6) ? 0.95 : 1;
-  return clamp(base * chapterMul * biomeMul * missionMul, 0.62, 1.35);
+  return clamp(base * chapterMul * biomeMul * weatherMul * missionMul, 0.62, 1.48);
 }
 function storyPayoutMul(){
   if(S.mode !== "Story") return 1;
@@ -17622,6 +17653,86 @@ function dynamicWorldEventsEnabled(){
   if(window.__TUTORIAL_MODE__) return false;
   return eventsEnabled() || S.mode === "Survival";
 }
+function dynamicWeather2TypeDef(type){
+  return DYNAMIC_WEATHER_2_FRONTS[type] || null;
+}
+function activeDynamicWeather2(state=S, now=Date.now()){
+  const front = state?.missionTwists?.weather2;
+  if(!front || !front.active || !dynamicWeather2TypeDef(front.type) || now >= Number(front.until || 0)) return null;
+  return front;
+}
+function dynamicWeather2Mods(now=Date.now(), state=S){
+  const front = activeDynamicWeather2(state, now);
+  const def = front ? dynamicWeather2TypeDef(front.type) : null;
+  return def || { playerSpeedMul:1, staminaDrainMul:1, civilianSpeedMul:1, tigerSpeedMul:1, tigerAggroMul:1, tigerDetectMul:1, tigerDamageMul:1, playerDamageMul:1, jamChanceMul:1 };
+}
+function dynamicWeather2LocalMoveMul(actor, x, y, now=Date.now()){
+  const front = activeDynamicWeather2(S, now);
+  const def = front ? dynamicWeather2TypeDef(front.type) : null;
+  if(!front || !def?.localMul || !front.r || dist(x, y, front.x, front.y) > front.r) return 1;
+  if(actor === "tiger") return clamp(def.localMul + 0.14, 0.58, 1);
+  if(actor === "civilian") return clamp(def.localMul - 0.04, 0.52, 1);
+  return clamp(def.localMul, 0.55, 1);
+}
+function chooseDynamicWeather2Type(){
+  const last = String(S?.missionTwists?.weather2?.lastType || "");
+  const profile = currentBiomeProfile();
+  const fx = String(profile?.weatherFx || "");
+  const weights = { calm:0.75, rain:fx==="rain" ? 1.9 : 1.0, fog:fx==="mist" ? 1.9 : 0.9, wildfire:fx==="ash" ? 1.75 : 0.62, flood:fx==="rain" ? 1.35 : 0.72, storm:fx==="storm" ? 2.0 : 0.82 };
+  if(last && weights[last]) weights[last] *= 0.16;
+  return weightedChoiceFromObject(weights, Object.keys(weights));
+}
+function startDynamicWeather2(type, now=Date.now(), opts={}){
+  const def = dynamicWeather2TypeDef(type);
+  if(!def) return false;
+  const tw = ensureMissionTwistState(S);
+  const front = tw.weather2;
+  const local = type === "flood" || type === "wildfire";
+  const point = local ? streamRandomPointInActiveSectors(S, 110) : null;
+  front.active = true;
+  front.type = type;
+  front.startedAt = now;
+  front.until = now + rand(def.duration[0], def.duration[1]);
+  front.nextAt = front.until + rand(12000, 26000);
+  front.x = point?.x || 0;
+  front.y = point?.y || 0;
+  front.r = local ? rand(100, 170) : 0;
+  front.lastType = type;
+  if(!opts.silent){
+    setEventText(`${def.icon} WEATHER: ${def.label}. Battlefield conditions changed.`, 4.8);
+    sfx("event");
+  }
+  __savePending = true;
+  return true;
+}
+function resetDynamicWeather2ForDeploy(state=S, now=Date.now()){
+  const tw = ensureMissionTwistState(state);
+  const front = tw.weather2;
+  front.active = false;
+  front.type = "";
+  front.startedAt = 0;
+  front.until = 0;
+  front.nextAt = now + rand(26000, 44000);
+  front.x = 0;
+  front.y = 0;
+  front.r = 0;
+  front.lastType = "";
+  if(!window.__TUTORIAL_MODE__) startDynamicWeather2(chooseDynamicWeather2Type(), now, { silent:true });
+}
+function tickDynamicWeather2(){
+  if(window.__TUTORIAL_MODE__ || S.paused || S.inBattle || S.gameOver || S.missionEnded) return;
+  const now = Date.now();
+  const front = S?.missionTwists?.weather2;
+  if(!front) return resetDynamicWeather2ForDeploy(S, now);
+  if(front.active && now >= Number(front.until || 0)){
+    front.active = false;
+    front.type = "";
+    front.x = 0;
+    front.y = 0;
+    front.r = 0;
+  }
+  if(!front.active && now >= Number(front.nextAt || 0)) startDynamicWeather2(chooseDynamicWeather2Type(), now);
+}
 function worldEventTypeDef(type){
   if(type === "ambush_convoy"){
     return {
@@ -17694,14 +17805,15 @@ function activeWorldEvent(state=S, now=Date.now()){
 }
 function worldEventMotionMods(now=Date.now()){
   const we = activeWorldEvent(S, now);
-  if(!we) return { civilianSpeedMul:1, tigerAggroMul:1, tigerSpeedMul:1, tigerDamageMul:1 };
+  const weather = dynamicWeather2Mods(now);
+  if(!we) return { civilianSpeedMul:weather.civilianSpeedMul, tigerAggroMul:weather.tigerAggroMul, tigerSpeedMul:weather.tigerSpeedMul, tigerDamageMul:weather.tigerDamageMul };
   const def = worldEventTypeDef(we.type);
-  if(!def) return { civilianSpeedMul:1, tigerAggroMul:1, tigerSpeedMul:1, tigerDamageMul:1 };
+  if(!def) return { civilianSpeedMul:weather.civilianSpeedMul, tigerAggroMul:weather.tigerAggroMul, tigerSpeedMul:weather.tigerSpeedMul, tigerDamageMul:weather.tigerDamageMul };
   return {
-    civilianSpeedMul: clamp(Number(def.civilianSpeedMul || 1), 0.7, 1.2),
-    tigerAggroMul: clamp(Number(def.tigerAggroMul || 1), 0.8, 1.35),
-    tigerSpeedMul: clamp(Number(def.tigerSpeedMul || 1), 0.8, 1.35),
-    tigerDamageMul: clamp(Number(def.tigerDamageMul || 1), 0.8, 1.35),
+    civilianSpeedMul: clamp(Number(def.civilianSpeedMul || 1) * weather.civilianSpeedMul, 0.62, 1.25),
+    tigerAggroMul: clamp(Number(def.tigerAggroMul || 1) * weather.tigerAggroMul, 0.72, 1.50),
+    tigerSpeedMul: clamp(Number(def.tigerSpeedMul || 1) * weather.tigerSpeedMul, 0.72, 1.45),
+    tigerDamageMul: clamp(Number(def.tigerDamageMul || 1) * weather.tigerDamageMul, 0.72, 1.50),
   };
 }
 function worldEventKeepoutContains(x, y, radius=0, now=Date.now()){
@@ -24248,7 +24360,7 @@ function jamChance(w){
   const dur=weaponDurability(w.id);
   const wearFactor = dur>=60?0.0:(60-dur)/60;
   const handling = weaponHandlingProfile(w);
-  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul() * weaponMasteryJamMul(w.id) * handling.jamMul * liveOpsMissionModifierValue("jamChanceMul", 1, S), 0, 0.42);
+  return clamp((g.jamBase + wearFactor*0.18) * perkJamMul() * weaponMasteryJamMul(w.id) * handling.jamMul * dynamicWeather2Mods().jamChanceMul * liveOpsMissionModifierValue("jamChanceMul", 1, S), 0, 0.42);
 }
 function autoReloadIfNeeded(force=false){
   const w=equippedWeapon();
@@ -26851,6 +26963,7 @@ function deploy(opts={}){
   // phase 1
   S.fogUntil = 0;
   resetMissionTwistsForDeploy(S);
+  resetDynamicWeather2ForDeploy(S);
   resetDynamicObjectiveForDeploy(S);
   S._biomeFogPulseAt = 0;
   S.eventText = "";
@@ -27956,6 +28069,7 @@ function keyboardMoveTick(){
   }
   speed *= motionMul;
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
+  speed *= dynamicWeather2Mods().playerSpeedMul * dynamicWeather2LocalMoveMul("soldier", S.me.x, S.me.y);
   speed *= liveOpsMissionModifierValue("playerSpeedMul", 1, S);
   const targetVx = ux * speed;
   const targetVy = uy * speed;
@@ -28011,6 +28125,7 @@ function movePlayer(){
   if(S._sprintTicks && S._sprintTicks>0){ speed=PLAYER_SPRINT_SPEED; sprinting = true; S._sprintTicks--; }
   speed *= motionMul;
   speed *= waterSpeedMul("soldier", S.me.x, S.me.y, 12);
+  speed *= dynamicWeather2Mods().playerSpeedMul * dynamicWeather2LocalMoveMul("soldier", S.me.x, S.me.y);
   speed *= liveOpsMissionModifierValue("playerSpeedMul", 1, S);
   const ux = dx / d;
   const uy = dy / d;
@@ -29069,7 +29184,7 @@ function runCivilianFleeStep(c, now=Date.now()){
   const mapCivMul = mapIdentityCivilianSpeedMul(S.mode, chapterIndexForMode(S.mode));
   const worldCivMul = clamp(Number(worldEventMotionMods(now).civilianSpeedMul || 1), 0.7, 1.2) * liveOpsMissionModifierValue("civilianSpeedMul", 1, S);
   const fleeBase = c.following ? 3.58 : 2.94;
-  const fleeSpeed = (fleeBase * (civDef.fleeMul || 1)) * (c.following ? Math.max(0.95, waterMul) : waterMul) * motionMul * mapCivMul * worldCivMul;
+  const fleeSpeed = (fleeBase * (civDef.fleeMul || 1)) * (c.following ? Math.max(0.95, waterMul) : waterMul) * motionMul * mapCivMul * worldCivMul * dynamicWeather2LocalMoveMul("civilian", c.x, c.y, now);
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
   const moved = tryMoveEntity(c, nx, ny, 14, { avoidKeepout:false });
@@ -29379,7 +29494,7 @@ function followCiviliansTick(){
     const cDef = civilianPersonalityDef(c.aiState || c.personality);
     const interactiveRouteMul = interactiveRouteSpeedMul("civilian", c.x, c.y, now);
     const sp = Math.min(
-      ((Math.max(playerSpeed * 1.66, 4.45) + catchup + trailBoost) * escortBoost * (cDef.followMul || 1) * escortWaterMul * stayCloseBoost * mapCivMul * worldCivMul * interactiveRouteMul),
+      ((Math.max(playerSpeed * 1.66, 4.45) + catchup + trailBoost) * escortBoost * (cDef.followMul || 1) * escortWaterMul * stayCloseBoost * mapCivMul * worldCivMul * interactiveRouteMul * dynamicWeather2LocalMoveMul("civilian", c.x, c.y, now)),
       PLAYER_SPRINT_SPEED + 6.3
     ) * motionMul;
     const targetVx = (dx/dd) * sp;
@@ -29688,7 +29803,7 @@ function tigerMotionProfile(t, def, now=Date.now()){
     chase,
     sprint,
     minChase: (base.minChase + (hunter * 0.55) + (pack * 0.30) + (rage * 0.35) + (fading * 0.20)) * Math.max(0.95, persona.speedMul),
-    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul * liveOpsMissionModifierValue("tigerDetectMul", 1, S),
+    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul * dynamicWeather2Mods(now).tigerDetectMul * liveOpsMissionModifierValue("tigerDetectMul", 1, S),
     chaseAccel: base.chaseAccel + (hunter * 0.04) + (pack * 0.02) + (rage * 0.03),
     wanderAccel: base.wanderAccel,
     burstMs: base.burstMs,
@@ -30428,6 +30543,7 @@ function roamTigers(){
     speedCap *= directorSpeedMul;
     speedCap *= packSpeedMul;
     speedCap *= waterSpeedMul("tiger", t.x, t.y, 14);
+    speedCap *= dynamicWeather2LocalMoveMul("tiger", t.x, t.y, now);
 
     if(!Number.isFinite(t._speedNow)) t._speedNow = Math.hypot(t.vx || 0, t.vy || 0);
     t._speedNow += (speedCap - t._speedNow) * (chase ? 0.24 : 0.16);
@@ -32215,6 +32331,7 @@ function playerAction(action){
     let dmg=rand(build.dmg[0],build.dmg[1]);
     dmg *= perkDamageMul();
     dmg *= arcadeBuildcraftMul("damageOutMul", 1);
+    dmg *= dynamicWeather2Mods().playerDamageMul;
     dmg *= liveOpsMissionModifierValue("playerDamageMul", 1, S);
     const crit=Math.random()<(eff.crit + perkCritBonus() + arcadeBuildcraftCritBonus() + build.critBonus);
     if(crit) dmg=Math.round(dmg*1.6);
@@ -34993,8 +35110,10 @@ function drawAtmosphericParallax(nowTs=Date.now()){
   const w = Math.max(cv.width, worldWidth(S));
   const h = Math.max(cv.height, worldHeight(S));
   const biome = currentBiomeProfile();
-  const weatherFx = String(biome?.weatherFx || "clear");
-  const weatherIntensity = clamp(Number(biome?.weatherIntensity || 0.45), 0.12, 1.25);
+  const weatherFront = activeDynamicWeather2(S, nowTs);
+  const weatherDef = weatherFront ? dynamicWeather2TypeDef(weatherFront.type) : null;
+  const weatherFx = String(weatherDef?.fx || biome?.weatherFx || "clear");
+  const weatherIntensity = clamp(Number(weatherDef?.intensity || biome?.weatherIntensity || 0.45), 0.12, 1.25);
   let hazeLayers = mode === "PERFORMANCE" ? 1 : (slow ? 2 : 3);
   let streakCount = mode === "PERFORMANCE" ? 6 : (slow ? 9 : 14);
   if(weatherFx === "mist" || weatherFx === "snow") hazeLayers += 1;
@@ -35117,6 +35236,23 @@ function drawAtmosphericParallax(nowTs=Date.now()){
     ctx.fillRect(0, 0, w, h);
   }
 
+  if(weatherFront?.r > 0 && (weatherFront.type === "flood" || weatherFront.type === "wildfire")){
+    const pulse = 0.88 + (Math.sin(nowTs * 0.004) * 0.08);
+    ctx.globalAlpha = 0.24;
+    ctx.fillStyle = weatherFront.type === "flood" ? "rgba(56,189,248,.30)" : "rgba(249,115,22,.28)";
+    ctx.beginPath();
+    ctx.arc(weatherFront.x, weatherFront.y, weatherFront.r * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.62;
+    ctx.strokeStyle = weatherFront.type === "flood" ? "rgba(125,211,252,.82)" : "rgba(251,146,60,.82)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([12, 8]);
+    ctx.beginPath();
+    ctx.arc(weatherFront.x, weatherFront.y, weatherFront.r * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   ctx.globalAlpha = 1;
   ctx.restore();
 }
@@ -35133,8 +35269,10 @@ function drawSceneCinematicGrade(nowTs=Date.now(), layer="overlay"){
   const h = Math.max(cv.height, worldHeight(S));
   const biome = currentBiomeProfile();
   const hazard = String(biome?.hazard || "").toLowerCase();
-  const weather = String(biome?.weatherFx || "clear").toLowerCase();
-  const intensity = clamp(Number(biome?.weatherIntensity || 0.48), 0.12, 1.2);
+  const weatherFront = activeDynamicWeather2(S, nowTs);
+  const weatherDef = weatherFront ? dynamicWeather2TypeDef(weatherFront.type) : null;
+  const weather = String(weatherDef?.fx || biome?.weatherFx || "clear").toLowerCase();
+  const intensity = clamp(Number(weatherDef?.intensity || biome?.weatherIntensity || 0.48), 0.12, 1.2);
 
   let topTint = "rgba(86,140,214,";
   let bottomTint = "rgba(5,10,20,";
@@ -38524,6 +38662,7 @@ function draw(){
         if(liveOpsCommandFlag("worldEvents")){
           runFrameTask("worldEvents", frameInterval(lagHeavy ? 286 : 214, 1.55), tickDynamicWorldEvents, { costHint:0.9, critical:S.mode!=="Survival" });
         }
+        runFrameTask("dynamicWeather2", frameInterval(lagHeavy ? 920 : 680, 1.45), tickDynamicWeather2, { costHint:0.25 });
         if(!mobileViewport && liveOpsCommandFlag("missionTwists")){
           runFrameTask("missionTwists", frameInterval(lagHeavy ? 236 : 176, 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
           runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
