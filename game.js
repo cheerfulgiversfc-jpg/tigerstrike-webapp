@@ -8516,6 +8516,10 @@ const DEFAULT = {
   takeoverUnitId:null,
   squadCommand:"AUTO",
   squadFormation:"WEDGE",
+  selectedSupportUnitId:null,
+  squadSyncTargetId:null,
+  squadSyncAttackAt:0,
+  squadSyncUntil:0,
 
   me:{ x:160, y:420, face:0, step:0 },
   target:null,
@@ -14349,6 +14353,9 @@ function sanitizeRuntimeState(){
     u.alive = u.alive !== false && u.hp > 0;
     if(!Number.isFinite(u.face)) u.face = 0;
     if(!Number.isFinite(u.step)) u.step = 0;
+    if(!Array.isArray(u.commandQueue)) u.commandQueue = [];
+    u.commandQueue = u.commandQueue.filter((order)=>order && typeof order === "object").slice(-3);
+    if(u.activeOrder && typeof u.activeOrder !== "object") u.activeOrder = null;
     if(inMobileNoBuildZone(u.x, u.y, 16) || blockedAt(u.x, u.y, 16)){
       const pt = safeSpawnPoint(u.x, u.y, 16, true, false);
       u.x = pt.x;
@@ -14358,6 +14365,9 @@ function sanitizeRuntimeState(){
     }
     return true;
   }).slice(0, MAX_PERSIST_SUPPORT_UNITS);
+  if(S.selectedSupportUnitId != null && !S.supportUnits.some((unit)=>unit?.alive && unit.id === S.selectedSupportUnitId)){
+    S.selectedSupportUnitId = null;
+  }
   S.rivalHunters = S.rivalHunters.filter((u)=>{
     if(!u || typeof u !== "object") return false;
     u.x = clampX(u.x, 40, w - 40);
@@ -14895,7 +14905,10 @@ function syncSquadCommandWheelUi(){
   const squadFormBtnMobile = document.getElementById("squadFormBtnMobile");
   if(squadFormBtnMobile) squadFormBtnMobile.innerText = `🧩 ${squadFormationShortLabel(formation)}`;
   const squadWheelCenterBtn = document.getElementById("squadWheelCenterBtn");
-  if(squadWheelCenterBtn) squadWheelCenterBtn.innerText = `Form\n${squadFormationShortLabel(formation)}`;
+  if(squadWheelCenterBtn){
+    const unit = selectedSupportUnit();
+    squadWheelCenterBtn.innerText = unit ? `${unit.name}\n${squadEquipmentForUnit(unit).label.replace(" Kit","")}` : `Form\n${squadFormationShortLabel(formation)}`;
+  }
 }
 function closeSquadCommandWheel(evt=null){
   if(evt?.preventDefault) evt.preventDefault();
@@ -14935,6 +14948,12 @@ function pickSquadCommand(cmd, evt=null){
 function setSquadCommand(cmd, opts={}){
   const next = normalizeSquadCommand(cmd);
   if(!S || typeof S !== "object") return next;
+  if(selectedSupportUnit() && opts.individual !== false){
+    queueSelectedSquadOrder(next);
+    syncSquadCommandWheelUi();
+    if(opts.save !== false) save();
+    return next;
+  }
   if(S.squadCommand === next && !opts.force) return next;
   S.squadCommand = next;
   if(opts.toast !== false){
@@ -14995,6 +15014,13 @@ const SQUAD_PERSONALITIES = Object.freeze({
   ],
 });
 const SQUAD_UNIFORMS = Object.freeze(["Field Standard","Veteran Stripe","Elite Gold","Legend Black"]);
+const SQUAD_EQUIPMENT_PRESETS = Object.freeze({
+  BALANCED:{ label:"Balanced Kit", damageMul:1, rangeMul:1, captureBonus:0, speedMul:1, desc:"Balanced field equipment." },
+  ASSAULT:{ label:"Assault Kit", damageMul:1.18, rangeMul:0.94, captureBonus:-0.08, speedMul:0.98, desc:"Higher damage for dangerous tiger fights." },
+  TRANQ:{ label:"Tranq Kit", damageMul:0.92, rangeMul:1.08, captureBonus:0.16, speedMul:1, desc:"Improves safe tiger captures." },
+  GUARDIAN:{ label:"Guardian Kit", damageMul:0.96, rangeMul:0.98, captureBonus:0.04, speedMul:0.94, desc:"Protective equipment for rescue routes." },
+});
+const SQUAD_EQUIPMENT_ORDER = Object.freeze(Object.keys(SQUAD_EQUIPMENT_PRESETS));
 function ensureSquadProgressionState(state=S){
   if(!state.squadProgression || typeof state.squadProgression !== "object") state.squadProgression = { profiles:{} };
   if(!state.squadProgression.profiles || typeof state.squadProgression.profiles !== "object") state.squadProgression.profiles = {};
@@ -15022,6 +15048,7 @@ function ensureSquadProfile(role, slotIndex=0, state=S){
       level:1,
       traitKey:traits[slot % traits.length].key,
       uniform:"Field Standard",
+      equipmentPreset:"BALANCED",
       missions:0,
       captures:0,
       kills:0,
@@ -15050,6 +15077,7 @@ function ensureSquadProfile(role, slotIndex=0, state=S){
   profile.medals = Math.max(0, Math.floor(Number(profile.medals || 0)));
   profile.bossWins = Math.max(0, Math.floor(Number(profile.bossWins || 0)));
   profile.perfectRescues = Math.max(0, Math.floor(Number(profile.perfectRescues || 0)));
+  profile.equipmentPreset = SQUAD_EQUIPMENT_PRESETS[profile.equipmentPreset] ? profile.equipmentPreset : "BALANCED";
   if(profile.level >= 15) profile.uniform = "Legend Black";
   else if(profile.level >= 10) profile.uniform = "Elite Gold";
   else if(profile.level >= 5) profile.uniform = "Veteran Stripe";
@@ -15105,6 +15133,63 @@ function syncUnitSquadProgression(unit, slotIndex=0){
 function squadProfileForUnit(unit){
   if(!unit || unit.raidPartner) return null;
   return ensureSquadProfile(unit.role, Number.isFinite(unit.progressionSlot) ? unit.progressionSlot : 0);
+}
+function squadEquipmentForUnit(unit){
+  const profile = squadProfileForUnit(unit);
+  return SQUAD_EQUIPMENT_PRESETS[profile?.equipmentPreset] || SQUAD_EQUIPMENT_PRESETS.BALANCED;
+}
+function selectedSupportUnit(){
+  const id = S?.selectedSupportUnitId;
+  return (S.supportUnits || []).find((unit)=>unit && unit.alive && unit.id === id) || null;
+}
+function cycleSelectedSquadEquipment(){
+  const unit = selectedSupportUnit();
+  if(!unit) return cycleSquadFormation();
+  const profile = squadProfileForUnit(unit);
+  if(!profile) return;
+  const idx = Math.max(0, SQUAD_EQUIPMENT_ORDER.indexOf(profile.equipmentPreset));
+  profile.equipmentPreset = SQUAD_EQUIPMENT_ORDER[(idx + 1) % SQUAD_EQUIPMENT_ORDER.length];
+  const equipment = squadEquipmentForUnit(unit);
+  toast(`${unit.name}: ${equipment.label} equipped.`);
+  syncSquadCommandWheelUi();
+  save();
+}
+function queueSelectedSquadOrder(command, target={}){
+  const unit = selectedSupportUnit();
+  if(!unit) return false;
+  if(!Array.isArray(unit.commandQueue)) unit.commandQueue = [];
+  const order = {
+    command:normalizeSquadCommand(command),
+    targetTigerId:Number(target.tigerId || 0),
+    targetCivId:Number(target.civId || 0),
+    x:Number.isFinite(target.x) ? target.x : 0,
+    y:Number.isFinite(target.y) ? target.y : 0,
+    createdAt:Date.now(),
+    until:Date.now() + 30000,
+  };
+  unit.commandQueue.push(order);
+  unit.commandQueue = unit.commandQueue.slice(-3);
+  if(!unit.activeOrder) unit.activeOrder = unit.commandQueue.shift();
+  toast(`${unit.name}: ${squadCommandLabel(order.command)} queued (${1 + unit.commandQueue.length}/3).`);
+  __savePending = true;
+  return true;
+}
+function triggerSynchronizedSquadAttack(){
+  const target = lockedTiger();
+  const attackers = (S.supportUnits || []).filter((unit)=>unit?.alive && unit.role === "attacker");
+  if(!target) return toast("Lock a tiger before ordering a synchronized attack.");
+  if(!attackers.length) return toast("No living attack specialists available.");
+  const now = Date.now();
+  S.squadSyncTargetId = target.id;
+  S.squadSyncAttackAt = now + 1300;
+  S.squadSyncUntil = now + 5200;
+  for(const unit of attackers){
+    unit.activeOrder = { command:"ATTACK_TARGET", targetTigerId:target.id, createdAt:now, until:S.squadSyncUntil };
+    unit.commandQueue = [];
+  }
+  setEventText(`🎯 SYNCHRONIZED ATTACK: ${attackers.length} specialists firing in 3…2…1…`, 3.2);
+  closeSquadCommandWheel();
+  save();
 }
 function addSquadProfileXp(unit, amount=0, memory=""){
   const profile = squadProfileForUnit(unit);
@@ -15170,7 +15255,8 @@ function squadProgressionSummaryHtml(){
       const p = ensureSquadProfile(role, slot);
       const trait = squadProfileTrait(p);
       const nextXp = squadXpForNextLevel(p);
-      rows.push(`<div class="item"><div><div class="itemName">${role === "attacker" ? "🪖" : "🚑"} ${p.name} <span class="tag">${squadProfileRankLabel(p)} Lv ${p.level}</span> <span class="tag">${p.uniform}</span> <span class="tag">${squadUnlockedAbilityLabel(p)}</span></div><div class="itemDesc">${trait.label}: ${trait.desc}</div><div class="itemDesc">${squadProfilePassiveSummary(p)} • Medals ${p.medals} • Boss wins ${p.bossWins} • Perfect rescues ${p.perfectRescues}</div><div class="itemDesc">XP ${p.xp}${nextXp ? ` • ${nextXp} to next level` : " • Max level"} • Missions ${p.missions} • Captures ${p.captures} • Kills ${p.kills} • Rescues ${p.rescues} • Downs ${p.downs} • Revives ${p.revives}</div><div class="itemDesc">Memory: ${p.lastMemory}</div></div></div>`);
+      const equipment = SQUAD_EQUIPMENT_PRESETS[p.equipmentPreset] || SQUAD_EQUIPMENT_PRESETS.BALANCED;
+      rows.push(`<div class="item"><div><div class="itemName">${role === "attacker" ? "🪖" : "🚑"} ${p.name} <span class="tag">${squadProfileRankLabel(p)} Lv ${p.level}</span> <span class="tag">${p.uniform}</span> <span class="tag">${squadUnlockedAbilityLabel(p)}</span></div><div class="itemDesc">${trait.label}: ${trait.desc}</div><div class="itemDesc"><b>Equipment:</b> ${equipment.label} • ${equipment.desc}</div><div class="itemDesc">${squadProfilePassiveSummary(p)} • Medals ${p.medals} • Boss wins ${p.bossWins} • Perfect rescues ${p.perfectRescues}</div><div class="itemDesc">XP ${p.xp}${nextXp ? ` • ${nextXp} to next level` : " • Max level"} • Missions ${p.missions} • Captures ${p.captures} • Kills ${p.kills} • Rescues ${p.rescues} • Downs ${p.downs} • Revives ${p.revives}</div><div class="itemDesc">Memory: ${p.lastMemory}</div></div></div>`);
     }
   }
   return rows.length ? rows.join("") : `<div class="item"><div><div class="itemName">No named specialists yet</div><div class="itemDesc">Hire specialists in Shop &gt; Squad to begin their progression.</div></div></div>`;
@@ -24910,6 +24996,10 @@ function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
   S.activeTigerId = null;
   S.lockedTigerId = null;
   S.lockedRivalId = null;
+  S.selectedSupportUnitId = null;
+  S.squadSyncTargetId = null;
+  S.squadSyncAttackAt = 0;
+  S.squadSyncUntil = 0;
   S.scanPing = 0;
   S._underAttack = 0;
   S._combatTigerAttackAt = 0;
@@ -25932,6 +26022,8 @@ function createSupportUnit(role, slotIndex=0){
     armor: armorBase,
     fireAt:0,
     guideAt:0,
+    activeOrder:null,
+    commandQueue:[],
     alive:true
   };
   return syncUnitSquadProgression(unit, slotIndex);
@@ -27353,6 +27445,8 @@ cv.addEventListener("pointerdown",(e)=>{
   const tappedInteractable = findInteractableAt(x,y);
   const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
   const tappedRival = (S.rivalHunters || []).find((u)=>u.alive && dist(x,y,u.x,u.y) < 34);
+  const tappedSupport = (S.supportUnits || []).find((u)=>u.alive && dist(x,y,u.x,u.y) < 34);
+  const tappedCivilian = (S.civilians || []).find((c)=>c.alive && !c.evac && dist(x,y,c.x,c.y) < 32);
 
   // --- Tutorial: capture map click so tutorial can advance ---
   if (window.TigerTutorial?.isRunning) {
@@ -27410,6 +27504,33 @@ cv.addEventListener("pointerdown",(e)=>{
   if(S.paused) return;
 
   ensureAudio();
+
+  if(tappedSupport && !S.inBattle){
+    S.selectedSupportUnitId = S.selectedSupportUnitId === tappedSupport.id ? null : tappedSupport.id;
+    const selected = selectedSupportUnit();
+    toast(selected ? `${selected.name} selected. Tap a target or queue commands.` : "Individual squad command cleared.");
+    syncSquadCommandWheelUi();
+    sfx("ui");
+    hapticImpact("light");
+    save();
+    return;
+  }
+
+  if(selectedSupportUnit() && !S.inBattle){
+    if(tapped){
+      queueSelectedSquadOrder("ATTACK_TARGET", { tigerId:tapped.id });
+      S.lockedTigerId = tapped.id;
+      return;
+    }
+    if(tappedCivilian){
+      queueSelectedSquadOrder("RESCUE", { civId:tappedCivilian.id });
+      return;
+    }
+    if(!tappedInteractable && !tappedRival){
+      queueSelectedSquadOrder("HOLD", { x, y });
+      return;
+    }
+  }
 
   if(tappedInteractable && !S.inBattle){
     const changed = activateMapInteractable(tappedInteractable);
@@ -28369,7 +28490,8 @@ function supportAttackDamage(unit, tiger, tigerDist){
   const trait = squadProfileTrait(profile);
   const bondMul = 1 + (clamp(Number(profile?.bond || 0), 0, 100) * 0.001);
   const bossMul = (isBossTiger(tiger) || tiger?.type === "Alpha") ? Number(trait.bossDamageMul || 1) : 1;
-  const boost = storyAttackerDamageMul() * (1 + ((profile?.level || 1) - 1) * 0.018) * Number(trait.damageMul || 1) * bondMul * bossMul;
+  const equipment = squadEquipmentForUnit(unit);
+  const boost = storyAttackerDamageMul() * (1 + ((profile?.level || 1) - 1) * 0.018) * Number(trait.damageMul || 1) * bondMul * bossMul * Number(equipment.damageMul || 1);
   const burstMul = squadAbilityActive("tranq_burst") ? 1.18 : 1;
   return Math.max(5, Math.round(base * antiTigerSkill * clamp(targetResist, 0.70, 1.0) * boost * burstMul));
 }
@@ -28787,6 +28909,11 @@ function supportUnitsTick(){
   if(!S.supportUnits?.length) return;
 
   const now = Date.now();
+  if(now >= Number(S.squadSyncUntil || 0)){
+    S.squadSyncTargetId = null;
+    S.squadSyncAttackAt = 0;
+    S.squadSyncUntil = 0;
+  }
   const lagTier = frameLagTier();
   const supportTickDelay = lagTier >= 2 ? 110 : (lagTier >= 1 ? 84 : 50);
   if(now < (S._supportTickAt || 0)) return;
@@ -28904,6 +29031,28 @@ function supportUnitsTick(){
     syncUnitSquadProgression(unit, unit.progressionSlot || 0);
     const unitProfile = squadProfileForUnit(unit);
     const unitTrait = squadProfileTrait(unitProfile);
+    const unitEquipment = squadEquipmentForUnit(unit);
+    const activeOrderTargetGone = !!unit.activeOrder && (
+      (unit.activeOrder.targetTigerId && !activeTigers.some((t)=>t.id === unit.activeOrder.targetTigerId)) ||
+      (unit.activeOrder.targetCivId && !liveCivs.some((c)=>c.id === unit.activeOrder.targetCivId))
+    );
+    const activeMoveReached = !!unit.activeOrder && (unit.activeOrder.x || unit.activeOrder.y) && dist(unit.x, unit.y, unit.activeOrder.x, unit.activeOrder.y) <= 24;
+    if(unit.activeOrder && (now >= Number(unit.activeOrder.until || 0) || activeOrderTargetGone || activeMoveReached)){
+      unit.activeOrder = Array.isArray(unit.commandQueue) && unit.commandQueue.length ? unit.commandQueue.shift() : null;
+    }
+    const individualOrder = unit.activeOrder || null;
+    const unitCommand = normalizeSquadCommand(individualOrder?.command || squadCommand);
+    const commandAuto = unitCommand === "AUTO";
+    const commandAttackTarget = unitCommand === "ATTACK_TARGET";
+    const commandRescue = unitCommand === "RESCUE";
+    const commandRegroup = unitCommand === "REGROUP";
+    const commandHold = unitCommand === "HOLD";
+    const individualTargetTiger = individualOrder?.targetTigerId
+      ? activeTigers.find((t)=>t.id === individualOrder.targetTigerId) || null
+      : null;
+    const individualTargetCiv = individualOrder?.targetCivId
+      ? liveCivs.find((c)=>c.id === individualOrder.targetCivId) || null
+      : null;
     unit.step = (unit.step || 0) + 0.08;
     unit.homeX = S.me.x;
     unit.homeY = S.me.y;
@@ -28913,6 +29062,10 @@ function supportUnitsTick(){
     const anchor = squadFormationAnchor(unit, slotIndex, roleCounts, squadFormation, unit.step || 0);
     let targetX = anchor.x;
     let targetY = anchor.y;
+    if(individualOrder && Number.isFinite(individualOrder.x) && Number.isFinite(individualOrder.y) && (individualOrder.x || individualOrder.y)){
+      targetX = individualOrder.x;
+      targetY = individualOrder.y;
+    }
     const leashMax = (commandHold ? 120 : (commandRegroup ? 150 : 265)) * formationProfile.leashMul;
     const hpRatio = clamp((Number(unit.hp || 0) / Math.max(1, Number(unit.hpMax || 1))), 0, 1);
     const nearestThreatNow = nearestTigerTo(unit.x, unit.y);
@@ -28951,6 +29104,7 @@ function supportUnitsTick(){
         : [];
       let targetCiv = null;
       const candidateSet = new Set();
+      if(individualTargetCiv) candidateSet.add(individualTargetCiv);
       if(dangerCiv && (dangerCiv.escortOwner !== ownTag || !dangerCiv.escortUnitId || dangerCiv.escortUnitId === unit.id)){
         candidateSet.add(dangerCiv);
       }
@@ -29025,7 +29179,7 @@ function supportUnitsTick(){
       const fallback = nearestTigerTo(unit.x, unit.y);
       let chaseTiger = null;
       if(commandAttackTarget){
-        chaseTiger = lockTiger || null;
+        chaseTiger = individualTargetTiger || lockTiger || null;
       } else if(commandRescue){
         chaseTiger = dangerCiv ? nearestTigerTo(dangerCiv.x, dangerCiv.y).tiger : null;
         if(!chaseTiger){
@@ -29076,7 +29230,7 @@ function supportUnitsTick(){
     }
 
     const homeDist = dist(unit.x, unit.y, unit.homeX, unit.homeY);
-    if(homeDist > leashMax){
+    if(homeDist > leashMax && !(individualOrder && (individualOrder.x || individualOrder.y))){
       targetX = unit.homeX + Math.cos(unit.step * 0.55) * 14;
       targetY = unit.homeY + Math.sin(unit.step * 0.62) * 12;
     }
@@ -29091,6 +29245,7 @@ function supportUnitsTick(){
     if(unit.role === "attacker") stepCap *= formationProfile.attackerMoveMul;
     else stepCap *= formationProfile.rescueMoveMul;
     stepCap *= (1 + ((unitProfile?.level || 1) - 1) * 0.008) * Number(unitTrait.speedMul || 1);
+    stepCap *= Number(unitEquipment.speedMul || 1);
     if(unit.role === "rescue" && commandRescue) stepCap *= 1.1;
     if(commandRegroup) stepCap *= 1.06;
     if(commandHold) stepCap *= 0.92;
@@ -29112,8 +29267,9 @@ function supportUnitsTick(){
       let shotRange = 230;
       let clawRange = 90;
       if(commandAttackTarget){
-        allowEngage = lockTiger ? tiger.id === lockTiger.id : (isPriority || nearPlayer || nearDanger);
-        shotRange = lockTiger ? 255 : 155;
+        const assignedTiger = individualTargetTiger || lockTiger;
+        allowEngage = assignedTiger ? tiger.id === assignedTiger.id : (isPriority || nearPlayer || nearDanger);
+        shotRange = assignedTiger ? 255 : 155;
         clawRange = 96;
       } else if(commandRescue){
         allowEngage = nearDanger || nearPlayer;
@@ -29129,7 +29285,7 @@ function supportUnitsTick(){
         clawRange = 82;
       }
       if(unit.role === "attacker"){
-        shotRange *= formationProfile.attackerRangeMul * Number(unitTrait.rangeMul || 1);
+        shotRange *= formationProfile.attackerRangeMul * Number(unitTrait.rangeMul || 1) * Number(unitEquipment.rangeMul || 1);
       }
       if(unit._retreating){
         allowEngage = false;
@@ -29137,7 +29293,8 @@ function supportUnitsTick(){
       const hostileMeleeRange = (isBossTiger(tiger) || tiger.type === "Alpha") ? 112 : clawRange;
 
       if(unit.role === "attacker"){
-        if(allowEngage && tigerDist < shotRange && now >= (unit.fireAt || 0)){
+        const synchronizedHold = Number(S.squadSyncTargetId || 0) === Number(tiger.id) && now < Number(S.squadSyncAttackAt || 0);
+        if(allowEngage && !synchronizedHold && tigerDist < shotRange && now >= (unit.fireAt || 0)){
           unit.fireAt = now + Math.round(rand(260, 430) * Number(unitTrait.fireRateMul || 1));
           unit.shotKickUntil = now + 130;
           const shotDmg = supportAttackDamage(unit, tiger, tigerDist);
@@ -29148,7 +29305,7 @@ function supportUnitsTick(){
             tiger.tranqTagged = true;
             applyTigerDamage(tiger, Math.max(1, Math.round(shotDmg * 0.35)), { floorOne:true });
             const burstBonus = (squadAbilityActive("tranq_burst", now, S) || now < Number(tiger._squadTranqBurstUntil || 0)) ? 0.12 : 0;
-            const capChance = clamp(0.62 + storyAttackerCaptureBonus() + burstBonus + Number(unitTrait.captureBonus || 0), 0.62, 0.98);
+            const capChance = clamp(0.62 + storyAttackerCaptureBonus() + burstBonus + Number(unitTrait.captureBonus || 0) + Number(unitEquipment.captureBonus || 0), 0.42, 0.98);
             if(Math.random() < capChance){
               noteTigerOutcomeForObjective(tiger);
               markStoryFinalBossOutcome("CAPTURE", tiger);
@@ -36562,6 +36719,17 @@ function drawSupportUnit(unit){
   const x = smooth.x;
   const y = smooth.y + bob;
   const attacker = unit.role === "attacker";
+  if(S.selectedSupportUnitId === unit.id){
+    ctx.save();
+    ctx.strokeStyle = "rgba(96,165,250,.98)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 5]);
+    ctx.beginPath();
+    ctx.arc(x, y - 2, 25 + (Math.sin(Date.now() * 0.008) * 2), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
   // Phase 2 readability: stronger local separation from terrain.
   ctx.save();
   ctx.globalAlpha = 0.28;
@@ -36644,6 +36812,12 @@ function drawSupportUnit(unit){
     ctx.fillStyle = attacker ? "rgba(255,210,160,.72)" : "rgba(180,238,255,.72)";
     ctx.font = "800 8px system-ui";
     ctx.fillText(badge, x - Math.min(30, badge.length * 1.7), y - 36);
+  }
+  if(unit.activeOrder && frameLagTier() < 2){
+    const queued = Array.isArray(unit.commandQueue) ? unit.commandQueue.length : 0;
+    ctx.fillStyle = "rgba(147,197,253,.90)";
+    ctx.font = "900 8px system-ui";
+    ctx.fillText(`${squadCommandShortLabel(unit.activeOrder.command)}${queued ? ` +${queued}` : ""} • ${squadEquipmentForUnit(unit).label}`, x - 30, y - 44);
   }
   ctx.fillStyle = "rgba(11,13,18,.84)";
   ctx.fillRect(x - 18, y - 22, 36, 4);
@@ -39609,6 +39783,8 @@ window.openSquadCommandWheel = openSquadCommandWheel;
 window.closeSquadCommandWheel = closeSquadCommandWheel;
 window.toggleSquadCommandWheel = toggleSquadCommandWheel;
 window.pickSquadCommand = pickSquadCommand;
+window.cycleSelectedSquadEquipment = cycleSelectedSquadEquipment;
+window.triggerSynchronizedSquadAttack = triggerSynchronizedSquadAttack;
 
 window.playerAction = playerAction;
 window.endBattle = endBattle;

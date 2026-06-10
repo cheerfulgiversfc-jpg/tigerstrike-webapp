@@ -279,6 +279,7 @@
     .squadWheelOption[data-cmd="RESCUE"]{right:var(--squad-wheel-corner-gap);bottom:var(--squad-wheel-corner-gap)}
     .squadWheelOption[data-cmd="REGROUP"]{left:var(--squad-wheel-corner-gap);bottom:var(--squad-wheel-corner-gap)}
     .squadWheelOption[data-cmd="HOLD"]{left:0;top:50%;transform:translate(0,-50%)}
+    .squadWheelSync{left:50%;bottom:-12px;transform:translate(-50%,0);border-color:rgba(251,191,36,.92);background:rgba(54,38,12,.96)}
 
     .overlay{
       position:fixed;
@@ -1473,7 +1474,7 @@
         <div class="squadCommandWheel" id="squadCommandWheel" aria-hidden="true">
           <div class="squadCommandWheelCore" id="squadCommandWheelCore">
             <div class="squadWheelRing"></div>
-            <button class="squadWheelCenter" type="button" id="squadWheelCenterBtn" onclick="cycleSquadFormation(); closeSquadCommandWheel(event)">Form</button>
+            <button class="squadWheelCenter" type="button" id="squadWheelCenterBtn" onclick="cycleSelectedSquadEquipment(); closeSquadCommandWheel(event)">Form</button>
             <button class="squadWheelOption" type="button" id="squadWheelCmdAuto" data-cmd="AUTO" onclick="pickSquadCommand('AUTO', event)">
               <span class="icon">🤖</span><span class="txt">Auto</span>
             </button>
@@ -1488,6 +1489,9 @@
             </button>
             <button class="squadWheelOption" type="button" id="squadWheelCmdHold" data-cmd="HOLD" onclick="pickSquadCommand('HOLD', event)">
               <span class="icon">🛑</span><span class="txt">Hold</span>
+            </button>
+            <button class="squadWheelOption squadWheelSync" type="button" id="squadWheelSyncAttack" onclick="triggerSynchronizedSquadAttack(); event.stopPropagation()">
+              <span class="icon">⚡</span><span class="txt">Sync</span>
             </button>
           </div>
         </div>
@@ -2097,7 +2101,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4511-rival-combat"></script>
+<script src="./game.js?v=4512-soldier-command-3"></script>
 <script src="./tutorial.js?v=4499-warfront-ledger-hardlock"></script>
 <script>
 (() => {
