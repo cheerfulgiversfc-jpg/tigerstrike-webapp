@@ -14305,6 +14305,9 @@ function sanitizeRuntimeState(){
     if(!Number.isFinite(t.wanderAngle)) t.wanderAngle = Math.random() * Math.PI * 2;
     ensureTigerVisualProfile(t);
     ensureTigerHuntState(t);
+    if(t.eliteMutation && !ELITE_TIGER_MUTATIONS[t.eliteMutation]) t.eliteMutation = "";
+    t.eliteMutationRewarded = !!t.eliteMutationRewarded;
+    if(!Number.isFinite(t.eliteMutationHealAt)) t.eliteMutationHealAt = 0;
     if(isBossTiger(t) && Number(t.bossPhases || 0) < 3) t.bossPhases = 3;
     if(isBossTiger(t)) ensureBossEncounter3State(t);
     if(!Number.isFinite(t.bossStalkUntil)) t.bossStalkUntil = 0;
@@ -17898,6 +17901,113 @@ function drawDynamicDayNightOverlay(now=Date.now()){
   ctx.restore();
 }
 
+// ===================== ELITE TIGER MUTATIONS =====================
+const ELITE_TIGER_MUTATIONS = Object.freeze({
+  camouflage:Object.freeze({ icon:"◌", label:"Camouflage", color:"rgba(125,211,252,.96)", hpMul:1.05, speedMul:1.03, detectMul:1.18, defenseMul:0.94, rewardMul:1.18 }),
+  armored_hide:Object.freeze({ icon:"◆", label:"Armored Hide", color:"rgba(148,163,184,.98)", hpMul:1.24, speedMul:0.94, detectMul:1.00, defenseMul:0.72, rewardMul:1.30 }),
+  pack_healing:Object.freeze({ icon:"+", label:"Pack Healing", color:"rgba(74,222,128,.98)", hpMul:1.12, speedMul:0.98, detectMul:1.04, defenseMul:0.90, rewardMul:1.28 }),
+  venom:Object.freeze({ icon:"!", label:"Venom Claws", color:"rgba(163,230,53,.98)", hpMul:1.08, speedMul:1.02, detectMul:1.06, defenseMul:0.92, rewardMul:1.24 }),
+  extreme_speed:Object.freeze({ icon:">>", label:"Extreme Speed", color:"rgba(251,191,36,.98)", hpMul:1.04, speedMul:1.20, detectMul:1.12, defenseMul:0.96, rewardMul:1.26 })
+});
+const ELITE_TIGER_MUTATION_KEYS = Object.freeze(Object.keys(ELITE_TIGER_MUTATIONS));
+
+function eliteTigerMutationDef(t){
+  return t?.eliteMutation ? ELITE_TIGER_MUTATIONS[t.eliteMutation] || null : null;
+}
+function eliteTigerMutationLabel(t){
+  const def = eliteTigerMutationDef(t);
+  return def ? `${def.icon} ${def.label}` : "";
+}
+function eliteTigerMutationChance(t, opts={}){
+  if(window.__TUTORIAL_MODE__ || !t || t.eliteMutation || opts.disableMutation) return 0;
+  const level = Math.max(1, currentCampaignLevel());
+  const base = S.mode === "Survival" ? 0.16 : (S.mode === "Arcade" ? 0.12 : 0.09);
+  const levelBonus = clamp((level - 1) * 0.0024, 0, 0.16);
+  const bossBonus = isBossTiger(t) || t.nemesisId ? 0.18 : (t.type === "Alpha" ? 0.07 : 0);
+  return clamp(base + levelBonus + bossBonus + Number(opts.mutationChanceBonus || 0), 0, 0.48);
+}
+function assignEliteTigerMutation(t, opts={}){
+  if(!t || t.eliteMutation || Math.random() > eliteTigerMutationChance(t, opts)) return false;
+  let pool = [...ELITE_TIGER_MUTATION_KEYS];
+  if(t.type === "Stalker") pool = ["camouflage","extreme_speed","venom","pack_healing"];
+  if(t.type === "Berserker") pool = ["armored_hide","venom","extreme_speed"];
+  if(t.type === "Alpha" || isBossTiger(t)) pool = ["pack_healing","armored_hide","venom","camouflage"];
+  const key = pool[rand(0, pool.length - 1)];
+  const def = ELITE_TIGER_MUTATIONS[key];
+  t.eliteMutation = key;
+  t.eliteMutationRewarded = false;
+  t.eliteMutationHealAt = 0;
+  t.eliteMutationPulseAt = 0;
+  t.hpMax = Math.max(1, Math.round(Number(t.hpMax || t.hp || 1) * def.hpMul));
+  t.hp = t.hpMax;
+  t.aggroBoost = clamp(Number(t.aggroBoost || 0) + 0.10, 0, 1.4);
+  return true;
+}
+function eliteMutationDamageDefenseMul(t){
+  return clamp(Number(eliteTigerMutationDef(t)?.defenseMul || 1), 0.60, 1);
+}
+function eliteMutationSpeedMul(t){
+  return clamp(Number(eliteTigerMutationDef(t)?.speedMul || 1), 0.88, 1.28);
+}
+function eliteMutationDetectMul(t){
+  return clamp(Number(eliteTigerMutationDef(t)?.detectMul || 1), 0.92, 1.30);
+}
+function grantEliteMutationReward(t, outcome="KILL"){
+  const def = eliteTigerMutationDef(t);
+  if(!def || t.eliteMutationRewarded) return false;
+  t.eliteMutationRewarded = true;
+  const capture = String(outcome).toUpperCase() === "CAPTURE";
+  const level = Math.max(1, currentCampaignLevel());
+  const cash = Math.round((capture ? 2100 : 1250) * def.rewardMul * (1 + level * 0.018));
+  const xp = Math.round((capture ? 135 : 90) * def.rewardMul);
+  S.funds += cash;
+  S.score += Math.round((capture ? 420 : 280) * def.rewardMul);
+  trackCashEarned(cash);
+  addXP(xp);
+  grantSeasonPassPoints(capture ? 8 : 5, "Elite mutation resolved");
+  setEventText(`🧬 ${def.label} tiger ${capture ? "captured" : "defeated"}: +$${cash.toLocaleString()} • +${xp}XP`, 5);
+  return true;
+}
+function tickEliteTigerMutations(now=Date.now()){
+  if(window.__TUTORIAL_MODE__ || S.paused || S.gameOver || S.missionEnded) return;
+  for(const t of (S.tigers || [])){
+    if(!t?.alive || t.eliteMutation !== "pack_healing" || now < Number(t.eliteMutationHealAt || 0)) continue;
+    t.eliteMutationHealAt = now + 2600;
+    let healed = 0;
+    for(const ally of (S.tigers || [])){
+      if(!ally?.alive || Number(ally.packId || 0) !== Number(t.packId || 0) || dist(t.x,t.y,ally.x,ally.y) > 190) continue;
+      const before = Number(ally.hp || 0);
+      ally.hp = clamp(before + Math.max(2, Math.round(Number(ally.hpMax || 1) * 0.018)), 0, Number(ally.hpMax || 1));
+      healed += Math.max(0, ally.hp - before);
+    }
+    if(healed > 0 && pointInViewportPad(t.x, t.y, 100)){
+      setTigerIntent(t, "Pack Heal", 620);
+      queueImpactPulse(t.x, t.y, "capture");
+    }
+  }
+}
+function drawEliteTigerMutationAura(t, x, y, scale=1, alpha=1, now=Date.now()){
+  const def = eliteTigerMutationDef(t);
+  if(!def) return;
+  const pulse = 0.76 + Math.sin((now * 0.008) + Number(t.id || 0)) * 0.16;
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha * (0.42 + pulse * 0.22), 0.20, 0.74);
+  ctx.strokeStyle = def.color;
+  ctx.lineWidth = 2.4;
+  ctx.setLineDash(t.eliteMutation === "camouflage" ? [4,5] : [9,5]);
+  ctx.beginPath();
+  ctx.arc(x, y, (34 + pulse * 4) * scale, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(7,12,20,.86)";
+  roundedRectFill(x - 48, y - (48 * scale), 96, 17, 7);
+  ctx.fillStyle = def.color;
+  ctx.font = "900 8px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(`ELITE • ${def.label}`, x, y - (36 * scale));
+  ctx.restore();
+}
+
 // ===================== TIGER TRACKING + INVESTIGATION =====================
 const INVESTIGATION_CLUE_DEFS = Object.freeze({
   footprint:{ icon:"🐾", label:"Footprints", color:"rgba(96,165,250,.96)" },
@@ -18061,7 +18171,8 @@ function scanInvestigationClues(now=Date.now()){
     const hp = Math.round(clamp(Number(target.hp || 0) / Math.max(1, Number(target.hpMax || 1)), 0, 1) * 100);
     const clue = nearby[nearby.length - 1];
     const falseNote = clue.falseTrail ? " • Stalker false trail detected" : "";
-    setEventText(`🔎 ${INVESTIGATION_CLUE_DEFS[clue.type]?.label || "Clue"} ${inv.found}/${inv.total}: ${investigationAgeLabel(target)} ${target.type} • ${hp}% health • ${investigationBehaviorLabel(target)} • moving ${investigationDirection(target.x-clue.x,target.y-clue.y)}${falseNote}`, 6);
+    const mutationNote = eliteTigerMutationLabel(target);
+    setEventText(`🔎 ${INVESTIGATION_CLUE_DEFS[clue.type]?.label || "Clue"} ${inv.found}/${inv.total}: ${investigationAgeLabel(target)} ${target.type}${mutationNote ? ` • ${mutationNote}` : ""} • ${hp}% health • ${investigationBehaviorLabel(target)} • moving ${investigationDirection(target.x-clue.x,target.y-clue.y)}${falseNote}`, 6);
     target.investigationSeenCount = Math.max(0, Number(target.investigationSeenCount || 0)) + nearby.length;
   }
   if(inv.found >= inv.total) completeTigerInvestigation(now);
@@ -27160,6 +27271,7 @@ function spawnTigers(){
     if(nemesisEntry && i === nemesisSlot){
       applyNemesisEntryToTiger(tigerObj, nemesisEntry, storyMissionNo);
     }
+    assignEliteTigerMutation(tigerObj, { mutationChanceBonus:(storyBoss && i < storyBossCount) ? 0.10 : 0 });
     S.tigers.push(tigerObj);
     tigerPackOnSpawn(tigerObj);
     missionDirectorMarkLaneSpawn(tigerObj.x, storyBoss && i < storyBossCount ? 1.35 : 1);
@@ -27298,6 +27410,7 @@ function spawnRogueTiger(options={}){
   }
   tiger.heading = Math.atan2(tiger.vy, tiger.vx);
   tiger.drawDir = tiger.vx >= 0 ? 1 : -1;
+  assignEliteTigerMutation(tiger, { mutationChanceBonus:forcedType === "Alpha" ? 0.08 : 0 });
 
   S.tigers.push(tiger);
   tigerPackOnSpawn(tiger);
@@ -28766,6 +28879,7 @@ function damageSupportUnit(unit, dmg){
 
 function applyTigerDamage(tiger, dmg, opts={}){
   if(!tiger || !tiger.alive || dmg <= 0) return { dealt:0, defeated:false, hp:Number(tiger?.hp || 0) };
+  dmg = Math.max(1, Number(dmg || 0) * eliteMutationDamageDefenseMul(tiger));
   if(isBossTiger(tiger)){
     ensureBossEncounter3State(tiger);
     if(tiger.bossArmor > 0){
@@ -29663,6 +29777,7 @@ function supportUnitsTick(){
               S.funds += cash;
               S.score += score;
               trackCashEarned(cash);
+              grantEliteMutationReward(tiger, "CAPTURE");
               if(unitProfile){
                 unitProfile.captures += 1;
                 if(isBossTiger(tiger)) S._squadBossWinMission = true;
@@ -30404,9 +30519,10 @@ function tigerMotionProfile(t, def, now=Date.now()){
   const nemesisSpeedMul = clamp(Number(t.nemesisSpeedMul || 1), 0.8, 1.45);
   const nemesisPounceMul = clamp(Number(t.nemesisPounceMul || 1), 0.8, 1.45);
 
-  const walk = (base.walk + (def.spd * 0.15) + (hunter * 0.30) + (pack * 0.25)) * persona.speedMul * nemesisSpeedMul;
-  const chase = (base.chase + (def.spd * 0.20) + (hunter * 0.85) + (pack * 0.55) + (rage * 0.35) + (fading * 0.22)) * persona.speedMul * nemesisSpeedMul;
-  const sprint = (base.sprint + (def.spd * 0.24) + (hunter * 1.05) + (pack * 0.85) + (rage * 0.55) + (scoutDash * 0.35)) * persona.speedMul * nemesisSpeedMul;
+  const mutationSpeedMul = eliteMutationSpeedMul(t);
+  const walk = (base.walk + (def.spd * 0.15) + (hunter * 0.30) + (pack * 0.25)) * persona.speedMul * nemesisSpeedMul * mutationSpeedMul;
+  const chase = (base.chase + (def.spd * 0.20) + (hunter * 0.85) + (pack * 0.55) + (rage * 0.35) + (fading * 0.22)) * persona.speedMul * nemesisSpeedMul * mutationSpeedMul;
+  const sprint = (base.sprint + (def.spd * 0.24) + (hunter * 1.05) + (pack * 0.85) + (rage * 0.55) + (scoutDash * 0.35)) * persona.speedMul * nemesisSpeedMul * mutationSpeedMul;
   const turnBase = t.type==="Scout" ? 0.21 : (t.type==="Stalker" ? 0.18 : (t.type==="Berserker" ? 0.17 : 0.155));
   const steerBase = t.type==="Scout" ? 0.062 : (t.type==="Stalker" ? 0.054 : 0.048);
 
@@ -30415,7 +30531,7 @@ function tigerMotionProfile(t, def, now=Date.now()){
     chase,
     sprint,
     minChase: (base.minChase + (hunter * 0.55) + (pack * 0.30) + (rage * 0.35) + (fading * 0.20)) * Math.max(0.95, persona.speedMul),
-    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul * dynamicWeather2Mods(now).tigerDetectMul * dynamicDayNightMods(now).tigerDetectMul * liveOpsMissionModifierValue("tigerDetectMul", 1, S),
+    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul * dynamicWeather2Mods(now).tigerDetectMul * dynamicDayNightMods(now).tigerDetectMul * eliteMutationDetectMul(t) * liveOpsMissionModifierValue("tigerDetectMul", 1, S),
     chaseAccel: base.chaseAccel + (hunter * 0.04) + (pack * 0.02) + (rage * 0.03),
     wanderAccel: base.wanderAccel,
     burstMs: base.burstMs,
@@ -32417,8 +32533,9 @@ function renderBattleStatus(){
   tigerValue.innerText = t ? `${Math.round(t.hp)} / ${Math.round(t.hpMax)}` : "No target";
 
   agentMeta.innerText = `Armor ${Math.round(S.armor)} • Stamina ${Math.round(S.stamina)} • Ammo ${S.mag.loaded}/${S.mag.cap}`;
+  const mutation = t ? eliteTigerMutationLabel(t) : "";
   tigerMeta.innerText = t
-    ? `${t.type} • Capture window ${captureWindowPctLabel()} to 5% HP${isBossTiger(t) ? ` • ${bossCaptureStrategyStatus(t)}` : ""}`
+    ? `${t.type}${mutation ? ` • ${mutation}` : ""} • Capture window ${captureWindowPctLabel()} to 5% HP${isBossTiger(t) ? ` • ${bossCaptureStrategyStatus(t)}` : ""}`
     : "Target lost";
   renderCombatControls();
 }
@@ -32752,6 +32869,7 @@ function finishTigerKill(t){
   trackCashEarned(pay.cash);
   resolveNemesisOutcome(t, "KILL");
   grantWeaponForgeDropFromTiger(t, "KILL");
+  grantEliteMutationReward(t, "KILL");
   unlockAchv("kill1","First Kill");
   S.trust=clamp(S.trust+pay.trust,0,100);
   S.aggro=clamp(S.aggro+pay.aggro,0,100);
@@ -32864,6 +32982,7 @@ function playerAction(action){
     trackCashEarned(pay.cash);
     resolveNemesisOutcome(t, "CAPTURE");
     grantWeaponForgeDropFromTiger(t, "CAPTURE");
+    grantEliteMutationReward(t, "CAPTURE");
     unlockAchv("cap1","First Capture");
     S.trust=clamp(S.trust+pay.trust,0,100);
     S.aggro=clamp(S.aggro+pay.aggro,0,100);
@@ -33093,6 +33212,11 @@ function tigerTurn(t, softened=false, opts={}){
   if(persona.key==="Sentinel") dmg = Math.round(dmg * 0.94);
   if(persona.key==="Fury" && (t.hp/t.hpMax) < 0.55) dmg = Math.round(dmg * 1.10);
   if(persona.key==="Ambusher" && Date.now() < (t.burstUntil||0)) dmg = Math.round(dmg * 1.08);
+  if(t.eliteMutation === "venom"){
+    dmg = Math.round(dmg * 1.08);
+    S.stamina = clamp(Number(S.stamina || 0) - 10, 0, 100);
+    setEventText("🧬 Venom Claws: stamina drained.", 1.8);
+  }
   dmg = Math.round(dmg * clamp(Number(worldEventMotionMods(now).tigerDamageMul || 1), 0.8, 1.35));
   dmg = Math.round(dmg * liveOpsMissionModifierValue("tigerDamageMul", 1, S));
   if(Number.isFinite(opts.dmgMul)) dmg = Math.round(dmg * opts.dmgMul);
@@ -33865,7 +33989,7 @@ function renderHUD(){
 
   const t=currentTargetTiger();
   document.getElementById("tigerTxt").innerText = t
-    ? `${Math.round(t.hp)}/${Math.round(t.hpMax)} (${t.type})${isBossTiger(t) ? ` • ARM ${Math.ceil(ensureBossEncounter3State(t).bossArmor)}/${Math.ceil(t.bossArmorMax)} • ${bossCaptureStrategyStatus(t)}` : ""}`
+    ? `${Math.round(t.hp)}/${Math.round(t.hpMax)} (${t.type}${eliteTigerMutationLabel(t) ? ` • ${eliteTigerMutationLabel(t)}` : ""})${isBossTiger(t) ? ` • ARM ${Math.ceil(ensureBossEncounter3State(t).bossArmor)}/${Math.ceil(t.bossArmorMax)} • ${bossCaptureStrategyStatus(t)}` : ""}`
     : "—";
   document.getElementById("tigerBar").style.width = t ? `${(t.hp/t.hpMax)*100}%` : "0%";
   const capturePctTxt = document.getElementById("capturePctTxt");
@@ -37488,6 +37612,10 @@ function drawTiger(t){
     const near=dist(t.x,t.y,S.me.x,S.me.y) < 180;
     alpha *= near ? 0.85 : 0.55;
   }
+  if(t.eliteMutation === "camouflage"){
+    const near = dist(t.x,t.y,S.me.x,S.me.y) < 170 || t.id === S.lockedTigerId;
+    alpha *= near ? 0.78 : 0.42;
+  }
 
   const visual = ensureTigerVisualProfile(t);
   const visualAge = TIGER_VISUAL_AGES[visual?.ageIndex] || TIGER_VISUAL_AGES[1];
@@ -37511,6 +37639,7 @@ function drawTiger(t){
   if(t.type==="Alpha") s=1.22;
   if(t.type==="Berserker") s=1.10;
   s *= tigerVisualScale(t);
+  drawEliteTigerMutationAura(t, x, y, s, Math.max(alpha, 0.72), now);
   ctx.save();
   ctx.globalAlpha = 0.34 * alpha;
   ctx.fillStyle = "rgba(5,8,14,.96)";
@@ -37972,8 +38101,9 @@ function drawTiger(t){
   const nemesisLabel = t.nemesisAlias
     ? ` ☠ ${t.nemesisAlias}${Number(t.nemesisPower || 0) > 0 ? ` Lv${Math.floor(Number(t.nemesisPower || 0))}` : ""}`
     : "";
-  const fullLabel = t.type + bossTag + bossPhaseTag + nemesisLabel + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
-  const compactLabel = (t.nemesisAlias ? `${t.type} • ${t.nemesisAlias}` : t.type) + (t.tranqTagged ? " (tranq)" : "");
+  const mutationLabel = eliteTigerMutationLabel(t);
+  const fullLabel = t.type + bossTag + bossPhaseTag + nemesisLabel + (mutationLabel ? ` • ${mutationLabel}` : "") + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
+  const compactLabel = (t.nemesisAlias ? `${t.type} • ${t.nemesisAlias}` : t.type) + (mutationLabel ? ` • ${mutationLabel}` : "") + (t.tranqTagged ? " (tranq)" : "");
   const skipLabel =
     visualReadabilityHeavyMode() &&
     !tigerFocus &&
@@ -38132,6 +38262,7 @@ function drawEntitiesLite(){
     ctx.fillRect(x - 18, y - 18, 36, 4);
     ctx.fillStyle = pct > 0.5 ? "#4ade80" : (pct > 0.2 ? "#f59e0b" : "#fb7185");
     ctx.fillRect(x - 18, y - 18, 36 * pct, 4);
+    drawEliteTigerMutationAura(t, x, y, tigerLiteScale, 0.82, Date.now());
     if(focus){
       ctx.strokeStyle = "rgba(59,130,246,.96)";
       ctx.lineWidth = 2.4;
@@ -39361,6 +39492,9 @@ function draw(){
           costHint:0.10, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
         });
         runFrameTask("tigerInvestigation", frameInterval(lagHeavy ? 1800 : 1250, 1.5), tickTigerInvestigation, {
+          costHint:0.18, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+        });
+        runFrameTask("eliteTigerMutations", frameInterval(lagHeavy ? 1800 : 1300, 1.5), tickEliteTigerMutations, {
           costHint:0.18, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
         });
         if(!mobileViewport && liveOpsCommandFlag("missionTwists")){
