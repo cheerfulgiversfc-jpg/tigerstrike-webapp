@@ -8530,6 +8530,8 @@ const DEFAULT = {
   rivalHunters:[],
   rescueSites:[],
   mapInteractables:[],
+  investigationClues:[],
+  tigerInvestigation:null,
 
   scanPing:0,
   lockedTigerId:null,
@@ -14244,6 +14246,7 @@ function sanitizeRuntimeState(){
   if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
+  ensureTigerInvestigationState(S);
   if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
   if(!Number.isFinite(S.soldierRescuersOwned)) S.soldierRescuersOwned = 0;
   if(!Number.isFinite(S.soldierAttackersDowned)) S.soldierAttackersDowned = 0;
@@ -14435,6 +14438,14 @@ function sanitizeRuntimeState(){
       it.x = pt.x;
       it.y = pt.y;
     }
+  }
+  S.investigationClues = S.investigationClues
+    .filter((clue)=>clue && typeof clue === "object" && Number.isFinite(clue.x) && Number.isFinite(clue.y))
+    .slice(0, INVESTIGATION_MAX_CLUES);
+  for(const clue of S.investigationClues){
+    clue.x = clampX(clue.x, 35, w - 35);
+    clue.y = clampY(clue.y, 45, h - 35);
+    clue.strength = clamp(Number(clue.strength || 0.7), 0.22, 1);
   }
   S.rescueSites = S.rescueSites.filter((site)=>site && typeof site === "object" && Number.isFinite(site.x) && Number.isFinite(site.y)).slice(0, MAX_PERSIST_RESCUE_SITES);
   for(const site of S.rescueSites){
@@ -16901,7 +16912,12 @@ function tigerCivilianHitRange(t){
   return CIVILIAN_HIT_PCT_BY_TIGER[t?.type] || CIVILIAN_HIT_PCT_BY_TIGER.Standard;
 }
 function captureWindowPctLabel(){ return `${Math.round(storyCaptureWindowPct() * 100)}%`; }
-function captureWindowHp(t){ return Math.max(1, Math.ceil((t?.hpMax || 0) * storyCaptureWindowPct())); }
+function tigerInvestigationCaptureBonus(t){
+  const inv = S?.tigerInvestigation;
+  if(!t || !inv?.completed || Number(inv.targetTigerId || 0) !== Number(t.id || 0)) return 0;
+  return clamp(Number(inv.captureBonus || 0), 0, 0.12);
+}
+function captureWindowHp(t){ return Math.max(1, Math.ceil((t?.hpMax || 0) * (storyCaptureWindowPct() + tigerInvestigationCaptureBonus(t)))); }
 function captureWindowMinHp(t){
   // Capture window is 25% down to 5% HP.
   return Math.max(1, Math.ceil((t?.hpMax || 0) * 0.05));
@@ -17766,6 +17782,196 @@ function dynamicWeather2LocalMoveMul(actor, x, y, now=Date.now()){
   if(actor === "civilian") return clamp(def.localMul - 0.04, 0.52, 1);
   return clamp(def.localMul, 0.55, 1);
 }
+
+// ===================== TIGER TRACKING + INVESTIGATION =====================
+const INVESTIGATION_CLUE_DEFS = Object.freeze({
+  footprint:{ icon:"🐾", label:"Footprints", color:"rgba(96,165,250,.96)" },
+  claw:{ icon:"///", label:"Claw Marks", color:"rgba(251,191,36,.96)" },
+  fur:{ icon:"FUR", label:"Shed Fur", color:"rgba(226,232,240,.96)" },
+  blood:{ icon:"B", label:"Blood Trail", color:"rgba(251,113,133,.98)" },
+  vegetation:{ icon:"V", label:"Damaged Vegetation", color:"rgba(74,222,128,.96)" },
+  sound:{ icon:"))", label:"Tiger Sounds", color:"rgba(192,132,252,.98)" }
+});
+const INVESTIGATION_MAX_CLUES = 24;
+
+function defaultTigerInvestigationState(){
+  return {
+    active:false, targetTigerId:0, targetLabel:"", total:0, found:0, completed:false,
+    rewardCash:0, rewardXp:0, captureBonus:0, rareType:"", startedAt:0, completedAt:0
+  };
+}
+function ensureTigerInvestigationState(state=S){
+  if(!state.tigerInvestigation || typeof state.tigerInvestigation !== "object"){
+    state.tigerInvestigation = defaultTigerInvestigationState();
+  }
+  if(!Array.isArray(state.investigationClues)) state.investigationClues = [];
+  return state.tigerInvestigation;
+}
+function tigerInvestigationTarget(state=S){
+  const inv = ensureTigerInvestigationState(state);
+  return (state.tigers || []).find((t)=>t && t.alive !== false && Number(t.id) === Number(inv.targetTigerId)) || null;
+}
+function investigationDirection(dx, dy){
+  const angle = Math.atan2(dy, dx);
+  const dirs = ["east","southeast","south","southwest","west","northwest","north","northeast"];
+  return dirs[Math.round((angle + Math.PI * 2) / (Math.PI / 4)) % 8];
+}
+function investigationBehaviorLabel(t){
+  if(!t) return "unknown";
+  if(t.nemesisBehavior) return String(t.nemesisBehavior);
+  if(t.personality) return String(t.personality);
+  if(t.type === "Stalker") return "misdirection and ambush";
+  if(t.type === "Berserker") return "aggressive charge";
+  if(t.type === "Scout") return "fast flanking";
+  if(t.type === "Alpha") return "pack command";
+  return "territorial patrol";
+}
+function investigationAgeLabel(t){
+  const visual = ensureTigerVisualProfile(t);
+  return (TIGER_VISUAL_AGES[visual?.ageIndex] || TIGER_VISUAL_AGES[1]).label;
+}
+function resetTigerInvestigationForDeploy(state=S){
+  state.investigationClues = [];
+  state.tigerInvestigation = defaultTigerInvestigationState();
+}
+function seedTigerInvestigationClues(state=S, now=Date.now()){
+  if(window.__TUTORIAL_MODE__ || state.mode === "Survival") return false;
+  const candidates = (state.tigers || []).filter((t)=>t && t.alive !== false);
+  if(!candidates.length) return false;
+  const score = (t)=>
+    (t.nemesisId ? 120 : 0) + (isBossTiger(t) ? 70 : 0) + (t.type === "Stalker" ? 34 : 0) +
+    ((1 - clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1)) * 30) + Math.random() * 20;
+  candidates.sort((a,b)=>score(b)-score(a));
+  const target = candidates[0];
+  const inv = ensureTigerInvestigationState(state);
+  const profile = ensureTigerVisualProfile(target);
+  const territory = tigerEcosystemTerritoryAt(target.x, target.y, state);
+  const injured = Number(target.hp || 0) < Number(target.hpMax || 1) * 0.72;
+  const total = clamp(5 + (target.type === "Stalker" ? 1 : 0) + (target.nemesisId ? 1 : 0), 5, 8);
+  const types = ["footprint","vegetation","claw","fur","sound","footprint","blood","claw"];
+  if(injured){
+    types[1] = "blood";
+    types[4] = "blood";
+  }
+  let rareType = "";
+  if(target.nemesisId) rareType = "nemesis";
+  else if(Number(territory?.denStrength || 0) >= 68) rareType = "hidden_den";
+  else if((state.civilians || []).some((c)=>c?.alive && !c.evac) && Math.random() < 0.24) rareType = "missing_civilian";
+  inv.active = true;
+  inv.targetTigerId = target.id;
+  inv.targetLabel = target.nemesisAlias || `${investigationAgeLabel(target)} ${target.type}`;
+  inv.total = total;
+  inv.found = 0;
+  inv.completed = false;
+  inv.rewardCash = Math.round(900 + total * 280 + (rareType ? 1100 : 0) + (target.nemesisId ? 1600 : 0));
+  inv.rewardXp = 80 + total * 18 + (rareType ? 45 : 0);
+  inv.captureBonus = target.nemesisId || isBossTiger(target) ? 0.10 : 0.07;
+  inv.rareType = rareType;
+  inv.startedAt = now;
+  inv.completedAt = 0;
+  state.investigationClues = [];
+  const startX = Number(state.me?.x || 160);
+  const startY = Number(state.me?.y || 420);
+  for(let i=0; i<total; i++){
+    const ratio = (i + 1) / (total + 1);
+    const falseTrail = target.type === "Stalker" && (i === 2 || (total >= 7 && i === 5));
+    const branch = falseTrail ? 150 : 42;
+    const x = clamp(startX + (target.x - startX) * ratio + rand(-branch, branch), 45, worldWidth(state) - 45);
+    const y = clamp(startY + (target.y - startY) * ratio + rand(-branch, branch), 45, worldHeight(state) - 45);
+    const clueType = falseTrail ? (i % 2 ? "sound" : "footprint") : types[i % types.length];
+    state.investigationClues.push({
+      id:`clue-${target.id}-${i}-${now}`,
+      x, y, type:clueType, targetTigerId:target.id, order:i + 1, found:false, falseTrail,
+      strength:falseTrail ? 0.78 : (injured && clueType === "blood" ? 1.0 : 0.92),
+      expiresAt:now + rand(150000, 260000),
+      revealed:false,
+      ageIndex:Number(profile?.ageIndex || 1)
+    });
+  }
+  target.investigationTarget = true;
+  setEventText(`🔎 Investigation available: scan ${total} clues before engaging ${inv.targetLabel}.`, 6);
+  return true;
+}
+function completeTigerInvestigation(now=Date.now()){
+  const inv = ensureTigerInvestigationState(S);
+  if(inv.completed) return false;
+  inv.completed = true;
+  inv.active = false;
+  inv.completedAt = now;
+  S.funds += Math.max(0, Math.floor(inv.rewardCash || 0));
+  S.score += 700 + inv.total * 90;
+  trackCashEarned(inv.rewardCash);
+  addXP(inv.rewardXp);
+  const target = tigerInvestigationTarget(S);
+  if(target){
+    target.investigationSolved = true;
+    S.lockedTigerId = target.id;
+  }
+  let rare = "";
+  if(inv.rareType === "nemesis") rare = " Nemesis route confirmed.";
+  if(inv.rareType === "hidden_den"){
+    rare = " Hidden den discovered.";
+    S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
+  }
+  if(inv.rareType === "missing_civilian"){
+    const civ = (S.civilians || []).find((c)=>c?.alive && !c.evac);
+    if(civ) S.dangerCivId = civ.id;
+    rare = " Missing civilian located.";
+  }
+  setEventText(`✅ Investigation solved: +$${inv.rewardCash.toLocaleString()} • +${inv.rewardXp}XP • capture window improved.${rare}`, 7);
+  sfx("win");
+  save();
+  return true;
+}
+function scanInvestigationClues(now=Date.now()){
+  const inv = ensureTigerInvestigationState(S);
+  if(!inv.active || inv.completed) return 0;
+  const nearby = (S.investigationClues || [])
+    .filter((c)=>c && !c.found && dist(S.me.x, S.me.y, c.x, c.y) <= 285)
+    .sort((a,b)=>dist(S.me.x,S.me.y,a.x,a.y)-dist(S.me.x,S.me.y,b.x,b.y))
+    .slice(0, 2);
+  if(!nearby.length){
+    const next = (S.investigationClues || []).find((c)=>c && !c.found);
+    if(next) setEventText(`🔎 No clue in scan range. Search ${investigationDirection(next.x-S.me.x, next.y-S.me.y)}.`, 2.8);
+    return 0;
+  }
+  const target = tigerInvestigationTarget(S);
+  for(const clue of nearby){
+    clue.found = true;
+    clue.revealed = true;
+    clue.foundAt = now;
+    inv.found++;
+  }
+  if(target){
+    const hp = Math.round(clamp(Number(target.hp || 0) / Math.max(1, Number(target.hpMax || 1)), 0, 1) * 100);
+    const clue = nearby[nearby.length - 1];
+    const falseNote = clue.falseTrail ? " • Stalker false trail detected" : "";
+    setEventText(`🔎 ${INVESTIGATION_CLUE_DEFS[clue.type]?.label || "Clue"} ${inv.found}/${inv.total}: ${investigationAgeLabel(target)} ${target.type} • ${hp}% health • ${investigationBehaviorLabel(target)} • moving ${investigationDirection(target.x-clue.x,target.y-clue.y)}${falseNote}`, 6);
+    target.investigationSeenCount = Math.max(0, Number(target.investigationSeenCount || 0)) + nearby.length;
+  }
+  if(inv.found >= inv.total) completeTigerInvestigation(now);
+  else save();
+  return nearby.length;
+}
+function tickTigerInvestigation(now=Date.now()){
+  const inv = ensureTigerInvestigationState(S);
+  if(!inv.active || inv.completed || S.missionEnded || S.gameOver) return;
+  const weather = String(activeDynamicWeather2(S, now)?.type || "calm");
+  const decayByWeather = { calm:0.004, fog:0.006, rain:0.018, flood:0.024, storm:0.030, wildfire:0.022 };
+  const decay = decayByWeather[weather] || decayByWeather.calm;
+  let remaining = 0;
+  for(const clue of (S.investigationClues || [])){
+    if(!clue || clue.found) continue;
+    remaining++;
+    let typeMul = 1;
+    if((weather === "rain" || weather === "storm" || weather === "flood") && (clue.type === "footprint" || clue.type === "blood")) typeMul = 1.45;
+    if(weather === "wildfire" && (clue.type === "fur" || clue.type === "vegetation")) typeMul = 1.55;
+    clue.strength = clamp(Number(clue.strength || 0.8) - decay * typeMul, 0.22, 1);
+    if(now >= Number(clue.expiresAt || now + 1)) clue.strength = Math.max(0.22, clue.strength - 0.08);
+  }
+  if(!remaining && inv.found < inv.total) completeTigerInvestigation(now);
+}
+
 function chooseDynamicWeather2Type(){
   const last = String(S?.missionTwists?.weather2?.lastType || "");
   const profile = currentBiomeProfile();
@@ -18999,6 +19205,8 @@ function storyMissionIntelText(mission){
   if(mission.lowVisibility) focus.push("low visibility route");
   if(mission.bloodAggro) focus.push("lethal kills increase aggression");
   if(ENABLE_BIOME_TEXT && biome?.hazardShort) focus.push(`${biome.weather.toLowerCase()} • ${biome.hazardShort.toLowerCase()}`);
+  const inv = ensureTigerInvestigationState(S);
+  if(inv.active) focus.push(`investigation: scan ${inv.total} clues for ${inv.targetLabel}`);
   if(!focus.length) focus.push("clear tiger threats and secure evacuation");
   return `Story Intel: ${focus.join(" • ")}.`;
 }
@@ -27066,6 +27274,7 @@ function deploy(opts={}){
   resetMissionTwistsForDeploy(S);
   resetDynamicWeather2ForDeploy(S);
   resetDynamicObjectiveForDeploy(S);
+  resetTigerInvestigationForDeploy(S);
   S._biomeFogPulseAt = 0;
   S.eventText = "";
   S.eventCooldown = 240;
@@ -27138,6 +27347,7 @@ function deploy(opts={}){
   spawnCivilians();
   spawnTigers();
   spawnRivalHunters();
+  seedTigerInvestigationClues(S);
   if(settlementServiceUnlocked("scouts")){
     S.scanPing = Math.max(Number(S.scanPing || 0), 260);
   }
@@ -28133,6 +28343,7 @@ function scan(){
   if(tutorialRun && window.TigerTutorial){
     window.TigerTutorial.scanUsed = true;
   }
+  if(!tutorialRun) scanInvestigationClues();
   if(!window.TigerTutorial?.isRunning) lockNearestTiger({ silent:true });
   sfx("scan"); hapticImpact("light"); save();
   unlockAchv("scan1","First Scan");
@@ -33567,6 +33778,10 @@ function renderHUD(){
   const dynInline = dynObjective.active
     ? ` • Dynamic: ${dynObjective.title} ${Math.min(dynObjective.progress, dynObjective.target)}/${dynObjective.target}${dynLeft ? ` (${dynLeft}s)` : ""}`
     : "";
+  const invObjective = ensureTigerInvestigationState(S);
+  const invInline = invObjective.active
+    ? ` • Investigation ${Math.min(invObjective.found, invObjective.total)}/${invObjective.total}`
+    : (invObjective.completed ? " • Investigation solved" : "");
   const arcadeLeft = (S.mode==="Arcade") ? arcadeMissionTimeLeftSec() : 0;
   const arcadeMult = (S.mode==="Arcade") ? arcadeComboMultiplier() : 1;
   const arcadeMedal = (S.mode==="Arcade") ? arcadeMissionMedal() : "";
@@ -33578,9 +33793,9 @@ function renderHUD(){
     (S.mode==="Survival")
       ? `🎯 Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
       : (S.mode==="Story")
-        ? `🎯 ${storyObjective}${dynInline}${grace}`
+        ? `🎯 ${storyObjective}${dynInline}${invInline}${grace}`
       : (S.mode==="Arcade")
-        ? `🎯 ${arcadeObjective}${arcadeHint}${dynInline}${grace}`
+        ? `🎯 ${arcadeObjective}${arcadeHint}${dynInline}${invInline}${grace}`
         : `🎯 Evacuate living civilians + clear ALL tigers${grace}`;
   const storyOpsEl = document.getElementById("storyOpsTxt");
   if(storyOpsEl){
@@ -35931,6 +36146,39 @@ function drawRescueSite(site){
   ctx.restore();
 }
 
+function drawInvestigationClue(clue){
+  if(!clue || clue.found) return;
+  const def = INVESTIGATION_CLUE_DEFS[clue.type] || INVESTIGATION_CLUE_DEFS.footprint;
+  const strength = clamp(Number(clue.strength || 0.7), 0.22, 1);
+  const nearby = dist(S.me.x, S.me.y, clue.x, clue.y) <= 340;
+  const visible = nearby || S.scanPing > 0 || clue.revealed;
+  if(!visible) return;
+  const now = Date.now();
+  const pulse = 1 + Math.sin((now + Number(clue.order || 0) * 150) / 220) * 0.12;
+  ctx.save();
+  ctx.globalAlpha = clamp((nearby ? 0.72 : 0.34) * strength, 0.16, 0.9);
+  ctx.strokeStyle = def.color;
+  ctx.lineWidth = 2;
+  ctx.setLineDash(clue.falseTrail ? [3,5] : [7,5]);
+  ctx.beginPath();
+  ctx.arc(clue.x, clue.y, 16 * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(5,15,24,.80)";
+  ctx.beginPath();
+  ctx.arc(clue.x, clue.y, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = def.color;
+  ctx.font = def.icon.length > 2 ? "900 7px system-ui" : "900 11px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(def.icon, clue.x, clue.y + 3);
+  if(nearby){
+    ctx.font = "800 8px system-ui";
+    ctx.fillText("SCAN CLUE", clue.x, clue.y - 22);
+  }
+  ctx.restore();
+}
+
 function drawMapInteractable(it){
   const now = Date.now();
   const active = now < (it.activeUntil || 0);
@@ -37641,6 +37889,7 @@ function drawEntitiesLite(){
   });
   const interactablesDraw = viewportCullEntities(S.mapInteractables || [], { pad:pickupPad, max:interactableMax });
   const rescueSitesDraw = viewportCullEntities(S.rescueSites || [], { pad:pickupPad, max:rescueSiteMax });
+  const investigationDraw = viewportCullEntities(S.investigationClues || [], { pad:pickupPad, max:8 });
 
   ctx.fillStyle = "rgba(77,47,33,.64)";
   const carcassesLite = viewportCullEntities(S.carcasses || [], {
@@ -37664,6 +37913,7 @@ function drawEntitiesLite(){
 
   for(const it of interactablesDraw) drawMapInteractable(it);
   for(const site of rescueSitesDraw) drawRescueSite(site);
+  for(const clue of investigationDraw) drawInvestigationClue(clue);
 
   if(S.mode !== "Survival"){
     for(const c of civsDraw){
@@ -37883,6 +38133,10 @@ function drawEntities(){
     pad:propsPad,
     max: mobile ? (lagTier >= 2 ? 4 : 6) : 10
   });
+  const drawInvestigationClues = viewportCullEntities(S.investigationClues || [], {
+    pad:propsPad,
+    max: mobile ? (lagTier >= 2 ? 5 : 8) : 12
+  });
 
   drawSafe("drawTigerEcosystemTerritories", drawTigerEcosystemTerritories);
   drawSafe("drawPlayerCosmeticTrail", drawPlayerCosmeticTrail);
@@ -37909,6 +38163,9 @@ function drawEntities(){
 
     for(const site of drawRescueSites){
       drawSafe("drawRescueSite", ()=>drawRescueSite(site));
+    }
+    for(const clue of drawInvestigationClues){
+      drawSafe("drawInvestigationClue", ()=>drawInvestigationClue(clue));
     }
 
     drawSafe("drawEscortRouteLines", drawEscortRouteLines);
@@ -38967,6 +39224,9 @@ function draw(){
           runFrameTask("worldEvents", frameInterval(lagHeavy ? 286 : 214, 1.55), tickDynamicWorldEvents, { costHint:0.9, critical:S.mode!=="Survival" });
         }
         runFrameTask("dynamicWeather2", frameInterval(lagHeavy ? 920 : 680, 1.45), tickDynamicWeather2, { costHint:0.25 });
+        runFrameTask("tigerInvestigation", frameInterval(lagHeavy ? 1800 : 1250, 1.5), tickTigerInvestigation, {
+          costHint:0.18, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+        });
         if(!mobileViewport && liveOpsCommandFlag("missionTwists")){
           runFrameTask("missionTwists", frameInterval(lagHeavy ? 236 : 176, 1.5), tickMissionTwists, { costHint:0.9, critical:S.mode!=="Survival" });
           runFrameTask("tickEvents", frameInterval(lagHeavy ? 240 : 180, 1.5), tickEvents, { costHint:0.9 });
