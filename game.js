@@ -8532,6 +8532,7 @@ const DEFAULT = {
   mapInteractables:[],
   investigationClues:[],
   tigerInvestigation:null,
+  dayNightCycle:null,
 
   scanPing:0,
   lockedTigerId:null,
@@ -14247,6 +14248,7 @@ function sanitizeRuntimeState(){
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
   ensureTigerInvestigationState(S);
+  ensureDayNightCycleState(S);
   if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
   if(!Number.isFinite(S.soldierRescuersOwned)) S.soldierRescuersOwned = 0;
   if(!Number.isFinite(S.soldierAttackersDowned)) S.soldierAttackersDowned = 0;
@@ -17783,6 +17785,119 @@ function dynamicWeather2LocalMoveMul(actor, x, y, now=Date.now()){
   return clamp(def.localMul, 0.55, 1);
 }
 
+// ===================== DYNAMIC DAY / NIGHT CYCLE =====================
+const DAY_NIGHT_PHASES = Object.freeze([
+  Object.freeze({ key:"sunrise", icon:"🌅", label:"Sunrise", duration:42000, light:0.82, civilianSpeedMul:1.04, tigerAggroMul:0.94, tigerSpeedMul:0.97, tigerDetectMul:0.94 }),
+  Object.freeze({ key:"day", icon:"☀️", label:"Daylight", duration:82000, light:1.00, civilianSpeedMul:1.02, tigerAggroMul:0.96, tigerSpeedMul:0.98, tigerDetectMul:0.96 }),
+  Object.freeze({ key:"sunset", icon:"🌇", label:"Sunset", duration:46000, light:0.70, civilianSpeedMul:0.97, tigerAggroMul:1.04, tigerSpeedMul:1.02, tigerDetectMul:1.06 }),
+  Object.freeze({ key:"night", icon:"🌙", label:"Night", duration:76000, light:0.40, civilianSpeedMul:0.90, tigerAggroMul:1.16, tigerSpeedMul:1.08, tigerDetectMul:1.18 })
+]);
+const DAY_NIGHT_TOTAL_MS = DAY_NIGHT_PHASES.reduce((sum, phase)=>sum + phase.duration, 0);
+
+function defaultDayNightCycleState(){
+  return { startedAt:0, offsetMs:0, phaseKey:"day", lastPhaseKey:"", transitions:0 };
+}
+function ensureDayNightCycleState(state=S){
+  if(!state.dayNightCycle || typeof state.dayNightCycle !== "object"){
+    state.dayNightCycle = defaultDayNightCycleState();
+  }
+  return state.dayNightCycle;
+}
+function resetDayNightCycleForDeploy(state=S, now=Date.now()){
+  const cycle = ensureDayNightCycleState(state);
+  const missionNo = Math.max(1, Math.floor(Number(
+    state.mode === "Arcade" ? state.arcadeLevel : (state.mode === "Survival" ? state.survivalWave : state.storyLevel)
+  ) || 1));
+  const starts = [0, 42000, 124000, 170000];
+  cycle.startedAt = now;
+  cycle.offsetMs = starts[(missionNo - 1) % starts.length];
+  cycle.lastPhaseKey = "";
+  cycle.transitions = 0;
+  cycle.phaseKey = dynamicDayNightPhase(now, state).key;
+}
+function dynamicDayNightPhase(now=Date.now(), state=S){
+  const cycle = ensureDayNightCycleState(state);
+  const start = Number(cycle.startedAt || state._missionStartAt || now);
+  let cursor = ((Math.max(0, now - start) + Number(cycle.offsetMs || 0)) % DAY_NIGHT_TOTAL_MS + DAY_NIGHT_TOTAL_MS) % DAY_NIGHT_TOTAL_MS;
+  for(const phase of DAY_NIGHT_PHASES){
+    if(cursor < phase.duration){
+      return { ...phase, progress:clamp(cursor / phase.duration, 0, 1), remainingMs:Math.max(0, phase.duration - cursor) };
+    }
+    cursor -= phase.duration;
+  }
+  return { ...DAY_NIGHT_PHASES[1], progress:0, remainingMs:DAY_NIGHT_PHASES[1].duration };
+}
+function dynamicDayNightMods(now=Date.now(), state=S){
+  const phase = dynamicDayNightPhase(now, state);
+  return {
+    civilianSpeedMul:phase.civilianSpeedMul,
+    tigerAggroMul:phase.tigerAggroMul,
+    tigerSpeedMul:phase.tigerSpeedMul,
+    tigerDetectMul:phase.tigerDetectMul,
+    light:phase.light
+  };
+}
+function tickDynamicDayNight(){
+  if(window.__TUTORIAL_MODE__ || S.paused || S.gameOver || S.missionEnded) return;
+  const cycle = ensureDayNightCycleState(S);
+  const phase = dynamicDayNightPhase(Date.now(), S);
+  if(cycle.lastPhaseKey === phase.key) return;
+  const previous = cycle.lastPhaseKey;
+  cycle.phaseKey = phase.key;
+  cycle.lastPhaseKey = phase.key;
+  if(previous){
+    cycle.transitions = Math.max(0, Number(cycle.transitions || 0)) + 1;
+    const effect = phase.key === "night"
+      ? "Tigers see farther and civilians move cautiously."
+      : (phase.key === "sunrise" ? "Visibility and civilian confidence are improving." : "Battlefield conditions shifted.");
+    setEventText(`${phase.icon} ${phase.label}: ${effect}`, 5);
+    sfx("event");
+  }
+  __savePending = true;
+}
+function drawDynamicDayNightOverlay(now=Date.now()){
+  if(window.__TUTORIAL_MODE__ || !ctx || !cv) return;
+  const phase = dynamicDayNightPhase(now, S);
+  if(phase.key === "day" && phase.progress < 0.88) return;
+  const w = Math.max(cv.width, worldWidth(S));
+  const h = Math.max(cv.height, worldHeight(S));
+  let darkness = 0;
+  let tint = "rgba(5,12,30,";
+  if(phase.key === "sunrise"){
+    darkness = 0.18 * (1 - phase.progress);
+    tint = "rgba(255,166,72,";
+  }else if(phase.key === "day"){
+    darkness = 0.08 * clamp((phase.progress - 0.88) / 0.12, 0, 1);
+    tint = "rgba(255,190,100,";
+  }else if(phase.key === "sunset"){
+    darkness = 0.10 + (phase.progress * 0.26);
+    tint = "rgba(238,105,62,";
+  }else if(phase.key === "night"){
+    darkness = 0.44;
+    tint = "rgba(5,12,36,";
+  }
+  const weather = activeDynamicWeather2(S, now);
+  if(weather?.type === "storm" || weather?.type === "fog") darkness += 0.06;
+  darkness = clamp(darkness, 0, 0.54);
+  ctx.save();
+  const lightRadius = phase.key === "night" ? (isMobileViewport() ? 235 : 290) : 420;
+  const gradient = ctx.createRadialGradient(S.me.x, S.me.y, 32, S.me.x, S.me.y, lightRadius);
+  gradient.addColorStop(0, `${tint}${Math.max(0.01, darkness * 0.12)})`);
+  gradient.addColorStop(0.42, `${tint}${darkness * 0.46})`);
+  gradient.addColorStop(1, `${tint}${darkness})`);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+  if(phase.key === "night" && frameLagTier() < 2){
+    ctx.globalCompositeOperation = "screen";
+    const lamp = ctx.createRadialGradient(S.me.x, S.me.y, 0, S.me.x, S.me.y, 150);
+    lamp.addColorStop(0, "rgba(255,224,158,.18)");
+    lamp.addColorStop(1, "rgba(255,224,158,0)");
+    ctx.fillStyle = lamp;
+    ctx.fillRect(S.me.x - 160, S.me.y - 160, 320, 320);
+  }
+  ctx.restore();
+}
+
 // ===================== TIGER TRACKING + INVESTIGATION =====================
 const INVESTIGATION_CLUE_DEFS = Object.freeze({
   footprint:{ icon:"🐾", label:"Footprints", color:"rgba(96,165,250,.96)" },
@@ -18104,13 +18219,24 @@ function activeWorldEvent(state=S, now=Date.now()){
 function worldEventMotionMods(now=Date.now()){
   const we = activeWorldEvent(S, now);
   const weather = dynamicWeather2Mods(now);
-  if(!we) return { civilianSpeedMul:weather.civilianSpeedMul, tigerAggroMul:weather.tigerAggroMul, tigerSpeedMul:weather.tigerSpeedMul, tigerDamageMul:weather.tigerDamageMul };
+  const dayNight = dynamicDayNightMods(now);
+  if(!we) return {
+    civilianSpeedMul:clamp(weather.civilianSpeedMul * dayNight.civilianSpeedMul, 0.62, 1.25),
+    tigerAggroMul:clamp(weather.tigerAggroMul * dayNight.tigerAggroMul, 0.72, 1.50),
+    tigerSpeedMul:clamp(weather.tigerSpeedMul * dayNight.tigerSpeedMul, 0.72, 1.45),
+    tigerDamageMul:weather.tigerDamageMul
+  };
   const def = worldEventTypeDef(we.type);
-  if(!def) return { civilianSpeedMul:weather.civilianSpeedMul, tigerAggroMul:weather.tigerAggroMul, tigerSpeedMul:weather.tigerSpeedMul, tigerDamageMul:weather.tigerDamageMul };
+  if(!def) return {
+    civilianSpeedMul:clamp(weather.civilianSpeedMul * dayNight.civilianSpeedMul, 0.62, 1.25),
+    tigerAggroMul:clamp(weather.tigerAggroMul * dayNight.tigerAggroMul, 0.72, 1.50),
+    tigerSpeedMul:clamp(weather.tigerSpeedMul * dayNight.tigerSpeedMul, 0.72, 1.45),
+    tigerDamageMul:weather.tigerDamageMul
+  };
   return {
-    civilianSpeedMul: clamp(Number(def.civilianSpeedMul || 1) * weather.civilianSpeedMul, 0.62, 1.25),
-    tigerAggroMul: clamp(Number(def.tigerAggroMul || 1) * weather.tigerAggroMul, 0.72, 1.50),
-    tigerSpeedMul: clamp(Number(def.tigerSpeedMul || 1) * weather.tigerSpeedMul, 0.72, 1.45),
+    civilianSpeedMul: clamp(Number(def.civilianSpeedMul || 1) * weather.civilianSpeedMul * dayNight.civilianSpeedMul, 0.62, 1.25),
+    tigerAggroMul: clamp(Number(def.tigerAggroMul || 1) * weather.tigerAggroMul * dayNight.tigerAggroMul, 0.72, 1.50),
+    tigerSpeedMul: clamp(Number(def.tigerSpeedMul || 1) * weather.tigerSpeedMul * dayNight.tigerSpeedMul, 0.72, 1.45),
     tigerDamageMul: clamp(Number(def.tigerDamageMul || 1) * weather.tigerDamageMul, 0.72, 1.50),
   };
 }
@@ -19207,6 +19333,8 @@ function storyMissionIntelText(mission){
   if(ENABLE_BIOME_TEXT && biome?.hazardShort) focus.push(`${biome.weather.toLowerCase()} • ${biome.hazardShort.toLowerCase()}`);
   const inv = ensureTigerInvestigationState(S);
   if(inv.active) focus.push(`investigation: scan ${inv.total} clues for ${inv.targetLabel}`);
+  const phase = dynamicDayNightPhase(Date.now(), S);
+  focus.push(`${phase.label.toLowerCase()} conditions`);
   if(!focus.length) focus.push("clear tiger threats and secure evacuation");
   return `Story Intel: ${focus.join(" • ")}.`;
 }
@@ -27275,6 +27403,7 @@ function deploy(opts={}){
   resetDynamicWeather2ForDeploy(S);
   resetDynamicObjectiveForDeploy(S);
   resetTigerInvestigationForDeploy(S);
+  resetDayNightCycleForDeploy(S);
   S._biomeFogPulseAt = 0;
   S.eventText = "";
   S.eventCooldown = 240;
@@ -30286,7 +30415,7 @@ function tigerMotionProfile(t, def, now=Date.now()){
     chase,
     sprint,
     minChase: (base.minChase + (hunter * 0.55) + (pack * 0.30) + (rage * 0.35) + (fading * 0.20)) * Math.max(0.95, persona.speedMul),
-    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul * dynamicWeather2Mods(now).tigerDetectMul * liveOpsMissionModifierValue("tigerDetectMul", 1, S),
+    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul * dynamicWeather2Mods(now).tigerDetectMul * dynamicDayNightMods(now).tigerDetectMul * liveOpsMissionModifierValue("tigerDetectMul", 1, S),
     chaseAccel: base.chaseAccel + (hunter * 0.04) + (pack * 0.02) + (rage * 0.03),
     wanderAccel: base.wanderAccel,
     burstMs: base.burstMs,
@@ -33782,6 +33911,8 @@ function renderHUD(){
   const invInline = invObjective.active
     ? ` • Investigation ${Math.min(invObjective.found, invObjective.total)}/${invObjective.total}`
     : (invObjective.completed ? " • Investigation solved" : "");
+  const dayPhase = dynamicDayNightPhase(Date.now(), S);
+  const dayNightInline = ` • ${dayPhase.icon} ${dayPhase.label}`;
   const arcadeLeft = (S.mode==="Arcade") ? arcadeMissionTimeLeftSec() : 0;
   const arcadeMult = (S.mode==="Arcade") ? arcadeComboMultiplier() : 1;
   const arcadeMedal = (S.mode==="Arcade") ? arcadeMissionMedal() : "";
@@ -33791,12 +33922,12 @@ function renderHUD(){
   const objEl = document.getElementById("objTxt");
   if(objEl) objEl.innerText =
     (S.mode==="Survival")
-      ? `🎯 Survive • Loot spawns • Traps hold tigers • Carcasses block movement`
+      ? `🎯 Survive • Loot spawns • Traps hold tigers • Carcasses block movement${dayNightInline}`
       : (S.mode==="Story")
-        ? `🎯 ${storyObjective}${dynInline}${invInline}${grace}`
+        ? `🎯 ${storyObjective}${dynInline}${invInline}${dayNightInline}${grace}`
       : (S.mode==="Arcade")
-        ? `🎯 ${arcadeObjective}${arcadeHint}${dynInline}${invInline}${grace}`
-        : `🎯 Evacuate living civilians + clear ALL tigers${grace}`;
+        ? `🎯 ${arcadeObjective}${arcadeHint}${dynInline}${invInline}${dayNightInline}${grace}`
+        : `🎯 Evacuate living civilians + clear ALL tigers${dayNightInline}${grace}`;
   const storyOpsEl = document.getElementById("storyOpsTxt");
   if(storyOpsEl){
     if(S.mode==="Story" && storyMission){
@@ -33851,6 +33982,8 @@ function renderHUD(){
   }
 
   const assistParts = [];
+  const phaseLeft = Math.max(1, Math.ceil(dayPhase.remainingMs / 1000));
+  assistParts.push(`${dayPhase.icon} ${dayPhase.label} ${phaseLeft}s`);
   if(!window.__TUTORIAL_MODE__){
     assistParts.push(`Territory: ${tigerEcosystemCurrentSummary(S)}`);
   }
@@ -39224,6 +39357,9 @@ function draw(){
           runFrameTask("worldEvents", frameInterval(lagHeavy ? 286 : 214, 1.55), tickDynamicWorldEvents, { costHint:0.9, critical:S.mode!=="Survival" });
         }
         runFrameTask("dynamicWeather2", frameInterval(lagHeavy ? 920 : 680, 1.45), tickDynamicWeather2, { costHint:0.25 });
+        runFrameTask("dynamicDayNight", frameInterval(lagHeavy ? 1500 : 1000, 1.5), tickDynamicDayNight, {
+          costHint:0.10, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+        });
         runFrameTask("tigerInvestigation", frameInterval(lagHeavy ? 1800 : 1250, 1.5), tickTigerInvestigation, {
           costHint:0.18, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
         });
@@ -39403,6 +39539,9 @@ function draw(){
         const entityDrawOk = safeTick("drawSceneEntities", drawEntities);
         if(entityDrawOk && window.TigerTutorial?.isRunning){
           safeTick("drawTutorialStepWorldHighlight", ()=>drawTutorialStepWorldHighlight(Date.now()));
+        }
+        if(entityDrawOk){
+          safeTick("drawDynamicDayNightOverlay", ()=>drawDynamicDayNightOverlay(Date.now()));
         }
         if(entityDrawOk && !frameBudgetExceeded(0.78)){
           safeTick("drawSceneGradeOverlay", ()=>drawSceneCinematicGrade(Date.now(), "overlay"));
