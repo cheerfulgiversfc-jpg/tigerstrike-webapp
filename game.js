@@ -8533,6 +8533,7 @@ const DEFAULT = {
   investigationClues:[],
   tigerInvestigation:null,
   dayNightCycle:null,
+  extractionSequence:null,
 
   scanPing:0,
   lockedTigerId:null,
@@ -12013,6 +12014,7 @@ function missionDirectorTick(){
   if(!S || typeof S !== "object") return;
   if(window.__TUTORIAL_MODE__) return;
   if(S.gameOver || S.missionEnded) return;
+  if(ensureExtractionSequenceState(S).active) return;
   const now = Date.now();
   const director = ensureMissionDirectorState();
   const liveTune = ensureDirectorTuningState(S);
@@ -14249,6 +14251,7 @@ function sanitizeRuntimeState(){
   if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
   ensureTigerInvestigationState(S);
   ensureDayNightCycleState(S);
+  ensureExtractionSequenceState(S);
   if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
   if(!Number.isFinite(S.soldierRescuersOwned)) S.soldierRescuersOwned = 0;
   if(!Number.isFinite(S.soldierAttackersDowned)) S.soldierAttackersDowned = 0;
@@ -27517,6 +27520,7 @@ function deploy(opts={}){
   resetDynamicObjectiveForDeploy(S);
   resetTigerInvestigationForDeploy(S);
   resetDayNightCycleForDeploy(S);
+  resetExtractionSequenceForDeploy(S);
   S._biomeFogPulseAt = 0;
   S.eventText = "";
   S.eventCooldown = 240;
@@ -32712,6 +32716,7 @@ function payout(outcome){
 
 function maybeReinforceOnKill(){
   if(S.mode==="Survival") return;
+  if(ensureExtractionSequenceState(S).active) return;
   if(hasAliveBossTiger()) return;
   const chance = clamp(0.12 + (S.carcasses.length*0.01), 0.12, 0.30);
   if(Math.random() > chance) return;
@@ -33501,6 +33506,145 @@ function dynamicObjectiveTick(){
   }
 }
 
+// ===================== EXTRACTION + ESCAPE SEQUENCES =====================
+const EXTRACTION_SEQUENCE_DEFS = Object.freeze([
+  Object.freeze({ key:"helicopter", icon:"🚁", label:"Helicopter Extraction", instruction:"Reach the landing zone and hold for pickup.", holdSec:18, color:"rgba(96,165,250,.98)" }),
+  Object.freeze({ key:"convoy", icon:"🚚", label:"Convoy Escape", instruction:"Reach the convoy departure point and secure the route.", holdSec:15, color:"rgba(251,191,36,.98)" }),
+  Object.freeze({ key:"boat", icon:"🚤", label:"River Extraction", instruction:"Reach the river pickup and defend the dock.", holdSec:16, color:"rgba(34,211,238,.98)" }),
+  Object.freeze({ key:"safe_hold", icon:"🛡️", label:"Emergency Holdout", instruction:"Reach the emergency zone and hold until relief arrives.", holdSec:20, color:"rgba(74,222,128,.98)" }),
+  Object.freeze({ key:"timed_escape", icon:"⏱️", label:"Timed Escape", instruction:"Reach extraction before the route closes.", holdSec:12, color:"rgba(248,113,113,.98)" })
+]);
+function defaultExtractionSequenceState(){
+  return { active:false, complete:false, key:"", label:"", instruction:"", icon:"", color:"", x:0, y:0, r:68, startedAt:0, deadlineAt:0, holdStartedAt:0, holdProgressMs:0, holdRequiredMs:0, lastTickAt:0, nextNoticeAt:0, pursuitSpawned:false, emergency:false, bonusCash:0 };
+}
+function ensureExtractionSequenceState(state=S){
+  if(!state.extractionSequence || typeof state.extractionSequence !== "object") state.extractionSequence = defaultExtractionSequenceState();
+  const ex = state.extractionSequence;
+  for(const key of ["x","y","r","startedAt","deadlineAt","holdStartedAt","holdProgressMs","holdRequiredMs","lastTickAt","nextNoticeAt","bonusCash"]){
+    if(!Number.isFinite(ex[key])) ex[key] = defaultExtractionSequenceState()[key];
+  }
+  ex.active = !!ex.active;
+  ex.complete = !!ex.complete;
+  ex.pursuitSpawned = !!ex.pursuitSpawned;
+  ex.emergency = !!ex.emergency;
+  return ex;
+}
+function resetExtractionSequenceForDeploy(state=S){
+  state.extractionSequence = defaultExtractionSequenceState();
+}
+function extractionSequenceDef(ex=ensureExtractionSequenceState(S)){
+  return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === ex.key) || EXTRACTION_SEQUENCE_DEFS[0];
+}
+function beginExtractionSequence(){
+  if(window.__TUTORIAL_MODE__ || S.mode === "Survival" || S.gameOver || S.missionEnded) return false;
+  const ex = ensureExtractionSequenceState(S);
+  if(ex.active || ex.complete) return false;
+  const level = Math.max(1, currentCampaignLevel());
+  const def = EXTRACTION_SEQUENCE_DEFS[(level + Math.max(0, Number(S.mapIndex || 0)) + rand(0, EXTRACTION_SEQUENCE_DEFS.length - 1)) % EXTRACTION_SEQUENCE_DEFS.length];
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const targetX = S.me.x < worldW * 0.5 ? worldW * 0.78 : worldW * 0.22;
+  const targetY = S.me.y < worldH * 0.5 ? worldH * 0.76 : worldH * 0.24;
+  const pt = safeSpawnPoint(targetX, targetY, 34, true, true);
+  const now = Date.now();
+  Object.assign(ex, {
+    active:true, complete:false, key:def.key, label:def.label, instruction:def.instruction, icon:def.icon, color:def.color,
+    x:pt.x, y:pt.y, r:68, startedAt:now, deadlineAt:now + 75000, holdStartedAt:0, holdProgressMs:0,
+    holdRequiredMs:def.holdSec * 1000, lastTickAt:now, nextNoticeAt:now, pursuitSpawned:false, emergency:false, bonusCash:0
+  });
+  S.lockedTigerId = null;
+  S.activeTigerId = null;
+  S.inBattle = false;
+  setEventText(`${def.icon} ${def.label}: ${def.instruction}`, 7);
+  toast(`${def.label} started`);
+  save();
+  return true;
+}
+function finishExtractionSequence(emergency=false){
+  const ex = ensureExtractionSequenceState(S);
+  if(!ex.active || ex.complete) return false;
+  ex.active = false;
+  ex.complete = true;
+  ex.emergency = !!emergency;
+  // All primary objectives were already cleared before extraction began.
+  // Remaining tigers are pursuit pressure and must never block mission completion.
+  for(const t of (S.tigers || [])) t.alive = false;
+  const level = Math.max(1, currentCampaignLevel());
+  ex.bonusCash = emergency ? 0 : Math.round(1100 + level * 95 + (ex.key === "timed_escape" ? 800 : 0));
+  if(ex.bonusCash > 0){
+    S.funds += ex.bonusCash;
+    trackCashEarned(ex.bonusCash);
+    addXP(85);
+    grantSeasonPassPoints(6, "Extraction completed");
+  }
+  setEventText(emergency ? "🚨 Emergency extraction completed. Mission secured." : `${ex.icon} Extraction successful: +$${ex.bonusCash.toLocaleString()}`, 5);
+  save();
+  checkMissionComplete();
+  return true;
+}
+function extractionSequenceTick(now=Date.now()){
+  const ex = ensureExtractionSequenceState(S);
+  if(!ex.active || ex.complete || S.paused || S.gameOver || S.missionEnded) return;
+  const dt = clamp(now - Math.max(ex.lastTickAt || now, now - 1000), 0, 1000);
+  ex.lastTickAt = now;
+  if(now >= ex.deadlineAt) return finishExtractionSequence(true);
+  const inside = dist(S.me.x, S.me.y, ex.x, ex.y) <= ex.r;
+  if(inside){
+    if(!ex.holdStartedAt) ex.holdStartedAt = now;
+    ex.holdProgressMs = clamp(ex.holdProgressMs + dt, 0, ex.holdRequiredMs);
+    if(!ex.pursuitSpawned){
+      ex.pursuitSpawned = true;
+      const waves = currentCampaignLevel() >= 25 ? 2 : 1;
+      for(let i=0;i<waves;i++){
+        const tiger = spawnRogueTiger({ nearX:ex.x, nearY:ex.y, anchorTight:true, ignoreDirectorBudget:true });
+        if(tiger){
+          tiger.extractionPursuit = true;
+          tiger.aggroBoost = Math.max(0.7, Number(tiger.aggroBoost || 0));
+        }
+      }
+      setEventText(`${ex.icon} Hold extraction! Pursuit tigers incoming.`, 3.2);
+    }
+    if(ex.holdProgressMs >= ex.holdRequiredMs) return finishExtractionSequence(false);
+  }else{
+    ex.holdProgressMs = Math.max(0, ex.holdProgressMs - dt * 0.20);
+  }
+  if(now >= ex.nextNoticeAt){
+    ex.nextNoticeAt = now + 2500;
+    const left = Math.max(0, Math.ceil((ex.deadlineAt - now) / 1000));
+    const holdLeft = Math.max(0, Math.ceil((ex.holdRequiredMs - ex.holdProgressMs) / 1000));
+    setEventText(inside ? `${ex.icon} Hold position: ${holdLeft}s` : `${ex.icon} Reach ${ex.label}: ${Math.round(dist(S.me.x,S.me.y,ex.x,ex.y))}m • ${left}s remaining`, 2.2);
+  }
+}
+function drawExtractionSequenceMarker(now=Date.now()){
+  const ex = ensureExtractionSequenceState(S);
+  if(!ex.active || ex.complete) return;
+  const def = extractionSequenceDef(ex);
+  const inside = dist(S.me.x, S.me.y, ex.x, ex.y) <= ex.r;
+  const pct = clamp(ex.holdProgressMs / Math.max(1, ex.holdRequiredMs), 0, 1);
+  const pulse = 0.82 + Math.sin(now / 180) * 0.12;
+  ctx.save();
+  ctx.globalAlpha = 0.72;
+  ctx.strokeStyle = ex.color || def.color;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([9,6]);
+  ctx.beginPath(); ctx.moveTo(S.me.x,S.me.y); ctx.lineTo(ex.x,ex.y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = pulse;
+  ctx.lineWidth = inside ? 5 : 3.5;
+  ctx.beginPath(); ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2); ctx.stroke();
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = ex.color || def.color;
+  ctx.beginPath(); ctx.arc(ex.x,ex.y,ex.r*pct,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha = 0.96;
+  ctx.fillStyle = "rgba(7,12,20,.88)";
+  roundedRectFill(ex.x-82,ex.y-ex.r-42,164,28,10);
+  ctx.fillStyle = ex.color || def.color;
+  ctx.font = "900 11px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(`${ex.icon} ${ex.label} • ${inside ? `${Math.ceil((ex.holdRequiredMs-ex.holdProgressMs)/1000)}s` : "REACH ZONE"}`,ex.x,ex.y-ex.r-23);
+  ctx.restore();
+}
+
 // ===================== MISSION COMPLETE =====================
 function convoyMissionTick(){
   if(window.__TUTORIAL_MODE__) return;
@@ -33542,6 +33686,8 @@ function checkMissionComplete(){
   if(window.__TUTORIAL_MODE__) return;
   if(S.mode==="Survival") return;
   if(S.gameOver) return;
+  const extraction = ensureExtractionSequenceState(S);
+  if(extraction.active && !extraction.complete) return;
 
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
   const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
@@ -33589,6 +33735,10 @@ function checkMissionComplete(){
   }
 
   if(!tAlive && evacReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady){
+    if(!extraction.complete){
+      beginExtractionSequence();
+      return;
+    }
     if(!S.missionEnded){
       ensureStoryEndgameState(S);
       const storyVariant = normalizeStoryVariant(storyMission?.storyVariant || S.storyVariant);
@@ -33821,6 +33971,9 @@ function checkMissionComplete(){
       const rewards2Note = rewards2
         ? `\nMission Rewards 2.0: +$${Math.max(0, Math.floor(Number(rewards2.totalCash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(rewards2.bonusXp || 0)))}XP • Streak ${Math.max(1, Math.floor(Number(rewards2.nextStreak || 1)))}\n`
         : "";
+      const extractionNote = extraction.complete
+        ? `\nExtraction: ${extraction.label || "Emergency Extraction"}${extraction.emergency ? " • Emergency fallback" : ` • Perfect hold +$${Math.max(0, Math.floor(Number(extraction.bonusCash || 0))).toLocaleString()}`}\n`
+        : "";
       const missionStats = finalizeMissionStatsSnapshot();
 
       const recapMeta = {
@@ -33851,7 +34004,7 @@ function checkMissionComplete(){
       renderMissionRewards2Card(rewards2);
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${extractionNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
@@ -39578,6 +39731,7 @@ function draw(){
       }
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
       runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 44 : (lagHeavy ? 36 : 28)) : (lagCritical ? 56 : (lagHeavy ? 46 : 36)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
+      runFrameTask("extractionSequence", frameInterval(lagCritical ? 180 : (lagHeavy ? 140 : 100), 1.4), extractionSequenceTick, { costHint:0.45, critical:true });
       runFrameTask("storyCheckpoint", frameInterval(lagCritical ? 220 : (lagHeavy ? 170 : 124), 1.45), maybeCaptureStoryCheckpoint, { costHint:0.8, critical:S.mode==="Story" });
       runFrameTask("checkMissionComplete", frameInterval(lagCritical ? 140 : (lagHeavy ? 112 : 90), 1.4), checkMissionComplete, { costHint:0.8, critical:true });
     }
@@ -39671,6 +39825,9 @@ function draw(){
           safeTick("drawSceneGradeUnderlay", ()=>drawSceneCinematicGrade(Date.now(), "underlay"));
         }
         const entityDrawOk = safeTick("drawSceneEntities", drawEntities);
+        if(entityDrawOk){
+          safeTick("drawExtractionSequenceMarker", ()=>drawExtractionSequenceMarker(Date.now()));
+        }
         if(entityDrawOk && window.TigerTutorial?.isRunning){
           safeTick("drawTutorialStepWorldHighlight", ()=>drawTutorialStepWorldHighlight(Date.now()));
         }
