@@ -11004,6 +11004,8 @@ const STREAM_ACTIVE_RADIUS = 1;
 const STREAM_EXPAND_MAX_SECTORS = 28;
 const STREAM_EXPAND_STEP = 0.018;
 const STREAM_MIN_AMBIENT_EDGE = 46;
+const MAP_EXPANSION_VERSION = 2;
+const MAP_EXPANSION_MAX_SCALE = 3;
 
 function defaultSectorStreamingState(){
   return {
@@ -11013,7 +11015,8 @@ function defaultSectorStreamingState(){
     activeKeys:[],
     discoveredKeys:[],
     centerKey:"0:0",
-    lastUpdateAt:0
+    lastUpdateAt:0,
+    mapExpansionVersion:MAP_EXPANSION_VERSION
   };
 }
 function ensureSectorStreamingState(state=S){
@@ -11029,6 +11032,7 @@ function ensureSectorStreamingState(state=S){
   ss.discoveredKeys = Array.isArray(ss.discoveredKeys) ? ss.discoveredKeys.map((v)=>String(v || "")).filter(Boolean).slice(-220) : [];
   ss.centerKey = String(ss.centerKey || "0:0");
   ss.lastUpdateAt = Math.max(0, Math.floor(Number(ss.lastUpdateAt || 0)));
+  ss.mapExpansionVersion = MAP_EXPANSION_VERSION;
   return ss;
 }
 function streamSectorKeyForPoint(x, y, state=S){
@@ -11120,6 +11124,9 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
   };
   pushPoint(src?.me?.x, src?.me?.y);
   pushPoint(src?.evacZone?.x, src?.evacZone?.y);
+  pushPoint(src?.extractionSequence?.x, src?.extractionSequence?.y);
+  pushPoint(src?.settlementDefense?.core?.x, src?.settlementDefense?.core?.y);
+  pushPoint(src?.targetTiger?.x, src?.targetTiger?.y);
   const cam = cameraOffsetSnapshot(src);
   const viewW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
   const viewH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
@@ -11127,10 +11134,10 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
   pushPoint(cam.x + viewW, cam.y);
   pushPoint(cam.x, cam.y + viewH);
   pushPoint(cam.x + viewW, cam.y + viewH);
-  for(const civ of (src.civilians || []).slice(0, 5)) pushPoint(civ?.x, civ?.y);
-  for(const tiger of (src.tigers || []).slice(0, 6)) pushPoint(tiger?.x, tiger?.y);
-  for(const site of (src.rescueSites || []).slice(0, 4)) pushPoint(site?.x, site?.y);
-  for(const it of (src.mapInteractables || []).slice(0, 4)) pushPoint(it?.x, it?.y);
+  for(const civ of (src.civilians || []).slice(0, 8)) pushPoint(civ?.x, civ?.y);
+  for(const tiger of (src.tigers || []).slice(0, 10)) pushPoint(tiger?.x, tiger?.y);
+  for(const site of (src.rescueSites || []).slice(0, 6)) pushPoint(site?.x, site?.y);
+  for(const it of (src.mapInteractables || []).slice(0, 8)) pushPoint(it?.x, it?.y);
 
   const discovered = new Set(ss.discoveredKeys || []);
   const active = new Set(ss.activeKeys || []);
@@ -11150,7 +11157,7 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
       }
     }
   }
-  ss.activeKeys = Array.from(active).slice(-64);
+  ss.activeKeys = Array.from(active).slice(-96);
   ss.discoveredKeys = Array.from(discovered).slice(-220);
   ss.lastUpdateAt = now;
   return ss;
@@ -11196,15 +11203,14 @@ function worldScaleForModeMission(mode, mission){
   const landscapeBoost = (mobile && landscape) ? 0.12 : (landscape ? 0.12 : 0);
   if(window.__TUTORIAL_MODE__) return 1;
   if(mobile && !landscape){
-    // Portrait keeps a lighter world than desktop, but still allows camera-follow travel.
-    if(mode === "Story") return clamp(1.02 + ((Math.max(1, mission) - 1) * 0.0020), 1.02, 1.22);
-    if(mode === "Arcade") return clamp(1.01 + ((Math.max(1, mission) - 1) * 0.0018), 1.01, 1.18);
-    return clamp(1.02 + ((Math.max(1, mission) - 1) * 0.0025), 1.02, 1.24);
+    if(mode === "Story") return clamp(1.62 + ((Math.max(1, mission) - 1) * 0.0045), 1.62, 2.22);
+    if(mode === "Arcade") return clamp(1.56 + ((Math.max(1, mission) - 1) * 0.0040), 1.56, 2.08);
+    return clamp(1.60 + ((Math.max(1, mission) - 1) * 0.0060), 1.60, 2.24);
   }
   if(mobile && landscape){
-    if(mode === "Story") return clamp(1.28 + ((Math.max(1, mission) - 1) * 0.0045) + landscapeBoost, 1.28, 1.90);
-    if(mode === "Arcade") return clamp(1.24 + ((Math.max(1, mission) - 1) * 0.0040) + landscapeBoost, 1.24, 1.78);
-    return clamp(1.26 + ((Math.max(1, mission) - 1) * 0.0060) + landscapeBoost, 1.26, 1.92);
+    if(mode === "Story") return clamp(2.02 + ((Math.max(1, mission) - 1) * 0.0055) + landscapeBoost, 2.02, 2.82);
+    if(mode === "Arcade") return clamp(1.96 + ((Math.max(1, mission) - 1) * 0.0050) + landscapeBoost, 1.96, 2.68);
+    return clamp(2.00 + ((Math.max(1, mission) - 1) * 0.0070) + landscapeBoost, 2.00, 2.86);
   }
   if(mode === "Story"){
     return clamp(1.92 + ((Math.max(1, mission) - 1) * 0.010) + landscapeBoost, 1.92, 2.95);
@@ -11218,7 +11224,7 @@ function worldScaleForModeMission(mode, mission){
 function desiredWorldLayout(state=S){
   const mode = normalizeModeName(state?.mode || "Story");
   const mission = missionProgressForWorld(state);
-  const scale = worldScaleForModeMission(mode, mission) + streamedWorldScaleBonus(state);
+  const scale = clamp(worldScaleForModeMission(mode, mission) + streamedWorldScaleBonus(state), 1, MAP_EXPANSION_MAX_SCALE);
   const viewportW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
   const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const mobile = isMobileViewport();
@@ -11333,9 +11339,11 @@ function updateWorldCamera(state=S){
     state.camera = { x: world.w * 0.5, y: world.h * 0.5 };
   }
   if(!Number.isFinite(state._cameraOutFrames)) state._cameraOutFrames = 0;
+  const face = Number.isFinite(state?.me?.face) ? state.me.face : 0;
+  const lookAhead = window.TigerTutorial?.isRunning ? 0 : (isMobileViewport() ? 34 : 58);
   const target = cameraClampCenter(
-    Number.isFinite(state?.me?.x) ? state.me.x : (world.w * 0.5),
-    Number.isFinite(state?.me?.y) ? state.me.y : (world.h * 0.5),
+    (Number.isFinite(state?.me?.x) ? state.me.x : (world.w * 0.5)) + (Math.cos(face) * lookAhead),
+    (Number.isFinite(state?.me?.y) ? state.me.y : (world.h * 0.5)) + (Math.sin(face) * lookAhead),
     state
   );
   const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
@@ -17023,23 +17031,117 @@ function buildMapWaterZones(mapKey, chapter, w=worldWidth(S), h=worldHeight(S)){
   const defs = MAP_WATER_LAYOUTS[family] || [];
   const riverChapter = (chapter === 5);
   const chapterMul = riverChapter ? 1.08 : 1;
-  return defs.map((def)=>{
-    const boost = (riverChapter && def.riverBoost) ? 1.16 : 1;
-    const rx = clamp(Math.round(w * def.rx * chapterMul * boost), 18, Math.round(w * 0.30));
-    const ry = clamp(Math.round(h * def.ry * chapterMul * boost), 12, Math.round(h * 0.18));
-    return {
-      x: clamp(Math.round(w * def.nx), 24, w - 24),
-      y: clamp(Math.round(h * def.ny), 24, h - 24),
-      rx,
-      ry,
-      rot: Number.isFinite(def.rot) ? def.rot : 0
-    };
-  }).filter((zone)=>!inMapScenarioKeepout(zone.x, zone.y, Math.max(zone.rx || 0, zone.ry || 0) * 0.55));
+  const cols = clamp(Math.ceil(w / WORLD_BASE_WIDTH), 1, 4);
+  const rows = clamp(Math.ceil(h / WORLD_BASE_HEIGHT), 1, 4);
+  const tileW = w / cols;
+  const tileH = h / rows;
+  const out = [];
+  for(let ty=0; ty<rows; ty++){
+    for(let tx=0; tx<cols; tx++){
+      for(let i=0; i<defs.length; i++){
+        if((tx + ty + i) % 3 === 2 && cols * rows > 2) continue;
+        const def = defs[i];
+        const boost = (riverChapter && def.riverBoost) ? 1.16 : 1;
+        const rx = clamp(Math.round(tileW * def.rx * chapterMul * boost), 18, Math.round(tileW * 0.30));
+        const ry = clamp(Math.round(tileH * def.ry * chapterMul * boost), 12, Math.round(tileH * 0.18));
+        out.push({
+          x: clamp(Math.round((tx * tileW) + (tileW * def.nx)), 24, w - 24),
+          y: clamp(Math.round((ty * tileH) + (tileH * def.ny)), 24, h - 24),
+          rx, ry,
+          rot: Number.isFinite(def.rot) ? def.rot + (((tx + ty) % 2) * 0.08) : 0
+        });
+      }
+    }
+  }
+  return out.slice(0, 18).filter((zone)=>!inMapScenarioKeepout(zone.x, zone.y, Math.max(zone.rx || 0, zone.ry || 0) * 0.55));
 }
 function waterZoneRadii(zone){
   const rx = Math.max(2, Number(zone?.rx || zone?.r || 0));
   const ry = Math.max(2, Number(zone?.ry || zone?.r || 0));
   return { rx, ry };
+}
+
+function mapExpansionHash(key, salt=0){
+  let h = (2166136261 ^ Math.floor(Number(salt || 0))) >>> 0;
+  for(const ch of String(key || "0:0")){
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+function mapExpansionSectorProfile(key, state=S){
+  const seed = mapExpansionHash(`${key}|${currentMap()?.key || ""}|${missionProgressForWorld(state)}`, 73);
+  const kinds = ["forest", "open_field", "settlement", "lake", "river", "woodland"];
+  return {
+    seed,
+    kind:kinds[seed % kinds.length],
+    vertical:((seed >>> 4) % 2) === 1,
+    footReverse:((seed >>> 7) % 2) === 1
+  };
+}
+function drawMapExpansionSectorDetails(opts={}){
+  if(window.__TUTORIAL_MODE__ || !ctx) return;
+  const state = opts.state || S;
+  const ss = ensureSectorStreamingState(state);
+  const keys = Array.from(new Set([...(ss.activeKeys || []), ss.centerKey])).slice(-20);
+  const mobileFast = !!opts.mobileFast;
+  ctx.save();
+  for(const key of keys){
+    const b = streamSectorBounds(key, state);
+    if(b.maxX <= b.minX || b.maxY <= b.minY) continue;
+    const p = mapExpansionSectorProfile(key, state);
+    const cx = (b.minX + b.maxX) * 0.5;
+    const cy = (b.minY + b.maxY) * 0.5;
+    const sw = b.maxX - b.minX;
+    const sh = b.maxY - b.minY;
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = p.kind === "settlement" ? "#a88a60" : (p.kind === "open_field" ? "#8cae54" : "#2f8054");
+    ctx.fillRect(b.minX + 2, b.minY + 2, Math.max(1, sw - 4), Math.max(1, sh - 4));
+
+    // Wide connected lanes are reserved for future vehicles; the dashed diagonal is a foot shortcut.
+    ctx.globalAlpha = 0.72;
+    ctx.strokeStyle = "rgba(82,72,57,.92)";
+    ctx.lineWidth = mobileFast ? 34 : 42;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(b.minX, cy); ctx.lineTo(b.maxX, cy);
+    ctx.moveTo(cx, b.minY); ctx.lineTo(cx, b.maxY);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(225,210,175,.30)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([12, 12]);
+    ctx.beginPath();
+    ctx.moveTo(b.minX, cy); ctx.lineTo(b.maxX, cy);
+    ctx.moveTo(cx, b.minY); ctx.lineTo(cx, b.maxY);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(186,230,210,.34)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([7, 9]);
+    ctx.beginPath();
+    if(p.footReverse){ ctx.moveTo(b.minX + 24, b.maxY - 24); ctx.lineTo(b.maxX - 24, b.minY + 24); }
+    else { ctx.moveTo(b.minX + 24, b.minY + 24); ctx.lineTo(b.maxX - 24, b.maxY - 24); }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if(!mobileFast && p.kind === "settlement"){
+      ctx.globalAlpha = 0.46;
+      ctx.fillStyle = "rgba(190,180,160,.82)";
+      for(let i=0; i<3; i++){
+        const ox = ((p.seed >>> (i * 3)) % Math.max(44, Math.floor(sw - 70))) + 24;
+        const oy = ((p.seed >>> (i * 5 + 2)) % Math.max(44, Math.floor(sh - 70))) + 24;
+        ctx.fillRect(b.minX + ox, b.minY + oy, 24, 18);
+      }
+    } else if(!mobileFast && (p.kind === "forest" || p.kind === "woodland")){
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = "rgba(46,160,88,.9)";
+      for(let i=0; i<7; i++){
+        const ox = ((p.seed >>> (i % 8)) + i * 47) % Math.max(30, Math.floor(sw - 28));
+        const oy = ((p.seed >>> ((i + 3) % 12)) + i * 61) % Math.max(30, Math.floor(sh - 28));
+        ctx.beginPath(); ctx.arc(b.minX + 14 + ox, b.minY + 14 + oy, 4 + (i % 3), 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
 }
 function pointInWaterZone(zone, x, y, radius=0){
   if(!zone) return false;
@@ -35107,6 +35209,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
       ctx.stroke();
     }
   }
+  drawMapExpansionSectorDetails({ mobileFast:true });
 
   if(S.mode !== "Survival"){
     const ex = zone.x;
@@ -35806,6 +35909,7 @@ function drawMapScene(){
     for(const [x,y] of crates) crateBlock(sxBase(x), syBase(y));
   }
   drawWaterBodies(1);
+  drawMapExpansionSectorDetails({ mobileFast:false });
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -36811,6 +36915,77 @@ function drawMapInteractable(it){
 
   ctx.textAlign = "start";
   ctx.restore();
+}
+
+function drawMapExpansionMinimap(){
+  if(!ctx || window.__TUTORIAL_MODE__ || S?.missionEnded || S?.gameOver) return;
+  const worldW = Math.max(1, worldWidth(S));
+  const worldH = Math.max(1, worldHeight(S));
+  const mobile = isMobileViewport();
+  const mw = mobile ? 92 : 126;
+  const mh = mobile ? 62 : 82;
+  const x = Math.max(8, cv.width - mw - (mobile ? 58 : 18));
+  const y = mobile ? 14 : 18;
+  const ss = ensureSectorStreamingState(S);
+  const point = (wx, wy)=>({
+    x:x + clamp(Number(wx || 0) / worldW, 0, 1) * mw,
+    y:y + clamp(Number(wy || 0) / worldH, 0, 1) * mh
+  });
+  ctx.save();
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = "rgba(5,12,20,.78)";
+  ctx.strokeStyle = "rgba(125,211,252,.58)";
+  ctx.lineWidth = 1.5;
+  ctx.fillRect(x, y, mw, mh);
+  ctx.strokeRect(x, y, mw, mh);
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = "rgba(74,222,128,.75)";
+  for(const key of (ss.discoveredKeys || []).slice(-80)){
+    const b = streamSectorBounds(key, S);
+    const a = point(b.minX, b.minY);
+    const z = point(b.maxX, b.maxY);
+    ctx.fillRect(a.x, a.y, Math.max(1, z.x - a.x), Math.max(1, z.y - a.y));
+  }
+  const targets = [];
+  if(S.mode !== "Survival" && S.evacZone) targets.push({ ...S.evacZone, color:"#4ade80" });
+  const tiger = currentTargetTiger();
+  if(tiger) targets.push({ ...tiger, color:"#f59e0b" });
+  const dangerCiv = (S.civilians || []).find((c)=>c && !c.evacuated && !c.dead && (c.underAttack || c.hp < 55));
+  if(dangerCiv) targets.push({ ...dangerCiv, color:"#fb7185" });
+  for(const target of targets){
+    const pt = point(target.x, target.y);
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = target.color;
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, 2.7, 0, Math.PI * 2); ctx.fill();
+  }
+  const me = point(S?.me?.x, S?.me?.y);
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "#38bdf8";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(me.x, me.y, 3.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  const primary = targets[0];
+  if(primary){
+    const screen = worldToScreenPoint(primary.x, primary.y, S);
+    const margin = 52;
+    if(screen.x < margin || screen.x > cv.width - margin || screen.y < margin || screen.y > cv.height - margin){
+      const centerX = cv.width * 0.5;
+      const centerY = cv.height * 0.5;
+      const ang = Math.atan2(screen.y - centerY, screen.x - centerX);
+      const ax = clamp(centerX + Math.cos(ang) * Math.min(cv.width * 0.37, 210), margin, cv.width - margin);
+      const ay = clamp(centerY + Math.sin(ang) * Math.min(cv.height * 0.34, 170), margin, cv.height - margin);
+      ctx.save();
+      ctx.translate(ax, ay);
+      ctx.rotate(ang);
+      ctx.fillStyle = primary.color;
+      ctx.globalAlpha = 0.82;
+      ctx.beginPath();
+      ctx.moveTo(12, 0); ctx.lineTo(-8, -7); ctx.lineTo(-5, 0); ctx.lineTo(-8, 7); ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
 }
 
 function drawAbilityCooldownWheel(){
@@ -39134,7 +39309,7 @@ function startupPreloadExpectedSectorCount(state=S){
   const src = (state && typeof state === "object") ? state : S;
   const actorCount = Math.min(5, (src.civilians || []).length) + Math.min(6, (src.tigers || []).length);
   const siteCount = Math.min(4, (src.rescueSites || []).length) + Math.min(4, (src.mapInteractables || []).length);
-  return clamp(7 + Math.ceil(actorCount * 0.45) + Math.ceil(siteCount * 0.25), 7, 18);
+  return clamp(8 + Math.ceil(actorCount * 0.45) + Math.ceil(siteCount * 0.25), 8, 24);
 }
 
 function computeStartupPreloadProgress(now=Date.now()){
@@ -40018,6 +40193,7 @@ function draw(){
           ctx.strokeStyle = "#ffffff";
         }catch(e){}
       }
+      drawMapExpansionMinimap();
       drawAbilityCooldownWheel();
       drawMobileUiClearLane();
     }
