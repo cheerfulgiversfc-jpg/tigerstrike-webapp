@@ -8501,6 +8501,7 @@ const DEFAULT = {
   soldierRescuersOwned:0,
   soldierAttackersDowned:0,
   soldierRescuersDowned:0,
+  squadOwnershipLedger:null,
   squadProgression:{ profiles:{} },
   civilianSettlement:null,
   specialistStarUnlocks:{ attacker:false, rescue:false },
@@ -15055,6 +15056,45 @@ function ensureSquadProgressionState(state=S){
   if(!state.squadProgression.profiles || typeof state.squadProgression.profiles !== "object") state.squadProgression.profiles = {};
   return state.squadProgression;
 }
+function ensureSquadOwnershipLedger(state=S){
+  if(!state || typeof state !== "object") return { attacker:0, rescue:0, version:1 };
+  if(!state.squadOwnershipLedger || typeof state.squadOwnershipLedger !== "object"){
+    const premium = state.specialistStarUnlocks && typeof state.specialistStarUnlocks === "object"
+      ? state.specialistStarUnlocks
+      : {};
+    const attackersOwned = Math.max(0, Math.floor(Number(state.soldierAttackersOwned || 0)));
+    const rescuersOwned = Math.max(0, Math.floor(Number(state.soldierRescuersOwned || 0)));
+    const attackerProfile = state.squadProgression?.profiles?.["attacker:0"];
+    const ghostMasonPattern =
+      attackersOwned === 1 &&
+      Math.max(0, Math.floor(Number(state.soldierAttackersDowned || 0))) === 0 &&
+      Math.max(0, Math.floor(Number(state.soldierRescuersDowned || 0))) > 0 &&
+      !premium.attacker &&
+      String(attackerProfile?.name || "Mason") === "Mason" &&
+      Math.max(1, Math.floor(Number(attackerProfile?.level || 1))) <= 2;
+    state.squadOwnershipLedger = {
+      version:1,
+      attacker:ghostMasonPattern ? 0 : attackersOwned,
+      rescue:rescuersOwned,
+      migratedAt:Date.now(),
+    };
+  }
+  const ledger = state.squadOwnershipLedger;
+  ledger.version = 1;
+  ledger.attacker = clamp(Math.floor(Number(ledger.attacker || 0)), 0, SQUAD_MAX_PER_ROLE);
+  ledger.rescue = clamp(Math.floor(Number(ledger.rescue || 0)), 0, SQUAD_MAX_PER_ROLE);
+  return ledger;
+}
+function recordSquadOwnership(role, count=1, state=S){
+  const cleanRole = role === "rescue" ? "rescue" : "attacker";
+  const ledger = ensureSquadOwnershipLedger(state);
+  ledger[cleanRole] = clamp(Number(ledger[cleanRole] || 0) + Math.max(0, Math.floor(Number(count || 0))), 0, SQUAD_MAX_PER_ROLE);
+  return ledger[cleanRole];
+}
+function verifiedSquadOwnedCount(role, state=S){
+  const cleanRole = role === "rescue" ? "rescue" : "attacker";
+  return Math.max(0, Math.floor(Number(ensureSquadOwnershipLedger(state)[cleanRole] || 0)));
+}
 function squadProgressionKey(role, slotIndex=0){
   return `${role === "rescue" ? "rescue" : "attacker"}:${Math.max(0, Math.floor(Number(slotIndex || 0)))}`;
 }
@@ -15318,6 +15358,7 @@ function pruneSupportUnitsToRoster(){
 }
 function syncSquadRosterBounds(){
   ensureSquadProgressionState(S);
+  ensureSquadOwnershipLedger(S);
   S.squadCommand = normalizeSquadCommand(S.squadCommand);
   S.squadFormation = normalizeSquadFormation(S.squadFormation);
   if(!specialistRoleUnlocked("attacker")){
@@ -15330,6 +15371,8 @@ function syncSquadRosterBounds(){
   }
   S.soldierAttackersOwned = clamp(Math.floor(Number(S.soldierAttackersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
   S.soldierRescuersOwned = clamp(Math.floor(Number(S.soldierRescuersOwned || 0)), 0, SQUAD_MAX_PER_ROLE);
+  S.soldierAttackersOwned = Math.min(S.soldierAttackersOwned, verifiedSquadOwnedCount("attacker", S));
+  S.soldierRescuersOwned = Math.min(S.soldierRescuersOwned, verifiedSquadOwnedCount("rescue", S));
   S.soldierAttackersDowned = clamp(Math.floor(Number(S.soldierAttackersDowned || 0)), 0, S.soldierAttackersOwned);
   S.soldierRescuersDowned = clamp(Math.floor(Number(S.soldierRescuersDowned || 0)), 0, S.soldierRescuersOwned);
   for(const role of ["attacker","rescue"]){
@@ -22255,6 +22298,7 @@ function applyRewardGrant(grantInput){
       const canAdd = clamp(wantAttackers, 0, Math.max(0, SQUAD_MAX_PER_ROLE - current));
       if(canAdd > 0){
         S.soldierAttackersOwned = current + canAdd;
+        recordSquadOwnership("attacker", canAdd, S);
         addedAttackers = canAdd;
         changed = true;
       }
@@ -22264,6 +22308,7 @@ function applyRewardGrant(grantInput){
       const canAdd = clamp(wantRescuers, 0, Math.max(0, SQUAD_MAX_PER_ROLE - current));
       if(canAdd > 0){
         S.soldierRescuersOwned = current + canAdd;
+        recordSquadOwnership("rescue", canAdd, S);
         addedRescuers = canAdd;
         changed = true;
       }
@@ -23962,6 +24007,7 @@ function buyTigerSpecialist(){
   if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
   S.funds -= SOLDIER_PRICE;
   S.soldierAttackersOwned = squadOwnedCount("attacker") + 1;
+  recordSquadOwnership("attacker", 1, S);
   syncSquadRosterBounds();
   if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
     const attackCount = (S.supportUnits || []).filter(unit => unit.role === "attacker").length;
@@ -23978,6 +24024,7 @@ function buyRescueSpecialist(){
   if(S.funds < SOLDIER_PRICE) return toast("Not enough money.");
   S.funds -= SOLDIER_PRICE;
   S.soldierRescuersOwned = squadOwnedCount("rescue") + 1;
+  recordSquadOwnership("rescue", 1, S);
   syncSquadRosterBounds();
   if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
     const rescueCount = (S.supportUnits || []).filter(unit => unit.role === "rescue").length;
@@ -24002,6 +24049,7 @@ function buyReinforcementBundle(){
   let addedR = 0;
   if(attackersOwned < SQUAD_MAX_PER_ROLE){
     S.soldierAttackersOwned = attackersOwned + 1;
+    recordSquadOwnership("attacker", 1, S);
     addedA = 1;
     if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
       const attackCount = (S.supportUnits || []).filter(unit => unit.role === "attacker").length;
@@ -24010,6 +24058,7 @@ function buyReinforcementBundle(){
   }
   if(rescuersOwned < SQUAD_MAX_PER_ROLE){
     S.soldierRescuersOwned = rescuersOwned + 1;
+    recordSquadOwnership("rescue", 1, S);
     addedR = 1;
     if(!window.__TUTORIAL_MODE__ && !S.gameOver && !S.missionEnded){
       const rescueCount = (S.supportUnits || []).filter(unit => unit.role === "rescue").length;
@@ -29629,7 +29678,7 @@ function supportUnitsTick(){
       targetX = individualOrder.x;
       targetY = individualOrder.y;
     }
-    const leashMax = (commandHold ? 120 : (commandRegroup ? 150 : 265)) * formationProfile.leashMul;
+    const leashMax = (commandHold ? 120 : (commandRegroup ? 165 : 340)) * formationProfile.leashMul;
     const hpRatio = clamp((Number(unit.hp || 0) / Math.max(1, Number(unit.hpMax || 1))), 0, 1);
     const nearestThreatNow = nearestTigerTo(unit.x, unit.y);
     const nearestThreatTiger = nearestThreatNow.tiger;
@@ -29756,7 +29805,7 @@ function supportUnitsTick(){
         const nearPlayer = nearestTigerTo(S.me.x, S.me.y);
         if(nearPlayer.tiger && nearPlayer.d < 110) chaseTiger = nearPlayer.tiger;
       } else if(commandAuto){
-        chaseTiger = priorityTiger || (fallback.d < 210 ? fallback.tiger : null);
+        chaseTiger = priorityTiger || (fallback.d < 310 ? fallback.tiger : null);
       } else {
         chaseTiger = fallback.d < 140 ? fallback.tiger : null;
       }
@@ -29772,7 +29821,7 @@ function supportUnitsTick(){
               ? (nearPlayer && dist(chaseTiger.x, chaseTiger.y, S.me.x, S.me.y) < 110)
             : commandRescue
               ? (nearDanger || nearPlayer)
-              : (isLocked || nearPlayer || nearDanger);
+              : (isLocked || nearPlayer || nearDanger || (commandAuto && tigerDist < 330));
         if(allowChase){
           if(unit.role === "attacker" && formationProfile.flankSplit > 0.12){
             const side = (slotIndex % 2 === 0) ? -1 : 1;
@@ -29803,7 +29852,7 @@ function supportUnitsTick(){
     const len = Math.hypot(dx, dy) || 1;
     const waterMul = waterSpeedMul("support", unit.x, unit.y, 12);
     let stepCap = unit.role === "attacker"
-      ? (playerBaseSpeed * 1.02 * (S.mode==="Story" ? (1 + (storySpecialistRank("SP_ATK_DRILL") * 0.04)) : 1))
+      ? (playerBaseSpeed * 1.20 * (S.mode==="Story" ? (1 + (storySpecialistRank("SP_ATK_DRILL") * 0.04)) : 1))
       : (playerBaseSpeed * 1.00 * storyRescueSpeedMul());
     if(unit.role === "attacker") stepCap *= formationProfile.attackerMoveMul;
     else stepCap *= formationProfile.rescueMoveMul;
@@ -29832,11 +29881,11 @@ function supportUnitsTick(){
       if(commandAttackTarget){
         const assignedTiger = individualTargetTiger || lockTiger;
         allowEngage = assignedTiger ? tiger.id === assignedTiger.id : (isPriority || nearPlayer || nearDanger);
-        shotRange = assignedTiger ? 255 : 155;
+        shotRange = assignedTiger ? 285 : 190;
         clawRange = 96;
       } else if(commandRescue){
         allowEngage = nearDanger || nearPlayer;
-        shotRange = nearDanger ? 245 : 190;
+        shotRange = nearDanger ? 265 : 220;
         clawRange = 98;
       } else if(commandRegroup){
         allowEngage = nearPlayer && tigerDist < 170;
