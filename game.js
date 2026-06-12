@@ -8534,6 +8534,7 @@ const DEFAULT = {
   tigerInvestigation:null,
   dayNightCycle:null,
   extractionSequence:null,
+  settlementDefense:null,
 
   scanPing:0,
   lockedTigerId:null,
@@ -14252,6 +14253,7 @@ function sanitizeRuntimeState(){
   ensureTigerInvestigationState(S);
   ensureDayNightCycleState(S);
   ensureExtractionSequenceState(S);
+  ensureSettlementDefenseState(S);
   if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
   if(!Number.isFinite(S.soldierRescuersOwned)) S.soldierRescuersOwned = 0;
   if(!Number.isFinite(S.soldierAttackersDowned)) S.soldierAttackersDowned = 0;
@@ -26048,7 +26050,7 @@ function mapInteractablePool(){
 }
 
 function spawnMapInteractables(){
-  if(window.__TUTORIAL_MODE__ || S.mode==="Survival"){
+  if(window.__TUTORIAL_MODE__){
     S.mapInteractables = [];
     return;
   }
@@ -26087,7 +26089,7 @@ function spawnMapInteractables(){
 }
 
 function ensureInteractiveMapObjectSet(){
-  if(window.__TUTORIAL_MODE__ || S.mode==="Survival") return;
+  if(window.__TUTORIAL_MODE__) return;
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   const existingKinds = new Set(S.mapInteractables.map((it)=>it?.kind).filter(Boolean));
   const missing = mapInteractablePool().filter((it)=>!existingKinds.has(it.kind));
@@ -27521,6 +27523,7 @@ function deploy(opts={}){
   resetTigerInvestigationForDeploy(S);
   resetDayNightCycleForDeploy(S);
   resetExtractionSequenceForDeploy(S);
+  resetSettlementDefenseForDeploy(S);
   S._biomeFogPulseAt = 0;
   S.eventText = "";
   S.eventCooldown = 240;
@@ -30901,6 +30904,8 @@ function roamTigers(){
     const closeCivRange = (130 + (bloodScent * 95)) * directorAggroMul;
     const closeToPlayer = playerDist <= (closePlayerRange + (persona.playerBias * 120));
     const closeToCiv = closestCiv && closestCivDist <= closeCivRange;
+    const defense = ensureSettlementDefenseState(S);
+    const coreDist = defense.active ? dist(t.x,t.y,defense.coreX,defense.coreY) : Infinity;
     const dynCivBiasMul = clamp(Number(S._dynamicTigerCivBiasMul || 1), 0.85, 1.35);
     const dynPlayerBiasMul = clamp(Number(S._dynamicTigerPlayerBiasMul || 1), 0.85, 1.35);
     const civFocusBias = clamp(
@@ -30910,7 +30915,12 @@ function roamTigers(){
     ) * dynCivBiasMul;
     const civFocusChance = clamp(civFocusBias, 0.05, 0.99);
 
-    if(closeToCiv && (!closeToPlayer || Math.random() < civFocusChance)){
+    if(defense.active && coreDist < (motion.detect + 320) && (!closeToPlayer || coreDist < playerDist * 1.25)){
+      targetX = defense.coreX;
+      targetY = defense.coreY;
+      targetDist = coreDist;
+      t._defenseRaider = true;
+    } else if(closeToCiv && (!closeToPlayer || Math.random() < civFocusChance)){
       targetX = closestCiv.x;
       targetY = closestCiv.y;
       targetDist = closestCivDist;
@@ -31317,6 +31327,121 @@ function roamTigers(){
   }
 }
 
+// ===================== SETTLEMENT DEFENSE MISSIONS =====================
+function defaultSettlementDefenseState(){
+  return { active:false, coreX:0, coreY:0, coreHp:0, coreHpMax:0, lastTickAt:0, nextHitAt:0, nextNoticeAt:0, wavesCleared:0, damageTaken:0, failed:false, rewardGranted:false };
+}
+function arcadeSettlementDefenseMission(state=S){
+  if(normalizeModeName(state.mode) !== "Arcade") return false;
+  const mission = activeArcadeMission(state);
+  return !!mission && /(defend|protect|survive|village|safe zone|helicopter zone)/i.test(String(mission.objective || ""));
+}
+function settlementDefenseEnabled(state=S){
+  return !window.__TUTORIAL_MODE__ && (normalizeModeName(state.mode) === "Survival" || arcadeSettlementDefenseMission(state));
+}
+function ensureSettlementDefenseState(state=S){
+  if(!state.settlementDefense || typeof state.settlementDefense !== "object") state.settlementDefense = defaultSettlementDefenseState();
+  const d = state.settlementDefense;
+  for(const key of ["coreX","coreY","coreHp","coreHpMax","lastTickAt","nextHitAt","nextNoticeAt","wavesCleared","damageTaken"]){
+    if(!Number.isFinite(d[key])) d[key] = defaultSettlementDefenseState()[key];
+  }
+  d.active = !!d.active;
+  d.failed = !!d.failed;
+  d.rewardGranted = !!d.rewardGranted;
+  return d;
+}
+function resetSettlementDefenseForDeploy(state=S){
+  const d = defaultSettlementDefenseState();
+  if(!settlementDefenseEnabled(state)){
+    state.settlementDefense = d;
+    return d;
+  }
+  const w = worldWidth(state);
+  const h = worldHeight(state);
+  const pt = safeSpawnPoint(w * 0.50, h * 0.50, 50, true, true);
+  const level = Math.max(1, currentCampaignLevel());
+  const settlement = ensureCivilianSettlementState(state);
+  const maxHp = Math.round(420 + level * 18 + Math.min(600, Number(settlement.population || 0) * 8));
+  Object.assign(d, { active:true, coreX:pt.x, coreY:pt.y, coreHp:maxHp, coreHpMax:maxHp, lastTickAt:Date.now(), nextNoticeAt:Date.now() });
+  state.settlementDefense = d;
+  return d;
+}
+function settlementDefenseDamageMul(now=Date.now()){
+  const activeBarriers = activeBarricades(now).length;
+  const powered = (S.mapInteractables || []).some((it)=>it.kind === "generator" && it.powered && now < Number(it.activeUntil || 0));
+  return clamp(1 - Math.min(0.48, activeBarriers * 0.16) - (powered ? 0.12 : 0), 0.40, 1);
+}
+function settlementDefenseTick(now=Date.now()){
+  const d = ensureSettlementDefenseState(S);
+  if(!d.active || d.failed || S.paused || S.gameOver || S.missionEnded) return;
+  const dt = clamp(now - Math.max(d.lastTickAt || now, now - 1200), 0, 1200);
+  d.lastTickAt = now;
+  const powered = (S.mapInteractables || []).some((it)=>it.kind === "generator" && it.powered && now < Number(it.activeUntil || 0));
+  if(powered && d.coreHp > 0 && d.coreHp < d.coreHpMax){
+    d.coreHp = clamp(d.coreHp + (dt * 0.012), 0, d.coreHpMax);
+  }
+  if(now >= d.nextHitAt){
+    const attackers = (S.tigers || []).filter((t)=>t?.alive && dist(t.x,t.y,d.coreX,d.coreY) <= 92);
+    if(attackers.length){
+      d.nextHitAt = now + 1700;
+      const raw = attackers.reduce((sum,t)=>sum + (isBossTiger(t) || t.type === "Alpha" ? 34 : (t.type === "Berserker" ? 26 : 18)), 0);
+      const damage = Math.max(1, Math.round(raw * settlementDefenseDamageMul(now)));
+      d.coreHp = clamp(d.coreHp - damage, 0, d.coreHpMax);
+      d.damageTaken += damage;
+      for(const t of attackers) setTigerIntent(t, "Raid Core", 850);
+      emitDamagePopup(d.coreX,d.coreY-52,`CORE -${damage}`,"civilian");
+      queueImpactPulse(d.coreX,d.coreY,"hurt");
+    }
+  }
+  if(d.coreHp <= 0){
+    d.failed = true;
+    d.active = false;
+    const st = ensureCivilianSettlementState(S);
+    st.lastArrival = "Emergency evacuation completed after settlement defense failure. Permanent population was protected.";
+    save();
+    return gameOverChoice("Settlement defenses fell.\nEmergency evacuation completed.\nPermanent settlement progress was protected.");
+  }
+  if(now >= d.nextNoticeAt){
+    d.nextNoticeAt = now + 5000;
+    const nearby = (S.tigers || []).filter((t)=>t?.alive && dist(t.x,t.y,d.coreX,d.coreY) <= 220).length;
+    if(nearby) setEventText(`🏘️ Settlement under attack • Core ${Math.ceil(d.coreHp)}/${d.coreHpMax} • ${nearby} threat${nearby===1?"":"s"}`, 2.8);
+  }
+}
+function grantSettlementDefenseReward(){
+  const d = ensureSettlementDefenseState(S);
+  if(!d.active || d.failed || d.rewardGranted) return "";
+  d.rewardGranted = true;
+  const perfect = d.damageTaken <= 0;
+  const level = Math.max(1, currentCampaignLevel());
+  const cash = Math.round((perfect ? 3200 : 1700) + level * (perfect ? 150 : 85));
+  S.funds += cash;
+  trackCashEarned(cash);
+  addXP(perfect ? 180 : 110);
+  grantSeasonPassPoints(perfect ? 12 : 7, "Settlement defense");
+  return `\nSettlement Defense: ${perfect ? "Perfect Defense" : "Settlement secured"} • +$${cash.toLocaleString()} • Core ${Math.ceil(d.coreHp)}/${d.coreHpMax}\n`;
+}
+function drawSettlementDefenseCore(now=Date.now()){
+  const d = ensureSettlementDefenseState(S);
+  if(!d.active || d.failed) return;
+  const pct = clamp(d.coreHp / Math.max(1,d.coreHpMax),0,1);
+  const pulse = 0.85 + Math.sin(now/210)*0.10;
+  ctx.save();
+  ctx.globalAlpha = 0.28*pulse;
+  ctx.fillStyle = pct > 0.5 ? "rgba(74,222,128,.9)" : "rgba(248,113,113,.92)";
+  ctx.beginPath(); ctx.arc(d.coreX,d.coreY,72,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha = 0.96;
+  ctx.strokeStyle = pct > 0.5 ? "rgba(74,222,128,.98)" : "rgba(248,113,113,.98)";
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(d.coreX,d.coreY,62,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle = "rgba(7,12,20,.9)";
+  roundedRectFill(d.coreX-78,d.coreY-96,156,31,10);
+  ctx.fillStyle = "rgba(248,250,252,.98)";
+  ctx.font = "900 11px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(`🏘️ SETTLEMENT CORE ${Math.ceil(pct*100)}%`,d.coreX,d.coreY-76);
+  ctx.restore();
+}
+
 // ===================== SURVIVAL PRESSURE =====================
 function survivalPressureTick(){
   if(S.mode!=="Survival" || S.paused || S.gameOver) return;
@@ -31333,11 +31458,18 @@ function survivalPressureTick(){
       setEventText(`Wave ${Math.max(1, S.survivalWave || 1)} cleared. Incoming pack...`, 2.4);
     } else if(now >= S._survivalClearAt && !S.inBattle && !S.missionEnded){
       S._survivalClearAt = 0;
+      const defenseReward = grantSettlementDefenseReward();
       S.survivalWave = Math.max(1, Math.floor(S.survivalWave || 1) + 1);
       spawnTigers();
+      const defense = ensureSettlementDefenseState(S);
+      if(defense.active){
+        defense.wavesCleared += 1;
+        defense.rewardGranted = false;
+        defense.coreHp = clamp(defense.coreHp + Math.round(defense.coreHpMax * 0.18), 0, defense.coreHpMax);
+      }
       const spawnAudit = validateMissionSpawnLayout({ repair:true });
       if((spawnAudit?.fixed || 0) > 0){
-        setEventText(`Wave ${S.survivalWave} started • spawn safety adjusted ${spawnAudit.fixed}`, 2.8);
+        setEventText(`Wave ${S.survivalWave} started • spawn safety adjusted ${spawnAudit.fixed}${defenseReward ? " • Defense reward secured" : ""}`, 2.8);
       } else {
         setEventText(`Wave ${S.survivalWave} started • Tigers incoming`, 2.8);
       }
@@ -33946,6 +34078,7 @@ function checkMissionComplete(){
       }
       let upkeepNote = "";
       const settlementNote = recordCivilianSettlementMission(civEvac);
+      const settlementDefenseNote = grantSettlementDefenseReward();
       const squadProgressNote = awardSquadMissionProgress();
       const upkeep = applySquadUpkeepAfterMission();
       if(upkeep){
@@ -34004,7 +34137,7 @@ function checkMissionComplete(){
       renderMissionRewards2Card(rewards2);
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${extractionNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
@@ -34401,6 +34534,12 @@ function renderHUD(){
     }
     if(nearestInteract && nearestInteractDist < 170){
       assistParts.push(`${nearestInteract.label}: ${Math.round(nearestInteractDist)}m (tap to use)`);
+    }
+  }
+  {
+    const defense = ensureSettlementDefenseState(S);
+    if(defense.active && !defense.failed){
+      assistParts.unshift(`🏘️ Core ${Math.ceil(defense.coreHp)}/${defense.coreHpMax} HP • Waves ${Math.max(0, defense.wavesCleared || 0)}`);
     }
   }
 
@@ -39730,6 +39869,7 @@ function draw(){
         });
       }
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
+      runFrameTask("settlementDefense", frameInterval(lagCritical ? 260 : (lagHeavy ? 210 : 160), 1.5), settlementDefenseTick, { costHint:0.55, critical:settlementDefenseEnabled(S) });
       runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 44 : (lagHeavy ? 36 : 28)) : (lagCritical ? 56 : (lagHeavy ? 46 : 36)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
       runFrameTask("extractionSequence", frameInterval(lagCritical ? 180 : (lagHeavy ? 140 : 100), 1.4), extractionSequenceTick, { costHint:0.45, critical:true });
       runFrameTask("storyCheckpoint", frameInterval(lagCritical ? 220 : (lagHeavy ? 170 : 124), 1.45), maybeCaptureStoryCheckpoint, { costHint:0.8, critical:S.mode==="Story" });
@@ -39827,6 +39967,7 @@ function draw(){
         const entityDrawOk = safeTick("drawSceneEntities", drawEntities);
         if(entityDrawOk){
           safeTick("drawExtractionSequenceMarker", ()=>drawExtractionSequenceMarker(Date.now()));
+          safeTick("drawSettlementDefenseCore", ()=>drawSettlementDefenseCore(Date.now()));
         }
         if(entityDrawOk && window.TigerTutorial?.isRunning){
           safeTick("drawTutorialStepWorldHighlight", ()=>drawTutorialStepWorldHighlight(Date.now()));
