@@ -8201,6 +8201,10 @@ function defaultStoryBranchingState(){
     dialogueChoices:{},
     scenesSeen:{},
     lastDoctrine:"BALANCED",
+    rivalHeat:0,
+    consequenceFlags:{},
+    loyaltyPerks:{},
+    lastAfterAction:"",
     lastEndingKey: "",
     lastUpdatedAt: 0,
   };
@@ -8274,6 +8278,10 @@ function normalizeStoryBranchingState(raw){
     dialogueChoices:normalizeStoryStringMap(src.dialogueChoices),
     scenesSeen:normalizeStoryBoolMap(src.scenesSeen),
     lastDoctrine:String(src.lastDoctrine || "BALANCED").trim().toUpperCase(),
+    rivalHeat:clamp(Math.floor(Number(src.rivalHeat || 0)), 0, 100),
+    consequenceFlags:normalizeStoryBoolMap(src.consequenceFlags),
+    loyaltyPerks:normalizeStoryBoolMap(src.loyaltyPerks),
+    lastAfterAction:String(src.lastAfterAction || "").trim(),
     lastEndingKey: String(src.lastEndingKey || "").trim(),
     lastUpdatedAt: Math.max(0, Math.floor(Number(src.lastUpdatedAt || 0))),
   };
@@ -8311,6 +8319,14 @@ function mergeStoryBranchingSnapshots(primaryRaw, secondaryRaw){
     ...(secondary.scenesSeen || {}),
     ...(primary.scenesSeen || {}),
   };
+  const consequenceFlags = {
+    ...(secondary.consequenceFlags || {}),
+    ...(primary.consequenceFlags || {}),
+  };
+  const loyaltyPerks = {
+    ...(secondary.loyaltyPerks || {}),
+    ...(primary.loyaltyPerks || {}),
+  };
   const hasChapterChoices = Object.keys(chapterChoices).length > 0;
   const mergedRaw = {
     path: hasChapterChoices ? "" : (primary.path || secondary.path || STORY_BRANCH_PATHS.BALANCED),
@@ -8321,6 +8337,10 @@ function mergeStoryBranchingSnapshots(primaryRaw, secondaryRaw){
     dialogueChoices,
     scenesSeen,
     lastDoctrine:primary.lastDoctrine || secondary.lastDoctrine || "BALANCED",
+    rivalHeat:Math.max(Number(primary.rivalHeat || 0), Number(secondary.rivalHeat || 0)),
+    consequenceFlags,
+    loyaltyPerks,
+    lastAfterAction:primary.lastAfterAction || secondary.lastAfterAction || "",
     lastEndingKey: String(primary.lastEndingKey || secondary.lastEndingKey || "").trim(),
     lastUpdatedAt: Math.max(
       0,
@@ -21659,24 +21679,57 @@ const STORY_CAMPAIGN_CAST = Object.freeze([
   { key:"commanderVale", name:"Commander Vale", role:"Operations Commander", icon:"🎖️" },
   { key:"drMira", name:"Dr. Mira Sen", role:"Tiger Behavior Scientist", icon:"🧬" },
   { key:"captainRook", name:"Captain Rook", role:"Field Security Lead", icon:"🪖" },
+  { key:"rivalVoss", name:"Director Voss", role:"Rival Hunter Commander", icon:"🎭", rival:true },
 ]);
+function storyRelationshipTier(value=0){
+  const bond = Number(value || 0);
+  if(bond >= 40) return "Loyal";
+  if(bond >= 20) return "Trusted";
+  if(bond >= 5) return "Supportive";
+  if(bond <= -20) return "Hostile";
+  if(bond < 0) return "Concerned";
+  return "Neutral";
+}
+function refreshStoryCampaignConsequences(branch=ensureStoryBranchingState(S)){
+  branch.loyaltyPerks = branch.loyaltyPerks || {};
+  branch.consequenceFlags = branch.consequenceFlags || {};
+  if(Number(branch.relationships.commanderVale || 0) >= 20) branch.loyaltyPerks.valeCommand = 1;
+  if(Number(branch.relationships.drMira || 0) >= 20) branch.loyaltyPerks.miraResearch = 1;
+  if(Number(branch.relationships.captainRook || 0) >= 20) branch.loyaltyPerks.rookVanguard = 1;
+  if(Number(branch.rivalHeat || 0) >= 30) branch.consequenceFlags.vossMarked = 1;
+  if(Number(branch.captureVotes || 0) >= 3) branch.consequenceFlags.researchAlliance = 1;
+  if(Number(branch.killVotes || 0) >= 3) branch.consequenceFlags.securityMandate = 1;
+  return branch;
+}
+function storyCampaignConsequenceSummary(branch=ensureStoryBranchingState(S)){
+  refreshStoryCampaignConsequences(branch);
+  const active = [];
+  if(branch.loyaltyPerks.valeCommand) active.push("Vale: +1 shield");
+  if(branch.loyaltyPerks.miraResearch) active.push("Mira: improved capture support");
+  if(branch.loyaltyPerks.rookVanguard) active.push("Rook: armor and payout support");
+  if(branch.consequenceFlags.vossMarked) active.push("Voss Marked: stronger rival pressure");
+  return active.length ? active.join(" • ") : "No loyalty perks unlocked yet.";
+}
 function storyCampaignSceneForMission(mission=storyMissionForState(S)){
   const number = Math.max(1, Math.floor(Number(mission?.number || 1)));
   const chapter = Math.max(1, Math.floor(Number(mission?.chapter || Math.ceil(number / 10))));
-  const route = storyBranchPathLabel(ensureStoryBranchingState(S).path);
+  const branch = refreshStoryCampaignConsequences(ensureStoryBranchingState(S));
+  const route = storyBranchPathLabel(branch.path);
+  const vossPressure = branch.rivalHeat >= 30 ? " Director Voss has marked this squad and deployed elite rivals." : "";
+  const aftermath = branch.lastAfterAction ? ` Last operation: ${branch.lastAfterAction}` : "";
   if(mission?.finalBoss){
-    return { key:`m${number}`, title:"The Ancient Line", visual:"Final command channel • all decisions converge", speaker:"Commander Vale", text:`Every settlement is watching. ${route} brought us here. Decide what Tiger Strike becomes when the Ancient Tiger falls.` };
+    return { key:`m${number}`, title:"The Ancient Line", visual:"Final command channel • all decisions converge", speaker:"Commander Vale", text:`Every settlement is watching. ${route} brought us here. Decide what Tiger Strike becomes when the Ancient Tiger falls.${vossPressure}${aftermath}` };
   }
   if(mission?.boss){
-    return { key:`m${number}`, title:`Chapter ${chapter}: Apex Contact`, visual:"Boss intelligence • live field transmission", speaker:"Dr. Mira Sen", text:`This Alpha remembers prior encounters. Break its armor, protect the civilians, and choose capture before lethal force closes the door.` };
+    return { key:`m${number}`, title:`Chapter ${chapter}: Apex Contact`, visual:"Boss intelligence • live field transmission", speaker:"Dr. Mira Sen", text:`This Alpha remembers prior encounters. Break its armor, protect the civilians, and choose capture before lethal force closes the door.${vossPressure}${aftermath}` };
   }
   if(((number - 1) % 10) === 0){
-    return { key:`m${number}`, title:`Chapter ${chapter}: New Territory`, visual:"Animated regional sweep • settlement signals acquired", speaker:"Commander Vale", text:`A new region has opened. Your doctrine will shape civilian trust, tiger pressure, and how the team remembers this operation.` };
+    return { key:`m${number}`, title:`Chapter ${chapter}: New Territory`, visual:"Animated regional sweep • settlement signals acquired", speaker:"Commander Vale", text:`A new region has opened. Your doctrine will shape civilian trust, tiger pressure, and how the team remembers this operation.${vossPressure}${aftermath}` };
   }
   if(number % 5 === 0){
-    return { key:`m${number}`, title:"Fault Lines", visual:"Intercepted rival transmission • route conditions changing", speaker:"Captain Rook", text:`Rival hunters are moving through the sector. We can protect the rescue lanes, study the pack, or hit hard before they interfere.` };
+    return { key:`m${number}`, title:"Fault Lines", visual:"Intercepted rival transmission • route conditions changing", speaker:"Captain Rook", text:`Rival hunters are moving through the sector. We can protect the rescue lanes, study the pack, or hit hard before they interfere.${vossPressure}${aftermath}` };
   }
-  return { key:`m${number}`, title:"Field Transmission", visual:"Short command update", speaker:"Dr. Mira Sen", text:`The pack is adapting to your route. Keep civilians moving and do not let pressure decide the tiger outcome for you.` };
+  return { key:`m${number}`, title:"Field Transmission", visual:"Short command update", speaker:"Dr. Mira Sen", text:`The pack is adapting to your route. Keep civilians moving and do not let pressure decide the tiger outcome for you.${vossPressure}${aftermath}` };
 }
 function storyCampaignSceneRequired(mission=storyMissionForState(S), force=false){
   if(force) return true;
@@ -21694,15 +21747,23 @@ function renderStoryCampaignScene(force=false){
   const visual = document.getElementById("storySceneVisual");
   const text = document.getElementById("storySceneText");
   const cast = document.getElementById("storyCastGrid");
+  const consequence = document.getElementById("storyConsequenceText");
   const choices = document.getElementById("storyChoiceGrid");
   if(title) title.innerText = scene.title;
   if(visual) visual.innerText = scene.visual;
   if(text) text.innerHTML = `<b>${scene.speaker}:</b> ${scene.text}`;
   if(cast){
     cast.innerHTML = STORY_CAMPAIGN_CAST.map((member)=>{
+      if(member.rival){
+        const heat = Number(branch.rivalHeat || 0);
+        return `<div class="storyCastCard"><div class="storyCastName">${member.icon} ${member.name}</div><div class="storyCastRole">${member.role}</div><div class="storyCastBond">Rival Threat ${heat}%</div></div>`;
+      }
       const bond = Number(branch.relationships?.[member.key] || 0);
-      return `<div class="storyCastCard"><div class="storyCastName">${member.icon} ${member.name}</div><div class="storyCastRole">${member.role}</div><div class="storyCastBond">Relationship ${bond >= 0 ? "+" : ""}${bond}</div></div>`;
+      return `<div class="storyCastCard"><div class="storyCastName">${member.icon} ${member.name}</div><div class="storyCastRole">${member.role}</div><div class="storyCastBond">${storyRelationshipTier(bond)} • ${bond >= 0 ? "+" : ""}${bond}</div></div>`;
     }).join("");
+  }
+  if(consequence){
+    consequence.innerHTML = `<b>Campaign Consequences:</b> ${storyCampaignConsequenceSummary(branch)}<br><b>Current Route:</b> ${storyBranchPathLabel(branch.path)} • <b>Voss Threat:</b> ${Number(branch.rivalHeat || 0)}%`;
   }
   if(choices){
     const selected = branch.dialogueChoices?.[scene.key] || "";
@@ -21713,6 +21774,51 @@ function renderStoryCampaignScene(force=false){
     ].map(([key,label,desc])=>`<button class="${selected === key ? "good" : "ghost"}" onclick="chooseStoryCampaignDoctrine('${key}')">${label}<br><span class="small">${desc}</span></button>`).join("");
   }
   return scene;
+}
+function recordStoryCampaignMissionOutcome({ missionStats={}, civTotal=0, civDead=0, civEvac=0, mission=null }={}){
+  if(S.mode !== "Story" || normalizeStoryVariant(mission?.storyVariant) !== STORY_VARIANTS.CAMPAIGN) return "";
+  const branch = ensureStoryBranchingState(S);
+  const captures = Math.max(0, Math.floor(Number(missionStats.captures || 0)));
+  const kills = Math.max(0, Math.floor(Number(missionStats.kills || 0)));
+  const perfectRescue = civTotal > 0 && civDead === 0 && civEvac >= civTotal;
+  const changes = [];
+  if(perfectRescue){
+    branch.relationships.commanderVale = clamp(branch.relationships.commanderVale + 3, -100, 100);
+    changes.push("Vale +3");
+  }else if(civDead > 0){
+    branch.relationships.commanderVale = clamp(branch.relationships.commanderVale - 3, -100, 100);
+    branch.rivalHeat = clamp(branch.rivalHeat + 3, 0, 100);
+    changes.push("Vale -3", "Voss threat +3");
+  }
+  if(captures > kills){
+    branch.relationships.drMira = clamp(branch.relationships.drMira + 2, -100, 100);
+    branch.rivalHeat = clamp(branch.rivalHeat - 1, 0, 100);
+    changes.push("Mira +2");
+  }else if(kills > captures){
+    branch.relationships.captainRook = clamp(branch.relationships.captainRook + 2, -100, 100);
+    branch.rivalHeat = clamp(branch.rivalHeat + 2, 0, 100);
+    changes.push("Rook +2", "Voss threat +2");
+  }
+  if(mission?.boss){
+    branch.rivalHeat = clamp(branch.rivalHeat + 4, 0, 100);
+    changes.push("Voss threat +4");
+  }
+  refreshStoryCampaignConsequences(branch);
+  branch.lastAfterAction = perfectRescue
+    ? `The settlement praised a zero-loss rescue; ${captures} tiger${captures===1?" was":"s were"} captured.`
+    : `${civEvac}/${Math.max(1, civTotal)} civilians evacuated; ${captures} captured and ${kills} eliminated.`;
+  branch.lastUpdatedAt = Date.now();
+  return `\nStory Campaign 3.0 After-Action: ${branch.lastAfterAction}\nRelationships: ${changes.join(" • ") || "No major changes"}\nActive Consequences: ${storyCampaignConsequenceSummary(branch)}\n`;
+}
+function applyStoryCampaignPersistentEffects(){
+  const branch = refreshStoryCampaignConsequences(ensureStoryBranchingState(S));
+  if(branch.loyaltyPerks.valeCommand) S.shields = Math.max(Number(S.shields || 0), 3);
+  if(branch.loyaltyPerks.miraResearch) S._storyDoctrineCaptureBonus = Math.max(Number(S._storyDoctrineCaptureBonus || 0), 0.12);
+  if(branch.loyaltyPerks.rookVanguard){
+    S.armor = Math.max(Number(S.armor || 0), Math.min(Number(S.armorCap || 100), 28));
+    S._storyDoctrinePayoutMul = Math.max(Number(S._storyDoctrinePayoutMul || 1), 1.05);
+  }
+  if(branch.consequenceFlags.vossMarked) S._directorAggroMul = Math.max(Number(S._directorAggroMul || 1), 1.12);
 }
 function applyStoryCampaignDoctrineEffects(choice, announce=false){
   const key = ["PRESERVE","BALANCED","STRIKE"].includes(String(choice || "").toUpperCase()) ? String(choice).toUpperCase() : "BALANCED";
@@ -21729,6 +21835,7 @@ function applyStoryCampaignDoctrineEffects(choice, announce=false){
     S._storyDoctrineRescueMul = 1.08;
     if(announce) setEventText("Story choice: Protect • team unity and rescue protection improved.", 5);
   }
+  applyStoryCampaignPersistentEffects();
   return key;
 }
 function chooseStoryCampaignDoctrine(choice){
@@ -28052,6 +28159,7 @@ function deploy(opts={}){
     const scene = storyCampaignSceneForMission(storyMissionForState(S));
     const selectedDoctrine = ensureStoryBranchingState(S).dialogueChoices?.[scene.key];
     if(selectedDoctrine) applyStoryCampaignDoctrineEffects(selectedDoctrine, false);
+    else applyStoryCampaignPersistentEffects();
   }
   prepareLiveOpsModifierCardsForMission(S);
   const storySceneShown = S.mode === "Story" && __launchIntroShownThisBoot && !storyCampaignStartupOverlayVisible()
@@ -34464,6 +34572,13 @@ function checkMissionComplete(){
         ? `\nExtraction: ${extraction.label || "Emergency Extraction"}${extraction.emergency ? " • Emergency fallback" : ` • Perfect hold +$${Math.max(0, Math.floor(Number(extraction.bonusCash || 0))).toLocaleString()}`}\n`
         : "";
       const missionStats = finalizeMissionStatsSnapshot();
+      const storyCampaign3Note = recordStoryCampaignMissionOutcome({
+        missionStats,
+        civTotal,
+        civDead,
+        civEvac,
+        mission:storyMission,
+      });
 
       const recapMeta = {
         number: activeMission?.number || gameplayCloudMission(S),
@@ -34493,7 +34608,7 @@ function checkMissionComplete(){
       renderMissionRewards2Card(rewards2);
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);

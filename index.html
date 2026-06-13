@@ -1758,7 +1758,7 @@
 <div class="overlay" id="storyIntroOverlay">
   <div class="modal">
     <div class="modalTop">
-      <div class="modalTitle">🐯 TIGER STRIKE</div>
+      <div class="modalTitle">🐯 Story Campaign 3.0</div>
       <button class="ghost" onclick="skipStoryIntro()">Skip</button>
     </div>
     <div class="modalBody storyIntroBody">
@@ -1768,6 +1768,7 @@
         <div class="storySceneText" id="storySceneText"><b>Rescue civilians.</b> Control tiger aggression. Choose capture or kill.</div>
       </div>
       <div class="storyCastGrid" id="storyCastGrid"></div>
+      <div class="hudLine" id="storyConsequenceText"></div>
       <div class="storyChoiceGrid" id="storyChoiceGrid"></div>
       <div class="row">
         <button class="good" id="storyContinueBtn" onclick="beginStoryMissionFromIntro()">🎮 Begin Mission</button>
@@ -2117,7 +2118,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4521-story-campaign-visible"></script>
+<script src="./game.js?v=4522-cinematic-story-3"></script>
 <script src="./tutorial.js?v=4499-warfront-ledger-hardlock"></script>
 <script>
 (() => {
