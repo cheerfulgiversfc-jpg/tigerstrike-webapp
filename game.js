@@ -8480,6 +8480,68 @@ function resetModeWallet(mode, state = S){
     state.funds = getModeWallet(key, state);
   }
 }
+const MODE_PROFILE_KEYS = Object.freeze([
+  "score","trust","aggro","lives","hp","armor","armorCap","stamina",
+  "ownedWeapons","equippedWeaponId","preferredWeaponId","preferredLethalWeaponId","lastCombatLethalWeaponId",
+  "weaponAttachments","weaponForge","activeLoadoutPresetId","ammoReserve","mag","durability","weaponMastery","weaponMasteryTrees",
+  "medkits","medkitSelectedId","repairKits","armorPlates","armorPlatesFallback","armorPlateSelectedId","trapsOwned","shields",
+  "soldierAttackersOwned","soldierRescuersOwned","soldierAttackersDowned","soldierRescuersDowned","squadOwnershipLedger",
+  "squadProgression","civilianSettlement","specialistStarUnlocks","stats","opsTotals","balanceStats","nemesis",
+  "seasonPass","masteryRewards","cosmeticCollection","achievements","title","xp","level","perkPoints","perks",
+  "progressionUnlocks","metaBase","metaHQ","specialistPerks","chapterRewardsUnlocked","contractTallies","contracts",
+  "liveOps","liveOpsModifierCards","missionRewardStreak"
+]);
+function modeProfileSnapshot(source){
+  const src = source && typeof source === "object" ? source : DEFAULT;
+  const out = {};
+  for(const key of MODE_PROFILE_KEYS){
+    out[key] = cloneState(src[key] ?? DEFAULT[key]);
+  }
+  return out;
+}
+function defaultModeProfile(){
+  return modeProfileSnapshot(DEFAULT);
+}
+function ensureModeProfilesState(state=S){
+  if(!state || typeof state !== "object") return {};
+  if(!state.modeProfiles || typeof state.modeProfiles !== "object"){
+    // Existing shared progression belongs to Story; other modes start clean.
+    state.modeProfiles = {
+      Story:modeProfileSnapshot(state),
+      Arcade:defaultModeProfile(),
+      Survival:defaultModeProfile(),
+    };
+  }else{
+    for(const mode of MODE_KEYS){
+      if(!state.modeProfiles[mode] || typeof state.modeProfiles[mode] !== "object"){
+        state.modeProfiles[mode] = defaultModeProfile();
+      }
+    }
+  }
+  return state.modeProfiles;
+}
+function captureActiveModeProfile(state=S){
+  if(!state || typeof state !== "object") return;
+  const profiles = ensureModeProfilesState(state);
+  profiles[normalizeModeName(state.mode)] = modeProfileSnapshot(state);
+}
+function applyModeProfile(mode, state=S){
+  if(!state || typeof state !== "object") return;
+  const key = normalizeModeName(mode);
+  const profiles = ensureModeProfilesState(state);
+  const profile = profiles[key] || defaultModeProfile();
+  for(const field of MODE_PROFILE_KEYS){
+    state[field] = cloneState(profile[field] ?? DEFAULT[field]);
+  }
+  state.mode = key;
+  state.funds = getModeWallet(key, state);
+}
+function activateModeProfile(mode, state=S){
+  if(!state || typeof state !== "object") return;
+  const next = normalizeModeName(mode);
+  if(normalizeModeName(state.mode) !== next) captureActiveModeProfile(state);
+  applyModeProfile(next, state);
+}
 
 const DEFAULT = {
   v: STORAGE_VERSION,
@@ -8517,6 +8579,7 @@ const DEFAULT = {
     Arcade:1000,
     Survival:1000,
   },
+  modeProfiles:null,
   soundOn:true, audioUnlocked:false,
   performanceMode:"AUTO",
 
@@ -10397,6 +10460,8 @@ function load(){
       }
     }
     m.funds = getModeWallet(m.mode, m);
+    ensureModeProfilesState(m);
+    applyModeProfile(m.mode, m);
     ensureContractTalliesState(m);
     ensureContractsState(m);
     ensureLiveOpsState(m);
@@ -10539,6 +10604,7 @@ function trimPersistentState(state){
   return state;
 }
 function buildPersistedState(){
+  captureActiveModeProfile(S);
   const out = { ...S };
   delete out._tutorialSnapshot;
   delete out._tutorialPrev;
@@ -14403,6 +14469,10 @@ function sanitizeRuntimeState(){
 
   S.civilians = S.civilians.filter((c)=>{
     if(!c || typeof c !== "object") return false;
+    if(c.evac || c.safeZoneLocked){
+      lockEvacuatedCivilianInSafeZone(c, S);
+      return true;
+    }
     c.x = clampX(c.x, 50, w - 50);
     c.y = clampY(c.y, 70, h - 50);
     c.hpMax = Math.max(1, Math.round(Number.isFinite(c.hpMax) ? c.hpMax : 100));
@@ -14419,6 +14489,7 @@ function sanitizeRuntimeState(){
     }
     return true;
   }).slice(0, MAX_PERSIST_CIVILIANS);
+  lockAllEvacuatedCivilians(S);
 
   S.supportUnits = S.supportUnits.filter((u)=>{
     if(!u || typeof u !== "object") return false;
@@ -22065,12 +22136,14 @@ function setMode(m){
   const wantsStoryIntro = (nextMode==="Story" && !window.__TUTORIAL_MODE__);
   ensureStoryEndgameState(S);
   setModeWallet(S.mode, S.funds, S);
-  S.mode = nextMode;
-  S.funds = getModeWallet(nextMode, S);
-  S.lives=5;
+  activateModeProfile(nextMode, S);
   applyModeTheme(S.mode);
-  if(nextMode==="Arcade") S.arcadeLevel=1;
-  if(nextMode==="Survival"){ S.survivalWave=1; S.survivalStart=Date.now(); S.surviveSeconds=0; }
+  if(nextMode==="Arcade") S.arcadeLevel = clamp(Math.floor(Number(S.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  if(nextMode==="Survival"){
+    S.survivalWave = Math.max(1, Math.floor(Number(S.survivalWave || 1)));
+    S.survivalStart = Date.now();
+    S.surviveSeconds = 0;
+  }
   if(nextMode==="Story"){
     // Keep Story progress when returning to Story mode.
     S.storyLevel = storyResumeMissionLevel();
@@ -22085,7 +22158,7 @@ function setMode(m){
 }
 function setStoryCampaignMode(){
   ensureStoryEndgameState(S);
-  S.mode = "Story";
+  activateModeProfile("Story", S);
   S.storyVariant = STORY_VARIANTS.CAMPAIGN;
   S.storyLevel = storyResumeMissionLevel();
   S.storyLastMission = Math.max(S.storyLastMission || 1, S.storyLevel || 1);
@@ -22103,7 +22176,7 @@ function startStoryNgPlus(){
     toast("Complete Story Mission 100 to unlock New Game+.");
     return;
   }
-  S.mode = "Story";
+  activateModeProfile("Story", S);
   S.storyVariant = STORY_VARIANTS.CAMPAIGN;
   S.storyNgPlusTier = Math.max(0, Math.floor(Number(S.storyNgPlusTier || 0))) + 1;
   S.storyLevel = 1;
@@ -22125,7 +22198,7 @@ function startEndlessGauntlet(){
     toast("Complete Story Mission 100 to unlock Endless Gauntlet.");
     return;
   }
-  S.mode = "Story";
+  activateModeProfile("Story", S);
   S.storyVariant = STORY_VARIANTS.GAUNTLET;
   S.gauntletDepth = Math.max(1, Math.floor(Number(S.gauntletDepth || 1)));
   S.storyLevel = storyMissionLevelForState(S);
@@ -22147,7 +22220,7 @@ function startEliteBossHunt(chapter=null){
   const nextChapter = Number.isFinite(Number(chapter))
     ? clamp(Math.floor(Number(chapter)), 1, 10)
     : clamp(Math.floor(Number(S.eliteHuntChapter || 1)), 1, 10);
-  S.mode = "Story";
+  activateModeProfile("Story", S);
   S.storyVariant = STORY_VARIANTS.ELITE_HUNT;
   S.eliteHuntChapter = nextChapter;
   S.eliteHuntRuns = Math.max(1, Math.floor(Number(S.eliteHuntRuns || 1)));
@@ -30497,6 +30570,7 @@ function civilianSmartRerouteTarget(c, anchor, now=Date.now()){
 // ===================== CIVILIANS FOLLOW-ONLY =====================
 function followCiviliansTick(){
   if(S.mode==="Survival") return;
+  lockAllEvacuatedCivilians(S);
   const tutorialRun = !!window.TigerTutorial?.isRunning;
   const tutorialEscortStep = window.TigerTutorial?.currentKey === "escort";
   const playerSpeed = (S._sprintTicks && S._sprintTicks > 0) ? PLAYER_SPRINT_SPEED : PLAYER_WALK_SPEED;
@@ -30777,6 +30851,37 @@ function moveCivilianInsideEvac(c, coreRadiusOverride=null){
   c._followVx = 0;
   c._followVy = 0;
 }
+function lockEvacuatedCivilianInSafeZone(c, state=S){
+  const ez = state?.evacZone;
+  if(!c || !ez || !Number.isFinite(ez.x) || !Number.isFinite(ez.y)) return;
+  const radius = Math.max(8, Math.min(24, (Number(ez.r || 70) - 18)));
+  if(!c.safeZoneOffset || !Number.isFinite(c.safeZoneOffset.x) || !Number.isFinite(c.safeZoneOffset.y)){
+    const angle = (((Number(c.id || 1) * 137.508) % 360) * Math.PI) / 180;
+    const lane = Math.max(6, Math.min(radius, 8 + ((Number(c.id || 1) % 4) * 4)));
+    c.safeZoneOffset = { x:Math.cos(angle) * lane, y:Math.sin(angle) * lane };
+  }
+  c.evac = true;
+  c.safeZoneLocked = true;
+  c.following = false;
+  c.escortOwner = "";
+  c.escortUnitId = "";
+  c.fleeUntil = 0;
+  c.fleeFromTigerId = 0;
+  c._followVx = 0;
+  c._followVy = 0;
+  c.vx = 0;
+  c.vy = 0;
+  c.x = ez.x + c.safeZoneOffset.x;
+  c.y = ez.y + c.safeZoneOffset.y;
+  c.__drawX = c.x;
+  c.__drawY = c.y;
+}
+function lockAllEvacuatedCivilians(state=S){
+  if(!state || !Array.isArray(state.civilians)) return;
+  for(const civ of state.civilians){
+    if(civ?.evac || civ?.safeZoneLocked) lockEvacuatedCivilianInSafeZone(civ, state);
+  }
+}
 
 function evacCheck(){
   if(S.mode==="Survival") return;
@@ -30800,6 +30905,7 @@ function evacCheck(){
         continue;
       }
       c.evac=true;
+      lockEvacuatedCivilianInSafeZone(c, S);
       S.evacDone += 1;
       S.stats.evac += 1;
       addContractTally("evac", 1);
