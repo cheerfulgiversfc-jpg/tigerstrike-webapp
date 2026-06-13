@@ -21684,7 +21684,7 @@ function storyCampaignSceneRequired(mission=storyMissionForState(S), force=false
   if(normalizeStoryVariant(mission?.storyVariant) !== STORY_VARIANTS.CAMPAIGN) return false;
   const number = Math.max(1, Math.floor(Number(mission?.number || 1)));
   const branch = ensureStoryBranchingState(S);
-  return !!(mission?.boss || ((number - 1) % 10) === 0 || number % 5 === 0) && !branch.scenesSeen[`m${number}`];
+  return !branch.scenesSeen[`m${number}`];
 }
 function renderStoryCampaignScene(force=false){
   const mission = storyMissionForState(S);
@@ -21753,6 +21753,13 @@ function chooseStoryCampaignDoctrine(choice){
   renderStoryCampaignScene(true);
   save();
 }
+let __storyCampaignJournalOnly = false;
+function storyCampaignStartupOverlayVisible(){
+  return ["launchIntroOverlay","dailyRewardOverlay"].some((id)=>{
+    const el = document.getElementById(id);
+    return !!(el && el.style.display === "flex");
+  });
+}
 function showStoryCampaignScene(force=false){
   const mission = storyMissionForState(S);
   if(!storyCampaignSceneRequired(mission, force)) return false;
@@ -21766,6 +21773,17 @@ function showStoryCampaignScene(force=false){
   overlay.style.display = "flex";
   syncGamepadFocus();
   return true;
+}
+function openStoryCampaignJournal(){
+  if(S.mode !== "Story"){
+    toast("Story Campaign is available while playing Story mode.");
+    return false;
+  }
+  __storyCampaignJournalOnly = true;
+  const shown = showStoryCampaignScene(true);
+  const btn = document.getElementById("storyContinueBtn");
+  if(btn) btn.innerText = "Return to Mission";
+  return shown;
 }
 function openLaunchIntro(force=false){
   if(window.__TUTORIAL_MODE__) return;
@@ -21887,6 +21905,15 @@ function beginStoryMissionFromIntro(){
   clearStoryIntroAutoTimer();
   const overlay = document.getElementById("storyIntroOverlay");
   if(overlay) overlay.style.display = "none";
+  const journalOnly = __storyCampaignJournalOnly;
+  __storyCampaignJournalOnly = false;
+  const continueBtn = document.getElementById("storyContinueBtn");
+  if(continueBtn) continueBtn.innerText = "🎮 Begin Mission";
+  if(journalOnly){
+    setPaused(false,null);
+    syncGamepadFocus();
+    return;
+  }
   S.storyIntroSeen = true;
   if(S.mode === "Story"){
     const scene = storyCampaignSceneForMission(storyMissionForState(S));
@@ -28027,7 +28054,9 @@ function deploy(opts={}){
     if(selectedDoctrine) applyStoryCampaignDoctrineEffects(selectedDoctrine, false);
   }
   prepareLiveOpsModifierCardsForMission(S);
-  const storySceneShown = S.mode === "Story" ? showStoryCampaignScene(false) : false;
+  const storySceneShown = S.mode === "Story" && __launchIntroShownThisBoot && !storyCampaignStartupOverlayVisible()
+    ? showStoryCampaignScene(false)
+    : false;
   const missionBriefShown = !storySceneShown && shouldShowMissionBrief() ? showMissionBrief(rand(2200, 3000)) : false;
   if(!missionBriefShown && !storySceneShown) {
     if(normalizeModeName(S.mode) === "Arcade" && !window.__TUTORIAL_MODE__){
@@ -40964,6 +40993,7 @@ window.claimDailyRewardOverlay = claimDailyRewardOverlay;
 window.setLaunchArtwork = setLaunchArtwork;
 window.openStoryIntro = openStoryIntro;
 window.showStoryCampaignScene = showStoryCampaignScene;
+window.openStoryCampaignJournal = openStoryCampaignJournal;
 window.chooseStoryCampaignDoctrine = chooseStoryCampaignDoctrine;
 window.startStoryIntroMission = startStoryIntroMission;
 window.beginStoryMissionFromIntro = beginStoryMissionFromIntro;
