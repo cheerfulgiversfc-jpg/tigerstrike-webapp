@@ -8197,6 +8197,10 @@ function defaultStoryBranchingState(){
     chapterChoices: {},
     endingsUnlocked: {},
     endingRewardsClaimed: {},
+    relationships:{ commanderVale:0, drMira:0, captainRook:0 },
+    dialogueChoices:{},
+    scenesSeen:{},
+    lastDoctrine:"BALANCED",
     lastEndingKey: "",
     lastUpdatedAt: 0,
   };
@@ -8224,6 +8228,24 @@ function normalizeStoryBoolMap(raw){
   }
   return out;
 }
+function normalizeStoryStringMap(raw){
+  const out = {};
+  if(!raw || typeof raw !== "object") return out;
+  for(const [keyRaw, valRaw] of Object.entries(raw)){
+    const key = String(keyRaw || "").trim();
+    const val = String(valRaw || "").trim().toUpperCase();
+    if(key && val) out[key] = val;
+  }
+  return out;
+}
+function normalizeStoryRelationships(raw){
+  const src = raw && typeof raw === "object" ? raw : {};
+  return {
+    commanderVale:clamp(Math.floor(Number(src.commanderVale || 0)), -100, 100),
+    drMira:clamp(Math.floor(Number(src.drMira || 0)), -100, 100),
+    captainRook:clamp(Math.floor(Number(src.captainRook || 0)), -100, 100),
+  };
+}
 function storyBranchPathFromVotes(captures=0, kills=0){
   const c = Math.max(0, Math.floor(Number(captures || 0)));
   const k = Math.max(0, Math.floor(Number(kills || 0)));
@@ -8248,6 +8270,10 @@ function normalizeStoryBranchingState(raw){
     chapterChoices,
     endingsUnlocked: normalizeStoryBoolMap(src.endingsUnlocked),
     endingRewardsClaimed: normalizeStoryBoolMap(src.endingRewardsClaimed),
+    relationships:normalizeStoryRelationships(src.relationships),
+    dialogueChoices:normalizeStoryStringMap(src.dialogueChoices),
+    scenesSeen:normalizeStoryBoolMap(src.scenesSeen),
+    lastDoctrine:String(src.lastDoctrine || "BALANCED").trim().toUpperCase(),
     lastEndingKey: String(src.lastEndingKey || "").trim(),
     lastUpdatedAt: Math.max(0, Math.floor(Number(src.lastUpdatedAt || 0))),
   };
@@ -8273,12 +8299,28 @@ function mergeStoryBranchingSnapshots(primaryRaw, secondaryRaw){
     ...(secondary.endingRewardsClaimed || {}),
     ...(primary.endingRewardsClaimed || {}),
   };
+  const relationships = {
+    ...secondary.relationships,
+    ...primary.relationships,
+  };
+  const dialogueChoices = {
+    ...(secondary.dialogueChoices || {}),
+    ...(primary.dialogueChoices || {}),
+  };
+  const scenesSeen = {
+    ...(secondary.scenesSeen || {}),
+    ...(primary.scenesSeen || {}),
+  };
   const hasChapterChoices = Object.keys(chapterChoices).length > 0;
   const mergedRaw = {
     path: hasChapterChoices ? "" : (primary.path || secondary.path || STORY_BRANCH_PATHS.BALANCED),
     chapterChoices,
     endingsUnlocked,
     endingRewardsClaimed,
+    relationships,
+    dialogueChoices,
+    scenesSeen,
+    lastDoctrine:primary.lastDoctrine || secondary.lastDoctrine || "BALANCED",
     lastEndingKey: String(primary.lastEndingKey || secondary.lastEndingKey || "").trim(),
     lastUpdatedAt: Math.max(
       0,
@@ -15755,7 +15797,7 @@ function storyAttackerCaptureBonus(){
   if(S.mode !== "Story") return 0;
   const rankBonus = storySpecialistRank("SP_ATK_CAPTURE") * 0.06;
   const chapterBonus = storyChapterRewardUnlocked(2) ? 0.05 : 0;
-  return rankBonus + chapterBonus;
+  return rankBonus + chapterBonus + clamp(Number(S._storyDoctrineCaptureBonus || 0), 0, 0.12);
 }
 function storyRescueSpeedMul(){
   if(S.mode === "Arcade"){
@@ -15765,7 +15807,7 @@ function storyRescueSpeedMul(){
   const escort = 1 + (storySpecialistRank("SP_RESCUE_ESCORT") * 0.10);
   const chapterMul = storyChapterRewardUnlocked(9) ? 1.10 : 1;
   const hqMul = 1 + (storyHQRank("HQ_MEDBAY") * 0.03);
-  return escort * chapterMul * hqMul;
+  return escort * chapterMul * hqMul * clamp(Number(S._storyDoctrineRescueMul || 1), 1, 1.16);
 }
 function storyRescueDamageMul(){
   if(S.mode !== "Story") return 1;
@@ -21604,13 +21646,126 @@ function continueAfterLaunchIntro(allowStoryIntro=true){
     syncGamepadFocus();
     return;
   }
-  const shown = showMissionBrief(INTRO_BRIEF_MS);
-  if(!shown) setPaused(false,null);
+  const storySceneShown = S.mode === "Story" ? showStoryCampaignScene(false) : false;
+  const shown = !storySceneShown && showMissionBrief(INTRO_BRIEF_MS);
+  if(!shown && !storySceneShown) setPaused(false,null);
   syncGamepadFocus();
 }
 function continueFromLaunchIntro(allowStoryIntro=true){
   if(maybeShowPendingDailyReward(()=>continueAfterLaunchIntro(allowStoryIntro))) return;
   continueAfterLaunchIntro(allowStoryIntro);
+}
+const STORY_CAMPAIGN_CAST = Object.freeze([
+  { key:"commanderVale", name:"Commander Vale", role:"Operations Commander", icon:"🎖️" },
+  { key:"drMira", name:"Dr. Mira Sen", role:"Tiger Behavior Scientist", icon:"🧬" },
+  { key:"captainRook", name:"Captain Rook", role:"Field Security Lead", icon:"🪖" },
+]);
+function storyCampaignSceneForMission(mission=storyMissionForState(S)){
+  const number = Math.max(1, Math.floor(Number(mission?.number || 1)));
+  const chapter = Math.max(1, Math.floor(Number(mission?.chapter || Math.ceil(number / 10))));
+  const route = storyBranchPathLabel(ensureStoryBranchingState(S).path);
+  if(mission?.finalBoss){
+    return { key:`m${number}`, title:"The Ancient Line", visual:"Final command channel • all decisions converge", speaker:"Commander Vale", text:`Every settlement is watching. ${route} brought us here. Decide what Tiger Strike becomes when the Ancient Tiger falls.` };
+  }
+  if(mission?.boss){
+    return { key:`m${number}`, title:`Chapter ${chapter}: Apex Contact`, visual:"Boss intelligence • live field transmission", speaker:"Dr. Mira Sen", text:`This Alpha remembers prior encounters. Break its armor, protect the civilians, and choose capture before lethal force closes the door.` };
+  }
+  if(((number - 1) % 10) === 0){
+    return { key:`m${number}`, title:`Chapter ${chapter}: New Territory`, visual:"Animated regional sweep • settlement signals acquired", speaker:"Commander Vale", text:`A new region has opened. Your doctrine will shape civilian trust, tiger pressure, and how the team remembers this operation.` };
+  }
+  if(number % 5 === 0){
+    return { key:`m${number}`, title:"Fault Lines", visual:"Intercepted rival transmission • route conditions changing", speaker:"Captain Rook", text:`Rival hunters are moving through the sector. We can protect the rescue lanes, study the pack, or hit hard before they interfere.` };
+  }
+  return { key:`m${number}`, title:"Field Transmission", visual:"Short command update", speaker:"Dr. Mira Sen", text:`The pack is adapting to your route. Keep civilians moving and do not let pressure decide the tiger outcome for you.` };
+}
+function storyCampaignSceneRequired(mission=storyMissionForState(S), force=false){
+  if(force) return true;
+  if(S.mode !== "Story" || window.__TUTORIAL_MODE__) return false;
+  if(normalizeStoryVariant(mission?.storyVariant) !== STORY_VARIANTS.CAMPAIGN) return false;
+  const number = Math.max(1, Math.floor(Number(mission?.number || 1)));
+  const branch = ensureStoryBranchingState(S);
+  return !!(mission?.boss || ((number - 1) % 10) === 0 || number % 5 === 0) && !branch.scenesSeen[`m${number}`];
+}
+function renderStoryCampaignScene(force=false){
+  const mission = storyMissionForState(S);
+  const scene = storyCampaignSceneForMission(mission);
+  const branch = ensureStoryBranchingState(S);
+  const title = document.getElementById("storySceneTitle");
+  const visual = document.getElementById("storySceneVisual");
+  const text = document.getElementById("storySceneText");
+  const cast = document.getElementById("storyCastGrid");
+  const choices = document.getElementById("storyChoiceGrid");
+  if(title) title.innerText = scene.title;
+  if(visual) visual.innerText = scene.visual;
+  if(text) text.innerHTML = `<b>${scene.speaker}:</b> ${scene.text}`;
+  if(cast){
+    cast.innerHTML = STORY_CAMPAIGN_CAST.map((member)=>{
+      const bond = Number(branch.relationships?.[member.key] || 0);
+      return `<div class="storyCastCard"><div class="storyCastName">${member.icon} ${member.name}</div><div class="storyCastRole">${member.role}</div><div class="storyCastBond">Relationship ${bond >= 0 ? "+" : ""}${bond}</div></div>`;
+    }).join("");
+  }
+  if(choices){
+    const selected = branch.dialogueChoices?.[scene.key] || "";
+    choices.innerHTML = [
+      ["PRESERVE","🧬 Preserve","Prioritize captures and civilian trust."],
+      ["BALANCED","🛡️ Protect","Strengthen rescue lanes and team unity."],
+      ["STRIKE","⚔️ Strike","Increase pressure and mission payout."]
+    ].map(([key,label,desc])=>`<button class="${selected === key ? "good" : "ghost"}" onclick="chooseStoryCampaignDoctrine('${key}')">${label}<br><span class="small">${desc}</span></button>`).join("");
+  }
+  return scene;
+}
+function applyStoryCampaignDoctrineEffects(choice, announce=false){
+  const key = ["PRESERVE","BALANCED","STRIKE"].includes(String(choice || "").toUpperCase()) ? String(choice).toUpperCase() : "BALANCED";
+  if(key === "PRESERVE"){
+    S.civGraceUntil = Math.max(Number(S.civGraceUntil || 0), Date.now() + 6500);
+    S._storyDoctrineCaptureBonus = 0.08;
+    if(announce) setEventText("Story choice: Preserve • capture odds and civilian grace improved.", 5);
+  }else if(key === "STRIKE"){
+    S._directorAggroMul = Math.max(Number(S._directorAggroMul || 1), 1.08);
+    S._storyDoctrinePayoutMul = 1.10;
+    if(announce) setEventText("Story choice: Strike • pressure and mission payout increased.", 5);
+  }else{
+    S.shields = Math.max(Number(S.shields || 0), 2);
+    S._storyDoctrineRescueMul = 1.08;
+    if(announce) setEventText("Story choice: Protect • team unity and rescue protection improved.", 5);
+  }
+  return key;
+}
+function chooseStoryCampaignDoctrine(choice){
+  const key = ["PRESERVE","BALANCED","STRIKE"].includes(String(choice || "").toUpperCase()) ? String(choice).toUpperCase() : "BALANCED";
+  const mission = storyMissionForState(S);
+  const scene = storyCampaignSceneForMission(mission);
+  const branch = ensureStoryBranchingState(S);
+  if(branch.dialogueChoices[scene.key]) return;
+  branch.dialogueChoices[scene.key] = key;
+  branch.lastDoctrine = key;
+  branch.lastUpdatedAt = Date.now();
+  if(key === "PRESERVE"){
+    branch.relationships.drMira = clamp(branch.relationships.drMira + 6, -100, 100);
+    branch.relationships.captainRook = clamp(branch.relationships.captainRook - 1, -100, 100);
+  }else if(key === "STRIKE"){
+    branch.relationships.captainRook = clamp(branch.relationships.captainRook + 6, -100, 100);
+    branch.relationships.drMira = clamp(branch.relationships.drMira - 2, -100, 100);
+  }else{
+    branch.relationships.commanderVale = clamp(branch.relationships.commanderVale + 6, -100, 100);
+  }
+  applyStoryCampaignDoctrineEffects(key, true);
+  renderStoryCampaignScene(true);
+  save();
+}
+function showStoryCampaignScene(force=false){
+  const mission = storyMissionForState(S);
+  if(!storyCampaignSceneRequired(mission, force)) return false;
+  const overlay = document.getElementById("storyIntroOverlay");
+  if(!overlay) return false;
+  renderStoryCampaignScene(force);
+  clearStoryIntroAutoTimer();
+  clearMissionBriefTimer();
+  closeMissionBrief(true);
+  setPaused(true,"story-cinematic");
+  overlay.style.display = "flex";
+  syncGamepadFocus();
+  return true;
 }
 function openLaunchIntro(force=false){
   if(window.__TUTORIAL_MODE__) return;
@@ -21710,6 +21865,7 @@ function openStoryIntro(force=false){
   if(!force && S.storyIntroSeen) return;
   const overlay = document.getElementById("storyIntroOverlay");
   if(!overlay) return;
+  renderStoryCampaignScene(true);
   const recapEl = document.getElementById("storyRecapText");
   if(recapEl){
     recapEl.style.display = "none";
@@ -21732,6 +21888,10 @@ function beginStoryMissionFromIntro(){
   const overlay = document.getElementById("storyIntroOverlay");
   if(overlay) overlay.style.display = "none";
   S.storyIntroSeen = true;
+  if(S.mode === "Story"){
+    const scene = storyCampaignSceneForMission(storyMissionForState(S));
+    ensureStoryBranchingState(S).scenesSeen[scene.key] = 1;
+  }
   save();
   const shown = showMissionBrief(INTRO_BRIEF_MS);
   if(!shown) setPaused(false,null);
@@ -27707,6 +27867,9 @@ function deploy(opts={}){
   S._arcadeTimerWarn = 0;
   S._arcadeNoKillWarned = false;
   S._storyFinalOutcome = null;
+  S._storyDoctrineCaptureBonus = 0;
+  S._storyDoctrinePayoutMul = 1;
+  S._storyDoctrineRescueMul = 1;
   S._survivalClearAt = 0;
   S._pressure = 0;
   S._pressTick = 0;
@@ -27858,9 +28021,15 @@ function deploy(opts={}){
 
   if(S.mode==="Survival"){ S.survivalStart = Date.now(); S.surviveSeconds=0; }
 
+  if(S.mode === "Story"){
+    const scene = storyCampaignSceneForMission(storyMissionForState(S));
+    const selectedDoctrine = ensureStoryBranchingState(S).dialogueChoices?.[scene.key];
+    if(selectedDoctrine) applyStoryCampaignDoctrineEffects(selectedDoctrine, false);
+  }
   prepareLiveOpsModifierCardsForMission(S);
-  const missionBriefShown = shouldShowMissionBrief() ? showMissionBrief(rand(2200, 3000)) : false;
-  if(!missionBriefShown) {
+  const storySceneShown = S.mode === "Story" ? showStoryCampaignScene(false) : false;
+  const missionBriefShown = !storySceneShown && shouldShowMissionBrief() ? showMissionBrief(rand(2200, 3000)) : false;
+  if(!missionBriefShown && !storySceneShown) {
     if(normalizeModeName(S.mode) === "Arcade" && !window.__TUTORIAL_MODE__){
       applyArcadeBuildcraftForMission({ silent:true });
     }
@@ -34205,6 +34374,13 @@ function checkMissionComplete(){
             trackCashEarned(bonus);
             endgamePayoutNote = `\nEndgame Bonus: +$${bonus.toLocaleString()} (x${payoutMul.toFixed(2)} payout).\n`;
           }
+        }
+        const doctrineMul = clamp(Number(S._storyDoctrinePayoutMul || 1), 1, 1.25);
+        if(doctrineMul > 1.001){
+          const doctrineBonus = Math.max(250, Math.round(2200 * (doctrineMul - 1)));
+          S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + doctrineBonus;
+          trackCashEarned(doctrineBonus);
+          endgamePayoutNote += `\nStory Doctrine Bonus: +$${doctrineBonus.toLocaleString()} (${ensureStoryBranchingState(S).lastDoctrine}).\n`;
         }
       }
       let convoyBonusNote = "";
@@ -40787,6 +40963,8 @@ window.openDailyRewardOverlay = openDailyRewardOverlay;
 window.claimDailyRewardOverlay = claimDailyRewardOverlay;
 window.setLaunchArtwork = setLaunchArtwork;
 window.openStoryIntro = openStoryIntro;
+window.showStoryCampaignScene = showStoryCampaignScene;
+window.chooseStoryCampaignDoctrine = chooseStoryCampaignDoctrine;
 window.startStoryIntroMission = startStoryIntroMission;
 window.beginStoryMissionFromIntro = beginStoryMissionFromIntro;
 window.startQuickTutorialFromIntro = startQuickTutorialFromIntro;
