@@ -15251,6 +15251,9 @@ function pickSquadCommand(cmd, evt=null){
 function setSquadCommand(cmd, opts={}){
   const next = normalizeSquadCommand(cmd);
   if(!S || typeof S !== "object") return next;
+  if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "squad_command"){
+    window.TigerTutorial.squadCommandUsed = true;
+  }
   if(selectedSupportUnit() && opts.individual !== false){
     queueSelectedSquadOrder(next);
     syncSquadCommandWheelUi();
@@ -15270,11 +15273,17 @@ function cycleSquadCommand(){
   const current = normalizeSquadCommand(S?.squadCommand);
   const idx = Math.max(0, SQUAD_COMMAND_ORDER.indexOf(current));
   const next = SQUAD_COMMAND_ORDER[(idx + 1) % SQUAD_COMMAND_ORDER.length];
+  if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "squad_command"){
+    window.TigerTutorial.squadCommandUsed = true;
+  }
   return setSquadCommand(next, { toast:true, save:true });
 }
 function setSquadFormation(formation, opts={}){
   const next = normalizeSquadFormation(formation);
   if(!S || typeof S !== "object") return next;
+  if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "squad_formation"){
+    window.TigerTutorial.squadFormationUsed = true;
+  }
   if(S.squadFormation === next && !opts.force) return next;
   S.squadFormation = next;
   if(opts.toast !== false){
@@ -15288,6 +15297,9 @@ function cycleSquadFormation(){
   const current = normalizeSquadFormation(S?.squadFormation);
   const idx = Math.max(0, SQUAD_FORMATION_ORDER.indexOf(current));
   const next = SQUAD_FORMATION_ORDER[(idx + 1) % SQUAD_FORMATION_ORDER.length];
+  if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "squad_formation"){
+    window.TigerTutorial.squadFormationUsed = true;
+  }
   return setSquadFormation(next, { toast:true, save:true });
 }
 const SQUAD_PROGRESSION_NAMES = Object.freeze({
@@ -15777,7 +15789,7 @@ function tutorialAllows(action){
     capture:["resolve_tiger","interactables","shield","shop","squad","inventory","done"],
     kill:["resolve_tiger","interactables","shield","shop","squad","inventory","done"],
     shop:["shop","squad","inventory","done"],
-    inventory:["inventory","done"],
+    inventory:["inventory","cosmetics","done"],
   };
   return !allow[action] || allow[action].includes(key);
 }
@@ -25656,6 +25668,9 @@ function equipWeapon(id, opts={}){
   const w=getWeapon(id); if(!w) return;
   ensureWeaponAttachmentState(S);
   S.equippedWeaponId=id;
+  if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weapon_switch"){
+    window.TigerTutorial.weaponSwitched = true;
+  }
   if(!opts.system){
     S.preferredWeaponId = id;
     if(w.type === "lethal"){
@@ -29551,6 +29566,9 @@ function sprint(){
   if(S.stamina < sprintCost) return toast("Not enough stamina.");
   S.stamina -= sprintCost;
   S._sprintTicks=82;
+  if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "sprint"){
+    window.TigerTutorial.sprintUsed = true;
+  }
   triggerAbilityCooldown("sprint");
   sfx("ui"); hapticImpact("light"); save();
   unlockAchv("sprint1","Sprint");

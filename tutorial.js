@@ -34,8 +34,12 @@
     if(id === "shopBtn") return visibleEl("shopBtn") || visibleEl("navShopBtn");
     if(id === "invBtn") return visibleEl("invBtn") || visibleEl("navInvBtn");
     if(id === "scanBtn") return visibleEl("scanBtn") || visibleEl("touchScanBtn");
+    if(id === "sprintBtn") return visibleEl("touchSprintBtn");
     if(id === "shieldBtn") return visibleSelector("[data-shield-btn]") || visibleEl("touchShieldBtn");
     if(id === "atkBtn") return visibleEl("atkBtn") || visibleEl("touchAttackBtn") || visibleEl("combatAttackBtn");
+    if(id === "weaponBtn") return visibleEl("touchNextWeaponBtn") || visibleEl("combatNextWeaponBtn");
+    if(id === "squadCmdBtn") return visibleEl("squadCmdBtn") || visibleEl("squadCmdBtnMobile") || visibleEl("touchSquadWheelBtn");
+    if(id === "squadFormBtn") return visibleEl("squadFormBtn") || visibleEl("squadFormBtnMobile");
     return visibleEl(id);
   }
   function getS(){
@@ -174,6 +178,7 @@
     if(T.shopOpened && squadTab && squadTab.classList.contains("active")) T.squadOpened = true;
     const inv = byId("invOverlay");
     if(inv && inv.style.display === "flex") T.inventoryOpened = true;
+    if(T.inventoryOpened && byId("invTabCosmetics")?.classList.contains("active")) T.cosmeticsOpened = true;
   }
   function setCardPlacement(step){
     if(!cardEl) return;
@@ -277,10 +282,18 @@
         canNext: () => window.TigerTutorial.movedOnce === true
       },
       {
+        key:"sprint",
+        title:"Sprint + Stamina",
+        text:"Sprint helps you reach civilians, clues, and extraction vehicles quickly. Sprint consumes stamina and then enters cooldown.",
+        hint:"Tap Sprint once.",
+        arrow:"sprintBtn",
+        canNext: () => window.TigerTutorial.sprintUsed === true
+      },
+      {
         key:"escort",
         title:"Escort Civilian",
-        text:"Move close to the civilian, then guide them into the green SAFE ZONE.",
-        hint:"Stay near them so they follow you.",
+        text:"Move close to the civilian, then guide them into the green SAFE ZONE. Rescued civilians remain protected there while you finish the mission.",
+        hint:"Stay near the civilian so they follow you into safety.",
         arrow:"evacZone",
         canNext: () => {
           const S = getS();
@@ -343,9 +356,17 @@
         }
       },
       {
+        key:"weapon_switch",
+        title:"Weapons + Ammo",
+        text:"Different weapons use different ammo families and ranges. Your chosen weapon stays equipped until you change it. During combat, use the weapon arrows to switch.",
+        hint:"Tap the next-weapon arrow once.",
+        arrow:"weaponBtn",
+        canNext: () => window.TigerTutorial.weaponSwitched === true
+      },
+      {
         key:"resolve_tiger",
         title:"Capture Or Kill",
-        text:`Now finish the fight.\nCapture: available at ${capturePct}% HP or lower, safer control, lower aggression spike.\nKill: faster clear, higher aggression spike.`,
+        text:`Now finish the fight.\nCapture: available at ${capturePct}% HP or lower and preserves the tiger for research.\nKill: faster clear, but raises aggression. Capture highlights when it is ready.`,
         hint:"Capture or kill this tiger to continue.",
         arrow:"tiger",
         canNext: () => {
@@ -364,15 +385,31 @@
       {
         key:"shield",
         title:"Shield Ability",
-        text:`Use Shield to protect yourself and nearby civilians for ${shieldDurationSec} seconds.\nThen Shield cooldown is ${shieldCooldownSec} seconds.`,
+        text:`Use Shield to protect yourself and nearby civilians for ${shieldDurationSec} seconds. Repeated shields and traps receive longer anti-spam cooldowns.`,
         hint:"Tap Shield once.",
         arrow:"shieldBtn",
         canNext: () => window.TigerTutorial.shieldUsed === true
       },
       {
+        key:"squad_command",
+        title:"Squad Commands",
+        text:"Owned specialists obey Auto, Attack Target, Rescue, Regroup, and Hold commands. Commands never create a soldier you do not own.",
+        hint:"Open the squad command wheel/menu and choose a different command.",
+        arrow:"squadCmdBtn",
+        canNext: () => window.TigerTutorial.squadCommandUsed === true
+      },
+      {
+        key:"squad_formation",
+        title:"Squad Formations",
+        text:"Formations change how specialists move and protect the team. Wedge attacks forward, Line controls space, Split Escort protects civilians, and Flank pressures tigers.",
+        hint:"Cycle the squad formation once.",
+        arrow:"squadFormBtn",
+        canNext: () => window.TigerTutorial.squadFormationUsed === true
+      },
+      {
         key:"shop",
         title:"Shop",
-        text:"Open Shop. You can buy during a run when needed.",
+        text:"Open Shop to buy weapons, stronger ammo, supplies, traps, bundles, specialists, and long-term upgrades. Shop filters help find mission-ready gear.",
         hint:"Tap Shop.",
         arrow:"shopBtn",
         canNext: () => {
@@ -384,7 +421,7 @@
       {
         key:"squad",
         title:"Squad Specialists",
-        text:`Open the Squad tab.\nTiger Specialist + Rescue Specialist unlock at Level ${squadUnlockLevel} and cost $${squadUnitPrice.toLocaleString()} each.\nBundle option: $${squadBundlePrice.toLocaleString()} for both.`,
+        text:`Open the Squad tab.\nTiger Specialist + Rescue Specialist unlock at Mission ${squadUnlockLevel}. Specialists must be purchased and revived; they do not respawn for free.`,
         hint:"Tap Squad tab in Shop.",
         arrow:"tabSquad",
         canNext: () => {
@@ -397,7 +434,7 @@
       {
         key:"inventory",
         title:"Inventory",
-        text:"Open Inventory to review weapons, ammo, supplies, and squad status.",
+        text:"Open Inventory to claim and equip gear, review operations, manage settlements, cosmetics, and your prestige showcase.",
         hint:"Tap Inventory once.",
         arrow:"invBtn",
         canNext: () => {
@@ -407,9 +444,49 @@
         }
       },
       {
+        key:"cosmetics",
+        title:"Cosmetics + Showcase",
+        text:"Cosmetics change appearance without changing combat balance. Showcase displays achievements, titles, trophies, and captured Nemesis records.",
+        hint:"Open the Cosmetics tab in Inventory.",
+        arrow:"invTabCosmetics",
+        canNext: () => window.TigerTutorial.cosmeticsOpened === true
+      },
+      {
+        key:"investigation",
+        title:"Tracking + Investigation",
+        text:"Some missions begin before combat. Scan footprints, fur, blood trails, scratches, sounds, and damaged objects to reveal tiger direction, health, behavior, hidden dens, or missing civilians.",
+        hint:"Weather can erase clues, so investigate early. Tap Next.",
+        arrow:"scanBtn",
+        canNext: () => true
+      },
+      {
+        key:"live_world",
+        title:"Living Missions",
+        text:"Watch the LIVE panel and the map. Weather, tiger packs, rivals, helicopter crashes, flooded routes, convoy ambushes, interactive gates, generators, bridges, and vehicles have real gameplay effects.",
+        hint:"React to what visibly happens on the map. Tap Next.",
+        arrow:"objTxt",
+        canNext: () => true
+      },
+      {
+        key:"extraction",
+        title:"Real Extraction",
+        text:"After objectives are complete, reach the marked evacuation vehicle. River missions use boats, air missions use helicopters, and road missions use convoys. Board and hold the extraction point until the vehicle departs.",
+        hint:"New tigers stop spawning during final extraction. Tap Next.",
+        arrow:"evacZone",
+        canNext: () => true
+      },
+      {
+        key:"modes",
+        title:"Game Modes + Progress",
+        text:"Story, Arcade, and Survival keep separate money, inventory, achievements, pass progress, and mission statistics. Mission results only count the current attempt.",
+        hint:"Choose the mode that matches how you want to play. Tap Next.",
+        arrow:null,
+        canNext: () => true
+      },
+      {
         key:"done",
         title:"Done",
-        text:"Tutorial complete.\nYou are ready for Story missions.",
+        text:"Tutorial complete.\nYou are ready to rescue civilians, investigate threats, command specialists, respond to live events, and extract from the city.",
         hint:"Tap Finish.",
         arrow:null,
         finish:true,
@@ -424,6 +501,7 @@
     currentKey:null,
     mapClicked:false,
     movedOnce:false,
+    sprintUsed:false,
     lastLockedTigerId:null,
     baseShots:0,
     engagedOnce:false,
@@ -436,10 +514,14 @@
     baseInteractables:null,
     captureWindowReached:false,
     combatOutcome:null,
+    weaponSwitched:false,
     shieldUsed:false,
+    squadCommandUsed:false,
+    squadFormationUsed:false,
     shopOpened:false,
     squadOpened:false,
     inventoryOpened:false,
+    cosmeticsOpened:false,
     lastShieldUntil:0
   };
 
@@ -566,6 +648,7 @@
     T.currentKey = "intro";
     T.mapClicked = false;
     T.movedOnce = false;
+    T.sprintUsed = false;
     T.lastLockedTigerId = null;
     T.baseShots = Number(getS()?.stats?.shots || 0);
     T.engagedOnce = false;
@@ -586,10 +669,14 @@
     }
     T.captureWindowReached = false;
     T.combatOutcome = null;
+    T.weaponSwitched = false;
     T.shieldUsed = false;
+    T.squadCommandUsed = false;
+    T.squadFormationUsed = false;
     T.shopOpened = false;
     T.squadOpened = false;
     T.inventoryOpened = false;
+    T.cosmeticsOpened = false;
     T.lastShieldUntil = Number(getS()?.shieldUntil || 0);
     try{ window.enterTutorialMode?.(); }catch(e){}
 
@@ -610,6 +697,7 @@
     T.currentKey = null;
     T.mapClicked = false;
     T.movedOnce = false;
+    T.sprintUsed = false;
     T.lastLockedTigerId = null;
     T.baseShots = 0;
     T.engagedOnce = false;
@@ -622,10 +710,14 @@
     T.baseInteractables = null;
     T.captureWindowReached = false;
     T.combatOutcome = null;
+    T.weaponSwitched = false;
     T.shieldUsed = false;
+    T.squadCommandUsed = false;
+    T.squadFormationUsed = false;
     T.shopOpened = false;
     T.squadOpened = false;
     T.inventoryOpened = false;
+    T.cosmeticsOpened = false;
     T.lastShieldUntil = 0;
     clearStepHighlight();
 
@@ -664,6 +756,9 @@
       try{ window.closeShop?.(); }catch(e){}
     }
     if(step.key === "inventory"){
+      // Keep Inventory open for the Cosmetics lesson that follows.
+    }
+    if(step.key === "cosmetics"){
       try{ window.closeInventory?.(); }catch(e){}
     }
 
