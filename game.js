@@ -1788,6 +1788,7 @@ function defaultMissionTwistsState(){
       x: 0,
       y: 0,
       r: 84,
+      startedAt: 0,
       until: 0,
       nextRollAt: 0,
       cooldownUntil: 0,
@@ -1862,6 +1863,7 @@ function ensureMissionTwistState(state=S){
   tw.worldEvent.x = Number.isFinite(Number(tw.worldEvent.x)) ? Number(tw.worldEvent.x) : 0;
   tw.worldEvent.y = Number.isFinite(Number(tw.worldEvent.y)) ? Number(tw.worldEvent.y) : 0;
   tw.worldEvent.r = clamp(Number.isFinite(Number(tw.worldEvent.r)) ? Number(tw.worldEvent.r) : base.worldEvent.r, 42, 170);
+  tw.worldEvent.startedAt = Math.max(0, Math.floor(Number(tw.worldEvent.startedAt || 0)));
   tw.worldEvent.until = Math.max(0, Math.floor(Number(tw.worldEvent.until || 0)));
   tw.worldEvent.nextRollAt = Math.max(0, Math.floor(Number(tw.worldEvent.nextRollAt || 0)));
   tw.worldEvent.cooldownUntil = Math.max(0, Math.floor(Number(tw.worldEvent.cooldownUntil || 0)));
@@ -2059,7 +2061,8 @@ function resetMissionTwistsForDeploy(state=S, now=Date.now()){
     tw.worldEvent.active = false;
     tw.worldEvent.type = "";
     tw.worldEvent.until = 0;
-    tw.worldEvent.nextRollAt = now + rand(WORLD_EVENT_ROLL_MIN_MS, WORLD_EVENT_ROLL_MAX_MS);
+    tw.worldEvent.startedAt = 0;
+    tw.worldEvent.nextRollAt = now + rand(35000, 55000);
     tw.worldEvent.cooldownUntil = now + Math.round(WORLD_EVENT_COOLDOWN_MS * 0.45);
     tw.worldEvent.triggerCount = 0;
     tw.worldEvent.rewardCash = 0;
@@ -2101,8 +2104,9 @@ function resetMissionTwistsForDeploy(state=S, now=Date.now()){
   tw.worldEvent.x = 0;
   tw.worldEvent.y = 0;
   tw.worldEvent.r = clamp(tw.worldEvent.r, 42, 170);
+  tw.worldEvent.startedAt = 0;
   tw.worldEvent.until = 0;
-  tw.worldEvent.nextRollAt = now + rand(WORLD_EVENT_ROLL_MIN_MS, WORLD_EVENT_ROLL_MAX_MS);
+  tw.worldEvent.nextRollAt = now + rand(35000, 55000);
   tw.worldEvent.cooldownUntil = now + Math.round(WORLD_EVENT_COOLDOWN_MS * 0.45);
   tw.worldEvent.triggerCount = 0;
   tw.worldEvent.rewardCash = 0;
@@ -19133,6 +19137,7 @@ function clearDynamicWorldEvent(opts={}){
   }
   we.active = false;
   we.type = "";
+  we.startedAt = 0;
   we.until = 0;
   we.rewardCash = 0;
   we.rewardScore = 0;
@@ -19159,6 +19164,7 @@ function triggerDynamicWorldEvent(type, now=Date.now()){
 
   we.active = true;
   we.type = type;
+  we.startedAt = now;
   we.x = point?.x || 0;
   we.y = point?.y || 0;
   we.r = rand(def.radius[0], def.radius[1]) || 84;
@@ -19189,6 +19195,11 @@ function chooseDynamicWorldEventType(){
   const aliveCivs = (S.civilians || []).filter((c)=>c && c.alive && !c.evac).length;
   const available = WORLD_EVENT_TYPES.filter((type)=>type !== we.lastType);
   if(!available.length) return "";
+  const activeMission = S.mode === "Story" ? storyMissionForState(S) : (S.mode === "Arcade" ? activeArcadeMission(S) : null);
+  const objective = String(activeMission?.objective || "").toLowerCase();
+  if((we.triggerCount || 0) === 0 && available.includes("helicopter_crash")){
+    if(/helicopter|airlift|landing/.test(objective) || (currentCampaignLevel() % 4) === 0) return "helicopter_crash";
+  }
   const weights = {
     ambush_convoy: 0.8 + (aliveCivs > 0 ? (0.5 + Math.min(0.7, aliveCivs * 0.06)) : 0.2),
     night_storm: 0.78 + (Math.max(0.2, Number(mapWeights.fog || 0) * 0.20)) + (pressure >= 55 ? 0.2 : 0),
@@ -34464,16 +34475,17 @@ const EXTRACTION_SEQUENCE_DEFS = Object.freeze([
   Object.freeze({ key:"timed_escape", icon:"⏱️", label:"Timed Escape", instruction:"Reach extraction before the route closes.", holdSec:12, color:"rgba(248,113,113,.98)" })
 ]);
 function defaultExtractionSequenceState(){
-  return { active:false, complete:false, key:"", label:"", instruction:"", icon:"", color:"", x:0, y:0, r:68, startedAt:0, deadlineAt:0, holdStartedAt:0, holdProgressMs:0, holdRequiredMs:0, lastTickAt:0, nextNoticeAt:0, pursuitSpawned:false, emergency:false, bonusCash:0 };
+  return { active:false, complete:false, departing:false, key:"", label:"", instruction:"", icon:"", color:"", x:0, y:0, r:68, vehicleX:0, vehicleY:0, vehicleAngle:0, startedAt:0, deadlineAt:0, holdStartedAt:0, holdProgressMs:0, holdRequiredMs:0, departStartedAt:0, departUntil:0, lastTickAt:0, nextNoticeAt:0, pursuitSpawned:false, emergency:false, bonusCash:0 };
 }
 function ensureExtractionSequenceState(state=S){
   if(!state.extractionSequence || typeof state.extractionSequence !== "object") state.extractionSequence = defaultExtractionSequenceState();
   const ex = state.extractionSequence;
-  for(const key of ["x","y","r","startedAt","deadlineAt","holdStartedAt","holdProgressMs","holdRequiredMs","lastTickAt","nextNoticeAt","bonusCash"]){
+  for(const key of ["x","y","r","vehicleX","vehicleY","vehicleAngle","startedAt","deadlineAt","holdStartedAt","holdProgressMs","holdRequiredMs","departStartedAt","departUntil","lastTickAt","nextNoticeAt","bonusCash"]){
     if(!Number.isFinite(ex[key])) ex[key] = defaultExtractionSequenceState()[key];
   }
   ex.active = !!ex.active;
   ex.complete = !!ex.complete;
+  ex.departing = !!ex.departing;
   ex.pursuitSpawned = !!ex.pursuitSpawned;
   ex.emergency = !!ex.emergency;
   return ex;
@@ -34484,22 +34496,58 @@ function resetExtractionSequenceForDeploy(state=S){
 function extractionSequenceDef(ex=ensureExtractionSequenceState(S)){
   return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === ex.key) || EXTRACTION_SEQUENCE_DEFS[0];
 }
+function extractionSequenceChoice(){
+  const storyMission = S.mode === "Story" ? storyMissionForState(S) : null;
+  const arcadeMission = S.mode === "Arcade" ? activeArcadeMission(S) : null;
+  const mission = storyMission || arcadeMission;
+  const objective = String(mission?.objective || "").toLowerCase();
+  const mapName = String(mapIdentityProfile(S.mode, chapterIndexForMode(S.mode))?.name || "").toLowerCase();
+  ensureMapObstacleCache();
+  const hasWater = (__mapWaterZones || []).length > 0;
+  if(hasWater && (/river|boat|dock|flood|water/.test(objective) || /river/.test(mapName))) return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "boat");
+  if(/helicopter|airlift|landing/.test(objective)) return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "helicopter");
+  if(mission?.convoyMission || /convoy|truck|road/.test(objective)) return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "convoy");
+  const level = Math.max(1, currentCampaignLevel());
+  return EXTRACTION_SEQUENCE_DEFS[(level + Math.max(0, Number(S.mapIndex || 0)) + rand(0, EXTRACTION_SEQUENCE_DEFS.length - 1)) % EXTRACTION_SEQUENCE_DEFS.length];
+}
+function extractionSequencePlacement(def){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  ensureMapObstacleCache();
+  if(def?.key === "boat" && (__mapWaterZones || []).length){
+    const zone = (__mapWaterZones || [])[rand(0, (__mapWaterZones || []).length - 1)];
+    const radii = waterZoneRadii(zone);
+    const angle = Math.atan2(S.me.y - zone.y, S.me.x - zone.x);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const shoreRaw = { x:zone.x + cos * radii.rx * 1.16, y:zone.y + sin * radii.ry * 1.16 };
+    const shore = findNearestOpenPoint(shoreRaw.x, shoreRaw.y, 28, {
+      avoidKeepout:true, avoidWater:true, targetX:zone.x, targetY:zone.y
+    }) || safeSpawnPoint(shoreRaw.x, shoreRaw.y, 28, true, true) || { x:shoreRaw.x, y:shoreRaw.y };
+    return {
+      x:shore.x, y:shore.y,
+      vehicleX:zone.x + cos * radii.rx * 0.66,
+      vehicleY:zone.y + sin * radii.ry * 0.66,
+      vehicleAngle:angle + Math.PI
+    };
+  }
+  const targetX = S.me.x < worldW * 0.5 ? worldW * 0.78 : worldW * 0.22;
+  const targetY = S.me.y < worldH * 0.5 ? worldH * 0.76 : worldH * 0.24;
+  const pt = safeSpawnPoint(targetX, targetY, 34, true, true) || { x:targetX, y:targetY };
+  return { x:pt.x, y:pt.y, vehicleX:pt.x, vehicleY:pt.y, vehicleAngle:0 };
+}
 function beginExtractionSequence(){
   if(window.__TUTORIAL_MODE__ || S.mode === "Survival" || S.gameOver || S.missionEnded) return false;
   const ex = ensureExtractionSequenceState(S);
   if(ex.active || ex.complete) return false;
-  const level = Math.max(1, currentCampaignLevel());
-  const def = EXTRACTION_SEQUENCE_DEFS[(level + Math.max(0, Number(S.mapIndex || 0)) + rand(0, EXTRACTION_SEQUENCE_DEFS.length - 1)) % EXTRACTION_SEQUENCE_DEFS.length];
-  const worldW = worldWidth(S);
-  const worldH = worldHeight(S);
-  const targetX = S.me.x < worldW * 0.5 ? worldW * 0.78 : worldW * 0.22;
-  const targetY = S.me.y < worldH * 0.5 ? worldH * 0.76 : worldH * 0.24;
-  const pt = safeSpawnPoint(targetX, targetY, 34, true, true);
+  const def = extractionSequenceChoice();
+  const placement = extractionSequencePlacement(def);
   const now = Date.now();
   Object.assign(ex, {
-    active:true, complete:false, key:def.key, label:def.label, instruction:def.instruction, icon:def.icon, color:def.color,
-    x:pt.x, y:pt.y, r:68, startedAt:now, deadlineAt:now + 75000, holdStartedAt:0, holdProgressMs:0,
-    holdRequiredMs:def.holdSec * 1000, lastTickAt:now, nextNoticeAt:now, pursuitSpawned:false, emergency:false, bonusCash:0
+    active:true, complete:false, departing:false, key:def.key, label:def.label, instruction:def.instruction, icon:def.icon, color:def.color,
+    x:placement.x, y:placement.y, r:68, vehicleX:placement.vehicleX, vehicleY:placement.vehicleY, vehicleAngle:placement.vehicleAngle,
+    startedAt:now, deadlineAt:now + 75000, holdStartedAt:0, holdProgressMs:0, holdRequiredMs:def.holdSec * 1000,
+    departStartedAt:0, departUntil:0, lastTickAt:now, nextNoticeAt:now, pursuitSpawned:false, emergency:false, bonusCash:0
   });
   activateMissionTigerSpawnLockdown("extraction-started");
   S.lockedTigerId = null;
@@ -34535,6 +34583,14 @@ function finishExtractionSequence(emergency=false){
 function extractionSequenceTick(now=Date.now()){
   const ex = ensureExtractionSequenceState(S);
   if(!ex.active || ex.complete || S.paused || S.gameOver || S.missionEnded) return;
+  if(ex.departing){
+    if(now >= ex.departUntil) return finishExtractionSequence(false);
+    if(now >= ex.nextNoticeAt){
+      ex.nextNoticeAt = now + 900;
+      setEventText(`${ex.icon} Evacuation departing the city...`, 1.2);
+    }
+    return;
+  }
   const dt = clamp(now - Math.max(ex.lastTickAt || now, now - 1000), 0, 1000);
   ex.lastTickAt = now;
   if(now >= ex.deadlineAt) return finishExtractionSequence(true);
@@ -34561,7 +34617,16 @@ function extractionSequenceTick(now=Date.now()){
         setEventText(`${ex.icon} Extraction route secured. No pursuit wave remains.`, 3.2);
       }
     }
-    if(ex.holdProgressMs >= ex.holdRequiredMs) return finishExtractionSequence(false);
+    if(ex.holdProgressMs >= ex.holdRequiredMs){
+      ex.departing = true;
+      ex.departStartedAt = now;
+      ex.departUntil = now + 2400;
+      ex.nextNoticeAt = now;
+      setEventText(`${ex.icon} All aboard. Evacuation departing now!`, 2.6);
+      sfx("win");
+      hapticNotif("success");
+      return;
+    }
   }else{
     ex.holdProgressMs = Math.max(0, ex.holdProgressMs - dt * 0.20);
   }
@@ -34572,10 +34637,95 @@ function extractionSequenceTick(now=Date.now()){
     setEventText(inside ? `${ex.icon} Hold position: ${holdLeft}s` : `${ex.icon} Reach ${ex.label}: ${Math.round(dist(S.me.x,S.me.y,ex.x,ex.y))}m • ${left}s remaining`, 2.2);
   }
 }
+function drawExtractionVehicle(ex, now=Date.now()){
+  const departPct = ex.departing
+    ? clamp((now - ex.departStartedAt) / Math.max(1, ex.departUntil - ex.departStartedAt), 0, 1)
+    : 0;
+  let x = Number(ex.vehicleX || ex.x);
+  let y = Number(ex.vehicleY || ex.y);
+  let angle = Number(ex.vehicleAngle || 0);
+  if(ex.key === "helicopter"){
+    y -= departPct * 145;
+    x += Math.sin(now / 180) * (1 - departPct) * 2;
+  }else if(ex.key === "boat"){
+    x += Math.cos(angle) * departPct * 190;
+    y += Math.sin(angle) * departPct * 190;
+  }else if(ex.key === "convoy" || ex.key === "timed_escape"){
+    angle = Math.abs(Math.cos(angle)) < 0.3 ? 0 : angle;
+    x += Math.cos(angle) * departPct * 190;
+    y += Math.sin(angle) * departPct * 190;
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.globalAlpha = 0.98 - (departPct * 0.34);
+  if(ex.key === "boat"){
+    ctx.fillStyle = "rgba(15,48,78,.98)";
+    ctx.beginPath();
+    ctx.moveTo(30,0); ctx.lineTo(14,13); ctx.lineTo(-26,11); ctx.lineTo(-32,0); ctx.lineTo(-26,-11); ctx.lineTo(14,-13); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(226,232,240,.96)";
+    roundedRectFill(-10,-10,20,20,4);
+    ctx.fillStyle = "rgba(34,211,238,.86)";
+    roundedRectFill(-5,-7,10,6,2);
+    ctx.strokeStyle = "rgba(125,211,252,.65)";
+    ctx.lineWidth = 2;
+    for(let i=0;i<3;i++){
+      ctx.beginPath(); ctx.moveTo(-35 - i*10,-12+i*4); ctx.lineTo(-48-i*10,-12+i*4); ctx.stroke();
+    }
+  }else if(ex.key === "helicopter"){
+    ctx.fillStyle = "rgba(42,78,60,.98)";
+    ctx.beginPath(); ctx.ellipse(0,0,25,13,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(125,211,252,.72)";
+    ctx.beginPath(); ctx.ellipse(8,-3,9,6,0,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "rgba(226,232,240,.88)";
+    ctx.lineWidth = 3;
+    const rotor = now / 90;
+    ctx.beginPath(); ctx.moveTo(Math.cos(rotor)*36,Math.sin(rotor)*8); ctx.lineTo(-Math.cos(rotor)*36,-Math.sin(rotor)*8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-20,0); ctx.lineTo(-43,0); ctx.lineTo(-49,-8); ctx.stroke();
+    ctx.strokeStyle = "rgba(15,23,42,.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-16,15); ctx.lineTo(17,15); ctx.moveTo(-12,11); ctx.lineTo(-16,15); ctx.moveTo(13,11); ctx.lineTo(17,15); ctx.stroke();
+  }else{
+    ctx.fillStyle = ex.key === "safe_hold" ? "rgba(34,92,62,.98)" : "rgba(92,69,42,.98)";
+    roundedRectFill(-30,-14,60,28,7);
+    ctx.fillStyle = "rgba(203,213,225,.82)";
+    roundedRectFill(8,-10,16,11,3);
+    ctx.fillStyle = "rgba(15,23,42,.96)";
+    ctx.beginPath(); ctx.arc(-18,15,7,0,Math.PI*2); ctx.arc(18,15,7,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(74,222,128,.94)";
+    roundedRectFill(-20,-8,19,15,3);
+  }
+  if(!ex.departing){
+    const rescued = Math.min(8, (S.civilians || []).filter((c)=>c?.alive && c.evac).length);
+    const boardPct = clamp(ex.holdProgressMs / Math.max(1, ex.holdRequiredMs), 0, 1);
+    for(let i=0;i<rescued;i++){
+      const boarded = i < Math.ceil(rescued * boardPct);
+      const px = boarded ? (-12 + (i % 4) * 8) : (-54 - (i % 3) * 9);
+      const py = boarded ? (-3 + Math.floor(i / 4) * 8) : (-22 + i * 7);
+      ctx.fillStyle = boarded ? "rgba(74,222,128,.98)" : "rgba(226,232,240,.96)";
+      ctx.beginPath(); ctx.arc(px, py, 3.2, 0, Math.PI * 2); ctx.fill();
+      if(!boarded){
+        ctx.strokeStyle = "rgba(74,222,128,.62)";
+        ctx.lineWidth = 1.3;
+        ctx.beginPath(); ctx.moveTo(px + 4, py); ctx.lineTo(-32, 0); ctx.stroke();
+      }
+    }
+  }
+  ctx.rotate(-angle);
+  ctx.globalAlpha = 0.96;
+  ctx.fillStyle = "rgba(5,12,20,.88)";
+  roundedRectFill(-58,-48,116,20,8);
+  ctx.fillStyle = ex.color || "#4ade80";
+  ctx.font = "900 10px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(ex.departing ? "EVAC DEPARTING" : "EVAC VEHICLE READY", 0, -34);
+  ctx.restore();
+}
 function drawExtractionSequenceMarker(now=Date.now()){
   const ex = ensureExtractionSequenceState(S);
   if(!ex.active || ex.complete) return;
   const def = extractionSequenceDef(ex);
+  drawExtractionVehicle(ex, now);
   const inside = dist(S.me.x, S.me.y, ex.x, ex.y) <= ex.r;
   const pct = clamp(ex.holdProgressMs / Math.max(1, ex.holdRequiredMs), 0, 1);
   const pulse = 0.82 + Math.sin(now / 180) * 0.12;
@@ -34598,7 +34748,7 @@ function drawExtractionSequenceMarker(now=Date.now()){
   ctx.fillStyle = ex.color || def.color;
   ctx.font = "900 11px system-ui";
   ctx.textAlign = "center";
-  ctx.fillText(`${ex.icon} ${ex.label} • ${inside ? `${Math.ceil((ex.holdRequiredMs-ex.holdProgressMs)/1000)}s` : "REACH ZONE"}`,ex.x,ex.y-ex.r-23);
+  ctx.fillText(`${ex.icon} ${ex.label} • ${ex.departing ? "DEPARTING" : (inside ? `${Math.ceil((ex.holdRequiredMs-ex.holdProgressMs)/1000)}s` : "REACH VEHICLE")}`,ex.x,ex.y-ex.r-23);
   ctx.restore();
 }
 
@@ -35806,6 +35956,56 @@ function drawMissionTwistOverlay(now=Date.now()){
       ctx.arc(we.x || 0, we.y || 0, Math.max(24, (we.r || 84) + 1), 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+      ctx.save();
+      ctx.translate(we.x || 0, we.y || 0);
+      if(we.type === "helicopter_crash"){
+        const impactAge = Math.max(0, now - Number(we.startedAt || now));
+        ctx.rotate(-0.32);
+        ctx.fillStyle = "rgba(42,78,60,.98)";
+        ctx.beginPath(); ctx.ellipse(0,0,27,13,0,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = "rgba(15,23,42,.92)";
+        ctx.beginPath(); ctx.ellipse(10,-3,9,6,0,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "rgba(203,213,225,.82)";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-22,2); ctx.lineTo(-47,11); ctx.lineTo(-53,3); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-34,-18); ctx.lineTo(31,18); ctx.moveTo(-27,24); ctx.lineTo(24,-23); ctx.stroke();
+        ctx.rotate(0.32);
+        ctx.globalAlpha = 0.36 + Math.sin(now / 270) * 0.08;
+        ctx.fillStyle = "rgba(30,41,59,.90)";
+        for(let i=0;i<3;i++){
+          const rise = ((impactAge / (18 + i * 5)) + i * 15) % 62;
+          ctx.beginPath(); ctx.arc(-8 + i*9, -18-rise, 12+i*3, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.globalAlpha = 0.96;
+        ctx.fillStyle = we.siteSecured ? "rgba(74,222,128,.98)" : "rgba(251,191,36,.98)";
+        ctx.font = "900 10px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(we.siteSecured ? "CRASH SITE SECURED" : "SECURE WRECKAGE", 0, 35);
+      }else if(we.type === "ambush_convoy"){
+        ctx.fillStyle = "rgba(92,69,42,.98)";
+        roundedRectFill(-34,-14,68,28,7);
+        ctx.fillStyle = "rgba(203,213,225,.78)";
+        roundedRectFill(9,-10,18,11,3);
+        ctx.fillStyle = "rgba(15,23,42,.96)";
+        ctx.beginPath(); ctx.arc(-20,15,7,0,Math.PI*2); ctx.arc(20,15,7,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "rgba(251,113,133,.9)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5,4]);
+        ctx.beginPath(); ctx.arc(0,0,43,0,Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]);
+      }else if(we.type === "flooded_route"){
+        ctx.strokeStyle = "rgba(125,211,252,.78)";
+        ctx.lineWidth = 3;
+        for(let i=-2;i<=2;i++){
+          ctx.beginPath();
+          ctx.moveTo(-40, i*10 + Math.sin(now/220+i)*3);
+          ctx.bezierCurveTo(-16,i*10-5,16,i*10+5,40,i*10);
+          ctx.stroke();
+        }
+        ctx.fillStyle = "rgba(120,84,48,.95)";
+        roundedRectFill(-19,-4,38,8,3);
+      }
+      ctx.restore();
       rounded((we.x || 0) - 90, (we.y || 0) - (we.r || 84) - 34, 180, 24, 11, "rgba(12,18,28,.90)", "rgba(196,221,255,.78)");
       ctx.fillStyle = "rgba(235,245,255,.98)";
       ctx.textAlign = "center";
