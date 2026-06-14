@@ -2756,11 +2756,58 @@ function beginMissionStatRun(reason="deploy"){
     Date.now(),
     Math.floor(Math.random() * 100000)
   ].join(":");
+  S._missionTigerOutcomes = {};
   S._missionStatsReason = reason;
+}
+function ensureMissionTigerOutcomeLedger(){
+  if(!S._missionTigerOutcomes || typeof S._missionTigerOutcomes !== "object" || Array.isArray(S._missionTigerOutcomes)){
+    S._missionTigerOutcomes = {};
+  }
+  for(const tiger of (S.tigers || [])){
+    const outcome = String(tiger?.missionOutcome || "").toUpperCase();
+    const id = Number(tiger?.id);
+    if(Number.isFinite(id) && (outcome === "CAPTURE" || outcome === "KILL")){
+      S._missionTigerOutcomes[String(id)] = outcome;
+    }
+  }
+  return S._missionTigerOutcomes;
+}
+function syncMissionOutcomeStats(){
+  const ledger = ensureMissionTigerOutcomeLedger();
+  let captures = 0;
+  let kills = 0;
+  for(const outcome of Object.values(ledger)){
+    if(outcome === "CAPTURE") captures += 1;
+    else if(outcome === "KILL") kills += 1;
+  }
+  S.stats.captures = captures;
+  S.stats.kills = kills;
+  return { captures, kills };
+}
+function recordUniqueMissionTigerOutcome(tiger, outcome="KILL"){
+  if(!tiger) return false;
+  const id = Number(tiger.id);
+  if(!Number.isFinite(id)) return false;
+  const ledger = ensureMissionTigerOutcomeLedger();
+  const key = String(id);
+  if(ledger[key]) return false;
+  ledger[key] = String(outcome || "KILL").toUpperCase() === "CAPTURE" ? "CAPTURE" : "KILL";
+  syncMissionOutcomeStats();
+  return true;
+}
+function reconcileMissionStatsWithEntities(stats={}){
+  const out = missionStatSnapshot(stats);
+  const outcomes = syncMissionOutcomeStats();
+  out.captures = outcomes.captures;
+  out.kills = outcomes.kills;
+  if(Array.isArray(S.civilians)){
+    out.evac = S.civilians.reduce((count, civ)=>count + (civ?.evac ? 1 : 0), 0);
+  }
+  return out;
 }
 function currentMissionStatsSnapshot(){
   if(S._missionStatsFinal && typeof S._missionStatsFinal === "object"){
-    return missionStatSnapshot(S._missionStatsFinal);
+    return reconcileMissionStatsWithEntities(S._missionStatsFinal);
   }
   const start = missionStatSnapshot(S._missionStatsStart || {});
   const now = missionStatSnapshot(S.stats || {});
@@ -2768,10 +2815,10 @@ function currentMissionStatsSnapshot(){
   for(const key of MISSION_STAT_KEYS){
     out[key] = Math.max(0, Math.floor(Number(now[key] || 0) - Number(start[key] || 0)));
   }
-  return out;
+  return reconcileMissionStatsWithEntities(out);
 }
 function finalizeMissionStatsSnapshot(){
-  const finalStats = currentMissionStatsSnapshot();
+  const finalStats = reconcileMissionStatsWithEntities(currentMissionStatsSnapshot());
   S._missionStatsFinal = finalStats;
   return finalStats;
 }
@@ -8742,6 +8789,7 @@ const DEFAULT = {
   stats:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
   _missionStatsStart:{ shots:0, captures:0, kills:0, evac:0, cashEarned:0, trapsPlaced:0, trapsTriggered:0 },
   _missionStatsFinal:null,
+  _missionTigerOutcomes:{},
   _missionRunId:"",
   opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0, perfectRescues:0, bossesDefeated:0 },
   balanceStats: defaultBalanceStatsState(),
@@ -30397,12 +30445,13 @@ function supportUnitsTick(){
             const burstBonus = (squadAbilityActive("tranq_burst", now, S) || now < Number(tiger._squadTranqBurstUntil || 0)) ? 0.12 : 0;
             const capChance = clamp(0.62 + storyAttackerCaptureBonus() + burstBonus + Number(unitTrait.captureBonus || 0) + Number(unitEquipment.captureBonus || 0), 0.42, 0.98);
             if(Math.random() < capChance){
+              if(!recordUniqueMissionTigerOutcome(tiger, "CAPTURE")) break;
               noteTigerOutcomeForObjective(tiger);
               markStoryFinalBossOutcome("CAPTURE", tiger);
+              tiger.missionOutcome = "CAPTURE";
               tiger.alive = false;
               tigerPackRecordLoss(tiger, "CAPTURE");
               recordCapturedTigerTrophy(tiger, "specialist");
-              S.stats.captures = (S.stats.captures || 0) + 1;
               addContractTally("captures", 1);
               addOpsTotal("captures", 1);
               addCoopStrikeContribution("capture", 12, { coordinated:true, silent:true });
@@ -33651,6 +33700,7 @@ function updateAttackButton(){
 
 function finishTigerKill(t){
   if(!t || !t.alive) return;
+  if(!recordUniqueMissionTigerOutcome(t, "KILL")) return;
   triggerPhase18TigerMoment(t, "finish", "Eliminated");
   noteTigerOutcomeForObjective(t);
   const bossKill = !!isBossTiger(t);
@@ -33663,6 +33713,7 @@ function finishTigerKill(t){
     window.TigerTutorial.combatOutcome = "KILL";
   }
   markStoryFinalBossOutcome("KILL", t);
+  t.missionOutcome = "KILL";
   t.alive=false;
   tigerPackRecordLoss(t, "KILL");
   breakCombo("tiger killed");
@@ -33672,7 +33723,6 @@ function finishTigerKill(t){
   }
   const pay=payout("KILL");
   S.funds+=pay.cash; S.score+=pay.score;
-  S.stats.kills += 1;
   addContractTally("kills", 1);
   if(bossKill) addContractTally("bossesDefeated", 1);
   addOpsTotal("kills", 1);
@@ -33762,6 +33812,7 @@ function playerAction(action){
       return toast(`Out of tranquilizers for ${reqWeapon.name}. Buy more in Shop > Ammo.`);
     }
     if(!canCaptureTiger(t)) return toast(`${reqWeapon.name} is needed to capture this ${t.type}.`);
+    if(!recordUniqueMissionTigerOutcome(t, "CAPTURE")) return toast("This tiger was already resolved.");
     if(window.TigerTutorial?.isRunning){
       window.TigerTutorial.combatOutcome = "CAPTURE";
     }
@@ -33775,6 +33826,7 @@ function playerAction(action){
     const captureTreeFx = weaponMasteryTreeEffects(req, S);
     markStoryFinalBossOutcome("CAPTURE", t);
     triggerPhase18TigerMoment(t, "capture", "Captured");
+    t.missionOutcome = "CAPTURE";
     t.alive=false;
     tigerPackRecordLoss(t, "CAPTURE");
     recordCapturedTigerTrophy(t, "player");
@@ -33784,7 +33836,6 @@ function playerAction(action){
     pay.trust = Math.round(Number(pay.trust || 0) + Number(captureTreeFx.captureTrustAdd || 0));
     pay.aggro = Math.round(Number(pay.aggro || 0) * Number(captureTreeFx.captureAggroMul || 1));
     S.funds+=pay.cash; S.score+=pay.score;
-    S.stats.captures += 1;
     addContractTally("captures", 1);
     if(bossCapture) addContractTally("bossesDefeated", 1);
     addOpsTotal("captures", 1);
