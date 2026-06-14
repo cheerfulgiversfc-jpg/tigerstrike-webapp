@@ -8709,6 +8709,8 @@ const DEFAULT = {
   tigerInvestigation:null,
   dayNightCycle:null,
   extractionSequence:null,
+  missionTigerSpawnControl:null,
+  _missionTigerInitialCount:0,
   settlementDefense:null,
 
   scanPing:0,
@@ -12010,8 +12012,89 @@ function missionDirectorHardCaps(){
   caps.support = clamp(Math.floor(caps.support), 8, MAX_PERSIST_SUPPORT_UNITS);
   return caps;
 }
+function missionTigerSpawnBudgetCap(level=currentCampaignLevel(), bossMission=false){
+  const n = Math.max(1, Math.floor(Number(level || 1)));
+  const standardCap = n <= 10 ? 10 : (n <= 30 ? 14 : (n <= 60 ? 18 : 20));
+  return bossMission ? Math.min(22, standardCap + 2) : standardCap;
+}
+function missionTigerSpawnBudgetForState(state=S){
+  if(normalizeModeName(state?.mode) === "Survival") return Number.POSITIVE_INFINITY;
+  const storyMission = normalizeModeName(state?.mode) === "Story" ? storyMissionForState(state) : null;
+  const arcadeMission = normalizeModeName(state?.mode) === "Arcade" ? activeArcadeMission(state) : null;
+  const activeMission = storyMission || arcadeMission;
+  const level = Math.max(1, Math.floor(Number(activeMission?.number || currentCampaignLevel() || 1)));
+  const initial = Math.max(1, Math.floor(Number(
+    state?._missionTigerInitialCount || activeMission?.tigers || state?.tigers?.length || 1
+  )));
+  const allowance = level <= 10 ? 4 : (level <= 30 ? 6 : (level <= 60 ? 8 : 10));
+  const bossMission = !!(activeMission?.boss || activeMission?.finalBoss || activeMission?.bossTwin);
+  return Math.max(initial, Math.min(initial + allowance, missionTigerSpawnBudgetCap(level, bossMission)));
+}
+function ensureMissionTigerSpawnControl(state=S){
+  if(!state.missionTigerSpawnControl || typeof state.missionTigerSpawnControl !== "object"){
+    const observed = Array.isArray(state.tigers) ? state.tigers.length : 0;
+    state.missionTigerSpawnControl = {
+      budget:missionTigerSpawnBudgetForState(state),
+      spawned:Math.max(Number(state._missionTigerInitialCount || 0), observed),
+      lockdown:false,
+      lockdownReason:"",
+      extractionWaveUsed:false
+    };
+  }
+  const control = state.missionTigerSpawnControl;
+  if(normalizeModeName(state.mode) === "Survival"){
+    control.budget = Number.POSITIVE_INFINITY;
+  }else if(!Number.isFinite(control.budget) || control.budget <= 0){
+    control.budget = missionTigerSpawnBudgetForState(state);
+  }
+  control.spawned = Math.max(0, Math.floor(Number(control.spawned || 0)));
+  control.lockdown = !!control.lockdown;
+  control.lockdownReason = String(control.lockdownReason || "");
+  control.extractionWaveUsed = !!control.extractionWaveUsed;
+  return control;
+}
+function initializeMissionTigerSpawnControl(state=S){
+  const initial = Array.isArray(state.tigers) ? state.tigers.reduce((n, tiger)=>n + (tiger ? 1 : 0), 0) : 0;
+  state._missionTigerInitialCount = initial;
+  state.missionTigerSpawnControl = {
+    budget:missionTigerSpawnBudgetForState(state),
+    spawned:initial,
+    lockdown:false,
+    lockdownReason:"",
+    extractionWaveUsed:false
+  };
+  return state.missionTigerSpawnControl;
+}
+function activateMissionTigerSpawnLockdown(reason="objectives-complete", state=S){
+  if(normalizeModeName(state?.mode) === "Survival") return false;
+  const control = ensureMissionTigerSpawnControl(state);
+  if(control.lockdown) return false;
+  control.lockdown = true;
+  control.lockdownReason = String(reason || "objectives-complete");
+  const director = ensureMissionDirectorState(state);
+  director.spawnSoftLockUntil = Math.max(Number(director.spawnSoftLockUntil || 0), Date.now() + 3600000);
+  setEventText("🔒 FINAL LOCKDOWN: normal tiger reinforcements have stopped.", 4.2);
+  return true;
+}
+function missionTigerSpawnAllowed(extra=1, opts={}, state=S){
+  if(normalizeModeName(state?.mode) === "Survival") return true;
+  if(state?.missionEnded || state?.gameOver) return false;
+  const control = ensureMissionTigerSpawnControl(state);
+  const count = Math.max(1, Math.floor(Number(extra || 1)));
+  const extractionPursuit = !!opts.extractionPursuit;
+  if(control.lockdown && !extractionPursuit) return false;
+  if(extractionPursuit && control.extractionWaveUsed) return false;
+  return control.spawned + count <= control.budget;
+}
+function recordMissionTigerSpawn(count=1, opts={}, state=S){
+  if(normalizeModeName(state?.mode) === "Survival") return;
+  const control = ensureMissionTigerSpawnControl(state);
+  control.spawned += Math.max(1, Math.floor(Number(count || 1)));
+  if(opts.extractionPursuit) control.extractionWaveUsed = true;
+}
 function missionDirectorAllowTigerSpawn(extra=1, opts={}){
   if(!S || typeof S !== "object") return false;
+  if(!opts.skipMissionBudget && !missionTigerSpawnAllowed(extra, opts)) return false;
   const now = Date.now();
   const director = ensureMissionDirectorState();
   if(!opts.ignoreFairness){
@@ -27927,7 +28010,8 @@ function spawnRogueTiger(options={}){
   const capFromDirector = missionDirectorHardCaps().tigers;
   const maxAlive = Math.min((S.mode === "Survival") ? 14 : 10, capFromDirector);
   if(aliveCount >= maxAlive) return null;
-  if(!ignoreDirectorBudget && !missionDirectorAllowTigerSpawn(1)) return null;
+  if(!missionTigerSpawnAllowed(1, options)) return null;
+  if(!ignoreDirectorBudget && !missionDirectorAllowTigerSpawn(1, { ...options, skipMissionBudget:true })) return null;
 
   const forcedType = (typeof options.typeKey === "string" && TIGER_TYPES.some((t)=>t.key === options.typeKey))
     ? options.typeKey
@@ -28050,6 +28134,7 @@ function spawnRogueTiger(options={}){
   assignEliteTigerMutation(tiger, { mutationChanceBonus:forcedType === "Alpha" ? 0.08 : 0 });
 
   S.tigers.push(tiger);
+  recordMissionTigerSpawn(1, options);
   tigerPackOnSpawn(tiger);
   missionDirectorMarkLaneSpawn(tiger.x, 1);
   if(!ignoreDirectorBudget) missionDirectorMarkTigerSpawn();
@@ -28160,6 +28245,8 @@ function deploy(opts={}){
   resetTigerInvestigationForDeploy(S);
   resetDayNightCycleForDeploy(S);
   resetExtractionSequenceForDeploy(S);
+  S.missionTigerSpawnControl = null;
+  S._missionTigerInitialCount = 0;
   resetSettlementDefenseForDeploy(S);
   S._biomeFogPulseAt = 0;
   S.eventText = "";
@@ -28235,6 +28322,7 @@ function deploy(opts={}){
   spawnSupportUnits();
   spawnCivilians();
   spawnTigers();
+  initializeMissionTigerSpawnControl(S);
   spawnRivalHunters();
   seedTigerInvestigationClues(S);
   if(settlementServiceUnlocked("scouts")){
@@ -34413,6 +34501,7 @@ function beginExtractionSequence(){
     x:pt.x, y:pt.y, r:68, startedAt:now, deadlineAt:now + 75000, holdStartedAt:0, holdProgressMs:0,
     holdRequiredMs:def.holdSec * 1000, lastTickAt:now, nextNoticeAt:now, pursuitSpawned:false, emergency:false, bonusCash:0
   });
+  activateMissionTigerSpawnLockdown("extraction-started");
   S.lockedTigerId = null;
   S.activeTigerId = null;
   S.inBattle = false;
@@ -34455,15 +34544,22 @@ function extractionSequenceTick(now=Date.now()){
     ex.holdProgressMs = clamp(ex.holdProgressMs + dt, 0, ex.holdRequiredMs);
     if(!ex.pursuitSpawned){
       ex.pursuitSpawned = true;
-      const waves = currentCampaignLevel() >= 25 ? 2 : 1;
-      for(let i=0;i<waves;i++){
-        const tiger = spawnRogueTiger({ nearX:ex.x, nearY:ex.y, anchorTight:true, ignoreDirectorBudget:true });
-        if(tiger){
-          tiger.extractionPursuit = true;
-          tiger.aggroBoost = Math.max(0.7, Number(tiger.aggroBoost || 0));
-        }
+      const tiger = spawnRogueTiger({
+        nearX:ex.x,
+        nearY:ex.y,
+        anchorTight:true,
+        ignoreDirectorBudget:true,
+        extractionPursuit:true
+      });
+      if(tiger){
+        tiger.extractionPursuit = true;
+        tiger.intent = "FINAL PURSUIT";
+        tiger.intentUntil = Number.MAX_SAFE_INTEGER;
+        tiger.aggroBoost = Math.max(0.7, Number(tiger.aggroBoost || 0));
+        setEventText(`${ex.icon} FINAL PURSUIT: hold extraction against the last tiger.`, 3.2);
+      }else{
+        setEventText(`${ex.icon} Extraction route secured. No pursuit wave remains.`, 3.2);
       }
-      setEventText(`${ex.icon} Hold extraction! Pursuit tigers incoming.`, 3.2);
     }
     if(ex.holdProgressMs >= ex.holdRequiredMs) return finishExtractionSequence(false);
   }else{
@@ -34563,6 +34659,12 @@ function checkMissionComplete(){
   const trapPlaceReady = !arcadeMission || (S.stats.trapsPlaced || 0) >= (arcadeMission.trapPlaceRequired || 0);
   const trapTriggerReady = !arcadeMission || (S.stats.trapsTriggered || 0) >= (arcadeMission.trapTriggerRequired || 0);
   const noKillReady = !arcadeMission || !arcadeMission.captureOnly || (S.stats.kills || 0) === 0;
+  const rescueObjectiveReady = civTotal > 0 ? evacReady : !tAlive;
+  const primaryObjectivesReady = rescueObjectiveReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady;
+
+  if(primaryObjectivesReady){
+    activateMissionTigerSpawnLockdown("primary-objectives-complete");
+  }
 
   if(S.mode!=="Survival" && civTotal > 0 && civDead > 0){
     if(!S.missionEnded){
@@ -34595,7 +34697,7 @@ function checkMissionComplete(){
     return;
   }
 
-  if(!tAlive && evacReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady){
+  if(!tAlive && primaryObjectivesReady){
     if(!extraction.complete){
       beginExtractionSequence();
       return;
