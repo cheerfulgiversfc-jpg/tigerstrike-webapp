@@ -2923,7 +2923,7 @@ function missionRewards2Build({ activeMission=null, storyMission=null, arcadeMis
   const kills = Math.max(0, Math.floor(Number(missionStats.kills || 0)));
   const shots = Math.max(0, Math.floor(Number(missionStats.shots || 0)));
   const trapStops = Math.max(0, Math.floor(Number(missionStats.trapsTriggered || 0)));
-  const cashEarnedBefore = Math.max(0, Math.floor(Number(missionStats.cashEarned || 0)));
+  const cashEarnedBefore = 0;
   const perfectRescue = civTotal > 0 && civDead === 0 && civEvac >= civTotal;
   const captureFocus = captures > 0 && captures >= Math.max(1, kills);
   const cleanPrecision = shots > 0 && shots <= Math.max(18, 18 + level);
@@ -2982,7 +2982,7 @@ function missionRewards2Build({ activeMission=null, storyMission=null, arcadeMis
     totalCash,
     bonusXp,
     cashEarnedBefore,
-    cashEarnedAfter: cashEarnedBefore + totalCash,
+    cashEarnedAfter: totalCash,
     lines,
     tags,
     createdAt:Date.now()
@@ -3024,8 +3024,7 @@ function renderMissionRewards2Card(breakdown=null){
   const bonusXp = Math.max(0, Math.floor(Number(data.bonusXp || 0)));
   if(totalEl) totalEl.innerText = `$${totalCash.toLocaleString()}`;
   if(subEl){
-    const fieldCash = Math.max(0, Math.floor(Number(data.cashEarnedBefore || 0)));
-    subEl.innerText = `Awarded now: +$${totalCash.toLocaleString()} • +${bonusXp}XP • Field earnings: $${fieldCash.toLocaleString()} • Clear streak ${Math.max(1, Math.floor(Number(data.nextStreak || 1)))}`;
+    subEl.innerText = `Total mission cash: +$${totalCash.toLocaleString()} • +${bonusXp}XP • Clear streak ${Math.max(1, Math.floor(Number(data.nextStreak || 1)))}`;
   }
   if(rowsEl){
     const lines = Array.isArray(data.lines) ? data.lines : [];
@@ -8609,6 +8608,9 @@ const DEFAULT = {
   trapsPlaced:[],
   shields:1,
   shieldUntil:0,
+  shieldUsesThisMission:0,
+  trapCooldownUntil:0,
+  trapUsesThisMission:0,
   rollCooldownUntil:0,
   rollInvulnUntil:0,
   rollBufferedDodges:0,
@@ -8663,6 +8665,8 @@ const DEFAULT = {
   settlementDefense:null,
 
   scanPing:0,
+  scanTargetTigerId:null,
+  scanTargetUntil:0,
   lockedTigerId:null,
   lockedRivalId:null,
 
@@ -14688,7 +14692,8 @@ const CIVILIAN_HIT_PCT_BY_TIGER = {
   Alpha:[0.10,0.12],
   Boss:[0.12,0.15],
 };
-const ABILITY_COOLDOWN_MS = { scan:6800, sprint:5200, shield:12000 };
+const ABILITY_COOLDOWN_MS = { scan:6800, sprint:5200, shield:SHIELD_DURATION_MS };
+const ESCALATING_ITEM_COOLDOWN_MS = 5000;
 const SQUAD_ABILITY_COOLDOWN_MS = Object.freeze({
   tranq_burst: 30000,
   smoke_screen: 26000,
@@ -16013,6 +16018,9 @@ function triggerAbilityCooldown(key){
   if(ms <= 0) return;
   S.abilityCooldowns[key] = Date.now() + ms;
 }
+function escalatingItemCooldownMs(uses=1){
+  return ESCALATING_ITEM_COOLDOWN_MS * Math.max(1, Math.floor(Number(uses || 1)));
+}
 
 function ensureSquadAbilityState(state=S){
   const src = (state && typeof state === "object") ? state : S;
@@ -17113,8 +17121,8 @@ function tigerInvestigationCaptureBonus(t){
 }
 function captureWindowHp(t){ return Math.max(1, Math.ceil((t?.hpMax || 0) * (storyCaptureWindowPct() + tigerInvestigationCaptureBonus(t)))); }
 function captureWindowMinHp(t){
-  // Capture window is 25% down to 5% HP.
-  return Math.max(1, Math.ceil((t?.hpMax || 0) * 0.05));
+  // Keep capture available until the tiger reaches the final 1% of health.
+  return Math.max(1, Math.ceil((t?.hpMax || 0) * 0.01));
 }
 function tigerInCaptureHpWindow(t){
   if(!t || !t.alive) return false;
@@ -23341,6 +23349,59 @@ function ownedAmmoCount(ammoId){ return S.ammoReserve[ammoId]||0; }
 function ownedMedCount(medId){ return S.medkits[medId]||0; }
 function ownedToolCount(toolId){ return S.repairKits[toolId]||0; }
 
+function cashBundleIndividualValue(grant={}){
+  let value = positiveInt(grant.funds);
+  value += positiveInt(grant.shields) * SHIELD_PRICE;
+  value += positiveInt(grant.traps) * TRAP_ITEM.price;
+  // Perk points are bonuses, not individually purchasable items, so they do not inflate bundle value.
+  for(const [id, qty] of Object.entries(grant.medkits || {})) value += positiveInt(qty) * Number(getMed(id)?.price || 0);
+  for(const [id, qty] of Object.entries(grant.repairs || {})) value += positiveInt(qty) * Number(getTool(id)?.price || 0);
+  for(const [id, qty] of Object.entries(grant.armorPlates || {})) value += positiveInt(qty) * Number(getArmor(id)?.price || 0);
+  for(const [id, qty] of Object.entries(grant.ammo || {})){
+    const ammo = getAmmo(id);
+    if(ammo) value += Math.ceil(positiveInt(qty) / Math.max(1, Number(ammo.pack || 1))) * ammoPriceCapped(ammo);
+  }
+  return Math.max(0, Math.round(value));
+}
+function scaleCashBundleGrant(grant={}, scale=1){
+  const out = cloneState(grant || {});
+  const mul = Math.max(1, Math.ceil(Number(scale || 1)));
+  for(const key of ["funds","shields","traps","perkPoints"]){
+    if(positiveInt(out[key]) > 0) out[key] = positiveInt(out[key]) * mul;
+  }
+  for(const group of ["medkits","repairs","armorPlates","ammo"]){
+    if(!out[group] || typeof out[group] !== "object") continue;
+    for(const id of Object.keys(out[group])){
+      if(positiveInt(out[group][id]) > 0) out[group][id] = positiveInt(out[group][id]) * mul;
+    }
+  }
+  return out;
+}
+function cashBundleGrantPreview(grant={}){
+  const bits = [];
+  const totalGroup = (group)=>Object.values(group || {}).reduce((sum, qty)=>sum + positiveInt(qty), 0);
+  if(positiveInt(grant.shields)) bits.push(`+${positiveInt(grant.shields)} Shields`);
+  if(positiveInt(grant.traps)) bits.push(`+${positiveInt(grant.traps)} Traps`);
+  if(totalGroup(grant.medkits)) bits.push(`+${totalGroup(grant.medkits)} Med Kits`);
+  if(totalGroup(grant.repairs)) bits.push(`+${totalGroup(grant.repairs)} Repairs`);
+  if(totalGroup(grant.armorPlates)) bits.push(`+${totalGroup(grant.armorPlates)} Armor Plates`);
+  if(totalGroup(grant.ammo)) bits.push(`+${totalGroup(grant.ammo)} Ammo`);
+  if(positiveInt(grant.perkPoints)) bits.push(`+${positiveInt(grant.perkPoints)} Perk Points`);
+  return bits.join(" • ") || "Supply bundle";
+}
+function valueGuaranteedCashBundle(bundle){
+  const base = cloneState(bundle);
+  const targetValue = Math.ceil(Number(base.price || 0) * 1.25);
+  const baseValue = cashBundleIndividualValue(base.grant);
+  const valueScale = Math.max(1, Math.ceil(targetValue / Math.max(1, baseValue)));
+  base.grant = scaleCashBundleGrant(base.grant, valueScale);
+  base.individualValue = cashBundleIndividualValue(base.grant);
+  base.savings = Math.max(0, base.individualValue - Number(base.price || 0));
+  base.valueScale = valueScale;
+  base.preview = cashBundleGrantPreview(base.grant);
+  return base;
+}
+
 function cashBundleValidationErrors(bundle){
   const errors = [];
   if(!bundle || typeof bundle !== "object") return ["missing bundle"];
@@ -23387,7 +23448,7 @@ function cashShopBundles(){
       console.warn("Cash shop bundle disabled:", bundle?.id || bundle?.name || "unknown", errors);
       continue;
     }
-    valid.push(bundle);
+    valid.push(valueGuaranteedCashBundle(bundle));
   }
   return valid.sort((a, b)=>Number(a.price || 0) - Number(b.price || 0));
 }
@@ -24195,6 +24256,7 @@ function renderShopList(){
           <div>
             <div class="itemName">${bundle.name} <span class="tag">Bundle</span>${tags}</div>
             <div class="itemDesc">${bundle.desc}</div>
+            <div class="itemDesc">Individual value: <b>$${Number(bundle.individualValue || 0).toLocaleString()}</b> • You save <b>$${Number(bundle.savings || 0).toLocaleString()}</b>.</div>
             <div class="itemDesc">${canAfford ? "Ready to buy now." : `Need $${Math.max(0, Number(bundle.price || 0) - Number(S.funds || 0)).toLocaleString()} more.`}</div>
           </div>
           <div style="text-align:right">
@@ -25064,7 +25126,7 @@ function renderInventory(){
 }
 
 function useMedkit(opts={}){
-  if(totalMedkits()<=0) return toast("No medkits. Buy in shop.");
+  if(totalMedkits()<=0) return toast("Out of medkits. Buy more in Shop > Med Kits.");
   const options = (opts && typeof opts === "object") ? opts : {};
   const preferred = (typeof options.medId === "string" && getMed(options.medId)) ? options.medId : null;
   const smart = (options.smart != null) ? !!options.smart : !preferred;
@@ -25295,8 +25357,12 @@ function backupTick(){
 // ===================== TRAPS (one-time) =====================
 function placeTrap(){
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
-  if(S.trapsOwned<=0) return toast("No traps. Buy in shop.");
+  if(S.trapsOwned<=0) return toast("Out of traps. Buy more in Shop > Traps.");
+  const trapCooldownLeft = Math.max(0, Number(S.trapCooldownUntil || 0) - Date.now());
+  if(trapCooldownLeft > 0) return toast(`Trap cooling down (${Math.max(1, Math.ceil(trapCooldownLeft / 1000))}s).`);
   S.trapsOwned -= 1;
+  S.trapUsesThisMission = Math.max(0, Math.floor(Number(S.trapUsesThisMission || 0))) + 1;
+  S.trapCooldownUntil = Date.now() + escalatingItemCooldownMs(S.trapUsesThisMission);
   S.stats.trapsPlaced = (S.stats.trapsPlaced || 0) + 1;
   addContractTally("trapsPlaced", 1);
   if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
@@ -25312,7 +25378,7 @@ function placeTrap(){
     removeAt: 0
   });
 
-  toast("🪤 Trap placed (one-time).");
+  toast(`🪤 Trap placed • next trap cooldown ${Math.round(escalatingItemCooldownMs(S.trapUsesThisMission) / 1000)}s.`);
   sfx("trap"); hapticImpact("light");
   save(); renderHUD();
 }
@@ -28004,6 +28070,8 @@ function deploy(opts={}){
   S.target=null;
   resetControlInputState("deploy");
   S.lockedTigerId=null;
+  S.scanTargetTigerId=null;
+  S.scanTargetUntil=0;
   S.lockedRivalId=null;
   S.respawnPendingUntil = 0;
   S.respawnNoticeAt = 0;
@@ -28014,6 +28082,9 @@ function deploy(opts={}){
   S.dangerCivId = null;
   S.shields = Math.max(0, 1 + storyStartingShieldBonus());
   S.shieldUntil = 0;
+  S.shieldUsesThisMission = 0;
+  S.trapCooldownUntil = 0;
+  S.trapUsesThisMission = 0;
   ensureAbilityCooldownState();
   S.abilityCooldowns.scan = 0;
   S.abilityCooldowns.sprint = 0;
@@ -29066,9 +29137,19 @@ function lockedTiger(){
   return locked && locked.alive ? locked : null;
 }
 function currentTargetTiger(){
+  const scanTarget = tigerById(S.scanTargetTigerId);
+  if(scanTarget?.alive && Date.now() < Number(S.scanTargetUntil || 0)) return scanTarget;
   const locked=lockedTiger();
   if(locked) return locked;
   return nearestTiger();
+}
+function tigerDirectionLabel(t){
+  if(!t) return "unknown direction";
+  const dx = Number(t.x || 0) - Number(S.me?.x || 0);
+  const dy = Number(t.y || 0) - Number(S.me?.y || 0);
+  const vertical = dy < -45 ? "north" : (dy > 45 ? "south" : "");
+  const horizontal = dx < -45 ? "west" : (dx > 45 ? "east" : "");
+  return [vertical, horizontal].filter(Boolean).join("-") || "nearby";
 }
 function lockNearestTiger(opts={}){
   const { silent=false } = opts;
@@ -29123,7 +29204,21 @@ function scan(){
     window.TigerTutorial.scanUsed = true;
   }
   if(!tutorialRun) scanInvestigationClues();
-  if(!window.TigerTutorial?.isRunning) lockNearestTiger({ silent:true });
+  if(!window.TigerTutorial?.isRunning){
+    const target = nearestTiger();
+    if(target){
+      S.scanTargetTigerId = target.id;
+      S.scanTargetUntil = Date.now() + 12000;
+      S.lockedTigerId = target.id;
+      const meters = Math.round(dist(S.me.x, S.me.y, target.x, target.y));
+      setEventText(`🛰️ Scan found Tiger #${target.id} ${tigerDirectionLabel(target)} • ${meters}m. Follow the blue guidance line.`, 4.5);
+      toast(`Scan locked Tiger #${target.id} • ${tigerDirectionLabel(target)} • ${meters}m`);
+    }else{
+      S.scanTargetTigerId = null;
+      S.scanTargetUntil = 0;
+      toast("Scan complete: no living tigers remain on the map.");
+    }
+  }
   sfx("scan"); hapticImpact("light"); save();
   unlockAchv("scan1","First Scan");
 }
@@ -29320,10 +29415,13 @@ function activateShield(){
   if((S.shields||0) <= 0) return toast("No shields left. Buy more in Shop.");
   S.shields = Math.max(0, (S.shields||0) - 1);
   S.shieldUntil = Date.now() + SHIELD_DURATION_MS;
+  S.shieldUsesThisMission = Math.max(0, Math.floor(Number(S.shieldUsesThisMission || 0))) + 1;
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "shield"){
     window.TigerTutorial.shieldUsed = true;
   }
-  triggerAbilityCooldown("shield");
+  ensureAbilityCooldownState();
+  const shieldCooldownMs = escalatingItemCooldownMs(S.shieldUsesThisMission);
+  S.abilityCooldowns.shield = Date.now() + shieldCooldownMs;
   S.eventText = "🛡️ Escort Shield active for 5 seconds.";
   S.eventTextUntil = Date.now() + 1500;
   sfx("ui");
@@ -29331,6 +29429,7 @@ function activateShield(){
   renderHUD();
   renderCombatControls();
   save();
+  toast(`Shield active 5s • next shield cooldown ${Math.round(shieldCooldownMs / 1000)}s.`);
 }
 function rollCooldownLeftMs(now=Date.now()){
   return Math.max(0, (S.rollCooldownUntil || 0) - now);
@@ -30899,7 +30998,7 @@ function evacCheck(){
       const rewardMul = CIVILIAN_RISK_REWARD_MULT[riskState] || 1;
       const pDef = civilianPersonalityDef(c.aiState || c.personality);
       const xpGain = Math.max(30, Math.round((35 * rewardMul) + ((pDef.riskValue || 1) * 3)));
-      const cashGain = Math.max(0, Math.round((riskState === "critical" ? 220 : (riskState === "threatened" ? 120 : 60)) * (pDef.riskValue || 1) * liveOpsMissionModifierValue("rescuePayoutMul", 1, S)));
+      const cashGain = 0;
       moveCivilianInsideEvac(c, evacCoreRadius);
       if(dist(c.x, c.y, ez.x, ez.y) > evacCoreRadius){
         continue;
@@ -33046,6 +33145,27 @@ function setCaptureReadyVisual(ready=false){
     else el.classList.remove("captureReady");
   });
 }
+function drawScanTigerGuidance(){
+  const target = tigerById(S.scanTargetTigerId);
+  if(!target?.alive || Date.now() >= Number(S.scanTargetUntil || 0)) return;
+  ctx.save();
+  ctx.globalAlpha = 0.78;
+  ctx.strokeStyle = "rgba(72,224,255,.96)";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([12,8]);
+  ctx.beginPath();
+  ctx.moveTo(S.me.x, S.me.y);
+  ctx.lineTo(target.x, target.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 0.95;
+  ctx.strokeStyle = "rgba(125,211,252,.98)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(target.x, target.y, 48 + (Math.sin(Date.now() / 150) * 7), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
 function updateCaptureReadyCue(t, ready){
   if(!t || !t.alive || !S.inBattle){
     S._captureReadyTigerId = 0;
@@ -33058,7 +33178,7 @@ function updateCaptureReadyCue(t, ready){
     if(lastKey !== key){
       S._captureReadyTigerId = key;
       S._captureReadyAt = Date.now();
-      setBattleMsg("🔴 Capture ready: tiger is in the 25%→5% capture window.");
+      setBattleMsg("🔴 Capture ready: tiger is in the capture window down to 1% HP.");
       setEventText("🔴 Capture-ready window active.", 1.6);
       try{ hapticImpact("medium"); }catch(e){}
     }
@@ -33094,34 +33214,29 @@ function renderCombatControls(){
   }
 
   const t = activeTiger();
-  const canCap = canAttemptCapture(t);
   const captureReadyByHp = tigerInCaptureHpWindow(t);
-  const canAtk = anyLethalWeaponHasAmmo();
+  const canPressCombatAction = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil);
   const medCount = totalMedkits();
   const armorPlateCountAll = totalArmorPlates();
-  const canMed = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && medCount > 0;
-  const canArmorPlate = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && armorPlateCountAll > 0 && S.armor < S.armorCap;
-  const canShield = !S.paused && !S.missionEnded && !S.gameOver && (S.shields||0) > 0 && !abilityOnCooldown("shield");
-  const canQuickArmor = canQuickUseArmorPlate();
-  const protectDisabled = inCombat || !(canShield || canQuickArmor);
+  const protectDisabled = inCombat || S.paused || S.missionEnded || S.gameOver;
   const rollLeft = rollCooldownLabel();
   const canRoll = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && !rollLeft;
 
-  [["touchAttackBtn", !canAtk], ["combatAttackBtn", !canAtk]].forEach(([id, disabled])=>{
+  [["touchAttackBtn", !canPressCombatAction], ["combatAttackBtn", !canPressCombatAction]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
-  [["touchCaptureBtn", !canCap], ["combatCaptureBtn", !canCap]].forEach(([id, disabled])=>{
+  [["touchCaptureBtn", !canPressCombatAction], ["combatCaptureBtn", !canPressCombatAction]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
   setCaptureReadyVisual(captureReadyByHp);
   updateCaptureReadyCue(t, captureReadyByHp);
-  [["touchCombatMedkitBtn", !canMed], ["combatMedkitBtn", !canMed]].forEach(([id, disabled])=>{
+  [["touchCombatMedkitBtn", !canPressCombatAction], ["combatMedkitBtn", !canPressCombatAction]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
-  [["touchCombatArmorBtn", !canArmorPlate], ["combatArmorBtn", !canArmorPlate]].forEach(([id, disabled])=>{
+  [["touchCombatArmorBtn", !canPressCombatAction], ["combatArmorBtn", !canPressCombatAction]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
@@ -33234,7 +33349,7 @@ function renderBattleStatus(){
   agentMeta.innerText = `Armor ${Math.round(S.armor)} • Stamina ${Math.round(S.stamina)} • Ammo ${S.mag.loaded}/${S.mag.cap}`;
   const mutation = t ? eliteTigerMutationLabel(t) : "";
   tigerMeta.innerText = t
-    ? `${t.type}${mutation ? ` • ${mutation}` : ""} • Capture window ${captureWindowPctLabel()} to 5% HP${isBossTiger(t) ? ` • ${bossCaptureStrategyStatus(t)}` : ""}`
+    ? `${t.type}${mutation ? ` • ${mutation}` : ""} • Capture window ${captureWindowPctLabel()} to 1% HP${isBossTiger(t) ? ` • ${bossCaptureStrategyStatus(t)}` : ""}`
     : "Target lost";
   renderCombatControls();
 }
@@ -33380,7 +33495,7 @@ function updateBattleButtons(){
   const killBtn = document.getElementById("killBtn");
   const capBtn = document.getElementById("capBtn");
   if(killBtn) killBtn.disabled = !(t && t.hp<=15);
-  if(capBtn) capBtn.disabled = !canAttemptCapture(t);
+  if(capBtn) capBtn.disabled = !(t && t.alive);
   setCaptureReadyVisual(tigerInCaptureHpWindow(t));
   try{
     if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weaken_tiger" && tigerInCaptureHpWindow(t)){
@@ -33396,17 +33511,17 @@ function payout(outcome){
   const missionBonusMul = liveOpsMissionBonusMul(S);
   if(S.mode==="Story"){
     const mul = storyPayoutMul();
-    if(outcome==="CAPTURE") return { cash: Math.round(rand(2500,5000) * mul * liveOpsMul * missionBonusMul), score: Math.round(220 * mul * missionBonusMul), trust:+6, aggro:-8 };
-    return { cash: Math.round(rand(500,1500) * mul * liveOpsMul * missionBonusMul), score: Math.round(100 * mul * missionBonusMul), trust:-4, aggro:+14 };
+    if(outcome==="CAPTURE") return { cash: 0, score: Math.round(220 * mul * missionBonusMul), trust:+6, aggro:-8 };
+    return { cash: 0, score: Math.round(100 * mul * missionBonusMul), trust:-4, aggro:+14 };
   }
   if(S.mode==="Arcade"){
     const L=S.arcadeLevel||1;
-    if(outcome==="CAPTURE") return { cash: Math.round((900 + L*220) * liveOpsMul * missionBonusMul), score: Math.round((180 + L*40) * missionBonusMul), trust:+2, aggro:-4 };
-    return { cash: Math.round((450 + L*140) * liveOpsMul * missionBonusMul), score: Math.round((90 + L*25) * missionBonusMul), trust:-1, aggro:+6 };
+    if(outcome==="CAPTURE") return { cash: 0, score: Math.round((180 + L*40) * missionBonusMul), trust:+2, aggro:-4 };
+    return { cash: 0, score: Math.round((90 + L*25) * missionBonusMul), trust:-1, aggro:+6 };
   }
   const W=S.survivalWave||1;
-  if(outcome==="CAPTURE") return { cash: Math.round((700 + W*260) * liveOpsMul * missionBonusMul), score: Math.round((180 + W*45) * missionBonusMul), trust:0, aggro:-2 };
-  return { cash: Math.round((300 + W*170) * liveOpsMul * missionBonusMul), score: Math.round((85 + W*28) * missionBonusMul), trust:0, aggro:+5 };
+  if(outcome==="CAPTURE") return { cash: 0, score: Math.round((180 + W*45) * missionBonusMul), trust:0, aggro:-2 };
+  return { cash: 0, score: Math.round((85 + W*28) * missionBonusMul), trust:0, aggro:+5 };
 }
 
 function maybeReinforceOnKill(){
@@ -33528,7 +33643,7 @@ function equippedWeaponHasAmmoNow(){
 function updateAttackButton(){
   const btn = document.getElementById("atkBtn");
   if(btn){
-    btn.disabled = !anyLethalWeaponHasAmmo();
+    btn.disabled = !S.inBattle || S.paused || S.missionEnded || S.gameOver;
     btn.innerText = lockedRival() && !S.inBattle ? "Attack Rival" : "Attack";
   }
   renderCombatControls();
@@ -33628,7 +33743,7 @@ function playerAction(action){
 
   if(action==="CAPTURE"){
     const preCaptureWeaponId = S.equippedWeaponId;
-    if(t.hp > captureWindowHp(t)) return toast(`Capture is available between ${captureWindowPctLabel()} and 5% HP.`);
+    if(t.hp > captureWindowHp(t)) return toast(`Capture is available between ${captureWindowPctLabel()} and 1% HP.`);
     if(t.hp < captureWindowMinHp(t)) return toast("Tiger HP is too low for capture. Finish the tiger.");
     if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return toast(`Boss capture locked: ${bossCaptureStrategyStatus(t)}.`);
     const req = requiredTranqWeaponId(t);
@@ -33638,13 +33753,13 @@ function playerAction(action){
     const magReady = (S.equippedWeaponId === req && S.mag.loaded > 0);
     const reserveReady = compatibleAmmoReserveForWeapon(reqWeapon) > 0;
     if(!magReady && !reserveReady){
-      return toast(`${reqWeapon.name} is out of ammo for this ${t.type}.`);
+      return toast(`Out of tranquilizers for ${reqWeapon.name}. Buy more in Shop > Ammo.`);
     }
     if(S.equippedWeaponId !== req){
       equipWeapon(req, { system:true, keepPreset:true });
     }
     if(S.mag.loaded <= 0 && !autoReloadIfNeeded(true)){
-      return toast(`${reqWeapon.name} is out of ammo for this ${t.type}.`);
+      return toast(`Out of tranquilizers for ${reqWeapon.name}. Buy more in Shop > Ammo.`);
     }
     if(!canCaptureTiger(t)) return toast(`${reqWeapon.name} is needed to capture this ${t.type}.`);
     if(window.TigerTutorial?.isRunning){
@@ -34678,6 +34793,9 @@ function checkMissionComplete(){
         ? `\nExtraction: ${extraction.label || "Emergency Extraction"}${extraction.emergency ? " • Emergency fallback" : ` • Perfect hold +$${Math.max(0, Math.floor(Number(extraction.bonusCash || 0))).toLocaleString()}`}\n`
         : "";
       const missionStats = finalizeMissionStatsSnapshot();
+      missionStats.evac = Math.min(Math.max(0, civTotal), Math.max(0, civEvac));
+      missionStats.cashEarned = Math.max(0, Math.floor(Number(rewards2?.totalCash || 0)));
+      S._missionStatsFinal = missionStatSnapshot(missionStats);
       const storyCampaign3Note = recordStoryCampaignMissionOutcome({
         missionStats,
         civTotal,
@@ -34799,7 +34917,14 @@ function renderHUD(){
   document.getElementById("ammoTxt").innerText = `${S.mag.loaded}/${S.mag.cap} ${loadedAmmoIdForEquippedWeapon() || w.ammo} (reserve ${compatibleAmmoReserveForWeapon(w)})`;
   document.getElementById("medTxt").innerText = totalMedkits();
   document.getElementById("repTxt").innerText = totalRepairKits();
-  document.getElementById("trapTxt").innerText = S.trapsOwned;
+  const trapCooldownSecs = Math.max(0, Math.ceil((Number(S.trapCooldownUntil || 0) - Date.now()) / 1000));
+  document.getElementById("trapTxt").innerText = trapCooldownSecs > 0 ? `${S.trapsOwned} • CD ${trapCooldownSecs}s` : S.trapsOwned;
+  const touchTrapBtn = document.getElementById("touchTrapBtn");
+  if(touchTrapBtn){
+    const label = touchTrapBtn.querySelector(".touchBtnLabel");
+    if(label) label.innerText = trapCooldownSecs > 0 ? `Trap ${trapCooldownSecs}s` : "Trap";
+    touchTrapBtn.title = trapCooldownSecs > 0 ? `Trap cooldown ${trapCooldownSecs}s` : `${S.trapsOwned} traps available`;
+  }
   const shieldSecs = Math.max(0, Math.ceil(((S.shieldUntil||0) - Date.now()) / 1000));
   const shieldLabel = shieldActiveNow() ? `${S.shields||0} • ACTIVE (${shieldSecs}s)` : `${S.shields||0}`;
   document.getElementById("shieldTxt").innerText = shieldLabel;
@@ -34808,9 +34933,7 @@ function renderHUD(){
   const tranqHud = squadAbilityStatusLabel("tranq_burst");
   const smokeHud = squadAbilityStatusLabel("smoke_screen");
   document.getElementById("backupTxt").innerText = `🧱 Armor ${totalArmorPlates()} • 🛒 Bundle $${REINFORCEMENT_BUNDLE_PRICE.toLocaleString()} • 🪖 A ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • 🚑 R ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")}) • 🧩 ${squadFormationLabel()} • ⚙️ Tranq ${tranqHud} / Smoke ${smokeHud}`;
-  const canShieldUse = !S.paused && !S.missionEnded && !S.gameOver && (S.shields||0)>0 && !abilityOnCooldown("shield");
-  const canArmorQuickUse = canQuickUseArmorPlate();
-  const shieldDisabled = !(canShieldUse || canArmorQuickUse);
+  const shieldDisabled = S.paused || S.inBattle || S.missionEnded || S.gameOver;
   document.querySelectorAll("[data-shield-btn]").forEach((btn)=>{ btn.disabled = shieldDisabled; });
   renderProtectActionButtons();
   const cacheBtn = document.getElementById("touchCacheBtn");
@@ -35770,6 +35893,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
       ctx.globalAlpha = 1;
     }
   }
+  drawScanTigerGuidance();
 
   if(Date.now() < (S.fogUntil || 0)){
     ctx.globalAlpha = 0.22;
@@ -36581,6 +36705,7 @@ function drawMapScene(){
       ctx.globalAlpha=1;
     }
   }
+  drawScanTigerGuidance();
 
   const detailPassOk = drawEnvironmentArtPass({
     nowTs: Date.now(),

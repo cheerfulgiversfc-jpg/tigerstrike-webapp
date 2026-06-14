@@ -1447,6 +1447,12 @@
     background:rgba(8,70,92,.42) !important;
     box-shadow:0 0 16px rgba(55,220,255,.44),inset 0 0 12px rgba(115,235,255,.14) !important;
   }
+  #combatTouchCluster #touchCaptureBtn.captureReady{
+    border-color:rgba(255,48,48,1) !important;
+    background:rgba(180,8,16,.68) !important;
+    box-shadow:0 0 0 3px rgba(255,235,235,.72),0 0 26px rgba(255,30,30,.95),inset 0 0 16px rgba(255,180,180,.26) !important;
+    animation:captureReadyPulse .65s ease-in-out infinite alternate;
+  }
   #combatTouchCluster #touchCombatMedkitBtn,#touchMedkitBtn{
     border-color:rgba(255,112,154,.98) !important;
     background:rgba(100,18,52,.38) !important;
@@ -1458,6 +1464,10 @@
   #combatTouchCluster{
     filter:drop-shadow(0 8px 12px rgba(0,0,0,.44));
   }
+}
+@keyframes captureReadyPulse{
+  from{transform:scale(1);filter:brightness(1)}
+  to{transform:scale(1.08);filter:brightness(1.28)}
 }
   </style>
 </head>
@@ -2170,7 +2180,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4523-mode-isolation-safe-zone-controls"></script>
+<script src="./game.js?v=4524-mission-rewards-action-feedback"></script>
 <script src="./tutorial.js?v=4499-warfront-ledger-hardlock"></script>
 <script>
 (() => {
