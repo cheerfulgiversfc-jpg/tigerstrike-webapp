@@ -28693,6 +28693,28 @@ cv.addEventListener("pointerdown",(e)=>{
       return;
     }
     if(tapped){
+      const tutorialStep = tutorialKey();
+      if(tutorialAllows("engage") && ["engage","weaken_tiger","weapon_switch","resolve_tiger"].includes(tutorialStep)){
+        S.lockedTigerId = tapped.id;
+        S.scanTargetTigerId = tapped.id;
+        S.scanTargetUntil = Date.now() + 600000;
+        window.TigerTutorial.lastLockedTigerId = tapped.id;
+        if(canEngage()){
+          startCombat();
+        }else{
+          const range = Math.max(60, equippedWeaponRange() - 18);
+          const dx = S.me.x - tapped.x;
+          const dy = S.me.y - tapped.y;
+          const len = Math.max(1, Math.hypot(dx, dy));
+          S.target = {
+            x: tapped.x + ((dx / len) * range),
+            y: tapped.y + ((dy / len) * range)
+          };
+          toast("Target recovered. Follow the blue line, then tap the tiger again.");
+          save();
+        }
+        return;
+      }
       if(tapped.id===S.lockedTigerId && tutorialAllows("engage")){
         if(canEngage()){
           startCombat();
@@ -29366,7 +29388,21 @@ function scan(){
     window.TigerTutorial.scanUsed = true;
   }
   if(!tutorialRun) scanInvestigationClues();
-  if(!window.TigerTutorial?.isRunning){
+  if(tutorialRun){
+    const target = nearestTiger();
+    if(target){
+      S.scanTargetTigerId = target.id;
+      S.scanTargetUntil = Date.now() + 600000;
+      S.lockedTigerId = target.id;
+      const meters = Math.round(dist(S.me.x, S.me.y, target.x, target.y));
+      setEventText(`🛰️ Tutorial Scan found Tiger #${target.id} • Follow the blue guidance line.`, 4.5);
+      toast(`Scan locked Tiger #${target.id} • ${meters}m • Follow the blue line`);
+    }else{
+      S.scanTargetTigerId = null;
+      S.scanTargetUntil = 0;
+      toast("Scan complete: no living tiger found.");
+    }
+  }else{
     const target = nearestTiger();
     if(target){
       S.scanTargetTigerId = target.id;

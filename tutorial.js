@@ -196,9 +196,10 @@
     cardEl.style.bottom = "auto";
     cardEl.style.top = `${baseTop}px`;
 
-    // Auto-place Squad step to avoid covering the Squad tab target.
-    if(key !== "squad") return;
-    const target = tutorialTarget("tabSquad");
+    // Keep the tutorial card away from whichever visible control the player must tap.
+    const target = typeof step?.arrow === "string" && !["cv","evacZone","tiger"].includes(step.arrow)
+      ? tutorialTarget(step.arrow)
+      : null;
     if(!target) return;
 
     const priorVisibility = cardEl.style.visibility;
@@ -307,8 +308,8 @@
       {
         key:"scan",
         title:"Scan",
-        text:"Press Scan to locate the tiger.",
-        hint:"Tap Scan once.",
+        text:"Press Scan to locate and lock the nearest tiger. Scan creates a blue guidance line that leads from your agent to the target.",
+        hint:"Tap Scan once, then follow the blue line.",
         arrow:"scanBtn",
         canNext: () => window.TigerTutorial.scanUsed === true
       },
@@ -319,20 +320,15 @@
         hint:"Blue ring = locked.",
         arrow:"tiger",
         canNext: () => {
-          const S = getS();
           const T = window.TigerTutorial;
-          return !!(
-            T?.lockedOnce ||
-            Number(S?.lockedTigerId || 0) > 0 ||
-            Number(T?.lastLockedTigerId || 0) > 0
-          );
+          return !!T?.lockedOnce;
         }
       },
       {
         key:"engage",
         title:"Engage On Map",
-        text:"Move into range and tap that same locked tiger again to engage.",
-        hint:"Combat stays on the main map screen.",
+        text:"Tap the locked tiger again. If you are out of range, the agent will move toward it while the blue line and lock remain active. Tap it again when close enough to engage.",
+        hint:"If you tap elsewhere by mistake, tap the highlighted tiger again.",
         arrow:"tiger",
         canNext: () => {
           const S = getS();
@@ -634,7 +630,14 @@
       if(!window.TigerTutorial.isRunning) return;
       updateProgressFlags();
       if(step.key === "weaken_tiger") updateWeakenTigerHint();
-      if(step.key === "squad") setCardPlacement(step);
+      setCardPlacement(step);
+      if(["lock","engage","weaken_tiger","weapon_switch","resolve_tiger"].includes(step.key)){
+        const target = pickTutorialTiger(getS());
+        if(target && target.alive && getS()){
+          getS().scanTargetTigerId = target.id;
+          getS().scanTargetUntil = Date.now() + 600000;
+        }
+      }
       setNextEnabled(!!step.canNext());
     }, 200);
   }
@@ -757,6 +760,11 @@
     }
     if(step.key === "inventory"){
       // Keep Inventory open for the Cosmetics lesson that follows.
+      setTimeout(() => {
+        const cosmeticsTab = tutorialTarget("invTabCosmetics");
+        try{ cosmeticsTab?.scrollIntoView?.({ block:"center", inline:"center" }); }catch(e){}
+        setCardPlacement(getStepList()[window.TigerTutorial.step]);
+      }, 80);
     }
     if(step.key === "cosmetics"){
       try{ window.closeInventory?.(); }catch(e){}
