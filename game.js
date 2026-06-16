@@ -34691,6 +34691,68 @@ function extractionSequenceTick(now=Date.now()){
     setEventText(inside ? `${ex.icon} Hold position: ${holdLeft}s` : `${ex.icon} Reach ${ex.label}: ${Math.round(dist(S.me.x,S.me.y,ex.x,ex.y))}m • ${left}s remaining`, 2.2);
   }
 }
+function drawSoftEllipse(x, y, rx, ry, color="rgba(0,0,0,.25)", alpha=1){
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+function drawVehicleBeacon(x, y, color="rgba(251,191,36,.96)", now=Date.now()){
+  const flash = 0.45 + ((Math.sin(now / 105) + 1) * 0.28);
+  ctx.save();
+  ctx.globalAlpha = flash;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, 4.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = flash * 0.42;
+  ctx.beginPath();
+  ctx.arc(x, y, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+function drawSmokePlume(baseX, baseY, now=Date.now(), opts={}){
+  const count = Math.max(3, Math.floor(Number(opts.count || 5)));
+  const height = Math.max(40, Number(opts.height || 92));
+  const drift = Number(opts.drift || 10);
+  const seed = Number(opts.seed || 0);
+  ctx.save();
+  for(let i=0; i<count; i++){
+    const phase = ((now / (1400 + i * 130)) + i * 0.23 + seed) % 1;
+    const rise = phase * height;
+    const puff = 11 + i * 2 + phase * 13;
+    const px = baseX + Math.sin(now / (310 + i * 43) + i) * drift + i * 3;
+    const py = baseY - rise - i * 8;
+    const a = clamp((1 - phase) * 0.36, 0.04, 0.32);
+    ctx.globalAlpha = a;
+    const g = ctx.createRadialGradient(px, py, 2, px, py, puff);
+    g.addColorStop(0, "rgba(48,54,64,.94)");
+    g.addColorStop(0.72, "rgba(55,65,81,.45)");
+    g.addColorStop(1, "rgba(55,65,81,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(px, py, puff, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+function drawGroundScorch(x, y, r=54, angle=0){
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  const g = ctx.createRadialGradient(0, 0, 4, 0, 0, r);
+  g.addColorStop(0, "rgba(24,18,14,.52)");
+  g.addColorStop(0.55, "rgba(70,44,28,.24)");
+  g.addColorStop(1, "rgba(70,44,28,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r, r * 0.48, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
 function drawExtractionVehicle(ex, now=Date.now()){
   const departPct = ex.departing
     ? clamp((now - ex.departStartedAt) / Math.max(1, ex.departUntil - ex.departStartedAt), 0, 1)
@@ -34710,25 +34772,56 @@ function drawExtractionVehicle(ex, now=Date.now()){
     y += Math.sin(angle) * departPct * 190;
   }
   ctx.save();
+  drawSoftEllipse(x, y + 18, ex.key === "helicopter" ? 42 : 48, ex.key === "boat" ? 14 : 18, "rgba(0,0,0,.30)", 1 - departPct * 0.35);
   ctx.translate(x, y);
   ctx.rotate(angle);
   ctx.globalAlpha = 0.98 - (departPct * 0.34);
   if(ex.key === "boat"){
+    ctx.save();
+    ctx.globalAlpha = 0.65;
+    ctx.strokeStyle = "rgba(186,230,253,.55)";
+    ctx.lineWidth = 2;
+    for(let i=0;i<4;i++){
+      ctx.beginPath();
+      ctx.moveTo(-35 - i*13, -13 + i*5);
+      ctx.bezierCurveTo(-51 - i*10, -17 + i*3, -60 - i*9, -12 + i*4, -72 - i*8, -14 + i*3);
+      ctx.stroke();
+    }
+    ctx.restore();
     ctx.fillStyle = "rgba(15,48,78,.98)";
     ctx.beginPath();
     ctx.moveTo(30,0); ctx.lineTo(14,13); ctx.lineTo(-26,11); ctx.lineTo(-32,0); ctx.lineTo(-26,-11); ctx.lineTo(14,-13); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(226,232,240,.72)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(5,15,28,.35)";
+    ctx.beginPath(); ctx.ellipse(-6, 0, 21, 7, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "rgba(226,232,240,.96)";
     roundedRectFill(-10,-10,20,20,4);
     ctx.fillStyle = "rgba(34,211,238,.86)";
     roundedRectFill(-5,-7,10,6,2);
+    drawVehicleBeacon(11, -10, "rgba(96,165,250,.96)", now);
     ctx.strokeStyle = "rgba(125,211,252,.65)";
     ctx.lineWidth = 2;
     for(let i=0;i<3;i++){
       ctx.beginPath(); ctx.moveTo(-35 - i*10,-12+i*4); ctx.lineTo(-48-i*10,-12+i*4); ctx.stroke();
     }
   }else if(ex.key === "helicopter"){
+    ctx.save();
+    ctx.globalAlpha = 0.22 + Math.sin(now / 150) * 0.04;
+    ctx.strokeStyle = "rgba(226,232,240,.60)";
+    ctx.lineWidth = 2;
+    for(let i=0;i<3;i++){
+      ctx.beginPath();
+      ctx.ellipse(0, 22, 44 + i * 16 + departPct * 30, 10 + i * 5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
     ctx.fillStyle = "rgba(42,78,60,.98)";
     ctx.beginPath(); ctx.ellipse(0,0,25,13,0,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "rgba(15,23,42,.85)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
     ctx.fillStyle = "rgba(125,211,252,.72)";
     ctx.beginPath(); ctx.ellipse(8,-3,9,6,0,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle = "rgba(226,232,240,.88)";
@@ -34739,15 +34832,32 @@ function drawExtractionVehicle(ex, now=Date.now()){
     ctx.strokeStyle = "rgba(15,23,42,.9)";
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(-16,15); ctx.lineTo(17,15); ctx.moveTo(-12,11); ctx.lineTo(-16,15); ctx.moveTo(13,11); ctx.lineTo(17,15); ctx.stroke();
+    drawVehicleBeacon(-2, -13, "rgba(248,113,113,.96)", now);
   }else{
+    ctx.save();
+    ctx.globalAlpha = 0.52;
+    ctx.fillStyle = "rgba(251,191,36,.18)";
+    ctx.beginPath();
+    ctx.moveTo(28, -7);
+    ctx.lineTo(70, -26);
+    ctx.lineTo(70, 26);
+    ctx.lineTo(28, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
     ctx.fillStyle = ex.key === "safe_hold" ? "rgba(34,92,62,.98)" : "rgba(92,69,42,.98)";
     roundedRectFill(-30,-14,60,28,7);
+    ctx.strokeStyle = "rgba(226,232,240,.34)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-25, -10, 50, 20);
     ctx.fillStyle = "rgba(203,213,225,.82)";
     roundedRectFill(8,-10,16,11,3);
     ctx.fillStyle = "rgba(15,23,42,.96)";
     ctx.beginPath(); ctx.arc(-18,15,7,0,Math.PI*2); ctx.arc(18,15,7,0,Math.PI*2); ctx.fill();
     ctx.fillStyle = "rgba(74,222,128,.94)";
     roundedRectFill(-20,-8,19,15,3);
+    drawVehicleBeacon(-24, -12, "rgba(251,191,36,.96)", now);
+    drawVehicleBeacon(25, -12, "rgba(248,113,113,.96)", now + 180);
   }
   if(!ex.departing){
     const rescued = Math.min(8, (S.civilians || []).filter((c)=>c?.alive && c.evac).length);
@@ -35990,6 +36100,33 @@ function drawMissionTwistOverlay(now=Date.now()){
       ctx.globalAlpha = pulse;
       ctx.fillStyle = "rgba(20,34,58,.96)";
       ctx.fillRect(0, 0, worldW, worldH);
+      ctx.save();
+      ctx.globalAlpha = 0.34;
+      ctx.strokeStyle = "rgba(186,230,253,.62)";
+      ctx.lineWidth = 1.4;
+      const offset = (now / 18) % 32;
+      for(let x=-80; x<worldW+80; x+=34){
+        ctx.beginPath();
+        ctx.moveTo(x + offset, -12);
+        ctx.lineTo(x + offset - 24, worldH + 20);
+        ctx.stroke();
+      }
+      if(Math.sin(now / 620) > 0.92){
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = "rgba(219,234,254,.98)";
+        ctx.fillRect(0, 0, worldW, worldH);
+        ctx.globalAlpha = 0.68;
+        ctx.strokeStyle = "rgba(240,249,255,.96)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        const lx = worldW * (0.18 + ((Math.sin(now / 900) + 1) * 0.32));
+        ctx.moveTo(lx, 0);
+        ctx.lineTo(lx - 16, worldH * 0.18);
+        ctx.lineTo(lx + 9, worldH * 0.34);
+        ctx.lineTo(lx - 24, worldH * 0.52);
+        ctx.stroke();
+      }
+      ctx.restore();
       rounded(16, 44, 216, 24, 11, "rgba(12,20,34,.92)", "rgba(125,211,252,.65)");
       ctx.globalAlpha = 0.98;
       ctx.fillStyle = "rgba(224,242,254,.98)";
@@ -36014,21 +36151,45 @@ function drawMissionTwistOverlay(now=Date.now()){
       ctx.translate(we.x || 0, we.y || 0);
       if(we.type === "helicopter_crash"){
         const impactAge = Math.max(0, now - Number(we.startedAt || now));
+        drawGroundScorch(0, 8, Math.max(62, (we.r || 84) * 0.78), -0.32);
         ctx.rotate(-0.32);
+        ctx.save();
+        ctx.globalAlpha = 0.32;
+        ctx.strokeStyle = "rgba(148,163,184,.50)";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 10]);
+        ctx.beginPath();
+        ctx.moveTo(-68, 24);
+        ctx.bezierCurveTo(-38, 9, -15, 4, 18, -2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
         ctx.fillStyle = "rgba(42,78,60,.98)";
         ctx.beginPath(); ctx.ellipse(0,0,27,13,0,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "rgba(12,18,24,.92)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = "rgba(120,53,15,.66)";
+        ctx.beginPath(); ctx.ellipse(-5, 5, 18, 5, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = "rgba(15,23,42,.92)";
         ctx.beginPath(); ctx.ellipse(10,-3,9,6,0,0,Math.PI*2); ctx.fill();
         ctx.strokeStyle = "rgba(203,213,225,.82)";
         ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(-22,2); ctx.lineTo(-47,11); ctx.lineTo(-53,3); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(-34,-18); ctx.lineTo(31,18); ctx.moveTo(-27,24); ctx.lineTo(24,-23); ctx.stroke();
+        ctx.strokeStyle = "rgba(248,113,113,.9)";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(22, 10); ctx.lineTo(37, 20); ctx.moveTo(-15, -8); ctx.lineTo(-30, -15); ctx.stroke();
+        drawVehicleBeacon(21, -8, "rgba(248,113,113,.96)", now);
         ctx.rotate(0.32);
-        ctx.globalAlpha = 0.36 + Math.sin(now / 270) * 0.08;
-        ctx.fillStyle = "rgba(30,41,59,.90)";
+        drawSmokePlume(-5, -22, now, { count:6, height:105, drift:12, seed:0.31 });
+        ctx.globalAlpha = 0.72;
+        ctx.fillStyle = "rgba(251,146,60,.76)";
         for(let i=0;i<3;i++){
-          const rise = ((impactAge / (18 + i * 5)) + i * 15) % 62;
-          ctx.beginPath(); ctx.arc(-8 + i*9, -18-rise, 12+i*3, 0, Math.PI*2); ctx.fill();
+          const flicker = 3 + Math.sin(now / (80 + i * 30)) * 2;
+          ctx.beginPath();
+          ctx.ellipse(-18 + i * 13, 12, 5 + flicker, 9 + flicker, 0, 0, Math.PI * 2);
+          ctx.fill();
         }
         ctx.globalAlpha = 0.96;
         ctx.fillStyle = we.siteSecured ? "rgba(74,222,128,.98)" : "rgba(251,191,36,.98)";
@@ -36036,28 +36197,65 @@ function drawMissionTwistOverlay(now=Date.now()){
         ctx.textAlign = "center";
         ctx.fillText(we.siteSecured ? "CRASH SITE SECURED" : "SECURE WRECKAGE", 0, 35);
       }else if(we.type === "ambush_convoy"){
+        ctx.save();
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = "rgba(127,29,29,.70)";
+        ctx.beginPath();
+        ctx.ellipse(0, 18, 66, 28, -0.12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
         ctx.fillStyle = "rgba(92,69,42,.98)";
         roundedRectFill(-34,-14,68,28,7);
+        ctx.strokeStyle = "rgba(251,191,36,.55)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-28, -10, 56, 20);
         ctx.fillStyle = "rgba(203,213,225,.78)";
         roundedRectFill(9,-10,18,11,3);
         ctx.fillStyle = "rgba(15,23,42,.96)";
         ctx.beginPath(); ctx.arc(-20,15,7,0,Math.PI*2); ctx.arc(20,15,7,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = "rgba(71,85,105,.92)";
+        roundedRectFill(-53, -7, 17, 11, 3);
+        roundedRectFill(39, 5, 22, 10, 3);
+        drawVehicleBeacon(-29, -14, "rgba(251,191,36,.96)", now);
+        drawSmokePlume(-42, -7, now, { count:3, height:48, drift:5, seed:0.52 });
         ctx.strokeStyle = "rgba(251,113,133,.9)";
         ctx.lineWidth = 2;
         ctx.setLineDash([5,4]);
         ctx.beginPath(); ctx.arc(0,0,43,0,Math.PI*2); ctx.stroke();
         ctx.setLineDash([]);
       }else if(we.type === "flooded_route"){
+        ctx.save();
+        const waterG = ctx.createRadialGradient(0, 0, 6, 0, 0, Math.max(54, we.r || 84));
+        waterG.addColorStop(0, "rgba(14,116,144,.40)");
+        waterG.addColorStop(0.65, "rgba(37,99,235,.24)");
+        waterG.addColorStop(1, "rgba(37,99,235,0)");
+        ctx.fillStyle = waterG;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, Math.max(58, (we.r || 84) * 0.95), Math.max(28, (we.r || 84) * 0.46), 0.08, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
         ctx.strokeStyle = "rgba(125,211,252,.78)";
         ctx.lineWidth = 3;
         for(let i=-2;i<=2;i++){
           ctx.beginPath();
-          ctx.moveTo(-40, i*10 + Math.sin(now/220+i)*3);
-          ctx.bezierCurveTo(-16,i*10-5,16,i*10+5,40,i*10);
+          ctx.moveTo(-52, i*10 + Math.sin(now/220+i)*3);
+          ctx.bezierCurveTo(-22,i*10-5,20,i*10+5,54,i*10 + Math.cos(now/260+i)*2);
           ctx.stroke();
         }
+        ctx.strokeStyle = "rgba(240,249,255,.55)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 9]);
+        for(let i=-1;i<=1;i++){
+          ctx.beginPath();
+          ctx.ellipse(4 + i * 18, 4 + i * 8, 22 + i * 2, 7, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
         ctx.fillStyle = "rgba(120,84,48,.95)";
-        roundedRectFill(-19,-4,38,8,3);
+        roundedRectFill(-24,-5,48,9,3);
+        ctx.fillStyle = "rgba(71,85,105,.82)";
+        roundedRectFill(26, 13, 15, 9, 3);
+        roundedRectFill(-45, -18, 18, 8, 3);
       }
       ctx.restore();
       rounded((we.x || 0) - 90, (we.y || 0) - (we.r || 84) - 34, 180, 24, 11, "rgba(12,18,28,.90)", "rgba(196,221,255,.78)");
