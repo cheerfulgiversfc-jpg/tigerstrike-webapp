@@ -29677,6 +29677,22 @@ function rollDodge(){
 
 function damageSupportUnit(unit, dmg){
   if(!unit || !unit.alive || dmg <= 0) return;
+  let nearestThreat = null;
+  let nearestThreatDist = Infinity;
+  if(Array.isArray(S?.tigers)){
+    for(const candidate of S.tigers){
+      if(!candidate?.alive) continue;
+      const d = dist(unit.x, unit.y, candidate.x, candidate.y);
+      if(d < nearestThreatDist){
+        nearestThreatDist = d;
+        nearestThreat = candidate;
+      }
+    }
+  }
+  if(nearestThreat && nearestThreatDist <= 140){
+    applyCombatKnockback(unit, nearestThreat.x, nearestThreat.y, isBossTiger(nearestThreat) || nearestThreat.type === "Alpha" ? 22 : 15, 16);
+    triggerCombatInteraction("support_hit", { tiger:nearestThreat, target:unit, x:unit.x, y:unit.y - 8 });
+  }
   const profile = squadProfileForUnit(unit);
   const trait = squadProfileTrait(profile);
   dmg *= Number(trait.damageTakenMul || 1);
@@ -29747,7 +29763,14 @@ function applyTigerDamage(tiger, dmg, opts={}){
   if(after < before){
     const now = Date.now();
     tiger.hitReactUntil = Math.max(Number(tiger.hitReactUntil || 0), now + 180);
+    const dealt = Math.max(0, before - after);
     const hpPct = clamp(after / hpMax, 0, 1);
+    const heavyHit = dealt >= Math.max(18, hpMax * (isBossTiger(tiger) ? 0.12 : 0.16));
+    if(after > 0 && heavyHit){
+      const staggerMs = isBossTiger(tiger) ? 260 : (tiger.type === "Alpha" ? 340 : 460);
+      tiger.holdUntil = Math.max(Number(tiger.holdUntil || 0), now + staggerMs);
+      triggerCombatInteraction("tiger_stagger", { tiger, ms:staggerMs, label:"STAGGER" });
+    }
     if(after > 0 && hpPct <= 0.36){
       markTigerBehaviorAnim(tiger, "limp", 900);
     }
@@ -30012,6 +30035,8 @@ function rivalResolveTigerOutcome(tiger, outcome="kill", actor=null){
   if(!tiger || !tiger.alive) return false;
   const now = Date.now();
   const mode = String(outcome || "kill").toLowerCase();
+  triggerCombatInteraction("finish", { tiger, outcome:mode === "capture" ? "CAPTURE" : "KILL" });
+  if(mode === "capture") pushTigerCaptureStruggle(tiger, "CAPTURE");
   tiger.alive = false;
   tigerPackRecordLoss(tiger, mode === "capture" ? "CAPTURE" : "KILL");
   if(mode !== "capture"){
@@ -30617,6 +30642,8 @@ function supportUnitsTick(){
               noteTigerOutcomeForObjective(tiger);
               markStoryFinalBossOutcome("CAPTURE", tiger);
               tiger.missionOutcome = "CAPTURE";
+              triggerCombatInteraction("finish", { tiger, outcome:"CAPTURE" });
+              pushTigerCaptureStruggle(tiger, "CAPTURE");
               tiger.alive = false;
               tigerPackRecordLoss(tiger, "CAPTURE");
               recordCapturedTigerTrophy(tiger, "specialist");
@@ -33869,6 +33896,7 @@ function updateAttackButton(){
 function finishTigerKill(t){
   if(!t || !t.alive) return;
   if(!recordUniqueMissionTigerOutcome(t, "KILL")) return;
+  triggerCombatInteraction("finish", { tiger:t, outcome:"KILL" });
   triggerPhase18TigerMoment(t, "finish", "Eliminated");
   noteTigerOutcomeForObjective(t);
   const bossKill = !!isBossTiger(t);
@@ -33995,6 +34023,7 @@ function playerAction(action){
     markStoryFinalBossOutcome("CAPTURE", t);
     triggerPhase18TigerMoment(t, "capture", "Captured");
     t.missionOutcome = "CAPTURE";
+    triggerCombatInteraction("finish", { tiger:t, outcome:"CAPTURE" });
     markTigerBehaviorAnim(t, "capture_struggle", 1200);
     pushTigerCaptureStruggle(t, "CAPTURE");
     t.alive=false;
@@ -34202,7 +34231,7 @@ function tigerTurn(t, softened=false, opts={}){
   const shieldBroken = isBossTiger(t) && now < (t.bossShieldBreakUntil || 0);
   if(shieldActiveNow() && !shieldBroken){
     emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(96,165,250,.95)", 2, "shield");
-    emitDamagePopup(S.me.x, S.me.y - 50, "BLOCK", "shield");
+    triggerCombatInteraction("block", { tiger:t, target:S.me, x:S.me.x, y:S.me.y - 8, label:"BLOCK" });
     if(S.inBattle) setBattleMsg("🛡️ Shield blocked the tiger attack.");
     updateBattleButtons();
     updateAttackButton();
@@ -34221,7 +34250,7 @@ function tigerTurn(t, softened=false, opts={}){
       S.rollBufferedUntil = 0;
     }
     emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(250,204,21,.95)", 2, "dodge");
-    emitDamagePopup(S.me.x, S.me.y - 50, "DODGE", "dodge");
+    triggerCombatInteraction("dodge", { tiger:t, target:S.me, x:S.me.x, y:S.me.y - 8, label:"DODGE" });
     if(S.inBattle) setBattleMsg("🤸 Roll dodge successful.");
     updateBattleButtons();
     updateAttackButton();
@@ -34262,6 +34291,9 @@ function tigerTurn(t, softened=false, opts={}){
   if(opts.kind === "charge") setTigerIntent(t, "Charge", 520);
   else if(opts.kind === "pounce") setTigerIntent(t, "Pounce", 480);
   else setTigerIntent(t, "Strike", 440);
+  if(isBossTiger(t) || t.type === "Alpha" || t.nemesisAlias){
+    emitDamagePopup(t.x, t.y - 66, opts.kind === "charge" ? "DANGER CHARGE" : (opts.kind === "pounce" ? "DANGER POUNCE" : "DANGER"), "crit");
+  }
   triggerPhase18TigerMoment(t, opts.kind === "charge" ? "threat" : (opts.kind === "pounce" ? "threat" : "strike"), opts.kind === "charge" ? "Charge" : (opts.kind === "pounce" ? "Pounce" : "Strike"));
   t.attackTelegraphKind = opts.kind || "strike";
   t.attackTelegraphStart = now;
@@ -34272,6 +34304,16 @@ function tigerTurn(t, softened=false, opts={}){
 
   emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(251,113,133,.95)", 3, "player");
   emitDamagePopup(S.me.x, S.me.y - 50, `-${dmg}`, "player");
+  const knockbackDist = opts.kind === "charge" ? 36 : (opts.kind === "pounce" ? 28 : 18);
+  applyCombatKnockback(S.me, t.x, t.y, knockbackDist, 16);
+  triggerCombatInteraction("player_hit", {
+    tiger:t,
+    target:S.me,
+    x:S.me.x,
+    y:S.me.y - 8,
+    power:opts.kind === "charge" ? 1.22 : (opts.kind === "pounce" ? 1.0 : 0.74),
+    dangerMs:(isBossTiger(t) || t.type === "Alpha" || t.nemesisAlias) ? 1100 : 520
+  });
   applyPlayerDamage(dmg,false);
   if(S.inBattle){
     const atkLabel = opts.kind === "charge" ? "charges" : (opts.kind === "pounce" ? "pounces" : "hits back");
@@ -39309,6 +39351,66 @@ function markTigerBehaviorAnim(t, kind, ms=720){
   t.behaviorAnimUntil = Math.max(Number(t.behaviorAnimUntil || 0), now + Math.max(80, Number(ms || 0)));
 }
 
+function applyCombatKnockback(ent, fromX, fromY, distancePx=18, radius=16){
+  if(!ent || !Number.isFinite(ent.x) || !Number.isFinite(ent.y)) return false;
+  const a = Math.atan2(ent.y - Number(fromY || ent.y), ent.x - Number(fromX || ent.x));
+  const distPx = clamp(Number(distancePx || 0), 0, 48);
+  if(distPx <= 0) return false;
+  const nx = ent.x + Math.cos(a) * distPx;
+  const ny = ent.y + Math.sin(a) * distPx;
+  const moved = tryMoveEntity(ent, nx, ny, radius, { avoidKeepout:false });
+  ent._combatKnockbackUntil = Date.now() + 190;
+  if(Number.isFinite(ent._moveVx)) ent._moveVx *= 0.34;
+  if(Number.isFinite(ent._moveVy)) ent._moveVy *= 0.34;
+  return !!moved;
+}
+
+function triggerCombatInteraction(kind, opts={}){
+  const now = Date.now();
+  const t = opts.tiger || null;
+  const target = opts.target || null;
+  const x = Number(opts.x ?? target?.x ?? t?.x ?? S.me?.x ?? 0);
+  const y = Number(opts.y ?? target?.y ?? t?.y ?? S.me?.y ?? 0);
+  const label = String(opts.label || "");
+  if(kind === "block"){
+    queueImpactPulse(x, y, "shield");
+    emitDamagePopup(x, y - 42, label || "BLOCK", "shield");
+    return;
+  }
+  if(kind === "dodge"){
+    queueImpactPulse(x, y, "dodge");
+    emitDamagePopup(x, y - 42, label || "DODGE", "dodge");
+    return;
+  }
+  if(kind === "player_hit"){
+    S.meHitFlashUntil = Math.max(Number(S.meHitFlashUntil || 0), now + 230);
+    S.meHitFlashPower = Math.max(Number(S.meHitFlashPower || 0), Number(opts.power || 0.82));
+    S._combatDangerUntil = Math.max(Number(S._combatDangerUntil || 0), now + Number(opts.dangerMs || 420));
+    queueImpactPulse(x, y, "player");
+    return;
+  }
+  if(kind === "support_hit"){
+    if(target) target.hitFlashUntil = Math.max(Number(target.hitFlashUntil || 0), now + 220);
+    queueImpactPulse(x, y, "player");
+    return;
+  }
+  if(kind === "tiger_stagger" && t){
+    t.staggerUntil = Math.max(Number(t.staggerUntil || 0), now + Number(opts.ms || 520));
+    markTigerBehaviorAnim(t, "stagger", Number(opts.ms || 520));
+    setTigerIntent(t, label || "STAGGER", 620);
+    queueImpactPulse(t.x, t.y - 8, "crit");
+    emitDamagePopup(t.x, t.y - 48, label || "STAGGER", "crit");
+    return;
+  }
+  if(kind === "finish" && t){
+    const capture = String(opts.outcome || "").toUpperCase() === "CAPTURE";
+    markTigerBehaviorAnim(t, capture ? "capture_struggle" : "finish", 900);
+    queueImpactPulse(t.x, t.y - 8, capture ? "capture" : "crit");
+    emitDamagePopup(t.x, t.y - 54, capture ? "SECURED" : "FINISH", capture ? "capture" : "crit");
+    triggerPhase18TigerMoment(t, capture ? "capture" : "finish", capture ? "Captured" : "Eliminated");
+  }
+}
+
 function tigerBehaviorAnimState(t, now, speed=0){
   const hpPct = clamp(Number(t?.hp || 0) / Math.max(1, Number(t?.hpMax || 1)), 0, 1);
   const pounceWindup = t?.huntState === TIGER_HUNT_STATES.POUNCE && now < Number(t?.pounceWindupUntil || 0);
@@ -39320,15 +39422,17 @@ function tigerBehaviorAnimState(t, now, speed=0){
   const packNearby = tigerNearbyPackCount(t, 210);
   const stalking = t?.huntState === TIGER_HUNT_STATES.STALK || animKind === "stalk";
   const captureReady = !!t && tigerInCaptureHpWindow(t);
+  const stagger = now < Number(t?.staggerUntil || 0) || animKind === "stagger";
   return {
     stalking,
-    crouch:pounceWindup || stalking || now < Number(t?.bossFakePounceUntil || 0),
+    crouch:pounceWindup || stalking || stagger || now < Number(t?.bossFakePounceUntil || 0),
     pounce:pounceActive,
     roaring:now < Number(t?.roarUntil || 0) || animKind === "roar",
     limping:lowHp || animKind === "limp",
     fleeing:veryLowHp || now < Number(t?._fleeAnimUntil || 0) || animKind === "flee",
     circling:packNearby > 0 && (stalking || t?.type === "Alpha" || t?.personality === "Ambusher"),
     swiping:now < Number(t?.attackAnimUntil || 0),
+    stagger,
     captureReady,
     packNearby,
     speed,
@@ -39644,9 +39748,10 @@ function drawTiger(t){
   const limpAmt = behaviorAnim.limping ? clamp(1 - behaviorAnim.hpPct, 0.15, 0.82) : 0;
   const roarAmt = behaviorAnim.roaring ? 1 : 0;
   const pounceAmt = behaviorAnim.pounce ? 1 : 0;
-  ctx.translate(0, ((crouchAmt * 4.3) + (limpAmt * 1.8) - (roarAmt * 1.7) - (pounceAmt * 1.4)) * s);
+  const staggerAmt = behaviorAnim.stagger ? 1 : 0;
+  ctx.translate((staggerAmt * Math.sin(now * 0.085) * 2.2) * s, ((crouchAmt * 4.3) + (limpAmt * 1.8) - (roarAmt * 1.7) - (pounceAmt * 1.4) + (staggerAmt * 1.5)) * s);
   ctx.scale(1 + crouchAmt * 0.10 + pounceAmt * 0.04, 1 - crouchAmt * 0.12 + roarAmt * 0.05);
-  ctx.rotate((limpAmt * Math.sin(lifePhase * 1.7) * 0.075) - (roarAmt * 0.035) + (pounceAmt * 0.045));
+  ctx.rotate((limpAmt * Math.sin(lifePhase * 1.7) * 0.075) - (roarAmt * 0.035) + (pounceAmt * 0.045) + (staggerAmt * Math.sin(now * 0.09) * 0.04));
 
   ctx.fillStyle=c.body;
   ctx.beginPath(); ctx.ellipse(0, (2 + breathe * 0.20)*s, (22 + breathe * 0.16)*s*visualAge.bodyX, (13 + breathe * 0.20)*s*visualAge.bodyY, 0, 0, Math.PI*2); ctx.fill();
@@ -39840,12 +39945,12 @@ function drawTiger(t){
     }
     ctx.restore();
   }
-  if(behaviorAnim.fleeing || behaviorAnim.limping){
+  if(behaviorAnim.fleeing || behaviorAnim.limping || behaviorAnim.stagger){
     ctx.save();
-    ctx.globalAlpha = behaviorAnim.fleeing ? clamp(alpha * 0.82, 0.32, 0.9) : clamp(alpha * 0.54, 0.22, 0.64);
-    ctx.fillStyle = "rgba(125,211,252,.96)";
+    ctx.globalAlpha = behaviorAnim.stagger ? clamp(alpha * 0.78, 0.28, 0.88) : (behaviorAnim.fleeing ? clamp(alpha * 0.82, 0.32, 0.9) : clamp(alpha * 0.54, 0.22, 0.64));
+    ctx.fillStyle = behaviorAnim.stagger ? "rgba(252,211,77,.98)" : "rgba(125,211,252,.96)";
     ctx.font = `900 ${Math.round(9 * s)}px system-ui`;
-    ctx.fillText(behaviorAnim.fleeing ? "FLEE" : "LIMP", -22 * s, -24 * s);
+    ctx.fillText(behaviorAnim.stagger ? "STAGGER" : (behaviorAnim.fleeing ? "FLEE" : "LIMP"), -24 * s, -24 * s);
     ctx.restore();
   }
   ctx.restore();
@@ -41879,6 +41984,11 @@ function init(){
     if(!Number.isFinite(t.attackAnimStart)) t.attackAnimStart = 0;
     if(!Number.isFinite(t.attackAnimUntil)) t.attackAnimUntil = 0;
     if(typeof t.attackAnimKind !== "string") t.attackAnimKind = "";
+    if(!Number.isFinite(t.behaviorAnimStart)) t.behaviorAnimStart = 0;
+    if(!Number.isFinite(t.behaviorAnimUntil)) t.behaviorAnimUntil = 0;
+    if(typeof t.behaviorAnimKind !== "string") t.behaviorAnimKind = "";
+    if(!Number.isFinite(t.staggerUntil)) t.staggerUntil = 0;
+    if(!Number.isFinite(t._fleeAnimUntil)) t._fleeAnimUntil = 0;
     if(!Number.isFinite(t.attackTelegraphStart)) t.attackTelegraphStart = 0;
     if(!Number.isFinite(t.attackTelegraphUntil)) t.attackTelegraphUntil = 0;
     if(typeof t.attackTelegraphKind !== "string") t.attackTelegraphKind = "";
