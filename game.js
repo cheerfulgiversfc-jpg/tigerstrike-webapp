@@ -8922,6 +8922,7 @@ const ctx = cv.getContext("2d");
 const COMBAT_FX = [];
 const DAMAGE_POPUPS = [];
 const IMPACT_PULSES = [];
+const TIGER_CAPTURE_STRUGGLES = [];
 const DAMAGE_POPUP_RATE_MS = 82;
 const DAMAGE_POPUP_GATE = new Map();
 const CAMERA_SHAKE = { until:0, power:0 };
@@ -8958,6 +8959,7 @@ function clearTransientCombatVisuals(){
   COMBAT_FX.length = 0;
   DAMAGE_POPUPS.length = 0;
   IMPACT_PULSES.length = 0;
+  TIGER_CAPTURE_STRUGGLES.length = 0;
   DAMAGE_POPUP_GATE.clear();
   CAMERA_SHAKE.until = 0;
   CAMERA_SHAKE.power = 0;
@@ -29742,6 +29744,19 @@ function applyTigerDamage(tiger, dmg, opts={}){
   const before = clamp(Number(tiger.hp || hpMax), floorHp, hpMax);
   const after = clamp(before - Math.max(0, Number(dmg || 0)), floorHp, hpMax);
   tiger.hp = after;
+  if(after < before){
+    const now = Date.now();
+    tiger.hitReactUntil = Math.max(Number(tiger.hitReactUntil || 0), now + 180);
+    const hpPct = clamp(after / hpMax, 0, 1);
+    if(after > 0 && hpPct <= 0.36){
+      markTigerBehaviorAnim(tiger, "limp", 900);
+    }
+    if(after > 0 && hpPct <= 0.20){
+      tiger._fleeAnimUntil = Math.max(Number(tiger._fleeAnimUntil || 0), now + 1450);
+      markTigerBehaviorAnim(tiger, "flee", 1050);
+      setTigerIntent(tiger, "Fleeing", 760);
+    }
+  }
   return { dealt:Math.max(0, before - after), defeated:after <= 0, hp:after };
 }
 
@@ -33980,6 +33995,8 @@ function playerAction(action){
     markStoryFinalBossOutcome("CAPTURE", t);
     triggerPhase18TigerMoment(t, "capture", "Captured");
     t.missionOutcome = "CAPTURE";
+    markTigerBehaviorAnim(t, "capture_struggle", 1200);
+    pushTigerCaptureStruggle(t, "CAPTURE");
     t.alive=false;
     tigerPackRecordLoss(t, "CAPTURE");
     recordCapturedTigerTrophy(t, "player");
@@ -39272,6 +39289,172 @@ function drawTigerAttackTelegraph(t, x, y, s, alpha, now){
   ctx.restore();
 }
 
+function tigerNearbyPackCount(t, radius=190){
+  if(!t || !Array.isArray(S?.tigers)) return 0;
+  const packId = Number(t.packId || 0);
+  let count = 0;
+  for(const other of S.tigers){
+    if(!other || other === t || !other.alive) continue;
+    if(Number(other.packId || 0) !== packId) continue;
+    if(dist(other.x, other.y, t.x, t.y) <= radius) count += 1;
+  }
+  return count;
+}
+
+function markTigerBehaviorAnim(t, kind, ms=720){
+  if(!t) return;
+  const now = Date.now();
+  t.behaviorAnimKind = String(kind || "");
+  t.behaviorAnimStart = now;
+  t.behaviorAnimUntil = Math.max(Number(t.behaviorAnimUntil || 0), now + Math.max(80, Number(ms || 0)));
+}
+
+function tigerBehaviorAnimState(t, now, speed=0){
+  const hpPct = clamp(Number(t?.hp || 0) / Math.max(1, Number(t?.hpMax || 1)), 0, 1);
+  const pounceWindup = t?.huntState === TIGER_HUNT_STATES.POUNCE && now < Number(t?.pounceWindupUntil || 0);
+  const pounceActive = t?.huntState === TIGER_HUNT_STATES.POUNCE && !pounceWindup;
+  const lowHp = hpPct > 0 && hpPct <= 0.36;
+  const veryLowHp = hpPct > 0 && hpPct <= 0.20;
+  const animActive = now < Number(t?.behaviorAnimUntil || 0);
+  const animKind = animActive ? String(t?.behaviorAnimKind || "") : "";
+  const packNearby = tigerNearbyPackCount(t, 210);
+  const stalking = t?.huntState === TIGER_HUNT_STATES.STALK || animKind === "stalk";
+  const captureReady = !!t && tigerInCaptureHpWindow(t);
+  return {
+    stalking,
+    crouch:pounceWindup || stalking || now < Number(t?.bossFakePounceUntil || 0),
+    pounce:pounceActive,
+    roaring:now < Number(t?.roarUntil || 0) || animKind === "roar",
+    limping:lowHp || animKind === "limp",
+    fleeing:veryLowHp || now < Number(t?._fleeAnimUntil || 0) || animKind === "flee",
+    circling:packNearby > 0 && (stalking || t?.type === "Alpha" || t?.personality === "Ambusher"),
+    swiping:now < Number(t?.attackAnimUntil || 0),
+    captureReady,
+    packNearby,
+    speed,
+    hpPct
+  };
+}
+
+function drawTigerRoarShockwave(x, y, s, alpha, now){
+  ctx.save();
+  const pulse = (now % 760) / 760;
+  for(let i=0; i<3; i++){
+    const p = (pulse + i * 0.32) % 1;
+    ctx.globalAlpha = clamp(alpha * (0.34 - p * 0.24), 0.04, 0.34);
+    ctx.strokeStyle = "rgba(251,191,36,.96)";
+    ctx.lineWidth = (3.6 - p * 1.6) * s;
+    ctx.beginPath();
+    ctx.arc(x, y, (28 + p * 58) * s, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawTigerPackCirclingCue(t, x, y, s, alpha, now){
+  if(!t) return;
+  const phase = now * 0.0026 + (Number(t.id || 0) * 0.41);
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha * 0.34, 0.10, 0.42);
+  ctx.strokeStyle = "rgba(250,204,21,.82)";
+  ctx.lineWidth = 1.8 * s;
+  ctx.setLineDash([7, 6]);
+  ctx.beginPath();
+  ctx.arc(x, y, 47 * s, phase, phase + Math.PI * 1.35);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 58 * s, phase + Math.PI, phase + Math.PI * 2.18);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  for(let i=0; i<Math.min(3, Number(tigerNearbyPackCount(t, 210) || 0) + 1); i++){
+    const a = phase + i * (Math.PI * 2 / 3);
+    ctx.fillStyle = "rgba(250,204,21,.88)";
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(a) * 54 * s, y + Math.sin(a) * 54 * s, 2.6 * s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawTigerFleeCue(t, x, y, s, alpha, now){
+  const awayA = Math.atan2((t?.y || y) - (S.me?.y || y), (t?.x || x) - (S.me?.x || x));
+  const pulse = 0.5 + Math.sin(now * 0.018) * 0.28;
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha * (0.24 + pulse * 0.2), 0.16, 0.46);
+  ctx.strokeStyle = "rgba(125,211,252,.90)";
+  ctx.lineWidth = 2.4 * s;
+  ctx.setLineDash([8, 5]);
+  for(let i=0; i<2; i++){
+    const ox = Math.cos(awayA) * (26 + i * 16) * s;
+    const oy = Math.sin(awayA) * (26 + i * 16) * s;
+    ctx.beginPath();
+    ctx.moveTo(x - ox * 0.35, y - oy * 0.35);
+    ctx.lineTo(x + ox, y + oy);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function pushTigerCaptureStruggle(t, outcome="CAPTURE"){
+  if(!t) return;
+  const now = Date.now();
+  TIGER_CAPTURE_STRUGGLES.push({
+    x:Number(t.x || 0),
+    y:Number(t.y || 0),
+    scale:tigerVisualScale(t) * (t.type === "Alpha" ? 1.2 : (t.type === "Berserker" ? 1.1 : 1)),
+    type:String(t.type || "Tiger"),
+    outcome:String(outcome || "CAPTURE"),
+    startedAt:now,
+    until:now + 1320
+  });
+  if(TIGER_CAPTURE_STRUGGLES.length > 12){
+    TIGER_CAPTURE_STRUGGLES.splice(0, TIGER_CAPTURE_STRUGGLES.length - 12);
+  }
+}
+
+function drawTigerCaptureStruggles(now=Date.now()){
+  if(!TIGER_CAPTURE_STRUGGLES.length) return;
+  for(let i=TIGER_CAPTURE_STRUGGLES.length-1; i>=0; i--){
+    const fx = TIGER_CAPTURE_STRUGGLES[i];
+    if(!fx || now > Number(fx.until || 0)){
+      TIGER_CAPTURE_STRUGGLES.splice(i, 1);
+      continue;
+    }
+    const life = clamp((now - Number(fx.startedAt || now)) / Math.max(1, Number(fx.until || now) - Number(fx.startedAt || now)), 0, 1);
+    const fade = 1 - life;
+    const shake = Math.sin(now * 0.052) * 2.8 * fade;
+    const x = Number(fx.x || 0) + shake;
+    const y = Number(fx.y || 0) + Math.cos(now * 0.047) * 1.8 * fade;
+    const s = clamp(Number(fx.scale || 1), 0.78, 1.55);
+    ctx.save();
+    ctx.globalAlpha = clamp(fade, 0.08, 0.96);
+    ctx.strokeStyle = "rgba(110,231,183,.96)";
+    ctx.lineWidth = 2.8 * s;
+    ctx.setLineDash([8, 5]);
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2 * s, 34 * s, 21 * s, -0.15, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(167,243,208,.74)";
+    ctx.lineWidth = 1.4 * s;
+    for(let k=-2; k<=2; k++){
+      ctx.beginPath();
+      ctx.moveTo(x - 26 * s, y + k * 7 * s);
+      ctx.lineTo(x + 26 * s, y - k * 7 * s);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(9,12,18,.82)";
+    roundedRectFill(x - 44 * s, y - 39 * s, 88 * s, 20 * s, 8 * s);
+    ctx.fillStyle = "rgba(220,252,231,.98)";
+    ctx.font = `900 ${Math.round(10 * s)}px system-ui`;
+    ctx.textAlign = "center";
+    ctx.fillText("CAPTURE STRUGGLE", x, y - 25 * s);
+    ctx.textAlign = "start";
+    ctx.restore();
+  }
+}
+
 function drawTiger(t){
   let alpha=1.0;
   const now = Date.now();
@@ -39339,7 +39522,11 @@ function drawTiger(t){
   const atkKind = t.attackAnimKind || "";
   const atkSwing = atkProgress > 0 ? Math.sin(atkProgress * Math.PI) : 0;
   const telegraphHeavy = visualReadabilityHeavyMode();
+  const behaviorAnim = tigerBehaviorAnimState(t, now, speed);
   drawTigerAttackTelegraph(t, x, y, s, alpha, now);
+  if(behaviorAnim.roaring) drawTigerRoarShockwave(x, y, s, alpha, now);
+  if(behaviorAnim.circling) drawTigerPackCirclingCue(t, x, y, s, alpha, now);
+  if(behaviorAnim.fleeing) drawTigerFleeCue(t, x, y, s, alpha, now);
   ctx.save();
   ctx.globalAlpha = tigerFocus ? 0.50 : 0.28;
   ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.99)" : "rgba(254,215,170,.88)";
@@ -39453,6 +39640,13 @@ function drawTiger(t){
   ctx.translate(x, y);
   ctx.scale(drawDir, 1);
   ctx.rotate(clamp((t.vy || 0) * 0.018, -0.09, 0.09) + shoulderRoll);
+  const crouchAmt = behaviorAnim.crouch ? (behaviorAnim.stalking ? 0.72 : 1) : 0;
+  const limpAmt = behaviorAnim.limping ? clamp(1 - behaviorAnim.hpPct, 0.15, 0.82) : 0;
+  const roarAmt = behaviorAnim.roaring ? 1 : 0;
+  const pounceAmt = behaviorAnim.pounce ? 1 : 0;
+  ctx.translate(0, ((crouchAmt * 4.3) + (limpAmt * 1.8) - (roarAmt * 1.7) - (pounceAmt * 1.4)) * s);
+  ctx.scale(1 + crouchAmt * 0.10 + pounceAmt * 0.04, 1 - crouchAmt * 0.12 + roarAmt * 0.05);
+  ctx.rotate((limpAmt * Math.sin(lifePhase * 1.7) * 0.075) - (roarAmt * 0.035) + (pounceAmt * 0.045));
 
   ctx.fillStyle=c.body;
   ctx.beginPath(); ctx.ellipse(0, (2 + breathe * 0.20)*s, (22 + breathe * 0.16)*s*visualAge.bodyX, (13 + breathe * 0.20)*s*visualAge.bodyY, 0, 0, Math.PI*2); ctx.fill();
@@ -39617,6 +39811,43 @@ function drawTiger(t){
     ctx.lineTo((22.3 + clawReach)*s, (pawY - clawLift - 0.8)*s);
     ctx.stroke();
   }
+  if(behaviorAnim.swiping && atkProgress > 0){
+    const swipeA = -0.45 + atkSwing * 0.82;
+    ctx.save();
+    ctx.globalAlpha = clamp(alpha * (0.22 + atkSwing * 0.50), 0.18, 0.78);
+    ctx.strokeStyle = "rgba(255,247,237,.92)";
+    ctx.lineWidth = 2.1 * s;
+    ctx.lineCap = "round";
+    for(let i=0; i<3; i++){
+      const r = (22 + i * 4) * s;
+      ctx.beginPath();
+      ctx.arc((24 + attackPosture) * s, (2 + headBob * 0.25) * s, r, swipeA + i * 0.06, swipeA + 0.55 + i * 0.06);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  if(behaviorAnim.roaring){
+    ctx.save();
+    ctx.globalAlpha = clamp(alpha * 0.75, 0.24, 0.86);
+    ctx.strokeStyle = "rgba(251,191,36,.95)";
+    ctx.lineWidth = 1.5 * s;
+    for(let i=0; i<3; i++){
+      const mx = (30 + attackPosture + i * 5) * s;
+      const my = (-5 + headBob * 0.45 - i * 2) * s;
+      ctx.beginPath();
+      ctx.arc(mx, my, (4 + i * 2.8) * s, -0.55, 0.55);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  if(behaviorAnim.fleeing || behaviorAnim.limping){
+    ctx.save();
+    ctx.globalAlpha = behaviorAnim.fleeing ? clamp(alpha * 0.82, 0.32, 0.9) : clamp(alpha * 0.54, 0.22, 0.64);
+    ctx.fillStyle = "rgba(125,211,252,.96)";
+    ctx.font = `900 ${Math.round(9 * s)}px system-ui`;
+    ctx.fillText(behaviorAnim.fleeing ? "FLEE" : "LIMP", -22 * s, -24 * s);
+    ctx.restore();
+  }
   ctx.restore();
 
   if(t._held){
@@ -39669,6 +39900,13 @@ function drawTiger(t){
     ctx.fillStyle = "rgba(254,202,202,.96)";
     ctx.font = "900 12px system-ui";
     ctx.fillText("💉", x-5*s, y-50*s);
+    ctx.fillStyle = "rgba(9,12,18,.86)";
+    roundedRectFill(x - 38*s, y - 68*s, 76*s, 17*s, 7*s);
+    ctx.fillStyle = "rgba(220,252,231,.98)";
+    ctx.font = "900 9px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("CAPTURE READY", x, y - 56*s);
+    ctx.textAlign = "start";
   }
 
   if(t.huntState === TIGER_HUNT_STATES.STALK){
@@ -40122,6 +40360,7 @@ function drawEntities(){
     }
     drawSafe("drawSoldier", drawSoldier);
   }
+  drawSafe("drawTigerCaptureStruggles", ()=>drawTigerCaptureStruggles(Date.now()));
   drawSafe("drawBossArenaMoments", ()=>drawBossArenaMoments(Date.now()));
   drawSafe("drawPhase18CinematicEvents", ()=>drawPhase18CinematicEvents(Date.now()));
   drawSafe("drawOnMapBattleReadability", drawOnMapBattleReadability);
