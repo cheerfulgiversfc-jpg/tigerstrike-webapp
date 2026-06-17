@@ -847,9 +847,9 @@ const NEMESIS_NAME_SUFFIX = Object.freeze([
 ]);
 const CIVILIAN_PERSONALITY_KEYS = Object.freeze(["cooperative","panicked","injured"]);
 const CIVILIAN_PERSONALITY_DEF = Object.freeze({
-  cooperative: Object.freeze({ engageMul:1.16, followMul:1.10, fleeMul:0.88, bravery:0.72, riskValue:1.12 }),
-  panicked: Object.freeze({ engageMul:0.82, followMul:0.92, fleeMul:1.18, bravery:0.38, riskValue:1.38 }),
-  injured: Object.freeze({ engageMul:0.92, followMul:0.74, fleeMul:0.86, bravery:0.56, riskValue:1.42 }),
+  cooperative: Object.freeze({ engageMul:1.16, followMul:1.10, fleeMul:0.88, bravery:0.72, riskValue:1.12, freezeChance:0.05, hideChance:0.10, callRange:150 }),
+  panicked: Object.freeze({ engageMul:0.82, followMul:0.92, fleeMul:1.18, bravery:0.38, riskValue:1.38, freezeChance:0.32, hideChance:0.30, callRange:210 }),
+  injured: Object.freeze({ engageMul:0.92, followMul:0.74, fleeMul:0.86, bravery:0.56, riskValue:1.42, freezeChance:0.18, hideChance:0.22, callRange:185 }),
 });
 const CIVILIAN_RISK_REWARD_MULT = Object.freeze({
   calm: 1.00,
@@ -27440,6 +27440,101 @@ function refreshCivilianAiState(c, now=Date.now()){
   if(nextState === "injured"){
     c.followGraceUntil = Math.max(Number(c.followGraceUntil || 0), now + 3200);
   }
+  civilianBehavior3Update(c, nearbyTiger, now);
+}
+
+function civilianBehaviorRoll(c, salt=0){
+  const n = Math.max(1, Number(c?.id || 1));
+  const raw = Math.sin((n * 38.91) + (salt * 19.17) + 0.314) * 43758.5453;
+  return Math.abs(raw - Math.floor(raw));
+}
+
+function civilianNearestThreat(c){
+  if(!c) return { tiger:null, d:Infinity };
+  let tiger = null;
+  let d = Infinity;
+  for(const t of (S.tigers || [])){
+    if(!t?.alive) continue;
+    const td = dist(c.x, c.y, t.x, t.y);
+    if(td < d){
+      d = td;
+      tiger = t;
+    }
+  }
+  return { tiger, d };
+}
+
+function civilianBehavior3Update(c, nearbyTiger=null, now=Date.now()){
+  if(!c || !c.alive || c.evac) return;
+  const pDef = civilianPersonalityDef(c.aiState || c.personality);
+  const threatInfo = nearbyTiger ? { tiger:nearbyTiger, d:dist(c.x, c.y, nearbyTiger.x, nearbyTiger.y) } : civilianNearestThreat(c);
+  const threat = threatInfo.tiger;
+  const threatDist = Number.isFinite(threatInfo.d) ? threatInfo.d : Infinity;
+  const inDanger = !!threat && threatDist <= Math.max(96, Number(pDef.callRange || 160));
+  c.helpWanted = !!inDanger || c.riskState === "critical" || c.aiState === "injured";
+  c.helpUntil = c.helpWanted ? Math.max(Number(c.helpUntil || 0), now + 1600) : Number(c.helpUntil || 0);
+  if(c.following || c.escortOwner === "rescue"){
+    c.freezeUntil = 0;
+    c.hideUntil = 0;
+    c.hideTargetX = NaN;
+    c.hideTargetY = NaN;
+    return;
+  }
+  if(!inDanger) return;
+  if(now < Number(c._nextBehaviorChoiceAt || 0)) return;
+  c._nextBehaviorChoiceAt = now + rand(850, 1550);
+  const roll = civilianBehaviorRoll(c, Math.floor(now / 900));
+  const freezeChance = clamp(Number(pDef.freezeChance || 0.08) + (c.riskState === "critical" ? 0.12 : 0), 0, 0.62);
+  const hideChance = clamp(Number(pDef.hideChance || 0.12) + (c.riskState === "critical" ? 0.10 : 0), 0, 0.68);
+  if(roll < freezeChance){
+    c.freezeUntil = now + rand(c.aiState === "injured" ? 1100 : 650, c.aiState === "injured" ? 2400 : 1550);
+    c.hideUntil = 0;
+    c.fleeUntil = Math.max(Number(c.fleeUntil || 0), now + 700);
+    return;
+  }
+  if(roll < freezeChance + hideChance){
+    const cover = civilianFindHidePoint(c, threat);
+    if(cover){
+      c.hideTargetX = cover.x;
+      c.hideTargetY = cover.y;
+      c.hideUntil = now + rand(1700, 3400);
+      c.freezeUntil = 0;
+      c.fleeUntil = Math.max(Number(c.fleeUntil || 0), now + 1400);
+    }
+  }
+}
+
+function civilianFindHidePoint(c, threat=null){
+  if(!c) return null;
+  const candidates = [];
+  for(const obj of (S.mapInteractables || [])){
+    if(obj && Number.isFinite(obj.x) && Number.isFinite(obj.y)) candidates.push({ x:obj.x, y:obj.y, weight:1.16 });
+  }
+  for(const site of (S.rescueSites || [])){
+    if(site && Number.isFinite(site.x) && Number.isFinite(site.y)) candidates.push({ x:site.x, y:site.y, weight:1.08 });
+  }
+  if(S.evacZone && Number.isFinite(S.evacZone.x) && Number.isFinite(S.evacZone.y)){
+    candidates.push({ x:S.evacZone.x, y:S.evacZone.y, weight:1.34 });
+  }
+  let best = null;
+  let bestScore = -Infinity;
+  for(const cand of candidates){
+    const open = findNearestOpenPoint(cand.x, cand.y, 14, {
+      avoidKeepout:false,
+      avoidWater:false,
+      targetX:c.x,
+      targetY:c.y
+    });
+    if(!open) continue;
+    const threatDist = threat ? dist(open.x, open.y, threat.x, threat.y) : 180;
+    const selfDist = dist(open.x, open.y, c.x, c.y);
+    const score = (threatDist * cand.weight) - (selfDist * 0.62) - (blockedAt(open.x, open.y, 14) ? 200 : 0);
+    if(score > bestScore){
+      bestScore = score;
+      best = open;
+    }
+  }
+  return best;
 }
 
 function civilianEscortPriorityScore(c, unit=null, now=Date.now()){
@@ -30738,6 +30833,15 @@ function runCivilianFleeStep(c, now=Date.now()){
     threat = nearest;
   }
   if(!threat) return false;
+  if(now < Number(c.freezeUntil || 0)){
+    c._followVx = 0;
+    c._followVy = 0;
+    c.vx = 0;
+    c.vy = 0;
+    c.face = Math.atan2(c.y - threat.y, c.x - threat.x);
+    c.step = (c.step || 0) + 0.03;
+    return true;
+  }
 
   const chooseCoverPoint = ()=>{
     const points = [];
@@ -30780,9 +30884,12 @@ function runCivilianFleeStep(c, now=Date.now()){
     }
   }
 
-  const towardCover = Number.isFinite(c.panicCoverX) && Number.isFinite(c.panicCoverY)
+  const activeHide = now < Number(c.hideUntil || 0) && Number.isFinite(c.hideTargetX) && Number.isFinite(c.hideTargetY);
+  const towardCover = activeHide
+    ? { x:c.hideTargetX, y:c.hideTargetY }
+    : (Number.isFinite(c.panicCoverX) && Number.isFinite(c.panicCoverY)
     ? { x:c.panicCoverX, y:c.panicCoverY }
-    : null;
+    : null);
   const awayX = c.x - threat.x;
   const awayY = c.y - threat.y;
   const fallbackAng = Math.atan2(awayY, awayX);
@@ -30794,7 +30901,7 @@ function runCivilianFleeStep(c, now=Date.now()){
   const motionMul = frameMotionMul();
   const mapCivMul = mapIdentityCivilianSpeedMul(S.mode, chapterIndexForMode(S.mode));
   const worldCivMul = clamp(Number(worldEventMotionMods(now).civilianSpeedMul || 1), 0.7, 1.2) * liveOpsMissionModifierValue("civilianSpeedMul", 1, S);
-  const fleeBase = c.following ? 3.58 : 2.94;
+  const fleeBase = activeHide ? 2.52 : (c.following ? 3.58 : 2.94);
   const fleeSpeed = (fleeBase * (civDef.fleeMul || 1)) * (c.following ? Math.max(0.95, waterMul) : waterMul) * motionMul * mapCivMul * worldCivMul * dynamicWeather2LocalMoveMul("civilian", c.x, c.y, now);
   const nx = c.x + Math.cos(ang) * fleeSpeed;
   const ny = c.y + Math.sin(ang) * fleeSpeed;
@@ -30972,6 +31079,16 @@ function followCiviliansTick(){
         c.escortOwner = "player";
         c.escortUnitId = "";
         c.followGraceUntil = now + 3600;
+        c.freezeUntil = 0;
+        c.hideUntil = 0;
+        c.helpWanted = false;
+        c._startedFollowingAt = now;
+        if(now >= Number(c._nextFollowNoticeAt || 0)){
+          c._nextFollowNoticeAt = now + 8000;
+          const route = ensureEvacRouteState(S);
+          const routeTxt = route.active ? ` Follow ${route.icon} ${route.label}.` : "";
+          setEventText(`${c.aiState === "injured" ? "🩹 Injured civilian" : "Civilian"} following.${routeTxt}`, 2.4);
+        }
       } else {
         continue;
       }
@@ -31253,8 +31370,11 @@ function evacCheck(){
       const riskState = String(c.riskState || "calm");
       const rewardMul = CIVILIAN_RISK_REWARD_MULT[riskState] || 1;
       const pDef = civilianPersonalityDef(c.aiState || c.personality);
-      const xpGain = Math.max(30, Math.round((35 * rewardMul) + ((pDef.riskValue || 1) * 3)));
-      const cashGain = 0;
+      const highRisk = riskState === "critical" || riskState === "threatened" || c.aiState === "injured";
+      const route = ensureEvacRouteState(S);
+      const routeBonus = route.active ? 6 : 0;
+      const xpGain = Math.max(30, Math.round((35 * rewardMul) + ((pDef.riskValue || 1) * 3) + (highRisk ? 10 : 0) + routeBonus));
+      const cashGain = highRisk ? Math.round((c.aiState === "injured" ? 95 : 70) * rewardMul) : 0;
       moveCivilianInsideEvac(c, evacCoreRadius);
       if(dist(c.x, c.y, ez.x, ez.y) > evacCoreRadius){
         continue;
@@ -39012,7 +39132,15 @@ function drawCivilian(c){
     let label = "";
     let labelBg = "";
     let labelBorder = "";
-    if(riskState === "critical"){
+    if(nowMs < Number(c.freezeUntil || 0)){
+      label = "FROZEN";
+      labelBg = "rgba(76,29,149,.92)";
+      labelBorder = "rgba(216,180,254,.92)";
+    }else if(nowMs < Number(c.hideUntil || 0)){
+      label = "HIDING";
+      labelBg = "rgba(20,83,45,.92)";
+      labelBorder = "rgba(134,239,172,.92)";
+    }else if(riskState === "critical"){
       label = "HELP";
       labelBg = "rgba(82,24,24,.92)";
       labelBorder = "rgba(248,113,113,.92)";
@@ -39024,6 +39152,10 @@ function drawCivilian(c){
       label = "INJURED";
       labelBg = "rgba(56,38,74,.90)";
       labelBorder = "rgba(216,180,254,.88)";
+    }else if(c.helpWanted || nowMs < Number(c.helpUntil || 0)){
+      label = "HELP";
+      labelBg = "rgba(74,50,8,.90)";
+      labelBorder = "rgba(251,191,36,.86)";
     }else if(c.following){
       label = "FOLLOW";
       labelBg = "rgba(14,44,86,.82)";
@@ -39050,6 +39182,19 @@ function drawCivilian(c){
   if(c.evac){
     ctx.fillStyle="rgba(74,222,128,.85)";
     ctx.beginPath(); ctx.arc(bx, by-32, 4.5, 0, Math.PI*2); ctx.fill();
+    if(c.boardingAt && (!c.boardedAt || nowMs < Number(c.boardedAt || 0))){
+      ctx.save();
+      ctx.fillStyle = "rgba(8,18,14,.90)";
+      roundedRectFill(bx - 38, by - 59, 76, 18, 8);
+      ctx.strokeStyle = "rgba(125,211,252,.82)";
+      ctx.strokeRect(bx - 37.5, by - 58.5, 75, 17);
+      ctx.fillStyle = "rgba(224,242,254,.98)";
+      ctx.font = "900 9px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("BOARDING", bx, by - 46);
+      ctx.textAlign = "start";
+      ctx.restore();
+    }
   }
   if(!c.following && !c.evac){
     ctx.fillStyle="rgba(245,247,255,.75)";
@@ -42380,6 +42525,15 @@ function init(){
     if(typeof civ.escortUnitId !== "string") civ.escortUnitId = "";
     if(!Number.isFinite(civ.fleeUntil)) civ.fleeUntil = 0;
     if(!Number.isFinite(civ.fleeFromTigerId)) civ.fleeFromTigerId = 0;
+    if(!Number.isFinite(civ.freezeUntil)) civ.freezeUntil = 0;
+    if(!Number.isFinite(civ.hideUntil)) civ.hideUntil = 0;
+    if(!Number.isFinite(civ.hideTargetX)) civ.hideTargetX = NaN;
+    if(!Number.isFinite(civ.hideTargetY)) civ.hideTargetY = NaN;
+    if(!Number.isFinite(civ.helpUntil)) civ.helpUntil = 0;
+    if(typeof civ.helpWanted !== "boolean") civ.helpWanted = false;
+    if(!Number.isFinite(civ.boardingAt)) civ.boardingAt = 0;
+    if(!Number.isFinite(civ.boardedAt)) civ.boardedAt = 0;
+    if(typeof civ.evacRouteKey !== "string") civ.evacRouteKey = "";
     if(!Number.isFinite(civ._takeoverPromptLockUntil)) civ._takeoverPromptLockUntil = 0;
     if(!Number.isFinite(civ.face)) civ.face = 0;
     if(!Number.isFinite(civ.step)) civ.step = 0;
