@@ -8712,6 +8712,7 @@ const DEFAULT = {
   investigationClues:[],
   tigerInvestigation:null,
   dayNightCycle:null,
+  evacRoute:null,
   extractionSequence:null,
   missionTigerSpawnControl:null,
   _missionTigerInitialCount:0,
@@ -14530,6 +14531,7 @@ function sanitizeRuntimeState(){
   if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
   ensureTigerInvestigationState(S);
   ensureDayNightCycleState(S);
+  ensureEvacRouteState(S);
   ensureExtractionSequenceState(S);
   ensureSettlementDefenseState(S);
   if(!Number.isFinite(S.soldierAttackersOwned)) S.soldierAttackersOwned = 0;
@@ -28272,6 +28274,7 @@ function deploy(opts={}){
   resetDynamicObjectiveForDeploy(S);
   resetTigerInvestigationForDeploy(S);
   resetDayNightCycleForDeploy(S);
+  resetEvacRouteForDeploy(S);
   resetExtractionSequenceForDeploy(S);
   S.missionTigerSpawnControl = null;
   S._missionTigerInitialCount = 0;
@@ -28358,6 +28361,7 @@ function deploy(opts={}){
   }
   if(S.mode!=="Survival" && !window.__TUTORIAL_MODE__){
     S.evacZone = randomEvacZone(S.civilians);
+    initializeRealEvacRoute();
   }
   const spawnAudit = validateMissionSpawnLayout({ repair:true });
   if((spawnAudit?.fixed || 0) > 0){
@@ -34579,6 +34583,133 @@ function dynamicObjectiveTick(){
   }
 }
 
+// ===================== REAL EVACUATION ROUTES =====================
+const EVAC_ROUTE_DEFS = Object.freeze([
+  Object.freeze({ key:"street", icon:"🚦", label:"Street Escape", instruction:"Follow the marked street corridor to the city exit.", color:"rgba(74,222,128,.98)", vehicle:"safe_hold" }),
+  Object.freeze({ key:"boat", icon:"🚤", label:"Boat Dock Evac", instruction:"Escort civilians to the river dock and board the boat.", color:"rgba(34,211,238,.98)", vehicle:"boat" }),
+  Object.freeze({ key:"helicopter", icon:"🚁", label:"Helicopter Pad", instruction:"Reach the landing pad and load civilians for airlift.", color:"rgba(96,165,250,.98)", vehicle:"helicopter" }),
+  Object.freeze({ key:"convoy", icon:"🚚", label:"Convoy Pickup", instruction:"Guide civilians to the pickup lane and load the convoy.", color:"rgba(251,191,36,.98)", vehicle:"convoy" })
+]);
+function defaultEvacRouteState(){
+  return {
+    active:false, key:"street", icon:"🚦", label:"Street Escape", instruction:"Follow the marked street corridor to the city exit.",
+    color:"rgba(74,222,128,.98)", vehicle:"safe_hold", x:0, y:0, r:70, startX:0, startY:0, midX:0, midY:0,
+    altX:0, altY:0, vehicleX:0, vehicleY:0, vehicleAngle:0, blocked:false, blockedUntil:0, noticeAt:0, lastTickAt:0
+  };
+}
+function ensureEvacRouteState(state=S){
+  if(!state.evacRoute || typeof state.evacRoute !== "object") state.evacRoute = defaultEvacRouteState();
+  const route = state.evacRoute;
+  const defaults = defaultEvacRouteState();
+  for(const key of ["x","y","r","startX","startY","midX","midY","altX","altY","vehicleX","vehicleY","vehicleAngle","blockedUntil","noticeAt","lastTickAt"]){
+    if(!Number.isFinite(Number(route[key]))) route[key] = defaults[key];
+  }
+  route.active = !!route.active;
+  route.blocked = !!route.blocked;
+  if(!route.key) route.key = defaults.key;
+  if(!route.icon) route.icon = defaults.icon;
+  if(!route.label) route.label = defaults.label;
+  if(!route.instruction) route.instruction = defaults.instruction;
+  if(!route.color) route.color = defaults.color;
+  if(!route.vehicle) route.vehicle = defaults.vehicle;
+  return route;
+}
+function resetEvacRouteForDeploy(state=S){
+  state.evacRoute = defaultEvacRouteState();
+}
+function evacRouteDefForKey(key){
+  return EVAC_ROUTE_DEFS.find((row)=>row.key === key) || EVAC_ROUTE_DEFS[0];
+}
+function chooseRealEvacRouteDef(){
+  const storyMission = S.mode === "Story" ? storyMissionForState(S) : null;
+  const arcadeMission = S.mode === "Arcade" ? activeArcadeMission(S) : null;
+  const mission = storyMission || arcadeMission;
+  const text = [
+    mission?.objective,
+    mission?.name,
+    mission?.routeLabel,
+    mapIdentityProfile(S.mode, chapterIndexForMode(S.mode))?.name,
+    activeWorldEvent(S)?.type
+  ].filter(Boolean).join(" ").toLowerCase();
+  ensureMapObstacleCache();
+  const hasWater = (__mapWaterZones || []).length > 0;
+  if(hasWater && /river|boat|dock|flood|water|delta|lake/.test(text)) return evacRouteDefForKey("boat");
+  if(/helicopter|airlift|landing|crash/.test(text)) return evacRouteDefForKey("helicopter");
+  if(/convoy|truck|road|street|highway|vehicle/.test(text) || mission?.convoyMission) return evacRouteDefForKey("convoy");
+  const level = Math.max(1, currentCampaignLevel());
+  const pool = hasWater ? EVAC_ROUTE_DEFS : EVAC_ROUTE_DEFS.filter((row)=>row.key !== "boat");
+  return pool[(level + Math.max(0, Number(S.mapIndex || 0))) % pool.length] || EVAC_ROUTE_DEFS[0];
+}
+function placeRealEvacRoute(def){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const base = extractionSequencePlacement(def?.key === "boat" ? { key:"boat" } : { key:def?.vehicle || "safe_hold" });
+  const target = safeSpawnPoint(base.x, base.y, 34, true, true) || { x:base.x, y:base.y };
+  const sx = clamp(Number(S.me?.x || worldW * 0.2), 90, worldW - 90);
+  const sy = clamp(Number(S.me?.y || worldH * 0.72), 90, worldH - 90);
+  const midRaw = { x:(sx + target.x) * 0.5, y:(sy + target.y) * 0.5 };
+  const mid = findNearestOpenPoint(midRaw.x, midRaw.y, 28, { avoidKeepout:true, avoidWater:def?.key !== "boat", targetX:target.x, targetY:target.y }) || midRaw;
+  const alternateRaw = {
+    x:clamp(target.x + (target.x < worldW * 0.5 ? 170 : -170), 100, worldW - 100),
+    y:clamp(target.y + (target.y < worldH * 0.5 ? 150 : -150), 100, worldH - 100)
+  };
+  const alternate = findNearestOpenPoint(alternateRaw.x, alternateRaw.y, 34, { avoidKeepout:true, avoidWater:true, targetX:mid.x, targetY:mid.y })
+    || safeSpawnPoint(alternateRaw.x, alternateRaw.y, 34, true, true)
+    || alternateRaw;
+  return {
+    x:target.x, y:target.y, r:70, startX:sx, startY:sy, midX:mid.x, midY:mid.y,
+    altX:alternate.x, altY:alternate.y,
+    vehicleX:Number.isFinite(base.vehicleX) ? base.vehicleX : target.x,
+    vehicleY:Number.isFinite(base.vehicleY) ? base.vehicleY : target.y,
+    vehicleAngle:Number.isFinite(base.vehicleAngle) ? base.vehicleAngle : 0
+  };
+}
+function initializeRealEvacRoute(){
+  if(window.__TUTORIAL_MODE__ || S.mode === "Survival") return false;
+  const def = chooseRealEvacRouteDef();
+  const placement = placeRealEvacRoute(def);
+  const route = ensureEvacRouteState(S);
+  Object.assign(route, defaultEvacRouteState(), def, placement, {
+    active:true,
+    blocked:false,
+    blockedUntil:0,
+    noticeAt:Date.now() + 1200,
+    lastTickAt:Date.now()
+  });
+  S.evacZone = { x:route.x, y:route.y, r:route.r };
+  setEventText(`${route.icon} Evac route set: ${route.label}. ${route.instruction}`, 5.5);
+  return true;
+}
+function realEvacRouteBlockedByWorld(route, now=Date.now()){
+  if(!route?.active) return false;
+  if(blockedAt(route.midX, route.midY, 36)) return true;
+  const we = activeWorldEvent(S, now);
+  if(!we) return false;
+  if((we.type === "flooded_route" || we.type === "ambush_convoy") && dist(route.midX, route.midY, we.x || 0, we.y || 0) <= (Number(we.r || 0) + 92)) return true;
+  return false;
+}
+function realEvacRouteTick(now=Date.now()){
+  if(window.__TUTORIAL_MODE__ || S.mode === "Survival" || S.paused || S.gameOver || S.missionEnded) return;
+  const route = ensureEvacRouteState(S);
+  if(!route.active) return;
+  route.lastTickAt = now;
+  const shouldBlock = realEvacRouteBlockedByWorld(route, now);
+  if(shouldBlock && !route.blocked){
+    route.blocked = true;
+    route.blockedUntil = now + 18000;
+    S.evacZone = { x:route.altX, y:route.altY, r:route.r };
+    setEventText(`🚧 ${route.label} blocked. Alternate exit marked!`, 5);
+    toast("Evac route blocked: follow alternate exit");
+  } else if(route.blocked && now >= route.blockedUntil && !shouldBlock){
+    route.blocked = false;
+    S.evacZone = { x:route.x, y:route.y, r:route.r };
+    setEventText(`${route.icon} ${route.label} reopened. Primary route restored.`, 4);
+  } else if(now >= route.noticeAt){
+    route.noticeAt = now + 16000;
+    setEventText(`${route.icon} Evac route: ${route.blocked ? "alternate exit" : route.label}.`, 2.4);
+  }
+}
+
 // ===================== EXTRACTION + ESCAPE SEQUENCES =====================
 const EXTRACTION_SEQUENCE_DEFS = Object.freeze([
   Object.freeze({ key:"helicopter", icon:"🚁", label:"Helicopter Extraction", instruction:"Reach the landing zone and hold for pickup.", holdSec:18, color:"rgba(96,165,250,.98)" }),
@@ -37828,6 +37959,115 @@ function drawEvacSafeHouseMarker(ex, ey, er, safeHue="rgba(74,222,128,.95)", opt
   ctx.textAlign = "start";
   ctx.restore();
 }
+function drawRealEvacRoute(now=Date.now()){
+  if(S.mode === "Survival") return;
+  const route = ensureEvacRouteState(S);
+  if(!route.active) return;
+  if(frameLagTier() >= 3 || frameBudgetExceeded(0.88)) return;
+  const target = missionEvacZoneSafe(S);
+  const color = route.blocked ? "rgba(251,113,133,.98)" : (route.color || "rgba(74,222,128,.98)");
+  const primaryDim = route.blocked ? 0.22 : 0.56;
+  const dash = -((now / 62) % 24);
+  const drawSegment = (a, b, alpha, stroke, width=4)=>{
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = width;
+    ctx.setLineDash([14, 10]);
+    ctx.lineDashOffset = dash;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.quadraticCurveTo((a.x + b.x) * 0.5, (a.y + b.y) * 0.5 - 28, b.x, b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const d = Math.max(1, dist(a.x, a.y, b.x, b.y));
+    const ux = (b.x - a.x) / d;
+    const uy = (b.y - a.y) / d;
+    const ax = a.x + ux * clamp(d * 0.58, 48, 210);
+    const ay = a.y + uy * clamp(d * 0.58, 48, 210);
+    ctx.translate(ax, ay);
+    ctx.rotate(Math.atan2(uy, ux));
+    ctx.fillStyle = stroke;
+    ctx.globalAlpha = Math.min(0.95, alpha + 0.24);
+    ctx.beginPath();
+    ctx.moveTo(13, 0);
+    ctx.lineTo(-9, -7);
+    ctx.lineTo(-5, 0);
+    ctx.lineTo(-9, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  };
+  const start = { x:Number(route.startX || S.me.x), y:Number(route.startY || S.me.y) };
+  const mid = { x:Number(route.midX || ((start.x + route.x) * 0.5)), y:Number(route.midY || ((start.y + route.y) * 0.5)) };
+  const end = { x:Number(route.x || target.x), y:Number(route.y || target.y) };
+  drawSegment(start, mid, primaryDim, route.color || color, 3.6);
+  drawSegment(mid, end, primaryDim, route.color || color, 3.6);
+  if(route.blocked){
+    drawSegment(mid, target, 0.74, "rgba(134,239,172,.98)", 5);
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = "rgba(127,29,29,.70)";
+    ctx.beginPath();
+    ctx.arc(mid.x, mid.y, 34 + Math.sin(now / 180) * 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(254,202,202,.95)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.arc(mid.x, mid.y, 44, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255,255,255,.96)";
+    ctx.font = "1000 13px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("ROAD BLOCKED", mid.x, mid.y - 48);
+    ctx.restore();
+  }
+
+  const markerEx = {
+    key:route.vehicle || "safe_hold",
+    color:route.color,
+    x:target.x,
+    y:target.y,
+    vehicleX:route.blocked ? target.x : route.vehicleX,
+    vehicleY:route.blocked ? target.y : route.vehicleY,
+    vehicleAngle:route.vehicleAngle,
+    departing:false,
+    departStartedAt:0,
+    departUntil:0,
+    holdProgressMs:Math.max(1, Number(S.stats?.evac || 0)),
+    holdRequiredMs:Math.max(1, (S.civilians || []).length || 1)
+  };
+  drawExtractionVehicle(markerEx, now);
+
+  ctx.save();
+  const pulse = 0.78 + Math.sin(now / 210) * 0.10;
+  ctx.globalAlpha = pulse;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = route.blocked ? 5 : 4;
+  ctx.setLineDash([10, 7]);
+  ctx.beginPath();
+  ctx.arc(target.x, target.y, target.r + 8, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 0.26;
+  ctx.fillStyle = route.blocked ? "rgba(34,197,94,.50)" : (route.color || "rgba(74,222,128,.50)");
+  ctx.beginPath();
+  ctx.arc(target.x, target.y, Math.max(24, target.r * 0.72), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.96;
+  ctx.fillStyle = "rgba(7,12,20,.90)";
+  roundedRectFill(target.x - 98, target.y - target.r - 54, 196, 30, 11);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(target.x - 92, target.y - target.r - 48, 184, 18);
+  ctx.fillStyle = route.blocked ? "rgba(220,252,231,.98)" : (route.color || "rgba(220,252,231,.98)");
+  ctx.font = "1000 11px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(route.blocked ? `↪ ALTERNATE EXIT • ${route.icon}` : `${route.icon} ${route.label}`, target.x, target.y - target.r - 35);
+  ctx.restore();
+}
 function drawEscortRouteLines(){
   if(S.mode === "Survival" || !S.evacZone) return;
   if(frameLagTier() >= 2 || frameBudgetExceeded(0.72)) return;
@@ -40419,6 +40659,7 @@ function drawEntities(){
 
   drawSafe("drawTigerEcosystemTerritories", drawTigerEcosystemTerritories);
   drawSafe("drawPlayerCosmeticTrail", drawPlayerCosmeticTrail);
+  drawSafe("drawRealEvacRoute", ()=>drawRealEvacRoute(Date.now()));
   if(liteRender){
     drawSafe("drawEntitiesLite", drawEntitiesLite);
   } else {
@@ -41571,6 +41812,10 @@ function draw(){
         costHint:1.15, critical:true, cadence:1, slowCadence:1, heavyCadence:1, extremeCadence:1
       });
       runFrameTask("evacCheck", frameInterval(lagCritical ? 90 : (lagHeavy ? 72 : 58), 1.5), evacCheck, { costHint:0.9 });
+      runFrameTask("realEvacRoute", frameInterval(lagCritical ? 210 : (lagHeavy ? 168 : 124), 1.45), ()=>realEvacRouteTick(Date.now()), {
+        costHint:0.35,
+        critical:S.mode!=="Survival"
+      });
       runFrameTask("sectorStreaming", frameInterval(lagCritical ? 280 : (lagHeavy ? 220 : 170), 1.35), sectorStreamingTick, {
         costHint:0.55, critical:true
       });
