@@ -34730,7 +34730,7 @@ function ensureEvacRouteState(state=S){
   if(!state.evacRoute || typeof state.evacRoute !== "object") state.evacRoute = defaultEvacRouteState();
   const route = state.evacRoute;
   const defaults = defaultEvacRouteState();
-  for(const key of ["x","y","r","startX","startY","midX","midY","altX","altY","vehicleX","vehicleY","vehicleAngle","blockedUntil","noticeAt","lastTickAt","boardedCount","boardingTotal","departStartedAt","departUntil"]){
+  for(const key of ["x","y","r","startX","startY","midX","midY","altX","altY","vehicleX","vehicleY","vehicleAngle","blockedUntil","noticeAt","lastTickAt","boardedCount","boardingTotal","departStartedAt","departUntil","departNoticeUntil"]){
     if(!Number.isFinite(Number(route[key]))) route[key] = defaults[key];
   }
   route.active = !!route.active;
@@ -34861,7 +34861,11 @@ function markCivilianBoarded(c, now=Date.now()){
   const route = ensureEvacRouteState(S);
   if(!route.active) return;
   if(!c.boardingAt) c.boardingAt = now;
-  if(!c.boardedAt) c.boardedAt = now + Math.min(900, 220 + ((Number(c.id || 1) % 5) * 120));
+  if(!c.boardedAt){
+    const group = Math.floor((Math.max(1, Number(c.id || 1)) - 1) / 3);
+    const lane = (Math.max(1, Number(c.id || 1)) - 1) % 3;
+    c.boardedAt = now + 2200 + (group * 780) + (lane * 260);
+  }
   c.evacRouteKey = route.key;
   const slot = evacRouteBoardingSlot(c, route);
   c.safeZoneOffset = { x:slot.x - missionEvacZoneSafe(S).x, y:slot.y - missionEvacZoneSafe(S).y };
@@ -34918,7 +34922,8 @@ function realEvacRouteTick(now=Date.now()){
   if(allBoarded && !route.blocked && !route.boardingPaused && !route.departing && !route.departed){
     route.departing = true;
     route.departStartedAt = now;
-    route.departUntil = now + (route.key === "helicopter" ? 4200 : 3600);
+    route.departUntil = now + (route.key === "helicopter" ? 9500 : 8200);
+    route.departNoticeUntil = now + 6200;
     setEventText(`${route.icon} Civilians boarded. ${route.label} departing!`, 4);
     toast("Evac transport departing");
   }
@@ -35170,15 +35175,15 @@ function drawExtractionVehicle(ex, now=Date.now()){
   let y = Number(ex.vehicleY || ex.y);
   let angle = Number(ex.vehicleAngle || 0);
   if(ex.key === "helicopter"){
-    y -= departPct * 145;
+    y -= departPct * 260;
     x += Math.sin(now / 180) * (1 - departPct) * 2;
   }else if(ex.key === "boat"){
-    x += Math.cos(angle) * departPct * 190;
-    y += Math.sin(angle) * departPct * 190;
+    x += Math.cos(angle) * departPct * 340;
+    y += Math.sin(angle) * departPct * 340;
   }else if(ex.key === "convoy" || ex.key === "timed_escape"){
     angle = Math.abs(Math.cos(angle)) < 0.3 ? 0 : angle;
-    x += Math.cos(angle) * departPct * 190;
-    y += Math.sin(angle) * departPct * 190;
+    x += Math.cos(angle) * departPct * 340;
+    y += Math.sin(angle) * departPct * 340;
   }
   ctx.save();
   drawSoftEllipse(x, y + 18, ex.key === "helicopter" ? 42 : 48, ex.key === "boat" ? 14 : 18, "rgba(0,0,0,.30)", 1 - departPct * 0.35);
@@ -35421,6 +35426,22 @@ function checkMissionComplete(){
   }
 
   if(!tAlive && primaryObjectivesReady){
+    const route = ensureEvacRouteState(S);
+    if(civTotal > 0 && route.active && !route.departed){
+      if(Date.now() > Number(route._missionHoldNoticeAt || 0)){
+        route._missionHoldNoticeAt = Date.now() + 2800;
+        const boarded = Math.max(0, Math.floor(Number(route.boardedCount || 0)));
+        const total = Math.max(1, Math.floor(Number(route.boardingTotal || civTotal || 1)));
+        if(route.boardingPaused){
+          setEventText("⚠️ Mission secure, but boarding is paused. Clear the tiger near evacuation.", 2.6);
+        }else if(route.departing){
+          setEventText(`${route.icon} Civilian transport departing. Mission completes after evacuation leaves.`, 2.6);
+        }else{
+          setEventText(`${route.icon} Boarding civilians ${boarded}/${total}. Hold the evac route.`, 2.6);
+        }
+      }
+      return;
+    }
     if(!extraction.complete){
       beginExtractionSequence();
       return;
@@ -38286,17 +38307,30 @@ function drawRealEvacRoute(now=Date.now()){
   ctx.textAlign = "center";
   const boardText = route.boardingPaused
     ? "BOARDING PAUSED"
-    : (route.departed ? "CIVILIANS EVACUATED" : `${Math.max(0, route.boardedCount || 0)}/${Math.max(1, route.boardingTotal || 1)} BOARDED`);
+    : (route.departed ? "CIVILIANS EVACUATED" : (route.departing ? "TRANSPORT DEPARTING" : `${Math.max(0, route.boardedCount || 0)}/${Math.max(1, route.boardingTotal || 1)} BOARDED`));
   ctx.fillText(route.blocked ? `↪ ALTERNATE EXIT • ${route.icon}` : `${route.icon} ${route.label}`, target.x, target.y - target.r - 35);
   ctx.fillStyle = route.boardingPaused ? "rgba(254,202,202,.98)" : "rgba(220,252,231,.96)";
   ctx.font = "900 9px system-ui";
   ctx.fillText(boardText, target.x, target.y - target.r - 20);
   if(!route.departed){
+    const banner = route.boardingPaused ? "CLEAR TIGER TO RESUME BOARDING" : (route.departing ? "EVAC TRANSPORT LEAVING" : "BOARDING CIVILIANS");
+    const bw = route.boardingPaused ? 236 : (route.departing ? 210 : 190);
+    ctx.globalAlpha = 0.96;
+    ctx.fillStyle = route.boardingPaused ? "rgba(127,29,29,.94)" : "rgba(7,12,20,.94)";
+    roundedRectFill(target.x - (bw / 2), target.y - target.r - 88, bw, 28, 13);
+    ctx.strokeStyle = route.boardingPaused ? "rgba(254,202,202,.90)" : (route.color || "rgba(134,239,172,.90)");
+    ctx.lineWidth = 2;
+    ctx.strokeRect(target.x - (bw / 2) + 1, target.y - target.r - 87, bw - 2, 26);
+    ctx.fillStyle = route.boardingPaused ? "rgba(255,245,245,.98)" : "rgba(240,253,244,.98)";
+    ctx.font = "1000 12px system-ui";
+    ctx.fillText(`${route.icon} ${banner}`, target.x, target.y - target.r - 70);
+  }
+  if(!route.departed){
     const pct = clamp(Number(route.boardedCount || 0) / Math.max(1, Number(route.boardingTotal || 1)), 0, 1);
     ctx.fillStyle = "rgba(8,18,14,.92)";
-    roundedRectFill(target.x - 58, target.y + target.r + 12, 116, 9, 5);
+    roundedRectFill(target.x - 74, target.y + target.r + 12, 148, 12, 6);
     ctx.fillStyle = route.boardingPaused ? "rgba(248,113,113,.96)" : (route.color || "rgba(74,222,128,.96)");
-    roundedRectFill(target.x - 58, target.y + target.r + 12, 116 * pct, 9, 5);
+    roundedRectFill(target.x - 74, target.y + target.r + 12, 148 * pct, 12, 6);
   }
   ctx.restore();
 }
