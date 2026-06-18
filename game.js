@@ -23579,6 +23579,259 @@ function openShopFromInventory(tab="ammo"){
     shopTab(tab);
   }
 }
+const BASE_HQ_ROOMS = Object.freeze([
+  Object.freeze({ id:"command", name:"Command Deck", icon:"SAT", sub:"Briefing", x:50, y:48 }),
+  Object.freeze({ id:"armory", name:"Armory", icon:"ARM", sub:"Weapons", x:20, y:24 }),
+  Object.freeze({ id:"medbay", name:"Medbay", icon:"MED", sub:"Heal + kits", x:80, y:24 }),
+  Object.freeze({ id:"intel", name:"Intel", icon:"INT", sub:"Threat scan", x:20, y:72 }),
+  Object.freeze({ id:"pens", name:"Tiger Pens", icon:"TGR", sub:"Captures", x:80, y:72 }),
+  Object.freeze({ id:"trophy", name:"Trophy Hall", icon:"TRP", sub:"Showcase", x:50, y:16 }),
+  Object.freeze({ id:"specialists", name:"Barracks", icon:"SQD", sub:"Squad", x:50, y:82 }),
+  Object.freeze({ id:"mission", name:"Mission Gate", icon:"GO", sub:"Deploy", x:50, y:50 }),
+]);
+let __baseHqPlayer = { x:50, y:54 };
+let __baseHqSelectedRoom = "command";
+
+function baseHqRoomById(id){
+  return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
+}
+function baseHqNearestRoom(){
+  let best = BASE_HQ_ROOMS[0];
+  let bestD = Infinity;
+  for(const room of BASE_HQ_ROOMS){
+    const d = Math.hypot(Number(room.x || 0) - __baseHqPlayer.x, Number(room.y || 0) - __baseHqPlayer.y);
+    if(d < bestD){
+      bestD = d;
+      best = room;
+    }
+  }
+  return best;
+}
+function baseHqEsc(value){
+  return String(value ?? "").replace(/[&<>"']/g, (ch)=>({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    "\"":"&quot;",
+    "'":"&#39;",
+  }[ch] || ch));
+}
+function baseHqStatsHtml(){
+  const captures = Math.max(0, Math.floor(Number(S?.opsTotals?.captures || S?.stats?.captures || 0)));
+  const rescued = Math.max(0, Math.floor(Number(S?.opsTotals?.evac || S?.stats?.evac || 0)));
+  const hqRank = STORY_HQ_MODULES.reduce((n, def)=>n + storyHQRank(def.key), 0);
+  const hqMax = STORY_HQ_MODULES.reduce((n, def)=>n + def.maxRank, 0);
+  const soldiers = Math.max(0, Number(S.soldierAttackersOwned || 0) + Number(S.soldierRescuersOwned || 0));
+  return `
+    <div class="baseHqStat"><span>Funds</span><b>$${Number(S.funds || 0).toLocaleString()}</b></div>
+    <div class="baseHqStat"><span>HQ Rank</span><b>${hqRank}/${hqMax}</b></div>
+    <div class="baseHqStat"><span>Captured Tigers</span><b>${captures}</b></div>
+    <div class="baseHqStat"><span>Civilians Saved</span><b>${rescued}</b></div>
+    <div class="baseHqStat"><span>Squad</span><b>${soldiers} owned</b></div>
+    <div class="baseHqStat"><span>Weapon</span><b>${baseHqEsc(equippedWeapon()?.name || "Starter")}</b></div>
+  `;
+}
+function baseHqUpgradeHtml(filterKeys=[]){
+  const allow = new Set(filterKeys);
+  return STORY_HQ_MODULES
+    .filter((def)=>!allow.size || allow.has(def.key))
+    .map((def)=>{
+      const rank = storyHQRank(def.key);
+      const maxed = rank >= def.maxRank;
+      const cost = maxed ? 0 : Number(def.costs?.[rank] || 0);
+      return `
+        <div class="baseHqUpgrade">
+          <div>
+            <b>${baseHqEsc(def.name)} Lv ${rank}/${def.maxRank}</b>
+            <small>${baseHqEsc(def.desc)}</small>
+          </div>
+          <button ${maxed ? "disabled" : ""} onclick="buyBaseHqUpgrade('${def.key}')">${maxed ? "Maxed" : `$${cost.toLocaleString()}`}</button>
+        </div>
+      `;
+    }).join("");
+}
+function baseHqRoomData(roomId=__baseHqSelectedRoom){
+  const room = baseHqRoomById(roomId);
+  const captures = Math.max(0, Math.floor(Number(S?.opsTotals?.captures || S?.stats?.captures || 0)));
+  const achv = achvCount();
+  const map = {
+    command:{
+      title:"Command Deck",
+      desc:`Review ${currentMissionLabel()}, check readiness, then deploy from the Mission Gate when your loadout feels right.`,
+      actions:[["Mission Briefing","openMissionBriefFromBaseHQ()"],["Start Mission","startMissionFromBaseHQ()"],["Mode Select","openModeFromBaseHQ()"]],
+      upgrades:["HQ_RD","HQ_INTEL"],
+    },
+    armory:{
+      title:"Armory",
+      desc:"Buy weapons, ammo, armor plates, repair kits, and inspect your current loadout before deployment.",
+      actions:[["Open Weapons","openShopFromBaseHQ('weapons')"],["Buy Ammo","openShopFromBaseHQ('ammo')"],["Inventory","openInventoryFromBaseHQ()"]],
+      upgrades:["HQ_ARMORY","HQ_RD"],
+    },
+    medbay:{
+      title:"Medbay",
+      desc:"Upgrade triage support, restock med kits, and improve civilian escort survivability.",
+      actions:[["Buy Med Kits","openShopFromBaseHQ('meds')"],["Buy Armor","openShopFromBaseHQ('armor')"],["Inventory","openInventoryFromBaseHQ()"]],
+      upgrades:["HQ_MEDBAY"],
+    },
+    intel:{
+      title:"Intel Center",
+      desc:"Study weather, tiger pressure, investigation clues, and mission modifiers before entering the field.",
+      actions:[["Mission Briefing","openMissionBriefFromBaseHQ()"],["Open Story","openStoryFromBaseHQ()"],["Mode Select","openModeFromBaseHQ()"]],
+      upgrades:["HQ_INTEL","HQ_RD"],
+    },
+    pens:{
+      title:"Captured Tiger Pens",
+      desc:`Research pens track captured tigers. Current lifetime captures: ${captures}.`,
+      actions:[["Trophy Showcase","selectBaseHqRoom('trophy')"],["Inventory Cosmetics","openInventoryFromBaseHQ('cosmetics')"]],
+      upgrades:["HQ_RD"],
+    },
+    trophy:{
+      title:"Trophy Hall",
+      desc:`Show achievements, cosmetics, Nemesis history, and perfect rescue records. Achievements unlocked: ${achv}.`,
+      actions:[["Open Showcase","openInventoryFromBaseHQ('cosmetics')"],["Story Journal","openStoryFromBaseHQ()"]],
+      upgrades:[],
+    },
+    specialists:{
+      title:"Barracks",
+      desc:`Manage attack and rescue specialists. Owned: A ${S.soldierAttackersOwned || 0}, R ${S.soldierRescuersOwned || 0}. Downed units must be revived before combat.`,
+      actions:[["Squad Shop","openShopFromBaseHQ('squad')"],["Inventory","openInventoryFromBaseHQ()"]],
+      upgrades:["HQ_ARMORY","HQ_MEDBAY"],
+    },
+    mission:{
+      title:"Mission Gate",
+      desc:`Ready to deploy? Next operation: ${nextMissionLabel()}.`,
+      actions:[["Start Mission","startMissionFromBaseHQ()"],["Brief First","openMissionBriefFromBaseHQ()"],["Shop First","openShopFromBaseHQ('bundles')"]],
+      upgrades:[],
+    },
+  };
+  return { room, data:map[room.id] || map.command };
+}
+function renderBaseHQ(){
+  const roomsWrap = document.getElementById("baseHqRooms");
+  const agent = document.getElementById("baseHqAgent");
+  if(roomsWrap){
+    roomsWrap.innerHTML = BASE_HQ_ROOMS.map((room)=>{
+      const active = room.id === __baseHqSelectedRoom ? " active" : "";
+      return `
+        <button class="baseHqRoom${active}" style="left:${room.x}%;top:${room.y}%;" onclick="event.stopPropagation();selectBaseHqRoom('${room.id}', true)">
+          <span class="baseHqRoomIcon">${baseHqEsc(room.icon)}</span>
+          <span class="baseHqRoomName">${baseHqEsc(room.name)}</span>
+          <span class="baseHqRoomSub">${baseHqEsc(room.sub)}</span>
+        </button>
+      `;
+    }).join("");
+  }
+  if(agent){
+    agent.style.left = `${__baseHqPlayer.x}%`;
+    agent.style.top = `${__baseHqPlayer.y}%`;
+  }
+  const { room, data } = baseHqRoomData(__baseHqSelectedRoom);
+  const title = document.getElementById("baseHqPanelTitle");
+  const desc = document.getElementById("baseHqPanelDesc");
+  const stats = document.getElementById("baseHqStats");
+  const actions = document.getElementById("baseHqActions");
+  const upgrades = document.getElementById("baseHqUpgradeList");
+  if(title) title.innerText = `${room.icon} ${data.title || room.name}`;
+  if(desc) desc.innerText = data.desc || "Walk around Base HQ and interact with rooms.";
+  if(stats) stats.innerHTML = baseHqStatsHtml();
+  if(actions) actions.innerHTML = (data.actions || []).map(([label, fn])=>`<button class="ghost" onclick="${fn}">${baseHqEsc(label)}</button>`).join("");
+  if(upgrades) upgrades.innerHTML = data.upgrades?.length ? baseHqUpgradeHtml(data.upgrades) : "";
+}
+function selectBaseHqRoom(roomId, movePlayer=false){
+  const room = baseHqRoomById(roomId);
+  __baseHqSelectedRoom = room.id;
+  if(movePlayer){
+    __baseHqPlayer.x = clamp(Number(room.x || 50), 8, 92);
+    __baseHqPlayer.y = clamp(Number(room.y || 50) + 8, 10, 90);
+  }
+  renderBaseHQ();
+  sfx("ui");
+}
+function moveBaseHQ(dx=0, dy=0){
+  __baseHqPlayer.x = clamp(__baseHqPlayer.x + Number(dx || 0), 8, 92);
+  __baseHqPlayer.y = clamp(__baseHqPlayer.y + Number(dy || 0), 10, 90);
+  __baseHqSelectedRoom = baseHqNearestRoom().id;
+  renderBaseHQ();
+}
+function baseHqStageTap(ev){
+  const stage = document.getElementById("baseHqStage");
+  if(!stage || !ev) return;
+  const rect = stage.getBoundingClientRect();
+  if(!rect.width || !rect.height) return;
+  __baseHqPlayer.x = clamp(((ev.clientX - rect.left) / rect.width) * 100, 8, 92);
+  __baseHqPlayer.y = clamp(((ev.clientY - rect.top) / rect.height) * 100, 10, 90);
+  __baseHqSelectedRoom = baseHqNearestRoom().id;
+  renderBaseHQ();
+}
+function interactBaseHQ(){
+  selectBaseHqRoom(baseHqNearestRoom().id, false);
+}
+function openBaseHQ(opts={}){
+  if(window.__TUTORIAL_MODE__) return toast("Finish the tutorial first.");
+  ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = "none";
+  });
+  clearLaunchMusicLoop();
+  clearLaunchIntroAutoTimer();
+  setPaused(true, "base-hq");
+  const overlay = document.getElementById("baseHqOverlay");
+  if(overlay) overlay.style.display = "flex";
+  renderBaseHQ();
+  syncGamepadFocus();
+  sfx("ui");
+}
+function openBaseHQFromLaunchIntro(){
+  openBaseHQ({ fromLaunch:true });
+}
+function closeBaseHQ(){
+  const overlay = document.getElementById("baseHqOverlay");
+  if(overlay) overlay.style.display = "none";
+  setPaused(false, null);
+  syncGamepadFocus();
+}
+function openShopFromBaseHQ(tab="bundles"){
+  const overlay = document.getElementById("baseHqOverlay");
+  if(overlay) overlay.style.display = "none";
+  openShop();
+  if(document.getElementById("shopOverlay")?.style.display === "flex") shopTab(tab);
+}
+function openInventoryFromBaseHQ(tab=""){
+  const overlay = document.getElementById("baseHqOverlay");
+  if(overlay) overlay.style.display = "none";
+  openInventory();
+  if(tab) inventoryTab(tab);
+}
+function openModeFromBaseHQ(){
+  const overlay = document.getElementById("baseHqOverlay");
+  if(overlay) overlay.style.display = "none";
+  openMode();
+}
+function openStoryFromBaseHQ(){
+  const overlay = document.getElementById("baseHqOverlay");
+  if(overlay) overlay.style.display = "none";
+  openStoryCampaignJournal();
+}
+function openMissionBriefFromBaseHQ(){
+  const overlay = document.getElementById("baseHqOverlay");
+  if(overlay) overlay.style.display = "none";
+  if(!showMissionBrief(4500)){
+    toast(currentMissionLabel());
+    openBaseHQ();
+  }
+}
+function startMissionFromBaseHQ(){
+  const overlay = document.getElementById("baseHqOverlay");
+  if(overlay) overlay.style.display = "none";
+  setPaused(false, null);
+  beginGameplayMapLoadingGuard("base-hq-start");
+  toast(`${currentMissionLabel()} started from Base HQ.`);
+  syncGamepadFocus();
+}
+function buyBaseHqUpgrade(key){
+  buyStoryHQModule(key);
+  renderBaseHQ();
+}
 const WEAPON_PICKER_STATE = { paused:false, reason:null };
 
 function renderQuickWeaponPicker(){
@@ -26128,7 +26381,7 @@ window.exitTutorialMode = function () {
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
-  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionCinemaOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
+  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -28958,7 +29211,7 @@ function performResetGame(){
   S = cloneState(DEFAULT);
   bindFundsWallet(S);
   syncWindowState();
-  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionCinemaOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
+  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -29319,7 +29572,7 @@ function gamepadUiContainers(){
   const tutorial = document.getElementById("tutorialOverlay");
   if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
 
-  const overlays = ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionCinemaOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
+  const overlays = ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
     .map((id)=>document.getElementById(id))
     .filter((el)=>el && el.style.display === "flex");
   if(overlays.length) return overlays;
@@ -29408,7 +29661,7 @@ function activateGamepadFocus(){
 }
 
 function anyGamepadOverlayVisible(){
-  const ids = ["tutorialOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionCinemaOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
+  const ids = ["tutorialOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
   return ids.some((id)=>{
     const el = document.getElementById(id);
     return !!(el && el.style.display === "flex");
@@ -41627,12 +41880,14 @@ function beginGameplayMapLoadingGuard(reason="gameplay"){
   const launch = document.getElementById("launchIntroOverlay");
   const story = document.getElementById("storyIntroOverlay");
   const daily = document.getElementById("dailyRewardOverlay");
+  const baseHq = document.getElementById("baseHqOverlay");
   const cinema = document.getElementById("missionCinemaOverlay");
   const brief = document.getElementById("missionBriefOverlay");
   const blocked =
     (launch && launch.style.display === "flex") ||
     (story && story.style.display === "flex") ||
     (daily && daily.style.display === "flex") ||
+    (baseHq && baseHq.style.display === "flex") ||
     (cinema && cinema.style.display === "flex") ||
     (brief && brief.style.display === "flex");
   if(blocked) return false;
@@ -41943,6 +42198,7 @@ let __phase15SelfHealState = {
 };
 function missionBlockingOverlayVisible(){
   const ids = [
+    "baseHqOverlay",
     "missionCinemaOverlay",
     "missionBriefOverlay",
     "modeOverlay",
@@ -43123,6 +43379,20 @@ window.closeShop = closeShop;
 window.shopTab = shopTab;
 window.setShopFilter = setShopFilter;
 
+window.openBaseHQ = openBaseHQ;
+window.openBaseHQFromLaunchIntro = openBaseHQFromLaunchIntro;
+window.closeBaseHQ = closeBaseHQ;
+window.moveBaseHQ = moveBaseHQ;
+window.baseHqStageTap = baseHqStageTap;
+window.interactBaseHQ = interactBaseHQ;
+window.selectBaseHqRoom = selectBaseHqRoom;
+window.openShopFromBaseHQ = openShopFromBaseHQ;
+window.openInventoryFromBaseHQ = openInventoryFromBaseHQ;
+window.openModeFromBaseHQ = openModeFromBaseHQ;
+window.openStoryFromBaseHQ = openStoryFromBaseHQ;
+window.openMissionBriefFromBaseHQ = openMissionBriefFromBaseHQ;
+window.startMissionFromBaseHQ = startMissionFromBaseHQ;
+window.buyBaseHqUpgrade = buyBaseHqUpgrade;
 window.openInventory = openInventory;
 window.closeInventory = closeInventory;
 window.openShopFromInventory = openShopFromInventory;

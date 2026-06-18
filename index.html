@@ -138,6 +138,123 @@
       background:linear-gradient(90deg, #34d399 0%, #f59e0b 55%, #f43f5e 100%);
       box-shadow:0 0 12px rgba(52,211,153,.35);
     }
+    .baseHqModal{width:min(920px,96vw)}
+    .baseHqBody{display:grid;grid-template-columns:minmax(280px,1.35fr) minmax(240px,.85fr);gap:14px}
+    .baseHqStage{
+      position:relative;
+      min-height:430px;
+      border:1px solid rgba(91,122,185,.62);
+      border-radius:18px;
+      overflow:hidden;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(96,165,250,.20), transparent 26%),
+        radial-gradient(circle at 80% 22%, rgba(52,211,153,.16), transparent 24%),
+        linear-gradient(135deg, rgba(13,23,42,.98), rgba(5,12,22,.98));
+      box-shadow:inset 0 0 36px rgba(15,23,42,.92), 0 18px 38px rgba(2,6,23,.36);
+      touch-action:none;
+    }
+    .baseHqStage::before{
+      content:"";
+      position:absolute;
+      inset:22px;
+      border-radius:22px;
+      background:
+        linear-gradient(90deg, transparent 0 46%, rgba(148,163,184,.12) 46% 54%, transparent 54%),
+        linear-gradient(0deg, transparent 0 45%, rgba(148,163,184,.10) 45% 55%, transparent 55%);
+      border:1px dashed rgba(148,163,184,.18);
+      pointer-events:none;
+    }
+    .baseHqRoom{
+      position:absolute;
+      transform:translate(-50%,-50%);
+      width:112px;
+      min-height:74px;
+      border-radius:18px;
+      border:1px solid rgba(125,168,255,.72);
+      background:linear-gradient(180deg, rgba(18,31,55,.96), rgba(8,17,31,.96));
+      color:#eef6ff;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:5px;
+      text-align:center;
+      font-weight:950;
+      box-shadow:0 12px 26px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);
+      cursor:pointer;
+      user-select:none;
+    }
+    .baseHqRoom.active{
+      border-color:#5eead4;
+      box-shadow:0 0 0 3px rgba(94,234,212,.18),0 0 24px rgba(45,212,191,.30),0 12px 26px rgba(0,0,0,.34);
+    }
+    .baseHqRoomIcon{font-size:24px;line-height:1}
+    .baseHqRoomName{font-size:12px;letter-spacing:.02em}
+    .baseHqRoomSub{font-size:10px;color:rgba(203,213,225,.86);font-weight:850}
+    .baseHqAgent{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:38px;
+      height:38px;
+      border-radius:999px;
+      transform:translate(-50%,-50%);
+      background:radial-gradient(circle at 48% 28%, #fef3c7 0 20%, #1d4ed8 22% 55%, #0f172a 56%);
+      border:2px solid rgba(191,219,254,.95);
+      box-shadow:0 10px 20px rgba(2,6,23,.55),0 0 0 8px rgba(59,130,246,.12);
+      transition:left .14s linear, top .14s linear;
+      z-index:3;
+    }
+    .baseHqAgent::after{
+      content:"Commander";
+      position:absolute;
+      left:50%;
+      top:42px;
+      transform:translateX(-50%);
+      padding:2px 7px;
+      border-radius:999px;
+      background:rgba(2,6,23,.82);
+      border:1px solid rgba(148,163,184,.35);
+      color:#e5eefc;
+      font-size:10px;
+      white-space:nowrap;
+      font-weight:900;
+    }
+    .baseHqPanel{
+      border:1px solid rgba(75,98,148,.78);
+      border-radius:18px;
+      background:linear-gradient(180deg, rgba(10,18,33,.95), rgba(6,12,23,.97));
+      padding:14px;
+      min-height:430px;
+    }
+    .baseHqPanelTitle{font-size:22px;font-weight:1000;color:#f8fafc}
+    .baseHqPanelDesc{margin-top:8px;color:rgba(203,213,225,.95);line-height:1.35;font-weight:750}
+    .baseHqStats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+    .baseHqStat{border:1px solid rgba(71,85,125,.72);border-radius:13px;padding:9px;background:rgba(15,23,42,.62)}
+    .baseHqStat span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;font-weight:950}
+    .baseHqStat b{display:block;margin-top:3px;font-size:15px;color:#f8fafc}
+    .baseHqControls{display:grid;grid-template-columns:repeat(3,54px);gap:8px;justify-content:center;margin-top:12px}
+    .baseHqControls button{min-height:42px}
+    .baseHqActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .baseHqUpgradeList{display:grid;gap:8px;margin-top:12px}
+    .baseHqUpgrade{
+      border:1px solid rgba(71,85,125,.72);
+      border-radius:13px;
+      padding:9px;
+      background:rgba(15,23,42,.58);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+    }
+    .baseHqUpgrade b{display:block;color:#f8fafc}
+    .baseHqUpgrade small{display:block;color:#aab6cc;font-weight:800}
+    @media(max-width:760px){
+      .baseHqBody{grid-template-columns:1fr}
+      .baseHqStage{min-height:390px}
+      .baseHqRoom{width:96px;min-height:66px}
+      .baseHqPanel{min-height:auto}
+    }
 
     .screenCard{
       order:3;
@@ -1612,6 +1729,7 @@
     <div class="row topActions">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
       <button class="ghost mobileCompactHide" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
+      <button class="ghost mobileCompactHide" onclick="openBaseHQ()">🏠 HQ</button>
       <button class="ghost mobileCompactHide" onclick="openMode()">🎮 Mode</button>
       <button class="ghost mobileCompactHide" onclick="nextMap()">🗺️ Map</button>
       <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLbl">Pause</span></button>
@@ -1896,10 +2014,47 @@
       <div class="hudLine" id="launchProgressHint">Continue where you left off, or restart from Mission 1.</div>
       <div class="row">
         <button class="good" id="launchContinueBtn" onclick="beginFromLaunchIntro()">▶ Continue</button>
+        <button class="ghost" onclick="openBaseHQFromLaunchIntro()">🏠 Base HQ</button>
         <button class="ghost" id="launchLoadBtn" onclick="loadStorySaveFromLaunchIntro()">📂 Load Save</button>
         <button class="ghost" id="launchRestartBtn" onclick="restartFromMission1FromLaunchIntro()">🔁 Restart From Mission 1</button>
         <button class="ghost" onclick="startQuickTutorialFromLaunchIntro()">🧭 Tutorial</button>
         <button class="ghost" onclick="skipLaunchIntro()">Skip</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Base HQ Walkable Hub -->
+<div class="overlay" id="baseHqOverlay">
+  <div class="modal baseHqModal">
+    <div class="modalTop">
+      <div class="modalTitle">🏠 Base HQ</div>
+      <button class="ghost" onclick="closeBaseHQ()">Close</button>
+    </div>
+    <div class="modalBody baseHqBody">
+      <div>
+        <div class="baseHqStage" id="baseHqStage" onclick="baseHqStageTap(event)">
+          <div class="baseHqAgent" id="baseHqAgent"></div>
+          <div id="baseHqRooms"></div>
+        </div>
+        <div class="baseHqControls">
+          <span></span>
+          <button class="ghost" onclick="moveBaseHQ(0,-8)">▲</button>
+          <span></span>
+          <button class="ghost" onclick="moveBaseHQ(-8,0)">◀</button>
+          <button class="good" onclick="interactBaseHQ()">Use</button>
+          <button class="ghost" onclick="moveBaseHQ(8,0)">▶</button>
+          <span></span>
+          <button class="ghost" onclick="moveBaseHQ(0,8)">▼</button>
+          <span></span>
+        </div>
+      </div>
+      <div class="baseHqPanel">
+        <div class="baseHqPanelTitle" id="baseHqPanelTitle">Command Deck</div>
+        <div class="baseHqPanelDesc" id="baseHqPanelDesc">Walk to rooms, inspect your base, upgrade facilities, and launch missions.</div>
+        <div class="baseHqStats" id="baseHqStats"></div>
+        <div class="baseHqActions" id="baseHqActions"></div>
+        <div class="baseHqUpgradeList" id="baseHqUpgradeList"></div>
       </div>
     </div>
   </div>
@@ -2329,6 +2484,7 @@
   </div>
   <div class="mobileUtilityBar">
     <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLblMobile">On</span></button>
+    <button class="ghost" onclick="openBaseHQ()">🏠 HQ</button>
     <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLblMobile">Pause</span></button>
     <button class="ghost" onclick="togglePerformanceMode()">⚙️ <span id="perfLblMobile">Auto</span></button>
     <button class="ghost" id="squadCmdBtnMobile" onclick="cycleSquadCommand()">🪖 Auto</button>
@@ -2343,7 +2499,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4539-fresh-mode-restart"></script>
+<script src="./game.js?v=4540-base-hq-hub"></script>
 <script src="./tutorial.js?v=4530-tutorial-step-hardening"></script>
 <script>
 (() => {
