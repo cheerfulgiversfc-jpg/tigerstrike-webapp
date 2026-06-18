@@ -249,11 +249,36 @@
     }
     .baseHqUpgrade b{display:block;color:#f8fafc}
     .baseHqUpgrade small{display:block;color:#aab6cc;font-weight:800}
+    .baseHqWorldHud{
+      position:absolute;
+      left:12px;
+      top:12px;
+      width:min(520px,calc(100% - 24px));
+      z-index:7;
+      display:none;
+      padding:12px;
+      border-radius:18px;
+      border:1px solid rgba(125,211,252,.55);
+      background:linear-gradient(180deg, rgba(8,13,25,.86), rgba(4,9,18,.74));
+      box-shadow:0 14px 34px rgba(0,0,0,.38), inset 0 0 18px rgba(56,189,248,.08);
+      backdrop-filter:blur(7px);
+      pointer-events:auto;
+    }
+    .baseHqWorldTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+    .baseHqWorldTitle{font-size:18px;font-weight:1000;color:#f8fafc}
+    .baseHqWorldSub{margin-top:3px;font-size:11px;font-weight:850;color:#a7c3ef}
+    .baseHqWorldDesc{margin-top:8px;color:#dbeafe;font-weight:800;line-height:1.32}
+    .baseHqWorldNpc{margin-top:8px;color:#bbf7d0;font-weight:900}
+    .baseHqWorldActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .baseHqWorldActions button{min-height:38px}
     @media(max-width:760px){
       .baseHqBody{grid-template-columns:1fr}
       .baseHqStage{min-height:390px}
       .baseHqRoom{width:96px;min-height:66px}
       .baseHqPanel{min-height:auto}
+      .baseHqWorldHud{left:8px;top:8px;width:calc(100% - 16px);padding:10px}
+      .baseHqWorldTitle{font-size:15px}
+      .baseHqWorldDesc{font-size:12px}
     }
 
     .screenCard{
@@ -1747,9 +1772,10 @@
     </div>
   </div>
 
-  <div class="screenCard">
+    <div class="screenCard">
     <div class="mapStage">
       <canvas id="cv" width="960" height="540"></canvas>
+      <div class="baseHqWorldHud" id="baseHqWorldHud"></div>
       <div class="touchOverlay">
         <div class="touchHint">Move</div>
         <div class="touchStickShell" id="touchStickShell">
@@ -2499,7 +2525,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4540-base-hq-hub"></script>
+<script src="./game.js?v=4541-walkable-base-hq"></script>
 <script src="./tutorial.js?v=4530-tutorial-step-hardening"></script>
 <script>
 (() => {

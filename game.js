@@ -23579,18 +23579,28 @@ function openShopFromInventory(tab="ammo"){
     shopTab(tab);
   }
 }
+const BASE_HQ_WORLD = Object.freeze({ w:960, h:540 });
 const BASE_HQ_ROOMS = Object.freeze([
-  Object.freeze({ id:"command", name:"Command Deck", icon:"SAT", sub:"Briefing", x:50, y:48 }),
-  Object.freeze({ id:"armory", name:"Armory", icon:"ARM", sub:"Weapons", x:20, y:24 }),
-  Object.freeze({ id:"medbay", name:"Medbay", icon:"MED", sub:"Heal + kits", x:80, y:24 }),
-  Object.freeze({ id:"intel", name:"Intel", icon:"INT", sub:"Threat scan", x:20, y:72 }),
-  Object.freeze({ id:"pens", name:"Tiger Pens", icon:"TGR", sub:"Captures", x:80, y:72 }),
-  Object.freeze({ id:"trophy", name:"Trophy Hall", icon:"TRP", sub:"Showcase", x:50, y:16 }),
-  Object.freeze({ id:"specialists", name:"Barracks", icon:"SQD", sub:"Squad", x:50, y:82 }),
-  Object.freeze({ id:"mission", name:"Mission Gate", icon:"GO", sub:"Deploy", x:50, y:50 }),
+  Object.freeze({ id:"command", name:"Command Deck", icon:"CMD", sub:"Briefing", x:480, y:126, w:238, h:106, color:"#2563eb" }),
+  Object.freeze({ id:"armory", name:"Armory", icon:"ARM", sub:"Weapons", x:188, y:182, w:220, h:126, color:"#f59e0b" }),
+  Object.freeze({ id:"medbay", name:"Medbay", icon:"MED", sub:"Heal + kits", x:772, y:182, w:220, h:126, color:"#22c55e" }),
+  Object.freeze({ id:"intel", name:"Intel Center", icon:"INT", sub:"Threat scan", x:188, y:386, w:220, h:126, color:"#38bdf8" }),
+  Object.freeze({ id:"pens", name:"Tiger Pens", icon:"PEN", sub:"Captures", x:772, y:386, w:220, h:126, color:"#fb7185" }),
+  Object.freeze({ id:"trophy", name:"Trophy Hall", icon:"TRP", sub:"Showcase", x:480, y:54, w:286, h:70, color:"#eab308" }),
+  Object.freeze({ id:"specialists", name:"Barracks", icon:"SQD", sub:"Squad", x:480, y:462, w:270, h:92, color:"#a78bfa" }),
+  Object.freeze({ id:"mission", name:"Mission Gate", icon:"GO", sub:"Deploy", x:480, y:288, w:190, h:92, color:"#34d399" }),
 ]);
-let __baseHqPlayer = { x:50, y:54 };
+const BASE_HQ_NPCS = Object.freeze([
+  Object.freeze({ name:"Mira", role:"Intel", x:420, y:138, room:"command", line:"Weather, tracks, and tiger pressure are on the board." }),
+  Object.freeze({ name:"Vale", role:"Squad Lead", x:440, y:444, room:"specialists", line:"Specialists remember missions now. Keep them alive." }),
+  Object.freeze({ name:"Doc Reyes", role:"Medbay", x:736, y:184, room:"medbay", line:"Medbay upgrades improve recovery and rescue safety." }),
+  Object.freeze({ name:"Armorer Jax", role:"Armory", x:150, y:184, room:"armory", line:"Gear up here before you deploy." }),
+  Object.freeze({ name:"Keeper Ana", role:"Tiger Pens", x:730, y:388, room:"pens", line:"Captured tigers are researched and displayed here." }),
+]);
+let __baseHqActive = false;
+let __baseHqPlayer = { x:480, y:322, targetX:480, targetY:322, face:-Math.PI/2, step:0, _moveVx:0, _moveVy:0 };
 let __baseHqSelectedRoom = "command";
+let __baseHqHint = "";
 
 function baseHqRoomById(id){
   return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
@@ -23606,6 +23616,39 @@ function baseHqNearestRoom(){
     }
   }
   return best;
+}
+function baseHqActive(){
+  return !!__baseHqActive;
+}
+function baseHqClampPlayer(){
+  __baseHqPlayer.x = clamp(Number(__baseHqPlayer.x || 0), 34, BASE_HQ_WORLD.w - 34);
+  __baseHqPlayer.y = clamp(Number(__baseHqPlayer.y || 0), 42, BASE_HQ_WORLD.h - 34);
+  __baseHqPlayer.targetX = clamp(Number(__baseHqPlayer.targetX || __baseHqPlayer.x), 34, BASE_HQ_WORLD.w - 34);
+  __baseHqPlayer.targetY = clamp(Number(__baseHqPlayer.targetY || __baseHqPlayer.y), 42, BASE_HQ_WORLD.h - 34);
+}
+function baseHqMoveTowardRoom(roomId){
+  const room = baseHqRoomById(roomId);
+  __baseHqSelectedRoom = room.id;
+  __baseHqPlayer.targetX = clamp(room.x, 34, BASE_HQ_WORLD.w - 34);
+  __baseHqPlayer.targetY = clamp(room.y + Math.min(52, Math.max(34, room.h * 0.42)), 42, BASE_HQ_WORLD.h - 34);
+}
+function baseHqNearestNpc(){
+  let best = null;
+  let bestD = Infinity;
+  for(const npc of BASE_HQ_NPCS){
+    const d = Math.hypot(Number(npc.x || 0) - __baseHqPlayer.x, Number(npc.y || 0) - __baseHqPlayer.y);
+    if(d < bestD){
+      bestD = d;
+      best = npc;
+    }
+  }
+  return bestD <= 72 ? best : null;
+}
+function baseHqNearestInteractable(){
+  const room = baseHqNearestRoom();
+  const roomD = room ? Math.hypot(room.x - __baseHqPlayer.x, room.y - __baseHqPlayer.y) : Infinity;
+  const npc = baseHqNearestNpc();
+  return { room, roomD, npc };
 }
 function baseHqEsc(value){
   return String(value ?? "").replace(/[&<>"']/g, (ch)=>({
@@ -23706,6 +23749,36 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
   };
   return { room, data:map[room.id] || map.command };
 }
+function baseHqPanelActionsHtml(data){
+  return (data.actions || []).map(([label, fn])=>`<button class="ghost" onclick="${fn}">${baseHqEsc(label)}</button>`).join("");
+}
+function renderBaseHqWorldHud(){
+  const hud = document.getElementById("baseHqWorldHud");
+  if(!hud) return;
+  if(!__baseHqActive){
+    hud.style.display = "none";
+    return;
+  }
+  const { room, data } = baseHqRoomData(__baseHqSelectedRoom);
+  const near = baseHqNearestInteractable();
+  const npcText = near.npc ? `<div class="baseHqWorldNpc">${baseHqEsc(near.npc.name)}: ${baseHqEsc(near.npc.line)}</div>` : "";
+  hud.style.display = "block";
+  hud.innerHTML = `
+    <div class="baseHqWorldTop">
+      <div>
+        <div class="baseHqWorldTitle">${baseHqEsc(room.icon)} ${baseHqEsc(data.title || room.name)}</div>
+        <div class="baseHqWorldSub">${baseHqEsc(room.sub)} • Walk with joystick/WASD. Tap rooms or press Use.</div>
+      </div>
+      <button class="ghost" onclick="closeBaseHQ()">Exit HQ</button>
+    </div>
+    <div class="baseHqWorldDesc">${baseHqEsc(data.desc || "Walk around Base HQ and interact with rooms.")}</div>
+    ${npcText}
+    <div class="baseHqWorldActions">
+      <button class="good" onclick="interactBaseHQ()">Use / Talk</button>
+      ${baseHqPanelActionsHtml(data)}
+    </div>
+  `;
+}
 function renderBaseHQ(){
   const roomsWrap = document.getElementById("baseHqRooms");
   const agent = document.getElementById("baseHqAgent");
@@ -23736,20 +23809,23 @@ function renderBaseHQ(){
   if(stats) stats.innerHTML = baseHqStatsHtml();
   if(actions) actions.innerHTML = (data.actions || []).map(([label, fn])=>`<button class="ghost" onclick="${fn}">${baseHqEsc(label)}</button>`).join("");
   if(upgrades) upgrades.innerHTML = data.upgrades?.length ? baseHqUpgradeHtml(data.upgrades) : "";
+  renderBaseHqWorldHud();
 }
 function selectBaseHqRoom(roomId, movePlayer=false){
   const room = baseHqRoomById(roomId);
   __baseHqSelectedRoom = room.id;
   if(movePlayer){
-    __baseHqPlayer.x = clamp(Number(room.x || 50), 8, 92);
-    __baseHqPlayer.y = clamp(Number(room.y || 50) + 8, 10, 90);
+    baseHqMoveTowardRoom(room.id);
   }
   renderBaseHQ();
   sfx("ui");
 }
 function moveBaseHQ(dx=0, dy=0){
-  __baseHqPlayer.x = clamp(__baseHqPlayer.x + Number(dx || 0), 8, 92);
-  __baseHqPlayer.y = clamp(__baseHqPlayer.y + Number(dy || 0), 10, 90);
+  __baseHqPlayer.x += Number(dx || 0) * 5;
+  __baseHqPlayer.y += Number(dy || 0) * 5;
+  __baseHqPlayer.targetX = __baseHqPlayer.x;
+  __baseHqPlayer.targetY = __baseHqPlayer.y;
+  baseHqClampPlayer();
   __baseHqSelectedRoom = baseHqNearestRoom().id;
   renderBaseHQ();
 }
@@ -23758,13 +23834,245 @@ function baseHqStageTap(ev){
   if(!stage || !ev) return;
   const rect = stage.getBoundingClientRect();
   if(!rect.width || !rect.height) return;
-  __baseHqPlayer.x = clamp(((ev.clientX - rect.left) / rect.width) * 100, 8, 92);
-  __baseHqPlayer.y = clamp(((ev.clientY - rect.top) / rect.height) * 100, 10, 90);
+  __baseHqPlayer.targetX = clamp(((ev.clientX - rect.left) / rect.width) * BASE_HQ_WORLD.w, 34, BASE_HQ_WORLD.w - 34);
+  __baseHqPlayer.targetY = clamp(((ev.clientY - rect.top) / rect.height) * BASE_HQ_WORLD.h, 42, BASE_HQ_WORLD.h - 34);
   __baseHqSelectedRoom = baseHqNearestRoom().id;
   renderBaseHQ();
 }
+function baseHqPointerDown(sx, sy){
+  if(!__baseHqActive) return false;
+  for(const room of BASE_HQ_ROOMS){
+    const inside = sx >= room.x - room.w/2 && sx <= room.x + room.w/2 && sy >= room.y - room.h/2 && sy <= room.y + room.h/2;
+    if(inside){
+      baseHqMoveTowardRoom(room.id);
+      renderBaseHQ();
+      sfx("ui");
+      return true;
+    }
+  }
+  __baseHqPlayer.targetX = clamp(sx, 34, BASE_HQ_WORLD.w - 34);
+  __baseHqPlayer.targetY = clamp(sy, 42, BASE_HQ_WORLD.h - 34);
+  __baseHqSelectedRoom = baseHqNearestRoom().id;
+  renderBaseHQ();
+  sfx("ui");
+  return true;
+}
+function baseHqMoveTick(){
+  if(!__baseHqActive) return false;
+  const dx = ((KEY_STATE.right ? 1 : 0) - (KEY_STATE.left ? 1 : 0)) + TOUCH_STICK.dx + GAMEPAD_STATE.lx;
+  const dy = ((KEY_STATE.down ? 1 : 0) - (KEY_STATE.up ? 1 : 0)) + TOUCH_STICK.dy + GAMEPAD_STATE.ly;
+  const direct = Math.hypot(dx, dy) > 0.045;
+  const speed = 3.2 * frameMotionMul();
+  if(direct){
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    __baseHqPlayer.targetX = __baseHqPlayer.x;
+    __baseHqPlayer.targetY = __baseHqPlayer.y;
+    __baseHqPlayer.x += ux * speed;
+    __baseHqPlayer.y += uy * speed;
+    __baseHqPlayer.face = Math.atan2(uy, ux);
+    __baseHqPlayer.step = (__baseHqPlayer.step + 0.22) % (Math.PI * 2);
+  }else{
+    const tx = Number(__baseHqPlayer.targetX || __baseHqPlayer.x);
+    const ty = Number(__baseHqPlayer.targetY || __baseHqPlayer.y);
+    const vx = tx - __baseHqPlayer.x;
+    const vy = ty - __baseHqPlayer.y;
+    const d = Math.hypot(vx, vy);
+    if(d > 4){
+      const step = Math.min(speed * 0.88, d);
+      __baseHqPlayer.x += (vx / d) * step;
+      __baseHqPlayer.y += (vy / d) * step;
+      __baseHqPlayer.face = Math.atan2(vy, vx);
+      __baseHqPlayer.step = (__baseHqPlayer.step + 0.18) % (Math.PI * 2);
+    }
+  }
+  baseHqClampPlayer();
+  const near = baseHqNearestInteractable();
+  if(near.room){
+    __baseHqSelectedRoom = near.room.id;
+    __baseHqHint = near.npc ? `Talk to ${near.npc.name}` : `Use ${near.room.name}`;
+  }
+  renderBaseHqWorldHud();
+  return direct;
+}
+function drawBaseHqLabel(text, x, y, color="rgba(226,232,240,.96)"){
+  ctx.save();
+  ctx.font = "900 12px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const w = Math.min(210, ctx.measureText(text).width + 18);
+  ctx.fillStyle = "rgba(4,8,18,.72)";
+  roundedRectFill(x - w/2, y - 12, w, 24, 8);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+function drawBaseHqRoom(room, now){
+  const active = room.id === __baseHqSelectedRoom;
+  const pulse = active ? 0.5 + Math.sin(now / 240) * 0.18 : 0;
+  ctx.save();
+  ctx.fillStyle = active ? "rgba(15,23,42,.96)" : "rgba(8,15,28,.92)";
+  ctx.strokeStyle = active ? "rgba(125,211,252,.98)" : "rgba(71,85,105,.84)";
+  ctx.lineWidth = active ? 3 : 1.5;
+  ctx.shadowColor = active ? "rgba(56,189,248,.45)" : "rgba(0,0,0,.25)";
+  ctx.shadowBlur = active ? 18 : 8;
+  roundedRectFill(room.x - room.w/2, room.y - room.h/2, room.w, room.h, 18);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 0.18 + pulse;
+  ctx.fillStyle = room.color || "#60a5fa";
+  roundedRectFill(room.x - room.w/2 + 8, room.y - room.h/2 + 8, room.w - 16, 12, 8);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "1000 15px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(room.icon, room.x, room.y - 18);
+  ctx.font = "1000 14px system-ui, sans-serif";
+  ctx.fillText(room.name, room.x, room.y + 4);
+  ctx.font = "850 10px system-ui, sans-serif";
+  ctx.fillStyle = "rgba(203,213,225,.9)";
+  ctx.fillText(room.sub, room.x, room.y + 22);
+  ctx.restore();
+}
+function drawBaseHqNpc(npc, now){
+  const bob = Math.sin(now / 360 + npc.x) * 1.5;
+  ctx.save();
+  ctx.translate(npc.x, npc.y + bob);
+  ctx.fillStyle = "rgba(0,0,0,.25)";
+  ctx.beginPath();
+  ctx.ellipse(0, 23, 16, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = npc.role === "Medbay" ? "#22c55e" : (npc.role === "Armory" ? "#f59e0b" : (npc.role === "Tiger Pens" ? "#fb7185" : "#60a5fa"));
+  roundedRectFill(-10, -4, 20, 28, 8);
+  ctx.fillStyle = "#f8d4b4";
+  ctx.beginPath();
+  ctx.arc(0, -14, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(226,232,240,.78)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 4, 20, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+  drawBaseHqLabel(`${npc.name} • ${npc.role}`, npc.x, npc.y - 38);
+}
+function drawBaseHqCasualPlayer(now){
+  const p = __baseHqPlayer;
+  const sway = Math.sin(p.step || 0) * 2.5;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.fillStyle = "rgba(0,0,0,.32)";
+  ctx.beginPath();
+  ctx.ellipse(0, 26, 18, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(125,211,252,.75)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 1, 29 + Math.sin(now / 220) * 2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#1d4ed8";
+  roundedRectFill(-12, -2, 24, 30, 9);
+  ctx.fillStyle = "#0f172a";
+  roundedRectFill(-13, 22, 9, 18 + sway, 5);
+  roundedRectFill(4, 22, 9, 18 - sway, 5);
+  ctx.fillStyle = "#f8d4b4";
+  ctx.beginPath();
+  ctx.arc(0, -16, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#1f2937";
+  ctx.fillRect(-8, -25, 16, 7);
+  ctx.fillStyle = "#e5e7eb";
+  ctx.font = "900 10px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("HQ", 0, 12);
+  ctx.restore();
+}
+function drawBaseHqTigerPen(now){
+  const captures = Math.max(0, Math.floor(Number(S?.opsTotals?.captures || S?.stats?.captures || 0)));
+  const tigerCount = clamp(Math.min(4, Math.ceil(captures / 8) || 1), 1, 4);
+  for(let i=0;i<tigerCount;i++){
+    const x = 715 + i * 38;
+    const y = 430 + Math.sin(now / 360 + i) * 2;
+    ctx.save();
+    ctx.fillStyle = "#f59e0b";
+    ctx.beginPath();
+    ctx.ellipse(x, y, 18, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 2;
+    for(let s=-10;s<=8;s+=6){
+      ctx.beginPath();
+      ctx.moveTo(x+s, y-9);
+      ctx.lineTo(x+s+4, y+8);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#fbbf24";
+    ctx.beginPath();
+    ctx.arc(x+17, y-5, 8, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+function drawBaseHQScene(now=Date.now()){
+  if(!cv || !ctx) return;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#07111f";
+  ctx.fillRect(0,0,cv.width,cv.height);
+  const grd = ctx.createLinearGradient(0,0,cv.width,cv.height);
+  grd.addColorStop(0, "#10243a");
+  grd.addColorStop(0.52, "#0b1728");
+  grd.addColorStop(1, "#07131d");
+  ctx.fillStyle = grd;
+  ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.save();
+  ctx.strokeStyle = "rgba(148,163,184,.13)";
+  ctx.lineWidth = 2;
+  for(let x=80; x<cv.width; x+=80){
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, cv.height);
+    ctx.stroke();
+  }
+  for(let y=60; y<cv.height; y+=60){
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(cv.width, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.fillStyle = "rgba(30,41,59,.58)";
+  roundedRectFill(358, 48, 244, 444, 42);
+  roundedRectFill(106, 246, 748, 78, 34);
+  ctx.strokeStyle = "rgba(125,211,252,.18)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+  for(const room of BASE_HQ_ROOMS) drawBaseHqRoom(room, now);
+  drawBaseHqTigerPen(now);
+  ctx.save();
+  ctx.fillStyle = "rgba(250,204,21,.18)";
+  for(let i=0;i<6;i++){
+    roundedRectFill(372 + i*45, 28, 24, 24, 6);
+  }
+  ctx.restore();
+  for(const npc of BASE_HQ_NPCS) drawBaseHqNpc(npc, now);
+  drawBaseHqCasualPlayer(now);
+  const hint = __baseHqHint || "Walk to a room and press Use";
+  drawBaseHqLabel(hint, 480, 520, "rgba(187,247,208,.98)");
+}
 function interactBaseHQ(){
-  selectBaseHqRoom(baseHqNearestRoom().id, false);
+  const near = baseHqNearestInteractable();
+  selectBaseHqRoom(near.room?.id || baseHqNearestRoom().id, false);
+  if(near.npc){
+    toast(`${near.npc.name}: ${near.npc.line}`);
+    setEventText(`${near.npc.role}: ${near.npc.line}`, 3.5);
+  }
+  renderBaseHQ();
 }
 function openBaseHQ(opts={}){
   if(window.__TUTORIAL_MODE__) return toast("Finish the tutorial first.");
@@ -23774,45 +24082,71 @@ function openBaseHQ(opts={}){
   });
   clearLaunchMusicLoop();
   clearLaunchIntroAutoTimer();
+  __baseHqActive = true;
+  baseHqClampPlayer();
+  __baseHqSelectedRoom = baseHqNearestRoom().id;
   setPaused(true, "base-hq");
   const overlay = document.getElementById("baseHqOverlay");
-  if(overlay) overlay.style.display = "flex";
+  if(overlay) overlay.style.display = "none";
   renderBaseHQ();
+  updateHUD();
+  renderCombatControls();
   syncGamepadFocus();
+  toast("Base HQ: walk around, talk, upgrade, shop, or deploy.");
   sfx("ui");
 }
 function openBaseHQFromLaunchIntro(){
   openBaseHQ({ fromLaunch:true });
 }
 function closeBaseHQ(){
+  __baseHqActive = false;
+  const hud = document.getElementById("baseHqWorldHud");
+  if(hud) hud.style.display = "none";
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
+  resetTouchStick();
   setPaused(false, null);
+  renderCombatControls();
   syncGamepadFocus();
 }
 function openShopFromBaseHQ(tab="bundles"){
+  __baseHqActive = false;
+  const hud = document.getElementById("baseHqWorldHud");
+  if(hud) hud.style.display = "none";
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
   openShop();
   if(document.getElementById("shopOverlay")?.style.display === "flex") shopTab(tab);
 }
 function openInventoryFromBaseHQ(tab=""){
+  __baseHqActive = false;
+  const hud = document.getElementById("baseHqWorldHud");
+  if(hud) hud.style.display = "none";
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
   openInventory();
   if(tab) inventoryTab(tab);
 }
 function openModeFromBaseHQ(){
+  __baseHqActive = false;
+  const hud = document.getElementById("baseHqWorldHud");
+  if(hud) hud.style.display = "none";
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
   openMode();
 }
 function openStoryFromBaseHQ(){
+  __baseHqActive = false;
+  const hud = document.getElementById("baseHqWorldHud");
+  if(hud) hud.style.display = "none";
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
   openStoryCampaignJournal();
 }
 function openMissionBriefFromBaseHQ(){
+  __baseHqActive = false;
+  const hud = document.getElementById("baseHqWorldHud");
+  if(hud) hud.style.display = "none";
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
   if(!showMissionBrief(4500)){
@@ -23821,8 +24155,12 @@ function openMissionBriefFromBaseHQ(){
   }
 }
 function startMissionFromBaseHQ(){
+  __baseHqActive = false;
+  const hud = document.getElementById("baseHqWorldHud");
+  if(hud) hud.style.display = "none";
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
+  resetTouchStick();
   setPaused(false, null);
   beginGameplayMapLoadingGuard("base-hq-start");
   toast(`${currentMissionLabel()} started from Base HQ.`);
@@ -29263,6 +29601,11 @@ cv.addEventListener("pointerdown",(e)=>{
   updateWorldCamera(S);
   const sx=(e.clientX-rect.left)*(cv.width/rect.width);
   const sy=(e.clientY-rect.top)*(cv.height/rect.height);
+  if(baseHqActive()){
+    ensureAudio();
+    baseHqPointerDown(sx, sy);
+    return;
+  }
   const worldPt = screenToWorldPoint(sx, sy, S);
   const x = worldPt.x;
   const y = worldPt.y;
@@ -29778,6 +30121,10 @@ function pollGamepadControls(){
   }
 
   if(gamepadButtonEdge("a", gamepadButtonPressed(pad.buttons?.[0]))){
+    if(baseHqActive()){
+      interactBaseHQ();
+      return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
+    }
     if(uiVisible || gamepadUiOwnsInput()){
       if(activateGamepadFocus()) return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
     }
@@ -29787,6 +30134,10 @@ function pollGamepadControls(){
     else lockNearestTiger({ silent:true });
   }
   if(gamepadButtonEdge("b", gamepadButtonPressed(pad.buttons?.[1]))){
+    if(baseHqActive()){
+      closeBaseHQ();
+      return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
+    }
     if(uiVisible || gamepadUiOwnsInput()){
       if(activateGamepadBack()) return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
     }
@@ -29794,7 +30145,17 @@ function pollGamepadControls(){
     else sprint();
   }
   if(gamepadButtonEdge("x", gamepadButtonPressed(pad.buttons?.[2]))){
+    if(baseHqActive()){
+      openMissionBriefFromBaseHQ();
+      return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
+    }
     scan();
+  }
+  if(baseHqActive()){
+    if(gamepadButtonEdge("start", gamepadButtonPressed(pad.buttons?.[9]))){
+      startMissionFromBaseHQ();
+    }
+    return { x: GAMEPAD_STATE.lx, y: GAMEPAD_STATE.ly };
   }
   if(gamepadButtonEdge("y", gamepadButtonPressed(pad.buttons?.[3]))){
     useMedkit();
@@ -29865,6 +30226,24 @@ document.addEventListener("keydown",(e)=>{
   }
 
   if(e.repeat) return;
+
+  if(baseHqActive()){
+    if(key==="e" || e.code==="Space"){
+      interactBaseHQ();
+      e.preventDefault();
+      return;
+    }
+    if(key==="escape"){
+      closeBaseHQ();
+      e.preventDefault();
+      return;
+    }
+    if(key==="q"){
+      openMissionBriefFromBaseHQ();
+      e.preventDefault();
+      return;
+    }
+  }
 
   if(key==="q"){
     if(!(S.paused || S.inBattle || S.missionEnded || S.gameOver)) lockNearestTiger();
@@ -34075,15 +34454,23 @@ function renderCombatControls(){
   const actionButtons = document.querySelector(".actionButtons");
   const combatButtons = document.getElementById("combatButtons");
   const inCombat = !!S.inBattle || !!lockedRival();
-  const hideTouchUi = controllerOwnsUi();
+  const hqActive = baseHqActive();
+  const hideTouchUi = controllerOwnsUi() && !hqActive;
   if(touchOverlay) touchOverlay.style.display = hideTouchUi ? "none" : "block";
-  if(touchHint) touchHint.style.display = hideTouchUi ? "none" : "block";
-  if(mapCluster) mapCluster.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "grid");
-  if(combatCluster) combatCluster.style.display = hideTouchUi ? "none" : (inCombat ? "grid" : "none");
-  if(cacheBtn) cacheBtn.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "flex");
-  if(squadWheelBtn) squadWheelBtn.style.display = hideTouchUi ? "none" : (inCombat ? "none" : "flex");
-  if(actionButtons) actionButtons.style.display = (hideTouchUi || inCombat) ? "none" : "";
-  if(combatButtons) combatButtons.style.display = hideTouchUi ? "none" : (inCombat ? "flex" : "none");
+  if(touchHint){
+    touchHint.style.display = hideTouchUi ? "none" : "block";
+    touchHint.innerText = hqActive ? "Walk HQ" : "Move";
+  }
+  if(mapCluster) mapCluster.style.display = hideTouchUi ? "none" : (hqActive ? "none" : (inCombat ? "none" : "grid"));
+  if(combatCluster) combatCluster.style.display = hideTouchUi ? "none" : (hqActive ? "none" : (inCombat ? "grid" : "none"));
+  if(cacheBtn) cacheBtn.style.display = hideTouchUi ? "none" : (hqActive ? "none" : (inCombat ? "none" : "flex"));
+  if(squadWheelBtn) squadWheelBtn.style.display = hideTouchUi ? "none" : (hqActive ? "none" : (inCombat ? "none" : "flex"));
+  if(actionButtons) actionButtons.style.display = (hideTouchUi || inCombat || hqActive) ? "none" : "";
+  if(combatButtons) combatButtons.style.display = hideTouchUi ? "none" : (hqActive ? "none" : (inCombat ? "flex" : "none"));
+  if(hqActive){
+    closeSquadCommandWheel();
+    return;
+  }
   if(hideTouchUi || inCombat || S.paused || S.gameOver || S.missionEnded){
     closeSquadCommandWheel();
   } else if(isSquadCommandWheelOpen()){
@@ -42235,7 +42622,7 @@ function recoverMissionInputLock(reason="watchdog"){
     return display === "flex" || display === "block";
   })();
   if(S.paused){
-    const stickyReason = pauseReason === "manual" || pauseReason === "complete" || pauseReason === "mode";
+    const stickyReason = pauseReason === "manual" || pauseReason === "complete" || pauseReason === "mode" || pauseReason === "base-hq";
     const staleMissionBriefPause = pauseReason === "mission-brief" && !missionBriefShown;
     const staleOverlayPause = !!pauseReason && !blockingOverlay && !stickyReason;
     if(staleMissionBriefPause || staleOverlayPause){
@@ -42512,6 +42899,14 @@ function draw(){
     safeTick("maybeRenderHUD", maybeRenderHUD);
     if(!startupLoading) safeTick("updateEngage", updateEngage);
     if(!startupLoading) safeTick("respawnTick", respawnTick);
+    if(!startupLoading && baseHqActive()){
+      safeTick("baseHqMoveTick", baseHqMoveTick);
+      safeTick("drawBaseHQScene", ()=>drawBaseHQScene(Date.now()));
+      safeTick("renderCombatControls", renderCombatControls);
+      safeTick("renderBaseHqWorldHud", renderBaseHqWorldHud);
+      maybeAutosave();
+      return;
+    }
     const emergencyInvalid = missionEntityStateInvalid(S);
     if(emergencyInvalid){
       safeTick("startupIntegrityEmergency", ()=>ensureMissionStartupIntegrity({ force:true, reason:`frame-emergency:${emergencyInvalid}` }));
