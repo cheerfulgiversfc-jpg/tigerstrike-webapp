@@ -447,6 +447,133 @@
       white-space:nowrap;
     }
     .storyIntroFooter{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+    .missionCinemaModal{width:min(720px,95vw)}
+    .missionCinemaHero{
+      position:relative;
+      overflow:hidden;
+      border:1px solid rgba(96,165,250,.55);
+      border-radius:18px;
+      padding:16px;
+      min-height:220px;
+      background:
+        radial-gradient(circle at 18% 24%, rgba(248,113,113,.24), transparent 34%),
+        radial-gradient(circle at 86% 20%, rgba(96,165,250,.22), transparent 34%),
+        radial-gradient(circle at 72% 88%, rgba(74,222,128,.18), transparent 38%),
+        linear-gradient(145deg, rgba(8,13,24,.98), rgba(17,24,39,.96));
+      box-shadow:0 22px 60px rgba(0,0,0,.38);
+    }
+    .missionCinemaHero::before{
+      content:"";
+      position:absolute;
+      inset:-40%;
+      background:linear-gradient(115deg, transparent 42%, rgba(255,255,255,.10) 50%, transparent 58%);
+      animation:cinemaSweep 3.8s ease-in-out infinite;
+      pointer-events:none;
+    }
+    .missionCinemaZone{
+      position:absolute;
+      right:20px;
+      top:18px;
+      width:126px;
+      height:88px;
+      border-radius:999px;
+      border:2px dashed rgba(96,165,250,.60);
+      background:rgba(15,23,42,.42);
+      animation:cinemaPulse 1.6s ease-in-out infinite;
+    }
+    .missionCinemaTiger{
+      position:absolute;
+      right:54px;
+      bottom:36px;
+      font-size:48px;
+      filter:drop-shadow(0 8px 18px rgba(0,0,0,.55));
+      animation:cinemaTiger 2.6s ease-in-out infinite;
+    }
+    .missionCinemaRoute{
+      position:absolute;
+      left:28px;
+      bottom:38px;
+      width:58%;
+      height:3px;
+      border-top:4px dashed rgba(74,222,128,.78);
+      transform:rotate(-7deg);
+      transform-origin:left center;
+      opacity:.78;
+    }
+    .missionCinemaTitle{
+      position:relative;
+      z-index:1;
+      font-size:28px;
+      font-weight:1000;
+      line-height:1.05;
+      letter-spacing:-.03em;
+      max-width:74%;
+    }
+    .missionCinemaSubtitle{
+      position:relative;
+      z-index:1;
+      margin-top:8px;
+      color:var(--muted);
+      font-size:13px;
+      font-weight:850;
+      max-width:76%;
+    }
+    .missionCinemaGrid{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:10px;
+      margin-top:12px;
+    }
+    .missionCinemaStat{
+      border:1px solid rgba(58,77,120,.8);
+      border-radius:13px;
+      padding:10px;
+      background:rgba(8,13,24,.68);
+    }
+    .missionCinemaStat span{
+      display:block;
+      color:var(--muted);
+      font-size:10px;
+      font-weight:900;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
+    .missionCinemaStat b{
+      display:block;
+      margin-top:4px;
+      font-size:14px;
+      font-weight:1000;
+      color:#f8fafc;
+    }
+    .missionCinemaTimeline{
+      display:grid;
+      gap:8px;
+      margin-top:12px;
+    }
+    .missionCinemaBeat{
+      border:1px solid rgba(35,42,62,.92);
+      border-radius:12px;
+      padding:9px 10px;
+      background:rgba(15,19,32,.76);
+      color:#dbeafe;
+      font-size:12px;
+      font-weight:850;
+    }
+    .cinemaOutroCard{
+      border:1px solid rgba(96,165,250,.50);
+      border-radius:16px;
+      padding:12px;
+      margin-top:12px;
+      background:
+        radial-gradient(circle at 16% 20%, rgba(34,211,238,.18), transparent 32%),
+        radial-gradient(circle at 86% 80%, rgba(74,222,128,.16), transparent 36%),
+        linear-gradient(160deg, rgba(8,13,24,.92), rgba(17,24,39,.86));
+    }
+    .cinemaOutroTitle{font-size:18px;font-weight:1000;margin-bottom:6px}
+    .cinemaOutroLine{color:var(--muted);font-size:12px;font-weight:850;line-height:1.45}
+    @keyframes cinemaSweep{0%,45%{transform:translateX(-30%) rotate(0deg)}100%{transform:translateX(34%) rotate(0deg)}}
+    @keyframes cinemaPulse{0%,100%{transform:scale(.96);opacity:.58}50%{transform:scale(1.06);opacity:.96}}
+    @keyframes cinemaTiger{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-8px) rotate(3deg)}}
     .launchIntroModal{width:min(660px,95vw)}
     .launchHero{
       border:1px solid rgba(62,90,156,.75);
@@ -1844,6 +1971,38 @@
   </div>
 </div>
 
+<!-- Cinematic Mission Intro -->
+<div class="overlay" id="missionCinemaOverlay">
+  <div class="modal missionCinemaModal">
+    <div class="modalTop">
+      <div class="modalTitle" id="missionCinemaHeader">🎬 Mission Cinematic</div>
+      <button class="ghost" onclick="skipMissionCinematicIntro()">Skip</button>
+    </div>
+    <div class="modalBody">
+      <div class="missionCinemaHero">
+        <div class="missionCinemaZone"></div>
+        <div class="missionCinemaRoute"></div>
+        <div class="missionCinemaTiger">🐅</div>
+        <div class="missionCinemaTitle" id="missionCinemaTitle">Danger Zone</div>
+        <div class="missionCinemaSubtitle" id="missionCinemaSubtitle">Briefing loading...</div>
+      </div>
+      <div class="missionCinemaGrid">
+        <div class="missionCinemaStat"><span>Tiger Threat</span><b id="missionCinemaThreat">Unknown</b></div>
+        <div class="missionCinemaStat"><span>Civilians</span><b id="missionCinemaCivilians">0</b></div>
+        <div class="missionCinemaStat"><span>Extraction</span><b id="missionCinemaExtraction">Safe Zone</b></div>
+        <div class="missionCinemaStat"><span>Weather</span><b id="missionCinemaWeather">Clear</b></div>
+        <div class="missionCinemaStat"><span>Bonus Objective</span><b id="missionCinemaBonus">Perfect rescue</b></div>
+        <div class="missionCinemaStat"><span>Recommended</span><b id="missionCinemaGear">Balanced kit</b></div>
+      </div>
+      <div class="missionCinemaTimeline" id="missionCinemaTimeline"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="good" onclick="continueMissionCinematicIntro()">Continue Briefing</button>
+        <button class="ghost" onclick="skipMissionCinematicIntro()">Skip Cinematic</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Mission Brief -->
 <div class="overlay" id="missionBriefOverlay">
   <div class="modal" style="width:min(560px,94vw)">
@@ -2057,6 +2216,10 @@
         <div class="storySceneTitle">Shareable Mission Recap</div>
         <div class="storySceneText" id="completeRecapCard">Mission recap preparing...</div>
       </div>
+      <div class="cinemaOutroCard" id="completeCinemaOutro" style="display:none">
+        <div class="cinemaOutroTitle">🎬 Cinematic Escape Recap</div>
+        <div class="cinemaOutroLine" id="completeCinemaOutroText">Escape recap preparing...</div>
+      </div>
       <div class="premiumSummaryCard" id="completePremiumSummary">
         <div class="premiumSummaryTop">
           <div class="premiumSummaryTitle">Mission Performance</div>
@@ -2180,7 +2343,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4537-visible-evac-boarding"></script>
+<script src="./game.js?v=4538-mission-cinematics"></script>
 <script src="./tutorial.js?v=4530-tutorial-step-hardening"></script>
 <script>
 (() => {

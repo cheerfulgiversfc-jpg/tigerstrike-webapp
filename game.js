@@ -19777,6 +19777,8 @@ let __dailyRewardContinue = null;
 let __launchThemeAt = 0;
 let __launchMusicLoopTimer = 0;
 let __returnToMissionBriefAfterShop = false;
+let __missionCinemaContinue = null;
+let __missionCinemaShownKey = "";
 
 const INTRO_LAUNCH_MS = 10000;
 const INTRO_STORY_MS = 10000;
@@ -19820,6 +19822,186 @@ function currentMissionCardData(){
     };
   }
   return null;
+}
+function missionCinemaSafeText(value){
+  return String(value ?? "").replace(/[&<>"']/g, (ch)=>({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    "\"":"&quot;",
+    "'":"&#39;"
+  }[ch] || ch));
+}
+function missionCinemaMissionKey(card=currentMissionCardData()){
+  if(!card?.mission) return "";
+  const variant = card.mode === "Story" ? normalizeStoryVariant(card.mission.storyVariant || S.storyVariant) : "Arcade";
+  return `${card.mode}:${variant}:${card.mission.number || missionIndexForMode(card.mode)}:${S.mapIndex || 0}`;
+}
+function shouldShowMissionCinematicIntro(card=currentMissionCardData()){
+  if(window.__TUTORIAL_MODE__) return false;
+  if(!card?.mission || card.mode === "Survival") return false;
+  const key = missionCinemaMissionKey(card);
+  if(!key || __missionCinemaShownKey === key) return false;
+  const m = card.mission;
+  const n = Math.max(1, Math.floor(Number(m.number || missionIndexForMode(card.mode) || 1)));
+  const variant = card.mode === "Story" ? normalizeStoryVariant(m.storyVariant || S.storyVariant) : "Arcade";
+  return !!(
+    m.boss || m.finalBoss || m.bossTwin || m.convoyMission || m.lowVisibility || m.bloodAggro ||
+    m.captureOnly || m.limitedAmmo || (m.civilians || 0) >= 5 || (m.tigers || 0) >= 5 ||
+    n === 1 || n % 5 === 0 || n % 10 === 1 || variant !== STORY_VARIANTS.CAMPAIGN
+  );
+}
+function missionCinematicThreatLabel(card=currentMissionCardData()){
+  const m = card?.mission || {};
+  if(m.finalBoss) return "Final Ancient Tiger";
+  if(m.bossTwin) return `Twin ${m.bossType || "Alpha"} Tigers`;
+  if(m.boss) return `${m.bossType || "Alpha"} Boss`;
+  if((m.tigers || 0) >= 5) return "Heavy pack pressure";
+  if(m.captureOnly) return "Capture-only threat";
+  const count = Math.max(1, Number(m.tigers || 1));
+  return `${count} tiger${count === 1 ? "" : "s"}`;
+}
+function missionCinematicExtractionLabel(){
+  const route = ensureEvacRouteState(S);
+  if(route.active) return `${route.icon || "🛡️"} ${route.label || "Evac Route"}`;
+  const ex = ensureExtractionSequenceState(S);
+  if(ex.active || ex.complete) return `${ex.icon || "🚁"} ${ex.label || "Extraction"}`;
+  return "🛡️ Safe-zone evacuation";
+}
+function missionCinematicWeatherLabel(card=currentMissionCardData()){
+  const biome = currentBiomeProfile() || chapterBiomeProfile(card?.mode || S.mode, Math.ceil(Number(card?.mission?.number || 1) / 10));
+  const day = dynamicDayNightPhase(Date.now(), S);
+  const weather = biome?.weather || biome?.weatherFx || "Clear";
+  const hazard = biome?.hazardShort || "standard visibility";
+  return `${weather} • ${day.label || "Daylight"} • ${hazard}`;
+}
+function missionCinematicBonusLabel(card=currentMissionCardData()){
+  const m = card?.mission || {};
+  if(m.captureOnly) return "No lethal takedowns";
+  if(m.captureRequired) return `Capture ${m.captureRequired} tiger${m.captureRequired === 1 ? "" : "s"}`;
+  if(m.convoyMission) return "Zero-loss convoy escort";
+  if(m.boss) return "Boss capture bonus";
+  if((m.civilians || 0) > 0) return "Perfect rescue streak";
+  return "Fast clear bonus";
+}
+function missionCinematicGearLabel(card=currentMissionCardData()){
+  const profile = missionBriefRecommendationProfile(card?.mode || S.mode, card?.mission || {});
+  return (profile.gear || ["Balanced kit"])[0] || "Balanced kit";
+}
+function missionCinematicData(card=currentMissionCardData()){
+  const m = card?.mission || {};
+  const totalTxt = Number.isFinite(Number(card?.total)) && Number(card.total) > 0 ? `/${card.total}` : "";
+  const title = card?.mode === "Arcade"
+    ? `Arcade Mission ${m.number || S.arcadeLevel}${totalTxt}`
+    : `${card?.mode || "Story"} Mission ${m.number || S.storyLevel}${totalTxt}`;
+  const name = m.chapterName ? `${title} — ${m.chapterName}` : title;
+  const objective = m.objective || missionObjectiveCountText(card?.mode || S.mode, m);
+  const route = ensureEvacRouteState(S);
+  const profile = missionBriefRecommendationProfile(card?.mode || S.mode, m);
+  const beats = [
+    `Danger zone marked: ${missionCinematicThreatLabel(card)}.`,
+    `Civilian pressure: ${Math.max(0, Number(m.civilians || 0))} civilian${Number(m.civilians || 0) === 1 ? "" : "s"} in route.`,
+    `Extraction plan: ${missionCinematicExtractionLabel()}.`,
+    `Bonus objective: ${missionCinematicBonusLabel(card)}.`,
+    route.active ? `Evac route: ${route.instruction || route.label}.` : `Weather intel: ${missionCinematicWeatherLabel(card)}.`
+  ];
+  return {
+    key: missionCinemaMissionKey(card),
+    title:name,
+    subtitle:objective,
+    threat:missionCinematicThreatLabel(card),
+    civilians:`${Math.max(0, Number(m.civilians || 0))}`,
+    extraction:missionCinematicExtractionLabel(),
+    weather:missionCinematicWeatherLabel(card),
+    bonus:missionCinematicBonusLabel(card),
+    gear:(profile.tags?.[0] ? `${profile.threat}: ${profile.tags[0]}` : missionCinematicGearLabel(card)),
+    beats
+  };
+}
+function renderMissionCinematicIntro(card=currentMissionCardData()){
+  const data = missionCinematicData(card);
+  const setText = (id, txt)=>{
+    const el = document.getElementById(id);
+    if(el) el.innerText = txt;
+  };
+  setText("missionCinemaHeader", "🎬 Cinematic Mission Intro");
+  setText("missionCinemaTitle", data.title);
+  setText("missionCinemaSubtitle", data.subtitle);
+  setText("missionCinemaThreat", data.threat);
+  setText("missionCinemaCivilians", data.civilians);
+  setText("missionCinemaExtraction", data.extraction);
+  setText("missionCinemaWeather", data.weather);
+  setText("missionCinemaBonus", data.bonus);
+  setText("missionCinemaGear", data.gear);
+  const timeline = document.getElementById("missionCinemaTimeline");
+  if(timeline){
+    timeline.innerHTML = data.beats.map((beat, idx)=>`<div class="missionCinemaBeat">${idx + 1}. ${missionCinemaSafeText(beat)}</div>`).join("");
+  }
+  return data;
+}
+function showMissionCinematicIntro(onDone=null, opts={}){
+  const card = currentMissionCardData();
+  if(!opts.force && !shouldShowMissionCinematicIntro(card)) return false;
+  const overlay = document.getElementById("missionCinemaOverlay");
+  if(!overlay || !card?.mission) return false;
+  const data = renderMissionCinematicIntro(card);
+  __missionCinemaShownKey = data.key;
+  __missionCinemaContinue = typeof onDone === "function" ? onDone : null;
+  clearMissionBriefTimer();
+  const brief = document.getElementById("missionBriefOverlay");
+  if(brief) brief.style.display = "none";
+  setPaused(true, "mission-cinematic");
+  overlay.style.display = "flex";
+  setEventText(`🎬 Briefing: ${data.threat} • ${data.extraction}`, 4);
+  syncGamepadFocus();
+  return true;
+}
+function continueMissionCinematicIntro(){
+  const overlay = document.getElementById("missionCinemaOverlay");
+  if(overlay) overlay.style.display = "none";
+  const fn = __missionCinemaContinue;
+  __missionCinemaContinue = null;
+  if(fn){
+    fn();
+  }else if(S.paused && S.pauseReason === "mission-cinematic"){
+    setPaused(false, null);
+    beginGameplayMapLoadingGuard("mission-cinematic-start");
+  }
+  sfx("ui");
+  syncGamepadFocus();
+}
+function skipMissionCinematicIntro(){
+  continueMissionCinematicIntro();
+}
+function renderMissionCinematicOutroCard(summary={}){
+  const wrap = document.getElementById("completeCinemaOutro");
+  const text = document.getElementById("completeCinemaOutroText");
+  if(!wrap || !text) return;
+  const route = ensureEvacRouteState(S);
+  const extraction = ensureExtractionSequenceState(S);
+  const missionStats = summary.missionStats || S._missionStatsFinal || S.stats || {};
+  const civTotal = Math.max(0, Math.floor(Number(summary.civTotal || 0)));
+  const civEvac = Math.max(0, Math.floor(Number(summary.civEvac || missionStats.evac || 0)));
+  const captures = Math.max(0, Math.floor(Number(missionStats.captures || 0)));
+  const kills = Math.max(0, Math.floor(Number(missionStats.kills || 0)));
+  const routeLabel = route.active
+    ? `${route.icon || "🛡️"} ${route.label || "Evac Route"}${route.departed ? " departed" : ""}`
+    : (extraction.complete ? `${extraction.icon || "🚁"} ${extraction.label || "Extraction"}` : "Safe-zone evacuation");
+  const escapeLine = extraction.complete
+    ? `${extraction.label || "Extraction"} secured${extraction.emergency ? " under emergency fallback" : " with a clean hold"}`
+    : `${routeLabel} carried civilians out of the hot zone`;
+  const conditionLine = missionCinematicWeatherLabel(currentMissionCardData());
+  const bonusLine = civTotal > 0 && civEvac >= civTotal
+    ? "Perfect rescue maintained"
+    : `${civEvac}/${Math.max(1, civTotal)} civilians extracted`;
+  wrap.style.display = "block";
+  text.innerHTML = [
+    `<b>${missionCinemaSafeText(escapeLine)}.</b>`,
+    `Civilians: ${missionCinemaSafeText(`${civEvac}/${Math.max(1, civTotal)}`)} • Tigers: ${captures} captured / ${kills} killed.`,
+    `Route: ${missionCinemaSafeText(routeLabel)}.`,
+    `Conditions: ${missionCinemaSafeText(conditionLine)}.`,
+    `Final beat: ${missionCinemaSafeText(bonusLine)}.`
+  ].join("<br>");
 }
 function chapterRecapTextForCurrentStoryMission(){
   const mission = storyMissionForState(S);
@@ -20287,7 +20469,8 @@ function playLaunchTheme(force=false){
 function introOverlayVisible(){
   const launch = document.getElementById("launchIntroOverlay");
   const story = document.getElementById("storyIntroOverlay");
-  return !!((launch && launch.style.display === "flex") || (story && story.style.display === "flex"));
+  const cinema = document.getElementById("missionCinemaOverlay");
+  return !!((launch && launch.style.display === "flex") || (story && story.style.display === "flex") || (cinema && cinema.style.display === "flex"));
 }
 function clearLaunchMusicLoop(){
   if(__launchMusicLoopTimer){
@@ -22264,7 +22447,7 @@ function beginStoryMissionFromIntro(){
     ensureStoryBranchingState(S).scenesSeen[scene.key] = 1;
   }
   save();
-  const shown = showMissionBrief(INTRO_BRIEF_MS);
+  const shown = showMissionCinematicIntro(()=>showMissionBrief(INTRO_BRIEF_MS), { force:false }) || showMissionBrief(INTRO_BRIEF_MS);
   if(!shown) setPaused(false,null);
   syncGamepadFocus();
 }
@@ -25862,7 +26045,7 @@ window.exitTutorialMode = function () {
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
-  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
+  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionCinemaOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -28572,7 +28755,9 @@ function deploy(opts={}){
   const storySceneShown = S.mode === "Story" && __launchIntroShownThisBoot && !storyCampaignStartupOverlayVisible()
     ? showStoryCampaignScene(false)
     : false;
-  const missionBriefShown = !storySceneShown && shouldShowMissionBrief() ? showMissionBrief(rand(2200, 3000)) : false;
+  const missionBriefShown = !storySceneShown && shouldShowMissionBrief()
+    ? (showMissionCinematicIntro(()=>showMissionBrief(rand(2200, 3000))) || showMissionBrief(rand(2200, 3000)))
+    : false;
   if(!missionBriefShown && !storySceneShown) {
     if(normalizeModeName(S.mode) === "Arcade" && !window.__TUTORIAL_MODE__){
       applyArcadeBuildcraftForMission({ silent:true });
@@ -28710,7 +28895,7 @@ function performResetGame(){
   S = cloneState(DEFAULT);
   bindFundsWallet(S);
   syncWindowState();
-  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
+  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionCinemaOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -29071,7 +29256,7 @@ function gamepadUiContainers(){
   const tutorial = document.getElementById("tutorialOverlay");
   if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
 
-  const overlays = ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
+  const overlays = ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionCinemaOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
     .map((id)=>document.getElementById(id))
     .filter((el)=>el && el.style.display === "flex");
   if(overlays.length) return overlays;
@@ -29160,7 +29345,7 @@ function activateGamepadFocus(){
 }
 
 function anyGamepadOverlayVisible(){
-  const ids = ["tutorialOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
+  const ids = ["tutorialOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","missionCinemaOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
   return ids.some((id)=>{
     const el = document.getElementById(id);
     return !!(el && el.style.display === "flex");
@@ -35727,6 +35912,15 @@ function checkMissionComplete(){
       S.lastMissionPremiumSummary = premiumSummary;
       renderMissionPremiumSummaryCard(premiumSummary);
       renderMissionRewards2Card(rewards2);
+      renderMissionCinematicOutroCard({
+        activeMission,
+        storyMission,
+        arcadeMission,
+        missionStats,
+        civTotal,
+        civDead,
+        civEvac
+      });
 
       document.getElementById("completeText").innerText =
         `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
@@ -41370,11 +41564,13 @@ function beginGameplayMapLoadingGuard(reason="gameplay"){
   const launch = document.getElementById("launchIntroOverlay");
   const story = document.getElementById("storyIntroOverlay");
   const daily = document.getElementById("dailyRewardOverlay");
+  const cinema = document.getElementById("missionCinemaOverlay");
   const brief = document.getElementById("missionBriefOverlay");
   const blocked =
     (launch && launch.style.display === "flex") ||
     (story && story.style.display === "flex") ||
     (daily && daily.style.display === "flex") ||
+    (cinema && cinema.style.display === "flex") ||
     (brief && brief.style.display === "flex");
   if(blocked) return false;
   beginStartupLoadingGuard(reason);
@@ -41684,6 +41880,7 @@ let __phase15SelfHealState = {
 };
 function missionBlockingOverlayVisible(){
   const ids = [
+    "missionCinemaOverlay",
     "missionBriefOverlay",
     "modeOverlay",
     "shopOverlay",
@@ -42851,6 +43048,8 @@ window.startQuickTutorialFromIntro = startQuickTutorialFromIntro;
 window.skipStoryIntro = skipStoryIntro;
 window.toggleChapterRecap = toggleChapterRecap;
 window.closeMissionBrief = closeMissionBrief;
+window.continueMissionCinematicIntro = continueMissionCinematicIntro;
+window.skipMissionCinematicIntro = skipMissionCinematicIntro;
 window.selectArcadeBuildcraft = selectArcadeBuildcraft;
 
 window.nextMap = nextMap;
