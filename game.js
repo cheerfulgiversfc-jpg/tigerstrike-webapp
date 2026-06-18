@@ -8530,6 +8530,69 @@ function resetModeWallet(mode, state = S){
     state.funds = getModeWallet(key, state);
   }
 }
+function resetModeProgressToFreshStart(mode, state = S){
+  if(!state || typeof state !== "object") return;
+  const key = normalizeModeName(mode);
+  const profiles = ensureModeProfilesState(state);
+  const freshProfile = defaultModeProfile();
+  profiles[key] = cloneState(freshProfile);
+
+  if(normalizeModeName(state.mode) === key){
+    for(const field of MODE_PROFILE_KEYS){
+      state[field] = cloneState(freshProfile[field] ?? DEFAULT[field]);
+    }
+  }
+
+  resetModeWallet(key, state);
+  state.mode = key;
+  state.mapIndex = 0;
+  state.paused = false;
+  state.pauseReason = null;
+  state.inBattle = false;
+  state.activeTigerId = null;
+  state.missionEnded = false;
+  state.gameOver = false;
+  state.lastMissionRecap = null;
+  state.lastMissionRewardBreakdown = null;
+  state._missionStatsFinal = null;
+
+  if(key === "Story"){
+    state.storyLevel = 1;
+    state.storyLastMission = 1;
+    state.storyVariant = STORY_VARIANTS.CAMPAIGN;
+    state.storyNgPlusTier = 0;
+    state.storyEndgameUnlocked = false;
+    state.storyIntroSeen = false;
+    state.storyBranching = defaultStoryBranchingState();
+    state.gauntletDepth = 1;
+    state.eliteHuntChapter = 1;
+    state.eliteHuntRuns = 1;
+    state.eliteHuntsCleared = 0;
+    state._storyFinalOutcome = "";
+    clearStoryCheckpointData();
+    clearStorySaveData();
+  }else if(key === "Arcade"){
+    state.arcadeLevel = 1;
+    state.arcadeBuildcraftSelected = ARCADE_BUILDCRAFT_DEFAULT_ID;
+    state.arcadeBuildcraftPending = ARCADE_BUILDCRAFT_DEFAULT_ID;
+    state.arcadeBuildcraftAppliedKey = "";
+    state.arcadeWeeklySeedEnabled = false;
+    state.arcadeWeeklySeedKey = "";
+    state.arcadeWeeklyRunId = "";
+    state.arcadeWeeklyRunStartedAt = 0;
+    state.arcadeWeeklyBestByWeek = {};
+    state.arcadeWeeklyLastResult = null;
+  }else{
+    state.survivalWave = 1;
+    state.survivalStart = Date.now();
+    state.surviveSeconds = 0;
+  }
+
+  if(state.modeWallets && typeof state.modeWallets === "object"){
+    state.modeWallets[key] = modeWalletStartValue(key);
+  }
+  state.funds = modeWalletStartValue(key);
+}
 const MODE_PROFILE_KEYS = Object.freeze([
   "score","trust","aggro","lives","hp","armor","armorCap","stamina",
   "ownedWeapons","equippedWeaponId","preferredWeaponId","preferredLethalWeaponId","lastCombatLethalWeaponId",
@@ -8551,6 +8614,25 @@ function modeProfileSnapshot(source){
 }
 function defaultModeProfile(){
   return modeProfileSnapshot(DEFAULT);
+}
+function modeHasNonStarterProfile(mode=S?.mode, state=S){
+  if(!state || typeof state !== "object") return false;
+  const key = normalizeModeName(mode);
+  const profile = normalizeModeName(state.mode) === key
+    ? modeProfileSnapshot(state)
+    : cloneState(ensureModeProfilesState(state)[key] || defaultModeProfile());
+  const fresh = defaultModeProfile();
+  if(getModeWallet(key, state) !== modeWalletStartValue(key)) return true;
+  for(const field of MODE_PROFILE_KEYS){
+    const current = profile[field] ?? DEFAULT[field];
+    const starter = fresh[field] ?? DEFAULT[field];
+    try{
+      if(JSON.stringify(current) !== JSON.stringify(starter)) return true;
+    }catch(e){
+      if(current !== starter) return true;
+    }
+  }
+  return false;
 }
 function ensureModeProfilesState(state=S){
   if(!state || typeof state !== "object") return {};
@@ -19698,7 +19780,7 @@ function openMissionProgressGuard(source=""){
       : source==="reset-all"
         ? "Reset will wipe progress and wallets for all modes."
         : source==="reset"
-        ? "Reset will restart progress from Mission 1."
+        ? "Reset will wipe this mode and restart from Mission 1."
         : "Choose what you want to do with your mission progress.";
   text.innerText = `${reason}\nCurrent: ${currentMissionLabel()}\nNext available: ${nextMissionLabel()}`;
   document.getElementById("completeOverlay").style.display = "none";
@@ -21717,8 +21799,9 @@ function launchProgressLabelForMode(mode=S.mode){
 }
 function modeHasSavedProgress(mode=S.mode){
   const m = normalizeModeName(mode);
-  if(m === "Story") return storyResumeMissionLevel() > 1;
-  if(m === "Arcade") return Math.max(1, S.arcadeLevel || 1) > 1;
+  if(modeHasNonStarterProfile(m, S)) return true;
+  if(m === "Story") return storyResumeMissionLevel() > 1 || normalizeStoryVariant(S.storyVariant) !== STORY_VARIANTS.CAMPAIGN || Number(S.storyNgPlusTier || 0) > 0 || storyEndgameUnlocked(S);
+  if(m === "Arcade") return Math.max(1, S.arcadeLevel || 1) > 1 || !!S.arcadeWeeklySeedEnabled;
   return Math.max(1, S.survivalWave || 1) > 1 || Number(S.surviveSeconds || 0) > 0;
 }
 function refreshLaunchStartButtons(){
@@ -21868,7 +21951,7 @@ function restartFromMission1FromLaunchIntro(){
   }
   const progressLabel = launchProgressLabelForMode(mode);
   const ok = window.confirm
-    ? window.confirm(`Restart ${mode} from Mission 1?\nCurrent saved progress: ${progressLabel}`)
+    ? window.confirm(`Restart ${mode} from Mission 1?\nThis wipes ${mode} money, inventory, purchases, equipped items, rewards, achievements, and progression.\nCurrent saved progress: ${progressLabel}`)
     : true;
   if(!ok) return;
   clearLaunchMusicLoop();
@@ -28849,30 +28932,10 @@ function restartModeFromMission1(){
     if(el) el.style.display = "none";
   });
   lastOverlay = null;
-  S.gameOver = false;
-
-  if(mode === "Story"){
-    S.storyLevel = 1;
-    S.storyLastMission = 1;
-    S.storyVariant = STORY_VARIANTS.CAMPAIGN;
-    S.gauntletDepth = 1;
-    S.eliteHuntChapter = 1;
-    S.eliteHuntRuns = 1;
-    S.eliteHuntsCleared = 0;
-    clearStoryCheckpointData();
-    clearStorySaveData();
-  }
-  else if(mode === "Arcade") S.arcadeLevel = 1;
-  else {
-    S.survivalWave = 1;
-    S.survivalStart = Date.now();
-    S.surviveSeconds = 0;
-  }
-  S.mapIndex = 0;
-  resetModeWallet(mode, S);
+  resetModeProgressToFreshStart(mode, S);
 
   deploy();
-  toast(`${mode} restarted from Mission 1. ${mode} wallet reset.`);
+  toast(`${mode} restarted from Mission 1. Money, inventory, rewards, and upgrades reset.`);
   save();
 }
 
