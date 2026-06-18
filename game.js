@@ -23591,16 +23591,59 @@ const BASE_HQ_ROOMS = Object.freeze([
   Object.freeze({ id:"mission", name:"Mission Gate", icon:"GO", sub:"Deploy", x:480, y:288, w:190, h:92, color:"#34d399" }),
 ]);
 const BASE_HQ_NPCS = Object.freeze([
-  Object.freeze({ name:"Mira", role:"Intel", x:420, y:138, room:"command", line:"Weather, tracks, and tiger pressure are on the board." }),
-  Object.freeze({ name:"Vale", role:"Squad Lead", x:440, y:444, room:"specialists", line:"Specialists remember missions now. Keep them alive." }),
-  Object.freeze({ name:"Doc Reyes", role:"Medbay", x:736, y:184, room:"medbay", line:"Medbay upgrades improve recovery and rescue safety." }),
-  Object.freeze({ name:"Armorer Jax", role:"Armory", x:150, y:184, room:"armory", line:"Gear up here before you deploy." }),
-  Object.freeze({ name:"Keeper Ana", role:"Tiger Pens", x:730, y:388, room:"pens", line:"Captured tigers are researched and displayed here." }),
+  Object.freeze({ name:"Mira", role:"Intel", x:420, y:138, room:"command", line:"Intel tracks day/night, weather, clues, rival factions, and live mission pressure." }),
+  Object.freeze({ name:"Vale", role:"Squad Lead", x:440, y:444, room:"specialists", line:"Specialists now gain personality, remember outcomes, and follow advanced commands." }),
+  Object.freeze({ name:"Doc Reyes", role:"Medbay", x:736, y:184, room:"medbay", line:"Rescue systems include civilian personality, panic, injuries, and safe-zone feedback." }),
+  Object.freeze({ name:"Armorer Jax", role:"Armory", x:150, y:184, room:"armory", line:"Weapons include attachments, mastery trees, ammo families, skins, and combat feedback." }),
+  Object.freeze({ name:"Keeper Ana", role:"Tiger Pens", x:730, y:388, room:"pens", line:"Tiger systems include Nemesis bosses, mutations, visual variety, dens, and tracking clues." }),
 ]);
+const BASE_HQ_FACTS = Object.freeze({
+  command:Object.freeze([
+    "Mission Director controls pressure, recovery windows, spawn lanes, and dominance triggers so missions do not feel random.",
+    "Major missions can now use cinematic intros/outros, evacuation routes, weather, bonus objectives, and boss warnings.",
+    "Story mode, Arcade mode, and Survival mode keep separate progress and inventory so one mode does not corrupt another."
+  ]),
+  armory:Object.freeze([
+    "Weapon Mastery Trees let each weapon grow into stability, control, silent capture, or burst lethality paths.",
+    "The attachment system supports optics, tranq chambers, suppressors, magazines, stocks, and tradeoff-based builds.",
+    "The capture icon lights up when a tiger is inside the capture-health window, so players know exactly when to tranquilize."
+  ]),
+  medbay:Object.freeze([
+    "Dynamic Civilian AI gives civilians different behaviors like panicked, cooperative, and injured escort patterns.",
+    "Civilian Pathing 2.1 adds anti-stall nudges and smart reroutes near obstacles and safe zones.",
+    "Real evacuation routes let civilians board boats, helicopters, convoys, or street exits instead of vanishing in a circle."
+  ]),
+  intel:Object.freeze([
+    "Tiger Tracking adds footprints, claw marks, fur, blood trails, damaged vegetation, and clues that weather can erase.",
+    "Dynamic Weather 2.0 changes movement, visibility, tiger senses, route safety, and civilian behavior.",
+    "The day/night cycle changes visibility and tiger behavior across daylight, sunset, night, sunrise, fog, storms, and snow."
+  ]),
+  pens:Object.freeze([
+    "Nemesis Tiger Huntboard creates named weekly bosses with traits, escape logic, bounty ladders, and special rewards.",
+    "Elite Tiger Mutations can create armored hides, camouflage, pack healing, venom, speed bursts, and rage phases.",
+    "Living Tiger Ecosystem makes tigers hunt prey, protect dens, migrate, form packs, and remember encounters."
+  ]),
+  trophy:Object.freeze([
+    "Cosmetics include player trails, safe-zone styles, captured tiger trophies, badges, titles, and seasonal showcase items.",
+    "Achievement + Prestige Showcase tracks perfect rescues, trophies, titles, rare captures, and long-term player identity.",
+    "The Forge lets earned materials craft weapon visuals, trail effects, rarity tiers, and seasonal cosmetic sets."
+  ]),
+  specialists:Object.freeze([
+    "Advanced Soldier Command supports individual selection, assigned targets, queued orders, formations, and role behavior.",
+    "Squad Ability Cooldowns prevent ability spam and make timing your smoke, tranq, shield, and rescue tools matter.",
+    "Combat Truth Pass unified damage/death logic so specialists should not become unkillable ghost helpers."
+  ]),
+  mission:Object.freeze([
+    "Map Expansion 2.0 streams larger sectors with forests, lakes, rivers, bridges, settlements, roads, and objective markers.",
+    "Extraction and Escape Sequences add boats, helicopters, convoys, timed exits, and last-stand mission finishes.",
+    "Settlement Defense missions let rescued civilians, defenses, soldiers, and nighttime tiger waves matter beyond one rescue."
+  ]),
+});
 let __baseHqActive = false;
 let __baseHqPlayer = { x:480, y:322, targetX:480, targetY:322, face:-Math.PI/2, step:0, _moveVx:0, _moveVy:0 };
 let __baseHqSelectedRoom = "command";
 let __baseHqHint = "";
+let __baseHqFactOffset = 0;
 
 function baseHqRoomById(id){
   return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
@@ -23697,53 +23740,55 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
   const room = baseHqRoomById(roomId);
   const captures = Math.max(0, Math.floor(Number(S?.opsTotals?.captures || S?.stats?.captures || 0)));
   const achv = achvCount();
+  const factList = BASE_HQ_FACTS[room.id] || BASE_HQ_FACTS.command;
+  const factIndex = Math.abs(Math.floor((Date.now() / 5200) + Number(S.storyLevel || 1) + room.x + __baseHqFactOffset)) % factList.length;
   const map = {
     command:{
       title:"Command Deck",
-      desc:`Review ${currentMissionLabel()}, check readiness, then deploy from the Mission Gate when your loadout feels right.`,
-      actions:[["Mission Briefing","openMissionBriefFromBaseHQ()"],["Start Mission","startMissionFromBaseHQ()"],["Mode Select","openModeFromBaseHQ()"]],
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
       upgrades:["HQ_RD","HQ_INTEL"],
     },
     armory:{
       title:"Armory",
-      desc:"Buy weapons, ammo, armor plates, repair kits, and inspect your current loadout before deployment.",
-      actions:[["Open Weapons","openShopFromBaseHQ('weapons')"],["Buy Ammo","openShopFromBaseHQ('ammo')"],["Inventory","openInventoryFromBaseHQ()"]],
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
       upgrades:["HQ_ARMORY","HQ_RD"],
     },
     medbay:{
       title:"Medbay",
-      desc:"Upgrade triage support, restock med kits, and improve civilian escort survivability.",
-      actions:[["Buy Med Kits","openShopFromBaseHQ('meds')"],["Buy Armor","openShopFromBaseHQ('armor')"],["Inventory","openInventoryFromBaseHQ()"]],
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
       upgrades:["HQ_MEDBAY"],
     },
     intel:{
       title:"Intel Center",
-      desc:"Study weather, tiger pressure, investigation clues, and mission modifiers before entering the field.",
-      actions:[["Mission Briefing","openMissionBriefFromBaseHQ()"],["Open Story","openStoryFromBaseHQ()"],["Mode Select","openModeFromBaseHQ()"]],
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
       upgrades:["HQ_INTEL","HQ_RD"],
     },
     pens:{
       title:"Captured Tiger Pens",
-      desc:`Research pens track captured tigers. Current lifetime captures: ${captures}.`,
-      actions:[["Trophy Showcase","selectBaseHqRoom('trophy')"],["Inventory Cosmetics","openInventoryFromBaseHQ('cosmetics')"]],
+      desc:`Base Intel: ${factList[factIndex]} Lifetime captures recorded: ${captures}.`,
+      actions:[],
       upgrades:["HQ_RD"],
     },
     trophy:{
       title:"Trophy Hall",
-      desc:`Show achievements, cosmetics, Nemesis history, and perfect rescue records. Achievements unlocked: ${achv}.`,
-      actions:[["Open Showcase","openInventoryFromBaseHQ('cosmetics')"],["Story Journal","openStoryFromBaseHQ()"]],
+      desc:`Base Intel: ${factList[factIndex]} Achievements unlocked: ${achv}.`,
+      actions:[],
       upgrades:[],
     },
     specialists:{
       title:"Barracks",
-      desc:`Manage attack and rescue specialists. Owned: A ${S.soldierAttackersOwned || 0}, R ${S.soldierRescuersOwned || 0}. Downed units must be revived before combat.`,
-      actions:[["Squad Shop","openShopFromBaseHQ('squad')"],["Inventory","openInventoryFromBaseHQ()"]],
+      desc:`Base Intel: ${factList[factIndex]} Squad owned: A ${S.soldierAttackersOwned || 0}, R ${S.soldierRescuersOwned || 0}.`,
+      actions:[],
       upgrades:["HQ_ARMORY","HQ_MEDBAY"],
     },
     mission:{
       title:"Mission Gate",
-      desc:`Ready to deploy? Next operation: ${nextMissionLabel()}.`,
-      actions:[["Start Mission","startMissionFromBaseHQ()"],["Brief First","openMissionBriefFromBaseHQ()"],["Shop First","openShopFromBaseHQ('bundles')"]],
+      desc:`Base Intel: ${factList[factIndex]} Next operation: ${nextMissionLabel()}.`,
+      actions:[["Deploy","startMissionFromBaseHQ()"]],
       upgrades:[],
     },
   };
@@ -23751,6 +23796,17 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
 }
 function baseHqPanelActionsHtml(data){
   return (data.actions || []).map(([label, fn])=>`<button class="ghost" onclick="${fn}">${baseHqEsc(label)}</button>`).join("");
+}
+function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
+  if(roomId === "command") return `${currentMissionLabel()} • Director ready`;
+  if(roomId === "armory") return `${equippedWeapon()?.name || "Starter"} equipped`;
+  if(roomId === "medbay") return `${totalMedkits()} medkits • ${totalArmorPlates()} armor plates`;
+  if(roomId === "intel") return `Investigation, weather, and tiger pressure systems online`;
+  if(roomId === "pens") return `${Math.max(0, Math.floor(Number(S?.opsTotals?.captures || S?.stats?.captures || 0)))} lifetime captures tracked`;
+  if(roomId === "trophy") return `${achvCount()} achievements • showcase ready`;
+  if(roomId === "specialists") return `Attack ${S.soldierAttackersOwned || 0} • Rescue ${S.soldierRescuersOwned || 0}`;
+  if(roomId === "mission") return `Next: ${nextMissionLabel()}`;
+  return "HQ systems online";
 }
 function renderBaseHqWorldHud(){
   const hud = document.getElementById("baseHqWorldHud");
@@ -23761,21 +23817,22 @@ function renderBaseHqWorldHud(){
   }
   const { room, data } = baseHqRoomData(__baseHqSelectedRoom);
   const near = baseHqNearestInteractable();
-  const npcText = near.npc ? `<div class="baseHqWorldNpc">${baseHqEsc(near.npc.name)}: ${baseHqEsc(near.npc.line)}</div>` : "";
+  const npcText = near.npc ? `<div class="baseHqWorldNpc">Talk: ${baseHqEsc(near.npc.name)} • ${baseHqEsc(near.npc.role)}</div>` : "";
+  const actionHtml = room.id === "mission" ? baseHqPanelActionsHtml(data) : "";
   hud.style.display = "block";
   hud.innerHTML = `
     <div class="baseHqWorldTop">
       <div>
         <div class="baseHqWorldTitle">${baseHqEsc(room.icon)} ${baseHqEsc(data.title || room.name)}</div>
-        <div class="baseHqWorldSub">${baseHqEsc(room.sub)} • Walk with joystick/WASD. Tap rooms or press Use.</div>
+        <div class="baseHqWorldSub">${baseHqEsc(baseHqRoomStatusLine(room.id))}</div>
       </div>
       <button class="ghost" onclick="closeBaseHQ()">Exit HQ</button>
     </div>
     <div class="baseHqWorldDesc">${baseHqEsc(data.desc || "Walk around Base HQ and interact with rooms.")}</div>
     ${npcText}
     <div class="baseHqWorldActions">
-      <button class="good" onclick="interactBaseHQ()">Use / Talk</button>
-      ${baseHqPanelActionsHtml(data)}
+      <button class="good" onclick="interactBaseHQ()">Talk / Inspect</button>
+      ${actionHtml}
     </div>
   `;
 }
@@ -24068,11 +24125,24 @@ function drawBaseHQScene(now=Date.now()){
 function interactBaseHQ(){
   const near = baseHqNearestInteractable();
   selectBaseHqRoom(near.room?.id || baseHqNearestRoom().id, false);
+  __baseHqFactOffset = (__baseHqFactOffset + 1) % 99;
+  const { room, data } = baseHqRoomData(__baseHqSelectedRoom);
   if(near.npc){
     toast(`${near.npc.name}: ${near.npc.line}`);
     setEventText(`${near.npc.role}: ${near.npc.line}`, 3.5);
+  }else{
+    toast(`${room.name}: ${String(data.desc || "").replace(/^Base Intel:\s*/,"")}`);
   }
   renderBaseHQ();
+}
+function leaveBaseHqView({ restoreMenu=true }={}){
+  __baseHqActive = false;
+  document.body?.classList?.remove("baseHqActive");
+  if(restoreMenu) applyMobileMenuState(__mobileMenuHiddenPref);
+  const hud = document.getElementById("baseHqWorldHud");
+  if(hud) hud.style.display = "none";
+  const overlay = document.getElementById("baseHqOverlay");
+  if(overlay) overlay.style.display = "none";
 }
 function openBaseHQ(opts={}){
   if(window.__TUTORIAL_MODE__) return toast("Finish the tutorial first.");
@@ -24083,6 +24153,8 @@ function openBaseHQ(opts={}){
   clearLaunchMusicLoop();
   clearLaunchIntroAutoTimer();
   __baseHqActive = true;
+  document.body?.classList?.add("baseHqActive");
+  applyMobileMenuState(true);
   baseHqClampPlayer();
   __baseHqSelectedRoom = baseHqNearestRoom().id;
   setPaused(true, "base-hq");
@@ -24092,74 +24164,46 @@ function openBaseHQ(opts={}){
   updateHUD();
   renderCombatControls();
   syncGamepadFocus();
-  toast("Base HQ: walk around, talk, upgrade, shop, or deploy.");
+  toast("Base HQ: walk around, inspect rooms, read intel, or deploy.");
   sfx("ui");
 }
 function openBaseHQFromLaunchIntro(){
   openBaseHQ({ fromLaunch:true });
 }
 function closeBaseHQ(){
-  __baseHqActive = false;
-  const hud = document.getElementById("baseHqWorldHud");
-  if(hud) hud.style.display = "none";
-  const overlay = document.getElementById("baseHqOverlay");
-  if(overlay) overlay.style.display = "none";
+  leaveBaseHqView({ restoreMenu:true });
   resetTouchStick();
   setPaused(false, null);
   renderCombatControls();
   syncGamepadFocus();
 }
 function openShopFromBaseHQ(tab="bundles"){
-  __baseHqActive = false;
-  const hud = document.getElementById("baseHqWorldHud");
-  if(hud) hud.style.display = "none";
-  const overlay = document.getElementById("baseHqOverlay");
-  if(overlay) overlay.style.display = "none";
+  leaveBaseHqView({ restoreMenu:true });
   openShop();
   if(document.getElementById("shopOverlay")?.style.display === "flex") shopTab(tab);
 }
 function openInventoryFromBaseHQ(tab=""){
-  __baseHqActive = false;
-  const hud = document.getElementById("baseHqWorldHud");
-  if(hud) hud.style.display = "none";
-  const overlay = document.getElementById("baseHqOverlay");
-  if(overlay) overlay.style.display = "none";
+  leaveBaseHqView({ restoreMenu:true });
   openInventory();
   if(tab) inventoryTab(tab);
 }
 function openModeFromBaseHQ(){
-  __baseHqActive = false;
-  const hud = document.getElementById("baseHqWorldHud");
-  if(hud) hud.style.display = "none";
-  const overlay = document.getElementById("baseHqOverlay");
-  if(overlay) overlay.style.display = "none";
+  leaveBaseHqView({ restoreMenu:true });
   openMode();
 }
 function openStoryFromBaseHQ(){
-  __baseHqActive = false;
-  const hud = document.getElementById("baseHqWorldHud");
-  if(hud) hud.style.display = "none";
-  const overlay = document.getElementById("baseHqOverlay");
-  if(overlay) overlay.style.display = "none";
+  leaveBaseHqView({ restoreMenu:true });
   openStoryCampaignJournal();
 }
 function openMissionBriefFromBaseHQ(){
-  __baseHqActive = false;
-  const hud = document.getElementById("baseHqWorldHud");
-  if(hud) hud.style.display = "none";
-  const overlay = document.getElementById("baseHqOverlay");
-  if(overlay) overlay.style.display = "none";
+  leaveBaseHqView({ restoreMenu:true });
   if(!showMissionBrief(4500)){
     toast(currentMissionLabel());
     openBaseHQ();
   }
 }
 function startMissionFromBaseHQ(){
-  __baseHqActive = false;
-  const hud = document.getElementById("baseHqWorldHud");
-  if(hud) hud.style.display = "none";
-  const overlay = document.getElementById("baseHqOverlay");
-  if(overlay) overlay.style.display = "none";
+  leaveBaseHqView({ restoreMenu:true });
   resetTouchStick();
   setPaused(false, null);
   beginGameplayMapLoadingGuard("base-hq-start");
