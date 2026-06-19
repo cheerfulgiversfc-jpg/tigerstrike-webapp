@@ -23826,6 +23826,7 @@ let __baseHqOnboardingActive = false;
 let __baseHqOnboardingStep = 0;
 let __returnToBaseHqAfterOverlay = false;
 let __baseHqReturnRoom = "mission";
+let __baseHqModePreviewMode = "";
 
 function baseHqRoomById(id){
   return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
@@ -24043,8 +24044,90 @@ function baseHqMissionGatePreviewHtml(){
     </div>
   `;
 }
-function baseHqIvyGuidance(){
-  const mode = normalizeModeName(S.mode);
+function baseHqModeRewardPreview(mode, snap){
+  const safeMode = normalizeModeName(mode);
+  if(safeMode === "Survival"){
+    const wave = Math.max(1, Math.floor(Number(S.survivalWave || 1)));
+    return `Rewards: wave ${wave} cash, survival XP, settlement defense progress, and streak bonuses for clean holds.`;
+  }
+  if(safeMode === "Arcade"){
+    return "Rewards: arcade cash, medal progress, timed objective bonuses, and extra payout for perfect rescues or captures.";
+  }
+  const level = clamp(Math.floor(Number(S.storyLevel || snap?.label?.match(/\d+/)?.[0] || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  return `Rewards: story mission payout, XP, rescue/capture bonuses, settlement support, and campaign progress for Mission ${level}.`;
+}
+function baseHqModePreviewHtml(mode=normalizeModeName(S.mode)){
+  const snap = baseHqModeMissionSnapshot(mode);
+  const gear = snap.gear.join(" • ");
+  const tags = snap.tags.join(" • ");
+  const reward = baseHqModeRewardPreview(snap.mode, snap);
+  return `
+    <div class="baseHqModePreviewCard">
+      <div class="baseHqModePreviewTop">
+        <div>
+          <div class="baseHqModePreviewTitle">${baseHqEsc(snap.mode)} Mode Preview</div>
+          <div class="baseHqModePreviewSub">${baseHqEsc(snap.label)} • Review the mission before deployment.</div>
+        </div>
+        <button class="ghost baseHqModePreviewClose" type="button" onpointerdown="event.stopPropagation();closeBaseHqModePreview()" onclick="event.stopPropagation();closeBaseHqModePreview()">Close</button>
+      </div>
+      <div class="baseHqModePreviewGrid">
+        <div class="baseHqModePreviewItem"><span>Objective</span><b>${baseHqEsc(snap.objective)}</b></div>
+        <div class="baseHqModePreviewItem"><span>Threat</span><b>${baseHqEsc(snap.threat)} • ${baseHqEsc(tags)}</b></div>
+        <div class="baseHqModePreviewItem"><span>Civilians</span><b>${baseHqEsc(snap.civilians)}</b></div>
+        <div class="baseHqModePreviewItem"><span>Tiger Intel</span><b>${baseHqEsc(snap.tigers)}</b></div>
+        <div class="baseHqModePreviewItem"><span>Weather</span><b>${baseHqEsc(snap.weather)}</b></div>
+        <div class="baseHqModePreviewItem"><span>Extraction</span><b>${baseHqEsc(snap.extraction)}</b></div>
+        <div class="baseHqModePreviewItem"><span>Recommended Gear</span><b>${baseHqEsc(gear || "Balanced kit")}</b></div>
+        <div class="baseHqModePreviewItem"><span>Readiness Tip</span><b>${baseHqEsc(baseHqIvyGuidance(snap.mode))}</b></div>
+      </div>
+      <div class="baseHqModePreviewReward">${baseHqEsc(reward)}</div>
+      <div class="baseHqModePreviewActions">
+        <button class="good" type="button" onpointerdown="event.stopPropagation();confirmBaseHqModePreview()" onclick="event.stopPropagation();confirmBaseHqModePreview()">Start This Mode</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation();openMissionBriefFromBaseHQ()" onclick="event.stopPropagation();openMissionBriefFromBaseHQ()">Open Full Briefing</button>
+      </div>
+    </div>
+  `;
+}
+function closeBaseHqModePreview(){
+  const panel = document.getElementById("baseHqModePreview");
+  if(panel){
+    panel.style.display = "none";
+    panel.innerHTML = "";
+  }
+  __baseHqModePreviewMode = "";
+  syncGamepadFocus();
+}
+function openBaseHqModePreview(mode=normalizeModeName(S.mode)){
+  const nextMode = normalizeModeName(mode);
+  if(document.getElementById("modeOverlay")?.style.display === "flex") closeMode();
+  if(!__baseHqActive) openBaseHQ({ home:true });
+  __baseHqModePreviewMode = nextMode;
+  hideBaseHqHud();
+  const panel = document.getElementById("baseHqModePreview");
+  if(!panel){
+    setMode(nextMode);
+    return;
+  }
+  panel.innerHTML = baseHqModePreviewHtml(nextMode);
+  panel.style.display = "flex";
+  setPaused(true, "base-hq-mode-preview");
+  toast(`${nextMode} preview ready.`);
+  sfx("ui");
+  syncGamepadFocus();
+}
+function confirmBaseHqModePreview(){
+  const nextMode = normalizeModeName(__baseHqModePreviewMode || S.mode);
+  closeBaseHqModePreview();
+  leaveBaseHqView({ restoreMenu:true });
+  resetTouchStick();
+  setMode(nextMode);
+  setPaused(false, null);
+  beginGameplayMapLoadingGuard("base-hq-mode-preview-start");
+  toast(`${nextMode} mission started from Base HQ.`);
+  syncGamepadFocus();
+}
+function baseHqIvyGuidance(modeOverride=S.mode){
+  const mode = normalizeModeName(modeOverride);
   const snap = baseHqModeMissionSnapshot(mode);
   const medkits = Math.max(0, Math.floor(Number(totalMedkits() || 0)));
   const armor = Math.max(0, Math.floor(Number(totalArmorPlates() || 0)));
@@ -24496,9 +24579,9 @@ function renderBaseHqQuickBar(){
   bar.innerHTML = `
     <div class="baseHqQuickHint">${baseHqEsc(baseHqIvyGuidance())} • Active: ${baseHqEsc(snap.label)}</div>
     ${button("HQ Tour", "resetBaseHqOnboarding()", "utility")}
-    ${button("Story", "startModeFromBaseHQ('Story')", "primary")}
-    ${button("Arcade", "startModeFromBaseHQ('Arcade')", "primary")}
-    ${button("Survival", "startModeFromBaseHQ('Survival')", "primary")}
+    ${button("Story", "openBaseHqModePreview('Story')", "primary")}
+    ${button("Arcade", "openBaseHqModePreview('Arcade')", "primary")}
+    ${button("Survival", "openBaseHqModePreview('Survival')", "primary")}
     ${button("Brief", "openMissionBriefFromBaseHQ()", "")}
     ${button("Tutorial", "startTutorialFromBaseHQ()", "")}
     ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
@@ -25214,6 +25297,7 @@ function interactBaseHQ(){
 }
 function leaveBaseHqView({ restoreMenu=true }={}){
   __baseHqActive = false;
+  closeBaseHqModePreview();
   hideBaseHqHud();
   renderBaseHqQuickBar();
   renderBaseHqOnboarding();
@@ -25242,6 +25326,7 @@ function openBaseHQ(opts={}){
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
+  closeBaseHqModePreview();
   clearLaunchMusicLoop();
   clearLaunchIntroAutoTimer();
   __baseHqActive = true;
@@ -25281,12 +25366,7 @@ function closeBaseHQ(){
   syncGamepadFocus();
 }
 function startModeFromBaseHQ(mode="Story"){
-  const nextMode = normalizeModeName(mode);
-  leaveBaseHqView({ restoreMenu:true });
-  resetTouchStick();
-  setMode(nextMode);
-  toast(`${nextMode} selected from Base HQ.`);
-  syncGamepadFocus();
+  openBaseHqModePreview(mode);
 }
 function startTutorialFromBaseHQ(){
   leaveBaseHqView({ restoreMenu:true });
@@ -25324,12 +25404,7 @@ function openMissionBriefFromBaseHQ(){
   }
 }
 function startMissionFromBaseHQ(){
-  leaveBaseHqView({ restoreMenu:true });
-  resetTouchStick();
-  setPaused(false, null);
-  beginGameplayMapLoadingGuard("base-hq-start");
-  toast(`${currentMissionLabel()} started from Base HQ.`);
-  syncGamepadFocus();
+  openBaseHqModePreview(S.mode);
 }
 function buyBaseHqUpgrade(key){
   buyStoryHQModule(key);
@@ -44953,6 +45028,9 @@ window.openStoryFromBaseHQ = openStoryFromBaseHQ;
 window.openMissionBriefFromBaseHQ = openMissionBriefFromBaseHQ;
 window.startMissionFromBaseHQ = startMissionFromBaseHQ;
 window.startModeFromBaseHQ = startModeFromBaseHQ;
+window.openBaseHqModePreview = openBaseHqModePreview;
+window.closeBaseHqModePreview = closeBaseHqModePreview;
+window.confirmBaseHqModePreview = confirmBaseHqModePreview;
 window.startTutorialFromBaseHQ = startTutorialFromBaseHQ;
 window.startBaseHqOnboarding = startBaseHqOnboarding;
 window.completeBaseHqOnboardingStep = completeBaseHqOnboardingStep;
