@@ -23589,6 +23589,14 @@ const BASE_HQ_ROOMS = Object.freeze([
   Object.freeze({ id:"trophy", name:"Trophy Hall", icon:"TRP", sub:"Showcase", x:480, y:54, w:286, h:70, color:"#eab308" }),
   Object.freeze({ id:"specialists", name:"Barracks", icon:"SQD", sub:"Squad", x:480, y:462, w:270, h:92, color:"#a78bfa" }),
   Object.freeze({ id:"mission", name:"Mission Gate", icon:"GO", sub:"Deploy", x:480, y:288, w:190, h:92, color:"#34d399" }),
+  Object.freeze({ id:"forge", name:"Forge Bench", icon:"FRG", sub:"Crafting", x:672, y:68, w:150, h:58, color:"#f97316" }),
+  Object.freeze({ id:"contracts", name:"Contracts Board", icon:"JOB", sub:"Daily ops", x:288, y:68, w:156, h:58, color:"#f43f5e" }),
+  Object.freeze({ id:"weather", name:"Weather Lab", icon:"WX", sub:"Storm intel", x:98, y:302, w:150, h:72, color:"#38bdf8" }),
+  Object.freeze({ id:"settlement", name:"Settlement Ops", icon:"SET", sub:"Rescued civilians", x:318, y:292, w:150, h:72, color:"#84cc16" }),
+  Object.freeze({ id:"cinema", name:"Cinema Archive", icon:"CIN", sub:"Story scenes", x:642, y:292, w:150, h:72, color:"#c084fc" }),
+  Object.freeze({ id:"vehicle", name:"Vehicle Bay", icon:"VHC", sub:"Evac routes", x:862, y:302, w:150, h:72, color:"#60a5fa" }),
+  Object.freeze({ id:"training", name:"Training Mat", icon:"TRN", sub:"Combat feel", x:478, y:376, w:150, h:64, color:"#14b8a6" }),
+  Object.freeze({ id:"research", name:"Research Desk", icon:"RND", sub:"Tiger science", x:842, y:68, w:142, h:58, color:"#2dd4bf" }),
 ]);
 const BASE_HQ_NPCS = Object.freeze([
   Object.freeze({ name:"Mira", role:"Intel", x:420, y:138, room:"command", line:"Intel tracks day/night, weather, clues, rival factions, and live mission pressure." }),
@@ -23596,6 +23604,9 @@ const BASE_HQ_NPCS = Object.freeze([
   Object.freeze({ name:"Doc Reyes", role:"Medbay", x:736, y:184, room:"medbay", line:"Rescue systems include civilian personality, panic, injuries, and safe-zone feedback." }),
   Object.freeze({ name:"Armorer Jax", role:"Armory", x:150, y:184, room:"armory", line:"Weapons include attachments, mastery trees, ammo families, skins, and combat feedback." }),
   Object.freeze({ name:"Keeper Ana", role:"Tiger Pens", x:730, y:388, room:"pens", line:"Tiger systems include Nemesis bosses, mutations, visual variety, dens, and tracking clues." }),
+  Object.freeze({ name:"Rook", role:"Vehicle Chief", x:835, y:300, room:"vehicle", line:"Evac routes now support boats, helicopters, convoy trucks, and blocked-road alternates." }),
+  Object.freeze({ name:"Nova", role:"Forge Tech", x:650, y:76, room:"forge", line:"The Forge turns earned materials into weapon skins, trails, and rarity-based cosmetics." }),
+  Object.freeze({ name:"Sage", role:"Weather Analyst", x:112, y:306, room:"weather", line:"Storms, fog, dust, snow, and nightfall can change visibility, tracks, routes, and tiger senses." }),
 ]);
 const BASE_HQ_FACTS = Object.freeze({
   command:Object.freeze([
@@ -23638,12 +23649,54 @@ const BASE_HQ_FACTS = Object.freeze({
     "Extraction and Escape Sequences add boats, helicopters, convoys, timed exits, and last-stand mission finishes.",
     "Settlement Defense missions let rescued civilians, defenses, soldiers, and nighttime tiger waves matter beyond one rescue."
   ]),
+  forge:Object.freeze([
+    "Weapon Skin + Effect Forge turns earned materials into custom trails, seasonal styles, and rarity-tier visuals.",
+    "Cosmetic systems are separated from power so players can flex style without breaking mission balance.",
+    "Prestige showcase items give long-term goals after money, gear, and supplies are already stacked."
+  ]),
+  contracts:Object.freeze([
+    "Daily and weekly contracts give players reasons to return without forcing mission resets.",
+    "Live Ops cards can add positive and negative modifiers before missions for replay variety.",
+    "Clan and co-op style systems can reward shared progress against tiger hotspots and seasonal objectives."
+  ]),
+  weather:Object.freeze([
+    "Weather can erase tiger tracks, slow civilians, lower visibility, and make scan clues more valuable.",
+    "Day and night phases change how dangerous tigers feel before combat even begins.",
+    "Biome hazards like floodwater, fog banks, mud, dust drafts, and snow gusts make maps feel alive."
+  ]),
+  settlement:Object.freeze([
+    "Rescued civilians can populate settlements, unlock support, and make rescue results matter after the mission.",
+    "Settlement Defense missions turn saved civilians into a long-term community to protect.",
+    "Perfect rescues, zero-loss clears, and settlement support give players rewards beyond simple cash."
+  ]),
+  cinema:Object.freeze([
+    "Cinematic intros and outros can show threats, weather, evacuation type, bonus objectives, and escape recaps.",
+    "Story choices such as Preserve, Protect, and Strike can shift relationships and mission consequences.",
+    "Animated mission moments make bosses, crashes, evacuations, and chapter milestones feel bigger."
+  ]),
+  vehicle:Object.freeze([
+    "Real evacuation routes let civilians board a truck, boat, helicopter, or street escape instead of only standing in a circle.",
+    "Vehicle routes become more important as maps expand into roads, rivers, bridges, and distant sectors.",
+    "Boarding can pause when tigers get too close, creating a clear rescue danger moment."
+  ]),
+  training:Object.freeze([
+    "Tiger Combat Interaction adds knockback, pounce danger, stagger, capture struggle, and clearer hit feedback.",
+    "Tiger Behavior Animation makes stalking, roaring, limping, fleeing, circling, and capture moments easier to read.",
+    "Movement and animation feel passes make the player, squad, civilians, and tigers feel less stiff."
+  ]),
+  research:Object.freeze([
+    "The Living Tiger Ecosystem lets tigers hunt prey, protect dens, form packs, migrate, and remember encounters.",
+    "Tiger Visual Variety adds scars, fur color, body size, stripe changes, age, injuries, and Alpha appearance differences.",
+    "Tiger Investigation can reveal type, direction, health, age, behavior, dens, Nemesis leads, or missing civilians."
+  ]),
 });
 let __baseHqActive = false;
 let __baseHqPlayer = { x:480, y:322, targetX:480, targetY:322, face:-Math.PI/2, step:0, _moveVx:0, _moveVy:0 };
 let __baseHqSelectedRoom = "command";
 let __baseHqHint = "";
 let __baseHqFactOffset = 0;
+let __baseHqHudUntil = 0;
+let __baseHqLastRoomId = "";
 
 function baseHqRoomById(id){
   return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
@@ -23672,6 +23725,8 @@ function baseHqClampPlayer(){
 function baseHqMoveTowardRoom(roomId){
   const room = baseHqRoomById(roomId);
   __baseHqSelectedRoom = room.id;
+  __baseHqLastRoomId = room.id;
+  showBaseHqHud(6800);
   __baseHqPlayer.targetX = clamp(room.x, 34, BASE_HQ_WORLD.w - 34);
   __baseHqPlayer.targetY = clamp(room.y + Math.min(52, Math.max(34, room.h * 0.42)), 42, BASE_HQ_WORLD.h - 34);
 }
@@ -23692,6 +23747,14 @@ function baseHqNearestInteractable(){
   const roomD = room ? Math.hypot(room.x - __baseHqPlayer.x, room.y - __baseHqPlayer.y) : Infinity;
   const npc = baseHqNearestNpc();
   return { room, roomD, npc };
+}
+function showBaseHqHud(ms=6200){
+  __baseHqHudUntil = Date.now() + Math.max(1800, Number(ms || 0));
+}
+function hideBaseHqHud(){
+  __baseHqHudUntil = 0;
+  const hud = document.getElementById("baseHqWorldHud");
+  if(hud) hud.style.display = "none";
 }
 function baseHqEsc(value){
   return String(value ?? "").replace(/[&<>"']/g, (ch)=>({
@@ -23791,6 +23854,54 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       actions:[["Deploy","startMissionFromBaseHQ()"]],
       upgrades:[],
     },
+    forge:{
+      title:"Forge Bench",
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
+      upgrades:["HQ_RD","HQ_ARMORY"],
+    },
+    contracts:{
+      title:"Contracts Board",
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
+      upgrades:["HQ_INTEL"],
+    },
+    weather:{
+      title:"Weather Lab",
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
+      upgrades:["HQ_INTEL"],
+    },
+    settlement:{
+      title:"Settlement Ops",
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
+      upgrades:["HQ_MEDBAY","HQ_INTEL"],
+    },
+    cinema:{
+      title:"Cinema Archive",
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
+      upgrades:[],
+    },
+    vehicle:{
+      title:"Vehicle Bay",
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
+      upgrades:["HQ_ARMORY"],
+    },
+    training:{
+      title:"Training Mat",
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
+      upgrades:["HQ_ARMORY","HQ_MEDBAY"],
+    },
+    research:{
+      title:"Research Desk",
+      desc:`Base Intel: ${factList[factIndex]}`,
+      actions:[],
+      upgrades:["HQ_RD"],
+    },
   };
   return { room, data:map[room.id] || map.command };
 }
@@ -23806,12 +23917,20 @@ function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
   if(roomId === "trophy") return `${achvCount()} achievements • showcase ready`;
   if(roomId === "specialists") return `Attack ${S.soldierAttackersOwned || 0} • Rescue ${S.soldierRescuersOwned || 0}`;
   if(roomId === "mission") return `Next: ${nextMissionLabel()}`;
+  if(roomId === "forge") return `Materials, skins, trails, and cosmetic rarity`;
+  if(roomId === "contracts") return `Daily, weekly, live ops, and co-op goals`;
+  if(roomId === "weather") return `Weather systems and track decay online`;
+  if(roomId === "settlement") return `Settlement support and defense planning`;
+  if(roomId === "cinema") return `Mission intros, outros, and story scenes`;
+  if(roomId === "vehicle") return `Boat, helicopter, convoy, and street exits`;
+  if(roomId === "training") return `Tiger combat and movement feel lab`;
+  if(roomId === "research") return `Ecosystem, mutations, and investigation data`;
   return "HQ systems online";
 }
 function renderBaseHqWorldHud(){
   const hud = document.getElementById("baseHqWorldHud");
   if(!hud) return;
-  if(!__baseHqActive){
+  if(!__baseHqActive || Date.now() > Number(__baseHqHudUntil || 0)){
     hud.style.display = "none";
     return;
   }
@@ -23826,7 +23945,7 @@ function renderBaseHqWorldHud(){
         <div class="baseHqWorldTitle">${baseHqEsc(room.icon)} ${baseHqEsc(data.title || room.name)}</div>
         <div class="baseHqWorldSub">${baseHqEsc(baseHqRoomStatusLine(room.id))}</div>
       </div>
-      <button class="ghost" onclick="closeBaseHQ()">Exit HQ</button>
+      <button class="ghost baseHqExitBtn" type="button" onpointerdown="event.stopPropagation();closeBaseHQ()" onclick="event.stopPropagation();closeBaseHQ()">Exit HQ</button>
     </div>
     <div class="baseHqWorldDesc">${baseHqEsc(data.desc || "Walk around Base HQ and interact with rooms.")}</div>
     ${npcText}
@@ -23871,6 +23990,8 @@ function renderBaseHQ(){
 function selectBaseHqRoom(roomId, movePlayer=false){
   const room = baseHqRoomById(roomId);
   __baseHqSelectedRoom = room.id;
+  __baseHqLastRoomId = room.id;
+  showBaseHqHud(6800);
   if(movePlayer){
     baseHqMoveTowardRoom(room.id);
   }
@@ -23884,6 +24005,10 @@ function moveBaseHQ(dx=0, dy=0){
   __baseHqPlayer.targetY = __baseHqPlayer.y;
   baseHqClampPlayer();
   __baseHqSelectedRoom = baseHqNearestRoom().id;
+  if(__baseHqSelectedRoom !== __baseHqLastRoomId){
+    __baseHqLastRoomId = __baseHqSelectedRoom;
+    showBaseHqHud(6200);
+  }
   renderBaseHQ();
 }
 function baseHqStageTap(ev){
@@ -23894,6 +24019,10 @@ function baseHqStageTap(ev){
   __baseHqPlayer.targetX = clamp(((ev.clientX - rect.left) / rect.width) * BASE_HQ_WORLD.w, 34, BASE_HQ_WORLD.w - 34);
   __baseHqPlayer.targetY = clamp(((ev.clientY - rect.top) / rect.height) * BASE_HQ_WORLD.h, 42, BASE_HQ_WORLD.h - 34);
   __baseHqSelectedRoom = baseHqNearestRoom().id;
+  if(__baseHqSelectedRoom !== __baseHqLastRoomId){
+    __baseHqLastRoomId = __baseHqSelectedRoom;
+    showBaseHqHud(6200);
+  }
   renderBaseHQ();
 }
 function baseHqPointerDown(sx, sy){
@@ -23910,6 +24039,10 @@ function baseHqPointerDown(sx, sy){
   __baseHqPlayer.targetX = clamp(sx, 34, BASE_HQ_WORLD.w - 34);
   __baseHqPlayer.targetY = clamp(sy, 42, BASE_HQ_WORLD.h - 34);
   __baseHqSelectedRoom = baseHqNearestRoom().id;
+  if(__baseHqSelectedRoom !== __baseHqLastRoomId){
+    __baseHqLastRoomId = __baseHqSelectedRoom;
+    showBaseHqHud(6200);
+  }
   renderBaseHQ();
   sfx("ui");
   return true;
@@ -23947,7 +24080,12 @@ function baseHqMoveTick(){
   baseHqClampPlayer();
   const near = baseHqNearestInteractable();
   if(near.room){
+    const prevRoom = __baseHqSelectedRoom;
     __baseHqSelectedRoom = near.room.id;
+    if(__baseHqSelectedRoom !== prevRoom && __baseHqSelectedRoom !== __baseHqLastRoomId){
+      __baseHqLastRoomId = __baseHqSelectedRoom;
+      showBaseHqHud(6200);
+    }
     __baseHqHint = near.npc ? `Talk to ${near.npc.name}` : `Use ${near.room.name}`;
   }
   renderBaseHqWorldHud();
@@ -24126,6 +24264,7 @@ function interactBaseHQ(){
   const near = baseHqNearestInteractable();
   selectBaseHqRoom(near.room?.id || baseHqNearestRoom().id, false);
   __baseHqFactOffset = (__baseHqFactOffset + 1) % 99;
+  showBaseHqHud(8200);
   const { room, data } = baseHqRoomData(__baseHqSelectedRoom);
   if(near.npc){
     toast(`${near.npc.name}: ${near.npc.line}`);
@@ -24137,10 +24276,9 @@ function interactBaseHQ(){
 }
 function leaveBaseHqView({ restoreMenu=true }={}){
   __baseHqActive = false;
+  hideBaseHqHud();
   document.body?.classList?.remove("baseHqActive");
   if(restoreMenu) applyMobileMenuState(__mobileMenuHiddenPref);
-  const hud = document.getElementById("baseHqWorldHud");
-  if(hud) hud.style.display = "none";
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
 }
@@ -24157,6 +24295,8 @@ function openBaseHQ(opts={}){
   applyMobileMenuState(true);
   baseHqClampPlayer();
   __baseHqSelectedRoom = baseHqNearestRoom().id;
+  __baseHqLastRoomId = __baseHqSelectedRoom;
+  showBaseHqHud(7800);
   setPaused(true, "base-hq");
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
