@@ -23607,6 +23607,15 @@ const BASE_HQ_AMBIENT_ACTORS = Object.freeze([
   Object.freeze({ name:"Mechanic", role:"Bay Crew", color:"#60a5fa", from:[1068,418], to:[1192,418], speed:0.000066, phase:0.27 }),
   Object.freeze({ name:"Keeper", role:"Pen Crew", color:"#fb7185", from:[930,560], to:[1120,560], speed:0.000055, phase:0.58 }),
 ]);
+const BASE_HQ_ONBOARDING_STEPS = Object.freeze([
+  Object.freeze({ room:"mission", title:"Reception + Mission Gate", text:"Ivy introduces the HQ. This gate starts Story, Arcade, Survival, Tutorial, Shop, Inventory, and mission briefing." }),
+  Object.freeze({ room:"command", title:"Command Deck", text:"Review mission danger, story progress, weather, objectives, and the safest plan before you deploy." }),
+  Object.freeze({ room:"armory", title:"Armory", text:"Buy weapons, ammo, armor, and check the loadout that follows you into the selected game mode." }),
+  Object.freeze({ room:"medbay", title:"Medbay", text:"Restock medkits and armor plates so rescues do not fall apart when tigers pressure civilians." }),
+  Object.freeze({ room:"intel", title:"Intel Center", text:"Learn scan clues, tiger tracking, weather effects, day/night risk, and investigation systems." }),
+  Object.freeze({ room:"specialists", title:"Barracks", text:"Manage squad roles, formations, revives, and soldier support before difficult missions." }),
+  Object.freeze({ room:"trophy", title:"Trophy Hall", text:"View achievements, cosmetics, captured tiger trophies, titles, and long-term prestige goals." }),
+]);
 const BASE_HQ_NPCS = Object.freeze([
   Object.freeze({ name:"Ivy", role:"Reception", x:640, y:424, room:"mission", style:"reception", line:"Welcome to Base HQ. Walk to any desk, tap a teammate, and inspect the systems you have unlocked." }),
   Object.freeze({ name:"Mira", role:"Intel", x:580, y:168, room:"command", line:"Intel tracks day/night, weather, clues, rival factions, and live mission pressure." }),
@@ -23758,6 +23767,8 @@ let __baseHqLastRoomId = "";
 let __baseHqDialogNpc = "";
 let __baseHqDialogIndex = 0;
 let __baseHqPendingHudRoom = "";
+let __baseHqOnboardingActive = false;
+let __baseHqOnboardingStep = 0;
 
 function baseHqRoomById(id){
   return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
@@ -23955,6 +23966,80 @@ function baseHqIvyGuidance(){
   }
   return `Ivy: ${snap.label} is ready. Brief first, stock up if needed, then deploy when the route feels right.`;
 }
+function baseHqOnboardingCompleted(){
+  try{ return localStorage.getItem("tigerstrike_base_hq_tour_complete") === "1"; }catch(_e){ return false; }
+}
+function setBaseHqOnboardingCompleted(done=true){
+  try{ localStorage.setItem("tigerstrike_base_hq_tour_complete", done ? "1" : "0"); }catch(_e){}
+}
+function currentBaseHqOnboardingStep(){
+  const idx = clamp(Math.floor(Number(__baseHqOnboardingStep || 0)), 0, BASE_HQ_ONBOARDING_STEPS.length - 1);
+  return BASE_HQ_ONBOARDING_STEPS[idx] || BASE_HQ_ONBOARDING_STEPS[0];
+}
+function startBaseHqOnboarding(reset=false){
+  __baseHqOnboardingActive = true;
+  __baseHqOnboardingStep = reset ? 0 : clamp(Number(__baseHqOnboardingStep || 0), 0, BASE_HQ_ONBOARDING_STEPS.length - 1);
+  const step = currentBaseHqOnboardingStep();
+  baseHqMoveTowardRoom(step.room);
+  showBaseHqHud(9000);
+  renderBaseHQ();
+  toast(`Ivy Tour: ${step.title}`);
+  sfx("ui");
+}
+function completeBaseHqOnboardingStep(){
+  if(!__baseHqOnboardingActive) return startBaseHqOnboarding(true);
+  if(__baseHqOnboardingStep >= BASE_HQ_ONBOARDING_STEPS.length - 1){
+    __baseHqOnboardingActive = false;
+    setBaseHqOnboardingCompleted(true);
+    const panel = document.getElementById("baseHqOnboarding");
+    if(panel) panel.style.display = "none";
+    toast("Base HQ tour complete. Ivy will still guide you from Reception.");
+    renderBaseHQ();
+    return;
+  }
+  __baseHqOnboardingStep += 1;
+  const step = currentBaseHqOnboardingStep();
+  baseHqMoveTowardRoom(step.room);
+  showBaseHqHud(9000);
+  toast(`Next HQ stop: ${step.title}`);
+  renderBaseHQ();
+}
+function skipBaseHqOnboarding(){
+  __baseHqOnboardingActive = false;
+  setBaseHqOnboardingCompleted(true);
+  const panel = document.getElementById("baseHqOnboarding");
+  if(panel) panel.style.display = "none";
+  toast("HQ tour skipped. Use Reception if you want the tour again.");
+  renderBaseHQ();
+}
+function resetBaseHqOnboarding(){
+  setBaseHqOnboardingCompleted(false);
+  startBaseHqOnboarding(true);
+}
+function renderBaseHqOnboarding(){
+  const panel = document.getElementById("baseHqOnboarding");
+  if(!panel) return;
+  if(!__baseHqActive || !__baseHqOnboardingActive){
+    panel.style.display = "none";
+    panel.innerHTML = "";
+    return;
+  }
+  const step = currentBaseHqOnboardingStep();
+  const room = baseHqRoomById(step.room);
+  const atRoom = __baseHqSelectedRoom === step.room || Math.hypot(__baseHqPlayer.x - room.x, __baseHqPlayer.y - room.y) < Math.max(86, room.w * 0.45);
+  const pct = Math.round(((__baseHqOnboardingStep + (atRoom ? 1 : 0.35)) / BASE_HQ_ONBOARDING_STEPS.length) * 100);
+  panel.style.display = "block";
+  panel.innerHTML = `
+    <div class="baseHqOnboardingTitle">Ivy HQ Tour ${__baseHqOnboardingStep + 1}/${BASE_HQ_ONBOARDING_STEPS.length}: ${baseHqEsc(step.title)}</div>
+    <div class="baseHqOnboardingText">${baseHqEsc(step.text)}<br>${atRoom ? "You are at the right room. Tap Complete Step to continue." : `Follow the green guide line to ${baseHqEsc(room.name)}.`}</div>
+    <div class="baseHqOnboardingProgress"><span style="width:${clamp(pct, 4, 100)}%"></span></div>
+    <div class="baseHqOnboardingActions">
+      <button class="good" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();completeBaseHqOnboardingStep()">${atRoom ? "Complete Step" : "Next Stop"}</button>
+      <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqMoveTowardRoom('${baseHqEsc(step.room)}');renderBaseHQ()">Guide Me</button>
+      <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();skipBaseHqOnboarding()">Skip Tour</button>
+    </div>
+  `;
+}
 function baseHqUpgradeHtml(filterKeys=[]){
   const allow = new Set(filterKeys);
   return STORY_HQ_MODULES
@@ -24057,6 +24142,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       desc:`Base Intel: ${factList[factIndex]} Base HQ is now the main menu. Choose Story, Arcade, Survival, Tutorial, or brief the next operation from here.`,
       actions:[
         ["Start Mission","startMissionFromBaseHQ()"],
+        ["Ivy HQ Tour","resetBaseHqOnboarding()"],
         ["Story Mode","startModeFromBaseHQ('Story')"],
         ["Arcade Mode","startModeFromBaseHQ('Arcade')"],
         ["Survival Mode","startModeFromBaseHQ('Survival')"],
@@ -24149,7 +24235,10 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
   return { room, data:map[room.id] || map.command };
 }
 function baseHqNpcDialogue(npcName){
-  if(npcName === "Ivy") return baseHqIvyGuidance();
+  if(npcName === "Ivy"){
+    if(!baseHqOnboardingCompleted()) return "Welcome to Base HQ. I can walk you through the important rooms first, then you can deploy when you feel ready.";
+    return baseHqIvyGuidance();
+  }
   const lines = BASE_HQ_DIALOGUES[npcName] || Object.freeze(["I am still setting up this desk, Commander. Check another room for more intel."]);
   const idx = Math.abs(Math.floor(Number(__baseHqDialogIndex || 0))) % lines.length;
   return lines[idx];
@@ -24265,6 +24354,7 @@ function renderBaseHqQuickBar(){
   bar.style.display = "grid";
   bar.innerHTML = `
     <div class="baseHqQuickHint">${baseHqEsc(baseHqIvyGuidance())} • Active: ${baseHqEsc(snap.label)}</div>
+    ${button("HQ Tour", "resetBaseHqOnboarding()", "utility")}
     ${button("Story", "startModeFromBaseHQ('Story')", "primary")}
     ${button("Arcade", "startModeFromBaseHQ('Arcade')", "primary")}
     ${button("Survival", "startModeFromBaseHQ('Survival')", "primary")}
@@ -24306,6 +24396,7 @@ function renderBaseHQ(){
   if(upgrades) upgrades.innerHTML = data.upgrades?.length ? baseHqUpgradeHtml(data.upgrades) : "";
   renderBaseHqWorldHud();
   renderBaseHqQuickBar();
+  renderBaseHqOnboarding();
 }
 function selectBaseHqRoom(roomId, movePlayer=false){
   const room = baseHqRoomById(roomId);
@@ -24478,6 +24569,85 @@ function drawBaseHqPurposePill(room, now){
   ctx.fillText(short, room.x, y);
   ctx.restore();
 }
+function drawBaseHqRoomProp(room, now){
+  if(!room) return;
+  const cx = room.x;
+  const cy = room.y + 2;
+  ctx.save();
+  ctx.globalAlpha = 0.82;
+  ctx.strokeStyle = "rgba(226,232,240,.72)";
+  ctx.fillStyle = "rgba(15,23,42,.72)";
+  ctx.lineWidth = 2;
+  const accent = room.color || "#60a5fa";
+  const drawScreen = (x, y, w=42, h=24)=>{
+    ctx.fillStyle = "rgba(2,6,23,.78)";
+    roundedRectFill(x - w/2, y - h/2, w, h, 5);
+    ctx.strokeStyle = accent;
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = 0.34;
+    roundedRectFill(x - w/2 + 5, y - h/2 + 5, w - 10, h - 10, 3);
+    ctx.globalAlpha = 0.82;
+  };
+  if(room.id === "command" || room.id === "mission"){
+    drawScreen(cx - 45, cy + 20, 46, 24);
+    drawScreen(cx + 45, cy + 20, 46, 24);
+    ctx.strokeStyle = accent;
+    ctx.beginPath(); ctx.arc(cx, cy + 16, 24 + Math.sin(now/260) * 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(cx, cy + 16, 5, 0, Math.PI * 2); ctx.fill();
+  }else if(room.id === "armory"){
+    ctx.strokeStyle = accent;
+    for(let i=-1;i<=1;i++){
+      ctx.beginPath(); ctx.moveTo(cx - 36 + i*26, cy + 24); ctx.lineTo(cx - 18 + i*26, cy + 2); ctx.stroke();
+      ctx.fillStyle = "rgba(226,232,240,.82)"; roundedRectFill(cx - 22 + i*26, cy, 9, 20, 3);
+    }
+  }else if(room.id === "medbay"){
+    ctx.fillStyle = "rgba(187,247,208,.22)";
+    roundedRectFill(cx - 36, cy + 10, 72, 28, 9);
+    ctx.fillStyle = "#bbf7d0";
+    roundedRectFill(cx - 6, cy - 3, 12, 38, 3);
+    roundedRectFill(cx - 19, cy + 10, 38, 12, 3);
+  }else if(room.id === "intel" || room.id === "weather" || room.id === "research"){
+    drawScreen(cx, cy + 12, 62, 34);
+    ctx.strokeStyle = accent;
+    ctx.beginPath(); ctx.arc(cx, cy + 12, 18, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy + 12); ctx.lineTo(cx + Math.cos(now/400) * 18, cy + 12 + Math.sin(now/400) * 18); ctx.stroke();
+  }else if(room.id === "pens"){
+    ctx.strokeStyle = accent;
+    for(let i=0;i<4;i++){
+      ctx.beginPath(); ctx.moveTo(cx - 42 + i*28, cy - 6); ctx.lineTo(cx - 42 + i*28, cy + 36); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(cx, cy + 16, 20, 0, Math.PI * 2); ctx.stroke();
+  }else if(room.id === "trophy"){
+    ctx.fillStyle = "#facc15";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 6);
+    for(let i=0;i<10;i++){
+      const a = -Math.PI/2 + i * Math.PI/5;
+      const r = i % 2 ? 9 : 19;
+      ctx.lineTo(cx + Math.cos(a) * r, cy + 13 + Math.sin(a) * r);
+    }
+    ctx.closePath(); ctx.fill();
+  }else if(room.id === "specialists" || room.id === "training"){
+    ctx.strokeStyle = accent;
+    ctx.beginPath(); ctx.arc(cx - 22, cy + 18, 13, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 22, cy + 18, 13, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - 9, cy + 18); ctx.lineTo(cx + 9, cy + 18); ctx.stroke();
+  }else if(room.id === "forge"){
+    ctx.fillStyle = "rgba(249,115,22,.52)";
+    roundedRectFill(cx - 27, cy + 2, 54, 28, 8);
+    ctx.fillStyle = "#fed7aa";
+    ctx.beginPath(); ctx.arc(cx, cy + 14, 9 + Math.sin(now/170) * 2, 0, Math.PI * 2); ctx.fill();
+  }else if(room.id === "vehicle"){
+    ctx.fillStyle = "rgba(96,165,250,.5)";
+    roundedRectFill(cx - 38, cy + 9, 76, 22, 8);
+    ctx.fillStyle = "#dbeafe";
+    ctx.beginPath(); ctx.arc(cx - 22, cy + 31, 6, 0, Math.PI * 2); ctx.arc(cx + 22, cy + 31, 6, 0, Math.PI * 2); ctx.fill();
+  }else{
+    drawScreen(cx, cy + 14, 46, 26);
+  }
+  ctx.restore();
+}
 function drawBaseHqRoom(room, now){
   const active = room.id === __baseHqSelectedRoom;
   const pulse = active ? 0.5 + Math.sin(now / 240) * 0.18 : 0;
@@ -24508,6 +24678,7 @@ function drawBaseHqRoom(room, now){
   ctx.fillStyle = room.color || "#60a5fa";
   roundedRectFill(room.x - room.w/2 + 8, room.y - room.h/2 + 8, room.w - 16, 12, 8);
   ctx.globalAlpha = 1;
+  drawBaseHqRoomProp(room, now);
   ctx.fillStyle = "#f8fafc";
   ctx.font = "1000 15px system-ui, sans-serif";
   ctx.textAlign = "center";
@@ -24519,6 +24690,44 @@ function drawBaseHqRoom(room, now){
   ctx.fillText(room.sub, room.x, room.y + 22);
   ctx.restore();
   drawBaseHqPurposePill(room, now);
+}
+function drawBaseHqOnboardingGuide(now){
+  if(!__baseHqOnboardingActive) return;
+  const step = currentBaseHqOnboardingStep();
+  const room = baseHqRoomById(step.room);
+  if(!room) return;
+  const pulse = 0.5 + Math.sin(now / 180) * 0.2;
+  ctx.save();
+  ctx.strokeStyle = `rgba(74,222,128,${0.58 + pulse * 0.22})`;
+  ctx.fillStyle = `rgba(74,222,128,${0.18 + pulse * 0.18})`;
+  ctx.lineWidth = 4;
+  ctx.setLineDash([14, 10]);
+  ctx.beginPath();
+  ctx.moveTo(__baseHqPlayer.x, __baseHqPlayer.y - 30);
+  ctx.lineTo(room.x, room.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineWidth = 3;
+  roundedRectFill(room.x - room.w/2 - 10, room.y - room.h/2 - 10, room.w + 20, room.h + 20, 24);
+  ctx.strokeStyle = "rgba(187,247,208,.95)";
+  ctx.stroke();
+  const dx = room.x - __baseHqPlayer.x;
+  const dy = room.y - __baseHqPlayer.y;
+  const angle = Math.atan2(dy, dx);
+  const ax = __baseHqPlayer.x + Math.cos(angle) * 74;
+  const ay = __baseHqPlayer.y + Math.sin(angle) * 74;
+  ctx.translate(ax, ay);
+  ctx.rotate(angle);
+  ctx.fillStyle = "rgba(187,247,208,.95)";
+  ctx.beginPath();
+  ctx.moveTo(16, 0);
+  ctx.lineTo(-8, -9);
+  ctx.lineTo(-4, 0);
+  ctx.lineTo(-8, 9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  drawBaseHqLabel(`Tour: ${step.title}`, room.x, room.y - room.h/2 - 24, "rgba(220,252,231,.98)");
 }
 function drawBaseHqAmbientActor(actor, now){
   if(!actor?.from || !actor?.to) return;
@@ -24816,6 +25025,7 @@ function drawBaseHQScene(now=Date.now()){
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.restore();
+  drawBaseHqOnboardingGuide(now);
   for(const room of BASE_HQ_ROOMS) drawBaseHqRoom(room, now);
   drawBaseHqTigerPen(now);
   ctx.save();
@@ -24853,6 +25063,7 @@ function leaveBaseHqView({ restoreMenu=true }={}){
   __baseHqActive = false;
   hideBaseHqHud();
   renderBaseHqQuickBar();
+  renderBaseHqOnboarding();
   document.body?.classList?.remove("baseHqActive");
   if(restoreMenu) applyMobileMenuState(__mobileMenuHiddenPref);
   const overlay = document.getElementById("baseHqOverlay");
@@ -24872,6 +25083,13 @@ function openBaseHQ(opts={}){
   baseHqClampPlayer();
   __baseHqSelectedRoom = baseHqNearestRoom().id;
   __baseHqLastRoomId = __baseHqSelectedRoom;
+  if(!baseHqOnboardingCompleted()){
+    __baseHqOnboardingActive = true;
+    __baseHqOnboardingStep = clamp(Number(__baseHqOnboardingStep || 0), 0, BASE_HQ_ONBOARDING_STEPS.length - 1);
+    const step = currentBaseHqOnboardingStep();
+    __baseHqSelectedRoom = step.room;
+    __baseHqLastRoomId = step.room;
+  }
   showBaseHqHud(7800);
   setPaused(true, "base-hq");
   const overlay = document.getElementById("baseHqOverlay");
@@ -24880,7 +25098,7 @@ function openBaseHQ(opts={}){
   updateHUD();
   renderCombatControls();
   syncGamepadFocus();
-  toast(baseHqIvyGuidance());
+  toast(__baseHqOnboardingActive ? "Ivy: Follow the HQ tour to learn the main rooms." : baseHqIvyGuidance());
   sfx("ui");
 }
 function openBaseHQFromLaunchIntro(){
@@ -44567,6 +44785,10 @@ window.openMissionBriefFromBaseHQ = openMissionBriefFromBaseHQ;
 window.startMissionFromBaseHQ = startMissionFromBaseHQ;
 window.startModeFromBaseHQ = startModeFromBaseHQ;
 window.startTutorialFromBaseHQ = startTutorialFromBaseHQ;
+window.startBaseHqOnboarding = startBaseHqOnboarding;
+window.completeBaseHqOnboardingStep = completeBaseHqOnboardingStep;
+window.skipBaseHqOnboarding = skipBaseHqOnboarding;
+window.resetBaseHqOnboarding = resetBaseHqOnboarding;
 window.openBaseHqHomeFromStartup = openBaseHqHomeFromStartup;
 window.buyBaseHqUpgrade = buyBaseHqUpgrade;
 window.openInventory = openInventory;
