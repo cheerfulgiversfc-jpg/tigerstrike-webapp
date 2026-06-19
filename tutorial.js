@@ -474,8 +474,8 @@
       {
         key:"modes",
         title:"Game Modes + Progress",
-        text:"Story, Arcade, and Survival keep separate money, inventory, achievements, pass progress, and mission statistics. Mission results only count the current attempt.",
-        hint:"Choose the mode that matches how you want to play. Tap Next.",
+        text:"Base HQ is your main menu now. Start Story, Arcade, Survival, Tutorial, Shop, Inventory, and Mission Briefing from the HQ Mission Gate. Story, Arcade, and Survival keep separate money, inventory, achievements, pass progress, and mission statistics.",
+        hint:"Return to Base HQ after the tutorial and choose your next mode from the Mission Gate. Tap Next.",
         arrow:null,
         canNext: () => true
       },
@@ -731,7 +731,8 @@
     if(openModePicker){
       setTimeout(() => {
         try{
-          if(typeof window.openModeOverlay === "function") window.openModeOverlay();
+          if(typeof window.openBaseHQ === "function") window.openBaseHQ({ fromTutorial:true, home:true });
+          else if(typeof window.openModeOverlay === "function") window.openModeOverlay();
           else if(typeof window.openMode === "function") window.openMode();
         }catch(e){}
       }, 60);

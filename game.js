@@ -22178,6 +22178,15 @@ function continueFromLaunchIntro(allowStoryIntro=true){
   if(maybeShowPendingDailyReward(()=>continueAfterLaunchIntro(allowStoryIntro))) return;
   continueAfterLaunchIntro(allowStoryIntro);
 }
+function openBaseHqHomeFromStartup(){
+  if(window.__TUTORIAL_MODE__) return;
+  const launchOverlay = document.getElementById("launchIntroOverlay");
+  if(launchOverlay) launchOverlay.style.display = "none";
+  clearLaunchMusicLoop();
+  clearLaunchIntroAutoTimer();
+  if(maybeShowPendingDailyReward(()=>openBaseHQ({ fromLaunch:true, home:true }))) return;
+  openBaseHQ({ fromLaunch:true, home:true });
+}
 const STORY_CAMPAIGN_CAST = Object.freeze([
   { key:"commanderVale", name:"Commander Vale", role:"Operations Commander", icon:"🎖️" },
   { key:"drMira", name:"Dr. Mira Sen", role:"Tiger Behavior Scientist", icon:"🧬" },
@@ -22398,40 +22407,15 @@ function openStoryCampaignJournal(){
 function openLaunchIntro(force=false){
   if(window.__TUTORIAL_MODE__) return;
   if(!force && __launchIntroShownThisBoot) return;
-  const overlay = document.getElementById("launchIntroOverlay");
-  if(!overlay){
-    // Fallback to existing flow if launch overlay is unavailable.
-    continueFromLaunchIntro(true);
-    return;
-  }
   __launchIntroShownThisBoot = true;
-  clearLaunchIntroAutoTimer();
-  clearStoryIntroAutoTimer();
-  clearMissionBriefTimer();
-  closeMissionBrief(true);
-  const storyOverlay = document.getElementById("storyIntroOverlay");
-  if(storyOverlay) storyOverlay.style.display = "none";
-  const dailyOverlay = document.getElementById("dailyRewardOverlay");
-  if(dailyOverlay) dailyOverlay.style.display = "none";
-  __dailyRewardContinue = null;
-  bindLaunchIntroAudioGesture();
-  refreshLaunchIntroStatus();
-  requestGameplayCloudSync("launch-intro", { force:true });
-  setPaused(true,"launch-intro");
-  overlay.style.display = "flex";
-  clearLaunchMusicLoop();
-  playLaunchTheme(false);
-  startLaunchMusicLoop(false);
-  __launchIntroAutoTimer = setTimeout(()=>{
-    beginFromLaunchIntro({ auto:true });
-  }, INTRO_LAUNCH_MS);
-  syncGamepadFocus();
+  requestGameplayCloudSync("base-hq-home", { force:true });
+  openBaseHqHomeFromStartup();
 }
 function beginFromLaunchIntro(){
   clearLaunchIntroAutoTimer();
   const overlay = document.getElementById("launchIntroOverlay");
   if(overlay) overlay.style.display = "none";
-  continueFromLaunchIntro(true);
+  openBaseHqHomeFromStartup();
 }
 function startQuickTutorialFromLaunchIntro(){
   clearLaunchMusicLoop();
@@ -22486,7 +22470,7 @@ function skipLaunchIntro(){
   clearLaunchIntroAutoTimer();
   const overlay = document.getElementById("launchIntroOverlay");
   if(overlay) overlay.style.display = "none";
-  continueFromLaunchIntro(false);
+  openBaseHqHomeFromStartup();
 }
 function openStoryIntro(force=false){
   if(S.mode!=="Story" || window.__TUTORIAL_MODE__) return;
@@ -23936,8 +23920,14 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
     },
     mission:{
       title:"Mission Gate",
-      desc:`Base Intel: ${factList[factIndex]} Next operation: ${nextMissionLabel()}.`,
-      actions:[["Deploy","startMissionFromBaseHQ()"]],
+      desc:`Base Intel: ${factList[factIndex]} Base HQ is now the main menu. Choose Story, Arcade, Survival, Tutorial, or brief the next operation from here.`,
+      actions:[
+        ["Story Mode","startModeFromBaseHQ('Story')"],
+        ["Arcade Mode","startModeFromBaseHQ('Arcade')"],
+        ["Survival Mode","startModeFromBaseHQ('Survival')"],
+        ["Mission Briefing","openMissionBriefFromBaseHQ()"],
+        ["Tutorial","startTutorialFromBaseHQ()"]
+      ],
       upgrades:[],
     },
     forge:{
@@ -24074,7 +24064,7 @@ function renderBaseHqWorldHud(){
         <div class="baseHqWorldTitle">${baseHqEsc(room.icon)} ${baseHqEsc(data.title || room.name)}</div>
         <div class="baseHqWorldSub">${baseHqEsc(baseHqRoomStatusLine(room.id))}</div>
       </div>
-      <button class="ghost baseHqExitBtn" type="button" onpointerdown="event.stopPropagation();closeBaseHQ()" onclick="event.stopPropagation();closeBaseHQ()">Exit HQ</button>
+      <button class="ghost baseHqExitBtn" type="button" onpointerdown="event.stopPropagation();hideBaseHqHud()" onclick="event.stopPropagation();hideBaseHqHud()">Hide Info</button>
     </div>
     <div class="baseHqWorldDesc">${baseHqEsc(data.desc || "Walk around Base HQ and interact with rooms.")}</div>
     ${npcText}
@@ -24486,7 +24476,7 @@ function drawBaseHqCameraHint(cam){
   ctx.font = "900 12px system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText(`Base HQ Phase 2.5`, 24, 27);
+  ctx.fillText(`Base HQ Main Menu`, 24, 27);
   ctx.globalAlpha = 0.52;
   ctx.fillStyle = "rgba(125,211,252,.92)";
   const miniW = 96;
@@ -24634,10 +24624,28 @@ function openBaseHQFromLaunchIntro(){
   openBaseHQ({ fromLaunch:true });
 }
 function closeBaseHQ(){
+  if(!__baseHqActive){
+    openBaseHQ({ home:true });
+    return;
+  }
+  hideBaseHqHud();
+  toast("Base HQ is the main menu. Choose Story, Arcade, Survival, Tutorial, Shop, or Inventory from HQ.");
+  syncGamepadFocus();
+}
+function startModeFromBaseHQ(mode="Story"){
+  const nextMode = normalizeModeName(mode);
   leaveBaseHqView({ restoreMenu:true });
   resetTouchStick();
-  renderCombatControls();
-  showLaunchMainMenuFromBaseHQ();
+  setMode(nextMode);
+  toast(`${nextMode} selected from Base HQ.`);
+  syncGamepadFocus();
+}
+function startTutorialFromBaseHQ(){
+  leaveBaseHqView({ restoreMenu:true });
+  resetTouchStick();
+  setPaused(false, null);
+  closeMissionBrief(true);
+  window.startTutorial?.();
   syncGamepadFocus();
 }
 function openShopFromBaseHQ(tab="bundles"){
@@ -44294,6 +44302,9 @@ window.openModeFromBaseHQ = openModeFromBaseHQ;
 window.openStoryFromBaseHQ = openStoryFromBaseHQ;
 window.openMissionBriefFromBaseHQ = openMissionBriefFromBaseHQ;
 window.startMissionFromBaseHQ = startMissionFromBaseHQ;
+window.startModeFromBaseHQ = startModeFromBaseHQ;
+window.startTutorialFromBaseHQ = startTutorialFromBaseHQ;
+window.openBaseHqHomeFromStartup = openBaseHqHomeFromStartup;
 window.buyBaseHqUpgrade = buyBaseHqUpgrade;
 window.openInventory = openInventory;
 window.closeInventory = closeInventory;
