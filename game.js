@@ -23517,6 +23517,10 @@ function closeShop(){
     }
   }
   __returnToMissionBriefAfterShop = false;
+  if(__returnToBaseHqAfterOverlay && !S.inBattle){
+    returnToBaseHqFromOverlay();
+    return;
+  }
   if(S.missionEnded){
     setPaused(true,"complete");
     renderCompleteRecapCard();
@@ -23546,8 +23550,12 @@ function openInventory(){
     sfx("ui");
   }
 }
-function closeInventory(){
+function closeInventory(opts={}){
   document.getElementById("invOverlay").style.display="none";
+  if(__returnToBaseHqAfterOverlay && !opts.skipBaseHqReturn){
+    returnToBaseHqFromOverlay();
+    return;
+  }
   if(S.missionEnded){
     setPaused(true,"complete");
     renderCompleteRecapCard();
@@ -23557,7 +23565,9 @@ function closeInventory(){
   setPaused(false,null);
 }
 function openShopFromInventory(tab="ammo"){
-  closeInventory();
+  const shouldReturnToHq = !!__returnToBaseHqAfterOverlay;
+  closeInventory({ skipBaseHqReturn:true });
+  if(shouldReturnToHq) __returnToBaseHqAfterOverlay = true;
   openShop();
   if(document.getElementById("shopOverlay").style.display === "flex"){
     shopTab(tab);
@@ -23600,6 +23610,33 @@ const BASE_HQ_ROOM_PURPOSES = Object.freeze({
   training:"Practice combat feedback, tiger attacks, and movement timing.",
   research:"Study tiger behavior, ecosystems, clues, and mutations.",
 });
+const BASE_HQ_ROOM_UNLOCKS = Object.freeze({
+  mission:1,
+  command:1,
+  armory:1,
+  medbay:1,
+  intel:3,
+  specialists:15,
+  contracts:10,
+  weather:12,
+  forge:18,
+  trophy:20,
+  pens:22,
+  settlement:28,
+  cinema:30,
+  vehicle:35,
+  training:8,
+  research:24,
+});
+const BASE_HQ_DAILY_NEWS = Object.freeze([
+  "HQ Update: Base HQ is now the main menu. Start every major mode from the Mission Gate.",
+  "Field Tip: If Shop or Inventory opens from HQ, Resume now returns to HQ instead of dropping into gameplay.",
+  "Intel Flash: Weather, scan clues, and tiger tracks are connected. Bad weather makes investigation more valuable.",
+  "Squad Note: Soldiers are strongest when assigned roles before combat, not after a tiger is already pouncing.",
+  "Evac Advisory: Real evacuation routes can use boats, helicopters, convoys, or street exits depending on the mission.",
+  "Keeper Report: Captures feed the Trophy Hall, Tiger Pens, research systems, and long-term prestige goals.",
+  "Armory Bulletin: Strong ammo should be spent first, and your chosen gun should stay under your control.",
+]);
 const BASE_HQ_AMBIENT_ACTORS = Object.freeze([
   Object.freeze({ name:"Courier", role:"Supply Runner", color:"#38bdf8", from:[178,616], to:[1110,616], speed:0.000050, phase:0.12 }),
   Object.freeze({ name:"Medic", role:"Triage Tech", color:"#22c55e", from:[972,292], to:[1078,292], speed:0.000072, phase:0.42 }),
@@ -23713,47 +23750,65 @@ const BASE_HQ_DIALOGUES = Object.freeze({
   "Ivy":Object.freeze([
     "Welcome back. The safest rhythm is brief first, stock up second, then deploy only when your route and extraction make sense.",
     "If a system feels confusing, walk to its desk. HQ conversations explain the game without forcing you into another menu.",
-    "The big secret is patience: scan before you sprint, protect civilians before chasing score, and keep an exit route in mind."
+    "The big secret is patience: scan before you sprint, protect civilians before chasing score, and keep an exit route in mind.",
+    "If you are new, start with the HQ Tour. It shows where to brief, buy gear, manage soldiers, and view trophies.",
+    "Think of this base like your camp between emergencies. If something unlocks, there is probably a room here that explains it."
   ]),
   "Mira":Object.freeze([
     "Commander, scans are not just a button anymore. They are a breadcrumb system: use them when weather makes tracks unreliable.",
     "If a Stalker misleads you, compare clues. Fresh blood, broken brush, and repeated paw direction usually tell the truth.",
-    "The Director watches pressure. If civilians are safe and tigers are controlled, it backs off instead of flooding the map forever."
+    "The Director watches pressure. If civilians are safe and tigers are controlled, it backs off instead of flooding the map forever.",
+    "Read the briefing before big missions. The threat rating is not decoration; it tells you what kind of mistake will hurt most.",
+    "If the map feels chaotic, find the objective first. Tigers are dangerous, but unclear priorities are worse."
   ]),
   "Vale":Object.freeze([
     "Do not treat squad commands like decoration. Formation changes decide who escorts, who flanks, and who holds danger away from civilians.",
     "Downed specialists should feel expensive because they are persistent teammates, not disposable extra lives.",
-    "If a soldier feels too brave near an Alpha, pull them back. Alpha pressure is designed to punish sloppy positioning."
+    "If a soldier feels too brave near an Alpha, pull them back. Alpha pressure is designed to punish sloppy positioning.",
+    "Attackers should never steal rescue work from rescuers. Give each soldier a job before the fight breaks open.",
+    "If a specialist is down, revive with intention. Bringing them back without gear just gives the tiger another target."
   ]),
   "Doc Reyes":Object.freeze([
     "Panicked civilians need a clean path more than speed. If they loop, the route needs space and the safe zone needs immediate credit.",
     "Injured civilians should be protected first. They are slower, louder, and more likely to draw tiger attention.",
-    "Perfect rescue bonuses are meant to feel earned, not automatic. Civilian feedback should tell you exactly who made it out."
+    "Perfect rescue bonuses are meant to feel earned, not automatic. Civilian feedback should tell you exactly who made it out.",
+    "When civilians board an evac route, protect the boarding area. A tiger near the zone can turn a clean rescue into a panic chain.",
+    "Medkits are not only for survival. They buy time, and time is what rescue missions are really testing."
   ]),
   "Armorer Jax":Object.freeze([
     "Heavy ammo should be used first when available. If the gun falls back to weaker ammo, it should be because the strong stock is empty.",
     "A build is a promise. If you choose a shotgun, the game should not sneak you back to the 9mm after death or capture.",
-    "Attachments should always have a tradeoff. If everything is only better, the shop becomes math instead of strategy."
+    "Attachments should always have a tradeoff. If everything is only better, the shop becomes math instead of strategy.",
+    "Capture gear is safest when paired with a real backup plan. Tigers do not politely wait for reloads.",
+    "Before a boss mission, check ammo families. Strong rounds, tranq stock, armor, and repairs all matter differently."
   ]),
   "Keeper Ana":Object.freeze([
     "A captured tiger is not just a number. Pens should eventually show what you captured: scars, mutations, and Nemesis history.",
     "Mutated tigers need readable tells. Camouflage, venom, armored hide, and rage should be scary but fair.",
-    "The ecosystem works best when tigers have reasons: dens, prey, territory, pack behavior, and memory."
+    "The ecosystem works best when tigers have reasons: dens, prey, territory, pack behavior, and memory.",
+    "Captures support research. Kills may save the moment, but captures build the long game.",
+    "If a Nemesis escapes, treat the next trail like a warning. Named tigers remember pressure better than standard ones."
   ]),
   "Rook":Object.freeze([
     "Evac should feel like leaving a dangerous city. Boats need docks, helicopters need landing zones, and convoys need roads.",
     "Boarding should pause if a tiger is too close. That warning creates the rescue drama players remember.",
-    "Vehicles will make more sense once expanded maps have roads, rivers, bridges, and wide routes."
+    "Vehicles will make more sense once expanded maps have roads, rivers, bridges, and wide routes.",
+    "A blocked road is not just decoration. It should change where civilians run and how you defend them.",
+    "When the extraction type changes, your gear plan should change too. Boats, convoys, and helicopters fail in different ways."
   ]),
   "Nova":Object.freeze([
     "Cosmetics are safest when they show achievement without selling power. Let players look legendary without breaking balance.",
     "Seasonal forge sets can make old missions worth replaying if materials drop from bosses, events, and perfect rescues.",
-    "Trails and weapon effects should be readable. Style is good, but it cannot hide tigers, civilians, or danger markers."
+    "Trails and weapon effects should be readable. Style is good, but it cannot hide tigers, civilians, or danger markers.",
+    "The best cosmetic is a story receipt: proof that you captured something rare or survived something ugly.",
+    "If a trail effect makes combat harder to read, it belongs in the scrap bin, no matter how pretty it is."
   ]),
   "Sage":Object.freeze([
     "Weather should change decisions, not just tint the screen. Fog should affect visibility, storms should affect routes, and rain should affect tracks.",
     "Night missions need stronger telegraphs. If players cannot see, the game must communicate danger through sound, rings, and silhouettes.",
-    "Track decay gives investigation urgency. Wait too long in rain or dust and the trail should become less reliable."
+    "Track decay gives investigation urgency. Wait too long in rain or dust and the trail should become less reliable.",
+    "If visibility drops, slow down. The tiger is not gone just because the map stopped showing you the whole truth.",
+    "Weather is a promise to the player: it must change movement, senses, tracks, or route safety, not only the background color."
   ]),
 });
 let __baseHqActive = false;
@@ -23769,6 +23824,8 @@ let __baseHqDialogIndex = 0;
 let __baseHqPendingHudRoom = "";
 let __baseHqOnboardingActive = false;
 let __baseHqOnboardingStep = 0;
+let __returnToBaseHqAfterOverlay = false;
+let __baseHqReturnRoom = "mission";
 
 function baseHqRoomById(id){
   return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
@@ -23841,6 +23898,49 @@ function baseHqNpcAt(x, y){
     }
   }
   return bestD <= 38 ? best : null;
+}
+function baseHqAmbientActorPosition(actor, now=Date.now()){
+  if(!actor?.from || !actor?.to) return null;
+  const speed = Number(actor.speed || 0.00005);
+  const phase = Number(actor.phase || 0);
+  const wave = (Math.sin((now * speed + phase) * Math.PI * 2) + 1) / 2;
+  return {
+    x: actor.from[0] + (actor.to[0] - actor.from[0]) * wave,
+    y: actor.from[1] + (actor.to[1] - actor.from[1]) * wave,
+    actor
+  };
+}
+function baseHqAmbientActorAt(x, y){
+  let best = null;
+  let bestD = Infinity;
+  const now = Date.now();
+  for(const actor of BASE_HQ_AMBIENT_ACTORS){
+    const pos = baseHqAmbientActorPosition(actor, now);
+    if(!pos) continue;
+    const d = Math.hypot(pos.x - Number(x || 0), pos.y - Number(y || 0));
+    if(d < bestD){
+      bestD = d;
+      best = actor;
+    }
+  }
+  return bestD <= 34 ? best : null;
+}
+function baseHqAmbientActorLine(actor){
+  const role = String(actor?.role || actor?.name || "HQ Crew");
+  if(/Supply/i.test(role)) return "Supplies move through HQ before every deployment. Shop bundles and room stock are connected to this prep loop.";
+  if(/Triage|Medic/i.test(role)) return "Medbay support keeps rescue runs alive. Bring medkits and armor before civilian-heavy missions.";
+  if(/Intel|Scout/i.test(role)) return "Intel runners track scan clues, weather, and tiger pressure so briefing data stays useful.";
+  if(/Bay|Mechanic/i.test(role)) return "Vehicle crews prep boat, helicopter, convoy, and street extraction routes before missions.";
+  if(/Keeper|Pen/i.test(role)) return "Pen crews log captures, mutations, trophies, and Nemesis records for the showcase.";
+  return "HQ crew keeps the base running. Walk to rooms or use quick actions to inspect active systems.";
+}
+function baseHqTalkToAmbientActor(actor){
+  if(!actor) return false;
+  const line = baseHqAmbientActorLine(actor);
+  showBaseHqHud(4200);
+  toast(`${actor.name || "HQ Crew"}: ${line}`);
+  setEventText(`${actor.role || "HQ Crew"}: ${line}`, 5);
+  return true;
 }
 function baseHqNearestInteractable(){
   const room = baseHqNearestRoom();
@@ -24071,6 +24171,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       desc:`Base Intel: ${factList[factIndex]}`,
       actions:[
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
+        ["HQ News","refreshBaseHqDailyNews()"],
         ["Story Journal","openStoryFromBaseHQ()"],
         ["Mode Select","openModeFromBaseHQ()"]
       ],
@@ -24165,6 +24266,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       title:"Contracts Board",
       desc:`Base Intel: ${factList[factIndex]}`,
       actions:[
+        ["Refresh News","refreshBaseHqDailyNews()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
         ["Story Journal","openStoryFromBaseHQ()"],
         ["Start Mission","startMissionFromBaseHQ()"]
@@ -24306,6 +24408,41 @@ function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
 function baseHqRoomPurposeLine(roomId=__baseHqSelectedRoom){
   return BASE_HQ_ROOM_PURPOSES[roomId] || "Inspect this room for Base HQ guidance and game systems.";
 }
+function baseHqRoomProgress(roomId=__baseHqSelectedRoom){
+  const required = Math.max(1, Math.floor(Number(BASE_HQ_ROOM_UNLOCKS[roomId] || 1)));
+  const level = Math.max(1, Math.floor(Number(S.storyLevel || 1)));
+  const pct = clamp(Math.round((level / required) * 100), 0, 100);
+  return {
+    required,
+    level,
+    pct,
+    unlocked: level >= required,
+    label: level >= required ? "Active" : `Unlocks at Story ${required}`
+  };
+}
+function baseHqDailyNewsItems(){
+  const level = Math.max(1, Math.floor(Number(S.storyLevel || 1)));
+  const offset = Math.floor(Date.now() / 60000) + level + Math.floor(Number(S.stats?.missions || 0));
+  const items = [];
+  for(let i=0;i<3;i++){
+    items.push(BASE_HQ_DAILY_NEWS[(offset + i) % BASE_HQ_DAILY_NEWS.length]);
+  }
+  return items;
+}
+function baseHqDailyNewsHtml(){
+  return `
+    <div class="baseHqMissionPreview">
+      <div class="baseHqMissionPreviewTitle">HQ Daily News / Updates Board</div>
+      <div class="baseHqRecommended">${baseHqDailyNewsItems().map((line)=>`• ${baseHqEsc(line)}`).join("<br>")}</div>
+    </div>
+  `;
+}
+function refreshBaseHqDailyNews(){
+  __baseHqFactOffset = (__baseHqFactOffset + 1) % 99;
+  showBaseHqHud(7200);
+  renderBaseHQ();
+  toast("HQ news board refreshed.");
+}
 function renderBaseHqWorldHud(){
   const hud = document.getElementById("baseHqWorldHud");
   if(!hud) return;
@@ -24321,6 +24458,8 @@ function renderBaseHqWorldHud(){
     : (near.npc ? `<div class="baseHqWorldNpc">Tap ${baseHqEsc(near.npc.name)} or Talk / Inspect for a conversation.</div>` : "");
   const actionHtml = baseHqPanelActionsHtml(data);
   const previewHtml = room.id === "mission" ? baseHqMissionGatePreviewHtml() : "";
+  const newsHtml = (room.id === "contracts" || room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
+  const progress = baseHqRoomProgress(room.id);
   hud.style.display = "block";
   hud.innerHTML = `
     <div class="baseHqWorldTop">
@@ -24332,7 +24471,9 @@ function renderBaseHqWorldHud(){
     </div>
     <div class="baseHqWorldDesc">${baseHqEsc(data.desc || "Walk around Base HQ and interact with rooms.")}</div>
     <div class="baseHqWorldNpc">Room Purpose: ${baseHqEsc(baseHqRoomPurposeLine(room.id))}</div>
+    <div class="baseHqWorldNpc">Room Progress: ${baseHqEsc(progress.label)} • ${progress.pct}% readiness</div>
     ${previewHtml}
+    ${newsHtml}
     ${npcText}
     <div class="baseHqWorldActions">
       <button class="good" type="button" onpointerdown="event.stopPropagation();interactBaseHQ()" onclick="event.stopPropagation();interactBaseHQ()">Talk / Inspect</button>
@@ -24453,6 +24594,13 @@ function baseHqPointerDown(sx, sy){
   const tappedNpc = baseHqNpcAt(pt.x, pt.y);
   if(tappedNpc){
     baseHqStartConversation(tappedNpc);
+    sfx("ui");
+    return true;
+  }
+  const tappedCrew = baseHqAmbientActorAt(pt.x, pt.y);
+  if(tappedCrew){
+    baseHqTalkToAmbientActor(tappedCrew);
+    renderBaseHQ();
     sfx("ui");
     return true;
   }
@@ -24678,6 +24826,11 @@ function drawBaseHqRoom(room, now){
   ctx.fillStyle = room.color || "#60a5fa";
   roundedRectFill(room.x - room.w/2 + 8, room.y - room.h/2 + 8, room.w - 16, 12, 8);
   ctx.globalAlpha = 1;
+  const progress = baseHqRoomProgress(room.id);
+  ctx.fillStyle = "rgba(2,6,23,.72)";
+  roundedRectFill(room.x - room.w/2 + 16, room.y + room.h/2 - 16, room.w - 32, 6, 4);
+  ctx.fillStyle = progress.unlocked ? "rgba(34,197,94,.86)" : "rgba(250,204,21,.78)";
+  roundedRectFill(room.x - room.w/2 + 16, room.y + room.h/2 - 16, (room.w - 32) * (progress.pct / 100), 6, 4);
   drawBaseHqRoomProp(room, now);
   ctx.fillStyle = "#f8fafc";
   ctx.font = "1000 15px system-ui, sans-serif";
@@ -25069,6 +25222,20 @@ function leaveBaseHqView({ restoreMenu=true }={}){
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
 }
+function rememberBaseHqOverlayReturn(roomId=__baseHqSelectedRoom){
+  __returnToBaseHqAfterOverlay = true;
+  __baseHqReturnRoom = baseHqRoomById(roomId)?.id || __baseHqSelectedRoom || "mission";
+}
+function returnToBaseHqFromOverlay(){
+  const roomId = __baseHqReturnRoom || "mission";
+  __returnToBaseHqAfterOverlay = false;
+  __baseHqReturnRoom = roomId;
+  openBaseHQ({ fromOverlay:true });
+  selectBaseHqRoom(roomId, false);
+  showBaseHqHud(5200);
+  toast("Returned to Base HQ.");
+  syncGamepadFocus();
+}
 function openBaseHQ(opts={}){
   if(window.__TUTORIAL_MODE__) return toast("Finish the tutorial first.");
   ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
@@ -25130,12 +25297,14 @@ function startTutorialFromBaseHQ(){
   syncGamepadFocus();
 }
 function openShopFromBaseHQ(tab="bundles"){
-  leaveBaseHqView({ restoreMenu:true });
+  rememberBaseHqOverlayReturn(__baseHqSelectedRoom);
+  leaveBaseHqView({ restoreMenu:false });
   openShop();
   if(document.getElementById("shopOverlay")?.style.display === "flex") shopTab(tab);
 }
 function openInventoryFromBaseHQ(tab=""){
-  leaveBaseHqView({ restoreMenu:true });
+  rememberBaseHqOverlayReturn(__baseHqSelectedRoom);
+  leaveBaseHqView({ restoreMenu:false });
   openInventory();
   if(tab) inventoryTab(tab);
 }
@@ -44789,6 +44958,7 @@ window.startBaseHqOnboarding = startBaseHqOnboarding;
 window.completeBaseHqOnboardingStep = completeBaseHqOnboardingStep;
 window.skipBaseHqOnboarding = skipBaseHqOnboarding;
 window.resetBaseHqOnboarding = resetBaseHqOnboarding;
+window.refreshBaseHqDailyNews = refreshBaseHqDailyNews;
 window.openBaseHqHomeFromStartup = openBaseHqHomeFromStartup;
 window.buyBaseHqUpgrade = buyBaseHqUpgrade;
 window.openInventory = openInventory;
