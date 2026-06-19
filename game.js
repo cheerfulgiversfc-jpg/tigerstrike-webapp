@@ -23599,6 +23599,7 @@ const BASE_HQ_ROOMS = Object.freeze([
   Object.freeze({ id:"research", name:"Research Desk", icon:"RND", sub:"Tiger science", x:1060, y:74, w:142, h:58, color:"#2dd4bf" }),
 ]);
 const BASE_HQ_NPCS = Object.freeze([
+  Object.freeze({ name:"Ivy", role:"Reception", x:640, y:424, room:"mission", style:"reception", line:"Welcome to Base HQ. Walk to any desk, tap a teammate, and inspect the systems you have unlocked." }),
   Object.freeze({ name:"Mira", role:"Intel", x:580, y:168, room:"command", line:"Intel tracks day/night, weather, clues, rival factions, and live mission pressure." }),
   Object.freeze({ name:"Vale", role:"Squad Lead", x:600, y:608, room:"specialists", line:"Specialists now gain personality, remember outcomes, and follow advanced commands." }),
   Object.freeze({ name:"Doc Reyes", role:"Medbay", x:984, y:220, room:"medbay", line:"Rescue systems include civilian personality, panic, injuries, and safe-zone feedback." }),
@@ -23691,6 +23692,11 @@ const BASE_HQ_FACTS = Object.freeze({
   ]),
 });
 const BASE_HQ_DIALOGUES = Object.freeze({
+  "Ivy":Object.freeze([
+    "Welcome back. The safest rhythm is brief first, stock up second, then deploy only when your route and extraction make sense.",
+    "If a system feels confusing, walk to its desk. HQ conversations explain the game without forcing you into another menu.",
+    "The big secret is patience: scan before you sprint, protect civilians before chasing score, and keep an exit route in mind."
+  ]),
   "Mira":Object.freeze([
     "Commander, scans are not just a button anymore. They are a breadcrumb system: use them when weather makes tracks unreliable.",
     "If a Stalker misleads you, compare clues. Fresh blood, broken brush, and repeated paw direction usually tell the truth.",
@@ -23742,6 +23748,7 @@ let __baseHqHudUntil = 0;
 let __baseHqLastRoomId = "";
 let __baseHqDialogNpc = "";
 let __baseHqDialogIndex = 0;
+let __baseHqPendingHudRoom = "";
 
 function baseHqRoomById(id){
   return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
@@ -23788,7 +23795,6 @@ function baseHqMoveTowardRoom(roomId){
   __baseHqSelectedRoom = room.id;
   __baseHqLastRoomId = room.id;
   __baseHqDialogNpc = "";
-  showBaseHqHud(6800);
   __baseHqPlayer.targetX = clamp(room.x, 34, BASE_HQ_WORLD.w - 34);
   __baseHqPlayer.targetY = clamp(room.y + Math.min(52, Math.max(34, room.h * 0.42)), 42, BASE_HQ_WORLD.h - 34);
 }
@@ -23827,6 +23833,12 @@ function showBaseHqHud(ms=6200){
 }
 function hideBaseHqHud(){
   __baseHqHudUntil = 0;
+  const hud = document.getElementById("baseHqWorldHud");
+  if(hud) hud.style.display = "none";
+}
+function dismissBaseHqInfoForMovement(){
+  __baseHqHudUntil = 0;
+  __baseHqDialogNpc = "";
   const hud = document.getElementById("baseHqWorldHud");
   if(hud) hud.style.display = "none";
 }
@@ -23997,6 +24009,28 @@ function baseHqStartConversation(npc){
   renderBaseHQ();
   return true;
 }
+function showLaunchMainMenuFromBaseHQ(){
+  const overlay = document.getElementById("launchIntroOverlay");
+  if(!overlay){
+    setPaused(true, "launch-intro");
+    return;
+  }
+  ["dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = "none";
+  });
+  clearLaunchIntroAutoTimer();
+  clearStoryIntroAutoTimer();
+  clearMissionBriefTimer();
+  closeMissionBrief(true);
+  __dailyRewardContinue = null;
+  __launchIntroShownThisBoot = true;
+  bindLaunchIntroAudioGesture();
+  refreshLaunchIntroStatus();
+  setPaused(true, "launch-intro");
+  overlay.style.display = "flex";
+  syncGamepadFocus();
+}
 function baseHqPanelActionsHtml(data){
   return (data.actions || []).map(([label, fn])=>`<button class="ghost" onclick="${fn}">${baseHqEsc(label)}</button>`).join("");
 }
@@ -24087,14 +24121,19 @@ function selectBaseHqRoom(roomId, movePlayer=false){
   __baseHqSelectedRoom = room.id;
   __baseHqLastRoomId = room.id;
   __baseHqDialogNpc = "";
-  showBaseHqHud(6800);
   if(movePlayer){
+    __baseHqPendingHudRoom = room.id;
+    dismissBaseHqInfoForMovement();
     baseHqMoveTowardRoom(room.id);
+  }else{
+    showBaseHqHud(6800);
   }
   renderBaseHQ();
   sfx("ui");
 }
 function moveBaseHQ(dx=0, dy=0){
+  dismissBaseHqInfoForMovement();
+  __baseHqPendingHudRoom = "";
   __baseHqPlayer.x += Number(dx || 0) * 5;
   __baseHqPlayer.y += Number(dy || 0) * 5;
   __baseHqPlayer.targetX = __baseHqPlayer.x;
@@ -24115,6 +24154,8 @@ function baseHqStageTap(ev){
   const sx = ((ev.clientX - rect.left) / rect.width) * (cv?.width || 960);
   const sy = ((ev.clientY - rect.top) / rect.height) * (cv?.height || 540);
   const pt = baseHqScreenToWorld(sx, sy);
+  dismissBaseHqInfoForMovement();
+  __baseHqPendingHudRoom = "";
   __baseHqPlayer.targetX = clamp(pt.x, 34, BASE_HQ_WORLD.w - 34);
   __baseHqPlayer.targetY = clamp(pt.y, 42, BASE_HQ_WORLD.h - 34);
   __baseHqSelectedRoom = baseHqNearestRoom().id;
@@ -24136,6 +24177,8 @@ function baseHqPointerDown(sx, sy){
   for(const room of BASE_HQ_ROOMS){
     const inside = pt.x >= room.x - room.w/2 && pt.x <= room.x + room.w/2 && pt.y >= room.y - room.h/2 && pt.y <= room.y + room.h/2;
     if(inside){
+      __baseHqPendingHudRoom = room.id;
+      dismissBaseHqInfoForMovement();
       baseHqMoveTowardRoom(room.id);
       renderBaseHQ();
       sfx("ui");
@@ -24143,6 +24186,8 @@ function baseHqPointerDown(sx, sy){
     }
   }
   __baseHqDialogNpc = "";
+  dismissBaseHqInfoForMovement();
+  __baseHqPendingHudRoom = "";
   __baseHqPlayer.targetX = clamp(pt.x, 34, BASE_HQ_WORLD.w - 34);
   __baseHqPlayer.targetY = clamp(pt.y, 42, BASE_HQ_WORLD.h - 34);
   __baseHqSelectedRoom = baseHqNearestRoom().id;
@@ -24160,7 +24205,11 @@ function baseHqMoveTick(){
   const dy = ((KEY_STATE.down ? 1 : 0) - (KEY_STATE.up ? 1 : 0)) + TOUCH_STICK.dy + GAMEPAD_STATE.ly;
   const direct = Math.hypot(dx, dy) > 0.045;
   const speed = 3.2 * frameMotionMul();
+  let movingThisTick = false;
   if(direct){
+    dismissBaseHqInfoForMovement();
+    __baseHqPendingHudRoom = "";
+    movingThisTick = true;
     const len = Math.hypot(dx, dy) || 1;
     const ux = dx / len;
     const uy = dy / len;
@@ -24177,11 +24226,18 @@ function baseHqMoveTick(){
     const vy = ty - __baseHqPlayer.y;
     const d = Math.hypot(vx, vy);
     if(d > 4){
+      dismissBaseHqInfoForMovement();
+      movingThisTick = true;
       const step = Math.min(speed * 0.88, d);
       __baseHqPlayer.x += (vx / d) * step;
       __baseHqPlayer.y += (vy / d) * step;
       __baseHqPlayer.face = Math.atan2(vy, vx);
       __baseHqPlayer.step = (__baseHqPlayer.step + 0.18) % (Math.PI * 2);
+    }else if(__baseHqPendingHudRoom){
+      __baseHqSelectedRoom = __baseHqPendingHudRoom;
+      __baseHqLastRoomId = __baseHqPendingHudRoom;
+      __baseHqPendingHudRoom = "";
+      showBaseHqHud(6200);
     }
   }
   baseHqClampPlayer();
@@ -24189,7 +24245,7 @@ function baseHqMoveTick(){
   if(near.room){
     const prevRoom = __baseHqSelectedRoom;
     __baseHqSelectedRoom = near.room.id;
-    if(__baseHqSelectedRoom !== prevRoom && __baseHqSelectedRoom !== __baseHqLastRoomId){
+    if(!movingThisTick && __baseHqSelectedRoom !== prevRoom && __baseHqSelectedRoom !== __baseHqLastRoomId){
       __baseHqLastRoomId = __baseHqSelectedRoom;
       showBaseHqHud(6200);
     }
@@ -24214,7 +24270,11 @@ function drawBaseHqRoom(room, now){
   const active = room.id === __baseHqSelectedRoom;
   const pulse = active ? 0.5 + Math.sin(now / 240) * 0.18 : 0;
   ctx.save();
-  ctx.fillStyle = active ? "rgba(15,23,42,.96)" : "rgba(8,15,28,.92)";
+  const roomGrad = ctx.createLinearGradient(room.x - room.w/2, room.y - room.h/2, room.x + room.w/2, room.y + room.h/2);
+  roomGrad.addColorStop(0, active ? "rgba(18,33,58,.98)" : "rgba(10,21,38,.94)");
+  roomGrad.addColorStop(0.55, active ? "rgba(9,18,34,.97)" : "rgba(6,13,25,.92)");
+  roomGrad.addColorStop(1, active ? "rgba(13,30,47,.97)" : "rgba(5,12,22,.92)");
+  ctx.fillStyle = roomGrad;
   ctx.strokeStyle = active ? "rgba(125,211,252,.98)" : "rgba(71,85,105,.84)";
   ctx.lineWidth = active ? 3 : 1.5;
   ctx.shadowColor = active ? "rgba(56,189,248,.45)" : "rgba(0,0,0,.25)";
@@ -24222,6 +24282,16 @@ function drawBaseHqRoom(room, now){
   roundedRectFill(room.x - room.w/2, room.y - room.h/2, room.w, room.h, 18);
   ctx.stroke();
   ctx.shadowBlur = 0;
+  ctx.globalAlpha = active ? 0.18 : 0.10;
+  ctx.strokeStyle = room.color || "#60a5fa";
+  ctx.lineWidth = 1;
+  for(let yy = room.y - room.h/2 + 26; yy < room.y + room.h/2 - 14; yy += 18){
+    ctx.beginPath();
+    ctx.moveTo(room.x - room.w/2 + 18, yy);
+    ctx.lineTo(room.x + room.w/2 - 18, yy);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
   ctx.globalAlpha = 0.18 + pulse;
   ctx.fillStyle = room.color || "#60a5fa";
   roundedRectFill(room.x - room.w/2 + 8, room.y - room.h/2 + 8, room.w - 16, 12, 8);
@@ -24237,33 +24307,82 @@ function drawBaseHqRoom(room, now){
   ctx.fillText(room.sub, room.x, room.y + 22);
   ctx.restore();
 }
-function drawBaseHqNpc(npc, now){
-  const bob = Math.sin(now / 360 + npc.x) * 1.5;
+function drawBaseHqPersonSprite({ x=0, y=0, step=0, role="", style="", face=0, scale=1, name="" }={}, now=Date.now()){
+  const bob = Math.sin(now / 360 + x) * 1.5;
+  const stride = Math.sin(step || 0) * 2.2;
+  const dir = Math.cos(face || 0) >= 0 ? 1 : -1;
+  const isReception = style === "reception" || role === "Reception";
+  const isMed = role === "Medbay";
+  const isArmory = role === "Armory";
+  const isKeeper = role === "Tiger Pens";
+  const jacket = isReception ? "#0f766e" : (isMed ? "#16a34a" : (isArmory ? "#b45309" : (isKeeper ? "#be123c" : "#1d4ed8")));
+  const vest = isReception ? "#67e8f9" : (isMed ? "#bbf7d0" : (isArmory ? "#fed7aa" : (isKeeper ? "#fecdd3" : "#93c5fd")));
+  const pants = isReception ? "#164e63" : "#111827";
+  const hair = isReception ? "#312e81" : "#1f2937";
   ctx.save();
-  ctx.translate(npc.x, npc.y + bob);
-  ctx.fillStyle = "rgba(0,0,0,.25)";
+  ctx.translate(x, y + bob);
+  ctx.scale(dir * scale, scale);
+  ctx.fillStyle = "rgba(0,0,0,.32)";
   ctx.beginPath();
-  ctx.ellipse(0, 23, 16, 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 24, 18, 7, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = npc.role === "Medbay" ? "#22c55e" : (npc.role === "Armory" ? "#f59e0b" : (npc.role === "Tiger Pens" ? "#fb7185" : "#60a5fa"));
-  roundedRectFill(-10, -4, 20, 28, 8);
-  ctx.fillStyle = "#f8d4b4";
+  ctx.strokeStyle = isReception ? "rgba(103,232,249,.95)" : "rgba(226,232,240,.78)";
+  ctx.lineWidth = isReception ? 3 : 2;
   ctx.beginPath();
-  ctx.arc(0, -14, 10, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(226,232,240,.78)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(0, 4, 20, 0, Math.PI * 2);
+  ctx.arc(0, 1, isReception ? 24 : 20, 0, Math.PI * 2);
   ctx.stroke();
+  ctx.fillStyle = pants;
+  roundedRectFill(-10, 9, 7, 14 + stride * 0.3, 3);
+  roundedRectFill(3, 9, 7, 14 - stride * 0.3, 3);
+  ctx.fillStyle = "#020617";
+  roundedRectFill(-10 + stride * 0.25, 22, 8, 5, 2);
+  roundedRectFill(3 - stride * 0.25, 22, 8, 5, 2);
+  ctx.fillStyle = jacket;
+  roundedRectFill(-12, -13, 24, 27, 8);
+  ctx.fillStyle = vest;
+  roundedRectFill(-8, -8, 16, 17, 6);
+  ctx.fillStyle = isReception ? "#f8fafc" : "rgba(15,23,42,.55)";
+  roundedRectFill(-3, -7, 6, 15, 3);
+  ctx.fillStyle = jacket;
+  roundedRectFill(-16, -10, 5, 16, 3);
+  roundedRectFill(11, -10, 5, 16, 3);
+  ctx.fillStyle = "#f2c7a5";
+  ctx.beginPath();
+  ctx.arc(0, -19, 9.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = hair;
+  if(isReception){
+    ctx.beginPath();
+    ctx.arc(0, -22, 11, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#22d3ee";
+    roundedRectFill(-10, -30, 20, 4, 2);
+    ctx.fillStyle = "#e0f2fe";
+    ctx.font = "900 7px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("HQ", 0, -27);
+  }else{
+    ctx.fillRect(-8, -28, 16, 6);
+  }
+  if(isReception){
+    ctx.fillStyle = "rgba(34,211,238,.9)";
+    ctx.beginPath();
+    ctx.arc(8, -17, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
+}
+function drawBaseHqNpc(npc, now){
+  drawBaseHqPersonSprite({ x:npc.x, y:npc.y, role:npc.role, style:npc.style || "", scale:npc.style === "reception" ? 1.08 : 0.95, name:npc.name }, now);
   drawBaseHqLabel(`${npc.name} • ${npc.role}`, npc.x, npc.y - 38);
 }
 function drawBaseHqCasualPlayer(now){
   const p = __baseHqPlayer;
   const sway = Math.sin(p.step || 0) * 2.5;
+  const dir = Math.cos(p.face || 0) >= 0 ? 1 : -1;
   ctx.save();
   ctx.translate(p.x, p.y);
+  ctx.scale(dir, 1);
   ctx.fillStyle = "rgba(0,0,0,.32)";
   ctx.beginPath();
   ctx.ellipse(0, 26, 18, 7, 0, 0, Math.PI * 2);
@@ -24273,17 +24392,38 @@ function drawBaseHqCasualPlayer(now){
   ctx.beginPath();
   ctx.arc(0, 1, 29 + Math.sin(now / 220) * 2, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.fillStyle = "#1d4ed8";
-  roundedRectFill(-12, -2, 24, 30, 9);
-  ctx.fillStyle = "#0f172a";
-  roundedRectFill(-13, 22, 9, 18 + sway, 5);
-  roundedRectFill(4, 22, 9, 18 - sway, 5);
-  ctx.fillStyle = "#f8d4b4";
+  const palette = seasonSoldierPalette();
+  ctx.fillStyle = palette.pants || "#111827";
+  roundedRectFill(-11, 10, 8, 17 + sway * 0.35, 4);
+  roundedRectFill(3, 10, 8, 17 - sway * 0.35, 4);
+  ctx.fillStyle = palette.boots || "#020617";
+  roundedRectFill(-11 + sway * 0.2, 25, 8, 5, 2);
+  roundedRectFill(3 - sway * 0.2, 25, 8, 5, 2);
+  ctx.fillStyle = palette.armorOuter || "#1d4ed8";
+  roundedRectFill(-12, -16, 24, 30, 8);
+  ctx.fillStyle = palette.armorInner || "#60a5fa";
+  roundedRectFill(-8, -10, 16, 19, 6);
+  ctx.fillStyle = palette.arm || "#1e293b";
+  roundedRectFill(-17, -12, 6, 18, 3);
+  roundedRectFill(11, -12, 6, 18, 3);
+  ctx.fillStyle = palette.helmet || "#334155";
+  ctx.beginPath(); ctx.arc(0, -24, 10, Math.PI, Math.PI*2); ctx.fill();
+  ctx.fillStyle = palette.arm || "#f8d4b4";
   ctx.beginPath();
   ctx.arc(0, -16, 11, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#1f2937";
-  ctx.fillRect(-8, -25, 16, 7);
+  ctx.fillStyle = palette.visor || "#0f172a";
+  roundedRectFill(-7, -23, 14, 4, 2);
+  ctx.strokeStyle = "rgba(15,23,42,.85)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(4, -2);
+  ctx.lineTo(18, 11);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(245,158,11,.95)";
+  ctx.beginPath();
+  ctx.arc(19, 12, 2.5, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = "#e5e7eb";
   ctx.font = "900 10px system-ui, sans-serif";
   ctx.textAlign = "center";
@@ -24299,23 +24439,40 @@ function drawBaseHqTigerPen(now){
   for(let i=0;i<tigerCount;i++){
     const x = startX + i * 38;
     const y = baseY + Math.sin(now / 360 + i) * 2;
+    const s = 0.58 + (i % 2) * 0.06;
     ctx.save();
-    ctx.fillStyle = "#f59e0b";
+    ctx.translate(x, y);
+    ctx.scale(i % 2 ? -s : s, s);
+    ctx.fillStyle = "rgba(0,0,0,.30)";
     ctx.beginPath();
-    ctx.ellipse(x, y, 18, 10, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 15, 26, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = i % 3 === 0 ? "#f59e0b" : (i % 3 === 1 ? "#d97706" : "#eab308");
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 29, 14, -0.08, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "#111827";
-    ctx.lineWidth = 2;
-    for(let s=-10;s<=8;s+=6){
+    ctx.lineWidth = 3;
+    for(let stripe=-19; stripe<=15; stripe+=8){
       ctx.beginPath();
-      ctx.moveTo(x+s, y-9);
-      ctx.lineTo(x+s+4, y+8);
+      ctx.moveTo(stripe, -12);
+      ctx.lineTo(stripe + 5, 10);
       ctx.stroke();
     }
     ctx.fillStyle = "#fbbf24";
     ctx.beginPath();
-    ctx.arc(x+17, y-5, 8, 0, Math.PI*2);
+    ctx.arc(28, -6, 10, 0, Math.PI*2);
     ctx.fill();
+    ctx.fillStyle = "#111827";
+    ctx.beginPath();
+    ctx.arc(31, -8, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#f59e0b";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(-27, -2);
+    ctx.quadraticCurveTo(-43, -19, -50, -4);
+    ctx.stroke();
     ctx.restore();
   }
 }
@@ -24329,7 +24486,7 @@ function drawBaseHqCameraHint(cam){
   ctx.font = "900 12px system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText(`Base HQ Phase 2.4`, 24, 27);
+  ctx.fillText(`Base HQ Phase 2.5`, 24, 27);
   ctx.globalAlpha = 0.52;
   ctx.fillStyle = "rgba(125,211,252,.92)";
   const miniW = 96;
@@ -24383,11 +24540,28 @@ function drawBaseHQScene(now=Date.now()){
   }
   ctx.restore();
   ctx.save();
-  ctx.fillStyle = "rgba(30,41,59,.58)";
+  ctx.fillStyle = "rgba(30,41,59,.62)";
   roundedRectFill(518, 58, 244, 610, 42);
   roundedRectFill(126, 318, 1028, 86, 34);
   roundedRectFill(560, 270, 160, 286, 34);
-  ctx.strokeStyle = "rgba(125,211,252,.18)";
+  ctx.strokeStyle = "rgba(125,211,252,.26)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.globalAlpha = 0.16;
+  ctx.strokeStyle = "rgba(226,232,240,.82)";
+  ctx.setLineDash([16, 12]);
+  for(let y=340; y<=380; y+=20){
+    ctx.beginPath();
+    ctx.moveTo(150, y);
+    ctx.lineTo(1130, y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(14,165,233,.12)";
+  roundedRectFill(466, 202, 348, 72, 28);
+  roundedRectFill(466, 548, 348, 64, 28);
+  ctx.strokeStyle = "rgba(14,165,233,.28)";
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.restore();
@@ -24462,8 +24636,8 @@ function openBaseHQFromLaunchIntro(){
 function closeBaseHQ(){
   leaveBaseHqView({ restoreMenu:true });
   resetTouchStick();
-  setPaused(false, null);
   renderCombatControls();
+  showLaunchMainMenuFromBaseHQ();
   syncGamepadFocus();
 }
 function openShopFromBaseHQ(tab="bundles"){
