@@ -23582,6 +23582,31 @@ const BASE_HQ_ROOMS = Object.freeze([
   Object.freeze({ id:"training", name:"Training Mat", icon:"TRN", sub:"Combat feel", x:640, y:486, w:150, h:64, color:"#14b8a6" }),
   Object.freeze({ id:"research", name:"Research Desk", icon:"RND", sub:"Tiger science", x:1060, y:74, w:142, h:58, color:"#2dd4bf" }),
 ]);
+const BASE_HQ_ROOM_PURPOSES = Object.freeze({
+  command:"Brief missions, review story, and choose the safest plan.",
+  armory:"Buy weapons, ammo, armor, and inspect your loadout.",
+  medbay:"Restock medkits, armor plates, and rescue support.",
+  intel:"Learn clues, weather, scan routes, and tiger pressure.",
+  pens:"Review captured tigers, trophies, mutations, and Nemesis history.",
+  trophy:"View achievements, cosmetics, titles, and prestige records.",
+  specialists:"Manage soldiers, squad roles, formations, and revives.",
+  mission:"Start Story, Arcade, Survival, or Tutorial from the main gate.",
+  forge:"Craft and equip weapon skins, trails, and visual effects.",
+  contracts:"Check daily goals, live ops, and replay objectives.",
+  weather:"Understand rain, fog, snow, night, dust, and track decay.",
+  settlement:"See rescued civilian support and defense progress.",
+  cinema:"Replay story scenes, intros, outros, and boss moments.",
+  vehicle:"Review boat, helicopter, convoy, and street extraction routes.",
+  training:"Practice combat feedback, tiger attacks, and movement timing.",
+  research:"Study tiger behavior, ecosystems, clues, and mutations.",
+});
+const BASE_HQ_AMBIENT_ACTORS = Object.freeze([
+  Object.freeze({ name:"Courier", role:"Supply Runner", color:"#38bdf8", from:[178,616], to:[1110,616], speed:0.000050, phase:0.12 }),
+  Object.freeze({ name:"Medic", role:"Triage Tech", color:"#22c55e", from:[972,292], to:[1078,292], speed:0.000072, phase:0.42 }),
+  Object.freeze({ name:"Scout", role:"Intel Runner", color:"#f59e0b", from:[235,430], to:[452,430], speed:0.000060, phase:0.70 }),
+  Object.freeze({ name:"Mechanic", role:"Bay Crew", color:"#60a5fa", from:[1068,418], to:[1192,418], speed:0.000066, phase:0.27 }),
+  Object.freeze({ name:"Keeper", role:"Pen Crew", color:"#fb7185", from:[930,560], to:[1120,560], speed:0.000055, phase:0.58 }),
+]);
 const BASE_HQ_NPCS = Object.freeze([
   Object.freeze({ name:"Ivy", role:"Reception", x:640, y:424, room:"mission", style:"reception", line:"Welcome to Base HQ. Walk to any desk, tap a teammate, and inspect the systems you have unlocked." }),
   Object.freeze({ name:"Mira", role:"Intel", x:580, y:168, room:"command", line:"Intel tracks day/night, weather, clues, rival factions, and live mission pressure." }),
@@ -23850,6 +23875,86 @@ function baseHqStatsHtml(){
     <div class="baseHqStat"><span>Weapon</span><b>${baseHqEsc(equippedWeapon()?.name || "Starter")}</b></div>
   `;
 }
+function baseHqModeMissionSnapshot(mode=normalizeModeName(S.mode)){
+  const safeMode = normalizeModeName(mode);
+  if(safeMode === "Survival"){
+    const wave = Math.max(1, Math.floor(Number(S.survivalWave || 1)));
+    return {
+      mode:safeMode,
+      label:`Survival Wave ${wave}`,
+      objective:`Hold the zone through wave ${wave}.`,
+      threat: wave >= 15 ? "Extreme" : (wave >= 8 ? "High" : "Rising"),
+      civilians:"Settlement core",
+      tigers:`Wave ${wave}`,
+      extraction:"Last-stand hold",
+      weather:missionCinematicWeatherLabel(null),
+      gear:["Armor plates, shields, medkits"],
+      tags:["Endless pressure"]
+    };
+  }
+  const mission = safeMode === "Arcade" ? activeArcadeMission(S) : storyMissionForState(S);
+  const profile = missionBriefRecommendationProfile(safeMode, mission || {});
+  const label = safeMode === "Arcade"
+    ? `Arcade Mission ${clamp(mission?.number || S.arcadeLevel || 1, 1, ARCADE_CAMPAIGN_OBJECTIVES.length)}`
+    : `Story Mission ${clamp(mission?.number || S.storyLevel || 1, 1, STORY_CAMPAIGN_OBJECTIVES.length)}`;
+  const civilians = Math.max(0, Math.floor(Number(mission?.civilians || 0)));
+  const tigers = Math.max(1, Math.floor(Number(mission?.tigers || 1)));
+  const card = { mode:safeMode, mission: mission || {} };
+  return {
+    mode:safeMode,
+    label,
+    objective:String(mission?.objective || missionObjectiveCountText(safeMode, mission || {})).replace(/^Objective Count:\s*/,""),
+    threat:profile.threat,
+    civilians:civilians ? `${civilians} civilians` : "No civilians",
+    tigers:`${tigers} tiger${tigers === 1 ? "" : "s"}`,
+    extraction:missionCinematicExtractionLabel(),
+    weather:missionCinematicWeatherLabel(card),
+    gear:profile.gear || ["Balanced kit"],
+    tags:profile.tags || ["Balanced mission"]
+  };
+}
+function baseHqMissionGatePreviewHtml(){
+  const snap = baseHqModeMissionSnapshot(S.mode);
+  const gear = snap.gear.slice(0, 2).join(" • ");
+  const tags = snap.tags.slice(0, 3).join(" • ");
+  return `
+    <div class="baseHqMissionPreview">
+      <div class="baseHqMissionPreviewTitle">Mission Gate 2.0 • ${baseHqEsc(snap.mode)} readiness</div>
+      <div class="baseHqMissionPreviewGrid">
+        <div class="baseHqMissionCard"><span>Next Operation</span><b>${baseHqEsc(snap.label)}</b></div>
+        <div class="baseHqMissionCard"><span>Threat</span><b>${baseHqEsc(snap.threat)} • ${baseHqEsc(tags)}</b></div>
+        <div class="baseHqMissionCard"><span>Objective</span><b>${baseHqEsc(snap.objective)}</b></div>
+        <div class="baseHqMissionCard"><span>Field Intel</span><b>${baseHqEsc(snap.civilians)} • ${baseHqEsc(snap.tigers)}</b></div>
+        <div class="baseHqMissionCard"><span>Extraction</span><b>${baseHqEsc(snap.extraction)}</b></div>
+        <div class="baseHqMissionCard"><span>Conditions</span><b>${baseHqEsc(snap.weather)}</b></div>
+      </div>
+      <div class="baseHqRecommended">Recommended: ${baseHqEsc(gear)}</div>
+    </div>
+  `;
+}
+function baseHqIvyGuidance(){
+  const mode = normalizeModeName(S.mode);
+  const snap = baseHqModeMissionSnapshot(mode);
+  const medkits = Math.max(0, Math.floor(Number(totalMedkits() || 0)));
+  const armor = Math.max(0, Math.floor(Number(totalArmorPlates() || 0)));
+  const traps = Math.max(0, Math.floor(Number(S.trapsOwned || 0)));
+  const shields = Math.max(0, Math.floor(Number(S.shields || 0)));
+  if(mode === "Survival"){
+    return `Ivy: Survival is about endurance. Bring armor, shields, and medkits before ${snap.label}.`;
+  }
+  if(medkits <= 1) return `Ivy: Medkits are low. Visit Medbay before ${snap.label} so one mistake does not end the run.`;
+  if(armor <= 4) return `Ivy: Armor plates are thin. Armory or Medbay prep will help before this ${snap.threat.toLowerCase()} threat.`;
+  if(traps <= 1 && /civilian|escort|rescue/i.test(`${snap.objective} ${snap.tags.join(" ")}`)){
+    return `Ivy: This route has rescue pressure. Buy traps so civilians have breathing room near extraction.`;
+  }
+  if(shields <= 0 && /Boss|High|Extreme/i.test(`${snap.threat} ${snap.tags.join(" ")}`)){
+    return `Ivy: Boss-style pressure is possible. Carry at least one shield before you deploy.`;
+  }
+  if(/Capture|capture/i.test(`${snap.objective} ${snap.tags.join(" ")}`)){
+    return `Ivy: Capture route detected. Check tranq ammo before starting, then scan before chasing.`;
+  }
+  return `Ivy: ${snap.label} is ready. Brief first, stock up if needed, then deploy when the route feels right.`;
+}
 function baseHqUpgradeHtml(filterKeys=[]){
   const allow = new Set(filterKeys);
   return STORY_HQ_MODULES
@@ -23879,49 +23984,79 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
     command:{
       title:"Command Deck",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Mission Briefing","openMissionBriefFromBaseHQ()"],
+        ["Story Journal","openStoryFromBaseHQ()"],
+        ["Mode Select","openModeFromBaseHQ()"]
+      ],
       upgrades:["HQ_RD","HQ_INTEL"],
     },
     armory:{
       title:"Armory",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Weapons","openShopFromBaseHQ('weapons')"],
+        ["Ammo","openShopFromBaseHQ('ammo')"],
+        ["Armor","openShopFromBaseHQ('armor')"],
+        ["Inventory","openInventoryFromBaseHQ('gear')"]
+      ],
       upgrades:["HQ_ARMORY","HQ_RD"],
     },
     medbay:{
       title:"Medbay",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Med Kits","openShopFromBaseHQ('meds')"],
+        ["Armor Plates","openShopFromBaseHQ('armor')"],
+        ["Inventory","openInventoryFromBaseHQ('gear')"]
+      ],
       upgrades:["HQ_MEDBAY"],
     },
     intel:{
       title:"Intel Center",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Mission Briefing","openMissionBriefFromBaseHQ()"],
+        ["Story Journal","openStoryFromBaseHQ()"],
+        ["Tutorial","startTutorialFromBaseHQ()"]
+      ],
       upgrades:["HQ_INTEL","HQ_RD"],
     },
     pens:{
       title:"Captured Tiger Pens",
       desc:`Base Intel: ${factList[factIndex]} Lifetime captures recorded: ${captures}.`,
-      actions:[],
+      actions:[
+        ["Trophy Showcase","openInventoryFromBaseHQ('showcase')"],
+        ["Cosmetics","openInventoryFromBaseHQ('cosmetics')"],
+        ["Research","selectBaseHqRoom('research', true)"]
+      ],
       upgrades:["HQ_RD"],
     },
     trophy:{
       title:"Trophy Hall",
       desc:`Base Intel: ${factList[factIndex]} Achievements unlocked: ${achv}.`,
-      actions:[],
+      actions:[
+        ["Showcase","openInventoryFromBaseHQ('showcase')"],
+        ["Cosmetics","openInventoryFromBaseHQ('cosmetics')"],
+        ["Forge","openShopFromBaseHQ('forge')"]
+      ],
       upgrades:[],
     },
     specialists:{
       title:"Barracks",
       desc:`Base Intel: ${factList[factIndex]} Squad owned: A ${S.soldierAttackersOwned || 0}, R ${S.soldierRescuersOwned || 0}.`,
-      actions:[],
+      actions:[
+        ["Squad Shop","openShopFromBaseHQ('squad')"],
+        ["Inventory","openInventoryFromBaseHQ('gear')"],
+        ["Training","selectBaseHqRoom('training', true)"]
+      ],
       upgrades:["HQ_ARMORY","HQ_MEDBAY"],
     },
     mission:{
       title:"Mission Gate",
       desc:`Base Intel: ${factList[factIndex]} Base HQ is now the main menu. Choose Story, Arcade, Survival, Tutorial, or brief the next operation from here.`,
       actions:[
+        ["Start Mission","startMissionFromBaseHQ()"],
         ["Story Mode","startModeFromBaseHQ('Story')"],
         ["Arcade Mode","startModeFromBaseHQ('Arcade')"],
         ["Survival Mode","startModeFromBaseHQ('Survival')"],
@@ -23933,55 +24068,88 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
     forge:{
       title:"Forge Bench",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Open Forge","openShopFromBaseHQ('forge')"],
+        ["Cosmetics","openInventoryFromBaseHQ('cosmetics')"],
+        ["Showcase","openInventoryFromBaseHQ('showcase')"]
+      ],
       upgrades:["HQ_RD","HQ_ARMORY"],
     },
     contracts:{
       title:"Contracts Board",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Mission Briefing","openMissionBriefFromBaseHQ()"],
+        ["Story Journal","openStoryFromBaseHQ()"],
+        ["Start Mission","startMissionFromBaseHQ()"]
+      ],
       upgrades:["HQ_INTEL"],
     },
     weather:{
       title:"Weather Lab",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Mission Briefing","openMissionBriefFromBaseHQ()"],
+        ["Intel Center","selectBaseHqRoom('intel', true)"],
+        ["Tutorial","startTutorialFromBaseHQ()"]
+      ],
       upgrades:["HQ_INTEL"],
     },
     settlement:{
       title:"Settlement Ops",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Settlement","openInventoryFromBaseHQ('settlement')"],
+        ["Medbay","selectBaseHqRoom('medbay', true)"],
+        ["Start Mission","startMissionFromBaseHQ()"]
+      ],
       upgrades:["HQ_MEDBAY","HQ_INTEL"],
     },
     cinema:{
       title:"Cinema Archive",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Story Journal","openStoryFromBaseHQ()"],
+        ["Mission Briefing","openMissionBriefFromBaseHQ()"],
+        ["Showcase","openInventoryFromBaseHQ('showcase')"]
+      ],
       upgrades:[],
     },
     vehicle:{
       title:"Vehicle Bay",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Mission Briefing","openMissionBriefFromBaseHQ()"],
+        ["Start Mission","startMissionFromBaseHQ()"],
+        ["Settlement","openInventoryFromBaseHQ('settlement')"]
+      ],
       upgrades:["HQ_ARMORY"],
     },
     training:{
       title:"Training Mat",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Tutorial","startTutorialFromBaseHQ()"],
+        ["Weapons","openShopFromBaseHQ('weapons')"],
+        ["Squad Shop","openShopFromBaseHQ('squad')"]
+      ],
       upgrades:["HQ_ARMORY","HQ_MEDBAY"],
     },
     research:{
       title:"Research Desk",
       desc:`Base Intel: ${factList[factIndex]}`,
-      actions:[],
+      actions:[
+        ["Intel Center","selectBaseHqRoom('intel', true)"],
+        ["Tiger Pens","selectBaseHqRoom('pens', true)"],
+        ["Showcase","openInventoryFromBaseHQ('showcase')"]
+      ],
       upgrades:["HQ_RD"],
     },
   };
   return { room, data:map[room.id] || map.command };
 }
 function baseHqNpcDialogue(npcName){
+  if(npcName === "Ivy") return baseHqIvyGuidance();
   const lines = BASE_HQ_DIALOGUES[npcName] || Object.freeze(["I am still setting up this desk, Commander. Check another room for more intel."]);
   const idx = Math.abs(Math.floor(Number(__baseHqDialogIndex || 0))) % lines.length;
   return lines[idx];
@@ -24022,7 +24190,10 @@ function showLaunchMainMenuFromBaseHQ(){
   syncGamepadFocus();
 }
 function baseHqPanelActionsHtml(data){
-  return (data.actions || []).map(([label, fn])=>`<button class="ghost" onclick="${fn}">${baseHqEsc(label)}</button>`).join("");
+  return (data.actions || []).map(([label, fn], idx)=>{
+    const cls = idx === 0 ? "good" : "ghost";
+    return `<button class="${cls}" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();${fn}">${baseHqEsc(label)}</button>`;
+  }).join("");
 }
 function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
   if(roomId === "command") return `${currentMissionLabel()} • Director ready`;
@@ -24043,6 +24214,9 @@ function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
   if(roomId === "research") return `Ecosystem, mutations, and investigation data`;
   return "HQ systems online";
 }
+function baseHqRoomPurposeLine(roomId=__baseHqSelectedRoom){
+  return BASE_HQ_ROOM_PURPOSES[roomId] || "Inspect this room for Base HQ guidance and game systems.";
+}
 function renderBaseHqWorldHud(){
   const hud = document.getElementById("baseHqWorldHud");
   if(!hud) return;
@@ -24056,7 +24230,8 @@ function renderBaseHqWorldHud(){
   const npcText = dialogNpc
     ? `<div class="baseHqWorldNpc">${baseHqEsc(dialogNpc.name)}: ${baseHqEsc(baseHqNpcDialogue(dialogNpc.name))}</div>`
     : (near.npc ? `<div class="baseHqWorldNpc">Tap ${baseHqEsc(near.npc.name)} or Talk / Inspect for a conversation.</div>` : "");
-  const actionHtml = room.id === "mission" ? baseHqPanelActionsHtml(data) : "";
+  const actionHtml = baseHqPanelActionsHtml(data);
+  const previewHtml = room.id === "mission" ? baseHqMissionGatePreviewHtml() : "";
   hud.style.display = "block";
   hud.innerHTML = `
     <div class="baseHqWorldTop">
@@ -24067,11 +24242,36 @@ function renderBaseHqWorldHud(){
       <button class="ghost baseHqExitBtn" type="button" onpointerdown="event.stopPropagation();hideBaseHqHud()" onclick="event.stopPropagation();hideBaseHqHud()">Hide Info</button>
     </div>
     <div class="baseHqWorldDesc">${baseHqEsc(data.desc || "Walk around Base HQ and interact with rooms.")}</div>
+    <div class="baseHqWorldNpc">Room Purpose: ${baseHqEsc(baseHqRoomPurposeLine(room.id))}</div>
+    ${previewHtml}
     ${npcText}
     <div class="baseHqWorldActions">
       <button class="good" type="button" onpointerdown="event.stopPropagation();interactBaseHQ()" onclick="event.stopPropagation();interactBaseHQ()">Talk / Inspect</button>
       ${actionHtml}
     </div>
+  `;
+}
+function renderBaseHqQuickBar(){
+  const bar = document.getElementById("baseHqQuickBar");
+  if(!bar) return;
+  if(!__baseHqActive){
+    bar.style.display = "none";
+    bar.innerHTML = "";
+    return;
+  }
+  const snap = baseHqModeMissionSnapshot(S.mode);
+  const button = (label, fn, cls="") =>
+    `<button class="baseHqQuickBtn ${cls}" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();${fn}">${baseHqEsc(label)}</button>`;
+  bar.style.display = "grid";
+  bar.innerHTML = `
+    <div class="baseHqQuickHint">${baseHqEsc(baseHqIvyGuidance())} • Active: ${baseHqEsc(snap.label)}</div>
+    ${button("Story", "startModeFromBaseHQ('Story')", "primary")}
+    ${button("Arcade", "startModeFromBaseHQ('Arcade')", "primary")}
+    ${button("Survival", "startModeFromBaseHQ('Survival')", "primary")}
+    ${button("Brief", "openMissionBriefFromBaseHQ()", "")}
+    ${button("Tutorial", "startTutorialFromBaseHQ()", "")}
+    ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
+    ${button("Inventory", "openInventoryFromBaseHQ()", "utility")}
   `;
 }
 function renderBaseHQ(){
@@ -24100,11 +24300,12 @@ function renderBaseHQ(){
   const actions = document.getElementById("baseHqActions");
   const upgrades = document.getElementById("baseHqUpgradeList");
   if(title) title.innerText = `${room.icon} ${data.title || room.name}`;
-  if(desc) desc.innerText = data.desc || "Walk around Base HQ and interact with rooms.";
+  if(desc) desc.innerText = `${baseHqRoomPurposeLine(room.id)}\n\n${data.desc || "Walk around Base HQ and interact with rooms."}`;
   if(stats) stats.innerHTML = baseHqStatsHtml();
-  if(actions) actions.innerHTML = (data.actions || []).map(([label, fn])=>`<button class="ghost" onclick="${fn}">${baseHqEsc(label)}</button>`).join("");
+  if(actions) actions.innerHTML = baseHqPanelActionsHtml(data);
   if(upgrades) upgrades.innerHTML = data.upgrades?.length ? baseHqUpgradeHtml(data.upgrades) : "";
   renderBaseHqWorldHud();
+  renderBaseHqQuickBar();
 }
 function selectBaseHqRoom(roomId, movePlayer=false){
   const room = baseHqRoomById(roomId);
@@ -24256,6 +24457,27 @@ function drawBaseHqLabel(text, x, y, color="rgba(226,232,240,.96)"){
   ctx.fillText(text, x, y);
   ctx.restore();
 }
+function drawBaseHqPurposePill(room, now){
+  if(!room) return;
+  const active = room.id === __baseHqSelectedRoom;
+  const purpose = baseHqRoomPurposeLine(room.id);
+  const short = purpose.length > 46 ? `${purpose.slice(0, 43)}...` : purpose;
+  const y = room.y + room.h / 2 + 18;
+  const pulse = active ? 0.12 + Math.sin(now / 260) * 0.06 : 0;
+  ctx.save();
+  ctx.font = "850 9px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const w = Math.min(250, ctx.measureText(short).width + 18);
+  ctx.fillStyle = active ? `rgba(15,23,42,${0.78 + pulse})` : "rgba(4,8,18,.54)";
+  ctx.strokeStyle = active ? "rgba(187,247,208,.82)" : "rgba(71,85,105,.54)";
+  ctx.lineWidth = active ? 1.4 : 1;
+  roundedRectFill(room.x - w / 2, y - 11, w, 22, 9);
+  ctx.stroke();
+  ctx.fillStyle = active ? "rgba(220,252,231,.96)" : "rgba(203,213,225,.82)";
+  ctx.fillText(short, room.x, y);
+  ctx.restore();
+}
 function drawBaseHqRoom(room, now){
   const active = room.id === __baseHqSelectedRoom;
   const pulse = active ? 0.5 + Math.sin(now / 240) * 0.18 : 0;
@@ -24296,6 +24518,45 @@ function drawBaseHqRoom(room, now){
   ctx.fillStyle = "rgba(203,213,225,.9)";
   ctx.fillText(room.sub, room.x, room.y + 22);
   ctx.restore();
+  drawBaseHqPurposePill(room, now);
+}
+function drawBaseHqAmbientActor(actor, now){
+  if(!actor?.from || !actor?.to) return;
+  const speed = Number(actor.speed || 0.00005);
+  const phase = Number(actor.phase || 0);
+  const wave = (Math.sin((now * speed + phase) * Math.PI * 2) + 1) / 2;
+  const x = actor.from[0] + (actor.to[0] - actor.from[0]) * wave;
+  const y = actor.from[1] + (actor.to[1] - actor.from[1]) * wave;
+  const face = actor.to[0] >= actor.from[0] ? 0 : Math.PI;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "rgba(0,0,0,.26)";
+  ctx.beginPath();
+  ctx.ellipse(0, 14, 12, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = actor.color || "rgba(125,211,252,.8)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, -2, 14 + Math.sin(now / 300 + phase) * 1.4, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = actor.color || "#38bdf8";
+  roundedRectFill(-7, -10, 14, 18, 5);
+  ctx.fillStyle = "#f2c7a5";
+  ctx.beginPath();
+  ctx.arc(0, -15, 6.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(-5, -21, 10, 4);
+  ctx.strokeStyle = "rgba(226,232,240,.7)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(face === 0 ? 4 : -4, -2);
+  ctx.lineTo(face === 0 ? 13 : -13, 4);
+  ctx.stroke();
+  ctx.restore();
+  if(wave > 0.22 && wave < 0.78 && Math.sin(now / 1100 + phase * 10) > 0.82){
+    drawBaseHqLabel(actor.role || actor.name || "HQ Crew", x, y - 34, "rgba(219,234,254,.92)");
+  }
 }
 function drawBaseHqPersonSprite({ x=0, y=0, step=0, role="", style="", face=0, scale=1, name="" }={}, now=Date.now()){
   const bob = Math.sin(now / 360 + x) * 1.5;
@@ -24566,6 +24827,7 @@ function drawBaseHQScene(now=Date.now()){
     roundedRectFill(trophyX + i*43, trophyY, 24, 24, 6);
   }
   ctx.restore();
+  for(const actor of BASE_HQ_AMBIENT_ACTORS) drawBaseHqAmbientActor(actor, now);
   for(const npc of BASE_HQ_NPCS) drawBaseHqNpc(npc, now);
   drawBaseHqCasualPlayer(now);
   const hint = __baseHqHint || "Walk to a room and press Use";
@@ -24590,6 +24852,7 @@ function interactBaseHQ(){
 function leaveBaseHqView({ restoreMenu=true }={}){
   __baseHqActive = false;
   hideBaseHqHud();
+  renderBaseHqQuickBar();
   document.body?.classList?.remove("baseHqActive");
   if(restoreMenu) applyMobileMenuState(__mobileMenuHiddenPref);
   const overlay = document.getElementById("baseHqOverlay");
@@ -24617,7 +24880,7 @@ function openBaseHQ(opts={}){
   updateHUD();
   renderCombatControls();
   syncGamepadFocus();
-  toast("Base HQ: walk around, inspect rooms, read intel, or deploy.");
+  toast(baseHqIvyGuidance());
   sfx("ui");
 }
 function openBaseHQFromLaunchIntro(){
