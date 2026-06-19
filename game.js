@@ -23579,34 +23579,34 @@ function openShopFromInventory(tab="ammo"){
     shopTab(tab);
   }
 }
-const BASE_HQ_WORLD = Object.freeze({ w:960, h:540 });
+const BASE_HQ_WORLD = Object.freeze({ w:1280, h:720 });
 const BASE_HQ_ROOMS = Object.freeze([
-  Object.freeze({ id:"command", name:"Command Deck", icon:"CMD", sub:"Briefing", x:480, y:126, w:238, h:106, color:"#2563eb" }),
-  Object.freeze({ id:"armory", name:"Armory", icon:"ARM", sub:"Weapons", x:188, y:182, w:220, h:126, color:"#f59e0b" }),
-  Object.freeze({ id:"medbay", name:"Medbay", icon:"MED", sub:"Heal + kits", x:772, y:182, w:220, h:126, color:"#22c55e" }),
-  Object.freeze({ id:"intel", name:"Intel Center", icon:"INT", sub:"Threat scan", x:188, y:386, w:220, h:126, color:"#38bdf8" }),
-  Object.freeze({ id:"pens", name:"Tiger Pens", icon:"PEN", sub:"Captures", x:772, y:386, w:220, h:126, color:"#fb7185" }),
-  Object.freeze({ id:"trophy", name:"Trophy Hall", icon:"TRP", sub:"Showcase", x:480, y:54, w:286, h:70, color:"#eab308" }),
-  Object.freeze({ id:"specialists", name:"Barracks", icon:"SQD", sub:"Squad", x:480, y:462, w:270, h:92, color:"#a78bfa" }),
-  Object.freeze({ id:"mission", name:"Mission Gate", icon:"GO", sub:"Deploy", x:480, y:288, w:190, h:92, color:"#34d399" }),
-  Object.freeze({ id:"forge", name:"Forge Bench", icon:"FRG", sub:"Crafting", x:672, y:68, w:150, h:58, color:"#f97316" }),
-  Object.freeze({ id:"contracts", name:"Contracts Board", icon:"JOB", sub:"Daily ops", x:288, y:68, w:156, h:58, color:"#f43f5e" }),
-  Object.freeze({ id:"weather", name:"Weather Lab", icon:"WX", sub:"Storm intel", x:98, y:302, w:150, h:72, color:"#38bdf8" }),
-  Object.freeze({ id:"settlement", name:"Settlement Ops", icon:"SET", sub:"Rescued civilians", x:318, y:292, w:150, h:72, color:"#84cc16" }),
-  Object.freeze({ id:"cinema", name:"Cinema Archive", icon:"CIN", sub:"Story scenes", x:642, y:292, w:150, h:72, color:"#c084fc" }),
-  Object.freeze({ id:"vehicle", name:"Vehicle Bay", icon:"VHC", sub:"Evac routes", x:862, y:302, w:150, h:72, color:"#60a5fa" }),
-  Object.freeze({ id:"training", name:"Training Mat", icon:"TRN", sub:"Combat feel", x:478, y:376, w:150, h:64, color:"#14b8a6" }),
-  Object.freeze({ id:"research", name:"Research Desk", icon:"RND", sub:"Tiger science", x:842, y:68, w:142, h:58, color:"#2dd4bf" }),
+  Object.freeze({ id:"command", name:"Command Deck", icon:"CMD", sub:"Briefing", x:640, y:156, w:238, h:106, color:"#2563eb" }),
+  Object.freeze({ id:"armory", name:"Armory", icon:"ARM", sub:"Weapons", x:260, y:218, w:220, h:126, color:"#f59e0b" }),
+  Object.freeze({ id:"medbay", name:"Medbay", icon:"MED", sub:"Heal + kits", x:1020, y:218, w:220, h:126, color:"#22c55e" }),
+  Object.freeze({ id:"intel", name:"Intel Center", icon:"INT", sub:"Threat scan", x:260, y:498, w:220, h:126, color:"#38bdf8" }),
+  Object.freeze({ id:"pens", name:"Tiger Pens", icon:"PEN", sub:"Captures", x:1020, y:498, w:220, h:126, color:"#fb7185" }),
+  Object.freeze({ id:"trophy", name:"Trophy Hall", icon:"TRP", sub:"Showcase", x:640, y:64, w:286, h:70, color:"#eab308" }),
+  Object.freeze({ id:"specialists", name:"Barracks", icon:"SQD", sub:"Squad", x:640, y:626, w:270, h:92, color:"#a78bfa" }),
+  Object.freeze({ id:"mission", name:"Mission Gate", icon:"GO", sub:"Deploy", x:640, y:356, w:190, h:92, color:"#34d399" }),
+  Object.freeze({ id:"forge", name:"Forge Bench", icon:"FRG", sub:"Crafting", x:850, y:74, w:150, h:58, color:"#f97316" }),
+  Object.freeze({ id:"contracts", name:"Contracts Board", icon:"JOB", sub:"Daily ops", x:430, y:74, w:156, h:58, color:"#f43f5e" }),
+  Object.freeze({ id:"weather", name:"Weather Lab", icon:"WX", sub:"Storm intel", x:126, y:360, w:150, h:72, color:"#38bdf8" }),
+  Object.freeze({ id:"settlement", name:"Settlement Ops", icon:"SET", sub:"Rescued civilians", x:430, y:356, w:150, h:72, color:"#84cc16" }),
+  Object.freeze({ id:"cinema", name:"Cinema Archive", icon:"CIN", sub:"Story scenes", x:850, y:356, w:150, h:72, color:"#c084fc" }),
+  Object.freeze({ id:"vehicle", name:"Vehicle Bay", icon:"VHC", sub:"Evac routes", x:1154, y:360, w:150, h:72, color:"#60a5fa" }),
+  Object.freeze({ id:"training", name:"Training Mat", icon:"TRN", sub:"Combat feel", x:640, y:486, w:150, h:64, color:"#14b8a6" }),
+  Object.freeze({ id:"research", name:"Research Desk", icon:"RND", sub:"Tiger science", x:1060, y:74, w:142, h:58, color:"#2dd4bf" }),
 ]);
 const BASE_HQ_NPCS = Object.freeze([
-  Object.freeze({ name:"Mira", role:"Intel", x:420, y:138, room:"command", line:"Intel tracks day/night, weather, clues, rival factions, and live mission pressure." }),
-  Object.freeze({ name:"Vale", role:"Squad Lead", x:440, y:444, room:"specialists", line:"Specialists now gain personality, remember outcomes, and follow advanced commands." }),
-  Object.freeze({ name:"Doc Reyes", role:"Medbay", x:736, y:184, room:"medbay", line:"Rescue systems include civilian personality, panic, injuries, and safe-zone feedback." }),
-  Object.freeze({ name:"Armorer Jax", role:"Armory", x:150, y:184, room:"armory", line:"Weapons include attachments, mastery trees, ammo families, skins, and combat feedback." }),
-  Object.freeze({ name:"Keeper Ana", role:"Tiger Pens", x:730, y:388, room:"pens", line:"Tiger systems include Nemesis bosses, mutations, visual variety, dens, and tracking clues." }),
-  Object.freeze({ name:"Rook", role:"Vehicle Chief", x:835, y:300, room:"vehicle", line:"Evac routes now support boats, helicopters, convoy trucks, and blocked-road alternates." }),
-  Object.freeze({ name:"Nova", role:"Forge Tech", x:650, y:76, room:"forge", line:"The Forge turns earned materials into weapon skins, trails, and rarity-based cosmetics." }),
-  Object.freeze({ name:"Sage", role:"Weather Analyst", x:112, y:306, room:"weather", line:"Storms, fog, dust, snow, and nightfall can change visibility, tracks, routes, and tiger senses." }),
+  Object.freeze({ name:"Mira", role:"Intel", x:580, y:168, room:"command", line:"Intel tracks day/night, weather, clues, rival factions, and live mission pressure." }),
+  Object.freeze({ name:"Vale", role:"Squad Lead", x:600, y:608, room:"specialists", line:"Specialists now gain personality, remember outcomes, and follow advanced commands." }),
+  Object.freeze({ name:"Doc Reyes", role:"Medbay", x:984, y:220, room:"medbay", line:"Rescue systems include civilian personality, panic, injuries, and safe-zone feedback." }),
+  Object.freeze({ name:"Armorer Jax", role:"Armory", x:222, y:220, room:"armory", line:"Weapons include attachments, mastery trees, ammo families, skins, and combat feedback." }),
+  Object.freeze({ name:"Keeper Ana", role:"Tiger Pens", x:984, y:500, room:"pens", line:"Tiger systems include Nemesis bosses, mutations, visual variety, dens, and tracking clues." }),
+  Object.freeze({ name:"Rook", role:"Vehicle Chief", x:1130, y:360, room:"vehicle", line:"Evac routes now support boats, helicopters, convoy trucks, and blocked-road alternates." }),
+  Object.freeze({ name:"Nova", role:"Forge Tech", x:826, y:82, room:"forge", line:"The Forge turns earned materials into weapon skins, trails, and rarity-based cosmetics." }),
+  Object.freeze({ name:"Sage", role:"Weather Analyst", x:148, y:360, room:"weather", line:"Storms, fog, dust, snow, and nightfall can change visibility, tracks, routes, and tiger senses." }),
 ]);
 const BASE_HQ_FACTS = Object.freeze({
   command:Object.freeze([
@@ -23690,13 +23690,58 @@ const BASE_HQ_FACTS = Object.freeze({
     "Tiger Investigation can reveal type, direction, health, age, behavior, dens, Nemesis leads, or missing civilians."
   ]),
 });
+const BASE_HQ_DIALOGUES = Object.freeze({
+  "Mira":Object.freeze([
+    "Commander, scans are not just a button anymore. They are a breadcrumb system: use them when weather makes tracks unreliable.",
+    "If a Stalker misleads you, compare clues. Fresh blood, broken brush, and repeated paw direction usually tell the truth.",
+    "The Director watches pressure. If civilians are safe and tigers are controlled, it backs off instead of flooding the map forever."
+  ]),
+  "Vale":Object.freeze([
+    "Do not treat squad commands like decoration. Formation changes decide who escorts, who flanks, and who holds danger away from civilians.",
+    "Downed specialists should feel expensive because they are persistent teammates, not disposable extra lives.",
+    "If a soldier feels too brave near an Alpha, pull them back. Alpha pressure is designed to punish sloppy positioning."
+  ]),
+  "Doc Reyes":Object.freeze([
+    "Panicked civilians need a clean path more than speed. If they loop, the route needs space and the safe zone needs immediate credit.",
+    "Injured civilians should be protected first. They are slower, louder, and more likely to draw tiger attention.",
+    "Perfect rescue bonuses are meant to feel earned, not automatic. Civilian feedback should tell you exactly who made it out."
+  ]),
+  "Armorer Jax":Object.freeze([
+    "Heavy ammo should be used first when available. If the gun falls back to weaker ammo, it should be because the strong stock is empty.",
+    "A build is a promise. If you choose a shotgun, the game should not sneak you back to the 9mm after death or capture.",
+    "Attachments should always have a tradeoff. If everything is only better, the shop becomes math instead of strategy."
+  ]),
+  "Keeper Ana":Object.freeze([
+    "A captured tiger is not just a number. Pens should eventually show what you captured: scars, mutations, and Nemesis history.",
+    "Mutated tigers need readable tells. Camouflage, venom, armored hide, and rage should be scary but fair.",
+    "The ecosystem works best when tigers have reasons: dens, prey, territory, pack behavior, and memory."
+  ]),
+  "Rook":Object.freeze([
+    "Evac should feel like leaving a dangerous city. Boats need docks, helicopters need landing zones, and convoys need roads.",
+    "Boarding should pause if a tiger is too close. That warning creates the rescue drama players remember.",
+    "Vehicles will make more sense once expanded maps have roads, rivers, bridges, and wide routes."
+  ]),
+  "Nova":Object.freeze([
+    "Cosmetics are safest when they show achievement without selling power. Let players look legendary without breaking balance.",
+    "Seasonal forge sets can make old missions worth replaying if materials drop from bosses, events, and perfect rescues.",
+    "Trails and weapon effects should be readable. Style is good, but it cannot hide tigers, civilians, or danger markers."
+  ]),
+  "Sage":Object.freeze([
+    "Weather should change decisions, not just tint the screen. Fog should affect visibility, storms should affect routes, and rain should affect tracks.",
+    "Night missions need stronger telegraphs. If players cannot see, the game must communicate danger through sound, rings, and silhouettes.",
+    "Track decay gives investigation urgency. Wait too long in rain or dust and the trail should become less reliable."
+  ]),
+});
 let __baseHqActive = false;
-let __baseHqPlayer = { x:480, y:322, targetX:480, targetY:322, face:-Math.PI/2, step:0, _moveVx:0, _moveVy:0 };
+let __baseHqPlayer = { x:640, y:420, targetX:640, targetY:420, face:-Math.PI/2, step:0, _moveVx:0, _moveVy:0 };
+let __baseHqCamera = { x:0, y:0 };
 let __baseHqSelectedRoom = "command";
 let __baseHqHint = "";
 let __baseHqFactOffset = 0;
 let __baseHqHudUntil = 0;
 let __baseHqLastRoomId = "";
+let __baseHqDialogNpc = "";
+let __baseHqDialogIndex = 0;
 
 function baseHqRoomById(id){
   return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
@@ -23716,6 +23761,22 @@ function baseHqNearestRoom(){
 function baseHqActive(){
   return !!__baseHqActive;
 }
+function baseHqCameraOffset(){
+  const viewW = Number(cv?.width || 960) || 960;
+  const viewH = Number(cv?.height || 540) || 540;
+  const maxX = Math.max(0, BASE_HQ_WORLD.w - viewW);
+  const maxY = Math.max(0, BASE_HQ_WORLD.h - viewH);
+  __baseHqCamera.x = clamp(Number(__baseHqPlayer.x || 0) - (viewW * 0.5), 0, maxX);
+  __baseHqCamera.y = clamp(Number(__baseHqPlayer.y || 0) - (viewH * 0.5), 0, maxY);
+  return __baseHqCamera;
+}
+function baseHqScreenToWorld(sx, sy){
+  const cam = baseHqCameraOffset();
+  return {
+    x: clamp(Number(sx || 0) + cam.x, 0, BASE_HQ_WORLD.w),
+    y: clamp(Number(sy || 0) + cam.y, 0, BASE_HQ_WORLD.h),
+  };
+}
 function baseHqClampPlayer(){
   __baseHqPlayer.x = clamp(Number(__baseHqPlayer.x || 0), 34, BASE_HQ_WORLD.w - 34);
   __baseHqPlayer.y = clamp(Number(__baseHqPlayer.y || 0), 42, BASE_HQ_WORLD.h - 34);
@@ -23726,6 +23787,7 @@ function baseHqMoveTowardRoom(roomId){
   const room = baseHqRoomById(roomId);
   __baseHqSelectedRoom = room.id;
   __baseHqLastRoomId = room.id;
+  __baseHqDialogNpc = "";
   showBaseHqHud(6800);
   __baseHqPlayer.targetX = clamp(room.x, 34, BASE_HQ_WORLD.w - 34);
   __baseHqPlayer.targetY = clamp(room.y + Math.min(52, Math.max(34, room.h * 0.42)), 42, BASE_HQ_WORLD.h - 34);
@@ -23741,6 +23803,18 @@ function baseHqNearestNpc(){
     }
   }
   return bestD <= 72 ? best : null;
+}
+function baseHqNpcAt(x, y){
+  let best = null;
+  let bestD = Infinity;
+  for(const npc of BASE_HQ_NPCS){
+    const d = Math.hypot(Number(npc.x || 0) - Number(x || 0), Number(npc.y || 0) - Number(y || 0));
+    if(d < bestD){
+      bestD = d;
+      best = npc;
+    }
+  }
+  return bestD <= 38 ? best : null;
 }
 function baseHqNearestInteractable(){
   const room = baseHqNearestRoom();
@@ -23905,6 +23979,24 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
   };
   return { room, data:map[room.id] || map.command };
 }
+function baseHqNpcDialogue(npcName){
+  const lines = BASE_HQ_DIALOGUES[npcName] || Object.freeze(["I am still setting up this desk, Commander. Check another room for more intel."]);
+  const idx = Math.abs(Math.floor(Number(__baseHqDialogIndex || 0))) % lines.length;
+  return lines[idx];
+}
+function baseHqStartConversation(npc){
+  if(!npc) return false;
+  __baseHqDialogNpc = npc.name;
+  __baseHqDialogIndex = (Number(__baseHqDialogIndex || 0) + 1) % 99;
+  __baseHqSelectedRoom = npc.room || __baseHqSelectedRoom;
+  __baseHqLastRoomId = __baseHqSelectedRoom;
+  showBaseHqHud(9800);
+  const line = baseHqNpcDialogue(npc.name);
+  toast(`${npc.name}: ${line}`);
+  setEventText(`${npc.role}: ${line}`, 5.5);
+  renderBaseHQ();
+  return true;
+}
 function baseHqPanelActionsHtml(data){
   return (data.actions || []).map(([label, fn])=>`<button class="ghost" onclick="${fn}">${baseHqEsc(label)}</button>`).join("");
 }
@@ -23936,7 +24028,10 @@ function renderBaseHqWorldHud(){
   }
   const { room, data } = baseHqRoomData(__baseHqSelectedRoom);
   const near = baseHqNearestInteractable();
-  const npcText = near.npc ? `<div class="baseHqWorldNpc">Talk: ${baseHqEsc(near.npc.name)} • ${baseHqEsc(near.npc.role)}</div>` : "";
+  const dialogNpc = __baseHqDialogNpc ? BASE_HQ_NPCS.find((npc)=>npc.name === __baseHqDialogNpc) : null;
+  const npcText = dialogNpc
+    ? `<div class="baseHqWorldNpc">${baseHqEsc(dialogNpc.name)}: ${baseHqEsc(baseHqNpcDialogue(dialogNpc.name))}</div>`
+    : (near.npc ? `<div class="baseHqWorldNpc">Tap ${baseHqEsc(near.npc.name)} or Talk / Inspect for a conversation.</div>` : "");
   const actionHtml = room.id === "mission" ? baseHqPanelActionsHtml(data) : "";
   hud.style.display = "block";
   hud.innerHTML = `
@@ -23950,7 +24045,7 @@ function renderBaseHqWorldHud(){
     <div class="baseHqWorldDesc">${baseHqEsc(data.desc || "Walk around Base HQ and interact with rooms.")}</div>
     ${npcText}
     <div class="baseHqWorldActions">
-      <button class="good" onclick="interactBaseHQ()">Talk / Inspect</button>
+      <button class="good" type="button" onpointerdown="event.stopPropagation();interactBaseHQ()" onclick="event.stopPropagation();interactBaseHQ()">Talk / Inspect</button>
       ${actionHtml}
     </div>
   `;
@@ -23991,6 +24086,7 @@ function selectBaseHqRoom(roomId, movePlayer=false){
   const room = baseHqRoomById(roomId);
   __baseHqSelectedRoom = room.id;
   __baseHqLastRoomId = room.id;
+  __baseHqDialogNpc = "";
   showBaseHqHud(6800);
   if(movePlayer){
     baseHqMoveTowardRoom(room.id);
@@ -24016,8 +24112,11 @@ function baseHqStageTap(ev){
   if(!stage || !ev) return;
   const rect = stage.getBoundingClientRect();
   if(!rect.width || !rect.height) return;
-  __baseHqPlayer.targetX = clamp(((ev.clientX - rect.left) / rect.width) * BASE_HQ_WORLD.w, 34, BASE_HQ_WORLD.w - 34);
-  __baseHqPlayer.targetY = clamp(((ev.clientY - rect.top) / rect.height) * BASE_HQ_WORLD.h, 42, BASE_HQ_WORLD.h - 34);
+  const sx = ((ev.clientX - rect.left) / rect.width) * (cv?.width || 960);
+  const sy = ((ev.clientY - rect.top) / rect.height) * (cv?.height || 540);
+  const pt = baseHqScreenToWorld(sx, sy);
+  __baseHqPlayer.targetX = clamp(pt.x, 34, BASE_HQ_WORLD.w - 34);
+  __baseHqPlayer.targetY = clamp(pt.y, 42, BASE_HQ_WORLD.h - 34);
   __baseHqSelectedRoom = baseHqNearestRoom().id;
   if(__baseHqSelectedRoom !== __baseHqLastRoomId){
     __baseHqLastRoomId = __baseHqSelectedRoom;
@@ -24027,8 +24126,15 @@ function baseHqStageTap(ev){
 }
 function baseHqPointerDown(sx, sy){
   if(!__baseHqActive) return false;
+  const pt = baseHqScreenToWorld(sx, sy);
+  const tappedNpc = baseHqNpcAt(pt.x, pt.y);
+  if(tappedNpc){
+    baseHqStartConversation(tappedNpc);
+    sfx("ui");
+    return true;
+  }
   for(const room of BASE_HQ_ROOMS){
-    const inside = sx >= room.x - room.w/2 && sx <= room.x + room.w/2 && sy >= room.y - room.h/2 && sy <= room.y + room.h/2;
+    const inside = pt.x >= room.x - room.w/2 && pt.x <= room.x + room.w/2 && pt.y >= room.y - room.h/2 && pt.y <= room.y + room.h/2;
     if(inside){
       baseHqMoveTowardRoom(room.id);
       renderBaseHQ();
@@ -24036,8 +24142,9 @@ function baseHqPointerDown(sx, sy){
       return true;
     }
   }
-  __baseHqPlayer.targetX = clamp(sx, 34, BASE_HQ_WORLD.w - 34);
-  __baseHqPlayer.targetY = clamp(sy, 42, BASE_HQ_WORLD.h - 34);
+  __baseHqDialogNpc = "";
+  __baseHqPlayer.targetX = clamp(pt.x, 34, BASE_HQ_WORLD.w - 34);
+  __baseHqPlayer.targetY = clamp(pt.y, 42, BASE_HQ_WORLD.h - 34);
   __baseHqSelectedRoom = baseHqNearestRoom().id;
   if(__baseHqSelectedRoom !== __baseHqLastRoomId){
     __baseHqLastRoomId = __baseHqSelectedRoom;
@@ -24186,9 +24293,12 @@ function drawBaseHqCasualPlayer(now){
 function drawBaseHqTigerPen(now){
   const captures = Math.max(0, Math.floor(Number(S?.opsTotals?.captures || S?.stats?.captures || 0)));
   const tigerCount = clamp(Math.min(4, Math.ceil(captures / 8) || 1), 1, 4);
+  const pen = baseHqRoomById("pens");
+  const startX = (pen?.x || 1020) - 56;
+  const baseY = (pen?.y || 498) + 36;
   for(let i=0;i<tigerCount;i++){
-    const x = 715 + i * 38;
-    const y = 430 + Math.sin(now / 360 + i) * 2;
+    const x = startX + i * 38;
+    const y = baseY + Math.sin(now / 360 + i) * 2;
     ctx.save();
     ctx.fillStyle = "#f59e0b";
     ctx.beginPath();
@@ -24209,40 +24319,74 @@ function drawBaseHqTigerPen(now){
     ctx.restore();
   }
 }
+function drawBaseHqCameraHint(cam){
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha = 0.74;
+  ctx.fillStyle = "rgba(4,8,18,.62)";
+  roundedRectFill(12, 12, 184, 30, 12);
+  ctx.fillStyle = "rgba(219,234,254,.96)";
+  ctx.font = "900 12px system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`Base HQ Phase 2.4`, 24, 27);
+  ctx.globalAlpha = 0.52;
+  ctx.fillStyle = "rgba(125,211,252,.92)";
+  const miniW = 96;
+  const miniH = 54;
+  const mx = cv.width - miniW - 12;
+  const my = 12;
+  roundedRectFill(mx, my, miniW, miniH, 8);
+  ctx.clearRect(mx + 3, my + 3, miniW - 6, miniH - 6);
+  ctx.strokeStyle = "rgba(125,211,252,.82)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(mx, my, miniW, miniH);
+  const px = mx + clamp(__baseHqPlayer.x / BASE_HQ_WORLD.w, 0, 1) * miniW;
+  const py = my + clamp(__baseHqPlayer.y / BASE_HQ_WORLD.h, 0, 1) * miniH;
+  ctx.fillStyle = "rgba(34,197,94,.95)";
+  ctx.beginPath();
+  ctx.arc(px, py, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
 function drawBaseHQScene(now=Date.now()){
   if(!cv || !ctx) return;
+  const cam = baseHqCameraOffset();
   ctx.setTransform(1,0,0,1,0,0);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "source-over";
   ctx.setLineDash([]);
   ctx.fillStyle = "#07111f";
   ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.save();
+  ctx.translate(-cam.x, -cam.y);
   const grd = ctx.createLinearGradient(0,0,cv.width,cv.height);
   grd.addColorStop(0, "#10243a");
   grd.addColorStop(0.52, "#0b1728");
   grd.addColorStop(1, "#07131d");
   ctx.fillStyle = grd;
-  ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.fillRect(0,0,BASE_HQ_WORLD.w,BASE_HQ_WORLD.h);
   ctx.save();
   ctx.strokeStyle = "rgba(148,163,184,.13)";
   ctx.lineWidth = 2;
-  for(let x=80; x<cv.width; x+=80){
+  for(let x=80; x<BASE_HQ_WORLD.w; x+=80){
     ctx.beginPath();
     ctx.moveTo(x, 0);
-    ctx.lineTo(x, cv.height);
+    ctx.lineTo(x, BASE_HQ_WORLD.h);
     ctx.stroke();
   }
-  for(let y=60; y<cv.height; y+=60){
+  for(let y=60; y<BASE_HQ_WORLD.h; y+=60){
     ctx.beginPath();
     ctx.moveTo(0, y);
-    ctx.lineTo(cv.width, y);
+    ctx.lineTo(BASE_HQ_WORLD.w, y);
     ctx.stroke();
   }
   ctx.restore();
   ctx.save();
   ctx.fillStyle = "rgba(30,41,59,.58)";
-  roundedRectFill(358, 48, 244, 444, 42);
-  roundedRectFill(106, 246, 748, 78, 34);
+  roundedRectFill(518, 58, 244, 610, 42);
+  roundedRectFill(126, 318, 1028, 86, 34);
+  roundedRectFill(560, 270, 160, 286, 34);
   ctx.strokeStyle = "rgba(125,211,252,.18)";
   ctx.lineWidth = 2;
   ctx.stroke();
@@ -24251,27 +24395,32 @@ function drawBaseHQScene(now=Date.now()){
   drawBaseHqTigerPen(now);
   ctx.save();
   ctx.fillStyle = "rgba(250,204,21,.18)";
+  const trophy = baseHqRoomById("trophy");
+  const trophyX = (trophy?.x || 360) - 108;
+  const trophyY = (trophy?.y || 108) - 28;
   for(let i=0;i<6;i++){
-    roundedRectFill(372 + i*45, 28, 24, 24, 6);
+    roundedRectFill(trophyX + i*43, trophyY, 24, 24, 6);
   }
   ctx.restore();
   for(const npc of BASE_HQ_NPCS) drawBaseHqNpc(npc, now);
   drawBaseHqCasualPlayer(now);
   const hint = __baseHqHint || "Walk to a room and press Use";
-  drawBaseHqLabel(hint, 480, 520, "rgba(187,247,208,.98)");
+  drawBaseHqLabel(hint, __baseHqPlayer.x, __baseHqPlayer.y + 58, "rgba(187,247,208,.98)");
+  ctx.restore();
+  drawBaseHqCameraHint(cam);
 }
 function interactBaseHQ(){
   const near = baseHqNearestInteractable();
+  if(near.npc){
+    baseHqStartConversation(near.npc);
+    return;
+  }
   selectBaseHqRoom(near.room?.id || baseHqNearestRoom().id, false);
   __baseHqFactOffset = (__baseHqFactOffset + 1) % 99;
+  __baseHqDialogNpc = "";
   showBaseHqHud(8200);
   const { room, data } = baseHqRoomData(__baseHqSelectedRoom);
-  if(near.npc){
-    toast(`${near.npc.name}: ${near.npc.line}`);
-    setEventText(`${near.npc.role}: ${near.npc.line}`, 3.5);
-  }else{
-    toast(`${room.name}: ${String(data.desc || "").replace(/^Base Intel:\s*/,"")}`);
-  }
+  toast(`${room.name}: ${String(data.desc || "").replace(/^Base Intel:\s*/,"")}`);
   renderBaseHQ();
 }
 function leaveBaseHqView({ restoreMenu=true }={}){
