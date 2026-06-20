@@ -24140,6 +24140,88 @@ function baseHqMissionGatePreviewHtml(){
     </div>
   `;
 }
+function baseHqMissionControlSnapshot(modeOverride=S.mode){
+  const mode = normalizeModeName(modeOverride);
+  const snap = baseHqModeMissionSnapshot(mode);
+  const ivy = baseHqIvyGuidanceProfile(mode);
+  const medkits = Math.max(0, Math.floor(Number(totalMedkits() || 0)));
+  const armor = Math.max(0, Math.floor(Number(totalArmorPlates() || 0)));
+  const traps = Math.max(0, Math.floor(Number(S.trapsOwned || 0)));
+  const shields = Math.max(0, Math.floor(Number(S.shields || 0)));
+  const squadOwned = Math.max(0, Math.floor(Number(S.soldierAttackersOwned || 0) + Number(S.soldierRescuersOwned || 0)));
+  const squadDowned = Math.max(0, Math.floor(Number(S.soldierAttackersDowned || 0) + Number(S.soldierRescuersDowned || 0)));
+  const weapon = equippedWeapon()?.name || "Starter";
+  const context = `${snap.objective} ${snap.threat} ${snap.tags.join(" ")}`;
+  const alerts = [];
+  if(!baseHqOnboardingCompleted()) alerts.push({ level:"Training", text:"HQ tour is not complete. Run Training before real deployment.", key:"training" });
+  if(medkits <= 1) alerts.push({ level:"Supply", text:`Medkits low (${medkits}). Restock before tiger contact.`, key:"medbay" });
+  if(armor <= 3) alerts.push({ level:"Armor", text:`Armor plates low (${armor}). Visit Medbay or Armory.`, key:"medbay" });
+  if(traps <= 1 && /civilian|escort|rescue|protect/i.test(context)) alerts.push({ level:"Rescue", text:"Civilian route detected with low traps. Bring control tools.", key:"bundles" });
+  if(shields <= 0 && /Boss|High|Extreme|Alpha|Nemesis/i.test(context)) alerts.push({ level:"Threat", text:"High tiger pressure with no shields. Bring at least one shield.", key:"bundles" });
+  if(squadDowned > 0) alerts.push({ level:"Squad", text:`${squadDowned} specialist${squadDowned === 1 ? "" : "s"} down. Revive before deployment.`, key:"squad" });
+  if(/capture|tranq|research/i.test(context)) alerts.push({ level:"Capture", text:"Capture objective active. Confirm tranq ammo and scan before chasing.", key:"armory" });
+  if(!alerts.length) alerts.push({ level:"Clear", text:"No critical warnings. Brief, confirm loadout, then deploy.", key:"brief" });
+  const readiness = [
+    { room:"Armory", status: armor > 3 ? "Ready" : "Needs armor", detail:`${weapon} • Armor ${armor}`, key:"armory", ok:armor > 3 },
+    { room:"Medbay", status: medkits > 1 ? "Ready" : "Restock", detail:`Medkits ${medkits}`, key:"medbay", ok:medkits > 1 },
+    { room:"Intel", status:"Online", detail:`${snap.weather} • ${snap.threat}`, key:"brief", ok:true },
+    { room:"Barracks", status:squadDowned > 0 ? "Revive needed" : "Ready", detail:`Squad ${Math.max(0, squadOwned - squadDowned)}/${squadOwned}`, key:"squad", ok:squadDowned <= 0 },
+    { room:"Mission Gate", status:"Standing by", detail:snap.label, key:"story", ok:true },
+  ];
+  return { mode, snap, ivy, medkits, armor, traps, shields, squadOwned, squadDowned, weapon, alerts, readiness };
+}
+function baseHqMissionControlAction(key="brief"){
+  const action = String(key || "brief");
+  if(action === "deploy") return startMissionFromBaseHQ();
+  if(action === "room:command") return selectBaseHqRoom("command", true);
+  return baseHqExecuteMissionGateAction(action);
+}
+function baseHqMissionControlHtml(modeOverride=S.mode){
+  const data = baseHqMissionControlSnapshot(modeOverride);
+  const snap = data.snap;
+  const gear = snap.gear.slice(0, 3).join(" • ") || "Balanced kit";
+  const alerts = data.alerts.slice(0, 4).map((alert)=>`
+    <button class="baseHqControlAlert" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqMissionControlAction('${baseHqEsc(alert.key)}')">
+      <span>${baseHqEsc(alert.level)}</span><b>${baseHqEsc(alert.text)}</b>
+    </button>
+  `).join("");
+  const checklist = data.readiness.map((item)=>`
+    <button class="baseHqControlCheck ${item.ok ? "ready" : "needs"}" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqMissionControlAction('${baseHqEsc(item.key)}')">
+      <span>${baseHqEsc(item.room)} • ${baseHqEsc(item.status)}</span><b>${baseHqEsc(item.detail)}</b>
+    </button>
+  `).join("");
+  return `
+    <div class="baseHqMissionPreview missionControlPanel">
+      <div class="baseHqMissionPreviewTitle">HQ Mission Control 4.0</div>
+      <div class="baseHqControlHero">
+        <div>
+          <span>Live Threat Board</span>
+          <b>${baseHqEsc(snap.label)} • ${baseHqEsc(snap.threat)}</b>
+          <small>${baseHqEsc(snap.objective)}</small>
+        </div>
+        <button class="good" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqMissionControlAction('deploy')">Deploy Plan</button>
+      </div>
+      <div class="baseHqMissionPreviewGrid missionControlGrid">
+        <div class="baseHqMissionCard"><span>Civilians</span><b>${baseHqEsc(snap.civilians)}</b></div>
+        <div class="baseHqMissionCard"><span>Tiger Intel</span><b>${baseHqEsc(snap.tigers)}</b></div>
+        <div class="baseHqMissionCard"><span>Weather</span><b>${baseHqEsc(snap.weather)}</b></div>
+        <div class="baseHqMissionCard"><span>Extraction</span><b>${baseHqEsc(snap.extraction)}</b></div>
+        <div class="baseHqMissionCard"><span>Recommended Loadout</span><b>${baseHqEsc(gear)}</b></div>
+        <div class="baseHqMissionCard"><span>Current Kit</span><b>${baseHqEsc(data.weapon)} • ${data.medkits} med • ${data.armor} armor • ${data.traps} traps • ${data.shields} shields</b></div>
+      </div>
+      <div class="baseHqControlSectionTitle">Active Alerts</div>
+      <div class="baseHqControlAlerts">${alerts}</div>
+      <div class="baseHqControlSectionTitle">Room Readiness Checklist</div>
+      <div class="baseHqControlChecklist">${checklist}</div>
+      <div class="baseHqRecommended"><b>Deploy Plan:</b> ${baseHqEsc(data.ivy.line)} ${baseHqEsc(data.ivy.reason)}</div>
+      <div class="baseHqWorldActions missionGateActions">
+        <button class="good" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqMissionControlAction('${baseHqEsc(data.ivy.key)}')">${baseHqEsc(data.ivy.button)}</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();openMissionBriefFromBaseHQ()">Full Briefing</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();openShopFromBaseHQ('bundles')">Recommended Shop</button>
+      </div>
+    </div>
+  `;
+}
 function baseHqMissionGateRecommendation(snaps=[]){
   const story = snaps.find((snap)=>snap.mode === "Story") || baseHqModeMissionSnapshot("Story");
   const medkits = Math.max(0, Math.floor(Number(totalMedkits() || 0)));
@@ -24534,9 +24616,10 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
   const factIndex = Math.abs(Math.floor((Date.now() / 5200) + Number(S.storyLevel || 1) + room.x + __baseHqFactOffset)) % factList.length;
   const map = {
     command:{
-      title:"Command Deck",
-      desc:`Base Intel: ${factList[factIndex]}`,
+      title:"Mission Control 4.0",
+      desc:`Base Intel: ${factList[factIndex]} Live threat board, readiness checklist, alerts, loadout guidance, and deploy plan are active.`,
       actions:[
+        ["Mission Control","baseHqMissionControlAction('room:command')"],
         ["Ask Ivy","baseHqExecuteIvyGuidance()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
         ["HQ News","refreshBaseHqDailyNews()"],
@@ -24607,9 +24690,10 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       upgrades:["HQ_ARMORY","HQ_MEDBAY"],
     },
     mission:{
-      title:"Mission Gate 3.0",
-      desc:`Base Intel: ${factList[factIndex]} Command Table compares Story, Arcade, Survival, Training, gear, briefing, shop, and inventory before deployment.`,
+      title:"Mission Gate 4.0",
+      desc:`Base Intel: ${factList[factIndex]} Mission Control compares threats, supplies, room readiness, and deploy plan before launch.`,
       actions:[
+        ["Mission Control","baseHqMissionControlAction('room:command')"],
         ["Ask Ivy","baseHqExecuteIvyGuidance()"],
         ["Recommended","baseHqRunRecommendedCommand()"],
         ["Continue Active","startMissionFromBaseHQ()"],
@@ -24761,14 +24845,14 @@ function baseHqPanelActionsHtml(data){
   }).join("");
 }
 function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
-  if(roomId === "command") return `${currentMissionLabel()} • Director ready`;
+  if(roomId === "command") return `${currentMissionLabel()} • Mission Control live`;
   if(roomId === "armory") return `${equippedWeapon()?.name || "Starter"} equipped`;
   if(roomId === "medbay") return `${totalMedkits()} medkits • ${totalArmorPlates()} armor plates`;
   if(roomId === "intel") return `Investigation, weather, and tiger pressure systems online`;
   if(roomId === "pens") return `${Math.max(0, Math.floor(Number(S?.opsTotals?.captures || S?.stats?.captures || 0)))} lifetime captures tracked`;
   if(roomId === "trophy") return `${achvCount()} achievements • showcase ready`;
   if(roomId === "specialists") return `Attack ${S.soldierAttackersOwned || 0} • Rescue ${S.soldierRescuersOwned || 0}`;
-  if(roomId === "mission") return `Next: ${nextMissionLabel()}`;
+  if(roomId === "mission") return `Next: ${nextMissionLabel()} • Deploy plan ready`;
   if(roomId === "forge") return `Materials, skins, trails, and cosmetic rarity`;
   if(roomId === "contracts") return `Daily, weekly, live ops, and co-op goals`;
   if(roomId === "weather") return `Weather systems and track decay online`;
@@ -24888,6 +24972,7 @@ function renderBaseHqWorldHud(){
   const previewHtml = room.id === "mission"
     ? baseHqMissionGatePreviewHtml()
     : (room.id === "training" ? baseHqTutorialStationHtml() : (room.id === "contracts" ? baseHqDailyRewardDeskHtml() : ""));
+  const missionControlHtml = (room.id === "command" || room.id === "mission") ? baseHqMissionControlHtml() : "";
   const newsHtml = (room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
   const ivyHtml = (room.id === "command" || room.id === "mission" || dialogNpc?.name === "Ivy") ? baseHqIvyGuidanceHtml() : "";
   const progressVisualHtml = (room.id === "command" || room.id === "trophy" || room.id === "mission") ? baseHqProgressVisualHtml() : "";
@@ -24904,6 +24989,7 @@ function renderBaseHqWorldHud(){
     <div class="baseHqWorldDesc">${baseHqEsc(data.desc || "Walk around Base HQ and interact with rooms.")}</div>
     <div class="baseHqWorldNpc">Room Purpose: ${baseHqEsc(baseHqRoomPurposeLine(room.id))}</div>
     <div class="baseHqWorldNpc">Room Progress: ${baseHqEsc(progress.label)} • ${progress.pct}% readiness</div>
+    ${missionControlHtml}
     ${ivyHtml}
     ${previewHtml}
     ${newsHtml}
@@ -45566,6 +45652,7 @@ window.confirmBaseHqModePreview = confirmBaseHqModePreview;
 window.baseHqExecuteMissionGateAction = baseHqExecuteMissionGateAction;
 window.baseHqExecuteIvyGuidance = baseHqExecuteIvyGuidance;
 window.baseHqRefreshIvyGuidance = baseHqRefreshIvyGuidance;
+window.baseHqMissionControlAction = baseHqMissionControlAction;
 window.setBaseHqQuickMenuCollapsed = setBaseHqQuickMenuCollapsed;
 window.toggleBaseHqQuickMenu = toggleBaseHqQuickMenu;
 window.baseHqRunRecommendedCommand = baseHqRunRecommendedCommand;
