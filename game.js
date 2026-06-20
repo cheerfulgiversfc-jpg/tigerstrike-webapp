@@ -24182,15 +24182,158 @@ function baseHqMissionGateRecommendation(snaps=[]){
     key:"story"
   };
 }
+function baseHqIvyGuidanceProfile(modeOverride=S.mode){
+  const mode = normalizeModeName(modeOverride);
+  const snap = baseHqModeMissionSnapshot(mode);
+  const medkits = Math.max(0, Math.floor(Number(totalMedkits() || 0)));
+  const armor = Math.max(0, Math.floor(Number(totalArmorPlates() || 0)));
+  const traps = Math.max(0, Math.floor(Number(S.trapsOwned || 0)));
+  const shields = Math.max(0, Math.floor(Number(S.shields || 0)));
+  const cash = Math.max(0, Math.floor(Number(S.money || 0)));
+  const storyLevel = Math.max(1, Math.floor(Number(S.storyLevel || 1)));
+  const squadDowned = Math.max(0, Math.floor(Number(S.soldierAttackersDowned || 0) + Number(S.soldierRescuersDowned || 0)));
+  const squadOwned = Math.max(0, Math.floor(Number(S.soldierAttackersOwned || 0) + Number(S.soldierRescuersOwned || 0)));
+  const daily = readDaily();
+  const dailyReady = Boolean(__pendingDailyReward) || daily?.last !== ymdUTC();
+  const context = `${snap.objective} ${snap.threat} ${snap.tags.join(" ")}`;
+  const rescuePressure = /civilian|escort|rescue|protect/i.test(context);
+  const captureRoute = /capture|tranq|research/i.test(context);
+  const highThreat = /Boss|High|Extreme|Alpha|Nemesis/i.test(context);
+  let profile = {
+    title:"Continue Operations",
+    priority:"Ready",
+    line:`${snap.label} is ready. Brief first, stock up if needed, then deploy when the route feels right.`,
+    reason:`${snap.objective} Recommended gear: ${snap.gear.slice(0, 2).join(" and ") || "Balanced kit"}.`,
+    button:"Preview Mission",
+    key:"story",
+    snap,
+    chips:[]
+  };
+  if(!baseHqOnboardingCompleted() || storyLevel <= 1){
+    profile = {
+      ...profile,
+      title:"Run HQ Training First",
+      priority:"Training",
+      line:"Welcome to Base HQ. Start with Training so movement, rescue, scan, combat, shop, inventory, and extraction all make sense before deployment.",
+      reason:"HQ is now the main menu, so new players should learn the rooms before starting real pressure.",
+      button:"Go To Training",
+      key:"training"
+    };
+  }else if(dailyReady){
+    profile = {
+      ...profile,
+      title:"Claim Daily Reward",
+      priority:"Reward",
+      line:"Your Daily Reward Desk is ready. Claim it before deploying so the free cash and perk point are not missed.",
+      reason:"Daily rewards are safest to collect from HQ before a mission starts.",
+      button:"Go To Reward Desk",
+      key:"reward"
+    };
+  }else if(squadDowned > 0){
+    profile = {
+      ...profile,
+      title:"Revive Downed Specialist",
+      priority:"Squad",
+      line:`${squadDowned} specialist${squadDowned === 1 ? " is" : "s are"} down. Visit Barracks before deploying so your squad does not stay short-handed.`,
+      reason:"Downed specialists should only return through revive flow, not surprise mission spawns.",
+      button:"Go To Barracks",
+      key:"squad"
+    };
+  }else if(medkits <= 1 || armor <= 3){
+    profile = {
+      ...profile,
+      title:"Restock Survival Supplies",
+      priority:"Supplies",
+      line:`Supplies are thin: ${medkits} medkit${medkits === 1 ? "" : "s"} and ${armor} armor plates. Visit Medbay before ${snap.label}.`,
+      reason:"A little prep prevents one bad pounce from ending a strong run.",
+      button:"Go To Medbay",
+      key:"medbay"
+    };
+  }else if(rescuePressure && traps <= 1){
+    profile = {
+      ...profile,
+      title:"Protect Civilians",
+      priority:"Rescue",
+      line:`This route has rescue pressure and only ${traps} trap${traps === 1 ? "" : "s"}. Buy control tools so civilians have breathing room near extraction.`,
+      reason:"Traps help pause tiger pressure while civilians board boats, helicopters, convoys, or safe routes.",
+      button:"Open Bundles",
+      key:"bundles"
+    };
+  }else if(highThreat && shields <= 0){
+    profile = {
+      ...profile,
+      title:"Prepare For Heavy Tiger Pressure",
+      priority:"Threat",
+      line:`${snap.label} has ${snap.threat.toLowerCase()} pressure and no shields stocked. Bring at least one shield before deploying.`,
+      reason:"Shields protect against Alpha, Nemesis, pounce, and bad ambush moments.",
+      button:"Open Bundles",
+      key:"bundles"
+    };
+  }else if(captureRoute){
+    profile = {
+      ...profile,
+      title:"Capture Route Prep",
+      priority:"Capture",
+      line:"Capture route detected. Check tranq ammo, scan before chasing, and only press capture when the tiger is under 25% HP.",
+      reason:"Captures pay better and support tiger research, but only if tranq ammo is ready.",
+      button:"Open Armory",
+      key:"armory"
+    };
+  }else if(mode === "Survival"){
+    profile = {
+      ...profile,
+      title:"Survival Endurance Check",
+      priority:"Survival",
+      line:`Survival is about endurance. Bring armor, shields, medkits, and traps before ${snap.label}.`,
+      reason:"Survival pressure ramps up, so preparation matters more than speed.",
+      button:"Preview Survival",
+      key:"survival"
+    };
+  }else if(highThreat){
+    profile = {
+      ...profile,
+      title:"Brief The Threat",
+      priority:"Briefing",
+      line:`${snap.label} has ${snap.threat.toLowerCase()} pressure. Review the briefing before starting.`,
+      reason:"Briefing shows tiger types, extraction, weather, recommended gear, and bonus objective.",
+      button:"Open Briefing",
+      key:"brief"
+    };
+  }
+  profile.chips = [
+    `Mission: ${snap.label}`,
+    `Threat: ${snap.threat}`,
+    `Medkits: ${medkits}`,
+    `Armor: ${armor}`,
+    `Traps: ${traps}`,
+    `Shields: ${shields}`,
+    `Squad: ${Math.max(0, squadOwned - squadDowned)}/${squadOwned}`,
+    `Cash: $${cash.toLocaleString()}`
+  ];
+  return profile;
+}
 function baseHqExecuteMissionGateAction(key="story"){
   const action = String(key || "story");
   if(action === "training") return selectBaseHqRoom("training", true);
   if(action === "medbay") return selectBaseHqRoom("medbay", true);
+  if(action === "reward") return selectBaseHqRoom("contracts", true);
+  if(action === "squad") return selectBaseHqRoom("specialists", true);
+  if(action === "armory") return selectBaseHqRoom("armory", true);
   if(action === "bundles") return openShopFromBaseHQ("bundles");
   if(action === "brief") return openMissionBriefFromBaseHQ();
   if(action === "arcade") return openBaseHqModePreview("Arcade");
   if(action === "survival") return openBaseHqModePreview("Survival");
   return openBaseHqModePreview("Story");
+}
+function baseHqExecuteIvyGuidance(key=""){
+  const profile = baseHqIvyGuidanceProfile();
+  baseHqExecuteMissionGateAction(key || profile.key);
+}
+function baseHqRefreshIvyGuidance(){
+  __baseHqFactOffset = (__baseHqFactOffset + 1) % 99;
+  showBaseHqHud(9000);
+  renderBaseHQ();
+  toast(baseHqIvyGuidance());
 }
 function baseHqRunRecommendedCommand(){
   const rec = baseHqMissionGateRecommendation(["Story","Arcade","Survival"].map((mode)=>baseHqModeMissionSnapshot(mode)));
@@ -24279,27 +24422,7 @@ function confirmBaseHqModePreview(){
   syncGamepadFocus();
 }
 function baseHqIvyGuidance(modeOverride=S.mode){
-  const mode = normalizeModeName(modeOverride);
-  const snap = baseHqModeMissionSnapshot(mode);
-  const medkits = Math.max(0, Math.floor(Number(totalMedkits() || 0)));
-  const armor = Math.max(0, Math.floor(Number(totalArmorPlates() || 0)));
-  const traps = Math.max(0, Math.floor(Number(S.trapsOwned || 0)));
-  const shields = Math.max(0, Math.floor(Number(S.shields || 0)));
-  if(mode === "Survival"){
-    return `Ivy: Survival is about endurance. Bring armor, shields, and medkits before ${snap.label}.`;
-  }
-  if(medkits <= 1) return `Ivy: Medkits are low. Visit Medbay before ${snap.label} so one mistake does not end the run.`;
-  if(armor <= 4) return `Ivy: Armor plates are thin. Armory or Medbay prep will help before this ${snap.threat.toLowerCase()} threat.`;
-  if(traps <= 1 && /civilian|escort|rescue/i.test(`${snap.objective} ${snap.tags.join(" ")}`)){
-    return `Ivy: This route has rescue pressure. Buy traps so civilians have breathing room near extraction.`;
-  }
-  if(shields <= 0 && /Boss|High|Extreme/i.test(`${snap.threat} ${snap.tags.join(" ")}`)){
-    return `Ivy: Boss-style pressure is possible. Carry at least one shield before you deploy.`;
-  }
-  if(/Capture|capture/i.test(`${snap.objective} ${snap.tags.join(" ")}`)){
-    return `Ivy: Capture route detected. Check tranq ammo before starting, then scan before chasing.`;
-  }
-  return `Ivy: ${snap.label} is ready. Brief first, stock up if needed, then deploy when the route feels right.`;
+  return `Ivy: ${baseHqIvyGuidanceProfile(modeOverride).line}`;
 }
 function baseHqOnboardingCompleted(){
   try{ return localStorage.getItem("tigerstrike_base_hq_tour_complete") === "1"; }catch(_e){ return false; }
@@ -24405,6 +24528,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       title:"Command Deck",
       desc:`Base Intel: ${factList[factIndex]}`,
       actions:[
+        ["Ask Ivy","baseHqExecuteIvyGuidance()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
         ["HQ News","refreshBaseHqDailyNews()"],
         ["Story Journal","openStoryFromBaseHQ()"],
@@ -24477,6 +24601,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       title:"Mission Gate 3.0",
       desc:`Base Intel: ${factList[factIndex]} Command Table compares Story, Arcade, Survival, Training, gear, briefing, shop, and inventory before deployment.`,
       actions:[
+        ["Ask Ivy","baseHqExecuteIvyGuidance()"],
         ["Recommended","baseHqRunRecommendedCommand()"],
         ["Continue Active","startMissionFromBaseHQ()"],
         ["Story Preview","openBaseHqModePreview('Story')"],
@@ -24578,7 +24703,8 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
 function baseHqNpcDialogue(npcName){
   if(npcName === "Ivy"){
     if(!baseHqOnboardingCompleted()) return "Welcome to Base HQ. I can walk you through the important rooms first, then you can deploy when you feel ready.";
-    return baseHqIvyGuidance();
+    const profile = baseHqIvyGuidanceProfile();
+    return `${profile.line} ${profile.reason}`;
   }
   const lines = BASE_HQ_DIALOGUES[npcName] || Object.freeze(["I am still setting up this desk, Commander. Check another room for more intel."]);
   const idx = Math.abs(Math.floor(Number(__baseHqDialogIndex || 0))) % lines.length;
@@ -24676,6 +24802,22 @@ function baseHqDailyNewsHtml(){
     </div>
   `;
 }
+function baseHqIvyGuidanceHtml(modeOverride=S.mode){
+  const profile = baseHqIvyGuidanceProfile(modeOverride);
+  const chips = profile.chips.map((chip)=>`<div class="baseHqMissionCard"><span>${baseHqEsc(profile.priority)}</span><b>${baseHqEsc(chip)}</b></div>`).join("");
+  return `
+    <div class="baseHqMissionPreview ivyGuidanceCard">
+      <div class="baseHqMissionPreviewTitle">Receptionist Guidance 2.0</div>
+      <div class="baseHqRecommended"><b>${baseHqEsc(profile.title)}:</b> Ivy says ${baseHqEsc(profile.line)}</div>
+      <div class="baseHqRecommended">${baseHqEsc(profile.reason)}</div>
+      <div class="baseHqMissionPreviewGrid ivyGuidanceGrid">${chips}</div>
+      <div class="baseHqWorldActions missionGateActions">
+        <button class="good" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqExecuteIvyGuidance('${baseHqEsc(profile.key)}')">${baseHqEsc(profile.button)}</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqRefreshIvyGuidance()">Refresh Advice</button>
+      </div>
+    </div>
+  `;
+}
 function baseHqDailyRewardDeskHtml(){
   const info = readDaily();
   const today = ymdUTC();
@@ -24738,6 +24880,7 @@ function renderBaseHqWorldHud(){
     ? baseHqMissionGatePreviewHtml()
     : (room.id === "training" ? baseHqTutorialStationHtml() : (room.id === "contracts" ? baseHqDailyRewardDeskHtml() : ""));
   const newsHtml = (room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
+  const ivyHtml = (room.id === "command" || room.id === "mission" || dialogNpc?.name === "Ivy") ? baseHqIvyGuidanceHtml() : "";
   const progressVisualHtml = (room.id === "command" || room.id === "trophy" || room.id === "mission") ? baseHqProgressVisualHtml() : "";
   const progress = baseHqRoomProgress(room.id);
   hud.style.display = "block";
@@ -24752,6 +24895,7 @@ function renderBaseHqWorldHud(){
     <div class="baseHqWorldDesc">${baseHqEsc(data.desc || "Walk around Base HQ and interact with rooms.")}</div>
     <div class="baseHqWorldNpc">Room Purpose: ${baseHqEsc(baseHqRoomPurposeLine(room.id))}</div>
     <div class="baseHqWorldNpc">Room Progress: ${baseHqEsc(progress.label)} • ${progress.pct}% readiness</div>
+    ${ivyHtml}
     ${previewHtml}
     ${newsHtml}
     ${progressVisualHtml}
@@ -45396,6 +45540,8 @@ window.openBaseHqModePreview = openBaseHqModePreview;
 window.closeBaseHqModePreview = closeBaseHqModePreview;
 window.confirmBaseHqModePreview = confirmBaseHqModePreview;
 window.baseHqExecuteMissionGateAction = baseHqExecuteMissionGateAction;
+window.baseHqExecuteIvyGuidance = baseHqExecuteIvyGuidance;
+window.baseHqRefreshIvyGuidance = baseHqRefreshIvyGuidance;
 window.baseHqRunRecommendedCommand = baseHqRunRecommendedCommand;
 window.startTutorialFromBaseHQ = startTutorialFromBaseHQ;
 window.startTutorialPracticeFromBaseHQ = startTutorialPracticeFromBaseHQ;
