@@ -23836,6 +23836,7 @@ let __baseHqOnboardingStep = 0;
 let __returnToBaseHqAfterOverlay = false;
 let __baseHqReturnRoom = "mission";
 let __baseHqModePreviewMode = "";
+let __baseHqProgressSnapshotCache = { at:0, value:null };
 
 function baseHqRoomById(id){
   return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
@@ -23994,6 +23995,61 @@ function baseHqStatsHtml(){
     <div class="baseHqStat"><span>Civilians Saved</span><b>${rescued}</b></div>
     <div class="baseHqStat"><span>Squad</span><b>${soldiers} owned</b></div>
     <div class="baseHqStat"><span>Weapon</span><b>${baseHqEsc(equippedWeapon()?.name || "Starter")}</b></div>
+  `;
+}
+function baseHqProgressSnapshot(){
+  const now = Date.now();
+  if(__baseHqProgressSnapshotCache.value && now - __baseHqProgressSnapshotCache.at < 500){
+    return __baseHqProgressSnapshotCache.value;
+  }
+  const level = Math.max(1, Math.floor(Number(S.storyLevel || 1)));
+  const captures = Math.max(0, Math.floor(Number(S?.opsTotals?.captures || S?.stats?.captures || 0)));
+  const achievements = Math.max(0, achvCount());
+  const hqRank = STORY_HQ_MODULES.reduce((n, def)=>n + storyHQRank(def.key), 0);
+  const hqMax = STORY_HQ_MODULES.reduce((n, def)=>n + def.maxRank, 0);
+  const levelTier = level >= 80 ? 5 : (level >= 60 ? 4 : (level >= 40 ? 3 : (level >= 20 ? 2 : (level >= 8 ? 1 : 0))));
+  const systemTier = hqMax > 0 ? Math.floor((hqRank / hqMax) * 5) : 0;
+  const trophyTier = Math.min(5, Math.floor((achievements + Math.min(captures, 80) / 8) / 5));
+  const tier = clamp(Math.max(levelTier, systemTier, trophyTier), 0, 5);
+  const labels = ["Field Tent","Forward Base","Active HQ","Regional Command","Elite Command","Legend HQ"];
+  const value = { level, captures, achievements, hqRank, hqMax, tier, label:labels[tier] || labels[0] };
+  __baseHqProgressSnapshotCache = { at:now, value };
+  return value;
+}
+function baseHqRoomModuleRank(roomId){
+  const map = {
+    armory:"HQ_ARMORY",
+    medbay:"HQ_MEDBAY",
+    intel:"HQ_INTEL",
+    weather:"HQ_INTEL",
+    research:"HQ_RD",
+    forge:"HQ_RD",
+    trophy:"HQ_RD",
+    pens:"HQ_RD",
+    specialists:"HQ_ARMORY",
+    training:"HQ_ARMORY",
+    settlement:"HQ_MEDBAY",
+    vehicle:"HQ_ARMORY",
+    command:"HQ_INTEL",
+    mission:"HQ_INTEL",
+    contracts:"HQ_INTEL",
+  };
+  const key = map[roomId] || "";
+  return key ? storyHQRank(key) : 0;
+}
+function baseHqProgressVisualHtml(){
+  const snap = baseHqProgressSnapshot();
+  const pct = snap.hqMax > 0 ? Math.round((snap.hqRank / snap.hqMax) * 100) : 0;
+  return `
+    <div class="baseHqMissionPreview">
+      <div class="baseHqMissionPreviewTitle">Persistent HQ Progress Visuals</div>
+      <div class="baseHqMissionPreviewGrid">
+        <div class="baseHqMissionCard"><span>HQ Identity</span><b>${baseHqEsc(snap.label)} • Tier ${snap.tier}/5</b></div>
+        <div class="baseHqMissionCard"><span>Room Systems</span><b>${snap.hqRank}/${snap.hqMax} ranks • ${pct}% built</b></div>
+        <div class="baseHqMissionCard"><span>Showcase</span><b>${snap.achievements} achievements • ${snap.captures} captures</b></div>
+        <div class="baseHqMissionCard"><span>Visual Growth</span><b>Lighting, staff, screens, trophies, and room glow scale with progress.</b></div>
+      </div>
+    </div>
   `;
 }
 function baseHqModeMissionSnapshot(mode=normalizeModeName(S.mode)){
@@ -24594,6 +24650,7 @@ function renderBaseHqWorldHud(){
     ? baseHqMissionGatePreviewHtml()
     : (room.id === "training" ? baseHqTutorialStationHtml() : (room.id === "contracts" ? baseHqDailyRewardDeskHtml() : ""));
   const newsHtml = (room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
+  const progressVisualHtml = (room.id === "command" || room.id === "trophy" || room.id === "mission") ? baseHqProgressVisualHtml() : "";
   const progress = baseHqRoomProgress(room.id);
   hud.style.display = "block";
   hud.innerHTML = `
@@ -24609,6 +24666,7 @@ function renderBaseHqWorldHud(){
     <div class="baseHqWorldNpc">Room Progress: ${baseHqEsc(progress.label)} • ${progress.pct}% readiness</div>
     ${previewHtml}
     ${newsHtml}
+    ${progressVisualHtml}
     ${npcText}
     <div class="baseHqWorldActions">
       <button class="good" type="button" onpointerdown="event.stopPropagation();interactBaseHQ()" onclick="event.stopPropagation();interactBaseHQ()">Talk / Inspect</button>
@@ -24932,19 +24990,49 @@ function drawBaseHqRoomProp(room, now){
   }
   ctx.restore();
 }
+function drawBaseHqRoomProgressBadge(room, now){
+  if(!room) return;
+  const rank = baseHqRoomModuleRank(room.id);
+  const unlock = baseHqRoomProgress(room.id);
+  if(rank <= 0 && unlock.unlocked) return;
+  ctx.save();
+  const x = room.x + room.w / 2 - 16;
+  const y = room.y - room.h / 2 + 16;
+  ctx.globalAlpha = unlock.unlocked ? 0.96 : 0.82;
+  ctx.fillStyle = unlock.unlocked ? "rgba(6,78,59,.92)" : "rgba(92,63,12,.92)";
+  ctx.strokeStyle = unlock.unlocked ? "rgba(187,247,208,.85)" : "rgba(250,204,21,.78)";
+  ctx.lineWidth = 1.5;
+  roundedRectFill(x - 18, y - 11, 36, 22, 9);
+  ctx.stroke();
+  ctx.fillStyle = unlock.unlocked ? "#dcfce7" : "#fef3c7";
+  ctx.font = "1000 10px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(rank > 0 ? `Lv${rank}` : `${unlock.required}`, x, y);
+  if(rank > 0){
+    ctx.globalAlpha = 0.22 + Math.sin(now / 300) * 0.06;
+    ctx.strokeStyle = room.color || "#60a5fa";
+    ctx.beginPath();
+    ctx.arc(x, y, 20 + rank * 2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 function drawBaseHqRoom(room, now){
   const active = room.id === __baseHqSelectedRoom;
   const pulse = active ? 0.5 + Math.sin(now / 240) * 0.18 : 0;
+  const moduleRank = baseHqRoomModuleRank(room.id);
+  const rankGlow = Math.min(0.22, moduleRank * 0.045);
   ctx.save();
   const roomGrad = ctx.createLinearGradient(room.x - room.w/2, room.y - room.h/2, room.x + room.w/2, room.y + room.h/2);
   roomGrad.addColorStop(0, active ? "rgba(18,33,58,.98)" : "rgba(10,21,38,.94)");
   roomGrad.addColorStop(0.55, active ? "rgba(9,18,34,.97)" : "rgba(6,13,25,.92)");
   roomGrad.addColorStop(1, active ? "rgba(13,30,47,.97)" : "rgba(5,12,22,.92)");
   ctx.fillStyle = roomGrad;
-  ctx.strokeStyle = active ? "rgba(125,211,252,.98)" : "rgba(71,85,105,.84)";
-  ctx.lineWidth = active ? 3 : 1.5;
-  ctx.shadowColor = active ? "rgba(56,189,248,.45)" : "rgba(0,0,0,.25)";
-  ctx.shadowBlur = active ? 18 : 8;
+  ctx.strokeStyle = active ? "rgba(125,211,252,.98)" : (moduleRank > 0 ? "rgba(187,247,208,.82)" : "rgba(71,85,105,.84)");
+  ctx.lineWidth = active ? 3 : (moduleRank > 0 ? 2 : 1.5);
+  ctx.shadowColor = active ? "rgba(56,189,248,.45)" : (moduleRank > 0 ? `rgba(34,197,94,${0.18 + rankGlow})` : "rgba(0,0,0,.25)");
+  ctx.shadowBlur = active ? 18 : (8 + moduleRank * 3);
   roundedRectFill(room.x - room.w/2, room.y - room.h/2, room.w, room.h, 18);
   ctx.stroke();
   ctx.shadowBlur = 0;
@@ -24968,6 +25056,7 @@ function drawBaseHqRoom(room, now){
   ctx.fillStyle = progress.unlocked ? "rgba(34,197,94,.86)" : "rgba(250,204,21,.78)";
   roundedRectFill(room.x - room.w/2 + 16, room.y + room.h/2 - 16, (room.w - 32) * (progress.pct / 100), 6, 4);
   drawBaseHqRoomProp(room, now);
+  drawBaseHqRoomProgressBadge(room, now);
   ctx.fillStyle = "#f8fafc";
   ctx.font = "1000 15px system-ui, sans-serif";
   ctx.textAlign = "center";
@@ -25225,17 +25314,106 @@ function drawBaseHqTigerPen(now){
     ctx.restore();
   }
 }
+function drawBaseHqProgressDecor(now){
+  const snap = baseHqProgressSnapshot();
+  const tier = snap.tier;
+  ctx.save();
+  if(tier >= 1){
+    ctx.globalAlpha = 0.14 + tier * 0.035;
+    ctx.fillStyle = "rgba(56,189,248,.55)";
+    for(let i=0;i<Math.min(8, 3 + tier);i++){
+      const x = 198 + i * 132;
+      const pulse = Math.sin(now / 520 + i) * 4;
+      roundedRectFill(x, 26 + pulse, 84, 10, 6);
+      roundedRectFill(x + 14, 682 - pulse, 56, 8, 5);
+    }
+  }
+  if(tier >= 2){
+    ctx.globalAlpha = 0.22;
+    ctx.strokeStyle = "rgba(74,222,128,.72)";
+    ctx.lineWidth = 2;
+    for(let i=0;i<tier + 1;i++){
+      const x = 360 + i * 112;
+      ctx.beginPath();
+      ctx.moveTo(x, 120);
+      ctx.lineTo(640, 356);
+      ctx.lineTo(920 - i * 62, 120);
+      ctx.stroke();
+    }
+  }
+  if(tier >= 3){
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = "rgba(15,23,42,.82)";
+    ctx.strokeStyle = "rgba(251,191,36,.72)";
+    for(let i=0;i<Math.min(7, Math.max(2, Math.floor(snap.achievements / 4)));i++){
+      const x = 488 + i * 48;
+      roundedRectFill(x, 92, 30, 30, 8);
+      ctx.stroke();
+      ctx.fillStyle = i % 2 ? "#facc15" : "#fde68a";
+      ctx.beginPath();
+      ctx.moveTo(x + 15, 98);
+      ctx.lineTo(x + 20, 109);
+      ctx.lineTo(x + 28, 110);
+      ctx.lineTo(x + 22, 116);
+      ctx.lineTo(x + 24, 124);
+      ctx.lineTo(x + 15, 120);
+      ctx.lineTo(x + 6, 124);
+      ctx.lineTo(x + 8, 116);
+      ctx.lineTo(x + 2, 110);
+      ctx.lineTo(x + 10, 109);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "rgba(15,23,42,.82)";
+    }
+  }
+  if(tier >= 4){
+    ctx.globalAlpha = 0.18 + Math.sin(now / 700) * 0.04;
+    const grd = ctx.createRadialGradient(640, 356, 40, 640, 356, 340);
+    grd.addColorStop(0, "rgba(34,197,94,.62)");
+    grd.addColorStop(1, "rgba(34,197,94,0)");
+    ctx.fillStyle = grd;
+    ctx.fillRect(260, 60, 760, 620);
+  }
+  if(tier >= 5){
+    ctx.globalAlpha = 0.48 + Math.sin(now / 420) * 0.08;
+    ctx.strokeStyle = "rgba(250,204,21,.84)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([18, 12]);
+    ctx.strokeRect(74, 42, BASE_HQ_WORLD.w - 148, BASE_HQ_WORLD.h - 84);
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+function drawBaseHqProgressStaff(now){
+  const snap = baseHqProgressSnapshot();
+  const extra = Math.min(6, snap.tier + Math.floor(snap.hqRank / 3));
+  for(let i=0;i<extra;i++){
+    const x = 210 + ((i * 177 + Math.sin(now / 900 + i) * 24) % 860);
+    const y = 142 + ((i * 91) % 460);
+    const colors = ["#38bdf8","#22c55e","#f59e0b","#a78bfa","#fb7185","#60a5fa"];
+    drawBaseHqAmbientActor({
+      name:`Crew ${i+1}`,
+      role:snap.tier >= 4 ? "Elite HQ Staff" : "HQ Staff",
+      color:colors[i % colors.length],
+      from:[x - 24, y],
+      to:[x + 42, y + (i % 2 ? 18 : -18)],
+      speed:0.000042 + i * 0.000004,
+      phase:i * 0.17
+    }, now);
+  }
+}
 function drawBaseHqCameraHint(cam){
   ctx.save();
   ctx.setTransform(1,0,0,1,0,0);
   ctx.globalAlpha = 0.74;
   ctx.fillStyle = "rgba(4,8,18,.62)";
-  roundedRectFill(12, 12, 184, 30, 12);
+  roundedRectFill(12, 12, 224, 30, 12);
   ctx.fillStyle = "rgba(219,234,254,.96)";
   ctx.font = "900 12px system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText(`Base HQ Main Menu`, 24, 27);
+  const snap = baseHqProgressSnapshot();
+  ctx.fillText(`${snap.label} • HQ Tier ${snap.tier}/5`, 24, 27);
   ctx.globalAlpha = 0.52;
   ctx.fillStyle = "rgba(125,211,252,.92)";
   const miniW = 96;
@@ -25258,6 +25436,8 @@ function drawBaseHqCameraHint(cam){
 function drawBaseHQScene(now=Date.now()){
   if(!cv || !ctx) return;
   const cam = baseHqCameraOffset();
+  const progressSnap = baseHqProgressSnapshot();
+  const tier = progressSnap.tier;
   ctx.setTransform(1,0,0,1,0,0);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "source-over";
@@ -25267,9 +25447,9 @@ function drawBaseHQScene(now=Date.now()){
   ctx.save();
   ctx.translate(-cam.x, -cam.y);
   const grd = ctx.createLinearGradient(0,0,cv.width,cv.height);
-  grd.addColorStop(0, "#10243a");
-  grd.addColorStop(0.52, "#0b1728");
-  grd.addColorStop(1, "#07131d");
+  grd.addColorStop(0, tier >= 4 ? "#17334a" : (tier >= 2 ? "#132b42" : "#10243a"));
+  grd.addColorStop(0.52, tier >= 3 ? "#102033" : "#0b1728");
+  grd.addColorStop(1, tier >= 5 ? "#0d1f2b" : "#07131d");
   ctx.fillStyle = grd;
   ctx.fillRect(0,0,BASE_HQ_WORLD.w,BASE_HQ_WORLD.h);
   ctx.save();
@@ -25296,6 +25476,7 @@ function drawBaseHQScene(now=Date.now()){
   ctx.strokeStyle = "rgba(125,211,252,.26)";
   ctx.lineWidth = 2;
   ctx.stroke();
+  drawBaseHqProgressDecor(now);
   ctx.globalAlpha = 0.16;
   ctx.strokeStyle = "rgba(226,232,240,.82)";
   ctx.setLineDash([16, 12]);
@@ -25318,15 +25499,24 @@ function drawBaseHQScene(now=Date.now()){
   for(const room of BASE_HQ_ROOMS) drawBaseHqRoom(room, now);
   drawBaseHqTigerPen(now);
   ctx.save();
-  ctx.fillStyle = "rgba(250,204,21,.18)";
+  const trophySnap = baseHqProgressSnapshot();
+  const trophyCount = clamp(Math.max(2, Math.ceil(trophySnap.achievements / 2), Math.ceil(trophySnap.captures / 18)), 2, 10);
   const trophy = baseHqRoomById("trophy");
-  const trophyX = (trophy?.x || 360) - 108;
+  const trophyX = (trophy?.x || 360) - Math.min(190, trophyCount * 22);
   const trophyY = (trophy?.y || 108) - 28;
-  for(let i=0;i<6;i++){
-    roundedRectFill(trophyX + i*43, trophyY, 24, 24, 6);
+  for(let i=0;i<trophyCount;i++){
+    const x = trophyX + i * 42;
+    const h = 18 + (i % 3) * 4;
+    ctx.fillStyle = i % 2 ? "rgba(250,204,21,.28)" : "rgba(253,230,138,.24)";
+    roundedRectFill(x, trophyY + (26 - h), 24, h, 6);
+    ctx.fillStyle = i % 2 ? "#facc15" : "#fde68a";
+    ctx.beginPath();
+    ctx.arc(x + 12, trophyY + 4 + Math.sin(now / 360 + i) * 1.4, 5, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
   for(const actor of BASE_HQ_AMBIENT_ACTORS) drawBaseHqAmbientActor(actor, now);
+  drawBaseHqProgressStaff(now);
   for(const npc of BASE_HQ_NPCS) drawBaseHqNpc(npc, now);
   drawBaseHqCasualPlayer(now);
   const hint = __baseHqHint || "Walk to a room and press Use";
