@@ -10804,6 +10804,8 @@ let __startupLoadingGuard = {
   tipIndex:0,
   stage:"terrain",
   stageScores:{ terrain:0, sectors:0, entities:0, hazards:0, visual:0 },
+  finalizingUntil:0,
+  pendingReleaseReason:"",
   releasedAt:0,
   reason:"",
   lastTextAt:0,
@@ -23822,7 +23824,7 @@ const BASE_HQ_DIALOGUES = Object.freeze({
 });
 let __baseHqActive = false;
 let __baseHqPlayer = { x:640, y:420, targetX:640, targetY:420, face:-Math.PI/2, step:0, _moveVx:0, _moveVy:0 };
-let __baseHqCamera = { x:0, y:0 };
+let __baseHqCamera = { x:0, y:0, targetX:0, targetY:0 };
 let __baseHqSelectedRoom = "command";
 let __baseHqHint = "";
 let __baseHqFactOffset = 0;
@@ -23862,8 +23864,24 @@ function baseHqCameraOffset(){
   const viewH = Number(cv?.height || 540) || 540;
   const maxX = Math.max(0, BASE_HQ_WORLD.w - viewW);
   const maxY = Math.max(0, BASE_HQ_WORLD.h - viewH);
-  __baseHqCamera.x = clamp(Number(__baseHqPlayer.x || 0) - (viewW * 0.5), 0, maxX);
-  __baseHqCamera.y = clamp(Number(__baseHqPlayer.y || 0) - (viewH * 0.5), 0, maxY);
+  const room = baseHqRoomById(__baseHqSelectedRoom);
+  const movingToRoom = !!__baseHqPendingHudRoom;
+  const focusX = movingToRoom ? ((Number(__baseHqPlayer.x || 0) * 0.45) + (Number(room.x || __baseHqPlayer.x) * 0.55)) : Number(__baseHqPlayer.x || 0);
+  const focusY = movingToRoom ? ((Number(__baseHqPlayer.y || 0) * 0.45) + (Number(room.y || __baseHqPlayer.y) * 0.55)) : Number(__baseHqPlayer.y || 0);
+  __baseHqCamera.targetX = clamp(focusX - (viewW * 0.5), 0, maxX);
+  __baseHqCamera.targetY = clamp(focusY - (viewH * 0.52), 0, maxY);
+  const ease = clamp(0.10 * frameMotionMul(), 0.06, 0.22);
+  if(!Number.isFinite(__baseHqCamera.x)) __baseHqCamera.x = __baseHqCamera.targetX;
+  if(!Number.isFinite(__baseHqCamera.y)) __baseHqCamera.y = __baseHqCamera.targetY;
+  if(Math.abs(__baseHqCamera.x - __baseHqCamera.targetX) > viewW || Math.abs(__baseHqCamera.y - __baseHqCamera.targetY) > viewH){
+    __baseHqCamera.x = __baseHqCamera.targetX;
+    __baseHqCamera.y = __baseHqCamera.targetY;
+  }else{
+    __baseHqCamera.x += (__baseHqCamera.targetX - __baseHqCamera.x) * ease;
+    __baseHqCamera.y += (__baseHqCamera.targetY - __baseHqCamera.y) * ease;
+  }
+  __baseHqCamera.x = clamp(__baseHqCamera.x, 0, maxX);
+  __baseHqCamera.y = clamp(__baseHqCamera.y, 0, maxY);
   return __baseHqCamera;
 }
 function baseHqScreenToWorld(sx, sy){
@@ -23886,6 +23904,7 @@ function baseHqMoveTowardRoom(roomId){
   __baseHqDialogNpc = "";
   __baseHqPlayer.targetX = clamp(room.x, 34, BASE_HQ_WORLD.w - 34);
   __baseHqPlayer.targetY = clamp(room.y + Math.min(52, Math.max(34, room.h * 0.42)), 42, BASE_HQ_WORLD.h - 34);
+  __baseHqHint = `Walking to ${room.name}`;
 }
 function baseHqNearestNpc(){
   let best = null;
@@ -25384,6 +25403,18 @@ function drawBaseHqRoom(room, now){
   roundedRectFill(room.x - room.w/2 + 8, room.y - room.h/2 + 8, room.w - 16, 12, 8);
   ctx.globalAlpha = 1;
   const progress = baseHqRoomProgress(room.id);
+  if(active){
+    ctx.save();
+    ctx.globalAlpha = 0.28 + Math.sin(now / 260) * 0.08;
+    ctx.strokeStyle = "rgba(187,247,208,.95)";
+    ctx.fillStyle = "rgba(187,247,208,.08)";
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([12, 8]);
+    roundedRectFill(room.x - room.w/2 - 10, room.y - room.h/2 - 10, room.w + 20, room.h + 20, 22);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
   ctx.fillStyle = "rgba(2,6,23,.72)";
   roundedRectFill(room.x - room.w/2 + 16, room.y + room.h/2 - 16, room.w - 32, 6, 4);
   ctx.fillStyle = progress.unlocked ? "rgba(34,197,94,.86)" : "rgba(250,204,21,.78)";
@@ -44089,7 +44120,7 @@ function ensureStartupLoadingOverlay(){
         <div data-load-bar style="height:100%;width:16%;border-radius:999px;background:linear-gradient(90deg,#22c55e,#a3e635,#facc15);transition:width .22s ease;"></div>
       </div>
       <div data-load-tip style="margin-top:16px;min-height:36px;font-size:13px;font-weight:850;color:#d9f99d;line-height:1.35;">Scout first: scan before you rush an Alpha.</div>
-      <div style="margin-top:10px;font-size:12px;font-weight:800;color:#94a3b8;">Gameplay starts once the nearby mission area is playable.</div>
+      <div style="margin-top:10px;font-size:12px;font-weight:800;color:#94a3b8;">Gameplay starts once the mission board reaches 100%.</div>
     </div>
   `;
   document.body.appendChild(node);
@@ -44112,6 +44143,8 @@ function beginStartupLoadingGuard(reason="startup"){
   __startupLoadingGuard.tipIndex = Math.abs(Math.floor(Number(S?.storyLevel || S?.arcadeLevel || S?.survivalWave || 1))) % STARTUP_LOADING_TIPS.length;
   __startupLoadingGuard.stage = "terrain";
   __startupLoadingGuard.stageScores = { terrain:0, sectors:0, entities:0, hazards:0, visual:0 };
+  __startupLoadingGuard.finalizingUntil = 0;
+  __startupLoadingGuard.pendingReleaseReason = "";
   __startupLoadingGuard.releasedAt = 0;
   __startupLoadingGuard.reason = reason;
   __startupLastDetailedMapAt = 0;
@@ -44265,6 +44298,8 @@ function releaseStartupLoadingGuard(reason="ready"){
   if(!__startupLoadingGuard.active) return;
   __startupLoadingGuard.percent = 100;
   __startupLoadingGuard.active = false;
+  __startupLoadingGuard.finalizingUntil = 0;
+  __startupLoadingGuard.pendingReleaseReason = "";
   __startupLoadingGuard.releasedAt = Date.now();
   __startupLoadingGuard.reason = reason;
   __forceFullMapRepaintUntil = Math.max(Number(__forceFullMapRepaintUntil || 0), Date.now() + 90000);
@@ -44272,12 +44307,30 @@ function releaseStartupLoadingGuard(reason="ready"){
   updateStartupLoadingOverlay(true);
 }
 
+function requestStartupLoadingFinalization(reason="ready"){
+  if(!__startupLoadingGuard.active) return;
+  const now = Date.now();
+  __startupLoadingGuard.percent = 100;
+  __startupLoadingGuard.stage = "ready";
+  __startupLoadingGuard.pendingReleaseReason = reason;
+  __startupLoadingGuard.finalizingUntil = Math.max(Number(__startupLoadingGuard.finalizingUntil || 0), now + 650);
+  updateStartupLoadingOverlay(true);
+}
+
 function startupLoadingGuardActive(now=Date.now()){
   if(!__startupLoadingGuard.active) return false;
+  if(Number(__startupLoadingGuard.finalizingUntil || 0) > 0){
+    if(now >= Number(__startupLoadingGuard.finalizingUntil || 0)){
+      releaseStartupLoadingGuard(__startupLoadingGuard.pendingReleaseReason || "ready");
+      return false;
+    }
+    updateStartupLoadingOverlay();
+    return true;
+  }
   const elapsed = now - Number(__startupLoadingGuard.startedAt || now);
   if(elapsed >= STARTUP_LOADING_MAX_MS){
-    releaseStartupLoadingGuard("timeout");
-    return false;
+    requestStartupLoadingFinalization("timeout");
+    return true;
   }
   return true;
 }
@@ -44291,7 +44344,7 @@ function noteStartupMapFrameReady(){
     __startupLoadingGuard.detailedFrames = Math.min(STARTUP_LOADING_DETAIL_READY_FRAMES, Number(__startupLoadingGuard.detailedFrames || 0) + 1);
   }
   if(startupLoadCanRelease(now)){
-    releaseStartupLoadingGuard("map-ready");
+    requestStartupLoadingFinalization("map-ready");
   }else{
     updateStartupLoadingOverlay();
   }
@@ -44308,12 +44361,14 @@ function updateStartupLoadingOverlay(force=false){
   __startupLoadingGuard.lastTextAt = now;
   const elapsed = Math.max(0, now - Number(__startupLoadingGuard.startedAt || now));
   computeStartupPreloadProgress(now);
+  const finalizing = Number(__startupLoadingGuard.finalizingUntil || 0) > 0;
+  if(finalizing) __startupLoadingGuard.stage = "ready";
   const timeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_PLAYABLE_MS), 0, 1);
   const maxTimeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_MAX_MS), 0, 1);
   const stageProgress = startupPreloadWeightedPercent() / 100;
   const criticalBonus = startupCriticalPreloadReady() ? 10 : 0;
   const rawPercent = Math.floor((timeProgress * 48) + (stageProgress * 42) + criticalBonus);
-  const readyToFinish = startupLoadCanRelease(now);
+  const readyToFinish = finalizing || startupLoadCanRelease(now);
   const cappedPercent = readyToFinish ? 100 : Math.min(maxTimeProgress >= 1 ? 99 : 96, rawPercent);
   __startupLoadingGuard.percent = Math.max(Number(__startupLoadingGuard.percent || 0), cappedPercent);
   const pct = clamp(Math.round(__startupLoadingGuard.percent || 0), 0, 100);
