@@ -23837,6 +23837,7 @@ let __returnToBaseHqAfterOverlay = false;
 let __baseHqReturnRoom = "mission";
 let __baseHqModePreviewMode = "";
 let __baseHqProgressSnapshotCache = { at:0, value:null };
+let __baseHqQuickMenuCollapsed = (()=>{ try{ return localStorage.getItem("tigerstrike_base_hq_quick_menu_collapsed") === "1"; }catch(_e){ return false; }})();
 
 function baseHqRoomById(id){
   return BASE_HQ_ROOMS.find((room)=>room.id === id) || BASE_HQ_ROOMS[0];
@@ -23966,6 +23967,14 @@ function hideBaseHqHud(){
   __baseHqHudUntil = 0;
   const hud = document.getElementById("baseHqWorldHud");
   if(hud) hud.style.display = "none";
+}
+function setBaseHqQuickMenuCollapsed(collapsed=true){
+  __baseHqQuickMenuCollapsed = !!collapsed;
+  try{ localStorage.setItem("tigerstrike_base_hq_quick_menu_collapsed", __baseHqQuickMenuCollapsed ? "1" : "0"); }catch(_e){}
+  renderBaseHqQuickBar();
+}
+function toggleBaseHqQuickMenu(){
+  setBaseHqQuickMenuCollapsed(!__baseHqQuickMenuCollapsed);
 }
 function dismissBaseHqInfoForMovement(){
   __baseHqHudUntil = 0;
@@ -24629,7 +24638,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       actions:[
         ["Claim / Preview","openDailyRewardDeskFromBaseHQ()"],
         ["Refresh Desk","refreshBaseHqDailyNews()"],
-        ["Daily Contracts","openInventoryFromBaseHQ('contracts')"],
+        ["Reward Desk","openDailyRewardDeskFromBaseHQ()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"]
       ],
       upgrades:["HQ_INTEL"],
@@ -24918,8 +24927,14 @@ function renderBaseHqQuickBar(){
   const button = (label, fn, cls="") =>
     `<button class="baseHqQuickBtn ${cls}" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();${fn}">${baseHqEsc(label)}</button>`;
   bar.style.display = "grid";
+  bar.classList.toggle("collapsed", !!__baseHqQuickMenuCollapsed);
+  if(__baseHqQuickMenuCollapsed){
+    bar.innerHTML = `${button("Open HQ Menu", "setBaseHqQuickMenuCollapsed(false)", "primary")}`;
+    return;
+  }
   bar.innerHTML = `
     <div class="baseHqQuickHint">${baseHqEsc(baseHqIvyGuidance())} • Active: ${baseHqEsc(snap.label)}</div>
+    ${button("Hide Menu", "setBaseHqQuickMenuCollapsed(true)", "utility")}
     ${button("HQ Tour", "resetBaseHqOnboarding()", "utility")}
     ${button("Story", "openBaseHqModePreview('Story')", "primary")}
     ${button("Arcade", "openBaseHqModePreview('Arcade')", "primary")}
@@ -25885,16 +25900,25 @@ function openDailyRewardDeskFromBaseHQ(){
   }
 }
 function openShopFromBaseHQ(tab="bundles"){
+  const validTabs = new Set(["weapons","ammo","armor","meds","squad","meta","bundles","season","forge","stars","cash","premium","tools","traps"]);
+  const safeTab = validTabs.has(String(tab || "")) ? String(tab) : "bundles";
   rememberBaseHqOverlayReturn(__baseHqSelectedRoom);
   leaveBaseHqView({ restoreMenu:false });
   openShop();
-  if(document.getElementById("shopOverlay")?.style.display === "flex") shopTab(tab);
+  if(document.getElementById("shopOverlay")?.style.display === "flex"){
+    shopTab(safeTab);
+    setTimeout(()=>{
+      if(document.getElementById("shopOverlay")?.style.display === "flex") shopTab(safeTab);
+    }, 0);
+  }
 }
 function openInventoryFromBaseHQ(tab=""){
+  const validTabs = new Set(["gear","cosmetics","settlement","showcase"]);
+  const safeTab = validTabs.has(String(tab || "")) ? String(tab) : "";
   rememberBaseHqOverlayReturn(__baseHqSelectedRoom);
   leaveBaseHqView({ restoreMenu:false });
   openInventory();
-  if(tab) inventoryTab(tab);
+  if(safeTab) inventoryTab(safeTab);
 }
 function openModeFromBaseHQ(){
   leaveBaseHqView({ restoreMenu:true });
@@ -45542,6 +45566,8 @@ window.confirmBaseHqModePreview = confirmBaseHqModePreview;
 window.baseHqExecuteMissionGateAction = baseHqExecuteMissionGateAction;
 window.baseHqExecuteIvyGuidance = baseHqExecuteIvyGuidance;
 window.baseHqRefreshIvyGuidance = baseHqRefreshIvyGuidance;
+window.setBaseHqQuickMenuCollapsed = setBaseHqQuickMenuCollapsed;
+window.toggleBaseHqQuickMenu = toggleBaseHqQuickMenu;
 window.baseHqRunRecommendedCommand = baseHqRunRecommendedCommand;
 window.startTutorialFromBaseHQ = startTutorialFromBaseHQ;
 window.startTutorialPracticeFromBaseHQ = startTutorialPracticeFromBaseHQ;
