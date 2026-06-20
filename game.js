@@ -24732,11 +24732,20 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       upgrades:[],
     },
     specialists:{
-      title:"Barracks",
-      desc:`Base Intel: ${factList[factIndex]} Squad owned: A ${S.soldierAttackersOwned || 0}, R ${S.soldierRescuersOwned || 0}.`,
+      title:"Squad Room 3.0",
+      desc:`Base Intel: ${factList[factIndex]} Assign default tactics, set formations, inspect personalities, equip squad kits, and revive downed specialists before deployment.`,
       actions:[
+        ["Default Auto","baseHqSetSquadCommand('AUTO')"],
+        ["Attack Target","baseHqSetSquadCommand('ATTACK_TARGET')"],
+        ["Rescue Focus","baseHqSetSquadCommand('RESCUE')"],
+        ["Regroup","baseHqSetSquadCommand('REGROUP')"],
+        ["Formation Wedge","baseHqSetSquadFormation('WEDGE')"],
+        ["Formation Split","baseHqSetSquadFormation('SPLIT_ESCORT')"],
+        ["Cycle A Gear","baseHqCycleSquadProfileGear('attacker',0)"],
+        ["Cycle R Gear","baseHqCycleSquadProfileGear('rescue',0)"],
+        ["Revive All","baseHqReviveAllSoldiers()"],
         ["Squad Shop","openShopFromBaseHQ('squad')"],
-        ["Inventory","openInventoryFromBaseHQ('gear')"],
+        ["Gear Inventory","openInventoryFromBaseHQ('gear')"],
         ["Training","selectBaseHqRoom('training', true)"]
       ],
       upgrades:["HQ_ARMORY","HQ_MEDBAY"],
@@ -24903,7 +24912,10 @@ function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
   if(roomId === "intel") return `Investigation, weather, and tiger pressure systems online`;
   if(roomId === "pens") return `${Math.max(0, Math.floor(Number(S?.opsTotals?.captures || S?.stats?.captures || 0)))} lifetime captures tracked`;
   if(roomId === "trophy") return `${achvCount()} achievements • showcase ready`;
-  if(roomId === "specialists") return `Attack ${S.soldierAttackersOwned || 0} • Rescue ${S.soldierRescuersOwned || 0}`;
+  if(roomId === "specialists"){
+    syncSquadRosterBounds();
+    return `A ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} active (${squadDownedCount("attacker")} down) • R ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} active (${squadDownedCount("rescue")} down) • ${squadFormationShortLabel()}`;
+  }
   if(roomId === "mission") return `Next: ${nextMissionLabel()} • Deploy plan ready`;
   if(roomId === "forge") return `Materials, skins, trails, and cosmetic rarity`;
   if(roomId === "contracts") return `Daily, weekly, live ops, and co-op goals`;
@@ -25001,6 +25013,128 @@ function baseHqTutorialStationHtml(){
     </div>
   `;
 }
+function baseHqSquadRoleLabel(role){
+  return role === "rescue" ? "Rescue Specialist" : "Tiger Specialist";
+}
+function baseHqSquadProfiles(){
+  syncSquadRosterBounds();
+  const rows = [];
+  for(const role of ["attacker", "rescue"]){
+    for(let slot=0; slot<squadOwnedCount(role); slot++){
+      rows.push(ensureSquadProfile(role, slot));
+    }
+  }
+  return rows;
+}
+function baseHqSquadProfileCardHtml(profile){
+  const trait = squadProfileTrait(profile);
+  const equipment = SQUAD_EQUIPMENT_PRESETS[profile.equipmentPreset] || SQUAD_EQUIPMENT_PRESETS.BALANCED;
+  const nextXp = squadXpForNextLevel(profile);
+  const roleLabel = baseHqSquadRoleLabel(profile.role);
+  return `
+    <div class="baseHqMissionCard">
+      <span>${baseHqEsc(roleLabel)} • Slot ${Number(profile.slot || 0) + 1}</span>
+      <b>${baseHqEsc(profile.name)} • ${baseHqEsc(squadProfileRankLabel(profile))} Lv ${Number(profile.level || 1)}</b>
+      <small>${baseHqEsc(trait.label)}: ${baseHqEsc(trait.desc)}</small>
+      <small>Gear: ${baseHqEsc(equipment.label)} • ${baseHqEsc(equipment.desc)}</small>
+      <small>${baseHqEsc(squadProfilePassiveSummary(profile))}</small>
+      <small>XP ${Number(profile.xp || 0).toLocaleString()}${nextXp ? ` • ${Number(nextXp).toLocaleString()} to next` : " • Max level"}</small>
+      <small>Memory: ${baseHqEsc(profile.lastMemory || "New recruit")}</small>
+    </div>
+  `;
+}
+function baseHqSquadRoomHtml(){
+  syncSquadRosterBounds();
+  const profiles = baseHqSquadProfiles();
+  const reviveCost = squadReviveAllCost();
+  const profileHtml = profiles.length
+    ? profiles.slice(0, 6).map(baseHqSquadProfileCardHtml).join("")
+    : `<div class="baseHqMissionCard"><span>No specialists hired</span><b>Hire squad members in Shop > Squad.</b><small>Mission 15 still unlocks normal purchase access; Star unlocks can open roles early.</small></div>`;
+  return `
+    <div class="baseHqMissionPreview">
+      <div class="baseHqMissionPreviewTitle">Squad Room 3.0</div>
+      <div class="baseHqMissionPreviewGrid">
+        <div class="baseHqMissionCard"><span>Attack Team</span><b>${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} active</b><small>${squadDownedCount("attacker")} down • Revive $${squadReviveUnitCost("attacker").toLocaleString()}</small></div>
+        <div class="baseHqMissionCard"><span>Rescue Team</span><b>${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} active</b><small>${squadDownedCount("rescue")} down • Revive $${squadReviveUnitCost("rescue").toLocaleString()}</small></div>
+        <div class="baseHqMissionCard"><span>Default Tactic</span><b>${baseHqEsc(squadCommandLabel())}</b><small>Applies to all specialists at mission start unless you give individual orders.</small></div>
+        <div class="baseHqMissionCard"><span>Formation</span><b>${baseHqEsc(squadFormationLabel())}</b><small>Wedge, line, split escort, or flank behavior.</small></div>
+        <div class="baseHqMissionCard"><span>Ability Status</span><b>${baseHqEsc(squadAbilityStatusLabel("tranq_burst"))} / ${baseHqEsc(squadAbilityStatusLabel("smoke_screen"))}</b><small>Attackers use tranq burst. Rescuers use smoke cover.</small></div>
+        <div class="baseHqMissionCard"><span>Revive All</span><b>$${reviveCost.toLocaleString()}</b><small>Restores every downed specialist without entering the shop.</small></div>
+      </div>
+      <div class="baseHqRecommended">Set your default squad plan here before you deploy. These controls update the real squad systems used in missions.</div>
+      <div class="baseHqMissionPreviewGrid">${profileHtml}</div>
+      <div class="baseHqWorldActions missionGateActions">
+        <button class="good" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqSetSquadCommand('AUTO')">Auto</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqSetSquadCommand('ATTACK_TARGET')">Attack Target</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqSetSquadCommand('RESCUE')">Rescue</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqSetSquadCommand('REGROUP')">Regroup</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqSetSquadCommand('HOLD')">Hold</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqSetSquadFormation('WEDGE')">Wedge</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqSetSquadFormation('LINE')">Line</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqSetSquadFormation('SPLIT_ESCORT')">Split Escort</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqSetSquadFormation('FLANK')">Flank</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqCycleSquadProfileGear('attacker',0)">Cycle A Gear</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqCycleSquadProfileGear('rescue',0)">Cycle R Gear</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqReviveSoldier('attacker')">Revive A</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqReviveSoldier('rescue')">Revive R</button>
+        <button class="good" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqReviveAllSoldiers()">Revive All</button>
+      </div>
+    </div>
+  `;
+}
+function baseHqSetSquadCommand(cmd){
+  const next = setSquadCommand(cmd, { toast:true, save:true, force:true, individual:false });
+  setEventText(`Squad Room: default command set to ${squadCommandLabel(next)}.`, 3.5);
+  showBaseHqHud(12000);
+  renderBaseHQ();
+  return next;
+}
+function baseHqSetSquadFormation(formation){
+  const next = setSquadFormation(formation, { toast:true, save:true, force:true });
+  setEventText(`Squad Room: formation set to ${squadFormationLabel(next)}.`, 3.5);
+  showBaseHqHud(12000);
+  renderBaseHQ();
+  return next;
+}
+function baseHqCycleSquadProfileGear(role="attacker", slot=0){
+  const cleanRole = role === "rescue" ? "rescue" : "attacker";
+  const cleanSlot = Math.max(0, Math.floor(Number(slot || 0)));
+  syncSquadRosterBounds();
+  if(squadOwnedCount(cleanRole) <= cleanSlot){
+    toast(`No ${baseHqSquadRoleLabel(cleanRole)} in slot ${cleanSlot + 1}.`);
+    showBaseHqHud(9000);
+    renderBaseHQ();
+    return false;
+  }
+  const profile = ensureSquadProfile(cleanRole, cleanSlot);
+  const idx = Math.max(0, SQUAD_EQUIPMENT_ORDER.indexOf(profile.equipmentPreset));
+  profile.equipmentPreset = SQUAD_EQUIPMENT_ORDER[(idx + 1) % SQUAD_EQUIPMENT_ORDER.length];
+  const equipment = SQUAD_EQUIPMENT_PRESETS[profile.equipmentPreset] || SQUAD_EQUIPMENT_PRESETS.BALANCED;
+  for(const unit of (S.supportUnits || [])){
+    if(unit && unit.role === cleanRole && Number(unit.progressionSlot || 0) === cleanSlot){
+      syncUnitSquadProgression(unit, cleanSlot);
+    }
+  }
+  toast(`${profile.name}: ${equipment.label} equipped.`);
+  setEventText(`Squad Room: ${profile.name} equipped ${equipment.label}.`, 3.5);
+  save();
+  showBaseHqHud(12000);
+  renderBaseHQ();
+  renderHUD();
+  return true;
+}
+function baseHqReviveSoldier(role){
+  reviveSoldier(role);
+  showBaseHqHud(12000);
+  renderBaseHQ();
+  return false;
+}
+function baseHqReviveAllSoldiers(){
+  reviveAllSoldiers();
+  showBaseHqHud(12000);
+  renderBaseHQ();
+  return false;
+}
 function refreshBaseHqDailyNews(){
   __baseHqFactOffset = (__baseHqFactOffset + 1) % 99;
   showBaseHqHud(7200);
@@ -25023,7 +25157,11 @@ function renderBaseHqWorldHud(){
   const actionHtml = baseHqPanelActionsHtml(data);
   const previewHtml = room.id === "mission"
     ? baseHqMissionGatePreviewHtml()
-    : (room.id === "training" ? baseHqTutorialStationHtml() : (room.id === "contracts" ? baseHqDailyRewardDeskHtml() : ""));
+    : (room.id === "training"
+      ? baseHqTutorialStationHtml()
+      : (room.id === "contracts"
+        ? baseHqDailyRewardDeskHtml()
+        : (room.id === "specialists" ? baseHqSquadRoomHtml() : "")));
   const missionControlHtml = (room.id === "command" || room.id === "mission") ? baseHqMissionControlHtml() : "";
   const newsHtml = (room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
   const ivyHtml = (room.id === "command" || room.id === "mission" || dialogNpc?.name === "Ivy") ? baseHqIvyGuidanceHtml() : "";
@@ -45925,6 +46063,11 @@ window.toggleSquadCommandWheel = toggleSquadCommandWheel;
 window.pickSquadCommand = pickSquadCommand;
 window.cycleSelectedSquadEquipment = cycleSelectedSquadEquipment;
 window.triggerSynchronizedSquadAttack = triggerSynchronizedSquadAttack;
+window.baseHqSetSquadCommand = baseHqSetSquadCommand;
+window.baseHqSetSquadFormation = baseHqSetSquadFormation;
+window.baseHqCycleSquadProfileGear = baseHqCycleSquadProfileGear;
+window.baseHqReviveSoldier = baseHqReviveSoldier;
+window.baseHqReviveAllSoldiers = baseHqReviveAllSoldiers;
 
 window.playerAction = playerAction;
 window.endBattle = endBattle;
