@@ -22097,6 +22097,11 @@ function claimDailyRewardOverlay(){
     onDone();
     return;
   }
+  if(__returnToBaseHqAfterOverlay){
+    returnToBaseHqFromOverlay();
+    if(hadPending) save();
+    return;
+  }
   if(introOverlayVisible()){
     setPaused(true, "launch-intro");
     syncGamepadFocus();
@@ -23584,7 +23589,7 @@ const BASE_HQ_ROOMS = Object.freeze([
   Object.freeze({ id:"specialists", name:"Barracks", icon:"SQD", sub:"Squad", x:640, y:626, w:270, h:92, color:"#a78bfa" }),
   Object.freeze({ id:"mission", name:"Mission Gate", icon:"GO", sub:"Deploy", x:640, y:356, w:190, h:92, color:"#34d399" }),
   Object.freeze({ id:"forge", name:"Forge Bench", icon:"FRG", sub:"Crafting", x:850, y:74, w:150, h:58, color:"#f97316" }),
-  Object.freeze({ id:"contracts", name:"Contracts Board", icon:"JOB", sub:"Daily ops", x:430, y:74, w:156, h:58, color:"#f43f5e" }),
+  Object.freeze({ id:"contracts", name:"Daily Reward Desk", icon:"DAY", sub:"Rewards", x:430, y:74, w:176, h:62, color:"#f43f5e" }),
   Object.freeze({ id:"weather", name:"Weather Lab", icon:"WX", sub:"Storm intel", x:126, y:360, w:150, h:72, color:"#38bdf8" }),
   Object.freeze({ id:"settlement", name:"Settlement Ops", icon:"SET", sub:"Rescued civilians", x:430, y:356, w:150, h:72, color:"#84cc16" }),
   Object.freeze({ id:"cinema", name:"Cinema Archive", icon:"CIN", sub:"Story scenes", x:850, y:356, w:150, h:72, color:"#c084fc" }),
@@ -23602,7 +23607,7 @@ const BASE_HQ_ROOM_PURPOSES = Object.freeze({
   specialists:"Manage soldiers, squad roles, formations, and revives.",
   mission:"Start Story, Arcade, Survival, or Tutorial from the main gate.",
   forge:"Craft and equip weapon skins, trails, and visual effects.",
-  contracts:"Check daily goals, live ops, and replay objectives.",
+  contracts:"Claim daily login rewards, check streaks, and preview tomorrow's reward.",
   weather:"Understand rain, fog, snow, night, dust, and track decay.",
   settlement:"See rescued civilian support and defense progress.",
   cinema:"Replay story scenes, intros, outros, and boss moments.",
@@ -23630,6 +23635,7 @@ const BASE_HQ_ROOM_UNLOCKS = Object.freeze({
 });
 const BASE_HQ_DAILY_NEWS = Object.freeze([
   "HQ Update: Base HQ is now the main menu. Start every major mode from the Mission Gate.",
+  "Reward Desk: Daily login rewards now live inside HQ, with streak status and tomorrow preview.",
   "Field Tip: If Shop or Inventory opens from HQ, Resume now returns to HQ instead of dropping into gameplay.",
   "Intel Flash: Weather, scan clues, and tiger tracks are connected. Bad weather makes investigation more valuable.",
   "Squad Note: Soldiers are strongest when assigned roles before combat, not after a tiger is already pouncing.",
@@ -23711,6 +23717,9 @@ const BASE_HQ_FACTS = Object.freeze({
     "Prestige showcase items give long-term goals after money, gear, and supplies are already stacked."
   ]),
   contracts:Object.freeze([
+    "The Daily Reward Desk keeps login rewards inside HQ so players claim them intentionally instead of through surprise popups.",
+    "Daily streaks should reward consistency, but the payout stays controlled so players still have reasons to buy stars.",
+    "Tomorrow preview helps players know what is coming next before they leave HQ.",
     "Daily and weekly contracts give players reasons to return without forcing mission resets.",
     "Live Ops cards can add positive and negative modifiers before missions for replay variety.",
     "Clan and co-op style systems can reward shared progress against tiger hotspots and seasonal objectives."
@@ -24346,13 +24355,13 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       upgrades:["HQ_RD","HQ_ARMORY"],
     },
     contracts:{
-      title:"Contracts Board",
+      title:"Daily Reward Desk",
       desc:`Base Intel: ${factList[factIndex]}`,
       actions:[
-        ["Refresh News","refreshBaseHqDailyNews()"],
-        ["Mission Briefing","openMissionBriefFromBaseHQ()"],
-        ["Story Journal","openStoryFromBaseHQ()"],
-        ["Start Mission","startMissionFromBaseHQ()"]
+        ["Claim / Preview","openDailyRewardDeskFromBaseHQ()"],
+        ["Refresh Desk","refreshBaseHqDailyNews()"],
+        ["Daily Contracts","openInventoryFromBaseHQ('contracts')"],
+        ["Mission Briefing","openMissionBriefFromBaseHQ()"]
       ],
       upgrades:["HQ_INTEL"],
     },
@@ -24523,6 +24532,30 @@ function baseHqDailyNewsHtml(){
     </div>
   `;
 }
+function baseHqDailyRewardDeskHtml(){
+  const info = readDaily();
+  const today = ymdUTC();
+  const ready = info?.last !== today;
+  const reward = ready && __pendingDailyReward ? __pendingDailyReward : previewNextDailyReward();
+  const streak = Math.max(ready ? 1 : 0, Math.floor(Number(ready ? reward.streak : info.streak || 0)));
+  const total = Math.max(0, Math.floor(Number(info.total || 0)));
+  const status = ready ? "Ready to claim" : "Claimed today";
+  const nextLine = ready
+    ? `Claim now: +$${Number(reward.cash || 0).toLocaleString()} • +${Number(reward.perkPts || 0)} perk`
+    : `Next reward: +$${Number(reward.cash || 0).toLocaleString()} • +${Number(reward.perkPts || 0)} perk in ${nextDailyCountdownText()}`;
+  return `
+    <div class="baseHqMissionPreview">
+      <div class="baseHqMissionPreviewTitle">Daily Reward Desk</div>
+      <div class="baseHqMissionPreviewGrid">
+        <div class="baseHqMissionCard"><span>Status</span><b>${baseHqEsc(status)}</b></div>
+        <div class="baseHqMissionCard"><span>Streak</span><b>${streak} day${streak === 1 ? "" : "s"}</b></div>
+        <div class="baseHqMissionCard"><span>Total Check-ins</span><b>${total}</b></div>
+        <div class="baseHqMissionCard"><span>Reward Preview</span><b>${baseHqEsc(nextLine)}</b></div>
+      </div>
+      <div class="baseHqRecommended">${ready ? "Reward is available now. Claiming stays inside Base HQ." : `Already claimed. UTC reset: ${baseHqEsc(nextDailyCountdownText())}.`}</div>
+    </div>
+  `;
+}
 function baseHqTutorialStationHtml(){
   return `
     <div class="baseHqMissionPreview">
@@ -24557,8 +24590,10 @@ function renderBaseHqWorldHud(){
     ? `<div class="baseHqWorldNpc">${baseHqEsc(dialogNpc.name)}: ${baseHqEsc(baseHqNpcDialogue(dialogNpc.name))}</div>`
     : (near.npc ? `<div class="baseHqWorldNpc">Tap ${baseHqEsc(near.npc.name)} or Talk / Inspect for a conversation.</div>` : "");
   const actionHtml = baseHqPanelActionsHtml(data);
-  const previewHtml = room.id === "mission" ? baseHqMissionGatePreviewHtml() : (room.id === "training" ? baseHqTutorialStationHtml() : "");
-  const newsHtml = (room.id === "contracts" || room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
+  const previewHtml = room.id === "mission"
+    ? baseHqMissionGatePreviewHtml()
+    : (room.id === "training" ? baseHqTutorialStationHtml() : (room.id === "contracts" ? baseHqDailyRewardDeskHtml() : ""));
+  const newsHtml = (room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
   const progress = baseHqRoomProgress(room.id);
   hud.style.display = "block";
   hud.innerHTML = `
@@ -24601,6 +24636,7 @@ function renderBaseHqQuickBar(){
     ${button("Survival", "openBaseHqModePreview('Survival')", "primary")}
     ${button("Brief", "openMissionBriefFromBaseHQ()", "")}
     ${button("Training", "selectBaseHqRoom('training', true)", "")}
+    ${button("Reward", "selectBaseHqRoom('contracts', true)", "utility")}
     ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
     ${button("Inventory", "openInventoryFromBaseHQ()", "utility")}
   `;
@@ -25415,6 +25451,16 @@ function startTutorialPracticeFromBaseHQ(kind="full"){
   const label = safeKind === "full" ? "Full tutorial" : `${safeKind.charAt(0).toUpperCase()}${safeKind.slice(1)} practice`;
   toast(`${label} started from HQ Training.`);
   syncGamepadFocus();
+}
+function openDailyRewardDeskFromBaseHQ(){
+  rememberBaseHqOverlayReturn("contracts");
+  leaveBaseHqView({ restoreMenu:false });
+  const reward = __pendingDailyReward || null;
+  const opened = openDailyRewardOverlay(reward, ()=>returnToBaseHqFromOverlay());
+  if(!opened){
+    returnToBaseHqFromOverlay();
+    toast("Daily Reward Desk is warming up. Try again in a moment.");
+  }
 }
 function openShopFromBaseHQ(tab="bundles"){
   rememberBaseHqOverlayReturn(__baseHqSelectedRoom);
@@ -45073,6 +45119,7 @@ window.closeBaseHqModePreview = closeBaseHqModePreview;
 window.confirmBaseHqModePreview = confirmBaseHqModePreview;
 window.startTutorialFromBaseHQ = startTutorialFromBaseHQ;
 window.startTutorialPracticeFromBaseHQ = startTutorialPracticeFromBaseHQ;
+window.openDailyRewardDeskFromBaseHQ = openDailyRewardDeskFromBaseHQ;
 window.startBaseHqOnboarding = startBaseHqOnboarding;
 window.completeBaseHqOnboardingStep = completeBaseHqOnboardingStep;
 window.skipBaseHqOnboarding = skipBaseHqOnboarding;
