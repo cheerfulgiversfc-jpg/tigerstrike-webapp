@@ -24287,7 +24287,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       actions:[
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
         ["Story Journal","openStoryFromBaseHQ()"],
-        ["Tutorial","startTutorialFromBaseHQ()"]
+        ["Training Station","selectBaseHqRoom('training', true)"]
       ],
       upgrades:["HQ_INTEL","HQ_RD"],
     },
@@ -24331,7 +24331,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
         ["Arcade Mode","startModeFromBaseHQ('Arcade')"],
         ["Survival Mode","startModeFromBaseHQ('Survival')"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
-        ["Tutorial","startTutorialFromBaseHQ()"]
+        ["Training Station","selectBaseHqRoom('training', true)"]
       ],
       upgrades:[],
     },
@@ -24362,7 +24362,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       actions:[
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
         ["Intel Center","selectBaseHqRoom('intel', true)"],
-        ["Tutorial","startTutorialFromBaseHQ()"]
+        ["Training Station","selectBaseHqRoom('training', true)"]
       ],
       upgrades:["HQ_INTEL"],
     },
@@ -24397,12 +24397,15 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       upgrades:["HQ_ARMORY"],
     },
     training:{
-      title:"Training Mat",
-      desc:`Base Intel: ${factList[factIndex]}`,
+      title:"Tutorial Station",
+      desc:`Base Intel: ${factList[factIndex]} Choose a full tutorial or a short practice lane before entering a real mission.`,
       actions:[
-        ["Tutorial","startTutorialFromBaseHQ()"],
-        ["Weapons","openShopFromBaseHQ('weapons')"],
-        ["Squad Shop","openShopFromBaseHQ('squad')"]
+        ["Full Tutorial","startTutorialPracticeFromBaseHQ('full')"],
+        ["Rescue Practice","startTutorialPracticeFromBaseHQ('rescue')"],
+        ["Combat Practice","startTutorialPracticeFromBaseHQ('combat')"],
+        ["Capture Practice","startTutorialPracticeFromBaseHQ('capture')"],
+        ["HQ Tour","resetBaseHqOnboarding()"],
+        ["Shop + Inventory","startTutorialPracticeFromBaseHQ('shop')"]
       ],
       upgrades:["HQ_ARMORY","HQ_MEDBAY"],
     },
@@ -24520,6 +24523,20 @@ function baseHqDailyNewsHtml(){
     </div>
   `;
 }
+function baseHqTutorialStationHtml(){
+  return `
+    <div class="baseHqMissionPreview">
+      <div class="baseHqMissionPreviewTitle">HQ Tutorial Station</div>
+      <div class="baseHqMissionPreviewGrid">
+        <div class="baseHqMissionCard"><span>Full Tutorial</span><b>Movement, rescue, combat, shop, inventory, extraction.</b></div>
+        <div class="baseHqMissionCard"><span>Rescue Practice</span><b>Escort one civilian and confirm safe-zone rescue flow.</b></div>
+        <div class="baseHqMissionCard"><span>Tiger Practice</span><b>Scan, lock, engage, weaken, capture, or kill.</b></div>
+        <div class="baseHqMissionCard"><span>HQ Tour</span><b>Learn the main-menu rooms before deployment.</b></div>
+      </div>
+      <div class="baseHqRecommended">Training is safe. It uses a temporary tutorial battlefield and returns you to Base HQ when finished.</div>
+    </div>
+  `;
+}
 function refreshBaseHqDailyNews(){
   __baseHqFactOffset = (__baseHqFactOffset + 1) % 99;
   showBaseHqHud(7200);
@@ -24540,7 +24557,7 @@ function renderBaseHqWorldHud(){
     ? `<div class="baseHqWorldNpc">${baseHqEsc(dialogNpc.name)}: ${baseHqEsc(baseHqNpcDialogue(dialogNpc.name))}</div>`
     : (near.npc ? `<div class="baseHqWorldNpc">Tap ${baseHqEsc(near.npc.name)} or Talk / Inspect for a conversation.</div>` : "");
   const actionHtml = baseHqPanelActionsHtml(data);
-  const previewHtml = room.id === "mission" ? baseHqMissionGatePreviewHtml() : "";
+  const previewHtml = room.id === "mission" ? baseHqMissionGatePreviewHtml() : (room.id === "training" ? baseHqTutorialStationHtml() : "");
   const newsHtml = (room.id === "contracts" || room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
   const progress = baseHqRoomProgress(room.id);
   hud.style.display = "block";
@@ -24583,7 +24600,7 @@ function renderBaseHqQuickBar(){
     ${button("Arcade", "openBaseHqModePreview('Arcade')", "primary")}
     ${button("Survival", "openBaseHqModePreview('Survival')", "primary")}
     ${button("Brief", "openMissionBriefFromBaseHQ()", "")}
-    ${button("Tutorial", "startTutorialFromBaseHQ()", "")}
+    ${button("Training", "selectBaseHqRoom('training', true)", "")}
     ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
     ${button("Inventory", "openInventoryFromBaseHQ()", "utility")}
   `;
@@ -25374,6 +25391,29 @@ function startTutorialFromBaseHQ(){
   setPaused(false, null);
   closeMissionBrief(true);
   window.startTutorial?.();
+  syncGamepadFocus();
+}
+function startTutorialPracticeFromBaseHQ(kind="full"){
+  const keyByKind = {
+    full:"",
+    rescue:"escort",
+    combat:"scan",
+    capture:"scan",
+    shield:"shield",
+    squad:"squad_command",
+    shop:"shop",
+    inventory:"inventory",
+    extraction:"extraction"
+  };
+  const safeKind = String(kind || "full").toLowerCase();
+  const startKey = keyByKind[safeKind] || "";
+  leaveBaseHqView({ restoreMenu:true });
+  resetTouchStick();
+  setPaused(false, null);
+  closeMissionBrief(true);
+  window.startTutorial?.(startKey ? { startKey } : undefined);
+  const label = safeKind === "full" ? "Full tutorial" : `${safeKind.charAt(0).toUpperCase()}${safeKind.slice(1)} practice`;
+  toast(`${label} started from HQ Training.`);
   syncGamepadFocus();
 }
 function openShopFromBaseHQ(tab="bundles"){
@@ -45032,6 +45072,7 @@ window.openBaseHqModePreview = openBaseHqModePreview;
 window.closeBaseHqModePreview = closeBaseHqModePreview;
 window.confirmBaseHqModePreview = confirmBaseHqModePreview;
 window.startTutorialFromBaseHQ = startTutorialFromBaseHQ;
+window.startTutorialPracticeFromBaseHQ = startTutorialPracticeFromBaseHQ;
 window.startBaseHqOnboarding = startBaseHqOnboarding;
 window.completeBaseHqOnboardingStep = completeBaseHqOnboardingStep;
 window.skipBaseHqOnboarding = skipBaseHqOnboarding;

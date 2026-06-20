@@ -642,13 +642,16 @@
     }, 200);
   }
 
-  function startTutorial(){
+  function startTutorial(opts={}){
     const T = window.TigerTutorial;
     if(T.isRunning) return;
+    const steps = getStepList();
+    const startKey = typeof opts === "string" ? opts : String(opts?.startKey || "");
+    const startIndex = startKey ? steps.findIndex((step)=>step.key === startKey) : -1;
 
     T.isRunning = true;
-    T.step = 0;
-    T.currentKey = "intro";
+    T.step = startIndex >= 0 ? startIndex : 0;
+    T.currentKey = steps[T.step]?.key || "intro";
     T.mapClicked = false;
     T.movedOnce = false;
     T.sprintUsed = false;
