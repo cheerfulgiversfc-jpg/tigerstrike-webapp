@@ -281,6 +281,15 @@
     .baseHqMissionCard{border:1px solid rgba(71,85,125,.54);border-radius:10px;padding:6px;background:rgba(2,6,23,.42)}
     .baseHqMissionCard span{display:block;font-size:9px;color:#94a3b8;font-weight:950;text-transform:uppercase;letter-spacing:.04em}
     .baseHqMissionCard b{display:block;margin-top:2px;font-size:11px;color:#f8fafc;line-height:1.18}
+    .baseHqMissionCard small{display:block;margin-top:4px;color:#bfdbfe;font-size:9px;font-weight:850;line-height:1.2}
+    .baseHqMissionCard button{margin-top:7px;min-height:28px;padding:5px 8px;font-size:9px;pointer-events:auto}
+    .missionGateCommandGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .missionGateRecommended{
+      border-color:rgba(74,222,128,.64);
+      background:linear-gradient(135deg, rgba(6,78,59,.48), rgba(2,6,23,.55));
+      box-shadow:inset 0 0 18px rgba(34,197,94,.08);
+    }
+    .missionGateActions{padding-top:2px}
     .baseHqRecommended{margin-top:6px;color:#dbeafe;font-size:10px;font-weight:850;line-height:1.25}
     .baseHqWorldActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
     .baseHqWorldActions button{min-height:34px;padding:7px 10px;font-size:11px;pointer-events:auto}
@@ -2723,7 +2732,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4554-base-hq-progress-visuals"></script>
+<script src="./game.js?v=4555-mission-gate-command-table"></script>
 <script src="./tutorial.js?v=4532-base-hq-tutorial-station"></script>
 <script>
 (() => {

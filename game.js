@@ -24091,23 +24091,110 @@ function baseHqModeMissionSnapshot(mode=normalizeModeName(S.mode)){
   };
 }
 function baseHqMissionGatePreviewHtml(){
-  const snap = baseHqModeMissionSnapshot(S.mode);
-  const gear = snap.gear.slice(0, 2).join(" • ");
-  const tags = snap.tags.slice(0, 3).join(" • ");
+  const current = normalizeModeName(S.mode);
+  const snaps = ["Story","Arcade","Survival"].map((mode)=>baseHqModeMissionSnapshot(mode));
+  const recommended = baseHqMissionGateRecommendation(snaps);
+  const cards = snaps.map((snap)=>{
+    const active = snap.mode === current ? " • ACTIVE" : "";
+    const tags = snap.tags.slice(0, 2).join(" • ");
+    return `
+      <div class="baseHqMissionCard">
+        <span>${baseHqEsc(snap.mode)}${baseHqEsc(active)}</span>
+        <b>${baseHqEsc(snap.label)}</b>
+        <small>${baseHqEsc(snap.threat)} • ${baseHqEsc(snap.civilians)} • ${baseHqEsc(snap.tigers)}</small>
+        <small>${baseHqEsc(tags || "Balanced")}</small>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();openBaseHqModePreview('${baseHqEsc(snap.mode)}')">Preview</button>
+      </div>
+    `;
+  }).join("");
   return `
     <div class="baseHqMissionPreview">
-      <div class="baseHqMissionPreviewTitle">Mission Gate 2.0 • ${baseHqEsc(snap.mode)} readiness</div>
-      <div class="baseHqMissionPreviewGrid">
-        <div class="baseHqMissionCard"><span>Next Operation</span><b>${baseHqEsc(snap.label)}</b></div>
-        <div class="baseHqMissionCard"><span>Threat</span><b>${baseHqEsc(snap.threat)} • ${baseHqEsc(tags)}</b></div>
-        <div class="baseHqMissionCard"><span>Objective</span><b>${baseHqEsc(snap.objective)}</b></div>
-        <div class="baseHqMissionCard"><span>Field Intel</span><b>${baseHqEsc(snap.civilians)} • ${baseHqEsc(snap.tigers)}</b></div>
-        <div class="baseHqMissionCard"><span>Extraction</span><b>${baseHqEsc(snap.extraction)}</b></div>
-        <div class="baseHqMissionCard"><span>Conditions</span><b>${baseHqEsc(snap.weather)}</b></div>
+      <div class="baseHqMissionPreviewTitle">Mission Gate 3.0 • Mode Command Table</div>
+      <div class="baseHqRecommended"><b>Recommended Next:</b> ${baseHqEsc(recommended.text)}</div>
+      <div class="baseHqMissionPreviewGrid missionGateCommandGrid">
+        ${cards}
+        <div class="baseHqMissionCard missionGateRecommended">
+          <span>Command Table</span>
+          <b>${baseHqEsc(recommended.title)}</b>
+          <small>${baseHqEsc(recommended.reason)}</small>
+          <button class="good" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();baseHqExecuteMissionGateAction('${baseHqEsc(recommended.key)}')">${baseHqEsc(recommended.button)}</button>
+        </div>
       </div>
-      <div class="baseHqRecommended">Recommended: ${baseHqEsc(gear)}</div>
+      <div class="baseHqWorldActions missionGateActions">
+        <button class="good" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();startMissionFromBaseHQ()">Continue Active</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();openMissionBriefFromBaseHQ()">Briefing</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();selectBaseHqRoom('training', true)">Training</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();selectBaseHqRoom('armory', true)">Gear</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();openShopFromBaseHQ('bundles')">Shop</button>
+        <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();openInventoryFromBaseHQ()">Inventory</button>
+      </div>
     </div>
   `;
+}
+function baseHqMissionGateRecommendation(snaps=[]){
+  const story = snaps.find((snap)=>snap.mode === "Story") || baseHqModeMissionSnapshot("Story");
+  const medkits = Math.max(0, Math.floor(Number(totalMedkits() || 0)));
+  const armor = Math.max(0, Math.floor(Number(totalArmorPlates() || 0)));
+  const traps = Math.max(0, Math.floor(Number(S.trapsOwned || 0)));
+  const shields = Math.max(0, Math.floor(Number(S.shields || 0)));
+  const storyLevel = Math.max(1, Math.floor(Number(S.storyLevel || 1)));
+  if(storyLevel <= 2 || !baseHqOnboardingCompleted()){
+    return {
+      title:"Start With Training",
+      text:"New players should run Training before deploying.",
+      reason:"HQ is now the main menu, and Training teaches rescue, scan, combat, shop, inventory, and extraction.",
+      button:"Go To Training",
+      key:"training"
+    };
+  }
+  if(medkits <= 1 || armor <= 3){
+    return {
+      title:"Restock Before Mission",
+      text:`Supplies are low: ${medkits} medkits and ${armor} armor plates.`,
+      reason:"Low supplies can turn rescue missions into avoidable failures.",
+      button:"Go To Medbay",
+      key:"medbay"
+    };
+  }
+  if(traps <= 1 || shields <= 0){
+    return {
+      title:"Prep Control Tools",
+      text:`Control tools are thin: ${traps} traps and ${shields} shields.`,
+      reason:"Traps and shields help protect civilians during boarding, pounces, and Alpha pressure.",
+      button:"Open Bundles",
+      key:"bundles"
+    };
+  }
+  if(/High|Extreme|Boss/i.test(String(story.threat || ""))){
+    return {
+      title:"Brief The Threat",
+      text:`${story.label} has ${String(story.threat || "high")} pressure.`,
+      reason:"Review tiger types, extraction, weather, recommended gear, and bonus objective before deploying.",
+      button:"Open Briefing",
+      key:"brief"
+    };
+  }
+  return {
+    title:"Continue Story",
+    text:`Best next move: ${story.label}.`,
+    reason:`${story.objective} Recommended gear: ${story.gear.slice(0, 2).join(" • ")}.`,
+    button:"Preview Story",
+    key:"story"
+  };
+}
+function baseHqExecuteMissionGateAction(key="story"){
+  const action = String(key || "story");
+  if(action === "training") return selectBaseHqRoom("training", true);
+  if(action === "medbay") return selectBaseHqRoom("medbay", true);
+  if(action === "bundles") return openShopFromBaseHQ("bundles");
+  if(action === "brief") return openMissionBriefFromBaseHQ();
+  if(action === "arcade") return openBaseHqModePreview("Arcade");
+  if(action === "survival") return openBaseHqModePreview("Survival");
+  return openBaseHqModePreview("Story");
+}
+function baseHqRunRecommendedCommand(){
+  const rec = baseHqMissionGateRecommendation(["Story","Arcade","Survival"].map((mode)=>baseHqModeMissionSnapshot(mode)));
+  baseHqExecuteMissionGateAction(rec.key);
 }
 function baseHqModeRewardPreview(mode, snap){
   const safeMode = normalizeModeName(mode);
@@ -24387,16 +24474,17 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       upgrades:["HQ_ARMORY","HQ_MEDBAY"],
     },
     mission:{
-      title:"Mission Gate",
-      desc:`Base Intel: ${factList[factIndex]} Base HQ is now the main menu. Choose Story, Arcade, Survival, Tutorial, or brief the next operation from here.`,
+      title:"Mission Gate 3.0",
+      desc:`Base Intel: ${factList[factIndex]} Command Table compares Story, Arcade, Survival, Training, gear, briefing, shop, and inventory before deployment.`,
       actions:[
-        ["Start Mission","startMissionFromBaseHQ()"],
-        ["Ivy HQ Tour","resetBaseHqOnboarding()"],
-        ["Story Mode","startModeFromBaseHQ('Story')"],
-        ["Arcade Mode","startModeFromBaseHQ('Arcade')"],
-        ["Survival Mode","startModeFromBaseHQ('Survival')"],
+        ["Recommended","baseHqRunRecommendedCommand()"],
+        ["Continue Active","startMissionFromBaseHQ()"],
+        ["Story Preview","openBaseHqModePreview('Story')"],
+        ["Arcade Preview","openBaseHqModePreview('Arcade')"],
+        ["Survival Preview","openBaseHqModePreview('Survival')"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
-        ["Training Station","selectBaseHqRoom('training', true)"]
+        ["Gear Prep","selectBaseHqRoom('armory', true)"],
+        ["Training","selectBaseHqRoom('training', true)"]
       ],
       upgrades:[],
     },
@@ -45307,6 +45395,8 @@ window.startModeFromBaseHQ = startModeFromBaseHQ;
 window.openBaseHqModePreview = openBaseHqModePreview;
 window.closeBaseHqModePreview = closeBaseHqModePreview;
 window.confirmBaseHqModePreview = confirmBaseHqModePreview;
+window.baseHqExecuteMissionGateAction = baseHqExecuteMissionGateAction;
+window.baseHqRunRecommendedCommand = baseHqRunRecommendedCommand;
 window.startTutorialFromBaseHQ = startTutorialFromBaseHQ;
 window.startTutorialPracticeFromBaseHQ = startTutorialPracticeFromBaseHQ;
 window.openDailyRewardDeskFromBaseHQ = openDailyRewardDeskFromBaseHQ;
