@@ -20096,12 +20096,17 @@ function renderMissionCinematicOutroCard(summary={}){
   const civEvac = Math.max(0, Math.floor(Number(summary.civEvac || missionStats.evac || 0)));
   const captures = Math.max(0, Math.floor(Number(missionStats.captures || 0)));
   const kills = Math.max(0, Math.floor(Number(missionStats.kills || 0)));
+  const boarded = route.active ? Math.max(0, Math.floor(Number(route.boardedCount || 0))) : 0;
+  const boardingTotal = route.active ? Math.max(1, Math.floor(Number(route.boardingTotal || civTotal || 1))) : Math.max(1, civTotal || 1);
   const routeLabel = route.active
-    ? `${route.icon || "🛡️"} ${route.label || "Evac Route"}${route.departed ? " departed" : ""}`
+    ? `${route.icon || "🛡️"} ${route.label || "Evac Route"}${route.departed ? " departed" : (route.departing ? " departing" : "")}`
     : (extraction.complete ? `${extraction.icon || "🚁"} ${extraction.label || "Extraction"}` : "Safe-zone evacuation");
   const escapeLine = extraction.complete
     ? `${extraction.label || "Extraction"} secured${extraction.emergency ? " under emergency fallback" : " with a clean hold"}`
     : `${routeLabel} carried civilians out of the hot zone`;
+  const boardingLine = route.active
+    ? `${boarded}/${boardingTotal} boarded${route.boardingPaused ? " after a danger pause" : (route.blocked ? " through an alternate exit" : "")}`
+    : "Final extraction hold completed";
   const conditionLine = missionCinematicWeatherLabel(currentMissionCardData());
   const bonusLine = civTotal > 0 && civEvac >= civTotal
     ? "Perfect rescue maintained"
@@ -20110,7 +20115,7 @@ function renderMissionCinematicOutroCard(summary={}){
   text.innerHTML = [
     `<b>${missionCinemaSafeText(escapeLine)}.</b>`,
     `Civilians: ${missionCinemaSafeText(`${civEvac}/${Math.max(1, civTotal)}`)} • Tigers: ${captures} captured / ${kills} killed.`,
-    `Route: ${missionCinemaSafeText(routeLabel)}.`,
+    `Route: ${missionCinemaSafeText(routeLabel)} • ${missionCinemaSafeText(boardingLine)}.`,
     `Conditions: ${missionCinemaSafeText(conditionLine)}.`,
     `Final beat: ${missionCinemaSafeText(bonusLine)}.`
   ].join("<br>");
@@ -37528,14 +37533,15 @@ function defaultEvacRouteState(){
     active:false, key:"street", icon:"🚦", label:"Street Escape", instruction:"Follow the marked street corridor to the city exit.",
     color:"rgba(74,222,128,.98)", vehicle:"safe_hold", x:0, y:0, r:70, startX:0, startY:0, midX:0, midY:0,
     altX:0, altY:0, vehicleX:0, vehicleY:0, vehicleAngle:0, blocked:false, blockedUntil:0, noticeAt:0, lastTickAt:0,
-    boardedCount:0, boardingTotal:0, boardingPaused:false, boardingPauseReason:"", departStartedAt:0, departUntil:0, departing:false, departed:false
+    boardedCount:0, boardingTotal:0, boardingPaused:false, boardingPauseReason:"", departStartedAt:0, departUntil:0, departing:false, departed:false,
+    cinematicStartedAt:0, cinematicBoardPulseAt:0, lastBoardedCount:0, lastCinematicPhase:""
   };
 }
 function ensureEvacRouteState(state=S){
   if(!state.evacRoute || typeof state.evacRoute !== "object") state.evacRoute = defaultEvacRouteState();
   const route = state.evacRoute;
   const defaults = defaultEvacRouteState();
-  for(const key of ["x","y","r","startX","startY","midX","midY","altX","altY","vehicleX","vehicleY","vehicleAngle","blockedUntil","noticeAt","lastTickAt","boardedCount","boardingTotal","departStartedAt","departUntil","departNoticeUntil"]){
+  for(const key of ["x","y","r","startX","startY","midX","midY","altX","altY","vehicleX","vehicleY","vehicleAngle","blockedUntil","noticeAt","lastTickAt","boardedCount","boardingTotal","departStartedAt","departUntil","departNoticeUntil","cinematicStartedAt","cinematicBoardPulseAt","lastBoardedCount"]){
     if(!Number.isFinite(Number(route[key]))) route[key] = defaults[key];
   }
   route.active = !!route.active;
@@ -37550,6 +37556,7 @@ function ensureEvacRouteState(state=S){
   if(!route.color) route.color = defaults.color;
   if(!route.vehicle) route.vehicle = defaults.vehicle;
   if(!route.boardingPauseReason) route.boardingPauseReason = "";
+  if(!route.lastCinematicPhase) route.lastCinematicPhase = "";
   return route;
 }
 function resetEvacRouteForDeploy(state=S){
@@ -37619,6 +37626,10 @@ function initializeRealEvacRoute(){
     departUntil:0,
     departing:false,
     departed:false,
+    cinematicStartedAt:Date.now(),
+    cinematicBoardPulseAt:0,
+    lastBoardedCount:0,
+    lastCinematicPhase:"route_set",
     noticeAt:Date.now() + 1200,
     lastTickAt:Date.now()
   });
@@ -37694,7 +37705,16 @@ function realEvacRouteTick(now=Date.now()){
       }
     }
   }
+  const prevBoarded = Math.max(0, Math.floor(Number(route.boardedCount || 0)));
   route.boardedCount = (S.civilians || []).filter((c)=>c?.alive && c.evac && c.boardedAt && now >= Number(c.boardedAt || 0)).length;
+  if(route.boardedCount > prevBoarded){
+    route.cinematicBoardPulseAt = now;
+    route.lastBoardedCount = route.boardedCount;
+    if(Date.now() > Number(route._boardingProgressNoticeAt || 0)){
+      route._boardingProgressNoticeAt = now + 1800;
+      setEventText(`${route.icon} Boarding ${route.boardedCount}/${Math.max(1, route.boardingTotal || 1)} civilians. Keep the route clear.`, 1.8);
+    }
+  }
   const shouldBlock = realEvacRouteBlockedByWorld(route, now);
   if(shouldBlock && !route.blocked){
     route.blocked = true;
@@ -37933,6 +37953,70 @@ function drawVehicleBeacon(x, y, color="rgba(251,191,36,.96)", now=Date.now()){
   ctx.fill();
   ctx.restore();
 }
+function drawEvacCinematicWash(x, y, key="safe_hold", angle=0, departPct=0, now=Date.now()){
+  ctx.save();
+  const active = departPct > 0.02;
+  if(key === "helicopter"){
+    const wash = 0.26 + Math.sin(now / 120) * 0.05;
+    ctx.globalAlpha = wash * (active ? 1.2 : 0.85);
+    ctx.strokeStyle = "rgba(226,232,240,.48)";
+    ctx.lineWidth = 2;
+    for(let i=0; i<4; i++){
+      ctx.beginPath();
+      ctx.ellipse(x, y + 24, 48 + i * 19 + departPct * 54, 11 + i * 5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.16 + departPct * 0.18;
+    ctx.fillStyle = "rgba(191,219,254,.70)";
+    ctx.beginPath();
+    ctx.moveTo(x - 16, y + 6);
+    ctx.lineTo(x - 86, y + 118);
+    ctx.lineTo(x + 86, y + 118);
+    ctx.lineTo(x + 16, y + 6);
+    ctx.closePath();
+    ctx.fill();
+  }else if(key === "boat"){
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.globalAlpha = 0.58;
+    ctx.strokeStyle = "rgba(186,230,253,.66)";
+    ctx.lineWidth = 2;
+    for(let i=0; i<5; i++){
+      const back = -34 - i * 18 - departPct * 70;
+      ctx.beginPath();
+      ctx.moveTo(back, -13 - i * 1.5);
+      ctx.bezierCurveTo(back - 20, -21, back - 35, -7, back - 56, -13);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(back, 13 + i * 1.5);
+      ctx.bezierCurveTo(back - 20, 21, back - 35, 7, back - 56, 13);
+      ctx.stroke();
+    }
+  }else{
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.globalAlpha = active ? 0.42 : 0.20;
+    ctx.fillStyle = "rgba(148,119,76,.55)";
+    for(let i=0; i<5; i++){
+      const px = -42 - i * 22 - departPct * 70;
+      ctx.beginPath();
+      ctx.ellipse(px, 18 + Math.sin(now / 120 + i) * 4, 16 + i * 2, 5 + i, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 0.30;
+    ctx.strokeStyle = "rgba(250,204,21,.55)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([9, 8]);
+    ctx.beginPath();
+    ctx.moveTo(-88, -22);
+    ctx.lineTo(92, -22);
+    ctx.moveTo(-88, 22);
+    ctx.lineTo(92, 22);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
 function drawSmokePlume(baseX, baseY, now=Date.now(), opts={}){
   const count = Math.max(3, Math.floor(Number(opts.count || 5)));
   const height = Math.max(40, Number(opts.height || 92));
@@ -37990,6 +38074,7 @@ function drawExtractionVehicle(ex, now=Date.now()){
     x += Math.cos(angle) * departPct * 340;
     y += Math.sin(angle) * departPct * 340;
   }
+  drawEvacCinematicWash(x, y, ex.key, angle, departPct, now);
   ctx.save();
   drawSoftEllipse(x, y + 18, ex.key === "helicopter" ? 42 : 48, ex.key === "boat" ? 14 : 18, "rgba(0,0,0,.30)", 1 - departPct * 0.35);
   ctx.translate(x, y);
@@ -38079,8 +38164,12 @@ function drawExtractionVehicle(ex, now=Date.now()){
     drawVehicleBeacon(25, -12, "rgba(248,113,113,.96)", now + 180);
   }
   if(!ex.departing){
-    const rescued = Math.min(8, (S.civilians || []).filter((c)=>c?.alive && c.evac).length);
-    const boardPct = clamp(ex.holdProgressMs / Math.max(1, ex.holdRequiredMs), 0, 1);
+    const boardedCount = Math.max(0, Math.floor(Number(ex.boardedCount ?? 0)));
+    const totalCount = Math.max(0, Math.floor(Number(ex.boardingTotal ?? 0)));
+    const rescued = Math.min(8, totalCount || (S.civilians || []).filter((c)=>c?.alive && c.evac).length);
+    const boardPct = totalCount > 0
+      ? clamp(boardedCount / Math.max(1, totalCount), 0, 1)
+      : clamp(ex.holdProgressMs / Math.max(1, ex.holdRequiredMs), 0, 1);
     for(let i=0;i<rescued;i++){
       const boarded = i < Math.ceil(rescued * boardPct);
       const px = boarded ? (-12 + (i % 4) * 8) : (-54 - (i % 3) * 9);
@@ -38097,11 +38186,14 @@ function drawExtractionVehicle(ex, now=Date.now()){
   ctx.rotate(-angle);
   ctx.globalAlpha = 0.96;
   ctx.fillStyle = "rgba(5,12,20,.88)";
-  roundedRectFill(-58,-48,116,20,8);
+  roundedRectFill(-72,-50,144,22,9);
   ctx.fillStyle = ex.color || "#4ade80";
   ctx.font = "900 10px system-ui";
   ctx.textAlign = "center";
-  ctx.fillText(ex.departing ? "EVAC DEPARTING" : "EVAC VEHICLE READY", 0, -34);
+  const label = ex.departing
+    ? "EVAC DEPARTING"
+    : (Number(ex.boardingTotal || 0) > 0 ? `${Math.max(0, Math.floor(Number(ex.boardedCount || 0)))}/${Math.max(1, Math.floor(Number(ex.boardingTotal || 1)))} BOARDED` : "EVAC VEHICLE READY");
+  ctx.fillText(label, 0, -35);
   ctx.restore();
 }
 function drawExtractionSequenceMarker(now=Date.now()){
@@ -38491,9 +38583,12 @@ function checkMissionComplete(){
       const rewards2Note = rewards2
         ? `\nMission Rewards 2.0: +$${Math.max(0, Math.floor(Number(rewards2.totalCash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(rewards2.bonusXp || 0)))}XP • Streak ${Math.max(1, Math.floor(Number(rewards2.nextStreak || 1)))}\n`
         : "";
+      const completedEvacRoute = ensureEvacRouteState(S);
       const extractionNote = extraction.complete
         ? `\nExtraction: ${extraction.label || "Emergency Extraction"}${extraction.emergency ? " • Emergency fallback" : ` • Perfect hold +$${Math.max(0, Math.floor(Number(extraction.bonusCash || 0))).toLocaleString()}`}\n`
-        : "";
+        : (completedEvacRoute.active
+          ? `\nEvacuation: ${completedEvacRoute.label || "Evac Route"} • ${Math.max(0, Math.floor(Number(completedEvacRoute.boardedCount || 0)))}/${Math.max(1, Math.floor(Number(completedEvacRoute.boardingTotal || civTotal || 1)))} boarded${completedEvacRoute.departed ? " • transport departed" : ""}\n`
+          : "");
       const missionStats = finalizeMissionStatsSnapshot();
       missionStats.evac = Math.min(Math.max(0, civTotal), Math.max(0, civEvac));
       missionStats.cashEarned = Math.max(0, Math.floor(Number(rewards2?.totalCash || 0)));
@@ -41081,6 +41176,8 @@ function drawRealEvacRoute(now=Date.now()){
 
   const markerEx = {
     key:route.vehicle || "safe_hold",
+    icon:route.icon,
+    label:route.label,
     color:route.color,
     x:target.x,
     y:target.y,
@@ -41090,6 +41187,8 @@ function drawRealEvacRoute(now=Date.now()){
     departing:!!route.departing,
     departStartedAt:Number(route.departStartedAt || 0),
     departUntil:Number(route.departUntil || 0),
+    boardedCount:Math.max(0, Math.floor(Number(route.boardedCount || 0))),
+    boardingTotal:Math.max(1, Math.floor(Number(route.boardingTotal || (S.civilians || []).length || 1))),
     holdProgressMs:Math.max(0, Number(route.boardedCount || S.stats?.evac || 0)),
     holdRequiredMs:Math.max(1, Number(route.boardingTotal || (S.civilians || []).length || 1))
   };
@@ -41097,6 +41196,16 @@ function drawRealEvacRoute(now=Date.now()){
 
   ctx.save();
   const pulse = 0.78 + Math.sin(now / 210) * 0.10;
+  const boardPulseAge = now - Math.max(0, Number(route.cinematicBoardPulseAt || 0));
+  if(boardPulseAge >= 0 && boardPulseAge < 900){
+    const life = 1 - clamp(boardPulseAge / 900, 0, 1);
+    ctx.globalAlpha = 0.55 * life;
+    ctx.strokeStyle = route.color || "rgba(74,222,128,.96)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, target.r + 18 + ((1 - life) * 34), 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.globalAlpha = pulse;
   ctx.strokeStyle = color;
   ctx.lineWidth = route.blocked ? 5 : 4;
@@ -41145,6 +41254,16 @@ function drawRealEvacRoute(now=Date.now()){
     roundedRectFill(target.x - 74, target.y + target.r + 12, 148, 12, 6);
     ctx.fillStyle = route.boardingPaused ? "rgba(248,113,113,.96)" : (route.color || "rgba(74,222,128,.96)");
     roundedRectFill(target.x - 74, target.y + target.r + 12, 148 * pct, 12, 6);
+    ctx.fillStyle = "rgba(226,232,240,.92)";
+    ctx.font = "900 9px system-ui";
+    ctx.fillText(`${Math.round(pct * 100)}% loaded`, target.x, target.y + target.r + 37);
+  }else{
+    ctx.globalAlpha = 0.80;
+    ctx.fillStyle = "rgba(5,12,20,.90)";
+    roundedRectFill(target.x - 92, target.y + target.r + 12, 184, 24, 11);
+    ctx.fillStyle = "rgba(187,247,208,.98)";
+    ctx.font = "1000 10px system-ui";
+    ctx.fillText("EVAC ROUTE CLEAR • CIVILIANS AWAY", target.x, target.y + target.r + 28);
   }
   ctx.restore();
 }
