@@ -10788,6 +10788,8 @@ const STARTUP_LOADING_PLAYABLE_MS = 16000;
 const STARTUP_LOADING_MIN_MS = 7500;
 const STARTUP_LOADING_READY_FRAMES = 24;
 const STARTUP_LOADING_DETAIL_READY_FRAMES = 10;
+const MAP_CLARITY_PRELOAD_RADIUS = 3;
+const MAP_CLARITY_FULL_REPAINT_MS = 120000;
 const STARTUP_PRELOAD_STAGE_WEIGHTS = Object.freeze({
   terrain:18,
   sectors:18,
@@ -10814,7 +10816,8 @@ let __startupLoadingGuard = {
   subNode:null,
   barNode:null,
   percentNode:null,
-  tipNode:null
+  tipNode:null,
+  checkNode:null
 };
 let __startupLastDetailedMapAt = 0;
 let __startupPreloadSig = "";
@@ -10827,7 +10830,8 @@ const STARTUP_LOADING_TIPS = [
   "Rescue civilians after the safe zone marker is visible.",
   "Boss roars mean the pack is about to get aggressive.",
   "Keep squad members alive: revive costs add up fast.",
-  "Only the first playable area blocks loading; deeper map detail streams in while you play."
+  "Mission control checks terrain, sectors, units, events, and visuals before gameplay starts.",
+  "The mission board opens at 100% so the map should not appear in unfinished chunks."
 ];
 let __phase18CinematicEvents = [];
 const PHASE18_CINEMATIC_EVENT_MAX = 18;
@@ -11301,7 +11305,7 @@ function ensureSectorStreamingState(state=S){
   const ss = state.sectorStreaming;
   ss.enabled = ss.enabled !== false;
   ss.size = clamp(Math.floor(Number(ss.size || STREAM_SECTOR_SIZE)), 220, 520);
-  ss.activeRadius = clamp(Math.floor(Number(ss.activeRadius || STREAM_ACTIVE_RADIUS)), 1, 2);
+  ss.activeRadius = clamp(Math.floor(Number(ss.activeRadius || STREAM_ACTIVE_RADIUS)), 1, 3);
   ss.activeKeys = Array.isArray(ss.activeKeys) ? ss.activeKeys.map((v)=>String(v || "")).filter(Boolean).slice(-64) : [];
   ss.discoveredKeys = Array.isArray(ss.discoveredKeys) ? ss.discoveredKeys.map((v)=>String(v || "")).filter(Boolean).slice(-220) : [];
   ss.centerKey = String(ss.centerKey || "0:0");
@@ -11434,6 +11438,16 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
   ss.activeKeys = Array.from(active).slice(-96);
   ss.discoveredKeys = Array.from(discovered).slice(-220);
   ss.lastUpdateAt = now;
+  return ss;
+}
+
+function preloadMapClarityFinalPass(state=S, now=Date.now()){
+  const src = (state && typeof state === "object") ? state : S;
+  const ss = preloadMissionBoardSectors(src, now, { radius:MAP_CLARITY_PRELOAD_RADIUS });
+  if(ss && typeof ss === "object"){
+    ss.activeRadius = Math.max(Number(ss.activeRadius || 1), 2);
+  }
+  try{ ensureMapObstacleCache(); }catch(e){}
   return ss;
 }
 function sectorStreamingTick(now=Date.now()){
@@ -17498,27 +17512,41 @@ function mapExpansionSectorProfile(key, state=S){
     footReverse:((seed >>> 7) % 2) === 1
   };
 }
+function mapExpansionSectorFill(profile){
+  if(profile?.kind === "settlement") return "#9a805e";
+  if(profile?.kind === "open_field") return "#789a4b";
+  if(profile?.kind === "lake" || profile?.kind === "river") return "#286a78";
+  if(profile?.kind === "woodland") return "#236f46";
+  return "#2f8054";
+}
 function drawMapExpansionSectorDetails(opts={}){
   if(window.__TUTORIAL_MODE__ || !ctx) return;
   const state = opts.state || S;
   const ss = ensureSectorStreamingState(state);
-  const keys = Array.from(new Set([...(ss.activeKeys || []), ss.centerKey])).slice(-20);
+  const activeSet = new Set(ss.activeKeys || []);
+  const keys = Array.from(new Set([...(ss.discoveredKeys || []).slice(-36), ...(ss.activeKeys || []), ss.centerKey])).slice(-48);
   const mobileFast = !!opts.mobileFast;
   ctx.save();
   for(const key of keys){
     const b = streamSectorBounds(key, state);
     if(b.maxX <= b.minX || b.maxY <= b.minY) continue;
     const p = mapExpansionSectorProfile(key, state);
+    const activeSector = activeSet.has(key) || key === ss.centerKey;
     const cx = (b.minX + b.maxX) * 0.5;
     const cy = (b.minY + b.maxY) * 0.5;
     const sw = b.maxX - b.minX;
     const sh = b.maxY - b.minY;
-    ctx.globalAlpha = 0.12;
-    ctx.fillStyle = p.kind === "settlement" ? "#a88a60" : (p.kind === "open_field" ? "#8cae54" : "#2f8054");
+    ctx.globalAlpha = activeSector ? 0.15 : 0.085;
+    ctx.fillStyle = mapExpansionSectorFill(p);
     ctx.fillRect(b.minX + 2, b.minY + 2, Math.max(1, sw - 4), Math.max(1, sh - 4));
+    ctx.globalAlpha = activeSector ? 0.08 : 0.045;
+    ctx.strokeStyle = "rgba(226,232,240,.32)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(b.minX + 2, b.minY + 2, Math.max(1, sw - 4), Math.max(1, sh - 4));
+    if(!activeSector && mobileFast) continue;
 
     // Wide connected lanes are reserved for future vehicles; the dashed diagonal is a foot shortcut.
-    ctx.globalAlpha = 0.72;
+    ctx.globalAlpha = activeSector ? 0.72 : 0.42;
     ctx.strokeStyle = "rgba(82,72,57,.92)";
     ctx.lineWidth = mobileFast ? 34 : 42;
     ctx.lineCap = "round";
@@ -17542,7 +17570,7 @@ function drawMapExpansionSectorDetails(opts={}){
     ctx.stroke();
     ctx.setLineDash([]);
 
-    if(!mobileFast && p.kind === "settlement"){
+    if(activeSector && !mobileFast && p.kind === "settlement"){
       ctx.globalAlpha = 0.46;
       ctx.fillStyle = "rgba(190,180,160,.82)";
       for(let i=0; i<3; i++){
@@ -17550,7 +17578,7 @@ function drawMapExpansionSectorDetails(opts={}){
         const oy = ((p.seed >>> (i * 5 + 2)) % Math.max(44, Math.floor(sh - 70))) + 24;
         ctx.fillRect(b.minX + ox, b.minY + oy, 24, 18);
       }
-    } else if(!mobileFast && (p.kind === "forest" || p.kind === "woodland")){
+    } else if(activeSector && !mobileFast && (p.kind === "forest" || p.kind === "woodland")){
       ctx.globalAlpha = 0.28;
       ctx.fillStyle = "rgba(46,160,88,.9)";
       for(let i=0; i<7; i++){
@@ -39536,7 +39564,7 @@ function shouldUseMobileFastMapRenderer(state=S){
   const now = Date.now();
   if(__startupLoadingGuard?.active) return false;
   if(now < Number(__forceFullMapRepaintUntil || 0)) return false;
-  if(__startupLoadingGuard?.releasedAt && (now - Number(__startupLoadingGuard.releasedAt || 0)) < 90000) return false;
+  if(__startupLoadingGuard?.releasedAt && (now - Number(__startupLoadingGuard.releasedAt || 0)) < MAP_CLARITY_FULL_REPAINT_MS) return false;
   const pref = String(state?.mobileMapRenderer || "full").toLowerCase();
   return pref === "fast";
 }
@@ -44119,6 +44147,7 @@ function ensureStartupLoadingOverlay(){
       <div style="margin-top:20px;height:10px;border-radius:999px;background:rgba(15,23,42,.95);overflow:hidden;border:1px solid rgba(148,163,184,.24);">
         <div data-load-bar style="height:100%;width:16%;border-radius:999px;background:linear-gradient(90deg,#22c55e,#a3e635,#facc15);transition:width .22s ease;"></div>
       </div>
+      <div data-load-checks style="margin-top:12px;font-size:11px;font-weight:900;color:#bae6fd;line-height:1.4;">Terrain 0% • Sectors 0% • Units 0% • Events 0% • Visuals 0%</div>
       <div data-load-tip style="margin-top:16px;min-height:36px;font-size:13px;font-weight:850;color:#d9f99d;line-height:1.35;">Scout first: scan before you rush an Alpha.</div>
       <div style="margin-top:10px;font-size:12px;font-weight:800;color:#94a3b8;">Gameplay starts once the mission board reaches 100%.</div>
     </div>
@@ -44130,6 +44159,7 @@ function ensureStartupLoadingOverlay(){
   __startupLoadingGuard.barNode = node.querySelector("[data-load-bar]");
   __startupLoadingGuard.percentNode = node.querySelector("[data-load-percent]");
   __startupLoadingGuard.tipNode = node.querySelector("[data-load-tip]");
+  __startupLoadingGuard.checkNode = node.querySelector("[data-load-checks]");
   return node;
 }
 
@@ -44177,7 +44207,7 @@ function missionMapWarmupTick(now=Date.now()){
   if(!__startupLoadingGuard.active) return;
   try{ resizeCanvasForViewport(); }catch(e){}
   try{ updateStreamedSectors(S, now); }catch(e){}
-  try{ preloadMissionBoardSectors(S, now, { radius:2 }); }catch(e){}
+  try{ preloadMapClarityFinalPass(S, now); }catch(e){}
   try{ ensureMapObstacleCache(); }catch(e){}
   try{ ensureMissionTwistState(S); }catch(e){}
   try{ computeStartupPreloadProgress(now); }catch(e){}
@@ -44187,7 +44217,7 @@ function startupPreloadExpectedSectorCount(state=S){
   const src = (state && typeof state === "object") ? state : S;
   const actorCount = Math.min(5, (src.civilians || []).length) + Math.min(6, (src.tigers || []).length);
   const siteCount = Math.min(4, (src.rescueSites || []).length) + Math.min(4, (src.mapInteractables || []).length);
-  return clamp(8 + Math.ceil(actorCount * 0.45) + Math.ceil(siteCount * 0.25), 8, 24);
+  return clamp(12 + Math.ceil(actorCount * 0.55) + Math.ceil(siteCount * 0.35), 12, 34);
 }
 
 function computeStartupPreloadProgress(now=Date.now()){
@@ -44223,7 +44253,9 @@ function computeStartupPreloadProgress(now=Date.now()){
   const expectedSectors = startupPreloadExpectedSectorCount(S);
   const discovered = Math.max(0, (ss.discoveredKeys || []).length);
   const active = Math.max(0, (ss.activeKeys || []).length);
-  const sectorScore = clamp(((discovered / expectedSectors) * 70) + ((active / Math.min(expectedSectors, 18)) * 30), 0, 100);
+  const activeExpected = Math.min(expectedSectors, 26);
+  const discoveredExpected = Math.max(expectedSectors, activeExpected + 4);
+  const sectorScore = clamp(((discovered / discoveredExpected) * 62) + ((active / activeExpected) * 38), 0, 100);
   scores.sectors = Math.max(scores.sectors || 0, Math.round(sectorScore));
 
   const hasPlayer = !!(S.me && Number.isFinite(S.me.x) && Number.isFinite(S.me.y));
@@ -44264,10 +44296,10 @@ function startupPreloadWeightedPercent(){
 function startupCriticalPreloadReady(){
   const scores = __startupLoadingGuard.stageScores || {};
   return (
-    Number(scores.terrain || 0) >= 68 &&
-    Number(scores.sectors || 0) >= 68 &&
-    Number(scores.entities || 0) >= 80 &&
-    Number(scores.hazards || 0) >= 66
+    Number(scores.terrain || 0) >= 82 &&
+    Number(scores.sectors || 0) >= 82 &&
+    Number(scores.entities || 0) >= 84 &&
+    Number(scores.hazards || 0) >= 72
   );
 }
 
@@ -44275,7 +44307,7 @@ function startupPlayablePreloadReady(){
   const scores = __startupLoadingGuard.stageScores || {};
   return (
     startupCriticalPreloadReady() &&
-    Number(scores.visual || 0) >= 78
+    Number(scores.visual || 0) >= 88
   );
 }
 
@@ -44302,7 +44334,8 @@ function releaseStartupLoadingGuard(reason="ready"){
   __startupLoadingGuard.pendingReleaseReason = "";
   __startupLoadingGuard.releasedAt = Date.now();
   __startupLoadingGuard.reason = reason;
-  __forceFullMapRepaintUntil = Math.max(Number(__forceFullMapRepaintUntil || 0), Date.now() + 90000);
+  try{ preloadMapClarityFinalPass(S, Date.now()); }catch(e){}
+  __forceFullMapRepaintUntil = Math.max(Number(__forceFullMapRepaintUntil || 0), Date.now() + MAP_CLARITY_FULL_REPAINT_MS);
   try{ invalidateMapCache(); }catch(e){}
   updateStartupLoadingOverlay(true);
 }
@@ -44390,6 +44423,20 @@ function updateStartupLoadingOverlay(force=false){
   if(__startupLoadingGuard.tipNode){
     const tipIndex = (Math.floor(elapsed / 5200) + Math.floor(Number(__startupLoadingGuard.tipIndex || 0))) % STARTUP_LOADING_TIPS.length;
     __startupLoadingGuard.tipNode.textContent = STARTUP_LOADING_TIPS[tipIndex] || STARTUP_LOADING_TIPS[0];
+  }
+  if(__startupLoadingGuard.checkNode){
+    const scores = __startupLoadingGuard.stageScores || {};
+    const labelFor = (label, key)=>{
+      const value = clamp(Math.round(Number(scores[key] || 0)), 0, 100);
+      return value >= 92 ? `Ready ${label}` : `${label} ${value}%`;
+    };
+    __startupLoadingGuard.checkNode.textContent = [
+      labelFor("Terrain", "terrain"),
+      labelFor("Sectors", "sectors"),
+      labelFor("Units", "entities"),
+      labelFor("Events", "hazards"),
+      labelFor("Visuals", "visual")
+    ].join(" • ");
   }
   if(__startupLoadingGuard.barNode){
     __startupLoadingGuard.barNode.style.width = `${Math.round(progress * 100)}%`;
