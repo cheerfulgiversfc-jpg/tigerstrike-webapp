@@ -7318,6 +7318,16 @@ function arcadeCampaignMission(level){
     else cfg.bossType = "Alpha";
   }
 
+  if(!cfg.boss && !cfg.finalBoss && n >= 12 && (n % 11 === 0 || (chapter >= 4 && n % 8 === 0))){
+    cfg.denRaid = true;
+    cfg.tigers = clamp(Math.max(cfg.tigers, 4 + Math.floor(chapter / 2)), 4, 18);
+    cfg.civilians = clamp(Math.max(cfg.civilians, 3 + Math.floor(chapter / 2)), 3, 14);
+    cfg.denCluesRequired = clamp(4 + Math.floor(chapter / 2), 4, 8);
+    cfg.denGuardCount = clamp(2 + Math.floor(chapter / 3), 2, 5);
+    cfg.denRewardCash = 2300 + chapter * 540;
+    cfg.objective = "Tiger Den Raid: investigate den clues, rescue trapped civilians, clear guards, and secure the Den Alpha.";
+  }
+
   const convoyText = /convoy|caravan|evacuation chain|supply convoy/i.test(objective);
   const convoyPattern = !cfg.boss && !cfg.finalBoss && cfg.civilians >= 4 && ((n % 7) === 0 || (chapter >= 4 && (n % 5) === 0));
   if(convoyText || convoyPattern){
@@ -7497,6 +7507,11 @@ function arcadeObjectiveProgressText(cfg){
   if(cfg.convoyMission){
     bits.push(`Convoy route ${String(cfg.convoyRouteLabel || "Balanced")}`);
     bits.push(`Split waves ${Math.max(0, Math.floor(Number(S._convoySplitThreatWaves || 0)))}`);
+  }
+  if(cfg.denRaid){
+    const den = ensureTigerDenRaidState(S);
+    bits.push(`Den ${den.revealed ? "revealed" : `${Math.min(den.cluesFound || 0, den.cluesTotal || cfg.denCluesRequired || 4)}/${den.cluesTotal || cfg.denCluesRequired || 4} clues`}`);
+    bits.push(`Guards ${Math.min(den.guardsCleared || 0, den.guardsTotal || cfg.denGuardCount || 2)}/${den.guardsTotal || cfg.denGuardCount || 2}`);
   }
   return bits.length ? ` • ${bits.join(" • ")}` : "";
 }
@@ -7713,6 +7728,16 @@ function storyCampaignMission(level){
     else cfg.bossType = "Alpha";
   }
 
+  if(!cfg.boss && !cfg.finalBoss && n >= 18 && (n % 9 === 0 || (chapter >= 5 && n % 7 === 0))){
+    cfg.denRaid = true;
+    cfg.tigers = clamp(Math.max(cfg.tigers, 4 + Math.floor(chapter / 2)), 4, 18);
+    cfg.civilians = clamp(Math.max(cfg.civilians, 3 + Math.floor(chapter / 2)), 3, 14);
+    cfg.denCluesRequired = clamp(4 + Math.floor(chapter / 2), 4, 8);
+    cfg.denGuardCount = clamp(2 + Math.floor(chapter / 3), 2, 5);
+    cfg.denRewardCash = 2800 + chapter * 620;
+    cfg.objective = `Tiger Den Raid: track clues, rescue trapped civilians, clear den guards, and capture or defeat the Den Alpha.`;
+  }
+
   if(cfg.finalBoss){
     cfg.boss = true;
     cfg.bossTwin = false;
@@ -7738,6 +7763,11 @@ function storyObjectiveProgressText(cfg){
   if(cfg.convoyMission){
     bits.push(`Convoy route ${String(cfg.convoyRouteLabel || "Balanced")}`);
     bits.push(`Split waves ${Math.max(0, Math.floor(Number(S._convoySplitThreatWaves || 0)))}`);
+  }
+  if(cfg.denRaid){
+    const den = ensureTigerDenRaidState(S);
+    bits.push(`Den ${den.revealed ? "revealed" : `${Math.min(den.cluesFound || 0, den.cluesTotal || cfg.denCluesRequired || 4)}/${den.cluesTotal || cfg.denCluesRequired || 4} clues`}`);
+    bits.push(`Guards ${Math.min(den.guardsCleared || 0, den.guardsTotal || cfg.denGuardCount || 2)}/${den.guardsTotal || cfg.denGuardCount || 2}`);
   }
   return bits.length ? ` • ${bits.join(" • ")}` : "";
 }
@@ -18612,9 +18642,222 @@ function investigationAgeLabel(t){
 function resetTigerInvestigationForDeploy(state=S){
   state.investigationClues = [];
   state.tigerInvestigation = defaultTigerInvestigationState();
+  resetTigerDenRaidForDeploy(state);
+}
+function defaultTigerDenRaidState(){
+  return {
+    active:false, revealed:false, secured:false, x:0, y:0, radius:120,
+    bossTigerId:0, guardsTotal:0, guardsCleared:0, trappedTotal:0, trappedRescued:0,
+    cluesTotal:0, cluesFound:0, rewardCash:0, rewardClaimed:false, startedAt:0, revealedAt:0, securedAt:0
+  };
+}
+function ensureTigerDenRaidState(state=S){
+  if(!state.tigerDenRaid || typeof state.tigerDenRaid !== "object"){
+    state.tigerDenRaid = defaultTigerDenRaidState();
+  }
+  return state.tigerDenRaid;
+}
+function resetTigerDenRaidForDeploy(state=S){
+  state.tigerDenRaid = defaultTigerDenRaidState();
+}
+function activeDenRaidMissionConfig(state=S){
+  const mode = normalizeModeName(state?.mode || S.mode);
+  if(mode === "Story") return storyMissionForState(state);
+  if(mode === "Arcade") return activeArcadeMission(state);
+  return null;
+}
+function revealTigerDenRaid(reason="clue", now=Date.now()){
+  const den = ensureTigerDenRaidState(S);
+  if(!den.active || den.revealed) return false;
+  den.revealed = true;
+  den.revealedAt = now;
+  const msg = reason === "entered"
+    ? "🐯 Tiger den discovered on foot. Secure the Den Alpha and rescue trapped civilians."
+    : "🐯 Tiger den revealed. Follow the den marker, rescue trapped civilians, and secure the Den Alpha.";
+  setEventText(msg, 6.5);
+  toast("Tiger Den revealed.");
+  return true;
+}
+function updateTigerDenRaidState(now=Date.now()){
+  const den = ensureTigerDenRaidState(S);
+  if(!den.active) return den;
+  den.cluesFound = (S.investigationClues || []).filter((c)=>c?.denRaid && c.found).length;
+  den.trappedRescued = (S.civilians || []).filter((c)=>c?.denRaidTrapped && c.alive && c.evac).length;
+  den.guardsCleared = (S.tigers || []).filter((t)=>t?.denRaidGuard && t.alive === false).length;
+  const nearDen = Number.isFinite(den.x) && Number.isFinite(den.y) && dist(S.me.x, S.me.y, den.x, den.y) <= Math.max(96, Number(den.radius || 120));
+  if(!den.revealed && (den.cluesFound >= Math.max(1, den.cluesTotal) || nearDen)){
+    revealTigerDenRaid(nearDen ? "entered" : "clue", now);
+  }
+  const bossDown = !den.bossTigerId || !(S.tigers || []).some((t)=>t?.alive && Number(t.id) === Number(den.bossTigerId));
+  const guardsDone = den.guardsCleared >= Math.max(0, den.guardsTotal);
+  const trappedDone = den.trappedRescued >= Math.max(0, den.trappedTotal);
+  if(!den.secured && den.revealed && bossDown && guardsDone && trappedDone){
+    den.secured = true;
+    den.securedAt = now;
+    const reward = Math.max(0, Math.floor(Number(den.rewardCash || 0)));
+    if(reward > 0 && !den.rewardClaimed){
+      den.rewardClaimed = true;
+      S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + reward;
+      trackCashEarned(reward);
+      addXP(120 + den.cluesTotal * 15);
+    }
+    setEventText(`✅ Tiger Den secured${reward ? `: +$${reward.toLocaleString()}` : ""}. Extraction route is clear.`, 6);
+  }
+  return den;
+}
+function tigerDenRaidObjectiveReady(state=S){
+  const den = ensureTigerDenRaidState(state);
+  if(!den.active) return true;
+  updateTigerDenRaidState();
+  return !!den.secured;
+}
+function seedTigerDenRaidMission(state=S, now=Date.now()){
+  if(window.__TUTORIAL_MODE__ || state.mode === "Survival") return false;
+  const mission = activeDenRaidMissionConfig(state);
+  if(!mission?.denRaid) return false;
+  const worldW = worldWidth(state);
+  const worldH = worldHeight(state);
+  const den = ensureTigerDenRaidState(state);
+  const denBase = streamRandomPointInActiveSectors(state, 140);
+  const denPoint = safeSpawnPoint(
+    clamp(denBase.x + rand(120, 260), 150, worldW - 130),
+    clamp(denBase.y + rand(-180, 140), 120, worldH - 120),
+    30,
+    true,
+    true
+  );
+  den.active = true;
+  den.revealed = false;
+  den.secured = false;
+  den.x = denPoint.x;
+  den.y = denPoint.y;
+  den.radius = 138;
+  den.cluesTotal = Math.max(4, Math.floor(Number(mission.denCluesRequired || 5)));
+  den.cluesFound = 0;
+  den.guardsTotal = Math.max(1, Math.floor(Number(mission.denGuardCount || 2)));
+  den.guardsCleared = 0;
+  den.rewardCash = Math.max(0, Math.floor(Number(mission.denRewardCash || 3500)));
+  den.startedAt = now;
+  den.revealedAt = 0;
+  den.securedAt = 0;
+  den.rewardClaimed = false;
+
+  if(!Array.isArray(state.tigers)) state.tigers = [];
+  let boss = state.tigers.find((t)=>t?.alive && t.type === "Alpha") || state.tigers.find((t)=>t?.alive) || null;
+  if(!boss){
+    boss = spawnRogueTiger({ typeKey:"Alpha", nearX:den.x, nearY:den.y, anchorTight:true, ignoreDirectorBudget:true });
+  }
+  if(boss){
+    const bossSpawn = pickTigerSpawnAwayFromEscort(den.x + rand(-34, 34), den.y + rand(-34, 34), {
+      preferX:den.x,
+      preferY:den.y,
+      minTigerDist:44,
+      anchorTight:true
+    });
+    boss.x = bossSpawn.x;
+    boss.y = bossSpawn.y;
+    boss.type = "Alpha";
+    boss.denRaidBoss = true;
+    boss.bossPhases = Math.max(3, Number(boss.bossPhases || 0));
+    boss.bossPhaseIndex = 1;
+    boss.hpMax = Math.max(Number(boss.hpMax || 1), Math.round(Number(boss.hpMax || 160) * 1.35));
+    boss.hp = Math.max(Number(boss.hp || 1), boss.hpMax);
+    boss.civBias = clamp(Number(boss.civBias || 0.4) + 0.10, 0, 0.98);
+    boss.aggroBoost = clamp(Number(boss.aggroBoost || 0) + 0.18, 0, 0.85);
+    boss.intent = "DEN ALPHA";
+    boss.intentUntil = now + 5000;
+    den.bossTigerId = boss.id;
+  }
+
+  const guardCandidates = state.tigers.filter((t)=>t?.alive && Number(t.id) !== Number(den.bossTigerId)).slice(0, den.guardsTotal);
+  while(guardCandidates.length < den.guardsTotal){
+    const spawned = spawnRogueTiger({ typeKey:guardCandidates.length % 2 ? "Stalker" : "Berserker", nearX:den.x, nearY:den.y, anchorTight:true, ignoreDirectorBudget:true });
+    if(!spawned) break;
+    guardCandidates.push(spawned);
+  }
+  guardCandidates.forEach((t, idx)=>{
+    const angle = (Math.PI * 2 * idx) / Math.max(1, guardCandidates.length);
+    const guardSpawn = pickTigerSpawnAwayFromEscort(den.x + Math.cos(angle) * 72, den.y + Math.sin(angle) * 72, {
+      preferX:den.x,
+      preferY:den.y,
+      minTigerDist:44,
+      anchorTight:true
+    });
+    t.x = guardSpawn.x;
+    t.y = guardSpawn.y;
+    t.denRaidGuard = true;
+    t.intent = "Den Guard";
+    t.intentUntil = now + 3600;
+    t.aggroBoost = clamp(Number(t.aggroBoost || 0) + 0.12, 0, 0.72);
+  });
+
+  const trappedTotal = Math.min(Math.max(1, Math.floor(Number(mission.civilians || 3) * 0.34)), Math.max(0, (state.civilians || []).length));
+  den.trappedTotal = trappedTotal;
+  den.trappedRescued = 0;
+  for(let i=0; i<trappedTotal; i++){
+    const civ = state.civilians[i];
+    if(!civ) continue;
+    const angle = (Math.PI * 2 * i) / Math.max(1, trappedTotal);
+    const civPoint = safeSpawnPoint(
+      den.x + Math.cos(angle) * rand(48, 82),
+      den.y + Math.sin(angle) * rand(48, 82),
+      14,
+      true,
+      true
+    );
+    civ.x = civPoint.x;
+    civ.y = civPoint.y;
+    civ.denRaidTrapped = true;
+    civ.rescueKind = "den";
+    civ.rescueLabel = "Tiger Den";
+    civ.following = false;
+    civ.escortOwner = "";
+    civ.escortUnitId = "";
+    civ.freezeUntil = now + 2400;
+    civ.helpWanted = true;
+    civ.helpUntil = now + 9000;
+  }
+
+  const inv = ensureTigerInvestigationState(state);
+  inv.active = true;
+  inv.targetTigerId = den.bossTigerId;
+  inv.targetLabel = "Den Alpha";
+  inv.total = den.cluesTotal;
+  inv.found = 0;
+  inv.completed = false;
+  inv.rewardCash = Math.round(1100 + den.cluesTotal * 240);
+  inv.rewardXp = 80 + den.cluesTotal * 15;
+  inv.captureBonus = 0.12;
+  inv.rareType = "den_raid";
+  inv.startedAt = now;
+  inv.completedAt = 0;
+  state.investigationClues = [];
+  const startX = Number(state.me?.x || 160);
+  const startY = Number(state.me?.y || 420);
+  const clueTypes = ["footprint", "claw", "vegetation", "fur", "sound", "blood", "claw", "footprint"];
+  for(let i=0; i<den.cluesTotal; i++){
+    const ratio = (i + 1) / (den.cluesTotal + 1);
+    state.investigationClues.push({
+      id:`den-${i}-${now}`,
+      x:clamp(startX + (den.x - startX) * ratio + rand(-46, 46), 45, worldW - 45),
+      y:clamp(startY + (den.y - startY) * ratio + rand(-46, 46), 45, worldH - 45),
+      type:clueTypes[i % clueTypes.length],
+      targetTigerId:den.bossTigerId,
+      order:i + 1,
+      found:false,
+      falseTrail:false,
+      strength:0.98,
+      expiresAt:now + rand(180000, 300000),
+      revealed:false,
+      denRaid:true
+    });
+  }
+  setEventText(`🐯 Tiger Den Raid: scan ${den.cluesTotal} clues, locate the den, rescue trapped civilians, and secure the Den Alpha.`, 8);
+  return true;
 }
 function seedTigerInvestigationClues(state=S, now=Date.now()){
   if(window.__TUTORIAL_MODE__ || state.mode === "Survival") return false;
+  if(seedTigerDenRaidMission(state, now)) return true;
   const candidates = (state.tigers || []).filter((t)=>t && t.alive !== false);
   if(!candidates.length) return false;
   const score = (t)=>
@@ -18692,6 +18935,10 @@ function completeTigerInvestigation(now=Date.now()){
     rare = " Hidden den discovered.";
     S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
   }
+  if(inv.rareType === "den_raid"){
+    revealTigerDenRaid("clue", now);
+    rare = " Den route confirmed.";
+  }
   if(inv.rareType === "missing_civilian"){
     const civ = (S.civilians || []).find((c)=>c?.alive && !c.evac);
     if(civ) S.dangerCivId = civ.id;
@@ -18721,6 +18968,11 @@ function scanInvestigationClues(now=Date.now()){
     clue.foundAt = now;
     inv.found++;
   }
+  if(nearby.some((clue)=>clue?.denRaid)){
+    const den = ensureTigerDenRaidState(S);
+    den.cluesFound = Math.max(den.cluesFound || 0, (S.investigationClues || []).filter((c)=>c?.denRaid && c.found).length);
+    if(den.cluesFound >= Math.max(1, den.cluesTotal || inv.total || 1)) revealTigerDenRaid("clue", now);
+  }
   if(target){
     const hp = Math.round(clamp(Number(target.hp || 0) / Math.max(1, Number(target.hpMax || 1)), 0, 1) * 100);
     const clue = nearby[nearby.length - 1];
@@ -18735,6 +18987,7 @@ function scanInvestigationClues(now=Date.now()){
 }
 function tickTigerInvestigation(now=Date.now()){
   const inv = ensureTigerInvestigationState(S);
+  updateTigerDenRaidState(now);
   if(!inv.active || inv.completed || S.missionEnded || S.gameOver) return;
   const weather = String(activeDynamicWeather2(S, now)?.type || "calm");
   const decayByWeather = { calm:0.004, fog:0.006, rain:0.018, flood:0.024, storm:0.030, wildfire:0.022 };
@@ -20146,6 +20399,7 @@ function missionSpecialRuleText(mode, mission){
   if(mode==="Arcade" && mission.captureOnly) rules.push("capture-only (no kills)");
   if(mode==="Arcade" && (mission.trapPlaceRequired || 0) > 0) rules.push("trap placement required");
   if(mode==="Arcade" && (mission.trapTriggerRequired || 0) > 0) rules.push("trap-stop objective active");
+  if(mission.denRaid) rules.push("tiger den raid: scan clues, rescue trapped civilians, secure Den Alpha");
   if(mode==="Arcade" && mission.limitedAmmo) rules.push("limited ammo");
   if(mission.lowVisibility) rules.push("reduced visibility");
   if(mission.bloodAggro) rules.push("blood increases aggression");
@@ -20189,6 +20443,10 @@ function storyMissionIntelText(mission){
   if((mission.captureRequired || 0) > 0) focus.push(`secure ${mission.captureRequired} capture${mission.captureRequired===1?"":"s"}`);
   if(mission.lowVisibility) focus.push("low visibility route");
   if(mission.bloodAggro) focus.push("lethal kills increase aggression");
+  if(mission.denRaid){
+    const den = ensureTigerDenRaidState(S);
+    focus.push(`tiger den raid ${den.secured ? "secured" : (den.revealed ? "revealed" : `${Math.min(den.cluesFound || 0, den.cluesTotal || mission.denCluesRequired || 4)}/${den.cluesTotal || mission.denCluesRequired || 4} clues`)}`);
+  }
   if(ENABLE_BIOME_TEXT && biome?.hazardShort) focus.push(`${biome.weather.toLowerCase()} • ${biome.hazardShort.toLowerCase()}`);
   const inv = ensureTigerInvestigationState(S);
   if(inv.active) focus.push(`investigation: scan ${inv.total} clues for ${inv.targetLabel}`);
@@ -31316,6 +31574,7 @@ function deploy(opts={}){
   S._convoyRouteChoiceLocked = "";
   S._convoySplitThreatAt = 0;
   S._convoySplitThreatWaves = 0;
+  S._denRaidHintAt = 0;
   S._rivalLastIntelDropAt = 0;
   S._rivalFactionName = "";
   S._scoutTakedownsMission = 0;
@@ -31416,6 +31675,9 @@ function deploy(opts={}){
     }
     if(mission.boss){
       setEventText(storyBossIntroText(mission), 9);
+    }else if(mission.denRaid){
+      const den = ensureTigerDenRaidState(S);
+      setEventText(`🐯 Tiger Den Raid active: scan ${den.cluesTotal || mission.denCluesRequired || 4} clues, rescue trapped civilians, and secure the Den Alpha.`, 8);
     }else if(mission.convoyMission){
       setEventText(`🚐 Convoy mission active: ${mission.convoyRouteLabel || "Balanced"} route • protect both civilian lanes.`, 8);
     }
@@ -31446,7 +31708,10 @@ function deploy(opts={}){
       S.arcadeWeeklyRunStartedAt = 0;
       S.arcadeWeeklyRunId = "";
     }
-    if(mission?.convoyMission){
+    if(mission?.denRaid){
+      const den = ensureTigerDenRaidState(S);
+      setEventText(`🐯 Arcade Den Raid: scan ${den.cluesTotal || mission.denCluesRequired || 4} clues, clear guards, and secure the Den Alpha.`, 8);
+    }else if(mission?.convoyMission){
       setEventText(`🚐 Arcade convoy op: ${mission.convoyRouteLabel || "Balanced"} route • split threats expected.`, 8);
     }
     S.arcadeComboPeak = 0;
@@ -38422,8 +38687,9 @@ function checkMissionComplete(){
   const trapPlaceReady = !arcadeMission || (S.stats.trapsPlaced || 0) >= (arcadeMission.trapPlaceRequired || 0);
   const trapTriggerReady = !arcadeMission || (S.stats.trapsTriggered || 0) >= (arcadeMission.trapTriggerRequired || 0);
   const noKillReady = !arcadeMission || !arcadeMission.captureOnly || (S.stats.kills || 0) === 0;
+  const denRaidReady = !activeMission?.denRaid || tigerDenRaidObjectiveReady(S);
   const rescueObjectiveReady = civTotal > 0 ? evacReady : !tAlive;
-  const primaryObjectivesReady = rescueObjectiveReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady;
+  const primaryObjectivesReady = rescueObjectiveReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady && denRaidReady;
 
   if(primaryObjectivesReady){
     activateMissionTigerSpawnLockdown("primary-objectives-complete");
@@ -38439,6 +38705,15 @@ function checkMissionComplete(){
   if(arcadeMission?.captureOnly && (S.stats.kills||0) > 0 && !S._arcadeNoKillWarned){
     S._arcadeNoKillWarned = true;
     toast("Mission rule failed: this mission requires captures only (no tiger kills).");
+  }
+
+  if(!tAlive && evacReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady && !denRaidReady){
+    if(!S.missionEnded && !S.gameOver && Date.now() > Number(S._denRaidHintAt || 0)){
+      S._denRaidHintAt = Date.now() + 3600;
+      const den = ensureTigerDenRaidState(S);
+      setEventText(den.revealed ? "Tiger den objective remains: rescue trapped civilians at the den marker." : "Tiger den objective remains: scan clues or reach the den marker to reveal it.", 3.2);
+    }
+    return;
   }
 
   if(!tAlive && evacReady && !(captureReady && trapPlaceReady && trapTriggerReady && noKillReady)){
@@ -38693,6 +38968,16 @@ function checkMissionComplete(){
             "\n";
         }
       }
+      let denRaidNote = "";
+      if(activeMission?.denRaid){
+        const den = ensureTigerDenRaidState(S);
+        denRaidNote =
+          `\nTiger Den Raid: ${den.secured ? "secured" : "not secured"}` +
+          ` • Clues ${Math.min(den.cluesFound || 0, den.cluesTotal || 0)}/${den.cluesTotal || 0}` +
+          ` • Guards ${Math.min(den.guardsCleared || 0, den.guardsTotal || 0)}/${den.guardsTotal || 0}` +
+          ` • Trapped civilians ${Math.min(den.trappedRescued || 0, den.trappedTotal || 0)}/${den.trappedTotal || 0}` +
+          `${den.rewardClaimed ? ` • Den reward +$${Math.max(0, Math.floor(Number(den.rewardCash || 0))).toLocaleString()}` : ""}\n`;
+      }
       let upkeepNote = "";
       const settlementNote = recordCivilianSettlementMission(civEvac);
       const settlementDefenseNote = grantSettlementDefenseReward();
@@ -38776,7 +39061,7 @@ function checkMissionComplete(){
       });
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
@@ -41673,6 +41958,43 @@ function drawInvestigationClue(clue){
   ctx.restore();
 }
 
+function drawTigerDenRaidSite(){
+  const den = ensureTigerDenRaidState(S);
+  if(!den.active || !Number.isFinite(den.x) || !Number.isFinite(den.y)) return;
+  const near = dist(S.me.x, S.me.y, den.x, den.y) <= Math.max(160, Number(den.radius || 120) + 40);
+  const visible = den.revealed || near || S.scanPing > 0;
+  if(!visible) return;
+  const now = Date.now();
+  const pulse = 0.72 + Math.sin(now / 240) * 0.18;
+  const r = Math.max(86, Number(den.radius || 120));
+  ctx.save();
+  ctx.globalAlpha = den.secured ? 0.48 : (den.revealed ? 0.82 : 0.42);
+  ctx.fillStyle = den.secured ? "rgba(34,197,94,.10)" : "rgba(120,53,15,.18)";
+  ctx.beginPath();
+  ctx.arc(den.x, den.y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = den.secured ? "rgba(74,222,128,.92)" : (den.revealed ? "rgba(251,146,60,.96)" : "rgba(251,191,36,.72)");
+  ctx.lineWidth = den.secured ? 3 : 2.4;
+  ctx.setLineDash(den.revealed ? [12, 8] : [4, 7]);
+  ctx.beginPath();
+  ctx.arc(den.x, den.y, r + pulse * 8, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = den.secured ? 0.72 : 0.96;
+  ctx.fillStyle = "rgba(9,12,18,.88)";
+  roundedRectFill(den.x - 62, den.y - 20, 124, 40, 10);
+  ctx.fillStyle = den.secured ? "rgba(220,252,231,.98)" : "rgba(255,237,213,.98)";
+  ctx.font = "900 11px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(den.secured ? "DEN SECURED" : (den.revealed ? "TIGER DEN" : "HIDDEN DEN"), den.x, den.y - 3);
+  ctx.font = "850 8px system-ui";
+  const status = den.secured
+    ? "route safe"
+    : `clues ${Math.min(den.cluesFound || 0, den.cluesTotal || 0)}/${den.cluesTotal || 0} • guards ${Math.min(den.guardsCleared || 0, den.guardsTotal || 0)}/${den.guardsTotal || 0}`;
+  ctx.fillText(status, den.x, den.y + 11);
+  ctx.restore();
+}
+
 function drawMapInteractable(it){
   const now = Date.now();
   const active = now < (it.activeUntil || 0);
@@ -43798,6 +44120,7 @@ function drawEntitiesLite(){
 
   for(const it of interactablesDraw) drawMapInteractable(it);
   for(const site of rescueSitesDraw) drawRescueSite(site);
+  drawTigerDenRaidSite();
   for(const clue of investigationDraw) drawInvestigationClue(clue);
 
   if(S.mode !== "Survival"){
@@ -44051,6 +44374,7 @@ function drawEntities(){
     for(const site of drawRescueSites){
       drawSafe("drawRescueSite", ()=>drawRescueSite(site));
     }
+    drawSafe("drawTigerDenRaidSite", ()=>drawTigerDenRaidSite());
     for(const clue of drawInvestigationClues){
       drawSafe("drawInvestigationClue", ()=>drawInvestigationClue(clue));
     }
