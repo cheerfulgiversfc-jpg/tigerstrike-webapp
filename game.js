@@ -25160,8 +25160,87 @@ function showLaunchMainMenuFromBaseHQ(){
 function baseHqPanelActionsHtml(data){
   return (data.actions || []).map(([label, fn], idx)=>{
     const cls = idx === 0 ? "good" : "ghost";
-    return `<button class="${cls}" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();${fn}">${baseHqEsc(label)}</button>`;
+    return baseHqActionButtonHtml(label, fn, cls);
   }).join("");
+}
+function baseHqActionButtonHtml(label, command, cls="ghost"){
+  return `<button class="${baseHqEsc(cls)}" type="button" data-base-hq-command="${baseHqEsc(command)}" onpointerdown="event.preventDefault();event.stopPropagation()" onclick="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)">${baseHqEsc(label)}</button>`;
+}
+function baseHqParseCommandArgs(raw=""){
+  const text = String(raw || "").trim();
+  if(!text) return [];
+  return text.split(",").map((part)=>{
+    const value = String(part || "").trim();
+    if((value.startsWith("'") && value.endsWith("'")) || (value.startsWith('"') && value.endsWith('"'))){
+      return value.slice(1, -1);
+    }
+    if(value === "true") return true;
+    if(value === "false") return false;
+    if(value !== "" && Number.isFinite(Number(value))) return Number(value);
+    return value;
+  });
+}
+function runBaseHqCommand(command="", label=""){
+  const cmd = String(command || "").trim();
+  const buttonLabel = String(label || "").trim() || "HQ action";
+  if(!cmd){
+    toast(`${buttonLabel} is not connected yet.`);
+    return false;
+  }
+  const match = cmd.match(/^([a-zA-Z_$][\w$]*)\((.*)\)$/);
+  const name = match ? match[1] : cmd.replace(/\(\s*\)$/,"");
+  const args = match ? baseHqParseCommandArgs(match[2]) : [];
+  const actions = {
+    baseHqMissionControlAction,
+    baseHqExecuteIvyGuidance,
+    openMissionBriefFromBaseHQ,
+    refreshBaseHqDailyNews,
+    openStoryFromBaseHQ,
+    openModeFromBaseHQ,
+    openShopFromBaseHQ,
+    openInventoryFromBaseHQ,
+    selectBaseHqRoom,
+    baseHqSetSquadCommand,
+    baseHqSetSquadFormation,
+    baseHqCycleSquadProfileGear,
+    baseHqReviveSoldier,
+    baseHqReviveAllSoldiers,
+    baseHqRunRecommendedCommand,
+    openBaseHqModePreview,
+    startMissionFromBaseHQ,
+    openDailyRewardDeskFromBaseHQ,
+    startTutorialPracticeFromBaseHQ,
+    resetBaseHqOnboarding,
+    setBaseHqQuickMenuCollapsed,
+    toggleBaseHqQuickMenu,
+    interactBaseHQ,
+    hideBaseHqHud,
+  };
+  const fn = actions[name] || window[name];
+  if(typeof fn !== "function"){
+    toast(`${buttonLabel} is being connected.`);
+    console.warn("Unknown Base HQ command", cmd);
+    return false;
+  }
+  try{
+    fn(...args);
+  }catch(err){
+    console.error("Base HQ command failed", cmd, err);
+    toast(`${buttonLabel} could not open. Try again.`);
+  }
+  syncGamepadFocus();
+  return false;
+}
+function armBaseHqButtons(root){
+  if(!root) return;
+  root.querySelectorAll?.("button")?.forEach((btn)=>{
+    if(btn.dataset.baseHqTapArmed === "1") return;
+    btn.dataset.baseHqTapArmed = "1";
+    btn.addEventListener("pointerdown", (ev)=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+    }, { passive:false });
+  });
 }
 function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
   if(roomId === "command") return `${currentMissionLabel()} • Mission Control live`;
@@ -25432,7 +25511,7 @@ function renderBaseHqWorldHud(){
         <div class="baseHqWorldTitle">${baseHqEsc(room.icon)} ${baseHqEsc(data.title || room.name)}</div>
         <div class="baseHqWorldSub">${baseHqEsc(baseHqRoomStatusLine(room.id))}</div>
       </div>
-      <button class="ghost baseHqExitBtn" type="button" onpointerdown="event.stopPropagation();hideBaseHqHud()" onclick="event.stopPropagation();hideBaseHqHud()">Hide Info</button>
+      ${baseHqActionButtonHtml("Hide Info", "hideBaseHqHud()", "ghost baseHqExitBtn")}
     </div>
     <div class="baseHqWorldDesc">${baseHqEsc(data.desc || "Walk around Base HQ and interact with rooms.")}</div>
     <div class="baseHqWorldNpc">Room Purpose: ${baseHqEsc(baseHqRoomPurposeLine(room.id))}</div>
@@ -25444,10 +25523,11 @@ function renderBaseHqWorldHud(){
     ${progressVisualHtml}
     ${npcText}
     <div class="baseHqWorldActions">
-      <button class="good" type="button" onpointerdown="event.stopPropagation();interactBaseHQ()" onclick="event.stopPropagation();interactBaseHQ()">Talk / Inspect</button>
+      ${baseHqActionButtonHtml("Talk / Inspect", "interactBaseHQ()", "good")}
       ${actionHtml}
     </div>
   `;
+  armBaseHqButtons(hud);
 }
 function renderBaseHqQuickBar(){
   const bar = document.getElementById("baseHqQuickBar");
@@ -25459,7 +25539,7 @@ function renderBaseHqQuickBar(){
   }
   const snap = baseHqModeMissionSnapshot(S.mode);
   const button = (label, fn, cls="") =>
-    `<button class="baseHqQuickBtn ${cls}" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();${fn}">${baseHqEsc(label)}</button>`;
+    baseHqActionButtonHtml(label, fn, `baseHqQuickBtn ${cls}`);
   bar.style.display = "grid";
   bar.classList.toggle("collapsed", !!__baseHqQuickMenuCollapsed);
   if(__baseHqQuickMenuCollapsed){
@@ -25479,6 +25559,7 @@ function renderBaseHqQuickBar(){
     ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
     ${button("Inventory", "openInventoryFromBaseHQ()", "utility")}
   `;
+  armBaseHqButtons(bar);
 }
 function renderBaseHQ(){
   const roomsWrap = document.getElementById("baseHqRooms");
@@ -25509,6 +25590,7 @@ function renderBaseHQ(){
   if(desc) desc.innerText = `${baseHqRoomPurposeLine(room.id)}\n\n${data.desc || "Walk around Base HQ and interact with rooms."}`;
   if(stats) stats.innerHTML = baseHqStatsHtml();
   if(actions) actions.innerHTML = baseHqPanelActionsHtml(data);
+  armBaseHqButtons(actions);
   if(upgrades) upgrades.innerHTML = data.upgrades?.length ? baseHqUpgradeHtml(data.upgrades) : "";
   renderBaseHqWorldHud();
   renderBaseHqQuickBar();
@@ -46322,6 +46404,7 @@ window.moveBaseHQ = moveBaseHQ;
 window.baseHqStageTap = baseHqStageTap;
 window.interactBaseHQ = interactBaseHQ;
 window.selectBaseHqRoom = selectBaseHqRoom;
+window.runBaseHqCommand = runBaseHqCommand;
 window.openShopFromBaseHQ = openShopFromBaseHQ;
 window.openInventoryFromBaseHQ = openInventoryFromBaseHQ;
 window.openModeFromBaseHQ = openModeFromBaseHQ;
