@@ -24130,6 +24130,7 @@ let __returnToBaseHqAfterOverlay = false;
 let __baseHqReturnRoom = "mission";
 let __baseHqModePreviewMode = "";
 let __baseHqProgressSnapshotCache = { at:0, value:null };
+let __lastBaseHqCommand = { cmd:"", at:0 };
 let __baseHqQuickMenuCollapsed = (()=>{ try{ return localStorage.getItem("tigerstrike_base_hq_quick_menu_collapsed") === "1"; }catch(_e){ return false; }})();
 
 function baseHqRoomById(id){
@@ -24805,6 +24806,7 @@ function openBaseHqModePreview(mode=normalizeModeName(S.mode)){
     return;
   }
   panel.innerHTML = baseHqModePreviewHtml(nextMode);
+  armBaseHqButtons(panel);
   panel.style.display = "flex";
   setPaused(true, "base-hq-mode-preview");
   toast(`${nextMode} preview ready.`);
@@ -24898,6 +24900,7 @@ function renderBaseHqOnboarding(){
       <button class="ghost" type="button" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();skipBaseHqOnboarding()">Skip Tour</button>
     </div>
   `;
+  armBaseHqButtons(panel);
 }
 function baseHqUpgradeHtml(filterKeys=[]){
   const allow = new Set(filterKeys);
@@ -25164,7 +25167,7 @@ function baseHqPanelActionsHtml(data){
   }).join("");
 }
 function baseHqActionButtonHtml(label, command, cls="ghost"){
-  return `<button class="${baseHqEsc(cls)}" type="button" data-base-hq-command="${baseHqEsc(command)}" onpointerdown="event.preventDefault();event.stopPropagation()" onclick="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)">${baseHqEsc(label)}</button>`;
+  return `<button class="${baseHqEsc(cls)}" type="button" data-base-hq-command="${baseHqEsc(command)}" onpointerdown="event.stopPropagation()" onpointerup="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)" onclick="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)">${baseHqEsc(label)}</button>`;
 }
 function baseHqParseCommandArgs(raw=""){
   const text = String(raw || "").trim();
@@ -25190,9 +25193,16 @@ function runBaseHqCommand(command="", label=""){
   const match = cmd.match(/^([a-zA-Z_$][\w$]*)\((.*)\)$/);
   const name = match ? match[1] : cmd.replace(/\(\s*\)$/,"");
   const args = match ? baseHqParseCommandArgs(match[2]) : [];
+  const now = Date.now();
+  if(__lastBaseHqCommand?.cmd === cmd && now - Number(__lastBaseHqCommand?.at || 0) < 350){
+    return false;
+  }
+  __lastBaseHqCommand = { cmd, at:now };
   const actions = {
     baseHqMissionControlAction,
+    baseHqExecuteMissionGateAction,
     baseHqExecuteIvyGuidance,
+    baseHqRefreshIvyGuidance,
     openMissionBriefFromBaseHQ,
     refreshBaseHqDailyNews,
     openStoryFromBaseHQ,
@@ -25211,8 +25221,13 @@ function runBaseHqCommand(command="", label=""){
     openDailyRewardDeskFromBaseHQ,
     startTutorialPracticeFromBaseHQ,
     resetBaseHqOnboarding,
+    completeBaseHqOnboardingStep,
+    skipBaseHqOnboarding,
+    baseHqMoveTowardRoom,
     setBaseHqQuickMenuCollapsed,
     toggleBaseHqQuickMenu,
+    closeBaseHqModePreview,
+    confirmBaseHqModePreview,
     interactBaseHQ,
     hideBaseHqHud,
   };
@@ -25236,10 +25251,24 @@ function armBaseHqButtons(root){
   root.querySelectorAll?.("button")?.forEach((btn)=>{
     if(btn.dataset.baseHqTapArmed === "1") return;
     btn.dataset.baseHqTapArmed = "1";
+    if(!btn.dataset.baseHqCommand){
+      const inline = String(btn.getAttribute("onclick") || "");
+      const match = inline.match(/\b((?:baseHq|open|start|select|reset|complete|skip|close|confirm|set|toggle|interact|hide)[a-zA-Z_$][\w$]*\([^;]*\))/);
+      if(match) btn.dataset.baseHqCommand = match[1];
+    }
     btn.addEventListener("pointerdown", (ev)=>{
+      ev.stopPropagation();
+    }, { passive:true });
+    btn.addEventListener("pointerup", (ev)=>{
+      const command = btn.dataset.baseHqCommand;
+      if(!command) return;
       ev.preventDefault();
       ev.stopPropagation();
+      runBaseHqCommand(command, btn.textContent);
     }, { passive:false });
+    btn.addEventListener("click", (ev)=>{
+      ev.stopPropagation();
+    }, true);
   });
 }
 function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
