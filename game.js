@@ -10818,7 +10818,7 @@ const STARTUP_LOADING_PLAYABLE_MS = 16000;
 const STARTUP_LOADING_MIN_MS = 7500;
 const STARTUP_LOADING_READY_FRAMES = 24;
 const STARTUP_LOADING_DETAIL_READY_FRAMES = 10;
-const MAP_CLARITY_PRELOAD_RADIUS = 3;
+const MAP_CLARITY_PRELOAD_RADIUS = 4;
 const MAP_CLARITY_FULL_REPAINT_MS = 120000;
 const STARTUP_PRELOAD_STAGE_WEIGHTS = Object.freeze({
   terrain:18,
@@ -11309,11 +11309,11 @@ const WORLD_BASE_WIDTH = 960;
 const WORLD_BASE_HEIGHT = 540;
 const STREAM_SECTOR_SIZE = 320;
 const STREAM_ACTIVE_RADIUS = 1;
-const STREAM_EXPAND_MAX_SECTORS = 28;
-const STREAM_EXPAND_STEP = 0.018;
+const STREAM_EXPAND_MAX_SECTORS = 44;
+const STREAM_EXPAND_STEP = 0.026;
 const STREAM_MIN_AMBIENT_EDGE = 46;
-const MAP_EXPANSION_VERSION = 2;
-const MAP_EXPANSION_MAX_SCALE = 3;
+const MAP_EXPANSION_VERSION = 3;
+const MAP_EXPANSION_MAX_SCALE = 5;
 
 function defaultSectorStreamingState(){
   return {
@@ -11335,9 +11335,9 @@ function ensureSectorStreamingState(state=S){
   const ss = state.sectorStreaming;
   ss.enabled = ss.enabled !== false;
   ss.size = clamp(Math.floor(Number(ss.size || STREAM_SECTOR_SIZE)), 220, 520);
-  ss.activeRadius = clamp(Math.floor(Number(ss.activeRadius || STREAM_ACTIVE_RADIUS)), 1, 3);
-  ss.activeKeys = Array.isArray(ss.activeKeys) ? ss.activeKeys.map((v)=>String(v || "")).filter(Boolean).slice(-64) : [];
-  ss.discoveredKeys = Array.isArray(ss.discoveredKeys) ? ss.discoveredKeys.map((v)=>String(v || "")).filter(Boolean).slice(-220) : [];
+  ss.activeRadius = clamp(Math.floor(Number(ss.activeRadius || STREAM_ACTIVE_RADIUS)), 1, 4);
+  ss.activeKeys = Array.isArray(ss.activeKeys) ? ss.activeKeys.map((v)=>String(v || "")).filter(Boolean).slice(-128) : [];
+  ss.discoveredKeys = Array.isArray(ss.discoveredKeys) ? ss.discoveredKeys.map((v)=>String(v || "")).filter(Boolean).slice(-320) : [];
   ss.centerKey = String(ss.centerKey || "0:0");
   ss.lastUpdateAt = Math.max(0, Math.floor(Number(ss.lastUpdateAt || 0)));
   ss.mapExpansionVersion = MAP_EXPANSION_VERSION;
@@ -11378,9 +11378,9 @@ function streamedWorldScaleBonus(state=S){
   if(!ss.enabled) return 0;
   const mobile = isMobileViewport();
   const landscape = isLandscapeViewport();
-  const maxSectors = mobile ? (landscape ? 18 : 12) : STREAM_EXPAND_MAX_SECTORS;
-  const step = mobile ? (landscape ? 0.014 : 0.010) : STREAM_EXPAND_STEP;
-  const maxBonus = mobile ? (landscape ? 0.24 : 0.12) : 0.42;
+  const maxSectors = mobile ? (landscape ? 28 : 22) : STREAM_EXPAND_MAX_SECTORS;
+  const step = mobile ? (landscape ? 0.026 : 0.022) : STREAM_EXPAND_STEP;
+  const maxBonus = mobile ? (landscape ? 0.64 : 0.52) : 0.78;
   const discovered = Math.max(0, Math.min(maxSectors, ss.discoveredKeys.length));
   return clamp(discovered * step, 0, maxBonus);
 }
@@ -11412,10 +11412,10 @@ function updateStreamedSectors(state=S, now=Date.now()){
   const discovered = new Set(ss.discoveredKeys);
   discovered.add(centerKey);
   for(const k of ss.activeKeys){
-    if(discovered.size >= 220) break;
+    if(discovered.size >= 320) break;
     discovered.add(k);
   }
-  ss.discoveredKeys = Array.from(discovered).slice(-220);
+  ss.discoveredKeys = Array.from(discovered).slice(-320);
   ss.lastUpdateAt = now;
   return ss;
 }
@@ -11423,7 +11423,7 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
   const src = (state && typeof state === "object") ? state : S;
   const ss = ensureSectorStreamingState(src);
   if(!ss.enabled) return ss;
-  const radius = clamp(Math.floor(Number(opts.radius ?? 1)), 1, 3);
+  const radius = clamp(Math.floor(Number(opts.radius ?? 1)), 1, 4);
   const points = [];
   const pushPoint = (x, y)=>{
     if(Number.isFinite(Number(x)) && Number.isFinite(Number(y))){
@@ -11447,6 +11447,26 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
   for(const site of (src.rescueSites || []).slice(0, 6)) pushPoint(site?.x, site?.y);
   for(const it of (src.mapInteractables || []).slice(0, 8)) pushPoint(it?.x, it?.y);
 
+  // Preload travel corridors between the player and important objectives so
+  // larger Map Expansion 3.0 boards do not reveal in dark chunks mid-route.
+  const routeTargets = [];
+  if(src?.evacZone) routeTargets.push(src.evacZone);
+  if(src?.targetTiger) routeTargets.push(src.targetTiger);
+  for(const civ of (src.civilians || []).filter((c)=>c && !c.dead && !c.evac).slice(0, 4)) routeTargets.push(civ);
+  for(const tiger of (src.tigers || []).filter((t)=>t && t.alive).slice(0, 4)) routeTargets.push(tiger);
+  const anchorX = Number(src?.me?.x);
+  const anchorY = Number(src?.me?.y);
+  if(Number.isFinite(anchorX) && Number.isFinite(anchorY)){
+    for(const target of routeTargets){
+      const tx = Number(target?.x);
+      const ty = Number(target?.y);
+      if(!Number.isFinite(tx) || !Number.isFinite(ty)) continue;
+      pushPoint((anchorX * 0.75) + (tx * 0.25), (anchorY * 0.75) + (ty * 0.25));
+      pushPoint((anchorX * 0.50) + (tx * 0.50), (anchorY * 0.50) + (ty * 0.50));
+      pushPoint((anchorX * 0.25) + (tx * 0.75), (anchorY * 0.25) + (ty * 0.75));
+    }
+  }
+
   const discovered = new Set(ss.discoveredKeys || []);
   const active = new Set(ss.activeKeys || []);
   for(const pt of points){
@@ -11465,8 +11485,8 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
       }
     }
   }
-  ss.activeKeys = Array.from(active).slice(-96);
-  ss.discoveredKeys = Array.from(discovered).slice(-220);
+  ss.activeKeys = Array.from(active).slice(-128);
+  ss.discoveredKeys = Array.from(discovered).slice(-320);
   ss.lastUpdateAt = now;
   return ss;
 }
@@ -11521,22 +11541,22 @@ function worldScaleForModeMission(mode, mission){
   const landscapeBoost = (mobile && landscape) ? 0.12 : (landscape ? 0.12 : 0);
   if(window.__TUTORIAL_MODE__) return 1;
   if(mobile && !landscape){
-    if(mode === "Story") return clamp(1.62 + ((Math.max(1, mission) - 1) * 0.0045), 1.62, 2.22);
-    if(mode === "Arcade") return clamp(1.56 + ((Math.max(1, mission) - 1) * 0.0040), 1.56, 2.08);
-    return clamp(1.60 + ((Math.max(1, mission) - 1) * 0.0060), 1.60, 2.24);
+    if(mode === "Story") return clamp(3.05 + ((Math.max(1, mission) - 1) * 0.010), 3.05, 4.78);
+    if(mode === "Arcade") return clamp(2.86 + ((Math.max(1, mission) - 1) * 0.009), 2.86, 4.35);
+    return clamp(3.00 + ((Math.max(1, mission) - 1) * 0.013), 3.00, 4.65);
   }
   if(mobile && landscape){
-    if(mode === "Story") return clamp(2.02 + ((Math.max(1, mission) - 1) * 0.0055) + landscapeBoost, 2.02, 2.82);
-    if(mode === "Arcade") return clamp(1.96 + ((Math.max(1, mission) - 1) * 0.0050) + landscapeBoost, 1.96, 2.68);
-    return clamp(2.00 + ((Math.max(1, mission) - 1) * 0.0070) + landscapeBoost, 2.00, 2.86);
+    if(mode === "Story") return clamp(3.35 + ((Math.max(1, mission) - 1) * 0.012) + landscapeBoost, 3.35, 4.95);
+    if(mode === "Arcade") return clamp(3.18 + ((Math.max(1, mission) - 1) * 0.011) + landscapeBoost, 3.18, 4.65);
+    return clamp(3.28 + ((Math.max(1, mission) - 1) * 0.014) + landscapeBoost, 3.28, 4.90);
   }
   if(mode === "Story"){
-    return clamp(1.92 + ((Math.max(1, mission) - 1) * 0.010) + landscapeBoost, 1.92, 2.95);
+    return clamp(3.25 + ((Math.max(1, mission) - 1) * 0.014) + landscapeBoost, 3.25, 5.00);
   }
   if(mode === "Arcade"){
-    return clamp(1.84 + ((Math.max(1, mission) - 1) * 0.009) + landscapeBoost, 1.84, 2.78);
+    return clamp(3.05 + ((Math.max(1, mission) - 1) * 0.012) + landscapeBoost, 3.05, 4.75);
   }
-  return clamp(1.88 + ((Math.max(1, mission) - 1) * 0.017) + landscapeBoost, 1.88, 2.86);
+  return clamp(3.16 + ((Math.max(1, mission) - 1) * 0.015) + landscapeBoost, 3.16, 4.90);
 }
 
 function desiredWorldLayout(state=S){
@@ -11547,7 +11567,7 @@ function desiredWorldLayout(state=S){
   const viewportH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const mobile = isMobileViewport();
   const landscape = isLandscapeViewport();
-  // Keep portrait close to viewport for stability; make landscape the primary expanded-map view.
+  // Map Expansion 3.0 intentionally gives portrait and landscape meaningful travel room.
   const minPadW = mobile ? (landscape ? 80 : 12) : 40;
   const minPadH = mobile ? (landscape ? 56 : 12) : 40;
   const w = Math.max(viewportW + minPadW, Math.round(WORLD_BASE_WIDTH * scale));
@@ -17445,8 +17465,8 @@ function buildDenseLandmarks(mapKey, chapter, w=worldWidth(S), h=worldHeight(S))
   const family = mapFamilyKey(mapKey);
   const base = MAP_DENSE_LANDMARKS[family] || [];
   const ch = clamp(chapter || 1, 1, 10) - 1;
-  const tileCols = clamp(Math.round(w / WORLD_BASE_WIDTH), 1, 4);
-  const tileRows = clamp(Math.round(h / WORLD_BASE_HEIGHT), 1, 4);
+  const tileCols = clamp(Math.round(w / WORLD_BASE_WIDTH), 1, 6);
+  const tileRows = clamp(Math.round(h / WORLD_BASE_HEIGHT), 1, 6);
   const out = [];
   for(let ty=0; ty<tileRows; ty++){
     for(let tx=0; tx<tileCols; tx++){
@@ -17494,8 +17514,8 @@ function buildMapWaterZones(mapKey, chapter, w=worldWidth(S), h=worldHeight(S)){
   const defs = MAP_WATER_LAYOUTS[family] || [];
   const riverChapter = (chapter === 5);
   const chapterMul = riverChapter ? 1.08 : 1;
-  const cols = clamp(Math.ceil(w / WORLD_BASE_WIDTH), 1, 4);
-  const rows = clamp(Math.ceil(h / WORLD_BASE_HEIGHT), 1, 4);
+  const cols = clamp(Math.ceil(w / WORLD_BASE_WIDTH), 1, 6);
+  const rows = clamp(Math.ceil(h / WORLD_BASE_HEIGHT), 1, 6);
   const tileW = w / cols;
   const tileH = h / rows;
   const out = [];
@@ -17516,7 +17536,7 @@ function buildMapWaterZones(mapKey, chapter, w=worldWidth(S), h=worldHeight(S)){
       }
     }
   }
-  return out.slice(0, 18).filter((zone)=>!inMapScenarioKeepout(zone.x, zone.y, Math.max(zone.rx || 0, zone.ry || 0) * 0.55));
+  return out.slice(0, 34).filter((zone)=>!inMapScenarioKeepout(zone.x, zone.y, Math.max(zone.rx || 0, zone.ry || 0) * 0.55));
 }
 function waterZoneRadii(zone){
   const rx = Math.max(2, Number(zone?.rx || zone?.r || 0));
@@ -17554,7 +17574,7 @@ function drawMapExpansionSectorDetails(opts={}){
   const state = opts.state || S;
   const ss = ensureSectorStreamingState(state);
   const activeSet = new Set(ss.activeKeys || []);
-  const keys = Array.from(new Set([...(ss.discoveredKeys || []).slice(-36), ...(ss.activeKeys || []), ss.centerKey])).slice(-48);
+  const keys = Array.from(new Set([...(ss.discoveredKeys || []).slice(-70), ...(ss.activeKeys || []), ss.centerKey])).slice(-96);
   const mobileFast = !!opts.mobileFast;
   ctx.save();
   for(const key of keys){
@@ -17576,10 +17596,17 @@ function drawMapExpansionSectorDetails(opts={}){
     if(!activeSector && mobileFast) continue;
 
     // Wide connected lanes are reserved for future vehicles; the dashed diagonal is a foot shortcut.
-    ctx.globalAlpha = activeSector ? 0.72 : 0.42;
-    ctx.strokeStyle = "rgba(82,72,57,.92)";
-    ctx.lineWidth = mobileFast ? 34 : 42;
+    ctx.globalAlpha = activeSector ? 0.42 : 0.25;
+    ctx.strokeStyle = "rgba(20,18,15,.72)";
+    ctx.lineWidth = mobileFast ? 46 : 58;
     ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(b.minX, cy); ctx.lineTo(b.maxX, cy);
+    ctx.moveTo(cx, b.minY); ctx.lineTo(cx, b.maxY);
+    ctx.stroke();
+    ctx.globalAlpha = activeSector ? 0.78 : 0.46;
+    ctx.strokeStyle = "rgba(88,76,58,.94)";
+    ctx.lineWidth = mobileFast ? 32 : 40;
     ctx.beginPath();
     ctx.moveTo(b.minX, cy); ctx.lineTo(b.maxX, cy);
     ctx.moveTo(cx, b.minY); ctx.lineTo(cx, b.maxY);
@@ -17600,6 +17627,19 @@ function drawMapExpansionSectorDetails(opts={}){
     ctx.stroke();
     ctx.setLineDash([]);
 
+    if(activeSector && !mobileFast && (p.kind === "lake" || p.kind === "river")){
+      ctx.globalAlpha = 0.58;
+      ctx.fillStyle = "rgba(154,126,76,.92)";
+      ctx.strokeStyle = "rgba(248,226,170,.28)";
+      ctx.lineWidth = 1.5;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(p.vertical ? Math.PI / 2 : 0);
+      ctx.fillRect(-38, -8, 76, 16);
+      ctx.strokeRect(-38, -8, 76, 16);
+      ctx.restore();
+    }
+
     if(activeSector && !mobileFast && p.kind === "settlement"){
       ctx.globalAlpha = 0.46;
       ctx.fillStyle = "rgba(190,180,160,.82)";
@@ -17607,6 +17647,22 @@ function drawMapExpansionSectorDetails(opts={}){
         const ox = ((p.seed >>> (i * 3)) % Math.max(44, Math.floor(sw - 70))) + 24;
         const oy = ((p.seed >>> (i * 5 + 2)) % Math.max(44, Math.floor(sh - 70))) + 24;
         ctx.fillRect(b.minX + ox, b.minY + oy, 24, 18);
+      }
+      ctx.globalAlpha = 0.26;
+      ctx.fillStyle = "rgba(24,34,48,.72)";
+      ctx.fillRect(cx - 28, cy - 24, 56, 40);
+      ctx.strokeStyle = "rgba(226,232,240,.18)";
+      ctx.strokeRect(cx - 28, cy - 24, 56, 40);
+    } else if(activeSector && !mobileFast && p.kind === "open_field"){
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = "rgba(240,253,244,.42)";
+      ctx.lineWidth = 1.3;
+      for(let i=0; i<4; i++){
+        const yy = b.minY + 42 + (i * Math.max(30, sh / 5));
+        ctx.beginPath();
+        ctx.moveTo(b.minX + 24, yy);
+        ctx.lineTo(b.maxX - 24, yy + Math.sin(i + p.seed) * 12);
+        ctx.stroke();
       }
     } else if(activeSector && !mobileFast && (p.kind === "forest" || p.kind === "woodland")){
       ctx.globalAlpha = 0.28;
@@ -24000,7 +24056,7 @@ const BASE_HQ_FACTS = Object.freeze({
     "Combat Truth Pass unified damage/death logic so specialists should not become unkillable ghost helpers."
   ]),
   mission:Object.freeze([
-    "Map Expansion 2.0 streams larger sectors with forests, lakes, rivers, bridges, settlements, roads, and objective markers.",
+    "Map Expansion 3.0 doubles travel space again with vehicle-ready roads, bridges, rivers, settlements, foot shortcuts, and stronger objective markers.",
     "Extraction and Escape Sequences add boats, helicopters, convoys, timed exits, and last-stand mission finishes.",
     "Settlement Defense missions let rescued civilians, defenses, soldiers, and nighttime tiger waves matter beyond one rescue."
   ]),
@@ -42196,10 +42252,10 @@ function drawMapExpansionMinimap(){
   const worldW = Math.max(1, worldWidth(S));
   const worldH = Math.max(1, worldHeight(S));
   const mobile = isMobileViewport();
-  const mw = mobile ? 92 : 126;
-  const mh = mobile ? 62 : 82;
-  const x = Math.max(8, cv.width - mw - (mobile ? 58 : 18));
-  const y = mobile ? 14 : 18;
+  const mw = mobile ? 122 : 150;
+  const mh = mobile ? 82 : 96;
+  const x = Math.max(8, cv.width - mw - (mobile ? 52 : 18));
+  const y = mobile ? 12 : 18;
   const ss = ensureSectorStreamingState(S);
   const point = (wx, wy)=>({
     x:x + clamp(Number(wx || 0) / worldW, 0, 1) * mw,
@@ -42219,18 +42275,35 @@ function drawMapExpansionMinimap(){
     const a = point(b.minX, b.minY);
     const z = point(b.maxX, b.maxY);
     ctx.fillRect(a.x, a.y, Math.max(1, z.x - a.x), Math.max(1, z.y - a.y));
+    ctx.globalAlpha = 0.14;
+    ctx.strokeStyle = "rgba(226,232,240,.55)";
+    ctx.strokeRect(a.x, a.y, Math.max(1, z.x - a.x), Math.max(1, z.y - a.y));
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = "rgba(74,222,128,.75)";
   }
+  ctx.globalAlpha = 0.20;
+  ctx.strokeStyle = "rgba(248,220,150,.55)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y + mh * 0.5); ctx.lineTo(x + mw, y + mh * 0.5);
+  ctx.moveTo(x + mw * 0.5, y); ctx.lineTo(x + mw * 0.5, y + mh);
+  ctx.stroke();
   const targets = [];
-  if(S.mode !== "Survival" && S.evacZone) targets.push({ ...S.evacZone, color:"#4ade80" });
   const tiger = currentTargetTiger();
-  if(tiger) targets.push({ ...tiger, color:"#f59e0b" });
   const dangerCiv = (S.civilians || []).find((c)=>c && !c.evacuated && !c.dead && (c.underAttack || c.hp < 55));
-  if(dangerCiv) targets.push({ ...dangerCiv, color:"#fb7185" });
+  if(dangerCiv) targets.push({ ...dangerCiv, label:"CIV", color:"#fb7185", priority:3 });
+  if(tiger) targets.push({ ...tiger, label:"TIGER", color:"#f59e0b", priority:2 });
+  if(S.mode !== "Survival" && S.evacZone){
+    const escorting = (S.civilians || []).some((c)=>c && c.following && !c.evac && !c.dead);
+    targets.push({ ...S.evacZone, label:"EVAC", color:"#4ade80", priority:escorting ? 2.5 : 1 });
+  }
   for(const target of targets){
     const pt = point(target.x, target.y);
     ctx.globalAlpha = 0.95;
     ctx.fillStyle = target.color;
     ctx.beginPath(); ctx.arc(pt.x, pt.y, 2.7, 0, Math.PI * 2); ctx.fill();
+    ctx.font = mobile ? "800 6px system-ui" : "800 7px system-ui";
+    ctx.fillText(String(target.label || "").slice(0, 1), pt.x + 4, pt.y + 2);
   }
   const me = point(S?.me?.x, S?.me?.y);
   ctx.fillStyle = "#ffffff";
@@ -42239,7 +42312,7 @@ function drawMapExpansionMinimap(){
   ctx.beginPath(); ctx.arc(me.x, me.y, 3.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.restore();
 
-  const primary = targets[0];
+  const primary = targets.slice().sort((a, b)=>(Number(b.priority || 0) - Number(a.priority || 0)))[0];
   if(primary){
     const screen = worldToScreenPoint(primary.x, primary.y, S);
     const margin = 52;
@@ -42257,6 +42330,17 @@ function drawMapExpansionMinimap(){
       ctx.beginPath();
       ctx.moveTo(12, 0); ctx.lineTo(-8, -7); ctx.lineTo(-5, 0); ctx.lineTo(-8, 7); ctx.closePath();
       ctx.fill();
+      ctx.restore();
+      const meters = Math.max(1, Math.round(dist(S?.me?.x || 0, S?.me?.y || 0, primary.x, primary.y)));
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.font = "900 10px system-ui";
+      ctx.fillStyle = "rgba(5,12,20,.78)";
+      const text = `${primary.label || "OBJ"} ${meters}m`;
+      const tw = ctx.measureText(text).width + 12;
+      ctx.fillRect(clamp(ax - tw / 2, 8, cv.width - tw - 8), clamp(ay + 12, 36, cv.height - 28), tw, 18);
+      ctx.fillStyle = primary.color;
+      ctx.fillText(text, ax, clamp(ay + 25, 49, cv.height - 15));
       ctx.restore();
     }
   }
