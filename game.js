@@ -5942,6 +5942,7 @@ function bossCaptureStrategyReady(t, now=Date.now()){
   if(!isBossTiger(t)) return true;
   ensureBossEncounter3State(t);
   if(!t.bossArmorBroken) return false;
+  if((t.denRaidBoss || t.type === "Alpha") && t.tranqTagged && tigerInCaptureHpWindow(t)) return true;
   if(bossPhaseFromHp(t) < bossPhaseCount(t)) return false;
   if(t.bossCaptureStrategy === "ISOLATE_PACK") return bossEncounter3PackEscorts(t) <= 0;
   if(t.bossCaptureStrategy === "EXHAUST_ENRAGE") return now >= Number(t.enragedUntil || 0) && now >= Number(t.bossRagePhaseUntil || 0);
@@ -19002,7 +19003,9 @@ function defaultTigerDenRaidState(){
   return {
     active:false, revealed:false, secured:false, x:0, y:0, radius:120,
     bossTigerId:0, guardsTotal:0, guardsCleared:0, trappedTotal:0, trappedRescued:0,
-    cluesTotal:0, cluesFound:0, rewardCash:0, rewardClaimed:false, startedAt:0, revealedAt:0, securedAt:0
+    cluesTotal:0, cluesFound:0, rewardCash:0, rewardClaimed:false, startedAt:0, revealedAt:0, securedAt:0,
+    phase:"tracking", phaseChangedAt:0, cacheSpawned:false, suppliesTotal:0, alphaCaptureReady:false, alphaHinted:false,
+    roarPulseAt:0, lastPhaseText:""
   };
 }
 function ensureTigerDenRaidState(state=S){
@@ -19020,14 +19023,39 @@ function activeDenRaidMissionConfig(state=S){
   if(mode === "Arcade") return activeArcadeMission(state);
   return null;
 }
+function tigerDenRaidPhaseLabel(phase){
+  if(phase === "clear_guards") return "Clear Den Guards";
+  if(phase === "rescue_trapped") return "Rescue Trapped Civilians";
+  if(phase === "alpha_showdown") return "Den Alpha Showdown";
+  if(phase === "secured") return "Secured";
+  return "Track Clues";
+}
+function tigerDenRaidSetPhase(den, phase, text="", now=Date.now()){
+  if(!den || den.phase === phase) return false;
+  den.phase = phase;
+  den.phaseChangedAt = now;
+  den.lastPhaseText = text || tigerDenRaidPhaseLabel(phase);
+  if(text) setEventText(text, 5.2);
+  return true;
+}
+function spawnTigerDenRaidSupplyCache(den){
+  if(!den || den.cacheSpawned) return false;
+  den.cacheSpawned = true;
+  den.suppliesTotal = 2;
+  spawnPickup("AMMO", den.x + rand(-58, 58), den.y + rand(-50, 50));
+  spawnPickup("MED", den.x + rand(-62, 62), den.y + rand(-52, 52));
+  return true;
+}
 function revealTigerDenRaid(reason="clue", now=Date.now()){
   const den = ensureTigerDenRaidState(S);
   if(!den.active || den.revealed) return false;
   den.revealed = true;
   den.revealedAt = now;
+  tigerDenRaidSetPhase(den, "clear_guards", "", now);
+  const cacheReady = spawnTigerDenRaidSupplyCache(den);
   const msg = reason === "entered"
-    ? "🐯 Tiger den discovered on foot. Secure the Den Alpha and rescue trapped civilians."
-    : "🐯 Tiger den revealed. Follow the den marker, rescue trapped civilians, and secure the Den Alpha.";
+    ? `🐯 Tiger den discovered on foot. Clear guards, rescue trapped civilians, then capture or defeat the Den Alpha.${cacheReady ? " Supply cache marked nearby." : ""}`
+    : `🐯 Tiger den revealed. Follow the den marker, clear guards, rescue trapped civilians, then secure the Den Alpha.${cacheReady ? " Supply cache marked nearby." : ""}`;
   setEventText(msg, 6.5);
   toast("Tiger Den revealed.");
   return true;
@@ -19043,11 +19071,36 @@ function updateTigerDenRaidState(now=Date.now()){
     revealTigerDenRaid(nearDen ? "entered" : "clue", now);
   }
   const bossDown = !den.bossTigerId || !(S.tigers || []).some((t)=>t?.alive && Number(t.id) === Number(den.bossTigerId));
+  const boss = (S.tigers || []).find((t)=>t?.alive && Number(t.id) === Number(den.bossTigerId));
   const guardsDone = den.guardsCleared >= Math.max(0, den.guardsTotal);
   const trappedDone = den.trappedRescued >= Math.max(0, den.trappedTotal);
+  if(den.revealed && !den.secured){
+    if(!guardsDone){
+      tigerDenRaidSetPhase(den, "clear_guards", `🐯 Den Raid 2.0: clear den guards ${den.guardsCleared}/${den.guardsTotal}.`, now);
+    } else if(!trappedDone){
+      tigerDenRaidSetPhase(den, "rescue_trapped", `🧑‍🤝‍🧑 Den guards down. Rescue trapped civilians ${den.trappedRescued}/${den.trappedTotal}.`, now);
+    } else if(!bossDown){
+      tigerDenRaidSetPhase(den, "alpha_showdown", "👑 Den Alpha exposed. Break armor, weaken it, then capture with Tranq Rifle or Launcher.", now);
+    }
+    if(boss && tigerInCaptureHpWindow(boss) && boss.tranqTagged && !den.alphaCaptureReady){
+      den.alphaCaptureReady = true;
+      setEventText("✅ Den Alpha is tranquilized and in capture range. Tap Capture now.", 4.5);
+    }
+    if(boss && !den.alphaHinted && boss.hp <= captureWindowHp(boss)){
+      den.alphaHinted = true;
+      setEventText("🎯 Den Alpha is weak. Use Tranq Rifle or Launcher, then Capture before HP drops too low.", 5);
+    }
+    if(boss && now >= Number(den.roarPulseAt || 0)){
+      den.roarPulseAt = now + rand(17000, 26000);
+      boss.aggroBoost = clamp(Number(boss.aggroBoost || 0) + 0.04, 0, 0.88);
+      setTigerIntent(boss, "Den Roar", 1200);
+      if(Math.random() < 0.55) setEventText("👑 Den Alpha roar: stay moving and keep civilians away from the den.", 3.2);
+    }
+  }
   if(!den.secured && den.revealed && bossDown && guardsDone && trappedDone){
     den.secured = true;
     den.securedAt = now;
+    tigerDenRaidSetPhase(den, "secured", "", now);
     const reward = Math.max(0, Math.floor(Number(den.rewardCash || 0)));
     if(reward > 0 && !den.rewardClaimed){
       den.rewardClaimed = true;
@@ -19095,6 +19148,14 @@ function seedTigerDenRaidMission(state=S, now=Date.now()){
   den.revealedAt = 0;
   den.securedAt = 0;
   den.rewardClaimed = false;
+  den.phase = "tracking";
+  den.phaseChangedAt = now;
+  den.cacheSpawned = false;
+  den.suppliesTotal = 0;
+  den.alphaCaptureReady = false;
+  den.alphaHinted = false;
+  den.roarPulseAt = now + rand(12000, 18000);
+  den.lastPhaseText = "Track den clues";
 
   if(!Array.isArray(state.tigers)) state.tigers = [];
   let boss = state.tigers.find((t)=>t?.alive && t.type === "Alpha") || state.tigers.find((t)=>t?.alive) || null;
@@ -19116,6 +19177,11 @@ function seedTigerDenRaidMission(state=S, now=Date.now()){
     boss.bossPhaseIndex = 1;
     boss.hpMax = Math.max(Number(boss.hpMax || 1), Math.round(Number(boss.hpMax || 160) * 1.35));
     boss.hp = Math.max(Number(boss.hp || 1), boss.hpMax);
+    boss.bossCaptureStrategy = "BREAK_AND_TRANQ";
+    ensureBossEncounter3State(boss);
+    boss.bossArmorMax = Math.max(36, Math.round(Number(boss.hpMax || 160) * 0.18));
+    boss.bossArmor = clamp(Number(boss.bossArmor || boss.bossArmorMax), 0, boss.bossArmorMax);
+    boss.bossArmorBroken = boss.bossArmor <= 0;
     boss.civBias = clamp(Number(boss.civBias || 0.4) + 0.10, 0, 0.98);
     boss.aggroBoost = clamp(Number(boss.aggroBoost || 0) + 0.18, 0, 0.85);
     boss.intent = "DEN ALPHA";
@@ -37502,11 +37568,22 @@ function endBattle(reason){
   save();
 }
 
+function captureTranqWeaponOptions(t){
+  if(!t) return ["W_TRQ_PISTOL_MK1"];
+  if(t.denRaidBoss || t.type === "Alpha") return ["W_TRQ_RIFLE", "W_TRQ_LAUNCHER"];
+  if(isBossTiger(t)) return ["W_TRQ_LAUNCHER"];
+  if(t.type==="Stalker" || t.type==="Berserker") return ["W_TRQ_RIFLE", "W_TRQ_LAUNCHER"];
+  return ["W_TRQ_PISTOL_MK1", "W_TRQ_RIFLE", "W_TRQ_LAUNCHER"];
+}
 function requiredTranqWeaponId(t){
-  const boss = isBossTiger(t);
-  if(boss) return "W_TRQ_LAUNCHER";
-  if(t.type==="Stalker" || t.type==="Berserker") return "W_TRQ_RIFLE";
-  return "W_TRQ_PISTOL_MK1";
+  return captureTranqWeaponOptions(t)[0] || "W_TRQ_PISTOL_MK1";
+}
+function captureTranqWeaponLabel(t){
+  const names = captureTranqWeaponOptions(t)
+    .map((id)=>getWeapon(id)?.name)
+    .filter(Boolean);
+  if(names.length <= 1) return names[0] || "tranquilizer";
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
 }
 function hasAmmoForWeaponId(id){
   const w = getWeapon(id);
@@ -37514,17 +37591,25 @@ function hasAmmoForWeaponId(id){
   if(S.equippedWeaponId === id && S.mag?.weaponId === id && S.mag.loaded > 0) return true;
   return compatibleAmmoReserveForWeapon(w) > 0;
 }
+function bestCaptureTranqWeaponId(t){
+  const options = captureTranqWeaponOptions(t);
+  if(options.includes(S.equippedWeaponId) && S.ownedWeapons.includes(S.equippedWeaponId) && hasAmmoForWeaponId(S.equippedWeaponId)){
+    return S.equippedWeaponId;
+  }
+  return options.find((id)=>S.ownedWeapons.includes(id) && hasAmmoForWeaponId(id))
+    || options.find((id)=>S.ownedWeapons.includes(id))
+    || options[0]
+    || "";
+}
 function canAttemptCapture(t){
   if(!tigerInCaptureHpWindow(t)) return false;
   if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return false;
-  const req = requiredTranqWeaponId(t);
-  return S.ownedWeapons.includes(req) && hasAmmoForWeaponId(req);
+  return captureTranqWeaponOptions(t).some((id)=>S.ownedWeapons.includes(id) && hasAmmoForWeaponId(id));
 }
 function canCaptureTiger(t){
   if(!tigerInCaptureHpWindow(t)) return false;
   if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return false;
-  const req = requiredTranqWeaponId(t);
-  if(S.equippedWeaponId !== req) return false;
+  if(!captureTranqWeaponOptions(t).includes(S.equippedWeaponId)) return false;
   const w=equippedWeapon();
   if(w.type!=="tranq") return false;
   return (S.mag?.weaponId === w.id && S.mag.loaded > 0) || compatibleAmmoReserveForWeapon(w) > 0;
@@ -37809,22 +37894,25 @@ function playerAction(action){
     if(t.hp > captureWindowHp(t)) return toast(`Capture is available between ${captureWindowPctLabel()} and 1% HP.`);
     if(t.hp < captureWindowMinHp(t)) return toast("Tiger HP is too low for capture. Finish the tiger.");
     if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return toast(`Boss capture locked: ${bossCaptureStrategyStatus(t)}.`);
-    const req = requiredTranqWeaponId(t);
+    const reqOptions = captureTranqWeaponOptions(t);
+    const req = bestCaptureTranqWeaponId(t);
     const reqWeapon = getWeapon(req);
+    const reqLabel = captureTranqWeaponLabel(t);
     if(!reqWeapon) return toast("Required tranq weapon data missing.");
-    if(!S.ownedWeapons.includes(req)) return toast(`${reqWeapon.name} is required to capture this ${t.type}.`);
-    const magReady = (S.equippedWeaponId === req && S.mag.loaded > 0);
-    const reserveReady = compatibleAmmoReserveForWeapon(reqWeapon) > 0;
-    if(!magReady && !reserveReady){
-      return toast(`Out of tranquilizers for ${reqWeapon.name}. Buy more in Shop > Ammo.`);
+    if(!reqOptions.some((id)=>S.ownedWeapons.includes(id))){
+      return toast(`${reqLabel} is required to capture this ${t.type}.`);
+    }
+    const anyTranqReady = reqOptions.some((id)=>S.ownedWeapons.includes(id) && hasAmmoForWeaponId(id));
+    if(!anyTranqReady){
+      return toast(`Out of tranquilizers for ${reqLabel}. Buy more in Shop > Ammo.`);
     }
     if(S.equippedWeaponId !== req){
       equipWeapon(req, { system:true, keepPreset:true });
     }
     if(S.mag.loaded <= 0 && !autoReloadIfNeeded(true)){
-      return toast(`Out of tranquilizers for ${reqWeapon.name}. Buy more in Shop > Ammo.`);
+      return toast(`Out of tranquilizers for ${reqLabel}. Buy more in Shop > Ammo.`);
     }
-    if(!canCaptureTiger(t)) return toast(`${reqWeapon.name} is needed to capture this ${t.type}.`);
+    if(!canCaptureTiger(t)) return toast(`${reqLabel} is needed to capture this ${t.type}.`);
     if(!recordUniqueMissionTigerOutcome(t, "CAPTURE")) return toast("This tiger was already resolved.");
     if(window.TigerTutorial?.isRunning){
       window.TigerTutorial.combatOutcome = "CAPTURE";
@@ -38021,7 +38109,7 @@ function playerAction(action){
       }
     }catch(e){}
     if(w.type==="tranq" && tigerInCaptureHpWindow(t)){
-      setBattleMsg(`Tiger is subdued. Tap Capture to use ${getWeapon(requiredTranqWeaponId(t))?.name || "the required tranq gun"}.`);
+      setBattleMsg(`Tiger is subdued. Tap Capture to use ${captureTranqWeaponLabel(t)}.`);
     }
 
     updateBattleButtons();
@@ -39445,9 +39533,11 @@ function checkMissionComplete(){
         const den = ensureTigerDenRaidState(S);
         denRaidNote =
           `\nTiger Den Raid: ${den.secured ? "secured" : "not secured"}` +
+          ` • Phase ${tigerDenRaidPhaseLabel(den.phase)}` +
           ` • Clues ${Math.min(den.cluesFound || 0, den.cluesTotal || 0)}/${den.cluesTotal || 0}` +
           ` • Guards ${Math.min(den.guardsCleared || 0, den.guardsTotal || 0)}/${den.guardsTotal || 0}` +
           ` • Trapped civilians ${Math.min(den.trappedRescued || 0, den.trappedTotal || 0)}/${den.trappedTotal || 0}` +
+          `${den.cacheSpawned ? " • Supply cache deployed" : ""}` +
           `${den.rewardClaimed ? ` • Den reward +$${Math.max(0, Math.floor(Number(den.rewardCash || 0))).toLocaleString()}` : ""}\n`;
       }
       let upkeepNote = "";
