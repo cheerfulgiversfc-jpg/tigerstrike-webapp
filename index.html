@@ -2046,6 +2046,7 @@
       <button class="ghost mobileCompactHide" onclick="openBaseHQ()">🏠 HQ</button>
       <button class="ghost mobileCompactHide" onclick="openMode()">🎮 Mode</button>
       <button class="ghost mobileCompactHide" onclick="nextMap()">🗺️ Map</button>
+      <button class="ghost mobileCompactHide" onclick="openWorldMapCampaign()">🌎 World Map</button>
       <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLbl">Pause</span></button>
       <button class="ghost" onclick="togglePerformanceMode()">⚙️ <span id="perfLbl">Auto</span></button>
       <button class="ghost" id="squadCmdBtn" onclick="cycleSquadCommand()">🪖 Auto</button>
@@ -2258,6 +2259,19 @@
         <button class="ghost" id="modeEliteHuntBtn" onclick="startEliteBossHunt()">👑 Elite Hunt</button>
         <button class="ghost" id="modeEliteChapterBtn" onclick="cycleEliteHuntChapter()">🗺️ Hunt Chapter 1</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- World Map Campaign -->
+<div class="overlay" id="worldMapCampaignOverlay">
+  <div class="modal" style="width:min(760px,96vw)">
+    <div class="modalTop">
+      <div class="modalTitle">🌎 World Map Campaign 1.0</div>
+      <button class="ghost" onclick="closeWorldMapCampaign()">Close</button>
+    </div>
+    <div class="modalBody" id="worldMapCampaignRoot">
+      <div class="hudLine">Strategic map loading...</div>
     </div>
   </div>
 </div>
@@ -2807,6 +2821,7 @@
     <button class="ghost" onclick="togglePerformanceMode()">⚙️ <span id="perfLblMobile">Auto</span></button>
     <button class="ghost" id="squadCmdBtnMobile" onclick="cycleSquadCommand()">🪖 Auto</button>
     <button class="ghost" id="squadFormBtnMobile" onclick="cycleSquadFormation()">🧩 Wedge</button>
+    <button class="ghost" onclick="openWorldMapCampaign()">🌎 World Map</button>
     <button class="ghost" onclick="openStoryCampaignJournal()">📖 Story</button>
     <button class="ghost" onclick="saveGameNow()">💾 Save</button>
     <button class="ghost" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
@@ -2817,7 +2832,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4567-character-animation-pass"></script>
+<script src="./game.js?v=4568-world-map-campaign"></script>
 <script src="./tutorial.js?v=4532-base-hq-tutorial-station"></script>
 <script>
 (() => {

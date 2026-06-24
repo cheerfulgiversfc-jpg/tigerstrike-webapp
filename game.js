@@ -8488,6 +8488,299 @@ function normalizeModeName(mode){
   const key = String(mode || "").trim();
   return MODE_KEYS.includes(key) ? key : "Story";
 }
+const WORLD_MAP_CAMPAIGN_REGIONS = Object.freeze([
+  Object.freeze({ id:"river_gate", name:"River Gate", biome:"River Territory", theme:"Flooded crossings and civilian boat lanes", unlockAt:1, missionLevel:1, x:15, y:58, danger:34, reward:"Starter rescue routes", neighbors:["jungle_spine","iron_roar"], traits:["street escape","boat evac","low pressure"] }),
+  Object.freeze({ id:"jungle_spine", name:"Jungle Spine", biome:"Canopy Mist", theme:"Dense forest trails with stalking packs", unlockAt:5, missionLevel:7, x:32, y:36, danger:46, reward:"Tracking clue bonus", neighbors:["river_gate","ember_streets","floodplain_delta"], traits:["fog","stalkers","foot shortcuts"] }),
+  Object.freeze({ id:"iron_roar", name:"Iron Roar", biome:"Industrial West", theme:"Warehouses, rail yards, and fortified dens", unlockAt:10, missionLevel:14, x:34, y:70, danger:54, reward:"Armory supply drop", neighbors:["river_gate","ember_streets","cave_wilds"], traits:["den raid","rivals","armor cache"] }),
+  Object.freeze({ id:"ember_streets", name:"Ember Streets", biome:"Smoke Haze", theme:"Urban blocks with smoke pockets and ambush alleys", unlockAt:18, missionLevel:22, x:52, y:52, danger:62, reward:"Evac route bonus", neighbors:["jungle_spine","iron_roar","floodplain_delta","night_stripe"], traits:["convoy evac","smoke","ambushers"] }),
+  Object.freeze({ id:"floodplain_delta", name:"Floodplain Delta", biome:"River Squalls", theme:"Wide water routes, bridges, and floodwater drag", unlockAt:28, missionLevel:32, x:70, y:34, danger:66, reward:"Boat extraction bonus", neighbors:["jungle_spine","ember_streets","alpine_ridge"], traits:["boats","bridges","floods"] }),
+  Object.freeze({ id:"cave_wilds", name:"Cave Wilds", biome:"Dust Drafts", theme:"Mountain caves guarded by den packs", unlockAt:40, missionLevel:45, x:56, y:78, danger:72, reward:"Den research lead", neighbors:["iron_roar","night_stripe","alpine_ridge"], traits:["den alpha","dust","mutation clue"] }),
+  Object.freeze({ id:"alpine_ridge", name:"Alpine Ridge", biome:"Snow Gusts", theme:"High ridge rescue routes with low visibility", unlockAt:52, missionLevel:58, x:84, y:56, danger:78, reward:"Cold-weather prep", neighbors:["floodplain_delta","cave_wilds","night_stripe"], traits:["snow","long sightlines","alpha patrols"] }),
+  Object.freeze({ id:"night_stripe", name:"Night Stripe", biome:"Night Territory", theme:"Late-game region with Nemesis pressure and darkness", unlockAt:65, missionLevel:72, x:76, y:80, danger:86, reward:"Nemesis bounty lead", neighbors:["ember_streets","cave_wilds","alpine_ridge"], traits:["night","nemesis","high pressure"] }),
+]);
+function defaultWorldMapCampaignState(){
+  return {
+    selectedRegionId:"river_gate",
+    activeRegionId:"",
+    defendedRegions:{},
+    regionControl:{},
+    completedMissions:{},
+    unlockedRegionIds:["river_gate"],
+    lastUpdatedAt:0,
+    lastOutcome:"",
+  };
+}
+function worldMapRegionById(id){
+  const key = String(id || "").trim();
+  return WORLD_MAP_CAMPAIGN_REGIONS.find((region)=>region.id === key) || WORLD_MAP_CAMPAIGN_REGIONS[0];
+}
+function ensureWorldMapCampaignState(state=S){
+  if(!state || typeof state !== "object") return defaultWorldMapCampaignState();
+  const src = (state.worldMapCampaign && typeof state.worldMapCampaign === "object") ? state.worldMapCampaign : {};
+  const out = {
+    ...defaultWorldMapCampaignState(),
+    ...src,
+    defendedRegions:(src.defendedRegions && typeof src.defendedRegions === "object") ? src.defendedRegions : {},
+    regionControl:(src.regionControl && typeof src.regionControl === "object") ? src.regionControl : {},
+    completedMissions:(src.completedMissions && typeof src.completedMissions === "object") ? src.completedMissions : {},
+    unlockedRegionIds:Array.isArray(src.unlockedRegionIds) ? src.unlockedRegionIds.map(String) : ["river_gate"],
+  };
+  if(!worldMapRegionById(out.selectedRegionId)) out.selectedRegionId = "river_gate";
+  if(!out.unlockedRegionIds.includes("river_gate")) out.unlockedRegionIds.push("river_gate");
+  for(const region of WORLD_MAP_CAMPAIGN_REGIONS){
+    const saved = Number(out.regionControl[region.id]);
+    if(!Number.isFinite(saved)){
+      out.regionControl[region.id] = worldMapInitialControl(region, state);
+    }else{
+      out.regionControl[region.id] = clamp(Math.round(saved), 5, 96);
+    }
+  }
+  state.worldMapCampaign = out;
+  return out;
+}
+function worldMapInitialControl(region, state=S){
+  const story = Math.max(1, Math.floor(Number(state?.storyLevel || state?.storyLastMission || 1)));
+  const progression = clamp((story - Number(region.unlockAt || 1)) * 0.65, -12, 24);
+  return clamp(Math.round(Number(region.danger || 45) + progression), 12, 92);
+}
+function worldMapStoryLevel(state=S){
+  return Math.max(1, Math.floor(Number(state?.storyLevel || state?.storyLastMission || 1)));
+}
+function worldMapRegionUnlocked(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return false;
+  const wm = ensureWorldMapCampaignState(state);
+  if(wm.unlockedRegionIds.includes(region.id)) return true;
+  if(worldMapStoryLevel(state) >= Number(region.unlockAt || 1)) return true;
+  return (region.neighbors || []).some((id)=>Number(wm.defendedRegions[id] || 0) > 0);
+}
+function worldMapControl(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  const wm = ensureWorldMapCampaignState(state);
+  if(!region) return 0;
+  let control = Number(wm.regionControl[region.id]);
+  if(!Number.isFinite(control)) control = worldMapInitialControl(region, state);
+  const neighborPressure = (region.neighbors || []).reduce((sum, id)=>{
+    const n = Number(wm.regionControl[id] || 0);
+    return sum + (n >= 78 ? 2.5 : (n >= 62 ? 1.25 : 0));
+  }, 0);
+  const defended = Math.max(0, Math.floor(Number(wm.defendedRegions[region.id] || 0)));
+  return clamp(Math.round(control + neighborPressure - defended * 2), 5, 98);
+}
+function updateWorldMapCampaignSpread(state=S, now=Date.now()){
+  const wm = ensureWorldMapCampaignState(state);
+  const last = Math.max(0, Number(wm.lastUpdatedAt || 0));
+  const elapsedHours = last ? clamp((now - last) / 3600000, 0, 10) : 0;
+  for(const region of WORLD_MAP_CAMPAIGN_REGIONS){
+    if(!worldMapRegionUnlocked(region, state)) continue;
+    const current = Number(wm.regionControl[region.id] || worldMapInitialControl(region, state));
+    const defended = Math.max(0, Math.floor(Number(wm.defendedRegions[region.id] || 0)));
+    const spread = (Number(region.danger || 50) >= 70 ? 1.4 : 0.9) * elapsedHours;
+    const relief = defended > 0 ? Math.min(6, defended * 0.45 * elapsedHours) : 0;
+    wm.regionControl[region.id] = clamp(Math.round(current + spread - relief), 5, 96);
+    if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
+  }
+  wm.lastUpdatedAt = now;
+  return wm;
+}
+function worldMapThreatLabel(control){
+  const c = Math.round(Number(control || 0));
+  if(c >= 82) return "Critical";
+  if(c >= 65) return "High";
+  if(c >= 42) return "Contested";
+  return "Stable";
+}
+function worldMapRegionMissionLevel(region, state=S){
+  const story = worldMapStoryLevel(state);
+  return clamp(Math.max(story, Math.floor(Number(region?.missionLevel || story || 1))), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+}
+function worldMapEsc(value){
+  return String(value ?? "").replace(/[&<>"']/g, (ch)=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
+}
+function worldMapRegionCardHtml(region){
+  const wm = ensureWorldMapCampaignState(S);
+  const unlocked = worldMapRegionUnlocked(region, S);
+  const selected = wm.selectedRegionId === region.id;
+  const active = wm.activeRegionId === region.id;
+  const control = worldMapControl(region, S);
+  const threat = worldMapThreatLabel(control);
+  const missionLevel = worldMapRegionMissionLevel(region, S);
+  const disabled = unlocked ? "" : "disabled";
+  const tags = (region.traits || []).slice(0, 3).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
+  return `
+    <button class="card ${selected ? "good" : ""}" style="text-align:left;min-height:148px;border-color:${selected ? "#4ade80" : (active ? "#60a5fa" : "rgba(96,165,250,.35)")}" onclick="selectWorldMapRegion('${region.id}')" ${disabled}>
+      <div class="hudTitle">${unlocked ? "🟢" : "🔒"} ${worldMapEsc(region.name)}${active ? " • ACTIVE" : ""}</div>
+      <div class="hudLine">${worldMapEsc(region.biome)} • Story ${missionLevel}</div>
+      <div class="bar"><div class="fill ${control >= 70 ? "red" : (control >= 45 ? "yellow" : "green")}" style="width:${control}%"></div></div>
+      <div class="small">Tiger Control ${control}% • ${worldMapEsc(threat)}</div>
+      <div class="small">${worldMapEsc(region.theme)}</div>
+      <div class="small">${tags}</div>
+    </button>
+  `;
+}
+function renderWorldMapCampaign(){
+  const root = document.getElementById("worldMapCampaignRoot");
+  if(!root) return;
+  const wm = updateWorldMapCampaignSpread(S);
+  const selected = worldMapRegionById(wm.selectedRegionId);
+  const selectedUnlocked = worldMapRegionUnlocked(selected, S);
+  const selectedControl = worldMapControl(selected, S);
+  const defended = Math.max(0, Math.floor(Number(wm.defendedRegions[selected.id] || 0)));
+  const activeMission = storyCampaignMission(worldMapRegionMissionLevel(selected, S));
+  const nodes = WORLD_MAP_CAMPAIGN_REGIONS.map((region)=>{
+    const unlocked = worldMapRegionUnlocked(region, S);
+    const selectedClass = wm.selectedRegionId === region.id ? "box-shadow:0 0 0 4px rgba(74,222,128,.38);" : "";
+    const color = unlocked ? (worldMapControl(region, S) >= 70 ? "#ef4444" : (worldMapControl(region, S) >= 45 ? "#f59e0b" : "#22c55e")) : "#64748b";
+    return `<button title="${worldMapEsc(region.name)}" onclick="selectWorldMapRegion('${region.id}')" style="position:absolute;left:${region.x}%;top:${region.y}%;transform:translate(-50%,-50%);width:46px;height:46px;border-radius:999px;border:2px solid ${color};background:rgba(15,23,42,.86);color:#fff;font-weight:900;${selectedClass}">${unlocked ? "🐅" : "🔒"}</button>`;
+  }).join("");
+  const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
+  const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
+  root.innerHTML = `
+    <div class="hudLine">Choose which region HQ defends next. Tiger control spreads over time; winning missions lowers control in the active region and unlocks neighboring regions.</div>
+    <div style="position:relative;height:260px;border:1px solid rgba(96,165,250,.35);border-radius:22px;overflow:hidden;background:radial-gradient(circle at 25% 30%,rgba(34,197,94,.22),transparent 26%),radial-gradient(circle at 74% 42%,rgba(59,130,246,.20),transparent 30%),linear-gradient(145deg,#07111f,#10243a 55%,#1e293b);margin:10px 0 12px">
+      <div style="position:absolute;inset:18px;border:1px dashed rgba(191,219,254,.20);border-radius:20px"></div>
+      <div style="position:absolute;left:12%;right:10%;top:50%;border-top:4px solid rgba(125,211,252,.16);transform:rotate(4deg)"></div>
+      <div style="position:absolute;left:25%;right:18%;top:68%;border-top:4px solid rgba(250,204,21,.13);transform:rotate(-7deg)"></div>
+      ${nodes}
+    </div>
+    <div class="grid2">
+      <div class="card" style="border-color:rgba(74,222,128,.42)">
+        <div class="hudTitle">${worldMapEsc(selected.name)}</div>
+        <div class="hudLine">${worldMapEsc(selected.biome)} • ${worldMapEsc(worldMapThreatLabel(selectedControl))}</div>
+        <div class="bar"><div class="fill ${selectedControl >= 70 ? "red" : (selectedControl >= 45 ? "yellow" : "green")}" style="width:${selectedControl}%"></div></div>
+        <div class="hudLine">Tiger Control ${selectedControl}% • Defended ${defended} time${defended === 1 ? "" : "s"}</div>
+        <div class="small">${worldMapEsc(selected.theme)}</div>
+        <div class="small">${selectedTags}</div>
+      </div>
+      <div class="card">
+        <div class="hudTitle">Unlocked Mission</div>
+        <div class="hudLine">Story Mission ${worldMapRegionMissionLevel(selected, S)}/100 • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
+        <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
+        <div class="small">Reward: ${worldMapEsc(selected.reward)} • Capture/rescue payouts still use normal Mission Rewards 2.0.</div>
+        <div class="row" style="margin-top:10px">
+          <button class="good" onclick="startWorldMapRegionMission('${selected.id}')" ${selectedUnlocked ? "" : "disabled"}>Deploy To Region</button>
+          <button class="ghost" onclick="openMissionBriefFromWorldMap()" ${selectedUnlocked ? "" : "disabled"}>Brief First</button>
+        </div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="grid2">${cards}</div>
+  `;
+}
+function openWorldMapCampaign(){
+  if(window.__TUTORIAL_MODE__) return toast("Finish the tutorial first.");
+  ensureWorldMapCampaignState(S);
+  updateWorldMapCampaignSpread(S);
+  ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = "none";
+  });
+  if(typeof baseHqActive === "function" && baseHqActive()){
+    rememberBaseHqOverlayReturn?.("mission");
+  }else{
+    __returnToBaseHqAfterOverlay = false;
+  }
+  setPaused(true, "world-map");
+  const overlay = document.getElementById("worldMapCampaignOverlay");
+  if(overlay) overlay.style.display = "flex";
+  renderWorldMapCampaign();
+  sfx("ui");
+  syncGamepadFocus();
+}
+function closeWorldMapCampaign(){
+  const overlay = document.getElementById("worldMapCampaignOverlay");
+  if(overlay) overlay.style.display = "none";
+  if(__returnToBaseHqAfterOverlay){
+    returnToBaseHqFromOverlay();
+    return;
+  }
+  setPaused(false, null);
+  syncGamepadFocus();
+}
+function selectWorldMapRegion(id){
+  const region = worldMapRegionById(id);
+  const wm = ensureWorldMapCampaignState(S);
+  if(!worldMapRegionUnlocked(region, S)){
+    toast(`${region.name} unlocks at Story Mission ${region.unlockAt} or by defending a neighboring region.`);
+    return false;
+  }
+  wm.selectedRegionId = region.id;
+  if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
+  renderWorldMapCampaign();
+  toast(`${region.name} selected.`);
+  save();
+  return false;
+}
+function startWorldMapRegionMission(id){
+  const region = worldMapRegionById(id);
+  const wm = ensureWorldMapCampaignState(S);
+  if(!worldMapRegionUnlocked(region, S)){
+    toast(`${region.name} is still locked.`);
+    return false;
+  }
+  activateModeProfile("Story", S);
+  S.storyVariant = STORY_VARIANTS.CAMPAIGN;
+  const missionLevel = worldMapRegionMissionLevel(region, S);
+  S.storyLevel = missionLevel;
+  S.storyLastMission = Math.max(Number(S.storyLastMission || 1), missionLevel);
+  S.mapIndex = 0;
+  wm.selectedRegionId = region.id;
+  wm.activeRegionId = region.id;
+  if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
+  const overlay = document.getElementById("worldMapCampaignOverlay");
+  if(overlay) overlay.style.display = "none";
+  __returnToBaseHqAfterOverlay = false;
+  beginMissionTransitionGuard("world-map-deploy", 1400);
+  deploy();
+  toast(`Deploying to ${region.name}. Tiger control ${worldMapControl(region, S)}%.`);
+  save(true);
+  return false;
+}
+function openMissionBriefFromWorldMap(){
+  const wm = ensureWorldMapCampaignState(S);
+  const region = worldMapRegionById(wm.selectedRegionId);
+  if(!worldMapRegionUnlocked(region, S)) return false;
+  activateModeProfile("Story", S);
+  S.storyVariant = STORY_VARIANTS.CAMPAIGN;
+  S.storyLevel = worldMapRegionMissionLevel(region, S);
+  S.storyLastMission = Math.max(Number(S.storyLastMission || 1), S.storyLevel);
+  wm.activeRegionId = region.id;
+  const overlay = document.getElementById("worldMapCampaignOverlay");
+  if(overlay) overlay.style.display = "none";
+  __returnToBaseHqAfterOverlay = false;
+  const shown = showMissionBrief(10000);
+  if(shown){
+    const btn = document.getElementById("missionBriefStartBtn");
+    if(btn){
+      btn.innerText = "Deploy To Region";
+      btn.onclick = ()=>startWorldMapRegionMission(region.id);
+    }
+  }
+  save();
+  return false;
+}
+function recordWorldMapCampaignOutcome({ missionStats=null }={}){
+  if(S.mode !== "Story") return "";
+  const wm = ensureWorldMapCampaignState(S);
+  if(!wm.activeRegionId) return "";
+  const activeId = wm.activeRegionId;
+  const region = worldMapRegionById(activeId);
+  if(!region) return "";
+  const before = worldMapControl(region, S);
+  const captures = Math.max(0, Math.floor(Number(missionStats?.captures || S.stats?.captures || 0)));
+  const evac = Math.max(0, Math.floor(Number(missionStats?.evac || S.stats?.evac || 0)));
+  const pressureDrop = clamp(14 + Math.floor(captures / 3) + Math.floor(evac / 2), 14, 34);
+  wm.regionControl[region.id] = clamp(Math.round(before - pressureDrop), 5, 96);
+  wm.defendedRegions[region.id] = Math.max(0, Math.floor(Number(wm.defendedRegions[region.id] || 0))) + 1;
+  wm.completedMissions[region.id] = Math.max(0, Math.floor(Number(wm.completedMissions[region.id] || 0))) + 1;
+  for(const neighborId of (region.neighbors || [])){
+    if(!wm.unlockedRegionIds.includes(neighborId)) wm.unlockedRegionIds.push(neighborId);
+    wm.regionControl[neighborId] = clamp(Math.round(Number(wm.regionControl[neighborId] || worldMapInitialControl(worldMapRegionById(neighborId), S)) + 2), 5, 96);
+  }
+  wm.lastOutcome = `${region.name}: tiger control reduced ${before}% → ${worldMapControl(region, S)}%. Neighbor regions unlocked for defense.`;
+  wm.lastUpdatedAt = Date.now();
+  return `\nWorld Map Campaign: ${wm.lastOutcome}\n`;
+}
 function sanitizeWalletAmount(value, fallback = 1000){
   const n = Math.floor(Number(value));
   if(Number.isFinite(n) && n >= 0) return n;
@@ -8594,6 +8887,7 @@ function resetModeProgressToFreshStart(mode, state = S){
     state.storyEndgameUnlocked = false;
     state.storyIntroSeen = false;
     state.storyBranching = defaultStoryBranchingState();
+    state.worldMapCampaign = defaultWorldMapCampaignState();
     state.gauntletDepth = 1;
     state.eliteHuntChapter = 1;
     state.eliteHuntRuns = 1;
@@ -8741,6 +9035,7 @@ const DEFAULT = {
     Arcade:1000,
     Survival:1000,
   },
+  worldMapCampaign: defaultWorldMapCampaignState(),
   modeProfiles:null,
   soundOn:true, audioUnlocked:false,
   performanceMode:"AUTO",
@@ -10548,6 +10843,7 @@ function load(){
       ensureMissionTwistState(fallback);
       ensureArcadeBuildcraftState(fallback);
       ensureArcadeWeeklySeedState(fallback);
+      ensureWorldMapCampaignState(fallback);
       ensureClanState(fallback);
       ensureSeasonPassState(fallback);
       ensureMasteryRewardsState(fallback);
@@ -10650,6 +10946,7 @@ function load(){
     ensureMissionTwistState(m);
     ensureArcadeBuildcraftState(m);
     ensureArcadeWeeklySeedState(m);
+    ensureWorldMapCampaignState(m);
     ensureClanState(m);
     ensureSeasonPassState(m);
     ensureMasteryRewardsState(m);
@@ -10679,6 +10976,7 @@ function load(){
     ensureMissionTwistState(fallback);
     ensureArcadeBuildcraftState(fallback);
     ensureArcadeWeeklySeedState(fallback);
+    ensureWorldMapCampaignState(fallback);
     ensureClanState(fallback);
     ensureSeasonPassState(fallback);
     ensureMasteryRewardsState(fallback);
@@ -20807,7 +21105,10 @@ function showMissionBrief(durationMs=2600){
       ? "Pick one Buildcraft loadout plus 1 positive and 1 negative Live Ops card, then tap Start Mission."
       : "Review recommended prep, pick 1 positive and 1 negative Live Ops card, then tap Start Mission.";
   }
-  if(startBtn) startBtn.innerText = isArcade ? "Start Mission" : "Start Mission";
+  if(startBtn){
+    startBtn.innerText = isArcade ? "Start Mission" : "Start Mission";
+    startBtn.onclick = ()=>closeMissionBrief();
+  }
   renderArcadeBuildcraftBrief();
 
   clearMissionBriefTimer();
@@ -24989,6 +25290,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       desc:`Base Intel: ${factList[factIndex]} Live threat board, readiness checklist, alerts, loadout guidance, and deploy plan are active.`,
       actions:[
         ["Mission Control","baseHqMissionControlAction('room:command')"],
+        ["World Map","openWorldMapCampaign()"],
         ["Ask Ivy","baseHqExecuteIvyGuidance()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
         ["HQ News","refreshBaseHqDailyNews()"],
@@ -25072,6 +25374,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       desc:`Base Intel: ${factList[factIndex]} Mission Control compares threats, supplies, room readiness, and deploy plan before launch.`,
       actions:[
         ["Mission Control","baseHqMissionControlAction('room:command')"],
+        ["World Map","openWorldMapCampaign()"],
         ["Ask Ivy","baseHqExecuteIvyGuidance()"],
         ["Recommended","baseHqRunRecommendedCommand()"],
         ["Continue Active","startMissionFromBaseHQ()"],
@@ -25200,7 +25503,7 @@ function showLaunchMainMenuFromBaseHQ(){
     setPaused(true, "launch-intro");
     return;
   }
-  ["dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
+  ["dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -25260,6 +25563,7 @@ function runBaseHqCommand(command="", label=""){
     baseHqExecuteIvyGuidance,
     baseHqRefreshIvyGuidance,
     openMissionBriefFromBaseHQ,
+    openWorldMapCampaign,
     refreshBaseHqDailyNews,
     openStoryFromBaseHQ,
     openModeFromBaseHQ,
@@ -25635,6 +25939,7 @@ function renderBaseHqQuickBar(){
     <div class="baseHqQuickHint">${baseHqEsc(baseHqIvyGuidance())} • Active: ${baseHqEsc(snap.label)}</div>
     ${button("Hide Menu", "setBaseHqQuickMenuCollapsed(true)", "utility")}
     ${button("HQ Tour", "resetBaseHqOnboarding()", "utility")}
+    ${button("World Map", "openWorldMapCampaign()", "primary")}
     ${button("Story", "openBaseHqModePreview('Story')", "primary")}
     ${button("Arcade", "openBaseHqModePreview('Arcade')", "primary")}
     ${button("Survival", "openBaseHqModePreview('Survival')", "primary")}
@@ -26525,7 +26830,7 @@ function returnToBaseHqFromOverlay(){
 }
 function openBaseHQ(opts={}){
   if(window.__TUTORIAL_MODE__) return toast("Finish the tutorial first.");
-  ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
+  ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -29204,7 +29509,7 @@ window.exitTutorialMode = function () {
   const prev = S._tutorialPrev || null;
   delete S._tutorialPrev;
 
-  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
+  ["battleOverlay","shopOverlay","invOverlay","completeOverlay","overOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","hudOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -32041,7 +32346,7 @@ function performResetGame(){
   S = cloneState(DEFAULT);
   bindFundsWallet(S);
   syncWindowState();
-  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","progressGuardOverlay"].forEach((id)=>{
+  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","worldMapCampaignOverlay","progressGuardOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -32407,7 +32712,7 @@ function gamepadUiContainers(){
   const tutorial = document.getElementById("tutorialOverlay");
   if(tutorial && tutorial.style.display === "flex") return [document.getElementById("tutorialCard")];
 
-  const overlays = ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
+  const overlays = ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","overOverlay","completeOverlay","worldMapCampaignOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"]
     .map((id)=>document.getElementById(id))
     .filter((el)=>el && el.style.display === "flex");
   if(overlays.length) return overlays;
@@ -32496,7 +32801,7 @@ function activateGamepadFocus(){
 }
 
 function anyGamepadOverlayVisible(){
-  const ids = ["tutorialOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","overOverlay","completeOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay"];
+  const ids = ["tutorialOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","overOverlay","completeOverlay","worldMapCampaignOverlay","shopOverlay","invOverlay","modeOverlay","aboutOverlay","weaponQuickOverlay","hudOverlay","worldMapCampaignOverlay"];
   return ids.some((id)=>{
     const el = document.getElementById(id);
     return !!(el && el.style.display === "flex");
@@ -39190,6 +39495,7 @@ function checkMissionComplete(){
         civEvac,
         mission:storyMission,
       });
+      const worldMapCampaignNote = recordWorldMapCampaignOutcome({ missionStats });
 
       const recapMeta = {
         number: activeMission?.number || gameplayCloudMission(S),
@@ -39228,7 +39534,7 @@ function checkMissionComplete(){
       });
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${worldMapCampaignNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
@@ -46638,6 +46944,11 @@ window.beginStoryMissionFromIntro = beginStoryMissionFromIntro;
 window.startQuickTutorialFromIntro = startQuickTutorialFromIntro;
 window.skipStoryIntro = skipStoryIntro;
 window.toggleChapterRecap = toggleChapterRecap;
+window.openWorldMapCampaign = openWorldMapCampaign;
+window.closeWorldMapCampaign = closeWorldMapCampaign;
+window.selectWorldMapRegion = selectWorldMapRegion;
+window.startWorldMapRegionMission = startWorldMapRegionMission;
+window.openMissionBriefFromWorldMap = openMissionBriefFromWorldMap;
 window.closeMissionBrief = closeMissionBrief;
 window.continueMissionCinematicIntro = continueMissionCinematicIntro;
 window.skipMissionCinematicIntro = skipMissionCinematicIntro;
