@@ -11117,6 +11117,8 @@ const STARTUP_LOADING_PLAYABLE_MS = 16000;
 const STARTUP_LOADING_MIN_MS = 7500;
 const STARTUP_LOADING_READY_FRAMES = 24;
 const STARTUP_LOADING_DETAIL_READY_FRAMES = 10;
+const STARTUP_LOADING_FINALIZE_MS = 850;
+const STARTUP_LOADING_FINALIZE_FAILSAFE_MS = 2600;
 const MAP_CLARITY_PRELOAD_RADIUS = 4;
 const MAP_CLARITY_FULL_REPAINT_MS = 120000;
 const STARTUP_PRELOAD_STAGE_WEIGHTS = Object.freeze({
@@ -11136,6 +11138,7 @@ let __startupLoadingGuard = {
   stage:"terrain",
   stageScores:{ terrain:0, sectors:0, entities:0, hazards:0, visual:0 },
   finalizingUntil:0,
+  finalizingStartedAt:0,
   pendingReleaseReason:"",
   releasedAt:0,
   reason:"",
@@ -45584,6 +45587,7 @@ function beginStartupLoadingGuard(reason="startup"){
   __startupLoadingGuard.stage = "terrain";
   __startupLoadingGuard.stageScores = { terrain:0, sectors:0, entities:0, hazards:0, visual:0 };
   __startupLoadingGuard.finalizingUntil = 0;
+  __startupLoadingGuard.finalizingStartedAt = 0;
   __startupLoadingGuard.pendingReleaseReason = "";
   __startupLoadingGuard.releasedAt = 0;
   __startupLoadingGuard.reason = reason;
@@ -45741,6 +45745,7 @@ function releaseStartupLoadingGuard(reason="ready"){
   __startupLoadingGuard.percent = 100;
   __startupLoadingGuard.active = false;
   __startupLoadingGuard.finalizingUntil = 0;
+  __startupLoadingGuard.finalizingStartedAt = 0;
   __startupLoadingGuard.pendingReleaseReason = "";
   __startupLoadingGuard.releasedAt = Date.now();
   __startupLoadingGuard.reason = reason;
@@ -45756,21 +45761,30 @@ function requestStartupLoadingFinalization(reason="ready"){
   __startupLoadingGuard.percent = 100;
   __startupLoadingGuard.stage = "ready";
   __startupLoadingGuard.pendingReleaseReason = reason;
-  __startupLoadingGuard.finalizingUntil = Math.max(Number(__startupLoadingGuard.finalizingUntil || 0), now + 650);
+  if(!Number(__startupLoadingGuard.finalizingStartedAt || 0)) __startupLoadingGuard.finalizingStartedAt = now;
+  __startupLoadingGuard.finalizingUntil = Math.max(Number(__startupLoadingGuard.finalizingUntil || 0), now + STARTUP_LOADING_FINALIZE_MS);
   updateStartupLoadingOverlay(true);
 }
 
 function startupLoadingGuardActive(now=Date.now()){
   if(!__startupLoadingGuard.active) return false;
   if(Number(__startupLoadingGuard.finalizingUntil || 0) > 0){
-    if(now >= Number(__startupLoadingGuard.finalizingUntil || 0)){
-      releaseStartupLoadingGuard(__startupLoadingGuard.pendingReleaseReason || "ready");
+    const started = Number(__startupLoadingGuard.finalizingStartedAt || 0);
+    const finalizeExpired = now >= Number(__startupLoadingGuard.finalizingUntil || 0);
+    const finalizeStuck = started > 0 && (now - started) >= STARTUP_LOADING_FINALIZE_FAILSAFE_MS;
+    const visibleHundred = Number(__startupLoadingGuard.percent || 0) >= 100;
+    if(finalizeExpired || (visibleHundred && finalizeStuck)){
+      releaseStartupLoadingGuard(__startupLoadingGuard.pendingReleaseReason || (finalizeStuck ? "finalize-failsafe" : "ready"));
       return false;
     }
     updateStartupLoadingOverlay();
     return true;
   }
   const elapsed = now - Number(__startupLoadingGuard.startedAt || now);
+  if(Number(__startupLoadingGuard.percent || 0) >= 100){
+    requestStartupLoadingFinalization("percent-ready");
+    return true;
+  }
   if(elapsed >= STARTUP_LOADING_MAX_MS){
     requestStartupLoadingFinalization("timeout");
     return true;
@@ -45823,7 +45837,7 @@ function updateStartupLoadingOverlay(force=false){
       entities:"Placing civilians and tigers",
       hazards:"Preparing hazards and events",
       visual:"Polishing nearby map detail",
-      ready:"Finalizing mission board"
+      ready:"Launching mission board"
     }[__startupLoadingGuard.stage || "terrain"] || "Preparing mission board";
     __startupLoadingGuard.subNode.textContent = `${stageLabel}...`;
   }
