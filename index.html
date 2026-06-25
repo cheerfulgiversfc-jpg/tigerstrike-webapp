@@ -254,9 +254,16 @@
       right:12px;
       top:12px;
       width:min(340px,calc(100% - 24px));
+      max-height:calc(100% - 112px);
+      overflow-y:auto;
+      overscroll-behavior:contain;
+      -webkit-overflow-scrolling:touch;
+      touch-action:pan-y;
+      scrollbar-width:thin;
+      scrollbar-color:rgba(125,211,252,.7) rgba(15,23,42,.35);
       z-index:7;
       display:none;
-      padding:10px;
+      padding:10px 10px 14px;
       border-radius:16px;
       border:1px solid rgba(125,211,252,.55);
       background:linear-gradient(180deg, rgba(8,13,25,.74), rgba(4,9,18,.58));
@@ -264,6 +271,9 @@
       backdrop-filter:blur(7px);
       pointer-events:auto;
     }
+    .baseHqWorldHud::-webkit-scrollbar{width:6px}
+    .baseHqWorldHud::-webkit-scrollbar-track{background:rgba(15,23,42,.35);border-radius:999px}
+    .baseHqWorldHud::-webkit-scrollbar-thumb{background:rgba(125,211,252,.72);border-radius:999px}
     .baseHqWorldTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
     .baseHqWorldTitle{font-size:14px;font-weight:1000;color:#f8fafc}
     .baseHqWorldSub{margin-top:2px;font-size:10px;font-weight:850;color:#a7c3ef}
@@ -538,9 +548,17 @@
       .baseHqStage{min-height:390px}
       .baseHqRoom{width:96px;min-height:66px}
       .baseHqPanel{min-height:auto}
-      .baseHqWorldHud{right:8px;top:8px;width:min(310px,calc(100% - 16px));padding:9px}
+      .baseHqWorldHud{
+        left:8px;
+        right:8px;
+        top:8px;
+        width:auto;
+        max-height:calc(100% - 124px);
+        padding:9px 9px 16px;
+      }
       .baseHqWorldTitle{font-size:13px}
-      .baseHqWorldDesc{font-size:12px}
+      .baseHqWorldDesc{font-size:12px;line-height:1.24}
+      .baseHqWorldNpc{font-size:11px;line-height:1.22}
       .baseHqMissionPreviewGrid{grid-template-columns:1fr}
       .missionControlGrid{grid-template-columns:1fr}
       .baseHqControlHero{align-items:flex-start;flex-direction:column}
@@ -2834,7 +2852,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4570-soldier-command-4"></script>
+<script src="./game.js?v=4571-hq-info-scroll"></script>
 <script src="./tutorial.js?v=4532-base-hq-tutorial-station"></script>
 <script>
 (() => {

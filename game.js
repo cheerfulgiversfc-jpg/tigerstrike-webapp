@@ -24734,6 +24734,15 @@ function hideBaseHqHud(){
   const hud = document.getElementById("baseHqWorldHud");
   if(hud) hud.style.display = "none";
 }
+function armBaseHqHudScroll(hud){
+  if(!hud || hud.__baseHqScrollArmed) return;
+  hud.__baseHqScrollArmed = true;
+  ["pointerdown","pointermove","pointerup","touchstart","touchmove","wheel"].forEach((eventName)=>{
+    hud.addEventListener(eventName, (ev)=>{
+      ev.stopPropagation();
+    }, { passive:true });
+  });
+}
 function setBaseHqQuickMenuCollapsed(collapsed=true){
   __baseHqQuickMenuCollapsed = !!collapsed;
   try{ localStorage.setItem("tigerstrike_base_hq_quick_menu_collapsed", __baseHqQuickMenuCollapsed ? "1" : "0"); }catch(_e){}
@@ -25971,6 +25980,7 @@ function refreshBaseHqDailyNews(){
 function renderBaseHqWorldHud(){
   const hud = document.getElementById("baseHqWorldHud");
   if(!hud) return;
+  armBaseHqHudScroll(hud);
   if(!__baseHqActive || Date.now() > Number(__baseHqHudUntil || 0)){
     hud.style.display = "none";
     return;
@@ -25994,8 +26004,7 @@ function renderBaseHqWorldHud(){
   const ivyHtml = (room.id === "command" || room.id === "mission" || dialogNpc?.name === "Ivy") ? baseHqIvyGuidanceHtml() : "";
   const progressVisualHtml = (room.id === "command" || room.id === "trophy" || room.id === "mission") ? baseHqProgressVisualHtml() : "";
   const progress = baseHqRoomProgress(room.id);
-  hud.style.display = "block";
-  hud.innerHTML = `
+  const html = `
     <div class="baseHqWorldTop">
       <div>
         <div class="baseHqWorldTitle">${baseHqEsc(room.icon)} ${baseHqEsc(data.title || room.name)}</div>
@@ -26017,7 +26026,16 @@ function renderBaseHqWorldHud(){
       ${actionHtml}
     </div>
   `;
-  armBaseHqButtons(hud);
+  hud.style.display = "block";
+  if(hud.__baseHqHtml !== html){
+    const sameRoom = hud.__baseHqRoomId === room.id;
+    const oldScroll = Number(hud.scrollTop || 0);
+    hud.innerHTML = html;
+    hud.__baseHqHtml = html;
+    hud.__baseHqRoomId = room.id;
+    hud.scrollTop = sameRoom ? Math.min(oldScroll, Math.max(0, hud.scrollHeight - hud.clientHeight)) : 0;
+    armBaseHqButtons(hud);
+  }
 }
 function renderBaseHqQuickBar(){
   const bar = document.getElementById("baseHqQuickBar");
