@@ -8499,19 +8499,43 @@ const WORLD_MAP_CAMPAIGN_REGIONS = Object.freeze([
   Object.freeze({ id:"alpine_ridge", name:"Alpine Ridge", biome:"Snow Gusts", theme:"High ridge rescue routes with low visibility", unlockAt:52, missionLevel:58, x:84, y:56, danger:78, reward:"Cold-weather prep", neighbors:["floodplain_delta","cave_wilds","night_stripe"], traits:["snow","long sightlines","alpha patrols"] }),
   Object.freeze({ id:"night_stripe", name:"Night Stripe", biome:"Night Territory", theme:"Late-game region with Nemesis pressure and darkness", unlockAt:65, missionLevel:72, x:76, y:80, danger:86, reward:"Nemesis bounty lead", neighbors:["ember_streets","cave_wilds","alpine_ridge"], traits:["night","nemesis","high pressure"] }),
 ]);
+const WORLD_MAP_LIVE_EVENT_TYPES = Object.freeze([
+  Object.freeze({ id:"helicopter_crash", icon:"🚁", name:"Helicopter Crash", desc:"Reach the crash site, secure survivors, and recover bonus intel.", rewardMul:1.08, controlDrop:3, boss:0 }),
+  Object.freeze({ id:"ambush_convoy", icon:"🚚", name:"Ambush Convoy", desc:"Break a moving ambush before it spreads to nearby evac lanes.", rewardMul:1.06, controlDrop:2, boss:0 }),
+  Object.freeze({ id:"flooded_route", icon:"🌊", name:"Flooded Route", desc:"Stabilize a dangerous water crossing and protect rescue paths.", rewardMul:1.05, controlDrop:2, boss:0 }),
+  Object.freeze({ id:"missing_civilians", icon:"🆘", name:"Missing Civilians", desc:"Investigate a missing group before tigers push deeper into the region.", rewardMul:1.05, controlDrop:2, boss:0 }),
+  Object.freeze({ id:"alpha_sighting", icon:"👑", name:"Alpha Sighting", desc:"An Alpha is coordinating pressure here. Completing this region advances the boss chain faster.", rewardMul:1.10, controlDrop:4, boss:1 }),
+]);
+const WORLD_MAP_BOSS_CHAIN_NAMES = Object.freeze({
+  river_gate:"Riverjaw",
+  jungle_spine:"MistClaw",
+  iron_roar:"IronFang",
+  ember_streets:"EmberMane",
+  floodplain_delta:"Floodmaw",
+  cave_wilds:"Cavecrusher",
+  alpine_ridge:"SnowRage",
+  night_stripe:"NightStripe",
+});
 function defaultWorldMapCampaignState(){
   return {
     version:2,
     selectedRegionId:"river_gate",
     activeRegionId:"",
+    activeEventId:"",
+    activeEventRegionId:"",
     defendedRegions:{},
     regionControl:{},
     completedMissions:{},
+    liveEvents:{},
+    completedEvents:{},
+    bossChains:{},
+    settlementInfluence:{},
     unlockedRegionIds:["river_gate"],
     totalRewardCash:0,
     totalRewardXp:0,
     totalRewardPass:0,
     lastUpdatedAt:0,
+    lastEventSeed:"",
     lastOutcome:"",
   };
 }
@@ -8529,10 +8553,17 @@ function ensureWorldMapCampaignState(state=S){
     defendedRegions:(src.defendedRegions && typeof src.defendedRegions === "object") ? src.defendedRegions : {},
     regionControl:(src.regionControl && typeof src.regionControl === "object") ? src.regionControl : {},
     completedMissions:(src.completedMissions && typeof src.completedMissions === "object") ? src.completedMissions : {},
+    liveEvents:(src.liveEvents && typeof src.liveEvents === "object") ? src.liveEvents : {},
+    completedEvents:(src.completedEvents && typeof src.completedEvents === "object") ? src.completedEvents : {},
+    bossChains:(src.bossChains && typeof src.bossChains === "object") ? src.bossChains : {},
+    settlementInfluence:(src.settlementInfluence && typeof src.settlementInfluence === "object") ? src.settlementInfluence : {},
     unlockedRegionIds:Array.isArray(src.unlockedRegionIds) ? src.unlockedRegionIds.map(String) : ["river_gate"],
     totalRewardCash:Math.max(0, Math.floor(Number(src.totalRewardCash || 0))),
     totalRewardXp:Math.max(0, Math.floor(Number(src.totalRewardXp || 0))),
     totalRewardPass:Math.max(0, Math.floor(Number(src.totalRewardPass || 0))),
+    activeEventId:String(src.activeEventId || ""),
+    activeEventRegionId:String(src.activeEventRegionId || ""),
+    lastEventSeed:String(src.lastEventSeed || ""),
   };
   if(!worldMapRegionById(out.selectedRegionId)) out.selectedRegionId = "river_gate";
   if(!out.unlockedRegionIds.includes("river_gate")) out.unlockedRegionIds.push("river_gate");
@@ -8543,6 +8574,13 @@ function ensureWorldMapCampaignState(state=S){
     }else{
       out.regionControl[region.id] = clamp(Math.round(saved), 5, 96);
     }
+    const chain = (out.bossChains[region.id] && typeof out.bossChains[region.id] === "object") ? out.bossChains[region.id] : {};
+    out.bossChains[region.id] = {
+      progress:clamp(Math.floor(Number(chain.progress || 0)), 0, 3),
+      resolved:Math.max(0, Math.floor(Number(chain.resolved || 0))),
+      bossName:String(chain.bossName || WORLD_MAP_BOSS_CHAIN_NAMES[region.id] || `${region.name} Alpha`),
+    };
+    out.settlementInfluence[region.id] = clamp(Math.floor(Number(out.settlementInfluence[region.id] || 0)), 0, 100);
   }
   state.worldMapCampaign = out;
   return out;
@@ -8595,8 +8633,9 @@ function updateWorldMapCampaignSpread(state=S, now=Date.now()){
     const baseSpread = (Number(region.danger || 50) >= 70 ? 1.18 : 0.74);
     const defendedRelief = defended > 0 ? Math.min(8, defended * 0.52 * elapsedHours) : 0;
     const activeRelief = wm.activeRegionId === region.id ? 0.28 * elapsedHours : 0;
+    const settlementRelief = Math.min(5, Math.max(0, Number(wm.settlementInfluence?.[region.id] || 0)) * 0.06 * elapsedHours);
     const spread = (baseSpread + neighborPush) * elapsedHours;
-    wm.regionControl[region.id] = clamp(Math.round(current + spread - defendedRelief - activeRelief), 5, 96);
+    wm.regionControl[region.id] = clamp(Math.round(current + spread - defendedRelief - activeRelief - settlementRelief), 5, 96);
     if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   }
   wm.lastUpdatedAt = now;
@@ -8615,6 +8654,91 @@ function worldMapRegionMissionLevel(region, state=S){
 }
 function worldMapEsc(value){
   return String(value ?? "").replace(/[&<>"']/g, (ch)=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
+}
+function worldMapLiveEventDef(typeId){
+  return WORLD_MAP_LIVE_EVENT_TYPES.find((event)=>event.id === typeId) || WORLD_MAP_LIVE_EVENT_TYPES[0];
+}
+function worldMapPhase3Seed(now=Date.now(), state=S){
+  const story = worldMapStoryLevel(state);
+  const windowId = Math.floor(Number(now || Date.now()) / 21600000);
+  return `${windowId}:${Math.floor(story / 5)}`;
+}
+function worldMapStableHash(text){
+  const str = String(text || "");
+  let hash = 0;
+  for(let i=0;i<str.length;i++){
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+function refreshWorldMapLiveEvents(state=S, now=Date.now()){
+  const wm = ensureWorldMapCampaignState(state);
+  const seed = worldMapPhase3Seed(now, state);
+  const unlocked = WORLD_MAP_CAMPAIGN_REGIONS.filter((region)=>worldMapRegionUnlocked(region, state));
+  if(wm.lastEventSeed === seed && Object.keys(wm.liveEvents || {}).length) return wm.liveEvents;
+  const ranked = unlocked
+    .map((region)=>({ region, score:worldMapStableHash(`${seed}:${region.id}:${worldMapControl(region, state)}`) }))
+    .sort((a,b)=>b.score - a.score);
+  const eventCount = clamp(Math.min(ranked.length, 2 + Math.floor(worldMapStoryLevel(state) / 35)), 1, 3);
+  const nextEvents = {};
+  ranked.slice(0, eventCount).forEach((entry, index)=>{
+    const type = WORLD_MAP_LIVE_EVENT_TYPES[(entry.score + index) % WORLD_MAP_LIVE_EVENT_TYPES.length];
+    const id = `${seed}:${entry.region.id}:${type.id}`;
+    if(wm.completedEvents?.[id]) return;
+    nextEvents[entry.region.id] = {
+      id,
+      typeId:type.id,
+      regionId:entry.region.id,
+      expiresAt:now + 21600000,
+      createdAt:now,
+    };
+  });
+  wm.liveEvents = nextEvents;
+  wm.lastEventSeed = seed;
+  return wm.liveEvents;
+}
+function worldMapLiveEventForRegion(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return null;
+  refreshWorldMapLiveEvents(state);
+  const wm = ensureWorldMapCampaignState(state);
+  const event = wm.liveEvents?.[region.id];
+  return event && event.regionId === region.id ? event : null;
+}
+function worldMapActiveEvent(state=S){
+  const wm = ensureWorldMapCampaignState(state);
+  const event = wm.activeEventRegionId ? wm.liveEvents?.[wm.activeEventRegionId] : null;
+  if(event && (!wm.activeEventId || event.id === wm.activeEventId)) return event;
+  return null;
+}
+function worldMapEventLine(event){
+  if(!event) return "No live event in this region.";
+  const def = worldMapLiveEventDef(event.typeId);
+  return `${def.icon} ${def.name}: ${def.desc}`;
+}
+function worldMapBossChainState(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  const wm = ensureWorldMapCampaignState(state);
+  if(!region) return { progress:0, resolved:0, bossName:"Regional Alpha" };
+  return wm.bossChains[region.id] || { progress:0, resolved:0, bossName:WORLD_MAP_BOSS_CHAIN_NAMES[region.id] || `${region.name} Alpha` };
+}
+function worldMapBossChainText(regionOrId, state=S){
+  const chain = worldMapBossChainState(regionOrId, state);
+  const ready = Number(chain.progress || 0) >= 3;
+  return `${ready ? "BOSS READY" : "Boss Chain"}: ${chain.bossName} ${Math.min(3, Number(chain.progress || 0))}/3${Number(chain.resolved || 0) > 0 ? ` • defeated ${chain.resolved}` : ""}`;
+}
+function worldMapSettlementInfluenceValue(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return 0;
+  const wm = ensureWorldMapCampaignState(state);
+  return clamp(Math.floor(Number(wm.settlementInfluence?.[region.id] || 0)), 0, 100);
+}
+function worldMapSettlementLine(regionOrId, state=S){
+  const influence = worldMapSettlementInfluenceValue(regionOrId, state);
+  if(influence >= 70) return `Settlement Influence ${influence}% • strong scouts, medics, and route support`;
+  if(influence >= 35) return `Settlement Influence ${influence}% • local support reducing tiger control`;
+  if(influence > 0) return `Settlement Influence ${influence}% • civilians are starting to support this region`;
+  return "Settlement Influence 0% • rescue civilians here to build local support";
 }
 function worldMapRegionMissionType(region){
   const text = `${region?.name || ""} ${(region?.traits || []).join(" ")} ${region?.theme || ""}`.toLowerCase();
@@ -8649,7 +8773,10 @@ function worldMapCampaignPhaseOneStats(wm=ensureWorldMapCampaignState(S)){
   const critical = unlocked.filter((region)=>worldMapControl(region, S) >= 82);
   const high = unlocked.filter((region)=>worldMapControl(region, S) >= 65);
   const active = worldMapRegionById(wm.activeRegionId || wm.selectedRegionId);
-  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active };
+  const liveEvents = Object.keys(refreshWorldMapLiveEvents(S) || {}).length;
+  const bossReady = unlocked.filter((region)=>worldMapBossChainState(region, S).progress >= 3).length;
+  const settlementAvg = unlocked.length ? Math.round(unlocked.reduce((sum, region)=>sum + worldMapSettlementInfluenceValue(region, S), 0) / unlocked.length) : 0;
+  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg };
 }
 function worldMapNeighborPathHtml(region){
   const neighbors = (region?.neighbors || []).map((id)=>worldMapRegionById(id)).filter(Boolean);
@@ -8660,16 +8787,20 @@ function worldMapNeighborPathHtml(region){
     return `<span class="tag">${unlocked ? "Open" : "Locked"}: ${worldMapEsc(neighbor.name)} ${control}%</span>`;
   }).join(" ");
 }
-function worldMapRegionReward(region, control=worldMapControl(region, S), missionStats=null){
+function worldMapRegionReward(region, control=worldMapControl(region, S), missionStats=null, opts={}){
   const level = worldMapRegionMissionLevel(region, S);
   const type = worldMapRegionMissionType(region);
   const captures = Math.max(0, Math.floor(Number(missionStats?.captures || 0)));
   const evac = Math.max(0, Math.floor(Number(missionStats?.evac || 0)));
   const controlTier = Number(control || 0) >= 82 ? 3 : (Number(control || 0) >= 65 ? 2 : (Number(control || 0) >= 42 ? 1 : 0));
   const performance = missionStats ? clamp(Math.floor(captures / 4) + Math.floor(evac / 3), 0, 4) : 1;
-  const cash = clamp(Math.round(850 + level * 32 + Number(control || 0) * 16 + performance * 220), 900, 7200);
-  const xp = clamp(Math.round(70 + level * 3 + Number(control || 0) * 1.1 + performance * 18), 90, 520);
-  const passPoints = clamp(4 + controlTier * 2 + Math.floor(performance / 2), 4, 12);
+  const eventMul = Number(opts.eventMul || 1);
+  const bossMul = opts.bossResolved ? 1.15 : (opts.bossReady ? 1.06 : 1);
+  const settlementMul = 1 + Math.min(0.12, worldMapSettlementInfluenceValue(region, S) / 500);
+  const rewardMul = clamp(eventMul * bossMul * settlementMul, 0.85, 1.35);
+  const cash = clamp(Math.round((850 + level * 32 + Number(control || 0) * 16 + performance * 220) * rewardMul), 900, 8500);
+  const xp = clamp(Math.round((70 + level * 3 + Number(control || 0) * 1.1 + performance * 18) * rewardMul), 90, 650);
+  const passPoints = clamp(Math.round((4 + controlTier * 2 + Math.floor(performance / 2)) * Math.min(1.18, rewardMul)), 4, 14);
   const reward = {
     cash,
     xp,
@@ -8680,6 +8811,7 @@ function worldMapRegionReward(region, control=worldMapControl(region, S), missio
     armorPlates:0,
     ammo:0,
     label:type,
+    rewardMul,
   };
   if(type === "Tiger Den Raid"){
     reward.traps = 1 + controlTier;
@@ -8760,7 +8892,14 @@ function worldMapRegionCardHtml(region){
   const threat = worldMapThreatLabel(control);
   const missionLevel = worldMapRegionMissionLevel(region, S);
   const type = worldMapRegionMissionType(region);
-  const reward = worldMapRegionReward(region, control);
+  const event = worldMapLiveEventForRegion(region, S);
+  const eventDef = event ? worldMapLiveEventDef(event.typeId) : null;
+  const boss = worldMapBossChainState(region, S);
+  const bossReady = Number(boss.progress || 0) >= 3;
+  const reward = worldMapRegionReward(region, control, null, {
+    eventMul:eventDef?.rewardMul || 1,
+    bossReady,
+  });
   const disabled = unlocked ? "" : "disabled";
   const tags = (region.traits || []).slice(0, 3).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
   return `
@@ -8769,6 +8908,9 @@ function worldMapRegionCardHtml(region){
       <div class="hudLine">${worldMapEsc(type)} • ${worldMapEsc(region.biome)} • Story ${missionLevel}</div>
       <div class="bar"><div class="fill ${control >= 70 ? "red" : (control >= 45 ? "yellow" : "green")}" style="width:${control}%"></div></div>
       <div class="small">Tiger Control ${control}% • ${worldMapEsc(threat)}</div>
+      ${eventDef ? `<div class="small">LIVE: ${eventDef.icon} ${worldMapEsc(eventDef.name)} • x${Number(eventDef.rewardMul || 1).toFixed(2)} reward</div>` : ""}
+      <div class="small">${worldMapEsc(worldMapBossChainText(region, S))}</div>
+      <div class="small">${worldMapEsc(worldMapSettlementLine(region, S))}</div>
       <div class="small">${worldMapEsc(region.theme)}</div>
       <div class="small">Reward: ${worldMapEsc(worldMapRewardText(reward))}</div>
       <div class="small">${tags}</div>
@@ -8779,6 +8921,7 @@ function renderWorldMapCampaign(){
   const root = document.getElementById("worldMapCampaignRoot");
   if(!root) return;
   const wm = updateWorldMapCampaignSpread(S);
+  refreshWorldMapLiveEvents(S);
   const stats = worldMapCampaignPhaseOneStats(wm);
   const selected = worldMapRegionById(wm.selectedRegionId);
   const selectedUnlocked = worldMapRegionUnlocked(selected, S);
@@ -8788,23 +8931,37 @@ function renderWorldMapCampaign(){
   const missionType = worldMapRegionMissionType(selected);
   const extractionType = worldMapRegionExtractionType(selected);
   const prepLine = worldMapRegionPrepLine(selected, selectedControl);
-  const rewardPreview = worldMapRegionReward(selected, selectedControl);
+  const selectedEvent = worldMapLiveEventForRegion(selected, S);
+  const selectedEventDef = selectedEvent ? worldMapLiveEventDef(selectedEvent.typeId) : null;
+  const selectedBoss = worldMapBossChainState(selected, S);
+  const selectedBossReady = Number(selectedBoss.progress || 0) >= 3;
+  const selectedInfluence = worldMapSettlementInfluenceValue(selected, S);
+  const rewardPreview = worldMapRegionReward(selected, selectedControl, null, {
+    eventMul:selectedEventDef?.rewardMul || 1,
+    bossReady:selectedBossReady,
+  });
   const nodes = WORLD_MAP_CAMPAIGN_REGIONS.map((region)=>{
     const unlocked = worldMapRegionUnlocked(region, S);
     const selectedClass = wm.selectedRegionId === region.id ? "box-shadow:0 0 0 4px rgba(74,222,128,.38);" : "";
     const color = unlocked ? (worldMapControl(region, S) >= 70 ? "#ef4444" : (worldMapControl(region, S) >= 45 ? "#f59e0b" : "#22c55e")) : "#64748b";
-    return `<button title="${worldMapEsc(region.name)}" onclick="selectWorldMapRegion('${region.id}')" style="position:absolute;left:${region.x}%;top:${region.y}%;transform:translate(-50%,-50%);width:46px;height:46px;border-radius:999px;border:2px solid ${color};background:rgba(15,23,42,.86);color:#fff;font-weight:900;${selectedClass}">${unlocked ? "🐅" : "🔒"}</button>`;
+    const event = worldMapLiveEventForRegion(region, S);
+    const bossReady = worldMapBossChainState(region, S).progress >= 3;
+    const icon = unlocked ? (event ? worldMapLiveEventDef(event.typeId).icon : (bossReady ? "👑" : "🐅")) : "🔒";
+    return `<button title="${worldMapEsc(region.name)}" onclick="selectWorldMapRegion('${region.id}')" style="position:absolute;left:${region.x}%;top:${region.y}%;transform:translate(-50%,-50%);width:46px;height:46px;border-radius:999px;border:2px solid ${color};background:rgba(15,23,42,.86);color:#fff;font-weight:900;${selectedClass}">${icon}</button>`;
   }).join("");
   const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
   const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
   root.innerHTML = `
-    <div class="hudLine"><b>Phase 2:</b> tiger control now spreads through connected regions over time, and defending an active region grants a strategic reward after mission completion.</div>
+    <div class="hudLine"><b>Phase 3:</b> live events, boss chains, and settlement influence now change regional pressure, rewards, and what the next defense means.</div>
     ${wm.lastOutcome ? `<div class="card" style="margin-top:10px;border-color:rgba(74,222,128,.44)"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px">
       <div class="card"><div class="small">Regions Open</div><div class="hudTitle">${stats.unlocked}/${stats.total}</div></div>
       <div class="card"><div class="small">High Threat</div><div class="hudTitle">${stats.high}</div></div>
       <div class="card"><div class="small">Critical</div><div class="hudTitle">${stats.critical}</div></div>
       <div class="card"><div class="small">Active Region</div><div class="hudTitle">${worldMapEsc(stats.active?.name || selected.name)}</div></div>
+      <div class="card"><div class="small">Live Events</div><div class="hudTitle">${stats.liveEvents}</div></div>
+      <div class="card"><div class="small">Boss Ready</div><div class="hudTitle">${stats.bossReady}</div></div>
+      <div class="card"><div class="small">Settlement Avg</div><div class="hudTitle">${stats.settlementAvg}%</div></div>
       <div class="card"><div class="small">Region Rewards</div><div class="hudTitle">$${Number(wm.totalRewardCash || 0).toLocaleString()}</div></div>
     </div>
     <div style="position:relative;height:260px;border:1px solid rgba(96,165,250,.35);border-radius:22px;overflow:hidden;background:radial-gradient(circle at 25% 30%,rgba(34,197,94,.22),transparent 26%),radial-gradient(circle at 74% 42%,rgba(59,130,246,.20),transparent 30%),linear-gradient(145deg,#07111f,#10243a 55%,#1e293b);margin:10px 0 12px">
@@ -8820,16 +8977,22 @@ function renderWorldMapCampaign(){
         <div class="bar"><div class="fill ${selectedControl >= 70 ? "red" : (selectedControl >= 45 ? "yellow" : "green")}" style="width:${selectedControl}%"></div></div>
         <div class="hudLine">Tiger Control ${selectedControl}% • Defended ${defended} time${defended === 1 ? "" : "s"}</div>
         <div class="small">${worldMapEsc(selected.theme)}</div>
+        <div class="small"><b>Live Event:</b> ${worldMapEsc(worldMapEventLine(selectedEvent))}</div>
+        <div class="small"><b>Boss Chain:</b> ${worldMapEsc(worldMapBossChainText(selected, S))}</div>
+        <div class="small"><b>Settlement:</b> ${worldMapEsc(worldMapSettlementLine(selected, S))}</div>
         <div class="small">${selectedTags}</div>
         <div class="divider"></div>
         <div class="small"><b>Connected Regions:</b> ${worldMapNeighborPathHtml(selected)}</div>
       </div>
       <div class="card">
-        <div class="hudTitle">Phase 1 Deploy Plan</div>
+        <div class="hudTitle">Phase 3 Deploy Plan</div>
         <div class="hudLine">Story Mission ${worldMapRegionMissionLevel(selected, S)}/100 • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
         <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
         <div class="small">Extraction: ${worldMapEsc(extractionType)}</div>
         <div class="small">Recommended prep: ${worldMapEsc(prepLine)}</div>
+        <div class="small">Live event impact: ${selectedEventDef ? `${selectedEventDef.icon} ${worldMapEsc(selectedEventDef.name)} • +${Math.round((Number(selectedEventDef.rewardMul || 1) - 1) * 100)}% strategic reward • -${selectedEventDef.controlDrop} control` : "None active right now"}</div>
+        <div class="small">Boss chain: ${selectedBossReady ? `${worldMapEsc(selectedBoss.bossName)} ready for a major control break` : `${Math.min(3, Number(selectedBoss.progress || 0))}/3 clues toward regional Alpha`}</div>
+        <div class="small">Settlement support: ${selectedInfluence}% influence adds regional control relief.</div>
         <div class="small">Region reward: ${worldMapEsc(worldMapRewardText(rewardPreview))}</div>
         <div class="small">Reward focus: ${worldMapEsc(selected.reward)} • Mission Rewards 2.0 still controls core payout.</div>
         <div class="row" style="margin-top:10px">
@@ -8909,6 +9072,8 @@ function startWorldMapRegionMission(id){
     toast(`${region.name} is still locked.`);
     return false;
   }
+  refreshWorldMapLiveEvents(S);
+  const event = worldMapLiveEventForRegion(region, S);
   activateModeProfile("Story", S);
   S.storyVariant = STORY_VARIANTS.CAMPAIGN;
   const missionLevel = worldMapRegionMissionLevel(region, S);
@@ -8917,13 +9082,16 @@ function startWorldMapRegionMission(id){
   S.mapIndex = 0;
   wm.selectedRegionId = region.id;
   wm.activeRegionId = region.id;
+  wm.activeEventId = event?.id || "";
+  wm.activeEventRegionId = event?.regionId || "";
   if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   const overlay = document.getElementById("worldMapCampaignOverlay");
   if(overlay) overlay.style.display = "none";
   __returnToBaseHqAfterOverlay = false;
   beginMissionTransitionGuard("world-map-deploy", 1400);
   deploy();
-  toast(`Deploying to ${region.name}. Tiger control ${worldMapControl(region, S)}%.`);
+  const eventDef = event ? worldMapLiveEventDef(event.typeId) : null;
+  toast(`Deploying to ${region.name}${eventDef ? ` • ${eventDef.name}` : ""}. Tiger control ${worldMapControl(region, S)}%.`);
   save(true);
   return false;
 }
@@ -8936,6 +9104,9 @@ function openMissionBriefFromWorldMap(){
   S.storyLevel = worldMapRegionMissionLevel(region, S);
   S.storyLastMission = Math.max(Number(S.storyLastMission || 1), S.storyLevel);
   wm.activeRegionId = region.id;
+  const event = worldMapLiveEventForRegion(region, S);
+  wm.activeEventId = event?.id || "";
+  wm.activeEventRegionId = event?.regionId || "";
   const overlay = document.getElementById("worldMapCampaignOverlay");
   if(overlay) overlay.style.display = "none";
   __returnToBaseHqAfterOverlay = false;
@@ -8962,19 +9133,70 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   const evac = Math.max(0, Math.floor(Number(missionStats?.evac || S.stats?.evac || 0)));
   const kills = Math.max(0, Math.floor(Number(missionStats?.kills || S.stats?.kills || 0)));
   const perfectRescue = evac > 0 && Array.isArray(S.civilians) && evac >= S.civilians.length;
-  const pressureDrop = clamp(14 + Math.floor(captures / 3) + Math.floor(kills / 4) + Math.floor(evac / 2) + (perfectRescue ? 4 : 0), 14, 38);
+  const activeEvent = worldMapActiveEvent(S);
+  const activeEventDef = activeEvent && activeEvent.regionId === region.id ? worldMapLiveEventDef(activeEvent.typeId) : null;
+  const chain = worldMapBossChainState(region, S);
+  const bossWasReady = Number(chain.progress || 0) >= 3;
+  const settlementBefore = worldMapSettlementInfluenceValue(region, S);
+  const settlementGain = evac > 0 ? clamp(Math.ceil(evac / 2) + (perfectRescue ? 2 : 0), 1, 10) : 0;
+  if(settlementGain > 0){
+    wm.settlementInfluence[region.id] = clamp(settlementBefore + settlementGain, 0, 100);
+  }
+  const settlementRelief = Math.floor(worldMapSettlementInfluenceValue(region, S) / 16);
+  const eventDrop = Math.max(0, Math.floor(Number(activeEventDef?.controlDrop || 0)));
+  const bossDrop = bossWasReady ? 8 : 0;
+  const pressureDrop = clamp(
+    14 + Math.floor(captures / 3) + Math.floor(kills / 4) + Math.floor(evac / 2) + (perfectRescue ? 4 : 0) + eventDrop + bossDrop + settlementRelief,
+    14,
+    52
+  );
   wm.regionControl[region.id] = clamp(Math.round(before - pressureDrop), 5, 96);
   wm.defendedRegions[region.id] = Math.max(0, Math.floor(Number(wm.defendedRegions[region.id] || 0))) + 1;
   wm.completedMissions[region.id] = Math.max(0, Math.floor(Number(wm.completedMissions[region.id] || 0))) + 1;
-  const reward = worldMapRegionReward(region, before, missionStats);
+  const bossProgressGain = 1 + Math.max(0, Math.floor(Number(activeEventDef?.boss || 0))) + (worldMapRegionMissionType(region) === "Tiger Den Raid" ? 1 : 0);
+  if(bossWasReady){
+    wm.bossChains[region.id] = {
+      ...chain,
+      progress:0,
+      resolved:Math.max(0, Math.floor(Number(chain.resolved || 0))) + 1,
+      bossName:chain.bossName || WORLD_MAP_BOSS_CHAIN_NAMES[region.id] || `${region.name} Alpha`,
+    };
+  }else{
+    wm.bossChains[region.id] = {
+      ...chain,
+      progress:clamp(Math.floor(Number(chain.progress || 0)) + bossProgressGain, 0, 3),
+      bossName:chain.bossName || WORLD_MAP_BOSS_CHAIN_NAMES[region.id] || `${region.name} Alpha`,
+    };
+  }
+  const reward = worldMapRegionReward(region, before, missionStats, {
+    eventMul:activeEventDef?.rewardMul || 1,
+    bossResolved:bossWasReady,
+    bossReady:!bossWasReady && wm.bossChains[region.id].progress >= 3,
+  });
   grantWorldMapRegionReward(region, reward);
+  if(activeEvent && activeEventDef){
+    wm.completedEvents[activeEvent.id] = {
+      regionId:region.id,
+      typeId:activeEvent.typeId,
+      completedAt:Date.now(),
+    };
+    if(wm.liveEvents?.[region.id]?.id === activeEvent.id) delete wm.liveEvents[region.id];
+  }
   for(const neighborId of (region.neighbors || [])){
     if(!wm.unlockedRegionIds.includes(neighborId)) wm.unlockedRegionIds.push(neighborId);
     const neighbor = worldMapRegionById(neighborId);
     const neighborPush = before >= 82 ? 3 : (before >= 65 ? 2 : 1);
     wm.regionControl[neighborId] = clamp(Math.round(Number(wm.regionControl[neighborId] || worldMapInitialControl(neighbor, S)) + neighborPush), 5, 96);
   }
-  wm.lastOutcome = `${region.name}: tiger control reduced ${before}% → ${worldMapControl(region, S)}%. Reward ${worldMapRewardText(reward)}. Neighbor regions unlocked for defense.`;
+  const chainAfter = worldMapBossChainState(region, S);
+  const notes = [];
+  if(activeEventDef) notes.push(`${activeEventDef.name} secured`);
+  if(bossWasReady) notes.push(`${chain.bossName} boss chain resolved`);
+  else if(chainAfter.progress >= 3) notes.push(`${chainAfter.bossName} boss ready`);
+  if(settlementGain > 0) notes.push(`settlement influence +${settlementGain}%`);
+  wm.activeEventId = "";
+  wm.activeEventRegionId = "";
+  wm.lastOutcome = `${region.name}: tiger control reduced ${before}% → ${worldMapControl(region, S)}%. Reward ${worldMapRewardText(reward)}.${notes.length ? ` ${notes.join(" • ")}.` : ""} Neighbor regions unlocked for defense.`;
   wm.lastUpdatedAt = Date.now();
   return `\nWorld Map Campaign: ${wm.lastOutcome}\n`;
 }
