@@ -8598,6 +8598,50 @@ function worldMapRegionMissionLevel(region, state=S){
 function worldMapEsc(value){
   return String(value ?? "").replace(/[&<>"']/g, (ch)=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
 }
+function worldMapRegionMissionType(region){
+  const text = `${region?.name || ""} ${(region?.traits || []).join(" ")} ${region?.theme || ""}`.toLowerCase();
+  if(text.includes("den")) return "Tiger Den Raid";
+  if(text.includes("boat") || text.includes("river") || text.includes("flood")) return "River Rescue";
+  if(text.includes("convoy") || text.includes("street")) return "Evac Convoy";
+  if(text.includes("nemesis") || text.includes("night")) return "Nemesis Hunt";
+  if(text.includes("stalker") || text.includes("fog")) return "Investigation";
+  return "Regional Defense";
+}
+function worldMapRegionExtractionType(region){
+  const text = `${region?.biome || ""} ${(region?.traits || []).join(" ")} ${region?.theme || ""}`.toLowerCase();
+  if(text.includes("boat") || text.includes("river") || text.includes("flood")) return "Boat / bridge evac";
+  if(text.includes("convoy") || text.includes("street") || text.includes("industrial") || text.includes("urban")) return "Convoy / street evac";
+  if(text.includes("ridge") || text.includes("mountain") || text.includes("snow")) return "Helicopter / ridge evac";
+  if(text.includes("den") || text.includes("cave")) return "Cave extraction route";
+  return "Safe-zone evacuation";
+}
+function worldMapRegionPrepLine(region, control=worldMapControl(region, S)){
+  const type = worldMapRegionMissionType(region);
+  const high = Number(control || 0) >= 65;
+  if(type === "Tiger Den Raid") return high ? "Bring armor, shields, tranq ammo, and squad attack support." : "Bring traps, tranq ammo, and scan before entering the den.";
+  if(type === "River Rescue") return "Bring medkits, traps, and rescue support for water-route civilians.";
+  if(type === "Evac Convoy") return "Bring barriers, shields, and squad rescue support to protect boarding.";
+  if(type === "Nemesis Hunt") return "Bring best ammo, scan clues, and avoid rushing Alpha pressure.";
+  if(type === "Investigation") return "Bring tranq ammo and follow clues before engaging stalkers.";
+  return high ? "Bring balanced gear, extra armor, and at least one shield." : "Balanced kit recommended.";
+}
+function worldMapCampaignPhaseOneStats(wm=ensureWorldMapCampaignState(S)){
+  const regions = WORLD_MAP_CAMPAIGN_REGIONS;
+  const unlocked = regions.filter((region)=>worldMapRegionUnlocked(region, S));
+  const critical = unlocked.filter((region)=>worldMapControl(region, S) >= 82);
+  const high = unlocked.filter((region)=>worldMapControl(region, S) >= 65);
+  const active = worldMapRegionById(wm.activeRegionId || wm.selectedRegionId);
+  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active };
+}
+function worldMapNeighborPathHtml(region){
+  const neighbors = (region?.neighbors || []).map((id)=>worldMapRegionById(id)).filter(Boolean);
+  if(!neighbors.length) return `<div class="small">No connected regions.</div>`;
+  return neighbors.map((neighbor)=>{
+    const unlocked = worldMapRegionUnlocked(neighbor, S);
+    const control = worldMapControl(neighbor, S);
+    return `<span class="tag">${unlocked ? "Open" : "Locked"}: ${worldMapEsc(neighbor.name)} ${control}%</span>`;
+  }).join(" ");
+}
 function worldMapRegionCardHtml(region){
   const wm = ensureWorldMapCampaignState(S);
   const unlocked = worldMapRegionUnlocked(region, S);
@@ -8606,12 +8650,13 @@ function worldMapRegionCardHtml(region){
   const control = worldMapControl(region, S);
   const threat = worldMapThreatLabel(control);
   const missionLevel = worldMapRegionMissionLevel(region, S);
+  const type = worldMapRegionMissionType(region);
   const disabled = unlocked ? "" : "disabled";
   const tags = (region.traits || []).slice(0, 3).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
   return `
     <button class="card ${selected ? "good" : ""}" style="text-align:left;min-height:148px;border-color:${selected ? "#4ade80" : (active ? "#60a5fa" : "rgba(96,165,250,.35)")}" onclick="selectWorldMapRegion('${region.id}')" ${disabled}>
       <div class="hudTitle">${unlocked ? "🟢" : "🔒"} ${worldMapEsc(region.name)}${active ? " • ACTIVE" : ""}</div>
-      <div class="hudLine">${worldMapEsc(region.biome)} • Story ${missionLevel}</div>
+      <div class="hudLine">${worldMapEsc(type)} • ${worldMapEsc(region.biome)} • Story ${missionLevel}</div>
       <div class="bar"><div class="fill ${control >= 70 ? "red" : (control >= 45 ? "yellow" : "green")}" style="width:${control}%"></div></div>
       <div class="small">Tiger Control ${control}% • ${worldMapEsc(threat)}</div>
       <div class="small">${worldMapEsc(region.theme)}</div>
@@ -8623,11 +8668,15 @@ function renderWorldMapCampaign(){
   const root = document.getElementById("worldMapCampaignRoot");
   if(!root) return;
   const wm = updateWorldMapCampaignSpread(S);
+  const stats = worldMapCampaignPhaseOneStats(wm);
   const selected = worldMapRegionById(wm.selectedRegionId);
   const selectedUnlocked = worldMapRegionUnlocked(selected, S);
   const selectedControl = worldMapControl(selected, S);
   const defended = Math.max(0, Math.floor(Number(wm.defendedRegions[selected.id] || 0)));
   const activeMission = storyCampaignMission(worldMapRegionMissionLevel(selected, S));
+  const missionType = worldMapRegionMissionType(selected);
+  const extractionType = worldMapRegionExtractionType(selected);
+  const prepLine = worldMapRegionPrepLine(selected, selectedControl);
   const nodes = WORLD_MAP_CAMPAIGN_REGIONS.map((region)=>{
     const unlocked = worldMapRegionUnlocked(region, S);
     const selectedClass = wm.selectedRegionId === region.id ? "box-shadow:0 0 0 4px rgba(74,222,128,.38);" : "";
@@ -8637,7 +8686,13 @@ function renderWorldMapCampaign(){
   const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
   const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
   root.innerHTML = `
-    <div class="hudLine">Choose which region HQ defends next. Tiger control spreads over time; winning missions lowers control in the active region and unlocks neighboring regions.</div>
+    <div class="hudLine"><b>Phase 1:</b> choose a region, preview the operation, then deploy through the existing mission system. Future phases can add stronger tiger spread, live events, and boss chains on top of this map.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px">
+      <div class="card"><div class="small">Regions Open</div><div class="hudTitle">${stats.unlocked}/${stats.total}</div></div>
+      <div class="card"><div class="small">High Threat</div><div class="hudTitle">${stats.high}</div></div>
+      <div class="card"><div class="small">Critical</div><div class="hudTitle">${stats.critical}</div></div>
+      <div class="card"><div class="small">Active Region</div><div class="hudTitle">${worldMapEsc(stats.active?.name || selected.name)}</div></div>
+    </div>
     <div style="position:relative;height:260px;border:1px solid rgba(96,165,250,.35);border-radius:22px;overflow:hidden;background:radial-gradient(circle at 25% 30%,rgba(34,197,94,.22),transparent 26%),radial-gradient(circle at 74% 42%,rgba(59,130,246,.20),transparent 30%),linear-gradient(145deg,#07111f,#10243a 55%,#1e293b);margin:10px 0 12px">
       <div style="position:absolute;inset:18px;border:1px dashed rgba(191,219,254,.20);border-radius:20px"></div>
       <div style="position:absolute;left:12%;right:10%;top:50%;border-top:4px solid rgba(125,211,252,.16);transform:rotate(4deg)"></div>
@@ -8647,20 +8702,25 @@ function renderWorldMapCampaign(){
     <div class="grid2">
       <div class="card" style="border-color:rgba(74,222,128,.42)">
         <div class="hudTitle">${worldMapEsc(selected.name)}</div>
-        <div class="hudLine">${worldMapEsc(selected.biome)} • ${worldMapEsc(worldMapThreatLabel(selectedControl))}</div>
+        <div class="hudLine">${worldMapEsc(missionType)} • ${worldMapEsc(selected.biome)} • ${worldMapEsc(worldMapThreatLabel(selectedControl))}</div>
         <div class="bar"><div class="fill ${selectedControl >= 70 ? "red" : (selectedControl >= 45 ? "yellow" : "green")}" style="width:${selectedControl}%"></div></div>
         <div class="hudLine">Tiger Control ${selectedControl}% • Defended ${defended} time${defended === 1 ? "" : "s"}</div>
         <div class="small">${worldMapEsc(selected.theme)}</div>
         <div class="small">${selectedTags}</div>
+        <div class="divider"></div>
+        <div class="small"><b>Connected Regions:</b> ${worldMapNeighborPathHtml(selected)}</div>
       </div>
       <div class="card">
-        <div class="hudTitle">Unlocked Mission</div>
+        <div class="hudTitle">Phase 1 Deploy Plan</div>
         <div class="hudLine">Story Mission ${worldMapRegionMissionLevel(selected, S)}/100 • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
         <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
-        <div class="small">Reward: ${worldMapEsc(selected.reward)} • Capture/rescue payouts still use normal Mission Rewards 2.0.</div>
+        <div class="small">Extraction: ${worldMapEsc(extractionType)}</div>
+        <div class="small">Recommended prep: ${worldMapEsc(prepLine)}</div>
+        <div class="small">Reward focus: ${worldMapEsc(selected.reward)} • Mission Rewards 2.0 still controls actual payout.</div>
         <div class="row" style="margin-top:10px">
           <button class="good" onclick="startWorldMapRegionMission('${selected.id}')" ${selectedUnlocked ? "" : "disabled"}>Deploy To Region</button>
           <button class="ghost" onclick="openMissionBriefFromWorldMap()" ${selectedUnlocked ? "" : "disabled"}>Brief First</button>
+          <button class="ghost" onclick="setWorldMapActiveRegion('${selected.id}')" ${selectedUnlocked ? "" : "disabled"}>Set Active</button>
         </div>
       </div>
     </div>
@@ -8709,6 +8769,21 @@ function selectWorldMapRegion(id){
   if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   renderWorldMapCampaign();
   toast(`${region.name} selected.`);
+  save();
+  return false;
+}
+function setWorldMapActiveRegion(id){
+  const region = worldMapRegionById(id);
+  const wm = ensureWorldMapCampaignState(S);
+  if(!worldMapRegionUnlocked(region, S)){
+    toast(`${region.name} is still locked.`);
+    return false;
+  }
+  wm.selectedRegionId = region.id;
+  wm.activeRegionId = region.id;
+  if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
+  renderWorldMapCampaign();
+  toast(`${region.name} marked as active campaign region.`);
   save();
   return false;
 }
@@ -47148,6 +47223,7 @@ window.toggleChapterRecap = toggleChapterRecap;
 window.openWorldMapCampaign = openWorldMapCampaign;
 window.closeWorldMapCampaign = closeWorldMapCampaign;
 window.selectWorldMapRegion = selectWorldMapRegion;
+window.setWorldMapActiveRegion = setWorldMapActiveRegion;
 window.startWorldMapRegionMission = startWorldMapRegionMission;
 window.openMissionBriefFromWorldMap = openMissionBriefFromWorldMap;
 window.closeMissionBrief = closeMissionBrief;
