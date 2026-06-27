@@ -8537,6 +8537,7 @@ const WORLD_MAP_REGION_UPGRADES = Object.freeze([
   Object.freeze({ id:"road_barriers", icon:"🚧", name:"Road Barriers", desc:"Protects roads during crises and slows tiger pressure.", baseCost:90000, controlRelief:2, crisisRelief:1, spreadRelief:0.08, maxLevel:5 }),
   Object.freeze({ id:"scout_network", icon:"📡", name:"Scout Network", desc:"Improves clue coverage, boss tracking, and pressure response.", baseCost:110000, intelGain:2, bossGain:1, spreadRelief:0.12, maxLevel:5 }),
 ]);
+const WORLD_MAP_SUPPLY_REPAIR_COST = 45000;
 function defaultWorldMapCampaignState(){
   return {
     version:2,
@@ -8560,6 +8561,8 @@ function defaultWorldMapCampaignState(){
     activeCrisisRegionId:"",
     crisisRewards:{},
     regionUpgrades:{},
+    supplyRoutes:{},
+    regionalSupplies:{},
     unlockedRegionIds:["river_gate"],
     totalRewardCash:0,
     totalRewardXp:0,
@@ -8568,6 +8571,10 @@ function defaultWorldMapCampaignState(){
     totalCrisisResolved:0,
     totalUpgradeSpend:0,
     totalRegionUpgrades:0,
+    totalSupplyCash:0,
+    totalSupplyClaims:0,
+    totalRouteRepairs:0,
+    lastSupplyAt:0,
     lastUpdatedAt:0,
     lastEventSeed:"",
     lastCrisisSeed:"",
@@ -8599,6 +8606,8 @@ function ensureWorldMapCampaignState(state=S){
     completedCrises:(src.completedCrises && typeof src.completedCrises === "object") ? src.completedCrises : {},
     crisisRewards:(src.crisisRewards && typeof src.crisisRewards === "object") ? src.crisisRewards : {},
     regionUpgrades:(src.regionUpgrades && typeof src.regionUpgrades === "object") ? src.regionUpgrades : {},
+    supplyRoutes:(src.supplyRoutes && typeof src.supplyRoutes === "object") ? src.supplyRoutes : {},
+    regionalSupplies:(src.regionalSupplies && typeof src.regionalSupplies === "object") ? src.regionalSupplies : {},
     unlockedRegionIds:Array.isArray(src.unlockedRegionIds) ? src.unlockedRegionIds.map(String) : ["river_gate"],
     totalRewardCash:Math.max(0, Math.floor(Number(src.totalRewardCash || 0))),
     totalRewardXp:Math.max(0, Math.floor(Number(src.totalRewardXp || 0))),
@@ -8607,6 +8616,10 @@ function ensureWorldMapCampaignState(state=S){
     totalCrisisResolved:Math.max(0, Math.floor(Number(src.totalCrisisResolved || 0))),
     totalUpgradeSpend:Math.max(0, Math.floor(Number(src.totalUpgradeSpend || 0))),
     totalRegionUpgrades:Math.max(0, Math.floor(Number(src.totalRegionUpgrades || 0))),
+    totalSupplyCash:Math.max(0, Math.floor(Number(src.totalSupplyCash || 0))),
+    totalSupplyClaims:Math.max(0, Math.floor(Number(src.totalSupplyClaims || 0))),
+    totalRouteRepairs:Math.max(0, Math.floor(Number(src.totalRouteRepairs || 0))),
+    lastSupplyAt:Math.max(0, Number(src.lastSupplyAt || 0)),
     activeEventId:String(src.activeEventId || ""),
     activeEventRegionId:String(src.activeEventRegionId || ""),
     activeCrisisId:String(src.activeCrisisId || ""),
@@ -8636,6 +8649,22 @@ function ensureWorldMapCampaignState(state=S){
     out.regionUpgrades[region.id] = {};
     for(const upgrade of WORLD_MAP_REGION_UPGRADES){
       out.regionUpgrades[region.id][upgrade.id] = clamp(Math.floor(Number(upgradeSrc[upgrade.id] || 0)), 0, Math.floor(Number(upgrade.maxLevel || 5)));
+    }
+    const supplySrc = (out.regionalSupplies[region.id] && typeof out.regionalSupplies[region.id] === "object") ? out.regionalSupplies[region.id] : {};
+    out.regionalSupplies[region.id] = {
+      cash:Math.max(0, Math.floor(Number(supplySrc.cash || 0))),
+      medkits:Math.max(0, Math.floor(Number(supplySrc.medkits || 0))),
+      armor:Math.max(0, Math.floor(Number(supplySrc.armor || 0))),
+      ammo:Math.max(0, Math.floor(Number(supplySrc.ammo || 0))),
+    };
+    for(const neighborId of (region.neighbors || [])){
+      const key = worldMapSupplyRouteKey(region.id, neighborId);
+      const routeSrc = (out.supplyRoutes[key] && typeof out.supplyRoutes[key] === "object") ? out.supplyRoutes[key] : {};
+      out.supplyRoutes[key] = {
+        health:clamp(Math.floor(Number(routeSrc.health ?? 100)), 0, 100),
+        lastDamagedAt:Math.max(0, Number(routeSrc.lastDamagedAt || 0)),
+        repaired:Math.max(0, Math.floor(Number(routeSrc.repaired || 0))),
+      };
     }
   }
   if(out.pendingChoice && !worldMapRegionById(out.pendingChoice.regionId)) out.pendingChoice = null;
@@ -8714,6 +8743,7 @@ function updateWorldMapCampaignSpread(state=S, now=Date.now()){
     wm.regionControl[region.id] = clamp(Math.round(current + spread - defendedRelief - activeRelief - settlementRelief - intelRelief - upgradeRelief), 5, 96);
     if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   }
+  updateWorldMapSupplyLines(state, now);
   wm.lastUpdatedAt = now;
   return wm;
 }
@@ -9014,6 +9044,213 @@ function buyWorldMapRegionUpgrade(regionId, upgradeId){
   save(true);
   return false;
 }
+function worldMapSupplyRouteKey(a, b){
+  return [String(a || ""), String(b || "")].sort().join("__");
+}
+function worldMapRouteHealthBetween(a, b, state=S){
+  const wm = ensureWorldMapCampaignState(state);
+  const route = wm.supplyRoutes?.[worldMapSupplyRouteKey(a, b)];
+  return clamp(Math.floor(Number(route?.health ?? 100)), 0, 100);
+}
+function worldMapRegionRouteStats(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return { routes:0, avgHealth:0, broken:0, damaged:0 };
+  const routes = (region.neighbors || []).map((id)=>worldMapRouteHealthBetween(region.id, id, state));
+  const avgHealth = routes.length ? Math.round(routes.reduce((sum, health)=>sum + health, 0) / routes.length) : 100;
+  const broken = routes.filter((health)=>health <= 20).length;
+  const damaged = routes.filter((health)=>health < 65).length;
+  return { routes:routes.length, avgHealth, broken, damaged };
+}
+function worldMapSupplyLineText(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return "No supply line.";
+  const stats = worldMapRegionRouteStats(region, state);
+  if(!stats.routes) return "No connected supply routes.";
+  if(stats.broken) return `Supply Lines ${stats.avgHealth}% • ${stats.broken} broken route${stats.broken === 1 ? "" : "s"} need repair`;
+  if(stats.damaged) return `Supply Lines ${stats.avgHealth}% • damaged but still moving`;
+  return `Supply Lines ${stats.avgHealth}% • stable routes generating supplies`;
+}
+function worldMapRegionalSupply(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  const wm = ensureWorldMapCampaignState(state);
+  const supply = region ? wm.regionalSupplies?.[region.id] : null;
+  return {
+    cash:Math.max(0, Math.floor(Number(supply?.cash || 0))),
+    medkits:Math.max(0, Math.floor(Number(supply?.medkits || 0))),
+    armor:Math.max(0, Math.floor(Number(supply?.armor || 0))),
+    ammo:Math.max(0, Math.floor(Number(supply?.ammo || 0))),
+  };
+}
+function worldMapSupplyText(regionOrId, state=S){
+  const supply = worldMapRegionalSupply(regionOrId, state);
+  const bits = [];
+  if(supply.cash) bits.push(`$${supply.cash.toLocaleString()}`);
+  if(supply.medkits) bits.push(`${supply.medkits} med`);
+  if(supply.armor) bits.push(`${supply.armor} armor`);
+  if(supply.ammo) bits.push(`${supply.ammo} ammo`);
+  return bits.length ? bits.join(" • ") : "No stored supplies yet";
+}
+function updateWorldMapSupplyLines(state=S, now=Date.now()){
+  const wm = ensureWorldMapCampaignState(state);
+  const last = Math.max(0, Number(wm.lastSupplyAt || wm.lastUpdatedAt || 0));
+  const elapsedHours = last ? clamp((now - last) / 3600000, 0, 8) : 0;
+  if(elapsedHours <= 0){
+    wm.lastSupplyAt = now;
+    return wm;
+  }
+  for(const region of WORLD_MAP_CAMPAIGN_REGIONS){
+    if(!worldMapRegionUnlocked(region, state)) continue;
+    const upgradeEffects = worldMapRegionUpgradeEffects(region, state);
+    const ammoDepotLevel = worldMapRegionUpgradeLevel(region, "ammo_depot", state);
+    const barrierLevel = worldMapRegionUpgradeLevel(region, "road_barriers", state);
+    const control = worldMapControl(region, state);
+    for(const neighborId of (region.neighbors || [])){
+      const neighbor = worldMapRegionById(neighborId);
+      if(!worldMapRegionUnlocked(neighbor, state)) continue;
+      const key = worldMapSupplyRouteKey(region.id, neighbor.id);
+      const route = wm.supplyRoutes[key] || { health:100, lastDamagedAt:0, repaired:0 };
+      const neighborControl = worldMapControl(neighbor, state);
+      const pressure = Math.max(0, Math.max(control, neighborControl) - 58);
+      const neighborBarriers = worldMapRegionUpgradeLevel(neighbor, "road_barriers", state);
+      const protection = 0.25 + (barrierLevel + neighborBarriers) * 0.10;
+      const damage = pressure > 0 ? Math.max(0, (pressure / 18) - protection) * elapsedHours : 0;
+      const repairDrift = pressure < 45 ? (0.5 + (barrierLevel + neighborBarriers) * 0.12) * elapsedHours : 0;
+      const nextHealth = clamp(Math.round(Number(route.health ?? 100) - damage + repairDrift), 0, 100);
+      wm.supplyRoutes[key] = {
+        ...route,
+        health:nextHealth,
+        lastDamagedAt:nextHealth < Number(route.health ?? 100) ? now : Number(route.lastDamagedAt || 0),
+      };
+    }
+    const routeStats = worldMapRegionRouteStats(region, state);
+    const routeMul = clamp(routeStats.avgHealth / 100, 0.15, 1);
+    const settlementMul = 1 + worldMapSettlementInfluenceValue(region, state) / 250;
+    const depotMul = 1 + ammoDepotLevel * 0.16;
+    const shieldMul = 1 + barrierLevel * 0.08;
+    const supplyMul = routeMul * settlementMul * depotMul * shieldMul;
+    const baseCash = 110 + Number(region.danger || 45) * 1.9;
+    const supply = worldMapRegionalSupply(region, state);
+    const cashAdd = Math.floor(baseCash * supplyMul * elapsedHours);
+    supply.cash = clamp(supply.cash + cashAdd, 0, 250000);
+    supply.medkits = clamp(supply.medkits + Math.floor((0.10 + Number(upgradeEffects.medkits || 0) * 0.03) * supplyMul * elapsedHours), 0, 99);
+    supply.armor = clamp(supply.armor + Math.floor((0.12 + barrierLevel * 0.05) * supplyMul * elapsedHours), 0, 99);
+    supply.ammo = clamp(supply.ammo + Math.floor((1.5 + ammoDepotLevel * 1.2 + Number(upgradeEffects.ammo || 0) * 0.02) * supplyMul * elapsedHours), 0, 999);
+    wm.regionalSupplies[region.id] = supply;
+  }
+  wm.lastSupplyAt = now;
+  return wm;
+}
+function claimWorldMapRegionalSupplies(regionId){
+  const region = worldMapRegionById(regionId);
+  const wm = updateWorldMapSupplyLines(S);
+  if(!worldMapRegionUnlocked(region, S)){
+    toast(`${region.name} is still locked.`);
+    return false;
+  }
+  const supply = worldMapRegionalSupply(region, S);
+  const total = supply.cash + supply.medkits + supply.armor + supply.ammo;
+  if(total <= 0){
+    toast(`${region.name} has no supplies ready yet.`);
+    return false;
+  }
+  const claimedText = worldMapSupplyText(region, S);
+  if(supply.cash > 0){
+    S.funds = Math.max(0, Math.floor(Number(S.funds || 0)) + supply.cash);
+    if(S.mode) setModeWallet(S.mode, S.funds, S);
+    if(typeof trackCashEarned === "function") trackCashEarned(supply.cash);
+  }
+  if(supply.medkits > 0){
+    S.medkits = { ...(S.medkits || {}) };
+    S.medkits.M_SMALL = Math.max(0, Math.floor(Number(S.medkits.M_SMALL || 0))) + supply.medkits;
+  }
+  if(supply.armor > 0){
+    ensureArmorPlateInventoryState();
+    ensureArmorPlateFallbackState();
+    S.armorPlates.A_TIER1 = Math.max(0, Math.floor(Number(S.armorPlates.A_TIER1 || 0))) + supply.armor;
+    S.armorPlatesFallback.A_TIER1 = Math.max(0, Math.floor(Number(S.armorPlatesFallback.A_TIER1 || 0))) + supply.armor;
+  }
+  if(supply.ammo > 0){
+    const w = equippedWeapon();
+    if(w) S.ammoReserve[w.ammo] = Math.max(0, Math.floor(Number(S.ammoReserve[w.ammo] || 0))) + supply.ammo;
+  }
+  wm.regionalSupplies[region.id] = { cash:0, medkits:0, armor:0, ammo:0 };
+  wm.totalSupplyCash = Math.max(0, Math.floor(Number(wm.totalSupplyCash || 0))) + supply.cash;
+  wm.totalSupplyClaims = Math.max(0, Math.floor(Number(wm.totalSupplyClaims || 0))) + 1;
+  wm.lastOutcome = `${region.name}: supply line delivered ${claimedText}.`;
+  renderWorldMapCampaign();
+  renderHUD();
+  toast(`${region.name} supplies claimed.`);
+  save(true);
+  return false;
+}
+function repairWorldMapSupplyRoutes(regionId){
+  const region = worldMapRegionById(regionId);
+  const wm = updateWorldMapSupplyLines(S);
+  if(!worldMapRegionUnlocked(region, S)){
+    toast(`${region.name} is still locked.`);
+    return false;
+  }
+  const routeStats = worldMapRegionRouteStats(region, S);
+  if(routeStats.avgHealth >= 95){
+    toast(`${region.name} supply routes are already stable.`);
+    return false;
+  }
+  const cost = Math.max(12000, Math.round((WORLD_MAP_SUPPLY_REPAIR_COST * (1 + Math.max(0, 100 - routeStats.avgHealth) / 90)) / 1000) * 1000);
+  if(Math.floor(Number(S.funds || 0)) < cost){
+    toast(`Need $${Math.max(0, cost - Math.floor(Number(S.funds || 0))).toLocaleString()} more to repair routes.`);
+    return false;
+  }
+  S.funds = Math.max(0, Math.floor(Number(S.funds || 0)) - cost);
+  if(S.mode) setModeWallet(S.mode, S.funds, S);
+  if(typeof trackCashSpent === "function") trackCashSpent(cost);
+  for(const neighborId of (region.neighbors || [])){
+    const key = worldMapSupplyRouteKey(region.id, neighborId);
+    const route = wm.supplyRoutes[key] || { health:100, lastDamagedAt:0, repaired:0 };
+    route.health = clamp(Math.max(Number(route.health || 0), 72) + 18 + worldMapRegionUpgradeLevel(region, "road_barriers", S) * 2, 0, 100);
+    route.repaired = Math.max(0, Math.floor(Number(route.repaired || 0))) + 1;
+    wm.supplyRoutes[key] = route;
+  }
+  wm.totalRouteRepairs = Math.max(0, Math.floor(Number(wm.totalRouteRepairs || 0))) + 1;
+  wm.lastOutcome = `${region.name}: supply routes repaired to ${worldMapRegionRouteStats(region, S).avgHealth}% health.`;
+  renderWorldMapCampaign();
+  renderHUD();
+  toast(`${region.name} supply routes repaired.`);
+  save(true);
+  return false;
+}
+function worldMapSupplyNetworkHtml(regionOrId){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return "";
+  const routeStats = worldMapRegionRouteStats(region, S);
+  const stored = worldMapSupplyText(region, S);
+  const routeRows = (region.neighbors || []).map((neighborId)=>{
+    const neighbor = worldMapRegionById(neighborId);
+    const health = worldMapRouteHealthBetween(region.id, neighbor.id, S);
+    const status = health <= 20 ? "BROKEN" : (health < 65 ? "DAMAGED" : "STABLE");
+    const color = health <= 20 ? "red" : (health < 65 ? "yellow" : "green");
+    return `
+      <div class="card">
+        <div class="small">${worldMapEsc(region.name)} ↔ ${worldMapEsc(neighbor.name)} • ${status}</div>
+        <div class="bar"><div class="fill ${color}" style="width:${health}%"></div></div>
+        <div class="small">Route health ${health}% • tiger control can damage this line.</div>
+      </div>
+    `;
+  }).join("") || `<div class="card"><div class="small">No connected supply route.</div></div>`;
+  const repairCost = Math.max(12000, Math.round((WORLD_MAP_SUPPLY_REPAIR_COST * (1 + Math.max(0, 100 - routeStats.avgHealth) / 90)) / 1000) * 1000);
+  const canClaim = Object.values(worldMapRegionalSupply(region, S)).some((value)=>Number(value || 0) > 0);
+  return `
+    <div class="card" style="margin:10px 0;border-color:rgba(125,211,252,.42);background:linear-gradient(145deg,rgba(8,47,73,.72),rgba(8,15,26,.96))">
+      <div class="hudTitle">Phase 7 Regional Economy + Supply Lines</div>
+      <div class="small">${worldMapEsc(worldMapSupplyLineText(region, S))}</div>
+      <div class="small">Stored supplies: ${worldMapEsc(stored)}. Ammo Depot improves ammo/cash flow. Road Barriers protect route health.</div>
+      <div class="row" style="margin-top:8px">
+        <button class="${canClaim ? "good" : "ghost"}" onclick="claimWorldMapRegionalSupplies('${region.id}')" ${canClaim ? "" : "disabled"}>Claim Supplies</button>
+        <button class="ghost" onclick="repairWorldMapSupplyRoutes('${region.id}')" ${routeStats.avgHealth < 95 ? "" : "disabled"}>Repair Routes $${repairCost.toLocaleString()}</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:10px">${routeRows}</div>
+    </div>
+  `;
+}
 function refreshWorldMapLiveEvents(state=S, now=Date.now()){
   const wm = ensureWorldMapCampaignState(state);
   const seed = worldMapPhase3Seed(now, state);
@@ -9217,7 +9454,10 @@ function worldMapCampaignPhaseOneStats(wm=ensureWorldMapCampaignState(S)){
   const crisisRegions = crisis?.regionIds?.length || 0;
   const upgradeCount = unlocked.reduce((sum, region)=>sum + worldMapRegionUpgradeTotal(region, S), 0);
   const upgradeSpend = Math.max(0, Math.floor(Number(wm.totalUpgradeSpend || 0)));
-  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg, intel, crisis, crisisRegions, upgradeCount, upgradeSpend };
+  const routeHealth = unlocked.length ? Math.round(unlocked.reduce((sum, region)=>sum + worldMapRegionRouteStats(region, S).avgHealth, 0) / unlocked.length) : 100;
+  const storedSupplyCash = unlocked.reduce((sum, region)=>sum + worldMapRegionalSupply(region, S).cash, 0);
+  const brokenRoutes = unlocked.reduce((sum, region)=>sum + worldMapRegionRouteStats(region, S).broken, 0);
+  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg, intel, crisis, crisisRegions, upgradeCount, upgradeSpend, routeHealth, storedSupplyCash, brokenRoutes };
 }
 function worldMapNeighborPathHtml(region){
   const neighbors = (region?.neighbors || []).map((id)=>worldMapRegionById(id)).filter(Boolean);
@@ -9359,6 +9599,7 @@ function worldMapRegionCardHtml(region){
       <div class="small">${worldMapEsc(worldMapBossChainText(region, S))}</div>
       <div class="small">${worldMapEsc(worldMapSettlementLine(region, S))}</div>
       <div class="small">Upgrades: ${worldMapRegionUpgradeTotal(region, S)}/${WORLD_MAP_REGION_UPGRADES.length * 5} • ${worldMapEsc(worldMapRegionUpgradeSummary(region, S))}</div>
+      <div class="small">${worldMapEsc(worldMapSupplyLineText(region, S))} • Stored: ${worldMapEsc(worldMapSupplyText(region, S))}</div>
       <div class="small">Intel ${worldMapRegionIntelValue(region, S)}/25 • Choices: ${worldMapEsc(worldMapStrategicChoiceHistoryText(region, S))}</div>
       <div class="small">${worldMapEsc(region.theme)}</div>
       <div class="small">Reward: ${worldMapEsc(worldMapRewardText(reward))}</div>
@@ -9407,7 +9648,7 @@ function renderWorldMapCampaign(){
   const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
   const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
   root.innerHTML = `
-    <div class="hudLine"><b>Phase 6:</b> build regional upgrades that permanently improve defended areas, slow tiger control, and add long-term cash goals.</div>
+    <div class="hudLine"><b>Phase 7:</b> connected regions now run supply routes that generate cash, ammo, medkits, and armor while tiger control can damage the network.</div>
     ${worldMapPendingChoiceHtml(wm)}
     ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
     ${wm.lastOutcome ? `<div class="card" style="margin-top:10px;border-color:rgba(74,222,128,.44)"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
@@ -9427,6 +9668,10 @@ function renderWorldMapCampaign(){
       <div class="card"><div class="small">Rare Unlocks</div><div class="hudTitle">${Object.keys(wm.crisisRewards || {}).length}</div></div>
       <div class="card"><div class="small">Region Upgrades</div><div class="hudTitle">${stats.upgradeCount}</div></div>
       <div class="card"><div class="small">Upgrade Spend</div><div class="hudTitle">$${Number(stats.upgradeSpend || 0).toLocaleString()}</div></div>
+      <div class="card"><div class="small">Route Health</div><div class="hudTitle">${stats.routeHealth}%</div></div>
+      <div class="card"><div class="small">Broken Routes</div><div class="hudTitle">${stats.brokenRoutes}</div></div>
+      <div class="card"><div class="small">Stored Supplies</div><div class="hudTitle">$${Number(stats.storedSupplyCash || 0).toLocaleString()}</div></div>
+      <div class="card"><div class="small">Supply Claims</div><div class="hudTitle">${Number(wm.totalSupplyClaims || 0)}</div></div>
     </div>
     <div style="position:relative;height:260px;border:1px solid rgba(96,165,250,.35);border-radius:22px;overflow:hidden;background:radial-gradient(circle at 25% 30%,rgba(34,197,94,.22),transparent 26%),radial-gradient(circle at 74% 42%,rgba(59,130,246,.20),transparent 30%),linear-gradient(145deg,#07111f,#10243a 55%,#1e293b);margin:10px 0 12px">
       <div style="position:absolute;inset:18px;border:1px dashed rgba(191,219,254,.20);border-radius:20px"></div>
@@ -9448,13 +9693,15 @@ function renderWorldMapCampaign(){
         <div class="small"><b>Settlement:</b> ${worldMapEsc(worldMapSettlementLine(selected, S))}</div>
         <div class="small"><b>Intel:</b> ${selectedIntel}/25 • slows spread and reveals safer pressure routes.</div>
         <div class="small"><b>Upgrade Network:</b> ${worldMapEsc(worldMapRegionUpgradeSummary(selected, S))}</div>
+        <div class="small"><b>Supply Lines:</b> ${worldMapEsc(worldMapSupplyLineText(selected, S))}</div>
+        <div class="small"><b>Stored Supplies:</b> ${worldMapEsc(worldMapSupplyText(selected, S))}</div>
         <div class="small"><b>Recent Choices:</b> ${worldMapEsc(worldMapStrategicChoiceHistoryText(selected, S))}</div>
         <div class="small">${selectedTags}</div>
         <div class="divider"></div>
         <div class="small"><b>Connected Regions:</b> ${worldMapNeighborPathHtml(selected)}</div>
       </div>
       <div class="card">
-        <div class="hudTitle">Phase 6 Deploy Plan</div>
+        <div class="hudTitle">Phase 7 Deploy Plan</div>
         <div class="hudLine">Story Mission ${worldMapRegionMissionLevel(selected, S)}/100 • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
         <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
         <div class="small">Extraction: ${worldMapEsc(extractionType)}</div>
@@ -9464,6 +9711,7 @@ function renderWorldMapCampaign(){
         <div class="small">Boss chain: ${selectedBossReady ? `${worldMapEsc(selectedBoss.bossName)} ready for a major control break` : `${Math.min(3, Number(selectedBoss.progress || 0))}/3 clues toward regional Alpha`}</div>
         <div class="small">Settlement support: ${selectedInfluence}% influence adds regional control relief.</div>
         <div class="small">Upgrade support: ${worldMapEsc(worldMapRegionUpgradeSummary(selected, S))}</div>
+        <div class="small">Supply route status: ${worldMapEsc(worldMapSupplyLineText(selected, S))}</div>
         <div class="small">Post-mission choice: after a clear, pick one strategic priority to shape this region.</div>
         <div class="small">Region reward: ${worldMapEsc(worldMapRewardText(rewardPreview))}</div>
         <div class="small">Reward focus: ${worldMapEsc(selected.reward)} • Mission Rewards 2.0 still controls core payout.</div>
@@ -9474,6 +9722,7 @@ function renderWorldMapCampaign(){
         </div>
       </div>
     </div>
+    ${worldMapSupplyNetworkHtml(selected)}
     ${worldMapRegionUpgradeHtml(selected)}
     <div class="divider"></div>
     <div class="grid2">${cards}</div>
@@ -9638,6 +9887,13 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
     62
   );
   wm.regionControl[region.id] = clamp(Math.round(before - pressureDrop), 5, 96);
+  const routeRepairGain = 6 + Math.floor(evac / 3) + Math.floor(captures / 5) + worldMapRegionUpgradeLevel(region, "road_barriers", S) * 2;
+  for(const neighborId of (region.neighbors || [])){
+    const key = worldMapSupplyRouteKey(region.id, neighborId);
+    const route = wm.supplyRoutes[key] || { health:100, lastDamagedAt:0, repaired:0 };
+    route.health = clamp(Math.round(Number(route.health ?? 100) + routeRepairGain), 0, 100);
+    wm.supplyRoutes[key] = route;
+  }
   wm.defendedRegions[region.id] = Math.max(0, Math.floor(Number(wm.defendedRegions[region.id] || 0))) + 1;
   wm.completedMissions[region.id] = Math.max(0, Math.floor(Number(wm.completedMissions[region.id] || 0))) + 1;
   const bossProgressGain = 1 + Math.max(0, Math.floor(Number(activeEventDef?.boss || 0))) + (worldMapRegionMissionType(region) === "Tiger Den Raid" ? 1 : 0);
@@ -9712,6 +9968,7 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   if(settlementGain > 0) notes.push(`settlement influence +${settlementGain}%`);
   if(intelRelief > 0) notes.push(`intel network -${intelRelief}% pressure`);
   if(upgradeRelief > 0) notes.push(`regional upgrades -${upgradeRelief}% pressure`);
+  if(routeRepairGain > 0) notes.push(`supply routes +${routeRepairGain}%`);
   wm.activeEventId = "";
   wm.activeEventRegionId = "";
   wm.activeCrisisId = "";
@@ -48096,6 +48353,8 @@ window.startWorldMapRegionMission = startWorldMapRegionMission;
 window.openMissionBriefFromWorldMap = openMissionBriefFromWorldMap;
 window.applyWorldMapStrategicChoice = applyWorldMapStrategicChoice;
 window.buyWorldMapRegionUpgrade = buyWorldMapRegionUpgrade;
+window.claimWorldMapRegionalSupplies = claimWorldMapRegionalSupplies;
+window.repairWorldMapSupplyRoutes = repairWorldMapSupplyRoutes;
 window.closeMissionBrief = closeMissionBrief;
 window.continueMissionCinematicIntro = continueMissionCinematicIntro;
 window.skipMissionCinematicIntro = skipMissionCinematicIntro;
