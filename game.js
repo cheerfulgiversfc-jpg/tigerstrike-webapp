@@ -8522,6 +8522,13 @@ const WORLD_MAP_STRATEGIC_CHOICES = Object.freeze([
   Object.freeze({ id:"hunt_alpha", icon:"👑", name:"Hunt Alpha", desc:"Push scouts toward the regional Alpha. Advances the boss chain and trims pressure.", controlDrop:3, settlementGain:0, bossGain:1, intelGain:0 }),
   Object.freeze({ id:"gather_intel", icon:"📡", name:"Gather Intel", desc:"Map tracks, dens, and weather routes. Adds intel, reduces nearby pressure, and improves planning.", controlDrop:2, settlementGain:2, bossGain:0, intelGain:1 }),
 ]);
+const WORLD_MAP_CRISIS_TYPES = Object.freeze([
+  Object.freeze({ id:"tiger_migration", icon:"🐅", name:"Tiger Migration", desc:"Packs are crossing multiple regions and raising pressure along connected routes.", regionCount:3, pressurePush:0.34, rewardMul:1.18, controlDrop:5, rare:"Migration Tracker" }),
+  Object.freeze({ id:"flood_emergency", icon:"🌊", name:"Flood Emergency", desc:"Floodwater is cutting off routes and forcing civilians into dangerous crossings.", regionCount:3, pressurePush:0.28, rewardMul:1.16, controlDrop:4, rare:"Flood Route Kit" }),
+  Object.freeze({ id:"civilian_evac_crisis", icon:"🆘", name:"Civilian Evacuation Crisis", desc:"Settlements are overwhelmed and need an urgent rescue corridor.", regionCount:4, pressurePush:0.25, rewardMul:1.20, controlDrop:4, rare:"Evac Coordinator Badge" }),
+  Object.freeze({ id:"nemesis_uprising", icon:"👑", name:"Nemesis Uprising", desc:"Named bosses are inspiring packs across the campaign map.", regionCount:3, pressurePush:0.40, rewardMul:1.24, controlDrop:6, rare:"Nemesis Intel Cache" }),
+  Object.freeze({ id:"supply_route_collapse", icon:"📦", name:"Supply Route Collapse", desc:"Armory routes are broken, making nearby missions more unstable until restored.", regionCount:3, pressurePush:0.30, rewardMul:1.17, controlDrop:5, rare:"Supply Route Permit" }),
+]);
 function defaultWorldMapCampaignState(){
   return {
     version:2,
@@ -8539,13 +8546,20 @@ function defaultWorldMapCampaignState(){
     strategicChoices:{},
     pendingChoice:null,
     regionIntel:{},
+    activeCrisis:null,
+    completedCrises:{},
+    activeCrisisId:"",
+    activeCrisisRegionId:"",
+    crisisRewards:{},
     unlockedRegionIds:["river_gate"],
     totalRewardCash:0,
     totalRewardXp:0,
     totalRewardPass:0,
     totalStrategicChoices:0,
+    totalCrisisResolved:0,
     lastUpdatedAt:0,
     lastEventSeed:"",
+    lastCrisisSeed:"",
     lastOutcome:"",
   };
 }
@@ -8570,14 +8584,21 @@ function ensureWorldMapCampaignState(state=S){
     strategicChoices:(src.strategicChoices && typeof src.strategicChoices === "object") ? src.strategicChoices : {},
     pendingChoice:(src.pendingChoice && typeof src.pendingChoice === "object") ? src.pendingChoice : null,
     regionIntel:(src.regionIntel && typeof src.regionIntel === "object") ? src.regionIntel : {},
+    activeCrisis:(src.activeCrisis && typeof src.activeCrisis === "object") ? src.activeCrisis : null,
+    completedCrises:(src.completedCrises && typeof src.completedCrises === "object") ? src.completedCrises : {},
+    crisisRewards:(src.crisisRewards && typeof src.crisisRewards === "object") ? src.crisisRewards : {},
     unlockedRegionIds:Array.isArray(src.unlockedRegionIds) ? src.unlockedRegionIds.map(String) : ["river_gate"],
     totalRewardCash:Math.max(0, Math.floor(Number(src.totalRewardCash || 0))),
     totalRewardXp:Math.max(0, Math.floor(Number(src.totalRewardXp || 0))),
     totalRewardPass:Math.max(0, Math.floor(Number(src.totalRewardPass || 0))),
     totalStrategicChoices:Math.max(0, Math.floor(Number(src.totalStrategicChoices || 0))),
+    totalCrisisResolved:Math.max(0, Math.floor(Number(src.totalCrisisResolved || 0))),
     activeEventId:String(src.activeEventId || ""),
     activeEventRegionId:String(src.activeEventRegionId || ""),
+    activeCrisisId:String(src.activeCrisisId || ""),
+    activeCrisisRegionId:String(src.activeCrisisRegionId || ""),
     lastEventSeed:String(src.lastEventSeed || ""),
+    lastCrisisSeed:String(src.lastCrisisSeed || ""),
   };
   if(!worldMapRegionById(out.selectedRegionId)) out.selectedRegionId = "river_gate";
   if(!out.unlockedRegionIds.includes("river_gate")) out.unlockedRegionIds.push("river_gate");
@@ -8599,6 +8620,19 @@ function ensureWorldMapCampaignState(state=S){
     out.strategicChoices[region.id] = Array.isArray(out.strategicChoices[region.id]) ? out.strategicChoices[region.id].slice(-10) : [];
   }
   if(out.pendingChoice && !worldMapRegionById(out.pendingChoice.regionId)) out.pendingChoice = null;
+  if(out.activeCrisis){
+    const crisisRegions = Array.isArray(out.activeCrisis.regionIds) ? out.activeCrisis.regionIds.map(String).filter(Boolean) : [];
+    out.activeCrisis = {
+      id:String(out.activeCrisis.id || ""),
+      typeId:String(out.activeCrisis.typeId || WORLD_MAP_CRISIS_TYPES[0].id),
+      regionIds:crisisRegions,
+      createdAt:Math.max(0, Number(out.activeCrisis.createdAt || 0)),
+      expiresAt:Math.max(0, Number(out.activeCrisis.expiresAt || 0)),
+      resolved:!!out.activeCrisis.resolved,
+      resolvedAt:Math.max(0, Number(out.activeCrisis.resolvedAt || 0)),
+    };
+    if(!out.activeCrisis.id || !out.activeCrisis.regionIds.length) out.activeCrisis = null;
+  }
   state.worldMapCampaign = out;
   return out;
 }
@@ -8652,7 +8686,10 @@ function updateWorldMapCampaignSpread(state=S, now=Date.now()){
     const activeRelief = wm.activeRegionId === region.id ? 0.28 * elapsedHours : 0;
     const settlementRelief = Math.min(5, Math.max(0, Number(wm.settlementInfluence?.[region.id] || 0)) * 0.06 * elapsedHours);
     const intelRelief = Math.min(3, Math.max(0, Number(wm.regionIntel?.[region.id] || 0)) * 0.08 * elapsedHours);
-    const spread = (baseSpread + neighborPush) * elapsedHours;
+    const crisis = worldMapActiveCrisis(state, now);
+    const crisisDef = crisis?.regionIds?.includes(region.id) ? worldMapCrisisDef(crisis.typeId) : null;
+    const crisisPush = crisisDef ? Number(crisisDef.pressurePush || 0) : 0;
+    const spread = (baseSpread + neighborPush + crisisPush) * elapsedHours;
     wm.regionControl[region.id] = clamp(Math.round(current + spread - defendedRelief - activeRelief - settlementRelief - intelRelief), 5, 96);
     if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   }
@@ -8688,6 +8725,98 @@ function worldMapStableHash(text){
     hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
   }
   return Math.abs(hash);
+}
+function worldMapCrisisDef(typeId){
+  return WORLD_MAP_CRISIS_TYPES.find((crisis)=>crisis.id === typeId) || WORLD_MAP_CRISIS_TYPES[0];
+}
+function worldMapCrisisSeed(now=Date.now(), state=S){
+  const story = worldMapStoryLevel(state);
+  const windowId = Math.floor(Number(now || Date.now()) / 43200000);
+  return `${windowId}:${Math.floor(story / 8)}`;
+}
+function worldMapCrisisRegionSet(anchor, count, state=S){
+  const out = [];
+  const queue = [anchor].filter(Boolean);
+  const seen = new Set();
+  while(queue.length && out.length < count){
+    const region = queue.shift();
+    if(!region || seen.has(region.id) || !worldMapRegionUnlocked(region, state)) continue;
+    seen.add(region.id);
+    out.push(region);
+    const neighbors = (region.neighbors || []).map((id)=>worldMapRegionById(id)).filter(Boolean);
+    neighbors.sort((a,b)=>worldMapControl(b, state) - worldMapControl(a, state));
+    for(const neighbor of neighbors){
+      if(!seen.has(neighbor.id)) queue.push(neighbor);
+    }
+  }
+  return out;
+}
+function refreshWorldMapCrisis(state=S, now=Date.now()){
+  const wm = ensureWorldMapCampaignState(state);
+  const seed = worldMapCrisisSeed(now, state);
+  const current = wm.activeCrisis;
+  if(current && !current.resolved && Number(current.expiresAt || 0) > now && wm.lastCrisisSeed === seed){
+    return current;
+  }
+  const unlocked = WORLD_MAP_CAMPAIGN_REGIONS.filter((region)=>worldMapRegionUnlocked(region, state));
+  if(unlocked.length < 2){
+    wm.activeCrisis = null;
+    wm.lastCrisisSeed = seed;
+    return null;
+  }
+  const ranked = unlocked
+    .map((region)=>({ region, score:worldMapStableHash(`${seed}:crisis:${region.id}:${worldMapControl(region, state)}`) + worldMapControl(region, state) }))
+    .sort((a,b)=>b.score - a.score);
+  const crisisDef = WORLD_MAP_CRISIS_TYPES[worldMapStableHash(`${seed}:type`) % WORLD_MAP_CRISIS_TYPES.length];
+  const anchor = ranked[0]?.region || unlocked[0];
+  const regionCount = clamp(Math.floor(Number(crisisDef.regionCount || 3)), 2, 4);
+  const regionIds = worldMapCrisisRegionSet(anchor, regionCount, state).map((region)=>region.id);
+  const id = `${seed}:${crisisDef.id}:${regionIds.join("-")}`;
+  if(wm.completedCrises?.[id]){
+    wm.activeCrisis = null;
+    wm.lastCrisisSeed = seed;
+    return null;
+  }
+  wm.activeCrisis = {
+    id,
+    typeId:crisisDef.id,
+    regionIds,
+    createdAt:now,
+    expiresAt:now + 43200000,
+    resolved:false,
+    resolvedAt:0,
+  };
+  wm.lastCrisisSeed = seed;
+  return wm.activeCrisis;
+}
+function worldMapActiveCrisis(state=S, now=Date.now()){
+  const crisis = refreshWorldMapCrisis(state, now);
+  if(!crisis || crisis.resolved || Number(crisis.expiresAt || 0) <= now) return null;
+  return crisis;
+}
+function worldMapCrisisForRegion(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return null;
+  const crisis = worldMapActiveCrisis(state);
+  return crisis?.regionIds?.includes(region.id) ? crisis : null;
+}
+function worldMapCrisisLine(crisis){
+  if(!crisis) return "No map-wide crisis active.";
+  const def = worldMapCrisisDef(crisis.typeId);
+  const regions = (crisis.regionIds || []).map((id)=>worldMapRegionById(id).name).join(", ");
+  return `${def.icon} ${def.name}: ${def.desc} Affected: ${regions}.`;
+}
+function worldMapCrisisRewardText(crisis){
+  if(!crisis) return "No crisis reward.";
+  const def = worldMapCrisisDef(crisis.typeId);
+  return `Crisis reward x${Number(def.rewardMul || 1).toFixed(2)} • rare unlock: ${def.rare}`;
+}
+function worldMapCrisisRewardsOwnedText(wm=ensureWorldMapCampaignState(S)){
+  const rewards = wm.crisisRewards && typeof wm.crisisRewards === "object" ? wm.crisisRewards : {};
+  const bits = Object.entries(rewards)
+    .filter(([, count])=>Number(count || 0) > 0)
+    .map(([name, count])=>`${name} x${Math.floor(Number(count || 0))}`);
+  return bits.length ? bits.join(" • ") : "No rare crisis unlocks yet.";
 }
 function refreshWorldMapLiveEvents(state=S, now=Date.now()){
   const wm = ensureWorldMapCampaignState(state);
@@ -8880,6 +9009,7 @@ function worldMapRegionPrepLine(region, control=worldMapControl(region, S)){
 }
 function worldMapCampaignPhaseOneStats(wm=ensureWorldMapCampaignState(S)){
   const regions = WORLD_MAP_CAMPAIGN_REGIONS;
+  const crisis = worldMapActiveCrisis(S);
   const unlocked = regions.filter((region)=>worldMapRegionUnlocked(region, S));
   const critical = unlocked.filter((region)=>worldMapControl(region, S) >= 82);
   const high = unlocked.filter((region)=>worldMapControl(region, S) >= 65);
@@ -8888,7 +9018,8 @@ function worldMapCampaignPhaseOneStats(wm=ensureWorldMapCampaignState(S)){
   const bossReady = unlocked.filter((region)=>worldMapBossChainState(region, S).progress >= 3).length;
   const settlementAvg = unlocked.length ? Math.round(unlocked.reduce((sum, region)=>sum + worldMapSettlementInfluenceValue(region, S), 0) / unlocked.length) : 0;
   const intel = unlocked.reduce((sum, region)=>sum + worldMapRegionIntelValue(region, S), 0);
-  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg, intel };
+  const crisisRegions = crisis?.regionIds?.length || 0;
+  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg, intel, crisis, crisisRegions };
 }
 function worldMapNeighborPathHtml(region){
   const neighbors = (region?.neighbors || []).map((id)=>worldMapRegionById(id)).filter(Boolean);
@@ -8907,9 +9038,10 @@ function worldMapRegionReward(region, control=worldMapControl(region, S), missio
   const controlTier = Number(control || 0) >= 82 ? 3 : (Number(control || 0) >= 65 ? 2 : (Number(control || 0) >= 42 ? 1 : 0));
   const performance = missionStats ? clamp(Math.floor(captures / 4) + Math.floor(evac / 3), 0, 4) : 1;
   const eventMul = Number(opts.eventMul || 1);
+  const crisisMul = Number(opts.crisisMul || 1);
   const bossMul = opts.bossResolved ? 1.15 : (opts.bossReady ? 1.06 : 1);
   const settlementMul = 1 + Math.min(0.12, worldMapSettlementInfluenceValue(region, S) / 500);
-  const rewardMul = clamp(eventMul * bossMul * settlementMul, 0.85, 1.35);
+  const rewardMul = clamp(eventMul * crisisMul * bossMul * settlementMul, 0.85, 1.55);
   const cash = clamp(Math.round((850 + level * 32 + Number(control || 0) * 16 + performance * 220) * rewardMul), 900, 8500);
   const xp = clamp(Math.round((70 + level * 3 + Number(control || 0) * 1.1 + performance * 18) * rewardMul), 90, 650);
   const passPoints = clamp(Math.round((4 + controlTier * 2 + Math.floor(performance / 2)) * Math.min(1.18, rewardMul)), 4, 14);
@@ -9006,10 +9138,13 @@ function worldMapRegionCardHtml(region){
   const type = worldMapRegionMissionType(region);
   const event = worldMapLiveEventForRegion(region, S);
   const eventDef = event ? worldMapLiveEventDef(event.typeId) : null;
+  const crisis = worldMapCrisisForRegion(region, S);
+  const crisisDef = crisis ? worldMapCrisisDef(crisis.typeId) : null;
   const boss = worldMapBossChainState(region, S);
   const bossReady = Number(boss.progress || 0) >= 3;
   const reward = worldMapRegionReward(region, control, null, {
     eventMul:eventDef?.rewardMul || 1,
+    crisisMul:crisisDef?.rewardMul || 1,
     bossReady,
   });
   const disabled = unlocked ? "" : "disabled";
@@ -9021,6 +9156,7 @@ function worldMapRegionCardHtml(region){
       <div class="bar"><div class="fill ${control >= 70 ? "red" : (control >= 45 ? "yellow" : "green")}" style="width:${control}%"></div></div>
       <div class="small">Tiger Control ${control}% • ${worldMapEsc(threat)}</div>
       ${eventDef ? `<div class="small">LIVE: ${eventDef.icon} ${worldMapEsc(eventDef.name)} • x${Number(eventDef.rewardMul || 1).toFixed(2)} reward</div>` : ""}
+      ${crisisDef ? `<div class="small">CRISIS: ${crisisDef.icon} ${worldMapEsc(crisisDef.name)} • x${Number(crisisDef.rewardMul || 1).toFixed(2)} reward</div>` : ""}
       <div class="small">${worldMapEsc(worldMapBossChainText(region, S))}</div>
       <div class="small">${worldMapEsc(worldMapSettlementLine(region, S))}</div>
       <div class="small">Intel ${worldMapRegionIntelValue(region, S)}/25 • Choices: ${worldMapEsc(worldMapStrategicChoiceHistoryText(region, S))}</div>
@@ -9035,6 +9171,7 @@ function renderWorldMapCampaign(){
   if(!root) return;
   const wm = updateWorldMapCampaignSpread(S);
   refreshWorldMapLiveEvents(S);
+  refreshWorldMapCrisis(S);
   const stats = worldMapCampaignPhaseOneStats(wm);
   const selected = worldMapRegionById(wm.selectedRegionId);
   const selectedUnlocked = worldMapRegionUnlocked(selected, S);
@@ -9046,12 +9183,15 @@ function renderWorldMapCampaign(){
   const prepLine = worldMapRegionPrepLine(selected, selectedControl);
   const selectedEvent = worldMapLiveEventForRegion(selected, S);
   const selectedEventDef = selectedEvent ? worldMapLiveEventDef(selectedEvent.typeId) : null;
+  const selectedCrisis = worldMapCrisisForRegion(selected, S);
+  const selectedCrisisDef = selectedCrisis ? worldMapCrisisDef(selectedCrisis.typeId) : null;
   const selectedBoss = worldMapBossChainState(selected, S);
   const selectedBossReady = Number(selectedBoss.progress || 0) >= 3;
   const selectedInfluence = worldMapSettlementInfluenceValue(selected, S);
   const selectedIntel = worldMapRegionIntelValue(selected, S);
   const rewardPreview = worldMapRegionReward(selected, selectedControl, null, {
     eventMul:selectedEventDef?.rewardMul || 1,
+    crisisMul:selectedCrisisDef?.rewardMul || 1,
     bossReady:selectedBossReady,
   });
   const nodes = WORLD_MAP_CAMPAIGN_REGIONS.map((region)=>{
@@ -9059,15 +9199,17 @@ function renderWorldMapCampaign(){
     const selectedClass = wm.selectedRegionId === region.id ? "box-shadow:0 0 0 4px rgba(74,222,128,.38);" : "";
     const color = unlocked ? (worldMapControl(region, S) >= 70 ? "#ef4444" : (worldMapControl(region, S) >= 45 ? "#f59e0b" : "#22c55e")) : "#64748b";
     const event = worldMapLiveEventForRegion(region, S);
+    const crisis = worldMapCrisisForRegion(region, S);
     const bossReady = worldMapBossChainState(region, S).progress >= 3;
-    const icon = unlocked ? (event ? worldMapLiveEventDef(event.typeId).icon : (bossReady ? "👑" : "🐅")) : "🔒";
+    const icon = unlocked ? (crisis ? worldMapCrisisDef(crisis.typeId).icon : (event ? worldMapLiveEventDef(event.typeId).icon : (bossReady ? "👑" : "🐅"))) : "🔒";
     return `<button title="${worldMapEsc(region.name)}" onclick="selectWorldMapRegion('${region.id}')" style="position:absolute;left:${region.x}%;top:${region.y}%;transform:translate(-50%,-50%);width:46px;height:46px;border-radius:999px;border:2px solid ${color};background:rgba(15,23,42,.86);color:#fff;font-weight:900;${selectedClass}">${icon}</button>`;
   }).join("");
   const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
   const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
   root.innerHTML = `
-    <div class="hudLine"><b>Phase 4:</b> after defending a region, choose Fortify, Rescue More, Hunt Alpha, or Gather Intel to shape what happens next.</div>
+    <div class="hudLine"><b>Phase 5:</b> map-wide crisis events now hit multiple connected regions at once and pay bigger rewards when disrupted.</div>
     ${worldMapPendingChoiceHtml(wm)}
+    ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
     ${wm.lastOutcome ? `<div class="card" style="margin-top:10px;border-color:rgba(74,222,128,.44)"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px">
       <div class="card"><div class="small">Regions Open</div><div class="hudTitle">${stats.unlocked}/${stats.total}</div></div>
@@ -9079,7 +9221,10 @@ function renderWorldMapCampaign(){
       <div class="card"><div class="small">Settlement Avg</div><div class="hudTitle">${stats.settlementAvg}%</div></div>
       <div class="card"><div class="small">Intel Network</div><div class="hudTitle">${stats.intel}</div></div>
       <div class="card"><div class="small">Decisions</div><div class="hudTitle">${Number(wm.totalStrategicChoices || 0)}</div></div>
+      <div class="card"><div class="small">Crisis Regions</div><div class="hudTitle">${stats.crisisRegions}</div></div>
+      <div class="card"><div class="small">Crises Resolved</div><div class="hudTitle">${Number(wm.totalCrisisResolved || 0)}</div></div>
       <div class="card"><div class="small">Region Rewards</div><div class="hudTitle">$${Number(wm.totalRewardCash || 0).toLocaleString()}</div></div>
+      <div class="card"><div class="small">Rare Unlocks</div><div class="hudTitle">${Object.keys(wm.crisisRewards || {}).length}</div></div>
     </div>
     <div style="position:relative;height:260px;border:1px solid rgba(96,165,250,.35);border-radius:22px;overflow:hidden;background:radial-gradient(circle at 25% 30%,rgba(34,197,94,.22),transparent 26%),radial-gradient(circle at 74% 42%,rgba(59,130,246,.20),transparent 30%),linear-gradient(145deg,#07111f,#10243a 55%,#1e293b);margin:10px 0 12px">
       <div style="position:absolute;inset:18px;border:1px dashed rgba(191,219,254,.20);border-radius:20px"></div>
@@ -9095,6 +9240,8 @@ function renderWorldMapCampaign(){
         <div class="hudLine">Tiger Control ${selectedControl}% • Defended ${defended} time${defended === 1 ? "" : "s"}</div>
         <div class="small">${worldMapEsc(selected.theme)}</div>
         <div class="small"><b>Live Event:</b> ${worldMapEsc(worldMapEventLine(selectedEvent))}</div>
+        <div class="small"><b>Crisis:</b> ${worldMapEsc(selectedCrisis ? worldMapCrisisLine(selectedCrisis) : "This region is not inside the active crisis.")}</div>
+        <div class="small"><b>Crisis Unlocks:</b> ${worldMapEsc(worldMapCrisisRewardsOwnedText(wm))}</div>
         <div class="small"><b>Boss Chain:</b> ${worldMapEsc(worldMapBossChainText(selected, S))}</div>
         <div class="small"><b>Settlement:</b> ${worldMapEsc(worldMapSettlementLine(selected, S))}</div>
         <div class="small"><b>Intel:</b> ${selectedIntel}/25 • slows spread and reveals safer pressure routes.</div>
@@ -9104,12 +9251,13 @@ function renderWorldMapCampaign(){
         <div class="small"><b>Connected Regions:</b> ${worldMapNeighborPathHtml(selected)}</div>
       </div>
       <div class="card">
-        <div class="hudTitle">Phase 4 Deploy Plan</div>
+        <div class="hudTitle">Phase 5 Deploy Plan</div>
         <div class="hudLine">Story Mission ${worldMapRegionMissionLevel(selected, S)}/100 • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
         <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
         <div class="small">Extraction: ${worldMapEsc(extractionType)}</div>
         <div class="small">Recommended prep: ${worldMapEsc(prepLine)}</div>
         <div class="small">Live event impact: ${selectedEventDef ? `${selectedEventDef.icon} ${worldMapEsc(selectedEventDef.name)} • +${Math.round((Number(selectedEventDef.rewardMul || 1) - 1) * 100)}% strategic reward • -${selectedEventDef.controlDrop} control` : "None active right now"}</div>
+        <div class="small">Crisis impact: ${selectedCrisisDef ? `${selectedCrisisDef.icon} ${worldMapEsc(selectedCrisisDef.name)} • +${Math.round((Number(selectedCrisisDef.rewardMul || 1) - 1) * 100)}% strategic reward • rare ${worldMapEsc(selectedCrisisDef.rare)}` : "No crisis in this region"}</div>
         <div class="small">Boss chain: ${selectedBossReady ? `${worldMapEsc(selectedBoss.bossName)} ready for a major control break` : `${Math.min(3, Number(selectedBoss.progress || 0))}/3 clues toward regional Alpha`}</div>
         <div class="small">Settlement support: ${selectedInfluence}% influence adds regional control relief.</div>
         <div class="small">Post-mission choice: after a clear, pick one strategic priority to shape this region.</div>
@@ -9194,6 +9342,7 @@ function startWorldMapRegionMission(id){
   }
   refreshWorldMapLiveEvents(S);
   const event = worldMapLiveEventForRegion(region, S);
+  const crisis = worldMapCrisisForRegion(region, S);
   activateModeProfile("Story", S);
   S.storyVariant = STORY_VARIANTS.CAMPAIGN;
   const missionLevel = worldMapRegionMissionLevel(region, S);
@@ -9204,6 +9353,8 @@ function startWorldMapRegionMission(id){
   wm.activeRegionId = region.id;
   wm.activeEventId = event?.id || "";
   wm.activeEventRegionId = event?.regionId || "";
+  wm.activeCrisisId = crisis?.id || "";
+  wm.activeCrisisRegionId = crisis ? region.id : "";
   if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   const overlay = document.getElementById("worldMapCampaignOverlay");
   if(overlay) overlay.style.display = "none";
@@ -9211,7 +9362,8 @@ function startWorldMapRegionMission(id){
   beginMissionTransitionGuard("world-map-deploy", 1400);
   deploy();
   const eventDef = event ? worldMapLiveEventDef(event.typeId) : null;
-  toast(`Deploying to ${region.name}${eventDef ? ` • ${eventDef.name}` : ""}. Tiger control ${worldMapControl(region, S)}%.`);
+  const crisisDef = crisis ? worldMapCrisisDef(crisis.typeId) : null;
+  toast(`Deploying to ${region.name}${crisisDef ? ` • ${crisisDef.name}` : (eventDef ? ` • ${eventDef.name}` : "")}. Tiger control ${worldMapControl(region, S)}%.`);
   save(true);
   return false;
 }
@@ -9227,6 +9379,9 @@ function openMissionBriefFromWorldMap(){
   const event = worldMapLiveEventForRegion(region, S);
   wm.activeEventId = event?.id || "";
   wm.activeEventRegionId = event?.regionId || "";
+  const crisis = worldMapCrisisForRegion(region, S);
+  wm.activeCrisisId = crisis?.id || "";
+  wm.activeCrisisRegionId = crisis ? region.id : "";
   const overlay = document.getElementById("worldMapCampaignOverlay");
   if(overlay) overlay.style.display = "none";
   __returnToBaseHqAfterOverlay = false;
@@ -9255,6 +9410,9 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   const perfectRescue = evac > 0 && Array.isArray(S.civilians) && evac >= S.civilians.length;
   const activeEvent = worldMapActiveEvent(S);
   const activeEventDef = activeEvent && activeEvent.regionId === region.id ? worldMapLiveEventDef(activeEvent.typeId) : null;
+  const activeCrisis = worldMapActiveCrisis(S);
+  const crisisAffected = !!(activeCrisis && activeCrisis.regionIds?.includes(region.id) && (!wm.activeCrisisId || wm.activeCrisisId === activeCrisis.id));
+  const activeCrisisDef = crisisAffected ? worldMapCrisisDef(activeCrisis.typeId) : null;
   const chain = worldMapBossChainState(region, S);
   const bossWasReady = Number(chain.progress || 0) >= 3;
   const settlementBefore = worldMapSettlementInfluenceValue(region, S);
@@ -9265,9 +9423,10 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   const intelRelief = Math.floor(worldMapRegionIntelValue(region, S) / 5);
   const settlementRelief = Math.floor(worldMapSettlementInfluenceValue(region, S) / 16);
   const eventDrop = Math.max(0, Math.floor(Number(activeEventDef?.controlDrop || 0)));
+  const crisisDrop = Math.max(0, Math.floor(Number(activeCrisisDef?.controlDrop || 0)));
   const bossDrop = bossWasReady ? 8 : 0;
   const pressureDrop = clamp(
-    14 + Math.floor(captures / 3) + Math.floor(kills / 4) + Math.floor(evac / 2) + (perfectRescue ? 4 : 0) + eventDrop + bossDrop + settlementRelief + intelRelief,
+    14 + Math.floor(captures / 3) + Math.floor(kills / 4) + Math.floor(evac / 2) + (perfectRescue ? 4 : 0) + eventDrop + crisisDrop + bossDrop + settlementRelief + intelRelief,
     14,
     52
   );
@@ -9291,10 +9450,38 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   }
   const reward = worldMapRegionReward(region, before, missionStats, {
     eventMul:activeEventDef?.rewardMul || 1,
+    crisisMul:activeCrisisDef?.rewardMul || 1,
     bossResolved:bossWasReady,
     bossReady:!bossWasReady && wm.bossChains[region.id].progress >= 3,
   });
   grantWorldMapRegionReward(region, reward);
+  if(activeCrisis && activeCrisisDef){
+    const affected = Array.isArray(activeCrisis.regionIds) ? activeCrisis.regionIds : [];
+    for(const id of affected){
+      const target = worldMapRegionById(id);
+      const current = Number(wm.regionControl[id] || worldMapInitialControl(target, S));
+      wm.regionControl[id] = clamp(Math.round(current - Math.max(2, Math.floor(Number(activeCrisisDef.controlDrop || 0)))), 5, 96);
+    }
+    wm.completedCrises[activeCrisis.id] = {
+      typeId:activeCrisis.typeId,
+      regionIds:affected,
+      resolvedAt:Date.now(),
+      resolvedBy:region.id,
+    };
+    wm.activeCrisis = {
+      ...activeCrisis,
+      resolved:true,
+      resolvedAt:Date.now(),
+    };
+    wm.crisisRewards[activeCrisisDef.rare] = Math.max(0, Math.floor(Number(wm.crisisRewards[activeCrisisDef.rare] || 0))) + 1;
+    wm.totalCrisisResolved = Math.max(0, Math.floor(Number(wm.totalCrisisResolved || 0))) + 1;
+    S.trapsOwned = Math.max(0, Math.floor(Number(S.trapsOwned || 0))) + 2;
+    S.shields = Math.max(0, Math.floor(Number(S.shields || 0))) + 1;
+    ensureArmorPlateInventoryState();
+    ensureArmorPlateFallbackState();
+    S.armorPlates.A_TIER1 = Math.max(0, Math.floor(Number(S.armorPlates.A_TIER1 || 0))) + 2;
+    S.armorPlatesFallback.A_TIER1 = Math.max(0, Math.floor(Number(S.armorPlatesFallback.A_TIER1 || 0))) + 2;
+  }
   if(activeEvent && activeEventDef){
     wm.completedEvents[activeEvent.id] = {
       regionId:region.id,
@@ -9312,12 +9499,15 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   const chainAfter = worldMapBossChainState(region, S);
   const notes = [];
   if(activeEventDef) notes.push(`${activeEventDef.name} secured`);
+  if(activeCrisisDef) notes.push(`${activeCrisisDef.name} resolved • rare ${activeCrisisDef.rare}`);
   if(bossWasReady) notes.push(`${chain.bossName} boss chain resolved`);
   else if(chainAfter.progress >= 3) notes.push(`${chainAfter.bossName} boss ready`);
   if(settlementGain > 0) notes.push(`settlement influence +${settlementGain}%`);
   if(intelRelief > 0) notes.push(`intel network -${intelRelief}% pressure`);
   wm.activeEventId = "";
   wm.activeEventRegionId = "";
+  wm.activeCrisisId = "";
+  wm.activeCrisisRegionId = "";
   wm.pendingChoice = {
     regionId:region.id,
     createdAt:Date.now(),
