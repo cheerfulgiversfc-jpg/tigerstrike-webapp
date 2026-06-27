@@ -8516,6 +8516,12 @@ const WORLD_MAP_BOSS_CHAIN_NAMES = Object.freeze({
   alpine_ridge:"SnowRage",
   night_stripe:"NightStripe",
 });
+const WORLD_MAP_STRATEGIC_CHOICES = Object.freeze([
+  Object.freeze({ id:"fortify", icon:"🛡️", name:"Fortify", desc:"Build barriers and safe lanes. Immediately lowers tiger control and slows future spread.", controlDrop:6, settlementGain:1, bossGain:0, intelGain:0 }),
+  Object.freeze({ id:"rescue_more", icon:"🏥", name:"Rescue More", desc:"Send medics and search teams after the mission. Boosts settlement influence and support rewards.", controlDrop:2, settlementGain:8, bossGain:0, intelGain:0 }),
+  Object.freeze({ id:"hunt_alpha", icon:"👑", name:"Hunt Alpha", desc:"Push scouts toward the regional Alpha. Advances the boss chain and trims pressure.", controlDrop:3, settlementGain:0, bossGain:1, intelGain:0 }),
+  Object.freeze({ id:"gather_intel", icon:"📡", name:"Gather Intel", desc:"Map tracks, dens, and weather routes. Adds intel, reduces nearby pressure, and improves planning.", controlDrop:2, settlementGain:2, bossGain:0, intelGain:1 }),
+]);
 function defaultWorldMapCampaignState(){
   return {
     version:2,
@@ -8530,10 +8536,14 @@ function defaultWorldMapCampaignState(){
     completedEvents:{},
     bossChains:{},
     settlementInfluence:{},
+    strategicChoices:{},
+    pendingChoice:null,
+    regionIntel:{},
     unlockedRegionIds:["river_gate"],
     totalRewardCash:0,
     totalRewardXp:0,
     totalRewardPass:0,
+    totalStrategicChoices:0,
     lastUpdatedAt:0,
     lastEventSeed:"",
     lastOutcome:"",
@@ -8557,10 +8567,14 @@ function ensureWorldMapCampaignState(state=S){
     completedEvents:(src.completedEvents && typeof src.completedEvents === "object") ? src.completedEvents : {},
     bossChains:(src.bossChains && typeof src.bossChains === "object") ? src.bossChains : {},
     settlementInfluence:(src.settlementInfluence && typeof src.settlementInfluence === "object") ? src.settlementInfluence : {},
+    strategicChoices:(src.strategicChoices && typeof src.strategicChoices === "object") ? src.strategicChoices : {},
+    pendingChoice:(src.pendingChoice && typeof src.pendingChoice === "object") ? src.pendingChoice : null,
+    regionIntel:(src.regionIntel && typeof src.regionIntel === "object") ? src.regionIntel : {},
     unlockedRegionIds:Array.isArray(src.unlockedRegionIds) ? src.unlockedRegionIds.map(String) : ["river_gate"],
     totalRewardCash:Math.max(0, Math.floor(Number(src.totalRewardCash || 0))),
     totalRewardXp:Math.max(0, Math.floor(Number(src.totalRewardXp || 0))),
     totalRewardPass:Math.max(0, Math.floor(Number(src.totalRewardPass || 0))),
+    totalStrategicChoices:Math.max(0, Math.floor(Number(src.totalStrategicChoices || 0))),
     activeEventId:String(src.activeEventId || ""),
     activeEventRegionId:String(src.activeEventRegionId || ""),
     lastEventSeed:String(src.lastEventSeed || ""),
@@ -8581,7 +8595,10 @@ function ensureWorldMapCampaignState(state=S){
       bossName:String(chain.bossName || WORLD_MAP_BOSS_CHAIN_NAMES[region.id] || `${region.name} Alpha`),
     };
     out.settlementInfluence[region.id] = clamp(Math.floor(Number(out.settlementInfluence[region.id] || 0)), 0, 100);
+    out.regionIntel[region.id] = clamp(Math.floor(Number(out.regionIntel[region.id] || 0)), 0, 25);
+    out.strategicChoices[region.id] = Array.isArray(out.strategicChoices[region.id]) ? out.strategicChoices[region.id].slice(-10) : [];
   }
+  if(out.pendingChoice && !worldMapRegionById(out.pendingChoice.regionId)) out.pendingChoice = null;
   state.worldMapCampaign = out;
   return out;
 }
@@ -8634,8 +8651,9 @@ function updateWorldMapCampaignSpread(state=S, now=Date.now()){
     const defendedRelief = defended > 0 ? Math.min(8, defended * 0.52 * elapsedHours) : 0;
     const activeRelief = wm.activeRegionId === region.id ? 0.28 * elapsedHours : 0;
     const settlementRelief = Math.min(5, Math.max(0, Number(wm.settlementInfluence?.[region.id] || 0)) * 0.06 * elapsedHours);
+    const intelRelief = Math.min(3, Math.max(0, Number(wm.regionIntel?.[region.id] || 0)) * 0.08 * elapsedHours);
     const spread = (baseSpread + neighborPush) * elapsedHours;
-    wm.regionControl[region.id] = clamp(Math.round(current + spread - defendedRelief - activeRelief - settlementRelief), 5, 96);
+    wm.regionControl[region.id] = clamp(Math.round(current + spread - defendedRelief - activeRelief - settlementRelief - intelRelief), 5, 96);
     if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   }
   wm.lastUpdatedAt = now;
@@ -8740,6 +8758,99 @@ function worldMapSettlementLine(regionOrId, state=S){
   if(influence > 0) return `Settlement Influence ${influence}% • civilians are starting to support this region`;
   return "Settlement Influence 0% • rescue civilians here to build local support";
 }
+function worldMapStrategicChoiceDef(choiceId){
+  return WORLD_MAP_STRATEGIC_CHOICES.find((choice)=>choice.id === choiceId) || WORLD_MAP_STRATEGIC_CHOICES[0];
+}
+function worldMapRegionIntelValue(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return 0;
+  const wm = ensureWorldMapCampaignState(state);
+  return clamp(Math.floor(Number(wm.regionIntel?.[region.id] || 0)), 0, 25);
+}
+function worldMapStrategicChoiceHistoryText(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return "No decisions yet.";
+  const wm = ensureWorldMapCampaignState(state);
+  const history = Array.isArray(wm.strategicChoices?.[region.id]) ? wm.strategicChoices[region.id] : [];
+  if(!history.length) return "No post-mission decisions made here yet.";
+  return history.slice(-3).map((entry)=>{
+    const def = worldMapStrategicChoiceDef(entry.choiceId);
+    return `${def.icon} ${def.name}`;
+  }).join(" • ");
+}
+function worldMapPendingChoiceHtml(wm=ensureWorldMapCampaignState(S)){
+  const pending = wm.pendingChoice;
+  if(!pending?.regionId) return "";
+  const region = worldMapRegionById(pending.regionId);
+  const control = worldMapControl(region, S);
+  const choices = WORLD_MAP_STRATEGIC_CHOICES.map((choice)=>{
+    const details = [];
+    if(choice.controlDrop) details.push(`-${choice.controlDrop}% control`);
+    if(choice.settlementGain) details.push(`+${choice.settlementGain}% settlement`);
+    if(choice.bossGain) details.push(`+${choice.bossGain} boss clue`);
+    if(choice.intelGain) details.push(`+${choice.intelGain} intel`);
+    return `
+      <button class="card" style="text-align:left;border-color:rgba(74,222,128,.35)" onclick="applyWorldMapStrategicChoice('${choice.id}')">
+        <div class="hudTitle">${choice.icon} ${worldMapEsc(choice.name)}</div>
+        <div class="small">${worldMapEsc(choice.desc)}</div>
+        <div class="small">${worldMapEsc(details.join(" • "))}</div>
+      </button>
+    `;
+  }).join("");
+  return `
+    <div class="card" style="margin-top:10px;border-color:rgba(250,204,21,.56);background:linear-gradient(145deg,rgba(49,35,10,.82),rgba(8,15,26,.92))">
+      <div class="hudTitle">Phase 4 Decision: ${worldMapEsc(region.name)}</div>
+      <div class="hudLine">Tiger Control ${control}% • Pick the region's next strategic priority.</div>
+      <div class="small">${worldMapEsc(pending.summary || "Your defense opened a short strategy window.")}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${choices}</div>
+    </div>
+  `;
+}
+function applyWorldMapStrategicChoice(choiceId){
+  const wm = ensureWorldMapCampaignState(S);
+  const pending = wm.pendingChoice;
+  if(!pending?.regionId){
+    toast("No world map decision is pending right now.");
+    return false;
+  }
+  const region = worldMapRegionById(pending.regionId);
+  const choice = worldMapStrategicChoiceDef(choiceId);
+  const before = worldMapControl(region, S);
+  wm.regionControl[region.id] = clamp(Math.round(Number(wm.regionControl[region.id] || before) - Number(choice.controlDrop || 0)), 5, 96);
+  if(choice.settlementGain){
+    wm.settlementInfluence[region.id] = clamp(worldMapSettlementInfluenceValue(region, S) + Math.floor(Number(choice.settlementGain || 0)), 0, 100);
+  }
+  if(choice.intelGain){
+    wm.regionIntel[region.id] = clamp(worldMapRegionIntelValue(region, S) + Math.floor(Number(choice.intelGain || 0)), 0, 25);
+    for(const neighborId of (region.neighbors || [])){
+      wm.regionControl[neighborId] = clamp(Math.round(Number(wm.regionControl[neighborId] || worldMapInitialControl(worldMapRegionById(neighborId), S)) - 1), 5, 96);
+    }
+  }
+  if(choice.bossGain){
+    const chain = worldMapBossChainState(region, S);
+    wm.bossChains[region.id] = {
+      ...chain,
+      progress:clamp(Math.floor(Number(chain.progress || 0)) + Math.floor(Number(choice.bossGain || 0)), 0, 3),
+      bossName:chain.bossName || WORLD_MAP_BOSS_CHAIN_NAMES[region.id] || `${region.name} Alpha`,
+    };
+  }
+  wm.strategicChoices[region.id] = Array.isArray(wm.strategicChoices[region.id]) ? wm.strategicChoices[region.id] : [];
+  wm.strategicChoices[region.id].push({
+    choiceId:choice.id,
+    at:Date.now(),
+    before,
+    after:worldMapControl(region, S),
+  });
+  wm.strategicChoices[region.id] = wm.strategicChoices[region.id].slice(-10);
+  wm.totalStrategicChoices = Math.max(0, Math.floor(Number(wm.totalStrategicChoices || 0))) + 1;
+  wm.pendingChoice = null;
+  wm.lastOutcome = `${region.name}: ${choice.name} chosen. Tiger control ${before}% → ${worldMapControl(region, S)}%. ${worldMapSettlementLine(region, S)}.`;
+  wm.lastUpdatedAt = Date.now();
+  renderWorldMapCampaign();
+  toast(`${choice.name} applied to ${region.name}.`);
+  save(true);
+  return false;
+}
 function worldMapRegionMissionType(region){
   const text = `${region?.name || ""} ${(region?.traits || []).join(" ")} ${region?.theme || ""}`.toLowerCase();
   if(text.includes("den")) return "Tiger Den Raid";
@@ -8776,7 +8887,8 @@ function worldMapCampaignPhaseOneStats(wm=ensureWorldMapCampaignState(S)){
   const liveEvents = Object.keys(refreshWorldMapLiveEvents(S) || {}).length;
   const bossReady = unlocked.filter((region)=>worldMapBossChainState(region, S).progress >= 3).length;
   const settlementAvg = unlocked.length ? Math.round(unlocked.reduce((sum, region)=>sum + worldMapSettlementInfluenceValue(region, S), 0) / unlocked.length) : 0;
-  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg };
+  const intel = unlocked.reduce((sum, region)=>sum + worldMapRegionIntelValue(region, S), 0);
+  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg, intel };
 }
 function worldMapNeighborPathHtml(region){
   const neighbors = (region?.neighbors || []).map((id)=>worldMapRegionById(id)).filter(Boolean);
@@ -8911,6 +9023,7 @@ function worldMapRegionCardHtml(region){
       ${eventDef ? `<div class="small">LIVE: ${eventDef.icon} ${worldMapEsc(eventDef.name)} • x${Number(eventDef.rewardMul || 1).toFixed(2)} reward</div>` : ""}
       <div class="small">${worldMapEsc(worldMapBossChainText(region, S))}</div>
       <div class="small">${worldMapEsc(worldMapSettlementLine(region, S))}</div>
+      <div class="small">Intel ${worldMapRegionIntelValue(region, S)}/25 • Choices: ${worldMapEsc(worldMapStrategicChoiceHistoryText(region, S))}</div>
       <div class="small">${worldMapEsc(region.theme)}</div>
       <div class="small">Reward: ${worldMapEsc(worldMapRewardText(reward))}</div>
       <div class="small">${tags}</div>
@@ -8936,6 +9049,7 @@ function renderWorldMapCampaign(){
   const selectedBoss = worldMapBossChainState(selected, S);
   const selectedBossReady = Number(selectedBoss.progress || 0) >= 3;
   const selectedInfluence = worldMapSettlementInfluenceValue(selected, S);
+  const selectedIntel = worldMapRegionIntelValue(selected, S);
   const rewardPreview = worldMapRegionReward(selected, selectedControl, null, {
     eventMul:selectedEventDef?.rewardMul || 1,
     bossReady:selectedBossReady,
@@ -8952,7 +9066,8 @@ function renderWorldMapCampaign(){
   const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
   const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
   root.innerHTML = `
-    <div class="hudLine"><b>Phase 3:</b> live events, boss chains, and settlement influence now change regional pressure, rewards, and what the next defense means.</div>
+    <div class="hudLine"><b>Phase 4:</b> after defending a region, choose Fortify, Rescue More, Hunt Alpha, or Gather Intel to shape what happens next.</div>
+    ${worldMapPendingChoiceHtml(wm)}
     ${wm.lastOutcome ? `<div class="card" style="margin-top:10px;border-color:rgba(74,222,128,.44)"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px">
       <div class="card"><div class="small">Regions Open</div><div class="hudTitle">${stats.unlocked}/${stats.total}</div></div>
@@ -8962,6 +9077,8 @@ function renderWorldMapCampaign(){
       <div class="card"><div class="small">Live Events</div><div class="hudTitle">${stats.liveEvents}</div></div>
       <div class="card"><div class="small">Boss Ready</div><div class="hudTitle">${stats.bossReady}</div></div>
       <div class="card"><div class="small">Settlement Avg</div><div class="hudTitle">${stats.settlementAvg}%</div></div>
+      <div class="card"><div class="small">Intel Network</div><div class="hudTitle">${stats.intel}</div></div>
+      <div class="card"><div class="small">Decisions</div><div class="hudTitle">${Number(wm.totalStrategicChoices || 0)}</div></div>
       <div class="card"><div class="small">Region Rewards</div><div class="hudTitle">$${Number(wm.totalRewardCash || 0).toLocaleString()}</div></div>
     </div>
     <div style="position:relative;height:260px;border:1px solid rgba(96,165,250,.35);border-radius:22px;overflow:hidden;background:radial-gradient(circle at 25% 30%,rgba(34,197,94,.22),transparent 26%),radial-gradient(circle at 74% 42%,rgba(59,130,246,.20),transparent 30%),linear-gradient(145deg,#07111f,#10243a 55%,#1e293b);margin:10px 0 12px">
@@ -8980,12 +9097,14 @@ function renderWorldMapCampaign(){
         <div class="small"><b>Live Event:</b> ${worldMapEsc(worldMapEventLine(selectedEvent))}</div>
         <div class="small"><b>Boss Chain:</b> ${worldMapEsc(worldMapBossChainText(selected, S))}</div>
         <div class="small"><b>Settlement:</b> ${worldMapEsc(worldMapSettlementLine(selected, S))}</div>
+        <div class="small"><b>Intel:</b> ${selectedIntel}/25 • slows spread and reveals safer pressure routes.</div>
+        <div class="small"><b>Recent Choices:</b> ${worldMapEsc(worldMapStrategicChoiceHistoryText(selected, S))}</div>
         <div class="small">${selectedTags}</div>
         <div class="divider"></div>
         <div class="small"><b>Connected Regions:</b> ${worldMapNeighborPathHtml(selected)}</div>
       </div>
       <div class="card">
-        <div class="hudTitle">Phase 3 Deploy Plan</div>
+        <div class="hudTitle">Phase 4 Deploy Plan</div>
         <div class="hudLine">Story Mission ${worldMapRegionMissionLevel(selected, S)}/100 • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
         <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
         <div class="small">Extraction: ${worldMapEsc(extractionType)}</div>
@@ -8993,6 +9112,7 @@ function renderWorldMapCampaign(){
         <div class="small">Live event impact: ${selectedEventDef ? `${selectedEventDef.icon} ${worldMapEsc(selectedEventDef.name)} • +${Math.round((Number(selectedEventDef.rewardMul || 1) - 1) * 100)}% strategic reward • -${selectedEventDef.controlDrop} control` : "None active right now"}</div>
         <div class="small">Boss chain: ${selectedBossReady ? `${worldMapEsc(selectedBoss.bossName)} ready for a major control break` : `${Math.min(3, Number(selectedBoss.progress || 0))}/3 clues toward regional Alpha`}</div>
         <div class="small">Settlement support: ${selectedInfluence}% influence adds regional control relief.</div>
+        <div class="small">Post-mission choice: after a clear, pick one strategic priority to shape this region.</div>
         <div class="small">Region reward: ${worldMapEsc(worldMapRewardText(rewardPreview))}</div>
         <div class="small">Reward focus: ${worldMapEsc(selected.reward)} • Mission Rewards 2.0 still controls core payout.</div>
         <div class="row" style="margin-top:10px">
@@ -9142,11 +9262,12 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   if(settlementGain > 0){
     wm.settlementInfluence[region.id] = clamp(settlementBefore + settlementGain, 0, 100);
   }
+  const intelRelief = Math.floor(worldMapRegionIntelValue(region, S) / 5);
   const settlementRelief = Math.floor(worldMapSettlementInfluenceValue(region, S) / 16);
   const eventDrop = Math.max(0, Math.floor(Number(activeEventDef?.controlDrop || 0)));
   const bossDrop = bossWasReady ? 8 : 0;
   const pressureDrop = clamp(
-    14 + Math.floor(captures / 3) + Math.floor(kills / 4) + Math.floor(evac / 2) + (perfectRescue ? 4 : 0) + eventDrop + bossDrop + settlementRelief,
+    14 + Math.floor(captures / 3) + Math.floor(kills / 4) + Math.floor(evac / 2) + (perfectRescue ? 4 : 0) + eventDrop + bossDrop + settlementRelief + intelRelief,
     14,
     52
   );
@@ -9194,11 +9315,17 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   if(bossWasReady) notes.push(`${chain.bossName} boss chain resolved`);
   else if(chainAfter.progress >= 3) notes.push(`${chainAfter.bossName} boss ready`);
   if(settlementGain > 0) notes.push(`settlement influence +${settlementGain}%`);
+  if(intelRelief > 0) notes.push(`intel network -${intelRelief}% pressure`);
   wm.activeEventId = "";
   wm.activeEventRegionId = "";
-  wm.lastOutcome = `${region.name}: tiger control reduced ${before}% → ${worldMapControl(region, S)}%. Reward ${worldMapRewardText(reward)}.${notes.length ? ` ${notes.join(" • ")}.` : ""} Neighbor regions unlocked for defense.`;
+  wm.pendingChoice = {
+    regionId:region.id,
+    createdAt:Date.now(),
+    summary:`Choose how ${region.name} should respond after this clear. Each option changes future control, boss pressure, settlement support, or intel.`,
+  };
+  wm.lastOutcome = `${region.name}: tiger control reduced ${before}% → ${worldMapControl(region, S)}%. Reward ${worldMapRewardText(reward)}.${notes.length ? ` ${notes.join(" • ")}.` : ""} Strategic choice unlocked. Neighbor regions unlocked for defense.`;
   wm.lastUpdatedAt = Date.now();
-  return `\nWorld Map Campaign: ${wm.lastOutcome}\n`;
+  return `\nWorld Map Campaign: ${wm.lastOutcome}\nPhase 4 Decision Ready: open World Map and choose Fortify, Rescue More, Hunt Alpha, or Gather Intel.\n`;
 }
 function sanitizeWalletAmount(value, fallback = 1000){
   const n = Math.floor(Number(value));
@@ -47569,6 +47696,7 @@ window.selectWorldMapRegion = selectWorldMapRegion;
 window.setWorldMapActiveRegion = setWorldMapActiveRegion;
 window.startWorldMapRegionMission = startWorldMapRegionMission;
 window.openMissionBriefFromWorldMap = openMissionBriefFromWorldMap;
+window.applyWorldMapStrategicChoice = applyWorldMapStrategicChoice;
 window.closeMissionBrief = closeMissionBrief;
 window.continueMissionCinematicIntro = continueMissionCinematicIntro;
 window.skipMissionCinematicIntro = skipMissionCinematicIntro;
