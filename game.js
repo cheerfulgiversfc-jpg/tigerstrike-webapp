@@ -8538,6 +8538,17 @@ const WORLD_MAP_REGION_UPGRADES = Object.freeze([
   Object.freeze({ id:"scout_network", icon:"📡", name:"Scout Network", desc:"Improves clue coverage, boss tracking, and pressure response.", baseCost:110000, intelGain:2, bossGain:1, spreadRelief:0.12, maxLevel:5 }),
 ]);
 const WORLD_MAP_SUPPLY_REPAIR_COST = 45000;
+const WORLD_MAP_FACTIONS = Object.freeze({
+  hq:Object.freeze({ id:"hq", icon:"🛡️", name:"HQ", color:"#22c55e", desc:"Your command controls the region." }),
+  tigers:Object.freeze({ id:"tigers", icon:"🐅", name:"Tigers", color:"#ef4444", desc:"Tiger packs dominate the region." }),
+  rivals:Object.freeze({ id:"rivals", icon:"🟠", name:"Rivals", color:"#f97316", desc:"Rival hunters interfere with rewards and objectives." }),
+  settlements:Object.freeze({ id:"settlements", icon:"🏘️", name:"Settlements", color:"#38bdf8", desc:"Rescued civilians and local scouts hold the region." }),
+});
+const WORLD_MAP_RIVAL_ACTIONS = Object.freeze([
+  Object.freeze({ id:"fight", icon:"⚔️", name:"Fight Rivals", desc:"Spend cash to push rival hunters out by force.", cost:45000, rivalDrop:14, hqGain:7, controlDrop:2 }),
+  Object.freeze({ id:"negotiate", icon:"🤝", name:"Negotiate", desc:"Buy temporary cooperation and repair nearby supply lines.", cost:28000, rivalDrop:8, settlementGain:3, routeRepair:8 }),
+  Object.freeze({ id:"outscore", icon:"🏆", name:"Outscore", desc:"Use recent mission success to beat rivals publicly.", cost:0, rivalDrop:10, hqGain:5, intelGain:1, requiresDefended:true }),
+]);
 function defaultWorldMapCampaignState(){
   return {
     version:2,
@@ -8559,10 +8570,13 @@ function defaultWorldMapCampaignState(){
     completedCrises:{},
     activeCrisisId:"",
     activeCrisisRegionId:"",
+    activeRivalRegionId:"",
     crisisRewards:{},
     regionUpgrades:{},
     supplyRoutes:{},
     regionalSupplies:{},
+    factionInfluence:{},
+    rivalSabotage:{},
     unlockedRegionIds:["river_gate"],
     totalRewardCash:0,
     totalRewardXp:0,
@@ -8574,6 +8588,8 @@ function defaultWorldMapCampaignState(){
     totalSupplyCash:0,
     totalSupplyClaims:0,
     totalRouteRepairs:0,
+    totalRivalActions:0,
+    totalRivalSabotage:0,
     lastSupplyAt:0,
     lastUpdatedAt:0,
     lastEventSeed:"",
@@ -8608,6 +8624,8 @@ function ensureWorldMapCampaignState(state=S){
     regionUpgrades:(src.regionUpgrades && typeof src.regionUpgrades === "object") ? src.regionUpgrades : {},
     supplyRoutes:(src.supplyRoutes && typeof src.supplyRoutes === "object") ? src.supplyRoutes : {},
     regionalSupplies:(src.regionalSupplies && typeof src.regionalSupplies === "object") ? src.regionalSupplies : {},
+    factionInfluence:(src.factionInfluence && typeof src.factionInfluence === "object") ? src.factionInfluence : {},
+    rivalSabotage:(src.rivalSabotage && typeof src.rivalSabotage === "object") ? src.rivalSabotage : {},
     unlockedRegionIds:Array.isArray(src.unlockedRegionIds) ? src.unlockedRegionIds.map(String) : ["river_gate"],
     totalRewardCash:Math.max(0, Math.floor(Number(src.totalRewardCash || 0))),
     totalRewardXp:Math.max(0, Math.floor(Number(src.totalRewardXp || 0))),
@@ -8619,11 +8637,14 @@ function ensureWorldMapCampaignState(state=S){
     totalSupplyCash:Math.max(0, Math.floor(Number(src.totalSupplyCash || 0))),
     totalSupplyClaims:Math.max(0, Math.floor(Number(src.totalSupplyClaims || 0))),
     totalRouteRepairs:Math.max(0, Math.floor(Number(src.totalRouteRepairs || 0))),
+    totalRivalActions:Math.max(0, Math.floor(Number(src.totalRivalActions || 0))),
+    totalRivalSabotage:Math.max(0, Math.floor(Number(src.totalRivalSabotage || 0))),
     lastSupplyAt:Math.max(0, Number(src.lastSupplyAt || 0)),
     activeEventId:String(src.activeEventId || ""),
     activeEventRegionId:String(src.activeEventRegionId || ""),
     activeCrisisId:String(src.activeCrisisId || ""),
     activeCrisisRegionId:String(src.activeCrisisRegionId || ""),
+    activeRivalRegionId:String(src.activeRivalRegionId || ""),
     lastEventSeed:String(src.lastEventSeed || ""),
     lastCrisisSeed:String(src.lastCrisisSeed || ""),
   };
@@ -8645,6 +8666,21 @@ function ensureWorldMapCampaignState(state=S){
     out.settlementInfluence[region.id] = clamp(Math.floor(Number(out.settlementInfluence[region.id] || 0)), 0, 100);
     out.regionIntel[region.id] = clamp(Math.floor(Number(out.regionIntel[region.id] || 0)), 0, 25);
     out.strategicChoices[region.id] = Array.isArray(out.strategicChoices[region.id]) ? out.strategicChoices[region.id].slice(-10) : [];
+    const factionSrc = (out.factionInfluence[region.id] && typeof out.factionInfluence[region.id] === "object") ? out.factionInfluence[region.id] : {};
+    const factionSaved = {
+      hq:clamp(Math.floor(Number(factionSrc.hq || 0)), 0, 100),
+      tigers:clamp(Math.floor(Number(factionSrc.tigers || 0)), 0, 100),
+      rivals:clamp(Math.floor(Number(factionSrc.rivals || 0)), 0, 100),
+      settlements:clamp(Math.floor(Number(factionSrc.settlements || 0)), 0, 100),
+    };
+    if((factionSaved.hq + factionSaved.tigers + factionSaved.rivals + factionSaved.settlements) <= 0){
+      factionSaved.tigers = clamp(Math.round(out.regionControl[region.id] * 0.75), 10, 82);
+      factionSaved.hq = clamp(18 + Math.floor(Number(out.defendedRegions[region.id] || 0)) * 9 + Math.floor((100 - out.regionControl[region.id]) / 5), 8, 72);
+      factionSaved.rivals = clamp(14 + Math.floor(Number(region.danger || 50) / 5) - Math.floor(Number(out.defendedRegions[region.id] || 0)) * 2, 6, 58);
+      factionSaved.settlements = clamp(Number(out.settlementInfluence[region.id] || 0), 0, 76);
+    }
+    out.factionInfluence[region.id] = factionSaved;
+    out.rivalSabotage[region.id] = clamp(Math.floor(Number(out.rivalSabotage[region.id] || 0)), 0, 100);
     const upgradeSrc = (out.regionUpgrades[region.id] && typeof out.regionUpgrades[region.id] === "object") ? out.regionUpgrades[region.id] : {};
     out.regionUpgrades[region.id] = {};
     for(const upgrade of WORLD_MAP_REGION_UPGRADES){
@@ -8744,6 +8780,7 @@ function updateWorldMapCampaignSpread(state=S, now=Date.now()){
     if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   }
   updateWorldMapSupplyLines(state, now);
+  updateWorldMapFactionControl(state, now);
   wm.lastUpdatedAt = now;
   return wm;
 }
@@ -9251,6 +9288,191 @@ function worldMapSupplyNetworkHtml(regionOrId){
     </div>
   `;
 }
+function worldMapFactionDef(id){
+  return WORLD_MAP_FACTIONS[String(id || "hq")] || WORLD_MAP_FACTIONS.hq;
+}
+function worldMapFactionInfluence(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  const wm = ensureWorldMapCampaignState(state);
+  if(!region) return { hq:0, tigers:0, rivals:0, settlements:0 };
+  const src = (wm.factionInfluence?.[region.id] && typeof wm.factionInfluence[region.id] === "object") ? wm.factionInfluence[region.id] : {};
+  return {
+    hq:clamp(Math.floor(Number(src.hq || 0)), 0, 100),
+    tigers:clamp(Math.floor(Number(src.tigers || 0)), 0, 100),
+    rivals:clamp(Math.floor(Number(src.rivals || 0)), 0, 100),
+    settlements:clamp(Math.floor(Number(src.settlements || 0)), 0, 100),
+  };
+}
+function worldMapRivalSabotageValue(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  const wm = ensureWorldMapCampaignState(state);
+  return region ? clamp(Math.floor(Number(wm.rivalSabotage?.[region.id] || 0)), 0, 100) : 0;
+}
+function worldMapControllingFaction(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return WORLD_MAP_FACTIONS.hq;
+  const wm = ensureWorldMapCampaignState(state);
+  const influence = worldMapFactionInfluence(region, state);
+  const control = worldMapControl(region, state);
+  const defended = Math.max(0, Math.floor(Number(wm.defendedRegions?.[region.id] || 0)));
+  const upgrades = worldMapRegionUpgradeTotal(region, state);
+  const settlement = worldMapSettlementInfluenceValue(region, state);
+  const sabotage = worldMapRivalSabotageValue(region, state);
+  const scores = {
+    hq:influence.hq + defended * 8 + upgrades * 1.5 + Math.max(0, 62 - control) * 0.35,
+    tigers:influence.tigers + control * 0.9 + (control >= 72 ? 14 : 0),
+    rivals:influence.rivals + sabotage + (control >= 38 && control <= 82 ? 10 : 0),
+    settlements:influence.settlements + settlement * 0.9 + (settlement >= 60 ? 12 : 0),
+  };
+  const id = Object.keys(scores).sort((a,b)=>scores[b] - scores[a])[0] || "hq";
+  return worldMapFactionDef(id);
+}
+function worldMapRivalPressure(regionOrId, state=S){
+  const influence = worldMapFactionInfluence(regionOrId, state);
+  return clamp(Math.round(Number(influence.rivals || 0) + worldMapRivalSabotageValue(regionOrId, state)), 0, 100);
+}
+function worldMapFactionLine(regionOrId, state=S){
+  const faction = worldMapControllingFaction(regionOrId, state);
+  const influence = worldMapFactionInfluence(regionOrId, state);
+  return `${faction.icon} Control: ${faction.name} • HQ ${influence.hq}% • Tigers ${influence.tigers}% • Rivals ${influence.rivals}% • Settlements ${influence.settlements}%`;
+}
+function worldMapRivalSabotageText(regionOrId, state=S){
+  const pressure = worldMapRivalPressure(regionOrId, state);
+  const sabotage = worldMapRivalSabotageValue(regionOrId, state);
+  if(pressure >= 72) return `Rival Sabotage HIGH ${sabotage}% • rivals can steal rewards and add objectives`;
+  if(pressure >= 45) return `Rival Sabotage ${sabotage}% • watch for rival interference`;
+  if(sabotage > 0) return `Rival Sabotage ${sabotage}% • mostly contained`;
+  return "Rival Sabotage 0% • no rival interference right now";
+}
+function updateWorldMapFactionControl(state=S, now=Date.now()){
+  const wm = ensureWorldMapCampaignState(state);
+  const last = Math.max(0, Number(wm.lastUpdatedAt || 0));
+  const elapsedHours = last ? clamp((now - last) / 3600000, 0, 10) : 0;
+  for(const region of WORLD_MAP_CAMPAIGN_REGIONS){
+    if(!worldMapRegionUnlocked(region, state)) continue;
+    const influence = worldMapFactionInfluence(region, state);
+    const control = worldMapControl(region, state);
+    const routeStats = worldMapRegionRouteStats(region, state);
+    const defended = Math.max(0, Math.floor(Number(wm.defendedRegions?.[region.id] || 0)));
+    const upgrades = worldMapRegionUpgradeTotal(region, state);
+    const settlement = worldMapSettlementInfluenceValue(region, state);
+    const crisis = worldMapCrisisForRegion(region, state);
+    const event = worldMapLiveEventForRegion(region, state);
+    const rivalPush = ((control >= 46 ? 0.5 : 0.12) + (routeStats.avgHealth < 55 ? 0.5 : 0) + (crisis ? 0.38 : 0) + (event ? 0.16 : 0)) * elapsedHours;
+    const hqPush = (defended * 0.18 + upgrades * 0.035 + Math.max(0, 58 - control) * 0.006) * elapsedHours;
+    const tigerPush = ((control >= 65 ? 0.35 : 0.08) + Number(region.danger || 50) * 0.002) * elapsedHours;
+    const settlementPush = (settlement * 0.012 + worldMapRegionUpgradeLevel(region, "safe_house", state) * 0.08) * elapsedHours;
+    influence.rivals = clamp(Math.round(influence.rivals + rivalPush - defended * 0.08 * elapsedHours), 0, 100);
+    influence.hq = clamp(Math.round(influence.hq + hqPush - (control >= 82 ? 0.4 * elapsedHours : 0)), 0, 100);
+    influence.tigers = clamp(Math.round(influence.tigers + tigerPush - defended * 0.15 * elapsedHours - upgrades * 0.025 * elapsedHours), 0, 100);
+    influence.settlements = clamp(Math.round(Math.max(influence.settlements, settlement) + settlementPush), 0, 100);
+    wm.factionInfluence[region.id] = influence;
+    const rivalScore = influence.rivals + (routeStats.avgHealth < 45 ? 10 : 0) + (control >= 65 ? 8 : 0);
+    if(rivalScore >= 58){
+      const beforeSabotage = worldMapRivalSabotageValue(region, state);
+      const nextSabotage = clamp(beforeSabotage + Math.ceil((rivalScore - 48) * 0.025 * Math.max(1, elapsedHours)), 0, 100);
+      wm.rivalSabotage[region.id] = nextSabotage;
+      if(beforeSabotage < 30 && nextSabotage >= 30) wm.totalRivalSabotage = Math.max(0, Math.floor(Number(wm.totalRivalSabotage || 0))) + 1;
+    }else if(wm.rivalSabotage[region.id] > 0){
+      wm.rivalSabotage[region.id] = clamp(Math.floor(Number(wm.rivalSabotage[region.id] || 0)) - Math.max(1, Math.floor((defended + upgrades / 3) * elapsedHours)), 0, 100);
+    }
+  }
+  return wm;
+}
+function worldMapRivalActionDef(actionId){
+  return WORLD_MAP_RIVAL_ACTIONS.find((action)=>action.id === actionId) || WORLD_MAP_RIVAL_ACTIONS[0];
+}
+function applyWorldMapRivalAction(regionId, actionId){
+  const region = worldMapRegionById(regionId);
+  const wm = updateWorldMapCampaignSpread(S);
+  if(!worldMapRegionUnlocked(region, S)){
+    toast(`${region.name} is still locked.`);
+    return false;
+  }
+  const action = worldMapRivalActionDef(actionId);
+  const defended = Math.max(0, Math.floor(Number(wm.defendedRegions?.[region.id] || 0)));
+  if(action.requiresDefended && defended <= 0){
+    toast("Outscore unlocks after you clear at least one mission in this region.");
+    return false;
+  }
+  const cost = Math.max(0, Math.floor(Number(action.cost || 0)));
+  if(cost > 0 && Math.floor(Number(S.funds || 0)) < cost){
+    toast(`Need $${Math.max(0, cost - Math.floor(Number(S.funds || 0))).toLocaleString()} more for ${action.name}.`);
+    return false;
+  }
+  if(cost > 0){
+    S.funds = Math.max(0, Math.floor(Number(S.funds || 0)) - cost);
+    if(S.mode) setModeWallet(S.mode, S.funds, S);
+    if(typeof trackCashSpent === "function") trackCashSpent(cost);
+  }
+  const influence = worldMapFactionInfluence(region, S);
+  const beforePressure = worldMapRivalPressure(region, S);
+  influence.rivals = clamp(influence.rivals - Math.floor(Number(action.rivalDrop || 0)), 0, 100);
+  influence.hq = clamp(influence.hq + Math.floor(Number(action.hqGain || 0)), 0, 100);
+  influence.settlements = clamp(influence.settlements + Math.floor(Number(action.settlementGain || 0)), 0, 100);
+  wm.factionInfluence[region.id] = influence;
+  wm.rivalSabotage[region.id] = clamp(worldMapRivalSabotageValue(region, S) - Math.floor(Number(action.rivalDrop || 0)) - 3, 0, 100);
+  if(action.controlDrop){
+    wm.regionControl[region.id] = clamp(Math.round(worldMapControl(region, S) - Number(action.controlDrop || 0)), 5, 96);
+  }
+  if(action.intelGain){
+    wm.regionIntel[region.id] = clamp(worldMapRegionIntelValue(region, S) + Math.floor(Number(action.intelGain || 0)), 0, 25);
+  }
+  if(action.routeRepair){
+    for(const neighborId of (region.neighbors || [])){
+      const key = worldMapSupplyRouteKey(region.id, neighborId);
+      const route = wm.supplyRoutes[key] || { health:100, lastDamagedAt:0, repaired:0 };
+      route.health = clamp(Math.round(Number(route.health ?? 100) + Number(action.routeRepair || 0)), 0, 100);
+      route.repaired = Math.max(0, Math.floor(Number(route.repaired || 0))) + 1;
+      wm.supplyRoutes[key] = route;
+    }
+  }
+  wm.totalRivalActions = Math.max(0, Math.floor(Number(wm.totalRivalActions || 0))) + 1;
+  wm.lastOutcome = `${region.name}: ${action.name} reduced rival pressure ${beforePressure}% → ${worldMapRivalPressure(region, S)}%.`;
+  renderWorldMapCampaign();
+  renderHUD();
+  toast(`${action.name}: ${region.name} rival pressure reduced.`);
+  save(true);
+  return false;
+}
+function worldMapFactionControlHtml(regionOrId){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return "";
+  const influence = worldMapFactionInfluence(region, S);
+  const faction = worldMapControllingFaction(region, S);
+  const sabotage = worldMapRivalSabotageValue(region, S);
+  const rivalPressure = worldMapRivalPressure(region, S);
+  const actions = WORLD_MAP_RIVAL_ACTIONS.map((action)=>{
+    const disabled = action.requiresDefended && Math.max(0, Number(ensureWorldMapCampaignState(S).defendedRegions?.[region.id] || 0)) <= 0;
+    const costText = Number(action.cost || 0) > 0 ? `$${Number(action.cost || 0).toLocaleString()}` : "Free";
+    return `
+      <button class="card ${disabled ? "" : "good"}" style="text-align:left;min-height:112px" onclick="applyWorldMapRivalAction('${region.id}','${action.id}')" ${disabled ? "disabled" : ""}>
+        <div class="hudTitle">${action.icon} ${worldMapEsc(action.name)}</div>
+        <div class="small">${worldMapEsc(action.desc)}</div>
+        <div class="small">Cost: ${costText} • rival -${Math.floor(Number(action.rivalDrop || 0))}%${action.routeRepair ? ` • routes +${action.routeRepair}%` : ""}</div>
+      </button>
+    `;
+  }).join("");
+  const bars = Object.keys(WORLD_MAP_FACTIONS).map((id)=>{
+    const def = worldMapFactionDef(id);
+    const amount = clamp(Math.floor(Number(influence[id] || 0)), 0, 100);
+    return `
+      <div class="small" style="margin-top:6px">${def.icon} ${worldMapEsc(def.name)} ${amount}%</div>
+      <div class="bar"><div class="fill" style="width:${amount}%;background:${def.color}"></div></div>
+    `;
+  }).join("");
+  return `
+    <div class="card" style="margin:10px 0;border-color:rgba(249,115,22,.50);background:linear-gradient(145deg,rgba(67,28,10,.72),rgba(8,15,26,.96))">
+      <div class="hudTitle">Phase 8 Faction Control + Rival Territory</div>
+      <div class="hudLine">${faction.icon} Current Controller: ${worldMapEsc(faction.name)} • Rival Pressure ${rivalPressure}%</div>
+      <div class="small">${worldMapEsc(faction.desc)}</div>
+      <div class="small">${worldMapEsc(worldMapRivalSabotageText(region, S))}</div>
+      ${bars}
+      <div class="small" style="margin-top:8px">Sabotage level ${sabotage}% can reduce strategic rewards and add rival objectives before deployment.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${actions}</div>
+    </div>
+  `;
+}
 function refreshWorldMapLiveEvents(state=S, now=Date.now()){
   const wm = ensureWorldMapCampaignState(state);
   const seed = worldMapPhase3Seed(now, state);
@@ -9457,7 +9679,14 @@ function worldMapCampaignPhaseOneStats(wm=ensureWorldMapCampaignState(S)){
   const routeHealth = unlocked.length ? Math.round(unlocked.reduce((sum, region)=>sum + worldMapRegionRouteStats(region, S).avgHealth, 0) / unlocked.length) : 100;
   const storedSupplyCash = unlocked.reduce((sum, region)=>sum + worldMapRegionalSupply(region, S).cash, 0);
   const brokenRoutes = unlocked.reduce((sum, region)=>sum + worldMapRegionRouteStats(region, S).broken, 0);
-  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg, intel, crisis, crisisRegions, upgradeCount, upgradeSpend, routeHealth, storedSupplyCash, brokenRoutes };
+  const factionCounts = { hq:0, tigers:0, rivals:0, settlements:0 };
+  for(const region of unlocked){
+    const faction = worldMapControllingFaction(region, S);
+    factionCounts[faction.id] = Math.max(0, Math.floor(Number(factionCounts[faction.id] || 0))) + 1;
+  }
+  const rivalZones = factionCounts.rivals || 0;
+  const rivalPressureAvg = unlocked.length ? Math.round(unlocked.reduce((sum, region)=>sum + worldMapRivalPressure(region, S), 0) / unlocked.length) : 0;
+  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg, intel, crisis, crisisRegions, upgradeCount, upgradeSpend, routeHealth, storedSupplyCash, brokenRoutes, factionCounts, rivalZones, rivalPressureAvg };
 }
 function worldMapNeighborPathHtml(region){
   const neighbors = (region?.neighbors || []).map((id)=>worldMapRegionById(id)).filter(Boolean);
@@ -9480,7 +9709,11 @@ function worldMapRegionReward(region, control=worldMapControl(region, S), missio
   const bossMul = opts.bossResolved ? 1.15 : (opts.bossReady ? 1.06 : 1);
   const settlementMul = 1 + Math.min(0.12, worldMapSettlementInfluenceValue(region, S) / 500);
   const upgradeMul = worldMapRegionUpgradeEffects(region, S).rewardMul || 1;
-  const rewardMul = clamp(eventMul * crisisMul * bossMul * settlementMul * upgradeMul, 0.85, 1.65);
+  const faction = worldMapControllingFaction(region, S);
+  const rivalPressure = worldMapRivalPressure(region, S);
+  const factionMul = faction.id === "hq" ? 1.04 : (faction.id === "settlements" ? 1.03 : (faction.id === "rivals" ? 0.92 : 0.98));
+  const sabotageMul = clamp(1 - Math.min(0.14, rivalPressure / 720), 0.86, 1);
+  const rewardMul = clamp(eventMul * crisisMul * bossMul * settlementMul * upgradeMul * factionMul * sabotageMul, 0.78, 1.65);
   const cash = clamp(Math.round((850 + level * 32 + Number(control || 0) * 16 + performance * 220) * rewardMul), 900, 8500);
   const xp = clamp(Math.round((70 + level * 3 + Number(control || 0) * 1.1 + performance * 18) * rewardMul), 90, 650);
   const passPoints = clamp(Math.round((4 + controlTier * 2 + Math.floor(performance / 2)) * Math.min(1.18, rewardMul)), 4, 14);
@@ -9581,6 +9814,7 @@ function worldMapRegionCardHtml(region){
   const crisisDef = crisis ? worldMapCrisisDef(crisis.typeId) : null;
   const boss = worldMapBossChainState(region, S);
   const bossReady = Number(boss.progress || 0) >= 3;
+  const faction = worldMapControllingFaction(region, S);
   const reward = worldMapRegionReward(region, control, null, {
     eventMul:eventDef?.rewardMul || 1,
     crisisMul:crisisDef?.rewardMul || 1,
@@ -9598,11 +9832,13 @@ function worldMapRegionCardHtml(region){
       ${crisisDef ? `<div class="small">CRISIS: ${crisisDef.icon} ${worldMapEsc(crisisDef.name)} • x${Number(crisisDef.rewardMul || 1).toFixed(2)} reward</div>` : ""}
       <div class="small">${worldMapEsc(worldMapBossChainText(region, S))}</div>
       <div class="small">${worldMapEsc(worldMapSettlementLine(region, S))}</div>
+      <div class="small">${worldMapEsc(worldMapFactionLine(region, S))}</div>
+      <div class="small">${worldMapEsc(worldMapRivalSabotageText(region, S))}</div>
       <div class="small">Upgrades: ${worldMapRegionUpgradeTotal(region, S)}/${WORLD_MAP_REGION_UPGRADES.length * 5} • ${worldMapEsc(worldMapRegionUpgradeSummary(region, S))}</div>
       <div class="small">${worldMapEsc(worldMapSupplyLineText(region, S))} • Stored: ${worldMapEsc(worldMapSupplyText(region, S))}</div>
       <div class="small">Intel ${worldMapRegionIntelValue(region, S)}/25 • Choices: ${worldMapEsc(worldMapStrategicChoiceHistoryText(region, S))}</div>
       <div class="small">${worldMapEsc(region.theme)}</div>
-      <div class="small">Reward: ${worldMapEsc(worldMapRewardText(reward))}</div>
+      <div class="small">Reward: ${worldMapEsc(worldMapRewardText(reward))} • ${faction.icon} ${worldMapEsc(faction.name)}</div>
       <div class="small">${tags}</div>
     </button>
   `;
@@ -9630,6 +9866,8 @@ function renderWorldMapCampaign(){
   const selectedBossReady = Number(selectedBoss.progress || 0) >= 3;
   const selectedInfluence = worldMapSettlementInfluenceValue(selected, S);
   const selectedIntel = worldMapRegionIntelValue(selected, S);
+  const selectedFaction = worldMapControllingFaction(selected, S);
+  const selectedRivalPressure = worldMapRivalPressure(selected, S);
   const rewardPreview = worldMapRegionReward(selected, selectedControl, null, {
     eventMul:selectedEventDef?.rewardMul || 1,
     crisisMul:selectedCrisisDef?.rewardMul || 1,
@@ -9642,13 +9880,14 @@ function renderWorldMapCampaign(){
     const event = worldMapLiveEventForRegion(region, S);
     const crisis = worldMapCrisisForRegion(region, S);
     const bossReady = worldMapBossChainState(region, S).progress >= 3;
-    const icon = unlocked ? (crisis ? worldMapCrisisDef(crisis.typeId).icon : (event ? worldMapLiveEventDef(event.typeId).icon : (bossReady ? "👑" : "🐅"))) : "🔒";
-    return `<button title="${worldMapEsc(region.name)}" onclick="selectWorldMapRegion('${region.id}')" style="position:absolute;left:${region.x}%;top:${region.y}%;transform:translate(-50%,-50%);width:46px;height:46px;border-radius:999px;border:2px solid ${color};background:rgba(15,23,42,.86);color:#fff;font-weight:900;${selectedClass}">${icon}</button>`;
+    const faction = worldMapControllingFaction(region, S);
+    const icon = unlocked ? (crisis ? worldMapCrisisDef(crisis.typeId).icon : (event ? worldMapLiveEventDef(event.typeId).icon : (bossReady ? "👑" : faction.icon))) : "🔒";
+    return `<button title="${worldMapEsc(region.name)} • ${worldMapEsc(faction.name)}" onclick="selectWorldMapRegion('${region.id}')" style="position:absolute;left:${region.x}%;top:${region.y}%;transform:translate(-50%,-50%);width:46px;height:46px;border-radius:999px;border:2px solid ${unlocked ? faction.color : color};background:rgba(15,23,42,.86);color:#fff;font-weight:900;${selectedClass}">${icon}</button>`;
   }).join("");
   const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
   const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
   root.innerHTML = `
-    <div class="hudLine"><b>Phase 7:</b> connected regions now run supply routes that generate cash, ammo, medkits, and armor while tiger control can damage the network.</div>
+    <div class="hudLine"><b>Phase 8:</b> HQ, tigers, rivals, and settlements now compete for territory. Rival zones can sabotage rewards until you fight, negotiate, or outscore them.</div>
     ${worldMapPendingChoiceHtml(wm)}
     ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
     ${wm.lastOutcome ? `<div class="card" style="margin-top:10px;border-color:rgba(74,222,128,.44)"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
@@ -9672,6 +9911,10 @@ function renderWorldMapCampaign(){
       <div class="card"><div class="small">Broken Routes</div><div class="hudTitle">${stats.brokenRoutes}</div></div>
       <div class="card"><div class="small">Stored Supplies</div><div class="hudTitle">$${Number(stats.storedSupplyCash || 0).toLocaleString()}</div></div>
       <div class="card"><div class="small">Supply Claims</div><div class="hudTitle">${Number(wm.totalSupplyClaims || 0)}</div></div>
+      <div class="card"><div class="small">HQ Control</div><div class="hudTitle">${Number(stats.factionCounts?.hq || 0)}</div></div>
+      <div class="card"><div class="small">Tiger Control</div><div class="hudTitle">${Number(stats.factionCounts?.tigers || 0)}</div></div>
+      <div class="card"><div class="small">Rival Zones</div><div class="hudTitle">${Number(stats.rivalZones || 0)}</div></div>
+      <div class="card"><div class="small">Rival Pressure</div><div class="hudTitle">${Number(stats.rivalPressureAvg || 0)}%</div></div>
     </div>
     <div style="position:relative;height:260px;border:1px solid rgba(96,165,250,.35);border-radius:22px;overflow:hidden;background:radial-gradient(circle at 25% 30%,rgba(34,197,94,.22),transparent 26%),radial-gradient(circle at 74% 42%,rgba(59,130,246,.20),transparent 30%),linear-gradient(145deg,#07111f,#10243a 55%,#1e293b);margin:10px 0 12px">
       <div style="position:absolute;inset:18px;border:1px dashed rgba(191,219,254,.20);border-radius:20px"></div>
@@ -9691,6 +9934,8 @@ function renderWorldMapCampaign(){
         <div class="small"><b>Crisis Unlocks:</b> ${worldMapEsc(worldMapCrisisRewardsOwnedText(wm))}</div>
         <div class="small"><b>Boss Chain:</b> ${worldMapEsc(worldMapBossChainText(selected, S))}</div>
         <div class="small"><b>Settlement:</b> ${worldMapEsc(worldMapSettlementLine(selected, S))}</div>
+        <div class="small"><b>Faction:</b> ${worldMapEsc(worldMapFactionLine(selected, S))}</div>
+        <div class="small"><b>Rivals:</b> ${worldMapEsc(worldMapRivalSabotageText(selected, S))}</div>
         <div class="small"><b>Intel:</b> ${selectedIntel}/25 • slows spread and reveals safer pressure routes.</div>
         <div class="small"><b>Upgrade Network:</b> ${worldMapEsc(worldMapRegionUpgradeSummary(selected, S))}</div>
         <div class="small"><b>Supply Lines:</b> ${worldMapEsc(worldMapSupplyLineText(selected, S))}</div>
@@ -9701,7 +9946,7 @@ function renderWorldMapCampaign(){
         <div class="small"><b>Connected Regions:</b> ${worldMapNeighborPathHtml(selected)}</div>
       </div>
       <div class="card">
-        <div class="hudTitle">Phase 7 Deploy Plan</div>
+        <div class="hudTitle">Phase 8 Deploy Plan</div>
         <div class="hudLine">Story Mission ${worldMapRegionMissionLevel(selected, S)}/100 • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
         <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
         <div class="small">Extraction: ${worldMapEsc(extractionType)}</div>
@@ -9712,6 +9957,8 @@ function renderWorldMapCampaign(){
         <div class="small">Settlement support: ${selectedInfluence}% influence adds regional control relief.</div>
         <div class="small">Upgrade support: ${worldMapEsc(worldMapRegionUpgradeSummary(selected, S))}</div>
         <div class="small">Supply route status: ${worldMapEsc(worldMapSupplyLineText(selected, S))}</div>
+        <div class="small">Faction controller: ${selectedFaction.icon} ${worldMapEsc(selectedFaction.name)} • Rival pressure ${selectedRivalPressure}%.</div>
+        <div class="small">Rival objective risk: ${selectedRivalPressure >= 70 ? "High sabotage chance. Consider Fight or Negotiate before deploying." : (selectedRivalPressure >= 45 ? "Moderate interference risk." : "Low interference risk.")}</div>
         <div class="small">Post-mission choice: after a clear, pick one strategic priority to shape this region.</div>
         <div class="small">Region reward: ${worldMapEsc(worldMapRewardText(rewardPreview))}</div>
         <div class="small">Reward focus: ${worldMapEsc(selected.reward)} • Mission Rewards 2.0 still controls core payout.</div>
@@ -9722,6 +9969,7 @@ function renderWorldMapCampaign(){
         </div>
       </div>
     </div>
+    ${worldMapFactionControlHtml(selected)}
     ${worldMapSupplyNetworkHtml(selected)}
     ${worldMapRegionUpgradeHtml(selected)}
     <div class="divider"></div>
@@ -9809,14 +10057,17 @@ function startWorldMapRegionMission(id){
   wm.activeEventRegionId = event?.regionId || "";
   wm.activeCrisisId = crisis?.id || "";
   wm.activeCrisisRegionId = crisis ? region.id : "";
+  wm.activeRivalRegionId = worldMapRivalPressure(region, S) >= 45 ? region.id : "";
   if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
-  const overlay = document.getElementById("worldMapCampaignOverlay");
-  if(overlay) overlay.style.display = "none";
-  __returnToBaseHqAfterOverlay = false;
+  clearBaseHqReturnForMissionLaunch();
   beginMissionTransitionGuard("world-map-deploy", 1400);
-  deploy();
+  __gameplayLoadingGuardArmed = true;
+  deploy({ skipBrief:true, skipStoryScene:true, source:"world-map", carryStats:false });
   const eventDef = event ? worldMapLiveEventDef(event.typeId) : null;
   const crisisDef = crisis ? worldMapCrisisDef(crisis.typeId) : null;
+  if(wm.activeRivalRegionId === region.id){
+    setEventText(`🟠 Rival territory: ${worldMapRivalSabotageText(region, S)}. Fight, negotiate, or outscore them on the World Map.`, 7);
+  }
   toast(`Deploying to ${region.name}${crisisDef ? ` • ${crisisDef.name}` : (eventDef ? ` • ${eventDef.name}` : "")}. Tiger control ${worldMapControl(region, S)}%.`);
   save(true);
   return false;
@@ -9836,6 +10087,7 @@ function openMissionBriefFromWorldMap(){
   const crisis = worldMapCrisisForRegion(region, S);
   wm.activeCrisisId = crisis?.id || "";
   wm.activeCrisisRegionId = crisis ? region.id : "";
+  wm.activeRivalRegionId = worldMapRivalPressure(region, S) >= 45 ? region.id : "";
   const overlay = document.getElementById("worldMapCampaignOverlay");
   if(overlay) overlay.style.display = "none";
   __returnToBaseHqAfterOverlay = false;
@@ -9894,6 +10146,14 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
     route.health = clamp(Math.round(Number(route.health ?? 100) + routeRepairGain), 0, 100);
     wm.supplyRoutes[key] = route;
   }
+  const faction = worldMapFactionInfluence(region, S);
+  const rivalBefore = worldMapRivalPressure(region, S);
+  faction.hq = clamp(faction.hq + 8 + Math.floor(evac / 3) + (perfectRescue ? 4 : 0), 0, 100);
+  faction.tigers = clamp(faction.tigers - 8 - Math.floor((captures + kills) / 5), 0, 100);
+  faction.rivals = clamp(faction.rivals - 5 - Math.floor(captures / 6) - (activeEventDef ? 2 : 0), 0, 100);
+  faction.settlements = clamp(faction.settlements + Math.floor(settlementGain * 1.2), 0, 100);
+  wm.factionInfluence[region.id] = faction;
+  wm.rivalSabotage[region.id] = clamp(worldMapRivalSabotageValue(region, S) - 6 - Math.floor(evac / 4), 0, 100);
   wm.defendedRegions[region.id] = Math.max(0, Math.floor(Number(wm.defendedRegions[region.id] || 0))) + 1;
   wm.completedMissions[region.id] = Math.max(0, Math.floor(Number(wm.completedMissions[region.id] || 0))) + 1;
   const bossProgressGain = 1 + Math.max(0, Math.floor(Number(activeEventDef?.boss || 0))) + (worldMapRegionMissionType(region) === "Tiger Den Raid" ? 1 : 0);
@@ -9969,10 +10229,12 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   if(intelRelief > 0) notes.push(`intel network -${intelRelief}% pressure`);
   if(upgradeRelief > 0) notes.push(`regional upgrades -${upgradeRelief}% pressure`);
   if(routeRepairGain > 0) notes.push(`supply routes +${routeRepairGain}%`);
+  if(rivalBefore > worldMapRivalPressure(region, S)) notes.push(`rival pressure ${rivalBefore}% → ${worldMapRivalPressure(region, S)}%`);
   wm.activeEventId = "";
   wm.activeEventRegionId = "";
   wm.activeCrisisId = "";
   wm.activeCrisisRegionId = "";
+  wm.activeRivalRegionId = "";
   wm.pendingChoice = {
     regionId:region.id,
     createdAt:Date.now(),
@@ -28150,6 +28412,20 @@ function returnToBaseHqFromOverlay(){
   toast("Returned to Base HQ.");
   syncGamepadFocus();
 }
+function clearBaseHqReturnForMissionLaunch(){
+  __returnToBaseHqAfterOverlay = false;
+  __baseHqReturnRoom = "mission";
+  if(typeof leaveBaseHqView === "function") leaveBaseHqView({ restoreMenu:true });
+  ["baseHqOverlay","worldMapCampaignOverlay","missionBriefOverlay","missionCinemaOverlay","storyIntroOverlay","modeOverlay","shopOverlay","invOverlay"].forEach((id)=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = "none";
+  });
+  closeMissionBrief?.(true);
+  clearMissionBriefTimer?.();
+  clearStoryIntroAutoTimer?.();
+  __dailyRewardContinue = null;
+  setPaused(false, null);
+}
 function openBaseHQ(opts={}){
   if(window.__TUTORIAL_MODE__) return toast("Finish the tutorial first.");
   ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
@@ -33545,10 +33821,10 @@ function deploy(opts={}){
     else applyStoryCampaignPersistentEffects();
   }
   prepareLiveOpsModifierCardsForMission(S);
-  const storySceneShown = S.mode === "Story" && __launchIntroShownThisBoot && !storyCampaignStartupOverlayVisible()
+  const storySceneShown = !opts.skipStoryScene && S.mode === "Story" && __launchIntroShownThisBoot && !storyCampaignStartupOverlayVisible()
     ? showStoryCampaignScene(false)
     : false;
-  const missionBriefShown = !storySceneShown && shouldShowMissionBrief()
+  const missionBriefShown = !opts.skipBrief && !storySceneShown && shouldShowMissionBrief()
     ? (showMissionCinematicIntro(()=>showMissionBrief(rand(2200, 3000))) || showMissionBrief(rand(2200, 3000)))
     : false;
   if(!missionBriefShown && !storySceneShown) {
@@ -46961,8 +47237,13 @@ function requestStartupLoadingFinalization(reason="ready"){
   __startupLoadingGuard.percent = 100;
   __startupLoadingGuard.stage = "ready";
   __startupLoadingGuard.pendingReleaseReason = reason;
-  if(!Number(__startupLoadingGuard.finalizingStartedAt || 0)) __startupLoadingGuard.finalizingStartedAt = now;
-  __startupLoadingGuard.finalizingUntil = Math.max(Number(__startupLoadingGuard.finalizingUntil || 0), now + STARTUP_LOADING_FINALIZE_MS);
+  if(!Number(__startupLoadingGuard.finalizingStartedAt || 0)){
+    __startupLoadingGuard.finalizingStartedAt = now;
+    __startupLoadingGuard.finalizingUntil = now + STARTUP_LOADING_FINALIZE_MS;
+  }else{
+    const started = Number(__startupLoadingGuard.finalizingStartedAt || now);
+    __startupLoadingGuard.finalizingUntil = Math.max(Number(__startupLoadingGuard.finalizingUntil || 0), started + STARTUP_LOADING_FINALIZE_MS);
+  }
   updateStartupLoadingOverlay(true);
 }
 
@@ -48352,6 +48633,7 @@ window.setWorldMapActiveRegion = setWorldMapActiveRegion;
 window.startWorldMapRegionMission = startWorldMapRegionMission;
 window.openMissionBriefFromWorldMap = openMissionBriefFromWorldMap;
 window.applyWorldMapStrategicChoice = applyWorldMapStrategicChoice;
+window.applyWorldMapRivalAction = applyWorldMapRivalAction;
 window.buyWorldMapRegionUpgrade = buyWorldMapRegionUpgrade;
 window.claimWorldMapRegionalSupplies = claimWorldMapRegionalSupplies;
 window.repairWorldMapSupplyRoutes = repairWorldMapSupplyRoutes;
