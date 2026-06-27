@@ -8549,6 +8549,19 @@ const WORLD_MAP_RIVAL_ACTIONS = Object.freeze([
   Object.freeze({ id:"negotiate", icon:"🤝", name:"Negotiate", desc:"Buy temporary cooperation and repair nearby supply lines.", cost:28000, rivalDrop:8, settlementGain:3, routeRepair:8 }),
   Object.freeze({ id:"outscore", icon:"🏆", name:"Outscore", desc:"Use recent mission success to beat rivals publicly.", cost:0, rivalDrop:10, hqGain:5, intelGain:1, requiresDefended:true }),
 ]);
+const WORLD_MAP_SEASON_GOALS = Object.freeze([
+  Object.freeze({ id:"defend_all", icon:"🛡️", name:"Defend Every Region", desc:"Clear at least one mission in every unlocked world region.", cash:65000, xp:900, passPoints:55, rare:"Guardian of All Regions Trophy" }),
+  Object.freeze({ id:"boss_chains", icon:"👑", name:"Clear Boss Chains", desc:"Resolve 3 regional Alpha or Nemesis boss chains this season.", target:3, cash:80000, xp:1200, passPoints:70, rare:"Alpha Chainbreaker Title" }),
+  Object.freeze({ id:"regional_upgrades", icon:"🏗️", name:"Max Regional Infrastructure", desc:"Build 12 total regional upgrade levels across the campaign map.", target:12, cash:55000, xp:750, passPoints:45, rare:"Command Architect Badge" }),
+  Object.freeze({ id:"crisis_ladder", icon:"🌍", name:"Win Crisis Ladder", desc:"Resolve 3 map-wide crisis events this season.", target:3, cash:90000, xp:1300, passPoints:75, rare:"Crisis Commander Trophy" }),
+  Object.freeze({ id:"rival_control", icon:"🟠", name:"Break Rival Territory", desc:"Complete 5 rival-control actions or clear rival-invaded missions.", target:5, cash:52000, xp:700, passPoints:40, rare:"Rivalbreaker Patch" }),
+]);
+const WORLD_MAP_WEEKLY_LADDER = Object.freeze([
+  Object.freeze({ id:"w1", points:40, name:"Recon Rank", cash:12000, xp:180, passPoints:10 }),
+  Object.freeze({ id:"w2", points:95, name:"Defender Rank", cash:28000, xp:360, passPoints:22 }),
+  Object.freeze({ id:"w3", points:165, name:"Crisis Rank", cash:52000, xp:620, passPoints:38 }),
+  Object.freeze({ id:"w4", points:260, name:"Nemesis Rank", cash:85000, xp:950, passPoints:60, rare:"Weekly Nemesis Trophy" }),
+]);
 function defaultWorldMapCampaignState(){
   return {
     version:2,
@@ -8577,6 +8590,20 @@ function defaultWorldMapCampaignState(){
     regionalSupplies:{},
     factionInfluence:{},
     rivalSabotage:{},
+    season:{
+      seasonId:"",
+      weekKey:"",
+      points:0,
+      weeklyPoints:0,
+      weeklyClaimed:{},
+      claimedGoals:{},
+      rareUnlocks:{},
+      nemesisInvasions:{},
+      regionScores:{},
+      totalNemesisInvasionsCleared:0,
+      totalSeasonCash:0,
+      totalSeasonPass:0,
+    },
     unlockedRegionIds:["river_gate"],
     totalRewardCash:0,
     totalRewardXp:0,
@@ -8626,6 +8653,7 @@ function ensureWorldMapCampaignState(state=S){
     regionalSupplies:(src.regionalSupplies && typeof src.regionalSupplies === "object") ? src.regionalSupplies : {},
     factionInfluence:(src.factionInfluence && typeof src.factionInfluence === "object") ? src.factionInfluence : {},
     rivalSabotage:(src.rivalSabotage && typeof src.rivalSabotage === "object") ? src.rivalSabotage : {},
+    season:(src.season && typeof src.season === "object") ? src.season : {},
     unlockedRegionIds:Array.isArray(src.unlockedRegionIds) ? src.unlockedRegionIds.map(String) : ["river_gate"],
     totalRewardCash:Math.max(0, Math.floor(Number(src.totalRewardCash || 0))),
     totalRewardXp:Math.max(0, Math.floor(Number(src.totalRewardXp || 0))),
@@ -8704,6 +8732,7 @@ function ensureWorldMapCampaignState(state=S){
     }
   }
   if(out.pendingChoice && !worldMapRegionById(out.pendingChoice.regionId)) out.pendingChoice = null;
+  out.season = normalizeWorldMapSeasonState(out.season);
   if(out.activeCrisis){
     const crisisRegions = Array.isArray(out.activeCrisis.regionIds) ? out.activeCrisis.regionIds.map(String).filter(Boolean) : [];
     out.activeCrisis = {
@@ -8774,8 +8803,10 @@ function updateWorldMapCampaignSpread(state=S, now=Date.now()){
     const upgradeRelief = Math.min(6, Math.max(0, Number(upgradeEffects.spreadRelief || 0)) * elapsedHours);
     const crisis = worldMapActiveCrisis(state, now);
     const crisisDef = crisis?.regionIds?.includes(region.id) ? worldMapCrisisDef(crisis.typeId) : null;
+    const invasion = worldMapNemesisInvasionForRegion(region, state);
     const crisisPush = Math.max(0, (crisisDef ? Number(crisisDef.pressurePush || 0) : 0) - Math.max(0, Number(upgradeEffects.crisisRelief || 0)) * 0.03);
-    const spread = (baseSpread + neighborPush + crisisPush) * elapsedHours;
+    const invasionPush = invasion ? 0.24 : 0;
+    const spread = (baseSpread + neighborPush + crisisPush + invasionPush) * elapsedHours;
     wm.regionControl[region.id] = clamp(Math.round(current + spread - defendedRelief - activeRelief - settlementRelief - intelRelief - upgradeRelief), 5, 96);
     if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   }
@@ -8813,6 +8844,249 @@ function worldMapStableHash(text){
     hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
   }
   return Math.abs(hash);
+}
+function worldMapSeasonId(now=Date.now()){
+  const d = new Date(Number(now || Date.now()));
+  const year = Number.isFinite(d.getFullYear()) ? d.getFullYear() : 2026;
+  const quarter = Math.floor((Number.isFinite(d.getMonth()) ? d.getMonth() : 0) / 3) + 1;
+  return `world-s${year}-q${quarter}`;
+}
+function worldMapWeekKey(now=Date.now()){
+  if(typeof weeklyChallengeWeekKey === "function") return weeklyChallengeWeekKey();
+  const d = new Date(Number(now || Date.now()));
+  const start = new Date(d.getFullYear(), 0, 1);
+  const dayMs = 86400000;
+  const week = Math.max(1, Math.ceil((((d - start) / dayMs) + start.getDay() + 1) / 7));
+  return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+function normalizeWorldMapSeasonState(src={}, now=Date.now()){
+  const seasonId = worldMapSeasonId(now);
+  const weekKey = worldMapWeekKey(now);
+  const source = (src && typeof src === "object") ? src : {};
+  const sameSeason = String(source.seasonId || "") === seasonId;
+  const sameWeek = sameSeason && String(source.weekKey || "") === weekKey;
+  return {
+    seasonId,
+    weekKey,
+    points:sameSeason ? Math.max(0, Math.floor(Number(source.points || 0))) : 0,
+    weeklyPoints:sameWeek ? Math.max(0, Math.floor(Number(source.weeklyPoints || 0))) : 0,
+    weeklyClaimed:sameWeek && source.weeklyClaimed && typeof source.weeklyClaimed === "object" ? source.weeklyClaimed : {},
+    claimedGoals:sameSeason && source.claimedGoals && typeof source.claimedGoals === "object" ? source.claimedGoals : {},
+    rareUnlocks:sameSeason && source.rareUnlocks && typeof source.rareUnlocks === "object" ? source.rareUnlocks : {},
+    nemesisInvasions:sameWeek && source.nemesisInvasions && typeof source.nemesisInvasions === "object" ? source.nemesisInvasions : {},
+    regionScores:sameSeason && source.regionScores && typeof source.regionScores === "object" ? source.regionScores : {},
+    totalNemesisInvasionsCleared:sameSeason ? Math.max(0, Math.floor(Number(source.totalNemesisInvasionsCleared || 0))) : 0,
+    totalSeasonCash:sameSeason ? Math.max(0, Math.floor(Number(source.totalSeasonCash || 0))) : 0,
+    totalSeasonPass:sameSeason ? Math.max(0, Math.floor(Number(source.totalSeasonPass || 0))) : 0,
+  };
+}
+function ensureWorldMapSeasonState(wm=ensureWorldMapCampaignState(S)){
+  wm.season = normalizeWorldMapSeasonState(wm.season);
+  return wm.season;
+}
+function worldMapSeasonAddProgress(points, reason="World Map"){
+  const wm = ensureWorldMapCampaignState(S);
+  const season = ensureWorldMapSeasonState(wm);
+  const add = Math.max(0, Math.floor(Number(points || 0)));
+  if(add <= 0) return season;
+  season.points += add;
+  season.weeklyPoints += add;
+  wm.lastOutcome = `${wm.lastOutcome || ""}${wm.lastOutcome ? " " : ""}Season +${add} pts (${reason}).`.trim();
+  return season;
+}
+function refreshWorldMapNemesisInvasions(state=S, now=Date.now()){
+  const wm = ensureWorldMapCampaignState(state);
+  const season = ensureWorldMapSeasonState(wm);
+  const unlocked = WORLD_MAP_CAMPAIGN_REGIONS.filter((region)=>worldMapRegionUnlocked(region, state));
+  if(unlocked.length <= 0) return season.nemesisInvasions;
+  const seed = `${season.weekKey}:${Math.floor(worldMapStoryLevel(state) / 6)}:phase9`;
+  const ranked = unlocked
+    .map((region)=>({
+      region,
+      score:worldMapStableHash(`${seed}:${region.id}`) + worldMapControl(region, state) + worldMapRivalPressure(region, state),
+    }))
+    .sort((a,b)=>b.score - a.score);
+  const count = clamp(1 + Math.floor(worldMapStoryLevel(state) / 40), 1, 3);
+  const next = {};
+  ranked.slice(0, count).forEach((entry, index)=>{
+    const existing = season.nemesisInvasions?.[entry.region.id];
+    next[entry.region.id] = {
+      id:`${season.weekKey}:${entry.region.id}:nemesis-${index}`,
+      regionId:entry.region.id,
+      bossName:WORLD_MAP_BOSS_CHAIN_NAMES[entry.region.id] || `${entry.region.name} Nemesis`,
+      level:clamp(2 + Math.floor(worldMapStoryLevel(state) / 12) + index, 2, 12),
+      cleared:!!existing?.cleared,
+      rewardClaimed:!!existing?.rewardClaimed,
+    };
+  });
+  season.nemesisInvasions = next;
+  return season.nemesisInvasions;
+}
+function worldMapNemesisInvasionForRegion(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return null;
+  const invasions = refreshWorldMapNemesisInvasions(state);
+  const invasion = invasions?.[region.id];
+  return invasion && !invasion.cleared ? invasion : null;
+}
+function worldMapSeasonGoalProgress(goalId, wm=ensureWorldMapCampaignState(S)){
+  const unlocked = WORLD_MAP_CAMPAIGN_REGIONS.filter((region)=>worldMapRegionUnlocked(region, S));
+  if(goalId === "defend_all"){
+    const total = Math.max(1, unlocked.length);
+    const done = unlocked.filter((region)=>Math.max(0, Number(wm.defendedRegions?.[region.id] || 0)) > 0).length;
+    return { done, total, ready:done >= total };
+  }
+  if(goalId === "boss_chains"){
+    const done = unlocked.reduce((sum, region)=>sum + Math.max(0, Math.floor(Number(wm.bossChains?.[region.id]?.resolved || 0))), 0);
+    return { done, total:3, ready:done >= 3 };
+  }
+  if(goalId === "regional_upgrades"){
+    const done = unlocked.reduce((sum, region)=>sum + worldMapRegionUpgradeTotal(region, S), 0);
+    return { done, total:12, ready:done >= 12 };
+  }
+  if(goalId === "crisis_ladder"){
+    const done = Math.max(0, Math.floor(Number(wm.totalCrisisResolved || 0)));
+    return { done, total:3, ready:done >= 3 };
+  }
+  if(goalId === "rival_control"){
+    const season = ensureWorldMapSeasonState(wm);
+    const done = Math.max(0, Math.floor(Number(wm.totalRivalActions || 0))) + Math.max(0, Math.floor(Number(season.totalNemesisInvasionsCleared || 0)));
+    return { done, total:5, ready:done >= 5 };
+  }
+  return { done:0, total:1, ready:false };
+}
+function claimWorldMapSeasonGoal(goalId){
+  const wm = ensureWorldMapCampaignState(S);
+  const season = ensureWorldMapSeasonState(wm);
+  const goal = WORLD_MAP_SEASON_GOALS.find((entry)=>entry.id === goalId) || WORLD_MAP_SEASON_GOALS[0];
+  const progress = worldMapSeasonGoalProgress(goal.id, wm);
+  if(season.claimedGoals?.[goal.id]){
+    toast(`${goal.name} already claimed.`);
+    return false;
+  }
+  if(!progress.ready){
+    toast(`${goal.name}: ${progress.done}/${progress.total} complete.`);
+    return false;
+  }
+  S.funds = Math.max(0, Math.floor(Number(S.funds || 0)) + Math.floor(Number(goal.cash || 0)));
+  if(S.mode) setModeWallet(S.mode, S.funds, S);
+  if(typeof trackCashEarned === "function") trackCashEarned(goal.cash || 0);
+  if(goal.xp) addXP(Math.floor(Number(goal.xp || 0)));
+  if(goal.passPoints) grantSeasonPassPoints(Math.floor(Number(goal.passPoints || 0)), `World Map season goal: ${goal.name}`);
+  season.claimedGoals[goal.id] = Date.now();
+  season.rareUnlocks[goal.rare] = Math.max(0, Math.floor(Number(season.rareUnlocks?.[goal.rare] || 0))) + 1;
+  season.totalSeasonCash += Math.floor(Number(goal.cash || 0));
+  season.totalSeasonPass += Math.floor(Number(goal.passPoints || 0));
+  wm.lastOutcome = `Season goal claimed: ${goal.name} • rare ${goal.rare}.`;
+  renderWorldMapCampaign();
+  renderHUD();
+  toast(`${goal.name} claimed.`);
+  save(true);
+  return false;
+}
+function claimWorldMapWeeklyLadder(tierId){
+  const wm = ensureWorldMapCampaignState(S);
+  const season = ensureWorldMapSeasonState(wm);
+  const tier = WORLD_MAP_WEEKLY_LADDER.find((entry)=>entry.id === tierId) || WORLD_MAP_WEEKLY_LADDER[0];
+  if(season.weeklyClaimed?.[tier.id]){
+    toast(`${tier.name} already claimed this week.`);
+    return false;
+  }
+  if(Math.floor(Number(season.weeklyPoints || 0)) < Math.floor(Number(tier.points || 0))){
+    toast(`${tier.name} needs ${tier.points} weekly points.`);
+    return false;
+  }
+  S.funds = Math.max(0, Math.floor(Number(S.funds || 0)) + Math.floor(Number(tier.cash || 0)));
+  if(S.mode) setModeWallet(S.mode, S.funds, S);
+  if(typeof trackCashEarned === "function") trackCashEarned(tier.cash || 0);
+  if(tier.xp) addXP(Math.floor(Number(tier.xp || 0)));
+  if(tier.passPoints) grantSeasonPassPoints(Math.floor(Number(tier.passPoints || 0)), `World Map weekly ladder: ${tier.name}`);
+  season.weeklyClaimed[tier.id] = Date.now();
+  if(tier.rare){
+    season.rareUnlocks[tier.rare] = Math.max(0, Math.floor(Number(season.rareUnlocks?.[tier.rare] || 0))) + 1;
+  }
+  season.totalSeasonCash += Math.floor(Number(tier.cash || 0));
+  season.totalSeasonPass += Math.floor(Number(tier.passPoints || 0));
+  wm.lastOutcome = `Weekly ladder claimed: ${tier.name}${tier.rare ? ` • rare ${tier.rare}` : ""}.`;
+  renderWorldMapCampaign();
+  renderHUD();
+  toast(`${tier.name} claimed.`);
+  save(true);
+  return false;
+}
+function worldMapSeasonHtml(selected){
+  const wm = ensureWorldMapCampaignState(S);
+  const season = ensureWorldMapSeasonState(wm);
+  const invasions = refreshWorldMapNemesisInvasions(S);
+  const rareRows = Object.entries(season.rareUnlocks || {})
+    .filter(([, count])=>Number(count || 0) > 0)
+    .map(([name, count])=>`<span class="tag">${worldMapEsc(name)} x${Math.floor(Number(count || 0))}</span>`)
+    .join(" ") || `<span class="tag">No rare season unlocks yet</span>`;
+  const goalRows = WORLD_MAP_SEASON_GOALS.map((goal)=>{
+    const progress = worldMapSeasonGoalProgress(goal.id, wm);
+    const pct = clamp(Math.round((progress.done / Math.max(1, progress.total)) * 100), 0, 100);
+    const claimed = !!season.claimedGoals?.[goal.id];
+    return `
+      <div class="card">
+        <div class="hudTitle">${goal.icon} ${worldMapEsc(goal.name)} <span class="tag">${claimed ? "Claimed" : (progress.ready ? "Ready" : `${progress.done}/${progress.total}`)}</span></div>
+        <div class="small">${worldMapEsc(goal.desc)}</div>
+        <div class="bar"><div class="fill ${progress.ready ? "green" : "yellow"}" style="width:${pct}%"></div></div>
+        <div class="small">Reward: $${Math.floor(Number(goal.cash || 0)).toLocaleString()} • +${Math.floor(Number(goal.xp || 0))}XP • +${Math.floor(Number(goal.passPoints || 0))} pass pts • ${worldMapEsc(goal.rare)}</div>
+        <button class="${progress.ready && !claimed ? "good" : "ghost"}" onclick="claimWorldMapSeasonGoal('${goal.id}')" ${progress.ready && !claimed ? "" : "disabled"}>${claimed ? "Claimed" : "Claim"}</button>
+      </div>
+    `;
+  }).join("");
+  const ladderRows = WORLD_MAP_WEEKLY_LADDER.map((tier)=>{
+    const claimed = !!season.weeklyClaimed?.[tier.id];
+    const ready = Math.floor(Number(season.weeklyPoints || 0)) >= Math.floor(Number(tier.points || 0));
+    return `
+      <div class="card">
+        <div class="hudTitle">${worldMapEsc(tier.name)} <span class="tag">${claimed ? "Claimed" : `${Math.floor(Number(season.weeklyPoints || 0))}/${tier.points}`}</span></div>
+        <div class="small">$${Math.floor(Number(tier.cash || 0)).toLocaleString()} • +${Math.floor(Number(tier.xp || 0))}XP • +${Math.floor(Number(tier.passPoints || 0))} pass pts${tier.rare ? ` • ${worldMapEsc(tier.rare)}` : ""}</div>
+        <button class="${ready && !claimed ? "good" : "ghost"}" onclick="claimWorldMapWeeklyLadder('${tier.id}')" ${ready && !claimed ? "" : "disabled"}>${claimed ? "Claimed" : "Claim"}</button>
+      </div>
+    `;
+  }).join("");
+  const invasionRows = Object.values(invasions || {}).map((inv)=>{
+    const region = worldMapRegionById(inv.regionId);
+    const selectedMark = selected?.id === region.id ? " • SELECTED" : "";
+    return `
+      <button class="card" style="text-align:left;border-color:rgba(248,113,113,.45)" onclick="selectWorldMapRegion('${region.id}')">
+        <div class="hudTitle">👑 ${worldMapEsc(inv.bossName)} Lv ${Math.floor(Number(inv.level || 1))}${selectedMark}</div>
+        <div class="small">${worldMapEsc(region.name)} invasion • clear the region to earn extra season points and rare progression.</div>
+      </button>
+    `;
+  }).join("") || `<div class="card"><div class="small">No Nemesis invasions active this week.</div></div>`;
+  const leaderboardRows = Object.entries(season.regionScores || {})
+    .map(([regionId, score])=>({ region:worldMapRegionById(regionId), score }))
+    .filter((row)=>row.region && Math.floor(Number(row.score?.best || 0)) > 0)
+    .sort((a,b)=>Math.floor(Number(b.score.best || 0)) - Math.floor(Number(a.score.best || 0)))
+    .slice(0, 5)
+    .map((row, index)=>`
+      <div class="card">
+        <div class="hudTitle">#${index + 1} ${worldMapEsc(row.region.name)}</div>
+        <div class="small">Best ${Math.floor(Number(row.score.best || 0)).toLocaleString()} pts • Last ${Math.floor(Number(row.score.last || 0)).toLocaleString()} • Runs ${Math.floor(Number(row.score.runs || 0))}</div>
+      </div>
+    `).join("") || `<div class="card"><div class="small">No region leaderboard scores yet. Clear a World Map mission to post one.</div></div>`;
+  return `
+    <div class="card" style="margin:10px 0;border-color:rgba(250,204,21,.58);background:linear-gradient(145deg,rgba(68,46,11,.78),rgba(8,15,26,.96))">
+      <div class="hudTitle">Phase 9 Endgame World Campaign Seasons</div>
+      <div class="small">Season ${worldMapEsc(season.seasonId)} • Week ${worldMapEsc(season.weekKey)} • Season ${Math.floor(Number(season.points || 0))} pts • Weekly ${Math.floor(Number(season.weeklyPoints || 0))} pts</div>
+      <div class="small">Rare unlocks: ${rareRows}</div>
+      <div class="divider"></div>
+      <div class="hudTitle">Weekly Crisis Ladder</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">${ladderRows}</div>
+      <div class="divider"></div>
+      <div class="hudTitle">Rotating Nemesis Invasions</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">${invasionRows}</div>
+      <div class="divider"></div>
+      <div class="hudTitle">Regional Leaderboard</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">${leaderboardRows}</div>
+      <div class="divider"></div>
+      <div class="hudTitle">Season Goals</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">${goalRows}</div>
+    </div>
+  `;
 }
 function worldMapCrisisDef(typeId){
   return WORLD_MAP_CRISIS_TYPES.find((crisis)=>crisis.id === typeId) || WORLD_MAP_CRISIS_TYPES[0];
@@ -9706,6 +9980,7 @@ function worldMapRegionReward(region, control=worldMapControl(region, S), missio
   const performance = missionStats ? clamp(Math.floor(captures / 4) + Math.floor(evac / 3), 0, 4) : 1;
   const eventMul = Number(opts.eventMul || 1);
   const crisisMul = Number(opts.crisisMul || 1);
+  const invasionMul = opts.nemesisInvasion ? 1.12 : 1;
   const bossMul = opts.bossResolved ? 1.15 : (opts.bossReady ? 1.06 : 1);
   const settlementMul = 1 + Math.min(0.12, worldMapSettlementInfluenceValue(region, S) / 500);
   const upgradeMul = worldMapRegionUpgradeEffects(region, S).rewardMul || 1;
@@ -9713,7 +9988,7 @@ function worldMapRegionReward(region, control=worldMapControl(region, S), missio
   const rivalPressure = worldMapRivalPressure(region, S);
   const factionMul = faction.id === "hq" ? 1.04 : (faction.id === "settlements" ? 1.03 : (faction.id === "rivals" ? 0.92 : 0.98));
   const sabotageMul = clamp(1 - Math.min(0.14, rivalPressure / 720), 0.86, 1);
-  const rewardMul = clamp(eventMul * crisisMul * bossMul * settlementMul * upgradeMul * factionMul * sabotageMul, 0.78, 1.65);
+  const rewardMul = clamp(eventMul * crisisMul * invasionMul * bossMul * settlementMul * upgradeMul * factionMul * sabotageMul, 0.78, 1.65);
   const cash = clamp(Math.round((850 + level * 32 + Number(control || 0) * 16 + performance * 220) * rewardMul), 900, 8500);
   const xp = clamp(Math.round((70 + level * 3 + Number(control || 0) * 1.1 + performance * 18) * rewardMul), 90, 650);
   const passPoints = clamp(Math.round((4 + controlTier * 2 + Math.floor(performance / 2)) * Math.min(1.18, rewardMul)), 4, 14);
@@ -9812,12 +10087,14 @@ function worldMapRegionCardHtml(region){
   const eventDef = event ? worldMapLiveEventDef(event.typeId) : null;
   const crisis = worldMapCrisisForRegion(region, S);
   const crisisDef = crisis ? worldMapCrisisDef(crisis.typeId) : null;
+  const invasion = worldMapNemesisInvasionForRegion(region, S);
   const boss = worldMapBossChainState(region, S);
   const bossReady = Number(boss.progress || 0) >= 3;
   const faction = worldMapControllingFaction(region, S);
   const reward = worldMapRegionReward(region, control, null, {
     eventMul:eventDef?.rewardMul || 1,
     crisisMul:crisisDef?.rewardMul || 1,
+    nemesisInvasion:!!invasion,
     bossReady,
   });
   const disabled = unlocked ? "" : "disabled";
@@ -9830,6 +10107,7 @@ function worldMapRegionCardHtml(region){
       <div class="small">Tiger Control ${control}% • ${worldMapEsc(threat)}</div>
       ${eventDef ? `<div class="small">LIVE: ${eventDef.icon} ${worldMapEsc(eventDef.name)} • x${Number(eventDef.rewardMul || 1).toFixed(2)} reward</div>` : ""}
       ${crisisDef ? `<div class="small">CRISIS: ${crisisDef.icon} ${worldMapEsc(crisisDef.name)} • x${Number(crisisDef.rewardMul || 1).toFixed(2)} reward</div>` : ""}
+      ${invasion ? `<div class="small">INVASION: 👑 ${worldMapEsc(invasion.bossName)} Lv ${Math.floor(Number(invasion.level || 1))} • season bonus</div>` : ""}
       <div class="small">${worldMapEsc(worldMapBossChainText(region, S))}</div>
       <div class="small">${worldMapEsc(worldMapSettlementLine(region, S))}</div>
       <div class="small">${worldMapEsc(worldMapFactionLine(region, S))}</div>
@@ -9862,6 +10140,7 @@ function renderWorldMapCampaign(){
   const selectedEventDef = selectedEvent ? worldMapLiveEventDef(selectedEvent.typeId) : null;
   const selectedCrisis = worldMapCrisisForRegion(selected, S);
   const selectedCrisisDef = selectedCrisis ? worldMapCrisisDef(selectedCrisis.typeId) : null;
+  const selectedInvasion = worldMapNemesisInvasionForRegion(selected, S);
   const selectedBoss = worldMapBossChainState(selected, S);
   const selectedBossReady = Number(selectedBoss.progress || 0) >= 3;
   const selectedInfluence = worldMapSettlementInfluenceValue(selected, S);
@@ -9871,6 +10150,7 @@ function renderWorldMapCampaign(){
   const rewardPreview = worldMapRegionReward(selected, selectedControl, null, {
     eventMul:selectedEventDef?.rewardMul || 1,
     crisisMul:selectedCrisisDef?.rewardMul || 1,
+    nemesisInvasion:!!selectedInvasion,
     bossReady:selectedBossReady,
   });
   const nodes = WORLD_MAP_CAMPAIGN_REGIONS.map((region)=>{
@@ -9881,13 +10161,15 @@ function renderWorldMapCampaign(){
     const crisis = worldMapCrisisForRegion(region, S);
     const bossReady = worldMapBossChainState(region, S).progress >= 3;
     const faction = worldMapControllingFaction(region, S);
-    const icon = unlocked ? (crisis ? worldMapCrisisDef(crisis.typeId).icon : (event ? worldMapLiveEventDef(event.typeId).icon : (bossReady ? "👑" : faction.icon))) : "🔒";
+    const invasion = worldMapNemesisInvasionForRegion(region, S);
+    const icon = unlocked ? (invasion ? "👑" : (crisis ? worldMapCrisisDef(crisis.typeId).icon : (event ? worldMapLiveEventDef(event.typeId).icon : (bossReady ? "👑" : faction.icon)))) : "🔒";
     return `<button title="${worldMapEsc(region.name)} • ${worldMapEsc(faction.name)}" onclick="selectWorldMapRegion('${region.id}')" style="position:absolute;left:${region.x}%;top:${region.y}%;transform:translate(-50%,-50%);width:46px;height:46px;border-radius:999px;border:2px solid ${unlocked ? faction.color : color};background:rgba(15,23,42,.86);color:#fff;font-weight:900;${selectedClass}">${icon}</button>`;
   }).join("");
   const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
   const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
   root.innerHTML = `
-    <div class="hudLine"><b>Phase 8:</b> HQ, tigers, rivals, and settlements now compete for territory. Rival zones can sabotage rewards until you fight, negotiate, or outscore them.</div>
+    <div class="hudLine"><b>Phase 9:</b> Endgame World Campaign Seasons add weekly ladders, rotating Nemesis invasions, season goals, rare trophies, titles, cosmetics, and long-term rewards.</div>
+    ${worldMapSeasonHtml(selected)}
     ${worldMapPendingChoiceHtml(wm)}
     ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
     ${wm.lastOutcome ? `<div class="card" style="margin-top:10px;border-color:rgba(74,222,128,.44)"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
@@ -9932,6 +10214,7 @@ function renderWorldMapCampaign(){
         <div class="small"><b>Live Event:</b> ${worldMapEsc(worldMapEventLine(selectedEvent))}</div>
         <div class="small"><b>Crisis:</b> ${worldMapEsc(selectedCrisis ? worldMapCrisisLine(selectedCrisis) : "This region is not inside the active crisis.")}</div>
         <div class="small"><b>Crisis Unlocks:</b> ${worldMapEsc(worldMapCrisisRewardsOwnedText(wm))}</div>
+        <div class="small"><b>Nemesis Invasion:</b> ${selectedInvasion ? `${worldMapEsc(selectedInvasion.bossName)} Lv ${Math.floor(Number(selectedInvasion.level || 1))} is invading this region.` : "No rotating Nemesis invasion here this week."}</div>
         <div class="small"><b>Boss Chain:</b> ${worldMapEsc(worldMapBossChainText(selected, S))}</div>
         <div class="small"><b>Settlement:</b> ${worldMapEsc(worldMapSettlementLine(selected, S))}</div>
         <div class="small"><b>Faction:</b> ${worldMapEsc(worldMapFactionLine(selected, S))}</div>
@@ -9946,13 +10229,14 @@ function renderWorldMapCampaign(){
         <div class="small"><b>Connected Regions:</b> ${worldMapNeighborPathHtml(selected)}</div>
       </div>
       <div class="card">
-        <div class="hudTitle">Phase 8 Deploy Plan</div>
+        <div class="hudTitle">Phase 9 Deploy Plan</div>
         <div class="hudLine">Story Mission ${worldMapRegionMissionLevel(selected, S)}/100 • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
         <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
         <div class="small">Extraction: ${worldMapEsc(extractionType)}</div>
         <div class="small">Recommended prep: ${worldMapEsc(prepLine)}</div>
         <div class="small">Live event impact: ${selectedEventDef ? `${selectedEventDef.icon} ${worldMapEsc(selectedEventDef.name)} • +${Math.round((Number(selectedEventDef.rewardMul || 1) - 1) * 100)}% strategic reward • -${selectedEventDef.controlDrop} control` : "None active right now"}</div>
         <div class="small">Crisis impact: ${selectedCrisisDef ? `${selectedCrisisDef.icon} ${worldMapEsc(selectedCrisisDef.name)} • +${Math.round((Number(selectedCrisisDef.rewardMul || 1) - 1) * 100)}% strategic reward • rare ${worldMapEsc(selectedCrisisDef.rare)}` : "No crisis in this region"}</div>
+        <div class="small">Nemesis invasion: ${selectedInvasion ? `👑 ${worldMapEsc(selectedInvasion.bossName)} Lv ${Math.floor(Number(selectedInvasion.level || 1))} • +12% strategic reward • +season ladder points` : "No weekly invasion on this region"}</div>
         <div class="small">Boss chain: ${selectedBossReady ? `${worldMapEsc(selectedBoss.bossName)} ready for a major control break` : `${Math.min(3, Number(selectedBoss.progress || 0))}/3 clues toward regional Alpha`}</div>
         <div class="small">Settlement support: ${selectedInfluence}% influence adds regional control relief.</div>
         <div class="small">Upgrade support: ${worldMapEsc(worldMapRegionUpgradeSummary(selected, S))}</div>
@@ -10119,8 +10403,10 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   const activeCrisis = worldMapActiveCrisis(S);
   const crisisAffected = !!(activeCrisis && activeCrisis.regionIds?.includes(region.id) && (!wm.activeCrisisId || wm.activeCrisisId === activeCrisis.id));
   const activeCrisisDef = crisisAffected ? worldMapCrisisDef(activeCrisis.typeId) : null;
+  const activeInvasion = worldMapNemesisInvasionForRegion(region, S);
   const chain = worldMapBossChainState(region, S);
   const bossWasReady = Number(chain.progress || 0) >= 3;
+  const notes = [];
   const settlementBefore = worldMapSettlementInfluenceValue(region, S);
   const settlementGain = evac > 0 ? clamp(Math.ceil(evac / 2) + (perfectRescue ? 2 : 0), 1, 10) : 0;
   if(settlementGain > 0){
@@ -10174,10 +10460,33 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   const reward = worldMapRegionReward(region, before, missionStats, {
     eventMul:activeEventDef?.rewardMul || 1,
     crisisMul:activeCrisisDef?.rewardMul || 1,
+    nemesisInvasion:!!activeInvasion,
     bossResolved:bossWasReady,
     bossReady:!bossWasReady && wm.bossChains[region.id].progress >= 3,
   });
   grantWorldMapRegionReward(region, reward);
+  const seasonPointBase = 16 + Math.floor(captures / 3) + Math.floor(evac / 2) + (activeEventDef ? 8 : 0) + (activeCrisisDef ? 16 : 0) + (bossWasReady ? 18 : 0) + (activeInvasion ? 24 : 0);
+  worldMapSeasonAddProgress(clamp(seasonPointBase, 12, 90), region.name);
+  const season = ensureWorldMapSeasonState(wm);
+  const regionScore = Math.max(0, Math.floor(captures * 18 + kills * 10 + evac * 24 + pressureDrop * 9 + (perfectRescue ? 120 : 0) + (activeEventDef ? 80 : 0) + (activeCrisisDef ? 160 : 0) + (bossWasReady ? 220 : 0) + (activeInvasion ? 260 : 0)));
+  const scoreRow = season.regionScores?.[region.id] || {};
+  season.regionScores[region.id] = {
+    best:Math.max(Math.floor(Number(scoreRow.best || 0)), regionScore),
+    runs:Math.max(0, Math.floor(Number(scoreRow.runs || 0))) + 1,
+    last:regionScore,
+    lastAt:Date.now(),
+  };
+  if(activeInvasion){
+    const invasion = season.nemesisInvasions?.[region.id];
+    if(invasion && !invasion.cleared){
+      invasion.cleared = true;
+      invasion.clearedAt = Date.now();
+      season.nemesisInvasions[region.id] = invasion;
+      season.totalNemesisInvasionsCleared = Math.max(0, Math.floor(Number(season.totalNemesisInvasionsCleared || 0))) + 1;
+      season.rareUnlocks["Nemesis Invasion Intel"] = Math.max(0, Math.floor(Number(season.rareUnlocks?.["Nemesis Invasion Intel"] || 0))) + 1;
+      notes.push(`${activeInvasion.bossName} invasion cleared`);
+    }
+  }
   if(activeCrisis && activeCrisisDef){
     const affected = Array.isArray(activeCrisis.regionIds) ? activeCrisis.regionIds : [];
     for(const id of affected){
@@ -10220,7 +10529,6 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
     wm.regionControl[neighborId] = clamp(Math.round(Number(wm.regionControl[neighborId] || worldMapInitialControl(neighbor, S)) + neighborPush), 5, 96);
   }
   const chainAfter = worldMapBossChainState(region, S);
-  const notes = [];
   if(activeEventDef) notes.push(`${activeEventDef.name} secured`);
   if(activeCrisisDef) notes.push(`${activeCrisisDef.name} resolved • rare ${activeCrisisDef.rare}`);
   if(bossWasReady) notes.push(`${chain.bossName} boss chain resolved`);
@@ -10242,7 +10550,7 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   };
   wm.lastOutcome = `${region.name}: tiger control reduced ${before}% → ${worldMapControl(region, S)}%. Reward ${worldMapRewardText(reward)}.${notes.length ? ` ${notes.join(" • ")}.` : ""} Strategic choice unlocked. Neighbor regions unlocked for defense.`;
   wm.lastUpdatedAt = Date.now();
-  return `\nWorld Map Campaign: ${wm.lastOutcome}\nPhase 4 Decision Ready: open World Map and choose Fortify, Rescue More, Hunt Alpha, or Gather Intel.\n`;
+  return `\nWorld Map Campaign: ${wm.lastOutcome}\nPhase 9 Season Progress: open World Map to claim weekly ladder rewards, season goals, and choose the next regional strategy.\n`;
 }
 function sanitizeWalletAmount(value, fallback = 1000){
   const n = Math.floor(Number(value));
@@ -48634,6 +48942,8 @@ window.startWorldMapRegionMission = startWorldMapRegionMission;
 window.openMissionBriefFromWorldMap = openMissionBriefFromWorldMap;
 window.applyWorldMapStrategicChoice = applyWorldMapStrategicChoice;
 window.applyWorldMapRivalAction = applyWorldMapRivalAction;
+window.claimWorldMapSeasonGoal = claimWorldMapSeasonGoal;
+window.claimWorldMapWeeklyLadder = claimWorldMapWeeklyLadder;
 window.buyWorldMapRegionUpgrade = buyWorldMapRegionUpgrade;
 window.claimWorldMapRegionalSupplies = claimWorldMapRegionalSupplies;
 window.repairWorldMapSupplyRoutes = repairWorldMapSupplyRoutes;
