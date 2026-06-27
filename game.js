@@ -8529,6 +8529,14 @@ const WORLD_MAP_CRISIS_TYPES = Object.freeze([
   Object.freeze({ id:"nemesis_uprising", icon:"👑", name:"Nemesis Uprising", desc:"Named bosses are inspiring packs across the campaign map.", regionCount:3, pressurePush:0.40, rewardMul:1.24, controlDrop:6, rare:"Nemesis Intel Cache" }),
   Object.freeze({ id:"supply_route_collapse", icon:"📦", name:"Supply Route Collapse", desc:"Armory routes are broken, making nearby missions more unstable until restored.", regionCount:3, pressurePush:0.30, rewardMul:1.17, controlDrop:5, rare:"Supply Route Permit" }),
 ]);
+const WORLD_MAP_REGION_UPGRADES = Object.freeze([
+  Object.freeze({ id:"safe_house", icon:"🏠", name:"Safe House", desc:"Builds safer civilian lanes and improves settlement support.", baseCost:60000, controlRelief:1, settlementGain:2, rewardMul:1.02, maxLevel:5 }),
+  Object.freeze({ id:"watch_tower", icon:"🗼", name:"Watch Tower", desc:"Spots pack movement early, lowering tiger control spread.", baseCost:75000, controlRelief:2, intelGain:1, spreadRelief:0.10, maxLevel:5 }),
+  Object.freeze({ id:"medical_outpost", icon:"🏥", name:"Medical Outpost", desc:"Adds rescue support, med stock, and stronger settlement recovery.", baseCost:85000, settlementGain:3, medkits:1, rewardMul:1.02, maxLevel:5 }),
+  Object.freeze({ id:"ammo_depot", icon:"📦", name:"Ammo Depot", desc:"Stocks regional ammo and improves strategic mission rewards.", baseCost:95000, ammo:8, rewardMul:1.03, maxLevel:5 }),
+  Object.freeze({ id:"road_barriers", icon:"🚧", name:"Road Barriers", desc:"Protects roads during crises and slows tiger pressure.", baseCost:90000, controlRelief:2, crisisRelief:1, spreadRelief:0.08, maxLevel:5 }),
+  Object.freeze({ id:"scout_network", icon:"📡", name:"Scout Network", desc:"Improves clue coverage, boss tracking, and pressure response.", baseCost:110000, intelGain:2, bossGain:1, spreadRelief:0.12, maxLevel:5 }),
+]);
 function defaultWorldMapCampaignState(){
   return {
     version:2,
@@ -8551,12 +8559,15 @@ function defaultWorldMapCampaignState(){
     activeCrisisId:"",
     activeCrisisRegionId:"",
     crisisRewards:{},
+    regionUpgrades:{},
     unlockedRegionIds:["river_gate"],
     totalRewardCash:0,
     totalRewardXp:0,
     totalRewardPass:0,
     totalStrategicChoices:0,
     totalCrisisResolved:0,
+    totalUpgradeSpend:0,
+    totalRegionUpgrades:0,
     lastUpdatedAt:0,
     lastEventSeed:"",
     lastCrisisSeed:"",
@@ -8587,12 +8598,15 @@ function ensureWorldMapCampaignState(state=S){
     activeCrisis:(src.activeCrisis && typeof src.activeCrisis === "object") ? src.activeCrisis : null,
     completedCrises:(src.completedCrises && typeof src.completedCrises === "object") ? src.completedCrises : {},
     crisisRewards:(src.crisisRewards && typeof src.crisisRewards === "object") ? src.crisisRewards : {},
+    regionUpgrades:(src.regionUpgrades && typeof src.regionUpgrades === "object") ? src.regionUpgrades : {},
     unlockedRegionIds:Array.isArray(src.unlockedRegionIds) ? src.unlockedRegionIds.map(String) : ["river_gate"],
     totalRewardCash:Math.max(0, Math.floor(Number(src.totalRewardCash || 0))),
     totalRewardXp:Math.max(0, Math.floor(Number(src.totalRewardXp || 0))),
     totalRewardPass:Math.max(0, Math.floor(Number(src.totalRewardPass || 0))),
     totalStrategicChoices:Math.max(0, Math.floor(Number(src.totalStrategicChoices || 0))),
     totalCrisisResolved:Math.max(0, Math.floor(Number(src.totalCrisisResolved || 0))),
+    totalUpgradeSpend:Math.max(0, Math.floor(Number(src.totalUpgradeSpend || 0))),
+    totalRegionUpgrades:Math.max(0, Math.floor(Number(src.totalRegionUpgrades || 0))),
     activeEventId:String(src.activeEventId || ""),
     activeEventRegionId:String(src.activeEventRegionId || ""),
     activeCrisisId:String(src.activeCrisisId || ""),
@@ -8618,6 +8632,11 @@ function ensureWorldMapCampaignState(state=S){
     out.settlementInfluence[region.id] = clamp(Math.floor(Number(out.settlementInfluence[region.id] || 0)), 0, 100);
     out.regionIntel[region.id] = clamp(Math.floor(Number(out.regionIntel[region.id] || 0)), 0, 25);
     out.strategicChoices[region.id] = Array.isArray(out.strategicChoices[region.id]) ? out.strategicChoices[region.id].slice(-10) : [];
+    const upgradeSrc = (out.regionUpgrades[region.id] && typeof out.regionUpgrades[region.id] === "object") ? out.regionUpgrades[region.id] : {};
+    out.regionUpgrades[region.id] = {};
+    for(const upgrade of WORLD_MAP_REGION_UPGRADES){
+      out.regionUpgrades[region.id][upgrade.id] = clamp(Math.floor(Number(upgradeSrc[upgrade.id] || 0)), 0, Math.floor(Number(upgrade.maxLevel || 5)));
+    }
   }
   if(out.pendingChoice && !worldMapRegionById(out.pendingChoice.regionId)) out.pendingChoice = null;
   if(out.activeCrisis){
@@ -8686,11 +8705,13 @@ function updateWorldMapCampaignSpread(state=S, now=Date.now()){
     const activeRelief = wm.activeRegionId === region.id ? 0.28 * elapsedHours : 0;
     const settlementRelief = Math.min(5, Math.max(0, Number(wm.settlementInfluence?.[region.id] || 0)) * 0.06 * elapsedHours);
     const intelRelief = Math.min(3, Math.max(0, Number(wm.regionIntel?.[region.id] || 0)) * 0.08 * elapsedHours);
+    const upgradeEffects = worldMapRegionUpgradeEffects(region, state);
+    const upgradeRelief = Math.min(6, Math.max(0, Number(upgradeEffects.spreadRelief || 0)) * elapsedHours);
     const crisis = worldMapActiveCrisis(state, now);
     const crisisDef = crisis?.regionIds?.includes(region.id) ? worldMapCrisisDef(crisis.typeId) : null;
-    const crisisPush = crisisDef ? Number(crisisDef.pressurePush || 0) : 0;
+    const crisisPush = Math.max(0, (crisisDef ? Number(crisisDef.pressurePush || 0) : 0) - Math.max(0, Number(upgradeEffects.crisisRelief || 0)) * 0.03);
     const spread = (baseSpread + neighborPush + crisisPush) * elapsedHours;
-    wm.regionControl[region.id] = clamp(Math.round(current + spread - defendedRelief - activeRelief - settlementRelief - intelRelief), 5, 96);
+    wm.regionControl[region.id] = clamp(Math.round(current + spread - defendedRelief - activeRelief - settlementRelief - intelRelief - upgradeRelief), 5, 96);
     if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   }
   wm.lastUpdatedAt = now;
@@ -8817,6 +8838,181 @@ function worldMapCrisisRewardsOwnedText(wm=ensureWorldMapCampaignState(S)){
     .filter(([, count])=>Number(count || 0) > 0)
     .map(([name, count])=>`${name} x${Math.floor(Number(count || 0))}`);
   return bits.length ? bits.join(" • ") : "No rare crisis unlocks yet.";
+}
+function worldMapRegionUpgradeDef(upgradeId){
+  return WORLD_MAP_REGION_UPGRADES.find((upgrade)=>upgrade.id === upgradeId) || WORLD_MAP_REGION_UPGRADES[0];
+}
+function worldMapRegionUpgradeLevel(regionOrId, upgradeId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  const def = worldMapRegionUpgradeDef(upgradeId);
+  if(!region || !def) return 0;
+  const wm = ensureWorldMapCampaignState(state);
+  return clamp(Math.floor(Number(wm.regionUpgrades?.[region.id]?.[def.id] || 0)), 0, Math.floor(Number(def.maxLevel || 5)));
+}
+function worldMapRegionUpgradeTotal(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return 0;
+  return WORLD_MAP_REGION_UPGRADES.reduce((sum, upgrade)=>sum + worldMapRegionUpgradeLevel(region, upgrade.id, state), 0);
+}
+function worldMapRegionUpgradeCost(regionOrId, upgradeId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  const def = worldMapRegionUpgradeDef(upgradeId);
+  if(!region || !def) return 0;
+  const level = worldMapRegionUpgradeLevel(region, def.id, state);
+  const maxLevel = Math.floor(Number(def.maxLevel || 5));
+  if(level >= maxLevel) return 0;
+  const dangerMul = 1 + Math.max(0, Number(region.danger || 50)) / 180;
+  const cost = Math.round((Number(def.baseCost || 60000) * (level + 1) * dangerMul) / 1000) * 1000;
+  return clamp(cost, 10000, 999999);
+}
+function worldMapRegionUpgradeEffects(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  const effects = {
+    controlRelief:0,
+    settlementGain:0,
+    intelGain:0,
+    bossGain:0,
+    spreadRelief:0,
+    crisisRelief:0,
+    rewardMul:1,
+    medkits:0,
+    ammo:0,
+  };
+  if(!region) return effects;
+  for(const upgrade of WORLD_MAP_REGION_UPGRADES){
+    const level = worldMapRegionUpgradeLevel(region, upgrade.id, state);
+    if(level <= 0) continue;
+    effects.controlRelief += level * Number(upgrade.controlRelief || 0);
+    effects.settlementGain += level * Number(upgrade.settlementGain || 0);
+    effects.intelGain += level * Number(upgrade.intelGain || 0);
+    effects.bossGain += level * Number(upgrade.bossGain || 0);
+    effects.spreadRelief += level * Number(upgrade.spreadRelief || 0);
+    effects.crisisRelief += level * Number(upgrade.crisisRelief || 0);
+    effects.rewardMul += level * Math.max(0, Number(upgrade.rewardMul || 1) - 1);
+    effects.medkits += level * Number(upgrade.medkits || 0);
+    effects.ammo += level * Number(upgrade.ammo || 0);
+  }
+  effects.rewardMul = clamp(effects.rewardMul, 1, 1.24);
+  return effects;
+}
+function worldMapRegionUpgradeSummary(regionOrId, state=S){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return "No upgrade network.";
+  const total = worldMapRegionUpgradeTotal(region, state);
+  if(total <= 0) return "No upgrades yet. Build regional infrastructure to lower pressure and improve rewards.";
+  const effects = worldMapRegionUpgradeEffects(region, state);
+  const bits = [`Lv ${total}/${WORLD_MAP_REGION_UPGRADES.length * 5}`];
+  if(effects.controlRelief) bits.push(`-${Math.floor(effects.controlRelief)}% pressure on clears`);
+  if(effects.spreadRelief) bits.push(`-${Math.round(effects.spreadRelief * 100)}% spread/hour`);
+  if(effects.rewardMul > 1) bits.push(`x${effects.rewardMul.toFixed(2)} reward support`);
+  if(effects.intelGain) bits.push(`+${Math.floor(effects.intelGain)} intel value`);
+  if(effects.settlementGain) bits.push(`+${Math.floor(effects.settlementGain)} settlement value`);
+  return bits.join(" • ");
+}
+function worldMapRegionUpgradeHtml(regionOrId){
+  const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
+  if(!region) return "";
+  const unlocked = worldMapRegionUnlocked(region, S);
+  const cards = WORLD_MAP_REGION_UPGRADES.map((upgrade)=>{
+    const level = worldMapRegionUpgradeLevel(region, upgrade.id, S);
+    const maxLevel = Math.floor(Number(upgrade.maxLevel || 5));
+    const cost = worldMapRegionUpgradeCost(region, upgrade.id, S);
+    const maxed = level >= maxLevel;
+    const canBuy = unlocked && !maxed && Math.floor(Number(S.funds || 0)) >= cost;
+    const nextBits = [];
+    if(upgrade.controlRelief) nextBits.push(`-${upgrade.controlRelief}% control`);
+    if(upgrade.spreadRelief) nextBits.push(`-${Math.round(Number(upgrade.spreadRelief || 0) * 100)}% spread`);
+    if(upgrade.crisisRelief) nextBits.push(`-${upgrade.crisisRelief} crisis`);
+    if(upgrade.rewardMul && Number(upgrade.rewardMul) > 1) nextBits.push(`+${Math.round((Number(upgrade.rewardMul) - 1) * 100)}% reward`);
+    if(upgrade.settlementGain) nextBits.push(`+${upgrade.settlementGain}% settlement`);
+    if(upgrade.intelGain) nextBits.push(`+${upgrade.intelGain} intel`);
+    if(upgrade.bossGain) nextBits.push(`+${upgrade.bossGain} boss clue`);
+    if(upgrade.medkits) nextBits.push(`+${upgrade.medkits} med`);
+    if(upgrade.ammo) nextBits.push(`+${upgrade.ammo} ammo`);
+    return `
+      <div class="card" style="border-color:${maxed ? "rgba(74,222,128,.40)" : "rgba(96,165,250,.35)"}">
+        <div class="hudTitle">${upgrade.icon} ${worldMapEsc(upgrade.name)}</div>
+        <div class="small">Level ${level}/${maxLevel} • ${worldMapEsc(upgrade.desc)}</div>
+        <div class="small">Next: ${worldMapEsc(nextBits.join(" • ") || "regional support")}</div>
+        <div class="row" style="margin-top:8px">
+          <button class="${canBuy ? "good" : "ghost"}" onclick="buyWorldMapRegionUpgrade('${region.id}','${upgrade.id}')" ${canBuy ? "" : "disabled"}>${maxed ? "Maxed" : `$${cost.toLocaleString()}`}</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+  return `
+    <div class="card" style="margin:10px 0;border-color:rgba(34,197,94,.46);background:linear-gradient(145deg,rgba(7,37,30,.74),rgba(8,15,26,.96))">
+      <div class="hudTitle">Phase 6 Regional Upgrade Network</div>
+      <div class="small">${worldMapEsc(region.name)} • ${worldMapEsc(worldMapRegionUpgradeSummary(region, S))}</div>
+      <div class="small">Spend campaign cash to fortify regions, slow tiger control, boost future rewards, and build long-term progression.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:10px">${cards}</div>
+    </div>
+  `;
+}
+function buyWorldMapRegionUpgrade(regionId, upgradeId){
+  const region = worldMapRegionById(regionId);
+  const upgrade = worldMapRegionUpgradeDef(upgradeId);
+  if(!region || !upgrade) return false;
+  const wm = ensureWorldMapCampaignState(S);
+  if(!worldMapRegionUnlocked(region, S)){
+    toast(`${region.name} is still locked.`);
+    return false;
+  }
+  const level = worldMapRegionUpgradeLevel(region, upgrade.id, S);
+  const maxLevel = Math.floor(Number(upgrade.maxLevel || 5));
+  if(level >= maxLevel){
+    toast(`${upgrade.name} is already maxed in ${region.name}.`);
+    return false;
+  }
+  const cost = worldMapRegionUpgradeCost(region, upgrade.id, S);
+  if(Math.floor(Number(S.funds || 0)) < cost){
+    toast(`Need $${Math.max(0, cost - Math.floor(Number(S.funds || 0))).toLocaleString()} more for ${upgrade.name}.`);
+    return false;
+  }
+  S.funds = Math.max(0, Math.floor(Number(S.funds || 0)) - cost);
+  if(S.mode) setModeWallet(S.mode, S.funds, S);
+  if(typeof trackCashSpent === "function") trackCashSpent(cost);
+  wm.regionUpgrades[region.id][upgrade.id] = level + 1;
+  wm.totalUpgradeSpend = Math.max(0, Math.floor(Number(wm.totalUpgradeSpend || 0))) + cost;
+  wm.totalRegionUpgrades = Math.max(0, Math.floor(Number(wm.totalRegionUpgrades || 0))) + 1;
+  const currentControl = worldMapControl(region, S);
+  const pressureRelief = Math.max(0, Math.floor(Number(upgrade.controlRelief || 0)));
+  if(pressureRelief > 0){
+    wm.regionControl[region.id] = clamp(Math.round(Number(wm.regionControl[region.id] || currentControl) - pressureRelief), 5, 96);
+  }
+  if(Number(upgrade.settlementGain || 0) > 0){
+    wm.settlementInfluence[region.id] = clamp(worldMapSettlementInfluenceValue(region, S) + Math.floor(Number(upgrade.settlementGain || 0)), 0, 100);
+  }
+  if(Number(upgrade.intelGain || 0) > 0){
+    wm.regionIntel[region.id] = clamp(worldMapRegionIntelValue(region, S) + Math.floor(Number(upgrade.intelGain || 0)), 0, 25);
+  }
+  if(Number(upgrade.bossGain || 0) > 0){
+    const chain = worldMapBossChainState(region, S);
+    wm.bossChains[region.id] = {
+      ...chain,
+      progress:clamp(Math.floor(Number(chain.progress || 0)) + Math.floor(Number(upgrade.bossGain || 0)), 0, 3),
+      bossName:chain.bossName || WORLD_MAP_BOSS_CHAIN_NAMES[region.id] || `${region.name} Alpha`,
+    };
+  }
+  if(Number(upgrade.medkits || 0) > 0){
+    S.medkits = { ...(S.medkits || {}) };
+    S.medkits.M_SMALL = Math.max(0, Math.floor(Number(S.medkits.M_SMALL || 0))) + Math.floor(Number(upgrade.medkits || 0));
+  }
+  if(Number(upgrade.ammo || 0) > 0){
+    const w = equippedWeapon();
+    if(w){
+      S.ammoReserve[w.ammo] = Math.max(0, Math.floor(Number(S.ammoReserve[w.ammo] || 0))) + Math.floor(Number(upgrade.ammo || 0));
+    }
+  }
+  wm.lastOutcome = `${region.name}: ${upgrade.name} upgraded to Level ${level + 1}. ${worldMapRegionUpgradeSummary(region, S)}.`;
+  wm.lastUpdatedAt = Date.now();
+  sfx("ui");
+  hapticImpact("medium");
+  renderWorldMapCampaign();
+  renderHUD();
+  toast(`${upgrade.name} upgraded in ${region.name}.`);
+  save(true);
+  return false;
 }
 function refreshWorldMapLiveEvents(state=S, now=Date.now()){
   const wm = ensureWorldMapCampaignState(state);
@@ -9019,7 +9215,9 @@ function worldMapCampaignPhaseOneStats(wm=ensureWorldMapCampaignState(S)){
   const settlementAvg = unlocked.length ? Math.round(unlocked.reduce((sum, region)=>sum + worldMapSettlementInfluenceValue(region, S), 0) / unlocked.length) : 0;
   const intel = unlocked.reduce((sum, region)=>sum + worldMapRegionIntelValue(region, S), 0);
   const crisisRegions = crisis?.regionIds?.length || 0;
-  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg, intel, crisis, crisisRegions };
+  const upgradeCount = unlocked.reduce((sum, region)=>sum + worldMapRegionUpgradeTotal(region, S), 0);
+  const upgradeSpend = Math.max(0, Math.floor(Number(wm.totalUpgradeSpend || 0)));
+  return { total:regions.length, unlocked:unlocked.length, critical:critical.length, high:high.length, active, liveEvents, bossReady, settlementAvg, intel, crisis, crisisRegions, upgradeCount, upgradeSpend };
 }
 function worldMapNeighborPathHtml(region){
   const neighbors = (region?.neighbors || []).map((id)=>worldMapRegionById(id)).filter(Boolean);
@@ -9041,7 +9239,8 @@ function worldMapRegionReward(region, control=worldMapControl(region, S), missio
   const crisisMul = Number(opts.crisisMul || 1);
   const bossMul = opts.bossResolved ? 1.15 : (opts.bossReady ? 1.06 : 1);
   const settlementMul = 1 + Math.min(0.12, worldMapSettlementInfluenceValue(region, S) / 500);
-  const rewardMul = clamp(eventMul * crisisMul * bossMul * settlementMul, 0.85, 1.55);
+  const upgradeMul = worldMapRegionUpgradeEffects(region, S).rewardMul || 1;
+  const rewardMul = clamp(eventMul * crisisMul * bossMul * settlementMul * upgradeMul, 0.85, 1.65);
   const cash = clamp(Math.round((850 + level * 32 + Number(control || 0) * 16 + performance * 220) * rewardMul), 900, 8500);
   const xp = clamp(Math.round((70 + level * 3 + Number(control || 0) * 1.1 + performance * 18) * rewardMul), 90, 650);
   const passPoints = clamp(Math.round((4 + controlTier * 2 + Math.floor(performance / 2)) * Math.min(1.18, rewardMul)), 4, 14);
@@ -9159,6 +9358,7 @@ function worldMapRegionCardHtml(region){
       ${crisisDef ? `<div class="small">CRISIS: ${crisisDef.icon} ${worldMapEsc(crisisDef.name)} • x${Number(crisisDef.rewardMul || 1).toFixed(2)} reward</div>` : ""}
       <div class="small">${worldMapEsc(worldMapBossChainText(region, S))}</div>
       <div class="small">${worldMapEsc(worldMapSettlementLine(region, S))}</div>
+      <div class="small">Upgrades: ${worldMapRegionUpgradeTotal(region, S)}/${WORLD_MAP_REGION_UPGRADES.length * 5} • ${worldMapEsc(worldMapRegionUpgradeSummary(region, S))}</div>
       <div class="small">Intel ${worldMapRegionIntelValue(region, S)}/25 • Choices: ${worldMapEsc(worldMapStrategicChoiceHistoryText(region, S))}</div>
       <div class="small">${worldMapEsc(region.theme)}</div>
       <div class="small">Reward: ${worldMapEsc(worldMapRewardText(reward))}</div>
@@ -9207,7 +9407,7 @@ function renderWorldMapCampaign(){
   const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
   const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
   root.innerHTML = `
-    <div class="hudLine"><b>Phase 5:</b> map-wide crisis events now hit multiple connected regions at once and pay bigger rewards when disrupted.</div>
+    <div class="hudLine"><b>Phase 6:</b> build regional upgrades that permanently improve defended areas, slow tiger control, and add long-term cash goals.</div>
     ${worldMapPendingChoiceHtml(wm)}
     ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
     ${wm.lastOutcome ? `<div class="card" style="margin-top:10px;border-color:rgba(74,222,128,.44)"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
@@ -9225,6 +9425,8 @@ function renderWorldMapCampaign(){
       <div class="card"><div class="small">Crises Resolved</div><div class="hudTitle">${Number(wm.totalCrisisResolved || 0)}</div></div>
       <div class="card"><div class="small">Region Rewards</div><div class="hudTitle">$${Number(wm.totalRewardCash || 0).toLocaleString()}</div></div>
       <div class="card"><div class="small">Rare Unlocks</div><div class="hudTitle">${Object.keys(wm.crisisRewards || {}).length}</div></div>
+      <div class="card"><div class="small">Region Upgrades</div><div class="hudTitle">${stats.upgradeCount}</div></div>
+      <div class="card"><div class="small">Upgrade Spend</div><div class="hudTitle">$${Number(stats.upgradeSpend || 0).toLocaleString()}</div></div>
     </div>
     <div style="position:relative;height:260px;border:1px solid rgba(96,165,250,.35);border-radius:22px;overflow:hidden;background:radial-gradient(circle at 25% 30%,rgba(34,197,94,.22),transparent 26%),radial-gradient(circle at 74% 42%,rgba(59,130,246,.20),transparent 30%),linear-gradient(145deg,#07111f,#10243a 55%,#1e293b);margin:10px 0 12px">
       <div style="position:absolute;inset:18px;border:1px dashed rgba(191,219,254,.20);border-radius:20px"></div>
@@ -9245,13 +9447,14 @@ function renderWorldMapCampaign(){
         <div class="small"><b>Boss Chain:</b> ${worldMapEsc(worldMapBossChainText(selected, S))}</div>
         <div class="small"><b>Settlement:</b> ${worldMapEsc(worldMapSettlementLine(selected, S))}</div>
         <div class="small"><b>Intel:</b> ${selectedIntel}/25 • slows spread and reveals safer pressure routes.</div>
+        <div class="small"><b>Upgrade Network:</b> ${worldMapEsc(worldMapRegionUpgradeSummary(selected, S))}</div>
         <div class="small"><b>Recent Choices:</b> ${worldMapEsc(worldMapStrategicChoiceHistoryText(selected, S))}</div>
         <div class="small">${selectedTags}</div>
         <div class="divider"></div>
         <div class="small"><b>Connected Regions:</b> ${worldMapNeighborPathHtml(selected)}</div>
       </div>
       <div class="card">
-        <div class="hudTitle">Phase 5 Deploy Plan</div>
+        <div class="hudTitle">Phase 6 Deploy Plan</div>
         <div class="hudLine">Story Mission ${worldMapRegionMissionLevel(selected, S)}/100 • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
         <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
         <div class="small">Extraction: ${worldMapEsc(extractionType)}</div>
@@ -9260,6 +9463,7 @@ function renderWorldMapCampaign(){
         <div class="small">Crisis impact: ${selectedCrisisDef ? `${selectedCrisisDef.icon} ${worldMapEsc(selectedCrisisDef.name)} • +${Math.round((Number(selectedCrisisDef.rewardMul || 1) - 1) * 100)}% strategic reward • rare ${worldMapEsc(selectedCrisisDef.rare)}` : "No crisis in this region"}</div>
         <div class="small">Boss chain: ${selectedBossReady ? `${worldMapEsc(selectedBoss.bossName)} ready for a major control break` : `${Math.min(3, Number(selectedBoss.progress || 0))}/3 clues toward regional Alpha`}</div>
         <div class="small">Settlement support: ${selectedInfluence}% influence adds regional control relief.</div>
+        <div class="small">Upgrade support: ${worldMapEsc(worldMapRegionUpgradeSummary(selected, S))}</div>
         <div class="small">Post-mission choice: after a clear, pick one strategic priority to shape this region.</div>
         <div class="small">Region reward: ${worldMapEsc(worldMapRewardText(rewardPreview))}</div>
         <div class="small">Reward focus: ${worldMapEsc(selected.reward)} • Mission Rewards 2.0 still controls core payout.</div>
@@ -9270,6 +9474,7 @@ function renderWorldMapCampaign(){
         </div>
       </div>
     </div>
+    ${worldMapRegionUpgradeHtml(selected)}
     <div class="divider"></div>
     <div class="grid2">${cards}</div>
   `;
@@ -9422,13 +9627,15 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   }
   const intelRelief = Math.floor(worldMapRegionIntelValue(region, S) / 5);
   const settlementRelief = Math.floor(worldMapSettlementInfluenceValue(region, S) / 16);
+  const upgradeEffects = worldMapRegionUpgradeEffects(region, S);
+  const upgradeRelief = Math.floor(Number(upgradeEffects.controlRelief || 0));
   const eventDrop = Math.max(0, Math.floor(Number(activeEventDef?.controlDrop || 0)));
   const crisisDrop = Math.max(0, Math.floor(Number(activeCrisisDef?.controlDrop || 0)));
   const bossDrop = bossWasReady ? 8 : 0;
   const pressureDrop = clamp(
-    14 + Math.floor(captures / 3) + Math.floor(kills / 4) + Math.floor(evac / 2) + (perfectRescue ? 4 : 0) + eventDrop + crisisDrop + bossDrop + settlementRelief + intelRelief,
+    14 + Math.floor(captures / 3) + Math.floor(kills / 4) + Math.floor(evac / 2) + (perfectRescue ? 4 : 0) + eventDrop + crisisDrop + bossDrop + settlementRelief + intelRelief + upgradeRelief,
     14,
-    52
+    62
   );
   wm.regionControl[region.id] = clamp(Math.round(before - pressureDrop), 5, 96);
   wm.defendedRegions[region.id] = Math.max(0, Math.floor(Number(wm.defendedRegions[region.id] || 0))) + 1;
@@ -9504,6 +9711,7 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   else if(chainAfter.progress >= 3) notes.push(`${chainAfter.bossName} boss ready`);
   if(settlementGain > 0) notes.push(`settlement influence +${settlementGain}%`);
   if(intelRelief > 0) notes.push(`intel network -${intelRelief}% pressure`);
+  if(upgradeRelief > 0) notes.push(`regional upgrades -${upgradeRelief}% pressure`);
   wm.activeEventId = "";
   wm.activeEventRegionId = "";
   wm.activeCrisisId = "";
@@ -47887,6 +48095,7 @@ window.setWorldMapActiveRegion = setWorldMapActiveRegion;
 window.startWorldMapRegionMission = startWorldMapRegionMission;
 window.openMissionBriefFromWorldMap = openMissionBriefFromWorldMap;
 window.applyWorldMapStrategicChoice = applyWorldMapStrategicChoice;
+window.buyWorldMapRegionUpgrade = buyWorldMapRegionUpgrade;
 window.closeMissionBrief = closeMissionBrief;
 window.continueMissionCinematicIntro = continueMissionCinematicIntro;
 window.skipMissionCinematicIntro = skipMissionCinematicIntro;
