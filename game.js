@@ -22815,6 +22815,10 @@ function openMode(){
 }
 function closeMode(){
   document.getElementById("modeOverlay").style.display="none";
+  if(__returnToBaseHqAfterOverlay){
+    returnToBaseHqFromOverlay();
+    return;
+  }
   if(S.missionEnded && !S.gameOver){
     setPaused(true,"complete");
     renderCompleteRecapCard();
@@ -25501,6 +25505,10 @@ function beginStoryMissionFromIntro(){
   const continueBtn = document.getElementById("storyContinueBtn");
   if(continueBtn) continueBtn.innerText = "🎮 Begin Mission";
   if(journalOnly){
+    if(__returnToBaseHqAfterOverlay){
+      returnToBaseHqFromOverlay();
+      return;
+    }
     setPaused(false,null);
     syncGamepadFocus();
     return;
@@ -25566,6 +25574,7 @@ function setMode(m){
     ensureStoryEndgameState(S);
   }
   S.mapIndex=0;
+  __returnToBaseHqAfterOverlay = false;
   deploy();
   updateModeDesc(); markModeTabs(); closeMode(); sfx("ui");
   if(wantsStoryIntro) openStoryIntro(false);
@@ -26975,6 +26984,9 @@ function baseHqNearestInteractable(){
   return { room, roomD, npc };
 }
 function showBaseHqHud(ms=6200){
+  if(__baseHqActive && !__baseHqQuickMenuCollapsed){
+    setBaseHqQuickMenuCollapsed(true);
+  }
   __baseHqHudUntil = Date.now() + Math.max(1800, Number(ms || 0));
 }
 function hideBaseHqHud(){
@@ -28067,6 +28079,9 @@ function runBaseHqCommand(command="", label=""){
     return false;
   }
   try{
+    if(__baseHqActive && !/^hideBaseHqHud|setBaseHqQuickMenuCollapsed|toggleBaseHqQuickMenu|closeBaseHqModePreview/.test(name)){
+      showBaseHqHud(9000);
+    }
     fn(...args);
   }catch(err){
     console.error("Base HQ command failed", cmd, err);
@@ -28085,17 +28100,29 @@ function armBaseHqButtons(root){
       const match = inline.match(/\b((?:baseHq|open|start|select|reset|complete|skip|close|confirm|set|toggle|interact|hide)[a-zA-Z_$][\w$]*\([^;]*\))/);
       if(match) btn.dataset.baseHqCommand = match[1];
     }
+    const trigger = (ev)=>{
+      const command = btn.dataset.baseHqCommand;
+      if(!command) return false;
+      const now = Date.now();
+      if(now - Number(btn.dataset.baseHqLastTapAt || 0) < 220){
+        ev?.preventDefault?.();
+        ev?.stopPropagation?.();
+        return true;
+      }
+      btn.dataset.baseHqLastTapAt = String(now);
+      ev?.preventDefault?.();
+      ev?.stopPropagation?.();
+      runBaseHqCommand(command, btn.textContent);
+      return true;
+    };
     btn.addEventListener("pointerdown", (ev)=>{
       ev.stopPropagation();
     }, { passive:true });
     btn.addEventListener("pointerup", (ev)=>{
-      const command = btn.dataset.baseHqCommand;
-      if(!command) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      runBaseHqCommand(command, btn.textContent);
+      trigger(ev);
     }, { passive:false });
     btn.addEventListener("click", (ev)=>{
+      if(trigger(ev)) return;
       ev.stopPropagation();
     }, true);
   });
@@ -29439,11 +29466,13 @@ function openInventoryFromBaseHQ(tab=""){
   if(safeTab) inventoryTab(safeTab);
 }
 function openModeFromBaseHQ(){
-  leaveBaseHqView({ restoreMenu:true });
+  rememberBaseHqOverlayReturn("mission");
+  leaveBaseHqView({ restoreMenu:false });
   openMode();
 }
 function openStoryFromBaseHQ(){
-  leaveBaseHqView({ restoreMenu:true });
+  rememberBaseHqOverlayReturn("command");
+  leaveBaseHqView({ restoreMenu:false });
   openStoryCampaignJournal();
 }
 function openMissionBriefFromBaseHQ(){

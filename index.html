@@ -253,8 +253,9 @@
       position:absolute;
       right:12px;
       top:12px;
+      bottom:72px;
       width:min(340px,calc(100% - 24px));
-      max-height:calc(100% - 112px);
+      max-height:none;
       overflow-y:auto;
       overscroll-behavior:contain;
       -webkit-overflow-scrolling:touch;
@@ -270,6 +271,19 @@
       box-shadow:0 14px 34px rgba(0,0,0,.38), inset 0 0 18px rgba(56,189,248,.08);
       backdrop-filter:blur(7px);
       pointer-events:auto;
+    }
+    .baseHqWorldHud::after{
+      content:"Scroll for more";
+      display:block;
+      margin-top:10px;
+      padding:7px 8px;
+      border-radius:999px;
+      text-align:center;
+      color:#bfdbfe;
+      font-size:10px;
+      font-weight:950;
+      background:rgba(15,23,42,.52);
+      border:1px solid rgba(125,211,252,.22);
     }
     .baseHqWorldHud::-webkit-scrollbar{width:6px}
     .baseHqWorldHud::-webkit-scrollbar-track{background:rgba(15,23,42,.35);border-radius:999px}
@@ -552,8 +566,9 @@
         left:8px;
         right:8px;
         top:8px;
+        bottom:60px;
         width:auto;
-        max-height:calc(100% - 124px);
+        max-height:none;
         padding:9px 9px 16px;
       }
       .baseHqWorldTitle{font-size:13px}
@@ -577,7 +592,7 @@
         grid-template-columns:1fr;
       }
       .baseHqQuickBtn{min-height:34px;font-size:9px;padding:5px 4px}
-      .baseHqQuickHint{font-size:10px;padding:5px 7px}
+      .baseHqQuickHint{font-size:10px;padding:5px 7px;max-height:42px;overflow:hidden}
       .baseHqModePreview{inset:8px;padding:6px}
       .baseHqModePreviewCard{padding:11px;border-radius:18px}
       .baseHqModePreviewTitle{font-size:17px}
@@ -2852,7 +2867,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4591-mission-result-accuracy-1"></script>
+<script src="./game.js?v=4592-hq-ux-polish-1"></script>
 <script src="./tutorial.js?v=4532-base-hq-tutorial-station"></script>
 <script>
 (() => {
