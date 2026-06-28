@@ -11231,6 +11231,16 @@ chapterRewardsUnlocked: {},
   }
 };
 
+const MAX_PERSIST_CARCASSES = 48;
+const MAX_PERSIST_PICKUPS = 26;
+const MAX_PERSIST_TRAPS = 24;
+const MAX_PERSIST_RESCUE_SITES = 12;
+const MAX_PERSIST_SUPPORT_UNITS = 16;
+const MAX_PERSIST_RIVAL_HUNTERS = 8;
+const MAX_PERSIST_INTERACTABLES = 10;
+const MAX_PERSIST_TIGERS = 24;
+const MAX_PERSIST_CIVILIANS = 24;
+
 let S = load();
 bindFundsWallet(S);
 
@@ -12809,6 +12819,7 @@ function load(){
       ensureSeasonPassState(fallback);
       ensureMasteryRewardsState(fallback);
       ensureCosmeticCollectionState(fallback);
+      stabilizeLoadedSaveState(fallback, "new-save");
       return fallback;
     }
     const m = { ...DEFAULT, ...saved };
@@ -12913,6 +12924,7 @@ function load(){
     ensureMasteryRewardsState(m);
     ensureStoryEndgameState(m);
     if(m.lives==null) m.lives=5;
+    stabilizeLoadedSaveState(m, sourceKey || "load");
     m.v = STORAGE_VERSION;
     trimPersistentState(m);
     if(sourceKey && sourceKey !== STORAGE_KEY){
@@ -12942,6 +12954,7 @@ function load(){
     ensureSeasonPassState(fallback);
     ensureMasteryRewardsState(fallback);
     ensureCosmeticCollectionState(fallback);
+    stabilizeLoadedSaveState(fallback, "load-fallback");
     return fallback;
   }
 }
@@ -12968,15 +12981,6 @@ const STABILITY_SOFT_CAP_CIVILIANS = 30;
 const STABILITY_SOFT_CAP_PICKUPS = 34;
 const STABILITY_SOFT_CAP_CARCASSES = 64;
 const STABILITY_SOFT_CAP_TRAPS = 28;
-const MAX_PERSIST_CARCASSES = 48;
-const MAX_PERSIST_PICKUPS = 26;
-const MAX_PERSIST_TRAPS = 24;
-const MAX_PERSIST_RESCUE_SITES = 12;
-const MAX_PERSIST_SUPPORT_UNITS = 16;
-const MAX_PERSIST_RIVAL_HUNTERS = 8;
-const MAX_PERSIST_INTERACTABLES = 10;
-const MAX_PERSIST_TIGERS = 24;
-const MAX_PERSIST_CIVILIANS = 24;
 const FRAME_LOAD_LIGHT = 1;
 const FRAME_LOAD_MID = 1.15;
 const FRAME_LOAD_HIGH = 1.32;
@@ -13035,6 +13039,136 @@ function trimPersistentState(state){
   state.civilians = capHead(state.civilians, MAX_PERSIST_CIVILIANS);
   return state;
 }
+function clearWorldMapActiveRunState(wm, reason=""){
+  if(!wm || typeof wm !== "object") return wm;
+  const note = String(reason || "").trim();
+  wm.activeRegionId = "";
+  wm.activeRunId = "";
+  wm.activeMissionLevel = 0;
+  wm.activeStartedAt = 0;
+  wm.activeEventId = "";
+  wm.activeEventRegionId = "";
+  wm.activeCrisisId = "";
+  wm.activeCrisisRegionId = "";
+  wm.activeRivalRegionId = "";
+  if(note){
+    wm.lastOutcome = `Resume guard cleared stale World Map mission state (${note}).`;
+  }
+  return wm;
+}
+function stabilizeWorldMapResumeState(state, reason="resume"){
+  if(!state || typeof state !== "object") return null;
+  const wm = ensureWorldMapCampaignState(state);
+  const runId = String(wm.activeRunId || "");
+  const activeRegionId = String(wm.activeRegionId || "");
+  if(!runId && !activeRegionId) return wm;
+  const now = Date.now();
+  const startedAt = Math.max(0, Number(wm.activeStartedAt || 0));
+  const staleMs = 6 * 60 * 60 * 1000;
+  const expectedLevel = Math.max(0, Math.floor(Number(wm.activeMissionLevel || 0)));
+  const currentLevel = Math.max(0, Math.floor(Number(state.storyLevel || state.storyLastMission || 0)));
+  let clearReason = "";
+  if(runId && wm.completedRuns && wm.completedRuns[runId]){
+    clearReason = "run already completed";
+  }else if(!runId || !activeRegionId || !worldMapRegionExists(activeRegionId)){
+    clearReason = "missing active region";
+  }else if(normalizeModeName(state.mode) !== "Story"){
+    clearReason = "mode changed";
+  }else if(expectedLevel > 0 && currentLevel > 0 && expectedLevel !== currentLevel){
+    clearReason = "mission level changed";
+  }else if(startedAt > 0 && (now - startedAt) > staleMs){
+    clearReason = "active run expired";
+  }else if(state.missionEnded || state.gameOver){
+    clearReason = state.missionEnded ? "mission already ended" : "game over";
+  }
+  if(clearReason){
+    clearWorldMapActiveRunState(wm, clearReason);
+  }
+  wm._resumeGuardVersion = 1;
+  wm._resumeGuardReason = String(reason || "resume");
+  return wm;
+}
+function missionRuntimeLooksNonLive(state){
+  if(!state || typeof state !== "object") return true;
+  if(state.missionEnded || state.gameOver) return true;
+  const pauseReason = String(state.pauseReason || "");
+  if(pauseReason === "mission-transition" || pauseReason === "world-map-transition") return true;
+  return false;
+}
+function clearTransientMissionRuntime(state, reason=""){
+  if(!state || typeof state !== "object") return state;
+  state.target = null;
+  state.inBattle = false;
+  state.activeTigerId = null;
+  state.lockedTigerId = null;
+  state.lockedRivalId = null;
+  state.selectedSupportUnitId = null;
+  state.selectedSupportTargetId = null;
+  state.scanPing = 0;
+  state.scanLead = null;
+  state.respawnPendingUntil = 0;
+  state._combatTigerAttackAt = 0;
+  state._combatStaggerUntil = 0;
+  state._transitionGuardReason = String(reason || "");
+  state.trapsPlaced = [];
+  state.carcasses = [];
+  state.pickups = [];
+  state.supportUnits = [];
+  state.rivalHunters = [];
+  state.rescueSites = [];
+  state.mapInteractables = [];
+  state.tigers = [];
+  state.civilians = [];
+  state.evacZone = null;
+  state.evacRoute = null;
+  state.extractionSequence = null;
+  state.settlementDefense = null;
+  state.missionTigerSpawnControl = null;
+  return state;
+}
+function stabilizeLoadedSaveState(state, sourceKey=""){
+  if(!state || typeof state !== "object") return state;
+  state.mode = normalizeModeName(state.mode);
+  stabilizeWorldMapResumeState(state, sourceKey || "load");
+  if(String(state.pauseReason || "") === "mission-transition"){
+    state.paused = false;
+    state.pauseReason = null;
+  }
+  state.target = null;
+  state.inBattle = false;
+  state.activeTigerId = null;
+  state.lockedTigerId = null;
+  state.lockedRivalId = null;
+  state.selectedSupportUnitId = null;
+  state.selectedSupportTargetId = null;
+  state.scanPing = 0;
+  state._combatTigerAttackAt = 0;
+  if(missionRuntimeLooksNonLive(state)){
+    clearTransientMissionRuntime(state, sourceKey || "load");
+  }
+  state._saveResumeStabilityVersion = 1;
+  state._saveResumeStabilizedAt = Date.now();
+  return state;
+}
+function stabilizeStateForPersistence(state, reason="save"){
+  if(!state || typeof state !== "object") return state;
+  stabilizeWorldMapResumeState(state, reason);
+  if(missionRuntimeLooksNonLive(state)){
+    clearTransientMissionRuntime(state, reason);
+  }else{
+    state.target = null;
+    state.inBattle = false;
+    state.activeTigerId = null;
+    state.lockedTigerId = null;
+    state.lockedRivalId = null;
+    state.selectedSupportUnitId = null;
+    state.selectedSupportTargetId = null;
+    state._combatTigerAttackAt = 0;
+  }
+  state._saveResumeStabilityVersion = 1;
+  state._saveResumeStabilizedAt = Date.now();
+  return state;
+}
 function buildPersistedState(){
   captureActiveModeProfile(S);
   const out = { ...S };
@@ -13049,6 +13183,8 @@ function buildPersistedState(){
   out.mapInteractables = capHead(S.mapInteractables, MAX_PERSIST_INTERACTABLES);
   out.tigers = capHead(S.tigers, MAX_PERSIST_TIGERS);
   out.civilians = capHead(S.civilians, MAX_PERSIST_CIVILIANS);
+  stabilizeStateForPersistence(out, "save");
+  trimPersistentState(out);
   return out;
 }
 
