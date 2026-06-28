@@ -8570,6 +8570,9 @@ function defaultWorldMapCampaignState(){
     activeRunId:"",
     activeMissionLevel:0,
     activeStartedAt:0,
+    returnAfterComplete:false,
+    lastCompletedRegionId:"",
+    lastCompletedRunId:"",
     activeEventId:"",
     activeEventRegionId:"",
     defendedRegions:{},
@@ -8681,6 +8684,9 @@ function ensureWorldMapCampaignState(state=S){
     activeMissionLevel:Math.max(0, Math.floor(Number(src.activeMissionLevel || 0))),
     activeStartedAt:Math.max(0, Number(src.activeStartedAt || 0)),
     activeRegionId:String(src.activeRegionId || ""),
+    returnAfterComplete:!!src.returnAfterComplete,
+    lastCompletedRegionId:String(src.lastCompletedRegionId || ""),
+    lastCompletedRunId:String(src.lastCompletedRunId || ""),
     activeEventId:String(src.activeEventId || ""),
     activeEventRegionId:String(src.activeEventRegionId || ""),
     activeCrisisId:String(src.activeCrisisId || ""),
@@ -10384,6 +10390,9 @@ function startWorldMapRegionMission(id){
   wm.activeRunId = createWorldMapMissionRun(region, missionLevel);
   wm.activeMissionLevel = missionLevel;
   wm.activeStartedAt = Date.now();
+  wm.returnAfterComplete = false;
+  wm.lastCompletedRegionId = "";
+  wm.lastCompletedRunId = "";
   wm.activeEventId = event?.id || "";
   wm.activeEventRegionId = event?.regionId || "";
   wm.activeCrisisId = crisis?.id || "";
@@ -10416,6 +10425,7 @@ function openMissionBriefFromWorldMap(){
   wm.activeRunId = "";
   wm.activeMissionLevel = 0;
   wm.activeStartedAt = 0;
+  wm.returnAfterComplete = false;
   wm.activeEventId = "";
   wm.activeEventRegionId = "";
   wm.activeCrisisId = "";
@@ -10624,6 +10634,9 @@ function recordWorldMapCampaignOutcome({ missionStats=null, missionLevel=null }=
   wm.activeRunId = "";
   wm.activeMissionLevel = 0;
   wm.activeStartedAt = 0;
+  wm.returnAfterComplete = true;
+  wm.lastCompletedRegionId = region.id;
+  wm.lastCompletedRunId = runId;
   wm.pendingChoice = {
     regionId:region.id,
     createdAt:Date.now(),
@@ -12991,6 +13004,7 @@ let __startupLoadingGuard = {
   finalizingUntil:0,
   finalizingStartedAt:0,
   pendingReleaseReason:"",
+  finalizeTimer:0,
   releasedAt:0,
   reason:"",
   lastTextAt:0,
@@ -34245,6 +34259,8 @@ function startNextMission(){
   tigerEcosystemMissionAdvance();
   document.getElementById("completeOverlay").style.display="none";
   ensureStoryEndgameState(S);
+  const wmForNext = ensureWorldMapCampaignState(S);
+  wmForNext.returnAfterComplete = false;
   const carryHp = clamp(S.hp, 0, 100);
   const carryArmor = clamp(S.armor, 0, S.armorCap || 100);
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
@@ -34316,6 +34332,19 @@ function restartModeFromMission1(){
 
 function closeComplete(){
   if(S.missionEnded && !S.gameOver){
+    const wm = ensureWorldMapCampaignState(S);
+    if(wm.returnAfterComplete){
+      wm.returnAfterComplete = false;
+      if(wm.lastCompletedRegionId && worldMapRegionExists(wm.lastCompletedRegionId)){
+        wm.selectedRegionId = wm.lastCompletedRegionId;
+      }
+      const overlay = document.getElementById("completeOverlay");
+      if(overlay) overlay.style.display = "none";
+      setPaused(true, "world-map");
+      openWorldMapCampaign();
+      save(true);
+      return;
+    }
     openMissionProgressGuard("close");
     return;
   }
@@ -47457,6 +47486,10 @@ function beginStartupLoadingGuard(reason="startup"){
   __startupLoadingGuard.finalizingUntil = 0;
   __startupLoadingGuard.finalizingStartedAt = 0;
   __startupLoadingGuard.pendingReleaseReason = "";
+  if(__startupLoadingGuard.finalizeTimer){
+    clearTimeout(__startupLoadingGuard.finalizeTimer);
+    __startupLoadingGuard.finalizeTimer = 0;
+  }
   __startupLoadingGuard.releasedAt = 0;
   __startupLoadingGuard.reason = reason;
   __startupLastDetailedMapAt = 0;
@@ -47610,8 +47643,13 @@ function startupLoadCanRelease(now=Date.now()){
 
 function releaseStartupLoadingGuard(reason="ready"){
   if(!__startupLoadingGuard.active) return;
+  if(__startupLoadingGuard.finalizeTimer){
+    clearTimeout(__startupLoadingGuard.finalizeTimer);
+    __startupLoadingGuard.finalizeTimer = 0;
+  }
   __startupLoadingGuard.percent = 100;
   __startupLoadingGuard.active = false;
+  __gameplayLoadingGuardArmed = false;
   __startupLoadingGuard.finalizingUntil = 0;
   __startupLoadingGuard.finalizingStartedAt = 0;
   __startupLoadingGuard.pendingReleaseReason = "";
@@ -47621,6 +47659,18 @@ function releaseStartupLoadingGuard(reason="ready"){
   __forceFullMapRepaintUntil = Math.max(Number(__forceFullMapRepaintUntil || 0), Date.now() + MAP_CLARITY_FULL_REPAINT_MS);
   try{ invalidateMapCache(); }catch(e){}
   updateStartupLoadingOverlay(true);
+}
+
+function scheduleStartupLoadingRelease(reason="ready"){
+  if(!__startupLoadingGuard.active) return;
+  if(__startupLoadingGuard.finalizeTimer) return;
+  __startupLoadingGuard.finalizeTimer = setTimeout(()=>{
+    __startupLoadingGuard.finalizeTimer = 0;
+    if(!__startupLoadingGuard.active) return;
+    if(Number(__startupLoadingGuard.percent || 0) >= 100 || Date.now() >= Number(__startupLoadingGuard.finalizingUntil || 0)){
+      releaseStartupLoadingGuard(reason || __startupLoadingGuard.pendingReleaseReason || "timer-release");
+    }
+  }, Math.max(120, STARTUP_LOADING_FINALIZE_MS + 120));
 }
 
 function requestStartupLoadingFinalization(reason="ready"){
@@ -47636,6 +47686,7 @@ function requestStartupLoadingFinalization(reason="ready"){
     const started = Number(__startupLoadingGuard.finalizingStartedAt || now);
     __startupLoadingGuard.finalizingUntil = Math.max(Number(__startupLoadingGuard.finalizingUntil || 0), started + STARTUP_LOADING_FINALIZE_MS);
   }
+  scheduleStartupLoadingRelease(reason || "finalize");
   updateStartupLoadingOverlay(true);
 }
 
@@ -47702,6 +47753,9 @@ function updateStartupLoadingOverlay(force=false){
   const cappedPercent = readyToFinish ? 100 : Math.min(maxTimeProgress >= 1 ? 99 : 96, rawPercent);
   __startupLoadingGuard.percent = Math.max(Number(__startupLoadingGuard.percent || 0), cappedPercent);
   const pct = clamp(Math.round(__startupLoadingGuard.percent || 0), 0, 100);
+  if(pct >= 100 && !finalizing){
+    setTimeout(()=>requestStartupLoadingFinalization("overlay-ready"), 0);
+  }
   const progress = pct / 100;
   if(__startupLoadingGuard.subNode){
     const stageLabel = {
