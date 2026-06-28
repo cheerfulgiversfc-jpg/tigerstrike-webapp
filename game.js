@@ -2754,6 +2754,7 @@ function missionStatSnapshot(src=S.stats){
 function beginMissionStatRun(reason="deploy"){
   S._missionStatsStart = missionStatSnapshot(S.stats);
   S._missionStatsFinal = null;
+  S._missionResultLocked = null;
   S._missionRewards2GrantedRunId = "";
   S._missionRewards2GrantedAt = 0;
   S._missionRunId = [
@@ -2769,20 +2770,26 @@ function ensureMissionTigerOutcomeLedger(){
   if(!S._missionTigerOutcomes || typeof S._missionTigerOutcomes !== "object" || Array.isArray(S._missionTigerOutcomes)){
     S._missionTigerOutcomes = {};
   }
+  const runId = String(S._missionRunId || "");
   for(const tiger of (S.tigers || [])){
     const outcome = String(tiger?.missionOutcome || "").toUpperCase();
     const id = Number(tiger?.id);
-    if(Number.isFinite(id) && (outcome === "CAPTURE" || outcome === "KILL")){
-      S._missionTigerOutcomes[String(id)] = outcome;
+    const key = String(id);
+    if(Number.isFinite(id) && (outcome === "CAPTURE" || outcome === "KILL") && !S._missionTigerOutcomes[key]){
+      S._missionTigerOutcomes[key] = { outcome, runId, at:Date.now() };
     }
   }
   return S._missionTigerOutcomes;
 }
 function syncMissionOutcomeStats(){
   const ledger = ensureMissionTigerOutcomeLedger();
+  const currentRunId = String(S._missionRunId || "");
   let captures = 0;
   let kills = 0;
-  for(const outcome of Object.values(ledger)){
+  for(const entry of Object.values(ledger)){
+    const outcome = String((entry && typeof entry === "object") ? entry.outcome : entry).toUpperCase();
+    const runId = String((entry && typeof entry === "object") ? (entry.runId || currentRunId) : currentRunId);
+    if(currentRunId && runId && runId !== currentRunId) continue;
     if(outcome === "CAPTURE") captures += 1;
     else if(outcome === "KILL") kills += 1;
   }
@@ -2796,8 +2803,12 @@ function recordUniqueMissionTigerOutcome(tiger, outcome="KILL"){
   if(!Number.isFinite(id)) return false;
   const ledger = ensureMissionTigerOutcomeLedger();
   const key = String(id);
-  if(ledger[key]) return false;
-  ledger[key] = String(outcome || "KILL").toUpperCase() === "CAPTURE" ? "CAPTURE" : "KILL";
+  const currentRunId = String(S._missionRunId || "");
+  const existing = ledger[key];
+  const existingRunId = String((existing && typeof existing === "object") ? (existing.runId || currentRunId) : currentRunId);
+  if(existing && (!currentRunId || existingRunId === currentRunId)) return false;
+  const cleanOutcome = String(outcome || "KILL").toUpperCase() === "CAPTURE" ? "CAPTURE" : "KILL";
+  ledger[key] = { outcome:cleanOutcome, runId:currentRunId, at:Date.now() };
   syncMissionOutcomeStats();
   return true;
 }
@@ -2835,6 +2846,20 @@ function finalizeMissionStatsSnapshot(opts={}){
   const finalStats = reconcileMissionStatsWithEntities(currentMissionStatsSnapshot(opts), opts);
   S._missionStatsFinal = finalStats;
   return finalStats;
+}
+function lockMissionResultStats(stats={}, opts={}){
+  const locked = reconcileMissionStatsWithEntities(missionStatSnapshot(stats), opts);
+  const civTotal = Math.max(0, Math.floor(Number(opts?.civTotal || 0)));
+  const civEvac = Math.max(0, Math.floor(Number(opts?.civEvac || locked.evac || 0)));
+  if(civTotal > 0) locked.evac = Math.min(civTotal, civEvac);
+  if(Number.isFinite(Number(opts?.cashEarned))){
+    locked.cashEarned = Math.max(0, Math.floor(Number(opts.cashEarned || 0)));
+  }
+  locked.runId = String(S._missionRunId || "");
+  locked.lockedAt = Date.now();
+  S._missionStatsFinal = missionStatSnapshot(locked);
+  S._missionResultLocked = { ...locked };
+  return S._missionStatsFinal;
 }
 
 function buildMissionRecapPayload(meta={}){
@@ -12362,6 +12387,19 @@ function trackCashEarned(amount=0){
   if(S.stats) S.stats.cashEarned = Math.max(0, Math.floor(Number(S.stats.cashEarned || 0))) + cash;
   addContractTally("cashEarned", cash);
   addOpsTotal("cashEarned", cash);
+}
+function reverseMissionFieldCash(amount=0, reason="mission-result-truth"){
+  const cash = Math.max(0, Math.floor(Number(amount || 0)));
+  if(cash <= 0) return 0;
+  S.funds = Math.max(0, Math.floor(Number(S.funds || 0)) - cash);
+  if(S.stats){
+    S.stats.cashEarned = Math.max(0, Math.floor(Number(S.stats.cashEarned || 0)) - cash);
+  }
+  const totals = ensureOpsTotalsState(S);
+  totals.cashEarned = Math.max(0, Math.floor(Number(totals.cashEarned || 0)) - cash);
+  S._missionFieldCashReversed = Math.max(0, Math.floor(Number(S._missionFieldCashReversed || 0))) + cash;
+  S._missionFieldCashReverseReason = String(reason || "mission-result-truth");
+  return cash;
 }
 
 let __cloudProfileLastSyncAt = 0;
@@ -42045,9 +42083,10 @@ function checkMissionComplete(){
           upkeepNote = `\nSquad upkeep paid: $${upkeep.paid.toLocaleString()} (all active specialists maintained)\n`;
         }
       }
-      const missionStats = finalizeMissionStatsSnapshot({ civTotal, civEvac });
-      missionStats.evac = Math.min(Math.max(0, civTotal), Math.max(0, civEvac));
-      S._missionStatsFinal = missionStatSnapshot(missionStats);
+      const preRewardMissionStats = finalizeMissionStatsSnapshot({ civTotal, civEvac });
+      preRewardMissionStats.evac = Math.min(Math.max(0, civTotal), Math.max(0, civEvac));
+      const fieldCashEarned = Math.max(0, Math.floor(Number(preRewardMissionStats.cashEarned || 0)));
+      S._missionStatsFinal = missionStatSnapshot(preRewardMissionStats);
       const rewards2 = grantMissionRewards2(missionRewards2Build({
         activeMission,
         storyMission,
@@ -42056,19 +42095,27 @@ function checkMissionComplete(){
         civDead,
         civEvac,
         storyVariant,
-        missionStatsOverride:missionStats
+        missionStatsOverride:preRewardMissionStats
       }));
       const rewards2Note = rewards2
         ? `\nMission Rewards 2.0: +$${Math.max(0, Math.floor(Number(rewards2.totalCash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(rewards2.bonusXp || 0)))}XP • Streak ${Math.max(1, Math.floor(Number(rewards2.nextStreak || 1)))}\n`
         : "";
+      const reversedFieldCash = reverseMissionFieldCash(fieldCashEarned, "mission-result-accuracy");
       const completedEvacRoute = ensureEvacRouteState(S);
       const extractionNote = extraction.complete
         ? `\nExtraction: ${extraction.label || "Emergency Extraction"}${extraction.emergency ? " • Emergency fallback" : ` • Perfect hold +$${Math.max(0, Math.floor(Number(extraction.bonusCash || 0))).toLocaleString()}`}\n`
         : (completedEvacRoute.active
           ? `\nEvacuation: ${completedEvacRoute.label || "Evac Route"} • ${Math.max(0, Math.floor(Number(completedEvacRoute.boardedCount || 0)))}/${Math.max(1, Math.floor(Number(completedEvacRoute.boardingTotal || civTotal || 1)))} boarded${completedEvacRoute.departed ? " • transport departed" : ""}\n`
           : "");
-      missionStats.cashEarned = Math.max(0, Math.floor(Number(rewards2?.totalCash || 0)));
-      S._missionStatsFinal = missionStatSnapshot(missionStats);
+      const missionStats = lockMissionResultStats(preRewardMissionStats, {
+        civTotal,
+        civEvac,
+        cashEarned:Math.max(0, Math.floor(Number(rewards2?.totalCash || 0)))
+      });
+      S.stats.cashEarned = Math.max(0, Math.floor(Number(missionStats.cashEarned || 0)));
+      const fieldCashTruthNote = reversedFieldCash > 0
+        ? `\nMission Result Accuracy: field cash $${reversedFieldCash.toLocaleString()} folded into final mission payout.\n`
+        : "";
       const storyCampaign3Note = recordStoryCampaignMissionOutcome({
         missionStats,
         civTotal,
@@ -42118,7 +42165,7 @@ function checkMissionComplete(){
       });
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${worldMapCampaignNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${fieldCashTruthNote}${worldMapCampaignNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
