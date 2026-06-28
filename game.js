@@ -8902,6 +8902,49 @@ function worldMapRegionMissionLevel(region, state=S){
 function worldMapEsc(value){
   return String(value ?? "").replace(/[&<>"']/g, (ch)=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
 }
+function worldMapTruthPill(label, detail="", tone="info"){
+  const colors = {
+    good:"rgba(34,197,94,.34)",
+    warn:"rgba(250,204,21,.34)",
+    danger:"rgba(248,113,113,.38)",
+    info:"rgba(96,165,250,.32)",
+    muted:"rgba(148,163,184,.22)",
+  };
+  const border = colors[tone] || colors.info;
+  return `<span class="tag" style="border-color:${border};background:${border};color:#eaf4ff">${worldMapEsc(label)}${detail ? `: ${worldMapEsc(detail)}` : ""}</span>`;
+}
+function worldMapClaimStateBadge(claimed=false, ready=false, lockedText="Locked"){
+  if(claimed) return `<span class="tag" style="border-color:rgba(74,222,128,.55);background:rgba(22,101,52,.36);color:#bbf7d0">CLAIMED</span>`;
+  if(ready) return `<span class="tag" style="border-color:rgba(250,204,21,.58);background:rgba(113,63,18,.34);color:#fef3c7">READY</span>`;
+  return `<span class="tag">${worldMapEsc(lockedText)}</span>`;
+}
+function worldMapTruthSummaryHtml(selected, stats, wm=ensureWorldMapCampaignState(S)){
+  const region = selected || worldMapRegionById(wm.selectedRegionId);
+  const season = ensureWorldMapSeasonState(wm);
+  const crisis = worldMapCrisisForRegion(region, S);
+  const crisisDef = crisis ? worldMapCrisisDef(crisis.typeId) : null;
+  const invasion = worldMapNemesisInvasionForRegion(region, S);
+  const rivalPressure = worldMapRivalPressure(region, S);
+  const faction = worldMapControllingFaction(region, S);
+  const seasonClaimable = WORLD_MAP_SEASON_GOALS.some((goal)=>worldMapSeasonGoalProgress(goal.id, wm).ready && !season.claimedGoals?.[goal.id]);
+  const weeklyClaimable = WORLD_MAP_WEEKLY_LADDER.some((tier)=>Math.floor(Number(season.weeklyPoints || 0)) >= Math.floor(Number(tier.points || 0)) && !season.weeklyClaimed?.[tier.id]);
+  const pills = [
+    worldMapTruthPill("Selected", region.name, "info"),
+    worldMapTruthPill("Controller", faction.name, faction.id === "hq" || faction.id === "settlements" ? "good" : (faction.id === "rivals" ? "warn" : "danger")),
+    worldMapTruthPill("Crisis", crisisDef ? crisisDef.name : "None here", crisisDef ? "danger" : "muted"),
+    worldMapTruthPill("Rivals", rivalPressure >= 70 ? `High ${rivalPressure}%` : (rivalPressure >= 45 ? `Active ${rivalPressure}%` : `Low ${rivalPressure}%`), rivalPressure >= 70 ? "danger" : (rivalPressure >= 45 ? "warn" : "good")),
+    worldMapTruthPill("Nemesis", invasion ? `${invasion.bossName} Lv ${Math.floor(Number(invasion.level || 1))}` : "None here", invasion ? "danger" : "muted"),
+    worldMapTruthPill("Season", `${Math.floor(Number(season.points || 0))} pts / Weekly ${Math.floor(Number(season.weeklyPoints || 0))}`, "info"),
+    worldMapTruthPill("Claims", (seasonClaimable || weeklyClaimable) ? "Rewards ready" : "No claim ready", (seasonClaimable || weeklyClaimable) ? "warn" : "muted"),
+  ].join(" ");
+  return `
+    <div class="card" style="margin:10px 0;border-color:rgba(125,211,252,.55);background:linear-gradient(145deg,rgba(8,47,73,.84),rgba(8,15,26,.96))">
+      <div class="hudTitle">World Map Truth Board</div>
+      <div class="small">Active states are shown here first so you know exactly what affects this region before launching.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:8px">${pills}</div>
+    </div>
+  `;
+}
 function worldMapLiveEventDef(typeId){
   return WORLD_MAP_LIVE_EVENT_TYPES.find((event)=>event.id === typeId) || WORLD_MAP_LIVE_EVENT_TYPES[0];
 }
@@ -9099,24 +9142,32 @@ function worldMapSeasonHtml(selected){
     const progress = worldMapSeasonGoalProgress(goal.id, wm);
     const pct = clamp(Math.round((progress.done / Math.max(1, progress.total)) * 100), 0, 100);
     const claimed = !!season.claimedGoals?.[goal.id];
+    const stateBadge = worldMapClaimStateBadge(claimed, progress.ready, `${progress.done}/${progress.total}`);
+    const actionHtml = claimed
+      ? `<div class="small" style="margin-top:8px;color:#bbf7d0;font-weight:900">Reward already collected.</div>`
+      : (progress.ready ? `<button class="good" onclick="claimWorldMapSeasonGoal('${goal.id}')">Claim Reward</button>` : `<div class="small" style="margin-top:8px">Keep progressing: ${progress.done}/${progress.total} complete.</div>`);
     return `
       <div class="card">
-        <div class="hudTitle">${goal.icon} ${worldMapEsc(goal.name)} <span class="tag">${claimed ? "Claimed" : (progress.ready ? "Ready" : `${progress.done}/${progress.total}`)}</span></div>
+        <div class="hudTitle">${goal.icon} ${worldMapEsc(goal.name)} ${stateBadge}</div>
         <div class="small">${worldMapEsc(goal.desc)}</div>
         <div class="bar"><div class="fill ${progress.ready ? "green" : "yellow"}" style="width:${pct}%"></div></div>
         <div class="small">Reward: $${Math.floor(Number(goal.cash || 0)).toLocaleString()} • +${Math.floor(Number(goal.xp || 0))}XP • +${Math.floor(Number(goal.passPoints || 0))} pass pts • ${worldMapEsc(goal.rare)}</div>
-        <button class="${progress.ready && !claimed ? "good" : "ghost"}" onclick="claimWorldMapSeasonGoal('${goal.id}')" ${progress.ready && !claimed ? "" : "disabled"}>${claimed ? "Claimed" : "Claim"}</button>
+        ${actionHtml}
       </div>
     `;
   }).join("");
   const ladderRows = WORLD_MAP_WEEKLY_LADDER.map((tier)=>{
     const claimed = !!season.weeklyClaimed?.[tier.id];
     const ready = Math.floor(Number(season.weeklyPoints || 0)) >= Math.floor(Number(tier.points || 0));
+    const stateBadge = worldMapClaimStateBadge(claimed, ready, `${Math.floor(Number(season.weeklyPoints || 0))}/${tier.points}`);
+    const actionHtml = claimed
+      ? `<div class="small" style="margin-top:8px;color:#bbf7d0;font-weight:900">Claimed for this week.</div>`
+      : (ready ? `<button class="good" onclick="claimWorldMapWeeklyLadder('${tier.id}')">Claim Reward</button>` : `<div class="small" style="margin-top:8px">Needs ${Math.max(0, Math.floor(Number(tier.points || 0)) - Math.floor(Number(season.weeklyPoints || 0)))} more weekly pts.</div>`);
     return `
       <div class="card">
-        <div class="hudTitle">${worldMapEsc(tier.name)} <span class="tag">${claimed ? "Claimed" : `${Math.floor(Number(season.weeklyPoints || 0))}/${tier.points}`}</span></div>
+        <div class="hudTitle">${worldMapEsc(tier.name)} ${stateBadge}</div>
         <div class="small">$${Math.floor(Number(tier.cash || 0)).toLocaleString()} • +${Math.floor(Number(tier.xp || 0))}XP • +${Math.floor(Number(tier.passPoints || 0))} pass pts${tier.rare ? ` • ${worldMapEsc(tier.rare)}` : ""}</div>
-        <button class="${ready && !claimed ? "good" : "ghost"}" onclick="claimWorldMapWeeklyLadder('${tier.id}')" ${ready && !claimed ? "" : "disabled"}>${claimed ? "Claimed" : "Claim"}</button>
+        ${actionHtml}
       </div>
     `;
   }).join("");
@@ -9622,14 +9673,24 @@ function worldMapSupplyNetworkHtml(regionOrId){
   }).join("") || `<div class="card"><div class="small">No connected supply route.</div></div>`;
   const repairCost = Math.max(12000, Math.round((WORLD_MAP_SUPPLY_REPAIR_COST * (1 + Math.max(0, 100 - routeStats.avgHealth) / 90)) / 1000) * 1000);
   const canClaim = Object.values(worldMapRegionalSupply(region, S)).some((value)=>Number(value || 0) > 0);
+  const actionBits = [];
+  if(canClaim){
+    actionBits.push(`<button class="good" onclick="claimWorldMapRegionalSupplies('${region.id}')">Claim Supplies</button>`);
+  }else{
+    actionBits.push(`<span class="tag">No supplies ready</span>`);
+  }
+  if(routeStats.avgHealth < 95){
+    actionBits.push(`<button class="ghost" onclick="repairWorldMapSupplyRoutes('${region.id}')">Repair Routes $${repairCost.toLocaleString()}</button>`);
+  }else{
+    actionBits.push(`<span class="tag">Routes stable</span>`);
+  }
   return `
     <div class="card" style="margin:10px 0;border-color:rgba(125,211,252,.42);background:linear-gradient(145deg,rgba(8,47,73,.72),rgba(8,15,26,.96))">
       <div class="hudTitle">Phase 7 Regional Economy + Supply Lines</div>
       <div class="small">${worldMapEsc(worldMapSupplyLineText(region, S))}</div>
       <div class="small">Stored supplies: ${worldMapEsc(stored)}. Ammo Depot improves ammo/cash flow. Road Barriers protect route health.</div>
       <div class="row" style="margin-top:8px">
-        <button class="${canClaim ? "good" : "ghost"}" onclick="claimWorldMapRegionalSupplies('${region.id}')" ${canClaim ? "" : "disabled"}>Claim Supplies</button>
-        <button class="ghost" onclick="repairWorldMapSupplyRoutes('${region.id}')" ${routeStats.avgHealth < 95 ? "" : "disabled"}>Repair Routes $${repairCost.toLocaleString()}</button>
+        ${actionBits.join("")}
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:10px">${routeRows}</div>
     </div>
@@ -9790,14 +9851,20 @@ function worldMapFactionControlHtml(regionOrId){
   const sabotage = worldMapRivalSabotageValue(region, S);
   const rivalPressure = worldMapRivalPressure(region, S);
   const actions = WORLD_MAP_RIVAL_ACTIONS.map((action)=>{
-    const disabled = action.requiresDefended && Math.max(0, Number(ensureWorldMapCampaignState(S).defendedRegions?.[region.id] || 0)) <= 0;
+    const needsDefended = action.requiresDefended && Math.max(0, Number(ensureWorldMapCampaignState(S).defendedRegions?.[region.id] || 0)) <= 0;
+    const cost = Math.max(0, Math.floor(Number(action.cost || 0)));
+    const canAfford = cost <= 0 || Math.floor(Number(S.funds || 0)) >= cost;
     const costText = Number(action.cost || 0) > 0 ? `$${Number(action.cost || 0).toLocaleString()}` : "Free";
+    const actionButton = (!needsDefended && canAfford)
+      ? `<button class="good" onclick="applyWorldMapRivalAction('${region.id}','${action.id}')">${worldMapEsc(action.name)}</button>`
+      : `<div class="small" style="margin-top:8px">${needsDefended ? "Clear this region once to unlock this action." : `Need $${Math.max(0, cost - Math.floor(Number(S.funds || 0))).toLocaleString()} more.`}</div>`;
     return `
-      <button class="card ${disabled ? "" : "good"}" style="text-align:left;min-height:112px" onclick="applyWorldMapRivalAction('${region.id}','${action.id}')" ${disabled ? "disabled" : ""}>
+      <div class="card" style="text-align:left;min-height:112px">
         <div class="hudTitle">${action.icon} ${worldMapEsc(action.name)}</div>
         <div class="small">${worldMapEsc(action.desc)}</div>
         <div class="small">Cost: ${costText} • rival -${Math.floor(Number(action.rivalDrop || 0))}%${action.routeRepair ? ` • routes +${action.routeRepair}%` : ""}</div>
-      </button>
+        ${actionButton}
+      </div>
     `;
   }).join("");
   const bars = Object.keys(WORLD_MAP_FACTIONS).map((id)=>{
@@ -10240,8 +10307,16 @@ function renderWorldMapCampaign(){
   }).join("");
   const cards = WORLD_MAP_CAMPAIGN_REGIONS.map(worldMapRegionCardHtml).join("");
   const selectedTags = (selected.traits || []).map((trait)=>`<span class="tag">${worldMapEsc(trait)}</span>`).join(" ");
+  const deployActions = selectedUnlocked
+    ? `
+        <button class="good" onclick="startWorldMapRegionMission('${selected.id}')">Deploy To Region</button>
+        <button class="ghost" onclick="openMissionBriefFromWorldMap()">Brief First</button>
+        <button class="ghost" onclick="setWorldMapActiveRegion('${selected.id}')">Set Active</button>
+      `
+    : `<span class="tag">Locked until Story Mission ${Math.floor(Number(selected.unlockAt || 1))} or neighboring defense</span>`;
   root.innerHTML = `
     <div class="hudLine"><b>Phase 9:</b> Endgame World Campaign Seasons add weekly ladders, rotating Nemesis invasions, season goals, rare trophies, titles, cosmetics, and long-term rewards.</div>
+    ${worldMapTruthSummaryHtml(selected, stats, wm)}
     ${worldMapSeasonHtml(selected)}
     ${worldMapPendingChoiceHtml(wm)}
     ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
@@ -10320,9 +10395,7 @@ function renderWorldMapCampaign(){
         <div class="small">Region reward: ${worldMapEsc(worldMapRewardText(rewardPreview))}</div>
         <div class="small">Reward focus: ${worldMapEsc(selected.reward)} • Mission Rewards 2.0 still controls core payout.</div>
         <div class="row" style="margin-top:10px">
-          <button class="good" onclick="startWorldMapRegionMission('${selected.id}')" ${selectedUnlocked ? "" : "disabled"}>Deploy To Region</button>
-          <button class="ghost" onclick="openMissionBriefFromWorldMap()" ${selectedUnlocked ? "" : "disabled"}>Brief First</button>
-          <button class="ghost" onclick="setWorldMapActiveRegion('${selected.id}')" ${selectedUnlocked ? "" : "disabled"}>Set Active</button>
+          ${deployActions}
         </div>
       </div>
     </div>
