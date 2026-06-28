@@ -2754,6 +2754,8 @@ function missionStatSnapshot(src=S.stats){
 function beginMissionStatRun(reason="deploy"){
   S._missionStatsStart = missionStatSnapshot(S.stats);
   S._missionStatsFinal = null;
+  S._missionRewards2GrantedRunId = "";
+  S._missionRewards2GrantedAt = 0;
   S._missionRunId = [
     normalizeModeName(S.mode),
     missionIndexForMode(S.mode),
@@ -2799,19 +2801,27 @@ function recordUniqueMissionTigerOutcome(tiger, outcome="KILL"){
   syncMissionOutcomeStats();
   return true;
 }
-function reconcileMissionStatsWithEntities(stats={}){
+function reconcileMissionStatsWithEntities(stats={}, opts={}){
   const out = missionStatSnapshot(stats);
   const outcomes = syncMissionOutcomeStats();
   out.captures = outcomes.captures;
   out.kills = outcomes.kills;
-  if(Array.isArray(S.civilians)){
-    out.evac = S.civilians.reduce((count, civ)=>count + (civ?.evac ? 1 : 0), 0);
+  const forcedEvac = Number(opts?.civEvac);
+  const forcedTotal = Number(opts?.civTotal);
+  if(Number.isFinite(forcedEvac)){
+    const maxEvac = Number.isFinite(forcedTotal)
+      ? Math.max(0, Math.floor(forcedTotal))
+      : Math.max(0, Math.floor(forcedEvac));
+    out.evac = Math.min(maxEvac, Math.max(0, Math.floor(forcedEvac)));
+  } else if(Array.isArray(S.civilians)){
+    const entityEvac = S.civilians.reduce((count, civ)=>count + (civ?.evac ? 1 : 0), 0);
+    out.evac = Math.min(S.civilians.length, Math.max(0, Math.floor(entityEvac)));
   }
   return out;
 }
-function currentMissionStatsSnapshot(){
+function currentMissionStatsSnapshot(opts={}){
   if(S._missionStatsFinal && typeof S._missionStatsFinal === "object"){
-    return reconcileMissionStatsWithEntities(S._missionStatsFinal);
+    return reconcileMissionStatsWithEntities(S._missionStatsFinal, opts);
   }
   const start = missionStatSnapshot(S._missionStatsStart || {});
   const now = missionStatSnapshot(S.stats || {});
@@ -2819,10 +2829,10 @@ function currentMissionStatsSnapshot(){
   for(const key of MISSION_STAT_KEYS){
     out[key] = Math.max(0, Math.floor(Number(now[key] || 0) - Number(start[key] || 0)));
   }
-  return reconcileMissionStatsWithEntities(out);
+  return reconcileMissionStatsWithEntities(out, opts);
 }
-function finalizeMissionStatsSnapshot(){
-  const finalStats = reconcileMissionStatsWithEntities(currentMissionStatsSnapshot());
+function finalizeMissionStatsSnapshot(opts={}){
+  const finalStats = reconcileMissionStatsWithEntities(currentMissionStatsSnapshot(opts), opts);
   S._missionStatsFinal = finalStats;
   return finalStats;
 }
@@ -2966,10 +2976,12 @@ function rewardEscapeHtml(value=""){
   }[ch] || ch));
 }
 
-function missionRewards2Build({ activeMission=null, storyMission=null, arcadeMission=null, civTotal=0, civDead=0, civEvac=0, storyVariant="" }={}){
+function missionRewards2Build({ activeMission=null, storyMission=null, arcadeMission=null, civTotal=0, civDead=0, civEvac=0, storyVariant="", missionStatsOverride=null }={}){
   const mode = normalizeModeName(S.mode);
   const level = Math.max(1, Math.floor(Number(activeMission?.number || missionIndexForMode(mode) || 1)));
-  const missionStats = currentMissionStatsSnapshot();
+  const missionStats = missionStatsOverride && typeof missionStatsOverride === "object"
+    ? missionStatSnapshot(missionStatsOverride)
+    : currentMissionStatsSnapshot({ civTotal, civEvac });
   const captures = Math.max(0, Math.floor(Number(missionStats.captures || 0)));
   const kills = Math.max(0, Math.floor(Number(missionStats.kills || 0)));
   const shots = Math.max(0, Math.floor(Number(missionStats.shots || 0)));
@@ -3026,6 +3038,7 @@ function missionRewards2Build({ activeMission=null, storyMission=null, arcadeMis
   if(liveOpsMul > 1.01) tags.push(`Live Ops x${liveOpsMul.toFixed(2)}`);
   if(convoyMission) tags.push("Convoy");
   return {
+    runId:String(S._missionRunId || ""),
     mode,
     level,
     storyVariant,
@@ -3042,6 +3055,12 @@ function missionRewards2Build({ activeMission=null, storyMission=null, arcadeMis
 
 function grantMissionRewards2(breakdown){
   if(!breakdown || typeof breakdown !== "object") return null;
+  const runId = String(breakdown.runId || S._missionRunId || "");
+  if(runId && String(S._missionRewards2GrantedRunId || "") === runId){
+    return (S.lastMissionRewardBreakdown && typeof S.lastMissionRewardBreakdown === "object")
+      ? S.lastMissionRewardBreakdown
+      : breakdown;
+  }
   const totalCash = Math.max(0, Math.floor(Number(breakdown.totalCash || 0)));
   if(totalCash > 0){
     S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + totalCash;
@@ -3050,8 +3069,12 @@ function grantMissionRewards2(breakdown){
   const bonusXp = Math.max(0, Math.floor(Number(breakdown.bonusXp || 0)));
   if(bonusXp > 0) addXP(bonusXp);
   S.missionRewardStreak = Math.max(1, Math.floor(Number(breakdown.nextStreak || 1)));
-  S.lastMissionRewardBreakdown = breakdown;
-  return breakdown;
+  const grantedAt = Date.now();
+  const grantedBreakdown = { ...breakdown, runId, grantedAt };
+  if(runId) S._missionRewards2GrantedRunId = runId;
+  S._missionRewards2GrantedAt = grantedAt;
+  S.lastMissionRewardBreakdown = grantedBreakdown;
+  return grantedBreakdown;
 }
 
 function renderMissionRewards2Card(breakdown=null){
@@ -41550,6 +41573,9 @@ function checkMissionComplete(){
           upkeepNote = `\nSquad upkeep paid: $${upkeep.paid.toLocaleString()} (all active specialists maintained)\n`;
         }
       }
+      const missionStats = finalizeMissionStatsSnapshot({ civTotal, civEvac });
+      missionStats.evac = Math.min(Math.max(0, civTotal), Math.max(0, civEvac));
+      S._missionStatsFinal = missionStatSnapshot(missionStats);
       const rewards2 = grantMissionRewards2(missionRewards2Build({
         activeMission,
         storyMission,
@@ -41557,7 +41583,8 @@ function checkMissionComplete(){
         civTotal,
         civDead,
         civEvac,
-        storyVariant
+        storyVariant,
+        missionStatsOverride:missionStats
       }));
       const rewards2Note = rewards2
         ? `\nMission Rewards 2.0: +$${Math.max(0, Math.floor(Number(rewards2.totalCash || 0))).toLocaleString()} • +${Math.max(0, Math.floor(Number(rewards2.bonusXp || 0)))}XP • Streak ${Math.max(1, Math.floor(Number(rewards2.nextStreak || 1)))}\n`
@@ -41568,8 +41595,6 @@ function checkMissionComplete(){
         : (completedEvacRoute.active
           ? `\nEvacuation: ${completedEvacRoute.label || "Evac Route"} • ${Math.max(0, Math.floor(Number(completedEvacRoute.boardedCount || 0)))}/${Math.max(1, Math.floor(Number(completedEvacRoute.boardingTotal || civTotal || 1)))} boarded${completedEvacRoute.departed ? " • transport departed" : ""}\n`
           : "");
-      const missionStats = finalizeMissionStatsSnapshot();
-      missionStats.evac = Math.min(Math.max(0, civTotal), Math.max(0, civEvac));
       missionStats.cashEarned = Math.max(0, Math.floor(Number(rewards2?.totalCash || 0)));
       S._missionStatsFinal = missionStatSnapshot(missionStats);
       const storyCampaign3Note = recordStoryCampaignMissionOutcome({
