@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4495";
+const TS_BUILD = "4496";
 if(tg){
   try{
     tg.expand?.();
@@ -3657,12 +3657,12 @@ function contractsHeartbeatTick(){
   }
 }
 
-const STORAGE_VERSION = 4385;
+const STORAGE_VERSION = 4386;
 const STORAGE_SCOPE = tgUserKey();
 const STORAGE_KEY_BASE = `ts_v${STORAGE_VERSION}`;
 const STORAGE_KEY = `${STORAGE_KEY_BASE}_${STORAGE_SCOPE}`;
 const STORAGE_FALLBACK_KEYS = (() => {
-  const versions = [4384, 4383, 4382, 4381, 4380, 4371];
+  const versions = [4385, 4384, 4383, 4382, 4381, 4380, 4371];
   const keys = [];
   const seen = new Set();
   const pushKey = (k)=>{
@@ -10499,7 +10499,7 @@ function startWorldMapRegionMission(id){
   if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
   clearBaseHqReturnForMissionLaunch();
   beginMissionTransitionGuard("world-map-deploy", 1400);
-  __gameplayLoadingGuardArmed = true;
+  saveResumeTransitionBoundary("world-map-deploy", { preserveWorldMap:true });
   deploy({ skipBrief:true, skipStoryScene:true, source:"world-map", carryStats:false });
   const eventDef = event ? worldMapLiveEventDef(event.typeId) : null;
   const crisisDef = crisis ? worldMapCrisisDef(crisis.typeId) : null;
@@ -13094,8 +13094,103 @@ function missionRuntimeLooksNonLive(state){
   if(!state || typeof state !== "object") return true;
   if(state.missionEnded || state.gameOver) return true;
   const pauseReason = String(state.pauseReason || "");
-  if(pauseReason === "mission-transition" || pauseReason === "world-map-transition") return true;
+  if(SAVE_RESUME_VOLATILE_PAUSE_REASONS.has(pauseReason)) return true;
   return false;
+}
+const SAVE_RESUME_QA_VERSION = 2;
+const SAVE_RESUME_VOLATILE_PAUSE_REASONS = new Set([
+  "mission-transition",
+  "world-map-transition",
+  "startup-loading",
+  "loading",
+  "base-hq",
+  "shop",
+  "inv",
+  "mode",
+  "mission-brief",
+  "mission-cinema",
+  "world-map",
+  "complete",
+  "game-over"
+]);
+function saveResumePriorVersion(state){
+  if(!state || typeof state !== "object") return 0;
+  return Math.max(
+    0,
+    Math.floor(Number(state._saveResumeQaVersion || 0)),
+    Math.floor(Number(state._saveResumeStabilityVersion || 0))
+  );
+}
+function clearVolatilePauseState(state, reason=""){
+  if(!state || typeof state !== "object") return state;
+  const pauseReason = String(state.pauseReason || "");
+  if(state.paused && SAVE_RESUME_VOLATILE_PAUSE_REASONS.has(pauseReason)){
+    state.paused = false;
+    state.pauseReason = null;
+    state._saveResumeClearedPauseReason = pauseReason;
+    state._saveResumeClearedPauseAt = Date.now();
+    state._saveResumeClearedPauseBy = String(reason || "resume");
+  }
+  return state;
+}
+function normalizeLoadedSquadOwnershipState(state, reason=""){
+  if(!state || typeof state !== "object") return state;
+  const ledger = ensureSquadOwnershipLedger(state);
+  const attackerOwned = clamp(Math.floor(Number(state.soldierAttackersOwned || 0)), 0, ledger.attacker);
+  const rescueOwned = clamp(Math.floor(Number(state.soldierRescuersOwned || 0)), 0, ledger.rescue);
+  state.soldierAttackersOwned = attackerOwned;
+  state.soldierRescuersOwned = rescueOwned;
+  state.soldierAttackersDowned = clamp(Math.floor(Number(state.soldierAttackersDowned || 0)), 0, attackerOwned);
+  state.soldierRescuersDowned = clamp(Math.floor(Number(state.soldierRescuersDowned || 0)), 0, rescueOwned);
+  if(state.squadProgression?.profiles && attackerOwned <= 0 && !state.specialistStarUnlocks?.attacker){
+    const attackerProfile = state.squadProgression.profiles["attacker:0"];
+    const looksLikeGhostMason =
+      String(attackerProfile?.name || "Mason") === "Mason" &&
+      Math.max(1, Math.floor(Number(attackerProfile?.level || 1))) <= 2 &&
+      Math.max(0, Math.floor(Number(attackerProfile?.missions || 0))) <= 1;
+    if(looksLikeGhostMason){
+      delete state.squadProgression.profiles["attacker:0"];
+      state._saveResumeClearedGhostSpecialist = "attacker:0";
+    }
+  }
+  if(Array.isArray(state.supportUnits)){
+    let keepAttackers = Math.max(0, attackerOwned - state.soldierAttackersDowned);
+    let keepRescuers = Math.max(0, rescueOwned - state.soldierRescuersDowned);
+    const kept = [];
+    for(const unit of state.supportUnits){
+      if(!unit || unit.alive === false) continue;
+      if(unit.raidPartner){
+        kept.push(unit);
+        continue;
+      }
+      if(unit.role === "attacker"){
+        if(keepAttackers <= 0) continue;
+        keepAttackers--;
+        kept.push(unit);
+      }else if(unit.role === "rescue"){
+        if(keepRescuers <= 0) continue;
+        keepRescuers--;
+        kept.push(unit);
+      }
+    }
+    state.supportUnits = kept.slice(0, MAX_PERSIST_SUPPORT_UNITS);
+  }
+  state._saveResumeSquadNormalizedBy = String(reason || "resume");
+  return state;
+}
+function saveResumeRuntimeNeedsReset(state, priorVersion=0){
+  if(!state || typeof state !== "object") return true;
+  const pauseReason = String(state.pauseReason || "");
+  return (
+    priorVersion < SAVE_RESUME_QA_VERSION ||
+    missionRuntimeLooksNonLive(state) ||
+    !!state.inBattle ||
+    state.activeTigerId != null ||
+    state.lockedRivalId != null ||
+    state.selectedSupportTargetId != null ||
+    Math.max(0, Number(state.respawnPendingUntil || 0)) > Date.now() ||
+    SAVE_RESUME_VOLATILE_PAUSE_REASONS.has(pauseReason)
+  );
 }
 function clearTransientMissionRuntime(state, reason=""){
   if(!state || typeof state !== "object") return state;
@@ -13130,12 +13225,11 @@ function clearTransientMissionRuntime(state, reason=""){
 }
 function stabilizeLoadedSaveState(state, sourceKey=""){
   if(!state || typeof state !== "object") return state;
+  const priorVersion = saveResumePriorVersion(state);
+  const resetRuntime = saveResumeRuntimeNeedsReset(state, priorVersion);
   state.mode = normalizeModeName(state.mode);
+  clearVolatilePauseState(state, sourceKey || "load");
   stabilizeWorldMapResumeState(state, sourceKey || "load");
-  if(String(state.pauseReason || "") === "mission-transition"){
-    state.paused = false;
-    state.pauseReason = null;
-  }
   state.target = null;
   state.inBattle = false;
   state.activeTigerId = null;
@@ -13145,15 +13239,23 @@ function stabilizeLoadedSaveState(state, sourceKey=""){
   state.selectedSupportTargetId = null;
   state.scanPing = 0;
   state._combatTigerAttackAt = 0;
-  if(missionRuntimeLooksNonLive(state)){
+  if(resetRuntime || missionRuntimeLooksNonLive(state)){
     clearTransientMissionRuntime(state, sourceKey || "load");
+    if(resetRuntime){
+      state.missionEnded = false;
+      state.gameOver = false;
+    }
   }
-  state._saveResumeStabilityVersion = 1;
+  normalizeLoadedSquadOwnershipState(state, sourceKey || "load");
+  state._saveResumeQaVersion = SAVE_RESUME_QA_VERSION;
+  state._saveResumeStabilityVersion = SAVE_RESUME_QA_VERSION;
   state._saveResumeStabilizedAt = Date.now();
+  state._saveResumeSourceKey = String(sourceKey || STORAGE_KEY);
   return state;
 }
 function stabilizeStateForPersistence(state, reason="save"){
   if(!state || typeof state !== "object") return state;
+  clearVolatilePauseState(state, reason);
   stabilizeWorldMapResumeState(state, reason);
   if(missionRuntimeLooksNonLive(state)){
     clearTransientMissionRuntime(state, reason);
@@ -13167,7 +13269,9 @@ function stabilizeStateForPersistence(state, reason="save"){
     state.selectedSupportTargetId = null;
     state._combatTigerAttackAt = 0;
   }
-  state._saveResumeStabilityVersion = 1;
+  normalizeLoadedSquadOwnershipState(state, reason);
+  state._saveResumeQaVersion = SAVE_RESUME_QA_VERSION;
+  state._saveResumeStabilityVersion = SAVE_RESUME_QA_VERSION;
   state._saveResumeStabilizedAt = Date.now();
   return state;
 }
@@ -25406,6 +25510,8 @@ function setMode(m){
   const nextMode = normalizeModeName(m);
   const wantsStoryIntro = (nextMode==="Story" && !window.__TUTORIAL_MODE__);
   ensureStoryEndgameState(S);
+  beginMissionTransitionGuard("mode-switch", 1100);
+  saveResumeTransitionBoundary(`mode-switch-${nextMode}`);
   setModeWallet(S.mode, S.funds, S);
   activateModeProfile(nextMode, S);
   applyModeTheme(S.mode);
@@ -29183,6 +29289,9 @@ function clearBaseHqReturnForMissionLaunch(){
 }
 function openBaseHQ(opts={}){
   if(window.__TUTORIAL_MODE__) return toast("Finish the tutorial first.");
+  if(__startupLoadingGuard?.active) releaseStartupLoadingGuard("base-hq-open");
+  __gameplayLoadingGuardArmed = false;
+  try{ resetControlInputState("base-hq-open"); }catch(e){}
   ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
@@ -32186,6 +32295,36 @@ function endMissionTransitionGuard(reason="transition-end"){
   try{ resetControlInputState(`guard-end:${reason}`); }catch(e){}
   updateMissionTransitionIndicator(now);
 }
+function saveResumeTransitionBoundary(reason="transition", opts={}){
+  if(!S || typeof S !== "object") return;
+  const r = String(reason || "transition");
+  const preserveWorldMap = !!opts.preserveWorldMap;
+  S.target = null;
+  S.inBattle = false;
+  S.activeTigerId = null;
+  S.lockedTigerId = null;
+  S.lockedRivalId = null;
+  S.selectedSupportUnitId = null;
+  S.selectedSupportTargetId = null;
+  S.squadSyncTargetId = null;
+  S.squadSyncAttackAt = 0;
+  S.squadSyncUntil = 0;
+  S.scanPing = 0;
+  S.scanLead = null;
+  S.respawnPendingUntil = 0;
+  S._combatTigerAttackAt = 0;
+  S._combatStaggerUntil = 0;
+  S._saveResumeLastTransitionReason = r;
+  S._saveResumeLastTransitionAt = Date.now();
+  __gameplayLoadingGuardArmed = true;
+  try{ resetControlInputState(`save-resume:${r}`); }catch(e){}
+  try{ clearTransientCombatVisuals(); }catch(e){}
+  try{ transitionCleanupSweep(`save-resume-${r}`); }catch(e){}
+  if(!preserveWorldMap){
+    try{ stabilizeWorldMapResumeState(S, r); }catch(e){}
+  }
+  try{ normalizeLoadedSquadOwnershipState(S, r); }catch(e){}
+}
 function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
   if(!S || typeof S !== "object") return;
   const now = Date.now();
@@ -34609,6 +34748,7 @@ function deploy(opts={}){
 
 function startNextMission(){
   beginMissionTransitionGuard("next-mission", 1200);
+  saveResumeTransitionBoundary("next-mission");
   tigerEcosystemMissionAdvance();
   document.getElementById("completeOverlay").style.display="none";
   ensureStoryEndgameState(S);
@@ -34656,6 +34796,7 @@ function startNextMission(){
 
 function restartCurrentMission(){
   beginMissionTransitionGuard("restart-current", 1300);
+  saveResumeTransitionBoundary("restart-current");
   document.getElementById("battleOverlay").style.display="none";
   document.getElementById("completeOverlay").style.display="none";
   document.getElementById("overOverlay").style.display="none";
@@ -34670,6 +34811,7 @@ function restartCurrentMission(){
 
 function restartModeFromMission1(){
   beginMissionTransitionGuard("restart-mode-m1", 1500);
+  saveResumeTransitionBoundary("restart-mode-from-mission-1");
   const mode = normalizeModeName(S.mode);
   ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay","modeOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
@@ -48018,7 +48160,10 @@ function releaseStartupLoadingGuard(reason="ready"){
 
 function scheduleStartupLoadingRelease(reason="ready"){
   if(!__startupLoadingGuard.active) return;
-  if(__startupLoadingGuard.finalizeTimer) return;
+  if(__startupLoadingGuard.finalizeTimer){
+    clearTimeout(__startupLoadingGuard.finalizeTimer);
+    __startupLoadingGuard.finalizeTimer = 0;
+  }
   __startupLoadingGuard.finalizeTimer = setTimeout(()=>{
     __startupLoadingGuard.finalizeTimer = 0;
     if(!__startupLoadingGuard.active) return;
@@ -48099,6 +48244,13 @@ function updateStartupLoadingOverlay(force=false){
   computeStartupPreloadProgress(now);
   const finalizing = Number(__startupLoadingGuard.finalizingUntil || 0) > 0;
   if(finalizing) __startupLoadingGuard.stage = "ready";
+  if(finalizing){
+    const started = Number(__startupLoadingGuard.finalizingStartedAt || 0);
+    if(started > 0 && (now - started) >= STARTUP_LOADING_FINALIZE_FAILSAFE_MS){
+      releaseStartupLoadingGuard(__startupLoadingGuard.pendingReleaseReason || "overlay-finalize-failsafe");
+      return;
+    }
+  }
   const timeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_PLAYABLE_MS), 0, 1);
   const maxTimeProgress = clamp(elapsed / Math.max(1, STARTUP_LOADING_MAX_MS), 0, 1);
   const stageProgress = startupPreloadWeightedPercent() / 100;
