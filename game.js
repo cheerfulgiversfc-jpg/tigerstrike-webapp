@@ -5066,6 +5066,7 @@ function inventoryTab(tab="gear"){
   if(cosmetics) renderCosmeticCollection();
   if(settlement) renderCivilianSettlement();
   if(showcase) renderAchievementPrestigeShowcase();
+  truthQaAuditVisibleUi(true);
 }
 
 // ===================== CIVILIAN SETTLEMENT SYSTEM =====================
@@ -10405,6 +10406,7 @@ function renderWorldMapCampaign(){
     <div class="divider"></div>
     <div class="grid2">${cards}</div>
   `;
+  truthQaAuditButtons(root, "world-map");
 }
 function openWorldMapCampaign(){
   if(window.__TUTORIAL_MODE__) return toast("Finish the tutorial first.");
@@ -26352,6 +26354,7 @@ function openShop(){
   const tab = currentShopTab;
   if(document.getElementById("shopOverlay")?.style.display === "flex"){
     shopTab(tab);
+    truthQaAuditVisibleUi(true);
     sfx("ui");
     if(fromBattle) setBattleMsg("Combat paused in Shop. Buy ammo or weapons, then tap Resume.");
   }
@@ -26400,6 +26403,7 @@ function openInventory(){
   if(overlay) overlay.style.display="flex";
   if(document.getElementById("invOverlay")?.style.display === "flex"){
     renderInventory();
+    truthQaAuditVisibleUi(true);
     sfx("ui");
   }
 }
@@ -27727,13 +27731,16 @@ function showLaunchMainMenuFromBaseHQ(){
   syncGamepadFocus();
 }
 function baseHqPanelActionsHtml(data){
-  return (data.actions || []).map(([label, fn], idx)=>{
+  const usable = (data.actions || []).filter(([, fn])=>truthQaActionAvailable(fn));
+  return usable.map(([label, fn], idx)=>{
     const cls = idx === 0 ? "good" : "ghost";
     return baseHqActionButtonHtml(label, fn, cls);
   }).join("");
 }
 function baseHqActionButtonHtml(label, command, cls="ghost"){
-  return `<button class="${baseHqEsc(cls)}" type="button" data-base-hq-command="${baseHqEsc(command)}" onpointerdown="event.stopPropagation()" onpointerup="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)" onclick="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)">${baseHqEsc(label)}</button>`;
+  const ready = truthQaActionAvailable(command);
+  const disabled = ready ? "" : ` disabled title="${baseHqEsc(label)} is not connected yet."`;
+  return `<button class="${baseHqEsc(cls)}" type="button" data-base-hq-command="${baseHqEsc(command)}"${disabled} onpointerdown="event.stopPropagation()" onpointerup="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)" onclick="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)">${baseHqEsc(label)}</button>`;
 }
 function baseHqParseCommandArgs(raw=""){
   const text = String(raw || "").trim();
@@ -27749,22 +27756,14 @@ function baseHqParseCommandArgs(raw=""){
     return value;
   });
 }
-function runBaseHqCommand(command="", label=""){
-  const cmd = String(command || "").trim();
-  const buttonLabel = String(label || "").trim() || "HQ action";
-  if(!cmd){
-    toast(`${buttonLabel} is not connected yet.`);
-    return false;
-  }
-  const match = cmd.match(/^([a-zA-Z_$][\w$]*)\((.*)\)$/);
-  const name = match ? match[1] : cmd.replace(/\(\s*\)$/,"");
-  const args = match ? baseHqParseCommandArgs(match[2]) : [];
-  const now = Date.now();
-  if(__lastBaseHqCommand?.cmd === cmd && now - Number(__lastBaseHqCommand?.at || 0) < 350){
-    return false;
-  }
-  __lastBaseHqCommand = { cmd, at:now };
-  const actions = {
+function truthQaCommandName(command=""){
+  const text = String(command || "").trim();
+  if(!text) return "";
+  const match = text.match(/^([a-zA-Z_$][\w$]*)\s*\(/);
+  return match ? match[1] : text.replace(/\(\s*\)$/,"").trim();
+}
+function baseHqCommandActions(){
+  return {
     baseHqMissionControlAction,
     baseHqExecuteMissionGateAction,
     baseHqExecuteIvyGuidance,
@@ -27786,6 +27785,7 @@ function runBaseHqCommand(command="", label=""){
     openBaseHqModePreview,
     startMissionFromBaseHQ,
     openDailyRewardDeskFromBaseHQ,
+    startTutorialFromBaseHQ,
     startTutorialPracticeFromBaseHQ,
     resetBaseHqOnboarding,
     completeBaseHqOnboardingStep,
@@ -27797,7 +27797,125 @@ function runBaseHqCommand(command="", label=""){
     confirmBaseHqModePreview,
     interactBaseHQ,
     hideBaseHqHud,
+    buyBaseHqUpgrade,
+    showLaunchMainMenuFromBaseHQ,
+    openShop,
+    closeShop,
+    shopTab,
+    setShopFilter,
+    openInventory,
+    closeInventory,
+    inventoryTab,
+    openShopFromInventory,
+    openMissionBriefShop,
+    openDailyRewardOverlay,
+    claimDailyRewardOverlay,
+    openBaseHQ,
+    closeBaseHQ,
+    openMode,
+    closeMode,
+    openStoryCampaignJournal,
+    startWorldMapRegionMission,
+    openMissionBriefFromWorldMap,
+    selectWorldMapRegion,
+    setWorldMapActiveRegion,
+    applyWorldMapStrategicChoice,
+    applyWorldMapRivalAction,
+    claimWorldMapSeasonGoal,
+    claimWorldMapWeeklyLadder,
+    buyWorldMapRegionUpgrade,
+    claimWorldMapRegionalSupplies,
+    repairWorldMapSupplyRoutes,
   };
+}
+function truthQaActionAvailable(command=""){
+  const name = truthQaCommandName(command);
+  if(!name) return false;
+  const local = baseHqCommandActions();
+  return typeof local[name] === "function" || typeof window?.[name] === "function";
+}
+function truthQaInlineActionNames(inline=""){
+  const text = String(inline || "");
+  const ignored = new Set(["event","stopPropagation","preventDefault","Math","Number","String","parseInt","parseFloat","floor","max","min","round"]);
+  const names = [];
+  const re = /\b([A-Za-z_$][\w$]*)\s*\(/g;
+  let match;
+  while((match = re.exec(text))){
+    const name = match[1];
+    if(!ignored.has(name) && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+function truthQaDisableButton(btn, reason="This action is not connected yet."){
+  if(!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.dataset.truthQaDisabled = "1";
+  btn.title = reason;
+  btn.setAttribute("aria-disabled", "true");
+}
+function truthQaAuditButtons(root=document, context="ui"){
+  try{
+    if(!root?.querySelectorAll) return;
+    root.querySelectorAll("button").forEach((btn)=>{
+      if(!btn || btn.disabled || btn.dataset.truthQaDisabled === "1") return;
+      const command = String(btn.dataset?.baseHqCommand || "").trim();
+      if(command && !truthQaActionAvailable(command)){
+        truthQaDisableButton(btn, `${btn.textContent?.trim() || "This action"} is not connected yet.`);
+        return;
+      }
+      const inline = String(btn.getAttribute("onclick") || "");
+      if(!inline) return;
+      const names = truthQaInlineActionNames(inline);
+      const actionable = names.filter((name)=>name !== "runBaseHqCommand");
+      const missing = actionable.find((name)=>!truthQaActionAvailable(name) && typeof window?.[name] !== "function");
+      if(missing){
+        truthQaDisableButton(btn, `${missing} is not connected yet.`);
+        if(context) btn.dataset.truthQaContext = context;
+      }
+    });
+  }catch(err){
+    console.warn("Truth QA button audit skipped", context, err);
+  }
+}
+function truthQaAuditVisibleUi(force=false){
+  const now = Date.now();
+  if(!force && now - Number(truthQaAuditVisibleUi.lastAt || 0) < 1200) return;
+  truthQaAuditVisibleUi.lastAt = now;
+  [
+    "baseHqOverlay",
+    "baseHqQuickBar",
+    "baseHqWorldHud",
+    "shopOverlay",
+    "invOverlay",
+    "worldMapCampaignOverlay",
+    "dailyRewardOverlay",
+    "missionBriefOverlay",
+    "modeOverlay",
+    "completeOverlay",
+    "overOverlay",
+  ].forEach((id)=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    const style = getComputedStyle(el);
+    if(style.display !== "none" && style.visibility !== "hidden") truthQaAuditButtons(el, id);
+  });
+}
+function runBaseHqCommand(command="", label=""){
+  const cmd = String(command || "").trim();
+  const buttonLabel = String(label || "").trim() || "HQ action";
+  if(!cmd){
+    toast(`${buttonLabel} is not connected yet.`);
+    return false;
+  }
+  const match = cmd.match(/^([a-zA-Z_$][\w$]*)\((.*)\)$/);
+  const name = match ? match[1] : cmd.replace(/\(\s*\)$/,"");
+  const args = match ? baseHqParseCommandArgs(match[2]) : [];
+  const now = Date.now();
+  if(__lastBaseHqCommand?.cmd === cmd && now - Number(__lastBaseHqCommand?.at || 0) < 350){
+    return false;
+  }
+  __lastBaseHqCommand = { cmd, at:now };
+  const actions = baseHqCommandActions();
   const fn = actions[name] || window[name];
   if(typeof fn !== "function"){
     toast(`${buttonLabel} is being connected.`);
@@ -27837,6 +27955,7 @@ function armBaseHqButtons(root){
       ev.stopPropagation();
     }, true);
   });
+  truthQaAuditButtons(root, "base-hq");
 }
 function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
   if(roomId === "command") return `${currentMissionLabel()} • Mission Control live`;
@@ -28204,6 +28323,7 @@ function renderBaseHQ(){
   renderBaseHqWorldHud();
   renderBaseHqQuickBar();
   renderBaseHqOnboarding();
+  truthQaAuditVisibleUi(true);
 }
 function selectBaseHqRoom(roomId, movePlayer=false){
   const room = baseHqRoomById(roomId);
@@ -29375,6 +29495,7 @@ function shopTab(tab){
     }
   }
   renderShopList();
+  truthQaAuditVisibleUi(true);
 }
 
 function ammoPriceCapped(a){
@@ -49354,6 +49475,7 @@ window.baseHqExecuteMissionGateAction = baseHqExecuteMissionGateAction;
 window.baseHqExecuteIvyGuidance = baseHqExecuteIvyGuidance;
 window.baseHqRefreshIvyGuidance = baseHqRefreshIvyGuidance;
 window.baseHqMissionControlAction = baseHqMissionControlAction;
+window.renderBaseHQ = renderBaseHQ;
 window.setBaseHqQuickMenuCollapsed = setBaseHqQuickMenuCollapsed;
 window.toggleBaseHqQuickMenu = toggleBaseHqQuickMenu;
 window.baseHqRunRecommendedCommand = baseHqRunRecommendedCommand;
@@ -49375,8 +49497,10 @@ window.claimSettlementPassive = claimSettlementPassive;
 window.claimSettlementJob = claimSettlementJob;
 window.equipWorldCosmetic = equipWorldCosmetic;
 window.equipWeaponForge = equipWeaponForge;
+window.craftWeaponForgeItem = craftWeaponForgeItem;
 window.openMissionBriefShop = openMissionBriefShop;
 window.toggleMobileMenu = toggleMobileMenu;
+window.truthQaAuditVisibleUi = truthQaAuditVisibleUi;
 
 window.resetGame = resetGame;
 window.deploy = deploy;
@@ -49384,6 +49508,7 @@ window.scan = scan;
 window.startCombat = startCombat;
 
 window.useMedkit = useMedkit;
+window.setHealTarget = setHealTarget;
 window.setSelectedMedkit = setSelectedMedkit;
 window.useArmorPlate = useArmorPlate;
 window.setSelectedArmorPlate = setSelectedArmorPlate;
@@ -49469,6 +49594,7 @@ window.openQuickWeaponPicker = openQuickWeaponPicker;
 window.closeQuickWeaponPicker = closeQuickWeaponPicker;
 window.selectQuickWeapon = selectQuickWeapon;
 window.buyPerk = buyPerk;
+window.claimLiveOps = claimLiveOps;
 window.claimContract = claimContract;
 window.claimAllContracts = claimAllContracts;
 window.lockNearestTiger = lockNearestTiger;
