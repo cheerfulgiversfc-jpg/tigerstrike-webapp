@@ -8567,11 +8567,15 @@ function defaultWorldMapCampaignState(){
     version:2,
     selectedRegionId:"river_gate",
     activeRegionId:"",
+    activeRunId:"",
+    activeMissionLevel:0,
+    activeStartedAt:0,
     activeEventId:"",
     activeEventRegionId:"",
     defendedRegions:{},
     regionControl:{},
     completedMissions:{},
+    completedRuns:{},
     liveEvents:{},
     completedEvents:{},
     bossChains:{},
@@ -8628,6 +8632,10 @@ function worldMapRegionById(id){
   const key = String(id || "").trim();
   return WORLD_MAP_CAMPAIGN_REGIONS.find((region)=>region.id === key) || WORLD_MAP_CAMPAIGN_REGIONS[0];
 }
+function worldMapRegionExists(id){
+  const key = String(id || "").trim();
+  return WORLD_MAP_CAMPAIGN_REGIONS.some((region)=>region.id === key);
+}
 function ensureWorldMapCampaignState(state=S){
   if(!state || typeof state !== "object") return defaultWorldMapCampaignState();
   const src = (state.worldMapCampaign && typeof state.worldMapCampaign === "object") ? state.worldMapCampaign : {};
@@ -8638,6 +8646,7 @@ function ensureWorldMapCampaignState(state=S){
     defendedRegions:(src.defendedRegions && typeof src.defendedRegions === "object") ? src.defendedRegions : {},
     regionControl:(src.regionControl && typeof src.regionControl === "object") ? src.regionControl : {},
     completedMissions:(src.completedMissions && typeof src.completedMissions === "object") ? src.completedMissions : {},
+    completedRuns:(src.completedRuns && typeof src.completedRuns === "object") ? src.completedRuns : {},
     liveEvents:(src.liveEvents && typeof src.liveEvents === "object") ? src.liveEvents : {},
     completedEvents:(src.completedEvents && typeof src.completedEvents === "object") ? src.completedEvents : {},
     bossChains:(src.bossChains && typeof src.bossChains === "object") ? src.bossChains : {},
@@ -8668,6 +8677,10 @@ function ensureWorldMapCampaignState(state=S){
     totalRivalActions:Math.max(0, Math.floor(Number(src.totalRivalActions || 0))),
     totalRivalSabotage:Math.max(0, Math.floor(Number(src.totalRivalSabotage || 0))),
     lastSupplyAt:Math.max(0, Number(src.lastSupplyAt || 0)),
+    activeRunId:String(src.activeRunId || ""),
+    activeMissionLevel:Math.max(0, Math.floor(Number(src.activeMissionLevel || 0))),
+    activeStartedAt:Math.max(0, Number(src.activeStartedAt || 0)),
+    activeRegionId:String(src.activeRegionId || ""),
     activeEventId:String(src.activeEventId || ""),
     activeEventRegionId:String(src.activeEventRegionId || ""),
     activeCrisisId:String(src.activeCrisisId || ""),
@@ -8676,7 +8689,22 @@ function ensureWorldMapCampaignState(state=S){
     lastEventSeed:String(src.lastEventSeed || ""),
     lastCrisisSeed:String(src.lastCrisisSeed || ""),
   };
-  if(!worldMapRegionById(out.selectedRegionId)) out.selectedRegionId = "river_gate";
+  if(!worldMapRegionExists(out.selectedRegionId)) out.selectedRegionId = "river_gate";
+  if(out.activeRegionId && !worldMapRegionExists(out.activeRegionId)){
+    out.activeRegionId = "";
+    out.activeRunId = "";
+    out.activeMissionLevel = 0;
+    out.activeStartedAt = 0;
+  }
+  if(out.activeEventRegionId && !worldMapRegionExists(out.activeEventRegionId)){
+    out.activeEventId = "";
+    out.activeEventRegionId = "";
+  }
+  if(out.activeCrisisRegionId && !worldMapRegionExists(out.activeCrisisRegionId)){
+    out.activeCrisisId = "";
+    out.activeCrisisRegionId = "";
+  }
+  if(out.activeRivalRegionId && !worldMapRegionExists(out.activeRivalRegionId)) out.activeRivalRegionId = "";
   if(!out.unlockedRegionIds.includes("river_gate")) out.unlockedRegionIds.push("river_gate");
   for(const region of WORLD_MAP_CAMPAIGN_REGIONS){
     const saved = Number(out.regionControl[region.id]);
@@ -8731,7 +8759,17 @@ function ensureWorldMapCampaignState(state=S){
       };
     }
   }
-  if(out.pendingChoice && !worldMapRegionById(out.pendingChoice.regionId)) out.pendingChoice = null;
+  if(out.pendingChoice && !worldMapRegionExists(out.pendingChoice.regionId)) out.pendingChoice = null;
+  {
+    const runEntries = Object.entries(out.completedRuns || {});
+    if(runEntries.length > 60){
+      out.completedRuns = Object.fromEntries(
+        runEntries
+          .sort((a,b)=>Number(b?.[1]?.completedAt || 0) - Number(a?.[1]?.completedAt || 0))
+          .slice(0, 60)
+      );
+    }
+  }
   out.season = normalizeWorldMapSeasonState(out.season);
   if(out.activeCrisis){
     const crisisRegions = Array.isArray(out.activeCrisis.regionIds) ? out.activeCrisis.regionIds.map(String).filter(Boolean) : [];
@@ -8756,6 +8794,12 @@ function worldMapInitialControl(region, state=S){
 }
 function worldMapStoryLevel(state=S){
   return Math.max(1, Math.floor(Number(state?.storyLevel || state?.storyLastMission || 1)));
+}
+function createWorldMapMissionRun(region, missionLevel){
+  const safeRegion = region || WORLD_MAP_CAMPAIGN_REGIONS[0];
+  const safeLevel = Math.max(1, Math.floor(Number(missionLevel || worldMapRegionMissionLevel(safeRegion, S))));
+  const now = Date.now();
+  return `${safeRegion.id}:${safeLevel}:${now}:${Math.floor(Math.random() * 100000)}`;
 }
 function worldMapRegionUnlocked(regionOrId, state=S){
   const region = typeof regionOrId === "string" ? worldMapRegionById(regionOrId) : regionOrId;
@@ -10337,6 +10381,9 @@ function startWorldMapRegionMission(id){
   S.mapIndex = 0;
   wm.selectedRegionId = region.id;
   wm.activeRegionId = region.id;
+  wm.activeRunId = createWorldMapMissionRun(region, missionLevel);
+  wm.activeMissionLevel = missionLevel;
+  wm.activeStartedAt = Date.now();
   wm.activeEventId = event?.id || "";
   wm.activeEventRegionId = event?.regionId || "";
   wm.activeCrisisId = crisis?.id || "";
@@ -10364,14 +10411,16 @@ function openMissionBriefFromWorldMap(){
   S.storyVariant = STORY_VARIANTS.CAMPAIGN;
   S.storyLevel = worldMapRegionMissionLevel(region, S);
   S.storyLastMission = Math.max(Number(S.storyLastMission || 1), S.storyLevel);
-  wm.activeRegionId = region.id;
-  const event = worldMapLiveEventForRegion(region, S);
-  wm.activeEventId = event?.id || "";
-  wm.activeEventRegionId = event?.regionId || "";
-  const crisis = worldMapCrisisForRegion(region, S);
-  wm.activeCrisisId = crisis?.id || "";
-  wm.activeCrisisRegionId = crisis ? region.id : "";
-  wm.activeRivalRegionId = worldMapRivalPressure(region, S) >= 45 ? region.id : "";
+  wm.selectedRegionId = region.id;
+  wm.activeRegionId = "";
+  wm.activeRunId = "";
+  wm.activeMissionLevel = 0;
+  wm.activeStartedAt = 0;
+  wm.activeEventId = "";
+  wm.activeEventRegionId = "";
+  wm.activeCrisisId = "";
+  wm.activeCrisisRegionId = "";
+  wm.activeRivalRegionId = "";
   const overlay = document.getElementById("worldMapCampaignOverlay");
   if(overlay) overlay.style.display = "none";
   __returnToBaseHqAfterOverlay = false;
@@ -10386,13 +10435,32 @@ function openMissionBriefFromWorldMap(){
   save();
   return false;
 }
-function recordWorldMapCampaignOutcome({ missionStats=null }={}){
+function recordWorldMapCampaignOutcome({ missionStats=null, missionLevel=null }={}){
   if(S.mode !== "Story") return "";
   const wm = ensureWorldMapCampaignState(S);
   if(!wm.activeRegionId) return "";
+  const runId = String(wm.activeRunId || "");
+  if(!runId) return "";
+  wm.completedRuns = (wm.completedRuns && typeof wm.completedRuns === "object") ? wm.completedRuns : {};
+  if(wm.completedRuns[runId]) return "";
   const activeId = wm.activeRegionId;
   const region = worldMapRegionById(activeId);
   if(!region) return "";
+  const expectedLevel = Math.max(1, Math.floor(Number(wm.activeMissionLevel || worldMapRegionMissionLevel(region, S))));
+  const currentLevel = Math.max(1, Math.floor(Number(missionLevel || S.storyLevel || S.storyLastMission || 1)));
+  if(expectedLevel !== currentLevel){
+    wm.lastOutcome = `${region.name}: World Map result ignored because mission level changed (${expectedLevel} → ${currentLevel}).`;
+    wm.activeRegionId = "";
+    wm.activeRunId = "";
+    wm.activeMissionLevel = 0;
+    wm.activeStartedAt = 0;
+    wm.activeEventId = "";
+    wm.activeEventRegionId = "";
+    wm.activeCrisisId = "";
+    wm.activeCrisisRegionId = "";
+    wm.activeRivalRegionId = "";
+    return "";
+  }
   const before = worldMapControl(region, S);
   const captures = Math.max(0, Math.floor(Number(missionStats?.captures || S.stats?.captures || 0)));
   const evac = Math.max(0, Math.floor(Number(missionStats?.evac || S.stats?.evac || 0)));
@@ -10543,6 +10611,19 @@ function recordWorldMapCampaignOutcome({ missionStats=null }={}){
   wm.activeCrisisId = "";
   wm.activeCrisisRegionId = "";
   wm.activeRivalRegionId = "";
+  wm.completedRuns[runId] = {
+    regionId:region.id,
+    missionLevel:expectedLevel,
+    completedAt:Date.now(),
+    captures,
+    kills,
+    evac,
+    cash:Math.max(0, Math.floor(Number(reward.cash || 0))),
+  };
+  wm.activeRegionId = "";
+  wm.activeRunId = "";
+  wm.activeMissionLevel = 0;
+  wm.activeStartedAt = 0;
   wm.pendingChoice = {
     regionId:region.id,
     createdAt:Date.now(),
@@ -41469,7 +41550,10 @@ function checkMissionComplete(){
         civEvac,
         mission:storyMission,
       });
-      const worldMapCampaignNote = recordWorldMapCampaignOutcome({ missionStats });
+      const worldMapCampaignNote = recordWorldMapCampaignOutcome({
+        missionStats,
+        missionLevel:activeMission?.number || storyMission?.number || S.storyLevel,
+      });
 
       const recapMeta = {
         number: activeMission?.number || gameplayCloudMission(S),
