@@ -16003,6 +16003,22 @@ function toast(msg){
   clearTimeout(window.__toastTimer);
   window.__toastTimer=setTimeout(()=>t.style.display="none",2200);
 }
+function interactionFeedback(msg, opts={}){
+  const text = String(msg || "").trim();
+  if(!text) return false;
+  const seconds = Number(opts.seconds || 2.6);
+  toast(text);
+  if(opts.event !== false){
+    try{ setEventText(text, seconds); }catch(e){}
+  }
+  if((opts.battle || S?.inBattle) && typeof setBattleMsg === "function"){
+    try{ setBattleMsg(text); }catch(e){}
+  }
+  if(opts.warn) hapticNotif("warning");
+  else if(opts.success) hapticNotif("success");
+  else hapticImpact("light");
+  return false;
+}
 const STARS_DEBUG_ENABLED_KEY = "ts_stars_debug_enabled";
 const DIRECTOR_TUNE_PRESETS_KEY = "ts_director_tune_presets_v1";
 const LIVE_OPS_COMMAND_CONFIG_KEY = "ts_live_ops_command_config_v1";
@@ -31491,7 +31507,7 @@ function renderInventory(){
 }
 
 function useMedkit(opts={}){
-  if(totalMedkits()<=0) return toast("Out of medkits. Buy more in Shop > Med Kits.");
+  if(totalMedkits()<=0) return interactionFeedback("Out of medkits. Buy more in Shop > Med Kits.", { battle:S.inBattle, warn:true });
   const options = (opts && typeof opts === "object") ? opts : {};
   const preferred = (typeof options.medId === "string" && getMed(options.medId)) ? options.medId : null;
   const smart = (options.smart != null) ? !!options.smart : !preferred;
@@ -31539,49 +31555,52 @@ function useMedkit(opts={}){
 
   if(S.healTarget==="civ" && S.mode!=="Survival"){
     const civ=pickMostInjuredCivilian();
-    if(!civ) return toast("No injured civilians to heal.");
+    if(!civ) return interactionFeedback("No injured civilians to heal right now.", { warn:true });
     const result = applyToTarget(civ, ()=>civ.hp, (next)=>{ civ.hp = next; }, civ.hpMax || 100);
     if(result.used <= 0){
-      if(preferred) return toast(`${medTierLabel(preferred)} medkits out of stock.`);
-      return toast("No usable medkits.");
+      if(preferred) return interactionFeedback(`${medTierLabel(preferred)} medkits out of stock.`, { warn:true });
+      return interactionFeedback("No usable medkits available.", { warn:true });
     }
     sfx("ui"); hapticImpact("light"); save(); renderHUD();
     renderCombatControls();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-    return toast(
+    return interactionFeedback(
       result.healed > 0
         ? `Healed civilian +${result.healed}${result.used > 1 ? ` (${result.used} kits)` : ""}`
-        : `Medkit used${result.used > 1 ? ` (${result.used})` : ""}.`
+        : `Medkit used${result.used > 1 ? ` (${result.used})` : ""}.`,
+      { success:true }
     );
   }
 
-  if(S.hp>=100 && !allowFull) return toast("HP already full.");
+  if(S.hp>=100 && !allowFull) return interactionFeedback("HP already full. Save medkits for damage.", { battle:S.inBattle, warn:true });
   const result = applyToTarget(S.me, ()=>S.hp, (next)=>{ S.hp = next; }, 100);
   if(result.used <= 0){
-    if(preferred) return toast(`${medTierLabel(preferred)} medkits out of stock.`);
-    if(S.hp>=100 && !allowFull) return toast("HP already full.");
-    return toast("No usable medkits.");
+    if(preferred) return interactionFeedback(`${medTierLabel(preferred)} medkits out of stock.`, { battle:S.inBattle, warn:true });
+    if(S.hp>=100 && !allowFull) return interactionFeedback("HP already full. Save medkits for damage.", { battle:S.inBattle, warn:true });
+    return interactionFeedback("No usable medkits available.", { battle:S.inBattle, warn:true });
   }
   sfx("ui"); hapticImpact("light"); save(); renderHUD();
   renderCombatControls();
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-  toast(
+  interactionFeedback(
     result.healed > 0
       ? `Healed +${result.healed}${result.used > 1 ? ` (${result.used} kits)` : ""}`
-      : `Medkit used${result.used > 1 ? ` (${result.used})` : ""}. HP remains full.`
+      : `Medkit used${result.used > 1 ? ` (${result.used})` : ""}. HP remains full.`,
+    { battle:S.inBattle, success:true }
   );
 }
 
 function useRepairKit(){
   const w=equippedWeapon();
   const pick = (S.repairKits["T_REPAIR_PRO"]||0)>0 ? "T_REPAIR_PRO" : ((S.repairKits["T_REPAIR"]||0)>0 ? "T_REPAIR" : null);
-  if(!pick) return toast("No repair kits.");
+  if(!pick) return interactionFeedback("No repair kits. Buy more in Shop > Tools.", { warn:true });
+  if(!w) return interactionFeedback("No equipped weapon to repair.", { warn:true });
   const t=getTool(pick);
   S.repairKits[pick]-=1;
   S.durability[w.id] = clamp((S.durability[w.id]??100) + t.add, 0, 100);
   sfx("ui"); hapticImpact("light"); save(); renderHUD();
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-  toast(`Repaired +${t.add} durability`);
+  interactionFeedback(`${w.name} repaired +${t.add} durability.`, { success:true });
 }
 function useArmorPlate(opts={}){
   const options = opts || {};
@@ -31594,11 +31613,11 @@ function useArmorPlate(opts={}){
   const autoFill = (options.autoFill != null) ? !!options.autoFill : !preferred;
   const plates = totalArmorPlates();
   if(plates <= 0){
-    if(!silent) toast("No armor plates. Buy in Shop > Armor.");
+    if(!silent) interactionFeedback("No armor plates. Buy more in Shop > Armor.", { battle:S.inBattle, warn:true });
     return 0;
   }
   if(S.armor >= S.armorCap){
-    if(!silent) toast("Armor already full.");
+    if(!silent) interactionFeedback("Armor already full. Save plates for damage.", { battle:S.inBattle, warn:true });
     return 0;
   }
   const pickId = ()=>{
@@ -31642,9 +31661,9 @@ function useArmorPlate(opts={}){
   }
   if(restoredTotal <= 0){
     if(!silent){
-      if(preferred && armorPlateCount(preferred) <= 0) toast(`${armorTierLabel(preferred)} armor plates out of stock.`);
-      else if(S.armor >= S.armorCap) toast("Armor already full.");
-      else toast("No armor plates. Buy in Shop > Armor.");
+      if(preferred && armorPlateCount(preferred) <= 0) interactionFeedback(`${armorTierLabel(preferred)} armor plates out of stock.`, { battle:S.inBattle, warn:true });
+      else if(S.armor >= S.armorCap) interactionFeedback("Armor already full. Save plates for damage.", { battle:S.inBattle, warn:true });
+      else interactionFeedback("No armor plates. Buy more in Shop > Armor.", { battle:S.inBattle, warn:true });
     }
     return 0;
   }
@@ -31658,7 +31677,7 @@ function useArmorPlate(opts={}){
     renderCombatControls();
     if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
   }
-  if(!silent) toast(`${lastPlateName} restored +${restoredTotal}${used > 1 ? ` (${used} plates)` : ""}.`);
+  if(!silent) interactionFeedback(`${lastPlateName} restored +${restoredTotal}${used > 1 ? ` (${used} plates)` : ""}.`, { battle:S.inBattle, success:true });
   return restoredTotal;
 }
 
@@ -31721,10 +31740,10 @@ function backupTick(){
 
 // ===================== TRAPS (one-time) =====================
 function placeTrap(){
-  if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
-  if(S.trapsOwned<=0) return toast("Out of traps. Buy more in Shop > Traps.");
+  if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return interactionFeedback("Trap unavailable right now. Place traps while moving on the map.", { battle:S.inBattle, warn:true });
+  if(S.trapsOwned<=0) return interactionFeedback("Out of traps. Buy more in Shop > Traps.", { warn:true });
   const trapCooldownLeft = Math.max(0, Number(S.trapCooldownUntil || 0) - Date.now());
-  if(trapCooldownLeft > 0) return toast(`Trap cooling down (${Math.max(1, Math.ceil(trapCooldownLeft / 1000))}s).`);
+  if(trapCooldownLeft > 0) return interactionFeedback(`Trap cooling down (${Math.max(1, Math.ceil(trapCooldownLeft / 1000))}s).`, { warn:true });
   S.trapsOwned -= 1;
   S.trapUsesThisMission = Math.max(0, Math.floor(Number(S.trapUsesThisMission || 0))) + 1;
   S.trapCooldownUntil = Date.now() + escalatingItemCooldownMs(S.trapUsesThisMission);
@@ -31743,7 +31762,7 @@ function placeTrap(){
     removeAt: 0
   });
 
-  toast(`🪤 Trap placed • next trap cooldown ${Math.round(escalatingItemCooldownMs(S.trapUsesThisMission) / 1000)}s.`);
+  interactionFeedback(`🪤 Trap placed • next trap cooldown ${Math.round(escalatingItemCooldownMs(S.trapUsesThisMission) / 1000)}s.`, { success:true });
   sfx("trap"); hapticImpact("light");
   save(); renderHUD();
 }
@@ -33134,10 +33153,13 @@ function nearestCacheInteractable(maxDist=128){
   return bestD <= maxDist ? best : null;
 }
 function useNearestCache(){
-  if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
+  if(S.paused || S.inBattle || S.missionEnded || S.gameOver){
+    interactionFeedback("Cache unavailable right now. Open caches while moving on the map.", { battle:S.inBattle, warn:true });
+    return;
+  }
   const cache = nearestCacheInteractable(132);
   if(!cache){
-    toast("Move closer to a cache to open it.");
+    interactionFeedback("Move closer to a cache to open it.", { warn:true });
     return;
   }
   const changed = activateMapInteractable(cache);
@@ -33179,16 +33201,16 @@ function activateMapInteractable(it){
   if(!it) return false;
   const now = Date.now();
   if(missionTwistBlackoutActive(now)){
-    toast("Radio blackout active. Map devices offline.");
+    interactionFeedback("Radio blackout active. Map devices are offline.", { warn:true });
     return false;
   }
   if((it.uses||0) <= 0){
-    toast(`${it.label} already used.`);
+    interactionFeedback(`${it.label} already used.`, { warn:true });
     return false;
   }
   if(now < (it.cooldownUntil || 0)){
     const sec = Math.max(1, Math.ceil(((it.cooldownUntil || 0) - now) / 1000));
-    toast(`${it.label} cooling down (${sec}s).`);
+    interactionFeedback(`${it.label} cooling down (${sec}s).`, { warn:true });
     return false;
   }
 
@@ -33203,7 +33225,7 @@ function activateMapInteractable(it){
     }
     it.activeUntil = now + 1400;
     it.cooldownUntil = now + 18000;
-    setEventText("📡 Siren triggered: nearby tigers exposed and staggered.", 3);
+    interactionFeedback("📡 Alarm triggered: nearby tigers exposed and staggered.", { success:true, seconds:3 });
     __savePending = true;
     return true;
   }
@@ -33212,7 +33234,7 @@ function activateMapInteractable(it){
     it.effectR = barricadeEffectRadius();
     it.activeUntil = now + 9500;
     it.cooldownUntil = now + 21000;
-    setEventText("🧱 Barrier deployed: tigers are forced around the block zone.", 3);
+    interactionFeedback("🧱 Barrier deployed: tigers are forced around the block zone.", { success:true, seconds:3 });
     __savePending = true;
     return true;
   }
@@ -33237,7 +33259,7 @@ function activateMapInteractable(it){
     it.uses = Math.max(0, (it.uses || 0) - 1);
     it.cooldownUntil = now + 60000;
     it.activeUntil = now + 900;
-    setEventText(`📦 ${it.label} opened: +$${cash} and supplies found.`, 3);
+    interactionFeedback(`📦 ${it.label} opened: +$${cash} and supplies found.`, { success:true, seconds:3 });
     unlockAchv("pickup1","First Pickup");
     addXP(18);
     __savePending = true;
@@ -33249,13 +33271,16 @@ function activateMapInteractable(it){
       it.routeOpen = false;
       it.activeUntil = now + 30000;
       it.cooldownUntil = now + 3500;
-      setEventText("🌉 Bridge destroyed: main route blocked and tigers must reroute.", 4);
+      interactionFeedback("🌉 Bridge destroyed: main route blocked and tigers must reroute.", { success:true, seconds:4 });
     }else{
-      if(!consumeInteractiveRepairKit()) return toast("A repair kit is required to rebuild the bridge."), false;
+      if(!consumeInteractiveRepairKit()){
+        interactionFeedback("A repair kit is required to rebuild the bridge.", { warn:true });
+        return false;
+      }
       it.routeOpen = true;
       it.activeUntil = now + 30000;
       it.cooldownUntil = now + 3500;
-      setEventText("🌉 Bridge repaired: alternate rescue route reopened.", 4);
+      interactionFeedback("🌉 Bridge repaired: alternate rescue route reopened.", { success:true, seconds:4 });
     }
     __blockedAtCache.clear();
     invalidateMapCache();
@@ -33266,15 +33291,18 @@ function activateMapInteractable(it){
   if(it.kind==="vehicle"){
     if(it.repaired){
       it.activeUntil = now + 30000;
-      setEventText("🚙 Rescue vehicle route extended: civilians and squad move faster nearby.", 4);
+      interactionFeedback("🚙 Rescue vehicle route extended: civilians and squad move faster nearby.", { success:true, seconds:4 });
       return true;
     }
-    if(!consumeInteractiveRepairKit()) return toast("A repair kit is required to repair this vehicle."), false;
+    if(!consumeInteractiveRepairKit()){
+      interactionFeedback("A repair kit is required to repair this vehicle.", { warn:true });
+      return false;
+    }
     it.repaired = true;
     it.activeUntil = now + 30000;
     it.cooldownUntil = now + 5000;
     addXP(28);
-    setEventText("🚙 Rescue vehicle repaired: fast escort route active.", 4);
+    interactionFeedback("🚙 Rescue vehicle repaired: fast escort route active.", { success:true, seconds:4 });
     __savePending = true;
     return true;
   }
@@ -33285,9 +33313,9 @@ function activateMapInteractable(it){
     it.cooldownUntil = now + 2500;
     if(it.powered){
       S.scanPing = Math.max(S.scanPing || 0, 320);
-      setEventText("⚡ Generator online: devices powered, civilians calmed, scan range boosted.", 4);
+      interactionFeedback("⚡ Generator online: devices powered, civilians calmed, scan range boosted.", { success:true, seconds:4 });
     }else{
-      setEventText("⚡ Generator shut down: stealth route restored.", 3);
+      interactionFeedback("⚡ Generator shut down: stealth route restored.", { success:true, seconds:3 });
     }
     __savePending = true;
     return true;
@@ -33299,7 +33327,7 @@ function activateMapInteractable(it){
     it.cooldownUntil = now + 2500;
     __blockedAtCache.clear();
     invalidateMapCache();
-    setEventText(it.routeOpen ? "🚪 Route gate opened: escort shortcut active." : "🚪 Route gate closed: chokepoint blocks movement.", 4);
+    interactionFeedback(it.routeOpen ? "🚪 Route gate opened: escort shortcut active." : "🚪 Route gate closed: chokepoint blocks movement.", { success:true, seconds:4 });
     __savePending = true;
     return true;
   }
@@ -33309,7 +33337,7 @@ function activateMapInteractable(it){
     it.cooldownUntil = now + 30000;
     it.triggered = false;
     it.effectR = 112;
-    setEventText("🪤 Route trap armed: first tiger entering the lane will be stunned.", 4);
+    interactionFeedback("🪤 Route trap armed: first tiger entering the lane will be stunned.", { success:true, seconds:4 });
     __savePending = true;
     return true;
   }
@@ -35730,18 +35758,18 @@ function tigerDirectionLabel(t){
 function lockNearestTiger(opts={}){
   const { silent=false } = opts;
   if(!tutorialAllows("lock")){
-    if(!silent) toast(tutorialBlockMessage("lock"));
+    if(!silent) interactionFeedback(tutorialBlockMessage("lock"), { warn:true });
     return null;
   }
   const t=nearestTiger();
   if(!t){
-    if(!silent) toast("No tiger to lock.");
+    if(!silent) interactionFeedback("No tiger found to lock. Use Scan or move deeper into the mission area.", { warn:true });
     return null;
   }
   S.lockedTigerId=t.id;
   if(!silent){
     const d = Math.round(dist(S.me.x,S.me.y,t.x,t.y));
-    toast(`Locked Tiger #${t.id} (${t.type}) • ${d}m`);
+    interactionFeedback(`Tiger locked: #${t.id} (${t.type}) • ${d}m. Blue ring is active.`, { success:true });
     sfx("ui");
     hapticImpact("light");
   }
@@ -35764,14 +35792,14 @@ function clearOutOfRangeLock(){
 
 // ===================== SCAN =====================
 function scan(){
-  if(!tutorialAllows("scan")) return toast(tutorialBlockMessage("scan"));
+  if(!tutorialAllows("scan")) return interactionFeedback(tutorialBlockMessage("scan"), { warn:true });
   const tutorialRun = !!window.TigerTutorial?.isRunning;
-  if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return toast("Not now.");
-  if(!tutorialRun && missionTwistBlackoutActive(Date.now())) return toast("Radio blackout active. Scan unavailable.");
-  if(!tutorialRun && abilityOnCooldown("scan")) return toast(`Scan cooling down (${abilityCooldownLabel("scan")}).`);
+  if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return interactionFeedback("Scan unavailable right now. Finish the current state first.", { battle:S.inBattle, warn:true });
+  if(!tutorialRun && missionTwistBlackoutActive(Date.now())) return interactionFeedback("Radio blackout active. Scan is offline until the blackout ends.", { warn:true });
+  if(!tutorialRun && abilityOnCooldown("scan")) return interactionFeedback(`Scan cooling down (${abilityCooldownLabel("scan")}).`, { warn:true });
   const scanCost = Math.max(2, STAMINA_COST_SCAN * storyStaminaDrainMul());
   if(!tutorialRun){
-    if(S.stamina < scanCost) return toast("Not enough stamina.");
+    if(S.stamina < scanCost) return interactionFeedback(`Not enough stamina to scan. Need ${Math.ceil(scanCost)} stamina.`, { warn:true });
     S.stamina -= scanCost;
     triggerAbilityCooldown("scan");
   }
@@ -35788,11 +35816,11 @@ function scan(){
       S.lockedTigerId = target.id;
       const meters = Math.round(dist(S.me.x, S.me.y, target.x, target.y));
       setEventText(`🛰️ Tutorial Scan found Tiger #${target.id} • Follow the blue guidance line.`, 4.5);
-      toast(`Scan locked Tiger #${target.id} • ${meters}m • Follow the blue line`);
+      interactionFeedback(`Scan target found: Tiger #${target.id} • ${meters}m. Follow the blue line.`, { success:true, seconds:4 });
     }else{
       S.scanTargetTigerId = null;
       S.scanTargetUntil = 0;
-      toast("Scan complete: no living tiger found.");
+      interactionFeedback("Scan complete: no living tiger found.", { warn:true });
     }
   }else{
     const target = nearestTiger();
@@ -35802,11 +35830,11 @@ function scan(){
       S.lockedTigerId = target.id;
       const meters = Math.round(dist(S.me.x, S.me.y, target.x, target.y));
       setEventText(`🛰️ Scan found Tiger #${target.id} ${tigerDirectionLabel(target)} • ${meters}m. Follow the blue guidance line.`, 4.5);
-      toast(`Scan locked Tiger #${target.id} • ${tigerDirectionLabel(target)} • ${meters}m`);
+      interactionFeedback(`Scan target found: Tiger #${target.id} • ${tigerDirectionLabel(target)} • ${meters}m.`, { success:true, seconds:4 });
     }else{
       S.scanTargetTigerId = null;
       S.scanTargetUntil = 0;
-      toast("Scan complete: no living tigers remain on the map.");
+      interactionFeedback("Scan complete: no living tigers remain on the map.", { warn:true });
     }
   }
   sfx("scan"); hapticImpact("light"); save();
@@ -35988,10 +36016,10 @@ function movePlayer(){
 }
 
 function sprint(){
-  if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
-  if(abilityOnCooldown("sprint")) return toast(`Sprint cooling down (${abilityCooldownLabel("sprint")}).`);
+  if(S.paused || S.missionEnded || S.gameOver) return interactionFeedback("Sprint unavailable right now.", { warn:true });
+  if(abilityOnCooldown("sprint")) return interactionFeedback(`Sprint cooling down (${abilityCooldownLabel("sprint")}).`, { warn:true });
   const sprintCost = Math.max(4, STAMINA_COST_SPRINT * storyStaminaDrainMul());
-  if(S.stamina < sprintCost) return toast("Not enough stamina.");
+  if(S.stamina < sprintCost) return interactionFeedback(`Not enough stamina to sprint. Need ${Math.ceil(sprintCost)} stamina.`, { warn:true });
   S.stamina -= sprintCost;
   S._sprintTicks=82;
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "sprint"){
@@ -36003,9 +36031,9 @@ function sprint(){
 }
 
 function activateShield(){
-  if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
-  if(abilityOnCooldown("shield")) return toast(`Shield cooling down (${abilityCooldownLabel("shield")}).`);
-  if((S.shields||0) <= 0) return toast("No shields left. Buy more in Shop.");
+  if(S.paused || S.missionEnded || S.gameOver) return interactionFeedback("Shield unavailable right now.", { battle:S.inBattle, warn:true });
+  if(abilityOnCooldown("shield")) return interactionFeedback(`Shield cooling down (${abilityCooldownLabel("shield")}).`, { battle:S.inBattle, warn:true });
+  if((S.shields||0) <= 0) return interactionFeedback("No shields left. Buy more in Shop.", { battle:S.inBattle, warn:true });
   S.shields = Math.max(0, (S.shields||0) - 1);
   S.shieldUntil = Date.now() + SHIELD_DURATION_MS;
   S.shieldUsesThisMission = Math.max(0, Math.floor(Number(S.shieldUsesThisMission || 0))) + 1;
@@ -36022,7 +36050,7 @@ function activateShield(){
   renderHUD();
   renderCombatControls();
   save();
-  toast(`Shield active 5s • next shield cooldown ${Math.round(shieldCooldownMs / 1000)}s.`);
+  interactionFeedback(`Shield active 5s • next shield cooldown ${Math.round(shieldCooldownMs / 1000)}s.`, { battle:S.inBattle, success:true });
 }
 function rollCooldownLeftMs(now=Date.now()){
   return Math.max(0, (S.rollCooldownUntil || 0) - now);
@@ -36032,11 +36060,11 @@ function rollCooldownLabel(now=Date.now()){
   return left > 0 ? `${Math.max(1, Math.ceil(left / 1000))}s` : "";
 }
 function rollDodge(){
-  if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
-  if(!S.inBattle) return toast("Roll is available during tiger combat.");
+  if(S.paused || S.missionEnded || S.gameOver) return interactionFeedback("Dodge unavailable right now.", { warn:true });
+  if(!S.inBattle) return interactionFeedback("Roll dodge is available during tiger combat.", { warn:true });
   if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return;
   const now = Date.now();
-  if(rollCooldownLeftMs(now) > 0) return toast(`Roll cooling down (${rollCooldownLabel(now)}).`);
+  if(rollCooldownLeftMs(now) > 0) return interactionFeedback(`Roll cooling down (${rollCooldownLabel(now)}).`, { battle:true, warn:true });
 
   const t = activeTiger() || lockedTiger();
   const away = t ? Math.atan2(S.me.y - t.y, S.me.x - t.x) : ((S.me.face || 0) + Math.PI);
@@ -36381,25 +36409,25 @@ function playerAttackLockedRival(){
   if(!unit) return false;
   const targetDist = dist(S.me.x, S.me.y, unit.x, unit.y);
   if(targetDist > equippedWeaponRange()){
-    toast(`${unit.callsign || "Rival"} is out of range. Move closer.`);
+    interactionFeedback(`${unit.callsign || "Rival"} is out of range. Move closer.`, { warn:true });
     return true;
   }
   const attackWeaponId = preferredAttackWeaponId();
   if(!attackWeaponId){
-    toast("No lethal ammo available to fight the rival.");
+    interactionFeedback("No lethal ammo available to fight the rival. Buy ammo in Shop > Ammo.", { warn:true });
     sfx("jam");
     return true;
   }
   if(S.equippedWeaponId !== attackWeaponId) equipWeapon(attackWeaponId, { system:true, keepPreset:true });
   const w = equippedWeapon();
   if(S.mag.loaded <= 0 && !autoReloadIfNeeded(true)){
-    toast("No reserve ammo for this weapon.");
+    interactionFeedback(`No reserve ammo for ${w.name}. Buy ammo or switch weapons.`, { warn:true });
     return true;
   }
   if(Math.random() < jamChance(w)){
     applyWearOnShot(w);
     sfx("jam");
-    toast(`${w.name} jammed!`);
+    interactionFeedback(`${w.name} jammed!`, { warn:true });
     return true;
   }
   const shotAmmoId = loadedAmmoIdForEquippedWeapon() || w.ammo;
@@ -40014,12 +40042,12 @@ function scheduleTigerRetaliationAfterShot(t){
 }
 
 function startCombat(){
-  if(!tutorialAllows("engage")) return toast(tutorialBlockMessage("engage"));
-  if(S.paused || S.missionEnded || S.gameOver) return toast("Not now.");
-  if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return toast("Respawning...");
+  if(!tutorialAllows("engage")) return interactionFeedback(tutorialBlockMessage("engage"), { warn:true });
+  if(S.paused || S.missionEnded || S.gameOver) return interactionFeedback("Combat unavailable right now.", { warn:true });
+  if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return interactionFeedback("Respawning. Combat controls will return shortly.", { warn:true });
   const t=canEngage();
-  if(!lockedTiger()) return toast("Lock a tiger first.");
-  if(!t) return toast("Move closer to the locked tiger and tap it again.");
+  if(!lockedTiger()) return interactionFeedback("Lock a tiger first. Tap a tiger or use Scan to find one.", { warn:true });
+  if(!t) return interactionFeedback("Move closer to the locked tiger and tap it again.", { warn:true });
   transitionCleanupSweep("battle-start");
   clearTransientCombatVisuals();
   S.inBattle = true;
@@ -40036,6 +40064,7 @@ function startCombat(){
   renderCombatControls();
   triggerBattleCinematic("enter", t.id);
   setBattleMsg(`Engaged Tiger #${t.id}. Fight stays on the map.`);
+  interactionFeedback(`Tiger locked and engaged: #${t.id} (${t.type}).`, { battle:true, success:true, event:false });
   if(isBossTiger(t)){
     triggerBossPrefightWarning(t, bossIdentityProfile(t), Date.now());
   }
@@ -40454,16 +40483,19 @@ function findFriendlyFireVictim(targetTiger){
 }
 
 function playerAction(action){
-  if(startupLoadingGuardActive()) return toast("Mission map is still loading.");
+  if(startupLoadingGuardActive()) return interactionFeedback("Mission map is still loading. Controls unlock when loading finishes.", { warn:true });
   if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return;
   if(window.TigerTutorial?.isRunning){
-    if(action==="ATTACK" && !tutorialAllows("attack")) return toast(tutorialBlockMessage("attack"));
-    if(action==="CAPTURE" && !tutorialAllows("capture")) return toast(tutorialBlockMessage("capture"));
-    if(action==="KILL" && !tutorialAllows("kill")) return toast(tutorialBlockMessage("kill"));
-    if(action==="PROTECT") return toast("Use Attack, Capture, or Kill for tutorial battle steps.");
+    if(action==="ATTACK" && !tutorialAllows("attack")) return interactionFeedback(tutorialBlockMessage("attack"), { battle:true, warn:true });
+    if(action==="CAPTURE" && !tutorialAllows("capture")) return interactionFeedback(tutorialBlockMessage("capture"), { battle:true, warn:true });
+    if(action==="KILL" && !tutorialAllows("kill")) return interactionFeedback(tutorialBlockMessage("kill"), { battle:true, warn:true });
+    if(action==="PROTECT") return interactionFeedback("Use Attack, Capture, or Kill for tutorial battle steps.", { battle:true, warn:true });
   }
   const t=tigerById(S.activeTigerId);
-  if(!t || !t.alive) return endBattle();
+  if(!t || !t.alive){
+    interactionFeedback("No active tiger target. Lock or scan for a tiger first.", { warn:true });
+    return endBattle();
+  }
   S._battleHeartbeatAt = Date.now();
 
   if(action==="PROTECT"){
@@ -40478,29 +40510,29 @@ function playerAction(action){
 
   if(action==="CAPTURE"){
     const preCaptureWeaponId = S.equippedWeaponId;
-    if(t.hp > captureWindowHp(t)) return toast(`Capture is available between ${captureWindowPctLabel()} and 1% HP.`);
-    if(t.hp < captureWindowMinHp(t)) return toast("Tiger HP is too low for capture. Finish the tiger.");
-    if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return toast(`Boss capture locked: ${bossCaptureStrategyStatus(t)}.`);
+    if(t.hp > captureWindowHp(t)) return interactionFeedback(`Capture not ready. Weaken tiger to ${captureWindowPctLabel()} HP or lower.`, { battle:true, warn:true });
+    if(t.hp < captureWindowMinHp(t)) return interactionFeedback("Capture failed: tiger HP is too low. Finish the tiger.", { battle:true, warn:true });
+    if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return interactionFeedback(`Boss capture locked: ${bossCaptureStrategyStatus(t)}.`, { battle:true, warn:true });
     const reqOptions = captureTranqWeaponOptions(t);
     const req = bestCaptureTranqWeaponId(t);
     const reqWeapon = getWeapon(req);
     const reqLabel = captureTranqWeaponLabel(t);
-    if(!reqWeapon) return toast("Required tranq weapon data missing.");
+    if(!reqWeapon) return interactionFeedback("Capture blocked: required tranq weapon data missing.", { battle:true, warn:true });
     if(!reqOptions.some((id)=>S.ownedWeapons.includes(id))){
-      return toast(`${reqLabel} is required to capture this ${t.type}.`);
+      return interactionFeedback(`${reqLabel} is required to capture this ${t.type}.`, { battle:true, warn:true });
     }
     const anyTranqReady = reqOptions.some((id)=>S.ownedWeapons.includes(id) && hasAmmoForWeaponId(id));
     if(!anyTranqReady){
-      return toast(`Out of tranquilizers for ${reqLabel}. Buy more in Shop > Ammo.`);
+      return interactionFeedback(`Out of tranquilizers for ${reqLabel}. Buy more in Shop > Ammo.`, { battle:true, warn:true });
     }
     if(S.equippedWeaponId !== req){
       equipWeapon(req, { system:true, keepPreset:true });
     }
     if(S.mag.loaded <= 0 && !autoReloadIfNeeded(true)){
-      return toast(`Out of tranquilizers for ${reqLabel}. Buy more in Shop > Ammo.`);
+      return interactionFeedback(`Out of tranquilizers for ${reqLabel}. Buy more in Shop > Ammo.`, { battle:true, warn:true });
     }
-    if(!canCaptureTiger(t)) return toast(`${reqLabel} is needed to capture this ${t.type}.`);
-    if(!recordUniqueMissionTigerOutcome(t, "CAPTURE")) return toast("This tiger was already resolved.");
+    if(!canCaptureTiger(t)) return interactionFeedback(`${reqLabel} is needed to capture this ${t.type}.`, { battle:true, warn:true });
+    if(!recordUniqueMissionTigerOutcome(t, "CAPTURE")) return interactionFeedback("This tiger was already resolved.", { battle:true, warn:true });
     if(window.TigerTutorial?.isRunning){
       window.TigerTutorial.combatOutcome = "CAPTURE";
     }
@@ -40546,6 +40578,7 @@ function playerAction(action){
     emitCombatFx(S.me.x, S.me.y - 6, t.x, t.y, "rgba(74,222,128,.98)", 4.2, "capture");
     queueImpactPulse(t.x, t.y - 8, "capture");
     emitDamagePopup(t.x, t.y - 44, "CAPTURE", "capture");
+    interactionFeedback(`Tiger captured: #${t.id} (${t.type}).`, { success:true, seconds:3 });
     sfx("win"); hapticNotif("success");
     endBattle();
     if(!restorePostCaptureWeapon(req, preCaptureWeaponId) && preCaptureWeaponId && preCaptureWeaponId !== req && S.ownedWeapons.includes(preCaptureWeaponId)){
@@ -40556,7 +40589,7 @@ function playerAction(action){
   }
 
   if(action==="KILL"){
-    if(t.hp>captureWindowHp(t)) return toast("Tiger HP is still too high to finish.");
+    if(t.hp>captureWindowHp(t)) return interactionFeedback(`Tiger HP is still too high to finish. Weaken it below ${captureWindowPctLabel()} HP.`, { battle:true, warn:true });
     finishTigerKillWithWeapon(t, S.equippedWeaponId);
     return;
   }
@@ -40565,7 +40598,7 @@ function playerAction(action){
     updateAttackButton();
     const attackWeaponId = preferredAttackWeaponId();
     if(!attackWeaponId){
-      toast("No lethal ammo. Buy ammo in Shop or use Capture when the tiger is weak enough.");
+      interactionFeedback("Out of lethal ammo. Buy ammo in Shop or use Capture when the tiger is weak enough.", { battle:true, warn:true });
       sfx("jam");
       return;
     }
@@ -40578,7 +40611,7 @@ function playerAction(action){
 
     // If this weapon is empty, do NOT auto-tigerTurn; let player switch weapons
     if(!equippedWeaponHasAmmoNow()){
-      toast("No ammo for this weapon — switch guns or buy ammo.");
+      interactionFeedback(`No ammo for ${w.name}. Switch guns or buy ammo in Shop > Ammo.`, { battle:true, warn:true });
       sfx("jam");
       renderWeaponGrid();
       updateAttackButton();
@@ -40589,7 +40622,7 @@ function playerAction(action){
     if(S.mag.loaded<=0){
       const ok=autoReloadIfNeeded(true);
       if(!ok){
-        toast("No reserve ammo for this weapon — switch guns.");
+        interactionFeedback(`No reserve ammo for ${w.name}. Switch guns or buy ammo.`, { battle:true, warn:true });
         sfx("jam");
         renderWeaponGrid();
         updateAttackButton();
@@ -40601,7 +40634,7 @@ function playerAction(action){
       addWeaponMasteryXp(w.id, 1);
       applyWearOnShot(w);
       sfx("jam");
-      setBattleMsg(`JAM! ${w.name} malfunctioned.`);
+      interactionFeedback(`JAM! ${w.name} malfunctioned.`, { battle:true, warn:true, event:false });
       tigerTurn(t);
       save();
       return;
