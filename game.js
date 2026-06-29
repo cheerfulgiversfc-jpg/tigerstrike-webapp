@@ -10434,7 +10434,10 @@ function renderWorldMapCampaign(){
   truthQaAuditButtons(root, "world-map");
 }
 function openWorldMapCampaign(){
-  if(window.__TUTORIAL_MODE__) return toast("Finish the tutorial first.");
+  if(window.__TUTORIAL_MODE__){
+    if(!tutorialAllows("worldMap")) return toast(tutorialBlockMessage("worldMap"));
+    if(window.TigerTutorial?.isRunning) window.TigerTutorial.worldMapOpened = true;
+  }
   ensureWorldMapCampaignState(S);
   updateWorldMapCampaignSpread(S);
   ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
@@ -10493,6 +10496,7 @@ function setWorldMapActiveRegion(id){
   return false;
 }
 function startWorldMapRegionMission(id){
+  if(window.__TUTORIAL_MODE__) return toast("World Map missions unlock after the tutorial.");
   const region = worldMapRegionById(id);
   const wm = ensureWorldMapCampaignState(S);
   if(!worldMapRegionUnlocked(region, S)){
@@ -18507,29 +18511,33 @@ function tutorialKey(){
 function tutorialAllows(action){
   const key = tutorialKey();
   if(!key) return true;
+  const combatKeys = ["lock_target","engage_tiger","combat_buttons","weaken_tiger","capture_window","weapon_switch","resolve_tiger"];
+  const afterCombatKeys = ["map_interactables","shield","squad_command","squad_formation","shop","squad_shop","inventory","cosmetics","investigation","live_world","world_map","mode_separation","done"];
   const allow = {
-    interact:["interactables","shield","shop","squad","inventory","done"],
-    scan:["scan","lock","engage","weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
-    lock:["lock","engage","weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
-    engage:["engage","weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
-    attack:["weaken_tiger","resolve_tiger","interactables","shield","shop","squad","inventory","done"],
-    capture:["resolve_tiger","interactables","shield","shop","squad","inventory","done"],
-    kill:["resolve_tiger","interactables","shield","shop","squad","inventory","done"],
-    shop:["shop","squad","inventory","done"],
+    interact:["map_interactables","shield",...afterCombatKeys],
+    scan:["scan_line",...combatKeys,...afterCombatKeys],
+    lock:["lock_target",...combatKeys,...afterCombatKeys],
+    engage:["engage_tiger",...combatKeys,...afterCombatKeys],
+    attack:["combat_buttons","weaken_tiger","capture_window","weapon_switch","resolve_tiger",...afterCombatKeys],
+    capture:["capture_window","resolve_tiger",...afterCombatKeys],
+    kill:["resolve_tiger",...afterCombatKeys],
+    shop:["shop","squad_shop","inventory","cosmetics","done"],
     inventory:["inventory","cosmetics","done"],
+    worldMap:["world_map","mode_separation","done"],
   };
   return !allow[action] || allow[action].includes(key);
 }
 function tutorialBlockMessage(action){
-  if(action==="interact") return "Use Alarm, Barrier, or Cache during the Interactables step.";
-  if(action==="scan") return "Escort the civilian to the green safe zone first.";
+  if(action==="interact") return "Use Alarm, Barrier, or Cache during the Map Interactables step.";
+  if(action==="scan") return "Follow the tutorial until the Scan Line step.";
   if(action==="lock") return "Scan first, then tap the tiger to lock it.";
   if(action==="engage") return "Scan and lock the tiger before engaging.";
   if(action==="attack") return "Engage first, then weaken the tiger to capture range.";
-  if(action==="capture") return "Reach the Capture step first.";
-  if(action==="kill") return "Reach the Capture/Kill step first.";
+  if(action==="capture") return "Wait for the Capture Window step and the highlighted Capture button.";
+  if(action==="kill") return "Reach the Capture or Kill step first.";
   if(action==="shop") return "Finish combat and shield basics before opening the shop.";
   if(action==="inventory") return "Open Inventory after the Shop step.";
+  if(action==="worldMap") return "Open World Map during the World Map tutorial step.";
   return "Follow the tutorial steps in order.";
 }
 function shieldActiveNow(){ return Date.now() < (S.shieldUntil||0); }
@@ -35036,7 +35044,7 @@ cv.addEventListener("pointerdown",(e)=>{
     }
     if(tapped){
       const tutorialStep = tutorialKey();
-      if(tutorialAllows("engage") && ["engage","weaken_tiger","weapon_switch","resolve_tiger"].includes(tutorialStep)){
+      if(tutorialAllows("engage") && ["engage_tiger","combat_buttons","weaken_tiger","capture_window","weapon_switch","resolve_tiger"].includes(tutorialStep)){
         S.lockedTigerId = tapped.id;
         S.scanTargetTigerId = tapped.id;
         S.scanTargetUntil = Date.now() + 600000;
@@ -40222,8 +40230,9 @@ function updateBattleButtons(){
   if(capBtn) capBtn.disabled = !(t && t.alive);
   setCaptureReadyVisual(tigerInCaptureHpWindow(t));
   try{
-    if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weaken_tiger" && tigerInCaptureHpWindow(t)){
+    if(window.TigerTutorial?.isRunning && ["weaken_tiger","capture_window"].includes(window.TigerTutorial.currentKey) && tigerInCaptureHpWindow(t)){
       window.TigerTutorial.captureWindowReached = true;
+      window.TigerTutorial.captureButtonReady = true;
     }
   }catch(e){}
   renderCombatControls();
@@ -40682,8 +40691,9 @@ function playerAction(action){
       return;
     }
     try{
-      if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weaken_tiger" && tigerInCaptureHpWindow(t)){
+      if(window.TigerTutorial?.isRunning && ["weaken_tiger","capture_window"].includes(window.TigerTutorial.currentKey) && tigerInCaptureHpWindow(t)){
         window.TigerTutorial.captureWindowReached = true;
+        window.TigerTutorial.captureButtonReady = true;
       }
     }catch(e){}
     if(w.type==="tranq" && tigerInCaptureHpWindow(t)){
