@@ -17966,13 +17966,14 @@ function pickSquadCommand(cmd, evt=null){
 function setSquadCommand(cmd, opts={}){
   const next = normalizeSquadCommand(cmd);
   if(!S || typeof S !== "object") return next;
+  const tutorialRunning = window.TigerTutorial?.isRunning && window.__TUTORIAL_MODE__;
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "squad_command"){
     window.TigerTutorial.squadCommandUsed = true;
   }
   if(selectedSupportUnit() && opts.individual !== false){
     queueSelectedSquadOrder(next);
     syncSquadCommandWheelUi();
-    if(opts.save !== false) save();
+    if(opts.save !== false && !tutorialRunning) save();
     return next;
   }
   if(S.squadCommand === next && !opts.force) return next;
@@ -17981,7 +17982,7 @@ function setSquadCommand(cmd, opts={}){
     toast(`Squad command: ${squadCommandLabel(next)}.`);
   }
   syncSquadCommandWheelUi();
-  if(opts.save !== false) save();
+  if(opts.save !== false && !tutorialRunning) save();
   return next;
 }
 function cycleSquadCommand(){
@@ -17996,6 +17997,7 @@ function cycleSquadCommand(){
 function setSquadFormation(formation, opts={}){
   const next = normalizeSquadFormation(formation);
   if(!S || typeof S !== "object") return next;
+  const tutorialRunning = window.TigerTutorial?.isRunning && window.__TUTORIAL_MODE__;
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "squad_formation"){
     window.TigerTutorial.squadFormationUsed = true;
   }
@@ -18005,7 +18007,7 @@ function setSquadFormation(formation, opts={}){
     toast(`Squad formation: ${squadFormationLabel(next)}.`);
   }
   syncSquadCommandWheelUi();
-  if(opts.save !== false) save();
+  if(opts.save !== false && !tutorialRunning) save();
   return next;
 }
 function cycleSquadFormation(){
@@ -18527,15 +18529,15 @@ function tutorialKey(){
 function tutorialAllows(action){
   const key = tutorialKey();
   if(!key) return true;
-  const combatKeys = ["lock_target","engage_tiger","combat_buttons","weaken_tiger","capture_window","weapon_switch","resolve_tiger"];
+  const combatKeys = ["lock_target","engage_tiger","combat_buttons","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger"];
   const afterCombatKeys = ["map_interactables","shield","squad_command","squad_formation","shop","squad_shop","inventory","cosmetics","investigation","live_world","world_map","mode_separation","done"];
   const allow = {
     interact:["map_interactables","shield",...afterCombatKeys],
     scan:["scan_line",...combatKeys,...afterCombatKeys],
     lock:["lock_target",...combatKeys,...afterCombatKeys],
     engage:["engage_tiger",...combatKeys,...afterCombatKeys],
-    attack:["combat_buttons","weaken_tiger","capture_window","weapon_switch","resolve_tiger",...afterCombatKeys],
-    capture:["capture_window","resolve_tiger",...afterCombatKeys],
+    attack:["combat_buttons","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger",...afterCombatKeys],
+    capture:["capture_window","ammo_warnings","resolve_tiger",...afterCombatKeys],
     kill:["resolve_tiger",...afterCombatKeys],
     shop:["shop","squad_shop","inventory","cosmetics","done"],
     inventory:["inventory","cosmetics","done"],
@@ -32111,6 +32113,32 @@ window.enterTutorialMode = function () {
     tiger.vy = 0;
     tiger.hp = tiger.hpMax || tiger.hp || 100;
     tiger.holdUntil = Date.now() + 86400000;
+  }
+
+  // Tutorial-only squad members make command and formation lessons real.
+  // The snapshot restore on exit prevents these from becoming owned soldiers.
+  try{
+    if(typeof recordSquadOwnership === "function"){
+      recordSquadOwnership("attacker", 1, S);
+      recordSquadOwnership("rescue", 1, S);
+    }
+    S.soldierAttackersOwned = Math.max(1, Number(S.soldierAttackersOwned || 0));
+    S.soldierRescuersOwned = Math.max(1, Number(S.soldierRescuersOwned || 0));
+    S.soldierAttackersDowned = 0;
+    S.soldierRescuersDowned = 0;
+    const tutorialAttacker = createSupportUnit("attacker", 0);
+    const tutorialRescue = createSupportUnit("rescue", 0);
+    tutorialAttacker.id = "TUT-ATTACKER";
+    tutorialAttacker.name = "Tutorial Specialist";
+    tutorialAttacker.x = clamp(S.me.x - 52, 40, tutWorldW - 40);
+    tutorialAttacker.y = clamp(S.me.y + 38, 60, tutWorldH - 40);
+    tutorialRescue.id = "TUT-RESCUE";
+    tutorialRescue.name = "Tutorial Rescuer";
+    tutorialRescue.x = clamp(S.me.x + 52, 40, tutWorldW - 40);
+    tutorialRescue.y = clamp(S.me.y + 38, 60, tutWorldH - 40);
+    S.supportUnits = [tutorialAttacker, tutorialRescue];
+  }catch(e){
+    S.supportUnits = [];
   }
 
   // Seed tutorial interactables so the interactables step is always completable.
@@ -49764,8 +49792,8 @@ window.getTutorialConfig = () => ({
   shieldDurationSec: Math.max(1, Math.round(SHIELD_DURATION_MS / 1000)),
   shieldCooldownSec: Math.max(1, Math.round((ABILITY_COOLDOWN_MS?.shield || 0) / 1000)),
   squadUnlockLevel: Number(SOLDIER_UNLOCK_LEVEL || 15),
-  squadUnitPrice: Number(SOLDIER_PRICE || 50000),
-  squadBundlePrice: Number(REINFORCEMENT_BUNDLE_PRICE || 80000)
+  squadUnitPrice: Number(SOLDIER_PRICE || 100000),
+  squadBundlePrice: Number(REINFORCEMENT_BUNDLE_PRICE || 175000)
 });
 
 

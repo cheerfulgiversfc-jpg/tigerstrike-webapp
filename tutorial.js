@@ -405,6 +405,14 @@
         canNext: () => window.TigerTutorial.weaponSwitched === true || !!window.TigerTutorial.combatOutcome
       },
       {
+        key:"ammo_warnings",
+        title:"Ammo + Icon Warnings",
+        text:"Combat icons should always explain what happened. If Attack, Capture, Medkit, Armor, Shield, Trap, Scan, or Cache cannot work, the game tells you why: out of ammo, no tranquilizers, capture not ready, shield cooldown, no medkits, no armor, or no target found.",
+        hint:"Watch for toast and LIVE messages when an icon cannot work. Tap Next.",
+        arrow:"atkBtn",
+        canNext: () => true
+      },
+      {
         key:"resolve_tiger",
         title:"Capture Or Kill",
         text:`Now finish the fight. Capture preserves the tiger for research. Kill removes the threat quickly. Strong tigers may require better timing, ammo, and armor.`,
@@ -681,7 +689,7 @@
       updateProgressFlags();
       if(step.key === "weaken_tiger") updateWeakenTigerHint();
       setCardPlacement(step);
-      if(["lock_target","engage_tiger","combat_buttons","weaken_tiger","capture_window","weapon_switch","resolve_tiger"].includes(step.key)){
+      if(["lock_target","engage_tiger","combat_buttons","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger"].includes(step.key)){
         const target = pickTutorialTiger(getS());
         if(target && target.alive && getS()){
           getS().scanTargetTigerId = target.id;
