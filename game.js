@@ -13352,14 +13352,14 @@ let __mapWaterSig = "";
 let __mapWaterZones = [];
 let __mapDenseLandmarksSig = "";
 let __mapDenseLandmarks = [];
-const STARTUP_LOADING_MAX_MS = 30000;
-const STARTUP_LOADING_PLAYABLE_MS = 16000;
-const STARTUP_LOADING_MIN_MS = 7500;
-const STARTUP_LOADING_READY_FRAMES = 24;
-const STARTUP_LOADING_DETAIL_READY_FRAMES = 10;
+const STARTUP_LOADING_MAX_MS = 26000;
+const STARTUP_LOADING_PLAYABLE_MS = 11500;
+const STARTUP_LOADING_MIN_MS = 5200;
+const STARTUP_LOADING_READY_FRAMES = 18;
+const STARTUP_LOADING_DETAIL_READY_FRAMES = 7;
 const STARTUP_LOADING_FINALIZE_MS = 850;
-const STARTUP_LOADING_FINALIZE_FAILSAFE_MS = 2600;
-const MAP_CLARITY_PRELOAD_RADIUS = 4;
+const STARTUP_LOADING_FINALIZE_FAILSAFE_MS = 1800;
+const MAP_CLARITY_PRELOAD_RADIUS = 5;
 const MAP_CLARITY_FULL_REPAINT_MS = 120000;
 const STARTUP_PRELOAD_STAGE_WEIGHTS = Object.freeze({
   terrain:18,
@@ -13966,7 +13966,7 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
   const src = (state && typeof state === "object") ? state : S;
   const ss = ensureSectorStreamingState(src);
   if(!ss.enabled) return ss;
-  const radius = clamp(Math.floor(Number(opts.radius ?? 1)), 1, 4);
+  const radius = clamp(Math.floor(Number(opts.radius ?? 1)), 1, 6);
   const points = [];
   const pushPoint = (x, y)=>{
     if(Number.isFinite(Number(x)) && Number.isFinite(Number(y))){
@@ -14038,7 +14038,7 @@ function preloadMapClarityFinalPass(state=S, now=Date.now()){
   const src = (state && typeof state === "object") ? state : S;
   const ss = preloadMissionBoardSectors(src, now, { radius:MAP_CLARITY_PRELOAD_RADIUS });
   if(ss && typeof ss === "object"){
-    ss.activeRadius = Math.max(Number(ss.activeRadius || 1), 2);
+    ss.activeRadius = Math.max(Number(ss.activeRadius || 1), 3);
   }
   try{ ensureMapObstacleCache(); }catch(e){}
   return ss;
@@ -20149,7 +20149,29 @@ function drawMapExpansionSectorDetails(opts={}){
   const state = opts.state || S;
   const ss = ensureSectorStreamingState(state);
   const activeSet = new Set(ss.activeKeys || []);
-  const keys = Array.from(new Set([...(ss.discoveredKeys || []).slice(-70), ...(ss.activeKeys || []), ss.centerKey])).slice(-96);
+  const visibleKeys = [];
+  try{
+    const off = cameraOffsetSnapshot(state);
+    const viewW = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+    const viewH = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+    const corners = [
+      [off.x, off.y],
+      [off.x + viewW, off.y],
+      [off.x, off.y + viewH],
+      [off.x + viewW, off.y + viewH],
+      [off.x + (viewW * 0.5), off.y + (viewH * 0.5)]
+    ];
+    for(const [x, y] of corners){
+      const key = streamSectorKeyForPoint(x, y, state);
+      const center = streamSectorPointFromKey(key, state);
+      for(let dy=-1; dy<=1; dy++){
+        for(let dx=-1; dx<=1; dx++){
+          visibleKeys.push(`${Math.max(0, center.sx + dx)}:${Math.max(0, center.sy + dy)}`);
+        }
+      }
+    }
+  }catch(e){}
+  const keys = Array.from(new Set([...(ss.discoveredKeys || []).slice(-90), ...(ss.activeKeys || []), ...visibleKeys, ss.centerKey])).slice(-132);
   const mobileFast = !!opts.mobileFast;
   ctx.save();
   for(const key of keys){
@@ -48096,6 +48118,19 @@ function missionMapWarmupTick(now=Date.now()){
   try{ resizeCanvasForViewport(); }catch(e){}
   try{ updateStreamedSectors(S, now); }catch(e){}
   try{ preloadMapClarityFinalPass(S, now); }catch(e){}
+  try{
+    // Expanded maps cannot always use the small full-frame cache path. Count
+    // warmup passes as visual readiness after the route sectors and obstacle
+    // data have been prepared, so the loader does not sit at 100% forever.
+    const g = __startupLoadingGuard;
+    if(startupCriticalPreloadReady()){
+      g.detailedFrames = Math.min(
+        STARTUP_LOADING_DETAIL_READY_FRAMES,
+        Number(g.detailedFrames || 0) + 1
+      );
+      __startupLastDetailedMapAt = Math.max(Number(__startupLastDetailedMapAt || 0), now);
+    }
+  }catch(e){}
   try{ ensureMapObstacleCache(); }catch(e){}
   try{ ensureMissionTwistState(S); }catch(e){}
   try{ computeStartupPreloadProgress(now); }catch(e){}
@@ -48232,6 +48267,8 @@ function releaseStartupLoadingGuard(reason="ready"){
   __forceFullMapRepaintUntil = Math.max(Number(__forceFullMapRepaintUntil || 0), Date.now() + MAP_CLARITY_FULL_REPAINT_MS);
   try{ invalidateMapCache(); }catch(e){}
   updateStartupLoadingOverlay(true);
+  try{ renderHUD(); }catch(e){}
+  try{ setEventText("Mission map ready.", 1.15); }catch(e){}
 }
 
 function scheduleStartupLoadingRelease(reason="ready"){
@@ -48254,6 +48291,13 @@ function requestStartupLoadingFinalization(reason="ready"){
   const now = Date.now();
   __startupLoadingGuard.percent = 100;
   __startupLoadingGuard.stage = "ready";
+  __startupLoadingGuard.stageScores = {
+    terrain:100,
+    sectors:100,
+    entities:100,
+    hazards:100,
+    visual:100
+  };
   __startupLoadingGuard.pendingReleaseReason = reason;
   if(!Number(__startupLoadingGuard.finalizingStartedAt || 0)){
     __startupLoadingGuard.finalizingStartedAt = now;
@@ -48322,8 +48366,9 @@ function updateStartupLoadingOverlay(force=false){
   if(finalizing) __startupLoadingGuard.stage = "ready";
   if(finalizing){
     const started = Number(__startupLoadingGuard.finalizingStartedAt || 0);
-    if(started > 0 && (now - started) >= STARTUP_LOADING_FINALIZE_FAILSAFE_MS){
-      releaseStartupLoadingGuard(__startupLoadingGuard.pendingReleaseReason || "overlay-finalize-failsafe");
+    const finalizeUntil = Number(__startupLoadingGuard.finalizingUntil || 0);
+    if((finalizeUntil > 0 && now >= finalizeUntil) || (started > 0 && (now - started) >= STARTUP_LOADING_FINALIZE_FAILSAFE_MS)){
+      releaseStartupLoadingGuard(__startupLoadingGuard.pendingReleaseReason || "overlay-finalize-ready");
       return;
     }
   }
@@ -48337,7 +48382,8 @@ function updateStartupLoadingOverlay(force=false){
   __startupLoadingGuard.percent = Math.max(Number(__startupLoadingGuard.percent || 0), cappedPercent);
   const pct = clamp(Math.round(__startupLoadingGuard.percent || 0), 0, 100);
   if(pct >= 100 && !finalizing){
-    setTimeout(()=>requestStartupLoadingFinalization("overlay-ready"), 0);
+    requestStartupLoadingFinalization("overlay-ready");
+    return;
   }
   const progress = pct / 100;
   if(__startupLoadingGuard.subNode){
