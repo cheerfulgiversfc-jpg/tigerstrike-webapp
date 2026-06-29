@@ -29729,6 +29729,68 @@ function ammoPriceCapped(a){
 function ownedAmmoCount(ammoId){ return S.ammoReserve[ammoId]||0; }
 function ownedMedCount(medId){ return S.medkits[medId]||0; }
 function ownedToolCount(toolId){ return S.repairKits[toolId]||0; }
+function weaponAmmoUsers(ammoId){
+  const ammo = getAmmo(ammoId);
+  return WEAPONS
+    .filter((w)=>{
+      if(w.ammo === ammoId) return true;
+      const baseAmmo = getAmmo(w.ammo);
+      return !!(ammo?.family && baseAmmo?.family && ammo.family === baseAmmo.family);
+    })
+    .map((w)=>w.name)
+    .join(", ") || "No current weapon";
+}
+function shopItemStatusTag(kind, id){
+  if(kind === "weapon"){
+    if(S.equippedWeaponId === id) return "Equipped";
+    return S.ownedWeapons.includes(id) ? "Owned" : "Locked";
+  }
+  if(kind === "ammo") return `Owned: ${ownedAmmoCount(id)}`;
+  if(kind === "med") return `Owned: ${ownedMedCount(id)}`;
+  if(kind === "armor") return `Owned: ${armorPlateCount(id)}`;
+  if(kind === "tool") return `Owned: ${ownedToolCount(id)}`;
+  return "";
+}
+function shopGameplayEffect(kind, item){
+  if(!item) return "No gameplay effect configured.";
+  if(kind === "weapon") return `${item.type === "tranq" ? "Capture" : "Combat"} weapon • uses ${item.ammo} • equip from Shop or Inventory.`;
+  if(kind === "ammo") return `Adds ${item.pack} reserve ammo • used by: ${weaponAmmoUsers(item.id)}.`;
+  if(kind === "med") return `Heals +${item.heal} HP • stored if HP is full, auto-used if injured.`;
+  if(kind === "armor") return `Adds one ${armorTierLabel(item.id)} armor plate • restores +${item.addArmor} armor when used.`;
+  if(kind === "tool") return `Adds ${item.qty || 1} repair kit • restores +${item.add} durability to equipped weapon.`;
+  if(kind === "shield") return "Adds one Escort Shield • blocks tiger damage for 5 seconds with escalating cooldown.";
+  if(kind === "trap") return "Adds one trap • placed on the map to hold a tiger for 3-5 seconds with escalating cooldown.";
+  return "Gameplay effect active.";
+}
+function shopAuditSummary(){
+  const issues = [];
+  for(const w of WEAPONS){
+    if(!getAmmo(w.ammo)) issues.push(`${w.name} missing ammo ${w.ammo}`);
+    if(!(w.price > 0)) issues.push(`${w.name} invalid price`);
+  }
+  for(const a of AMMO){
+    if(!(a.price > 0) || !(a.pack > 0)) issues.push(`${a.name} invalid price/pack`);
+    if(weaponAmmoUsers(a.id) === "No current weapon") issues.push(`${a.name} has no weapon user`);
+  }
+  for(const m of MEDS){
+    if(!(m.price > 0) || !(m.heal > 0)) issues.push(`${m.name} invalid price/heal`);
+  }
+  for(const ar of ARMORY){
+    if(!(ar.price > 0) || !(ar.addArmor > 0)) issues.push(`${ar.name} invalid price/armor`);
+  }
+  for(const t of TOOLS){
+    if(!(t.price > 0) || !(t.add > 0) || !(t.qty > 0)) issues.push(`${t.name} invalid price/effect`);
+  }
+  for(const b of CASH_SUPPLY_BUNDLES){
+    const errors = cashBundleValidationErrors(b);
+    if(errors.length) issues.push(`${b.name}: ${errors[0]}`);
+  }
+  return {
+    issues,
+    ok: issues.length === 0,
+    label: issues.length ? `${issues.length} shop audit issue${issues.length === 1 ? "" : "s"}` : "Audit OK: every visible item has a gameplay effect",
+  };
+}
 
 function cashBundleIndividualValue(grant={}){
   let value = positiveInt(grant.funds);
@@ -29911,11 +29973,12 @@ function renderShopList(){
   document.getElementById("shopMoney").innerText = S.funds.toLocaleString();
   const list=document.getElementById("shopList");
   const note=document.getElementById("shopNote");
+  const audit = shopAuditSummary();
   renderShopFilterPanel(0, 0);
 
   if(currentShopTab==="weapons"){
     ensureWeaponAttachmentState(S);
-    note.innerText="Weapons now support modular builds. Attach optic/tranq/suppressor/mag/stock and use mission presets.";
+    note.innerText=`${audit.label}. Weapons support modular builds; owned/equipped state is shown on every card.`;
     const presetButtons = WEAPON_LOADOUT_PRESETS.map((preset)=>{
       const active = S.activeLoadoutPresetId === preset.id;
       return `<button class="${active ? "good" : "ghost"}" onclick="applyLoadoutPreset('${preset.id}')">${preset.name}</button>`;
@@ -29976,7 +30039,8 @@ function renderShopList(){
       return `
         <div class="item">
           <div>
-            <div class="itemName">${w.name} <span class="tag">${w.grade}</span> <span class="tag">${owned?'Owned':'Not owned'}</span></div>
+            <div class="itemName">${w.name} <span class="tag">${w.grade}</span> <span class="tag">${shopItemStatusTag("weapon", w.id)}</span></div>
+            <div class="itemDesc">${shopGameplayEffect("weapon", w)}</div>
             <div class="itemDesc">Ammo: ${w.ammo} • Mag: ${stats.magCap} • Damage: ${stats.dmg[0]}–${stats.dmg[1]} • Range: ${stats.range}${masteryText}${treeText}</div>
           </div>
           <div style="text-align:right">
@@ -29991,15 +30055,16 @@ function renderShopList(){
   }
 
   if(currentShopTab==="ammo"){
-    note.innerText="Owned shows reserve count. Epic price capped to Standard + $500.";
+    note.innerText=`${audit.label}. Ammo is grouped by weapon family; Epic ammo price is capped to Standard + $500.`;
     list.innerHTML = AMMO.map(a=>{
       const p=ammoPriceCapped(a);
       const owned = ownedAmmoCount(a.id);
       return `
         <div class="item">
           <div>
-            <div class="itemName">${a.name} <span class="tag">${a.grade}</span> <span class="tag">Owned: ${owned}</span></div>
-            <div class="itemDesc">+${a.pack} reserve • Family: ${a.family}</div>
+            <div class="itemName">${a.name} <span class="tag">${a.grade}</span> <span class="tag">${shopItemStatusTag("ammo", a.id)}</span></div>
+            <div class="itemDesc">${shopGameplayEffect("ammo", a)}</div>
+            <div class="itemDesc">Family: ${a.family}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${p.toLocaleString()}</div>
@@ -30011,12 +30076,13 @@ function renderShopList(){
   }
 
   if(currentShopTab==="armor"){
-    note.innerText="Armor plates are storable by tier. Pick a tier in Inventory for exact use, or quick-use to auto-fill armor to 100.";
+    note.innerText=`${audit.label}. Armor plates are storable by tier. Pick a tier in Inventory or quick-use to auto-fill armor.`;
     list.innerHTML = ARMORY.map(ar=>`
       <div class="item">
         <div>
-          <div class="itemName">${ar.name} <span class="tag">${armorTierLabel(ar.id)}</span> <span class="tag">Owned: ${armorPlateCount(ar.id)}</span></div>
-          <div class="itemDesc">Armor Plate: +${ar.addArmor} armor per use • Armor cap ${ar.cap} • Total plates: ${totalArmorPlates()}</div>
+          <div class="itemName">${ar.name} <span class="tag">${armorTierLabel(ar.id)}</span> <span class="tag">${shopItemStatusTag("armor", ar.id)}</span></div>
+          <div class="itemDesc">${shopGameplayEffect("armor", ar)}</div>
+          <div class="itemDesc">Armor cap ${ar.cap} • Total plates: ${totalArmorPlates()}</div>
         </div>
         <div style="text-align:right">
           <div class="price">$${ar.price.toLocaleString()}</div>
@@ -30027,14 +30093,14 @@ function renderShopList(){
   }
 
   if(currentShopTab==="meds"){
-    note.innerText="Pick a tier in Inventory for exact use, or quick-use to auto-fill HP to 100.";
+    note.innerText=`${audit.label}. Med kits are storable by tier and can heal the player or injured civilians.`;
     list.innerHTML = MEDS.map(m=>{
       const owned=ownedMedCount(m.id);
       return `
         <div class="item">
           <div>
-            <div class="itemName">${m.name} <span class="tag">${medTierLabel(m.id)}</span> <span class="tag">Owned: ${owned}</span></div>
-            <div class="itemDesc">Heals +${m.heal} HP</div>
+            <div class="itemName">${m.name} <span class="tag">${medTierLabel(m.id)}</span> <span class="tag">${shopItemStatusTag("med", m.id)}</span></div>
+            <div class="itemDesc">${shopGameplayEffect("med", m)}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${m.price.toLocaleString()}</div>
@@ -30067,6 +30133,7 @@ function renderShopList(){
     note.innerText = unlockedAny
       ? `${spawnNow ? "Buy now to spawn immediately." : "Buy now and they join on next mission deploy."} Upkeep per mission: Tiger Specialist $${SQUAD_UPKEEP_ATTACKER.toLocaleString()} • Rescue Specialist $${SQUAD_UPKEEP_RESCUE.toLocaleString()}. ${premiumUnlockedA || premiumUnlockedR ? "Stars specialist unlock active." : `Level unlock: ${SOLDIER_UNLOCK_LEVEL}.`}`
       : `Locked until level ${SOLDIER_UNLOCK_LEVEL}. Current level: ${level}.`;
+    note.innerText = `${audit.label}. ${note.innerText}`;
     if(starsReason){
       note.innerText += ` Stars checkout unavailable: ${starsReason}`;
     }
@@ -30596,7 +30663,7 @@ function renderShopList(){
     const filteredBundles = cashBundles.filter((bundle)=>cashBundleCategorySet(bundle, recommendedIds).has(activeFilter));
     renderShopFilterPanel(cashBundles.length, filteredBundles.length);
     const filterLabel = (shopFiltersForTab("bundles").find((f)=>f.id === activeFilter)?.label || "All");
-    note.innerText=`Bundles are validated before display and purchases only charge after rewards apply. Filter: ${filterLabel}. ${filteredBundles.length}/${cashBundles.length} bundles shown.`;
+    note.innerText=`${audit.label}. Bundles are validated before display and purchases only charge after rewards apply. Filter: ${filterLabel}. ${filteredBundles.length}/${cashBundles.length} bundles shown.`;
     if(!filteredBundles.length){
       list.innerHTML = `
         <div class="item">
@@ -30650,14 +30717,14 @@ function renderShopList(){
   }
 
   if(currentShopTab==="tools"){
-    note.innerText="Tools are individual utility items. Repair kits restore weapon durability. Escort Shield protects you and nearby civilians.";
+    note.innerText=`${audit.label}. Tools are individual utility items. Repair kits can be stockpiled; shields protect you and nearby civilians.`;
     const repairCards = TOOLS.map(t=>{
       const owned=ownedToolCount(t.id);
       return `
         <div class="item">
           <div>
-            <div class="itemName">${t.name} <span class="tag">Owned: ${owned}</span></div>
-            <div class="itemDesc">+${t.add} durability</div>
+            <div class="itemName">${t.name} <span class="tag">${shopItemStatusTag("tool", t.id)}</span></div>
+            <div class="itemDesc">${shopGameplayEffect("tool", t)}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${t.price.toLocaleString()}</div>
@@ -30667,10 +30734,10 @@ function renderShopList(){
     }).join("");
     const shieldCard = `
       <div class="item">
-        <div>
-          <div class="itemName">Escort Shield <span class="tag">Owned: ${S.shields||0}</span></div>
-          <div class="itemDesc">Creates a shield around you and nearby civilians for 5 seconds.</div>
-        </div>
+          <div>
+            <div class="itemName">Escort Shield <span class="tag">Owned: ${S.shields||0}</span></div>
+            <div class="itemDesc">${shopGameplayEffect("shield")}</div>
+          </div>
         <div style="text-align:right">
           <div class="price">$${SHIELD_PRICE.toLocaleString()}</div>
           <button onclick="buyShield()">Buy</button>
@@ -30680,12 +30747,12 @@ function renderShopList(){
     return;
   }
 
-  note.innerText="Traps are one-time: hold a tiger 3–5s then disappear after hold ends.";
+  note.innerText=`${audit.label}. Traps are one-time map control items.`;
   list.innerHTML = `
     <div class="item">
       <div>
         <div class="itemName">Trap <span class="tag">Owned: ${S.trapsOwned}</span></div>
-        <div class="itemDesc">Hold tigers 3–5 seconds inside trap circle.</div>
+        <div class="itemDesc">${shopGameplayEffect("trap")}</div>
       </div>
       <div style="text-align:right">
         <div class="price">$${TRAP_ITEM.price.toLocaleString()}</div>
@@ -30710,6 +30777,7 @@ function buyWeapon(id){
   if(!S.ammoReserve[w.ammo]) S.ammoReserve[w.ammo]=0;
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
+  interactionFeedback(`${w.name} purchased. It is now unlocked in Weapons and Inventory.`, { success:true });
 }
 function buyAmmo(id){
   const a=getAmmo(id); if(!a) return;
@@ -30719,6 +30787,7 @@ function buyAmmo(id){
   S.ammoReserve[id] = (S.ammoReserve[id]||0) + a.pack;
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
+  interactionFeedback(`${a.name} purchased: +${a.pack} reserve (${ownedAmmoCount(id)} owned).`, { success:true });
 }
 function buyArmor(id){
   const ar=getArmor(id); if(!ar) return;
@@ -30776,14 +30845,14 @@ function buyMed(id){
   if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
 }
 function buyTool(id){
-  const w=equippedWeapon();
-  if(weaponDurability(w.id) >= 100) return toast("Weapon durability already 100%.");
   const t=getTool(id); if(!t) return;
   if(S.funds < t.price) return toast("Not enough money.");
   S.funds -= t.price;
   S.repairKits[id] = (S.repairKits[id]||0) + t.qty;
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
+  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  interactionFeedback(`${t.name} purchased: +${t.qty} repair kit${t.qty === 1 ? "" : "s"} (${ownedToolCount(id)} owned).`, { success:true });
 }
 function buyShield(){
   if(S.funds < SHIELD_PRICE) return toast("Not enough money.");
@@ -30791,6 +30860,8 @@ function buyShield(){
   S.shields = (S.shields||0) + 1;
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
+  renderCombatControls();
+  interactionFeedback(`Escort Shield purchased. Shields owned: ${S.shields || 0}.`, { success:true });
 }
 function buyCashBundle(id){
   const bundle = cashBundleById(id);
@@ -31004,6 +31075,8 @@ function buyTrap(){
   S.trapsOwned += TRAP_ITEM.qty;
   sfx("ui"); hapticImpact("light");
   save(); renderShopList(); renderHUD();
+  renderCombatControls();
+  interactionFeedback(`Trap purchased. Traps owned: ${S.trapsOwned || 0}.`, { success:true });
 }
 
 function totalMedkits(){ return Object.values(S.medkits||{}).reduce((a,b)=>a+(b||0),0); }
