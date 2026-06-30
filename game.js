@@ -10438,15 +10438,18 @@ function openWorldMapCampaign(){
     if(!tutorialAllows("worldMap")) return toast(tutorialBlockMessage("worldMap"));
     if(window.TigerTutorial?.isRunning) window.TigerTutorial.worldMapOpened = true;
   }
+  const returningToHq = typeof baseHqActive === "function" && baseHqActive();
+  if(returningToHq){
+    rememberBaseHqOverlayReturn?.(__baseHqSelectedRoom || "mission");
+    leaveBaseHqView?.({ restoreMenu:false });
+  }
   ensureWorldMapCampaignState(S);
   updateWorldMapCampaignSpread(S);
   ["launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
-  if(typeof baseHqActive === "function" && baseHqActive()){
-    rememberBaseHqOverlayReturn?.("mission");
-  }else{
+  if(!returningToHq){
     __returnToBaseHqAfterOverlay = false;
   }
   setPaused(true, "world-map");
@@ -27037,10 +27040,15 @@ function showBaseHqHud(ms=6200){
   }
   __baseHqHudUntil = Date.now() + Math.max(1800, Number(ms || 0));
 }
+function setBaseHqHudOpenClass(open=false){
+  try{ document.body?.classList?.toggle("baseHqHudOpen", !!open); }catch(_e){}
+}
 function hideBaseHqHud(){
   __baseHqHudUntil = 0;
+  setBaseHqHudOpenClass(false);
   const hud = document.getElementById("baseHqWorldHud");
   if(hud) hud.style.display = "none";
+  renderBaseHqQuickBar();
 }
 function armBaseHqHudScroll(hud){
   if(!hud || hud.__baseHqScrollArmed) return;
@@ -27062,8 +27070,10 @@ function toggleBaseHqQuickMenu(){
 function dismissBaseHqInfoForMovement(){
   __baseHqHudUntil = 0;
   __baseHqDialogNpc = "";
+  setBaseHqHudOpenClass(false);
   const hud = document.getElementById("baseHqWorldHud");
   if(hud) hud.style.display = "none";
+  renderBaseHqQuickBar();
 }
 function baseHqEsc(value){
   return String(value ?? "").replace(/[&<>"']/g, (ch)=>({
@@ -28169,6 +28179,9 @@ function armBaseHqButtons(root){
     btn.addEventListener("pointerup", (ev)=>{
       trigger(ev);
     }, { passive:false });
+    btn.addEventListener("touchend", (ev)=>{
+      trigger(ev);
+    }, { passive:false });
     btn.addEventListener("click", (ev)=>{
       if(trigger(ev)) return;
       ev.stopPropagation();
@@ -28420,9 +28433,12 @@ function renderBaseHqWorldHud(){
   if(!hud) return;
   armBaseHqHudScroll(hud);
   if(!__baseHqActive || Date.now() > Number(__baseHqHudUntil || 0)){
+    setBaseHqHudOpenClass(false);
     hud.style.display = "none";
+    renderBaseHqQuickBar();
     return;
   }
+  setBaseHqHudOpenClass(true);
   const { room, data } = baseHqRoomData(__baseHqSelectedRoom);
   const near = baseHqNearestInteractable();
   const dialogNpc = __baseHqDialogNpc ? BASE_HQ_NPCS.find((npc)=>npc.name === __baseHqDialogNpc) : null;
@@ -28478,9 +28494,9 @@ function renderBaseHqWorldHud(){
 function renderBaseHqQuickBar(){
   const bar = document.getElementById("baseHqQuickBar");
   if(!bar) return;
-  if(!__baseHqActive){
+  if(!__baseHqActive || document.body?.classList?.contains("baseHqHudOpen")){
     bar.style.display = "none";
-    bar.innerHTML = "";
+    if(!__baseHqActive) bar.innerHTML = "";
     return;
   }
   const snap = baseHqModeMissionSnapshot(S.mode);
@@ -29367,7 +29383,7 @@ function leaveBaseHqView({ restoreMenu=true }={}){
   hideBaseHqHud();
   renderBaseHqQuickBar();
   renderBaseHqOnboarding();
-  document.body?.classList?.remove("baseHqActive");
+  document.body?.classList?.remove("baseHqActive", "baseHqHudOpen");
   if(restoreMenu) applyMobileMenuState(__mobileMenuHiddenPref);
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
@@ -48415,6 +48431,19 @@ function releaseStartupLoadingGuard(reason="ready"){
   try{ setEventText("Mission map ready.", 1.15); }catch(e){}
 }
 
+function forceReleaseStartupLoadingIfComplete(now=Date.now()){
+  if(!__startupLoadingGuard.active) return false;
+  const pct = Number(__startupLoadingGuard.percent || 0);
+  const started = Number(__startupLoadingGuard.finalizingStartedAt || 0);
+  const finalizeUntil = Number(__startupLoadingGuard.finalizingUntil || 0);
+  const elapsedAtHundred = started > 0 ? now - started : 0;
+  if(pct >= 100 && (!finalizeUntil || now >= finalizeUntil || elapsedAtHundred >= 650)){
+    releaseStartupLoadingGuard(__startupLoadingGuard.pendingReleaseReason || "hundred-percent-frame-release");
+    return true;
+  }
+  return false;
+}
+
 function scheduleStartupLoadingRelease(reason="ready"){
   if(!__startupLoadingGuard.active) return;
   if(__startupLoadingGuard.finalizeTimer){
@@ -48456,6 +48485,7 @@ function requestStartupLoadingFinalization(reason="ready"){
 
 function startupLoadingGuardActive(now=Date.now()){
   if(!__startupLoadingGuard.active) return false;
+  if(forceReleaseStartupLoadingIfComplete(now)) return false;
   if(Number(__startupLoadingGuard.finalizingUntil || 0) > 0){
     const started = Number(__startupLoadingGuard.finalizingStartedAt || 0);
     const finalizeExpired = now >= Number(__startupLoadingGuard.finalizingUntil || 0);
@@ -48502,6 +48532,7 @@ function updateStartupLoadingOverlay(force=false){
   node.style.display = active ? "flex" : "none";
   if(!active) return;
   const now = Date.now();
+  if(forceReleaseStartupLoadingIfComplete(now)) return;
   if(!force && now - Number(__startupLoadingGuard.lastTextAt || 0) < 160) return;
   __startupLoadingGuard.lastTextAt = now;
   const elapsed = Math.max(0, now - Number(__startupLoadingGuard.startedAt || now));

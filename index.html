@@ -253,9 +253,10 @@
       position:absolute;
       right:12px;
       top:12px;
-      bottom:72px;
+      bottom:12px;
       width:min(340px,calc(100% - 24px));
-      max-height:none;
+      max-height:calc(100% - 24px);
+      box-sizing:border-box;
       overflow-y:auto;
       overscroll-behavior:contain;
       -webkit-overflow-scrolling:touch;
@@ -271,6 +272,10 @@
       box-shadow:0 14px 34px rgba(0,0,0,.38), inset 0 0 18px rgba(56,189,248,.08);
       backdrop-filter:blur(7px);
       pointer-events:auto;
+    }
+    body.baseHqHudOpen .baseHqQuickBar{
+      display:none !important;
+      pointer-events:none !important;
     }
     .baseHqWorldHud::after{
       content:"Scroll for more";
@@ -566,9 +571,9 @@
         left:8px;
         right:8px;
         top:8px;
-        bottom:60px;
+        bottom:8px;
         width:auto;
-        max-height:none;
+        max-height:calc(100% - 16px);
         padding:9px 9px 16px;
       }
       .baseHqWorldTitle{font-size:13px}
