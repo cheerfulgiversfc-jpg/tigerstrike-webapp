@@ -42397,6 +42397,17 @@ function updateEngage(){
 
 function renderHUD(){
   try{
+    if(!window.__TUTORIAL_MODE__){
+      const repaired = repairBlankRuntimeState(S, "render-hud");
+      const invalid = missionEntityStateInvalid(S);
+      if((repaired || invalid) && invalid && !(S.gameOver || S.missionEnded)){
+        const now = Date.now();
+        if(now - Number(__runtimeBlankRepairAt || 0) > 1200){
+          __runtimeBlankRepairAt = now;
+          ensureMissionStartupIntegrity({ force:true, reason:`render-hud-${invalid}` });
+        }
+      }
+    }
     updateMissionTransitionIndicator();
     syncSquadRosterBounds();
     contractsHeartbeatTick();
@@ -48691,6 +48702,7 @@ function onStartupComplete(){
 let __lastStartupIntegrityAt = 0;
 let __lastStartupIntegrityToastAt = 0;
 let __lastControlRecoverAt = 0;
+let __runtimeBlankRepairAt = 0;
 const PHASE15_SELF_HEAL_COOLDOWN_MS = 2400;
 let __phase15SelfHealState = {
   lastAt: 0,
@@ -48852,9 +48864,147 @@ function runSafeSelfHealSweep(reason="auto", opts={}){
   phase15SelfHealToast(fixes.join(" + "), force);
   return true;
 }
+function repairBlankRuntimeState(state=S, reason=""){
+  if(!state || typeof state !== "object") return false;
+  let repaired = false;
+  const setDefault = (key, fallback)=>{
+    if(!Number.isFinite(Number(state[key]))){
+      state[key] = fallback;
+      repaired = true;
+    }
+  };
+  const setArray = (key)=>{
+    if(!Array.isArray(state[key])){
+      state[key] = [];
+      repaired = true;
+    }
+  };
+  const setObject = (key, fallback)=>{
+    if(!state[key] || typeof state[key] !== "object" || Array.isArray(state[key])){
+      state[key] = cloneState(fallback);
+      repaired = true;
+    }
+  };
+
+  const mode = normalizeModeName(state.mode);
+  if(!["Story","Arcade","Survival"].includes(mode) || state.mode !== mode){
+    state.mode = ["Story","Arcade","Survival"].includes(mode) ? mode : DEFAULT.mode;
+    repaired = true;
+  }
+
+  state.storyLevel = clamp(Math.floor(Number(state.storyLevel || DEFAULT.storyLevel)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  state.storyLastMission = clamp(Math.floor(Number(state.storyLastMission || state.storyLevel || DEFAULT.storyLastMission)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  state.arcadeLevel = clamp(Math.floor(Number(state.arcadeLevel || DEFAULT.arcadeLevel)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
+  state.survivalWave = Math.max(1, Math.floor(Number(state.survivalWave || DEFAULT.survivalWave)));
+
+  setDefault("lives", DEFAULT.lives);
+  setDefault("funds", DEFAULT.funds);
+  setDefault("score", DEFAULT.score);
+  setDefault("trust", DEFAULT.trust);
+  setDefault("aggro", DEFAULT.aggro);
+  setDefault("stamina", DEFAULT.stamina);
+  setDefault("hp", DEFAULT.hp);
+  setDefault("armorCap", DEFAULT.armorCap);
+  setDefault("armor", DEFAULT.armor);
+  state.lives = clamp(Math.round(Number(state.lives)), 0, 99);
+  state.funds = Math.max(0, Math.round(Number(state.funds)));
+  state.score = Math.max(0, Math.round(Number(state.score)));
+  state.hp = clamp(Number(state.hp), 0, 100);
+  state.armorCap = Math.max(1, Math.round(Number(state.armorCap)));
+  state.armor = clamp(Number(state.armor), 0, state.armorCap);
+  state.stamina = clamp(Number(state.stamina), 0, 100);
+
+  setObject("modeWallets", DEFAULT.modeWallets);
+  state.modeWallets = normalizeModeWallets(state.modeWallets, state.funds, state.mode);
+  bindFundsWallet(state);
+
+  setObject("me", DEFAULT.me);
+  if(!Number.isFinite(Number(state.me.x)) || !Number.isFinite(Number(state.me.y))){
+    state.me = cloneState(DEFAULT.me);
+    repaired = true;
+  }
+  if(!Number.isFinite(Number(state.me.face))) state.me.face = 0;
+  if(!Number.isFinite(Number(state.me.step))) state.me.step = 0;
+  if(!state.camera || typeof state.camera !== "object"){
+    state.camera = { x: Number(state.me.x || DEFAULT.me.x), y: Number(state.me.y || DEFAULT.me.y) };
+    repaired = true;
+  }
+
+  setArray("tigers");
+  setArray("civilians");
+  setArray("pickups");
+  setArray("carcasses");
+  setArray("trapsPlaced");
+  setArray("supportUnits");
+  setArray("rivalHunters");
+  setArray("rescueSites");
+  setArray("mapInteractables");
+  setArray("investigationClues");
+  setObject("stats", DEFAULT.stats);
+  setObject("_missionStatsStart", DEFAULT._missionStatsStart);
+  setObject("_missionTigerOutcomes", DEFAULT._missionTigerOutcomes);
+  setObject("opsTotals", DEFAULT.opsTotals);
+
+  if(!Array.isArray(state.ownedWeapons) || !state.ownedWeapons.length){
+    state.ownedWeapons = [...DEFAULT.ownedWeapons];
+    repaired = true;
+  }
+  if(!state.equippedWeaponId || !getWeapon(state.equippedWeaponId)){
+    state.equippedWeaponId = DEFAULT.equippedWeaponId;
+    repaired = true;
+  }
+  if(!state.preferredWeaponId || !getWeapon(state.preferredWeaponId)){
+    state.preferredWeaponId = state.equippedWeaponId;
+    repaired = true;
+  }
+  setObject("ammoReserve", DEFAULT.ammoReserve);
+  setObject("mag", DEFAULT.mag);
+  if(!Number.isFinite(Number(state.mag.loaded))) state.mag.loaded = 0;
+  if(!Number.isFinite(Number(state.mag.cap)) || Number(state.mag.cap) <= 0) state.mag.cap = DEFAULT.mag.cap;
+  if(!state.mag.weaponId || !getWeapon(state.mag.weaponId)) state.mag.weaponId = state.equippedWeaponId;
+  if(typeof state.mag.ammoId !== "string") state.mag.ammoId = DEFAULT.mag.ammoId;
+  setObject("medkits", DEFAULT.medkits);
+  setObject("repairKits", DEFAULT.repairKits);
+  setObject("armorPlates", DEFAULT.armorPlates);
+
+  setDefault("trapsOwned", DEFAULT.trapsOwned);
+  setDefault("shields", DEFAULT.shields);
+  setDefault("shieldUntil", 0);
+  setDefault("trapCooldownUntil", 0);
+  setDefault("trapUsesThisMission", 0);
+  setDefault("shieldUsesThisMission", 0);
+
+  if(state.mode !== "Survival"){
+    if(!state.evacZone || typeof state.evacZone !== "object"){
+      state.evacZone = cloneState(DEFAULT.evacZone);
+      repaired = true;
+    }
+    if(!Number.isFinite(Number(state.evacDone))){
+      state.evacDone = 0;
+      repaired = true;
+    }
+  }
+
+  if(typeof state.paused !== "boolean") state.paused = false;
+  if(state.pauseReason != null && typeof state.pauseReason !== "string") state.pauseReason = null;
+  if(typeof state.missionEnded !== "boolean") state.missionEnded = false;
+  if(typeof state.gameOver !== "boolean") state.gameOver = false;
+  if(repaired){
+    state._runtimeBlankRepairAt = Date.now();
+    state._runtimeBlankRepairReason = String(reason || "startup");
+  }
+  return repaired;
+}
 function missionEntityStateInvalid(state=S){
   if(!state || typeof state !== "object") return "state-missing";
   const mode = normalizeModeName(state.mode);
+  if(!["Story","Arcade","Survival"].includes(mode)) return "mode-invalid";
+  const requiredNumbers = ["lives","funds","score","hp","armor","armorCap","stamina"];
+  for(const key of requiredNumbers){
+    if(!Number.isFinite(Number(state[key]))) return `${key}-missing`;
+  }
+  if(!state.mag || typeof state.mag !== "object") return "mag-missing";
+  if(!Array.isArray(state.ownedWeapons) || !state.ownedWeapons.length) return "weapons-missing";
   const w = Math.max(200, worldWidth(state));
   const h = Math.max(200, worldHeight(state));
   const inWorld = (x, y, pad=140)=>
@@ -48867,14 +49017,20 @@ function missionEntityStateInvalid(state=S){
   const meOk = !!(state.me && inWorld(state.me.x, state.me.y, 180));
   if(!meOk) return "player-missing";
 
-  if(!Array.isArray(state.tigers) || !state.tigers.length) return "";
+  if(!Array.isArray(state.tigers) || !state.tigers.length){
+    const hasMissionCivilians = Array.isArray(state.civilians) && state.civilians.length > 0;
+    return (state.missionEnded || state.gameOver || hasMissionCivilians) ? "" : "tigers-empty";
+  }
   const hasTiger = state.tigers.some((t)=>
     t &&
     t.alive !== false &&
     inWorld(t.x, t.y, 220) &&
     Number.isFinite(t.hp)
   );
-  if(!hasTiger) return "";
+  if(!hasTiger){
+    const hasMissionCivilians = Array.isArray(state.civilians) && state.civilians.length > 0;
+    return (state.missionEnded || state.gameOver || hasMissionCivilians) ? "" : "tigers-invalid";
+  }
 
   if(mode === "Survival") return "";
 
@@ -48914,6 +49070,7 @@ function ensureMissionStartupIntegrity(opts={}){
     return false;
   }
   __lastStartupIntegrityAt = now;
+  repairBlankRuntimeState(S, `integrity-${reason}`);
   let invalid = missionEntityStateInvalid(S);
   if(!invalid) return false;
 
@@ -49338,6 +49495,7 @@ function missionStateLooksEmpty(){
 }
 
 function init(){
+  repairBlankRuntimeState(S, "init-start");
   ensureStarsDebugUi();
   pushStarsDebug("app:init", { user: tgUserKey(), build: TS_BUILD });
   ensureStoryMetaState();
@@ -49682,9 +49840,11 @@ function init(){
   ensureInteractiveMapObjectSet();
   validateMissionSpawnLayout({ repair:true });
   transitionCleanupSweep("init");
+  repairBlankRuntimeState(S, "init-before-integrity");
   ensureMissionStartupIntegrity({ force:true, reason:"init" });
   if(missionStateLooksEmpty()){
     deploy({ carryStats:true, hp:S.hp, armor:S.armor });
+    repairBlankRuntimeState(S, "init-after-deploy");
   }
   checkProgressionUnlocks({ silent:true });
   if(!S.gameOver && !S.missionEnded){
