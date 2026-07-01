@@ -11274,6 +11274,23 @@ const MAX_PERSIST_RIVAL_HUNTERS = 8;
 const MAX_PERSIST_INTERACTABLES = 10;
 const MAX_PERSIST_TIGERS = 24;
 const MAX_PERSIST_CIVILIANS = 24;
+const SQUAD_MAX_PER_ROLE = 8;
+const SAVE_RESUME_QA_VERSION = 2;
+const SAVE_RESUME_VOLATILE_PAUSE_REASONS = new Set([
+  "mission-transition",
+  "world-map-transition",
+  "startup-loading",
+  "loading",
+  "base-hq",
+  "shop",
+  "inv",
+  "mode",
+  "mission-brief",
+  "mission-cinema",
+  "world-map",
+  "complete",
+  "game-over"
+]);
 
 let S = load();
 bindFundsWallet(S);
@@ -13142,22 +13159,6 @@ function missionRuntimeLooksNonLive(state){
   if(SAVE_RESUME_VOLATILE_PAUSE_REASONS.has(pauseReason)) return true;
   return false;
 }
-const SAVE_RESUME_QA_VERSION = 2;
-const SAVE_RESUME_VOLATILE_PAUSE_REASONS = new Set([
-  "mission-transition",
-  "world-map-transition",
-  "startup-loading",
-  "loading",
-  "base-hq",
-  "shop",
-  "inv",
-  "mode",
-  "mission-brief",
-  "mission-cinema",
-  "world-map",
-  "complete",
-  "game-over"
-]);
 function saveResumePriorVersion(state){
   if(!state || typeof state !== "object") return 0;
   return Math.max(
@@ -17521,7 +17522,6 @@ const SHIELD_RADIUS = 150;
 const SHIELD_PRICE = 1000;
 const SOLDIER_PRICE = 100000;
 const REINFORCEMENT_BUNDLE_PRICE = 175000;
-const SQUAD_MAX_PER_ROLE = 8;
 const SQUAD_UPKEEP_ATTACKER = 1400;
 const SQUAD_UPKEEP_RESCUE = 1100;
 const SQUAD_REVIVE_ATTACKER = 150000;
@@ -29446,7 +29446,7 @@ function openBaseHQ(opts={}){
   const overlay = document.getElementById("baseHqOverlay");
   if(overlay) overlay.style.display = "none";
   renderBaseHQ();
-  updateHUD();
+  renderHUD();
   renderCombatControls();
   syncGamepadFocus();
   toast(__baseHqOnboardingActive ? "Ivy: Follow the HQ tour to learn the main rooms." : baseHqIvyGuidance());
