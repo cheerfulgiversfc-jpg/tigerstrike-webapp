@@ -31,15 +31,20 @@
     return null;
   }
   function tutorialTarget(id){
-    if(id === "shopBtn") return visibleEl("shopBtn") || visibleEl("navShopBtn");
-    if(id === "invBtn") return visibleEl("invBtn") || visibleEl("navInvBtn");
+    if(id === "shopBtn") return visibleEl("shopBtn") || visibleEl("navShopBtn") || visibleSelector('button[onclick*="openShop"]');
+    if(id === "invBtn") return visibleEl("invBtn") || visibleEl("navInvBtn") || visibleSelector('button[onclick*="openInventory"]');
     if(id === "scanBtn") return visibleEl("scanBtn") || visibleEl("touchScanBtn");
     if(id === "sprintBtn") return visibleEl("touchSprintBtn");
-    if(id === "shieldBtn") return visibleSelector("[data-shield-btn]") || visibleEl("touchShieldBtn");
+    if(id === "shieldBtn") return visibleSelector("[data-shield-btn]") || visibleEl("touchShieldBtn") || visibleEl("combatArmorBtn") || visibleEl("touchCombatArmorBtn");
     if(id === "atkBtn") return visibleEl("atkBtn") || visibleEl("touchAttackBtn") || visibleEl("combatAttackBtn");
+    if(id === "captureBtn") return visibleEl("capBtn") || visibleEl("touchCaptureBtn") || visibleEl("combatCaptureBtn");
+    if(id === "medBtn") return visibleEl("touchCombatMedkitBtn") || visibleEl("combatMedkitBtn") || visibleEl("touchMedkitBtn");
+    if(id === "armorBtn") return visibleEl("touchCombatArmorBtn") || visibleEl("combatArmorBtn") || visibleEl("touchShieldBtn");
     if(id === "weaponBtn") return visibleEl("touchNextWeaponBtn") || visibleEl("combatNextWeaponBtn");
     if(id === "squadCmdBtn") return visibleEl("squadCmdBtn") || visibleEl("squadCmdBtnMobile") || visibleEl("touchSquadWheelBtn");
     if(id === "squadFormBtn") return visibleEl("squadFormBtn") || visibleEl("squadFormBtnMobile");
+    if(id === "worldMapBtn") return visibleSelector('button[onclick*="openWorldMapCampaign"]');
+    if(id === "hqBtn") return visibleSelector('button[onclick*="openBaseHQ"]') || visibleSelector('button[onclick*="openBaseHQFromLaunchIntro"]');
     return visibleEl(id);
   }
   function getS(){
@@ -172,6 +177,10 @@
       }
     }
 
+    if(S?.inBattle || visibleEl("touchAttackBtn") || visibleEl("combatAttackBtn")) T.combatButtonsSeen = true;
+    if(captureReadyFromUi()) T.captureButtonReady = true;
+    if(S?.evacZone && (S?.evacRoute || S?.extractionSequence || Number(S?.evacDone || 0) > 0)) T.evacRouteSeen = true;
+
     const shop = byId("shopOverlay");
     if(shop && shop.style.display === "flex") T.shopOpened = true;
     const squadTab = byId("tabSquad");
@@ -179,6 +188,10 @@
     const inv = byId("invOverlay");
     if(inv && inv.style.display === "flex") T.inventoryOpened = true;
     if(T.inventoryOpened && byId("invTabCosmetics")?.classList.contains("active")) T.cosmeticsOpened = true;
+    const worldMap = byId("worldMapCampaignOverlay");
+    if(worldMap && worldMap.style.display === "flex") T.worldMapOpened = true;
+    const baseHq = byId("baseHqOverlay");
+    if((baseHq && baseHq.style.display === "flex") || document.body.classList.contains("baseHqActive") || S?.pauseReason === "base-hq") T.hqSeen = true;
   }
   function setCardPlacement(step){
     if(!cardEl) return;
@@ -186,7 +199,7 @@
     const mobile = !!window.matchMedia?.("(max-width:760px)")?.matches;
     const baseTop = mobile ? 12 : 70;
     const margin = mobile ? 8 : 12;
-    const maxH = key === "squad"
+    const maxH = key === "squad_shop"
       ? (mobile ? "min(34vh, 280px)" : "min(36vh, 300px)")
       : (mobile ? "min(42vh, 340px)" : "min(44vh, 360px)");
 
@@ -255,29 +268,37 @@
     const shieldDurationSec = Math.max(1, Number(cfg.shieldDurationSec || 5));
     const shieldCooldownSec = Math.max(1, Number(cfg.shieldCooldownSec || 12));
     const squadUnlockLevel = Math.max(1, Number(cfg.squadUnlockLevel || 15));
-    const squadUnitPrice = Math.max(1, Number(cfg.squadUnitPrice || 50000));
-    const squadBundlePrice = Math.max(1, Number(cfg.squadBundlePrice || 80000));
+    const squadUnitPrice = Math.max(1, Number(cfg.squadUnitPrice || 100000));
+    const squadBundlePrice = Math.max(1, Number(cfg.squadBundlePrice || 175000));
     return [
       {
         key:"intro",
-        title:"Story Tutorial",
-        text:"Welcome to Tiger Strike Story Mode.\nYou will learn movement, escorting civilians, on-map combat, and your new systems.",
+        title:"Current Game Tutorial",
+        text:"Welcome to the rebuilt Tiger Strike tutorial. This version teaches the current game: HQ, mission HUD, civilians, scan line, capture window, combat buttons, squad, shop, inventory, World Map, and real evacuation routes.",
         hint:"Tap Next to begin.",
         arrow:null,
         canNext: () => true
       },
       {
-        key:"storyflow",
-        title:"Mission Flow",
-        text:"Story missions are objective-based:\n1) Keep civilians alive\n2) Escort them to SAFE ZONE\n3) Clear or capture tigers.\nYour Agent + Mission HUD stays above the map.",
-        hint:"Tap Next to begin.",
+        key:"hq_overview",
+        title:"Base HQ Main Menu",
+        text:"Base HQ is the main menu. Use it to start Story, Arcade, Survival, Tutorial, Shop, Inventory, Mission Briefing, World Map, Barracks, Armory, Medbay, Intel, and Trophy rooms.",
+        hint:"After this tutorial finishes, you will return to HQ. Tap Next.",
+        arrow:"hqBtn",
+        canNext: () => true
+      },
+      {
+        key:"mission_hud",
+        title:"Mission HUD",
+        text:"The Mission panel shows objectives, civilians, tigers left, weather, world events, and extraction status. The Agent panel shows health, armor, ammo, money, stars, squad status, and active gear.",
+        hint:"Read the top mission cards, then tap Next.",
         arrow:"objTxt",
         canNext: () => true
       },
       {
         key:"move",
         title:"Move",
-        text:"Tap anywhere on the map to move your agent.",
+        text:"Tap anywhere on the map to move your agent. The camera follows you, but important targets stay marked so you can find them again.",
         hint:"Move your agent a short distance.",
         arrow:"cv",
         canNext: () => window.TigerTutorial.movedOnce === true
@@ -285,16 +306,16 @@
       {
         key:"sprint",
         title:"Sprint + Stamina",
-        text:"Sprint helps you reach civilians, clues, and extraction vehicles quickly. Sprint consumes stamina and then enters cooldown.",
+        text:"Sprint helps you reach civilians, clues, and extraction routes faster. Sprint uses stamina and then enters cooldown, so save it for danger moments.",
         hint:"Tap Sprint once.",
         arrow:"sprintBtn",
         canNext: () => window.TigerTutorial.sprintUsed === true
       },
       {
         key:"escort",
-        title:"Escort Civilian",
-        text:"Move close to the civilian, then guide them into the green SAFE ZONE. Rescued civilians remain protected there while you finish the mission.",
-        hint:"Stay near the civilian so they follow you into safety.",
+        title:"Civilian Rescue",
+        text:"Move close to the civilian so they follow you. Guide them into the green safe/extraction zone. Rescued civilians should count immediately and stay protected.",
+        hint:"Escort the civilian into the green zone.",
         arrow:"evacZone",
         canNext: () => {
           const S = getS();
@@ -306,29 +327,34 @@
         }
       },
       {
-        key:"scan",
-        title:"Scan",
-        text:"Press Scan to locate and lock the nearest tiger. Scan creates a blue guidance line that leads from your agent to the target.",
-        hint:"Tap Scan once, then follow the blue line.",
+        key:"evac_routes",
+        title:"Real Evac Routes",
+        text:"Later missions can extract by safe house, street convoy, boat dock, or helicopter pad. Civilians board the route, boarding can pause if tigers are too close, and the vehicle departs when extraction is secure.",
+        hint:"This tutorial uses the safe zone. Tap Next.",
+        arrow:"evacZone",
+        canNext: () => true
+      },
+      {
+        key:"scan_line",
+        title:"Scan Line",
+        text:"Press Scan to locate and lock the nearest tiger. Scan creates a blue guidance line from your agent to the target tiger.",
+        hint:"Tap Scan once and look for the blue line.",
         arrow:"scanBtn",
         canNext: () => window.TigerTutorial.scanUsed === true
       },
       {
-        key:"lock",
-        title:"Lock Target",
-        text:"Tap a tiger on the map to lock it.",
-        hint:"Blue ring = locked.",
+        key:"lock_target",
+        title:"Lock A Tiger",
+        text:"Tap a tiger on the map to lock it. Blue ring means locked. If you accidentally tap away, tap the tiger again.",
+        hint:"Tap the highlighted tiger until the blue lock ring appears.",
         arrow:"tiger",
-        canNext: () => {
-          const T = window.TigerTutorial;
-          return !!T?.lockedOnce;
-        }
+        canNext: () => !!window.TigerTutorial?.lockedOnce
       },
       {
-        key:"engage",
+        key:"engage_tiger",
         title:"Engage On Map",
-        text:"Tap the locked tiger again. If you are out of range, the agent will move toward it while the blue line and lock remain active. Tap it again when close enough to engage.",
-        hint:"If you tap elsewhere by mistake, tap the highlighted tiger again.",
+        text:"Tap the locked tiger again. If you are too far away, your agent moves closer while the scan line stays active. Tap again when close enough to start combat.",
+        hint:"Engage the highlighted tiger.",
         arrow:"tiger",
         canNext: () => {
           const S = getS();
@@ -337,10 +363,21 @@
         }
       },
       {
+        key:"combat_buttons",
+        title:"Combat Buttons",
+        text:"During combat, the buttons become your survival kit: Attack damages, Capture uses tranquilizers, Med restores HP, Armor/Shield protects, Weapon arrows switch weapons, and Roll dodges danger.",
+        hint:"Find the combat buttons, then tap Next.",
+        arrow:"atkBtn",
+        canNext: () => {
+          const S = getS();
+          return !!(S?.inBattle || window.TigerTutorial.combatButtonsSeen || visibleEl("touchAttackBtn") || visibleEl("combatAttackBtn"));
+        }
+      },
+      {
         key:"weaken_tiger",
         title:"Weaken Tiger",
-        text:`Attack until the tiger is at ${capturePct}% HP or lower.`,
-        hint:"Keep attacking until the tiger health bar reaches capture range.",
+        text:`Attack until the tiger is at ${capturePct}% HP or lower. The capture button will highlight when the tiger is in capture range.`,
+        hint:"Keep attacking until capture becomes available.",
         arrow:"atkBtn",
         canNext: () => {
           const T = window.TigerTutorial;
@@ -348,40 +385,56 @@
           const activeTigerId = Number(S?.activeTigerId || 0);
           const tiger = activeTigerId > 0 ? (S?.tigers || []).find((it)=>it && it.id === activeTigerId && it.alive) : null;
           const hpWindowReady = !!(tiger && tiger.hpMax > 0 && (tiger.hp / tiger.hpMax) <= 0.34);
-          return !!(T?.captureWindowReached || captureReadyFromUi() || hpWindowReady || T?.combatOutcome);
+          return !!(T?.captureWindowReached || T?.captureButtonReady || captureReadyFromUi() || hpWindowReady || T?.combatOutcome);
         }
+      },
+      {
+        key:"capture_window",
+        title:"Capture Window",
+        text:`Capture is best when the tiger is at ${capturePct}% HP or lower. If you press Capture with no tranquilizers, the game should tell you you are out instead of leaving you guessing.`,
+        hint:"When Capture is highlighted, tap Next.",
+        arrow:"captureBtn",
+        canNext: () => !!(window.TigerTutorial.captureWindowReached || window.TigerTutorial.captureButtonReady || captureReadyFromUi() || window.TigerTutorial.combatOutcome)
       },
       {
         key:"weapon_switch",
         title:"Weapons + Ammo",
-        text:"Different weapons use different ammo families and ranges. Your chosen weapon stays equipped until you change it. During combat, use the weapon arrows to switch.",
-        hint:"Tap the next-weapon arrow once.",
+        text:"Your weapon choice should stay under your control. Different guns use different ammo families and ranges; stronger ammo should be used before weaker ammo when available.",
+        hint:"Tap the next-weapon arrow once. If the tiger is already resolved, you can continue.",
         arrow:"weaponBtn",
-        canNext: () => window.TigerTutorial.weaponSwitched === true
+        canNext: () => window.TigerTutorial.weaponSwitched === true || !!window.TigerTutorial.combatOutcome
+      },
+      {
+        key:"ammo_warnings",
+        title:"Ammo + Icon Warnings",
+        text:"Combat icons should always explain what happened. If Attack, Capture, Medkit, Armor, Shield, Trap, Scan, or Cache cannot work, the game tells you why: out of ammo, no tranquilizers, capture not ready, shield cooldown, no medkits, no armor, or no target found.",
+        hint:"Watch for toast and LIVE messages when an icon cannot work. Tap Next.",
+        arrow:"atkBtn",
+        canNext: () => true
       },
       {
         key:"resolve_tiger",
         title:"Capture Or Kill",
-        text:`Now finish the fight.\nCapture: available at ${capturePct}% HP or lower and preserves the tiger for research.\nKill: faster clear, but raises aggression. Capture highlights when it is ready.`,
+        text:`Now finish the fight. Capture preserves the tiger for research. Kill removes the threat quickly. Strong tigers may require better timing, ammo, and armor.`,
         hint:"Capture or kill this tiger to continue.",
-        arrow:"tiger",
+        arrow:"captureBtn",
         canNext: () => {
           const outcome = window.TigerTutorial.combatOutcome;
           return outcome === "CAPTURE" || outcome === "KILL";
         }
       },
       {
-        key:"interactables",
+        key:"map_interactables",
         title:"Map Interactables",
-        text:"Story maps include interactables:\n• Alarm: reveals nearby tigers and briefly staggers them\n• Barricade: creates a temporary block zone\n• Cache: gives cash + ammo.",
-        hint:"Use any one interactable once (Alarm, Barricade, or Cache).",
+        text:"Story maps include real interactables: Alarm reveals or disrupts threats, Barrier blocks danger lanes, and Cache grants resources. Other missions add gates, generators, bridges, crash sites, and convoy objects.",
+        hint:"Use any one interactable once: Alarm, Barrier, or Cache.",
         arrow:"cv",
         canNext: () => window.TigerTutorial.interactableUsed === true
       },
       {
         key:"shield",
-        title:"Shield Ability",
-        text:`Use Shield to protect yourself and nearby civilians for ${shieldDurationSec} seconds. Repeated shields and traps receive longer anti-spam cooldowns.`,
+        title:"Shield, Armor + Cooldowns",
+        text:`Shield protects you and nearby civilians for ${shieldDurationSec} seconds. Shields and traps use anti-spam cooldowns that grow by 5 seconds each repeated use, starting around ${shieldCooldownSec} seconds.`,
         hint:"Tap Shield once.",
         arrow:"shieldBtn",
         canNext: () => window.TigerTutorial.shieldUsed === true
@@ -389,15 +442,15 @@
       {
         key:"squad_command",
         title:"Squad Commands",
-        text:"Owned specialists obey Auto, Attack Target, Rescue, Regroup, and Hold commands. Commands never create a soldier you do not own.",
-        hint:"Open the squad command wheel/menu and choose a different command.",
+        text:"Owned specialists can follow Auto, Attack Target, Rescue, Regroup, and Hold. They should not appear unless owned, and downed specialists must be revived before returning.",
+        hint:"Open the squad command wheel/menu and choose a command.",
         arrow:"squadCmdBtn",
         canNext: () => window.TigerTutorial.squadCommandUsed === true
       },
       {
         key:"squad_formation",
         title:"Squad Formations",
-        text:"Formations change how specialists move and protect the team. Wedge attacks forward, Line controls space, Split Escort protects civilians, and Flank pressures tigers.",
+        text:"Formations change team behavior. Wedge pushes forward, Line controls space, Split Escort protects civilians, and Flank pressures tigers from the side.",
         hint:"Cycle the squad formation once.",
         arrow:"squadFormBtn",
         canNext: () => window.TigerTutorial.squadFormationUsed === true
@@ -405,7 +458,7 @@
       {
         key:"shop",
         title:"Shop",
-        text:"Open Shop to buy weapons, stronger ammo, supplies, traps, bundles, specialists, and long-term upgrades. Shop filters help find mission-ready gear.",
+        text:"Open Shop to buy weapons, ammo, med kits, armor, traps, bundles, specialists, cosmetics, and progression supplies. Bundles should be better value than buying each item alone.",
         hint:"Tap Shop.",
         arrow:"shopBtn",
         canNext: () => {
@@ -415,9 +468,9 @@
         }
       },
       {
-        key:"squad",
-        title:"Squad Specialists",
-        text:`Open the Squad tab.\nTiger Specialist + Rescue Specialist unlock at Mission ${squadUnlockLevel}. Specialists must be purchased and revived; they do not respawn for free.`,
+        key:"squad_shop",
+        title:"Squad In Shop",
+        text:`Open the Squad tab. Specialists unlock normally at Mission ${squadUnlockLevel}, can be bought early with Stars, cost $${squadUnitPrice.toLocaleString()} each, or $${squadBundlePrice.toLocaleString()} for both. Revive is $150,000.`,
         hint:"Tap Squad tab in Shop.",
         arrow:"tabSquad",
         canNext: () => {
@@ -430,7 +483,7 @@
       {
         key:"inventory",
         title:"Inventory",
-        text:"Open Inventory to claim and equip gear, review operations, manage settlements, cosmetics, and your prestige showcase.",
+        text:"Open Inventory to claim and equip items, review operations, manage settlements, view cosmetics, and inspect achievements. Claim buttons should change state after they are claimed.",
         hint:"Tap Inventory once.",
         arrow:"invBtn",
         canNext: () => {
@@ -442,7 +495,7 @@
       {
         key:"cosmetics",
         title:"Cosmetics + Showcase",
-        text:"Cosmetics change appearance without changing combat balance. Showcase displays achievements, titles, trophies, and captured Nemesis records.",
+        text:"Cosmetics, titles, trails, trophies, captured tiger displays, and safe-zone visuals let players show progress without breaking balance.",
         hint:"Open the Cosmetics tab in Inventory.",
         arrow:"invTabCosmetics",
         canNext: () => window.TigerTutorial.cosmeticsOpened === true
@@ -450,7 +503,7 @@
       {
         key:"investigation",
         title:"Tracking + Investigation",
-        text:"Some missions begin before combat. Scan footprints, fur, blood trails, scratches, sounds, and damaged objects to reveal tiger direction, health, behavior, hidden dens, or missing civilians.",
+        text:"Some missions begin before combat. Scan footprints, fur, blood trails, scratches, sounds, and damaged objects to reveal tiger direction, type, health, age, behavior, dens, or missing civilians.",
         hint:"Weather can erase clues, so investigate early. Tap Next.",
         arrow:"scanBtn",
         canNext: () => true
@@ -458,32 +511,32 @@
       {
         key:"live_world",
         title:"Living Missions",
-        text:"Watch the LIVE panel and the map. Weather, tiger packs, rivals, helicopter crashes, flooded routes, convoy ambushes, interactive gates, generators, bridges, and vehicles have real gameplay effects.",
-        hint:"React to what visibly happens on the map. Tap Next.",
+        text:"LIVE events are real map events: tiger behavior changes, rivals can interfere, weather changes routes, helicopters can crash, floods can block paths, and convoy ambushes can create new objectives.",
+        hint:"Watch the LIVE panel during missions. Tap Next.",
         arrow:"objTxt",
         canNext: () => true
       },
       {
-        key:"extraction",
-        title:"Real Extraction",
-        text:"After objectives are complete, reach the marked evacuation vehicle. River missions use boats, air missions use helicopters, and road missions use convoys. Board and hold the extraction point until the vehicle departs.",
-        hint:"New tigers stop spawning during final extraction. Tap Next.",
-        arrow:"evacZone",
-        canNext: () => true
+        key:"world_map",
+        title:"World Map Campaign",
+        text:"The World Map lets you choose regions, defend territory, respond to crisis events, track rival/tiger control, protect supply lines, and earn regional rewards.",
+        hint:"Open World Map once. You cannot launch a separate World Map mission during the tutorial.",
+        arrow:"worldMapBtn",
+        canNext: () => window.TigerTutorial.worldMapOpened === true
       },
       {
-        key:"modes",
-        title:"Game Modes + Progress",
-        text:"Base HQ is your main menu now. Start Story, Arcade, Survival, Tutorial, Shop, Inventory, and Mission Briefing from the HQ Mission Gate. Story, Arcade, and Survival keep separate money, inventory, achievements, pass progress, and mission statistics.",
-        hint:"Return to Base HQ after the tutorial and choose your next mode from the Mission Gate. Tap Next.",
+        key:"mode_separation",
+        title:"Modes Stay Separate",
+        text:"Story, Arcade, and Survival keep separate money, ammo, inventory, pass progress, achievements, and stats. Starting over at Mission 1 resets earned progress, purchases, equipment, money, and inventory for that run.",
+        hint:"Tap Next.",
         arrow:null,
         canNext: () => true
       },
       {
         key:"done",
         title:"Done",
-        text:"Tutorial complete.\nYou are ready to rescue civilians, investigate threats, command specialists, respond to live events, and extract from the city.",
-        hint:"Tap Finish.",
+        text:"Tutorial complete. You are ready to rescue civilians, scan and track tigers, use capture windows, command specialists, manage HQ, shop wisely, use the World Map, and extract safely.",
+        hint:"Tap Finish to return to Base HQ.",
         arrow:null,
         finish:true,
         canNext: () => true
@@ -518,6 +571,11 @@
     squadOpened:false,
     inventoryOpened:false,
     cosmeticsOpened:false,
+    worldMapOpened:false,
+    hqSeen:false,
+    combatButtonsSeen:false,
+    captureButtonReady:false,
+    evacRouteSeen:false,
     lastShieldUntil:0
   };
 
@@ -615,7 +673,7 @@
     } else if(step.arrow === "evacZone"){
       showArrowAtCanvasPoint(S?.evacZone?.x, S?.evacZone?.y);
     } else if(step.arrow === "tiger"){
-      const tiger = S?.tigers?.find((t) => t.alive);
+      const tiger = pickTutorialTiger(S);
       showArrowAtCanvasPoint(tiger?.x, tiger?.y);
     } else if(typeof step.arrow === "string"){
       showArrowAtEl(tutorialTarget(step.arrow));
@@ -631,7 +689,7 @@
       updateProgressFlags();
       if(step.key === "weaken_tiger") updateWeakenTigerHint();
       setCardPlacement(step);
-      if(["lock","engage","weaken_tiger","weapon_switch","resolve_tiger"].includes(step.key)){
+      if(["lock_target","engage_tiger","combat_buttons","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger"].includes(step.key)){
         const target = pickTutorialTiger(getS());
         if(target && target.alive && getS()){
           getS().scanTargetTigerId = target.id;
@@ -683,6 +741,11 @@
     T.squadOpened = false;
     T.inventoryOpened = false;
     T.cosmeticsOpened = false;
+    T.worldMapOpened = false;
+    T.hqSeen = false;
+    T.combatButtonsSeen = false;
+    T.captureButtonReady = false;
+    T.evacRouteSeen = false;
     T.lastShieldUntil = Number(getS()?.shieldUntil || 0);
     try{ window.enterTutorialMode?.(); }catch(e){}
 
@@ -690,6 +753,19 @@
     if(S){
       S.paused = false;
       S.pauseReason = null;
+      T.baseShots = Number(S.stats?.shots || 0);
+      T.startX = Number(S.me?.x || 0);
+      T.startY = Number(S.me?.y || 0);
+      T.baseInteractables = {};
+      for(const it of (S.mapInteractables || [])){
+        if(!it?.id) continue;
+        T.baseInteractables[String(it.id)] = {
+          uses: Number.isFinite(Number(it.uses)) ? Number(it.uses) : null,
+          cooldownUntil: Number(it.cooldownUntil || 0),
+          activeUntil: Number(it.activeUntil || 0)
+        };
+      }
+      T.lastShieldUntil = Number(S.shieldUntil || 0);
     }
 
     open();
@@ -724,9 +800,15 @@
     T.squadOpened = false;
     T.inventoryOpened = false;
     T.cosmeticsOpened = false;
+    T.worldMapOpened = false;
+    T.hqSeen = false;
+    T.combatButtonsSeen = false;
+    T.captureButtonReady = false;
+    T.evacRouteSeen = false;
     T.lastShieldUntil = 0;
     clearStepHighlight();
 
+    try{ window.closeWorldMapCampaign?.(); }catch(e){}
     try{ window.closeShop?.(); }catch(e){}
     try{ window.closeInventory?.(); }catch(e){}
     try{ window.endBattle?.(); }catch(e){}
@@ -759,8 +841,11 @@
       return;
     }
 
-    if(step.key === "squad"){
+    if(step.key === "squad_shop"){
       try{ window.closeShop?.(); }catch(e){}
+    }
+    if(step.key === "world_map"){
+      try{ window.closeWorldMapCampaign?.(); }catch(e){}
     }
     if(step.key === "inventory"){
       // Keep Inventory open for the Cosmetics lesson that follows.
