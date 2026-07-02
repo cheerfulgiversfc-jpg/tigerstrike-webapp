@@ -30,6 +30,17 @@
     }
     return null;
   }
+  function overlayVisible(id){
+    const el = byId(id);
+    if(!el) return false;
+    if(el.getClientRects().length === 0) return false;
+    const style = window.getComputedStyle(el);
+    return style.display !== "none" && style.visibility !== "hidden";
+  }
+  function stepElapsedMs(){
+    const started = Number(window.TigerTutorial?.stepStartedAt || 0);
+    return started > 0 ? Math.max(0, Date.now() - started) : 0;
+  }
   function tutorialTarget(id){
     if(id === "shopBtn") return visibleEl("shopBtn") || visibleEl("navShopBtn") || visibleSelector('button[onclick*="openShop"]');
     if(id === "invBtn") return visibleEl("invBtn") || visibleEl("navInvBtn") || visibleSelector('button[onclick*="openInventory"]');
@@ -45,6 +56,8 @@
     if(id === "squadFormBtn") return visibleEl("squadFormBtn") || visibleEl("squadFormBtnMobile");
     if(id === "worldMapBtn") return visibleSelector('button[onclick*="openWorldMapCampaign"]');
     if(id === "hqBtn") return visibleSelector('button[onclick*="openBaseHQ"]') || visibleSelector('button[onclick*="openBaseHQFromLaunchIntro"]');
+    if(id === "tabSquad") return visibleEl("tabSquad") || visibleSelector('button[onclick*="shopTab"][onclick*="squad"]');
+    if(id === "invTabCosmetics") return visibleEl("invTabCosmetics") || visibleSelector('button[onclick*="inventoryTab"][onclick*="cosmetics"]');
     return visibleEl(id);
   }
   function getS(){
@@ -182,16 +195,20 @@
     if(S?.evacZone && (S?.evacRoute || S?.extractionSequence || Number(S?.evacDone || 0) > 0)) T.evacRouteSeen = true;
 
     const shop = byId("shopOverlay");
-    if(shop && shop.style.display === "flex") T.shopOpened = true;
+    if(overlayVisible("shopOverlay")) T.shopOpened = true;
     const squadTab = byId("tabSquad");
-    if(T.shopOpened && squadTab && squadTab.classList.contains("active")) T.squadOpened = true;
-    const inv = byId("invOverlay");
-    if(inv && inv.style.display === "flex") T.inventoryOpened = true;
-    if(T.inventoryOpened && byId("invTabCosmetics")?.classList.contains("active")) T.cosmeticsOpened = true;
-    const worldMap = byId("worldMapCampaignOverlay");
-    if(worldMap && worldMap.style.display === "flex") T.worldMapOpened = true;
-    const baseHq = byId("baseHqOverlay");
-    if((baseHq && baseHq.style.display === "flex") || document.body.classList.contains("baseHqActive") || S?.pauseReason === "base-hq") T.hqSeen = true;
+    const squadPageVisible = !!(byId("shopList")?.innerText || "").match(/specialist|squad|revive|rescue/i);
+    if(T.shopOpened && ((squadTab && squadTab.classList.contains("active")) || squadPageVisible)) T.squadOpened = true;
+    if(overlayVisible("invOverlay")) T.inventoryOpened = true;
+    const cosmeticsTab = byId("invTabCosmetics");
+    const cosmeticsPage = byId("invCosmeticsPage");
+    if(T.inventoryOpened && (
+      cosmeticsTab?.classList.contains("active") ||
+      (cosmeticsPage && window.getComputedStyle(cosmeticsPage).display !== "none") ||
+      (byId("invCosmeticSummary")?.innerText || "").length > 0
+    )) T.cosmeticsOpened = true;
+    if(overlayVisible("worldMapCampaignOverlay")) T.worldMapOpened = true;
+    if(overlayVisible("baseHqOverlay") || document.body.classList.contains("baseHqActive") || S?.pauseReason === "base-hq") T.hqSeen = true;
   }
   function setCardPlacement(step){
     if(!cardEl) return;
@@ -340,7 +357,10 @@
         text:"Press Scan to locate and lock the nearest tiger. Scan creates a blue guidance line from your agent to the target tiger.",
         hint:"Tap Scan once and look for the blue line.",
         arrow:"scanBtn",
-        canNext: () => window.TigerTutorial.scanUsed === true
+        canNext: () => {
+          const S = getS();
+          return window.TigerTutorial.scanUsed === true || Number(S?.scanPing || 0) > 0 || Number(S?.scanTargetTigerId || 0) > 0;
+        }
       },
       {
         key:"lock_target",
@@ -348,7 +368,10 @@
         text:"Tap a tiger on the map to lock it. Blue ring means locked. If you accidentally tap away, tap the tiger again.",
         hint:"Tap the highlighted tiger until the blue lock ring appears.",
         arrow:"tiger",
-        canNext: () => !!window.TigerTutorial?.lockedOnce
+        canNext: () => {
+          const S = getS();
+          return !!window.TigerTutorial?.lockedOnce || Number(S?.lockedTigerId || 0) > 0;
+        }
       },
       {
         key:"engage_tiger",
@@ -402,7 +425,11 @@
         text:"Your weapon choice should stay under your control. Different guns use different ammo families and ranges; stronger ammo should be used before weaker ammo when available.",
         hint:"Tap the next-weapon arrow once. If the tiger is already resolved, you can continue.",
         arrow:"weaponBtn",
-        canNext: () => window.TigerTutorial.weaponSwitched === true || !!window.TigerTutorial.combatOutcome
+        canNext: () => {
+          if(window.TigerTutorial.weaponSwitched === true || !!window.TigerTutorial.combatOutcome) return true;
+          // If the weapon switch control is unavailable on a compact HUD, don't strand the lesson.
+          return stepElapsedMs() > 2500 && !tutorialTarget("weaponBtn");
+        }
       },
       {
         key:"ammo_warnings",
@@ -429,7 +456,12 @@
         text:"Story maps include real interactables: Alarm reveals or disrupts threats, Barrier blocks danger lanes, and Cache grants resources. Other missions add gates, generators, bridges, crash sites, and convoy objects.",
         hint:"Use any one interactable once: Alarm, Barrier, or Cache.",
         arrow:"cv",
-        canNext: () => window.TigerTutorial.interactableUsed === true
+        canNext: () => {
+          if(window.TigerTutorial.interactableUsed === true) return true;
+          const S = getS();
+          if(!Array.isArray(S?.mapInteractables)) return false;
+          return S.mapInteractables.some((it)=>it && (Number(it.cooldownUntil || 0) > 0 || Number(it.activeUntil || 0) > 0 || Number(it.uses || 0) < 1));
+        }
       },
       {
         key:"shield",
@@ -437,7 +469,7 @@
         text:`Shield protects you and nearby civilians for ${shieldDurationSec} seconds. Shields and traps use anti-spam cooldowns that grow by 5 seconds each repeated use, starting around ${shieldCooldownSec} seconds.`,
         hint:"Tap Shield once.",
         arrow:"shieldBtn",
-        canNext: () => window.TigerTutorial.shieldUsed === true
+        canNext: () => window.TigerTutorial.shieldUsed === true || Number(getS()?.shieldUntil || 0) > Date.now()
       },
       {
         key:"squad_command",
@@ -445,7 +477,7 @@
         text:"Owned specialists can follow Auto, Attack Target, Rescue, Regroup, and Hold. They should not appear unless owned, and downed specialists must be revived before returning.",
         hint:"Open the squad command wheel/menu and choose a command.",
         arrow:"squadCmdBtn",
-        canNext: () => window.TigerTutorial.squadCommandUsed === true
+        canNext: () => window.TigerTutorial.squadCommandUsed === true || stepElapsedMs() > 2500 && !tutorialTarget("squadCmdBtn")
       },
       {
         key:"squad_formation",
@@ -453,7 +485,7 @@
         text:"Formations change team behavior. Wedge pushes forward, Line controls space, Split Escort protects civilians, and Flank pressures tigers from the side.",
         hint:"Cycle the squad formation once.",
         arrow:"squadFormBtn",
-        canNext: () => window.TigerTutorial.squadFormationUsed === true
+        canNext: () => window.TigerTutorial.squadFormationUsed === true || stepElapsedMs() > 2500 && !tutorialTarget("squadFormBtn")
       },
       {
         key:"shop",
@@ -463,8 +495,7 @@
         arrow:"shopBtn",
         canNext: () => {
           if(window.TigerTutorial.shopOpened) return true;
-          const el = byId("shopOverlay");
-          return !!(el && el.style.display === "flex");
+          return overlayVisible("shopOverlay");
         }
       },
       {
@@ -475,9 +506,8 @@
         arrow:"tabSquad",
         canNext: () => {
           if(window.TigerTutorial.squadOpened) return true;
-          const shop = byId("shopOverlay");
           const tab = byId("tabSquad");
-          return !!(shop && tab && shop.style.display === "flex" && tab.classList.contains("active"));
+          return !!(overlayVisible("shopOverlay") && tab && tab.classList.contains("active"));
         }
       },
       {
@@ -488,8 +518,7 @@
         arrow:"invBtn",
         canNext: () => {
           if(window.TigerTutorial.inventoryOpened) return true;
-          const el = byId("invOverlay");
-          return !!(el && el.style.display === "flex");
+          return overlayVisible("invOverlay");
         }
       },
       {
@@ -498,7 +527,13 @@
         text:"Cosmetics, titles, trails, trophies, captured tiger displays, and safe-zone visuals let players show progress without breaking balance.",
         hint:"Open the Cosmetics tab in Inventory.",
         arrow:"invTabCosmetics",
-        canNext: () => window.TigerTutorial.cosmeticsOpened === true
+        canNext: () => {
+          if(window.TigerTutorial.cosmeticsOpened === true) return true;
+          return overlayVisible("invOverlay") && (
+            byId("invTabCosmetics")?.classList.contains("active") ||
+            window.getComputedStyle(byId("invCosmeticsPage") || document.body).display !== "none"
+          );
+        }
       },
       {
         key:"investigation",
@@ -576,7 +611,9 @@
     combatButtonsSeen:false,
     captureButtonReady:false,
     evacRouteSeen:false,
-    lastShieldUntil:0
+    lastShieldUntil:0,
+    stepStartedAt:0,
+    renderedKey:null
   };
 
   function showArrowAtEl(el){
@@ -643,6 +680,10 @@
     const steps = getStepList();
     const step = steps[T.step];
     const S = getS();
+    if(T.renderedKey !== step.key){
+      T.renderedKey = step.key;
+      T.stepStartedAt = Date.now();
+    }
     updateProgressFlags();
     let text = step.text;
     let hint = step.hint || "";
@@ -747,6 +788,8 @@
     T.captureButtonReady = false;
     T.evacRouteSeen = false;
     T.lastShieldUntil = Number(getS()?.shieldUntil || 0);
+    T.stepStartedAt = Date.now();
+    T.renderedKey = null;
     try{ window.enterTutorialMode?.(); }catch(e){}
 
     const S = getS();
@@ -806,6 +849,8 @@
     T.captureButtonReady = false;
     T.evacRouteSeen = false;
     T.lastShieldUntil = 0;
+    T.stepStartedAt = 0;
+    T.renderedKey = null;
     clearStepHighlight();
 
     try{ window.closeWorldMapCampaign?.(); }catch(e){}
@@ -861,6 +906,8 @@
 
     T.step += 1;
     T.mapClicked = false;
+    T.stepStartedAt = Date.now();
+    T.renderedKey = null;
     render();
   });
 
