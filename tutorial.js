@@ -41,6 +41,35 @@
     const started = Number(window.TigerTutorial?.stepStartedAt || 0);
     return started > 0 ? Math.max(0, Date.now() - started) : 0;
   }
+  function stepAgentMoveDistance(){
+    const T = window.TigerTutorial;
+    const S = getS();
+    if(!T || !S?.me) return 0;
+    const sx = Number.isFinite(Number(T.stepStartX)) ? Number(T.stepStartX) : Number(T.startX || 0);
+    const sy = Number.isFinite(Number(T.stepStartY)) ? Number(T.stepStartY) : Number(T.startY || 0);
+    if(!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(Number(S.me.x)) || !Number.isFinite(Number(S.me.y))) return 0;
+    return Math.hypot(Number(S.me.x) - sx, Number(S.me.y) - sy);
+  }
+  function agentMovedForTutorial(){
+    const T = window.TigerTutorial;
+    if(!T) return false;
+    if(T.movedOnce === true) return true;
+    if(stepAgentMoveDistance() >= 18) return true;
+    // Joystick/map input is enough for the movement lesson on small screens where
+    // overlays can make the visible movement shorter than the distance threshold.
+    return T.mapClicked === true && stepElapsedMs() > 450;
+  }
+  function markStepStart(step){
+    const T = window.TigerTutorial;
+    const S = getS();
+    if(!T || !step) return;
+    T.renderedKey = step.key;
+    T.stepStartedAt = Date.now();
+    T.stepStartX = Number(S?.me?.x || T.startX || 0);
+    T.stepStartY = Number(S?.me?.y || T.startY || 0);
+    T.stepStartTargetX = Number(S?.target?.x || T.stepStartX || 0);
+    T.stepStartTargetY = Number(S?.target?.y || T.stepStartY || 0);
+  }
   function tutorialTarget(id){
     if(id === "shopBtn") return visibleEl("shopBtn") || visibleEl("navShopBtn") || visibleSelector('button[onclick*="openShop"]');
     if(id === "invBtn") return visibleEl("invBtn") || visibleEl("navInvBtn") || visibleSelector('button[onclick*="openInventory"]');
@@ -142,6 +171,10 @@
         const dx = Number(S.me.x) - Number(T.startX);
         const dy = Number(S.me.y) - Number(T.startY);
         if(Math.hypot(dx, dy) >= 36) T.movedOnce = true;
+      }
+      if(stepAgentMoveDistance() >= 18) T.movedOnce = true;
+      if(T.currentKey === "move" && T.mapClicked && stepElapsedMs() > 450){
+        T.movedOnce = true;
       }
       if(S.inBattle) T.engagedOnce = true;
       const shots = Number(S.stats?.shots || 0);
@@ -318,7 +351,7 @@
         text:"Tap anywhere on the map to move your agent. The camera follows you, but important targets stay marked so you can find them again.",
         hint:"Move your agent a short distance.",
         arrow:"cv",
-        canNext: () => window.TigerTutorial.movedOnce === true
+        canNext: () => agentMovedForTutorial()
       },
       {
         key:"sprint",
@@ -326,7 +359,12 @@
         text:"Sprint helps you reach civilians, clues, and extraction routes faster. Sprint uses stamina and then enters cooldown, so save it for danger moments.",
         hint:"Tap Sprint once.",
         arrow:"sprintBtn",
-        canNext: () => window.TigerTutorial.sprintUsed === true
+        canNext: () => {
+          const S = getS();
+          if(window.TigerTutorial.sprintUsed === true) return true;
+          if(Number(S?.sprintCooldownUntil || 0) > Date.now() || Number(S?.stamina || 100) < 95) return true;
+          return stepElapsedMs() > 2500 && !tutorialTarget("sprintBtn");
+        }
       },
       {
         key:"escort",
@@ -469,7 +507,10 @@
         text:`Shield protects you and nearby civilians for ${shieldDurationSec} seconds. Shields and traps use anti-spam cooldowns that grow by 5 seconds each repeated use, starting around ${shieldCooldownSec} seconds.`,
         hint:"Tap Shield once.",
         arrow:"shieldBtn",
-        canNext: () => window.TigerTutorial.shieldUsed === true || Number(getS()?.shieldUntil || 0) > Date.now()
+        canNext: () => {
+          if(window.TigerTutorial.shieldUsed === true || Number(getS()?.shieldUntil || 0) > Date.now()) return true;
+          return stepElapsedMs() > 2500 && !tutorialTarget("shieldBtn");
+        }
       },
       {
         key:"squad_command",
@@ -557,7 +598,7 @@
         text:"The World Map lets you choose regions, defend territory, respond to crisis events, track rival/tiger control, protect supply lines, and earn regional rewards.",
         hint:"Open World Map once. You cannot launch a separate World Map mission during the tutorial.",
         arrow:"worldMapBtn",
-        canNext: () => window.TigerTutorial.worldMapOpened === true
+        canNext: () => window.TigerTutorial.worldMapOpened === true || overlayVisible("worldMapCampaignOverlay")
       },
       {
         key:"mode_separation",
@@ -613,7 +654,21 @@
     evacRouteSeen:false,
     lastShieldUntil:0,
     stepStartedAt:0,
-    renderedKey:null
+    renderedKey:null,
+    stepStartX:0,
+    stepStartY:0,
+    stepStartTargetX:0,
+    stepStartTargetY:0
+  };
+
+  window.verifyTigerTutorialSteps = function verifyTigerTutorialSteps(){
+    const steps = getStepList();
+    return {
+      ok: steps.length === 29 && steps.every((step)=>step && step.key && step.title && typeof step.canNext === "function"),
+      count: steps.length,
+      missingCanNext: steps.filter((step)=>typeof step?.canNext !== "function").map((step)=>step?.key || "(unknown)"),
+      keys: steps.map((step)=>step.key)
+    };
   };
 
   function showArrowAtEl(el){
@@ -681,8 +736,7 @@
     const step = steps[T.step];
     const S = getS();
     if(T.renderedKey !== step.key){
-      T.renderedKey = step.key;
-      T.stepStartedAt = Date.now();
+      markStepStart(step);
     }
     updateProgressFlags();
     let text = step.text;
