@@ -41266,22 +41266,50 @@ function resetEvacRouteForDeploy(state=S){
 function evacRouteDefForKey(key){
   return EVAC_ROUTE_DEFS.find((row)=>row.key === key) || EVAC_ROUTE_DEFS[0];
 }
-function chooseRealEvacRouteDef(){
+function evacuationTruthText(){
   const storyMission = S.mode === "Story" ? storyMissionForState(S) : null;
   const arcadeMission = S.mode === "Arcade" ? activeArcadeMission(S) : null;
   const mission = storyMission || arcadeMission;
-  const text = [
+  const wm = ensureWorldMapCampaignState?.(S);
+  const region = (typeof worldMapRegionById === "function" && wm)
+    ? worldMapRegionById(wm.activeRegionId || wm.selectedRegionId)
+    : null;
+  return [
     mission?.objective,
     mission?.name,
+    mission?.chapterName,
     mission?.routeLabel,
+    mission?.convoyRouteLabel,
     mapIdentityProfile(S.mode, chapterIndexForMode(S.mode))?.name,
+    mapIdentityProfile(S.mode, chapterIndexForMode(S.mode))?.theme,
+    region?.name,
+    region?.biome,
+    region?.theme,
+    Array.isArray(region?.traits) ? region.traits.join(" ") : "",
     activeWorldEvent(S)?.type
   ].filter(Boolean).join(" ").toLowerCase();
+}
+function declaredEvacRouteKey(){
+  const text = evacuationTruthText();
+  if(/\b(boat|dock|harbor|river|water|flood|floodplain|delta|lake|bridge evac|river rescue|river extraction)\b/.test(text)) return "boat";
+  if(/\b(helicopter|helo|airlift|landing pad|landing zone|chopper|crash)\b/.test(text)) return "helicopter";
+  if(/\b(convoy|truck|caravan|pickup lane|vehicle|highway|supply route)\b/.test(text)) return "convoy";
+  if(/\b(street escape|street exit|city exit|alley exit|road exit|safe house|safe-zone|safe zone)\b/.test(text)) return "street";
+  return "";
+}
+function chooseRealEvacRouteDef(){
+  const declared = declaredEvacRouteKey();
+  if(declared) return evacRouteDefForKey(declared);
+  const text = evacuationTruthText();
   ensureMapObstacleCache();
   const hasWater = (__mapWaterZones || []).length > 0;
   if(hasWater && /river|boat|dock|flood|water|delta|lake/.test(text)) return evacRouteDefForKey("boat");
   if(/helicopter|airlift|landing|crash/.test(text)) return evacRouteDefForKey("helicopter");
-  if(/convoy|truck|road|street|highway|vehicle/.test(text) || mission?.convoyMission) return evacRouteDefForKey("convoy");
+  const storyMission = S.mode === "Story" ? storyMissionForState(S) : null;
+  const arcadeMission = S.mode === "Arcade" ? activeArcadeMission(S) : null;
+  const mission = storyMission || arcadeMission;
+  if(/convoy|truck|highway|vehicle/.test(text) || mission?.convoyMission) return evacRouteDefForKey("convoy");
+  if(/street|road|safe house/.test(text)) return evacRouteDefForKey("street");
   const level = Math.max(1, currentCampaignLevel());
   const pool = hasWater ? EVAC_ROUTE_DEFS : EVAC_ROUTE_DEFS.filter((row)=>row.key !== "boat");
   return pool[(level + Math.max(0, Number(S.mapIndex || 0))) % pool.length] || EVAC_ROUTE_DEFS[0];
@@ -41491,6 +41519,11 @@ function extractionSequenceDef(ex=ensureExtractionSequenceState(S)){
   return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === ex.key) || EXTRACTION_SEQUENCE_DEFS[0];
 }
 function extractionSequenceChoice(){
+  const declared = declaredEvacRouteKey();
+  if(declared === "boat") return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "boat");
+  if(declared === "helicopter") return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "helicopter");
+  if(declared === "convoy") return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "convoy");
+  if(declared === "street") return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "safe_hold");
   const storyMission = S.mode === "Story" ? storyMissionForState(S) : null;
   const arcadeMission = S.mode === "Arcade" ? activeArcadeMission(S) : null;
   const mission = storyMission || arcadeMission;
@@ -44861,7 +44894,7 @@ function drawRealEvacRoute(now=Date.now()){
   if(S.mode === "Survival") return;
   const route = ensureEvacRouteState(S);
   if(!route.active) return;
-  if(frameLagTier() >= 3 || frameBudgetExceeded(0.88)) return;
+  const lite = frameLagTier() >= 3 || frameBudgetExceeded(0.88);
   const target = missionEvacZoneSafe(S);
   const color = route.blocked ? "rgba(251,113,133,.98)" : (route.color || "rgba(74,222,128,.98)");
   const primaryDim = route.blocked ? 0.22 : 0.56;
@@ -44899,8 +44932,22 @@ function drawRealEvacRoute(now=Date.now()){
   const start = { x:Number(route.startX || S.me.x), y:Number(route.startY || S.me.y) };
   const mid = { x:Number(route.midX || ((start.x + route.x) * 0.5)), y:Number(route.midY || ((start.y + route.y) * 0.5)) };
   const end = { x:Number(route.x || target.x), y:Number(route.y || target.y) };
-  drawSegment(start, mid, primaryDim, route.color || color, 3.6);
-  drawSegment(mid, end, primaryDim, route.color || color, 3.6);
+  if(!lite){
+    drawSegment(start, mid, primaryDim, route.color || color, 3.6);
+    drawSegment(mid, end, primaryDim, route.color || color, 3.6);
+  }else{
+    ctx.save();
+    ctx.globalAlpha = route.blocked ? 0.62 : 0.48;
+    ctx.strokeStyle = route.color || color;
+    ctx.lineWidth = 4;
+    ctx.setLineDash([16, 14]);
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(target.x, target.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
   if(route.blocked){
     drawSegment(mid, target, 0.74, "rgba(134,239,172,.98)", 5);
     ctx.save();
@@ -44941,7 +44988,7 @@ function drawRealEvacRoute(now=Date.now()){
     holdProgressMs:Math.max(0, Number(route.boardedCount || S.stats?.evac || 0)),
     holdRequiredMs:Math.max(1, Number(route.boardingTotal || (S.civilians || []).length || 1))
   };
-  if(!route.departed || route.departing) drawExtractionVehicle(markerEx, now);
+  if(!lite && (!route.departed || route.departing)) drawExtractionVehicle(markerEx, now);
 
   ctx.save();
   const pulse = 0.78 + Math.sin(now / 210) * 0.10;
