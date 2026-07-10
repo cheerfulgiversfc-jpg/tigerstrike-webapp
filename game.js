@@ -1017,7 +1017,16 @@ const DYNAMIC_OBJECTIVE_ROLL_MIN_MS = 90000;
 const DYNAMIC_OBJECTIVE_ROLL_MAX_MS = 155000;
 const DYNAMIC_OBJECTIVE_ACTIVE_MIN_MS = 50000;
 const DYNAMIC_OBJECTIVE_ACTIVE_MAX_MS = 88000;
-const DYNAMIC_OBJECTIVE_TYPES = Object.freeze(["escort_lane","intercept_scout","pack_break"]);
+const DYNAMIC_OBJECTIVE_TYPES = Object.freeze([
+  "escort_lane",
+  "intercept_scout",
+  "pack_break",
+  "recover_supply",
+  "secure_crash_site",
+  "hold_evac_route",
+  "alpha_surge",
+  "civilian_triage"
+]);
 const ARCADE_BUILDCRAFT_DEFAULT_ID = "RESCUE";
 const ARCADE_BUILDCRAFT_LOADOUTS = Object.freeze([
   Object.freeze({
@@ -1991,6 +2000,11 @@ function defaultDynamicObjectiveState(){
     startCaptures: 0,
     startScoutTakedowns: 0,
     startCivAlive: 0,
+    markerId: "",
+    markerX: 0,
+    markerY: 0,
+    holdStartedAt: 0,
+    worldEventType: "",
     completed: false,
   };
 }
@@ -2016,6 +2030,11 @@ function ensureDynamicObjectiveState(state=S){
   d.startCaptures = Math.max(0, Math.floor(Number(d.startCaptures || 0)));
   d.startScoutTakedowns = Math.max(0, Math.floor(Number(d.startScoutTakedowns || 0)));
   d.startCivAlive = Math.max(0, Math.floor(Number(d.startCivAlive || 0)));
+  d.markerId = String(d.markerId || "");
+  d.markerX = Number.isFinite(Number(d.markerX)) ? Number(d.markerX) : 0;
+  d.markerY = Number.isFinite(Number(d.markerY)) ? Number(d.markerY) : 0;
+  d.holdStartedAt = Math.max(0, Math.floor(Number(d.holdStartedAt || 0)));
+  d.worldEventType = String(d.worldEventType || "");
   d.completed = !!d.completed;
   return d;
 }
@@ -2029,14 +2048,20 @@ function clearDynamicObjective(state=S){
   d.until = 0;
   d.progress = 0;
   d.target = 0;
+  d.markerId = "";
+  d.markerX = 0;
+  d.markerY = 0;
+  d.holdStartedAt = 0;
+  d.worldEventType = "";
   d.completed = false;
   state._dynamicTigerCivBiasMul = 1;
   state._dynamicTigerPlayerBiasMul = 1;
+  state._directorObjectiveCollectedId = "";
 }
 function resetDynamicObjectiveForDeploy(state=S){
   const d = ensureDynamicObjectiveState(state);
   clearDynamicObjective(state);
-  d.nextRollAt = Date.now() + rand(22000, 36000);
+  d.nextRollAt = Date.now() + rand(9000, 16000);
 }
 
 function resetMissionTwistsForDeploy(state=S, now=Date.now()){
@@ -17132,6 +17157,8 @@ function scaleWorldForViewportResize(oldW, oldH, newW, newH){
   if(Number.isFinite(S.rollAnimToY)) S.rollAnimToY *= sy;
 
   const tw = ensureMissionTwistState(S);
+  const dynObjective = ensureDynamicObjectiveState(S);
+  scalePointXY(dynObjective, sx, sy, "markerX", "markerY");
   scalePointXY(tw.bridge, sx, sy);
   tw.bridge.r = clamp((Number(tw.bridge.r) || 68) * sr, 24, 180);
   scalePointXY(tw.hostage, sx, sy);
@@ -22603,13 +22630,15 @@ function spawnPickup(type, x, y){
     true,
     false
   );
-  S.pickups.push({
+  const pickup = {
     id: Date.now()+Math.random(),
     type,
     x:pt.x,
     y:pt.y,
     ttl: 60*20 // ~20 seconds at 60fps
-  });
+  };
+  S.pickups.push(pickup);
+  return pickup;
 }
 function maybeSpawnAmbientPickup(){
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
@@ -22678,6 +22707,13 @@ function tickPickups(){
 }
 function collectPickup(p){
   const pickupMul = liveOpsMissionModifierValue("pickupRewardMul", 1, S);
+  if(p?.directorObjectiveId){
+    const d = ensureDynamicObjectiveState(S);
+    if(d.active && d.type === "recover_supply" && d.markerId === p.directorObjectiveId){
+      S._directorObjectiveCollectedId = p.directorObjectiveId;
+      d.progress = Math.max(d.progress || 0, d.target || 1);
+    }
+  }
   if(p.type==="CASH"){
     const amt = Math.max(1, Math.round(rand(80, 260) * pickupMul));
     S.funds += amt;
@@ -41170,6 +41206,58 @@ function combatTick(){
   }
 }
 
+function missionDirector4ObjectivePickPoint(prefer="center"){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const me = S.me || { x:worldW * 0.5, y:worldH * 0.5 };
+  const civs = (S.civilians || []).filter((c)=>c && c.alive && !c.evac);
+  const tigers = (S.tigers || []).filter((t)=>t && t.alive);
+  const candidates = [];
+  if(prefer === "evac" && S.evacZone) candidates.push({ x:S.evacZone.x, y:S.evacZone.y });
+  if(prefer === "civilian" && civs.length){
+    const far = civs.reduce((best, civ)=>!best || dist(me.x, me.y, civ.x, civ.y) > dist(me.x, me.y, best.x, best.y) ? civ : best, null);
+    if(far) candidates.push({ x:far.x, y:far.y });
+  }
+  if(prefer === "tiger" && tigers.length){
+    const near = tigers.reduce((best, tiger)=>!best || dist(me.x, me.y, tiger.x, tiger.y) < dist(me.x, me.y, best.x, best.y) ? tiger : best, null);
+    if(near) candidates.push({ x:(me.x + near.x) * 0.5, y:(me.y + near.y) * 0.5 });
+  }
+  candidates.push({ x:me.x + rand(140, 260), y:me.y + rand(-110, 130) });
+  candidates.push({ x:worldW * 0.52, y:worldH * 0.48 });
+  candidates.push({ x:worldW * 0.40, y:worldH * 0.62 });
+  for(const c of candidates){
+    const pt = safeSpawnPoint(c.x, c.y, 18, true, true);
+    if(pt && dist(pt.x, pt.y, me.x, me.y) >= 86) return pt;
+  }
+  for(let i=0; i<18; i++){
+    const pt = safeSpawnPoint(rand(100, worldW - 100), rand(100, worldH - 100), 18, true, true);
+    if(pt && dist(pt.x, pt.y, me.x, me.y) >= 86) return pt;
+  }
+  return { x:clamp(me.x + 180, 80, worldW - 80), y:clamp(me.y, 90, worldH - 90) };
+}
+
+function chooseDynamicObjectiveType(){
+  const activeMission = S.mode === "Story" ? storyMissionForState(S) : (S.mode === "Arcade" ? activeArcadeMission(S) : null);
+  const objective = String(activeMission?.objective || "").toLowerCase();
+  const aliveCivs = (S.civilians || []).filter((c)=>c && c.alive && !c.evac).length;
+  const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive).length;
+  const hasAlpha = (S.tigers || []).some((t)=>t && t.alive && /alpha|boss|nemesis/i.test(`${t.type || ""} ${t.name || ""}`));
+  const weights = {
+    escort_lane: aliveCivs > 1 ? 1.05 : 0.25,
+    intercept_scout: aliveTigers > 0 ? 0.95 : 0.2,
+    pack_break: aliveTigers > 1 ? 1.00 : 0.25,
+    recover_supply: 0.95,
+    secure_crash_site: /helicopter|crash|airlift|landing/.test(objective) ? 1.45 : 0.58,
+    hold_evac_route: (aliveCivs > 0 && S.evacZone) ? 1.10 : 0.38,
+    alpha_surge: hasAlpha ? 1.38 : (aliveTigers > 0 ? 0.58 : 0.12),
+    civilian_triage: aliveCivs > 0 ? 1.15 : 0.18
+  };
+  const tw = ensureMissionTwistState(S);
+  if(tw?.worldEvent?.active) weights.secure_crash_site *= 0.25;
+  if((tw?.hostage?.active || false)) weights.civilian_triage *= 0.55;
+  return weightedChoiceFromObject(weights, DYNAMIC_OBJECTIVE_TYPES) || "pack_break";
+}
+
 function startDynamicObjective(type){
   const d = ensureDynamicObjectiveState(S);
   const now = Date.now();
@@ -41186,6 +41274,11 @@ function startDynamicObjective(type){
   d.startCaptures = Math.max(0, Math.floor(Number(S.stats?.captures || 0)));
   d.startScoutTakedowns = Math.max(0, Math.floor(Number(S._scoutTakedownsMission || 0)));
   d.startCivAlive = (S.civilians || []).filter((c)=>c && c.alive && !c.evac).length;
+  d.markerId = "";
+  d.markerX = 0;
+  d.markerY = 0;
+  d.holdStartedAt = 0;
+  d.worldEventType = "";
   d.progress = 0;
   d.target = 1;
   d.rewardCash = Math.max(650, Math.round((800 + missionLevel * 45) * liveOpsPayoutMul(S)));
@@ -41213,6 +41306,78 @@ function startDynamicObjective(type){
     d.rewardCash = Math.round(d.rewardCash * 1.22);
     d.rewardScore = Math.round(d.rewardScore * 1.18);
     S._dynamicTigerPlayerBiasMul = 1.12;
+  }
+  if(type === "recover_supply"){
+    const pt = missionDirector4ObjectivePickPoint("center");
+    const crate = spawnPickup("CRATE", pt.x, pt.y);
+    if(crate){
+      crate.ttl = Math.max(crate.ttl || 0, 60 * 70);
+      crate.directorObjectiveId = `director4-${now}`;
+      d.markerId = crate.directorObjectiveId;
+      d.markerX = crate.x;
+      d.markerY = crate.y;
+    }
+    d.title = "Supply Recovery";
+    d.desc = "Recover the marked field crate before tigers overrun it.";
+    d.target = 1;
+    d.rewardCash = Math.round(d.rewardCash * 1.16);
+    d.rewardScore = Math.round(d.rewardScore * 1.12);
+  } else if(type === "secure_crash_site"){
+    const triggered = !ensureMissionTwistState(S).worldEvent.active && triggerDynamicWorldEvent("helicopter_crash", now);
+    if(!triggered){
+      const pt = missionDirector4ObjectivePickPoint("center");
+      d.markerX = pt.x;
+      d.markerY = pt.y;
+    }
+    d.title = "Crash Site Secure";
+    d.desc = triggered ? "Reach the helicopter wreckage and secure the site." : "Secure the emergency marker near the active route.";
+    d.target = 1;
+    d.worldEventType = "helicopter_crash";
+    d.rewardCash = Math.round(d.rewardCash * 1.24);
+    d.rewardScore = Math.round(d.rewardScore * 1.20);
+  } else if(type === "hold_evac_route"){
+    const pt = S.evacZone ? { x:S.evacZone.x, y:S.evacZone.y } : missionDirector4ObjectivePickPoint("evac");
+    d.markerX = pt.x;
+    d.markerY = pt.y;
+    d.title = "Evac Route Hold";
+    d.desc = "Stand near the evac route and keep tigers away for 6 seconds.";
+    d.target = 6;
+    d.rewardCash = Math.round(d.rewardCash * 1.20);
+    d.rewardScore = Math.round(d.rewardScore * 1.18);
+  } else if(type === "alpha_surge"){
+    const target = (S.tigers || []).find((t)=>t && t.alive && /alpha|boss|nemesis/i.test(`${t.type || ""} ${t.name || ""}`))
+      || (S.tigers || []).find((t)=>t && t.alive);
+    if(target){
+      target.aggroBoost = clamp((target.aggroBoost || 0) + 0.22, 0, 1.6);
+      target._directorSurgeUntil = now + 36000;
+      target._directorSurge = true;
+      d.markerId = String(target.id || "");
+      d.markerX = target.x;
+      d.markerY = target.y;
+    }
+    d.title = "Alpha Surge";
+    d.desc = "A tiger shifted tactics. Capture or defeat one tiger to break the surge.";
+    d.target = 1;
+    d.rewardCash = Math.round(d.rewardCash * 1.26);
+    d.rewardScore = Math.round(d.rewardScore * 1.22);
+    S._dynamicTigerPlayerBiasMul = 1.22;
+  } else if(type === "civilian_triage"){
+    const civ = (S.civilians || []).find((c)=>c && c.alive && !c.evac && c.hp < (c.hpMax || 100))
+      || (S.civilians || []).find((c)=>c && c.alive && !c.evac);
+    if(civ){
+      civ.panic = Math.max(Number(civ.panic || 0), 40);
+      civ.fleeUntil = Math.max(Number(civ.fleeUntil || 0), now + 2400);
+      S.dangerCivId = civ.id;
+      d.markerId = String(civ.id || "");
+      d.markerX = civ.x;
+      d.markerY = civ.y;
+    }
+    d.title = "Civilian Triage";
+    d.desc = "Reach and evacuate one high-risk civilian before pressure spikes.";
+    d.target = 1;
+    d.rewardCash = Math.round(d.rewardCash * 1.18);
+    d.rewardScore = Math.round(d.rewardScore * 1.18);
+    S._dynamicTigerCivBiasMul = 1.24;
   }
   setEventText(`🎯 Dynamic Objective: ${d.title} • ${d.desc}`, 4.2);
 }
@@ -41243,8 +41408,7 @@ function dynamicObjectiveTick(){
   const now = Date.now();
   if(!d.active){
     if(now < Math.max(0, Number(d.nextRollAt || 0))) return;
-    const types = [...DYNAMIC_OBJECTIVE_TYPES];
-    const pick = types[rand(0, types.length - 1)];
+    const pick = chooseDynamicObjectiveType();
     startDynamicObjective(pick);
     return;
   }
@@ -41257,6 +41421,44 @@ function dynamicObjectiveTick(){
     const deltaKills = Math.max(0, Math.floor(Number(S.stats?.kills || 0))) - d.startKills;
     const deltaCaps = Math.max(0, Math.floor(Number(S.stats?.captures || 0))) - d.startCaptures;
     d.progress = Math.max(0, deltaKills + deltaCaps);
+  } else if(d.type === "recover_supply"){
+    d.progress = S._directorObjectiveCollectedId === d.markerId ? Math.max(d.progress || 0, d.target || 1) : Math.max(0, Math.min(d.progress || 0, Math.max(0, (d.target || 1) - 1)));
+  } else if(d.type === "secure_crash_site"){
+    const we = ensureMissionTwistState(S).worldEvent;
+    d.progress = (we.type === "helicopter_crash" && we.siteSecured) || (!we.active && d.markerX && dist(S.me.x, S.me.y, d.markerX, d.markerY) <= 46) ? 1 : 0;
+  } else if(d.type === "hold_evac_route"){
+    const ez = S.evacZone || { x:d.markerX, y:d.markerY, r:70 };
+    const nearTiger = (S.tigers || []).some((t)=>t && t.alive && dist(t.x, t.y, ez.x, ez.y) < Math.max(110, (ez.r || 70) + 55));
+    const inside = dist(S.me.x, S.me.y, ez.x, ez.y) <= Math.max(42, (ez.r || 70) * 0.72);
+    if(inside && !nearTiger){
+      if(!d.holdStartedAt) d.holdStartedAt = now;
+      d.progress = clamp(Math.floor((now - d.holdStartedAt) / 1000), 0, d.target || 6);
+    } else {
+      d.holdStartedAt = 0;
+      d.progress = 0;
+      if(nearTiger && now > Number(S._director4EvacWarnAt || 0)){
+        S._director4EvacWarnAt = now + 2600;
+        setEventText("⚠️ Evac hold paused: tiger too close to the route.", 2.4);
+      }
+    }
+  } else if(d.type === "alpha_surge"){
+    const deltaKills = Math.max(0, Math.floor(Number(S.stats?.kills || 0))) - d.startKills;
+    const deltaCaps = Math.max(0, Math.floor(Number(S.stats?.captures || 0))) - d.startCaptures;
+    d.progress = Math.max(0, deltaKills + deltaCaps);
+    const target = (S.tigers || []).find((t)=>t && String(t.id || "") === d.markerId);
+    if(target && target.alive){
+      d.markerX = target.x;
+      d.markerY = target.y;
+      target.aggroBoost = Math.max(Number(target.aggroBoost || 0), 0.18);
+    }
+  } else if(d.type === "civilian_triage"){
+    d.progress = Math.max(0, Math.floor(Number(S.stats?.evac || 0))) - d.startEvac;
+    const civ = (S.civilians || []).find((c)=>c && String(c.id || "") === d.markerId);
+    if(civ && civ.alive && !civ.evac){
+      d.markerX = civ.x;
+      d.markerY = civ.y;
+      S.dangerCivId = civ.id;
+    }
   }
 
   if(d.progress >= d.target){
@@ -43678,6 +43880,51 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   }
 }
 
+function drawDynamicObjectiveMarker(now=Date.now()){
+  const d = ensureDynamicObjectiveState(S);
+  if(!d.active || d.completed) return;
+  let x = Number(d.markerX || 0);
+  let y = Number(d.markerY || 0);
+  if(d.type === "secure_crash_site"){
+    const we = ensureMissionTwistState(S).worldEvent;
+    if(we.active && we.type === "helicopter_crash"){
+      x = Number(we.x || x);
+      y = Number(we.y || y);
+    }
+  } else if(d.type === "alpha_surge" && d.markerId){
+    const tiger = (S.tigers || []).find((t)=>t && String(t.id || "") === d.markerId);
+    if(tiger){
+      x = Number(tiger.x || x);
+      y = Number(tiger.y || y);
+    }
+  } else if(d.type === "civilian_triage" && d.markerId){
+    const civ = (S.civilians || []).find((c)=>c && String(c.id || "") === d.markerId);
+    if(civ){
+      x = Number(civ.x || x);
+      y = Number(civ.y || y);
+    }
+  }
+  if(!Number.isFinite(x) || !Number.isFinite(y) || x <= 0 || y <= 0) return;
+  const pulse = (Math.sin(now / 260) + 1) * 0.5;
+  ctx.save();
+  ctx.globalAlpha = 0.88;
+  ctx.strokeStyle = "rgba(250,204,21,.95)";
+  ctx.fillStyle = "rgba(250,204,21,.13)";
+  ctx.lineWidth = 2.5 + pulse * 1.2;
+  ctx.setLineDash([8, 7]);
+  ctx.beginPath();
+  ctx.arc(x, y, 30 + pulse * 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.setLineDash([]);
+  rounded(x - 62, y - 56, 124, 22, 10, "rgba(15,23,42,.88)", "rgba(250,204,21,.76)");
+  ctx.fillStyle = "rgba(254,240,138,.98)";
+  ctx.font = "900 10px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(`DIRECTOR: ${String(d.title || "OBJECTIVE").toUpperCase().slice(0, 18)}`, x, y - 41);
+  ctx.restore();
+}
+
 function drawMapScene(){
   const frameNow = Date.now();
   const viewportW = cv.width;
@@ -43719,7 +43966,12 @@ function drawMapScene(){
     Math.round(tw.hostage.r || 0),
     Math.max(0, Math.ceil(((tw.hostage.until || 0) - frameNow) / 1000)),
     tw.blackout.active ? 1 : 0,
-    Math.max(0, Math.ceil(((tw.blackout.until || 0) - frameNow) / 1000))
+    Math.max(0, Math.ceil(((tw.blackout.until || 0) - frameNow) / 1000)),
+    dynObjective.active ? dynObjective.type : "",
+    Math.round(dynObjective.markerX || 0),
+    Math.round(dynObjective.markerY || 0),
+    Math.round(dynObjective.progress || 0),
+    Math.round(dynObjective.target || 0)
   ].join("|");
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
@@ -47712,6 +47964,7 @@ function drawEntitiesLite(){
   for(const it of interactablesDraw) drawMapInteractable(it);
   for(const site of rescueSitesDraw) drawRescueSite(site);
   drawTigerDenRaidSite();
+  drawDynamicObjectiveMarker(frameNow);
   for(const clue of investigationDraw) drawInvestigationClue(clue);
 
   if(S.mode !== "Survival"){
