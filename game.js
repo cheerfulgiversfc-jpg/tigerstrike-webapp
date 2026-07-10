@@ -13392,6 +13392,8 @@ const STARTUP_LOADING_READY_FRAMES = 18;
 const STARTUP_LOADING_DETAIL_READY_FRAMES = 7;
 const STARTUP_LOADING_FINALIZE_MS = 850;
 const STARTUP_LOADING_FINALIZE_FAILSAFE_MS = 1800;
+const STARTUP_LOADING_HARD_STUCK_MS = 32000;
+const STARTUP_LOADING_HUNDRED_STUCK_MS = 1800;
 const MAP_CLARITY_PRELOAD_RADIUS = 5;
 const MAP_CLARITY_FULL_REPAINT_MS = 120000;
 const STARTUP_PRELOAD_STAGE_WEIGHTS = Object.freeze({
@@ -13428,6 +13430,7 @@ let __startupLoadingGuard = {
 let __startupLastDetailedMapAt = 0;
 let __startupPreloadSig = "";
 let __gameplayLoadingGuardArmed = false;
+let __startupLoadingWatchdogTimer = 0;
 let __forceFullMapRepaintUntil = 0;
 const STARTUP_LOADING_TIPS = [
   "Scout first: scan before you rush an Alpha.",
@@ -15368,6 +15371,14 @@ function runStabilityRecovery(reason="stall"){
   __frameSlowUntil = Math.max(__frameSlowUntil || 0, perfNow + 2600);
 
   try{ if(typeof clearTransientCombatVisuals === "function") clearTransientCombatVisuals(); }catch(e){}
+  try{
+    if(__startupLoadingGuard?.active){
+      startupLoadingWatchdogTick();
+      if(__startupLoadingGuard.active && (now - Number(__startupLoadingGuard.startedAt || now)) > STARTUP_LOADING_MAX_MS){
+        releaseStartupLoadingGuard(`recover:${reason}`);
+      }
+    }
+  }catch(e){}
   try{ if(typeof resetControlInputState === "function") resetControlInputState("stability-recover"); }catch(e){}
   try{ if(typeof invalidateMapCache === "function") invalidateMapCache(); }catch(e){}
   try{ if(typeof transitionCleanupSweep === "function") transitionCleanupSweep(`recover:${reason}`); }catch(e){}
@@ -15711,6 +15722,7 @@ function trimActiveEntityLoad(){
 
 function stabilityHealthTick(){
   if(!S || typeof S !== "object") return;
+  if(__startupLoadingGuard?.active) startupLoadingWatchdogTick();
   recoverMissionInputLock("stability");
   runSafeSelfHealSweep("stability");
   if(!Array.isArray(S.tigers)) S.tigers = [];
@@ -15718,6 +15730,18 @@ function stabilityHealthTick(){
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(!Array.isArray(S.carcasses)) S.carcasses = [];
   if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
+
+  const blockingOverlay = missionBlockingOverlayVisible();
+  const invalidMission = missionEntityStateInvalid(S);
+  if(invalidMission && !blockingOverlay && !startupLoadingGuardActive() && !(S.gameOver || S.missionEnded)){
+    const repaired = ensureMissionStartupIntegrity({ force:true, reason:`stability:${invalidMission}` });
+    if(!repaired && missionEntityStateInvalid(S)){
+      const keepHp = clamp(Number(S.hp || 100), 0, 100);
+      const keepArmor = clamp(Number(S.armor || 0), 0, S.armorCap || 100);
+      deploy({ carryStats:true, hp:keepHp, armor:keepArmor });
+      pushStabilityEvent("blank-mission-redeploy", { reason: invalidMission });
+    }
+  }
 
   const slow = frameIsSlow();
   const mobile = isMobileViewport();
@@ -48333,6 +48357,7 @@ function beginStartupLoadingGuard(reason="startup"){
   __startupLastDetailedMapAt = 0;
   try{ invalidateMapCache(); }catch(e){}
   updateStartupLoadingOverlay(true);
+  ensureStartupLoadingWatchdog();
 }
 
 function beginGameplayMapLoadingGuard(reason="gameplay"){
@@ -48512,6 +48537,7 @@ function releaseStartupLoadingGuard(reason="ready"){
   updateStartupLoadingOverlay(true);
   try{ renderHUD(); }catch(e){}
   try{ setEventText("Mission map ready.", 1.15); }catch(e){}
+  pushStabilityEvent("loader-release", { reason });
 }
 
 function forceReleaseStartupLoadingIfComplete(now=Date.now()){
@@ -48520,11 +48546,49 @@ function forceReleaseStartupLoadingIfComplete(now=Date.now()){
   const started = Number(__startupLoadingGuard.finalizingStartedAt || 0);
   const finalizeUntil = Number(__startupLoadingGuard.finalizingUntil || 0);
   const elapsedAtHundred = started > 0 ? now - started : 0;
-  if(pct >= 100 && (!finalizeUntil || now >= finalizeUntil || elapsedAtHundred >= 650)){
+  if(pct >= 100 && (!finalizeUntil || now >= finalizeUntil || elapsedAtHundred >= STARTUP_LOADING_HUNDRED_STUCK_MS)){
     releaseStartupLoadingGuard(__startupLoadingGuard.pendingReleaseReason || "hundred-percent-frame-release");
     return true;
   }
   return false;
+}
+
+function startupLoadingWatchdogTick(){
+  if(!__startupLoadingGuard.active) return false;
+  const now = Date.now();
+  const elapsed = now - Number(__startupLoadingGuard.startedAt || now);
+  const pct = Number(__startupLoadingGuard.percent || 0);
+  const finalizingStarted = Number(__startupLoadingGuard.finalizingStartedAt || 0);
+  const hundredStuck = pct >= 100 && (!finalizingStarted || (now - finalizingStarted) >= STARTUP_LOADING_HUNDRED_STUCK_MS);
+  const hardStuck = elapsed >= STARTUP_LOADING_HARD_STUCK_MS;
+  if(hundredStuck || hardStuck){
+    try{
+      computeStartupPreloadProgress(now);
+      __startupLoadingGuard.percent = 100;
+      __startupLoadingGuard.stage = "ready";
+      __startupLoadingGuard.stageScores = {
+        terrain:100,
+        sectors:100,
+        entities:100,
+        hazards:100,
+        visual:100
+      };
+      releaseStartupLoadingGuard(hundredStuck ? "watchdog-100-release" : "watchdog-hard-release");
+      runSafeSelfHealSweep("loader-watchdog", { force:true });
+      ensureMissionStartupIntegrity({ force:true, reason:"loader-watchdog" });
+    }catch(e){
+      releaseStartupLoadingGuard("watchdog-emergency-release");
+    }
+    return true;
+  }
+  return false;
+}
+
+function ensureStartupLoadingWatchdog(){
+  if(__startupLoadingWatchdogTimer || typeof window === "undefined") return;
+  __startupLoadingWatchdogTimer = window.setInterval(()=>{
+    try{ startupLoadingWatchdogTick(); }catch(e){}
+  }, 500);
 }
 
 function scheduleStartupLoadingRelease(reason="ready"){
