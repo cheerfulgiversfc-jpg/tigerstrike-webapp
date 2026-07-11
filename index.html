@@ -252,9 +252,9 @@
     .baseHqWorldHud{
       position:absolute;
       right:12px;
-      top:12px;
-      bottom:12px;
-      width:min(340px,calc(100% - 24px));
+      top:10px;
+      bottom:10px;
+      width:min(390px,calc(100% - 24px));
       max-height:calc(100% - 24px);
       box-sizing:border-box;
       overflow-y:auto;
@@ -265,13 +265,14 @@
       scrollbar-color:rgba(125,211,252,.7) rgba(15,23,42,.35);
       z-index:7;
       display:none;
-      padding:10px 10px 14px;
+      padding:12px 12px 18px;
       border-radius:16px;
       border:1px solid rgba(125,211,252,.55);
-      background:linear-gradient(180deg, rgba(8,13,25,.74), rgba(4,9,18,.58));
-      box-shadow:0 14px 34px rgba(0,0,0,.38), inset 0 0 18px rgba(56,189,248,.08);
-      backdrop-filter:blur(7px);
+      background:linear-gradient(180deg, rgba(8,13,25,.88), rgba(4,9,18,.78));
+      box-shadow:0 18px 42px rgba(0,0,0,.44), inset 0 0 20px rgba(56,189,248,.10);
+      backdrop-filter:blur(10px);
       pointer-events:auto;
+      user-select:text;
     }
     body.baseHqHudOpen .baseHqQuickBar{
       display:none !important;
@@ -387,16 +388,16 @@
     .ivyGuidanceCard .baseHqMissionCard span{color:#67e8f9}
     .baseHqRecommended{margin-top:6px;color:#dbeafe;font-size:10px;font-weight:850;line-height:1.25}
     .baseHqWorldActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    .baseHqWorldActions button{min-height:34px;padding:7px 10px;font-size:11px;pointer-events:auto}
+    .baseHqWorldActions button{min-height:38px;padding:8px 12px;font-size:11px;pointer-events:auto;touch-action:manipulation}
     .baseHqExitBtn{pointer-events:auto}
     .baseHqQuickBar{
       position:absolute;
       left:12px;
       bottom:12px;
-      width:min(760px,calc(100% - 24px));
+      width:min(700px,calc(100% - 24px));
       z-index:8;
       display:none;
-      grid-template-columns:repeat(8,minmax(0,1fr));
+      grid-template-columns:repeat(6,minmax(0,1fr));
       gap:7px;
       padding:8px;
       border-radius:18px;
@@ -431,7 +432,7 @@
       line-height:1.25;
     }
     .baseHqQuickBtn{
-      min-height:38px;
+      min-height:40px;
       border-radius:13px;
       border:1px solid rgba(96,165,250,.46);
       background:linear-gradient(180deg, rgba(30,64,175,.46), rgba(15,23,42,.84));
@@ -440,6 +441,7 @@
       font-weight:1000;
       cursor:pointer;
       pointer-events:auto;
+      touch-action:manipulation;
     }
     .baseHqQuickBtn.primary{
       border-color:rgba(52,211,153,.74);
@@ -571,10 +573,10 @@
         left:8px;
         right:8px;
         top:8px;
-        bottom:8px;
+        bottom:74px;
         width:auto;
-        max-height:calc(100% - 16px);
-        padding:9px 9px 16px;
+        max-height:calc(100% - 88px);
+        padding:10px 10px 18px;
       }
       .baseHqWorldTitle{font-size:13px}
       .baseHqWorldDesc{font-size:12px;line-height:1.24}
@@ -587,7 +589,7 @@
         right:8px;
         bottom:8px;
         width:auto;
-        grid-template-columns:repeat(4,minmax(0,1fr));
+        grid-template-columns:repeat(3,minmax(0,1fr));
         gap:6px;
         padding:7px;
       }
@@ -596,7 +598,8 @@
         width:auto;
         grid-template-columns:1fr;
       }
-      .baseHqQuickBtn{min-height:34px;font-size:9px;padding:5px 4px}
+      .baseHqQuickBar.collapsed .baseHqQuickBtn{min-width:142px}
+      .baseHqQuickBtn{min-height:36px;font-size:9px;padding:6px 5px}
       .baseHqQuickHint{font-size:10px;padding:5px 7px;max-height:42px;overflow:hidden}
       .baseHqModePreview{inset:8px;padding:6px}
       .baseHqModePreviewCard{padding:11px;border-radius:18px}
@@ -2872,7 +2875,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4600-combat-feel-4"></script>
+<script src="./game.js?v=4601-hq-main-menu-polish"></script>
 <script src="./tutorial.js?v=4536-current-game-tutorial-step-qa"></script>
 <script>
 (() => {

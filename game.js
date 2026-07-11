@@ -26815,6 +26815,9 @@ const BASE_HQ_AMBIENT_ACTORS = Object.freeze([
   Object.freeze({ name:"Scout", role:"Intel Runner", color:"#f59e0b", from:[235,430], to:[452,430], speed:0.000060, phase:0.70 }),
   Object.freeze({ name:"Mechanic", role:"Bay Crew", color:"#60a5fa", from:[1068,418], to:[1192,418], speed:0.000066, phase:0.27 }),
   Object.freeze({ name:"Keeper", role:"Pen Crew", color:"#fb7185", from:[930,560], to:[1120,560], speed:0.000055, phase:0.58 }),
+  Object.freeze({ name:"Trainer", role:"Combat Coach", color:"#14b8a6", from:[548,520], to:[740,520], speed:0.000063, phase:0.19 }),
+  Object.freeze({ name:"Quartermaster", role:"Loadout Clerk", color:"#eab308", from:[328,118], to:[536,118], speed:0.000052, phase:0.86 }),
+  Object.freeze({ name:"Analyst", role:"Research Runner", color:"#2dd4bf", from:[986,112], to:[1134,112], speed:0.000057, phase:0.34 }),
 ]);
 const BASE_HQ_ONBOARDING_STEPS = Object.freeze([
   Object.freeze({ room:"mission", title:"Reception + Mission Gate", text:"Ivy introduces the HQ. This gate starts Story, Arcade, Survival, Tutorial, Shop, Inventory, and mission briefing." }),
@@ -26835,6 +26838,12 @@ const BASE_HQ_NPCS = Object.freeze([
   Object.freeze({ name:"Rook", role:"Vehicle Chief", x:1130, y:360, room:"vehicle", line:"Evac routes now support boats, helicopters, convoy trucks, and blocked-road alternates." }),
   Object.freeze({ name:"Nova", role:"Forge Tech", x:826, y:82, room:"forge", line:"The Forge turns earned materials into weapon skins, trails, and rarity-based cosmetics." }),
   Object.freeze({ name:"Sage", role:"Weather Analyst", x:148, y:360, room:"weather", line:"Storms, fog, dust, snow, and nightfall can change visibility, tracks, routes, and tiger senses." }),
+  Object.freeze({ name:"June", role:"Reward Clerk", x:394, y:84, room:"contracts", line:"The Daily Reward Desk keeps claims intentional, visible, and separate from mission rewards." }),
+  Object.freeze({ name:"Sol", role:"Settlement Liaison", x:430, y:420, room:"settlement", line:"Every rescued civilian can support the settlement economy, defenses, and long-term upgrades." }),
+  Object.freeze({ name:"Atlas", role:"Archivist", x:850, y:414, room:"cinema", line:"The Cinema Archive stores story moments, mission intros, boss scenes, and escape recaps." }),
+  Object.freeze({ name:"Coach Lyn", role:"Training Lead", x:640, y:520, room:"training", line:"Training lanes should teach the current game: scan lines, capture windows, evac routes, and combat feedback." }),
+  Object.freeze({ name:"Dr. Noor", role:"Research Lead", x:1070, y:118, room:"research", line:"Research connects tiger clues, mutations, ecosystems, den raids, and Nemesis behavior." }),
+  Object.freeze({ name:"Legend HQ", role:"Trophy Curator", x:640, y:86, room:"trophy", line:"The Trophy Hall is where cosmetics, titles, perfect rescues, rare captures, and season identity live." }),
 ]);
 const BASE_HQ_FACTS = Object.freeze({
   command:Object.freeze([
@@ -26985,6 +26994,48 @@ const BASE_HQ_DIALOGUES = Object.freeze({
     "If visibility drops, slow down. The tiger is not gone just because the map stopped showing you the whole truth.",
     "Weather is a promise to the player: it must change movement, senses, tracks, or route safety, not only the background color."
   ]),
+  "June":Object.freeze([
+    "Daily rewards should be claimed once, clearly marked, and never mixed into mission payout math.",
+    "If a reward says claimed, it must stay claimed. Free rewards are fun only when the player trusts the counter.",
+    "The reward desk is here so players know exactly where bonuses came from before they deploy.",
+    "Streak rewards should help, not flood the economy. The shop still needs reasons to matter.",
+    "A good reward screen answers one question quickly: what did I get, and why did I get it?"
+  ]),
+  "Sol":Object.freeze([
+    "Settlement support turns rescued civilians into long-term progress instead of one mission number.",
+    "A perfect rescue should ripple outward: safer routes, better support, and stronger defense readiness.",
+    "If civilians are saved, they should stay saved. The settlement is where that success becomes visible.",
+    "Defense missions work best when players care about the people they already rescued.",
+    "Support rewards should be honest: current mission saves, not stacked totals from old runs."
+  ]),
+  "Atlas":Object.freeze([
+    "Cinematics are strongest when they explain danger fast, then get out of the player's way.",
+    "Every major mission should feel like it has a beginning, a pressure turn, and a clean escape recap.",
+    "The archive exists so players can replay story moments without replaying the whole mission.",
+    "Boss intros should teach the threat: armor, rage phase, reinforcements, or capture strategy.",
+    "If an event says helicopter crash, the world should show wreckage, smoke, and a reason to care."
+  ]),
+  "Coach Lyn":Object.freeze([
+    "A tutorial step is only complete when the player actually does the thing, not when they tap Next early.",
+    "Training should mirror the real game: scan line, lock ring, capture window, ammo warnings, and evac routes.",
+    "Combat practice is for learning danger without punishing a real save file.",
+    "If a button is highlighted, it should respond. If it cannot respond, it should not be highlighted.",
+    "Good training makes the first real mission feel familiar instead of confusing."
+  ]),
+  "Dr. Noor":Object.freeze([
+    "Research connects clues to behavior. Footprints, fur, blood, and broken brush should all mean something.",
+    "Mutations are fair when players can read the tell before the punishment arrives.",
+    "Den raids should start like investigations and end like boss encounters.",
+    "A tiger ecosystem feels alive when packs hunt, protect dens, migrate, and react to pressure.",
+    "The best research reward is better decision-making in the next mission."
+  ]),
+  "Legend HQ":Object.freeze([
+    "Prestige should show what you survived: perfect rescues, rare captures, season trophies, and hard bosses.",
+    "Cosmetics belong here because style is identity, not mission balance.",
+    "A trophy is most exciting when it remembers where it came from.",
+    "Captured tiger displays should eventually show scars, mutations, size, stripe pattern, and Nemesis history.",
+    "Long-term players need goals that still matter after cash and supplies are stacked."
+  ]),
 });
 let __baseHqActive = false;
 let __baseHqPlayer = { x:640, y:420, targetX:640, targetY:420, face:-Math.PI/2, step:0, _moveVx:0, _moveVy:0 };
@@ -27031,11 +27082,18 @@ function baseHqCameraOffset(){
   const maxY = Math.max(0, BASE_HQ_WORLD.h - viewH);
   const room = baseHqRoomById(__baseHqSelectedRoom);
   const movingToRoom = !!__baseHqPendingHudRoom;
-  const focusX = movingToRoom ? ((Number(__baseHqPlayer.x || 0) * 0.45) + (Number(room.x || __baseHqPlayer.x) * 0.55)) : Number(__baseHqPlayer.x || 0);
-  const focusY = movingToRoom ? ((Number(__baseHqPlayer.y || 0) * 0.45) + (Number(room.y || __baseHqPlayer.y) * 0.55)) : Number(__baseHqPlayer.y || 0);
-  __baseHqCamera.targetX = clamp(focusX - (viewW * 0.5), 0, maxX);
-  __baseHqCamera.targetY = clamp(focusY - (viewH * 0.52), 0, maxY);
-  const ease = clamp(0.10 * frameMotionMul(), 0.06, 0.22);
+  const hudOpen = !!document.body?.classList?.contains("baseHqHudOpen");
+  const quickOpen = __baseHqActive && !__baseHqQuickMenuCollapsed && !hudOpen;
+  const roomX = Number(room.x || __baseHqPlayer.x || 0);
+  const roomY = Number(room.y || __baseHqPlayer.y || 0);
+  let focusX = movingToRoom || hudOpen ? ((Number(__baseHqPlayer.x || 0) * 0.38) + (roomX * 0.62)) : Number(__baseHqPlayer.x || 0);
+  let focusY = movingToRoom || hudOpen ? ((Number(__baseHqPlayer.y || 0) * 0.38) + (roomY * 0.62)) : Number(__baseHqPlayer.y || 0);
+  if(quickOpen) focusY = Math.max(90, focusY - (viewH * 0.14));
+  const xBias = hudOpen && !isMobileViewport() ? 0.38 : 0.50;
+  const yBias = quickOpen ? 0.44 : (hudOpen ? 0.48 : 0.52);
+  __baseHqCamera.targetX = clamp(focusX - (viewW * xBias), 0, maxX);
+  __baseHqCamera.targetY = clamp(focusY - (viewH * yBias), 0, maxY);
+  const ease = clamp((movingToRoom ? 0.14 : 0.11) * frameMotionMul(), 0.07, 0.26);
   if(!Number.isFinite(__baseHqCamera.x)) __baseHqCamera.x = __baseHqCamera.targetX;
   if(!Number.isFinite(__baseHqCamera.y)) __baseHqCamera.y = __baseHqCamera.targetY;
   if(Math.abs(__baseHqCamera.x - __baseHqCamera.targetX) > viewW || Math.abs(__baseHqCamera.y - __baseHqCamera.targetY) > viewH){
@@ -27095,6 +27153,17 @@ function baseHqNpcAt(x, y){
   }
   return bestD <= 38 ? best : null;
 }
+function baseHqNpcForRoom(roomId=__baseHqSelectedRoom){
+  const roomKey = String(roomId || "");
+  return BASE_HQ_NPCS.find((npc)=>npc?.room === roomKey) || null;
+}
+function baseHqRoomConversationLine(roomId=__baseHqSelectedRoom){
+  const { room, data } = baseHqRoomData(roomId);
+  const purpose = baseHqRoomPurposeLine(room.id);
+  const progress = baseHqRoomProgress(room.id);
+  const action = Array.isArray(data.actions) && data.actions.length ? data.actions[0]?.[0] : "inspect";
+  return `${room.name}: ${purpose} Best next action: ${action}. Status: ${progress.label}, ${progress.pct}% readiness.`;
+}
 function baseHqAmbientActorPosition(actor, now=Date.now()){
   if(!actor?.from || !actor?.to) return null;
   const speed = Number(actor.speed || 0.00005);
@@ -27128,6 +27197,9 @@ function baseHqAmbientActorLine(actor){
   if(/Intel|Scout/i.test(role)) return "Intel runners track scan clues, weather, and tiger pressure so briefing data stays useful.";
   if(/Bay|Mechanic/i.test(role)) return "Vehicle crews prep boat, helicopter, convoy, and street extraction routes before missions.";
   if(/Keeper|Pen/i.test(role)) return "Pen crews log captures, mutations, trophies, and Nemesis records for the showcase.";
+  if(/Coach|Trainer|Combat/i.test(role)) return "Training staff keeps tutorial and practice lanes lined up with the real combat, scan, capture, and evac systems.";
+  if(/Loadout|Quartermaster/i.test(role)) return "Quartermasters compare your current gear against the next threat before you step through the Mission Gate.";
+  if(/Research|Analyst/i.test(role)) return "Research analysts turn field clues, den reports, and mutation data into useful mission warnings.";
   return "HQ crew keeps the base running. Walk to rooms or use quick actions to inspect active systems.";
 }
 function baseHqTalkToAmbientActor(actor){
@@ -28064,7 +28136,7 @@ function baseHqPanelActionsHtml(data){
 function baseHqActionButtonHtml(label, command, cls="ghost"){
   const ready = truthQaActionAvailable(command);
   const disabled = ready ? "" : ` disabled title="${baseHqEsc(label)} is not connected yet."`;
-  return `<button class="${baseHqEsc(cls)}" type="button" data-base-hq-command="${baseHqEsc(command)}"${disabled} onpointerdown="event.stopPropagation()" onpointerup="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)" onclick="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)">${baseHqEsc(label)}</button>`;
+  return `<button class="${baseHqEsc(cls)}" type="button" data-base-hq-command="${baseHqEsc(command)}"${disabled} onclick="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)">${baseHqEsc(label)}</button>`;
 }
 function baseHqParseCommandArgs(raw=""){
   const text = String(raw || "").trim();
@@ -28268,6 +28340,10 @@ function armBaseHqButtons(root){
       const match = inline.match(/\b((?:baseHq|open|start|select|reset|complete|skip|close|confirm|set|toggle|interact|hide)[a-zA-Z_$][\w$]*\([^;]*\))/);
       if(match) btn.dataset.baseHqCommand = match[1];
     }
+    try{
+      btn.style.touchAction = "manipulation";
+      btn.style.pointerEvents = "auto";
+    }catch(_e){}
     const trigger = (ev)=>{
       const command = btn.dataset.baseHqCommand;
       if(!command) return false;
@@ -28284,8 +28360,9 @@ function armBaseHqButtons(root){
       return true;
     };
     btn.addEventListener("pointerdown", (ev)=>{
+      if(btn.disabled) return;
       ev.stopPropagation();
-    }, { passive:true });
+    }, { passive:false });
     btn.addEventListener("pointerup", (ev)=>{
       trigger(ev);
     }, { passive:false });
@@ -29479,12 +29556,21 @@ function interactBaseHQ(){
     baseHqStartConversation(near.npc);
     return;
   }
+  const selectedRoom = near.room?.id || __baseHqSelectedRoom || baseHqNearestRoom().id;
+  const roomNpc = baseHqNpcForRoom(selectedRoom);
+  if(roomNpc){
+    __baseHqSelectedRoom = selectedRoom;
+    baseHqStartConversation(roomNpc);
+    return;
+  }
   selectBaseHqRoom(near.room?.id || baseHqNearestRoom().id, false);
   __baseHqFactOffset = (__baseHqFactOffset + 1) % 99;
   __baseHqDialogNpc = "";
   showBaseHqHud(8200);
   const { room, data } = baseHqRoomData(__baseHqSelectedRoom);
-  toast(`${room.name}: ${String(data.desc || "").replace(/^Base Intel:\s*/,"")}`);
+  const line = baseHqRoomConversationLine(room.id);
+  toast(line);
+  setEventText(line, 5);
   renderBaseHQ();
 }
 function leaveBaseHqView({ restoreMenu=true }={}){
