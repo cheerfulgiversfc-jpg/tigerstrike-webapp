@@ -15876,6 +15876,31 @@ function sfx(name){
     beep(220,96,"triangle",0.034);
     setTimeout(()=>beep(176,72,"sine",0.022),60);
   }
+  if(name==="heavyHit"){
+    if(!sfxGate("heavyHit", 92)) return;
+    beep(148,76,"triangle",0.042);
+    setTimeout(()=>beep(92,86,"sine",0.026),42);
+  }
+  if(name==="danger"){
+    if(!sfxGate("danger", 520)) return;
+    beep(128,96,"triangle",0.032);
+    setTimeout(()=>beep(164,74,"triangle",0.026),112);
+  }
+  if(name==="stagger"){
+    if(!sfxGate("stagger", 120)) return;
+    beep(260,54,"triangle",0.038);
+    setTimeout(()=>beep(360,46,"sine",0.024),48);
+  }
+  if(name==="captureReady"){
+    if(!sfxGate("captureReady", 640)) return;
+    beep(700,58,"triangle",0.04);
+    setTimeout(()=>beep(920,68,"triangle",0.036),72);
+  }
+  if(name==="captureStruggle"){
+    if(!sfxGate("captureStruggle", 260)) return;
+    beep(310,62,"triangle",0.036);
+    setTimeout(()=>beep(430,72,"triangle",0.03),58);
+  }
   if(name==="win"){
     if(!sfxGate("win", 180)) return;
     beep(660,58,"triangle",0.046);
@@ -36310,8 +36335,16 @@ function damageSupportUnit(unit, dmg){
     }
   }
   if(nearestThreat && nearestThreatDist <= 140){
-    applyCombatKnockback(unit, nearestThreat.x, nearestThreat.y, isBossTiger(nearestThreat) || nearestThreat.type === "Alpha" ? 22 : 15, 16);
-    triggerCombatInteraction("support_hit", { tiger:nearestThreat, target:unit, x:unit.x, y:unit.y - 8 });
+    const heavyTiger = isBossTiger(nearestThreat) || nearestThreat.type === "Alpha" || nearestThreat.nemesisAlias;
+    applyCombatKnockback(unit, nearestThreat.x, nearestThreat.y, heavyTiger ? 26 : 16, 16);
+    triggerCombatInteraction("support_hit", {
+      tiger:nearestThreat,
+      target:unit,
+      x:unit.x,
+      y:unit.y - 8,
+      shakePower:heavyTiger ? 0.72 : 0.48,
+      label:heavyTiger ? "SQUAD HIT" : "HIT"
+    });
   }
   const profile = squadProfileForUnit(unit);
   const trait = squadProfileTrait(profile);
@@ -40916,6 +40949,17 @@ function playerAction(action){
       emitDamagePopup(t.x, t.y - 44, `-${tigerHit.dealt}`, crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"));
       hapticImpact(crit ? "heavy" : "light");
       setBattleMsg(`${crit?'CRIT! ':''}Hit for ${tigerHit.dealt}. ${w.type==='tranq'?'(tranq applied)':''}`);
+      const staggerThreshold = Math.max(14, Math.round(Number(t.hpMax || 1) * (isBossTiger(t) ? 0.12 : 0.18)));
+      if(crit || tigerHit.dealt >= staggerThreshold){
+        triggerCombatInteraction("tiger_stagger", {
+          tiger:t,
+          label:crit ? "CRITICAL STAGGER" : "STAGGER",
+          ms:crit ? 680 : 520,
+          shakePower:crit ? 0.72 : 0.54
+        });
+      }else{
+        markTigerBehaviorAnim(t, w.type === "tranq" ? "tranq_hit" : "hit", 260);
+      }
       if(!crit && Math.random() < (0.08 + (Math.max(0, 1 - build.recoilMul) * 0.2))){
         setEventText(`🎯 ${w.name}: ${handling.label}.`, 0.9);
       }
@@ -40933,6 +40977,7 @@ function playerAction(action){
     }catch(e){}
     if(w.type==="tranq" && tigerInCaptureHpWindow(t)){
       setBattleMsg(`Tiger is subdued. Tap Capture to use ${captureTranqWeaponLabel(t)}.`);
+      triggerCombatInteraction("capture_ready", { tiger:t, label:"CAPTURE READY" });
     }
 
     updateBattleButtons();
@@ -41040,7 +41085,11 @@ function tigerTurn(t, softened=false, opts={}){
     x:S.me.x,
     y:S.me.y - 8,
     power:opts.kind === "charge" ? 1.22 : (opts.kind === "pounce" ? 1.0 : 0.74),
-    dangerMs:(isBossTiger(t) || t.type === "Alpha" || t.nemesisAlias) ? 1100 : 520
+    dangerMs:(isBossTiger(t) || t.type === "Alpha" || t.nemesisAlias) ? 1100 : 520,
+    heavy:isBossTiger(t) || t.type === "Alpha" || t.nemesisAlias || opts.kind === "charge" || opts.kind === "pounce",
+    label:opts.kind === "charge" ? "DANGER CHARGE" : (opts.kind === "pounce" ? "DANGER POUNCE" : "DANGER"),
+    shakePower:opts.kind === "charge" ? 1.3 : (opts.kind === "pounce" ? 1.05 : 0.72),
+    shakeMs:opts.kind === "charge" ? 230 : (opts.kind === "pounce" ? 190 : 140)
   });
   applyPlayerDamage(dmg,false);
   if(S.inBattle){
@@ -46032,6 +46081,30 @@ function drawOnMapBattleReadability(){
     ctx.stroke();
   }
 
+  const dangerLeft = Math.max(0, Number(S._combatDangerUntil || 0) - now);
+  if(dangerLeft > 0 && !extreme){
+    const dangerAlpha = clamp(dangerLeft / 900, 0.18, 0.72);
+    const dangerLabel = String(S._combatDangerText || "DANGER").slice(0, 24);
+    ctx.globalAlpha = dangerAlpha;
+    ctx.fillStyle = "rgba(255,72,104,.12)";
+    ctx.fillRect(0, 0, worldWidth(S), worldHeight(S));
+    ctx.globalAlpha = clamp(dangerAlpha + 0.16, 0.22, 0.86);
+    ctx.strokeStyle = "rgba(255,103,132,.92)";
+    ctx.lineWidth = 5;
+    ctx.strokeRect(p.x - 68, p.y - 68, 136, 136);
+    ctx.fillStyle = "rgba(10,13,20,.88)";
+    const chipW = Math.max(92, Math.min(190, dangerLabel.length * 9 + 30));
+    roundedRectFill(mx - chipW / 2, Math.min(p.y, tp.y) - 92, chipW, 28, 11);
+    ctx.strokeStyle = "rgba(255,103,132,.90)";
+    ctx.lineWidth = 1.8;
+    ctx.strokeRect(mx - chipW / 2 + 0.5, Math.min(p.y, tp.y) - 91.5, chipW - 1, 27);
+    ctx.font = "900 12px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillStyle = dangerLabel.includes("CAPTURE") ? "#bbf7d0" : "#fecdd3";
+    ctx.fillText(dangerLabel, mx, Math.min(p.y, tp.y) - 74);
+    ctx.textAlign = "start";
+  }
+
   ctx.restore();
 }
 function drawOnMapBattleHud(){
@@ -47124,12 +47197,18 @@ function triggerCombatInteraction(kind, opts={}){
     S.meHitFlashUntil = Math.max(Number(S.meHitFlashUntil || 0), now + 230);
     S.meHitFlashPower = Math.max(Number(S.meHitFlashPower || 0), Number(opts.power || 0.82));
     S._combatDangerUntil = Math.max(Number(S._combatDangerUntil || 0), now + Number(opts.dangerMs || 420));
+    S._combatDangerText = label || (opts.heavy ? "DANGER" : "HIT");
     queueImpactPulse(x, y, "player");
+    queueCameraShake(Number(opts.shakePower || opts.power || 0.7), Number(opts.shakeMs || 150));
+    sfx(opts.heavy ? "danger" : "heavyHit");
     return;
   }
   if(kind === "support_hit"){
     if(target) target.hitFlashUntil = Math.max(Number(target.hitFlashUntil || 0), now + 220);
     queueImpactPulse(x, y, "player");
+    emitDamagePopup(x, y - 42, label || "SQUAD HIT", "player");
+    queueCameraShake(Number(opts.shakePower || 0.55), Number(opts.shakeMs || 120));
+    sfx("heavyHit");
     return;
   }
   if(kind === "tiger_stagger" && t){
@@ -47138,6 +47217,18 @@ function triggerCombatInteraction(kind, opts={}){
     setTigerIntent(t, label || "STAGGER", 620);
     queueImpactPulse(t.x, t.y - 8, "crit");
     emitDamagePopup(t.x, t.y - 48, label || "STAGGER", "crit");
+    queueCameraShake(Number(opts.shakePower || 0.58), Number(opts.shakeMs || 120));
+    sfx("stagger");
+    return;
+  }
+  if(kind === "capture_ready" && t){
+    t.captureReadyFlashUntil = Math.max(Number(t.captureReadyFlashUntil || 0), now + Number(opts.ms || 1100));
+    setTigerIntent(t, label || "CAPTURE READY", 900);
+    queueImpactPulse(t.x, t.y - 8, "capture");
+    emitDamagePopup(t.x, t.y - 54, label || "CAPTURE READY", "capture");
+    S._combatDangerUntil = Math.max(Number(S._combatDangerUntil || 0), now + 620);
+    S._combatDangerText = "CAPTURE READY";
+    sfx("captureReady");
     return;
   }
   if(kind === "finish" && t){
@@ -47145,6 +47236,8 @@ function triggerCombatInteraction(kind, opts={}){
     markTigerBehaviorAnim(t, capture ? "capture_struggle" : "finish", 900);
     queueImpactPulse(t.x, t.y - 8, capture ? "capture" : "crit");
     emitDamagePopup(t.x, t.y - 54, capture ? "SECURED" : "FINISH", capture ? "capture" : "crit");
+    queueCameraShake(capture ? 0.72 : 0.95, capture ? 160 : 210);
+    sfx(capture ? "captureStruggle" : "heavyHit");
     triggerPhase18TigerMoment(t, capture ? "capture" : "finish", capture ? "Captured" : "Eliminated");
   }
 }
