@@ -9010,6 +9010,47 @@ function worldMapTruthSummaryHtml(selected, stats, wm=ensureWorldMapCampaignStat
     </div>
   `;
 }
+function worldMapStrategyTruthHtml(selected, stats, wm=ensureWorldMapCampaignState(S)){
+  const region = selected || worldMapRegionById(wm.selectedRegionId);
+  if(!region) return "";
+  const activeRegion = wm.activeRegionId ? worldMapRegionById(wm.activeRegionId) : null;
+  const activeLevel = Math.max(0, Math.floor(Number(wm.activeMissionLevel || 0)));
+  const lastReward = wm.lastReward && typeof wm.lastReward === "object" ? wm.lastReward : null;
+  const season = ensureWorldMapSeasonState(wm);
+  const readySeasonGoals = WORLD_MAP_SEASON_GOALS
+    .filter((goal)=>worldMapSeasonGoalProgress(goal.id, wm).ready && !season.claimedGoals?.[goal.id])
+    .map((goal)=>goal.name);
+  const readyWeekly = WORLD_MAP_WEEKLY_LADDER
+    .filter((tier)=>Math.floor(Number(season.weeklyPoints || 0)) >= Math.floor(Number(tier.points || 0)) && !season.weeklyClaimed?.[tier.id])
+    .map((tier)=>tier.name);
+  const returnRegion = wm.lastCompletedRegionId ? worldMapRegionById(wm.lastCompletedRegionId) : null;
+  const launchLine = activeRegion
+    ? `Active run: ${activeRegion.name} • Story ${activeLevel || worldMapRegionMissionLevel(activeRegion, S)} • Run ${String(wm.activeRunId || "").slice(-8) || "tracking"}`
+    : `No active World Map run. Selected launch target: ${region.name} • Story ${worldMapRegionMissionLevel(region, S)}.`;
+  const returnLine = wm.returnAfterComplete && returnRegion
+    ? `Completion return is armed for ${returnRegion.name}. Closing the mission recap will reopen the World Map on that region.`
+    : "No completion return is waiting right now.";
+  const rewardLine = lastReward?.regionId
+    ? `${worldMapRegionById(lastReward.regionId)?.name || "Region"} reward truth: +$${Math.max(0, Math.floor(Number(lastReward.cash || 0))).toLocaleString()} • ${Math.max(0, Math.floor(Number(lastReward.captures || 0)))} captures • ${Math.max(0, Math.floor(Number(lastReward.kills || 0)))} kills • ${Math.max(0, Math.floor(Number(lastReward.evac || 0)))} rescued.`
+    : "No completed World Map reward has been recorded this session yet.";
+  const claimLine = readySeasonGoals.length || readyWeekly.length
+    ? `Claims ready: ${[...readySeasonGoals, ...readyWeekly].slice(0, 4).join(" • ")}.`
+    : "Claims: no season or weekly rewards are ready yet.";
+  const rivalLine = worldMapRivalPressure(region, S) >= 45
+    ? `${worldMapRivalSabotageText(region, S)} Use Fight, Negotiate, or Outscore below before deploying if you want less interference.`
+    : `${worldMapRivalSabotageText(region, S)} Region is safe to deploy without rival prep.`;
+  return `
+    <div class="card" style="margin:10px 0;border-color:rgba(74,222,128,.55);background:linear-gradient(145deg,rgba(20,83,45,.44),rgba(8,15,26,.96))">
+      <div class="hudTitle">World Map Truth + Strategy 3.0</div>
+      <div class="small">${worldMapEsc(launchLine)}</div>
+      <div class="small">${worldMapEsc(returnLine)}</div>
+      <div class="small">${worldMapEsc(rewardLine)}</div>
+      <div class="small">${worldMapEsc(claimLine)}</div>
+      <div class="small">${worldMapEsc(rivalLine)}</div>
+      <div class="small">Strategic state: ${Number(stats?.rivalZones || 0)} rival zones • ${Number(stats?.crisisRegions || 0)} crisis regions • ${Number(stats?.brokenRoutes || 0)} broken supply routes • route health ${Number(stats?.routeHealth || 0)}%.</div>
+    </div>
+  `;
+}
 function worldMapLiveEventDef(typeId){
   return WORLD_MAP_LIVE_EVENT_TYPES.find((event)=>event.id === typeId) || WORLD_MAP_LIVE_EVENT_TYPES[0];
 }
@@ -10338,7 +10379,10 @@ function renderWorldMapCampaign(){
   refreshWorldMapLiveEvents(S);
   refreshWorldMapCrisis(S);
   const stats = worldMapCampaignPhaseOneStats(wm);
-  const selected = worldMapRegionById(wm.selectedRegionId);
+  const selected = worldMapRegionById(wm.selectedRegionId)
+    || WORLD_MAP_CAMPAIGN_REGIONS.find((region)=>worldMapRegionUnlocked(region, S))
+    || WORLD_MAP_CAMPAIGN_REGIONS[0];
+  wm.selectedRegionId = selected.id;
   const selectedUnlocked = worldMapRegionUnlocked(selected, S);
   const selectedControl = worldMapControl(selected, S);
   const defended = Math.max(0, Math.floor(Number(wm.defendedRegions[selected.id] || 0)));
@@ -10388,6 +10432,7 @@ function renderWorldMapCampaign(){
   root.innerHTML = `
     <div class="hudLine"><b>Phase 9:</b> Endgame World Campaign Seasons add weekly ladders, rotating Nemesis invasions, season goals, rare trophies, titles, cosmetics, and long-term rewards.</div>
     ${worldMapTruthSummaryHtml(selected, stats, wm)}
+    ${worldMapStrategyTruthHtml(selected, stats, wm)}
     ${worldMapSeasonHtml(selected)}
     ${worldMapPendingChoiceHtml(wm)}
     ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
@@ -10550,6 +10595,9 @@ function startWorldMapRegionMission(id){
     toast(`${region.name} is still locked.`);
     return false;
   }
+  if(wm.activeRunId || wm.activeRegionId){
+    clearWorldMapActiveRunState(wm, "replaced by new region launch");
+  }
   refreshWorldMapLiveEvents(S);
   const event = worldMapLiveEventForRegion(region, S);
   const crisis = worldMapCrisisForRegion(region, S);
@@ -10572,8 +10620,16 @@ function startWorldMapRegionMission(id){
   wm.activeCrisisId = crisis?.id || "";
   wm.activeCrisisRegionId = crisis ? region.id : "";
   wm.activeRivalRegionId = worldMapRivalPressure(region, S) >= 45 ? region.id : "";
+  wm.lastLaunch = {
+    regionId:region.id,
+    missionLevel,
+    runId:wm.activeRunId,
+    launchedAt:Date.now(),
+  };
   wm.lastOutcome = `${region.name}: launched Story Mission ${missionLevel}. Complete this run to update region control and rewards.`;
   if(!wm.unlockedRegionIds.includes(region.id)) wm.unlockedRegionIds.push(region.id);
+  const overlay = document.getElementById("worldMapCampaignOverlay");
+  if(overlay) overlay.style.display = "none";
   clearBaseHqReturnForMissionLaunch();
   beginMissionTransitionGuard("world-map-deploy", 1400);
   saveResumeTransitionBoundary("world-map-deploy", { preserveWorldMap:true });
@@ -10636,16 +10692,8 @@ function recordWorldMapCampaignOutcome({ missionStats=null, missionLevel=null }=
   const levelDrift = Math.abs(expectedLevel - currentLevel);
   const tolerateCompletionLevelDrift = !!missionStats && levelDrift <= 1;
   if(expectedLevel !== currentLevel && !tolerateCompletionLevelDrift){
-    wm.lastOutcome = `${region.name}: World Map result ignored because mission level changed (${expectedLevel} → ${currentLevel}).`;
-    wm.activeRegionId = "";
-    wm.activeRunId = "";
-    wm.activeMissionLevel = 0;
-    wm.activeStartedAt = 0;
-    wm.activeEventId = "";
-    wm.activeEventRegionId = "";
-    wm.activeCrisisId = "";
-    wm.activeCrisisRegionId = "";
-    wm.activeRivalRegionId = "";
+    clearWorldMapActiveRunState(wm, `mission level changed ${expectedLevel} to ${currentLevel}`);
+    wm.lastOutcome = `${region.name}: World Map result ignored because mission level changed (${expectedLevel} → ${currentLevel}). Active run was cleared so future launches are clean.`;
     return "";
   }
   const before = worldMapControl(region, S);
@@ -10809,6 +10857,21 @@ function recordWorldMapCampaignOutcome({ missionStats=null, missionLevel=null }=
     kills,
     evac,
     cash:Math.max(0, Math.floor(Number(reward.cash || 0))),
+  };
+  wm.selectedRegionId = region.id;
+  wm.lastReward = {
+    regionId:region.id,
+    runId,
+    missionLevel:expectedLevel,
+    cash:Math.max(0, Math.floor(Number(reward.cash || 0))),
+    xp:Math.max(0, Math.floor(Number(reward.xp || 0))),
+    passPoints:Math.max(0, Math.floor(Number(reward.passPoints || 0))),
+    captures,
+    kills,
+    evac,
+    before,
+    after:worldMapControl(region, S),
+    completedAt:Date.now(),
   };
   wm.activeRegionId = "";
   wm.activeRunId = "";
@@ -35185,6 +35248,11 @@ function deploy(opts={}){
 }
 
 function startNextMission(){
+  const pendingWorldMapReturn = ensureWorldMapCampaignState(S);
+  if(pendingWorldMapReturn.returnAfterComplete){
+    closeComplete();
+    return;
+  }
   beginMissionTransitionGuard("next-mission", 1200);
   saveResumeTransitionBoundary("next-mission");
   tigerEcosystemMissionAdvance();
@@ -35275,6 +35343,7 @@ function closeComplete(){
       if(overlay) overlay.style.display = "none";
       setPaused(true, "world-map");
       openWorldMapCampaign();
+      toast("World Map updated. Region rewards, control, rivals, and claims are ready to review.");
       save(true);
       return;
     }
