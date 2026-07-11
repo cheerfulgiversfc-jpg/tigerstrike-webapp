@@ -28756,6 +28756,7 @@ function renderBaseHqQuickBar(){
   bar.classList.toggle("collapsed", !!__baseHqQuickMenuCollapsed);
   if(__baseHqQuickMenuCollapsed){
     bar.innerHTML = `${button("Open HQ Menu", "setBaseHqQuickMenuCollapsed(false)", "primary")}`;
+    armBaseHqButtons(bar);
     return;
   }
   bar.innerHTML = `
