@@ -18696,16 +18696,16 @@ function tutorialKey(){
 function tutorialAllows(action){
   const key = tutorialKey();
   if(!key) return true;
-  const combatKeys = ["lock_target","engage_tiger","combat_buttons","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger"];
+  const combatKeys = ["lock_target","engage_tiger","combat_buttons","attack_tiger","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger"];
   const afterCombatKeys = ["map_interactables","shield","squad_command","squad_formation","shop","squad_shop","inventory","cosmetics","investigation","live_world","world_map","mode_separation","done"];
   const allow = {
     interact:["map_interactables","shield",...afterCombatKeys],
     scan:["scan_line",...combatKeys,...afterCombatKeys],
     lock:["lock_target",...combatKeys,...afterCombatKeys],
     engage:["engage_tiger",...combatKeys,...afterCombatKeys],
-    attack:["combat_buttons","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger",...afterCombatKeys],
+    attack:["attack_tiger","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger",...afterCombatKeys],
     capture:["capture_window","ammo_warnings","resolve_tiger",...afterCombatKeys],
-    kill:["resolve_tiger",...afterCombatKeys],
+    kill:[...afterCombatKeys],
     shop:["shop","squad_shop","inventory","cosmetics","done"],
     inventory:["inventory","cosmetics","done"],
     worldMap:["world_map","mode_separation","done"],
@@ -18719,7 +18719,7 @@ function tutorialBlockMessage(action){
   if(action==="engage") return "Scan and lock the tiger before engaging.";
   if(action==="attack") return "Engage first, then weaken the tiger to capture range.";
   if(action==="capture") return "Wait for the Capture Window step and the highlighted Capture button.";
-  if(action==="kill") return "Reach the Capture or Kill step first.";
+  if(action==="kill") return "The tutorial requires one clean capture. Kill is available in normal missions after the tutorial.";
   if(action==="shop") return "Finish combat and shield basics before opening the shop.";
   if(action==="inventory") return "Open Inventory after the Shop step.";
   if(action==="worldMap") return "Open World Map during the World Map tutorial step.";
@@ -35455,7 +35455,7 @@ cv.addEventListener("pointerdown",(e)=>{
     }
     if(tapped){
       const tutorialStep = tutorialKey();
-      if(tutorialAllows("engage") && ["engage_tiger","combat_buttons","weaken_tiger","capture_window","weapon_switch","resolve_tiger"].includes(tutorialStep)){
+      if(tutorialAllows("engage") && ["engage_tiger","combat_buttons","attack_tiger","weaken_tiger","capture_window","weapon_switch","resolve_tiger"].includes(tutorialStep)){
         S.lockedTigerId = tapped.id;
         S.scanTargetTigerId = tapped.id;
         S.scanTargetUntil = Date.now() + 600000;
@@ -40650,7 +40650,7 @@ function updateBattleButtons(){
   if(capBtn) capBtn.disabled = !(t && t.alive);
   setCaptureReadyVisual(tigerInCaptureHpWindow(t));
   try{
-    if(window.TigerTutorial?.isRunning && ["weaken_tiger","capture_window"].includes(window.TigerTutorial.currentKey) && tigerInCaptureHpWindow(t)){
+    if(window.TigerTutorial?.isRunning && ["attack_tiger","weaken_tiger","capture_window"].includes(window.TigerTutorial.currentKey) && tigerInCaptureHpWindow(t)){
       window.TigerTutorial.captureWindowReached = true;
       window.TigerTutorial.captureButtonReady = true;
     }
@@ -41121,12 +41121,23 @@ function playerAction(action){
       }
     }
 
+    if(window.TigerTutorial?.isRunning && ["attack_tiger","weaken_tiger","capture_window"].includes(window.TigerTutorial.currentKey || "")){
+      const capMax = captureWindowHp(t);
+      const capMin = captureWindowMinHp(t);
+      if(Number(t.hp || 0) <= capMax){
+        t.hp = Math.max(capMin + 1, Math.min(capMax, Math.ceil(Number(t.hpMax || 1) * 0.22)));
+        window.TigerTutorial.captureWindowReached = true;
+        window.TigerTutorial.captureButtonReady = true;
+        setBattleMsg(`Capture ready. Tap Capture to use ${captureTranqWeaponLabel(t)}.`);
+      }
+    }
+
     if(t.hp<=0){
       finishTigerKillWithWeapon(t, w.id);
       return;
     }
     try{
-      if(window.TigerTutorial?.isRunning && ["weaken_tiger","capture_window"].includes(window.TigerTutorial.currentKey) && tigerInCaptureHpWindow(t)){
+      if(window.TigerTutorial?.isRunning && ["attack_tiger","weaken_tiger","capture_window"].includes(window.TigerTutorial.currentKey) && tigerInCaptureHpWindow(t)){
         window.TigerTutorial.captureWindowReached = true;
         window.TigerTutorial.captureButtonReady = true;
       }

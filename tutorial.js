@@ -374,11 +374,7 @@
         arrow:"evacZone",
         canNext: () => {
           const S = getS();
-          if((S?.evacDone || 0) >= 1) return true;
-          if(!S?.evacZone || !Array.isArray(S?.civilians)) return false;
-          const ez = S.evacZone;
-          const outer = (ez.r || 70) + 42;
-          return S.civilians.some((c)=>c && c.alive && !c.evac && dist(c.x, c.y, ez.x, ez.y) <= outer);
+          return (S?.evacDone || 0) >= 1 || (S?.stats?.evac || 0) >= 1;
         }
       },
       {
@@ -435,6 +431,14 @@
         }
       },
       {
+        key:"attack_tiger",
+        title:"Attack Tiger",
+        text:"Tap Attack once. This proves the combat button works and starts lowering the tiger toward the capture window.",
+        hint:"Tap the highlighted Attack button.",
+        arrow:"atkBtn",
+        canNext: () => window.TigerTutorial.attackedOnce === true
+      },
+      {
         key:"weaken_tiger",
         title:"Weaken Tiger",
         text:`Attack until the tiger is at ${capturePct}% HP or lower. The capture button will highlight when the tiger is in capture range.`,
@@ -453,9 +457,9 @@
         key:"capture_window",
         title:"Capture Window",
         text:`Capture is best when the tiger is at ${capturePct}% HP or lower. If you press Capture with no tranquilizers, the game should tell you you are out instead of leaving you guessing.`,
-        hint:"When Capture is highlighted, tap Next.",
+        hint:"When Capture is highlighted, tap Capture to finish the tutorial tiger.",
         arrow:"captureBtn",
-        canNext: () => !!(window.TigerTutorial.captureWindowReached || window.TigerTutorial.captureButtonReady || captureReadyFromUi() || window.TigerTutorial.combatOutcome)
+        canNext: () => !!(window.TigerTutorial.combatOutcome === "CAPTURE")
       },
       {
         key:"weapon_switch",
@@ -479,13 +483,13 @@
       },
       {
         key:"resolve_tiger",
-        title:"Capture Or Kill",
-        text:`Now finish the fight. Capture preserves the tiger for research. Kill removes the threat quickly. Strong tigers may require better timing, ammo, and armor.`,
-        hint:"Capture or kill this tiger to continue.",
+        title:"Capture Confirmed",
+        text:`Capture preserves the tiger for research and keeps missions under control. In normal missions you can kill if needed, but the tutorial requires one clean capture.`,
+        hint:"Captured successfully. Tap Next.",
         arrow:"captureBtn",
         canNext: () => {
           const outcome = window.TigerTutorial.combatOutcome;
-          return outcome === "CAPTURE" || outcome === "KILL";
+          return outcome === "CAPTURE";
         }
       },
       {
@@ -663,11 +667,32 @@
 
   window.verifyTigerTutorialSteps = function verifyTigerTutorialSteps(){
     const steps = getStepList();
+    const requiredKeys = [
+      "move",
+      "scan_line",
+      "lock_target",
+      "engage_tiger",
+      "attack_tiger",
+      "capture_window",
+      "escort",
+      "shop",
+      "squad_shop",
+      "inventory",
+      "cosmetics",
+      "squad_command",
+      "squad_formation",
+      "world_map"
+    ];
+    const keys = steps.map((step)=>step?.key);
+    const missingRequired = requiredKeys.filter((key)=>!keys.includes(key));
+    const duplicateKeys = keys.filter((key, idx)=>key && keys.indexOf(key) !== idx);
     return {
-      ok: steps.length === 29 && steps.every((step)=>step && step.key && step.title && typeof step.canNext === "function"),
+      ok: steps.length >= requiredKeys.length && missingRequired.length === 0 && duplicateKeys.length === 0 && steps.every((step)=>step && step.key && step.title && typeof step.canNext === "function"),
       count: steps.length,
       missingCanNext: steps.filter((step)=>typeof step?.canNext !== "function").map((step)=>step?.key || "(unknown)"),
-      keys: steps.map((step)=>step.key)
+      missingRequired,
+      duplicateKeys,
+      keys
     };
   };
 
@@ -784,7 +809,7 @@
       updateProgressFlags();
       if(step.key === "weaken_tiger") updateWeakenTigerHint();
       setCardPlacement(step);
-      if(["lock_target","engage_tiger","combat_buttons","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger"].includes(step.key)){
+      if(["lock_target","engage_tiger","combat_buttons","attack_tiger","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger"].includes(step.key)){
         const target = pickTutorialTiger(getS());
         if(target && target.alive && getS()){
           getS().scanTargetTigerId = target.id;
