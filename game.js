@@ -23483,7 +23483,7 @@ function renderMissionCinematicOutroCard(summary={}){
     : (extraction.complete ? `${extraction.icon || "🚁"} ${extraction.label || "Extraction"}` : "Safe-zone evacuation");
   const escapeLine = extraction.complete
     ? `${extraction.label || "Extraction"} secured${extraction.emergency ? " under emergency fallback" : " with a clean hold"}`
-    : `${routeLabel} carried civilians out of the hot zone`;
+    : (route.successRecap || `${routeLabel} carried civilians out of the hot zone`);
   const boardingLine = route.active
     ? `${boarded}/${boardingTotal} boarded${route.boardingPaused ? " after a danger pause" : (route.blocked ? " through an alternate exit" : "")}`
     : "Final extraction hold completed";
@@ -42148,14 +42148,14 @@ function defaultEvacRouteState(){
     color:"rgba(74,222,128,.98)", vehicle:"safe_hold", x:0, y:0, r:70, startX:0, startY:0, midX:0, midY:0,
     altX:0, altY:0, vehicleX:0, vehicleY:0, vehicleAngle:0, blocked:false, blockedUntil:0, noticeAt:0, lastTickAt:0,
     boardedCount:0, boardingTotal:0, boardingPaused:false, boardingPauseReason:"", departStartedAt:0, departUntil:0, departing:false, departed:false,
-    cinematicStartedAt:0, cinematicBoardPulseAt:0, lastBoardedCount:0, lastCinematicPhase:""
+    departedAt:0, cinematicStartedAt:0, cinematicBoardPulseAt:0, lastBoardedCount:0, lastCinematicPhase:"", successRecap:""
   };
 }
 function ensureEvacRouteState(state=S){
   if(!state.evacRoute || typeof state.evacRoute !== "object") state.evacRoute = defaultEvacRouteState();
   const route = state.evacRoute;
   const defaults = defaultEvacRouteState();
-  for(const key of ["x","y","r","startX","startY","midX","midY","altX","altY","vehicleX","vehicleY","vehicleAngle","blockedUntil","noticeAt","lastTickAt","boardedCount","boardingTotal","departStartedAt","departUntil","departNoticeUntil","cinematicStartedAt","cinematicBoardPulseAt","lastBoardedCount"]){
+  for(const key of ["x","y","r","startX","startY","midX","midY","altX","altY","vehicleX","vehicleY","vehicleAngle","blockedUntil","noticeAt","lastTickAt","boardedCount","boardingTotal","departStartedAt","departUntil","departNoticeUntil","departedAt","cinematicStartedAt","cinematicBoardPulseAt","lastBoardedCount"]){
     if(!Number.isFinite(Number(route[key]))) route[key] = defaults[key];
   }
   route.active = !!route.active;
@@ -42171,6 +42171,7 @@ function ensureEvacRouteState(state=S){
   if(!route.vehicle) route.vehicle = defaults.vehicle;
   if(!route.boardingPauseReason) route.boardingPauseReason = "";
   if(!route.lastCinematicPhase) route.lastCinematicPhase = "";
+  if(typeof route.successRecap !== "string") route.successRecap = "";
   return route;
 }
 function resetEvacRouteForDeploy(state=S){
@@ -42203,10 +42204,14 @@ function evacuationTruthText(){
   ].filter(Boolean).join(" ").toLowerCase();
 }
 function declaredEvacRouteKey(){
+  const weType = String(activeWorldEvent(S)?.type || "").toLowerCase();
+  if(weType === "helicopter_crash") return "helicopter";
+  if(weType === "ambush_convoy") return "convoy";
+  if(weType === "flooded_route") return "boat";
   const text = evacuationTruthText();
-  if(/\b(boat|dock|harbor|river|water|flood|floodplain|delta|lake|bridge evac|river rescue|river extraction)\b/.test(text)) return "boat";
   if(/\b(helicopter|helo|airlift|landing pad|landing zone|chopper|crash)\b/.test(text)) return "helicopter";
   if(/\b(convoy|truck|caravan|pickup lane|vehicle|highway|supply route)\b/.test(text)) return "convoy";
+  if(/\b(boat|dock|harbor|river|water|flood|floodplain|delta|lake|bridge evac|river rescue|river extraction)\b/.test(text)) return "boat";
   if(/\b(street escape|street exit|city exit|alley exit|road exit|safe house|safe-zone|safe zone)\b/.test(text)) return "street";
   return "";
 }
@@ -42266,12 +42271,14 @@ function initializeRealEvacRoute(){
     boardingPauseReason:"",
     departStartedAt:0,
     departUntil:0,
+    departedAt:0,
     departing:false,
     departed:false,
     cinematicStartedAt:Date.now(),
     cinematicBoardPulseAt:0,
     lastBoardedCount:0,
     lastCinematicPhase:"route_set",
+    successRecap:"",
     noticeAt:Date.now() + 1200,
     lastTickAt:Date.now()
   });
@@ -42318,6 +42325,10 @@ function markCivilianBoarded(c, now=Date.now()){
   if(!c) return;
   const route = ensureEvacRouteState(S);
   if(!route.active) return;
+  if((route.boardingPaused || route.blocked) && !c.boardingAt){
+    c.evacRouteKey = route.key;
+    return;
+  }
   if(!c.boardingAt) c.boardingAt = now;
   if(!c.boardedAt){
     const group = Math.floor((Math.max(1, Number(c.id || 1)) - 1) / 3);
@@ -42332,31 +42343,11 @@ function realEvacRouteTick(now=Date.now()){
   if(window.__TUTORIAL_MODE__ || S.mode === "Survival" || S.paused || S.gameOver || S.missionEnded) return;
   const route = ensureEvacRouteState(S);
   if(!route.active) return;
+  const prevTickAt = Math.max(0, Number(route.lastTickAt || now));
+  const dt = clamp(now - Math.max(prevTickAt, now - 1000), 0, 1000);
   route.lastTickAt = now;
   route.boardingTotal = (S.civilians || []).filter((c)=>c?.alive).length;
-  for(const c of (S.civilians || [])){
-    if(c?.alive && c.evac){
-      markCivilianBoarded(c, now);
-      const slot = evacRouteBoardingSlot(c, route);
-      c.safeZoneOffset = { x:slot.x - missionEvacZoneSafe(S).x, y:slot.y - missionEvacZoneSafe(S).y };
-      if(!route.departed){
-        c.x = slot.x;
-        c.y = slot.y;
-        c.__drawX = c.x;
-        c.__drawY = c.y;
-      }
-    }
-  }
-  const prevBoarded = Math.max(0, Math.floor(Number(route.boardedCount || 0)));
-  route.boardedCount = (S.civilians || []).filter((c)=>c?.alive && c.evac && c.boardedAt && now >= Number(c.boardedAt || 0)).length;
-  if(route.boardedCount > prevBoarded){
-    route.cinematicBoardPulseAt = now;
-    route.lastBoardedCount = route.boardedCount;
-    if(Date.now() > Number(route._boardingProgressNoticeAt || 0)){
-      route._boardingProgressNoticeAt = now + 1800;
-      setEventText(`${route.icon} Boarding ${route.boardedCount}/${Math.max(1, route.boardingTotal || 1)} civilians. Keep the route clear.`, 1.8);
-    }
-  }
+
   const shouldBlock = realEvacRouteBlockedByWorld(route, now);
   if(shouldBlock && !route.blocked){
     route.blocked = true;
@@ -42385,6 +42376,37 @@ function realEvacRouteTick(now=Date.now()){
   } else if(!route.boardingPaused && wasPaused){
     setEventText(`${route.icon} Boarding resumed. Keep civilians moving.`, 3);
   }
+  if(route.boardingPaused || route.blocked){
+    for(const c of (S.civilians || [])){
+      if(c?.alive && c.evac && c.boardedAt && now < Number(c.boardedAt || 0)){
+        c.boardedAt += dt;
+      }
+    }
+  }
+  for(const c of (S.civilians || [])){
+    if(c?.alive && c.evac){
+      if(!route.boardingPaused && !route.blocked) markCivilianBoarded(c, now);
+      else c.evacRouteKey = route.key;
+      const slot = evacRouteBoardingSlot(c, route);
+      c.safeZoneOffset = { x:slot.x - missionEvacZoneSafe(S).x, y:slot.y - missionEvacZoneSafe(S).y };
+      if(!route.departed){
+        c.x = slot.x;
+        c.y = slot.y;
+        c.__drawX = c.x;
+        c.__drawY = c.y;
+      }
+    }
+  }
+  const prevBoarded = Math.max(0, Math.floor(Number(route.boardedCount || 0)));
+  route.boardedCount = (S.civilians || []).filter((c)=>c?.alive && c.evac && c.boardedAt && now >= Number(c.boardedAt || 0)).length;
+  if(route.boardedCount > prevBoarded){
+    route.cinematicBoardPulseAt = now;
+    route.lastBoardedCount = route.boardedCount;
+    if(Date.now() > Number(route._boardingProgressNoticeAt || 0)){
+      route._boardingProgressNoticeAt = now + 1800;
+      setEventText(`${route.icon} Boarding ${route.boardedCount}/${Math.max(1, route.boardingTotal || 1)} civilians. Keep the route clear.`, 1.8);
+    }
+  }
   const allBoarded = route.boardingTotal > 0 && route.boardedCount >= route.boardingTotal;
   if(allBoarded && !route.blocked && !route.boardingPaused && !route.departing && !route.departed){
     route.departing = true;
@@ -42397,7 +42419,10 @@ function realEvacRouteTick(now=Date.now()){
   if(route.departing && now >= route.departUntil){
     route.departing = false;
     route.departed = true;
+    route.departedAt = now;
+    route.successRecap = `${route.icon} ${route.label}: ${Math.max(0, route.boardedCount || 0)}/${Math.max(1, route.boardingTotal || 1)} civilians boarded and departed.`;
     setEventText(`${route.icon} Civilian evacuation completed. Finish the mission.`, 3.5);
+    toast(route.successRecap);
   }
 }
 
@@ -45953,7 +45978,9 @@ function drawRealEvacRoute(now=Date.now()){
     holdProgressMs:Math.max(0, Number(route.boardedCount || S.stats?.evac || 0)),
     holdRequiredMs:Math.max(1, Number(route.boardingTotal || (S.civilians || []).length || 1))
   };
-  if(!lite && (!route.departed || route.departing)) drawExtractionVehicle(markerEx, now);
+  if(!route.departed || route.departing){
+    drawExtractionVehicle(markerEx, now);
+  }
 
   ctx.save();
   const pulse = 0.78 + Math.sin(now / 210) * 0.10;
