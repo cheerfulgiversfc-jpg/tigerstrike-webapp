@@ -38403,6 +38403,127 @@ function alphaBuffs(){
   }
 }
 
+function tigerEcosystemAiProfile(t){
+  const type = String(t?.type || "Standard");
+  const profiles = {
+    Standard: { retreatHp:0.18, huntCiv:0.38, stalk:0.20, den:0.34, packCall:0.08, flee:0.30, label:"Hunt" },
+    Scout: { retreatHp:0.30, huntCiv:0.48, stalk:0.38, den:0.26, packCall:0.06, flee:0.62, label:"Scout" },
+    Stalker: { retreatHp:0.25, huntCiv:0.44, stalk:0.86, den:0.32, packCall:0.07, flee:0.50, label:"Stalk" },
+    Berserker: { retreatHp:0.10, huntCiv:0.86, stalk:0.10, den:0.42, packCall:0.06, flee:0.12, label:"Rush" },
+    Alpha: { retreatHp:0.22, huntCiv:0.52, stalk:0.24, den:0.92, packCall:0.92, flee:0.22, label:"Command" },
+  };
+  const p = { ...(profiles[type] || profiles.Standard) };
+  if(isBossTiger(t)){
+    p.retreatHp *= 0.68;
+    p.den = clamp(p.den + 0.18, 0, 1);
+    p.packCall = clamp(p.packCall + 0.18, 0, 1);
+    p.huntCiv = clamp(p.huntCiv + 0.08, 0, 1);
+  }
+  return p;
+}
+
+function tigerEcoSetBehavior(t, behavior, now, ms=1200, label="", noticeCooldown=5200){
+  if(!t || !behavior) return false;
+  t._ecoBehavior = behavior;
+  t._ecoBehaviorUntil = now + ms;
+  if(label) setTigerIntent(t, label, Math.min(900, ms));
+  if(label && now >= Number(t._ecoNextNoticeAt || 0)){
+    t._ecoNextNoticeAt = now + noticeCooldown;
+    const map = {
+      hunt_civilian:"Tiger is hunting a civilian.",
+      retreat:"Injured tiger is falling back.",
+      protect_den:"Tiger is protecting its den.",
+      call_pack:"Alpha called the pack.",
+      stalk_player:"Stalker is shadowing your route.",
+      flee:"Scout is fleeing to regroup.",
+      answer_call:"Pack is answering the Alpha call.",
+    };
+    const msg = map[behavior];
+    if(msg) setEventText(msg, 1.9);
+  }
+  return true;
+}
+
+function tigerEcoDenAnchor(t, pack){
+  let x = Number(pack?.territoryX);
+  let y = Number(pack?.territoryY);
+  let r = Number(pack?.territoryR);
+  let strength = Number(t?.ecosystemDenStrength || pack?.packState?.ecosystemDen || 0);
+  if((!Number.isFinite(x) || !Number.isFinite(y)) && t?.packId){
+    const territory = tigerEcosystemPackTerritory(t.packId, S);
+    const center = territory ? tigerEcosystemTerritoryCenter(territory.key, S) : null;
+    if(center){
+      x = center.x;
+      y = center.y;
+      strength = Math.max(strength, Number(territory.denStrength || 0));
+      r = Math.max(Number.isFinite(r) ? r : 0, 170 + strength * 1.4);
+    }
+  }
+  if(!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return {
+    x: clamp(x, 18, worldWidth(S) - 18),
+    y: clamp(y, 18, worldHeight(S) - 18),
+    r: clamp(Number.isFinite(r) ? r : 220, 150, 420),
+    strength: clamp(strength, 0, 100),
+  };
+}
+
+function tigerEcoCivilianPrey(t, civs=[]){
+  const base = selectTigerCivilianTarget(t, civs);
+  if(!base.civ) return base;
+  let best = base.civ;
+  let bestScore = base.score;
+  let bestDist = base.dist;
+  for(const civ of civs){
+    if(!civ || !civ.alive || civ.evac) continue;
+    const d = dist(t.x, t.y, civ.x, civ.y);
+    const isolated = civ.following ? 0 : 54;
+    const injured = civ.aiState === "injured" ? 120 : 0;
+    const panicked = civ.aiState === "panicked" ? 66 : 0;
+    const lowHp = clamp(1 - (Number(civ.hp || 0) / Math.max(1, Number(civ.hpMax || 1))), 0, 1) * 110;
+    const escort = civ.following ? 44 : 0;
+    const score = isolated + injured + panicked + lowHp + escort - d * 0.38;
+    if(score > bestScore){
+      best = civ;
+      bestScore = score;
+      bestDist = d;
+    }
+  }
+  return { civ:best, dist:bestDist, score:bestScore };
+}
+
+function tigerEcoRetreatPoint(t, threatX, threatY, denAnchor=null){
+  const awayA = Math.atan2(t.y - threatY, t.x - threatX);
+  let x = t.x + Math.cos(awayA) * 190;
+  let y = t.y + Math.sin(awayA) * 190;
+  if(denAnchor){
+    const denIsSafer = dist(denAnchor.x, denAnchor.y, threatX, threatY) > dist(t.x, t.y, threatX, threatY) + 50;
+    if(denIsSafer || String(t.type || "") === "Alpha"){
+      x = (denAnchor.x * 0.74) + (x * 0.26);
+      y = (denAnchor.y * 0.74) + (y * 0.26);
+    }
+  }
+  return {
+    x: clamp(x, 18, worldWidth(S) - 18),
+    y: clamp(y, 18, worldHeight(S) - 18),
+  };
+}
+
+function tigerEcoCallPack(alpha, pack, now, targetX, targetY){
+  if(!alpha || !pack?.members?.length) return;
+  pack.packState.threatUntil = Math.max(pack.packState.threatUntil || 0, now + 9000);
+  for(const mate of pack.members){
+    if(!mate || !mate.alive || mate.id === alpha.id) continue;
+    mate._ecoTargetX = targetX;
+    mate._ecoTargetY = targetY;
+    tigerEcoSetBehavior(mate, "answer_call", now, rand(1350, 2300), "Pack Rally", 9000);
+    mate.enragedUntil = Math.max(mate.enragedUntil || 0, now + rand(900, 1700));
+    if(mate.type === "Scout" || mate.type === "Stalker" || mate.packRole === TIGER_PACK_ROLES.FLANKER){
+      mate.burstUntil = Math.max(mate.burstUntil || 0, now + rand(520, 980));
+    }
+  }
+}
+
 // ===================== TIGERS ROAM =====================
 function roamTigers(){
   alphaBuffs();
@@ -38653,6 +38774,7 @@ function roamTigers(){
     const motion = tigerMotionProfile(t, def, now);
     const persona = motion.personality || tigerPersonalityProfile(t, now);
     const ai2 = tigerAi2Profile(t);
+    const ecoAi = tigerEcosystemAiProfile(t);
     const civs = liveCivs;
     let targetX=t.x + Math.cos(t.wanderAngle) * 20;
     let targetY=t.y + Math.sin(t.wanderAngle) * 20;
@@ -38669,6 +38791,9 @@ function roamTigers(){
     const priorityCivInfo = selectTigerCivilianTarget(t, civs);
     const priorityCiv = priorityCivInfo.civ;
     const priorityCivDist = priorityCivInfo.dist;
+    const ecoPreyInfo = tigerEcoCivilianPrey(t, civs);
+    const ecoPrey = ecoPreyInfo.civ;
+    const ecoPreyDist = ecoPreyInfo.dist;
 
     let nearestCarcassDist = 1e9;
     for(const carcass of (S.carcasses || [])){
@@ -38883,6 +39008,96 @@ function roamTigers(){
       t._ai2TargetCivId = 0;
     }
 
+    const denAnchor = tigerEcoDenAnchor(t, pack);
+    const ecoHpRatio = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
+    const playerInDenZone = !!denAnchor && dist(S.me.x, S.me.y, denAnchor.x, denAnchor.y) <= denAnchor.r + 70;
+    let preyInDenZone = false;
+    if(denAnchor && ecoPrey){
+      preyInDenZone = dist(ecoPrey.x, ecoPrey.y, denAnchor.x, denAnchor.y) <= denAnchor.r + 35;
+    }
+    const ecoThinkReady = now >= Number(t._ecoNextThinkAt || 0);
+    if(ecoThinkReady){
+      t._ecoNextThinkAt = now + rand(520, 980);
+      const underPressure = playerDist < (motion.detect + 110) * directorAggroMul || now < Number(t.enragedUntil || 0);
+      const denThreat = !!denAnchor && (playerInDenZone || preyInDenZone || (pack && now < Number(pack.packState?.threatUntil || 0)));
+      const canRetreat = ecoHpRatio <= ecoAi.retreatHp && underPressure && t.type !== "Berserker";
+      const huntRange = (motion.detect + 95 + ecoAi.huntCiv * 145) * directorAggroMul;
+      if(canRetreat){
+        const fleeLabel = t.type === "Scout" ? "Flee" : (t.type === "Alpha" ? "Fallback Den" : "Retreat");
+        tigerEcoSetBehavior(t, t.type === "Scout" ? "flee" : "retreat", now, rand(1300, 2200), fleeLabel, 5800);
+      } else if(t.type === "Alpha" && pack && denThreat && Math.random() < ecoAi.packCall){
+        const callTarget = ecoPrey && ecoPreyDist < playerDist + 120 ? ecoPrey : S.me;
+        t._ecoTargetX = callTarget.x;
+        t._ecoTargetY = callTarget.y;
+        tigerEcoSetBehavior(t, "call_pack", now, rand(1100, 1700), "Pack Call", 6800);
+        tigerEcoCallPack(t, pack, now, callTarget.x, callTarget.y);
+      } else if(denThreat && denAnchor && Math.random() < ecoAi.den){
+        const denRole = t.packRole || TIGER_PACK_ROLES.HUNTER;
+        const denDefender = t.type === "Alpha" || denRole === TIGER_PACK_ROLES.PROTECTOR || denRole === TIGER_PACK_ROLES.ALPHA || denAnchor.strength >= 64;
+        if(denDefender){
+          tigerEcoSetBehavior(t, "protect_den", now, rand(1200, 2100), "Protect Den", 6400);
+        }
+      } else if(t.type === "Stalker" && playerDist > 120 && playerDist < (motion.detect + 210) * dynPlayerBiasMul && Math.random() < ecoAi.stalk){
+        t._ecoFlankSide = (Number(t._ecoFlankSide || 1) || 1) * -1;
+        tigerEcoSetBehavior(t, "stalk_player", now, rand(1350, 2300), "Stalk", 5600);
+      } else if(ecoPrey && ecoPreyDist < huntRange && Math.random() < ecoAi.huntCiv){
+        t._ecoTargetCivId = ecoPrey.id;
+        const label = t.type === "Berserker" ? "Civilian Rush" : (t.type === "Scout" ? "Scout Prey" : "Hunt Civilian");
+        tigerEcoSetBehavior(t, "hunt_civilian", now, rand(1250, 2200), label, 5200);
+        if(t.type === "Berserker") t.enragedUntil = Math.max(t.enragedUntil || 0, now + rand(1100, 1900));
+      }
+    }
+
+    if(now < Number(t._ecoBehaviorUntil || 0)){
+      if(t._ecoBehavior === "hunt_civilian"){
+        const civ = (S.civilians || []).find((c)=>c && c.id === t._ecoTargetCivId && c.alive && !c.evac) || ecoPrey;
+        if(civ){
+          targetX = civ.x;
+          targetY = civ.y;
+          targetDist = dist(t.x, t.y, targetX, targetY);
+        }
+      } else if(t._ecoBehavior === "retreat" || t._ecoBehavior === "flee"){
+        const away = tigerEcoRetreatPoint(t, S.me.x, S.me.y, denAnchor);
+        targetX = away.x;
+        targetY = away.y;
+        targetDist = dist(t.x, t.y, targetX, targetY);
+      } else if(t._ecoBehavior === "protect_den" && denAnchor){
+        if(playerInDenZone && playerDist < (motion.detect + 120) * directorAggroMul){
+          targetX = S.me.x;
+          targetY = S.me.y;
+          targetDist = playerDist;
+        } else if(ecoPrey && preyInDenZone){
+          targetX = ecoPrey.x;
+          targetY = ecoPrey.y;
+          targetDist = ecoPreyDist;
+        } else {
+          const patrolA = (now * 0.001) + (t.id * 1.17);
+          const patrolR = clamp(46 + denAnchor.strength * 0.55, 46, 104);
+          targetX = denAnchor.x + Math.cos(patrolA) * patrolR;
+          targetY = denAnchor.y + Math.sin(patrolA) * patrolR;
+          targetDist = dist(t.x, t.y, targetX, targetY);
+        }
+      } else if(t._ecoBehavior === "call_pack"){
+        targetX = Number.isFinite(t._ecoTargetX) ? t._ecoTargetX : S.me.x;
+        targetY = Number.isFinite(t._ecoTargetY) ? t._ecoTargetY : S.me.y;
+        targetDist = dist(t.x, t.y, targetX, targetY);
+      } else if(t._ecoBehavior === "answer_call"){
+        targetX = Number.isFinite(t._ecoTargetX) ? t._ecoTargetX : S.me.x;
+        targetY = Number.isFinite(t._ecoTargetY) ? t._ecoTargetY : S.me.y;
+        targetDist = dist(t.x, t.y, targetX, targetY);
+      } else if(t._ecoBehavior === "stalk_player"){
+        const side = Number(t._ecoFlankSide || t._ai2FlankSide || 1) || 1;
+        const flank = tigerAi2FlankAnchor(t, S.me.x, S.me.y, playerDist, side, 0.48);
+        targetX = flank.x;
+        targetY = flank.y;
+        targetDist = dist(t.x, t.y, targetX, targetY);
+        t.wanderAngle += (Math.random() - 0.5) * 0.08;
+      }
+    } else if(t._ecoBehavior){
+      t._ecoBehavior = "";
+      t._ecoTargetCivId = 0;
+    }
+
     if(S.lockedTigerId===t.id && playerDist < motion.detect + 90){
       targetX=S.me.x;
       targetY=S.me.y;
@@ -39065,6 +39280,13 @@ function roamTigers(){
       if(t._ai2Behavior === "flank_player") speedCap = Math.max(speedCap, motion.sprint * 1.02);
       if(t._ai2Behavior === "civilian_rush") speedCap = Math.max(speedCap, motion.sprint * 1.08);
       if(t._ai2Behavior === "ambush") speedCap = Math.max(speedCap, motion.chase * 1.08);
+    }
+    if(now < Number(t._ecoBehaviorUntil || 0)){
+      if(t._ecoBehavior === "hunt_civilian") speedCap = Math.max(speedCap, motion.sprint * (t.type === "Berserker" ? 1.10 : 1.02));
+      if(t._ecoBehavior === "retreat" || t._ecoBehavior === "flee") speedCap = Math.max(speedCap, motion.sprint * (t._ecoBehavior === "flee" ? 1.08 : 0.96));
+      if(t._ecoBehavior === "protect_den") speedCap = Math.max(speedCap, motion.chase * 1.04);
+      if(t._ecoBehavior === "call_pack" || t._ecoBehavior === "answer_call") speedCap = Math.max(speedCap, motion.chase * 1.08);
+      if(t._ecoBehavior === "stalk_player") speedCap = Math.max(motion.walk * 1.18, Math.min(speedCap, motion.chase * 0.88));
     }
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap = Math.max(speedCap, motion.sprint + 0.35);
     if(t.type==="Berserker" && t.rageOn) speedCap = Math.max(speedCap, motion.sprint * 1.06);
