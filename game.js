@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4496";
+const TS_BUILD = "4497";
 if(tg){
   try{
     tg.expand?.();
@@ -1297,6 +1297,24 @@ const CLAN_CONTRACT_POOL = Object.freeze([
     baseTarget:22000,
     perMember:8500,
     reward:{ cash:3600, perkPoints:2 }
+  }),
+  Object.freeze({
+    id:"C_SOCIAL_PERFECT_RESCUE",
+    title:"Perfect Rescue Relay",
+    desc:"Clan members stack zero-loss rescues for weekly bragging rights.",
+    metric:"perfectRescues",
+    baseTarget:4,
+    perMember:1,
+    reward:{ cash:4200, perkPoints:2 }
+  }),
+  Object.freeze({
+    id:"C_SOCIAL_NEMESIS_CLEAR",
+    title:"Nemesis Watch",
+    desc:"Coordinate boss and Nemesis clears across the rescue network.",
+    metric:"bossesDefeated",
+    baseTarget:3,
+    perMember:1,
+    reward:{ cash:5200, perkPoints:3 }
   }),
 ]);
 
@@ -2773,6 +2791,52 @@ function missionShareBaseUrl(){
 }
 
 const MISSION_STAT_KEYS = Object.freeze(["shots","captures","kills","evac","cashEarned","trapsPlaced","trapsTriggered"]);
+function defaultSocialRescueState(){
+  return {
+    weekKey: contractWeekKey(),
+    weekly:{ captures:0, evac:0, perfectRescues:0, nemesisClears:0, missions:0, bestScore:0 },
+    challengeHistory:[],
+    lastChallenge:null,
+    claimedInviteMilestones:{},
+    unlockedTitles:{},
+    lastAwardedRunId:"",
+  };
+}
+function normalizeSocialRescueState(raw={}){
+  const base = defaultSocialRescueState();
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const weekKey = String(src.weekKey || base.weekKey || contractWeekKey()).trim() || contractWeekKey();
+  const weeklyRaw = (src.weekly && typeof src.weekly === "object") ? src.weekly : {};
+  return {
+    weekKey,
+    weekly:{
+      captures: Math.max(0, Math.floor(Number(weeklyRaw.captures || 0))),
+      evac: Math.max(0, Math.floor(Number(weeklyRaw.evac || 0))),
+      perfectRescues: Math.max(0, Math.floor(Number(weeklyRaw.perfectRescues || 0))),
+      nemesisClears: Math.max(0, Math.floor(Number(weeklyRaw.nemesisClears || 0))),
+      missions: Math.max(0, Math.floor(Number(weeklyRaw.missions || 0))),
+      bestScore: Math.max(0, Math.floor(Number(weeklyRaw.bestScore || 0))),
+    },
+    challengeHistory: Array.isArray(src.challengeHistory) ? src.challengeHistory.slice(-12).filter((row)=>row && typeof row === "object") : [],
+    lastChallenge: (src.lastChallenge && typeof src.lastChallenge === "object") ? { ...src.lastChallenge } : null,
+    claimedInviteMilestones: (src.claimedInviteMilestones && typeof src.claimedInviteMilestones === "object") ? { ...src.claimedInviteMilestones } : {},
+    unlockedTitles: (src.unlockedTitles && typeof src.unlockedTitles === "object") ? { ...src.unlockedTitles } : {},
+    lastAwardedRunId: String(src.lastAwardedRunId || ""),
+  };
+}
+function ensureSocialRescueState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return defaultSocialRescueState();
+  const social = normalizeSocialRescueState(src.socialRescue || {});
+  const currentWeek = contractWeekKey();
+  if(social.weekKey !== currentWeek){
+    social.weekKey = currentWeek;
+    social.weekly = { captures:0, evac:0, perfectRescues:0, nemesisClears:0, missions:0, bestScore:0 };
+    social.lastAwardedRunId = "";
+  }
+  src.socialRescue = social;
+  return src.socialRescue;
+}
 function missionStatSnapshot(src=S.stats){
   const s = src && typeof src === "object" ? src : {};
   const out = {};
@@ -2941,6 +3005,7 @@ function renderCompleteRecapCard(payload=null){
   cardEl.innerText = String(recap.card || "Mission recap is ready.");
   renderMissionPremiumSummaryCard();
   renderMissionRewards2Card();
+  renderSocialRescueCard();
 }
 
 function missionPremiumGrade(stats){
@@ -3170,6 +3235,203 @@ function renderMissionRewards2Card(breakdown=null){
       .map((tag)=>`<span class="premiumSummaryTag">${rewardEscapeHtml(tag)}</span>`)
       .join("");
   }
+}
+
+function socialRescueScore(stats={}, meta={}){
+  const s = missionStatSnapshot(stats);
+  const civTotal = Math.max(0, Math.floor(Number(meta?.civTotal || 0)));
+  const perfect = civTotal > 0 && Math.max(0, Number(s.evac || 0)) >= civTotal && Math.max(0, Number(meta?.civDead || 0)) <= 0;
+  const boss = !!meta?.bossMission;
+  return Math.max(0, Math.round(
+    (s.evac * 140) +
+    (s.captures * 180) +
+    (s.kills * 80) +
+    (Math.max(0, Number(s.cashEarned || 0)) * 0.04) +
+    (Math.max(0, Number(s.trapsTriggered || 0)) * 90) +
+    (perfect ? 900 : 0) +
+    (boss ? 650 : 0)
+  ));
+}
+function socialRescueTitleDefs(){
+  return [
+    { key:"weekly_perfect_1", titleId:"ELITE_SOCIAL_RESCUE_BEACON", icon:"🛟", name:"Rescue Beacon", ready:(w)=>w.perfectRescues >= 1 },
+    { key:"weekly_captures_20", titleId:"ELITE_SOCIAL_CAPTURE_ACE", icon:"🎯", name:"Capture Ace", ready:(w)=>w.captures >= 20 },
+    { key:"weekly_evac_30", titleId:"ELITE_SOCIAL_LIFELINE_CAPTAIN", icon:"🚁", name:"Lifeline Captain", ready:(w)=>w.evac >= 30 },
+    { key:"weekly_nemesis_1", titleId:"ELITE_SOCIAL_NEMESIS_SIGNAL", icon:"👑", name:"Nemesis Signal", ready:(w)=>w.nemesisClears >= 1 },
+  ];
+}
+function unlockSocialRescueTitle(def){
+  if(!def) return false;
+  const mastery = ensureMasteryRewardsState(S);
+  if(!mastery.ownedEliteTitles.includes(def.titleId)){
+    mastery.ownedEliteTitles.push(def.titleId);
+    mastery.equippedEliteTitle = def.titleId;
+    return true;
+  }
+  return false;
+}
+function awardSocialRescueTitles(){
+  const social = ensureSocialRescueState(S);
+  const unlocked = [];
+  for(const def of socialRescueTitleDefs()){
+    if(social.unlockedTitles[def.key]) continue;
+    if(!def.ready(social.weekly)) continue;
+    social.unlockedTitles[def.key] = Date.now();
+    if(unlockSocialRescueTitle(def)){
+      unlocked.push(`${def.icon} ${def.name}`);
+    }
+  }
+  return unlocked;
+}
+function socialInviteRewardMilestones(){
+  return [
+    { target:1, label:"First Responder Invite", reward:{ medkits:1, shields:1, traps:2 } },
+    { target:3, label:"Rescue Network Invite", reward:{ medkits:2, shields:2, traps:3, armor:6 } },
+    { target:5, label:"Clan Signal Invite", reward:{ medkits:3, shields:3, traps:4, armor:10 } },
+  ];
+}
+function claimAvailableSocialInviteReward(){
+  const social = ensureSocialRescueState(S);
+  const ref = normalizeReferralMilestoneSnapshot(S.referralMilestone || {});
+  const started = Math.max(0, Math.floor(Number(ref.started || 0)));
+  const tier = socialInviteRewardMilestones().find((row)=>started >= row.target && !social.claimedInviteMilestones[row.target]);
+  if(!tier) return null;
+  social.claimedInviteMilestones[tier.target] = Date.now();
+  const reward = tier.reward || {};
+  if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
+  if(!S.armorPlates || typeof S.armorPlates !== "object") S.armorPlates = {};
+  if(!S.armorPlatesFallback || typeof S.armorPlatesFallback !== "object") S.armorPlatesFallback = {};
+  if(reward.medkits) S.medkits.M_SMALL = Math.max(0, Math.floor(Number(S.medkits.M_SMALL || 0))) + Math.max(0, Math.floor(Number(reward.medkits || 0)));
+  if(reward.shields) S.shields = Math.max(0, Math.floor(Number(S.shields || 0))) + Math.max(0, Math.floor(Number(reward.shields || 0)));
+  if(reward.traps) S.trapsOwned = Math.max(0, Math.floor(Number(S.trapsOwned || 0))) + Math.max(0, Math.floor(Number(reward.traps || 0)));
+  if(reward.armor){
+    const add = Math.max(0, Math.floor(Number(reward.armor || 0)));
+    S.armorPlates.A_TIER1 = Math.max(0, Math.floor(Number(S.armorPlates?.A_TIER1 || 0))) + add;
+    S.armorPlatesFallback.A_TIER1 = Math.max(0, Math.floor(Number(S.armorPlatesFallback?.A_TIER1 || 0))) + add;
+  }
+  return tier;
+}
+function recordSocialRescueMission({ missionStats=null, civTotal=0, civDead=0, activeMission=null }={}){
+  const social = ensureSocialRescueState(S);
+  const runId = String(S._missionRunId || "");
+  if(runId && social.lastAwardedRunId === runId){
+    return social.lastChallenge || null;
+  }
+  const stats = missionStatSnapshot(missionStats || currentMissionStatsSnapshot({ civTotal }));
+  const bossMission = !!(activeMission?.boss || activeMission?.finalBoss || activeMission?.bossTwin || activeMission?.denRaid);
+  const perfect = civTotal > 0 && civDead <= 0 && Math.max(0, Number(stats.evac || 0)) >= civTotal;
+  const score = socialRescueScore(stats, { civTotal, civDead, bossMission });
+  social.weekly.captures += Math.max(0, Math.floor(Number(stats.captures || 0)));
+  social.weekly.evac += Math.max(0, Math.floor(Number(stats.evac || 0)));
+  social.weekly.perfectRescues += perfect ? 1 : 0;
+  social.weekly.nemesisClears += bossMission ? 1 : 0;
+  social.weekly.missions += 1;
+  social.weekly.bestScore = Math.max(social.weekly.bestScore || 0, score);
+  social.lastAwardedRunId = runId;
+  const challenge = {
+    runId,
+    weekKey:social.weekKey,
+    score,
+    missionLabel: storyOrModeMissionLabel(S, activeMission || {}),
+    evac: Math.max(0, Math.floor(Number(stats.evac || 0))),
+    civTotal: Math.max(0, Math.floor(Number(civTotal || 0))),
+    captures: Math.max(0, Math.floor(Number(stats.captures || 0))),
+    kills: Math.max(0, Math.floor(Number(stats.kills || 0))),
+    cashEarned: Math.max(0, Math.floor(Number(stats.cashEarned || 0))),
+    perfect,
+    bossMission,
+    createdAt: Date.now(),
+  };
+  social.lastChallenge = challenge;
+  social.challengeHistory.push(challenge);
+  social.challengeHistory = social.challengeHistory.slice(-12);
+  const titleUnlocks = awardSocialRescueTitles();
+  const inviteReward = claimAvailableSocialInviteReward();
+  if(perfect) setEventText("Telegram Achievement: Perfect Rescue ready to share.", 4.2);
+  if(bossMission) setEventText("Telegram Achievement: Alpha/Nemesis clear recorded.", 4.2);
+  if(titleUnlocks.length){
+    toast(`Rare title unlocked: ${titleUnlocks[0]}`);
+  }else if(inviteReward){
+    toast(`${inviteReward.label} reward claimed.`);
+  }
+  return challenge;
+}
+function socialClanGoalRows(){
+  const totals = ensureOpsTotalsState(S);
+  return [
+    { label:"Clan Civilians Saved", value:totals.evac, target:75 },
+    { label:"Clan Tigers Captured", value:totals.captures, target:60 },
+    { label:"Perfect Rescue Relay", value:showcaseMetricValue("perfectRescues", S), target:10 },
+    { label:"Boss/Nemesis Clears", value:showcaseMetricValue("bossesDefeated", S), target:8 },
+  ];
+}
+function renderSocialRescueCard(challenge=null){
+  const root = document.getElementById("completeSocialRescueCard");
+  if(!root) return;
+  const social = ensureSocialRescueState(S);
+  const data = (challenge && typeof challenge === "object") ? challenge : (social.lastChallenge || null);
+  const scoreEl = document.getElementById("completeSocialScore");
+  const subEl = document.getElementById("completeSocialSub");
+  const rowsEl = document.getElementById("completeSocialRows");
+  const tagsEl = document.getElementById("completeSocialTags");
+  if(scoreEl) scoreEl.innerText = `${Math.max(0, Math.floor(Number(data?.score || social.weekly.bestScore || 0))).toLocaleString()} pts`;
+  if(subEl){
+    subEl.innerText = `Week ${social.weekKey} • Local best ${Math.max(0, Math.floor(Number(social.weekly.bestScore || 0))).toLocaleString()} • /weeklyleaders tracks cloud scores.`;
+  }
+  if(rowsEl){
+    const challengeLine = data
+      ? `<div class="rewardBreakdownRow"><div><b>Rescue Challenge</b><br><span>${rewardEscapeHtml(data.missionLabel || "Mission")} • ${data.evac}/${Math.max(1, data.civTotal || 1)} saved • ${data.captures} captures</span></div><div class="rewardBreakdownValue">${Math.max(0, Number(data.score || 0)).toLocaleString()}</div></div>`
+      : "";
+    const weeklyLine = `<div class="rewardBreakdownRow"><div><b>Weekly Rescue Totals</b><br><span>${social.weekly.evac} saved • ${social.weekly.captures} captures • ${social.weekly.perfectRescues} perfect • ${social.weekly.nemesisClears} boss clears</span></div><div class="rewardBreakdownValue">${social.weekly.missions} runs</div></div>`;
+    const clanLine = socialClanGoalRows().map((row)=>{
+      const value = Math.max(0, Math.floor(Number(row.value || 0)));
+      const target = Math.max(1, Math.floor(Number(row.target || 1)));
+      return `<div class="rewardBreakdownRow"><div><b>${rewardEscapeHtml(row.label)}</b><br><span>Clan goal progress ${Math.min(value, target)}/${target}</span></div><div class="rewardBreakdownValue">${Math.min(100, Math.floor((value / target) * 100))}%</div></div>`;
+    }).join("");
+    rowsEl.innerHTML = challengeLine + weeklyLine + clanLine;
+  }
+  if(tagsEl){
+    const tags = ["Rescue Challenge", "Weekly Leaderboard", "Clan Goals"];
+    if(data?.perfect) tags.unshift("Perfect Rescue");
+    if(data?.bossMission) tags.unshift("Alpha Captured");
+    tagsEl.innerHTML = tags.map((tag)=>`<span class="premiumSummaryTag">${rewardEscapeHtml(tag)}</span>`).join("");
+  }
+}
+function buildRescueChallengePayload(){
+  const social = ensureSocialRescueState(S);
+  const challenge = social.lastChallenge || null;
+  if(!challenge){
+    toast("Complete a mission first, then challenge a friend.");
+    return null;
+  }
+  const score = Math.max(0, Math.floor(Number(challenge.score || social.weekly.bestScore || 0)));
+  const params = new URLSearchParams();
+  params.set("challenge", "rescue");
+  params.set("score", String(score));
+  params.set("week", String(social.weekKey || contractWeekKey()));
+  params.set("mission", String(challenge.missionLabel || storyOrModeMissionLabel(S)));
+  const url = `${missionShareBaseUrl()}?${params.toString()}`;
+  const text = [
+    "Tiger Strike Rescue Challenge",
+    `Beat my score: ${score.toLocaleString()} pts`,
+    `${challenge.missionLabel || storyOrModeMissionLabel(S)} • Saved ${Math.max(0, Number(challenge.evac || 0))}/${Math.max(1, Number(challenge.civTotal || 1))}`,
+    `Captures ${Math.max(0, Number(challenge.captures || 0))} • Kills ${Math.max(0, Number(challenge.kills || 0))}`,
+    "Can you rescue cleaner than me?",
+    "#TigerStrike #RescueChallenge",
+  ].join("\n");
+  return { url, text, challenge };
+}
+async function shareRescueChallenge(){
+  const payload = buildRescueChallengePayload();
+  if(!payload) return;
+  renderSocialRescueCard(payload.challenge);
+  const shareLink = `https://t.me/share/url?url=${encodeURIComponent(payload.url)}&text=${encodeURIComponent(payload.text)}`;
+  if(openShareUrl(shareLink)){
+    toast("Rescue Challenge opened for sharing.");
+    return;
+  }
+  const ok = await shareFallbackText(`${payload.text}\n${payload.url}`);
+  toast(ok ? "Rescue Challenge copied." : "Could not share challenge. Copy it manually.");
 }
 
 function openShareUrl(url){
@@ -5351,6 +5613,10 @@ const MASTERY_ELITE_TITLES = Object.freeze({
   ELITE_PREDATOR_HUNTER: { name:"Predator Hunter", icon:"🐯" },
   ELITE_RESCUE_LEAD: { name:"Rescue Lead", icon:"🚁" },
   ELITE_APEX_COMMANDER: { name:"Apex Commander", icon:"👑" },
+  ELITE_SOCIAL_RESCUE_BEACON: { name:"Rescue Beacon", icon:"🛟" },
+  ELITE_SOCIAL_CAPTURE_ACE: { name:"Capture Ace", icon:"🎯" },
+  ELITE_SOCIAL_LIFELINE_CAPTAIN: { name:"Lifeline Captain", icon:"🚁" },
+  ELITE_SOCIAL_NEMESIS_SIGNAL: { name:"Nemesis Signal", icon:"👑" },
 });
 const MASTERY_TRACKS = Object.freeze([
   { id:"MR_SKIN_FOREST_RANGER", type:"skin", rewardId:"SKIN_FOREST_RANGER", name:"Forest Ops", desc:"Evacuate civilians across Story operations.", metric:"evac", target:18 },
@@ -5430,6 +5696,29 @@ function mergeMasteryRewardsSnapshots(currentSnapshot, incomingSnapshot){
     claimed: { ...current.claimed, ...incoming.claimed },
     ownedEliteTitles,
     equippedEliteTitle: ownedEliteTitles.includes(preferred) ? preferred : (ownedEliteTitles[0] || ""),
+  };
+}
+function mergeSocialRescueSnapshots(currentSnapshot, incomingSnapshot){
+  const current = normalizeSocialRescueState(currentSnapshot);
+  const incoming = normalizeSocialRescueState(incomingSnapshot);
+  const weekKey = contractWeekKey();
+  const curWeekly = current.weekKey === weekKey ? current.weekly : defaultSocialRescueState().weekly;
+  const inWeekly = incoming.weekKey === weekKey ? incoming.weekly : defaultSocialRescueState().weekly;
+  return {
+    weekKey,
+    weekly:{
+      captures: Math.max(curWeekly.captures || 0, inWeekly.captures || 0),
+      evac: Math.max(curWeekly.evac || 0, inWeekly.evac || 0),
+      perfectRescues: Math.max(curWeekly.perfectRescues || 0, inWeekly.perfectRescues || 0),
+      nemesisClears: Math.max(curWeekly.nemesisClears || 0, inWeekly.nemesisClears || 0),
+      missions: Math.max(curWeekly.missions || 0, inWeekly.missions || 0),
+      bestScore: Math.max(curWeekly.bestScore || 0, inWeekly.bestScore || 0),
+    },
+    challengeHistory: [...(current.challengeHistory || []), ...(incoming.challengeHistory || [])].slice(-12),
+    lastChallenge: incoming.lastChallenge || current.lastChallenge || null,
+    claimedInviteMilestones: { ...(current.claimedInviteMilestones || {}), ...(incoming.claimedInviteMilestones || {}) },
+    unlockedTitles: { ...(current.unlockedTitles || {}), ...(incoming.unlockedTitles || {}) },
+    lastAwardedRunId: String(incoming.lastAwardedRunId || current.lastAwardedRunId || ""),
   };
 }
 function masteryTrackDef(trackId){
@@ -11375,6 +11664,7 @@ const DEFAULT = {
   clanLastSyncAt:0,
   referralMilestone:null,
   telegramEventDrop:null,
+  socialRescue: defaultSocialRescueState(),
   lastMissionRecap:null,
   lastMissionRewardBreakdown:null,
   missionRewardStreak:0,
@@ -11484,6 +11774,7 @@ ensureBalanceStatsState(S);
 ensureNemesisState(S);
 ensureArcadeWeeklySeedState(S);
 ensureMasteryRewardsState(S);
+ensureSocialRescueState(S);
 ensureWeaponForgeState(S);
 syncWindowState();
 
@@ -13029,6 +13320,7 @@ function load(){
       ensureClanState(fallback);
       ensureSeasonPassState(fallback);
       ensureMasteryRewardsState(fallback);
+      ensureSocialRescueState(fallback);
       ensureCosmeticCollectionState(fallback);
       stabilizeLoadedSaveState(fallback, "new-save");
       return fallback;
@@ -13080,6 +13372,7 @@ function load(){
     m.clanWarfront = (saved.clanWarfront && typeof saved.clanWarfront === "object") ? cloneState(saved.clanWarfront) : null;
     m.referralMilestone = (saved.referralMilestone && typeof saved.referralMilestone === "object") ? saved.referralMilestone : null;
     m.telegramEventDrop = (saved.telegramEventDrop && typeof saved.telegramEventDrop === "object") ? saved.telegramEventDrop : null;
+    m.socialRescue = normalizeSocialRescueState(saved.socialRescue ?? DEFAULT.socialRescue);
     m.lastMissionRecap = (saved.lastMissionRecap && typeof saved.lastMissionRecap === "object") ? saved.lastMissionRecap : null;
     m.lastMissionRewardBreakdown = (saved.lastMissionRewardBreakdown && typeof saved.lastMissionRewardBreakdown === "object") ? saved.lastMissionRewardBreakdown : null;
     m.missionRewardStreak = Math.max(0, Math.floor(Number(saved.missionRewardStreak || 0)));
@@ -13133,6 +13426,7 @@ function load(){
     ensureClanState(m);
     ensureSeasonPassState(m);
     ensureMasteryRewardsState(m);
+    ensureSocialRescueState(m);
     ensureStoryEndgameState(m);
     if(m.lives==null) m.lives=5;
     stabilizeLoadedSaveState(m, sourceKey || "load");
@@ -13164,6 +13458,7 @@ function load(){
     ensureClanState(fallback);
     ensureSeasonPassState(fallback);
     ensureMasteryRewardsState(fallback);
+    ensureSocialRescueState(fallback);
     ensureCosmeticCollectionState(fallback);
     stabilizeLoadedSaveState(fallback, "load-fallback");
     return fallback;
@@ -24479,6 +24774,7 @@ function writeStoryProfileData(source="autosave", state=S){
       : { tranq_burst:0, smoke_screen:0 },
     seasonPass: cloneState(seasonPass),
     masteryRewards: cloneState(masteryRewards),
+    socialRescue: cloneState(ensureSocialRescueState(src)),
     cosmeticCollection: cloneState(ensureCosmeticCollectionState(src)),
     savedAt: Date.now(),
     source: String(source || "autosave"),
@@ -24794,6 +25090,10 @@ function applyStoryProfileToState(state, profile){
     state.masteryRewards = mergeMasteryRewardsSnapshots(state.masteryRewards, profile.masteryRewards);
   }
   ensureMasteryRewardsState(state);
+  if(profile.socialRescue && typeof profile.socialRescue === "object"){
+    state.socialRescue = mergeSocialRescueSnapshots(state.socialRescue, profile.socialRescue);
+  }
+  ensureSocialRescueState(state);
   if(profile.cosmeticCollection && typeof profile.cosmeticCollection === "object"){
     state.cosmeticCollection = mergeCosmeticCollectionStates(state.cosmeticCollection, profile.cosmeticCollection);
   }
@@ -24970,6 +25270,9 @@ function writeStoryProgressData(payload={}){
     masteryRewards: (payload.masteryRewards && typeof payload.masteryRewards === "object")
       ? cloneState(payload.masteryRewards)
       : cloneState(masteryRewards),
+    socialRescue: (payload.socialRescue && typeof payload.socialRescue === "object")
+      ? cloneState(normalizeSocialRescueState(payload.socialRescue))
+      : cloneState(ensureSocialRescueState(S)),
     mag: {
       loaded: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).loaded || 0))),
       cap: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).cap || 0))),
@@ -43370,6 +43673,12 @@ function checkMissionComplete(){
         missionStats,
         missionLevel:activeMission?.number || storyMission?.number || S.storyLevel,
       });
+      const socialChallenge = recordSocialRescueMission({
+        missionStats,
+        civTotal,
+        civDead,
+        activeMission,
+      });
 
       const recapMeta = {
         number: activeMission?.number || gameplayCloudMission(S),
@@ -43397,6 +43706,7 @@ function checkMissionComplete(){
       S.lastMissionPremiumSummary = premiumSummary;
       renderMissionPremiumSummaryCard(premiumSummary);
       renderMissionRewards2Card(rewards2);
+      renderSocialRescueCard(socialChallenge);
       renderMissionCinematicOutroCard({
         activeMission,
         storyMission,

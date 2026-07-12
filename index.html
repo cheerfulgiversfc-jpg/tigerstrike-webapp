@@ -2780,11 +2780,21 @@
         <div class="rewardBreakdownList" id="completeRewardRows"></div>
         <div class="premiumSummaryTags" id="completeRewardTags"></div>
       </div>
+      <div class="premiumSummaryCard" id="completeSocialRescueCard">
+        <div class="premiumSummaryTop">
+          <div class="premiumSummaryTitle">Social Rescue Ops</div>
+          <div class="premiumSummaryGrade" id="completeSocialScore">0</div>
+        </div>
+        <div class="premiumSummarySub" id="completeSocialSub">Challenge and clan progress preparing...</div>
+        <div class="rewardBreakdownList" id="completeSocialRows"></div>
+        <div class="premiumSummaryTags" id="completeSocialTags"></div>
+      </div>
       <div class="hudLine" id="completeText"></div>
       <div class="divider"></div>
       <div class="row">
         <button class="good" onclick="startNextMission()">Start Next Mission</button>
         <button class="ghost" onclick="shareMissionRecap()">Share Recap</button>
+        <button class="ghost" onclick="shareRescueChallenge()">Challenge Friend</button>
         <button class="ghost" onclick="shareReferralLinkFromGame()">Invite Friends</button>
         <button class="ghost" onclick="openShop()">Shop First</button>
         <button class="ghost" onclick="openInventory()">Inventory</button>
@@ -2875,7 +2885,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4617-shop-inventory-economy-rebalance"></script>
+<script src="./game.js?v=4618-social-rescue-ops"></script>
 <script src="./tutorial.js?v=4537-tutorial-3-full-qa"></script>
 <script>
 (() => {
