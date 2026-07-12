@@ -897,6 +897,11 @@ const WEAPON_FORGE_MATERIAL_DEF = Object.freeze({
   ion_dust: Object.freeze({ name:"Ion Dust", icon:"✨" }),
 });
 const WEAPON_FORGE_MATERIAL_KEYS = Object.freeze(Object.keys(WEAPON_FORGE_MATERIAL_DEF));
+const WEAPON_FORGE_MATERIAL_CASH_VALUE = Object.freeze({
+  alloy: 1800,
+  bio_resin: 3200,
+  ion_dust: 9000,
+});
 const WEAPON_FORGE_SEASON_KEY = "S26_RISING_HEAT";
 const WEAPON_FORGE_SEASON_ENDS_AT = Date.parse("2026-06-30T23:59:59Z");
 const WEAPON_FORGE_SKINS = Object.freeze([
@@ -3802,6 +3807,8 @@ const WEAPONS = [
   { id:"W_DMR",           name:"DMR Marksman", grade:"Epic", price:18000,       type:"lethal", ammo:"762_STD",      mag:10, dmg:[20,28], range:214 },
   { id:"W_TRQ_LAUNCHER",  name:"Tranquilizer Launcher", grade:"Legendary", price:50000, type:"tranq", ammo:"TRANQ_HEAVY", mag:2, dmg:[30,42], range:188 },
   { id:"W_RAIL_PROTO",    name:"Prototype Rail Rifle", grade:"Mythic", price:100000,    type:"lethal", ammo:"RAIL_CELL",   mag:3, dmg:[40,60], range:236 },
+  { id:"W_APEX_TRANQ_RIFLE", name:"Apex Tranq Rifle", grade:"Mythic", price:350000, type:"tranq", ammo:"TRANQ_HEAVY", mag:4, dmg:[42,58], range:232 },
+  { id:"W_COMMAND_RAIL", name:"Command Rail Carbine", grade:"Mythic", price:600000, type:"lethal", ammo:"RAIL_CELL", mag:5, dmg:[54,76], range:260 },
 ];
 const ATTACHMENT_SLOTS = Object.freeze(["optic","tranq_chamber","suppressor","mag","stock"]);
 const WEAPON_ATTACHMENTS = Object.freeze([
@@ -3872,6 +3879,7 @@ const MEDS = [
   { id:"M_MED",    name:"Med Kit",        price:150, heal:25 },
   { id:"M_LARGE",  name:"Large Med Kit",  price:400, heal:50 },
   { id:"M_TRAUMA", name:"Trauma Kit",     price:1000, heal:100 },
+  { id:"M_FIELD_SURGERY", name:"Field Surgery Kit", price:6500, heal:100 },
 ];
 
 const ARMORY = [
@@ -3879,11 +3887,13 @@ const ARMORY = [
   { id:"A_TIER2", name:"Armory Tier II", price:150, addArmor:25,  cap:100 },
   { id:"A_TIER3", name:"Armory Tier III",price:400, addArmor:50,  cap:100 },
   { id:"A_TIER4", name:"Armory Tier IV", price:1000,addArmor:100, cap:100 },
+  { id:"A_APEX", name:"Apex Armor Plate", price:7500, addArmor:100, cap:100 },
 ];
 
 const TOOLS = [
   { id:"T_REPAIR",     name:"Repair Kit",     price:300,  qty:1, add:10  },
   { id:"T_REPAIR_PRO", name:"Pro Repair Kit", price:2500, qty:1, add:100 },
+  { id:"T_REPAIR_APEX", name:"Apex Repair Kit", price:12000, qty:1, add:100 },
 ];
 
 const TRAP_ITEM = { id:"TRAP", name:"Trap", price:300, qty:1 };
@@ -4301,6 +4311,30 @@ const CASH_SUPPLY_BUNDLES = [
     desc:"Ultra-endgame command reserve for players with massive cash stacks.",
     preview:"+18 Perk Points • +80 Shields • +70 Traps • +35 Trauma Kits • +35 Pro Repairs • +1,150 Ammo",
     grant:{ perkPoints:18, shields:80, traps:70, medkits:{ M_TRAUMA:35 }, repairs:{ T_REPAIR_PRO:35 }, armorPlates:{ A_TIER4:35 }, ammo:{ "9MM_STD":220, "12GA_STD":160, "556_AP":220, "762_AP":190, TRANQ_DARTS:190, TRANQ_HEAVY:180, RAIL_CELL:190 } },
+  },
+  {
+    id:"cash_apex_evac_operation",
+    name:"Apex Evac Operation",
+    price:2000000,
+    desc:"Ultra rescue reserve for late-story evacuations with civilians, squads, and route pressure.",
+    preview:"+24 Perk Points • +90 Shields • +90 Traps • +28 Field Surgery Kits • +28 Apex Armor • Forge materials",
+    grant:{ perkPoints:24, shields:90, traps:90, medkits:{ M_FIELD_SURGERY:28 }, repairs:{ T_REPAIR_APEX:18 }, armorPlates:{ A_APEX:28 }, ammo:{ TRANQ_HEAVY:220, TRANQ_DARTS:260, RAIL_CELL:120 }, forgeMaterials:{ alloy:150, bio_resin:90, ion_dust:36 } },
+  },
+  {
+    id:"cash_den_raid_blacksite",
+    name:"Den Raid Blacksite Cache",
+    price:2500000,
+    desc:"Boss and den raid economy sink built for Alpha, Nemesis, and fortified tiger territory missions.",
+    preview:"+30 Perk Points • +110 Shields • +110 Traps • +Boss ammo • Apex repairs • Forge materials",
+    grant:{ perkPoints:30, shields:110, traps:110, medkits:{ M_FIELD_SURGERY:24, M_TRAUMA:20 }, repairs:{ T_REPAIR_APEX:26 }, armorPlates:{ A_APEX:30 }, ammo:{ "556_AP":260, "762_AP":240, TRANQ_HEAVY:300, RAIL_CELL:260 }, forgeMaterials:{ alloy:220, bio_resin:130, ion_dust:58 } },
+  },
+  {
+    id:"cash_hq_modernization_contract",
+    name:"HQ Modernization Contract",
+    price:3000000,
+    desc:"Long-term account sink for players who want HQ upgrades, cosmetics, squad readiness, and mission supplies.",
+    preview:"+40 Perk Points • +140 Shields • +140 Traps • +Apex support • Large forge vault",
+    grant:{ perkPoints:40, shields:140, traps:140, medkits:{ M_FIELD_SURGERY:36 }, repairs:{ T_REPAIR_APEX:36 }, armorPlates:{ A_APEX:40 }, ammo:{ "556_AP":320, "762_AP":280, TRANQ_HEAVY:360, TRANQ_DARTS:320, RAIL_CELL:320 }, forgeMaterials:{ alloy:320, bio_resin:200, ion_dust:90 } },
   },
 ];
 const STARS_TOPUP_GUIDE = [
@@ -6495,24 +6529,24 @@ const PROGRESSION_UNLOCKS = [
 ];
 
 const STORY_BASE_UPGRADES = [
-  { key:"BASE_ARMORY", name:"Base Armory", maxRank:3, costs:[4500,8500,13500], desc:"+8 starting armor per rank in Story missions." },
-  { key:"BASE_LOGISTICS", name:"Logistics Wing", maxRank:3, costs:[4200,7600,11800], desc:"Higher minimum mission-start supplies (medkits/traps/repair)." },
-  { key:"BASE_SHIELD_NET", name:"Shield Network", maxRank:2, costs:[5200,9400], desc:"+1 starting shield per rank in Story missions." },
-  { key:"BASE_ENDURANCE", name:"Endurance Program", maxRank:3, costs:[3800,7000,10600], desc:"-8% stamina drain per rank in Story missions." },
-  { key:"BASE_FINANCE", name:"Operations Finance", maxRank:3, costs:[6000,10200,15400], desc:"+8% Story payout cash per rank." },
+  { key:"BASE_ARMORY", name:"Base Armory", maxRank:3, costs:[45000,125000,300000], desc:"+8 starting armor per rank in Story missions." },
+  { key:"BASE_LOGISTICS", name:"Logistics Wing", maxRank:3, costs:[40000,110000,280000], desc:"Higher minimum mission-start supplies (medkits/traps/repair)." },
+  { key:"BASE_SHIELD_NET", name:"Shield Network", maxRank:2, costs:[60000,180000], desc:"+1 starting shield per rank in Story missions." },
+  { key:"BASE_ENDURANCE", name:"Endurance Program", maxRank:3, costs:[35000,95000,240000], desc:"-8% stamina drain per rank in Story missions." },
+  { key:"BASE_FINANCE", name:"Operations Finance", maxRank:3, costs:[75000,225000,500000], desc:"+8% Story payout cash per rank." },
 ];
 const STORY_HQ_MODULES = [
-  { key:"HQ_RD", name:"R&D Lab", maxRank:4, costs:[7800,12800,19400,27800], desc:"+3% Story payout per rank and wider capture research window." },
-  { key:"HQ_MEDBAY", name:"Medbay", maxRank:4, costs:[7600,12200,18600,26800], desc:"Stronger escort survivability and rescue movement efficiency." },
-  { key:"HQ_INTEL", name:"Intel Center", maxRank:4, costs:[8000,13400,19800,28600], desc:"Lowers tiger pressure and improves mission control stability." },
-  { key:"HQ_ARMORY", name:"Armory Deck", maxRank:4, costs:[8200,13800,20600,29400], desc:"More starting armor/shields and specialist combat edge." },
+  { key:"HQ_RD", name:"R&D Lab", maxRank:4, costs:[90000,220000,520000,950000], desc:"+3% Story payout per rank and wider capture research window." },
+  { key:"HQ_MEDBAY", name:"Medbay", maxRank:4, costs:[85000,210000,480000,900000], desc:"Stronger escort survivability and rescue movement efficiency." },
+  { key:"HQ_INTEL", name:"Intel Center", maxRank:4, costs:[95000,230000,550000,1000000], desc:"Lowers tiger pressure and improves mission control stability." },
+  { key:"HQ_ARMORY", name:"Armory Deck", maxRank:4, costs:[100000,250000,600000,1100000], desc:"More starting armor/shields and specialist combat edge." },
 ];
 
 const STORY_SPECIALIST_PERKS = [
-  { key:"SP_ATK_DRILL", role:"attacker", name:"Tiger Specialist Drill", maxRank:3, costs:[6800,11600,17200], desc:"Tiger specialists gain damage, HP, and armor." },
-  { key:"SP_ATK_CAPTURE", role:"attacker", name:"Capture Tactics", maxRank:3, costs:[7000,12400,18400], desc:"Tiger specialists capture more reliably and improve Story capture window." },
-  { key:"SP_RESCUE_ESCORT", role:"rescue", name:"Escort Formation", maxRank:3, costs:[6400,10800,16400], desc:"Rescue specialists move and guide civilians faster." },
-  { key:"SP_RESCUE_GUARD", role:"rescue", name:"Civilian Guard Protocol", maxRank:3, costs:[6200,10400,15800], desc:"Rescue specialists and nearby civilians take less tiger damage." },
+  { key:"SP_ATK_DRILL", role:"attacker", name:"Tiger Specialist Drill", maxRank:3, costs:[100000,250000,650000], desc:"Tiger specialists gain damage, HP, and armor." },
+  { key:"SP_ATK_CAPTURE", role:"attacker", name:"Capture Tactics", maxRank:3, costs:[100000,260000,700000], desc:"Tiger specialists capture more reliably and improve Story capture window." },
+  { key:"SP_RESCUE_ESCORT", role:"rescue", name:"Escort Formation", maxRank:3, costs:[90000,225000,575000], desc:"Rescue specialists move and guide civilians faster." },
+  { key:"SP_RESCUE_GUARD", role:"rescue", name:"Civilian Guard Protocol", maxRank:3, costs:[90000,225000,600000], desc:"Rescue specialists and nearby civilians take less tiger damage." },
 ];
 
 const STORY_CHAPTER_REWARDS = [
@@ -20004,6 +20038,7 @@ function medTierLabel(id){
   if(id === "M_MED") return "T2";
   if(id === "M_LARGE") return "T3";
   if(id === "M_TRAUMA") return "T4";
+  if(id === "M_FIELD_SURGERY") return "Apex";
   return "T?";
 }
 function armorTierLabel(id){
@@ -20011,6 +20046,7 @@ function armorTierLabel(id){
   if(id === "A_TIER2") return "T2";
   if(id === "A_TIER3") return "T3";
   if(id === "A_TIER4") return "T4";
+  if(id === "A_APEX") return "Apex";
   return "T?";
 }
 function legacyArmorKeysForId(id){
@@ -26493,6 +26529,14 @@ function applyRewardGrant(grantInput){
     bits.push(`+${ammoAdded} ammo`);
   }
 
+  if(grant.forgeMaterials && typeof grant.forgeMaterials === "object"){
+    const forgeSummary = grantWeaponForgeMaterials(grant.forgeMaterials, { silent:true });
+    if(forgeSummary){
+      changed = true;
+      bits.push(`forge materials ${forgeSummary}`);
+    }
+  }
+
   let unlockBits = 0;
   if(grant.specialistUnlocks && typeof grant.specialistUnlocks === "object"){
     for(const role of ["attacker", "rescue"]){
@@ -30234,11 +30278,15 @@ function shopItemStatusTag(kind, id){
 }
 function shopGameplayEffect(kind, item){
   if(!item) return "No gameplay effect configured.";
-  if(kind === "weapon") return `${item.type === "tranq" ? "Capture" : "Combat"} weapon • uses ${item.ammo} • equip from Shop or Inventory.`;
-  if(kind === "ammo") return `Adds ${item.pack} reserve ammo • used by: ${weaponAmmoUsers(item.id)}.`;
-  if(kind === "med") return `Heals +${item.heal} HP • stored if HP is full, auto-used if injured.`;
-  if(kind === "armor") return `Adds one ${armorTierLabel(item.id)} armor plate • restores +${item.addArmor} armor when used.`;
-  if(kind === "tool") return `Adds ${item.qty || 1} repair kit • restores +${item.add} durability to equipped weapon.`;
+  if(kind === "weapon"){
+    const role = item.type === "tranq" ? "Capture" : "Combat";
+    const highTier = Number(item.price || 0) >= 300000 ? "Endgame cash sink • " : "";
+    return `${highTier}${role} weapon • uses ${item.ammo} • equip from Shop or Inventory.`;
+  }
+  if(kind === "ammo") return `Adds ${item.pack} reserve ammo • used by: ${weaponAmmoUsers(item.id)} • strongest compatible ammo auto-loads first.`;
+  if(kind === "med") return `Heals +${item.heal} HP • stored if HP is full, auto-used if injured${Number(item.price || 0) >= 5000 ? " • premium endgame refill" : ""}.`;
+  if(kind === "armor") return `Adds one ${armorTierLabel(item.id)} armor plate • restores +${item.addArmor} armor when used${Number(item.price || 0) >= 5000 ? " • premium endgame plate" : ""}.`;
+  if(kind === "tool") return `Adds ${item.qty || 1} repair kit • restores +${item.add} durability to equipped weapon${Number(item.price || 0) >= 10000 ? " • premium endgame maintenance" : ""}.`;
   if(kind === "shield") return "Adds one Escort Shield • blocks tiger damage for 5 seconds with escalating cooldown.";
   if(kind === "trap") return "Adds one trap • placed on the map to hold a tiger for 3-5 seconds with escalating cooldown.";
   return "Gameplay effect active.";
@@ -30285,6 +30333,10 @@ function cashBundleIndividualValue(grant={}){
     const ammo = getAmmo(id);
     if(ammo) value += Math.ceil(positiveInt(qty) / Math.max(1, Number(ammo.pack || 1))) * ammoPriceCapped(ammo);
   }
+  for(const [key, qty] of Object.entries(grant.forgeMaterials || {})){
+    if(!WEAPON_FORGE_MATERIAL_DEF[key]) continue;
+    value += positiveInt(qty) * Math.max(0, Number(WEAPON_FORGE_MATERIAL_CASH_VALUE[key] || 0));
+  }
   return Math.max(0, Math.round(value));
 }
 function scaleCashBundleGrant(grant={}, scale=1){
@@ -30293,7 +30345,7 @@ function scaleCashBundleGrant(grant={}, scale=1){
   for(const key of ["funds","shields","traps","perkPoints"]){
     if(positiveInt(out[key]) > 0) out[key] = positiveInt(out[key]) * mul;
   }
-  for(const group of ["medkits","repairs","armorPlates","ammo"]){
+  for(const group of ["medkits","repairs","armorPlates","ammo","forgeMaterials"]){
     if(!out[group] || typeof out[group] !== "object") continue;
     for(const id of Object.keys(out[group])){
       if(positiveInt(out[group][id]) > 0) out[group][id] = positiveInt(out[group][id]) * mul;
@@ -30310,6 +30362,7 @@ function cashBundleGrantPreview(grant={}){
   if(totalGroup(grant.repairs)) bits.push(`+${totalGroup(grant.repairs)} Repairs`);
   if(totalGroup(grant.armorPlates)) bits.push(`+${totalGroup(grant.armorPlates)} Armor Plates`);
   if(totalGroup(grant.ammo)) bits.push(`+${totalGroup(grant.ammo)} Ammo`);
+  if(totalGroup(grant.forgeMaterials)) bits.push(`+${totalGroup(grant.forgeMaterials)} Forge Materials`);
   if(positiveInt(grant.perkPoints)) bits.push(`+${positiveInt(grant.perkPoints)} Perk Points`);
   return bits.join(" • ") || "Supply bundle";
 }
@@ -30349,6 +30402,10 @@ function cashBundleValidationErrors(bundle){
   }
   for(const [id, rawQty] of Object.entries(grant?.ammo || {})){
     if(!getAmmo(id)) errors.push(`unknown ammo ${id}`);
+    if(positiveInt(rawQty) > 0) effectCount += 1;
+  }
+  for(const [key, rawQty] of Object.entries(grant?.forgeMaterials || {})){
+    if(!WEAPON_FORGE_MATERIAL_DEF[key]) errors.push(`unknown forge material ${key}`);
     if(positiveInt(rawQty) > 0) effectCount += 1;
   }
   const armorGrant = grant?.armorPlates && typeof grant.armorPlates === "object" && !Array.isArray(grant.armorPlates)
@@ -30399,6 +30456,7 @@ function cashBundleCategorySet(bundle, recommendedIds=recommendedShopBundleIds()
   if(/squad|soldier|specialist|deployment|payroll|training|doctrine/.test(text)) cats.add("squad");
   if(/trap|control/.test(text)) cats.add("control");
   if(/ammo|armory|weapon|repair|durability|scope/.test(text)) cats.add("armory");
+  if(/forge|cosmetic|skin|trail|material/.test(text) || positiveInt(bundle?.grant?.forgeMaterials?.alloy) || positiveInt(bundle?.grant?.forgeMaterials?.bio_resin) || positiveInt(bundle?.grant?.forgeMaterials?.ion_dust)) cats.add("cosmetic");
   return cats;
 }
 
@@ -30417,6 +30475,7 @@ function shopFiltersForTab(tab=currentShopTab){
     { id:"squad", label:"Squad" },
     { id:"control", label:"Control" },
     { id:"armory", label:"Armory" },
+    { id:"cosmetic", label:"Cosmetic" },
   ];
 }
 
@@ -31160,7 +31219,7 @@ function renderShopList(){
     }
     list.innerHTML = filteredBundles.map((bundle)=>{
       const cats = cashBundleCategorySet(bundle, recommendedIds);
-      const tagOrder = ["recommended","affordable","starter","midgame","endgame","capture","boss","rescue","squad","control","armory"];
+      const tagOrder = ["recommended","affordable","starter","midgame","endgame","capture","boss","rescue","squad","control","armory","cosmetic"];
       const tagLabels = {
         recommended:"Recommended",
         affordable:"Can Buy",
@@ -31173,6 +31232,7 @@ function renderShopList(){
         squad:"Squad",
         control:"Control",
         armory:"Armory",
+        cosmetic:"Cosmetic",
       };
       const tags = tagOrder
         .filter((id)=>cats.has(id))
@@ -31961,13 +32021,14 @@ function renderInventory(){
     <div class="item">
       <div>
         <div class="itemName">🛡️ Armor Plates <span class="tag">Owned: ${totalArmorPlates()}</span></div>
-        <div class="itemDesc">Selected: <b>${armorTierLabel(armorSelectedDef.id)} ${armorSelectedDef.name}</b> (+${armorSelectedDef.addArmor} armor). T1 ${armorPlateCount("A_TIER1")} • T2 ${armorPlateCount("A_TIER2")} • T3 ${armorPlateCount("A_TIER3")} • T4 ${armorPlateCount("A_TIER4")}</div>
+        <div class="itemDesc">Selected: <b>${armorTierLabel(armorSelectedDef.id)} ${armorSelectedDef.name}</b> (+${armorSelectedDef.addArmor} armor). T1 ${armorPlateCount("A_TIER1")} • T2 ${armorPlateCount("A_TIER2")} • T3 ${armorPlateCount("A_TIER3")} • T4 ${armorPlateCount("A_TIER4")} • Apex ${armorPlateCount("A_APEX")}</div>
       </div>
       <div style="text-align:right">
         <button class="${armorSelectedDef.id==='A_TIER1' ? 'good' : 'ghost'}" ${totalArmorPlates()<=0?'disabled':''} onclick="setSelectedArmorPlate('A_TIER1')">T1</button>
         <button class="${armorSelectedDef.id==='A_TIER2' ? 'good' : 'ghost'}" ${totalArmorPlates()<=0?'disabled':''} onclick="setSelectedArmorPlate('A_TIER2')">T2</button>
         <button class="${armorSelectedDef.id==='A_TIER3' ? 'good' : 'ghost'}" ${totalArmorPlates()<=0?'disabled':''} onclick="setSelectedArmorPlate('A_TIER3')">T3</button>
         <button class="${armorSelectedDef.id==='A_TIER4' ? 'good' : 'ghost'}" ${totalArmorPlates()<=0?'disabled':''} onclick="setSelectedArmorPlate('A_TIER4')">T4</button>
+        <button class="${armorSelectedDef.id==='A_APEX' ? 'good' : 'ghost'}" ${totalArmorPlates()<=0?'disabled':''} onclick="setSelectedArmorPlate('A_APEX')">Apex</button>
         <button ${totalArmorPlates()<=0 || S.armor>=S.armorCap?'disabled':''} onclick="useArmorPlate({ armorId:'${armorSelectedDef.id}' })">Use Selected</button>
         <button class="ghost" onclick="openShopFromInventory('armor')">Buy</button>
       </div>
