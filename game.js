@@ -13976,11 +13976,11 @@ const WORLD_BASE_WIDTH = 960;
 const WORLD_BASE_HEIGHT = 540;
 const STREAM_SECTOR_SIZE = 320;
 const STREAM_ACTIVE_RADIUS = 1;
-const STREAM_EXPAND_MAX_SECTORS = 44;
-const STREAM_EXPAND_STEP = 0.026;
+const STREAM_EXPAND_MAX_SECTORS = 58;
+const STREAM_EXPAND_STEP = 0.031;
 const STREAM_MIN_AMBIENT_EDGE = 46;
-const MAP_EXPANSION_VERSION = 3;
-const MAP_EXPANSION_MAX_SCALE = 5;
+const MAP_EXPANSION_VERSION = 4;
+const MAP_EXPANSION_MAX_SCALE = 5.85;
 
 function defaultSectorStreamingState(){
   return {
@@ -14003,8 +14003,8 @@ function ensureSectorStreamingState(state=S){
   ss.enabled = ss.enabled !== false;
   ss.size = clamp(Math.floor(Number(ss.size || STREAM_SECTOR_SIZE)), 220, 520);
   ss.activeRadius = clamp(Math.floor(Number(ss.activeRadius || STREAM_ACTIVE_RADIUS)), 1, 4);
-  ss.activeKeys = Array.isArray(ss.activeKeys) ? ss.activeKeys.map((v)=>String(v || "")).filter(Boolean).slice(-128) : [];
-  ss.discoveredKeys = Array.isArray(ss.discoveredKeys) ? ss.discoveredKeys.map((v)=>String(v || "")).filter(Boolean).slice(-320) : [];
+  ss.activeKeys = Array.isArray(ss.activeKeys) ? ss.activeKeys.map((v)=>String(v || "")).filter(Boolean).slice(-160) : [];
+  ss.discoveredKeys = Array.isArray(ss.discoveredKeys) ? ss.discoveredKeys.map((v)=>String(v || "")).filter(Boolean).slice(-420) : [];
   ss.centerKey = String(ss.centerKey || "0:0");
   ss.lastUpdateAt = Math.max(0, Math.floor(Number(ss.lastUpdateAt || 0)));
   ss.mapExpansionVersion = MAP_EXPANSION_VERSION;
@@ -14079,10 +14079,10 @@ function updateStreamedSectors(state=S, now=Date.now()){
   const discovered = new Set(ss.discoveredKeys);
   discovered.add(centerKey);
   for(const k of ss.activeKeys){
-    if(discovered.size >= 320) break;
+    if(discovered.size >= 420) break;
     discovered.add(k);
   }
-  ss.discoveredKeys = Array.from(discovered).slice(-320);
+  ss.discoveredKeys = Array.from(discovered).slice(-420);
   ss.lastUpdateAt = now;
   return ss;
 }
@@ -14152,8 +14152,8 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
       }
     }
   }
-  ss.activeKeys = Array.from(active).slice(-128);
-  ss.discoveredKeys = Array.from(discovered).slice(-320);
+  ss.activeKeys = Array.from(active).slice(-160);
+  ss.discoveredKeys = Array.from(discovered).slice(-420);
   ss.lastUpdateAt = now;
   return ss;
 }
@@ -14208,22 +14208,22 @@ function worldScaleForModeMission(mode, mission){
   const landscapeBoost = (mobile && landscape) ? 0.12 : (landscape ? 0.12 : 0);
   if(window.__TUTORIAL_MODE__) return 1;
   if(mobile && !landscape){
-    if(mode === "Story") return clamp(3.05 + ((Math.max(1, mission) - 1) * 0.010), 3.05, 4.78);
-    if(mode === "Arcade") return clamp(2.86 + ((Math.max(1, mission) - 1) * 0.009), 2.86, 4.35);
-    return clamp(3.00 + ((Math.max(1, mission) - 1) * 0.013), 3.00, 4.65);
+    if(mode === "Story") return clamp(3.42 + ((Math.max(1, mission) - 1) * 0.012), 3.42, 5.30);
+    if(mode === "Arcade") return clamp(3.18 + ((Math.max(1, mission) - 1) * 0.011), 3.18, 4.95);
+    return clamp(3.28 + ((Math.max(1, mission) - 1) * 0.014), 3.28, 5.25);
   }
   if(mobile && landscape){
-    if(mode === "Story") return clamp(3.35 + ((Math.max(1, mission) - 1) * 0.012) + landscapeBoost, 3.35, 4.95);
-    if(mode === "Arcade") return clamp(3.18 + ((Math.max(1, mission) - 1) * 0.011) + landscapeBoost, 3.18, 4.65);
-    return clamp(3.28 + ((Math.max(1, mission) - 1) * 0.014) + landscapeBoost, 3.28, 4.90);
+    if(mode === "Story") return clamp(3.72 + ((Math.max(1, mission) - 1) * 0.014) + landscapeBoost, 3.72, 5.60);
+    if(mode === "Arcade") return clamp(3.48 + ((Math.max(1, mission) - 1) * 0.013) + landscapeBoost, 3.48, 5.35);
+    return clamp(3.58 + ((Math.max(1, mission) - 1) * 0.015) + landscapeBoost, 3.58, 5.50);
   }
   if(mode === "Story"){
-    return clamp(3.25 + ((Math.max(1, mission) - 1) * 0.014) + landscapeBoost, 3.25, 5.00);
+    return clamp(3.66 + ((Math.max(1, mission) - 1) * 0.016) + landscapeBoost, 3.66, 5.75);
   }
   if(mode === "Arcade"){
-    return clamp(3.05 + ((Math.max(1, mission) - 1) * 0.012) + landscapeBoost, 3.05, 4.75);
+    return clamp(3.42 + ((Math.max(1, mission) - 1) * 0.014) + landscapeBoost, 3.42, 5.45);
   }
-  return clamp(3.16 + ((Math.max(1, mission) - 1) * 0.015) + landscapeBoost, 3.16, 4.90);
+  return clamp(3.52 + ((Math.max(1, mission) - 1) * 0.016) + landscapeBoost, 3.52, 5.65);
 }
 
 function desiredWorldLayout(state=S){
@@ -20322,7 +20322,20 @@ function mapExpansionHash(key, salt=0){
 }
 function mapExpansionSectorProfile(key, state=S){
   const seed = mapExpansionHash(`${key}|${currentMap()?.key || ""}|${missionProgressForWorld(state)}`, 73);
-  const kinds = ["forest", "open_field", "settlement", "lake", "river", "woodland"];
+  const kinds = [
+    "forest",
+    "open_field",
+    "settlement",
+    "lake",
+    "river",
+    "woodland",
+    "cave",
+    "den",
+    "bridge",
+    "road_hub",
+    "settlement",
+    "forest"
+  ];
   return {
     seed,
     kind:kinds[seed % kinds.length],
@@ -20331,11 +20344,30 @@ function mapExpansionSectorProfile(key, state=S){
   };
 }
 function mapExpansionSectorFill(profile){
+  if(profile?.kind === "cave") return "#3f4f5f";
+  if(profile?.kind === "den") return "#5d4b36";
+  if(profile?.kind === "bridge") return "#6d6a5a";
+  if(profile?.kind === "road_hub") return "#63706a";
   if(profile?.kind === "settlement") return "#9a805e";
   if(profile?.kind === "open_field") return "#789a4b";
   if(profile?.kind === "lake" || profile?.kind === "river") return "#286a78";
   if(profile?.kind === "woodland") return "#236f46";
   return "#2f8054";
+}
+function mapExpansionSectorLabel(profile){
+  const labels = {
+    forest:"FOREST TRAIL",
+    open_field:"OPEN FIELD",
+    settlement:"SETTLEMENT",
+    lake:"LAKE ROUTE",
+    river:"RIVER ROUTE",
+    woodland:"WOODLAND",
+    cave:"CAVE PASS",
+    den:"DEN RANGE",
+    bridge:"BRIDGE LINK",
+    road_hub:"ROUTE HUB"
+  };
+  return labels[profile?.kind] || "ROUTE";
 }
 function drawMapExpansionSectorDetails(opts={}){
   if(window.__TUTORIAL_MODE__ || !ctx) return;
@@ -20430,6 +20462,80 @@ function drawMapExpansionSectorDetails(opts={}){
       ctx.restore();
     }
 
+    if(activeSector && !mobileFast && p.kind === "bridge"){
+      ctx.globalAlpha = 0.62;
+      ctx.fillStyle = "rgba(155,130,82,.92)";
+      ctx.strokeStyle = "rgba(248,226,170,.36)";
+      ctx.lineWidth = 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(p.vertical ? Math.PI / 2 : 0);
+      ctx.fillRect(-70, -13, 140, 26);
+      ctx.strokeRect(-70, -13, 140, 26);
+      ctx.strokeStyle = "rgba(248,226,170,.30)";
+      ctx.lineWidth = 1.5;
+      for(let i=-54; i<=54; i+=18){
+        ctx.beginPath();
+        ctx.moveTo(i, -13);
+        ctx.lineTo(i + 14, 13);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    if(activeSector && !mobileFast && p.kind === "cave"){
+      ctx.globalAlpha = 0.62;
+      ctx.fillStyle = "rgba(18,24,32,.86)";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - 8, 42, 28, 0, Math.PI, Math.PI * 2);
+      ctx.lineTo(cx + 42, cy + 18);
+      ctx.lineTo(cx - 42, cy + 18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 0.34;
+      ctx.fillStyle = "rgba(203,213,225,.72)";
+      for(let i=0; i<5; i++){
+        const ox = ((p.seed >>> (i + 1)) % 84) - 42;
+        const oy = ((p.seed >>> (i + 4)) % 44) - 4;
+        ctx.fillRect(cx + ox, cy + oy, 10 + (i % 2) * 5, 7 + (i % 3));
+      }
+    }
+
+    if(activeSector && !mobileFast && p.kind === "den"){
+      ctx.globalAlpha = 0.34;
+      ctx.strokeStyle = "rgba(251,191,36,.78)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.min(sw, sh) * 0.24, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.36;
+      ctx.fillStyle = "rgba(120,66,34,.92)";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 34, 20, 0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(251,191,36,.86)";
+      ctx.font = "900 18px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("🐾", cx, cy + 6);
+      ctx.textAlign = "start";
+    }
+
+    if(activeSector && !mobileFast && p.kind === "road_hub"){
+      ctx.globalAlpha = 0.33;
+      ctx.fillStyle = "rgba(148,163,184,.78)";
+      ctx.fillRect(cx - 60, cy - 38, 120, 76);
+      ctx.strokeStyle = "rgba(226,232,240,.34)";
+      ctx.lineWidth = 1.5;
+      for(let i=-42; i<=42; i+=28){
+        ctx.beginPath();
+        ctx.moveTo(cx + i, cy - 38);
+        ctx.lineTo(cx + i, cy + 38);
+        ctx.stroke();
+      }
+    }
+
     if(activeSector && !mobileFast && p.kind === "settlement"){
       ctx.globalAlpha = 0.46;
       ctx.fillStyle = "rgba(190,180,160,.82)";
@@ -20462,6 +20568,100 @@ function drawMapExpansionSectorDetails(opts={}){
         const oy = ((p.seed >>> ((i + 3) % 12)) + i * 61) % Math.max(30, Math.floor(sh - 28));
         ctx.beginPath(); ctx.arc(b.minX + 14 + ox, b.minY + 14 + oy, 4 + (i % 3), 0, Math.PI * 2); ctx.fill();
       }
+    }
+    if(activeSector && !mobileFast){
+      const label = mapExpansionSectorLabel(p);
+      ctx.globalAlpha = 0.58;
+      ctx.fillStyle = "rgba(5,12,20,.72)";
+      roundedRectFill(cx - 52, b.minY + 10, 104, 18, 8);
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "rgba(226,232,240,.9)";
+      ctx.font = "900 9px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText(label, cx, b.minY + 23);
+      ctx.textAlign = "start";
+    }
+  }
+  ctx.restore();
+}
+function mapExpansionObjectiveRouteTargets(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const targets = [];
+  const push = (x, y, label, color, priority=1, kind="objective")=>{
+    const nx = Number(x);
+    const ny = Number(y);
+    if(!Number.isFinite(nx) || !Number.isFinite(ny)) return;
+    targets.push({ x:nx, y:ny, label, color, priority, kind });
+  };
+  const dangerCiv = (src.civilians || []).find((c)=>c && !c.dead && !c.evacuated && !c.evac && (c.underAttack || c.hp < 55));
+  if(dangerCiv) push(dangerCiv.x, dangerCiv.y, "CIV", "#fb7185", 4, "civilian");
+  const escortCiv = (src.civilians || []).find((c)=>c && !c.dead && !c.evacuated && !c.evac && c.following);
+  if(escortCiv && src.mode !== "Survival" && src.evacZone) push(src.evacZone.x, src.evacZone.y, "EVAC", "#4ade80", 3.5, "evac");
+  const tiger = currentTargetTiger();
+  if(tiger) push(tiger.x, tiger.y, "TIGER", "#f59e0b", 3, "tiger");
+  if(src.mode !== "Survival" && src.evacZone && !escortCiv) push(src.evacZone.x, src.evacZone.y, "EVAC", "#4ade80", 2, "evac");
+  const activeSite = (src.rescueSites || []).find((site)=>site && site.type && site.x && site.y);
+  if(activeSite) push(activeSite.x, activeSite.y, "SITE", "#93c5fd", 1.8, "site");
+  const routeItem = (src.mapInteractables || []).find((it)=>it && !it.spent && ["vehicle", "bridge", "gate", "generator", "tower"].includes(String(it.type || "")));
+  if(routeItem) push(routeItem.x, routeItem.y, "ROUTE", "#22d3ee", 1.6, "route");
+  const den = src.tigerDenRaid?.den || src.tigerDenRaid?.site || null;
+  if(src.tigerDenRaid?.active && den) push(den.x, den.y, "DEN", "#f97316", 3.2, "den");
+  return targets
+    .filter((t, idx, arr)=>arr.findIndex((o)=>Math.abs(o.x - t.x) < 18 && Math.abs(o.y - t.y) < 18 && o.label === t.label) === idx)
+    .sort((a, b)=>(Number(b.priority || 0) - Number(a.priority || 0)));
+}
+function drawMapExpansionObjectiveRoutes(opts={}){
+  if(window.__TUTORIAL_MODE__ || !ctx) return;
+  const state = opts.state || S;
+  const me = state?.me || {};
+  if(!Number.isFinite(Number(me.x)) || !Number.isFinite(Number(me.y))) return;
+  const mobileFast = !!opts.mobileFast;
+  const targets = mapExpansionObjectiveRouteTargets(state);
+  if(!targets.length) return;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  const limit = mobileFast ? 2 : 5;
+  for(const target of targets.slice(0, limit)){
+    const meters = Math.max(1, Math.round(dist(Number(me.x), Number(me.y), target.x, target.y)));
+    if(meters < 75) continue;
+    ctx.globalAlpha = mobileFast ? 0.18 : 0.28;
+    ctx.strokeStyle = target.color;
+    ctx.lineWidth = mobileFast ? 2.5 : 3.5;
+    ctx.setLineDash(target.kind === "evac" ? [16, 10] : [10, 9]);
+    ctx.beginPath();
+    ctx.moveTo(Number(me.x), Number(me.y));
+    ctx.lineTo(target.x, target.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if(!mobileFast){
+      const midX = (Number(me.x) * 0.58) + (target.x * 0.42);
+      const midY = (Number(me.y) * 0.58) + (target.y * 0.42);
+      const angle = Math.atan2(target.y - Number(me.y), target.x - Number(me.x));
+      ctx.save();
+      ctx.translate(midX, midY);
+      ctx.rotate(angle);
+      ctx.globalAlpha = 0.72;
+      ctx.fillStyle = target.color;
+      ctx.beginPath();
+      ctx.moveTo(12, 0);
+      ctx.lineTo(-8, -6);
+      ctx.lineTo(-5, 0);
+      ctx.lineTo(-8, 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      const label = `${target.label} ${meters}m`;
+      ctx.font = "900 10px system-ui";
+      const tw = ctx.measureText(label).width + 14;
+      ctx.globalAlpha = 0.72;
+      ctx.fillStyle = "rgba(5,12,20,.78)";
+      roundedRectFill(midX - (tw * 0.5), midY + 12, tw, 18, 8);
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = target.color;
+      ctx.textAlign = "center";
+      ctx.fillText(label, midX, midY + 25);
+      ctx.textAlign = "start";
     }
   }
   ctx.restore();
@@ -44223,6 +44423,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
     }
   }
   drawMapExpansionSectorDetails({ mobileFast:true });
+  drawMapExpansionObjectiveRoutes({ mobileFast:true });
 
   if(S.mode !== "Survival"){
     const ex = zone.x;
@@ -44974,6 +45175,7 @@ function drawMapScene(){
   }
   drawWaterBodies(1);
   drawMapExpansionSectorDetails({ mobileFast:false });
+  drawMapExpansionObjectiveRoutes({ mobileFast:false });
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -46234,6 +46436,7 @@ function drawMapExpansionMinimap(){
   ctx.moveTo(x + mw * 0.5, y); ctx.lineTo(x + mw * 0.5, y + mh);
   ctx.stroke();
   const targets = [];
+  const routeTargets = mapExpansionObjectiveRouteTargets(S).slice(0, 6);
   const tiger = currentTargetTiger();
   const dangerCiv = (S.civilians || []).find((c)=>c && !c.evacuated && !c.dead && (c.underAttack || c.hp < 55));
   if(dangerCiv) targets.push({ ...dangerCiv, label:"CIV", color:"#fb7185", priority:3 });
@@ -46241,6 +46444,35 @@ function drawMapExpansionMinimap(){
   if(S.mode !== "Survival" && S.evacZone){
     const escorting = (S.civilians || []).some((c)=>c && c.following && !c.evac && !c.dead);
     targets.push({ ...S.evacZone, label:"EVAC", color:"#4ade80", priority:escorting ? 2.5 : 1 });
+  }
+  for(const target of routeTargets){
+    if(!targets.some((t)=>Math.abs(Number(t.x || 0) - target.x) < 18 && Math.abs(Number(t.y || 0) - target.y) < 18 && t.label === target.label)){
+      targets.push(target);
+    }
+  }
+  for(const site of (S.rescueSites || []).slice(0, 4)){
+    if(site && Number.isFinite(Number(site.x)) && Number.isFinite(Number(site.y))){
+      targets.push({ x:site.x, y:site.y, label:"S", color:"#93c5fd", priority:0.8 });
+    }
+  }
+  for(const it of (S.mapInteractables || []).filter((item)=>item && !item.spent && ["vehicle", "bridge", "gate", "generator", "tower", "cache"].includes(String(item.type || ""))).slice(0, 5)){
+    targets.push({ x:it.x, y:it.y, label:"R", color:"#22d3ee", priority:0.7 });
+  }
+  if(routeTargets.length && S?.me){
+    const mePt = point(S.me.x, S.me.y);
+    ctx.save();
+    ctx.globalAlpha = 0.38;
+    ctx.strokeStyle = "rgba(186,230,253,.86)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    for(const target of routeTargets.slice(0, 4)){
+      const pt = point(target.x, target.y);
+      ctx.beginPath();
+      ctx.moveTo(mePt.x, mePt.y);
+      ctx.lineTo(pt.x, pt.y);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
   for(const target of targets){
     const pt = point(target.x, target.y);
