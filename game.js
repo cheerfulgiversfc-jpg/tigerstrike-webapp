@@ -17545,6 +17545,9 @@ function sanitizeRuntimeState(){
   if(S.selectedSupportUnitId != null && !S.supportUnits.some((unit)=>unit?.alive && unit.id === S.selectedSupportUnitId)){
     S.selectedSupportUnitId = null;
   }
+  if(!rivalHuntersAllowedForMission(S)){
+    clearRivalHunters("runtime-cleanup");
+  }
   S.rivalHunters = S.rivalHunters.filter((u)=>{
     if(!u || typeof u !== "object") return false;
     u.x = clampX(u.x, 40, w - 40);
@@ -34203,31 +34206,48 @@ function createRivalHunter(faction, slotIndex=0){
   };
 }
 
+function rivalHuntersAllowedForMission(state=S){
+  if(window.__TUTORIAL_MODE__) return false;
+  if(normalizeModeName(state?.mode || "Story") === "Survival") return false;
+  const wm = state?.worldMapCampaign;
+  const activeRegionId = String(wm?.activeRivalRegionId || "");
+  const activeRegion = activeRegionId ? worldMapRegionById(activeRegionId) : null;
+  const rivalPressure = activeRegion ? worldMapRivalPressure(activeRegion, state) : 0;
+  return rivalPressure >= 45 || !!state?._forceRivalHunters || !!state?._rivalMissionActive;
+}
+
+function clearRivalHunters(reason="inactive"){
+  S.rivalHunters = [];
+  S.lockedRivalId = null;
+  S._rivalFactionName = "";
+  S._rivalClearReason = reason;
+}
+
 function spawnRivalHunters(){
   if(window.__TUTORIAL_MODE__){
-    S.rivalHunters = [];
-    S._rivalFactionName = "";
+    clearRivalHunters("tutorial");
     return;
   }
   if(S.mode === "Survival"){
-    S.rivalHunters = [];
-    S._rivalFactionName = "";
+    clearRivalHunters("survival");
     return;
   }
   const storyLevel = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   const arcadeLevel = clamp(Math.floor(Number(S.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
   const missionLevel = S.mode === "Story" ? storyLevel : arcadeLevel;
   if(missionLevel < RIVAL_MIN_SPAWN_LEVEL){
-    S.rivalHunters = [];
-    S._rivalFactionName = "";
+    clearRivalHunters("level");
+    return;
+  }
+  if(!rivalHuntersAllowedForMission(S)){
+    clearRivalHunters("no-rival-objective");
     return;
   }
   const baseChance = S.mode === "Story" ? 0.30 : 0.45;
   const bonus = clamp((missionLevel - RIVAL_MIN_SPAWN_LEVEL) * 0.04, 0, 0.34);
   const spawnChance = clamp(baseChance + bonus, 0, 0.92);
   if(Math.random() > spawnChance){
-    S.rivalHunters = [];
-    S._rivalFactionName = "";
+    clearRivalHunters("chance");
     return;
   }
 
@@ -34422,7 +34442,9 @@ function spawnCivilians(){
       aiState:"cooperative",
       riskState:"calm",
       riskLevel:0,
-      riskValue:1.12
+      riskValue:1.12,
+      missionCivilian:true,
+      missionRunId:String(S._missionRunId || "tutorial")
     }];
     S.evacDone = 0;
     return;
@@ -34484,7 +34506,9 @@ function spawnCivilians(){
       aiState:"",
       riskState:"calm",
       riskLevel:0,
-      riskValue:1
+      riskValue:1,
+      missionCivilian:true,
+      missionRunId:String(S._missionRunId || "")
     };
     assignCivilianPersonality(civObj, ((storyMission?.number || S.storyLevel || 1) * 100) + i + 1);
     S.civilians.push(civObj);
@@ -47053,12 +47077,17 @@ function drawCivilian(c){
       label = "FOLLOW";
       labelBg = "rgba(14,44,86,.82)";
       labelBorder = "rgba(96,165,250,.76)";
+    }else{
+      const civNum = Math.max(1, Math.floor(Number(c.id || 1)));
+      label = `CIV ${civNum}`;
+      labelBg = "rgba(12,58,44,.84)";
+      labelBorder = "rgba(110,231,183,.78)";
     }
     if(label){
       const pulse = riskState === "critical" ? (0.84 + Math.sin(nowMs / 95) * 0.12) : 0.86;
       ctx.save();
       ctx.globalAlpha = pulse;
-      const w = label === "INJURED" ? 58 : 48;
+      const w = label === "INJURED" ? 58 : (label.startsWith("CIV ") ? 54 : 48);
       ctx.fillStyle = labelBg;
       roundedRectFill(bx - (w * 0.5), by - 58, w, 18, 8);
       ctx.strokeStyle = labelBorder;
@@ -47088,11 +47117,6 @@ function drawCivilian(c){
       ctx.textAlign = "start";
       ctx.restore();
     }
-  }
-  if(!c.following && !c.evac){
-    ctx.fillStyle="rgba(245,247,255,.75)";
-    ctx.font="900 11px system-ui";
-    ctx.fillText("…", bx-4, by-33);
   }
 
   if(S.dangerCivId===c.id) drawDangerMarker(bx, by-58);
@@ -47508,6 +47532,16 @@ function drawRivalHunter(unit){
   const stride = Math.sin((unit.step || 0) * 1.9) * 1.4;
 
   drawWaterRipple(x, y, 15, 0.46);
+  ctx.save();
+  ctx.globalAlpha = 0.58 + (Math.sin(Date.now() * 0.006) * 0.10);
+  ctx.strokeStyle = "rgba(251,146,60,.96)";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.arc(x, y - 2, 23, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
   if(S.lockedRivalId === unit.id){
     ctx.save();
     ctx.strokeStyle = "rgba(248,113,113,.98)";
@@ -47572,7 +47606,17 @@ function drawRivalHunter(unit){
   ctx.fillRect(x - 16, y - 18, 32, 4);
   ctx.fillStyle = hpPct > 0.5 ? "#4ade80" : (hpPct > 0.2 ? "#f59e0b" : "#fb7185");
   ctx.fillRect(x - 16, y - 18, 32 * hpPct, 4);
-  ctx.fillStyle = "rgba(245,247,255,.86)";
+  ctx.save();
+  ctx.fillStyle = "rgba(124,45,18,.94)";
+  roundedRectFill(x - 28, y - 44, 56, 16, 8);
+  ctx.strokeStyle = "rgba(251,146,60,.88)";
+  ctx.strokeRect(x - 27.5, y - 43.5, 55, 15);
+  ctx.fillStyle = "rgba(255,247,237,.98)";
+  ctx.font = "900 8px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(S.lockedRivalId === unit.id ? "RIVAL LOCK" : "RIVAL", x, y - 33);
+  ctx.restore();
+  ctx.fillStyle = "rgba(245,247,255,.90)";
   ctx.font = "800 9px system-ui";
   ctx.fillText(unit.callsign || "Rival", x - 16, y - 24);
 }
@@ -50895,6 +50939,9 @@ function init(){
     if(typeof unit.factionName !== "string" || !unit.factionName){
       unit.factionName = RIVAL_FACTION_BY_KEY[unit.factionKey]?.name || "Rival Hunters";
     }
+  }
+  if(!rivalHuntersAllowedForMission(S)){
+    clearRivalHunters("finalize-cleanup");
   }
   reconcileSupportDownedFromUnits(S);
   if(
