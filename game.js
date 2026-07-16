@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4497";
+const TS_BUILD = "4498";
 if(tg){
   try{
     tg.expand?.();
@@ -263,6 +263,197 @@ function ensureCoopStrikeOpsState(state=S, opts={}){
   co.hotspots = rows.map((entry)=>normalizeCoopHotspotEntry(entry, co.key));
   src.coopStrikeOps = co;
   return co;
+}
+
+function defaultLiveCoopWorldEventsState(now=Date.now()){
+  return {
+    version: LIVE_COOP_WORLD_EVENTS_VERSION,
+    weekKey: contractWeekKey(now),
+    board: [],
+    totalPoints: 0,
+    eventCompletions: 0,
+    perfectChains: 0,
+    bossSignals: 0,
+    lastEventType: "",
+    lastContributionAt: 0,
+    lastToastAt: 0,
+  };
+}
+
+function normalizeLiveCoopWorldEventEntry(entry={}, period=contractWeekKey()){
+  const src = (entry && typeof entry === "object") ? entry : {};
+  const rewardSrc = (src.reward && typeof src.reward === "object") ? src.reward : {};
+  return {
+    id: String(src.id || ""),
+    key: String(src.key || ""),
+    icon: String(src.icon || "🌐"),
+    name: String(src.name || "Live Co-op Event"),
+    type: String(src.type || "mission"),
+    desc: String(src.desc || "Shared world event progress."),
+    target: Math.max(1, Math.floor(Number(src.target || 120))),
+    progress: Math.max(0, Math.floor(Number(src.progress || 0))),
+    personal: Math.max(0, Math.floor(Number(src.personal || 0))),
+    completions: Math.max(0, Math.floor(Number(src.completions || 0))),
+    period: String(src.period || period || contractWeekKey()),
+    reward: {
+      cash: Math.max(0, Math.floor(Number(rewardSrc.cash || 0))),
+      perkPoints: Math.max(0, Math.floor(Number(rewardSrc.perkPoints || 0))),
+      seasonPoints: Math.max(0, Math.floor(Number(rewardSrc.seasonPoints || 0))),
+    },
+    source: String(src.source || "local"),
+  };
+}
+
+function liveCoopWorldEventsFromLocal(state=S, liveState=null){
+  const clanTag = normalizeClanTag(state?.clanTag || defaultClanTagFromTelegram(state)) || "SOLO";
+  const live = (liveState && typeof liveState === "object") ? liveState : ((state?.liveCoopWorldEvents && typeof state.liveCoopWorldEvents === "object") ? state.liveCoopWorldEvents : defaultLiveCoopWorldEventsState());
+  const period = String(live.weekKey || contractWeekKey()).trim() || contractWeekKey();
+  const cloudMembers = Math.max(1, Math.floor(Number(state?.clanCloud?.members || 1)));
+  const seed = contractHashInt(`live_coop_world_events|${period}|${clanTag}`);
+  const picks = contractSeededPick(
+    LIVE_COOP_WORLD_EVENT_TEMPLATES,
+    Math.min(LIVE_COOP_WORLD_EVENTS_BOARD_COUNT, LIVE_COOP_WORLD_EVENT_TEMPLATES.length),
+    seed
+  );
+  const byId = Object.fromEntries((Array.isArray(live.board) ? live.board : []).map((row)=>[String(row.id || ""), row]));
+  return picks.map((tpl, idx)=>{
+    const id = `${period}_${idx}_${tpl.key}`;
+    const prev = normalizeLiveCoopWorldEventEntry(byId[id], period);
+    const target = Math.max(70, Math.floor(Number(tpl.target || 120) + (cloudMembers * 18) + (idx * 12)));
+    return normalizeLiveCoopWorldEventEntry({
+      id,
+      key: tpl.key,
+      icon: tpl.icon,
+      name: tpl.name,
+      type: tpl.type,
+      desc: tpl.desc,
+      target,
+      progress: prev.progress,
+      personal: prev.personal,
+      completions: prev.completions,
+      period,
+      reward: tpl.reward || {},
+      source:"local",
+    }, period);
+  });
+}
+
+function ensureLiveCoopWorldEventsState(state=S, opts={}){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return defaultLiveCoopWorldEventsState();
+  const now = Number.isFinite(Number(opts.now)) ? Number(opts.now) : Date.now();
+  const base = defaultLiveCoopWorldEventsState(now);
+  const incoming = (src.liveCoopWorldEvents && typeof src.liveCoopWorldEvents === "object") ? src.liveCoopWorldEvents : {};
+  const periodNow = contractWeekKey(now);
+  const savedPeriod = String(incoming.weekKey || periodNow).trim() || periodNow;
+  const weekChanged = savedPeriod !== periodNow;
+  const live = {
+    version: LIVE_COOP_WORLD_EVENTS_VERSION,
+    weekKey: weekChanged ? periodNow : savedPeriod,
+    board: weekChanged ? [] : (Array.isArray(incoming.board) ? incoming.board.map((entry)=>normalizeLiveCoopWorldEventEntry(entry, savedPeriod)).filter((row)=>row.id) : []),
+    totalPoints: weekChanged ? 0 : Math.max(0, Math.floor(Number(incoming.totalPoints || 0))),
+    eventCompletions: weekChanged ? 0 : Math.max(0, Math.floor(Number(incoming.eventCompletions || 0))),
+    perfectChains: weekChanged ? 0 : Math.max(0, Math.floor(Number(incoming.perfectChains || 0))),
+    bossSignals: weekChanged ? 0 : Math.max(0, Math.floor(Number(incoming.bossSignals || 0))),
+    lastEventType: weekChanged ? "" : String(incoming.lastEventType || ""),
+    lastContributionAt: weekChanged ? 0 : Math.max(0, Math.floor(Number(incoming.lastContributionAt || 0))),
+    lastToastAt: weekChanged ? 0 : Math.max(0, Math.floor(Number(incoming.lastToastAt || 0))),
+  };
+  live.board = liveCoopWorldEventsFromLocal(src, live).map((entry)=>normalizeLiveCoopWorldEventEntry(entry, live.weekKey));
+  src.liveCoopWorldEvents = live;
+  return live;
+}
+
+function mergeLiveCoopWorldEventsSnapshots(currentRaw=null, incomingRaw=null){
+  const now = Date.now();
+  const current = ensureLiveCoopWorldEventsState({ liveCoopWorldEvents: currentRaw || null }, { now });
+  const incoming = ensureLiveCoopWorldEventsState({ liveCoopWorldEvents: incomingRaw || null }, { now });
+  const out = defaultLiveCoopWorldEventsState(now);
+  out.weekKey = String(current.weekKey || incoming.weekKey || contractWeekKey(now));
+  out.totalPoints = Math.max(current.totalPoints || 0, incoming.totalPoints || 0);
+  out.eventCompletions = Math.max(current.eventCompletions || 0, incoming.eventCompletions || 0);
+  out.perfectChains = Math.max(current.perfectChains || 0, incoming.perfectChains || 0);
+  out.bossSignals = Math.max(current.bossSignals || 0, incoming.bossSignals || 0);
+  out.lastEventType = current.lastContributionAt >= incoming.lastContributionAt ? current.lastEventType : incoming.lastEventType;
+  out.lastContributionAt = Math.max(current.lastContributionAt || 0, incoming.lastContributionAt || 0);
+  out.lastToastAt = Math.max(current.lastToastAt || 0, incoming.lastToastAt || 0);
+  const byId = {};
+  for(const row of [...(current.board || []), ...(incoming.board || [])]){
+    const norm = normalizeLiveCoopWorldEventEntry(row, out.weekKey);
+    if(!norm.id) continue;
+    const prev = byId[norm.id] || norm;
+    byId[norm.id] = {
+      ...prev,
+      ...norm,
+      progress: Math.max(prev.progress || 0, norm.progress || 0),
+      personal: Math.max(prev.personal || 0, norm.personal || 0),
+      completions: Math.max(prev.completions || 0, norm.completions || 0),
+    };
+  }
+  out.board = Object.values(byId).map((row)=>normalizeLiveCoopWorldEventEntry(row, out.weekKey));
+  return out;
+}
+
+function liveCoopWorldEventScoreMul(kind="mission", opts={}){
+  let mul = 1;
+  if(raidModeActive(S)) mul += 0.08;
+  if(opts?.completed) mul += 0.12;
+  if(opts?.perfect) mul += 0.18;
+  if(opts?.boss) mul += 0.20;
+  if(kind === "perfect_rescue") mul += 0.16;
+  if(kind === "boss_clear") mul += 0.18;
+  return clamp(mul, 1, 1.65);
+}
+
+function addLiveCoopWorldEventContribution(kind="mission", basePoints=8, opts={}){
+  if(window.__TUTORIAL_MODE__) return null;
+  const live = ensureLiveCoopWorldEventsState(S);
+  if(!Array.isArray(live.board) || !live.board.length) return null;
+  const type = String(kind || "mission");
+  const direct = live.board.find((row)=>row.type === type);
+  const hash = contractHashInt(`${live.weekKey}|${type}|${gameplayCloudMission(S)}|${S.stats?.evac || 0}|${S.stats?.captures || 0}|${S.stats?.kills || 0}`);
+  const row = direct || live.board[Math.max(0, hash % live.board.length)];
+  if(!row) return null;
+  const points = Math.max(1, Math.round(Math.max(1, Number(basePoints || 1)) * liveCoopWorldEventScoreMul(type, opts)));
+  row.personal = Math.max(0, Math.floor(Number(row.personal || 0))) + points;
+  row.progress = Math.max(0, Math.floor(Number(row.progress || 0))) + points;
+  if(opts?.completed) row.completions = Math.max(0, Math.floor(Number(row.completions || 0))) + 1;
+  live.totalPoints = Math.max(0, Math.floor(Number(live.totalPoints || 0))) + points;
+  if(opts?.completed) live.eventCompletions = Math.max(0, Math.floor(Number(live.eventCompletions || 0))) + 1;
+  if(type === "perfect_rescue") live.perfectChains = Math.max(0, Math.floor(Number(live.perfectChains || 0))) + 1;
+  if(type === "boss_clear") live.bossSignals = Math.max(0, Math.floor(Number(live.bossSignals || 0))) + 1;
+  live.lastEventType = type;
+  live.lastContributionAt = Date.now();
+  if(!opts?.silent && Date.now() > (live.lastToastAt || 0) + 3400){
+    live.lastToastAt = Date.now();
+    setEventText(`${row.icon} Live Co-op Event: +${points} pts (${row.name})`, 2.6);
+  }
+  requestGameplayCloudSync(`live-coop-${type}`);
+  return { row, points, type };
+}
+
+function liveCoopWorldEventSummaryRows(state=S){
+  const live = ensureLiveCoopWorldEventsState(state);
+  return (Array.isArray(live.board) ? live.board : []).slice(0, 3).map((row)=>({
+    label:`${row.icon} ${row.name}`,
+    value: Math.max(0, Math.floor(Number(row.progress || 0))),
+    target: Math.max(1, Math.floor(Number(row.target || 1))),
+  }));
+}
+
+function recordLiveCoopWorldMissionOutcome({ missionStats=null, civTotal=0, civDead=0, activeMission=null }={}){
+  if(window.__TUTORIAL_MODE__) return "";
+  const stats = missionStatSnapshot(missionStats || currentMissionStatsSnapshot({ civTotal }));
+  const bossMission = !!(activeMission?.boss || activeMission?.finalBoss || activeMission?.bossTwin || activeMission?.denRaid);
+  const perfect = civTotal > 0 && civDead <= 0 && Math.max(0, Number(stats.evac || 0)) >= civTotal;
+  const base = 8 + Math.min(18, Math.floor(Math.max(0, Number(stats.evac || 0)) * 1.8)) + Math.min(18, Math.floor(Math.max(0, Number(stats.captures || 0)) * 0.9));
+  const general = addLiveCoopWorldEventContribution("mission", base, { silent:true });
+  const special = perfect
+    ? addLiveCoopWorldEventContribution("perfect_rescue", 18, { silent:true, perfect:true })
+    : (bossMission ? addLiveCoopWorldEventContribution("boss_clear", 20, { silent:true, boss:true }) : null);
+  const used = special || general;
+  if(!used?.row) return "";
+  return `\nLive Co-op World Event: +${Math.max(0, Math.floor(Number((general?.points || 0) + ((special && special !== general) ? special.points : 0))))} shared pts • ${used.row.name} ${Math.min(used.row.progress, used.row.target)}/${used.row.target}\n`;
 }
 
 function coopRoleLabel(role){
@@ -780,6 +971,8 @@ const LIVE_OPS_VERSION = 1;
 const COOP_STRIKE_OPS_VERSION = 1;
 const COOP_STRIKE_OPS_HOTSPOT_COUNT = 3;
 const COOP_STRIKE_OPS_ROLE_PREFS = Object.freeze(["hunter","rescuer","support"]);
+const LIVE_COOP_WORLD_EVENTS_VERSION = 1;
+const LIVE_COOP_WORLD_EVENTS_BOARD_COUNT = 3;
 const CLAN_WARFRONT_VERSION = 1;
 const CLAN_WARFRONT_TERRITORY_COUNT = 4;
 const COOP_STRIKE_OPS_TEMPLATES = Object.freeze([
@@ -789,6 +982,14 @@ const COOP_STRIKE_OPS_TEMPLATES = Object.freeze([
   Object.freeze({ key:"CLIFF_RELAY", name:"Cliff Relay Zone", desc:"Mountain relay corridor with rotating tiger packs.", flavor:"mountain" }),
   Object.freeze({ key:"JUNGLE_GRID", name:"Jungle Grid Sector", desc:"Dense jungle lanes with ambush risk.", flavor:"jungle" }),
   Object.freeze({ key:"TOWN_EGRESS", name:"Town Egress Lane", desc:"Urban exit routes requiring synchronized pushes.", flavor:"urban" }),
+]);
+const LIVE_COOP_WORLD_EVENT_TEMPLATES = Object.freeze([
+  Object.freeze({ key:"RIVER_RELAY", icon:"🚤", name:"River Rescue Relay", type:"flooded_route", desc:"Teams stabilize flooded crossings and move civilians through river exits.", target:160, reward:{ cash:6200, perkPoints:2, seasonPoints:18 } }),
+  Object.freeze({ key:"AIRLIFT_NET", icon:"🚁", name:"Airlift Net", type:"helicopter_crash", desc:"Secure crash sites, recover intel, and keep rescue aircraft flying.", target:145, reward:{ cash:6800, perkPoints:2, seasonPoints:20 } }),
+  Object.freeze({ key:"CONVOY_BREAK", icon:"🚚", name:"Convoy Break", type:"ambush_convoy", desc:"Break ambush waves before they spill into civilian routes.", target:170, reward:{ cash:5900, perkPoints:2, seasonPoints:16 } }),
+  Object.freeze({ key:"STORM_WATCH", icon:"⛈️", name:"Storm Watch", type:"night_storm", desc:"Hold the line through storm events and complete clean rescues.", target:135, reward:{ cash:5400, perkPoints:1, seasonPoints:15 } }),
+  Object.freeze({ key:"PERFECT_CHAIN", icon:"🛟", name:"Perfect Rescue Chain", type:"perfect_rescue", desc:"Stack zero-loss rescue clears for the weekly Telegram rescue board.", target:95, reward:{ cash:7600, perkPoints:3, seasonPoints:24 } }),
+  Object.freeze({ key:"NEMESIS_SIGNAL", icon:"👑", name:"Nemesis Signal", type:"boss_clear", desc:"Coordinate boss and Nemesis clears across the active rescue network.", target:110, reward:{ cash:8200, perkPoints:3, seasonPoints:28 } }),
 ]);
 const CLAN_WARFRONT_TEMPLATES = Object.freeze([
   Object.freeze({ key:"IRON_GATE", name:"Iron Gate Corridor", desc:"Primary stronghold route with high tiger pressure." }),
@@ -3363,6 +3564,7 @@ function socialClanGoalRows(){
     { label:"Clan Tigers Captured", value:totals.captures, target:60 },
     { label:"Perfect Rescue Relay", value:showcaseMetricValue("perfectRescues", S), target:10 },
     { label:"Boss/Nemesis Clears", value:showcaseMetricValue("bossesDefeated", S), target:8 },
+    ...liveCoopWorldEventSummaryRows(S),
   ];
 }
 function renderSocialRescueCard(challenge=null){
@@ -3376,7 +3578,8 @@ function renderSocialRescueCard(challenge=null){
   const tagsEl = document.getElementById("completeSocialTags");
   if(scoreEl) scoreEl.innerText = `${Math.max(0, Math.floor(Number(data?.score || social.weekly.bestScore || 0))).toLocaleString()} pts`;
   if(subEl){
-    subEl.innerText = `Week ${social.weekKey} • Local best ${Math.max(0, Math.floor(Number(social.weekly.bestScore || 0))).toLocaleString()} • /weeklyleaders tracks cloud scores.`;
+    const live = ensureLiveCoopWorldEventsState(S);
+    subEl.innerText = `Week ${social.weekKey} • Local best ${Math.max(0, Math.floor(Number(social.weekly.bestScore || 0))).toLocaleString()} • ${Math.max(0, Math.floor(Number(live.totalPoints || 0))).toLocaleString()} live co-op pts.`;
   }
   if(rowsEl){
     const challengeLine = data
@@ -3391,7 +3594,7 @@ function renderSocialRescueCard(challenge=null){
     rowsEl.innerHTML = challengeLine + weeklyLine + clanLine;
   }
   if(tagsEl){
-    const tags = ["Rescue Challenge", "Weekly Leaderboard", "Clan Goals"];
+    const tags = ["Live Co-op Events", "Rescue Challenge", "Weekly Leaderboard", "Clan Goals"];
     if(data?.perfect) tags.unshift("Perfect Rescue");
     if(data?.bossMission) tags.unshift("Alpha Captured");
     tagsEl.innerHTML = tags.map((tag)=>`<span class="premiumSummaryTag">${rewardEscapeHtml(tag)}</span>`).join("");
@@ -11659,6 +11862,7 @@ const DEFAULT = {
   clanRaidEnabled:false,
   clanContractClaims:{},
   coopStrikeOps: null,
+  liveCoopWorldEvents: null,
   clanWarfront: null,
   clanCloud:null,
   clanLastSyncAt:0,
@@ -12890,6 +13094,7 @@ function buildGameplayCloudSnapshot(state=S){
   const weeklyKey = String(src.arcadeWeeklySeedKey || weeklyChallengeWeekKey()).trim() || weeklyChallengeWeekKey();
   const weeklyBest = arcadeWeeklyBestForWeek(src, weeklyKey);
   const coop = ensureCoopStrikeOpsState(src);
+  const liveCoop = ensureLiveCoopWorldEventsState(src);
   const warfront = ensureClanWarfrontState(src);
   const coopHotspots = (Array.isArray(coop.hotspots) ? coop.hotspots : []).map((row)=>({
     id: String(row.id || ""),
@@ -12908,6 +13113,16 @@ function buildGameplayCloudSnapshot(state=S){
     target: Math.max(1, Math.floor(Number(row.target || 1))),
     control: Math.round(clamp(Number(row.control || 0), 0, 100)),
     period: String(row.period || warfront.key || contractWeekKey()),
+  }));
+  const liveCoopBoard = (Array.isArray(liveCoop.board) ? liveCoop.board : []).map((row)=>({
+    id: String(row.id || ""),
+    key: String(row.key || ""),
+    type: String(row.type || ""),
+    personal: Math.max(0, Math.floor(Number(row.personal || 0))),
+    progress: Math.max(0, Math.floor(Number(row.progress || 0))),
+    target: Math.max(1, Math.floor(Number(row.target || 1))),
+    completions: Math.max(0, Math.floor(Number(row.completions || 0))),
+    period: String(row.period || liveCoop.weekKey || contractWeekKey()),
   }));
   const missionStats = (src.stats && typeof src.stats === "object") ? src.stats : {};
   const kills = Math.max(
@@ -12960,6 +13175,10 @@ function buildGameplayCloudSnapshot(state=S){
     coopMissionPoints: Math.max(0, Math.floor(Number(coop.missionPoints || 0))),
     coopRescuePoints: Math.max(0, Math.floor(Number(coop.rescuePoints || 0))),
     coopHotspots,
+    liveCoopWorldWeekKey: String(liveCoop.weekKey || contractWeekKey()),
+    liveCoopWorldPoints: Math.max(0, Math.floor(Number(liveCoop.totalPoints || 0))),
+    liveCoopWorldCompletions: Math.max(0, Math.floor(Number(liveCoop.eventCompletions || 0))),
+    liveCoopWorldBoard: liveCoopBoard,
     warfrontWeekKey: String(warfront.key || contractWeekKey()),
     warfrontPointsTotal: Math.max(0, Math.floor(Number(warfront.pointsTotal || 0))),
     warfrontCapturePoints: Math.max(0, Math.floor(Number(warfront.capturePoints || 0))),
@@ -13010,6 +13229,17 @@ function gameplayCloudSnapshotSig(snapshot){
       Math.max(0, Math.floor(Number(row?.progress || 0))),
       Math.max(1, Math.floor(Number(row?.target || 1))),
       Math.max(0, Math.floor(Number(row?.coordinatedCaptures || 0))),
+    ].join(":")) : []),
+    String(snap.liveCoopWorldWeekKey || ""),
+    Math.max(0, Math.floor(Number(snap.liveCoopWorldPoints || 0))),
+    Math.max(0, Math.floor(Number(snap.liveCoopWorldCompletions || 0))),
+    ...(Array.isArray(snap.liveCoopWorldBoard) ? snap.liveCoopWorldBoard.map((row)=>[
+      String(row?.id || ""),
+      String(row?.type || ""),
+      Math.max(0, Math.floor(Number(row?.personal || 0))),
+      Math.max(0, Math.floor(Number(row?.progress || 0))),
+      Math.max(1, Math.floor(Number(row?.target || 1))),
+      Math.max(0, Math.floor(Number(row?.completions || 0))),
     ].join(":")) : []),
     String(snap.warfrontWeekKey || ""),
     Math.max(0, Math.floor(Number(snap.warfrontPointsTotal || 0))),
@@ -13321,6 +13551,7 @@ function load(){
       ensureSeasonPassState(fallback);
       ensureMasteryRewardsState(fallback);
       ensureSocialRescueState(fallback);
+      ensureLiveCoopWorldEventsState(fallback);
       ensureCosmeticCollectionState(fallback);
       stabilizeLoadedSaveState(fallback, "new-save");
       return fallback;
@@ -13369,6 +13600,7 @@ function load(){
       ? cloneState(saved.liveOpsModifierCards)
       : null;
     m.coopStrikeOps = (saved.coopStrikeOps && typeof saved.coopStrikeOps === "object") ? cloneState(saved.coopStrikeOps) : null;
+    m.liveCoopWorldEvents = (saved.liveCoopWorldEvents && typeof saved.liveCoopWorldEvents === "object") ? cloneState(saved.liveCoopWorldEvents) : null;
     m.clanWarfront = (saved.clanWarfront && typeof saved.clanWarfront === "object") ? cloneState(saved.clanWarfront) : null;
     m.referralMilestone = (saved.referralMilestone && typeof saved.referralMilestone === "object") ? saved.referralMilestone : null;
     m.telegramEventDrop = (saved.telegramEventDrop && typeof saved.telegramEventDrop === "object") ? saved.telegramEventDrop : null;
@@ -13412,6 +13644,7 @@ function load(){
     ensureLiveOpsState(m);
     currentMissionModifierCards(m);
     ensureCoopStrikeOpsState(m);
+    ensureLiveCoopWorldEventsState(m);
     ensureOpsTotalsState(m);
     ensureBalanceStatsState(m);
     ensureNemesisState(m);
@@ -13445,6 +13678,7 @@ function load(){
     ensureContractsState(fallback);
     ensureLiveOpsState(fallback);
     ensureCoopStrikeOpsState(fallback);
+    ensureLiveCoopWorldEventsState(fallback);
     ensureOpsTotalsState(fallback);
     ensureBalanceStatsState(fallback);
     ensureNemesisState(fallback);
@@ -22961,6 +23195,14 @@ function clearDynamicWorldEvent(opts={}){
   if(success && score > 0){
     S.score = Math.max(0, Math.floor(Number(S.score || 0))) + score;
   }
+  if(success && eventType){
+    addLiveCoopWorldEventContribution(eventType, 20 + Math.floor(score / 30), {
+      completed:true,
+      silent:false,
+      cash,
+      score,
+    });
+  }
   we.active = false;
   we.type = "";
   we.startedAt = 0;
@@ -23005,6 +23247,7 @@ function triggerDynamicWorldEvent(type, now=Date.now()){
   we.siteSecured = false;
   const left = Math.max(1, Math.ceil((we.until - now) / 1000));
   setEventText(`${def.icon} ${def.label} live event started (${left}s).`, 5.2);
+  addLiveCoopWorldEventContribution(type, 4, { silent:true, started:true });
   missionDirectorReadableAlert(type);
   sfx("event");
   hapticImpact("medium");
@@ -24730,6 +24973,7 @@ function writeStoryProfileData(source="autosave", state=S){
     liveOps: (src.liveOps && typeof src.liveOps === "object") ? cloneState(src.liveOps) : null,
     liveOpsModifierCards: (src.liveOpsModifierCards && typeof src.liveOpsModifierCards === "object") ? cloneState(src.liveOpsModifierCards) : null,
     coopStrikeOps: (src.coopStrikeOps && typeof src.coopStrikeOps === "object") ? cloneState(src.coopStrikeOps) : null,
+    liveCoopWorldEvents: cloneState(ensureLiveCoopWorldEventsState(src)),
     clanWarfront: (src.clanWarfront && typeof src.clanWarfront === "object") ? cloneState(src.clanWarfront) : null,
     ownedWeapons: Array.isArray(src.ownedWeapons) ? src.ownedWeapons.filter((id)=>typeof id === "string") : [],
     equippedWeaponId: String(src.equippedWeaponId || ""),
@@ -25030,6 +25274,10 @@ function applyStoryProfileToState(state, profile){
     state.coopStrikeOps = merged;
     ensureCoopStrikeOpsState(state);
   }
+  if(profile.liveCoopWorldEvents && typeof profile.liveCoopWorldEvents === "object"){
+    state.liveCoopWorldEvents = mergeLiveCoopWorldEventsSnapshots(state.liveCoopWorldEvents, profile.liveCoopWorldEvents);
+    ensureLiveCoopWorldEventsState(state);
+  }
   if(profile.clanWarfront && typeof profile.clanWarfront === "object"){
     const merged = cloneState(profile.clanWarfront);
     merged.claims = mergeClaimMaps(merged.claims, state.clanWarfront?.claims, normalizeClanWarfrontClaimsMap);
@@ -25243,6 +25491,9 @@ function writeStoryProgressData(payload={}){
     coopStrikeOps: (payload.coopStrikeOps && typeof payload.coopStrikeOps === "object")
       ? cloneState(payload.coopStrikeOps)
       : ((S.coopStrikeOps && typeof S.coopStrikeOps === "object") ? cloneState(S.coopStrikeOps) : null),
+    liveCoopWorldEvents: (payload.liveCoopWorldEvents && typeof payload.liveCoopWorldEvents === "object")
+      ? cloneState(payload.liveCoopWorldEvents)
+      : cloneState(ensureLiveCoopWorldEventsState(S)),
     clanWarfront: (payload.clanWarfront && typeof payload.clanWarfront === "object")
       ? cloneState(payload.clanWarfront)
       : ((S.clanWarfront && typeof S.clanWarfront === "object") ? cloneState(S.clanWarfront) : null),
@@ -43679,6 +43930,12 @@ function checkMissionComplete(){
         civDead,
         activeMission,
       });
+      const liveCoopWorldNote = recordLiveCoopWorldMissionOutcome({
+        missionStats,
+        civTotal,
+        civDead,
+        activeMission,
+      });
 
       const recapMeta = {
         number: activeMission?.number || gameplayCloudMission(S),
@@ -43718,7 +43975,7 @@ function checkMissionComplete(){
       });
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${fieldCashTruthNote}${worldMapCampaignNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${fieldCashTruthNote}${worldMapCampaignNote}${liveCoopWorldNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
