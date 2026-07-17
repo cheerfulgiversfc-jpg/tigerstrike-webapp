@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4499";
+const TS_BUILD = "4500";
 if(tg){
   try{
     tg.expand?.();
@@ -5592,11 +5592,74 @@ function prestigeShowcaseTier(state=S){
   const index = PRESTIGE_SHOWCASE_TIERS.indexOf(current);
   return { score, current, next:PRESTIGE_SHOWCASE_TIERS[index + 1] || null };
 }
+function playerProfileShowcaseSummary(state=S){
+  const totals = ensureOpsTotalsState(state);
+  const cosmetics = cosmeticCollectionStats();
+  const collection = ensureCosmeticCollectionState(state);
+  const nemesis = showcaseNemesisRecords(state);
+  const prestige = prestigeShowcaseTier(state);
+  const trophies = TIGER_TROPHY_TYPES.map((type)=>({
+    type,
+    count:Math.max(0, Math.floor(Number(collection.trophies?.[type] || 0)))
+  }));
+  const topTrophy = trophies.reduce((best, row)=>row.count > best.count ? row : best, { type:"None", count:0 });
+  const season = typeof cinematicBossHuntSeasonSummary === "function" ? cinematicBossHuntSeasonSummary(state) : null;
+  return {
+    name:currentPlayerHandle(state),
+    title:effectiveDisplayTitle(state),
+    clan:normalizeClanTag(state.clanTag || "SOLO"),
+    prestige,
+    mode:String(state.mode || "Story"),
+    mission:currentMissionLabel(),
+    storyLevel:Math.max(1, Math.floor(Number(state.storyLevel || 1))),
+    arcadeLevel:Math.max(1, Math.floor(Number(state.arcadeLevel || 1))),
+    survivalWave:Math.max(0, Math.floor(Number(state.survivalWave || state.stats?.bestWave || 0))),
+    hqIdentity:storyHQIdentityLabel(),
+    achievements:achvCount(),
+    showcaseUnlocked:SHOWCASE_ACHIEVEMENTS.filter((def)=>state.achievements?.[`showcase_${def.id}`]).length,
+    cosmetics,
+    nemesis,
+    totals,
+    trophies,
+    topTrophy,
+    season,
+  };
+}
+function playerProfileShareText(state=S){
+  const profile = playerProfileShowcaseSummary(state);
+  const totals = profile.totals;
+  const bossWins = showcaseMetricValue("bossesDefeated", state);
+  const perfect = showcaseMetricValue("perfectRescues", state);
+  return [
+    `Tiger Strike Profile: ${profile.name}`,
+    `${profile.prestige.current.icon} ${profile.prestige.current.name} • ${profile.title} • Clan ${profile.clan}`,
+    `Story ${profile.storyLevel} • ${profile.hqIdentity}`,
+    `Missions ${Math.max(0, Math.floor(Number(totals.missionsCleared || 0)))} • Rescues ${Math.max(0, Math.floor(Number(totals.evac || 0)))} • Perfect ${perfect}`,
+    `Captures ${Math.max(0, Math.floor(Number(totals.captures || 0)))} • Kills ${Math.max(0, Math.floor(Number(totals.kills || 0)))} • Boss wins ${bossWins} • Nemesis ${profile.nemesis.resolved.length}`,
+    `Trophy spotlight: ${profile.topTrophy.count ? `${profile.topTrophy.type} x${profile.topTrophy.count}` : "No trophies yet"}`,
+  ].join(" | ");
+}
+function copyPlayerProfileShareText(){
+  const text = playerProfileShareText(S);
+  const done = ()=>toast("Player profile copied for sharing.");
+  if(typeof navigator !== "undefined" && navigator?.clipboard?.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>{
+      toast(text);
+    });
+  }else{
+    toast(text);
+  }
+  return false;
+}
+function playerProfileStatCard(label, value, detail=""){
+  return `<div class="item" style="align-items:flex-start"><div><div class="itemDesc">${baseHqEsc(label)}</div><div class="itemName">${baseHqEsc(value)}</div>${detail ? `<div class="itemDesc">${baseHqEsc(detail)}</div>` : ""}</div></div>`;
+}
 function renderAchievementPrestigeShowcase(){
   const root = document.getElementById("invShowcase");
   const summary = document.getElementById("invShowcaseSummary");
   if(!root || !summary) return;
   syncShowcaseAchievements(S);
+  const profile = playerProfileShowcaseSummary(S);
   const totals = ensureOpsTotalsState(S);
   const collection = ensureCosmeticCollectionState(S);
   const cosmetics = cosmeticCollectionStats();
@@ -5604,9 +5667,9 @@ function renderAchievementPrestigeShowcase(){
   const nemesis = showcaseNemesisRecords(S);
   const prestige = prestigeShowcaseTier(S);
   const showcaseUnlocked = SHOWCASE_ACHIEVEMENTS.filter((def)=>S.achievements?.[`showcase_${def.id}`]).length;
-  const commander = String(S.playerHandle || S.telegramUsername || "Tiger Strike Commander");
+  const commander = profile.name;
   const progress = prestige.next ? `${prestige.score}/${prestige.next.min} to ${prestige.next.icon} ${prestige.next.name}` : `${prestige.score} prestige • Maximum rank`;
-  summary.innerHTML = `<b>${prestige.current.icon} ${prestige.current.name}</b> • ${commander} • [${normalizeClanTag(S.clanTag || "SOLO")}]<br><b>Prestige:</b> ${progress}<br><b>Showcase:</b> ${showcaseUnlocked}/${SHOWCASE_ACHIEVEMENTS.length} achievements • ${cosmetics.owned}/${cosmetics.total} collectibles`;
+  summary.innerHTML = `<b>Player Profile + Trophy Showcase</b><br><b>${prestige.current.icon} ${prestige.current.name}</b> • ${baseHqEsc(commander)} • [${baseHqEsc(profile.clan)}]<br><b>Prestige:</b> ${baseHqEsc(progress)}<br><b>Showcase:</b> ${showcaseUnlocked}/${SHOWCASE_ACHIEVEMENTS.length} achievements • ${cosmetics.owned}/${cosmetics.total} collectibles`;
   const achievementRows = SHOWCASE_ACHIEVEMENTS.map((def)=>{
     const value = showcaseMetricValue(def.metric, S);
     const unlocked = !!S.achievements?.[`showcase_${def.id}`];
@@ -5628,7 +5691,30 @@ function renderAchievementPrestigeShowcase(){
     const equipped = mastery.equippedEliteTitle === id;
     return cosmeticCard(def.name, owned ? "Elite title owned." : "Unlock through Mastery.", def.icon, owned, equipped, owned ? `<button ${equipped ? "disabled" : ""} onclick="equipMasteryEliteTitle('${id}')">${equipped ? "Featured" : "Feature"}</button>` : "");
   }).join("");
-  root.innerHTML = `<div class="item"><div><div class="itemName">${prestige.current.icon} Commander Profile • ${effectiveDisplayTitle(S)}</div><div class="itemDesc">Missions ${totals.missionsCleared} • Rescues ${totals.evac} • Perfect rescues ${showcaseMetricValue("perfectRescues", S)} • Captures ${totals.captures} • Boss wins ${showcaseMetricValue("bossesDefeated", S)} • Nemesis resolved ${nemesis.resolved.length}</div><div class="itemDesc">Captured Nemesis ${nemesis.captured.length} • Nemesis eliminated ${nemesis.killed.length} • Lifetime cash earned $${totals.cashEarned.toLocaleString()}</div></div></div><div class="divider"></div><div class="hudTitle">Achievement Wall</div>${achievementRows}<div class="divider"></div><div class="hudTitle">Legacy Field Medals</div>${legacyRows}<div class="divider"></div><div class="hudTitle">Featured Elite Titles</div>${titleRows}<div class="divider"></div><div class="hudTitle">Captured Tiger Trophy Hall</div>${trophyRows}<div class="divider"></div><div class="hudTitle">Nemesis Hall</div>${nemesisRows}`;
+  const shareText = playerProfileShareText(S);
+  const profileCards = [
+    playerProfileStatCard("Commander", profile.name, `${profile.title} • Clan ${profile.clan}`),
+    playerProfileStatCard("Prestige Rank", `${prestige.current.icon} ${prestige.current.name}`, progress),
+    playerProfileStatCard("Campaign", `Story ${profile.storyLevel}`, `${profile.mission} • ${profile.hqIdentity}`),
+    playerProfileStatCard("Mode Progress", `${profile.mode}`, `Arcade Lv ${profile.arcadeLevel} • Survival Wave ${profile.survivalWave}`),
+    playerProfileStatCard("Rescue Record", `${Math.max(0, Number(totals.evac || 0)).toLocaleString()} saved`, `${showcaseMetricValue("perfectRescues", S)} perfect rescue clears`),
+    playerProfileStatCard("Tiger Record", `${Math.max(0, Number(totals.captures || 0)).toLocaleString()} captured`, `${Math.max(0, Number(totals.kills || 0)).toLocaleString()} defeated • ${showcaseMetricValue("bossesDefeated", S)} boss wins`),
+    playerProfileStatCard("Trophy Spotlight", profile.topTrophy.count ? `${profile.topTrophy.type} x${profile.topTrophy.count}` : "No trophy yet", `${cosmetics.trophyOwned}/${cosmetics.trophyTotal} trophy classes unlocked`),
+    playerProfileStatCard("Boss Hunt Season", profile.season?.title || "No active season", profile.season ? `${profile.season.points}/${profile.season.target} pts • ${profile.season.theme?.bonus || "Boss hunt records will appear here."}` : "Cinematic boss hunt records will appear here."),
+  ].join("");
+  root.innerHTML = `<div class="item">
+    <div>
+      <div class="itemName">${prestige.current.icon} Player Profile • ${baseHqEsc(effectiveDisplayTitle(S))}</div>
+      <div class="itemDesc">${baseHqEsc(shareText)}</div>
+    </div>
+    <div style="text-align:right"><button onclick="copyPlayerProfileShareText()">Copy Profile</button></div>
+  </div>
+  <div class="hudTitle">Profile Snapshot</div>${profileCards}
+  <div class="divider"></div><div class="hudTitle">Achievement Wall</div>${achievementRows}
+  <div class="divider"></div><div class="hudTitle">Legacy Field Medals</div>${legacyRows}
+  <div class="divider"></div><div class="hudTitle">Featured Elite Titles</div>${titleRows}
+  <div class="divider"></div><div class="hudTitle">Captured Tiger Trophy Hall</div>${trophyRows}
+  <div class="divider"></div><div class="hudTitle">Nemesis Hall</div>${nemesisRows}`;
 }
 let __inventoryActiveTab = "gear";
 function inventoryTab(tab="gear"){
@@ -29793,6 +29879,7 @@ function renderBaseHqQuickBar(){
     ${button("Survival", "openBaseHqModePreview('Survival')", "primary")}
     ${button("Brief", "openMissionBriefFromBaseHQ()", "")}
     ${button("Training", "selectBaseHqRoom('training', true)", "")}
+    ${button("Profile", "openInventoryFromBaseHQ('showcase')", "utility")}
     ${button("Reward", "selectBaseHqRoom('contracts', true)", "utility")}
     ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
     ${button("Inventory", "openInventoryFromBaseHQ()", "utility")}
@@ -52135,6 +52222,7 @@ window.openInventory = openInventory;
 window.closeInventory = closeInventory;
 window.openShopFromInventory = openShopFromInventory;
 window.inventoryTab = inventoryTab;
+window.copyPlayerProfileShareText = copyPlayerProfileShareText;
 window.claimSettlementPassive = claimSettlementPassive;
 window.claimSettlementJob = claimSettlementJob;
 window.equipWorldCosmetic = equipWorldCosmetic;
