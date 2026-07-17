@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4498";
+const TS_BUILD = "4499";
 if(tg){
   try{
     tg.expand?.();
@@ -1878,6 +1878,46 @@ function defaultNemesisHuntboardState(weekKey=weeklyChallengeWeekKey()){
     lifetimeClaims: 0,
     lastEventAt: 0,
     lastSource: "",
+  };
+}
+
+const CINEMATIC_BOSS_HUNT_SEASON_VERSION = 1;
+const CINEMATIC_BOSS_HUNT_POINT_TARGET = 220;
+const CINEMATIC_BOSS_HUNT_POINT_MAX = 999;
+const CINEMATIC_BOSS_HUNT_SEASON_THEMES = Object.freeze([
+  Object.freeze({ key:"IRON_ROAR", icon:"🎬", title:"Iron Roar Season", nemesisTitle:"Iron Roar Prime", trait:"armored hide", scene:"Armor sparks across the command screen before the hunt begins.", bonus:"Break boss armor before capture", target:220 }),
+  Object.freeze({ key:"ASH_MOON", icon:"🌘", title:"Ash Moon Season", nemesisTitle:"Ash Moon Stalker", trait:"smoke ambush", scene:"Ash rolls through the route and the tiger vanishes between floodlights.", bonus:"Survive stealth phases", target:200 }),
+  Object.freeze({ key:"STORM_CLAW", icon:"⛈️", title:"Storm Claw Season", nemesisTitle:"Storm Claw Alpha", trait:"pounce chains", scene:"Thunder masks the roar before the Alpha cuts across the road.", bonus:"Dodge chained pounces", target:210 }),
+  Object.freeze({ key:"BLOOD_RIVER", icon:"🩸", title:"Blood River Season", nemesisTitle:"Blood River Mauler", trait:"rage phase", scene:"The river exit flashes red as the boss forces a final stand.", bonus:"Capture during final rage", target:230 }),
+]);
+
+function cinematicBossHuntThemeForWeek(weekKey=weeklyChallengeWeekKey()){
+  const key = String(weekKey || weeklyChallengeWeekKey()).trim() || "week";
+  const idx = Math.abs(contractHashInt(`cinematic-boss-hunt|${key}`)) % CINEMATIC_BOSS_HUNT_SEASON_THEMES.length;
+  return CINEMATIC_BOSS_HUNT_SEASON_THEMES[idx] || CINEMATIC_BOSS_HUNT_SEASON_THEMES[0];
+}
+
+function defaultCinematicBossHuntSeasonState(weekKey=weeklyChallengeWeekKey()){
+  const key = String(weekKey || weeklyChallengeWeekKey()).trim() || "week";
+  const theme = cinematicBossHuntThemeForWeek(key);
+  return {
+    version: CINEMATIC_BOSS_HUNT_SEASON_VERSION,
+    weekKey: key,
+    themeKey: theme.key,
+    points: 0,
+    target: Math.max(1, Math.floor(Number(theme.target || CINEMATIC_BOSS_HUNT_POINT_TARGET))),
+    bossesResolved: 0,
+    captures: 0,
+    kills: 0,
+    streak: 0,
+    bestStreak: 0,
+    lifetimeBossesResolved: 0,
+    lifetimePoints: 0,
+    lastOutcome: "",
+    lastBossName: "",
+    lastResolvedAt: 0,
+    lastMissionRunId: "",
+    lastNote: "",
   };
 }
 
@@ -11557,7 +11597,7 @@ const MODE_PROFILE_KEYS = Object.freeze([
   "weaponAttachments","weaponForge","activeLoadoutPresetId","ammoReserve","mag","durability","weaponMastery","weaponMasteryTrees",
   "medkits","medkitSelectedId","repairKits","armorPlates","armorPlatesFallback","armorPlateSelectedId","trapsOwned","shields",
   "soldierAttackersOwned","soldierRescuersOwned","soldierAttackersDowned","soldierRescuersDowned","squadOwnershipLedger",
-  "squadProgression","civilianSettlement","specialistStarUnlocks","stats","opsTotals","balanceStats","nemesis",
+  "squadProgression","civilianSettlement","specialistStarUnlocks","stats","opsTotals","balanceStats","nemesis","cinematicBossHuntSeason",
   "seasonPass","masteryRewards","cosmeticCollection","achievements","title","xp","level","perkPoints","perks",
   "progressionUnlocks","metaBase","metaHQ","specialistPerks","chapterRewardsUnlocked","contractTallies","contracts",
   "liveOps","liveOpsModifierCards","missionRewardStreak"
@@ -11842,6 +11882,7 @@ const DEFAULT = {
   opsTotals:{ kills:0, captures:0, evac:0, civiliansLost:0, missionsCleared:0, cashEarned:0, perfectRescues:0, bossesDefeated:0 },
   balanceStats: defaultBalanceStatsState(),
   nemesis: defaultNemesisState(),
+  cinematicBossHuntSeason: defaultCinematicBossHuntSeasonState(),
   missionTwists: defaultMissionTwistsState(),
   tigerEcosystem: defaultTigerEcosystemState(),
   dynamicObjective: defaultDynamicObjectiveState(),
@@ -11976,6 +12017,7 @@ ensureClanState(S);
 ensureOpsTotalsState(S);
 ensureBalanceStatsState(S);
 ensureNemesisState(S);
+ensureCinematicBossHuntSeasonState(S);
 ensureArcadeWeeklySeedState(S);
 ensureMasteryRewardsState(S);
 ensureSocialRescueState(S);
@@ -12482,6 +12524,153 @@ function ensureNemesisState(state=S){
   }
   trimNemesisRoster(src.nemesis);
   return src.nemesis;
+}
+
+
+function normalizeCinematicBossHuntSeasonState(raw, weekKey=weeklyChallengeWeekKey()){
+  const activeWeek = String(weekKey || weeklyChallengeWeekKey()).trim() || "week";
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const previousWeek = String(src.weekKey || activeWeek).trim() || activeWeek;
+  const changedWeek = previousWeek !== activeWeek;
+  const base = defaultCinematicBossHuntSeasonState(activeWeek);
+  const out = {
+    ...base,
+    lifetimeBossesResolved: Math.max(0, Math.floor(Number(src.lifetimeBossesResolved || 0))),
+    lifetimePoints: Math.max(0, Math.floor(Number(src.lifetimePoints || 0))),
+  };
+  if(!changedWeek){
+    out.points = clamp(Math.floor(Number(src.points || 0)), 0, CINEMATIC_BOSS_HUNT_POINT_MAX);
+    out.target = Math.max(1, Math.floor(Number(src.target || base.target || CINEMATIC_BOSS_HUNT_POINT_TARGET)));
+    out.bossesResolved = Math.max(0, Math.floor(Number(src.bossesResolved || 0)));
+    out.captures = Math.max(0, Math.floor(Number(src.captures || 0)));
+    out.kills = Math.max(0, Math.floor(Number(src.kills || 0)));
+    out.streak = Math.max(0, Math.floor(Number(src.streak || 0)));
+    out.bestStreak = Math.max(out.streak, Math.max(0, Math.floor(Number(src.bestStreak || 0))));
+    out.lastOutcome = String(src.lastOutcome || "").slice(0, 16);
+    out.lastBossName = String(src.lastBossName || "").slice(0, 48);
+    out.lastResolvedAt = Math.max(0, Math.floor(Number(src.lastResolvedAt || 0)));
+    out.lastMissionRunId = String(src.lastMissionRunId || "").slice(0, 64);
+    out.lastNote = String(src.lastNote || "").slice(0, 160);
+  }
+  return out;
+}
+
+function ensureCinematicBossHuntSeasonState(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  if(!src || typeof src !== "object") return defaultCinematicBossHuntSeasonState();
+  src.cinematicBossHuntSeason = normalizeCinematicBossHuntSeasonState(src.cinematicBossHuntSeason, weeklyChallengeWeekKey());
+  return src.cinematicBossHuntSeason;
+}
+
+function mergeCinematicBossHuntSeasonSnapshots(currentSeason, incomingSeason){
+  const weekKey = weeklyChallengeWeekKey();
+  const current = normalizeCinematicBossHuntSeasonState(currentSeason, weekKey);
+  const incoming = normalizeCinematicBossHuntSeasonState(incomingSeason, weekKey);
+  return normalizeCinematicBossHuntSeasonState({
+    ...current,
+    points: Math.max(current.points || 0, incoming.points || 0),
+    bossesResolved: Math.max(current.bossesResolved || 0, incoming.bossesResolved || 0),
+    captures: Math.max(current.captures || 0, incoming.captures || 0),
+    kills: Math.max(current.kills || 0, incoming.kills || 0),
+    streak: Math.max(current.streak || 0, incoming.streak || 0),
+    bestStreak: Math.max(current.bestStreak || 0, incoming.bestStreak || 0),
+    lifetimeBossesResolved: Math.max(current.lifetimeBossesResolved || 0, incoming.lifetimeBossesResolved || 0),
+    lifetimePoints: Math.max(current.lifetimePoints || 0, incoming.lifetimePoints || 0),
+    lastOutcome: Number(incoming.lastResolvedAt || 0) >= Number(current.lastResolvedAt || 0) ? incoming.lastOutcome : current.lastOutcome,
+    lastBossName: Number(incoming.lastResolvedAt || 0) >= Number(current.lastResolvedAt || 0) ? incoming.lastBossName : current.lastBossName,
+    lastResolvedAt: Math.max(current.lastResolvedAt || 0, incoming.lastResolvedAt || 0),
+    lastMissionRunId: Number(incoming.lastResolvedAt || 0) >= Number(current.lastResolvedAt || 0) ? incoming.lastMissionRunId : current.lastMissionRunId,
+    lastNote: Number(incoming.lastResolvedAt || 0) >= Number(current.lastResolvedAt || 0) ? incoming.lastNote : current.lastNote,
+  }, weekKey);
+}
+
+function cinematicBossHuntSeasonSummary(state=S){
+  const season = ensureCinematicBossHuntSeasonState(state);
+  const theme = cinematicBossHuntThemeForWeek(season.weekKey);
+  const points = clamp(Math.floor(Number(season.points || 0)), 0, CINEMATIC_BOSS_HUNT_POINT_MAX);
+  const target = Math.max(1, Math.floor(Number(season.target || theme.target || CINEMATIC_BOSS_HUNT_POINT_TARGET)));
+  return { ...season, theme, title:theme.title, nemesisTitle:theme.nemesisTitle, percent:clamp(Math.round((points / target) * 100), 0, 100), points, target };
+}
+
+function cinematicBossHuntMissionActive(card=currentMissionCardData()){
+  if(window.__TUTORIAL_MODE__) return false;
+  if(!card?.mission || card.mode === "Survival") return false;
+  const m = card.mission || {};
+  const n = Math.max(1, Math.floor(Number(m.number || missionIndexForMode(card.mode) || 1)));
+  const variant = card.mode === "Story" ? normalizeStoryVariant(m.storyVariant || S.storyVariant) : "Arcade";
+  const objective = String(m.objective || "").toLowerCase();
+  return !!(m.boss || m.finalBoss || m.bossTwin || variant === STORY_VARIANTS.ELITE_HUNT || n % 5 === 0 || n % 10 === 0 || objective.includes("boss") || objective.includes("alpha"));
+}
+
+function cinematicBossHuntIntroBeats(card=currentMissionCardData()){
+  if(!cinematicBossHuntMissionActive(card)) return [];
+  const summary = cinematicBossHuntSeasonSummary(S);
+  return [
+    `${summary.theme.icon} Boss Hunt Season active: ${summary.title}.`,
+    `Featured target: ${summary.nemesisTitle} (${summary.theme.trait}).`,
+    `Cinematic objective: ${summary.theme.bonus}.`,
+  ];
+}
+
+function cinematicBossHuntTigerName(t){
+  if(!t) return "Boss Tiger";
+  return String(t.nemesisAlias || t.bossName || t.name || `${t.type || "Alpha"} Tiger`).slice(0, 48);
+}
+
+function recordCinematicBossHuntOutcome(t, outcome="KILL"){
+  if(window.__TUTORIAL_MODE__) return null;
+  if(!t || t._cinematicBossHuntRecorded) return null;
+  const boss = !!(isBossTiger(t) || t.nemesisId || t.bossPhases || /alpha|boss|nemesis/i.test(`${t.type || ""} ${t.name || ""} ${t.nemesisAlias || ""}`));
+  if(!boss) return null;
+  const season = ensureCinematicBossHuntSeasonState(S);
+  const summary = cinematicBossHuntSeasonSummary(S);
+  const isCapture = String(outcome || "").toUpperCase() === "CAPTURE";
+  const power = Math.max(1, Math.floor(Number(t.nemesisPower || t.bossIdentityChapter || currentStoryMissionNumber(S) / 10 || 1)));
+  const gained = Math.max(10, Math.round((isCapture ? 34 : 24) + (power * 2) + (t.bossPhases ? 8 : 0)));
+  t._cinematicBossHuntRecorded = true;
+  season.points = clamp(Math.floor(Number(season.points || 0)) + gained, 0, CINEMATIC_BOSS_HUNT_POINT_MAX);
+  season.lifetimePoints = Math.max(0, Math.floor(Number(season.lifetimePoints || 0))) + gained;
+  season.bossesResolved = Math.max(0, Math.floor(Number(season.bossesResolved || 0))) + 1;
+  season.lifetimeBossesResolved = Math.max(0, Math.floor(Number(season.lifetimeBossesResolved || 0))) + 1;
+  if(isCapture) season.captures = Math.max(0, Math.floor(Number(season.captures || 0))) + 1;
+  else season.kills = Math.max(0, Math.floor(Number(season.kills || 0))) + 1;
+  season.streak = Math.max(0, Math.floor(Number(season.streak || 0))) + 1;
+  season.bestStreak = Math.max(Math.floor(Number(season.bestStreak || 0)), season.streak);
+  season.lastOutcome = isCapture ? "CAPTURE" : "KILL";
+  season.lastBossName = cinematicBossHuntTigerName(t);
+  season.lastResolvedAt = Date.now();
+  season.lastNote = `${summary.theme.icon} ${summary.title}: ${season.lastBossName} ${isCapture ? "captured" : "defeated"} (+${gained} pts)`;
+  S._cinematicBossHuntLastNote = season.lastNote;
+  addNemesisHuntboardPoints(Math.round(gained * 0.45), "cinematic boss", { toast:false });
+  grantSeasonPassPoints(isCapture ? 8 : 6, "Cinematic Boss Hunt Season");
+  if(typeof addLiveCoopWorldEventContribution === "function") addLiveCoopWorldEventContribution("boss_clear", isCapture ? 18 : 14, { boss:true, silent:true });
+  setEventText(`${summary.theme.icon} Boss Hunt Season: +${gained} pts • ${season.lastBossName}`, 4.8);
+  return { gained, season, summary, outcome:season.lastOutcome };
+}
+
+function recordCinematicBossHuntMissionOutcome({ activeMission=null }={}){
+  const card = currentMissionCardData();
+  const mission = activeMission || card?.mission || null;
+  const missionCard = mission ? { mode:S.mode, mission } : card;
+  const season = ensureCinematicBossHuntSeasonState(S);
+  const summary = cinematicBossHuntSeasonSummary(S);
+  const runId = String(S._missionRunId || `${S.mode}:${missionIndexForMode(S.mode)}:${Date.now()}`);
+  if(season.lastMissionRunId === runId) return "";
+  const active = cinematicBossHuntMissionActive(missionCard);
+  season.lastMissionRunId = runId;
+  if(S._cinematicBossHuntLastNote){
+    const note = `\nCinematic Boss Hunt: ${S._cinematicBossHuntLastNote} • Season ${summary.points}/${summary.target} pts.\n`;
+    S._cinematicBossHuntLastNote = "";
+    return note;
+  }
+  if(active){
+    const scoutPts = 8;
+    season.points = clamp(Math.floor(Number(season.points || 0)) + scoutPts, 0, CINEMATIC_BOSS_HUNT_POINT_MAX);
+    season.lifetimePoints = Math.max(0, Math.floor(Number(season.lifetimePoints || 0))) + scoutPts;
+    season.lastNote = `${summary.theme.icon} ${summary.title}: boss intel secured (+${scoutPts} pts)`;
+    return `\nCinematic Boss Hunt: ${summary.title} intel secured • +${scoutPts} pts • Season ${season.points}/${summary.target} pts.\n`;
+  }
+  return "";
 }
 
 function nextNemesisAlias(nemesisState){
@@ -13096,6 +13285,7 @@ function buildGameplayCloudSnapshot(state=S){
   const coop = ensureCoopStrikeOpsState(src);
   const liveCoop = ensureLiveCoopWorldEventsState(src);
   const warfront = ensureClanWarfrontState(src);
+  const bossHunt = cinematicBossHuntSeasonSummary(src);
   const coopHotspots = (Array.isArray(coop.hotspots) ? coop.hotspots : []).map((row)=>({
     id: String(row.id || ""),
     key: String(row.key || ""),
@@ -13185,6 +13375,10 @@ function buildGameplayCloudSnapshot(state=S){
     warfrontMissionPoints: Math.max(0, Math.floor(Number(warfront.missionPoints || 0))),
     warfrontRescuePoints: Math.max(0, Math.floor(Number(warfront.rescuePoints || 0))),
     warfrontTerritories,
+    bossHuntWeekKey: String(bossHunt.weekKey || weeklyChallengeWeekKey()),
+    bossHuntTheme: String(bossHunt.themeKey || bossHunt.theme?.key || ""),
+    bossHuntPoints: Math.max(0, Math.floor(Number(bossHunt.points || 0))),
+    bossHuntResolved: Math.max(0, Math.floor(Number(bossHunt.bossesResolved || 0))),
   };
 }
 
@@ -13217,6 +13411,10 @@ function gameplayCloudSnapshotSig(snapshot){
     normalizeClanTag(snap.clanTag || "SOLO"),
     sanitizeClanName(snap.clanName || "", snap.clanTag || "SOLO"),
     snap.clanRaidEnabled ? 1 : 0,
+    String(snap.bossHuntWeekKey || ""),
+    String(snap.bossHuntTheme || ""),
+    Math.max(0, Math.floor(Number(snap.bossHuntPoints || 0))),
+    Math.max(0, Math.floor(Number(snap.bossHuntResolved || 0))),
     String(snap.coopRolePref || "support"),
     String(snap.coopWeekKey || ""),
     Math.max(0, Math.floor(Number(snap.coopPointsTotal || 0))),
@@ -13540,6 +13738,7 @@ function load(){
       ensureOpsTotalsState(fallback);
       ensureBalanceStatsState(fallback);
       ensureNemesisState(fallback);
+      ensureCinematicBossHuntSeasonState(fallback);
       ensureTigerEcosystemState(fallback);
       ensureWeaponAttachmentState(fallback);
       ensureWeaponForgeState(fallback);
@@ -13583,6 +13782,7 @@ function load(){
     m.opsTotals = { ...DEFAULT.opsTotals, ...((saved.opsTotals && typeof saved.opsTotals === "object") ? saved.opsTotals : {}) };
     m.balanceStats = { ...defaultBalanceStatsState(), ...((saved.balanceStats && typeof saved.balanceStats === "object") ? saved.balanceStats : {}) };
     m.nemesis = (saved.nemesis && typeof saved.nemesis === "object") ? cloneState(saved.nemesis) : defaultNemesisState();
+    m.cinematicBossHuntSeason = normalizeCinematicBossHuntSeasonState(saved.cinematicBossHuntSeason ?? DEFAULT.cinematicBossHuntSeason);
     m.tigerEcosystem = normalizeTigerEcosystemState(saved.tigerEcosystem ?? DEFAULT.tigerEcosystem);
     m.squadProgression = (saved.squadProgression && typeof saved.squadProgression === "object")
       ? cloneState(saved.squadProgression)
@@ -13648,6 +13848,7 @@ function load(){
     ensureOpsTotalsState(m);
     ensureBalanceStatsState(m);
     ensureNemesisState(m);
+    ensureCinematicBossHuntSeasonState(m);
     ensureTigerEcosystemState(m);
     ensureWeaponAttachmentState(m);
     ensureCosmeticCollectionState(m);
@@ -13682,6 +13883,7 @@ function load(){
     ensureOpsTotalsState(fallback);
     ensureBalanceStatsState(fallback);
     ensureNemesisState(fallback);
+    ensureCinematicBossHuntSeasonState(fallback);
     ensureTigerEcosystemState(fallback);
     ensureWeaponAttachmentState(fallback);
     ensureWeaponForgeState(fallback);
@@ -23912,13 +24114,19 @@ function shouldShowMissionCinematicIntro(card=currentMissionCardData()){
   const n = Math.max(1, Math.floor(Number(m.number || missionIndexForMode(card.mode) || 1)));
   const variant = card.mode === "Story" ? normalizeStoryVariant(m.storyVariant || S.storyVariant) : "Arcade";
   return !!(
-    m.boss || m.finalBoss || m.bossTwin || m.convoyMission || m.lowVisibility || m.bloodAggro ||
+    cinematicBossHuntMissionActive(card) || m.boss || m.finalBoss || m.bossTwin || m.convoyMission || m.lowVisibility || m.bloodAggro ||
     m.captureOnly || m.limitedAmmo || (m.civilians || 0) >= 5 || (m.tigers || 0) >= 5 ||
     n === 1 || n % 5 === 0 || n % 10 === 1 || variant !== STORY_VARIANTS.CAMPAIGN
   );
 }
 function missionCinematicThreatLabel(card=currentMissionCardData()){
   const m = card?.mission || {};
+  if(cinematicBossHuntMissionActive(card)){
+    const summary = cinematicBossHuntSeasonSummary(S);
+    if(m.finalBoss) return `${summary.theme.icon} Final ${summary.nemesisTitle}`;
+    if(m.bossTwin) return `${summary.theme.icon} Twin ${m.bossType || "Alpha"} Bosses`;
+    return `${summary.theme.icon} ${m.bossType || "Alpha"} Boss • ${summary.title}`;
+  }
   if(m.finalBoss) return "Final Ancient Tiger";
   if(m.bossTwin) return `Twin ${m.bossType || "Alpha"} Tigers`;
   if(m.boss) return `${m.bossType || "Alpha"} Boss`;
@@ -23946,6 +24154,7 @@ function missionCinematicBonusLabel(card=currentMissionCardData()){
   if(m.captureOnly) return "No lethal takedowns";
   if(m.captureRequired) return `Capture ${m.captureRequired} tiger${m.captureRequired === 1 ? "" : "s"}`;
   if(m.convoyMission) return "Zero-loss convoy escort";
+  if(cinematicBossHuntMissionActive(card)) return `Cinematic Hunt: ${cinematicBossHuntSeasonSummary(S).theme.bonus}`;
   if(m.boss) return "Boss capture bonus";
   if((m.civilians || 0) > 0) return "Perfect rescue streak";
   return "Fast clear bonus";
@@ -23965,6 +24174,7 @@ function missionCinematicData(card=currentMissionCardData()){
   const route = ensureEvacRouteState(S);
   const profile = missionBriefRecommendationProfile(card?.mode || S.mode, m);
   const beats = [
+    ...cinematicBossHuntIntroBeats(card),
     `Danger zone marked: ${missionCinematicThreatLabel(card)}.`,
     `Civilian pressure: ${Math.max(0, Number(m.civilians || 0))} civilian${Number(m.civilians || 0) === 1 ? "" : "s"} in route.`,
     `Extraction plan: ${missionCinematicExtractionLabel()}.`,
@@ -23974,7 +24184,7 @@ function missionCinematicData(card=currentMissionCardData()){
   return {
     key: missionCinemaMissionKey(card),
     title:name,
-    subtitle:objective,
+    subtitle:cinematicBossHuntMissionActive(card) ? `${objective} • ${cinematicBossHuntSeasonSummary(S).theme.scene}` : objective,
     threat:missionCinematicThreatLabel(card),
     civilians:`${Math.max(0, Number(m.civilians || 0))}`,
     extraction:missionCinematicExtractionLabel(),
@@ -23990,7 +24200,7 @@ function renderMissionCinematicIntro(card=currentMissionCardData()){
     const el = document.getElementById(id);
     if(el) el.innerText = txt;
   };
-  setText("missionCinemaHeader", "🎬 Cinematic Mission Intro");
+  setText("missionCinemaHeader", cinematicBossHuntMissionActive(card) ? "🎬 Cinematic Boss Hunt Season" : "🎬 Cinematic Mission Intro");
   setText("missionCinemaTitle", data.title);
   setText("missionCinemaSubtitle", data.subtitle);
   setText("missionCinemaThreat", data.threat);
@@ -24065,13 +24275,18 @@ function renderMissionCinematicOutroCard(summary={}){
   const bonusLine = civTotal > 0 && civEvac >= civTotal
     ? "Perfect rescue maintained"
     : `${civEvac}/${Math.max(1, civTotal)} civilians extracted`;
+  const bossHunt = cinematicBossHuntSeasonSummary(S);
+  const bossSeasonLine = bossHunt.lastOutcome
+    ? `Boss Hunt Season: ${bossHunt.lastBossName || bossHunt.nemesisTitle} ${bossHunt.lastOutcome === "CAPTURE" ? "captured" : "defeated"} • ${bossHunt.points}/${bossHunt.target} pts.`
+    : `Boss Hunt Season: ${bossHunt.title} • ${bossHunt.points}/${bossHunt.target} pts.`;
   wrap.style.display = "block";
   text.innerHTML = [
     `<b>${missionCinemaSafeText(escapeLine)}.</b>`,
     `Civilians: ${missionCinemaSafeText(`${civEvac}/${Math.max(1, civTotal)}`)} • Tigers: ${captures} captured / ${kills} killed.`,
     `Route: ${missionCinemaSafeText(routeLabel)} • ${missionCinemaSafeText(boardingLine)}.`,
     `Conditions: ${missionCinemaSafeText(conditionLine)}.`,
-    `Final beat: ${missionCinemaSafeText(bonusLine)}.`
+    `Final beat: ${missionCinemaSafeText(bonusLine)}.`,
+    missionCinemaSafeText(bossSeasonLine)
   ].join("<br>");
 }
 function chapterRecapTextForCurrentStoryMission(){
@@ -24932,6 +25147,7 @@ function writeStoryProfileData(source="autosave", state=S){
   const seasonPass = ensureSeasonPassState(src);
   const masteryRewards = ensureMasteryRewardsState(src);
   const nemesis = ensureNemesisState(src);
+  const cinematicBossHuntSeason = ensureCinematicBossHuntSeasonState(src);
   const payload = {
     storyLevel: clamp(Math.floor(Number(src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
     storyLastMission: clamp(Math.floor(Number(src.storyLastMission || src.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length),
@@ -24968,6 +25184,7 @@ function writeStoryProfileData(source="autosave", state=S){
     opsTotals: { ...ensureOpsTotalsState(src) },
     balanceStats: cloneState(ensureBalanceStatsState(src)),
     nemesis: cloneState(nemesis),
+    cinematicBossHuntSeason: cloneState(cinematicBossHuntSeason),
     contractTallies: { ...ensureContractTalliesState(src) },
     contracts: (src.contracts && typeof src.contracts === "object") ? cloneState(src.contracts) : null,
     liveOps: (src.liveOps && typeof src.liveOps === "object") ? cloneState(src.liveOps) : null,
@@ -25248,6 +25465,10 @@ function applyStoryProfileToState(state, profile){
     state.nemesis = mergeNemesisState(state.nemesis, profile.nemesis, currentStoryMissionNumber(state));
     ensureNemesisState(state);
   }
+  if(profile.cinematicBossHuntSeason && typeof profile.cinematicBossHuntSeason === "object"){
+    state.cinematicBossHuntSeason = mergeCinematicBossHuntSeasonSnapshots(state.cinematicBossHuntSeason, profile.cinematicBossHuntSeason);
+  }
+  ensureCinematicBossHuntSeasonState(state);
   if(profile.contractTallies && typeof profile.contractTallies === "object"){
     ensureContractTalliesState(state);
     for(const [metric, fallback] of Object.entries(DEFAULT_CONTRACT_TALLIES)){
@@ -25420,6 +25641,7 @@ function writeStoryProgressData(payload={}){
   const seasonPass = ensureSeasonPassState(S);
   const masteryRewards = ensureMasteryRewardsState(S);
   const nemesis = ensureNemesisState(S);
+  const cinematicBossHuntSeason = ensureCinematicBossHuntSeasonState(S);
   const storyVariant = normalizeStoryVariant(payload.storyVariant ?? S.storyVariant);
   const storyNgPlusTier = Math.max(0, Math.floor(Number(payload.storyNgPlusTier ?? S.storyNgPlusTier ?? 0)));
   const gauntletDepth = Math.max(1, Math.floor(Number(payload.gauntletDepth ?? S.gauntletDepth ?? 1)));
@@ -25478,6 +25700,7 @@ function writeStoryProgressData(payload={}){
     opsTotals: { ...ensureOpsTotalsState(payload.opsTotals ? { opsTotals: payload.opsTotals } : S) },
     balanceStats: cloneState(ensureBalanceStatsState(payload.balanceStats ? { balanceStats: payload.balanceStats } : S)),
     nemesis: cloneState(payload.nemesis && typeof payload.nemesis === "object" ? ensureNemesisState({ nemesis: payload.nemesis }) : nemesis),
+    cinematicBossHuntSeason: cloneState(payload.cinematicBossHuntSeason && typeof payload.cinematicBossHuntSeason === "object" ? normalizeCinematicBossHuntSeasonState(payload.cinematicBossHuntSeason) : cinematicBossHuntSeason),
     contractTallies: normalizeContractTalliesMap(payload.contractTallies ?? S.contractTallies),
     contracts: (payload.contracts && typeof payload.contracts === "object")
       ? cloneState(payload.contracts)
@@ -41899,6 +42122,7 @@ function finishTigerKill(t){
   applySeasonFinisherVisual(t, "KILL");
   trackCashEarned(pay.cash);
   resolveNemesisOutcome(t, "KILL");
+  recordCinematicBossHuntOutcome(t, "KILL");
   grantWeaponForgeDropFromTiger(t, "KILL");
   grantEliteMutationReward(t, "KILL");
   unlockAchv("kill1","First Kill");
@@ -42022,6 +42246,7 @@ function playerAction(action){
     awardCombo("capture");
     trackCashEarned(pay.cash);
     resolveNemesisOutcome(t, "CAPTURE");
+    recordCinematicBossHuntOutcome(t, "CAPTURE");
     grantWeaponForgeDropFromTiger(t, "CAPTURE");
     grantEliteMutationReward(t, "CAPTURE");
     unlockAchv("cap1","First Capture");
@@ -43936,6 +44161,7 @@ function checkMissionComplete(){
         civDead,
         activeMission,
       });
+      const cinematicBossHuntNote = recordCinematicBossHuntMissionOutcome({ activeMission });
 
       const recapMeta = {
         number: activeMission?.number || gameplayCloudMission(S),
@@ -43975,7 +44201,7 @@ function checkMissionComplete(){
       });
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${fieldCashTruthNote}${worldMapCampaignNote}${liveCoopWorldNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${fieldCashTruthNote}${worldMapCampaignNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
@@ -44216,7 +44442,9 @@ function renderHUD(){
         const seasonLabel = season.targetId
           ? `Season Hunt: ${season.targetAlias || "Nemesis"} Lv${Math.max(1, Math.floor(Number(season.targetPower || 1)))} (${season.targetStatus})`
           : "Season Hunt: scouting target";
-        storyOpsEl.innerText = `${focus} • ${rewardTrack} • ${seasonLabel}`;
+        const bossHunt = cinematicBossHuntSeasonSummary(S);
+        const bossHuntLabel = `Boss Cinema: ${bossHunt.title} ${bossHunt.points}/${bossHunt.target}`;
+        storyOpsEl.innerText = `${focus} • ${rewardTrack} • ${seasonLabel} • ${bossHuntLabel}`;
       }
     } else {
       storyOpsEl.innerText = "";
