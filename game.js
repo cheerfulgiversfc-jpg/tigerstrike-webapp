@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4500";
+const TS_BUILD = "4502";
 if(tg){
   try{
     tg.expand?.();
@@ -967,6 +967,7 @@ const CONTRACTS_VERSION = 1;
 const CONTRACT_DAILY_COUNT = 3;
 const CONTRACT_WEEKLY_COUNT = 3;
 const CONTRACT_REFRESH_THROTTLE_MS = 15000;
+const CHALLENGE_TOWER_VERSION = 1;
 const LIVE_OPS_VERSION = 1;
 const COOP_STRIKE_OPS_VERSION = 1;
 const COOP_STRIKE_OPS_HOTSPOT_COUNT = 3;
@@ -1015,6 +1016,22 @@ const DEFAULT_CONTRACT_TALLIES = Object.freeze({
   nemesisReturns:0,
   nemesisBountiesClaimed:0,
 });
+const DAILY_CHALLENGE_TOWER_FLOORS = Object.freeze([
+  Object.freeze({ id:"D1", icon:"🛟", title:"Floor 1: First Rescue Push", desc:"Save civilians or complete rescue progress today.", metric:"evac", target:2, reward:{ cash:2200, perkPoints:1, seasonPoints:4 } }),
+  Object.freeze({ id:"D2", icon:"🎯", title:"Floor 2: Capture Window", desc:"Capture tigers using tranq timing today.", metric:"captures", target:2, reward:{ cash:3600, perkPoints:1, seasonPoints:5 } }),
+  Object.freeze({ id:"D3", icon:"🪤", title:"Floor 3: Control Tools", desc:"Stop tiger pressure with traps today.", metric:"trapsTriggered", target:1, reward:{ cash:4200, perkPoints:1, seasonPoints:6 } }),
+  Object.freeze({ id:"D4", icon:"📍", title:"Floor 4: Mission Clear", desc:"Finish missions today.", metric:"missionsCleared", target:1, reward:{ cash:5600, perkPoints:1, seasonPoints:8 } }),
+  Object.freeze({ id:"D5", icon:"👑", title:"Floor 5: Daily Apex", desc:"Keep pressure on the field with controlled combat today.", metric:"shots", target:45, reward:{ cash:9800, perkPoints:2, seasonPoints:12 } }),
+]);
+const WEEKLY_CHALLENGE_TOWER_FLOORS = Object.freeze([
+  Object.freeze({ id:"W1", icon:"📍", title:"Floor 1: Campaign Momentum", desc:"Clear missions this week.", metric:"missionsCleared", target:4, reward:{ cash:12000, perkPoints:2, seasonPoints:14 } }),
+  Object.freeze({ id:"W2", icon:"🛟", title:"Floor 2: Rescue Chain", desc:"Save civilians this week.", metric:"evac", target:18, reward:{ cash:18000, perkPoints:2, seasonPoints:18 } }),
+  Object.freeze({ id:"W3", icon:"🔬", title:"Floor 3: Research Capture", desc:"Capture tigers for the research wing this week.", metric:"captures", target:12, reward:{ cash:26000, perkPoints:3, seasonPoints:24 } }),
+  Object.freeze({ id:"W4", icon:"⚔️", title:"Floor 4: Predator Break", desc:"Defeat dangerous tigers when capture is not safe.", metric:"kills", target:8, reward:{ cash:30000, perkPoints:3, seasonPoints:28 } }),
+  Object.freeze({ id:"W5", icon:"🪤", title:"Floor 5: Route Control", desc:"Trigger traps against tiger pressure this week.", metric:"trapsTriggered", target:5, reward:{ cash:36000, perkPoints:3, seasonPoints:34 } }),
+  Object.freeze({ id:"W6", icon:"👑", title:"Floor 6: Boss Breaker", desc:"Defeat or capture boss-class tigers this week.", metric:"bossesDefeated", target:3, reward:{ cash:52000, perkPoints:4, seasonPoints:46 } }),
+  Object.freeze({ id:"W7", icon:"🏆", title:"Floor 7: Weekly Summit", desc:"Complete a strong run of missions this week.", metric:"missionsCleared", target:10, reward:{ cash:78000, perkPoints:5, seasonPoints:70 } }),
+]);
 
 const BALANCE_RECENT_MISSION_MAX = 18;
 const BALANCE_FREEZE_WINDOW_MS = 10 * 60 * 1000;
@@ -2709,6 +2726,199 @@ function claimAllContracts(period="daily"){
   }
 }
 
+function challengeTowerDefs(period="daily"){
+  return period === "weekly" ? WEEKLY_CHALLENGE_TOWER_FLOORS : DAILY_CHALLENGE_TOWER_FLOORS;
+}
+function challengeTowerKey(period="daily", nowMs=Date.now()){
+  return period === "weekly" ? contractWeekKey(nowMs) : contractDayKey(nowMs);
+}
+function challengeTowerResetAt(period="daily", nowMs=Date.now()){
+  return period === "weekly" ? nextUtcWeekMs(nowMs) : nextUtcDayMs(nowMs);
+}
+function buildChallengeTowerBucket(period="daily", nowMs=Date.now(), state=S){
+  const safePeriod = period === "weekly" ? "weekly" : "daily";
+  const key = challengeTowerKey(safePeriod, nowMs);
+  return {
+    key,
+    resetAt:challengeTowerResetAt(safePeriod, nowMs),
+    floors:challengeTowerDefs(safePeriod).map((def, idx)=>({
+      id:`${safePeriod}_${key}_${def.id}`,
+      key:def.id,
+      floor:idx + 1,
+      icon:def.icon,
+      title:def.title,
+      desc:def.desc,
+      metric:def.metric,
+      target:Math.max(1, Math.floor(Number(def.target || 1))),
+      baseline:contractMetricValue(def.metric, state),
+      reward:{ ...def.reward },
+      claimed:false,
+      claimedAt:0,
+      createdAt:nowMs,
+      period:safePeriod,
+    })),
+    refreshedAt:nowMs,
+  };
+}
+function normalizeChallengeTowerFloor(raw, period="daily", fallbackDef=null, idx=0, state=S){
+  const def = fallbackDef || {};
+  const metric = String(raw?.metric || def.metric || "").trim();
+  if(!metric || !Object.prototype.hasOwnProperty.call(DEFAULT_CONTRACT_TALLIES, metric)) return null;
+  return {
+    id:String(raw?.id || `${period}_${challengeTowerKey(period)}_${def.id || idx}`),
+    key:String(raw?.key || def.id || idx),
+    floor:Math.max(1, Math.floor(Number(raw?.floor || idx + 1))),
+    icon:String(raw?.icon || def.icon || "🗼"),
+    title:String(raw?.title || def.title || `Floor ${idx + 1}`),
+    desc:String(raw?.desc || def.desc || "Complete this tower floor."),
+    metric,
+    target:Math.max(1, Math.floor(Number(raw?.target || def.target || 1))),
+    baseline:Math.max(0, Math.floor(Number(raw?.baseline ?? contractMetricValue(metric, state)))),
+    reward:{
+      cash:Math.max(0, Math.floor(Number(raw?.reward?.cash ?? def.reward?.cash ?? 0))),
+      perkPoints:Math.max(0, Math.floor(Number(raw?.reward?.perkPoints ?? def.reward?.perkPoints ?? 0))),
+      seasonPoints:Math.max(0, Math.floor(Number(raw?.reward?.seasonPoints ?? def.reward?.seasonPoints ?? 0))),
+    },
+    claimed:!!raw?.claimed,
+    claimedAt:Math.max(0, Math.floor(Number(raw?.claimedAt || 0))),
+    createdAt:Math.max(0, Math.floor(Number(raw?.createdAt || Date.now()))),
+    period,
+  };
+}
+function ensureChallengeTowerState(state=S, opts={}){
+  if(!state || typeof state !== "object") return false;
+  ensureContractTalliesState(state);
+  const now = Number(opts.now || Date.now());
+  let changed = false;
+  if(!state.challengeTower || typeof state.challengeTower !== "object"){
+    state.challengeTower = {};
+    changed = true;
+  }
+  state.challengeTower.version = CHALLENGE_TOWER_VERSION;
+  for(const period of ["daily", "weekly"]){
+    const key = challengeTowerKey(period, now);
+    const defs = challengeTowerDefs(period);
+    const bucket = state.challengeTower[period];
+    if(!bucket || typeof bucket !== "object" || bucket.key !== key){
+      state.challengeTower[period] = buildChallengeTowerBucket(period, now, state);
+      changed = true;
+      continue;
+    }
+    bucket.key = key;
+    bucket.resetAt = challengeTowerResetAt(period, now);
+    const floors = Array.isArray(bucket.floors) ? bucket.floors : [];
+    const normalized = defs.map((def, idx)=>normalizeChallengeTowerFloor(floors[idx], period, def, idx, state)).filter(Boolean);
+    if(normalized.length !== defs.length) changed = true;
+    bucket.floors = normalized;
+  }
+  return changed;
+}
+function challengeTowerFloorProgress(floor, state=S){
+  if(!floor || typeof floor !== "object") return 0;
+  const nowValue = contractMetricValue(floor.metric, state);
+  return Math.max(0, nowValue - Math.max(0, Math.floor(Number(floor.baseline || 0))));
+}
+function challengeTowerFloorReady(floor, state=S){
+  return !!floor && !floor.claimed && challengeTowerFloorProgress(floor, state) >= Math.max(1, Math.floor(Number(floor.target || 1)));
+}
+function challengeTowerSummary(period="daily", state=S){
+  ensureChallengeTowerState(state);
+  const bucket = state.challengeTower?.[period === "weekly" ? "weekly" : "daily"];
+  const floors = Array.isArray(bucket?.floors) ? bucket.floors : [];
+  const claimed = floors.filter((floor)=>floor.claimed).length;
+  const ready = floors.filter((floor)=>challengeTowerFloorReady(floor, state)).length;
+  return { total:floors.length, claimed, ready, key:String(bucket?.key || ""), resetAt:Math.max(0, Number(bucket?.resetAt || 0)) };
+}
+function challengeTowerRewardText(reward={}){
+  const cash = Math.max(0, Math.floor(Number(reward.cash || 0)));
+  const perks = Math.max(0, Math.floor(Number(reward.perkPoints || 0)));
+  const season = Math.max(0, Math.floor(Number(reward.seasonPoints || 0)));
+  const bits = [];
+  if(cash) bits.push(`$${cash.toLocaleString()}`);
+  if(perks) bits.push(`+${perks} perk`);
+  if(season) bits.push(`+${season} pass pts`);
+  return bits.join(" • ") || "No reward";
+}
+function grantChallengeTowerReward(floor){
+  const reward = floor?.reward || {};
+  const cash = Math.max(0, Math.floor(Number(reward.cash || 0)));
+  const perks = Math.max(0, Math.floor(Number(reward.perkPoints || 0)));
+  const season = Math.max(0, Math.floor(Number(reward.seasonPoints || 0)));
+  if(cash > 0){
+    S.funds = Math.max(0, Math.floor(Number(S.funds || 0))) + cash;
+    trackCashEarned(cash);
+  }
+  if(perks > 0) S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + perks;
+  if(season > 0) grantSeasonPassPoints(season, `Challenge Tower ${floor?.title || "floor"}`);
+}
+function claimChallengeTowerFloor(period="daily", floorId=""){
+  const safePeriod = period === "weekly" ? "weekly" : "daily";
+  ensureChallengeTowerState(S);
+  const floors = S.challengeTower?.[safePeriod]?.floors || [];
+  const floor = floors.find((row)=>row.id === floorId || row.key === floorId);
+  if(!floor) return toast("Challenge Tower floor not found.");
+  if(floor.claimed) return toast("Challenge Tower floor already claimed.");
+  if(!challengeTowerFloorReady(floor, S)) return toast("Challenge Tower floor is not complete yet.");
+  grantChallengeTowerReward(floor);
+  floor.claimed = true;
+  floor.claimedAt = Date.now();
+  toast(`🗼 ${floor.title} claimed: ${challengeTowerRewardText(floor.reward)}`);
+  hapticNotif("success");
+  sfx("win");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display === "flex") renderInventory();
+  refreshLaunchIntroStatus();
+}
+function claimAllChallengeTower(period="daily"){
+  const safePeriod = period === "weekly" ? "weekly" : "daily";
+  ensureChallengeTowerState(S);
+  const ready = (S.challengeTower?.[safePeriod]?.floors || []).filter((floor)=>challengeTowerFloorReady(floor, S));
+  if(!ready.length) return toast("No ready Challenge Tower floors.");
+  ready.forEach((floor)=>claimChallengeTowerFloor(safePeriod, floor.id));
+}
+function renderChallengeTowerSectionHtml(state=S){
+  ensureChallengeTowerState(state);
+  const periodHtml = ["daily", "weekly"].map((period)=>{
+    const bucket = state.challengeTower?.[period] || {};
+    const summary = challengeTowerSummary(period, state);
+    const resetTxt = contractCountdownText(period);
+    const title = period === "weekly" ? "Weekly Challenge Tower" : "Daily Challenge Tower";
+    const floors = Array.isArray(bucket.floors) ? bucket.floors : [];
+    const rows = floors.map((floor)=>{
+      const progress = Math.min(Math.max(1, Number(floor.target || 1)), challengeTowerFloorProgress(floor, state));
+      const target = Math.max(1, Math.floor(Number(floor.target || 1)));
+      const pct = clamp((progress / target) * 100, 0, 100);
+      const ready = challengeTowerFloorReady(floor, state);
+      const status = floor.claimed ? "Claimed" : (ready ? "Ready" : `${progress}/${target}`);
+      return `
+        <div class="item" style="padding:10px 12px;">
+          <div>
+            <div class="itemName">${baseHqEsc(floor.icon)} ${baseHqEsc(floor.title)} <span class="tag">${baseHqEsc(status)}</span></div>
+            <div class="itemDesc">${baseHqEsc(floor.desc)}</div>
+            <div class="itemDesc">Progress: ${progress}/${target} • Reward: ${baseHqEsc(challengeTowerRewardText(floor.reward))}</div>
+            <div class="bar"><div class="fill green" style="width:${pct}%"></div></div>
+          </div>
+          <div style="text-align:right">
+            <button ${(floor.claimed || !ready) ? "disabled" : ""} onclick="claimChallengeTowerFloor('${period}','${floor.id}')">${floor.claimed ? "Claimed" : "Claim"}</button>
+          </div>
+        </div>`;
+    }).join("");
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">🗼 ${title} <span class="tag">${summary.claimed}/${summary.total} claimed</span> <span class="tag">${summary.ready} ready</span></div>
+          <div class="itemDesc">Tower key ${baseHqEsc(summary.key)} • Resets in ${resetTxt}. Complete floors from real mission actions, then claim each rung.</div>
+        </div>
+        <div style="text-align:right">
+          <button class="ghost" ${summary.ready <= 0 ? "disabled" : ""} onclick="claimAllChallengeTower('${period}')">Claim Ready</button>
+        </div>
+      </div>
+      ${rows}`;
+  }).join("");
+  return `<div class="divider"></div><div class="hudTitle" id="invChallengeTowerAnchor">Daily/Weekly Challenge Tower</div>${periodHtml}`;
+}
+
 function normalizeClanContractClaimsMap(raw){
   const out = {};
   if(!raw || typeof raw !== "object") return out;
@@ -3758,6 +3968,138 @@ async function shareReferralLinkFromGame(){
 
 function shareReferralFromLaunchIntro(){
   return shareReferralLinkFromGame();
+}
+
+function socialRescueWeeklyRank(state=S){
+  const social = ensureSocialRescueState(state);
+  const score = Math.max(0, Math.floor(Number(social.weekly.bestScore || 0)));
+  const saved = Math.max(0, Math.floor(Number(social.weekly.evac || 0)));
+  const captures = Math.max(0, Math.floor(Number(social.weekly.captures || 0)));
+  const perfect = Math.max(0, Math.floor(Number(social.weekly.perfectRescues || 0)));
+  const total = score + saved * 70 + captures * 90 + perfect * 450;
+  if(total >= 24000) return { icon:"👑", name:"Legend Rescue Rank", detail:"Top-tier weekly pace." };
+  if(total >= 14000) return { icon:"🏆", name:"Elite Rescue Rank", detail:"Strong weekly leaderboard pace." };
+  if(total >= 7000) return { icon:"🥇", name:"Gold Rescue Rank", detail:"Competitive weekly pace." };
+  if(total >= 3000) return { icon:"🥈", name:"Silver Rescue Rank", detail:"Good weekly start." };
+  return { icon:"🥉", name:"Bronze Rescue Rank", detail:"Complete missions to climb." };
+}
+function socialInviteRewardStatusRows(state=S){
+  const social = ensureSocialRescueState(state);
+  const ref = normalizeReferralMilestoneSnapshot(state.referralMilestone || {});
+  const started = Math.max(0, Math.floor(Number(ref.started || 0)));
+  return socialInviteRewardMilestones().map((tier)=>{
+    const target = Math.max(1, Math.floor(Number(tier.target || 1)));
+    const claimed = !!social.claimedInviteMilestones[target];
+    const ready = started >= target;
+    const reward = tier.reward || {};
+    const bits = [];
+    if(reward.medkits) bits.push(`+${reward.medkits} med`);
+    if(reward.shields) bits.push(`+${reward.shields} shield`);
+    if(reward.traps) bits.push(`+${reward.traps} trap`);
+    if(reward.armor) bits.push(`+${reward.armor} armor`);
+    return {
+      label:tier.label,
+      progress:Math.min(started, target),
+      target,
+      status:claimed ? "Claimed" : (ready ? "Ready" : `${Math.min(started, target)}/${target}`),
+      reward:bits.join(" • ") || "Supplies",
+    };
+  });
+}
+function socialRescueWeeklyGoalRows(state=S){
+  const social = ensureSocialRescueState(state);
+  return [
+    { label:"Weekly Rescue Score", value:social.weekly.bestScore, target:6000, reward:"Leaderboard card + title progress" },
+    { label:"Civilians Saved", value:social.weekly.evac, target:30, reward:"Lifeline Captain title" },
+    { label:"Tigers Captured", value:social.weekly.captures, target:20, reward:"Capture Ace title" },
+    { label:"Perfect Rescues", value:social.weekly.perfectRescues, target:3, reward:"Rescue Beacon title progress" },
+    { label:"Boss/Nemesis Clears", value:social.weekly.nemesisClears, target:1, reward:"Nemesis Signal title" },
+  ];
+}
+function renderSocialRescueOpsSectionHtml(state=S, anchorId="invSocialRescueAnchor"){
+  const social = ensureSocialRescueState(state);
+  const rank = socialRescueWeeklyRank(state);
+  const challenge = social.lastChallenge || null;
+  const weeklyRows = socialRescueWeeklyGoalRows(state).map((row)=>{
+    const value = Math.max(0, Math.floor(Number(row.value || 0)));
+    const target = Math.max(1, Math.floor(Number(row.target || 1)));
+    const pct = clamp((value / target) * 100, 0, 100);
+    const ready = value >= target;
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${baseHqEsc(row.label)} <span class="tag">${ready ? "Ready" : `${Math.min(value, target)}/${target}`}</span></div>
+          <div class="itemDesc">${baseHqEsc(row.reward)}</div>
+          <div class="bar"><div class="fill green" style="width:${pct}%"></div></div>
+        </div>
+      </div>`;
+  }).join("");
+  const clanRows = socialClanGoalRows().slice(0, 6).map((row)=>{
+    const value = Math.max(0, Math.floor(Number(row.value || 0)));
+    const target = Math.max(1, Math.floor(Number(row.target || 1)));
+    const pct = clamp((value / target) * 100, 0, 100);
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${baseHqEsc(row.label)} <span class="tag">${Math.min(value, target)}/${target}</span></div>
+          <div class="itemDesc">Clan/social progress updates from your real rescue, capture, boss, and live-event actions.</div>
+          <div class="bar"><div class="fill orange" style="width:${pct}%"></div></div>
+        </div>
+      </div>`;
+  }).join("");
+  const inviteRows = socialInviteRewardStatusRows(state).map((row)=>`
+    <div class="item" style="padding:10px 12px;">
+      <div>
+        <div class="itemName">${baseHqEsc(row.label)} <span class="tag">${baseHqEsc(row.status)}</span></div>
+        <div class="itemDesc">Invite progress ${row.progress}/${row.target} • Reward: ${baseHqEsc(row.reward)}</div>
+      </div>
+    </div>`).join("");
+  const challengeText = challenge
+    ? `${challenge.missionLabel || "Last Mission"} • ${Math.max(0, Number(challenge.evac || 0))}/${Math.max(1, Number(challenge.civTotal || 1))} saved • ${Math.max(0, Number(challenge.captures || 0))} captures • ${Math.max(0, Number(challenge.score || 0)).toLocaleString()} pts`
+    : "Complete a mission to create your first Rescue Challenge card.";
+  return `
+    <div class="divider"></div>
+    <div class="hudTitle" id="${baseHqEsc(anchorId)}">Social Rescue Operations 2.0</div>
+    <div class="item" style="padding:10px 12px;">
+      <div>
+        <div class="itemName">${baseHqEsc(rank.icon)} ${baseHqEsc(rank.name)} <span class="tag">Week ${baseHqEsc(social.weekKey)}</span></div>
+        <div class="itemDesc">${baseHqEsc(rank.detail)} Last challenge: ${baseHqEsc(challengeText)}</div>
+        <div class="itemDesc">Weekly totals: ${Math.max(0, Number(social.weekly.evac || 0))} saved • ${Math.max(0, Number(social.weekly.captures || 0))} captures • ${Math.max(0, Number(social.weekly.perfectRescues || 0))} perfect • ${Math.max(0, Number(social.weekly.nemesisClears || 0))} boss clears.</div>
+      </div>
+      <div style="text-align:right;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button onclick="shareRescueChallenge()">Challenge Friend</button>
+        <button class="ghost" onclick="shareWeeklyRescueLeaderboard()">Share Weekly</button>
+        <button class="ghost" onclick="shareReferralLinkFromGame()">Invite Friends</button>
+      </div>
+    </div>
+    <div class="hudTitle">Weekly Leaderboard Goals</div>
+    ${weeklyRows}
+    <div class="hudTitle">Clan Rescue Goals</div>
+    ${clanRows}
+    <div class="hudTitle">Invite Rewards</div>
+    ${inviteRows}
+  `;
+}
+async function shareWeeklyRescueLeaderboard(){
+  const social = ensureSocialRescueState(S);
+  const rank = socialRescueWeeklyRank(S);
+  const text = [
+    "Tiger Strike Weekly Rescue Board",
+    `${rank.icon} ${rank.name} • Week ${social.weekKey}`,
+    `Best score: ${Math.max(0, Number(social.weekly.bestScore || 0)).toLocaleString()} pts`,
+    `Saved ${Math.max(0, Number(social.weekly.evac || 0))} • Captures ${Math.max(0, Number(social.weekly.captures || 0))}`,
+    `Perfect rescues ${Math.max(0, Number(social.weekly.perfectRescues || 0))} • Boss clears ${Math.max(0, Number(social.weekly.nemesisClears || 0))}`,
+    "Can your squad outrank mine?",
+    "#TigerStrike #WeeklyRescueBoard",
+  ].join("\n");
+  const url = `${missionShareBaseUrl()}?weekly=rescue&score=${encodeURIComponent(String(social.weekly.bestScore || 0))}&week=${encodeURIComponent(String(social.weekKey || ""))}`;
+  const shareLink = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+  if(openShareUrl(shareLink)){
+    toast("Weekly rescue board opened for sharing.");
+    return;
+  }
+  const copied = await shareFallbackText(`${text}\n${url}`);
+  toast(copied ? "Weekly rescue board copied." : "Could not share weekly board.");
 }
 
 function normalizeLiveOpsReward(raw={}){
@@ -5666,6 +6008,8 @@ function renderAchievementPrestigeShowcase(){
   const mastery = ensureMasteryRewardsState(S);
   const nemesis = showcaseNemesisRecords(S);
   const prestige = prestigeShowcaseTier(S);
+  const social = ensureSocialRescueState(S);
+  const socialRank = socialRescueWeeklyRank(S);
   const showcaseUnlocked = SHOWCASE_ACHIEVEMENTS.filter((def)=>S.achievements?.[`showcase_${def.id}`]).length;
   const commander = profile.name;
   const progress = prestige.next ? `${prestige.score}/${prestige.next.min} to ${prestige.next.icon} ${prestige.next.name}` : `${prestige.score} prestige • Maximum rank`;
@@ -5701,6 +6045,7 @@ function renderAchievementPrestigeShowcase(){
     playerProfileStatCard("Tiger Record", `${Math.max(0, Number(totals.captures || 0)).toLocaleString()} captured`, `${Math.max(0, Number(totals.kills || 0)).toLocaleString()} defeated • ${showcaseMetricValue("bossesDefeated", S)} boss wins`),
     playerProfileStatCard("Trophy Spotlight", profile.topTrophy.count ? `${profile.topTrophy.type} x${profile.topTrophy.count}` : "No trophy yet", `${cosmetics.trophyOwned}/${cosmetics.trophyTotal} trophy classes unlocked`),
     playerProfileStatCard("Boss Hunt Season", profile.season?.title || "No active season", profile.season ? `${profile.season.points}/${profile.season.target} pts • ${profile.season.theme?.bonus || "Boss hunt records will appear here."}` : "Cinematic boss hunt records will appear here."),
+    playerProfileStatCard("Social Rescue Rank", `${socialRank.icon} ${socialRank.name}`, `Week ${social.weekKey} • Best ${Math.max(0, Number(social.weekly.bestScore || 0)).toLocaleString()} pts • ${Math.max(0, Number(social.weekly.evac || 0))} saved`),
   ].join("");
   root.innerHTML = `<div class="item">
     <div>
@@ -5710,6 +6055,7 @@ function renderAchievementPrestigeShowcase(){
     <div style="text-align:right"><button onclick="copyPlayerProfileShareText()">Copy Profile</button></div>
   </div>
   <div class="hudTitle">Profile Snapshot</div>${profileCards}
+  <div class="divider"></div><div class="hudTitle">Social Rescue Operations 2.0</div>${renderSocialRescueOpsSectionHtml(S, "invSocialRescueShowcaseAnchor")}
   <div class="divider"></div><div class="hudTitle">Achievement Wall</div>${achievementRows}
   <div class="divider"></div><div class="hudTitle">Legacy Field Medals</div>${legacyRows}
   <div class="divider"></div><div class="hudTitle">Featured Elite Titles</div>${titleRows}
@@ -26178,6 +26524,7 @@ function bindLaunchIntroAudioGesture(){
 }
 function refreshLaunchIntroStatus(){
   ensureContractsState(S);
+  ensureChallengeTowerState(S);
   ensureLiveOpsState(S);
   ensureClanState(S);
   const streakEl = document.getElementById("launchIntroStreak");
@@ -29072,6 +29419,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
         ["Mission Control","baseHqMissionControlAction('room:command')"],
         ["World Map","openWorldMapCampaign()"],
         ["Ask Ivy","baseHqExecuteIvyGuidance()"],
+        ["Social Ops","openSocialRescueOpsFromBaseHQ()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
         ["HQ News","refreshBaseHqDailyNews()"],
         ["Story Journal","openStoryFromBaseHQ()"],
@@ -29125,6 +29473,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       desc:`Base Intel: ${factList[factIndex]} Achievements unlocked: ${achv}.`,
       actions:[
         ["Showcase","openInventoryFromBaseHQ('showcase')"],
+        ["Social Ops","openSocialRescueOpsFromBaseHQ()"],
         ["Cosmetics","openInventoryFromBaseHQ('cosmetics')"],
         ["Forge","openShopFromBaseHQ('forge')"]
       ],
@@ -29182,6 +29531,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       desc:`Base Intel: ${factList[factIndex]}`,
       actions:[
         ["Claim / Preview","openDailyRewardDeskFromBaseHQ()"],
+        ["Challenge Tower","openChallengeTowerFromBaseHQ()"],
         ["Refresh Desk","refreshBaseHqDailyNews()"],
         ["Reward Desk","openDailyRewardDeskFromBaseHQ()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"]
@@ -29344,6 +29694,8 @@ function baseHqCommandActions(){
     openModeFromBaseHQ,
     openShopFromBaseHQ,
     openInventoryFromBaseHQ,
+    openChallengeTowerFromBaseHQ,
+    openSocialRescueOpsFromBaseHQ,
     selectBaseHqRoom,
     baseHqSetSquadCommand,
     baseHqSetSquadFormation,
@@ -29630,6 +29982,9 @@ function baseHqDailyRewardDeskHtml(){
   const nextLine = ready
     ? `Claim now: +$${Number(reward.cash || 0).toLocaleString()} • +${Number(reward.perkPts || 0)} perk`
     : `Next reward: +$${Number(reward.cash || 0).toLocaleString()} • +${Number(reward.perkPts || 0)} perk in ${nextDailyCountdownText()}`;
+  ensureChallengeTowerState(S);
+  const dailyTower = challengeTowerSummary("daily", S);
+  const weeklyTower = challengeTowerSummary("weekly", S);
   return `
     <div class="baseHqMissionPreview">
       <div class="baseHqMissionPreviewTitle">Daily Reward Desk</div>
@@ -29638,8 +29993,10 @@ function baseHqDailyRewardDeskHtml(){
         <div class="baseHqMissionCard"><span>Streak</span><b>${streak} day${streak === 1 ? "" : "s"}</b></div>
         <div class="baseHqMissionCard"><span>Total Check-ins</span><b>${total}</b></div>
         <div class="baseHqMissionCard"><span>Reward Preview</span><b>${baseHqEsc(nextLine)}</b></div>
+        <div class="baseHqMissionCard"><span>Daily Tower</span><b>${dailyTower.claimed}/${dailyTower.total} claimed • ${dailyTower.ready} ready</b></div>
+        <div class="baseHqMissionCard"><span>Weekly Tower</span><b>${weeklyTower.claimed}/${weeklyTower.total} claimed • ${weeklyTower.ready} ready</b></div>
       </div>
-      <div class="baseHqRecommended">${ready ? "Reward is available now. Claiming stays inside Base HQ." : `Already claimed. UTC reset: ${baseHqEsc(nextDailyCountdownText())}.`}</div>
+      <div class="baseHqRecommended">${ready ? "Reward is available now. Claiming stays inside Base HQ." : `Already claimed. UTC reset: ${baseHqEsc(nextDailyCountdownText())}.`} Challenge Tower floors progress from real mission actions and can be claimed from Inventory > Gear + Operations.</div>
     </div>
   `;
 }
@@ -29880,6 +30237,8 @@ function renderBaseHqQuickBar(){
     ${button("Brief", "openMissionBriefFromBaseHQ()", "")}
     ${button("Training", "selectBaseHqRoom('training', true)", "")}
     ${button("Profile", "openInventoryFromBaseHQ('showcase')", "utility")}
+    ${button("Tower", "openChallengeTowerFromBaseHQ()", "utility")}
+    ${button("Social", "openSocialRescueOpsFromBaseHQ()", "utility")}
     ${button("Reward", "selectBaseHqRoom('contracts', true)", "utility")}
     ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
     ${button("Inventory", "openInventoryFromBaseHQ()", "utility")}
@@ -30899,6 +31258,24 @@ function openInventoryFromBaseHQ(tab=""){
   leaveBaseHqView({ restoreMenu:false });
   openInventory();
   if(safeTab) inventoryTab(safeTab);
+}
+function openChallengeTowerFromBaseHQ(){
+  openInventoryFromBaseHQ("gear");
+  setTimeout(()=>{
+    const anchor = document.getElementById("invChallengeTowerAnchor");
+    if(anchor && typeof anchor.scrollIntoView === "function"){
+      anchor.scrollIntoView({ block:"start", behavior:"smooth" });
+    }
+  }, 80);
+}
+function openSocialRescueOpsFromBaseHQ(){
+  openInventoryFromBaseHQ("gear");
+  setTimeout(()=>{
+    const anchor = document.getElementById("invSocialRescueAnchor");
+    if(anchor && typeof anchor.scrollIntoView === "function"){
+      anchor.scrollIntoView({ block:"start", behavior:"smooth" });
+    }
+  }, 80);
 }
 function openModeFromBaseHQ(){
   rememberBaseHqOverlayReturn("mission");
@@ -32721,6 +33098,8 @@ function renderInventory(){
       ${rows}
     `;
   }).join("");
+  const challengeTowerSectionHtml = renderChallengeTowerSectionHtml(S);
+  const socialRescueOpsSectionHtml = renderSocialRescueOpsSectionHtml(S);
 
   ensureClanState(S);
   const clanContracts = clanContractsForUi(S);
@@ -32954,6 +33333,10 @@ function renderInventory(){
     </div>
     ${nemesisTargetsHtml}
     ${nemesisLadderRowsHtml}
+
+    ${challengeTowerSectionHtml}
+
+    ${socialRescueOpsSectionHtml}
 
     <div class="divider"></div>
     <div class="hudTitle" id="invLiveOpsAnchor">Live Ops</div>
@@ -51620,6 +52003,8 @@ function init(){
   ensureContractTalliesState(S);
   ensureBalanceStatsState(S);
   ensureContractsState(S);
+  ensureChallengeTowerState(S);
+  ensureSocialRescueState(S);
   ensureMissionDirectorState(S);
   ensureMissionTwistState(S);
   ensureArcadeBuildcraftState(S);
@@ -52192,6 +52577,8 @@ window.selectBaseHqRoom = selectBaseHqRoom;
 window.runBaseHqCommand = runBaseHqCommand;
 window.openShopFromBaseHQ = openShopFromBaseHQ;
 window.openInventoryFromBaseHQ = openInventoryFromBaseHQ;
+window.openChallengeTowerFromBaseHQ = openChallengeTowerFromBaseHQ;
+window.openSocialRescueOpsFromBaseHQ = openSocialRescueOpsFromBaseHQ;
 window.openModeFromBaseHQ = openModeFromBaseHQ;
 window.openStoryFromBaseHQ = openStoryFromBaseHQ;
 window.openMissionBriefFromBaseHQ = openMissionBriefFromBaseHQ;
@@ -52223,6 +52610,7 @@ window.closeInventory = closeInventory;
 window.openShopFromInventory = openShopFromInventory;
 window.inventoryTab = inventoryTab;
 window.copyPlayerProfileShareText = copyPlayerProfileShareText;
+window.shareWeeklyRescueLeaderboard = shareWeeklyRescueLeaderboard;
 window.claimSettlementPassive = claimSettlementPassive;
 window.claimSettlementJob = claimSettlementJob;
 window.equipWorldCosmetic = equipWorldCosmetic;
@@ -52327,6 +52715,8 @@ window.buyPerk = buyPerk;
 window.claimLiveOps = claimLiveOps;
 window.claimContract = claimContract;
 window.claimAllContracts = claimAllContracts;
+window.claimChallengeTowerFloor = claimChallengeTowerFloor;
+window.claimAllChallengeTower = claimAllChallengeTower;
 window.lockNearestTiger = lockNearestTiger;
 window.canAttemptCapture = canAttemptCapture;
 window.tutorialCaptureWindowReady = tutorialCaptureWindowReady;
