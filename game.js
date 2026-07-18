@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4506";
+const TS_BUILD = "4507";
 if(tg){
   try{
     tg.expand?.();
@@ -29015,6 +29015,8 @@ function openShopFromInventory(tab="ammo"){
 }
 const BASE_HQ_WORLD = Object.freeze({ w:1280, h:720 });
 const BASE_HQ_ROOMS = Object.freeze([
+  Object.freeze({ id:"news", name:"News Board", icon:"NEW", sub:"HQ updates", x:150, y:74, w:150, h:58, color:"#7dd3fc" }),
+  Object.freeze({ id:"clan", name:"Clan Desk", icon:"CLN", sub:"Rescue teams", x:1190, y:74, w:130, h:58, color:"#c084fc" }),
   Object.freeze({ id:"command", name:"Command Deck", icon:"CMD", sub:"Briefing", x:640, y:156, w:238, h:106, color:"#2563eb" }),
   Object.freeze({ id:"armory", name:"Armory", icon:"ARM", sub:"Weapons", x:260, y:218, w:220, h:126, color:"#f59e0b" }),
   Object.freeze({ id:"medbay", name:"Medbay", icon:"MED", sub:"Heal + kits", x:1020, y:218, w:220, h:126, color:"#22c55e" }),
@@ -29031,8 +29033,13 @@ const BASE_HQ_ROOMS = Object.freeze([
   Object.freeze({ id:"vehicle", name:"Vehicle Bay", icon:"VHC", sub:"Evac routes", x:1154, y:360, w:150, h:72, color:"#60a5fa" }),
   Object.freeze({ id:"training", name:"Training Mat", icon:"TRN", sub:"Combat feel", x:640, y:486, w:150, h:64, color:"#14b8a6" }),
   Object.freeze({ id:"research", name:"Research Desk", icon:"RND", sub:"Tiger science", x:1060, y:74, w:142, h:58, color:"#2dd4bf" }),
+  Object.freeze({ id:"challenge", name:"Challenge Board", icon:"CHL", sub:"Daily/weekly", x:150, y:646, w:150, h:72, color:"#f43f5e" }),
+  Object.freeze({ id:"leaderboard", name:"Leaderboard Screen", icon:"LDR", sub:"Ranks", x:1130, y:646, w:160, h:72, color:"#eab308" }),
+  Object.freeze({ id:"events", name:"Event Countdown", icon:"EVT", sub:"Live timers", x:640, y:696, w:188, h:48, color:"#fb923c" }),
 ]);
 const BASE_HQ_ROOM_PURPOSES = Object.freeze({
+  news:"Read live HQ updates, feature tips, and current operations.",
+  clan:"Open social rescue, clan warfront, and co-op world goals.",
   command:"Brief missions, review story, and choose the safest plan.",
   armory:"Buy weapons, ammo, armor, and inspect your loadout.",
   medbay:"Restock medkits, armor plates, and rescue support.",
@@ -29049,8 +29056,13 @@ const BASE_HQ_ROOM_PURPOSES = Object.freeze({
   vehicle:"Review boat, helicopter, convoy, and street extraction routes.",
   training:"Practice combat feedback, tiger attacks, and movement timing.",
   research:"Study tiger behavior, ecosystems, clues, and mutations.",
+  challenge:"Track daily and weekly challenge tower progress.",
+  leaderboard:"Review player profile, trophies, and weekly social rank.",
+  events:"Check active event countdowns, bosses, and live co-op goals.",
 });
 const BASE_HQ_ROOM_UNLOCKS = Object.freeze({
+  news:1,
+  clan:1,
   mission:1,
   command:1,
   armory:1,
@@ -29067,6 +29079,9 @@ const BASE_HQ_ROOM_UNLOCKS = Object.freeze({
   vehicle:35,
   training:8,
   research:24,
+  challenge:1,
+  leaderboard:1,
+  events:1,
 });
 const BASE_HQ_DAILY_NEWS = Object.freeze([
   "HQ Update: Base HQ is now the main menu. Start every major mode from the Mission Gate.",
@@ -29113,8 +29128,23 @@ const BASE_HQ_NPCS = Object.freeze([
   Object.freeze({ name:"Coach Lyn", role:"Training Lead", x:640, y:520, room:"training", line:"Training lanes should teach the current game: scan lines, capture windows, evac routes, and combat feedback." }),
   Object.freeze({ name:"Dr. Noor", role:"Research Lead", x:1070, y:118, room:"research", line:"Research connects tiger clues, mutations, ecosystems, den raids, and Nemesis behavior." }),
   Object.freeze({ name:"Legend HQ", role:"Trophy Curator", x:640, y:86, room:"trophy", line:"The Trophy Hall is where cosmetics, titles, perfect rescues, rare captures, and season identity live." }),
+  Object.freeze({ name:"Kai", role:"Social Coordinator", x:1186, y:112, room:"clan", line:"Social Rescue Operations track friend challenges, clan goals, co-op events, and weekly bragging rights." }),
+  Object.freeze({ name:"Piper", role:"News Producer", x:148, y:112, room:"news", line:"The News Board rotates live feature tips so players understand what all these systems actually do." }),
+  Object.freeze({ name:"Rin", role:"Challenge Marshal", x:150, y:608, room:"challenge", line:"Daily and weekly challenge floors give players a reason to return without bloating normal mission rewards." }),
+  Object.freeze({ name:"Lux", role:"Leaderboard Analyst", x:1130, y:608, room:"leaderboard", line:"Profiles, trophies, perfect rescues, and boss clears become more exciting when players can show them off." }),
+  Object.freeze({ name:"Oren", role:"Event Watch", x:724, y:690, room:"events", line:"Event countdowns keep the base alive: bosses, co-op goals, dailies, and weekly resets all feed the next mission." }),
 ]);
 const BASE_HQ_FACTS = Object.freeze({
+  news:Object.freeze([
+    "HQ Social Hub turns the base into a living command center with updates, boards, ranks, and active event timers.",
+    "News boards teach real features already in the game so players understand what changed and where to go next.",
+    "A good HQ should answer the player's next question before they have to guess."
+  ]),
+  clan:Object.freeze([
+    "Social Rescue Operations add friend challenges, weekly ranks, clan goals, and shareable mission bragging.",
+    "Live Co-op World Events let all players contribute to shared tiger invasions, rescues, and boss objectives.",
+    "Clan Warfront rewards group progress while still keeping solo players moving through the campaign."
+  ]),
   command:Object.freeze([
     "Mission Director controls pressure, recovery windows, spawn lanes, and dominance triggers so missions do not feel random.",
     "Major missions can now use cinematic intros/outros, evacuation routes, weather, bonus objectives, and boss warnings.",
@@ -29198,8 +29228,48 @@ const BASE_HQ_FACTS = Object.freeze({
     "Tiger Visual Variety adds scars, fur color, body size, stripe changes, age, injuries, and Alpha appearance differences.",
     "Tiger Investigation can reveal type, direction, health, age, behavior, dens, Nemesis leads, or missing civilians."
   ]),
+  challenge:Object.freeze([
+    "Challenge Tower gives daily and weekly objectives like rescues, captures, perfect clears, and boss floors.",
+    "Challenge rewards should feel useful without making normal mission cash explode.",
+    "Rotating objectives help players see different parts of the game instead of repeating one farming loop."
+  ]),
+  leaderboard:Object.freeze([
+    "Player Profile and Trophy Showcase create status around rare captures, perfect rescues, cosmetics, and season trophies.",
+    "Weekly leaderboard ranks turn rescue score, captures, boss clears, and perfect rescues into social goals.",
+    "Shareable recap cards help Telegram players challenge friends without leaving the game loop."
+  ]),
+  events:Object.freeze([
+    "Event countdowns make the HQ feel alive by surfacing daily resets, weekly bosses, live co-op goals, and season timing.",
+    "Cinematic Boss Hunt Seasons give named bosses weekly identity, bounty ladders, and rare cosmetic rewards.",
+    "Live events should always connect to real mission systems so players know why the board matters."
+  ]),
 });
 const BASE_HQ_DIALOGUES = Object.freeze({
+  "Piper":Object.freeze([
+    "I rotate the board so players learn what Tiger Strike already has: HQ, weather, bosses, evacuation routes, and social goals.",
+    "A live base should teach without pausing the game. If something matters, it deserves a board or a person explaining it.",
+    "When updates land, this board helps players see what changed instead of wondering why a new button appeared."
+  ]),
+  "Kai":Object.freeze([
+    "Social Rescue Operations are about bragging rights: friend challenges, weekly ranks, clan goals, and shared rescue milestones.",
+    "The best Telegram loop is simple: finish something cool, share it, challenge a friend, then come back for the next clear.",
+    "Clan goals should reward teamwork without making solo players feel locked out."
+  ]),
+  "Rin":Object.freeze([
+    "Challenge floors push different skills: rescue, capture, survive, clear fast, and handle boss pressure.",
+    "Daily floors should be quick. Weekly floors can be harder because they give players a longer chase.",
+    "If a challenge cannot be tracked truthfully, it should not appear on the board."
+  ]),
+  "Lux":Object.freeze([
+    "The leaderboard screen is where your profile turns into proof: titles, trophies, perfect rescues, boss clears, and rare captures.",
+    "Players do not only want power. They want receipts that show what they survived.",
+    "A good trophy wall makes old wins feel permanent."
+  ]),
+  "Oren":Object.freeze([
+    "Countdowns tell players what is urgent: daily reward reset, weekly challenge reset, live co-op progress, and boss season goals.",
+    "Events work best when the board and the mission agree. If the board says crisis, the map should feel it.",
+    "A timer without a reward is noise. A timer with a clear objective becomes a reason to play one more mission."
+  ]),
   "Ivy":Object.freeze([
     "Welcome back. The safest rhythm is brief first, stock up second, then deploy only when your route and extraction make sense.",
     "If a system feels confusing, walk to its desk. HQ conversations explain the game without forcing you into another menu.",
@@ -30161,6 +30231,30 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
   const factList = BASE_HQ_FACTS[room.id] || BASE_HQ_FACTS.command;
   const factIndex = Math.abs(Math.floor((Date.now() / 5200) + Number(S.storyLevel || 1) + room.x + __baseHqFactOffset)) % factList.length;
   const map = {
+    news:{
+      title:"HQ News Board",
+      desc:`Base Intel: ${factList[factIndex]} Live patch notes, mode tips, and current operation callouts rotate here.`,
+      actions:[
+        ["Refresh News","refreshBaseHqDailyNews()"],
+        ["World Events","openLiveCoopWorldEventsFromBaseHQ()"],
+        ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
+        ["Challenge Tower","openChallengeTowerFromBaseHQ()"],
+        ["Social Ops","openSocialRescueOpsFromBaseHQ()"]
+      ],
+      upgrades:["HQ_INTEL"],
+    },
+    clan:{
+      title:"Clan Desk",
+      desc:`Base Intel: ${factList[factIndex]} Social rescue, clan warfront, and live co-op goals are grouped here so Telegram players can compete and contribute.`,
+      actions:[
+        ["Clan + Co-op","openClanDeskFromBaseHQ()"],
+        ["Social Ops","openSocialRescueOpsFromBaseHQ()"],
+        ["Live Co-op","openLiveCoopWorldEventsFromBaseHQ()"],
+        ["World Map","openWorldMapCampaign()"],
+        ["Profile","openInventoryFromBaseHQ('showcase')"]
+      ],
+      upgrades:["HQ_INTEL","HQ_RD"],
+    },
     command:{
       title:"Mission Control 4.0",
       desc:`Base Intel: ${factList[factIndex]} Live threat board, readiness checklist, alerts, loadout guidance, and deploy plan are active.`,
@@ -30357,6 +30451,40 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       ],
       upgrades:["HQ_RD"],
     },
+    challenge:{
+      title:"Challenge Board",
+      desc:`Base Intel: ${factList[factIndex]} Daily and weekly challenge floors are surfaced here so players know what to chase next.`,
+      actions:[
+        ["Challenge Tower","openChallengeTowerFromBaseHQ()"],
+        ["Daily Reward","openDailyRewardDeskFromBaseHQ()"],
+        ["Training","selectBaseHqRoom('training', true)"],
+        ["Social Ops","openSocialRescueOpsFromBaseHQ()"]
+      ],
+      upgrades:["HQ_INTEL"],
+    },
+    leaderboard:{
+      title:"Leaderboard Screen",
+      desc:`Base Intel: ${factList[factIndex]} Player profile, trophy showcase, boss season score, and social rank live here.`,
+      actions:[
+        ["Profile","openInventoryFromBaseHQ('showcase')"],
+        ["Social Ops","openSocialRescueOpsFromBaseHQ()"],
+        ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
+        ["Challenge Tower","openChallengeTowerFromBaseHQ()"]
+      ],
+      upgrades:[],
+    },
+    events:{
+      title:"Event Countdown",
+      desc:`Base Intel: ${factList[factIndex]} Timers show what is urgent now: daily rewards, weekly challenges, live co-op goals, and boss hunt seasons.`,
+      actions:[
+        ["Live Co-op","openLiveCoopWorldEventsFromBaseHQ()"],
+        ["Live Ops","openLiveOpsFromBaseHQ()"],
+        ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
+        ["Challenge Tower","openChallengeTowerFromBaseHQ()"],
+        ["Daily Reward","openDailyRewardDeskFromBaseHQ()"]
+      ],
+      upgrades:["HQ_INTEL"],
+    },
   };
   return { room, data:map[room.id] || map.command };
 }
@@ -30454,6 +30582,10 @@ function baseHqCommandActions(){
     openSocialRescueOpsFromBaseHQ,
     openLiveCoopWorldEventsFromBaseHQ,
     openCinematicBossHuntFromBaseHQ,
+    openInventoryAnchorFromBaseHQ,
+    openClanDeskFromBaseHQ,
+    openLiveOpsFromBaseHQ,
+    openContractsFromBaseHQ,
     selectBaseHqRoom,
     baseHqSetSquadCommand,
     baseHqSetSquadFormation,
@@ -30660,6 +30792,14 @@ function armBaseHqButtons(root){
   truthQaAuditButtons(root, "base-hq");
 }
 function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
+  if(roomId === "news") return `${baseHqDailyNewsItems().length} live updates • HQ feed online`;
+  if(roomId === "clan"){
+    const clan = ensureClanState(S);
+    const wf = ensureClanWarfrontState(S);
+    const rows = Array.isArray(wf.territories) ? wf.territories : [];
+    const avg = rows.length ? Math.round(rows.reduce((sum,row)=>sum + Number(row.control || 0),0) / rows.length) : 0;
+    return `${clan.name} • ${rows.length} warfront sectors • ${avg}% control`;
+  }
   if(roomId === "command") return `${currentMissionLabel()} • Mission Control live`;
   if(roomId === "armory") return `${equippedWeapon()?.name || "Starter"} equipped`;
   if(roomId === "medbay") return `${totalMedkits()} medkits • ${totalArmorPlates()} armor plates`;
@@ -30679,6 +30819,20 @@ function baseHqRoomStatusLine(roomId=__baseHqSelectedRoom){
   if(roomId === "vehicle") return `Boat, helicopter, convoy, and street exits`;
   if(roomId === "training") return `Tiger combat and movement feel lab`;
   if(roomId === "research") return `Ecosystem, mutations, and investigation data`;
+  if(roomId === "challenge"){
+    const daily = challengeTowerSummary("daily", S);
+    const weekly = challengeTowerSummary("weekly", S);
+    return `${daily.ready + weekly.ready} rewards ready • Daily ${daily.claimed}/${daily.total} • Weekly ${weekly.claimed}/${weekly.total}`;
+  }
+  if(roomId === "leaderboard"){
+    const rank = socialRescueWeeklyRank(S);
+    return `${rank.name} • ${achvCount()} achievements • ${Math.max(0, Number(S?.opsTotals?.captures || 0))} captures`;
+  }
+  if(roomId === "events"){
+    const live = ensureLiveCoopWorldEventsState(S);
+    const boss = cinematicBossHuntSeasonSummary(S);
+    return `Daily ${nextDailyCountdownText()} • Co-op ${Math.max(0, Number(live.totalPoints || 0)).toLocaleString()} pts • Boss ${boss.percent}%`;
+  }
   return "HQ systems online";
 }
 function baseHqRoomPurposeLine(roomId=__baseHqSelectedRoom){
@@ -30696,6 +30850,40 @@ function baseHqRoomProgress(roomId=__baseHqSelectedRoom){
     label: level >= required ? "Active" : `Unlocks at Story ${required}`
   };
 }
+function baseHqRoomLiveBadge(roomId=__baseHqSelectedRoom){
+  const id = String(roomId || "");
+  if(id === "contracts"){
+    return readDaily()?.last !== ymdUTC() ? "CLAIM" : "DAILY";
+  }
+  if(id === "challenge"){
+    const daily = challengeTowerSummary("daily", S);
+    const weekly = challengeTowerSummary("weekly", S);
+    const ready = Math.max(0, Number(daily.ready || 0)) + Math.max(0, Number(weekly.ready || 0));
+    return ready > 0 ? `${ready} READY` : "TOWER";
+  }
+  if(id === "clan"){
+    const wf = ensureClanWarfrontState(S);
+    const rows = Array.isArray(wf.territories) ? wf.territories : [];
+    const low = rows.filter((row)=>Number(row.control || 0) < 55).length;
+    return low > 0 ? `${low} ALERT` : "CLAN";
+  }
+  if(id === "events"){
+    const live = ensureLiveCoopWorldEventsState(S);
+    const ready = (Array.isArray(live.board) ? live.board : []).filter((row)=>
+      Math.max(0, Number(row.progress || 0)) >= Math.max(1, Number(row.target || 1)) &&
+      !liveCoopWorldEventClaimed(row.period, row.id, S)
+    ).length;
+    return ready > 0 ? `${ready} LIVE` : "TIMER";
+  }
+  if(id === "leaderboard"){
+    const rank = socialRescueWeeklyRank(S);
+    return String(rank?.name || "").split(" ")[0].toUpperCase() || "RANK";
+  }
+  if(id === "news") return "LIVE";
+  if(id === "trophy") return "SHOW";
+  if(id === "mission") return "DEPLOY";
+  return "";
+}
 function baseHqDailyNewsItems(){
   const level = Math.max(1, Math.floor(Number(S.storyLevel || 1)));
   const offset = Math.floor(Date.now() / 60000) + level + Math.floor(Number(S.stats?.missions || 0));
@@ -30710,6 +30898,74 @@ function baseHqDailyNewsHtml(){
     <div class="baseHqMissionPreview">
       <div class="baseHqMissionPreviewTitle">HQ Daily News / Updates Board</div>
       <div class="baseHqRecommended">${baseHqDailyNewsItems().map((line)=>`• ${baseHqEsc(line)}`).join("<br>")}</div>
+    </div>
+  `;
+}
+function baseHqSocialMetricCard(label, value, detail=""){
+  return `
+    <div class="baseHqMissionCard">
+      <span>${baseHqEsc(label)}</span>
+      <b>${baseHqEsc(value)}</b>
+      ${detail ? `<small>${baseHqEsc(detail)}</small>` : ""}
+    </div>
+  `;
+}
+function baseHqSocialHubHtml(roomId=__baseHqSelectedRoom){
+  const id = String(roomId || "");
+  if(!["news","clan","challenge","leaderboard","events","trophy","contracts"].includes(id)) return "";
+  ensureChallengeTowerState(S);
+  const dailyTower = challengeTowerSummary("daily", S);
+  const weeklyTower = challengeTowerSummary("weekly", S);
+  const socialRank = socialRescueWeeklyRank(S);
+  const live = ensureLiveCoopWorldEventsState(S);
+  const liveRows = Array.isArray(live.board) ? live.board : [];
+  const liveReady = liveRows.filter((row)=>Math.max(0, Number(row.progress || 0)) >= Math.max(1, Number(row.target || 1)) && !liveCoopWorldEventClaimed(row.period, row.id, S)).length;
+  const boss = cinematicBossHuntSeasonSummary(S);
+  const clan = ensureClanState(S);
+  const war = ensureClanWarfrontState(S);
+  const warRows = Array.isArray(war.territories) ? war.territories : [];
+  const warAvg = warRows.length ? Math.round(warRows.reduce((sum,row)=>sum + Number(row.control || 0),0) / warRows.length) : 0;
+  const dailyInfo = readDaily();
+  const dailyReady = dailyInfo?.last !== ymdUTC();
+  const headline = {
+    news:"HQ Social Hub",
+    clan:"Clan + Co-op Command",
+    challenge:"Challenge Board",
+    leaderboard:"Leaderboard Screen",
+    events:"Event Countdown Board",
+    trophy:"Trophy Wall Social Feed",
+    contracts:"Daily + Weekly Desk",
+  }[id] || "HQ Social Hub";
+  const detail = {
+    news:"Live boards now connect news, challenges, leaderboards, clan goals, daily rewards, trophy status, and timed events.",
+    clan:"Coordinate clan warfront sectors, live co-op goals, and social rescue challenges from one desk.",
+    challenge:"Daily and weekly floors refresh over time and progress from real mission actions.",
+    leaderboard:"Track your weekly social rank, boss hunt score, captures, achievements, and trophy showcase identity.",
+    events:"Countdowns show what resets next so players know whether to claim, grind, or deploy.",
+    trophy:"Your trophy wall now connects to social rank, boss seasons, cosmetics, and public showcase progress.",
+    contracts:"Daily rewards and Challenge Tower progress share one clear reward desk.",
+  }[id] || "";
+  const liveTop = liveRows[0];
+  return `
+    <div class="baseHqMissionPreview socialHubCard">
+      <div class="baseHqMissionPreviewTitle">${baseHqEsc(headline)}</div>
+      <div class="baseHqRecommended">${baseHqEsc(detail)}</div>
+      <div class="baseHqMissionPreviewGrid">
+        ${baseHqSocialMetricCard("Daily Reward", dailyReady ? "Ready" : "Claimed", dailyReady ? "Visit Daily Desk" : `Resets in ${nextDailyCountdownText()}`)}
+        ${baseHqSocialMetricCard("Challenge Tower", `${dailyTower.ready + weeklyTower.ready} ready`, `Daily ${dailyTower.claimed}/${dailyTower.total} • Weekly ${weeklyTower.claimed}/${weeklyTower.total}`)}
+        ${baseHqSocialMetricCard("Social Rank", socialRank.name, socialRank.detail)}
+        ${baseHqSocialMetricCard("Clan Desk", clan.name, `${warRows.length} sectors • ${warAvg}% control`)}
+        ${baseHqSocialMetricCard("Live Co-op", `${Math.max(0, Number(live.totalPoints || 0)).toLocaleString()} pts`, `${liveReady} event rewards ready${liveTop ? ` • ${liveTop.name}` : ""}`)}
+        ${baseHqSocialMetricCard("Boss Season", `${boss.title} ${boss.percent}%`, `${boss.points}/${boss.target} pts • ${boss.nemesisTitle}`)}
+      </div>
+      <div class="baseHqWorldActions missionGateActions">
+        ${baseHqActionButtonHtml("Challenge Tower", "openChallengeTowerFromBaseHQ()", "ghost")}
+        ${baseHqActionButtonHtml("Social Ops", "openSocialRescueOpsFromBaseHQ()", "ghost")}
+        ${baseHqActionButtonHtml("Clan + Co-op", "openClanDeskFromBaseHQ()", "ghost")}
+        ${baseHqActionButtonHtml("Live Events", "openLiveCoopWorldEventsFromBaseHQ()", "ghost")}
+        ${baseHqActionButtonHtml("Boss Hunt", "openCinematicBossHuntFromBaseHQ()", "ghost")}
+        ${baseHqActionButtonHtml("Trophy Showcase", "openInventoryFromBaseHQ('showcase')", "ghost")}
+      </div>
     </div>
   `;
 }
@@ -30930,6 +31186,7 @@ function renderBaseHqWorldHud(){
         : (room.id === "specialists" ? baseHqSquadRoomHtml() : "")));
   const missionControlHtml = (room.id === "command" || room.id === "mission") ? baseHqMissionControlHtml() : "";
   const newsHtml = (room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
+  const socialHubHtml = baseHqSocialHubHtml(room.id);
   const ivyHtml = (room.id === "command" || room.id === "mission" || dialogNpc?.name === "Ivy") ? baseHqIvyGuidanceHtml() : "";
   const progressVisualHtml = (room.id === "command" || room.id === "trophy" || room.id === "mission") ? baseHqProgressVisualHtml() : "";
   const progress = baseHqRoomProgress(room.id);
@@ -30947,6 +31204,7 @@ function renderBaseHqWorldHud(){
     ${missionControlHtml}
     ${ivyHtml}
     ${previewHtml}
+    ${socialHubHtml}
     ${newsHtml}
     ${progressVisualHtml}
     ${npcText}
@@ -31010,8 +31268,10 @@ function renderBaseHQ(){
   if(roomsWrap){
     roomsWrap.innerHTML = BASE_HQ_ROOMS.map((room)=>{
       const active = room.id === __baseHqSelectedRoom ? " active" : "";
+      const badge = baseHqRoomLiveBadge(room.id);
       return `
         <button class="baseHqRoom${active}" style="left:${room.x}%;top:${room.y}%;" onclick="event.stopPropagation();selectBaseHqRoom('${room.id}', true)">
+          ${badge ? `<span class="baseHqRoomBadge">${baseHqEsc(badge)}</span>` : ""}
           <span class="baseHqRoomIcon">${baseHqEsc(room.icon)}</span>
           <span class="baseHqRoomName">${baseHqEsc(room.name)}</span>
           <span class="baseHqRoomSub">${baseHqEsc(room.sub)}</span>
@@ -31325,6 +31585,29 @@ function drawBaseHqRoomProgressBadge(room, now){
   }
   ctx.restore();
 }
+function drawBaseHqRoomLiveBadge(room, now){
+  if(!room) return;
+  const text = baseHqRoomLiveBadge(room.id);
+  if(!text) return;
+  const active = room.id === __baseHqSelectedRoom;
+  const pulse = 0.08 + Math.sin(now / 260) * 0.04;
+  const x = room.x + room.w / 2 - 34;
+  const y = room.y - room.h / 2 + 16;
+  ctx.save();
+  ctx.font = "1000 9px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const w = Math.min(72, ctx.measureText(text).width + 16);
+  ctx.globalAlpha = active ? 0.98 : 0.9;
+  ctx.fillStyle = `rgba(6,78,59,${0.82 + pulse})`;
+  ctx.strokeStyle = active ? "rgba(187,247,208,.95)" : "rgba(134,239,172,.72)";
+  ctx.lineWidth = active ? 1.8 : 1.2;
+  roundedRectFill(x - w / 2, y - 11, w, 22, 10);
+  ctx.stroke();
+  ctx.fillStyle = "#dcfce7";
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
 function drawBaseHqRoom(room, now){
   const active = room.id === __baseHqSelectedRoom;
   const pulse = active ? 0.5 + Math.sin(now / 240) * 0.18 : 0;
@@ -31376,6 +31659,7 @@ function drawBaseHqRoom(room, now){
   roundedRectFill(room.x - room.w/2 + 16, room.y + room.h/2 - 16, (room.w - 32) * (progress.pct / 100), 6, 4);
   drawBaseHqRoomProp(room, now);
   drawBaseHqRoomProgressBadge(room, now);
+  drawBaseHqRoomLiveBadge(room, now);
   ctx.fillStyle = "#f8fafc";
   ctx.font = "1000 15px system-ui, sans-serif";
   ctx.textAlign = "center";
@@ -32053,6 +32337,25 @@ function openCinematicBossHuntFromBaseHQ(){
       anchor.scrollIntoView({ block:"start", behavior:"smooth" });
     }
   }, 80);
+}
+function openInventoryAnchorFromBaseHQ(anchorId="", tab="gear"){
+  const safeAnchor = String(anchorId || "").replace(/[^\w:-]/g, "");
+  openInventoryFromBaseHQ(tab);
+  setTimeout(()=>{
+    const anchor = safeAnchor ? document.getElementById(safeAnchor) : null;
+    if(anchor && typeof anchor.scrollIntoView === "function"){
+      anchor.scrollIntoView({ block:"start", behavior:"smooth" });
+    }
+  }, 80);
+}
+function openClanDeskFromBaseHQ(){
+  openInventoryAnchorFromBaseHQ("invClanAnchor", "gear");
+}
+function openLiveOpsFromBaseHQ(){
+  openInventoryAnchorFromBaseHQ("invLiveOpsAnchor", "gear");
+}
+function openContractsFromBaseHQ(){
+  openInventoryAnchorFromBaseHQ("invContractsAnchor", "gear");
 }
 function openModeFromBaseHQ(){
   rememberBaseHqOverlayReturn("mission");
@@ -53365,6 +53668,10 @@ window.openInventoryFromBaseHQ = openInventoryFromBaseHQ;
 window.openChallengeTowerFromBaseHQ = openChallengeTowerFromBaseHQ;
 window.openSocialRescueOpsFromBaseHQ = openSocialRescueOpsFromBaseHQ;
 window.openLiveCoopWorldEventsFromBaseHQ = openLiveCoopWorldEventsFromBaseHQ;
+window.openInventoryAnchorFromBaseHQ = openInventoryAnchorFromBaseHQ;
+window.openClanDeskFromBaseHQ = openClanDeskFromBaseHQ;
+window.openLiveOpsFromBaseHQ = openLiveOpsFromBaseHQ;
+window.openContractsFromBaseHQ = openContractsFromBaseHQ;
 window.openModeFromBaseHQ = openModeFromBaseHQ;
 window.openStoryFromBaseHQ = openStoryFromBaseHQ;
 window.openMissionBriefFromBaseHQ = openMissionBriefFromBaseHQ;

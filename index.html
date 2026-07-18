@@ -191,6 +191,21 @@
     .baseHqRoomIcon{font-size:24px;line-height:1}
     .baseHqRoomName{font-size:12px;letter-spacing:.02em}
     .baseHqRoomSub{font-size:10px;color:rgba(203,213,225,.86);font-weight:850}
+    .baseHqRoomBadge{
+      position:absolute;
+      right:8px;
+      top:6px;
+      padding:2px 6px;
+      border-radius:999px;
+      border:1px solid rgba(187,247,208,.56);
+      background:linear-gradient(135deg, rgba(6,78,59,.86), rgba(15,23,42,.78));
+      color:#dcfce7;
+      font-size:8px;
+      font-weight:1000;
+      letter-spacing:.05em;
+      pointer-events:none;
+      box-shadow:0 0 14px rgba(34,197,94,.24);
+    }
     .baseHqAgent{
       position:absolute;
       left:50%;
@@ -2885,7 +2900,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-<script src="./game.js?v=4626-cinematic-boss-hunt-seasons"></script>
+  <script src="./game.js?v=4627-hq-social-hub"></script>
 <script src="./tutorial.js?v=4537-tutorial-3-full-qa"></script>
 <script>
 (() => {
