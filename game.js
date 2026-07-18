@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4503";
+const TS_BUILD = "4504";
 if(tg){
   try{
     tg.expand?.();
@@ -6081,13 +6081,17 @@ function playerProfileShareText(state=S){
   const totals = profile.totals;
   const bossWins = showcaseMetricValue("bossesDefeated", state);
   const perfect = showcaseMetricValue("perfectRescues", state);
+  const pass = ensureSeasonPassState(state);
+  const social = ensureSocialRescueState(state);
+  const socialRank = socialRescueWeeklyRank(state);
   return [
-    `Tiger Strike Profile: ${profile.name}`,
+    `Tiger Strike Public Trophy Showcase 2.0: ${profile.name}`,
     `${profile.prestige.current.icon} ${profile.prestige.current.name} • ${profile.title} • Clan ${profile.clan}`,
     `Story ${profile.storyLevel} • ${profile.hqIdentity}`,
     `Missions ${Math.max(0, Math.floor(Number(totals.missionsCleared || 0)))} • Rescues ${Math.max(0, Math.floor(Number(totals.evac || 0)))} • Perfect ${perfect}`,
     `Captures ${Math.max(0, Math.floor(Number(totals.captures || 0)))} • Kills ${Math.max(0, Math.floor(Number(totals.kills || 0)))} • Boss wins ${bossWins} • Nemesis ${profile.nemesis.resolved.length}`,
     `Trophy spotlight: ${profile.topTrophy.count ? `${profile.topTrophy.type} x${profile.topTrophy.count}` : "No trophies yet"}`,
+    `Season Pass Lv ${seasonPassLevel(pass)} • ${socialRank.icon} ${socialRank.name} • ${cosmeticCollectionStats().owned}/${cosmeticCollectionStats().total} cosmetics`,
   ].join(" | ");
 }
 function copyPlayerProfileShareText(){
@@ -6104,6 +6108,85 @@ function copyPlayerProfileShareText(){
 }
 function playerProfileStatCard(label, value, detail=""){
   return `<div class="item" style="align-items:flex-start"><div><div class="itemDesc">${baseHqEsc(label)}</div><div class="itemName">${baseHqEsc(value)}</div>${detail ? `<div class="itemDesc">${baseHqEsc(detail)}</div>` : ""}</div></div>`;
+}
+function publicShowcaseRarityTier(state=S){
+  const score = prestigeShowcaseScore(state);
+  if(score >= 2600) return { icon:"🌟", name:"Mythic Showcase", color:"#fde68a" };
+  if(score >= 1600) return { icon:"👑", name:"Legend Showcase", color:"#fca5a5" };
+  if(score >= 900) return { icon:"💎", name:"Elite Showcase", color:"#93c5fd" };
+  if(score >= 380) return { icon:"🏆", name:"Rare Showcase", color:"#86efac" };
+  return { icon:"🎖️", name:"Field Showcase", color:"#cbd5e1" };
+}
+function publicShowcaseFeaturedCaptures(state=S){
+  const collection = ensureCosmeticCollectionState(state);
+  const recent = Array.isArray(collection.recentTrophies) ? collection.recentTrophies.slice(-6).reverse() : [];
+  if(recent.length){
+    return recent.map((row)=>`${row.type || "Tiger"}: ${row.name || "Unknown"}`).slice(0, 4);
+  }
+  const trophies = TIGER_TROPHY_TYPES
+    .map((type)=>({ type, count:Math.max(0, Math.floor(Number(collection.trophies?.[type] || 0))) }))
+    .filter((row)=>row.count > 0)
+    .sort((a,b)=>b.count - a.count);
+  return trophies.length ? trophies.slice(0, 4).map((row)=>`${row.type} x${row.count}`) : ["No captured tiger trophies yet"];
+}
+function publicShowcaseCosmeticLine(state=S){
+  const pass = ensureSeasonPassState(state);
+  const collection = ensureCosmeticCollectionState(state);
+  const skin = SEASON_PASS_SKINS[pass.equipped?.skin]?.name || "Field Standard";
+  const badge = SEASON_PASS_BADGES[pass.equipped?.badge]?.name || "Recruit Badge";
+  const banner = SEASON_PASS_BANNERS[pass.equipped?.banner]?.name || "Forest Edge";
+  const safe = SAFE_ZONE_COSMETICS[collection.equippedSafeZone]?.name || "Field Safe Zone";
+  const trail = MOVEMENT_TRAIL_COSMETICS[collection.equippedMovementTrail]?.name || "No Trail";
+  return `${skin} • ${badge} • ${banner} • ${safe} • ${trail}`;
+}
+function publicShowcaseSeasonTrophyLine(state=S){
+  const pass = ensureSeasonPassState(state);
+  const badge = seasonPassBadgeDisplay(pass);
+  const finisher = seasonPassFinisherDisplay(pass);
+  const bossSeason = typeof cinematicBossHuntSeasonSummary === "function" ? cinematicBossHuntSeasonSummary(state) : null;
+  const bossLine = bossSeason ? `${bossSeason.title} ${bossSeason.points}/${bossSeason.target}` : "Boss hunt trophy pending";
+  return `Season Pass Lv ${seasonPassLevel(pass)} • ${badge.icon || "🏅"} ${badge.name || "Badge"} • ${finisher.icon || "⚡"} ${finisher.name || "Finisher"} • ${bossLine}`;
+}
+function publicShowcaseCardHtml(state=S){
+  const profile = playerProfileShowcaseSummary(state);
+  const totals = profile.totals;
+  const rarity = publicShowcaseRarityTier(state);
+  const social = ensureSocialRescueState(state);
+  const socialRank = socialRescueWeeklyRank(state);
+  const clanLine = typeof clanSummaryLine === "function" ? clanSummaryLine(state) : `Clan ${profile.clan}`;
+  const perfect = showcaseMetricValue("perfectRescues", state);
+  const captures = publicShowcaseFeaturedCaptures(state);
+  const cosmetics = cosmeticCollectionStats();
+  const captureRows = captures.map((line)=>`<span class="tag">${baseHqEsc(line)}</span>`).join(" ");
+  return `
+    <div class="item" style="align-items:flex-start;border-color:rgba(250,204,21,.55);background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(20,83,45,.72));">
+      <div style="min-width:0">
+        <div class="itemDesc">PUBLIC TROPHY CARD 2.0</div>
+        <div class="itemName" style="font-size:20px;color:${rarity.color};">${rarity.icon} ${baseHqEsc(profile.name)} • ${baseHqEsc(rarity.name)}</div>
+        <div class="itemDesc">${baseHqEsc(profile.title)} • ${baseHqEsc(profile.prestige.current.icon)} ${baseHqEsc(profile.prestige.current.name)} • ${baseHqEsc(profile.hqIdentity)}</div>
+        <div class="itemDesc">Record: ${Math.max(0, Number(totals.evac || 0)).toLocaleString()} rescued • ${perfect} perfect rescues • ${Math.max(0, Number(totals.captures || 0)).toLocaleString()} captures • ${showcaseMetricValue("bossesDefeated", state)} boss wins</div>
+        <div class="itemDesc">Rare captures: ${captureRows}</div>
+        <div class="itemDesc">Cosmetics: ${baseHqEsc(publicShowcaseCosmeticLine(state))} • Collection ${cosmetics.owned}/${cosmetics.total}</div>
+        <div class="itemDesc">Clan/Social: ${baseHqEsc(clanLine)} • ${baseHqEsc(socialRank.icon)} ${baseHqEsc(socialRank.name)} • Week ${baseHqEsc(social.weekKey)}</div>
+        <div class="itemDesc">Season trophies: ${baseHqEsc(publicShowcaseSeasonTrophyLine(state))}</div>
+      </div>
+      <div style="text-align:right;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button onclick="copyPlayerProfileShareText()">Copy</button>
+        <button class="ghost" onclick="sharePublicTrophyShowcase()">Share</button>
+      </div>
+    </div>`;
+}
+async function sharePublicTrophyShowcase(){
+  const text = playerProfileShareText(S);
+  const profile = playerProfileShowcaseSummary(S);
+  const url = `${missionShareBaseUrl()}?profile=showcase2&commander=${encodeURIComponent(profile.name)}&prestige=${encodeURIComponent(profile.prestige.current.name)}&clan=${encodeURIComponent(profile.clan)}`;
+  const shareLink = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+  if(openShareUrl(shareLink)){
+    toast("Public Trophy Showcase opened for sharing.");
+    return;
+  }
+  const copied = await shareFallbackText(`${text}\n${url}`);
+  toast(copied ? "Public Trophy Showcase copied." : "Could not share public showcase.");
 }
 function renderAchievementPrestigeShowcase(){
   const root = document.getElementById("invShowcase");
@@ -6122,7 +6205,7 @@ function renderAchievementPrestigeShowcase(){
   const showcaseUnlocked = SHOWCASE_ACHIEVEMENTS.filter((def)=>S.achievements?.[`showcase_${def.id}`]).length;
   const commander = profile.name;
   const progress = prestige.next ? `${prestige.score}/${prestige.next.min} to ${prestige.next.icon} ${prestige.next.name}` : `${prestige.score} prestige • Maximum rank`;
-  summary.innerHTML = `<b>Player Profile + Trophy Showcase</b><br><b>${prestige.current.icon} ${prestige.current.name}</b> • ${baseHqEsc(commander)} • [${baseHqEsc(profile.clan)}]<br><b>Prestige:</b> ${baseHqEsc(progress)}<br><b>Showcase:</b> ${showcaseUnlocked}/${SHOWCASE_ACHIEVEMENTS.length} achievements • ${cosmetics.owned}/${cosmetics.total} collectibles`;
+  summary.innerHTML = `<b>Player Profile + Public Trophy Showcase 2.0</b><br><b>${prestige.current.icon} ${prestige.current.name}</b> • ${baseHqEsc(commander)} • [${baseHqEsc(profile.clan)}]<br><b>Prestige:</b> ${baseHqEsc(progress)}<br><b>Showcase:</b> ${showcaseUnlocked}/${SHOWCASE_ACHIEVEMENTS.length} achievements • ${cosmetics.owned}/${cosmetics.total} collectibles`;
   const achievementRows = SHOWCASE_ACHIEVEMENTS.map((def)=>{
     const value = showcaseMetricValue(def.metric, S);
     const unlocked = !!S.achievements?.[`showcase_${def.id}`];
@@ -6156,7 +6239,8 @@ function renderAchievementPrestigeShowcase(){
     playerProfileStatCard("Boss Hunt Season", profile.season?.title || "No active season", profile.season ? `${profile.season.points}/${profile.season.target} pts • ${profile.season.theme?.bonus || "Boss hunt records will appear here."}` : "Cinematic boss hunt records will appear here."),
     playerProfileStatCard("Social Rescue Rank", `${socialRank.icon} ${socialRank.name}`, `Week ${social.weekKey} • Best ${Math.max(0, Number(social.weekly.bestScore || 0)).toLocaleString()} pts • ${Math.max(0, Number(social.weekly.evac || 0))} saved`),
   ].join("");
-  root.innerHTML = `<div class="item">
+  root.innerHTML = `${publicShowcaseCardHtml(S)}
+  <div class="item">
     <div>
       <div class="itemName">${prestige.current.icon} Player Profile • ${baseHqEsc(effectiveDisplayTitle(S))}</div>
       <div class="itemDesc">${baseHqEsc(shareText)}</div>
@@ -52719,6 +52803,7 @@ window.closeInventory = closeInventory;
 window.openShopFromInventory = openShopFromInventory;
 window.inventoryTab = inventoryTab;
 window.copyPlayerProfileShareText = copyPlayerProfileShareText;
+window.sharePublicTrophyShowcase = sharePublicTrophyShowcase;
 window.shareWeeklyRescueLeaderboard = shareWeeklyRescueLeaderboard;
 window.claimSettlementPassive = claimSettlementPassive;
 window.claimSettlementJob = claimSettlementJob;
