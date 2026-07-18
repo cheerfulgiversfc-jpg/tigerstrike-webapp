@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4504";
+const TS_BUILD = "4505";
 if(tg){
   try{
     tg.expand?.();
@@ -270,6 +270,8 @@ function defaultLiveCoopWorldEventsState(now=Date.now()){
     version: LIVE_COOP_WORLD_EVENTS_VERSION,
     weekKey: contractWeekKey(now),
     board: [],
+    claims: {},
+    milestoneClaims: {},
     totalPoints: 0,
     eventCompletions: 0,
     perfectChains: 0,
@@ -278,6 +280,20 @@ function defaultLiveCoopWorldEventsState(now=Date.now()){
     lastContributionAt: 0,
     lastToastAt: 0,
   };
+}
+
+function normalizeLiveCoopWorldClaimsMap(raw){
+  const out = {};
+  if(!raw || typeof raw !== "object") return out;
+  for(const [period, val] of Object.entries(raw)){
+    if(!period || !val || typeof val !== "object") continue;
+    const row = {};
+    for(const [id, claimed] of Object.entries(val)){
+      if(id && claimed) row[id] = 1;
+    }
+    if(Object.keys(row).length) out[period] = row;
+  }
+  return out;
 }
 
 function normalizeLiveCoopWorldEventEntry(entry={}, period=contractWeekKey()){
@@ -351,6 +367,8 @@ function ensureLiveCoopWorldEventsState(state=S, opts={}){
     version: LIVE_COOP_WORLD_EVENTS_VERSION,
     weekKey: weekChanged ? periodNow : savedPeriod,
     board: weekChanged ? [] : (Array.isArray(incoming.board) ? incoming.board.map((entry)=>normalizeLiveCoopWorldEventEntry(entry, savedPeriod)).filter((row)=>row.id) : []),
+    claims: weekChanged ? {} : normalizeLiveCoopWorldClaimsMap(incoming.claims),
+    milestoneClaims: weekChanged ? {} : normalizeLiveCoopWorldClaimsMap(incoming.milestoneClaims),
     totalPoints: weekChanged ? 0 : Math.max(0, Math.floor(Number(incoming.totalPoints || 0))),
     eventCompletions: weekChanged ? 0 : Math.max(0, Math.floor(Number(incoming.eventCompletions || 0))),
     perfectChains: weekChanged ? 0 : Math.max(0, Math.floor(Number(incoming.perfectChains || 0))),
@@ -370,6 +388,8 @@ function mergeLiveCoopWorldEventsSnapshots(currentRaw=null, incomingRaw=null){
   const incoming = ensureLiveCoopWorldEventsState({ liveCoopWorldEvents: incomingRaw || null }, { now });
   const out = defaultLiveCoopWorldEventsState(now);
   out.weekKey = String(current.weekKey || incoming.weekKey || contractWeekKey(now));
+  out.claims = mergeLiveCoopWorldClaimsMaps(current.claims, incoming.claims);
+  out.milestoneClaims = mergeLiveCoopWorldClaimsMaps(current.milestoneClaims, incoming.milestoneClaims);
   out.totalPoints = Math.max(current.totalPoints || 0, incoming.totalPoints || 0);
   out.eventCompletions = Math.max(current.eventCompletions || 0, incoming.eventCompletions || 0);
   out.perfectChains = Math.max(current.perfectChains || 0, incoming.perfectChains || 0);
@@ -394,6 +414,253 @@ function mergeLiveCoopWorldEventsSnapshots(currentRaw=null, incomingRaw=null){
   return out;
 }
 
+function mergeLiveCoopWorldClaimsMaps(a=null, b=null){
+  const out = normalizeLiveCoopWorldClaimsMap(a);
+  const incoming = normalizeLiveCoopWorldClaimsMap(b);
+  for(const [period, entries] of Object.entries(incoming)){
+    if(!out[period]) out[period] = {};
+    for(const [id, claimed] of Object.entries(entries || {})){
+      if(id && claimed) out[period][id] = 1;
+    }
+  }
+  return out;
+}
+
+function liveCoopWorldRewardText(reward={}){
+  const cash = Math.max(0, Math.floor(Number(reward.cash || 0)));
+  const perks = Math.max(0, Math.floor(Number(reward.perkPoints || 0)));
+  const seasonPts = Math.max(0, Math.floor(Number(reward.seasonPoints || 0)));
+  const bits = [];
+  if(cash > 0) bits.push(`$${cash.toLocaleString()}`);
+  if(perks > 0) bits.push(`+${perks} perk`);
+  if(seasonPts > 0) bits.push(`+${seasonPts} pass pts`);
+  return bits.join(" • ") || "Community reward";
+}
+
+function liveCoopWorldEventClaimed(period, id, state=S){
+  const live = ensureLiveCoopWorldEventsState(state);
+  const week = String(period || live.weekKey || contractWeekKey());
+  const claims = normalizeLiveCoopWorldClaimsMap(live.claims);
+  return !!(claims?.[week]?.[id]);
+}
+
+function liveCoopWorldMilestoneClaimed(period, id, state=S){
+  const live = ensureLiveCoopWorldEventsState(state);
+  const week = String(period || live.weekKey || contractWeekKey());
+  const claims = normalizeLiveCoopWorldClaimsMap(live.milestoneClaims);
+  return !!(claims?.[week]?.[id]);
+}
+
+function grantLiveCoopWorldReward(reward={}, source="Live Co-op World Event"){
+  const cash = Math.max(0, Math.floor(Number(reward.cash || 0)));
+  const perks = Math.max(0, Math.floor(Number(reward.perkPoints || 0)));
+  const seasonPts = Math.max(0, Math.floor(Number(reward.seasonPoints || 0)));
+  if(cash > 0){
+    S.funds = Math.max(0, Math.floor(Number(S.funds || 0))) + cash;
+  }
+  if(perks > 0){
+    S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + perks;
+  }
+  if(seasonPts > 0){
+    grantSeasonPassPoints(seasonPts, source);
+  }
+  return { cash, perks, seasonPts };
+}
+
+function claimLiveCoopWorldEvent(eventId=""){
+  const live = ensureLiveCoopWorldEventsState(S);
+  const row = (Array.isArray(live.board) ? live.board : []).find((entry)=>entry.id === eventId);
+  if(!row){
+    toast("Live co-op event not found.");
+    return;
+  }
+  const ready = Math.max(0, Number(row.progress || 0)) >= Math.max(1, Number(row.target || 1));
+  if(!ready){
+    toast("Community goal is not complete yet.");
+    return;
+  }
+  if(liveCoopWorldEventClaimed(row.period, row.id, S)){
+    toast("Live co-op reward already claimed.");
+    return;
+  }
+  const claims = normalizeLiveCoopWorldClaimsMap(live.claims);
+  if(!claims[row.period]) claims[row.period] = {};
+  claims[row.period][row.id] = 1;
+  live.claims = claims;
+  const reward = grantLiveCoopWorldReward(row.reward, "Live Co-op World Event");
+  requestGameplayCloudSync("live-coop-world-claim", { force:true });
+  toast(`${row.icon} Claimed ${row.name}: +$${reward.cash.toLocaleString()} • +${reward.perks} perk • +${reward.seasonPts} pass pts`);
+  hapticNotif("success");
+  sfx("win");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display === "flex") renderInventory();
+}
+
+function claimLiveCoopWorldMilestone(milestoneId=""){
+  const live = ensureLiveCoopWorldEventsState(S);
+  const milestone = LIVE_COOP_WORLD_MILESTONES.find((entry)=>entry.id === milestoneId);
+  if(!milestone){
+    toast("Community milestone not found.");
+    return;
+  }
+  const ready = Math.max(0, Number(live.totalPoints || 0)) >= Math.max(1, Number(milestone.target || 1));
+  if(!ready){
+    toast("Community milestone is not complete yet.");
+    return;
+  }
+  if(liveCoopWorldMilestoneClaimed(live.weekKey, milestone.id, S)){
+    toast("Community milestone already claimed.");
+    return;
+  }
+  const claims = normalizeLiveCoopWorldClaimsMap(live.milestoneClaims);
+  if(!claims[live.weekKey]) claims[live.weekKey] = {};
+  claims[live.weekKey][milestone.id] = 1;
+  live.milestoneClaims = claims;
+  const reward = grantLiveCoopWorldReward(milestone.reward, "Live Co-op World Milestone");
+  requestGameplayCloudSync("live-coop-world-milestone", { force:true });
+  toast(`${milestone.icon} Milestone claimed: +$${reward.cash.toLocaleString()} • +${reward.perks} perk • +${reward.seasonPts} pass pts`);
+  hapticNotif("success");
+  sfx("win");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display === "flex") renderInventory();
+}
+
+function claimAllLiveCoopWorldEvents(){
+  const live = ensureLiveCoopWorldEventsState(S);
+  const readyEvents = (Array.isArray(live.board) ? live.board : []).filter((row)=>
+    Math.max(0, Number(row.progress || 0)) >= Math.max(1, Number(row.target || 1)) &&
+    !liveCoopWorldEventClaimed(row.period, row.id, S)
+  );
+  const readyMilestones = LIVE_COOP_WORLD_MILESTONES.filter((row)=>
+    Math.max(0, Number(live.totalPoints || 0)) >= Math.max(1, Number(row.target || 1)) &&
+    !liveCoopWorldMilestoneClaimed(live.weekKey, row.id, S)
+  );
+  if(!readyEvents.length && !readyMilestones.length){
+    toast("No Live Co-op World rewards ready yet.");
+    return;
+  }
+  const eventClaims = normalizeLiveCoopWorldClaimsMap(live.claims);
+  const milestoneClaims = normalizeLiveCoopWorldClaimsMap(live.milestoneClaims);
+  if(!eventClaims[live.weekKey]) eventClaims[live.weekKey] = {};
+  if(!milestoneClaims[live.weekKey]) milestoneClaims[live.weekKey] = {};
+  let totalCash = 0;
+  let totalPerks = 0;
+  let totalSeason = 0;
+  for(const row of readyEvents){
+    eventClaims[row.period][row.id] = 1;
+    const reward = grantLiveCoopWorldReward(row.reward, "Live Co-op World Event");
+    totalCash += reward.cash;
+    totalPerks += reward.perks;
+    totalSeason += reward.seasonPts;
+  }
+  for(const row of readyMilestones){
+    milestoneClaims[live.weekKey][row.id] = 1;
+    const reward = grantLiveCoopWorldReward(row.reward, "Live Co-op World Milestone");
+    totalCash += reward.cash;
+    totalPerks += reward.perks;
+    totalSeason += reward.seasonPts;
+  }
+  live.claims = eventClaims;
+  live.milestoneClaims = milestoneClaims;
+  requestGameplayCloudSync("live-coop-world-claim-all", { force:true });
+  toast(`Claimed ${readyEvents.length + readyMilestones.length} Live Co-op rewards: +$${totalCash.toLocaleString()} • +${totalPerks} perk • +${totalSeason} pass pts`);
+  hapticNotif("success");
+  sfx("win");
+  save();
+  renderHUD();
+  if(document.getElementById("invOverlay")?.style?.display === "flex") renderInventory();
+}
+
+function renderLiveCoopWorldEventsSectionHtml(state=S, anchorId="invLiveCoopWorldAnchor"){
+  const live = ensureLiveCoopWorldEventsState(state);
+  const board = Array.isArray(live.board) ? live.board : [];
+  const readyCount = board.filter((row)=>Math.max(0, Number(row.progress || 0)) >= Math.max(1, Number(row.target || 1)) && !liveCoopWorldEventClaimed(row.period, row.id, state)).length;
+  const milestoneReady = LIVE_COOP_WORLD_MILESTONES.filter((row)=>Math.max(0, Number(live.totalPoints || 0)) >= Math.max(1, Number(row.target || 1)) && !liveCoopWorldMilestoneClaimed(live.weekKey, row.id, state)).length;
+  const eventRows = board.map((row)=>{
+    const progress = Math.max(0, Math.floor(Number(row.progress || 0)));
+    const target = Math.max(1, Math.floor(Number(row.target || 1)));
+    const pct = clamp((progress / target) * 100, 0, 100);
+    const personal = Math.max(0, Math.floor(Number(row.personal || 0)));
+    const ready = progress >= target;
+    const claimed = liveCoopWorldEventClaimed(row.period, row.id, state);
+    const status = claimed ? "Claimed" : (ready ? "Ready" : `${Math.min(progress, target)}/${target}`);
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${row.icon} ${row.name} <span class="tag">${status}</span> <span class="tag">You ${personal} pts</span></div>
+          <div class="itemDesc">${baseHqEsc(row.desc)}</div>
+          <div class="itemDesc">Community: ${progress.toLocaleString()}/${target.toLocaleString()} • Clears ${Math.max(0, Math.floor(Number(row.completions || 0)))} • Reward: ${liveCoopWorldRewardText(row.reward)}</div>
+          <div class="bar"><div class="fill green" style="width:${pct}%"></div></div>
+        </div>
+        <div style="text-align:right">
+          <button ${(claimed || !ready) ? "disabled" : ""} onclick="claimLiveCoopWorldEvent('${row.id}')">${claimed ? "Claimed" : "Claim"}</button>
+        </div>
+      </div>`;
+  }).join("");
+  const milestoneRows = LIVE_COOP_WORLD_MILESTONES.map((row)=>{
+    const total = Math.max(0, Math.floor(Number(live.totalPoints || 0)));
+    const target = Math.max(1, Math.floor(Number(row.target || 1)));
+    const pct = clamp((total / target) * 100, 0, 100);
+    const ready = total >= target;
+    const claimed = liveCoopWorldMilestoneClaimed(live.weekKey, row.id, state);
+    const status = claimed ? "Claimed" : (ready ? "Ready" : `${Math.min(total, target)}/${target}`);
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${row.icon} ${row.title} <span class="tag">${status}</span></div>
+          <div class="itemDesc">Weekly community milestone • Reward: ${liveCoopWorldRewardText(row.reward)}</div>
+          <div class="bar"><div class="fill green" style="width:${pct}%"></div></div>
+        </div>
+        <div style="text-align:right">
+          <button ${(claimed || !ready) ? "disabled" : ""} onclick="claimLiveCoopWorldMilestone('${row.id}')">${claimed ? "Claimed" : "Claim"}</button>
+        </div>
+      </div>`;
+  }).join("");
+  return `
+    <div class="divider"></div>
+    <div class="hudTitle" id="${baseHqEsc(anchorId)}">Live Co-op World Events 2.0</div>
+    <div class="item" style="padding:10px 12px;">
+      <div>
+        <div class="itemName">🌎 Global Rescue Network <span class="tag">Week ${baseHqEsc(live.weekKey)}</span> <span class="tag">${readyCount + milestoneReady} ready</span></div>
+        <div class="itemDesc">All players contribute by rescuing civilians, stopping invasions, defending regions, and defeating bosses. Rewards unlock when community goals are reached.</div>
+        <div class="itemDesc">Total community points: ${Math.max(0, Math.floor(Number(live.totalPoints || 0))).toLocaleString()} • Clears ${Math.max(0, Math.floor(Number(live.eventCompletions || 0))).toLocaleString()} • Reset in ${contractCountdownText("weekly")}</div>
+      </div>
+      <div style="text-align:right">
+        <button class="ghost" ${(readyCount + milestoneReady) <= 0 ? "disabled" : ""} onclick="claimAllLiveCoopWorldEvents()">Claim Ready</button>
+        <button class="ghost" onclick="shareLiveCoopWorldEvents()">Share</button>
+      </div>
+    </div>
+    ${eventRows}
+    <div class="item" style="padding:10px 12px;">
+      <div>
+        <div class="itemName">Community Milestones <span class="tag">Shared Goals</span></div>
+        <div class="itemDesc">Milestone chests are based on total weekly community progress, separate from single event goals.</div>
+      </div>
+    </div>
+    ${milestoneRows}`;
+}
+
+async function shareLiveCoopWorldEvents(){
+  const live = ensureLiveCoopWorldEventsState(S);
+  const top = (Array.isArray(live.board) ? live.board : [])
+    .slice()
+    .sort((a,b)=>Math.max(0, Number(b.progress || 0)) - Math.max(0, Number(a.progress || 0)))
+    .slice(0, 3)
+    .map((row)=>`${row.icon} ${row.name}: ${Math.min(Math.max(0, Math.floor(Number(row.progress || 0))), Math.max(1, Math.floor(Number(row.target || 1))))}/${Math.max(1, Math.floor(Number(row.target || 1)))} pts`)
+    .join("\n");
+  const text = `Tiger Strike Live Co-op World Events\nWeek ${live.weekKey}\nCommunity points: ${Math.max(0, Math.floor(Number(live.totalPoints || 0))).toLocaleString()}\n${top || "No active events yet."}\nJoin the rescue network and help unlock shared rewards.`;
+  const url = `${missionShareBaseUrl()}?live_coop=${encodeURIComponent(live.weekKey)}&points=${Math.max(0, Math.floor(Number(live.totalPoints || 0)))}`;
+  const shareLink = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+  if(openShareUrl(shareLink)){
+    toast("Live Co-op World Events share opened.");
+    return;
+  }
+  const copied = await shareFallbackText(`${text}\n${url}`);
+  toast(copied ? "Live Co-op World Events copied." : "Could not share world events.");
+}
+
 function liveCoopWorldEventScoreMul(kind="mission", opts={}){
   let mul = 1;
   if(raidModeActive(S)) mul += 0.08;
@@ -402,6 +669,12 @@ function liveCoopWorldEventScoreMul(kind="mission", opts={}){
   if(opts?.boss) mul += 0.20;
   if(kind === "perfect_rescue") mul += 0.16;
   if(kind === "boss_clear") mul += 0.18;
+  if(kind === "nemesis_uprising") mul += 0.22;
+  if(kind === "tiger_invasion") mul += 0.12;
+  if(kind === "region_defense") mul += 0.10;
+  if(kind === "rescue_surge") mul += 0.14;
+  if(kind === "supply_route") mul += 0.08;
+  if(kind === "settlement_defense") mul += 0.08;
   return clamp(mul, 1, 1.65);
 }
 
@@ -421,7 +694,7 @@ function addLiveCoopWorldEventContribution(kind="mission", basePoints=8, opts={}
   live.totalPoints = Math.max(0, Math.floor(Number(live.totalPoints || 0))) + points;
   if(opts?.completed) live.eventCompletions = Math.max(0, Math.floor(Number(live.eventCompletions || 0))) + 1;
   if(type === "perfect_rescue") live.perfectChains = Math.max(0, Math.floor(Number(live.perfectChains || 0))) + 1;
-  if(type === "boss_clear") live.bossSignals = Math.max(0, Math.floor(Number(live.bossSignals || 0))) + 1;
+  if(type === "boss_clear" || type === "nemesis_uprising") live.bossSignals = Math.max(0, Math.floor(Number(live.bossSignals || 0))) + 1;
   live.lastEventType = type;
   live.lastContributionAt = Date.now();
   if(!opts?.silent && Date.now() > (live.lastToastAt || 0) + 3400){
@@ -448,12 +721,27 @@ function recordLiveCoopWorldMissionOutcome({ missionStats=null, civTotal=0, civD
   const perfect = civTotal > 0 && civDead <= 0 && Math.max(0, Number(stats.evac || 0)) >= civTotal;
   const base = 8 + Math.min(18, Math.floor(Math.max(0, Number(stats.evac || 0)) * 1.8)) + Math.min(18, Math.floor(Math.max(0, Number(stats.captures || 0)) * 0.9));
   const general = addLiveCoopWorldEventContribution("mission", base, { silent:true });
+  const region = addLiveCoopWorldEventContribution("region_defense", Math.max(8, Math.round(base * 0.55)), { silent:true, completed:true });
+  const supply = addLiveCoopWorldEventContribution("supply_route", Math.max(6, Math.round(base * 0.42)), { silent:true });
+  const rescue = Math.max(0, Number(stats.evac || 0)) > 0
+    ? addLiveCoopWorldEventContribution("rescue_surge", 6 + Math.min(22, Math.round(Number(stats.evac || 0) * 2.2)), { silent:true })
+    : null;
+  const invasion = (Math.max(0, Number(stats.captures || 0)) + Math.max(0, Number(stats.kills || 0))) > 0
+    ? addLiveCoopWorldEventContribution("tiger_invasion", 6 + Math.min(24, Math.round((Number(stats.captures || 0) + Number(stats.kills || 0)) * 1.4)), { silent:true })
+    : null;
+  const settlement = perfect
+    ? addLiveCoopWorldEventContribution("settlement_defense", 12, { silent:true, perfect:true })
+    : null;
   const special = perfect
     ? addLiveCoopWorldEventContribution("perfect_rescue", 18, { silent:true, perfect:true })
     : (bossMission ? addLiveCoopWorldEventContribution("boss_clear", 20, { silent:true, boss:true }) : null);
+  const nemesis = bossMission ? addLiveCoopWorldEventContribution("nemesis_uprising", 16, { silent:true, boss:true }) : null;
   const used = special || general;
   if(!used?.row) return "";
-  return `\nLive Co-op World Event: +${Math.max(0, Math.floor(Number((general?.points || 0) + ((special && special !== general) ? special.points : 0))))} shared pts • ${used.row.name} ${Math.min(used.row.progress, used.row.target)}/${used.row.target}\n`;
+  const totalPts = [general, region, supply, rescue, invasion, settlement, special, nemesis]
+    .filter(Boolean)
+    .reduce((sum, row)=>sum + Math.max(0, Math.floor(Number(row.points || 0))), 0);
+  return `\nLive Co-op World Events: +${Math.max(0, Math.floor(Number(totalPts || 0)))} shared pts • ${used.row.name} ${Math.min(used.row.progress, used.row.target)}/${used.row.target}\n`;
 }
 
 function coopRoleLabel(role){
@@ -974,8 +1262,8 @@ const LIVE_OPS_VERSION = 1;
 const COOP_STRIKE_OPS_VERSION = 1;
 const COOP_STRIKE_OPS_HOTSPOT_COUNT = 3;
 const COOP_STRIKE_OPS_ROLE_PREFS = Object.freeze(["hunter","rescuer","support"]);
-const LIVE_COOP_WORLD_EVENTS_VERSION = 1;
-const LIVE_COOP_WORLD_EVENTS_BOARD_COUNT = 3;
+const LIVE_COOP_WORLD_EVENTS_VERSION = 2;
+const LIVE_COOP_WORLD_EVENTS_BOARD_COUNT = 4;
 const CLAN_WARFRONT_VERSION = 1;
 const CLAN_WARFRONT_TERRITORY_COUNT = 4;
 const COOP_STRIKE_OPS_TEMPLATES = Object.freeze([
@@ -993,6 +1281,18 @@ const LIVE_COOP_WORLD_EVENT_TEMPLATES = Object.freeze([
   Object.freeze({ key:"STORM_WATCH", icon:"⛈️", name:"Storm Watch", type:"night_storm", desc:"Hold the line through storm events and complete clean rescues.", target:135, reward:{ cash:5400, perkPoints:1, seasonPoints:15 } }),
   Object.freeze({ key:"PERFECT_CHAIN", icon:"🛟", name:"Perfect Rescue Chain", type:"perfect_rescue", desc:"Stack zero-loss rescue clears for the weekly Telegram rescue board.", target:95, reward:{ cash:7600, perkPoints:3, seasonPoints:24 } }),
   Object.freeze({ key:"NEMESIS_SIGNAL", icon:"👑", name:"Nemesis Signal", type:"boss_clear", desc:"Coordinate boss and Nemesis clears across the active rescue network.", target:110, reward:{ cash:8200, perkPoints:3, seasonPoints:28 } }),
+  Object.freeze({ key:"TIGER_INVASION", icon:"🐅", name:"Tiger Invasion Front", type:"tiger_invasion", desc:"Every capture, takedown, and mission clear pushes back roaming tiger invasions.", target:185, reward:{ cash:9400, perkPoints:2, seasonPoints:24 } }),
+  Object.freeze({ key:"REGION_DEFENSE", icon:"🛡️", name:"Region Defense Pact", type:"region_defense", desc:"Defend contested regions so HQ, settlements, and rescue routes stay under control.", target:175, reward:{ cash:8800, perkPoints:2, seasonPoints:22 } }),
+  Object.freeze({ key:"CIVILIAN_SURGE", icon:"🏘️", name:"Civilian Surge Rescue", type:"rescue_surge", desc:"Rescue civilians during global emergencies to unlock shared relief supplies.", target:155, reward:{ cash:7200, perkPoints:2, seasonPoints:20 } }),
+  Object.freeze({ key:"NEMESIS_UPRISING", icon:"🔥", name:"Nemesis Uprising", type:"nemesis_uprising", desc:"Boss and Nemesis clears weaken a global apex threat before it spreads.", target:120, reward:{ cash:11000, perkPoints:4, seasonPoints:34 } }),
+  Object.freeze({ key:"SUPPLY_LINE", icon:"📦", name:"Supply Line Hold", type:"supply_route", desc:"Keep routes open by completing missions, stopping ambushes, and protecting evac lanes.", target:165, reward:{ cash:7800, perkPoints:2, seasonPoints:21 } }),
+  Object.freeze({ key:"SETTLEMENT_HOLD", icon:"🏥", name:"Settlement Holdout", type:"settlement_defense", desc:"Community rescues and clean clears reinforce settlement medics, guards, and scouts.", target:150, reward:{ cash:7600, perkPoints:2, seasonPoints:20 } }),
+]);
+const LIVE_COOP_WORLD_MILESTONES = Object.freeze([
+  Object.freeze({ id:"M1", icon:"🛟", title:"Community Rescue Push", target:180, reward:{ cash:9000, perkPoints:1, seasonPoints:12 } }),
+  Object.freeze({ id:"M2", icon:"🛡️", title:"Regional Hold Bonus", target:420, reward:{ cash:16000, perkPoints:2, seasonPoints:22 } }),
+  Object.freeze({ id:"M3", icon:"👑", title:"Apex Network Reward", target:760, reward:{ cash:26000, perkPoints:3, seasonPoints:36 } }),
+  Object.freeze({ id:"M4", icon:"🌎", title:"Global Rescue Chest", target:1200, reward:{ cash:42000, perkPoints:4, seasonPoints:55 } }),
 ]);
 const CLAN_WARFRONT_TEMPLATES = Object.freeze([
   Object.freeze({ key:"IRON_GATE", name:"Iron Gate Corridor", desc:"Primary stronghold route with high tiger pressure." }),
@@ -13993,6 +14293,8 @@ function buildGameplayCloudSnapshot(state=S){
     liveCoopWorldWeekKey: String(liveCoop.weekKey || contractWeekKey()),
     liveCoopWorldPoints: Math.max(0, Math.floor(Number(liveCoop.totalPoints || 0))),
     liveCoopWorldCompletions: Math.max(0, Math.floor(Number(liveCoop.eventCompletions || 0))),
+    liveCoopWorldClaims: normalizeLiveCoopWorldClaimsMap(liveCoop.claims),
+    liveCoopWorldMilestoneClaims: normalizeLiveCoopWorldClaimsMap(liveCoop.milestoneClaims),
     liveCoopWorldBoard: liveCoopBoard,
     warfrontWeekKey: String(warfront.key || contractWeekKey()),
     warfrontPointsTotal: Math.max(0, Math.floor(Number(warfront.pointsTotal || 0))),
@@ -14056,6 +14358,8 @@ function gameplayCloudSnapshotSig(snapshot){
     String(snap.liveCoopWorldWeekKey || ""),
     Math.max(0, Math.floor(Number(snap.liveCoopWorldPoints || 0))),
     Math.max(0, Math.floor(Number(snap.liveCoopWorldCompletions || 0))),
+    JSON.stringify(normalizeLiveCoopWorldClaimsMap(snap.liveCoopWorldClaims)),
+    JSON.stringify(normalizeLiveCoopWorldClaimsMap(snap.liveCoopWorldMilestoneClaims)),
     ...(Array.isArray(snap.liveCoopWorldBoard) ? snap.liveCoopWorldBoard.map((row)=>[
       String(row?.id || ""),
       String(row?.type || ""),
@@ -26717,6 +27021,7 @@ function bindLaunchIntroAudioGesture(){
 }
 function refreshLaunchIntroStatus(){
   ensureContractsState(S);
+  ensureLiveCoopWorldEventsState(S);
   ensureChallengeTowerState(S);
   ensureLiveOpsState(S);
   ensureClanState(S);
@@ -29611,6 +29916,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       actions:[
         ["Mission Control","baseHqMissionControlAction('room:command')"],
         ["World Map","openWorldMapCampaign()"],
+        ["World Events","openLiveCoopWorldEventsFromBaseHQ()"],
         ["Ask Ivy","baseHqExecuteIvyGuidance()"],
         ["Social Ops","openSocialRescueOpsFromBaseHQ()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
@@ -29697,6 +30003,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       actions:[
         ["Mission Control","baseHqMissionControlAction('room:command')"],
         ["World Map","openWorldMapCampaign()"],
+        ["World Events","openLiveCoopWorldEventsFromBaseHQ()"],
         ["Ask Ivy","baseHqExecuteIvyGuidance()"],
         ["Recommended","baseHqRunRecommendedCommand()"],
         ["Continue Active","startMissionFromBaseHQ()"],
@@ -29889,6 +30196,7 @@ function baseHqCommandActions(){
     openInventoryFromBaseHQ,
     openChallengeTowerFromBaseHQ,
     openSocialRescueOpsFromBaseHQ,
+    openLiveCoopWorldEventsFromBaseHQ,
     selectBaseHqRoom,
     baseHqSetSquadCommand,
     baseHqSetSquadFormation,
@@ -31465,6 +31773,15 @@ function openSocialRescueOpsFromBaseHQ(){
   openInventoryFromBaseHQ("gear");
   setTimeout(()=>{
     const anchor = document.getElementById("invSocialRescueAnchor");
+    if(anchor && typeof anchor.scrollIntoView === "function"){
+      anchor.scrollIntoView({ block:"start", behavior:"smooth" });
+    }
+  }, 80);
+}
+function openLiveCoopWorldEventsFromBaseHQ(){
+  openInventoryFromBaseHQ("gear");
+  setTimeout(()=>{
+    const anchor = document.getElementById("invLiveCoopWorldAnchor");
     if(anchor && typeof anchor.scrollIntoView === "function"){
       anchor.scrollIntoView({ block:"start", behavior:"smooth" });
     }
@@ -33293,6 +33610,7 @@ function renderInventory(){
   }).join("");
   const challengeTowerSectionHtml = renderChallengeTowerSectionHtml(S);
   const socialRescueOpsSectionHtml = renderSocialRescueOpsSectionHtml(S);
+  const liveCoopWorldEventsSectionHtml = renderLiveCoopWorldEventsSectionHtml(S);
 
   ensureClanState(S);
   const clanContracts = clanContractsForUi(S);
@@ -33507,6 +33825,7 @@ function renderInventory(){
       </div>
     </div>
     ${coopRowsHtml}
+    ${liveCoopWorldEventsSectionHtml}
     <div class="item" style="padding:10px 12px;">
       <div>
         <div class="itemName">Clan Warfront Seasons <span class="tag">Territory Control</span> <span class="tag">${warfrontSeasonReady ? "Season Chest Ready" : "Season Chest Locked"}</span></div>
@@ -52196,6 +52515,7 @@ function init(){
   ensureContractTalliesState(S);
   ensureBalanceStatsState(S);
   ensureContractsState(S);
+  ensureLiveCoopWorldEventsState(S);
   ensureChallengeTowerState(S);
   ensureSocialRescueState(S);
   ensureMissionDirectorState(S);
@@ -52772,6 +53092,7 @@ window.openShopFromBaseHQ = openShopFromBaseHQ;
 window.openInventoryFromBaseHQ = openInventoryFromBaseHQ;
 window.openChallengeTowerFromBaseHQ = openChallengeTowerFromBaseHQ;
 window.openSocialRescueOpsFromBaseHQ = openSocialRescueOpsFromBaseHQ;
+window.openLiveCoopWorldEventsFromBaseHQ = openLiveCoopWorldEventsFromBaseHQ;
 window.openModeFromBaseHQ = openModeFromBaseHQ;
 window.openStoryFromBaseHQ = openStoryFromBaseHQ;
 window.openMissionBriefFromBaseHQ = openMissionBriefFromBaseHQ;
@@ -52893,6 +53214,10 @@ window.refreshClanCloudNow = refreshClanCloudNow;
 window.claimClanContract = claimClanContract;
 window.cycleCoopRolePref = cycleCoopRolePref;
 window.claimCoopStrikeHotspot = claimCoopStrikeHotspot;
+window.claimLiveCoopWorldEvent = claimLiveCoopWorldEvent;
+window.claimLiveCoopWorldMilestone = claimLiveCoopWorldMilestone;
+window.claimAllLiveCoopWorldEvents = claimAllLiveCoopWorldEvents;
+window.shareLiveCoopWorldEvents = shareLiveCoopWorldEvents;
 window.claimClanWarfrontTerritory = claimClanWarfrontTerritory;
 window.claimClanWarfrontSeasonChest = claimClanWarfrontSeasonChest;
 window.claimNemesisHuntboardTier = claimNemesisHuntboardTier;
