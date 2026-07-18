@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4507";
+const TS_BUILD = "4508";
 if(tg){
   try{
     tg.expand?.();
@@ -42614,13 +42614,19 @@ function queueImpactPulse(x, y, kind="hit"){
     maxR *= 0.84;
     ttl = Math.max(12, Math.round(ttl * 0.78));
   }
+  const polish = premiumVisualPolishLevel();
+  if(polish > 0 && (kind === "crit" || kind === "player" || kind === "capture" || kind === "tranq")){
+    maxR *= polish >= 2 ? 1.24 : 1.12;
+    ttl += polish >= 2 ? 5 : 2;
+  }
   if(iphoneLite){
     maxR *= 0.58;
     ttl = Math.max(9, Math.round(ttl * 0.60));
   }
   IMPACT_PULSES.push({
     x, y, color, kind, ttl, maxTtl:ttl, r:2, maxR,
-    spin: Math.random() * Math.PI * 2
+    spin: Math.random() * Math.PI * 2,
+    premium: polish
   });
 }
 
@@ -42827,6 +42833,19 @@ function drawImpactPulses(){
     ctx.beginPath();
     ctx.arc(pulse.x, pulse.y, Math.max(1.8, pulse.r * 0.34), 0, Math.PI * 2);
     ctx.fill();
+    if(Number(pulse.premium || 0) > 0){
+      ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = life * (Number(pulse.premium) >= 2 ? 0.24 : 0.14);
+      const burst = ctx.createRadialGradient(pulse.x, pulse.y, 0, pulse.x, pulse.y, Math.max(10, pulse.r * 1.55));
+      burst.addColorStop(0, pulse.color);
+      burst.addColorStop(0.55, "rgba(255,255,255,.12)");
+      burst.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = burst;
+      ctx.beginPath();
+      ctx.arc(pulse.x, pulse.y, Math.max(10, pulse.r * 1.55), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+    }
     ctx.restore();
   }
 }
@@ -45086,6 +45105,45 @@ function drawEvacCinematicWash(x, y, key="safe_hold", angle=0, departPct=0, now=
   }
   ctx.restore();
 }
+function drawPremiumEvacDepartureBurst(x, y, key="safe_hold", angle=0, departPct=0, now=Date.now()){
+  const level = premiumVisualPolishLevel();
+  if(level <= 0 || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const active = departPct > 0.02;
+  const beacon = 0.58 + Math.sin(now * 0.006) * 0.18;
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = (active ? 0.22 : 0.13) * beacon;
+  const glowColor = key === "helicopter"
+    ? "rgba(191,219,254,.72)"
+    : (key === "boat" ? "rgba(125,211,252,.70)" : "rgba(251,191,36,.70)");
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, (active ? 96 : 68) + departPct * 80);
+  glow.addColorStop(0, glowColor);
+  glow.addColorStop(0.58, "rgba(255,255,255,.08)");
+  glow.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(x, y, (active ? 96 : 68) + departPct * 80, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
+
+  if(active || level >= 2){
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.globalAlpha = active ? 0.34 : 0.18;
+    ctx.strokeStyle = key === "helicopter" ? "rgba(226,232,240,.58)" : "rgba(255,247,237,.46)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 10]);
+    const rings = level >= 2 ? 4 : 2;
+    for(let i=0; i<rings; i++){
+      const r = 32 + i * 18 + departPct * 90;
+      ctx.beginPath();
+      ctx.ellipse(0, 10, r, Math.max(7, r * 0.22), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
 function drawSmokePlume(baseX, baseY, now=Date.now(), opts={}){
   const count = Math.max(3, Math.floor(Number(opts.count || 5)));
   const height = Math.max(40, Number(opts.height || 92));
@@ -45144,6 +45202,7 @@ function drawExtractionVehicle(ex, now=Date.now()){
     y += Math.sin(angle) * departPct * 340;
   }
   drawEvacCinematicWash(x, y, ex.key, angle, departPct, now);
+  drawPremiumEvacDepartureBurst(x, y, ex.key, angle, departPct, now);
   ctx.save();
   drawSoftEllipse(x, y + 18, ex.key === "helicopter" ? 42 : 48, ex.key === "boat" ? 14 : 18, "rgba(0,0,0,.30)", 1 - departPct * 0.35);
   ctx.translate(x, y);
@@ -47844,6 +47903,7 @@ function drawMapScene(){
     chapterStyle
   });
   if(detailPassOk) __startupLastDetailedMapAt = Date.now();
+  drawPremiumMapLightingPass({ nowTs:Date.now(), w, h, themeKey, chapterStyle });
 
   drawMissionTwistOverlay(Date.now());
 
@@ -47870,6 +47930,46 @@ function drawMapScene(){
   } else {
     __mapFrameCacheSig = "";
   }
+}
+
+function drawPremiumMapLightingPass(opts={}){
+  const level = premiumVisualPolishLevel();
+  if(level <= 0 || !ctx) return;
+  const w = Math.max(1, Math.round(Number(opts.w || cv?.width || worldWidth(S) || 1)));
+  const h = Math.max(1, Math.round(Number(opts.h || cv?.height || worldHeight(S) || 1)));
+  const nowTs = Number(opts.nowTs || Date.now());
+  const chapterStyle = opts.chapterStyle || chapterVisualForMode(S.mode, chapterIndexForMode(S.mode));
+  const biome = currentBiomeProfile();
+  const weather = String(biome?.weatherFx || "clear").toLowerCase();
+  const warm = weather === "ash" || weather === "dust" || String(chapterStyle?.name || "").toLowerCase().includes("sun");
+  const cool = weather === "mist" || weather === "storm" || weather === "snow";
+  const lightColor = warm ? "rgba(255,210,132," : (cool ? "rgba(186,230,253," : "rgba(220,255,210,");
+  const shadowColor = cool ? "rgba(4,12,24," : "rgba(4,10,16,";
+  const pulse = 0.92 + Math.sin(nowTs * 0.0011) * 0.08;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  const beamAlpha = (level >= 2 ? 0.085 : 0.045) * pulse;
+  const beamCount = level >= 2 && !isMobileViewport() ? 4 : 2;
+  for(let i=0; i<beamCount; i++){
+    const sx = (w * (0.10 + i * 0.24)) + Math.sin(nowTs * 0.00022 + i * 1.3) * 34;
+    const grad = ctx.createLinearGradient(sx, 0, sx + w * 0.18, h);
+    grad.addColorStop(0, `${lightColor}${beamAlpha})`);
+    grad.addColorStop(0.52, `${lightColor}${beamAlpha * 0.34})`);
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(sx - 34, 0, Math.max(70, w * 0.20), h);
+  }
+
+  ctx.globalCompositeOperation = "multiply";
+  ctx.globalAlpha = level >= 2 ? 0.18 : 0.11;
+  const vignette = ctx.createRadialGradient(w * 0.5, h * 0.52, Math.min(w, h) * 0.22, w * 0.5, h * 0.52, Math.max(w, h) * 0.88);
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(0.68, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, `${shadowColor}1)`);
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
 }
 
 function drawEnvironmentArtPass(opts={}){
@@ -49307,6 +49407,104 @@ function drawMotionAfterImages(entity, x, y, opts={}){
   ctx.restore();
 }
 
+function premiumVisualPolishLevel(){
+  if(!ctx || !cv) return 0;
+  const lag = frameLagTier();
+  const mobile = isMobileViewport();
+  const perf = performanceMode() === "PERFORMANCE";
+  if(iphoneStabilityModeActive() || lag >= 3) return 0;
+  if(frameBudgetExceeded(0.92) && (mobile || perf)) return 0;
+  if(lag >= 2 || visualExtremeLoadMode()) return mobile ? 0 : 1;
+  if(lag >= 1 || frameIsSlow() || visualReadabilityHeavyMode()) return 1;
+  return 2;
+}
+
+let __premiumVisualPolishUiLast = 0;
+let __premiumVisualPolishUiOn = null;
+function updatePremiumVisualPolishUi(now=Date.now()){
+  if(typeof document === "undefined" || !document.body) return;
+  if(now - __premiumVisualPolishUiLast < 450) return;
+  __premiumVisualPolishUiLast = now;
+  const on = premiumVisualPolishLevel() > 0;
+  if(__premiumVisualPolishUiOn === on) return;
+  __premiumVisualPolishUiOn = on;
+  document.body.classList.toggle("premiumVisualPolish", on);
+}
+
+function drawPremiumFootstepDust(entity, x, y, moveBlend=0, color="rgba(226,232,240,.32)"){
+  const level = premiumVisualPolishLevel();
+  if(level <= 0 || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const speed = Math.hypot(Number(entity?._moveVx || entity?.vx || 0), Number(entity?._moveVy || entity?.vy || 0));
+  const blend = Math.max(Number(moveBlend || 0), clamp(speed / 3.2, 0, 1));
+  if(blend < 0.18) return;
+  const v = animVelocity(entity);
+  const angle = Number.isFinite(v.angle) ? v.angle + Math.PI : Math.PI;
+  const count = level >= 2 ? 3 : 2;
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  for(let i=0; i<count; i++){
+    const side = ((i % 2) ? -1 : 1) * (5 + i * 2);
+    const back = 9 + (i * 7) + (blend * 5);
+    const px = x + Math.cos(angle) * back + Math.cos(angle + Math.PI / 2) * side;
+    const py = y + 16 + Math.sin(angle) * back + Math.sin(angle + Math.PI / 2) * side;
+    ctx.globalAlpha = (0.10 + blend * 0.18) * (1 - i * 0.18);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(px, py, 4.5 + blend * 5 + i * 1.2, 1.8 + blend * 2.2, angle, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawPremiumTigerPresence(t, x, y, s=1, alpha=1, now=Date.now(), behaviorAnim=null, speed=0, focused=false){
+  const level = premiumVisualPolishLevel();
+  if(level <= 0 || !t || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const hpPct = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
+  const boss = isBossTiger(t) || t.type === "Alpha" || !!t.nemesisAlias;
+  const danger = focused || boss || behaviorAnim?.pounce || behaviorAnim?.roaring || hpPct < 0.35;
+  const pulse = 0.74 + Math.sin(now * 0.006 + Number(t.id || 0)) * 0.16;
+  ctx.save();
+  if(danger){
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = clamp((boss ? 0.24 : 0.16) * alpha * pulse, 0.05, 0.34);
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, (boss ? 70 : 52) * s);
+    glow.addColorStop(0, boss ? "rgba(251,191,36,.52)" : "rgba(248,113,113,.42)");
+    glow.addColorStop(0.55, boss ? "rgba(248,113,113,.18)" : "rgba(251,146,60,.14)");
+    glow.addColorStop(1, "rgba(248,113,113,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, (boss ? 70 : 52) * s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if(level >= 2 && (speed > 1.1 || behaviorAnim?.pounce || behaviorAnim?.stalking)){
+    const dir = Number.isFinite(t.heading) ? t.heading + Math.PI : Math.atan2(-(t.vy || 0), -(t.vx || 1));
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = behaviorAnim?.pounce ? "rgba(251,191,36,.60)" : "rgba(254,215,170,.38)";
+    ctx.lineWidth = Math.max(1.4, 2.1 * s);
+    ctx.lineCap = "round";
+    for(let i=0; i<3; i++){
+      const back = (18 + i * 13 + speed * 4) * s;
+      const side = ((i % 2) ? -1 : 1) * (6 + i * 2) * s;
+      ctx.globalAlpha = clamp(alpha * (0.22 - i * 0.045), 0.05, 0.24);
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(dir) * back + Math.cos(dir + Math.PI / 2) * side, y + 15 * s + Math.sin(dir) * back + Math.sin(dir + Math.PI / 2) * side);
+      ctx.lineTo(x + Math.cos(dir) * (back + 18 * s), y + 15 * s + Math.sin(dir) * (back + 18 * s));
+      ctx.stroke();
+    }
+  }
+  if(level >= 2 && focused){
+    ctx.globalAlpha = clamp(alpha * 0.46, 0.12, 0.52);
+    ctx.strokeStyle = "rgba(255,247,237,.70)";
+    ctx.lineWidth = 1.5 * s;
+    ctx.setLineDash([4, 8]);
+    ctx.beginPath();
+    ctx.arc(x, y, 48 * s, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+
 function drawEscortLink(from, to, color="rgba(110,231,183,.72)"){
   if(animationPassQuality() === "lite" || !from || !to) return;
   const now = Date.now();
@@ -49356,6 +49554,7 @@ function drawCivilian(c){
   ctx.stroke();
   ctx.restore();
   drawWaterRipple(cx, cy, 16, 0.50);
+  drawPremiumFootstepDust(c, cx, cy, moveBlend, c.following ? "rgba(110,231,183,.34)" : "rgba(226,232,240,.24)");
   ctx.save();
   ctx.globalAlpha = S.inBattle ? 0.34 : 0.24;
   ctx.strokeStyle = S.inBattle ? "rgba(254,240,138,.95)" : "rgba(236,253,245,.95)";
@@ -49652,6 +49851,7 @@ function drawSoldier(){
   ctx.stroke();
   ctx.restore();
   drawWaterRipple(x, y, 18, 0.56);
+  drawPremiumFootstepDust(S.me, x, y, moveBlend, rolling ? "rgba(125,211,252,.42)" : "rgba(191,219,254,.30)");
   if(meHitFlashAlpha > 0){
     ctx.save();
     ctx.globalAlpha = meHitFlashAlpha;
@@ -49865,6 +50065,7 @@ function drawSupportUnit(unit){
   ctx.stroke();
   ctx.restore();
   drawWaterRipple(x, y, 17, 0.52);
+  drawPremiumFootstepDust(unit, x, y, moveBlend, attacker ? "rgba(251,146,60,.30)" : "rgba(96,165,250,.30)");
   const ang = unit.face || 0;
   const dir = Math.cos(ang) >= 0 ? 1 : -1;
   const stride = Math.sin((unit.step || 0) * 1.8) * (0.8 + (1.25 * moveBlend));
@@ -50565,6 +50766,7 @@ function drawTiger(t){
   const atkSwing = atkProgress > 0 ? Math.sin(atkProgress * Math.PI) : 0;
   const telegraphHeavy = visualReadabilityHeavyMode();
   const behaviorAnim = tigerBehaviorAnimState(t, now, speed);
+  drawPremiumTigerPresence(t, x, y, s, alpha, now, behaviorAnim, speed, tigerFocus);
   if(behaviorAnim.pounce || sprinting || atkKind === "pounce"){
     drawMotionAfterImages(t, x, y, {
       minSpeed:1.6,
@@ -52744,6 +52946,7 @@ function draw(){
     const battleLoad = !!S.inBattle;
     const mobileViewport = isMobileViewport();
     const iphoneLock = iphoneStabilityModeActive();
+    safeTick("premiumVisualPolishUi", ()=>updatePremiumVisualPolishUi(Date.now()));
     safeTick("ensureMissionTwistState", ()=>{ ensureMissionTwistState(S); });
     if(startupLoading){
       runFrameTask("missionMapWarmup", frameInterval(120, 1.15), missionMapWarmupTick, {

@@ -2079,6 +2079,28 @@
     filter:drop-shadow(0 8px 12px rgba(0,0,0,.44));
   }
 }
+.premiumVisualPolish #combatTouchCluster .touchBtn,
+.premiumVisualPolish .touchBtn{
+  text-shadow:0 1px 2px rgba(0,0,0,.95);
+}
+.premiumVisualPolish #combatTouchCluster .touchBtn.combatCore,
+.premiumVisualPolish #combatTouchCluster .touchBtn.combatAux{
+  background:
+    radial-gradient(circle at 50% 22%, rgba(255,255,255,.18), transparent 35%),
+    linear-gradient(180deg, rgba(20,31,52,.72), rgba(5,10,20,.54)) !important;
+  box-shadow:
+    0 0 0 2px rgba(15,23,42,.38),
+    0 12px 28px rgba(0,0,0,.34),
+    inset 0 1px 0 rgba(255,255,255,.16) !important;
+  backdrop-filter:blur(7px) saturate(1.18);
+}
+.premiumVisualPolish #combatTouchCluster .touchBtn.combatCore:active,
+.premiumVisualPolish #combatTouchCluster .touchBtn.combatAux:active{
+  transform:scale(.97);
+}
+.premiumVisualPolish #combatTouchCluster .touchBtn .touchBtnIcon{
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.95)) drop-shadow(0 0 9px rgba(255,255,255,.68)) !important;
+}
 @keyframes captureReadyPulse{
   from{transform:scale(1);filter:brightness(1)}
   to{transform:scale(1.08);filter:brightness(1.28)}
@@ -2900,7 +2922,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=4627-hq-social-hub"></script>
+  <script src="./game.js?v=4628-premium-visual-polish"></script>
 <script src="./tutorial.js?v=4537-tutorial-3-full-qa"></script>
 <script>
 (() => {
