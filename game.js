@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4508";
+const TS_BUILD = "4509";
 if(tg){
   try{
     tg.expand?.();
@@ -3702,6 +3702,11 @@ function defaultSocialRescueState(){
     weekly:{ captures:0, evac:0, perfectRescues:0, nemesisClears:0, missions:0, bestScore:0 },
     challengeHistory:[],
     lastChallenge:null,
+    incomingChallenge:null,
+    sharedRecapRunIds:{},
+    sharedChallengeRunIds:{},
+    inviteShareDays:{},
+    challengeVictoryClaims:{},
     claimedInviteMilestones:{},
     unlockedTitles:{},
     lastAwardedRunId:"",
@@ -3724,6 +3729,11 @@ function normalizeSocialRescueState(raw={}){
     },
     challengeHistory: Array.isArray(src.challengeHistory) ? src.challengeHistory.slice(-12).filter((row)=>row && typeof row === "object") : [],
     lastChallenge: (src.lastChallenge && typeof src.lastChallenge === "object") ? { ...src.lastChallenge } : null,
+    incomingChallenge: (src.incomingChallenge && typeof src.incomingChallenge === "object") ? { ...src.incomingChallenge } : null,
+    sharedRecapRunIds: (src.sharedRecapRunIds && typeof src.sharedRecapRunIds === "object") ? { ...src.sharedRecapRunIds } : {},
+    sharedChallengeRunIds: (src.sharedChallengeRunIds && typeof src.sharedChallengeRunIds === "object") ? { ...src.sharedChallengeRunIds } : {},
+    inviteShareDays: (src.inviteShareDays && typeof src.inviteShareDays === "object") ? { ...src.inviteShareDays } : {},
+    challengeVictoryClaims: (src.challengeVictoryClaims && typeof src.challengeVictoryClaims === "object") ? { ...src.challengeVictoryClaims } : {},
     claimedInviteMilestones: (src.claimedInviteMilestones && typeof src.claimedInviteMilestones === "object") ? { ...src.claimedInviteMilestones } : {},
     unlockedTitles: (src.unlockedTitles && typeof src.unlockedTitles === "object") ? { ...src.unlockedTitles } : {},
     lastAwardedRunId: String(src.lastAwardedRunId || ""),
@@ -3883,6 +3893,7 @@ function buildMissionRecapPayload(meta={}){
   ].join("\n");
   const shareText = [
     "🐯 TIGER STRIKE MISSION RECAP",
+    `I saved ${evac} civilian${evac===1 ? "" : "s"} and captured ${captures} tiger${captures===1 ? "" : "s"} in Tiger Strike.`,
     `${missionLabel}${chapterSuffix}`,
     `🛟 Civilians Saved: ${evac}`,
     `🎯 Captures: ${captures} • Eliminations: ${kills}`,
@@ -3897,6 +3908,7 @@ function buildMissionRecapPayload(meta={}){
     shareText,
     shareUrl,
     missionStats,
+    runId:String(meta?.runId || missionStats?.runId || S._missionRunId || ""),
     createdAt: Date.now(),
   };
 }
@@ -4216,6 +4228,96 @@ function claimAvailableSocialInviteReward(){
   }
   return tier;
 }
+function grantSocialSupportReward(label="", reward={}, source="Social Rescue"){
+  const clean = {
+    medkits: Math.max(0, Math.floor(Number(reward?.medkits || 0))),
+    shields: Math.max(0, Math.floor(Number(reward?.shields || 0))),
+    traps: Math.max(0, Math.floor(Number(reward?.traps || 0))),
+    armor: Math.max(0, Math.floor(Number(reward?.armor || 0))),
+    tranq: Math.max(0, Math.floor(Number(reward?.tranq || 0))),
+  };
+  if(clean.medkits > 0){
+    if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
+    S.medkits.M_SMALL = Math.max(0, Math.floor(Number(S.medkits.M_SMALL || 0))) + clean.medkits;
+  }
+  if(clean.shields > 0){
+    S.shields = Math.max(0, Math.floor(Number(S.shields || 0))) + clean.shields;
+  }
+  if(clean.traps > 0){
+    S.trapsOwned = Math.max(0, Math.floor(Number(S.trapsOwned || 0))) + clean.traps;
+  }
+  if(clean.armor > 0){
+    if(!S.armorPlates || typeof S.armorPlates !== "object") S.armorPlates = {};
+    if(!S.armorPlatesFallback || typeof S.armorPlatesFallback !== "object") S.armorPlatesFallback = {};
+    S.armorPlates.A_TIER1 = Math.max(0, Math.floor(Number(S.armorPlates.A_TIER1 || 0))) + clean.armor;
+    S.armorPlatesFallback.A_TIER1 = Math.max(0, Math.floor(Number(S.armorPlatesFallback.A_TIER1 || 0))) + clean.armor;
+  }
+  if(clean.tranq > 0){
+    if(!S.ammoReserve || typeof S.ammoReserve !== "object") S.ammoReserve = {};
+    S.ammoReserve.TRANQ_HEAVY = Math.max(0, Math.floor(Number(S.ammoReserve.TRANQ_HEAVY || 0))) + clean.tranq;
+  }
+  const bits = [];
+  if(clean.medkits) bits.push(`+${clean.medkits} med`);
+  if(clean.shields) bits.push(`+${clean.shields} shield`);
+  if(clean.traps) bits.push(`+${clean.traps} trap`);
+  if(clean.armor) bits.push(`+${clean.armor} armor`);
+  if(clean.tranq) bits.push(`+${clean.tranq} tranq`);
+  if(bits.length){
+    unlockAchv("social_share_ops","Social Rescue Ops");
+    toast(`${label || source}: ${bits.join(" • ")}`);
+    save(true);
+  }
+  return { ...clean, label:String(label || source), text:bits.join(" • ") };
+}
+function grantSocialShareActionReward(kind="recap", challenge=null){
+  const social = ensureSocialRescueState(S);
+  const runId = String(challenge?.runId || S.lastMissionRecap?.runId || S.lastMissionRecap?.missionStats?.runId || S._missionRunId || "");
+  if(kind === "recap"){
+    if(!runId || social.sharedRecapRunIds[runId]) return null;
+    social.sharedRecapRunIds[runId] = Date.now();
+    return grantSocialSupportReward("Telegram recap shared", { medkits:1, tranq:1 }, "Mission Recap Share");
+  }
+  if(kind === "challenge"){
+    if(!runId || social.sharedChallengeRunIds[runId]) return null;
+    social.sharedChallengeRunIds[runId] = Date.now();
+    return grantSocialSupportReward("Rescue challenge sent", { traps:1, armor:2 }, "Rescue Challenge Share");
+  }
+  if(kind === "invite"){
+    const day = contractDayKey();
+    if(social.inviteShareDays[day]) return null;
+    social.inviteShareDays[day] = Date.now();
+    return grantSocialSupportReward("Invite signal reward", { medkits:1, shields:1 }, "Invite Share");
+  }
+  return null;
+}
+function processIncomingSocialChallenge(){
+  if(typeof window === "undefined" || !window.location) return null;
+  let params = null;
+  try{ params = new URLSearchParams(window.location.search || ""); }catch(e){ return null; }
+  if(!params || params.get("challenge") !== "rescue") return null;
+  const score = Math.max(0, Math.floor(Number(params.get("score") || 0)));
+  if(score <= 0) return null;
+  const mission = String(params.get("mission") || "Friend Rescue Challenge").slice(0, 90);
+  const week = String(params.get("week") || contractWeekKey()).slice(0, 20);
+  const key = `${week}:${score}:${mission}`.replace(/[^a-zA-Z0-9:_ -]/g, "").slice(0, 140);
+  const social = ensureSocialRescueState(S);
+  if(social.challengeVictoryClaims[key]) return social.incomingChallenge || null;
+  social.incomingChallenge = { key, score, mission, week, acceptedAt:Date.now() };
+  toast(`Rescue Challenge accepted: beat ${score.toLocaleString()} pts.`);
+  return social.incomingChallenge;
+}
+function maybeGrantIncomingChallengeVictory(challenge=null){
+  const social = ensureSocialRescueState(S);
+  const incoming = social.incomingChallenge;
+  if(!incoming || !incoming.key || social.challengeVictoryClaims[incoming.key]) return null;
+  const score = Math.max(0, Math.floor(Number(challenge?.score || 0)));
+  const target = Math.max(1, Math.floor(Number(incoming.score || 0)));
+  if(score < target) return null;
+  social.challengeVictoryClaims[incoming.key] = Date.now();
+  const reward = grantSocialSupportReward("Friend challenge beaten", { medkits:2, shields:1, traps:2, tranq:2 }, "Challenge Victory");
+  setEventText(`Telegram Challenge beaten: ${score.toLocaleString()} > ${target.toLocaleString()} pts.`, 5);
+  return reward;
+}
 function recordSocialRescueMission({ missionStats=null, civTotal=0, civDead=0, activeMission=null }={}){
   const social = ensureSocialRescueState(S);
   const runId = String(S._missionRunId || "");
@@ -4252,10 +4354,13 @@ function recordSocialRescueMission({ missionStats=null, civTotal=0, civDead=0, a
   social.challengeHistory = social.challengeHistory.slice(-12);
   const titleUnlocks = awardSocialRescueTitles();
   const inviteReward = claimAvailableSocialInviteReward();
+  const challengeVictory = maybeGrantIncomingChallengeVictory(challenge);
   if(perfect) setEventText("Telegram Achievement: Perfect Rescue ready to share.", 4.2);
   if(bossMission) setEventText("Telegram Achievement: Alpha/Nemesis clear recorded.", 4.2);
   if(titleUnlocks.length){
     toast(`Rare title unlocked: ${titleUnlocks[0]}`);
+  }else if(challengeVictory){
+    toast(`Challenge victory reward: ${challengeVictory.text}`);
   }else if(inviteReward){
     toast(`${inviteReward.label} reward claimed.`);
   }
@@ -4286,6 +4391,13 @@ function renderSocialRescueCard(challenge=null){
     subEl.innerText = `Week ${social.weekKey} • Local best ${Math.max(0, Math.floor(Number(social.weekly.bestScore || 0))).toLocaleString()} • ${Math.max(0, Math.floor(Number(live.totalPoints || 0))).toLocaleString()} live co-op pts.`;
   }
   if(rowsEl){
+    const runId = String(data?.runId || "");
+    const shareLine = data
+      ? `<div class="rewardBreakdownRow"><div><b>Telegram Share Rewards</b><br><span>Recap ${runId && social.sharedRecapRunIds[runId] ? "shared" : "not shared"} • Challenge ${runId && social.sharedChallengeRunIds[runId] ? "sent" : "not sent"} • Invite ${social.inviteShareDays[contractDayKey()] ? "sent today" : "available today"}</span></div><div class="rewardBreakdownValue">SUPPLIES</div></div>`
+      : "";
+    const incoming = social.incomingChallenge && !social.challengeVictoryClaims?.[social.incomingChallenge.key]
+      ? `<div class="rewardBreakdownRow"><div><b>Incoming Friend Challenge</b><br><span>Beat ${Math.max(0, Number(social.incomingChallenge.score || 0)).toLocaleString()} pts from ${rewardEscapeHtml(social.incomingChallenge.mission || "a friend")}</span></div><div class="rewardBreakdownValue">ACTIVE</div></div>`
+      : "";
     const challengeLine = data
       ? `<div class="rewardBreakdownRow"><div><b>Rescue Challenge</b><br><span>${rewardEscapeHtml(data.missionLabel || "Mission")} • ${data.evac}/${Math.max(1, data.civTotal || 1)} saved • ${data.captures} captures</span></div><div class="rewardBreakdownValue">${Math.max(0, Number(data.score || 0)).toLocaleString()}</div></div>`
       : "";
@@ -4295,7 +4407,7 @@ function renderSocialRescueCard(challenge=null){
       const target = Math.max(1, Math.floor(Number(row.target || 1)));
       return `<div class="rewardBreakdownRow"><div><b>${rewardEscapeHtml(row.label)}</b><br><span>Clan goal progress ${Math.min(value, target)}/${target}</span></div><div class="rewardBreakdownValue">${Math.min(100, Math.floor((value / target) * 100))}%</div></div>`;
     }).join("");
-    rowsEl.innerHTML = challengeLine + weeklyLine + clanLine;
+    rowsEl.innerHTML = shareLine + incoming + challengeLine + weeklyLine + clanLine;
   }
   if(tagsEl){
     const tags = ["Live Co-op Events", "Rescue Challenge", "Weekly Leaderboard", "Clan Goals"];
@@ -4334,10 +4446,16 @@ async function shareRescueChallenge(){
   renderSocialRescueCard(payload.challenge);
   const shareLink = `https://t.me/share/url?url=${encodeURIComponent(payload.url)}&text=${encodeURIComponent(payload.text)}`;
   if(openShareUrl(shareLink)){
+    grantSocialShareActionReward("challenge", payload.challenge);
+    renderSocialRescueCard(payload.challenge);
     toast("Rescue Challenge opened for sharing.");
     return;
   }
   const ok = await shareFallbackText(`${payload.text}\n${payload.url}`);
+  if(ok){
+    grantSocialShareActionReward("challenge", payload.challenge);
+    renderSocialRescueCard(payload.challenge);
+  }
   toast(ok ? "Rescue Challenge copied." : "Could not share challenge. Copy it manually.");
 }
 
@@ -4377,15 +4495,23 @@ async function shareFallbackText(text){
 }
 
 async function shareMissionRecap(){
-  const recap = buildMissionRecapPayload();
+  const recap = (S.lastMissionRecap && typeof S.lastMissionRecap === "object")
+    ? S.lastMissionRecap
+    : buildMissionRecapPayload();
   S.lastMissionRecap = recap;
   renderCompleteRecapCard(recap);
   const shareLink = `https://t.me/share/url?url=${encodeURIComponent(recap.shareUrl)}&text=${encodeURIComponent(recap.shareText)}`;
   if(openShareUrl(shareLink)){
+    grantSocialShareActionReward("recap");
+    renderSocialRescueCard();
     toast("Mission recap opened for sharing.");
     return;
   }
   const ok = await shareFallbackText(`${recap.shareText}\n${recap.shareUrl}`);
+  if(ok){
+    grantSocialShareActionReward("recap");
+    renderSocialRescueCard();
+  }
   toast(ok ? "Mission recap copied for sharing." : "Could not open share. Copy the recap manually.");
 }
 
@@ -4413,10 +4539,16 @@ async function shareReferralLinkFromGame(){
   ].join("\n");
   const shareLink = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   if(openShareUrl(shareLink)){
+    grantSocialShareActionReward("invite");
+    renderSocialRescueCard();
     toast("Referral share opened.");
     return;
   }
   const copied = await shareFallbackText(text);
+  if(copied){
+    grantSocialShareActionReward("invite");
+    renderSocialRescueCard();
+  }
   toast(copied ? "Referral link copied." : "Could not share referral link.");
 }
 
@@ -53308,6 +53440,7 @@ function init(){
   const bootStorySlot = bootCache ? bootCache.storySlot : readStorySaveData();
   const bootStoryProfile = resolveStoryProfileOverlay(bootCache ? bootCache.storyProfileRaw : readStoryProfileData(), bootStoryProgress, S);
   applyStoryProfileToState(S, bootStoryProfile);
+  processIncomingSocialChallenge();
   __lastStoryFullSnapshotAt = Number.isFinite(Number(bootStorySlot?.savedAt))
     ? Number(bootStorySlot.savedAt)
     : Date.now();
