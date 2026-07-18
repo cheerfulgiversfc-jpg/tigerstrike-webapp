@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4505";
+const TS_BUILD = "4506";
 if(tg){
   try{
     tg.expand?.();
@@ -2215,14 +2215,25 @@ function defaultNemesisHuntboardState(weekKey=weeklyChallengeWeekKey()){
   };
 }
 
-const CINEMATIC_BOSS_HUNT_SEASON_VERSION = 1;
+const CINEMATIC_BOSS_HUNT_SEASON_VERSION = 2;
 const CINEMATIC_BOSS_HUNT_POINT_TARGET = 220;
 const CINEMATIC_BOSS_HUNT_POINT_MAX = 999;
 const CINEMATIC_BOSS_HUNT_SEASON_THEMES = Object.freeze([
-  Object.freeze({ key:"IRON_ROAR", icon:"🎬", title:"Iron Roar Season", nemesisTitle:"Iron Roar Prime", trait:"armored hide", scene:"Armor sparks across the command screen before the hunt begins.", bonus:"Break boss armor before capture", target:220 }),
-  Object.freeze({ key:"ASH_MOON", icon:"🌘", title:"Ash Moon Season", nemesisTitle:"Ash Moon Stalker", trait:"smoke ambush", scene:"Ash rolls through the route and the tiger vanishes between floodlights.", bonus:"Survive stealth phases", target:200 }),
-  Object.freeze({ key:"STORM_CLAW", icon:"⛈️", title:"Storm Claw Season", nemesisTitle:"Storm Claw Alpha", trait:"pounce chains", scene:"Thunder masks the roar before the Alpha cuts across the road.", bonus:"Dodge chained pounces", target:210 }),
-  Object.freeze({ key:"BLOOD_RIVER", icon:"🩸", title:"Blood River Season", nemesisTitle:"Blood River Mauler", trait:"rage phase", scene:"The river exit flashes red as the boss forces a final stand.", bonus:"Capture during final rage", target:230 }),
+  Object.freeze({ key:"IRON_ROAR", icon:"🎬", title:"Iron Roar Season", nemesisTitle:"Iron Roar Prime", trait:"armored hide", ability:"Armor Break", abilityDesc:"Boss armor reduces early damage until staggered.", scene:"Armor sparks across the command screen before the hunt begins.", intro:"Command cameras lock on a plated Alpha forcing its way through the barricade line.", bonus:"Break boss armor before capture", cosmetic:"Iron Roar Banner", leaderboard:"Armor Break Ladder", target:220 }),
+  Object.freeze({ key:"ASH_MOON", icon:"🌘", title:"Ash Moon Season", nemesisTitle:"Ash Moon Stalker", trait:"smoke ambush", ability:"Vanish Step", abilityDesc:"The boss creates short stealth windows and false pressure pings.", scene:"Ash rolls through the route and the tiger vanishes between floodlights.", intro:"Thermal scans flicker as the Stalker disappears behind ash and sirens.", bonus:"Survive stealth phases", cosmetic:"Ash Moon Trail", leaderboard:"Stealth Capture Ladder", target:200 }),
+  Object.freeze({ key:"STORM_CLAW", icon:"⛈️", title:"Storm Claw Season", nemesisTitle:"Storm Claw Alpha", trait:"pounce chains", ability:"Chain Pounce", abilityDesc:"Back-to-back pounce warnings demand movement, shield timing, or squad spacing.", scene:"Thunder masks the roar before the Alpha cuts across the road.", intro:"Lightning exposes claw marks leading straight toward the evacuation route.", bonus:"Dodge chained pounces", cosmetic:"Storm Claw Badge", leaderboard:"Pounce Dodge Ladder", target:210 }),
+  Object.freeze({ key:"BLOOD_RIVER", icon:"🩸", title:"Blood River Season", nemesisTitle:"Blood River Mauler", trait:"rage phase", ability:"Blood Rage", abilityDesc:"The boss becomes more aggressive at low health and pressures civilians.", scene:"The river exit flashes red as the boss forces a final stand.", intro:"The rescue river goes quiet, then a red flare marks the Mauler's territory.", bonus:"Capture during final rage", cosmetic:"Blood River Finisher", leaderboard:"Rage Capture Ladder", target:230 }),
+  Object.freeze({ key:"GLASS_FANG", icon:"💎", title:"Glass Fang Season", nemesisTitle:"Glass Fang Mirage", trait:"decoy trails", ability:"Mirror Trail", abilityDesc:"Investigation clues can split until the real boss is scanned.", scene:"Blue scanner lines fracture into three possible tiger paths.", intro:"Intel warns that only a clean scan separates the real target from decoys.", bonus:"Scan before engaging", cosmetic:"Glass Fang Nameplate", leaderboard:"Investigation Ladder", target:215 }),
+  Object.freeze({ key:"EMBER_HIDE", icon:"🔥", title:"Ember Hide Season", nemesisTitle:"Ember Hide Brute", trait:"burning charge", ability:"Scorch Charge", abilityDesc:"The boss charges through routes and leaves dangerous pressure zones.", scene:"Smoke lifts from the road as the Brute drags fire through the grass.", intro:"A burning path cuts across the map and HQ marks a civilian route in danger.", bonus:"Stop route charges", cosmetic:"Ember Hide Weapon Glow", leaderboard:"Route Defense Ladder", target:225 }),
+  Object.freeze({ key:"FROST_MANE", icon:"❄️", title:"Frost Mane Season", nemesisTitle:"Frost Mane Warden", trait:"slow aura", ability:"Cold Snap", abilityDesc:"Nearby units slow down until the boss is staggered or lured away.", scene:"The safe-zone lights dim as frost spreads over the extraction path.", intro:"The Warden is freezing movement lanes, forcing a careful capture approach.", bonus:"Keep civilians moving", cosmetic:"Frost Mane Safe Zone", leaderboard:"Zero-Loss Ladder", target:205 }),
+  Object.freeze({ key:"CROWNED_DUSK", icon:"👑", title:"Crowned Dusk Season", nemesisTitle:"Crowned Dusk King", trait:"pack command", ability:"Royal Call", abilityDesc:"The boss calls reinforcements when ignored or when civilians bunch up.", scene:"A crown marker pulses while smaller tigers circle the boss arena.", intro:"The King announces itself with a roar that turns the whole pack toward HQ.", bonus:"Break the pack before capture", cosmetic:"Crowned Dusk Title", leaderboard:"Nemesis Crown Ladder", target:240 }),
+]);
+const CINEMATIC_BOSS_HUNT_LADDER = Object.freeze([
+  Object.freeze({ id:"scout", label:"Scout Bounty", points:40, cash:3200, xp:80, passPoints:4 }),
+  Object.freeze({ id:"hunter", label:"Hunter Bounty", points:90, cash:6200, xp:140, passPoints:6 }),
+  Object.freeze({ id:"alpha", label:"Alpha Bounty", points:150, cash:9800, xp:220, passPoints:8 }),
+  Object.freeze({ id:"nemesis", label:"Nemesis Bounty", points:220, cash:14500, xp:340, passPoints:12, cosmetic:true }),
+  Object.freeze({ id:"legend", label:"Leaderboard Legend", points:320, cash:21500, xp:520, passPoints:18, cosmetic:true, title:true }),
 ]);
 
 function cinematicBossHuntThemeForWeek(weekKey=weeklyChallengeWeekKey()){
@@ -2247,12 +2258,47 @@ function defaultCinematicBossHuntSeasonState(weekKey=weeklyChallengeWeekKey()){
     bestStreak: 0,
     lifetimeBossesResolved: 0,
     lifetimePoints: 0,
+    leaderboardBest: 0,
+    claimed: {},
+    cosmeticsUnlocked: {},
+    bossHistory: [],
     lastOutcome: "",
     lastBossName: "",
     lastResolvedAt: 0,
     lastMissionRunId: "",
     lastNote: "",
   };
+}
+
+function normalizeCinematicBossHuntClaimMap(raw){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const out = {};
+  for(const tier of CINEMATIC_BOSS_HUNT_LADDER){
+    if(src[tier.id]) out[tier.id] = true;
+  }
+  return out;
+}
+
+function normalizeCinematicBossHuntCosmetics(raw){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const out = {};
+  for(const [key, value] of Object.entries(src)){
+    if(!value) continue;
+    const cleanKey = String(key || "").trim().slice(0, 40);
+    if(cleanKey) out[cleanKey] = true;
+  }
+  return out;
+}
+
+function normalizeCinematicBossHuntHistory(raw){
+  if(!Array.isArray(raw)) return [];
+  return raw.map((entry)=>({
+    name:String(entry?.name || "Boss Tiger").slice(0, 48),
+    outcome:String(entry?.outcome || "").toUpperCase() === "CAPTURE" ? "CAPTURE" : "KILL",
+    points:Math.max(0, Math.floor(Number(entry?.points || 0))),
+    at:Math.max(0, Math.floor(Number(entry?.at || 0))),
+    theme:String(entry?.theme || "").slice(0, 40),
+  })).filter((entry)=>entry.points > 0 || entry.name).slice(-8);
 }
 
 function arcadeBuildcraftDef(id){
@@ -13462,6 +13508,8 @@ function normalizeCinematicBossHuntSeasonState(raw, weekKey=weeklyChallengeWeekK
     ...base,
     lifetimeBossesResolved: Math.max(0, Math.floor(Number(src.lifetimeBossesResolved || 0))),
     lifetimePoints: Math.max(0, Math.floor(Number(src.lifetimePoints || 0))),
+    leaderboardBest: Math.max(0, Math.floor(Number(src.leaderboardBest || 0))),
+    cosmeticsUnlocked: normalizeCinematicBossHuntCosmetics(src.cosmeticsUnlocked),
   };
   if(!changedWeek){
     out.points = clamp(Math.floor(Number(src.points || 0)), 0, CINEMATIC_BOSS_HUNT_POINT_MAX);
@@ -13471,6 +13519,9 @@ function normalizeCinematicBossHuntSeasonState(raw, weekKey=weeklyChallengeWeekK
     out.kills = Math.max(0, Math.floor(Number(src.kills || 0)));
     out.streak = Math.max(0, Math.floor(Number(src.streak || 0)));
     out.bestStreak = Math.max(out.streak, Math.max(0, Math.floor(Number(src.bestStreak || 0))));
+    out.leaderboardBest = Math.max(out.leaderboardBest, Math.max(0, Math.floor(Number(src.leaderboardBest || 0))));
+    out.claimed = normalizeCinematicBossHuntClaimMap(src.claimed);
+    out.bossHistory = normalizeCinematicBossHuntHistory(src.bossHistory);
     out.lastOutcome = String(src.lastOutcome || "").slice(0, 16);
     out.lastBossName = String(src.lastBossName || "").slice(0, 48);
     out.lastResolvedAt = Math.max(0, Math.floor(Number(src.lastResolvedAt || 0)));
@@ -13499,6 +13550,10 @@ function mergeCinematicBossHuntSeasonSnapshots(currentSeason, incomingSeason){
     kills: Math.max(current.kills || 0, incoming.kills || 0),
     streak: Math.max(current.streak || 0, incoming.streak || 0),
     bestStreak: Math.max(current.bestStreak || 0, incoming.bestStreak || 0),
+    leaderboardBest: Math.max(current.leaderboardBest || 0, incoming.leaderboardBest || 0),
+    claimed: { ...(current.claimed || {}), ...(incoming.claimed || {}) },
+    cosmeticsUnlocked: { ...(current.cosmeticsUnlocked || {}), ...(incoming.cosmeticsUnlocked || {}) },
+    bossHistory: normalizeCinematicBossHuntHistory([...(current.bossHistory || []), ...(incoming.bossHistory || [])]),
     lifetimeBossesResolved: Math.max(current.lifetimeBossesResolved || 0, incoming.lifetimeBossesResolved || 0),
     lifetimePoints: Math.max(current.lifetimePoints || 0, incoming.lifetimePoints || 0),
     lastOutcome: Number(incoming.lastResolvedAt || 0) >= Number(current.lastResolvedAt || 0) ? incoming.lastOutcome : current.lastOutcome,
@@ -13517,6 +13572,195 @@ function cinematicBossHuntSeasonSummary(state=S){
   return { ...season, theme, title:theme.title, nemesisTitle:theme.nemesisTitle, percent:clamp(Math.round((points / target) * 100), 0, 100), points, target };
 }
 
+function cinematicBossHuntLadderProgress(state=S){
+  const summary = cinematicBossHuntSeasonSummary(state);
+  return CINEMATIC_BOSS_HUNT_LADDER.map((tier)=>({
+    ...tier,
+    ready: summary.points >= Math.max(1, Math.floor(Number(tier.points || 0))),
+    claimed: !!summary.claimed?.[tier.id],
+    remaining: Math.max(0, Math.max(1, Math.floor(Number(tier.points || 0))) - summary.points),
+  }));
+}
+
+function applyCinematicBossHuntTigerTraits(t){
+  if(window.__TUTORIAL_MODE__ || !t || !isBossTiger(t)) return t;
+  const card = currentMissionCardData();
+  if(!cinematicBossHuntMissionActive(card)) return t;
+  const summary = cinematicBossHuntSeasonSummary(S);
+  if(t.cinematicBossHuntThemeKey === summary.theme.key) return t;
+  t.cinematicBossHuntThemeKey = summary.theme.key;
+  t.cinematicBossHuntAbility = summary.theme.ability;
+  if(!t.bossName && !t.nemesisAlias) t.bossName = summary.nemesisTitle;
+  if(summary.theme.key === "IRON_ROAR"){
+    t.nemesisDefenseMul = Math.max(Number(t.nemesisDefenseMul || 1), 1.08);
+    t.bossArmorMax = Math.max(Number(t.bossArmorMax || 0), Math.round(Number(t.hpMax || 100) * 0.36));
+    t.bossArmor = Math.max(Number(t.bossArmor || 0), Math.round(Number(t.bossArmorMax || t.hpMax * 0.32)));
+  } else if(summary.theme.key === "ASH_MOON"){
+    t.stealth = true;
+    t.bossStealthUntil = Math.max(Number(t.bossStealthUntil || 0), Date.now() + 1400);
+  } else if(summary.theme.key === "STORM_CLAW"){
+    t.nemesisPounceMul = Math.max(Number(t.nemesisPounceMul || 1), 1.14);
+    t.bossPounceCharges = Math.max(Number(t.bossPounceCharges || 0), 2);
+  } else if(summary.theme.key === "BLOOD_RIVER"){
+    t.nemesisDamageMul = Math.max(Number(t.nemesisDamageMul || 1), 1.08);
+    t.bossCaptureStrategy = "EXHAUST_ENRAGE";
+  } else if(summary.theme.key === "GLASS_FANG"){
+    t.bossMirrorTrail = true;
+    t.bossCaptureStrategy = "BREAK_AND_TRANQ";
+  } else if(summary.theme.key === "EMBER_HIDE"){
+    t.nemesisSpeedMul = Math.max(Number(t.nemesisSpeedMul || 1), 1.06);
+    t.bossChargeUntil = Math.max(Number(t.bossChargeUntil || 0), Date.now() + 900);
+  } else if(summary.theme.key === "FROST_MANE"){
+    t.bossSlowAura = true;
+    t.nemesisDefenseMul = Math.max(Number(t.nemesisDefenseMul || 1), 1.04);
+  } else if(summary.theme.key === "CROWNED_DUSK"){
+    t.bossCaptureStrategy = "ISOLATE_PACK";
+    t.nextReinforceAt = Math.min(Number(t.nextReinforceAt || Date.now() + 900), Date.now() + 900);
+  }
+  t._cinematicBossHuntAbilityAnnounced = false;
+  return t;
+}
+
+function cinematicBossHuntAbilityTick(t, now=Date.now()){
+  if(!t || !isBossTiger(t) || !t.cinematicBossHuntThemeKey) return;
+  if(!t._cinematicBossHuntAbilityAnnounced){
+    t._cinematicBossHuntAbilityAnnounced = true;
+    const summary = cinematicBossHuntSeasonSummary(S);
+    setTigerIntent(t, summary.theme.ability || "Boss Season", 1100);
+    setEventText(`${summary.theme.icon} ${summary.theme.nemesisTitle}: ${summary.theme.ability}`, 3.2);
+  }
+  if(t.bossSlowAura && dist(t.x, t.y, S.me.x, S.me.y) < 190){
+    S._civilianPathingHazardNote = "Frost Mane slow aura active near the player.";
+  }
+  if(t.bossMirrorTrail && now > Number(t._bossMirrorTrailAt || 0)){
+    t._bossMirrorTrailAt = now + 4200;
+    setTigerIntent(t, "Mirror Trail", 760);
+  }
+}
+
+function cinematicBossHuntRewardText(tier, theme=cinematicBossHuntThemeForWeek()){
+  const bits = [
+    `$${Math.max(0, Math.floor(Number(tier.cash || 0))).toLocaleString()}`,
+    `+${Math.max(0, Math.floor(Number(tier.xp || 0)))}XP`,
+    `+${Math.max(0, Math.floor(Number(tier.passPoints || 0)))} pass pts`,
+  ];
+  if(tier.cosmetic) bits.push(theme.cosmetic || "rare cosmetic");
+  if(tier.title) bits.push(`${theme.nemesisTitle} title`);
+  return bits.join(" • ");
+}
+
+function claimCinematicBossHuntTier(tierId){
+  const season = ensureCinematicBossHuntSeasonState(S);
+  const summary = cinematicBossHuntSeasonSummary(S);
+  const tier = CINEMATIC_BOSS_HUNT_LADDER.find((row)=>row.id === tierId);
+  if(!tier) return toast("Boss Hunt reward not found.");
+  if(season.claimed?.[tier.id]) return toast(`${tier.label} already claimed.`);
+  if(summary.points < Math.max(1, Math.floor(Number(tier.points || 0)))){
+    return toast(`${tier.label} needs ${Math.max(0, tier.points - summary.points)} more Boss Hunt points.`);
+  }
+  const cash = Math.max(0, Math.floor(Number(tier.cash || 0)));
+  if(cash > 0){
+    S.funds = Math.max(0, Math.floor(Number(S.funds || 0)) + cash);
+    if(S.mode) setModeWallet(S.mode, S.funds, S);
+  }
+  if(tier.xp) addXP(Math.max(0, Math.floor(Number(tier.xp || 0))));
+  if(tier.passPoints) grantSeasonPassPoints(Math.max(0, Math.floor(Number(tier.passPoints || 0))), "Cinematic Boss Hunt ladder");
+  if(!season.claimed || typeof season.claimed !== "object") season.claimed = {};
+  season.claimed[tier.id] = true;
+  if(tier.cosmetic || tier.title){
+    if(!season.cosmeticsUnlocked || typeof season.cosmeticsUnlocked !== "object") season.cosmeticsUnlocked = {};
+    season.cosmeticsUnlocked[summary.theme.key] = true;
+  }
+  season.lastNote = `${summary.theme.icon} ${tier.label} claimed: ${cinematicBossHuntRewardText(tier, summary.theme)}`;
+  sfx("ui");
+  hapticNotif("success");
+  toast(`${tier.label} claimed.`);
+  save(true);
+  renderInventory();
+  renderHUD();
+  return false;
+}
+
+function claimAllCinematicBossHuntRewards(){
+  let claimed = 0;
+  for(const tier of cinematicBossHuntLadderProgress(S)){
+    if(tier.ready && !tier.claimed){
+      claimCinematicBossHuntTier(tier.id);
+      claimed++;
+    }
+  }
+  if(!claimed) toast("No Boss Hunt rewards ready.");
+  return false;
+}
+
+async function shareCinematicBossHuntSeason(){
+  const summary = cinematicBossHuntSeasonSummary(S);
+  const text = [
+    `Tiger Strike Cinematic Boss Hunt Season`,
+    `${summary.theme.icon} ${summary.title}: ${summary.nemesisTitle}`,
+    `Boss ability: ${summary.theme.ability}`,
+    `Progress: ${summary.points}/${summary.target} pts • Resolved ${Math.max(0, Math.floor(Number(summary.bossesResolved || 0)))}`,
+    `Best ladder score: ${Math.max(0, Math.floor(Number(summary.leaderboardBest || 0))).toLocaleString()}`,
+    `Rare reward: ${summary.theme.cosmetic}`,
+    "#TigerStrike #BossHunt",
+  ].join("\n");
+  const url = `${missionShareBaseUrl()}?boss_hunt=${encodeURIComponent(summary.weekKey)}&points=${encodeURIComponent(String(summary.points))}`;
+  const shareLink = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+  if(openShareUrl(shareLink)){
+    toast("Boss Hunt season share opened.");
+    return;
+  }
+  const copied = await shareFallbackText(`${text}\n${url}`);
+  toast(copied ? "Boss Hunt season copied." : "Could not share Boss Hunt season.");
+}
+
+function cinematicBossHuntSeasonSectionHtml(){
+  const summary = cinematicBossHuntSeasonSummary(S);
+  const unlocked = !!summary.cosmeticsUnlocked?.[summary.theme.key];
+  const ladderRows = cinematicBossHuntLadderProgress(S).map((tier)=>{
+    const pct = clamp(Math.round((summary.points / Math.max(1, tier.points)) * 100), 0, 100);
+    const action = tier.claimed
+      ? `<span class="tag" style="color:#bbf7d0">Claimed</span>`
+      : (tier.ready ? `<button class="good" onclick="claimCinematicBossHuntTier('${tier.id}')">Claim</button>` : `<span class="tag">Need ${tier.remaining} pts</span>`);
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${baseHqEsc(tier.label)} <span class="tag">${summary.points}/${tier.points} pts</span></div>
+          <div class="itemDesc">${baseHqEsc(cinematicBossHuntRewardText(tier, summary.theme))}</div>
+          <div class="bar"><div class="fill ${tier.ready ? "green" : "yellow"}" style="width:${pct}%"></div></div>
+        </div>
+        <div style="text-align:right">${action}</div>
+      </div>
+    `;
+  }).join("");
+  const history = normalizeCinematicBossHuntHistory(summary.bossHistory).slice(-5).reverse();
+  const historyHtml = history.length
+    ? history.map((row)=>`<div class="itemDesc">• ${baseHqEsc(row.name)} ${row.outcome === "CAPTURE" ? "captured" : "defeated"} • +${row.points} pts</div>`).join("")
+    : `<div class="itemDesc">No weekly boss clears yet. Boss, Alpha, and Nemesis missions add points here.</div>`;
+  return `
+    <div class="divider"></div>
+    <div class="hudTitle" id="invBossHuntSeasonAnchor">Cinematic Boss Hunt Seasons</div>
+    <div class="item" style="padding:12px;border-color:rgba(250,204,21,.48);background:linear-gradient(145deg,rgba(68,46,11,.74),rgba(8,15,26,.96))">
+      <div>
+        <div class="itemName">${summary.theme.icon} ${baseHqEsc(summary.title)} <span class="tag">Week ${baseHqEsc(summary.weekKey)}</span> <span class="tag">${summary.points}/${summary.target} pts</span></div>
+        <div class="itemDesc"><b>Named Boss:</b> ${baseHqEsc(summary.nemesisTitle)} • <b>Trait:</b> ${baseHqEsc(summary.theme.trait)}</div>
+        <div class="itemDesc"><b>Special Ability:</b> ${baseHqEsc(summary.theme.ability)} - ${baseHqEsc(summary.theme.abilityDesc)}</div>
+        <div class="itemDesc"><b>Boss Intro:</b> ${baseHqEsc(summary.theme.intro || summary.theme.scene)}</div>
+        <div class="itemDesc"><b>Leaderboard:</b> ${baseHqEsc(summary.theme.leaderboard)} • Best ${Math.max(0, Math.floor(Number(summary.leaderboardBest || 0))).toLocaleString()} pts • Streak ${Math.max(0, Math.floor(Number(summary.bestStreak || 0)))}</div>
+        <div class="itemDesc"><b>Rare Reward:</b> ${baseHqEsc(summary.theme.cosmetic)} ${unlocked ? "• Unlocked" : "• Locked until high bounty claim"}</div>
+        <div class="bar"><div class="fill green" style="width:${summary.percent}%"></div></div>
+        <div class="itemDesc"><b>Recent Bosses:</b></div>
+        ${historyHtml}
+      </div>
+      <div style="text-align:right">
+        <button class="good" onclick="claimAllCinematicBossHuntRewards()">Claim Ready</button>
+        <button class="ghost" onclick="shareCinematicBossHuntSeason()">Share</button>
+      </div>
+    </div>
+    ${ladderRows}
+  `;
+}
+
 function cinematicBossHuntMissionActive(card=currentMissionCardData()){
   if(window.__TUTORIAL_MODE__) return false;
   if(!card?.mission || card.mode === "Survival") return false;
@@ -13533,7 +13777,9 @@ function cinematicBossHuntIntroBeats(card=currentMissionCardData()){
   return [
     `${summary.theme.icon} Boss Hunt Season active: ${summary.title}.`,
     `Featured target: ${summary.nemesisTitle} (${summary.theme.trait}).`,
+    `Special ability: ${summary.theme.ability} - ${summary.theme.abilityDesc}.`,
     `Cinematic objective: ${summary.theme.bonus}.`,
+    `Bounty ladder: ${summary.theme.leaderboard} rewards ${summary.theme.cosmetic}.`,
   ];
 }
 
@@ -13561,10 +13807,15 @@ function recordCinematicBossHuntOutcome(t, outcome="KILL"){
   else season.kills = Math.max(0, Math.floor(Number(season.kills || 0))) + 1;
   season.streak = Math.max(0, Math.floor(Number(season.streak || 0))) + 1;
   season.bestStreak = Math.max(Math.floor(Number(season.bestStreak || 0)), season.streak);
+  season.leaderboardBest = Math.max(Math.floor(Number(season.leaderboardBest || 0)), Math.floor(Number(season.points || 0)));
   season.lastOutcome = isCapture ? "CAPTURE" : "KILL";
   season.lastBossName = cinematicBossHuntTigerName(t);
   season.lastResolvedAt = Date.now();
   season.lastNote = `${summary.theme.icon} ${summary.title}: ${season.lastBossName} ${isCapture ? "captured" : "defeated"} (+${gained} pts)`;
+  season.bossHistory = normalizeCinematicBossHuntHistory([
+    ...(season.bossHistory || []),
+    { name:season.lastBossName, outcome:season.lastOutcome, points:gained, at:season.lastResolvedAt, theme:summary.theme.key },
+  ]);
   S._cinematicBossHuntLastNote = season.lastNote;
   addNemesisHuntboardPoints(Math.round(gained * 0.45), "cinematic boss", { toast:false });
   grantSeasonPassPoints(isCapture ? 8 : 6, "Cinematic Boss Hunt Season");
@@ -29917,6 +30168,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
         ["Mission Control","baseHqMissionControlAction('room:command')"],
         ["World Map","openWorldMapCampaign()"],
         ["World Events","openLiveCoopWorldEventsFromBaseHQ()"],
+        ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
         ["Ask Ivy","baseHqExecuteIvyGuidance()"],
         ["Social Ops","openSocialRescueOpsFromBaseHQ()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
@@ -29962,6 +30214,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       desc:`Base Intel: ${factList[factIndex]} Lifetime captures recorded: ${captures}.`,
       actions:[
         ["Trophy Showcase","openInventoryFromBaseHQ('showcase')"],
+        ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
         ["Cosmetics","openInventoryFromBaseHQ('cosmetics')"],
         ["Research","selectBaseHqRoom('research', true)"]
       ],
@@ -29973,6 +30226,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       actions:[
         ["Showcase","openInventoryFromBaseHQ('showcase')"],
         ["Social Ops","openSocialRescueOpsFromBaseHQ()"],
+        ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
         ["Cosmetics","openInventoryFromBaseHQ('cosmetics')"],
         ["Forge","openShopFromBaseHQ('forge')"]
       ],
@@ -30004,6 +30258,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
         ["Mission Control","baseHqMissionControlAction('room:command')"],
         ["World Map","openWorldMapCampaign()"],
         ["World Events","openLiveCoopWorldEventsFromBaseHQ()"],
+        ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
         ["Ask Ivy","baseHqExecuteIvyGuidance()"],
         ["Recommended","baseHqRunRecommendedCommand()"],
         ["Continue Active","startMissionFromBaseHQ()"],
@@ -30064,6 +30319,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       actions:[
         ["Story Journal","openStoryFromBaseHQ()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
+        ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
         ["Showcase","openInventoryFromBaseHQ('showcase')"]
       ],
       upgrades:[],
@@ -30197,6 +30453,7 @@ function baseHqCommandActions(){
     openChallengeTowerFromBaseHQ,
     openSocialRescueOpsFromBaseHQ,
     openLiveCoopWorldEventsFromBaseHQ,
+    openCinematicBossHuntFromBaseHQ,
     selectBaseHqRoom,
     baseHqSetSquadCommand,
     baseHqSetSquadFormation,
@@ -30740,6 +30997,7 @@ function renderBaseHqQuickBar(){
     ${button("Profile", "openInventoryFromBaseHQ('showcase')", "utility")}
     ${button("Tower", "openChallengeTowerFromBaseHQ()", "utility")}
     ${button("Social", "openSocialRescueOpsFromBaseHQ()", "utility")}
+    ${button("Boss Hunt", "openCinematicBossHuntFromBaseHQ()", "utility")}
     ${button("Reward", "selectBaseHqRoom('contracts', true)", "utility")}
     ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
     ${button("Inventory", "openInventoryFromBaseHQ()", "utility")}
@@ -31782,6 +32040,15 @@ function openLiveCoopWorldEventsFromBaseHQ(){
   openInventoryFromBaseHQ("gear");
   setTimeout(()=>{
     const anchor = document.getElementById("invLiveCoopWorldAnchor");
+    if(anchor && typeof anchor.scrollIntoView === "function"){
+      anchor.scrollIntoView({ block:"start", behavior:"smooth" });
+    }
+  }, 80);
+}
+function openCinematicBossHuntFromBaseHQ(){
+  openInventoryFromBaseHQ("gear");
+  setTimeout(()=>{
+    const anchor = document.getElementById("invBossHuntSeasonAnchor");
     if(anchor && typeof anchor.scrollIntoView === "function"){
       anchor.scrollIntoView({ block:"start", behavior:"smooth" });
     }
@@ -33845,6 +34112,8 @@ function renderInventory(){
     </div>
     ${nemesisTargetsHtml}
     ${nemesisLadderRowsHtml}
+
+    ${cinematicBossHuntSeasonSectionHtml()}
 
     ${challengeTowerSectionHtml}
 
@@ -36802,6 +37071,7 @@ function spawnTigers(){
     if(nemesisEntry && i === nemesisSlot){
       applyNemesisEntryToTiger(tigerObj, nemesisEntry, storyMissionNo);
     }
+    applyCinematicBossHuntTigerTraits(tigerObj);
     assignEliteTigerMutation(tigerObj, { mutationChanceBonus:(storyBoss && i < storyBossCount) ? 0.10 : 0 });
     S.tigers.push(tigerObj);
     tigerPackOnSpawn(tigerObj);
@@ -40802,6 +41072,8 @@ function roamTigers(){
       t._nextFarThinkAt = 0;
     }
 
+    applyCinematicBossHuntTigerTraits(t);
+    cinematicBossHuntAbilityTick(t, now);
     abilityTick(t);
 
     if(t.holdUntil && now < t.holdUntil){
@@ -53221,6 +53493,10 @@ window.shareLiveCoopWorldEvents = shareLiveCoopWorldEvents;
 window.claimClanWarfrontTerritory = claimClanWarfrontTerritory;
 window.claimClanWarfrontSeasonChest = claimClanWarfrontSeasonChest;
 window.claimNemesisHuntboardTier = claimNemesisHuntboardTier;
+window.claimCinematicBossHuntTier = claimCinematicBossHuntTier;
+window.claimAllCinematicBossHuntRewards = claimAllCinematicBossHuntRewards;
+window.shareCinematicBossHuntSeason = shareCinematicBossHuntSeason;
+window.openCinematicBossHuntFromBaseHQ = openCinematicBossHuntFromBaseHQ;
 window.clearPendingStarsPurchase = clearPendingStarsPurchase;
 window.awardDailyLogin = awardDailyLogin;
 window.equipWeapon = equipWeapon;
