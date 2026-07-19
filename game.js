@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4511";
+const TS_BUILD = "4512";
 if(tg){
   try{
     tg.expand?.();
@@ -2706,6 +2706,303 @@ function resetDynamicObjectiveForDeploy(state=S){
   const d = ensureDynamicObjectiveState(state);
   clearDynamicObjective(state);
   d.nextRollAt = Date.now() + rand(9000, 16000);
+}
+
+function defaultMissionDirector5State(){
+  return {
+    active: false,
+    planId: "",
+    title: "",
+    desc: "",
+    objectiveBias: [],
+    worldEventBias: [],
+    incidentTypes: [],
+    pressureMul: 1,
+    spawnCdMul: 1,
+    rewardHint: "",
+    nextIncidentAt: 0,
+    incidentIndex: 0,
+    incidentCap: 0,
+    incidentHistory: [],
+    lastNoticeAt: 0,
+  };
+}
+function missionDirector5PlanDefs(){
+  return [
+    {
+      id:"rescue_surge",
+      title:"Rescue Surge",
+      desc:"Civilian calls spike early. Escort, triage, and hold routes become priority.",
+      objectiveBias:["civilian_triage","escort_lane","hold_evac_route"],
+      worldEventBias:["ambush_convoy","flooded_route"],
+      incidentTypes:["rescue_emergency","objective","evac_complication","supply_choice"],
+      pressureMul:1.04,
+      spawnCdMul:1.03,
+      rewardHint:"Perfect rescue and triage bonuses are favored.",
+    },
+    {
+      id:"predator_pressure",
+      title:"Predator Pressure",
+      desc:"Tigers push harder, call packs, and force quicker combat decisions.",
+      objectiveBias:["pack_break","alpha_surge","intercept_scout"],
+      worldEventBias:["night_storm","ambush_convoy"],
+      incidentTypes:["tiger_surge","objective","world_event","rescue_emergency"],
+      pressureMul:1.13,
+      spawnCdMul:0.92,
+      rewardHint:"Capture focus and alpha control are favored.",
+    },
+    {
+      id:"route_collapse",
+      title:"Route Collapse",
+      desc:"Roads, bridges, and evac lanes become unstable during the mission.",
+      objectiveBias:["hold_evac_route","secure_crash_site","recover_supply"],
+      worldEventBias:["flooded_route","helicopter_crash"],
+      incidentTypes:["evac_complication","world_event","objective","supply_choice"],
+      pressureMul:1.08,
+      spawnCdMul:1.00,
+      rewardHint:"Route control and recovery bonuses are favored.",
+    },
+    {
+      id:"intel_window",
+      title:"Intel Window",
+      desc:"Short scan openings reveal high-value targets and reward careful hunting.",
+      objectiveBias:["intercept_scout","recover_supply","alpha_surge"],
+      worldEventBias:["helicopter_crash","night_storm"],
+      incidentTypes:["scan_window","objective","world_event","tiger_surge"],
+      pressureMul:0.98,
+      spawnCdMul:1.06,
+      rewardHint:"Scan, clue, and target-lock play are favored.",
+    },
+    {
+      id:"extraction_risk",
+      title:"Extraction Risk",
+      desc:"Evac zones can be interrupted, forcing the player to secure pickup routes.",
+      objectiveBias:["hold_evac_route","escort_lane","civilian_triage"],
+      worldEventBias:["ambush_convoy","helicopter_crash"],
+      incidentTypes:["evac_complication","rescue_emergency","objective","world_event"],
+      pressureMul:1.10,
+      spawnCdMul:0.98,
+      rewardHint:"Zero-loss evacuation and boarding control are favored.",
+    },
+    {
+      id:"supply_gamble",
+      title:"Supply Gamble",
+      desc:"Bonus supplies appear off-route, tempting players away from the safest path.",
+      objectiveBias:["recover_supply","intercept_scout","pack_break"],
+      worldEventBias:["helicopter_crash","flooded_route"],
+      incidentTypes:["supply_choice","objective","tiger_surge","world_event"],
+      pressureMul:1.03,
+      spawnCdMul:1.00,
+      rewardHint:"Risky supply recovery can improve long-term inventory.",
+    },
+  ];
+}
+function missionDirector5PlanById(id){
+  const key = String(id || "");
+  return missionDirector5PlanDefs().find((p)=>p.id === key) || null;
+}
+function ensureMissionDirector5State(state=S){
+  if(!state || typeof state !== "object") return defaultMissionDirector5State();
+  if(!state.missionDirector5 || typeof state.missionDirector5 !== "object"){
+    state.missionDirector5 = defaultMissionDirector5State();
+  }
+  const d = state.missionDirector5;
+  const plan = missionDirector5PlanById(d.planId);
+  d.active = !!d.active && !!plan;
+  d.planId = plan ? plan.id : "";
+  d.title = plan ? plan.title : String(d.title || "");
+  d.desc = plan ? plan.desc : String(d.desc || "");
+  d.objectiveBias = Array.isArray(d.objectiveBias) ? d.objectiveBias.filter((x)=>DYNAMIC_OBJECTIVE_TYPES.includes(String(x))) : (plan?.objectiveBias || []);
+  d.worldEventBias = Array.isArray(d.worldEventBias) ? d.worldEventBias.filter((x)=>WORLD_EVENT_TYPES.includes(String(x))) : (plan?.worldEventBias || []);
+  d.incidentTypes = Array.isArray(d.incidentTypes) ? d.incidentTypes.map((x)=>String(x || "")).filter(Boolean).slice(0, 8) : (plan?.incidentTypes || []);
+  d.pressureMul = clamp(Number(d.pressureMul || plan?.pressureMul || 1), 0.86, 1.22);
+  d.spawnCdMul = clamp(Number(d.spawnCdMul || plan?.spawnCdMul || 1), 0.82, 1.18);
+  d.rewardHint = plan ? plan.rewardHint : String(d.rewardHint || "");
+  d.nextIncidentAt = Math.max(0, Math.floor(Number(d.nextIncidentAt || 0)));
+  d.incidentIndex = Math.max(0, Math.floor(Number(d.incidentIndex || 0)));
+  d.incidentCap = clamp(Math.floor(Number(d.incidentCap || 0)), 0, 5);
+  d.incidentHistory = Array.isArray(d.incidentHistory) ? d.incidentHistory.slice(-6) : [];
+  d.lastNoticeAt = Math.max(0, Math.floor(Number(d.lastNoticeAt || 0)));
+  if(plan){
+    if(!d.objectiveBias.length) d.objectiveBias = plan.objectiveBias.slice();
+    if(!d.worldEventBias.length) d.worldEventBias = plan.worldEventBias.slice();
+    if(!d.incidentTypes.length) d.incidentTypes = plan.incidentTypes.slice();
+  }
+  return d;
+}
+function resetMissionDirector5ForDeploy(state=S){
+  if(state && typeof state === "object") state.missionDirector5 = defaultMissionDirector5State();
+}
+function chooseMissionDirector5Plan(state=S){
+  const plans = missionDirector5PlanDefs();
+  const activeMission = state.mode === "Story" ? storyMissionForState(state) : (state.mode === "Arcade" ? activeArcadeMission(state) : null);
+  const objective = String(activeMission?.objective || "").toLowerCase();
+  const level = Math.max(1, Math.floor(Number(activeMission?.number || state.storyLevel || state.arcadeLevel || state.survivalWave || 1)));
+  const weights = {};
+  for(const p of plans) weights[p.id] = 1;
+  if(/civilian|escort|rescue|protect/.test(objective)){
+    weights.rescue_surge += 1.4;
+    weights.extraction_risk += 0.8;
+  }
+  if(/alpha|boss|nemesis|den|hunt|tiger/.test(objective)){
+    weights.predator_pressure += 1.15;
+    weights.intel_window += 0.65;
+  }
+  if(/evac|boat|convoy|helicopter|route|bridge|river/.test(objective)){
+    weights.route_collapse += 1.2;
+    weights.extraction_risk += 1.1;
+  }
+  if(level % 5 === 0) weights.predator_pressure += 0.65;
+  if(level % 4 === 0) weights.route_collapse += 0.5;
+  const id = weightedChoiceFromObject(weights, plans.map((p)=>p.id)) || plans[rand(0, plans.length - 1)]?.id;
+  return missionDirector5PlanById(id) || plans[0];
+}
+function initializeMissionDirector5ForDeploy(state=S, now=Date.now()){
+  if(!state || typeof state !== "object" || window.__TUTORIAL_MODE__) return null;
+  const plan = chooseMissionDirector5Plan(state);
+  const d = ensureMissionDirector5State(state);
+  d.active = true;
+  d.planId = plan.id;
+  d.title = plan.title;
+  d.desc = plan.desc;
+  d.objectiveBias = plan.objectiveBias.slice();
+  d.worldEventBias = plan.worldEventBias.slice();
+  d.incidentTypes = plan.incidentTypes.slice();
+  d.pressureMul = plan.pressureMul;
+  d.spawnCdMul = plan.spawnCdMul;
+  d.rewardHint = plan.rewardHint;
+  d.nextIncidentAt = now + rand(15000, isMobileViewport() ? 24000 : 30000);
+  d.incidentIndex = 0;
+  d.incidentCap = state.mode === "Survival" ? 2 : (isMobileViewport() ? 3 : 4);
+  d.incidentHistory = [];
+  d.lastNoticeAt = now;
+  if(!String(state.eventText || "").trim()){
+    setEventText(`Director 5.0: ${plan.title}. ${plan.rewardHint}`, 5);
+  }
+  __savePending = true;
+  return d;
+}
+function missionDirector5Pick(arr, fallback=""){
+  const list = Array.isArray(arr) ? arr.filter(Boolean) : [];
+  if(!list.length) return fallback;
+  return list[rand(0, list.length - 1)] || fallback;
+}
+function missionDirector5PreferredObjective(){
+  const d = ensureMissionDirector5State(S);
+  if(!d.active || !d.objectiveBias.length) return "";
+  const type = missionDirector5Pick(d.objectiveBias, "");
+  return DYNAMIC_OBJECTIVE_TYPES.includes(type) ? type : "";
+}
+function missionDirector5PreferredWorldEvent(){
+  const d = ensureMissionDirector5State(S);
+  if(!d.active || !d.worldEventBias.length) return "";
+  const type = missionDirector5Pick(d.worldEventBias, "");
+  return WORLD_EVENT_TYPES.includes(type) ? type : "";
+}
+function missionDirector5TriggerObjective(now=Date.now()){
+  const d = ensureDynamicObjectiveState(S);
+  if(!liveOpsCommandFlag("dynamicObjectives")) return false;
+  if(d.active || S.inBattle || S.missionEnded || S.gameOver) return false;
+  const type = missionDirector5PreferredObjective() || chooseDynamicObjectiveType();
+  if(!DYNAMIC_OBJECTIVE_TYPES.includes(type)) return false;
+  startDynamicObjective(type);
+  setEventText(`Director 5.0 bonus objective: ${ensureDynamicObjectiveState(S).title}`, 5);
+  return true;
+}
+function missionDirector5TriggerWorldEvent(now=Date.now()){
+  if(!dynamicWorldEventsEnabled()) return false;
+  const tw = ensureMissionTwistState(S);
+  const we = tw.worldEvent;
+  if(we.active || S.inBattle || S.missionEnded || S.gameOver) return false;
+  const preferred = missionDirector5PreferredWorldEvent();
+  const type = preferred || chooseDynamicWorldEventType();
+  if(!WORLD_EVENT_TYPES.includes(type)) return false;
+  return triggerDynamicWorldEvent(type, now);
+}
+function missionDirector5TriggerTigerSurge(now=Date.now()){
+  const director = ensureMissionDirectorState(S);
+  director.pressure = clamp(Number(director.pressure || 0) + rand(8, 14), 0, 100);
+  director.spawnSoftLockUntil = Math.max(0, Math.min(director.spawnSoftLockUntil || 0, now + 900));
+  director.nextSpawnAt = Math.min(Math.max(0, Number(director.nextSpawnAt || 0)), now + rand(900, 1600));
+  if(!hasAliveBossTiger() && missionDirectorAllowTigerSpawn(1, { ignoreBudget:true })){
+    const spawned = spawnRogueTiger({ reason:"director5" });
+    if(spawned){
+      setEventText("Director 5.0: tiger pressure surge. A new predator entered the lane.", 5.2);
+      return true;
+    }
+  }
+  setEventText("Director 5.0: tiger pressure surge. Stay mobile and protect civilians.", 4.4);
+  return true;
+}
+function missionDirector5TriggerRescueEmergency(now=Date.now()){
+  const civs = (S.civilians || []).filter((c)=>c && c.alive && !c.evac);
+  if(!civs.length || S.mode === "Survival") return false;
+  const civ = civs.reduce((best, c)=>!best || dist(S.me.x, S.me.y, c.x, c.y) > dist(S.me.x, S.me.y, best.x, best.y) ? c : best, null);
+  if(!civ) return false;
+  S.dangerCivId = civ.id;
+  civ.panicUntil = Math.max(civ.panicUntil || 0, now + rand(7000, 12000));
+  civ._rescueEmergencyAt = now;
+  setEventText(`Director 5.0: rescue emergency near ${civ.rescueLabel || "field site"}. Secure civilian #${civ.id}.`, 5.8);
+  if(!ensureDynamicObjectiveState(S).active && Math.random() < 0.7) startDynamicObjective("civilian_triage");
+  return true;
+}
+function missionDirector5TriggerEvacComplication(now=Date.now()){
+  if(S.mode === "Survival" || !S.evacZone) return false;
+  const director = ensureMissionDirectorState(S);
+  director.recoveryUntil = Math.max(director.recoveryUntil || 0, now + 2200);
+  director.spawnSoftLockUntil = Math.max(director.spawnSoftLockUntil || 0, now + 1800);
+  if(!ensureDynamicObjectiveState(S).active){
+    startDynamicObjective("hold_evac_route");
+  }
+  setEventText("Director 5.0: evac complication. Keep tigers away from the route.", 5.4);
+  return true;
+}
+function missionDirector5TriggerSupplyChoice(now=Date.now()){
+  const p = missionDirector4ObjectivePickPoint("center");
+  if(!p) return false;
+  spawnPickup(Math.random() < 0.55 ? "CRATE" : "AMMO", p.x, p.y);
+  setEventText("Director 5.0 bonus choice: grab supplies or stay on rescue route.", 5.6);
+  return true;
+}
+function missionDirector5TriggerScanWindow(now=Date.now()){
+  const target = currentTargetTiger() || (S.tigers || []).find((t)=>t && t.alive);
+  if(target){
+    S.lockedTigerId = target.id;
+    S.scanPing = Math.max(S.scanPing || 0, now + 9000);
+    setEventText(`Director 5.0 intel window: Tiger #${target.id} marked. Follow the scan line.`, 5.6);
+    return true;
+  }
+  return missionDirector5TriggerObjective(now);
+}
+function missionDirector5TriggerIncident(type, now=Date.now()){
+  if(type === "objective") return missionDirector5TriggerObjective(now);
+  if(type === "world_event") return missionDirector5TriggerWorldEvent(now);
+  if(type === "tiger_surge") return missionDirector5TriggerTigerSurge(now);
+  if(type === "rescue_emergency") return missionDirector5TriggerRescueEmergency(now);
+  if(type === "evac_complication") return missionDirector5TriggerEvacComplication(now);
+  if(type === "supply_choice") return missionDirector5TriggerSupplyChoice(now);
+  if(type === "scan_window") return missionDirector5TriggerScanWindow(now);
+  return false;
+}
+function missionDirector5Tick(now=Date.now()){
+  const d = ensureMissionDirector5State(S);
+  if(!d.active || window.__TUTORIAL_MODE__) return;
+  if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
+  if(d.incidentIndex >= d.incidentCap) return;
+  if(now < (d.nextIncidentAt || 0)) return;
+  const types = d.incidentTypes.length ? d.incidentTypes : ["objective","tiger_surge","supply_choice"];
+  let ok = false;
+  let picked = "";
+  for(let i=0; i<types.length && !ok; i++){
+    picked = types[(d.incidentIndex + i) % types.length];
+    ok = missionDirector5TriggerIncident(picked, now);
+  }
+  d.incidentIndex += 1;
+  d.incidentHistory.push({ type:picked || "none", ok:!!ok, at:now });
+  d.incidentHistory = d.incidentHistory.slice(-6);
+  d.nextIncidentAt = now + rand(isMobileViewport() ? 24000 : 21000, isMobileViewport() ? 38000 : 43000);
+  d.lastNoticeAt = now;
+  __savePending = true;
 }
 
 function resetMissionTwistsForDeploy(state=S, now=Date.now()){
@@ -17218,7 +17515,9 @@ function missionDirectorMarkTigerSpawn(opts={}){
   const minCd = Math.round(cfg.spawnCd?.[0] || 13000);
   const maxCd = Math.round(cfg.spawnCd?.[1] || 19000);
   const survivalMul = S.mode === "Survival" ? 0.76 : 1;
-  const cdMul = clamp(Number(tuning.spawnCdMul || 1), 0.84, 1.22) * clamp(Number(liveTune.spawnCdMul || 1), 0.70, 1.60);
+  const director5 = ensureMissionDirector5State(S);
+  const director5SpawnMul = director5.active ? clamp(Number(director5.spawnCdMul || 1), 0.82, 1.18) : 1;
+  const cdMul = clamp(Number(tuning.spawnCdMul || 1), 0.84, 1.22) * clamp(Number(liveTune.spawnCdMul || 1), 0.70, 1.60) * director5SpawnMul;
   const cd = rand(
     Math.max(1200, Math.round(minCd * survivalMul * cdMul)),
     Math.max(1600, Math.round(maxCd * survivalMul * cdMul))
@@ -17281,6 +17580,10 @@ function missionDirectorTargetPressure(now=Date.now()){
   const mapId = mapIdentityProfile(S.mode, chapterIndexForMode(S.mode));
   target *= clamp(Number(tuning.pressureMul || 1), 0.86, 1.16);
   target *= clamp(Number(mapId?.pressureMul || 1), 0.88, 1.18);
+  const director5 = ensureMissionDirector5State(S);
+  if(director5.active){
+    target *= clamp(Number(director5.pressureMul || 1), 0.86, 1.22);
+  }
   return clamp(target, 0, 100);
 }
 function missionDirectorResolvePhase(pressure, currentPhase){
@@ -17450,6 +17753,7 @@ function missionDirectorTick(){
       setEventText(`Director stabilized mission load (${trimRes.trimmed} cleanup).`, 1.8);
     }
   }
+  missionDirector5Tick(now);
 }
 function beginFrameBudget(frameStartTs){
   const now = Number.isFinite(frameStartTs) ? frameStartTs : (performance.now ? performance.now() : Date.now());
@@ -37946,6 +38250,7 @@ function deploy(opts={}){
   resetMissionTwistsForDeploy(S);
   resetDynamicWeather2ForDeploy(S);
   resetDynamicObjectiveForDeploy(S);
+  resetMissionDirector5ForDeploy(S);
   resetTigerInvestigationForDeploy(S);
   resetDayNightCycleForDeploy(S);
   resetEvacRouteForDeploy(S);
@@ -38155,6 +38460,7 @@ function deploy(opts={}){
     else applyStoryCampaignPersistentEffects();
   }
   prepareLiveOpsModifierCardsForMission(S);
+  initializeMissionDirector5ForDeploy(S);
   const storySceneShown = !opts.skipStoryScene && S.mode === "Story" && __launchIntroShownThisBoot && !storyCampaignStartupOverlayVisible()
     ? showStoryCampaignScene(false)
     : false;
@@ -44653,6 +44959,10 @@ function chooseDynamicObjectiveType(){
   const tw = ensureMissionTwistState(S);
   if(tw?.worldEvent?.active) weights.secure_crash_site *= 0.25;
   if((tw?.hostage?.active || false)) weights.civilian_triage *= 0.55;
+  const director5Pick = missionDirector5PreferredObjective();
+  if(director5Pick && Math.random() < 0.58){
+    return director5Pick;
+  }
   return weightedChoiceFromObject(weights, DYNAMIC_OBJECTIVE_TYPES) || "pack_break";
 }
 
@@ -46333,6 +46643,8 @@ function renderHUD(){
   const dynInline = dynObjective.active
     ? ` • Dynamic: ${dynObjective.title} ${Math.min(dynObjective.progress, dynObjective.target)}/${dynObjective.target}${dynLeft ? ` (${dynLeft}s)` : ""}`
     : "";
+  const director5 = ensureMissionDirector5State(S);
+  const director5Inline = director5.active ? ` • Director 5.0: ${director5.title}` : "";
   const invObjective = ensureTigerInvestigationState(S);
   const invInline = invObjective.active
     ? ` • Investigation ${Math.min(invObjective.found, invObjective.total)}/${invObjective.total}`
@@ -46350,9 +46662,9 @@ function renderHUD(){
     (S.mode==="Survival")
       ? `🎯 Survive • Loot spawns • Traps hold tigers • Carcasses block movement${dayNightInline}`
       : (S.mode==="Story")
-        ? `🎯 ${storyObjective}${dynInline}${invInline}${dayNightInline}${grace}`
+        ? `🎯 ${storyObjective}${director5Inline}${dynInline}${invInline}${dayNightInline}${grace}`
       : (S.mode==="Arcade")
-        ? `🎯 ${arcadeObjective}${arcadeHint}${dynInline}${invInline}${dayNightInline}${grace}`
+        ? `🎯 ${arcadeObjective}${arcadeHint}${director5Inline}${dynInline}${invInline}${dayNightInline}${grace}`
         : `🎯 Evacuate living civilians + clear ALL tigers${dayNightInline}${grace}`;
   const storyOpsEl = document.getElementById("storyOpsTxt");
   if(storyOpsEl){
@@ -46412,6 +46724,10 @@ function renderHUD(){
   const assistParts = [];
   const phaseLeft = Math.max(1, Math.ceil(dayPhase.remainingMs / 1000));
   assistParts.push(`${dayPhase.icon} ${dayPhase.label} ${phaseLeft}s`);
+  if(director5.active){
+    const incidentTxt = `${Math.min(director5.incidentIndex, director5.incidentCap)}/${director5.incidentCap}`;
+    assistParts.push(`Director 5.0: ${director5.title} • Incidents ${incidentTxt} • ${director5.rewardHint}`);
+  }
   if(!window.__TUTORIAL_MODE__){
     assistParts.push(`Territory: ${tigerEcosystemCurrentSummary(S)}`);
   }
