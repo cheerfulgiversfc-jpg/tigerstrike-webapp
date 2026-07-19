@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4509";
+const TS_BUILD = "4510";
 if(tg){
   try{
     tg.expand?.();
@@ -15559,6 +15559,9 @@ const STARTUP_LOADING_FINALIZE_MS = 850;
 const STARTUP_LOADING_FINALIZE_FAILSAFE_MS = 1800;
 const STARTUP_LOADING_HARD_STUCK_MS = 32000;
 const STARTUP_LOADING_HUNDRED_STUCK_MS = 1800;
+const STABILITY_MASTER_LOADER_RELEASE_MS = 520;
+const STABILITY_MASTER_TICK_MS = 1250;
+const STABILITY_MASTER_REDEPLOY_COOLDOWN_MS = 6500;
 const MAP_CLARITY_PRELOAD_RADIUS = 5;
 const MAP_CLARITY_FULL_REPAINT_MS = 120000;
 const STARTUP_PRELOAD_STAGE_WEIGHTS = Object.freeze({
@@ -52320,6 +52323,7 @@ function releaseStartupLoadingGuard(reason="ready"){
   __forceFullMapRepaintUntil = Math.max(Number(__forceFullMapRepaintUntil || 0), Date.now() + MAP_CLARITY_FULL_REPAINT_MS);
   try{ invalidateMapCache(); }catch(e){}
   updateStartupLoadingOverlay(true);
+  try{ stabilityMasterEnterGameplay(`loader:${reason}`); }catch(e){}
   try{ renderHUD(); }catch(e){}
   try{ setEventText("Mission map ready.", 1.15); }catch(e){}
   pushStabilityEvent("loader-release", { reason });
@@ -52388,7 +52392,7 @@ function scheduleStartupLoadingRelease(reason="ready"){
     if(Number(__startupLoadingGuard.percent || 0) >= 100 || Date.now() >= Number(__startupLoadingGuard.finalizingUntil || 0)){
       releaseStartupLoadingGuard(reason || __startupLoadingGuard.pendingReleaseReason || "timer-release");
     }
-  }, Math.max(120, STARTUP_LOADING_FINALIZE_MS + 120));
+  }, Math.max(120, Math.min(STARTUP_LOADING_FINALIZE_MS + 120, STABILITY_MASTER_LOADER_RELEASE_MS)));
 }
 
 function requestStartupLoadingFinalization(reason="ready"){
@@ -53036,6 +53040,133 @@ function ensureMissionStartupIntegrity(opts={}){
   return true;
 }
 
+let __stabilityMasterLastTickAt = 0;
+let __stabilityMasterLastRedeployAt = 0;
+function closeTransientMissionOverlaysForGameplay(reason="stability-master"){
+  const keepComplete = !!(S?.missionEnded || S?.gameOver);
+  const ids = [
+    "launchIntroOverlay",
+    "dailyRewardOverlay",
+    "storyIntroOverlay",
+    "worldMapCampaignOverlay",
+    "baseHqOverlay",
+    "missionCinemaOverlay",
+    "missionBriefOverlay",
+    "modeOverlay",
+    "shopOverlay",
+    "invOverlay",
+    "weaponQuickOverlay",
+    "aboutOverlay",
+    "hudOverlay",
+    "progressGuardOverlay"
+  ];
+  if(!keepComplete){
+    ids.push("completeOverlay", "overOverlay");
+  }
+  for(const id of ids){
+    const el = document.getElementById(id);
+    if(el) el.style.display = "none";
+  }
+  if(!keepComplete){
+    lastOverlay = null;
+  }
+  if(typeof document !== "undefined" && document.body){
+    document.body.classList.remove("baseHqActive");
+  }
+  try{ pushStabilityEvent("overlay-cleanup", { reason }); }catch(e){}
+}
+function stabilityMasterUnpauseGameplay(reason="stability-master"){
+  if(!S || typeof S !== "object" || S.gameOver || S.missionEnded) return false;
+  const blocking = missionBlockingOverlayVisible();
+  const sticky = new Set(["manual", "complete", "mode", "base-hq"]);
+  if(S.paused && (!blocking || S.pauseReason === "mission-transition" || S.pauseReason === "mission-brief" || S.pauseReason === "world-map")){
+    if(!sticky.has(String(S.pauseReason || "")) || S.pauseReason === "mission-transition" || S.pauseReason === "mission-brief" || S.pauseReason === "world-map"){
+      S.paused = false;
+      S.pauseReason = null;
+      try{ pushStabilityEvent("unpause", { reason }); }catch(e){}
+      return true;
+    }
+  }
+  return false;
+}
+function stabilityMasterEnsurePlayableMission(reason="stability-master", opts={}){
+  if(!S || typeof S !== "object") return false;
+  if(window.__TUTORIAL_MODE__) return false;
+  if(S.gameOver || S.missionEnded) return false;
+  let changed = false;
+  try{ repairBlankRuntimeState(S, reason); }catch(e){}
+  let invalid = "";
+  try{ invalid = missionEntityStateInvalid(S); }catch(e){ invalid = "integrity-exception"; }
+  if(invalid){
+    try{
+      sanitizeRuntimeState();
+      clampWorldToCanvas();
+      validateMissionSpawnLayout({ repair:true });
+      normalizeLoadedSquadOwnershipState(S, reason);
+      reconcileSupportDownedFromUnits(S);
+      if(!rivalHuntersAllowedForMission(S)) clearRivalHunters(reason);
+      changed = true;
+    }catch(e){}
+  }
+  try{ invalid = missionEntityStateInvalid(S); }catch(e){ invalid = "integrity-exception"; }
+  if(invalid && !opts.noRedeploy){
+    const now = Date.now();
+    if(now - Number(__stabilityMasterLastRedeployAt || 0) >= STABILITY_MASTER_REDEPLOY_COOLDOWN_MS && !__deployInProgress){
+      __stabilityMasterLastRedeployAt = now;
+      const keepHp = clamp(Number(S.hp || 100), 0, 100);
+      const keepArmor = clamp(Number(S.armor || 0), 0, S.armorCap || 100);
+      try{
+        deploy({ carryStats:true, hp:keepHp, armor:keepArmor, skipBrief:true, skipStoryScene:true, source:`stability-master:${reason}` });
+        pushStabilityEvent("redeploy", { reason, invalid });
+        changed = true;
+      }catch(e){}
+    }
+  }
+  try{ runSafeSelfHealSweep(reason, { force:!!opts.force }); }catch(e){}
+  try{ transitionCleanupSweep(reason); }catch(e){}
+  try{ truthQaAuditVisibleUi(false); }catch(e){}
+  try{ maybeRenderHUD(true); }catch(e){}
+  try{ renderCombatControls(); }catch(e){}
+  try{ updateAttackButton(); }catch(e){}
+  return changed;
+}
+function stabilityMasterEnterGameplay(reason="loader-release"){
+  if(window.__TUTORIAL_MODE__) return false;
+  if(!S || typeof S !== "object") return false;
+  closeTransientMissionOverlaysForGameplay(reason);
+  stabilityMasterEnsurePlayableMission(reason, { force:true, noRedeploy:false });
+  stabilityMasterUnpauseGameplay(reason);
+  try{ resetControlInputState(reason); }catch(e){}
+  try{ resizeCanvasForViewport(); }catch(e){}
+  try{ clampWorldToCanvas(); }catch(e){}
+  try{ invalidateMapCache(); }catch(e){}
+  try{ renderHUD(); }catch(e){}
+  try{ pushStabilityEvent("enter-gameplay", { reason }); }catch(e){}
+  return true;
+}
+function stabilityMasterTick(reason="frame"){
+  const now = Date.now();
+  if(now - Number(__stabilityMasterLastTickAt || 0) < STABILITY_MASTER_TICK_MS) return false;
+  __stabilityMasterLastTickAt = now;
+  let changed = false;
+  if(__startupLoadingGuard?.active){
+    const pct = Number(__startupLoadingGuard.percent || 0);
+    const started = Number(__startupLoadingGuard.finalizingStartedAt || __startupLoadingGuard.startedAt || now);
+    if(pct >= 100 && (now - started) >= STABILITY_MASTER_LOADER_RELEASE_MS){
+      releaseStartupLoadingGuard(`master-100-release:${reason}`);
+      changed = true;
+    }else{
+      try{ startupLoadingWatchdogTick(); }catch(e){}
+    }
+  }
+  const blocking = missionBlockingOverlayVisible();
+  if(!blocking && !(S?.gameOver || S?.missionEnded) && !baseHqActive?.()){
+    changed = stabilityMasterEnsurePlayableMission(`master:${reason}`, { force:false, noRedeploy:false }) || changed;
+    changed = stabilityMasterUnpauseGameplay(`master:${reason}`) || changed;
+  }
+  return changed;
+}
+
 // ===================== MISSION FLOW =====================
 
 // ===================== MAIN LOOP =====================
@@ -53072,6 +53203,7 @@ function draw(){
     beginFrameBudget(frameStart);
     const startupLoading = startupLoadingGuardActive();
     updateStartupLoadingOverlay();
+    safeTick("stabilityMasterTick", ()=>stabilityMasterTick("draw"));
     const lagTier = frameLagTier();
     const lagHeavy = lagTier >= 1;
     const lagCritical = lagTier >= 2;
