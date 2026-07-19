@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4510";
+const TS_BUILD = "4511";
 if(tg){
   try{
     tg.expand?.();
@@ -3706,8 +3706,11 @@ function defaultSocialRescueState(){
     sharedRecapRunIds:{},
     sharedChallengeRunIds:{},
     inviteShareDays:{},
+    weeklyShareWeeks:{},
     challengeVictoryClaims:{},
     claimedInviteMilestones:{},
+    claimedWeeklyTrophies:{},
+    claimedClanGoals:{},
     unlockedTitles:{},
     lastAwardedRunId:"",
   };
@@ -3733,8 +3736,11 @@ function normalizeSocialRescueState(raw={}){
     sharedRecapRunIds: (src.sharedRecapRunIds && typeof src.sharedRecapRunIds === "object") ? { ...src.sharedRecapRunIds } : {},
     sharedChallengeRunIds: (src.sharedChallengeRunIds && typeof src.sharedChallengeRunIds === "object") ? { ...src.sharedChallengeRunIds } : {},
     inviteShareDays: (src.inviteShareDays && typeof src.inviteShareDays === "object") ? { ...src.inviteShareDays } : {},
+    weeklyShareWeeks: (src.weeklyShareWeeks && typeof src.weeklyShareWeeks === "object") ? { ...src.weeklyShareWeeks } : {},
     challengeVictoryClaims: (src.challengeVictoryClaims && typeof src.challengeVictoryClaims === "object") ? { ...src.challengeVictoryClaims } : {},
     claimedInviteMilestones: (src.claimedInviteMilestones && typeof src.claimedInviteMilestones === "object") ? { ...src.claimedInviteMilestones } : {},
+    claimedWeeklyTrophies: (src.claimedWeeklyTrophies && typeof src.claimedWeeklyTrophies === "object") ? { ...src.claimedWeeklyTrophies } : {},
+    claimedClanGoals: (src.claimedClanGoals && typeof src.claimedClanGoals === "object") ? { ...src.claimedClanGoals } : {},
     unlockedTitles: (src.unlockedTitles && typeof src.unlockedTitles === "object") ? { ...src.unlockedTitles } : {},
     lastAwardedRunId: String(src.lastAwardedRunId || ""),
   };
@@ -3748,6 +3754,7 @@ function ensureSocialRescueState(state=S){
     social.weekKey = currentWeek;
     social.weekly = { captures:0, evac:0, perfectRescues:0, nemesisClears:0, missions:0, bestScore:0 };
     social.lastAwardedRunId = "";
+    social.claimedWeeklyTrophies = {};
   }
   src.socialRescue = social;
   return src.socialRescue;
@@ -4228,7 +4235,7 @@ function claimAvailableSocialInviteReward(){
   }
   return tier;
 }
-function grantSocialSupportReward(label="", reward={}, source="Social Rescue"){
+function grantSocialSupportReward(label="", reward={}, source="Social Rescue", silent=false){
   const clean = {
     medkits: Math.max(0, Math.floor(Number(reward?.medkits || 0))),
     shields: Math.max(0, Math.floor(Number(reward?.shields || 0))),
@@ -4264,7 +4271,41 @@ function grantSocialSupportReward(label="", reward={}, source="Social Rescue"){
   if(clean.tranq) bits.push(`+${clean.tranq} tranq`);
   if(bits.length){
     unlockAchv("social_share_ops","Social Rescue Ops");
+    if(!silent) toast(`${label || source}: ${bits.join(" • ")}`);
+    save(true);
+  }
+  return { ...clean, label:String(label || source), text:bits.join(" • ") };
+}
+function grantTelegramSocialReward(label="", reward={}, source="Telegram Social Loop"){
+  const clean = {
+    cash: Math.max(0, Math.floor(Number(reward?.cash || 0))),
+    perkPoints: Math.max(0, Math.floor(Number(reward?.perkPoints || 0))),
+    seasonPoints: Math.max(0, Math.floor(Number(reward?.seasonPoints || 0))),
+    medkits: Math.max(0, Math.floor(Number(reward?.medkits || 0))),
+    shields: Math.max(0, Math.floor(Number(reward?.shields || 0))),
+    traps: Math.max(0, Math.floor(Number(reward?.traps || 0))),
+    armor: Math.max(0, Math.floor(Number(reward?.armor || 0))),
+    tranq: Math.max(0, Math.floor(Number(reward?.tranq || 0))),
+  };
+  const bits = [];
+  if(clean.cash > 0){
+    S.funds = Math.max(0, Math.floor(Number(S.funds || 0))) + clean.cash;
+    bits.push(`+$${clean.cash.toLocaleString()}`);
+  }
+  if(clean.perkPoints > 0){
+    S.perkPoints = Math.max(0, Math.floor(Number(S.perkPoints || 0))) + clean.perkPoints;
+    bits.push(`+${clean.perkPoints} perk`);
+  }
+  if(clean.seasonPoints > 0){
+    grantSeasonPassPoints(clean.seasonPoints, source);
+    bits.push(`+${clean.seasonPoints} pass pts`);
+  }
+  const supplyReward = grantSocialSupportReward("", clean, source, true);
+  if(supplyReward?.text) bits.push(supplyReward.text);
+  if(bits.length){
+    unlockAchv("telegram_social_loop","Telegram Social Loop");
     toast(`${label || source}: ${bits.join(" • ")}`);
+    try{ requestGameplayCloudSync("telegram-social-reward", { force:true }); }catch(e){}
     save(true);
   }
   return { ...clean, label:String(label || source), text:bits.join(" • ") };
@@ -4289,6 +4330,13 @@ function grantSocialShareActionReward(kind="recap", challenge=null){
     return grantSocialSupportReward("Invite signal reward", { medkits:1, shields:1 }, "Invite Share");
   }
   return null;
+}
+function grantWeeklyShareReward(){
+  const social = ensureSocialRescueState(S);
+  const week = String(social.weekKey || contractWeekKey());
+  if(social.weeklyShareWeeks[week]) return null;
+  social.weeklyShareWeeks[week] = Date.now();
+  return grantTelegramSocialReward("Weekly board shared", { shields:1, tranq:2, seasonPoints:4 }, "Weekly Telegram Share");
 }
 function processIncomingSocialChallenge(){
   if(typeof window === "undefined" || !window.location) return null;
@@ -4364,17 +4412,123 @@ function recordSocialRescueMission({ missionStats=null, civTotal=0, civDead=0, a
   }else if(inviteReward){
     toast(`${inviteReward.label} reward claimed.`);
   }
+  try{ requestGameplayCloudSync("telegram-social-mission", { force:true }); }catch(e){}
   return challenge;
 }
 function socialClanGoalRows(){
   const totals = ensureOpsTotalsState(S);
   return [
-    { label:"Clan Civilians Saved", value:totals.evac, target:75 },
-    { label:"Clan Tigers Captured", value:totals.captures, target:60 },
-    { label:"Perfect Rescue Relay", value:showcaseMetricValue("perfectRescues", S), target:10 },
-    { label:"Boss/Nemesis Clears", value:showcaseMetricValue("bossesDefeated", S), target:8 },
-    ...liveCoopWorldEventSummaryRows(S),
+    { id:"clan_civilians_saved", label:"Clan Civilians Saved", value:totals.evac, target:75, reward:{ cash:3500, medkits:2, seasonPoints:8 } },
+    { id:"clan_tigers_captured", label:"Clan Tigers Captured", value:totals.captures, target:60, reward:{ cash:4200, tranq:4, seasonPoints:10 } },
+    { id:"perfect_rescue_relay", label:"Perfect Rescue Relay", value:showcaseMetricValue("perfectRescues", S), target:10, reward:{ cash:5200, shields:2, perkPoints:1, seasonPoints:12 } },
+    { id:"boss_nemesis_clears", label:"Boss/Nemesis Clears", value:showcaseMetricValue("bossesDefeated", S), target:8, reward:{ cash:6800, armor:8, perkPoints:1, seasonPoints:16 } },
+    ...liveCoopWorldEventSummaryRows(S).map((row, idx)=>({
+      id:`live_coop_${idx}`,
+      label:row.label,
+      value:row.value,
+      target:row.target,
+      reward:{ cash:2600 + idx * 450, traps:1, seasonPoints:6 + idx },
+    })),
   ];
+}
+function socialWeeklyTrophyDefs(){
+  return [
+    { id:"rescue_streak", name:"Rescue Streak Trophy", metric:"missions", target:5, reward:{ cash:2500, medkits:1, seasonPoints:8 } },
+    { id:"civilian_guardian", name:"Civilian Guardian Trophy", metric:"evac", target:30, reward:{ cash:4000, medkits:2, seasonPoints:12 } },
+    { id:"capture_league", name:"Capture League Trophy", metric:"captures", target:20, reward:{ cash:4500, tranq:4, seasonPoints:12 } },
+    { id:"perfect_rescue", name:"Perfect Rescue Trophy", metric:"perfectRescues", target:3, reward:{ cash:5200, shields:2, perkPoints:1, seasonPoints:16 } },
+    { id:"boss_bounty", name:"Boss Bounty Trophy", metric:"nemesisClears", target:1, reward:{ cash:6000, armor:6, perkPoints:1, seasonPoints:18 } },
+  ];
+}
+function socialRewardText(reward={}){
+  const bits = [];
+  if(reward.cash) bits.push(`$${Math.max(0, Math.floor(Number(reward.cash || 0))).toLocaleString()}`);
+  if(reward.perkPoints) bits.push(`+${Math.max(0, Math.floor(Number(reward.perkPoints || 0)))} perk`);
+  if(reward.seasonPoints) bits.push(`+${Math.max(0, Math.floor(Number(reward.seasonPoints || 0)))} pass`);
+  if(reward.medkits) bits.push(`+${Math.max(0, Math.floor(Number(reward.medkits || 0)))} med`);
+  if(reward.shields) bits.push(`+${Math.max(0, Math.floor(Number(reward.shields || 0)))} shield`);
+  if(reward.traps) bits.push(`+${Math.max(0, Math.floor(Number(reward.traps || 0)))} trap`);
+  if(reward.armor) bits.push(`+${Math.max(0, Math.floor(Number(reward.armor || 0)))} armor`);
+  if(reward.tranq) bits.push(`+${Math.max(0, Math.floor(Number(reward.tranq || 0)))} tranq`);
+  return bits.join(" • ") || "Social reward";
+}
+function socialWeeklyTrophyRows(state=S){
+  const social = ensureSocialRescueState(state);
+  return socialWeeklyTrophyDefs().map((def)=>{
+    const value = Math.max(0, Math.floor(Number(social.weekly?.[def.metric] || 0)));
+    const target = Math.max(1, Math.floor(Number(def.target || 1)));
+    const claimed = !!social.claimedWeeklyTrophies?.[def.id];
+    return {
+      ...def,
+      value,
+      target,
+      pct:clamp((value / target) * 100, 0, 100),
+      ready:value >= target,
+      claimed,
+      status:claimed ? "Claimed" : (value >= target ? "Ready" : `${Math.min(value, target)}/${target}`),
+      rewardText:socialRewardText(def.reward),
+    };
+  });
+}
+function claimSocialWeeklyTrophy(id=""){
+  const social = ensureSocialRescueState(S);
+  const key = String(id || "").trim();
+  const row = socialWeeklyTrophyRows(S).find((item)=>item.id === key);
+  if(!row) return toast("Weekly trophy not found.");
+  if(row.claimed) return toast(`${row.name} already claimed.`);
+  if(!row.ready) return toast(`${row.name}: ${Math.min(row.value, row.target)}/${row.target}.`);
+  social.claimedWeeklyTrophies[row.id] = Date.now();
+  grantTelegramSocialReward(row.name, row.reward, "Weekly Trophy");
+  renderSocialRescueCard();
+  try{ rerenderOpenInventory(); }catch(e){}
+  return row;
+}
+function claimAllSocialWeeklyTrophies(){
+  const ready = socialWeeklyTrophyRows(S).filter((row)=>row.ready && !row.claimed);
+  if(!ready.length) return toast("No weekly trophies ready yet.");
+  ready.forEach((row)=>{
+    const social = ensureSocialRescueState(S);
+    social.claimedWeeklyTrophies[row.id] = Date.now();
+    grantTelegramSocialReward(row.name, row.reward, "Weekly Trophy");
+  });
+  renderSocialRescueCard();
+  try{ rerenderOpenInventory(); }catch(e){}
+  return ready.length;
+}
+function claimSocialClanGoal(id=""){
+  const social = ensureSocialRescueState(S);
+  const key = String(id || "").trim();
+  const row = socialClanGoalRows().find((item)=>item.id === key);
+  if(!row) return toast("Clan goal not found.");
+  const value = Math.max(0, Math.floor(Number(row.value || 0)));
+  const target = Math.max(1, Math.floor(Number(row.target || 1)));
+  if(social.claimedClanGoals[row.id]) return toast(`${row.label} already claimed.`);
+  if(value < target) return toast(`${row.label}: ${Math.min(value, target)}/${target}.`);
+  social.claimedClanGoals[row.id] = Date.now();
+  grantTelegramSocialReward(row.label, row.reward, "Clan Goal");
+  renderSocialRescueCard();
+  try{ rerenderOpenInventory(); }catch(e){}
+  return row;
+}
+function claimAllSocialClanGoals(){
+  const social = ensureSocialRescueState(S);
+  const ready = socialClanGoalRows().filter((row)=>{
+    const value = Math.max(0, Math.floor(Number(row.value || 0)));
+    const target = Math.max(1, Math.floor(Number(row.target || 1)));
+    return value >= target && !social.claimedClanGoals[row.id];
+  });
+  if(!ready.length) return toast("No clan goals ready yet.");
+  ready.forEach((row)=>{
+    social.claimedClanGoals[row.id] = Date.now();
+    grantTelegramSocialReward(row.label, row.reward, "Clan Goal");
+  });
+  renderSocialRescueCard();
+  try{ rerenderOpenInventory(); }catch(e){}
+  return ready.length;
+}
+function rerenderOpenInventory(){
+  const inv = document.getElementById("inventoryOverlay");
+  if(inv && !inv.classList.contains("hidden")) renderInventory();
 }
 function renderSocialRescueCard(challenge=null){
   const root = document.getElementById("completeSocialRescueCard");
@@ -4401,11 +4555,14 @@ function renderSocialRescueCard(challenge=null){
     const challengeLine = data
       ? `<div class="rewardBreakdownRow"><div><b>Rescue Challenge</b><br><span>${rewardEscapeHtml(data.missionLabel || "Mission")} • ${data.evac}/${Math.max(1, data.civTotal || 1)} saved • ${data.captures} captures</span></div><div class="rewardBreakdownValue">${Math.max(0, Number(data.score || 0)).toLocaleString()}</div></div>`
       : "";
-    const weeklyLine = `<div class="rewardBreakdownRow"><div><b>Weekly Rescue Totals</b><br><span>${social.weekly.evac} saved • ${social.weekly.captures} captures • ${social.weekly.perfectRescues} perfect • ${social.weekly.nemesisClears} boss clears</span></div><div class="rewardBreakdownValue">${social.weekly.missions} runs</div></div>`;
+    const readyTrophies = socialWeeklyTrophyRows().filter((row)=>row.ready && !row.claimed).length;
+    const weeklyLine = `<div class="rewardBreakdownRow"><div><b>Weekly Rescue Totals</b><br><span>${social.weekly.evac} saved • ${social.weekly.captures} captures • ${social.weekly.perfectRescues} perfect • ${social.weekly.nemesisClears} boss clears</span></div><div class="rewardBreakdownValue">${readyTrophies ? `${readyTrophies} READY` : `${social.weekly.missions} runs`}</div></div>`;
     const clanLine = socialClanGoalRows().map((row)=>{
       const value = Math.max(0, Math.floor(Number(row.value || 0)));
       const target = Math.max(1, Math.floor(Number(row.target || 1)));
-      return `<div class="rewardBreakdownRow"><div><b>${rewardEscapeHtml(row.label)}</b><br><span>Clan goal progress ${Math.min(value, target)}/${target}</span></div><div class="rewardBreakdownValue">${Math.min(100, Math.floor((value / target) * 100))}%</div></div>`;
+      const claimed = !!social.claimedClanGoals?.[row.id];
+      const ready = value >= target && !claimed;
+      return `<div class="rewardBreakdownRow"><div><b>${rewardEscapeHtml(row.label)}</b><br><span>Clan goal progress ${Math.min(value, target)}/${target} • Reward ${rewardEscapeHtml(socialRewardText(row.reward))}</span></div><div class="rewardBreakdownValue">${claimed ? "CLAIMED" : (ready ? "READY" : `${Math.min(100, Math.floor((value / target) * 100))}%`)}</div></div>`;
     }).join("");
     rowsEl.innerHTML = shareLine + incoming + challengeLine + weeklyLine + clanLine;
   }
@@ -4606,6 +4763,19 @@ function renderSocialRescueOpsSectionHtml(state=S, anchorId="invSocialRescueAnch
   const social = ensureSocialRescueState(state);
   const rank = socialRescueWeeklyRank(state);
   const challenge = social.lastChallenge || null;
+  const trophyRows = socialWeeklyTrophyRows(state).map((row)=>{
+    return `
+      <div class="item" style="padding:10px 12px;">
+        <div>
+          <div class="itemName">${baseHqEsc(row.name)} <span class="tag">${baseHqEsc(row.status)}</span></div>
+          <div class="itemDesc">Progress ${Math.min(row.value, row.target)}/${row.target} • Reward: ${baseHqEsc(row.rewardText)}</div>
+          <div class="bar"><div class="fill green" style="width:${row.pct}%"></div></div>
+        </div>
+        <div style="text-align:right">
+          <button ${row.ready && !row.claimed ? "" : "disabled"} onclick="claimSocialWeeklyTrophy('${baseHqEsc(row.id)}')">${row.claimed ? "Claimed" : "Claim"}</button>
+        </div>
+      </div>`;
+  }).join("");
   const weeklyRows = socialRescueWeeklyGoalRows(state).map((row)=>{
     const value = Math.max(0, Math.floor(Number(row.value || 0)));
     const target = Math.max(1, Math.floor(Number(row.target || 1)));
@@ -4624,12 +4794,17 @@ function renderSocialRescueOpsSectionHtml(state=S, anchorId="invSocialRescueAnch
     const value = Math.max(0, Math.floor(Number(row.value || 0)));
     const target = Math.max(1, Math.floor(Number(row.target || 1)));
     const pct = clamp((value / target) * 100, 0, 100);
+    const claimed = !!social.claimedClanGoals?.[row.id];
+    const ready = value >= target && !claimed;
     return `
       <div class="item" style="padding:10px 12px;">
         <div>
-          <div class="itemName">${baseHqEsc(row.label)} <span class="tag">${Math.min(value, target)}/${target}</span></div>
-          <div class="itemDesc">Clan/social progress updates from your real rescue, capture, boss, and live-event actions.</div>
+          <div class="itemName">${baseHqEsc(row.label)} <span class="tag">${claimed ? "Claimed" : (ready ? "Ready" : `${Math.min(value, target)}/${target}`)}</span></div>
+          <div class="itemDesc">Clan/social progress from real rescue, capture, boss, and live-event actions. Reward: ${baseHqEsc(socialRewardText(row.reward))}</div>
           <div class="bar"><div class="fill orange" style="width:${pct}%"></div></div>
+        </div>
+        <div style="text-align:right">
+          <button ${ready ? "" : "disabled"} onclick="claimSocialClanGoal('${baseHqEsc(row.id)}')">${claimed ? "Claimed" : "Claim"}</button>
         </div>
       </div>`;
   }).join("");
@@ -4655,12 +4830,16 @@ function renderSocialRescueOpsSectionHtml(state=S, anchorId="invSocialRescueAnch
       <div style="text-align:right;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
         <button onclick="shareRescueChallenge()">Challenge Friend</button>
         <button class="ghost" onclick="shareWeeklyRescueLeaderboard()">Share Weekly</button>
+        <button class="ghost" onclick="claimAllSocialWeeklyTrophies()">Claim Trophies</button>
         <button class="ghost" onclick="shareReferralLinkFromGame()">Invite Friends</button>
       </div>
     </div>
+    <div class="hudTitle">Weekly Telegram Trophies</div>
+    ${trophyRows}
     <div class="hudTitle">Weekly Leaderboard Goals</div>
     ${weeklyRows}
     <div class="hudTitle">Clan Rescue Goals</div>
+    <div style="margin:4px 0 8px;text-align:right"><button class="ghost" onclick="claimAllSocialClanGoals()">Claim Ready Clan Goals</button></div>
     ${clanRows}
     <div class="hudTitle">Invite Rewards</div>
     ${inviteRows}
@@ -4681,10 +4860,16 @@ async function shareWeeklyRescueLeaderboard(){
   const url = `${missionShareBaseUrl()}?weekly=rescue&score=${encodeURIComponent(String(social.weekly.bestScore || 0))}&week=${encodeURIComponent(String(social.weekKey || ""))}`;
   const shareLink = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
   if(openShareUrl(shareLink)){
+    grantWeeklyShareReward();
+    renderSocialRescueCard();
     toast("Weekly rescue board opened for sharing.");
     return;
   }
   const copied = await shareFallbackText(`${text}\n${url}`);
+  if(copied){
+    grantWeeklyShareReward();
+    renderSocialRescueCard();
+  }
   toast(copied ? "Weekly rescue board copied." : "Could not share weekly board.");
 }
 
@@ -54173,6 +54358,10 @@ window.inventoryTab = inventoryTab;
 window.copyPlayerProfileShareText = copyPlayerProfileShareText;
 window.sharePublicTrophyShowcase = sharePublicTrophyShowcase;
 window.shareWeeklyRescueLeaderboard = shareWeeklyRescueLeaderboard;
+window.claimSocialWeeklyTrophy = claimSocialWeeklyTrophy;
+window.claimAllSocialWeeklyTrophies = claimAllSocialWeeklyTrophies;
+window.claimSocialClanGoal = claimSocialClanGoal;
+window.claimAllSocialClanGoals = claimAllSocialClanGoals;
 window.claimSettlementPassive = claimSettlementPassive;
 window.claimSettlementJob = claimSettlementJob;
 window.equipWorldCosmetic = equipWorldCosmetic;
