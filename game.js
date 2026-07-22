@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4513";
+const TS_BUILD = "4514";
 if(tg){
   try{
     tg.expand?.();
@@ -16541,8 +16541,8 @@ const STREAM_ACTIVE_RADIUS = 1;
 const STREAM_EXPAND_MAX_SECTORS = 58;
 const STREAM_EXPAND_STEP = 0.031;
 const STREAM_MIN_AMBIENT_EDGE = 46;
-const MAP_EXPANSION_VERSION = 4;
-const MAP_EXPANSION_MAX_SCALE = 5.85;
+const MAP_EXPANSION_VERSION = 5;
+const MAP_EXPANSION_MAX_SCALE = 6.10;
 
 function defaultSectorStreamingState(){
   return {
@@ -16675,6 +16675,7 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
   for(const tiger of (src.tigers || []).slice(0, 10)) pushPoint(tiger?.x, tiger?.y);
   for(const site of (src.rescueSites || []).slice(0, 6)) pushPoint(site?.x, site?.y);
   for(const it of (src.mapInteractables || []).slice(0, 8)) pushPoint(it?.x, it?.y);
+  for(const anchor of mapExpansionRouteAnchors(src)) pushPoint(anchor.x, anchor.y);
 
   // Preload travel corridors between the player and important objectives so
   // larger Map Expansion 3.0 boards do not reveal in dark chunks mid-route.
@@ -16683,6 +16684,7 @@ function preloadMissionBoardSectors(state=S, now=Date.now(), opts={}){
   if(src?.targetTiger) routeTargets.push(src.targetTiger);
   for(const civ of (src.civilians || []).filter((c)=>c && !c.dead && !c.evac).slice(0, 4)) routeTargets.push(civ);
   for(const tiger of (src.tigers || []).filter((t)=>t && t.alive).slice(0, 4)) routeTargets.push(tiger);
+  for(const anchor of mapExpansionRouteAnchors(src).filter((a)=>a.priority >= 1.8)) routeTargets.push(anchor);
   const anchorX = Number(src?.me?.x);
   const anchorY = Number(src?.me?.y);
   if(Number.isFinite(anchorX) && Number.isFinite(anchorY)){
@@ -22943,6 +22945,118 @@ function mapExpansionSectorLabel(profile){
   };
   return labels[profile?.kind] || "ROUTE";
 }
+
+function mapExpansionRouteAnchors(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const w = worldWidth(src);
+  const h = worldHeight(src);
+  const family = mapFamilyKey(currentMap()?.key || "");
+  const mission = missionProgressForWorld(src);
+  const wobble = (salt, amt=0.028)=>Math.sin((mission * 1.73) + salt) * amt;
+  const labels = {
+    ST_FOREST:{ settlement:"Ranger Settlement", bridge:"Creek Bridge", cave:"Cave Trail", den:"Old Den", evac:"River Dock" },
+    ST_SUBURBS:{ settlement:"Safe Block", bridge:"Canal Bridge", cave:"Utility Tunnel", den:"Backlot Den", evac:"Convoy Pickup" },
+    ST_DOWNTOWN:{ settlement:"Shelter Plaza", bridge:"Sky Bridge", cave:"Metro Tunnel", den:"Parking Den", evac:"Helipad" },
+    ST_INDUSTRIAL:{ settlement:"Worker Camp", bridge:"Service Bridge", cave:"Rail Tunnel", den:"Foundry Den", evac:"Dock Exit" }
+  }[family] || { settlement:"Safe Settlement", bridge:"Bridge Link", cave:"Cave Pass", den:"Tiger Den", evac:"Evac Route" };
+  const pt = (id, label, type, nx, ny, priority=1)=>({
+    id,
+    label,
+    type,
+    x:clamp(Math.round(w * clamp(nx, 0.04, 0.96)), 70, w - 70),
+    y:clamp(Math.round(h * clamp(ny, 0.06, 0.94)), 90, h - 80),
+    priority
+  });
+  return [
+    pt("command", "Command Start", "road", 0.13 + wobble(1), 0.16 + wobble(2, 0.018), 1.2),
+    pt("main-road", "Main Road", "road", 0.32 + wobble(3), 0.26 + wobble(4, 0.018), 1.1),
+    pt("bridge", labels.bridge, "bridge", 0.52 + wobble(5, 0.022), 0.38 + wobble(6, 0.020), 1.8),
+    pt("settlement", labels.settlement, "settlement", 0.77 + wobble(7), 0.31 + wobble(8, 0.018), 2.1),
+    pt("trail-cut", "Foot Shortcut", "trail", 0.36 + wobble(9), 0.56 + wobble(10, 0.020), 1.5),
+    pt("cave", labels.cave, "cave", 0.18 + wobble(11, 0.022), 0.74 + wobble(12, 0.018), 1.9),
+    pt("den", labels.den, "den", 0.58 + wobble(13, 0.024), 0.79 + wobble(14, 0.020), 2.4),
+    pt("evac", labels.evac, "evac", 0.84 + wobble(15, 0.020), 0.66 + wobble(16, 0.020), 2.2)
+  ];
+}
+
+function drawMapExpansionRouteNetwork(opts={}){
+  if(window.__TUTORIAL_MODE__ || !ctx) return;
+  const state = opts.state || S;
+  const mobileFast = !!opts.mobileFast;
+  const anchors = mapExpansionRouteAnchors(state);
+  const byId = Object.fromEntries(anchors.map((a)=>[a.id, a]));
+  const segments = [
+    ["command", "main-road", "road"],
+    ["main-road", "bridge", "road"],
+    ["bridge", "settlement", "road"],
+    ["settlement", "evac", "road"],
+    ["main-road", "trail-cut", "trail"],
+    ["trail-cut", "cave", "trail"],
+    ["cave", "den", "trail"],
+    ["bridge", "den", "den"],
+    ["den", "evac", "route"]
+  ];
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for(const [fromId, toId, kind] of segments){
+    const a = byId[fromId];
+    const b = byId[toId];
+    if(!a || !b) continue;
+    if(kind === "road"){
+      ctx.globalAlpha = mobileFast ? 0.12 : 0.18;
+      ctx.strokeStyle = "rgba(17,24,39,.92)";
+      ctx.lineWidth = mobileFast ? 18 : 28;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.globalAlpha = mobileFast ? 0.18 : 0.28;
+      ctx.strokeStyle = "rgba(245,221,158,.70)";
+      ctx.lineWidth = mobileFast ? 2 : 3;
+      ctx.setLineDash([18, 16]);
+    } else {
+      ctx.globalAlpha = kind === "den" ? (mobileFast ? 0.12 : 0.24) : (mobileFast ? 0.14 : 0.28);
+      ctx.strokeStyle = kind === "den" ? "rgba(251,146,60,.82)" : "rgba(134,239,172,.82)";
+      ctx.lineWidth = kind === "den" ? (mobileFast ? 3 : 4) : (mobileFast ? 2.5 : 3.5);
+      ctx.setLineDash(kind === "route" ? [14, 12] : [8, 10]);
+    }
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    const mx = (a.x + b.x) * 0.5;
+    const my = (a.y + b.y) * 0.5;
+    const curve = kind === "road" ? 0 : (kind === "den" ? -36 : 28);
+    ctx.quadraticCurveTo(mx, my + curve, b.x, b.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  if(!mobileFast){
+    for(const anchor of anchors.filter((a)=>["settlement", "bridge", "cave", "den", "evac"].includes(a.type))){
+      const fill = anchor.type === "den" ? "rgba(251,146,60,.16)" : (anchor.type === "evac" ? "rgba(74,222,128,.16)" : "rgba(147,197,253,.14)");
+      const stroke = anchor.type === "den" ? "rgba(251,146,60,.65)" : (anchor.type === "evac" ? "rgba(74,222,128,.68)" : "rgba(147,197,253,.58)");
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(anchor.x, anchor.y, 24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      const label = anchor.label.toUpperCase();
+      ctx.font = "900 9px system-ui";
+      const tw = ctx.measureText(label).width + 14;
+      ctx.fillStyle = "rgba(5,12,20,.78)";
+      roundedRectFill(anchor.x - (tw * 0.5), anchor.y + 28, tw, 18, 8);
+      ctx.fillStyle = "rgba(226,232,240,.92)";
+      ctx.textAlign = "center";
+      ctx.fillText(label, anchor.x, anchor.y + 41);
+      ctx.textAlign = "start";
+    }
+  }
+  ctx.restore();
+}
+
 function drawMapExpansionSectorDetails(opts={}){
   if(window.__TUTORIAL_MODE__ || !ctx) return;
   const state = opts.state || S;
@@ -23174,12 +23288,18 @@ function mapExpansionObjectiveRouteTargets(state=S){
   const tiger = currentTargetTiger();
   if(tiger) push(tiger.x, tiger.y, "TIGER", "#f59e0b", 3, "tiger");
   if(src.mode !== "Survival" && src.evacZone && !escortCiv) push(src.evacZone.x, src.evacZone.y, "EVAC", "#4ade80", 2, "evac");
-  const activeSite = (src.rescueSites || []).find((site)=>site && site.type && site.x && site.y);
+  const activeSite = (src.rescueSites || []).find((site)=>site && (site.kind || site.type) && site.x && site.y);
   if(activeSite) push(activeSite.x, activeSite.y, "SITE", "#93c5fd", 1.8, "site");
-  const routeItem = (src.mapInteractables || []).find((it)=>it && !it.spent && ["vehicle", "bridge", "gate", "generator", "tower"].includes(String(it.type || "")));
+  const routeItem = (src.mapInteractables || []).find((it)=>it && !it.spent && ["vehicle", "bridge", "gate", "generator", "tower"].includes(String(it.kind || it.type || "")));
   if(routeItem) push(routeItem.x, routeItem.y, "ROUTE", "#22d3ee", 1.6, "route");
   const den = src.tigerDenRaid?.den || src.tigerDenRaid?.site || null;
   if(src.tigerDenRaid?.active && den) push(den.x, den.y, "DEN", "#f97316", 3.2, "den");
+  for(const anchor of mapExpansionRouteAnchors(src)){
+    if(anchor.type === "settlement") push(anchor.x, anchor.y, "SETTLE", "#86efac", 1.35, "settlement");
+    if(anchor.type === "bridge") push(anchor.x, anchor.y, "BRIDGE", "#93c5fd", 1.25, "bridge");
+    if(anchor.type === "cave") push(anchor.x, anchor.y, "CAVE", "#c4b5fd", 1.20, "cave");
+    if(anchor.type === "den") push(anchor.x, anchor.y, "DEN", "#fb923c", 1.55, "den-route");
+  }
   return targets
     .filter((t, idx, arr)=>arr.findIndex((o)=>Math.abs(o.x - t.x) < 18 && Math.abs(o.y - t.y) < 18 && o.label === t.label) === idx)
     .sort((a, b)=>(Number(b.priority || 0) - Number(a.priority || 0)));
@@ -23190,6 +23310,7 @@ function drawMapExpansionObjectiveRoutes(opts={}){
   const me = state?.me || {};
   if(!Number.isFinite(Number(me.x)) || !Number.isFinite(Number(me.y))) return;
   const mobileFast = !!opts.mobileFast;
+  drawMapExpansionRouteNetwork({ state, mobileFast });
   const targets = mapExpansionObjectiveRouteTargets(state);
   if(!targets.length) return;
   ctx.save();
@@ -36260,12 +36381,22 @@ function rescueSitePool(){
     ],
   };
   const pool = pools[currentMapKey()] || pools.ST_FOREST;
-  return pool.map((site, idx) => ({
+  const anchorSites = mapExpansionRouteAnchors(S)
+    .filter((anchor)=>["settlement", "cave", "bridge", "evac"].includes(anchor.type))
+    .map((anchor)=>({
+      kind:anchor.type === "settlement" ? "house" : (anchor.type === "bridge" ? "trail" : anchor.type),
+      label:anchor.label,
+      x:anchor.x,
+      y:anchor.y,
+      r:anchor.type === "settlement" ? 54 : 46,
+      world:true
+    }));
+  return [...pool, ...anchorSites].map((site, idx) => ({
     id: idx + 1,
     kind: site.kind,
     label: site.label,
-    x: clamp(Math.round(toWorldX(site.x)), 70, worldW - 70),
-    y: clamp(Math.round(toWorldY(site.y)), 90, worldH - 80),
+    x: clamp(Math.round(site.world ? site.x : toWorldX(site.x)), 70, worldW - 70),
+    y: clamp(Math.round(site.world ? site.y : toWorldY(site.y)), 90, worldH - 80),
     r: site.r
   }));
 }
@@ -36292,10 +36423,28 @@ function spawnRescueSites(){
       ? clamp(4 + Math.floor((S.arcadeLevel - 1) / 2), 4, 6)
       : 5;
 
-  S.rescueSites = basePool
+  const anchors = mapExpansionRouteAnchors(S);
+  const anchorLabels = new Set(anchors.map((a)=>a.label));
+  const preferred = basePool.filter((site)=>anchorLabels.has(site.label));
+  const selected = [];
+  const addSite = (site)=>{
+    if(!site) return;
+    if(selected.some((picked)=>Math.abs(picked.x - site.x) < 36 && Math.abs(picked.y - site.y) < 36)) return;
+    selected.push(site);
+  };
+  preferred
+    .slice()
+    .sort((a, b)=>dist(a.x, a.y, worldWidth(S) * 0.5, worldHeight(S) * 0.5) - dist(b.x, b.y, worldWidth(S) * 0.5, worldHeight(S) * 0.5))
+    .slice(0, Math.min(3, wanted))
+    .forEach(addSite);
+  basePool
     .slice()
     .sort(() => Math.random() - 0.5)
-    .slice(0, Math.min(wanted, basePool.length))
+    .forEach((site)=>{
+      if(selected.length < Math.min(wanted, basePool.length)) addSite(site);
+    });
+
+  S.rescueSites = selected
     .sort((a, b) => a.y - b.y || a.x - b.x)
     .map((site)=>{
       let pt = safeSpawnPoint(site.x, site.y, Math.round((site.r || 44) * 0.42), true, true);
@@ -36695,12 +36844,21 @@ function mapInteractablePool(){
     { kind:"cache", label:"Supply Cache", x:w*0.34, y:h*0.70 }
   ];
   const core = (pools[key] || fallback);
+  const anchors = mapExpansionRouteAnchors(S);
+  const anchorById = Object.fromEntries(anchors.map((a)=>[a.id, a]));
+  const bridge = anchorById.bridge || { x:w*0.47, y:h*0.34, label:"Route Bridge" };
+  const settlement = anchorById.settlement || { x:w*0.77, y:h*0.31, label:"Safe Settlement" };
+  const cave = anchorById.cave || { x:w*0.18, y:h*0.74, label:"Cave Pass" };
+  const den = anchorById.den || { x:w*0.58, y:h*0.79, label:"Tiger Den" };
+  const evac = anchorById.evac || { x:w*0.84, y:h*0.66, label:"Evac Route" };
   const interactiveRoutes = [
-    { kind:"bridge", label:"Route Bridge", x:w*0.47, y:h*0.34 },
-    { kind:"vehicle", label:"Rescue Vehicle", x:w*0.74, y:h*0.68 },
-    { kind:"generator", label:"Field Generator", x:w*0.72, y:h*0.27 },
-    { kind:"gate", label:"Route Gate", x:w*0.47, y:h*0.72 },
-    { kind:"route_trap", label:"Route Trap", x:w*0.77, y:h*0.48 },
+    { kind:"bridge", label:bridge.label || "Route Bridge", x:bridge.x, y:bridge.y },
+    { kind:"vehicle", label:"Rescue Vehicle", x:evac.x, y:evac.y },
+    { kind:"generator", label:"Settlement Generator", x:settlement.x, y:settlement.y },
+    { kind:"gate", label:"Cave Gate", x:cave.x, y:cave.y },
+    { kind:"route_trap", label:"Den Route Trap", x:den.x, y:den.y },
+    { kind:"cache", label:"Route Supply Cache", x:w*0.36, y:h*0.56 },
+    { kind:"barricade", label:"Road Barricade", x:w*0.62, y:h*0.43 },
   ];
   return [...core, ...interactiveRoutes].map((it)=>({
     kind: it.kind,
