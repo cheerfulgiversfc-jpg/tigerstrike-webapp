@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4514";
+const TS_BUILD = "4515";
 if(tg){
   try{
     tg.expand?.();
@@ -18520,6 +18520,11 @@ function sfx(name){
     beep(128,96,"triangle",0.032);
     setTimeout(()=>beep(164,74,"triangle",0.026),112);
   }
+  if(name==="shield"){
+    if(!sfxGate("shield", 120)) return;
+    beep(360,42,"sine",0.03);
+    setTimeout(()=>beep(520,48,"triangle",0.025),34);
+  }
   if(name==="stagger"){
     if(!sfxGate("stagger", 120)) return;
     beep(260,54,"triangle",0.038);
@@ -18534,6 +18539,17 @@ function sfx(name){
     if(!sfxGate("captureStruggle", 260)) return;
     beep(310,62,"triangle",0.036);
     setTimeout(()=>beep(430,72,"triangle",0.03),58);
+  }
+  if(name==="tigerImpact"){
+    if(!sfxGate("tigerImpact", 82)) return;
+    beep(190,44,"triangle",0.034);
+    setTimeout(()=>beep(310,42,"sine",0.023),34);
+  }
+  if(name==="bossImpact"){
+    if(!sfxGate("bossImpact", 520)) return;
+    beep(128,72,"triangle",0.034);
+    setTimeout(()=>beep(208,88,"triangle",0.032),76);
+    setTimeout(()=>beep(312,62,"sine",0.022),164);
   }
   if(name==="win"){
     if(!sfxGate("win", 180)) return;
@@ -40025,6 +40041,8 @@ function applyTigerDamage(tiger, dmg, opts={}){
         setEventText(`💥 ${bossIdentityProfile(tiger)?.name || "Boss"} armor destroyed. Enrage triggered!`, 4);
         if(S.inBattle && S.activeTigerId === tiger.id) setBattleMsg(`Armor broken. ${bossCaptureStrategyLabel(tiger)}.`);
         queueImpactPulse(tiger.x, tiger.y - 8, "crit");
+        triggerPhase18TigerMoment(tiger, "boss", "Armor Broken");
+        sfx("bossImpact");
         hapticImpact("heavy");
       }
     }
@@ -40039,11 +40057,12 @@ function applyTigerDamage(tiger, dmg, opts={}){
     tiger.hitReactUntil = Math.max(Number(tiger.hitReactUntil || 0), now + 180);
     const dealt = Math.max(0, before - after);
     const hpPct = clamp(after / hpMax, 0, 1);
+    triggerTigerHitFeel(tiger, dealt, opts);
     const heavyHit = dealt >= Math.max(18, hpMax * (isBossTiger(tiger) ? 0.12 : 0.16));
     if(after > 0 && heavyHit){
       const staggerMs = isBossTiger(tiger) ? 260 : (tiger.type === "Alpha" ? 340 : 460);
       tiger.holdUntil = Math.max(Number(tiger.holdUntil || 0), now + staggerMs);
-      triggerCombatInteraction("tiger_stagger", { tiger, ms:staggerMs, label:"STAGGER" });
+      triggerCombatInteraction("tiger_stagger", { tiger, ms:staggerMs, label:"STAGGER", sourceX:opts.sourceX, sourceY:opts.sourceY });
     }
     if(after > 0 && hpPct <= 0.36){
       markTigerBehaviorAnim(tiger, "limp", 900);
@@ -40466,7 +40485,7 @@ function rivalHuntersTick(){
       if(canCapture && Math.random() < clamp(Number(faction.captureBias || 0.26), 0.12, 0.62)){
         rivalResolveTigerOutcome(tiger, "capture", unit);
       } else {
-        const tigerHit = applyTigerDamage(tiger, shot);
+        const tigerHit = applyTigerDamage(tiger, shot, { sourceX:unit.x, sourceY:unit.y });
         tiger.aggroBoost = clamp((tiger.aggroBoost || 0) + 0.05, 0, 1.5);
         emitCombatFx(unit.x, unit.y - 5, tiger.x, tiger.y, faction.accent || "rgba(248,113,113,.95)", 2.8, "hit");
         emitDamagePopup(tiger.x, tiger.y - 40, `-${tigerHit.dealt}`, "hit");
@@ -40946,7 +40965,7 @@ function supportUnitsTick(){
           const captureFirst = captureReady && !forceKill;
           if(captureFirst){
             tiger.tranqTagged = true;
-            applyTigerDamage(tiger, Math.max(1, Math.round(shotDmg * 0.35)), { floorOne:true });
+            applyTigerDamage(tiger, Math.max(1, Math.round(shotDmg * 0.35)), { floorOne:true, tranq:true, sourceX:unit.x, sourceY:unit.y });
             const burstBonus = (squadAbilityActive("tranq_burst", now, S) || now < Number(tiger._squadTranqBurstUntil || 0)) ? 0.12 : 0;
             const capChance = clamp(0.62 + storyAttackerCaptureBonus() + burstBonus + Number(unitTrait.captureBonus || 0) + Number(unitEquipment.captureBonus || 0), 0.42, 0.98);
             if(Math.random() < capChance){
@@ -40979,7 +40998,7 @@ function supportUnitsTick(){
               break;
             }
           } else {
-            applyTigerDamage(tiger, shotDmg);
+            applyTigerDamage(tiger, shotDmg, { sourceX:unit.x, sourceY:unit.y });
           }
           tiger.aggroBoost = clamp((tiger.aggroBoost||0) + 0.05, 0, 1.4);
           if(tiger.hp <= 0){
@@ -43126,6 +43145,7 @@ function applyPlayerDamage(dmg, showToast=false){
   if(shieldActiveNow()){
     if((S._shieldBlockToastAt || 0) + 700 < now){
       S._shieldBlockToastAt = now;
+      triggerCombatInteraction("block", { target:S.me, x:S.me.x, y:S.me.y - 8, label:"BLOCK" });
       if(showToast) toast("🛡️ Shield blocked the hit.");
     }
     return;
@@ -44799,7 +44819,7 @@ function playerAction(action){
       t.hitFlashUntil = Date.now() + 190;
       t.hitFlashKind = crit ? "crit" : (w.type === "tranq" ? "tranq" : "hit");
       t.lastHitDamage = dmg;
-      const tigerHit = applyTigerDamage(t, dmg, { floorOne:w.type==="tranq" });
+      const tigerHit = applyTigerDamage(t, dmg, { floorOne:w.type==="tranq", tranq:w.type==="tranq", crit, sourceX:S.me.x, sourceY:S.me.y });
       const trailBaseColor = w.type==="tranq"
         ? (forgeTrail?.tranqColor || "rgba(96,165,250,.96)")
         : (forgeTrail?.color || "rgba(245,247,255,.96)");
@@ -51340,6 +51360,45 @@ function applyCombatKnockback(ent, fromX, fromY, distancePx=18, radius=16){
   return !!moved;
 }
 
+function tigerCombatFeelTier(t, dealt, opts={}){
+  const hpMax = Math.max(1, Number(t?.hpMax || 1));
+  const damageRatio = clamp(Number(dealt || 0) / hpMax, 0, 1);
+  if(isBossTiger(t) && (opts.crit || damageRatio >= 0.10)) return "boss";
+  if(opts.crit || damageRatio >= (isBossTiger(t) ? 0.08 : 0.14)) return "heavy";
+  if(opts.tranq) return "tranq";
+  return "hit";
+}
+
+function triggerTigerHitFeel(t, dealt, opts={}){
+  if(!t || !t.alive || Number(dealt || 0) <= 0) return;
+  const now = Date.now();
+  const tier = tigerCombatFeelTier(t, dealt, opts);
+  const tranq = !!opts.tranq;
+  const crit = !!opts.crit || tier === "heavy" || tier === "boss";
+  t.hitFlashUntil = Math.max(Number(t.hitFlashUntil || 0), now + (crit ? 260 : 190));
+  t.hitFlashKind = crit ? "crit" : (tranq ? "tranq" : "hit");
+  t.lastHitDamage = Math.max(Number(t.lastHitDamage || 0), Number(dealt || 0));
+  markTigerBehaviorAnim(t, tranq ? "tranq_hit" : (crit ? "stagger" : "hit"), crit ? 360 : 240);
+  if(now - Number(t._combatFeelKnockbackAt || 0) > 130){
+    t._combatFeelKnockbackAt = now;
+    const fromX = Number(opts.sourceX ?? S.me?.x ?? t.x);
+    const fromY = Number(opts.sourceY ?? S.me?.y ?? t.y);
+    applyCombatKnockback(t, fromX, fromY, tier === "boss" ? 10 : (tier === "heavy" ? 14 : 7), isBossTiger(t) ? 22 : 18);
+  }
+  if(tier === "boss"){
+    queueImpactPulse(t.x, t.y - 8, "crit");
+    sfx("bossImpact");
+    adaptiveAudioStinger("boss");
+  }else if(tier === "heavy"){
+    queueImpactPulse(t.x, t.y - 8, "crit");
+    sfx("tigerImpact");
+  }
+  if(tigerInCaptureHpWindow(t) && now - Number(t._captureReadyFeelAt || 0) > 1450){
+    t._captureReadyFeelAt = now;
+    triggerCombatInteraction("capture_ready", { tiger:t, label:"CAPTURE READY" });
+  }
+}
+
 function triggerCombatInteraction(kind, opts={}){
   const now = Date.now();
   const t = opts.tiger || null;
@@ -51350,11 +51409,15 @@ function triggerCombatInteraction(kind, opts={}){
   if(kind === "block"){
     queueImpactPulse(x, y, "shield");
     emitDamagePopup(x, y - 42, label || "BLOCK", "shield");
+    sfx("shield");
+    hapticImpact("light");
     return;
   }
   if(kind === "dodge"){
     queueImpactPulse(x, y, "dodge");
     emitDamagePopup(x, y - 42, label || "DODGE", "dodge");
+    sfx("ui");
+    hapticImpact("light");
     return;
   }
   if(kind === "player_hit"){
@@ -51365,6 +51428,8 @@ function triggerCombatInteraction(kind, opts={}){
     queueImpactPulse(x, y, "player");
     queueCameraShake(Number(opts.shakePower || opts.power || 0.7), Number(opts.shakeMs || 150));
     sfx(opts.heavy ? "danger" : "heavyHit");
+    adaptiveAudioStinger(opts.heavy ? "danger" : "peak");
+    hapticImpact(opts.heavy ? "heavy" : "medium");
     return;
   }
   if(kind === "support_hit"){
@@ -51376,13 +51441,20 @@ function triggerCombatInteraction(kind, opts={}){
     return;
   }
   if(kind === "tiger_stagger" && t){
+    const loud = now - Number(t._staggerFeedbackAt || 0) > 210;
+    t._staggerFeedbackAt = now;
     t.staggerUntil = Math.max(Number(t.staggerUntil || 0), now + Number(opts.ms || 520));
     markTigerBehaviorAnim(t, "stagger", Number(opts.ms || 520));
     setTigerIntent(t, label || "STAGGER", 620);
-    queueImpactPulse(t.x, t.y - 8, "crit");
-    emitDamagePopup(t.x, t.y - 48, label || "STAGGER", "crit");
-    queueCameraShake(Number(opts.shakePower || 0.58), Number(opts.shakeMs || 120));
-    sfx("stagger");
+    applyCombatKnockback(t, Number(opts.sourceX ?? S.me?.x ?? t.x), Number(opts.sourceY ?? S.me?.y ?? t.y), Number(opts.knockback || (isBossTiger(t) ? 8 : 16)), isBossTiger(t) ? 22 : 18);
+    if(loud){
+      queueImpactPulse(t.x, t.y - 8, "crit");
+      emitDamagePopup(t.x, t.y - 48, label || "STAGGER", "crit");
+      queueCameraShake(Number(opts.shakePower || 0.58), Number(opts.shakeMs || 120));
+      sfx(isBossTiger(t) ? "bossImpact" : "stagger");
+      adaptiveAudioStinger(isBossTiger(t) ? "boss" : "peak");
+      hapticImpact(isBossTiger(t) ? "heavy" : "medium");
+    }
     return;
   }
   if(kind === "capture_ready" && t){
@@ -51393,6 +51465,8 @@ function triggerCombatInteraction(kind, opts={}){
     S._combatDangerUntil = Math.max(Number(S._combatDangerUntil || 0), now + 620);
     S._combatDangerText = "CAPTURE READY";
     sfx("captureReady");
+    adaptiveAudioStinger("peak");
+    hapticImpact("light");
     return;
   }
   if(kind === "finish" && t){
