@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4512";
+const TS_BUILD = "4513";
 if(tg){
   try{
     tg.expand?.();
@@ -30049,11 +30049,12 @@ function baseHqCameraOffset(){
   const quickOpen = __baseHqActive && !__baseHqQuickMenuCollapsed && !hudOpen;
   const roomX = Number(room.x || __baseHqPlayer.x || 0);
   const roomY = Number(room.y || __baseHqPlayer.y || 0);
-  let focusX = movingToRoom || hudOpen ? ((Number(__baseHqPlayer.x || 0) * 0.38) + (roomX * 0.62)) : Number(__baseHqPlayer.x || 0);
-  let focusY = movingToRoom || hudOpen ? ((Number(__baseHqPlayer.y || 0) * 0.38) + (roomY * 0.62)) : Number(__baseHqPlayer.y || 0);
+  let focusX = movingToRoom || hudOpen ? ((Number(__baseHqPlayer.x || 0) * 0.32) + (roomX * 0.68)) : Number(__baseHqPlayer.x || 0);
+  let focusY = movingToRoom || hudOpen ? ((Number(__baseHqPlayer.y || 0) * 0.32) + (roomY * 0.68)) : Number(__baseHqPlayer.y || 0);
   if(quickOpen) focusY = Math.max(90, focusY - (viewH * 0.14));
-  const xBias = hudOpen && !isMobileViewport() ? 0.38 : 0.50;
-  const yBias = quickOpen ? 0.44 : (hudOpen ? 0.48 : 0.52);
+  if(hudOpen && isMobileViewport()) focusY = Math.max(80, focusY - (viewH * 0.10));
+  const xBias = hudOpen && !isMobileViewport() ? 0.34 : 0.50;
+  const yBias = quickOpen ? 0.44 : (hudOpen ? (isMobileViewport() ? 0.34 : 0.46) : 0.52);
   __baseHqCamera.targetX = clamp(focusX - (viewW * xBias), 0, maxX);
   __baseHqCamera.targetY = clamp(focusY - (viewH * yBias), 0, maxY);
   const ease = clamp((movingToRoom ? 0.14 : 0.11) * frameMotionMul(), 0.07, 0.26);
@@ -31198,6 +31199,12 @@ function baseHqCommandActions(){
     openMissionBriefFromBaseHQ,
     openWorldMapCampaign,
     refreshBaseHqDailyNews,
+    openBaseHqBoard,
+    openBaseHqNewsBoard,
+    openBaseHqDailyBoard,
+    openBaseHqChallengeBoard,
+    openBaseHqLeaderboardBoard,
+    openBaseHqEventBoard,
     openStoryFromBaseHQ,
     openModeFromBaseHQ,
     openShopFromBaseHQ,
@@ -31525,6 +31532,60 @@ function baseHqDailyNewsHtml(){
     </div>
   `;
 }
+function openBaseHqBoard(roomId="news"){
+  const room = baseHqRoomById(roomId);
+  __baseHqSelectedRoom = room.id;
+  __baseHqLastRoomId = room.id;
+  __baseHqDialogNpc = "";
+  showBaseHqHud(15000);
+  renderBaseHQ();
+  toast(`${room.name} opened.`);
+  sfx("ui");
+  return false;
+}
+function openBaseHqNewsBoard(){ return openBaseHqBoard("news"); }
+function openBaseHqDailyBoard(){ return openBaseHqBoard("contracts"); }
+function openBaseHqChallengeBoard(){ return openBaseHqBoard("challenge"); }
+function openBaseHqLeaderboardBoard(){ return openBaseHqBoard("leaderboard"); }
+function openBaseHqEventBoard(){ return openBaseHqBoard("events"); }
+function baseHqBoardHubHtml(roomId=__baseHqSelectedRoom){
+  const id = String(roomId || "");
+  if(!["news","contracts","challenge","leaderboard","events","mission"].includes(id)) return "";
+  ensureChallengeTowerState(S);
+  const dailyTower = challengeTowerSummary("daily", S);
+  const weeklyTower = challengeTowerSummary("weekly", S);
+  const dailyInfo = readDaily();
+  const dailyReady = dailyInfo?.last !== ymdUTC();
+  const socialRank = socialRescueWeeklyRank(S);
+  const live = ensureLiveCoopWorldEventsState(S);
+  const liveRows = Array.isArray(live.board) ? live.board : [];
+  const liveReady = liveRows.filter((row)=>Math.max(0, Number(row.progress || 0)) >= Math.max(1, Number(row.target || 1)) && !liveCoopWorldEventClaimed(row.period, row.id, S)).length;
+  const boss = cinematicBossHuntSeasonSummary(S);
+  const boardTitle = id === "mission" ? "HQ Main Menu Boards" : `${baseHqRoomById(id).name} • Live Board`;
+  const newsItems = baseHqDailyNewsItems();
+  return `
+    <div class="baseHqMissionPreview baseHqHomeBoard">
+      <div class="baseHqMissionPreviewTitle">${baseHqEsc(boardTitle)}</div>
+      <div class="baseHqRecommended">These boards are the HQ home-screen loop: daily claim, challenge tower, news, event timers, leaderboards, and boss season goals.</div>
+      <div class="baseHqMissionPreviewGrid baseHqBoardGrid">
+        <div class="baseHqMissionCard"><span>News</span><b>${baseHqEsc(newsItems[0] || "HQ systems online.")}</b><small>${baseHqEsc(newsItems[1] || "Check active desks for more details.")}</small></div>
+        <div class="baseHqMissionCard"><span>Daily Desk</span><b>${dailyReady ? "Reward Ready" : "Claimed Today"}</b><small>${dailyReady ? "Open Daily to claim." : `Resets in ${nextDailyCountdownText()}`}</small></div>
+        <div class="baseHqMissionCard"><span>Challenge Tower</span><b>${dailyTower.ready + weeklyTower.ready} rewards ready</b><small>Daily ${dailyTower.claimed}/${dailyTower.total} • Weekly ${weeklyTower.claimed}/${weeklyTower.total}</small></div>
+        <div class="baseHqMissionCard"><span>Live Events</span><b>${liveReady} claims ready</b><small>${Math.max(0, Number(live.totalPoints || 0)).toLocaleString()} community points</small></div>
+        <div class="baseHqMissionCard"><span>Boss Hunt</span><b>${baseHqEsc(boss.title)} ${boss.percent}%</b><small>${baseHqEsc(boss.nemesisTitle)} • ${boss.points}/${boss.target} pts</small></div>
+        <div class="baseHqMissionCard"><span>Leaderboard</span><b>${baseHqEsc(socialRank.name)}</b><small>${baseHqEsc(socialRank.detail)}</small></div>
+      </div>
+      <div class="baseHqWorldActions missionGateActions">
+        ${baseHqActionButtonHtml("News", "openBaseHqNewsBoard()", "ghost")}
+        ${baseHqActionButtonHtml("Daily", "openBaseHqDailyBoard()", "ghost")}
+        ${baseHqActionButtonHtml("Challenge", "openBaseHqChallengeBoard()", "ghost")}
+        ${baseHqActionButtonHtml("Events", "openBaseHqEventBoard()", "ghost")}
+        ${baseHqActionButtonHtml("Leaderboard", "openBaseHqLeaderboardBoard()", "ghost")}
+        ${baseHqActionButtonHtml("Boss Hunt", "openCinematicBossHuntFromBaseHQ()", "ghost")}
+      </div>
+    </div>
+  `;
+}
 function baseHqSocialMetricCard(label, value, detail=""){
   return `
     <div class="baseHqMissionCard">
@@ -31808,6 +31869,7 @@ function renderBaseHqWorldHud(){
       : (room.id === "contracts"
         ? baseHqDailyRewardDeskHtml()
         : (room.id === "specialists" ? baseHqSquadRoomHtml() : "")));
+  const boardHtml = baseHqBoardHubHtml(room.id);
   const missionControlHtml = (room.id === "command" || room.id === "mission") ? baseHqMissionControlHtml() : "";
   const newsHtml = (room.id === "command" || room.id === "mission") ? baseHqDailyNewsHtml() : "";
   const socialHubHtml = baseHqSocialHubHtml(room.id);
@@ -31828,6 +31890,7 @@ function renderBaseHqWorldHud(){
     ${missionControlHtml}
     ${ivyHtml}
     ${previewHtml}
+    ${boardHtml}
     ${socialHubHtml}
     ${newsHtml}
     ${progressVisualHtml}
@@ -31867,22 +31930,23 @@ function renderBaseHqQuickBar(){
     return;
   }
   bar.innerHTML = `
-    <div class="baseHqQuickHint">${baseHqEsc(baseHqIvyGuidance())} • Active: ${baseHqEsc(snap.label)}</div>
-    ${button("Hide Menu", "setBaseHqQuickMenuCollapsed(true)", "utility")}
-    ${button("HQ Tour", "resetBaseHqOnboarding()", "utility")}
-    ${button("World Map", "openWorldMapCampaign()", "primary")}
+    <div class="baseHqQuickHint"><b>Base HQ Home:</b> ${baseHqEsc(baseHqIvyGuidance())} • Active: ${baseHqEsc(snap.label)}</div>
     ${button("Story", "openBaseHqModePreview('Story')", "primary")}
     ${button("Arcade", "openBaseHqModePreview('Arcade')", "primary")}
     ${button("Survival", "openBaseHqModePreview('Survival')", "primary")}
+    ${button("World Map", "openWorldMapCampaign()", "primary")}
     ${button("Brief", "openMissionBriefFromBaseHQ()", "")}
     ${button("Training", "selectBaseHqRoom('training', true)", "")}
-    ${button("Profile", "openInventoryFromBaseHQ('showcase')", "utility")}
-    ${button("Tower", "openChallengeTowerFromBaseHQ()", "utility")}
+    ${button("Daily", "openBaseHqDailyBoard()", "utility")}
+    ${button("Challenge", "openBaseHqChallengeBoard()", "utility")}
+    ${button("News", "openBaseHqNewsBoard()", "utility")}
+    ${button("Events", "openBaseHqEventBoard()", "utility")}
+    ${button("Profile", "openBaseHqLeaderboardBoard()", "utility")}
     ${button("Social", "openSocialRescueOpsFromBaseHQ()", "utility")}
-    ${button("Boss Hunt", "openCinematicBossHuntFromBaseHQ()", "utility")}
-    ${button("Reward", "selectBaseHqRoom('contracts', true)", "utility")}
     ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
     ${button("Inventory", "openInventoryFromBaseHQ()", "utility")}
+    ${button("HQ Tour", "resetBaseHqOnboarding()", "utility")}
+    ${button("Hide Menu", "setBaseHqQuickMenuCollapsed(true)", "utility")}
   `;
   armBaseHqButtons(bar);
 }
@@ -54665,6 +54729,12 @@ window.completeBaseHqOnboardingStep = completeBaseHqOnboardingStep;
 window.skipBaseHqOnboarding = skipBaseHqOnboarding;
 window.resetBaseHqOnboarding = resetBaseHqOnboarding;
 window.refreshBaseHqDailyNews = refreshBaseHqDailyNews;
+window.openBaseHqBoard = openBaseHqBoard;
+window.openBaseHqNewsBoard = openBaseHqNewsBoard;
+window.openBaseHqDailyBoard = openBaseHqDailyBoard;
+window.openBaseHqChallengeBoard = openBaseHqChallengeBoard;
+window.openBaseHqLeaderboardBoard = openBaseHqLeaderboardBoard;
+window.openBaseHqEventBoard = openBaseHqEventBoard;
 window.openBaseHqHomeFromStartup = openBaseHqHomeFromStartup;
 window.buyBaseHqUpgrade = buyBaseHqUpgrade;
 window.openInventory = openInventory;

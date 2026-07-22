@@ -402,6 +402,18 @@
     }
     .ivyGuidanceCard .baseHqMissionCard span{color:#67e8f9}
     .baseHqRecommended{margin-top:6px;color:#dbeafe;font-size:10px;font-weight:850;line-height:1.25}
+    .baseHqHomeBoard{
+      border-color:rgba(52,211,153,.58);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(52,211,153,.18), transparent 40%),
+        linear-gradient(135deg, rgba(6,78,59,.38), rgba(15,23,42,.78));
+      box-shadow:inset 0 0 22px rgba(34,197,94,.08);
+    }
+    .baseHqBoardGrid .baseHqMissionCard{
+      border-color:rgba(125,211,252,.34);
+      background:linear-gradient(180deg, rgba(8,47,73,.42), rgba(2,6,23,.48));
+    }
+    .baseHqBoardGrid .baseHqMissionCard span{color:#67e8f9}
     .baseHqWorldActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
     .baseHqWorldActions button{min-height:38px;padding:8px 12px;font-size:11px;pointer-events:auto;touch-action:manipulation}
     .baseHqExitBtn{pointer-events:auto}
@@ -2922,7 +2934,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=4632-mission-director-5"></script>
+  <script src="./game.js?v=4633-hq-main-menu-final-polish"></script>
 <script src="./tutorial.js?v=4537-tutorial-3-full-qa"></script>
 <script>
 (() => {
