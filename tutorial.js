@@ -54,7 +54,8 @@
     const T = window.TigerTutorial;
     if(!T) return false;
     if(T.movedOnce === true) return true;
-    if(stepAgentMoveDistance() >= 18) return true;
+    if(T.movementInputSeen === true && stepElapsedMs() > 250) return true;
+    if(stepAgentMoveDistance() >= 8) return true;
     // Joystick/map input is enough for the movement lesson on small screens where
     // overlays can make the visible movement shorter than the distance threshold.
     return T.mapClicked === true && stepElapsedMs() > 450;
@@ -167,19 +168,26 @@
     const S = getS();
 
     if(S){
+      const targetDx = Number(S?.target?.x || 0) - Number(T.stepStartTargetX || 0);
+      const targetDy = Number(S?.target?.y || 0) - Number(T.stepStartTargetY || 0);
+      const vx = Number(S?.me?._moveVx || 0);
+      const vy = Number(S?.me?._moveVy || 0);
+      if(T.mapClicked || Math.hypot(targetDx, targetDy) >= 8 || Math.hypot(vx, vy) >= 0.15){
+        T.movementInputSeen = true;
+      }
       if(Number.isFinite(T.startX) && Number.isFinite(T.startY) && Number.isFinite(S?.me?.x) && Number.isFinite(S?.me?.y)){
         const dx = Number(S.me.x) - Number(T.startX);
         const dy = Number(S.me.y) - Number(T.startY);
         if(Math.hypot(dx, dy) >= 36) T.movedOnce = true;
       }
-      if(stepAgentMoveDistance() >= 18) T.movedOnce = true;
-      if(T.currentKey === "move" && T.mapClicked && stepElapsedMs() > 450){
+      if(stepAgentMoveDistance() >= 8) T.movedOnce = true;
+      if(T.currentKey === "move" && agentMovedForTutorial()){
         T.movedOnce = true;
       }
       if(S.inBattle) T.engagedOnce = true;
       const shots = Number(S.stats?.shots || 0);
       if(shots > (T.baseShots || 0)) T.attackedOnce = true;
-      if(Number(S.scanPing || 0) > 0) T.scanUsed = true;
+      if(Number(S.scanPing || 0) > 0 || Number(S.scanTargetTigerId || 0) > 0 || Number(S.scanTargetUntil || 0) > Date.now()) T.scanUsed = true;
       if(Number(S.lockedTigerId || 0) > 0) T.lockedOnce = true;
       if(Number(T.lastLockedTigerId || 0) > 0) T.lockedOnce = true;
       const activeTigerId = Number(S.activeTigerId || 0);
@@ -629,6 +637,7 @@
     step:0,
     currentKey:null,
     mapClicked:false,
+    movementInputSeen:false,
     movedOnce:false,
     sprintUsed:false,
     lastLockedTigerId:null,
@@ -667,6 +676,38 @@
 
   window.verifyTigerTutorialSteps = function verifyTigerTutorialSteps(){
     const steps = getStepList();
+    const expectedKeys = [
+      "intro",
+      "hq_overview",
+      "mission_hud",
+      "move",
+      "sprint",
+      "escort",
+      "evac_routes",
+      "scan_line",
+      "lock_target",
+      "engage_tiger",
+      "combat_buttons",
+      "attack_tiger",
+      "weaken_tiger",
+      "capture_window",
+      "weapon_switch",
+      "ammo_warnings",
+      "resolve_tiger",
+      "map_interactables",
+      "shield",
+      "squad_command",
+      "squad_formation",
+      "shop",
+      "squad_shop",
+      "inventory",
+      "cosmetics",
+      "investigation",
+      "live_world",
+      "world_map",
+      "mode_separation",
+      "done"
+    ];
     const requiredKeys = [
       "move",
       "scan_line",
@@ -686,13 +727,70 @@
     const keys = steps.map((step)=>step?.key);
     const missingRequired = requiredKeys.filter((key)=>!keys.includes(key));
     const duplicateKeys = keys.filter((key, idx)=>key && keys.indexOf(key) !== idx);
+    const missingExpected = expectedKeys.filter((key)=>!keys.includes(key));
+    const orderMatches = expectedKeys.every((key, idx)=>keys[idx] === key);
+    const emptyTitles = steps.filter((step)=>!String(step?.title || "").trim()).map((step)=>step?.key || "(unknown)");
+    const emptyHints = steps.filter((step)=>!String(step?.hint || "").trim() && !step?.finish).map((step)=>step?.key || "(unknown)");
+    const missingArrowTargets = steps.filter((step)=>step?.arrow && typeof step.arrow === "string" && !["cv","evacZone","tiger"].includes(step.arrow) && !tutorialTarget(step.arrow)).map((step)=>`${step.key}:${step.arrow}`);
     return {
-      ok: steps.length >= requiredKeys.length && missingRequired.length === 0 && duplicateKeys.length === 0 && steps.every((step)=>step && step.key && step.title && typeof step.canNext === "function"),
+      ok: steps.length === expectedKeys.length && orderMatches && missingExpected.length === 0 && missingRequired.length === 0 && duplicateKeys.length === 0 && emptyTitles.length === 0 && steps.every((step)=>step && step.key && step.title && typeof step.canNext === "function"),
       count: steps.length,
+      expectedCount: expectedKeys.length,
+      orderMatches,
       missingCanNext: steps.filter((step)=>typeof step?.canNext !== "function").map((step)=>step?.key || "(unknown)"),
       missingRequired,
+      missingExpected,
       duplicateKeys,
+      emptyTitles,
+      emptyHints,
+      missingArrowTargets,
       keys
+    };
+  };
+
+  window.runTutorial3QaAudit = function runTutorial3QaAudit(){
+    const S = getS();
+    const T = window.TigerTutorial || {};
+    const steps = getStepList();
+    const step = steps[Number(T.step || 0)] || null;
+    let canNextNow = false;
+    try{ canNextNow = !!step?.canNext?.(); }catch(e){}
+    return {
+      ...window.verifyTigerTutorialSteps(),
+      running: T.isRunning === true,
+      currentStep: Number(T.step || 0) + 1,
+      currentKey: step?.key || T.currentKey || "",
+      canNextNow,
+      flags: {
+        movedOnce: !!T.movedOnce,
+        movementInputSeen: !!T.movementInputSeen,
+        scanUsed: !!T.scanUsed,
+        lockedOnce: !!T.lockedOnce,
+        engagedOnce: !!T.engagedOnce,
+        attackedOnce: !!T.attackedOnce,
+        captureWindowReached: !!T.captureWindowReached,
+        combatOutcome: T.combatOutcome || "",
+        weaponSwitched: !!T.weaponSwitched,
+        interactableUsed: !!T.interactableUsed,
+        shieldUsed: !!T.shieldUsed,
+        squadCommandUsed: !!T.squadCommandUsed,
+        squadFormationUsed: !!T.squadFormationUsed,
+        shopOpened: !!T.shopOpened,
+        squadOpened: !!T.squadOpened,
+        inventoryOpened: !!T.inventoryOpened,
+        cosmeticsOpened: !!T.cosmeticsOpened,
+        worldMapOpened: !!T.worldMapOpened
+      },
+      state: {
+        paused: !!S?.paused,
+        pauseReason: S?.pauseReason || "",
+        inBattle: !!S?.inBattle,
+        lockedTigerId: Number(S?.lockedTigerId || 0),
+        activeTigerId: Number(S?.activeTigerId || 0),
+        scanTargetTigerId: Number(S?.scanTargetTigerId || 0),
+        scanPing: Number(S?.scanPing || 0),
+        stepMoveDistance: Math.round(stepAgentMoveDistance())
+      }
     };
   };
 
@@ -831,6 +929,7 @@
     T.step = startIndex >= 0 ? startIndex : 0;
     T.currentKey = steps[T.step]?.key || "intro";
     T.mapClicked = false;
+    T.movementInputSeen = false;
     T.movedOnce = false;
     T.sprintUsed = false;
     T.lastLockedTigerId = null;
@@ -900,6 +999,7 @@
     T.step = 0;
     T.currentKey = null;
     T.mapClicked = false;
+    T.movementInputSeen = false;
     T.movedOnce = false;
     T.sprintUsed = false;
     T.lastLockedTigerId = null;

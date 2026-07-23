@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4515";
+const TS_BUILD = "4516";
 if(tg){
   try{
     tg.expand?.();
@@ -7218,6 +7218,10 @@ function renderAchievementPrestigeShowcase(){
 let __inventoryActiveTab = "gear";
 function inventoryTab(tab="gear"){
   __inventoryActiveTab = tab === "showcase" ? "showcase" : (tab === "cosmetics" ? "cosmetics" : (tab === "settlement" ? "settlement" : "gear"));
+  if(window.TigerTutorial?.isRunning){
+    window.TigerTutorial.inventoryOpened = true;
+    if(__inventoryActiveTab === "cosmetics") window.TigerTutorial.cosmeticsOpened = true;
+  }
   const cosmetics = __inventoryActiveTab === "cosmetics";
   const settlement = __inventoryActiveTab === "settlement";
   const showcase = __inventoryActiveTab === "showcase";
@@ -29681,6 +29685,9 @@ function maybeAutoClaimPendingStars(){
 function openShop(){
   if(!tutorialAllows("shop")) return toast(tutorialBlockMessage("shop"));
   if(S.gameOver) return;
+  if(window.TigerTutorial?.isRunning){
+    window.TigerTutorial.shopOpened = true;
+  }
   const fromBattle = !!S.inBattle;
   ensureSquadShopTab();
   ensureBundlesShopTab();
@@ -29741,6 +29748,9 @@ function openInventory(){
   if(!tutorialAllows("inventory")) return toast(tutorialBlockMessage("inventory"));
   if(S.inBattle) return toast("Finish battle first.");
   if(S.gameOver) return;
+  if(window.TigerTutorial?.isRunning){
+    window.TigerTutorial.inventoryOpened = true;
+  }
   if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
   setPaused(true,"inv");
   const overlay = document.getElementById("invOverlay");
@@ -33077,13 +33087,13 @@ function startTutorialPracticeFromBaseHQ(kind="full"){
   const keyByKind = {
     full:"",
     rescue:"escort",
-    combat:"scan",
-    capture:"scan",
+    combat:"scan_line",
+    capture:"scan_line",
     shield:"shield",
     squad:"squad_command",
     shop:"shop",
     inventory:"inventory",
-    extraction:"extraction"
+    extraction:"evac_routes"
   };
   const safeKind = String(kind || "full").toLowerCase();
   const startKey = keyByKind[safeKind] || "";
@@ -33360,6 +33370,10 @@ function shopTab(tab){
   ensureForgeShopTab();
   if(currentShopTab !== tab) currentShopFilter = "all";
   currentShopTab=tab;
+  if(window.TigerTutorial?.isRunning){
+    window.TigerTutorial.shopOpened = true;
+    if(String(tab) === "squad") window.TigerTutorial.squadOpened = true;
+  }
   ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabBundles","tabSeason","tabForge","tabStars","tabCash","tabPremium","tabTools","tabTraps"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.classList.remove("active");
@@ -35696,6 +35710,9 @@ function cycleWeapon(dir=1){
   const idx = Math.max(0, S.ownedWeapons.indexOf(S.equippedWeaponId));
   const nextIdx = (idx + dir + S.ownedWeapons.length) % S.ownedWeapons.length;
   equipWeapon(S.ownedWeapons[nextIdx]);
+  if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weapon_switch"){
+    window.TigerTutorial.weaponSwitched = true;
+  }
 }
 
 // ===================== SPAWNS =====================
@@ -35724,6 +35741,11 @@ window.enterTutorialMode = function () {
   S.storyLevel = 1;
   S.survivalStart = null;
   S.surviveSeconds = 0;
+  S.paused = false;
+  S.pauseReason = null;
+  S.missionEnded = false;
+  S.gameOver = false;
+  S.respawnPendingUntil = 0;
   S.scanPing = 0;
   S.lockedTigerId = null;
   S.lockedRivalId = null;
@@ -35738,6 +35760,7 @@ window.enterTutorialMode = function () {
   S.activeTigerId = null;
   S.comboCount = 0;
   S.comboExpireAt = 0;
+  S.stats = S.stats || {};
   const tutWorldW = worldWidth(S);
   const tutWorldH = worldHeight(S);
   S.me = { x:Math.round(tutWorldW * 0.30), y:Math.round(tutWorldH * 0.60), face:0, step:0 };
@@ -35767,6 +35790,9 @@ window.enterTutorialMode = function () {
   S.squadAbilityActiveUntil.smoke_screen = 0;
 
   // Tutorial loadout guarantees Attack and Capture steps can proceed.
+  S.ownedWeapons = Array.isArray(S.ownedWeapons) ? S.ownedWeapons : [];
+  S.ammoReserve = S.ammoReserve || {};
+  S.mag = S.mag || {};
   if(!S.ownedWeapons.includes("W_9MM_JUNK")) S.ownedWeapons.push("W_9MM_JUNK");
   if(!S.ownedWeapons.includes("W_TRQ_PISTOL_MK1")) S.ownedWeapons.push("W_TRQ_PISTOL_MK1");
   S.ammoReserve["9MM_STD"] = Math.max(S.ammoReserve["9MM_STD"]||0, 24);
@@ -35803,11 +35829,13 @@ window.enterTutorialMode = function () {
 
   const tiger = S.tigers[0];
   if(tiger){
+    tiger.type = "Scout";
+    tiger.hpMax = 110;
     tiger.x = Math.round(tutWorldW * 0.64);
     tiger.y = Math.round(tutWorldH * 0.40);
     tiger.vx = 0;
     tiger.vy = 0;
-    tiger.hp = tiger.hpMax || tiger.hp || 100;
+    tiger.hp = tiger.hpMax;
     tiger.holdUntil = Date.now() + 86400000;
   }
 
@@ -39631,6 +39659,12 @@ function lockNearestTiger(opts={}){
     return null;
   }
   S.lockedTigerId=t.id;
+  if(window.TigerTutorial?.isRunning){
+    window.TigerTutorial.lockedOnce = true;
+    window.TigerTutorial.lastLockedTigerId = t.id;
+    S.scanTargetTigerId = t.id;
+    S.scanTargetUntil = Date.now() + 600000;
+  }
   if(!silent){
     const d = Math.round(dist(S.me.x,S.me.y,t.x,t.y));
     interactionFeedback(`Tiger locked: #${t.id} (${t.type}) • ${d}m. Blue ring is active.`, { success:true });
