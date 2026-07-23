@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4516";
+const TS_BUILD = "4517";
 if(tg){
   try{
     tg.expand?.();
@@ -5830,25 +5830,57 @@ const STARS_PREMIUM_PACKS = [
     sku:"premium_supply_drop",
     name:"Supply Drop",
     stars:150,
-    desc:"Budget refill pack for active runs.",
-    preview:"+3 Small Med Kits • +2 Med Kits • +2 Repair Kits • +3 Traps • +1 Shield",
-    grant:{ medkits:{ M_SMALL:3, M_MED:2 }, repairs:{ T_REPAIR:2 }, traps:3, shields:1 },
+    desc:"Budget refill pack for active runs with better early value.",
+    preview:"+4 Med Kits • +4 Repairs • +6 Traps • +3 Shields • +60 Ammo",
+    grant:{ medkits:{ M_MED:4 }, repairs:{ T_REPAIR:4 }, traps:6, shields:3, ammo:{ TRANQ_DARTS:30, "9MM_STD":30 } },
   },
   {
     sku:"premium_arsenal_convoy",
     name:"Arsenal Convoy",
     stars:500,
-    desc:"Large ammo shipment and maintenance support.",
-    preview:"+260 Ammo • +1 Pro Repair • +2 Traps",
-    grant:{ ammo:{ "9MM_STD":120, "556_STD":60, "762_STD":40, "TRANQ_DARTS":40 }, repairs:{ T_REPAIR_PRO:1 }, traps:2 },
+    desc:"Large ammo shipment, weapon maintenance, and capture prep.",
+    preview:"+520 Ammo • +4 Pro Repairs • +8 Traps • +6 Shields",
+    grant:{ ammo:{ "9MM_STD":160, "12GA_STD":80, "556_STD":110, "762_STD":80, "TRANQ_DARTS":70, TRANQ_HEAVY:20 }, repairs:{ T_REPAIR_PRO:4 }, traps:8, shields:6 },
   },
   {
     sku:"premium_rescue_priority",
     name:"Rescue Priority",
     stars:1000,
-    desc:"Heavy mission support for survival streaks.",
-    preview:"+5 Shields • +8 Traps • +3 Trauma Kits • +2 Pro Repairs",
-    grant:{ shields:5, traps:8, medkits:{ M_TRAUMA:3 }, repairs:{ T_REPAIR_PRO:2 } },
+    desc:"Heavy rescue support for civilian-heavy routes and survival streaks.",
+    preview:"+18 Shields • +18 Traps • +8 Trauma Kits • +8 Tier III Armor • +6 Pro Repairs",
+    grant:{ shields:18, traps:18, medkits:{ M_TRAUMA:8 }, armorPlates:{ A_TIER3:8 }, repairs:{ T_REPAIR_PRO:6 } },
+  },
+  {
+    sku:"premium_forge_vault",
+    name:"Forge Vault",
+    stars:750,
+    desc:"Cosmetic-focused Stars sink for weapon skins and trail effects.",
+    preview:"+100 Alloy • +60 Bio Resin • +24 Ion Dust",
+    grant:{ forgeMaterials:{ alloy:100, bio_resin:60, ion_dust:24 } },
+  },
+  {
+    sku:"premium_boss_hunt_reserve",
+    name:"Boss Hunt Reserve",
+    stars:1500,
+    desc:"High-end boss and Alpha prep with elite ammo, shields, repairs, and forge materials.",
+    preview:"+12 Perk Points • +30 Shields • +24 Traps • +Boss Ammo • +Forge Materials",
+    grant:{ perkPoints:12, shields:30, traps:24, repairs:{ T_REPAIR_PRO:12 }, ammo:{ "556_AP":160, "762_AP":140, TRANQ_HEAVY:180, RAIL_CELL:80 }, forgeMaterials:{ alloy:80, bio_resin:40, ion_dust:12 } },
+  },
+  {
+    sku:"premium_hq_modernization",
+    name:"HQ Modernization",
+    stars:2500,
+    desc:"Long-term account progress pack for HQ upgrades, squad perks, cosmetics, and mission supplies.",
+    preview:"+22 Perk Points • +50 Shields • +50 Traps • +Apex Support • +Forge Materials",
+    grant:{ perkPoints:22, shields:50, traps:50, medkits:{ M_FIELD_SURGERY:12 }, repairs:{ T_REPAIR_APEX:12 }, armorPlates:{ A_APEX:14 }, ammo:{ TRANQ_HEAVY:220, TRANQ_DARTS:220, RAIL_CELL:120 }, forgeMaterials:{ alloy:180, bio_resin:110, ion_dust:42 } },
+  },
+  {
+    sku:"premium_apex_evac_reserve",
+    name:"Apex Evac Reserve",
+    stars:3500,
+    desc:"Ultra-premium rescue, boss, and late-story reserve for players who want a serious strategic stockpile.",
+    preview:"+35 Perk Points • +85 Shields • +85 Traps • +Apex Kits/Armor • +Elite Ammo • Forge Vault",
+    grant:{ perkPoints:35, shields:85, traps:85, medkits:{ M_FIELD_SURGERY:22, M_TRAUMA:20 }, repairs:{ T_REPAIR_APEX:22 }, armorPlates:{ A_APEX:28 }, ammo:{ "556_AP":260, "762_AP":220, TRANQ_HEAVY:320, TRANQ_DARTS:300, RAIL_CELL:220 }, forgeMaterials:{ alloy:280, bio_resin:170, ion_dust:70 } },
   },
   {
     sku:"premium_tiger_specialist_unlock",
@@ -33480,6 +33512,36 @@ function shopAuditSummary(){
     label: issues.length ? `${issues.length} shop audit issue${issues.length === 1 ? "" : "s"}` : "Audit OK: every visible item has a gameplay effect",
   };
 }
+function economyShopFinalAudit(){
+  const cashBundles = cashShopBundles();
+  const cashBundleIssues = [];
+  let minCashValueRatio = Infinity;
+  for(const bundle of cashBundles){
+    const price = Math.max(1, Number(bundle.price || 0));
+    const value = Math.max(0, Number(bundle.individualValue || cashBundleIndividualValue(bundle.grant)));
+    const ratio = value / price;
+    minCashValueRatio = Math.min(minCashValueRatio, ratio);
+    if(ratio < 1.25){
+      cashBundleIssues.push(`${bundle.name} value ratio ${ratio.toFixed(2)}x`);
+    }
+  }
+  const premiumIssues = [];
+  for(const pack of STARS_PREMIUM_PACKS){
+    const errors = cashBundleValidationErrors({ id:pack.sku, name:pack.name, price:pack.stars, grant:pack.grant });
+    if(errors.length) premiumIssues.push(`${pack.name}: ${errors[0]}`);
+  }
+  const shopIssues = shopAuditSummary().issues || [];
+  const issues = [...shopIssues, ...cashBundleIssues, ...premiumIssues];
+  return {
+    ok: issues.length === 0,
+    build: TS_BUILD,
+    cashBundles: cashBundles.length,
+    premiumStarPacks: STARS_PREMIUM_PACKS.length,
+    minCashValueRatio: Number.isFinite(minCashValueRatio) ? Number(minCashValueRatio.toFixed(2)) : 0,
+    guarantee: "Visible cash bundles are auto-scaled to at least 1.25x individual shop value.",
+    issues,
+  };
+}
 
 function cashBundleIndividualValue(grant={}){
   let value = positiveInt(grant.funds);
@@ -33525,6 +33587,11 @@ function cashBundleGrantPreview(grant={}){
   if(totalGroup(grant.forgeMaterials)) bits.push(`+${totalGroup(grant.forgeMaterials)} Forge Materials`);
   if(positiveInt(grant.perkPoints)) bits.push(`+${positiveInt(grant.perkPoints)} Perk Points`);
   return bits.join(" • ") || "Supply bundle";
+}
+function cashBundleSavingsPercent(bundle){
+  const price = Math.max(1, Number(bundle?.price || 0));
+  const savings = Math.max(0, Number(bundle?.savings || 0));
+  return Math.round((savings / price) * 100);
 }
 function valueGuaranteedCashBundle(bundle){
   const base = cloneState(bundle);
@@ -34280,6 +34347,7 @@ function renderShopList(){
           <div>
             <div class="itemName">${pack.name} <span class="tag">${pack.stars} Stars</span></div>
             <div class="itemDesc">${pack.desc}</div>
+            <div class="itemDesc">Effect: +$${Number(pack.funds || 0).toLocaleString()} cash added to your current mode wallet.</div>
           </div>
           <div style="text-align:right">
             <div class="price">+$${pack.funds.toLocaleString()}</div>
@@ -34329,6 +34397,7 @@ function renderShopList(){
           <div>
             <div class="itemName">${pack.name} <span class="tag">${pack.stars} Stars</span></div>
             <div class="itemDesc">${pack.desc}</div>
+            <div class="itemDesc">Effect: ${cashBundleGrantPreview(pack.grant)}</div>
           </div>
           <div style="text-align:right">
             <div class="price">${pack.preview}</div>
@@ -34405,7 +34474,7 @@ function renderShopList(){
           <div>
             <div class="itemName">${bundle.name} <span class="tag">Bundle</span>${tags}</div>
             <div class="itemDesc">${bundle.desc}</div>
-            <div class="itemDesc">Individual value: <b>$${Number(bundle.individualValue || 0).toLocaleString()}</b> • You save <b>$${Number(bundle.savings || 0).toLocaleString()}</b>.</div>
+            <div class="itemDesc">Individual value: <b>$${Number(bundle.individualValue || 0).toLocaleString()}</b> • You save <b>$${Number(bundle.savings || 0).toLocaleString()}</b> (${cashBundleSavingsPercent(bundle)}%).</div>
             <div class="itemDesc">${canAfford ? "Ready to buy now." : `Need $${Math.max(0, Number(bundle.price || 0) - Number(S.funds || 0)).toLocaleString()} more.`}</div>
           </div>
           <div style="text-align:right">
@@ -55022,6 +55091,7 @@ window.craftWeaponForgeItem = craftWeaponForgeItem;
 window.openMissionBriefShop = openMissionBriefShop;
 window.toggleMobileMenu = toggleMobileMenu;
 window.truthQaAuditVisibleUi = truthQaAuditVisibleUi;
+window.runEconomyShopFinalAudit = economyShopFinalAudit;
 
 window.resetGame = resetGame;
 window.deploy = deploy;
