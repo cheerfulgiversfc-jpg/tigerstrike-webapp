@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4517";
+const TS_BUILD = "4518";
 if(tg){
   try{
     tg.expand?.();
@@ -16078,6 +16078,7 @@ const STARTUP_LOADING_FINALIZE_FAILSAFE_MS = 1800;
 const STARTUP_LOADING_HARD_STUCK_MS = 32000;
 const STARTUP_LOADING_HUNDRED_STUCK_MS = 1800;
 const STABILITY_MASTER_LOADER_RELEASE_MS = 520;
+const STABILITY_MASTER_LOADER_EMERGENCY_RELEASE_MS = 2400;
 const STABILITY_MASTER_TICK_MS = 1250;
 const STABILITY_MASTER_REDEPLOY_COOLDOWN_MS = 6500;
 const MAP_CLARITY_PRELOAD_RADIUS = 5;
@@ -16100,8 +16101,10 @@ let __startupLoadingGuard = {
   stageScores:{ terrain:0, sectors:0, entities:0, hazards:0, visual:0 },
   finalizingUntil:0,
   finalizingStartedAt:0,
+  hundredAt:0,
   pendingReleaseReason:"",
   finalizeTimer:0,
+  emergencyReleaseTimer:0,
   releasedAt:0,
   reason:"",
   lastTextAt:0,
@@ -53035,10 +53038,15 @@ function beginStartupLoadingGuard(reason="startup"){
   __startupLoadingGuard.stageScores = { terrain:0, sectors:0, entities:0, hazards:0, visual:0 };
   __startupLoadingGuard.finalizingUntil = 0;
   __startupLoadingGuard.finalizingStartedAt = 0;
+  __startupLoadingGuard.hundredAt = 0;
   __startupLoadingGuard.pendingReleaseReason = "";
   if(__startupLoadingGuard.finalizeTimer){
     clearTimeout(__startupLoadingGuard.finalizeTimer);
     __startupLoadingGuard.finalizeTimer = 0;
+  }
+  if(__startupLoadingGuard.emergencyReleaseTimer){
+    clearTimeout(__startupLoadingGuard.emergencyReleaseTimer);
+    __startupLoadingGuard.emergencyReleaseTimer = 0;
   }
   __startupLoadingGuard.releasedAt = 0;
   __startupLoadingGuard.reason = reason;
@@ -53211,11 +53219,16 @@ function releaseStartupLoadingGuard(reason="ready"){
     clearTimeout(__startupLoadingGuard.finalizeTimer);
     __startupLoadingGuard.finalizeTimer = 0;
   }
+  if(__startupLoadingGuard.emergencyReleaseTimer){
+    clearTimeout(__startupLoadingGuard.emergencyReleaseTimer);
+    __startupLoadingGuard.emergencyReleaseTimer = 0;
+  }
   __startupLoadingGuard.percent = 100;
   __startupLoadingGuard.active = false;
   __gameplayLoadingGuardArmed = false;
   __startupLoadingGuard.finalizingUntil = 0;
   __startupLoadingGuard.finalizingStartedAt = 0;
+  __startupLoadingGuard.hundredAt = 0;
   __startupLoadingGuard.pendingReleaseReason = "";
   __startupLoadingGuard.releasedAt = Date.now();
   __startupLoadingGuard.reason = reason;
@@ -53233,9 +53246,19 @@ function forceReleaseStartupLoadingIfComplete(now=Date.now()){
   if(!__startupLoadingGuard.active) return false;
   const pct = Number(__startupLoadingGuard.percent || 0);
   const started = Number(__startupLoadingGuard.finalizingStartedAt || 0);
+  if(pct >= 100 && !Number(__startupLoadingGuard.hundredAt || 0)){
+    __startupLoadingGuard.hundredAt = now;
+  }
+  const hundredAt = Number(__startupLoadingGuard.hundredAt || started || 0);
   const finalizeUntil = Number(__startupLoadingGuard.finalizingUntil || 0);
   const elapsedAtHundred = started > 0 ? now - started : 0;
-  if(pct >= 100 && (!finalizeUntil || now >= finalizeUntil || elapsedAtHundred >= STARTUP_LOADING_HUNDRED_STUCK_MS)){
+  const emergencyElapsed = hundredAt > 0 ? now - hundredAt : 0;
+  if(pct >= 100 && (
+    !finalizeUntil ||
+    now >= finalizeUntil ||
+    elapsedAtHundred >= STARTUP_LOADING_HUNDRED_STUCK_MS ||
+    emergencyElapsed >= STABILITY_MASTER_LOADER_EMERGENCY_RELEASE_MS
+  )){
     releaseStartupLoadingGuard(__startupLoadingGuard.pendingReleaseReason || "hundred-percent-frame-release");
     return true;
   }
@@ -53248,7 +53271,15 @@ function startupLoadingWatchdogTick(){
   const elapsed = now - Number(__startupLoadingGuard.startedAt || now);
   const pct = Number(__startupLoadingGuard.percent || 0);
   const finalizingStarted = Number(__startupLoadingGuard.finalizingStartedAt || 0);
-  const hundredStuck = pct >= 100 && (!finalizingStarted || (now - finalizingStarted) >= STARTUP_LOADING_HUNDRED_STUCK_MS);
+  if(pct >= 100 && !Number(__startupLoadingGuard.hundredAt || 0)){
+    __startupLoadingGuard.hundredAt = now;
+  }
+  const hundredAt = Number(__startupLoadingGuard.hundredAt || finalizingStarted || 0);
+  const hundredStuck = pct >= 100 && (
+    !finalizingStarted ||
+    (now - finalizingStarted) >= STARTUP_LOADING_HUNDRED_STUCK_MS ||
+    (hundredAt > 0 && (now - hundredAt) >= STABILITY_MASTER_LOADER_EMERGENCY_RELEASE_MS)
+  );
   const hardStuck = elapsed >= STARTUP_LOADING_HARD_STUCK_MS;
   if(hundredStuck || hardStuck){
     try{
@@ -53286,6 +53317,10 @@ function scheduleStartupLoadingRelease(reason="ready"){
     clearTimeout(__startupLoadingGuard.finalizeTimer);
     __startupLoadingGuard.finalizeTimer = 0;
   }
+  if(__startupLoadingGuard.emergencyReleaseTimer){
+    clearTimeout(__startupLoadingGuard.emergencyReleaseTimer);
+    __startupLoadingGuard.emergencyReleaseTimer = 0;
+  }
   __startupLoadingGuard.finalizeTimer = setTimeout(()=>{
     __startupLoadingGuard.finalizeTimer = 0;
     if(!__startupLoadingGuard.active) return;
@@ -53293,6 +53328,15 @@ function scheduleStartupLoadingRelease(reason="ready"){
       releaseStartupLoadingGuard(reason || __startupLoadingGuard.pendingReleaseReason || "timer-release");
     }
   }, Math.max(120, Math.min(STARTUP_LOADING_FINALIZE_MS + 120, STABILITY_MASTER_LOADER_RELEASE_MS)));
+  if(typeof window !== "undefined"){
+    __startupLoadingGuard.emergencyReleaseTimer = window.setTimeout(()=>{
+      __startupLoadingGuard.emergencyReleaseTimer = 0;
+      if(!__startupLoadingGuard.active) return;
+      if(Number(__startupLoadingGuard.percent || 0) >= 100){
+        releaseStartupLoadingGuard(reason || __startupLoadingGuard.pendingReleaseReason || "emergency-100-release");
+      }
+    }, STABILITY_MASTER_LOADER_EMERGENCY_RELEASE_MS);
+  }
 }
 
 function requestStartupLoadingFinalization(reason="ready"){
@@ -53308,6 +53352,9 @@ function requestStartupLoadingFinalization(reason="ready"){
     visual:100
   };
   __startupLoadingGuard.pendingReleaseReason = reason;
+  if(!Number(__startupLoadingGuard.hundredAt || 0)){
+    __startupLoadingGuard.hundredAt = now;
+  }
   if(!Number(__startupLoadingGuard.finalizingStartedAt || 0)){
     __startupLoadingGuard.finalizingStartedAt = now;
     __startupLoadingGuard.finalizingUntil = now + STARTUP_LOADING_FINALIZE_MS;
@@ -53392,6 +53439,9 @@ function updateStartupLoadingOverlay(force=false){
   const cappedPercent = readyToFinish ? 100 : Math.min(maxTimeProgress >= 1 ? 99 : 96, rawPercent);
   __startupLoadingGuard.percent = Math.max(Number(__startupLoadingGuard.percent || 0), cappedPercent);
   const pct = clamp(Math.round(__startupLoadingGuard.percent || 0), 0, 100);
+  if(pct >= 100 && !Number(__startupLoadingGuard.hundredAt || 0)){
+    __startupLoadingGuard.hundredAt = now;
+  }
   if(pct >= 100 && !finalizing){
     requestStartupLoadingFinalization("overlay-ready");
     return;
@@ -54051,7 +54101,10 @@ function stabilityMasterTick(reason="frame"){
   let changed = false;
   if(__startupLoadingGuard?.active){
     const pct = Number(__startupLoadingGuard.percent || 0);
-    const started = Number(__startupLoadingGuard.finalizingStartedAt || __startupLoadingGuard.startedAt || now);
+    if(pct >= 100 && !Number(__startupLoadingGuard.hundredAt || 0)){
+      __startupLoadingGuard.hundredAt = now;
+    }
+    const started = Number(__startupLoadingGuard.hundredAt || __startupLoadingGuard.finalizingStartedAt || __startupLoadingGuard.startedAt || now);
     if(pct >= 100 && (now - started) >= STABILITY_MASTER_LOADER_RELEASE_MS){
       releaseStartupLoadingGuard(`master-100-release:${reason}`);
       changed = true;
@@ -54065,6 +54118,87 @@ function stabilityMasterTick(reason="frame"){
     changed = stabilityMasterUnpauseGameplay(`master:${reason}`) || changed;
   }
   return changed;
+}
+
+function gameStabilityMasterAudit(){
+  const overlayIds = [
+    "startupLoadingGuard",
+    "launchIntroOverlay",
+    "dailyRewardOverlay",
+    "storyIntroOverlay",
+    "worldMapCampaignOverlay",
+    "baseHqOverlay",
+    "missionCinemaOverlay",
+    "missionBriefOverlay",
+    "modeOverlay",
+    "shopOverlay",
+    "invOverlay",
+    "completeOverlay",
+    "overOverlay"
+  ];
+  const visibleOverlays = [];
+  if(typeof document !== "undefined"){
+    for(const id of overlayIds){
+      const el = document.getElementById(id);
+      if(!el) continue;
+      const style = window.getComputedStyle ? getComputedStyle(el) : el.style;
+      if(style.display !== "none" && style.visibility !== "hidden"){
+        visibleOverlays.push(id);
+      }
+    }
+  }
+  let invalidMission = "";
+  try{ invalidMission = missionEntityStateInvalid(S) || ""; }catch(e){ invalidMission = "audit-exception"; }
+  let disabledButtons = 0;
+  let enabledCommandButtons = 0;
+  try{
+    truthQaAuditVisibleUi(true);
+    if(typeof document !== "undefined"){
+      disabledButtons = document.querySelectorAll("button[data-truth-qa-disabled='1']").length;
+      enabledCommandButtons = [...document.querySelectorAll("button[data-base-hq-command]")].filter((btn)=>!btn.disabled).length;
+    }
+  }catch(e){}
+  const loader = __startupLoadingGuard || {};
+  return {
+    build: TS_BUILD,
+    mode: S?.mode || "",
+    storyLevel: S?.storyLevel || 0,
+    arcadeLevel: S?.arcadeLevel || 0,
+    survivalWave: S?.survivalWave || 0,
+    paused: !!S?.paused,
+    pauseReason: S?.pauseReason || "",
+    gameOver: !!S?.gameOver,
+    missionEnded: !!S?.missionEnded,
+    deployInProgress: !!__deployInProgress,
+    loading: {
+      active: !!loader.active,
+      percent: Math.round(Number(loader.percent || 0)),
+      stage: loader.stage || "",
+      reason: loader.reason || "",
+      pendingReleaseReason: loader.pendingReleaseReason || "",
+      startedAt: Number(loader.startedAt || 0),
+      hundredAt: Number(loader.hundredAt || 0),
+      finalizingUntil: Number(loader.finalizingUntil || 0),
+      releasedAt: Number(loader.releasedAt || 0),
+      stageScores: Object.assign({}, loader.stageScores || {})
+    },
+    visibleOverlays,
+    blockingOverlay: missionBlockingOverlayVisible(),
+    invalidMission,
+    counts: {
+      tigers: Array.isArray(S?.tigers) ? S.tigers.length : 0,
+      aliveTigers: Array.isArray(S?.tigers) ? S.tigers.filter((t)=>t && t.alive !== false).length : 0,
+      civilians: Array.isArray(S?.civilians) ? S.civilians.length : 0,
+      activeCivilians: Array.isArray(S?.civilians) ? S.civilians.filter((c)=>c && c.alive !== false && !c.evac).length : 0,
+      supportUnits: Array.isArray(S?.supportUnits) ? S.supportUnits.length : 0,
+      rivals: Array.isArray(S?.rivalHunters) ? S.rivalHunters.length : 0
+    },
+    ui: {
+      disabledButtons,
+      enabledCommandButtons
+    },
+    lastStabilityEvents: Array.isArray(S?.stabilityEvents) ? S.stabilityEvents.slice(-8) : []
+  };
 }
 
 // ===================== MISSION FLOW =====================
@@ -54915,10 +55049,21 @@ function refreshSceneAfterForeground(){
   const now = Date.now();
   if(now - (__foregroundRefreshAt || 0) < 350) return;
   __foregroundRefreshAt = now;
+  try{
+    if(__startupLoadingGuard?.active){
+      if(Number(__startupLoadingGuard.percent || 0) >= 100){
+        releaseStartupLoadingGuard("foreground-100-release");
+      }else{
+        startupLoadingWatchdogTick();
+        updateStartupLoadingOverlay(true);
+      }
+    }
+  }catch(e){}
   try{ resizeCanvasForViewport(); }catch(e){}
   try{ sanitizeRuntimeState(); }catch(e){}
   try{ clampWorldToCanvas(); }catch(e){}
   try{ invalidateMapCache(); }catch(e){}
+  try{ stabilityMasterTick("foreground"); }catch(e){}
 }
 window.addEventListener("pagehide", ()=>{
   try{ save(true); }catch(e){}
@@ -54931,6 +55076,9 @@ document.addEventListener("visibilitychange", ()=>{
   refreshSceneAfterForeground();
 });
 window.addEventListener("pageshow", ()=>{
+  refreshSceneAfterForeground();
+}, { capture:true });
+window.addEventListener("focus", ()=>{
   refreshSceneAfterForeground();
 }, { capture:true });
 
@@ -55092,6 +55240,7 @@ window.openMissionBriefShop = openMissionBriefShop;
 window.toggleMobileMenu = toggleMobileMenu;
 window.truthQaAuditVisibleUi = truthQaAuditVisibleUi;
 window.runEconomyShopFinalAudit = economyShopFinalAudit;
+window.runGameStabilityMasterAudit = gameStabilityMasterAudit;
 
 window.resetGame = resetGame;
 window.deploy = deploy;
