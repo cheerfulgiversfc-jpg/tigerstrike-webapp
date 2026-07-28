@@ -55,10 +55,55 @@
     if(!T) return false;
     if(T.movedOnce === true) return true;
     if(T.movementInputSeen === true && stepElapsedMs() > 250) return true;
-    if(stepAgentMoveDistance() >= 8) return true;
+    if(stepAgentMoveDistance() >= 5) return true;
     // Joystick/map input is enough for the movement lesson on small screens where
     // overlays can make the visible movement shorter than the distance threshold.
     return T.mapClicked === true && stepElapsedMs() > 450;
+  }
+  function tutorialRecoverableStep(step){
+    const key = String(step?.key || "");
+    return new Set([
+      "move",
+      "sprint",
+      "guide_civilian",
+      "scan_line",
+      "lock_target",
+      "engage_tiger",
+      "combat_buttons",
+      "attack_tiger",
+      "weaken_tiger",
+      "capture_window",
+      "weapon_switch",
+      "interactables",
+      "shield",
+      "squad_command",
+      "squad_formation",
+      "shop",
+      "squad_shop",
+      "inventory",
+      "cosmetics",
+      "world_map"
+    ]).has(key);
+  }
+  function tutorialStepCanNext(step){
+    const T = window.TigerTutorial;
+    if(!T || !step) return false;
+    try{
+      if(step.canNext?.()) return true;
+    }catch(e){}
+    const key = String(step.key || "");
+    if(T.autoRecoveredSteps?.[key]) return true;
+    if(!tutorialRecoverableStep(step)) return false;
+    const elapsed = stepElapsedMs();
+    const fastRecover = key === "move" && (T.mapClicked || T.movementInputSeen || stepAgentMoveDistance() > 1) && elapsed > 1200;
+    const normalRecover = elapsed > 9000;
+    if(fastRecover || normalRecover){
+      T.autoRecoveredSteps = T.autoRecoveredSteps || {};
+      T.autoRecoveredSteps[key] = Date.now();
+      try{ window.toast?.("Tutorial step verified. Continue when ready."); }catch(e){}
+      return true;
+    }
+    return false;
   }
   function markStepStart(step){
     const T = window.TigerTutorial;
@@ -900,7 +945,7 @@
     }
     applyStepHighlight(step, S);
 
-    setNextEnabled(!!step.canNext());
+    setNextEnabled(tutorialStepCanNext(step));
     clearInterval(window.__tutTimer);
     window.__tutTimer = setInterval(() => {
       if(!window.TigerTutorial.isRunning) return;
@@ -914,7 +959,7 @@
           getS().scanTargetUntil = Date.now() + 600000;
         }
       }
-      setNextEnabled(!!step.canNext());
+      setNextEnabled(tutorialStepCanNext(step));
     }, 200);
   }
 
@@ -965,6 +1010,7 @@
     T.combatButtonsSeen = false;
     T.captureButtonReady = false;
     T.evacRouteSeen = false;
+    T.autoRecoveredSteps = {};
     T.lastShieldUntil = Number(getS()?.shieldUntil || 0);
     T.stepStartedAt = Date.now();
     T.renderedKey = null;
@@ -1027,6 +1073,7 @@
     T.combatButtonsSeen = false;
     T.captureButtonReady = false;
     T.evacRouteSeen = false;
+    T.autoRecoveredSteps = null;
     T.lastShieldUntil = 0;
     T.stepStartedAt = 0;
     T.renderedKey = null;
@@ -1058,7 +1105,7 @@
 
     const steps = getStepList();
     const step = steps[T.step];
-    if(!step.canNext || !step.canNext()) return;
+    if(!tutorialStepCanNext(step)) return;
 
     if(step.finish){
       endTutorial(true);

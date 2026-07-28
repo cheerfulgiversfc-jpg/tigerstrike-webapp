@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4518";
+const TS_BUILD = "4519";
 if(tg){
   try{
     tg.expand?.();
@@ -54045,6 +54045,7 @@ function stabilityMasterEnsurePlayableMission(reason="stability-master", opts={}
   if(S.gameOver || S.missionEnded) return false;
   let changed = false;
   try{ repairBlankRuntimeState(S, reason); }catch(e){}
+  try{ changed = stabilityMasterCullGhostEntities(S, reason) || changed; }catch(e){}
   let invalid = "";
   try{ invalid = missionEntityStateInvalid(S); }catch(e){ invalid = "integrity-exception"; }
   if(invalid){
@@ -54078,6 +54079,75 @@ function stabilityMasterEnsurePlayableMission(reason="stability-master", opts={}
   try{ maybeRenderHUD(true); }catch(e){}
   try{ renderCombatControls(); }catch(e){}
   try{ updateAttackButton(); }catch(e){}
+  return changed;
+}
+function stabilityMasterCullGhostEntities(state=S, reason="stability-master"){
+  if(!state || typeof state !== "object") return false;
+  let changed = false;
+
+  if(Array.isArray(state.supportUnits)){
+    const before = state.supportUnits.length;
+    normalizeLoadedSquadOwnershipState(state, reason);
+    reconcileSupportDownedFromUnits(state);
+    let keepAttackers = Math.max(0, Math.floor(Number(state.soldierAttackersOwned || 0)) - Math.floor(Number(state.soldierAttackersDowned || 0)));
+    let keepRescuers = Math.max(0, Math.floor(Number(state.soldierRescuersOwned || 0)) - Math.floor(Number(state.soldierRescuersDowned || 0)));
+    state.supportUnits = state.supportUnits.filter((unit)=>{
+      if(!unit || typeof unit !== "object") return false;
+      if(unit.tutorialOnly || unit._tutorialOnly) return false;
+      if(unit.raidPartner) return !!raidModeActive(state);
+      if(unit.alive === false || Number(unit.hp || 0) <= 0) return false;
+      if(unit.role === "attacker"){
+        if(keepAttackers <= 0) return false;
+        keepAttackers -= 1;
+        return true;
+      }
+      if(unit.role === "rescue"){
+        if(keepRescuers <= 0) return false;
+        keepRescuers -= 1;
+        return true;
+      }
+      return false;
+    }).slice(0, MAX_PERSIST_SUPPORT_UNITS);
+    if(state.supportUnits.length !== before){
+      state._stabilityGhostSupportCull = {
+        before,
+        after:state.supportUnits.length,
+        reason:String(reason || "stability-master"),
+        at:Date.now()
+      };
+      pushStabilityEvent("ghost-support-cull", state._stabilityGhostSupportCull);
+      changed = true;
+    }
+  }
+
+  if(Array.isArray(state.civilians)){
+    const before = state.civilians.length;
+    const seen = new Set();
+    state.civilians = state.civilians.filter((civ, index)=>{
+      if(!civ || typeof civ !== "object") return false;
+      if(civ.tutorialOnly || civ._tutorialOnly || civ.ghost || civ._ghost) return false;
+      const id = Number(civ.id || index + 1);
+      const key = Number.isFinite(id) ? id : index + 1;
+      if(seen.has(key)) return false;
+      seen.add(key);
+      if(!Number.isFinite(Number(civ.x)) || !Number.isFinite(Number(civ.y))) return false;
+      if(!Number.isFinite(Number(civ.hp))) civ.hp = Math.max(1, Number(civ.hpMax || 100));
+      if(!Number.isFinite(Number(civ.hpMax)) || Number(civ.hpMax) <= 0) civ.hpMax = Math.max(1, Number(civ.hp || 100));
+      if(civ.evac === true) lockEvacuatedCivilianInSafeZone(civ, state);
+      return true;
+    });
+    if(state.civilians.length !== before){
+      state.evacDone = clamp(Math.floor(Number(state.evacDone || 0)), 0, state.civilians.length);
+      state._stabilityGhostCivilianCull = {
+        before,
+        after:state.civilians.length,
+        reason:String(reason || "stability-master"),
+        at:Date.now()
+      };
+      pushStabilityEvent("ghost-civilian-cull", state._stabilityGhostCivilianCull);
+      changed = true;
+    }
+  }
   return changed;
 }
 function stabilityMasterEnterGameplay(reason="loader-release"){
@@ -54193,6 +54263,11 @@ function gameStabilityMasterAudit(){
       supportUnits: Array.isArray(S?.supportUnits) ? S.supportUnits.length : 0,
       rivals: Array.isArray(S?.rivalHunters) ? S.rivalHunters.length : 0
     },
+    ghostCleanup: {
+      support: S?._stabilityGhostSupportCull || null,
+      civilians: S?._stabilityGhostCivilianCull || null
+    },
+    tutorial: typeof window.runTutorial3QaAudit === "function" ? window.runTutorial3QaAudit() : null,
     ui: {
       disabledButtons,
       enabledCommandButtons
