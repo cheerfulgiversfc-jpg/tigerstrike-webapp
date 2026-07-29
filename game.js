@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4521";
+const TS_BUILD = "4522";
 if(tg){
   try{
     tg.expand?.();
@@ -2725,6 +2725,21 @@ function defaultMissionDirector5State(){
     incidentCap: 0,
     incidentHistory: [],
     lastNoticeAt: 0,
+    planStartedAt: 0,
+    successfulIncidents: 0,
+    failedIncidents: 0,
+    bonusObjectivesStarted: 0,
+    bonusObjectivesCompleted: 0,
+    surpriseGoals: 0,
+    mapEventCount: 0,
+    tigerSurges: 0,
+    evacComplications: 0,
+    rescueEmergencies: 0,
+    lastIncidentType: "",
+    currentObjectiveTitle: "",
+    recapLines: [],
+    rewardCashEarned: 0,
+    rewardScoreEarned: 0,
   };
 }
 function missionDirector5PlanDefs(){
@@ -2823,6 +2838,21 @@ function ensureMissionDirector5State(state=S){
   d.incidentCap = clamp(Math.floor(Number(d.incidentCap || 0)), 0, 5);
   d.incidentHistory = Array.isArray(d.incidentHistory) ? d.incidentHistory.slice(-6) : [];
   d.lastNoticeAt = Math.max(0, Math.floor(Number(d.lastNoticeAt || 0)));
+  d.planStartedAt = Math.max(0, Math.floor(Number(d.planStartedAt || 0)));
+  d.successfulIncidents = Math.max(0, Math.floor(Number(d.successfulIncidents || 0)));
+  d.failedIncidents = Math.max(0, Math.floor(Number(d.failedIncidents || 0)));
+  d.bonusObjectivesStarted = Math.max(0, Math.floor(Number(d.bonusObjectivesStarted || 0)));
+  d.bonusObjectivesCompleted = Math.max(0, Math.floor(Number(d.bonusObjectivesCompleted || 0)));
+  d.surpriseGoals = Math.max(0, Math.floor(Number(d.surpriseGoals || 0)));
+  d.mapEventCount = Math.max(0, Math.floor(Number(d.mapEventCount || 0)));
+  d.tigerSurges = Math.max(0, Math.floor(Number(d.tigerSurges || 0)));
+  d.evacComplications = Math.max(0, Math.floor(Number(d.evacComplications || 0)));
+  d.rescueEmergencies = Math.max(0, Math.floor(Number(d.rescueEmergencies || 0)));
+  d.lastIncidentType = String(d.lastIncidentType || "");
+  d.currentObjectiveTitle = String(d.currentObjectiveTitle || "");
+  d.recapLines = Array.isArray(d.recapLines) ? d.recapLines.map((x)=>String(x || "").trim()).filter(Boolean).slice(-5) : [];
+  d.rewardCashEarned = Math.max(0, Math.floor(Number(d.rewardCashEarned || 0)));
+  d.rewardScoreEarned = Math.max(0, Math.floor(Number(d.rewardScoreEarned || 0)));
   if(plan){
     if(!d.objectiveBias.length) d.objectiveBias = plan.objectiveBias.slice();
     if(!d.worldEventBias.length) d.worldEventBias = plan.worldEventBias.slice();
@@ -2876,6 +2906,21 @@ function initializeMissionDirector5ForDeploy(state=S, now=Date.now()){
   d.incidentCap = state.mode === "Survival" ? 2 : (isMobileViewport() ? 3 : 4);
   d.incidentHistory = [];
   d.lastNoticeAt = now;
+  d.planStartedAt = now;
+  d.successfulIncidents = 0;
+  d.failedIncidents = 0;
+  d.bonusObjectivesStarted = 0;
+  d.bonusObjectivesCompleted = 0;
+  d.surpriseGoals = 0;
+  d.mapEventCount = 0;
+  d.tigerSurges = 0;
+  d.evacComplications = 0;
+  d.rescueEmergencies = 0;
+  d.lastIncidentType = "";
+  d.currentObjectiveTitle = "";
+  d.recapLines = [`Plan active: ${plan.title}`];
+  d.rewardCashEarned = 0;
+  d.rewardScoreEarned = 0;
   if(!String(state.eventText || "").trim()){
     setEventText(`Director 5.0: ${plan.title}. ${plan.rewardHint}`, 5);
   }
@@ -2899,6 +2944,67 @@ function missionDirector5PreferredWorldEvent(){
   const type = missionDirector5Pick(d.worldEventBias, "");
   return WORLD_EVENT_TYPES.includes(type) ? type : "";
 }
+function missionDirector5IncidentLabel(type){
+  const labels = {
+    objective:"bonus objective",
+    world_event:"world event",
+    tiger_surge:"tiger pressure surge",
+    rescue_emergency:"rescue emergency",
+    evac_complication:"evac complication",
+    supply_choice:"supply choice",
+    scan_window:"intel scan window",
+  };
+  return labels[String(type || "")] || String(type || "mission incident").replace(/_/g, " ");
+}
+function missionDirector5PushRecap(line){
+  const d = ensureMissionDirector5State(S);
+  const txt = String(line || "").trim();
+  if(!d.active || !txt) return;
+  d.recapLines.push(txt);
+  d.recapLines = d.recapLines.slice(-5);
+}
+function missionDirector5ObjectiveFallbackPoint(type){
+  const key = String(type || "");
+  if(key === "civilian_triage" || key === "escort_lane"){
+    const civ = (S.civilians || []).find((c)=>c && c.alive && !c.evac && String(c.id || "") === String(S.dangerCivId || ""))
+      || (S.civilians || []).filter((c)=>c && c.alive && !c.evac)
+        .sort((a,b)=>dist(S.me.x,S.me.y,b.x,b.y)-dist(S.me.x,S.me.y,a.x,a.y))[0];
+    if(civ) return { x:civ.x, y:civ.y };
+  }
+  if(key === "intercept_scout" || key === "pack_break" || key === "alpha_surge"){
+    const tiger = currentTargetTiger() || (S.tigers || []).find((t)=>t && t.alive);
+    if(tiger) return { x:tiger.x, y:tiger.y };
+  }
+  if(key === "hold_evac_route" && S.evacZone) return { x:S.evacZone.x, y:S.evacZone.y };
+  const p = missionDirector4ObjectivePickPoint("center");
+  return p || { x:worldWidth(S) * 0.5, y:worldHeight(S) * 0.5 };
+}
+function missionDirector5AttachObjectiveMarker(type){
+  const d = ensureDynamicObjectiveState(S);
+  if(!d.active) return;
+  if(Number.isFinite(Number(d.markerX)) && Number.isFinite(Number(d.markerY)) && d.markerX > 0 && d.markerY > 0) return;
+  const p = missionDirector5ObjectiveFallbackPoint(type || d.type);
+  d.markerX = clamp(Number(p.x || 0), 40, Math.max(40, worldWidth(S) - 40));
+  d.markerY = clamp(Number(p.y || 0), 40, Math.max(40, worldHeight(S) - 40));
+}
+function missionDirector5SummaryLine(state=S){
+  const d = ensureMissionDirector5State(state);
+  if(!d.active && !d.planId) return "";
+  const completed = Math.max(0, Math.floor(Number(d.bonusObjectivesCompleted || 0)));
+  const started = Math.max(completed, Math.floor(Number(d.bonusObjectivesStarted || 0)));
+  const success = Math.max(0, Math.floor(Number(d.successfulIncidents || 0)));
+  const cap = Math.max(success, Math.floor(Number(d.incidentCap || 0)));
+  const pieces = [
+    `${d.title || "Adaptive Plan"} ${success}/${cap} incidents`,
+    `${completed}/${started || 0} bonus clears`,
+  ];
+  if(d.mapEventCount) pieces.push(`${d.mapEventCount} map event${d.mapEventCount===1?"":"s"}`);
+  if(d.evacComplications) pieces.push(`${d.evacComplications} evac complication${d.evacComplications===1?"":"s"}`);
+  if(d.rescueEmergencies) pieces.push(`${d.rescueEmergencies} rescue emergency${d.rescueEmergencies===1?"":"ies"}`);
+  if(d.tigerSurges) pieces.push(`${d.tigerSurges} tiger surge${d.tigerSurges===1?"":"s"}`);
+  if(d.rewardCashEarned) pieces.push(`+$${d.rewardCashEarned.toLocaleString()} tactical cash`);
+  return `Mission Director 5.0: ${pieces.join(" • ")}.`;
+}
 function missionDirector5TriggerObjective(now=Date.now()){
   const d = ensureDynamicObjectiveState(S);
   if(!liveOpsCommandFlag("dynamicObjectives")) return false;
@@ -2906,7 +3012,14 @@ function missionDirector5TriggerObjective(now=Date.now()){
   const type = missionDirector5PreferredObjective() || chooseDynamicObjectiveType();
   if(!DYNAMIC_OBJECTIVE_TYPES.includes(type)) return false;
   startDynamicObjective(type);
-  setEventText(`Director 5.0 bonus objective: ${ensureDynamicObjectiveState(S).title}`, 5);
+  missionDirector5AttachObjectiveMarker(type);
+  const director = ensureMissionDirector5State(S);
+  const activeObjective = ensureDynamicObjectiveState(S);
+  director.bonusObjectivesStarted += 1;
+  director.surpriseGoals += 1;
+  director.currentObjectiveTitle = activeObjective.title || "";
+  missionDirector5PushRecap(`Bonus objective started: ${activeObjective.title || missionDirector5IncidentLabel(type)}`);
+  setEventText(`Director 5.0 bonus objective: ${activeObjective.title}`, 5);
   return true;
 }
 function missionDirector5TriggerWorldEvent(now=Date.now()){
@@ -2917,9 +3030,16 @@ function missionDirector5TriggerWorldEvent(now=Date.now()){
   const preferred = missionDirector5PreferredWorldEvent();
   const type = preferred || chooseDynamicWorldEventType();
   if(!WORLD_EVENT_TYPES.includes(type)) return false;
-  return triggerDynamicWorldEvent(type, now);
+  const ok = triggerDynamicWorldEvent(type, now);
+  if(ok){
+    const director = ensureMissionDirector5State(S);
+    director.mapEventCount += 1;
+    missionDirector5PushRecap(`World event triggered: ${String(type).replace(/_/g, " ")}`);
+  }
+  return ok;
 }
 function missionDirector5TriggerTigerSurge(now=Date.now()){
+  ensureMissionDirector5State(S).tigerSurges += 1;
   const director = ensureMissionDirectorState(S);
   director.pressure = clamp(Number(director.pressure || 0) + rand(8, 14), 0, 100);
   director.spawnSoftLockUntil = Math.max(0, Math.min(director.spawnSoftLockUntil || 0, now + 900));
@@ -2942,17 +3062,33 @@ function missionDirector5TriggerRescueEmergency(now=Date.now()){
   S.dangerCivId = civ.id;
   civ.panicUntil = Math.max(civ.panicUntil || 0, now + rand(7000, 12000));
   civ._rescueEmergencyAt = now;
+  ensureMissionDirector5State(S).rescueEmergencies += 1;
   setEventText(`Director 5.0: rescue emergency near ${civ.rescueLabel || "field site"}. Secure civilian #${civ.id}.`, 5.8);
-  if(!ensureDynamicObjectiveState(S).active && Math.random() < 0.7) startDynamicObjective("civilian_triage");
+  if(!ensureDynamicObjectiveState(S).active && Math.random() < 0.7){
+    startDynamicObjective("civilian_triage");
+    missionDirector5AttachObjectiveMarker("civilian_triage");
+    const director = ensureMissionDirector5State(S);
+    const activeObjective = ensureDynamicObjectiveState(S);
+    director.bonusObjectivesStarted += 1;
+    director.currentObjectiveTitle = activeObjective.title || "";
+    missionDirector5PushRecap(`Bonus objective started: ${activeObjective.title || "Civilian Triage"}`);
+  }
   return true;
 }
 function missionDirector5TriggerEvacComplication(now=Date.now()){
   if(S.mode === "Survival" || !S.evacZone) return false;
+  ensureMissionDirector5State(S).evacComplications += 1;
   const director = ensureMissionDirectorState(S);
   director.recoveryUntil = Math.max(director.recoveryUntil || 0, now + 2200);
   director.spawnSoftLockUntil = Math.max(director.spawnSoftLockUntil || 0, now + 1800);
   if(!ensureDynamicObjectiveState(S).active){
     startDynamicObjective("hold_evac_route");
+    missionDirector5AttachObjectiveMarker("hold_evac_route");
+    const director5 = ensureMissionDirector5State(S);
+    const activeObjective = ensureDynamicObjectiveState(S);
+    director5.bonusObjectivesStarted += 1;
+    director5.currentObjectiveTitle = activeObjective.title || "";
+    missionDirector5PushRecap(`Bonus objective started: ${activeObjective.title || "Evac Route Hold"}`);
   }
   setEventText("Director 5.0: evac complication. Keep tigers away from the route.", 5.4);
   return true;
@@ -2961,6 +3097,8 @@ function missionDirector5TriggerSupplyChoice(now=Date.now()){
   const p = missionDirector4ObjectivePickPoint("center");
   if(!p) return false;
   spawnPickup(Math.random() < 0.55 ? "CRATE" : "AMMO", p.x, p.y);
+  ensureMissionDirector5State(S).surpriseGoals += 1;
+  missionDirector5PushRecap("Supply choice appeared off-route");
   setEventText("Director 5.0 bonus choice: grab supplies or stay on rescue route.", 5.6);
   return true;
 }
@@ -2969,6 +3107,7 @@ function missionDirector5TriggerScanWindow(now=Date.now()){
   if(target){
     S.lockedTigerId = target.id;
     S.scanPing = Math.max(S.scanPing || 0, now + 9000);
+    missionDirector5PushRecap(`Intel window marked Tiger #${target.id}`);
     setEventText(`Director 5.0 intel window: Tiger #${target.id} marked. Follow the scan line.`, 5.6);
     return true;
   }
@@ -2998,9 +3137,19 @@ function missionDirector5Tick(now=Date.now()){
     ok = missionDirector5TriggerIncident(picked, now);
   }
   d.incidentIndex += 1;
+  d.lastIncidentType = picked || "none";
+  if(ok){
+    d.successfulIncidents += 1;
+    missionDirector5PushRecap(`Incident resolved: ${missionDirector5IncidentLabel(picked)}`);
+  }else{
+    d.failedIncidents += 1;
+    missionDirector5PushRecap(`Incident retry queued: ${missionDirector5IncidentLabel(picked)}`);
+  }
   d.incidentHistory.push({ type:picked || "none", ok:!!ok, at:now });
   d.incidentHistory = d.incidentHistory.slice(-6);
-  d.nextIncidentAt = now + rand(isMobileViewport() ? 24000 : 21000, isMobileViewport() ? 38000 : 43000);
+  d.nextIncidentAt = ok
+    ? now + rand(isMobileViewport() ? 24000 : 21000, isMobileViewport() ? 38000 : 43000)
+    : now + rand(isMobileViewport() ? 11000 : 9000, isMobileViewport() ? 16000 : 14000);
   d.lastNoticeAt = now;
   __savePending = true;
 }
@@ -17785,6 +17934,11 @@ function missionDirectorTick(){
   const intelMul = (S.mode === "Story") ? clamp(1 - (storyHQRank("HQ_INTEL") * 0.04), 0.78, 1) : 1;
   S._directorAggroMul = clamp(Number(phaseCfg.aggroMul || 1) * clamp(Number(tuning.aggroMul || 1), 0.86, 1.18) * intelMul, 0.72, 1.28);
   S._directorSpeedMul = clamp(Number(phaseCfg.speedMul || 1) * clamp(Number(tuning.speedMul || 1), 0.88, 1.14), 0.84, 1.22);
+  const director5 = ensureMissionDirector5State(S);
+  if(director5.active){
+    S._directorAggroMul = clamp(S._directorAggroMul * Number(director5.pressureMul || 1), 0.72, 1.34);
+    S._directorSpeedMul = clamp(S._directorSpeedMul * clamp(Number(director5.pressureMul || 1), 0.94, 1.09), 0.84, 1.26);
+  }
 
   if(now >= (director.hardTrimAt || 0)){
     const trimRes = missionDirectorApplyHardCaps();
@@ -45601,6 +45755,13 @@ function grantDynamicObjectiveReward(){
   const d = ensureDynamicObjectiveState(S);
   if(!d.active || d.completed) return;
   d.completed = true;
+  const director5 = ensureMissionDirector5State(S);
+  if(director5.active){
+    director5.bonusObjectivesCompleted += 1;
+    director5.rewardCashEarned += Math.max(0, Math.floor(Number(d.rewardCash || 0)));
+    director5.rewardScoreEarned += Math.max(0, Math.floor(Number(d.rewardScore || 0)));
+    missionDirector5PushRecap(`Bonus objective completed: ${d.title || "Tactical objective"}`);
+  }
   if(d.rewardCash > 0){
     S.funds = Math.max(0, Math.round(Number(S.funds || 0))) + d.rewardCash;
     trackCashEarned(d.rewardCash);
@@ -46915,6 +47076,12 @@ function checkMissionComplete(){
         activeMission,
       });
       const cinematicBossHuntNote = recordCinematicBossHuntMissionOutcome({ activeMission });
+      const director5Summary = missionDirector5SummaryLine(S);
+      const director5State = ensureMissionDirector5State(S);
+      const director5Recent = Array.isArray(director5State.recapLines) && director5State.recapLines.length
+        ? `\nDirector Log: ${director5State.recapLines.slice(-3).join(" • ")}`
+        : "";
+      const director5Note = director5Summary ? `\n${director5Summary}${director5Recent}\n` : "";
 
       const recapMeta = {
         number: activeMission?.number || gameplayCloudMission(S),
@@ -46954,7 +47121,7 @@ function checkMissionComplete(){
       });
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${fieldCashTruthNote}${worldMapCampaignNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${director5Note}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${fieldCashTruthNote}${worldMapCampaignNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
@@ -48210,6 +48377,18 @@ function drawDynamicObjectiveMarker(now=Date.now()){
   if(!Number.isFinite(x) || !Number.isFinite(y) || x <= 0 || y <= 0) return;
   const pulse = (Math.sin(now / 260) + 1) * 0.5;
   ctx.save();
+  const playerDist = dist(S.me.x, S.me.y, x, y);
+  if(playerDist > 140){
+    ctx.globalAlpha = 0.62;
+    ctx.strokeStyle = "rgba(250,204,21,.46)";
+    ctx.lineWidth = 2.2;
+    ctx.setLineDash([12, 10]);
+    ctx.beginPath();
+    ctx.moveTo(S.me.x, S.me.y);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
   ctx.globalAlpha = 0.88;
   ctx.strokeStyle = "rgba(250,204,21,.95)";
   ctx.fillStyle = "rgba(250,204,21,.13)";
@@ -48225,6 +48404,12 @@ function drawDynamicObjectiveMarker(now=Date.now()){
   ctx.font = "900 10px system-ui";
   ctx.textAlign = "center";
   ctx.fillText(`DIRECTOR: ${String(d.title || "OBJECTIVE").toUpperCase().slice(0, 18)}`, x, y - 41);
+  const target = Math.max(1, Math.floor(Number(d.target || 1)));
+  const progress = clamp(Math.floor(Number(d.progress || 0)), 0, target);
+  rounded(x - 38, y + 33, 76, 18, 8, "rgba(15,23,42,.82)", "rgba(250,204,21,.55)");
+  ctx.fillStyle = "rgba(254,249,195,.96)";
+  ctx.font = "900 9px system-ui";
+  ctx.fillText(`${progress}/${target}`, x, y + 46);
   ctx.restore();
 }
 
