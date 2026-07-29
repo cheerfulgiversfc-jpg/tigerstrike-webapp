@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4519";
+const TS_BUILD = "4520";
 if(tg){
   try{
     tg.expand?.();
@@ -33476,7 +33476,7 @@ function shopGameplayEffect(kind, item){
   if(kind === "weapon"){
     const role = item.type === "tranq" ? "Capture" : "Combat";
     const highTier = Number(item.price || 0) >= 300000 ? "Endgame cash sink • " : "";
-    return `${highTier}${role} weapon • uses ${item.ammo} • equip from Shop or Inventory.`;
+    return `${highTier}${role} weapon • buys and equips immediately • uses ${item.ammo}.`;
   }
   if(kind === "ammo") return `Adds ${item.pack} reserve ammo • used by: ${weaponAmmoUsers(item.id)} • strongest compatible ammo auto-loads first.`;
   if(kind === "med") return `Heals +${item.heal} HP • stored if HP is full, auto-used if injured${Number(item.price || 0) >= 5000 ? " • premium endgame refill" : ""}.`;
@@ -33485,6 +33485,40 @@ function shopGameplayEffect(kind, item){
   if(kind === "shield") return "Adds one Escort Shield • blocks tiger damage for 5 seconds with escalating cooldown.";
   if(kind === "trap") return "Adds one trap • placed on the map to hold a tiger for 3-5 seconds with escalating cooldown.";
   return "Gameplay effect active.";
+}
+function shopTruthStateLine(kind, item){
+  if(!item) return "State: unavailable.";
+  if(kind === "weapon"){
+    const owned = S.ownedWeapons.includes(item.id);
+    const equipped = S.equippedWeaponId === item.id;
+    const reserve = compatibleAmmoReserveForWeapon(item);
+    return `State: ${equipped ? "Equipped now" : (owned ? "Owned, ready to equip" : "Locked until purchased")} • Compatible reserve ${reserve} • Durability ${Math.round(weaponDurability(item.id))}%.`;
+  }
+  if(kind === "ammo") return `State: ${ownedAmmoCount(item.id)} in reserve • Family ${item.family} • Used by ${weaponAmmoUsers(item.id)}.`;
+  if(kind === "med") return `State: ${ownedMedCount(item.id)} owned • ${S.hp < 100 ? "Next purchase auto-heals your agent now" : "Next purchase stores in Inventory"}.`;
+  if(kind === "armor") return `State: ${armorPlateCount(item.id)} owned • ${S.armor < S.armorCap ? "Next purchase restores armor now and stores the plate" : "Next purchase stores the plate"}.`;
+  if(kind === "tool") return `State: ${ownedToolCount(item.id)} owned • Repairs equipped weapon durability on use.`;
+  if(kind === "shield") return `State: ${S.shields || 0} owned • Cooldown increases by 5s each mission use.`;
+  if(kind === "trap") return `State: ${S.trapsOwned || 0} owned • Cooldown increases by 5s each mission use.`;
+  if(kind === "bundle") return `State: ${Number(S.funds || 0) >= Number(item.price || 0) ? "Can buy now" : "Need more cash"} • Rewards apply before cash is charged.`;
+  return "State: active.";
+}
+function shopTruthRefresh(message="", opts={}){
+  if(document.getElementById("shopOverlay")?.style.display === "flex") renderShopList();
+  if(document.getElementById("invOverlay")?.style.display === "flex") renderInventory();
+  renderHUD();
+  renderCombatControls();
+  if(document.getElementById("battleOverlay")?.style.display === "flex"){
+    renderWeaponGrid();
+    updateBattleButtons();
+    updateAttackButton();
+    renderBattleStatus();
+  }
+  if(message){
+    const feedback = opts.feedback !== false;
+    if(feedback) interactionFeedback(message, { success:opts.success !== false, warn:!!opts.warn, battle:S.inBattle });
+    else toast(message);
+  }
 }
 function shopAuditSummary(){
   const issues = [];
@@ -33545,6 +33579,58 @@ function economyShopFinalAudit(){
     issues,
   };
 }
+function shopInventoryTruthAudit(){
+  const issues = [...shopAuditSummary().issues];
+  const actionChecks = [
+    ["buyWeapon", typeof buyWeapon === "function"],
+    ["buyAmmo", typeof buyAmmo === "function"],
+    ["buyArmor", typeof buyArmor === "function"],
+    ["buyMed", typeof buyMed === "function"],
+    ["buyTool", typeof buyTool === "function"],
+    ["buyShield", typeof buyShield === "function"],
+    ["buyTrap", typeof buyTrap === "function"],
+    ["buyCashBundle", typeof buyCashBundle === "function"],
+    ["equipWeapon", typeof equipWeapon === "function"],
+    ["renderInventory", typeof renderInventory === "function"],
+  ];
+  for(const [name, ok] of actionChecks){
+    if(!ok) issues.push(`missing action ${name}`);
+  }
+  for(const w of WEAPONS){
+    if(!shopGameplayEffect("weapon", w) || !shopTruthStateLine("weapon", w)) issues.push(`${w.name} missing weapon truth text`);
+  }
+  for(const a of AMMO){
+    if(!shopGameplayEffect("ammo", a) || !shopTruthStateLine("ammo", a)) issues.push(`${a.name} missing ammo truth text`);
+  }
+  for(const m of MEDS){
+    if(!shopGameplayEffect("med", m) || !shopTruthStateLine("med", m)) issues.push(`${m.name} missing med truth text`);
+  }
+  for(const ar of ARMORY){
+    if(!shopGameplayEffect("armor", ar) || !shopTruthStateLine("armor", ar)) issues.push(`${ar.name} missing armor truth text`);
+  }
+  for(const t of TOOLS){
+    if(!shopGameplayEffect("tool", t) || !shopTruthStateLine("tool", t)) issues.push(`${t.name} missing tool truth text`);
+  }
+  for(const bundle of cashShopBundles()){
+    const errors = cashBundleValidationErrors(bundle);
+    if(errors.length) issues.push(`${bundle.name}: ${errors[0]}`);
+    if(!shopTruthStateLine("bundle", bundle)) issues.push(`${bundle.name} missing bundle truth text`);
+  }
+  return {
+    ok: issues.length === 0,
+    build: TS_BUILD,
+    weapons: WEAPONS.length,
+    ammo: AMMO.length,
+    meds: MEDS.length,
+    armor: ARMORY.length,
+    tools: TOOLS.length + 2,
+    bundles: cashShopBundles().length,
+    equippedWeapon: equippedWeapon()?.name || "",
+    equippedState: shopTruthStateLine("weapon", equippedWeapon()),
+    issues,
+  };
+}
+window.runShopInventoryTruthAudit = shopInventoryTruthAudit;
 
 function cashBundleIndividualValue(grant={}){
   let value = positiveInt(grant.funds);
@@ -33811,12 +33897,13 @@ function renderShopList(){
           <div>
             <div class="itemName">${w.name} <span class="tag">${w.grade}</span> <span class="tag">${shopItemStatusTag("weapon", w.id)}</span></div>
             <div class="itemDesc">${shopGameplayEffect("weapon", w)}</div>
+            <div class="itemDesc">${shopTruthStateLine("weapon", w)}</div>
             <div class="itemDesc">Ammo: ${w.ammo} • Mag: ${stats.magCap} • Damage: ${stats.dmg[0]}–${stats.dmg[1]} • Range: ${stats.range}${masteryText}${treeText}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${w.price.toLocaleString()}</div>
-            <button ${owned?'disabled':''} onclick="buyWeapon('${w.id}')">${owned?'Owned':'Buy'}</button>
-            <button class="ghost" onclick="equipWeapon('${w.id}')" ${owned?'':'disabled'}>Equip</button>
+            <button ${owned?'disabled':''} onclick="buyWeapon('${w.id}')">${owned?'Owned':'Buy + Equip'}</button>
+            <button class="ghost" onclick="equipWeapon('${w.id}')" ${owned && S.equippedWeaponId !== w.id ? "" : "disabled"}>${S.equippedWeaponId === w.id ? "Equipped" : "Equip"}</button>
           </div>
         </div>`;
     }).join("")}
@@ -33834,6 +33921,7 @@ function renderShopList(){
           <div>
             <div class="itemName">${a.name} <span class="tag">${a.grade}</span> <span class="tag">${shopItemStatusTag("ammo", a.id)}</span></div>
             <div class="itemDesc">${shopGameplayEffect("ammo", a)}</div>
+            <div class="itemDesc">${shopTruthStateLine("ammo", a)}</div>
             <div class="itemDesc">Family: ${a.family}</div>
           </div>
           <div style="text-align:right">
@@ -33852,6 +33940,7 @@ function renderShopList(){
         <div>
           <div class="itemName">${ar.name} <span class="tag">${armorTierLabel(ar.id)}</span> <span class="tag">${shopItemStatusTag("armor", ar.id)}</span></div>
           <div class="itemDesc">${shopGameplayEffect("armor", ar)}</div>
+          <div class="itemDesc">${shopTruthStateLine("armor", ar)}</div>
           <div class="itemDesc">Armor cap ${ar.cap} • Total plates: ${totalArmorPlates()}</div>
         </div>
         <div style="text-align:right">
@@ -33871,6 +33960,7 @@ function renderShopList(){
           <div>
             <div class="itemName">${m.name} <span class="tag">${medTierLabel(m.id)}</span> <span class="tag">${shopItemStatusTag("med", m.id)}</span></div>
             <div class="itemDesc">${shopGameplayEffect("med", m)}</div>
+            <div class="itemDesc">${shopTruthStateLine("med", m)}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${m.price.toLocaleString()}</div>
@@ -34477,6 +34567,7 @@ function renderShopList(){
           <div>
             <div class="itemName">${bundle.name} <span class="tag">Bundle</span>${tags}</div>
             <div class="itemDesc">${bundle.desc}</div>
+            <div class="itemDesc">${shopTruthStateLine("bundle", bundle)}</div>
             <div class="itemDesc">Individual value: <b>$${Number(bundle.individualValue || 0).toLocaleString()}</b> • You save <b>$${Number(bundle.savings || 0).toLocaleString()}</b> (${cashBundleSavingsPercent(bundle)}%).</div>
             <div class="itemDesc">${canAfford ? "Ready to buy now." : `Need $${Math.max(0, Number(bundle.price || 0) - Number(S.funds || 0)).toLocaleString()} more.`}</div>
           </div>
@@ -34498,6 +34589,7 @@ function renderShopList(){
           <div>
             <div class="itemName">${t.name} <span class="tag">${shopItemStatusTag("tool", t.id)}</span></div>
             <div class="itemDesc">${shopGameplayEffect("tool", t)}</div>
+            <div class="itemDesc">${shopTruthStateLine("tool", t)}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${t.price.toLocaleString()}</div>
@@ -34510,6 +34602,7 @@ function renderShopList(){
           <div>
             <div class="itemName">Escort Shield <span class="tag">Owned: ${S.shields||0}</span></div>
             <div class="itemDesc">${shopGameplayEffect("shield")}</div>
+            <div class="itemDesc">${shopTruthStateLine("shield", { id:"SHIELD" })}</div>
           </div>
         <div style="text-align:right">
           <div class="price">$${SHIELD_PRICE.toLocaleString()}</div>
@@ -34526,6 +34619,7 @@ function renderShopList(){
       <div>
         <div class="itemName">Trap <span class="tag">Owned: ${S.trapsOwned}</span></div>
         <div class="itemDesc">${shopGameplayEffect("trap")}</div>
+        <div class="itemDesc">${shopTruthStateLine("trap", TRAP_ITEM)}</div>
       </div>
       <div style="text-align:right">
         <div class="price">$${TRAP_ITEM.price.toLocaleString()}</div>
@@ -34549,8 +34643,8 @@ function buyWeapon(id){
   }
   if(!S.ammoReserve[w.ammo]) S.ammoReserve[w.ammo]=0;
   sfx("ui"); hapticImpact("light");
-  save(); renderShopList(); renderHUD();
-  interactionFeedback(`${w.name} purchased. It is now unlocked in Weapons and Inventory.`, { success:true });
+  equipWeapon(id, { keepPreset:true });
+  shopTruthRefresh(`${w.name} purchased and equipped. ${compatibleAmmoReserveForWeapon(w)} compatible ammo in reserve.`, { success:true });
 }
 function buyAmmo(id){
   const a=getAmmo(id); if(!a) return;
@@ -34558,9 +34652,12 @@ function buyAmmo(id){
   if(S.funds < p) return toast("Not enough money.");
   S.funds -= p;
   S.ammoReserve[id] = (S.ammoReserve[id]||0) + a.pack;
+  const w = equippedWeapon();
+  const fitsEquipped = compatibleAmmoIdsForWeapon(w).includes(id);
+  if(fitsEquipped && (!S.mag || S.mag.loaded <= 0)) autoReloadIfNeeded(true);
   sfx("ui"); hapticImpact("light");
-  save(); renderShopList(); renderHUD();
-  interactionFeedback(`${a.name} purchased: +${a.pack} reserve (${ownedAmmoCount(id)} owned).`, { success:true });
+  save();
+  shopTruthRefresh(`${a.name} purchased: +${a.pack} reserve (${ownedAmmoCount(id)} owned).${fitsEquipped ? " Compatible with equipped weapon." : ""}`, { success:true });
 }
 function buyArmor(id){
   const ar=getArmor(id); if(!ar) return;
@@ -34584,10 +34681,7 @@ function buyArmor(id){
   toast(`${ar.name} bought. ${armorTierLabel(ar.id)} owned: ${armorPlateCount(ar.id)}${armorGain > 0 ? ` • Armor +${armorGain}` : ""}.`);
   sfx("ui"); hapticImpact("light");
   save();
-  renderShopList();
-  renderHUD();
-  renderCombatControls();
-  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  shopTruthRefresh("", { feedback:false });
 }
 function buyMed(id){
   const m=getMed(id); if(!m) return;
@@ -34612,10 +34706,7 @@ function buyMed(id){
   );
   sfx("ui"); hapticImpact("light");
   save();
-  renderShopList();
-  renderHUD();
-  renderCombatControls();
-  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
+  shopTruthRefresh("", { feedback:false });
 }
 function buyTool(id){
   const t=getTool(id); if(!t) return;
@@ -34623,18 +34714,16 @@ function buyTool(id){
   S.funds -= t.price;
   S.repairKits[id] = (S.repairKits[id]||0) + t.qty;
   sfx("ui"); hapticImpact("light");
-  save(); renderShopList(); renderHUD();
-  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-  interactionFeedback(`${t.name} purchased: +${t.qty} repair kit${t.qty === 1 ? "" : "s"} (${ownedToolCount(id)} owned).`, { success:true });
+  save();
+  shopTruthRefresh(`${t.name} purchased: +${t.qty} repair kit${t.qty === 1 ? "" : "s"} (${ownedToolCount(id)} owned).`, { success:true });
 }
 function buyShield(){
   if(S.funds < SHIELD_PRICE) return toast("Not enough money.");
   S.funds -= SHIELD_PRICE;
   S.shields = (S.shields||0) + 1;
   sfx("ui"); hapticImpact("light");
-  save(); renderShopList(); renderHUD();
-  renderCombatControls();
-  interactionFeedback(`Escort Shield purchased. Shields owned: ${S.shields || 0}.`, { success:true });
+  save();
+  shopTruthRefresh(`Escort Shield purchased. Shields owned: ${S.shields || 0}.`, { success:true });
 }
 function buyCashBundle(id){
   const bundle = cashBundleById(id);
@@ -34649,10 +34738,7 @@ function buyCashBundle(id){
   S.funds -= bundle.price;
   sfx("ui"); hapticImpact("medium");
   save();
-  renderShopList();
-  renderHUD();
-  if(document.getElementById("invOverlay").style.display==="flex") renderInventory();
-  toast(`${bundle.name} applied: ${applied.summary}`);
+  shopTruthRefresh(`${bundle.name} applied: ${applied.summary}`, { feedback:false });
 }
 function buyTigerSpecialist(){
   if(!specialistRoleUnlocked("attacker")) return toast(`Unlocks at level ${SOLDIER_UNLOCK_LEVEL}, or unlock anytime in Squad for 500 Stars.`);
@@ -34847,9 +34933,8 @@ function buyTrap(){
   S.funds -= TRAP_ITEM.price;
   S.trapsOwned += TRAP_ITEM.qty;
   sfx("ui"); hapticImpact("light");
-  save(); renderShopList(); renderHUD();
-  renderCombatControls();
-  interactionFeedback(`Trap purchased. Traps owned: ${S.trapsOwned || 0}.`, { success:true });
+  save();
+  shopTruthRefresh(`Trap purchased. Traps owned: ${S.trapsOwned || 0}.`, { success:true });
 }
 
 function totalMedkits(){ return Object.values(S.medkits||{}).reduce((a,b)=>a+(b||0),0); }
@@ -34937,6 +35022,7 @@ function renderInventory(){
       <div class="item">
         <div>
           <div class="itemName">${active?'✅ ':''}${ww.name} <span class="tag">${ww.grade}</span></div>
+          <div class="itemDesc">${shopTruthStateLine("weapon", ww)}</div>
           <div class="itemDesc">Ammo: ${ww.ammo} • Mag: ${buildStats.magCap} • Damage: ${buildStats.dmg[0]}-${buildStats.dmg[1]} • Range: ${buildStats.range} • Durability: ${dur}%</div>
           <div class="itemDesc">Attachments: ${equippedSlots || "None"}.</div>
           <div class="itemDesc">Mastery Lv ${mastery.level}/${WEAPON_MASTERY_MAX_LEVEL} • ${xpTxt} • Anti-jam ${jamCut}% • Reload smooth +${reloadSmooth}%</div>
@@ -34957,6 +35043,7 @@ function renderInventory(){
         <div>
           <div class="itemName">${a?a.name:aid} <span class="tag">${a?a.grade:'Ammo'}</span></div>
           <div class="itemDesc">Reserve: ${S.ammoReserve[aid]||0}</div>
+          <div class="itemDesc">${a ? shopGameplayEffect("ammo", a) : "Ammo effect unavailable."}</div>
         </div>
         <div style="text-align:right">
           <button class="ghost" onclick="openShopFromInventory('ammo')">Buy</button>
@@ -35231,6 +35318,7 @@ function renderInventory(){
     <div class="item">
       <div>
         <div class="itemName">❤️ Med Kits <span class="tag">Owned: ${totalMedkits()}</span></div>
+        <div class="itemDesc">Effect: Use selected kit to heal yourself or an injured civilian. Smart use picks the best available kit.</div>
         <div class="itemDesc">Heal target: <b>${S.healTarget||'self'}</b> • Selected: <b>${medTierLabel(medSelectedDef.id)} ${medSelectedDef.name}</b> (+${medSelectedDef.heal} HP)</div>
         <div class="itemDesc">${MEDS.map((m)=>`${medTierLabel(m.id)} ${m.name}: ${S.medkits?.[m.id] || 0}`).join(" • ")}</div>
       </div>
@@ -35248,6 +35336,7 @@ function renderInventory(){
       <div>
         <div class="itemName">🧰 Repair Kits <span class="tag">Owned: ${totalRepairKits()}</span></div>
         <div class="itemDesc">Repairs current weapon durability</div>
+        <div class="itemDesc">Effect: consumes one repair kit and restores durability on ${w.name}.</div>
       </div>
       <div style="text-align:right">
         <button ${totalRepairKits()<=0?'disabled':''} onclick="useRepairKit()">Use</button>
@@ -35256,6 +35345,7 @@ function renderInventory(){
     <div class="item">
       <div>
         <div class="itemName">🛡️ Armor Plates <span class="tag">Owned: ${totalArmorPlates()}</span></div>
+        <div class="itemDesc">Effect: Use selected plate to restore armor immediately until your armor cap is full.</div>
         <div class="itemDesc">Selected: <b>${armorTierLabel(armorSelectedDef.id)} ${armorSelectedDef.name}</b> (+${armorSelectedDef.addArmor} armor). T1 ${armorPlateCount("A_TIER1")} • T2 ${armorPlateCount("A_TIER2")} • T3 ${armorPlateCount("A_TIER3")} • T4 ${armorPlateCount("A_TIER4")} • Apex ${armorPlateCount("A_APEX")}</div>
       </div>
       <div style="text-align:right">
@@ -35271,7 +35361,7 @@ function renderInventory(){
     <div class="item">
       <div>
         <div class="itemName">🪤 Traps <span class="tag">Owned: ${S.trapsOwned}</span></div>
-        <div class="itemDesc">One-time hold 3–5s.</div>
+        <div class="itemDesc">Effect: One-time map control hold for 3-5s. Each use adds +5s to the mission cooldown.</div>
       </div>
       <div style="text-align:right">
         <button ${S.trapsOwned<=0?'disabled':''} onclick="placeTrap()">Place</button>
