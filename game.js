@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4520";
+const TS_BUILD = "4521";
 if(tg){
   try{
     tg.expand?.();
@@ -30233,10 +30233,10 @@ function baseHqCameraOffset(){
   const roomY = Number(room.y || __baseHqPlayer.y || 0);
   let focusX = movingToRoom || hudOpen ? ((Number(__baseHqPlayer.x || 0) * 0.32) + (roomX * 0.68)) : Number(__baseHqPlayer.x || 0);
   let focusY = movingToRoom || hudOpen ? ((Number(__baseHqPlayer.y || 0) * 0.32) + (roomY * 0.68)) : Number(__baseHqPlayer.y || 0);
-  if(quickOpen) focusY = Math.max(90, focusY - (viewH * 0.14));
-  if(hudOpen && isMobileViewport()) focusY = Math.max(80, focusY - (viewH * 0.10));
+  if(quickOpen) focusY = Math.max(110, focusY - (viewH * 0.20));
+  if(hudOpen && isMobileViewport()) focusY = Math.max(90, focusY - (viewH * 0.14));
   const xBias = hudOpen && !isMobileViewport() ? 0.34 : 0.50;
-  const yBias = quickOpen ? 0.44 : (hudOpen ? (isMobileViewport() ? 0.34 : 0.46) : 0.52);
+  const yBias = quickOpen ? 0.38 : (hudOpen ? (isMobileViewport() ? 0.32 : 0.46) : 0.52);
   __baseHqCamera.targetX = clamp(focusX - (viewW * xBias), 0, maxX);
   __baseHqCamera.targetY = clamp(focusY - (viewH * yBias), 0, maxY);
   const ease = clamp((movingToRoom ? 0.14 : 0.11) * frameMotionMul(), 0.07, 0.26);
@@ -30252,6 +30252,19 @@ function baseHqCameraOffset(){
   __baseHqCamera.x = clamp(__baseHqCamera.x, 0, maxX);
   __baseHqCamera.y = clamp(__baseHqCamera.y, 0, maxY);
   return __baseHqCamera;
+}
+function baseHqWorldToStagePercent(x, y, cam=baseHqCameraOffset(), pad=130){
+  const viewW = Number(cv?.width || 960) || 960;
+  const viewH = Number(cv?.height || 540) || 540;
+  const sx = Number(x || 0) - Number(cam?.x || 0);
+  const sy = Number(y || 0) - Number(cam?.y || 0);
+  return {
+    xPct: (sx / viewW) * 100,
+    yPct: (sy / viewH) * 100,
+    sx,
+    sy,
+    visible: sx >= -pad && sx <= viewW + pad && sy >= -pad && sy <= viewH + pad,
+  };
 }
 function baseHqScreenToWorld(sx, sy){
   const cam = baseHqCameraOffset();
@@ -31301,9 +31314,13 @@ function baseHqNpcDialogue(npcName){
     const profile = baseHqIvyGuidanceProfile();
     return `${profile.line} ${profile.reason}`;
   }
+  const npc = BASE_HQ_NPCS.find((row)=>row.name === npcName);
   const lines = BASE_HQ_DIALOGUES[npcName] || Object.freeze(["I am still setting up this desk, Commander. Check another room for more intel."]);
   const idx = Math.abs(Math.floor(Number(__baseHqDialogIndex || 0))) % lines.length;
-  return lines[idx];
+  const purpose = npc?.room ? baseHqRoomPurposeLine(npc.room) : "";
+  const status = npc?.room ? baseHqRoomStatusLine(npc.room) : "";
+  const suffix = purpose ? ` This station is for ${purpose.toLowerCase()} ${status ? `Status: ${status}.` : ""}` : "";
+  return `${lines[idx]}${suffix}`;
 }
 function baseHqStartConversation(npc){
   if(!npc) return false;
@@ -31457,6 +31474,49 @@ function truthQaActionAvailable(command=""){
   if(!name) return false;
   const local = baseHqCommandActions();
   return typeof local[name] === "function" || typeof window?.[name] === "function";
+}
+function baseHqMainMenuPolishAudit(){
+  const issues = [];
+  const quickCommands = [
+    "startMissionFromBaseHQ()",
+    "openBaseHqModePreview('Story')",
+    "openBaseHqModePreview('Arcade')",
+    "openBaseHqModePreview('Survival')",
+    "startTutorialFromBaseHQ()",
+    "openWorldMapCampaign()",
+    "openMissionBriefFromBaseHQ()",
+    "selectBaseHqRoom('training', true)",
+    "openBaseHqDailyBoard()",
+    "openBaseHqChallengeBoard()",
+    "openBaseHqNewsBoard()",
+    "openBaseHqEventBoard()",
+    "openBaseHqLeaderboardBoard()",
+    "openSocialRescueOpsFromBaseHQ()",
+    "openShopFromBaseHQ('bundles')",
+    "openInventoryFromBaseHQ()",
+    "resetBaseHqOnboarding()",
+    "setBaseHqQuickMenuCollapsed(true)",
+    "setBaseHqQuickMenuCollapsed(false)",
+  ];
+  for(const room of BASE_HQ_ROOMS){
+    const { data } = baseHqRoomData(room.id);
+    const actions = Array.isArray(data?.actions) ? data.actions : [];
+    if(!actions.length) issues.push(`${room.id}: no actions`);
+    actions.forEach(([label, command])=>{
+      if(!truthQaActionAvailable(command)) issues.push(`${room.id}: ${label || command} is not connected`);
+    });
+  }
+  quickCommands.forEach((command)=>{
+    if(!truthQaActionAvailable(command)) issues.push(`quick: ${command} is not connected`);
+  });
+  return {
+    ok: issues.length === 0,
+    build: TS_BUILD,
+    rooms: BASE_HQ_ROOMS.length,
+    npcs: BASE_HQ_NPCS.length,
+    quickControls: quickCommands.length,
+    issues
+  };
 }
 function truthQaInlineActionNames(inline=""){
   const text = String(inline || "");
@@ -32113,9 +32173,11 @@ function renderBaseHqQuickBar(){
   }
   bar.innerHTML = `
     <div class="baseHqQuickHint"><b>Base HQ Home:</b> ${baseHqEsc(baseHqIvyGuidance())} • Active: ${baseHqEsc(snap.label)}</div>
+    ${button("Continue", "startMissionFromBaseHQ()", "primary")}
     ${button("Story", "openBaseHqModePreview('Story')", "primary")}
     ${button("Arcade", "openBaseHqModePreview('Arcade')", "primary")}
     ${button("Survival", "openBaseHqModePreview('Survival')", "primary")}
+    ${button("Tutorial", "startTutorialFromBaseHQ()", "primary")}
     ${button("World Map", "openWorldMapCampaign()", "primary")}
     ${button("Brief", "openMissionBriefFromBaseHQ()", "")}
     ${button("Training", "selectBaseHqRoom('training', true)", "")}
@@ -32135,12 +32197,16 @@ function renderBaseHqQuickBar(){
 function renderBaseHQ(){
   const roomsWrap = document.getElementById("baseHqRooms");
   const agent = document.getElementById("baseHqAgent");
+  const cam = baseHqCameraOffset();
   if(roomsWrap){
     roomsWrap.innerHTML = BASE_HQ_ROOMS.map((room)=>{
       const active = room.id === __baseHqSelectedRoom ? " active" : "";
       const badge = baseHqRoomLiveBadge(room.id);
+      const pos = baseHqWorldToStagePercent(room.x, room.y, cam, Math.max(room.w || 120, room.h || 90, 150));
+      const offscreen = pos.visible ? "" : " offscreen";
+      const command = `selectBaseHqRoom('${room.id}', true)`;
       return `
-        <button class="baseHqRoom${active}" style="left:${room.x}%;top:${room.y}%;" onclick="event.stopPropagation();selectBaseHqRoom('${room.id}', true)">
+        <button class="baseHqRoom${active}${offscreen}" style="left:${pos.xPct.toFixed(3)}%;top:${pos.yPct.toFixed(3)}%;--roomColor:${baseHqEsc(room.color || "#60a5fa")};" data-base-hq-command="${baseHqEsc(command)}" aria-label="${baseHqEsc(room.name)} room" onclick="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, '${baseHqEsc(room.name)}')">
           ${badge ? `<span class="baseHqRoomBadge">${baseHqEsc(badge)}</span>` : ""}
           <span class="baseHqRoomIcon">${baseHqEsc(room.icon)}</span>
           <span class="baseHqRoomName">${baseHqEsc(room.name)}</span>
@@ -32148,10 +32214,13 @@ function renderBaseHQ(){
         </button>
       `;
     }).join("");
+    armBaseHqButtons(roomsWrap);
   }
   if(agent){
-    agent.style.left = `${__baseHqPlayer.x}%`;
-    agent.style.top = `${__baseHqPlayer.y}%`;
+    const pos = baseHqWorldToStagePercent(__baseHqPlayer.x, __baseHqPlayer.y, cam, 90);
+    agent.style.left = `${pos.xPct.toFixed(3)}%`;
+    agent.style.top = `${pos.yPct.toFixed(3)}%`;
+    agent.style.opacity = pos.visible ? "1" : "0";
   }
   const { room, data } = baseHqRoomData(__baseHqSelectedRoom);
   const title = document.getElementById("baseHqPanelTitle");
@@ -55404,6 +55473,7 @@ window.craftWeaponForgeItem = craftWeaponForgeItem;
 window.openMissionBriefShop = openMissionBriefShop;
 window.toggleMobileMenu = toggleMobileMenu;
 window.truthQaAuditVisibleUi = truthQaAuditVisibleUi;
+window.runBaseHqMainMenuPolishAudit = baseHqMainMenuPolishAudit;
 window.runEconomyShopFinalAudit = economyShopFinalAudit;
 window.runGameStabilityMasterAudit = gameStabilityMasterAudit;
 

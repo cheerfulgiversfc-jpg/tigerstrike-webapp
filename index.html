@@ -183,6 +183,11 @@
       box-shadow:0 12px 26px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);
       cursor:pointer;
       user-select:none;
+      transition:left .12s linear, top .12s linear, opacity .14s ease, transform .14s ease;
+    }
+    .baseHqRoom.offscreen{
+      opacity:0;
+      pointer-events:none;
     }
     .baseHqRoom.active{
       border-color:#5eead4;
@@ -269,7 +274,7 @@
       right:12px;
       top:10px;
       bottom:10px;
-      width:min(390px,calc(100% - 24px));
+      width:min(460px,calc(100% - 24px));
       max-height:calc(100% - 24px);
       box-sizing:border-box;
       overflow-y:auto;
@@ -280,10 +285,12 @@
       scrollbar-color:rgba(125,211,252,.7) rgba(15,23,42,.35);
       z-index:7;
       display:none;
-      padding:12px 12px 18px;
-      border-radius:16px;
-      border:1px solid rgba(125,211,252,.55);
-      background:linear-gradient(180deg, rgba(8,13,25,.88), rgba(4,9,18,.78));
+      padding:14px 14px 20px;
+      border-radius:18px;
+      border:1px solid rgba(125,211,252,.68);
+      background:
+        radial-gradient(circle at 20% 0%, rgba(45,212,191,.16), transparent 34%),
+        linear-gradient(180deg, rgba(8,13,25,.94), rgba(4,9,18,.88));
       box-shadow:0 18px 42px rgba(0,0,0,.44), inset 0 0 20px rgba(56,189,248,.10);
       backdrop-filter:blur(10px);
       pointer-events:auto;
@@ -414,8 +421,8 @@
       background:linear-gradient(180deg, rgba(8,47,73,.42), rgba(2,6,23,.48));
     }
     .baseHqBoardGrid .baseHqMissionCard span{color:#67e8f9}
-    .baseHqWorldActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    .baseHqWorldActions button{min-height:38px;padding:8px 12px;font-size:11px;pointer-events:auto;touch-action:manipulation}
+    .baseHqWorldActions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+    .baseHqWorldActions button{width:100%;min-height:38px;padding:8px 12px;font-size:11px;pointer-events:auto;touch-action:manipulation}
     .baseHqExitBtn{pointer-events:auto}
     .baseHqQuickBar{
       position:absolute;
@@ -2934,7 +2941,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=4640-shop-inventory-truth-audit"></script>
+  <script src="./game.js?v=4641-hq-main-menu-final-polish"></script>
   <script src="./tutorial.js?v=4539-stability-master-2-tutorial"></script>
 <script>
 (() => {
