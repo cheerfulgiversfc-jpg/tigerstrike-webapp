@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4522";
+const TS_BUILD = "4523";
 if(tg){
   try{
     tg.expand?.();
@@ -7401,7 +7401,9 @@ function inventoryTab(tab="gear"){
   __inventoryActiveTab = tab === "showcase" ? "showcase" : (tab === "cosmetics" ? "cosmetics" : (tab === "settlement" ? "settlement" : "gear"));
   if(window.TigerTutorial?.isRunning){
     window.TigerTutorial.inventoryOpened = true;
+    window.markTigerTutorialAction?.("inventory");
     if(__inventoryActiveTab === "cosmetics") window.TigerTutorial.cosmeticsOpened = true;
+    if(__inventoryActiveTab === "cosmetics") window.markTigerTutorialAction?.("cosmetics");
   }
   const cosmetics = __inventoryActiveTab === "cosmetics";
   const settlement = __inventoryActiveTab === "settlement";
@@ -12862,7 +12864,10 @@ function renderWorldMapCampaign(){
 function openWorldMapCampaign(){
   if(window.__TUTORIAL_MODE__){
     if(!tutorialAllows("worldMap")) return toast(tutorialBlockMessage("worldMap"));
-    if(window.TigerTutorial?.isRunning) window.TigerTutorial.worldMapOpened = true;
+    if(window.TigerTutorial?.isRunning){
+      window.TigerTutorial.worldMapOpened = true;
+      window.markTigerTutorialAction?.("world_map");
+    }
   }
   const returningToHq = typeof baseHqActive === "function" && baseHqActive();
   if(returningToHq){
@@ -20920,6 +20925,7 @@ function setSquadCommand(cmd, opts={}){
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "squad_command"){
     window.TigerTutorial.squadCommandUsed = true;
   }
+  if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("squad_command");
   if(selectedSupportUnit() && opts.individual !== false){
     queueSelectedSquadOrder(next);
     syncSquadCommandWheelUi();
@@ -20942,6 +20948,7 @@ function cycleSquadCommand(){
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "squad_command"){
     window.TigerTutorial.squadCommandUsed = true;
   }
+  if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("squad_command");
   return setSquadCommand(next, { toast:true, save:true });
 }
 function setSquadFormation(formation, opts={}){
@@ -20951,6 +20958,7 @@ function setSquadFormation(formation, opts={}){
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "squad_formation"){
     window.TigerTutorial.squadFormationUsed = true;
   }
+  if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("squad_formation");
   if(S.squadFormation === next && !opts.force) return next;
   S.squadFormation = next;
   if(opts.toast !== false){
@@ -20967,6 +20975,7 @@ function cycleSquadFormation(){
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "squad_formation"){
     window.TigerTutorial.squadFormationUsed = true;
   }
+  if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("squad_formation");
   return setSquadFormation(next, { toast:true, save:true });
 }
 const SQUAD_PROGRESSION_NAMES = Object.freeze({
@@ -29876,6 +29885,7 @@ function openShop(){
   if(S.gameOver) return;
   if(window.TigerTutorial?.isRunning){
     window.TigerTutorial.shopOpened = true;
+    window.markTigerTutorialAction?.("shop");
   }
   const fromBattle = !!S.inBattle;
   ensureSquadShopTab();
@@ -29939,6 +29949,7 @@ function openInventory(){
   if(S.gameOver) return;
   if(window.TigerTutorial?.isRunning){
     window.TigerTutorial.inventoryOpened = true;
+    window.markTigerTutorialAction?.("inventory");
   }
   if(S.missionEnded){ lastOverlay="complete"; document.getElementById("completeOverlay").style.display="none"; }
   setPaused(true,"inv");
@@ -33630,7 +33641,9 @@ function shopTab(tab){
   currentShopTab=tab;
   if(window.TigerTutorial?.isRunning){
     window.TigerTutorial.shopOpened = true;
+    window.markTigerTutorialAction?.("shop");
     if(String(tab) === "squad") window.TigerTutorial.squadOpened = true;
+    if(String(tab) === "squad") window.markTigerTutorialAction?.("squad_shop");
   }
   ["tabWeapons","tabAmmo","tabArmor","tabMeds","tabSquad","tabMeta","tabBundles","tabSeason","tabForge","tabStars","tabCash","tabPremium","tabTools","tabTraps"].forEach((id)=>{
     const el = document.getElementById(id);
@@ -36071,6 +36084,7 @@ function equipWeapon(id, opts={}){
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weapon_switch"){
     window.TigerTutorial.weaponSwitched = true;
   }
+  if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("weapon_switch");
   if(!opts.system){
     S.preferredWeaponId = id;
     if(w.type === "lethal"){
@@ -36098,6 +36112,7 @@ function cycleWeapon(dir=1){
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "weapon_switch"){
     window.TigerTutorial.weaponSwitched = true;
   }
+  if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("weapon_switch");
 }
 
 // ===================== SPAWNS =====================
@@ -39328,6 +39343,8 @@ cv.addEventListener("pointerdown",(e)=>{
   // --- Tutorial: capture map click so tutorial can advance ---
   if (window.TigerTutorial?.isRunning) {
     window.TigerTutorial.mapClicked = true;
+    window.TigerTutorial.movementInputSeen = true;
+    window.markTigerTutorialAction?.("map_tap", { x, y });
   }
 
   // Stop normal gameplay while tutorial controls flow
@@ -39341,6 +39358,7 @@ cv.addEventListener("pointerdown",(e)=>{
       const changed = activateMapInteractable(tappedInteractable);
       if(changed){
         window.TigerTutorial.interactableUsed = true;
+        window.markTigerTutorialAction?.("interactable", { id:tappedInteractable.id || tappedInteractable.kind || "" });
         sfx("ui");
         hapticImpact("light");
         save();
@@ -39354,7 +39372,9 @@ cv.addEventListener("pointerdown",(e)=>{
         S.scanTargetTigerId = tapped.id;
         S.scanTargetUntil = Date.now() + 600000;
         window.TigerTutorial.lastLockedTigerId = tapped.id;
+        window.markTigerTutorialAction?.("lock", { id:tapped.id });
         if(canEngage()){
+          window.markTigerTutorialAction?.("engage", { id:tapped.id });
           startCombat();
         }else{
           const range = Math.max(60, equippedWeaponRange() - 18);
@@ -39372,6 +39392,7 @@ cv.addEventListener("pointerdown",(e)=>{
       }
       if(tapped.id===S.lockedTigerId && tutorialAllows("engage")){
         if(canEngage()){
+          window.markTigerTutorialAction?.("engage", { id:tapped.id });
           startCombat();
         }else{
           toast("Move closer to the locked tiger, then tap it again.");
@@ -39382,6 +39403,7 @@ cv.addEventListener("pointerdown",(e)=>{
         S.lockedTigerId=tapped.id;
         window.TigerTutorial.lastLockedTigerId = tapped.id;
         window.TigerTutorial.lockedOnce = true;
+        window.markTigerTutorialAction?.("lock", { id:tapped.id });
         sfx("ui");
         hapticImpact("light");
         save();
@@ -39554,7 +39576,11 @@ function touchStartFallback(e){
   TOUCH_STICK.pointerId = null;
   TOUCH_STICK.touchId = touch.identifier;
   S.target = null;
-  if(window.TigerTutorial?.isRunning) window.TigerTutorial.mapClicked = true;
+  if(window.TigerTutorial?.isRunning){
+    window.TigerTutorial.mapClicked = true;
+    window.TigerTutorial.movementInputSeen = true;
+    window.markTigerTutorialAction?.("joystick_move");
+  }
   updateTouchStick(touch.clientX, touch.clientY);
 }
 
@@ -39589,7 +39615,11 @@ function setupTouchControls(){
     TOUCH_STICK.active = true;
     TOUCH_STICK.pointerId = e.pointerId;
     S.target = null;
-    if(window.TigerTutorial?.isRunning) window.TigerTutorial.mapClicked = true;
+    if(window.TigerTutorial?.isRunning){
+      window.TigerTutorial.mapClicked = true;
+      window.TigerTutorial.movementInputSeen = true;
+      window.markTigerTutorialAction?.("joystick_move");
+    }
     updateTouchStick(e.clientX, e.clientY);
   };
 
@@ -39818,6 +39848,8 @@ function pollGamepadControls(){
 
   if(window.TigerTutorial?.isRunning && (Math.abs(GAMEPAD_STATE.lx) > 0.08 || Math.abs(GAMEPAD_STATE.ly) > 0.08)){
     window.TigerTutorial.mapClicked = true;
+    window.TigerTutorial.movementInputSeen = true;
+    window.markTigerTutorialAction?.("gamepad_move", { lx:GAMEPAD_STATE.lx, ly:GAMEPAD_STATE.ly });
   }
 
   const uiVisible = anyGamepadOverlayVisible();
@@ -40089,6 +40121,7 @@ function scan(){
   S.scanPing = tutorialRun ? 220 : Math.max(70, Math.round(140 * liveOpsMissionModifierValue("scanDurationMul", 1, S)));
   if(tutorialRun && window.TigerTutorial){
     window.TigerTutorial.scanUsed = true;
+    window.markTigerTutorialAction?.("scan");
   }
   if(!tutorialRun) scanInvestigationClues();
   if(tutorialRun){
@@ -40308,6 +40341,7 @@ function sprint(){
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "sprint"){
     window.TigerTutorial.sprintUsed = true;
   }
+  if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("sprint");
   triggerAbilityCooldown("sprint");
   sfx("ui"); hapticImpact("light"); save();
   unlockAchv("sprint1","Sprint");
@@ -40323,6 +40357,7 @@ function activateShield(){
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "shield"){
     window.TigerTutorial.shieldUsed = true;
   }
+  if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("shield");
   ensureAbilityCooldownState();
   const shieldCooldownMs = escalatingItemCooldownMs(S.shieldUsesThisMission);
   S.abilityCooldowns.shield = Date.now() + shieldCooldownMs;
@@ -44591,6 +44626,7 @@ function startCombat(){
   S.inBattle = true;
   S.activeTigerId = t.id;
   S.lockedTigerId = t.id;
+  if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("engage", { id:t.id });
   S._combatTigerAttackAt = Date.now() + (isBossTiger(t) ? 680 : 950);
   S._battleHeartbeatAt = Date.now();
   t.aggroBoost = Math.max(t.aggroBoost || 0, 0.85);
@@ -44800,6 +44836,7 @@ function updateBattleButtons(){
     if(window.TigerTutorial?.isRunning && ["attack_tiger","weaken_tiger","capture_window"].includes(window.TigerTutorial.currentKey) && tigerInCaptureHpWindow(t)){
       window.TigerTutorial.captureWindowReached = true;
       window.TigerTutorial.captureButtonReady = true;
+      window.markTigerTutorialAction?.("capture_window", { id:t.id });
     }
   }catch(e){}
   renderCombatControls();
@@ -44963,6 +45000,7 @@ function finishTigerKill(t){
   }
   if(window.TigerTutorial?.isRunning){
     window.TigerTutorial.combatOutcome = "KILL";
+    window.markTigerTutorialAction?.("kill", { id:t.id });
   }
   markStoryFinalBossOutcome("KILL", t);
   t.missionOutcome = "KILL";
@@ -45074,6 +45112,7 @@ function playerAction(action){
     if(!recordUniqueMissionTigerOutcome(t, "CAPTURE")) return interactionFeedback("This tiger was already resolved.", { battle:true, warn:true });
     if(window.TigerTutorial?.isRunning){
       window.TigerTutorial.combatOutcome = "CAPTURE";
+      window.markTigerTutorialAction?.("capture", { id:t.id });
     }
     noteTigerOutcomeForObjective(t);
     const bossCapture = !!isBossTiger(t);
@@ -45182,6 +45221,7 @@ function playerAction(action){
 
     S.mag.loaded -= 1;
     S.stats.shots += 1;
+    if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("attack", { id:t.id });
     S.meShotKickUntil = Date.now() + 140;
     addContractTally("shots", 1);
     addWeaponMasteryXp(w.id, 2);
@@ -45277,6 +45317,7 @@ function playerAction(action){
         t.hp = Math.max(capMin + 1, Math.min(capMax, Math.ceil(Number(t.hpMax || 1) * 0.22)));
         window.TigerTutorial.captureWindowReached = true;
         window.TigerTutorial.captureButtonReady = true;
+        window.markTigerTutorialAction?.("capture_window", { id:t.id });
         setBattleMsg(`Capture ready. Tap Capture to use ${captureTranqWeaponLabel(t)}.`);
       }
     }
@@ -45289,6 +45330,7 @@ function playerAction(action){
       if(window.TigerTutorial?.isRunning && ["attack_tiger","weaken_tiger","capture_window"].includes(window.TigerTutorial.currentKey) && tigerInCaptureHpWindow(t)){
         window.TigerTutorial.captureWindowReached = true;
         window.TigerTutorial.captureButtonReady = true;
+        window.markTigerTutorialAction?.("capture_window", { id:t.id });
       }
     }catch(e){}
     if(w.type==="tranq" && tigerInCaptureHpWindow(t)){

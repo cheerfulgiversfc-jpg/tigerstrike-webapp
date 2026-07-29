@@ -50,10 +50,49 @@
     if(!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(Number(S.me.x)) || !Number.isFinite(Number(S.me.y))) return 0;
     return Math.hypot(Number(S.me.x) - sx, Number(S.me.y) - sy);
   }
+  function markTutorialAction(action, detail={}){
+    const T = window.TigerTutorial;
+    if(!T?.isRunning) return false;
+    const key = String(T.currentKey || "");
+    const type = String(action || "");
+    T.actionLog = Array.isArray(T.actionLog) ? T.actionLog.slice(-20) : [];
+    T.actionLog.push({ type, key, at:Date.now(), detail });
+    T.lastActionType = type;
+    T.lastActionAt = Date.now();
+    if(["map_tap","joystick_move","gamepad_move","movement"].includes(type)){
+      T.mapClicked = true;
+      T.movementInputSeen = true;
+      if(key === "move") T.stepActionSeen = true;
+    }
+    if(type === "sprint") T.sprintUsed = true;
+    if(type === "scan") T.scanUsed = true;
+    if(type === "lock"){
+      T.lockedOnce = true;
+      if(detail?.id != null) T.lastLockedTigerId = detail.id;
+    }
+    if(type === "engage") T.engagedOnce = true;
+    if(type === "attack") T.attackedOnce = true;
+    if(type === "capture_window") T.captureWindowReached = true;
+    if(type === "capture") T.combatOutcome = "CAPTURE";
+    if(type === "kill") T.combatOutcome = "KILL";
+    if(type === "weapon_switch") T.weaponSwitched = true;
+    if(type === "interactable") T.interactableUsed = true;
+    if(type === "shield") T.shieldUsed = true;
+    if(type === "squad_command") T.squadCommandUsed = true;
+    if(type === "squad_formation") T.squadFormationUsed = true;
+    if(type === "shop") T.shopOpened = true;
+    if(type === "squad_shop") T.squadOpened = true;
+    if(type === "inventory") T.inventoryOpened = true;
+    if(type === "cosmetics") T.cosmeticsOpened = true;
+    if(type === "world_map") T.worldMapOpened = true;
+    if(type === "hq") T.hqSeen = true;
+    return true;
+  }
   function agentMovedForTutorial(){
     const T = window.TigerTutorial;
     if(!T) return false;
     if(T.movedOnce === true) return true;
+    if(T.stepActionSeen === true && stepElapsedMs() > 180) return true;
     if(T.movementInputSeen === true && stepElapsedMs() > 250) return true;
     if(stepAgentMoveDistance() >= 5) return true;
     // Joystick/map input is enough for the movement lesson on small screens where
@@ -65,6 +104,7 @@
     return new Set([
       "move",
       "sprint",
+      "escort",
       "guide_civilian",
       "scan_line",
       "lock_target",
@@ -74,6 +114,7 @@
       "weaken_tiger",
       "capture_window",
       "weapon_switch",
+      "map_interactables",
       "interactables",
       "shield",
       "squad_command",
@@ -115,6 +156,7 @@
     T.stepStartY = Number(S?.me?.y || T.startY || 0);
     T.stepStartTargetX = Number(S?.target?.x || T.stepStartX || 0);
     T.stepStartTargetY = Number(S?.target?.y || T.stepStartY || 0);
+    T.stepActionSeen = false;
   }
   function tutorialTarget(id){
     if(id === "shopBtn") return visibleEl("shopBtn") || visibleEl("navShopBtn") || visibleSelector('button[onclick*="openShop"]');
@@ -217,7 +259,7 @@
       const targetDy = Number(S?.target?.y || 0) - Number(T.stepStartTargetY || 0);
       const vx = Number(S?.me?._moveVx || 0);
       const vy = Number(S?.me?._moveVy || 0);
-      if(T.mapClicked || Math.hypot(targetDx, targetDy) >= 8 || Math.hypot(vx, vy) >= 0.15){
+      if(T.mapClicked || T.stepActionSeen || Math.hypot(targetDx, targetDy) >= 8 || Math.hypot(vx, vy) >= 0.15){
         T.movementInputSeen = true;
       }
       if(Number.isFinite(T.startX) && Number.isFinite(T.startY) && Number.isFinite(S?.me?.x) && Number.isFinite(S?.me?.y)){
@@ -809,6 +851,8 @@
       flags: {
         movedOnce: !!T.movedOnce,
         movementInputSeen: !!T.movementInputSeen,
+        stepActionSeen: !!T.stepActionSeen,
+        lastActionType: T.lastActionType || "",
         scanUsed: !!T.scanUsed,
         lockedOnce: !!T.lockedOnce,
         engagedOnce: !!T.engagedOnce,
@@ -836,6 +880,61 @@
         scanPing: Number(S?.scanPing || 0),
         stepMoveDistance: Math.round(stepAgentMoveDistance())
       }
+    };
+  };
+
+  window.runTutorial3FullQaAudit = function runTutorial3FullQaAudit(){
+    const steps = getStepList();
+    const base = window.verifyTigerTutorialSteps();
+    const results = [];
+    const T = window.TigerTutorial || {};
+    const original = {};
+    for(const key of [
+      "isRunning","currentKey","mapClicked","movementInputSeen","movedOnce","sprintUsed","scanUsed","lockedOnce",
+      "engagedOnce","combatButtonsSeen","attackedOnce","captureWindowReached","captureButtonReady","combatOutcome",
+      "weaponSwitched","interactableUsed","shieldUsed","squadCommandUsed","squadFormationUsed","shopOpened",
+      "squadOpened","inventoryOpened","cosmeticsOpened","worldMapOpened","stepActionSeen"
+    ]){
+      original[key] = T[key];
+    }
+    T.isRunning = true;
+    for(const step of steps){
+      T.currentKey = step.key;
+      T.stepActionSeen = true;
+      T.mapClicked = true;
+      T.movementInputSeen = true;
+      T.movedOnce = true;
+      T.sprintUsed = true;
+      T.scanUsed = true;
+      T.lockedOnce = true;
+      T.engagedOnce = true;
+      T.combatButtonsSeen = true;
+      T.attackedOnce = true;
+      T.captureWindowReached = true;
+      T.captureButtonReady = true;
+      T.combatOutcome = "CAPTURE";
+      T.weaponSwitched = true;
+      T.interactableUsed = true;
+      T.shieldUsed = true;
+      T.squadCommandUsed = true;
+      T.squadFormationUsed = true;
+      T.shopOpened = true;
+      T.squadOpened = true;
+      T.inventoryOpened = true;
+      T.cosmeticsOpened = true;
+      T.worldMapOpened = true;
+      let canNext = false;
+      let error = "";
+      try{ canNext = !!step.canNext?.(); }catch(e){ error = String(e?.message || e); }
+      results.push({ key:step.key, canNext, error });
+    }
+    Object.assign(T, original);
+    const stuck = results.filter((row)=>!row.canNext || row.error);
+    return {
+      ...base,
+      simulatedActionsOk: stuck.length === 0,
+      stuck,
+      results
     };
   };
 
@@ -1142,4 +1241,5 @@
   });
 
   window.startTutorial = startTutorial;
+  window.markTigerTutorialAction = markTutorialAction;
 })();
