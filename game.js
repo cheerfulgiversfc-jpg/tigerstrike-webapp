@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4526";
+const TS_BUILD = "4527";
 if(tg){
   try{
     tg.expand?.();
@@ -30651,13 +30651,13 @@ function baseHqCameraOffset(){
   const roomY = Number(room.y || __baseHqPlayer.y || 0);
   let focusX = movingToRoom || hudOpen ? ((Number(__baseHqPlayer.x || 0) * 0.32) + (roomX * 0.68)) : Number(__baseHqPlayer.x || 0);
   let focusY = movingToRoom || hudOpen ? ((Number(__baseHqPlayer.y || 0) * 0.32) + (roomY * 0.68)) : Number(__baseHqPlayer.y || 0);
-  if(quickOpen) focusY = Math.max(110, focusY - (viewH * 0.20));
-  if(hudOpen && isMobileViewport()) focusY = Math.max(90, focusY - (viewH * 0.14));
+  if(quickOpen) focusY = Math.max(110, focusY - (viewH * 0.24));
+  if(hudOpen && isMobileViewport()) focusY = Math.max(90, focusY - (viewH * 0.20));
   const xBias = hudOpen && !isMobileViewport() ? 0.34 : 0.50;
-  const yBias = quickOpen ? 0.38 : (hudOpen ? (isMobileViewport() ? 0.32 : 0.46) : 0.52);
+  const yBias = quickOpen ? 0.34 : (hudOpen ? (isMobileViewport() ? 0.28 : 0.44) : 0.52);
   __baseHqCamera.targetX = clamp(focusX - (viewW * xBias), 0, maxX);
   __baseHqCamera.targetY = clamp(focusY - (viewH * yBias), 0, maxY);
-  const ease = clamp((movingToRoom ? 0.14 : 0.11) * frameMotionMul(), 0.07, 0.26);
+  const ease = clamp((movingToRoom ? 0.18 : (hudOpen ? 0.14 : 0.12)) * frameMotionMul(), 0.08, 0.30);
   if(!Number.isFinite(__baseHqCamera.x)) __baseHqCamera.x = __baseHqCamera.targetX;
   if(!Number.isFinite(__baseHqCamera.y)) __baseHqCamera.y = __baseHqCamera.targetY;
   if(Math.abs(__baseHqCamera.x - __baseHqCamera.targetX) > viewW || Math.abs(__baseHqCamera.y - __baseHqCamera.targetY) > viewH){
@@ -30798,15 +30798,22 @@ function showBaseHqHud(ms=6200){
     setBaseHqQuickMenuCollapsed(true);
   }
   __baseHqHudUntil = Date.now() + Math.max(1800, Number(ms || 0));
+  setBaseHqHudOpenClass(true);
+  renderBaseHqQuickBar();
 }
 function setBaseHqHudOpenClass(open=false){
   try{ document.body?.classList?.toggle("baseHqHudOpen", !!open); }catch(_e){}
 }
 function hideBaseHqHud(){
   __baseHqHudUntil = 0;
+  __baseHqPendingHudRoom = "";
   setBaseHqHudOpenClass(false);
   const hud = document.getElementById("baseHqWorldHud");
-  if(hud) hud.style.display = "none";
+  if(hud){
+    hud.style.display = "none";
+    hud.innerHTML = "";
+    hud.__baseHqHtml = "";
+  }
   renderBaseHqQuickBar();
 }
 function armBaseHqHudScroll(hud){
@@ -30819,6 +30826,9 @@ function armBaseHqHudScroll(hud){
   });
 }
 function setBaseHqQuickMenuCollapsed(collapsed=true){
+  if(!collapsed){
+    hideBaseHqHud();
+  }
   __baseHqQuickMenuCollapsed = !!collapsed;
   try{ localStorage.setItem("tigerstrike_base_hq_quick_menu_collapsed", __baseHqQuickMenuCollapsed ? "1" : "0"); }catch(_e){}
   renderBaseHqQuickBar();
@@ -30831,7 +30841,11 @@ function dismissBaseHqInfoForMovement(){
   __baseHqDialogNpc = "";
   setBaseHqHudOpenClass(false);
   const hud = document.getElementById("baseHqWorldHud");
-  if(hud) hud.style.display = "none";
+  if(hud){
+    hud.style.display = "none";
+    hud.innerHTML = "";
+    hud.__baseHqHtml = "";
+  }
   renderBaseHqQuickBar();
 }
 function baseHqEsc(value){
@@ -31785,7 +31799,7 @@ function baseHqPanelActionsHtml(data){
 function baseHqActionButtonHtml(label, command, cls="ghost"){
   const ready = truthQaActionAvailable(command);
   const disabled = ready ? "" : ` disabled title="${baseHqEsc(label)} is not connected yet."`;
-  return `<button class="${baseHqEsc(cls)}" type="button" data-base-hq-command="${baseHqEsc(command)}"${disabled} onclick="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)">${baseHqEsc(label)}</button>`;
+  return `<button class="${baseHqEsc(cls)}" type="button" data-base-hq-command="${baseHqEsc(command)}"${disabled} onpointerdown="event.preventDefault();event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="event.preventDefault();event.stopPropagation();return runBaseHqCommand(this.dataset.baseHqCommand, this.textContent)">${baseHqEsc(label)}</button>`;
 }
 function baseHqParseCommandArgs(raw=""){
   const text = String(raw || "").trim();
@@ -31936,6 +31950,7 @@ function baseHqMainMenuPolishAudit(){
     issues
   };
 }
+window.runBaseHqMainMenuPolishAudit = baseHqMainMenuPolishAudit;
 function truthQaInlineActionNames(inline=""){
   const text = String(inline || "");
   const ignored = new Set(["event","stopPropagation","preventDefault","Math","Number","String","parseInt","parseFloat","floor","max","min","round"]);
@@ -32057,11 +32072,13 @@ function armBaseHqButtons(root){
       if(now - Number(btn.dataset.baseHqLastTapAt || 0) < 220){
         ev?.preventDefault?.();
         ev?.stopPropagation?.();
+        ev?.stopImmediatePropagation?.();
         return true;
       }
       btn.dataset.baseHqLastTapAt = String(now);
       ev?.preventDefault?.();
       ev?.stopPropagation?.();
+      ev?.stopImmediatePropagation?.();
       runBaseHqCommand(command, btn.textContent);
       return true;
     };
