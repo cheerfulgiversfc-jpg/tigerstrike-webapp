@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4528";
+const TS_BUILD = "4529";
 if(tg){
   try{
     tg.expand?.();
@@ -17012,8 +17012,8 @@ const STREAM_ACTIVE_RADIUS = 1;
 const STREAM_EXPAND_MAX_SECTORS = 58;
 const STREAM_EXPAND_STEP = 0.031;
 const STREAM_MIN_AMBIENT_EDGE = 46;
-const MAP_EXPANSION_VERSION = 5;
-const MAP_EXPANSION_MAX_SCALE = 6.10;
+const MAP_EXPANSION_VERSION = 6;
+const MAP_EXPANSION_MAX_SCALE = 7.20;
 
 function defaultSectorStreamingState(){
   return {
@@ -17243,22 +17243,22 @@ function worldScaleForModeMission(mode, mission){
   const landscapeBoost = (mobile && landscape) ? 0.12 : (landscape ? 0.12 : 0);
   if(window.__TUTORIAL_MODE__) return 1;
   if(mobile && !landscape){
-    if(mode === "Story") return clamp(3.42 + ((Math.max(1, mission) - 1) * 0.012), 3.42, 5.30);
-    if(mode === "Arcade") return clamp(3.18 + ((Math.max(1, mission) - 1) * 0.011), 3.18, 4.95);
-    return clamp(3.28 + ((Math.max(1, mission) - 1) * 0.014), 3.28, 5.25);
+    if(mode === "Story") return clamp(3.88 + ((Math.max(1, mission) - 1) * 0.016), 3.88, 6.18);
+    if(mode === "Arcade") return clamp(3.56 + ((Math.max(1, mission) - 1) * 0.014), 3.56, 5.72);
+    return clamp(3.70 + ((Math.max(1, mission) - 1) * 0.016), 3.70, 6.02);
   }
   if(mobile && landscape){
-    if(mode === "Story") return clamp(3.72 + ((Math.max(1, mission) - 1) * 0.014) + landscapeBoost, 3.72, 5.60);
-    if(mode === "Arcade") return clamp(3.48 + ((Math.max(1, mission) - 1) * 0.013) + landscapeBoost, 3.48, 5.35);
-    return clamp(3.58 + ((Math.max(1, mission) - 1) * 0.015) + landscapeBoost, 3.58, 5.50);
+    if(mode === "Story") return clamp(4.12 + ((Math.max(1, mission) - 1) * 0.017) + landscapeBoost, 4.12, 6.38);
+    if(mode === "Arcade") return clamp(3.84 + ((Math.max(1, mission) - 1) * 0.015) + landscapeBoost, 3.84, 6.02);
+    return clamp(3.96 + ((Math.max(1, mission) - 1) * 0.017) + landscapeBoost, 3.96, 6.26);
   }
   if(mode === "Story"){
-    return clamp(3.66 + ((Math.max(1, mission) - 1) * 0.016) + landscapeBoost, 3.66, 5.75);
+    return clamp(4.10 + ((Math.max(1, mission) - 1) * 0.019) + landscapeBoost, 4.10, 6.48);
   }
   if(mode === "Arcade"){
-    return clamp(3.42 + ((Math.max(1, mission) - 1) * 0.014) + landscapeBoost, 3.42, 5.45);
+    return clamp(3.78 + ((Math.max(1, mission) - 1) * 0.016) + landscapeBoost, 3.78, 6.08);
   }
-  return clamp(3.52 + ((Math.max(1, mission) - 1) * 0.016) + landscapeBoost, 3.52, 5.65);
+  return clamp(3.92 + ((Math.max(1, mission) - 1) * 0.018) + landscapeBoost, 3.92, 6.32);
 }
 
 function desiredWorldLayout(state=S){
@@ -23475,6 +23475,39 @@ function mapExpansionRouteAnchors(state=S){
   ];
 }
 
+function mapExpansionAnchorById(state=S){
+  return Object.fromEntries(mapExpansionRouteAnchors(state).map((anchor)=>[anchor.id, anchor]));
+}
+
+function mapExpansionRouteGameplayTargets(state=S, purpose="objective"){
+  const anchors = mapExpansionRouteAnchors(state);
+  const orderByPurpose = {
+    start:["command", "main-road", "trail-cut"],
+    civilian:["settlement", "bridge", "cave", "evac", "trail-cut", "main-road"],
+    tiger:["den", "cave", "bridge", "settlement", "evac", "trail-cut"],
+    evac:["evac", "settlement", "bridge", "main-road"],
+    interactable:["bridge", "evac", "settlement", "cave", "den", "trail-cut"]
+  }[purpose] || ["main-road", "bridge", "settlement", "cave", "den", "evac"];
+  const byId = Object.fromEntries(anchors.map((anchor)=>[anchor.id, anchor]));
+  return orderByPurpose.map((id)=>byId[id]).filter(Boolean);
+}
+
+function mapExpansionOffsetPoint(anchor, index=0, total=1, opts={}){
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const spread = Math.max(24, Number(opts.spread || 72));
+  const laneBias = Number(opts.laneBias || 0);
+  const ring = 1 + (Math.floor(index / Math.max(1, total)) % 2);
+  const a = ((Math.PI * 2 * (index + 0.35)) / Math.max(1, total)) + laneBias;
+  return safeSpawnPoint(
+    clamp(anchor.x + Math.cos(a) * spread * ring + rand(-18, 18), 70, worldW - 70),
+    clamp(anchor.y + Math.sin(a) * spread * ring + rand(-18, 18), 90, worldH - 70),
+    Math.max(14, Number(opts.radius || 18)),
+    true,
+    opts.avoidWater !== false
+  );
+}
+
 function drawMapExpansionRouteNetwork(opts={}){
   if(window.__TUTORIAL_MODE__ || !ctx) return;
   const state = opts.state || S;
@@ -23857,6 +23890,34 @@ function drawMapExpansionObjectiveRoutes(opts={}){
   }
   ctx.restore();
 }
+
+function mapExpansionRouteGameplayAudit(state=S){
+  const src = (state && typeof state === "object") ? state : S;
+  const anchors = mapExpansionRouteAnchors(src);
+  const ss = ensureSectorStreamingState(src);
+  const aliveCivs = (src.civilians || []).filter((c)=>c && c.alive && !c.evac);
+  const aliveTigers = (src.tigers || []).filter((t)=>t && t.alive);
+  return {
+    build:TS_BUILD,
+    version:MAP_EXPANSION_VERSION,
+    maxScale:MAP_EXPANSION_MAX_SCALE,
+    mode:normalizeModeName(src?.mode || "Story"),
+    mission:missionProgressForWorld(src),
+    world:{ w:worldWidth(src), h:worldHeight(src), scale:Number(src?.world?.scale || 1) },
+    routeAnchors:anchors.map((a)=>({ id:a.id, type:a.type, label:a.label, x:a.x, y:a.y })),
+    activeSectors:(ss.activeKeys || []).length,
+    discoveredSectors:(ss.discoveredKeys || []).length,
+    rescueSites:(src.rescueSites || []).map((site)=>({ label:site.label, x:site.x, y:site.y })).slice(0, 12),
+    interactables:(src.mapInteractables || []).map((it)=>({ kind:it.kind, label:it.label, x:it.x, y:it.y })).slice(0, 14),
+    distances:{
+      farthestCivilian:aliveCivs.reduce((m, c)=>Math.max(m, dist(src?.me?.x || 0, src?.me?.y || 0, c.x, c.y)), 0),
+      farthestTiger:aliveTigers.reduce((m, t)=>Math.max(m, dist(src?.me?.x || 0, src?.me?.y || 0, t.x, t.y)), 0),
+      evac:src?.evacZone ? dist(src?.me?.x || 0, src?.me?.y || 0, src.evacZone.x, src.evacZone.y) : 0
+    }
+  };
+}
+window.runMapExpansionRouteGameplayAudit = ()=>mapExpansionRouteGameplayAudit(S);
+
 function pointInWaterZone(zone, x, y, radius=0){
   if(!zone) return false;
   const pad = Math.max(0, Number(radius) || 0);
@@ -36694,6 +36755,12 @@ function randomEvacZone(civilians=[]){
     { x:maxX, y:Math.round((minY + maxY) * 0.5) }
   );
 
+  for(const anchor of mapExpansionRouteGameplayTargets(S, "evac")){
+    candidates.push({ x:anchor.x, y:anchor.y });
+    candidates.push({ x:clamp(anchor.x + 96, minX, maxX), y:clamp(anchor.y - 54, minY, maxY) });
+    candidates.push({ x:clamp(anchor.x - 96, minX, maxX), y:clamp(anchor.y + 54, minY, maxY) });
+  }
+
   for(let i=0;i<20;i++){
     candidates.push({
       x: rand(minX, maxX),
@@ -37177,10 +37244,10 @@ function spawnRescueSites(){
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
   const storyIdx = Math.max(1, Number(storyMission?.number || S.storyLevel || 1));
   const wanted = (S.mode==="Story")
-    ? clamp(4 + Math.floor((storyIdx - 1) / 2), 4, 6)
+    ? clamp(5 + Math.floor((storyIdx - 1) / 2), 5, 8)
     : (S.mode==="Arcade")
-      ? clamp(4 + Math.floor((S.arcadeLevel - 1) / 2), 4, 6)
-      : 5;
+      ? clamp(5 + Math.floor((S.arcadeLevel - 1) / 2), 5, 7)
+      : 6;
 
   const anchors = mapExpansionRouteAnchors(S);
   const anchorLabels = new Set(anchors.map((a)=>a.label));
@@ -37194,7 +37261,7 @@ function spawnRescueSites(){
   preferred
     .slice()
     .sort((a, b)=>dist(a.x, a.y, worldWidth(S) * 0.5, worldHeight(S) * 0.5) - dist(b.x, b.y, worldWidth(S) * 0.5, worldHeight(S) * 0.5))
-    .slice(0, Math.min(3, wanted))
+    .slice(0, Math.min(5, wanted))
     .forEach(addSite);
   basePool
     .slice()
@@ -38464,7 +38531,8 @@ function spawnCivilians(){
   S.civilians = [];
 
   for(let i=0;i<spawnCount;i++){
-    const site = sites[i % sites.length] || { x: rand(160, worldW - 160), y: rand(140, worldH - 120), kind:"trail", label:"Field Site" };
+    const siteIndex = sites.length ? ((i * 3) + Math.floor(i / Math.max(1, sites.length))) % sites.length : 0;
+    const site = sites[siteIndex] || { x: rand(160, worldW - 160), y: rand(140, worldH - 120), kind:"trail", label:"Field Site" };
     const orbit = 16 + ((i % 3) * 14);
     const angle = (Math.PI * 2 * (i % Math.max(1, sites.length))) / Math.max(1, sites.length);
     const jitterX = Math.round(Math.cos(angle) * orbit + rand(-10, 10));
@@ -38830,11 +38898,12 @@ function spawnTigers(){
     ? pickReturningNemesisForMission(storyMissionNo)
     : null;
   const nemesisSlot = nemesisEntry ? rand(Math.max(0, Math.floor(count * 0.45)), Math.max(0, count - 1)) : -1;
-  const packCount = clamp(Math.ceil(count / 2), 1, 4);
+  const packCount = clamp(Math.ceil(count / 2), 1, 6);
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
   tigerEcosystemSeedActiveTerritories(S);
   const sitePool = (S.rescueSites?.length ? S.rescueSites : rescueSitePool()).slice().reverse();
+  const routeThreatAnchors = mapExpansionRouteGameplayTargets(S, "tiger");
   const fallbackPacks = [
     { x: worldW * 0.68, y: worldH * 0.22 },
     { x: worldW * 0.78, y: worldH * 0.48 },
@@ -38845,7 +38914,10 @@ function spawnTigers(){
     const site = sitePool[idx];
     const territory = tigerEcosystemPackTerritory(idx + 1, S);
     const territoryCenter = territory ? tigerEcosystemTerritoryCenter(territory.key, S) : null;
-    const anchor = territoryCenter
+    const routeAnchor = routeThreatAnchors[idx % Math.max(1, routeThreatAnchors.length)];
+    const anchor = routeAnchor && (idx < routeThreatAnchors.length || !territoryCenter)
+      ? { x:routeAnchor.x, y:routeAnchor.y }
+      : territoryCenter
       ? { x:clamp(territoryCenter.x, 160, worldW - 70), y:clamp(territoryCenter.y, 100, worldH - 70) }
       : site
       ? { x: clamp(site.x + rand(90, 180), 160, worldW - 70), y: clamp(site.y + rand(-110, 110), 100, worldH - 70) }
@@ -39177,7 +39249,9 @@ function deploy(opts={}){
   S.stamina=100;
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
-  S.me={x:160,y:clamp(worldH - 120, 240, 420),face:0,step:0};
+  const startAnchor = mapExpansionRouteGameplayTargets(S, "start")[0] || { x:160, y:clamp(worldH - 120, 240, 420) };
+  const startPoint = safeSpawnPoint(startAnchor.x, startAnchor.y, 16, true, false);
+  S.me={x:startPoint.x,y:startPoint.y,face:0,step:0};
   {
     const ss = ensureSectorStreamingState(S);
     ss.activeKeys = [];
@@ -50832,7 +50906,7 @@ function drawMapExpansionMinimap(){
       targets.push({ x:site.x, y:site.y, label:"S", color:"#93c5fd", priority:0.8 });
     }
   }
-  for(const it of (S.mapInteractables || []).filter((item)=>item && !item.spent && ["vehicle", "bridge", "gate", "generator", "tower", "cache"].includes(String(item.type || ""))).slice(0, 5)){
+  for(const it of (S.mapInteractables || []).filter((item)=>item && !item.spent && ["vehicle", "bridge", "gate", "generator", "tower", "cache"].includes(String(item.kind || item.type || ""))).slice(0, 5)){
     targets.push({ x:it.x, y:it.y, label:"R", color:"#22d3ee", priority:0.7 });
   }
   if(routeTargets.length && S?.me){
