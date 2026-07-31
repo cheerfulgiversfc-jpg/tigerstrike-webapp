@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4524";
+const TS_BUILD = "4525";
 if(tg){
   try{
     tg.expand?.();
@@ -2742,6 +2742,11 @@ function defaultMissionDirector5State(){
     truthChecks: 0,
     truthRepairs: 0,
     guaranteedMapEvents: 0,
+    recentObjectives: [],
+    recentWorldEvents: [],
+    lastPressureTuneAt: 0,
+    pressureTarget: 0,
+    pressureTrend: "steady",
     recapLines: [],
     rewardCashEarned: 0,
     rewardScoreEarned: 0,
@@ -2860,6 +2865,11 @@ function ensureMissionDirector5State(state=S){
   d.truthChecks = Math.max(0, Math.floor(Number(d.truthChecks || 0)));
   d.truthRepairs = Math.max(0, Math.floor(Number(d.truthRepairs || 0)));
   d.guaranteedMapEvents = Math.max(0, Math.floor(Number(d.guaranteedMapEvents || 0)));
+  d.recentObjectives = Array.isArray(d.recentObjectives) ? d.recentObjectives.map((x)=>String(x || "")).filter((x)=>DYNAMIC_OBJECTIVE_TYPES.includes(x)).slice(-4) : [];
+  d.recentWorldEvents = Array.isArray(d.recentWorldEvents) ? d.recentWorldEvents.map((x)=>String(x || "")).filter((x)=>WORLD_EVENT_TYPES.includes(x)).slice(-4) : [];
+  d.lastPressureTuneAt = Math.max(0, Math.floor(Number(d.lastPressureTuneAt || 0)));
+  d.pressureTarget = clamp(Number(d.pressureTarget || 0), 0, 100);
+  d.pressureTrend = ["rising","cooling","steady"].includes(String(d.pressureTrend || "")) ? String(d.pressureTrend) : "steady";
   d.recapLines = Array.isArray(d.recapLines) ? d.recapLines.map((x)=>String(x || "").trim()).filter(Boolean).slice(-5) : [];
   d.rewardCashEarned = Math.max(0, Math.floor(Number(d.rewardCashEarned || 0)));
   d.rewardScoreEarned = Math.max(0, Math.floor(Number(d.rewardScoreEarned || 0)));
@@ -2933,6 +2943,11 @@ function initializeMissionDirector5ForDeploy(state=S, now=Date.now()){
   d.truthChecks = 0;
   d.truthRepairs = 0;
   d.guaranteedMapEvents = 0;
+  d.recentObjectives = [];
+  d.recentWorldEvents = [];
+  d.lastPressureTuneAt = 0;
+  d.pressureTarget = 0;
+  d.pressureTrend = "steady";
   d.recapLines = [`Plan active: ${plan.title}`];
   d.rewardCashEarned = 0;
   d.rewardScoreEarned = 0;
@@ -2953,16 +2968,35 @@ function missionDirector5Pick(arr, fallback=""){
   if(!list.length) return fallback;
   return list[rand(0, list.length - 1)] || fallback;
 }
+function missionDirector5PickRotating(arr, recent, fallback=""){
+  const list = Array.isArray(arr) ? arr.map((x)=>String(x || "")).filter(Boolean) : [];
+  if(!list.length) return fallback;
+  const recentSet = new Set((Array.isArray(recent) ? recent : []).map((x)=>String(x || "")));
+  const fresh = list.filter((x)=>!recentSet.has(x));
+  return missionDirector5Pick(fresh.length ? fresh : list, fallback);
+}
+function missionDirector5Remember(kind, value){
+  const d = ensureMissionDirector5State(S);
+  const key = String(value || "");
+  if(!d.active || !key) return;
+  if(kind === "objective"){
+    d.recentObjectives.push(key);
+    d.recentObjectives = d.recentObjectives.slice(-4);
+  }else if(kind === "world_event"){
+    d.recentWorldEvents.push(key);
+    d.recentWorldEvents = d.recentWorldEvents.slice(-4);
+  }
+}
 function missionDirector5PreferredObjective(){
   const d = ensureMissionDirector5State(S);
   if(!d.active || !d.objectiveBias.length) return "";
-  const type = missionDirector5Pick(d.objectiveBias, "");
+  const type = missionDirector5PickRotating(d.objectiveBias, d.recentObjectives, "");
   return DYNAMIC_OBJECTIVE_TYPES.includes(type) ? type : "";
 }
 function missionDirector5PreferredWorldEvent(){
   const d = ensureMissionDirector5State(S);
   if(!d.active || !d.worldEventBias.length) return "";
-  const type = missionDirector5Pick(d.worldEventBias, "");
+  const type = missionDirector5PickRotating(d.worldEventBias, d.recentWorldEvents, "");
   return WORLD_EVENT_TYPES.includes(type) ? type : "";
 }
 function missionDirector5BriefingTruthLine(state=S){
@@ -2972,7 +3006,7 @@ function missionDirector5BriefingTruthLine(state=S){
   const event = (d.worldEventBias || []).slice(0, 2).map((x)=>String(x || "").replace(/_/g, " ")).join(" / ") || "live event";
   const title = d.title || "Adaptive Plan";
   const hint = d.rewardHint ? ` ${d.rewardHint}` : "";
-  return `Director 5.0: ${title} will create ${obj} and ${event} moments on-map.${hint}`;
+  return `Director 5.0: ${title} will create ${obj} and ${event} moments on-map; evac problems appear as visible route warnings.${hint}`;
 }
 function missionDirector5TruthFallbackPoint(type, state=S){
   const worldW = Math.max(120, worldWidth(state));
@@ -3072,6 +3106,32 @@ function missionDirector5TruthPulse(now=Date.now()){
     d.nextIncidentAt = Math.min(d.nextIncidentAt || now, now);
   }
 }
+function missionDirector5PressureFlow(now=Date.now()){
+  const d5 = ensureMissionDirector5State(S);
+  if(!d5.active || window.__TUTORIAL_MODE__ || S.paused || S.gameOver || S.missionEnded) return;
+  if(now - Number(d5.lastPressureTuneAt || 0) < 1200) return;
+  d5.lastPressureTuneAt = now;
+  const director = ensureMissionDirectorState(S);
+  const aliveTigers = (S.tigers || []).filter((t)=>t && t.alive).length;
+  const aliveCivs = (S.civilians || []).filter((c)=>c && c.alive && !c.evac).length;
+  const dyn = ensureDynamicObjectiveState(S);
+  const we = activeWorldEvent(S, now);
+  const route = ensureEvacRouteState(S);
+  const dangerCiv = S.dangerCivId ? 10 : 0;
+  const routeRisk = route.active && (route.blocked || route.boardingPaused || route.problemType) ? 12 : 0;
+  const objectiveRisk = dyn.active ? 5 : 0;
+  const eventRisk = we ? 7 : 0;
+  let target = 12 + (aliveTigers * 4.8) + Math.min(14, aliveCivs * 1.6) + dangerCiv + routeRisk + objectiveRisk + eventRisk;
+  target *= clamp(Number(d5.pressureMul || 1), 0.90, 1.20);
+  if(now < Number(director.recoveryUntil || 0)) target = Math.min(target, 50);
+  target = clamp(target, 8, S.mode === "Survival" ? 84 : 76);
+  const current = clamp(Number(director.pressure || 0), 0, 100);
+  const delta = target - current;
+  const maxStep = delta >= 0 ? 3.2 : 4.4;
+  director.pressure = clamp(current + clamp(delta, -maxStep, maxStep), 0, 100);
+  d5.pressureTarget = target;
+  d5.pressureTrend = Math.abs(delta) < 2 ? "steady" : (delta > 0 ? "rising" : "cooling");
+}
 function missionDirector5IncidentLabel(type){
   const labels = {
     objective:"bonus objective",
@@ -3146,6 +3206,7 @@ function missionDirector5TriggerObjective(now=Date.now()){
   director.bonusObjectivesStarted += 1;
   director.surpriseGoals += 1;
   director.currentObjectiveTitle = activeObjective.title || "";
+  missionDirector5Remember("objective", type);
   missionDirector5PushRecap(`Bonus objective started: ${activeObjective.title || missionDirector5IncidentLabel(type)}`);
   setEventText(`Director 5.0 bonus objective: ${activeObjective.title}`, 5);
   return true;
@@ -3162,6 +3223,7 @@ function missionDirector5TriggerWorldEvent(now=Date.now()){
   if(ok){
     const director = ensureMissionDirector5State(S);
     director.mapEventCount += 1;
+    missionDirector5Remember("world_event", type);
     missionDirector5PushRecap(`World event triggered: ${String(type).replace(/_/g, " ")}`);
   }
   return ok;
@@ -3199,13 +3261,69 @@ function missionDirector5TriggerRescueEmergency(now=Date.now()){
     const activeObjective = ensureDynamicObjectiveState(S);
     director.bonusObjectivesStarted += 1;
     director.currentObjectiveTitle = activeObjective.title || "";
+    missionDirector5Remember("objective", "civilian_triage");
     missionDirector5PushRecap(`Bonus objective started: ${activeObjective.title || "Civilian Triage"}`);
   }
   return true;
 }
+function missionDirector5EvacProblemType(route=ensureEvacRouteState(S)){
+  const key = String(route?.key || "");
+  if(key === "helicopter") return "delayed_helicopter";
+  if(key === "boat") return "unsafe_boat_dock";
+  if(key === "convoy") return "tiger_near_convoy";
+  return "blocked_street_route";
+}
+function missionDirector5EvacProblemLabel(type){
+  const labels = {
+    delayed_helicopter:"Delayed helicopter",
+    unsafe_boat_dock:"Unsafe boat dock",
+    tiger_near_convoy:"Tiger near convoy",
+    blocked_street_route:"Broken street route",
+  };
+  return labels[String(type || "")] || "Evac complication";
+}
+function missionDirector5StartEvacProblem(now=Date.now()){
+  if(S.mode === "Survival") return false;
+  let route = ensureEvacRouteState(S);
+  if(!route.active){
+    initializeRealEvacRoute();
+    route = ensureEvacRouteState(S);
+  }
+  if(!route.active || route.departed) return false;
+  const type = missionDirector5EvacProblemType(route);
+  route.problemType = type;
+  route.problemLabel = missionDirector5EvacProblemLabel(type);
+  route.problemStartedAt = now;
+  route.problemUntil = now + (type === "tiger_near_convoy" ? 18000 : (type === "delayed_helicopter" ? 15500 : 16500));
+  route.problemResolvedAt = 0;
+  route.problemNoticeAt = now + 3200;
+  route.departing = false;
+  route.departStartedAt = 0;
+  route.departUntil = 0;
+  if(type === "unsafe_boat_dock" || type === "blocked_street_route"){
+    route.blocked = true;
+    route.blockedUntil = Math.max(route.blockedUntil || 0, route.problemUntil);
+    S.evacZone = { x:route.altX, y:route.altY, r:route.r };
+  }
+  if(type === "tiger_near_convoy"){
+    const target = missionEvacZoneSafe(S);
+    const spawned = spawnRogueTiger({ typeKey:"Stalker", nearX:target.x, nearY:target.y, anchorTight:true, ignoreDirectorBudget:true });
+    if(spawned){
+      spawned.intent = "Convoy Threat";
+      spawned.intentUntil = now + 3600;
+      spawned.aggroBoost = Math.max(Number(spawned.aggroBoost || 0), 0.34);
+    }
+  }
+  missionDirector5PushRecap(`Evac complication visible: ${route.problemLabel}`);
+  setEventText(`Director 5.0: ${route.problemLabel}. Secure the route before boarding continues.`, 5.8);
+  toast(route.problemLabel);
+  __savePending = true;
+  return true;
+}
 function missionDirector5TriggerEvacComplication(now=Date.now()){
-  if(S.mode === "Survival" || !S.evacZone) return false;
+  if(S.mode === "Survival") return false;
   ensureMissionDirector5State(S).evacComplications += 1;
+  const visibleProblem = missionDirector5StartEvacProblem(now);
   const director = ensureMissionDirectorState(S);
   director.recoveryUntil = Math.max(director.recoveryUntil || 0, now + 2200);
   director.spawnSoftLockUntil = Math.max(director.spawnSoftLockUntil || 0, now + 1800);
@@ -3216,9 +3334,10 @@ function missionDirector5TriggerEvacComplication(now=Date.now()){
     const activeObjective = ensureDynamicObjectiveState(S);
     director5.bonusObjectivesStarted += 1;
     director5.currentObjectiveTitle = activeObjective.title || "";
+    missionDirector5Remember("objective", "hold_evac_route");
     missionDirector5PushRecap(`Bonus objective started: ${activeObjective.title || "Evac Route Hold"}`);
   }
-  setEventText("Director 5.0: evac complication. Keep tigers away from the route.", 5.4);
+  if(!visibleProblem) setEventText("Director 5.0: evac complication. Keep tigers away from the route.", 5.4);
   return true;
 }
 function missionDirector5TriggerSupplyChoice(now=Date.now()){
@@ -3256,6 +3375,7 @@ function missionDirector5Tick(now=Date.now()){
   if(!d.active || window.__TUTORIAL_MODE__) return;
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
   missionDirector5TruthPulse(now);
+  missionDirector5PressureFlow(now);
   if(d.incidentIndex >= d.incidentCap) return;
   if(now < (d.nextIncidentAt || 0)) return;
   const types = d.incidentTypes.length ? d.incidentTypes : ["objective","tiger_surge","supply_choice"];
@@ -46037,14 +46157,15 @@ function defaultEvacRouteState(){
     color:"rgba(74,222,128,.98)", vehicle:"safe_hold", x:0, y:0, r:70, startX:0, startY:0, midX:0, midY:0,
     altX:0, altY:0, vehicleX:0, vehicleY:0, vehicleAngle:0, blocked:false, blockedUntil:0, noticeAt:0, lastTickAt:0,
     boardedCount:0, boardingTotal:0, boardingPaused:false, boardingPauseReason:"", departStartedAt:0, departUntil:0, departing:false, departed:false,
-    departedAt:0, cinematicStartedAt:0, cinematicBoardPulseAt:0, lastBoardedCount:0, lastCinematicPhase:"", successRecap:""
+    departedAt:0, cinematicStartedAt:0, cinematicBoardPulseAt:0, lastBoardedCount:0, lastCinematicPhase:"", successRecap:"",
+    problemType:"", problemLabel:"", problemStartedAt:0, problemUntil:0, problemResolvedAt:0, problemNoticeAt:0
   };
 }
 function ensureEvacRouteState(state=S){
   if(!state.evacRoute || typeof state.evacRoute !== "object") state.evacRoute = defaultEvacRouteState();
   const route = state.evacRoute;
   const defaults = defaultEvacRouteState();
-  for(const key of ["x","y","r","startX","startY","midX","midY","altX","altY","vehicleX","vehicleY","vehicleAngle","blockedUntil","noticeAt","lastTickAt","boardedCount","boardingTotal","departStartedAt","departUntil","departNoticeUntil","departedAt","cinematicStartedAt","cinematicBoardPulseAt","lastBoardedCount"]){
+  for(const key of ["x","y","r","startX","startY","midX","midY","altX","altY","vehicleX","vehicleY","vehicleAngle","blockedUntil","noticeAt","lastTickAt","boardedCount","boardingTotal","departStartedAt","departUntil","departNoticeUntil","departedAt","cinematicStartedAt","cinematicBoardPulseAt","lastBoardedCount","problemStartedAt","problemUntil","problemResolvedAt","problemNoticeAt"]){
     if(!Number.isFinite(Number(route[key]))) route[key] = defaults[key];
   }
   route.active = !!route.active;
@@ -46061,6 +46182,8 @@ function ensureEvacRouteState(state=S){
   if(!route.boardingPauseReason) route.boardingPauseReason = "";
   if(!route.lastCinematicPhase) route.lastCinematicPhase = "";
   if(typeof route.successRecap !== "string") route.successRecap = "";
+  route.problemType = String(route.problemType || "");
+  route.problemLabel = String(route.problemLabel || "");
   return route;
 }
 function resetEvacRouteForDeploy(state=S){
@@ -46237,16 +46360,34 @@ function realEvacRouteTick(now=Date.now()){
   route.lastTickAt = now;
   route.boardingTotal = (S.civilians || []).filter((c)=>c?.alive).length;
 
-  const shouldBlock = realEvacRouteBlockedByWorld(route, now);
+  const routeProblemActive = !!route.problemType && now < Number(route.problemUntil || 0);
+  const problemBlocksRoute = routeProblemActive && (route.problemType === "unsafe_boat_dock" || route.problemType === "blocked_street_route");
+  const problemDelaysBoarding = routeProblemActive && route.problemType === "delayed_helicopter";
+  const problemThreatConvoy = routeProblemActive && route.problemType === "tiger_near_convoy";
+  if(route.problemType && !routeProblemActive){
+    const clearedLabel = route.problemLabel || missionDirector5EvacProblemLabel(route.problemType);
+    route.problemType = "";
+    route.problemLabel = "";
+    route.problemResolvedAt = now;
+    route.problemNoticeAt = 0;
+    if(route.blocked && !realEvacRouteBlockedByWorld(route, now)){
+      route.blocked = false;
+      S.evacZone = { x:route.x, y:route.y, r:route.r };
+    }
+    setEventText(`${route.icon} ${clearedLabel} cleared. Boarding route restored.`, 3.4);
+  }
+
+  const shouldBlock = realEvacRouteBlockedByWorld(route, now) || problemBlocksRoute;
   if(shouldBlock && !route.blocked){
     route.blocked = true;
-    route.blockedUntil = now + 18000;
+    route.blockedUntil = problemBlocksRoute ? Math.max(route.blockedUntil || 0, route.problemUntil || now + 16000) : now + 18000;
     route.departing = false;
     route.departStartedAt = 0;
     route.departUntil = 0;
     S.evacZone = { x:route.altX, y:route.altY, r:route.r };
-    setEventText(`🚧 ${route.label} blocked. Alternate exit marked!`, 5);
-    toast("Evac route blocked: follow alternate exit");
+    const label = route.problemLabel || `${route.label} blocked`;
+    setEventText(`🚧 ${label}. Alternate exit marked!`, 5);
+    toast(`${label}: follow alternate exit`);
   } else if(route.blocked && now >= route.blockedUntil && !shouldBlock){
     route.blocked = false;
     S.evacZone = { x:route.x, y:route.y, r:route.r };
@@ -46255,13 +46396,18 @@ function realEvacRouteTick(now=Date.now()){
     route.noticeAt = now + 16000;
     setEventText(`${route.icon} Evac route: ${route.blocked ? "alternate exit" : route.label}.`, 2.4);
   }
+  if(routeProblemActive && now >= Number(route.problemNoticeAt || 0)){
+    route.problemNoticeAt = now + 5200;
+    const label = route.problemLabel || missionDirector5EvacProblemLabel(route.problemType);
+    setEventText(`⚠️ ${label}: ${problemDelaysBoarding ? "pickup delayed" : (problemThreatConvoy ? "clear convoy threat" : "use alternate route")}.`, 3.1);
+  }
 
   const wasPaused = !!route.boardingPaused;
   const threat = realEvacRouteThreatNearBoarding(route);
-  route.boardingPaused = !!threat;
-  route.boardingPauseReason = threat ? "Tiger near boarding zone" : "";
+  route.boardingPaused = !!threat || problemDelaysBoarding || problemThreatConvoy;
+  route.boardingPauseReason = threat ? "Tiger near boarding zone" : (problemDelaysBoarding ? "Helicopter delayed" : (problemThreatConvoy ? "Tiger near convoy" : ""));
   if(route.boardingPaused && !wasPaused){
-    setEventText("⚠️ Boarding paused: tiger too close to evac route.", 3.2);
+    setEventText(`⚠️ Boarding paused: ${route.boardingPauseReason || "route complication"}.`, 3.2);
   } else if(!route.boardingPaused && wasPaused){
     setEventText(`${route.icon} Boarding resumed. Keep civilians moving.`, 3);
   }
@@ -49902,8 +50048,11 @@ function drawRealEvacRoute(now=Date.now()){
   if(!route.active) return;
   const lite = frameLagTier() >= 3 || frameBudgetExceeded(0.88);
   const target = missionEvacZoneSafe(S);
-  const color = route.blocked ? "rgba(251,113,133,.98)" : (route.color || "rgba(74,222,128,.98)");
-  const primaryDim = route.blocked ? 0.22 : 0.56;
+  const problemActive = !!route.problemType && now < Number(route.problemUntil || 0);
+  const problemLabel = route.problemLabel || missionDirector5EvacProblemLabel(route.problemType);
+  const dangerColor = problemActive ? "rgba(251,191,36,.98)" : "rgba(251,113,133,.98)";
+  const color = route.blocked ? "rgba(251,113,133,.98)" : (problemActive ? dangerColor : (route.color || "rgba(74,222,128,.98)"));
+  const primaryDim = route.blocked ? 0.22 : (problemActive ? 0.34 : 0.56);
   const dash = -((now / 62) % 24);
   const drawSegment = (a, b, alpha, stroke, width=4)=>{
     ctx.save();
@@ -49972,7 +50121,29 @@ function drawRealEvacRoute(now=Date.now()){
     ctx.fillStyle = "rgba(255,255,255,.96)";
     ctx.font = "1000 13px system-ui";
     ctx.textAlign = "center";
-    ctx.fillText("ROAD BLOCKED", mid.x, mid.y - 48);
+    ctx.fillText(problemActive ? problemLabel.toUpperCase() : "ROAD BLOCKED", mid.x, mid.y - 48);
+    ctx.restore();
+  }
+  if(problemActive && !route.blocked){
+    const px = route.problemType === "delayed_helicopter" ? target.x : mid.x;
+    const py = route.problemType === "delayed_helicopter" ? target.y : mid.y;
+    ctx.save();
+    ctx.globalAlpha = 0.90;
+    ctx.fillStyle = "rgba(92,51,13,.72)";
+    ctx.beginPath();
+    ctx.arc(px, py, 38 + Math.sin(now / 170) * 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(253,224,71,.95)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([7, 7]);
+    ctx.beginPath();
+    ctx.arc(px, py, 49, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255,251,235,.98)";
+    ctx.font = "1000 12px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(problemLabel.toUpperCase(), px, py - 53);
     ctx.restore();
   }
 
@@ -50033,15 +50204,15 @@ function drawRealEvacRoute(now=Date.now()){
   ctx.font = "1000 11px system-ui";
   ctx.textAlign = "center";
   const boardText = route.boardingPaused
-    ? "BOARDING PAUSED"
+    ? (problemActive ? problemLabel.toUpperCase() : "BOARDING PAUSED")
     : (route.departed ? "CIVILIANS EVACUATED" : (route.departing ? "TRANSPORT DEPARTING" : `${Math.max(0, route.boardedCount || 0)}/${Math.max(1, route.boardingTotal || 1)} BOARDED`));
-  ctx.fillText(route.blocked ? `↪ ALTERNATE EXIT • ${route.icon}` : `${route.icon} ${route.label}`, target.x, target.y - target.r - 35);
+  ctx.fillText(route.blocked ? `↪ ALTERNATE EXIT • ${route.icon}` : (problemActive ? `⚠ ${problemLabel}` : `${route.icon} ${route.label}`), target.x, target.y - target.r - 35);
   ctx.fillStyle = route.boardingPaused ? "rgba(254,202,202,.98)" : "rgba(220,252,231,.96)";
   ctx.font = "900 9px system-ui";
   ctx.fillText(boardText, target.x, target.y - target.r - 20);
   if(!route.departed){
-    const banner = route.boardingPaused ? "CLEAR TIGER TO RESUME BOARDING" : (route.departing ? "EVAC TRANSPORT LEAVING" : "BOARDING CIVILIANS");
-    const bw = route.boardingPaused ? 236 : (route.departing ? 210 : 190);
+    const banner = route.boardingPaused ? (problemActive ? problemLabel.toUpperCase() : "CLEAR TIGER TO RESUME BOARDING") : (route.departing ? "EVAC TRANSPORT LEAVING" : "BOARDING CIVILIANS");
+    const bw = route.boardingPaused ? (problemActive ? 250 : 236) : (route.departing ? 210 : 190);
     ctx.globalAlpha = 0.96;
     ctx.fillStyle = route.boardingPaused ? "rgba(127,29,29,.94)" : "rgba(7,12,20,.94)";
     roundedRectFill(target.x - (bw / 2), target.y - target.r - 88, bw, 28, 13);
