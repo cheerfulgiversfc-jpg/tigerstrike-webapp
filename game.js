@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4527";
+const TS_BUILD = "4528";
 if(tg){
   try{
     tg.expand?.();
@@ -6123,6 +6123,8 @@ const WEAPONS = [
   { id:"W_RAIL_PROTO",    name:"Prototype Rail Rifle", grade:"Mythic", price:100000,    type:"lethal", ammo:"RAIL_CELL",   mag:3, dmg:[40,60], range:236 },
   { id:"W_APEX_TRANQ_RIFLE", name:"Apex Tranq Rifle", grade:"Mythic", price:350000, type:"tranq", ammo:"TRANQ_HEAVY", mag:4, dmg:[42,58], range:232 },
   { id:"W_COMMAND_RAIL", name:"Command Rail Carbine", grade:"Mythic", price:600000, type:"lethal", ammo:"RAIL_CELL", mag:5, dmg:[54,76], range:260 },
+  { id:"W_GUARDIAN_TRANQ_MK2", name:"Guardian Tranq Mk II", grade:"Legendary+", price:1250000, type:"tranq", ammo:"TRANQ_HEAVY", mag:5, dmg:[52,70], range:252 },
+  { id:"W_APEX_RAIL_DMR", name:"Apex Rail DMR", grade:"Mythic+", price:1750000, type:"lethal", ammo:"RAIL_CELL", mag:6, dmg:[66,88], range:292 },
 ];
 const ATTACHMENT_SLOTS = Object.freeze(["optic","tranq_chamber","suppressor","mag","stock"]);
 const WEAPON_ATTACHMENTS = Object.freeze([
@@ -6194,6 +6196,7 @@ const MEDS = [
   { id:"M_LARGE",  name:"Large Med Kit",  price:400, heal:50 },
   { id:"M_TRAUMA", name:"Trauma Kit",     price:1000, heal:100 },
   { id:"M_FIELD_SURGERY", name:"Field Surgery Kit", price:6500, heal:100 },
+  { id:"M_NANO_TRIAGE", name:"Nano Triage Kit", price:25000, heal:100 },
 ];
 
 const ARMORY = [
@@ -6202,12 +6205,14 @@ const ARMORY = [
   { id:"A_TIER3", name:"Armory Tier III",price:400, addArmor:50,  cap:100 },
   { id:"A_TIER4", name:"Armory Tier IV", price:1000,addArmor:100, cap:100 },
   { id:"A_APEX", name:"Apex Armor Plate", price:7500, addArmor:100, cap:100 },
+  { id:"A_COMMAND", name:"Command Armor Plate", price:30000, addArmor:100, cap:100 },
 ];
 
 const TOOLS = [
   { id:"T_REPAIR",     name:"Repair Kit",     price:300,  qty:1, add:10  },
   { id:"T_REPAIR_PRO", name:"Pro Repair Kit", price:2500, qty:1, add:100 },
   { id:"T_REPAIR_APEX", name:"Apex Repair Kit", price:12000, qty:1, add:100 },
+  { id:"T_REPAIR_QUANTUM", name:"Quantum Repair Kit", price:45000, qty:1, add:100 },
 ];
 
 const TRAP_ITEM = { id:"TRAP", name:"Trap", price:300, qty:1 };
@@ -6253,32 +6258,32 @@ const STARS_PREMIUM_PACKS = [
     name:"Forge Vault",
     stars:750,
     desc:"Cosmetic-focused Stars sink for weapon skins and trail effects.",
-    preview:"+100 Alloy • +60 Bio Resin • +24 Ion Dust",
-    grant:{ forgeMaterials:{ alloy:100, bio_resin:60, ion_dust:24 } },
+    preview:"+160 Alloy • +95 Bio Resin • +38 Ion Dust",
+    grant:{ forgeMaterials:{ alloy:160, bio_resin:95, ion_dust:38 } },
   },
   {
     sku:"premium_boss_hunt_reserve",
     name:"Boss Hunt Reserve",
     stars:1500,
     desc:"High-end boss and Alpha prep with elite ammo, shields, repairs, and forge materials.",
-    preview:"+12 Perk Points • +30 Shields • +24 Traps • +Boss Ammo • +Forge Materials",
-    grant:{ perkPoints:12, shields:30, traps:24, repairs:{ T_REPAIR_PRO:12 }, ammo:{ "556_AP":160, "762_AP":140, TRANQ_HEAVY:180, RAIL_CELL:80 }, forgeMaterials:{ alloy:80, bio_resin:40, ion_dust:12 } },
+    preview:"+16 Perk Points • +38 Shields • +30 Traps • +Boss Ammo • +Forge Materials",
+    grant:{ perkPoints:16, shields:38, traps:30, repairs:{ T_REPAIR_APEX:8, T_REPAIR_PRO:10 }, ammo:{ "556_AP":210, "762_AP":180, TRANQ_HEAVY:240, RAIL_CELL:110 }, forgeMaterials:{ alloy:120, bio_resin:70, ion_dust:24 } },
   },
   {
     sku:"premium_hq_modernization",
     name:"HQ Modernization",
     stars:2500,
     desc:"Long-term account progress pack for HQ upgrades, squad perks, cosmetics, and mission supplies.",
-    preview:"+22 Perk Points • +50 Shields • +50 Traps • +Apex Support • +Forge Materials",
-    grant:{ perkPoints:22, shields:50, traps:50, medkits:{ M_FIELD_SURGERY:12 }, repairs:{ T_REPAIR_APEX:12 }, armorPlates:{ A_APEX:14 }, ammo:{ TRANQ_HEAVY:220, TRANQ_DARTS:220, RAIL_CELL:120 }, forgeMaterials:{ alloy:180, bio_resin:110, ion_dust:42 } },
+    preview:"+30 Perk Points • +65 Shields • +65 Traps • +Apex Support • +Forge Materials",
+    grant:{ perkPoints:30, shields:65, traps:65, medkits:{ M_FIELD_SURGERY:16, M_NANO_TRIAGE:4 }, repairs:{ T_REPAIR_APEX:14, T_REPAIR_QUANTUM:4 }, armorPlates:{ A_APEX:16, A_COMMAND:4 }, ammo:{ TRANQ_HEAVY:300, TRANQ_DARTS:300, RAIL_CELL:170 }, forgeMaterials:{ alloy:260, bio_resin:160, ion_dust:64 } },
   },
   {
     sku:"premium_apex_evac_reserve",
     name:"Apex Evac Reserve",
     stars:3500,
     desc:"Ultra-premium rescue, boss, and late-story reserve for players who want a serious strategic stockpile.",
-    preview:"+35 Perk Points • +85 Shields • +85 Traps • +Apex Kits/Armor • +Elite Ammo • Forge Vault",
-    grant:{ perkPoints:35, shields:85, traps:85, medkits:{ M_FIELD_SURGERY:22, M_TRAUMA:20 }, repairs:{ T_REPAIR_APEX:22 }, armorPlates:{ A_APEX:28 }, ammo:{ "556_AP":260, "762_AP":220, TRANQ_HEAVY:320, TRANQ_DARTS:300, RAIL_CELL:220 }, forgeMaterials:{ alloy:280, bio_resin:170, ion_dust:70 } },
+    preview:"+45 Perk Points • +110 Shields • +110 Traps • +Apex Kits/Armor • +Elite Ammo • Forge Vault",
+    grant:{ perkPoints:45, shields:110, traps:110, medkits:{ M_FIELD_SURGERY:28, M_TRAUMA:24, M_NANO_TRIAGE:8 }, repairs:{ T_REPAIR_APEX:24, T_REPAIR_QUANTUM:8 }, armorPlates:{ A_APEX:32, A_COMMAND:8 }, ammo:{ "556_AP":360, "762_AP":300, TRANQ_HEAVY:420, TRANQ_DARTS:400, RAIL_CELL:300 }, forgeMaterials:{ alloy:420, bio_resin:260, ion_dust:110 } },
   },
   {
     sku:"premium_tiger_specialist_unlock",
@@ -6667,6 +6672,14 @@ const CASH_SUPPLY_BUNDLES = [
     grant:{ perkPoints:24, shields:90, traps:90, medkits:{ M_FIELD_SURGERY:28 }, repairs:{ T_REPAIR_APEX:18 }, armorPlates:{ A_APEX:28 }, ammo:{ TRANQ_HEAVY:220, TRANQ_DARTS:260, RAIL_CELL:120 }, forgeMaterials:{ alloy:150, bio_resin:90, ion_dust:36 } },
   },
   {
+    id:"cash_forge_material_contract",
+    name:"Forge Material Contract",
+    price:1800000,
+    desc:"Cash-to-cosmetic sink for crafting weapon skins, trails, and seasonal forge sets.",
+    preview:"+260 Alloy • +160 Bio Resin • +70 Ion Dust",
+    grant:{ forgeMaterials:{ alloy:260, bio_resin:160, ion_dust:70 } },
+  },
+  {
     id:"cash_den_raid_blacksite",
     name:"Den Raid Blacksite Cache",
     price:2500000,
@@ -6675,12 +6688,28 @@ const CASH_SUPPLY_BUNDLES = [
     grant:{ perkPoints:30, shields:110, traps:110, medkits:{ M_FIELD_SURGERY:24, M_TRAUMA:20 }, repairs:{ T_REPAIR_APEX:26 }, armorPlates:{ A_APEX:30 }, ammo:{ "556_AP":260, "762_AP":240, TRANQ_HEAVY:300, RAIL_CELL:260 }, forgeMaterials:{ alloy:220, bio_resin:130, ion_dust:58 } },
   },
   {
+    id:"cash_squad_command_retainer",
+    name:"Squad Command Retainer",
+    price:2800000,
+    desc:"High-end squad sink for investing in specialist command, revives, and formations.",
+    preview:"+36 Perk Points • +120 Shields • +80 Traps • Command Gear • Forge Materials",
+    grant:{ perkPoints:36, shields:120, traps:80, medkits:{ M_FIELD_SURGERY:26, M_NANO_TRIAGE:10 }, repairs:{ T_REPAIR_QUANTUM:14 }, armorPlates:{ A_COMMAND:14 }, ammo:{ TRANQ_HEAVY:260, RAIL_CELL:180 }, forgeMaterials:{ alloy:180, bio_resin:120, ion_dust:52 } },
+  },
+  {
     id:"cash_hq_modernization_contract",
     name:"HQ Modernization Contract",
     price:3000000,
     desc:"Long-term account sink for players who want HQ upgrades, cosmetics, squad readiness, and mission supplies.",
     preview:"+40 Perk Points • +140 Shields • +140 Traps • +Apex support • Large forge vault",
     grant:{ perkPoints:40, shields:140, traps:140, medkits:{ M_FIELD_SURGERY:36 }, repairs:{ T_REPAIR_APEX:36 }, armorPlates:{ A_APEX:40 }, ammo:{ "556_AP":320, "762_AP":280, TRANQ_HEAVY:360, TRANQ_DARTS:320, RAIL_CELL:320 }, forgeMaterials:{ alloy:320, bio_resin:200, ion_dust:90 } },
+  },
+  {
+    id:"cash_legend_hq_endowment",
+    name:"Legend HQ Endowment",
+    price:5000000,
+    desc:"Prestige economy sink for max-level players building a legendary HQ and cosmetic armory.",
+    preview:"+60 Perk Points • +220 Shields • +220 Traps • Command Gear • Massive Forge Vault",
+    grant:{ perkPoints:60, shields:220, traps:220, medkits:{ M_FIELD_SURGERY:44, M_NANO_TRIAGE:20 }, repairs:{ T_REPAIR_APEX:30, T_REPAIR_QUANTUM:20 }, armorPlates:{ A_APEX:36, A_COMMAND:24 }, ammo:{ "556_AP":420, "762_AP":380, TRANQ_HEAVY:520, TRANQ_DARTS:480, RAIL_CELL:420 }, forgeMaterials:{ alloy:620, bio_resin:390, ion_dust:170 } },
   },
 ];
 const STARS_TOPUP_GUIDE = [
@@ -9082,24 +9111,24 @@ const PROGRESSION_UNLOCKS = [
 ];
 
 const STORY_BASE_UPGRADES = [
-  { key:"BASE_ARMORY", name:"Base Armory", maxRank:3, costs:[45000,125000,300000], desc:"+8 starting armor per rank in Story missions." },
-  { key:"BASE_LOGISTICS", name:"Logistics Wing", maxRank:3, costs:[40000,110000,280000], desc:"Higher minimum mission-start supplies (medkits/traps/repair)." },
-  { key:"BASE_SHIELD_NET", name:"Shield Network", maxRank:2, costs:[60000,180000], desc:"+1 starting shield per rank in Story missions." },
-  { key:"BASE_ENDURANCE", name:"Endurance Program", maxRank:3, costs:[35000,95000,240000], desc:"-8% stamina drain per rank in Story missions." },
-  { key:"BASE_FINANCE", name:"Operations Finance", maxRank:3, costs:[75000,225000,500000], desc:"+8% Story payout cash per rank." },
+  { key:"BASE_ARMORY", name:"Base Armory", maxRank:5, costs:[45000,125000,300000,750000,1500000], desc:"+8 starting armor per rank in Story missions." },
+  { key:"BASE_LOGISTICS", name:"Logistics Wing", maxRank:5, costs:[40000,110000,280000,700000,1400000], desc:"Higher minimum mission-start supplies (medkits/traps/repair)." },
+  { key:"BASE_SHIELD_NET", name:"Shield Network", maxRank:4, costs:[60000,180000,550000,1200000], desc:"+1 starting shield per rank in Story missions." },
+  { key:"BASE_ENDURANCE", name:"Endurance Program", maxRank:5, costs:[35000,95000,240000,650000,1300000], desc:"-8% stamina drain per rank in Story missions." },
+  { key:"BASE_FINANCE", name:"Operations Finance", maxRank:5, costs:[75000,225000,500000,1250000,2500000], desc:"+8% Story payout cash per rank." },
 ];
 const STORY_HQ_MODULES = [
-  { key:"HQ_RD", name:"R&D Lab", maxRank:4, costs:[90000,220000,520000,950000], desc:"+3% Story payout per rank and wider capture research window." },
-  { key:"HQ_MEDBAY", name:"Medbay", maxRank:4, costs:[85000,210000,480000,900000], desc:"Stronger escort survivability and rescue movement efficiency." },
-  { key:"HQ_INTEL", name:"Intel Center", maxRank:4, costs:[95000,230000,550000,1000000], desc:"Lowers tiger pressure and improves mission control stability." },
-  { key:"HQ_ARMORY", name:"Armory Deck", maxRank:4, costs:[100000,250000,600000,1100000], desc:"More starting armor/shields and specialist combat edge." },
+  { key:"HQ_RD", name:"R&D Lab", maxRank:6, costs:[90000,220000,520000,950000,1700000,2800000], desc:"+3% Story payout per rank and wider capture research window." },
+  { key:"HQ_MEDBAY", name:"Medbay", maxRank:6, costs:[85000,210000,480000,900000,1600000,2600000], desc:"Stronger escort survivability and rescue movement efficiency." },
+  { key:"HQ_INTEL", name:"Intel Center", maxRank:6, costs:[95000,230000,550000,1000000,1800000,3000000], desc:"Lowers tiger pressure and improves mission control stability." },
+  { key:"HQ_ARMORY", name:"Armory Deck", maxRank:6, costs:[100000,250000,600000,1100000,1900000,3200000], desc:"More starting armor/shields and specialist combat edge." },
 ];
 
 const STORY_SPECIALIST_PERKS = [
-  { key:"SP_ATK_DRILL", role:"attacker", name:"Tiger Specialist Drill", maxRank:3, costs:[100000,250000,650000], desc:"Tiger specialists gain damage, HP, and armor." },
-  { key:"SP_ATK_CAPTURE", role:"attacker", name:"Capture Tactics", maxRank:3, costs:[100000,260000,700000], desc:"Tiger specialists capture more reliably and improve Story capture window." },
-  { key:"SP_RESCUE_ESCORT", role:"rescue", name:"Escort Formation", maxRank:3, costs:[90000,225000,575000], desc:"Rescue specialists move and guide civilians faster." },
-  { key:"SP_RESCUE_GUARD", role:"rescue", name:"Civilian Guard Protocol", maxRank:3, costs:[90000,225000,600000], desc:"Rescue specialists and nearby civilians take less tiger damage." },
+  { key:"SP_ATK_DRILL", role:"attacker", name:"Tiger Specialist Drill", maxRank:5, costs:[100000,250000,650000,1250000,2400000], desc:"Tiger specialists gain damage, HP, and armor." },
+  { key:"SP_ATK_CAPTURE", role:"attacker", name:"Capture Tactics", maxRank:5, costs:[100000,260000,700000,1350000,2600000], desc:"Tiger specialists capture more reliably and improve Story capture window." },
+  { key:"SP_RESCUE_ESCORT", role:"rescue", name:"Escort Formation", maxRank:5, costs:[90000,225000,575000,1150000,2200000], desc:"Rescue specialists move and guide civilians faster." },
+  { key:"SP_RESCUE_GUARD", role:"rescue", name:"Civilian Guard Protocol", maxRank:5, costs:[90000,225000,600000,1200000,2300000], desc:"Rescue specialists and nearby civilians take less tiger damage." },
 ];
 
 const STORY_CHAPTER_REWARDS = [
@@ -33990,6 +34019,12 @@ function shopGameplayEffect(kind, item){
   if(kind === "tool") return `Adds ${item.qty || 1} repair kit • restores +${item.add} durability to equipped weapon${Number(item.price || 0) >= 10000 ? " • premium endgame maintenance" : ""}.`;
   if(kind === "shield") return "Adds one Escort Shield • blocks tiger damage for 5 seconds with escalating cooldown.";
   if(kind === "trap") return "Adds one trap • placed on the map to hold a tiger for 3-5 seconds with escalating cooldown.";
+  if(kind === "bundle"){
+    const value = Number(item.individualValue || cashBundleIndividualValue(item.grant) || 0);
+    const price = Math.max(1, Number(item.price || item.stars || 1));
+    const ratio = value > 0 ? ` • ${Math.max(1, value / price).toFixed(2)}x shop value` : "";
+    return `Applies immediately: ${cashBundleGrantPreview(item.grant)}${ratio}.`;
+  }
   return "Gameplay effect active.";
 }
 function shopTruthStateLine(kind, item){
@@ -34006,7 +34041,7 @@ function shopTruthStateLine(kind, item){
   if(kind === "tool") return `State: ${ownedToolCount(item.id)} owned • Repairs equipped weapon durability on use.`;
   if(kind === "shield") return `State: ${S.shields || 0} owned • Cooldown increases by 5s each mission use.`;
   if(kind === "trap") return `State: ${S.trapsOwned || 0} owned • Cooldown increases by 5s each mission use.`;
-  if(kind === "bundle") return `State: ${Number(S.funds || 0) >= Number(item.price || 0) ? "Can buy now" : "Need more cash"} • Rewards apply before cash is charged.`;
+  if(kind === "bundle") return `State: ${Number(S.funds || 0) >= Number(item.price || 0) ? "Can buy now" : "Need more cash"} • Rewards apply before cash is charged • Bundle is guaranteed cheaper than buying the same supplies separately.`;
   return "State: active.";
 }
 function shopTruthRefresh(message="", opts={}){
@@ -34073,6 +34108,22 @@ function economyShopFinalAudit(){
     const errors = cashBundleValidationErrors({ id:pack.sku, name:pack.name, price:pack.stars, grant:pack.grant });
     if(errors.length) premiumIssues.push(`${pack.name}: ${errors[0]}`);
   }
+  const metaUpgradeCosts = [
+    ...STORY_BASE_UPGRADES.flatMap((def)=>def.costs || []),
+    ...STORY_HQ_MODULES.flatMap((def)=>def.costs || []),
+    ...STORY_SPECIALIST_PERKS.flatMap((def)=>def.costs || []),
+  ].map((n)=>Number(n || 0)).filter((n)=>n > 0);
+  const highEndCashSinks = [
+    ...WEAPONS.map((item)=>({ name:item.name, price:Number(item.price || 0), kind:"weapon" })),
+    ...MEDS.map((item)=>({ name:item.name, price:Number(item.price || 0), kind:"med" })),
+    ...ARMORY.map((item)=>({ name:item.name, price:Number(item.price || 0), kind:"armor" })),
+    ...TOOLS.map((item)=>({ name:item.name, price:Number(item.price || 0), kind:"repair" })),
+    ...cashBundles.map((item)=>({ name:item.name, price:Number(item.price || 0), kind:"bundle" })),
+    ...metaUpgradeCosts.map((price)=>({ name:"Meta Upgrade Rank", price, kind:"upgrade" })),
+  ].filter((row)=>row.price >= 1000000);
+  if(highEndCashSinks.length < 12){
+    premiumIssues.push(`Only ${highEndCashSinks.length} high-end cash sinks configured`);
+  }
   const shopIssues = shopAuditSummary().issues || [];
   const issues = [...shopIssues, ...cashBundleIssues, ...premiumIssues];
   return {
@@ -34080,8 +34131,10 @@ function economyShopFinalAudit(){
     build: TS_BUILD,
     cashBundles: cashBundles.length,
     premiumStarPacks: STARS_PREMIUM_PACKS.length,
+    highEndCashSinks: highEndCashSinks.length,
+    maxCashSink: highEndCashSinks.reduce((max, row)=>Math.max(max, row.price), 0),
     minCashValueRatio: Number.isFinite(minCashValueRatio) ? Number(minCashValueRatio.toFixed(2)) : 0,
-    guarantee: "Visible cash bundles are auto-scaled to at least 1.25x individual shop value.",
+    guarantee: "Visible cash bundles are auto-scaled to at least 1.25x individual shop value, with million-dollar sinks across weapons, HQ, squad, bundles, and cosmetics.",
     issues,
   };
 }
@@ -35073,6 +35126,7 @@ function renderShopList(){
           <div>
             <div class="itemName">${bundle.name} <span class="tag">Bundle</span>${tags}</div>
             <div class="itemDesc">${bundle.desc}</div>
+            <div class="itemDesc">${shopGameplayEffect("bundle", bundle)}</div>
             <div class="itemDesc">${shopTruthStateLine("bundle", bundle)}</div>
             <div class="itemDesc">Individual value: <b>$${Number(bundle.individualValue || 0).toLocaleString()}</b> • You save <b>$${Number(bundle.savings || 0).toLocaleString()}</b> (${cashBundleSavingsPercent(bundle)}%).</div>
             <div class="itemDesc">${canAfford ? "Ready to buy now." : `Need $${Math.max(0, Number(bundle.price || 0) - Number(S.funds || 0)).toLocaleString()} more.`}</div>
@@ -35387,12 +35441,9 @@ function buyStoryBaseUpgrade(key){
   if(S.funds < cost) return toast("Not enough money.");
   S.funds -= cost;
   S.metaBase[key] = rank + 1;
-  toast(`${def.name} upgraded to Rank ${rank + 1}.`);
   sfx("ui"); hapticImpact("light");
   save();
-  renderShopList();
-  renderHUD();
-  if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+  shopTruthRefresh(`${def.name} upgraded to Rank ${rank + 1}/${def.maxRank}.`, { success:true });
 }
 function buyStorySpecialistPerk(key){
   ensureStoryMetaState();
@@ -35407,12 +35458,9 @@ function buyStorySpecialistPerk(key){
   if(!window.__TUTORIAL_MODE__ && Array.isArray(S.supportUnits) && S.supportUnits.length){
     spawnSupportUnits();
   }
-  toast(`${def.name} upgraded to Rank ${rank + 1}.`);
   sfx("ui"); hapticImpact("light");
   save();
-  renderShopList();
-  renderHUD();
-  if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+  shopTruthRefresh(`${def.name} upgraded to Rank ${rank + 1}/${def.maxRank}.`, { success:true });
 }
 function buyStoryHQModule(key){
   ensureStoryMetaState();
@@ -35427,12 +35475,9 @@ function buyStoryHQModule(key){
   if(!window.__TUTORIAL_MODE__ && Array.isArray(S.supportUnits) && S.supportUnits.length){
     spawnSupportUnits();
   }
-  toast(`${def.name} upgraded to Rank ${rank + 1}.`);
   sfx("ui"); hapticImpact("light");
   save();
-  renderShopList();
-  renderHUD();
-  if(document.getElementById("invOverlay").style.display === "flex") renderInventory();
+  shopTruthRefresh(`${def.name} upgraded to Rank ${rank + 1}/${def.maxRank}.`, { success:true });
 }
 function buyTrap(){
   if(S.funds < TRAP_ITEM.price) return toast("Not enough money.");
