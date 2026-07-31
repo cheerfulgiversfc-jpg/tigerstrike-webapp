@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4523";
+const TS_BUILD = "4524";
 if(tg){
   try{
     tg.expand?.();
@@ -2737,6 +2737,11 @@ function defaultMissionDirector5State(){
     rescueEmergencies: 0,
     lastIncidentType: "",
     currentObjectiveTitle: "",
+    briefingTruthLine: "",
+    lastTruthPulseAt: 0,
+    truthChecks: 0,
+    truthRepairs: 0,
+    guaranteedMapEvents: 0,
     recapLines: [],
     rewardCashEarned: 0,
     rewardScoreEarned: 0,
@@ -2850,6 +2855,11 @@ function ensureMissionDirector5State(state=S){
   d.rescueEmergencies = Math.max(0, Math.floor(Number(d.rescueEmergencies || 0)));
   d.lastIncidentType = String(d.lastIncidentType || "");
   d.currentObjectiveTitle = String(d.currentObjectiveTitle || "");
+  d.briefingTruthLine = String(d.briefingTruthLine || "");
+  d.lastTruthPulseAt = Math.max(0, Math.floor(Number(d.lastTruthPulseAt || 0)));
+  d.truthChecks = Math.max(0, Math.floor(Number(d.truthChecks || 0)));
+  d.truthRepairs = Math.max(0, Math.floor(Number(d.truthRepairs || 0)));
+  d.guaranteedMapEvents = Math.max(0, Math.floor(Number(d.guaranteedMapEvents || 0)));
   d.recapLines = Array.isArray(d.recapLines) ? d.recapLines.map((x)=>String(x || "").trim()).filter(Boolean).slice(-5) : [];
   d.rewardCashEarned = Math.max(0, Math.floor(Number(d.rewardCashEarned || 0)));
   d.rewardScoreEarned = Math.max(0, Math.floor(Number(d.rewardScoreEarned || 0)));
@@ -2901,7 +2911,7 @@ function initializeMissionDirector5ForDeploy(state=S, now=Date.now()){
   d.pressureMul = plan.pressureMul;
   d.spawnCdMul = plan.spawnCdMul;
   d.rewardHint = plan.rewardHint;
-  d.nextIncidentAt = now + rand(15000, isMobileViewport() ? 24000 : 30000);
+  d.nextIncidentAt = now + rand(9000, isMobileViewport() ? 15000 : 18000);
   d.incidentIndex = 0;
   d.incidentCap = state.mode === "Survival" ? 2 : (isMobileViewport() ? 3 : 4);
   d.incidentHistory = [];
@@ -2918,9 +2928,20 @@ function initializeMissionDirector5ForDeploy(state=S, now=Date.now()){
   d.rescueEmergencies = 0;
   d.lastIncidentType = "";
   d.currentObjectiveTitle = "";
+  d.briefingTruthLine = "";
+  d.lastTruthPulseAt = 0;
+  d.truthChecks = 0;
+  d.truthRepairs = 0;
+  d.guaranteedMapEvents = 0;
   d.recapLines = [`Plan active: ${plan.title}`];
   d.rewardCashEarned = 0;
   d.rewardScoreEarned = 0;
+  d.briefingTruthLine = missionDirector5BriefingTruthLine(state);
+  if(dynamicWorldEventsEnabled()){
+    const tw = ensureMissionTwistState(state);
+    const we = tw.worldEvent;
+    we.nextRollAt = Math.min(Math.max(0, Number(we.nextRollAt || 0)) || Infinity, now + rand(18000, 26000));
+  }
   if(!String(state.eventText || "").trim()){
     setEventText(`Director 5.0: ${plan.title}. ${plan.rewardHint}`, 5);
   }
@@ -2943,6 +2964,113 @@ function missionDirector5PreferredWorldEvent(){
   if(!d.active || !d.worldEventBias.length) return "";
   const type = missionDirector5Pick(d.worldEventBias, "");
   return WORLD_EVENT_TYPES.includes(type) ? type : "";
+}
+function missionDirector5BriefingTruthLine(state=S){
+  const d = ensureMissionDirector5State(state);
+  if(!d.active && !d.planId) return "";
+  const obj = (d.objectiveBias || []).slice(0, 2).map((x)=>String(x || "").replace(/_/g, " ")).join(" / ") || "adaptive objective";
+  const event = (d.worldEventBias || []).slice(0, 2).map((x)=>String(x || "").replace(/_/g, " ")).join(" / ") || "live event";
+  const title = d.title || "Adaptive Plan";
+  const hint = d.rewardHint ? ` ${d.rewardHint}` : "";
+  return `Director 5.0: ${title} will create ${obj} and ${event} moments on-map.${hint}`;
+}
+function missionDirector5TruthFallbackPoint(type, state=S){
+  const worldW = Math.max(120, worldWidth(state));
+  const worldH = Math.max(120, worldHeight(state));
+  const me = state.me || { x:worldW * 0.5, y:worldH * 0.5 };
+  const eventType = String(type || "");
+  const candidates = [];
+  if(state.evacZone && eventType !== "helicopter_crash"){
+    candidates.push({ x:(me.x + state.evacZone.x) * 0.5, y:(me.y + state.evacZone.y) * 0.5 });
+  }
+  const civ = (state.civilians || []).find((c)=>c && c.alive && !c.evac);
+  if(civ) candidates.push({ x:(me.x + civ.x) * 0.5, y:(me.y + civ.y) * 0.5 });
+  candidates.push(
+    { x:worldW * 0.52, y:worldH * 0.48 },
+    { x:clamp(me.x + 180, 80, worldW - 80), y:clamp(me.y - 120, 90, worldH - 90) },
+    { x:clamp(me.x - 180, 80, worldW - 80), y:clamp(me.y + 130, 90, worldH - 90) }
+  );
+  for(const raw of candidates){
+    const p = safeSpawnPoint(raw.x, raw.y, eventType === "flooded_route" ? 14 : 18, true, false)
+      || findNearestOpenPoint(raw.x, raw.y, 18, 10, 22);
+    if(p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y))){
+      return {
+        x:clamp(Number(p.x), 48, worldW - 48),
+        y:clamp(Number(p.y), 48, worldH - 48)
+      };
+    }
+  }
+  return { x:worldW * 0.5, y:worldH * 0.5 };
+}
+function missionDirector5EnsureWorldEventVisible(type, now=Date.now()){
+  const eventType = WORLD_EVENT_TYPES.includes(String(type || "")) ? String(type) : chooseDynamicWorldEventType();
+  const def = worldEventTypeDef(eventType);
+  if(!def) return false;
+  const tw = ensureMissionTwistState(S);
+  const we = tw.worldEvent;
+  if(we.active){
+    const needsPoint = we.type !== "night_storm" && (!Number.isFinite(Number(we.x)) || !Number.isFinite(Number(we.y)) || (Number(we.x) === 0 && Number(we.y) === 0));
+    if(needsPoint){
+      const p = missionDirector5TruthFallbackPoint(we.type || eventType, S);
+      we.x = p.x;
+      we.y = p.y;
+      we.r = Math.max(64, Number(we.r || rand(def.radius[0], def.radius[1]) || 84));
+      ensureMissionDirector5State(S).truthRepairs += 1;
+      missionDirector5PushRecap(`Truth repair: ${String(we.type || eventType).replace(/_/g, " ")} marked on-map`);
+      __savePending = true;
+    }
+    return true;
+  }
+  const started = triggerDynamicWorldEvent(eventType, now);
+  if(started) return true;
+  const p = missionDirector5TruthFallbackPoint(eventType, S);
+  we.active = true;
+  we.type = eventType;
+  we.startedAt = now;
+  we.x = p.x;
+  we.y = p.y;
+  we.r = rand(def.radius[0], def.radius[1]) || 84;
+  we.until = now + rand(def.duration[0], def.duration[1]);
+  we.cooldownUntil = now + WORLD_EVENT_COOLDOWN_MS;
+  we.nextRollAt = now + rand(WORLD_EVENT_ROLL_MIN_MS, WORLD_EVENT_ROLL_MAX_MS);
+  we.triggerCount = Math.max(0, Math.floor(Number(we.triggerCount || 0))) + 1;
+  we.rewardCash = rand(def.rewardCash[0], def.rewardCash[1]);
+  we.rewardScore = rand(def.rewardScore[0], def.rewardScore[1]);
+  we.startEvac = Math.max(0, Math.floor(Number(S.evacDone || 0)));
+  we.startCivs = Math.max(0, (S.civilians || []).filter((c)=>c && c.alive && !c.evac).length);
+  we.siteSecured = false;
+  const director = ensureMissionDirector5State(S);
+  director.guaranteedMapEvents += 1;
+  director.truthRepairs += 1;
+  setEventText(`${def.icon} ${def.label} guaranteed on-map by Mission Director 5.0.`, 5.2);
+  missionDirectorReadableAlert(eventType);
+  missionDirector5PushRecap(`Truth guarantee: ${def.label} appeared on-map`);
+  sfx("event");
+  __blockedAtCache.clear();
+  __blockedAtCacheFrame = __frameBudgetState.frameNo;
+  __savePending = true;
+  return true;
+}
+function missionDirector5TruthPulse(now=Date.now()){
+  const d = ensureMissionDirector5State(S);
+  if(!d.active || window.__TUTORIAL_MODE__ || S.paused || S.inBattle || S.gameOver || S.missionEnded) return;
+  if(now - (d.lastTruthPulseAt || 0) < 1200) return;
+  d.lastTruthPulseAt = now;
+  d.truthChecks += 1;
+  const dyn = ensureDynamicObjectiveState(S);
+  if(dyn.active){
+    const beforeX = Number(dyn.markerX || 0);
+    const beforeY = Number(dyn.markerY || 0);
+    missionDirector5AttachObjectiveMarker(dyn.type);
+    if((!beforeX || !beforeY) && Number(dyn.markerX || 0) && Number(dyn.markerY || 0)) d.truthRepairs += 1;
+  }
+  const we = ensureMissionTwistState(S).worldEvent;
+  if(we.active && we.type && we.type !== "night_storm"){
+    missionDirector5EnsureWorldEventVisible(we.type, now);
+  }
+  if(d.incidentIndex === 0 && now - (d.planStartedAt || now) > 16000 && !dyn.active && !we.active){
+    d.nextIncidentAt = Math.min(d.nextIncidentAt || now, now);
+  }
 }
 function missionDirector5IncidentLabel(type){
   const labels = {
@@ -3030,7 +3158,7 @@ function missionDirector5TriggerWorldEvent(now=Date.now()){
   const preferred = missionDirector5PreferredWorldEvent();
   const type = preferred || chooseDynamicWorldEventType();
   if(!WORLD_EVENT_TYPES.includes(type)) return false;
-  const ok = triggerDynamicWorldEvent(type, now);
+  const ok = missionDirector5EnsureWorldEventVisible(type, now);
   if(ok){
     const director = ensureMissionDirector5State(S);
     director.mapEventCount += 1;
@@ -3127,6 +3255,7 @@ function missionDirector5Tick(now=Date.now()){
   const d = ensureMissionDirector5State(S);
   if(!d.active || window.__TUTORIAL_MODE__) return;
   if(S.paused || S.inBattle || S.missionEnded || S.gameOver) return;
+  missionDirector5TruthPulse(now);
   if(d.incidentIndex >= d.incidentCap) return;
   if(now < (d.nextIncidentAt || 0)) return;
   const types = d.incidentTypes.length ? d.incidentTypes : ["objective","tiger_surge","supply_choice"];
@@ -25522,7 +25651,9 @@ function dynamicWorldEventPickPoint(type){
     const pt = evalPoint(rand(100, worldW - 100), rand(110, worldH - 100));
     if(pt) return pt;
   }
-  return null;
+  const fallback = missionDirector5TruthFallbackPoint(type, S);
+  if(fallback && Number.isFinite(Number(fallback.x)) && Number.isFinite(Number(fallback.y))) return fallback;
+  return { x:worldW * 0.5, y:worldH * 0.5 };
 }
 function clearDynamicWorldEvent(opts={}){
   const tw = ensureMissionTwistState(S);
@@ -26806,9 +26937,11 @@ function showMissionBrief(durationMs=2600){
   if(rewardEl) rewardEl.innerText = isStory ? storyChapterRewardPreviewText(card.mission) : "";
   renderMissionBriefRecommendations(card.mode, card.mission);
   if(hintEl){
-    hintEl.innerText = isArcade
+    const baseHint = isArcade
       ? "Pick one Buildcraft loadout plus 1 positive and 1 negative Live Ops card, then tap Start Mission."
       : "Review recommended prep, pick 1 positive and 1 negative Live Ops card, then tap Start Mission.";
+    const directorHint = missionDirector5BriefingTruthLine(S);
+    hintEl.innerText = directorHint ? `${baseHint} ${directorHint}` : baseHint;
   }
   if(startBtn){
     startBtn.innerText = isArcade ? "Start Mission" : "Start Mission";
