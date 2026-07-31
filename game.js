@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4525";
+const TS_BUILD = "4526";
 if(tg){
   try{
     tg.expand?.();
@@ -14064,7 +14064,7 @@ const TIGER_CAPTURE_STRUGGLES = [];
 const DAMAGE_POPUP_RATE_MS = 82;
 const DAMAGE_POPUP_GATE = new Map();
 const CAMERA_SHAKE = { until:0, power:0 };
-const ENABLE_SCREEN_SHAKE = false;
+const ENABLE_SCREEN_SHAKE = true;
 const ENABLE_BATTLE_CINEMATIC = false;
 const BATTLE_CINE_ENTER_MS = 260;
 const BATTLE_CINE_EXIT_MS = 220;
@@ -43837,12 +43837,59 @@ function lowHpAlertTick(now=Date.now()){
   const msg = tier >= 2
     ? `🚨 CRITICAL HP ${Math.round(hp)}% • Heal now!`
     : `⚠️ Low HP ${Math.round(hp)}% • Prepare to heal.`;
+  if(S.inBattle){
+    S._combatDangerUntil = Math.max(Number(S._combatDangerUntil || 0), now + (tier >= 2 ? 980 : 620));
+    S._combatDangerText = tier >= 2 ? "CRITICAL HP" : "LOW HP";
+    if((now - Number(S._combatLowHpAudioAt || 0)) >= (tier >= 2 ? 1900 : 3100)){
+      S._combatLowHpAudioAt = now;
+      sfx("danger");
+      adaptiveAudioStinger(tier >= 2 ? "danger" : "peak");
+    }
+  }
   setEventText(msg, tier >= 2 ? 1.4 : 1.1);
   if((now - Math.max(0, Math.floor(Number(S._lowHpToastAt || 0)))) >= 2600){
     S._lowHpToastAt = now;
     toast(msg);
   }
   try{ hapticNotif("warning"); }catch(e){}
+}
+
+function combatFeelFinalTick(now=Date.now()){
+  if(!S.inBattle || S.paused || S.missionEnded || S.gameOver) return;
+  const t = activeTiger();
+  if(!t || !t.alive) return;
+  const hpRatio = clamp(Number(S.hp || 0) / 100, 0, 1);
+  const tigerRatio = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
+  const attackSoonMs = Math.max(0, Number(S._combatTigerAttackAt || 0) - now);
+  const close = dist(S.me.x, S.me.y, t.x, t.y) <= 150;
+  const bossThreat = isBossTiger(t) || t.type === "Alpha" || !!t.nemesisAlias;
+
+  if(close && attackSoonMs > 0 && attackSoonMs <= (bossThreat ? 620 : 420)){
+    const kind = t.attackTelegraphKind || (bossThreat ? "Pounce" : "Strike");
+    S._combatDangerUntil = Math.max(Number(S._combatDangerUntil || 0), now + 360);
+    S._combatDangerText = bossThreat ? `INCOMING ${String(kind).toUpperCase()}` : "INCOMING HIT";
+    if((now - Number(S._combatIncomingAudioAt || 0)) > (bossThreat ? 950 : 1500)){
+      S._combatIncomingAudioAt = now;
+      sfx(bossThreat ? "danger" : "heavyHit");
+    }
+  }
+
+  if(tigerInCaptureHpWindow(t)){
+    if((now - Number(t._combatCapturePulseAt || 0)) > 1650){
+      t._combatCapturePulseAt = now;
+      triggerCombatInteraction("capture_ready", { tiger:t, label:"CAPTURE READY", ms:980 });
+    }
+  } else if(tigerRatio <= 0.34 && (now - Number(t._combatWeakPulseAt || 0)) > 1700){
+    t._combatWeakPulseAt = now;
+    markTigerBehaviorAnim(t, "limp", 720);
+    setTigerIntent(t, "Weakening", 620);
+  }
+
+  if(hpRatio <= 0.25 && (now - Number(S._combatFinalDangerAt || 0)) > 1400){
+    S._combatFinalDangerAt = now;
+    queueImpactPulse(S.me.x, S.me.y - 6, "player");
+    if(hpRatio <= 0.12) queueCameraShake(0.44, 130);
+  }
 }
 
 function applyPlayerDamage(dmg, showToast=false){
@@ -44795,7 +44842,19 @@ function renderCombatControls(){
   });
   [["touchCaptureBtn", !canPressCombatAction], ["combatCaptureBtn", !canPressCombatAction]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
-    if(el) el.disabled = disabled;
+    if(!el) return;
+    el.disabled = disabled;
+    const ready = !!t && captureReadyByHp;
+    const hasTranq = !!t && captureTranqWeaponOptions(t).some((id)=>S.ownedWeapons.includes(id) && hasAmmoForWeaponId(id));
+    el.title = ready
+      ? (hasTranq ? "Capture ready. Tap to secure the tiger." : "Capture ready, but you are out of tranquilizers.")
+      : "Weaken the tiger into the capture window first.";
+    if(id === "combatCaptureBtn"){
+      el.innerText = ready ? (hasTranq ? "💉 Capture READY" : "💉 Need Tranq") : "💉 Capture";
+    }else{
+      const label = el.querySelector(".touchBtnLabel");
+      if(label) label.innerText = ready ? (hasTranq ? "Capture!" : "No Tranq") : "Capture";
+    }
   });
   setCaptureReadyVisual(captureReadyByHp);
   updateCaptureReadyCue(t, captureReadyByHp);
@@ -45340,28 +45399,46 @@ function playerAction(action){
 
   if(action==="CAPTURE"){
     const preCaptureWeaponId = S.equippedWeaponId;
-    if(t.hp > captureWindowHp(t)) return interactionFeedback(`Capture not ready. Weaken tiger to ${captureWindowPctLabel()} HP or lower.`, { battle:true, warn:true });
-    if(t.hp < captureWindowMinHp(t)) return interactionFeedback("Capture failed: tiger HP is too low. Finish the tiger.", { battle:true, warn:true });
-    if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return interactionFeedback(`Boss capture locked: ${bossCaptureStrategyStatus(t)}.`, { battle:true, warn:true });
+    if(t.hp > captureWindowHp(t)){
+      triggerCombatInteraction("capture_not_ready", { tiger:t, label:"WEAKEN MORE" });
+      return interactionFeedback(`Capture not ready. Weaken tiger to ${captureWindowPctLabel()} HP or lower.`, { battle:true, warn:true });
+    }
+    if(t.hp < captureWindowMinHp(t)){
+      triggerCombatInteraction("capture_not_ready", { tiger:t, label:"TOO LOW" });
+      return interactionFeedback("Capture failed: tiger HP is too low. Finish the tiger.", { battle:true, warn:true });
+    }
+    if(isBossTiger(t) && !bossCaptureStrategyReady(t)){
+      triggerCombatInteraction("capture_not_ready", { tiger:t, label:"BOSS LOCKED" });
+      return interactionFeedback(`Boss capture locked: ${bossCaptureStrategyStatus(t)}.`, { battle:true, warn:true });
+    }
     const reqOptions = captureTranqWeaponOptions(t);
     const req = bestCaptureTranqWeaponId(t);
     const reqWeapon = getWeapon(req);
     const reqLabel = captureTranqWeaponLabel(t);
-    if(!reqWeapon) return interactionFeedback("Capture blocked: required tranq weapon data missing.", { battle:true, warn:true });
+    if(!reqWeapon){
+      sfx("jam");
+      return interactionFeedback("Capture blocked: required tranq weapon data missing.", { battle:true, warn:true });
+    }
     if(!reqOptions.some((id)=>S.ownedWeapons.includes(id))){
+      sfx("jam");
       return interactionFeedback(`${reqLabel} is required to capture this ${t.type}.`, { battle:true, warn:true });
     }
     const anyTranqReady = reqOptions.some((id)=>S.ownedWeapons.includes(id) && hasAmmoForWeaponId(id));
     if(!anyTranqReady){
+      sfx("jam");
       return interactionFeedback(`Out of tranquilizers for ${reqLabel}. Buy more in Shop > Ammo.`, { battle:true, warn:true });
     }
     if(S.equippedWeaponId !== req){
       equipWeapon(req, { system:true, keepPreset:true });
     }
     if(S.mag.loaded <= 0 && !autoReloadIfNeeded(true)){
+      sfx("jam");
       return interactionFeedback(`Out of tranquilizers for ${reqLabel}. Buy more in Shop > Ammo.`, { battle:true, warn:true });
     }
-    if(!canCaptureTiger(t)) return interactionFeedback(`${reqLabel} is needed to capture this ${t.type}.`, { battle:true, warn:true });
+    if(!canCaptureTiger(t)){
+      sfx("jam");
+      return interactionFeedback(`${reqLabel} is needed to capture this ${t.type}.`, { battle:true, warn:true });
+    }
     if(!recordUniqueMissionTigerOutcome(t, "CAPTURE")) return interactionFeedback("This tiger was already resolved.", { battle:true, warn:true });
     if(window.TigerTutorial?.isRunning){
       window.TigerTutorial.combatOutcome = "CAPTURE";
@@ -52265,6 +52342,17 @@ function triggerCombatInteraction(kind, opts={}){
     hapticImpact("light");
     return;
   }
+  if(kind === "capture_not_ready" && t){
+    t.captureReadyFlashUntil = Math.max(Number(t.captureReadyFlashUntil || 0), now + Number(opts.ms || 520));
+    setTigerIntent(t, label || "WEAKEN MORE", 760);
+    queueImpactPulse(t.x, t.y - 8, "player");
+    emitDamagePopup(t.x, t.y - 54, label || "WEAKEN MORE", "player");
+    S._combatDangerUntil = Math.max(Number(S._combatDangerUntil || 0), now + 520);
+    S._combatDangerText = "CAPTURE NOT READY";
+    sfx("jam");
+    hapticNotif("warning");
+    return;
+  }
   if(kind === "finish" && t){
     const capture = String(opts.outcome || "").toUpperCase() === "CAPTURE";
     markTigerBehaviorAnim(t, capture ? "capture_struggle" : "finish", 900);
@@ -55172,6 +55260,10 @@ function draw(){
       runFrameTask("survivalPressure", frameInterval(lagCritical ? 120 : (lagHeavy ? 102 : 86), 1.4), survivalPressureTick, { costHint:1.1 });
       runFrameTask("settlementDefense", frameInterval(lagCritical ? 260 : (lagHeavy ? 210 : 160), 1.5), settlementDefenseTick, { costHint:0.55, critical:settlementDefenseEnabled(S) });
       runFrameTask("combatTick", frameInterval(S.inBattle ? (lagCritical ? 44 : (lagHeavy ? 36 : 28)) : (lagCritical ? 56 : (lagHeavy ? 46 : 36)), 1.6), combatTick, { costHint:1.9, critical:S.inBattle });
+      runFrameTask("combatFeelFinal", frameInterval(S.inBattle ? (lagCritical ? 128 : (lagHeavy ? 104 : 76)) : 220, 1.55), combatFeelFinalTick, {
+        costHint:0.38,
+        critical:S.inBattle
+      });
       runFrameTask("extractionSequence", frameInterval(lagCritical ? 180 : (lagHeavy ? 140 : 100), 1.4), extractionSequenceTick, { costHint:0.45, critical:true });
       runFrameTask("storyCheckpoint", frameInterval(lagCritical ? 220 : (lagHeavy ? 170 : 124), 1.45), maybeCaptureStoryCheckpoint, { costHint:0.8, critical:S.mode==="Story" });
       runFrameTask("checkMissionComplete", frameInterval(lagCritical ? 140 : (lagHeavy ? 112 : 90), 1.4), checkMissionComplete, { costHint:0.8, critical:true });
