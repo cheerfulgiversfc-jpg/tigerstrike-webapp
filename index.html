@@ -70,9 +70,13 @@
     }
     button:disabled{opacity:.58;cursor:not-allowed}
     button.gamepadFocus{outline:2px solid rgba(58,120,255,.98);box-shadow:0 0 0 3px rgba(58,120,255,.32)}
-    .ghost{background:rgba(11,20,38,.42);box-shadow:none}
-    .good{border-color:#14532d;background:#0f2416}
-    .warn{border-color:#7c2d12;background:#2b140d}
+    .ghost{
+      border-color:rgba(165,205,255,.56);
+      background:linear-gradient(180deg, rgba(22,35,59,.64), rgba(8,15,29,.50));
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 10px 24px rgba(0,0,0,.24);
+    }
+    .good{border-color:#22c55e;background:linear-gradient(180deg, rgba(20,83,45,.88), rgba(6,44,25,.86))}
+    .warn{border-color:#fb923c;background:linear-gradient(180deg, rgba(124,45,18,.88), rgba(43,20,13,.88))}
     .danger{border-color:#7f1d1d;background:#2a0f13}
     .captureReady{
       border-color:#ff1f1f!important;
@@ -719,6 +723,24 @@
     }
     .small{font-size:12px;color:var(--muted)}
     .actionButtons{flex:1 1 560px}
+    .actionButtons button,
+    .combatButtons button{
+      border-width:1.5px;
+      color:rgba(248,252,255,.98);
+      text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 8px rgba(12,20,38,.82);
+      backdrop-filter:blur(5px) saturate(1.12);
+    }
+    .actionButtons .ghost,
+    .combatButtons .ghost{
+      border-color:rgba(190,220,255,.66);
+      background:
+        radial-gradient(circle at 50% 18%, rgba(255,255,255,.14), transparent 42%),
+        linear-gradient(180deg, rgba(19,31,52,.68), rgba(6,12,23,.54));
+      box-shadow:
+        0 0 0 1px rgba(5,10,20,.38),
+        0 9px 22px rgba(0,0,0,.30),
+        inset 0 1px 0 rgba(255,255,255,.13);
+    }
     .combatButtons{display:none;flex:1 1 560px}
     .mobileUtilityBar{display:none}
     .touchOverlay{display:none}
@@ -1549,7 +1571,7 @@
         grid-template-columns:repeat(2,64px);
         gap:12px;
         z-index:5;
-        opacity:var(--touch-cluster-opacity,.44);
+        opacity:var(--touch-cluster-opacity,.72);
         transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
         transform-origin:right bottom;
       }
@@ -1559,7 +1581,7 @@
         right:auto;
         bottom:312px;
         z-index:6;
-        opacity:var(--touch-cache-opacity,.46);
+        opacity:var(--touch-cache-opacity,.72);
         transform:translate(var(--touch-cache-offset-x), var(--touch-cache-offset-y)) scale(var(--touch-ui-scale));
         transform-origin:left bottom;
       }
@@ -1568,7 +1590,7 @@
         right:10px;
         bottom:300px;
         z-index:6;
-        opacity:var(--touch-cache-opacity,.46);
+        opacity:var(--touch-cache-opacity,.72);
         transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
         transform-origin:right bottom;
         display:flex;
@@ -1610,7 +1632,7 @@
         bottom:94px;
         z-index:7;
         width:auto;
-        opacity:var(--touch-cluster-opacity,.62);
+        opacity:var(--touch-cluster-opacity,.86);
         transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
         transform-origin:right bottom;
       }
@@ -1618,13 +1640,13 @@
         width:64px;
         min-height:54px;
         border-radius:16px;
-        opacity:var(--touch-btn-opacity,.62);
+        opacity:var(--touch-btn-opacity,.86);
       }
       #combatTouchCluster .touchBtn.combatAux{
         width:64px;
         min-height:44px;
         border-radius:14px;
-        opacity:var(--touch-btn-opacity,.46);
+        opacity:var(--touch-btn-opacity,.78);
       }
       #combatTouchCluster .touchBtn.combatCore .touchBtnIcon{
         font-size:20px;
@@ -1637,36 +1659,51 @@
         width:64px;
         padding:0;
         border-radius:18px;
-        border:1px solid rgba(198,223,255,.52);
-        background:rgba(8,12,22,.34);
-        backdrop-filter:blur(4px);
-        box-shadow:0 10px 22px rgba(0,0,0,.30);
+        border:2px solid rgba(226,242,255,.82);
+        background:
+          radial-gradient(circle at 50% 18%, rgba(255,255,255,.18), transparent 40%),
+          linear-gradient(180deg, rgba(15,27,48,.62), rgba(4,9,18,.48));
+        backdrop-filter:blur(5px) saturate(1.16);
+        box-shadow:
+          0 0 0 1px rgba(5,10,20,.54),
+          0 11px 24px rgba(0,0,0,.42),
+          0 0 16px rgba(125,211,252,.14),
+          inset 0 1px 0 rgba(255,255,255,.16);
         display:flex;
         align-items:center;
         justify-content:center;
         font-size:12px;
         line-height:1;
-        opacity:var(--touch-btn-opacity,.56);
+        opacity:var(--touch-btn-opacity,.80);
       }
       .touchBtn:active,
       .touchBtn.gamepadFocus{
         opacity:1;
-        background:rgba(20,30,48,.56);
-        border-color:rgba(155,208,255,.78);
+        background:
+          radial-gradient(circle at 50% 18%, rgba(255,255,255,.24), transparent 42%),
+          linear-gradient(180deg, rgba(30,49,78,.76), rgba(8,16,30,.62));
+        border-color:rgba(190,232,255,.96);
+        box-shadow:
+          0 0 0 2px rgba(255,255,255,.22),
+          0 0 20px rgba(125,211,252,.38),
+          inset 0 0 16px rgba(255,255,255,.14);
       }
       .touchBtnIcon{
         font-size:24px;
         line-height:1;
         opacity:1;
-        filter:drop-shadow(0 2px 6px rgba(0,0,0,.75));
+        filter:
+          drop-shadow(0 2px 2px rgba(0,0,0,1))
+          drop-shadow(0 0 8px rgba(255,255,255,.72))
+          drop-shadow(0 0 12px rgba(72,224,255,.28));
       }
       .touchBtn.protectArmorMode{
-        border-color:rgba(96,165,250,.62);
-        background:rgba(37,99,235,.24);
+        border-color:rgba(125,211,252,.98);
+        background:linear-gradient(180deg, rgba(37,99,235,.44), rgba(13,38,94,.34));
       }
       .touchBtn.protectShieldMode{
-        border-color:rgba(74,222,128,.58);
-        background:rgba(16,185,129,.20);
+        border-color:rgba(74,222,128,.98);
+        background:linear-gradient(180deg, rgba(16,185,129,.42), rgba(5,70,45,.34));
       }
       .touchBtnLabel{display:none}
       .touchBtnAux{display:none!important}
@@ -1828,7 +1865,7 @@
         grid-template-columns:repeat(2,52px);
         gap:10px;
         z-index:5;
-        opacity:var(--touch-cluster-opacity,.44);
+        opacity:var(--touch-cluster-opacity,.72);
         transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
         transform-origin:right bottom;
       }
@@ -1837,35 +1874,56 @@
         min-height:52px;
         border-radius:16px;
         padding:0;
-        border:1px solid rgba(245,247,255,.30);
-        background:rgba(8,12,22,.18);
-        backdrop-filter:blur(4px);
-        box-shadow:0 8px 18px rgba(0,0,0,.26);
+        border:2px solid rgba(226,242,255,.82);
+        background:
+          radial-gradient(circle at 50% 18%, rgba(255,255,255,.18), transparent 40%),
+          linear-gradient(180deg, rgba(15,27,48,.62), rgba(4,9,18,.48));
+        backdrop-filter:blur(5px) saturate(1.16);
+        box-shadow:
+          0 0 0 1px rgba(5,10,20,.54),
+          0 10px 22px rgba(0,0,0,.42),
+          0 0 14px rgba(125,211,252,.14),
+          inset 0 1px 0 rgba(255,255,255,.16);
         display:flex;
         align-items:center;
         justify-content:center;
         font-size:12px;
         line-height:1;
-        opacity:var(--touch-btn-opacity,.40);
+        opacity:var(--touch-btn-opacity,.80);
       }
       .touchBtn:active,
       .touchBtn.gamepadFocus{
         opacity:1;
-        background:rgba(18,24,38,.42);
+        background:
+          radial-gradient(circle at 50% 18%, rgba(255,255,255,.24), transparent 42%),
+          linear-gradient(180deg, rgba(30,49,78,.76), rgba(8,16,30,.62));
+        border-color:rgba(190,232,255,.96);
+        box-shadow:
+          0 0 0 2px rgba(255,255,255,.22),
+          0 0 18px rgba(125,211,252,.36),
+          inset 0 0 14px rgba(255,255,255,.14);
       }
       .touchBtnIcon{
         font-size:20px;
         line-height:1;
         opacity:1;
-        filter:drop-shadow(0 2px 6px rgba(0,0,0,.75));
+        filter:
+          drop-shadow(0 2px 3px rgba(0,0,0,.95))
+          drop-shadow(0 0 8px rgba(255,255,255,.32));
       }
       .touchBtn.protectArmorMode{
-        border-color:rgba(96,165,250,.62);
-        background:rgba(37,99,235,.24);
+        border-color:rgba(125,211,252,.92);
+        background:
+          radial-gradient(circle at 50% 16%, rgba(191,219,254,.30), transparent 42%),
+          linear-gradient(180deg, rgba(37,99,235,.58), rgba(15,23,42,.50));
+        box-shadow:0 0 18px rgba(96,165,250,.34), 0 10px 22px rgba(0,0,0,.42);
       }
       .touchBtn.protectShieldMode{
-        border-color:rgba(74,222,128,.58);
-        background:rgba(16,185,129,.20);
+        border-color:rgba(110,231,183,.92);
+        background:
+          radial-gradient(circle at 50% 16%, rgba(187,247,208,.28), transparent 42%),
+          linear-gradient(180deg, rgba(16,185,129,.54), rgba(15,23,42,.50));
+        box-shadow:0 0 18px rgba(74,222,128,.32), 0 10px 22px rgba(0,0,0,.42);
       }
       #touchCacheBtn{
         position:absolute;
@@ -1873,7 +1931,7 @@
         right:auto;
         bottom:206px;
         z-index:6;
-        opacity:var(--touch-cache-opacity,.46);
+        opacity:var(--touch-cache-opacity,.72);
         transform:translate(var(--touch-cache-offset-x), var(--touch-cache-offset-y)) scale(var(--touch-ui-scale));
         transform-origin:left bottom;
       }
@@ -1882,7 +1940,7 @@
         right:8px;
         bottom:198px;
         z-index:6;
-        opacity:var(--touch-cache-opacity,.46);
+        opacity:var(--touch-cache-opacity,.72);
         transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
         transform-origin:right bottom;
         display:flex;
@@ -1907,7 +1965,7 @@
         bottom:74px;
         z-index:7;
         width:auto;
-        opacity:var(--touch-cluster-opacity,.62);
+        opacity:var(--touch-cluster-opacity,.86);
         transform:translate(var(--touch-cluster-offset-x), var(--touch-cluster-offset-y)) scale(var(--touch-ui-scale));
         transform-origin:right bottom;
       }
@@ -1915,13 +1973,13 @@
         width:52px;
         min-height:48px;
         border-radius:14px;
-        opacity:var(--touch-btn-opacity,.62);
+        opacity:var(--touch-btn-opacity,.86);
       }
       #combatTouchCluster .touchBtn.combatAux{
         width:52px;
         min-height:40px;
         border-radius:12px;
-        opacity:var(--touch-btn-opacity,.44);
+        opacity:var(--touch-btn-opacity,.78);
       }
       #combatTouchCluster .touchBtn.combatCore .touchBtnIcon{
         font-size:18px;
@@ -2095,13 +2153,17 @@
   }
   #combatTouchCluster #touchAttackBtn{
     border-color:rgba(255,106,106,.98) !important;
-    background:rgba(105,18,24,.42) !important;
-    box-shadow:0 0 16px rgba(255,72,72,.48),inset 0 0 12px rgba(255,120,120,.16) !important;
+    background:
+      radial-gradient(circle at 50% 16%, rgba(255,255,255,.20), transparent 42%),
+      linear-gradient(180deg, rgba(144,25,31,.62), rgba(64,12,20,.44)) !important;
+    box-shadow:0 0 0 1px rgba(255,255,255,.16),0 0 20px rgba(255,72,72,.58),inset 0 0 14px rgba(255,120,120,.20) !important;
   }
   #combatTouchCluster #touchCaptureBtn{
     border-color:rgba(72,224,255,.98) !important;
-    background:rgba(8,70,92,.42) !important;
-    box-shadow:0 0 16px rgba(55,220,255,.44),inset 0 0 12px rgba(115,235,255,.14) !important;
+    background:
+      radial-gradient(circle at 50% 16%, rgba(255,255,255,.20), transparent 42%),
+      linear-gradient(180deg, rgba(10,102,132,.58), rgba(5,43,60,.42)) !important;
+    box-shadow:0 0 0 1px rgba(255,255,255,.16),0 0 20px rgba(55,220,255,.52),inset 0 0 14px rgba(115,235,255,.18) !important;
   }
   #combatTouchCluster #touchCaptureBtn.captureReady{
     border-color:rgba(255,48,48,1) !important;
@@ -2111,16 +2173,24 @@
   }
   #combatTouchCluster #touchCombatMedkitBtn,#touchMedkitBtn{
     border-color:rgba(255,112,154,.98) !important;
-    background:rgba(100,18,52,.38) !important;
+    background:
+      radial-gradient(circle at 50% 16%, rgba(255,255,255,.18), transparent 42%),
+      linear-gradient(180deg, rgba(123,26,68,.52), rgba(60,12,34,.38)) !important;
+    box-shadow:0 0 18px rgba(255,112,154,.34),inset 0 0 13px rgba(255,190,210,.14) !important;
   }
   #combatTouchCluster #touchCombatArmorBtn,#touchShieldBtn{
     border-color:rgba(96,165,250,.98) !important;
-    background:rgba(20,58,125,.40) !important;
+    background:
+      radial-gradient(circle at 50% 16%, rgba(255,255,255,.18), transparent 42%),
+      linear-gradient(180deg, rgba(29,78,216,.52), rgba(16,44,102,.38)) !important;
+    box-shadow:0 0 18px rgba(96,165,250,.34),inset 0 0 13px rgba(191,219,254,.14) !important;
   }
   #touchFieldRollBtn{
     border-color:rgba(250,204,21,.96) !important;
-    background:rgba(112,72,14,.38) !important;
-    box-shadow:0 0 16px rgba(250,204,21,.32),inset 0 0 12px rgba(253,224,71,.12) !important;
+    background:
+      radial-gradient(circle at 50% 16%, rgba(255,255,255,.18), transparent 42%),
+      linear-gradient(180deg, rgba(146,94,18,.52), rgba(75,48,12,.38)) !important;
+    box-shadow:0 0 18px rgba(250,204,21,.42),inset 0 0 13px rgba(253,224,71,.16) !important;
   }
   #combatTouchCluster{
     filter:drop-shadow(0 8px 12px rgba(0,0,0,.44));
@@ -2133,12 +2203,15 @@
 .premiumVisualPolish #combatTouchCluster .touchBtn.combatCore,
 .premiumVisualPolish #combatTouchCluster .touchBtn.combatAux{
   background:
-    radial-gradient(circle at 50% 22%, rgba(255,255,255,.18), transparent 35%),
-    linear-gradient(180deg, rgba(20,31,52,.72), rgba(5,10,20,.54)) !important;
+    radial-gradient(circle at 50% 18%, rgba(255,255,255,.22), transparent 38%),
+    linear-gradient(180deg, rgba(24,39,65,.78), rgba(5,10,20,.58)) !important;
+  border-color:rgba(232,244,255,.90) !important;
   box-shadow:
-    0 0 0 2px rgba(15,23,42,.38),
+    0 0 0 2px rgba(15,23,42,.52),
+    0 0 0 3px rgba(190,220,255,.12),
     0 12px 28px rgba(0,0,0,.34),
-    inset 0 1px 0 rgba(255,255,255,.16) !important;
+    0 0 18px rgba(125,211,252,.18),
+    inset 0 1px 0 rgba(255,255,255,.20) !important;
   backdrop-filter:blur(7px) saturate(1.18);
 }
 .premiumVisualPolish #combatTouchCluster .touchBtn.combatCore:active,
@@ -2147,6 +2220,40 @@
 }
 .premiumVisualPolish #combatTouchCluster .touchBtn .touchBtnIcon{
   filter:drop-shadow(0 2px 2px rgba(0,0,0,.95)) drop-shadow(0 0 9px rgba(255,255,255,.68)) !important;
+}
+.premiumVisualPolish #combatTouchCluster #touchAttackBtn{
+  border-color:rgba(255,132,132,.98) !important;
+  background:
+    radial-gradient(circle at 50% 16%, rgba(255,255,255,.22), transparent 42%),
+    linear-gradient(180deg, rgba(154,28,36,.70), rgba(61,10,18,.54)) !important;
+  box-shadow:0 0 0 2px rgba(255,255,255,.10),0 0 24px rgba(255,72,72,.62),inset 0 0 15px rgba(255,170,170,.22) !important;
+}
+.premiumVisualPolish #combatTouchCluster #touchCaptureBtn{
+  border-color:rgba(103,232,249,.98) !important;
+  background:
+    radial-gradient(circle at 50% 16%, rgba(255,255,255,.22), transparent 42%),
+    linear-gradient(180deg, rgba(14,116,144,.70), rgba(6,44,61,.54)) !important;
+  box-shadow:0 0 0 2px rgba(255,255,255,.10),0 0 24px rgba(56,189,248,.58),inset 0 0 15px rgba(165,243,252,.20) !important;
+}
+.premiumVisualPolish #combatTouchCluster #touchCombatMedkitBtn,
+.premiumVisualPolish #touchMedkitBtn{
+  border-color:rgba(251,113,133,.98) !important;
+  background:
+    radial-gradient(circle at 50% 16%, rgba(255,255,255,.20), transparent 42%),
+    linear-gradient(180deg, rgba(157,23,77,.64), rgba(76,5,40,.48)) !important;
+}
+.premiumVisualPolish #combatTouchCluster #touchCombatArmorBtn,
+.premiumVisualPolish #touchShieldBtn{
+  border-color:rgba(147,197,253,.98) !important;
+  background:
+    radial-gradient(circle at 50% 16%, rgba(255,255,255,.20), transparent 42%),
+    linear-gradient(180deg, rgba(37,99,235,.64), rgba(15,42,105,.48)) !important;
+}
+.premiumVisualPolish #touchFieldRollBtn{
+  border-color:rgba(250,204,21,.98) !important;
+  background:
+    radial-gradient(circle at 50% 16%, rgba(255,255,255,.20), transparent 42%),
+    linear-gradient(180deg, rgba(161,98,7,.64), rgba(83,53,9,.48)) !important;
 }
 @keyframes captureReadyPulse{
   from{transform:scale(1);filter:brightness(1)}
@@ -2974,7 +3081,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=4656-lighting-atmosphere"></script>
+  <script src="./game.js?v=4657-ui-contrast"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
 <script>
 (() => {
