@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4537";
+const TS_BUILD = "4538";
 const PREMIUM_2D_GRAPHICS_VERSION = 2;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
@@ -14092,6 +14092,7 @@ const ctx = cv.getContext("2d");
 const COMBAT_FX = [];
 const DAMAGE_POPUPS = [];
 const IMPACT_PULSES = [];
+const COMBAT_PARTICLES = [];
 const TIGER_CAPTURE_STRUGGLES = [];
 const DAMAGE_POPUP_RATE_MS = 82;
 const DAMAGE_POPUP_GATE = new Map();
@@ -14129,6 +14130,7 @@ function clearTransientCombatVisuals(){
   COMBAT_FX.length = 0;
   DAMAGE_POPUPS.length = 0;
   IMPACT_PULSES.length = 0;
+  COMBAT_PARTICLES.length = 0;
   TIGER_CAPTURE_STRUGGLES.length = 0;
   DAMAGE_POPUP_GATE.clear();
   CAMERA_SHAKE.until = 0;
@@ -17688,9 +17690,11 @@ function performanceGuardClampFxLists(){
   const fxCap = performanceGuardCap(64, 10, scale);
   const popupCap = performanceGuardCap(30, 5, scale);
   const pulseCap = performanceGuardCap(30, 5, scale);
+  const particleCap = performanceGuardCap(92, 8, scale);
   if(COMBAT_FX.length > fxCap) COMBAT_FX.splice(0, COMBAT_FX.length - fxCap);
   if(DAMAGE_POPUPS.length > popupCap) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - popupCap);
   if(IMPACT_PULSES.length > pulseCap) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - pulseCap);
+  if(COMBAT_PARTICLES.length > particleCap) COMBAT_PARTICLES.splice(0, COMBAT_PARTICLES.length - particleCap);
   if(__phase18CinematicEvents.length > performanceGuardCap(PHASE18_CINEMATIC_EVENT_MAX, 4, scale)){
     __phase18CinematicEvents.splice(0, __phase18CinematicEvents.length - performanceGuardCap(PHASE18_CINEMATIC_EVENT_MAX, 4, scale));
   }
@@ -18618,6 +18622,7 @@ function recoverFromSpikeFrame(){
   if(COMBAT_FX.length > 24) COMBAT_FX.splice(0, COMBAT_FX.length - 24);
   if(DAMAGE_POPUPS.length > 24) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - 24);
   if(IMPACT_PULSES.length > 18) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - 18);
+  if(COMBAT_PARTICLES.length > 30) COMBAT_PARTICLES.splice(0, COMBAT_PARTICLES.length - 30);
   if(S && typeof S === "object"){
     S.scanPing = Math.min(42, Math.max(0, S.scanPing || 0));
     for(const t of (S.tigers || [])){
@@ -18888,17 +18893,21 @@ function stabilityHealthTick(){
   let fxCap = slow ? (mobile ? 14 : 22) : (lagTier >= 1 ? (mobile ? 16 : 22) : (mobile ? 24 : 34));
   let popupCap = slow ? (mobile ? 10 : 16) : (lagTier >= 1 ? (mobile ? 12 : 16) : (mobile ? 18 : 24));
   let pulseCap = slow ? (mobile ? 8 : 14) : (lagTier >= 1 ? (mobile ? 10 : 14) : (mobile ? 14 : 22));
+  let particleCap = slow ? (mobile ? 18 : 28) : (lagTier >= 1 ? (mobile ? 24 : 36) : (mobile ? 42 : 64));
   if(perfMode){
     fxCap = Math.min(fxCap, mobile ? 12 : 18);
     popupCap = Math.min(popupCap, mobile ? 9 : 14);
     pulseCap = Math.min(pulseCap, mobile ? 7 : 12);
+    particleCap = Math.min(particleCap, mobile ? 18 : 28);
   }
   fxCap = performanceGuardCap(fxCap, mobile ? 6 : 10, performanceGuardFxScale());
   popupCap = performanceGuardCap(popupCap, mobile ? 4 : 6, performanceGuardFxScale());
   pulseCap = performanceGuardCap(pulseCap, mobile ? 4 : 6, performanceGuardFxScale());
+  particleCap = performanceGuardCap(particleCap, mobile ? 6 : 10, performanceGuardFxScale());
   if(COMBAT_FX.length > fxCap) COMBAT_FX.splice(0, COMBAT_FX.length - fxCap);
   if(DAMAGE_POPUPS.length > popupCap) DAMAGE_POPUPS.splice(0, DAMAGE_POPUPS.length - popupCap);
   if(IMPACT_PULSES.length > pulseCap) IMPACT_PULSES.splice(0, IMPACT_PULSES.length - pulseCap);
+  if(COMBAT_PARTICLES.length > particleCap) COMBAT_PARTICLES.splice(0, COMBAT_PARTICLES.length - particleCap);
   if(DAMAGE_POPUP_GATE.size > 360){
     const nowGate = Date.now();
     for(const [k, at] of DAMAGE_POPUP_GATE){
@@ -20922,6 +20931,9 @@ function sanitizeRuntimeState(){
   if(!Number.isFinite(S._biomeFogPulseAt)) S._biomeFogPulseAt = 0;
   if(COMBAT_FX.length > 96){
     COMBAT_FX.splice(0, COMBAT_FX.length - 96);
+  }
+  if(COMBAT_PARTICLES.length > 120){
+    COMBAT_PARTICLES.splice(0, COMBAT_PARTICLES.length - 120);
   }
 }
 function resizeCanvasForViewport(){
@@ -40948,6 +40960,8 @@ function activateShield(){
   S.abilityCooldowns.shield = Date.now() + shieldCooldownMs;
   S.eventText = "🛡️ Escort Shield active for 5 seconds.";
   S.eventTextUntil = Date.now() + 1500;
+  emitCombatParticles("shield", S.me.x, S.me.y - 4);
+  queueImpactPulse(S.me.x, S.me.y - 4, "shield");
   sfx("ui");
   hapticImpact("medium");
   renderHUD();
@@ -40990,6 +41004,8 @@ function rollDodge(){
   S.rollAnimToY = S.me.y;
   S.me.face = away;
   S.me.step = (S.me.step + 2.2) % (Math.PI * 2);
+  emitCombatParticles("dust", fromX, fromY + 8, { sourceX:nx, sourceY:ny });
+  emitCombatParticles("dodge", S.me.x, S.me.y + 8, { sourceX:fromX, sourceY:fromY });
   if(S.inBattle) setBattleMsg("Roll executed. Next tiger hit will be dodged.");
   else interactionFeedback("Roll executed. Ambush dodged if timed correctly.", { success:true });
   sfx("ui");
@@ -44739,18 +44755,113 @@ function emitCombatFx(x1, y1, x2, y2, color, width=3, kind="hit"){
     kind, ttl, maxTtl:ttl,
     spin:Math.random() * Math.PI * 2
   });
+  emitCombatParticles(kind, x2, y2, { sourceX:x1, sourceY:y1, color, width });
   queueImpactPulse(x2, y2, kind);
+}
+
+function combatVfxBudgetScale(){
+  if(iphoneStabilityModeActive() && !iphoneLiteCombatFeedbackEnabled()) return 0;
+  let scale = performanceGuardFxScale();
+  if(visualEffectsHeavyMode()) scale *= 0.62;
+  if(frameLagTier() >= 2) scale *= 0.42;
+  else if(frameLagTier() >= 1) scale *= 0.68;
+  if(frameIsSlow()) scale *= 0.72;
+  if(iphoneLiteCombatFeedbackEnabled()) scale *= 0.45;
+  return clamp(scale, 0, 1.15);
+}
+
+function combatVfxStyle(kind="hit"){
+  if(kind === "crit") return { color:"rgba(255,220,94,.98)", glow:"rgba(252,211,77,.30)", shape:"spark", count:10, speed:3.2, size:3.4, ttl:24 };
+  if(kind === "player") return { color:"rgba(255,110,132,.98)", glow:"rgba(248,113,113,.32)", shape:"spark", count:9, speed:3.0, size:3.1, ttl:22 };
+  if(kind === "tranq") return { color:"rgba(144,236,255,.98)", glow:"rgba(45,212,191,.36)", shape:"mote", count:11, speed:2.1, size:3.0, ttl:28 };
+  if(kind === "capture") return { color:"rgba(110,231,183,.98)", glow:"rgba(74,222,128,.34)", shape:"ring", count:13, speed:2.2, size:3.2, ttl:32 };
+  if(kind === "shield") return { color:"rgba(147,197,253,.98)", glow:"rgba(96,165,250,.36)", shape:"shimmer", count:12, speed:1.7, size:3.0, ttl:30 };
+  if(kind === "dodge" || kind === "dust") return { color:"rgba(203,164,92,.78)", glow:"rgba(180,120,64,.18)", shape:"dust", count:9, speed:2.0, size:4.1, ttl:26 };
+  if(kind === "swipe") return { color:"rgba(255,247,237,.96)", glow:"rgba(251,113,133,.26)", shape:"slash", count:8, speed:2.7, size:2.8, ttl:18 };
+  if(kind === "danger") return { color:"rgba(251,113,133,.98)", glow:"rgba(248,113,113,.38)", shape:"danger", count:10, speed:2.4, size:3.3, ttl:24 };
+  if(kind === "civilian") return { color:"rgba(255,178,95,.95)", glow:"rgba(251,146,60,.24)", shape:"dust", count:7, speed:2.0, size:3.8, ttl:22 };
+  return { color:"rgba(245,247,255,.94)", glow:"rgba(255,255,255,.20)", shape:"spark", count:7, speed:2.4, size:2.7, ttl:20 };
+}
+
+function emitCombatParticles(kind, x, y, opts={}){
+  if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+  const scale = combatVfxBudgetScale();
+  if(scale <= 0.02) return;
+  if(performanceGuardSkipWorldFx(x, y, kind)) return;
+  const style = combatVfxStyle(kind);
+  const cap = performanceGuardCap(iphoneLiteCombatFeedbackEnabled() ? 22 : 92, 8, scale);
+  if(COMBAT_PARTICLES.length >= cap){
+    COMBAT_PARTICLES.splice(0, COMBAT_PARTICLES.length - (cap - 1));
+  }
+  const baseCount = Math.max(1, Math.round(style.count * scale));
+  const sourceX = Number(opts.sourceX);
+  const sourceY = Number(opts.sourceY);
+  const fromAngle = Number.isFinite(sourceX) && Number.isFinite(sourceY)
+    ? Math.atan2(y - sourceY, x - sourceX)
+    : (Math.random() * Math.PI * 2);
+  const spray = style.shape === "slash" ? 0.95 : (style.shape === "ring" || style.shape === "shimmer" ? Math.PI * 2 : 1.9);
+  const ttlMul = iphoneLiteCombatFeedbackEnabled() ? 0.72 : 1;
+  for(let i=0; i<baseCount; i++){
+    const a = style.shape === "ring" || style.shape === "shimmer"
+      ? ((Math.PI * 2 * i) / baseCount) + (Math.random() - 0.5) * 0.34
+      : fromAngle + Math.PI + ((Math.random() - 0.5) * spray);
+    const speed = (0.35 + Math.random() * style.speed) * (style.shape === "dust" ? 0.78 : 1);
+    const ttl = Math.max(8, Math.round((style.ttl + rand(-4, 5)) * ttlMul));
+    COMBAT_PARTICLES.push({
+      x:x + ((Math.random() - 0.5) * 8),
+      y:y + ((Math.random() - 0.5) * 8),
+      vx:Math.cos(a) * speed + (style.shape === "dust" ? ((Math.random() - 0.5) * 0.70) : 0),
+      vy:Math.sin(a) * speed + (style.shape === "dust" ? ((Math.random() * 0.54) - 0.12) : 0),
+      size:Math.max(1.2, style.size * (0.62 + Math.random() * 0.74)),
+      ttl,
+      maxTtl:ttl,
+      color:String(opts.color || style.color),
+      glow:style.glow,
+      kind,
+      shape:style.shape,
+      spin:Math.random() * Math.PI * 2,
+      spinV:(Math.random() - 0.5) * 0.36,
+      gravity:style.shape === "dust" ? 0.035 : (style.shape === "mote" ? -0.018 : 0.004),
+      grow:(style.shape === "ring" || style.shape === "shimmer" || style.shape === "danger") ? (0.38 + Math.random() * 0.28) : 0.03,
+    });
+  }
 }
 
 function tickCombatFx(){
   if(iphoneStabilityModeActive()){
     if(COMBAT_FX.length) COMBAT_FX.length = 0;
+    if(!iphoneLiteCombatFeedbackEnabled() && COMBAT_PARTICLES.length) COMBAT_PARTICLES.length = 0;
     return;
   }
   for(const fx of COMBAT_FX) fx.ttl -= 1;
   for(let i = COMBAT_FX.length - 1; i >= 0; i--){
     const fx = COMBAT_FX[i];
     if(!fx || !Number.isFinite(fx.ttl) || fx.ttl <= 0) COMBAT_FX.splice(i, 1);
+  }
+  tickCombatParticles();
+}
+
+function tickCombatParticles(){
+  if(iphoneStabilityModeActive() && !iphoneLiteCombatFeedbackEnabled()){
+    if(COMBAT_PARTICLES.length) COMBAT_PARTICLES.length = 0;
+    return;
+  }
+  const decay = iphoneLiteCombatFeedbackEnabled() ? 1.85 : (visualEffectsHeavyMode() ? 1.55 : 1);
+  for(const p of COMBAT_PARTICLES){
+    if(!p) continue;
+    p.ttl -= decay;
+    p.x += Number(p.vx || 0);
+    p.y += Number(p.vy || 0);
+    p.vx *= 0.94;
+    p.vy = (Number(p.vy || 0) * 0.94) + Number(p.gravity || 0);
+    p.size = Math.max(0.2, Number(p.size || 1) + Number(p.grow || 0));
+    p.spin = Number(p.spin || 0) + Number(p.spinV || 0);
+  }
+  for(let i=COMBAT_PARTICLES.length-1; i>=0; i--){
+    const p = COMBAT_PARTICLES[i];
+    if(!p || !Number.isFinite(p.ttl) || p.ttl <= 0 || !Number.isFinite(p.x) || !Number.isFinite(p.y)){
+      COMBAT_PARTICLES.splice(i, 1);
+    }
   }
 }
 
@@ -44842,6 +44953,68 @@ function drawCombatFx(){
         ctx.moveTo(tipX - (ux * cross * 0.8), tipY - (uy * cross * 0.8));
         ctx.lineTo(tipX + (ux * cross * 0.8), tipY + (uy * cross * 0.8));
         ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+}
+
+function drawCombatParticles(){
+  if(iphoneStabilityModeActive() && !iphoneLiteCombatFeedbackEnabled()) return;
+  const lagTier = frameLagTier();
+  const maxDrawRaw = iphoneLiteCombatFeedbackEnabled()
+    ? (lagTier >= 1 ? 10 : 16)
+    : (visualEffectsHeavyMode()
+      ? (lagTier >= 2 ? 14 : (lagTier >= 1 ? 22 : 36))
+      : (lagTier >= 2 ? 24 : (lagTier >= 1 ? 44 : 78)));
+  const maxDraw = performanceGuardCap(maxDrawRaw, 6, combatVfxBudgetScale());
+  const startIdx = Math.max(0, COMBAT_PARTICLES.length - maxDraw);
+  for(let i=startIdx; i<COMBAT_PARTICLES.length; i++){
+    const p = COMBAT_PARTICLES[i];
+    if(!p) continue;
+    const life = clamp(Number(p.ttl || 0) / Math.max(1, Number(p.maxTtl || 1)), 0, 1);
+    const fade = Math.pow(life, 0.72);
+    const size = Math.max(0.4, Number(p.size || 1));
+    ctx.save();
+    ctx.globalAlpha = fade;
+    if(p.shape === "dust"){
+      ctx.fillStyle = p.color || "rgba(203,164,92,.72)";
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, size * 1.45, size * 0.72, Number(p.spin || 0), 0, Math.PI * 2);
+      ctx.fill();
+    }else if(p.shape === "slash"){
+      ctx.strokeStyle = p.color || "rgba(255,247,237,.96)";
+      ctx.lineWidth = Math.max(1, size * 0.72);
+      ctx.lineCap = "round";
+      const a = Number(p.spin || 0);
+      ctx.beginPath();
+      ctx.moveTo(p.x - Math.cos(a) * size * 2.8, p.y - Math.sin(a) * size * 2.8);
+      ctx.lineTo(p.x + Math.cos(a) * size * 3.6, p.y + Math.sin(a) * size * 3.6);
+      ctx.stroke();
+    }else if(p.shape === "ring" || p.shape === "shimmer" || p.shape === "danger"){
+      ctx.strokeStyle = p.color || "rgba(110,231,183,.96)";
+      ctx.lineWidth = Math.max(1.2, size * 0.28);
+      if(p.shape === "shimmer") ctx.setLineDash([5, 5]);
+      if(p.shape === "danger") ctx.setLineDash([8, 4]);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size * (p.shape === "danger" ? 2.4 : 2.0), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }else{
+      ctx.fillStyle = p.color || "rgba(245,247,255,.94)";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+      ctx.fill();
+      if(!visualEffectsHeavyMode() && p.glow){
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = fade * 0.34;
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size * 4.2);
+        g.addColorStop(0, p.glow);
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, size * 4.2, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
     ctx.restore();
@@ -46246,6 +46419,7 @@ function tigerTurn(t, softened=false, opts={}){
   t.attackAnimStart = now;
   t.attackAnimUntil = now + ((opts.kind === "charge") ? 360 : (opts.kind === "pounce" ? 320 : 260));
 
+  emitCombatParticles(opts.kind === "pounce" || opts.kind === "charge" ? "danger" : "swipe", S.me.x, S.me.y - 8, { sourceX:t.x, sourceY:t.y });
   emitCombatFx(t.x, t.y, S.me.x, S.me.y - 4, "rgba(251,113,133,.95)", 3, "player");
   emitDamagePopup(S.me.x, S.me.y - 50, `-${dmg}`, "player");
   const knockbackDist = opts.kind === "charge" ? 36 : (opts.kind === "pounce" ? 28 : 18);
@@ -53760,12 +53934,16 @@ function triggerTigerHitFeel(t, dealt, opts={}){
     applyCombatKnockback(t, fromX, fromY, tier === "boss" ? 10 : (tier === "heavy" ? 14 : 7), isBossTiger(t) ? 22 : 18);
   }
   if(tier === "boss"){
+    emitCombatParticles(tranq ? "tranq" : "crit", t.x, t.y - 8, { sourceX:opts.sourceX, sourceY:opts.sourceY });
     queueImpactPulse(t.x, t.y - 8, "crit");
     sfx("bossImpact");
     adaptiveAudioStinger("boss");
   }else if(tier === "heavy"){
+    emitCombatParticles(tranq ? "tranq" : "crit", t.x, t.y - 8, { sourceX:opts.sourceX, sourceY:opts.sourceY });
     queueImpactPulse(t.x, t.y - 8, "crit");
     sfx("tigerImpact");
+  }else{
+    emitCombatParticles(tranq ? "tranq" : "hit", t.x, t.y - 8, { sourceX:opts.sourceX, sourceY:opts.sourceY });
   }
   if(tigerInCaptureHpWindow(t) && now - Number(t._captureReadyFeelAt || 0) > 1450){
     t._captureReadyFeelAt = now;
@@ -53781,6 +53959,7 @@ function triggerCombatInteraction(kind, opts={}){
   const y = Number(opts.y ?? target?.y ?? t?.y ?? S.me?.y ?? 0);
   const label = String(opts.label || "");
   if(kind === "block"){
+    emitCombatParticles("shield", x, y, { sourceX:t?.x, sourceY:t?.y });
     queueImpactPulse(x, y, "shield");
     emitDamagePopup(x, y - 42, label || "BLOCK", "shield");
     sfx("shield");
@@ -53788,6 +53967,7 @@ function triggerCombatInteraction(kind, opts={}){
     return;
   }
   if(kind === "dodge"){
+    emitCombatParticles("dodge", x, y, { sourceX:t?.x, sourceY:t?.y });
     queueImpactPulse(x, y, "dodge");
     emitDamagePopup(x, y - 42, label || "DODGE", "dodge");
     sfx("ui");
@@ -53799,6 +53979,7 @@ function triggerCombatInteraction(kind, opts={}){
     S.meHitFlashPower = Math.max(Number(S.meHitFlashPower || 0), Number(opts.power || 0.82));
     S._combatDangerUntil = Math.max(Number(S._combatDangerUntil || 0), now + Number(opts.dangerMs || 420));
     S._combatDangerText = label || (opts.heavy ? "DANGER" : "HIT");
+    emitCombatParticles(opts.heavy ? "danger" : "player", x, y, { sourceX:t?.x, sourceY:t?.y });
     queueImpactPulse(x, y, "player");
     queueCameraShake(Number(opts.shakePower || opts.power || 0.7), Number(opts.shakeMs || 150));
     sfx(opts.heavy ? "danger" : "heavyHit");
@@ -53808,6 +53989,7 @@ function triggerCombatInteraction(kind, opts={}){
   }
   if(kind === "support_hit"){
     if(target) target.hitFlashUntil = Math.max(Number(target.hitFlashUntil || 0), now + 220);
+    emitCombatParticles("player", x, y, { sourceX:t?.x, sourceY:t?.y });
     queueImpactPulse(x, y, "player");
     emitDamagePopup(x, y - 42, label || "SQUAD HIT", "player");
     queueCameraShake(Number(opts.shakePower || 0.55), Number(opts.shakeMs || 120));
@@ -53823,6 +54005,7 @@ function triggerCombatInteraction(kind, opts={}){
     applyCombatKnockback(t, Number(opts.sourceX ?? S.me?.x ?? t.x), Number(opts.sourceY ?? S.me?.y ?? t.y), Number(opts.knockback || (isBossTiger(t) ? 8 : 16)), isBossTiger(t) ? 22 : 18);
     if(loud){
       queueImpactPulse(t.x, t.y - 8, "crit");
+      emitCombatParticles("crit", t.x, t.y - 8, { sourceX:opts.sourceX, sourceY:opts.sourceY });
       emitDamagePopup(t.x, t.y - 48, label || "STAGGER", "crit");
       queueCameraShake(Number(opts.shakePower || 0.58), Number(opts.shakeMs || 120));
       sfx(isBossTiger(t) ? "bossImpact" : "stagger");
@@ -53834,6 +54017,7 @@ function triggerCombatInteraction(kind, opts={}){
   if(kind === "capture_ready" && t){
     t.captureReadyFlashUntil = Math.max(Number(t.captureReadyFlashUntil || 0), now + Number(opts.ms || 1100));
     setTigerIntent(t, label || "CAPTURE READY", 900);
+    emitCombatParticles("capture", t.x, t.y - 8);
     queueImpactPulse(t.x, t.y - 8, "capture");
     emitDamagePopup(t.x, t.y - 54, label || "CAPTURE READY", "capture");
     S._combatDangerUntil = Math.max(Number(S._combatDangerUntil || 0), now + 620);
@@ -53846,6 +54030,7 @@ function triggerCombatInteraction(kind, opts={}){
   if(kind === "capture_not_ready" && t){
     t.captureReadyFlashUntil = Math.max(Number(t.captureReadyFlashUntil || 0), now + Number(opts.ms || 520));
     setTigerIntent(t, label || "WEAKEN MORE", 760);
+    emitCombatParticles("danger", t.x, t.y - 8);
     queueImpactPulse(t.x, t.y - 8, "player");
     emitDamagePopup(t.x, t.y - 54, label || "WEAKEN MORE", "player");
     S._combatDangerUntil = Math.max(Number(S._combatDangerUntil || 0), now + 520);
@@ -53857,6 +54042,7 @@ function triggerCombatInteraction(kind, opts={}){
   if(kind === "finish" && t){
     const capture = String(opts.outcome || "").toUpperCase() === "CAPTURE";
     markTigerBehaviorAnim(t, capture ? "capture_struggle" : "finish", 900);
+    emitCombatParticles(capture ? "capture" : "crit", t.x, t.y - 8);
     queueImpactPulse(t.x, t.y - 8, capture ? "capture" : "crit");
     emitDamagePopup(t.x, t.y - 54, capture ? "SECURED" : "FINISH", capture ? "capture" : "crit");
     queueCameraShake(capture ? 0.72 : 0.95, capture ? 160 : 210);
@@ -54989,10 +55175,12 @@ function drawEntities(){
   if(iphoneLiteFeedback){
     const liteTick = (__frameHeavyFxFlip % (lagTier >= 1 ? 8 : 6)) === 0;
     if(liteTick && !frameBudgetTight){
+      if(COMBAT_PARTICLES.length > 0) drawSafe("drawCombatParticles", drawCombatParticles);
       if(IMPACT_PULSES.length > 0) drawSafe("drawImpactPulses", drawImpactPulses);
       if(!liteRender && DAMAGE_POPUPS.length > 0) drawSafe("drawDamagePopups", drawDamagePopups);
     }
   } else if(!iphoneStability){
+    if((shouldDrawFx || (COMBAT_PARTICLES.length > 0 && !frameBudgetTight && lagTier === 0)) && !frameBudgetTight) drawSafe("drawCombatParticles", drawCombatParticles);
     if(shouldDrawFx || (IMPACT_PULSES.length > 0 && !frameBudgetTight && lagTier === 0)) drawSafe("drawImpactPulses", drawImpactPulses);
     if(!liteRender && shouldDrawFx && !frameBudgetTight) drawSafe("drawCombatFx", drawCombatFx);
     if(!liteRender && (shouldDrawFx || (!frameBudgetTight && shouldDrawPopups))) drawSafe("drawDamagePopups", drawDamagePopups);
@@ -56772,6 +56960,9 @@ function draw(){
       });
     } else if(iphoneLiteCombatFeedbackEnabled()){
       if(COMBAT_FX.length) COMBAT_FX.length = 0;
+      runFrameTask("combatParticles", frameInterval(lagCritical ? 126 : (lagHeavy ? 102 : 82), 2.2), tickCombatParticles, {
+        costHint:0.2, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
       runFrameTask("damagePopups", frameInterval(lagCritical ? 130 : (lagHeavy ? 108 : 88), 2.2), tickDamagePopups, {
         costHint:0.2, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
@@ -56782,6 +56973,7 @@ function draw(){
       if(COMBAT_FX.length) COMBAT_FX.length = 0;
       if(DAMAGE_POPUPS.length) DAMAGE_POPUPS.length = 0;
       if(IMPACT_PULSES.length) IMPACT_PULSES.length = 0;
+      if(COMBAT_PARTICLES.length) COMBAT_PARTICLES.length = 0;
     }
 
     {
