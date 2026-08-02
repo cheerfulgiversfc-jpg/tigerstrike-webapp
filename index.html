@@ -1592,6 +1592,15 @@
         font-weight:900;
         letter-spacing:.2px;
       }
+      #touchFieldRollBtn{
+        border-color:rgba(250,204,21,.72);
+        background:rgba(92,64,12,.32);
+      }
+      #touchFieldRollBtn .touchBtnIcon{
+        color:#fde68a;
+        font-size:22px;
+        font-weight:1000;
+      }
       #combatTouchCluster{
         display:none;
         grid-template-columns:repeat(2,64px);
@@ -2108,6 +2117,11 @@
     border-color:rgba(96,165,250,.98) !important;
     background:rgba(20,58,125,.40) !important;
   }
+  #touchFieldRollBtn{
+    border-color:rgba(250,204,21,.96) !important;
+    background:rgba(112,72,14,.38) !important;
+    box-shadow:0 0 16px rgba(250,204,21,.32),inset 0 0 12px rgba(253,224,71,.12) !important;
+  }
   #combatTouchCluster{
     filter:drop-shadow(0 8px 12px rgba(0,0,0,.44));
   }
@@ -2212,6 +2226,10 @@
             <span class="touchBtnIcon">🪤</span>
             <span class="touchBtnLabel">Trap</span>
           </button>
+          <button class="touchBtn" id="touchFieldRollBtn" onclick="rollDodge()">
+            <span class="touchBtnIcon">↯</span>
+            <span class="touchBtnLabel">Roll</span>
+          </button>
         </div>
         <button class="touchBtn" id="touchCacheBtn" onclick="useNearestCache()">
           <span class="touchBtnIcon">📦</span>
@@ -2286,6 +2304,7 @@
         <button class="ghost" id="protectActionBtn" data-shield-btn onclick="useProtectAction()">🛡️ Shield</button>
         <button class="ghost" onclick="useRepairKit()">🧰 Repair</button>
         <button class="ghost" onclick="placeTrap()">🪤 Trap</button>
+        <button class="ghost" id="fieldRollBtn" onclick="rollDodge()">↯ Roll</button>
       </div>
       <div class="row combatButtons" id="combatButtons">
         <button class="warn" id="combatAttackBtn" data-attack-btn>🔫 Attack</button>
@@ -2955,7 +2974,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=4650-premium-2d-hunt-pass"></script>
+  <script src="./game.js?v=4651-audio-roll-visual-pop"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
 <script>
 (() => {

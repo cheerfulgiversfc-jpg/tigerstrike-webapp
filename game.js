@@ -1,6 +1,6 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4530";
-const PREMIUM_2D_GRAPHICS_VERSION = 1;
+const TS_BUILD = "4531";
+const PREMIUM_2D_GRAPHICS_VERSION = 2;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 if(tg){
@@ -18936,6 +18936,8 @@ let __adaptiveAudioLastPressure=-1;
 let __adaptiveAudioLastPhase="";
 let __adaptiveAudioLastBossAt=0;
 let __adaptiveAudioLastDangerAt=0;
+let __gameMusic=null;
+let __gameMusicLastTickAt=0;
 function ensureAudio(){
   if(!S.soundOn) return;
   if(!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
@@ -18947,7 +18949,10 @@ function ensureAudio(){
   }
   S.audioUnlocked=true;
 }
-document.addEventListener("pointerdown", ()=>{ if(!S.audioUnlocked) ensureAudio(); }, {once:true});
+document.addEventListener("pointerdown", ()=>{
+  if(!S.audioUnlocked) ensureAudio();
+  startGameMusicDirector();
+}, {once:true});
 function beep(f=440,ms=80,type="sine",vol=0.06){
   if(!S.soundOn) return;
   try{
@@ -19064,6 +19069,7 @@ function toggleSound(){
   if(mobileLbl) mobileLbl.innerText = S.soundOn ? "On" : "Off";
   if(!S.soundOn){
     stopAdaptiveAudioDirector();
+    stopGameMusicDirector();
     clearLaunchMusicLoop();
   }
   save();
@@ -19071,6 +19077,7 @@ function toggleSound(){
     sfx("ui");
     ensureAudio();
     startAdaptiveAudioDirector();
+    startGameMusicDirector();
     if(introOverlayVisible()){
       playLaunchTheme(true);
       startLaunchMusicLoop(true);
@@ -19226,6 +19233,170 @@ function adaptiveAudioDirectorTick(){
     __adaptiveAudioLastDangerAt = nowMs;
   }
   __adaptiveAudioLastPressure = pressure;
+}
+
+function stopGameMusicDirector(){
+  if(!__gameMusic) return;
+  try{
+    const at = AC ? AC.currentTime : 0;
+    if(__gameMusic.out?.gain){
+      __gameMusic.out.gain.cancelScheduledValues(at);
+      __gameMusic.out.gain.setTargetAtTime(0.0001, at, 0.08);
+    }
+  }catch(e){}
+  __gameMusic = null;
+}
+function startGameMusicDirector(){
+  if(!S.soundOn) return;
+  try{
+    ensureAudio();
+    if(!AC || !__audioMasterGain || __gameMusic) return;
+    const out = AC.createGain();
+    out.gain.value = 0.0001;
+    out.connect(__audioMasterGain);
+    __gameMusic = {
+      out,
+      mode:"",
+      step:0,
+      nextNoteAt:0,
+      nextBeatAt:0,
+      lastStingerAt:0
+    };
+    __gameMusicLastTickAt = 0;
+  }catch(e){}
+}
+function gameMusicMode(){
+  if(!S.soundOn) return "off";
+  if(introOverlayVisible()) return "menu";
+  try{ if(baseHqActive?.()) return "hq"; }catch(e){}
+  if(S.gameOver || S.missionEnded) return "menu";
+  if(S.inBattle || hasAliveBossTiger?.()) return "battle";
+  if(S.paused) return "menu";
+  return "mission";
+}
+function gameMusicSpec(mode){
+  if(mode === "hq"){
+    return {
+      vol:0.115,
+      gap:440,
+      wave:"triangle",
+      root:[146.83, 196.00, 220.00, 293.66, 329.63],
+      bass:[73.42, 98.00],
+      beat:false
+    };
+  }
+  if(mode === "battle"){
+    return {
+      vol:0.145,
+      gap:255,
+      wave:"triangle",
+      root:[130.81, 155.56, 174.61, 196.00, 261.63],
+      bass:[65.41, 82.41, 98.00],
+      beat:true
+    };
+  }
+  if(mode === "mission"){
+    return {
+      vol:0.105,
+      gap:520,
+      wave:"sine",
+      root:[164.81, 196.00, 220.00, 246.94, 329.63],
+      bass:[82.41, 110.00],
+      beat:false
+    };
+  }
+  return {
+    vol:0.095,
+    gap:560,
+    wave:"triangle",
+    root:[196.00, 246.94, 293.66, 392.00, 493.88],
+    bass:[98.00, 130.81],
+    beat:false
+  };
+}
+function gameMusicNote(freq, durMs=220, type="sine", vol=0.05, when=0){
+  if(!S.soundOn || !AC || !__gameMusic?.out) return;
+  try{
+    const start = Math.max(AC.currentTime + 0.006, Number(when || AC.currentTime));
+    const dur = Math.max(0.05, Number(durMs || 220) / 1000);
+    const osc = AC.createOscillator();
+    const gain = AC.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(Math.max(30, Number(freq || 220)), start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, Number(vol || 0.03)), start + 0.026);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    osc.connect(gain);
+    gain.connect(__gameMusic.out);
+    osc.start(start);
+    osc.stop(start + dur + 0.04);
+  }catch(e){}
+}
+function gameMusicStinger(mode){
+  if(!__gameMusic || !AC) return;
+  const now = Date.now();
+  if(now - Number(__gameMusic.lastStingerAt || 0) < 900) return;
+  __gameMusic.lastStingerAt = now;
+  const at = AC.currentTime + 0.012;
+  if(mode === "battle"){
+    gameMusicNote(196, 120, "triangle", 0.07, at);
+    gameMusicNote(293.66, 160, "triangle", 0.055, at + 0.10);
+    gameMusicNote(392, 190, "sine", 0.04, at + 0.23);
+  }else if(mode === "hq"){
+    gameMusicNote(220, 130, "triangle", 0.045, at);
+    gameMusicNote(293.66, 160, "sine", 0.04, at + 0.14);
+  }else if(mode === "mission"){
+    gameMusicNote(164.81, 170, "sine", 0.04, at);
+    gameMusicNote(246.94, 170, "triangle", 0.036, at + 0.16);
+  }else{
+    gameMusicNote(392, 120, "triangle", 0.042, at);
+    gameMusicNote(523.25, 150, "sine", 0.035, at + 0.14);
+  }
+}
+function gameMusicDirectorTick(){
+  if(!S.soundOn) return;
+  if(!__gameMusic) startGameMusicDirector();
+  if(!__gameMusic || !AC) return;
+  const nowMs = Date.now();
+  if(nowMs - Number(__gameMusicLastTickAt || 0) < 120) return;
+  __gameMusicLastTickAt = nowMs;
+  const mode = gameMusicMode();
+  if(mode === "off"){
+    stopGameMusicDirector();
+    return;
+  }
+  const spec = gameMusicSpec(mode);
+  const at = AC.currentTime;
+  const targetVol = iphoneStabilityModeActive?.() && frameLagTier?.() >= 2 ? 0.035 : spec.vol;
+  __gameMusic.out.gain.cancelScheduledValues(at);
+  __gameMusic.out.gain.setTargetAtTime(targetVol, at, 0.28);
+  if(__gameMusic.mode !== mode){
+    __gameMusic.mode = mode;
+    __gameMusic.step = 0;
+    __gameMusic.nextNoteAt = 0;
+    __gameMusic.nextBeatAt = 0;
+    gameMusicStinger(mode);
+  }
+  if(at >= Number(__gameMusic.nextNoteAt || 0)){
+    const step = Math.max(0, Math.floor(Number(__gameMusic.step || 0)));
+    const melody = spec.root;
+    const bass = spec.bass;
+    const pressure = clamp(Number(ensureMissionDirectorState?.(S)?.pressure || 0), 0, 100);
+    const idx = (step + Math.floor(pressure / 28)) % melody.length;
+    const octave = (mode === "battle" && step % 4 === 3) ? 2 : 1;
+    const noteVol = spec.vol * (mode === "battle" ? 0.54 : 0.42);
+    const noteDur = mode === "battle" ? 150 : (mode === "hq" ? 210 : 240);
+    gameMusicNote(melody[idx] * octave, noteDur, spec.wave, noteVol, at + 0.012);
+    if(step % (mode === "battle" ? 4 : 3) === 0){
+      gameMusicNote(bass[step % bass.length], mode === "battle" ? 180 : 260, "triangle", spec.vol * 0.34, at + 0.006);
+    }
+    __gameMusic.step = step + 1;
+    __gameMusic.nextNoteAt = at + (spec.gap / 1000);
+  }
+  if(spec.beat && at >= Number(__gameMusic.nextBeatAt || 0)){
+    gameMusicNote(78, 54, "triangle", spec.vol * 0.44, at + 0.004);
+    __gameMusic.nextBeatAt = at + 0.50;
+  }
 }
 
 // ===================== HELPERS =====================
@@ -27265,10 +27436,10 @@ function playHuntPulse(){
   if(!S.soundOn) return;
   try{
     ensureAudio();
-    beep(146, 130, "sawtooth", 0.035);
+    beep(146, 130, "triangle", 0.028);
     setTimeout(()=>beep(196, 90, "triangle", 0.03), 160);
     setTimeout(()=>beep(246, 80, "triangle", 0.028), 320);
-    setTimeout(()=>beep(164, 120, "square", 0.03), 780);
+    setTimeout(()=>beep(164, 120, "sine", 0.026), 780);
     setTimeout(()=>beep(220, 70, "triangle", 0.028), 960);
   }catch(e){}
 }
@@ -45075,6 +45246,8 @@ function renderCombatControls(){
   const squadWheelBtn = document.getElementById("touchSquadWheelBtn");
   const actionButtons = document.querySelector(".actionButtons");
   const combatButtons = document.getElementById("combatButtons");
+  const fieldRollBtn = document.getElementById("fieldRollBtn");
+  const touchFieldRollBtn = document.getElementById("touchFieldRollBtn");
   const inCombat = !!S.inBattle || !!lockedRival();
   const hqActive = baseHqActive();
   const hideTouchUi = controllerOwnsUi() && !hqActive;
@@ -45089,6 +45262,8 @@ function renderCombatControls(){
   if(squadWheelBtn) squadWheelBtn.style.display = hideTouchUi ? "none" : (hqActive ? "none" : (inCombat ? "none" : "flex"));
   if(actionButtons) actionButtons.style.display = (hideTouchUi || inCombat || hqActive) ? "none" : "";
   if(combatButtons) combatButtons.style.display = hideTouchUi ? "none" : (hqActive ? "none" : (inCombat ? "flex" : "none"));
+  if(fieldRollBtn) fieldRollBtn.style.display = (hideTouchUi || inCombat || hqActive) ? "none" : "";
+  if(touchFieldRollBtn) touchFieldRollBtn.style.display = (hideTouchUi || inCombat || hqActive) ? "none" : "flex";
   if(hqActive){
     closeSquadCommandWheel();
     return;
@@ -45107,6 +45282,7 @@ function renderCombatControls(){
   const protectDisabled = inCombat || S.paused || S.missionEnded || S.gameOver;
   const rollLeft = rollCooldownLabel();
   const canRoll = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) && !rollLeft;
+  const canFieldRollButton = !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil);
 
   [["touchAttackBtn", !canPressCombatAction], ["combatAttackBtn", !canPressCombatAction]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
@@ -45143,8 +45319,21 @@ function renderCombatControls(){
     const el = document.getElementById(id);
     if(el) el.disabled = disabled;
   });
+  [["touchFieldRollBtn", !canFieldRollButton], ["fieldRollBtn", !canFieldRollButton]].forEach(([id, disabled])=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.disabled = disabled;
+    el.title = rollLeft
+      ? `Roll cooling down (${rollLeft}).`
+      : "Roll dodge. Best used during tiger combat or ambush warnings.";
+  });
   const rollBtn = document.getElementById("combatRollBtn");
   if(rollBtn) rollBtn.innerText = rollLeft ? `Roll (${rollLeft})` : "Roll";
+  if(fieldRollBtn) fieldRollBtn.innerText = rollLeft ? `↯ Roll (${rollLeft})` : "↯ Roll";
+  if(touchFieldRollBtn){
+    const label = touchFieldRollBtn.querySelector(".touchBtnLabel");
+    if(label) label.innerText = rollLeft ? `Roll ${rollLeft}` : "Roll";
+  }
 
   const prevLabel = combatWeaponLabel(-1);
   const nextLabel = combatWeaponLabel(1);
@@ -48882,18 +49071,18 @@ function premium2DTallGrassPatches(state=S){
   const mission = Math.max(1, missionIndexForMode(state?.mode || "Story"));
   const mapIndex = Math.max(0, Number(state?.mapIndex || 0));
   const seed = (mission * 97) + (mapIndex * 389) + (String(state?.mode || "").length * 53);
-  const count = clamp(Math.round((w * h) / 125000) + 7, 9, isMobileViewport() ? 15 : 22);
+  const count = clamp(Math.round((w * h) / 108000) + 10, 12, isMobileViewport() ? 19 : 28);
   const patches = [];
   for(let i=0; i<count; i++){
-    const rx = 52 + premium2DSeeded(seed, i + 11) * 82;
-    const ry = 24 + premium2DSeeded(seed, i + 29) * 44;
+    const rx = 66 + premium2DSeeded(seed, i + 11) * 106;
+    const ry = 30 + premium2DSeeded(seed, i + 29) * 58;
     const x = clamp(70 + premium2DSeeded(seed, i + 47) * (w - 140), rx * 0.6, w - rx * 0.6);
     const y = clamp(90 + premium2DSeeded(seed, i + 83) * (h - 180), ry * 0.8, h - ry * 0.8);
     patches.push({
       x, y, rx, ry,
       rot:(premium2DSeeded(seed, i + 131) - 0.5) * 0.9,
       seed:seed + i * 71,
-      alpha:0.55 + premium2DSeeded(seed, i + 173) * 0.30
+      alpha:0.68 + premium2DSeeded(seed, i + 173) * 0.24
     });
   }
   return patches;
@@ -48930,7 +49119,7 @@ function drawPremiumTallGrass(opts={}){
   const viewTop = -cam.y - pad;
   const viewRight = -cam.x + cv.width + pad;
   const viewBottom = -cam.y + cv.height + pad;
-  const bladeStep = mobileFast || lag >= 2 ? 24 : (lag >= 1 ? 18 : 13);
+  const bladeStep = mobileFast || lag >= 2 ? 22 : (lag >= 1 ? 16 : 12);
   ctx.save();
   for(const p of patches){
     if(p.x + p.rx < viewLeft || p.x - p.rx > viewRight || p.y + p.ry < viewTop || p.y - p.ry > viewBottom) continue;
@@ -48947,10 +49136,10 @@ function drawPremiumTallGrass(opts={}){
     ctx.beginPath();
     ctx.ellipse(0, 0, p.rx, p.ry, 0, 0, Math.PI * 2);
     ctx.fill();
-    if(!mobileFast){
+    if(!mobileFast || lag < 2){
       ctx.strokeStyle = palette.grassStroke;
       ctx.lineWidth = 1.4;
-      ctx.globalAlpha = p.alpha * 0.58;
+      ctx.globalAlpha = p.alpha * (mobileFast ? 0.36 : 0.70);
       for(let bx = -p.rx * 0.82; bx <= p.rx * 0.82; bx += bladeStep){
         const n = premium2DSeeded(p.seed, Math.round((bx + p.rx) * 3));
         const localRy = p.ry * Math.sqrt(Math.max(0, 1 - ((bx * bx) / (p.rx * p.rx))));
@@ -48980,7 +49169,7 @@ function drawPremium2DColorGrade(opts={}){
   const sunX = w * 0.22;
   const sunY = h * 0.10;
   const glow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, Math.max(w, h) * 0.64);
-  glow.addColorStop(0, mobileFast ? "rgba(255,244,196,.12)" : "rgba(255,244,196,.18)");
+  glow.addColorStop(0, mobileFast ? "rgba(255,244,196,.18)" : "rgba(255,244,196,.24)");
   glow.addColorStop(0.45, palette.warmth);
   glow.addColorStop(1, "rgba(255,244,196,0)");
   ctx.fillStyle = glow;
@@ -48991,7 +49180,7 @@ function drawPremium2DColorGrade(opts={}){
   ctx.fillStyle = cyan;
   ctx.fillRect(0, 0, w, h);
   ctx.globalCompositeOperation = "source-over";
-  ctx.globalAlpha = mobileFast ? 0.08 : 0.12;
+  ctx.globalAlpha = mobileFast ? 0.13 : 0.17;
   const depth = ctx.createLinearGradient(0, 0, 0, h);
   depth.addColorStop(0, "rgba(255,255,255,.10)");
   depth.addColorStop(0.55, "rgba(0,0,0,0)");
@@ -51669,11 +51858,11 @@ function drawGroundedFootContacts(entity, x, y, opts={}){
   const angle = Number.isFinite(opts.angle) ? opts.angle : (Number.isFinite(v.angle) ? v.angle : 0);
   const sideA = Math.sin(step * Number(opts.stepMul || 1.7));
   const sideB = -sideA;
-  const alpha = clamp(0.16 + speed * 0.08, 0.16, 0.46) * Number(opts.alphaMul || 1);
+  const alpha = clamp(0.22 + speed * 0.105, 0.22, 0.58) * Number(opts.alphaMul || 1);
   const footGap = Number(opts.footGap || 8);
   const footY = Number(opts.footY || 18);
   const footW = Number(opts.footW || 7);
-  const footH = Number(opts.footH || 2.2);
+  const footH = Number(opts.footH || 2.9);
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
@@ -51688,6 +51877,20 @@ function drawGroundedFootContacts(entity, x, y, opts={}){
     ctx.beginPath();
     ctx.ellipse(-7 + c.phase * 3, c.sx + footY, footW * plant, footH * plant, 0, 0, Math.PI * 2);
     ctx.fill();
+  }
+  if(level >= 2 && speed > 1.2){
+    ctx.globalAlpha = alpha * 0.42;
+    ctx.strokeStyle = opts.stepStroke || "rgba(226,232,240,.30)";
+    ctx.lineWidth = Math.max(1, footH * 0.55);
+    ctx.lineCap = "round";
+    for(const c of contacts){
+      const lift = clamp(Math.max(0, -c.phase), 0, 1);
+      if(lift < 0.15) continue;
+      ctx.beginPath();
+      ctx.moveTo(-9 + c.phase * 3, c.sx + footY - 2);
+      ctx.lineTo(-16 + c.phase * 4, c.sx + footY - 5 - lift * 5);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -55628,7 +55831,10 @@ function draw(){
         costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
     }
-    runFrameTask("adaptiveAudio", frameInterval(240, 1.4), adaptiveAudioDirectorTick, {
+    runFrameTask("adaptiveAudio", frameInterval(240, 1.4), ()=>{
+      adaptiveAudioDirectorTick();
+      gameMusicDirectorTick();
+    }, {
       costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
     });
     runFrameTask("runtimeMemoryCleanup", frameInterval(lagCritical ? 1320 : (lagHeavy ? 1080 : 880), 1.5), runtimeMemoryCleanupTick, {
@@ -56605,6 +56811,21 @@ window.runPremium2DHuntAudit = function runPremium2DHuntAudit(){
     tigersInTallGrass:tigers.filter((t)=>pointInTallGrass(t.x, t.y, 18, S)).length,
     activeFieldPounces:tigers.filter((t)=>Number(t._fieldPounceResolveAt || 0) > Date.now()).length,
     rollAmbushWindow:Date.now() < Number(S._fieldPounceThreatUntil || 0)
+  };
+};
+window.runAudioRollVisualAudit = function runAudioRollVisualAudit(){
+  return {
+    build:TS_BUILD,
+    soundOn:!!S.soundOn,
+    audioUnlocked:!!S.audioUnlocked,
+    musicActive:!!__gameMusic,
+    musicMode:__gameMusic?.mode || gameMusicMode(),
+    rollHudVisible:!!(
+      document.getElementById("touchFieldRollBtn") &&
+      document.getElementById("touchFieldRollBtn").style.display !== "none"
+    ),
+    graphicsVersion:PREMIUM_2D_GRAPHICS_VERSION,
+    tallGrassPatches:premium2DTallGrassPatches(S).length
   };
 };
 
