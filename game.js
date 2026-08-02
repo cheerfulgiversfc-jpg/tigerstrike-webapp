@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4535";
+const TS_BUILD = "4536";
 const PREMIUM_2D_GRAPHICS_VERSION = 2;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
@@ -49521,6 +49521,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   drawMapExpansionObjectiveRoutes({ mobileFast:true });
   drawPremiumTallGrass({ nowTs:frameNow, themeKey, mobileFast:true });
   drawMapArtUpgrade({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
+  drawLightingAtmospherePass({ nowTs:frameNow, w, h, themeKey, chapterStyle, mobileFast:true });
 
   if(S.mode !== "Survival"){
     const ex = zone.x;
@@ -49704,9 +49705,16 @@ function drawMapScene(){
   }
   const forceFullRepaint = frameNow < Number(__forceFullMapRepaintUntil || 0);
   const ez = S.evacZone || DEFAULT.evacZone;
+  const atmosphereMood = lightingAtmosphereMood(frameNow);
+  const atmosphereBucket = Math.floor(frameNow / 2000);
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
     PREMIUM_2D_GRAPHICS_VERSION,
+    atmosphereMood.dayKey || "",
+    atmosphereMood.weatherFx || "",
+    atmosphereMood.front?.type || "",
+    atmosphereMood.danger ? 1 : 0,
+    atmosphereBucket,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
     Math.round(camSnap.x || 0), Math.round(camSnap.y || 0),
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0,
@@ -50502,6 +50510,7 @@ function drawMapScene(){
   });
   if(detailPassOk) __startupLastDetailedMapAt = Date.now();
   drawPremiumMapLightingPass({ nowTs:Date.now(), w, h, themeKey, chapterStyle });
+  drawLightingAtmospherePass({ nowTs:Date.now(), w, h, themeKey, chapterStyle, mobileFast:false });
   drawPremium2DColorGrade({ themeKey, mobileFast:false });
 
   drawMissionTwistOverlay(Date.now());
@@ -50540,8 +50549,10 @@ function drawPremiumMapLightingPass(opts={}){
   const chapterStyle = opts.chapterStyle || chapterVisualForMode(S.mode, chapterIndexForMode(S.mode));
   const biome = currentBiomeProfile();
   const weather = String(biome?.weatherFx || "clear").toLowerCase();
-  const warm = weather === "ash" || weather === "dust" || String(chapterStyle?.name || "").toLowerCase().includes("sun");
-  const cool = weather === "mist" || weather === "storm" || weather === "snow";
+  const phase = typeof dynamicDayNightPhase === "function" ? dynamicDayNightPhase(nowTs, S) : null;
+  const phaseKey = String(phase?.key || "").toLowerCase();
+  const warm = weather === "ash" || weather === "dust" || phaseKey === "sunrise" || phaseKey === "sunset" || String(chapterStyle?.name || "").toLowerCase().includes("sun");
+  const cool = weather === "mist" || weather === "storm" || weather === "snow" || phaseKey === "night";
   const lightColor = warm ? "rgba(255,210,132," : (cool ? "rgba(186,230,253," : "rgba(220,255,210,");
   const shadowColor = cool ? "rgba(4,12,24," : "rgba(4,10,16,";
   const pulse = 0.92 + Math.sin(nowTs * 0.0011) * 0.08;
@@ -50569,6 +50580,230 @@ function drawPremiumMapLightingPass(opts={}){
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
+}
+
+function lightingAtmosphereLevel(){
+  const level = premiumVisualPolishLevel();
+  if(level <= 0) return 0;
+  if(frameBudgetExceeded(0.90) || frameLagTier() >= 3) return 0;
+  if(frameBudgetExceeded(0.78) || frameLagTier() >= 2) return 1;
+  return level >= 2 ? 2 : 1;
+}
+
+function lightingAtmosphereMood(nowTs=Date.now()){
+  const phase = typeof dynamicDayNightPhase === "function"
+    ? dynamicDayNightPhase(nowTs, S)
+    : { key:"day", label:"Daylight", icon:"SUN" };
+  const dayKey = String(phase?.key || phase?.label || "day").toLowerCase();
+  const biome = currentBiomeProfile();
+  const front = typeof activeDynamicWeather2 === "function" ? activeDynamicWeather2(S, nowTs) : null;
+  const def = front && typeof dynamicWeather2TypeDef === "function" ? dynamicWeather2TypeDef(front.type) : null;
+  const weatherFx = String(def?.fx || biome?.weatherFx || "clear").toLowerCase();
+  const intensity = clamp(Number(def?.intensity || biome?.weatherIntensity || 0.45), 0.15, 1.25);
+  const combatDanger = Number(S._combatDangerUntil || 0) > nowTs;
+  const dangerCiv = S.mode !== "Survival" && S.dangerCivId
+    ? (S.civilians || []).find((c)=>c && String(c.id) === String(S.dangerCivId) && c.alive !== false && !c.evac)
+    : null;
+  const tigerStates = typeof TIGER_HUNT_STATES === "object" ? TIGER_HUNT_STATES : {};
+  const dangerTigers = (S.tigers || []).filter((t)=>{
+    if(!t || !t.alive) return false;
+    if(t.huntState === tigerStates.POUNCE || t.huntState === "pounce") return true;
+    if(String(t.type || "").toLowerCase() === "alpha") return true;
+    if(typeof isBossTiger === "function" && isBossTiger(t)) return true;
+    return false;
+  }).slice(0, 4);
+  const danger = combatDanger || !!dangerCiv || dangerTigers.length > 0 || weatherFx === "storm" || front?.type === "wildfire";
+  let top = "rgba(255,244,196,";
+  let mid = "rgba(74,222,128,";
+  let bottom = "rgba(6,16,14,";
+  let beam = "rgba(255,241,205,";
+  let vignette = "rgba(4,10,18,";
+
+  if(dayKey.includes("sunrise")){
+    top = "rgba(255,206,141,";
+    mid = "rgba(251,191,36,";
+    bottom = "rgba(41,25,18,";
+    beam = "rgba(255,229,180,";
+  }else if(dayKey.includes("sunset")){
+    top = "rgba(251,146,60,";
+    mid = "rgba(244,114,182,";
+    bottom = "rgba(35,18,36,";
+    beam = "rgba(255,186,116,";
+  }else if(dayKey.includes("night")){
+    top = "rgba(59,130,246,";
+    mid = "rgba(30,64,175,";
+    bottom = "rgba(3,7,18,";
+    beam = "rgba(147,197,253,";
+    vignette = "rgba(0,4,14,";
+  }
+  if(weatherFx === "storm" || front?.type === "storm"){
+    top = "rgba(96,165,250,";
+    mid = "rgba(30,41,59,";
+    bottom = "rgba(2,6,23,";
+    beam = "rgba(191,219,254,";
+  }else if(weatherFx === "ash" || weatherFx === "dust" || front?.type === "wildfire"){
+    top = "rgba(249,115,22,";
+    mid = "rgba(251,146,60,";
+    bottom = "rgba(45,14,8,";
+    beam = "rgba(254,215,170,";
+  }else if(weatherFx === "mist" || weatherFx === "fog"){
+    top = "rgba(203,213,225,";
+    mid = "rgba(148,163,184,";
+    bottom = "rgba(15,23,42,";
+    beam = "rgba(226,232,240,";
+  }
+
+  return { phase, dayKey, weatherFx, intensity, front, def, top, mid, bottom, beam, vignette, danger, dangerCiv, dangerTigers };
+}
+
+function drawLightingAtmospherePass(opts={}){
+  if(!ctx) return false;
+  const level = lightingAtmosphereLevel();
+  if(level <= 0) return false;
+  const nowTs = Number(opts.nowTs || Date.now());
+  const mobileFast = !!opts.mobileFast;
+  const w = Math.max(1, Number(opts.w || worldWidth(S) || cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH);
+  const h = Math.max(1, Number(opts.h || worldHeight(S) || cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT);
+  const mood = lightingAtmosphereMood(nowTs);
+  const intensity = clamp(mood.intensity, 0.15, 1.25);
+  const mobileMul = mobileFast ? 0.62 : 1;
+  const night = mood.dayKey.includes("night");
+  const sunset = mood.dayKey.includes("sunset");
+  const sunrise = mood.dayKey.includes("sunrise");
+  const storm = mood.weatherFx === "storm" || mood.front?.type === "storm";
+  const foggy = mood.weatherFx === "mist" || mood.weatherFx === "fog" || Number(S.fogUntil || 0) > nowTs;
+  const fiery = mood.weatherFx === "ash" || mood.weatherFx === "dust" || mood.front?.type === "wildfire";
+
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  const tint = ctx.createLinearGradient(0, 0, 0, h);
+  tint.addColorStop(0, `${mood.top}${(night ? 0.24 : 0.16) * mobileMul})`);
+  tint.addColorStop(0.50, `${mood.mid}${0.055 * intensity * mobileMul})`);
+  tint.addColorStop(1, `${mood.bottom}${(night ? 0.30 : 0.13) * mobileMul})`);
+  ctx.fillStyle = tint;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.globalCompositeOperation = "screen";
+  const glowX = sunset ? w * 0.82 : (night ? w * 0.72 : w * 0.18);
+  const glowY = night ? h * 0.16 : h * 0.12;
+  const glowRadius = Math.max(w, h) * (night ? 0.45 : 0.62);
+  const glow = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, glowRadius);
+  glow.addColorStop(0, `${mood.beam}${(night ? 0.13 : 0.25) * mobileMul})`);
+  glow.addColorStop(0.42, `${mood.beam}${(night ? 0.055 : 0.10) * mobileMul})`);
+  glow.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, w, h);
+
+  if(level >= 2 && !mobileFast && (sunrise || sunset || night || storm)){
+    ctx.globalAlpha = storm ? 0.06 : (night ? 0.05 : 0.09);
+    ctx.strokeStyle = `${mood.beam}0.70)`;
+    ctx.lineWidth = Math.max(16, w * 0.021);
+    ctx.lineCap = "round";
+    for(let i=0; i<4; i++){
+      const sx = glowX + ((i - 1.5) * w * 0.12) + Math.sin(nowTs * 0.00025 + i) * 22;
+      ctx.beginPath();
+      ctx.moveTo(sx, -24);
+      ctx.lineTo(sx + (sunset ? -w * 0.15 : w * 0.18), h * 0.66);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.globalCompositeOperation = "source-over";
+  if(foggy){
+    const bands = mobileFast ? 2 : 4;
+    ctx.fillStyle = "rgba(226,232,240,.10)";
+    for(let i=0; i<bands; i++){
+      const y = ((i + 1) / (bands + 1)) * h + Math.sin(nowTs * 0.00034 + i) * 28;
+      const band = ctx.createLinearGradient(0, y - 38, 0, y + 38);
+      band.addColorStop(0, "rgba(203,213,225,0)");
+      band.addColorStop(0.5, `rgba(226,232,240,${(0.12 + intensity * 0.05) * mobileMul})`);
+      band.addColorStop(1, "rgba(203,213,225,0)");
+      ctx.fillStyle = band;
+      ctx.fillRect(0, y - 44, w, 88);
+    }
+  }
+
+  if(mood.weatherFx === "rain" || storm){
+    const rainCount = mobileFast ? 14 : (storm ? 44 : 30);
+    ctx.globalAlpha = storm ? 0.48 : 0.36;
+    ctx.strokeStyle = storm ? "rgba(191,219,254,.82)" : "rgba(186,230,253,.68)";
+    ctx.lineWidth = storm ? 1.25 : 1;
+    for(let i=0; i<rainCount; i++){
+      const speed = (storm ? 520 : 360) * (1 + (i % 5) * 0.06);
+      const drift = nowTs * 0.001 * speed;
+      const x = ((i * 73.17) + drift) % (w + 150) - 75;
+      const y = ((i * 47.31) + drift * 1.55) % (h + 120) - 60;
+      const len = 10 + (i % 6) * 1.8 + intensity * 4;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - len * 0.30, y + len);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    if(storm){
+      const lightning = Math.max(0, Math.sin(nowTs * 0.0053 + 0.8) + Math.sin(nowTs * 0.0081 + 1.7) - 1.75);
+      if(lightning > 0){
+        ctx.globalAlpha = clamp(lightning * 0.18, 0.04, 0.18);
+        ctx.fillStyle = "rgba(226,240,255,.88)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  if(fiery){
+    ctx.globalCompositeOperation = "screen";
+    const fx = Number.isFinite(mood.front?.x) ? mood.front.x : w * 0.78;
+    const fy = Number.isFinite(mood.front?.y) ? mood.front.y : h * 0.22;
+    const fr = Number.isFinite(mood.front?.r) ? Math.max(90, mood.front.r * 1.2) : Math.max(w, h) * 0.34;
+    const firePulse = 0.85 + Math.sin(nowTs * 0.006) * 0.15;
+    const fire = ctx.createRadialGradient(fx, fy, 0, fx, fy, fr * firePulse);
+    fire.addColorStop(0, `rgba(251,146,60,${0.22 * mobileMul})`);
+    fire.addColorStop(0.44, `rgba(249,115,22,${0.10 * mobileMul})`);
+    fire.addColorStop(1, "rgba(249,115,22,0)");
+    ctx.fillStyle = fire;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  if(mood.danger){
+    ctx.globalCompositeOperation = "screen";
+    const dangerTargets = [];
+    if(mood.dangerCiv) dangerTargets.push(mood.dangerCiv);
+    dangerTargets.push(...mood.dangerTigers);
+    for(const target of dangerTargets.slice(0, mobileFast ? 3 : 5)){
+      const pulse = 0.78 + Math.sin(nowTs * 0.006 + Number(target.id || 0)) * 0.16;
+      const r = (target.type ? 92 : 70) * pulse;
+      const dangerGlow = ctx.createRadialGradient(target.x, target.y, 0, target.x, target.y, r);
+      dangerGlow.addColorStop(0, `rgba(248,113,113,${0.18 * mobileMul})`);
+      dangerGlow.addColorStop(0.55, `rgba(251,191,36,${0.08 * mobileMul})`);
+      dangerGlow.addColorStop(1, "rgba(248,113,113,0)");
+      ctx.fillStyle = dangerGlow;
+      ctx.fillRect(target.x - r, target.y - r, r * 2, r * 2);
+    }
+    ctx.globalCompositeOperation = "source-over";
+    const edge = ctx.createRadialGradient(w * 0.5, h * 0.52, Math.min(w, h) * 0.32, w * 0.5, h * 0.52, Math.max(w, h) * 0.86);
+    edge.addColorStop(0, "rgba(127,29,29,0)");
+    edge.addColorStop(0.72, "rgba(127,29,29,0)");
+    edge.addColorStop(1, `rgba(127,29,29,${0.19 * mobileMul})`);
+    ctx.fillStyle = edge;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  if(night || storm){
+    ctx.globalCompositeOperation = "multiply";
+    const nightVignette = ctx.createRadialGradient(w * 0.5, h * 0.52, Math.min(w, h) * 0.24, w * 0.5, h * 0.52, Math.max(w, h) * 0.90);
+    nightVignette.addColorStop(0, "rgba(0,0,0,0)");
+    nightVignette.addColorStop(0.66, "rgba(0,0,0,0)");
+    nightVignette.addColorStop(1, `${mood.vignette}${(night ? 0.52 : 0.35) * mobileMul})`);
+    ctx.fillStyle = nightVignette;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  ctx.restore();
+  return true;
 }
 
 function drawEnvironmentArtPass(opts={}){
@@ -57366,6 +57601,22 @@ window.runMapArtUpgradeAudit = function runMapArtUpgradeAudit(){
     palette:mapArtUpgradePalette(themeKey),
     waterZones:Array.isArray(__mapWaterZones) ? __mapWaterZones.length : 0,
     tallGrassPatches:premium2DTallGrassPatches(S).length,
+    mobileFast:shouldUseMobileFastMapRenderer(S)
+  };
+};
+window.runLightingAtmosphereAudit = function runLightingAtmosphereAudit(){
+  const mood = lightingAtmosphereMood(Date.now());
+  return {
+    build:TS_BUILD,
+    lightingAtmosphere:"phase1",
+    level:lightingAtmosphereLevel(),
+    dayKey:mood.dayKey,
+    dayLabel:mood.phase?.label || "",
+    weatherFx:mood.weatherFx,
+    weatherFront:mood.front?.type || "",
+    danger:!!mood.danger,
+    dangerTigerCount:Array.isArray(mood.dangerTigers) ? mood.dangerTigers.length : 0,
+    hasDangerCivilian:!!mood.dangerCiv,
     mobileFast:shouldUseMobileFastMapRenderer(S)
   };
 };
