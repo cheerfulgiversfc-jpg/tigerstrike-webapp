@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4538";
+const TS_BUILD = "4539";
 const PREMIUM_2D_GRAPHICS_VERSION = 2;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
@@ -14098,7 +14098,7 @@ const DAMAGE_POPUP_RATE_MS = 82;
 const DAMAGE_POPUP_GATE = new Map();
 const CAMERA_SHAKE = { until:0, power:0 };
 const ENABLE_SCREEN_SHAKE = true;
-const ENABLE_BATTLE_CINEMATIC = false;
+const ENABLE_BATTLE_CINEMATIC = true;
 const BATTLE_CINE_ENTER_MS = 260;
 const BATTLE_CINE_EXIT_MS = 220;
 const BATTLE_CINEMATIC = {
@@ -14109,7 +14109,10 @@ const BATTLE_CINEMATIC = {
   toScale:1,
   scale:1,
   focusX:0,
-  focusY:0
+  focusY:0,
+  kind:"",
+  label:"",
+  letterboxUntil:0
 };
 const ATMOS_PARTICLES = Object.freeze(Array.from({ length:26 }, (_, i)=>{
   const seed = i + 1;
@@ -17386,11 +17389,25 @@ function updateWorldCamera(state=S){
   if(!Number.isFinite(state._cameraOutFrames)) state._cameraOutFrames = 0;
   const face = Number.isFinite(state?.me?.face) ? state.me.face : 0;
   const lookAhead = window.TigerTutorial?.isRunning ? 0 : (isMobileViewport() ? 34 : 58);
-  const target = cameraClampCenter(
-    (Number.isFinite(state?.me?.x) ? state.me.x : (world.w * 0.5)) + (Math.cos(face) * lookAhead),
-    (Number.isFinite(state?.me?.y) ? state.me.y : (world.h * 0.5)) + (Math.sin(face) * lookAhead),
-    state
-  );
+  let targetX = (Number.isFinite(state?.me?.x) ? state.me.x : (world.w * 0.5)) + (Math.cos(face) * lookAhead);
+  let targetY = (Number.isFinite(state?.me?.y) ? state.me.y : (world.h * 0.5)) + (Math.sin(face) * lookAhead);
+  if(BATTLE_CINEMATIC.active && Date.now() >= (Number(BATTLE_CINEMATIC.startAt || 0) + Math.max(1, Number(BATTLE_CINEMATIC.durationMs || 1)))){
+    BATTLE_CINEMATIC.active = false;
+  }
+  const cineActive = ENABLE_BATTLE_CINEMATIC
+    && !window.TigerTutorial?.isRunning
+    && !iphoneStabilityModeActive()
+    && !(typeof useLiteEntityRender === "function" && useLiteEntityRender())
+    && (BATTLE_CINEMATIC.active || Number(BATTLE_CINEMATIC.scale || 1) > 1.01 || Date.now() < Number(BATTLE_CINEMATIC.letterboxUntil || 0))
+    && Number.isFinite(BATTLE_CINEMATIC.focusX)
+    && Number.isFinite(BATTLE_CINEMATIC.focusY);
+  if(cineActive){
+    const kind = String(BATTLE_CINEMATIC.kind || "");
+    const focusWeight = kind === "evac_depart" ? 0.72 : (kind === "boss_intro" ? 0.66 : (state?.inBattle ? 0.48 : 0.54));
+    targetX = (targetX * (1 - focusWeight)) + (BATTLE_CINEMATIC.focusX * focusWeight);
+    targetY = (targetY * (1 - focusWeight)) + (BATTLE_CINEMATIC.focusY * focusWeight);
+  }
+  const target = cameraClampCenter(targetX, targetY, state);
   const vw = Number(cv?.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
   const vh = Number(cv?.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
   const mobile = isMobileViewport();
@@ -37640,9 +37657,25 @@ function triggerPhase18TigerMoment(t, kind="threat", label=""){
     until:now + (k === "intro" ? 1550 : 980)
   });
   if(k === "intro" || k === "boss"){
+    triggerCinematicCameraCue("boss_intro", t.x, t.y, {
+      scale:isBossTiger(t) ? 1.12 : 1.09,
+      durationMs:isBossTiger(t) ? 1500 : 1220,
+      letterboxMs:isBossTiger(t) ? 1450 : 1050,
+      label:text,
+      shake:k === "intro" ? 0.28 : 0.18,
+      shakeMs:k === "intro" ? 220 : 160
+    });
     queueCameraShake(k === "intro" ? 0.58 : 0.38, k === "intro" ? 260 : 190);
     adaptiveAudioStinger("boss");
   }else if(k === "finish" || k === "capture"){
+    triggerCinematicCameraCue(k === "capture" ? "capture_finish" : "tiger_finish", t.x, t.y, {
+      scale:k === "capture" ? 1.09 : 1.08,
+      durationMs:900,
+      letterboxMs:720,
+      label:text,
+      shake:0.14,
+      shakeMs:120
+    });
     queueCameraShake(0.28, 150);
     adaptiveAudioStinger("peak");
   }else{
@@ -44530,8 +44563,8 @@ function visualExtremeLoadMode(){
 function currentBattleCinematicTargetScale(){
   if(!ENABLE_BATTLE_CINEMATIC) return 1;
   const perfScale = (performanceMode() === "PERFORMANCE" || frameIsSlow()) ? 0.96 : 1;
-  const base = isMobileViewport() ? (isLandscapeViewport() ? 1.10 : 1.16) : 1.14;
-  return clamp(base * perfScale, 1.06, 1.18);
+  const base = isMobileViewport() ? (isLandscapeViewport() ? 1.07 : 1.09) : 1.08;
+  return clamp(base * perfScale, 1.03, 1.10);
 }
 
 function resolveBattleCinematicFocus(t){
@@ -44569,6 +44602,9 @@ function resetBattleCinematic(){
   BATTLE_CINEMATIC.scale = 1;
   BATTLE_CINEMATIC.focusX = Number.isFinite(S?.me?.x) ? S.me.x : (worldWidth(S) * 0.5);
   BATTLE_CINEMATIC.focusY = Number.isFinite(S?.me?.y) ? S.me.y : (worldHeight(S) * 0.5);
+  BATTLE_CINEMATIC.kind = "";
+  BATTLE_CINEMATIC.label = "";
+  BATTLE_CINEMATIC.letterboxUntil = 0;
 }
 
 function triggerBattleCinematic(kind="enter", focusTigerId=null){
@@ -44598,6 +44634,36 @@ function triggerBattleCinematic(kind="enter", focusTigerId=null){
   BATTLE_CINEMATIC.fromScale = from;
   BATTLE_CINEMATIC.toScale = to;
   BATTLE_CINEMATIC.scale = from;
+  BATTLE_CINEMATIC.kind = kind;
+  BATTLE_CINEMATIC.label = "";
+}
+
+function triggerCinematicCameraCue(kind="moment", x=null, y=null, opts={}){
+  if(!ENABLE_BATTLE_CINEMATIC || window.__TUTORIAL_MODE__) return;
+  if(iphoneStabilityModeActive()) return;
+  const now = Date.now();
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  const fx = Number.isFinite(Number(x)) ? Number(x) : (Number.isFinite(S?.me?.x) ? S.me.x : worldW * 0.5);
+  const fy = Number.isFinite(Number(y)) ? Number(y) : (Number.isFinite(S?.me?.y) ? S.me.y : worldH * 0.5);
+  const perfScale = (performanceMode() === "PERFORMANCE" || frameIsSlow() || frameLagTier() >= 1) ? 0.72 : 1;
+  const requestedScale = Number.isFinite(Number(opts.scale)) ? Number(opts.scale) : 1.07;
+  const to = clamp(1 + ((requestedScale - 1) * perfScale), 1.02, isMobileViewport() ? 1.12 : 1.13);
+  const from = battleCinematicScaleNow(now);
+  BATTLE_CINEMATIC.active = true;
+  BATTLE_CINEMATIC.startAt = now;
+  BATTLE_CINEMATIC.durationMs = clamp(Number(opts.durationMs || 1100), 240, 1800);
+  BATTLE_CINEMATIC.fromScale = clamp(from, 1, 1.13);
+  BATTLE_CINEMATIC.toScale = to;
+  BATTLE_CINEMATIC.scale = BATTLE_CINEMATIC.fromScale;
+  BATTLE_CINEMATIC.focusX = clamp(fx, 70, Math.max(70, worldW - 70));
+  BATTLE_CINEMATIC.focusY = clamp(fy, 70, Math.max(70, worldH - 70));
+  BATTLE_CINEMATIC.kind = String(kind || "moment");
+  BATTLE_CINEMATIC.label = String(opts.label || "").slice(0, 48);
+  BATTLE_CINEMATIC.letterboxUntil = now + clamp(Number(opts.letterboxMs || 0), 0, 1800);
+  if(Number(opts.shake || 0) > 0){
+    queueCameraShake(Number(opts.shake), Number(opts.shakeMs || 150));
+  }
 }
 
 function sampleBattleCinematic(){
@@ -44632,8 +44698,35 @@ function sampleBattleCinematic(){
     active,
     scale: BATTLE_CINEMATIC.scale,
     x: Number.isFinite(BATTLE_CINEMATIC.focusX) ? BATTLE_CINEMATIC.focusX : (worldWidth(S) * 0.5),
-    y: Number.isFinite(BATTLE_CINEMATIC.focusY) ? BATTLE_CINEMATIC.focusY : (worldHeight(S) * 0.5)
+    y: Number.isFinite(BATTLE_CINEMATIC.focusY) ? BATTLE_CINEMATIC.focusY : (worldHeight(S) * 0.5),
+    kind:String(BATTLE_CINEMATIC.kind || ""),
+    label:String(BATTLE_CINEMATIC.label || ""),
+    letterboxUntil:Number(BATTLE_CINEMATIC.letterboxUntil || 0)
   };
+}
+
+function drawCinematicCameraOverlay(now=Date.now()){
+  if(!ENABLE_BATTLE_CINEMATIC || iphoneStabilityModeActive()) return;
+  if(now >= Number(BATTLE_CINEMATIC.letterboxUntil || 0)) return;
+  const span = clamp(Number(BATTLE_CINEMATIC.letterboxUntil || now) - now, 0, 1800);
+  const fade = clamp(span / 360, 0, 1);
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha = 0.24 * fade;
+  ctx.fillStyle = "#020617";
+  const barH = clamp(cv.height * 0.045, 18, 34);
+  ctx.fillRect(0, 0, cv.width, barH);
+  ctx.fillRect(0, cv.height - barH, cv.width, barH);
+  const label = String(BATTLE_CINEMATIC.label || "");
+  if(label){
+    ctx.globalAlpha = 0.84 * fade;
+    ctx.fillStyle = "rgba(226,232,240,.96)";
+    ctx.font = "900 13px system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, cv.width * 0.5, barH * 0.52);
+  }
+  ctx.restore();
 }
 
 function queueCameraShake(power=1, durationMs=120){
@@ -47182,6 +47275,14 @@ function realEvacRouteTick(now=Date.now()){
     route.departStartedAt = now;
     route.departUntil = now + (route.key === "helicopter" ? 9500 : 8200);
     route.departNoticeUntil = now + 6200;
+    triggerCinematicCameraCue("evac_depart", route.vehicleX || route.x, route.vehicleY || route.y, {
+      scale:1.075,
+      durationMs:1350,
+      letterboxMs:1250,
+      label:`${route.icon || ""} ${route.label || "Evac"} departing`,
+      shake:0.10,
+      shakeMs:110
+    });
     setEventText(`${route.icon} Civilians boarded. ${route.label} departing!`, 4);
     toast("Evac transport departing");
   }
@@ -47190,6 +47291,14 @@ function realEvacRouteTick(now=Date.now()){
     route.departed = true;
     route.departedAt = now;
     route.successRecap = `${route.icon} ${route.label}: ${Math.max(0, route.boardedCount || 0)}/${Math.max(1, route.boardingTotal || 1)} civilians boarded and departed.`;
+    triggerCinematicCameraCue("evac_clear", route.x, route.y, {
+      scale:1.045,
+      durationMs:820,
+      letterboxMs:640,
+      label:"Evacuation complete",
+      shake:0.06,
+      shakeMs:90
+    });
     setEventText(`${route.icon} Civilian evacuation completed. Finish the mission.`, 3.5);
     toast(route.successRecap);
   }
@@ -53934,6 +54043,12 @@ function triggerTigerHitFeel(t, dealt, opts={}){
     applyCombatKnockback(t, fromX, fromY, tier === "boss" ? 10 : (tier === "heavy" ? 14 : 7), isBossTiger(t) ? 22 : 18);
   }
   if(tier === "boss"){
+    triggerCinematicCameraCue("boss_hit", t.x, t.y - 8, {
+      scale:1.07,
+      durationMs:520,
+      shake:0.16,
+      shakeMs:110
+    });
     emitCombatParticles(tranq ? "tranq" : "crit", t.x, t.y - 8, { sourceX:opts.sourceX, sourceY:opts.sourceY });
     queueImpactPulse(t.x, t.y - 8, "crit");
     sfx("bossImpact");
@@ -57098,6 +57213,7 @@ function draw(){
       drawMapExpansionMinimap();
       drawAbilityCooldownWheel();
       drawMobileUiClearLane();
+      drawCinematicCameraOverlay(Date.now());
     }
     maybeAutosave();
   }catch(err){
