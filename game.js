@@ -1,5 +1,8 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4529";
+const TS_BUILD = "4530";
+const PREMIUM_2D_GRAPHICS_VERSION = 1;
+const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
+const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 if(tg){
   try{
     tg.expand?.();
@@ -40768,12 +40771,13 @@ function rollCooldownLabel(now=Date.now()){
 }
 function rollDodge(){
   if(S.paused || S.missionEnded || S.gameOver) return interactionFeedback("Dodge unavailable right now.", { warn:true });
-  if(!S.inBattle) return interactionFeedback("Roll dodge is available during tiger combat.", { warn:true });
   if(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil) return;
   const now = Date.now();
-  if(rollCooldownLeftMs(now) > 0) return interactionFeedback(`Roll cooling down (${rollCooldownLabel(now)}).`, { battle:true, warn:true });
+  const fieldPounceThreat = now < Number(S._fieldPounceThreatUntil || 0);
+  if(!S.inBattle && !fieldPounceThreat) return interactionFeedback("Roll dodge is available during tiger combat or ambush warnings.", { warn:true });
+  if(rollCooldownLeftMs(now) > 0) return interactionFeedback(`Roll cooling down (${rollCooldownLabel(now)}).`, { battle:S.inBattle, warn:true });
 
-  const t = activeTiger() || lockedTiger();
+  const t = activeTiger() || lockedTiger() || (S.tigers || []).filter((candidate)=>candidate?.alive && Number(candidate._fieldPounceResolveAt || 0) > now).sort((a,b)=>dist(S.me.x,S.me.y,a.x,a.y)-dist(S.me.x,S.me.y,b.x,b.y))[0];
   const away = t ? Math.atan2(S.me.y - t.y, S.me.x - t.x) : ((S.me.face || 0) + Math.PI);
   const fromX = S.me.x;
   const fromY = S.me.y;
@@ -40793,7 +40797,8 @@ function rollDodge(){
   S.rollAnimToY = S.me.y;
   S.me.face = away;
   S.me.step = (S.me.step + 2.2) % (Math.PI * 2);
-  setBattleMsg("Roll executed. Next tiger hit will be dodged.");
+  if(S.inBattle) setBattleMsg("Roll executed. Next tiger hit will be dodged.");
+  else interactionFeedback("Roll executed. Ambush dodged if timed correctly.", { success:true });
   sfx("ui");
   hapticImpact("medium");
   renderCombatControls();
@@ -43088,6 +43093,7 @@ function roamTigers(){
     applyCinematicBossHuntTigerTraits(t);
     cinematicBossHuntAbilityTick(t, now);
     abilityTick(t);
+    resolveTigerFieldPounce(t, now);
 
     if(t.holdUntil && now < t.holdUntil){
       t.vx=0; t.vy=0;
@@ -43431,6 +43437,38 @@ function roamTigers(){
       targetX=S.me.x;
       targetY=S.me.y;
       targetDist=playerDist;
+    }
+
+    const inTallGrass = pointInTallGrass(t.x, t.y, 18, S);
+    const allCivsRescued = !liveCivs.length || liveCivs.every((c)=>!c || !c.alive || c.evac);
+    if(allCivsRescued && playerDist < (motion.detect + 260) * dynPlayerBiasMul){
+      targetX = S.me.x;
+      targetY = S.me.y;
+      targetDist = playerDist;
+      if(now - Number(t._huntAgentIntentAt || 0) > 2800){
+        t._huntAgentIntentAt = now;
+        setTigerIntent(t, "Hunt Agent", 850);
+      }
+    }
+    const fieldPrey = !allCivsRescued
+      ? (priorityCiv || closestCiv || ecoPrey)
+      : S.me;
+    const fieldPreyKind = !allCivsRescued ? "civilian" : "player";
+    if(inTallGrass && fieldPrey && !S.inBattle && !S.missionEnded && !S.paused){
+      const preyDist = dist(t.x, t.y, fieldPrey.x, fieldPrey.y);
+      if(preyDist < (fieldPreyKind === "player" ? 230 : 250)){
+        if(now - Number(t._lurkIntentAt || 0) > 2400){
+          t._lurkIntentAt = now;
+          setTigerIntent(t, fieldPreyKind === "player" ? "Lurk Agent" : "Lurk Prey", 900);
+        }
+        t._ecoBehavior = t._ecoBehavior || "lurk_prey";
+        t._ecoBehaviorUntil = Math.max(Number(t._ecoBehaviorUntil || 0), now + 800);
+        if(preyDist < (fieldPreyKind === "player" ? 138 : 128)){
+          startTigerFieldPounce(t, fieldPrey, fieldPreyKind, now);
+        }
+      }
+    } else if(fieldPreyKind === "player" && fieldPrey && !S.inBattle && playerDist < 112 && now >= Number(t._fieldPounceCooldownUntil || 0)){
+      startTigerFieldPounce(t, fieldPrey, "player", now);
     }
     tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion);
     const packAggroMul = clamp(Number(t._packAggroMul || 1), 0.74, 1.36);
@@ -44071,6 +44109,104 @@ function applyPlayerDamage(dmg, showToast=false){
 
     S.lives = 0;
     return gameOverChoice("You died and ran out of lives.");
+  }
+}
+
+function tigerFieldPounceDamage(t, targetKind="player"){
+  if(!t) return 10;
+  const baseByType = {
+    Scout: 8,
+    Standard: 10,
+    Stalker: 13,
+    Berserker: 18,
+    Alpha: 24
+  };
+  let dmg = Number(baseByType[t.type] || 11);
+  if(isBossTiger(t) || t.nemesisAlias) dmg += 8;
+  if(t.rageOn || Date.now() < Number(t.enragedUntil || 0) || Date.now() < Number(t.bossChargeUntil || 0)) dmg *= 1.18;
+  if(targetKind === "civilian") dmg *= 1.16;
+  else dmg *= 0.92;
+  dmg *= tigerDamageScale(t, targetKind === "civilian" ? "civilian" : "player");
+  return Math.max(1, Math.round(dmg));
+}
+
+function fieldPounceTarget(t){
+  if(!t) return null;
+  const kind = String(t._fieldPounceTargetKind || "");
+  if(kind === "civilian"){
+    const id = Number(t._fieldPounceTargetId || 0);
+    return (S.civilians || []).find((c)=>c && c.id === id && c.alive && !c.evac) || null;
+  }
+  if(kind === "player") return S.me;
+  return null;
+}
+
+function startTigerFieldPounce(t, target, targetKind, now=Date.now()){
+  if(!t || !target || S.inBattle || S.paused || S.gameOver || S.missionEnded) return false;
+  if(now < Number(t._fieldPounceCooldownUntil || 0)) return false;
+  const d = dist(t.x, t.y, target.x, target.y);
+  if(d > (targetKind === "player" ? 142 : 128)) return false;
+  t._fieldPounceTargetKind = targetKind;
+  t._fieldPounceTargetId = targetKind === "civilian" ? target.id : 0;
+  t._fieldPounceResolveAt = now + TIGER_FIELD_POUNCE_TELEGRAPH_MS;
+  t._fieldPounceCooldownUntil = now + TIGER_FIELD_POUNCE_COOLDOWN_MS + rand(300, 1500);
+  t.attackTelegraphStart = now;
+  t.attackTelegraphUntil = t._fieldPounceResolveAt + 180;
+  t.attackTelegraphKind = "pounce";
+  const a = Math.atan2(target.y - t.y, target.x - t.x);
+  t.pounceDirX = Math.cos(a);
+  t.pounceDirY = Math.sin(a);
+  t.huntState = TIGER_HUNT_STATES.POUNCE;
+  t.pounceWindupUntil = t._fieldPounceResolveAt;
+  markTigerBehaviorAnim(t, "pounce", TIGER_FIELD_POUNCE_TELEGRAPH_MS + 420);
+  setTigerIntent(t, targetKind === "civilian" ? "Ambush Prey" : "Ambush Agent", TIGER_FIELD_POUNCE_TELEGRAPH_MS + 360);
+  if(targetKind === "player"){
+    S._fieldPounceThreatUntil = Math.max(Number(S._fieldPounceThreatUntil || 0), t._fieldPounceResolveAt + 420);
+    interactionFeedback("Tiger ambush incoming. Roll to dodge.", { warn:true });
+  }
+  return true;
+}
+
+function resolveTigerFieldPounce(t, now=Date.now()){
+  if(!t || !t.alive || !Number.isFinite(t._fieldPounceResolveAt) || t._fieldPounceResolveAt <= 0 || now < t._fieldPounceResolveAt) return;
+  const targetKind = String(t._fieldPounceTargetKind || "");
+  const target = fieldPounceTarget(t);
+  t._fieldPounceResolveAt = 0;
+  t.attackAnimUntil = now + 420;
+  if(!target) return;
+  const hitRange = targetKind === "player" ? 66 : tigerCivilianHitRange(t);
+  if(dist(t.x, t.y, target.x, target.y) > hitRange + 34) return;
+  if(targetKind === "player"){
+    const dodged = now < Number(S.rollInvulnUntil || 0) || (Number(S.rollBufferedDodges || 0) > 0 && now < Number(S.rollBufferedUntil || 0));
+    if(dodged){
+      S.rollBufferedDodges = Math.max(0, Number(S.rollBufferedDodges || 0) - 1);
+      triggerCombatInteraction("dodge", { tiger:t, target:S.me, x:S.me.x, y:S.me.y - 8, label:"DODGED" });
+      setTigerIntent(t, "Missed", 640);
+      return;
+    }
+    const dmg = tigerFieldPounceDamage(t, "player");
+    applyCombatKnockback(S.me, t.x, t.y, isBossTiger(t) ? 34 : 24, 16);
+    triggerCombatInteraction("player_hit", { tiger:t, target:S.me, x:S.me.x, y:S.me.y - 8, label:"AMBUSH", heavy:isBossTiger(t) || t.type === "Alpha", damage:dmg });
+    applyPlayerDamage(dmg, true);
+    return;
+  }
+  if(targetKind === "civilian" && target.alive && !target.evac){
+    const dmg = tigerFieldPounceDamage(t, "civilian");
+    target.hp = clamp(Number(target.hp || 0) - dmg, 0, Number(target.hpMax || 100));
+    target.riskState = target.hp <= target.hpMax * 0.28 ? "critical" : "threatened";
+    target.helpWanted = true;
+    target.helpUntil = Math.max(Number(target.helpUntil || 0), now + 4200);
+    S.dangerCivId = target.id;
+    S.dangerCivUntil = now + 3600;
+    emitDamagePopup(target.x, target.y - 42, `-${dmg}`, "civilian");
+    queueImpactPulse(target.x, target.y - 4, "player");
+    setTigerIntent(t, "Prey Hit", 700);
+    if(target.hp <= 0){
+      target.alive = false;
+      if(!S.stats || typeof S.stats !== "object") S.stats = {};
+      S.stats.civLost = Math.max(0, Number(S.stats.civLost || 0)) + 1;
+      setEventText("A tiger ambush killed a civilian.", 2.4);
+    }
   }
 }
 
@@ -48690,6 +48826,181 @@ function mobileWeatherTintSpec(){
   return null;
 }
 
+function premium2DHash(seed){
+  let n = Math.floor(Number(seed || 0)) || 0;
+  n = (n ^ (n << 13)) | 0;
+  n = (n ^ (n >> 17)) | 0;
+  n = (n ^ (n << 5)) | 0;
+  return ((n >>> 0) / 4294967295);
+}
+
+function premium2DSeeded(seed, salt=0){
+  return premium2DHash((Number(seed || 0) * 1103515245) + (Number(salt || 0) * 2654435761));
+}
+
+function premium2DMapPalette(themeKey=""){
+  const key = String(themeKey || "").toUpperCase();
+  if(key === "ST_DOWNTOWN"){
+    return {
+      glow:"rgba(56,189,248,.18)",
+      warmth:"rgba(251,191,36,.10)",
+      grassA:"rgba(22,163,74,.38)",
+      grassB:"rgba(20,184,166,.28)",
+      grassStroke:"rgba(187,247,208,.52)"
+    };
+  }
+  if(key === "ST_INDUSTRIAL"){
+    return {
+      glow:"rgba(251,146,60,.16)",
+      warmth:"rgba(250,204,21,.11)",
+      grassA:"rgba(101,163,13,.32)",
+      grassB:"rgba(34,197,94,.23)",
+      grassStroke:"rgba(217,249,157,.46)"
+    };
+  }
+  if(key === "ST_SUBURBS"){
+    return {
+      glow:"rgba(74,222,128,.20)",
+      warmth:"rgba(253,224,71,.12)",
+      grassA:"rgba(34,197,94,.40)",
+      grassB:"rgba(45,212,191,.25)",
+      grassStroke:"rgba(187,247,208,.58)"
+    };
+  }
+  return {
+    glow:"rgba(34,197,94,.22)",
+    warmth:"rgba(250,204,21,.10)",
+    grassA:"rgba(21,128,61,.44)",
+    grassB:"rgba(13,148,136,.26)",
+    grassStroke:"rgba(134,239,172,.58)"
+  };
+}
+
+function premium2DTallGrassPatches(state=S){
+  const w = Math.max(1, worldWidth(state));
+  const h = Math.max(1, worldHeight(state));
+  const mission = Math.max(1, missionIndexForMode(state?.mode || "Story"));
+  const mapIndex = Math.max(0, Number(state?.mapIndex || 0));
+  const seed = (mission * 97) + (mapIndex * 389) + (String(state?.mode || "").length * 53);
+  const count = clamp(Math.round((w * h) / 125000) + 7, 9, isMobileViewport() ? 15 : 22);
+  const patches = [];
+  for(let i=0; i<count; i++){
+    const rx = 52 + premium2DSeeded(seed, i + 11) * 82;
+    const ry = 24 + premium2DSeeded(seed, i + 29) * 44;
+    const x = clamp(70 + premium2DSeeded(seed, i + 47) * (w - 140), rx * 0.6, w - rx * 0.6);
+    const y = clamp(90 + premium2DSeeded(seed, i + 83) * (h - 180), ry * 0.8, h - ry * 0.8);
+    patches.push({
+      x, y, rx, ry,
+      rot:(premium2DSeeded(seed, i + 131) - 0.5) * 0.9,
+      seed:seed + i * 71,
+      alpha:0.55 + premium2DSeeded(seed, i + 173) * 0.30
+    });
+  }
+  return patches;
+}
+
+function pointInTallGrass(x, y, radius=0, state=S){
+  if(!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  for(const p of premium2DTallGrassPatches(state)){
+    const cos = Math.cos(-(p.rot || 0));
+    const sin = Math.sin(-(p.rot || 0));
+    const dx = x - p.x;
+    const dy = y - p.y;
+    const lx = dx * cos - dy * sin;
+    const ly = dx * sin + dy * cos;
+    const rx = Math.max(1, p.rx + radius);
+    const ry = Math.max(1, p.ry + radius);
+    if(((lx * lx) / (rx * rx)) + ((ly * ly) / (ry * ry)) <= 1) return true;
+  }
+  return false;
+}
+
+function drawPremiumTallGrass(opts={}){
+  if(!ctx || !cv) return;
+  const lag = frameLagTier();
+  const mobileFast = !!opts.mobileFast;
+  if(lag >= 3 || (mobileFast && frameBudgetExceeded(0.75))) return;
+  const themeKey = opts.themeKey || mapFamilyKey(currentMap()?.key);
+  const palette = premium2DMapPalette(themeKey);
+  const now = Number(opts.nowTs || Date.now());
+  const patches = premium2DTallGrassPatches(S);
+  const pad = 180;
+  const cam = cameraOffsetSnapshot(S);
+  const viewLeft = -cam.x - pad;
+  const viewTop = -cam.y - pad;
+  const viewRight = -cam.x + cv.width + pad;
+  const viewBottom = -cam.y + cv.height + pad;
+  const bladeStep = mobileFast || lag >= 2 ? 24 : (lag >= 1 ? 18 : 13);
+  ctx.save();
+  for(const p of patches){
+    if(p.x + p.rx < viewLeft || p.x - p.rx > viewRight || p.y + p.ry < viewTop || p.y - p.ry > viewBottom) continue;
+    const sway = Math.sin(now * 0.0016 + p.seed) * 0.08;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate((p.rot || 0) + sway);
+    ctx.globalAlpha = p.alpha;
+    const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, Math.max(p.rx, p.ry));
+    grad.addColorStop(0, palette.grassA);
+    grad.addColorStop(0.65, palette.grassB);
+    grad.addColorStop(1, "rgba(5,46,22,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, p.rx, p.ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if(!mobileFast){
+      ctx.strokeStyle = palette.grassStroke;
+      ctx.lineWidth = 1.4;
+      ctx.globalAlpha = p.alpha * 0.58;
+      for(let bx = -p.rx * 0.82; bx <= p.rx * 0.82; bx += bladeStep){
+        const n = premium2DSeeded(p.seed, Math.round((bx + p.rx) * 3));
+        const localRy = p.ry * Math.sqrt(Math.max(0, 1 - ((bx * bx) / (p.rx * p.rx))));
+        const by = (n - 0.5) * localRy * 0.72;
+        const bladeH = 9 + n * 18;
+        ctx.beginPath();
+        ctx.moveTo(bx, by + bladeH * 0.45);
+        ctx.quadraticCurveTo(bx + (sway * 28) + (n - 0.5) * 8, by - bladeH * 0.4, bx + (n - 0.5) * 13, by - bladeH);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawPremium2DColorGrade(opts={}){
+  if(!ctx || !cv) return;
+  const lag = frameLagTier();
+  if(lag >= 3 || frameBudgetExceeded(0.82)) return;
+  const mobileFast = !!opts.mobileFast;
+  const w = Math.max(cv.width, worldWidth(S));
+  const h = Math.max(cv.height, worldHeight(S));
+  const palette = premium2DMapPalette(opts.themeKey || mapFamilyKey(currentMap()?.key));
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  const sunX = w * 0.22;
+  const sunY = h * 0.10;
+  const glow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, Math.max(w, h) * 0.64);
+  glow.addColorStop(0, mobileFast ? "rgba(255,244,196,.12)" : "rgba(255,244,196,.18)");
+  glow.addColorStop(0.45, palette.warmth);
+  glow.addColorStop(1, "rgba(255,244,196,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, w, h);
+  const cyan = ctx.createRadialGradient(w * 0.78, h * 0.70, 20, w * 0.78, h * 0.70, Math.max(w, h) * 0.58);
+  cyan.addColorStop(0, palette.glow);
+  cyan.addColorStop(1, "rgba(34,211,238,0)");
+  ctx.fillStyle = cyan;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = mobileFast ? 0.08 : 0.12;
+  const depth = ctx.createLinearGradient(0, 0, 0, h);
+  depth.addColorStop(0, "rgba(255,255,255,.10)");
+  depth.addColorStop(0.55, "rgba(0,0,0,0)");
+  depth.addColorStop(1, "rgba(0,8,18,.54)");
+  ctx.fillStyle = depth;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+}
+
 function shouldUseMobileFastMapRenderer(state=S){
   if(!isMobileViewport()) return false;
   const now = Date.now();
@@ -48789,6 +49100,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   }
   drawMapExpansionSectorDetails({ mobileFast:true });
   drawMapExpansionObjectiveRoutes({ mobileFast:true });
+  drawPremiumTallGrass({ nowTs:frameNow, themeKey, mobileFast:true });
 
   if(S.mode !== "Survival"){
     const ex = zone.x;
@@ -48882,6 +49194,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
     ctx.fillRect(drawX, drawY, drawW, drawH);
     ctx.globalAlpha = 1;
   }
+  drawPremium2DColorGrade({ themeKey, mobileFast:true });
 }
 
 function drawDynamicObjectiveMarker(now=Date.now()){
@@ -48973,6 +49286,7 @@ function drawMapScene(){
   const ez = S.evacZone || DEFAULT.evacZone;
   const cacheSig = [
     key, w, h, S.mode, missionIndex, chapter, S.mapIndex || 0, window.__TUTORIAL_MODE__ ? 1 : 0,
+    PREMIUM_2D_GRAPHICS_VERSION,
     Math.round(ez.x || 0), Math.round(ez.y || 0), Math.round(ez.r || 0),
     Math.round(camSnap.x || 0), Math.round(camSnap.y || 0),
     (S.trapsPlaced || []).length, (S.scanPing || 0) > 0 ? 1 : 0, frameNow < (S.fogUntil || 0) ? 1 : 0,
@@ -49559,6 +49873,7 @@ function drawMapScene(){
   drawWaterBodies(1);
   drawMapExpansionSectorDetails({ mobileFast:false });
   drawMapExpansionObjectiveRoutes({ mobileFast:false });
+  drawPremiumTallGrass({ nowTs:frameNow, themeKey, mobileFast:false });
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -49766,6 +50081,7 @@ function drawMapScene(){
   });
   if(detailPassOk) __startupLastDetailedMapAt = Date.now();
   drawPremiumMapLightingPass({ nowTs:Date.now(), w, h, themeKey, chapterStyle });
+  drawPremium2DColorGrade({ themeKey, mobileFast:false });
 
   drawMissionTwistOverlay(Date.now());
 
@@ -51343,6 +51659,39 @@ function drawPremiumFootstepDust(entity, x, y, moveBlend=0, color="rgba(226,232,
   ctx.restore();
 }
 
+function drawGroundedFootContacts(entity, x, y, opts={}){
+  const level = premiumVisualPolishLevel();
+  if(level <= 0 || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const v = animVelocity(entity);
+  const speed = Math.max(v.speed, Number(opts.forceSpeed || 0));
+  if(speed < Number(opts.minSpeed || 0.12)) return;
+  const step = Number(entity.step || 0);
+  const angle = Number.isFinite(opts.angle) ? opts.angle : (Number.isFinite(v.angle) ? v.angle : 0);
+  const sideA = Math.sin(step * Number(opts.stepMul || 1.7));
+  const sideB = -sideA;
+  const alpha = clamp(0.16 + speed * 0.08, 0.16, 0.46) * Number(opts.alphaMul || 1);
+  const footGap = Number(opts.footGap || 8);
+  const footY = Number(opts.footY || 18);
+  const footW = Number(opts.footW || 7);
+  const footH = Number(opts.footH || 2.2);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = opts.color || "rgba(2,6,23,.48)";
+  ctx.globalAlpha = alpha;
+  const contacts = [
+    { sx:-footGap, phase:sideA },
+    { sx:footGap, phase:sideB }
+  ];
+  for(const c of contacts){
+    const plant = clamp(0.55 + Math.max(0, c.phase) * 0.45, 0.35, 1);
+    ctx.beginPath();
+    ctx.ellipse(-7 + c.phase * 3, c.sx + footY, footW * plant, footH * plant, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawPremiumTigerPresence(t, x, y, s=1, alpha=1, now=Date.now(), behaviorAnim=null, speed=0, focused=false){
   const level = premiumVisualPolishLevel();
   if(level <= 0 || !t || !Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -51441,6 +51790,7 @@ function drawCivilian(c){
   ctx.stroke();
   ctx.restore();
   drawWaterRipple(cx, cy, 16, 0.50);
+  drawGroundedFootContacts(c, cx, cy, { footGap:5.5, footY:17, footW:5.6, alphaMul:0.86 });
   drawPremiumFootstepDust(c, cx, cy, moveBlend, c.following ? "rgba(110,231,183,.34)" : "rgba(226,232,240,.24)");
   ctx.save();
   ctx.globalAlpha = S.inBattle ? 0.34 : 0.24;
@@ -51738,6 +52088,7 @@ function drawSoldier(){
   ctx.stroke();
   ctx.restore();
   drawWaterRipple(x, y, 18, 0.56);
+  drawGroundedFootContacts(S.me, x, y, { footGap:7.2, footY:17.5, footW:7, alphaMul:1.05 });
   drawPremiumFootstepDust(S.me, x, y, moveBlend, rolling ? "rgba(125,211,252,.42)" : "rgba(191,219,254,.30)");
   if(meHitFlashAlpha > 0){
     ctx.save();
@@ -52840,6 +53191,16 @@ function drawTiger(t){
   ctx.ellipse(x, y + 18*s, 22*s + (speed * 0.8), 8*s, 0, 0, Math.PI*2);
   ctx.fill();
   ctx.globalAlpha=alpha;
+
+  drawGroundedFootContacts(t, x, y, {
+    angle:Number.isFinite(t.heading) ? t.heading : 0,
+    footGap:10 * s,
+    footY:10 * s,
+    footW:8 * s,
+    footH:2.4 * s,
+    stepMul:2.05,
+    alphaMul:0.95
+  });
 
   if(speed > 1.15 || atkProgress > 0 || t.huntState === TIGER_HUNT_STATES.POUNCE){
     const trailA = Math.atan2(t.vy || Math.sin(t.heading || 0), t.vx || Math.cos(t.heading || 0)) + Math.PI;
@@ -56235,6 +56596,17 @@ window.truthQaAuditVisibleUi = truthQaAuditVisibleUi;
 window.runBaseHqMainMenuPolishAudit = baseHqMainMenuPolishAudit;
 window.runEconomyShopFinalAudit = economyShopFinalAudit;
 window.runGameStabilityMasterAudit = gameStabilityMasterAudit;
+window.runPremium2DHuntAudit = function runPremium2DHuntAudit(){
+  const tigers = Array.isArray(S.tigers) ? S.tigers.filter((t)=>t && t.alive) : [];
+  return {
+    build:TS_BUILD,
+    premium2D:PREMIUM_2D_GRAPHICS_VERSION,
+    tallGrassPatches:premium2DTallGrassPatches(S).length,
+    tigersInTallGrass:tigers.filter((t)=>pointInTallGrass(t.x, t.y, 18, S)).length,
+    activeFieldPounces:tigers.filter((t)=>Number(t._fieldPounceResolveAt || 0) > Date.now()).length,
+    rollAmbushWindow:Date.now() < Number(S._fieldPounceThreatUntil || 0)
+  };
+};
 
 window.resetGame = resetGame;
 window.deploy = deploy;
