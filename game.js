@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4534";
+const TS_BUILD = "4535";
 const PREMIUM_2D_GRAPHICS_VERSION = 2;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
@@ -49212,6 +49212,214 @@ function drawPremium2DColorGrade(opts={}){
   ctx.restore();
 }
 
+function mapArtUpgradeLevel(){
+  const level = premiumVisualPolishLevel();
+  if(level <= 0) return 0;
+  if(frameBudgetExceeded(0.88) || frameLagTier() >= 3) return 0;
+  if(frameBudgetExceeded(0.76) || frameLagTier() >= 2) return 1;
+  return level >= 2 ? 2 : 1;
+}
+
+function mapArtUpgradePalette(themeKey=""){
+  const key = String(themeKey || "").toUpperCase();
+  if(key === "ST_DOWNTOWN"){
+    return {
+      grass:"rgba(76,175,119,.42)",
+      grassHi:"rgba(163,230,53,.46)",
+      mud:"rgba(45,38,42,.34)",
+      stone:"rgba(150,164,182,.56)",
+      shadow:"rgba(3,7,18,.30)",
+      roof:"rgba(96,112,140,.58)",
+      light:"rgba(186,230,253,.18)",
+      bridge:"rgba(112,96,72,.72)"
+    };
+  }
+  if(key === "ST_INDUSTRIAL"){
+    return {
+      grass:"rgba(132,170,54,.36)",
+      grassHi:"rgba(217,249,157,.36)",
+      mud:"rgba(76,50,30,.42)",
+      stone:"rgba(118,124,134,.60)",
+      shadow:"rgba(9,8,7,.34)",
+      roof:"rgba(122,105,88,.62)",
+      light:"rgba(251,191,36,.15)",
+      bridge:"rgba(122,88,58,.76)"
+    };
+  }
+  if(key === "ST_SUBURBS"){
+    return {
+      grass:"rgba(74,222,128,.42)",
+      grassHi:"rgba(187,247,208,.48)",
+      mud:"rgba(70,52,32,.32)",
+      stone:"rgba(166,180,190,.48)",
+      shadow:"rgba(4,12,9,.28)",
+      roof:"rgba(154,128,96,.58)",
+      light:"rgba(253,224,71,.15)",
+      bridge:"rgba(128,96,62,.72)"
+    };
+  }
+  return {
+    grass:"rgba(34,197,94,.44)",
+    grassHi:"rgba(134,239,172,.50)",
+    mud:"rgba(76,55,34,.34)",
+    stone:"rgba(142,154,132,.48)",
+    shadow:"rgba(2,10,7,.30)",
+    roof:"rgba(125,98,72,.56)",
+    light:"rgba(250,204,21,.15)",
+    bridge:"rgba(126,92,58,.74)"
+  };
+}
+
+function drawMapArtUpgrade(opts={}){
+  if(!ctx) return false;
+  const level = mapArtUpgradeLevel();
+  if(level <= 0) return false;
+  const mobileFast = !!opts.mobileFast;
+  const w = Math.max(1, Number(opts.w || worldWidth(S) || cv?.width || WORLD_BASE_WIDTH));
+  const h = Math.max(1, Number(opts.h || worldHeight(S) || cv?.height || WORLD_BASE_HEIGHT));
+  const themeKey = String(opts.themeKey || mapFamilyKey(currentMap()?.key || ""));
+  const palette = mapArtUpgradePalette(themeKey);
+  const mission = Math.max(1, missionIndexForMode(S.mode));
+  const mapIndex = Math.max(0, Number(S.mapIndex || 0));
+  const seed = (mission * 1019) + (mapIndex * 313) + (String(S.mode || "").length * 79);
+  const detailMul = mobileFast ? 0.58 : 1;
+  const rich = level >= 2 && !mobileFast;
+
+  const rnd = (salt)=>premium2DSeeded(seed, salt);
+  const keepout = (x, y, r=24)=>{
+    try{ return typeof inMapScenarioKeepout === "function" && inMapScenarioKeepout(x, y, r); }catch(e){ return false; }
+  };
+
+  ctx.save();
+
+  // Ground detail: flecks, moss, mud, stones. This fights the flat-color look.
+  const flecks = Math.round(clamp((w * h) / 21000, 28, rich ? 130 : 82) * detailMul);
+  for(let i=0; i<flecks; i++){
+    const x = rnd(i + 11) * w;
+    const y = rnd(i + 47) * h;
+    if(keepout(x, y, 16)) continue;
+    const n = rnd(i + 83);
+    const r = (0.8 + rnd(i + 127) * 2.8) * (mobileFast ? 0.9 : 1);
+    ctx.globalAlpha = 0.18 + n * 0.26;
+    ctx.fillStyle = i % 5 === 0 ? palette.grassHi : (i % 3 === 0 ? palette.mud : palette.grass);
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * (1.7 + rnd(i + 151)), r * (0.65 + rnd(i + 173)), (rnd(i + 191) - 0.5) * 1.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const rocks = Math.round(clamp((w * h) / 82000, 8, rich ? 32 : 20) * detailMul);
+  for(let i=0; i<rocks; i++){
+    const x = rnd(i + 251) * w;
+    const y = rnd(i + 277) * h;
+    if(keepout(x, y, 24)) continue;
+    const s = 0.65 + rnd(i + 311) * 1.35;
+    ctx.globalAlpha = 0.32;
+    ctx.fillStyle = palette.shadow;
+    ctx.beginPath();
+    ctx.ellipse(x + 2*s, y + 3*s, 8*s, 3.5*s, -0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.62;
+    ctx.fillStyle = palette.stone;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 7*s, 4.5*s, (rnd(i + 337) - 0.5) * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = "rgba(255,255,255,.55)";
+    ctx.beginPath();
+    ctx.ellipse(x - 2*s, y - 1.4*s, 2.6*s, 1.4*s, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Richer tree clusters and canopy shadows.
+  const treeCountBase = themeKey === "ST_DOWNTOWN" ? 8 : (themeKey === "ST_INDUSTRIAL" ? 12 : 20);
+  const treeCount = Math.round(treeCountBase * detailMul * (rich ? 1.35 : 1));
+  for(let i=0; i<treeCount; i++){
+    const x = clamp(rnd(i + 401) * w, 28, w - 28);
+    const y = clamp(rnd(i + 433) * h, 28, h - 28);
+    if(keepout(x, y, 32)) continue;
+    const s = 0.75 + rnd(i + 461) * 1.35;
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = palette.shadow;
+    ctx.beginPath();
+    ctx.ellipse(x + 4*s, y + 8*s, 15*s, 6*s, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.86;
+    ctx.fillStyle = "rgba(82,54,31,.90)";
+    ctx.fillRect(x - 1.6*s, y + 4*s, 3.2*s, 12*s);
+    const canopy = themeKey === "ST_INDUSTRIAL" ? "rgba(86,129,45,.86)" : "rgba(22,112,55,.90)";
+    ctx.fillStyle = canopy;
+    ctx.beginPath(); ctx.arc(x, y, 10*s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(52,211,153,.54)";
+    ctx.beginPath(); ctx.arc(x - 4*s, y - 4*s, 6*s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(13,74,40,.64)";
+    ctx.beginPath(); ctx.arc(x + 5*s, y + 3*s, 6.5*s, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Buildings and houses get roof highlights so they read as physical objects.
+  const roofCount = Math.round((themeKey === "ST_DOWNTOWN" ? 18 : (themeKey === "ST_SUBURBS" ? 12 : 8)) * detailMul);
+  for(let i=0; i<roofCount; i++){
+    const x = clamp(rnd(i + 601) * w, 44, w - 44);
+    const y = clamp(rnd(i + 641) * h, 44, h - 44);
+    if(keepout(x, y, 42)) continue;
+    const ww = 24 + rnd(i + 683) * (themeKey === "ST_DOWNTOWN" ? 58 : 34);
+    const hh = 14 + rnd(i + 727) * (themeKey === "ST_DOWNTOWN" ? 42 : 24);
+    ctx.globalAlpha = 0.14;
+    ctx.fillStyle = palette.shadow;
+    ctx.fillRect(x - ww/2 + 5, y - hh/2 + 7, ww, hh);
+    ctx.globalAlpha = themeKey === "ST_DOWNTOWN" ? 0.30 : 0.22;
+    ctx.fillStyle = palette.roof;
+    ctx.fillRect(x - ww/2, y - hh/2, ww, hh);
+    ctx.globalAlpha = 0.24;
+    ctx.strokeStyle = "rgba(235,245,255,.62)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - ww/2 + 3, y - hh/2 + 3, Math.max(4, ww - 6), Math.max(4, hh - 6));
+  }
+
+  // Bridges / boardwalks near water zones sell depth and route readability.
+  const zones = Array.isArray(__mapWaterZones) ? __mapWaterZones : [];
+  for(let i=0; i<zones.length; i++){
+    const z = zones[i];
+    if(!z) continue;
+    const rad = typeof waterZoneRadii === "function" ? waterZoneRadii(z) : { rx:Number(z.rx || z.r || 70), ry:Number(z.ry || z.r || 30) };
+    const x = Number(z.x || 0);
+    const y = Number(z.y || 0);
+    const rx = Math.max(20, Number(rad.rx || 60));
+    const angle = Number(z.rot || 0) + (i % 2 ? 0.05 : -0.05);
+    const len = clamp(rx * 1.05, 54, 170);
+    const bw = 10 + (i % 3) * 2;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.globalAlpha = 0.26;
+    ctx.fillStyle = palette.shadow;
+    ctx.fillRect(-len/2 + 3, -bw/2 + 5, len, bw + 4);
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = palette.bridge;
+    ctx.fillRect(-len/2, -bw/2, len, bw);
+    ctx.strokeStyle = "rgba(255,236,190,.34)";
+    ctx.lineWidth = 1;
+    const plankStep = mobileFast ? 18 : 12;
+    for(let px=-len/2 + 6; px<len/2; px+=plankStep){
+      ctx.beginPath();
+      ctx.moveTo(px, -bw/2);
+      ctx.lineTo(px - 2, bw/2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Foreground depth wash: keeps the map cinematic without covering gameplay.
+  ctx.globalAlpha = mobileFast ? 0.08 : 0.12;
+  const depth = ctx.createLinearGradient(0, 0, w, h);
+  depth.addColorStop(0, palette.light);
+  depth.addColorStop(0.55, "rgba(255,255,255,0)");
+  depth.addColorStop(1, palette.shadow);
+  ctx.fillStyle = depth;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+  return true;
+}
+
 function shouldUseMobileFastMapRenderer(state=S){
   if(!isMobileViewport()) return false;
   const now = Date.now();
@@ -49312,6 +49520,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   drawMapExpansionSectorDetails({ mobileFast:true });
   drawMapExpansionObjectiveRoutes({ mobileFast:true });
   drawPremiumTallGrass({ nowTs:frameNow, themeKey, mobileFast:true });
+  drawMapArtUpgrade({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
 
   if(S.mode !== "Survival"){
     const ex = zone.x;
@@ -50085,6 +50294,7 @@ function drawMapScene(){
   drawMapExpansionSectorDetails({ mobileFast:false });
   drawMapExpansionObjectiveRoutes({ mobileFast:false });
   drawPremiumTallGrass({ nowTs:frameNow, themeKey, mobileFast:false });
+  drawMapArtUpgrade({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -57146,6 +57356,19 @@ window.truthQaAuditVisibleUi = truthQaAuditVisibleUi;
 window.runBaseHqMainMenuPolishAudit = baseHqMainMenuPolishAudit;
 window.runEconomyShopFinalAudit = economyShopFinalAudit;
 window.runGameStabilityMasterAudit = gameStabilityMasterAudit;
+window.runMapArtUpgradeAudit = function runMapArtUpgradeAudit(){
+  const themeKey = mapFamilyKey(currentMap()?.key || "");
+  return {
+    build:TS_BUILD,
+    mapArtUpgrade:"phase1",
+    level:mapArtUpgradeLevel(),
+    themeKey,
+    palette:mapArtUpgradePalette(themeKey),
+    waterZones:Array.isArray(__mapWaterZones) ? __mapWaterZones.length : 0,
+    tallGrassPatches:premium2DTallGrassPatches(S).length,
+    mobileFast:shouldUseMobileFastMapRenderer(S)
+  };
+};
 window.runPremium2DHuntAudit = function runPremium2DHuntAudit(){
   const tigers = Array.isArray(S.tigers) ? S.tigers.filter((t)=>t && t.alive) : [];
   return {
