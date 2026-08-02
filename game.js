@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4531";
+const TS_BUILD = "4532";
 const PREMIUM_2D_GRAPHICS_VERSION = 2;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
@@ -18938,28 +18938,39 @@ let __adaptiveAudioLastBossAt=0;
 let __adaptiveAudioLastDangerAt=0;
 let __gameMusic=null;
 let __gameMusicLastTickAt=0;
+let __audioUnlockedStingerPlayed=false;
+const AUDIO_AUDIBILITY_BOOST = 1.42;
 function ensureAudio(){
   if(!S.soundOn) return;
   if(!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
   if(AC.state==="suspended") AC.resume();
   if(!__audioMasterGain && AC){
     __audioMasterGain = AC.createGain();
-    __audioMasterGain.gain.value = 0.92;
+    __audioMasterGain.gain.value = 1.0;
     __audioMasterGain.connect(AC.destination);
   }
   S.audioUnlocked=true;
 }
-document.addEventListener("pointerdown", ()=>{
-  if(!S.audioUnlocked) ensureAudio();
+function unlockGameAudioFromGesture(){
+  if(!S.soundOn) return;
+  const wasUnlocked = !!S.audioUnlocked;
+  ensureAudio();
   startGameMusicDirector();
-}, {once:true});
+  if(!wasUnlocked && !__audioUnlockedStingerPlayed){
+    __audioUnlockedStingerPlayed = true;
+    setTimeout(()=>sfx("audioReady"), 24);
+  }
+}
+["pointerdown","touchstart","click"].forEach((eventName)=>{
+  document.addEventListener(eventName, unlockGameAudioFromGesture, { passive:true });
+});
 function beep(f=440,ms=80,type="sine",vol=0.06){
   if(!S.soundOn) return;
   try{
     ensureAudio();
     if(!AC || !__audioMasterGain) return;
     const o=AC.createOscillator(), g=AC.createGain();
-    o.type=type; o.frequency.value=f; g.gain.value=vol;
+    o.type=type; o.frequency.value=f; g.gain.value=clamp(Number(vol || 0) * AUDIO_AUDIBILITY_BOOST, 0.0001, 0.18);
     o.connect(g); g.connect(__audioMasterGain);
     o.start(); setTimeout(()=>o.stop(), ms);
   }catch(e){}
@@ -18973,6 +18984,12 @@ function sfxGate(name, minMs=36){
 }
 function sfx(name){
   if(!S.soundOn) return;
+  if(name==="audioReady"){
+    if(!sfxGate("audioReady", 900)) return;
+    beep(330,70,"triangle",0.055);
+    setTimeout(()=>beep(494,82,"triangle",0.048),74);
+    setTimeout(()=>beep(660,92,"sine",0.042),154);
+  }
   if(name==="ui"){ beep(420,64,"sine",0.042); }
   if(name==="scan"){
     if(!sfxGate("scan", 120)) return;
@@ -19078,6 +19095,7 @@ function toggleSound(){
     ensureAudio();
     startAdaptiveAudioDirector();
     startGameMusicDirector();
+    sfx("audioReady");
     if(introOverlayVisible()){
       playLaunchTheme(true);
       startLaunchMusicLoop(true);
@@ -19277,7 +19295,7 @@ function gameMusicMode(){
 function gameMusicSpec(mode){
   if(mode === "hq"){
     return {
-      vol:0.115,
+      vol:0.18,
       gap:440,
       wave:"triangle",
       root:[146.83, 196.00, 220.00, 293.66, 329.63],
@@ -19287,7 +19305,7 @@ function gameMusicSpec(mode){
   }
   if(mode === "battle"){
     return {
-      vol:0.145,
+      vol:0.22,
       gap:255,
       wave:"triangle",
       root:[130.81, 155.56, 174.61, 196.00, 261.63],
@@ -19297,7 +19315,7 @@ function gameMusicSpec(mode){
   }
   if(mode === "mission"){
     return {
-      vol:0.105,
+      vol:0.17,
       gap:520,
       wave:"sine",
       root:[164.81, 196.00, 220.00, 246.94, 329.63],
@@ -19306,7 +19324,7 @@ function gameMusicSpec(mode){
     };
   }
   return {
-    vol:0.095,
+    vol:0.16,
     gap:560,
     wave:"triangle",
     root:[196.00, 246.94, 293.66, 392.00, 493.88],
@@ -19367,7 +19385,7 @@ function gameMusicDirectorTick(){
   }
   const spec = gameMusicSpec(mode);
   const at = AC.currentTime;
-  const targetVol = iphoneStabilityModeActive?.() && frameLagTier?.() >= 2 ? 0.035 : spec.vol;
+  const targetVol = iphoneStabilityModeActive?.() && frameLagTier?.() >= 2 ? 0.07 : spec.vol;
   __gameMusic.out.gain.cancelScheduledValues(at);
   __gameMusic.out.gain.setTargetAtTime(targetVol, at, 0.28);
   if(__gameMusic.mode !== mode){
@@ -19397,6 +19415,10 @@ function gameMusicDirectorTick(){
     gameMusicNote(78, 54, "triangle", spec.vol * 0.44, at + 0.004);
     __gameMusic.nextBeatAt = at + 0.50;
   }
+}
+function tickAudioDirectors(){
+  adaptiveAudioDirectorTick();
+  gameMusicDirectorTick();
 }
 
 // ===================== HELPERS =====================
@@ -55812,6 +55834,9 @@ function draw(){
     safeTick("maybeRenderHUD", maybeRenderHUD);
     if(!startupLoading) safeTick("updateEngage", updateEngage);
     if(!startupLoading) safeTick("respawnTick", respawnTick);
+    runFrameTask("adaptiveAudio", frameInterval(220, 1.4), tickAudioDirectors, {
+      costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+    });
     if(!startupLoading && baseHqActive()){
       safeTick("baseHqMoveTick", baseHqMoveTick);
       safeTick("drawBaseHQScene", ()=>drawBaseHQScene(Date.now()));
@@ -55831,12 +55856,6 @@ function draw(){
         costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
     }
-    runFrameTask("adaptiveAudio", frameInterval(240, 1.4), ()=>{
-      adaptiveAudioDirectorTick();
-      gameMusicDirectorTick();
-    }, {
-      costHint:0.25, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
-    });
     runFrameTask("runtimeMemoryCleanup", frameInterval(lagCritical ? 1320 : (lagHeavy ? 1080 : 880), 1.5), runtimeMemoryCleanupTick, {
       costHint:0.35, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
     });
@@ -56818,8 +56837,11 @@ window.runAudioRollVisualAudit = function runAudioRollVisualAudit(){
     build:TS_BUILD,
     soundOn:!!S.soundOn,
     audioUnlocked:!!S.audioUnlocked,
+    audioContextState:AC?.state || "",
+    audioBoost:AUDIO_AUDIBILITY_BOOST,
     musicActive:!!__gameMusic,
     musicMode:__gameMusic?.mode || gameMusicMode(),
+    musicTick:__gameMusicLastTickAt || 0,
     rollHudVisible:!!(
       document.getElementById("touchFieldRollBtn") &&
       document.getElementById("touchFieldRollBtn").style.display !== "none"
