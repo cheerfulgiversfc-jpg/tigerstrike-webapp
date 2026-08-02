@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4533";
+const TS_BUILD = "4534";
 const PREMIUM_2D_GRAPHICS_VERSION = 2;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
@@ -52053,6 +52053,16 @@ function drawAnimatedTigerLegCycle(t, s, colors, behaviorAnim={}, speed=0, gaitS
     ctx.beginPath();
     ctx.ellipse(footX + phase * 1.6 * s, pawY + 1.5 * s, 3.7 * s * pawStretch, 1.65 * s, 0, 0, Math.PI * 2);
     ctx.fill();
+    if(quality === "full"){
+      ctx.strokeStyle = "rgba(245,245,245,.70)";
+      ctx.lineWidth = 0.72 * s;
+      for(let toe=-1; toe<=1; toe++){
+        ctx.beginPath();
+        ctx.moveTo(footX + (toe * 1.6 * s), pawY + 1.15 * s);
+        ctx.lineTo(footX + (toe * 1.9 * s) + (2.2 * s), pawY + 2.25 * s);
+        ctx.stroke();
+      }
+    }
     if(quality === "full" && (speed > 1.2 || pounce)){
       ctx.globalAlpha = 0.26;
       ctx.strokeStyle = pounce ? "rgba(251,191,36,.65)" : "rgba(254,215,170,.45)";
@@ -52074,6 +52084,122 @@ function drawAnimatedTigerLegCycle(t, s, colors, behaviorAnim={}, speed=0, gaitS
     ctx.lineTo((injuredOffset+2)*s,17*s);
     ctx.moveTo((injuredOffset+2)*s,14*s);
     ctx.lineTo((injuredOffset-2)*s,17*s);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function tigerVisualUpgradeLevel(){
+  const level = premiumVisualPolishLevel();
+  if(level <= 0) return 0;
+  if(frameBudgetExceeded(0.86) || frameLagTier() >= 2) return 1;
+  return level >= 2 ? 2 : 1;
+}
+
+function tigerIsHiddenInGrass(t){
+  if(!t || typeof pointInTallGrass !== "function") return false;
+  if(!pointInTallGrass(Number(t.x || 0), Number(t.y || 0), 22, S)) return false;
+  const focused = S.inBattle && (S.activeTigerId === t.id || S.lockedTigerId === t.id);
+  const near = dist(Number(t.x || 0), Number(t.y || 0), Number(S.me?.x || 0), Number(S.me?.y || 0)) < 132;
+  return !focused && (!near || t.huntState === TIGER_HUNT_STATES.STALK || t.type === "Stalker" || t.eliteMutation === "camouflage");
+}
+
+function drawTigerGrassCover(t, x, y, s=1, alpha=1, now=Date.now(), layer="over"){
+  const level = tigerVisualUpgradeLevel();
+  if(level <= 0 || !tigerIsHiddenInGrass(t)) return;
+  const over = layer === "over";
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha * (over ? 0.62 : 0.24), 0.08, over ? 0.78 : 0.32);
+  ctx.lineCap = "round";
+  const seed = Number(t.id || 0) * 13.37;
+  const count = level >= 2 ? 18 : 10;
+  for(let i=0; i<count; i++){
+    const a = seed + i * 1.73;
+    const bx = x + Math.cos(a) * (8 + (i % 5) * 5) * s;
+    const by = y + 15 * s + Math.sin(a * 1.4) * 8 * s;
+    const lean = Math.sin(now * 0.002 + i + seed) * 5 * s;
+    const h = (16 + (i % 4) * 5) * s;
+    ctx.strokeStyle = i % 3 === 0 ? "rgba(74,222,128,.78)" : "rgba(34,197,94,.62)";
+    ctx.lineWidth = (over ? 2.8 : 1.9) * s;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.quadraticCurveTo(bx + lean * 0.4, by - h * 0.55, bx + lean, by - h);
+    ctx.stroke();
+  }
+  if(over){
+    ctx.globalAlpha = clamp(alpha * 0.18, 0.06, 0.22);
+    ctx.fillStyle = "rgba(21,128,61,.88)";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 13 * s, 37 * s, 18 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = clamp(alpha * 0.84, 0.28, 0.88);
+    ctx.fillStyle = "rgba(220,252,231,.96)";
+    ctx.font = `900 ${Math.round(8.5 * s)}px system-ui`;
+    ctx.textAlign = "center";
+    ctx.fillText("HIDDEN", x, y - 36 * s);
+    ctx.textAlign = "start";
+  }
+  ctx.restore();
+}
+
+function drawTigerAnatomyDetails(t, s, c, visual, behaviorAnim, now, headReach=0, headBob=0, lifePhase=0){
+  const level = tigerVisualUpgradeLevel();
+  if(level <= 0) return;
+  const pounce = behaviorAnim?.pounce ? 1 : 0;
+  const roar = behaviorAnim?.roaring ? 1 : 0;
+  ctx.save();
+  ctx.globalAlpha = 0.88;
+  ctx.fillStyle = "rgba(255,236,196,.12)";
+  ctx.beginPath();
+  ctx.ellipse(-11*s, -4*s, 8*s, 8*s, -0.15, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(18,24,32,.18)";
+  ctx.beginPath();
+  ctx.ellipse(9*s, 1*s, 10*s, 9*s, 0.12, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = c.stripe;
+  ctx.lineWidth = 1.1*s;
+  ctx.globalAlpha = 0.66;
+  for(let i=0; i<3; i++){
+    const yy = (-2 + i * 3) * s;
+    ctx.beginPath();
+    ctx.moveTo((-19 + i * 3)*s, yy);
+    ctx.quadraticCurveTo((-12 + i * 2)*s, (yy + 2*s), (-7 + i*2)*s, yy + 7*s);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.9;
+  ctx.strokeStyle = "rgba(245,245,235,.62)";
+  ctx.lineWidth = 0.85*s;
+  const whiskerBaseX = (26 + headReach) * s;
+  const whiskerBaseY = (-4 + headBob * 0.5) * s;
+  for(let i=-1; i<=1; i++){
+    ctx.beginPath();
+    ctx.moveTo(whiskerBaseX, whiskerBaseY + i * 1.6 * s);
+    ctx.lineTo((34 + headReach) * s, whiskerBaseY + i * 3.6 * s);
+    ctx.stroke();
+  }
+  if(roar || pounce){
+    ctx.fillStyle = "rgba(255,247,237,.95)";
+    ctx.beginPath();
+    ctx.moveTo((20 + headReach)*s, (-1 + headBob*.5)*s);
+    ctx.lineTo((21.8 + headReach)*s, (3 + roar*2)*s);
+    ctx.lineTo((23.5 + headReach)*s, (-1 + headBob*.5)*s);
+    ctx.fill();
+  }
+  if(level >= 2 && visual?.alphaMantle){
+    ctx.globalAlpha = 0.42;
+    ctx.strokeStyle = c.accent || "rgba(251,191,36,.8)";
+    ctx.lineWidth = 2*s;
+    ctx.beginPath();
+    ctx.arc(11*s, -5*s, 17*s, -1.4, 1.35);
+    ctx.stroke();
+  }
+  if(level >= 2 && behaviorAnim?.stalking){
+    ctx.globalAlpha = 0.34 + Math.sin(now * 0.006 + lifePhase) * 0.08;
+    ctx.strokeStyle = "rgba(250,204,21,.78)";
+    ctx.lineWidth = 1.2 * s;
+    ctx.beginPath();
+    ctx.arc((22 + headReach)*s, (-8 + headBob*.5)*s, 7*s, -0.25, 1.1);
     ctx.stroke();
   }
   ctx.restore();
@@ -53477,12 +53603,15 @@ function drawTiger(t){
   const bodyLift = clamp(gaitBlend * 2.4 + (sprinting ? 1.35 : 0), 0, 3.8);
   const x=smooth.x, y=smooth.y + bob - bodyLift + (strideBounce * 0.36);
   const tigerFocus = S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id);
+  const grassHidden = tigerIsHiddenInGrass(t);
+  if(grassHidden && !tigerFocus) alpha *= 0.72;
   // Phase 2 readability: stronger local separation from terrain.
   let s=1.0;
   if(t.type==="Scout") s=0.85;
   if(t.type==="Alpha") s=1.22;
   if(t.type==="Berserker") s=1.10;
   s *= tigerVisualScale(t);
+  if(grassHidden) drawTigerGrassCover(t, x, y, s, alpha, now, "under");
   drawEliteTigerMutationAura(t, x, y, s, Math.max(alpha, 0.72), now);
   ctx.save();
   ctx.globalAlpha = 0.34 * alpha;
@@ -53676,9 +53805,10 @@ function drawTiger(t){
   const roarAmt = behaviorAnim.roaring ? 1 : 0;
   const pounceAmt = behaviorAnim.pounce ? 1 : 0;
   const staggerAmt = behaviorAnim.stagger ? 1 : 0;
+  const postureReach = (pounceAmt * 5.5) - (crouchAmt * 2.0) + (roarAmt * 1.4);
   const captureShake = behaviorAnim.captureStruggle ? Math.sin(now * 0.058) * 2.7 : 0;
-  ctx.translate(((staggerAmt * Math.sin(now * 0.085) * 2.2) + captureShake) * s, ((crouchAmt * 4.3) + (limpAmt * 1.8) - (roarAmt * 1.7) - (pounceAmt * 1.4) + (staggerAmt * 1.5)) * s);
-  ctx.scale(1 + crouchAmt * 0.10 + pounceAmt * 0.04, 1 - crouchAmt * 0.12 + roarAmt * 0.05);
+  ctx.translate(((staggerAmt * Math.sin(now * 0.085) * 2.2) + captureShake) * s, ((crouchAmt * 6.2) + (limpAmt * 2.5) - (roarAmt * 2.2) - (pounceAmt * 2.8) + (staggerAmt * 1.5)) * s);
+  ctx.scale(1 + crouchAmt * 0.16 + pounceAmt * 0.10, 1 - crouchAmt * 0.20 + roarAmt * 0.08);
   ctx.rotate((limpAmt * Math.sin(lifePhase * 1.7) * 0.075) - (roarAmt * 0.035) + (pounceAmt * 0.045) + (staggerAmt * Math.sin(now * 0.09) * 0.04) + (behaviorAnim.captureStruggle ? Math.sin(now * 0.045) * 0.055 : 0));
 
   ctx.fillStyle=c.body;
@@ -53714,6 +53844,7 @@ function drawTiger(t){
   ctx.lineTo((23.5 + attackPosture)*s, (-2.3 + (headBob * 0.50))*s);
   ctx.closePath();
   ctx.fill();
+  drawTigerAnatomyDetails(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob, lifePhase);
   if(atkProgress > 0){
     const biteOpen = atkKind === "charge" ? 1.2 : (atkKind === "pounce" ? 1.0 : 0.75);
     const jawDrop = atkSwing * biteOpen * 2.4;
@@ -53857,6 +53988,7 @@ function drawTiger(t){
     ctx.restore();
   }
   ctx.restore();
+  if(grassHidden) drawTigerGrassCover(t, x, y, s, alpha, now, "over");
 
   if(t._held){
     ctx.globalAlpha=0.35;
@@ -57019,8 +57151,11 @@ window.runPremium2DHuntAudit = function runPremium2DHuntAudit(){
   return {
     build:TS_BUILD,
     premium2D:PREMIUM_2D_GRAPHICS_VERSION,
+    tigerVisualUpgrade:"phase1",
+    animatedTigerBodies:true,
     tallGrassPatches:premium2DTallGrassPatches(S).length,
     tigersInTallGrass:tigers.filter((t)=>pointInTallGrass(t.x, t.y, 18, S)).length,
+    hiddenTigers:tigers.filter((t)=>tigerIsHiddenInGrass(t)).length,
     activeFieldPounces:tigers.filter((t)=>Number(t._fieldPounceResolveAt || 0) > Date.now()).length,
     rollAmbushWindow:Date.now() < Number(S._fieldPounceThreatUntil || 0)
   };
