@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4532";
+const TS_BUILD = "4533";
 const PREMIUM_2D_GRAPHICS_VERSION = 2;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
@@ -51917,6 +51917,168 @@ function drawGroundedFootContacts(entity, x, y, opts={}){
   ctx.restore();
 }
 
+function premiumGaitBlend(entity, fallbackTopSpeed=2.4){
+  const v = animVelocity(entity);
+  return clamp(v.speed / Math.max(0.25, Number(fallbackTopSpeed) || 2.4), 0, 1);
+}
+
+function drawAnimatedBipedGait(entity, opts={}){
+  const quality = animationPassQuality();
+  if(quality === "lite" || !entity) return;
+  const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 2.4)), 0, 1);
+  const active = blend > 0.06 || opts.force;
+  if(!active) return;
+  const step = Number(entity.step || 0) + Number(opts.phase || 0);
+  const run = clamp(blend * (opts.runBoost || 1), 0, 1.25);
+  const stride = Math.sin(step * Number(opts.stepRate || 2.1));
+  const counter = Math.sin(step * Number(opts.stepRate || 2.1) + Math.PI);
+  const kneeLift = Math.abs(Math.sin(step * Number(opts.stepRate || 2.1))) * run;
+  const armColor = opts.armColor || "rgba(32,40,54,.92)";
+  const legColor = opts.legColor || "rgba(28,34,46,.96)";
+  const bootColor = opts.bootColor || "rgba(8,12,20,.96)";
+  const scale = Number(opts.scale || 1);
+  const alpha = clamp(Number(opts.alpha || 1), 0.15, 1);
+  const hipY = Number(opts.hipY || 7) * scale;
+  const footY = Number(opts.footY || 22) * scale;
+  const shoulderY = Number(opts.shoulderY || -9) * scale;
+  const handY = Number(opts.handY || 4) * scale;
+  const legSpread = Number(opts.legSpread || 5.8) * scale;
+  const armSpread = Number(opts.armSpread || 11.5) * scale;
+  const swing = (Number(opts.swing || 7.2) * run) * scale;
+  const lift = (Number(opts.lift || 4.2) * kneeLift) * scale;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // Rear arm and leg first so the torso can sit naturally on top.
+  ctx.strokeStyle = legColor;
+  ctx.lineWidth = Number(opts.legWidth || 4.2) * scale;
+  [
+    { sx:-legSpread, phase:stride, rear:true },
+    { sx:legSpread, phase:counter, rear:false }
+  ].forEach((leg)=>{
+    const kneeX = leg.sx + leg.phase * swing * 0.42;
+    const kneeY = hipY + (6.8 * scale) - Math.max(0, leg.phase) * lift * 0.35;
+    const footX = leg.sx + leg.phase * swing;
+    const footPlant = leg.phase > 0 ? 1 : 0.72;
+    const fy = footY - Math.max(0, -leg.phase) * lift;
+    ctx.beginPath();
+    ctx.moveTo(leg.sx, hipY);
+    ctx.lineTo(kneeX, kneeY);
+    ctx.lineTo(footX, fy);
+    ctx.stroke();
+    ctx.fillStyle = bootColor;
+    ctx.beginPath();
+    ctx.ellipse(footX + leg.phase * 1.2 * scale, fy + 1.8 * scale, (4.4 + footPlant) * scale, 2.2 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.strokeStyle = armColor;
+  ctx.lineWidth = Number(opts.armWidth || 3.7) * scale;
+  [
+    { sx:-armSpread, phase:counter },
+    { sx:armSpread, phase:stride }
+  ].forEach((arm)=>{
+    const elbowX = arm.sx + arm.phase * swing * 0.35;
+    const elbowY = shoulderY + (8.5 * scale);
+    const handX = arm.sx + arm.phase * swing * 0.74;
+    const handDrop = Math.max(0, -arm.phase) * lift * 0.36;
+    ctx.beginPath();
+    ctx.moveTo(arm.sx, shoulderY);
+    ctx.lineTo(elbowX, elbowY);
+    ctx.lineTo(handX, handY + handDrop);
+    ctx.stroke();
+    ctx.fillStyle = opts.handColor || armColor;
+    ctx.beginPath();
+    ctx.arc(handX, handY + handDrop, 2.2 * scale, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  if(quality === "full"){
+    ctx.globalAlpha = alpha * clamp(0.24 + run * 0.26, 0.18, 0.52);
+    ctx.strokeStyle = opts.motionColor || "rgba(226,232,240,.32)";
+    ctx.lineWidth = 1.2 * scale;
+    ctx.beginPath();
+    ctx.moveTo(-legSpread - 7 * scale, footY + 3 * scale);
+    ctx.lineTo(-legSpread - 17 * scale, footY + 7 * scale);
+    ctx.moveTo(legSpread + 7 * scale, footY + 3 * scale);
+    ctx.lineTo(legSpread + 17 * scale, footY + 7 * scale);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAnimatedTigerLegCycle(t, s, colors, behaviorAnim={}, speed=0, gaitState="walk"){
+  const quality = animationPassQuality();
+  const c = colors || tigerColors(t);
+  const step = Number(t?.step || 0);
+  const gaitMul = gaitState==="sprint" ? 1.35 : (gaitState==="run" ? 1.16 : (gaitState==="trot" ? 0.92 : 0.68));
+  const crouch = behaviorAnim?.crouch ? 0.82 : 0;
+  const limp = behaviorAnim?.limping ? clamp(1 - Number(behaviorAnim.hpPct || 1), 0.15, 0.82) : 0;
+  const pounce = behaviorAnim?.pounce ? 1 : 0;
+  const travel = clamp(speed / 3.4, 0.14, 1.25) * gaitMul;
+  const swingAmp = (5.4 + speed * 3.1) * s * travel;
+  const liftAmp = (2.8 + speed * 1.2) * s * travel;
+  const hipY = (7 + crouch * 2.8 - pounce * 2.0) * s;
+  const footY = (22 - crouch * 2.5 - pounce * 3.2) * s;
+  const legs = [
+    { hip:-13, phase:0, front:false },
+    { hip:-4, phase:Math.PI, front:false },
+    { hip:8, phase:Math.PI * 0.82, front:true },
+    { hip:17, phase:Math.PI * 1.82, front:true }
+  ];
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for(let i=0; i<legs.length; i++){
+    const leg = legs[i];
+    const phase = Math.sin(step * 2.15 + leg.phase);
+    const limpLeg = limp > 0 && i === clamp(Math.floor(Number(ensureTigerVisualProfile(t)?.injuredLeg || 0)), 0, 3);
+    const localSwing = swingAmp * (limpLeg ? 0.45 : 1);
+    const kneeX = (leg.hip * s) + phase * localSwing * 0.36;
+    const kneeY = hipY + (6.5 * s) + (limpLeg ? 2.2 * s : 0);
+    const footX = (leg.hip * s) + phase * localSwing;
+    const footLift = Math.max(0, -phase) * liftAmp * (limpLeg ? 0.48 : 1);
+    const pawY = footY - footLift + (limpLeg ? 1.8 * s : 0);
+    const pawStretch = 1 + Math.max(0, phase) * 0.32;
+    ctx.strokeStyle = c.body;
+    ctx.lineWidth = (leg.front ? 3.4 : 3.0) * s;
+    ctx.beginPath();
+    ctx.moveTo(leg.hip * s, hipY);
+    ctx.quadraticCurveTo(kneeX, kneeY, footX, pawY);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(24,26,33,.94)";
+    ctx.beginPath();
+    ctx.ellipse(footX + phase * 1.6 * s, pawY + 1.5 * s, 3.7 * s * pawStretch, 1.65 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if(quality === "full" && (speed > 1.2 || pounce)){
+      ctx.globalAlpha = 0.26;
+      ctx.strokeStyle = pounce ? "rgba(251,191,36,.65)" : "rgba(254,215,170,.45)";
+      ctx.lineWidth = 1.1 * s;
+      ctx.beginPath();
+      ctx.moveTo(footX - 4 * s, pawY + 3.2 * s);
+      ctx.lineTo(footX - 13 * s - Math.max(0, phase) * 5 * s, pawY + 5.5 * s);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+  if(limp > 0){
+    const injuredOffsets = [-13,-4,8,17];
+    const injuredOffset = injuredOffsets[clamp(Math.floor(Number(ensureTigerVisualProfile(t)?.injuredLeg || 0)), 0, 3)];
+    ctx.strokeStyle="rgba(244,226,190,.94)";
+    ctx.lineWidth=2.6*s;
+    ctx.beginPath();
+    ctx.moveTo((injuredOffset-2)*s,14*s);
+    ctx.lineTo((injuredOffset+2)*s,17*s);
+    ctx.moveTo((injuredOffset+2)*s,14*s);
+    ctx.lineTo((injuredOffset-2)*s,17*s);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawPremiumTigerPresence(t, x, y, s=1, alpha=1, now=Date.now(), behaviorAnim=null, speed=0, focused=false){
   const level = premiumVisualPolishLevel();
   if(level <= 0 || !t || !Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -52058,6 +52220,19 @@ function drawCivilian(c){
 
   ctx.fillStyle="rgba(8,12,20,.30)";
   ctx.beginPath(); ctx.ellipse(0, 20, 15, 6.2, 0, 0, Math.PI*2); ctx.fill();
+  drawAnimatedBipedGait(c, {
+    blend:moveBlend,
+    topSpeed:c.following ? 2.1 : 1.4,
+    phase:(c.id || 0) * 0.31,
+    legColor:c.pants,
+    bootColor:"rgba(30,36,48,.96)",
+    armColor:"rgba(35,44,58,.92)",
+    handColor:c.skin,
+    motionColor:c.following ? "rgba(110,231,183,.34)" : "rgba(226,232,240,.28)",
+    swing:c.following ? 8.4 : 6.1,
+    lift:c.following ? 4.8 : 3.2,
+    alpha:0.88
+  });
 
   ctx.fillStyle=c.pants;
   roundedRectFill(-9, 9, 7, 11, 3);
@@ -52365,6 +52540,22 @@ function drawSoldier(){
   ctx.fillStyle="#000";
   ctx.beginPath(); ctx.ellipse(0,19,20,8,0,0,Math.PI*2); ctx.fill();
   ctx.globalAlpha=1;
+  drawAnimatedBipedGait(S.me, {
+    blend:rolling ? 1 : moveBlend,
+    topSpeed:3.0,
+    force:rolling,
+    phase:0.15,
+    legColor:palette.pants,
+    bootColor:palette.boots,
+    armColor:palette.arm,
+    handColor:"rgba(220,220,225,.90)",
+    motionColor:rolling ? "rgba(125,211,252,.48)" : "rgba(191,219,254,.34)",
+    swing:rolling ? 10.5 : 8.6,
+    lift:rolling ? 6.4 : 4.7,
+    legWidth:4.8,
+    armWidth:4.2,
+    alpha:rolling ? 0.72 : 0.96
+  });
 
   ctx.fillStyle = palette.pants;
   roundedRectFill(-9,9,7,10,3);
@@ -52548,6 +52739,20 @@ function drawSupportUnit(unit){
   ctx.fill();
   ctx.globalAlpha = 1;
 
+  drawAnimatedBipedGait(unit, {
+    blend:moveBlend,
+    topSpeed:2.5,
+    phase:(unit.id || 0) * 0.27,
+    legColor:"rgba(22,28,38,.96)",
+    bootColor:"rgba(8,12,18,.98)",
+    armColor:attacker ? "rgba(95,38,20,.92)" : "rgba(22,56,80,.92)",
+    handColor:"rgba(220,220,225,.90)",
+    motionColor:attacker ? "rgba(251,146,60,.34)" : "rgba(96,165,250,.34)",
+    swing:8.2,
+    lift:4.6,
+    alpha:0.92
+  });
+
   ctx.fillStyle = "rgba(25,30,40,.95)";
   roundedRectFill(-8, 8, 6, 9, 3);
   roundedRectFill(2, 8, 6, 9, 3);
@@ -52673,6 +52878,19 @@ function drawRivalHunter(unit){
   ctx.beginPath();
   ctx.ellipse(0, 17, 14, 6, 0, 0, Math.PI * 2);
   ctx.fill();
+  drawAnimatedBipedGait(unit, {
+    blend:animMoveBlend(unit, 2.5),
+    topSpeed:2.5,
+    phase:(unit.id || 0) * 0.19,
+    legColor:"rgba(21,27,36,.95)",
+    bootColor:"rgba(8,12,18,.98)",
+    armColor:faction.color || "rgba(239,68,68,.92)",
+    handColor:"rgba(220,220,225,.90)",
+    motionColor:faction.accent || "rgba(253,164,175,.30)",
+    swing:7.6,
+    lift:4.0,
+    alpha:0.86
+  });
 
   ctx.fillStyle = "rgba(21,27,36,.95)";
   roundedRectFill(-7, 8, 5.5, 9, 2.5);
@@ -53517,32 +53735,7 @@ function drawTiger(t){
   }
 
   const gaitMul = gaitState==="sprint" ? 1.34 : (gaitState==="run" ? 1.18 : (gaitState==="trot" ? 0.92 : 0.64));
-  const legSwingA = Math.sin((t.step||0)*1.9) * (2.6 + speed*3.7) * s * gaitMul;
-  const legSwingB = Math.sin((t.step||0)*1.9 + Math.PI) * (2.2 + speed*3.2) * s * gaitMul;
-  ctx.strokeStyle=c.body;
-  ctx.lineWidth=3*s;
-  [[-10,legSwingA],[-2,legSwingB],[8,legSwingB],[16,legSwingA]].forEach(([offset, swing])=>{
-    ctx.beginPath();
-    ctx.moveTo(offset*s, 10*s);
-    ctx.lineTo(offset*s + swing*0.18, 21*s);
-    ctx.stroke();
-    ctx.fillStyle="rgba(24,26,33,.92)";
-    ctx.beginPath();
-    ctx.ellipse(offset*s + swing*0.18, 21.5*s, 1.8*s, 1.05*s, 0, 0, Math.PI*2);
-    ctx.fill();
-  });
-  if((t.hp / Math.max(1, t.hpMax)) < 0.58){
-    const injuredOffsets = [-10,-2,8,16];
-    const injuredOffset = injuredOffsets[clamp(Math.floor(Number(visual?.injuredLeg || 0)), 0, 3)];
-    ctx.strokeStyle="rgba(244,226,190,.94)";
-    ctx.lineWidth=2.6*s;
-    ctx.beginPath();
-    ctx.moveTo((injuredOffset-2)*s,14*s);
-    ctx.lineTo((injuredOffset+2)*s,17*s);
-    ctx.moveTo((injuredOffset+2)*s,14*s);
-    ctx.lineTo((injuredOffset-2)*s,17*s);
-    ctx.stroke();
-  }
+  drawAnimatedTigerLegCycle(t, s, c, behaviorAnim, speed, gaitState);
 
   ctx.strokeStyle=c.body; ctx.lineWidth=5*s;
   ctx.beginPath();
