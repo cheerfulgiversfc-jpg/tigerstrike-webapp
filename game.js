@@ -1,6 +1,6 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4541";
-const PREMIUM_2D_GRAPHICS_VERSION = 3;
+const TS_BUILD = "4542";
+const PREMIUM_2D_GRAPHICS_VERSION = 4;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 if(tg){
@@ -49805,6 +49805,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   drawPremiumTallGrass({ nowTs:frameNow, themeKey, mobileFast:true });
   drawMapArtUpgrade({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawPremium2DMapArtReplacementPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
+  drawPremium2DArtPhase2MapPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawLightingAtmospherePass({ nowTs:frameNow, w, h, themeKey, chapterStyle, mobileFast:true });
 
   if(S.mode !== "Survival"){
@@ -50588,6 +50589,7 @@ function drawMapScene(){
   drawPremiumTallGrass({ nowTs:frameNow, themeKey, mobileFast:false });
   drawMapArtUpgrade({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
   drawPremium2DMapArtReplacementPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
+  drawPremium2DArtPhase2MapPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -52657,6 +52659,121 @@ function drawPremium2DMapArtReplacementPass(opts={}){
   ctx.restore();
 }
 
+function drawPremium2DArtPhase2MapPass(opts={}){
+  const level = premium2DArtPhaseLevel();
+  if(level < 1 || !ctx) return;
+  const w = Math.max(1, Number(opts.w || worldWidth(S) || cv?.width || WORLD_BASE_WIDTH));
+  const h = Math.max(1, Number(opts.h || worldHeight(S) || cv?.height || WORLD_BASE_HEIGHT));
+  const mobileFast = !!opts.mobileFast;
+  const themeKey = String(opts.themeKey || mapFamilyKey(currentMap()?.key || ""));
+  const seed = (missionIndexForMode(S.mode) * 1217) + ((S.mapIndex || 0) * 241) + (PREMIUM_2D_GRAPHICS_VERSION * 31);
+  const rnd = (salt)=>premium2DSeeded(seed, salt);
+  const rich = level >= 2;
+  const density = mobileFast ? 0.62 : 1;
+  ctx.save();
+
+  // Phase 2: larger painted biomes and shadows so the terrain change is obvious on phones.
+  const biomeBands = Math.round((rich ? 18 : 10) * density);
+  for(let i=0; i<biomeBands; i++){
+    const x = rnd(90 + i) * w;
+    const y = rnd(190 + i) * h;
+    const rx = 95 + rnd(290 + i) * (rich ? 190 : 120);
+    const ry = 34 + rnd(390 + i) * (rich ? 78 : 46);
+    const rot = (rnd(490 + i) - 0.5) * 1.35;
+    const grad = ctx.createRadialGradient(x - rx * 0.28, y - ry * 0.35, 0, x, y, Math.max(rx, ry));
+    if(themeKey === "ST_DOWNTOWN"){
+      grad.addColorStop(0, "rgba(148,163,184,.24)");
+      grad.addColorStop(0.55, "rgba(37,99,235,.10)");
+    }else if(themeKey === "ST_INDUSTRIAL"){
+      grad.addColorStop(0, "rgba(245,158,11,.18)");
+      grad.addColorStop(0.55, "rgba(30,41,59,.18)");
+    }else{
+      grad.addColorStop(0, "rgba(132,204,22,.20)");
+      grad.addColorStop(0.55, "rgba(20,83,45,.18)");
+    }
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = mobileFast ? 0.34 : 0.48;
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Road/path shoulders with little painted edge marks make routes read as physical surfaces.
+  ctx.lineCap = "round";
+  const routes = [0.22, 0.42, 0.62, 0.81];
+  for(let r=0; r<routes.length; r++){
+    const y = h * routes[r] + (rnd(700 + r) - 0.5) * 58;
+    ctx.globalAlpha = mobileFast ? 0.16 : 0.24;
+    ctx.strokeStyle = themeKey === "ST_DOWNTOWN" ? "rgba(203,213,225,.58)" : "rgba(250,204,21,.36)";
+    ctx.lineWidth = mobileFast ? 1.6 : 2.2;
+    ctx.setLineDash([9, 17]);
+    ctx.beginPath();
+    ctx.moveTo(-20, y - 18);
+    ctx.bezierCurveTo(w * 0.22, y + 28, w * 0.47, y - 32, w * 0.72, y + 10);
+    ctx.bezierCurveTo(w * 0.86, y + 32, w * 0.95, y - 22, w + 24, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-20, y + 18);
+    ctx.bezierCurveTo(w * 0.22, y + 64, w * 0.47, y + 4, w * 0.72, y + 46);
+    ctx.bezierCurveTo(w * 0.86, y + 68, w * 0.95, y + 14, w + 24, y + 36);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Extra water shine and tree silhouettes are cheap, but make the map feel less flat.
+  const waters = Array.isArray(__mapWaterZones) ? __mapWaterZones.slice(0, mobileFast ? 5 : 9) : [];
+  for(const zone of waters){
+    const radii = waterZoneRadii(zone);
+    ctx.globalAlpha = mobileFast ? 0.18 : 0.28;
+    ctx.strokeStyle = "rgba(186,230,253,.78)";
+    ctx.lineWidth = mobileFast ? 1.2 : 1.8;
+    for(let k=0; k<3; k++){
+      ctx.beginPath();
+      ctx.ellipse(
+        zone.x + (k - 1) * 6,
+        zone.y + Math.sin(seed + k) * 4,
+        Math.max(8, radii.rx * (0.48 + k * 0.16)),
+        Math.max(5, radii.ry * (0.34 + k * 0.12)),
+        zone.rot || 0,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
+    }
+  }
+
+  const landmarkCount = Math.round((rich ? 34 : 20) * density);
+  for(let i=0; i<landmarkCount; i++){
+    const x = rnd(900 + i) * w;
+    const y = rnd(1000 + i) * h;
+    const s = 0.75 + rnd(1100 + i) * (rich ? 1.2 : 0.75);
+    if(i % 4 === 0){
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = "rgba(0,0,0,.86)";
+      ctx.beginPath(); ctx.ellipse(x + 3*s, y + 10*s, 18*s, 6*s, -0.08, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.78;
+      ctx.fillStyle = "rgba(75,85,99,.88)";
+      roundedRectFill(x - 9*s, y - 6*s, 18*s, 13*s, 4*s);
+      ctx.fillStyle = "rgba(203,213,225,.30)";
+      roundedRectFill(x - 7*s, y - 5*s, 12*s, 3*s, 2*s);
+    }else{
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = "rgba(0,0,0,.92)";
+      ctx.beginPath(); ctx.ellipse(x + 4*s, y + 12*s, 15*s, 5*s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = i % 5 === 0 ? "rgba(22,101,52,.96)" : "rgba(21,128,61,.95)";
+      ctx.beginPath(); ctx.arc(x, y, 9*s, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "rgba(134,239,172,.42)";
+      ctx.beginPath(); ctx.arc(x - 3*s, y - 5*s, 4.5*s, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.76;
+      ctx.fillStyle = "rgba(76,48,26,.82)";
+      roundedRectFill(x - 2*s, y + 6*s, 4*s, 10*s, 2*s);
+    }
+  }
+  ctx.restore();
+}
+
 let __premiumVisualPolishUiLast = 0;
 let __premiumVisualPolishUiOn = null;
 function updatePremiumVisualPolishUi(now=Date.now()){
@@ -52917,6 +53034,68 @@ function drawPremiumBipedArtShell(entity, x, y, opts={}){
     ctx.stroke();
   }
   ctx.restore();
+}
+
+function drawPremium2DArtPhase2BipedOverlay(entity, x, y, opts={}){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 2.5)), 0, 1);
+  const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
+  const dir = Math.cos(face) >= 0 ? 1 : -1;
+  const step = Number(entity.step || 0) + Number(opts.phase || 0);
+  const stride = Math.sin(step * 2.55) * (2.2 + blend * 4.8);
+  const scale = Number(opts.scale || 1);
+  const accent = opts.accent || "rgba(125,211,252,.95)";
+  const trim = opts.trim || accent;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir * scale, scale);
+  ctx.rotate(animLean(entity, 0.026) * dir);
+
+  // Phase 2 silhouette rim separates people from busy terrain and Telegram compression.
+  ctx.globalAlpha = 0.34;
+  ctx.strokeStyle = "rgba(226,232,240,.72)";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.ellipse(0, -4, 16.5, 30, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.92;
+  ctx.strokeStyle = trim;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-8, -11);
+  ctx.lineTo(8, -11);
+  ctx.moveTo(-5, -5);
+  ctx.lineTo(5, -5);
+  ctx.moveTo(0, -14);
+  ctx.lineTo(0, 7);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(4,8,14,.98)";
+  ctx.beginPath(); ctx.ellipse(-8 + stride, 23, 6.2, 2.8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8 - stride, 23, 6.2, 2.8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(241,245,249,.66)";
+  ctx.beginPath(); ctx.ellipse(-8 + stride + 1.8, 22.2, 2.0, 0.9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8 - stride + 1.8, 22.2, 2.0, 0.9, 0, 0, Math.PI * 2); ctx.fill();
+
+  if(level >= 2){
+    ctx.globalAlpha = 0.62;
+    ctx.fillStyle = opts.pack || "rgba(15,23,42,.82)";
+    roundedRectFill(-13, -9, 4.6, 17, 2.3);
+    roundedRectFill(8.5, -9, 4.6, 17, 2.3);
+    ctx.globalAlpha = 0.76;
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.arc(0, -23, 12.2, Math.PI * 1.04, Math.PI * 1.96);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  if(blend > 0.08){
+    drawPremiumFootstepDust(entity, x, y, blend, opts.dustColor || "rgba(226,232,240,.28)");
+  }
 }
 
 function drawAnimatedTigerLegCycle(t, s, colors, behaviorAnim={}, speed=0, gaitState="walk"){
@@ -53346,6 +53525,15 @@ function drawCivilian(c){
     headgear:"rgba(24,24,27,.88)",
     scale:0.92
   });
+  drawPremium2DArtPhase2BipedOverlay(c, bx, by, {
+    blend:moveBlend,
+    topSpeed:c.following ? 2.1 : 1.4,
+    face,
+    phase:(c.id || 0) * 0.31,
+    accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)",
+    trim:c.shirt,
+    scale:0.92
+  });
 
   const rescuedAge = nowMs - Math.max(0, Number(c._rescuedAt || 0));
   if(c.evac && rescuedAge >= 0 && rescuedAge < 1800){
@@ -53656,6 +53844,16 @@ function drawSoldier(){
     headgear:palette.helmet,
     scale:1.02
   });
+  drawPremium2DArtPhase2BipedOverlay(S.me, x, y, {
+    blend:rolling ? 1 : moveBlend,
+    topSpeed:3.0,
+    face:ang,
+    phase:0.15,
+    accent:palette.trim,
+    trim:palette.armorOuter,
+    pack:palette.armorInner,
+    scale:1.02
+  });
 
   if(!rolling){
     const wx = x + Math.cos(ang) * (14 + (shotKick * 2.6));
@@ -53853,6 +54051,16 @@ function drawSupportUnit(unit){
     pants:"rgba(22,28,38,.96)",
     skin:"rgba(220,220,225,.92)",
     headgear:"rgba(26,36,49,.96)",
+    scale:0.94
+  });
+  drawPremium2DArtPhase2BipedOverlay(unit, x, y, {
+    blend:moveBlend,
+    topSpeed:2.5,
+    face:ang,
+    phase:(unit.id || 0) * 0.27,
+    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
+    trim:uniformBody,
+    pack:attacker ? "rgba(120,53,15,.88)" : "rgba(17,94,89,.86)",
     scale:0.94
   });
 
@@ -54674,6 +54882,103 @@ function drawPremiumTigerIllustratedShell(t, s, c, visual, behaviorAnim={}, now=
   ctx.restore();
 }
 
+function drawPremium2DArtPhase2TigerOverlay(t, s, c, visual, behaviorAnim={}, now=Date.now(), headReach=0, headBob=0){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !ctx || !t) return;
+  const hpPct = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
+  const speed = Math.hypot(Number(t.vx || 0), Number(t.vy || 0));
+  const step = Number(t.step || 0);
+  const crouch = behaviorAnim?.crouch || behaviorAnim?.stalking ? 1 : 0;
+  const pounce = behaviorAnim?.pounce ? 1 : 0;
+  const bodyLong = visual?.ageIndex === 2 ? 1.12 : (visual?.ageIndex === 0 ? 0.94 : 1);
+  const danger = isBossTiger(t) || t.type === "Alpha" || t.eliteMutation;
+  const headX = (22 + headReach + pounce * 5 - crouch * 2.5) * s;
+  const headY = (-7 + headBob * 0.45 + crouch * 1.5 - pounce * 2) * s;
+  ctx.save();
+
+  ctx.globalAlpha = danger ? 0.42 : 0.30;
+  ctx.strokeStyle = danger ? "rgba(251,191,36,.94)" : "rgba(255,247,237,.72)";
+  ctx.lineWidth = (danger ? 2.8 : 2.0) * s;
+  ctx.beginPath();
+  ctx.ellipse(-2 * s, (1 + crouch * 4 - pounce * 1.5) * s, 31 * s * bodyLong, 17 * s, -0.03, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Stronger fur/stripe language: this should read as a tiger, not a sliding icon.
+  ctx.globalAlpha = 0.88;
+  ctx.strokeStyle = c.stripe || "rgba(17,24,39,.96)";
+  ctx.lineCap = "round";
+  ctx.lineWidth = 1.8 * s;
+  const stripeCount = visual?.stripeIndex === 3 ? 11 : 8;
+  for(let i=0; i<stripeCount; i++){
+    const sx = (-23 + i * 5.4) * s;
+    const wiggle = Math.sin(step * 0.5 + i) * 1.2 * s;
+    ctx.beginPath();
+    ctx.moveTo(sx, (-11 + wiggle) * s);
+    ctx.quadraticCurveTo(sx + 2.6 * s, (-2 + wiggle) * s, sx + 3.9 * s, (10 - wiggle) * s);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 0.56;
+  ctx.strokeStyle = "rgba(255,247,237,.74)";
+  ctx.lineWidth = 1.1 * s;
+  ctx.beginPath();
+  ctx.moveTo(-21 * s, -8 * s);
+  ctx.quadraticCurveTo(-4 * s, -16 * s, 20 * s, -8 * s);
+  ctx.moveTo(-20 * s, 9 * s);
+  ctx.quadraticCurveTo(-2 * s, 15 * s, 18 * s, 9 * s);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = "rgba(255,237,213,.96)";
+  ctx.beginPath(); ctx.ellipse(headX + 2 * s, headY + 4.8 * s, 8.4 * s, 4.8 * s, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "rgba(15,23,42,.92)";
+  ctx.lineWidth = 0.9 * s;
+  for(let side=-1; side<=1; side+=2){
+    ctx.beginPath();
+    ctx.moveTo(headX + side * 4 * s, headY + 4.2 * s);
+    ctx.lineTo(headX + side * 15 * s, headY + (1.8 + side * 0.5) * s);
+    ctx.moveTo(headX + side * 4 * s, headY + 5.6 * s);
+    ctx.lineTo(headX + side * 15 * s, headY + 7.4 * s);
+    ctx.stroke();
+  }
+
+  const tailWave = Math.sin(step * 1.3 + now * 0.002) * (behaviorAnim?.stalking ? 8 : 5);
+  ctx.globalAlpha = 0.92;
+  ctx.strokeStyle = c.stripe || "rgba(17,24,39,.96)";
+  ctx.lineWidth = 1.5 * s;
+  for(let k=0; k<4; k++){
+    const tx = (-35 - k * 4.5) * s;
+    const ty = (-4 + tailWave * 0.55 - k * 2.4) * s;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(tx - 4.5 * s, ty - 5.5 * s);
+    ctx.stroke();
+  }
+
+  if(pounce || behaviorAnim?.stalking || speed > 1.15){
+    ctx.globalAlpha = pounce ? 0.72 : 0.42;
+    ctx.strokeStyle = pounce ? "rgba(251,191,36,.98)" : "rgba(74,222,128,.76)";
+    ctx.lineWidth = (pounce ? 2.2 : 1.4) * s;
+    ctx.setLineDash(pounce ? [7 * s, 4 * s] : [4 * s, 5 * s]);
+    ctx.beginPath();
+    ctx.ellipse(4 * s, (6 + crouch * 3) * s, (39 + speed * 2.5) * s, 22 * s, -0.08, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  if(hpPct <= 0.33){
+    ctx.globalAlpha = 0.48;
+    ctx.strokeStyle = "rgba(248,113,113,.82)";
+    ctx.lineWidth = 1.8 * s;
+    ctx.beginPath();
+    ctx.moveTo(-8 * s, 4 * s);
+    ctx.lineTo(-1 * s, 9 * s);
+    ctx.lineTo(5 * s, 3 * s);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawTiger(t){
   let alpha=1.0;
   const now = Date.now();
@@ -54950,6 +55255,7 @@ function drawTiger(t){
   ctx.fill();
   drawTigerAnatomyDetails(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob, lifePhase);
   drawPremiumTigerIllustratedShell(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
+  drawPremium2DArtPhase2TigerOverlay(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   if(atkProgress > 0){
     const biteOpen = atkKind === "charge" ? 1.2 : (atkKind === "pounce" ? 1.0 : 0.75);
     const jawDrop = atkSwing * biteOpen * 2.4;

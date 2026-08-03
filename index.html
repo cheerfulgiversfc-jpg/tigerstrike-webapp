@@ -97,6 +97,23 @@
       color:#ffd7d7!important;
       filter:drop-shadow(0 0 10px rgba(255,24,24,.95)) drop-shadow(0 0 4px rgba(255,255,255,.45));
     }
+    button.captureReady,
+    button.captureReady:disabled,
+    #capBtn.captureReady,
+    #combatCaptureBtn.captureReady,
+    #touchCaptureBtn.captureReady,
+    .premiumVisualPolish #combatTouchCluster #touchCaptureBtn.captureReady{
+      border-color:#ff1f1f!important;
+      background:
+        radial-gradient(circle at 50% 16%, rgba(255,255,255,.26), transparent 42%),
+        linear-gradient(180deg, rgba(239,25,25,.98), rgba(129,0,8,.98))!important;
+      box-shadow:
+        0 0 0 3px rgba(255,235,235,.78),
+        0 0 28px rgba(255,30,30,.98),
+        inset 0 0 18px rgba(255,190,190,.28)!important;
+      color:#fff1f2!important;
+      opacity:1!important;
+    }
 
     .hud{
       order:2;
@@ -3081,7 +3098,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=4660-premium-2d-art-phase1"></script>
+  <script src="./game.js?v=4661-premium-2d-art-phase2"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
 <script>
 (() => {
