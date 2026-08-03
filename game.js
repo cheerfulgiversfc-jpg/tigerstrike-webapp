@@ -1,6 +1,6 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4539";
-const PREMIUM_2D_GRAPHICS_VERSION = 2;
+const TS_BUILD = "4541";
+const PREMIUM_2D_GRAPHICS_VERSION = 3;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 if(tg){
@@ -49804,6 +49804,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   drawMapExpansionObjectiveRoutes({ mobileFast:true });
   drawPremiumTallGrass({ nowTs:frameNow, themeKey, mobileFast:true });
   drawMapArtUpgrade({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
+  drawPremium2DMapArtReplacementPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawLightingAtmospherePass({ nowTs:frameNow, w, h, themeKey, chapterStyle, mobileFast:true });
 
   if(S.mode !== "Survival"){
@@ -50586,6 +50587,7 @@ function drawMapScene(){
   drawMapExpansionObjectiveRoutes({ mobileFast:false });
   drawPremiumTallGrass({ nowTs:frameNow, themeKey, mobileFast:false });
   drawMapArtUpgrade({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
+  drawPremium2DMapArtReplacementPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -52506,7 +52508,8 @@ function animMoveBlend(entity, expectedTopSpeed=2.4){
 
 function animationPassQuality(){
   const lag = frameLagTier();
-  if(visualExtremeLoadMode() || lag >= 2) return "lite";
+  if(visualExtremeLoadMode() && frameBudgetExceeded(0.72)) return "lite";
+  if(lag >= 2) return "balanced";
   if(visualReadabilityHeavyMode() || lag >= 1) return "balanced";
   return "full";
 }
@@ -52554,11 +52557,104 @@ function premiumVisualPolishLevel(){
   const lag = frameLagTier();
   const mobile = isMobileViewport();
   const perf = performanceMode() === "PERFORMANCE";
-  if(iphoneStabilityModeActive() || lag >= 3) return 0;
-  if(frameBudgetExceeded(0.92) && (mobile || perf)) return 0;
-  if(lag >= 2 || visualExtremeLoadMode()) return mobile ? 0 : 1;
+  if(lag >= 3 && frameBudgetExceeded(0.92)) return iphoneStabilityModeActive() ? 1 : 0;
+  if(frameBudgetExceeded(0.96) && (mobile || perf)) return 1;
+  if(iphoneStabilityModeActive()) return lag >= 2 ? 1 : 2;
+  if(lag >= 2 || visualExtremeLoadMode()) return 1;
   if(lag >= 1 || frameIsSlow() || visualReadabilityHeavyMode()) return 1;
   return 2;
+}
+
+function premium2DArtPhaseLevel(){
+  if(!ctx || !cv) return 0;
+  if(frameLagTier() >= 3 && frameBudgetExceeded(0.86)) return 1;
+  return premiumVisualPolishLevel() >= 2 ? 2 : 1;
+}
+
+function drawPremium2DMapArtReplacementPass(opts={}){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !ctx) return;
+  const w = Math.max(1, Number(opts.w || worldWidth(S) || cv?.width || WORLD_BASE_WIDTH));
+  const h = Math.max(1, Number(opts.h || worldHeight(S) || cv?.height || WORLD_BASE_HEIGHT));
+  const mobileFast = !!opts.mobileFast;
+  const themeKey = String(opts.themeKey || mapFamilyKey(currentMap()?.key || ""));
+  const seed = (missionIndexForMode(S.mode) * 997) + ((S.mapIndex || 0) * 131) + PREMIUM_2D_GRAPHICS_VERSION;
+  const rnd = (salt)=>premium2DSeeded(seed, salt);
+  const rich = level >= 2 && !mobileFast;
+  const countMul = mobileFast ? 0.58 : 1;
+  const grassA = themeKey === "ST_DOWNTOWN" ? "rgba(45,90,120,.42)" : "rgba(27,126,67,.46)";
+  const grassB = themeKey === "ST_INDUSTRIAL" ? "rgba(155,125,54,.36)" : "rgba(74,222,128,.34)";
+  const flower = themeKey === "ST_DOWNTOWN" ? "rgba(125,211,252,.64)" : "rgba(250,204,21,.60)";
+
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+
+  // Big painted terrain shapes make the map immediately read less flat.
+  const patches = Math.round((rich ? 32 : 18) * countMul);
+  for(let i=0; i<patches; i++){
+    const x = rnd(i + 31) * w;
+    const y = rnd(i + 79) * h;
+    const rx = 42 + rnd(i + 113) * (rich ? 95 : 62);
+    const ry = 18 + rnd(i + 151) * (rich ? 48 : 30);
+    const rot = (rnd(i + 181) - 0.5) * 1.2;
+    const grad = ctx.createRadialGradient(x - rx * 0.22, y - ry * 0.20, 0, x, y, Math.max(rx, ry));
+    grad.addColorStop(0, i % 3 === 0 ? grassB : "rgba(255,244,214,.12)");
+    grad.addColorStop(0.62, i % 2 === 0 ? grassA : "rgba(8,20,16,.14)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = mobileFast ? 0.30 : 0.42;
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // High-contrast route edges and painted lane light help roads/rivers pop on phones.
+  ctx.globalAlpha = mobileFast ? 0.14 : 0.20;
+  ctx.strokeStyle = themeKey === "ST_DOWNTOWN" ? "rgba(186,230,253,.45)" : "rgba(255,238,180,.38)";
+  ctx.lineWidth = mobileFast ? 2.0 : 3.2;
+  ctx.setLineDash([18, 18]);
+  const routeRows = [0.26, 0.50, 0.73];
+  for(let i=0; i<routeRows.length; i++){
+    const y = h * routeRows[i];
+    ctx.beginPath();
+    ctx.moveTo(w * -0.02, y + Math.sin(seed + i) * 18);
+    ctx.bezierCurveTo(w * 0.25, y - 36, w * 0.45, y + 34, w * 0.70, y - 8);
+    ctx.bezierCurveTo(w * 0.82, y - 28, w * 0.92, y + 20, w * 1.04, y + 4);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Visible foliage clusters, flowers, rocks, and depth shadows.
+  const clusterCount = Math.round((rich ? 46 : 26) * countMul);
+  for(let i=0; i<clusterCount; i++){
+    const x = rnd(i + 311) * w;
+    const y = rnd(i + 353) * h;
+    const s = 0.8 + rnd(i + 397) * (rich ? 1.4 : 0.9);
+    ctx.globalAlpha = 0.20;
+    ctx.fillStyle = "rgba(0,0,0,.80)";
+    ctx.beginPath();
+    ctx.ellipse(x + 3*s, y + 6*s, 12*s, 4.5*s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.78;
+    ctx.fillStyle = i % 5 === 0 ? "rgba(22,163,74,.92)" : "rgba(18,120,62,.88)";
+    ctx.beginPath(); ctx.arc(x, y, 7*s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(134,239,172,.62)";
+    ctx.beginPath(); ctx.arc(x - 3*s, y - 3*s, 4*s, 0, Math.PI * 2); ctx.fill();
+    if(i % 6 === 0){
+      ctx.globalAlpha = 0.72;
+      ctx.fillStyle = flower;
+      ctx.beginPath(); ctx.arc(x + 7*s, y - 2*s, 2.4*s, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  ctx.globalAlpha = mobileFast ? 0.12 : 0.18;
+  const gloss = ctx.createLinearGradient(0, 0, w, h);
+  gloss.addColorStop(0, "rgba(255,255,255,.18)");
+  gloss.addColorStop(0.38, "rgba(255,255,255,0)");
+  gloss.addColorStop(1, "rgba(0,12,20,.40)");
+  ctx.fillStyle = gloss;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
 }
 
 let __premiumVisualPolishUiLast = 0;
@@ -52733,6 +52829,91 @@ function drawAnimatedBipedGait(entity, opts={}){
     ctx.lineTo(-legSpread - 17 * scale, footY + 7 * scale);
     ctx.moveTo(legSpread + 7 * scale, footY + 3 * scale);
     ctx.lineTo(legSpread + 17 * scale, footY + 7 * scale);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPremiumBipedArtShell(entity, x, y, opts={}){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 2.5)), 0, 1);
+  const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
+  const dir = Math.cos(face) >= 0 ? 1 : -1;
+  const step = Number(entity.step || 0) + Number(opts.phase || 0);
+  const stride = Math.sin(step * 2.35) * (2.5 + blend * 4.2);
+  const lift = Math.abs(Math.sin(step * 2.35)) * (1.2 + blend * 2.0);
+  const body = opts.body || "rgba(30,64,175,.92)";
+  const vest = opts.vest || "rgba(15,23,42,.82)";
+  const accent = opts.accent || "rgba(125,211,252,.92)";
+  const pants = opts.pants || "rgba(17,24,39,.94)";
+  const skin = opts.skin || "rgba(231,219,202,.92)";
+  const scale = Number(opts.scale || 1);
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir * scale, scale);
+  ctx.rotate(animLean(entity, 0.035) * dir);
+
+  ctx.globalAlpha = 0.32;
+  ctx.fillStyle = "rgba(0,0,0,.86)";
+  ctx.beginPath();
+  ctx.ellipse(0, 21, 19, 6.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Clear planted feet and swinging legs so characters read as walking/running.
+  ctx.globalAlpha = 1;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = pants;
+  ctx.lineWidth = 4.4;
+  ctx.beginPath();
+  ctx.moveTo(-5, 5);
+  ctx.quadraticCurveTo(-8 + stride * 0.24, 13 - lift * 0.22, -8 + stride, 21 - lift);
+  ctx.moveTo(5, 5);
+  ctx.quadraticCurveTo(8 - stride * 0.24, 13 - lift * 0.22, 8 - stride, 21 - lift);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(5,8,14,.96)";
+  ctx.beginPath(); ctx.ellipse(-8 + stride, 22 - lift, 5.4, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8 - stride, 22 - lift, 5.4, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = body;
+  roundedRectFill(-11, -17, 22, 29, 7);
+  ctx.strokeStyle = "rgba(241,245,249,.36)";
+  ctx.lineWidth = 1.1;
+  ctx.strokeRect(-10.5, -16.5, 21, 28);
+  ctx.fillStyle = vest;
+  roundedRectFill(-7, -12, 14, 18, 5);
+  ctx.fillStyle = accent;
+  roundedRectFill(-5, -14, 10, 3, 2);
+  roundedRectFill(-1.5, -10, 3, 15, 1.5);
+
+  ctx.strokeStyle = body;
+  ctx.lineWidth = 3.8;
+  ctx.beginPath();
+  ctx.moveTo(-11, -11);
+  ctx.quadraticCurveTo(-17 - stride * 0.15, -4, -14 - stride * 0.32, 5);
+  ctx.moveTo(11, -11);
+  ctx.quadraticCurveTo(17 + stride * 0.15, -4, 14 + stride * 0.32, 5);
+  ctx.stroke();
+
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.arc(0, -23, 8.8, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = opts.headgear || "rgba(15,23,42,.95)";
+  ctx.beginPath(); ctx.ellipse(0, -29, 10.5, 5.5, 0, Math.PI, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.70)";
+  ctx.beginPath(); ctx.arc(-2.8, -23.2, 1.1, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(2.8, -23.2, 1.1, 0, Math.PI * 2); ctx.fill();
+
+  if(level >= 2 && blend > 0.10){
+    ctx.globalAlpha = clamp(0.20 + blend * 0.22, 0.18, 0.42);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-17 - stride * 0.4, 24);
+    ctx.lineTo(-30 - stride * 0.65, 29);
+    ctx.moveTo(17 + stride * 0.4, 24);
+    ctx.lineTo(30 + stride * 0.65, 29);
     ctx.stroke();
   }
   ctx.restore();
@@ -53152,6 +53333,19 @@ function drawCivilian(c){
   roundedRectFill(2, 12, 7, 2.6, 1.2);
 
   ctx.restore();
+  drawPremiumBipedArtShell(c, bx, by, {
+    blend:moveBlend,
+    topSpeed:c.following ? 2.1 : 1.4,
+    face,
+    phase:(c.id || 0) * 0.31,
+    body:c.shirt,
+    vest:"rgba(15,23,42,.38)",
+    accent:c.following ? "rgba(110,231,183,.92)" : "rgba(186,230,253,.72)",
+    pants:c.pants,
+    skin:c.skin,
+    headgear:"rgba(24,24,27,.88)",
+    scale:0.92
+  });
 
   const rescuedAge = nowMs - Math.max(0, Number(c._rescuedAt || 0));
   if(c.evac && rescuedAge >= 0 && rescuedAge < 1800){
@@ -53449,6 +53643,19 @@ function drawSoldier(){
   ctx.beginPath(); ctx.arc(-2,-20,1,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(2,-20,1,0,Math.PI*2); ctx.fill();
   ctx.restore();
+  drawPremiumBipedArtShell(S.me, x, y, {
+    blend:rolling ? 1 : moveBlend,
+    topSpeed:3.0,
+    face:ang,
+    phase:0.15,
+    body:palette.armorOuter,
+    vest:palette.armorInner,
+    accent:palette.trim,
+    pants:palette.pants,
+    skin:"rgba(220,220,225,.92)",
+    headgear:palette.helmet,
+    scale:1.02
+  });
 
   if(!rolling){
     const wx = x + Math.cos(ang) * (14 + (shotKick * 2.6));
@@ -53635,6 +53842,19 @@ function drawSupportUnit(unit){
   roundedRectFill(-12, -12, 4, 12, 2);
   roundedRectFill(8, -12, 4, 12, 2);
   ctx.restore();
+  drawPremiumBipedArtShell(unit, x, y, {
+    blend:moveBlend,
+    topSpeed:2.5,
+    face:ang,
+    phase:(unit.id || 0) * 0.27,
+    body:uniformBody,
+    vest:attacker ? "rgba(251,146,60,.78)" : "rgba(52,211,153,.78)",
+    accent:attacker ? "rgba(251,191,36,.92)" : "rgba(125,211,252,.92)",
+    pants:"rgba(22,28,38,.96)",
+    skin:"rgba(220,220,225,.92)",
+    headgear:"rgba(26,36,49,.96)",
+    scale:0.94
+  });
 
   ctx.strokeStyle = attacker ? "rgba(255,214,170,.9)" : "rgba(210,240,255,.88)";
   ctx.lineWidth = 3;
@@ -54316,6 +54536,144 @@ function drawTigerCaptureStruggles(now=Date.now()){
   }
 }
 
+function drawPremiumTigerIllustratedShell(t, s, c, visual, behaviorAnim={}, now=Date.now(), headReach=0, headBob=0){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !ctx || !t) return;
+  const hpPct = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
+  const step = Number(t.step || 0);
+  const speed = Math.hypot(Number(t.vx || 0), Number(t.vy || 0));
+  const crouch = behaviorAnim?.crouch || behaviorAnim?.stalking ? 1 : 0;
+  const pounce = behaviorAnim?.pounce ? 1 : 0;
+  const limp = behaviorAnim?.limping || hpPct < 0.32 ? 1 : 0;
+  const stride = Math.sin(step * 2.18) * (1.8 + Math.min(5.5, speed * 1.5));
+  const lift = Math.abs(Math.sin(step * 2.18)) * (1.2 + Math.min(3.5, speed * 0.8));
+  const bodyLong = visual?.ageIndex === 2 ? 1.10 : (visual?.ageIndex === 0 ? 0.92 : 1);
+  const bodyTall = visual?.ageIndex === 2 ? 1.06 : 1;
+  ctx.save();
+
+  // This illustrated layer is intentionally bold so the upgrade is obvious on mobile.
+  ctx.globalAlpha = 0.34;
+  ctx.fillStyle = "rgba(2,6,23,.95)";
+  ctx.beginPath();
+  ctx.ellipse(-1 * s, 20 * s, 28 * s * bodyLong, 8 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = 0.98;
+  const bodyGrad = ctx.createLinearGradient(-26 * s, -12 * s, 30 * s, 14 * s);
+  bodyGrad.addColorStop(0, c.accent || c.body);
+  bodyGrad.addColorStop(0.45, c.body);
+  bodyGrad.addColorStop(1, c.belly || "rgba(255,237,213,.88)");
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.ellipse(-2 * s, (1 + crouch * 4 - pounce * 1.5) * s, 27 * s * bodyLong, 14 * s * bodyTall, -0.03, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = 0.70;
+  ctx.fillStyle = c.accent || "rgba(251,146,60,.84)";
+  ctx.beginPath();
+  ctx.ellipse(-14 * s, (-1 + crouch * 2) * s, 10 * s, 11 * s, -0.12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(11 * s, (-2 + crouch * 1.6) * s, 12 * s, 11 * s, 0.16, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = 0.52;
+  ctx.strokeStyle = "rgba(255,247,237,.66)";
+  ctx.lineWidth = 1.7 * s;
+  ctx.beginPath();
+  ctx.moveTo(-24 * s, -8 * s);
+  ctx.quadraticCurveTo(-7 * s, (-16 + crouch * 3) * s, 18 * s, -9 * s);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.96;
+  ctx.strokeStyle = c.body;
+  ctx.lineWidth = 4.2 * s;
+  const legs = [
+    { hx:-15, ph:0.15 },
+    { hx:-5, ph:Math.PI + 0.15 },
+    { hx:8, ph:Math.PI * 0.78 },
+    { hx:18, ph:Math.PI * 1.78 }
+  ];
+  legs.forEach((leg, idx)=>{
+    const phase = Math.sin(step * 2.05 + leg.ph);
+    const injured = limp && idx === Math.floor(Number(visual?.injuredLeg || 0));
+    const swing = phase * (injured ? stride * 0.35 : stride);
+    const footY = (23 - Math.max(0, -phase) * lift + (injured ? 3 : 0) - pounce * 4 - crouch * 2) * s;
+    const kneeY = (9 + crouch * 3 + (injured ? 2 : 0)) * s;
+    ctx.beginPath();
+    ctx.moveTo(leg.hx * s, (5 + crouch * 2) * s);
+    ctx.quadraticCurveTo((leg.hx + swing * 0.38) * s, kneeY, (leg.hx + swing) * s, footY);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(18,20,26,.96)";
+    ctx.beginPath();
+    ctx.ellipse((leg.hx + swing + phase * 1.8) * s, footY + 1.4 * s, 4.9 * s, 2.0 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if(level >= 2){
+      ctx.strokeStyle = "rgba(255,247,237,.70)";
+      ctx.lineWidth = 0.85 * s;
+      ctx.beginPath();
+      ctx.moveTo((leg.hx + swing + 2.5) * s, footY + 1.2 * s);
+      ctx.lineTo((leg.hx + swing + 5.7) * s, footY + 0.3 * s);
+      ctx.moveTo((leg.hx + swing + 1.1) * s, footY + 2.1 * s);
+      ctx.lineTo((leg.hx + swing + 4.4) * s, footY + 2.5 * s);
+      ctx.stroke();
+      ctx.strokeStyle = c.body;
+      ctx.lineWidth = 4.2 * s;
+    }
+  });
+
+  const headX = (22 + headReach + pounce * 4 - crouch * 2) * s;
+  const headY = (-7 + headBob * 0.45 + crouch * 1.5 - pounce * 2) * s;
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = c.body;
+  ctx.beginPath(); ctx.ellipse(headX, headY, 13 * s, 10.5 * s, 0.04, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(headX + 7 * s, headY - 8 * s, 4.6 * s, 4.3 * s, 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(headX - 7 * s, headY - 8 * s, 4.6 * s, 4.3 * s, -0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(255,237,213,.94)";
+  ctx.beginPath(); ctx.ellipse(headX + 2 * s, headY + 4 * s, 7.2 * s, 4.3 * s, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(10,13,18,.96)";
+  ctx.beginPath(); ctx.arc(headX + 3.8 * s, headY - 2.8 * s, 1.25 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(headX - 3.2 * s, headY - 2.9 * s, 1.25 * s, 0, Math.PI * 2); ctx.fill();
+  if(behaviorAnim?.stalking || behaviorAnim?.pounce){
+    ctx.globalAlpha = 0.78;
+    ctx.fillStyle = "rgba(250,204,21,.92)";
+    ctx.beginPath(); ctx.arc(headX + 3.8 * s, headY - 2.8 * s, 1.65 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(headX - 3.2 * s, headY - 2.9 * s, 1.65 * s, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.globalAlpha = 0.92;
+  ctx.strokeStyle = c.stripe || "rgba(31,41,55,.95)";
+  ctx.lineWidth = 2.4 * s;
+  const stripes = visual?.stripeIndex === 3 ? 8 : 6;
+  for(let i=0; i<stripes; i++){
+    const sx = (-18 + i * 6.3) * s;
+    ctx.beginPath();
+    ctx.moveTo(sx, -8 * s);
+    ctx.quadraticCurveTo(sx + 3.5 * s, -1 * s, sx + 5.2 * s, 9 * s);
+    ctx.stroke();
+  }
+  ctx.lineWidth = 4.4 * s;
+  ctx.strokeStyle = c.body;
+  const tail = Math.sin(step * 1.25 + now * 0.002) * (behaviorAnim?.stalking ? 7 : 4);
+  ctx.beginPath();
+  ctx.moveTo(-27 * s, 1 * s);
+  ctx.quadraticCurveTo(-42 * s, (-7 + tail) * s, -49 * s, (-15 + tail * 0.45) * s);
+  ctx.stroke();
+
+  if(level >= 2 && (speed > 1.1 || behaviorAnim?.pounce)){
+    ctx.globalAlpha = 0.26;
+    ctx.strokeStyle = behaviorAnim?.pounce ? "rgba(251,191,36,.78)" : "rgba(254,215,170,.58)";
+    ctx.lineWidth = 1.6 * s;
+    ctx.beginPath();
+    ctx.moveTo(-31 * s, 26 * s);
+    ctx.lineTo(-51 * s, 32 * s);
+    ctx.moveTo(18 * s, 26 * s);
+    ctx.lineTo(39 * s, 31 * s);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawTiger(t){
   let alpha=1.0;
   const now = Date.now();
@@ -54591,6 +54949,7 @@ function drawTiger(t){
   ctx.closePath();
   ctx.fill();
   drawTigerAnatomyDetails(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob, lifePhase);
+  drawPremiumTigerIllustratedShell(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   if(atkProgress > 0){
     const biteOpen = atkKind === "charge" ? 1.2 : (atkKind === "pounce" ? 1.0 : 0.75);
     const jawDrop = atkSwing * biteOpen * 2.4;
