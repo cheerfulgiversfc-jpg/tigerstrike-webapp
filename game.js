@@ -1,6 +1,6 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4542";
-const PREMIUM_2D_GRAPHICS_VERSION = 4;
+const TS_BUILD = "4543";
+const PREMIUM_2D_GRAPHICS_VERSION = 5;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 if(tg){
@@ -49806,6 +49806,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   drawMapArtUpgrade({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawPremium2DMapArtReplacementPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawPremium2DArtPhase2MapPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
+  drawPremium2DArtPhase3MapPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawLightingAtmospherePass({ nowTs:frameNow, w, h, themeKey, chapterStyle, mobileFast:true });
 
   if(S.mode !== "Survival"){
@@ -50590,6 +50591,7 @@ function drawMapScene(){
   drawMapArtUpgrade({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
   drawPremium2DMapArtReplacementPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
   drawPremium2DArtPhase2MapPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
+  drawPremium2DArtPhase3MapPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -52774,6 +52776,93 @@ function drawPremium2DArtPhase2MapPass(opts={}){
   ctx.restore();
 }
 
+function drawPremium2DArtPhase3MapPass(opts={}){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !ctx) return;
+  const w = Math.max(1, Number(opts.w || worldWidth(S) || cv?.width || WORLD_BASE_WIDTH));
+  const h = Math.max(1, Number(opts.h || worldHeight(S) || cv?.height || WORLD_BASE_HEIGHT));
+  const mobileFast = !!opts.mobileFast;
+  const themeKey = String(opts.themeKey || mapFamilyKey(currentMap()?.key || ""));
+  const seed = (missionIndexForMode(S.mode) * 1567) + ((S.mapIndex || 0) * 353) + (PREMIUM_2D_GRAPHICS_VERSION * 43);
+  const rnd = (salt)=>premium2DSeeded(seed, salt);
+  const density = mobileFast ? 0.58 : 1;
+  ctx.save();
+
+  // Phase 3: cinematic color blocking gives each board stronger visual identity.
+  const mood = ctx.createLinearGradient(0, 0, w, h);
+  if(themeKey === "ST_DOWNTOWN"){
+    mood.addColorStop(0, "rgba(56,189,248,.10)");
+    mood.addColorStop(0.52, "rgba(15,23,42,0)");
+    mood.addColorStop(1, "rgba(2,6,23,.24)");
+  }else if(themeKey === "ST_INDUSTRIAL"){
+    mood.addColorStop(0, "rgba(251,146,60,.10)");
+    mood.addColorStop(0.48, "rgba(15,23,42,0)");
+    mood.addColorStop(1, "rgba(30,41,59,.25)");
+  }else{
+    mood.addColorStop(0, "rgba(190,242,100,.10)");
+    mood.addColorStop(0.50, "rgba(15,23,42,0)");
+    mood.addColorStop(1, "rgba(5,46,22,.26)");
+  }
+  ctx.globalAlpha = mobileFast ? 0.70 : 0.92;
+  ctx.fillStyle = mood;
+  ctx.fillRect(0, 0, w, h);
+
+  const textureCount = Math.round((level >= 2 ? 120 : 70) * density);
+  for(let i=0; i<textureCount; i++){
+    const x = rnd(1200 + i) * w;
+    const y = rnd(1400 + i) * h;
+    const len = 8 + rnd(1600 + i) * 34;
+    const rot = (rnd(1800 + i) - 0.5) * Math.PI;
+    ctx.globalAlpha = mobileFast ? 0.08 : 0.13;
+    ctx.strokeStyle = i % 3 === 0 ? "rgba(255,255,255,.42)" : "rgba(2,6,23,.54)";
+    ctx.lineWidth = 0.8 + rnd(2000 + i) * 1.1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(rot) * len, y + Math.sin(rot) * len);
+    ctx.stroke();
+  }
+
+  // Soft foreground leaf/structure shadows add depth without hiding play markers.
+  const shadowCount = Math.round((level >= 2 ? 18 : 10) * density);
+  for(let i=0; i<shadowCount; i++){
+    const x = rnd(2300 + i) * w;
+    const y = rnd(2500 + i) * h;
+    const rx = 52 + rnd(2700 + i) * 130;
+    const ry = 18 + rnd(2900 + i) * 58;
+    ctx.globalAlpha = mobileFast ? 0.10 : 0.16;
+    ctx.fillStyle = "rgba(2,8,14,.75)";
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, (rnd(3100 + i) - 0.5) * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    if(level >= 2 && i % 3 === 0){
+      ctx.globalAlpha = 0.10;
+      ctx.strokeStyle = "rgba(226,232,240,.54)";
+      ctx.lineWidth = 1.1;
+      ctx.setLineDash([10, 15]);
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx * 0.82, ry * 0.74, (rnd(3300 + i) - 0.5) * 1.8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Brighter route glints make paths feel intentionally painted instead of flat bands.
+  ctx.lineCap = "round";
+  for(let i=0; i<5; i++){
+    const y = h * (0.16 + i * 0.18) + (rnd(3600 + i) - 0.5) * 54;
+    ctx.globalAlpha = mobileFast ? 0.09 : 0.15;
+    ctx.strokeStyle = "rgba(255,250,220,.74)";
+    ctx.lineWidth = mobileFast ? 1.2 : 1.8;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.05, y);
+    ctx.quadraticCurveTo(w * 0.30, y - 38, w * 0.56, y + 6);
+    ctx.quadraticCurveTo(w * 0.78, y + 38, w * 0.96, y - 10);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 let __premiumVisualPolishUiLast = 0;
 let __premiumVisualPolishUiOn = null;
 function updatePremiumVisualPolishUi(now=Date.now()){
@@ -53096,6 +53185,70 @@ function drawPremium2DArtPhase2BipedOverlay(entity, x, y, opts={}){
   if(blend > 0.08){
     drawPremiumFootstepDust(entity, x, y, blend, opts.dustColor || "rgba(226,232,240,.28)");
   }
+}
+
+function drawPremium2DArtPhase3BipedFinish(entity, x, y, opts={}){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 2.5)), 0, 1);
+  const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
+  const dir = Math.cos(face) >= 0 ? 1 : -1;
+  const step = Number(entity.step || 0) + Number(opts.phase || 0);
+  const scale = Number(opts.scale || 1);
+  const accent = opts.accent || "rgba(125,211,252,.95)";
+  const roleGlow = opts.roleGlow || accent;
+  const stride = Math.sin(step * 2.8) * (2.4 + blend * 5.2);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir * scale, scale);
+  ctx.rotate(animLean(entity, 0.022) * dir);
+
+  ctx.globalAlpha = 0.28;
+  ctx.strokeStyle = roleGlow;
+  ctx.lineWidth = 3.0;
+  ctx.beginPath();
+  ctx.ellipse(0, -2, 18.5, 32, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = "rgba(255,255,255,.72)";
+  ctx.beginPath(); ctx.arc(-3.1, -23.3, 1.35, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(3.1, -23.3, 1.35, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "rgba(2,6,23,.92)";
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(-4.8, -18.2);
+  ctx.quadraticCurveTo(0, -16.4, 4.8, -18.2);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.78;
+  ctx.fillStyle = accent;
+  roundedRectFill(-7.5, -15.7, 15, 2.4, 1.2);
+  ctx.globalAlpha = 0.56;
+  ctx.strokeStyle = "rgba(255,255,255,.70)";
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(-8, -14);
+  ctx.lineTo(8, -14);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.38 + blend * 0.18;
+  ctx.fillStyle = "rgba(255,255,255,.70)";
+  ctx.beginPath(); ctx.ellipse(-8 + stride, 24.1, 4.8, 1.2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8 - stride, 24.1, 4.8, 1.2, 0, 0, Math.PI * 2); ctx.fill();
+
+  if(blend > 0.18){
+    ctx.globalAlpha = clamp(0.16 + blend * 0.18, 0.16, 0.36);
+    ctx.strokeStyle = roleGlow;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-18 - stride * 0.4, 18);
+    ctx.lineTo(-33 - stride * 0.7, 24);
+    ctx.moveTo(18 + stride * 0.4, 18);
+    ctx.lineTo(33 + stride * 0.7, 24);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawAnimatedTigerLegCycle(t, s, colors, behaviorAnim={}, speed=0, gaitState="walk"){
@@ -53534,6 +53687,15 @@ function drawCivilian(c){
     trim:c.shirt,
     scale:0.92
   });
+  drawPremium2DArtPhase3BipedFinish(c, bx, by, {
+    blend:moveBlend,
+    topSpeed:c.following ? 2.1 : 1.4,
+    face,
+    phase:(c.id || 0) * 0.31,
+    accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)",
+    roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
+    scale:0.92
+  });
 
   const rescuedAge = nowMs - Math.max(0, Number(c._rescuedAt || 0));
   if(c.evac && rescuedAge >= 0 && rescuedAge < 1800){
@@ -53854,6 +54016,15 @@ function drawSoldier(){
     pack:palette.armorInner,
     scale:1.02
   });
+  drawPremium2DArtPhase3BipedFinish(S.me, x, y, {
+    blend:rolling ? 1 : moveBlend,
+    topSpeed:3.0,
+    face:ang,
+    phase:0.15,
+    accent:palette.trim,
+    roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
+    scale:1.02
+  });
 
   if(!rolling){
     const wx = x + Math.cos(ang) * (14 + (shotKick * 2.6));
@@ -54061,6 +54232,15 @@ function drawSupportUnit(unit){
     accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
     trim:uniformBody,
     pack:attacker ? "rgba(120,53,15,.88)" : "rgba(17,94,89,.86)",
+    scale:0.94
+  });
+  drawPremium2DArtPhase3BipedFinish(unit, x, y, {
+    blend:moveBlend,
+    topSpeed:2.5,
+    face:ang,
+    phase:(unit.id || 0) * 0.27,
+    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
+    roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
     scale:0.94
   });
 
@@ -54979,6 +55159,95 @@ function drawPremium2DArtPhase2TigerOverlay(t, s, c, visual, behaviorAnim={}, no
   ctx.restore();
 }
 
+function drawPremium2DArtPhase3TigerFinish(t, s, c, visual, behaviorAnim={}, now=Date.now(), headReach=0, headBob=0){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !ctx || !t) return;
+  const hpPct = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
+  const speed = Math.hypot(Number(t.vx || 0), Number(t.vy || 0));
+  const step = Number(t.step || 0);
+  const crouch = behaviorAnim?.crouch || behaviorAnim?.stalking ? 1 : 0;
+  const pounce = behaviorAnim?.pounce ? 1 : 0;
+  const danger = isBossTiger(t) || t.type === "Alpha" || t.eliteMutation;
+  const headX = (22 + headReach + pounce * 5 - crouch * 2.5) * s;
+  const headY = (-7 + headBob * 0.45 + crouch * 1.5 - pounce * 2) * s;
+  ctx.save();
+
+  ctx.globalAlpha = danger ? 0.34 : 0.22;
+  ctx.strokeStyle = danger ? "rgba(251,191,36,.98)" : "rgba(255,247,237,.76)";
+  ctx.lineWidth = (danger ? 3.4 : 2.4) * s;
+  ctx.beginPath();
+  ctx.ellipse(2 * s, (2 + crouch * 3 - pounce) * s, (35 + speed * 1.6) * s, (20 + pounce * 2) * s, -0.04, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.92;
+  ctx.strokeStyle = c.stripe || "rgba(15,23,42,.98)";
+  ctx.lineWidth = 1.2 * s;
+  ctx.lineCap = "round";
+  for(let i=0; i<5; i++){
+    const sx = (-17 + i * 8) * s;
+    const sway = Math.sin(step * 0.65 + i) * 1.4 * s;
+    ctx.beginPath();
+    ctx.moveTo(sx, (-15 + sway) * s);
+    ctx.lineTo((sx + 3 * s), (-8 + sway * 0.4) * s);
+    ctx.moveTo(sx + 1.5 * s, (14 - sway) * s);
+    ctx.lineTo(sx + 5.5 * s, (7 - sway * 0.4) * s);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = behaviorAnim?.stalking || pounce ? "rgba(254,240,138,.98)" : "rgba(255,255,255,.90)";
+  ctx.beginPath(); ctx.arc(headX + 4.2 * s, headY - 3.2 * s, 1.9 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(headX - 3.4 * s, headY - 3.2 * s, 1.9 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(2,6,23,.98)";
+  ctx.beginPath(); ctx.arc(headX + 4.4 * s, headY - 3.1 * s, 0.8 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(headX - 3.2 * s, headY - 3.1 * s, 0.8 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(2,6,23,.96)";
+  ctx.beginPath();
+  ctx.moveTo(headX + 1.8 * s, headY + 3.6 * s);
+  ctx.lineTo(headX + 0.2 * s, headY + 5.8 * s);
+  ctx.lineTo(headX + 3.6 * s, headY + 5.8 * s);
+  ctx.closePath();
+  ctx.fill();
+
+  if(pounce || behaviorAnim?.stalking || t.huntState === TIGER_HUNT_STATES.POUNCE){
+    ctx.globalAlpha = pounce ? 0.72 : 0.42;
+    ctx.strokeStyle = pounce ? "rgba(255,237,213,.98)" : "rgba(250,204,21,.82)";
+    ctx.lineWidth = 1.4 * s;
+    const clawY = (22 - pounce * 4) * s;
+    for(let i=0; i<4; i++){
+      const cx = (3 + i * 5.2) * s;
+      ctx.beginPath();
+      ctx.moveTo(cx, clawY);
+      ctx.lineTo(cx + 4.5 * s, clawY + (pounce ? 5.6 : 3.2) * s);
+      ctx.stroke();
+    }
+  }
+
+  if(hpPct <= 0.25){
+    ctx.globalAlpha = 0.58;
+    ctx.strokeStyle = "rgba(248,113,113,.92)";
+    ctx.lineWidth = 1.5 * s;
+    ctx.beginPath();
+    ctx.moveTo(-15 * s, -1 * s);
+    ctx.lineTo(-7 * s, 5 * s);
+    ctx.moveTo(6 * s, -8 * s);
+    ctx.lineTo(14 * s, -2 * s);
+    ctx.stroke();
+  }
+
+  if(danger){
+    ctx.globalAlpha = 0.24 + Math.sin(now * 0.009) * 0.08;
+    ctx.strokeStyle = "rgba(251,191,36,.96)";
+    ctx.lineWidth = 2.2 * s;
+    ctx.setLineDash([8 * s, 7 * s]);
+    ctx.beginPath();
+    ctx.ellipse(2 * s, 4 * s, 45 * s, 26 * s, -0.06, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+
 function drawTiger(t){
   let alpha=1.0;
   const now = Date.now();
@@ -55256,6 +55525,7 @@ function drawTiger(t){
   drawTigerAnatomyDetails(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob, lifePhase);
   drawPremiumTigerIllustratedShell(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   drawPremium2DArtPhase2TigerOverlay(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
+  drawPremium2DArtPhase3TigerFinish(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   if(atkProgress > 0){
     const biteOpen = atkKind === "charge" ? 1.2 : (atkKind === "pounce" ? 1.0 : 0.75);
     const jawDrop = atkSwing * biteOpen * 2.4;
