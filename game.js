@@ -1,6 +1,6 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4546";
-const PREMIUM_2D_GRAPHICS_VERSION = 8;
+const TS_BUILD = "4547";
+const PREMIUM_2D_GRAPHICS_VERSION = 9;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 if(tg){
@@ -49810,6 +49810,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   drawPremium2DArtPhase4CinematicDepthPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawPremium2DArtPhase5AtmospherePass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawPremium2DArtPhase6ContrastPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
+  drawPremium2DArtPhase7PaintedWorldPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawLightingAtmospherePass({ nowTs:frameNow, w, h, themeKey, chapterStyle, mobileFast:true });
 
   if(S.mode !== "Survival"){
@@ -50598,6 +50599,7 @@ function drawMapScene(){
   drawPremium2DArtPhase4CinematicDepthPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
   drawPremium2DArtPhase5AtmospherePass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
   drawPremium2DArtPhase6ContrastPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
+  drawPremium2DArtPhase7PaintedWorldPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -53093,6 +53095,71 @@ function drawPremium2DArtPhase6ContrastPass(opts={}){
   ctx.restore();
 }
 
+function drawPremium2DArtPhase7PaintedWorldPass(opts={}){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !ctx) return;
+  const w = Math.max(1, Number(opts.w || worldWidth(S) || cv?.width || WORLD_BASE_WIDTH));
+  const h = Math.max(1, Number(opts.h || worldHeight(S) || cv?.height || WORLD_BASE_HEIGHT));
+  const mobileFast = !!opts.mobileFast;
+  const themeKey = String(opts.themeKey || mapFamilyKey(currentMap()?.key || ""));
+  const seed = (missionIndexForMode(S.mode) * 2473) + ((S.mapIndex || 0) * 587) + (PREMIUM_2D_GRAPHICS_VERSION * 97);
+  const rnd = (salt)=>premium2DSeeded(seed, salt);
+  const density = mobileFast ? 0.40 : 1;
+  ctx.save();
+
+  // Phase 7: richer hand-painted terrain accents that keep gameplay markers readable.
+  const palette = themeKey === "ST_DOWNTOWN"
+    ? { a:"rgba(125,211,252,.12)", b:"rgba(147,197,253,.08)", c:"rgba(15,23,42,.18)" }
+    : themeKey === "ST_INDUSTRIAL"
+      ? { a:"rgba(251,191,36,.11)", b:"rgba(248,113,113,.075)", c:"rgba(69,26,3,.18)" }
+      : { a:"rgba(134,239,172,.12)", b:"rgba(190,242,100,.08)", c:"rgba(5,46,22,.18)" };
+  const wash = ctx.createRadialGradient(w * 0.52, h * 0.45, Math.min(w,h) * 0.14, w * 0.52, h * 0.45, Math.max(w,h) * 0.62);
+  wash.addColorStop(0, palette.a);
+  wash.addColorStop(0.55, "rgba(255,255,255,0)");
+  wash.addColorStop(1, palette.c);
+  ctx.globalAlpha = mobileFast ? 0.48 : 0.68;
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, w, h);
+
+  const brushCount = Math.round((level >= 2 ? 58 : 34) * density);
+  ctx.lineCap = "round";
+  for(let i=0; i<brushCount; i++){
+    const x = rnd(10100 + i) * w;
+    const y = rnd(10300 + i) * h;
+    const len = 18 + rnd(10500 + i) * 88;
+    const rot = (rnd(10700 + i) - 0.5) * 2.8;
+    ctx.globalAlpha = mobileFast ? 0.045 : 0.074;
+    ctx.strokeStyle = i % 5 === 0 ? palette.a : (i % 2 === 0 ? palette.b : "rgba(255,255,255,.42)");
+    ctx.lineWidth = 1.3 + rnd(10900 + i) * 3.8;
+    ctx.beginPath();
+    ctx.moveTo(x - Math.cos(rot) * len * 0.35, y - Math.sin(rot) * len * 0.35);
+    ctx.quadraticCurveTo(x, y + (rnd(11100 + i) - 0.5) * 28, x + Math.cos(rot) * len, y + Math.sin(rot) * len);
+    ctx.stroke();
+  }
+
+  const z = typeof safeZone === "function" ? safeZone() : null;
+  if(z && Number.isFinite(z.x) && Number.isFinite(z.y)){
+    ctx.globalAlpha = 0.16;
+    ctx.strokeStyle = "rgba(134,239,172,.92)";
+    ctx.lineWidth = mobileFast ? 2.0 : 2.8;
+    ctx.setLineDash([10, 10]);
+    ctx.beginPath();
+    ctx.ellipse(z.x, z.y, Math.max(55, Number(z.r || 70) * 1.45), Math.max(34, Number(z.r || 70) * 0.82), 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  if(S?.me && Number.isFinite(S.me.x) && Number.isFinite(S.me.y)){
+    ctx.globalAlpha = mobileFast ? 0.075 : 0.12;
+    ctx.strokeStyle = "rgba(255,255,255,.86)";
+    ctx.lineWidth = mobileFast ? 1.2 : 1.8;
+    ctx.beginPath();
+    ctx.ellipse(S.me.x, S.me.y + 18, 62, 17, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 let __premiumVisualPolishUiLast = 0;
 let __premiumVisualPolishUiOn = null;
 function updatePremiumVisualPolishUi(now=Date.now()){
@@ -53690,6 +53757,66 @@ function drawPremium2DArtPhase6BipedReadability(entity, x, y, opts={}){
   ctx.restore();
 }
 
+function drawPremium2DArtPhase7BipedPremiumInk(entity, x, y, opts={}){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 2.5)), 0, 1);
+  const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
+  const dir = Math.cos(face) >= 0 ? 1 : -1;
+  const step = Number(entity.step || 0) + Number(opts.phase || 0);
+  const scale = Number(opts.scale || 1);
+  const accent = opts.accent || "rgba(125,211,252,.96)";
+  const roleGlow = opts.roleGlow || accent;
+  const stride = Math.sin(step * 3.55) * (3.4 + blend * 7.2);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir * scale, scale);
+  ctx.rotate(animLean(entity, 0.010) * dir);
+
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = "rgba(0,0,0,.96)";
+  ctx.lineWidth = 5.0;
+  ctx.beginPath();
+  ctx.ellipse(0, -4, 18.2, 32.5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.56;
+  ctx.strokeStyle = roleGlow;
+  ctx.lineWidth = 1.65;
+  ctx.beginPath();
+  ctx.ellipse(0, -4, 15.2, 28.8, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const shine = ctx.createLinearGradient(-9, -18, 9, 10);
+  shine.addColorStop(0, "rgba(255,255,255,.35)");
+  shine.addColorStop(0.32, "rgba(255,255,255,.08)");
+  shine.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.globalAlpha = 0.60;
+  ctx.fillStyle = shine;
+  roundedRectFill(-8.8, -16, 17.6, 25, 6);
+
+  if(blend > 0.12){
+    ctx.globalAlpha = clamp(0.18 + blend * 0.26, 0.18, 0.48);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-9 + stride * 0.18, 25);
+    ctx.quadraticCurveTo(-22 - stride * 0.30, 28, -36 - stride * 0.55, 32);
+    ctx.moveTo(9 - stride * 0.18, 25);
+    ctx.quadraticCurveTo(22 + stride * 0.30, 28, 36 + stride * 0.55, 32);
+    ctx.stroke();
+  }
+
+  if(level >= 2){
+    ctx.globalAlpha = 0.70;
+    ctx.fillStyle = "rgba(255,255,255,.84)";
+    ctx.beginPath(); ctx.ellipse(-8 + stride, 25.2, 4.8, 1.15, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(8 - stride, 25.2, 4.8, 1.15, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawAnimatedTigerLegCycle(t, s, colors, behaviorAnim={}, speed=0, gaitState="walk"){
   const quality = animationPassQuality();
   const c = colors || tigerColors(t);
@@ -54162,6 +54289,15 @@ function drawCivilian(c){
     roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
     scale:0.92
   });
+  drawPremium2DArtPhase7BipedPremiumInk(c, bx, by, {
+    blend:moveBlend,
+    topSpeed:c.following ? 2.1 : 1.4,
+    face,
+    phase:(c.id || 0) * 0.31,
+    accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)",
+    roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
+    scale:0.92
+  });
 
   const rescuedAge = nowMs - Math.max(0, Number(c._rescuedAt || 0));
   if(c.evac && rescuedAge >= 0 && rescuedAge < 1800){
@@ -54518,6 +54654,15 @@ function drawSoldier(){
     roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
     scale:1.02
   });
+  drawPremium2DArtPhase7BipedPremiumInk(S.me, x, y, {
+    blend:rolling ? 1 : moveBlend,
+    topSpeed:3.0,
+    face:ang,
+    phase:0.15,
+    accent:palette.trim,
+    roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
+    scale:1.02
+  });
 
   if(!rolling){
     const wx = x + Math.cos(ang) * (14 + (shotKick * 2.6));
@@ -54755,6 +54900,15 @@ function drawSupportUnit(unit){
     scale:0.94
   });
   drawPremium2DArtPhase6BipedReadability(unit, x, y, {
+    blend:moveBlend,
+    topSpeed:2.5,
+    face:ang,
+    phase:(unit.id || 0) * 0.27,
+    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
+    roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
+    scale:0.94
+  });
+  drawPremium2DArtPhase7BipedPremiumInk(unit, x, y, {
     blend:moveBlend,
     topSpeed:2.5,
     face:ang,
@@ -56040,6 +56194,86 @@ function drawPremium2DArtPhase6TigerReadability(t, s, c, visual, behaviorAnim={}
   ctx.restore();
 }
 
+function drawPremium2DArtPhase7TigerPremiumInk(t, s, c, visual, behaviorAnim={}, now=Date.now(), headReach=0, headBob=0){
+  const level = premium2DArtPhaseLevel();
+  if(level <= 0 || !ctx || !t) return;
+  const hpPct = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
+  const speed = Math.hypot(Number(t.vx || 0), Number(t.vy || 0));
+  const step = Number(t.step || 0);
+  const crouch = behaviorAnim?.crouch || behaviorAnim?.stalking ? 1 : 0;
+  const pounce = behaviorAnim?.pounce || t.huntState === TIGER_HUNT_STATES.POUNCE ? 1 : 0;
+  const danger = isBossTiger(t) || t.type === "Alpha" || !!t.eliteMutation;
+  const headX = (22 + headReach + pounce * 5 - crouch * 2.5) * s;
+  const headY = (-7 + headBob * 0.45 + crouch * 1.5 - pounce * 2) * s;
+  const tailLift = Math.sin(step * 1.2 + Number(t.id || 0)) * (4 + speed) * s;
+  ctx.save();
+
+  ctx.globalAlpha = 0.26;
+  ctx.strokeStyle = "rgba(0,0,0,.98)";
+  ctx.lineWidth = 6.6 * s;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.ellipse(2 * s, (2 + crouch * 2 - pounce) * s, (40 + speed * 2) * s, (23 + pounce * 3) * s, -0.06, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-30 * s, (-5 + crouch * 2) * s);
+  ctx.quadraticCurveTo(-45 * s, (-20 + tailLift * 0.2) * s, (-59 - speed * 3) * s, (-8 + tailLift * 0.25) * s);
+  ctx.stroke();
+
+  ctx.globalAlpha = danger ? 0.72 : 0.52;
+  ctx.strokeStyle = danger ? "rgba(253,224,71,.98)" : "rgba(255,247,237,.86)";
+  ctx.lineWidth = (1.5 + (danger ? 0.55 : 0)) * s;
+  ctx.beginPath();
+  ctx.ellipse(2 * s, (1.5 + crouch * 2 - pounce) * s, (36 + speed * 1.6) * s, (19.5 + pounce * 2.2) * s, -0.06, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const tigerShine = ctx.createLinearGradient(-23 * s, -17 * s, 23 * s, 12 * s);
+  tigerShine.addColorStop(0, "rgba(255,255,255,.24)");
+  tigerShine.addColorStop(0.42, "rgba(255,255,255,.065)");
+  tigerShine.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.globalAlpha = 0.68;
+  ctx.fillStyle = tigerShine;
+  ctx.beginPath();
+  ctx.ellipse(-2 * s, (-4 + crouch * 2) * s, 27 * s, 12 * s, -0.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = 0.96;
+  ctx.fillStyle = danger || pounce ? "rgba(254,240,138,.98)" : "rgba(255,255,255,.94)";
+  ctx.beginPath(); ctx.arc(headX + 5.3 * s, headY - 3.8 * s, 1.95 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(headX - 4.0 * s, headY - 3.8 * s, 1.95 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(2,6,23,.98)";
+  ctx.beginPath(); ctx.arc(headX + 5.45 * s, headY - 3.75 * s, 0.84 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(headX - 3.85 * s, headY - 3.75 * s, 0.84 * s, 0, Math.PI * 2); ctx.fill();
+
+  if(pounce){
+    ctx.globalAlpha = 0.72;
+    ctx.strokeStyle = "rgba(255,237,213,.98)";
+    ctx.lineWidth = 2.0 * s;
+    ctx.lineCap = "round";
+    for(let i=0; i<4; i++){
+      const cx = (4 + i * 5.4) * s;
+      const cy = 17 * s;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + 7.5 * s, cy + 8.5 * s);
+      ctx.stroke();
+    }
+  }
+
+  if(hpPct <= 0.25 && level >= 2){
+    ctx.globalAlpha = 0.74;
+    ctx.strokeStyle = "rgba(248,113,113,.98)";
+    ctx.lineWidth = 1.8 * s;
+    ctx.beginPath();
+    ctx.moveTo(-21 * s, -7 * s);
+    ctx.lineTo(-12 * s, 1 * s);
+    ctx.moveTo(5 * s, -9 * s);
+    ctx.lineTo(14 * s, -2 * s);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawTiger(t){
   let alpha=1.0;
   const now = Date.now();
@@ -56321,6 +56555,7 @@ function drawTiger(t){
   drawPremium2DArtPhase4TigerPolish(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   drawPremium2DArtPhase5TigerIllustration(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   drawPremium2DArtPhase6TigerReadability(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
+  drawPremium2DArtPhase7TigerPremiumInk(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   if(atkProgress > 0){
     const biteOpen = atkKind === "charge" ? 1.2 : (atkKind === "pounce" ? 1.0 : 0.75);
     const jawDrop = atkSwing * biteOpen * 2.4;
