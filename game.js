@@ -1,6 +1,6 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4548";
-const PREMIUM_2D_GRAPHICS_VERSION = 10;
+const TS_BUILD = "4547";
+const PREMIUM_2D_GRAPHICS_VERSION = 9;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 if(tg){
@@ -49811,7 +49811,6 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   drawPremium2DArtPhase5AtmospherePass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawPremium2DArtPhase6ContrastPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawPremium2DArtPhase7PaintedWorldPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
-  drawPremium2DArtPhase8CinematicFinishPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
   drawLightingAtmospherePass({ nowTs:frameNow, w, h, themeKey, chapterStyle, mobileFast:true });
 
   if(S.mode !== "Survival"){
@@ -50601,7 +50600,6 @@ function drawMapScene(){
   drawPremium2DArtPhase5AtmospherePass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
   drawPremium2DArtPhase6ContrastPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
   drawPremium2DArtPhase7PaintedWorldPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
-  drawPremium2DArtPhase8CinematicFinishPass({ nowTs:frameNow, w, h, themeKey, mobileFast:false });
 
   if(chapterStyle?.tint){
     ctx.fillStyle = chapterStyle.tint;
@@ -53162,96 +53160,6 @@ function drawPremium2DArtPhase7PaintedWorldPass(opts={}){
   ctx.restore();
 }
 
-function drawPremium2DArtPhase8CinematicFinishPass(opts={}){
-  const level = premium2DArtPhaseLevel();
-  if(level <= 0 || !ctx) return;
-  const w = Math.max(1, Number(opts.w || worldWidth(S) || cv?.width || WORLD_BASE_WIDTH));
-  const h = Math.max(1, Number(opts.h || worldHeight(S) || cv?.height || WORLD_BASE_HEIGHT));
-  const mobileFast = !!opts.mobileFast;
-  const themeKey = String(opts.themeKey || mapFamilyKey(currentMap()?.key || ""));
-  const seed = (missionIndexForMode(S.mode) * 2687) + ((S.mapIndex || 0) * 641) + (PREMIUM_2D_GRAPHICS_VERSION * 109);
-  const rnd = (salt)=>premium2DSeeded(seed, salt);
-  const density = mobileFast ? 0.34 : 1;
-  ctx.save();
-
-  // Phase 8: cinematic color grade and focal lighting without hiding gameplay.
-  const grade = ctx.createLinearGradient(0, 0, w, h);
-  if(themeKey === "ST_DOWNTOWN"){
-    grade.addColorStop(0, "rgba(56,189,248,.075)");
-    grade.addColorStop(0.55, "rgba(255,255,255,0)");
-    grade.addColorStop(1, "rgba(2,6,23,.18)");
-  } else if(themeKey === "ST_INDUSTRIAL"){
-    grade.addColorStop(0, "rgba(251,146,60,.085)");
-    grade.addColorStop(0.56, "rgba(255,255,255,0)");
-    grade.addColorStop(1, "rgba(67,20,7,.17)");
-  } else {
-    grade.addColorStop(0, "rgba(190,242,100,.085)");
-    grade.addColorStop(0.56, "rgba(255,255,255,0)");
-    grade.addColorStop(1, "rgba(6,78,59,.17)");
-  }
-  ctx.globalAlpha = mobileFast ? 0.44 : 0.64;
-  ctx.fillStyle = grade;
-  ctx.fillRect(0, 0, w, h);
-
-  const beamCount = Math.round((level >= 2 ? 28 : 16) * density);
-  ctx.lineCap = "round";
-  ctx.globalCompositeOperation = "screen";
-  for(let i=0; i<beamCount; i++){
-    const x = rnd(12100 + i) * w;
-    const y = rnd(12300 + i) * h;
-    const len = 44 + rnd(12500 + i) * 150;
-    const rot = (rnd(12700 + i) - 0.5) * 1.45;
-    ctx.globalAlpha = mobileFast ? 0.035 : 0.06;
-    ctx.strokeStyle = i % 3 === 0 ? "rgba(255,255,255,.76)" : "rgba(134,239,172,.68)";
-    ctx.lineWidth = 1.2 + rnd(12900 + i) * 2.6;
-    ctx.beginPath();
-    ctx.moveTo(x - Math.cos(rot) * len * 0.35, y - Math.sin(rot) * len * 0.35);
-    ctx.quadraticCurveTo(x + (rnd(13100 + i) - 0.5) * 22, y + (rnd(13300 + i) - 0.5) * 22, x + Math.cos(rot) * len, y + Math.sin(rot) * len);
-    ctx.stroke();
-  }
-
-  ctx.globalCompositeOperation = "source-over";
-  const z = typeof safeZone === "function" ? safeZone() : null;
-  if(z && Number.isFinite(z.x) && Number.isFinite(z.y)){
-    const zr = Math.max(64, Number(z.r || 74));
-    const halo = ctx.createRadialGradient(z.x, z.y, zr * 0.25, z.x, z.y, zr * 1.7);
-    halo.addColorStop(0, "rgba(74,222,128,.18)");
-    halo.addColorStop(0.62, "rgba(34,197,94,.07)");
-    halo.addColorStop(1, "rgba(34,197,94,0)");
-    ctx.globalAlpha = mobileFast ? 0.70 : 0.92;
-    ctx.fillStyle = halo;
-    ctx.fillRect(z.x - zr * 1.8, z.y - zr * 1.8, zr * 3.6, zr * 3.6);
-    ctx.globalAlpha = 0.22;
-    ctx.strokeStyle = "rgba(187,247,208,.95)";
-    ctx.lineWidth = mobileFast ? 2.4 : 3.2;
-    ctx.beginPath();
-    ctx.ellipse(z.x, z.y, zr * 1.08, zr * 0.70, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
-  const focusId = S?.lockedTigerId || S?.activeTigerId;
-  const focusTiger = focusId ? (S.tigers || []).find((t)=>t && t.id === focusId) : null;
-  if(focusTiger && Number.isFinite(focusTiger.x) && Number.isFinite(focusTiger.y)){
-    const boss = isBossTiger(focusTiger) || focusTiger.type === "Alpha" || !!focusTiger.eliteMutation;
-    ctx.globalAlpha = boss ? 0.19 : 0.12;
-    ctx.strokeStyle = boss ? "rgba(251,191,36,.95)" : "rgba(248,113,113,.88)";
-    ctx.lineWidth = boss ? 4.2 : 3.0;
-    ctx.setLineDash([14, 12]);
-    ctx.beginPath();
-    ctx.ellipse(focusTiger.x, focusTiger.y + 5, boss ? 66 : 52, boss ? 42 : 34, -0.08, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-
-  ctx.globalAlpha = mobileFast ? 0.08 : 0.13;
-  const vignette = ctx.createRadialGradient(w * 0.5, h * 0.48, Math.min(w, h) * 0.35, w * 0.5, h * 0.48, Math.max(w, h) * 0.72);
-  vignette.addColorStop(0, "rgba(0,0,0,0)");
-  vignette.addColorStop(1, "rgba(0,0,0,.95)");
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, w, h);
-  ctx.restore();
-}
-
 let __premiumVisualPolishUiLast = 0;
 let __premiumVisualPolishUiOn = null;
 function updatePremiumVisualPolishUi(now=Date.now()){
@@ -53909,76 +53817,6 @@ function drawPremium2DArtPhase7BipedPremiumInk(entity, x, y, opts={}){
   ctx.restore();
 }
 
-function drawPremium2DArtPhase8BipedCinematicFinish(entity, x, y, opts={}){
-  const level = premium2DArtPhaseLevel();
-  if(level <= 0 || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
-  const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 2.5)), 0, 1);
-  const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
-  const dir = Math.cos(face) >= 0 ? 1 : -1;
-  const step = Number(entity.step || 0) + Number(opts.phase || 0);
-  const scale = Number(opts.scale || 1);
-  const accent = opts.accent || "rgba(125,211,252,.96)";
-  const roleGlow = opts.roleGlow || accent;
-  const stride = Math.sin(step * 3.8) * (4.2 + blend * 7.8);
-  const lift = Math.abs(Math.sin(step * 3.8)) * (blend * 2.8);
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(dir * scale, scale);
-  ctx.rotate(animLean(entity, 0.012) * dir);
-
-  ctx.globalAlpha = 0.30;
-  ctx.fillStyle = "rgba(0,0,0,.90)";
-  ctx.beginPath();
-  ctx.ellipse(0, 27.5, 22 + blend * 5, 4.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.globalCompositeOperation = "screen";
-  ctx.globalAlpha = 0.48;
-  ctx.strokeStyle = roleGlow;
-  ctx.lineWidth = 2.6;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(-12, -16);
-  ctx.quadraticCurveTo(-19, 1, -12 + stride * 0.18, 17);
-  ctx.moveTo(12, -16);
-  ctx.quadraticCurveTo(19, 1, 12 - stride * 0.18, 17);
-  ctx.stroke();
-
-  const chest = ctx.createLinearGradient(-13, -17, 12, 13);
-  chest.addColorStop(0, "rgba(255,255,255,.42)");
-  chest.addColorStop(0.40, "rgba(255,255,255,.10)");
-  chest.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = chest;
-  roundedRectFill(-9.2, -16.4, 18.4, 25.6, 6.5);
-
-  if(blend > 0.10){
-    ctx.globalAlpha = clamp(0.22 + blend * 0.28, 0.22, 0.52);
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 1.55;
-    ctx.beginPath();
-    ctx.moveTo(-7 + stride * 0.15, 23 - lift);
-    ctx.quadraticCurveTo(-23 - stride * 0.34, 27, -42 - stride * 0.55, 32);
-    ctx.moveTo(7 - stride * 0.15, 23 - lift);
-    ctx.quadraticCurveTo(23 + stride * 0.34, 27, 42 + stride * 0.55, 32);
-    ctx.stroke();
-  }
-
-  ctx.globalCompositeOperation = "source-over";
-  ctx.globalAlpha = 0.74;
-  ctx.fillStyle = "rgba(255,255,255,.86)";
-  ctx.beginPath(); ctx.ellipse(-8 + stride, 25.2 - lift, 5.5, 1.25, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(8 - stride, 25.2 - lift, 5.5, 1.25, 0, 0, Math.PI * 2); ctx.fill();
-
-  if(level >= 2){
-    ctx.globalAlpha = 0.58;
-    ctx.fillStyle = roleGlow;
-    ctx.beginPath(); ctx.arc(-3.2, -24.8, 1.45, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(3.2, -24.8, 1.45, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.restore();
-}
-
 function drawAnimatedTigerLegCycle(t, s, colors, behaviorAnim={}, speed=0, gaitState="walk"){
   const quality = animationPassQuality();
   const c = colors || tigerColors(t);
@@ -54460,15 +54298,6 @@ function drawCivilian(c){
     roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
     scale:0.92
   });
-  drawPremium2DArtPhase8BipedCinematicFinish(c, bx, by, {
-    blend:moveBlend,
-    topSpeed:c.following ? 2.1 : 1.4,
-    face,
-    phase:(c.id || 0) * 0.31,
-    accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)",
-    roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
-    scale:0.92
-  });
 
   const rescuedAge = nowMs - Math.max(0, Number(c._rescuedAt || 0));
   if(c.evac && rescuedAge >= 0 && rescuedAge < 1800){
@@ -54834,15 +54663,6 @@ function drawSoldier(){
     roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
     scale:1.02
   });
-  drawPremium2DArtPhase8BipedCinematicFinish(S.me, x, y, {
-    blend:rolling ? 1 : moveBlend,
-    topSpeed:3.0,
-    face:ang,
-    phase:0.15,
-    accent:palette.trim,
-    roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
-    scale:1.02
-  });
 
   if(!rolling){
     const wx = x + Math.cos(ang) * (14 + (shotKick * 2.6));
@@ -55089,15 +54909,6 @@ function drawSupportUnit(unit){
     scale:0.94
   });
   drawPremium2DArtPhase7BipedPremiumInk(unit, x, y, {
-    blend:moveBlend,
-    topSpeed:2.5,
-    face:ang,
-    phase:(unit.id || 0) * 0.27,
-    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
-    roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
-    scale:0.94
-  });
-  drawPremium2DArtPhase8BipedCinematicFinish(unit, x, y, {
     blend:moveBlend,
     topSpeed:2.5,
     face:ang,
@@ -56463,109 +56274,6 @@ function drawPremium2DArtPhase7TigerPremiumInk(t, s, c, visual, behaviorAnim={},
   ctx.restore();
 }
 
-function drawPremium2DArtPhase8TigerCinematicInk(t, s, c, visual, behaviorAnim={}, now=Date.now(), headReach=0, headBob=0){
-  const level = premium2DArtPhaseLevel();
-  if(level <= 0 || !ctx || !t) return;
-  const hpPct = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
-  const speed = Math.hypot(Number(t.vx || 0), Number(t.vy || 0));
-  const step = Number(t.step || 0);
-  const crouch = behaviorAnim?.crouch || behaviorAnim?.stalking ? 1 : 0;
-  const pounce = behaviorAnim?.pounce || t.huntState === TIGER_HUNT_STATES.POUNCE ? 1 : 0;
-  const danger = isBossTiger(t) || t.type === "Alpha" || !!t.eliteMutation;
-  const injured = hpPct <= 0.25;
-  const headX = (22 + headReach + pounce * 5.5 - crouch * 2.4) * s;
-  const headY = (-7 + headBob * 0.46 + crouch * 1.5 - pounce * 2.2) * s;
-  const tailWhip = Math.sin(step * 1.45 + Number(t.id || 0)) * (4.5 + speed * 1.5) * s;
-  ctx.save();
-
-  ctx.globalAlpha = danger ? 0.34 : 0.24;
-  ctx.fillStyle = "rgba(0,0,0,.88)";
-  ctx.beginPath();
-  ctx.ellipse(0, (24 + crouch * 2) * s, (43 + speed * 3) * s, (7.5 + pounce * 1.7) * s, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.globalCompositeOperation = "screen";
-  ctx.globalAlpha = danger ? 0.56 : 0.40;
-  ctx.strokeStyle = danger ? "rgba(253,224,71,.98)" : "rgba(255,247,237,.88)";
-  ctx.lineWidth = (2.2 + (danger ? 0.8 : 0)) * s;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.ellipse(2 * s, (1 + crouch * 2 - pounce) * s, (38 + speed * 2.0) * s, (20 + pounce * 2.6) * s, -0.06, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(-30 * s, (-6 + crouch * 2) * s);
-  ctx.quadraticCurveTo(-47 * s, (-21 + tailWhip * 0.18) * s, (-64 - speed * 2.5) * s, (-7 + tailWhip * 0.22) * s);
-  ctx.stroke();
-
-  const highlight = ctx.createLinearGradient(-26 * s, -18 * s, 27 * s, 12 * s);
-  highlight.addColorStop(0, "rgba(255,255,255,.34)");
-  highlight.addColorStop(0.38, "rgba(255,255,255,.075)");
-  highlight.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.globalAlpha = 0.58;
-  ctx.fillStyle = highlight;
-  ctx.beginPath();
-  ctx.ellipse(-2 * s, (-4 + crouch * 2 - pounce * 0.6) * s, 30 * s, 12.8 * s, -0.08, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.globalCompositeOperation = "source-over";
-  ctx.globalAlpha = 0.95;
-  ctx.fillStyle = danger ? "rgba(254,240,138,.98)" : "rgba(255,255,255,.94)";
-  ctx.beginPath(); ctx.arc(headX + 5.4 * s, headY - 3.9 * s, 2.15 * s, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(headX - 4.1 * s, headY - 3.9 * s, 2.15 * s, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "rgba(1,4,10,.98)";
-  ctx.beginPath(); ctx.arc(headX + 5.55 * s, headY - 3.85 * s, 0.92 * s, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(headX - 3.95 * s, headY - 3.85 * s, 0.92 * s, 0, Math.PI * 2); ctx.fill();
-
-  ctx.globalAlpha = 0.60;
-  ctx.strokeStyle = "rgba(255,247,237,.86)";
-  ctx.lineWidth = 0.75 * s;
-  for(let i=-1; i<=1; i++){
-    ctx.beginPath();
-    ctx.moveTo((headX + 10 * s), (headY + (i * 2.2) * s));
-    ctx.lineTo((headX + 20 * s), (headY + (i * 3.2 - 2) * s));
-    ctx.moveTo((headX - 8 * s), (headY + (i * 2.2) * s));
-    ctx.lineTo((headX - 18 * s), (headY + (i * 3.2 - 2) * s));
-    ctx.stroke();
-  }
-
-  if(pounce || behaviorAnim?.roar){
-    ctx.globalAlpha = 0.78;
-    ctx.fillStyle = "rgba(255,255,255,.92)";
-    ctx.beginPath();
-    ctx.moveTo((headX + 1.4 * s), (headY + 5.0 * s));
-    ctx.lineTo((headX + 2.4 * s), (headY + 9.2 * s));
-    ctx.lineTo((headX + 3.6 * s), (headY + 5.0 * s));
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  if(injured){
-    ctx.globalAlpha = 0.78;
-    ctx.strokeStyle = "rgba(248,113,113,.98)";
-    ctx.lineWidth = 2.0 * s;
-    ctx.beginPath();
-    ctx.moveTo(-24 * s, -9 * s);
-    ctx.lineTo(-14 * s, -1 * s);
-    ctx.moveTo(-2 * s, 7 * s);
-    ctx.lineTo(10 * s, 13 * s);
-    ctx.moveTo(7 * s, -12 * s);
-    ctx.lineTo(18 * s, -4 * s);
-    ctx.stroke();
-  }
-
-  if(danger && level >= 2){
-    ctx.globalAlpha = 0.18 + Math.sin(now * 0.012) * 0.05;
-    ctx.strokeStyle = "rgba(251,191,36,.95)";
-    ctx.lineWidth = 1.8 * s;
-    ctx.setLineDash([6 * s, 8 * s]);
-    ctx.beginPath();
-    ctx.ellipse(3 * s, 5 * s, 56 * s, 34 * s, -0.06, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-  ctx.restore();
-}
-
 function drawTiger(t){
   let alpha=1.0;
   const now = Date.now();
@@ -56848,7 +56556,6 @@ function drawTiger(t){
   drawPremium2DArtPhase5TigerIllustration(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   drawPremium2DArtPhase6TigerReadability(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   drawPremium2DArtPhase7TigerPremiumInk(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
-  drawPremium2DArtPhase8TigerCinematicInk(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   if(atkProgress > 0){
     const biteOpen = atkKind === "charge" ? 1.2 : (atkKind === "pounce" ? 1.0 : 0.75);
     const jawDrop = atkSwing * biteOpen * 2.4;
