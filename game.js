@@ -1,6 +1,6 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4547";
-const PREMIUM_2D_GRAPHICS_VERSION = 9;
+const TS_BUILD = "4550";
+const PREMIUM_2D_GRAPHICS_VERSION = 11;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 if(tg){
@@ -53817,6 +53817,228 @@ function drawPremium2DArtPhase7BipedPremiumInk(entity, x, y, opts={}){
   ctx.restore();
 }
 
+function drawRealisticCivilianModel(entity, x, y, opts={}){
+  if(!ctx || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 1.8)), 0, 1);
+  const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
+  const dir = Math.cos(face) >= 0 ? 1 : -1;
+  const step = Number(entity.step || 0) + Number(opts.phase || 0);
+  const scale = Number(opts.scale || 1);
+  const stride = Math.sin(step * 3.1) * (3.6 + blend * 5.4);
+  const lift = Math.abs(Math.sin(step * 3.1)) * (1.2 + blend * 2.5);
+  const shirt = entity.shirt || "rgba(59,130,246,.96)";
+  const pants = entity.pants || "rgba(31,41,55,.96)";
+  const skin = entity.skin || "rgba(222,170,126,.96)";
+  const hairStyle = Number(entity.hair || 0);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir * scale, scale);
+  ctx.rotate(animLean(entity, 0.018) * dir);
+
+  ctx.globalAlpha = 0.38;
+  ctx.fillStyle = "rgba(0,0,0,.84)";
+  ctx.beginPath();
+  ctx.ellipse(0, 26.2, 18, 4.9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = pants;
+  roundedRectFill(-7.5 + stride * 0.16, 9, 6.4, 15 - lift * 0.15, 3);
+  roundedRectFill(1.1 - stride * 0.16, 9, 6.4, 15 - lift * 0.15, 3);
+  ctx.fillStyle = "rgba(21,27,38,.98)";
+  roundedRectFill(-8 + stride * 0.45, 22.5 - lift, 8.5, 3.8, 2);
+  roundedRectFill(0.5 - stride * 0.45, 22.5 - lift, 8.5, 3.8, 2);
+
+  ctx.strokeStyle = "rgba(12,16,24,.62)";
+  ctx.lineWidth = 1.2;
+  ctx.fillStyle = shirt;
+  ctx.beginPath();
+  ctx.moveTo(-9.5, -13);
+  ctx.quadraticCurveTo(0, -17.5, 9.5, -13);
+  ctx.lineTo(8, 10);
+  ctx.quadraticCurveTo(0, 14.5, -8, 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,.20)";
+  roundedRectFill(-6.4, -11, 12.8, 4.4, 2);
+  ctx.fillStyle = "rgba(15,23,42,.30)";
+  roundedRectFill(-1, -12.5, 2, 23, 1);
+
+  ctx.fillStyle = shirt;
+  roundedRectFill(-13.2, -10.5 + stride * 0.08, 4.8, 14.5, 2.4);
+  roundedRectFill(8.4, -10.5 - stride * 0.08, 4.8, 14.5, 2.4);
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.arc(-11.2, 4.8 + stride * 0.08, 2.7, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(11.2, 4.8 - stride * 0.08, 2.7, 0, Math.PI * 2); ctx.fill();
+
+  if(Number(entity.id || 0) % 3 === 0){
+    ctx.fillStyle = "rgba(30,41,59,.82)";
+    roundedRectFill(7.4, -6, 5.3, 12, 2.5);
+  } else if(Number(entity.id || 0) % 4 === 0){
+    ctx.strokeStyle = "rgba(71,85,105,.74)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-7, -10);
+    ctx.quadraticCurveTo(0, -2, 7, -10);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = skin;
+  ctx.beginPath();
+  ctx.ellipse(0, -21.1, 7.8, 8.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,232,210,.24)";
+  ctx.beginPath();
+  ctx.ellipse(-2.2, -23.1, 3.4, 2.2, -0.25, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = hairStyle === 1 ? "rgba(58,37,28,.96)" : (hairStyle === 2 ? "rgba(21,24,30,.96)" : "rgba(35,27,24,.96)");
+  if(hairStyle === 1){
+    roundedRectFill(-7.8, -29.2, 15.6, 7.0, 3.5);
+  } else if(hairStyle === 2){
+    ctx.beginPath(); ctx.ellipse(0, -27, 8.4, 5.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(6.6, -22.5, 3.6, 7.2, 0.1, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.arc(0, -24.2, 7.6, Math.PI, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = "rgba(15,23,42,.96)";
+  ctx.beginPath(); ctx.arc(-2.8, -21.7, 0.9, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(2.8, -21.7, 0.9, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "rgba(92,52,38,.72)";
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(-2.4, -17.2); ctx.quadraticCurveTo(0, -16.2, 2.4, -17.2); ctx.stroke();
+
+  if(blend > 0.12){
+    ctx.globalAlpha = clamp(0.20 + blend * 0.18, 0.20, 0.38);
+    ctx.strokeStyle = entity.following ? "rgba(110,231,183,.76)" : "rgba(226,232,240,.50)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-7 + stride * 0.4, 25);
+    ctx.lineTo(-20 - stride * 0.8, 30);
+    ctx.moveTo(7 - stride * 0.4, 25);
+    ctx.lineTo(20 + stride * 0.8, 30);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+function drawRealisticSoldierModel(entity, x, y, opts={}){
+  if(!ctx || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const blend = clamp(Number(opts.blend ?? premiumGaitBlend(entity, opts.topSpeed || 2.8)), 0, 1);
+  const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
+  const dir = Math.cos(face) >= 0 ? 1 : -1;
+  const step = Number(entity.step || 0) + Number(opts.phase || 0);
+  const scale = Number(opts.scale || 1);
+  const role = String(opts.role || "player");
+  const attacker = role === "attacker";
+  const rescue = role === "rescue";
+  const stride = Math.sin(step * 3.25) * (4.0 + blend * 6.2);
+  const lift = Math.abs(Math.sin(step * 3.25)) * (1.3 + blend * 2.6);
+  const camoA = attacker ? "rgba(101,69,38,.98)" : "rgba(82,86,59,.98)";
+  const camoB = attacker ? "rgba(150,104,58,.96)" : "rgba(132,121,78,.96)";
+  const camoC = "rgba(45,54,40,.96)";
+  const vest = rescue ? "rgba(22,78,99,.98)" : "rgba(58,45,32,.98)";
+  const trim = opts.accent || (rescue ? "rgba(125,211,252,.96)" : "rgba(251,191,36,.92)");
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir * scale, scale);
+  ctx.rotate(animLean(entity, 0.015) * dir);
+
+  ctx.globalAlpha = 0.42;
+  ctx.fillStyle = "rgba(0,0,0,.88)";
+  ctx.beginPath();
+  ctx.ellipse(0, 27, 22, 5.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = camoA;
+  roundedRectFill(-8.8 + stride * 0.13, 8.2, 7.3, 16.5 - lift * 0.12, 3);
+  roundedRectFill(1.5 - stride * 0.13, 8.2, 7.3, 16.5 - lift * 0.12, 3);
+  ctx.fillStyle = camoC;
+  roundedRectFill(-9.8 + stride * 0.46, 22.6 - lift, 9.2, 4.4, 2);
+  roundedRectFill(0.6 - stride * 0.46, 22.6 - lift, 9.2, 4.4, 2);
+  ctx.fillStyle = camoB;
+  roundedRectFill(-7.8, 12, 4.0, 5.5, 1.8);
+  roundedRectFill(4.0, 10.5, 3.7, 6.5, 1.8);
+
+  ctx.fillStyle = camoA;
+  roundedRectFill(-10.5, -15.5, 21, 25.5, 6.5);
+  ctx.fillStyle = camoB;
+  roundedRectFill(-8.8, -12.8, 17.6, 20.2, 5.5);
+  ctx.fillStyle = vest;
+  roundedRectFill(-8, -13.6, 16, 22.5, 4.5);
+  ctx.strokeStyle = "rgba(6,10,16,.66)";
+  ctx.lineWidth = 1.3;
+  ctx.strokeRect(-8, -13.6, 16, 22.5);
+  ctx.fillStyle = "rgba(12,18,28,.55)";
+  roundedRectFill(-6.6, -9.8, 5.1, 6.2, 1.5);
+  roundedRectFill(1.5, -9.8, 5.1, 6.2, 1.5);
+  roundedRectFill(-6.0, -1.8, 4.5, 5.5, 1.4);
+  roundedRectFill(1.5, -1.8, 4.5, 5.5, 1.4);
+  ctx.fillStyle = trim;
+  roundedRectFill(-6.2, -15.3, 12.4, 2.3, 1.2);
+
+  ctx.fillStyle = camoA;
+  roundedRectFill(-14.4, -12 + stride * 0.08, 5.3, 15.5, 2.5);
+  roundedRectFill(9.1, -12 - stride * 0.08, 5.3, 15.5, 2.5);
+  ctx.fillStyle = "rgba(24,28,34,.98)";
+  ctx.beginPath(); ctx.arc(-12, 3.7 + stride * 0.08, 2.8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(12, 3.7 - stride * 0.08, 2.8, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = "rgba(86,80,58,.98)";
+  ctx.beginPath();
+  ctx.ellipse(0, -25, 10.5, 7.8, 0, Math.PI, Math.PI * 2);
+  ctx.fill();
+  roundedRectFill(-10.2, -25, 20.4, 5.6, 2.8);
+  ctx.fillStyle = "rgba(42,49,42,.96)";
+  roundedRectFill(-7.2, -30.2, 14.4, 3.8, 1.5);
+  ctx.fillStyle = "rgba(10,14,18,.88)";
+  roundedRectFill(-6.8, -22.7, 13.6, 3.0, 1.5);
+  ctx.fillStyle = "rgba(220,220,210,.88)";
+  ctx.beginPath(); ctx.ellipse(0, -19.5, 6.2, 5.8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(4,8,12,.92)";
+  roundedRectFill(-6.6, -21.6, 13.2, 2.8, 1.4);
+  ctx.strokeStyle = "rgba(14,18,22,.82)";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath(); ctx.moveTo(8.5, -24.5); ctx.quadraticCurveTo(14, -21, 13, -14.5); ctx.stroke();
+
+  const gunY = -1.2;
+  const gunReach = 19 + Number(opts.shotKick || 0) * 2.8;
+  ctx.strokeStyle = "rgba(8,10,14,.98)";
+  ctx.lineWidth = 4.0;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-4, 1.5);
+  ctx.lineTo(gunReach, gunY);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(78,87,94,.92)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-1, 0.8);
+  ctx.lineTo(gunReach + 3, gunY - 0.2);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(20,24,30,.98)";
+  roundedRectFill(4, 1.5, 6, 7, 1.5);
+  ctx.fillStyle = "rgba(120,113,92,.96)";
+  roundedRectFill(-7.5, 0.4, 5.6, 8.6, 1.5);
+
+  if(blend > 0.12){
+    ctx.globalAlpha = clamp(0.22 + blend * 0.18, 0.22, 0.40);
+    ctx.strokeStyle = trim;
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(-8 + stride * 0.35, 25);
+    ctx.lineTo(-25 - stride * 0.72, 31);
+    ctx.moveTo(8 - stride * 0.35, 25);
+    ctx.lineTo(25 + stride * 0.72, 31);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
 function drawAnimatedTigerLegCycle(t, s, colors, behaviorAnim={}, speed=0, gaitState="walk"){
   const quality = animationPassQuality();
   const c = colors || tigerColors(t);
@@ -54298,6 +54520,13 @@ function drawCivilian(c){
     roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
     scale:0.92
   });
+  drawRealisticCivilianModel(c, bx, by, {
+    blend:moveBlend,
+    topSpeed:c.following ? 2.1 : 1.4,
+    face,
+    phase:(c.id || 0) * 0.31,
+    scale:0.96
+  });
 
   const rescuedAge = nowMs - Math.max(0, Number(c._rescuedAt || 0));
   if(c.evac && rescuedAge >= 0 && rescuedAge < 1800){
@@ -54663,6 +54892,16 @@ function drawSoldier(){
     roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
     scale:1.02
   });
+  drawRealisticSoldierModel(S.me, x, y, {
+    blend:rolling ? 1 : moveBlend,
+    topSpeed:3.0,
+    face:ang,
+    phase:0.15,
+    scale:1.05,
+    role:"player",
+    accent:palette.trim,
+    shotKick
+  });
 
   if(!rolling){
     const wx = x + Math.cos(ang) * (14 + (shotKick * 2.6));
@@ -54916,6 +55155,16 @@ function drawSupportUnit(unit){
     accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
     roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
     scale:0.94
+  });
+  drawRealisticSoldierModel(unit, x, y, {
+    blend:moveBlend,
+    topSpeed:2.5,
+    face:ang,
+    phase:(unit.id || 0) * 0.27,
+    scale:0.98,
+    role:attacker ? "attacker" : "rescue",
+    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
+    shotKick
   });
 
   ctx.strokeStyle = attacker ? "rgba(255,214,170,.9)" : "rgba(210,240,255,.88)";
@@ -56274,6 +56523,181 @@ function drawPremium2DArtPhase7TigerPremiumInk(t, s, c, visual, behaviorAnim={},
   ctx.restore();
 }
 
+function drawRealisticTigerModel(t, s, c, visual, behaviorAnim={}, now=Date.now(), headReach=0, headBob=0){
+  if(!ctx || !t) return;
+  const hpPct = clamp(Number(t.hp || 0) / Math.max(1, Number(t.hpMax || 1)), 0, 1);
+  const speed = Math.hypot(Number(t.vx || 0), Number(t.vy || 0));
+  const step = Number(t.step || 0);
+  const age = TIGER_VISUAL_AGES[visual?.ageIndex] || TIGER_VISUAL_AGES[1];
+  const crouch = behaviorAnim?.crouch || behaviorAnim?.stalking ? 1 : 0;
+  const pounce = behaviorAnim?.pounce || t.huntState === TIGER_HUNT_STATES.POUNCE ? 1 : 0;
+  const roar = behaviorAnim?.roaring || t.huntState === TIGER_HUNT_STATES.ROAR ? 1 : 0;
+  const limp = behaviorAnim?.limping ? clamp(1 - hpPct, 0.18, 0.82) : 0;
+  const danger = isBossTiger(t) || t.type === "Alpha" || !!t.eliteMutation;
+  const bodyLong = (visual?.ageIndex === 2 ? 1.12 : (visual?.ageIndex === 0 ? 0.94 : 1)) * Number(age.bodyX || 1);
+  const bodyTall = Number(age.bodyY || 1) * (danger ? 1.04 : 1);
+  const gait = clamp(speed / 3.5, 0.08, 1);
+  const stride = Math.sin(step * 2.18) * (4.4 + speed * 2.0) * (pounce ? 1.35 : 1);
+  const lift = Math.max(0, -Math.sin(step * 2.18)) * (2.1 + speed * 0.9);
+  const baseY = (2 + crouch * 4.4 - pounce * 2.8 + limp * 1.5) * s;
+  const headX = (25 + headReach + pounce * 5.2 - crouch * 2.6) * s;
+  const headY = (-8 + headBob * 0.42 + crouch * 1.4 - pounce * 2.4) * s;
+  const orange = c.body || "rgba(245,137,28,.98)";
+  const dark = c.stripe || "rgba(15,23,42,.98)";
+  const cream = c.belly || "rgba(255,237,213,.96)";
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  ctx.fillStyle = "rgba(0,0,0,.45)";
+  ctx.beginPath();
+  ctx.ellipse(-2 * s, 24 * s, (36 + speed * 1.2) * s * bodyLong, 7.4 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const tailWave = Math.sin(step * 1.15 + Number(t.id || 0)) * (5.5 + gait * 4.5) * s;
+  ctx.strokeStyle = orange;
+  ctx.lineWidth = 5.2 * s;
+  ctx.beginPath();
+  ctx.moveTo(-28 * s * bodyLong, (-2 + crouch * 2) * s);
+  ctx.quadraticCurveTo(-45 * s * bodyLong, (-18 + tailWave * 0.26) * s, -58 * s * bodyLong, (-8 + tailWave * 0.35) * s);
+  ctx.stroke();
+  ctx.strokeStyle = dark;
+  ctx.lineWidth = 1.6 * s;
+  for(let i=0; i<5; i++){
+    const tx = (-36 - i * 4.6) * s * bodyLong;
+    const ty = (-6 - i * 1.6 + tailWave * 0.20) * s;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(tx - 3.6 * s, ty - 5.4 * s);
+    ctx.stroke();
+  }
+
+  const legs = [
+    { hx:-17, phase:0.1, back:true },
+    { hx:-5, phase:Math.PI + 0.15, back:true },
+    { hx:9, phase:Math.PI * 0.78, back:false },
+    { hx:20, phase:Math.PI * 1.78, back:false }
+  ];
+  for(const leg of legs){
+    const p = Math.sin(step * 2.18 + leg.phase);
+    const injured = limp > 0 && leg.hx === [-17,-5,9,20][clamp(Math.floor(Number(visual?.injuredLeg || 0)), 0, 3)];
+    const swing = p * (injured ? stride * 0.34 : stride);
+    const kneeY = (8 + crouch * 3 + (injured ? 2.3 : 0)) * s;
+    const footY = (23 - Math.max(0, -p) * lift - pounce * 4.2 - crouch * 2.2 + (injured ? 2.4 : 0)) * s;
+    ctx.strokeStyle = leg.back ? "rgba(198,99,25,.96)" : orange;
+    ctx.lineWidth = (leg.back ? 4.0 : 4.7) * s;
+    ctx.beginPath();
+    ctx.moveTo(leg.hx * s, (5 + crouch * 2) * s);
+    ctx.quadraticCurveTo((leg.hx + swing * 0.36) * s, kneeY, (leg.hx + swing) * s, footY);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(18,20,24,.98)";
+    ctx.beginPath();
+    ctx.ellipse((leg.hx + swing + p * 1.4) * s, footY + 1.4 * s, 5.4 * s, 2.0 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,247,237,.72)";
+    ctx.lineWidth = 0.82 * s;
+    ctx.beginPath();
+    ctx.moveTo((leg.hx + swing + 2.1) * s, footY + 1.0 * s);
+    ctx.lineTo((leg.hx + swing + 5.8) * s, footY + 0.1 * s);
+    ctx.moveTo((leg.hx + swing + 0.7) * s, footY + 2.0 * s);
+    ctx.lineTo((leg.hx + swing + 4.4) * s, footY + 2.4 * s);
+    ctx.stroke();
+  }
+
+  const bodyGrad = ctx.createLinearGradient(-29 * s, -14 * s, 30 * s, 15 * s);
+  bodyGrad.addColorStop(0, c.accent || "rgba(251,146,60,.98)");
+  bodyGrad.addColorStop(0.42, orange);
+  bodyGrad.addColorStop(0.82, "rgba(245,158,11,.98)");
+  bodyGrad.addColorStop(1, cream);
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.ellipse(-3 * s, baseY - 2 * s, 31 * s * bodyLong, 15 * s * bodyTall, -0.04, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,247,237,.60)";
+  ctx.beginPath();
+  ctx.ellipse(-1 * s, baseY + 6 * s, 19 * s * bodyLong, 6.8 * s, -0.04, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = danger ? "rgba(185,83,22,.72)" : "rgba(217,119,6,.62)";
+  ctx.beginPath(); ctx.ellipse(-16 * s, baseY - 3 * s, 11 * s, 11 * s, -0.18, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(12 * s, baseY - 4 * s, 13 * s, 12 * s, 0.16, 0, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = dark;
+  ctx.lineWidth = 2.35 * s;
+  const stripeCount = visual?.stripeIndex === 3 ? 12 : 9;
+  for(let i=0; i<stripeCount; i++){
+    const sx = (-24 + i * (48 / Math.max(1, stripeCount - 1))) * s * bodyLong;
+    const wiggle = Math.sin(i * 1.47 + Number(t.id || 0)) * 2.2 * s;
+    ctx.beginPath();
+    ctx.moveTo(sx, (baseY - 14 * s));
+    ctx.quadraticCurveTo(sx + 2.6 * s, baseY - 4 * s + wiggle, sx + 5.2 * s, baseY + 9 * s);
+    ctx.stroke();
+    if(i % 2 === 0){
+      ctx.beginPath();
+      ctx.moveTo(sx - 2.2 * s, baseY + 12 * s);
+      ctx.lineTo(sx + 3.8 * s, baseY + 4 * s);
+      ctx.stroke();
+    }
+  }
+
+  ctx.fillStyle = orange;
+  ctx.beginPath();
+  ctx.ellipse(headX, headY, 13.6 * s, 10.8 * s, 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath(); ctx.ellipse(headX + 7.8 * s, headY - 8.8 * s, 4.8 * s, 4.3 * s, 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(headX - 7.7 * s, headY - 8.8 * s, 4.8 * s, 4.3 * s, -0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(255,247,237,.96)";
+  ctx.beginPath(); ctx.ellipse(headX + 2.1 * s, headY + 4.5 * s, 8.4 * s, 5.0 * s, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(headX - 5.2 * s, headY - 0.7 * s, 4.6 * s, 5.0 * s, -0.14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(headX + 7.4 * s, headY - 0.7 * s, 4.6 * s, 5.0 * s, 0.14, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = dark;
+  ctx.beginPath(); ctx.moveTo(headX + 1.4 * s, headY + 3.2 * s); ctx.lineTo(headX - 0.7 * s, headY + 5.9 * s); ctx.lineTo(headX + 3.8 * s, headY + 5.9 * s); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = behaviorAnim?.stalking || pounce || danger ? "rgba(254,240,138,.98)" : "rgba(255,255,255,.94)";
+  ctx.beginPath(); ctx.arc(headX + 5.0 * s, headY - 3.5 * s, 1.9 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(headX - 3.8 * s, headY - 3.6 * s, 1.9 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(2,6,23,.98)";
+  ctx.beginPath(); ctx.arc(headX + 5.1 * s, headY - 3.5 * s, 0.82 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(headX - 3.7 * s, headY - 3.6 * s, 0.82 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = dark;
+  ctx.lineWidth = 1.55 * s;
+  for(let i=0; i<5; i++){
+    const fx = headX + (-8 + i * 4) * s;
+    ctx.beginPath();
+    ctx.moveTo(fx, headY - 10 * s);
+    ctx.lineTo(fx + (i < 2 ? 3 : -3) * s, headY - 4 * s);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(255,247,237,.88)";
+  ctx.lineWidth = 0.85 * s;
+  for(let side=-1; side<=1; side+=2){
+    ctx.beginPath();
+    ctx.moveTo(headX + side * 4.0 * s, headY + 4.2 * s);
+    ctx.lineTo(headX + side * 16.5 * s, headY + 2.1 * s);
+    ctx.moveTo(headX + side * 4.0 * s, headY + 5.7 * s);
+    ctx.lineTo(headX + side * 16.5 * s, headY + 8.0 * s);
+    ctx.stroke();
+  }
+  if(roar || pounce){
+    ctx.fillStyle = "rgba(255,255,255,.98)";
+    ctx.beginPath();
+    ctx.moveTo(headX + 0.5 * s, headY + 5.3 * s);
+    ctx.lineTo(headX + 1.8 * s, headY + 9.6 * s);
+    ctx.lineTo(headX + 3.2 * s, headY + 5.3 * s);
+    ctx.fill();
+  }
+  if(hpPct <= 0.28){
+    ctx.strokeStyle = "rgba(248,113,113,.95)";
+    ctx.lineWidth = 1.7 * s;
+    ctx.beginPath();
+    ctx.moveTo(-19 * s, baseY - 4 * s);
+    ctx.lineTo(-10 * s, baseY + 3 * s);
+    ctx.moveTo(4 * s, baseY - 11 * s);
+    ctx.lineTo(13 * s, baseY - 4 * s);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawTiger(t){
   let alpha=1.0;
   const now = Date.now();
@@ -56698,6 +57122,7 @@ function drawTiger(t){
     ctx.fillText(behaviorAnim.stagger ? "STAGGER" : (behaviorAnim.fleeing ? "FLEE" : "LIMP"), -24 * s, -24 * s);
     ctx.restore();
   }
+  drawRealisticTigerModel(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
   ctx.restore();
   if(grassHidden) drawTigerGrassCover(t, x, y, s, alpha, now, "over");
 
