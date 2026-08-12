@@ -1,6 +1,6 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4550";
-const PREMIUM_2D_GRAPHICS_VERSION = 11;
+const TS_BUILD = "4551";
+const PREMIUM_2D_GRAPHICS_VERSION = 12;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 if(tg){
@@ -53830,6 +53830,7 @@ function drawRealisticCivilianModel(entity, x, y, opts={}){
   const pants = entity.pants || "rgba(31,41,55,.96)";
   const skin = entity.skin || "rgba(222,170,126,.96)";
   const hairStyle = Number(entity.hair || 0);
+  const civilianStyle = Math.abs(Math.floor(Number(entity.id || 0))) % 6;
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(dir * scale, scale);
@@ -53864,6 +53865,30 @@ function drawRealisticCivilianModel(entity, x, y, opts={}){
   roundedRectFill(-6.4, -11, 12.8, 4.4, 2);
   ctx.fillStyle = "rgba(15,23,42,.30)";
   roundedRectFill(-1, -12.5, 2, 23, 1);
+  if(civilianStyle === 1){
+    ctx.fillStyle = "rgba(248,250,252,.82)";
+    roundedRectFill(-7.3, -14.5, 14.6, 4.8, 2.4);
+    ctx.fillStyle = "rgba(17,24,39,.22)";
+    roundedRectFill(-5.8, -12.6, 11.6, 2.0, 1);
+  } else if(civilianStyle === 2){
+    ctx.strokeStyle = "rgba(250,204,21,.88)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-5.6, -9);
+    ctx.lineTo(0, -2.5);
+    ctx.lineTo(5.6, -9);
+    ctx.stroke();
+  } else if(civilianStyle === 3){
+    ctx.fillStyle = "rgba(168,85,247,.76)";
+    roundedRectFill(-9.2, -12.5, 18.4, 4.0, 2);
+  } else if(civilianStyle === 4){
+    ctx.strokeStyle = "rgba(15,23,42,.46)";
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(-7.0, -8.8);
+    ctx.lineTo(7.0, 5.8);
+    ctx.stroke();
+  }
 
   ctx.fillStyle = shirt;
   roundedRectFill(-13.2, -10.5 + stride * 0.08, 4.8, 14.5, 2.4);
@@ -53882,6 +53907,12 @@ function drawRealisticCivilianModel(entity, x, y, opts={}){
     ctx.moveTo(-7, -10);
     ctx.quadraticCurveTo(0, -2, 7, -10);
     ctx.stroke();
+  }
+  if(civilianStyle === 5){
+    ctx.fillStyle = "rgba(234,179,8,.92)";
+    roundedRectFill(-12.6, -5, 4.7, 10.5, 2);
+    ctx.fillStyle = "rgba(15,23,42,.28)";
+    roundedRectFill(-11.5, -2.8, 2.5, 5.5, 1.2);
   }
 
   ctx.fillStyle = skin;
@@ -53908,6 +53939,16 @@ function drawRealisticCivilianModel(entity, x, y, opts={}){
   ctx.strokeStyle = "rgba(92,52,38,.72)";
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(-2.4, -17.2); ctx.quadraticCurveTo(0, -16.2, 2.4, -17.2); ctx.stroke();
+  if(entity.injured || entity.panic || entity._panicUntil > Date.now()){
+    ctx.strokeStyle = "rgba(248,113,113,.88)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-4.7, -31.8);
+    ctx.lineTo(-2.9, -36.8);
+    ctx.moveTo(4.7, -31.8);
+    ctx.lineTo(2.9, -36.8);
+    ctx.stroke();
+  }
 
   if(blend > 0.12){
     ctx.globalAlpha = clamp(0.20 + blend * 0.18, 0.20, 0.38);
@@ -53941,6 +53982,7 @@ function drawRealisticSoldierModel(entity, x, y, opts={}){
   const camoC = "rgba(45,54,40,.96)";
   const vest = rescue ? "rgba(22,78,99,.98)" : "rgba(58,45,32,.98)";
   const trim = opts.accent || (rescue ? "rgba(125,211,252,.96)" : "rgba(251,191,36,.92)");
+  const camoSeed = Math.abs(Math.floor(Number(entity.id || 17))) % 5;
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(dir * scale, scale);
@@ -53962,6 +54004,9 @@ function drawRealisticSoldierModel(entity, x, y, opts={}){
   ctx.fillStyle = camoB;
   roundedRectFill(-7.8, 12, 4.0, 5.5, 1.8);
   roundedRectFill(4.0, 10.5, 3.7, 6.5, 1.8);
+  ctx.fillStyle = "rgba(17,24,39,.42)";
+  roundedRectFill(-9.2 + stride * 0.13, 15.4, 7.0, 3.8, 1.4);
+  roundedRectFill(2.2 - stride * 0.13, 15.2, 6.7, 3.8, 1.4);
 
   ctx.fillStyle = camoA;
   roundedRectFill(-10.5, -15.5, 21, 25.5, 6.5);
@@ -53979,6 +54024,17 @@ function drawRealisticSoldierModel(entity, x, y, opts={}){
   roundedRectFill(1.5, -1.8, 4.5, 5.5, 1.4);
   ctx.fillStyle = trim;
   roundedRectFill(-6.2, -15.3, 12.4, 2.3, 1.2);
+  ctx.fillStyle = "rgba(226,232,240,.78)";
+  roundedRectFill(-2.1, -14.2, 4.2, 3.4, 1);
+  ctx.fillStyle = "rgba(20,83,45,.42)";
+  for(let i=0; i<5; i++){
+    const px = -9.3 + ((i * 4.5 + camoSeed * 1.7) % 18);
+    const py = -11.6 + ((i * 6.1 + camoSeed) % 18);
+    roundedRectFill(px, py, 5.1, 2.4, 1.2);
+  }
+  ctx.fillStyle = "rgba(15,23,42,.48)";
+  roundedRectFill(-13.0, -7.5, 3.2, 13.5, 1.4);
+  roundedRectFill(9.8, -7.5, 3.2, 13.5, 1.4);
 
   ctx.fillStyle = camoA;
   roundedRectFill(-14.4, -12 + stride * 0.08, 5.3, 15.5, 2.5);
@@ -53992,6 +54048,16 @@ function drawRealisticSoldierModel(entity, x, y, opts={}){
   ctx.ellipse(0, -25, 10.5, 7.8, 0, Math.PI, Math.PI * 2);
   ctx.fill();
   roundedRectFill(-10.2, -25, 20.4, 5.6, 2.8);
+  ctx.fillStyle = "rgba(101,92,64,.96)";
+  roundedRectFill(-8.2, -29.2, 16.4, 5.2, 2.2);
+  ctx.strokeStyle = "rgba(232,213,167,.55)";
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(-7.2, -26.8);
+  ctx.lineTo(7.2, -26.8);
+  ctx.moveTo(0, -29.0);
+  ctx.lineTo(0, -24.6);
+  ctx.stroke();
   ctx.fillStyle = "rgba(42,49,42,.96)";
   roundedRectFill(-7.2, -30.2, 14.4, 3.8, 1.5);
   ctx.fillStyle = "rgba(10,14,18,.88)";
@@ -54003,6 +54069,10 @@ function drawRealisticSoldierModel(entity, x, y, opts={}){
   ctx.strokeStyle = "rgba(14,18,22,.82)";
   ctx.lineWidth = 1.1;
   ctx.beginPath(); ctx.moveTo(8.5, -24.5); ctx.quadraticCurveTo(14, -21, 13, -14.5); ctx.stroke();
+  ctx.fillStyle = "rgba(15,23,42,.88)";
+  roundedRectFill(-15.5, -2.5, 4.2, 12.8, 1.4);
+  ctx.fillStyle = "rgba(75,85,99,.88)";
+  roundedRectFill(-16.2, 1.0, 5.6, 2.4, 1);
 
   const gunY = -1.2;
   const gunReach = 19 + Number(opts.shotKick || 0) * 2.8;
@@ -56618,6 +56688,12 @@ function drawRealisticTigerModel(t, s, c, visual, behaviorAnim={}, now=Date.now(
   ctx.beginPath();
   ctx.ellipse(-1 * s, baseY + 6 * s, 19 * s * bodyLong, 6.8 * s, -0.04, 0, Math.PI * 2);
   ctx.fill();
+  ctx.globalAlpha = 0.34;
+  ctx.fillStyle = "rgba(255,255,255,.64)";
+  ctx.beginPath();
+  ctx.ellipse(-12 * s, baseY - 7.5 * s, 9.5 * s, 3.0 * s, -0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
   ctx.fillStyle = danger ? "rgba(185,83,22,.72)" : "rgba(217,119,6,.62)";
   ctx.beginPath(); ctx.ellipse(-16 * s, baseY - 3 * s, 11 * s, 11 * s, -0.18, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(12 * s, baseY - 4 * s, 13 * s, 12 * s, 0.16, 0, Math.PI * 2); ctx.fill();
@@ -56639,6 +56715,21 @@ function drawRealisticTigerModel(t, s, c, visual, behaviorAnim={}, now=Date.now(
       ctx.stroke();
     }
   }
+  ctx.strokeStyle = "rgba(255,247,237,.72)";
+  ctx.lineWidth = 1.25 * s;
+  ctx.beginPath();
+  ctx.moveTo(-23 * s, baseY - 12 * s);
+  ctx.quadraticCurveTo(-8 * s, baseY - 18 * s, 16 * s, baseY - 11 * s);
+  ctx.stroke();
+  ctx.strokeStyle = dark;
+  ctx.lineWidth = 1.5 * s;
+  for(let i=0; i<4; i++){
+    const sx = (-22 + i * 12) * s;
+    ctx.beginPath();
+    ctx.moveTo(sx, baseY - 15 * s);
+    ctx.lineTo(sx + 4.4 * s, baseY - 8 * s);
+    ctx.stroke();
+  }
 
   ctx.fillStyle = orange;
   ctx.beginPath();
@@ -56650,6 +56741,14 @@ function drawRealisticTigerModel(t, s, c, visual, behaviorAnim={}, now=Date.now(
   ctx.beginPath(); ctx.ellipse(headX + 2.1 * s, headY + 4.5 * s, 8.4 * s, 5.0 * s, 0, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(headX - 5.2 * s, headY - 0.7 * s, 4.6 * s, 5.0 * s, -0.14, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(headX + 7.4 * s, headY - 0.7 * s, 4.6 * s, 5.0 * s, 0.14, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "rgba(255,247,237,.88)";
+  ctx.lineWidth = 1.35 * s;
+  ctx.beginPath();
+  ctx.moveTo(headX - 8.0 * s, headY - 6.7 * s);
+  ctx.quadraticCurveTo(headX - 4.3 * s, headY - 10.4 * s, headX - 1.2 * s, headY - 4.6 * s);
+  ctx.moveTo(headX + 8.4 * s, headY - 6.7 * s);
+  ctx.quadraticCurveTo(headX + 4.6 * s, headY - 10.4 * s, headX + 1.4 * s, headY - 4.6 * s);
+  ctx.stroke();
   ctx.fillStyle = dark;
   ctx.beginPath(); ctx.moveTo(headX + 1.4 * s, headY + 3.2 * s); ctx.lineTo(headX - 0.7 * s, headY + 5.9 * s); ctx.lineTo(headX + 3.8 * s, headY + 5.9 * s); ctx.closePath(); ctx.fill();
   ctx.fillStyle = behaviorAnim?.stalking || pounce || danger ? "rgba(254,240,138,.98)" : "rgba(255,255,255,.94)";
@@ -56667,6 +56766,13 @@ function drawRealisticTigerModel(t, s, c, visual, behaviorAnim={}, now=Date.now(
     ctx.lineTo(fx + (i < 2 ? 3 : -3) * s, headY - 4 * s);
     ctx.stroke();
   }
+  ctx.lineWidth = 1.2 * s;
+  ctx.beginPath();
+  ctx.moveTo(headX - 9.2 * s, headY + 1.6 * s);
+  ctx.quadraticCurveTo(headX - 3.0 * s, headY + 3.8 * s, headX - 0.2 * s, headY + 7.2 * s);
+  ctx.moveTo(headX + 10.2 * s, headY + 1.6 * s);
+  ctx.quadraticCurveTo(headX + 4.2 * s, headY + 3.8 * s, headX + 2.2 * s, headY + 7.2 * s);
+  ctx.stroke();
   ctx.strokeStyle = "rgba(255,247,237,.88)";
   ctx.lineWidth = 0.85 * s;
   for(let side=-1; side<=1; side+=2){
