@@ -52056,37 +52056,18 @@ function drawDangerMarker(x,y){
 
 function drawRescueSite(site){
   ctx.save();
-  const palette = {
-    trail: ["rgba(96,165,250,.18)", "rgba(96,165,250,.92)"],
-    park: ["rgba(74,222,128,.18)", "rgba(74,222,128,.92)"],
-    car: ["rgba(251,191,36,.20)", "rgba(251,191,36,.94)"],
-    truck: ["rgba(248,113,113,.20)", "rgba(248,113,113,.94)"],
-    house: ["rgba(244,114,182,.18)", "rgba(244,114,182,.92)"],
-    cabin: ["rgba(245,158,11,.20)", "rgba(245,158,11,.94)"],
-    building: ["rgba(167,139,250,.20)", "rgba(167,139,250,.94)"],
+  const siteScale = clamp((Number(site.r || 44) / 44), 0.82, 1.35);
+  const accentByKind = {
+    trail: "rgba(96,165,250,.82)",
+    park: "rgba(74,222,128,.82)",
+    car: "rgba(251,191,36,.86)",
+    truck: "rgba(248,113,113,.86)",
+    house: "rgba(244,114,182,.82)",
+    cabin: "rgba(245,158,11,.86)",
+    building: "rgba(167,139,250,.84)",
   };
-  const [fill, stroke] = palette[site.kind] || palette.trail;
-  const pulse = 0.82 + (Math.sin(Date.now() / 220 + (site.x * 0.01)) * 0.12);
-
-  ctx.globalAlpha = 0.90;
-  ctx.fillStyle = fill;
-  ctx.beginPath();
-  ctx.arc(site.x, site.y, site.r, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.globalAlpha = 0.64 * pulse;
-  ctx.strokeStyle = stroke;
-  ctx.lineWidth = 3.2;
-  ctx.beginPath();
-  ctx.arc(site.x, site.y, site.r, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.globalAlpha = 0.42;
-  ctx.strokeStyle = "rgba(220,235,255,.88)";
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.arc(site.x, site.y, Math.max(12, site.r - 5), 0, Math.PI * 2);
-  ctx.stroke();
+  const accent = accentByKind[site.kind] || accentByKind.trail;
+  groundShadow(site.x, site.y + (12 * siteScale), 32 * siteScale, 10 * siteScale, 0.24);
 
   function drawWheel(wx, wy, rr=3.2){
     ctx.fillStyle = "rgba(10,14,20,.95)";
@@ -52097,109 +52078,138 @@ function drawRescueSite(site){
 
   ctx.globalAlpha = 0.96;
   if(site.kind==="car"){
+    const z = siteScale;
     ctx.fillStyle = "rgba(50,108,185,.95)";
-    roundedRectFill(site.x - 15, site.y - 7, 30, 14, 5);
+    roundedRectFill(site.x - 17*z, site.y - 8*z, 34*z, 16*z, 5*z);
     ctx.fillStyle = "rgba(180,220,250,.55)";
-    roundedRectFill(site.x - 8, site.y - 10, 16, 6, 3);
+    roundedRectFill(site.x - 9*z, site.y - 12*z, 18*z, 7*z, 3*z);
     ctx.fillStyle = "rgba(220,233,248,.40)";
-    roundedRectFill(site.x - 6, site.y - 9, 5, 4, 2);
-    roundedRectFill(site.x + 1, site.y - 9, 5, 4, 2);
-    drawWheel(site.x - 9, site.y + 7.2, 3.1);
-    drawWheel(site.x + 9, site.y + 7.2, 3.1);
+    roundedRectFill(site.x - 7*z, site.y - 10*z, 5*z, 4*z, 2*z);
+    roundedRectFill(site.x + 2*z, site.y - 10*z, 5*z, 4*z, 2*z);
+    drawWheel(site.x - 10*z, site.y + 8*z, 3.4*z);
+    drawWheel(site.x + 10*z, site.y + 8*z, 3.4*z);
   } else if(site.kind==="truck"){
+    const z = siteScale;
     ctx.fillStyle = "rgba(112,126,146,.95)";
-    roundedRectFill(site.x - 20, site.y - 8, 26, 16, 4);
+    roundedRectFill(site.x - 23*z, site.y - 9*z, 31*z, 18*z, 4*z);
     ctx.fillStyle = "rgba(156,173,194,.96)";
-    roundedRectFill(site.x + 7, site.y - 7, 13, 14, 3);
+    roundedRectFill(site.x + 9*z, site.y - 8*z, 15*z, 16*z, 3*z);
     ctx.fillStyle = "rgba(208,228,248,.42)";
-    roundedRectFill(site.x + 10, site.y - 5, 7, 5, 2);
-    drawWheel(site.x - 12, site.y + 8.5, 3.2);
-    drawWheel(site.x - 1, site.y + 8.5, 3.2);
-    drawWheel(site.x + 13, site.y + 8.5, 3.2);
+    roundedRectFill(site.x + 12*z, site.y - 6*z, 8*z, 5*z, 2*z);
+    drawWheel(site.x - 14*z, site.y + 9.5*z, 3.3*z);
+    drawWheel(site.x - 1*z, site.y + 9.5*z, 3.3*z);
+    drawWheel(site.x + 16*z, site.y + 9.5*z, 3.3*z);
   } else if(site.kind==="house"){
+    const z = siteScale;
     ctx.fillStyle = "rgba(206,188,160,.96)";
-    roundedRectFill(site.x - 13, site.y - 9, 26, 18, 4);
+    roundedRectFill(site.x - 16*z, site.y - 10*z, 32*z, 22*z, 4*z);
     ctx.fillStyle = "rgba(110,66,38,.95)";
     ctx.beginPath();
-    ctx.moveTo(site.x - 16, site.y - 9);
-    ctx.lineTo(site.x, site.y - 22);
-    ctx.lineTo(site.x + 16, site.y - 9);
+    ctx.moveTo(site.x - 20*z, site.y - 10*z);
+    ctx.lineTo(site.x, site.y - 27*z);
+    ctx.lineTo(site.x + 20*z, site.y - 10*z);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = "rgba(90,56,34,.95)";
-    roundedRectFill(site.x - 2, site.y - 1, 4, 10, 1.8);
+    roundedRectFill(site.x - 2.5*z, site.y - 1*z, 5*z, 13*z, 1.8*z);
     ctx.fillStyle = "rgba(220,234,250,.50)";
-    roundedRectFill(site.x - 9, site.y - 5, 5, 5, 1.6);
-    roundedRectFill(site.x + 4, site.y - 5, 5, 5, 1.6);
+    roundedRectFill(site.x - 11*z, site.y - 6*z, 6*z, 6*z, 1.6*z);
+    roundedRectFill(site.x + 5*z, site.y - 6*z, 6*z, 6*z, 1.6*z);
   } else if(site.kind==="cabin"){
+    const z = siteScale;
     ctx.fillStyle = "rgba(160,108,66,.96)";
-    roundedRectFill(site.x - 13, site.y - 9, 26, 18, 4);
+    roundedRectFill(site.x - 16*z, site.y - 10*z, 32*z, 22*z, 4*z);
     ctx.fillStyle = "rgba(116,70,35,.96)";
     ctx.beginPath();
-    ctx.moveTo(site.x - 16, site.y - 9);
-    ctx.lineTo(site.x, site.y - 21);
-    ctx.lineTo(site.x + 16, site.y - 9);
+    ctx.moveTo(site.x - 20*z, site.y - 10*z);
+    ctx.lineTo(site.x, site.y - 26*z);
+    ctx.lineTo(site.x + 20*z, site.y - 10*z);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = "rgba(134,88,52,.92)";
-    ctx.lineWidth = 1.1;
+    ctx.lineWidth = 1.1*z;
     for(let i=-10;i<=10;i+=5){
       ctx.beginPath();
-      ctx.moveTo(site.x - 12, site.y - 6 + (i * 0.2));
-      ctx.lineTo(site.x + 12, site.y - 6 + (i * 0.2));
+      ctx.moveTo(site.x - 14*z, site.y - 6*z + (i * 0.24*z));
+      ctx.lineTo(site.x + 14*z, site.y - 6*z + (i * 0.24*z));
       ctx.stroke();
     }
     ctx.fillStyle = "rgba(86,52,28,.95)";
-    roundedRectFill(site.x - 2, site.y - 1, 4, 10, 1.8);
+    roundedRectFill(site.x - 2.5*z, site.y - 1*z, 5*z, 13*z, 1.8*z);
   } else if(site.kind==="building"){
+    const z = siteScale;
     ctx.fillStyle = "rgba(96,108,132,.96)";
-    roundedRectFill(site.x - 14, site.y - 16, 28, 32, 4);
+    roundedRectFill(site.x - 18*z, site.y - 22*z, 36*z, 44*z, 4*z);
     ctx.fillStyle = "rgba(28,36,52,.86)";
-    roundedRectFill(site.x - 14, site.y - 16, 28, 4, 2);
+    roundedRectFill(site.x - 18*z, site.y - 22*z, 36*z, 5*z, 2*z);
     ctx.fillStyle = "rgba(214,228,245,.48)";
     for(let row=0; row<3; row++){
       for(let col=0; col<2; col++){
-        roundedRectFill(site.x - 9 + (col * 9), site.y - 11 + (row * 8), 5, 5, 1.2);
+        roundedRectFill(site.x - 11*z + (col * 12*z), site.y - 15*z + (row * 11*z), 7*z, 7*z, 1.2*z);
       }
     }
     ctx.fillStyle = "rgba(38,48,66,.90)";
-    roundedRectFill(site.x - 2.2, site.y + 6, 4.4, 10, 1.8);
+    roundedRectFill(site.x - 3*z, site.y + 8*z, 6*z, 14*z, 1.8*z);
   } else if(site.kind==="park"){
+    const z = siteScale;
+    ctx.fillStyle = "rgba(22,101,52,.72)";
+    roundedRectFill(site.x - 28*z, site.y - 19*z, 56*z, 38*z, 12*z);
     ctx.fillStyle = "rgba(27,121,70,.96)";
-    ctx.beginPath(); ctx.arc(site.x - 6, site.y - 6, 9, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(site.x + 3, site.y - 8, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(site.x - 8*z, site.y - 8*z, 10*z, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(site.x + 5*z, site.y - 10*z, 9*z, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "rgba(92,58,30,.95)";
-    roundedRectFill(site.x - 3, site.y - 1, 4, 11, 1.6);
+    roundedRectFill(site.x - 3*z, site.y - 1*z, 5*z, 13*z, 1.6*z);
     ctx.fillStyle = "rgba(117,84,54,.96)";
-    roundedRectFill(site.x + 6, site.y + 3, 11, 3, 1.2);
-    roundedRectFill(site.x + 6, site.y + 6, 2, 4, 0.8);
-    roundedRectFill(site.x + 15, site.y + 6, 2, 4, 0.8);
+    roundedRectFill(site.x + 8*z, site.y + 4*z, 14*z, 4*z, 1.2*z);
+    roundedRectFill(site.x + 8*z, site.y + 8*z, 2*z, 5*z, 0.8*z);
+    roundedRectFill(site.x + 20*z, site.y + 8*z, 2*z, 5*z, 0.8*z);
   } else {
-    ctx.fillStyle = "rgba(231,245,255,.92)";
-    roundedRectFill(site.x - 2.2, site.y - 16, 4.4, 22, 1.6);
+    const z = siteScale;
+    ctx.strokeStyle = "rgba(96,165,250,.48)";
+    ctx.lineWidth = 2*z;
+    ctx.setLineDash([8*z, 5*z]);
     ctx.beginPath();
-    ctx.moveTo(site.x + 2.2, site.y - 15);
-    ctx.lineTo(site.x + 16, site.y - 9);
-    ctx.lineTo(site.x + 2.2, site.y - 3);
+    ctx.moveTo(site.x - 28*z, site.y + 10*z);
+    ctx.lineTo(site.x + 28*z, site.y + 10*z);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(231,245,255,.92)";
+    roundedRectFill(site.x - 2.5*z, site.y - 18*z, 5*z, 25*z, 1.6*z);
+    ctx.beginPath();
+    ctx.moveTo(site.x + 2.5*z, site.y - 17*z);
+    ctx.lineTo(site.x + 19*z, site.y - 10*z);
+    ctx.lineTo(site.x + 2.5*z, site.y - 3*z);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = "rgba(18,38,64,.85)";
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.2*z;
     ctx.beginPath();
-    ctx.moveTo(site.x - 9, site.y + 10);
-    ctx.lineTo(site.x + 11, site.y + 10);
+    ctx.moveTo(site.x - 12*z, site.y + 12*z);
+    ctx.lineTo(site.x + 14*z, site.y + 12*z);
     ctx.stroke();
   }
 
   ctx.globalAlpha = 0.96;
+  const labelY = site.y + ({
+    car: 28,
+    truck: 30,
+    house: 34,
+    cabin: 34,
+    building: 40,
+    park: 34,
+    trail: 32,
+  }[site.kind] || 32) * siteScale;
   const badgeW = Math.max(92, Math.min(150, site.label.length * 6.2));
-  roundedRectFill(site.x - (badgeW / 2), site.y + site.r + 6, badgeW, 16, 8);
+  roundedRectFill(site.x - (badgeW / 2), labelY, badgeW, 16, 8);
   ctx.fillStyle = "rgba(8,12,18,.88)";
-  roundedRectFill(site.x - (badgeW / 2) + 1.5, site.y + site.r + 7.5, badgeW - 3, 13, 6);
+  roundedRectFill(site.x - (badgeW / 2) + 1.5, labelY + 1.5, badgeW - 3, 13, 6);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
   ctx.fillStyle = "rgba(240,246,255,.96)";
   ctx.font = "900 10px system-ui";
   ctx.textAlign = "center";
-  ctx.fillText(site.label, site.x, site.y + site.r + 18);
+  ctx.fillText(site.label, site.x, labelY + 12);
   const hostageTw = S?.missionTwists?.hostage;
   if(
     hostageTw &&
@@ -52345,23 +52355,127 @@ function drawMapInteractable(it){
     ctx.globalAlpha = spent ? 0.35 : 1;
   }
 
-  ctx.fillStyle = palette[0];
-  ctx.beginPath();
-  ctx.arc(it.x, it.y, it.r || 22, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = palette[1];
-  ctx.lineWidth = active ? 3.5 : 2;
-  ctx.beginPath();
-  ctx.arc(it.x, it.y, (it.r || 22) + (active ? 1 : 0), 0, Math.PI * 2);
-  ctx.stroke();
+  groundShadow(it.x, it.y + 9, 22, 7, 0.24);
+  ctx.globalAlpha = spent ? 0.35 : 0.96;
+  const objectStroke = active ? palette[1] : "rgba(203,213,225,.62)";
+  ctx.strokeStyle = objectStroke;
+  ctx.lineWidth = active ? 2.6 : 1.7;
 
-  ctx.fillStyle = "rgba(242,247,255,.95)";
-  ctx.font = icon.length > 1 ? "900 9px system-ui" : "900 12px system-ui";
-  ctx.textAlign = "center";
-  ctx.fillText(icon, it.x, it.y + 4);
+  if(it.kind === "alarm"){
+    ctx.fillStyle = "rgba(17,24,39,.92)";
+    roundedRectFill(it.x - 3, it.y - 18, 6, 28, 2);
+    ctx.fillStyle = "rgba(37,99,235,.92)";
+    roundedRectFill(it.x - 13, it.y - 24, 26, 14, 5);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(191,219,254,.92)";
+    roundedRectFill(it.x - 8, it.y - 21, 16, 7, 3);
+    ctx.fillStyle = palette[1];
+    ctx.beginPath();
+    ctx.moveTo(it.x - 17, it.y - 21);
+    ctx.lineTo(it.x - 26, it.y - 27);
+    ctx.moveTo(it.x + 17, it.y - 21);
+    ctx.lineTo(it.x + 26, it.y - 27);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(242,247,255,.95)";
+    ctx.font = "900 10px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(icon, it.x, it.y - 13);
+  } else if(it.kind === "barricade"){
+    ctx.fillStyle = "rgba(245,158,11,.92)";
+    roundedRectFill(it.x - 25, it.y - 8, 50, 12, 4);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(120,53,15,.92)";
+    for(let bx=-18; bx<=14; bx+=16){
+      ctx.save();
+      ctx.translate(it.x + bx, it.y - 2);
+      ctx.rotate(-0.42);
+      roundedRectFill(-2, -8, 4, 18, 1.2);
+      ctx.restore();
+    }
+    ctx.fillStyle = "rgba(30,41,59,.95)";
+    roundedRectFill(it.x - 22, it.y + 5, 5, 10, 1.4);
+    roundedRectFill(it.x + 17, it.y + 5, 5, 10, 1.4);
+  } else if(it.kind === "cache"){
+    crateBlock(it.x, it.y);
+    ctx.strokeStyle = palette[1];
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(it.x - 12, it.y - 4);
+    ctx.lineTo(it.x + 12, it.y - 4);
+    ctx.moveTo(it.x, it.y - 10);
+    ctx.lineTo(it.x, it.y + 10);
+    ctx.stroke();
+  } else if(it.kind === "bridge"){
+    ctx.fillStyle = it.routeOpen ? "rgba(87,68,45,.92)" : "rgba(91,41,41,.90)";
+    roundedRectFill(it.x - 34, it.y - 10, 68, 20, 6);
+    ctx.stroke();
+    ctx.strokeStyle = it.routeOpen ? "rgba(245,158,11,.62)" : "rgba(248,113,113,.70)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(it.x - 29, it.y - 6);
+    ctx.lineTo(it.x + 29, it.y - 6);
+    ctx.moveTo(it.x - 29, it.y + 6);
+    ctx.lineTo(it.x + 29, it.y + 6);
+    ctx.stroke();
+  } else if(it.kind === "vehicle"){
+    ctx.fillStyle = it.repaired ? "rgba(52,211,153,.90)" : "rgba(107,114,128,.92)";
+    roundedRectFill(it.x - 24, it.y - 10, 34, 20, 5);
+    ctx.fillStyle = it.repaired ? "rgba(16,185,129,.96)" : "rgba(148,163,184,.94)";
+    roundedRectFill(it.x + 11, it.y - 8, 15, 16, 4);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(219,234,254,.45)";
+    roundedRectFill(it.x + 14, it.y - 5, 8, 5, 2);
+    ctx.fillStyle = "rgba(8,13,20,.95)";
+    ctx.beginPath(); ctx.arc(it.x - 14, it.y + 10, 3.7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(it.x + 15, it.y + 10, 3.7, 0, Math.PI * 2); ctx.fill();
+  } else if(it.kind === "generator"){
+    ctx.fillStyle = it.powered ? "rgba(202,138,4,.95)" : "rgba(71,85,105,.94)";
+    roundedRectFill(it.x - 18, it.y - 14, 36, 28, 6);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(15,23,42,.82)";
+    roundedRectFill(it.x - 12, it.y - 8, 24, 7, 2);
+    ctx.fillStyle = "rgba(250,250,210,.96)";
+    ctx.beginPath();
+    ctx.moveTo(it.x + 1, it.y - 1);
+    ctx.lineTo(it.x - 5, it.y + 9);
+    ctx.lineTo(it.x + 2, it.y + 7);
+    ctx.lineTo(it.x - 1, it.y + 15);
+    ctx.lineTo(it.x + 8, it.y + 3);
+    ctx.lineTo(it.x + 1, it.y + 5);
+    ctx.closePath();
+    ctx.fill();
+  } else if(it.kind === "gate"){
+    ctx.fillStyle = it.routeOpen ? "rgba(59,130,246,.72)" : "rgba(127,29,29,.84)";
+    roundedRectFill(it.x - 28, it.y - 11, 8, 30, 2);
+    roundedRectFill(it.x + 20, it.y - 11, 8, 30, 2);
+    ctx.fillStyle = it.routeOpen ? "rgba(96,165,250,.62)" : "rgba(248,113,113,.78)";
+    roundedRectFill(it.x - 21, it.y - 4, 42, 8, 2);
+    ctx.stroke();
+  } else if(it.kind === "route_trap"){
+    ctx.fillStyle = "rgba(80,45,70,.92)";
+    roundedRectFill(it.x - 18, it.y - 11, 36, 22, 6);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(244,114,182,.88)";
+    ctx.lineWidth = 2;
+    for(let sx=-12; sx<=12; sx+=8){
+      ctx.beginPath();
+      ctx.moveTo(it.x + sx, it.y + 7);
+      ctx.lineTo(it.x + sx + 4, it.y - 7);
+      ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle = palette[0];
+    roundedRectFill(it.x - 17, it.y - 13, 34, 26, 7);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(242,247,255,.95)";
+    ctx.font = icon.length > 1 ? "900 9px system-ui" : "900 12px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(icon, it.x, it.y + 4);
+  }
 
   ctx.font = "800 10px system-ui";
   ctx.fillStyle = "rgba(242,247,255,.9)";
+  ctx.textAlign = "center";
   ctx.fillText(label, it.x, it.y + 24);
 
   if(cooling && !active && !spent){
