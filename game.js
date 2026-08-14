@@ -1,5 +1,7 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4551";
+const TS_BUILD = "4552";
+const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
+const DECORATIVE_UNIT_RINGS_ENABLED = false;
 const PREMIUM_2D_GRAPHICS_VERSION = 12;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
@@ -39139,7 +39141,8 @@ function spawnTigers(){
     ? pickReturningNemesisForMission(storyMissionNo)
     : null;
   const nemesisSlot = nemesisEntry ? rand(Math.max(0, Math.floor(count * 0.45)), Math.max(0, count - 1)) : -1;
-  const packCount = clamp(Math.ceil(count / 2), 1, 6);
+  const targetPackSize = count <= 1 ? 1 : (count <= 6 ? 2 + (storyMissionNo % 2) : 3 + (storyMissionNo % 2));
+  const packCount = clamp(Math.ceil(count / Math.max(1, targetPackSize)), 1, 6);
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
   tigerEcosystemSeedActiveTerritories(S);
@@ -39202,18 +39205,19 @@ function spawnTigers(){
       hp = Math.round(hp * clamp(Number(storyMission?.endgameHpMul || 1), 1, 6));
     }
 
-    const pack = packAnchors[i % packAnchors.length];
-    const theta = (Math.PI * 2 * (i % 3)) / 3;
-    const radius = 24 + ((i % 2) * 20);
+    const pack = packAnchors[Math.floor(i / Math.max(1, targetPackSize)) % packAnchors.length];
+    const slot = i % Math.max(1, targetPackSize);
+    const theta = (Math.PI * 2 * slot) / Math.max(2, targetPackSize);
+    const radius = (targetPackSize <= 2 ? 54 : 66) + ((slot % 2) * 18);
     const initialVx = (Math.random()<0.5?-1:1)*def.spd*0.55;
     const initialVy = (Math.random()<0.5?-1:1)*def.spd*0.50;
     const tigerSpawn = pickTigerSpawnAwayFromEscort(
-      clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-12,12)), 140, worldW - 50),
-      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-12,12)), 90, worldH - 70),
+      clamp(Math.round(pack.x + Math.cos(theta) * radius + rand(-18,18)), 160, worldW - 110),
+      clamp(Math.round(pack.y + Math.sin(theta) * radius + rand(-18,18)), 110, worldH - 110),
       {
         preferX: pack.x,
         preferY: pack.y,
-        minTigerDist: 58,
+        minTigerDist: 84,
         anchorTight: true
       }
     );
@@ -39298,9 +39302,47 @@ function spawnTigers(){
     tigerPackOnSpawn(tigerObj);
     missionDirectorMarkLaneSpawn(tigerObj.x, storyBoss && i < storyBossCount ? 1.35 : 1);
   }
+  applyTigerPackSpacing(S, { spawn:true });
   if(nemesisEntry){
     setEventText(`☠️ Nemesis returned: ${nemesisEntry.alias} (Lv ${nemesisEntry.power}) • Bounty $${nemesisEntry.bountyCash.toLocaleString()}`, 6.2);
     toast(`Nemesis returned: ${nemesisEntry.alias}`);
+  }
+}
+
+function applyTigerPackSpacing(state=S, opts={}){
+  const tigers = (state?.tigers || []).filter((t)=>t && t.alive && Number.isFinite(t.x) && Number.isFinite(t.y));
+  if(tigers.length < 2) return;
+  const worldW = Math.max(480, worldWidth(state));
+  const worldH = Math.max(360, worldHeight(state));
+  const minX = 90;
+  const maxX = Math.max(minX + 80, worldW - 90);
+  const minY = 90;
+  const maxY = Math.max(minY + 80, worldH - 90);
+  const iterations = opts.spawn ? 3 : 1;
+  for(let pass=0; pass<iterations; pass++){
+    for(const t of tigers){
+      t.x = clamp(Number(t.x) || minX, minX, maxX);
+      t.y = clamp(Number(t.y) || minY, minY, maxY);
+    }
+    for(let i=0; i<tigers.length; i++){
+      for(let j=i+1; j<tigers.length; j++){
+        const a = tigers[i];
+        const b = tigers[j];
+        const samePack = Number(a.packId || 0) === Number(b.packId || 0);
+        const minDist = samePack ? 62 : 82;
+        const dx = Number(b.x) - Number(a.x);
+        const dy = Number(b.y) - Number(a.y);
+        const d = Math.hypot(dx, dy) || 0.001;
+        if(d >= minDist) continue;
+        const push = (minDist - d) * (samePack ? 0.34 : 0.48);
+        const nx = dx / d;
+        const ny = dy / d;
+        a.x = clamp(a.x - nx * push, minX, maxX);
+        a.y = clamp(a.y - ny * push, minY, maxY);
+        b.x = clamp(b.x + nx * push, minX, maxX);
+        b.y = clamp(b.y + ny * push, minY, maxY);
+      }
+    }
   }
 }
 
@@ -39439,6 +39481,7 @@ function spawnRogueTiger(options={}){
   recordMissionTigerSpawn(1, options);
   tigerPackOnSpawn(tiger);
   missionDirectorMarkLaneSpawn(tiger.x, 1);
+  applyTigerPackSpacing(S, { spawn:true });
   if(!ignoreDirectorBudget) missionDirectorMarkTigerSpawn();
   return tiger;
 }
@@ -46973,10 +47016,13 @@ function dynamicObjectiveTick(){
 
 // ===================== REAL EVACUATION ROUTES =====================
 const EVAC_ROUTE_DEFS = Object.freeze([
-  Object.freeze({ key:"street", icon:"🚦", label:"Street Escape", instruction:"Follow the marked street corridor to the city exit.", color:"rgba(74,222,128,.98)", vehicle:"safe_hold" }),
+  Object.freeze({ key:"street", icon:"🚙", label:"Street SUV Pickup", instruction:"Follow the marked street corridor to the armored SUV pickup.", color:"rgba(74,222,128,.98)", vehicle:"suv" }),
   Object.freeze({ key:"boat", icon:"🚤", label:"Boat Dock Evac", instruction:"Escort civilians to the river dock and board the boat.", color:"rgba(34,211,238,.98)", vehicle:"boat" }),
   Object.freeze({ key:"helicopter", icon:"🚁", label:"Helicopter Pad", instruction:"Reach the landing pad and load civilians for airlift.", color:"rgba(96,165,250,.98)", vehicle:"helicopter" }),
-  Object.freeze({ key:"convoy", icon:"🚚", label:"Convoy Pickup", instruction:"Guide civilians to the pickup lane and load the convoy.", color:"rgba(251,191,36,.98)", vehicle:"convoy" })
+  Object.freeze({ key:"convoy", icon:"🚚", label:"Convoy Pickup", instruction:"Guide civilians to the pickup lane and load the convoy.", color:"rgba(251,191,36,.98)", vehicle:"convoy" }),
+  Object.freeze({ key:"bus", icon:"🚌", label:"Rescue Bus Stop", instruction:"Bring civilians to the protected bus stop and board the rescue bus.", color:"rgba(250,204,21,.98)", vehicle:"bus" }),
+  Object.freeze({ key:"plane", icon:"✈️", label:"Airstrip Evac", instruction:"Reach the marked runway strip and board the evacuation plane.", color:"rgba(196,181,253,.98)", vehicle:"plane" }),
+  Object.freeze({ key:"suv", icon:"🚙", label:"Armored SUV Pickup", instruction:"Escort civilians to the armored SUV rally point.", color:"rgba(52,211,153,.98)", vehicle:"suv" })
 ]);
 function defaultEvacRouteState(){
   return {
@@ -47019,6 +47065,25 @@ function resetEvacRouteForDeploy(state=S){
 function evacRouteDefForKey(key){
   return EVAC_ROUTE_DEFS.find((row)=>row.key === key) || EVAC_ROUTE_DEFS[0];
 }
+function mapHasUsableEvacWater(){
+  try{ ensureMapObstacleCache(); }catch(e){}
+  return (__mapWaterZones || []).some((zone)=>{
+    if(!zone) return false;
+    const radii = waterZoneRadii(zone);
+    return Number(radii.rx || 0) >= 34 && Number(radii.ry || 0) >= 22;
+  });
+}
+function storyTransportRouteKeyForLevel(level=currentCampaignLevel()){
+  const band = Math.floor((Math.max(1, Number(level || 1)) - 1) / 10) % 8;
+  return ["suv", "convoy", "helicopter", "bus", "convoy", "helicopter", "plane", "suv"][band] || "suv";
+}
+function normalizeEvacRouteKeyForTerrain(key, useStoryFallback=false){
+  const raw = String(key || "").toLowerCase();
+  if(!raw) return useStoryFallback ? storyTransportRouteKeyForLevel() : "";
+  if(raw === "boat" && !mapHasUsableEvacWater()) return storyTransportRouteKeyForLevel();
+  if(raw === "safe_hold") return "street";
+  return raw;
+}
 function evacuationTruthText(){
   const storyMission = S.mode === "Story" ? storyMissionForState(S) : null;
   const arcadeMission = S.mode === "Arcade" ? activeArcadeMission(S) : null;
@@ -47055,11 +47120,10 @@ function declaredEvacRouteKey(){
   return "";
 }
 function chooseRealEvacRouteDef(){
-  const declared = declaredEvacRouteKey();
+  const declared = normalizeEvacRouteKeyForTerrain(declaredEvacRouteKey());
   if(declared) return evacRouteDefForKey(declared);
   const text = evacuationTruthText();
-  ensureMapObstacleCache();
-  const hasWater = (__mapWaterZones || []).length > 0;
+  const hasWater = mapHasUsableEvacWater();
   if(hasWater && /river|boat|dock|flood|water|delta|lake/.test(text)) return evacRouteDefForKey("boat");
   if(/helicopter|airlift|landing|crash/.test(text)) return evacRouteDefForKey("helicopter");
   const storyMission = S.mode === "Story" ? storyMissionForState(S) : null;
@@ -47068,6 +47132,7 @@ function chooseRealEvacRouteDef(){
   if(/convoy|truck|highway|vehicle/.test(text) || mission?.convoyMission) return evacRouteDefForKey("convoy");
   if(/street|road|safe house/.test(text)) return evacRouteDefForKey("street");
   const level = Math.max(1, currentCampaignLevel());
+  if(S.mode === "Story") return evacRouteDefForKey(normalizeEvacRouteKeyForTerrain(storyTransportRouteKeyForLevel(level), true));
   const pool = hasWater ? EVAC_ROUTE_DEFS : EVAC_ROUTE_DEFS.filter((row)=>row.key !== "boat");
   return pool[(level + Math.max(0, Number(S.mapIndex || 0))) % pool.length] || EVAC_ROUTE_DEFS[0];
 }
@@ -47309,6 +47374,9 @@ const EXTRACTION_SEQUENCE_DEFS = Object.freeze([
   Object.freeze({ key:"helicopter", icon:"🚁", label:"Helicopter Extraction", instruction:"Reach the landing zone and hold for pickup.", holdSec:18, color:"rgba(96,165,250,.98)" }),
   Object.freeze({ key:"convoy", icon:"🚚", label:"Convoy Escape", instruction:"Reach the convoy departure point and secure the route.", holdSec:15, color:"rgba(251,191,36,.98)" }),
   Object.freeze({ key:"boat", icon:"🚤", label:"River Extraction", instruction:"Reach the river pickup and defend the dock.", holdSec:16, color:"rgba(34,211,238,.98)" }),
+  Object.freeze({ key:"suv", icon:"🚙", label:"Armored SUV Extraction", instruction:"Reach the armored SUV pickup and load civilians.", holdSec:14, color:"rgba(52,211,153,.98)" }),
+  Object.freeze({ key:"bus", icon:"🚌", label:"Rescue Bus Extraction", instruction:"Reach the rescue bus stop and hold until boarding completes.", holdSec:17, color:"rgba(250,204,21,.98)" }),
+  Object.freeze({ key:"plane", icon:"✈️", label:"Airstrip Extraction", instruction:"Reach the runway marker and secure the evacuation plane.", holdSec:20, color:"rgba(196,181,253,.98)" }),
   Object.freeze({ key:"safe_hold", icon:"🛡️", label:"Emergency Holdout", instruction:"Reach the emergency zone and hold until relief arrives.", holdSec:20, color:"rgba(74,222,128,.98)" }),
   Object.freeze({ key:"timed_escape", icon:"⏱️", label:"Timed Escape", instruction:"Reach extraction before the route closes.", holdSec:12, color:"rgba(248,113,113,.98)" })
 ]);
@@ -47335,22 +47403,25 @@ function extractionSequenceDef(ex=ensureExtractionSequenceState(S)){
   return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === ex.key) || EXTRACTION_SEQUENCE_DEFS[0];
 }
 function extractionSequenceChoice(){
-  const declared = declaredEvacRouteKey();
-  if(declared === "boat") return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "boat");
-  if(declared === "helicopter") return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "helicopter");
-  if(declared === "convoy") return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "convoy");
-  if(declared === "street") return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "safe_hold");
+  const declared = normalizeEvacRouteKeyForTerrain(declaredEvacRouteKey());
+  if(declared){
+    const direct = EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === (declared === "street" ? "suv" : declared));
+    if(direct) return direct;
+  }
   const storyMission = S.mode === "Story" ? storyMissionForState(S) : null;
   const arcadeMission = S.mode === "Arcade" ? activeArcadeMission(S) : null;
   const mission = storyMission || arcadeMission;
   const objective = String(mission?.objective || "").toLowerCase();
   const mapName = String(mapIdentityProfile(S.mode, chapterIndexForMode(S.mode))?.name || "").toLowerCase();
-  ensureMapObstacleCache();
-  const hasWater = (__mapWaterZones || []).length > 0;
+  const hasWater = mapHasUsableEvacWater();
   if(hasWater && (/river|boat|dock|flood|water/.test(objective) || /river/.test(mapName))) return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "boat");
   if(/helicopter|airlift|landing/.test(objective)) return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "helicopter");
   if(mission?.convoyMission || /convoy|truck|road/.test(objective)) return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "convoy");
   const level = Math.max(1, currentCampaignLevel());
+  if(S.mode === "Story"){
+    const storyKey = normalizeEvacRouteKeyForTerrain(storyTransportRouteKeyForLevel(level), true);
+    return EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === storyKey) || EXTRACTION_SEQUENCE_DEFS.find((row)=>row.key === "suv");
+  }
   return EXTRACTION_SEQUENCE_DEFS[(level + Math.max(0, Number(S.mapIndex || 0)) + rand(0, EXTRACTION_SEQUENCE_DEFS.length - 1)) % EXTRACTION_SEQUENCE_DEFS.length];
 }
 function extractionSequencePlacement(def){
@@ -47658,7 +47729,7 @@ function drawExtractionVehicle(ex, now=Date.now()){
   }else if(ex.key === "boat"){
     x += Math.cos(angle) * departPct * 340;
     y += Math.sin(angle) * departPct * 340;
-  }else if(ex.key === "convoy" || ex.key === "timed_escape"){
+  }else if(ex.key === "convoy" || ex.key === "suv" || ex.key === "bus" || ex.key === "plane" || ex.key === "timed_escape"){
     angle = Math.abs(Math.cos(angle)) < 0.3 ? 0 : angle;
     x += Math.cos(angle) * departPct * 340;
     y += Math.sin(angle) * departPct * 340;
@@ -47739,19 +47810,40 @@ function drawExtractionVehicle(ex, now=Date.now()){
     ctx.closePath();
     ctx.fill();
     ctx.restore();
-    ctx.fillStyle = ex.key === "safe_hold" ? "rgba(34,92,62,.98)" : "rgba(92,69,42,.98)";
-    roundedRectFill(-30,-14,60,28,7);
-    ctx.strokeStyle = "rgba(226,232,240,.34)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-25, -10, 50, 20);
-    ctx.fillStyle = "rgba(203,213,225,.82)";
-    roundedRectFill(8,-10,16,11,3);
-    ctx.fillStyle = "rgba(15,23,42,.96)";
-    ctx.beginPath(); ctx.arc(-18,15,7,0,Math.PI*2); ctx.arc(18,15,7,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = "rgba(74,222,128,.94)";
-    roundedRectFill(-20,-8,19,15,3);
-    drawVehicleBeacon(-24, -12, "rgba(251,191,36,.96)", now);
-    drawVehicleBeacon(25, -12, "rgba(248,113,113,.96)", now + 180);
+    if(ex.key === "plane"){
+      ctx.fillStyle = "rgba(210,213,225,.96)";
+      ctx.beginPath();
+      ctx.moveTo(46, 0); ctx.lineTo(4, 12); ctx.lineTo(-42, 9); ctx.lineTo(-52, 0); ctx.lineTo(-42, -9); ctx.lineTo(4, -12); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "rgba(148,163,184,.88)";
+      ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(-34,-25); ctx.lineTo(-18,0); ctx.lineTo(-34,25); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "rgba(96,165,250,.74)";
+      roundedRectFill(12,-6,14,5,2);
+      drawVehicleBeacon(-18, -14, "rgba(196,181,253,.96)", now);
+    }else if(ex.key === "bus"){
+      roundedRectFill(-44,-16,88,32,9, "rgba(232,176,36,.98)", "rgba(39,30,12,.92)");
+      ctx.fillStyle = "rgba(219,234,254,.72)";
+      for(let i=0;i<5;i++) roundedRectFill(-32 + i*13,-12,10,8,3);
+      ctx.fillStyle = "rgba(15,23,42,.96)";
+      ctx.beginPath(); ctx.arc(-28,17,7,0,Math.PI*2); ctx.arc(28,17,7,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(16,185,129,.88)";
+      roundedRectFill(-6,-10,12,22,3);
+      drawVehicleBeacon(38, -13, "rgba(248,113,113,.96)", now);
+    }else{
+      const suv = ex.key === "suv" || ex.key === "street" || ex.key === "safe_hold";
+      ctx.fillStyle = suv ? "rgba(39,88,67,.98)" : "rgba(92,69,42,.98)";
+      roundedRectFill(suv ? -33 : -30, suv ? -15 : -14, suv ? 66 : 60, suv ? 30 : 28, 8);
+      ctx.strokeStyle = "rgba(226,232,240,.34)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(suv ? -27 : -25, -10, suv ? 54 : 50, 20);
+      ctx.fillStyle = "rgba(203,213,225,.82)";
+      roundedRectFill(8,-10,16,11,3);
+      ctx.fillStyle = "rgba(15,23,42,.96)";
+      ctx.beginPath(); ctx.arc(-18,15,7,0,Math.PI*2); ctx.arc(18,15,7,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = suv ? "rgba(52,211,153,.94)" : "rgba(74,222,128,.94)";
+      roundedRectFill(-20,-8,19,15,3);
+      drawVehicleBeacon(-24, -12, "rgba(251,191,36,.96)", now);
+      drawVehicleBeacon(25, -12, "rgba(248,113,113,.96)", now + 180);
+    }
   }
   if(!ex.departing){
     const boardedCount = Math.max(0, Math.floor(Number(ex.boardedCount ?? 0)));
@@ -50340,11 +50432,180 @@ function drawMapScene(){
     }
     ctx.restore();
   }
+  function landmarkTypeForProp(p){
+    const text = `${p.kind || ""} ${p.label || ""}`.toLowerCase();
+    if(/helipad|heli pad|landing zone/.test(text)) return "helipad";
+    if(/runway|airstrip|plane/.test(text)) return "runway";
+    if(/office|tower|warehouse|building|school|station|depot|center|centre|mall|garage/.test(text)) return "building";
+    if(/shelter|safe house|house|home|cabin/.test(text)) return "shelter";
+    if(/plaza|square|market|courtyard/.test(text)) return "plaza";
+    if(/truck|taxi|service|convoy|suv|bus|vehicle|car|lane/.test(text)) return "vehicle";
+    if(/bridge|crossing/.test(text)) return "bridge";
+    if(/park|forest|trail|garden|grove/.test(text)) return "park";
+    if(/den|cave|tunnel|burrow|lair/.test(text)) return "den";
+    return "";
+  }
+
+  function drawLandmarkName(label, px, py, yOffset, accent="rgba(125,211,252,.92)", s=1){
+    if(!label) return;
+    ctx.save();
+    const text = String(label).slice(0, 22);
+    ctx.font = `900 ${Math.max(9, 10 * s)}px system-ui`;
+    ctx.textAlign = "center";
+    const tw = Math.min(130 * s, Math.max(48 * s, ctx.measureText(text).width + (16 * s)));
+    rounded(px - (tw * 0.5), py + yOffset, tw, 17 * s, 7 * s, "rgba(8,13,20,.86)", accent);
+    ctx.fillStyle = "rgba(245,247,255,.94)";
+    ctx.fillText(text, px, py + yOffset + (12 * s));
+    ctx.textAlign = "start";
+    ctx.restore();
+  }
+
+  function drawNamedLandmarkProp(p, px, py, s){
+    const label = String(p.label || "");
+    const type = landmarkTypeForProp(p);
+    if(!label || !type) return false;
+    ctx.save();
+    if(type === "helipad"){
+      groundShadow(px, py + (9 * s), 34 * s, 12 * s, 0.22);
+      rounded(px - (32*s), py - (22*s), 64*s, 44*s, 10*s, "rgba(45,55,72,.86)", "rgba(125,211,252,.86)");
+      ctx.strokeStyle = "rgba(226,232,240,.72)";
+      ctx.lineWidth = 2.2*s;
+      ctx.beginPath(); ctx.arc(px, py, 18*s, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle = "rgba(226,232,240,.92)";
+      ctx.font = `900 ${18*s}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.fillText("H", px, py + (6*s));
+      ctx.textAlign = "start";
+      drawLandmarkName(label, px, py, 28*s, "rgba(125,211,252,.78)", s);
+      ctx.restore();
+      return true;
+    }
+    if(type === "runway"){
+      groundShadow(px, py + (8 * s), 48 * s, 10 * s, 0.18);
+      rounded(px - (48*s), py - (12*s), 96*s, 24*s, 8*s, "rgba(51,65,85,.88)", "rgba(148,163,184,.72)");
+      ctx.strokeStyle = "rgba(226,232,240,.62)";
+      ctx.lineWidth = 2*s;
+      ctx.setLineDash([8*s, 8*s]);
+      ctx.beginPath(); ctx.moveTo(px - (38*s), py); ctx.lineTo(px + (38*s), py); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(203,213,225,.88)";
+      ctx.beginPath();
+      ctx.moveTo(px + (8*s), py);
+      ctx.lineTo(px - (14*s), py - (8*s));
+      ctx.lineTo(px - (10*s), py);
+      ctx.lineTo(px - (14*s), py + (8*s));
+      ctx.closePath();
+      ctx.fill();
+      drawLandmarkName(label, px, py, 20*s, "rgba(148,163,184,.78)", s);
+      ctx.restore();
+      return true;
+    }
+    if(type === "building"){
+      groundShadow(px, py + (10 * s), 34 * s, 12 * s, 0.24);
+      buildingBlock(px, py, 70*s, 54*s);
+      ctx.fillStyle = "rgba(226,232,240,.46)";
+      for(let row=0; row<3; row++){
+        for(let col=0; col<3; col++){
+          ctx.fillRect(px - (22*s) + (col * 15*s), py - (18*s) + (row * 13*s), 8*s, 7*s);
+        }
+      }
+      rounded(px - (31*s), py - (27*s), 62*s, 7*s, 3*s, "rgba(15,23,42,.88)", "rgba(96,165,250,.60)");
+      drawLandmarkName(label, px, py, 34*s, "rgba(96,165,250,.72)", s);
+      ctx.restore();
+      return true;
+    }
+    if(type === "shelter"){
+      groundShadow(px, py + (9 * s), 27 * s, 10 * s, 0.22);
+      houseBlock(px, py);
+      ctx.fillStyle = "rgba(114,62,40,.95)";
+      ctx.beginPath();
+      ctx.moveTo(px - (24*s), py - (10*s));
+      ctx.lineTo(px, py - (30*s));
+      ctx.lineTo(px + (24*s), py - (10*s));
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "rgba(34,197,94,.88)";
+      rounded(px - (7*s), py - (2*s), 14*s, 16*s, 3*s, "rgba(34,197,94,.88)");
+      drawLandmarkName(label, px, py, 28*s, "rgba(34,197,94,.76)", s);
+      ctx.restore();
+      return true;
+    }
+    if(type === "plaza"){
+      groundShadow(px, py + (8 * s), 36 * s, 12 * s, 0.18);
+      rounded(px - (38*s), py - (24*s), 76*s, 48*s, 12*s, "rgba(71,85,105,.72)", "rgba(196,181,253,.78)");
+      ctx.strokeStyle = "rgba(226,232,240,.28)";
+      ctx.lineWidth = 1.4*s;
+      ctx.beginPath(); ctx.moveTo(px - (26*s), py); ctx.lineTo(px + (26*s), py); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px, py - (16*s)); ctx.lineTo(px, py + (16*s)); ctx.stroke();
+      treeDot(px - (23*s), py - (10*s), 5*s);
+      treeDot(px + (23*s), py + (9*s), 5*s);
+      drawLandmarkName(label, px, py, 30*s, "rgba(196,181,253,.76)", s);
+      ctx.restore();
+      return true;
+    }
+    if(type === "vehicle"){
+      groundShadow(px, py + (8 * s), 30 * s, 9 * s, 0.22);
+      const isBus = /bus/.test(`${p.kind || ""} ${label}`.toLowerCase());
+      const isSuv = /suv|taxi|car/.test(`${p.kind || ""} ${label}`.toLowerCase());
+      const ww = isBus ? 68*s : (isSuv ? 48*s : 58*s);
+      const fill = isBus ? "rgba(84,124,184,.92)" : (isSuv ? "rgba(30,41,59,.92)" : "rgba(110,124,140,.92)");
+      rounded(px - ww/2, py - (12*s), ww, 24*s, 7*s, fill, "rgba(15,23,42,.94)");
+      if(!isSuv) rounded(px + (ww/2) - (18*s), py - (8*s), 16*s, 16*s, 4*s, "rgba(170,186,204,.85)", "rgba(15,23,42,.92)");
+      ctx.fillStyle = "rgba(210,232,255,.48)";
+      const windows = isBus ? 5 : 2;
+      for(let i=0;i<windows;i++) rounded(px - (ww/2) + (8*s) + (i * 10*s), py - (8*s), 8*s, 6*s, 2*s, "rgba(210,232,255,.48)");
+      ctx.fillStyle = "rgba(8,13,20,.92)";
+      ctx.beginPath(); ctx.arc(px - (ww*0.30), py + (11*s), 4*s, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + (ww*0.30), py + (11*s), 4*s, 0, Math.PI*2); ctx.fill();
+      drawLandmarkName(label, px, py, 23*s, "rgba(125,211,252,.74)", s);
+      ctx.restore();
+      return true;
+    }
+    if(type === "bridge"){
+      groundShadow(px, py + (8 * s), 50 * s, 10 * s, 0.16);
+      rounded(px - (52*s), py - (13*s), 104*s, 26*s, 8*s, "rgba(87,68,45,.88)", "rgba(202,138,4,.62)");
+      ctx.strokeStyle = "rgba(245,158,11,.42)";
+      ctx.lineWidth = 2*s;
+      ctx.beginPath(); ctx.moveTo(px - (45*s), py - (9*s)); ctx.lineTo(px + (45*s), py - (9*s)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px - (45*s), py + (9*s)); ctx.lineTo(px + (45*s), py + (9*s)); ctx.stroke();
+      drawLandmarkName(label, px, py, 20*s, "rgba(245,158,11,.72)", s);
+      ctx.restore();
+      return true;
+    }
+    if(type === "park"){
+      groundShadow(px, py + (8 * s), 32 * s, 11 * s, 0.16);
+      rounded(px - (38*s), py - (24*s), 76*s, 48*s, 14*s, "rgba(22,101,52,.80)", "rgba(74,222,128,.62)");
+      treeDot(px - (18*s), py - (7*s), 8*s);
+      treeDot(px + (16*s), py - (2*s), 7*s);
+      ctx.fillStyle = "rgba(98,64,38,.86)";
+      rounded(px - (12*s), py + (12*s), 24*s, 4*s, 2*s, "rgba(98,64,38,.86)");
+      drawLandmarkName(label, px, py, 30*s, "rgba(74,222,128,.70)", s);
+      ctx.restore();
+      return true;
+    }
+    if(type === "den"){
+      groundShadow(px, py + (10 * s), 34 * s, 12 * s, 0.24);
+      ctx.fillStyle = "rgba(38,28,22,.96)";
+      ctx.beginPath(); ctx.ellipse(px, py, 34*s, 22*s, -0.04, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(9,10,12,.96)";
+      ctx.beginPath(); ctx.ellipse(px, py + (2*s), 22*s, 13*s, -0.04, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(104,84,64,.82)";
+      ctx.beginPath(); ctx.arc(px - (26*s), py + (7*s), 8*s, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + (24*s), py + (8*s), 7*s, 0, Math.PI*2); ctx.fill();
+      drawLandmarkName(label, px, py, 28*s, "rgba(251,146,60,.72)", s);
+      ctx.restore();
+      return true;
+    }
+    ctx.restore();
+    return false;
+  }
+
   function drawProp(p){
     const px = p._abs ? p.x : (p.x * (w / 960));
     const py = p._abs ? p.y : (p.y * (h / 540));
     const s = p.s || 1;
     if(inMapScenarioKeepout(px, py, 24 * s)) return;
+    if(drawNamedLandmarkProp(p, px, py, s)) return;
     const shadowRx = (()=>{
       if(p.kind === "building") return 20 * s;
       if(p.kind === "truck" || p.kind === "bus") return 18 * s;
@@ -54394,24 +54655,28 @@ function drawCivilian(c){
   ctx.beginPath();
   ctx.ellipse(cx, cy + 19, 16, 6.6, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.globalAlpha = 0.60;
-  ctx.strokeStyle = "rgba(236,253,245,.92)";
-  ctx.lineWidth = 1.8;
-  ctx.beginPath();
-  ctx.arc(cx, cy - 4, 14.5, 0, Math.PI * 2);
-  ctx.stroke();
+  if(DECORATIVE_UNIT_RINGS_ENABLED){
+    ctx.globalAlpha = 0.60;
+    ctx.strokeStyle = "rgba(236,253,245,.92)";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(cx, cy - 4, 14.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
   drawWaterRipple(cx, cy, 16, 0.50);
   drawGroundedFootContacts(c, cx, cy, { footGap:5.5, footY:17, footW:5.6, alphaMul:0.86 });
   drawPremiumFootstepDust(c, cx, cy, moveBlend, c.following ? "rgba(110,231,183,.34)" : "rgba(226,232,240,.24)");
-  ctx.save();
-  ctx.globalAlpha = S.inBattle ? 0.34 : 0.24;
-  ctx.strokeStyle = S.inBattle ? "rgba(254,240,138,.95)" : "rgba(236,253,245,.95)";
-  ctx.lineWidth = S.inBattle ? 3.0 : 2.3;
-  ctx.beginPath();
-  ctx.arc(cx, cy - 4, S.inBattle ? 20 : 17, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
+  if(DECORATIVE_UNIT_RINGS_ENABLED){
+    ctx.save();
+    ctx.globalAlpha = S.inBattle ? 0.34 : 0.24;
+    ctx.strokeStyle = S.inBattle ? "rgba(254,240,138,.95)" : "rgba(236,253,245,.95)";
+    ctx.lineWidth = S.inBattle ? 3.0 : 2.3;
+    ctx.beginPath();
+    ctx.arc(cx, cy - 4, S.inBattle ? 20 : 17, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   if(civilianShielded(c)){
     const pulse = 0.82 + Math.sin(Date.now()/120) * 0.15;
     ctx.save();
@@ -54523,73 +54788,37 @@ function drawCivilian(c){
   roundedRectFill(2, 12, 7, 2.6, 1.2);
 
   ctx.restore();
-  drawPremiumBipedArtShell(c, bx, by, {
-    blend:moveBlend,
-    topSpeed:c.following ? 2.1 : 1.4,
-    face,
-    phase:(c.id || 0) * 0.31,
-    body:c.shirt,
-    vest:"rgba(15,23,42,.38)",
-    accent:c.following ? "rgba(110,231,183,.92)" : "rgba(186,230,253,.72)",
-    pants:c.pants,
-    skin:c.skin,
-    headgear:"rgba(24,24,27,.88)",
-    scale:0.92
-  });
-  drawPremium2DArtPhase2BipedOverlay(c, bx, by, {
-    blend:moveBlend,
-    topSpeed:c.following ? 2.1 : 1.4,
-    face,
-    phase:(c.id || 0) * 0.31,
-    accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)",
-    trim:c.shirt,
-    scale:0.92
-  });
-  drawPremium2DArtPhase3BipedFinish(c, bx, by, {
-    blend:moveBlend,
-    topSpeed:c.following ? 2.1 : 1.4,
-    face,
-    phase:(c.id || 0) * 0.31,
-    accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)",
-    roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
-    scale:0.92
-  });
-  drawPremium2DArtPhase4BipedPolish(c, bx, by, {
-    blend:moveBlend,
-    topSpeed:c.following ? 2.1 : 1.4,
-    face,
-    phase:(c.id || 0) * 0.31,
-    accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)",
-    roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
-    scale:0.92
-  });
-  drawPremium2DArtPhase5BipedIllustration(c, bx, by, {
-    blend:moveBlend,
-    topSpeed:c.following ? 2.1 : 1.4,
-    face,
-    phase:(c.id || 0) * 0.31,
-    accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)",
-    roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
-    scale:0.92
-  });
-  drawPremium2DArtPhase6BipedReadability(c, bx, by, {
-    blend:moveBlend,
-    topSpeed:c.following ? 2.1 : 1.4,
-    face,
-    phase:(c.id || 0) * 0.31,
-    accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)",
-    roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
-    scale:0.92
-  });
-  drawPremium2DArtPhase7BipedPremiumInk(c, bx, by, {
-    blend:moveBlend,
-    topSpeed:c.following ? 2.1 : 1.4,
-    face,
-    phase:(c.id || 0) * 0.31,
-    accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)",
-    roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)",
-    scale:0.92
-  });
+  if(LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED){
+    drawPremiumBipedArtShell(c, bx, by, {
+      blend:moveBlend, topSpeed:c.following ? 2.1 : 1.4, face, phase:(c.id || 0) * 0.31,
+      body:c.shirt, vest:"rgba(15,23,42,.38)", accent:c.following ? "rgba(110,231,183,.92)" : "rgba(186,230,253,.72)",
+      pants:c.pants, skin:c.skin, headgear:"rgba(24,24,27,.88)", scale:0.92
+    });
+    drawPremium2DArtPhase2BipedOverlay(c, bx, by, {
+      blend:moveBlend, topSpeed:c.following ? 2.1 : 1.4, face, phase:(c.id || 0) * 0.31,
+      accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)", trim:c.shirt, scale:0.92
+    });
+    drawPremium2DArtPhase3BipedFinish(c, bx, by, {
+      blend:moveBlend, topSpeed:c.following ? 2.1 : 1.4, face, phase:(c.id || 0) * 0.31,
+      accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)", roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)", scale:0.92
+    });
+    drawPremium2DArtPhase4BipedPolish(c, bx, by, {
+      blend:moveBlend, topSpeed:c.following ? 2.1 : 1.4, face, phase:(c.id || 0) * 0.31,
+      accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)", roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)", scale:0.92
+    });
+    drawPremium2DArtPhase5BipedIllustration(c, bx, by, {
+      blend:moveBlend, topSpeed:c.following ? 2.1 : 1.4, face, phase:(c.id || 0) * 0.31,
+      accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)", roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)", scale:0.92
+    });
+    drawPremium2DArtPhase6BipedReadability(c, bx, by, {
+      blend:moveBlend, topSpeed:c.following ? 2.1 : 1.4, face, phase:(c.id || 0) * 0.31,
+      accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)", roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)", scale:0.92
+    });
+    drawPremium2DArtPhase7BipedPremiumInk(c, bx, by, {
+      blend:moveBlend, topSpeed:c.following ? 2.1 : 1.4, face, phase:(c.id || 0) * 0.31,
+      accent:c.following ? "rgba(110,231,183,.98)" : "rgba(186,230,253,.82)", roleGlow:c.evac ? "rgba(74,222,128,.98)" : "rgba(125,211,252,.78)", scale:0.92
+    });
+  }
   drawRealisticCivilianModel(c, bx, by, {
     blend:moveBlend,
     topSpeed:c.following ? 2.1 : 1.4,
@@ -54766,26 +54995,30 @@ function drawSoldier(){
   ctx.beginPath();
   ctx.ellipse(x, y + 19, 20.5, 8.2, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.globalAlpha = 0.66;
-  ctx.strokeStyle = S.inBattle ? "rgba(56,189,248,.98)" : "rgba(226,232,240,.92)";
-  ctx.lineWidth = S.inBattle ? 2.4 : 2.0;
-  ctx.beginPath();
-  ctx.arc(x, y - 2, S.inBattle ? 21 : 18, 0, Math.PI * 2);
-  ctx.stroke();
+  if(DECORATIVE_UNIT_RINGS_ENABLED){
+    ctx.globalAlpha = 0.66;
+    ctx.strokeStyle = S.inBattle ? "rgba(56,189,248,.98)" : "rgba(226,232,240,.92)";
+    ctx.lineWidth = S.inBattle ? 2.4 : 2.0;
+    ctx.beginPath();
+    ctx.arc(x, y - 2, S.inBattle ? 21 : 18, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
   const meHitFlashLeft = Math.max(0, (S.meHitFlashUntil || 0) - now);
   const meHitFlashAlpha = meHitFlashLeft > 0
     ? clamp((meHitFlashLeft / 190) * (Number(S.meHitFlashPower) || 0.7), 0.12, 0.86)
     : 0;
   const palette = seasonSoldierPalette();
-  ctx.save();
-  ctx.globalAlpha = S.inBattle ? 0.40 : 0.26;
-  ctx.strokeStyle = S.inBattle ? "rgba(56,189,248,.98)" : "rgba(226,232,240,.90)";
-  ctx.lineWidth = S.inBattle ? 3.8 : 2.4;
-  ctx.beginPath();
-  ctx.arc(x, y - 2, S.inBattle ? 25 : 20, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
+  if(DECORATIVE_UNIT_RINGS_ENABLED){
+    ctx.save();
+    ctx.globalAlpha = S.inBattle ? 0.40 : 0.26;
+    ctx.strokeStyle = S.inBattle ? "rgba(56,189,248,.98)" : "rgba(226,232,240,.90)";
+    ctx.lineWidth = S.inBattle ? 3.8 : 2.4;
+    ctx.beginPath();
+    ctx.arc(x, y - 2, S.inBattle ? 25 : 20, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   drawWaterRipple(x, y, 18, 0.56);
   drawGroundedFootContacts(S.me, x, y, { footGap:7.2, footY:17.5, footW:7, alphaMul:1.05 });
   drawPremiumFootstepDust(S.me, x, y, moveBlend, rolling ? "rgba(125,211,252,.42)" : "rgba(191,219,254,.30)");
@@ -54894,74 +55127,76 @@ function drawSoldier(){
   ctx.beginPath(); ctx.arc(-2,-20,1,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(2,-20,1,0,Math.PI*2); ctx.fill();
   ctx.restore();
-  drawPremiumBipedArtShell(S.me, x, y, {
-    blend:rolling ? 1 : moveBlend,
-    topSpeed:3.0,
-    face:ang,
-    phase:0.15,
-    body:palette.armorOuter,
-    vest:palette.armorInner,
-    accent:palette.trim,
-    pants:palette.pants,
-    skin:"rgba(220,220,225,.92)",
-    headgear:palette.helmet,
-    scale:1.02
-  });
-  drawPremium2DArtPhase2BipedOverlay(S.me, x, y, {
-    blend:rolling ? 1 : moveBlend,
-    topSpeed:3.0,
-    face:ang,
-    phase:0.15,
-    accent:palette.trim,
-    trim:palette.armorOuter,
-    pack:palette.armorInner,
-    scale:1.02
-  });
-  drawPremium2DArtPhase3BipedFinish(S.me, x, y, {
-    blend:rolling ? 1 : moveBlend,
-    topSpeed:3.0,
-    face:ang,
-    phase:0.15,
-    accent:palette.trim,
-    roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
-    scale:1.02
-  });
-  drawPremium2DArtPhase4BipedPolish(S.me, x, y, {
-    blend:rolling ? 1 : moveBlend,
-    topSpeed:3.0,
-    face:ang,
-    phase:0.15,
-    accent:palette.trim,
-    roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
-    scale:1.02
-  });
-  drawPremium2DArtPhase5BipedIllustration(S.me, x, y, {
-    blend:rolling ? 1 : moveBlend,
-    topSpeed:3.0,
-    face:ang,
-    phase:0.15,
-    accent:palette.trim,
-    roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
-    scale:1.02
-  });
-  drawPremium2DArtPhase6BipedReadability(S.me, x, y, {
-    blend:rolling ? 1 : moveBlend,
-    topSpeed:3.0,
-    face:ang,
-    phase:0.15,
-    accent:palette.trim,
-    roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
-    scale:1.02
-  });
-  drawPremium2DArtPhase7BipedPremiumInk(S.me, x, y, {
-    blend:rolling ? 1 : moveBlend,
-    topSpeed:3.0,
-    face:ang,
-    phase:0.15,
-    accent:palette.trim,
-    roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
-    scale:1.02
-  });
+  if(LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED){
+    drawPremiumBipedArtShell(S.me, x, y, {
+      blend:rolling ? 1 : moveBlend,
+      topSpeed:3.0,
+      face:ang,
+      phase:0.15,
+      body:palette.armorOuter,
+      vest:palette.armorInner,
+      accent:palette.trim,
+      pants:palette.pants,
+      skin:"rgba(220,220,225,.92)",
+      headgear:palette.helmet,
+      scale:1.02
+    });
+    drawPremium2DArtPhase2BipedOverlay(S.me, x, y, {
+      blend:rolling ? 1 : moveBlend,
+      topSpeed:3.0,
+      face:ang,
+      phase:0.15,
+      accent:palette.trim,
+      trim:palette.armorOuter,
+      pack:palette.armorInner,
+      scale:1.02
+    });
+    drawPremium2DArtPhase3BipedFinish(S.me, x, y, {
+      blend:rolling ? 1 : moveBlend,
+      topSpeed:3.0,
+      face:ang,
+      phase:0.15,
+      accent:palette.trim,
+      roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
+      scale:1.02
+    });
+    drawPremium2DArtPhase4BipedPolish(S.me, x, y, {
+      blend:rolling ? 1 : moveBlend,
+      topSpeed:3.0,
+      face:ang,
+      phase:0.15,
+      accent:palette.trim,
+      roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
+      scale:1.02
+    });
+    drawPremium2DArtPhase5BipedIllustration(S.me, x, y, {
+      blend:rolling ? 1 : moveBlend,
+      topSpeed:3.0,
+      face:ang,
+      phase:0.15,
+      accent:palette.trim,
+      roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
+      scale:1.02
+    });
+    drawPremium2DArtPhase6BipedReadability(S.me, x, y, {
+      blend:rolling ? 1 : moveBlend,
+      topSpeed:3.0,
+      face:ang,
+      phase:0.15,
+      accent:palette.trim,
+      roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
+      scale:1.02
+    });
+    drawPremium2DArtPhase7BipedPremiumInk(S.me, x, y, {
+      blend:rolling ? 1 : moveBlend,
+      topSpeed:3.0,
+      face:ang,
+      phase:0.15,
+      accent:palette.trim,
+      roleGlow:rolling ? "rgba(250,204,21,.98)" : palette.trim,
+      scale:1.02
+    });
+  }
   drawRealisticSoldierModel(S.me, x, y, {
     blend:rolling ? 1 : moveBlend,
     topSpeed:3.0,
@@ -55088,12 +55323,14 @@ function drawSupportUnit(unit){
   ctx.beginPath();
   ctx.ellipse(x, y + 17.5, 16.5, 7, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.globalAlpha = 0.56;
-  ctx.strokeStyle = attacker ? "rgba(255,214,170,.90)" : "rgba(210,240,255,.90)";
-  ctx.lineWidth = 1.9;
-  ctx.beginPath();
-  ctx.arc(x, y - 2, 15.5, 0, Math.PI * 2);
-  ctx.stroke();
+  if(DECORATIVE_UNIT_RINGS_ENABLED){
+    ctx.globalAlpha = 0.56;
+    ctx.strokeStyle = attacker ? "rgba(255,214,170,.90)" : "rgba(210,240,255,.90)";
+    ctx.lineWidth = 1.9;
+    ctx.beginPath();
+    ctx.arc(x, y - 2, 15.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
   drawWaterRipple(x, y, 17, 0.52);
   drawPremiumFootstepDust(unit, x, y, moveBlend, attacker ? "rgba(251,146,60,.30)" : "rgba(96,165,250,.30)");
@@ -55158,74 +55395,76 @@ function drawSupportUnit(unit){
   roundedRectFill(-12, -12, 4, 12, 2);
   roundedRectFill(8, -12, 4, 12, 2);
   ctx.restore();
-  drawPremiumBipedArtShell(unit, x, y, {
-    blend:moveBlend,
-    topSpeed:2.5,
-    face:ang,
-    phase:(unit.id || 0) * 0.27,
-    body:uniformBody,
-    vest:attacker ? "rgba(251,146,60,.78)" : "rgba(52,211,153,.78)",
-    accent:attacker ? "rgba(251,191,36,.92)" : "rgba(125,211,252,.92)",
-    pants:"rgba(22,28,38,.96)",
-    skin:"rgba(220,220,225,.92)",
-    headgear:"rgba(26,36,49,.96)",
-    scale:0.94
-  });
-  drawPremium2DArtPhase2BipedOverlay(unit, x, y, {
-    blend:moveBlend,
-    topSpeed:2.5,
-    face:ang,
-    phase:(unit.id || 0) * 0.27,
-    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
-    trim:uniformBody,
-    pack:attacker ? "rgba(120,53,15,.88)" : "rgba(17,94,89,.86)",
-    scale:0.94
-  });
-  drawPremium2DArtPhase3BipedFinish(unit, x, y, {
-    blend:moveBlend,
-    topSpeed:2.5,
-    face:ang,
-    phase:(unit.id || 0) * 0.27,
-    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
-    roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
-    scale:0.94
-  });
-  drawPremium2DArtPhase4BipedPolish(unit, x, y, {
-    blend:moveBlend,
-    topSpeed:2.5,
-    face:ang,
-    phase:(unit.id || 0) * 0.27,
-    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
-    roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
-    scale:0.94
-  });
-  drawPremium2DArtPhase5BipedIllustration(unit, x, y, {
-    blend:moveBlend,
-    topSpeed:2.5,
-    face:ang,
-    phase:(unit.id || 0) * 0.27,
-    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
-    roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
-    scale:0.94
-  });
-  drawPremium2DArtPhase6BipedReadability(unit, x, y, {
-    blend:moveBlend,
-    topSpeed:2.5,
-    face:ang,
-    phase:(unit.id || 0) * 0.27,
-    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
-    roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
-    scale:0.94
-  });
-  drawPremium2DArtPhase7BipedPremiumInk(unit, x, y, {
-    blend:moveBlend,
-    topSpeed:2.5,
-    face:ang,
-    phase:(unit.id || 0) * 0.27,
-    accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
-    roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
-    scale:0.94
-  });
+  if(LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED){
+    drawPremiumBipedArtShell(unit, x, y, {
+      blend:moveBlend,
+      topSpeed:2.5,
+      face:ang,
+      phase:(unit.id || 0) * 0.27,
+      body:uniformBody,
+      vest:attacker ? "rgba(251,146,60,.78)" : "rgba(52,211,153,.78)",
+      accent:attacker ? "rgba(251,191,36,.92)" : "rgba(125,211,252,.92)",
+      pants:"rgba(22,28,38,.96)",
+      skin:"rgba(220,220,225,.92)",
+      headgear:"rgba(26,36,49,.96)",
+      scale:0.94
+    });
+    drawPremium2DArtPhase2BipedOverlay(unit, x, y, {
+      blend:moveBlend,
+      topSpeed:2.5,
+      face:ang,
+      phase:(unit.id || 0) * 0.27,
+      accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
+      trim:uniformBody,
+      pack:attacker ? "rgba(120,53,15,.88)" : "rgba(17,94,89,.86)",
+      scale:0.94
+    });
+    drawPremium2DArtPhase3BipedFinish(unit, x, y, {
+      blend:moveBlend,
+      topSpeed:2.5,
+      face:ang,
+      phase:(unit.id || 0) * 0.27,
+      accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
+      roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
+      scale:0.94
+    });
+    drawPremium2DArtPhase4BipedPolish(unit, x, y, {
+      blend:moveBlend,
+      topSpeed:2.5,
+      face:ang,
+      phase:(unit.id || 0) * 0.27,
+      accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
+      roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
+      scale:0.94
+    });
+    drawPremium2DArtPhase5BipedIllustration(unit, x, y, {
+      blend:moveBlend,
+      topSpeed:2.5,
+      face:ang,
+      phase:(unit.id || 0) * 0.27,
+      accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
+      roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
+      scale:0.94
+    });
+    drawPremium2DArtPhase6BipedReadability(unit, x, y, {
+      blend:moveBlend,
+      topSpeed:2.5,
+      face:ang,
+      phase:(unit.id || 0) * 0.27,
+      accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
+      roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
+      scale:0.94
+    });
+    drawPremium2DArtPhase7BipedPremiumInk(unit, x, y, {
+      blend:moveBlend,
+      topSpeed:2.5,
+      face:ang,
+      phase:(unit.id || 0) * 0.27,
+      accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
+      roleGlow:attacker ? "rgba(251,146,60,.96)" : "rgba(52,211,153,.96)",
+      scale:0.94
+    });
+  }
   drawRealisticSoldierModel(unit, x, y, {
     blend:moveBlend,
     topSpeed:2.5,
@@ -56853,12 +57092,14 @@ function drawTiger(t){
   ctx.beginPath();
   ctx.ellipse(x, y + (18 * s), (24 * s) + (speed * 0.9), 8.6 * s, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.globalAlpha = tigerFocus ? 0.72 : 0.56;
-  ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.99)" : "rgba(254,229,184,.90)";
-  ctx.lineWidth = tigerFocus ? 2.4 : 2.0;
-  ctx.beginPath();
-  ctx.arc(x, y, tigerFocus ? 33 * s : 28 * s, 0, Math.PI * 2);
-  ctx.stroke();
+  if(DECORATIVE_UNIT_RINGS_ENABLED){
+    ctx.globalAlpha = tigerFocus ? 0.72 : 0.56;
+    ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.99)" : "rgba(254,229,184,.90)";
+    ctx.lineWidth = tigerFocus ? 2.4 : 2.0;
+    ctx.beginPath();
+    ctx.arc(x, y, tigerFocus ? 33 * s : 28 * s, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
   const headBob = Math.sin((t.step||0)*2.4 + 0.7) * (gaitState==="sprint" ? 1.7 : (gaitState==="run" ? 1.25 : 0.7));
   const shoulderRoll = Math.sin((t.step||0)*1.3) * (gaitState==="sprint" ? 0.06 : 0.04);
@@ -56875,7 +57116,7 @@ function drawTiger(t){
   const atkSwing = atkProgress > 0 ? Math.sin(atkProgress * Math.PI) : 0;
   const telegraphHeavy = visualReadabilityHeavyMode();
   const behaviorAnim = tigerBehaviorAnimState(t, now, speed);
-  drawPremiumTigerPresence(t, x, y, s, alpha, now, behaviorAnim, speed, tigerFocus);
+  if(DECORATIVE_UNIT_RINGS_ENABLED) drawPremiumTigerPresence(t, x, y, s, alpha, now, behaviorAnim, speed, tigerFocus);
   if(behaviorAnim.pounce || sprinting || atkKind === "pounce"){
     drawMotionAfterImages(t, x, y, {
       minSpeed:1.6,
@@ -56890,14 +57131,16 @@ function drawTiger(t){
   if(behaviorAnim.roaring) drawTigerRoarShockwave(x, y, s, alpha, now);
   if(behaviorAnim.circling) drawTigerPackCirclingCue(t, x, y, s, alpha, now);
   if(behaviorAnim.fleeing) drawTigerFleeCue(t, x, y, s, alpha, now);
-  ctx.save();
-  ctx.globalAlpha = tigerFocus ? 0.50 : 0.28;
-  ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.99)" : "rgba(254,215,170,.88)";
-  ctx.lineWidth = tigerFocus ? 3.8 : 2.3;
-  ctx.beginPath();
-  ctx.arc(x, y, tigerFocus ? 38 : 30, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
+  if(DECORATIVE_UNIT_RINGS_ENABLED){
+    ctx.save();
+    ctx.globalAlpha = tigerFocus ? 0.50 : 0.28;
+    ctx.strokeStyle = tigerFocus ? "rgba(248,113,113,.99)" : "rgba(254,215,170,.88)";
+    ctx.lineWidth = tigerFocus ? 3.8 : 2.3;
+    ctx.beginPath();
+    ctx.arc(x, y, tigerFocus ? 38 : 30, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   drawWaterRipple(x, y, 20 * s, 0.58);
   const drawDir = Number.isFinite(t.drawDir) ? (t.drawDir >= 0 ? 1 : -1) : ((Math.cos(t.heading || 0) >= 0) ? 1 : -1);
 
@@ -59481,6 +59724,9 @@ function draw(){
         1.55
       ), roamTigers, {
         costHint:2.6, critical:true, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
+      });
+      runFrameTask("tigerPackSpacing", frameInterval(lagCritical ? 260 : (lagHeavy ? 220 : 170), 1.45), ()=>applyTigerPackSpacing(S), {
+        costHint:0.35, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
       });
       runFrameTask("tigerEcosystem", frameInterval(4200, 1.5), tigerEcosystemSimTick, {
         costHint:0.35, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
