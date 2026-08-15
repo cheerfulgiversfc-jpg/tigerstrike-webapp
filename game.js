@@ -52397,16 +52397,22 @@ function drawTigerDenRaidSite(){
   ctx.setLineDash([]);
   ctx.globalAlpha = den.secured ? 0.72 : 0.96;
   ctx.fillStyle = "rgba(9,12,18,.88)";
-  roundedRectFill(den.x - 62, den.y - 20, 124, 40, 10);
+  const boxW = den.secured ? 134 : 156;
+  const boxH = den.secured ? 40 : 52;
+  roundedRectFill(den.x - boxW / 2, den.y - boxH / 2, boxW, boxH, 10);
   ctx.fillStyle = den.secured ? "rgba(220,252,231,.98)" : "rgba(255,237,213,.98)";
   ctx.font = "900 11px system-ui";
   ctx.textAlign = "center";
-  ctx.fillText(den.secured ? "DEN SECURED" : (den.revealed ? "TIGER DEN" : "HIDDEN DEN"), den.x, den.y - 3);
+  ctx.fillText(den.secured ? "DEN SECURED" : (den.revealed ? "TIGER DEN RAID" : "HIDDEN TIGER DEN"), den.x, den.y - 11);
   ctx.font = "850 8px system-ui";
-  const status = den.secured
-    ? "route safe"
-    : `clues ${Math.min(den.cluesFound || 0, den.cluesTotal || 0)}/${den.cluesTotal || 0} • guards ${Math.min(den.guardsCleared || 0, den.guardsTotal || 0)}/${den.guardsTotal || 0}`;
-  ctx.fillText(status, den.x, den.y + 11);
+  if(den.secured){
+    ctx.fillText("route safe", den.x, den.y + 8);
+  } else {
+    const cluesFound = Math.min(den.cluesFound || 0, den.cluesTotal || 0);
+    const guardsCleared = Math.min(den.guardsCleared || 0, den.guardsTotal || 0);
+    ctx.fillText(`scan clues ${cluesFound}/${den.cluesTotal || 0}`, den.x, den.y + 4);
+    ctx.fillText(`clear den guards ${guardsCleared}/${den.guardsTotal || 0}`, den.x, den.y + 18);
+  }
   ctx.restore();
 }
 
@@ -57302,6 +57308,12 @@ function drawTiger(t){
   const tigerFocus = S.inBattle && (S.activeTigerId===t.id || S.lockedTigerId===t.id);
   const grassHidden = tigerIsHiddenInGrass(t);
   if(grassHidden && !tigerFocus) alpha *= 0.72;
+  const stealthReadable = bossStealth || t.type === "Stalker" || t.eliteMutation === "camouflage" || grassHidden;
+  const focusReadable = tigerFocus || t.id === S.lockedTigerId || t.id === S.activeTigerId;
+  const nearReadable = Number.isFinite(S?.me?.x) && Number.isFinite(S?.me?.y) && dist(t.x, t.y, S.me.x, S.me.y) < 260;
+  // Stealth should feel sneaky, not broken. Keep hidden tigers readable enough to avoid "vanished" moments.
+  const alphaFloor = focusReadable ? 0.78 : (nearReadable ? 0.58 : (stealthReadable ? 0.36 : 0.62));
+  alpha = clamp(alpha, alphaFloor, 1);
   // Phase 2 readability: stronger local separation from terrain.
   let s=1.0;
   if(t.type==="Scout") s=0.85;
@@ -58135,7 +58147,8 @@ function drawEntities(){
   });
   const drawSupport = viewportCullEntities(S.supportUnits || [], {
     pad:actorPad,
-    max: mobile ? (lagTier >= 2 ? 5 : 8) : 14
+    max: mobile ? (lagTier >= 2 ? 5 : 8) : 14,
+    pin:(unit)=>unit?.id === S.selectedSupportUnitId || !!unit?.activeOrder || (Number.isFinite(unit?.x) && Number.isFinite(unit?.y) && Number.isFinite(S?.me?.x) && dist(unit.x, unit.y, S.me.x, S.me.y) < 320)
   });
   const drawRivals = viewportCullEntities(S.rivalHunters || [], {
     pad:actorPad,
@@ -58144,7 +58157,7 @@ function drawEntities(){
   const drawTigers = viewportCullEntities(S.tigers || [], {
     pad:actorPad,
     max: mobile ? (lagTier >= 2 ? 10 : (lagTier >= 1 ? 16 : 22)) : 32,
-    pin:(t)=>t?.id === S.activeTigerId || t?.id === S.lockedTigerId || isBossTiger(t)
+    pin:(t)=>t?.id === S.activeTigerId || t?.id === S.lockedTigerId || isBossTiger(t) || (Number.isFinite(t?.x) && Number.isFinite(t?.y) && Number.isFinite(S?.me?.x) && dist(t.x, t.y, S.me.x, S.me.y) < 340)
   });
   const drawPickups = viewportCullEntities(S.pickups || [], {
     pad:propsPad,
