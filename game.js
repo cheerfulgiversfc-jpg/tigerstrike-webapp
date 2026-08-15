@@ -23752,6 +23752,134 @@ function drawMapExpansionRouteNetwork(opts={}){
     ["bridge", "den", "den"],
     ["den", "evac", "route"]
   ];
+  const drawAnchorBadge = (anchor, yOffset=32)=>{
+    const label = String(anchor.label || "").toUpperCase().slice(0, 22);
+    if(!label) return;
+    ctx.font = "900 9px system-ui";
+    const tw = Math.min(126, Math.max(44, ctx.measureText(label).width + 14));
+    ctx.fillStyle = "rgba(5,12,20,.82)";
+    roundedRectFill(anchor.x - (tw * 0.5), anchor.y + yOffset, tw, 18, 8);
+    ctx.fillStyle = "rgba(226,232,240,.94)";
+    ctx.textAlign = "center";
+    ctx.fillText(label, anchor.x, anchor.y + yOffset + 13);
+    ctx.textAlign = "start";
+  };
+  const drawRouteAnchorObject = (anchor)=>{
+    const x = anchor.x;
+    const y = anchor.y;
+    const label = String(anchor.label || "");
+    const lower = label.toLowerCase();
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "rgba(3,7,14,.34)";
+    ctx.beginPath();
+    ctx.ellipse(x + 3, y + 15, anchor.type === "bridge" ? 48 : 34, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if(anchor.type === "settlement"){
+      const roof = (hx, hy, w, h, color)=>{
+        ctx.fillStyle = "rgba(198,185,160,.94)";
+        roundedRectFill(hx - (w * 0.5), hy - (h * 0.35), w, h, 6);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(hx - (w * 0.58), hy - (h * 0.35));
+        ctx.lineTo(hx, hy - h);
+        ctx.lineTo(hx + (w * 0.58), hy - (h * 0.35));
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "rgba(80,63,48,.72)";
+        ctx.fillRect(hx - 3, hy - 1, 6, h * 0.45);
+      };
+      roof(x - 16, y + 4, 28, 22, "rgba(154,92,56,.95)");
+      roof(x + 14, y + 2, 30, 24, "rgba(185,112,68,.95)");
+      ctx.fillStyle = "rgba(74,222,128,.20)";
+      roundedRectFill(x - 38, y + 18, 76, 8, 5);
+      drawAnchorBadge(anchor, 34);
+    } else if(anchor.type === "bridge"){
+      ctx.fillStyle = "rgba(103,86,61,.96)";
+      roundedRectFill(x - 50, y - 10, 100, 20, 7);
+      ctx.fillStyle = "rgba(161,126,76,.92)";
+      for(let i=-38; i<=38; i+=19) ctx.fillRect(x + i, y - 13, 8, 26);
+      ctx.strokeStyle = "rgba(245,221,158,.58)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 45, y - 4);
+      ctx.lineTo(x + 45, y - 4);
+      ctx.moveTo(x - 45, y + 5);
+      ctx.lineTo(x + 45, y + 5);
+      ctx.stroke();
+      drawAnchorBadge(anchor, 24);
+    } else if(anchor.type === "cave"){
+      ctx.fillStyle = "rgba(80,67,56,.96)";
+      ctx.beginPath();
+      ctx.ellipse(x, y + 5, 36, 24, 0, Math.PI, Math.PI * 2);
+      ctx.lineTo(x + 36, y + 18);
+      ctx.lineTo(x - 36, y + 18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "rgba(5,7,12,.95)";
+      ctx.beginPath();
+      ctx.ellipse(x, y + 9, 20, 13, 0, Math.PI, Math.PI * 2);
+      ctx.lineTo(x + 20, y + 18);
+      ctx.lineTo(x - 20, y + 18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "rgba(148,163,184,.45)";
+      ctx.fillRect(x - 32, y + 18, 64, 4);
+      drawAnchorBadge(anchor, 28);
+    } else if(anchor.type === "den"){
+      ctx.fillStyle = "rgba(89,52,31,.95)";
+      ctx.beginPath();
+      ctx.ellipse(x, y + 7, 38, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(19,11,7,.94)";
+      ctx.beginPath();
+      ctx.ellipse(x, y + 8, 22, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(251,146,60,.78)";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(x - 22, y - 10);
+      ctx.lineTo(x - 10, y - 18);
+      ctx.moveTo(x - 3, y - 12);
+      ctx.lineTo(x + 11, y - 20);
+      ctx.moveTo(x + 15, y - 8);
+      ctx.lineTo(x + 29, y - 16);
+      ctx.stroke();
+      drawAnchorBadge(anchor, 30);
+    } else if(anchor.type === "evac"){
+      if(/heli|pad|landing/.test(lower)){
+        ctx.fillStyle = "rgba(45,55,72,.94)";
+        roundedRectFill(x - 34, y - 22, 68, 44, 10);
+        ctx.strokeStyle = "rgba(125,211,252,.84)";
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.arc(x, y, 17, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(226,232,240,.94)";
+        ctx.font = "900 19px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText("H", x, y + 7);
+        ctx.textAlign = "start";
+      } else if(/dock|river|boat/.test(lower)){
+        ctx.fillStyle = "rgba(34,116,135,.72)";
+        roundedRectFill(x - 42, y - 18, 84, 36, 12);
+        ctx.fillStyle = "rgba(126,87,53,.96)";
+        roundedRectFill(x - 30, y - 5, 60, 11, 4);
+        ctx.fillStyle = "rgba(161,126,76,.9)";
+        for(let i=-24;i<=24;i+=16) ctx.fillRect(x + i, y - 12, 5, 24);
+      } else {
+        ctx.fillStyle = "rgba(59,130,246,.90)";
+        roundedRectFill(x - 31, y - 11, 62, 22, 7);
+        ctx.fillStyle = "rgba(191,219,254,.82)";
+        ctx.fillRect(x - 20, y - 16, 24, 9);
+        ctx.fillStyle = "rgba(17,24,39,.96)";
+        ctx.beginPath(); ctx.arc(x - 20, y + 12, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 22, y + 12, 5, 0, Math.PI * 2); ctx.fill();
+      }
+      drawAnchorBadge(anchor, 30);
+    }
+    ctx.restore();
+  };
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -23789,25 +23917,7 @@ function drawMapExpansionRouteNetwork(opts={}){
   ctx.setLineDash([]);
   if(!mobileFast){
     for(const anchor of anchors.filter((a)=>["settlement", "bridge", "cave", "den", "evac"].includes(a.type))){
-      const fill = anchor.type === "den" ? "rgba(251,146,60,.16)" : (anchor.type === "evac" ? "rgba(74,222,128,.16)" : "rgba(147,197,253,.14)");
-      const stroke = anchor.type === "den" ? "rgba(251,146,60,.65)" : (anchor.type === "evac" ? "rgba(74,222,128,.68)" : "rgba(147,197,253,.58)");
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = fill;
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(anchor.x, anchor.y, 24, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      const label = anchor.label.toUpperCase();
-      ctx.font = "900 9px system-ui";
-      const tw = ctx.measureText(label).width + 14;
-      ctx.fillStyle = "rgba(5,12,20,.78)";
-      roundedRectFill(anchor.x - (tw * 0.5), anchor.y + 28, tw, 18, 8);
-      ctx.fillStyle = "rgba(226,232,240,.92)";
-      ctx.textAlign = "center";
-      ctx.fillText(label, anchor.x, anchor.y + 41);
-      ctx.textAlign = "start";
+      drawRouteAnchorObject(anchor);
     }
   }
   ctx.restore();
