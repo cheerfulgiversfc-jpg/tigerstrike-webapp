@@ -6199,18 +6199,18 @@ const MEDS = [
   { id:"M_SMALL",  name:"Small Med Kit",  price:50,  heal:10 },
   { id:"M_MED",    name:"Med Kit",        price:150, heal:25 },
   { id:"M_LARGE",  name:"Large Med Kit",  price:400, heal:50 },
-  { id:"M_TRAUMA", name:"Trauma Kit",     price:1000, heal:100 },
-  { id:"M_FIELD_SURGERY", name:"Field Surgery Kit", price:6500, heal:100 },
-  { id:"M_NANO_TRIAGE", name:"Nano Triage Kit", price:25000, heal:100 },
+  { id:"M_TRAUMA", name:"Trauma Kit",     price:1000, heal:100, qty:1 },
+  { id:"M_FIELD_SURGERY", name:"Field Surgery Kit", price:6500, heal:100, qty:8 },
+  { id:"M_NANO_TRIAGE", name:"Nano Triage Kit", price:25000, heal:100, qty:34 },
 ];
 
 const ARMORY = [
   { id:"A_TIER1", name:"Armory Tier I",  price:50,  addArmor:10,  cap:100 },
   { id:"A_TIER2", name:"Armory Tier II", price:150, addArmor:25,  cap:100 },
   { id:"A_TIER3", name:"Armory Tier III",price:400, addArmor:50,  cap:100 },
-  { id:"A_TIER4", name:"Armory Tier IV", price:1000,addArmor:100, cap:100 },
-  { id:"A_APEX", name:"Apex Armor Plate", price:7500, addArmor:100, cap:100 },
-  { id:"A_COMMAND", name:"Command Armor Plate", price:30000, addArmor:100, cap:100 },
+  { id:"A_TIER4", name:"Armory Tier IV", price:1000,addArmor:100, cap:100, qty:1 },
+  { id:"A_APEX", name:"Apex Armor Plate", price:7500, addArmor:100, cap:100, qty:9 },
+  { id:"A_COMMAND", name:"Command Armor Plate", price:30000, addArmor:100, cap:100, qty:40 },
 ];
 
 const TOOLS = [
@@ -34412,8 +34412,16 @@ function shopGameplayEffect(kind, item){
     return `${highTier}${role} weapon • buys and equips immediately • uses ${item.ammo}.`;
   }
   if(kind === "ammo") return `Adds ${item.pack} reserve ammo • used by: ${weaponAmmoUsers(item.id)} • strongest compatible ammo auto-loads first.`;
-  if(kind === "med") return `Heals +${item.heal} HP • stored if HP is full, auto-used if injured${Number(item.price || 0) >= 5000 ? " • premium endgame refill" : ""}.`;
-  if(kind === "armor") return `Adds one ${armorTierLabel(item.id)} armor plate • restores +${item.addArmor} armor when used${Number(item.price || 0) >= 5000 ? " • premium endgame plate" : ""}.`;
+  if(kind === "med"){
+    const qty = Math.max(1, Math.floor(Number(item.qty || 1)));
+    const value = qty > 1 ? ` • bulk value: ${qty} kits for ${money(item.price)}` : "";
+    return `Adds ${qty} ${qty === 1 ? "kit" : "kits"} • each heals +${item.heal} HP • stored if HP is full, auto-used if injured${value}.`;
+  }
+  if(kind === "armor"){
+    const qty = Math.max(1, Math.floor(Number(item.qty || 1)));
+    const value = qty > 1 ? ` • bulk value: ${qty} plates for ${money(item.price)}` : "";
+    return `Adds ${qty} ${armorTierLabel(item.id)} armor ${qty === 1 ? "plate" : "plates"} • each restores +${item.addArmor} armor when used${value}.`;
+  }
   if(kind === "tool") return `Adds ${item.qty || 1} repair kit • restores +${item.add} durability to equipped weapon${Number(item.price || 0) >= 10000 ? " • premium endgame maintenance" : ""}.`;
   if(kind === "shield") return "Adds one Escort Shield • blocks tiger damage for 5 seconds with escalating cooldown.";
   if(kind === "trap") return "Adds one trap • placed on the map to hold a tiger for 3-5 seconds with escalating cooldown.";
@@ -34434,8 +34442,8 @@ function shopTruthStateLine(kind, item){
     return `State: ${equipped ? "Equipped now" : (owned ? "Owned, ready to equip" : "Locked until purchased")} • Compatible reserve ${reserve} • Durability ${Math.round(weaponDurability(item.id))}%.`;
   }
   if(kind === "ammo") return `State: ${ownedAmmoCount(item.id)} in reserve • Family ${item.family} • Used by ${weaponAmmoUsers(item.id)}.`;
-  if(kind === "med") return `State: ${ownedMedCount(item.id)} owned • ${S.hp < 100 ? "Next purchase auto-heals your agent now" : "Next purchase stores in Inventory"}.`;
-  if(kind === "armor") return `State: ${armorPlateCount(item.id)} owned • ${S.armor < S.armorCap ? "Next purchase restores armor now and stores the plate" : "Next purchase stores the plate"}.`;
+  if(kind === "med") return `State: ${ownedMedCount(item.id)} owned • Next purchase adds ${Math.max(1, Math.floor(Number(item.qty || 1)))} kit${Math.max(1, Math.floor(Number(item.qty || 1))) === 1 ? "" : "s"}${S.hp < 100 ? " and auto-uses one if injured" : " to Inventory"}.`;
+  if(kind === "armor") return `State: ${armorPlateCount(item.id)} owned • Next purchase adds ${Math.max(1, Math.floor(Number(item.qty || 1)))} plate${Math.max(1, Math.floor(Number(item.qty || 1))) === 1 ? "" : "s"}${S.armor < S.armorCap ? " and restores armor now" : " to Inventory"}.`;
   if(kind === "tool") return `State: ${ownedToolCount(item.id)} owned • Repairs equipped weapon durability on use.`;
   if(kind === "shield") return `State: ${S.shields || 0} owned • Cooldown increases by 5s each mission use.`;
   if(kind === "trap") return `State: ${S.trapsOwned || 0} owned • Cooldown increases by 5s each mission use.`;
@@ -35624,8 +35632,9 @@ function buyArmor(id){
   S.armorCap = Math.max(S.armorCap || 100, ar.cap);
   ensureArmorPlateInventoryState();
   ensureArmorPlateFallbackState();
+  const qty = Math.max(1, Math.floor(Number(ar.qty || 1)));
   const ownedBefore = armorPlateCount(ar.id);
-  const ownedNext = clamp(ownedBefore + 1, 0, 999);
+  const ownedNext = clamp(ownedBefore + qty, 0, 999);
   S.armorPlates[ar.id] = ownedNext;
   S.armorPlatesFallback[ar.id] = ownedNext;
   if(!getArmor(S.armorPlateSelectedId) || armorPlateCount(S.armorPlateSelectedId) <= 0){
@@ -35636,7 +35645,7 @@ function buyArmor(id){
     S.armor = clamp(S.armor + (ar.addArmor || 0), 0, S.armorCap);
   }
   const armorGain = Math.max(0, Math.round(S.armor - armorBefore));
-  toast(`${ar.name} bought. ${armorTierLabel(ar.id)} owned: ${armorPlateCount(ar.id)}${armorGain > 0 ? ` • Armor +${armorGain}` : ""}.`);
+  toast(`${ar.name} bought. +${qty} ${armorTierLabel(ar.id)} plate${qty === 1 ? "" : "s"} • owned: ${armorPlateCount(ar.id)}${armorGain > 0 ? ` • Armor +${armorGain}` : ""}.`);
   sfx("ui"); hapticImpact("light");
   save();
   shopTruthRefresh("", { feedback:false });
@@ -35646,7 +35655,8 @@ function buyMed(id){
   if(S.funds < m.price) return toast("Not enough money.");
   if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
   S.funds -= m.price;
-  S.medkits[id] = (S.medkits[id]||0)+1;
+  const qty = Math.max(1, Math.floor(Number(m.qty || 1)));
+  S.medkits[id] = (S.medkits[id]||0)+qty;
   let healed = 0;
   let used = 0;
   if(S.hp < 100){
@@ -35659,8 +35669,8 @@ function buyMed(id){
   const owned = S.medkits[id] || 0;
   toast(
     used > 0
-      ? `${m.name} bought and auto-used. Healed +${healed}. ${medTierLabel(m.id)} owned: ${owned}.`
-      : `${m.name} bought. ${medTierLabel(m.id)} owned: ${owned}.`
+      ? `${m.name} bought (+${qty}) and auto-used 1. Healed +${healed}. ${medTierLabel(m.id)} owned: ${owned}.`
+      : `${m.name} bought. +${qty} ${medTierLabel(m.id)} kit${qty === 1 ? "" : "s"} • owned: ${owned}.`
   );
   sfx("ui"); hapticImpact("light");
   save();
@@ -55176,6 +55186,200 @@ function drawCivilian(c){
   ctx.strokeRect(bx-22,by-34,44,6);
 }
 
+function safeCanvasLayer(label, fn){
+  if(!ctx || typeof fn !== "function") return;
+  ctx.save();
+  try{
+    fn();
+  }catch(err){
+    reportTickError(label || "canvasLayer", err);
+  }finally{
+    try{ ctx.restore(); }catch(_err){}
+  }
+}
+
+function drawBipedVisibilityFailsafe(entity, x, y, opts={}){
+  if(!ctx || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const role = opts.role || "player";
+  const isCivilian = role === "civilian";
+  const isAttacker = role === "attacker";
+  const isPlayer = role === "player";
+  const face = Number.isFinite(opts.face) ? opts.face : Number(entity.face || 0);
+  const dir = Math.cos(face) >= 0 ? 1 : -1;
+  const step = Number(entity.step || 0) + Number(opts.phase || 0);
+  const blend = clamp(Number(opts.blend ?? animMoveBlend(entity, isCivilian ? 2.0 : 2.8)), 0, 1);
+  const stride = Math.sin(step * 2.35) * (1.6 + blend * 2.6);
+  const torso = isCivilian
+    ? (entity.personality === "injured" ? "rgba(216,180,254,.98)" : (entity.personality === "panicked" ? "rgba(251,146,60,.98)" : "rgba(34,197,94,.98)"))
+    : (isAttacker ? "rgba(93,48,28,.98)" : (isPlayer ? "rgba(70,83,54,.98)" : "rgba(33,74,99,.98)"));
+  const vest = isCivilian ? "rgba(241,245,249,.78)" : (isAttacker ? "rgba(251,191,36,.88)" : "rgba(148,163,184,.92)");
+  const pants = isCivilian ? "rgba(30,41,59,.96)" : "rgba(38,48,38,.98)";
+  const helmet = isCivilian ? "rgba(35,26,22,.96)" : "rgba(74,85,55,.98)";
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir, 1);
+  ctx.globalAlpha = 0.98;
+
+  ctx.fillStyle = "rgba(2,6,12,.92)";
+  ctx.beginPath();
+  ctx.ellipse(0, 19, 14.5, 5.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.lineCap = "round";
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = "rgba(7,10,16,.96)";
+  ctx.beginPath();
+  ctx.moveTo(-4, 6);
+  ctx.lineTo(-6 + stride * 0.38, 18);
+  ctx.moveTo(4, 6);
+  ctx.lineTo(6 - stride * 0.38, 18);
+  ctx.stroke();
+  ctx.lineWidth = 3.4;
+  ctx.strokeStyle = pants;
+  ctx.beginPath();
+  ctx.moveTo(-4, 6);
+  ctx.lineTo(-6 + stride * 0.38, 17);
+  ctx.moveTo(4, 6);
+  ctx.lineTo(6 - stride * 0.38, 17);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(7,10,16,.96)";
+  roundedRectFill(-9.5, -16.5, 19, 26, 6);
+  ctx.fillStyle = torso;
+  roundedRectFill(-8, -15, 16, 23, 5);
+  ctx.fillStyle = vest;
+  roundedRectFill(-6.4, -11.5, 12.8, 13.5, 3.5);
+  if(!isCivilian){
+    ctx.fillStyle = "rgba(30,41,59,.92)";
+    roundedRectFill(-10, -12, 3.8, 13, 2);
+    roundedRectFill(6.2, -12, 3.8, 13, 2);
+    ctx.fillStyle = "rgba(15,23,42,.95)";
+    roundedRectFill(4.6, -19, 2.4, 9, 1.5);
+  }
+
+  ctx.fillStyle = "rgba(210,185,155,.98)";
+  ctx.beginPath();
+  ctx.ellipse(0, -20.5, 6.4, 6.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = helmet;
+  if(isCivilian){
+    ctx.beginPath();
+    ctx.arc(0, -24, 6.8, Math.PI, Math.PI * 2);
+    ctx.fill();
+  }else{
+    ctx.beginPath();
+    ctx.ellipse(0, -25, 8.2, 5.2, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(-7.8, -24.8, 15.6, 3.8);
+    ctx.fillStyle = "rgba(10,15,20,.92)";
+    roundedRectFill(-5.5, -22.2, 11, 2.6, 1.5);
+  }
+  ctx.restore();
+}
+
+function drawTigerVisibilityFailsafe(t){
+  if(!ctx || !t || !t.alive || !Number.isFinite(t.x) || !Number.isFinite(t.y)) return;
+  const visual = ensureTigerVisualProfile(t);
+  const c = tigerColors(t);
+  const smooth = {
+    x: Number.isFinite(t.__drawX) ? Number(t.__drawX) : t.x,
+    y: Number.isFinite(t.__drawY) ? Number(t.__drawY) : t.y
+  };
+  const speed = Math.hypot(Number(t.vx || 0), Number(t.vy || 0));
+  const face = Number.isFinite(t.heading) ? t.heading : Number(t.face || 0);
+  const dir = Math.cos(face) >= 0 ? 1 : -1;
+  let s = tigerVisualScale(t);
+  if(t.type === "Scout") s *= 0.9;
+  if(t.type === "Alpha") s *= 1.18;
+  if(t.type === "Berserker") s *= 1.08;
+  const phase = (Number(t.step || 0) * 2.1) + (Number(t.id || 0) * 0.37);
+  const stride = Math.sin(phase) * (2.4 + Math.min(3.8, speed) * 1.1);
+  const y = smooth.y - Math.min(2.4, speed * 0.35);
+
+  ctx.save();
+  ctx.translate(smooth.x, y);
+  ctx.scale(dir * s, s);
+  ctx.globalAlpha = 0.96;
+  ctx.lineCap = "round";
+
+  ctx.fillStyle = "rgba(2,6,12,.95)";
+  ctx.beginPath();
+  ctx.ellipse(0, 18, 25, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.lineWidth = 6.2;
+  ctx.strokeStyle = c.stripe || "rgba(20,20,20,.98)";
+  for(let i=0; i<4; i++){
+    const lx = -12 + i * 8;
+    const swing = (i % 2 === 0 ? stride : -stride) * 0.45;
+    ctx.beginPath();
+    ctx.moveTo(lx, 7);
+    ctx.lineTo(lx + swing, 18);
+    ctx.stroke();
+  }
+  ctx.lineWidth = 4.1;
+  ctx.strokeStyle = c.body || "#d97706";
+  for(let i=0; i<4; i++){
+    const lx = -12 + i * 8;
+    const swing = (i % 2 === 0 ? stride : -stride) * 0.45;
+    ctx.beginPath();
+    ctx.moveTo(lx, 6);
+    ctx.lineTo(lx + swing, 17);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = c.body || "#d97706";
+  ctx.beginPath();
+  ctx.ellipse(0, 1, 23, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = c.belly || "rgba(255,237,213,.9)";
+  ctx.beginPath();
+  ctx.ellipse(4, 7, 13, 5.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = c.body || "#d97706";
+  ctx.beginPath();
+  ctx.ellipse(22, -4, 11, 9.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(15, -12, 4, 4.2, 0, 0, Math.PI * 2);
+  ctx.ellipse(27, -12, 4, 4.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,247,237,.92)";
+  ctx.beginPath();
+  ctx.ellipse(22, -1.5, 6.2, 4.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(10,14,20,.96)";
+  ctx.beginPath();
+  ctx.arc(19, -7.4, 1.15, 0, Math.PI * 2);
+  ctx.arc(25, -7.4, 1.15, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = c.stripe || "rgba(20,20,20,.98)";
+  ctx.lineWidth = 2.2;
+  const stripeCount = visual?.stripeIndex === 3 ? 8 : 6;
+  for(let i=0; i<stripeCount; i++){
+    const sx = -14 + i * (28 / Math.max(1, stripeCount - 1));
+    ctx.beginPath();
+    ctx.moveTo(sx, -9);
+    ctx.lineTo(sx + 4, 8);
+    ctx.stroke();
+  }
+  ctx.lineWidth = 3.8;
+  ctx.strokeStyle = c.body || "#d97706";
+  ctx.beginPath();
+  ctx.moveTo(-21, 1);
+  ctx.quadraticCurveTo(-34, -8 - Math.sin(phase) * 5, -42, -3);
+  ctx.stroke();
+  ctx.strokeStyle = c.stripe || "rgba(20,20,20,.98)";
+  ctx.lineWidth = 2.3;
+  ctx.beginPath();
+  ctx.moveTo(-33, -6 - Math.sin(phase) * 4);
+  ctx.lineTo(-38, -4 - Math.sin(phase) * 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawSoldier(){
   const now = Date.now();
   const step = S.me.step || 0;
@@ -55427,7 +55631,7 @@ function drawSoldier(){
       scale:1.02
     });
   }
-  drawRealisticSoldierModel(S.me, x, y, {
+  safeCanvasLayer("drawRealisticSoldierModel.player", ()=>drawRealisticSoldierModel(S.me, x, y, {
     blend:rolling ? 1 : moveBlend,
     topSpeed:3.0,
     face:ang,
@@ -55436,7 +55640,7 @@ function drawSoldier(){
     role:"player",
     accent:palette.trim,
     shotKick
-  });
+  }));
 
   if(!rolling){
     const wx = x + Math.cos(ang) * (14 + (shotKick * 2.6));
@@ -55695,7 +55899,7 @@ function drawSupportUnit(unit){
       scale:0.94
     });
   }
-  drawRealisticSoldierModel(unit, x, y, {
+  safeCanvasLayer("drawRealisticSoldierModel.support", ()=>drawRealisticSoldierModel(unit, x, y, {
     blend:moveBlend,
     topSpeed:2.5,
     face:ang,
@@ -55704,7 +55908,7 @@ function drawSupportUnit(unit){
     role:attacker ? "attacker" : "rescue",
     accent:attacker ? "rgba(251,191,36,.98)" : "rgba(125,211,252,.98)",
     shotKick
-  });
+  }));
 
   ctx.strokeStyle = attacker ? "rgba(255,214,170,.9)" : "rgba(210,240,255,.88)";
   ctx.lineWidth = 3;
@@ -57707,7 +57911,7 @@ function drawTiger(t){
     ctx.fillText(behaviorAnim.stagger ? "STAGGER" : (behaviorAnim.fleeing ? "FLEE" : "LIMP"), -24 * s, -24 * s);
     ctx.restore();
   }
-  drawRealisticTigerModel(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob);
+  safeCanvasLayer("drawRealisticTigerModel", ()=>drawRealisticTigerModel(t, s, c, visual, behaviorAnim, now, attackPosture + postureReach, headBob));
   ctx.restore();
   if(grassHidden) drawTigerGrassCover(t, x, y, s, alpha, now, "over");
 
@@ -58212,19 +58416,44 @@ function drawEntities(){
 
     if(S.mode!=="Survival"){
       for(const c of drawCivs){
-        if(c.alive) drawSafe("drawCivilian", ()=>drawCivilian(c));
+        if(c.alive) drawSafe("drawCivilian", ()=>{
+          try{ drawCivilian(c); }catch(err){ reportTickError("drawCivilian.body", err); }
+          drawBipedVisibilityFailsafe(c, c.x, c.y, {
+            role:"civilian",
+            phase:(c.id || 0) * 0.19,
+            blend:animMoveBlend(c, 2.0)
+          });
+        });
       }
     }
     for(const unit of drawSupport){
-      drawSafe("drawSupportUnit", ()=>drawSupportUnit(unit));
+      drawSafe("drawSupportUnit", ()=>{
+        try{ drawSupportUnit(unit); }catch(err){ reportTickError("drawSupportUnit.body", err); }
+        drawBipedVisibilityFailsafe(unit, unit.x, unit.y, {
+          role:unit.role === "attacker" ? "attacker" : "rescue",
+          phase:(unit.id || 0) * 0.27,
+          blend:animMoveBlend(unit, 2.5)
+        });
+      });
     }
     for(const unit of drawRivals){
       if(unit.alive) drawSafe("drawRivalHunter", ()=>drawRivalHunter(unit));
     }
     for(const t of drawTigers){
-      if(t.alive) drawSafe("drawTiger", ()=>drawTiger(t));
+      if(t.alive) drawSafe("drawTiger", ()=>{
+        try{ drawTiger(t); }catch(err){ reportTickError("drawTiger.body", err); }
+        drawTigerVisibilityFailsafe(t);
+      });
     }
-    drawSafe("drawSoldier", drawSoldier);
+    drawSafe("drawSoldier", ()=>{
+      try{ drawSoldier(); }catch(err){ reportTickError("drawSoldier.body", err); }
+      drawBipedVisibilityFailsafe(S.me, S.me.x, S.me.y, {
+        role:"player",
+        face:S.me.face,
+        phase:0.15,
+        blend:animMoveBlend(S.me, 3.0)
+      });
+    });
   }
   drawSafe("drawTigerCaptureStruggles", ()=>drawTigerCaptureStruggles(Date.now()));
   drawSafe("drawBossArenaMoments", ()=>drawBossArenaMoments(Date.now()));
