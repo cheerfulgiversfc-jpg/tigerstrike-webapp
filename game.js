@@ -21835,6 +21835,10 @@ function pruneSupportUnitsToRoster(){
   const keep = [];
   for(const unit of S.supportUnits){
     if(!unit || unit.alive === false) continue;
+    if(unit.tutorialOnly || unit._tutorialOnly){
+      if(window.__TUTORIAL_MODE__) keep.push(unit);
+      continue;
+    }
     if(unit.raidPartner){
       if(raidModeActive(S)) keep.push(unit);
       continue;
@@ -55198,6 +55202,26 @@ function safeCanvasLayer(label, fn){
   }
 }
 
+function drawWithEmergencyFallback(label, primary, fallback){
+  let primaryDrew = false;
+  try{
+    if(typeof primary === "function") primary();
+    primaryDrew = true;
+  }catch(err){
+    reportTickError(`${label || "drawEntity"}.body`, err);
+  }
+  if(!primaryDrew && typeof fallback === "function"){
+    fallback();
+  }
+}
+
+function shouldDrawActiveCivilian(c, nowMs=Date.now()){
+  if(!c || c.alive === false || c.dead) return false;
+  if(c.evacuated || c.extracted || c.removedAfterEvac || c._hiddenAfterEvac) return false;
+  if(c.boarded || (c.boardedAt && nowMs >= Number(c.boardedAt || 0))) return false;
+  return true;
+}
+
 function drawBipedVisibilityFailsafe(entity, x, y, opts={}){
   if(!ctx || !entity || !Number.isFinite(x) || !Number.isFinite(y)) return;
   const role = opts.role || "player";
@@ -58344,7 +58368,11 @@ function drawEntities(){
   const frameBudgetTight = frameBudgetExceeded(0.85);
   const actorPad = frameBudgetTight ? 130 : 190;
   const propsPad = frameBudgetTight ? 80 : 130;
-  const drawCivs = viewportCullEntities(S.civilians || [], {
+  const nowMs = Date.now();
+  if(!window.__TUTORIAL_MODE__ && Array.isArray(S.supportUnits)){
+    pruneSupportUnitsToRoster();
+  }
+  const drawCivs = viewportCullEntities((S.civilians || []).filter((c)=>shouldDrawActiveCivilian(c, nowMs)), {
     pad:actorPad,
     max: mobile ? (lagTier >= 2 ? 12 : (lagTier >= 1 ? 18 : 24)) : 32,
     pin:(c)=>c?.id === S.dangerCivId || c?.following
@@ -58417,23 +58445,29 @@ function drawEntities(){
     if(S.mode!=="Survival"){
       for(const c of drawCivs){
         if(c.alive) drawSafe("drawCivilian", ()=>{
-          try{ drawCivilian(c); }catch(err){ reportTickError("drawCivilian.body", err); }
-          drawBipedVisibilityFailsafe(c, c.x, c.y, {
-            role:"civilian",
-            phase:(c.id || 0) * 0.19,
-            blend:animMoveBlend(c, 2.0)
-          });
+          drawWithEmergencyFallback(
+            "drawCivilian",
+            ()=>drawCivilian(c),
+            ()=>drawBipedVisibilityFailsafe(c, c.x, c.y, {
+              role:"civilian",
+              phase:(c.id || 0) * 0.19,
+              blend:animMoveBlend(c, 2.0)
+            })
+          );
         });
       }
     }
     for(const unit of drawSupport){
       drawSafe("drawSupportUnit", ()=>{
-        try{ drawSupportUnit(unit); }catch(err){ reportTickError("drawSupportUnit.body", err); }
-        drawBipedVisibilityFailsafe(unit, unit.x, unit.y, {
-          role:unit.role === "attacker" ? "attacker" : "rescue",
-          phase:(unit.id || 0) * 0.27,
-          blend:animMoveBlend(unit, 2.5)
-        });
+        drawWithEmergencyFallback(
+          "drawSupportUnit",
+          ()=>drawSupportUnit(unit),
+          ()=>drawBipedVisibilityFailsafe(unit, unit.x, unit.y, {
+            role:unit.role === "attacker" ? "attacker" : "rescue",
+            phase:(unit.id || 0) * 0.27,
+            blend:animMoveBlend(unit, 2.5)
+          })
+        );
       });
     }
     for(const unit of drawRivals){
@@ -58441,18 +58475,24 @@ function drawEntities(){
     }
     for(const t of drawTigers){
       if(t.alive) drawSafe("drawTiger", ()=>{
-        try{ drawTiger(t); }catch(err){ reportTickError("drawTiger.body", err); }
-        drawTigerVisibilityFailsafe(t);
+        drawWithEmergencyFallback(
+          "drawTiger",
+          ()=>drawTiger(t),
+          ()=>drawTigerVisibilityFailsafe(t)
+        );
       });
     }
     drawSafe("drawSoldier", ()=>{
-      try{ drawSoldier(); }catch(err){ reportTickError("drawSoldier.body", err); }
-      drawBipedVisibilityFailsafe(S.me, S.me.x, S.me.y, {
-        role:"player",
-        face:S.me.face,
-        phase:0.15,
-        blend:animMoveBlend(S.me, 3.0)
-      });
+      drawWithEmergencyFallback(
+        "drawSoldier",
+        ()=>drawSoldier(),
+        ()=>drawBipedVisibilityFailsafe(S.me, S.me.x, S.me.y, {
+          role:"player",
+          face:S.me.face,
+          phase:0.15,
+          blend:animMoveBlend(S.me, 3.0)
+        })
+      );
     });
   }
   drawSafe("drawTigerCaptureStruggles", ()=>drawTigerCaptureStruggles(Date.now()));
