@@ -11507,6 +11507,186 @@ function worldMapInitialControl(region, state=S){
 function worldMapStoryLevel(state=S){
   return Math.max(1, Math.floor(Number(state?.storyLevel || state?.storyLastMission || 1)));
 }
+const WORLD_MAP_PREP_SOLDIERS = Object.freeze([
+  Object.freeze({ id:"vanguard", name:"Vanguard", role:"Balanced Soldier", perk:"Balanced rescue, combat, and movement.", icon:"Helmet" }),
+  Object.freeze({ id:"tracker", name:"Tracker", role:"Investigation Scout", perk:"Better scan routes, clue work, and den hunts.", icon:"Compass" }),
+  Object.freeze({ id:"guardian", name:"Guardian", role:"Rescue Shield", perk:"Best for civilians, boarding zones, and escort safety.", icon:"Shield" }),
+  Object.freeze({ id:"striker", name:"Striker", role:"Tiger Response", perk:"Best for Alpha pressure and aggressive fights.", icon:"Target" }),
+  Object.freeze({ id:"medic", name:"Medic", role:"Field Support", perk:"Best for injured civilians and long missions.", icon:"Medic" }),
+]);
+const WORLD_MAP_PREP_UNIFORMS = Object.freeze([
+  Object.freeze({ id:"jungle", name:"Jungle Camo", perk:"Better fit for forest, grass, and den raids." }),
+  Object.freeze({ id:"urban", name:"Urban Tactical", perk:"Cleaner visibility around roads, buildings, and night routes." }),
+  Object.freeze({ id:"rescue", name:"Rescue Vest", perk:"Makes escort and extraction missions easier to read." }),
+  Object.freeze({ id:"stealth", name:"Dark Stalker", perk:"Best visual match for night and ambush missions." }),
+  Object.freeze({ id:"desert", name:"Field Tan", perk:"Best fit for open roads, dust, and sunrise maps." }),
+]);
+const WORLD_MAP_PREP_SECONDARIES = Object.freeze([
+  Object.freeze({ id:"tranq-kit", name:"Tranq Kit", perk:"Capture focus and clear low-health capture reminder." }),
+  Object.freeze({ id:"smoke", name:"Smoke Grenade", perk:"Best for civilian boarding and tiger pressure breaks." }),
+  Object.freeze({ id:"med-drone", name:"Med Drone", perk:"Best for rescue routes and injured civilians." }),
+  Object.freeze({ id:"flare", name:"Signal Flare", perk:"Best for finding objectives and evac lanes." }),
+  Object.freeze({ id:"shock", name:"Shock Baton", perk:"Best for close tiger pressure and stagger moments." }),
+]);
+function worldMapTotalStoryLevels(){
+  return Math.max(1, Math.floor(Number(STORY_CAMPAIGN_OBJECTIVES?.length || 100)));
+}
+function worldMapMaxUnlockedStoryLevel(state=S){
+  return clamp(Math.max(1, Math.floor(Number(state?.storyLastMission || state?.storyLevel || 1))), 1, worldMapTotalStoryLevels());
+}
+function worldMapOwnedWeaponOptions(state=S){
+  const rawOwned = state?.ownedWeapons;
+  const ownedIds = Array.isArray(rawOwned) ? rawOwned : Object.keys(rawOwned || {});
+  const ids = Array.from(new Set([state?.equippedWeaponId, state?.preferredWeaponId, state?.preferredLethalWeaponId, ...(ownedIds || [])].filter(Boolean).map(String)));
+  const opts = ids.map((id)=>typeof getWeapon === "function" ? getWeapon(id) : null)
+    .filter((w)=>w && w.id)
+    .map((w)=>({ id:String(w.id), name:String(w.name || w.id), ammo:String(w.ammo || w.ammoFamily || ""), type:String(w.type || "") }));
+  const weaponCatalog = (typeof WEAPONS !== "undefined" && Array.isArray(WEAPONS)) ? WEAPONS : [];
+  if(!opts.length && weaponCatalog.length){
+    const fallback = weaponCatalog[0];
+    opts.push({ id:String(fallback.id), name:String(fallback.name || fallback.id), ammo:String(fallback.ammo || fallback.ammoFamily || ""), type:String(fallback.type || "") });
+  }
+  return opts;
+}
+function ensureWorldMapPrepState(state=S){
+  const wm = ensureWorldMapCampaignState(state);
+  const maxLevel = worldMapMaxUnlockedStoryLevel(state);
+  const weaponOptions = worldMapOwnedWeaponOptions(state);
+  const previous = wm.prep && typeof wm.prep === "object" ? wm.prep : {};
+  const selectedLevel = clamp(Math.floor(Number(previous.selectedLevel || state?.storyLevel || maxLevel || 1)), 1, maxLevel);
+  const weaponId = weaponOptions.some((w)=>w.id === previous.weaponId) ? previous.weaponId : (weaponOptions[0]?.id || "");
+  const soldierId = WORLD_MAP_PREP_SOLDIERS.some((soldier)=>soldier.id === previous.soldierId) ? previous.soldierId : WORLD_MAP_PREP_SOLDIERS[0].id;
+  const uniformId = WORLD_MAP_PREP_UNIFORMS.some((uniform)=>uniform.id === previous.uniformId) ? previous.uniformId : WORLD_MAP_PREP_UNIFORMS[0].id;
+  const secondaryId = WORLD_MAP_PREP_SECONDARIES.some((secondary)=>secondary.id === previous.secondaryId) ? previous.secondaryId : WORLD_MAP_PREP_SECONDARIES[0].id;
+  wm.prep = { selectedLevel, soldierId, weaponId, uniformId, secondaryId, debugOpen: previous.debugOpen === true };
+  return wm.prep;
+}
+function worldMapLaunchStoryLevel(region=null, state=S){
+  const prep = ensureWorldMapPrepState(state);
+  return clamp(Math.floor(Number(prep.selectedLevel || worldMapStoryLevel(state))), 1, worldMapMaxUnlockedStoryLevel(state));
+}
+function applyWorldMapPrepToMission(region, missionLevel, state=S){
+  const prep = ensureWorldMapPrepState(state);
+  const soldier = WORLD_MAP_PREP_SOLDIERS.find((item)=>item.id === prep.soldierId) || WORLD_MAP_PREP_SOLDIERS[0];
+  const uniform = WORLD_MAP_PREP_UNIFORMS.find((item)=>item.id === prep.uniformId) || WORLD_MAP_PREP_UNIFORMS[0];
+  const secondary = WORLD_MAP_PREP_SECONDARIES.find((item)=>item.id === prep.secondaryId) || WORLD_MAP_PREP_SECONDARIES[0];
+  if(prep.weaponId && typeof getWeapon === "function" && getWeapon(prep.weaponId)){
+    state.equippedWeaponId = prep.weaponId;
+    state.preferredWeaponId = prep.weaponId;
+  }
+  state.worldMapPrepLast = {
+    soldierId:soldier.id,
+    soldierName:soldier.name,
+    uniformId:uniform.id,
+    uniformName:uniform.name,
+    secondaryId:secondary.id,
+    secondaryName:secondary.name,
+    weaponId:prep.weaponId || "",
+    regionId:region?.id || "",
+    missionLevel:Math.max(1, Math.floor(Number(missionLevel || 1))),
+    appliedAt:Date.now(),
+  };
+  return state.worldMapPrepLast;
+}
+function setWorldMapPrep(key, value){
+  const prep = ensureWorldMapPrepState(S);
+  const safeKey = String(key || "");
+  if(safeKey === "selectedLevel"){
+    prep.selectedLevel = clamp(Math.floor(Number(value || 1)), 1, worldMapMaxUnlockedStoryLevel(S));
+  }else if(safeKey === "soldierId" && WORLD_MAP_PREP_SOLDIERS.some((item)=>item.id === value)){
+    prep.soldierId = String(value);
+  }else if(safeKey === "weaponId" && worldMapOwnedWeaponOptions(S).some((item)=>item.id === value)){
+    prep.weaponId = String(value);
+  }else if(safeKey === "uniformId" && WORLD_MAP_PREP_UNIFORMS.some((item)=>item.id === value)){
+    prep.uniformId = String(value);
+  }else if(safeKey === "secondaryId" && WORLD_MAP_PREP_SECONDARIES.some((item)=>item.id === value)){
+    prep.secondaryId = String(value);
+  }
+  save();
+  renderWorldMapCampaign();
+  return false;
+}
+function toggleWorldMapDebugInfo(){
+  const prep = ensureWorldMapPrepState(S);
+  prep.debugOpen = !prep.debugOpen;
+  save();
+  renderWorldMapCampaign();
+  return false;
+}
+function worldMapPrepButtonHtml(kind, item, selectedId, labelExtra=""){
+  const active = item.id === selectedId;
+  const icon = item.icon ? `${item.icon} ` : "";
+  return `<button class="${active ? "good" : "ghost"}" type="button" onclick="setWorldMapPrep('${worldMapEsc(kind)}','${worldMapEsc(item.id)}')"><b>${worldMapEsc(icon)}${worldMapEsc(item.name)}</b>${labelExtra ? `<span class="small">${worldMapEsc(labelExtra)}</span>` : ""}${item.perk ? `<span class="small">${worldMapEsc(item.perk)}</span>` : ""}</button>`;
+}
+function worldMapPrepPanelHtml(state=S){
+  const prep = ensureWorldMapPrepState(state);
+  const weapons = worldMapOwnedWeaponOptions(state);
+  const selectedWeapon = weapons.find((weapon)=>weapon.id === prep.weaponId) || weapons[0];
+  const selectedSoldier = WORLD_MAP_PREP_SOLDIERS.find((soldier)=>soldier.id === prep.soldierId) || WORLD_MAP_PREP_SOLDIERS[0];
+  const selectedUniform = WORLD_MAP_PREP_UNIFORMS.find((uniform)=>uniform.id === prep.uniformId) || WORLD_MAP_PREP_UNIFORMS[0];
+  const selectedSecondary = WORLD_MAP_PREP_SECONDARIES.find((secondary)=>secondary.id === prep.secondaryId) || WORLD_MAP_PREP_SECONDARIES[0];
+  return `
+    <div class="card" style="margin:10px 0;border-color:rgba(74,222,128,.58);background:linear-gradient(145deg,rgba(20,83,45,.56),rgba(8,15,26,.96))">
+      <div class="hudTitle">World Map Pre-Deploy Setup</div>
+      <div class="small">Pick your mission prep before choosing a level. These choices apply when you press Deploy.</div>
+      <div class="divider"></div>
+      <div class="hudLine"><b>Choose Soldier</b></div>
+      <div class="row">${WORLD_MAP_PREP_SOLDIERS.map((soldier)=>worldMapPrepButtonHtml("soldierId", soldier, prep.soldierId, soldier.role)).join("")}</div>
+      <div class="hudLine" style="margin-top:8px"><b>Choose Gun</b></div>
+      <div class="row">${weapons.slice(0, 8).map((weapon)=>worldMapPrepButtonHtml("weaponId", { id:weapon.id, name:weapon.name, perk:`Ammo: ${weapon.ammo || "standard"}` }, prep.weaponId)).join("") || `<span class="tag">No weapons found</span>`}</div>
+      <div class="hudLine" style="margin-top:8px"><b>Choose Clothes / Uniform</b></div>
+      <div class="row">${WORLD_MAP_PREP_UNIFORMS.map((uniform)=>worldMapPrepButtonHtml("uniformId", uniform, prep.uniformId)).join("")}</div>
+      <div class="hudLine" style="margin-top:8px"><b>Choose Secondary</b></div>
+      <div class="row">${WORLD_MAP_PREP_SECONDARIES.map((secondary)=>worldMapPrepButtonHtml("secondaryId", secondary, prep.secondaryId)).join("")}</div>
+      <div class="small" style="margin-top:8px"><b>Selected:</b> ${worldMapEsc(selectedSoldier.name)} • ${worldMapEsc(selectedWeapon?.name || "Weapon")} • ${worldMapEsc(selectedUniform.name)} • ${worldMapEsc(selectedSecondary.name)}</div>
+    </div>
+  `;
+}
+function worldMapStoryLevelPickerHtml(state=S){
+  const prep = ensureWorldMapPrepState(state);
+  const maxLevel = worldMapMaxUnlockedStoryLevel(state);
+  const total = worldMapTotalStoryLevels();
+  const selectedLevel = clamp(Math.floor(Number(prep.selectedLevel || maxLevel)), 1, maxLevel);
+  const start = Math.max(1, selectedLevel - 5);
+  const end = Math.min(total, Math.max(selectedLevel + 6, Math.min(total, maxLevel + 3)));
+  const buttons = [];
+  for(let level=start; level<=end; level++){
+    const locked = level > maxLevel;
+    const active = level === selectedLevel;
+    buttons.push(`<button class="${active ? "good" : "ghost"}" type="button" ${locked ? "disabled" : `onclick="setWorldMapPrep('selectedLevel',${level})"`} style="${locked ? "opacity:.42;filter:grayscale(1)" : ""}">${locked ? "Locked " : ""}${level}</button>`);
+  }
+  return `
+    <div class="card" style="margin:10px 0;border-color:rgba(96,165,250,.45)">
+      <div class="hudTitle">Choose Story Level</div>
+      <div class="small">Current unlocked level: ${maxLevel}/${total}. Replay completed levels anytime; future levels stay locked until you beat the next mission.</div>
+      <div class="row" style="margin-top:8px">
+        <button class="ghost" type="button" onclick="setWorldMapPrep('selectedLevel',1)">Level 1</button>
+        <button class="ghost" type="button" onclick="setWorldMapPrep('selectedLevel',${Math.max(1, maxLevel - 1)})">Previous</button>
+        <button class="good" type="button" onclick="setWorldMapPrep('selectedLevel',${maxLevel})">Current ${maxLevel}</button>
+      </div>
+      <div class="row" style="margin-top:8px">${buttons.join("")}</div>
+    </div>
+  `;
+}
+function worldMapDebugInfoPanelHtml(selected, stats, wm=ensureWorldMapCampaignState(S)){
+  const prep = ensureWorldMapPrepState(S);
+  const body = prep.debugOpen ? `
+    ${worldMapTruthSummaryHtml(selected, stats, wm)}
+    ${worldMapStrategyTruthHtml(selected, stats, wm)}
+  ` : `<div class="small">Hidden. Keep this closed during normal play, open it when we need to QA region launch, claims, return target, and active run truth.</div>`;
+  return `
+    <div class="card" style="margin:10px 0;border-color:rgba(148,163,184,.38)">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div>
+          <div class="hudTitle">Hidden Debug / Info Panel</div>
+          <div class="small">Startup and World Map truth tools stay available without blocking the main deploy flow.</div>
+        </div>
+        <button class="ghost" type="button" onclick="toggleWorldMapDebugInfo()">${prep.debugOpen ? "Hide Info" : "Show Info"}</button>
+      </div>
+      ${body}
+    </div>
+  `;
+}
 function createWorldMapMissionRun(region, missionLevel){
   const safeRegion = region || WORLD_MAP_CAMPAIGN_REGIONS[0];
   const safeLevel = Math.max(1, Math.floor(Number(missionLevel || worldMapRegionMissionLevel(safeRegion, S))));
@@ -11580,7 +11760,8 @@ function worldMapThreatLabel(control){
 }
 function worldMapRegionMissionLevel(region, state=S){
   const story = worldMapStoryLevel(state);
-  return clamp(Math.max(story, Math.floor(Number(region?.missionLevel || story || 1))), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  const regional = Math.floor(Number(region?.missionLevel || story || 1));
+  return clamp(regional || story || 1, 1, worldMapTotalStoryLevels());
 }
 function worldMapEsc(value){
   return String(value ?? "").replace(/[&<>"']/g, (ch)=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
@@ -13007,7 +13188,13 @@ function renderWorldMapCampaign(){
   const selectedUnlocked = worldMapRegionUnlocked(selected, S);
   const selectedControl = worldMapControl(selected, S);
   const defended = Math.max(0, Math.floor(Number(wm.defendedRegions[selected.id] || 0)));
-  const activeMission = storyCampaignMission(worldMapRegionMissionLevel(selected, S));
+  const selectedMissionLevel = worldMapLaunchStoryLevel(selected, S);
+  const activeMission = storyCampaignMission(selectedMissionLevel);
+  const prep = ensureWorldMapPrepState(S);
+  const prepSoldier = WORLD_MAP_PREP_SOLDIERS.find((item)=>item.id === prep.soldierId) || WORLD_MAP_PREP_SOLDIERS[0];
+  const prepUniform = WORLD_MAP_PREP_UNIFORMS.find((item)=>item.id === prep.uniformId) || WORLD_MAP_PREP_UNIFORMS[0];
+  const prepSecondary = WORLD_MAP_PREP_SECONDARIES.find((item)=>item.id === prep.secondaryId) || WORLD_MAP_PREP_SECONDARIES[0];
+  const prepWeapon = worldMapOwnedWeaponOptions(S).find((item)=>item.id === prep.weaponId);
   const missionType = worldMapRegionMissionType(selected);
   const extractionType = worldMapRegionExtractionType(selected);
   const prepLine = worldMapRegionPrepLine(selected, selectedControl);
@@ -13045,15 +13232,16 @@ function renderWorldMapCampaign(){
   const activeRunRegion = wm.activeRegionId ? worldMapRegionById(wm.activeRegionId) : null;
   const deployActions = selectedUnlocked
     ? `
-        <button class="good" onclick="startWorldMapRegionMission('${selected.id}')">${activeRunRegion && activeRunRegion.id !== selected.id ? "Launch Selected Region" : "Deploy To Region"}</button>
+        <button class="good" onclick="startWorldMapRegionMission('${selected.id}')">${activeRunRegion && activeRunRegion.id !== selected.id ? "Launch Selected Region" : `Deploy Story ${selectedMissionLevel}`}</button>
         <button class="ghost" onclick="openMissionBriefFromWorldMap()">Brief First</button>
         <button class="ghost" onclick="setWorldMapActiveRegion('${selected.id}')">Focus Region</button>
       `
     : `<span class="tag">Locked until Story Mission ${Math.floor(Number(selected.unlockAt || 1))} or neighboring defense</span>`;
   root.innerHTML = `
-    <div class="hudLine"><b>Phase 9:</b> Endgame World Campaign Seasons add weekly ladders, rotating Nemesis invasions, season goals, rare trophies, titles, cosmetics, and long-term rewards.</div>
-    ${worldMapTruthSummaryHtml(selected, stats, wm)}
-    ${worldMapStrategyTruthHtml(selected, stats, wm)}
+    <div class="hudLine"><b>World Map Campaign:</b> Pick prep, choose replay/current story level, then deploy.</div>
+    ${worldMapPrepPanelHtml(S)}
+    ${worldMapStoryLevelPickerHtml(S)}
+    ${worldMapDebugInfoPanelHtml(selected, stats, wm)}
     ${worldMapSeasonHtml(selected)}
     ${worldMapPendingChoiceHtml(wm)}
     ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
@@ -13114,11 +13302,12 @@ function renderWorldMapCampaign(){
         <div class="small"><b>Connected Regions:</b> ${worldMapNeighborPathHtml(selected)}</div>
       </div>
       <div class="card">
-        <div class="hudTitle">Phase 9 Deploy Plan</div>
-        <div class="hudLine">Story Mission ${worldMapRegionMissionLevel(selected, S)}/100 • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
+        <div class="hudTitle">Deploy Plan</div>
+        <div class="hudLine">Story Mission ${selectedMissionLevel}/${worldMapTotalStoryLevels()} • ${worldMapEsc(activeMission.chapterName || "Campaign")}</div>
         <div class="small">${worldMapEsc(activeMission.objective || "Defend the region and reduce tiger control.")}</div>
         <div class="small">Extraction: ${worldMapEsc(extractionType)}</div>
         <div class="small">Recommended prep: ${worldMapEsc(prepLine)}</div>
+        <div class="small">Selected prep: ${worldMapEsc(prepSoldier.name)} • ${worldMapEsc(prepWeapon?.name || "Current Weapon")} • ${worldMapEsc(prepUniform.name)} • ${worldMapEsc(prepSecondary.name)}</div>
         <div class="small">Live event impact: ${selectedEventDef ? `${selectedEventDef.icon} ${worldMapEsc(selectedEventDef.name)} • +${Math.round((Number(selectedEventDef.rewardMul || 1) - 1) * 100)}% strategic reward • -${selectedEventDef.controlDrop} control` : "None active right now"}</div>
         <div class="small">Crisis impact: ${selectedCrisisDef ? `${selectedCrisisDef.icon} ${worldMapEsc(selectedCrisisDef.name)} • +${Math.round((Number(selectedCrisisDef.rewardMul || 1) - 1) * 100)}% strategic reward • rare ${worldMapEsc(selectedCrisisDef.rare)}` : "No crisis in this region"}</div>
         <div class="small">Nemesis invasion: ${selectedInvasion ? `👑 ${worldMapEsc(selectedInvasion.bossName)} Lv ${Math.floor(Number(selectedInvasion.level || 1))} • +12% strategic reward • +season ladder points` : "No weekly invasion on this region"}</div>
@@ -13227,9 +13416,11 @@ function startWorldMapRegionMission(id){
   const crisis = worldMapCrisisForRegion(region, S);
   activateModeProfile("Story", S);
   S.storyVariant = STORY_VARIANTS.CAMPAIGN;
-  const missionLevel = worldMapRegionMissionLevel(region, S);
+  const previousBestStory = worldMapMaxUnlockedStoryLevel(S);
+  const missionLevel = worldMapLaunchStoryLevel(region, S);
+  applyWorldMapPrepToMission(region, missionLevel, S);
   S.storyLevel = missionLevel;
-  S.storyLastMission = Math.max(Number(S.storyLastMission || 1), missionLevel);
+  S.storyLastMission = Math.max(previousBestStory, missionLevel);
   S.mapIndex = 0;
   wm.selectedRegionId = region.id;
   wm.activeRegionId = region.id;
@@ -13273,8 +13464,11 @@ function openMissionBriefFromWorldMap(){
   if(!worldMapRegionUnlocked(region, S)) return false;
   activateModeProfile("Story", S);
   S.storyVariant = STORY_VARIANTS.CAMPAIGN;
-  S.storyLevel = worldMapRegionMissionLevel(region, S);
-  S.storyLastMission = Math.max(Number(S.storyLastMission || 1), S.storyLevel);
+  const previousBestStory = worldMapMaxUnlockedStoryLevel(S);
+  const missionLevel = worldMapLaunchStoryLevel(region, S);
+  applyWorldMapPrepToMission(region, missionLevel, S);
+  S.storyLevel = missionLevel;
+  S.storyLastMission = Math.max(previousBestStory, missionLevel);
   wm.selectedRegionId = region.id;
   wm.activeRegionId = "";
   wm.activeRunId = "";
@@ -31468,8 +31662,8 @@ function baseHqMissionControlSnapshot(modeOverride=S.mode){
   return { mode, snap, ivy, medkits, armor, traps, shields, squadOwned, squadDowned, weapon, alerts, readiness };
 }
 function baseHqMissionControlAction(key="brief"){
-  const action = String(key || "brief");
-  if(action === "deploy") return startMissionFromBaseHQ();
+  const action = String(key || "brief").toLowerCase();
+  if(["deploy","story","continue","mission","world","worldmap","map"].includes(action)) return openWorldMapCampaign();
   if(action === "room:command") return selectBaseHqRoom("command", true);
   return baseHqExecuteMissionGateAction(action);
 }
@@ -31701,7 +31895,8 @@ function baseHqIvyGuidanceProfile(modeOverride=S.mode){
   return profile;
 }
 function baseHqExecuteMissionGateAction(key="story"){
-  const action = String(key || "story");
+  const action = String(key || "story").toLowerCase();
+  if(["story","continue","deploy","mission","world","worldmap","map"].includes(action)) return openWorldMapCampaign();
   if(action === "training") return selectBaseHqRoom("training", true);
   if(action === "medbay") return selectBaseHqRoom("medbay", true);
   if(action === "reward") return selectBaseHqRoom("contracts", true);
@@ -31711,7 +31906,7 @@ function baseHqExecuteMissionGateAction(key="story"){
   if(action === "brief") return openMissionBriefFromBaseHQ();
   if(action === "arcade") return openBaseHqModePreview("Arcade");
   if(action === "survival") return openBaseHqModePreview("Survival");
-  return openBaseHqModePreview("Story");
+  return openWorldMapCampaign();
 }
 function baseHqExecuteIvyGuidance(key=""){
   const profile = baseHqIvyGuidanceProfile();
@@ -34180,7 +34375,7 @@ function openMissionBriefFromBaseHQ(){
   }
 }
 function startMissionFromBaseHQ(){
-  openBaseHqModePreview(S.mode);
+  return openWorldMapCampaign();
 }
 function buyBaseHqUpgrade(key){
   buyStoryHQModule(key);
@@ -42292,17 +42487,41 @@ function supportUnitsTick(){
   syncSquadRosterBounds();
 }
 
+function nearestCivilianTigerThreat(c, maxDist=Infinity){
+  if(!c || !Array.isArray(S.tigers)) return null;
+  let best = null;
+  let bestD = Infinity;
+  for(const t of S.tigers){
+    if(!t || !t.alive || t.captured || t.removed) continue;
+    const d = dist(c.x, c.y, t.x, t.y);
+    if(d < bestD && d <= maxDist){
+      best = t;
+      bestD = d;
+    }
+  }
+  return best ? { tiger:best, distance:bestD } : null;
+}
+
+function primeCivilianFleeFromNearbyTigers(now=Date.now()){
+  for(const c of (S.civilians || [])){
+    if(!c || !c.alive || c.evac || c.boarded) continue;
+    const threat = nearestCivilianTigerThreat(c, 280);
+    if(!threat) continue;
+    const panicMs = threat.distance <= 125 ? 4200 : 2500;
+    if(now + panicMs > Number(c.fleeUntil || 0)){
+      c.fleeUntil = now + panicMs;
+      c.fleeFromTigerId = threat.tiger.id;
+      c.aiState = c.aiState || "panicked";
+    }
+  }
+}
+
 function runCivilianFleeStep(c, now=Date.now()){
   if(!c || !c.alive || c.evac) return false;
   if(now >= (c.fleeUntil || 0)) return false;
   refreshCivilianAiState(c, now);
   const civDef = civilianPersonalityDef(c.aiState || c.personality);
   const escortedByPlayer = c.following && c.escortOwner === "player";
-  if(escortedByPlayer){
-    c.fleeUntil = 0;
-    c.fleeFromTigerId = 0;
-    return false;
-  }
 
   let threat = null;
   if(Number.isFinite(c.fleeFromTigerId)){
@@ -42322,6 +42541,18 @@ function runCivilianFleeStep(c, now=Date.now()){
     threat = nearest;
   }
   if(!threat) return false;
+  const threatDistance = dist(c.x, c.y, threat.x, threat.y);
+  const emergencyFlee = threatDistance <= 185 || now < Number(c.lastDamageAt || 0) + 2200 || now < Number(c.underAttackUntil || 0);
+  if(escortedByPlayer && !emergencyFlee){
+    c.fleeUntil = 0;
+    c.fleeFromTigerId = 0;
+    return false;
+  }
+  if(escortedByPlayer && emergencyFlee){
+    c.following = false;
+    c.escortOwner = "";
+    c.followTargetId = 0;
+  }
   if(now < Number(c.freezeUntil || 0)){
     c._followVx = 0;
     c._followVy = 0;
@@ -42529,6 +42760,7 @@ function followCiviliansTick(){
   const escortFace = S._escortFace;
   const activeFollowers = [];
   const now = Date.now();
+  if(!window.__TUTORIAL_MODE__) primeCivilianFleeFromNearbyTigers(now);
 
   for(const c of S.civilians){
     if(!c.alive || c.evac) continue;
@@ -61051,6 +61283,8 @@ window.startQuickTutorialFromIntro = startQuickTutorialFromIntro;
 window.skipStoryIntro = skipStoryIntro;
 window.toggleChapterRecap = toggleChapterRecap;
 window.openWorldMapCampaign = openWorldMapCampaign;
+window.setWorldMapPrep = setWorldMapPrep;
+window.toggleWorldMapDebugInfo = toggleWorldMapDebugInfo;
 window.closeWorldMapCampaign = closeWorldMapCampaign;
 window.selectWorldMapRegion = selectWorldMapRegion;
 window.setWorldMapActiveRegion = setWorldMapActiveRegion;
