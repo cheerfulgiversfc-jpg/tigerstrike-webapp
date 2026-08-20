@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4554";
+const TS_BUILD = "4555";
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
 const DECORATIVE_UNIT_RINGS_ENABLED = false;
 const PREMIUM_2D_GRAPHICS_VERSION = 12;
@@ -3358,7 +3358,9 @@ function missionDirector5TriggerScanWindow(now=Date.now()){
   const target = currentTargetTiger() || (S.tigers || []).find((t)=>t && t.alive);
   if(target){
     S.lockedTigerId = target.id;
-    S.scanPing = Math.max(S.scanPing || 0, now + 9000);
+    // scanPing is a render-frame countdown, not an absolute timestamp. Mixing
+    // the two can create a negative canvas radius and abort the whole map draw.
+    S.scanPing = Math.max(Number(S.scanPing) || 0, 320);
     missionDirector5PushRecap(`Intel window marked Tiger #${target.id}`);
     setEventText(`Director 5.0 intel window: Tiger #${target.id} marked. Follow the scan line.`, 5.6);
     return true;
@@ -4627,9 +4629,44 @@ function renderCompleteRecapCard(payload=null){
     ? payload
     : ((S.lastMissionRecap && typeof S.lastMissionRecap === "object") ? S.lastMissionRecap : buildMissionRecapPayload());
   cardEl.innerText = String(recap.card || "Mission recap is ready.");
+  renderMissionVictoryHero();
   renderMissionPremiumSummaryCard();
   renderMissionRewards2Card();
   renderSocialRescueCard();
+}
+
+function renderMissionVictoryHero(summary=null){
+  const root = document.getElementById("missionVictoryHero");
+  if(!root) return;
+  const base = summary && typeof summary === "object"
+    ? summary
+    : ((S.lastMissionPremiumSummary && typeof S.lastMissionPremiumSummary === "object") ? S.lastMissionPremiumSummary : {});
+  const stats = currentMissionStatsSnapshot();
+  const mode = String(base.mode || S.mode || "Story");
+  const level = Math.max(1, Math.floor(Number(base.level || missionIndexForMode(mode) || 1)));
+  const saved = Math.max(0, Math.floor(Number(base.evac ?? stats.evac ?? 0)));
+  const captures = Math.max(0, Math.floor(Number(base.captures ?? stats.captures ?? 0)));
+  const kills = Math.max(0, Math.floor(Number(base.kills ?? stats.kills ?? 0)));
+  const cash = Math.max(0, Math.floor(Number(base.cashEarned ?? stats.cashEarned ?? 0)));
+  const firstHunt = mode === "Story" && level === 1;
+  const nextLevel = level + 1;
+  const nextObjective = mode === "Story" && STORY_CAMPAIGN_OBJECTIVES[nextLevel - 1]
+    ? String(STORY_CAMPAIGN_OBJECTIVES[nextLevel - 1].objective || STORY_CAMPAIGN_OBJECTIVES[nextLevel - 1] || "New operation ready")
+    : "A new operation is ready at Base HQ.";
+  const kicker = document.getElementById("missionVictoryKicker");
+  const title = document.getElementById("missionVictoryTitle");
+  const next = document.getElementById("missionVictoryNext");
+  const savedEl = document.getElementById("missionVictorySaved");
+  const tigerEl = document.getElementById("missionVictoryTiger");
+  const cashEl = document.getElementById("missionVictoryCash");
+  if(kicker) kicker.innerText = firstHunt ? "Welcome to Tiger Strike" : `${mode} operation secured`;
+  if(title) title.innerText = firstHunt ? "First Hunt Complete" : "Mission Secured";
+  if(next) next.innerText = firstHunt
+    ? `You completed the full rescue loop. Next: Story Mission ${nextLevel} — ${nextObjective}`
+    : (mode === "Story" ? `Next: Story Mission ${Math.min(nextLevel, STORY_CAMPAIGN_OBJECTIVES.length)} — ${nextObjective}` : "Review your rewards, prepare your loadout, and launch the next operation.");
+  if(savedEl) savedEl.innerText = String(saved);
+  if(tigerEl) tigerEl.innerText = String(captures + kills);
+  if(cashEl) cashEl.innerText = `$${cash.toLocaleString()}`;
 }
 
 function missionPremiumGrade(stats){
@@ -20111,6 +20148,12 @@ function copyStarsDebugLog(){
 }
 function ensureStarsDebugUi(){
   if(typeof document === "undefined" || !document.body) return;
+  let debugRequested = false;
+  try{
+    const params = new URLSearchParams(window.location.search || "");
+    debugRequested = params.get("debug") === "1" || localStorage.getItem("ts_debug_ui") === "1";
+  }catch(e){}
+  if(!debugRequested) return;
   if(document.getElementById("starsDebugToggle")) return;
 
   const toggle = document.createElement("button");
@@ -48779,6 +48822,7 @@ function checkMissionComplete(){
         trapsTriggered:missionStats.trapsTriggered || 0,
       };
       S.lastMissionPremiumSummary = premiumSummary;
+      renderMissionVictoryHero(premiumSummary);
       renderMissionPremiumSummaryCard(premiumSummary);
       renderMissionRewards2Card(rewards2);
       renderSocialRescueCard(socialChallenge);
@@ -48810,6 +48854,131 @@ function updateEngage(){
   document.querySelectorAll("[data-engage-btn]").forEach((btn)=>{
     btn.disabled = disabled;
   });
+}
+
+let __firstHuntCoachDismissed = null;
+let __firstHuntOrigin = null;
+let __firstHuntOriginRunId = "";
+function firstHuntCoachKey(){
+  return `ts_first_hunt_coach_v1_${tgUserKey()}`;
+}
+function firstHuntCoachWasDismissed(){
+  if(__firstHuntCoachDismissed !== null) return __firstHuntCoachDismissed;
+  try{ __firstHuntCoachDismissed = localStorage.getItem(firstHuntCoachKey()) === "1"; }
+  catch(e){ __firstHuntCoachDismissed = false; }
+  return __firstHuntCoachDismissed;
+}
+function dismissFirstHuntCoach(){
+  __firstHuntCoachDismissed = true;
+  try{ localStorage.setItem(firstHuntCoachKey(), "1"); }catch(e){}
+  const coach = document.getElementById("firstHuntCoach");
+  if(coach) coach.classList.remove("active");
+  document.body?.classList.remove("firstHuntActive");
+  toast("First Hunt guidance hidden. You can still use Tutorial from the menu.");
+}
+function firstHuntCoachEligible(){
+  if(window.__TUTORIAL_MODE__ || window.TigerTutorial?.isRunning) return false;
+  if(document.body?.classList.contains("baseHqActive")) return false;
+  if(S.mode !== "Story" || normalizeStoryVariant(S.storyVariant) !== STORY_VARIANTS.CAMPAIGN) return false;
+  const mission = storyMissionForState(S);
+  return Number(mission?.number || S.storyLevel || 1) === 1 && !S.gameOver && !S.missionEnded;
+}
+function firstHuntProgressState(target=null){
+  const runId = String(S._missionRunId || `story-${S.storyLevel || 1}`);
+  if(!__firstHuntOrigin || __firstHuntOriginRunId !== runId){
+    __firstHuntOriginRunId = runId;
+    __firstHuntOrigin = { x:Number(S.me?.x || 0), y:Number(S.me?.y || 0) };
+  }
+  const moved = !!S.inBattle || Number(S.evacDone || 0) > 0 || Number(S.lockedTigerId || 0) > 0 ||
+    dist(Number(S.me?.x || 0), Number(S.me?.y || 0), __firstHuntOrigin.x, __firstHuntOrigin.y) >= 36;
+  const missionStats = currentMissionStatsSnapshot();
+  const resolved = Math.max(0, Number(missionStats.captures || 0)) + Math.max(0, Number(missionStats.kills || 0)) > 0;
+  const scanned = resolved || !!S.inBattle || Number(S.lockedTigerId || 0) > 0 || Number(S.scanTargetTigerId || 0) > 0 || Number(S.scanPing || 0) > 0;
+  const rescued = Number(S.evacDone || 0) > 0;
+  const extractionReady = (S.civilians || []).length > 0 && Number(S.evacDone || 0) >= (S.civilians || []).length;
+  const captureReady = !!(target && target.alive && target.hp <= captureWindowHp(target) && target.hp >= captureWindowMinHp(target));
+  return { moved, rescued, scanned, resolved, extractionReady, captureReady, missionStats };
+}
+function renderFirstHuntCoach(target=null){
+  const coach = document.getElementById("firstHuntCoach");
+  if(!coach) return;
+  const active = firstHuntCoachEligible() && !firstHuntCoachWasDismissed();
+  coach.classList.toggle("active", active);
+  document.body?.classList.toggle("firstHuntActive", active);
+  if(!active) return;
+
+  const state = firstHuntProgressState(target);
+  const completed = [state.moved, state.rescued, state.scanned, state.resolved, state.extractionReady].filter(Boolean).length;
+  let step = Math.min(5, completed + 1);
+  let title = "Move into the mission area";
+  let hint = "Use the joystick and follow the orange direction marker.";
+  if(S.dangerCivId && !S.inBattle){
+    title = "Civilian under attack — intercept now";
+    hint = "Move to the warning marker before the tiger reaches the civilian.";
+  }else if(S.inBattle && state.captureReady){
+    step = 4;
+    title = "Capture window open — tap Capture";
+    hint = "The tiger is weak enough. Capture preserves it for research.";
+  }else if(S.inBattle){
+    step = 4;
+    title = "Weaken the tiger";
+    hint = "Attack, watch your HP, and use Roll or Armor when danger is called.";
+  }else if(!state.moved){
+    step = 1;
+  }else if(!state.rescued){
+    step = 2;
+    title = "Rescue your first civilian";
+    hint = "Move close so they follow, then lead them into the green evacuation zone.";
+  }else if(!state.scanned){
+    step = 3;
+    title = "Scan and lock a tiger";
+    hint = "Tap Scan, follow the blue line, then tap the marked tiger.";
+  }else if(!state.resolved){
+    step = 4;
+    title = target ? "Tap the locked tiger to engage" : "Follow the scan line to a tiger";
+    hint = "Move closer if needed. Attack until the Capture button highlights.";
+  }else{
+    step = 5;
+    title = state.extractionReady ? "Secure the extraction route" : "Finish the rescue";
+    hint = state.extractionReady
+      ? "Clear the remaining tiger threat and hold the evacuation route."
+      : `Evacuate the remaining ${Math.max(0, (S.civilians || []).length - Number(S.evacDone || 0))} civilian${Math.max(0, (S.civilians || []).length - Number(S.evacDone || 0)) === 1 ? "" : "s"}.`;
+  }
+  const kicker = document.getElementById("firstHuntCoachKicker");
+  const stepEl = document.getElementById("firstHuntCoachStep");
+  const hintEl = document.getElementById("firstHuntCoachHint");
+  const progress = document.getElementById("firstHuntCoachProgress");
+  if(kicker) kicker.innerText = `First Hunt • Step ${step} of 5`;
+  if(stepEl) stepEl.innerText = title;
+  if(hintEl) hintEl.innerText = hint;
+  if(progress) progress.style.width = `${clamp(Math.max(completed, step - 1) / 5 * 100, 0, 100)}%`;
+}
+function renderFieldAlert(target=null){
+  const alert = document.getElementById("fieldAlert");
+  if(!alert) return;
+  let text = "";
+  let kind = "";
+  if(!(S.paused || S.gameOver || S.missionEnded)){
+    const captureReady = !!(target && target.alive && target.hp <= captureWindowHp(target) && target.hp >= captureWindowMinHp(target));
+    const urgentBattle = S.inBattle && /incoming|pounce|charge|strike|attack|roll|shield/i.test(String(S.battleMsg || ""));
+    if(S.inBattle && captureReady){
+      text = "CAPTURE WINDOW OPEN — TAP CAPTURE";
+      kind = "capture";
+    }else if(urgentBattle){
+      text = "TIGER STRIKE INCOMING — ROLL OR USE ARMOR";
+      kind = "danger";
+    }else if(S.dangerCivId){
+      text = "CIVILIAN UNDER ATTACK — INTERCEPT";
+      kind = "danger";
+    }else if(Number(S._underAttack || 0) > 0){
+      text = "TIGER PRESSURE — KEEP MOVING";
+      kind = "danger";
+    }else if(target && canEngage()){
+      text = `TIGER #${target.id} LOCKED — TAP TO ENGAGE`;
+    }
+  }
+  alert.innerText = text;
+  alert.className = `fieldAlert${text ? " active" : ""}${kind ? ` ${kind}` : ""}`;
 }
 
 function renderHUD(){
@@ -49330,6 +49499,8 @@ function renderHUD(){
     }
     mobilePromptTxt.innerText = mobilePrompt;
   }
+  renderFirstHuntCoach(t);
+  renderFieldAlert(t);
 
     const takeoverBtn = document.getElementById("escortTakeoverBtn");
     if(takeoverBtn){
@@ -50395,8 +50566,8 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
     S.scanPing--;
     const t = currentTargetTiger();
     if(t){
-      const r = 40 + (140 - S.scanPing) * 1.3;
-      ctx.globalAlpha = Math.max(0, S.scanPing / 260);
+      const r = clamp(40 + (140 - (Number(S.scanPing) || 0)) * 1.3, 8, Math.max(w, h) * 1.25);
+      ctx.globalAlpha = clamp(S.scanPing / 260, 0, 1);
       ctx.strokeStyle = "rgba(245,158,11,.18)";
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -51466,8 +51637,8 @@ function drawMapScene(){
     S.scanPing--;
     const t=currentTargetTiger();
     if(t){
-      const r=40+(140-S.scanPing)*1.3;
-      ctx.globalAlpha=Math.max(0,S.scanPing/260);
+      const r=clamp(40+(140-(Number(S.scanPing)||0))*1.3,8,Math.max(w,h)*1.25);
+      ctx.globalAlpha=clamp(S.scanPing/260,0,1);
       ctx.strokeStyle="rgba(245,158,11,.18)";
       ctx.lineWidth=3;
       ctx.beginPath(); ctx.arc(t.x,t.y,r,0,Math.PI*2); ctx.stroke();
