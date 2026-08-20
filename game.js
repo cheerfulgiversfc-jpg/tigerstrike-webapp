@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4555";
+const TS_BUILD = "4556";
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
 const DECORATIVE_UNIT_RINGS_ENABLED = false;
 const PREMIUM_2D_GRAPHICS_VERSION = 12;
@@ -4303,6 +4303,8 @@ function normalizeReferralMilestoneSnapshot(raw={}){
   const next = (src.next && typeof src.next === "object") ? src.next : null;
   return {
     started,
+    opened: Math.max(0, Math.floor(Number(src.opened || started || 0))),
+    qualified: Math.max(0, Math.floor(Number(src.qualified || started || 0))),
     current: {
       target: Math.max(0, Math.floor(Number(current.target || 0))),
       title: String(current.title || "No Milestone Yet"),
@@ -4322,15 +4324,35 @@ function normalizeReferralMilestoneSnapshot(raw={}){
   };
 }
 
+function normalizeTelegramCommunitySnapshot(raw={}){
+  const src = (raw && typeof raw === "object") ? raw : {};
+  const qualification = (src.qualification && typeof src.qualification === "object") ? src.qualification : {};
+  return {
+    configured:!!src.configured,
+    title:String(src.title || "Tiger Strike Community").trim().slice(0, 120),
+    type:String(src.type || ""),
+    username:String(src.username || "").trim().replace(/^@+/, ""),
+    joinUrl:String(src.joinUrl || "").trim(),
+    isMember:!!src.isMember,
+    memberStatus:String(src.memberStatus || "unknown"),
+    qualification:{
+      eligible:!!qualification.eligible,
+      qualified:!!qualification.qualified,
+      needsGroup:!!qualification.needsGroup,
+      needsMission:!!qualification.needsMission,
+    },
+  };
+}
+
 function launchReferralSummaryText(state=S){
   const ref = normalizeReferralMilestoneSnapshot(state?.referralMilestone || {});
   if(ref.started <= 0 && !ref.next){
-    return "Use /ref in Telegram to generate your invite link.";
+    return "Tap Invite Squad to bring a Telegram friend into the game.";
   }
   if(ref.next){
-    return `Referrals ${ref.started} • Next ${ref.next.title} (${ref.next.target}) in ${ref.next.remaining}`;
+    return `Verified recruits ${ref.started} • Next ${ref.next.title} (${ref.next.target}) in ${ref.next.remaining}`;
   }
-  return `Referrals ${ref.started} • MAX milestone reached (${ref.current.title})`;
+  return `Verified recruits ${ref.started} • MAX milestone reached (${ref.current.title})`;
 }
 
 function countdownTextFromMs(ms){
@@ -5409,6 +5431,57 @@ async function shareMissionRecap(){
   toast(ok ? "Mission recap copied for sharing." : "Could not open share. Copy the recap manually.");
 }
 
+async function prepareTelegramCommunityInvite(){
+  const initData = String(tg?.initData || "");
+  if(!initData) return null;
+  try{
+    const res = await fetch(TELEGRAM_COMMUNITY_ENDPOINT, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ initData, action:"prepare_invite" }),
+    });
+    const payload = await res.json().catch(()=>null);
+    if(payload?.community){
+      S.telegramCommunity = normalizeTelegramCommunitySnapshot(payload.community);
+    }
+    return res.ok ? payload : null;
+  }catch(e){
+    return null;
+  }
+}
+
+async function sharePreparedTelegramMessage(messageId){
+  const id = String(messageId || "").trim();
+  if(!id || typeof tg?.shareMessage !== "function") return false;
+  return new Promise((resolve)=>{
+    let settled = false;
+    const done = (ok)=>{
+      if(settled) return;
+      settled = true;
+      resolve(ok === true);
+    };
+    try{
+      tg.shareMessage(id, done);
+      setTimeout(()=>done(false), 30_000);
+    }catch(e){
+      done(false);
+    }
+  });
+}
+
+function openTelegramCommunityGroup(){
+  const community = normalizeTelegramCommunitySnapshot(S.telegramCommunity || {});
+  if(community.joinUrl){
+    if(openShareUrl(community.joinUrl)){
+      toast(community.isMember ? `Opening ${community.title}.` : `Join ${community.title}, then complete a mission to verify your recruit.`);
+      return true;
+    }
+  }
+  requestGameplayCloudSync("community-link", { force:true });
+  toast("Community link is syncing. Try again in a moment or send /community to the Tiger Strike bot.");
+  return false;
+}
+
 async function shareReferralLinkFromGame(){
   const ref = normalizeReferralMilestoneSnapshot(S.referralMilestone || {});
   const link = String(ref.link || "").trim();
@@ -5422,15 +5495,30 @@ async function shareReferralLinkFromGame(){
     toast(copied ? "Referral instructions copied." : "Run /ref in Telegram bot to get your invite link.");
     return;
   }
+  const prepared = await prepareTelegramCommunityInvite();
+  if(prepared?.preparedMessageId && typeof tg?.shareMessage === "function"){
+    const shared = await sharePreparedTelegramMessage(prepared.preparedMessageId);
+    if(shared){
+      grantSocialShareActionReward("invite");
+      renderSocialRescueCard();
+      toast("Squad invitation sent.");
+    }else{
+      toast("Invitation was not sent.");
+    }
+    return;
+  }
   const nextLine = ref.next
     ? `Next milestone: ${ref.next.title} at ${ref.next.target} (${ref.next.remaining} to go).`
     : "MAX referral milestone reached.";
+  const community = normalizeTelegramCommunitySnapshot(S.telegramCommunity || {});
   const text = [
-    "Join me in Tiger Strike.",
-    `Referral progress: ${ref.started} started.`,
+    "🐅 I need backup in Tiger Strike!",
+    "Rescue civilians, track dangerous tigers, and build your squad with me.",
+    `Verified recruits: ${ref.started}.`,
     nextLine,
     link,
-  ].join("\n");
+    community.joinUrl ? `Join our group: ${community.joinUrl}` : "",
+  ].filter(Boolean).join("\n");
   const shareLink = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   if(openShareUrl(shareLink)){
     grantSocialShareActionReward("invite");
@@ -5568,7 +5656,8 @@ function renderSocialRescueOpsSectionHtml(state=S, anchorId="invSocialRescueAnch
         <button onclick="shareRescueChallenge()">Challenge Friend</button>
         <button class="ghost" onclick="shareWeeklyRescueLeaderboard()">Share Weekly</button>
         <button class="ghost" onclick="claimAllSocialWeeklyTrophies()">Claim Trophies</button>
-        <button class="ghost" onclick="shareReferralLinkFromGame()">Invite Friends</button>
+        <button class="ghost" onclick="shareReferralLinkFromGame()">Invite Squad</button>
+        <button class="ghost" onclick="openTelegramCommunityGroup()">${normalizeTelegramCommunitySnapshot(state.telegramCommunity || {}).isMember ? "Open Group" : "Join Group"}</button>
       </div>
     </div>
     <div class="hudTitle">Weekly Telegram Trophies</div>
@@ -6102,6 +6191,7 @@ const STORY_PROGRESS_KEY_BASE = "ts_story_progress";
 const STORY_PROFILE_KEY_BASE = "ts_story_profile";
 const STORY_CHECKPOINT_KEY_BASE = "ts_story_checkpoint";
 const CLOUD_PROFILE_ENDPOINT = "/api/player/game-sync";
+const TELEGRAM_COMMUNITY_ENDPOINT = "/api/telegram/community";
 const CLOUD_PROFILE_SAVE_MIN_MS = 15000;
 
 function cloneState(obj){
@@ -14197,6 +14287,7 @@ const DEFAULT = {
   clanCloud:null,
   clanLastSyncAt:0,
   referralMilestone:null,
+  telegramCommunity:null,
   telegramEventDrop:null,
   socialRescue: defaultSocialRescueState(),
   lastMissionRecap:null,
@@ -15773,6 +15864,17 @@ function gameplayCloudMission(state=S){
   return Math.max(1, Math.floor(Number(src.survivalWave || 1)));
 }
 
+function telegramStartParamForCloud(){
+  const direct = String(tg?.initDataUnsafe?.start_param || "").trim();
+  if(direct) return direct.slice(0, 64);
+  try{
+    const params = new URLSearchParams(window.location.search || "");
+    return String(params.get("tgWebAppStartParam") || params.get("startapp") || "").trim().slice(0, 64);
+  }catch(e){
+    return "";
+  }
+}
+
 function buildGameplayCloudSnapshot(state=S){
   const src = (state && typeof state === "object") ? state : S;
   ensureArcadeWeeklySeedState(src);
@@ -15831,6 +15933,7 @@ function buildGameplayCloudSnapshot(state=S){
     Math.max(0, Math.floor(Number(missionStats.cashEarned || 0)))
   );
   return {
+    startParam:telegramStartParamForCloud(),
     kills,
     captures,
     evac,
@@ -15886,6 +15989,7 @@ function buildGameplayCloudSnapshot(state=S){
 function gameplayCloudSnapshotSig(snapshot){
   const snap = (snapshot && typeof snapshot === "object") ? snapshot : {};
   return [
+    String(snap.startParam || ""),
     normalizeModeName(snap.mode),
     Math.max(1, Math.floor(Number(snap.mission || 1))),
     Math.max(1, Math.floor(Number(snap.level || 1))),
@@ -16014,6 +16118,9 @@ async function postGameplayCloudSnapshot(snapshot){
       }
       if(payload?.referral && typeof payload.referral === "object"){
         S.referralMilestone = normalizeReferralMilestoneSnapshot(payload.referral);
+      }
+      if(payload?.community && typeof payload.community === "object"){
+        S.telegramCommunity = normalizeTelegramCommunitySnapshot(payload.community);
       }
       if(payload?.eventDrop && typeof payload.eventDrop === "object"){
         S.telegramEventDrop = normalizeTelegramEventDrop(payload.eventDrop);
@@ -16306,6 +16413,9 @@ function load(){
     m.liveCoopWorldEvents = (saved.liveCoopWorldEvents && typeof saved.liveCoopWorldEvents === "object") ? cloneState(saved.liveCoopWorldEvents) : null;
     m.clanWarfront = (saved.clanWarfront && typeof saved.clanWarfront === "object") ? cloneState(saved.clanWarfront) : null;
     m.referralMilestone = (saved.referralMilestone && typeof saved.referralMilestone === "object") ? saved.referralMilestone : null;
+    m.telegramCommunity = (saved.telegramCommunity && typeof saved.telegramCommunity === "object")
+      ? normalizeTelegramCommunitySnapshot(saved.telegramCommunity)
+      : null;
     m.telegramEventDrop = (saved.telegramEventDrop && typeof saved.telegramEventDrop === "object") ? saved.telegramEventDrop : null;
     m.socialRescue = normalizeSocialRescueState(saved.socialRescue ?? DEFAULT.socialRescue);
     m.lastMissionRecap = (saved.lastMissionRecap && typeof saved.lastMissionRecap === "object") ? saved.lastMissionRecap : null;
@@ -32172,6 +32282,8 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       actions:[
         ["Clan + Co-op","openClanDeskFromBaseHQ()"],
         ["Social Ops","openSocialRescueOpsFromBaseHQ()"],
+        ["Invite Squad","shareReferralLinkFromGame()"],
+        ["Join Group","openTelegramCommunityGroup()"],
         ["Live Co-op","openLiveCoopWorldEventsFromBaseHQ()"],
         ["World Map","openWorldMapCampaign()"],
         ["Profile","openInventoryFromBaseHQ('showcase')"]
@@ -33293,6 +33405,8 @@ function renderBaseHqQuickBar(){
     ${button("Events", "openBaseHqEventBoard()", "utility")}
     ${button("Profile", "openBaseHqLeaderboardBoard()", "utility")}
     ${button("Social", "openSocialRescueOpsFromBaseHQ()", "utility")}
+    ${button("Invite Squad", "shareReferralLinkFromGame()", "primary")}
+    ${button(normalizeTelegramCommunitySnapshot(S.telegramCommunity || {}).isMember ? "Open Group" : "Join Group", "openTelegramCommunityGroup()", "primary")}
     ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
     ${button("Inventory", "openInventoryFromBaseHQ()", "utility")}
     ${button("HQ Tour", "resetBaseHqOnboarding()", "utility")}
@@ -61871,6 +61985,8 @@ window.claimChallengeTowerFloor = claimChallengeTowerFloor;
 window.claimAllChallengeTower = claimAllChallengeTower;
 window.claimChallengeTowerBonus = claimChallengeTowerBonus;
 window.shareChallengeTowerProgress = shareChallengeTowerProgress;
+window.shareReferralLinkFromGame = shareReferralLinkFromGame;
+window.openTelegramCommunityGroup = openTelegramCommunityGroup;
 window.lockNearestTiger = lockNearestTiger;
 window.canAttemptCapture = canAttemptCapture;
 window.tutorialCaptureWindowReady = tutorialCaptureWindowReady;

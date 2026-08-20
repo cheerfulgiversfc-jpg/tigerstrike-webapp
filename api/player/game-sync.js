@@ -1,6 +1,13 @@
 const { json, readJsonBody } = require("../_lib/http");
 const { validateTelegramInitData } = require("../_lib/telegram-auth");
-const { recordGameplaySnapshot, getClanCloudSnapshot, referralMilestoneFromCount } = require("../_lib/player-stats");
+const {
+  recordGameplaySnapshot,
+  getClanCloudSnapshot,
+  recordReferralStart,
+  recordReferralQualification,
+  referralMilestoneFromCount,
+} = require("../_lib/player-stats");
+const { getCommunitySnapshot } = require("../_lib/community");
 const liveops = require("../_lib/liveops");
 
 module.exports = async function handler(req, res){
@@ -22,17 +29,42 @@ module.exports = async function handler(req, res){
 
     const { user } = validateTelegramInitData(initData, botToken);
     const snapshot = (body?.snapshot && typeof body.snapshot === "object") ? body.snapshot : {};
+    const startParam = String(snapshot?.startParam || "").trim();
+    const referralMatch = startParam.match(/^ref_(\d{1,20})$/);
+    if(referralMatch){
+      const referrerId = Number(referralMatch[1] || 0);
+      if(Number.isSafeInteger(referrerId) && referrerId > 0){
+        try{ await recordReferralStart({ referredUser:user, referrerId }); }catch(e){ /* best effort */ }
+      }
+    }
     const profile = await recordGameplaySnapshot({ user, snapshot });
     if(!profile){
       return json(res, 400, { ok:false, error:"Could not update gameplay stats." });
     }
     const clan = await getClanCloudSnapshot(user);
+    const community = await getCommunitySnapshot({ botToken, userId:Number(user?.id || 0) });
+    const referredBy = Number(profile.referredBy || 0);
+    const missionsCleared = Math.max(0, Number(profile?.ops?.missionsCleared || 0));
+    let qualification = {
+      eligible:referredBy > 0,
+      qualified:Number(profile.referralQualifiedAt || 0) > 0,
+      needsGroup:referredBy > 0 && !community.isMember,
+      needsMission:referredBy > 0 && missionsCleared < 1,
+    };
+    if(referredBy > 0 && community.isMember && missionsCleared >= 1 && !qualification.qualified){
+      try{
+        const result = await recordReferralQualification({ referredUser:user, referrerId:referredBy });
+        qualification = { ...qualification, qualified:!!(result?.qualified || result?.alreadyQualified), needsGroup:false, needsMission:false };
+      }catch(e){ /* best effort */ }
+    }
     const botUsername = String(process.env.TELEGRAM_BOT_USERNAME || process.env.TELEGRAM_BOT_PUBLIC_USERNAME || "").trim().replace(/^@+/, "");
     const userId = Number(profile.userId || 0);
-    const referralLink = (botUsername && userId > 0) ? `https://t.me/${botUsername}?start=ref_${userId}` : "";
+    const referralLink = (botUsername && userId > 0) ? `https://t.me/${botUsername}?startapp=ref_${userId}` : "";
     const botLink = botUsername ? `https://t.me/${botUsername}` : "";
     const referral = {
-      ...referralMilestoneFromCount(profile.referralsStarted || 0),
+      ...referralMilestoneFromCount(profile.referralsQualified || 0),
+      opened:Math.max(0, Number(profile.referralsStarted || 0)),
+      qualified:Math.max(0, Number(profile.referralsQualified || 0)),
       link: referralLink,
       botLink,
     };
@@ -55,6 +87,7 @@ module.exports = async function handler(req, res){
       },
       clan: clan || null,
       referral,
+      community:{ ...community, qualification },
       eventDrop,
     });
   }catch(e){

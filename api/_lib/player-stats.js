@@ -322,6 +322,8 @@ function defaultProfile(user, userId = 0){
     lastPaidAt: 0,
     referredBy: 0,
     referralsStarted: 0,
+    referralsQualified: 0,
+    referralQualifiedAt: 0,
     weekly: {
       period: week,
       ordersCreated: 0,
@@ -451,6 +453,8 @@ function normalizeProfile(raw, user = null, fallbackUserId = 0){
   out.lastPaidAt = clampNonNegative(out.lastPaidAt);
   out.referredBy = safeUserId(out.referredBy);
   out.referralsStarted = clampNonNegative(out.referralsStarted);
+  out.referralsQualified = clampNonNegative(out.referralsQualified);
+  out.referralQualifiedAt = clampNonNegative(out.referralQualifiedAt);
 
   out.weekly = {
     ...base.weekly,
@@ -1281,10 +1285,52 @@ async function recordReferralStart({ referredUser, referrerId }){
   return referredProfile;
 }
 
+async function recordReferralQualification({ referredUser, referrerId }){
+  const referredId = safeUserId(referredUser?.id || referredUser);
+  const refId = safeUserId(referrerId);
+  if(!referredId || !refId || referredId === refId) return { qualified:false };
+
+  const current = await readProfile(referredId);
+  if(!current || safeUserId(current.referredBy) !== refId) return { qualified:false };
+  if(clampNonNegative(current.referralQualifiedAt) > 0){
+    return { qualified:false, alreadyQualified:true };
+  }
+
+  let awarded = false;
+  const referrerProfile = await upsertPlayerProfile({ id:refId }, (profile)=>{
+    const duplicateGuardKey = `qualified:${referredId}`;
+    const refMap = (profile._qualifiedRefMap && typeof profile._qualifiedRefMap === "object")
+      ? profile._qualifiedRefMap
+      : {};
+    if(refMap[duplicateGuardKey]) return;
+    refMap[duplicateGuardKey] = 1;
+    profile._qualifiedRefMap = refMap;
+    profile.referralsQualified = clampNonNegative(profile.referralsQualified) + 1;
+    awarded = true;
+  });
+
+  if(referrerProfile?._qualifiedRefMap && Object.keys(referrerProfile._qualifiedRefMap).length > 400){
+    const keys = Object.keys(referrerProfile._qualifiedRefMap);
+    const trimmed = {};
+    keys.slice(-300).forEach((key)=>{ trimmed[key] = 1; });
+    referrerProfile._qualifiedRefMap = trimmed;
+    await writeProfile(referrerProfile);
+    await updateLeaderboardsFromProfile(referrerProfile);
+  }
+
+  await upsertPlayerProfile({ id:referredId }, (profile)=>{
+    if(safeUserId(profile.referredBy) === refId && clampNonNegative(profile.referralQualifiedAt) <= 0){
+      profile.referralQualifiedAt = nowSec();
+    }
+  });
+  return { qualified:awarded, alreadyQualified:!awarded };
+}
+
 function stripPrivateFields(profile){
   if(!profile || typeof profile !== "object") return profile;
   const out = { ...profile };
   delete out._refMap;
+  delete out._qualifiedRefMap;
   return out;
 }
 
@@ -1416,6 +1462,7 @@ module.exports = {
   recordClaimError,
   recordClaimPaid,
   recordReferralStart,
+  recordReferralQualification,
   referralMilestoneFromCount,
   getLeaderboardSnapshot,
   getClanCloudSnapshot,

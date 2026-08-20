@@ -157,6 +157,11 @@ Phase 2A adds channel-growth tooling directly in your webhook: admin posting com
   - Use numeric channel id (e.g. `-1001234567890`) or `@channelusername`.
 - `TELEGRAM_REF_LOG_CHAT_ID` (optional)
   - If set, referral starts (`/start ref_*`) are logged to this chat/channel for tracking.
+- `TELEGRAM_COMMUNITY_CHAT_ID` or `TELEGRAM_GROUP_ID` (optional)
+  - Official Tiger Strike group used for Join Group buttons and verified-member referral rewards.
+  - Instead of setting an environment variable, a group administrator can run `/setcommunity` once inside the official group.
+- `TELEGRAM_COMMUNITY_INVITE_URL` or `TELEGRAM_GROUP_INVITE_URL` (optional)
+  - Explicit group invite URL. If omitted, the bot uses the public group username or creates an invite link when it has invite permission.
 
 ### Phase 2A usage
 1. Add env vars above in Vercel.
@@ -167,6 +172,7 @@ Phase 2A adds channel-growth tooling directly in your webhook: admin posting com
    ```
 4. In Telegram (from an admin account in `TELEGRAM_ADMIN_IDS`), run `/admin`.
 5. Use `/post_play`, `/post_stars`, `/post_premium`, `/post_campaign` to publish channel posts.
+6. In the official Tiger Strike group, run `/setcommunity` once to connect Join Group buttons and membership verification.
 
 ### Security notes
 - Keep `TELEGRAM_WEBHOOK_SECRET` enabled.

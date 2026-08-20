@@ -113,6 +113,7 @@ module.exports = async function handler(req, res){
       { command:"support", description:"Support options" },
       { command:"stars", description:"How to buy/spend Telegram Stars" },
       { command:"ref", description:"Get your personal referral link" },
+      { command:"community", description:"Join the Tiger Strike group" },
       { command:"settings", description:"Open bot settings shortcuts" },
       { command:"liveops_now", description:"Admin trigger liveops post" },
       { command:"stats_today", description:"Admin funnel stats (today)" },
@@ -126,6 +127,8 @@ module.exports = async function handler(req, res){
       { command:"help", description:"Show available commands" },
       { command:"game_guide", description:"Full systems/items guide" },
       { command:"play", description:"Open Tiger Strike Mini App" },
+      { command:"community", description:"Open the official community" },
+      { command:"setcommunity", description:"Connect this official group" },
       { command:"myid", description:"Show your Telegram user ID" },
       { command:"status", description:"Check bot status" },
     ];

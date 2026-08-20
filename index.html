@@ -7,7 +7,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V4.4.0 (First Hunt)</title>
+  <title>Tiger Strike 🐅 — V4.4.1 (Recruit a Squad)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <style>
@@ -2424,10 +2424,10 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V4.4.0</span> <span class="tag">First Hunt</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V4.4.1</span> <span class="tag">Recruit a Squad</span></div>
       <div class="sub">
-        First Hunt: cleaner mobile command HUD, adaptive mission guidance, readable danger warnings, and a stronger mission victory flow.<br>
-        Scan, rescue, engage, capture, extract.
+        Recruit a Squad: native Telegram invitations, official group access, verified recruits, and real invite rewards.<br>
+        Invite, join, complete a mission, grow the rescue network.
       </div>
     </div>
     <div class="row topActions">
@@ -2766,6 +2766,7 @@
           <div class="launchHeroCardTitle">Referral Milestone</div>
           <div class="launchHeroCardValue" id="launchReferralCard">Referral progress loading...</div>
           <button class="ghost" onclick="shareReferralFromLaunchIntro()">🔗 Invite Squad</button>
+          <button class="ghost" onclick="openTelegramCommunityGroup()">👥 Join Group</button>
         </div>
         <div class="launchHeroCard">
           <div class="launchHeroCardTitle">Telegram Event Drop</div>
@@ -3195,7 +3196,8 @@
         <button class="good" onclick="startNextMission()">Start Next Mission</button>
         <button class="ghost" onclick="shareMissionRecap()">Share Recap</button>
         <button class="ghost" onclick="shareRescueChallenge()">Challenge Friend</button>
-        <button class="ghost" onclick="shareReferralLinkFromGame()">Invite Friends</button>
+        <button class="ghost" onclick="shareReferralLinkFromGame()">Invite Squad</button>
+        <button class="ghost" onclick="openTelegramCommunityGroup()">Join Group</button>
         <button class="ghost" onclick="openShop()">Shop First</button>
         <button class="ghost" onclick="openInventory()">Inventory</button>
       </div>
@@ -3276,6 +3278,8 @@
     <button class="ghost" onclick="selectNextSupportUnit()">🎯 Select Squad</button>
     <button class="ghost" onclick="openWorldMapCampaign()">🌎 World Map</button>
     <button class="ghost" onclick="openStoryCampaignJournal()">📖 Story</button>
+    <button class="ghost" onclick="shareReferralLinkFromGame()">👥 Invite</button>
+    <button class="ghost" onclick="openTelegramCommunityGroup()">💬 Group</button>
     <button class="ghost" onclick="saveGameNow()">💾 Save</button>
     <button class="ghost" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
     <button class="ghost" onclick="openHudCustomizer()">🎛️ HUD</button>
@@ -3285,7 +3289,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=4679-first-hunt"></script>
+  <script src="./game.js?v=4680-recruit-squad"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
 <script>
 (() => {

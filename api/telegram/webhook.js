@@ -1,6 +1,7 @@
 const { telegramBotApi } = require("../_lib/telegram-api");
 const { json, readJsonBody } = require("../_lib/http");
 const { incrMetric, summarizeMetrics, storageMode } = require("../_lib/metrics-store");
+const { getCommunitySnapshot, saveCommunityChat } = require("../_lib/community");
 const liveops = require("../_lib/liveops");
 const fs = require("fs");
 const path = require("path");
@@ -122,6 +123,13 @@ function botLink(botUsername, startParam){
     return `https://t.me/${uname}?start=${encodeURIComponent(startParam)}`;
   }
   return `https://t.me/${uname}`;
+}
+
+function botAppLink(botUsername, startParam){
+  const uname = String(botUsername || "").trim();
+  if(!uname) return "";
+  if(startParam) return `https://t.me/${uname}?startapp=${encodeURIComponent(startParam)}`;
+  return `https://t.me/${uname}?startapp`;
 }
 
 function mainMenuText(){
@@ -666,6 +674,10 @@ function mainMenuKeyboard(botUsername){
         { text: "Events", callback_data: "menu_events" },
       ],
       [
+        { text: "Community", callback_data: "menu_community" },
+        { text: "Invite Squad", callback_data: "menu_ref" },
+      ],
+      [
         { text: "Help", callback_data: "menu_help" },
         { text: "Support", callback_data: "menu_support" },
       ],
@@ -787,6 +799,7 @@ function helpText(){
     "/contact - Support contact",
     "/support - Support options",
     "/ref - Get your referral link",
+    "/community - Join the Tiger Strike group",
     "/status - Check bot setup status",
     "/settings - Quick settings help",
     "",
@@ -799,6 +812,7 @@ function helpText(){
     "/post_stars",
     "/post_premium",
     "/post_campaign",
+    "/setcommunity - Set this group as the official community",
   ].join("\n");
 }
 
@@ -879,6 +893,7 @@ function adminHelpText(){
     "/post_stars - Post Stars top-up CTA",
     "/post_premium - Post Premium bundle CTA",
     "/post_campaign - Post campaign update CTA",
+    "/setcommunity - Run inside the official group once to connect it to the game",
     "",
     "Set TELEGRAM_CHANNEL_ID to post from private chat.",
   ].join("\n");
@@ -1091,16 +1106,20 @@ async function handleRefCommand(botToken, ctx, botUsername){
   }
 
   const startToken = `ref_${userId}`;
-  const link = botLink(botUsername, startToken);
+  const link = botAppLink(botUsername, startToken);
+  const community = await getCommunitySnapshot({ botToken, userId:Number(ctx.from?.id || 0) });
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Join me in Tiger Strike")}`;
-  let referralsStarted = 0;
+  let referralsOpened = 0;
+  let referralsQualified = 0;
   try{
     const stats = await getPlayerStats(ctx.from);
-    referralsStarted = Number(stats?.referralsStarted || 0);
+    referralsOpened = Number(stats?.referralsStarted || 0);
+    referralsQualified = Number(stats?.referralsQualified || 0);
   }catch(e){
-    referralsStarted = 0;
+    referralsOpened = 0;
+    referralsQualified = 0;
   }
-  const milestone = referralMilestoneFromCount(referralsStarted);
+  const milestone = referralMilestoneFromCount(referralsQualified);
   const nextLine = milestone?.next
     ? `Next: ${milestone.next.title} at ${milestone.next.target} referrals (${milestone.next.remaining} to go).`
     : "Next: MAX milestone reached.";
@@ -1109,18 +1128,59 @@ async function handleRefCommand(botToken, ctx, botUsername){
     "Your referral link:",
     link,
     "",
-    `Referrals started: ${fmtNum(milestone?.started || 0)}`,
+    `Referral links opened: ${fmtNum(referralsOpened)}`,
+    `Verified recruits: ${fmtNum(milestone?.started || 0)}`,
     `Current milestone: ${milestone?.current?.title || "No milestone yet"} (${fmtNum(milestone?.current?.target || 0)})`,
     nextLine,
     "",
-    "Share this link. When users start the bot with it, we log the referral.",
+    "A recruit becomes verified after joining the community and completing a mission.",
   ].join("\n"), {
     reply_markup: {
       inline_keyboard: [
         [{ text: "Share Link", url: shareUrl }],
+        ...(community.joinUrl ? [[{ text:`Join ${community.title}`.slice(0, 64), url:community.joinUrl }]] : []),
       ],
     },
   });
+}
+
+async function handleCommunityCommand(botToken, ctx, botUsername){
+  const community = await getCommunitySnapshot({ botToken, userId:Number(ctx.from?.id || 0) });
+  if(!community.configured || !community.joinUrl){
+    await sendMessage(botToken, ctx.chat.id, "The Tiger Strike community is not connected yet. A group admin can run /setcommunity inside the official group.");
+    return;
+  }
+  const buttons = [[{ text:community.isMember ? `Open ${community.title}` : `Join ${community.title}`, url:community.joinUrl }]];
+  const playUrl = botAppLink(botUsername, "play");
+  if(playUrl) buttons.push([{ text:"Play Tiger Strike", url:playUrl }]);
+  await sendMessage(botToken, ctx.chat.id, [
+    `Tiger Strike Community: ${community.title}`,
+    community.isMember ? "You are already a verified member." : "Join the group, then complete a mission to qualify as a verified recruit.",
+  ].join("\n"), { reply_markup:{ inline_keyboard:buttons } });
+}
+
+async function handleSetCommunityCommand(botToken, ctx){
+  if(!isGroupChat({ chat:ctx.chat })){
+    await sendMessage(botToken, ctx.chat.id, "Run /setcommunity inside the Telegram group you want Tiger Strike to use.");
+    return;
+  }
+  let allowed = isAdminUser(ctx.from);
+  if(!allowed){
+    try{
+      const member = await telegramBotApi("getChatMember", { chat_id:ctx.chat.id, user_id:ctx.from?.id }, botToken);
+      allowed = member?.status === "creator" || member?.status === "administrator";
+    }catch(e){ allowed = false; }
+  }
+  if(!allowed){
+    await sendMessage(botToken, ctx.chat.id, "Only a group administrator can connect this community.");
+    return;
+  }
+  await saveCommunityChat(ctx.chat);
+  const community = await getCommunitySnapshot({ botToken, userId:Number(ctx.from?.id || 0) });
+  await sendMessage(botToken, ctx.chat.id, [
+    `✅ ${community.title} is now the official Tiger Strike community.`,
+    "Invite buttons, group membership verification, and qualified recruit rewards are connected.",
+  ].join("\n"));
 }
 
 async function handlePostCommand(botToken, ctx, botUsername, kind){
@@ -1432,6 +1492,16 @@ async function handleCommand(botToken, update, source){
       await handleRefCommand(botToken, ctx, bot?.username || "");
       return true;
     }
+    case "community":
+    case "group": {
+      await handleCommunityCommand(botToken, ctx, bot?.username || "");
+      return true;
+    }
+    case "setcommunity":
+    case "set_community": {
+      await handleSetCommunityCommand(botToken, ctx);
+      return true;
+    }
     case "status": {
       await sendMessage(botToken, ctx.chat.id, statusText(ctx));
       return true;
@@ -1560,6 +1630,20 @@ async function handleCallbackQuery(botToken, update){
   if(data === "menu_events"){
     await answerCallback(botToken, q.id, "Events");
     await editMenuMessage(botToken, q, eventsText(), leafMenuKeyboard("menu_open"));
+    return;
+  }
+
+  if(data === "menu_community"){
+    if(!bot) bot = await getBotMeta(botToken);
+    await answerCallback(botToken, q.id, "Tiger Strike community");
+    await handleCommunityCommand(botToken, { chat:q.message?.chat, from:q.from }, bot?.username || "");
+    return;
+  }
+
+  if(data === "menu_ref"){
+    if(!bot) bot = await getBotMeta(botToken);
+    await answerCallback(botToken, q.id, "Preparing squad invite");
+    await handleRefCommand(botToken, { chat:q.message?.chat, from:q.from }, bot?.username || "");
     return;
   }
 
