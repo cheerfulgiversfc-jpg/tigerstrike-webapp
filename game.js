@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4553";
+const TS_BUILD = "4554";
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
 const DECORATIVE_UNIT_RINGS_ENABLED = false;
 const PREMIUM_2D_GRAPHICS_VERSION = 12;
@@ -23497,6 +23497,7 @@ function medTierLabel(id){
   if(id === "M_LARGE") return "T3";
   if(id === "M_TRAUMA") return "T4";
   if(id === "M_FIELD_SURGERY") return "Apex";
+  if(id === "M_NANO_TRIAGE") return "Command";
   return "T?";
 }
 function armorTierLabel(id){
@@ -23505,6 +23506,7 @@ function armorTierLabel(id){
   if(id === "A_TIER3") return "T3";
   if(id === "A_TIER4") return "T4";
   if(id === "A_APEX") return "Apex";
+  if(id === "A_COMMAND") return "Command";
   return "T?";
 }
 function legacyArmorKeysForId(id){
@@ -34533,6 +34535,8 @@ function shopTab(tab){
   ensureBundlesShopTab();
   ensureSeasonShopTab();
   ensureForgeShopTab();
+  const allowedTabs = ["weapons","ammo","armor","meds","squad","meta","bundles","season","forge","stars","cash","premium","tools","traps"];
+  tab = allowedTabs.includes(String(tab || "")) ? String(tab) : "weapons";
   if(currentShopTab !== tab) currentShopFilter = "all";
   currentShopTab=tab;
   if(window.TigerTutorial?.isRunning){
@@ -34562,13 +34566,32 @@ function shopTab(tab){
     traps:"tabTraps",
   };
   const activeEl = document.getElementById(activeByTab[tab] || "tabWeapons");
-  if(activeEl){
-    activeEl.classList.add("active");
-    if(typeof activeEl.scrollIntoView === "function"){
-      activeEl.scrollIntoView({ block:"nearest", inline:"center" });
+  Object.values(activeByTab).forEach((id)=>{
+    const el = document.getElementById(id);
+    if(el){
+      el.setAttribute("role", "tab");
+      el.setAttribute("aria-selected", el === activeEl ? "true" : "false");
+    }
+  });
+  if(activeEl) activeEl.classList.add("active");
+  try{
+    renderShopList();
+  }catch(error){
+    console.error(`Shop category failed to render: ${String(tab || "unknown")}`, error);
+    const note = document.getElementById("shopNote");
+    const list = document.getElementById("shopList");
+    if(note) note.innerText = "This shop category hit a loading error. Your money and inventory were not changed.";
+    if(list){
+      list.innerHTML = `
+        <div class="item shopProductCard">
+          <div class="shopItemCopy">
+            <div class="itemName">Category unavailable</div>
+            <div class="itemDesc">Tap Retry. If the problem continues, resume the game and reopen the Shop.</div>
+          </div>
+          <div class="shopItemActions"><button class="ghost" onclick="shopTab('${String(tab || "weapons")}')">Retry</button></div>
+        </div>`;
     }
   }
-  renderShopList();
   truthQaAuditVisibleUi(true);
 }
 
@@ -34613,12 +34636,12 @@ function shopGameplayEffect(kind, item){
   if(kind === "ammo") return `Adds ${item.pack} reserve ammo • used by: ${weaponAmmoUsers(item.id)} • strongest compatible ammo auto-loads first.`;
   if(kind === "med"){
     const qty = Math.max(1, Math.floor(Number(item.qty || 1)));
-    const value = qty > 1 ? ` • bulk value: ${qty} kits for ${money(item.price)}` : "";
+    const value = qty > 1 ? ` • bulk value: ${qty} kits for $${Number(item.price || 0).toLocaleString()}` : "";
     return `Adds ${qty} ${qty === 1 ? "kit" : "kits"} • each heals +${item.heal} HP • stored if HP is full, auto-used if injured${value}.`;
   }
   if(kind === "armor"){
     const qty = Math.max(1, Math.floor(Number(item.qty || 1)));
-    const value = qty > 1 ? ` • bulk value: ${qty} plates for ${money(item.price)}` : "";
+    const value = qty > 1 ? ` • bulk value: ${qty} plates for $${Number(item.price || 0).toLocaleString()}` : "";
     return `Adds ${qty} ${armorTierLabel(item.id)} armor ${qty === 1 ? "plate" : "plates"} • each restores +${item.addArmor} armor when used${value}.`;
   }
   if(kind === "tool") return `Adds ${item.qty || 1} repair kit • restores +${item.add} durability to equipped weapon${Number(item.price || 0) >= 10000 ? " • premium endgame maintenance" : ""}.`;
@@ -35057,8 +35080,8 @@ function renderShopList(){
         ? ` • Tree ${treeSpent}/${treeAvail} [STB ${tree.STABILITY} | CTL ${tree.CONTROL} | SIL ${tree.SILENT_CAPTURE} | BST ${tree.BURST_LETHALITY}]`
         : "";
       return `
-        <div class="item">
-          <div>
+        <div class="item shopProductCard">
+          <div class="shopItemCopy">
             <div class="itemName">${w.name} <span class="tag">${w.grade}</span> <span class="tag">${shopItemStatusTag("weapon", w.id)}</span></div>
             <div class="itemDesc">${shopGameplayEffect("weapon", w)}</div>
             <div class="itemDesc">${shopTruthStateLine("weapon", w)}</div>
@@ -35081,14 +35104,13 @@ function renderShopList(){
       const p=ammoPriceCapped(a);
       const owned = ownedAmmoCount(a.id);
       return `
-        <div class="item">
-          <div>
+        <div class="item shopProductCard">
+          <div class="shopItemCopy">
             <div class="itemName">${a.name} <span class="tag">${a.grade}</span> <span class="tag">${shopItemStatusTag("ammo", a.id)}</span></div>
             <div class="itemDesc">${shopGameplayEffect("ammo", a)}</div>
             <div class="itemDesc">${shopTruthStateLine("ammo", a)}</div>
-            <div class="itemDesc">Family: ${a.family}</div>
           </div>
-          <div style="text-align:right">
+          <div class="shopItemActions">
             <div class="price">$${p.toLocaleString()}</div>
             <button onclick="buyAmmo('${a.id}')">Buy</button>
           </div>
@@ -35100,14 +35122,14 @@ function renderShopList(){
   if(currentShopTab==="armor"){
     note.innerText=`${audit.label}. Armor plates are storable by tier. Pick a tier in Inventory or quick-use to auto-fill armor.`;
     list.innerHTML = ARMORY.map(ar=>`
-      <div class="item">
-        <div>
+      <div class="item shopProductCard">
+        <div class="shopItemCopy">
           <div class="itemName">${ar.name} <span class="tag">${armorTierLabel(ar.id)}</span> <span class="tag">${shopItemStatusTag("armor", ar.id)}</span></div>
           <div class="itemDesc">${shopGameplayEffect("armor", ar)}</div>
           <div class="itemDesc">${shopTruthStateLine("armor", ar)}</div>
           <div class="itemDesc">Armor cap ${ar.cap} • Total plates: ${totalArmorPlates()}</div>
         </div>
-        <div style="text-align:right">
+        <div class="shopItemActions">
           <div class="price">$${ar.price.toLocaleString()}</div>
           <button onclick="buyArmor('${ar.id}')">Buy</button>
         </div>
@@ -35120,13 +35142,13 @@ function renderShopList(){
     list.innerHTML = MEDS.map(m=>{
       const owned=ownedMedCount(m.id);
       return `
-        <div class="item">
-          <div>
+        <div class="item shopProductCard">
+          <div class="shopItemCopy">
             <div class="itemName">${m.name} <span class="tag">${medTierLabel(m.id)}</span> <span class="tag">${shopItemStatusTag("med", m.id)}</span></div>
             <div class="itemDesc">${shopGameplayEffect("med", m)}</div>
             <div class="itemDesc">${shopTruthStateLine("med", m)}</div>
           </div>
-          <div style="text-align:right">
+          <div class="shopItemActions">
             <div class="price">$${m.price.toLocaleString()}</div>
             <button onclick="buyMed('${m.id}')">Buy</button>
           </div>

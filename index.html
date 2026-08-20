@@ -1295,6 +1295,29 @@
       background:linear-gradient(180deg, rgba(48,68,116,.94), rgba(28,44,84,.92));
       box-shadow:0 0 0 1px var(--mode-glow) inset;
     }
+    #shopOverlay .shopTabs{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(104px,1fr));
+      gap:8px;
+      overflow:visible;
+      padding:0;
+    }
+    #shopOverlay .shopTabs .tab{
+      width:100%;
+      min-width:0;
+      min-height:42px;
+      padding:8px 9px;
+      line-height:1.1;
+      white-space:normal;
+    }
+    #shopOverlay .shopItemCopy{min-width:0;flex:1 1 auto}
+    #shopOverlay .shopItemActions{
+      flex:0 0 auto;
+      display:grid;
+      gap:8px;
+      justify-items:end;
+      text-align:right;
+    }
     .shopFilterPanel{
       display:none;
       margin-top:10px;
@@ -1731,6 +1754,39 @@
       .battleStatus{grid-template-columns:1fr}
       .modal{width:min(100vw - 12px, 980px);max-height:90vh}
       .modalBody{padding:12px}
+      #shopOverlay{padding:6px;align-items:stretch}
+      #shopOverlay .shopModal{
+        width:100%;
+        max-height:calc(100dvh - 12px);
+        border-radius:16px;
+      }
+      #shopOverlay .modalTop{gap:8px;padding:9px 10px}
+      #shopOverlay .modalTitle{font-size:14px;line-height:1.2}
+      #shopOverlay .modalTop button{min-width:96px;padding:8px 10px}
+      #shopOverlay .shopModalBody{padding:10px}
+      #shopOverlay .shopTabs{
+        grid-template-columns:repeat(3,minmax(0,1fr));
+        gap:6px;
+      }
+      #shopOverlay .shopTabs .tab{
+        min-height:40px;
+        padding:7px 4px;
+        font-size:12px;
+      }
+      #shopOverlay #shopNote{margin-top:9px;line-height:1.3}
+      #shopOverlay .shopProductCard{gap:10px;padding:11px}
+      #shopOverlay .shopProductCard .itemName{line-height:1.45}
+      #shopOverlay .shopProductCard .tag{margin-left:4px;padding:2px 6px}
+      #shopOverlay .shopItemActions{
+        width:100%;
+        grid-template-columns:auto minmax(116px,160px);
+        align-items:center;
+      }
+      #shopOverlay .shopItemActions button{
+        width:100%;
+        min-width:0;
+        margin:0;
+      }
       .toast{bottom:96px}
       .nav{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
       .mobileUtilityBar{
@@ -2830,13 +2886,13 @@
 
 <!-- Shop -->
 <div class="overlay" id="shopOverlay">
-  <div class="modal">
+  <div class="modal shopModal">
     <div class="modalTop">
       <div class="modalTitle">Shop (Paused) — Money: $<span id="shopMoney"></span></div>
       <button class="ghost" onclick="closeShop()">Resume</button>
     </div>
-    <div class="modalBody">
-      <div class="tabs">
+    <div class="modalBody shopModalBody">
+      <div class="tabs shopTabs" role="tablist" aria-label="Shop categories">
         <button class="tab active" id="tabWeapons" onclick="shopTab('weapons')">Weapons</button>
         <button class="tab" id="tabAmmo" onclick="shopTab('ammo')">Ammo</button>
         <button class="tab" id="tabArmor" onclick="shopTab('armor')">Armory</button>
@@ -2858,7 +2914,7 @@
         <div class="shopFilterChips" id="shopFilterChips"></div>
       </div>
       <div class="hudLine" id="shopNote"></div>
-      <div class="list" id="shopList"></div>
+      <div class="list" id="shopList" aria-live="polite"></div>
     </div>
   </div>
 </div>
@@ -3098,7 +3154,7 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=4677-respawn-entity-recovery"></script>
+  <script src="./game.js?v=4678-shop-mobile-repair"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
 <script>
 (() => {
