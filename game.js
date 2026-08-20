@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4552";
+const TS_BUILD = "4553";
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
 const DECORATIVE_UNIT_RINGS_ENABLED = false;
 const PREMIUM_2D_GRAPHICS_VERSION = 12;
@@ -44575,8 +44575,45 @@ function startRespawnCountdown(){
   S._combatTigerAttackAt = 0;
   S.target = null;
   if(S.inBattle) endBattle("RETREAT");
+  // endBattle intentionally starts an exit cinematic. A death is different:
+  // the player is about to be moved to a distant safe point, so retaining the
+  // old combat focus can leave the camera looking at an empty patch of map.
+  resetBattleCinematic();
   toast(`Downed. Respawn in 3s. Lives left: ${S.lives}`);
 }
+
+function restoreRespawnPresentation(now=Date.now()){
+  if(!S?.me || !Number.isFinite(S.me.x) || !Number.isFinite(S.me.y)) return false;
+
+  // Teleports must be atomic across simulation, draw interpolation, and the
+  // world camera. Leaving any one of these at the death location can make the
+  // live player appear to have vanished even though the minimap still sees it.
+  clearEntityDrawCache(S.me);
+  S.me.__drawX = S.me.x;
+  S.me.__drawY = S.me.y;
+  S.me.__drawAt = performance.now ? performance.now() : now;
+  S.meHitFlashUntil = 0;
+  S.meHitFlashPower = 0;
+  S.rollAnimStart = 0;
+  S.rollAnimUntil = 0;
+  S.rollAnimFromX = S.me.x;
+  S.rollAnimFromY = S.me.y;
+  S.rollAnimToX = S.me.x;
+  S.rollAnimToY = S.me.y;
+
+  const cameraCenter = cameraClampCenter(S.me.x, S.me.y, S);
+  if(!S.camera || typeof S.camera !== "object") S.camera = {};
+  S.camera.x = cameraCenter.x;
+  S.camera.y = cameraCenter.y;
+  S._cameraOutFrames = 0;
+  __emptyViewportFrames = 0;
+
+  clearTransientCombatVisuals();
+  resetBattleCinematic();
+  try{ invalidateMapCache(); }catch(e){}
+  return true;
+}
+
 function respawnTick(){
   if(!S.respawnPendingUntil) return;
   const now = Date.now();
@@ -44603,6 +44640,7 @@ function respawnTick(){
   S.respawnTargetY = 0;
   S.rollInvulnUntil = now + 1200;
   S.civGraceUntil = Math.max(S.civGraceUntil || 0, now + 1800);
+  restoreRespawnPresentation(now);
   {
     const director = ensureMissionDirectorState(S);
     director.nextSpawnAt = Math.max(director.nextSpawnAt || 0, now + rand(3200, 5200));
@@ -50433,6 +50471,7 @@ function drawMapScene(){
   const chapter = chapterIndexForMode(S.mode);
   const chapterStyle = chapterVisualForMode(S.mode, chapter);
   const tw = ensureMissionTwistState(S);
+  const dynObjective = ensureDynamicObjectiveState(S);
   if(!ENABLE_BIOME_SYSTEM && (S.fogUntil || 0) > 0){
     S.fogUntil = 0;
   }
@@ -52407,6 +52446,20 @@ function drawDangerMarker(x,y){
   ctx.fillStyle="rgba(11,13,18,.9)";
   ctx.font="900 14px system-ui";
   ctx.fillText("!", x-3.5, y+15);
+  ctx.restore();
+}
+
+// Entity props are rendered outside drawMapScene, so they cannot use that
+// function's local groundShadow helper. Keep a global equivalent for rescue
+// sites and interactables instead of letting those entity passes fail.
+function groundShadow(x, y, rx, ry, alpha=0.24){
+  if(!ctx) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = "rgba(5,8,14,.82)";
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -58778,6 +58831,70 @@ function drawEntities(){
     if(!liteRender && (shouldDrawFx || (!frameBudgetTight && shouldDrawPopups))) drawSafe("drawDamagePopups", drawDamagePopups);
   }
 }
+
+function drawEmergencyEntityLayer(){
+  if(!ctx || !cv || !S || typeof S !== "object") return false;
+  const off = cameraOffsetSnapshot(S);
+  const viewW = Number(cv.width || WORLD_BASE_WIDTH) || WORLD_BASE_WIDTH;
+  const viewH = Number(cv.height || WORLD_BASE_HEIGHT) || WORLD_BASE_HEIGHT;
+  const visible = (x, y, r=20)=>{
+    if(!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const sx = x - off.x;
+    const sy = y - off.y;
+    return sx >= -r && sx <= (viewW + r) && sy >= -r && sy <= (viewH + r);
+  };
+
+  ctx.save();
+  try{
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+    ctx.lineCap = "round";
+
+    for(const civ of (Array.isArray(S.civilians) ? S.civilians : [])){
+      if(!civ || civ.alive === false || civ.dead || civ.evac || !visible(civ.x, civ.y, 24)) continue;
+      ctx.fillStyle = "rgba(56,189,248,.98)";
+      ctx.strokeStyle = "rgba(224,242,254,.98)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(civ.x, civ.y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    for(const tiger of (Array.isArray(S.tigers) ? S.tigers : [])){
+      if(!tiger || tiger.alive === false || !visible(tiger.x, tiger.y, 30)) continue;
+      const face = Number.isFinite(tiger.heading) ? tiger.heading : Number(tiger.face || 0);
+      ctx.fillStyle = "rgba(249,115,22,.98)";
+      ctx.strokeStyle = "rgba(30,20,12,.98)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(tiger.x, tiger.y, 14, 9, face, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    if(S.me && visible(S.me.x, S.me.y, 34)){
+      const face = Number.isFinite(S.me.face) ? S.me.face : 0;
+      ctx.fillStyle = "rgba(241,245,249,.99)";
+      ctx.strokeStyle = "rgba(14,165,233,.98)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(S.me.x, S.me.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(S.me.x, S.me.y);
+      ctx.lineTo(S.me.x + Math.cos(face) * 18, S.me.y + Math.sin(face) * 18);
+      ctx.stroke();
+    }
+    return true;
+  }finally{
+    ctx.restore();
+  }
+}
+
 function drawMobileUiClearLane(){
   // Intentionally no overlay in the control lane; keep full map visibility.
   return;
@@ -59690,10 +59807,11 @@ function recoverMissionInputLock(reason="watchdog"){
     }
   }
   if((S.respawnPendingUntil || 0) > 0 && now > (S.respawnPendingUntil + 12000)){
-    S.respawnPendingUntil = 0;
-    S.respawnNoticeAt = 0;
-    S.respawnTargetX = 0;
-    S.respawnTargetY = 0;
+    // Complete the interrupted respawn instead of only unlocking input. Merely
+    // clearing the timer can strand the player at 0 HP with stale draw/camera
+    // state, which looks like every actor disappeared while the HUD stays live.
+    S.respawnPendingUntil = now;
+    respawnTick();
     recovered = true;
   }
   if(!recovered) return false;
@@ -60636,7 +60754,15 @@ function draw(){
         if(mapDrawOk && !frameBudgetExceeded(0.92)){
           safeTick("drawSceneGradeUnderlay", ()=>drawSceneCinematicGrade(Date.now(), "underlay"));
         }
-        const entityDrawOk = safeTick("drawSceneEntities", drawEntities);
+        const richEntityDrawOk = safeTick("drawSceneEntities", drawEntities);
+        let entityDrawOk = richEntityDrawOk;
+        if(!richEntityDrawOk){
+          // The map and HUD can continue after a rich entity renderer error.
+          // Always paint a dependency-free actor layer so a recoverable visual
+          // exception can never strand the player on an apparently empty map.
+          entityDrawOk = safeTick("drawSceneEntitiesFallback", drawEmergencyEntityLayer);
+          noteRenderFailSafe("entity-layer");
+        }
         if(entityDrawOk){
           safeTick("drawExtractionSequenceMarker", ()=>drawExtractionSequenceMarker(Date.now()));
           safeTick("drawSettlementDefenseCore", ()=>drawSettlementDefenseCore(Date.now()));
@@ -60650,9 +60776,13 @@ function draw(){
         if(entityDrawOk && !frameBudgetExceeded(0.78)){
           safeTick("drawSceneGradeOverlay", ()=>drawSceneCinematicGrade(Date.now(), "overlay"));
         }
-        if(mapDrawOk){
+        if(mapDrawOk && richEntityDrawOk){
           noteStartupMapFrameReady();
           noteRenderSuccess();
+        } else if(mapDrawOk && entityDrawOk){
+          // The emergency layer kept the mission playable. Do not reset the
+          // consecutive failure counter until the full actor renderer returns.
+          noteStartupMapFrameReady();
         } else {
           throw new Error(`render-scene-failed map=failure entities=${entityDrawOk ? "success" : "failure"}`);
         }
@@ -60822,10 +60952,8 @@ function init(){
     const stalePastLock = lockLeftMs < -1800;
     if(staleFutureLock || stalePastLock){
       const staleKind = staleFutureLock ? "future-lock" : "past-lock";
-      S.respawnPendingUntil = 0;
-      S.respawnNoticeAt = 0;
-      S.respawnTargetX = 0;
-      S.respawnTargetY = 0;
+      S.respawnPendingUntil = now;
+      respawnTick();
       S.rollInvulnUntil = Math.max(Number(S.rollInvulnUntil || 0), now + 500);
       S.respawnLockRecoverCount = Math.max(0, Math.floor(Number(S.respawnLockRecoverCount || 0))) + 1;
       S._respawnLockRecoverCountSession = Math.max(0, Math.floor(Number(S._respawnLockRecoverCountSession || 0))) + 1;
