@@ -72,6 +72,16 @@ function isAdminUser(user){
   return adminIds.has(userId);
 }
 
+function isAnonymousAdminForSameGroup(ctx){
+  const chat = ctx?.chat;
+  const senderChat = ctx?.senderChat;
+  if(!isGroupChat({ chat }) || !senderChat) return false;
+  const chatId = String(chat?.id || "").trim();
+  const senderChatId = String(senderChat?.id || "").trim();
+  if(!chatId || senderChatId !== chatId) return false;
+  return isGroupChat({ chat:senderChat });
+}
+
 function readCommand(text, botUsername){
   const raw = String(text || "").trim();
   if(!raw.startsWith("/")) return null;
@@ -1164,7 +1174,11 @@ async function handleSetCommunityCommand(botToken, ctx){
     await sendMessage(botToken, ctx.chat.id, "Run /setcommunity inside the Telegram group you want Tiger Strike to use.");
     return;
   }
-  let allowed = isAdminUser(ctx.from);
+  // Telegram hides the owner's personal user id when "Remain Anonymous" is
+  // enabled and sends the command on behalf of the group instead. A regular
+  // member cannot produce sender_chat with the same group id, so this remains
+  // scoped to a Telegram-authorized anonymous administrator.
+  let allowed = isAdminUser(ctx.from) || isAnonymousAdminForSameGroup(ctx);
   if(!allowed){
     try{
       const member = await telegramBotApi("getChatMember", { chat_id:ctx.chat.id, user_id:ctx.from?.id }, botToken);
@@ -1299,6 +1313,7 @@ async function handleCommand(botToken, update, source){
   const ctx = {
     chat: source.chat,
     from: resolveActorUser(update, source),
+    senderChat: source.sender_chat || null,
     message_id: source.message_id,
   };
   try{ await touchPlayer(ctx.from); }catch(e){ /* best effort */ }
