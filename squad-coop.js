@@ -5,6 +5,7 @@
   const state = {
     open:false,
     code:"",
+    inviteUrl:"",
     snapshot:null,
     roles:[],
     local:null,
@@ -16,6 +17,8 @@
     lastSyncAt:0,
     syncBusy:false,
     actionBusy:false,
+    requestBusy:false,
+    overlayBound:false,
     move:{ up:false, down:false, left:false, right:false },
     keys:new Set(),
     priorPause:false,
@@ -28,6 +31,15 @@
   const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (ch)=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[ch]));
   const distance = (a,b) => Math.hypot(Number(a?.x||0)-Number(b?.x||0),Number(a?.y||0)-Number(b?.y||0));
   const cleanCode = (value) => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0,6);
+  const extractCode = (value) => {
+    const text = String(value || "").trim().toUpperCase();
+    const tagged = text.match(/(?:SQUAD[_\s:/=-]*|STARTAPP=SQUAD_)([A-Z0-9]{6})/);
+    if(tagged) return cleanCode(tagged[1]);
+    const exact = text.match(/^([A-Z0-9]{6})$/);
+    if(exact) return cleanCode(exact[1]);
+    const tokens = text.match(/\b[A-Z0-9]{6}\b/g);
+    return tokens?.length ? cleanCode(tokens[tokens.length - 1]) : "";
+  };
   const hasTelegramAuth = () => !!String(tgApp?.initData || "");
   const viewerId = () => Number(tgApp?.initDataUnsafe?.user?.id || state.snapshot?.viewerId || 0);
   const localSnapshotPlayer = () => (state.snapshot?.players || []).find((p)=>Number(p.userId) === viewerId()) || null;
@@ -44,11 +56,20 @@
   }
 
   async function api(action, extra={}){
-    const response = await fetch(API, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify({ initData:String(tgApp?.initData || ""), action, code:state.code, ...extra }),
-    });
+    const controller = new AbortController();
+    const timeout = window.setTimeout(()=>controller.abort(), 14000);
+    let response;
+    try{
+      response = await fetch(API, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ initData:String(tgApp?.initData || ""), action, code:state.code, ...extra }),
+        signal:controller.signal,
+      });
+    }catch(error){
+      if(error?.name === "AbortError") throw new Error("Live Squad took too long to answer. Please try again.");
+      throw new Error("Live Squad could not connect. Check your signal and try again.");
+    }finally{ window.clearTimeout(timeout); }
     const payload = await response.json().catch(()=>null);
     if(!response.ok || !payload?.ok) throw new Error(payload?.error || "Live squad request failed.");
     if(payload.snapshot) applySnapshot(payload.snapshot, payload.roles);
@@ -57,7 +78,6 @@
 
   function applySnapshot(snapshot, roles){
     if(!snapshot || typeof snapshot !== "object") return;
-    const previousStatus = state.snapshot?.status || "";
     state.snapshot = snapshot;
     state.code = cleanCode(snapshot.code);
     if(Array.isArray(roles) && roles.length) state.roles = roles;
@@ -75,9 +95,32 @@
       state.local.downed = !!mine.downed;
       state.local.role = mine.role;
     }
-    if(previousStatus === "active" && snapshot.status === "active" && $("squadArena")) updateActiveHud();
-    else render();
+    const bodyMode = $("squadBody")?.dataset?.squadMode || "";
+    if(snapshot.status === "active" && bodyMode === "active" && $("squadArena")){
+      updateActiveHud();
+    }else if(snapshot.status === "waiting" && bodyMode === "waiting"){
+      updateWaitingLobby();
+    }else if(["complete","failed"].includes(snapshot.status) && bodyMode === snapshot.status){
+      updateActiveHud();
+    }else{
+      render();
+    }
     maybeApplyReward();
+  }
+
+  function updateWaitingLobby(){
+    const snapshot = state.snapshot;
+    if(!snapshot) return;
+    const count = $("squadMemberCount");
+    if(count) count.textContent = `${snapshot.memberCount}/2 players connected`;
+    const roster = $("squadRoster");
+    if(roster) roster.innerHTML = rosterHtml();
+    const mine = localSnapshotPlayer();
+    document.querySelectorAll("#liveSquadOverlay [data-squad-role]").forEach((button)=>{
+      button.classList.toggle("active", button.dataset.squadRole === mine?.role);
+    });
+    const startButton = $("squadStartButton");
+    if(startButton) startButton.disabled = snapshot.memberCount < 2 || state.requestBusy;
   }
 
   function updateActiveHud(){
@@ -121,7 +164,7 @@
     const roles = state.roles.length ? state.roles : [
       {key:"tracker",label:"Tracker"},{key:"medic",label:"Medic"},{key:"assault",label:"Assault"},{key:"trapper",label:"Trapper"},
     ];
-    return roles.map((role)=>`<button class="squadRole ${mine?.role === role.key ? "active" : ""}" ${waiting ? "" : "disabled"} onclick="liveSquadChooseRole('${esc(role.key)}')">${esc(role.label)}</button>`).join("");
+    return roles.map((role)=>`<button type="button" class="squadRole ${mine?.role === role.key ? "active" : ""}" ${waiting ? "" : "disabled"} data-squad-command="role" data-squad-role="${esc(role.key)}">${esc(role.label)}</button>`).join("");
   }
 
   function lobbyHtml(){
@@ -132,8 +175,8 @@
           <div><div class="squadKicker">V5.0 Live Co-op</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Two real Telegram players enter one rescue arena. Save four civilians, defeat the Night Fang Alpha, revive each other, and stand together at extraction.</div></div>
           <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
         </div>
-        <div class="squadRow"><button class="squadBtn good" onclick="liveSquadCreate()">Create Squad</button></div>
-        <div class="squadJoinRow"><input class="squadInput" id="squadJoinCode" maxlength="6" placeholder="SQUAD CODE" autocomplete="off" inputmode="text"><button class="squadBtn primary" onclick="liveSquadJoin()">Join</button></div>
+        <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
+        <div class="squadJoinRow"><input class="squadInput" id="squadJoinCode" maxlength="160" placeholder="CODE OR INVITE LINK" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text"><button type="button" class="squadBtn primary" data-squad-command="join">Join</button></div>
         <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
         <div class="squadSmall">Telegram requires both players to open the game through the Tiger Strike bot. Rooms expire automatically.</div>
       </div>`;
@@ -143,17 +186,18 @@
     return `<div class="squadPanel">
       <div class="squadHero">
         <div><div class="squadKicker">Private Live Squad</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Choose a role. The squad leader starts when both players are connected.</div></div>
-        <div class="squadCodeBox"><div class="squadSmall">SQUAD CODE</div><div class="squadCode">${esc(snapshot.code)}</div><div class="squadSmall">${snapshot.memberCount}/2 players connected</div></div>
+        <div class="squadCodeBox"><div class="squadSmall">SQUAD CODE</div><div class="squadCode">${esc(snapshot.code)}</div><div class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/2 players connected</div></div>
       </div>
-      <div class="squadRoster">${rosterHtml()}</div>
+      <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
-        ${waiting ? `<button class="squadBtn primary" onclick="liveSquadInvite()">Invite Teammate</button>` : ""}
-        ${waiting && snapshot.isHost ? `<button class="squadBtn good" ${full ? "" : "disabled"} onclick="liveSquadStart()">Start Mission</button>` : ""}
-        ${waiting && !snapshot.isHost ? `<button class="squadBtn good" disabled>Waiting for Leader</button>` : ""}
-        <button class="squadBtn" onclick="liveSquadCopyCode()">Copy Code</button>
-        <button class="squadBtn danger" onclick="liveSquadLeave()">Leave Squad</button>
+        ${waiting ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate</button>` : ""}
+        ${waiting && snapshot.isHost ? `<button type="button" class="squadBtn good" id="squadStartButton" ${full ? "" : "disabled"} data-squad-command="start">Start Mission</button>` : ""}
+        ${waiting && !snapshot.isHost ? `<button type="button" class="squadBtn good" disabled>Waiting for Leader</button>` : ""}
+        <button type="button" class="squadBtn" data-squad-command="copy-code">Copy Code</button>
+        <button type="button" class="squadBtn" data-squad-command="copy-link">Copy Invite Link</button>
+        <button type="button" class="squadBtn danger" data-squad-command="leave">Leave Squad</button>
       </div>
     </div>`;
   }
@@ -178,17 +222,17 @@
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : "⏱️ Operation Failed"}</div>
         <div class="squadBannerText">${snap.status === "complete" ? "Both players rescued the civilians, defeated Night Fang, and reached extraction together." : "Create another squad and try the rescue again."}</div>
-        ${snap.status === "complete" ? `<button class="squadBtn good" onclick="liveSquadClaim()">Claim Co-op Reward</button>` : ""}
-        <button class="squadBtn" onclick="liveSquadLeave()">Return to HQ</button>
+        ${snap.status === "complete" ? `<button type="button" class="squadBtn good" data-squad-command="claim">Claim Co-op Reward</button>` : ""}
+        <button type="button" class="squadBtn" data-squad-command="leave">Return to HQ</button>
       </div>
       <div class="squadControls">
         <div class="squadDpad">
-          <button class="squadPadBtn up" data-move="up">▲</button><button class="squadPadBtn left" data-move="left">◀</button><button class="squadPadBtn right" data-move="right">▶</button><button class="squadPadBtn down" data-move="down">▼</button>
+          <button type="button" class="squadPadBtn up" data-move="up">▲</button><button type="button" class="squadPadBtn left" data-move="left">◀</button><button type="button" class="squadPadBtn right" data-move="right">▶</button><button type="button" class="squadPadBtn down" data-move="down">▼</button>
         </div>
         <div class="squadActions">
-          <button class="squadActionBtn attack" onclick="liveSquadAction('attack')">🎯 Attack</button>
-          <button class="squadActionBtn rescue" onclick="liveSquadAction('rescue')">🛟 Rescue</button>
-          <button class="squadActionBtn revive" onclick="liveSquadAction('revive')">💚 Revive</button>
+          <button type="button" class="squadActionBtn attack" data-squad-command="action" data-squad-action="attack">🎯 Attack</button>
+          <button type="button" class="squadActionBtn rescue" data-squad-command="action" data-squad-action="rescue">🛟 Rescue</button>
+          <button type="button" class="squadActionBtn revive" data-squad-command="action" data-squad-action="revive">💚 Revive</button>
         </div>
       </div>
       <div class="squadSmall" style="margin-top:8px">Move with the arrows or WASD. Actions work only when you are close enough. If disconnected, reopen the same invitation to reconnect.</div>
@@ -212,18 +256,39 @@
   function render(){
     const body = $("squadBody");
     if(!body) return;
-    if(state.snapshot && ["active","complete","failed"].includes(state.snapshot.status)) body.innerHTML = arenaHtml();
-    else body.innerHTML = lobbyHtml();
+    if(state.snapshot && ["active","complete","failed"].includes(state.snapshot.status)){
+      body.dataset.squadMode = state.snapshot.status;
+      body.innerHTML = arenaHtml();
+    }else{
+      body.dataset.squadMode = state.snapshot ? "waiting" : "landing";
+      body.innerHTML = lobbyHtml();
+    }
     bindMoveButtons();
+    bindLobbyInput();
     if(state.snapshot?.status === "active") ensureFrame();
     else drawArena();
+  }
+
+  function bindLobbyInput(){
+    const input = $("squadJoinCode");
+    if(!input) return;
+    input.addEventListener("keydown", (event)=>{
+      if(event.key !== "Enter") return;
+      event.preventDefault();
+      dispatchCommand("join", input);
+    });
   }
 
   function bindMoveButtons(){
     document.querySelectorAll("#liveSquadOverlay [data-move]").forEach((button)=>{
       const direction = button.dataset.move;
-      const on = (event)=>{ event.preventDefault(); state.move[direction] = true; };
-      const off = (event)=>{ event.preventDefault(); state.move[direction] = false; };
+      const on = (event)=>{
+        event.preventDefault();
+        event.stopPropagation();
+        try{ button.setPointerCapture?.(event.pointerId); }catch(error){}
+        state.move[direction] = true;
+      };
+      const off = (event)=>{ event.preventDefault(); event.stopPropagation(); state.move[direction] = false; };
       button.addEventListener("pointerdown", on);
       button.addEventListener("pointerup", off);
       button.addEventListener("pointercancel", off);
@@ -231,9 +296,56 @@
     });
   }
 
+  async function dispatchCommand(command, source){
+    const button = source?.closest?.("button") || null;
+    if(button?.disabled || state.requestBusy) return;
+    const actionName = button?.dataset?.squadAction || "";
+    const role = button?.dataset?.squadRole || "";
+    const commands = {
+      create:()=>create(),
+      join:()=>join(),
+      role:()=>chooseRole(role),
+      invite:()=>invite(),
+      start:()=>start(),
+      action:()=>action(actionName),
+      claim:()=>claim(),
+      leave:()=>leave(),
+      "copy-code":()=>copyCode(),
+      "copy-link":()=>copyInviteLink(),
+    };
+    const run = commands[String(command || "")];
+    if(!run) return;
+    state.requestBusy = true;
+    if(button) button.classList.add("busy");
+    try{ await run(); }
+    finally{
+      state.requestBusy = false;
+      if(button?.isConnected) button.classList.remove("busy");
+      if(state.snapshot?.status === "waiting") updateWaitingLobby();
+    }
+  }
+
+  function bindOverlay(){
+    const overlay = $("liveSquadOverlay");
+    if(!overlay || state.overlayBound) return;
+    state.overlayBound = true;
+    ["pointerdown","pointerup","touchstart","touchend"].forEach((name)=>{
+      overlay.addEventListener(name, (event)=>event.stopPropagation(), { passive:name.startsWith("touch") });
+    });
+    overlay.addEventListener("click", (event)=>{
+      const button = event.target?.closest?.("[data-squad-command]");
+      if(!button || !overlay.contains(button)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      dispatchCommand(button.dataset.squadCommand, button);
+    }, true);
+  }
+
   function open(){
     const overlay = $("liveSquadOverlay");
     if(!overlay) return;
+    bindOverlay();
     state.open = true;
     state.priorPause = !!window.S?.paused;
     if(window.S && !state.priorPause){ window.S.paused = true; window.S.pauseReason = "live-squad"; }
@@ -272,7 +384,7 @@
 
   async function join(codeValue=""){
     if(!hasTelegramAuth()) return setMessage("Please open the game inside Telegram first.", true);
-    const code = cleanCode(codeValue || $("squadJoinCode")?.value);
+    const code = extractCode(codeValue || $("squadJoinCode")?.value);
     if(code.length !== 6) return setMessage("Enter the complete six-character squad code.", true);
     try{
       state.code = code;
@@ -295,6 +407,7 @@
       setMessage("Preparing your Telegram squad invitation…");
       const payload = await api("invite");
       const invitation = payload.invitation || {};
+      state.inviteUrl = String(invitation.playUrl || "");
       if(invitation.preparedMessageId && typeof tgApp?.shareMessage === "function"){
         const sent = await new Promise((resolve)=>{
           let done = false;
@@ -302,14 +415,24 @@
           try{ tgApp.shareMessage(invitation.preparedMessageId, finish); setTimeout(()=>finish(false),30000); }
           catch(error){ finish(false); }
         });
-        setMessage(sent ? "Invitation sent. Waiting for your teammate…" : "Invitation was not sent.", !sent);
+        if(sent){
+          setMessage("Invitation sent. Waiting for your teammate…");
+        }else{
+          openTelegramShare(invitation.playUrl);
+          setMessage("Choose a Telegram friend and send the invitation.");
+        }
       }else{
-        const text = `Join my live Tiger Strike squad for Operation Night Fang. Code: ${state.code}`;
-        const url = `https://t.me/share/url?url=${encodeURIComponent(invitation.playUrl || "")}&text=${encodeURIComponent(text)}`;
-        if(typeof tgApp?.openTelegramLink === "function") tgApp.openTelegramLink(url); else window.open(url,"_blank","noopener");
+        openTelegramShare(invitation.playUrl);
         setMessage("Telegram share opened. Choose a teammate to invite.");
       }
     }catch(error){ setMessage(error.message, true); }
+  }
+
+  function openTelegramShare(playUrl=""){
+    const text = `Join my live Tiger Strike squad for Operation Night Fang. Code: ${state.code}`;
+    const url = `https://t.me/share/url?url=${encodeURIComponent(playUrl || state.inviteUrl || "")}&text=${encodeURIComponent(text)}`;
+    if(typeof tgApp?.openTelegramLink === "function") tgApp.openTelegramLink(url);
+    else window.open(url,"_blank","noopener");
   }
 
   async function start(){
@@ -321,6 +444,12 @@
     if(state.actionBusy || state.snapshot?.status !== "active") return;
     state.actionBusy = true;
     try{
+      // Send the newest local position before judging action range. This keeps
+      // a fast move-then-tap from being rejected using an older server position.
+      if(state.local){
+        await api("sync", { player:{ x:state.local.x, y:state.local.y, face:state.local.face } });
+        state.lastSyncAt = Date.now();
+      }
       const extra = {};
       if(kind === "rescue"){
         const remaining = (state.snapshot.civilians || []).filter((c)=>!(state.snapshot.rescuedIds || []).includes(c.id));
@@ -374,15 +503,64 @@
 
   async function leave(){
     if(state.code){ try{ await api("leave"); }catch(error){} }
-    state.code = ""; state.snapshot = null; state.local = null; state.remoteDraw.clear();
+    state.code = ""; state.inviteUrl = ""; state.snapshot = null; state.local = null; state.remoteDraw.clear();
     setMessage("Create a private squad or enter a teammate's six-character code.");
     close();
   }
 
+  async function copyTextReliable(text){
+    const value = String(text || "");
+    if(!value) return false;
+    try{
+      if(navigator.clipboard?.writeText){
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+    }catch(error){}
+    const field = document.createElement("textarea");
+    field.value = value;
+    field.setAttribute("readonly", "");
+    field.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+    document.body.appendChild(field);
+    field.focus();
+    field.select();
+    field.setSelectionRange(0, field.value.length);
+    let copied = false;
+    try{ copied = document.execCommand("copy") === true; }catch(error){}
+    field.remove();
+    return copied;
+  }
+
+  function copyFeedback(text){
+    try{ tgApp?.HapticFeedback?.notificationOccurred?.("success"); }catch(error){}
+    setMessage(text);
+  }
+
   async function copyCode(){
     const text = state.code || "";
-    try{ await navigator.clipboard.writeText(text); setMessage(`Squad code ${text} copied.`); }
-    catch(error){ setMessage(`Squad code: ${text}`); }
+    const copied = await copyTextReliable(text);
+    if(copied) copyFeedback(`Copied! Squad code: ${text}`);
+    else{
+      setMessage(`Squad code: ${text}. Press and hold the large code above to copy it.`, true);
+      try{ tgApp?.showAlert?.(`Squad code: ${text}`); }catch(error){}
+    }
+  }
+
+  async function copyInviteLink(){
+    try{
+      if(!state.inviteUrl){
+        setMessage("Preparing the invite link…");
+        const payload = await api("invite");
+        state.inviteUrl = String(payload?.invitation?.playUrl || "");
+      }
+      if(!state.inviteUrl) throw new Error("Invite link is unavailable. Use the squad code instead.");
+      const copied = await copyTextReliable(state.inviteUrl);
+      if(copied) copyFeedback("Copied! Send the invite link to your teammate.");
+      else{
+        setMessage(`Invite link ready: ${state.inviteUrl}`, true);
+        try{ tgApp?.showAlert?.(state.inviteUrl); }catch(error){}
+      }
+    }catch(error){ setMessage(error.message, true); }
   }
 
   function startPolling(){

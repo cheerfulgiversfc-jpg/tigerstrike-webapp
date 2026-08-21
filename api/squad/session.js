@@ -2,6 +2,7 @@ const { json, readJsonBody } = require("../_lib/http");
 const { telegramBotApi } = require("../_lib/telegram-api");
 const { validateTelegramInitData } = require("../_lib/telegram-auth");
 const { getCommunitySnapshot } = require("../_lib/community");
+const { storageMode } = require("../_lib/metrics-store");
 const {
   ROLE_DEFS,
   cleanCode,
@@ -47,23 +48,36 @@ async function prepareInvite(botToken, user, session){
     },
     reply_markup:{ inline_keyboard:buttons },
   };
-  const prepared = await telegramBotApi("savePreparedInlineMessage", {
-    user_id:userIdOf(user),
-    result,
-    allow_user_chats:true,
-    allow_group_chats:true,
-    allow_channel_chats:false,
-    allow_bot_chats:false,
-  }, botToken);
+  let prepared = null;
+  let preparedError = "";
+  try{
+    prepared = await telegramBotApi("savePreparedInlineMessage", {
+      user_id:userIdOf(user),
+      result,
+      allow_user_chats:true,
+      allow_group_chats:true,
+      allow_channel_chats:false,
+      allow_bot_chats:false,
+    }, botToken);
+  }catch(error){
+    // Older Telegram clients/bots may not support prepared messages. The
+    // ordinary Telegram share URL below is a fully functional fallback.
+    preparedError = String(error?.message || "Prepared message unavailable.").slice(0, 180);
+  }
   return {
     preparedMessageId:String(prepared?.id || ""),
     expirationDate:Number(prepared?.expiration_date || 0),
+    preparedError,
     playUrl,
     community,
   };
 }
 
 module.exports = async function handler(req, res){
+  if(req.method === "GET"){
+    const storage = storageMode();
+    return json(res, 200, { ok:true, service:"live-squad", storage, durable:storage === "kv" });
+  }
   if(req.method !== "POST") return json(res, 405, { ok:false, error:"Method not allowed." });
   try{
     const botToken = envText("TELEGRAM_BOT_TOKEN");
@@ -105,6 +119,7 @@ module.exports = async function handler(req, res){
     const snapshot = await buildSnapshot(session, userIdOf(user));
     return json(res, 200, {
       ok:true,
+      storage:storageMode(),
       snapshot,
       invitation,
       reward,
