@@ -4,13 +4,19 @@ const { getState, setState } = require("./metrics-store");
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
 const BOSS_HP_MAX = 1200;
-const WORLD = Object.freeze({ width:1000, height:600 });
-const EXTRACTION = Object.freeze({ x:875, y:485, r:72 });
+const WORLD = Object.freeze({ width:1000, height:760 });
+const EXTRACTION = Object.freeze({ x:875, y:485, r:76 });
 const CIVILIANS = Object.freeze([
-  Object.freeze({ id:"civ_north", x:255, y:145, name:"Radio Operator" }),
-  Object.freeze({ id:"civ_market", x:485, y:425, name:"Field Medic" }),
-  Object.freeze({ id:"civ_bridge", x:735, y:155, name:"Bridge Scout" }),
-  Object.freeze({ id:"civ_river", x:650, y:500, name:"Evac Driver" }),
+  Object.freeze({ id:"civ_north", x:230, y:170, name:"Radio Operator", look:"field" }),
+  Object.freeze({ id:"civ_market", x:470, y:555, name:"Field Medic", look:"medic" }),
+  Object.freeze({ id:"civ_bridge", x:790, y:190, name:"Bridge Scout", look:"scout" }),
+  Object.freeze({ id:"civ_river", x:660, y:655, name:"Evac Driver", look:"driver" }),
+]);
+const TIGER_DEFS = Object.freeze([
+  Object.freeze({ id:"tiger_scout", name:"Scout Tiger", type:"Scout", hpMax:210, baseX:290, baseY:350, rangeX:58, rangeY:44, speed:.72, phase:.4 }),
+  Object.freeze({ id:"tiger_ambush", name:"Ambush Tiger", type:"Standard", hpMax:260, baseX:610, baseY:190, rangeX:76, rangeY:50, speed:.54, phase:2.1 }),
+  Object.freeze({ id:"tiger_guard", name:"Guard Tiger", type:"Armored", hpMax:330, baseX:735, baseY:500, rangeX:62, rangeY:58, speed:.47, phase:4.2 }),
+  Object.freeze({ id:"night_fang_alpha", name:"Night Fang Alpha", type:"Alpha", hpMax:BOSS_HP_MAX, baseX:560, baseY:385, rangeX:118, rangeY:92, speed:.36, phase:1.25, boss:true }),
 ]);
 const ROLE_DEFS = Object.freeze({
   tracker:Object.freeze({ key:"tracker", label:"Tracker", damage:28, maxHp:105, speed:1.08 }),
@@ -82,6 +88,7 @@ function newPlayer(user, slot=0){
     maxHp:def.maxHp,
     downed:false,
     bossDamage:0,
+    tigerDamage:{},
     rescuedIds:[],
     revives:0,
     joinedAt:nowMs(),
@@ -100,6 +107,11 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
   const def = ROLE_DEFS[role];
   const maxHp = def.maxHp;
   const hp = clamp(src.hp ?? maxHp, 0, maxHp);
+  const tigerDamage = {};
+  for(const tiger of TIGER_DEFS){
+    const damage = clamp(src?.tigerDamage?.[tiger.id], 0, tiger.hpMax);
+    if(damage > 0) tigerDamage[tiger.id] = damage;
+  }
   return {
     ...base,
     ...src,
@@ -114,6 +126,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     maxHp,
     downed:!!src.downed || hp <= 0,
     bossDamage:clamp(src.bossDamage, 0, BOSS_HP_MAX),
+    tigerDamage,
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>CIVILIANS.some((c)=>c.id === id)))],
     revives:clamp(src.revives, 0, 999),
     joinedAt:Math.max(0, Number(src.joinedAt || base.joinedAt)),
@@ -125,14 +138,25 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
   };
 }
 
-function bossPosition(session, at=nowMs()){
-  if(!session?.startedAt) return { x:650, y:250 };
+function tigerPosition(session, tiger, at=nowMs()){
+  if(!session?.startedAt) return { x:tiger.baseX, y:tiger.baseY };
   const elapsed = Math.max(0, at - session.startedAt) / 1000;
-  const rush = Math.sin(elapsed * 0.43) * 92;
   return {
-    x:clamp(620 + Math.cos(elapsed * 0.31) * 118 + rush * 0.22, 390, 830),
-    y:clamp(270 + Math.sin(elapsed * 0.47) * 96, 105, 455),
+    x:clamp(tiger.baseX + Math.cos(elapsed * tiger.speed + tiger.phase) * tiger.rangeX, 70, WORLD.width - 70),
+    y:clamp(tiger.baseY + Math.sin(elapsed * tiger.speed * .83 + tiger.phase) * tiger.rangeY, 90, WORLD.height - 80),
   };
+}
+
+function tigerSnapshots(session, players, at=nowMs()){
+  return TIGER_DEFS.map((def)=>{
+    let damage = players.reduce((sum, player)=>sum + clamp(player?.tigerDamage?.[def.id], 0, def.hpMax), 0);
+    if(def.boss && damage <= 0){
+      // Keep rooms created by the first V5 release playable after this update.
+      damage = players.reduce((sum, player)=>sum + clamp(player?.bossDamage, 0, BOSS_HP_MAX), 0);
+    }
+    const hp = clamp(def.hpMax - damage, 0, def.hpMax);
+    return { ...def, ...tigerPosition(session, def, at), hp, defeated:hp <= 0 };
+  });
 }
 
 async function readSession(code){ return normalizeSession(await getState(sessionKey(code))); }
@@ -207,14 +231,18 @@ async function memberPlayers(session){
 
 function sessionDerived(session, players, at=nowMs()){
   const rescuedIds = [...new Set(players.flatMap((p)=>p.rescuedIds || []))];
-  const bossDamage = players.reduce((sum, p)=>sum + clamp(p.bossDamage, 0, BOSS_HP_MAX), 0);
-  const bossHp = clamp(BOSS_HP_MAX - bossDamage, 0, BOSS_HP_MAX);
+  const tigers = tigerSnapshots(session, players, at);
+  const boss = tigers.find((t)=>t.boss) || tigers[tigers.length - 1];
+  const bossDamage = clamp(BOSS_HP_MAX - Number(boss?.hp || 0), 0, BOSS_HP_MAX);
+  const bossHp = Number(boss?.hp || 0);
   const onlineIds = players.filter((p)=>at - p.lastSeenAt <= 15000).map((p)=>p.userId);
   const extractionReadyIds = players
     .filter((p)=>!p.downed && distance(p, EXTRACTION) <= EXTRACTION.r)
     .map((p)=>p.userId);
-  const objectivesReady = rescuedIds.length >= CIVILIANS.length && bossHp <= 0;
-  return { rescuedIds, bossDamage, bossHp, onlineIds, extractionReadyIds, objectivesReady };
+  const allTigersCleared = tigers.every((t)=>t.defeated);
+  const legacyBossOnlyRoom = players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
+  const objectivesReady = rescuedIds.length >= CIVILIANS.length && bossHp <= 0 && (allTigersCleared || legacyBossOnlyRoom);
+  return { rescuedIds, bossDamage, bossHp, boss, tigers, onlineIds, extractionReadyIds, objectivesReady };
 }
 
 async function maybeFinishSession(session, players){
@@ -261,7 +289,8 @@ async function buildSnapshot(session, viewerId){
     world:WORLD,
     extraction:EXTRACTION,
     civilians:CIVILIANS,
-    boss:{ ...bossPosition(session, at), hp:derived.bossHp, hpMax:BOSS_HP_MAX, defeated:derived.bossHp <= 0, name:"Night Fang Alpha" },
+    tigers:derived.tigers,
+    boss:derived.boss,
     rescuedIds:derived.rescuedIds,
     objectivesReady:derived.objectivesReady,
     extractionReadyIds:derived.extractionReadyIds,
@@ -293,10 +322,14 @@ async function updateOwnPresence(session, user, patch={}){
     player.lastMoveAt = now;
   }
   if(session.status === "active" && !player.downed){
-    const boss = bossPosition(session, now);
-    if(distance(player, boss) <= 118 && now - player.lastHazardAt >= 1250){
+    const players = await memberPlayers(session);
+    const threat = tigerSnapshots(session, players, now)
+      .filter((t)=>!t.defeated)
+      .sort((a,b)=>distance(player,a)-distance(player,b))[0];
+    if(threat && distance(player, threat) <= (threat.boss ? 122 : 102) && now - player.lastHazardAt >= 1250){
       const armor = player.role === "assault" ? 3 : (player.role === "medic" ? 1 : 0);
-      player.hp = clamp(player.hp - Math.max(7, 12 - armor), 0, player.maxHp);
+      const baseDamage = threat.boss ? 13 : (threat.type === "Armored" ? 11 : 9);
+      player.hp = clamp(player.hp - Math.max(6, baseDamage - armor), 0, player.maxHp);
       player.lastHazardAt = now;
       if(player.hp <= 0) player.downed = true;
     }
@@ -325,6 +358,7 @@ async function applyAction(session, user, action, payload={}){
       p.maxHp = def.maxHp;
       p.downed = false;
       p.bossDamage = 0;
+      p.tigerDamage = {};
       p.rescuedIds = [];
       p.rewardClaimed = false;
       p.lastSeenAt = now;
@@ -335,12 +369,19 @@ async function applyAction(session, user, action, payload={}){
   if(session.status !== "active") throw new Error("The co-op mission is not active.");
   if(player.downed) throw new Error("Your teammate must revive you first.");
   if(action === "attack"){
-    const boss = bossPosition(session, now);
-    if(distance(player, boss) > 175) throw new Error("Move closer to Night Fang.");
+    const players = await memberPlayers(session);
+    const tigers = tigerSnapshots(session, players, now).filter((t)=>!t.defeated);
+    const requestedId = cleanText(payload.tigerId, 32);
+    const target = tigers.find((t)=>t.id === requestedId) || tigers.sort((a,b)=>distance(player,a)-distance(player,b))[0];
+    if(!target) throw new Error("The tiger threat is already cleared.");
+    if(distance(player, target) > (target.boss ? 178 : 164)) throw new Error(`Move closer to ${target.name}.`);
     if(now - player.lastAttackAt < 560) throw new Error("Weapon is cooling down.");
     const def = ROLE_DEFS[player.role];
     const combo = clamp(payload.combo || 0, 0, 3);
-    player.bossDamage = clamp(player.bossDamage + def.damage + combo * 2, 0, BOSS_HP_MAX);
+    const hit = def.damage + combo * 2;
+    if(!player.tigerDamage || typeof player.tigerDamage !== "object") player.tigerDamage = {};
+    player.tigerDamage[target.id] = clamp(Number(player.tigerDamage[target.id] || 0) + hit, 0, target.hpMax);
+    if(target.boss) player.bossDamage = clamp(player.bossDamage + hit, 0, BOSS_HP_MAX);
     player.lastAttackAt = now;
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
@@ -398,6 +439,7 @@ async function closeSession(session, user){
 
 module.exports = {
   ROLE_DEFS,
+  TIGER_DEFS,
   cleanCode,
   createSession,
   joinSession,

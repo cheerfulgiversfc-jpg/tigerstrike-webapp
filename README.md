@@ -191,6 +191,10 @@ Operation Night Fang is a private two-player Telegram co-op mission:
 
 Reliable live rooms require the existing Upstash/Vercel KV environment (`KV_REST_API_URL` + `KV_REST_API_TOKEN`, or the equivalent `UPSTASH_REDIS_REST_*` variables). Without KV, the development-only in-memory fallback does not persist across serverless instances.
 
+### V5.1 Shared Story Co-op
+
+Live Squad now uses a Story-style shared district instead of the original placeholder arena. Both Telegram players see the same four human civilians, roaming tiger pack, Night Fang Alpha, soldier avatars, extraction zone, shared health/progress, and six-minute mission clock. Action buttons explain whether the player is in range, and the lobby includes a plain four-step guide for two-player play.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

@@ -15,6 +15,7 @@
     frame:0,
     lastFrameAt:0,
     lastSyncAt:0,
+    lastActionUiAt:0,
     syncBusy:false,
     actionBusy:false,
     requestBusy:false,
@@ -129,10 +130,35 @@
     const bossPct = Math.round((Number(snap.boss?.hp || 0) / Math.max(1, Number(snap.boss?.hpMax || 1))) * 100);
     const seconds = Math.max(0, Math.ceil(Number(snap.timeLeftMs || 0) / 1000));
     const set = (id, text)=>{ const node=$(id); if(node) node.textContent=text; };
-    set("squadBossHud", `${Math.round(snap.boss?.hp || 0)}/${Math.round(snap.boss?.hpMax || 0)} HP (${bossPct}%)`);
+    const activeThreats = (snap.tigers || []).filter((t)=>!t.defeated).length;
+    set("squadBossHud", `Alpha ${Math.round(snap.boss?.hp || 0)} HP • ${activeThreats} active`);
     set("squadCivHud", `${snap.rescuedIds?.length || 0}/4 rescued`);
     set("squadMissionHud", `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`);
     set("squadObjective", objectiveText());
+    updateActionButtons();
+  }
+
+  function activeTigers(){ return (state.snapshot?.tigers || (state.snapshot?.boss ? [state.snapshot.boss] : [])).filter((t)=>!t.defeated && Number(t.hp || 0) > 0); }
+  function nearestActiveTiger(){ return activeTigers().sort((a,b)=>distance(state.local,a)-distance(state.local,b))[0] || null; }
+  function nearestUnrescuedCivilian(){
+    return (state.snapshot?.civilians || [])
+      .filter((c)=>!(state.snapshot?.rescuedIds || []).includes(c.id))
+      .sort((a,b)=>distance(state.local,a)-distance(state.local,b))[0] || null;
+  }
+  function updateActionButtons(){
+    if(!state.local || state.snapshot?.status !== "active") return;
+    const tiger = nearestActiveTiger();
+    const civilian = nearestUnrescuedCivilian();
+    const teammate = remoteSnapshotPlayer();
+    const attack = $("squadAttackButton");
+    const rescue = $("squadRescueButton");
+    const revive = $("squadReviveButton");
+    const tigerNear = tiger && distance(state.local,tiger) <= (tiger.boss ? 178 : 164);
+    const civNear = civilian && distance(state.local,civilian) <= 82;
+    const reviveNear = teammate?.downed && distance(state.local,teammate) <= 108;
+    if(attack){ attack.innerHTML = tiger ? (tigerNear ? `🎯 Attack<br><small>${esc(tiger.type || "Tiger")}</small>` : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"; attack.disabled = !tiger; }
+    if(rescue){ rescue.innerHTML = civilian ? (civNear ? `🛟 Rescue<br><small>${esc(civilian.name || "Civilian")}</small>` : `👤 Find Civilian<br><small>${Math.round(distance(state.local,civilian))}m</small>`) : "✅ Civilians Safe"; rescue.disabled = !civilian; }
+    if(revive){ revive.innerHTML = teammate?.downed ? (reviveNear ? "💚 Revive<br><small>Teammate</small>" : `💚 Reach Teammate<br><small>${Math.round(distance(state.local,teammate))}m</small>`) : "💚 Revive<br><small>Not needed</small>"; revive.disabled = !teammate?.downed; }
   }
 
   function roleLabel(key){
@@ -172,7 +198,7 @@
     if(!snapshot){
       return `<div class="squadPanel">
         <div class="squadHero">
-          <div><div class="squadKicker">V5.0 Live Co-op</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Two real Telegram players enter one rescue arena. Save four civilians, defeat the Night Fang Alpha, revive each other, and stand together at extraction.</div></div>
+          <div><div class="squadKicker">V5.1 Shared Story Co-op</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Two real Telegram players enter the same Story-style district with soldiers, civilians, a tiger pack, and Night Fang Alpha. Your movement and mission progress are shared live.</div></div>
           <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
         </div>
         <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
@@ -190,6 +216,7 @@
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
+      <details class="squadHowTo" open><summary>How two-player Live Squad works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tiger pack, Alpha health, and extraction.<br><b>3.</b> Move near a person to Rescue, near a tiger to Attack, or near a downed teammate to Revive.<br><b>4.</b> Rescue all four, defeat Night Fang, then both soldiers enter the green extraction zone.</div></details>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
         ${waiting ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate</button>` : ""}
@@ -211,17 +238,18 @@
     const statusText = snap?.status === "complete" ? "MISSION COMPLETE" : (snap?.status === "failed" ? "MISSION FAILED" : `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`);
     return `<div class="squadPanel squadArenaPanel">
       <div class="squadHud">
-        <div class="squadHudCard"><div class="squadHudLabel">Night Fang</div><div class="squadHudValue" id="squadBossHud">${Math.round(snap.boss.hp)}/${snap.boss.hpMax} HP (${bossPct}%)</div></div>
+        <div class="squadHudCard"><div class="squadHudLabel">Tiger Threats</div><div class="squadHudValue" id="squadBossHud">Alpha ${Math.round(snap.boss.hp)} HP • ${(snap.tigers || []).filter((t)=>!t.defeated).length || 1} active</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Civilians</div><div class="squadHudValue" id="squadCivHud">${rescued}/4 rescued</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Mission</div><div class="squadHudValue" id="squadMissionHud">${statusText}</div></div>
       </div>
       <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${mine?.downed ? "You are down—your teammate must revive you." : connectionText()}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
-      <canvas id="squadArena" width="1000" height="600" aria-label="Operation Night Fang live co-op arena"></canvas>
+      <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>👤 Civilian</span><span>🐅 Tiger</span></div>
+      <canvas id="squadArena" width="1000" height="760" aria-label="Operation Night Fang Story-style live co-op battlefield"></canvas>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : "⏱️ Operation Failed"}</div>
-        <div class="squadBannerText">${snap.status === "complete" ? "Both players rescued the civilians, defeated Night Fang, and reached extraction together." : "Create another squad and try the rescue again."}</div>
+        <div class="squadBannerText">${snap.status === "complete" ? "Both players rescued the civilians, cleared the tiger pack, defeated Night Fang, and reached extraction together." : "Create another squad and try the rescue again."}</div>
         ${snap.status === "complete" ? `<button type="button" class="squadBtn good" data-squad-command="claim">Claim Co-op Reward</button>` : ""}
         <button type="button" class="squadBtn" data-squad-command="leave">Return to HQ</button>
       </div>
@@ -230,12 +258,12 @@
           <button type="button" class="squadPadBtn up" data-move="up">▲</button><button type="button" class="squadPadBtn left" data-move="left">◀</button><button type="button" class="squadPadBtn right" data-move="right">▶</button><button type="button" class="squadPadBtn down" data-move="down">▼</button>
         </div>
         <div class="squadActions">
-          <button type="button" class="squadActionBtn attack" data-squad-command="action" data-squad-action="attack">🎯 Attack</button>
-          <button type="button" class="squadActionBtn rescue" data-squad-command="action" data-squad-action="rescue">🛟 Rescue</button>
-          <button type="button" class="squadActionBtn revive" data-squad-command="action" data-squad-action="revive">💚 Revive</button>
+          <button type="button" class="squadActionBtn attack" id="squadAttackButton" data-squad-command="action" data-squad-action="attack">🎯 Attack</button>
+          <button type="button" class="squadActionBtn rescue" id="squadRescueButton" data-squad-command="action" data-squad-action="rescue">🛟 Rescue</button>
+          <button type="button" class="squadActionBtn revive" id="squadReviveButton" data-squad-command="action" data-squad-action="revive">💚 Revive</button>
         </div>
       </div>
-      <div class="squadSmall" style="margin-top:8px">Move with the arrows or WASD. Actions work only when you are close enough. If disconnected, reopen the same invitation to reconnect.</div>
+      <div class="squadSmall" style="margin-top:8px">Hold the arrows to move your soldier. The three action buttons tell you what is close enough. Both players must finish inside extraction.</div>
     </div>`;
   }
 
@@ -247,8 +275,9 @@
   function objectiveText(){
     const snap = state.snapshot;
     if(!snap) return "";
-    if((snap.rescuedIds || []).length < 4) return `Objective: Reach the blue civilian markers and tap Rescue (${snap.rescuedIds.length}/4).`;
-    if(Number(snap.boss?.hp || 0) > 0) return `Objective: Fight Night Fang together (${Math.round(snap.boss.hp)} HP remaining).`;
+    if((snap.rescuedIds || []).length < 4) return `Objective 1: Find the human civilians and tap Rescue when close (${snap.rescuedIds.length}/4 safe).`;
+    const threats = (snap.tigers || (snap.boss ? [snap.boss] : [])).filter((t)=>!t.defeated && Number(t.hp || 0) > 0);
+    if(threats.length) return `Objective 2: Clear the tiger pack and defeat Night Fang together (${threats.length} tiger${threats.length===1?"":"s"} active • ${Math.round(snap.boss?.hp || 0)} Alpha HP).`;
     const ready = snap.extractionReadyIds || [];
     return `Objective: Both players stand inside the green extraction circle (${ready.length}/2 ready).`;
   }
@@ -452,8 +481,7 @@
       }
       const extra = {};
       if(kind === "rescue"){
-        const remaining = (state.snapshot.civilians || []).filter((c)=>!(state.snapshot.rescuedIds || []).includes(c.id));
-        const target = remaining.sort((a,b)=>distance(state.local,a)-distance(state.local,b))[0];
+        const target = nearestUnrescuedCivilian();
         if(!target || distance(state.local,target) > 82) throw new Error("Move next to a blue civilian marker first.");
         extra.civilianId = target.id;
       }else if(kind === "revive"){
@@ -462,7 +490,10 @@
         if(distance(state.local,teammate) > 108) throw new Error("Move next to your downed teammate first.");
         extra.targetUserId = teammate.userId;
       }else if(kind === "attack"){
-        if(distance(state.local,state.snapshot.boss) > 178) throw new Error("Move closer to Night Fang before attacking.");
+        const target = nearestActiveTiger();
+        if(!target) throw new Error("The tiger threat is already cleared.");
+        if(distance(state.local,target) > (target.boss ? 178 : 164)) throw new Error(`Move closer to ${target.name || "the tiger"} before attacking.`);
+        extra.tigerId = target.id;
       }
       await api(kind, extra);
       setMessage(kind === "rescue" ? "Civilian secured!" : (kind === "revive" ? "Teammate revived!" : "Hit confirmed."));
@@ -601,8 +632,9 @@
     const len = Math.hypot(dx,dy) || 1;
     const roleSpeed = state.local.role === "tracker" ? 1.08 : (state.local.role === "assault" ? .96 : 1);
     const speed = 185 * roleSpeed;
-    state.local.x = clamp(state.local.x + (dx/len)*speed*dt, 24, 976);
-    state.local.y = clamp(state.local.y + (dy/len)*speed*dt, 24, 576);
+    const world = state.snapshot?.world || { width:1000, height:760 };
+    state.local.x = clamp(state.local.x + (dx/len)*speed*dt, 24, Number(world.width || 1000) - 24);
+    state.local.y = clamp(state.local.y + (dy/len)*speed*dt, 24, Number(world.height || 760) - 24);
     state.local.face = Math.atan2(dy,dx);
   }
 
@@ -615,10 +647,65 @@
       const dt = clamp((at - state.lastFrameAt)/1000,0,.05);
       state.lastFrameAt = at;
       updateMovement(dt);
+      if(at - state.lastActionUiAt > 160){ state.lastActionUiAt = at; updateActionButtons(); }
       drawArena();
       state.frame = requestAnimationFrame(tick);
     };
     state.frame = requestAnimationFrame(tick);
+  }
+
+  function roundRect(ctx,x,y,w,h,r=8){
+    const radius=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+radius,y);ctx.arcTo(x+w,y,x+w,y+h,radius);ctx.arcTo(x+w,y+h,x,y+h,radius);ctx.arcTo(x,y+h,x,y,radius);ctx.arcTo(x,y,x+w,y,radius);ctx.closePath();
+  }
+
+  function drawStoryTree(ctx,x,y,size=1){
+    ctx.fillStyle="rgba(15,23,42,.28)";ctx.beginPath();ctx.ellipse(x+5,y+15,25*size,9*size,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#65462c";ctx.fillRect(x-4*size,y-2*size,8*size,25*size);
+    for(const [dx,dy,r,c] of [[0,-12,19,"#166534"],[-13,-4,15,"#15803d"],[13,-3,15,"#14532d"],[0,-25,14,"#22c55e"]]){ctx.fillStyle=c;ctx.beginPath();ctx.arc(x+dx*size,y+dy*size,r*size,0,Math.PI*2);ctx.fill();}
+  }
+
+  function drawStoryBuilding(ctx,x,y,w,h,roof="#9a5c38"){
+    ctx.fillStyle="rgba(2,6,23,.28)";roundRect(ctx,x+8,y+10,w,h,9);ctx.fill();
+    ctx.fillStyle="#c7b79c";roundRect(ctx,x,y,w,h,8);ctx.fill();
+    ctx.fillStyle=roof;ctx.beginPath();ctx.moveTo(x-8,y+6);ctx.lineTo(x+w*.5,y-28);ctx.lineTo(x+w+8,y+6);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#5b4333";ctx.fillRect(x+w*.43,y+h*.48,w*.18,h*.52);
+    ctx.fillStyle="#93c5fd";ctx.fillRect(x+w*.12,y+h*.26,w*.18,h*.2);ctx.fillRect(x+w*.7,y+h*.26,w*.18,h*.2);
+  }
+
+  function drawStoryCivilian(ctx,civ,rescued){
+    const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"]};
+    const [shirt,pants]=colors[civ.look]||colors.field;ctx.save();ctx.translate(civ.x,civ.y);ctx.globalAlpha=rescued?.24:1;
+    ctx.fillStyle="rgba(2,6,23,.32)";ctx.beginPath();ctx.ellipse(3,18,17,7,0,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=pants;ctx.lineWidth=6;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-4,9);ctx.lineTo(-8,24);ctx.moveTo(4,9);ctx.lineTo(9,24);ctx.stroke();
+    ctx.strokeStyle=shirt;ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(0,11);ctx.moveTo(-2,0);ctx.lineTo(-13,9);ctx.moveTo(2,0);ctx.lineTo(13,8);ctx.stroke();
+    ctx.fillStyle="#d7a47f";ctx.beginPath();ctx.arc(0,-14,8,0,Math.PI*2);ctx.fill();ctx.fillStyle="#3f2d22";ctx.beginPath();ctx.arc(0,-17,8,Math.PI,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(rescued?"SAFE":`RESCUE • ${civ.name}`,0,-32);ctx.restore();
+  }
+
+  function drawStoryTiger(ctx,tiger,now){
+    if(tiger.defeated) return;const alpha=!!tiger.boss;const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const facing=Math.sin((now/900)+(String(tiger.id).length))>=0?1:-1;
+    ctx.save();ctx.translate(tiger.x,tiger.y);ctx.scale(facing*s,s);
+    if(alpha){ctx.fillStyle="rgba(239,68,68,.18)";ctx.beginPath();ctx.arc(0,0,62,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(251,113,133,.55)";ctx.lineWidth=3;ctx.stroke();}
+    ctx.fillStyle="rgba(2,6,23,.35)";ctx.beginPath();ctx.ellipse(3,22,40,10,0,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle="#f59e0b";ctx.lineWidth=9;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-29,2);ctx.quadraticCurveTo(-54,-15,-64,4);ctx.stroke();
+    ctx.strokeStyle="#111827";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-47,-6);ctx.lineTo(-51,2);ctx.stroke();
+    ctx.fillStyle="#f59e0b";ctx.beginPath();ctx.ellipse(0,0,35,20,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(30,-7,16,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#fbbf24";ctx.beginPath();ctx.moveTo(22,-17);ctx.lineTo(23,-29);ctx.lineTo(31,-20);ctx.closePath();ctx.fill();ctx.beginPath();ctx.moveTo(34,-19);ctx.lineTo(40,-28);ctx.lineTo(43,-15);ctx.closePath();ctx.fill();
+    ctx.strokeStyle="#111827";ctx.lineWidth=4;for(const x of [-20,-7,7,18]){ctx.beginPath();ctx.moveTo(x,-15);ctx.lineTo(x+8,13);ctx.stroke();}
+    ctx.strokeStyle="#d97706";ctx.lineWidth=7;for(const x of [-18,9]){ctx.beginPath();ctx.moveTo(x,12);ctx.lineTo(x-2,28);ctx.stroke();}
+    ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(37,-9,2.5,0,Math.PI*2);ctx.fill();ctx.fillStyle="#f8fafc";ctx.beginPath();ctx.arc(44,-3,3,0,Math.PI*2);ctx.fill();ctx.restore();
+    const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);const barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,tiger.y-(alpha?65:50),barW,11,5);ctx.fill();ctx.fillStyle=alpha?"#fb7185":"#f59e0b";roundRect(ctx,tiger.x-barW/2+2,tiger.y-(alpha?63:48),(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(alpha?"NIGHT FANG ALPHA":String(tiger.type||"TIGER").toUpperCase(),tiger.x,tiger.y-(alpha?72:57));
+  }
+
+  function drawStorySoldier(ctx,p,source,draw,mine){
+    const body=mine?"#0ea5e9":"#8b5cf6";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=Number(source.face||0);ctx.save();ctx.translate(draw.x,draw.y);ctx.rotate(face);
+    ctx.fillStyle="rgba(2,6,23,.38)";ctx.beginPath();ctx.ellipse(1,19,18,7,0,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle="#1e293b";ctx.lineWidth=7;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-5,10);ctx.lineTo(-8,25);ctx.moveTo(5,10);ctx.lineTo(8,25);ctx.stroke();
+    ctx.fillStyle=body;roundRect(ctx,-11,-7,22,25,6);ctx.fill();ctx.strokeStyle=outline;ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle="#334155";roundRect(ctx,-13,-4,26,15,4);ctx.fill();ctx.fillStyle="#6b7c65";ctx.beginPath();ctx.arc(0,-15,11,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(-11,-15,22,6);
+    ctx.strokeStyle="#dbeafe";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(8,-1);ctx.lineTo(27,0);ctx.stroke();ctx.fillStyle="#0f172a";ctx.fillRect(18,-4,15,5);ctx.restore();
+    ctx.fillStyle=outline;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${p.downed?" • DOWN":""}`,draw.x,draw.y-35);
+    ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-26,draw.y+31,52,7,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-25,draw.y+32,50*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),5,3);ctx.fill();
   }
 
   function drawArena(){
@@ -626,24 +713,24 @@
     const snap = state.snapshot;
     if(!canvas || !snap) return;
     const ctx = canvas.getContext("2d");
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0,0,w,h);
-    const sky = ctx.createLinearGradient(0,0,0,h); sky.addColorStop(0,"#07151e"); sky.addColorStop(1,"#0d2419"); ctx.fillStyle=sky; ctx.fillRect(0,0,w,h);
-    ctx.fillStyle="rgba(51,65,85,.58)"; ctx.fillRect(0,260,w,82); ctx.fillRect(430,0,94,h);
-    ctx.strokeStyle="rgba(226,232,240,.22)"; ctx.lineWidth=4; ctx.setLineDash([18,16]); ctx.beginPath(); ctx.moveTo(0,301);ctx.lineTo(w,301);ctx.moveTo(477,0);ctx.lineTo(477,h);ctx.stroke();ctx.setLineDash([]);
-    for(let i=0;i<26;i++){
-      const x=(i*137)%970+15,y=(i*83)%560+20;if((x>405&&x<550)||(y>235&&y<360))continue;
-      ctx.fillStyle="rgba(22,101,52,.45)";ctx.beginPath();ctx.arc(x,y,13+(i%4)*3,0,Math.PI*2);ctx.fill();
-    }
-    const ex=snap.extraction;ctx.fillStyle="rgba(34,197,94,.15)";ctx.strokeStyle="#4ade80";ctx.lineWidth=5;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#bbf7d0";ctx.font="900 16px system-ui";ctx.textAlign="center";ctx.fillText("EXTRACT",ex.x,ex.y+5);
-    for(const civ of (snap.civilians||[])){
-      const rescued=(snap.rescuedIds||[]).includes(civ.id);ctx.globalAlpha=rescued?.28:1;ctx.fillStyle=rescued?"#64748b":"#38bdf8";ctx.beginPath();ctx.arc(civ.x,civ.y,14,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#e0f2fe";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#e0f2fe";ctx.font="800 12px system-ui";ctx.fillText(rescued?"SAFE":"RESCUE",civ.x,civ.y-22);ctx.globalAlpha=1;
-    }
-    const boss=snap.boss;if(boss&&!boss.defeated){ctx.fillStyle="rgba(251,113,133,.16)";ctx.beginPath();ctx.arc(boss.x,boss.y,72,0,Math.PI*2);ctx.fill();ctx.fillStyle="#f97316";ctx.beginPath();ctx.ellipse(boss.x,boss.y,38,24,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(boss.x+26,boss.y-5,15,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fed7aa";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(boss.x-18,boss.y-16);ctx.lineTo(boss.x+28,boss.y+14);ctx.moveTo(boss.x-24,boss.y);ctx.lineTo(boss.x+20,boss.y+23);ctx.stroke();ctx.fillStyle="#fecaca";ctx.font="950 14px system-ui";ctx.fillText("NIGHT FANG",boss.x,boss.y-42);}
+    const w=canvas.width,h=canvas.height,now=Number(snap.serverNow||Date.now());ctx.clearRect(0,0,w,h);
+    const terrain=ctx.createLinearGradient(0,0,0,h);terrain.addColorStop(0,"#315f3d");terrain.addColorStop(.55,"#28563a");terrain.addColorStop(1,"#1f4934");ctx.fillStyle=terrain;ctx.fillRect(0,0,w,h);
+    ctx.fillStyle="rgba(79,121,72,.24)";for(let y=0;y<h;y+=76){for(let x=0;x<w;x+=92){ctx.fillRect(x+((y/76)%2)*21,y,70,54);}}
+    ctx.fillStyle="rgba(40,110,130,.62)";ctx.beginPath();ctx.moveTo(0,605);ctx.bezierCurveTo(210,560,330,705,520,666);ctx.bezierCurveTo(710,625,815,710,1000,675);ctx.lineTo(1000,760);ctx.lineTo(0,760);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#4b5563";ctx.fillRect(0,315,w,96);ctx.fillRect(430,0,106,h);ctx.fillStyle="#374151";ctx.fillRect(0,323,w,80);ctx.fillRect(438,0,90,h);
+    ctx.strokeStyle="rgba(250,204,21,.45)";ctx.lineWidth=4;ctx.setLineDash([25,22]);ctx.beginPath();ctx.moveTo(0,363);ctx.lineTo(w,363);ctx.moveTo(483,0);ctx.lineTo(483,h);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="#7c6548";ctx.fillRect(512,612,160,26);ctx.strokeStyle="#d6b56c";ctx.lineWidth=5;for(let x=525;x<665;x+=22){ctx.beginPath();ctx.moveTo(x,606);ctx.lineTo(x,645);ctx.stroke();}
+    [[64,78,115,72,"#9a5c38"],[700,64,132,82,"#7c4a32"],[810,575,118,72,"#8b5a3c"],[95,470,126,78,"#72452f"],[570,470,105,68,"#9a5c38"]].forEach((b)=>drawStoryBuilding(ctx,...b));
+    for(let i=0;i<32;i++){const x=(i*149+47)%960+20,y=(i*97+31)%710+22;if((x>405&&x<560)||(y>285&&y<435)||((x>40&&x<240)&&(y>40&&y<180))||((x>680&&x<970)&&(y>35&&y<180)))continue;drawStoryTree(ctx,x,y,.72+(i%4)*.1);}
+    const ex=snap.extraction;ctx.fillStyle="rgba(34,197,94,.2)";ctx.strokeStyle="#4ade80";ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#dcfce7";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("SQUAD EXTRACTION",ex.x,ex.y+6);
+    const guideTarget=nearestUnrescuedCivilian()||nearestActiveTiger()||ex;if(state.local&&guideTarget){ctx.strokeStyle="rgba(103,232,249,.55)";ctx.lineWidth=4;ctx.setLineDash([10,10]);ctx.beginPath();ctx.moveTo(state.local.x,state.local.y);ctx.lineTo(guideTarget.x,guideTarget.y);ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle="rgba(103,232,249,.25)";ctx.lineWidth=3;ctx.beginPath();ctx.arc(guideTarget.x,guideTarget.y,guideTarget.hpMax?(guideTarget.boss?178:164):82,0,Math.PI*2);ctx.stroke();}
+    for(const civ of (snap.civilians||[])) drawStoryCivilian(ctx,civ,(snap.rescuedIds||[]).includes(civ.id));
+    for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawStoryTiger(ctx,tiger,now);
     for(const p of (snap.players||[])){
       const mine=Number(p.userId)===viewerId();const source=mine&&state.local?state.local:p;let draw=state.remoteDraw.get(p.userId)||{x:source.x,y:source.y};draw.x+=(Number(source.x)-draw.x)*.22;draw.y+=(Number(source.y)-draw.y)*.22;state.remoteDraw.set(p.userId,draw);
-      ctx.globalAlpha=p.online===false?.5:1;ctx.fillStyle=p.downed?"#ef4444":(mine?"#22d3ee":"#a78bfa");ctx.beginPath();ctx.arc(draw.x,draw.y,18,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#f8fafc";ctx.lineWidth=3;ctx.stroke();const face=Number(source.face||0);ctx.beginPath();ctx.moveTo(draw.x,draw.y);ctx.lineTo(draw.x+Math.cos(face)*28,draw.y+Math.sin(face)*28);ctx.stroke();ctx.fillStyle="#f8fafc";ctx.font="900 13px system-ui";ctx.fillText(`${mine?"YOU":p.name}${p.downed?" • DOWN":""}`,draw.x,draw.y-29);ctx.globalAlpha=1;
+      ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
+    ctx.fillStyle="rgba(2,6,23,.72)";roundRect(ctx,18,18,250,44,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 15px system-ui";ctx.textAlign="left";ctx.fillText("STORY MAP • NIGHT FANG DISTRICT",34,45);
   }
 
   function startParam(){
