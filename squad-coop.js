@@ -8,6 +8,7 @@
     joinDraft:"",
     inviteUrl:"",
     inviteText:"",
+    roomEpoch:0,
     snapshot:null,
     roles:[],
     local:null,
@@ -20,7 +21,7 @@
     lastActionUiAt:0,
     syncBusy:false,
     actionBusy:false,
-    requestBusy:false,
+    pending:new Set(),
     overlayBound:false,
     move:{ up:false, down:false, left:false, right:false },
     keys:new Set(),
@@ -63,6 +64,7 @@
   }
 
   async function api(action, extra={}){
+    const requestEpoch = state.roomEpoch;
     const controller = new AbortController();
     const timeout = window.setTimeout(()=>controller.abort(), 14000);
     let response;
@@ -79,7 +81,7 @@
     }finally{ window.clearTimeout(timeout); }
     const payload = await response.json().catch(()=>null);
     if(!response.ok || !payload?.ok) throw new Error(payload?.error || "Live squad request failed.");
-    if(payload.snapshot) applySnapshot(payload.snapshot, payload.roles);
+    if(payload.snapshot && requestEpoch === state.roomEpoch) applySnapshot(payload.snapshot, payload.roles);
     return payload;
   }
 
@@ -127,7 +129,10 @@
       button.classList.toggle("active", button.dataset.squadRole === mine?.role);
     });
     const startButton = $("squadStartButton");
-    if(startButton) startButton.disabled = snapshot.memberCount < 2 || state.requestBusy;
+    if(startButton){
+      startButton.disabled = state.pending.has("start");
+      startButton.textContent = snapshot.memberCount < 2 ? "Need Teammate" : "Start Mission";
+    }
   }
 
   function updateActiveHud(){
@@ -204,7 +209,7 @@
     if(!snapshot){
       return `<div class="squadPanel">
         <div class="squadHero">
-          <div><div class="squadKicker">V5.2 Reliable Live Squad Join</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Two real Telegram players enter the same Story-style district with soldiers, civilians, a tiger pack, and Night Fang Alpha. Your movement and mission progress are shared live.</div></div>
+          <div><div class="squadKicker">V5.3 Live Squad Control Repair</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Two real Telegram players enter the same Story-style district with soldiers, civilians, a tiger pack, and Night Fang Alpha. Your movement and mission progress are shared live.</div></div>
           <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
         </div>
         <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
@@ -227,7 +232,7 @@
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
         ${waiting ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate</button>` : ""}
-        ${waiting && snapshot.isHost ? `<button type="button" class="squadBtn good" id="squadStartButton" ${full ? "" : "disabled"} data-squad-command="start">Start Mission</button>` : ""}
+        ${waiting && snapshot.isHost ? `<button type="button" class="squadBtn good" id="squadStartButton" data-squad-command="start">${full ? "Start Mission" : "Need Teammate"}</button>` : ""}
         ${waiting && !snapshot.isHost ? `<button type="button" class="squadBtn good" disabled>Waiting for Leader</button>` : ""}
         <button type="button" class="squadBtn" data-squad-command="copy-code">Copy Code</button>
         <button type="button" class="squadBtn" data-squad-command="copy-link">Copy Invite Link</button>
@@ -299,6 +304,7 @@
       body.dataset.squadMode = state.snapshot ? "waiting" : "landing";
       body.innerHTML = lobbyHtml();
     }
+    bindCommandButtons();
     bindMoveButtons();
     bindLobbyInput();
     if(state.snapshot?.status === "active") ensureFrame();
@@ -312,6 +318,10 @@
       const code = cleanCode(input.value);
       state.joinDraft = code;
       if(input.value !== code) input.value = code;
+    });
+    input.addEventListener("focus", ()=>{
+      state.keys.clear();
+      Object.keys(state.move).forEach((key)=>{ state.move[key] = false; });
     });
     input.addEventListener("paste", ()=>window.setTimeout(()=>{
       const code = extractCode(input.value);
@@ -341,11 +351,39 @@
     });
   }
 
+  function bindCommandButtons(){
+    document.querySelectorAll("#liveSquadOverlay [data-squad-command]").forEach((button)=>{
+      if(button.dataset.squadControlBound === "1") return;
+      button.dataset.squadControlBound = "1";
+      const activate = (event)=>{
+        if(button.disabled) return;
+        const now = Date.now();
+        if(now - Number(button.dataset.squadLastActivationAt || 0) < 500){
+          event?.preventDefault?.();
+          event?.stopPropagation?.();
+          event?.stopImmediatePropagation?.();
+          return;
+        }
+        button.dataset.squadLastActivationAt = String(now);
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        event?.stopImmediatePropagation?.();
+        dispatchCommand(button.dataset.squadCommand, button);
+      };
+      button.addEventListener("pointerup", activate, { passive:false });
+      button.addEventListener("touchend", activate, { passive:false });
+      button.addEventListener("click", activate, true);
+    });
+  }
+
   async function dispatchCommand(command, source){
     const button = source?.closest?.("button") || null;
-    if(button?.disabled || state.requestBusy) return;
+    if(button?.disabled) return;
     const actionName = button?.dataset?.squadAction || "";
     const role = button?.dataset?.squadRole || "";
+    const commandName = String(command || "");
+    const lockKey = commandName === "role" ? `role:${role}` : (commandName === "action" ? `action:${actionName}` : commandName);
+    if(state.pending.has(lockKey)) return;
     const commands = {
       create:()=>create(),
       join:()=>join(),
@@ -359,13 +397,13 @@
       "copy-code":()=>copyCode(),
       "copy-link":()=>copyInviteLink(),
     };
-    const run = commands[String(command || "")];
+    const run = commands[commandName];
     if(!run) return;
-    state.requestBusy = true;
+    state.pending.add(lockKey);
     if(button) button.classList.add("busy");
     try{ await run(); }
     finally{
-      state.requestBusy = false;
+      state.pending.delete(lockKey);
       if(button?.isConnected) button.classList.remove("busy");
       if(state.snapshot?.status === "waiting") updateWaitingLobby();
     }
@@ -385,7 +423,7 @@
       event.stopPropagation();
       event.stopImmediatePropagation();
       dispatchCommand(button.dataset.squadCommand, button);
-    }, true);
+    }, false);
   }
 
   function open(){
@@ -450,16 +488,26 @@
 
   async function chooseRole(role){
     if(!state.snapshot || state.snapshot.status !== "waiting") return;
+    const mine = localSnapshotPlayer();
+    if(mine) mine.role = role;
+    if(state.local) state.local.role = role;
+    updateWaitingLobby();
+    setMessage(`${roleLabel(role)} selected. Saving…`);
     try{ await api("role", { role }); setMessage(`${roleLabel(role)} selected.`); }
-    catch(error){ setMessage(error.message, true); }
+    catch(error){
+      setMessage(`${error.message} Your role will be retried when the connection returns.`, true);
+      sync().catch(()=>{});
+    }
   }
 
   async function invite(){
     if(!state.code) return;
+    const inviteCode = state.code;
     try{
       setMessage("Preparing your Telegram squad invitation…");
       const payload = await api("invite");
       const invitation = payload.invitation || {};
+      if(!state.open || state.code !== inviteCode) return;
       state.inviteUrl = String(invitation.playUrl || "");
       state.inviteText = String(invitation.shareText || "");
       if(invitation.preparedMessageId && typeof tgApp?.shareMessage === "function"){
@@ -470,8 +518,10 @@
           catch(error){ finish(false); }
         });
         if(sent){
+          if(!state.open || state.code !== inviteCode) return;
           setMessage("Invitation sent. Waiting for your teammate…");
         }else{
+          if(!state.open || state.code !== inviteCode) return;
           openTelegramShare(invitation.playUrl, invitation.shareText);
           setMessage("Choose a Telegram friend and send the invitation.");
         }
@@ -490,6 +540,10 @@
   }
 
   async function start(){
+    if(Number(state.snapshot?.memberCount || 0) < 2){
+      setMessage("Start Mission needs 2/2 players. Invite one teammate or have them join with the code first.", true);
+      return;
+    }
     try{ setMessage("Deploying both players…"); await api("start"); setMessage("Operation Night Fang is live."); ensureFrame(); }
     catch(error){ setMessage(error.message, true); }
   }
@@ -557,11 +611,14 @@
     // Claim button if it was not yet applied to this local save.
   }
 
-  async function leave(){
-    if(state.code){ try{ await api("leave"); }catch(error){} }
+  function leave(){
+    const oldCode = state.code;
+    state.roomEpoch += 1;
+    state.pending.clear();
     state.code = ""; state.joinDraft = ""; state.inviteUrl = ""; state.inviteText = ""; state.snapshot = null; state.local = null; state.remoteDraw.clear();
     setMessage("Create a private squad or enter a teammate's six-character code.");
     close();
+    if(oldCode) api("leave", { code:oldCode }).catch(()=>{});
   }
 
   async function copyTextReliable(text){
@@ -789,8 +846,9 @@
   }
 
 
-  window.addEventListener("keydown",(event)=>{ if(!state.open)return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
-  window.addEventListener("keyup",(event)=>{ state.keys.delete(String(event.key||"").toLowerCase()); });
+  const isTypingTarget = (target)=>!!target?.closest?.("input,textarea,select,[contenteditable='true']");
+  window.addEventListener("keydown",(event)=>{ if(!state.open||isTypingTarget(event.target))return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.closeLiveSquadOps=close;
   window.liveSquadCreate=create;

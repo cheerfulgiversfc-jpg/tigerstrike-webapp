@@ -202,6 +202,13 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Failed join attempts keep the entered code in place so the player can correct it instead of starting over.
 - The large lobby code is now a copy button, and invitation sharing falls back to a plain squad-code message if a deep link is unavailable.
 
+### V5.3 Live Squad Control Repair
+
+- Live Squad command buttons now receive direct pointer, touch, and click activation with duplicate-event protection, avoiding Telegram iOS tap loss.
+- Each command has its own pending lock, so a slow invitation can no longer freeze roles, copy controls, Start Mission, or Leave Squad.
+- A, S, D, and W movement shortcuts are ignored while the squad-code input is focused, allowing every valid code character to be typed.
+- Role selection highlights immediately, Leave Squad closes immediately, and Start Mission gives visible `1/2` guidance instead of behaving like a dead disabled button.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
