@@ -22,32 +22,44 @@ function envText(name){ return String(process.env[name] || "").trim(); }
 function botUsername(){
   return (envText("TELEGRAM_BOT_USERNAME") || envText("TELEGRAM_BOT_PUBLIC_USERNAME")).replace(/^@+/, "");
 }
-function appLink(code){
-  const username = botUsername();
+let discoveredBotUsername = "";
+async function resolveBotUsername(botToken){
+  const configured = botUsername();
+  if(configured) return configured;
+  if(discoveredBotUsername) return discoveredBotUsername;
+  try{
+    const bot = await telegramBotApi("getMe", {}, botToken);
+    discoveredBotUsername = String(bot?.username || "").trim().replace(/^@+/, "");
+  }catch(error){}
+  return discoveredBotUsername;
+}
+function appLink(code, username=""){
   return username && code ? `https://t.me/${username}?startapp=${encodeURIComponent(`squad_${code}`)}` : "";
 }
 
 async function prepareInvite(botToken, user, session){
-  const playUrl = appLink(session.code);
-  if(!playUrl) throw new Error("Bot username is not configured.");
+  const username = await resolveBotUsername(botToken);
+  const playUrl = appLink(session.code, username);
   const community = await getCommunitySnapshot({ botToken, userId:userIdOf(user) });
-  const buttons = [[{ text:"🐅 Join Live Squad", url:playUrl }]];
+  const buttons = [];
+  if(playUrl) buttons.push([{ text:"🐅 Join Live Squad", url:playUrl }]);
   if(community.joinUrl) buttons.push([{ text:`👥 Join ${community.title}`.slice(0, 64), url:community.joinUrl }]);
+  const shareText = [
+    "🐅 LIVE SQUAD REQUEST",
+    "I need one teammate for Operation Night Fang.",
+    "Rescue four civilians, defeat the Alpha, revive each other, and extract together.",
+    `Squad code: ${session.code}`,
+  ].join("\n\n");
   const result = {
     type:"article",
     id:`night_fang_${session.code}`.slice(0, 64),
     title:"Join Operation Night Fang",
     description:`Private two-player Tiger Strike squad • Code ${session.code}`,
     input_message_content:{
-      message_text:[
-        "🐅 LIVE SQUAD REQUEST",
-        "I need one teammate for Operation Night Fang.",
-        "Rescue four civilians, defeat the Alpha, revive each other, and extract together.",
-        `Squad code: ${session.code}`,
-      ].join("\n\n"),
+      message_text:shareText,
     },
-    reply_markup:{ inline_keyboard:buttons },
   };
+  if(buttons.length) result.reply_markup = { inline_keyboard:buttons };
   let prepared = null;
   let preparedError = "";
   try{
@@ -69,6 +81,8 @@ async function prepareInvite(botToken, user, session){
     expirationDate:Number(prepared?.expiration_date || 0),
     preparedError,
     playUrl,
+    shareText,
+    botUsername:username,
     community,
   };
 }

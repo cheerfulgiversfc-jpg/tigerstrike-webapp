@@ -195,6 +195,13 @@ Reliable live rooms require the existing Upstash/Vercel KV environment (`KV_REST
 
 Live Squad now uses a Story-style shared district instead of the original placeholder arena. Both Telegram players see the same four human civilians, roaming tiger pack, Night Fang Alpha, soldier avatars, extraction zone, shared health/progress, and six-minute mission clock. Action buttons explain whether the player is in range, and the lobby includes a plain four-step guide for two-player play.
 
+### V5.2 Reliable Live Squad Join
+
+- Live Squad invitations discover the public Telegram bot username directly from the Bot API when the deployment variable is missing.
+- Manual joining uses a stable six-character code field with a normal letter keyboard, Paste button, and clearer grouped code display.
+- Failed join attempts keep the entered code in place so the player can correct it instead of starting over.
+- The large lobby code is now a copy button, and invitation sharing falls back to a plain squad-code message if a deep link is unavailable.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

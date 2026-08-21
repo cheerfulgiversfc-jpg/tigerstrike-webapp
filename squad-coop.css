@@ -42,11 +42,12 @@ body.baseHqActive #baseHqLiveSquadFab{
 .squadHero{display:grid;grid-template-columns:1.35fr .65fr;gap:14px;margin-bottom:12px}
 .squadMissionName{font-size:clamp(24px,6vw,42px);font-weight:950;margin:3px 0 8px}
 .squadDesc{color:#c6d5e8;font-size:15px;line-height:1.45}
-.squadCodeBox{display:grid;place-items:center;text-align:center;border:2px dashed #67e8f9;border-radius:18px;background:#081c29;padding:14px}
+.squadCodeBox{display:grid;place-items:center;width:100%;text-align:center;border:2px dashed #67e8f9;border-radius:18px;background:#081c29;padding:14px;color:inherit;font:inherit;appearance:none;cursor:pointer;touch-action:manipulation}
 .squadCode{font:950 clamp(28px,9vw,52px)/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;color:#a5f3fc;user-select:all;-webkit-user-select:all}
 .squadSmall{font-size:12px;color:#9fb2ca;line-height:1.4}
 .squadRow{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
-.squadJoinRow{display:grid;grid-template-columns:1fr auto;gap:9px;margin-top:12px}
+.squadJoinLabel{margin-top:12px;color:#cfe0f3;font-weight:800}
+.squadJoinRow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;margin-top:6px}
 .squadInput{min-height:48px;border:2px solid #3d5981;border-radius:14px;background:#060c16;color:white;padding:0 14px;font:900 20px ui-monospace;text-transform:uppercase;letter-spacing:.12em;min-width:0}
 .squadStatus{margin:12px 0;border:1px solid #304b70;border-radius:13px;background:#0b1424;padding:10px 12px;color:#d8e5f5;font-weight:750}
 .squadRoster{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
@@ -85,4 +86,4 @@ body.baseHqActive #baseHqLiveSquadFab{
   .squadDpad{grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px)}
   .squadActions{gap:5px}.squadActionBtn{min-height:58px;padding:5px;font-size:12px}
 }
-@media(max-width:370px){.squadRoster{grid-template-columns:1fr}.squadHud{grid-template-columns:1fr 1fr}.squadControls{grid-template-columns:112px minmax(0,1fr)}.squadDpad{grid-template-columns:repeat(3,34px);grid-template-rows:repeat(3,34px)}.squadActionBtn{font-size:11px;padding:4px 2px}.squadActionBtn small{font-size:8px}}
+@media(max-width:370px){.squadRoster{grid-template-columns:1fr}.squadHud{grid-template-columns:1fr 1fr}.squadJoinRow{grid-template-columns:minmax(0,1fr) auto}.squadJoinRow .squadInput{grid-column:1/-1}.squadControls{grid-template-columns:112px minmax(0,1fr)}.squadDpad{grid-template-columns:repeat(3,34px);grid-template-rows:repeat(3,34px)}.squadActionBtn{font-size:11px;padding:4px 2px}.squadActionBtn small{font-size:8px}}

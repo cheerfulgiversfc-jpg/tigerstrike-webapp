@@ -5,7 +5,9 @@
   const state = {
     open:false,
     code:"",
+    joinDraft:"",
     inviteUrl:"",
+    inviteText:"",
     snapshot:null,
     roles:[],
     local:null,
@@ -32,6 +34,10 @@
   const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (ch)=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[ch]));
   const distance = (a,b) => Math.hypot(Number(a?.x||0)-Number(b?.x||0),Number(a?.y||0)-Number(b?.y||0));
   const cleanCode = (value) => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0,6);
+  const displayCode = (value) => {
+    const code = cleanCode(value);
+    return code.length > 3 ? `${code.slice(0,3)} ${code.slice(3)}` : code;
+  };
   const extractCode = (value) => {
     const text = String(value || "").trim().toUpperCase();
     const tagged = text.match(/(?:SQUAD[_\s:/=-]*|STARTAPP=SQUAD_)([A-Z0-9]{6})/);
@@ -198,11 +204,12 @@
     if(!snapshot){
       return `<div class="squadPanel">
         <div class="squadHero">
-          <div><div class="squadKicker">V5.1 Shared Story Co-op</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Two real Telegram players enter the same Story-style district with soldiers, civilians, a tiger pack, and Night Fang Alpha. Your movement and mission progress are shared live.</div></div>
+          <div><div class="squadKicker">V5.2 Reliable Live Squad Join</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Two real Telegram players enter the same Story-style district with soldiers, civilians, a tiger pack, and Night Fang Alpha. Your movement and mission progress are shared live.</div></div>
           <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
         </div>
         <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
-        <div class="squadJoinRow"><input class="squadInput" id="squadJoinCode" maxlength="160" placeholder="CODE OR INVITE LINK" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text"><button type="button" class="squadBtn primary" data-squad-command="join">Join</button></div>
+        <div class="squadSmall squadJoinLabel">Enter the six-character code from your teammate</div>
+        <div class="squadJoinRow"><input class="squadInput" id="squadJoinCode" value="${esc(state.joinDraft)}" maxlength="6" placeholder="ABC123" aria-label="Six-character squad code" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="go"><button type="button" class="squadBtn" data-squad-command="paste-code">Paste</button><button type="button" class="squadBtn primary" data-squad-command="join">Join</button></div>
         <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
         <div class="squadSmall">Telegram requires both players to open the game through the Tiger Strike bot. Rooms expire automatically.</div>
       </div>`;
@@ -212,7 +219,7 @@
     return `<div class="squadPanel">
       <div class="squadHero">
         <div><div class="squadKicker">Private Live Squad</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Choose a role. The squad leader starts when both players are connected.</div></div>
-        <div class="squadCodeBox"><div class="squadSmall">SQUAD CODE</div><div class="squadCode">${esc(snapshot.code)}</div><div class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/2 players connected</div></div>
+        <button type="button" class="squadCodeBox" data-squad-command="copy-code" aria-label="Copy squad code ${esc(snapshot.code)}"><span class="squadSmall">SQUAD CODE • TAP TO COPY</span><span class="squadCode">${esc(displayCode(snapshot.code))}</span><span class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/2 players connected</span></button>
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
@@ -301,6 +308,15 @@
   function bindLobbyInput(){
     const input = $("squadJoinCode");
     if(!input) return;
+    input.addEventListener("input", ()=>{
+      const code = cleanCode(input.value);
+      state.joinDraft = code;
+      if(input.value !== code) input.value = code;
+    });
+    input.addEventListener("paste", ()=>window.setTimeout(()=>{
+      const code = extractCode(input.value);
+      if(code){ state.joinDraft = code; input.value = code; }
+    },0));
     input.addEventListener("keydown", (event)=>{
       if(event.key !== "Enter") return;
       event.preventDefault();
@@ -339,6 +355,7 @@
       action:()=>action(actionName),
       claim:()=>claim(),
       leave:()=>leave(),
+      "paste-code":()=>pasteJoinCode(),
       "copy-code":()=>copyCode(),
       "copy-link":()=>copyInviteLink(),
     };
@@ -413,15 +430,22 @@
 
   async function join(codeValue=""){
     if(!hasTelegramAuth()) return setMessage("Please open the game inside Telegram first.", true);
-    const code = extractCode(codeValue || $("squadJoinCode")?.value);
+    const code = extractCode(codeValue || state.joinDraft || $("squadJoinCode")?.value);
     if(code.length !== 6) return setMessage("Enter the complete six-character squad code.", true);
     try{
+      state.joinDraft = code;
       state.code = code;
       setMessage(`Joining squad ${code}…`);
       await api("join", { code });
+      state.joinDraft = "";
       setMessage("Connected. Choose your role and wait for the squad leader.");
       startPolling();
-    }catch(error){ state.code = ""; setMessage(error.message, true); render(); }
+    }catch(error){
+      state.code = "";
+      setMessage(`${error.message} Check the six characters and try again.`, true);
+      const input = $("squadJoinCode");
+      if(input){ input.value = state.joinDraft; input.focus({ preventScroll:true }); input.select(); }
+    }
   }
 
   async function chooseRole(role){
@@ -437,6 +461,7 @@
       const payload = await api("invite");
       const invitation = payload.invitation || {};
       state.inviteUrl = String(invitation.playUrl || "");
+      state.inviteText = String(invitation.shareText || "");
       if(invitation.preparedMessageId && typeof tgApp?.shareMessage === "function"){
         const sent = await new Promise((resolve)=>{
           let done = false;
@@ -447,18 +472,18 @@
         if(sent){
           setMessage("Invitation sent. Waiting for your teammate…");
         }else{
-          openTelegramShare(invitation.playUrl);
+          openTelegramShare(invitation.playUrl, invitation.shareText);
           setMessage("Choose a Telegram friend and send the invitation.");
         }
       }else{
-        openTelegramShare(invitation.playUrl);
+        openTelegramShare(invitation.playUrl, invitation.shareText);
         setMessage("Telegram share opened. Choose a teammate to invite.");
       }
     }catch(error){ setMessage(error.message, true); }
   }
 
-  function openTelegramShare(playUrl=""){
-    const text = `Join my live Tiger Strike squad for Operation Night Fang. Code: ${state.code}`;
+  function openTelegramShare(playUrl="", shareText=""){
+    const text = String(shareText || state.inviteText || `Join my live Tiger Strike squad for Operation Night Fang. Code: ${state.code}`);
     const url = `https://t.me/share/url?url=${encodeURIComponent(playUrl || state.inviteUrl || "")}&text=${encodeURIComponent(text)}`;
     if(typeof tgApp?.openTelegramLink === "function") tgApp.openTelegramLink(url);
     else window.open(url,"_blank","noopener");
@@ -534,7 +559,7 @@
 
   async function leave(){
     if(state.code){ try{ await api("leave"); }catch(error){} }
-    state.code = ""; state.inviteUrl = ""; state.snapshot = null; state.local = null; state.remoteDraw.clear();
+    state.code = ""; state.joinDraft = ""; state.inviteUrl = ""; state.inviteText = ""; state.snapshot = null; state.local = null; state.remoteDraw.clear();
     setMessage("Create a private squad or enter a teammate's six-character code.");
     close();
   }
@@ -567,6 +592,21 @@
     setMessage(text);
   }
 
+  async function pasteJoinCode(){
+    const input = $("squadJoinCode");
+    try{
+      const clipboardText = await navigator.clipboard?.readText?.();
+      const code = extractCode(clipboardText);
+      if(code.length !== 6) throw new Error("No complete squad code was found on the clipboard.");
+      state.joinDraft = code;
+      if(input) input.value = code;
+      setMessage(`Code ${displayCode(code)} is ready. Tap Join.`);
+    }catch(error){
+      setMessage("Press and hold inside the code box, then choose Paste.", true);
+      input?.focus({ preventScroll:true });
+    }
+  }
+
   async function copyCode(){
     const text = state.code || "";
     const copied = await copyTextReliable(text);
@@ -583,8 +623,13 @@
         setMessage("Preparing the invite link…");
         const payload = await api("invite");
         state.inviteUrl = String(payload?.invitation?.playUrl || "");
+        state.inviteText = String(payload?.invitation?.shareText || "");
       }
-      if(!state.inviteUrl) throw new Error("Invite link is unavailable. Use the squad code instead.");
+      if(!state.inviteUrl){
+        const copiedCode = await copyTextReliable(state.code);
+        if(copiedCode) return copyFeedback(`Join link unavailable, so the squad code was copied: ${state.code}`);
+        throw new Error("Invite link is unavailable. Tap the large squad code to copy it.");
+      }
       const copied = await copyTextReliable(state.inviteUrl);
       if(copied) copyFeedback("Copied! Send the invite link to your teammate.");
       else{
