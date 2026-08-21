@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "4557";
+const TS_BUILD = "5000";
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
 const DECORATIVE_UNIT_RINGS_ENABLED = false;
 const PREMIUM_2D_GRAPHICS_VERSION = 12;
@@ -14288,6 +14288,8 @@ const DEFAULT = {
   clanLastSyncAt:0,
   referralMilestone:null,
   telegramCommunity:null,
+  liveSquadRewardReceipts:{},
+  liveSquadBadges:{},
   telegramEventDrop:null,
   socialRescue: defaultSocialRescueState(),
   lastMissionRecap:null,
@@ -16416,6 +16418,8 @@ function load(){
     m.telegramCommunity = (saved.telegramCommunity && typeof saved.telegramCommunity === "object")
       ? normalizeTelegramCommunitySnapshot(saved.telegramCommunity)
       : null;
+    m.liveSquadRewardReceipts = (saved.liveSquadRewardReceipts && typeof saved.liveSquadRewardReceipts === "object") ? { ...saved.liveSquadRewardReceipts } : {};
+    m.liveSquadBadges = (saved.liveSquadBadges && typeof saved.liveSquadBadges === "object") ? { ...saved.liveSquadBadges } : {};
     m.telegramEventDrop = (saved.telegramEventDrop && typeof saved.telegramEventDrop === "object") ? saved.telegramEventDrop : null;
     m.socialRescue = normalizeSocialRescueState(saved.socialRescue ?? DEFAULT.socialRescue);
     m.lastMissionRecap = (saved.lastMissionRecap && typeof saved.lastMissionRecap === "object") ? saved.lastMissionRecap : null;
@@ -32281,6 +32285,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       desc:`Base Intel: ${factList[factIndex]} Social rescue, clan warfront, and live co-op goals are grouped here so Telegram players can compete and contribute.`,
       actions:[
         ["Clan + Co-op","openClanDeskFromBaseHQ()"],
+        ["Live Squad","openLiveSquadOps()"],
         ["Social Ops","openSocialRescueOpsFromBaseHQ()"],
         ["Invite Squad","shareReferralLinkFromGame()"],
         ["Join Group","openTelegramCommunityGroup()"],
@@ -33405,6 +33410,7 @@ function renderBaseHqQuickBar(){
     ${button("Events", "openBaseHqEventBoard()", "utility")}
     ${button("Profile", "openBaseHqLeaderboardBoard()", "utility")}
     ${button("Social", "openSocialRescueOpsFromBaseHQ()", "utility")}
+    ${button("Live Squad", "openLiveSquadOps()", "primary")}
     ${button("Invite Squad", "shareReferralLinkFromGame()", "primary")}
     ${button(normalizeTelegramCommunitySnapshot(S.telegramCommunity || {}).isMember ? "Open Group" : "Join Group", "openTelegramCommunityGroup()", "primary")}
     ${button("Shop", "openShopFromBaseHQ('bundles')", "utility")}
@@ -61943,6 +61949,7 @@ window.buyStoryHQModule = buyStoryHQModule;
 window.buyStorySpecialistPerk = buyStorySpecialistPerk;
 window.unlockSeasonPremium = unlockSeasonPremium;
 window.claimSeasonPassReward = claimSeasonPassReward;
+window.grantSeasonPassPoints = grantSeasonPassPoints;
 window.equipSeasonPassCosmetic = equipSeasonPassCosmetic;
 window.claimMasteryReward = claimMasteryReward;
 window.equipMasteryEliteTitle = equipMasteryEliteTitle;

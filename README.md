@@ -179,6 +179,18 @@ Phase 2A adds channel-growth tooling directly in your webhook: admin posting com
 - Keep `TELEGRAM_SETUP_KEY` as a strong secret after setup.
 - Never commit bot token/admin secrets into GitHub.
 
+## V5.0 Live Squad Operations
+
+Operation Night Fang is a private two-player Telegram co-op mission:
+
+- The leader creates a six-character squad room and shares a native Telegram invitation.
+- The invited player opens the Mini App with `startapp=squad_<CODE>` and joins the same room.
+- Both players synchronize movement, roles, health, rescue progress, Alpha damage, revives, connection state, and extraction readiness through `/api/squad/session`.
+- The room is capped at two signed Telegram users, expires automatically, and only the leader can start it.
+- Rewards use a per-player server receipt so the same mission cannot be claimed twice.
+
+Reliable live rooms require the existing Upstash/Vercel KV environment (`KV_REST_API_URL` + `KV_REST_API_TOKEN`, or the equivalent `UPSTASH_REDIS_REST_*` variables). Without KV, the development-only in-memory fallback does not persist across serverless instances.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

@@ -1,0 +1,81 @@
+#liveSquadOverlay{
+  position:fixed;
+  inset:0;
+  z-index:10050;
+  display:none;
+  overflow:auto;
+  overscroll-behavior:contain;
+  padding:max(12px,env(safe-area-inset-top)) 10px max(16px,env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 50% 0%,rgba(23,73,67,.9),transparent 42%),
+    linear-gradient(180deg,#071019,#050911 72%);
+  color:#eef7ff;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+#liveSquadOverlay.open{display:block}
+#baseHqLiveSquadFab{display:none}
+body.baseHqActive #baseHqLiveSquadFab{
+  display:block;position:fixed;left:10px;bottom:max(12px,env(safe-area-inset-bottom));z-index:122;
+  min-height:44px;padding:9px 14px;border:2px solid #67e8f9;border-radius:999px;
+  background:linear-gradient(180deg,rgba(22,101,123,.96),rgba(8,47,73,.96));color:#ecfeff;
+  box-shadow:0 10px 28px rgba(0,0,0,.48),0 0 20px rgba(34,211,238,.24);font:950 12px/1 system-ui;
+}
+.squadShell{width:min(920px,100%);margin:0 auto}
+.squadTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.squadTitle{font-size:clamp(22px,5vw,38px);font-weight:950;letter-spacing:.02em}
+.squadKicker{font-size:12px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#86efac}
+.squadClose,.squadBtn{
+  appearance:none;border:2px solid #46638e;border-radius:14px;background:#111a2b;color:#f8fbff;
+  padding:11px 16px;font:900 16px/1 system-ui;min-height:46px;touch-action:manipulation
+}
+.squadBtn.primary{border-color:#67e8f9;background:linear-gradient(180deg,#245f78,#15364d)}
+.squadBtn.good{border-color:#86efac;background:linear-gradient(180deg,#236047,#123a2d)}
+.squadBtn.warn{border-color:#facc15;background:linear-gradient(180deg,#6b4d12,#392b10)}
+.squadBtn.danger{border-color:#fb7185;background:linear-gradient(180deg,#6c2434,#38151e)}
+.squadBtn:disabled{opacity:.42;filter:grayscale(.5)}
+.squadPanel{border:2px solid #29466f;border-radius:20px;background:rgba(9,17,31,.94);box-shadow:0 18px 55px rgba(0,0,0,.45);padding:16px}
+.squadHero{display:grid;grid-template-columns:1.35fr .65fr;gap:14px;margin-bottom:12px}
+.squadMissionName{font-size:clamp(24px,6vw,42px);font-weight:950;margin:3px 0 8px}
+.squadDesc{color:#c6d5e8;font-size:15px;line-height:1.45}
+.squadCodeBox{display:grid;place-items:center;text-align:center;border:2px dashed #67e8f9;border-radius:18px;background:#081c29;padding:14px}
+.squadCode{font:950 clamp(28px,9vw,52px)/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;color:#a5f3fc}
+.squadSmall{font-size:12px;color:#9fb2ca;line-height:1.4}
+.squadRow{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.squadJoinRow{display:grid;grid-template-columns:1fr auto;gap:9px;margin-top:12px}
+.squadInput{min-height:48px;border:2px solid #3d5981;border-radius:14px;background:#060c16;color:white;padding:0 14px;font:900 20px ui-monospace;text-transform:uppercase;letter-spacing:.12em;min-width:0}
+.squadStatus{margin:12px 0;border:1px solid #304b70;border-radius:13px;background:#0b1424;padding:10px 12px;color:#d8e5f5;font-weight:750}
+.squadRoster{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.squadMember{border:1px solid #38557d;border-radius:15px;background:#101a2b;padding:12px;min-height:112px}
+.squadMember.me{border-color:#67e8f9;box-shadow:inset 0 0 18px rgba(34,211,238,.09)}
+.squadMember.offline{opacity:.58}
+.squadMemberName{font-size:18px;font-weight:950;overflow-wrap:anywhere}
+.squadMemberMeta{font-size:13px;color:#b9cae0;margin-top:5px}
+.squadRoleGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:10px}
+.squadRole{padding:10px 6px;border:1px solid #46638e;border-radius:12px;background:#0b1321;color:#dce9f8;font-weight:850}
+.squadRole.active{border-color:#86efac;background:#123a2d;color:white}
+.squadArenaPanel{padding:10px;position:relative}
+#squadArena{display:block;width:100%;height:auto;aspect-ratio:5/3;border:2px solid #31547e;border-radius:16px;background:#07130f;touch-action:none}
+.squadHud{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:9px}
+.squadHudCard{border:1px solid #38557d;border-radius:12px;background:#0d1727;padding:8px 10px;min-width:0}
+.squadHudLabel{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#8da7c7;font-weight:900}
+.squadHudValue{font-size:15px;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.squadObjective{margin:9px 0;color:#d9e8f7;font-weight:800;font-size:13px;line-height:1.4}
+.squadControls{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:end;margin-top:10px;user-select:none}
+.squadDpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,46px);gap:3px;justify-content:center}
+.squadPadBtn,.squadActionBtn{appearance:none;border:2px solid #6682a8;background:rgba(17,29,47,.96);color:white;font-weight:950;touch-action:none}
+.squadPadBtn{border-radius:12px;font-size:20px}
+.squadPadBtn.up{grid-column:2;grid-row:1}.squadPadBtn.left{grid-column:1;grid-row:2}.squadPadBtn.down{grid-column:2;grid-row:3}.squadPadBtn.right{grid-column:3;grid-row:2}
+.squadActions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.squadActionBtn{border-radius:16px;min-height:64px;font-size:15px}
+.squadActionBtn.attack{border-color:#fb7185;background:#591d2b}.squadActionBtn.rescue{border-color:#67e8f9;background:#164a61}.squadActionBtn.revive{border-color:#86efac;background:#194f38}
+.squadBanner{display:none;position:absolute;inset:50% auto auto 50%;transform:translate(-50%,-50%);width:min(88%,580px);z-index:3;text-align:center;border:3px solid #86efac;border-radius:22px;background:rgba(4,12,18,.96);padding:20px;box-shadow:0 0 60px rgba(74,222,128,.28)}
+.squadBanner.show{display:block}.squadBannerTitle{font-size:clamp(28px,8vw,48px);font-weight:1000}.squadBannerText{color:#c8d8e9;margin:8px 0 15px;line-height:1.4}
+.squadConnection{font-size:12px;font-weight:900;color:#93c5fd}.squadConnection.bad{color:#fca5a5}
+@media(max-width:640px){
+  #liveSquadOverlay{padding-left:6px;padding-right:6px}
+  .squadPanel{padding:11px}.squadHero{grid-template-columns:1fr}.squadRoster{grid-template-columns:1fr 1fr}
+  .squadRoleGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.squadControls{grid-template-columns:132px 1fr;gap:7px}
+  .squadDpad{grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px)}
+  .squadActions{gap:5px}.squadActionBtn{min-height:58px;padding:5px;font-size:12px}
+}
+@media(max-width:370px){.squadRoster{grid-template-columns:1fr}.squadHud{grid-template-columns:1fr 1fr}.squadControls{grid-template-columns:118px 1fr}.squadDpad{grid-template-columns:repeat(3,36px);grid-template-rows:repeat(3,36px)}}

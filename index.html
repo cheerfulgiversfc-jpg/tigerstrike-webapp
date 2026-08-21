@@ -7,8 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V4.4.1 (Recruit a Squad)</title>
+  <title>Tiger Strike 🐅 — V5.0 (Live Squad Operations)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="./squad-coop.css?v=5000-live-squad">
 
   <style>
     :root{
@@ -2424,10 +2425,10 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V4.4.1</span> <span class="tag">Recruit a Squad</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V5.0</span> <span class="tag">Live Squad Operations</span></div>
       <div class="sub">
-        Recruit a Squad: native Telegram invitations, official group access, verified recruits, and real invite rewards.<br>
-        Invite, join, complete a mission, grow the rescue network.
+        Operation Night Fang: private two-player rooms, live teammate movement, shared rescue objectives, revives, Alpha combat, and squad extraction.<br>
+        Create a squad, invite one teammate, and deploy together.
       </div>
     </div>
     <div class="row topActions">
@@ -2443,6 +2444,7 @@
       <button class="ghost" id="squadFormBtn" onclick="cycleSquadFormation()">🧩 Wedge</button>
       <button class="ghost" onclick="selectNextSupportUnit()">🎯 Select Squad</button>
       <button class="ghost" onclick="openStoryCampaignJournal()">📖 Story</button>
+      <button class="good" onclick="openLiveSquadOps()">🐅 Live Squad</button>
       <button class="ghost" onclick="openHudCustomizer()">🎛️ HUD</button>
 
       <!-- IDs added for tutorial highlighting -->
@@ -2761,6 +2763,7 @@
           <div class="launchHeroCardTitle">Clan + Co-op</div>
           <div class="launchHeroCardValue" id="launchClanCard">Clan status loading...</div>
           <button class="ghost" onclick="openClanContractsFromLaunchIntro()">🤝 Clan Contracts</button>
+          <button class="good" onclick="openLiveSquadOps()">🐅 Live Squad Mission</button>
         </div>
         <div class="launchHeroCard">
           <div class="launchHeroCardTitle">Referral Milestone</div>
@@ -3196,6 +3199,7 @@
         <button class="good" onclick="startNextMission()">Start Next Mission</button>
         <button class="ghost" onclick="shareMissionRecap()">Share Recap</button>
         <button class="ghost" onclick="shareRescueChallenge()">Challenge Friend</button>
+        <button class="good" onclick="openLiveSquadOps()">Live Squad</button>
         <button class="ghost" onclick="shareReferralLinkFromGame()">Invite Squad</button>
         <button class="ghost" onclick="openTelegramCommunityGroup()">Join Group</button>
         <button class="ghost" onclick="openShop()">Shop First</button>
@@ -3257,9 +3261,21 @@
   </div>
 </div>
 
+<!-- V5.0 Live Squad Operations -->
+<div id="liveSquadOverlay" aria-hidden="true">
+  <div class="squadShell">
+    <div class="squadTop">
+      <div><div class="squadKicker">Tiger Strike V5.0</div><div class="squadTitle">🐅 Live Squad Operations</div></div>
+      <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
+    </div>
+    <div id="squadBody"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div class="transitionGuardChip" id="transitionGuardChip">Transition...</div>
 <button class="mobileMenuToggle" id="mobileMenuToggle" onclick="toggleMobileMenu()">Hide Menu</button>
+<button id="baseHqLiveSquadFab" type="button" onclick="openLiveSquadOps()">🐅 LIVE SQUAD</button>
 
 <div class="nav">
   <div class="navInner">
@@ -3278,6 +3294,7 @@
     <button class="ghost" onclick="selectNextSupportUnit()">🎯 Select Squad</button>
     <button class="ghost" onclick="openWorldMapCampaign()">🌎 World Map</button>
     <button class="ghost" onclick="openStoryCampaignJournal()">📖 Story</button>
+    <button class="ghost" onclick="openLiveSquadOps()">🐅 Live Squad</button>
     <button class="ghost" onclick="shareReferralLinkFromGame()">👥 Invite</button>
     <button class="ghost" onclick="openTelegramCommunityGroup()">💬 Group</button>
     <button class="ghost" onclick="saveGameNow()">💾 Save</button>
@@ -3289,8 +3306,9 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=4681-community-admin-fix"></script>
+  <script src="./game.js?v=5000-live-squad"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
+  <script src="./squad-coop.js?v=5000-live-squad"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";
