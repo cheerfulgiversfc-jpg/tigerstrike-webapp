@@ -28,6 +28,8 @@
     priorPause:false,
     message:"Create a private squad or enter a teammate's six-character code.",
     error:"",
+    storyMissionLevel:0,
+    launchType:"live-squad",
   };
 
   const $ = (id) => document.getElementById(id);
@@ -52,6 +54,8 @@
   const viewerId = () => Number(tgApp?.initDataUnsafe?.user?.id || state.snapshot?.viewerId || 0);
   const localSnapshotPlayer = () => (state.snapshot?.players || []).find((p)=>Number(p.userId) === viewerId()) || null;
   const remoteSnapshotPlayer = () => (state.snapshot?.players || []).find((p)=>Number(p.userId) !== viewerId()) || null;
+  const sharedStoryActive = () => state.launchType === "shared-story" || state.snapshot?.launchType === "shared-story";
+  const missionName = () => sharedStoryActive() ? `Shared Story Mission ${Math.max(1, Number(state.snapshot?.storyMissionLevel || state.storyMissionLevel || 1))}` : "Operation Night Fang";
 
   function setMessage(message, error=false){
     state.message = String(message || "");
@@ -88,6 +92,8 @@
   function applySnapshot(snapshot, roles){
     if(!snapshot || typeof snapshot !== "object") return;
     state.snapshot = snapshot;
+    state.launchType = snapshot.launchType === "shared-story" ? "shared-story" : "live-squad";
+    state.storyMissionLevel = Number(snapshot.storyMissionLevel || 0);
     state.code = cleanCode(snapshot.code);
     if(Array.isArray(roles) && roles.length) state.roles = roles;
     const mine = localSnapshotPlayer();
@@ -216,7 +222,7 @@
     if(!snapshot){
       return `<div class="squadPanel">
         <div class="squadHero">
-          <div><div class="squadKicker">V5.4 Co-op Field Lives</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Two real Telegram players enter an expanded Story-style district with soldiers, civilians, a tiger pack, Night Fang Alpha, one field life each, and a full mission restart after a squad wipe.</div></div>
+          <div><div class="squadKicker">${sharedStoryActive() ? "V5.5 Flexible Shared Story Pilot" : "V5.5 Co-op Field Lives"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">Two real Telegram players enter the same bright Story district with soldiers, civilians, a tiger pack, Night Fang Alpha, one field life each, and a full mission restart after a squad wipe.</div></div>
           <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
         </div>
         <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
@@ -230,7 +236,7 @@
     const waiting = snapshot.status === "waiting";
     return `<div class="squadPanel">
       <div class="squadHero">
-        <div><div class="squadKicker">Private Live Squad</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Choose a role. The squad leader starts when both players are connected.</div></div>
+        <div><div class="squadKicker">${sharedStoryActive() ? "Private Shared Story Squad" : "Private Live Squad"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">Choose a role. The squad leader starts when both players are connected.</div></div>
         <button type="button" class="squadCodeBox" data-squad-command="copy-code" aria-label="Copy squad code ${esc(snapshot.code)}"><span class="squadSmall">SQUAD CODE • TAP TO COPY</span><span class="squadCode">${esc(displayCode(snapshot.code))}</span><span class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/2 players connected</span></button>
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
@@ -460,9 +466,14 @@
     }, false);
   }
 
-  function open(){
+  function open(opts={}){
     const overlay = $("liveSquadOverlay");
     if(!overlay) return;
+    const requestedStoryLevel = Math.max(0, Math.floor(Number(opts?.storyMissionLevel || 0)));
+    if(!state.snapshot){
+      state.storyMissionLevel = requestedStoryLevel;
+      state.launchType = requestedStoryLevel === 1 ? "shared-story" : "live-squad";
+    }
     bindOverlay();
     state.open = true;
     state.priorPause = !!window.S?.paused;
@@ -493,7 +504,10 @@
     if(!hasTelegramAuth()) return setMessage("Please open the game inside Telegram first.", true);
     try{
       setMessage("Creating your private squad…");
-      const payload = await api("create");
+      const payload = await api("create", {
+        storyMissionLevel:state.storyMissionLevel,
+        launchType:state.launchType,
+      });
       state.code = payload.snapshot.code;
       setMessage("Squad created. Invite one teammate, choose roles, then start.");
       startPolling();
@@ -567,7 +581,7 @@
   }
 
   function openTelegramShare(playUrl="", shareText=""){
-    const text = String(shareText || state.inviteText || `Join my live Tiger Strike squad for Operation Night Fang. Code: ${state.code}`);
+    const text = String(shareText || state.inviteText || `Join my live Tiger Strike squad for ${missionName()}. Code: ${state.code}`);
     const url = `https://t.me/share/url?url=${encodeURIComponent(playUrl || state.inviteUrl || "")}&text=${encodeURIComponent(text)}`;
     if(typeof tgApp?.openTelegramLink === "function") tgApp.openTelegramLink(url);
     else window.open(url,"_blank","noopener");
@@ -578,7 +592,7 @@
       setMessage("Start Mission needs 2/2 players. Invite one teammate or have them join with the code first.", true);
       return;
     }
-    try{ setMessage("Deploying both players…"); await api("start"); setMessage("Operation Night Fang is live."); ensureFrame(); }
+    try{ setMessage("Deploying both players…"); await api("start"); setMessage(`${missionName()} is live.`); ensureFrame(); }
     catch(error){ setMessage(error.message, true); }
   }
 
@@ -832,7 +846,6 @@
     if(tiger.defeated) return;const alpha=!!tiger.boss;const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const facing=Math.sin((now/900)+(String(tiger.id).length))>=0?1:-1;
     ctx.save();ctx.translate(tiger.x,tiger.y);ctx.scale(facing*s,s);
     if(alpha){ctx.fillStyle="rgba(239,68,68,.18)";ctx.beginPath();ctx.arc(0,0,62,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(251,113,133,.55)";ctx.lineWidth=3;ctx.stroke();}
-    ctx.fillStyle="rgba(2,6,23,.35)";ctx.beginPath();ctx.ellipse(3,22,40,10,0,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle="#f59e0b";ctx.lineWidth=9;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-29,2);ctx.quadraticCurveTo(-54,-15,-64,4);ctx.stroke();
     ctx.strokeStyle="#111827";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-47,-6);ctx.lineTo(-51,2);ctx.stroke();
     ctx.fillStyle="#f59e0b";ctx.beginPath();ctx.ellipse(0,0,35,20,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(30,-7,16,0,Math.PI*2);ctx.fill();
@@ -900,6 +913,7 @@
   window.addEventListener("keydown",(event)=>{ if(!state.open||isTypingTarget(event.target))return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
+  window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });
   window.closeLiveSquadOps=close;
   window.liveSquadCreate=create;
   window.liveSquadJoin=()=>join();

@@ -217,6 +217,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - The shared battlefield is now a larger 1200×1100 Story-style district with more terrain, buildings, roads, trees, a river crossing, Base Camp, Medical Post, and clearer mission landmarks.
 - The recovery, wipe, restart, and post-restart completion paths are server-authoritative so both phones see the same result.
 
+### V5.5 Flexible Shared Story
+
+- The World Map now gives a clear Solo or Two Player choice for Story Mission 1. Solo remains the safe default, while the two-player route opens a private Shared Story squad.
+- Shared Story is protected by a feature switch and limited to the Mission 1 pilot so later Story progress and old saves remain untouched while the shared campaign is expanded one mission at a time.
+- Solo Story on phones now uses the brighter co-op district look: green terrain, clearer roads, real houses, richer trees, and the same visual language as the shared map.
+- A held touch joystick is no longer mistaken for abandoned input. Stability recovery preserves a real finger hold, slow-frame motion compensation is stronger, and player unstick recovery reacts sooner.
+- Decorative ground ovals were removed from Story and co-op tigers while combat telegraphs remain intact.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

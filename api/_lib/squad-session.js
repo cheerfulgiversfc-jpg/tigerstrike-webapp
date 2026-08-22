@@ -74,7 +74,9 @@ function normalizeSession(raw){
     startedAt:Math.max(0, Number(raw.startedAt || 0)),
     completedAt:Math.max(0, Number(raw.completedAt || 0)),
     failureReason:cleanText(raw.failureReason, 32),
-    title:"Operation Night Fang",
+    storyMissionLevel:clamp(Math.floor(Number(raw.storyMissionLevel || 0)), 0, 100),
+    launchType:raw.launchType === "shared-story" ? "shared-story" : "live-squad",
+    title:raw.launchType === "shared-story" ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}` : "Operation Night Fang",
   };
 }
 
@@ -195,7 +197,7 @@ function ensureLiveSession(session){
   if(session.status === "closed") throw new Error("This squad room is closed.");
 }
 
-async function createSession(user){
+async function createSession(user, opts={}){
   const uid = userIdOf(user);
   if(!uid) throw new Error("Telegram player identity is missing.");
   let code = "";
@@ -213,6 +215,8 @@ async function createSession(user){
     updatedAt:nowMs(),
     startedAt:0,
     completedAt:0,
+    storyMissionLevel:clamp(Math.floor(Number(opts?.storyMissionLevel || 0)), 0, 100),
+    launchType:opts?.launchType === "shared-story" ? "shared-story" : "live-squad",
   });
   await writePlayer(code, newPlayer(user, 0));
   return session;
@@ -296,6 +300,8 @@ async function buildSnapshot(session, viewerId){
   return {
     code:session.code,
     title:session.title,
+    storyMissionLevel:session.storyMissionLevel,
+    launchType:session.launchType,
     hostId:session.hostId,
     viewerId:userIdOf(viewerId),
     isHost:session.hostId === userIdOf(viewerId),
