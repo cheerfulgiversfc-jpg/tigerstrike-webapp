@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5006";
+const TS_BUILD = "5007";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 1;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -13620,6 +13620,24 @@ function startWorldMapStoryCoopMission(id){
     toast("Two-player service is unavailable right now. Solo Story is still safe.");
   }
   return false;
+}
+function applySharedStoryCompletion(progress={}, receipt=""){
+  const completedLevel = clamp(Math.floor(Number(progress?.completedLevel || 0)), 0, STORY_CAMPAIGN_OBJECTIVES.length);
+  const unlockLevel = clamp(Math.floor(Number(progress?.unlockLevel || completedLevel + 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
+  if(completedLevel !== 1) return false;
+  if(!S.sharedStoryCompletionReceipts || typeof S.sharedStoryCompletionReceipts !== "object"){
+    S.sharedStoryCompletionReceipts = {};
+  }
+  const key = String(receipt || `shared-story:${completedLevel}`).slice(0, 160);
+  if(S.sharedStoryCompletionReceipts[key]) return false;
+  S.sharedStoryCompletionReceipts[key] = Date.now();
+  clearStoryCheckpointForMission(completedLevel);
+  S.storyLevel = Math.max(Number(S.storyLevel || 1), unlockLevel);
+  S.storyLastMission = Math.max(Number(S.storyLastMission || 1), unlockLevel);
+  S.storyPartyMode = "solo";
+  save(true);
+  toast(`Shared Story Mission ${completedLevel} complete • Story Mission ${unlockLevel} unlocked.`);
+  return true;
 }
 function openMissionBriefFromWorldMap(){
   const wm = ensureWorldMapCampaignState(S);
@@ -50545,6 +50563,11 @@ function drawMapArtUpgrade(opts={}){
 }
 
 function shouldUseMobileFastMapRenderer(state=S){
+  // Story now deliberately shares the same bright district foundation as
+  // Shared Story co-op on every device. Do not let a saved "full" renderer
+  // preference or the startup repaint guard silently put Story back on the
+  // older, muted road/map renderer.
+  if(normalizeModeName(state?.mode) === "Story") return true;
   if(!isMobileViewport()) return false;
   const now = Date.now();
   if(__startupLoadingGuard?.active) return false;
@@ -50592,23 +50615,82 @@ function drawSharedStoryHouse(x, y, width, height, roof="#9a5c38"){
   ctx.restore();
 }
 
-function drawSharedStoryDistrictScenery(w, h, heavy=false){
+function drawSharedStoryDistrictScenery(offsetX=0, offsetY=0, heavy=false){
+  // These are the same fixed measurements used by Shared Story co-op. Story's
+  // world can be larger than a co-op room, so repeat the district instead of
+  // stretching houses and trees into oversized obstacles.
   const houses = [
-    [.07,.08,.105,.078,"#9a5c38"], [.79,.075,.115,.083,"#7c4a32"],
-    [.08,.62,.108,.082,"#72452f"], [.61,.65,.10,.078,"#9a5c38"],
-    [.82,.77,.11,.086,"#8b5a3c"], [.29,.69,.098,.074,"#7c4a32"]
+    [68,86,150,94,"#9a5c38"], [930,82,165,100,"#7c4a32"],
+    [82,650,154,102,"#72452f"], [735,700,142,94,"#9a5c38"],
+    [980,855,156,104,"#8b5a3c"], [335,730,138,90,"#7c4a32"]
   ];
-  for(const [px,py,pw,ph,roof] of houses){
-    drawSharedStoryHouse(w * px, h * py, Math.max(70, w * pw), Math.max(54, h * ph), roof);
+  for(const [x,y,width,height,roof] of houses){
+    drawSharedStoryHouse(offsetX + x, offsetY + y, width, height, roof);
   }
-  const treeCount = heavy ? 18 : 34;
+  const treeCount = heavy ? 26 : 48;
   for(let i=0; i<treeCount; i++){
-    const x = ((i * 173 + 51) % Math.max(80, w - 60)) + 30;
-    const y = ((i * 113 + 37) % Math.max(80, h - 70)) + 35;
-    const onMainRoad = Math.abs(y - h * .54) < 70 || Math.abs(x - w * .51) < 70;
-    const nearHouse = houses.some(([px,py,pw,ph])=>x > w*px-30 && x < w*(px+pw)+30 && y > h*py-55 && y < h*(py+ph)+35);
-    if(onMainRoad || nearHouse) continue;
-    drawSharedStoryTree(x, y, .70 + (i % 4) * .08);
+    const x = (i * 173 + 51) % 1160 + 20;
+    const y = (i * 113 + 37) % 1040 + 22;
+    if((x>515&&x<700)||(y>440&&y<630)||((x>40&&x<255)&&(y>45&&y<210))||((x>900&&x<1165)&&(y>45&&y<220))||((x>55&&x<265)&&(y>620&&y<790))||((x>700&&x<900)&&(y>670&&y<825))||((x>950&&y>820))) continue;
+    drawSharedStoryTree(offsetX + x, offsetY + y, .72 + (i % 4) * .1);
+  }
+}
+
+function drawSharedStoryDistrictFoundation(w, h, heavy=false){
+  const terrain = ctx.createLinearGradient(0, 0, 0, h);
+  terrain.addColorStop(0, "#376b43");
+  terrain.addColorStop(0.52, "#2b5b3b");
+  terrain.addColorStop(1, "#204b35");
+  ctx.fillStyle = terrain;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "rgba(91,139,81,.22)";
+  for(let y=0, row=0; y<h; y+=82, row++){
+    for(let x=0; x<w; x+=100){
+      ctx.fillRect(x + ((row % 2) * 24), y, 76, 58);
+    }
+  }
+
+  for(let oy=0; oy<h; oy+=1100){
+    for(let ox=0; ox<w; ox+=1200){
+      ctx.fillStyle = "rgba(39,112,137,.68)";
+      ctx.beginPath();
+      ctx.moveTo(ox, oy + 930);
+      ctx.bezierCurveTo(ox + 250, oy + 865, ox + 430, oy + 1035, ox + 650, oy + 970);
+      ctx.bezierCurveTo(ox + 880, oy + 905, ox + 1015, oy + 1035, ox + 1200, oy + 965);
+      ctx.lineTo(ox + 1200, oy + 1100);
+      ctx.lineTo(ox, oy + 1100);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#4b5563";
+      ctx.fillRect(ox, oy + 470, 1200, 132);
+      ctx.fillRect(ox + 540, oy, 132, 1100);
+      ctx.fillStyle = "#354052";
+      ctx.fillRect(ox, oy + 482, 1200, 108);
+      ctx.fillRect(ox + 552, oy, 108, 1100);
+      if(!heavy){
+        ctx.strokeStyle = "rgba(250,204,21,.48)";
+        ctx.lineWidth = 5;
+        ctx.setLineDash([30,26]);
+        ctx.beginPath();
+        ctx.moveTo(ox, oy + 536); ctx.lineTo(ox + 1200, oy + 536);
+        ctx.moveTo(ox + 606, oy); ctx.lineTo(ox + 606, oy + 1100);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      ctx.fillStyle = "#765a3b";
+      ctx.fillRect(ox + 530, oy + 900, 152, 58);
+      ctx.strokeStyle = "#e0bc73";
+      ctx.lineWidth = 6;
+      for(let x=542; x<675; x+=22){
+        ctx.beginPath();
+        ctx.moveTo(ox + x, oy + 892);
+        ctx.lineTo(ox + x, oy + 967);
+        ctx.stroke();
+      }
+      drawSharedStoryDistrictScenery(ox, oy, heavy);
+    }
   }
 }
 
@@ -50623,103 +50705,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
   const drawX = Number.isFinite(camX) ? Number(camX) : 0;
   const drawY = Number.isFinite(camY) ? Number(camY) : 0;
   const zone = missionEvacZoneSafe(S);
-  const roadColor = "rgba(53,64,82,.96)";
-  const roadEdge = "rgba(24,30,42,.78)";
-  const grass = themeKey === "ST_DOWNTOWN"
-    ? "#294d3b"
-    : (themeKey === "ST_SUBURBS" ? "#2f6743" : "#28583b");
-
-  ctx.fillStyle = grass;
-  ctx.fillRect(drawX, drawY, drawW, drawH);
-  ctx.fillStyle = "rgba(91,139,81,.20)";
-  for(let y=0; y<h; y+=82){
-    for(let x=0; x<w; x+=100){
-      ctx.fillRect(x + ((Math.floor(y / 82) % 2) * 24), y, 76, 58);
-    }
-  }
-  if(chapterStyle?.tint){
-    ctx.save();
-    ctx.globalAlpha = 0.20;
-    ctx.fillStyle = chapterStyle.tint;
-    ctx.fillRect(drawX, drawY, drawW, drawH);
-    ctx.restore();
-  }
-  const weatherTint = mobileWeatherTintSpec();
-  if(weatherTint){
-    ctx.save();
-    ctx.globalAlpha = 0.32;
-    ctx.fillStyle = weatherTint.main;
-    ctx.fillRect(drawX, drawY, drawW, drawH);
-    if(!heavy){
-      ctx.fillStyle = weatherTint.top;
-      ctx.fillRect(drawX, drawY, drawW, Math.max(80, drawH * 0.22));
-    }
-    ctx.restore();
-  }
-
-  // Simple, stable road ribbons (mobile fast path).
-  const roads = [
-    [[0, h * 0.49], [w, h * 0.49]],
-    [[w * 0.51, 0], [w * 0.51, h]],
-    [[0, h * 0.76], [w * 0.28, h * 0.71], [w * 0.52, h * 0.74], [w * 0.76, h * 0.68], [w, h * 0.72]],
-  ];
-  for(const pts of roads){
-    ctx.strokeStyle = roadEdge;
-    ctx.lineWidth = 58;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(pts[0][0], pts[0][1]);
-    for(let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-    ctx.stroke();
-
-    ctx.strokeStyle = roadColor;
-    ctx.lineWidth = 50;
-    ctx.beginPath();
-    ctx.moveTo(pts[0][0], pts[0][1]);
-    for(let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-    ctx.stroke();
-
-    if(!heavy){
-      ctx.strokeStyle = "rgba(250,204,21,.48)";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([10, 10]);
-      ctx.beginPath();
-      ctx.moveTo(pts[0][0], pts[0][1]);
-      for(let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-  }
-
-  ensureMapObstacleCache();
-  for(const zone of (__mapWaterZones || [])){
-    const radii = waterZoneRadii(zone);
-    ctx.fillStyle = "rgba(32,100,128,.46)";
-    ctx.beginPath();
-    ctx.ellipse(zone.x, zone.y, radii.rx, radii.ry, zone.rot || 0, 0, Math.PI * 2);
-    ctx.fill();
-    if(!heavy){
-      ctx.strokeStyle = "rgba(170,220,245,.48)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(zone.x, zone.y, Math.max(8, radii.rx - 1), Math.max(6, radii.ry - 1), zone.rot || 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-  }
-  drawMapExpansionSectorDetails({ mobileFast:true });
-  drawMapExpansionObjectiveRoutes({ mobileFast:true });
-  drawPremiumTallGrass({ nowTs:frameNow, themeKey, mobileFast:true });
-  drawMapArtUpgrade({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
-  drawPremium2DMapArtReplacementPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
-  drawPremium2DArtPhase2MapPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
-  drawPremium2DArtPhase3MapPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
-  drawPremium2DArtPhase4CinematicDepthPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
-  drawPremium2DArtPhase5AtmospherePass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
-  drawPremium2DArtPhase6ContrastPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
-  drawPremium2DArtPhase7PaintedWorldPass({ nowTs:frameNow, w, h, themeKey, mobileFast:true });
-  drawLightingAtmospherePass({ nowTs:frameNow, w, h, themeKey, chapterStyle, mobileFast:true });
-  drawSharedStoryDistrictScenery(w, h, heavy);
+  drawSharedStoryDistrictFoundation(w, h, heavy);
 
   if(S.mode !== "Survival"){
     const ex = zone.x;
@@ -61158,10 +61144,11 @@ function draw(){
             drawUltraSafeMapFrame(viewW, viewH, camX, camY);
           });
         }
-        if(mapDrawOk && shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
+        const brightSharedStoryMap = S.mode === "Story" && shouldUseMobileFastMapRenderer(S);
+        if(mapDrawOk && !brightSharedStoryMap && shouldDrawAtmosphericPass() && !frameBudgetExceeded(0.95)){
           safeTick("drawSceneAtmosphere", drawAtmosphericParallax);
         }
-        if(mapDrawOk && !frameBudgetExceeded(0.92)){
+        if(mapDrawOk && !brightSharedStoryMap && !frameBudgetExceeded(0.92)){
           safeTick("drawSceneGradeUnderlay", ()=>drawSceneCinematicGrade(Date.now(), "underlay"));
         }
         const richEntityDrawOk = safeTick("drawSceneEntities", drawEntities);
@@ -61180,10 +61167,10 @@ function draw(){
         if(entityDrawOk && window.TigerTutorial?.isRunning){
           safeTick("drawTutorialStepWorldHighlight", ()=>drawTutorialStepWorldHighlight(Date.now()));
         }
-        if(entityDrawOk){
+        if(entityDrawOk && !brightSharedStoryMap){
           safeTick("drawDynamicDayNightOverlay", ()=>drawDynamicDayNightOverlay(Date.now()));
         }
-        if(entityDrawOk && !frameBudgetExceeded(0.78)){
+        if(entityDrawOk && !brightSharedStoryMap && !frameBudgetExceeded(0.78)){
           safeTick("drawSceneGradeOverlay", ()=>drawSceneCinematicGrade(Date.now(), "overlay"));
         }
         if(mapDrawOk && richEntityDrawOk){
@@ -61828,6 +61815,7 @@ window.selectWorldMapRegion = selectWorldMapRegion;
 window.setWorldMapActiveRegion = setWorldMapActiveRegion;
 window.startWorldMapRegionMission = startWorldMapRegionMission;
 window.startWorldMapStoryCoopMission = startWorldMapStoryCoopMission;
+window.applySharedStoryCompletion = applySharedStoryCompletion;
 window.openMissionBriefFromWorldMap = openMissionBriefFromWorldMap;
 window.applyWorldMapStrategicChoice = applyWorldMapStrategicChoice;
 window.applyWorldMapRivalAction = applyWorldMapRivalAction;

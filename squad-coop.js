@@ -56,6 +56,9 @@
   const remoteSnapshotPlayer = () => (state.snapshot?.players || []).find((p)=>Number(p.userId) !== viewerId()) || null;
   const sharedStoryActive = () => state.launchType === "shared-story" || state.snapshot?.launchType === "shared-story";
   const missionName = () => sharedStoryActive() ? `Shared Story Mission ${Math.max(1, Number(state.snapshot?.storyMissionLevel || state.storyMissionLevel || 1))}` : "Operation Night Fang";
+  const missionMeta = () => state.snapshot?.mission || {};
+  const rescueRequired = () => Math.max(1, Number(missionMeta().rescueRequired || (sharedStoryActive() ? 2 : 4)));
+  const civilianCount = () => Math.max(rescueRequired(), Number(missionMeta().civilianCount || state.snapshot?.civilians?.length || 4));
 
   function setMessage(message, error=false){
     state.message = String(message || "");
@@ -150,8 +153,8 @@
     const seconds = Math.max(0, Math.ceil(Number(snap.timeLeftMs || 0) / 1000));
     const set = (id, text)=>{ const node=$(id); if(node) node.textContent=text; };
     const activeThreats = (snap.tigers || []).filter((t)=>!t.defeated).length;
-    set("squadBossHud", `Alpha ${Math.round(snap.boss?.hp || 0)} HP • ${activeThreats} active`);
-    set("squadCivHud", `${snap.rescuedIds?.length || 0}/4 rescued`);
+    set("squadBossHud", `${snap.boss?.boss ? `Alpha ${Math.round(snap.boss?.hp || 0)} HP` : `${activeThreats} tiger${activeThreats===1?"":"s"}`} • ${activeThreats} active`);
+    set("squadCivHud", `${snap.rescuedIds?.length || 0}/${rescueRequired()} escorted`);
     set("squadMissionHud", `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`);
     set("squadLivesHud", livesHudText());
     const connection = $("squadConnection");
@@ -163,6 +166,7 @@
   function activeTigers(){ return (state.snapshot?.tigers || (state.snapshot?.boss ? [state.snapshot.boss] : [])).filter((t)=>!t.defeated && Number(t.hp || 0) > 0); }
   function nearestActiveTiger(){ return activeTigers().sort((a,b)=>distance(state.local,a)-distance(state.local,b))[0] || null; }
   function nearestUnrescuedCivilian(){
+    if((state.snapshot?.rescuedIds || []).length >= rescueRequired()) return null;
     return (state.snapshot?.civilians || [])
       .filter((c)=>!(state.snapshot?.rescuedIds || []).includes(c.id))
       .sort((a,b)=>distance(state.local,a)-distance(state.local,b))[0] || null;
@@ -202,7 +206,7 @@
       return `<div class="squadMember ${mine ? "me" : ""} ${player.online ? "" : "offline"}">
         <div class="squadMemberName">${mine ? "⭐ " : ""}${esc(player.name)}</div>
         <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}</div>
-        <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Alpha damage ${Math.round(player.bossDamage || 0)} • Rescues ${(player.rescuedIds || []).length} • Revives ${Math.round(player.revives || 0)}</div>
+        <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Tiger damage ${Math.round(Object.values(player.tigerDamage || {}).reduce((sum,value)=>sum+Number(value||0),0))} • Rescues ${(player.rescuedIds || []).length} • Revives ${Math.round(player.revives || 0)}</div>
       </div>`;
     });
     return cards.join("");
@@ -222,7 +226,7 @@
     if(!snapshot){
       return `<div class="squadPanel">
         <div class="squadHero">
-          <div><div class="squadKicker">${sharedStoryActive() ? "V5.5 Flexible Shared Story Pilot" : "V5.5 Co-op Field Lives"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">Two real Telegram players enter the same bright Story district with soldiers, civilians, a tiger pack, Night Fang Alpha, one field life each, and a full mission restart after a squad wipe.</div></div>
+          <div><div class="squadKicker">${sharedStoryActive() ? "V5.6 Real Shared Story" : "V5.6 Co-op Field Lives"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${sharedStoryActive() ? "Play the real Story Mission 1 objective together: escort two villagers, clear the two Story tigers, and extract on the same shared map." : "Two real Telegram players enter Night Fang District with civilians, a tiger pack, an Alpha, field lives, and mission restart."}</div></div>
           <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
         </div>
         <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
@@ -241,7 +245,7 @@
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
-      <details class="squadHowTo" open><summary>How two-player Live Squad works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tiger pack, Alpha health, and extraction.<br><b>3.</b> Move near a person to Rescue, near a tiger to Attack, or near a downed teammate to Revive.<br><b>4.</b> Rescue all four, defeat Night Fang, then both soldiers enter the green extraction zone.</div></details>
+      <details class="squadHowTo" open><summary>How ${sharedStoryActive() ? "Shared Story" : "Live Squad"} works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tigers, health, and extraction.<br><b>3.</b> Move near a person to Rescue, near a tiger to Attack, or near a downed teammate to Revive.<br><b>4.</b> ${sharedStoryActive() ? `Escort ${rescueRequired()} villagers, clear the Story tigers, then extract together. Completion unlocks Story Mission 2 for both players.` : "Rescue all four, defeat Night Fang, then extract together."}</div></details>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
         ${waiting ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate</button>` : ""}
@@ -259,24 +263,26 @@
     const mine = localSnapshotPlayer();
     const bossPct = snap?.boss ? Math.round((snap.boss.hp / snap.boss.hpMax) * 100) : 100;
     const rescued = snap?.rescuedIds?.length || 0;
+    const required = rescueRequired();
+    const activeThreats = (snap.tigers || []).filter((t)=>!t.defeated).length;
     const seconds = Math.max(0, Math.ceil(Number(snap?.timeLeftMs || 0) / 1000));
     const statusText = snap?.status === "complete" ? "MISSION COMPLETE" : (snap?.status === "failed" ? "MISSION FAILED" : `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`);
     return `<div class="squadPanel squadArenaPanel">
       <div class="squadHud">
-        <div class="squadHudCard"><div class="squadHudLabel">Tiger Threats</div><div class="squadHudValue" id="squadBossHud">Alpha ${Math.round(snap.boss.hp)} HP • ${(snap.tigers || []).filter((t)=>!t.defeated).length || 1} active</div></div>
-        <div class="squadHudCard"><div class="squadHudLabel">Civilians</div><div class="squadHudValue" id="squadCivHud">${rescued}/4 rescued</div></div>
+        <div class="squadHudCard"><div class="squadHudLabel">Tiger Threats</div><div class="squadHudValue" id="squadBossHud">${snap.boss?.boss ? `Alpha ${Math.round(snap.boss.hp)} HP` : `${activeThreats} Story tigers`} • ${activeThreats} active</div></div>
+        <div class="squadHudCard"><div class="squadHudLabel">Civilians</div><div class="squadHudValue" id="squadCivHud">${rescued}/${required} escorted</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Mission</div><div class="squadHudValue" id="squadMissionHud">${statusText}</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Field Lives</div><div class="squadHudValue" id="squadLivesHud">${esc(livesHudText())}</div></div>
       </div>
-      <div class="squadStoryStrip"><span>🌤️ Daylight Patrol</span><span>🧭 Base Camp Respawn</span><span>🏘️ Night Fang District</span></div>
+      <div class="squadStoryStrip"><span>📖 ${esc(missionMeta().title || missionName())}</span><span>🎯 ${esc(missionMeta().objective || "Shared objectives")}</span><span>🏘️ Shared Story District</span></div>
       <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${esc(playerConnectionText())}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>👤 Civilian</span><span>🐅 Tiger</span></div>
-      <canvas id="squadArena" width="1200" height="1100" aria-label="Operation Night Fang expanded Story-style live co-op battlefield"></canvas>
+      <canvas id="squadArena" width="1200" height="1100" aria-label="${esc(missionName())} shared Story battlefield"></canvas>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : "⏱️ Operation Failed")}</div>
-        <div class="squadBannerText">${snap.status === "complete" ? "Both players rescued the civilians, cleared the tiger pack, defeated Night Fang, and reached extraction together." : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : "Time expired. The squad leader can restart Operation Night Fang.")}</div>
+        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? "Story Mission 1 completed together. Story Mission 2 unlocks when each player claims the result." : "Both players cleared Operation Night Fang and extracted together."}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : `Time expired. The squad leader can restart ${esc(missionName())}.`)}</div>
         ${snap.status === "complete" ? `<button type="button" class="squadBtn good" data-squad-command="claim">Claim Co-op Reward</button>` : ""}
         ${snap.status === "failed" && snap.isHost ? `<button type="button" class="squadBtn good" data-squad-command="restart">Restart Mission</button>` : ""}
         ${snap.status === "failed" && !snap.isHost ? `<button type="button" class="squadBtn" disabled>Waiting for Leader to Restart</button>` : ""}
@@ -326,9 +332,9 @@
     const respawn = respawnSeconds(mine);
     if(mine?.downed && respawn > 0) return `Recovery: Your field life is returning you to Base Camp in ${respawn}s.`;
     if(snap.failureReason === "squad_wipe") return "Squad wipe: Restart Mission restores both soldiers, both field lives, civilians, tigers, and the mission clock.";
-    if((snap.rescuedIds || []).length < 4) return `Objective 1: Find the human civilians and tap Rescue when close (${snap.rescuedIds.length}/4 safe).`;
+    if((snap.rescuedIds || []).length < rescueRequired()) return `Objective 1: ${missionMeta().objective || "Escort the civilians"} (${snap.rescuedIds.length}/${rescueRequired()} escorted).`;
     const threats = (snap.tigers || (snap.boss ? [snap.boss] : [])).filter((t)=>!t.defeated && Number(t.hp || 0) > 0);
-    if(threats.length) return `Objective 2: Clear the tiger pack and defeat Night Fang together (${threats.length} tiger${threats.length===1?"":"s"} active • ${Math.round(snap.boss?.hp || 0)} Alpha HP).`;
+    if(threats.length) return `Objective 2: Clear the Story tiger threat together (${threats.length} tiger${threats.length===1?"":"s"} active).`;
     const ready = snap.extractionReadyIds || [];
     return `Objective: Both players stand inside the green extraction circle (${ready.length}/2 ready).`;
   }
@@ -474,6 +480,10 @@
       state.storyMissionLevel = requestedStoryLevel;
       state.launchType = requestedStoryLevel === 1 ? "shared-story" : "live-squad";
     }
+    const versionLabel = $("liveSquadVersionLabel");
+    const titleLabel = $("liveSquadTitle");
+    if(versionLabel) versionLabel.textContent = sharedStoryActive() ? "Tiger Strike V5.6 • Story Mission 1" : "Tiger Strike V5.6";
+    if(titleLabel) titleLabel.textContent = sharedStoryActive() ? "📖 Story Mission 1 — Two Player" : "🐅 Live Squad";
     bindOverlay();
     state.open = true;
     state.priorPause = !!window.S?.paused;
@@ -481,7 +491,9 @@
     overlay.classList.add("open");
     overlay.setAttribute("aria-hidden","false");
     render();
-    if(!hasTelegramAuth()) setMessage("Open Tiger Strike inside Telegram to create or join a live squad.", true);
+    if(!hasTelegramAuth()) setMessage(sharedStoryActive()
+      ? "Open Tiger Strike inside Telegram to create or join this two-player Story mission."
+      : "Open Tiger Strike inside Telegram to create or join a live squad.", true);
     if(state.snapshot) startPolling();
   }
 
@@ -599,7 +611,7 @@
   async function restart(){
     if(!state.snapshot?.isHost) return setMessage("Only the squad leader can restart the mission.", true);
     try{
-      setMessage("Restarting Operation Night Fang with both field lives restored…");
+      setMessage(`Restarting ${missionName()} with both field lives restored…`);
       await api("restart");
       setMessage("Mission restarted. Both soldiers are back at Base Camp.");
       ensureFrame();
@@ -656,7 +668,12 @@
     window.S.perkPoints = Math.max(0, Number(window.S.perkPoints || 0)) + Math.max(0, Number(data.reward.perkPoints || 0));
     if(!window.S.liveSquadBadges || typeof window.S.liveSquadBadges !== "object") window.S.liveSquadBadges = {};
     window.S.liveSquadBadges[String(data.reward.badge || "Night Fang First Response")] = Date.now();
-    try{ if(typeof window.grantSeasonPassPoints === "function") window.grantSeasonPassPoints(Number(data.reward.seasonPoints || 0), "Operation Night Fang"); }catch(error){}
+    try{ if(typeof window.grantSeasonPassPoints === "function") window.grantSeasonPassPoints(Number(data.reward.seasonPoints || 0), missionName()); }catch(error){}
+    try{
+      if(data.storyProgress && typeof window.applySharedStoryCompletion === "function"){
+        window.applySharedStoryCompletion(data.storyProgress, data.receipt);
+      }
+    }catch(error){}
     try{ window.saveGameNow?.(); }catch(error){}
     return true;
   }
@@ -894,8 +911,8 @@
       const mine=Number(p.userId)===viewerId();const source=mine&&state.local?state.local:p;let draw=state.remoteDraw.get(p.userId)||{x:source.x,y:source.y};draw.x+=(Number(source.x)-draw.x)*.22;draw.y+=(Number(source.y)-draw.y)*.22;state.remoteDraw.set(p.userId,draw);
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
-    ctx.fillStyle="rgba(2,6,23,.78)";roundRect(ctx,18,18,330,50,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 16px system-ui";ctx.textAlign="left";ctx.fillText("STORY MAP • NIGHT FANG DISTRICT",34,49);
-    ctx.fillStyle="rgba(2,6,23,.68)";roundRect(ctx,w-300,18,282,50,12);ctx.fill();ctx.fillStyle="#bfdbfe";ctx.textAlign="center";ctx.fillText("MISSION 1 • DAYLIGHT PATROL",w-159,49);
+    ctx.fillStyle="rgba(2,6,23,.78)";roundRect(ctx,18,18,350,50,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 16px system-ui";ctx.textAlign="left";ctx.fillText(sharedStoryActive()?"STORY MAP • FOREST EDGE":"STORY MAP • NIGHT FANG DISTRICT",34,49);
+    ctx.fillStyle="rgba(2,6,23,.68)";roundRect(ctx,w-330,18,312,50,12);ctx.fill();ctx.fillStyle="#bfdbfe";ctx.textAlign="center";ctx.fillText(sharedStoryActive()?"STORY MISSION 1 • ESCORT 2":"OPERATION NIGHT FANG",w-174,49);
   }
 
   function startParam(){

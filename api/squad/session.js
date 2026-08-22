@@ -41,20 +41,22 @@ async function prepareInvite(botToken, user, session){
   const username = await resolveBotUsername(botToken);
   const playUrl = appLink(session.code, username);
   const community = await getCommunitySnapshot({ botToken, userId:userIdOf(user) });
-  const buttons = [];
-  if(playUrl) buttons.push([{ text:"🐅 Join Live Squad", url:playUrl }]);
-  if(community.joinUrl) buttons.push([{ text:`👥 Join ${community.title}`.slice(0, 64), url:community.joinUrl }]);
   const sharedStory = session.launchType === "shared-story";
+  const buttons = [];
+  if(playUrl) buttons.push([{ text:sharedStory ? "📖 Join Story Mission 1" : "🐅 Join Live Squad", url:playUrl }]);
+  if(community.joinUrl) buttons.push([{ text:`👥 Join ${community.title}`.slice(0, 64), url:community.joinUrl }]);
   const missionName = sharedStory ? `Shared Story Mission ${Math.max(1, Number(session.storyMissionLevel || 1))}` : "Operation Night Fang";
   const shareText = [
-    "🐅 LIVE SQUAD REQUEST",
+    sharedStory ? "📖 STORY MISSION 1 TEAMMATE REQUEST" : "🐅 LIVE SQUAD REQUEST",
     `I need one teammate for ${missionName}.`,
-    "Rescue four civilians, defeat the Alpha, revive each other, and extract together.",
+    sharedStory
+      ? "Play the real Story Mission 1 together: escort two villagers, clear the Story tigers, and extract."
+      : "Rescue four civilians, defeat the Alpha, revive each other, and extract together.",
     `Squad code: ${session.code}`,
   ].join("\n\n");
   const result = {
     type:"article",
-    id:`night_fang_${session.code}`.slice(0, 64),
+    id:`${sharedStory ? "story_m1" : "night_fang"}_${session.code}`.slice(0, 64),
     title:`Join ${missionName}`,
     description:`Private two-player Tiger Strike squad • Code ${session.code}`,
     input_message_content:{

@@ -225,6 +225,13 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - A held touch joystick is no longer mistaken for abandoned input. Stability recovery preserves a real finger hold, slow-frame motion compensation is stronger, and player unstick recovery reacts sooner.
 - Decorative ground ovals were removed from Story and co-op tigers while combat telegraphs remain intact.
 
+### V5.6 Real Shared Story
+
+- Corrects the V5.5 wording and behavior: Story Mission 1 Two Player no longer launches the fixed Operation Night Fang mission. It creates a Story Mission 1 room with the Story objective, two required villager escorts, two Story tigers, shared extraction, and Story Mission 2 unlock on completion for each claimant.
+- The private room screen is labeled `Story Mission 1 — Two Player`; it is the required invite/join lobby, not the separate Night Fang operation.
+- Story rendering now calls the same bright district foundation used by the shared mission on phones and larger screens: the same green palette, cross roads, river, bridge, houses, and trees. Larger Story worlds repeat that fixed-size district instead of stretching its buildings. The dull cinematic tint, weather wash, and grading overlays are skipped on this renderer.
+- This update makes Mission 1 the real shared-Story pilot. Missions 2–100 remain Solo until their exact objectives and progression are converted; the interface does not claim they are already co-op.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

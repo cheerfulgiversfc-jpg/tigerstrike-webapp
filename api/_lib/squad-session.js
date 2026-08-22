@@ -24,6 +24,22 @@ const TIGER_DEFS = Object.freeze([
   Object.freeze({ id:"tiger_guard", name:"Guard Tiger", type:"Armored", hpMax:330, baseX:900, baseY:735, rangeX:78, rangeY:72, speed:.47, phase:4.2 }),
   Object.freeze({ id:"night_fang_alpha", name:"Night Fang Alpha", type:"Alpha", hpMax:BOSS_HP_MAX, baseX:650, baseY:570, rangeX:140, rangeY:112, speed:.36, phase:1.25, boss:true }),
 ]);
+const SHARED_STORY_MISSION_1 = Object.freeze({
+  level:1,
+  chapter:1,
+  chapterName:"Forest Edge",
+  title:"Story Mission 1",
+  objective:"Escort 2 villagers from the jungle edge.",
+  rescueRequired:2,
+  world:WORLD,
+  extraction:EXTRACTION,
+  spawns:SPAWNS,
+  civilians:Object.freeze(CIVILIANS.slice(0, 3)),
+  tigers:Object.freeze([
+    Object.freeze({ ...TIGER_DEFS[0], name:"Jungle Tiger", type:"Standard", hpMax:124, baseX:760, baseY:330, rangeX:86, rangeY:62 }),
+    Object.freeze({ ...TIGER_DEFS[1], name:"Forest Scout", type:"Scout", hpMax:112, baseX:390, baseY:560, rangeX:74, rangeY:54 }),
+  ]),
+});
 const ROLE_DEFS = Object.freeze({
   tracker:Object.freeze({ key:"tracker", label:"Tracker", damage:28, maxHp:105, speed:1.08 }),
   medic:Object.freeze({ key:"medic", label:"Medic", damage:23, maxHp:120, speed:1.00 }),
@@ -48,6 +64,22 @@ function sessionKey(code){ return `live_squad_session_${cleanCode(code)}`; }
 function playerKey(code, userId){ return `live_squad_player_${cleanCode(code)}_${userIdOf(userId)}`; }
 function roleKey(value){ return ROLE_DEFS[String(value || "").toLowerCase()] ? String(value).toLowerCase() : "tracker"; }
 function distance(a, b){ return Math.hypot(Number(a?.x || 0) - Number(b?.x || 0), Number(a?.y || 0) - Number(b?.y || 0)); }
+function missionDefinition(session){
+  if(session?.launchType === "shared-story" && Number(session.storyMissionLevel || 0) === 1) return SHARED_STORY_MISSION_1;
+  return {
+    level:0,
+    chapter:0,
+    chapterName:"Night Fang District",
+    title:"Operation Night Fang",
+    objective:"Rescue four civilians, defeat the tiger pack and Night Fang Alpha, then extract together.",
+    rescueRequired:CIVILIANS.length,
+    world:WORLD,
+    extraction:EXTRACTION,
+    spawns:SPAWNS,
+    civilians:CIVILIANS,
+    tigers:TIGER_DEFS,
+  };
+}
 
 function randomCode(){
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -155,18 +187,19 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
 }
 
 function tigerPosition(session, tiger, at=nowMs()){
+  const world = missionDefinition(session).world;
   if(!session?.startedAt) return { x:tiger.baseX, y:tiger.baseY };
   const elapsed = Math.max(0, at - session.startedAt) / 1000;
   return {
-    x:clamp(tiger.baseX + Math.cos(elapsed * tiger.speed + tiger.phase) * tiger.rangeX, 70, WORLD.width - 70),
-    y:clamp(tiger.baseY + Math.sin(elapsed * tiger.speed * .83 + tiger.phase) * tiger.rangeY, 90, WORLD.height - 80),
+    x:clamp(tiger.baseX + Math.cos(elapsed * tiger.speed + tiger.phase) * tiger.rangeX, 70, world.width - 70),
+    y:clamp(tiger.baseY + Math.sin(elapsed * tiger.speed * .83 + tiger.phase) * tiger.rangeY, 90, world.height - 80),
   };
 }
 
 function tigerSnapshots(session, players, at=nowMs()){
-  return TIGER_DEFS.map((def)=>{
+  return missionDefinition(session).tigers.map((def)=>{
     let damage = players.reduce((sum, player)=>sum + clamp(player?.tigerDamage?.[def.id], 0, def.hpMax), 0);
-    if(def.boss && damage <= 0){
+    if(session?.launchType !== "shared-story" && def.boss && damage <= 0){
       // Keep rooms created by the first V5 release playable after this update.
       damage = players.reduce((sum, player)=>sum + clamp(player?.bossDamage, 0, BOSS_HP_MAX), 0);
     }
@@ -248,18 +281,20 @@ async function memberPlayers(session){
 }
 
 function sessionDerived(session, players, at=nowMs()){
+  const mission = missionDefinition(session);
   const rescuedIds = [...new Set(players.flatMap((p)=>p.rescuedIds || []))];
   const tigers = tigerSnapshots(session, players, at);
   const boss = tigers.find((t)=>t.boss) || tigers[tigers.length - 1];
-  const bossDamage = clamp(BOSS_HP_MAX - Number(boss?.hp || 0), 0, BOSS_HP_MAX);
+  const bossHpMax = Math.max(1, Number(boss?.hpMax || BOSS_HP_MAX));
+  const bossDamage = clamp(bossHpMax - Number(boss?.hp || 0), 0, bossHpMax);
   const bossHp = Number(boss?.hp || 0);
   const onlineIds = players.filter((p)=>at - p.lastSeenAt <= 15000).map((p)=>p.userId);
   const extractionReadyIds = players
-    .filter((p)=>!p.downed && distance(p, EXTRACTION) <= EXTRACTION.r)
+    .filter((p)=>!p.downed && distance(p, mission.extraction) <= mission.extraction.r)
     .map((p)=>p.userId);
   const allTigersCleared = tigers.every((t)=>t.defeated);
-  const legacyBossOnlyRoom = players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
-  const objectivesReady = rescuedIds.length >= CIVILIANS.length && bossHp <= 0 && (allTigersCleared || legacyBossOnlyRoom);
+  const legacyBossOnlyRoom = session.launchType !== "shared-story" && players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
+  const objectivesReady = rescuedIds.length >= mission.rescueRequired && (allTigersCleared || legacyBossOnlyRoom);
   const squadWiped = players.length === session.memberIds.length && players.every((p)=>p.downed && Number(p.respawnAt || 0) <= 0 && Number(p.livesRemaining || 0) <= 0);
   return { rescuedIds, bossDamage, bossHp, boss, tigers, onlineIds, extractionReadyIds, objectivesReady, squadWiped };
 }
@@ -296,6 +331,7 @@ async function buildSnapshot(session, viewerId){
   const players = await memberPlayers(session);
   session = await maybeFinishSession(session, players);
   const at = nowMs();
+  const mission = missionDefinition(session);
   const derived = sessionDerived(session, players, at);
   return {
     code:session.code,
@@ -315,9 +351,19 @@ async function buildSnapshot(session, viewerId){
     serverNow:at,
     expiresAt:session.updatedAt + SESSION_TTL_MS,
     timeLeftMs:session.status === "active" ? Math.max(0, MISSION_LIMIT_MS - (at - session.startedAt)) : MISSION_LIMIT_MS,
-    world:WORLD,
-    extraction:EXTRACTION,
-    civilians:CIVILIANS,
+    mission:{
+      level:mission.level,
+      chapter:mission.chapter,
+      chapterName:mission.chapterName,
+      title:mission.title,
+      objective:mission.objective,
+      rescueRequired:mission.rescueRequired,
+      civilianCount:mission.civilians.length,
+      tigerCount:mission.tigers.length,
+    },
+    world:mission.world,
+    extraction:mission.extraction,
+    civilians:mission.civilians,
     tigers:derived.tigers,
     boss:derived.boss,
     rescuedIds:derived.rescuedIds,
@@ -334,7 +380,8 @@ async function updateOwnPresence(session, user, patch={}){
   if(slot < 0) throw new Error("You are not a member of this squad.");
   let player = await readPlayer(session.code, uid, user, slot);
   const now = nowMs();
-  const spawn = SPAWNS[slot === 0 ? 0 : 1];
+  const mission = missionDefinition(session);
+  const spawn = mission.spawns[slot === 0 ? 0 : 1];
   player.name = playerName(user);
   if(session.status === "waiting" && patch.role) player.role = roleKey(patch.role);
   const def = ROLE_DEFS[player.role];
@@ -357,7 +404,7 @@ async function updateOwnPresence(session, user, patch={}){
     player.lastMoveAt = now;
   }
   if(!player.downed && session.status === "active" && patch && Number.isFinite(Number(patch.x)) && Number.isFinite(Number(patch.y))){
-    const proposed = { x:clamp(patch.x, 24, WORLD.width - 24), y:clamp(patch.y, 24, WORLD.height - 24) };
+    const proposed = { x:clamp(patch.x, 24, mission.world.width - 24), y:clamp(patch.y, 24, mission.world.height - 24) };
     const elapsed = clamp(now - player.lastMoveAt, 100, 1800);
     const maxMove = 70 + elapsed * 0.34 * def.speed;
     const moveDist = distance(player, proposed);
@@ -410,10 +457,11 @@ async function applyAction(session, user, action, payload={}){
     session.completedAt = 0;
     session.failureReason = "";
     await writeSession(session);
+    const mission = missionDefinition(session);
     const players = await memberPlayers(session);
     for(const p of players){
       const def = ROLE_DEFS[p.role];
-      const spawn = SPAWNS[p.slot === 0 ? 0 : 1];
+      const spawn = mission.spawns[p.slot === 0 ? 0 : 1];
       p.hp = def.maxHp;
       p.maxHp = def.maxHp;
       p.downed = false;
@@ -456,7 +504,7 @@ async function applyAction(session, user, action, payload={}){
     await writePlayer(session.code, player);
   }else if(action === "rescue"){
     const id = cleanText(payload.civilianId, 24);
-    const civilian = CIVILIANS.find((c)=>c.id === id);
+    const civilian = missionDefinition(session).civilians.find((c)=>c.id === id);
     if(!civilian) throw new Error("Civilian not found.");
     if(distance(player, civilian) > 82) throw new Error("Move closer to the civilian.");
     if(!player.rescuedIds.includes(id)) player.rescuedIds.push(id);
@@ -490,10 +538,14 @@ async function claimReward(session, user){
   const firstClaim = !player.rewardClaimed;
   player.rewardClaimed = true;
   await writePlayer(session.code, player);
+  const sharedStory = session.launchType === "shared-story" && Number(session.storyMissionLevel || 0) === 1;
   return {
     firstClaim,
-    receipt:`night-fang:${session.code}:${uid}`,
-    reward:{ cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },
+    receipt:`${sharedStory ? "shared-story-1" : "night-fang"}:${session.code}:${uid}`,
+    storyProgress:sharedStory ? { completedLevel:1, unlockLevel:2 } : null,
+    reward:sharedStory
+      ? { cash:1800, perkPoints:1, seasonPoints:6, badge:"Shared Story First Patrol" }
+      : { cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },
   };
 }
 
@@ -510,6 +562,7 @@ async function closeSession(session, user){
 module.exports = {
   ROLE_DEFS,
   TIGER_DEFS,
+  SHARED_STORY_MISSION_1,
   cleanCode,
   createSession,
   joinSession,
