@@ -102,6 +102,8 @@
       state.local.hp = Number(mine.hp || 0);
       state.local.maxHp = Number(mine.maxHp || 100);
       state.local.downed = !!mine.downed;
+      state.local.livesRemaining = Number(mine.livesRemaining || 0);
+      state.local.respawnAt = Number(mine.respawnAt || 0);
       state.local.role = mine.role;
     }
     const bodyMode = $("squadBody")?.dataset?.squadMode || "";
@@ -145,6 +147,9 @@
     set("squadBossHud", `Alpha ${Math.round(snap.boss?.hp || 0)} HP • ${activeThreats} active`);
     set("squadCivHud", `${snap.rescuedIds?.length || 0}/4 rescued`);
     set("squadMissionHud", `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`);
+    set("squadLivesHud", livesHudText());
+    const connection = $("squadConnection");
+    if(connection) connection.textContent = playerConnectionText();
     set("squadObjective", objectiveText());
     updateActionButtons();
   }
@@ -167,9 +172,10 @@
     const tigerNear = tiger && distance(state.local,tiger) <= (tiger.boss ? 178 : 164);
     const civNear = civilian && distance(state.local,civilian) <= 82;
     const reviveNear = teammate?.downed && distance(state.local,teammate) <= 108;
-    if(attack){ attack.innerHTML = tiger ? (tigerNear ? `🎯 Attack<br><small>${esc(tiger.type || "Tiger")}</small>` : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"; attack.disabled = !tiger; }
-    if(rescue){ rescue.innerHTML = civilian ? (civNear ? `🛟 Rescue<br><small>${esc(civilian.name || "Civilian")}</small>` : `👤 Find Civilian<br><small>${Math.round(distance(state.local,civilian))}m</small>`) : "✅ Civilians Safe"; rescue.disabled = !civilian; }
-    if(revive){ revive.innerHTML = teammate?.downed ? (reviveNear ? "💚 Revive<br><small>Teammate</small>" : `💚 Reach Teammate<br><small>${Math.round(distance(state.local,teammate))}m</small>`) : "💚 Revive<br><small>Not needed</small>"; revive.disabled = !teammate?.downed; }
+    const unavailable = !!state.local.downed;
+    if(attack){ attack.innerHTML = unavailable ? "⏳ Down<br><small>Recovery</small>" : (tiger ? (tigerNear ? `🎯 Attack<br><small>${esc(tiger.type || "Tiger")}</small>` : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"); attack.disabled = unavailable || !tiger; }
+    if(rescue){ rescue.innerHTML = unavailable ? "⏳ Down<br><small>Recovery</small>" : (civilian ? (civNear ? `🛟 Rescue<br><small>${esc(civilian.name || "Civilian")}</small>` : `👤 Find Civilian<br><small>${Math.round(distance(state.local,civilian))}m</small>`) : "✅ Civilians Safe"); rescue.disabled = unavailable || !civilian; }
+    if(revive){ revive.innerHTML = unavailable ? "⏳ Down<br><small>Recovery</small>" : (teammate?.downed ? (reviveNear ? "💚 Revive<br><small>Teammate</small>" : `💚 Reach Teammate<br><small>${Math.round(distance(state.local,teammate))}m</small>`) : "💚 Revive<br><small>Not needed</small>"); revive.disabled = unavailable || !teammate?.downed; }
   }
 
   function roleLabel(key){
@@ -185,11 +191,12 @@
         return `<div class="squadMember"><div class="squadMemberName">Waiting for teammate…</div><div class="squadMemberMeta">Send the invitation or share code ${esc(state.code)}</div></div>`;
       }
       const mine = Number(player.userId) === viewerId();
-      const status = player.downed ? "DOWNED — needs revive" : (player.online ? `HP ${Math.round(player.hp)}/${Math.round(player.maxHp)}` : "Reconnecting…");
+      const respawn = respawnSeconds(player);
+      const status = player.downed ? (respawn > 0 ? `RESPAWNING IN ${respawn}s` : "DOWNED — needs revive") : (player.online ? `HP ${Math.round(player.hp)}/${Math.round(player.maxHp)}` : "Reconnecting…");
       return `<div class="squadMember ${mine ? "me" : ""} ${player.online ? "" : "offline"}">
         <div class="squadMemberName">${mine ? "⭐ " : ""}${esc(player.name)}</div>
         <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}</div>
-        <div class="squadMemberMeta">Alpha damage ${Math.round(player.bossDamage || 0)} • Rescues ${(player.rescuedIds || []).length} • Revives ${Math.round(player.revives || 0)}</div>
+        <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Alpha damage ${Math.round(player.bossDamage || 0)} • Rescues ${(player.rescuedIds || []).length} • Revives ${Math.round(player.revives || 0)}</div>
       </div>`;
     });
     return cards.join("");
@@ -209,7 +216,7 @@
     if(!snapshot){
       return `<div class="squadPanel">
         <div class="squadHero">
-          <div><div class="squadKicker">V5.3 Live Squad Control Repair</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Two real Telegram players enter the same Story-style district with soldiers, civilians, a tiger pack, and Night Fang Alpha. Your movement and mission progress are shared live.</div></div>
+          <div><div class="squadKicker">V5.4 Co-op Field Lives</div><div class="squadMissionName">Operation Night Fang</div><div class="squadDesc">Two real Telegram players enter an expanded Story-style district with soldiers, civilians, a tiger pack, Night Fang Alpha, one field life each, and a full mission restart after a squad wipe.</div></div>
           <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
         </div>
         <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
@@ -253,16 +260,20 @@
         <div class="squadHudCard"><div class="squadHudLabel">Tiger Threats</div><div class="squadHudValue" id="squadBossHud">Alpha ${Math.round(snap.boss.hp)} HP • ${(snap.tigers || []).filter((t)=>!t.defeated).length || 1} active</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Civilians</div><div class="squadHudValue" id="squadCivHud">${rescued}/4 rescued</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Mission</div><div class="squadHudValue" id="squadMissionHud">${statusText}</div></div>
+        <div class="squadHudCard"><div class="squadHudLabel">Field Lives</div><div class="squadHudValue" id="squadLivesHud">${esc(livesHudText())}</div></div>
       </div>
-      <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${mine?.downed ? "You are down—your teammate must revive you." : connectionText()}</div>
+      <div class="squadStoryStrip"><span>🌤️ Daylight Patrol</span><span>🧭 Base Camp Respawn</span><span>🏘️ Night Fang District</span></div>
+      <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${esc(playerConnectionText())}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>👤 Civilian</span><span>🐅 Tiger</span></div>
-      <canvas id="squadArena" width="1000" height="760" aria-label="Operation Night Fang Story-style live co-op battlefield"></canvas>
+      <canvas id="squadArena" width="1200" height="1100" aria-label="Operation Night Fang expanded Story-style live co-op battlefield"></canvas>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
-        <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : "⏱️ Operation Failed"}</div>
-        <div class="squadBannerText">${snap.status === "complete" ? "Both players rescued the civilians, cleared the tiger pack, defeated Night Fang, and reached extraction together." : "Create another squad and try the rescue again."}</div>
+        <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : "⏱️ Operation Failed")}</div>
+        <div class="squadBannerText">${snap.status === "complete" ? "Both players rescued the civilians, cleared the tiger pack, defeated Night Fang, and reached extraction together." : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : "Time expired. The squad leader can restart Operation Night Fang.")}</div>
         ${snap.status === "complete" ? `<button type="button" class="squadBtn good" data-squad-command="claim">Claim Co-op Reward</button>` : ""}
+        ${snap.status === "failed" && snap.isHost ? `<button type="button" class="squadBtn good" data-squad-command="restart">Restart Mission</button>` : ""}
+        ${snap.status === "failed" && !snap.isHost ? `<button type="button" class="squadBtn" disabled>Waiting for Leader to Restart</button>` : ""}
         <button type="button" class="squadBtn" data-squad-command="leave">Return to HQ</button>
       </div>
       <div class="squadControls">
@@ -275,7 +286,7 @@
           <button type="button" class="squadActionBtn revive" id="squadReviveButton" data-squad-command="action" data-squad-action="revive">💚 Revive</button>
         </div>
       </div>
-      <div class="squadSmall" style="margin-top:8px">Hold the arrows to move your soldier. The three action buttons tell you what is close enough. Both players must finish inside extraction.</div>
+      <div class="squadSmall" style="margin-top:8px">Hold the arrows to move your soldier. Each player has one automatic field life. After both lives are used, the leader can restart the mission. Both players must finish inside extraction.</div>
     </div>`;
   }
 
@@ -284,9 +295,31 @@
     if(!remote) return "Waiting for your teammate…";
     return remote.online ? `${remote.name} is connected live.` : `${remote.name} is reconnecting…`;
   }
+  function respawnSeconds(player){
+    const at = Number(player?.respawnAt || 0);
+    if(!at) return 0;
+    return Math.max(0, Math.ceil((at - Number(state.snapshot?.serverNow || Date.now())) / 1000));
+  }
+  function livesHudText(){
+    const players = state.snapshot?.players || [];
+    return players.map((p)=>`${Number(p.userId) === viewerId() ? "You" : "Team"} ${Math.round(p.livesRemaining || 0)}`).join(" • ") || "1 each";
+  }
+  function playerConnectionText(){
+    const mine = localSnapshotPlayer();
+    if(mine?.downed){
+      const seconds = respawnSeconds(mine);
+      if(seconds > 0) return `Field life activated—respawning at Base Camp in ${seconds}s.`;
+      return "You are out of lives—your teammate must revive you. If both soldiers are down, the leader can restart.";
+    }
+    return connectionText();
+  }
   function objectiveText(){
     const snap = state.snapshot;
     if(!snap) return "";
+    const mine = localSnapshotPlayer();
+    const respawn = respawnSeconds(mine);
+    if(mine?.downed && respawn > 0) return `Recovery: Your field life is returning you to Base Camp in ${respawn}s.`;
+    if(snap.failureReason === "squad_wipe") return "Squad wipe: Restart Mission restores both soldiers, both field lives, civilians, tigers, and the mission clock.";
     if((snap.rescuedIds || []).length < 4) return `Objective 1: Find the human civilians and tap Rescue when close (${snap.rescuedIds.length}/4 safe).`;
     const threats = (snap.tigers || (snap.boss ? [snap.boss] : [])).filter((t)=>!t.defeated && Number(t.hp || 0) > 0);
     if(threats.length) return `Objective 2: Clear the tiger pack and defeat Night Fang together (${threats.length} tiger${threats.length===1?"":"s"} active • ${Math.round(snap.boss?.hp || 0)} Alpha HP).`;
@@ -390,6 +423,7 @@
       role:()=>chooseRole(role),
       invite:()=>invite(),
       start:()=>start(),
+      restart:()=>restart(),
       action:()=>action(actionName),
       claim:()=>claim(),
       leave:()=>leave(),
@@ -546,6 +580,16 @@
     }
     try{ setMessage("Deploying both players…"); await api("start"); setMessage("Operation Night Fang is live."); ensureFrame(); }
     catch(error){ setMessage(error.message, true); }
+  }
+
+  async function restart(){
+    if(!state.snapshot?.isHost) return setMessage("Only the squad leader can restart the mission.", true);
+    try{
+      setMessage("Restarting Operation Night Fang with both field lives restored…");
+      await api("restart");
+      setMessage("Mission restarted. Both soldiers are back at Base Camp.");
+      ensureFrame();
+    }catch(error){ setMessage(error.message, true); }
   }
 
   async function action(kind){
@@ -716,7 +760,7 @@
       await api("sync", { player });
       state.lastSyncAt = Date.now();
       const node = $("squadConnection");
-      if(node){ node.textContent = localSnapshotPlayer()?.downed ? "You are down—your teammate must revive you." : connectionText(); node.classList.toggle("bad", remoteSnapshotPlayer()?.online === false); }
+      if(node){ node.textContent = playerConnectionText(); node.classList.toggle("bad", remoteSnapshotPlayer()?.online === false); }
     }catch(error){
       const node = $("squadConnection");
       if(node){ node.textContent = "Connection interrupted—reconnecting…"; node.classList.add("bad"); }
@@ -806,8 +850,9 @@
     ctx.fillStyle=body;roundRect(ctx,-11,-7,22,25,6);ctx.fill();ctx.strokeStyle=outline;ctx.lineWidth=2.5;ctx.stroke();
     ctx.fillStyle="#334155";roundRect(ctx,-13,-4,26,15,4);ctx.fill();ctx.fillStyle="#6b7c65";ctx.beginPath();ctx.arc(0,-15,11,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(-11,-15,22,6);
     ctx.strokeStyle="#dbeafe";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(8,-1);ctx.lineTo(27,0);ctx.stroke();ctx.fillStyle="#0f172a";ctx.fillRect(18,-4,15,5);ctx.restore();
-    ctx.fillStyle=outline;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${p.downed?" • DOWN":""}`,draw.x,draw.y-35);
+    const recovery=respawnSeconds(p);const downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=outline;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,draw.y-35);
     ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-26,draw.y+31,52,7,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-25,draw.y+32,50*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),5,3);ctx.fill();
+    ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,draw.y+52);
   }
 
   function drawArena(){
@@ -816,14 +861,18 @@
     if(!canvas || !snap) return;
     const ctx = canvas.getContext("2d");
     const w=canvas.width,h=canvas.height,now=Number(snap.serverNow||Date.now());ctx.clearRect(0,0,w,h);
-    const terrain=ctx.createLinearGradient(0,0,0,h);terrain.addColorStop(0,"#315f3d");terrain.addColorStop(.55,"#28563a");terrain.addColorStop(1,"#1f4934");ctx.fillStyle=terrain;ctx.fillRect(0,0,w,h);
-    ctx.fillStyle="rgba(79,121,72,.24)";for(let y=0;y<h;y+=76){for(let x=0;x<w;x+=92){ctx.fillRect(x+((y/76)%2)*21,y,70,54);}}
-    ctx.fillStyle="rgba(40,110,130,.62)";ctx.beginPath();ctx.moveTo(0,605);ctx.bezierCurveTo(210,560,330,705,520,666);ctx.bezierCurveTo(710,625,815,710,1000,675);ctx.lineTo(1000,760);ctx.lineTo(0,760);ctx.closePath();ctx.fill();
-    ctx.fillStyle="#4b5563";ctx.fillRect(0,315,w,96);ctx.fillRect(430,0,106,h);ctx.fillStyle="#374151";ctx.fillRect(0,323,w,80);ctx.fillRect(438,0,90,h);
-    ctx.strokeStyle="rgba(250,204,21,.45)";ctx.lineWidth=4;ctx.setLineDash([25,22]);ctx.beginPath();ctx.moveTo(0,363);ctx.lineTo(w,363);ctx.moveTo(483,0);ctx.lineTo(483,h);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle="#7c6548";ctx.fillRect(512,612,160,26);ctx.strokeStyle="#d6b56c";ctx.lineWidth=5;for(let x=525;x<665;x+=22){ctx.beginPath();ctx.moveTo(x,606);ctx.lineTo(x,645);ctx.stroke();}
-    [[64,78,115,72,"#9a5c38"],[700,64,132,82,"#7c4a32"],[810,575,118,72,"#8b5a3c"],[95,470,126,78,"#72452f"],[570,470,105,68,"#9a5c38"]].forEach((b)=>drawStoryBuilding(ctx,...b));
-    for(let i=0;i<32;i++){const x=(i*149+47)%960+20,y=(i*97+31)%710+22;if((x>405&&x<560)||(y>285&&y<435)||((x>40&&x<240)&&(y>40&&y<180))||((x>680&&x<970)&&(y>35&&y<180)))continue;drawStoryTree(ctx,x,y,.72+(i%4)*.1);}
+    const terrain=ctx.createLinearGradient(0,0,0,h);terrain.addColorStop(0,"#376b43");terrain.addColorStop(.52,"#2b5b3b");terrain.addColorStop(1,"#204b35");ctx.fillStyle=terrain;ctx.fillRect(0,0,w,h);
+    ctx.fillStyle="rgba(91,139,81,.22)";for(let y=0;y<h;y+=82){for(let x=0;x<w;x+=100){ctx.fillRect(x+((y/82)%2)*24,y,76,58);}}
+    // Expanded Story district river, two main roads, and a real bridge route.
+    ctx.fillStyle="rgba(39,112,137,.68)";ctx.beginPath();ctx.moveTo(0,930);ctx.bezierCurveTo(250,865,430,1035,650,970);ctx.bezierCurveTo(880,905,1015,1035,1200,965);ctx.lineTo(1200,1100);ctx.lineTo(0,1100);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#4b5563";ctx.fillRect(0,470,w,132);ctx.fillRect(540,0,132,h);ctx.fillStyle="#354052";ctx.fillRect(0,482,w,108);ctx.fillRect(552,0,108,h);
+    ctx.strokeStyle="rgba(250,204,21,.48)";ctx.lineWidth=5;ctx.setLineDash([30,26]);ctx.beginPath();ctx.moveTo(0,536);ctx.lineTo(w,536);ctx.moveTo(606,0);ctx.lineTo(606,h);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="#765a3b";ctx.fillRect(530,900,152,58);ctx.strokeStyle="#e0bc73";ctx.lineWidth=6;for(let x=542;x<675;x+=22){ctx.beginPath();ctx.moveTo(x,892);ctx.lineTo(x,967);ctx.stroke();}
+    [[68,86,150,94,"#9a5c38"],[930,82,165,100,"#7c4a32"],[82,650,154,102,"#72452f"],[735,700,142,94,"#9a5c38"],[980,855,156,104,"#8b5a3c"],[335,730,138,90,"#7c4a32"]].forEach((b)=>drawStoryBuilding(ctx,...b));
+    for(let i=0;i<48;i++){const x=(i*173+51)%1160+20,y=(i*113+37)%1040+22;if((x>515&&x<700)||(y>440&&y<630)||((x>40&&x<255)&&(y>45&&y<210))||((x>900&&x<1165)&&(y>45&&y<220))||((x>55&&x<265)&&(y>620&&y<790))||((x>700&&x<900)&&(y>670&&y<825))||((x>950&&y>820)))continue;drawStoryTree(ctx,x,y,.72+(i%4)*.1);}
+    // Story-mode landmarks make navigation readable instead of feeling like a test arena.
+    ctx.fillStyle="rgba(15,23,42,.82)";roundRect(ctx,52,790,235,92,16);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#cffafe";ctx.font="950 20px system-ui";ctx.textAlign="center";ctx.fillText("🛡️ BASE CAMP",170,825);ctx.font="800 14px system-ui";ctx.fillText("Respawn • Rally • Safe Start",170,852);
+    ctx.fillStyle="rgba(15,23,42,.72)";roundRect(ctx,315,835,188,46,12);ctx.fill();ctx.fillStyle="#fee2e2";ctx.font="900 15px system-ui";ctx.fillText("🏥 MEDICAL POST",409,864);
     const ex=snap.extraction;ctx.fillStyle="rgba(34,197,94,.2)";ctx.strokeStyle="#4ade80";ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#dcfce7";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("SQUAD EXTRACTION",ex.x,ex.y+6);
     const guideTarget=nearestUnrescuedCivilian()||nearestActiveTiger()||ex;if(state.local&&guideTarget){ctx.strokeStyle="rgba(103,232,249,.55)";ctx.lineWidth=4;ctx.setLineDash([10,10]);ctx.beginPath();ctx.moveTo(state.local.x,state.local.y);ctx.lineTo(guideTarget.x,guideTarget.y);ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle="rgba(103,232,249,.25)";ctx.lineWidth=3;ctx.beginPath();ctx.arc(guideTarget.x,guideTarget.y,guideTarget.hpMax?(guideTarget.boss?178:164):82,0,Math.PI*2);ctx.stroke();}
     for(const civ of (snap.civilians||[])) drawStoryCivilian(ctx,civ,(snap.rescuedIds||[]).includes(civ.id));
@@ -832,7 +881,8 @@
       const mine=Number(p.userId)===viewerId();const source=mine&&state.local?state.local:p;let draw=state.remoteDraw.get(p.userId)||{x:source.x,y:source.y};draw.x+=(Number(source.x)-draw.x)*.22;draw.y+=(Number(source.y)-draw.y)*.22;state.remoteDraw.set(p.userId,draw);
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
-    ctx.fillStyle="rgba(2,6,23,.72)";roundRect(ctx,18,18,250,44,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 15px system-ui";ctx.textAlign="left";ctx.fillText("STORY MAP • NIGHT FANG DISTRICT",34,45);
+    ctx.fillStyle="rgba(2,6,23,.78)";roundRect(ctx,18,18,330,50,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 16px system-ui";ctx.textAlign="left";ctx.fillText("STORY MAP • NIGHT FANG DISTRICT",34,49);
+    ctx.fillStyle="rgba(2,6,23,.68)";roundRect(ctx,w-300,18,282,50,12);ctx.fill();ctx.fillStyle="#bfdbfe";ctx.textAlign="center";ctx.fillText("MISSION 1 • DAYLIGHT PATROL",w-159,49);
   }
 
   function startParam(){

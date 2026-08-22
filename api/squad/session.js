@@ -117,7 +117,7 @@ module.exports = async function handler(req, res){
     let reward = null;
     if(action === "sync" || action === "status" || action === "role"){
       await updateOwnPresence(session, user, body?.player || (action === "role" ? { role:body?.role } : {}));
-    }else if(["start","attack","rescue","revive"].includes(action)){
+    }else if(["start","restart","attack","rescue","revive"].includes(action)){
       session = await applyAction(session, user, action, body || {});
     }else if(action === "invite"){
       invitation = await prepareInvite(botToken, user, session);

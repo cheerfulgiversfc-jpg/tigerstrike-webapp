@@ -209,6 +209,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - A, S, D, and W movement shortcuts are ignored while the squad-code input is focused, allowing every valid code character to be typed.
 - Role selection highlights immediately, Leave Squad closes immediately, and Start Mission gives visible `1/2` guidance instead of behaving like a dead disabled button.
 
+### V5.4 Co-op Field Lives
+
+- Each player starts Operation Night Fang with one personal field life. The first knockout automatically returns that player to Base Camp after three seconds with full health.
+- After a player spends that field life, the teammate can still revive them normally. If both players are down and out of lives, the mission becomes a clear Squad Wipe instead of getting stuck.
+- The squad leader receives a Restart Mission button. Restart restores both players, both field lives, all civilians, all tiger health, extraction progress, and the six-minute clock without requiring a new room code.
+- The shared battlefield is now a larger 1200×1100 Story-style district with more terrain, buildings, roads, trees, a river crossing, Base Camp, Medical Post, and clearer mission landmarks.
+- The recovery, wipe, restart, and post-restart completion paths are server-authoritative so both phones see the same result.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
