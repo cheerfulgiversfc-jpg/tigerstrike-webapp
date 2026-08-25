@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5007";
+const TS_BUILD = "5008";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 1;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -13364,7 +13364,7 @@ function renderWorldMapCampaign(){
     ? `
         <button class="good" onclick="startWorldMapRegionMission('${selected.id}')">👤 Play Story ${selectedMissionLevel} Solo</button>
         ${sharedStoryPilotAvailable
-          ? `<button class="good" onclick="startWorldMapStoryCoopMission('${selected.id}')">👥 Play Story ${selectedMissionLevel} With Teammate</button>`
+          ? `<button class="good" onclick="startWorldMapStoryCoopMission('${selected.id}')">👥 Open Story ${selectedMissionLevel} in Live Squad</button>`
           : `<button class="ghost" disabled title="Two-player Story is rolling out safely one mission at a time.">👥 Two Player • Mission 1 Pilot</button>`}
         <button class="ghost" onclick="openMissionBriefFromWorldMap()">Brief First</button>
         <button class="ghost" onclick="setWorldMapActiveRegion('${selected.id}')">Focus Region</button>
@@ -13601,21 +13601,14 @@ function startWorldMapStoryCoopMission(id){
   if(missionLevel > FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL){
     return toast(`Two-player Story is currently a Mission ${FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL} pilot. Choose Mission 1 or play this level Solo.`);
   }
-  activateModeProfile("Story", S);
-  S.storyVariant = STORY_VARIANTS.CAMPAIGN;
-  S.storyPartyMode = "two-player";
-  S.storyLevel = missionLevel;
-  S.storyLastMission = Math.max(worldMapMaxUnlockedStoryLevel(S), missionLevel);
-  applyWorldMapPrepToMission(region, missionLevel, S);
   wm.selectedRegionId = region.id;
   const overlay = document.getElementById("worldMapCampaignOverlay");
   if(overlay) overlay.style.display = "none";
-  save(true);
+  save();
   if(typeof window.openLiveSquadStoryMission === "function"){
     window.openLiveSquadStoryMission(missionLevel);
-    toast(`Story Mission ${missionLevel} • Two Player pilot ready. Create or join a squad.`);
+    toast(`Live Squad opened to Story Mission ${missionLevel}. Create or join a squad when ready.`);
   }else{
-    S.storyPartyMode = "solo";
     openWorldMapCampaign();
     toast("Two-player service is unavailable right now. Solo Story is still safe.");
   }
@@ -34447,6 +34440,25 @@ function openBaseHQ(opts={}){
   syncGamepadFocus();
   toast(__baseHqOnboardingActive ? "Ivy: Follow the HQ tour to learn the main rooms." : baseHqIvyGuidance());
   sfx("ui");
+}
+function prepareLiveSquadHub(){
+  try{ resetControlInputState("live-squad-hub"); }catch(error){}
+  if(typeof baseHqActive !== "function" || !baseHqActive()){
+    openBaseHQ({ fromLiveSquad:true });
+  }else{
+    ["worldMapCampaignOverlay","missionBriefOverlay","missionCinemaOverlay","shopOverlay","invOverlay","modeOverlay","completeOverlay","overOverlay"].forEach((id)=>{
+      const el = document.getElementById(id);
+      if(el) el.style.display = "none";
+    });
+    setPaused(true, "base-hq");
+  }
+  return true;
+}
+function returnToLiveSquadMenuBackground(){
+  prepareLiveSquadHub();
+  setPaused(true, "base-hq");
+  syncGamepadFocus();
+  return true;
 }
 function openBaseHQFromLaunchIntro(){
   openBaseHQ({ fromLaunch:true });
@@ -61816,6 +61828,8 @@ window.setWorldMapActiveRegion = setWorldMapActiveRegion;
 window.startWorldMapRegionMission = startWorldMapRegionMission;
 window.startWorldMapStoryCoopMission = startWorldMapStoryCoopMission;
 window.applySharedStoryCompletion = applySharedStoryCompletion;
+window.prepareLiveSquadHub = prepareLiveSquadHub;
+window.returnToLiveSquadMenuBackground = returnToLiveSquadMenuBackground;
 window.openMissionBriefFromWorldMap = openMissionBriefFromWorldMap;
 window.applyWorldMapStrategicChoice = applyWorldMapStrategicChoice;
 window.applyWorldMapRivalAction = applyWorldMapRivalAction;

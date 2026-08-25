@@ -232,6 +232,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Story rendering now calls the same bright district foundation used by the shared mission on phones and larger screens: the same green palette, cross roads, river, bridge, houses, and trees. Larger Story worlds repeat that fixed-size district instead of stretching its buildings. The dull cinematic tint, weather wash, and grading overlays are skipped on this renderer.
 - This update makes Mission 1 the real shared-Story pilot. Missions 2–100 remain Solo until their exact objectives and progression are converted; the interface does not claim they are already co-op.
 
+### V5.7 Co-op Home + Auto Resume
+
+- Live Squad is the single multiplayer home. Its opening screen lets players choose the real two-player Story Mission 1 or the original Operation Night Fang before creating a room.
+- The World Map teammate button opens Story Mission 1 inside that same Live Squad home. It no longer changes the main game into Story gameplay or deploys a hidden Solo mission behind the co-op screen.
+- Claiming a completed co-op reward returns that player to the Live Squad mission menu. Leaving a squad also returns to that menu, while Close returns to Base HQ instead of resuming a hidden field mission.
+- Each Telegram player stores only their current six-character room reference locally. Reopening Tiger Strike automatically checks that room and restores its waiting, active, failed, or completed state if the server room is still valid; expired rooms are cleared safely.
+- Story Missions 2–100 remain Solo. This release does not claim that later missions have already been converted.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

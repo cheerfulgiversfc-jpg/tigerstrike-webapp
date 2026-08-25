@@ -1,6 +1,8 @@
 (() => {
   "use strict";
   const API = "/api/squad/session";
+  const ACTIVE_ROOM_STORAGE_PREFIX = "ts_live_squad_active_v1";
+  const ACTIVE_ROOM_MAX_AGE_MS = 3 * 60 * 60 * 1000;
   const tgApp = window.Telegram?.WebApp || null;
   const state = {
     open:false,
@@ -25,11 +27,11 @@
     overlayBound:false,
     move:{ up:false, down:false, left:false, right:false },
     keys:new Set(),
-    priorPause:false,
+    priorPause:true,
     message:"Create a private squad or enter a teammate's six-character code.",
     error:"",
-    storyMissionLevel:0,
-    launchType:"live-squad",
+    storyMissionLevel:1,
+    launchType:"shared-story",
   };
 
   const $ = (id) => document.getElementById(id);
@@ -59,6 +61,58 @@
   const missionMeta = () => state.snapshot?.mission || {};
   const rescueRequired = () => Math.max(1, Number(missionMeta().rescueRequired || (sharedStoryActive() ? 2 : 4)));
   const civilianCount = () => Math.max(rescueRequired(), Number(missionMeta().civilianCount || state.snapshot?.civilians?.length || 4));
+
+  function activeRoomStorageKey(){
+    const userId = viewerId();
+    return userId > 0 ? `${ACTIVE_ROOM_STORAGE_PREFIX}:${userId}` : "";
+  }
+
+  function persistActiveRoom(snapshot=state.snapshot){
+    const key = activeRoomStorageKey();
+    const code = cleanCode(snapshot?.code || state.code);
+    if(!key || code.length !== 6) return;
+    const record = {
+      code,
+      launchType:snapshot?.launchType === "shared-story" || state.launchType === "shared-story" ? "shared-story" : "live-squad",
+      storyMissionLevel:Math.max(0, Math.floor(Number(snapshot?.storyMissionLevel || state.storyMissionLevel || 0))),
+      savedAt:Date.now(),
+    };
+    try{ window.localStorage.setItem(key, JSON.stringify(record)); }catch(error){}
+  }
+
+  function readActiveRoom(){
+    const key = activeRoomStorageKey();
+    if(!key) return null;
+    try{
+      const record = JSON.parse(window.localStorage.getItem(key) || "null");
+      if(!record || cleanCode(record.code).length !== 6 || Date.now() - Number(record.savedAt || 0) > ACTIVE_ROOM_MAX_AGE_MS){
+        window.localStorage.removeItem(key);
+        return null;
+      }
+      return {
+        code:cleanCode(record.code),
+        launchType:record.launchType === "shared-story" ? "shared-story" : "live-squad",
+        storyMissionLevel:Math.max(0, Math.floor(Number(record.storyMissionLevel || 0))),
+      };
+    }catch(error){ return null; }
+  }
+
+  function clearActiveRoom(){
+    const key = activeRoomStorageKey();
+    if(!key) return;
+    try{ window.localStorage.removeItem(key); }catch(error){}
+  }
+
+  function updateHeader(){
+    const versionLabel = $("liveSquadVersionLabel");
+    const titleLabel = $("liveSquadTitle");
+    if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
+      ? "Tiger Strike V5.7 • Story Mission 1"
+      : "Tiger Strike V5.7 • Co-op Home";
+    if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
+      ? "📖 Story Mission 1 — Two Player"
+      : "🐅 Live Squad";
+  }
 
   function setMessage(message, error=false){
     state.message = String(message || "");
@@ -98,6 +152,8 @@
     state.launchType = snapshot.launchType === "shared-story" ? "shared-story" : "live-squad";
     state.storyMissionLevel = Number(snapshot.storyMissionLevel || 0);
     state.code = cleanCode(snapshot.code);
+    persistActiveRoom(snapshot);
+    updateHeader();
     if(Array.isArray(roles) && roles.length) state.roles = roles;
     const mine = localSnapshotPlayer();
     if(mine){
@@ -225,15 +281,23 @@
     const snapshot = state.snapshot;
     if(!snapshot){
       return `<div class="squadPanel">
+        <div class="squadMissionPicker" aria-label="Choose a two-player mission">
+          <button type="button" class="squadMissionChoice ${sharedStoryActive() ? "active" : ""}" data-squad-command="select-story">
+            <span>📖 Story Mission 1</span><small>The real first Story objective for two players</small>
+          </button>
+          <button type="button" class="squadMissionChoice ${sharedStoryActive() ? "" : "active"}" data-squad-command="select-operation">
+            <span>🐅 Operation Night Fang</span><small>The original Live Squad rescue operation</small>
+          </button>
+        </div>
         <div class="squadHero">
-          <div><div class="squadKicker">${sharedStoryActive() ? "V5.6 Real Shared Story" : "V5.6 Co-op Field Lives"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${sharedStoryActive() ? "Play the real Story Mission 1 objective together: escort two villagers, clear the two Story tigers, and extract on the same shared map." : "Two real Telegram players enter Night Fang District with civilians, a tiger pack, an Alpha, field lives, and mission restart."}</div></div>
+          <div><div class="squadKicker">${sharedStoryActive() ? "V5.7 Shared Story" : "V5.7 Live Operation"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${sharedStoryActive() ? "Play the real Story Mission 1 objective together: escort two villagers, clear the two Story tigers, and extract on the same shared map." : "Two real Telegram players enter Night Fang District with civilians, a tiger pack, an Alpha, field lives, and mission restart."}</div></div>
           <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
         </div>
         <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
         <div class="squadSmall squadJoinLabel">Enter the six-character code from your teammate</div>
         <div class="squadJoinRow"><input class="squadInput" id="squadJoinCode" value="${esc(state.joinDraft)}" maxlength="6" placeholder="ABC123" aria-label="Six-character squad code" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="go"><button type="button" class="squadBtn" data-squad-command="paste-code">Paste</button><button type="button" class="squadBtn primary" data-squad-command="join">Join</button></div>
         <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
-        <div class="squadSmall">Telegram requires both players to open the game through the Tiger Strike bot. Rooms expire automatically.</div>
+        <div class="squadSmall">Telegram requires both players to open the game through the Tiger Strike bot. If Telegram closes, Tiger Strike remembers this room and reconnects automatically when reopened. Rooms expire automatically.</div>
       </div>`;
     }
     const full = snapshot.memberCount >= 2;
@@ -286,7 +350,7 @@
         ${snap.status === "complete" ? `<button type="button" class="squadBtn good" data-squad-command="claim">Claim Co-op Reward</button>` : ""}
         ${snap.status === "failed" && snap.isHost ? `<button type="button" class="squadBtn good" data-squad-command="restart">Restart Mission</button>` : ""}
         ${snap.status === "failed" && !snap.isHost ? `<button type="button" class="squadBtn" disabled>Waiting for Leader to Restart</button>` : ""}
-        <button type="button" class="squadBtn" data-squad-command="leave">Return to HQ</button>
+        ${snap.status === "failed" ? `<button type="button" class="squadBtn" data-squad-command="leave">Back to Co-op Menu</button>` : `<div class="squadSmall">Claim your reward to save progress and return to the co-op menu.</div>`}
       </div>
       <div class="squadControls">
         <div class="squadDpad">
@@ -430,6 +494,8 @@
     const lockKey = commandName === "role" ? `role:${role}` : (commandName === "action" ? `action:${actionName}` : commandName);
     if(state.pending.has(lockKey)) return;
     const commands = {
+      "select-story":()=>selectMission("shared-story"),
+      "select-operation":()=>selectMission("live-squad"),
       create:()=>create(),
       join:()=>join(),
       role:()=>chooseRole(role),
@@ -455,6 +521,18 @@
     }
   }
 
+  function selectMission(launchType){
+    if(state.snapshot) return;
+    state.launchType = launchType === "shared-story" ? "shared-story" : "live-squad";
+    state.storyMissionLevel = state.launchType === "shared-story" ? 1 : 0;
+    state.message = state.launchType === "shared-story"
+      ? "Story Mission 1 selected. Create a squad or enter your teammate's code."
+      : "Operation Night Fang selected. Create a squad or enter your teammate's code.";
+    state.error = "";
+    updateHeader();
+    render();
+  }
+
   function bindOverlay(){
     const overlay = $("liveSquadOverlay");
     if(!overlay || state.overlayBound) return;
@@ -473,17 +551,22 @@
   }
 
   function open(opts={}){
+    if(!state.open){
+      try{ window.prepareLiveSquadHub?.(); }catch(error){}
+    }
     const overlay = $("liveSquadOverlay");
     if(!overlay) return;
     const requestedStoryLevel = Math.max(0, Math.floor(Number(opts?.storyMissionLevel || 0)));
     if(!state.snapshot){
-      state.storyMissionLevel = requestedStoryLevel;
-      state.launchType = requestedStoryLevel === 1 ? "shared-story" : "live-squad";
+      if(requestedStoryLevel === 1){
+        state.storyMissionLevel = 1;
+        state.launchType = "shared-story";
+      }else if(opts?.launchType === "live-squad"){
+        state.storyMissionLevel = 0;
+        state.launchType = "live-squad";
+      }
     }
-    const versionLabel = $("liveSquadVersionLabel");
-    const titleLabel = $("liveSquadTitle");
-    if(versionLabel) versionLabel.textContent = sharedStoryActive() ? "Tiger Strike V5.6 • Story Mission 1" : "Tiger Strike V5.6";
-    if(titleLabel) titleLabel.textContent = sharedStoryActive() ? "📖 Story Mission 1 — Two Player" : "🐅 Live Squad";
+    updateHeader();
     bindOverlay();
     state.open = true;
     state.priorPause = !!window.S?.paused;
@@ -506,10 +589,7 @@
     const overlay = $("liveSquadOverlay");
     overlay?.classList.remove("open");
     overlay?.setAttribute("aria-hidden","true");
-    if(window.S && !state.priorPause && window.S.pauseReason === "live-squad"){
-      window.S.paused = false;
-      window.S.pauseReason = null;
-    }
+    try{ window.returnToLiveSquadMenuBackground?.(); }catch(error){}
   }
 
   async function create(){
@@ -654,7 +734,7 @@
     try{
       const payload = await api("claim");
       applyReward(payload.reward);
-      setMessage("Co-op reward claimed and saved.");
+      returnToCoopMenu("Co-op reward claimed and saved. Choose another mission when you are ready.");
     }catch(error){ setMessage(error.message, true); }
   }
 
@@ -686,14 +766,39 @@
     // Claim button if it was not yet applied to this local save.
   }
 
-  function leave(){
-    const oldCode = state.code;
+  function resetRoomState(){
     state.roomEpoch += 1;
     state.pending.clear();
-    state.code = ""; state.joinDraft = ""; state.inviteUrl = ""; state.inviteText = ""; state.snapshot = null; state.local = null; state.remoteDraw.clear();
-    setMessage("Create a private squad or enter a teammate's six-character code.");
-    close();
-    if(oldCode) api("leave", { code:oldCode }).catch(()=>{});
+    state.code = "";
+    state.joinDraft = "";
+    state.inviteUrl = "";
+    state.inviteText = "";
+    state.snapshot = null;
+    state.local = null;
+    state.remoteDraw.clear();
+    clearActiveRoom();
+  }
+
+  function returnToCoopMenu(message="Choose a two-player mission, then create or join a private squad."){
+    stopPolling();
+    cancelAnimationFrame(state.frame);
+    state.frame = 0;
+    Object.keys(state.move).forEach((key)=>{ state.move[key] = false; });
+    resetRoomState();
+    state.message = message;
+    state.error = "";
+    try{ window.prepareLiveSquadHub?.(); }catch(error){}
+    updateHeader();
+    if(!state.open) open();
+    else render();
+  }
+
+  async function leave(){
+    const oldCode = state.code;
+    if(oldCode){
+      try{ await api("leave", { code:oldCode }); }catch(error){}
+    }
+    returnToCoopMenu("You left the squad. Choose a mission when you are ready to play again.");
   }
 
   async function copyTextReliable(text){
@@ -920,9 +1025,36 @@
     if(direct) return direct;
     try{ const params=new URLSearchParams(location.search);return String(params.get("tgWebAppStartParam")||params.get("startapp")||"").trim(); }catch(error){ return ""; }
   }
+  async function resumeSavedRoom(record){
+    if(!record || !hasTelegramAuth()) return;
+    state.code = cleanCode(record.code);
+    state.launchType = record.launchType === "shared-story" ? "shared-story" : "live-squad";
+    state.storyMissionLevel = Math.max(0, Math.floor(Number(record.storyMissionLevel || 0)));
+    open({ storyMissionLevel:state.storyMissionLevel, launchType:state.launchType });
+    setMessage(`Reconnecting to ${missionName()}…`);
+    try{
+      await api("status", { code:state.code });
+      setMessage(state.snapshot?.status === "active"
+        ? `Reconnected to ${missionName()}. Continue with your teammate.`
+        : `Reconnected to ${missionName()}.`);
+      startPolling();
+    }catch(error){
+      resetRoomState();
+      state.message = "Your previous squad has ended or expired. Create a new squad or enter a teammate's code.";
+      state.error = "";
+      updateHeader();
+      render();
+    }
+  }
   function autoJoinFromTelegram(){
-    const match=startParam().match(/^squad_([A-Z0-9]{6})$/i);if(!match||!hasTelegramAuth())return;
-    window.setTimeout(()=>{ open(); join(match[1]); },1400);
+    if(!hasTelegramAuth()) return;
+    const match=startParam().match(/^squad_([A-Z0-9]{6})$/i);
+    if(match){
+      window.setTimeout(()=>{ open(); join(match[1]); },1400);
+      return;
+    }
+    const savedRoom = readActiveRoom();
+    if(savedRoom) window.setTimeout(()=>resumeSavedRoom(savedRoom),1400);
   }
 
 

@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V5.6 (Real Shared Story)</title>
+  <title>Tiger Strike 🐅 — V5.7 (Co-op Home + Auto Resume)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5007-real-shared-story">
+  <link rel="stylesheet" href="./squad-coop.css?v=5008-coop-home-resume">
 
   <style>
     :root{
@@ -2425,10 +2425,10 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V5.6</span> <span class="tag">Real Shared Story</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V5.7</span> <span class="tag">Co-op Home + Auto Resume</span></div>
       <div class="sub">
-        Story Mission 1 now lets you choose Solo or Two Player. Shared Story uses a private room, live teammate movement, shared rescues, revives, the two Story tigers, and squad extraction.<br>
-        Choose Mission 1 on the World Map to play alone or invite one teammate. Missions 2–100 remain Solo while they are converted safely.
+        Live Squad is now the one home for two-player missions: choose Story Mission 1 or Operation Night Fang, then create or join a private room.<br>
+        Co-op no longer starts a Solo mission behind the squad. Claiming a completed mission returns to the co-op menu, and reopening Telegram reconnects to the remembered room while it is still active. Missions 2–100 remain Solo while they are converted safely.
       </div>
     </div>
     <div class="row topActions">
@@ -3261,11 +3261,11 @@
   </div>
 </div>
 
-<!-- V5.6 Real Shared Story -->
+<!-- V5.7 Co-op Home + Auto Resume -->
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V5.6</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V5.7 • Co-op Home</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3306,9 +3306,9 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=5007-real-shared-story"></script>
+  <script src="./game.js?v=5008-coop-home-resume"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
-  <script src="./squad-coop.js?v=5007-real-shared-story"></script>
+  <script src="./squad-coop.js?v=5008-coop-home-resume"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";
