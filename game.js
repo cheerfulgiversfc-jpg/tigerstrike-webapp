@@ -1,7 +1,7 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5008";
+const TS_BUILD = "5009";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
-const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 1;
+const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 5;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
 const DECORATIVE_UNIT_RINGS_ENABLED = false;
 const PREMIUM_2D_GRAPHICS_VERSION = 12;
@@ -10531,11 +10531,17 @@ function storyCampaignMission(level){
   };
 
   const civMatch = objective.match(/(?:escort|rescue)\s+(\d+)\s+(?:civilians?|villagers?)/i);
-  if(civMatch) cfg.civilians = clamp(parseInt(civMatch[1], 10) || cfg.civilians, 0, 14);
+  if(civMatch){
+    cfg.civilians = clamp(parseInt(civMatch[1], 10) || cfg.civilians, 0, 14);
+    cfg.civiliansExact = true;
+  }
   else if(/injured villager|wounded villager|lost hunter|doctor civilian|scientist/i.test(objective)) cfg.civilians = Math.max(1, cfg.civilians);
 
   const tigerNums = [...objective.matchAll(/(\d+)\s+tigers?/ig)].map((m)=>parseInt(m[1], 10)).filter(Number.isFinite);
-  if(tigerNums.length) cfg.tigers = clamp(Math.max(cfg.tigers, ...tigerNums), 1, 18);
+  if(tigerNums.length){
+    cfg.tigers = clamp(Math.max(...tigerNums), 1, 18);
+    cfg.tigersExact = true;
+  }
   if(/swarm|massive tiger|all directions|pack attack/i.test(objective)) cfg.tigers = clamp(Math.max(cfg.tigers, 7 + chapter), 1, 18);
 
   if(!/kill or capture/i.test(objective)){
@@ -10595,6 +10601,22 @@ function storyObjectiveProgressText(cfg){
     bits.push(`Guards ${Math.min(den.guardsCleared || 0, den.guardsTotal || cfg.denGuardCount || 2)}/${den.guardsTotal || cfg.denGuardCount || 2}`);
   }
   return bits.length ? ` • ${bits.join(" • ")}` : "";
+}
+function storyMissionLiveStepText(cfg, state=S){
+  if(!cfg) return "";
+  const src = (state && typeof state === "object") ? state : S;
+  const civilians = Array.isArray(src.civilians) ? src.civilians : [];
+  const tigers = Array.isArray(src.tigers) ? src.tigers : [];
+  const civiliansPending = civilians.filter((c)=>c?.alive && !c.evac).length;
+  const civiliansSafe = civilians.filter((c)=>c?.alive && c.evac).length;
+  const tigersPending = tigers.filter((t)=>t?.alive).length;
+  if(civiliansPending > 0){
+    return `NEXT: rescue and escort ${civiliansPending} civilian${civiliansPending===1?"":"s"} to the green EVAC zone (${civiliansSafe}/${civilians.length} safe).`;
+  }
+  if(tigersPending > 0){
+    return `NEXT: clear ${tigersPending} remaining tiger${tigersPending===1?"":"s"}. Tap Scan to mark the nearest one.`;
+  }
+  return "NEXT: enter the green EVAC zone and hold there until transport departs.";
 }
 
 const CONVOY_ROUTE_PROFILES = Object.freeze({
@@ -10746,11 +10768,15 @@ function applyMissionVarietyProfile(cfg, state=S, mode=""){
     signature: profile.signature
   };
   if(!cfg.boss && !cfg.finalBoss){
-    cfg.tigers = clamp(Math.round((Number(cfg.tigers || 1) + profile.tigerDelta) * profile.tigerMul), 1, 26);
+    if(!cfg.tigersExact){
+      cfg.tigers = clamp(Math.round((Number(cfg.tigers || 1) + profile.tigerDelta) * profile.tigerMul), 1, 26);
+    }
   }else{
     cfg.tigers = clamp(Number(cfg.tigers || 1), 1, 4);
   }
-  cfg.civilians = clamp(Math.round((Number(cfg.civilians || 0) + profile.civilianDelta) * profile.civMul), 0, 18);
+  if(!cfg.civiliansExact){
+    cfg.civilians = clamp(Math.round((Number(cfg.civilians || 0) + profile.civilianDelta) * profile.civMul), 0, 18);
+  }
   if(profile.trapPlaceDelta > 0){
     cfg.trapPlaceRequired = Math.max(0, Math.floor(Number(cfg.trapPlaceRequired || 0)) + profile.trapPlaceDelta);
   }
@@ -11008,6 +11034,19 @@ function storyMissionForState(state=S){
     }
   }
   applyMissionVarietyProfile(cfg, src, "Story");
+
+  // Mission 72 used to inherit a huge generic "all directions" swarm with no
+  // staged instructions. Keep the intended ambush, but make it a curated,
+  // readable mission that can be completed without wandering the whole board.
+  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number === 72){
+    cfg.objective = "Rescue and evacuate 5 civilians, then clear 6 tigers attacking from all directions.";
+    cfg.civilians = 5;
+    cfg.tigers = 6;
+    cfg.captureRequired = 0;
+    cfg.convoyMission = false;
+    cfg.convoySplitThreat = false;
+    cfg.boss = false;
+  }
 
   if(cfg.convoyMission){
     applyConvoyMissionProfile(cfg, src);
@@ -13365,7 +13404,7 @@ function renderWorldMapCampaign(){
         <button class="good" onclick="startWorldMapRegionMission('${selected.id}')">👤 Play Story ${selectedMissionLevel} Solo</button>
         ${sharedStoryPilotAvailable
           ? `<button class="good" onclick="startWorldMapStoryCoopMission('${selected.id}')">👥 Open Story ${selectedMissionLevel} in Live Squad</button>`
-          : `<button class="ghost" disabled title="Two-player Story is rolling out safely one mission at a time.">👥 Two Player • Mission 1 Pilot</button>`}
+          : `<button class="ghost" disabled title="Two-player Story currently includes Missions 1-${FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL}.">👥 Two Player • Missions 1-${FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL}</button>`}
         <button class="ghost" onclick="openMissionBriefFromWorldMap()">Brief First</button>
         <button class="ghost" onclick="setWorldMapActiveRegion('${selected.id}')">Focus Region</button>
       `
@@ -13599,7 +13638,7 @@ function startWorldMapStoryCoopMission(id){
   if(!worldMapRegionUnlocked(region, S)) return toast(`${region.name} is still locked.`);
   const missionLevel = worldMapLaunchStoryLevel(region, S);
   if(missionLevel > FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL){
-    return toast(`Two-player Story is currently a Mission ${FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL} pilot. Choose Mission 1 or play this level Solo.`);
+    return toast(`Two-player Story currently includes Missions 1-${FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL}. Play this later level Solo for now.`);
   }
   wm.selectedRegionId = region.id;
   const overlay = document.getElementById("worldMapCampaignOverlay");
@@ -13617,7 +13656,7 @@ function startWorldMapStoryCoopMission(id){
 function applySharedStoryCompletion(progress={}, receipt=""){
   const completedLevel = clamp(Math.floor(Number(progress?.completedLevel || 0)), 0, STORY_CAMPAIGN_OBJECTIVES.length);
   const unlockLevel = clamp(Math.floor(Number(progress?.unlockLevel || completedLevel + 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
-  if(completedLevel !== 1) return false;
+  if(completedLevel < 1 || completedLevel > FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL) return false;
   if(!S.sharedStoryCompletionReceipts || typeof S.sharedStoryCompletionReceipts !== "object"){
     S.sharedStoryCompletionReceipts = {};
   }
@@ -24388,16 +24427,16 @@ function drawMapExpansionSectorDetails(opts={}){
     ctx.moveTo(b.minX, cy); ctx.lineTo(b.maxX, cy);
     ctx.moveTo(cx, b.minY); ctx.lineTo(cx, b.maxY);
     ctx.stroke();
-    ctx.globalAlpha = activeSector ? 0.78 : 0.46;
+    ctx.globalAlpha = activeSector ? 0.90 : 0.58;
     ctx.strokeStyle = "rgba(88,76,58,.94)";
     ctx.lineWidth = mobileFast ? 32 : 40;
     ctx.beginPath();
     ctx.moveTo(b.minX, cy); ctx.lineTo(b.maxX, cy);
     ctx.moveTo(cx, b.minY); ctx.lineTo(cx, b.maxY);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(225,210,175,.30)";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([12, 12]);
+    ctx.strokeStyle = "rgba(250,204,21,.82)";
+    ctx.lineWidth = mobileFast ? 2.5 : 3;
+    ctx.setLineDash([18, 14]);
     ctx.beginPath();
     ctx.moveTo(b.minX, cy); ctx.lineTo(b.maxX, cy);
     ctx.moveTo(cx, b.minY); ctx.lineTo(cx, b.maxY);
@@ -24692,7 +24731,12 @@ function ensureMapObstacleCache(){
   const rects = [];
   const circles = [];
   const waters = buildMapWaterZones(key, chapter, w, h);
-  const denseLandmarks = buildDenseLandmarks(key, chapter, w, h);
+  // Story uses the same bright Shared Story district renderer as co-op. The
+  // legacy landmark colliders belong to a different hidden layout and were the
+  // source of the invisible walls seen on phones. Explicit closed route gates
+  // still block through blockedAt(); decorative scenery stays freely walkable.
+  const sharedStoryDistrict = normalizeModeName(S.mode) === "Story" && shouldUseMobileFastMapRenderer(S);
+  const denseLandmarks = sharedStoryDistrict ? [] : buildDenseLandmarks(key, chapter, w, h);
   const family = mapFamilyKey(key);
   const sx = (v)=> v * (w / 960);
   const sy = (v)=> v * (h / 540);
@@ -24701,13 +24745,13 @@ function ensureMapObstacleCache(){
     addMapObstacleForLandmark(rects, circles, lm);
   }
 
-  for(const p of (MAP_REALISM_PROPS[family] || [])){
+  for(const p of (sharedStoryDistrict ? [] : (MAP_REALISM_PROPS[family] || []))){
     const px = p.x * (w / 960);
     const py = p.y * (h / 540);
     addMapObstacleForLandmark(rects, circles, { kind:p.kind, x:px, y:py, s:p.s || 1 });
   }
 
-  if(family === "ST_SUBURBS"){
+  if(!sharedStoryDistrict && family === "ST_SUBURBS"){
     const anchors = [
       [220,146],[460,146],[718,146],
       [240,388],[560,388],[820,388],
@@ -24718,7 +24762,7 @@ function ensureMapObstacleCache(){
       if(inMapScenarioKeepout(cx, cy, 24)) continue;
       pushMapObstacleRect(rects, cx, cy, sx(34), sy(22), 2);
     }
-  } else if(family === "ST_DOWNTOWN"){
+  } else if(!sharedStoryDistrict && family === "ST_DOWNTOWN"){
     const blocks = [
       [180,145,74,60],[520,145,84,64],[840,145,72,58],
       [200,330,86,66],[560,325,92,68],[860,320,78,60],
@@ -24729,7 +24773,7 @@ function ensureMapObstacleCache(){
       if(inMapScenarioKeepout(cx, cy, Math.max(sx(bw), sy(bh)) * 0.52)) continue;
       pushMapObstacleRect(rects, cx, cy, sx(bw), sy(bh), 4);
     }
-  } else if(family === "ST_INDUSTRIAL"){
+  } else if(!sharedStoryDistrict && family === "ST_INDUSTRIAL"){
     const industrialBlocks = [
       [218,158,198,96,5],
       [738,166,202,92,5],
@@ -38597,6 +38641,40 @@ function findInteractableAt(x,y){
   }
   return null;
 }
+function findRescueSiteAt(x,y){
+  return (S.rescueSites || []).find((site)=>site && dist(x, y, site.x, site.y) <= Math.max(30, Number(site.r || 44))) || null;
+}
+function activateRescueSite(site){
+  if(!site || S.inBattle) return false;
+  const playerDistance = dist(S.me.x, S.me.y, site.x, site.y);
+  if(playerDistance > Math.max(100, Number(site.r || 44) + 64)){
+    S.target = { x:site.x, y:site.y };
+    S.scanPing = Math.max(Number(S.scanPing || 0), 180);
+    interactionFeedback(`📍 ${site.label} marked. Follow the route line to reach it.`, { success:true, seconds:3 });
+    return true;
+  }
+  let rallied = 0;
+  for(const civ of (S.civilians || [])){
+    if(!civ?.alive || civ.evac || dist(civ.x, civ.y, site.x, site.y) > 240) continue;
+    civ.following = true;
+    civ.escortOwner = "player";
+    civ.followTargetId = 0;
+    civ.freezeUntil = 0;
+    civ.hideUntil = 0;
+    civ.fleeUntil = 0;
+    civ.panic = Math.max(0, Number(civ.panic || 0) - 35);
+    rallied += 1;
+  }
+  site.activatedAt = Date.now();
+  site.effect = rallied > 0 ? `Rallied ${rallied}` : "Route checked";
+  S.scanPing = Math.max(Number(S.scanPing || 0), 220);
+  interactionFeedback(rallied > 0
+    ? `🏠 ${site.label} rally active: ${rallied} civilian${rallied===1?"":"s"} now following you.`
+    : `📍 ${site.label} checked: no waiting civilians remain here. Nearby threats are marked.`,
+    { success:true, seconds:4 });
+  __savePending = true;
+  return true;
+}
 function nearestCacheInteractable(maxDist=128){
   const items = S.mapInteractables || [];
   let best = null;
@@ -40582,6 +40660,7 @@ cv.addEventListener("pointerdown",(e)=>{
   const x = worldPt.x;
   const y = worldPt.y;
   const tappedInteractable = findInteractableAt(x,y);
+  const tappedRescueSite = findRescueSiteAt(x,y);
   const tapped = S.tigers.find(t=>t.alive && dist(x,y,t.x,t.y) < 34);
   const tappedRival = (S.rivalHunters || []).find((u)=>u.alive && dist(x,y,u.x,u.y) < 34);
   const tappedSupport = (S.supportUnits || []).find((u)=>u.alive && dist(x,y,u.x,u.y) < 34);
@@ -40709,6 +40788,15 @@ cv.addEventListener("pointerdown",(e)=>{
   if(tappedInteractable && !S.inBattle){
     const changed = activateMapInteractable(tappedInteractable);
     if(changed){
+      sfx("ui");
+      hapticImpact("light");
+      save();
+    }
+    return;
+  }
+
+  if(tappedRescueSite && !S.inBattle){
+    if(activateRescueSite(tappedRescueSite)){
       sfx("ui");
       hapticImpact("light");
       save();
@@ -49343,7 +49431,7 @@ function renderHUD(){
   const grace = (S.mode!=="Survival" && Date.now() < (S.civGraceUntil||0)) ? " • Civ Grace" : "";
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
   const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
-  const storyObjective = storyMission ? `${storyMission.objective}${storyObjectiveProgressText(storyMission)}` : "";
+  const storyObjective = storyMission ? `${storyMission.objective}${storyObjectiveProgressText(storyMission)} • ${storyMissionLiveStepText(storyMission, S)}` : "";
   const arcadeObjective = arcadeMission ? `${arcadeMission.objective}${arcadeObjectiveProgressText(arcadeMission)}` : "";
   const dynObjective = ensureDynamicObjectiveState(S);
   const dynLeft = dynObjective.active ? Math.max(0, Math.ceil((Number(dynObjective.until || 0) - Date.now()) / 1000)) : 0;
@@ -49662,7 +49750,7 @@ function renderHUD(){
         ? "Stay moving, manage ammo, and survive the pressure."
         : (S.mode==="Arcade"
             ? "Beat the clock, chain combos, and finish with a higher medal."
-            : "Protect civilians, reach the evac zone, and clear every tiger.");
+            : (storyMission ? storyMissionLiveStepText(storyMission, S) : "Protect civilians, reach the evac zone, and clear every tiger."));
     let nearInteract = null;
     let nearInteractDist = 1e9;
     for(const it of (S.mapInteractables || [])){
@@ -49678,6 +49766,8 @@ function renderHUD(){
       mobilePrompt = civ ? `⚠️ Civilian #${civ.id} is under attack. Move there now.` : mobilePrompt;
     } else if(!anyWeaponHasAmmo()){
       mobilePrompt = "⚠️ Out of ammo. Open Shop before the next fight.";
+    } else if(S.mode === "Story" && storyMission && S.civilians.some((c)=>c?.alive && !c.evac)){
+      mobilePrompt = storyMissionLiveStepText(storyMission, S);
     } else if(t && canEngage()){
       mobilePrompt = `Tiger #${t.id} locked. Tap it to fight.`;
     } else if(t){
@@ -50680,16 +50770,23 @@ function drawSharedStoryDistrictFoundation(w, h, heavy=false){
       ctx.fillStyle = "#354052";
       ctx.fillRect(ox, oy + 482, 1200, 108);
       ctx.fillRect(ox + 552, oy, 108, 1100);
-      if(!heavy){
-        ctx.strokeStyle = "rgba(250,204,21,.48)";
-        ctx.lineWidth = 5;
-        ctx.setLineDash([30,26]);
-        ctx.beginPath();
-        ctx.moveTo(ox, oy + 536); ctx.lineTo(ox + 1200, oy + 536);
-        ctx.moveTo(ox + 606, oy); ctx.lineTo(ox + 606, oy + 1100);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+      // Keep real lane markings in the lightweight phone renderer too.
+      ctx.strokeStyle = "rgba(250,204,21,.88)";
+      ctx.lineWidth = heavy ? 4 : 5;
+      ctx.setLineDash(heavy ? [24,22] : [30,26]);
+      ctx.beginPath();
+      ctx.moveTo(ox, oy + 536); ctx.lineTo(ox + 1200, oy + 536);
+      ctx.moveTo(ox + 606, oy); ctx.lineTo(ox + 606, oy + 1100);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(241,245,249,.62)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(ox, oy + 488); ctx.lineTo(ox + 1200, oy + 488);
+      ctx.moveTo(ox, oy + 584); ctx.lineTo(ox + 1200, oy + 584);
+      ctx.moveTo(ox + 558, oy); ctx.lineTo(ox + 558, oy + 1100);
+      ctx.moveTo(ox + 654, oy); ctx.lineTo(ox + 654, oy + 1100);
+      ctx.stroke();
 
       ctx.fillStyle = "#765a3b";
       ctx.fillRect(ox + 530, oy + 900, 152, 58);

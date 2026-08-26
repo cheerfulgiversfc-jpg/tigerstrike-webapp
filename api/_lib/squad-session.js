@@ -40,6 +40,50 @@ const SHARED_STORY_MISSION_1 = Object.freeze({
     Object.freeze({ ...TIGER_DEFS[1], name:"Forest Scout", type:"Scout", hpMax:112, baseX:390, baseY:560, rangeX:74, rangeY:54 }),
   ]),
 });
+const SHARED_STORY_MISSIONS = Object.freeze({
+  1:SHARED_STORY_MISSION_1,
+  2:Object.freeze({
+    level:2, chapter:1, chapterName:"Forest Edge", title:"Story Mission 2",
+    objective:"Tigers attack a farm road. Escort 3 civilians to safety.", rescueRequired:3,
+    world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze(CIVILIANS.slice(0, 3)),
+    tigers:Object.freeze([
+      Object.freeze({ ...TIGER_DEFS[0], name:"Farm Road Scout", type:"Scout", hpMax:132, baseX:350, baseY:500 }),
+      Object.freeze({ ...TIGER_DEFS[1], name:"Farm Road Tiger", type:"Standard", hpMax:148, baseX:770, baseY:330 }),
+      Object.freeze({ ...TIGER_DEFS[2], name:"Road Guard", type:"Armored", hpMax:176, baseX:900, baseY:720 }),
+    ]),
+  }),
+  3:Object.freeze({
+    level:3, chapter:1, chapterName:"Forest Edge", title:"Story Mission 3",
+    objective:"First tiger encounter. Kill or capture 1 tiger, then extract.", rescueRequired:0,
+    world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ ...TIGER_DEFS[0], name:"First Encounter Tiger", type:"Standard", hpMax:190, baseX:650, baseY:540, rangeX:105, rangeY:80 }),
+    ]),
+  }),
+  4:Object.freeze({
+    level:4, chapter:1, chapterName:"Forest Edge", title:"Story Mission 4",
+    objective:"Rescue 3 villagers trapped near the jungle huts.", rescueRequired:3,
+    world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze(CIVILIANS.slice(0, 3)),
+    tigers:Object.freeze([
+      Object.freeze({ ...TIGER_DEFS[0], name:"Hut Stalker", type:"Scout", hpMax:148, baseX:300, baseY:320 }),
+      Object.freeze({ ...TIGER_DEFS[1], name:"Village Tiger", type:"Standard", hpMax:168, baseX:820, baseY:520 }),
+    ]),
+  }),
+  5:Object.freeze({
+    level:5, chapter:1, chapterName:"Forest Edge", title:"Story Mission 5",
+    objective:"Escort 4 civilians through the jungle trail.", rescueRequired:4,
+    world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:CIVILIANS,
+    tigers:Object.freeze([
+      Object.freeze({ ...TIGER_DEFS[0], name:"Trail Scout", type:"Scout", hpMax:154, baseX:325, baseY:495 }),
+      Object.freeze({ ...TIGER_DEFS[1], name:"Trail Tiger", type:"Standard", hpMax:176, baseX:760, baseY:245 }),
+      Object.freeze({ ...TIGER_DEFS[2], name:"Trail Guard", type:"Armored", hpMax:205, baseX:900, baseY:735 }),
+    ]),
+  }),
+});
 const ROLE_DEFS = Object.freeze({
   tracker:Object.freeze({ key:"tracker", label:"Tracker", damage:28, maxHp:105, speed:1.08 }),
   medic:Object.freeze({ key:"medic", label:"Medic", damage:23, maxHp:120, speed:1.00 }),
@@ -65,7 +109,9 @@ function playerKey(code, userId){ return `live_squad_player_${cleanCode(code)}_$
 function roleKey(value){ return ROLE_DEFS[String(value || "").toLowerCase()] ? String(value).toLowerCase() : "tracker"; }
 function distance(a, b){ return Math.hypot(Number(a?.x || 0) - Number(b?.x || 0), Number(a?.y || 0) - Number(b?.y || 0)); }
 function missionDefinition(session){
-  if(session?.launchType === "shared-story" && Number(session.storyMissionLevel || 0) === 1) return SHARED_STORY_MISSION_1;
+  if(session?.launchType === "shared-story"){
+    return SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0)] || SHARED_STORY_MISSION_1;
+  }
   return {
     level:0,
     chapter:0,
@@ -134,6 +180,7 @@ function newPlayer(user, slot=0){
     respawnAt:0,
     bossDamage:0,
     tigerDamage:{},
+    capturedIds:[],
     rescuedIds:[],
     revives:0,
     joinedAt:nowMs(),
@@ -176,6 +223,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     bossDamage:clamp(src.bossDamage, 0, BOSS_HP_MAX),
     tigerDamage,
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>CIVILIANS.some((c)=>c.id === id)))],
+    capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>TIGER_DEFS.some((t)=>t.id === id)))],
     revives:clamp(src.revives, 0, 999),
     joinedAt:Math.max(0, Number(src.joinedAt || base.joinedAt)),
     lastSeenAt:Math.max(0, Number(src.lastSeenAt || base.lastSeenAt)),
@@ -198,13 +246,14 @@ function tigerPosition(session, tiger, at=nowMs()){
 
 function tigerSnapshots(session, players, at=nowMs()){
   return missionDefinition(session).tigers.map((def)=>{
+    const captured = players.some((player)=>(player?.capturedIds || []).includes(def.id));
     let damage = players.reduce((sum, player)=>sum + clamp(player?.tigerDamage?.[def.id], 0, def.hpMax), 0);
     if(session?.launchType !== "shared-story" && def.boss && damage <= 0){
       // Keep rooms created by the first V5 release playable after this update.
       damage = players.reduce((sum, player)=>sum + clamp(player?.bossDamage, 0, BOSS_HP_MAX), 0);
     }
-    const hp = clamp(def.hpMax - damage, 0, def.hpMax);
-    return { ...def, ...tigerPosition(session, def, at), hp, defeated:hp <= 0 };
+    const hp = captured ? 0 : clamp(def.hpMax - damage, 0, def.hpMax);
+    return { ...def, ...tigerPosition(session, def, at), hp, defeated:hp <= 0, captured };
   });
 }
 
@@ -473,6 +522,7 @@ async function applyAction(session, user, action, payload={}){
       p.face = 0;
       p.bossDamage = 0;
       p.tigerDamage = {};
+      p.capturedIds = [];
       p.rescuedIds = [];
       p.rewardClaimed = false;
       p.lastSeenAt = now;
@@ -499,6 +549,19 @@ async function applyAction(session, user, action, payload={}){
     if(!player.tigerDamage || typeof player.tigerDamage !== "object") player.tigerDamage = {};
     player.tigerDamage[target.id] = clamp(Number(player.tigerDamage[target.id] || 0) + hit, 0, target.hpMax);
     if(target.boss) player.bossDamage = clamp(player.bossDamage + hit, 0, BOSS_HP_MAX);
+    player.lastAttackAt = now;
+    player.lastSeenAt = now;
+    await writePlayer(session.code, player);
+  }else if(action === "capture"){
+    const players = await memberPlayers(session);
+    const tigers = tigerSnapshots(session, players, now).filter((t)=>!t.defeated);
+    const requestedId = cleanText(payload.tigerId, 32);
+    const target = tigers.find((t)=>t.id === requestedId) || tigers.sort((a,b)=>distance(player,a)-distance(player,b))[0];
+    if(!target) throw new Error("The tiger threat is already cleared.");
+    if(distance(player, target) > (target.boss ? 178 : 164)) throw new Error(`Move closer to ${target.name}.`);
+    if(Number(target.hp || 0) > Number(target.hpMax || 1) * 0.30) throw new Error("Weaken the tiger to 30% health before capture.");
+    if(!Array.isArray(player.capturedIds)) player.capturedIds = [];
+    if(!player.capturedIds.includes(target.id)) player.capturedIds.push(target.id);
     player.lastAttackAt = now;
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
@@ -538,13 +601,21 @@ async function claimReward(session, user){
   const firstClaim = !player.rewardClaimed;
   player.rewardClaimed = true;
   await writePlayer(session.code, player);
-  const sharedStory = session.launchType === "shared-story" && Number(session.storyMissionLevel || 0) === 1;
+  const sharedStory = session.launchType === "shared-story";
+  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 5) : 0;
+  const sharedRewards = {
+    1:{ cash:1800, perkPoints:1, seasonPoints:6, badge:"Shared Story First Patrol" },
+    2:{ cash:2050, perkPoints:1, seasonPoints:7, badge:"Farm Road Guardians" },
+    3:{ cash:2250, perkPoints:1, seasonPoints:8, badge:"First Encounter Duo" },
+    4:{ cash:2450, perkPoints:1, seasonPoints:9, badge:"Jungle Hut Rescue" },
+    5:{ cash:2700, perkPoints:1, seasonPoints:10, badge:"Jungle Trail Team" },
+  };
   return {
     firstClaim,
-    receipt:`${sharedStory ? "shared-story-1" : "night-fang"}:${session.code}:${uid}`,
-    storyProgress:sharedStory ? { completedLevel:1, unlockLevel:2 } : null,
+    receipt:`${sharedStory ? `shared-story-${sharedLevel}` : "night-fang"}:${session.code}:${uid}`,
+    storyProgress:sharedStory ? { completedLevel:sharedLevel, unlockLevel:Math.min(100, sharedLevel + 1) } : null,
     reward:sharedStory
-      ? { cash:1800, perkPoints:1, seasonPoints:6, badge:"Shared Story First Patrol" }
+      ? sharedRewards[sharedLevel]
       : { cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },
   };
 }
@@ -563,6 +634,7 @@ module.exports = {
   ROLE_DEFS,
   TIGER_DEFS,
   SHARED_STORY_MISSION_1,
+  SHARED_STORY_MISSIONS,
   cleanCode,
   createSession,
   joinSession,

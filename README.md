@@ -240,6 +240,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Each Telegram player stores only their current six-character room reference locally. Reopening Tiger Strike automatically checks that room and restores its waiting, active, failed, or completed state if the server room is still valid; expired rooms are cleared safely.
 - Story Missions 2–100 remain Solo. This release does not claim that later missions have already been converted.
 
+### V5.8 Shared Story 1–5 + Mission Clarity
+
+- Live Squad now offers Story Missions 1–5. Each mission keeps a separate title, civilian requirement, tiger set, completion receipt, reward, and next-mission unlock for both players.
+- Mission 1 gameplay is unchanged. Missions 2–5 add Farm Road Rescue, First Tiger Encounter, Jungle Hut Rescue, and Jungle Trail Escort. Missions 6–100 remain Solo until their shared objectives are converted and tested.
+- Solo Story's bright district roads now keep yellow center dashes and white edge lines even when a phone switches to the lightweight renderer.
+- The invisible-wall bug is fixed by removing legacy landmark collision from the bright Shared Story district. Closed route gates remain real blockers; decorative scenery no longer blocks movement from an unseen layout.
+- Mission 72 is now a curated five-civilian/six-tiger ambush with live `NEXT` instructions that say whether to rescue, clear remaining tigers, or enter extraction. The same live next-step wording is shown across every Solo Story mission.
+- Tapping a named map location now has a result: distant locations become navigation targets, while nearby locations rally waiting civilians and expose nearby threats. Existing alarms, barriers, caches, bridges, vehicles, generators, gates, and route traps retain their gameplay effects.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

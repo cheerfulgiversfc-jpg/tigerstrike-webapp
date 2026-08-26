@@ -82,7 +82,55 @@ async function run(){
   assert.equal(hostAgain.firstClaim, false, "host cannot receive a second server reward");
   assert.equal(teammateAgain.firstClaim, false, "teammate cannot receive a second server reward");
 
-  console.log("PASS: two-player Story Mission 1 join, reconnect, wipe, restart, completion, separate unlocks, and reward dedupe");
+  for(let level=2; level<=5; level++){
+    const levelHost = { id:910100 + (level * 10), first_name:`Host ${level}` };
+    const levelMate = { id:910101 + (level * 10), first_name:`Mate ${level}` };
+    let levelSession = await createSession(levelHost, { launchType:"shared-story", storyMissionLevel:level });
+    levelSession = await joinSession(levelSession.code, levelMate);
+    levelSession = await applyAction(levelSession, levelHost, "start");
+    let levelSnapshot = await buildSnapshot(levelSession, levelHost.id);
+    assert.equal(levelSnapshot.mission.level, level, `Story Mission ${level} keeps its own definition`);
+    assert.equal(levelSnapshot.mission.title, `Story Mission ${level}`, `Story Mission ${level} has an accurate title`);
+    assert(levelSnapshot.mission.objective.length > 12, `Story Mission ${level} has a real objective`);
+    assert(levelSnapshot.tigers.length >= 1, `Story Mission ${level} has shared tiger gameplay`);
+    const clearedAt = Date.now();
+    await writePlayerPatch(levelSession.code, levelHost.id, {
+      x:levelSnapshot.extraction.x,
+      y:levelSnapshot.extraction.y,
+      rescuedIds:levelSnapshot.civilians.slice(0, levelSnapshot.mission.rescueRequired).map((c)=>c.id),
+      tigerDamage:Object.fromEntries(levelSnapshot.tigers.map((t)=>[t.id, t.hpMax])),
+      lastSeenAt:clearedAt,
+    });
+    await writePlayerPatch(levelSession.code, levelMate.id, {
+      x:levelSnapshot.extraction.x,
+      y:levelSnapshot.extraction.y,
+      lastSeenAt:clearedAt,
+    });
+    levelSnapshot = await buildSnapshot(await readSession(levelSession.code), levelHost.id);
+    assert.equal(levelSnapshot.status, "complete", `Story Mission ${level} can be completed by both players`);
+    const levelReward = await claimReward(await readSession(levelSession.code), levelHost);
+    assert.deepEqual(levelReward.storyProgress, { completedLevel:level, unlockLevel:level + 1 }, `Story Mission ${level} unlocks the correct next mission`);
+  }
+
+  const captureHost = { id:910303, first_name:"Capture Host" };
+  const captureMate = { id:910304, first_name:"Capture Mate" };
+  let captureSession = await createSession(captureHost, { launchType:"shared-story", storyMissionLevel:3 });
+  captureSession = await joinSession(captureSession.code, captureMate);
+  captureSession = await applyAction(captureSession, captureHost, "start");
+  let captureSnapshot = await buildSnapshot(captureSession, captureHost.id);
+  const captureTiger = captureSnapshot.tigers[0];
+  await writePlayerPatch(captureSession.code, captureHost.id, {
+    x:captureTiger.x,
+    y:captureTiger.y,
+    tigerDamage:{ [captureTiger.id]:Math.ceil(captureTiger.hpMax * 0.71) },
+    lastSeenAt:Date.now(),
+  });
+  await applyAction(await readSession(captureSession.code), captureHost, "capture", { tigerId:captureTiger.id });
+  captureSnapshot = await buildSnapshot(await readSession(captureSession.code), captureHost.id);
+  assert.equal(captureSnapshot.tigers[0].captured, true, "Mission 3 supports the Story capture choice");
+  assert.equal(captureSnapshot.tigers[0].defeated, true, "a captured tiger clears the shared threat");
+
+  console.log("PASS: two-player Story Missions 1-5 completion, Mission 3 capture, reconnect/restart, separate unlocks, and reward dedupe");
 }
 
 run().catch((error)=>{

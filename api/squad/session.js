@@ -43,20 +43,21 @@ async function prepareInvite(botToken, user, session){
   const community = await getCommunitySnapshot({ botToken, userId:userIdOf(user) });
   const sharedStory = session.launchType === "shared-story";
   const buttons = [];
-  if(playUrl) buttons.push([{ text:sharedStory ? "📖 Join Story Mission 1" : "🐅 Join Live Squad", url:playUrl }]);
+  const sharedLevel = Math.max(1, Number(session.storyMissionLevel || 1));
+  if(playUrl) buttons.push([{ text:sharedStory ? `📖 Join Story Mission ${sharedLevel}` : "🐅 Join Live Squad", url:playUrl }]);
   if(community.joinUrl) buttons.push([{ text:`👥 Join ${community.title}`.slice(0, 64), url:community.joinUrl }]);
   const missionName = sharedStory ? `Shared Story Mission ${Math.max(1, Number(session.storyMissionLevel || 1))}` : "Operation Night Fang";
   const shareText = [
-    sharedStory ? "📖 STORY MISSION 1 TEAMMATE REQUEST" : "🐅 LIVE SQUAD REQUEST",
+    sharedStory ? `📖 STORY MISSION ${sharedLevel} TEAMMATE REQUEST` : "🐅 LIVE SQUAD REQUEST",
     `I need one teammate for ${missionName}.`,
     sharedStory
-      ? "Play the real Story Mission 1 together: escort two villagers, clear the Story tigers, and extract."
+      ? `Play Story Mission ${sharedLevel} together on the shared map, finish its real objective, and extract.`
       : "Rescue four civilians, defeat the Alpha, revive each other, and extract together.",
     `Squad code: ${session.code}`,
   ].join("\n\n");
   const result = {
     type:"article",
-    id:`${sharedStory ? "story_m1" : "night_fang"}_${session.code}`.slice(0, 64),
+    id:`${sharedStory ? `story_m${sharedLevel}` : "night_fang"}_${session.code}`.slice(0, 64),
     title:`Join ${missionName}`,
     description:`Private two-player Tiger Strike squad • Code ${session.code}`,
     input_message_content:{
@@ -111,7 +112,7 @@ module.exports = async function handler(req, res){
       const requestedStoryLevel = Math.max(0, Math.min(100, Math.floor(Number(body?.storyMissionLevel || 0))));
       session = await createSession(user, {
         storyMissionLevel:requestedStoryLevel,
-        launchType:body?.launchType === "shared-story" && requestedStoryLevel === 1 ? "shared-story" : "live-squad",
+        launchType:body?.launchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 5 ? "shared-story" : "live-squad",
       });
     }else if(action === "join"){
       session = await joinSession(cleanCode(body?.code), user);
@@ -125,7 +126,7 @@ module.exports = async function handler(req, res){
     let reward = null;
     if(action === "sync" || action === "status" || action === "role"){
       await updateOwnPresence(session, user, body?.player || (action === "role" ? { role:body?.role } : {}));
-    }else if(["start","restart","attack","rescue","revive"].includes(action)){
+    }else if(["start","restart","attack","capture","rescue","revive"].includes(action)){
       session = await applyAction(session, user, action, body || {});
     }else if(action === "invite"){
       invitation = await prepareInvite(botToken, user, session);

@@ -44,6 +44,7 @@ body.baseHqActive #baseHqLiveSquadFab{
 .squadMissionChoice span{display:block;font:950 17px/1.2 system-ui}.squadMissionChoice small{display:block;margin-top:7px;color:#9fb2ca;font:750 12px/1.35 system-ui}
 .squadMissionChoice.active{border-color:#86efac;background:linear-gradient(145deg,rgba(20,83,45,.82),rgba(8,47,73,.82));box-shadow:inset 0 0 22px rgba(74,222,128,.12)}
 .squadMissionChoice.active small{color:#d1fae5}
+.squadMissionChoice:disabled{opacity:.48;filter:grayscale(.35);cursor:not-allowed}
 .squadHero{display:grid;grid-template-columns:1.35fr .65fr;gap:14px;margin-bottom:12px}
 .squadMissionName{font-size:clamp(24px,6vw,42px);font-weight:950;margin:3px 0 8px}
 .squadDesc{color:#c6d5e8;font-size:15px;line-height:1.45}
