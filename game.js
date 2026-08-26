@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5009";
+const TS_BUILD = "5010";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 5;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -31013,13 +31013,14 @@ function maybeAutoClaimPendingStars(){
 }
 
 function openShop(){
-  if(!tutorialAllows("shop")) return toast(tutorialBlockMessage("shop"));
-  if(S.gameOver) return;
-  if(window.TigerTutorial?.isRunning){
+  const fromLiveSquad = window.TigerLiveSquad?.equipmentOpen?.() === "shop";
+  if(!fromLiveSquad && !tutorialAllows("shop")) return toast(tutorialBlockMessage("shop"));
+  if(S.gameOver && !fromLiveSquad) return;
+  if(!fromLiveSquad && window.TigerTutorial?.isRunning){
     window.TigerTutorial.shopOpened = true;
     window.markTigerTutorialAction?.("shop");
   }
-  const fromBattle = !!S.inBattle;
+  const fromBattle = !!S.inBattle && !fromLiveSquad;
   ensureSquadShopTab();
   ensureBundlesShopTab();
   ensureSeasonShopTab();
@@ -31043,6 +31044,7 @@ function openShop(){
 }
 function closeShop(){
   document.getElementById("shopOverlay").style.display="none";
+  if(window.TigerLiveSquad?.returnFromEquipment?.("shop")) return;
   if(__returnToMissionBriefAfterShop && !S.missionEnded && !S.inBattle && !S.gameOver){
     __returnToMissionBriefAfterShop = false;
     const overlay = document.getElementById("missionBriefOverlay");
@@ -31076,10 +31078,11 @@ function closeShop(){
 }
 
 function openInventory(){
-  if(!tutorialAllows("inventory")) return toast(tutorialBlockMessage("inventory"));
-  if(S.inBattle) return toast("Finish battle first.");
-  if(S.gameOver) return;
-  if(window.TigerTutorial?.isRunning){
+  const fromLiveSquad = window.TigerLiveSquad?.equipmentOpen?.() === "inventory";
+  if(!fromLiveSquad && !tutorialAllows("inventory")) return toast(tutorialBlockMessage("inventory"));
+  if(S.inBattle && !fromLiveSquad) return toast("Finish battle first.");
+  if(S.gameOver && !fromLiveSquad) return;
+  if(!fromLiveSquad && window.TigerTutorial?.isRunning){
     window.TigerTutorial.inventoryOpened = true;
     window.markTigerTutorialAction?.("inventory");
   }
@@ -31095,6 +31098,7 @@ function openInventory(){
 }
 function closeInventory(opts={}){
   document.getElementById("invOverlay").style.display="none";
+  if(window.TigerLiveSquad?.returnFromEquipment?.("inventory")) return;
   if(__returnToBaseHqAfterOverlay && !opts.skipBaseHqReturn){
     returnToBaseHqFromOverlay();
     return;

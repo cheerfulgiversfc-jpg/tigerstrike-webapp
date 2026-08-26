@@ -53,6 +53,30 @@ async function run(){
     assert.equal(player.downed, false, "restart stands both players up");
   }
 
+  const startedBeforeGear = snapshot.startedAt;
+  session = await applyAction(await readSession(code), host, "pause", { reason:"shop" });
+  session = await applyAction(session, teammate, "pause", { reason:"inventory" });
+  snapshot = await buildSnapshot(session, host.id);
+  assert.equal(snapshot.paused, true, "opening Shop or Inventory pauses the shared mission");
+  assert.equal(snapshot.pausedBy.length, 2, "both open gear screens are tracked");
+  assert(snapshot.pausedBy.some((row)=>row.reason === "shop"), "Shop pause is identified");
+  assert(snapshot.pausedBy.some((row)=>row.reason === "inventory"), "Inventory pause is identified");
+
+  const rawPausedSession = await getState(`live_squad_session_${code}`);
+  await setState(`live_squad_session_${code}`, { ...rawPausedSession, pausedAt:Date.now() - 5000 });
+  session = await applyAction(await readSession(code), host, "resume");
+  snapshot = await buildSnapshot(session, host.id);
+  assert.equal(snapshot.paused, true, "mission stays paused until every player closes gear");
+  session = await applyAction(await readSession(code), teammate, "resume");
+  snapshot = await buildSnapshot(session, host.id);
+  assert.equal(snapshot.paused, false, "mission resumes after every gear screen closes");
+  assert(snapshot.startedAt >= startedBeforeGear + 4500, "paused time is removed from the mission clock");
+
+  session = await applyAction(await readSession(code), teammate, "pause", { reason:"shop" });
+  await writePlayerPatch(code, teammate.id, { lastSeenAt:Date.now() - 31000 });
+  snapshot = await buildSnapshot(session, host.id);
+  assert.equal(snapshot.paused, false, "an abandoned gear pause clears after the player disconnects");
+
   const completedAt = Date.now();
   await writePlayerPatch(code, host.id, {
     x:snapshot.extraction.x,
@@ -130,7 +154,7 @@ async function run(){
   assert.equal(captureSnapshot.tigers[0].captured, true, "Mission 3 supports the Story capture choice");
   assert.equal(captureSnapshot.tigers[0].defeated, true, "a captured tiger clears the shared threat");
 
-  console.log("PASS: two-player Story Missions 1-5 completion, Mission 3 capture, reconnect/restart, separate unlocks, and reward dedupe");
+  console.log("PASS: Story Missions 1-5, synchronized Shop/Inventory pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
 }
 
 run().catch((error)=>{

@@ -25,6 +25,9 @@
     actionBusy:false,
     pending:new Set(),
     overlayBound:false,
+    equipmentOpen:"",
+    equipmentResumePending:false,
+    equipmentResumeTimer:0,
     move:{ up:false, down:false, left:false, right:false },
     keys:new Set(),
     priorPause:true,
@@ -71,6 +74,15 @@
   const selectedStoryMeta = () => SHARED_STORY_LEVELS.find((row)=>row.level === Math.max(1, Number(state.storyMissionLevel || 1))) || SHARED_STORY_LEVELS[0];
   const maxUnlockedSharedStoryLevel = () => clamp(Math.floor(Math.max(Number(window.S?.storyLastMission || 1), Number(window.S?.storyLevel || 1))), 1, 5);
 
+  function equipmentButtonsHtml(){
+    const active = state.snapshot?.status === "active";
+    return `<div class="squadPrepBar">
+      <div><b>🎒 Squad Gear</b><small>${active ? "Opening gear pauses the shared mission for both players." : "Buy supplies or arrange your loadout before deployment."}</small></div>
+      <button type="button" class="squadBtn" data-squad-command="shop">🛒 Shop</button>
+      <button type="button" class="squadBtn" data-squad-command="inventory">🎒 Inventory</button>
+    </div>`;
+  }
+
   function activeRoomStorageKey(){
     const userId = viewerId();
     return userId > 0 ? `${ACTIVE_ROOM_STORAGE_PREFIX}:${userId}` : "";
@@ -116,8 +128,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V5.8 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : "Tiger Strike V5.8 • Co-op Home";
+      ? `Tiger Strike V5.9 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : "Tiger Strike V5.9 • Co-op Home";
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : "🐅 Live Squad";
@@ -220,11 +232,17 @@
     const activeThreats = (snap.tigers || []).filter((t)=>!t.defeated).length;
     set("squadBossHud", `${snap.boss?.boss ? `Alpha ${Math.round(snap.boss?.hp || 0)} HP` : `${activeThreats} tiger${activeThreats===1?"":"s"}`} • ${activeThreats} active`);
     set("squadCivHud", rescueRequired() > 0 ? `${snap.rescuedIds?.length || 0}/${rescueRequired()} escorted` : "No escort objective");
-    set("squadMissionHud", `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`);
+    set("squadMissionHud", snap.paused ? "PAUSED" : `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`);
     set("squadLivesHud", livesHudText());
     const connection = $("squadConnection");
     if(connection) connection.textContent = playerConnectionText();
     set("squadObjective", objectiveText());
+    const pauseNotice = $("squadPauseNotice");
+    if(pauseNotice){
+      pauseNotice.hidden = !snap.paused;
+      pauseNotice.textContent = snap.paused ? pauseSummary() : "";
+    }
+    document.querySelectorAll("#liveSquadOverlay [data-move]").forEach((button)=>{ button.disabled = !!snap.paused; });
     updateActionButtons();
   }
 
@@ -247,11 +265,12 @@
     const tigerNear = tiger && distance(state.local,tiger) <= (tiger.boss ? 178 : 164);
     const civNear = civilian && distance(state.local,civilian) <= 82;
     const reviveNear = teammate?.downed && distance(state.local,teammate) <= 108;
-    const unavailable = !!state.local.downed;
+    const unavailable = !!state.local.downed || !!state.snapshot?.paused;
     const captureReady = tiger && Number(tiger.hp || 0) <= Number(tiger.hpMax || 1) * 0.30;
-    if(attack){ attack.innerHTML = unavailable ? "⏳ Down<br><small>Recovery</small>" : (tiger ? (tigerNear ? (captureReady ? `🛟 Capture<br><small>${esc(tiger.type || "Tiger")}</small>` : `🎯 Attack<br><small>${esc(tiger.type || "Tiger")}</small>`) : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"); attack.disabled = unavailable || !tiger; }
-    if(rescue){ rescue.innerHTML = unavailable ? "⏳ Down<br><small>Recovery</small>" : (civilian ? (civNear ? `🛟 Rescue<br><small>${esc(civilian.name || "Civilian")}</small>` : `👤 Find Civilian<br><small>${Math.round(distance(state.local,civilian))}m</small>`) : "✅ Civilians Safe"); rescue.disabled = unavailable || !civilian; }
-    if(revive){ revive.innerHTML = unavailable ? "⏳ Down<br><small>Recovery</small>" : (teammate?.downed ? (reviveNear ? "💚 Revive<br><small>Teammate</small>" : `💚 Reach Teammate<br><small>${Math.round(distance(state.local,teammate))}m</small>`) : "💚 Revive<br><small>Not needed</small>"); revive.disabled = unavailable || !teammate?.downed; }
+    const unavailableLabel = state.snapshot?.paused ? "⏸️ Paused<br><small>Gear menu open</small>" : "⏳ Down<br><small>Recovery</small>";
+    if(attack){ attack.innerHTML = unavailable ? unavailableLabel : (tiger ? (tigerNear ? (captureReady ? `🛟 Capture<br><small>${esc(tiger.type || "Tiger")}</small>` : `🎯 Attack<br><small>${esc(tiger.type || "Tiger")}</small>`) : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"); attack.disabled = unavailable || !tiger; }
+    if(rescue){ rescue.innerHTML = unavailable ? unavailableLabel : (civilian ? (civNear ? `🛟 Rescue<br><small>${esc(civilian.name || "Civilian")}</small>` : `👤 Find Civilian<br><small>${Math.round(distance(state.local,civilian))}m</small>`) : "✅ Civilians Safe"); rescue.disabled = unavailable || !civilian; }
+    if(revive){ revive.innerHTML = unavailable ? unavailableLabel : (teammate?.downed ? (reviveNear ? "💚 Revive<br><small>Teammate</small>" : `💚 Reach Teammate<br><small>${Math.round(distance(state.local,teammate))}m</small>`) : "💚 Revive<br><small>Not needed</small>"); revive.disabled = unavailable || !teammate?.downed; }
   }
 
   function roleLabel(key){
@@ -291,6 +310,7 @@
     const snapshot = state.snapshot;
     if(!snapshot){
       return `<div class="squadPanel">
+        ${equipmentButtonsHtml()}
         <div class="squadMissionPicker" aria-label="Choose a two-player mission">
           ${SHARED_STORY_LEVELS.map((mission)=>`<button type="button" class="squadMissionChoice ${sharedStoryActive() && Number(state.storyMissionLevel) === mission.level ? "active" : ""}" ${mission.level > maxUnlockedSharedStoryLevel() ? "disabled" : ""} data-squad-command="select-story" data-squad-story-level="${mission.level}">
             <span>${mission.level > maxUnlockedSharedStoryLevel() ? "🔒" : "📖"} Story Mission ${mission.level}</span><small>${mission.level > maxUnlockedSharedStoryLevel() ? `Finish Mission ${mission.level - 1} first` : esc(mission.title)}</small>
@@ -300,7 +320,7 @@
           </button>
         </div>
         <div class="squadHero">
-          <div><div class="squadKicker">${sharedStoryActive() ? "V5.8 Shared Story" : "V5.8 Live Operation"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${sharedStoryActive() ? esc(selectedStoryMeta().description) : "Two real Telegram players enter Night Fang District with civilians, a tiger pack, an Alpha, field lives, and mission restart."}</div></div>
+          <div><div class="squadKicker">${sharedStoryActive() ? "V5.9 Shared Story" : "V5.9 Live Operation"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${sharedStoryActive() ? esc(selectedStoryMeta().description) : "Two real Telegram players enter Night Fang District with civilians, a tiger pack, an Alpha, field lives, mission restart, and synchronized gear access."}</div></div>
           <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
         </div>
         <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
@@ -313,6 +333,7 @@
     const full = snapshot.memberCount >= 2;
     const waiting = snapshot.status === "waiting";
     return `<div class="squadPanel">
+      ${equipmentButtonsHtml()}
       <div class="squadHero">
         <div><div class="squadKicker">${sharedStoryActive() ? "Private Shared Story Squad" : "Private Live Squad"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">Choose a role. The squad leader starts when both players are connected.</div></div>
         <button type="button" class="squadCodeBox" data-squad-command="copy-code" aria-label="Copy squad code ${esc(snapshot.code)}"><span class="squadSmall">SQUAD CODE • TAP TO COPY</span><span class="squadCode">${esc(displayCode(snapshot.code))}</span><span class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/2 players connected</span></button>
@@ -340,8 +361,10 @@
     const required = rescueRequired();
     const activeThreats = (snap.tigers || []).filter((t)=>!t.defeated).length;
     const seconds = Math.max(0, Math.ceil(Number(snap?.timeLeftMs || 0) / 1000));
-    const statusText = snap?.status === "complete" ? "MISSION COMPLETE" : (snap?.status === "failed" ? "MISSION FAILED" : `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`);
+    const statusText = snap?.status === "complete" ? "MISSION COMPLETE" : (snap?.status === "failed" ? "MISSION FAILED" : (snap?.paused ? "PAUSED" : `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`));
+    const controlsDisabled = snap?.paused ? "disabled" : "";
     return `<div class="squadPanel squadArenaPanel">
+      ${equipmentButtonsHtml()}
       <div class="squadHud">
         <div class="squadHudCard"><div class="squadHudLabel">Tiger Threats</div><div class="squadHudValue" id="squadBossHud">${snap.boss?.boss ? `Alpha ${Math.round(snap.boss.hp)} HP` : `${activeThreats} Story tigers`} • ${activeThreats} active</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Civilians</div><div class="squadHudValue" id="squadCivHud">${required > 0 ? `${rescued}/${required} escorted` : "No escort objective"}</div></div>
@@ -350,6 +373,7 @@
       </div>
       <div class="squadStoryStrip"><span>📖 ${esc(missionMeta().title || missionName())}</span><span>🎯 ${esc(missionMeta().objective || "Shared objectives")}</span><span>🏘️ Shared Story District</span></div>
       <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${esc(playerConnectionText())}</div>
+      <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>👤 Civilian</span><span>🐅 Tiger</span></div>
@@ -364,7 +388,7 @@
       </div>
       <div class="squadControls">
         <div class="squadDpad">
-          <button type="button" class="squadPadBtn up" data-move="up">▲</button><button type="button" class="squadPadBtn left" data-move="left">◀</button><button type="button" class="squadPadBtn right" data-move="right">▶</button><button type="button" class="squadPadBtn down" data-move="down">▼</button>
+          <button type="button" class="squadPadBtn up" data-move="up" ${controlsDisabled}>▲</button><button type="button" class="squadPadBtn left" data-move="left" ${controlsDisabled}>◀</button><button type="button" class="squadPadBtn right" data-move="right" ${controlsDisabled}>▶</button><button type="button" class="squadPadBtn down" data-move="down" ${controlsDisabled}>▼</button>
         </div>
         <div class="squadActions">
           <button type="button" class="squadActionBtn attack" id="squadAttackButton" data-squad-command="action" data-squad-action="attack">🎯 Attack</button>
@@ -391,6 +415,7 @@
     return players.map((p)=>`${Number(p.userId) === viewerId() ? "You" : "Team"} ${Math.round(p.livesRemaining || 0)}`).join(" • ") || "1 each";
   }
   function playerConnectionText(){
+    if(state.snapshot?.paused) return pauseSummary();
     const mine = localSnapshotPlayer();
     if(mine?.downed){
       const seconds = respawnSeconds(mine);
@@ -402,6 +427,7 @@
   function objectiveText(){
     const snap = state.snapshot;
     if(!snap) return "";
+    if(snap.paused) return "Shared mission paused safely. The clock, tigers, movement, damage, and respawn timer are stopped.";
     const mine = localSnapshotPlayer();
     const respawn = respawnSeconds(mine);
     if(mine?.downed && respawn > 0) return `Recovery: Your field life is returning you to Base Camp in ${respawn}s.`;
@@ -411,6 +437,13 @@
     if(threats.length) return `Objective 2: Clear the Story tiger threat together (${threats.length} tiger${threats.length===1?"":"s"} active).`;
     const ready = snap.extractionReadyIds || [];
     return `Objective: Both players stand inside the green extraction circle (${ready.length}/2 ready).`;
+  }
+
+  function pauseSummary(){
+    const pausedBy = state.snapshot?.pausedBy || [];
+    if(!pausedBy.length) return "Squad mission paused for gear changes.";
+    const labels = pausedBy.map((row)=>`${Number(row.userId) === viewerId() ? "You" : row.name} opened ${row.reason === "inventory" ? "Inventory" : "the Shop"}`);
+    return `⏸️ ${labels.join(" • ")}. The mission resumes after every open gear screen is closed.`;
   }
 
   function render(){
@@ -513,6 +546,8 @@
       start:()=>start(),
       restart:()=>restart(),
       action:()=>action(actionName),
+      shop:()=>openEquipment("shop"),
+      inventory:()=>openEquipment("inventory"),
       claim:()=>claim(),
       leave:()=>leave(),
       "paste-code":()=>pasteJoinCode(),
@@ -558,6 +593,72 @@
       event.stopImmediatePropagation();
       dispatchCommand(button.dataset.squadCommand, button);
     }, false);
+  }
+
+  async function openEquipment(kind="shop"){
+    const equipment = kind === "inventory" ? "inventory" : "shop";
+    if(state.equipmentOpen) return;
+    state.equipmentOpen = equipment;
+    state.equipmentResumePending = false;
+    window.clearTimeout(state.equipmentResumeTimer);
+    try{
+      if(state.snapshot?.status === "active"){
+        setMessage(`Pausing the squad while you open ${equipment === "inventory" ? "Inventory" : "the Shop"}…`);
+        await api("pause", { reason:equipment });
+      }
+      const liveOverlay = $("liveSquadOverlay");
+      liveOverlay?.classList.remove("open");
+      liveOverlay?.setAttribute("aria-hidden", "true");
+      if(equipment === "inventory") window.openInventory?.();
+      else window.openShop?.();
+      const gearOverlay = $(equipment === "inventory" ? "invOverlay" : "shopOverlay");
+      if(gearOverlay?.style?.display !== "flex") throw new Error(`${equipment === "inventory" ? "Inventory" : "Shop"} could not open. Please try again.`);
+    }catch(error){
+      state.equipmentOpen = "";
+      const liveOverlay = $("liveSquadOverlay");
+      liveOverlay?.classList.add("open");
+      liveOverlay?.setAttribute("aria-hidden", "false");
+      if(state.snapshot?.status === "active"){
+        state.equipmentResumePending = true;
+        finishEquipmentResume();
+      }
+      setMessage(error.message, true);
+    }
+  }
+
+  async function finishEquipmentResume(){
+    window.clearTimeout(state.equipmentResumeTimer);
+    state.equipmentResumeTimer = 0;
+    if(!state.equipmentResumePending || !state.code || state.snapshot?.status !== "active"){
+      state.equipmentResumePending = false;
+      return;
+    }
+    try{
+      await api("resume");
+      state.equipmentResumePending = false;
+      setMessage(state.snapshot?.paused ? pauseSummary() : "Squad mission resumed. Both players can continue.");
+    }catch(error){
+      setMessage(`${error.message} Tiger Strike will keep trying to return you safely.`, true);
+      state.equipmentResumeTimer = window.setTimeout(finishEquipmentResume, 1500);
+    }
+  }
+
+  function returnFromEquipment(kind=""){
+    const equipment = kind === "inventory" ? "inventory" : "shop";
+    if(state.equipmentOpen !== equipment) return false;
+    state.equipmentOpen = "";
+    const liveOverlay = $("liveSquadOverlay");
+    liveOverlay?.classList.add("open");
+    liveOverlay?.setAttribute("aria-hidden", "false");
+    render();
+    if(state.snapshot?.status === "active"){
+      setMessage("Returning to your squad…");
+      state.equipmentResumePending = true;
+      finishEquipmentResume();
+    }else{
+      setMessage("Gear saved. Continue preparing your squad.");
+    }
+    return true;
   }
 
   function open(opts={}){
@@ -709,7 +810,7 @@
   }
 
   async function action(kind){
-    if(state.actionBusy || state.snapshot?.status !== "active") return;
+    if(state.actionBusy || state.snapshot?.status !== "active" || state.snapshot?.paused) return;
     state.actionBusy = true;
     try{
       // Send the newest local position before judging action range. This keeps
@@ -788,6 +889,10 @@
     state.snapshot = null;
     state.local = null;
     state.remoteDraw.clear();
+    state.equipmentOpen = "";
+    state.equipmentResumePending = false;
+    window.clearTimeout(state.equipmentResumeTimer);
+    state.equipmentResumeTimer = 0;
     clearActiveRoom();
   }
 
@@ -916,7 +1021,7 @@
   }
 
   function updateMovement(dt){
-    if(!state.local || state.local.downed || state.snapshot?.status !== "active") return;
+    if(!state.local || state.local.downed || state.snapshot?.status !== "active" || state.snapshot?.paused) return;
     let dx = 0, dy = 0;
     if(state.move.left || state.keys.has("arrowleft") || state.keys.has("a")) dx -= 1;
     if(state.move.right || state.keys.has("arrowright") || state.keys.has("d")) dx += 1;
@@ -1085,5 +1190,10 @@
   window.liveSquadClaim=claim;
   window.liveSquadLeave=leave;
   window.liveSquadCopyCode=copyCode;
+  window.TigerLiveSquad = Object.freeze({
+    returnFromEquipment,
+    equipmentOpen:()=>state.equipmentOpen,
+    isOpen:()=>state.open,
+  });
   window.addEventListener("load",autoJoinFromTelegram,{once:true});
 })();

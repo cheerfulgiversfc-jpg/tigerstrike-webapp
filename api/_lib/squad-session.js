@@ -141,6 +141,13 @@ function normalizeSession(raw){
   const hostId = userIdOf(raw.hostId);
   const memberIds = [...new Set((Array.isArray(raw.memberIds) ? raw.memberIds : []).map(userIdOf).filter(Boolean))].slice(0, 2);
   if(!code || !hostId || !memberIds.includes(hostId)) return null;
+  const pausedBy = {};
+  const rawPausedBy = raw.pausedBy && typeof raw.pausedBy === "object" ? raw.pausedBy : {};
+  for(const memberId of memberIds){
+    const reason = cleanText(rawPausedBy[String(memberId)] || rawPausedBy[memberId], 20).toLowerCase();
+    if(reason) pausedBy[String(memberId)] = reason === "inventory" ? "inventory" : "shop";
+  }
+  const activePause = raw.status === "active" && Object.keys(pausedBy).length > 0;
   return {
     version:1,
     code,
@@ -151,11 +158,21 @@ function normalizeSession(raw){
     updatedAt:Math.max(0, Number(raw.updatedAt || nowMs())),
     startedAt:Math.max(0, Number(raw.startedAt || 0)),
     completedAt:Math.max(0, Number(raw.completedAt || 0)),
+    pausedAt:activePause ? Math.max(0, Number(raw.pausedAt || nowMs())) : 0,
+    pausedBy:activePause ? pausedBy : {},
     failureReason:cleanText(raw.failureReason, 32),
     storyMissionLevel:clamp(Math.floor(Number(raw.storyMissionLevel || 0)), 0, 100),
     launchType:raw.launchType === "shared-story" ? "shared-story" : "live-squad",
     title:raw.launchType === "shared-story" ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}` : "Operation Night Fang",
   };
+}
+
+function sessionPaused(session){
+  return session?.status === "active" && Number(session?.pausedAt || 0) > 0 && Object.keys(session?.pausedBy || {}).length > 0;
+}
+
+function sessionClockNow(session, at=nowMs()){
+  return sessionPaused(session) ? Number(session.pausedAt) : at;
 }
 
 function newPlayer(user, slot=0){
@@ -237,7 +254,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
 function tigerPosition(session, tiger, at=nowMs()){
   const world = missionDefinition(session).world;
   if(!session?.startedAt) return { x:tiger.baseX, y:tiger.baseY };
-  const elapsed = Math.max(0, at - session.startedAt) / 1000;
+  const elapsed = Math.max(0, sessionClockNow(session, at) - session.startedAt) / 1000;
   return {
     x:clamp(tiger.baseX + Math.cos(elapsed * tiger.speed + tiger.phase) * tiger.rangeX, 70, world.width - 70),
     y:clamp(tiger.baseY + Math.sin(elapsed * tiger.speed * .83 + tiger.phase) * tiger.rangeY, 90, world.height - 80),
@@ -351,6 +368,30 @@ function sessionDerived(session, players, at=nowMs()){
 async function maybeFinishSession(session, players){
   if(session.status !== "active") return session;
   const now = nowMs();
+  if(sessionPaused(session)){
+    const onlinePausedIds = Object.keys(session.pausedBy || {}).filter((id)=>{
+      const player = players.find((row)=>String(row.userId) === String(id));
+      return player && now - Number(player.lastSeenAt || 0) <= 30000;
+    });
+    if(onlinePausedIds.length !== Object.keys(session.pausedBy || {}).length){
+      const nextPausedBy = {};
+      for(const id of onlinePausedIds) nextPausedBy[id] = session.pausedBy[id];
+      session.pausedBy = nextPausedBy;
+      if(!onlinePausedIds.length){
+        const pausedFor = Math.max(0, now - Number(session.pausedAt || now));
+        session.startedAt += pausedFor;
+        session.pausedAt = 0;
+        for(const player of players){
+          if(Number(player.respawnAt || 0) > 0){
+            player.respawnAt += pausedFor;
+            await writePlayer(session.code, player);
+          }
+        }
+      }
+      session = await writeSession(session);
+    }
+    if(sessionPaused(session)) return session;
+  }
   if(now - session.startedAt > MISSION_LIMIT_MS){
     session.status = "failed";
     session.failureReason = "timeout";
@@ -397,9 +438,15 @@ async function buildSnapshot(session, viewerId){
     startedAt:session.startedAt,
     completedAt:session.completedAt,
     failureReason:session.failureReason,
+    paused:sessionPaused(session),
+    pausedAt:Number(session.pausedAt || 0),
+    pausedBy:Object.entries(session.pausedBy || {}).map(([userId, reason])=>{
+      const player = players.find((row)=>String(row.userId) === String(userId));
+      return { userId:Number(userId), name:player?.name || `Player ${userId}`, reason };
+    }),
     serverNow:at,
     expiresAt:session.updatedAt + SESSION_TTL_MS,
-    timeLeftMs:session.status === "active" ? Math.max(0, MISSION_LIMIT_MS - (at - session.startedAt)) : MISSION_LIMIT_MS,
+    timeLeftMs:session.status === "active" ? Math.max(0, MISSION_LIMIT_MS - (sessionClockNow(session, at) - session.startedAt)) : MISSION_LIMIT_MS,
     mission:{
       level:mission.level,
       chapter:mission.chapter,
@@ -436,6 +483,10 @@ async function updateOwnPresence(session, user, patch={}){
   const def = ROLE_DEFS[player.role];
   player.maxHp = def.maxHp;
   player.hp = clamp(player.hp ?? def.maxHp, 0, def.maxHp);
+  if(sessionPaused(session)){
+    player.lastSeenAt = now;
+    return writePlayer(session.code, player);
+  }
   // Recover legacy rooms that were already stuck with a downed player before
   // personal lives were introduced.
   if(session.status === "active" && player.downed && !player.respawnAt && player.livesRemaining > 0){
@@ -496,6 +547,33 @@ async function applyAction(session, user, action, payload={}){
   if(slot < 0) throw new Error("You are not a member of this squad.");
   let player = await readPlayer(session.code, uid, user, slot);
   const now = nowMs();
+  if(action === "pause" || action === "resume"){
+    if(session.status !== "active") return session;
+    if(!session.pausedBy || typeof session.pausedBy !== "object") session.pausedBy = {};
+    if(action === "pause"){
+      if(!sessionPaused(session)) session.pausedAt = now;
+      session.pausedBy[String(uid)] = cleanText(payload.reason, 20).toLowerCase() === "inventory" ? "inventory" : "shop";
+      player.lastSeenAt = now;
+      await writePlayer(session.code, player);
+      return writeSession(session);
+    }
+    delete session.pausedBy[String(uid)];
+    player.lastSeenAt = now;
+    await writePlayer(session.code, player);
+    if(!Object.keys(session.pausedBy).length && Number(session.pausedAt || 0) > 0){
+      const pausedFor = Math.max(0, now - Number(session.pausedAt || now));
+      session.startedAt += pausedFor;
+      session.pausedAt = 0;
+      const players = await memberPlayers(session);
+      for(const row of players){
+        if(Number(row.respawnAt || 0) > 0){
+          row.respawnAt += pausedFor;
+          await writePlayer(session.code, row);
+        }
+      }
+    }
+    return writeSession(session);
+  }
   if(action === "start" || action === "restart"){
     if(session.hostId !== uid) throw new Error("Only the squad leader can start the mission.");
     if(session.memberIds.length < 2) throw new Error("Invite one teammate before starting.");
@@ -505,6 +583,8 @@ async function applyAction(session, user, action, payload={}){
     session.startedAt = now;
     session.completedAt = 0;
     session.failureReason = "";
+    session.pausedAt = 0;
+    session.pausedBy = {};
     await writeSession(session);
     const mission = missionDefinition(session);
     const players = await memberPlayers(session);
@@ -531,6 +611,7 @@ async function applyAction(session, user, action, payload={}){
     return session;
   }
   if(session.status !== "active") throw new Error("The co-op mission is not active.");
+  if(sessionPaused(session)) throw new Error("The squad mission is paused while a player uses Shop or Inventory.");
   if(player.downed){
     if(player.respawnAt > now) throw new Error("Your field life is bringing you back at Base Camp.");
     throw new Error("You are out of lives. Your teammate must revive you or the leader can restart after a squad wipe.");

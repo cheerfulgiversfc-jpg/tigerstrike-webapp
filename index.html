@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V5.8 (Shared Story 1–5 + Mission Clarity)</title>
+  <title>Tiger Strike 🐅 — V5.9 (Live Squad Gear Access)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5009-story-1-5-clarity">
+  <link rel="stylesheet" href="./squad-coop.css?v=5010-squad-gear-pause">
 
   <style>
     :root{
@@ -2425,10 +2425,10 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V5.8</span> <span class="tag">Shared Story 1–5 + Mission Clarity</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V5.9</span> <span class="tag">Live Squad Gear Access</span></div>
       <div class="sub">
-        Live Squad now includes real two-player Story Missions 1–5, each with its own civilians, tigers, objective, reward, and next-level unlock.<br>
-        Solo roads keep visible center and edge lines, hidden legacy colliders no longer create invisible walls, Mission 72 has a curated finishable objective, and map locations now mark routes or rally nearby civilians when tapped. Missions 6–100 remain Solo while they are converted safely.
+        Live Squad now has working Shop and Inventory buttons in the co-op home, waiting room, and shared mission.<br>
+        Opening gear during a mission pauses the shared clock, tigers, damage, movement, and respawn timer for both players. The mission resumes only after every player closes their open gear screen. Story Missions 1–5 remain available in two-player mode.
       </div>
     </div>
     <div class="row topActions">
@@ -3261,11 +3261,11 @@
   </div>
 </div>
 
-<!-- V5.8 Shared Story 1-5 + Mission Clarity -->
+<!-- V5.9 Live Squad Gear Access -->
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V5.8 • Co-op Home</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V5.9 • Co-op Home</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3306,9 +3306,9 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=5009-story-1-5-clarity"></script>
+  <script src="./game.js?v=5010-squad-gear-pause"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
-  <script src="./squad-coop.js?v=5009-story-1-5-clarity"></script>
+  <script src="./squad-coop.js?v=5010-squad-gear-pause"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

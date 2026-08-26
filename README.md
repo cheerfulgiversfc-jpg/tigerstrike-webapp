@@ -249,6 +249,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Mission 72 is now a curated five-civilian/six-tiger ambush with live `NEXT` instructions that say whether to rescue, clear remaining tigers, or enter extraction. The same live next-step wording is shown across every Solo Story mission.
 - Tapping a named map location now has a result: distant locations become navigation targets, while nearby locations rally waiting civilians and expose nearby threats. Existing alarms, barriers, caches, bridges, vehicles, generators, gates, and route traps retain their gameplay effects.
 
+### V5.9 Live Squad Gear Access
+
+- Shop and Inventory are now directly available from the Live Squad mission picker, waiting room, active shared mission, and end-state screen.
+- Opening either gear screen during an active mission creates a synchronized squad pause. The shared mission clock, tiger movement, hazard damage, player movement, and field-life respawn timer stop for both players.
+- If both players open gear screens, the mission remains paused until both have returned. The co-op screen identifies who has Shop or Inventory open.
+- A disconnected player cannot trap the room in pause forever: an abandoned gear pause clears automatically after the player has been offline for 30 seconds.
+- Purchases, equipment choices, and inventory changes use the existing Tiger Strike profile and save normally. Co-op combat balance remains role-based.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
