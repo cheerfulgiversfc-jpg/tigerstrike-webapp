@@ -45,15 +45,16 @@ const snapshot = {
   serverNow:Date.now(),
   timeLeftMs:300000,
   mission:{ title:"Story Mission 1", objective:"Escort 2 villagers", rescueRequired:2, civilianCount:3 },
-  world:{ width:1200, height:1100 },
-  extraction:{ x:1045, y:735, r:92 },
+  world:{ width:3840, height:2160 },
+  spawns:[{ x:400, y:1669 },{ x:688, y:1669 }],
+  extraction:{ x:3344, y:1443, r:110 },
   civilians:[],
   tigers:[],
   rescuedIds:[],
   extractionReadyIds:[],
   players:[
-    { userId, slot:0, name:"Host", role:"tracker", x:125, y:850, hp:105, maxHp:105, livesRemaining:1, online:true },
-    { userId:910002, slot:1, name:"Teammate", role:"medic", x:215, y:850, hp:120, maxHp:120, livesRemaining:1, online:true },
+    { userId, slot:0, name:"Host", role:"tracker", x:400, y:1669, hp:105, maxHp:105, livesRemaining:1, online:true },
+    { userId:910002, slot:1, name:"Teammate", role:"medic", x:2450, y:720, hp:120, maxHp:120, livesRemaining:1, online:true },
   ],
 };
 
@@ -117,6 +118,8 @@ async function run(){
   assert.equal(requests[0].action, "status", "reopen checks membership instead of trying to join again");
   assert.equal(requests[0].code, roomCode, "reopen uses the remembered room code");
   assert.equal(element("squadBody").dataset.squadMode, "active", "the restored room opens directly on the active mission");
+  assert(element("squadBody").innerHTML.includes('width="1200" height="760"'), "active co-op uses a camera viewport instead of a full-world canvas");
+  assert(element("squadBody").innerHTML.includes("player-following camera"), "the expanded map exposes the camera-following battlefield to assistive UI");
   assert.equal(JSON.parse(storage.get(storageKey)).code, roomCode, "valid active room remains remembered");
   console.log("PASS: Telegram reopen restores the remembered active Story room");
 }

@@ -257,6 +257,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - A disconnected player cannot trap the room in pause forever: an abandoned gear pause clears automatically after the player has been offline for 30 seconds.
 - Purchases, equipment choices, and inventory changes use the existing Tiger Strike profile and save normally. Co-op combat balance remains role-based.
 
+### V6.0 Expanded Co-op Worlds
+
+- Live Squad no longer displays the full fixed 1,200 × 1,100 arena at once. Shared Story Mission 1 starts at 3,840 × 2,160, and Missions 2–5 grow progressively larger up to 4,416 × 2,480.
+- Each phone now follows its own soldier with an independent smooth camera, so teammates can explore different parts of the same synchronized world.
+- The expanded district adds multiple marked roads, bridges, river routes, houses, trees, a world boundary, and Story-style travel spacing without reintroducing invisible decorative collision.
+- A live minimap shows both players, civilians, active tigers, extraction, roads, and the current camera area. An edge arrow shows the direction and distance to an off-screen teammate.
+- Civilians, tigers, player spawns, and extraction are scaled across the larger mission space while mission completion, reconnecting, field lives, restart, rewards, Shop, Inventory, and synchronized pause keep their existing server rules.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

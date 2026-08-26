@@ -33,6 +33,9 @@ async function run(){
   let snapshot = await buildSnapshot(session, host.id);
   assert.equal(snapshot.status, "active", "Mission 1 starts");
   assert.equal(snapshot.mission.level, 1, "real Story Mission 1 is selected");
+  assert(snapshot.world.width >= 3800 && snapshot.world.height >= 2100, "co-op uses a Story-sized Mission 1 world");
+  assert(snapshot.players.every((player)=>player.x < snapshot.world.width && player.y < snapshot.world.height), "both players spawn inside the expanded world");
+  assert(snapshot.tigers.some((tiger)=>Math.hypot(tiger.x - snapshot.players[0].x, tiger.y - snapshot.players[0].y) > 1200), "objectives are spread across the larger district");
 
   session = await joinSession(code, host);
   snapshot = await buildSnapshot(session, host.id);
@@ -114,6 +117,8 @@ async function run(){
     levelSession = await applyAction(levelSession, levelHost, "start");
     let levelSnapshot = await buildSnapshot(levelSession, levelHost.id);
     assert.equal(levelSnapshot.mission.level, level, `Story Mission ${level} keeps its own definition`);
+    assert(levelSnapshot.world.width >= 3800 + ((level - 1) * 100), `Story Mission ${level} keeps a large mission world`);
+    assert(levelSnapshot.world.height >= 2100, `Story Mission ${level} keeps Story-scale travel depth`);
     assert.equal(levelSnapshot.mission.title, `Story Mission ${level}`, `Story Mission ${level} has an accurate title`);
     assert(levelSnapshot.mission.objective.length > 12, `Story Mission ${level} has a real objective`);
     assert(levelSnapshot.tigers.length >= 1, `Story Mission ${level} has shared tiger gameplay`);

@@ -28,6 +28,7 @@
     equipmentOpen:"",
     equipmentResumePending:false,
     equipmentResumeTimer:0,
+    camera:{ x:0, y:0, ready:false, worldKey:"" },
     move:{ up:false, down:false, left:false, right:false },
     keys:new Set(),
     priorPause:true,
@@ -128,8 +129,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V5.9 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : "Tiger Strike V5.9 • Co-op Home";
+      ? `Tiger Strike V6.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : "Tiger Strike V6.0 • Co-op Home";
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : "🐅 Live Squad";
@@ -173,6 +174,10 @@
     state.launchType = snapshot.launchType === "shared-story" ? "shared-story" : "live-squad";
     state.storyMissionLevel = Number(snapshot.storyMissionLevel || 0);
     state.code = cleanCode(snapshot.code);
+    const worldKey = `${Number(snapshot.world?.width || 0)}x${Number(snapshot.world?.height || 0)}:${snapshot.status}`;
+    if(state.camera.worldKey !== worldKey && snapshot.status === "active"){
+      state.camera = { x:0, y:0, ready:false, worldKey };
+    }
     persistActiveRoom(snapshot);
     updateHeader();
     if(Array.isArray(roles) && roles.length) state.roles = roles;
@@ -320,7 +325,7 @@
           </button>
         </div>
         <div class="squadHero">
-          <div><div class="squadKicker">${sharedStoryActive() ? "V5.9 Shared Story" : "V5.9 Live Operation"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${sharedStoryActive() ? esc(selectedStoryMeta().description) : "Two real Telegram players enter Night Fang District with civilians, a tiger pack, an Alpha, field lives, mission restart, and synchronized gear access."}</div></div>
+          <div><div class="squadKicker">${sharedStoryActive() ? "V6.0 Shared Story" : "V6.0 Live Operation"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${sharedStoryActive() ? esc(selectedStoryMeta().description) : "Two real Telegram players enter an expanded Night Fang District with independent cameras, civilians, a tiger pack, an Alpha, field lives, mission restart, and synchronized gear access."}</div></div>
           <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
         </div>
         <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
@@ -377,7 +382,7 @@
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>👤 Civilian</span><span>🐅 Tiger</span></div>
-      <canvas id="squadArena" width="1200" height="1100" aria-label="${esc(missionName())} shared Story battlefield"></canvas>
+      <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} expanded shared Story battlefield with a player-following camera"></canvas>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : "⏱️ Operation Failed")}</div>
         <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Math.min(100, Number(state.storyMissionLevel || 1) + 1)} unlocks when each player claims the result.` : "Both players cleared Operation Night Fang and extracted together."}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : `Time expired. The squad leader can restart ${esc(missionName())}.`)}</div>
@@ -889,6 +894,7 @@
     state.snapshot = null;
     state.local = null;
     state.remoteDraw.clear();
+    state.camera = { x:0, y:0, ready:false, worldKey:"" };
     state.equipmentOpen = "";
     state.equipmentResumePending = false;
     window.clearTimeout(state.equipmentResumeTimer);
@@ -1107,34 +1113,114 @@
     ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,draw.y+52);
   }
 
+  function drawExpandedDistrict(ctx, snap, view){
+    const worldW = Math.max(view.w, Number(snap.world?.width || view.w));
+    const worldH = Math.max(view.h, Number(snap.world?.height || view.h));
+    const roadW = 112;
+    const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
+    const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
+    const riverTop = worldH*.88;
+    const visible = (x,y,pad=120)=>x >= view.x-pad && x <= view.x+view.w+pad && y >= view.y-pad && y <= view.y+view.h+pad;
+    const nearRoad = (x,y,pad=75)=>verticalRoads.some((road)=>Math.abs(x-road)<pad)||horizontalRoads.some((road)=>Math.abs(y-road)<pad);
+
+    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,"#3f7b4d");terrain.addColorStop(.52,"#2f6944");terrain.addColorStop(1,"#24583c");ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
+    ctx.fillStyle="rgba(102,164,91,.20)";
+    const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
+    for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
+
+    ctx.fillStyle="rgba(35,117,145,.80)";ctx.beginPath();ctx.moveTo(0,riverTop);
+    for(let x=0;x<=worldW+180;x+=180){ctx.lineTo(x,riverTop+Math.sin((x/worldW)*Math.PI*5)*42);}
+    ctx.lineTo(worldW,worldH);ctx.lineTo(0,worldH);ctx.closePath();ctx.fill();
+
+    ctx.fillStyle="#4b5563";
+    for(const y of horizontalRoads) ctx.fillRect(0,y-roadW/2,worldW,roadW);
+    for(const x of verticalRoads) ctx.fillRect(x-roadW/2,0,roadW,worldH);
+    ctx.strokeStyle="rgba(241,245,249,.58)";ctx.lineWidth=4;
+    for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y-roadW/2+8);ctx.lineTo(worldW,y-roadW/2+8);ctx.moveTo(0,y+roadW/2-8);ctx.lineTo(worldW,y+roadW/2-8);ctx.stroke();}
+    for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x-roadW/2+8,0);ctx.lineTo(x-roadW/2+8,worldH);ctx.moveTo(x+roadW/2-8,0);ctx.lineTo(x+roadW/2-8,worldH);ctx.stroke();}
+    ctx.strokeStyle="rgba(250,204,21,.78)";ctx.lineWidth=5;ctx.setLineDash([34,28]);
+    for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(worldW,y);ctx.stroke();}
+    for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,worldH);ctx.stroke();}
+    ctx.setLineDash([]);
+
+    for(const roadX of verticalRoads){
+      const bridgeY=riverTop-34;ctx.fillStyle="#765a3b";ctx.fillRect(roadX-roadW*.63,bridgeY,roadW*1.26,94);ctx.strokeStyle="#e8c178";ctx.lineWidth=6;
+      for(let x=roadX-roadW*.52;x<roadX+roadW*.53;x+=24){ctx.beginPath();ctx.moveTo(x,bridgeY-8);ctx.lineTo(x,bridgeY+102);ctx.stroke();}
+    }
+
+    for(let i=0;i<240;i++){
+      const x=70+((i*337+53)%Math.max(100,Math.floor(worldW-140)));
+      const y=80+((i*191+97)%Math.max(100,Math.floor(worldH-180)));
+      if(!visible(x,y,70)||nearRoad(x,y,88)||y>riverTop-55) continue;
+      drawStoryTree(ctx,x,y,.68+(i%5)*.075);
+    }
+    const roofColors=["#9a5c38","#7c4a32","#72452f","#a1623c"];
+    for(let i=0;i<34;i++){
+      const x=100+((i*421+160)%Math.max(140,Math.floor(worldW-280)));
+      const y=110+((i*263+120)%Math.max(140,Math.floor(riverTop-260)));
+      if(!visible(x,y,210)||nearRoad(x+80,y+52,125)) continue;
+      drawStoryBuilding(ctx,x,y,142+(i%3)*14,88+(i%2)*12,roofColors[i%roofColors.length]);
+    }
+
+    const spawns=(snap.spawns||snap.players||[]).map((player)=>({x:Number(player.x||0),y:Number(player.y||0)}));
+    const baseX=spawns.length?spawns.reduce((sum,row)=>sum+row.x,0)/spawns.length:worldW*.12;
+    const baseY=spawns.length?spawns.reduce((sum,row)=>sum+row.y,0)/spawns.length:worldH*.78;
+    if(visible(baseX,baseY,260)){
+      ctx.fillStyle="rgba(15,23,42,.86)";roundRect(ctx,baseX-118,baseY-112,236,78,16);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#cffafe";ctx.font="950 19px system-ui";ctx.textAlign="center";ctx.fillText("🛡️ BASE CAMP",baseX,baseY-82);ctx.font="800 13px system-ui";ctx.fillText("Respawn • Rally • Safe Start",baseX,baseY-57);
+    }
+
+    const ex=snap.extraction;ctx.fillStyle="rgba(34,197,94,.23)";ctx.strokeStyle="#4ade80";ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#dcfce7";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("SQUAD EXTRACTION",ex.x,ex.y+6);
+    const guideTarget=nearestUnrescuedCivilian()||nearestActiveTiger()||ex;
+    if(state.local&&guideTarget){ctx.strokeStyle="rgba(103,232,249,.62)";ctx.lineWidth=4;ctx.setLineDash([12,11]);ctx.beginPath();ctx.moveTo(state.local.x,state.local.y);ctx.lineTo(guideTarget.x,guideTarget.y);ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle="rgba(103,232,249,.30)";ctx.lineWidth=3;ctx.beginPath();ctx.arc(guideTarget.x,guideTarget.y,guideTarget.hpMax?(guideTarget.boss?178:164):82,0,Math.PI*2);ctx.stroke();}
+    ctx.strokeStyle="rgba(191,219,254,.7)";ctx.lineWidth=8;ctx.strokeRect(4,4,worldW-8,worldH-8);
+  }
+
+  function drawCoopMiniMap(ctx,snap,view,canvasW){
+    const worldW=Math.max(1,Number(snap.world?.width||1)),worldH=Math.max(1,Number(snap.world?.height||1));
+    const mw=220,mh=128,mx=canvasW-mw-18,my=18,sx=mw/worldW,sy=mh/worldH;
+    ctx.fillStyle="rgba(2,6,23,.88)";roundRect(ctx,mx,my,mw,mh,12);ctx.fill();ctx.strokeStyle="#60a5fa";ctx.lineWidth=3;ctx.stroke();
+    ctx.strokeStyle="rgba(250,204,21,.45)";ctx.lineWidth=2;
+    for(const x of [worldW*.28,worldW*.54,worldW*.81]){ctx.beginPath();ctx.moveTo(mx+x*sx,my);ctx.lineTo(mx+x*sx,my+mh);ctx.stroke();}
+    for(const y of [worldH*.24,worldH*.50,worldH*.76]){ctx.beginPath();ctx.moveTo(mx,my+y*sy);ctx.lineTo(mx+mw,my+y*sy);ctx.stroke();}
+    ctx.fillStyle="#4ade80";ctx.beginPath();ctx.arc(mx+snap.extraction.x*sx,my+snap.extraction.y*sy,5,0,Math.PI*2);ctx.fill();
+    for(const civ of (snap.civilians||[])){if((snap.rescuedIds||[]).includes(civ.id))continue;ctx.fillStyle="#e0f2fe";ctx.fillRect(mx+civ.x*sx-2,my+civ.y*sy-2,4,4);}
+    for(const tiger of (snap.tigers||[])){if(tiger.defeated)continue;ctx.fillStyle="#fb923c";ctx.beginPath();ctx.arc(mx+tiger.x*sx,my+tiger.y*sy,tiger.boss?5:3.5,0,Math.PI*2);ctx.fill();}
+    for(const player of (snap.players||[])){const mine=Number(player.userId)===viewerId();const src=mine&&state.local?state.local:player;ctx.fillStyle=mine?"#22d3ee":"#a78bfa";ctx.beginPath();ctx.arc(mx+src.x*sx,my+src.y*sy,5,0,Math.PI*2);ctx.fill();}
+    ctx.strokeStyle="#f8fafc";ctx.lineWidth=1.5;ctx.strokeRect(mx+view.x*sx,my+view.y*sy,Math.min(mw,view.w*sx),Math.min(mh,view.h*sy));
+    ctx.fillStyle="#dbeafe";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText("LIVE DISTRICT MAP",mx+mw/2,my+mh-7);
+  }
+
+  function drawOffscreenTeammate(ctx,snap,view,w,h){
+    const teammate=remoteSnapshotPlayer();
+    if(!teammate||!state.local)return;
+    const sx=Number(teammate.x)-view.x,sy=Number(teammate.y)-view.y;
+    if(sx>=42&&sx<=w-42&&sy>=42&&sy<=h-42)return;
+    const dx=Number(teammate.x)-Number(state.local.x),dy=Number(teammate.y)-Number(state.local.y),angle=Math.atan2(dy,dx);
+    const cx=w/2,cy=h/2,limitX=w/2-54,limitY=h/2-54,scale=Math.min(limitX/Math.max(1,Math.abs(dx)),limitY/Math.max(1,Math.abs(dy)));
+    const x=clamp(cx+dx*scale,54,w-54),y=clamp(cy+dy*scale,54,h-54);
+    ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.fillStyle="#a78bfa";ctx.strokeStyle="#ede9fe";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(20,0);ctx.lineTo(-12,-12);ctx.lineTo(-7,0);ctx.lineTo(-12,12);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
+    ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,x-52,y+19,104,24,9);ctx.fill();ctx.fillStyle="#ede9fe";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText(`TEAM ${Math.round(Math.hypot(dx,dy))}m`,x,y+35);
+  }
+
   function drawArena(){
-    const canvas = $("squadArena");
-    const snap = state.snapshot;
-    if(!canvas || !snap) return;
-    const ctx = canvas.getContext("2d");
-    const w=canvas.width,h=canvas.height,now=Number(snap.serverNow||Date.now());ctx.clearRect(0,0,w,h);
-    const terrain=ctx.createLinearGradient(0,0,0,h);terrain.addColorStop(0,"#376b43");terrain.addColorStop(.52,"#2b5b3b");terrain.addColorStop(1,"#204b35");ctx.fillStyle=terrain;ctx.fillRect(0,0,w,h);
-    ctx.fillStyle="rgba(91,139,81,.22)";for(let y=0;y<h;y+=82){for(let x=0;x<w;x+=100){ctx.fillRect(x+((y/82)%2)*24,y,76,58);}}
-    // Expanded Story district river, two main roads, and a real bridge route.
-    ctx.fillStyle="rgba(39,112,137,.68)";ctx.beginPath();ctx.moveTo(0,930);ctx.bezierCurveTo(250,865,430,1035,650,970);ctx.bezierCurveTo(880,905,1015,1035,1200,965);ctx.lineTo(1200,1100);ctx.lineTo(0,1100);ctx.closePath();ctx.fill();
-    ctx.fillStyle="#4b5563";ctx.fillRect(0,470,w,132);ctx.fillRect(540,0,132,h);ctx.fillStyle="#354052";ctx.fillRect(0,482,w,108);ctx.fillRect(552,0,108,h);
-    ctx.strokeStyle="rgba(250,204,21,.48)";ctx.lineWidth=5;ctx.setLineDash([30,26]);ctx.beginPath();ctx.moveTo(0,536);ctx.lineTo(w,536);ctx.moveTo(606,0);ctx.lineTo(606,h);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle="#765a3b";ctx.fillRect(530,900,152,58);ctx.strokeStyle="#e0bc73";ctx.lineWidth=6;for(let x=542;x<675;x+=22){ctx.beginPath();ctx.moveTo(x,892);ctx.lineTo(x,967);ctx.stroke();}
-    [[68,86,150,94,"#9a5c38"],[930,82,165,100,"#7c4a32"],[82,650,154,102,"#72452f"],[735,700,142,94,"#9a5c38"],[980,855,156,104,"#8b5a3c"],[335,730,138,90,"#7c4a32"]].forEach((b)=>drawStoryBuilding(ctx,...b));
-    for(let i=0;i<48;i++){const x=(i*173+51)%1160+20,y=(i*113+37)%1040+22;if((x>515&&x<700)||(y>440&&y<630)||((x>40&&x<255)&&(y>45&&y<210))||((x>900&&x<1165)&&(y>45&&y<220))||((x>55&&x<265)&&(y>620&&y<790))||((x>700&&x<900)&&(y>670&&y<825))||((x>950&&y>820)))continue;drawStoryTree(ctx,x,y,.72+(i%4)*.1);}
-    // Story-mode landmarks make navigation readable instead of feeling like a test arena.
-    ctx.fillStyle="rgba(15,23,42,.82)";roundRect(ctx,52,790,235,92,16);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#cffafe";ctx.font="950 20px system-ui";ctx.textAlign="center";ctx.fillText("🛡️ BASE CAMP",170,825);ctx.font="800 14px system-ui";ctx.fillText("Respawn • Rally • Safe Start",170,852);
-    ctx.fillStyle="rgba(15,23,42,.72)";roundRect(ctx,315,835,188,46,12);ctx.fill();ctx.fillStyle="#fee2e2";ctx.font="900 15px system-ui";ctx.fillText("🏥 MEDICAL POST",409,864);
-    const ex=snap.extraction;ctx.fillStyle="rgba(34,197,94,.2)";ctx.strokeStyle="#4ade80";ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#dcfce7";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("SQUAD EXTRACTION",ex.x,ex.y+6);
-    const guideTarget=nearestUnrescuedCivilian()||nearestActiveTiger()||ex;if(state.local&&guideTarget){ctx.strokeStyle="rgba(103,232,249,.55)";ctx.lineWidth=4;ctx.setLineDash([10,10]);ctx.beginPath();ctx.moveTo(state.local.x,state.local.y);ctx.lineTo(guideTarget.x,guideTarget.y);ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle="rgba(103,232,249,.25)";ctx.lineWidth=3;ctx.beginPath();ctx.arc(guideTarget.x,guideTarget.y,guideTarget.hpMax?(guideTarget.boss?178:164):82,0,Math.PI*2);ctx.stroke();}
+    const canvas=$("squadArena"),snap=state.snapshot;if(!canvas||!snap)return;
+    const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height,now=Number(snap.serverNow||Date.now());
+    const worldW=Math.max(w,Number(snap.world?.width||w)),worldH=Math.max(h,Number(snap.world?.height||h));
+    const focus=state.local||localSnapshotPlayer()||{x:worldW*.5,y:worldH*.5};
+    const targetX=clamp(Number(focus.x)-w*.5,0,Math.max(0,worldW-w)),targetY=clamp(Number(focus.y)-h*.5,0,Math.max(0,worldH-h));
+    if(!state.camera.ready){state.camera.x=targetX;state.camera.y=targetY;state.camera.ready=true;}
+    else{state.camera.x+=(targetX-state.camera.x)*.16;state.camera.y+=(targetY-state.camera.y)*.16;}
+    const view={x:state.camera.x,y:state.camera.y,w,h};ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(-view.x,-view.y);
+    drawExpandedDistrict(ctx,snap,view);
     for(const civ of (snap.civilians||[])) drawStoryCivilian(ctx,civ,(snap.rescuedIds||[]).includes(civ.id));
     for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawStoryTiger(ctx,tiger,now);
     for(const p of (snap.players||[])){
-      const mine=Number(p.userId)===viewerId();const source=mine&&state.local?state.local:p;let draw=state.remoteDraw.get(p.userId)||{x:source.x,y:source.y};draw.x+=(Number(source.x)-draw.x)*.22;draw.y+=(Number(source.y)-draw.y)*.22;state.remoteDraw.set(p.userId,draw);
+      const mine=Number(p.userId)===viewerId(),source=mine&&state.local?state.local:p;let draw=state.remoteDraw.get(p.userId)||{x:source.x,y:source.y};draw.x+=(Number(source.x)-draw.x)*.22;draw.y+=(Number(source.y)-draw.y)*.22;state.remoteDraw.set(p.userId,draw);
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
-    ctx.fillStyle="rgba(2,6,23,.78)";roundRect(ctx,18,18,350,50,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 16px system-ui";ctx.textAlign="left";ctx.fillText(sharedStoryActive()?"STORY MAP • FOREST EDGE":"STORY MAP • NIGHT FANG DISTRICT",34,49);
-    ctx.fillStyle="rgba(2,6,23,.68)";roundRect(ctx,w-330,18,312,50,12);ctx.fill();ctx.fillStyle="#bfdbfe";ctx.textAlign="center";ctx.fillText(sharedStoryActive()?`STORY MISSION ${Math.max(1, Number(state.storyMissionLevel || 1))}`:"OPERATION NIGHT FANG",w-174,49);
+    ctx.restore();
+    ctx.fillStyle="rgba(2,6,23,.84)";roundRect(ctx,18,18,350,54,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 16px system-ui";ctx.textAlign="left";ctx.fillText(sharedStoryActive()?"EXPANDED STORY DISTRICT":"EXPANDED NIGHT FANG",34,43);ctx.fillStyle="#93c5fd";ctx.font="850 12px system-ui";ctx.fillText(`${Math.round(worldW/100)/10}km × ${Math.round(worldH/100)/10}km • CAMERA FOLLOW`,34,61);
+    drawCoopMiniMap(ctx,snap,view,w);drawOffscreenTeammate(ctx,snap,view,w,h);
   }
 
   function startParam(){

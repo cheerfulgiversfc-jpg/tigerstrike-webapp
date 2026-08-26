@@ -7,6 +7,7 @@ const RESPAWN_DELAY_MS = 3000;
 const STARTING_LIVES = 1;
 const BOSS_HP_MAX = 1200;
 const WORLD = Object.freeze({ width:1200, height:1100 });
+const MAX_COOP_WORLD = Object.freeze({ width:4800, height:2800 });
 const EXTRACTION = Object.freeze({ x:1045, y:735, r:92 });
 const SPAWNS = Object.freeze([
   Object.freeze({ x:125, y:850 }),
@@ -91,6 +92,15 @@ const ROLE_DEFS = Object.freeze({
   trapper:Object.freeze({ key:"trapper", label:"Trapper", damage:30, maxHp:112, speed:1.00 }),
 });
 
+const SHARED_STORY_WORLD_SIZES = Object.freeze({
+  1:Object.freeze({ width:3840, height:2160 }),
+  2:Object.freeze({ width:3984, height:2240 }),
+  3:Object.freeze({ width:4128, height:2320 }),
+  4:Object.freeze({ width:4272, height:2400 }),
+  5:Object.freeze({ width:4416, height:2480 }),
+});
+const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
+
 function nowMs(){ return Date.now(); }
 function clamp(value, min, max){ return Math.max(min, Math.min(max, Number(value || 0))); }
 function cleanText(value, max=80){ return String(value || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max); }
@@ -108,23 +118,58 @@ function sessionKey(code){ return `live_squad_session_${cleanCode(code)}`; }
 function playerKey(code, userId){ return `live_squad_player_${cleanCode(code)}_${userIdOf(userId)}`; }
 function roleKey(value){ return ROLE_DEFS[String(value || "").toLowerCase()] ? String(value).toLowerCase() : "tracker"; }
 function distance(a, b){ return Math.hypot(Number(a?.x || 0) - Number(b?.x || 0), Number(a?.y || 0) - Number(b?.y || 0)); }
+function expandMissionDefinition(base, targetWorld){
+  const world = Object.freeze({ width:Number(targetWorld.width), height:Number(targetWorld.height) });
+  const sx = world.width / WORLD.width;
+  const sy = world.height / WORLD.height;
+  const tigerRoamScale = Math.min(1.55, Math.max(1.25, ((sx + sy) * .5) * .58));
+  const point = (src)=>Object.freeze({ ...src, x:Math.round(Number(src.x || 0) * sx), y:Math.round(Number(src.y || 0) * sy) });
+  const tiger = (src)=>Object.freeze({
+    ...src,
+    baseX:Math.round(Number(src.baseX || 0) * sx),
+    baseY:Math.round(Number(src.baseY || 0) * sy),
+    rangeX:Math.round(Number(src.rangeX || 0) * tigerRoamScale),
+    rangeY:Math.round(Number(src.rangeY || 0) * tigerRoamScale),
+  });
+  return Object.freeze({
+    ...base,
+    world,
+    extraction:Object.freeze({
+      x:Math.round(Number(base.extraction.x || 0) * sx),
+      y:Math.round(Number(base.extraction.y || 0) * sy),
+      r:110,
+    }),
+    spawns:Object.freeze((base.spawns || []).map(point)),
+    civilians:Object.freeze((base.civilians || []).map(point)),
+    tigers:Object.freeze((base.tigers || []).map(tiger)),
+  });
+}
+
+const EXPANDED_SHARED_STORY_MISSIONS = Object.freeze(Object.fromEntries(
+  Object.entries(SHARED_STORY_MISSIONS).map(([level, mission])=>[
+    level,
+    expandMissionDefinition(mission, SHARED_STORY_WORLD_SIZES[level] || SHARED_STORY_WORLD_SIZES[1]),
+  ])
+));
+const EXPANDED_NIGHT_FANG_MISSION = expandMissionDefinition({
+  level:0,
+  chapter:0,
+  chapterName:"Night Fang District",
+  title:"Operation Night Fang",
+  objective:"Rescue four civilians, defeat the tiger pack and Night Fang Alpha, then extract together.",
+  rescueRequired:CIVILIANS.length,
+  world:WORLD,
+  extraction:EXTRACTION,
+  spawns:SPAWNS,
+  civilians:CIVILIANS,
+  tigers:TIGER_DEFS,
+}, NIGHT_FANG_WORLD_SIZE);
+
 function missionDefinition(session){
   if(session?.launchType === "shared-story"){
-    return SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0)] || SHARED_STORY_MISSION_1;
+    return EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0)] || EXPANDED_SHARED_STORY_MISSIONS[1];
   }
-  return {
-    level:0,
-    chapter:0,
-    chapterName:"Night Fang District",
-    title:"Operation Night Fang",
-    objective:"Rescue four civilians, defeat the tiger pack and Night Fang Alpha, then extract together.",
-    rescueRequired:CIVILIANS.length,
-    world:WORLD,
-    extraction:EXTRACTION,
-    spawns:SPAWNS,
-    civilians:CIVILIANS,
-    tigers:TIGER_DEFS,
-  };
+  return EXPANDED_NIGHT_FANG_MISSION;
 }
 
 function randomCode(){
@@ -228,8 +273,8 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     name:cleanText(src.name || playerName(fallbackUser), 60),
     slot:Number(src.slot) === 1 ? 1 : 0,
     role,
-    x:clamp(src.x ?? base.x, 24, WORLD.width - 24),
-    y:clamp(src.y ?? base.y, 24, WORLD.height - 24),
+    x:clamp(src.x ?? base.x, 24, MAX_COOP_WORLD.width - 24),
+    y:clamp(src.y ?? base.y, 24, MAX_COOP_WORLD.height - 24),
     face:clamp(src.face, -Math.PI * 4, Math.PI * 4),
     hp,
     maxHp,
@@ -458,6 +503,7 @@ async function buildSnapshot(session, viewerId){
       tigerCount:mission.tigers.length,
     },
     world:mission.world,
+    spawns:mission.spawns,
     extraction:mission.extraction,
     civilians:mission.civilians,
     tigers:derived.tigers,
