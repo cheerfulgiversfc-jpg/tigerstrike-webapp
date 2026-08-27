@@ -103,6 +103,7 @@ const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
 const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
 const VILLAGE_SIEGE_WORLD_SIZE = Object.freeze({ width:4680, height:2640 });
 const CONVOY_RESCUE_WORLD_SIZE = Object.freeze({ width:4800, height:2720 });
+const ALPHA_HUNT_WORLD_SIZE = Object.freeze({ width:4800, height:2800 });
 const TIGER_DEN_CIVILIANS = Object.freeze([
   Object.freeze({ id:"den_ranger", x:285, y:255, name:"Trapped Ranger", look:"scout" }),
   Object.freeze({ id:"den_researcher", x:905, y:285, name:"Den Researcher", look:"medic" }),
@@ -139,6 +140,16 @@ const CONVOY_RESCUE_TIGERS = Object.freeze([
   Object.freeze({ id:"convoy_bridge", name:"Bridge Ambusher", type:"Standard", hpMax:435, baseX:760, baseY:350, rangeX:112, rangeY:86, speed:.70, phase:3.7 }),
   Object.freeze({ id:"convoy_cargo", name:"Cargo Breaker", type:"Armored", hpMax:520, baseX:930, baseY:690, rangeX:98, rangeY:82, speed:.52, phase:5.0 }),
   Object.freeze({ id:"roadclaw_alpha", name:"Roadclaw Alpha", type:"Alpha", hpMax:2000, baseX:665, baseY:600, rangeX:175, rangeY:138, speed:.43, phase:1.2, boss:true }),
+]);
+const ALPHA_HUNT_CIVILIANS = Object.freeze([
+  Object.freeze({ id:"alpha_tracker_lead", x:275, y:250, name:"Lead Tracker", look:"scout" }),
+  Object.freeze({ id:"alpha_tracker_field", x:925, y:260, name:"Field Tracker", look:"medic" }),
+]);
+const ALPHA_HUNT_TIGERS = Object.freeze([
+  Object.freeze({ id:"alpha_highland", name:"Highland Prowler", type:"Scout", hpMax:440, baseX:330, baseY:460, rangeX:110, rangeY:84, speed:.82, phase:.6 }),
+  Object.freeze({ id:"alpha_mist", name:"Mist Hunter", type:"Standard", hpMax:480, baseX:665, baseY:340, rangeX:124, rangeY:94, speed:.68, phase:2.5 }),
+  Object.freeze({ id:"alpha_guard", name:"Apex Guard", type:"Armored", hpMax:600, baseX:900, baseY:660, rangeX:104, rangeY:88, speed:.54, phase:4.6 }),
+  Object.freeze({ id:"ghoststripe_alpha", name:"Ghoststripe Alpha", type:"Alpha", hpMax:2300, baseX:640, baseY:585, rangeX:185, rangeY:145, speed:.44, phase:1.3, boss:true }),
 ]);
 
 function nowMs(){ return Date.now(); }
@@ -246,11 +257,26 @@ const EXPANDED_CONVOY_RESCUE_MISSION = expandMissionDefinition({
   civilians:CONVOY_RESCUE_CIVILIANS,
   tigers:CONVOY_RESCUE_TIGERS,
 }, CONVOY_RESCUE_WORLD_SIZE);
+const EXPANDED_ALPHA_HUNT_MISSION = expandMissionDefinition({
+  level:0,
+  chapter:0,
+  chapterName:"Moonshadow Highlands",
+  title:"Alpha Hunt",
+  objective:"Rescue two injured trackers, clear the three elite tigers, defeat Ghoststripe Alpha, then extract together.",
+  rescueRequired:ALPHA_HUNT_CIVILIANS.length,
+  timeLimitMs:11 * 60 * 1000,
+  world:WORLD,
+  extraction:EXTRACTION,
+  spawns:SPAWNS,
+  civilians:ALPHA_HUNT_CIVILIANS,
+  tigers:ALPHA_HUNT_TIGERS,
+}, ALPHA_HUNT_WORLD_SIZE);
 const SPECIAL_OPERATION_MISSIONS = Object.freeze({
   "live-squad":EXPANDED_NIGHT_FANG_MISSION,
   "tiger-den":EXPANDED_TIGER_DEN_MISSION,
   "village-siege":EXPANDED_VILLAGE_SIEGE_MISSION,
   "convoy-rescue":EXPANDED_CONVOY_RESCUE_MISSION,
+  "alpha-hunt":EXPANDED_ALPHA_HUNT_MISSION,
 });
 const VALID_LAUNCH_TYPES = Object.freeze(["shared-story", ...Object.keys(SPECIAL_OPERATION_MISSIONS)]);
 const ALL_COOP_MISSIONS = Object.freeze([
@@ -850,6 +876,7 @@ async function claimReward(session, user){
     "tiger-den":{ cash:8200, perkPoints:2, seasonPoints:16, badge:"Stoneclaw Den Breaker" },
     "village-siege":{ cash:9600, perkPoints:2, seasonPoints:20, badge:"Suncrest Village Shield" },
     "convoy-rescue":{ cash:11200, perkPoints:3, seasonPoints:24, badge:"Redwood Convoy Guardian" },
+    "alpha-hunt":{ cash:13000, perkPoints:3, seasonPoints:28, badge:"Ghoststripe Apex Hunter" },
   };
   const operationId = normalizeLaunchType(session.launchType);
   return {

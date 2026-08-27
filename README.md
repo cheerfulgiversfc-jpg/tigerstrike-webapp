@@ -297,6 +297,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, and synchronized pause behavior work unchanged.
 - Each player receives a separate deduplicated receipt, $11,200, three perk points, 24 season points, and the `Redwood Convoy Guardian` badge. Convoy Rescue does not advance Story progress or alter the first three Special Operations.
 
+### V6.5 Alpha Hunt
+
+- Alpha Hunt is the fifth fully playable Special Operation and has its own durable `alpha-hunt` room identity, Telegram invitation, reconnect path, mission state, and reward receipt.
+- The 4,800 × 2,800 Moonshadow Highlands uses the full supported co-op world, with moonlit terrain, mountain peaks, marked roads, sparse ranger buildings, and Ghoststripe's hunting range.
+- Both players must rescue two injured trackers, clear three elite tigers, defeat or capture the 2,300 HP Ghoststripe Alpha, and reach extraction together within eleven minutes.
+- Ghoststripe has a unique pale coat and dark stripes. The old decorative oval surrounding Alpha tigers has been removed while health bars and boss names remain visible.
+- Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, and synchronized pause behavior work unchanged.
+- Each player receives a separate deduplicated receipt, $13,000, three perk points, 28 season points, and the `Ghoststripe Apex Hunter` badge. Alpha Hunt does not advance Story progress or alter the first four Special Operations.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

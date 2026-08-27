@@ -118,9 +118,10 @@ async function run(){
   assert(html.includes("Tiger Den Assault"), "Tiger Den Assault is a real Special Operation choice");
   assert(html.includes("Village Siege"), "Village Siege is a real Special Operation choice");
   assert(html.includes("Convoy Rescue"), "Convoy Rescue is a real Special Operation choice");
+  assert(html.includes("Alpha Hunt"), "Alpha Hunt is a real Special Operation choice");
   assert(html.includes("Special Operations do not change your Story mission number"), "Special Operation progression is explained as separate");
   assert(html.includes("only after their real gameplay is complete"), "remaining future operations stay honest previews");
-  assert(html.includes("Alpha Hunt, Storm Extraction, and Endless Survival"), "only unfinished operations remain in the preview list");
+  assert(html.includes("Storm Extraction and Endless Survival"), "only unfinished operations remain in the preview list");
 
   await clickCommand("select-operation", { squadOperation:"tiger-den" });
   html = element("squadBody").innerHTML;
@@ -145,7 +146,15 @@ async function run(){
   assert(html.includes("Redwood Convoy Guardian badge"), "Convoy Rescue selection names its unique badge");
   assert(html.includes("Create Convoy Rescue Squad"), "Convoy Rescue can create its own squad room");
 
-  console.log("PASS: Co-op Home separates Story Campaign and four playable Special Operations with accurate routing");
+  await clickCommand("select-operation", { squadOperation:"alpha-hunt" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Moonshadow Highlands"), "Alpha Hunt selection exposes its own map identity");
+  assert(html.includes("Ghoststripe Alpha"), "Alpha Hunt selection exposes its own boss objective");
+  assert(html.includes("$13,000"), "Alpha Hunt selection shows its exact reward");
+  assert(html.includes("Ghoststripe Apex Hunter badge"), "Alpha Hunt selection names its unique badge");
+  assert(html.includes("Create Alpha Hunt Squad"), "Alpha Hunt can create its own squad room");
+
+  console.log("PASS: Co-op Home separates Story Campaign and five playable Special Operations with accurate routing");
 }
 
 run().catch((error)=>{

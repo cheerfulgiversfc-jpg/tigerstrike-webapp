@@ -64,6 +64,13 @@ async function prepareInvite(botToken, user, session){
         heading:"🚚 CONVOY RESCUE TEAMMATE REQUEST",
         detail:"Rescue four stranded convoy crew members, clear the road ambush, defeat Roadclaw Alpha, revive each other, and extract together.",
       },
+    "alpha-hunt":{
+        id:"alpha_hunt",
+        name:"Alpha Hunt",
+        button:"🎯 Join Alpha Hunt",
+        heading:"🎯 ALPHA HUNT TEAMMATE REQUEST",
+        detail:"Rescue two injured trackers, clear three elite tigers, defeat Ghoststripe Alpha, revive each other, and extract together.",
+      },
   }[session.launchType] || {
         id:"night_fang",
         name:"Operation Night Fang",
@@ -144,7 +151,7 @@ module.exports = async function handler(req, res){
         storyMissionLevel:requestedStoryLevel,
         launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 5
           ? "shared-story"
-          : (["tiger-den","village-siege","convoy-rescue"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
+          : (["tiger-den","village-siege","convoy-rescue","alpha-hunt"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
       });
     }else if(action === "join"){
       session = await joinSession(cleanCode(body?.code), user);

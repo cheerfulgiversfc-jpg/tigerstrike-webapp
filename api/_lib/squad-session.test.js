@@ -316,7 +316,62 @@ async function run(){
   const convoyHostAgain = await claimReward(await readSession(convoySession.code), convoyHost);
   assert.equal(convoyHostAgain.firstClaim, false, "Convoy Rescue cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-5, Night Fang, Tiger Den, Village Siege, Convoy Rescue, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
+  const alphaHost = { id:910701, first_name:"Alpha Host" };
+  const alphaMate = { id:910702, first_name:"Alpha Mate" };
+  let alphaSession = await createSession(alphaHost, { launchType:"alpha-hunt" });
+  alphaSession = await joinSession(alphaSession.code, alphaMate);
+  assert.equal(alphaSession.launchType, "alpha-hunt", "Alpha Hunt keeps its own operation identity");
+  alphaSession = await applyAction(alphaSession, alphaHost, "start");
+  let alphaSnapshot = await buildSnapshot(alphaSession, alphaHost.id);
+  assert.equal(alphaSnapshot.mission.title, "Alpha Hunt", "Alpha Hunt has its own mission title");
+  assert.equal(alphaSnapshot.mission.chapterName, "Moonshadow Highlands", "Alpha Hunt has its own map identity");
+  assert.equal(alphaSnapshot.mission.rescueRequired, 2, "Alpha Hunt requires both injured trackers");
+  assert.equal(alphaSnapshot.tigers.length, 4, "Alpha Hunt has three elite tigers and one Alpha");
+  assert.equal(alphaSnapshot.boss.name, "Ghoststripe Alpha", "Alpha Hunt has its own boss");
+  assert.equal(alphaSnapshot.boss.hpMax, 2300, "Ghoststripe has the operation's full Alpha health pool");
+  assert.equal(alphaSnapshot.mission.timeLimitMs, 11 * 60 * 1000, "Alpha Hunt uses its eleven-minute hunt timer");
+  assert.equal(alphaSnapshot.world.width, 4800, "Alpha Hunt uses the full co-op world width");
+  assert.equal(alphaSnapshot.world.height, 2800, "Alpha Hunt uses the full co-op world height");
+
+  const leadTracker = alphaSnapshot.civilians[0];
+  await writePlayerPatch(alphaSession.code, alphaHost.id, { x:leadTracker.x, y:leadTracker.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(alphaSession.code), alphaHost, "rescue", { civilianId:leadTracker.id });
+  alphaSnapshot = await buildSnapshot(await readSession(alphaSession.code), alphaHost.id);
+  assert(alphaSnapshot.rescuedIds.includes(leadTracker.id), "Alpha Hunt trackers use the real shared rescue action");
+
+  const ghoststripe = alphaSnapshot.boss;
+  await writePlayerPatch(alphaSession.code, alphaHost.id, { x:ghoststripe.x, y:ghoststripe.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(alphaSession.code), alphaHost, "attack", { tigerId:ghoststripe.id });
+  alphaSnapshot = await buildSnapshot(await readSession(alphaSession.code), alphaHost.id);
+  assert(alphaSnapshot.boss.hp < alphaSnapshot.boss.hpMax, "Ghoststripe uses the real shared combat action");
+
+  const alphaClearedAt = Date.now();
+  await writePlayerPatch(alphaSession.code, alphaHost.id, {
+    x:alphaSnapshot.extraction.x,
+    y:alphaSnapshot.extraction.y,
+    rescuedIds:alphaSnapshot.civilians.map((civilian)=>civilian.id),
+    tigerDamage:Object.fromEntries(alphaSnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
+    lastSeenAt:alphaClearedAt,
+  });
+  await writePlayerPatch(alphaSession.code, alphaMate.id, {
+    x:alphaSnapshot.extraction.x,
+    y:alphaSnapshot.extraction.y,
+    lastSeenAt:alphaClearedAt,
+  });
+  alphaSnapshot = await buildSnapshot(await readSession(alphaSession.code), alphaHost.id);
+  assert.equal(alphaSnapshot.status, "complete", "Alpha Hunt can be completed through its real objectives");
+  const alphaHostReward = await claimReward(await readSession(alphaSession.code), alphaHost);
+  const alphaMateReward = await claimReward(await readSession(alphaSession.code), alphaMate);
+  assert.equal(alphaHostReward.reward.badge, "Ghoststripe Apex Hunter", "Alpha Hunt awards its own badge");
+  assert.equal(alphaHostReward.reward.cash, 13000, "Alpha Hunt awards its own cash payout");
+  assert.equal(alphaHostReward.reward.perkPoints, 3, "Alpha Hunt awards its own perk points");
+  assert.equal(alphaHostReward.reward.seasonPoints, 28, "Alpha Hunt awards its own season points");
+  assert.equal(alphaHostReward.storyProgress, null, "Alpha Hunt never changes Story progress");
+  assert.notEqual(alphaHostReward.receipt, alphaMateReward.receipt, "both Alpha Hunt players receive separate receipts");
+  const alphaHostAgain = await claimReward(await readSession(alphaSession.code), alphaHost);
+  assert.equal(alphaHostAgain.firstClaim, false, "Alpha Hunt cannot pay the same player twice in one room");
+
+  console.log("PASS: Story Missions 1-5 and five Special Operations, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
 }
 
 run().catch((error)=>{
