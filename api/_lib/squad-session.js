@@ -102,6 +102,7 @@ const SHARED_STORY_WORLD_SIZES = Object.freeze({
 const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
 const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
 const VILLAGE_SIEGE_WORLD_SIZE = Object.freeze({ width:4680, height:2640 });
+const CONVOY_RESCUE_WORLD_SIZE = Object.freeze({ width:4800, height:2720 });
 const TIGER_DEN_CIVILIANS = Object.freeze([
   Object.freeze({ id:"den_ranger", x:285, y:255, name:"Trapped Ranger", look:"scout" }),
   Object.freeze({ id:"den_researcher", x:905, y:285, name:"Den Researcher", look:"medic" }),
@@ -125,6 +126,19 @@ const VILLAGE_SIEGE_TIGERS = Object.freeze([
   Object.freeze({ id:"siege_alley", name:"Alley Stalker", type:"Standard", hpMax:385, baseX:855, baseY:470, rangeX:106, rangeY:82, speed:.68, phase:3.8 }),
   Object.freeze({ id:"siege_gatebreaker", name:"Gatebreaker Guard", type:"Armored", hpMax:460, baseX:920, baseY:720, rangeX:92, rangeY:78, speed:.50, phase:4.9 }),
   Object.freeze({ id:"ironmane_alpha", name:"Ironmane Alpha", type:"Alpha", hpMax:1800, baseX:625, baseY:580, rangeX:165, rangeY:132, speed:.42, phase:1.1, boss:true }),
+]);
+const CONVOY_RESCUE_CIVILIANS = Object.freeze([
+  Object.freeze({ id:"convoy_driver", x:225, y:250, name:"Convoy Driver", look:"driver" }),
+  Object.freeze({ id:"convoy_medic", x:470, y:470, name:"Convoy Medic", look:"medic" }),
+  Object.freeze({ id:"convoy_mechanic", x:750, y:250, name:"Convoy Mechanic", look:"field" }),
+  Object.freeze({ id:"convoy_dispatcher", x:960, y:700, name:"Route Dispatcher", look:"scout" }),
+]);
+const CONVOY_RESCUE_TIGERS = Object.freeze([
+  Object.freeze({ id:"convoy_scout", name:"Roadside Scout", type:"Scout", hpMax:380, baseX:300, baseY:370, rangeX:102, rangeY:78, speed:.80, phase:.5 }),
+  Object.freeze({ id:"convoy_wreck", name:"Wreck Prowler", type:"Standard", hpMax:420, baseX:510, baseY:520, rangeX:118, rangeY:90, speed:.66, phase:2.0 }),
+  Object.freeze({ id:"convoy_bridge", name:"Bridge Ambusher", type:"Standard", hpMax:435, baseX:760, baseY:350, rangeX:112, rangeY:86, speed:.70, phase:3.7 }),
+  Object.freeze({ id:"convoy_cargo", name:"Cargo Breaker", type:"Armored", hpMax:520, baseX:930, baseY:690, rangeX:98, rangeY:82, speed:.52, phase:5.0 }),
+  Object.freeze({ id:"roadclaw_alpha", name:"Roadclaw Alpha", type:"Alpha", hpMax:2000, baseX:665, baseY:600, rangeX:175, rangeY:138, speed:.43, phase:1.2, boss:true }),
 ]);
 
 function nowMs(){ return Date.now(); }
@@ -218,10 +232,25 @@ const EXPANDED_VILLAGE_SIEGE_MISSION = expandMissionDefinition({
   civilians:VILLAGE_SIEGE_CIVILIANS,
   tigers:VILLAGE_SIEGE_TIGERS,
 }, VILLAGE_SIEGE_WORLD_SIZE);
+const EXPANDED_CONVOY_RESCUE_MISSION = expandMissionDefinition({
+  level:0,
+  chapter:0,
+  chapterName:"Redwood Convoy Route",
+  title:"Convoy Rescue",
+  objective:"Rescue four stranded convoy crew members, clear the four ambush tigers, defeat Roadclaw Alpha, then extract together.",
+  rescueRequired:CONVOY_RESCUE_CIVILIANS.length,
+  timeLimitMs:10 * 60 * 1000,
+  world:WORLD,
+  extraction:EXTRACTION,
+  spawns:SPAWNS,
+  civilians:CONVOY_RESCUE_CIVILIANS,
+  tigers:CONVOY_RESCUE_TIGERS,
+}, CONVOY_RESCUE_WORLD_SIZE);
 const SPECIAL_OPERATION_MISSIONS = Object.freeze({
   "live-squad":EXPANDED_NIGHT_FANG_MISSION,
   "tiger-den":EXPANDED_TIGER_DEN_MISSION,
   "village-siege":EXPANDED_VILLAGE_SIEGE_MISSION,
+  "convoy-rescue":EXPANDED_CONVOY_RESCUE_MISSION,
 });
 const VALID_LAUNCH_TYPES = Object.freeze(["shared-story", ...Object.keys(SPECIAL_OPERATION_MISSIONS)]);
 const ALL_COOP_MISSIONS = Object.freeze([
@@ -820,6 +849,7 @@ async function claimReward(session, user){
     "live-squad":{ cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },
     "tiger-den":{ cash:8200, perkPoints:2, seasonPoints:16, badge:"Stoneclaw Den Breaker" },
     "village-siege":{ cash:9600, perkPoints:2, seasonPoints:20, badge:"Suncrest Village Shield" },
+    "convoy-rescue":{ cash:11200, perkPoints:3, seasonPoints:24, badge:"Redwood Convoy Guardian" },
   };
   const operationId = normalizeLaunchType(session.launchType);
   return {

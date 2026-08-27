@@ -289,6 +289,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, and synchronized pause rules work unchanged.
 - Each player receives a separate deduplicated receipt, $9,600, two perk points, 20 season points, and the `Suncrest Village Shield` badge. Village Siege does not advance Story progress or alter Night Fang and Tiger Den rooms.
 
+### V6.4 Convoy Rescue
+
+- Convoy Rescue is the fourth fully playable Special Operation and has its own durable `convoy-rescue` room identity, Telegram invitation, reconnect path, mission state, and reward receipt.
+- The 4,800 × 2,720 Redwood Convoy Route is the widest supported co-op battlefield and includes marked highways, bridges, convoy trucks, wreckage, route checkpoints, trees, and roadside buildings.
+- Both players must rescue the stranded driver, medic, mechanic, and dispatcher, clear four ambush tigers, defeat or capture the 2,000 HP Roadclaw Alpha, and reach extraction together within ten minutes.
+- Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, and synchronized pause behavior work unchanged.
+- Each player receives a separate deduplicated receipt, $11,200, three perk points, 24 season points, and the `Redwood Convoy Guardian` badge. Convoy Rescue does not advance Story progress or alter the first three Special Operations.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

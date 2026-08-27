@@ -73,6 +73,15 @@
       reward:"$9,600 • 2 perk points • 20 season points • Suncrest Village Shield badge",
       mapLabel:"Suncrest Village",
     },
+    {
+      id:"convoy-rescue",
+      icon:"🚚",
+      title:"Convoy Rescue",
+      short:"Rescue 4 stranded crew, clear 4 ambush tigers, defeat Roadclaw Alpha, and extract.",
+      description:"Push through the ten-minute Redwood Convoy Route operation. Rescue the driver, medic, mechanic, and dispatcher, clear the four-tiger road ambush, defeat Roadclaw Alpha, then extract together.",
+      reward:"$11,200 • 3 perk points • 24 season points • Redwood Convoy Guardian badge",
+      mapLabel:"Redwood Convoy Route",
+    },
   ]);
 
   const $ = (id) => document.getElementById(id);
@@ -168,8 +177,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V6.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V6.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.3 • Co-op Command");
+      ? `Tiger Strike V6.4 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V6.4 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.4 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -392,7 +401,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V6.3 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V6.4 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -458,7 +467,7 @@
       <div class="squadSectionHead"><div><div class="squadKicker">Replayable team challenges</div><div class="squadMissionName">🐅 Special Operations</div><div class="squadDesc">These missions have their own objectives, badges, and rewards. They never skip, replace, or unlock Story missions.</div></div><span class="squadProgressPill">Team mode</span></div>
       <div class="squadOperationGrid">
         ${SPECIAL_OPERATIONS.map((row)=>`<button type="button" class="squadMissionChoice ${operation.id === row.id ? "active" : ""}" data-squad-command="select-operation" data-squad-operation="${esc(row.id)}"><span>${row.icon} ${esc(row.title)}</span><small>${esc(row.short)}</small></button>`).join("")}
-        <div class="squadMissionChoice preview" aria-disabled="true"><span>🔒 More operations</span><small>Convoy Rescue, Alpha Hunt, Storm Extraction, and Endless Survival will arrive only after their real gameplay is complete.</small></div>
+        <div class="squadMissionChoice preview" aria-disabled="true"><span>🔒 More operations</span><small>Alpha Hunt, Storm Extraction, and Endless Survival will arrive only after their real gameplay is complete.</small></div>
       </div>
       <div class="squadSelectedMission"><div><div class="squadKicker">Playable now • ${esc(operation.mapLabel)}</div><div class="squadSectionTitle">${operation.icon} ${esc(operation.title)}</div><div class="squadDesc">${esc(operation.description)}</div><div class="squadSmall"><b>Reward:</b> ${esc(operation.reward)}</div></div><span class="squadReadyPill ready">Two Players</span></div>
       <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create ${esc(operation.title)} Squad</button></div>
@@ -1265,6 +1274,18 @@
     ctx.restore();
   }
 
+  function drawConvoyTruck(ctx,x,y,angle=0,color="#2f855a",damaged=false){
+    ctx.save();ctx.translate(x,y);ctx.rotate(angle);
+    ctx.fillStyle="rgba(2,6,23,.32)";ctx.beginPath();ctx.ellipse(0,24,72,16,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=color;roundRect(ctx,-62,-24,82,48,8);ctx.fill();ctx.strokeStyle="#d1fae5";ctx.lineWidth=3;ctx.stroke();
+    ctx.fillStyle="#334155";roundRect(ctx,20,-20,44,40,8);ctx.fill();ctx.strokeStyle="#cbd5e1";ctx.stroke();
+    ctx.fillStyle="#93c5fd";ctx.fillRect(38,-14,19,14);
+    ctx.fillStyle="#111827";for(const wheelX of [-40,39]){ctx.beginPath();ctx.arc(wheelX,25,10,0,Math.PI*2);ctx.fill();ctx.fillStyle="#94a3b8";ctx.beginPath();ctx.arc(wheelX,25,4,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";}
+    ctx.fillStyle="#facc15";ctx.fillRect(-48,-4,16,7);ctx.fillRect(-23,-4,16,7);ctx.fillRect(2,-4,12,7);
+    if(damaged){ctx.strokeStyle="#fb7185";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(-12,-22);ctx.lineTo(14,18);ctx.moveTo(10,-18);ctx.lineTo(-18,18);ctx.stroke();ctx.fillStyle="rgba(71,85,105,.46)";ctx.beginPath();ctx.arc(-18,-48,18,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(-6,-70,25,0,Math.PI*2);ctx.fill();}
+    ctx.restore();
+  }
+
   function drawStoryCivilian(ctx,civ,rescued){
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"]};
     const [shirt,pants]=colors[civ.look]||colors.field;ctx.save();ctx.translate(civ.x,civ.y);ctx.globalAlpha=rescued?.24:1;
@@ -1306,6 +1327,7 @@
     const worldH = Math.max(view.h, Number(snap.world?.height || view.h));
     const denAssault = snap.launchType === "tiger-den";
     const villageSiege = snap.launchType === "village-siege";
+    const convoyRescue = snap.launchType === "convoy-rescue";
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -1313,22 +1335,22 @@
     const visible = (x,y,pad=120)=>x >= view.x-pad && x <= view.x+view.w+pad && y >= view.y-pad && y <= view.y+view.h+pad;
     const nearRoad = (x,y,pad=75)=>verticalRoads.some((road)=>Math.abs(x-road)<pad)||horizontalRoads.some((road)=>Math.abs(y-road)<pad);
 
-    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,denAssault?"#62533c":(villageSiege?"#66a85c":"#3f7b4d"));terrain.addColorStop(.52,denAssault?"#3f4936":(villageSiege?"#43814d":"#2f6944"));terrain.addColorStop(1,denAssault?"#29382f":(villageSiege?"#2c6845":"#24583c"));ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
-    ctx.fillStyle=denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":"rgba(102,164,91,.20)");
+    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,denAssault?"#62533c":(villageSiege?"#66a85c":(convoyRescue?"#6f8f4e":"#3f7b4d")));terrain.addColorStop(.52,denAssault?"#3f4936":(villageSiege?"#43814d":(convoyRescue?"#416b46":"#2f6944")));terrain.addColorStop(1,denAssault?"#29382f":(villageSiege?"#2c6845":(convoyRescue?"#294f3e":"#24583c")));ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
+    ctx.fillStyle=denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":"rgba(102,164,91,.20)"));
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
 
-    ctx.fillStyle=denAssault?"rgba(32,31,29,.88)":(villageSiege?"rgba(31,142,174,.86)":"rgba(35,117,145,.80)");ctx.beginPath();ctx.moveTo(0,riverTop);
+    ctx.fillStyle=denAssault?"rgba(32,31,29,.88)":(villageSiege?"rgba(31,142,174,.86)":(convoyRescue?"rgba(28,102,132,.86)":"rgba(35,117,145,.80)"));ctx.beginPath();ctx.moveTo(0,riverTop);
     for(let x=0;x<=worldW+180;x+=180){ctx.lineTo(x,riverTop+Math.sin((x/worldW)*Math.PI*5)*42);}
     ctx.lineTo(worldW,worldH);ctx.lineTo(0,worldH);ctx.closePath();ctx.fill();
 
-    ctx.fillStyle=denAssault?"#49443b":(villageSiege?"#455267":"#4b5563");
+    ctx.fillStyle=denAssault?"#49443b":(villageSiege?"#455267":(convoyRescue?"#3f4654":"#4b5563"));
     for(const y of horizontalRoads) ctx.fillRect(0,y-roadW/2,worldW,roadW);
     for(const x of verticalRoads) ctx.fillRect(x-roadW/2,0,roadW,worldH);
-    ctx.strokeStyle=denAssault?"rgba(214,180,125,.42)":(villageSiege?"rgba(248,250,252,.78)":"rgba(241,245,249,.58)");ctx.lineWidth=4;
+    ctx.strokeStyle=denAssault?"rgba(214,180,125,.42)":(villageSiege?"rgba(248,250,252,.78)":(convoyRescue?"rgba(226,232,240,.74)":"rgba(241,245,249,.58)"));ctx.lineWidth=4;
     for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y-roadW/2+8);ctx.lineTo(worldW,y-roadW/2+8);ctx.moveTo(0,y+roadW/2-8);ctx.lineTo(worldW,y+roadW/2-8);ctx.stroke();}
     for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x-roadW/2+8,0);ctx.lineTo(x-roadW/2+8,worldH);ctx.moveTo(x+roadW/2-8,0);ctx.lineTo(x+roadW/2-8,worldH);ctx.stroke();}
-    ctx.strokeStyle=denAssault?"rgba(251,146,60,.62)":(villageSiege?"rgba(253,224,71,.92)":"rgba(250,204,21,.78)");ctx.lineWidth=5;ctx.setLineDash(denAssault?[18,34]:[34,28]);
+    ctx.strokeStyle=denAssault?"rgba(251,146,60,.62)":(villageSiege?"rgba(253,224,71,.92)":(convoyRescue?"rgba(250,204,21,.96)":"rgba(250,204,21,.78)"));ctx.lineWidth=5;ctx.setLineDash(denAssault?[18,34]:[34,28]);
     for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(worldW,y);ctx.stroke();}
     for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,worldH);ctx.stroke();}
     ctx.setLineDash([]);
@@ -1338,7 +1360,7 @@
       for(let x=roadX-roadW*.52;x<roadX+roadW*.53;x+=24){ctx.beginPath();ctx.moveTo(x,bridgeY-8);ctx.lineTo(x,bridgeY+102);ctx.stroke();}
     }
 
-    for(let i=0;i<(denAssault?150:(villageSiege?185:240));i++){
+    for(let i=0;i<(denAssault?150:(villageSiege?185:(convoyRescue?210:240)));i++){
       const x=70+((i*337+53)%Math.max(100,Math.floor(worldW-140)));
       const y=80+((i*191+97)%Math.max(100,Math.floor(worldH-180)));
       if(!visible(x,y,70)||nearRoad(x,y,88)||y>riverTop-55) continue;
@@ -1346,7 +1368,7 @@
       else drawStoryTree(ctx,x,y,.68+(i%5)*.075);
     }
     const roofColors=["#9a5c38","#7c4a32","#72452f","#a1623c"];
-    for(let i=0;i<(denAssault?12:(villageSiege?58:34));i++){
+    for(let i=0;i<(denAssault?12:(villageSiege?58:(convoyRescue?18:34)));i++){
       const x=100+((i*421+160)%Math.max(140,Math.floor(worldW-280)));
       const y=110+((i*263+120)%Math.max(140,Math.floor(riverTop-260)));
       if(!visible(x,y,210)||nearRoad(x+80,y+52,125)) continue;
@@ -1368,6 +1390,19 @@
         [worldW*.28,worldH*.76,Math.PI/2],[worldW*.54,worldH*.76,0],[worldW*.81,worldH*.76,0],
       ];
       for(const [x,y,angle] of barricades){if(visible(x,y,110))drawVillageBarricade(ctx,x,y,angle);}
+    }
+    if(convoyRescue){
+      const routeY=worldH*.50;
+      if(visible(worldW*.52,routeY,420)){
+        ctx.fillStyle="rgba(15,23,42,.88)";roundRect(ctx,worldW*.52-146,routeY-118,292,48,12);ctx.fill();ctx.strokeStyle="#facc15";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#fef9c3";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("REDWOOD CONVOY ROUTE",worldW*.52,routeY-87);
+      }
+      const trucks=[
+        [worldW*.20,routeY-17,0,"#2f855a",false],[worldW*.38,routeY+18,Math.PI,"#2563eb",true],
+        [worldW*.66,routeY-18,0,"#b45309",false],[worldW*.84,routeY+17,Math.PI,"#475569",true],
+      ];
+      for(const [x,y,angle,color,damaged] of trucks){if(visible(x,y,130))drawConvoyTruck(ctx,x,y,angle,color,damaged);}
+      const checkpoints=[[worldW*.28,worldH*.24],[worldW*.54,worldH*.76],[worldW*.81,worldH*.24]];
+      for(const [x,y] of checkpoints){if(!visible(x,y,100))continue;ctx.strokeStyle="rgba(56,189,248,.65)";ctx.lineWidth=5;ctx.setLineDash([14,10]);ctx.beginPath();ctx.arc(x,y,66,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);}
     }
 
     const spawns=(snap.spawns||snap.players||[]).map((player)=>({x:Number(player.x||0),y:Number(player.y||0)}));

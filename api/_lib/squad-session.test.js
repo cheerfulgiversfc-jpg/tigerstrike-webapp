@@ -262,7 +262,61 @@ async function run(){
   const siegeHostAgain = await claimReward(await readSession(siegeSession.code), siegeHost);
   assert.equal(siegeHostAgain.firstClaim, false, "Village Siege cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-5, Night Fang, Tiger Den, Village Siege, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
+  const convoyHost = { id:910601, first_name:"Convoy Host" };
+  const convoyMate = { id:910602, first_name:"Convoy Mate" };
+  let convoySession = await createSession(convoyHost, { launchType:"convoy-rescue" });
+  convoySession = await joinSession(convoySession.code, convoyMate);
+  assert.equal(convoySession.launchType, "convoy-rescue", "Convoy Rescue keeps its own operation identity");
+  convoySession = await applyAction(convoySession, convoyHost, "start");
+  let convoySnapshot = await buildSnapshot(convoySession, convoyHost.id);
+  assert.equal(convoySnapshot.mission.title, "Convoy Rescue", "Convoy Rescue has its own mission title");
+  assert.equal(convoySnapshot.mission.chapterName, "Redwood Convoy Route", "Convoy Rescue has its own map identity");
+  assert.equal(convoySnapshot.mission.rescueRequired, 4, "Convoy Rescue requires all four stranded crew members");
+  assert.equal(convoySnapshot.tigers.length, 5, "Convoy Rescue has four ambush tigers and one Alpha");
+  assert.equal(convoySnapshot.boss.name, "Roadclaw Alpha", "Convoy Rescue has its own boss");
+  assert.equal(convoySnapshot.mission.timeLimitMs, 10 * 60 * 1000, "Convoy Rescue uses its ten-minute route timer");
+  assert.equal(convoySnapshot.world.width, 4800, "Convoy Rescue uses the widest supported co-op route");
+  assert(convoySnapshot.world.height >= 2700, "Convoy Rescue has a full-height Redwood route map");
+
+  const convoyDriver = convoySnapshot.civilians[0];
+  await writePlayerPatch(convoySession.code, convoyHost.id, { x:convoyDriver.x, y:convoyDriver.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(convoySession.code), convoyHost, "rescue", { civilianId:convoyDriver.id });
+  convoySnapshot = await buildSnapshot(await readSession(convoySession.code), convoyHost.id);
+  assert(convoySnapshot.rescuedIds.includes(convoyDriver.id), "Convoy crew members use the real shared rescue action");
+
+  const roadclaw = convoySnapshot.boss;
+  await writePlayerPatch(convoySession.code, convoyHost.id, { x:roadclaw.x, y:roadclaw.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(convoySession.code), convoyHost, "attack", { tigerId:roadclaw.id });
+  convoySnapshot = await buildSnapshot(await readSession(convoySession.code), convoyHost.id);
+  assert(convoySnapshot.boss.hp < convoySnapshot.boss.hpMax, "Roadclaw uses the real shared combat action");
+
+  const convoyClearedAt = Date.now();
+  await writePlayerPatch(convoySession.code, convoyHost.id, {
+    x:convoySnapshot.extraction.x,
+    y:convoySnapshot.extraction.y,
+    rescuedIds:convoySnapshot.civilians.map((civilian)=>civilian.id),
+    tigerDamage:Object.fromEntries(convoySnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
+    lastSeenAt:convoyClearedAt,
+  });
+  await writePlayerPatch(convoySession.code, convoyMate.id, {
+    x:convoySnapshot.extraction.x,
+    y:convoySnapshot.extraction.y,
+    lastSeenAt:convoyClearedAt,
+  });
+  convoySnapshot = await buildSnapshot(await readSession(convoySession.code), convoyHost.id);
+  assert.equal(convoySnapshot.status, "complete", "Convoy Rescue can be completed through its real objectives");
+  const convoyHostReward = await claimReward(await readSession(convoySession.code), convoyHost);
+  const convoyMateReward = await claimReward(await readSession(convoySession.code), convoyMate);
+  assert.equal(convoyHostReward.reward.badge, "Redwood Convoy Guardian", "Convoy Rescue awards its own badge");
+  assert.equal(convoyHostReward.reward.cash, 11200, "Convoy Rescue awards its own cash payout");
+  assert.equal(convoyHostReward.reward.perkPoints, 3, "Convoy Rescue awards its own perk points");
+  assert.equal(convoyHostReward.reward.seasonPoints, 24, "Convoy Rescue awards its own season points");
+  assert.equal(convoyHostReward.storyProgress, null, "Convoy Rescue never changes Story progress");
+  assert.notEqual(convoyHostReward.receipt, convoyMateReward.receipt, "both Convoy Rescue players receive separate receipts");
+  const convoyHostAgain = await claimReward(await readSession(convoySession.code), convoyHost);
+  assert.equal(convoyHostAgain.firstClaim, false, "Convoy Rescue cannot pay the same player twice in one room");
+
+  console.log("PASS: Story Missions 1-5, Night Fang, Tiger Den, Village Siege, Convoy Rescue, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
 }
 
 run().catch((error)=>{
