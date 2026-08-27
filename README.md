@@ -281,6 +281,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Tiger Den invitations name the correct mission and objectives. Each player receives a separate deduplicated receipt, $8,200, two perk points, 16 season points, and the `Stoneclaw Den Breaker` badge.
 - Tiger Den completion never advances Story progress and does not alter Operation Night Fang rewards or rooms.
 
+### V6.3 Village Siege
+
+- Village Siege is the third fully playable Special Operation and has its own durable `village-siege` room identity, invitation, mission state, reward receipt, and reconnect path.
+- The bright 4,680 × 2,640 Suncrest Village battlefield uses marked roads, homes, a central safehouse, village barricades, and a nine-minute mission timer.
+- Both players must rescue five named villagers, clear four siege tigers, defeat or capture the 1,800 HP Ironmane Alpha, and reach extraction together.
+- Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, and synchronized pause rules work unchanged.
+- Each player receives a separate deduplicated receipt, $9,600, two perk points, 20 season points, and the `Suncrest Village Shield` badge. Village Siege does not advance Story progress or alter Night Fang and Tiger Den rooms.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

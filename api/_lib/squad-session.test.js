@@ -210,7 +210,59 @@ async function run(){
   const denHostAgain = await claimReward(await readSession(denSession.code), denHost);
   assert.equal(denHostAgain.firstClaim, false, "Tiger Den cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-5, Night Fang, Tiger Den Assault, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
+  const siegeHost = { id:910501, first_name:"Siege Host" };
+  const siegeMate = { id:910502, first_name:"Siege Mate" };
+  let siegeSession = await createSession(siegeHost, { launchType:"village-siege" });
+  siegeSession = await joinSession(siegeSession.code, siegeMate);
+  assert.equal(siegeSession.launchType, "village-siege", "Village Siege keeps its own operation identity");
+  siegeSession = await applyAction(siegeSession, siegeHost, "start");
+  let siegeSnapshot = await buildSnapshot(siegeSession, siegeHost.id);
+  assert.equal(siegeSnapshot.mission.title, "Village Siege", "Village Siege has its own mission title");
+  assert.equal(siegeSnapshot.mission.chapterName, "Suncrest Village", "Village Siege has its own map identity");
+  assert.equal(siegeSnapshot.mission.rescueRequired, 5, "Village Siege requires all five trapped villagers");
+  assert.equal(siegeSnapshot.tigers.length, 5, "Village Siege has four siege tigers and one Alpha");
+  assert.equal(siegeSnapshot.boss.name, "Ironmane Alpha", "Village Siege has its own boss");
+  assert.equal(siegeSnapshot.mission.timeLimitMs, 9 * 60 * 1000, "Village Siege uses its nine-minute siege timer");
+  assert(siegeSnapshot.world.width >= 4600 && siegeSnapshot.world.height >= 2600, "Village Siege has a full-sized Suncrest Village map");
+
+  const villageElder = siegeSnapshot.civilians[0];
+  await writePlayerPatch(siegeSession.code, siegeHost.id, { x:villageElder.x, y:villageElder.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(siegeSession.code), siegeHost, "rescue", { civilianId:villageElder.id });
+  siegeSnapshot = await buildSnapshot(await readSession(siegeSession.code), siegeHost.id);
+  assert(siegeSnapshot.rescuedIds.includes(villageElder.id), "Village Siege villagers use the real shared rescue action");
+
+  const ironmane = siegeSnapshot.boss;
+  await writePlayerPatch(siegeSession.code, siegeHost.id, { x:ironmane.x, y:ironmane.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(siegeSession.code), siegeHost, "attack", { tigerId:ironmane.id });
+  siegeSnapshot = await buildSnapshot(await readSession(siegeSession.code), siegeHost.id);
+  assert(siegeSnapshot.boss.hp < siegeSnapshot.boss.hpMax, "Ironmane uses the real shared combat action");
+
+  const siegeClearedAt = Date.now();
+  await writePlayerPatch(siegeSession.code, siegeHost.id, {
+    x:siegeSnapshot.extraction.x,
+    y:siegeSnapshot.extraction.y,
+    rescuedIds:siegeSnapshot.civilians.map((civilian)=>civilian.id),
+    tigerDamage:Object.fromEntries(siegeSnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
+    lastSeenAt:siegeClearedAt,
+  });
+  await writePlayerPatch(siegeSession.code, siegeMate.id, {
+    x:siegeSnapshot.extraction.x,
+    y:siegeSnapshot.extraction.y,
+    lastSeenAt:siegeClearedAt,
+  });
+  siegeSnapshot = await buildSnapshot(await readSession(siegeSession.code), siegeHost.id);
+  assert.equal(siegeSnapshot.status, "complete", "Village Siege can be completed through its real objectives");
+  const siegeHostReward = await claimReward(await readSession(siegeSession.code), siegeHost);
+  const siegeMateReward = await claimReward(await readSession(siegeSession.code), siegeMate);
+  assert.equal(siegeHostReward.reward.badge, "Suncrest Village Shield", "Village Siege awards its own badge");
+  assert.equal(siegeHostReward.reward.cash, 9600, "Village Siege awards its own cash payout");
+  assert.equal(siegeHostReward.reward.seasonPoints, 20, "Village Siege awards its own season points");
+  assert.equal(siegeHostReward.storyProgress, null, "Village Siege never changes Story progress");
+  assert.notEqual(siegeHostReward.receipt, siegeMateReward.receipt, "both Village Siege players receive separate receipts");
+  const siegeHostAgain = await claimReward(await readSession(siegeSession.code), siegeHost);
+  assert.equal(siegeHostAgain.firstClaim, false, "Village Siege cannot pay the same player twice in one room");
+
+  console.log("PASS: Story Missions 1-5, Night Fang, Tiger Den, Village Siege, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
 }
 
 run().catch((error)=>{

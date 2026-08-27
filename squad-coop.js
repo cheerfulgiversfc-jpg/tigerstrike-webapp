@@ -64,6 +64,15 @@
       reward:"$8,200 • 2 perk points • 16 season points • Stoneclaw Den Breaker badge",
       mapLabel:"Cave Wilds",
     },
+    {
+      id:"village-siege",
+      icon:"🏘️",
+      title:"Village Siege",
+      short:"Rescue 5 trapped villagers, clear 4 siege tigers, defeat Ironmane Alpha, and extract.",
+      description:"Fight across the bright Suncrest Village battlefield during a nine-minute siege. Rescue the elder, teacher, vendor, nurse, and gate keeper, break the four-tiger siege pack, defeat Ironmane Alpha, then extract together.",
+      reward:"$9,600 • 2 perk points • 20 season points • Suncrest Village Shield badge",
+      mapLabel:"Suncrest Village",
+    },
   ]);
 
   const $ = (id) => document.getElementById(id);
@@ -159,8 +168,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V6.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V6.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.2 • Co-op Command");
+      ? `Tiger Strike V6.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V6.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.3 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -383,7 +392,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V6.2 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V6.3 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -449,7 +458,7 @@
       <div class="squadSectionHead"><div><div class="squadKicker">Replayable team challenges</div><div class="squadMissionName">🐅 Special Operations</div><div class="squadDesc">These missions have their own objectives, badges, and rewards. They never skip, replace, or unlock Story missions.</div></div><span class="squadProgressPill">Team mode</span></div>
       <div class="squadOperationGrid">
         ${SPECIAL_OPERATIONS.map((row)=>`<button type="button" class="squadMissionChoice ${operation.id === row.id ? "active" : ""}" data-squad-command="select-operation" data-squad-operation="${esc(row.id)}"><span>${row.icon} ${esc(row.title)}</span><small>${esc(row.short)}</small></button>`).join("")}
-        <div class="squadMissionChoice preview" aria-disabled="true"><span>🔒 More operations</span><small>Village Siege, Convoy Rescue, Alpha Hunt, Storm Extraction, and Endless Survival will arrive only after their real gameplay is complete.</small></div>
+        <div class="squadMissionChoice preview" aria-disabled="true"><span>🔒 More operations</span><small>Convoy Rescue, Alpha Hunt, Storm Extraction, and Endless Survival will arrive only after their real gameplay is complete.</small></div>
       </div>
       <div class="squadSelectedMission"><div><div class="squadKicker">Playable now • ${esc(operation.mapLabel)}</div><div class="squadSectionTitle">${operation.icon} ${esc(operation.title)}</div><div class="squadDesc">${esc(operation.description)}</div><div class="squadSmall"><b>Reward:</b> ${esc(operation.reward)}</div></div><span class="squadReadyPill ready">Two Players</span></div>
       <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create ${esc(operation.title)} Squad</button></div>
@@ -1246,6 +1255,16 @@
     ctx.fillStyle="#fbbf24";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText("TIGER DEN",0,45);ctx.restore();
   }
 
+  function drawVillageBarricade(ctx,x,y,angle=0){
+    ctx.save();ctx.translate(x,y);ctx.rotate(angle);
+    ctx.fillStyle="rgba(2,6,23,.28)";roundRect(ctx,-60,13,120,18,7);ctx.fill();
+    ctx.fillStyle="#9a6a3a";ctx.strokeStyle="#f5d08a";ctx.lineWidth=3;
+    for(const offset of [-38,0,38]){ctx.save();ctx.translate(offset,0);ctx.rotate(offset===0?-.08:.08);roundRect(ctx,-8,-28,16,58,4);ctx.fill();ctx.stroke();ctx.restore();}
+    ctx.fillStyle="#b7793f";roundRect(ctx,-62,-12,124,20,5);ctx.fill();ctx.stroke();
+    ctx.fillStyle="#facc15";ctx.fillRect(-48,-7,24,5);ctx.fillRect(-10,-7,24,5);ctx.fillRect(28,-7,24,5);
+    ctx.restore();
+  }
+
   function drawStoryCivilian(ctx,civ,rescued){
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"]};
     const [shirt,pants]=colors[civ.look]||colors.field;ctx.save();ctx.translate(civ.x,civ.y);ctx.globalAlpha=rescued?.24:1;
@@ -1286,6 +1305,7 @@
     const worldW = Math.max(view.w, Number(snap.world?.width || view.w));
     const worldH = Math.max(view.h, Number(snap.world?.height || view.h));
     const denAssault = snap.launchType === "tiger-den";
+    const villageSiege = snap.launchType === "village-siege";
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -1293,22 +1313,22 @@
     const visible = (x,y,pad=120)=>x >= view.x-pad && x <= view.x+view.w+pad && y >= view.y-pad && y <= view.y+view.h+pad;
     const nearRoad = (x,y,pad=75)=>verticalRoads.some((road)=>Math.abs(x-road)<pad)||horizontalRoads.some((road)=>Math.abs(y-road)<pad);
 
-    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,denAssault?"#62533c":"#3f7b4d");terrain.addColorStop(.52,denAssault?"#3f4936":"#2f6944");terrain.addColorStop(1,denAssault?"#29382f":"#24583c");ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
-    ctx.fillStyle=denAssault?"rgba(168,139,92,.16)":"rgba(102,164,91,.20)";
+    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,denAssault?"#62533c":(villageSiege?"#66a85c":"#3f7b4d"));terrain.addColorStop(.52,denAssault?"#3f4936":(villageSiege?"#43814d":"#2f6944"));terrain.addColorStop(1,denAssault?"#29382f":(villageSiege?"#2c6845":"#24583c"));ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
+    ctx.fillStyle=denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":"rgba(102,164,91,.20)");
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
 
-    ctx.fillStyle=denAssault?"rgba(32,31,29,.88)":"rgba(35,117,145,.80)";ctx.beginPath();ctx.moveTo(0,riverTop);
+    ctx.fillStyle=denAssault?"rgba(32,31,29,.88)":(villageSiege?"rgba(31,142,174,.86)":"rgba(35,117,145,.80)");ctx.beginPath();ctx.moveTo(0,riverTop);
     for(let x=0;x<=worldW+180;x+=180){ctx.lineTo(x,riverTop+Math.sin((x/worldW)*Math.PI*5)*42);}
     ctx.lineTo(worldW,worldH);ctx.lineTo(0,worldH);ctx.closePath();ctx.fill();
 
-    ctx.fillStyle=denAssault?"#49443b":"#4b5563";
+    ctx.fillStyle=denAssault?"#49443b":(villageSiege?"#455267":"#4b5563");
     for(const y of horizontalRoads) ctx.fillRect(0,y-roadW/2,worldW,roadW);
     for(const x of verticalRoads) ctx.fillRect(x-roadW/2,0,roadW,worldH);
-    ctx.strokeStyle=denAssault?"rgba(214,180,125,.42)":"rgba(241,245,249,.58)";ctx.lineWidth=4;
+    ctx.strokeStyle=denAssault?"rgba(214,180,125,.42)":(villageSiege?"rgba(248,250,252,.78)":"rgba(241,245,249,.58)");ctx.lineWidth=4;
     for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y-roadW/2+8);ctx.lineTo(worldW,y-roadW/2+8);ctx.moveTo(0,y+roadW/2-8);ctx.lineTo(worldW,y+roadW/2-8);ctx.stroke();}
     for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x-roadW/2+8,0);ctx.lineTo(x-roadW/2+8,worldH);ctx.moveTo(x+roadW/2-8,0);ctx.lineTo(x+roadW/2-8,worldH);ctx.stroke();}
-    ctx.strokeStyle=denAssault?"rgba(251,146,60,.62)":"rgba(250,204,21,.78)";ctx.lineWidth=5;ctx.setLineDash(denAssault?[18,34]:[34,28]);
+    ctx.strokeStyle=denAssault?"rgba(251,146,60,.62)":(villageSiege?"rgba(253,224,71,.92)":"rgba(250,204,21,.78)");ctx.lineWidth=5;ctx.setLineDash(denAssault?[18,34]:[34,28]);
     for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(worldW,y);ctx.stroke();}
     for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,worldH);ctx.stroke();}
     ctx.setLineDash([]);
@@ -1318,7 +1338,7 @@
       for(let x=roadX-roadW*.52;x<roadX+roadW*.53;x+=24){ctx.beginPath();ctx.moveTo(x,bridgeY-8);ctx.lineTo(x,bridgeY+102);ctx.stroke();}
     }
 
-    for(let i=0;i<(denAssault?150:240);i++){
+    for(let i=0;i<(denAssault?150:(villageSiege?185:240));i++){
       const x=70+((i*337+53)%Math.max(100,Math.floor(worldW-140)));
       const y=80+((i*191+97)%Math.max(100,Math.floor(worldH-180)));
       if(!visible(x,y,70)||nearRoad(x,y,88)||y>riverTop-55) continue;
@@ -1326,7 +1346,7 @@
       else drawStoryTree(ctx,x,y,.68+(i%5)*.075);
     }
     const roofColors=["#9a5c38","#7c4a32","#72452f","#a1623c"];
-    for(let i=0;i<(denAssault?12:34);i++){
+    for(let i=0;i<(denAssault?12:(villageSiege?58:34));i++){
       const x=100+((i*421+160)%Math.max(140,Math.floor(worldW-280)));
       const y=110+((i*263+120)%Math.max(140,Math.floor(riverTop-260)));
       if(!visible(x,y,210)||nearRoad(x+80,y+52,125)) continue;
@@ -1336,6 +1356,18 @@
       const caves=[[worldW*.18,worldH*.17,1.05],[worldW*.58,worldH*.31,1.3],[worldW*.82,worldH*.62,1.12],[worldW*.43,worldH*.70,.92]];
       for(const [x,y,size] of caves){if(visible(x,y,150))drawDenCave(ctx,x,y,size);}
       ctx.fillStyle="rgba(245,158,11,.14)";ctx.beginPath();ctx.arc(worldW*.62,worldH*.51,230,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(251,146,60,.42)";ctx.lineWidth=8;ctx.setLineDash([20,16]);ctx.stroke();ctx.setLineDash([]);
+    }
+    if(villageSiege){
+      const plazaX=worldW*.54,plazaY=worldH*.50;
+      if(visible(plazaX,plazaY,300)){
+        ctx.fillStyle="rgba(226,232,240,.24)";ctx.beginPath();ctx.arc(plazaX,plazaY,158,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(254,240,138,.76)";ctx.lineWidth=7;ctx.setLineDash([18,12]);ctx.stroke();ctx.setLineDash([]);
+        ctx.fillStyle="rgba(7,35,27,.88)";roundRect(ctx,plazaX-116,plazaY-46,232,52,13);ctx.fill();ctx.strokeStyle="#86efac";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#dcfce7";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("SUNCREST SAFEHOUSE",plazaX,plazaY-14);
+      }
+      const barricades=[
+        [worldW*.28,worldH*.24,0],[worldW*.54,worldH*.24,0],[worldW*.81,worldH*.50,Math.PI/2],
+        [worldW*.28,worldH*.76,Math.PI/2],[worldW*.54,worldH*.76,0],[worldW*.81,worldH*.76,0],
+      ];
+      for(const [x,y,angle] of barricades){if(visible(x,y,110))drawVillageBarricade(ctx,x,y,angle);}
     }
 
     const spawns=(snap.spawns||snap.players||[]).map((player)=>({x:Number(player.x||0),y:Number(player.y||0)}));
@@ -1363,7 +1395,8 @@
     for(const tiger of (snap.tigers||[])){if(tiger.defeated)continue;ctx.fillStyle="#fb923c";ctx.beginPath();ctx.arc(mx+tiger.x*sx,my+tiger.y*sy,tiger.boss?5:3.5,0,Math.PI*2);ctx.fill();}
     for(const player of (snap.players||[])){const mine=Number(player.userId)===viewerId();const src=mine&&state.local?state.local:player;ctx.fillStyle=mine?"#22d3ee":"#a78bfa";ctx.beginPath();ctx.arc(mx+src.x*sx,my+src.y*sy,5,0,Math.PI*2);ctx.fill();}
     ctx.strokeStyle="#f8fafc";ctx.lineWidth=1.5;ctx.strokeRect(mx+view.x*sx,my+view.y*sy,Math.min(mw,view.w*sx),Math.min(mh,view.h*sy));
-    ctx.fillStyle="#dbeafe";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText(state.snapshot?.launchType === "tiger-den" ? "CAVE WILDS MAP" : (sharedStoryActive() ? "STORY DISTRICT MAP" : "NIGHT FANG MAP"),mx+mw/2,my+mh-7);
+    const mapName=sharedStoryActive()?"STORY DISTRICT MAP":`${String(selectedOperation().mapLabel||"SPECIAL OPERATION").toUpperCase()} MAP`;
+    ctx.fillStyle="#dbeafe";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText(mapName,mx+mw/2,my+mh-7);
   }
 
   function drawOffscreenTeammate(ctx,snap,view,w,h){

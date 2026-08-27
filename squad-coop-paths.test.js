@@ -116,8 +116,10 @@ async function run(){
   html = element("squadBody").innerHTML;
   assert(html.includes("Operation Night Fang"), "Night Fang is inside Special Operations");
   assert(html.includes("Tiger Den Assault"), "Tiger Den Assault is a real Special Operation choice");
+  assert(html.includes("Village Siege"), "Village Siege is a real Special Operation choice");
   assert(html.includes("Special Operations do not change your Story mission number"), "Special Operation progression is explained as separate");
   assert(html.includes("only after their real gameplay is complete"), "remaining future operations stay honest previews");
+  assert(html.includes("Convoy Rescue, Alpha Hunt, Storm Extraction, and Endless Survival"), "only unfinished operations remain in the preview list");
 
   await clickCommand("select-operation", { squadOperation:"tiger-den" });
   html = element("squadBody").innerHTML;
@@ -126,7 +128,15 @@ async function run(){
   assert(html.includes("$8,200"), "Tiger Den selection shows its exact reward");
   assert(html.includes("Create Tiger Den Assault Squad"), "Tiger Den can create its own squad room");
 
-  console.log("PASS: Co-op Home separates Story Campaign and playable Night Fang/Tiger Den operations with accurate routing");
+  await clickCommand("select-operation", { squadOperation:"village-siege" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Suncrest Village"), "Village Siege selection exposes its own map identity");
+  assert(html.includes("Ironmane Alpha"), "Village Siege selection exposes its own boss objective");
+  assert(html.includes("$9,600"), "Village Siege selection shows its exact reward");
+  assert(html.includes("Suncrest Village Shield badge"), "Village Siege selection names its unique badge");
+  assert(html.includes("Create Village Siege Squad"), "Village Siege can create its own squad room");
+
+  console.log("PASS: Co-op Home separates Story Campaign and three playable Special Operations with accurate routing");
 }
 
 run().catch((error)=>{

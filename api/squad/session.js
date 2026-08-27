@@ -42,15 +42,22 @@ async function prepareInvite(botToken, user, session){
   const playUrl = appLink(session.code, username);
   const community = await getCommunitySnapshot({ botToken, userId:userIdOf(user) });
   const sharedStory = session.launchType === "shared-story";
-  const operation = session.launchType === "tiger-den"
-    ? {
+  const operation = {
+    "tiger-den":{
         id:"tiger_den",
         name:"Tiger Den Assault",
         button:"🪨 Join Tiger Den Assault",
         heading:"🪨 TIGER DEN ASSAULT REQUEST",
         detail:"Rescue two trapped field specialists, clear the den guards, defeat Stoneclaw Alpha, revive each other, and extract together.",
-      }
-    : {
+      },
+    "village-siege":{
+        id:"village_siege",
+        name:"Village Siege",
+        button:"🏘️ Join Village Siege",
+        heading:"🏘️ VILLAGE SIEGE TEAMMATE REQUEST",
+        detail:"Rescue five trapped villagers, clear the siege pack, defeat Ironmane Alpha, revive each other, and extract together.",
+      },
+  }[session.launchType] || {
         id:"night_fang",
         name:"Operation Night Fang",
         button:"🐅 Join Operation Night Fang",
@@ -130,7 +137,7 @@ module.exports = async function handler(req, res){
         storyMissionLevel:requestedStoryLevel,
         launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 5
           ? "shared-story"
-          : (requestedLaunchType === "tiger-den" ? "tiger-den" : "live-squad"),
+          : (["tiger-den","village-siege"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
       });
     }else if(action === "join"){
       session = await joinSession(cleanCode(body?.code), user);
