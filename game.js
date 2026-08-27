@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5011";
+const TS_BUILD = "5012";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 5;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -13403,7 +13403,7 @@ function renderWorldMapCampaign(){
     ? `
         <button class="good" onclick="startWorldMapRegionMission('${selected.id}')">👤 Play Story ${selectedMissionLevel} Solo</button>
         ${sharedStoryPilotAvailable
-          ? `<button class="good" onclick="startWorldMapStoryCoopMission('${selected.id}')">👥 Open Story ${selectedMissionLevel} in Live Squad</button>`
+          ? `<button class="good" onclick="startWorldMapStoryCoopMission('${selected.id}')">👥 Play Story ${selectedMissionLevel} with Teammate</button>`
           : `<button class="ghost" disabled title="Two-player Story currently includes Missions 1-${FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL}.">👥 Two Player • Missions 1-${FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL}</button>`}
         <button class="ghost" onclick="openMissionBriefFromWorldMap()">Brief First</button>
         <button class="ghost" onclick="setWorldMapActiveRegion('${selected.id}')">Focus Region</button>
@@ -13651,6 +13651,22 @@ function startWorldMapStoryCoopMission(id){
     openWorldMapCampaign();
     toast("Two-player service is unavailable right now. Solo Story is still safe.");
   }
+  return false;
+}
+function openSoloStoryMissionFromCoop(level=1){
+  if(window.__TUTORIAL_MODE__) return toast("Story mission selection unlocks after the tutorial.");
+  const maxLevel = worldMapMaxUnlockedStoryLevel(S);
+  const missionLevel = clamp(Math.floor(Number(level || 1)), 1, maxLevel);
+  const wm = ensureWorldMapCampaignState(S);
+  const selectedRegion = worldMapRegionById(wm.selectedRegionId);
+  const region = worldMapRegionUnlocked(selectedRegion, S)
+    ? selectedRegion
+    : (WORLD_MAP_CAMPAIGN_REGIONS.find((row)=>worldMapRegionUnlocked(row, S)) || WORLD_MAP_CAMPAIGN_REGIONS[0]);
+  ensureWorldMapPrepState(S).selectedLevel = missionLevel;
+  wm.selectedRegionId = region.id;
+  save();
+  openWorldMapCampaign();
+  toast(`Story Mission ${missionLevel} selected for Solo. Review your prep, then tap Play Story ${missionLevel} Solo.`);
   return false;
 }
 function applySharedStoryCompletion(progress={}, receipt=""){
@@ -61928,6 +61944,7 @@ window.selectWorldMapRegion = selectWorldMapRegion;
 window.setWorldMapActiveRegion = setWorldMapActiveRegion;
 window.startWorldMapRegionMission = startWorldMapRegionMission;
 window.startWorldMapStoryCoopMission = startWorldMapStoryCoopMission;
+window.openSoloStoryMissionFromCoop = openSoloStoryMissionFromCoop;
 window.applySharedStoryCompletion = applySharedStoryCompletion;
 window.prepareLiveSquadHub = prepareLiveSquadHub;
 window.returnToLiveSquadMenuBackground = returnToLiveSquadMenuBackground;

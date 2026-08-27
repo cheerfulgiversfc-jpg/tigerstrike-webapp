@@ -265,6 +265,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - A live minimap shows both players, civilians, active tigers, extraction, roads, and the current camera area. An edge arrow shows the direction and distance to an off-screen teammate.
 - Civilians, tigers, player spawns, and extraction are scaled across the larger mission space while mission completion, reconnecting, field lives, restart, rewards, Shop, Inventory, and synchronized pause keep their existing server rules.
 
+### V6.1 Co-op Campaign Paths
+
+- Live Squad now opens into two honest, separate paths: `Story Campaign` and `Special Operations`.
+- Story Campaign lets the player select a mission and then choose Solo or Two Players. Solo keeps every unlocked Story mission available; Two Player is accurately marked ready for converted Story Missions 1–5.
+- Operation Night Fang now lives under Special Operations. Its badge and payout stay separate and never skip, replace, or unlock Story progress.
+- A squad code can be entered from either path and automatically restores the correct mission type. Existing reconnect, revive, restart, synchronized Shop/Inventory pause, reward dedupe, cameras, minimap, and expanded worlds remain intact.
+- Future operations are shown only as a roadmap preview; they are not presented as working buttons until their real gameplay is built.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

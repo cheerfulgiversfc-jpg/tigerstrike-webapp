@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V6.0 (Expanded Co-op Worlds)</title>
+  <title>Tiger Strike 🐅 — V6.1 (Co-op Campaign Paths)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5011-expanded-coop-worlds">
+  <link rel="stylesheet" href="./squad-coop.css?v=5012-coop-paths">
 
   <style>
     :root{
@@ -2425,10 +2425,10 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V6.0</span> <span class="tag">Expanded Co-op Worlds</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V6.1</span> <span class="tag">Co-op Campaign Paths</span></div>
       <div class="sub">
-        Live Squad now uses Story-sized mission worlds instead of shrinking one small arena onto the screen.<br>
-        Each player has an independent camera, expanded roads and districts, a live minimap, off-screen teammate guidance, and objectives spread across real travel distances. Shop and Inventory keep their synchronized squad pause.
+        Live Squad now clearly separates Story Campaign from Special Operations.<br>
+        Story lets you choose Solo or Two Players per mission; Night Fang keeps separate replayable progress, badges, and rewards. Two Player Story is currently playable for Missions 1–5, while Solo keeps every unlocked Story mission available.
       </div>
     </div>
     <div class="row topActions">
@@ -3261,11 +3261,11 @@
   </div>
 </div>
 
-<!-- V6.0 Expanded Co-op Worlds -->
+<!-- V6.1 Co-op Campaign Paths -->
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V6.0 • Co-op Home</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V6.1 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3306,9 +3306,9 @@
 </div>
 
 <!-- IMPORTANT: load game first (defines window.S and functions), then tutorial -->
-  <script src="./game.js?v=5011-expanded-coop-worlds"></script>
+  <script src="./game.js?v=5012-coop-paths"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
-  <script src="./squad-coop.js?v=5011-expanded-coop-worlds"></script>
+  <script src="./squad-coop.js?v=5012-coop-paths"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

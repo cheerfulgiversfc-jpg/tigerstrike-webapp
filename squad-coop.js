@@ -36,6 +36,7 @@
     error:"",
     storyMissionLevel:1,
     launchType:"shared-story",
+    hubSection:"home",
   };
   const SHARED_STORY_LEVELS = Object.freeze([
     { level:1, title:"Escort 2 villagers", description:"Escort two villagers, clear two tigers, and extract." },
@@ -71,9 +72,13 @@
   const missionName = () => sharedStoryActive() ? `Shared Story Mission ${Math.max(1, Number(state.snapshot?.storyMissionLevel || state.storyMissionLevel || 1))}` : "Operation Night Fang";
   const missionMeta = () => state.snapshot?.mission || {};
   const rescueRequired = () => Math.max(0, Number(missionMeta().rescueRequired ?? (sharedStoryActive() ? 2 : 4)));
-  const civilianCount = () => Math.max(rescueRequired(), Number(missionMeta().civilianCount ?? state.snapshot?.civilians?.length ?? 4));
-  const selectedStoryMeta = () => SHARED_STORY_LEVELS.find((row)=>row.level === Math.max(1, Number(state.storyMissionLevel || 1))) || SHARED_STORY_LEVELS[0];
-  const maxUnlockedSharedStoryLevel = () => clamp(Math.floor(Math.max(Number(window.S?.storyLastMission || 1), Number(window.S?.storyLevel || 1))), 1, 5);
+  const maxUnlockedStoryLevel = () => clamp(Math.floor(Math.max(Number(window.S?.storyLastMission || 1), Number(window.S?.storyLevel || 1))), 1, 100);
+  const twoPlayerStoryReady = (level=state.storyMissionLevel) => Math.max(1, Math.floor(Number(level || 1))) <= SHARED_STORY_LEVELS.length;
+  const selectedStoryDescription = () => {
+    const level = Math.max(1, Math.floor(Number(state.storyMissionLevel || 1)));
+    const converted = SHARED_STORY_LEVELS.find((row)=>row.level === level);
+    return converted?.description || `Story Mission ${level} is available Solo. Its Two Player version has not been converted yet.`;
+  };
 
   function equipmentButtonsHtml(){
     const active = state.snapshot?.status === "active";
@@ -129,11 +134,11 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V6.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : "Tiger Strike V6.0 • Co-op Home";
+      ? `Tiger Strike V6.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? "Tiger Strike V6.1 • Special Operation" : "Tiger Strike V6.1 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
-      : "🐅 Live Squad";
+      : (state.snapshot ? "🐅 Operation Night Fang" : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
   }
 
   function setMessage(message, error=false){
@@ -172,6 +177,7 @@
     if(!snapshot || typeof snapshot !== "object") return;
     state.snapshot = snapshot;
     state.launchType = snapshot.launchType === "shared-story" ? "shared-story" : "live-squad";
+    state.hubSection = state.launchType === "shared-story" ? "story" : "operations";
     state.storyMissionLevel = Number(snapshot.storyMissionLevel || 0);
     state.code = cleanCode(snapshot.code);
     const worldKey = `${Number(snapshot.world?.width || 0)}x${Number(snapshot.world?.height || 0)}:${snapshot.status}`;
@@ -314,26 +320,9 @@
   function lobbyHtml(){
     const snapshot = state.snapshot;
     if(!snapshot){
-      return `<div class="squadPanel">
-        ${equipmentButtonsHtml()}
-        <div class="squadMissionPicker" aria-label="Choose a two-player mission">
-          ${SHARED_STORY_LEVELS.map((mission)=>`<button type="button" class="squadMissionChoice ${sharedStoryActive() && Number(state.storyMissionLevel) === mission.level ? "active" : ""}" ${mission.level > maxUnlockedSharedStoryLevel() ? "disabled" : ""} data-squad-command="select-story" data-squad-story-level="${mission.level}">
-            <span>${mission.level > maxUnlockedSharedStoryLevel() ? "🔒" : "📖"} Story Mission ${mission.level}</span><small>${mission.level > maxUnlockedSharedStoryLevel() ? `Finish Mission ${mission.level - 1} first` : esc(mission.title)}</small>
-          </button>`).join("")}
-          <button type="button" class="squadMissionChoice ${sharedStoryActive() ? "" : "active"}" data-squad-command="select-operation">
-            <span>🐅 Operation Night Fang</span><small>The original Live Squad rescue operation</small>
-          </button>
-        </div>
-        <div class="squadHero">
-          <div><div class="squadKicker">${sharedStoryActive() ? "V6.0 Shared Story" : "V6.0 Live Operation"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${sharedStoryActive() ? esc(selectedStoryMeta().description) : "Two real Telegram players enter an expanded Night Fang District with independent cameras, civilians, a tiger pack, an Alpha, field lives, mission restart, and synchronized gear access."}</div></div>
-          <div class="squadCodeBox"><div class="squadSmall">PRIVATE TWO-PLAYER MISSION</div><div style="font-size:44px;margin:5px">🐅🐅</div><div class="squadSmall">One leader • One teammate</div></div>
-        </div>
-        <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Squad</button></div>
-        <div class="squadSmall squadJoinLabel">Enter the six-character code from your teammate</div>
-        <div class="squadJoinRow"><input class="squadInput" id="squadJoinCode" value="${esc(state.joinDraft)}" maxlength="6" placeholder="ABC123" aria-label="Six-character squad code" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="go"><button type="button" class="squadBtn" data-squad-command="paste-code">Paste</button><button type="button" class="squadBtn primary" data-squad-command="join">Join</button></div>
-        <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
-        <div class="squadSmall">Telegram requires both players to open the game through the Tiger Strike bot. If Telegram closes, Tiger Strike remembers this room and reconnects automatically when reopened. Rooms expire automatically.</div>
-      </div>`;
+      if(state.hubSection === "story") return storyCampaignLandingHtml();
+      if(state.hubSection === "operations") return specialOperationsLandingHtml();
+      return coopHomeHtml();
     }
     const full = snapshot.memberCount >= 2;
     const waiting = snapshot.status === "waiting";
@@ -358,6 +347,92 @@
     </div>`;
   }
 
+  function joinSquadHtml(){
+    return `<div class="squadJoinCard">
+      <div><div class="squadKicker">Already invited?</div><div class="squadSectionTitle">Join a teammate</div><div class="squadSmall">A squad code automatically opens the correct Story mission or Special Operation.</div></div>
+      <div class="squadJoinRow"><input class="squadInput" id="squadJoinCode" value="${esc(state.joinDraft)}" maxlength="6" placeholder="ABC123" aria-label="Six-character squad code" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="go"><button type="button" class="squadBtn" data-squad-command="paste-code">Paste</button><button type="button" class="squadBtn primary" data-squad-command="join">Join</button></div>
+    </div>`;
+  }
+
+  function coopHomeHtml(){
+    const storyMax = maxUnlockedStoryLevel();
+    return `<div class="squadPanel">
+      ${equipmentButtonsHtml()}
+      <div class="squadHomeHero"><div class="squadKicker">V6.1 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
+      <div class="squadPathGrid">
+        <button type="button" class="squadPathCard story" data-squad-command="hub-story">
+          <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
+          <small>Pick a Story mission, then choose Solo or Two Players. Solo supports all ${storyMax} unlocked mission${storyMax === 1 ? "" : "s"}; Two Player is ready for Missions 1–5.</small>
+          <b>Open Story Campaign →</b>
+        </button>
+        <button type="button" class="squadPathCard ops" data-squad-command="hub-operations">
+          <span class="squadPathIcon">🐅</span><span class="squadPathTitle">Special Operations</span>
+          <small>Replayable team missions with their own maps, bosses, badges, and rewards. They do not move or replace Story progress.</small>
+          <b>Open Special Operations →</b>
+        </button>
+      </div>
+      ${joinSquadHtml()}
+      <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
+      <div class="squadSmall">Both players must open Tiger Strike through the Telegram bot. Active rooms reconnect automatically when the game is reopened.</div>
+    </div>`;
+  }
+
+  function storyLevelButtonsHtml(){
+    const max = maxUnlockedStoryLevel();
+    const selected = clamp(Math.floor(Number(state.storyMissionLevel || 1)), 1, max);
+    const start = Math.max(1, selected - 2);
+    const end = Math.min(max, Math.max(selected + 2, Math.min(max, 5)));
+    const levels = [];
+    for(let level=start; level<=end; level++){
+      const meta = SHARED_STORY_LEVELS.find((row)=>row.level === level);
+      levels.push(`<button type="button" class="squadMissionChoice ${selected === level ? "active" : ""}" data-squad-command="select-story" data-squad-story-level="${level}">
+        <span>📖 Story Mission ${level}</span><small>${esc(meta?.title || (level <= SHARED_STORY_LEVELS.length ? "Two Player ready" : "Solo ready • Two Player conversion pending"))}</small>
+      </button>`);
+    }
+    return `<div class="squadLevelNav">
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="1">First</button>
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.max(1, selected - 1)}" ${selected <= 1 ? "disabled" : ""}>← Previous</button>
+      <span>Unlocked ${max}/100</span>
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.min(max, selected + 1)}" ${selected >= max ? "disabled" : ""}>Next →</button>
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${max}">Current</button>
+    </div><div class="squadMissionPicker" aria-label="Choose a Story mission">${levels.join("")}</div>`;
+  }
+
+  function storyCampaignLandingHtml(){
+    const level = clamp(Math.floor(Number(state.storyMissionLevel || 1)), 1, maxUnlockedStoryLevel());
+    const coopReady = twoPlayerStoryReady(level);
+    return `<div class="squadPanel">
+      <button type="button" class="squadBackLink" data-squad-command="hub-home">← Co-op Home</button>
+      <div class="squadSectionHead"><div><div class="squadKicker">Same campaign • choose every mission</div><div class="squadMissionName">📖 Story Campaign</div><div class="squadDesc">Your normal Story missions and unlocks. Choose Solo when you are alone or Two Players when a teammate is ready.</div></div><span class="squadProgressPill">Story ${maxUnlockedStoryLevel()}/100</span></div>
+      ${storyLevelButtonsHtml()}
+      <div class="squadSelectedMission"><div><div class="squadKicker">Selected mission</div><div class="squadSectionTitle">Story Mission ${level}</div><div class="squadDesc">${esc(selectedStoryDescription())}</div></div><span class="squadReadyPill ${coopReady ? "ready" : "pending"}">${coopReady ? "Two Player ready" : "Solo only for now"}</span></div>
+      <div class="squadPartyChoice">
+        <button type="button" class="squadPathCard solo" data-squad-command="play-solo"><span class="squadPathIcon">👤</span><span class="squadPathTitle">Play Solo</span><small>Continue to the normal Story map and pre-deploy setup for Mission ${level}.</small><b>Prepare Solo Mission →</b></button>
+        <button type="button" class="squadPathCard team ${coopReady ? "" : "locked"}" data-squad-command="create" ${coopReady ? "" : "disabled"}><span class="squadPathIcon">👥</span><span class="squadPathTitle">Play with Teammate</span><small>${coopReady ? `Create a private two-player Story Mission ${level} room. Both players earn their own reward and unlock.` : "This mission still needs its full Two Player conversion. Play it Solo without losing progress."}</small><b>${coopReady ? "Create Two Player Squad →" : "Two Player coming later"}</b></button>
+      </div>
+      ${joinSquadHtml()}
+      <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
+      <div class="squadSmall">Story progression belongs to each player. Special Operation badges and rewards are kept separate.</div>
+    </div>`;
+  }
+
+  function specialOperationsLandingHtml(){
+    return `<div class="squadPanel">
+      <button type="button" class="squadBackLink" data-squad-command="hub-home">← Co-op Home</button>
+      ${equipmentButtonsHtml()}
+      <div class="squadSectionHead"><div><div class="squadKicker">Replayable team challenges</div><div class="squadMissionName">🐅 Special Operations</div><div class="squadDesc">These missions have their own objectives, badges, and rewards. They never skip, replace, or unlock Story missions.</div></div><span class="squadProgressPill">Team mode</span></div>
+      <div class="squadOperationGrid">
+        <button type="button" class="squadMissionChoice active" data-squad-command="select-operation"><span>🐅 Operation Night Fang</span><small>Rescue 4 civilians, clear the tiger pack, defeat Night Fang Alpha, and extract together.</small></button>
+        <div class="squadMissionChoice preview" aria-disabled="true"><span>🔒 More operations</span><small>Tiger Den, Village Siege, Convoy Rescue, Alpha Hunt, Storm Extraction, and Endless Survival will arrive as real playable missions—not empty menu buttons.</small></div>
+      </div>
+      <div class="squadSelectedMission"><div><div class="squadKicker">Available now</div><div class="squadSectionTitle">Operation Night Fang</div><div class="squadDesc">An expanded team district with civilians, a roaming tiger pack, an Alpha boss, field lives, revives, restart, shared extraction, Shop, and Inventory.</div></div><span class="squadReadyPill ready">Two Players</span></div>
+      <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Night Fang Squad</button></div>
+      ${joinSquadHtml()}
+      <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
+      <div class="squadSmall">Night Fang rewards its own badge and payout. It does not change your Story mission number.</div>
+    </div>`;
+  }
+
   function arenaHtml(){
     const snap = state.snapshot;
     const mine = localSnapshotPlayer();
@@ -376,7 +451,7 @@
         <div class="squadHudCard"><div class="squadHudLabel">Mission</div><div class="squadHudValue" id="squadMissionHud">${statusText}</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Field Lives</div><div class="squadHudValue" id="squadLivesHud">${esc(livesHudText())}</div></div>
       </div>
-      <div class="squadStoryStrip"><span>📖 ${esc(missionMeta().title || missionName())}</span><span>🎯 ${esc(missionMeta().objective || "Shared objectives")}</span><span>🏘️ Shared Story District</span></div>
+      <div class="squadStoryStrip"><span>${sharedStoryActive() ? "📖" : "🐅"} ${esc(missionMeta().title || missionName())}</span><span>🎯 ${esc(missionMeta().objective || "Shared objectives")}</span><span>${sharedStoryActive() ? "🏘️ Story Campaign District" : "🌙 Night Fang District"}</span></div>
       <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${esc(playerConnectionText())}</div>
       <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
@@ -385,7 +460,7 @@
       <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} expanded shared Story battlefield with a player-following camera"></canvas>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : "⏱️ Operation Failed")}</div>
-        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Math.min(100, Number(state.storyMissionLevel || 1) + 1)} unlocks when each player claims the result.` : "Both players cleared Operation Night Fang and extracted together."}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : `Time expired. The squad leader can restart ${esc(missionName())}.`)}</div>
+        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Math.min(100, Number(state.storyMissionLevel || 1) + 1)} unlocks when each player claims the result.` : "Both players cleared Operation Night Fang and earned its separate Special Operation reward."}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : `Time expired. The squad leader can restart ${esc(missionName())}.`)}</div>
         ${snap.status === "complete" ? `<button type="button" class="squadBtn good" data-squad-command="claim">Claim Co-op Reward</button>` : ""}
         ${snap.status === "failed" && snap.isHost ? `<button type="button" class="squadBtn good" data-squad-command="restart">Restart Mission</button>` : ""}
         ${snap.status === "failed" && !snap.isHost ? `<button type="button" class="squadBtn" disabled>Waiting for Leader to Restart</button>` : ""}
@@ -439,7 +514,7 @@
     if(snap.failureReason === "squad_wipe") return "Squad wipe: Restart Mission restores both soldiers, both field lives, civilians, tigers, and the mission clock.";
     if(rescueRequired() > 0 && (snap.rescuedIds || []).length < rescueRequired()) return `Objective 1: ${missionMeta().objective || "Escort the civilians"} (${snap.rescuedIds.length}/${rescueRequired()} escorted).`;
     const threats = (snap.tigers || (snap.boss ? [snap.boss] : [])).filter((t)=>!t.defeated && Number(t.hp || 0) > 0);
-    if(threats.length) return `Objective 2: Clear the Story tiger threat together (${threats.length} tiger${threats.length===1?"":"s"} active).`;
+    if(threats.length) return `Objective 2: Clear the ${sharedStoryActive() ? "Story" : "Special Operation"} tiger threat together (${threats.length} tiger${threats.length===1?"":"s"} active).`;
     const ready = snap.extractionReadyIds || [];
     return `Objective: Both players stand inside the green extraction circle (${ready.length}/2 ready).`;
   }
@@ -542,8 +617,12 @@
     const lockKey = commandName === "role" ? `role:${role}` : (commandName === "action" ? `action:${actionName}` : commandName);
     if(state.pending.has(lockKey)) return;
     const commands = {
+      "hub-home":()=>selectHubSection("home"),
+      "hub-story":()=>selectHubSection("story"),
+      "hub-operations":()=>selectHubSection("operations"),
       "select-story":()=>selectMission("shared-story", Number(button?.dataset?.squadStoryLevel || 1)),
       "select-operation":()=>selectMission("live-squad"),
+      "play-solo":()=>playSoloStory(),
       create:()=>create(),
       join:()=>join(),
       role:()=>chooseRole(role),
@@ -571,16 +650,52 @@
     }
   }
 
-  function selectMission(launchType, storyLevel=1){
+  function selectHubSection(section="home"){
     if(state.snapshot) return;
-    state.launchType = launchType === "shared-story" ? "shared-story" : "live-squad";
-    state.storyMissionLevel = state.launchType === "shared-story" ? clamp(Math.floor(Number(storyLevel || 1)), 1, 5) : 0;
-    state.message = state.launchType === "shared-story"
-      ? `Story Mission ${state.storyMissionLevel} selected. Create a squad or enter your teammate's code.`
-      : "Operation Night Fang selected. Create a squad or enter your teammate's code.";
+    state.hubSection = ["story","operations"].includes(section) ? section : "home";
+    if(state.hubSection === "story"){
+      state.launchType = "shared-story";
+      state.storyMissionLevel = clamp(Math.floor(Number(state.storyMissionLevel || 1)), 1, maxUnlockedStoryLevel());
+      state.message = "Choose a Story mission, then choose Solo or Two Players.";
+    }else if(state.hubSection === "operations"){
+      state.launchType = "live-squad";
+      state.storyMissionLevel = 0;
+      state.message = "Operation Night Fang is ready. Create a squad or join your teammate.";
+    }else{
+      state.message = "Choose Story Campaign or Special Operations.";
+    }
     state.error = "";
     updateHeader();
     render();
+  }
+
+  function selectMission(launchType, storyLevel=1){
+    if(state.snapshot) return;
+    state.launchType = launchType === "shared-story" ? "shared-story" : "live-squad";
+    state.hubSection = state.launchType === "shared-story" ? "story" : "operations";
+    state.storyMissionLevel = state.launchType === "shared-story" ? clamp(Math.floor(Number(storyLevel || 1)), 1, maxUnlockedStoryLevel()) : 0;
+    state.message = state.launchType === "shared-story"
+      ? `Story Mission ${state.storyMissionLevel} selected. Choose Solo or Two Players.`
+      : "Operation Night Fang selected. Create a squad or join with your teammate's code.";
+    state.error = "";
+    updateHeader();
+    render();
+  }
+
+  function playSoloStory(){
+    if(state.snapshot) return;
+    const level = clamp(Math.floor(Number(state.storyMissionLevel || 1)), 1, maxUnlockedStoryLevel());
+    if(typeof window.openSoloStoryMissionFromCoop !== "function"){
+      setMessage("Solo Story setup is unavailable right now. Open the World Map and choose this mission there.", true);
+      return;
+    }
+    state.open = false;
+    stopPolling();
+    const overlay = $("liveSquadOverlay");
+    overlay?.classList.remove("open");
+    overlay?.setAttribute("aria-hidden", "true");
+    state.hubSection = "home";
+    window.openSoloStoryMissionFromCoop(level);
   }
 
   function bindOverlay(){
@@ -674,12 +789,18 @@
     if(!overlay) return;
     const requestedStoryLevel = Math.max(0, Math.floor(Number(opts?.storyMissionLevel || 0)));
     if(!state.snapshot){
-      if(requestedStoryLevel >= 1 && requestedStoryLevel <= 5){
+      if(requestedStoryLevel >= 1 && requestedStoryLevel <= 100){
         state.storyMissionLevel = requestedStoryLevel;
         state.launchType = "shared-story";
+        state.hubSection = "story";
       }else if(opts?.launchType === "live-squad"){
         state.storyMissionLevel = 0;
         state.launchType = "live-squad";
+        state.hubSection = "operations";
+      }else if(opts?.hubSection){
+        state.hubSection = ["story","operations"].includes(opts.hubSection) ? opts.hubSection : "home";
+      }else if(state.hubSection === "home"){
+        state.storyMissionLevel = maxUnlockedStoryLevel();
       }
     }
     updateHeader();
@@ -705,11 +826,21 @@
     const overlay = $("liveSquadOverlay");
     overlay?.classList.remove("open");
     overlay?.setAttribute("aria-hidden","true");
+    if(!state.snapshot){
+      state.hubSection = "home";
+      state.storyMissionLevel = maxUnlockedStoryLevel();
+      state.message = "Choose Story Campaign or Special Operations.";
+      state.error = "";
+      updateHeader();
+    }
     try{ window.returnToLiveSquadMenuBackground?.(); }catch(error){}
   }
 
   async function create(){
     if(!hasTelegramAuth()) return setMessage("Please open the game inside Telegram first.", true);
+    if(state.launchType === "shared-story" && !twoPlayerStoryReady()){
+      return setMessage(`Story Mission ${state.storyMissionLevel} is Solo only right now. Two Player is currently ready for Missions 1–${SHARED_STORY_LEVELS.length}.`, true);
+    }
     try{
       setMessage("Creating your private squad…");
       const payload = await api("create", {
@@ -908,6 +1039,9 @@
     state.frame = 0;
     Object.keys(state.move).forEach((key)=>{ state.move[key] = false; });
     resetRoomState();
+    state.hubSection = "home";
+    state.launchType = "shared-story";
+    state.storyMissionLevel = clamp(Math.floor(Number(window.S?.storyLevel || 1)), 1, maxUnlockedStoryLevel());
     state.message = message;
     state.error = "";
     try{ window.prepareLiveSquadHub?.(); }catch(error){}
