@@ -42,22 +42,37 @@ async function prepareInvite(botToken, user, session){
   const playUrl = appLink(session.code, username);
   const community = await getCommunitySnapshot({ botToken, userId:userIdOf(user) });
   const sharedStory = session.launchType === "shared-story";
+  const operation = session.launchType === "tiger-den"
+    ? {
+        id:"tiger_den",
+        name:"Tiger Den Assault",
+        button:"🪨 Join Tiger Den Assault",
+        heading:"🪨 TIGER DEN ASSAULT REQUEST",
+        detail:"Rescue two trapped field specialists, clear the den guards, defeat Stoneclaw Alpha, revive each other, and extract together.",
+      }
+    : {
+        id:"night_fang",
+        name:"Operation Night Fang",
+        button:"🐅 Join Operation Night Fang",
+        heading:"🐅 NIGHT FANG TEAMMATE REQUEST",
+        detail:"Rescue four civilians, defeat the tiger pack and Night Fang Alpha, revive each other, and extract together.",
+      };
   const buttons = [];
   const sharedLevel = Math.max(1, Number(session.storyMissionLevel || 1));
-  if(playUrl) buttons.push([{ text:sharedStory ? `📖 Join Story Mission ${sharedLevel}` : "🐅 Join Live Squad", url:playUrl }]);
+  if(playUrl) buttons.push([{ text:sharedStory ? `📖 Join Story Mission ${sharedLevel}` : operation.button, url:playUrl }]);
   if(community.joinUrl) buttons.push([{ text:`👥 Join ${community.title}`.slice(0, 64), url:community.joinUrl }]);
-  const missionName = sharedStory ? `Shared Story Mission ${Math.max(1, Number(session.storyMissionLevel || 1))}` : "Operation Night Fang";
+  const missionName = sharedStory ? `Shared Story Mission ${Math.max(1, Number(session.storyMissionLevel || 1))}` : operation.name;
   const shareText = [
-    sharedStory ? `📖 STORY MISSION ${sharedLevel} TEAMMATE REQUEST` : "🐅 LIVE SQUAD REQUEST",
+    sharedStory ? `📖 STORY MISSION ${sharedLevel} TEAMMATE REQUEST` : operation.heading,
     `I need one teammate for ${missionName}.`,
     sharedStory
       ? `Play Story Mission ${sharedLevel} together on the shared map, finish its real objective, and extract.`
-      : "Rescue four civilians, defeat the Alpha, revive each other, and extract together.",
+      : operation.detail,
     `Squad code: ${session.code}`,
   ].join("\n\n");
   const result = {
     type:"article",
-    id:`${sharedStory ? `story_m${sharedLevel}` : "night_fang"}_${session.code}`.slice(0, 64),
+    id:`${sharedStory ? `story_m${sharedLevel}` : operation.id}_${session.code}`.slice(0, 64),
     title:`Join ${missionName}`,
     description:`Private two-player Tiger Strike squad • Code ${session.code}`,
     input_message_content:{
@@ -110,9 +125,12 @@ module.exports = async function handler(req, res){
 
     if(action === "create"){
       const requestedStoryLevel = Math.max(0, Math.min(100, Math.floor(Number(body?.storyMissionLevel || 0))));
+      const requestedLaunchType = String(body?.launchType || "").trim().toLowerCase();
       session = await createSession(user, {
         storyMissionLevel:requestedStoryLevel,
-        launchType:body?.launchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 5 ? "shared-story" : "live-squad",
+        launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 5
+          ? "shared-story"
+          : (requestedLaunchType === "tiger-den" ? "tiger-den" : "live-squad"),
       });
     }else if(action === "join"){
       session = await joinSession(cleanCode(body?.code), user);

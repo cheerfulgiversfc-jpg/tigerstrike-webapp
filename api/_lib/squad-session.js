@@ -100,6 +100,17 @@ const SHARED_STORY_WORLD_SIZES = Object.freeze({
   5:Object.freeze({ width:4416, height:2480 }),
 });
 const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
+const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
+const TIGER_DEN_CIVILIANS = Object.freeze([
+  Object.freeze({ id:"den_ranger", x:285, y:255, name:"Trapped Ranger", look:"scout" }),
+  Object.freeze({ id:"den_researcher", x:905, y:285, name:"Den Researcher", look:"medic" }),
+]);
+const TIGER_DEN_TIGERS = Object.freeze([
+  Object.freeze({ id:"den_sentry", name:"Den Sentry", type:"Scout", hpMax:300, baseX:360, baseY:515, rangeX:88, rangeY:70, speed:.76, phase:.7 }),
+  Object.freeze({ id:"den_guard", name:"Cavern Guard", type:"Armored", hpMax:390, baseX:720, baseY:300, rangeX:94, rangeY:76, speed:.52, phase:2.4 }),
+  Object.freeze({ id:"den_stalker", name:"Tunnel Stalker", type:"Standard", hpMax:345, baseX:920, baseY:720, rangeX:105, rangeY:82, speed:.64, phase:4.5 }),
+  Object.freeze({ id:"stoneclaw_alpha", name:"Stoneclaw Alpha", type:"Alpha", hpMax:1600, baseX:705, baseY:565, rangeX:155, rangeY:125, speed:.40, phase:1.4, boss:true }),
+]);
 
 function nowMs(){ return Date.now(); }
 function clamp(value, min, max){ return Math.max(min, Math.min(max, Number(value || 0))); }
@@ -164,12 +175,46 @@ const EXPANDED_NIGHT_FANG_MISSION = expandMissionDefinition({
   civilians:CIVILIANS,
   tigers:TIGER_DEFS,
 }, NIGHT_FANG_WORLD_SIZE);
+const EXPANDED_TIGER_DEN_MISSION = expandMissionDefinition({
+  level:0,
+  chapter:0,
+  chapterName:"Cave Wilds",
+  title:"Tiger Den Assault",
+  objective:"Rescue two trapped field specialists, clear the den guards, defeat Stoneclaw Alpha, then extract together.",
+  rescueRequired:TIGER_DEN_CIVILIANS.length,
+  timeLimitMs:8 * 60 * 1000,
+  world:WORLD,
+  extraction:EXTRACTION,
+  spawns:SPAWNS,
+  civilians:TIGER_DEN_CIVILIANS,
+  tigers:TIGER_DEN_TIGERS,
+}, TIGER_DEN_WORLD_SIZE);
+const SPECIAL_OPERATION_MISSIONS = Object.freeze({
+  "live-squad":EXPANDED_NIGHT_FANG_MISSION,
+  "tiger-den":EXPANDED_TIGER_DEN_MISSION,
+});
+const VALID_LAUNCH_TYPES = Object.freeze(["shared-story", ...Object.keys(SPECIAL_OPERATION_MISSIONS)]);
+const ALL_COOP_MISSIONS = Object.freeze([
+  ...Object.values(EXPANDED_SHARED_STORY_MISSIONS),
+  ...Object.values(SPECIAL_OPERATION_MISSIONS),
+]);
+const ALL_COOP_TIGERS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []));
+const ALL_COOP_CIVILIANS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []));
+
+function normalizeLaunchType(value){
+  const type = String(value || "").trim().toLowerCase();
+  return VALID_LAUNCH_TYPES.includes(type) ? type : "live-squad";
+}
 
 function missionDefinition(session){
   if(session?.launchType === "shared-story"){
     return EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0)] || EXPANDED_SHARED_STORY_MISSIONS[1];
   }
-  return EXPANDED_NIGHT_FANG_MISSION;
+  return SPECIAL_OPERATION_MISSIONS[normalizeLaunchType(session?.launchType)] || EXPANDED_NIGHT_FANG_MISSION;
+}
+
+function missionLimitMs(session){
+  return Math.max(60 * 1000, Number(missionDefinition(session).timeLimitMs || MISSION_LIMIT_MS));
 }
 
 function randomCode(){
@@ -193,6 +238,7 @@ function normalizeSession(raw){
     if(reason) pausedBy[String(memberId)] = reason === "inventory" ? "inventory" : "shop";
   }
   const activePause = raw.status === "active" && Object.keys(pausedBy).length > 0;
+  const launchType = normalizeLaunchType(raw.launchType);
   return {
     version:1,
     code,
@@ -207,8 +253,10 @@ function normalizeSession(raw){
     pausedBy:activePause ? pausedBy : {},
     failureReason:cleanText(raw.failureReason, 32),
     storyMissionLevel:clamp(Math.floor(Number(raw.storyMissionLevel || 0)), 0, 100),
-    launchType:raw.launchType === "shared-story" ? "shared-story" : "live-squad",
-    title:raw.launchType === "shared-story" ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}` : "Operation Night Fang",
+    launchType,
+    title:launchType === "shared-story"
+      ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
+      : (launchType === "tiger-den" ? "Tiger Den Assault" : "Operation Night Fang"),
   };
 }
 
@@ -262,7 +310,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
   const maxHp = def.maxHp;
   const hp = clamp(src.hp ?? maxHp, 0, maxHp);
   const tigerDamage = {};
-  for(const tiger of TIGER_DEFS){
+  for(const tiger of ALL_COOP_TIGERS){
     const damage = clamp(src?.tigerDamage?.[tiger.id], 0, tiger.hpMax);
     if(damage > 0) tigerDamage[tiger.id] = damage;
   }
@@ -282,10 +330,10 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     livesRemaining:clamp(src.livesRemaining ?? STARTING_LIVES, 0, STARTING_LIVES),
     knockdowns:clamp(src.knockdowns, 0, 999),
     respawnAt:Math.max(0, Number(src.respawnAt || 0)),
-    bossDamage:clamp(src.bossDamage, 0, BOSS_HP_MAX),
+    bossDamage:clamp(src.bossDamage, 0, 2000),
     tigerDamage,
-    rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>CIVILIANS.some((c)=>c.id === id)))],
-    capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>TIGER_DEFS.some((t)=>t.id === id)))],
+    rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
+    capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
     revives:clamp(src.revives, 0, 999),
     joinedAt:Math.max(0, Number(src.joinedAt || base.joinedAt)),
     lastSeenAt:Math.max(0, Number(src.lastSeenAt || base.lastSeenAt)),
@@ -310,7 +358,7 @@ function tigerSnapshots(session, players, at=nowMs()){
   return missionDefinition(session).tigers.map((def)=>{
     const captured = players.some((player)=>(player?.capturedIds || []).includes(def.id));
     let damage = players.reduce((sum, player)=>sum + clamp(player?.tigerDamage?.[def.id], 0, def.hpMax), 0);
-    if(session?.launchType !== "shared-story" && def.boss && damage <= 0){
+    if(session?.launchType === "live-squad" && def.boss && damage <= 0){
       // Keep rooms created by the first V5 release playable after this update.
       damage = players.reduce((sum, player)=>sum + clamp(player?.bossDamage, 0, BOSS_HP_MAX), 0);
     }
@@ -360,7 +408,7 @@ async function createSession(user, opts={}){
     startedAt:0,
     completedAt:0,
     storyMissionLevel:clamp(Math.floor(Number(opts?.storyMissionLevel || 0)), 0, 100),
-    launchType:opts?.launchType === "shared-story" ? "shared-story" : "live-squad",
+    launchType:normalizeLaunchType(opts?.launchType),
   });
   await writePlayer(code, newPlayer(user, 0));
   return session;
@@ -404,7 +452,7 @@ function sessionDerived(session, players, at=nowMs()){
     .filter((p)=>!p.downed && distance(p, mission.extraction) <= mission.extraction.r)
     .map((p)=>p.userId);
   const allTigersCleared = tigers.every((t)=>t.defeated);
-  const legacyBossOnlyRoom = session.launchType !== "shared-story" && players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
+  const legacyBossOnlyRoom = session.launchType === "live-squad" && players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
   const objectivesReady = rescuedIds.length >= mission.rescueRequired && (allTigersCleared || legacyBossOnlyRoom);
   const squadWiped = players.length === session.memberIds.length && players.every((p)=>p.downed && Number(p.respawnAt || 0) <= 0 && Number(p.livesRemaining || 0) <= 0);
   return { rescuedIds, bossDamage, bossHp, boss, tigers, onlineIds, extractionReadyIds, objectivesReady, squadWiped };
@@ -437,7 +485,7 @@ async function maybeFinishSession(session, players){
     }
     if(sessionPaused(session)) return session;
   }
-  if(now - session.startedAt > MISSION_LIMIT_MS){
+  if(now - session.startedAt > missionLimitMs(session)){
     session.status = "failed";
     session.failureReason = "timeout";
     session.completedAt = now;
@@ -491,7 +539,7 @@ async function buildSnapshot(session, viewerId){
     }),
     serverNow:at,
     expiresAt:session.updatedAt + SESSION_TTL_MS,
-    timeLeftMs:session.status === "active" ? Math.max(0, MISSION_LIMIT_MS - (sessionClockNow(session, at) - session.startedAt)) : MISSION_LIMIT_MS,
+    timeLeftMs:session.status === "active" ? Math.max(0, missionLimitMs(session) - (sessionClockNow(session, at) - session.startedAt)) : missionLimitMs(session),
     mission:{
       level:mission.level,
       chapter:mission.chapter,
@@ -501,6 +549,7 @@ async function buildSnapshot(session, viewerId){
       rescueRequired:mission.rescueRequired,
       civilianCount:mission.civilians.length,
       tigerCount:mission.tigers.length,
+      timeLimitMs:missionLimitMs(session),
     },
     world:mission.world,
     spawns:mission.spawns,
@@ -737,13 +786,18 @@ async function claimReward(session, user){
     4:{ cash:2450, perkPoints:1, seasonPoints:9, badge:"Jungle Hut Rescue" },
     5:{ cash:2700, perkPoints:1, seasonPoints:10, badge:"Jungle Trail Team" },
   };
+  const operationRewards = {
+    "live-squad":{ cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },
+    "tiger-den":{ cash:8200, perkPoints:2, seasonPoints:16, badge:"Stoneclaw Den Breaker" },
+  };
+  const operationId = normalizeLaunchType(session.launchType);
   return {
     firstClaim,
-    receipt:`${sharedStory ? `shared-story-${sharedLevel}` : "night-fang"}:${session.code}:${uid}`,
+    receipt:`${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}`,
     storyProgress:sharedStory ? { completedLevel:sharedLevel, unlockLevel:Math.min(100, sharedLevel + 1) } : null,
     reward:sharedStory
       ? sharedRewards[sharedLevel]
-      : { cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },
+      : (operationRewards[operationId] || operationRewards["live-squad"]),
   };
 }
 
@@ -760,6 +814,7 @@ async function closeSession(session, user){
 module.exports = {
   ROLE_DEFS,
   TIGER_DEFS,
+  SPECIAL_OPERATION_MISSIONS,
   SHARED_STORY_MISSION_1,
   SHARED_STORY_MISSIONS,
   cleanCode,

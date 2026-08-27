@@ -115,10 +115,18 @@ async function run(){
   await clickCommand("hub-operations");
   html = element("squadBody").innerHTML;
   assert(html.includes("Operation Night Fang"), "Night Fang is inside Special Operations");
-  assert(html.includes("does not change your Story mission number"), "Night Fang progression is explained as separate");
-  assert(html.includes("not empty menu buttons"), "future operations are previews rather than fake controls");
+  assert(html.includes("Tiger Den Assault"), "Tiger Den Assault is a real Special Operation choice");
+  assert(html.includes("Special Operations do not change your Story mission number"), "Special Operation progression is explained as separate");
+  assert(html.includes("only after their real gameplay is complete"), "remaining future operations stay honest previews");
 
-  console.log("PASS: Co-op Home separates Story Campaign and Special Operations with accurate Solo/Two Player routing");
+  await clickCommand("select-operation", { squadOperation:"tiger-den" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Cave Wilds"), "Tiger Den selection exposes its own map identity");
+  assert(html.includes("Stoneclaw Alpha"), "Tiger Den selection exposes its own boss objective");
+  assert(html.includes("$8,200"), "Tiger Den selection shows its exact reward");
+  assert(html.includes("Create Tiger Den Assault Squad"), "Tiger Den can create its own squad room");
+
+  console.log("PASS: Co-op Home separates Story Campaign and playable Night Fang/Tiger Den operations with accurate routing");
 }
 
 run().catch((error)=>{

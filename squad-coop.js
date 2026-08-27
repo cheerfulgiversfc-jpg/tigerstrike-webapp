@@ -45,6 +45,26 @@
     { level:4, title:"Jungle Hut Rescue", description:"Rescue three villagers trapped near the jungle huts." },
     { level:5, title:"Jungle Trail Escort", description:"Escort four civilians through the jungle trail." },
   ]);
+  const SPECIAL_OPERATIONS = Object.freeze([
+    {
+      id:"live-squad",
+      icon:"🐅",
+      title:"Operation Night Fang",
+      short:"Rescue 4 civilians, clear the tiger pack, defeat Night Fang Alpha, and extract together.",
+      description:"An expanded team district with civilians, a roaming tiger pack, an Alpha boss, field lives, revives, restart, shared extraction, Shop, and Inventory.",
+      reward:"$6,500 • 1 perk point • 12 season points • Night Fang First Response badge",
+      mapLabel:"Night Fang District",
+    },
+    {
+      id:"tiger-den",
+      icon:"🪨",
+      title:"Tiger Den Assault",
+      short:"Rescue 2 trapped specialists, clear 3 den guards, defeat Stoneclaw Alpha, and extract.",
+      description:"Enter the Cave Wilds on a larger eight-minute assault. Fight through den sentries and armored guards, rescue both trapped specialists, defeat Stoneclaw Alpha, then extract together.",
+      reward:"$8,200 • 2 perk points • 16 season points • Stoneclaw Den Breaker badge",
+      mapLabel:"Cave Wilds",
+    },
+  ]);
 
   const $ = (id) => document.getElementById(id);
   const clamp = (v, min, max) => Math.max(min, Math.min(max, Number(v || 0)));
@@ -68,8 +88,13 @@
   const viewerId = () => Number(tgApp?.initDataUnsafe?.user?.id || state.snapshot?.viewerId || 0);
   const localSnapshotPlayer = () => (state.snapshot?.players || []).find((p)=>Number(p.userId) === viewerId()) || null;
   const remoteSnapshotPlayer = () => (state.snapshot?.players || []).find((p)=>Number(p.userId) !== viewerId()) || null;
+  const normalizeLaunchType = (value) => {
+    const type = String(value || "").trim().toLowerCase();
+    return type === "shared-story" || SPECIAL_OPERATIONS.some((operation)=>operation.id === type) ? type : "live-squad";
+  };
   const sharedStoryActive = () => state.launchType === "shared-story" || state.snapshot?.launchType === "shared-story";
-  const missionName = () => sharedStoryActive() ? `Shared Story Mission ${Math.max(1, Number(state.snapshot?.storyMissionLevel || state.storyMissionLevel || 1))}` : "Operation Night Fang";
+  const selectedOperation = () => SPECIAL_OPERATIONS.find((operation)=>operation.id === normalizeLaunchType(state.snapshot?.launchType || state.launchType)) || SPECIAL_OPERATIONS[0];
+  const missionName = () => sharedStoryActive() ? `Shared Story Mission ${Math.max(1, Number(state.snapshot?.storyMissionLevel || state.storyMissionLevel || 1))}` : selectedOperation().title;
   const missionMeta = () => state.snapshot?.mission || {};
   const rescueRequired = () => Math.max(0, Number(missionMeta().rescueRequired ?? (sharedStoryActive() ? 2 : 4)));
   const maxUnlockedStoryLevel = () => clamp(Math.floor(Math.max(Number(window.S?.storyLastMission || 1), Number(window.S?.storyLevel || 1))), 1, 100);
@@ -100,7 +125,7 @@
     if(!key || code.length !== 6) return;
     const record = {
       code,
-      launchType:snapshot?.launchType === "shared-story" || state.launchType === "shared-story" ? "shared-story" : "live-squad",
+      launchType:normalizeLaunchType(snapshot?.launchType || state.launchType),
       storyMissionLevel:Math.max(0, Math.floor(Number(snapshot?.storyMissionLevel || state.storyMissionLevel || 0))),
       savedAt:Date.now(),
     };
@@ -118,7 +143,7 @@
       }
       return {
         code:cleanCode(record.code),
-        launchType:record.launchType === "shared-story" ? "shared-story" : "live-squad",
+        launchType:normalizeLaunchType(record.launchType),
         storyMissionLevel:Math.max(0, Math.floor(Number(record.storyMissionLevel || 0))),
       };
     }catch(error){ return null; }
@@ -134,11 +159,11 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V6.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? "Tiger Strike V6.1 • Special Operation" : "Tiger Strike V6.1 • Co-op Command");
+      ? `Tiger Strike V6.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V6.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.2 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
-      : (state.snapshot ? "🐅 Operation Night Fang" : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
+      : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
   }
 
   function setMessage(message, error=false){
@@ -176,7 +201,7 @@
   function applySnapshot(snapshot, roles){
     if(!snapshot || typeof snapshot !== "object") return;
     state.snapshot = snapshot;
-    state.launchType = snapshot.launchType === "shared-story" ? "shared-story" : "live-squad";
+    state.launchType = normalizeLaunchType(snapshot.launchType);
     state.hubSection = state.launchType === "shared-story" ? "story" : "operations";
     state.storyMissionLevel = Number(snapshot.storyMissionLevel || 0);
     state.code = cleanCode(snapshot.code);
@@ -334,7 +359,7 @@
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
-      <details class="squadHowTo" open><summary>How ${sharedStoryActive() ? "Shared Story" : "Live Squad"} works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tigers, health, and extraction.<br><b>3.</b> Move near a person to Rescue, near a tiger to Attack, or near a downed teammate to Revive.<br><b>4.</b> ${sharedStoryActive() ? `${rescueRequired() > 0 ? `Escort ${rescueRequired()} civilians, ` : ""}clear the Story tigers, then extract together. Completion unlocks Story Mission ${Math.min(100, Number(state.storyMissionLevel || 1) + 1)} for both players.` : "Rescue all four, defeat Night Fang, then extract together."}</div></details>
+      <details class="squadHowTo" open><summary>How ${sharedStoryActive() ? "Shared Story" : selectedOperation().title} works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tigers, health, and extraction.<br><b>3.</b> Move near a person to Rescue, near a tiger to Attack, or near a downed teammate to Revive.<br><b>4.</b> ${sharedStoryActive() ? `${rescueRequired() > 0 ? `Escort ${rescueRequired()} civilians, ` : ""}clear the Story tigers, then extract together. Completion unlocks Story Mission ${Math.min(100, Number(state.storyMissionLevel || 1) + 1)} for both players.` : `${esc(missionMeta().objective || selectedOperation().short)} Special Operation progress stays separate from Story.`}</div></details>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
         ${waiting ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate</button>` : ""}
@@ -358,7 +383,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V6.1 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V6.2 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -417,19 +442,20 @@
   }
 
   function specialOperationsLandingHtml(){
+    const operation = selectedOperation();
     return `<div class="squadPanel">
       <button type="button" class="squadBackLink" data-squad-command="hub-home">← Co-op Home</button>
       ${equipmentButtonsHtml()}
       <div class="squadSectionHead"><div><div class="squadKicker">Replayable team challenges</div><div class="squadMissionName">🐅 Special Operations</div><div class="squadDesc">These missions have their own objectives, badges, and rewards. They never skip, replace, or unlock Story missions.</div></div><span class="squadProgressPill">Team mode</span></div>
       <div class="squadOperationGrid">
-        <button type="button" class="squadMissionChoice active" data-squad-command="select-operation"><span>🐅 Operation Night Fang</span><small>Rescue 4 civilians, clear the tiger pack, defeat Night Fang Alpha, and extract together.</small></button>
-        <div class="squadMissionChoice preview" aria-disabled="true"><span>🔒 More operations</span><small>Tiger Den, Village Siege, Convoy Rescue, Alpha Hunt, Storm Extraction, and Endless Survival will arrive as real playable missions—not empty menu buttons.</small></div>
+        ${SPECIAL_OPERATIONS.map((row)=>`<button type="button" class="squadMissionChoice ${operation.id === row.id ? "active" : ""}" data-squad-command="select-operation" data-squad-operation="${esc(row.id)}"><span>${row.icon} ${esc(row.title)}</span><small>${esc(row.short)}</small></button>`).join("")}
+        <div class="squadMissionChoice preview" aria-disabled="true"><span>🔒 More operations</span><small>Village Siege, Convoy Rescue, Alpha Hunt, Storm Extraction, and Endless Survival will arrive only after their real gameplay is complete.</small></div>
       </div>
-      <div class="squadSelectedMission"><div><div class="squadKicker">Available now</div><div class="squadSectionTitle">Operation Night Fang</div><div class="squadDesc">An expanded team district with civilians, a roaming tiger pack, an Alpha boss, field lives, revives, restart, shared extraction, Shop, and Inventory.</div></div><span class="squadReadyPill ready">Two Players</span></div>
-      <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create Night Fang Squad</button></div>
+      <div class="squadSelectedMission"><div><div class="squadKicker">Playable now • ${esc(operation.mapLabel)}</div><div class="squadSectionTitle">${operation.icon} ${esc(operation.title)}</div><div class="squadDesc">${esc(operation.description)}</div><div class="squadSmall"><b>Reward:</b> ${esc(operation.reward)}</div></div><span class="squadReadyPill ready">Two Players</span></div>
+      <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create ${esc(operation.title)} Squad</button></div>
       ${joinSquadHtml()}
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
-      <div class="squadSmall">Night Fang rewards its own badge and payout. It does not change your Story mission number.</div>
+      <div class="squadSmall">Each Special Operation has its own badge and payout. Special Operations do not change your Story mission number.</div>
     </div>`;
   }
 
@@ -451,16 +477,16 @@
         <div class="squadHudCard"><div class="squadHudLabel">Mission</div><div class="squadHudValue" id="squadMissionHud">${statusText}</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Field Lives</div><div class="squadHudValue" id="squadLivesHud">${esc(livesHudText())}</div></div>
       </div>
-      <div class="squadStoryStrip"><span>${sharedStoryActive() ? "📖" : "🐅"} ${esc(missionMeta().title || missionName())}</span><span>🎯 ${esc(missionMeta().objective || "Shared objectives")}</span><span>${sharedStoryActive() ? "🏘️ Story Campaign District" : "🌙 Night Fang District"}</span></div>
+      <div class="squadStoryStrip"><span>${sharedStoryActive() ? "📖" : selectedOperation().icon} ${esc(missionMeta().title || missionName())}</span><span>🎯 ${esc(missionMeta().objective || "Shared objectives")}</span><span>${sharedStoryActive() ? "🏘️ Story Campaign District" : `🗺️ ${esc(missionMeta().chapterName || selectedOperation().mapLabel)}`}</span></div>
       <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${esc(playerConnectionText())}</div>
       <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>👤 Civilian</span><span>🐅 Tiger</span></div>
-      <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} expanded shared Story battlefield with a player-following camera"></canvas>
+      <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} expanded cooperative battlefield with a player-following camera"></canvas>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : "⏱️ Operation Failed")}</div>
-        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Math.min(100, Number(state.storyMissionLevel || 1) + 1)} unlocks when each player claims the result.` : "Both players cleared Operation Night Fang and earned its separate Special Operation reward."}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : `Time expired. The squad leader can restart ${esc(missionName())}.`)}</div>
+        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Math.min(100, Number(state.storyMissionLevel || 1) + 1)} unlocks when each player claims the result.` : `Both players cleared ${esc(selectedOperation().title)} and earned its separate Special Operation reward.`}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : `Time expired. The squad leader can restart ${esc(missionName())}.`)}</div>
         ${snap.status === "complete" ? `<button type="button" class="squadBtn good" data-squad-command="claim">Claim Co-op Reward</button>` : ""}
         ${snap.status === "failed" && snap.isHost ? `<button type="button" class="squadBtn good" data-squad-command="restart">Restart Mission</button>` : ""}
         ${snap.status === "failed" && !snap.isHost ? `<button type="button" class="squadBtn" disabled>Waiting for Leader to Restart</button>` : ""}
@@ -621,7 +647,7 @@
       "hub-story":()=>selectHubSection("story"),
       "hub-operations":()=>selectHubSection("operations"),
       "select-story":()=>selectMission("shared-story", Number(button?.dataset?.squadStoryLevel || 1)),
-      "select-operation":()=>selectMission("live-squad"),
+      "select-operation":()=>selectMission(button?.dataset?.squadOperation || "live-squad"),
       "play-solo":()=>playSoloStory(),
       create:()=>create(),
       join:()=>join(),
@@ -658,9 +684,9 @@
       state.storyMissionLevel = clamp(Math.floor(Number(state.storyMissionLevel || 1)), 1, maxUnlockedStoryLevel());
       state.message = "Choose a Story mission, then choose Solo or Two Players.";
     }else if(state.hubSection === "operations"){
-      state.launchType = "live-squad";
+      state.launchType = sharedStoryActive() ? "live-squad" : normalizeLaunchType(state.launchType);
       state.storyMissionLevel = 0;
-      state.message = "Operation Night Fang is ready. Create a squad or join your teammate.";
+      state.message = `${selectedOperation().title} is ready. Create a squad or join your teammate.`;
     }else{
       state.message = "Choose Story Campaign or Special Operations.";
     }
@@ -671,12 +697,12 @@
 
   function selectMission(launchType, storyLevel=1){
     if(state.snapshot) return;
-    state.launchType = launchType === "shared-story" ? "shared-story" : "live-squad";
+    state.launchType = normalizeLaunchType(launchType);
     state.hubSection = state.launchType === "shared-story" ? "story" : "operations";
     state.storyMissionLevel = state.launchType === "shared-story" ? clamp(Math.floor(Number(storyLevel || 1)), 1, maxUnlockedStoryLevel()) : 0;
     state.message = state.launchType === "shared-story"
       ? `Story Mission ${state.storyMissionLevel} selected. Choose Solo or Two Players.`
-      : "Operation Night Fang selected. Create a squad or join with your teammate's code.";
+      : `${selectedOperation().title} selected. Create a squad or join with your teammate's code.`;
     state.error = "";
     updateHeader();
     render();
@@ -793,9 +819,9 @@
         state.storyMissionLevel = requestedStoryLevel;
         state.launchType = "shared-story";
         state.hubSection = "story";
-      }else if(opts?.launchType === "live-squad"){
+      }else if(SPECIAL_OPERATIONS.some((operation)=>operation.id === opts?.launchType)){
         state.storyMissionLevel = 0;
-        state.launchType = "live-squad";
+        state.launchType = normalizeLaunchType(opts.launchType);
         state.hubSection = "operations";
       }else if(opts?.hubSection){
         state.hubSection = ["story","operations"].includes(opts.hubSection) ? opts.hubSection : "home";
@@ -1211,6 +1237,15 @@
     ctx.fillStyle="#93c5fd";ctx.fillRect(x+w*.12,y+h*.26,w*.18,h*.2);ctx.fillRect(x+w*.7,y+h*.26,w*.18,h*.2);
   }
 
+  function drawDenCave(ctx,x,y,size=1){
+    ctx.save();ctx.translate(x,y);ctx.scale(size,size);
+    ctx.fillStyle="rgba(2,6,23,.35)";ctx.beginPath();ctx.ellipse(6,24,78,22,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#57534e";ctx.beginPath();ctx.moveTo(-82,20);ctx.quadraticCurveTo(-68,-76,0,-88);ctx.quadraticCurveTo(70,-72,88,20);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#292524";ctx.beginPath();ctx.ellipse(0,13,43,55,0,Math.PI,Math.PI*2);ctx.lineTo(43,26);ctx.lineTo(-43,26);ctx.closePath();ctx.fill();
+    ctx.strokeStyle="#a8a29e";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(-75,13);ctx.quadraticCurveTo(-55,-62,0,-73);ctx.quadraticCurveTo(58,-61,77,14);ctx.stroke();
+    ctx.fillStyle="#fbbf24";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText("TIGER DEN",0,45);ctx.restore();
+  }
+
   function drawStoryCivilian(ctx,civ,rescued){
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"]};
     const [shirt,pants]=colors[civ.look]||colors.field;ctx.save();ctx.translate(civ.x,civ.y);ctx.globalAlpha=rescued?.24:1;
@@ -1232,7 +1267,7 @@
     ctx.strokeStyle="#111827";ctx.lineWidth=4;for(const x of [-20,-7,7,18]){ctx.beginPath();ctx.moveTo(x,-15);ctx.lineTo(x+8,13);ctx.stroke();}
     ctx.strokeStyle="#d97706";ctx.lineWidth=7;for(const x of [-18,9]){ctx.beginPath();ctx.moveTo(x,12);ctx.lineTo(x-2,28);ctx.stroke();}
     ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(37,-9,2.5,0,Math.PI*2);ctx.fill();ctx.fillStyle="#f8fafc";ctx.beginPath();ctx.arc(44,-3,3,0,Math.PI*2);ctx.fill();ctx.restore();
-    const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);const barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,tiger.y-(alpha?65:50),barW,11,5);ctx.fill();ctx.fillStyle=alpha?"#fb7185":"#f59e0b";roundRect(ctx,tiger.x-barW/2+2,tiger.y-(alpha?63:48),(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(alpha?"NIGHT FANG ALPHA":String(tiger.type||"TIGER").toUpperCase(),tiger.x,tiger.y-(alpha?72:57));
+    const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);const barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,tiger.y-(alpha?65:50),barW,11,5);ctx.fill();ctx.fillStyle=alpha?"#fb7185":"#f59e0b";roundRect(ctx,tiger.x-barW/2+2,tiger.y-(alpha?63:48),(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase(),tiger.x,tiger.y-(alpha?72:57));
   }
 
   function drawStorySoldier(ctx,p,source,draw,mine){
@@ -1250,6 +1285,7 @@
   function drawExpandedDistrict(ctx, snap, view){
     const worldW = Math.max(view.w, Number(snap.world?.width || view.w));
     const worldH = Math.max(view.h, Number(snap.world?.height || view.h));
+    const denAssault = snap.launchType === "tiger-den";
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -1257,22 +1293,22 @@
     const visible = (x,y,pad=120)=>x >= view.x-pad && x <= view.x+view.w+pad && y >= view.y-pad && y <= view.y+view.h+pad;
     const nearRoad = (x,y,pad=75)=>verticalRoads.some((road)=>Math.abs(x-road)<pad)||horizontalRoads.some((road)=>Math.abs(y-road)<pad);
 
-    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,"#3f7b4d");terrain.addColorStop(.52,"#2f6944");terrain.addColorStop(1,"#24583c");ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
-    ctx.fillStyle="rgba(102,164,91,.20)";
+    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,denAssault?"#62533c":"#3f7b4d");terrain.addColorStop(.52,denAssault?"#3f4936":"#2f6944");terrain.addColorStop(1,denAssault?"#29382f":"#24583c");ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
+    ctx.fillStyle=denAssault?"rgba(168,139,92,.16)":"rgba(102,164,91,.20)";
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
 
-    ctx.fillStyle="rgba(35,117,145,.80)";ctx.beginPath();ctx.moveTo(0,riverTop);
+    ctx.fillStyle=denAssault?"rgba(32,31,29,.88)":"rgba(35,117,145,.80)";ctx.beginPath();ctx.moveTo(0,riverTop);
     for(let x=0;x<=worldW+180;x+=180){ctx.lineTo(x,riverTop+Math.sin((x/worldW)*Math.PI*5)*42);}
     ctx.lineTo(worldW,worldH);ctx.lineTo(0,worldH);ctx.closePath();ctx.fill();
 
-    ctx.fillStyle="#4b5563";
+    ctx.fillStyle=denAssault?"#49443b":"#4b5563";
     for(const y of horizontalRoads) ctx.fillRect(0,y-roadW/2,worldW,roadW);
     for(const x of verticalRoads) ctx.fillRect(x-roadW/2,0,roadW,worldH);
-    ctx.strokeStyle="rgba(241,245,249,.58)";ctx.lineWidth=4;
+    ctx.strokeStyle=denAssault?"rgba(214,180,125,.42)":"rgba(241,245,249,.58)";ctx.lineWidth=4;
     for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y-roadW/2+8);ctx.lineTo(worldW,y-roadW/2+8);ctx.moveTo(0,y+roadW/2-8);ctx.lineTo(worldW,y+roadW/2-8);ctx.stroke();}
     for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x-roadW/2+8,0);ctx.lineTo(x-roadW/2+8,worldH);ctx.moveTo(x+roadW/2-8,0);ctx.lineTo(x+roadW/2-8,worldH);ctx.stroke();}
-    ctx.strokeStyle="rgba(250,204,21,.78)";ctx.lineWidth=5;ctx.setLineDash([34,28]);
+    ctx.strokeStyle=denAssault?"rgba(251,146,60,.62)":"rgba(250,204,21,.78)";ctx.lineWidth=5;ctx.setLineDash(denAssault?[18,34]:[34,28]);
     for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(worldW,y);ctx.stroke();}
     for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,worldH);ctx.stroke();}
     ctx.setLineDash([]);
@@ -1282,18 +1318,24 @@
       for(let x=roadX-roadW*.52;x<roadX+roadW*.53;x+=24){ctx.beginPath();ctx.moveTo(x,bridgeY-8);ctx.lineTo(x,bridgeY+102);ctx.stroke();}
     }
 
-    for(let i=0;i<240;i++){
+    for(let i=0;i<(denAssault?150:240);i++){
       const x=70+((i*337+53)%Math.max(100,Math.floor(worldW-140)));
       const y=80+((i*191+97)%Math.max(100,Math.floor(worldH-180)));
       if(!visible(x,y,70)||nearRoad(x,y,88)||y>riverTop-55) continue;
-      drawStoryTree(ctx,x,y,.68+(i%5)*.075);
+      if(denAssault && i%3===0){ctx.fillStyle=i%2?"#78716c":"#57534e";ctx.beginPath();ctx.ellipse(x,y,18+(i%5)*4,13+(i%4)*3,(i%7)*.22,0,Math.PI*2);ctx.fill();}
+      else drawStoryTree(ctx,x,y,.68+(i%5)*.075);
     }
     const roofColors=["#9a5c38","#7c4a32","#72452f","#a1623c"];
-    for(let i=0;i<34;i++){
+    for(let i=0;i<(denAssault?12:34);i++){
       const x=100+((i*421+160)%Math.max(140,Math.floor(worldW-280)));
       const y=110+((i*263+120)%Math.max(140,Math.floor(riverTop-260)));
       if(!visible(x,y,210)||nearRoad(x+80,y+52,125)) continue;
       drawStoryBuilding(ctx,x,y,142+(i%3)*14,88+(i%2)*12,roofColors[i%roofColors.length]);
+    }
+    if(denAssault){
+      const caves=[[worldW*.18,worldH*.17,1.05],[worldW*.58,worldH*.31,1.3],[worldW*.82,worldH*.62,1.12],[worldW*.43,worldH*.70,.92]];
+      for(const [x,y,size] of caves){if(visible(x,y,150))drawDenCave(ctx,x,y,size);}
+      ctx.fillStyle="rgba(245,158,11,.14)";ctx.beginPath();ctx.arc(worldW*.62,worldH*.51,230,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(251,146,60,.42)";ctx.lineWidth=8;ctx.setLineDash([20,16]);ctx.stroke();ctx.setLineDash([]);
     }
 
     const spawns=(snap.spawns||snap.players||[]).map((player)=>({x:Number(player.x||0),y:Number(player.y||0)}));
@@ -1321,7 +1363,7 @@
     for(const tiger of (snap.tigers||[])){if(tiger.defeated)continue;ctx.fillStyle="#fb923c";ctx.beginPath();ctx.arc(mx+tiger.x*sx,my+tiger.y*sy,tiger.boss?5:3.5,0,Math.PI*2);ctx.fill();}
     for(const player of (snap.players||[])){const mine=Number(player.userId)===viewerId();const src=mine&&state.local?state.local:player;ctx.fillStyle=mine?"#22d3ee":"#a78bfa";ctx.beginPath();ctx.arc(mx+src.x*sx,my+src.y*sy,5,0,Math.PI*2);ctx.fill();}
     ctx.strokeStyle="#f8fafc";ctx.lineWidth=1.5;ctx.strokeRect(mx+view.x*sx,my+view.y*sy,Math.min(mw,view.w*sx),Math.min(mh,view.h*sy));
-    ctx.fillStyle="#dbeafe";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText("LIVE DISTRICT MAP",mx+mw/2,my+mh-7);
+    ctx.fillStyle="#dbeafe";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText(state.snapshot?.launchType === "tiger-den" ? "CAVE WILDS MAP" : (sharedStoryActive() ? "STORY DISTRICT MAP" : "NIGHT FANG MAP"),mx+mw/2,my+mh-7);
   }
 
   function drawOffscreenTeammate(ctx,snap,view,w,h){
@@ -1353,7 +1395,7 @@
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
     ctx.restore();
-    ctx.fillStyle="rgba(2,6,23,.84)";roundRect(ctx,18,18,350,54,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 16px system-ui";ctx.textAlign="left";ctx.fillText(sharedStoryActive()?"EXPANDED STORY DISTRICT":"EXPANDED NIGHT FANG",34,43);ctx.fillStyle="#93c5fd";ctx.font="850 12px system-ui";ctx.fillText(`${Math.round(worldW/100)/10}km × ${Math.round(worldH/100)/10}km • CAMERA FOLLOW`,34,61);
+    ctx.fillStyle="rgba(2,6,23,.84)";roundRect(ctx,18,18,350,54,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 16px system-ui";ctx.textAlign="left";ctx.fillText(sharedStoryActive()?"EXPANDED STORY DISTRICT":String(selectedOperation().mapLabel||"SPECIAL OPERATION").toUpperCase(),34,43);ctx.fillStyle="#93c5fd";ctx.font="850 12px system-ui";ctx.fillText(`${Math.round(worldW/100)/10}km × ${Math.round(worldH/100)/10}km • CAMERA FOLLOW`,34,61);
     drawCoopMiniMap(ctx,snap,view,w);drawOffscreenTeammate(ctx,snap,view,w,h);
   }
 
@@ -1365,7 +1407,7 @@
   async function resumeSavedRoom(record){
     if(!record || !hasTelegramAuth()) return;
     state.code = cleanCode(record.code);
-    state.launchType = record.launchType === "shared-story" ? "shared-story" : "live-squad";
+    state.launchType = normalizeLaunchType(record.launchType);
     state.storyMissionLevel = Math.max(0, Math.floor(Number(record.storyMissionLevel || 0)));
     open({ storyMissionLevel:state.storyMissionLevel, launchType:state.launchType });
     setMessage(`Reconnecting to ${missionName()}…`);

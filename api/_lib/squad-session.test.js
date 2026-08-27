@@ -159,7 +159,58 @@ async function run(){
   assert.equal(captureSnapshot.tigers[0].captured, true, "Mission 3 supports the Story capture choice");
   assert.equal(captureSnapshot.tigers[0].defeated, true, "a captured tiger clears the shared threat");
 
-  console.log("PASS: Story Missions 1-5, synchronized Shop/Inventory pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
+  const denHost = { id:910401, first_name:"Den Host" };
+  const denMate = { id:910402, first_name:"Den Mate" };
+  let denSession = await createSession(denHost, { launchType:"tiger-den" });
+  denSession = await joinSession(denSession.code, denMate);
+  assert.equal(denSession.launchType, "tiger-den", "Tiger Den keeps its own operation identity");
+  denSession = await applyAction(denSession, denHost, "start");
+  let denSnapshot = await buildSnapshot(denSession, denHost.id);
+  assert.equal(denSnapshot.mission.title, "Tiger Den Assault", "Tiger Den has its own mission title");
+  assert.equal(denSnapshot.mission.chapterName, "Cave Wilds", "Tiger Den has its own map identity");
+  assert.equal(denSnapshot.mission.rescueRequired, 2, "Tiger Den requires both trapped specialists");
+  assert.equal(denSnapshot.tigers.length, 4, "Tiger Den has three guards and one Alpha");
+  assert.equal(denSnapshot.boss.name, "Stoneclaw Alpha", "Tiger Den has its own boss");
+  assert.equal(denSnapshot.mission.timeLimitMs, 8 * 60 * 1000, "Tiger Den uses its eight-minute assault timer");
+  assert(denSnapshot.world.width >= 4500 && denSnapshot.world.height >= 2500, "Tiger Den has a full-sized Cave Wilds map");
+
+  const trappedRanger = denSnapshot.civilians[0];
+  await writePlayerPatch(denSession.code, denHost.id, { x:trappedRanger.x, y:trappedRanger.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(denSession.code), denHost, "rescue", { civilianId:trappedRanger.id });
+  denSnapshot = await buildSnapshot(await readSession(denSession.code), denHost.id);
+  assert(denSnapshot.rescuedIds.includes(trappedRanger.id), "Tiger Den specialists use the real shared rescue action");
+
+  const stoneclaw = denSnapshot.boss;
+  await writePlayerPatch(denSession.code, denHost.id, { x:stoneclaw.x, y:stoneclaw.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(denSession.code), denHost, "attack", { tigerId:stoneclaw.id });
+  denSnapshot = await buildSnapshot(await readSession(denSession.code), denHost.id);
+  assert(denSnapshot.boss.hp < denSnapshot.boss.hpMax, "Stoneclaw uses the real shared combat action");
+
+  const denClearedAt = Date.now();
+  await writePlayerPatch(denSession.code, denHost.id, {
+    x:denSnapshot.extraction.x,
+    y:denSnapshot.extraction.y,
+    rescuedIds:denSnapshot.civilians.map((civilian)=>civilian.id),
+    tigerDamage:Object.fromEntries(denSnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
+    lastSeenAt:denClearedAt,
+  });
+  await writePlayerPatch(denSession.code, denMate.id, {
+    x:denSnapshot.extraction.x,
+    y:denSnapshot.extraction.y,
+    lastSeenAt:denClearedAt,
+  });
+  denSnapshot = await buildSnapshot(await readSession(denSession.code), denHost.id);
+  assert.equal(denSnapshot.status, "complete", "Tiger Den can be completed through its real objectives");
+  const denHostReward = await claimReward(await readSession(denSession.code), denHost);
+  const denMateReward = await claimReward(await readSession(denSession.code), denMate);
+  assert.equal(denHostReward.reward.badge, "Stoneclaw Den Breaker", "Tiger Den awards its own badge");
+  assert.equal(denHostReward.reward.cash, 8200, "Tiger Den awards its own cash payout");
+  assert.equal(denHostReward.storyProgress, null, "Tiger Den never changes Story progress");
+  assert.notEqual(denHostReward.receipt, denMateReward.receipt, "both Tiger Den players receive separate receipts");
+  const denHostAgain = await claimReward(await readSession(denSession.code), denHost);
+  assert.equal(denHostAgain.firstClaim, false, "Tiger Den cannot pay the same player twice in one room");
+
+  console.log("PASS: Story Missions 1-5, Night Fang, Tiger Den Assault, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
 }
 
 run().catch((error)=>{

@@ -273,6 +273,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - A squad code can be entered from either path and automatically restores the correct mission type. Existing reconnect, revive, restart, synchronized Shop/Inventory pause, reward dedupe, cameras, minimap, and expanded worlds remain intact.
 - Future operations are shown only as a roadmap preview; they are not presented as working buttons until their real gameplay is built.
 
+### V6.2 Tiger Den Assault
+
+- Tiger Den Assault is the second fully playable Special Operation, with its own durable room identity instead of reusing the Night Fang mission.
+- The Cave Wilds operation uses a 4,560 × 2,560 rocky den map, an eight-minute mission timer, two trapped field specialists, three den guards, and the new 1,600 HP Stoneclaw Alpha boss.
+- Both players must rescue the specialists, defeat or capture every tiger, and reach extraction together. Existing reconnect, field lives, revives, squad-wipe restart, Shop, Inventory, and synchronized pause rules work unchanged.
+- Tiger Den invitations name the correct mission and objectives. Each player receives a separate deduplicated receipt, $8,200, two perk points, 16 season points, and the `Stoneclaw Den Breaker` badge.
+- Tiger Den completion never advances Story progress and does not alter Operation Night Fang rewards or rooms.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
