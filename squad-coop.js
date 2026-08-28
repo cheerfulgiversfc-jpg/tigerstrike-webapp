@@ -44,6 +44,11 @@
     { level:3, title:"First Tiger Encounter", description:"Kill or capture the first Story tiger together, then extract." },
     { level:4, title:"Jungle Hut Rescue", description:"Rescue three villagers trapped near the jungle huts." },
     { level:5, title:"Jungle Trail Escort", description:"Escort four civilians through the jungle trail." },
+    { level:6, title:"Tall Grass Ambush", description:"Find and clear three tigers attacking from the tall grass." },
+    { level:7, title:"Injured Villager Escort", description:"Escort the injured villager to safety while clearing the road tigers." },
+    { level:8, title:"First Research Capture", description:"Weaken and capture your first research tiger, then extract together." },
+    { level:9, title:"Village Gate Defense", description:"Defend the village gate against a four-tiger attack." },
+    { level:10, title:"Village Alpha", description:"Defeat or capture the Village Alpha boss and finish Chapter 1 together." },
   ]);
   const SPECIAL_OPERATIONS = Object.freeze([
     {
@@ -142,6 +147,7 @@
   const missionName = () => sharedStoryActive() ? `Shared Story Mission ${Math.max(1, Number(state.snapshot?.storyMissionLevel || state.storyMissionLevel || 1))}` : selectedOperation().title;
   const missionMeta = () => state.snapshot?.mission || {};
   const rescueRequired = () => Math.max(0, Number(missionMeta().rescueRequired ?? (sharedStoryActive() ? 2 : 4)));
+  const captureRequired = () => Math.max(0, Number(missionMeta().captureRequired || 0));
   const maxUnlockedStoryLevel = () => clamp(Math.floor(Math.max(Number(window.S?.storyLastMission || 1), Number(window.S?.storyLevel || 1))), 1, 100);
   const twoPlayerStoryReady = (level=state.storyMissionLevel) => Math.max(1, Math.floor(Number(level || 1))) <= SHARED_STORY_LEVELS.length;
   const selectedStoryDescription = () => {
@@ -204,8 +210,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V6.7 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V6.7 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.7 • Co-op Command");
+      ? `Tiger Strike V6.8 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V6.8 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.8 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -316,7 +322,7 @@
     const wavesCleared = Math.max(0, Number(snap.mission?.survivalWavesCleared || 0));
     const regroupSeconds = Math.max(0, Math.ceil(Number(snap.mission?.survivalIntermissionMs || 0) / 1000));
     set("squadBossHud", `${snap.boss?.boss ? `Alpha ${Math.round(snap.boss?.hp || 0)} HP` : `${activeThreats} tiger${activeThreats===1?"":"s"}`} • ${activeThreats} active`);
-    set("squadCivHud", survival ? `${wavesCleared} wave${wavesCleared === 1 ? "" : "s"} cleared` : (rescueRequired() > 0 ? `${snap.rescuedIds?.length || 0}/${rescueRequired()} escorted` : "No escort objective"));
+    set("squadCivHud", survival ? `${wavesCleared} wave${wavesCleared === 1 ? "" : "s"} cleared` : (captureRequired() > 0 ? `${snap.capturedIds?.length || 0}/${captureRequired()} captured` : (rescueRequired() > 0 ? `${snap.rescuedIds?.length || 0}/${rescueRequired()} escorted` : "No escort objective")));
     set("squadMissionHud", snap.paused ? "PAUSED" : (survival ? (regroupSeconds > 0 ? `WAVE ${wave} CLEAR • ${regroupSeconds}s` : `WAVE ${wave}`) : `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`));
     set("squadLivesHud", livesHudText());
     const connection = $("squadConnection");
@@ -354,7 +360,13 @@
     const captureReady = tiger && Number(tiger.hp || 0) <= Number(tiger.hpMax || 1) * 0.30;
     const unavailableLabel = state.snapshot?.paused ? "⏸️ Paused<br><small>Gear menu open</small>" : "⏳ Down<br><small>Recovery</small>";
     if(attack){ attack.innerHTML = unavailable ? unavailableLabel : (tiger ? (tigerNear ? (captureReady ? `🛟 Capture<br><small>${esc(tiger.type || "Tiger")}</small>` : `🎯 Attack<br><small>${esc(tiger.type || "Tiger")}</small>`) : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"); attack.disabled = unavailable || !tiger; }
-    if(rescue){ rescue.innerHTML = unavailable ? unavailableLabel : (civilian ? (civNear ? `🛟 Rescue<br><small>${esc(civilian.name || "Civilian")}</small>` : `👤 Find Civilian<br><small>${Math.round(distance(state.local,civilian))}m</small>`) : "✅ Civilians Safe"); rescue.disabled = unavailable || !civilian; }
+    if(rescue){
+      const noCivilianLabel = captureRequired() > 0
+        ? `🔬 Capture Target<br><small>Use Attack at 30% health</small>`
+        : "✅ Civilians Safe";
+      rescue.innerHTML = unavailable ? unavailableLabel : (civilian ? (civNear ? `🛟 Rescue<br><small>${esc(civilian.name || "Civilian")}</small>` : `👤 Find Civilian<br><small>${Math.round(distance(state.local,civilian))}m</small>`) : noCivilianLabel);
+      rescue.disabled = unavailable || !civilian;
+    }
     if(revive){ revive.innerHTML = unavailable ? unavailableLabel : (teammate?.downed ? (reviveNear ? "💚 Revive<br><small>Teammate</small>" : `💚 Reach Teammate<br><small>${Math.round(distance(state.local,teammate))}m</small>`) : "💚 Revive<br><small>Not needed</small>"); revive.disabled = unavailable || !teammate?.downed; }
   }
 
@@ -432,11 +444,11 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V6.7 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V6.8 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
-          <small>Pick a Story mission, then choose Solo or Two Players. Solo supports all ${storyMax} unlocked mission${storyMax === 1 ? "" : "s"}; Two Player is ready for Missions 1–5.</small>
+          <small>Pick a Story mission, then choose Solo or Two Players. Solo supports all ${storyMax} unlocked mission${storyMax === 1 ? "" : "s"}; Two Player is ready for Missions 1–${SHARED_STORY_LEVELS.length}.</small>
           <b>Open Story Campaign →</b>
         </button>
         <button type="button" class="squadPathCard ops" data-squad-command="hub-operations">
@@ -465,6 +477,7 @@
     }
     return `<div class="squadLevelNav">
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="1">First</button>
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="6">Co-op 6–10</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.max(1, selected - 1)}" ${selected <= 1 ? "disabled" : ""}>← Previous</button>
       <span>Unlocked ${max}/100</span>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.min(max, selected + 1)}" ${selected >= max ? "disabled" : ""}>Next →</button>
@@ -525,7 +538,7 @@
       ${equipmentButtonsHtml()}
       <div class="squadHud">
         <div class="squadHudCard"><div class="squadHudLabel">Tiger Threats</div><div class="squadHudValue" id="squadBossHud">${snap.boss?.boss ? `Alpha ${Math.round(snap.boss.hp)} HP` : `${activeThreats} Story tigers`} • ${activeThreats} active</div></div>
-        <div class="squadHudCard"><div class="squadHudLabel">${survival ? "Survival" : "Civilians"}</div><div class="squadHudValue" id="squadCivHud">${survival ? `${survivalCleared} wave${survivalCleared === 1 ? "" : "s"} cleared` : (required > 0 ? `${rescued}/${required} escorted` : "No escort objective")}</div></div>
+        <div class="squadHudCard"><div class="squadHudLabel">${survival ? "Survival" : (captureRequired() > 0 ? "Research" : "Civilians")}</div><div class="squadHudValue" id="squadCivHud">${survival ? `${survivalCleared} wave${survivalCleared === 1 ? "" : "s"} cleared` : (captureRequired() > 0 ? `${snap.capturedIds?.length || 0}/${captureRequired()} captured` : (required > 0 ? `${rescued}/${required} escorted` : "No escort objective"))}</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Mission</div><div class="squadHudValue" id="squadMissionHud">${statusText}</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Field Lives</div><div class="squadHudValue" id="squadLivesHud">${esc(livesHudText())}</div></div>
       </div>
@@ -535,7 +548,7 @@
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
       ${survival && snap.mission.survivalExtractAvailable ? `<div class="squadConnection">✅ Extraction unlocked. Both players may bank the current reward, or stay out of the circle until the next wave begins.</div>` : ""}
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
-      <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>👤 Civilian</span><span>🐅 Tiger</span></div>
+      <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>${captureRequired() > 0 ? "🔬 Capture target" : "👤 Civilian"}</span><span>🐅 Tiger</span></div>
       <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} expanded cooperative battlefield with a player-following camera"></canvas>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : "⏱️ Operation Failed")}</div>
@@ -602,6 +615,10 @@
       return `Wave ${wave}: Clear all four tigers together. ${snap.mission.survivalExtractAvailable ? "Extraction is unlocked whenever the wave ends." : `Clear ${Math.max(0, 3 - Number(snap.mission.survivalWavesCleared || 0))} more wave${Math.max(0, 3 - Number(snap.mission.survivalWavesCleared || 0)) === 1 ? "" : "s"} to unlock extraction.`}`;
     }
     if(rescueRequired() > 0 && (snap.rescuedIds || []).length < rescueRequired()) return `Objective 1: ${missionMeta().objective || "Escort the civilians"} (${snap.rescuedIds.length}/${rescueRequired()} escorted).`;
+    if(captureRequired() > 0 && (snap.capturedIds || []).length < captureRequired()){
+      const threats = (snap.tigers || []).filter((t)=>!t.defeated && Number(t.hp || 0) > 0);
+      return `Research objective: Weaken a tiger to 30% health, then tap Capture (${snap.capturedIds?.length || 0}/${captureRequired()} captured • ${threats.length} target${threats.length === 1 ? "" : "s"} active).`;
+    }
     const threats = (snap.tigers || (snap.boss ? [snap.boss] : [])).filter((t)=>!t.defeated && Number(t.hp || 0) > 0);
     if(threats.length) return `Objective 2: Clear the ${sharedStoryActive() ? "Story" : "Special Operation"} tiger threat together (${threats.length} tiger${threats.length===1?"":"s"} active).`;
     const ready = snap.extractionReadyIds || [];
@@ -1357,6 +1374,26 @@
     ctx.fillStyle="#ffedd5";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText("LAST STAND",0,17);ctx.restore();
   }
 
+  function drawTallGrassPatch(ctx,x,y,size=1){
+    ctx.save();ctx.translate(x,y);ctx.scale(size,size);ctx.lineCap="round";
+    for(let i=0;i<13;i++){const dx=-48+i*8;ctx.strokeStyle=i%3===0?"#d9f99d":"#65a30d";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(dx,28);ctx.quadraticCurveTo(dx+(i%2?10:-8),-8-(i%4)*7,dx+(i%3?4:-3),-34-(i%3)*5);ctx.stroke();}
+    ctx.fillStyle="rgba(20,83,45,.24)";ctx.beginPath();ctx.ellipse(0,31,62,15,0,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+
+  function drawResearchBeacon(ctx,x,y,size=1){
+    ctx.save();ctx.translate(x,y);ctx.scale(size,size);
+    ctx.fillStyle="rgba(8,47,73,.86)";ctx.strokeStyle="#67e8f9";ctx.lineWidth=4;ctx.beginPath();ctx.arc(0,0,54,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.strokeStyle="#22d3ee";ctx.lineWidth=5;ctx.setLineDash([10,8]);ctx.beginPath();ctx.arc(0,0,78,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="#e0f2fe";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText("RESEARCH CAPTURE",0,5);ctx.restore();
+  }
+
+  function drawFieldClinic(ctx,x,y,size=1){
+    ctx.save();ctx.translate(x,y);ctx.scale(size,size);
+    ctx.fillStyle="rgba(2,6,23,.32)";ctx.beginPath();ctx.ellipse(0,34,76,17,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#f8fafc";ctx.strokeStyle="#93c5fd";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-70,28);ctx.lineTo(0,-55);ctx.lineTo(70,28);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.fillStyle="#ef4444";ctx.fillRect(-10,-30,20,50);ctx.fillRect(-26,-14,52,20);ctx.fillStyle="#0f172a";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText("FIELD CLINIC",0,47);ctx.restore();
+  }
+
   function drawStoryCivilian(ctx,civ,rescued){
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"]};
     const [shirt,pants]=colors[civ.look]||colors.field;ctx.save();ctx.translate(civ.x,civ.y);ctx.globalAlpha=rescued?.24:1;
@@ -1401,6 +1438,7 @@
     const alphaHunt = snap.launchType === "alpha-hunt";
     const stormExtraction = snap.launchType === "storm-extraction";
     const endlessSurvival = snap.launchType === "endless-survival";
+    const storyLevel = snap.launchType === "shared-story" ? Math.max(1,Number(snap.storyMissionLevel||snap.mission?.level||1)) : 0;
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -1500,6 +1538,22 @@
       const ringX=worldW*.55,ringY=worldH*.51;
       if(visible(ringX,ringY,360)){ctx.fillStyle="rgba(127,29,29,.18)";ctx.beginPath();ctx.arc(ringX,ringY,255,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(251,146,60,.72)";ctx.lineWidth=8;ctx.setLineDash([22,16]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(28,16,26,.92)";roundRect(ctx,ringX-154,ringY-58,308,48,12);ctx.fill();ctx.strokeStyle="#fb923c";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#ffedd5";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText(`SURVIVAL WAVE ${Math.max(1,Number(snap.mission?.survivalWave||1))}`,ringX,ringY-27);}
     }
+    if(storyLevel === 6){
+      const grass=[[.16,.18,1.1],[.39,.35,1.3],[.64,.20,1.05],[.76,.61,1.25],[.46,.72,1.1],[.88,.38,.95]];
+      for(const [xp,yp,size] of grass){const x=worldW*xp,y=worldH*yp;if(visible(x,y,100))drawTallGrassPatch(ctx,x,y,size);}
+      if(visible(worldW*.53,worldH*.48,320)){ctx.fillStyle="rgba(20,83,45,.88)";roundRect(ctx,worldW*.53-142,worldH*.48-54,284,46,12);ctx.fill();ctx.strokeStyle="#bef264";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#ecfccb";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("TALL GRASS AMBUSH",worldW*.53,worldH*.48-24);}
+    }else if(storyLevel === 7){
+      const clinicX=worldW*.43,clinicY=worldH*.31;if(visible(clinicX,clinicY,150))drawFieldClinic(ctx,clinicX,clinicY,1.15);
+      const aidPosts=[[.23,.54],[.72,.39],[.84,.69]];for(const [xp,yp] of aidPosts){const x=worldW*xp,y=worldH*yp;if(visible(x,y,100)){ctx.fillStyle="rgba(220,38,38,.22)";ctx.strokeStyle="#fda4af";ctx.lineWidth=5;ctx.beginPath();ctx.arc(x,y,58,0,Math.PI*2);ctx.fill();ctx.stroke();}}
+    }else if(storyLevel === 8){
+      const bx=worldW*.54,by=worldH*.49;if(visible(bx,by,180))drawResearchBeacon(ctx,bx,by,1.25);
+      for(const [xp,yp] of [[.24,.31],[.72,.28],[.78,.68]]){const x=worldW*xp,y=worldH*yp;if(!visible(x,y,80))continue;ctx.strokeStyle="#67e8f9";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x,y+34);ctx.lineTo(x,y-34);ctx.stroke();ctx.fillStyle="#22d3ee";ctx.beginPath();ctx.arc(x,y-39,8,0,Math.PI*2);ctx.fill();}
+    }else if(storyLevel === 9){
+      const gateY=worldH*.50;for(const x of [worldW*.28,worldW*.54,worldW*.81]){if(visible(x,gateY,110))drawVillageBarricade(ctx,x,gateY,0);}
+      if(visible(worldW*.54,gateY,340)){ctx.fillStyle="rgba(69,26,3,.90)";roundRect(ctx,worldW*.54-130,gateY-128,260,48,12);ctx.fill();ctx.strokeStyle="#fdba74";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#ffedd5";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("VILLAGE GATE",worldW*.54,gateY-97);}
+    }else if(storyLevel === 10){
+      const villageX=worldW*.55,villageY=worldH*.50;if(visible(villageX,villageY,360)){ctx.fillStyle="rgba(127,29,29,.18)";ctx.beginPath();ctx.arc(villageX,villageY,235,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=7;ctx.setLineDash([18,13]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(69,10,10,.90)";roundRect(ctx,villageX-145,villageY-60,290,48,12);ctx.fill();ctx.strokeStyle="#fda4af";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#ffe4e6";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("VILLAGE ALPHA TERRITORY",villageX,villageY-29);}
+    }
 
     const spawns=(snap.spawns||snap.players||[]).map((player)=>({x:Number(player.x||0),y:Number(player.y||0)}));
     const baseX=spawns.length?spawns.reduce((sum,row)=>sum+row.x,0)/spawns.length:worldW*.12;
@@ -1526,7 +1580,7 @@
     for(const tiger of (snap.tigers||[])){if(tiger.defeated)continue;ctx.fillStyle="#fb923c";ctx.beginPath();ctx.arc(mx+tiger.x*sx,my+tiger.y*sy,tiger.boss?5:3.5,0,Math.PI*2);ctx.fill();}
     for(const player of (snap.players||[])){const mine=Number(player.userId)===viewerId();const src=mine&&state.local?state.local:player;ctx.fillStyle=mine?"#22d3ee":"#a78bfa";ctx.beginPath();ctx.arc(mx+src.x*sx,my+src.y*sy,5,0,Math.PI*2);ctx.fill();}
     ctx.strokeStyle="#f8fafc";ctx.lineWidth=1.5;ctx.strokeRect(mx+view.x*sx,my+view.y*sy,Math.min(mw,view.w*sx),Math.min(mh,view.h*sy));
-    const mapName=sharedStoryActive()?"STORY DISTRICT MAP":`${String(selectedOperation().mapLabel||"SPECIAL OPERATION").toUpperCase()} MAP`;
+    const mapName=sharedStoryActive()?`STORY M${Math.max(1,Number(snap.storyMissionLevel||1))} MAP`:`${String(selectedOperation().mapLabel||"SPECIAL OPERATION").toUpperCase()} MAP`;
     ctx.fillStyle="#dbeafe";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText(mapName,mx+mw/2,my+mh-7);
   }
 
@@ -1559,7 +1613,7 @@
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
     ctx.restore();
-    ctx.fillStyle="rgba(2,6,23,.84)";roundRect(ctx,18,18,350,54,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 16px system-ui";ctx.textAlign="left";ctx.fillText(sharedStoryActive()?"EXPANDED STORY DISTRICT":String(selectedOperation().mapLabel||"SPECIAL OPERATION").toUpperCase(),34,43);ctx.fillStyle="#93c5fd";ctx.font="850 12px system-ui";ctx.fillText(`${Math.round(worldW/100)/10}km × ${Math.round(worldH/100)/10}km • CAMERA FOLLOW`,34,61);
+    ctx.fillStyle="rgba(2,6,23,.84)";roundRect(ctx,18,18,350,54,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 16px system-ui";ctx.textAlign="left";ctx.fillText(sharedStoryActive()?`STORY MISSION ${Math.max(1,Number(snap.storyMissionLevel||1))} • ${String(snap.mission?.chapterName||"STORY DISTRICT").toUpperCase()}`:String(selectedOperation().mapLabel||"SPECIAL OPERATION").toUpperCase(),34,43);ctx.fillStyle="#93c5fd";ctx.font="850 12px system-ui";ctx.fillText(`${Math.round(worldW/100)/10}km × ${Math.round(worldH/100)/10}km • CAMERA FOLLOW`,34,61);
     drawCoopMiniMap(ctx,snap,view,w);drawOffscreenTeammate(ctx,snap,view,w,h);
   }
 

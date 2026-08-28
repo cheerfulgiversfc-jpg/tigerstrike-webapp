@@ -322,6 +322,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - After clearing Wave 3, both players may enter extraction to bank $13,500, two perk points, 22 season points, and the `Last Stand Survivor` badge. Staying for later waves increases cash by $2,500 and season points by four per wave, with an additional perk point every three waves.
 - Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, and synchronized pause behavior work unchanged. Restart returns the squad to Wave 1, and Endless Survival never advances Story progress.
 
+### V6.8 Shared Story Missions 6–10
+
+- Story Campaign now offers a real Solo or Two Players choice for Missions 1–10. Solo remains available for every unlocked Story mission; Missions 11–100 remain accurately labeled Solo-only until their co-op versions are built.
+- Mission 6 is the Tall Grass Ambush with three hidden-grass tigers. Mission 7 escorts one injured villager through a two-tiger attack. Mission 8 requires weakening and capturing the research tiger. Mission 9 defends the village gate from four tigers. Mission 10 ends Chapter 1 against the 1,000 HP Village Alpha.
+- Missions 6–10 use expanded 4,500–4,740 × 2,520–2,680 Story districts with mission-specific tall grass, field clinic, research beacon, village-gate barricades, and Alpha territory details.
+- Both players must complete the mission and enter extraction together. Each receives a separate, deduplicated reward receipt and unlocks the next Story mission independently; Mission 10 unlocks Mission 11 for each player.
+- Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, synchronized pause behavior, Solo Story progress, and all seven Special Operations remain unchanged.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

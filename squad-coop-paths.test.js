@@ -97,7 +97,7 @@ async function run(){
   assert(html.includes("Story Campaign"), "Story Campaign path is visible");
   assert(html.includes("Special Operations"), "Special Operations path is visible");
   assert(html.includes("Solo supports all 72 unlocked missions"), "home reports the real Solo unlock count");
-  assert(html.includes("Two Player is ready for Missions 1–5"), "home reports the exact converted co-op range");
+  assert(html.includes("Two Player is ready for Missions 1–10"), "home reports the exact converted co-op range");
 
   await clickCommand("hub-story");
   html = element("squadBody").innerHTML;
@@ -112,6 +112,28 @@ async function run(){
   windowObject.openLiveSquadOps();
   html = element("squadBody").innerHTML;
   assert(html.includes("Choose how you want to play"), "returning later opens Co-op Home again");
+  await clickCommand("hub-story");
+  await clickCommand("select-story", { squadStoryLevel:"6" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Story Mission 6"), "Mission 6 is selectable in Story Campaign");
+  assert(html.includes("Tall Grass Ambush"), "Mission 6 exposes its real co-op objective");
+  assert(html.includes("Two Player ready"), "Mission 6 is marked playable with a teammate");
+
+  await clickCommand("select-story", { squadStoryLevel:"8" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("First Research Capture"), "Mission 8 exposes its research-capture objective");
+  assert(html.includes("Create Two Player Squad"), "Mission 8 can create a real shared room");
+
+  await clickCommand("select-story", { squadStoryLevel:"10" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Village Alpha"), "Mission 10 exposes its Village Alpha boss objective");
+  assert(html.includes("Two Player ready"), "Mission 10 is marked playable with a teammate");
+
+  await clickCommand("select-story", { squadStoryLevel:"11" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Solo only for now"), "Mission 11 remains accurately marked Solo-only");
+
+  windowObject.openLiveSquadOps();
   await clickCommand("hub-operations");
   html = element("squadBody").innerHTML;
   assert(html.includes("Operation Night Fang"), "Night Fang is inside Special Operations");

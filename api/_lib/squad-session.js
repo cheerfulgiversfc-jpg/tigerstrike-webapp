@@ -84,6 +84,59 @@ const SHARED_STORY_MISSIONS = Object.freeze({
       Object.freeze({ ...TIGER_DEFS[2], name:"Trail Guard", type:"Armored", hpMax:205, baseX:900, baseY:735 }),
     ]),
   }),
+  6:Object.freeze({
+    level:6, chapter:1, chapterName:"The First Attack", title:"Story Mission 6",
+    objective:"Tigers attack from tall grass. Clear the hidden pack together.", rescueRequired:0,
+    timeLimitMs:7 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"story6_grass_scout", name:"Grassline Scout", type:"Scout", hpMax:180, baseX:315, baseY:360, rangeX:104, rangeY:76, speed:.78, phase:.5 }),
+      Object.freeze({ id:"story6_hidden_hunter", name:"Hidden Hunter", type:"Standard", hpMax:210, baseX:675, baseY:535, rangeX:122, rangeY:94, speed:.66, phase:2.6 }),
+      Object.freeze({ id:"story6_reed_stalker", name:"Reed Stalker", type:"Standard", hpMax:225, baseX:930, baseY:700, rangeX:116, rangeY:90, speed:.70, phase:4.4 }),
+    ]),
+  }),
+  7:Object.freeze({
+    level:7, chapter:1, chapterName:"The First Attack", title:"Story Mission 7",
+    objective:"Escort the injured villager to the safe zone, clear the road tigers, and extract.", rescueRequired:1,
+    timeLimitMs:7 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([
+      Object.freeze({ id:"story7_injured_villager", x:515, y:330, name:"Injured Villager", look:"medic" }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"story7_road_scout", name:"Roadside Scout", type:"Scout", hpMax:195, baseX:405, baseY:540, rangeX:98, rangeY:78, speed:.76, phase:.9 }),
+      Object.freeze({ id:"story7_escort_breaker", name:"Escort Breaker", type:"Armored", hpMax:260, baseX:865, baseY:690, rangeX:104, rangeY:86, speed:.54, phase:3.8 }),
+    ]),
+  }),
+  8:Object.freeze({
+    level:8, chapter:1, chapterName:"The First Attack", title:"Story Mission 8",
+    objective:"Capture your first tiger for research, then extract together.", rescueRequired:0, captureRequired:1,
+    timeLimitMs:7 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"story8_research_tiger", name:"Research Tiger", type:"Standard", hpMax:280, baseX:650, baseY:535, rangeX:138, rangeY:106, speed:.64, phase:1.7 }),
+    ]),
+  }),
+  9:Object.freeze({
+    level:9, chapter:1, chapterName:"The First Attack", title:"Story Mission 9",
+    objective:"Multiple tigers attack the village gate. Defend the gate and clear the pack.", rescueRequired:0,
+    timeLimitMs:8 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"story9_north_gate", name:"North Gate Prowler", type:"Scout", hpMax:205, baseX:285, baseY:425, rangeX:104, rangeY:80, speed:.80, phase:.4 }),
+      Object.freeze({ id:"story9_center_gate", name:"Center Gate Tiger", type:"Standard", hpMax:235, baseX:540, baseY:335, rangeX:118, rangeY:92, speed:.68, phase:2.0 }),
+      Object.freeze({ id:"story9_wall_stalker", name:"Wall Stalker", type:"Standard", hpMax:245, baseX:790, baseY:480, rangeX:110, rangeY:88, speed:.70, phase:3.6 }),
+      Object.freeze({ id:"story9_gate_breaker", name:"Gate Breaker", type:"Armored", hpMax:310, baseX:925, baseY:710, rangeX:100, rangeY:84, speed:.52, phase:5.0 }),
+    ]),
+  }),
+  10:Object.freeze({
+    level:10, chapter:1, chapterName:"The First Attack", title:"Story Mission 10",
+    objective:"Boss: Alpha Tiger appears near the village. Defeat or capture the Alpha, then extract.", rescueRequired:0,
+    timeLimitMs:8 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"story10_village_alpha", name:"Village Alpha", type:"Alpha", hpMax:1000, baseX:655, baseY:570, rangeX:172, rangeY:136, speed:.43, phase:1.25, boss:true }),
+    ]),
+  }),
 });
 const ROLE_DEFS = Object.freeze({
   tracker:Object.freeze({ key:"tracker", label:"Tracker", damage:28, maxHp:105, speed:1.08 }),
@@ -98,6 +151,11 @@ const SHARED_STORY_WORLD_SIZES = Object.freeze({
   3:Object.freeze({ width:4128, height:2320 }),
   4:Object.freeze({ width:4272, height:2400 }),
   5:Object.freeze({ width:4416, height:2480 }),
+  6:Object.freeze({ width:4500, height:2520 }),
+  7:Object.freeze({ width:4560, height:2560 }),
+  8:Object.freeze({ width:4620, height:2600 }),
+  9:Object.freeze({ width:4680, height:2640 }),
+  10:Object.freeze({ width:4740, height:2680 }),
 });
 const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
 const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
@@ -585,6 +643,9 @@ async function memberPlayers(session){
 function sessionDerived(session, players, at=nowMs()){
   const mission = missionDefinition(session);
   const rescuedIds = [...new Set(players.flatMap((p)=>p.rescuedIds || []))];
+  const missionTigerIds = new Set(mission.tigers.map((tiger)=>tiger.id));
+  const capturedIds = [...new Set(players.flatMap((p)=>p.capturedIds || []))]
+    .filter((id)=>missionTigerIds.has(id));
   const tigers = tigerSnapshots(session, players, at);
   const boss = tigers.find((t)=>t.boss) || tigers[tigers.length - 1];
   const bossHpMax = Math.max(1, Number(boss?.hpMax || BOSS_HP_MAX));
@@ -596,9 +657,10 @@ function sessionDerived(session, players, at=nowMs()){
     .map((p)=>p.userId);
   const allTigersCleared = tigers.every((t)=>t.defeated);
   const legacyBossOnlyRoom = session.launchType === "live-squad" && players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
-  const objectivesReady = rescuedIds.length >= mission.rescueRequired && (allTigersCleared || legacyBossOnlyRoom);
+  const captureRequired = Math.max(0, Number(mission.captureRequired || 0));
+  const objectivesReady = rescuedIds.length >= mission.rescueRequired && capturedIds.length >= captureRequired && (allTigersCleared || legacyBossOnlyRoom);
   const squadWiped = players.length === session.memberIds.length && players.every((p)=>p.downed && Number(p.respawnAt || 0) <= 0 && Number(p.livesRemaining || 0) <= 0);
-  return { rescuedIds, bossDamage, bossHp, boss, tigers, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
+  return { rescuedIds, capturedIds, bossDamage, bossHp, boss, tigers, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
 }
 
 async function maybeFinishSession(session, players){
@@ -725,6 +787,7 @@ async function buildSnapshot(session, viewerId){
       title:mission.title,
       objective:mission.objective,
       rescueRequired:mission.rescueRequired,
+      captureRequired:Math.max(0, Number(mission.captureRequired || 0)),
       civilianCount:mission.civilians.length,
       tigerCount:mission.tigers.length,
       timeLimitMs:missionLimitMs(session),
@@ -741,6 +804,7 @@ async function buildSnapshot(session, viewerId){
     tigers:derived.tigers,
     boss:derived.boss,
     rescuedIds:derived.rescuedIds,
+    capturedIds:derived.capturedIds,
     objectivesReady:derived.objectivesReady,
     squadWiped:derived.squadWiped,
     extractionReadyIds:derived.extractionReadyIds,
@@ -964,13 +1028,18 @@ async function claimReward(session, user){
   player.rewardClaimed = true;
   await writePlayer(session.code, player);
   const sharedStory = session.launchType === "shared-story";
-  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 5) : 0;
+  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 10) : 0;
   const sharedRewards = {
     1:{ cash:1800, perkPoints:1, seasonPoints:6, badge:"Shared Story First Patrol" },
     2:{ cash:2050, perkPoints:1, seasonPoints:7, badge:"Farm Road Guardians" },
     3:{ cash:2250, perkPoints:1, seasonPoints:8, badge:"First Encounter Duo" },
     4:{ cash:2450, perkPoints:1, seasonPoints:9, badge:"Jungle Hut Rescue" },
     5:{ cash:2700, perkPoints:1, seasonPoints:10, badge:"Jungle Trail Team" },
+    6:{ cash:2950, perkPoints:1, seasonPoints:11, badge:"Tall Grass Patrol" },
+    7:{ cash:3200, perkPoints:1, seasonPoints:12, badge:"Injured Escort Team" },
+    8:{ cash:3500, perkPoints:2, seasonPoints:13, badge:"First Research Capture" },
+    9:{ cash:3850, perkPoints:2, seasonPoints:14, badge:"Village Gate Defenders" },
+    10:{ cash:4500, perkPoints:2, seasonPoints:16, badge:"Village Alpha Breakers" },
   };
   const operationRewards = {
     "live-squad":{ cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },
