@@ -105,6 +105,7 @@ const VILLAGE_SIEGE_WORLD_SIZE = Object.freeze({ width:4680, height:2640 });
 const CONVOY_RESCUE_WORLD_SIZE = Object.freeze({ width:4800, height:2720 });
 const ALPHA_HUNT_WORLD_SIZE = Object.freeze({ width:4800, height:2800 });
 const STORM_EXTRACTION_WORLD_SIZE = Object.freeze({ width:4800, height:2800 });
+const ENDLESS_SURVIVAL_WORLD_SIZE = Object.freeze({ width:4800, height:2800 });
 const TIGER_DEN_CIVILIANS = Object.freeze([
   Object.freeze({ id:"den_ranger", x:285, y:255, name:"Trapped Ranger", look:"scout" }),
   Object.freeze({ id:"den_researcher", x:905, y:285, name:"Den Researcher", look:"medic" }),
@@ -163,6 +164,12 @@ const STORM_EXTRACTION_TIGERS = Object.freeze([
   Object.freeze({ id:"storm_breaker", name:"Breakwater Tiger", type:"Armored", hpMax:660, baseX:845, baseY:465, rangeX:112, rangeY:92, speed:.56, phase:3.9 }),
   Object.freeze({ id:"storm_coast", name:"Coastal Stalker", type:"Standard", hpMax:575, baseX:930, baseY:700, rangeX:120, rangeY:94, speed:.66, phase:5.1 }),
   Object.freeze({ id:"tempest_alpha", name:"Tempest Alpha", type:"Alpha", hpMax:2600, baseX:655, baseY:590, rangeX:195, rangeY:152, speed:.45, phase:1.15, boss:true }),
+]);
+const ENDLESS_SURVIVAL_TIGERS = Object.freeze([
+  Object.freeze({ id:"survival_raider", name:"Basin Raider", type:"Scout", hpMax:420, baseX:310, baseY:430, rangeX:120, rangeY:90, speed:.84, phase:.4 }),
+  Object.freeze({ id:"survival_stalker", name:"Night Stalker", type:"Standard", hpMax:470, baseX:540, baseY:310, rangeX:132, rangeY:100, speed:.72, phase:2.1 }),
+  Object.freeze({ id:"survival_breaker", name:"Last Stand Breaker", type:"Armored", hpMax:560, baseX:900, baseY:675, rangeX:112, rangeY:92, speed:.58, phase:4.4 }),
+  Object.freeze({ id:"survival_alpha", name:"Relentless Alpha", type:"Alpha", hpMax:1500, baseX:660, baseY:590, rangeX:190, rangeY:150, speed:.46, phase:1.2, boss:true }),
 ]);
 
 function nowMs(){ return Date.now(); }
@@ -298,6 +305,20 @@ const EXPANDED_STORM_EXTRACTION_MISSION = expandMissionDefinition({
   civilians:STORM_EXTRACTION_CIVILIANS,
   tigers:STORM_EXTRACTION_TIGERS,
 }, STORM_EXTRACTION_WORLD_SIZE);
+const EXPANDED_ENDLESS_SURVIVAL_MISSION = expandMissionDefinition({
+  level:0,
+  chapter:0,
+  chapterName:"Last Stand Basin",
+  title:"Endless Survival",
+  objective:"Survive escalating tiger waves. After clearing Wave 3, extract together to bank rewards or keep fighting for a larger payout.",
+  rescueRequired:0,
+  timeLimitMs:SESSION_TTL_MS,
+  world:WORLD,
+  extraction:EXTRACTION,
+  spawns:SPAWNS,
+  civilians:Object.freeze([]),
+  tigers:ENDLESS_SURVIVAL_TIGERS,
+}, ENDLESS_SURVIVAL_WORLD_SIZE);
 const SPECIAL_OPERATION_MISSIONS = Object.freeze({
   "live-squad":EXPANDED_NIGHT_FANG_MISSION,
   "tiger-den":EXPANDED_TIGER_DEN_MISSION,
@@ -305,6 +326,7 @@ const SPECIAL_OPERATION_MISSIONS = Object.freeze({
   "convoy-rescue":EXPANDED_CONVOY_RESCUE_MISSION,
   "alpha-hunt":EXPANDED_ALPHA_HUNT_MISSION,
   "storm-extraction":EXPANDED_STORM_EXTRACTION_MISSION,
+  "endless-survival":EXPANDED_ENDLESS_SURVIVAL_MISSION,
 });
 const VALID_LAUNCH_TYPES = Object.freeze(["shared-story", ...Object.keys(SPECIAL_OPERATION_MISSIONS)]);
 const ALL_COOP_MISSIONS = Object.freeze([
@@ -367,6 +389,9 @@ function normalizeSession(raw){
     failureReason:cleanText(raw.failureReason, 32),
     storyMissionLevel:clamp(Math.floor(Number(raw.storyMissionLevel || 0)), 0, 100),
     launchType,
+    survivalWave:clamp(Math.floor(Number(raw.survivalWave || 1)), 1, 50),
+    survivalWavesCleared:clamp(Math.floor(Number(raw.survivalWavesCleared || 0)), 0, 50),
+    survivalIntermissionUntil:Math.max(0, Number(raw.survivalIntermissionUntil || 0)),
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
@@ -424,7 +449,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
   const hp = clamp(src.hp ?? maxHp, 0, maxHp);
   const tigerDamage = {};
   for(const tiger of ALL_COOP_TIGERS){
-    const damage = clamp(src?.tigerDamage?.[tiger.id], 0, tiger.hpMax);
+    const damage = clamp(src?.tigerDamage?.[tiger.id], 0, Math.max(tiger.hpMax, tiger.hpMax * 20));
     if(damage > 0) tigerDamage[tiger.id] = damage;
   }
   return {
@@ -468,7 +493,12 @@ function tigerPosition(session, tiger, at=nowMs()){
 }
 
 function tigerSnapshots(session, players, at=nowMs()){
-  return missionDefinition(session).tigers.map((def)=>{
+  const survivalWave = session?.launchType === "endless-survival" ? clamp(Math.floor(Number(session.survivalWave || 1)), 1, 50) : 1;
+  const survivalScale = 1 + (survivalWave - 1) * 0.22;
+  return missionDefinition(session).tigers.map((baseDef)=>{
+    const def = session?.launchType === "endless-survival"
+      ? { ...baseDef, hpMax:Math.round(baseDef.hpMax * survivalScale), name:`${baseDef.name} • Wave ${survivalWave}` }
+      : baseDef;
     const captured = players.some((player)=>(player?.capturedIds || []).includes(def.id));
     let damage = players.reduce((sum, player)=>sum + clamp(player?.tigerDamage?.[def.id], 0, def.hpMax), 0);
     if(session?.launchType === "live-squad" && def.boss && damage <= 0){
@@ -568,7 +598,7 @@ function sessionDerived(session, players, at=nowMs()){
   const legacyBossOnlyRoom = session.launchType === "live-squad" && players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
   const objectivesReady = rescuedIds.length >= mission.rescueRequired && (allTigersCleared || legacyBossOnlyRoom);
   const squadWiped = players.length === session.memberIds.length && players.every((p)=>p.downed && Number(p.respawnAt || 0) <= 0 && Number(p.livesRemaining || 0) <= 0);
-  return { rescuedIds, bossDamage, bossHp, boss, tigers, onlineIds, extractionReadyIds, objectivesReady, squadWiped };
+  return { rescuedIds, bossDamage, bossHp, boss, tigers, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
 }
 
 async function maybeFinishSession(session, players){
@@ -610,6 +640,41 @@ async function maybeFinishSession(session, players){
     session.failureReason = "squad_wipe";
     session.completedAt = now;
     return writeSession(session);
+  }
+  if(session.launchType === "endless-survival"){
+    const wave = clamp(Math.floor(Number(session.survivalWave || 1)), 1, 50);
+    if(derived.allTigersCleared){
+      if(Number(session.survivalWavesCleared || 0) < wave){
+        session.survivalWavesCleared = wave;
+        session.survivalIntermissionUntil = now + 12000;
+        session = await writeSession(session);
+      }
+      const canExtract = Number(session.survivalWavesCleared || 0) >= 3
+        && derived.onlineIds.length === session.memberIds.length
+        && derived.extractionReadyIds.length === session.memberIds.length;
+      if(canExtract){
+        session.status = "complete";
+        session.completedAt = now;
+        return writeSession(session);
+      }
+      if(now >= Number(session.survivalIntermissionUntil || 0)){
+        session.survivalWave = clamp(wave + 1, 1, 50);
+        session.survivalIntermissionUntil = 0;
+        for(const player of players){
+          player.bossDamage = 0;
+          player.tigerDamage = {};
+          player.capturedIds = [];
+          await writePlayer(session.code, player);
+        }
+        return writeSession(session);
+      }
+      return session;
+    }
+    if(Number(session.survivalIntermissionUntil || 0) > 0){
+      session.survivalIntermissionUntil = 0;
+      return writeSession(session);
+    }
+    return session;
   }
   if(
     derived.objectivesReady &&
@@ -663,6 +728,11 @@ async function buildSnapshot(session, viewerId){
       civilianCount:mission.civilians.length,
       tigerCount:mission.tigers.length,
       timeLimitMs:missionLimitMs(session),
+      survival:session.launchType === "endless-survival",
+      survivalWave:session.launchType === "endless-survival" ? Number(session.survivalWave || 1) : 0,
+      survivalWavesCleared:session.launchType === "endless-survival" ? Number(session.survivalWavesCleared || 0) : 0,
+      survivalIntermissionMs:session.launchType === "endless-survival" ? Math.max(0, Number(session.survivalIntermissionUntil || 0) - at) : 0,
+      survivalExtractAvailable:session.launchType === "endless-survival" && Number(session.survivalWavesCleared || 0) >= 3,
     },
     world:mission.world,
     spawns:mission.spawns,
@@ -793,6 +863,9 @@ async function applyAction(session, user, action, payload={}){
     session.failureReason = "";
     session.pausedAt = 0;
     session.pausedBy = {};
+    session.survivalWave = 1;
+    session.survivalWavesCleared = 0;
+    session.survivalIntermissionUntil = 0;
     await writeSession(session);
     const mission = missionDefinition(session);
     const players = await memberPlayers(session);
@@ -908,13 +981,22 @@ async function claimReward(session, user){
     "storm-extraction":{ cash:15000, perkPoints:4, seasonPoints:32, badge:"Tempest Coast Lifeline" },
   };
   const operationId = normalizeLaunchType(session.launchType);
+  const survivalWaves = clamp(Math.floor(Number(session.survivalWavesCleared || 0)), 3, 50);
+  const operationReward = operationId === "endless-survival"
+    ? {
+        cash:6000 + survivalWaves * 2500,
+        perkPoints:1 + Math.floor(survivalWaves / 3),
+        seasonPoints:10 + survivalWaves * 4,
+        badge:"Last Stand Survivor",
+      }
+    : (operationRewards[operationId] || operationRewards["live-squad"]);
   return {
     firstClaim,
     receipt:`${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}`,
     storyProgress:sharedStory ? { completedLevel:sharedLevel, unlockLevel:Math.min(100, sharedLevel + 1) } : null,
     reward:sharedStory
       ? sharedRewards[sharedLevel]
-      : (operationRewards[operationId] || operationRewards["live-squad"]),
+      : operationReward,
   };
 }
 

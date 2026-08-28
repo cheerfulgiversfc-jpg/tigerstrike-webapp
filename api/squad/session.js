@@ -78,6 +78,13 @@ async function prepareInvite(botToken, user, session){
         heading:"⛈️ STORM EXTRACTION TEAMMATE REQUEST",
         detail:"Rescue three stranded evacuation specialists, clear the storm pack, defeat Tempest Alpha, revive each other, and reach storm extraction together.",
       },
+    "endless-survival":{
+        id:"endless_survival",
+        name:"Endless Survival",
+        button:"♾️ Join Endless Survival",
+        heading:"♾️ ENDLESS SURVIVAL TEAMMATE REQUEST",
+        detail:"Defend Last Stand Basin through escalating tiger waves. Clear Wave 3, then extract together to bank your rewards or keep fighting for a larger payout.",
+      },
   }[session.launchType] || {
         id:"night_fang",
         name:"Operation Night Fang",
@@ -158,7 +165,7 @@ module.exports = async function handler(req, res){
         storyMissionLevel:requestedStoryLevel,
         launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 5
           ? "shared-story"
-          : (["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
+          : (["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
       });
     }else if(action === "join"){
       session = await joinSession(cleanCode(body?.code), user);

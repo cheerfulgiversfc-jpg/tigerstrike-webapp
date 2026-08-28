@@ -120,9 +120,9 @@ async function run(){
   assert(html.includes("Convoy Rescue"), "Convoy Rescue is a real Special Operation choice");
   assert(html.includes("Alpha Hunt"), "Alpha Hunt is a real Special Operation choice");
   assert(html.includes("Storm Extraction"), "Storm Extraction is a real Special Operation choice");
+  assert(html.includes("Endless Survival"), "Endless Survival is a real Special Operation choice");
   assert(html.includes("Special Operations do not change your Story mission number"), "Special Operation progression is explained as separate");
-  assert(html.includes("only after its real gameplay is complete"), "the remaining future operation stays an honest preview");
-  assert(html.includes("Endless Survival will arrive only after its real gameplay is complete"), "only Endless Survival remains in the preview list");
+  assert(!html.includes("only after its real gameplay is complete"), "no playable operation is left behind a fake preview");
 
   await clickCommand("select-operation", { squadOperation:"tiger-den" });
   html = element("squadBody").innerHTML;
@@ -163,7 +163,16 @@ async function run(){
   assert(html.includes("Tempest Coast Lifeline badge"), "Storm Extraction selection names its unique badge");
   assert(html.includes("Create Storm Extraction Squad"), "Storm Extraction can create its own squad room");
 
-  console.log("PASS: Co-op Home separates Story Campaign and six playable Special Operations with accurate routing");
+  await clickCommand("select-operation", { squadOperation:"endless-survival" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Last Stand Basin"), "Endless Survival selection exposes its own map identity");
+  assert(html.includes("Relentless Alpha"), "Endless Survival selection exposes its recurring Alpha threat");
+  assert(html.includes("22% more health"), "Endless Survival explains its real wave scaling");
+  assert(html.includes("Wave 3: $13,500"), "Endless Survival shows its exact first extraction reward");
+  assert(html.includes("Last Stand Survivor badge"), "Endless Survival selection names its unique badge");
+  assert(html.includes("Create Endless Survival Squad"), "Endless Survival can create its own squad room");
+
+  console.log("PASS: Co-op Home separates Story Campaign and seven playable Special Operations with accurate routing");
 }
 
 run().catch((error)=>{

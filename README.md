@@ -314,6 +314,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, and synchronized pause behavior work unchanged.
 - Each player receives a separate deduplicated receipt, $15,000, four perk points, 32 season points, and the `Tempest Coast Lifeline` badge. Storm Extraction does not advance Story progress or alter the first five Special Operations.
 
+### V6.7 Endless Survival
+
+- Endless Survival is the seventh fully playable Special Operation and has its own durable `endless-survival` room identity, Telegram invitation, reconnect path, wave state, and deduplicated reward receipt.
+- The 4,800 × 2,800 Last Stand Basin uses the full supported co-op world with marked roads, a fortified survival ring, defensive outposts, rally camp, and a reward extraction zone.
+- Each wave contains three tigers and the Relentless Alpha. Enemy health rises by 22% every wave, and the squad receives a twelve-second regroup period after each clear.
+- After clearing Wave 3, both players may enter extraction to bank $13,500, two perk points, 22 season points, and the `Last Stand Survivor` badge. Staying for later waves increases cash by $2,500 and season points by four per wave, with an additional perk point every three waves.
+- Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, and synchronized pause behavior work unchanged. Restart returns the squad to Wave 1, and Endless Survival never advances Story progress.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

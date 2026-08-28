@@ -426,7 +426,89 @@ async function run(){
   const stormHostAgain = await claimReward(await readSession(stormSession.code), stormHost);
   assert.equal(stormHostAgain.firstClaim, false, "Storm Extraction cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-5 and six Special Operations, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
+  const survivalHost = { id:910901, first_name:"Survival Host" };
+  const survivalMate = { id:910902, first_name:"Survival Mate" };
+  let survivalSession = await createSession(survivalHost, { launchType:"endless-survival" });
+  survivalSession = await joinSession(survivalSession.code, survivalMate);
+  assert.equal(survivalSession.launchType, "endless-survival", "Endless Survival keeps its own operation identity");
+  survivalSession = await applyAction(survivalSession, survivalHost, "start");
+  let survivalSnapshot = await buildSnapshot(survivalSession, survivalHost.id);
+  assert.equal(survivalSnapshot.mission.title, "Endless Survival", "Endless Survival has its own mission title");
+  assert.equal(survivalSnapshot.mission.chapterName, "Last Stand Basin", "Endless Survival has its own map identity");
+  assert.equal(survivalSnapshot.mission.survival, true, "Endless Survival exposes wave rules to the client");
+  assert.equal(survivalSnapshot.mission.survivalWave, 1, "Endless Survival starts on Wave 1");
+  assert.equal(survivalSnapshot.mission.rescueRequired, 0, "Endless Survival has no fake civilian objective");
+  assert.equal(survivalSnapshot.tigers.length, 4, "each survival wave has three tigers and one Alpha");
+  assert.equal(survivalSnapshot.boss.name, "Relentless Alpha • Wave 1", "the recurring Alpha displays its wave number");
+  assert.equal(survivalSnapshot.boss.hpMax, 1500, "Wave 1 uses the base Relentless Alpha health");
+  assert.equal(survivalSnapshot.world.width, 4800, "Endless Survival uses the full co-op world width");
+  assert.equal(survivalSnapshot.world.height, 2800, "Endless Survival uses the full co-op world height");
+
+  const relentless = survivalSnapshot.boss;
+  await writePlayerPatch(survivalSession.code, survivalHost.id, { x:relentless.x, y:relentless.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(survivalSession.code), survivalHost, "attack", { tigerId:relentless.id });
+  survivalSnapshot = await buildSnapshot(await readSession(survivalSession.code), survivalHost.id);
+  assert(survivalSnapshot.boss.hp < survivalSnapshot.boss.hpMax, "Relentless Alpha uses the real shared combat action");
+
+  async function clearSurvivalWave(expectedWave){
+    const clearedAt = Date.now();
+    await writePlayerPatch(survivalSession.code, survivalHost.id, {
+      x:survivalSnapshot.world.width * .45,
+      y:survivalSnapshot.world.height * .45,
+      tigerDamage:Object.fromEntries(survivalSnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
+      lastSeenAt:clearedAt,
+    });
+    await writePlayerPatch(survivalSession.code, survivalMate.id, {
+      x:survivalSnapshot.world.width * .48,
+      y:survivalSnapshot.world.height * .45,
+      lastSeenAt:clearedAt,
+    });
+    survivalSnapshot = await buildSnapshot(await readSession(survivalSession.code), survivalHost.id);
+    assert.equal(survivalSnapshot.mission.survivalWavesCleared, expectedWave, `Wave ${expectedWave} clear is saved`);
+    assert(survivalSnapshot.mission.survivalIntermissionMs > 0, `Wave ${expectedWave} starts a regroup period`);
+  }
+
+  await clearSurvivalWave(1);
+  const waveOneBossHp = survivalSnapshot.boss.hpMax;
+  let survivalRaw = await getState(`live_squad_session_${survivalSession.code}`);
+  await setState(`live_squad_session_${survivalSession.code}`, { ...survivalRaw, survivalIntermissionUntil:Date.now() - 1 });
+  survivalSnapshot = await buildSnapshot(await readSession(survivalSession.code), survivalHost.id);
+  assert.equal(survivalSnapshot.mission.survivalWave, 2, "Wave 2 starts after the regroup period");
+  assert(survivalSnapshot.boss.hpMax > waveOneBossHp, "Wave 2 tiger health is higher than Wave 1");
+  assert(survivalSnapshot.tigers.every((tiger)=>tiger.hp === tiger.hpMax), "new-wave tiger health resets completely");
+
+  await clearSurvivalWave(2);
+  survivalRaw = await getState(`live_squad_session_${survivalSession.code}`);
+  await setState(`live_squad_session_${survivalSession.code}`, { ...survivalRaw, survivalIntermissionUntil:Date.now() - 1 });
+  survivalSnapshot = await buildSnapshot(await readSession(survivalSession.code), survivalHost.id);
+  assert.equal(survivalSnapshot.mission.survivalWave, 3, "Wave 3 starts after the second regroup period");
+  assert.equal(survivalSnapshot.boss.hpMax, 2160, "Wave 3 applies the documented 44% health increase");
+
+  await clearSurvivalWave(3);
+  assert.equal(survivalSnapshot.status, "active", "clearing Wave 3 does not force the squad to leave");
+  assert.equal(survivalSnapshot.mission.survivalExtractAvailable, true, "clearing Wave 3 unlocks optional reward extraction");
+  const survivalExtractAt = Date.now();
+  for(const player of [survivalHost, survivalMate]){
+    await writePlayerPatch(survivalSession.code, player.id, {
+      x:survivalSnapshot.extraction.x,
+      y:survivalSnapshot.extraction.y,
+      lastSeenAt:survivalExtractAt,
+    });
+  }
+  survivalSnapshot = await buildSnapshot(await readSession(survivalSession.code), survivalHost.id);
+  assert.equal(survivalSnapshot.status, "complete", "both players can bank the survival reward after Wave 3");
+  const survivalHostReward = await claimReward(await readSession(survivalSession.code), survivalHost);
+  const survivalMateReward = await claimReward(await readSession(survivalSession.code), survivalMate);
+  assert.equal(survivalHostReward.reward.cash, 13500, "Wave 3 extraction awards the exact survival cash payout");
+  assert.equal(survivalHostReward.reward.perkPoints, 2, "Wave 3 extraction awards two perk points");
+  assert.equal(survivalHostReward.reward.seasonPoints, 22, "Wave 3 extraction awards 22 season points");
+  assert.equal(survivalHostReward.reward.badge, "Last Stand Survivor", "Endless Survival awards its own badge");
+  assert.equal(survivalHostReward.storyProgress, null, "Endless Survival never changes Story progress");
+  assert.notEqual(survivalHostReward.receipt, survivalMateReward.receipt, "both survival players receive separate receipts");
+  const survivalHostAgain = await claimReward(await readSession(survivalSession.code), survivalHost);
+  assert.equal(survivalHostAgain.firstClaim, false, "Endless Survival cannot pay the same player twice in one room");
+
+  console.log("PASS: Story Missions 1-5 and seven Special Operations, survival waves, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
 }
 
 run().catch((error)=>{
