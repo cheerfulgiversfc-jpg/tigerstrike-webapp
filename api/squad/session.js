@@ -71,6 +71,13 @@ async function prepareInvite(botToken, user, session){
         heading:"🎯 ALPHA HUNT TEAMMATE REQUEST",
         detail:"Rescue two injured trackers, clear three elite tigers, defeat Ghoststripe Alpha, revive each other, and extract together.",
       },
+    "storm-extraction":{
+        id:"storm_extraction",
+        name:"Storm Extraction",
+        button:"⛈️ Join Storm Extraction",
+        heading:"⛈️ STORM EXTRACTION TEAMMATE REQUEST",
+        detail:"Rescue three stranded evacuation specialists, clear the storm pack, defeat Tempest Alpha, revive each other, and reach storm extraction together.",
+      },
   }[session.launchType] || {
         id:"night_fang",
         name:"Operation Night Fang",
@@ -151,7 +158,7 @@ module.exports = async function handler(req, res){
         storyMissionLevel:requestedStoryLevel,
         launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 5
           ? "shared-story"
-          : (["tiger-den","village-siege","convoy-rescue","alpha-hunt"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
+          : (["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
       });
     }else if(action === "join"){
       session = await joinSession(cleanCode(body?.code), user);

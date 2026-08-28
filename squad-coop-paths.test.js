@@ -119,9 +119,10 @@ async function run(){
   assert(html.includes("Village Siege"), "Village Siege is a real Special Operation choice");
   assert(html.includes("Convoy Rescue"), "Convoy Rescue is a real Special Operation choice");
   assert(html.includes("Alpha Hunt"), "Alpha Hunt is a real Special Operation choice");
+  assert(html.includes("Storm Extraction"), "Storm Extraction is a real Special Operation choice");
   assert(html.includes("Special Operations do not change your Story mission number"), "Special Operation progression is explained as separate");
-  assert(html.includes("only after their real gameplay is complete"), "remaining future operations stay honest previews");
-  assert(html.includes("Storm Extraction and Endless Survival"), "only unfinished operations remain in the preview list");
+  assert(html.includes("only after its real gameplay is complete"), "the remaining future operation stays an honest preview");
+  assert(html.includes("Endless Survival will arrive only after its real gameplay is complete"), "only Endless Survival remains in the preview list");
 
   await clickCommand("select-operation", { squadOperation:"tiger-den" });
   html = element("squadBody").innerHTML;
@@ -154,7 +155,15 @@ async function run(){
   assert(html.includes("Ghoststripe Apex Hunter badge"), "Alpha Hunt selection names its unique badge");
   assert(html.includes("Create Alpha Hunt Squad"), "Alpha Hunt can create its own squad room");
 
-  console.log("PASS: Co-op Home separates Story Campaign and five playable Special Operations with accurate routing");
+  await clickCommand("select-operation", { squadOperation:"storm-extraction" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Tempest Coast"), "Storm Extraction selection exposes its own map identity");
+  assert(html.includes("Tempest Alpha"), "Storm Extraction selection exposes its own boss objective");
+  assert(html.includes("$15,000"), "Storm Extraction selection shows its exact reward");
+  assert(html.includes("Tempest Coast Lifeline badge"), "Storm Extraction selection names its unique badge");
+  assert(html.includes("Create Storm Extraction Squad"), "Storm Extraction can create its own squad room");
+
+  console.log("PASS: Co-op Home separates Story Campaign and six playable Special Operations with accurate routing");
 }
 
 run().catch((error)=>{

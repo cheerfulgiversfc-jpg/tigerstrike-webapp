@@ -104,6 +104,7 @@ const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
 const VILLAGE_SIEGE_WORLD_SIZE = Object.freeze({ width:4680, height:2640 });
 const CONVOY_RESCUE_WORLD_SIZE = Object.freeze({ width:4800, height:2720 });
 const ALPHA_HUNT_WORLD_SIZE = Object.freeze({ width:4800, height:2800 });
+const STORM_EXTRACTION_WORLD_SIZE = Object.freeze({ width:4800, height:2800 });
 const TIGER_DEN_CIVILIANS = Object.freeze([
   Object.freeze({ id:"den_ranger", x:285, y:255, name:"Trapped Ranger", look:"scout" }),
   Object.freeze({ id:"den_researcher", x:905, y:285, name:"Den Researcher", look:"medic" }),
@@ -150,6 +151,18 @@ const ALPHA_HUNT_TIGERS = Object.freeze([
   Object.freeze({ id:"alpha_mist", name:"Mist Hunter", type:"Standard", hpMax:480, baseX:665, baseY:340, rangeX:124, rangeY:94, speed:.68, phase:2.5 }),
   Object.freeze({ id:"alpha_guard", name:"Apex Guard", type:"Armored", hpMax:600, baseX:900, baseY:660, rangeX:104, rangeY:88, speed:.54, phase:4.6 }),
   Object.freeze({ id:"ghoststripe_alpha", name:"Ghoststripe Alpha", type:"Alpha", hpMax:2300, baseX:640, baseY:585, rangeX:185, rangeY:145, speed:.44, phase:1.3, boss:true }),
+]);
+const STORM_EXTRACTION_CIVILIANS = Object.freeze([
+  Object.freeze({ id:"storm_pilot", x:235, y:250, name:"Evac Pilot", look:"driver" }),
+  Object.freeze({ id:"storm_engineer", x:545, y:720, name:"Rescue Engineer", look:"field" }),
+  Object.freeze({ id:"storm_officer", x:935, y:265, name:"Weather Officer", look:"scout" }),
+]);
+const STORM_EXTRACTION_TIGERS = Object.freeze([
+  Object.freeze({ id:"storm_surge", name:"Surge Prowler", type:"Scout", hpMax:500, baseX:300, baseY:430, rangeX:118, rangeY:88, speed:.84, phase:.5 }),
+  Object.freeze({ id:"storm_flood", name:"Floodplain Hunter", type:"Standard", hpMax:540, baseX:545, baseY:330, rangeX:130, rangeY:98, speed:.70, phase:2.2 }),
+  Object.freeze({ id:"storm_breaker", name:"Breakwater Tiger", type:"Armored", hpMax:660, baseX:845, baseY:465, rangeX:112, rangeY:92, speed:.56, phase:3.9 }),
+  Object.freeze({ id:"storm_coast", name:"Coastal Stalker", type:"Standard", hpMax:575, baseX:930, baseY:700, rangeX:120, rangeY:94, speed:.66, phase:5.1 }),
+  Object.freeze({ id:"tempest_alpha", name:"Tempest Alpha", type:"Alpha", hpMax:2600, baseX:655, baseY:590, rangeX:195, rangeY:152, speed:.45, phase:1.15, boss:true }),
 ]);
 
 function nowMs(){ return Date.now(); }
@@ -271,12 +284,27 @@ const EXPANDED_ALPHA_HUNT_MISSION = expandMissionDefinition({
   civilians:ALPHA_HUNT_CIVILIANS,
   tigers:ALPHA_HUNT_TIGERS,
 }, ALPHA_HUNT_WORLD_SIZE);
+const EXPANDED_STORM_EXTRACTION_MISSION = expandMissionDefinition({
+  level:0,
+  chapter:0,
+  chapterName:"Tempest Coast",
+  title:"Storm Extraction",
+  objective:"Rescue three stranded evacuation specialists, clear the four storm-pack tigers, defeat Tempest Alpha, then reach storm extraction together.",
+  rescueRequired:STORM_EXTRACTION_CIVILIANS.length,
+  timeLimitMs:12 * 60 * 1000,
+  world:WORLD,
+  extraction:EXTRACTION,
+  spawns:SPAWNS,
+  civilians:STORM_EXTRACTION_CIVILIANS,
+  tigers:STORM_EXTRACTION_TIGERS,
+}, STORM_EXTRACTION_WORLD_SIZE);
 const SPECIAL_OPERATION_MISSIONS = Object.freeze({
   "live-squad":EXPANDED_NIGHT_FANG_MISSION,
   "tiger-den":EXPANDED_TIGER_DEN_MISSION,
   "village-siege":EXPANDED_VILLAGE_SIEGE_MISSION,
   "convoy-rescue":EXPANDED_CONVOY_RESCUE_MISSION,
   "alpha-hunt":EXPANDED_ALPHA_HUNT_MISSION,
+  "storm-extraction":EXPANDED_STORM_EXTRACTION_MISSION,
 });
 const VALID_LAUNCH_TYPES = Object.freeze(["shared-story", ...Object.keys(SPECIAL_OPERATION_MISSIONS)]);
 const ALL_COOP_MISSIONS = Object.freeze([
@@ -877,6 +905,7 @@ async function claimReward(session, user){
     "village-siege":{ cash:9600, perkPoints:2, seasonPoints:20, badge:"Suncrest Village Shield" },
     "convoy-rescue":{ cash:11200, perkPoints:3, seasonPoints:24, badge:"Redwood Convoy Guardian" },
     "alpha-hunt":{ cash:13000, perkPoints:3, seasonPoints:28, badge:"Ghoststripe Apex Hunter" },
+    "storm-extraction":{ cash:15000, perkPoints:4, seasonPoints:32, badge:"Tempest Coast Lifeline" },
   };
   const operationId = normalizeLaunchType(session.launchType);
   return {

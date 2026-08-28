@@ -91,6 +91,15 @@
       reward:"$13,000 • 3 perk points • 28 season points • Ghoststripe Apex Hunter badge",
       mapLabel:"Moonshadow Highlands",
     },
+    {
+      id:"storm-extraction",
+      icon:"⛈️",
+      title:"Storm Extraction",
+      short:"Rescue 3 evacuation specialists, clear 4 storm tigers, defeat Tempest Alpha, and extract.",
+      description:"Cross the flooded Tempest Coast during a twelve-minute severe-weather operation. Rescue the pilot, engineer, and weather officer, clear the four-tiger storm pack, defeat Tempest Alpha, then reach storm extraction together.",
+      reward:"$15,000 • 4 perk points • 32 season points • Tempest Coast Lifeline badge",
+      mapLabel:"Tempest Coast",
+    },
   ]);
 
   const $ = (id) => document.getElementById(id);
@@ -186,8 +195,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V6.5 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V6.5 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.5 • Co-op Command");
+      ? `Tiger Strike V6.6 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V6.6 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.6 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -410,7 +419,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V6.5 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V6.6 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -476,7 +485,7 @@
       <div class="squadSectionHead"><div><div class="squadKicker">Replayable team challenges</div><div class="squadMissionName">🐅 Special Operations</div><div class="squadDesc">These missions have their own objectives, badges, and rewards. They never skip, replace, or unlock Story missions.</div></div><span class="squadProgressPill">Team mode</span></div>
       <div class="squadOperationGrid">
         ${SPECIAL_OPERATIONS.map((row)=>`<button type="button" class="squadMissionChoice ${operation.id === row.id ? "active" : ""}" data-squad-command="select-operation" data-squad-operation="${esc(row.id)}"><span>${row.icon} ${esc(row.title)}</span><small>${esc(row.short)}</small></button>`).join("")}
-        <div class="squadMissionChoice preview" aria-disabled="true"><span>🔒 More operations</span><small>Storm Extraction and Endless Survival will arrive only after their real gameplay is complete.</small></div>
+        <div class="squadMissionChoice preview" aria-disabled="true"><span>🔒 More operations</span><small>Endless Survival will arrive only after its real gameplay is complete.</small></div>
       </div>
       <div class="squadSelectedMission"><div><div class="squadKicker">Playable now • ${esc(operation.mapLabel)}</div><div class="squadSectionTitle">${operation.icon} ${esc(operation.title)}</div><div class="squadDesc">${esc(operation.description)}</div><div class="squadSmall"><b>Reward:</b> ${esc(operation.reward)}</div></div><span class="squadReadyPill ready">Two Players</span></div>
       <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create ${esc(operation.title)} Squad</button></div>
@@ -1303,6 +1312,15 @@
     ctx.strokeStyle="rgba(191,219,254,.42)";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-88,34);ctx.lineTo(-26,-42);ctx.lineTo(2,-12);ctx.lineTo(35,-78);ctx.lineTo(92,34);ctx.stroke();ctx.restore();
   }
 
+  function drawStormShelter(ctx,x,y,size=1){
+    ctx.save();ctx.translate(x,y);ctx.scale(size,size);
+    ctx.fillStyle="rgba(2,6,23,.36)";ctx.beginPath();ctx.ellipse(2,34,76,18,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#475569";roundRect(ctx,-58,-24,116,58,7);ctx.fill();ctx.strokeStyle="#bae6fd";ctx.lineWidth=3;ctx.stroke();
+    ctx.fillStyle="#1e293b";ctx.beginPath();ctx.moveTo(-72,-21);ctx.lineTo(0,-62);ctx.lineTo(72,-21);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.fillStyle="#7dd3fc";ctx.fillRect(-43,-10,25,18);ctx.fillRect(18,-10,25,18);ctx.fillStyle="#0f172a";ctx.fillRect(-9,2,18,32);
+    ctx.strokeStyle="#cbd5e1";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(48,-49);ctx.lineTo(48,-91);ctx.stroke();ctx.fillStyle="#facc15";ctx.beginPath();ctx.moveTo(50,-88);ctx.lineTo(82,-77);ctx.lineTo(50,-67);ctx.closePath();ctx.fill();ctx.restore();
+  }
+
   function drawStoryCivilian(ctx,civ,rescued){
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"]};
     const [shirt,pants]=colors[civ.look]||colors.field;ctx.save();ctx.translate(civ.x,civ.y);ctx.globalAlpha=rescued?.24:1;
@@ -1345,6 +1363,7 @@
     const villageSiege = snap.launchType === "village-siege";
     const convoyRescue = snap.launchType === "convoy-rescue";
     const alphaHunt = snap.launchType === "alpha-hunt";
+    const stormExtraction = snap.launchType === "storm-extraction";
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -1352,22 +1371,22 @@
     const visible = (x,y,pad=120)=>x >= view.x-pad && x <= view.x+view.w+pad && y >= view.y-pad && y <= view.y+view.h+pad;
     const nearRoad = (x,y,pad=75)=>verticalRoads.some((road)=>Math.abs(x-road)<pad)||horizontalRoads.some((road)=>Math.abs(y-road)<pad);
 
-    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,denAssault?"#62533c":(villageSiege?"#66a85c":(convoyRescue?"#6f8f4e":(alphaHunt?"#34435c":"#3f7b4d"))));terrain.addColorStop(.52,denAssault?"#3f4936":(villageSiege?"#43814d":(convoyRescue?"#416b46":(alphaHunt?"#28384a":"#2f6944"))));terrain.addColorStop(1,denAssault?"#29382f":(villageSiege?"#2c6845":(convoyRescue?"#294f3e":(alphaHunt?"#1d2b3f":"#24583c"))));ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
-    ctx.fillStyle=denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":(alphaHunt?"rgba(147,197,253,.12)":"rgba(102,164,91,.20)")));
+    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,denAssault?"#62533c":(villageSiege?"#66a85c":(convoyRescue?"#6f8f4e":(alphaHunt?"#34435c":(stormExtraction?"#315a66":"#3f7b4d")))));terrain.addColorStop(.52,denAssault?"#3f4936":(villageSiege?"#43814d":(convoyRescue?"#416b46":(alphaHunt?"#28384a":(stormExtraction?"#254956":"#2f6944")))));terrain.addColorStop(1,denAssault?"#29382f":(villageSiege?"#2c6845":(convoyRescue?"#294f3e":(alphaHunt?"#1d2b3f":(stormExtraction?"#193845":"#24583c")))));ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
+    ctx.fillStyle=denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":(alphaHunt?"rgba(147,197,253,.12)":(stormExtraction?"rgba(125,211,252,.13)":"rgba(102,164,91,.20)"))));
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
 
-    ctx.fillStyle=denAssault?"rgba(32,31,29,.88)":(villageSiege?"rgba(31,142,174,.86)":(convoyRescue?"rgba(28,102,132,.86)":(alphaHunt?"rgba(23,61,93,.90)":"rgba(35,117,145,.80)")));ctx.beginPath();ctx.moveTo(0,riverTop);
+    ctx.fillStyle=denAssault?"rgba(32,31,29,.88)":(villageSiege?"rgba(31,142,174,.86)":(convoyRescue?"rgba(28,102,132,.86)":(alphaHunt?"rgba(23,61,93,.90)":(stormExtraction?"rgba(14,83,112,.94)":"rgba(35,117,145,.80)"))));ctx.beginPath();ctx.moveTo(0,riverTop);
     for(let x=0;x<=worldW+180;x+=180){ctx.lineTo(x,riverTop+Math.sin((x/worldW)*Math.PI*5)*42);}
     ctx.lineTo(worldW,worldH);ctx.lineTo(0,worldH);ctx.closePath();ctx.fill();
 
-    ctx.fillStyle=denAssault?"#49443b":(villageSiege?"#455267":(convoyRescue?"#3f4654":(alphaHunt?"#374151":"#4b5563")));
+    ctx.fillStyle=denAssault?"#49443b":(villageSiege?"#455267":(convoyRescue?"#3f4654":(alphaHunt?"#374151":(stormExtraction?"#334155":"#4b5563"))));
     for(const y of horizontalRoads) ctx.fillRect(0,y-roadW/2,worldW,roadW);
     for(const x of verticalRoads) ctx.fillRect(x-roadW/2,0,roadW,worldH);
-    ctx.strokeStyle=denAssault?"rgba(214,180,125,.42)":(villageSiege?"rgba(248,250,252,.78)":(convoyRescue?"rgba(226,232,240,.74)":(alphaHunt?"rgba(191,219,254,.62)":"rgba(241,245,249,.58)")));ctx.lineWidth=4;
+    ctx.strokeStyle=denAssault?"rgba(214,180,125,.42)":(villageSiege?"rgba(248,250,252,.78)":(convoyRescue?"rgba(226,232,240,.74)":(alphaHunt?"rgba(191,219,254,.62)":(stormExtraction?"rgba(186,230,253,.72)":"rgba(241,245,249,.58)"))));ctx.lineWidth=4;
     for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y-roadW/2+8);ctx.lineTo(worldW,y-roadW/2+8);ctx.moveTo(0,y+roadW/2-8);ctx.lineTo(worldW,y+roadW/2-8);ctx.stroke();}
     for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x-roadW/2+8,0);ctx.lineTo(x-roadW/2+8,worldH);ctx.moveTo(x+roadW/2-8,0);ctx.lineTo(x+roadW/2-8,worldH);ctx.stroke();}
-    ctx.strokeStyle=denAssault?"rgba(251,146,60,.62)":(villageSiege?"rgba(253,224,71,.92)":(convoyRescue?"rgba(250,204,21,.96)":(alphaHunt?"rgba(165,180,252,.80)":"rgba(250,204,21,.78)")));ctx.lineWidth=5;ctx.setLineDash(denAssault?[18,34]:[34,28]);
+    ctx.strokeStyle=denAssault?"rgba(251,146,60,.62)":(villageSiege?"rgba(253,224,71,.92)":(convoyRescue?"rgba(250,204,21,.96)":(alphaHunt?"rgba(165,180,252,.80)":(stormExtraction?"rgba(125,211,252,.88)":"rgba(250,204,21,.78)"))));ctx.lineWidth=5;ctx.setLineDash(denAssault?[18,34]:[34,28]);
     for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(worldW,y);ctx.stroke();}
     for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,worldH);ctx.stroke();}
     ctx.setLineDash([]);
@@ -1377,7 +1396,7 @@
       for(let x=roadX-roadW*.52;x<roadX+roadW*.53;x+=24){ctx.beginPath();ctx.moveTo(x,bridgeY-8);ctx.lineTo(x,bridgeY+102);ctx.stroke();}
     }
 
-    for(let i=0;i<(denAssault?150:(villageSiege?185:(convoyRescue?210:(alphaHunt?175:240))));i++){
+    for(let i=0;i<(denAssault?150:(villageSiege?185:(convoyRescue?210:(alphaHunt?175:(stormExtraction?125:240)))));i++){
       const x=70+((i*337+53)%Math.max(100,Math.floor(worldW-140)));
       const y=80+((i*191+97)%Math.max(100,Math.floor(worldH-180)));
       if(!visible(x,y,70)||nearRoad(x,y,88)||y>riverTop-55) continue;
@@ -1385,7 +1404,7 @@
       else drawStoryTree(ctx,x,y,.68+(i%5)*.075);
     }
     const roofColors=["#9a5c38","#7c4a32","#72452f","#a1623c"];
-    for(let i=0;i<(denAssault?12:(villageSiege?58:(convoyRescue?18:(alphaHunt?8:34))));i++){
+    for(let i=0;i<(denAssault?12:(villageSiege?58:(convoyRescue?18:(alphaHunt?8:(stormExtraction?14:34)))));i++){
       const x=100+((i*421+160)%Math.max(140,Math.floor(worldW-280)));
       const y=110+((i*263+120)%Math.max(140,Math.floor(riverTop-260)));
       if(!visible(x,y,210)||nearRoad(x+80,y+52,125)) continue;
@@ -1428,6 +1447,16 @@
       for(const [x,y,r] of moonPools){if(!visible(x,y,r+40))continue;ctx.fillStyle="rgba(147,197,253,.09)";ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(165,180,252,.32)";ctx.lineWidth=5;ctx.setLineDash([18,14]);ctx.stroke();ctx.setLineDash([]);}
       if(visible(worldW*.60,worldH*.46,360)){ctx.fillStyle="rgba(15,23,42,.90)";roundRect(ctx,worldW*.60-144,worldH*.46-50,288,48,12);ctx.fill();ctx.strokeStyle="#c4b5fd";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#ede9fe";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("GHOSTSTRIPE RANGE",worldW*.60,worldH*.46-19);}
     }
+    if(stormExtraction){
+      const floodZones=[[worldW*.20,worldH*.38,240,105],[worldW*.48,worldH*.67,310,120],[worldW*.76,worldH*.34,270,110],[worldW*.86,worldH*.72,230,100]];
+      for(const [x,y,rx,ry] of floodZones){if(!visible(x,y,rx+60))continue;ctx.fillStyle="rgba(14,165,233,.22)";ctx.beginPath();ctx.ellipse(x,y,rx,ry,-.08,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(125,211,252,.42)";ctx.lineWidth=5;ctx.stroke();}
+      const shelters=[[worldW*.17,worldH*.20,1.05],[worldW*.51,worldH*.31,.92],[worldW*.82,worldH*.61,1.12]];
+      for(const [x,y,size] of shelters){if(visible(x,y,150))drawStormShelter(ctx,x,y,size);}
+      const stormNow=Number(snap.serverNow||Date.now()),rainShift=(stormNow/22)%140;
+      ctx.strokeStyle="rgba(186,230,253,.46)";ctx.lineWidth=3;
+      for(let i=0;i<72;i++){const x=view.x+((i*89+rainShift)%Math.max(1,view.w+120))-60;const y=view.y+((i*137+rainShift*1.7)%Math.max(1,view.h+120))-60;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-18,y+42);ctx.stroke();}
+      if(Math.floor(stormNow/900)%7===0){const lx=worldW*.72,ly=worldH*.15;if(visible(lx,ly,240)){ctx.strokeStyle="#fef9c3";ctx.lineWidth=10;ctx.shadowColor="#e0f2fe";ctx.shadowBlur=28;ctx.beginPath();ctx.moveTo(lx,ly-110);ctx.lineTo(lx-34,ly-25);ctx.lineTo(lx+8,ly-35);ctx.lineTo(lx-44,ly+80);ctx.stroke();ctx.shadowBlur=0;}}
+    }
 
     const spawns=(snap.spawns||snap.players||[]).map((player)=>({x:Number(player.x||0),y:Number(player.y||0)}));
     const baseX=spawns.length?spawns.reduce((sum,row)=>sum+row.x,0)/spawns.length:worldW*.12;
@@ -1436,7 +1465,7 @@
       ctx.fillStyle="rgba(15,23,42,.86)";roundRect(ctx,baseX-118,baseY-112,236,78,16);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#cffafe";ctx.font="950 19px system-ui";ctx.textAlign="center";ctx.fillText("🛡️ BASE CAMP",baseX,baseY-82);ctx.font="800 13px system-ui";ctx.fillText("Respawn • Rally • Safe Start",baseX,baseY-57);
     }
 
-    const ex=snap.extraction;ctx.fillStyle="rgba(34,197,94,.23)";ctx.strokeStyle="#4ade80";ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#dcfce7";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("SQUAD EXTRACTION",ex.x,ex.y+6);
+    const ex=snap.extraction;ctx.fillStyle=stormExtraction?"rgba(14,165,233,.26)":"rgba(34,197,94,.23)";ctx.strokeStyle=stormExtraction?"#7dd3fc":"#4ade80";ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=stormExtraction?"#e0f2fe":"#dcfce7";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText(stormExtraction?"STORM EXTRACTION":"SQUAD EXTRACTION",ex.x,ex.y+6);if(stormExtraction){ctx.font="950 44px system-ui";ctx.fillText("H",ex.x,ex.y-24);}
     const guideTarget=nearestUnrescuedCivilian()||nearestActiveTiger()||ex;
     if(state.local&&guideTarget){ctx.strokeStyle="rgba(103,232,249,.62)";ctx.lineWidth=4;ctx.setLineDash([12,11]);ctx.beginPath();ctx.moveTo(state.local.x,state.local.y);ctx.lineTo(guideTarget.x,guideTarget.y);ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle="rgba(103,232,249,.30)";ctx.lineWidth=3;ctx.beginPath();ctx.arc(guideTarget.x,guideTarget.y,guideTarget.hpMax?(guideTarget.boss?178:164):82,0,Math.PI*2);ctx.stroke();}
     ctx.strokeStyle="rgba(191,219,254,.7)";ctx.lineWidth=8;ctx.strokeRect(4,4,worldW-8,worldH-8);

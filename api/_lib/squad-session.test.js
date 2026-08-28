@@ -371,7 +371,62 @@ async function run(){
   const alphaHostAgain = await claimReward(await readSession(alphaSession.code), alphaHost);
   assert.equal(alphaHostAgain.firstClaim, false, "Alpha Hunt cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-5 and five Special Operations, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
+  const stormHost = { id:910801, first_name:"Storm Host" };
+  const stormMate = { id:910802, first_name:"Storm Mate" };
+  let stormSession = await createSession(stormHost, { launchType:"storm-extraction" });
+  stormSession = await joinSession(stormSession.code, stormMate);
+  assert.equal(stormSession.launchType, "storm-extraction", "Storm Extraction keeps its own operation identity");
+  stormSession = await applyAction(stormSession, stormHost, "start");
+  let stormSnapshot = await buildSnapshot(stormSession, stormHost.id);
+  assert.equal(stormSnapshot.mission.title, "Storm Extraction", "Storm Extraction has its own mission title");
+  assert.equal(stormSnapshot.mission.chapterName, "Tempest Coast", "Storm Extraction has its own map identity");
+  assert.equal(stormSnapshot.mission.rescueRequired, 3, "Storm Extraction requires all three evacuation specialists");
+  assert.equal(stormSnapshot.tigers.length, 5, "Storm Extraction has four storm tigers and one Alpha");
+  assert.equal(stormSnapshot.boss.name, "Tempest Alpha", "Storm Extraction has its own boss");
+  assert.equal(stormSnapshot.boss.hpMax, 2600, "Tempest has the operation's full Alpha health pool");
+  assert.equal(stormSnapshot.mission.timeLimitMs, 12 * 60 * 1000, "Storm Extraction uses its twelve-minute extraction timer");
+  assert.equal(stormSnapshot.world.width, 4800, "Storm Extraction uses the full co-op world width");
+  assert.equal(stormSnapshot.world.height, 2800, "Storm Extraction uses the full co-op world height");
+
+  const evacPilot = stormSnapshot.civilians[0];
+  await writePlayerPatch(stormSession.code, stormHost.id, { x:evacPilot.x, y:evacPilot.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(stormSession.code), stormHost, "rescue", { civilianId:evacPilot.id });
+  stormSnapshot = await buildSnapshot(await readSession(stormSession.code), stormHost.id);
+  assert(stormSnapshot.rescuedIds.includes(evacPilot.id), "Storm specialists use the real shared rescue action");
+
+  const tempest = stormSnapshot.boss;
+  await writePlayerPatch(stormSession.code, stormHost.id, { x:tempest.x, y:tempest.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(stormSession.code), stormHost, "attack", { tigerId:tempest.id });
+  stormSnapshot = await buildSnapshot(await readSession(stormSession.code), stormHost.id);
+  assert(stormSnapshot.boss.hp < stormSnapshot.boss.hpMax, "Tempest uses the real shared combat action");
+
+  const stormClearedAt = Date.now();
+  await writePlayerPatch(stormSession.code, stormHost.id, {
+    x:stormSnapshot.extraction.x,
+    y:stormSnapshot.extraction.y,
+    rescuedIds:stormSnapshot.civilians.map((civilian)=>civilian.id),
+    tigerDamage:Object.fromEntries(stormSnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
+    lastSeenAt:stormClearedAt,
+  });
+  await writePlayerPatch(stormSession.code, stormMate.id, {
+    x:stormSnapshot.extraction.x,
+    y:stormSnapshot.extraction.y,
+    lastSeenAt:stormClearedAt,
+  });
+  stormSnapshot = await buildSnapshot(await readSession(stormSession.code), stormHost.id);
+  assert.equal(stormSnapshot.status, "complete", "Storm Extraction can be completed through its real objectives");
+  const stormHostReward = await claimReward(await readSession(stormSession.code), stormHost);
+  const stormMateReward = await claimReward(await readSession(stormSession.code), stormMate);
+  assert.equal(stormHostReward.reward.badge, "Tempest Coast Lifeline", "Storm Extraction awards its own badge");
+  assert.equal(stormHostReward.reward.cash, 15000, "Storm Extraction awards its own cash payout");
+  assert.equal(stormHostReward.reward.perkPoints, 4, "Storm Extraction awards its own perk points");
+  assert.equal(stormHostReward.reward.seasonPoints, 32, "Storm Extraction awards its own season points");
+  assert.equal(stormHostReward.storyProgress, null, "Storm Extraction never changes Story progress");
+  assert.notEqual(stormHostReward.receipt, stormMateReward.receipt, "both Storm Extraction players receive separate receipts");
+  const stormHostAgain = await claimReward(await readSession(stormSession.code), stormHost);
+  assert.equal(stormHostAgain.firstClaim, false, "Storm Extraction cannot pay the same player twice in one room");
+
+  console.log("PASS: Story Missions 1-5 and six Special Operations, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
 }
 
 run().catch((error)=>{

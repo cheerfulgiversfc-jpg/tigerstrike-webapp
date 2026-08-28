@@ -306,6 +306,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, and synchronized pause behavior work unchanged.
 - Each player receives a separate deduplicated receipt, $13,000, three perk points, 28 season points, and the `Ghoststripe Apex Hunter` badge. Alpha Hunt does not advance Story progress or alter the first four Special Operations.
 
+### V6.6 Storm Extraction
+
+- Storm Extraction is the sixth fully playable Special Operation and has its own durable `storm-extraction` room identity, Telegram invitation, reconnect path, mission state, and reward receipt.
+- The 4,800 × 2,800 Tempest Coast uses the full supported co-op world with severe rain, lightning flashes, flooded ground, storm shelters, marked roads, bridges, and a dedicated helicopter extraction pad.
+- Both players must rescue the stranded evacuation pilot, rescue engineer, and weather officer, clear four storm-pack tigers, defeat or capture the 2,600 HP Tempest Alpha, and reach storm extraction within twelve minutes.
+- Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, and synchronized pause behavior work unchanged.
+- Each player receives a separate deduplicated receipt, $15,000, four perk points, 32 season points, and the `Tempest Coast Lifeline` badge. Storm Extraction does not advance Story progress or alter the first five Special Operations.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
