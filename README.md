@@ -330,6 +330,18 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Both players must complete the mission and enter extraction together. Each receives a separate, deduplicated reward receipt and unlocks the next Story mission independently; Mission 10 unlocks Mission 11 for each player.
 - Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, synchronized pause behavior, Solo Story progress, and all seven Special Operations remain unchanged.
 
+### V6.9 Shared Story Chapter 2
+
+- Story Campaign now offers a real Solo or Two Players choice for Missions 1–20. Solo remains available for every unlocked Story mission; Missions 21–100 remain accurately labeled Solo-only until their co-op versions are built.
+- Missions 11–20 follow the existing `Blood in the Jungle` campaign: Narrow Path Escort, Blood Aggression, Double Research Capture, Protect Doctor Amara, Caravan Ambush, Forest Escort, Village Children Rescue, Aggressive Pack Capture, High-Aggression Swarm, and the Blood Tiger boss.
+- All Chapter 2 missions use the full 4,800 × 2,800 co-op world with mission-specific escort paths, blood-aggression warnings, research capture zones, clinic protection, caravan wrecks, forest routes, village search areas, swarm territory, marked roads, buildings, and Blood Tiger territory.
+- Mission 12 has a functional consequence system: every tiger killed adds two close-range damage to the surviving pack, while captures do not raise aggression. Mission 18 begins with an aggressive-pack damage bonus. Mission 19 has nine tigers, a four-damage bonus, and a faster attack interval.
+- Mission 13 and Mission 18 each require two real captures and cannot be completed by simply defeating every tiger. Mission 20's 1,800 HP Blood Tiger enters Blood Rage below 35% health, attacks faster, and adds six more close-range damage.
+- Rescued civilians now remain visible and follow the player who reached them until extraction. Doctor Amara and all four village children are mandatory mission targets rather than decorative map objects.
+- Missions 11, 15, and 16 use sequential shared route checkpoints that both players must reach. Mission 15's protected caravan advances to each saved route point, and a field-life respawn or squad-wipe restart returns the team to its latest checkpoint without deleting the saved escort progress.
+- Both players complete and extract together, receive separate deduplicated reward receipts, and unlock the next Story mission independently. Mission 20 awards the `Blood Tiger Breakers` badge and unlocks Mission 21 for each player.
+- Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, synchronized pause behavior, Solo Story progress, Missions 1–10, and all seven Special Operations remain unchanged.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

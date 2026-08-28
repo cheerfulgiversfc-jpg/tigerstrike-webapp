@@ -137,6 +137,164 @@ const SHARED_STORY_MISSIONS = Object.freeze({
       Object.freeze({ id:"story10_village_alpha", name:"Village Alpha", type:"Alpha", hpMax:1000, baseX:655, baseY:570, rangeX:172, rangeY:136, speed:.43, phase:1.25, boss:true }),
     ]),
   }),
+  11:Object.freeze({
+    level:11, chapter:2, chapterName:"Blood in the Jungle", title:"Story Mission 11",
+    objective:"Escort four villagers through the narrow jungle path, clear the patrol, and extract.", rescueRequired:4,
+    timeLimitMs:8 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s11_path_mid", x:520, y:445, r:125, label:"Narrow Path Midpoint" }),
+      Object.freeze({ id:"s11_path_exit", x:860, y:625, r:125, label:"Narrow Path Exit" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s11_path_elder", x:260, y:220, name:"Path Elder", look:"field" }),
+      Object.freeze({ id:"s11_family_guide", x:475, y:410, name:"Family Guide", look:"scout" }),
+      Object.freeze({ id:"s11_trail_worker", x:760, y:265, name:"Trail Worker", look:"driver" }),
+      Object.freeze({ id:"s11_village_scout", x:900, y:700, name:"Village Scout", look:"medic" }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s11_path_scout", name:"Path Scout", type:"Scout", hpMax:235, baseX:340, baseY:500, rangeX:105, rangeY:78, speed:.80, phase:.5 }),
+      Object.freeze({ id:"s11_bend_stalker", name:"Bend Stalker", type:"Standard", hpMax:275, baseX:680, baseY:350, rangeX:126, rangeY:94, speed:.69, phase:2.5 }),
+      Object.freeze({ id:"s11_narrow_guard", name:"Narrow Path Guard", type:"Armored", hpMax:335, baseX:900, baseY:720, rangeX:106, rangeY:86, speed:.54, phase:4.7 }),
+    ]),
+  }),
+  12:Object.freeze({
+    level:12, chapter:2, chapterName:"Blood in the Jungle", title:"Story Mission 12",
+    objective:"Killing a tiger increases the surviving pack's aggression. Clear or capture the pack together.", rescueRequired:0,
+    dangerNote:"Every tiger killed adds 2 damage to the surviving tigers. Captures do not raise aggression.", aggressionLabel:"Rising Blood Aggression", aggressionPerKill:2,
+    timeLimitMs:8 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s12_blood_scout", name:"Blood Trail Scout", type:"Scout", hpMax:245, baseX:290, baseY:420, rangeX:112, rangeY:82, speed:.84, phase:.4 }),
+      Object.freeze({ id:"s12_rage_hunter", name:"Rage Hunter", type:"Standard", hpMax:290, baseX:520, baseY:300, rangeX:132, rangeY:98, speed:.72, phase:1.8 }),
+      Object.freeze({ id:"s12_blood_stalker", name:"Blood Stalker", type:"Standard", hpMax:305, baseX:790, baseY:500, rangeX:126, rangeY:96, speed:.74, phase:3.5 }),
+      Object.freeze({ id:"s12_rage_guard", name:"Rage Guard", type:"Armored", hpMax:370, baseX:925, baseY:720, rangeX:108, rangeY:88, speed:.57, phase:5.1 }),
+    ]),
+  }),
+  13:Object.freeze({
+    level:13, chapter:2, chapterName:"Blood in the Jungle", title:"Story Mission 13",
+    objective:"Capture two tigers for the scientists, clear the remaining threat, and extract.", rescueRequired:0, captureRequired:2,
+    timeLimitMs:9 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s13_sample_scout", name:"Sample Scout", type:"Scout", hpMax:260, baseX:315, baseY:390, rangeX:114, rangeY:84, speed:.80, phase:.7 }),
+      Object.freeze({ id:"s13_sample_tiger", name:"Research Sample Tiger", type:"Standard", hpMax:320, baseX:660, baseY:510, rangeX:138, rangeY:105, speed:.68, phase:2.6 }),
+      Object.freeze({ id:"s13_sample_guard", name:"Sample Guard", type:"Armored", hpMax:385, baseX:920, baseY:700, rangeX:112, rangeY:90, speed:.55, phase:4.8 }),
+    ]),
+  }),
+  14:Object.freeze({
+    level:14, chapter:2, chapterName:"Blood in the Jungle", title:"Story Mission 14",
+    objective:"Protect Doctor Amara, escort her to safety, clear the tigers, and extract.", rescueRequired:1,
+    timeLimitMs:8 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([
+      Object.freeze({ id:"s14_doctor_amara", x:560, y:315, name:"Doctor Amara", look:"medic", vip:true }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s14_clinic_scout", name:"Clinic Scout", type:"Scout", hpMax:255, baseX:330, baseY:480, rangeX:108, rangeY:82, speed:.82, phase:.6 }),
+      Object.freeze({ id:"s14_doctor_hunter", name:"Doctor Hunter", type:"Standard", hpMax:310, baseX:700, baseY:410, rangeX:132, rangeY:102, speed:.71, phase:2.7 }),
+      Object.freeze({ id:"s14_clinic_guard", name:"Clinic Guard", type:"Armored", hpMax:380, baseX:910, baseY:710, rangeX:108, rangeY:88, speed:.54, phase:4.9 }),
+    ]),
+  }),
+  15:Object.freeze({
+    level:15, chapter:2, chapterName:"Blood in the Jungle", title:"Story Mission 15",
+    objective:"Tigers ambush the caravan. Rescue all four crew members, clear the ambush, and extract.", rescueRequired:4,
+    timeLimitMs:9 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s15_route_1", x:390, y:550, r:130, label:"Caravan Rally Point" }),
+      Object.freeze({ id:"s15_route_2", x:660, y:550, r:130, label:"Caravan Crossroads" }),
+      Object.freeze({ id:"s15_route_3", x:900, y:675, r:130, label:"Caravan Safe Approach" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s15_driver", x:245, y:300, name:"Caravan Driver", look:"driver" }),
+      Object.freeze({ id:"s15_merchant", x:465, y:520, name:"Caravan Merchant", look:"field" }),
+      Object.freeze({ id:"s15_medic", x:735, y:295, name:"Caravan Medic", look:"medic" }),
+      Object.freeze({ id:"s15_guard", x:925, y:690, name:"Caravan Guard", look:"scout" }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s15_road_scout", name:"Caravan Scout", type:"Scout", hpMax:270, baseX:300, baseY:430, rangeX:112, rangeY:84, speed:.84, phase:.5 }),
+      Object.freeze({ id:"s15_wagon_stalker", name:"Wagon Stalker", type:"Standard", hpMax:320, baseX:520, baseY:350, rangeX:132, rangeY:100, speed:.72, phase:2.0 }),
+      Object.freeze({ id:"s15_cargo_hunter", name:"Cargo Hunter", type:"Standard", hpMax:335, baseX:780, baseY:510, rangeX:126, rangeY:98, speed:.70, phase:3.7 }),
+      Object.freeze({ id:"s15_caravan_breaker", name:"Caravan Breaker", type:"Armored", hpMax:405, baseX:930, baseY:720, rangeX:108, rangeY:90, speed:.55, phase:5.2 }),
+    ]),
+  }),
+  16:Object.freeze({
+    level:16, chapter:2, chapterName:"Blood in the Jungle", title:"Story Mission 16",
+    objective:"Escort five civilians through the forest, clear the tiger patrol, and extract.", rescueRequired:5,
+    timeLimitMs:9 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s16_forest_mid", x:545, y:430, r:125, label:"Forest Midpoint" }),
+      Object.freeze({ id:"s16_forest_exit", x:850, y:650, r:125, label:"Forest Exit" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s16_forester", x:230, y:230, name:"Forester", look:"field" }),
+      Object.freeze({ id:"s16_ranger", x:410, y:465, name:"Forest Ranger", look:"scout" }),
+      Object.freeze({ id:"s16_healer", x:595, y:260, name:"Village Healer", look:"medic" }),
+      Object.freeze({ id:"s16_farmer", x:790, y:510, name:"Forest Farmer", look:"driver" }),
+      Object.freeze({ id:"s16_guide", x:930, y:705, name:"Trail Guide", look:"field" }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s16_forest_scout", name:"Forest Scout", type:"Scout", hpMax:275, baseX:315, baseY:390, rangeX:116, rangeY:86, speed:.84, phase:.4 }),
+      Object.freeze({ id:"s16_tree_stalker", name:"Tree Stalker", type:"Standard", hpMax:330, baseX:585, baseY:540, rangeX:136, rangeY:104, speed:.71, phase:2.2 }),
+      Object.freeze({ id:"s16_trail_hunter", name:"Trail Hunter", type:"Standard", hpMax:345, baseX:790, baseY:330, rangeX:128, rangeY:98, speed:.73, phase:3.8 }),
+      Object.freeze({ id:"s16_forest_guard", name:"Forest Guard", type:"Armored", hpMax:420, baseX:925, baseY:715, rangeX:110, rangeY:90, speed:.55, phase:5.3 }),
+    ]),
+  }),
+  17:Object.freeze({
+    level:17, chapter:2, chapterName:"Blood in the Jungle", title:"Story Mission 17",
+    objective:"Rescue four children hiding in the village, clear the prowlers, and extract.", rescueRequired:4,
+    timeLimitMs:9 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([
+      Object.freeze({ id:"s17_child_maya", x:250, y:245, name:"Maya", look:"field", child:true }),
+      Object.freeze({ id:"s17_child_leo", x:480, y:385, name:"Leo", look:"scout", child:true }),
+      Object.freeze({ id:"s17_child_nia", x:735, y:250, name:"Nia", look:"medic", child:true }),
+      Object.freeze({ id:"s17_child_omar", x:905, y:680, name:"Omar", look:"driver", child:true }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s17_home_scout", name:"Village Home Scout", type:"Scout", hpMax:280, baseX:320, baseY:450, rangeX:114, rangeY:84, speed:.85, phase:.6 }),
+      Object.freeze({ id:"s17_alley_stalker", name:"Village Alley Stalker", type:"Standard", hpMax:340, baseX:665, baseY:370, rangeX:136, rangeY:102, speed:.72, phase:2.8 }),
+      Object.freeze({ id:"s17_square_guard", name:"Village Square Guard", type:"Armored", hpMax:430, baseX:910, baseY:710, rangeX:112, rangeY:92, speed:.56, phase:4.9 }),
+    ]),
+  }),
+  18:Object.freeze({
+    level:18, chapter:2, chapterName:"Blood in the Jungle", title:"Story Mission 18",
+    objective:"Capture two aggressive pack tigers, clear the remaining pack, and extract together.", rescueRequired:0, captureRequired:2,
+    dangerNote:"Aggressive pack tigers deal 2 extra damage at close range.", aggressionLabel:"Aggressive Capture Pack", hazardDamageBonus:2,
+    timeLimitMs:9 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s18_pack_scout", name:"Aggressive Pack Scout", type:"Scout", hpMax:295, baseX:300, baseY:400, rangeX:118, rangeY:88, speed:.88, phase:.5 }),
+      Object.freeze({ id:"s18_pack_hunter", name:"Aggressive Pack Hunter", type:"Standard", hpMax:350, baseX:535, baseY:305, rangeX:140, rangeY:106, speed:.76, phase:2.0 }),
+      Object.freeze({ id:"s18_pack_stalker", name:"Aggressive Pack Stalker", type:"Standard", hpMax:365, baseX:785, baseY:500, rangeX:134, rangeY:102, speed:.77, phase:3.7 }),
+      Object.freeze({ id:"s18_pack_guard", name:"Aggressive Pack Guard", type:"Armored", hpMax:445, baseX:930, baseY:710, rangeX:112, rangeY:92, speed:.59, phase:5.2 }),
+    ]),
+  }),
+  19:Object.freeze({
+    level:19, chapter:2, chapterName:"Blood in the Jungle", title:"Story Mission 19",
+    objective:"Survive the high-aggression tiger swarm, clear all nine threats, and extract.", rescueRequired:0,
+    dangerNote:"The swarm attacks faster and deals 4 extra damage at close range.", aggressionLabel:"High Aggression", hazardDamageBonus:4, hazardCooldownMs:900,
+    timeLimitMs:10 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s19_swarm_1", name:"Swarm Scout One", type:"Scout", hpMax:240, baseX:225, baseY:350, rangeX:110, rangeY:82, speed:.92, phase:.2 }),
+      Object.freeze({ id:"s19_swarm_2", name:"Swarm Scout Two", type:"Scout", hpMax:250, baseX:410, baseY:260, rangeX:116, rangeY:86, speed:.94, phase:1.1 }),
+      Object.freeze({ id:"s19_swarm_3", name:"Swarm Hunter One", type:"Standard", hpMax:300, baseX:585, baseY:430, rangeX:138, rangeY:104, speed:.80, phase:2.0 }),
+      Object.freeze({ id:"s19_swarm_4", name:"Swarm Hunter Two", type:"Standard", hpMax:310, baseX:760, baseY:290, rangeX:136, rangeY:102, speed:.82, phase:2.8 }),
+      Object.freeze({ id:"s19_swarm_5", name:"Swarm Hunter Three", type:"Standard", hpMax:320, baseX:930, baseY:410, rangeX:134, rangeY:100, speed:.84, phase:3.6 }),
+      Object.freeze({ id:"s19_swarm_6", name:"Swarm Prowler One", type:"Scout", hpMax:270, baseX:285, baseY:690, rangeX:118, rangeY:88, speed:.93, phase:4.4 }),
+      Object.freeze({ id:"s19_swarm_7", name:"Swarm Prowler Two", type:"Standard", hpMax:325, baseX:500, baseY:750, rangeX:134, rangeY:102, speed:.82, phase:5.2 }),
+      Object.freeze({ id:"s19_swarm_8", name:"Swarm Guard One", type:"Armored", hpMax:390, baseX:740, baseY:690, rangeX:114, rangeY:92, speed:.64, phase:6.0 }),
+      Object.freeze({ id:"s19_swarm_9", name:"Swarm Guard Two", type:"Armored", hpMax:410, baseX:955, baseY:735, rangeX:112, rangeY:90, speed:.65, phase:6.8 }),
+    ]),
+  }),
+  20:Object.freeze({
+    level:20, chapter:2, chapterName:"Blood in the Jungle", title:"Story Mission 20",
+    objective:"Boss: Blood Tiger appears. Defeat or capture it before Blood Rage overwhelms the squad.", rescueRequired:0,
+    dangerNote:"Blood Rage activates below 35% health: the Blood Tiger attacks faster and deals 6 extra damage.", aggressionLabel:"Blood Tiger Boss", hazardDamageBonus:3,
+    timeLimitMs:10 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s20_blood_tiger", name:"Blood Tiger", type:"Berserker", hpMax:1800, baseX:655, baseY:565, rangeX:190, rangeY:150, speed:.50, phase:1.2, boss:true, bloodRage:true }),
+    ]),
+  }),
 });
 const ROLE_DEFS = Object.freeze({
   tracker:Object.freeze({ key:"tracker", label:"Tracker", damage:28, maxHp:105, speed:1.08 }),
@@ -156,6 +314,16 @@ const SHARED_STORY_WORLD_SIZES = Object.freeze({
   8:Object.freeze({ width:4620, height:2600 }),
   9:Object.freeze({ width:4680, height:2640 }),
   10:Object.freeze({ width:4740, height:2680 }),
+  11:Object.freeze({ width:4800, height:2800 }),
+  12:Object.freeze({ width:4800, height:2800 }),
+  13:Object.freeze({ width:4800, height:2800 }),
+  14:Object.freeze({ width:4800, height:2800 }),
+  15:Object.freeze({ width:4800, height:2800 }),
+  16:Object.freeze({ width:4800, height:2800 }),
+  17:Object.freeze({ width:4800, height:2800 }),
+  18:Object.freeze({ width:4800, height:2800 }),
+  19:Object.freeze({ width:4800, height:2800 }),
+  20:Object.freeze({ width:4800, height:2800 }),
 });
 const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
 const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
@@ -271,6 +439,7 @@ function expandMissionDefinition(base, targetWorld){
     spawns:Object.freeze((base.spawns || []).map(point)),
     civilians:Object.freeze((base.civilians || []).map(point)),
     tigers:Object.freeze((base.tigers || []).map(tiger)),
+    checkpoints:Object.freeze((base.checkpoints || []).map(point)),
   });
 }
 
@@ -393,6 +562,7 @@ const ALL_COOP_MISSIONS = Object.freeze([
 ]);
 const ALL_COOP_TIGERS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []));
 const ALL_COOP_CIVILIANS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []));
+const ALL_COOP_CHECKPOINTS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.checkpoints || []));
 
 function normalizeLaunchType(value){
   const type = String(value || "").trim().toLowerCase();
@@ -431,7 +601,11 @@ function normalizeSession(raw){
     if(reason) pausedBy[String(memberId)] = reason === "inventory" ? "inventory" : "shop";
   }
   const activePause = raw.status === "active" && Object.keys(pausedBy).length > 0;
-  const launchType = normalizeLaunchType(raw.launchType);
+  const requestedStoryMissionLevel = clamp(Math.floor(Number(raw.storyMissionLevel || 0)), 0, 100);
+  const requestedLaunchType = normalizeLaunchType(raw.launchType);
+  const launchType = requestedLaunchType === "shared-story" && !EXPANDED_SHARED_STORY_MISSIONS[requestedStoryMissionLevel]
+    ? "live-squad"
+    : requestedLaunchType;
   return {
     version:1,
     code,
@@ -445,7 +619,7 @@ function normalizeSession(raw){
     pausedAt:activePause ? Math.max(0, Number(raw.pausedAt || nowMs())) : 0,
     pausedBy:activePause ? pausedBy : {},
     failureReason:cleanText(raw.failureReason, 32),
-    storyMissionLevel:clamp(Math.floor(Number(raw.storyMissionLevel || 0)), 0, 100),
+    storyMissionLevel:launchType === "shared-story" ? requestedStoryMissionLevel : 0,
     launchType,
     survivalWave:clamp(Math.floor(Number(raw.survivalWave || 1)), 1, 50),
     survivalWavesCleared:clamp(Math.floor(Number(raw.survivalWavesCleared || 0)), 0, 50),
@@ -488,6 +662,7 @@ function newPlayer(user, slot=0){
     tigerDamage:{},
     capturedIds:[],
     rescuedIds:[],
+    checkpointIds:[],
     revives:0,
     joinedAt:nowMs(),
     lastSeenAt:nowMs(),
@@ -529,6 +704,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     bossDamage:clamp(src.bossDamage, 0, 2000),
     tigerDamage,
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
+    checkpointIds:[...new Set((Array.isArray(src.checkpointIds) ? src.checkpointIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_CHECKPOINTS.some((checkpoint)=>checkpoint.id === id)))],
     capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
     revives:clamp(src.revives, 0, 999),
     joinedAt:Math.max(0, Number(src.joinedAt || base.joinedAt)),
@@ -599,6 +775,11 @@ async function createSession(user, opts={}){
     if(!(await readSession(candidate))){ code = candidate; break; }
   }
   if(!code) throw new Error("Could not create a squad code. Try again.");
+  const requestedStoryMissionLevel = clamp(Math.floor(Number(opts?.storyMissionLevel || 0)), 0, 100);
+  const requestedLaunchType = normalizeLaunchType(opts?.launchType);
+  const launchType = requestedLaunchType === "shared-story" && !EXPANDED_SHARED_STORY_MISSIONS[requestedStoryMissionLevel]
+    ? "live-squad"
+    : requestedLaunchType;
   let session = await writeSession({
     code,
     hostId:uid,
@@ -608,8 +789,8 @@ async function createSession(user, opts={}){
     updatedAt:nowMs(),
     startedAt:0,
     completedAt:0,
-    storyMissionLevel:clamp(Math.floor(Number(opts?.storyMissionLevel || 0)), 0, 100),
-    launchType:normalizeLaunchType(opts?.launchType),
+    storyMissionLevel:launchType === "shared-story" ? requestedStoryMissionLevel : 0,
+    launchType,
   });
   await writePlayer(code, newPlayer(user, 0));
   return session;
@@ -642,7 +823,9 @@ async function memberPlayers(session){
 
 function sessionDerived(session, players, at=nowMs()){
   const mission = missionDefinition(session);
-  const rescuedIds = [...new Set(players.flatMap((p)=>p.rescuedIds || []))];
+  const missionCivilianIds = new Set(mission.civilians.map((civilian)=>civilian.id));
+  const rescuedIds = [...new Set(players.flatMap((p)=>p.rescuedIds || []))]
+    .filter((id)=>missionCivilianIds.has(id));
   const missionTigerIds = new Set(mission.tigers.map((tiger)=>tiger.id));
   const capturedIds = [...new Set(players.flatMap((p)=>p.capturedIds || []))]
     .filter((id)=>missionTigerIds.has(id));
@@ -656,11 +839,40 @@ function sessionDerived(session, players, at=nowMs()){
     .filter((p)=>!p.downed && distance(p, mission.extraction) <= mission.extraction.r)
     .map((p)=>p.userId);
   const allTigersCleared = tigers.every((t)=>t.defeated);
+  const tigerKills = tigers.filter((t)=>t.defeated && !t.captured).length;
+  const bloodRageActive = !!boss?.bloodRage && !boss.defeated && Number(boss.hp || 0) <= Number(boss.hpMax || 1) * 0.35;
+  const aggressionBonus = Math.max(0, Number(mission.hazardDamageBonus || 0))
+    + tigerKills * Math.max(0, Number(mission.aggressionPerKill || 0))
+    + (bloodRageActive ? 6 : 0);
   const legacyBossOnlyRoom = session.launchType === "live-squad" && players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
   const captureRequired = Math.max(0, Number(mission.captureRequired || 0));
-  const objectivesReady = rescuedIds.length >= mission.rescueRequired && capturedIds.length >= captureRequired && (allTigersCleared || legacyBossOnlyRoom);
+  const checkpoints = mission.checkpoints || [];
+  const checkpointCompletedIds = checkpoints
+    .filter((checkpoint)=>players.length === session.memberIds.length && players.every((player)=>(player.checkpointIds || []).includes(checkpoint.id)))
+    .map((checkpoint)=>checkpoint.id);
+  const checkpointsReady = checkpointCompletedIds.length >= checkpoints.length;
+  const objectivesReady = rescuedIds.length >= mission.rescueRequired && capturedIds.length >= captureRequired && checkpointsReady && (allTigersCleared || legacyBossOnlyRoom);
   const squadWiped = players.length === session.memberIds.length && players.every((p)=>p.downed && Number(p.respawnAt || 0) <= 0 && Number(p.livesRemaining || 0) <= 0);
-  return { rescuedIds, capturedIds, bossDamage, bossHp, boss, tigers, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
+  return { rescuedIds, capturedIds, checkpointCompletedIds, checkpointsReady, bossDamage, bossHp, boss, tigers, tigerKills, aggressionBonus, bloodRageActive, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
+}
+
+function civilianSnapshots(session, players, rescuedIds){
+  const mission = missionDefinition(session);
+  return mission.civilians.map((civilian, index)=>{
+    const owner = players.find((player)=>(player.rescuedIds || []).includes(civilian.id));
+    if(!owner) return { ...civilian, following:false, followingUserId:0, secured:false };
+    const row = Math.floor(index / 2);
+    const side = index % 2 === 0 ? -1 : 1;
+    return {
+      ...civilian,
+      x:clamp(Number(owner.x || 0) + side * (38 + row * 8), 24, mission.world.width - 24),
+      y:clamp(Number(owner.y || 0) + 42 + row * 30, 24, mission.world.height - 24),
+      following:true,
+      followingUserId:owner.userId,
+      secured:distance(owner, mission.extraction) <= mission.extraction.r,
+      rescued:rescuedIds.includes(civilian.id),
+    };
+  });
 }
 
 async function maybeFinishSession(session, players){
@@ -788,8 +1000,15 @@ async function buildSnapshot(session, viewerId){
       objective:mission.objective,
       rescueRequired:mission.rescueRequired,
       captureRequired:Math.max(0, Number(mission.captureRequired || 0)),
+      aggressionLabel:cleanText(mission.aggressionLabel, 50),
+      dangerNote:cleanText(mission.dangerNote, 180),
+      aggressionBonus:derived.aggressionBonus,
+      tigerKills:derived.tigerKills,
+      bloodRageActive:derived.bloodRageActive,
       civilianCount:mission.civilians.length,
       tigerCount:mission.tigers.length,
+      checkpointRequired:(mission.checkpoints || []).length,
+      checkpointCompletedIds:derived.checkpointCompletedIds,
       timeLimitMs:missionLimitMs(session),
       survival:session.launchType === "endless-survival",
       survivalWave:session.launchType === "endless-survival" ? Number(session.survivalWave || 1) : 0,
@@ -800,11 +1019,13 @@ async function buildSnapshot(session, viewerId){
     world:mission.world,
     spawns:mission.spawns,
     extraction:mission.extraction,
-    civilians:mission.civilians,
+    civilians:civilianSnapshots(session, players, derived.rescuedIds),
+    checkpoints:mission.checkpoints || [],
     tigers:derived.tigers,
     boss:derived.boss,
     rescuedIds:derived.rescuedIds,
     capturedIds:derived.capturedIds,
+    checkpointCompletedIds:derived.checkpointCompletedIds,
     objectivesReady:derived.objectivesReady,
     squadWiped:derived.squadWiped,
     extractionReadyIds:derived.extractionReadyIds,
@@ -819,7 +1040,11 @@ async function updateOwnPresence(session, user, patch={}){
   let player = await readPlayer(session.code, uid, user, slot);
   const now = nowMs();
   const mission = missionDefinition(session);
-  const spawn = mission.spawns[slot === 0 ? 0 : 1];
+  const defaultSpawn = mission.spawns[slot === 0 ? 0 : 1];
+  const lastCheckpoint = (mission.checkpoints || []).reduce((last, checkpoint)=>(player.checkpointIds || []).includes(checkpoint.id) ? checkpoint : last, null);
+  const spawn = lastCheckpoint
+    ? { x:lastCheckpoint.x + (slot === 0 ? -42 : 42), y:lastCheckpoint.y + 54 }
+    : defaultSpawn;
   player.name = playerName(user);
   if(session.status === "waiting" && patch.role) player.role = roleKey(patch.role);
   const def = ROLE_DEFS[player.role];
@@ -857,15 +1082,38 @@ async function updateOwnPresence(session, user, patch={}){
     }
     player.lastMoveAt = now;
   }
+  if(session.status === "active" && !player.downed && (mission.checkpoints || []).length){
+    const routePlayers = await memberPlayers(session);
+    const routeRows = routePlayers.map((row)=>row.userId === player.userId ? player : row);
+    const rescued = new Set(routeRows.flatMap((row)=>row.rescuedIds || []));
+    if(rescued.size >= Number(mission.rescueRequired || 0)){
+      if(!Array.isArray(player.checkpointIds)) player.checkpointIds = [];
+      for(let index=0; index<mission.checkpoints.length; index++){
+        const checkpoint = mission.checkpoints[index];
+        const priorReady = index === 0 || player.checkpointIds.includes(mission.checkpoints[index - 1].id);
+        if(priorReady && !player.checkpointIds.includes(checkpoint.id) && distance(player, checkpoint) <= Number(checkpoint.r || 120)){
+          player.checkpointIds.push(checkpoint.id);
+          break;
+        }
+      }
+    }
+  }
   if(session.status === "active" && !player.downed){
     const players = await memberPlayers(session);
-    const threat = tigerSnapshots(session, players, now)
+    const threats = tigerSnapshots(session, players, now);
+    const threat = threats
       .filter((t)=>!t.defeated)
       .sort((a,b)=>distance(player,a)-distance(player,b))[0];
-    if(threat && distance(player, threat) <= (threat.boss ? 122 : 102) && now - player.lastHazardAt >= 1250){
+    const tigerKills = threats.filter((t)=>t.defeated && !t.captured).length;
+    const bloodRage = !!threat?.bloodRage && Number(threat.hp || 0) <= Number(threat.hpMax || 1) * 0.35;
+    const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0));
+    if(threat && distance(player, threat) <= (threat.boss ? 122 : 102) && now - player.lastHazardAt >= hazardCooldown){
       const armor = player.role === "assault" ? 3 : (player.role === "medic" ? 1 : 0);
       const baseDamage = threat.boss ? 13 : (threat.type === "Armored" ? 11 : 9);
-      player.hp = clamp(player.hp - Math.max(6, baseDamage - armor), 0, player.maxHp);
+      const aggressionDamage = Math.max(0, Number(mission.hazardDamageBonus || 0))
+        + tigerKills * Math.max(0, Number(mission.aggressionPerKill || 0))
+        + (bloodRage ? 6 : 0);
+      player.hp = clamp(player.hp - Math.max(6, baseDamage + aggressionDamage - armor), 0, player.maxHp);
       player.lastHazardAt = now;
       if(player.hp <= 0){
         player.downed = true;
@@ -933,9 +1181,16 @@ async function applyAction(session, user, action, payload={}){
     await writeSession(session);
     const mission = missionDefinition(session);
     const players = await memberPlayers(session);
+    const completedCheckpointIndex = action === "restart"
+      ? (mission.checkpoints || []).reduce((last, checkpoint, index)=>players.every((row)=>(row.checkpointIds || []).includes(checkpoint.id)) ? index : last, -1)
+      : -1;
+    const restartCheckpoint = completedCheckpointIndex >= 0 ? mission.checkpoints[completedCheckpointIndex] : null;
     for(const p of players){
       const def = ROLE_DEFS[p.role];
-      const spawn = mission.spawns[p.slot === 0 ? 0 : 1];
+      const defaultSpawn = mission.spawns[p.slot === 0 ? 0 : 1];
+      const spawn = restartCheckpoint
+        ? { x:restartCheckpoint.x + (p.slot === 0 ? -42 : 42), y:restartCheckpoint.y + 54 }
+        : defaultSpawn;
       p.hp = def.maxHp;
       p.maxHp = def.maxHp;
       p.downed = false;
@@ -945,10 +1200,13 @@ async function applyAction(session, user, action, payload={}){
       p.x = spawn.x;
       p.y = spawn.y;
       p.face = 0;
-      p.bossDamage = 0;
-      p.tigerDamage = {};
-      p.capturedIds = [];
-      p.rescuedIds = [];
+      if(!restartCheckpoint){
+        p.bossDamage = 0;
+        p.tigerDamage = {};
+        p.capturedIds = [];
+        p.rescuedIds = [];
+        p.checkpointIds = [];
+      }
       p.rewardClaimed = false;
       p.lastSeenAt = now;
       await writePlayer(session.code, p);
@@ -1028,7 +1286,7 @@ async function claimReward(session, user){
   player.rewardClaimed = true;
   await writePlayer(session.code, player);
   const sharedStory = session.launchType === "shared-story";
-  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 10) : 0;
+  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 20) : 0;
   const sharedRewards = {
     1:{ cash:1800, perkPoints:1, seasonPoints:6, badge:"Shared Story First Patrol" },
     2:{ cash:2050, perkPoints:1, seasonPoints:7, badge:"Farm Road Guardians" },
@@ -1040,6 +1298,16 @@ async function claimReward(session, user){
     8:{ cash:3500, perkPoints:2, seasonPoints:13, badge:"First Research Capture" },
     9:{ cash:3850, perkPoints:2, seasonPoints:14, badge:"Village Gate Defenders" },
     10:{ cash:4500, perkPoints:2, seasonPoints:16, badge:"Village Alpha Breakers" },
+    11:{ cash:4800, perkPoints:2, seasonPoints:17, badge:"Narrow Path Guides" },
+    12:{ cash:5100, perkPoints:2, seasonPoints:18, badge:"Blood Aggression Control" },
+    13:{ cash:5450, perkPoints:2, seasonPoints:19, badge:"Double Research Capture" },
+    14:{ cash:5800, perkPoints:2, seasonPoints:20, badge:"Doctor Amara Guard" },
+    15:{ cash:6200, perkPoints:2, seasonPoints:21, badge:"Caravan Ambush Response" },
+    16:{ cash:6600, perkPoints:3, seasonPoints:22, badge:"Forest Escort Team" },
+    17:{ cash:7000, perkPoints:3, seasonPoints:23, badge:"Village Children Rescue" },
+    18:{ cash:7500, perkPoints:3, seasonPoints:24, badge:"Aggressive Pack Researchers" },
+    19:{ cash:8200, perkPoints:3, seasonPoints:26, badge:"Swarm Survivors" },
+    20:{ cash:9500, perkPoints:4, seasonPoints:30, badge:"Blood Tiger Breakers" },
   };
   const operationRewards = {
     "live-squad":{ cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },

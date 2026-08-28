@@ -49,6 +49,16 @@
     { level:8, title:"First Research Capture", description:"Weaken and capture your first research tiger, then extract together." },
     { level:9, title:"Village Gate Defense", description:"Defend the village gate against a four-tiger attack." },
     { level:10, title:"Village Alpha", description:"Defeat or capture the Village Alpha boss and finish Chapter 1 together." },
+    { level:11, title:"Narrow Path Escort", description:"Escort four villagers through a narrow jungle path and clear the patrol." },
+    { level:12, title:"Blood Aggression", description:"Clear or capture the pack. Every tiger killed makes the survivors hit harder." },
+    { level:13, title:"Double Research Capture", description:"Weaken and capture two tigers for the scientists before extraction." },
+    { level:14, title:"Protect Doctor Amara", description:"Reach Doctor Amara, escort her to safety, and clear the clinic attackers." },
+    { level:15, title:"Caravan Ambush", description:"Rescue four caravan crew members and break the four-tiger ambush." },
+    { level:16, title:"Forest Escort", description:"Escort five civilians through the forest while clearing four patrol tigers." },
+    { level:17, title:"Village Children Rescue", description:"Find four children hiding across the village and clear the prowlers." },
+    { level:18, title:"Aggressive Pack Capture", description:"Capture two aggressive pack tigers and clear the remaining threats." },
+    { level:19, title:"High-Aggression Swarm", description:"Survive and clear a nine-tiger swarm that attacks faster and hits harder." },
+    { level:20, title:"Blood Tiger", description:"Defeat or capture the Blood Tiger before its low-health Blood Rage overwhelms the squad." },
   ]);
   const SPECIAL_OPERATIONS = Object.freeze([
     {
@@ -148,6 +158,7 @@
   const missionMeta = () => state.snapshot?.mission || {};
   const rescueRequired = () => Math.max(0, Number(missionMeta().rescueRequired ?? (sharedStoryActive() ? 2 : 4)));
   const captureRequired = () => Math.max(0, Number(missionMeta().captureRequired || 0));
+  const checkpointRequired = () => Math.max(0, Number(missionMeta().checkpointRequired || 0));
   const maxUnlockedStoryLevel = () => clamp(Math.floor(Math.max(Number(window.S?.storyLastMission || 1), Number(window.S?.storyLevel || 1))), 1, 100);
   const twoPlayerStoryReady = (level=state.storyMissionLevel) => Math.max(1, Math.floor(Number(level || 1))) <= SHARED_STORY_LEVELS.length;
   const selectedStoryDescription = () => {
@@ -210,8 +221,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V6.8 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V6.8 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.8 • Co-op Command");
+      ? `Tiger Strike V6.9 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V6.9 • ${selectedOperation().mapLabel}` : "Tiger Strike V6.9 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -321,10 +332,11 @@
     const wave = Math.max(1, Number(snap.mission?.survivalWave || 1));
     const wavesCleared = Math.max(0, Number(snap.mission?.survivalWavesCleared || 0));
     const regroupSeconds = Math.max(0, Math.ceil(Number(snap.mission?.survivalIntermissionMs || 0) / 1000));
-    set("squadBossHud", `${snap.boss?.boss ? `Alpha ${Math.round(snap.boss?.hp || 0)} HP` : `${activeThreats} tiger${activeThreats===1?"":"s"}`} • ${activeThreats} active`);
-    set("squadCivHud", survival ? `${wavesCleared} wave${wavesCleared === 1 ? "" : "s"} cleared` : (captureRequired() > 0 ? `${snap.capturedIds?.length || 0}/${captureRequired()} captured` : (rescueRequired() > 0 ? `${snap.rescuedIds?.length || 0}/${rescueRequired()} escorted` : "No escort objective")));
+    set("squadBossHud", `${snap.boss?.boss ? `${snap.boss.name || "Alpha"} ${Math.round(snap.boss?.hp || 0)} HP` : `${activeThreats} tiger${activeThreats===1?"":"s"}`} • ${activeThreats} active`);
+    set("squadCivHud", survival ? `${wavesCleared} wave${wavesCleared === 1 ? "" : "s"} cleared` : (captureRequired() > 0 ? `${snap.capturedIds?.length || 0}/${captureRequired()} captured` : (rescueRequired() > 0 ? `${snap.rescuedIds?.length || 0}/${rescueRequired()} following` : "No escort objective")));
     set("squadMissionHud", snap.paused ? "PAUSED" : (survival ? (regroupSeconds > 0 ? `WAVE ${wave} CLEAR • ${regroupSeconds}s` : `WAVE ${wave}`) : `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`));
     set("squadLivesHud", livesHudText());
+    set("squadDangerNotice", dangerText());
     const connection = $("squadConnection");
     if(connection) connection.textContent = playerConnectionText();
     set("squadObjective", objectiveText());
@@ -344,6 +356,10 @@
     return (state.snapshot?.civilians || [])
       .filter((c)=>!(state.snapshot?.rescuedIds || []).includes(c.id))
       .sort((a,b)=>distance(state.local,a)-distance(state.local,b))[0] || null;
+  }
+  function nextCheckpointForLocal(){
+    const mine = localSnapshotPlayer();
+    return (state.snapshot?.checkpoints || []).find((checkpoint)=>!(mine?.checkpointIds || []).includes(checkpoint.id)) || null;
   }
   function updateActionButtons(){
     if(!state.local || state.snapshot?.status !== "active") return;
@@ -444,7 +460,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V6.8 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V6.9 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -478,6 +494,7 @@
     return `<div class="squadLevelNav">
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="1">First</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="6">Co-op 6–10</button>
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="11">Chapter 2 • 11–20</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.max(1, selected - 1)}" ${selected <= 1 ? "disabled" : ""}>← Previous</button>
       <span>Unlocked ${max}/100</span>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.min(max, selected + 1)}" ${selected >= max ? "disabled" : ""}>Next →</button>
@@ -537,8 +554,8 @@
     return `<div class="squadPanel squadArenaPanel">
       ${equipmentButtonsHtml()}
       <div class="squadHud">
-        <div class="squadHudCard"><div class="squadHudLabel">Tiger Threats</div><div class="squadHudValue" id="squadBossHud">${snap.boss?.boss ? `Alpha ${Math.round(snap.boss.hp)} HP` : `${activeThreats} Story tigers`} • ${activeThreats} active</div></div>
-        <div class="squadHudCard"><div class="squadHudLabel">${survival ? "Survival" : (captureRequired() > 0 ? "Research" : "Civilians")}</div><div class="squadHudValue" id="squadCivHud">${survival ? `${survivalCleared} wave${survivalCleared === 1 ? "" : "s"} cleared` : (captureRequired() > 0 ? `${snap.capturedIds?.length || 0}/${captureRequired()} captured` : (required > 0 ? `${rescued}/${required} escorted` : "No escort objective"))}</div></div>
+        <div class="squadHudCard"><div class="squadHudLabel">Tiger Threats</div><div class="squadHudValue" id="squadBossHud">${snap.boss?.boss ? `${esc(snap.boss.name || "Alpha")} ${Math.round(snap.boss.hp)} HP` : `${activeThreats} Story tigers`} • ${activeThreats} active</div></div>
+        <div class="squadHudCard"><div class="squadHudLabel">${survival ? "Survival" : (captureRequired() > 0 ? "Research" : "Civilians")}</div><div class="squadHudValue" id="squadCivHud">${survival ? `${survivalCleared} wave${survivalCleared === 1 ? "" : "s"} cleared` : (captureRequired() > 0 ? `${snap.capturedIds?.length || 0}/${captureRequired()} captured` : (required > 0 ? `${rescued}/${required} following` : "No escort objective"))}</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Mission</div><div class="squadHudValue" id="squadMissionHud">${statusText}</div></div>
         <div class="squadHudCard"><div class="squadHudLabel">Field Lives</div><div class="squadHudValue" id="squadLivesHud">${esc(livesHudText())}</div></div>
       </div>
@@ -546,6 +563,7 @@
       <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${esc(playerConnectionText())}</div>
       <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
+      ${snap.mission?.dangerNote ? `<div class="squadConnection bad" id="squadDangerNotice">${esc(dangerText())}</div>` : ""}
       ${survival && snap.mission.survivalExtractAvailable ? `<div class="squadConnection">✅ Extraction unlocked. Both players may bank the current reward, or stay out of the circle until the next wave begins.</div>` : ""}
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>${captureRequired() > 0 ? "🔬 Capture target" : "👤 Civilian"}</span><span>🐅 Tiger</span></div>
@@ -614,7 +632,12 @@
       if(regroup > 0) return `Wave ${wave} cleared. Regroup at Base Camp—Wave ${wave + 1} begins in ${regroup}s. Extraction unlocks after Wave 3.`;
       return `Wave ${wave}: Clear all four tigers together. ${snap.mission.survivalExtractAvailable ? "Extraction is unlocked whenever the wave ends." : `Clear ${Math.max(0, 3 - Number(snap.mission.survivalWavesCleared || 0))} more wave${Math.max(0, 3 - Number(snap.mission.survivalWavesCleared || 0)) === 1 ? "" : "s"} to unlock extraction.`}`;
     }
-    if(rescueRequired() > 0 && (snap.rescuedIds || []).length < rescueRequired()) return `Objective 1: ${missionMeta().objective || "Escort the civilians"} (${snap.rescuedIds.length}/${rescueRequired()} escorted).`;
+    if(rescueRequired() > 0 && (snap.rescuedIds || []).length < rescueRequired()) return `Objective 1: ${missionMeta().objective || "Escort the civilians"} (${snap.rescuedIds.length}/${rescueRequired()} now following).`;
+    if(checkpointRequired() > 0 && (snap.checkpointCompletedIds || []).length < checkpointRequired()){
+      const checkpoint = (snap.checkpoints || []).find((row)=>!(snap.checkpointCompletedIds || []).includes(row.id));
+      const ready = (snap.players || []).filter((player)=>(player.checkpointIds || []).includes(checkpoint?.id)).length;
+      return `Moving objective: Both players escort the group to ${checkpoint?.label || "the next route checkpoint"} (${ready}/2 ready • ${(snap.checkpointCompletedIds || []).length}/${checkpointRequired()} checkpoints complete).`;
+    }
     if(captureRequired() > 0 && (snap.capturedIds || []).length < captureRequired()){
       const threats = (snap.tigers || []).filter((t)=>!t.defeated && Number(t.hp || 0) > 0);
       return `Research objective: Weaken a tiger to 30% health, then tap Capture (${snap.capturedIds?.length || 0}/${captureRequired()} captured • ${threats.length} target${threats.length === 1 ? "" : "s"} active).`;
@@ -623,6 +646,16 @@
     if(threats.length) return `Objective 2: Clear the ${sharedStoryActive() ? "Story" : "Special Operation"} tiger threat together (${threats.length} tiger${threats.length===1?"":"s"} active).`;
     const ready = snap.extractionReadyIds || [];
     return `Objective: Both players stand inside the green extraction circle (${ready.length}/2 ready).`;
+  }
+
+  function dangerText(){
+    const mission = state.snapshot?.mission;
+    if(!mission?.dangerNote) return "";
+    const parts = [`🔥 ${mission.aggressionLabel || "Danger"}: ${mission.dangerNote}`];
+    if(Number(mission.aggressionBonus || 0) > 0) parts.push(`Current close-range damage bonus: +${Number(mission.aggressionBonus || 0)}`);
+    if(Number(mission.tigerKills || 0) > 0 && Number(state.snapshot?.storyMissionLevel || 0) === 12) parts.push(`${mission.tigerKills} tiger kill${mission.tigerKills === 1 ? "" : "s"} raised aggression`);
+    if(mission.bloodRageActive) parts.push("BLOOD RAGE ACTIVE");
+    return parts.join(" • ");
   }
 
   function pauseSummary(){
@@ -1080,7 +1113,7 @@
         if(Number(target.hp || 0) <= Number(target.hpMax || 1) * 0.30) apiAction = "capture";
       }
       await api(apiAction, extra);
-      setMessage(apiAction === "capture" ? "Tiger captured together!" : (kind === "rescue" ? "Civilian secured!" : (kind === "revive" ? "Teammate revived!" : "Hit confirmed.")));
+      setMessage(apiAction === "capture" ? "Tiger captured together!" : (kind === "rescue" ? "Civilian is following your squad—bring them through the route and into extraction." : (kind === "revive" ? "Teammate revived!" : "Hit confirmed.")));
     }catch(error){ setMessage(error.message, true); }
     finally{ state.actionBusy = false; }
   }
@@ -1394,18 +1427,25 @@
     ctx.fillStyle="#ef4444";ctx.fillRect(-10,-30,20,50);ctx.fillRect(-26,-14,52,20);ctx.fillStyle="#0f172a";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText("FIELD CLINIC",0,47);ctx.restore();
   }
 
+  function drawBloodTrailMarker(ctx,x,y,size=1,label="DANGER"){
+    ctx.save();ctx.translate(x,y);ctx.scale(size,size);
+    ctx.fillStyle="rgba(127,29,29,.28)";ctx.strokeStyle="rgba(251,113,133,.82)";ctx.lineWidth=5;ctx.beginPath();ctx.ellipse(0,0,70,34,-.18,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle="rgba(69,10,10,.90)";roundRect(ctx,-66,-58,132,34,10);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=2;ctx.stroke();ctx.fillStyle="#ffe4e6";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(label,0,-36);ctx.restore();
+  }
+
   function drawStoryCivilian(ctx,civ,rescued){
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"]};
-    const [shirt,pants]=colors[civ.look]||colors.field;ctx.save();ctx.translate(civ.x,civ.y);ctx.globalAlpha=rescued?.24:1;
+    const [shirt,pants]=colors[civ.look]||colors.field;ctx.save();ctx.translate(civ.x,civ.y);ctx.globalAlpha=civ.secured?.42:1;
     ctx.fillStyle="rgba(2,6,23,.32)";ctx.beginPath();ctx.ellipse(3,18,17,7,0,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle=pants;ctx.lineWidth=6;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-4,9);ctx.lineTo(-8,24);ctx.moveTo(4,9);ctx.lineTo(9,24);ctx.stroke();
     ctx.strokeStyle=shirt;ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(0,11);ctx.moveTo(-2,0);ctx.lineTo(-13,9);ctx.moveTo(2,0);ctx.lineTo(13,8);ctx.stroke();
     ctx.fillStyle="#d7a47f";ctx.beginPath();ctx.arc(0,-14,8,0,Math.PI*2);ctx.fill();ctx.fillStyle="#3f2d22";ctx.beginPath();ctx.arc(0,-17,8,Math.PI,Math.PI*2);ctx.fill();
-    ctx.globalAlpha=1;ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(rescued?"SAFE":`RESCUE • ${civ.name}`,0,-32);ctx.restore();
+    ctx.globalAlpha=1;ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(civ.secured?"AT EXTRACTION":(civ.following?`FOLLOWING • ${civ.name}`:`RESCUE • ${civ.name}`),0,-32);ctx.restore();
   }
 
   function drawStoryTiger(ctx,tiger,now){
-    if(tiger.defeated) return;const alpha=!!tiger.boss;const ghost=String(tiger.id||"")==="ghoststripe_alpha";const coat=ghost?"#dbeafe":"#f59e0b";const ear=ghost?"#e2e8f0":"#fbbf24";const leg=ghost?"#94a3b8":"#d97706";const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const facing=Math.sin((now/900)+(String(tiger.id).length))>=0?1:-1;
+    if(tiger.defeated) return;const alpha=!!tiger.boss;const ghost=String(tiger.id||"")==="ghoststripe_alpha";const blood=String(tiger.id||"")==="s20_blood_tiger";const coat=blood?"#b91c1c":(ghost?"#dbeafe":"#f59e0b");const ear=blood?"#fb7185":(ghost?"#e2e8f0":"#fbbf24");const leg=blood?"#7f1d1d":(ghost?"#94a3b8":"#d97706");const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const facing=Math.sin((now/900)+(String(tiger.id).length))>=0?1:-1;
+    if(blood){ctx.save();ctx.fillStyle=tiger.hp<=tiger.hpMax*.35?"rgba(239,68,68,.28)":"rgba(127,29,29,.18)";ctx.shadowColor="#ef4444";ctx.shadowBlur=tiger.hp<=tiger.hpMax*.35?38:20;ctx.beginPath();ctx.arc(tiger.x,tiger.y,58,0,Math.PI*2);ctx.fill();ctx.restore();}
     ctx.save();ctx.translate(tiger.x,tiger.y);ctx.scale(facing*s,s);
     ctx.strokeStyle=coat;ctx.lineWidth=9;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-29,2);ctx.quadraticCurveTo(-54,-15,-64,4);ctx.stroke();
     ctx.strokeStyle="#111827";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-47,-6);ctx.lineTo(-51,2);ctx.stroke();
@@ -1414,7 +1454,7 @@
     ctx.strokeStyle="#111827";ctx.lineWidth=4;for(const x of [-20,-7,7,18]){ctx.beginPath();ctx.moveTo(x,-15);ctx.lineTo(x+8,13);ctx.stroke();}
     ctx.strokeStyle=leg;ctx.lineWidth=7;for(const x of [-18,9]){ctx.beginPath();ctx.moveTo(x,12);ctx.lineTo(x-2,28);ctx.stroke();}
     ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(37,-9,2.5,0,Math.PI*2);ctx.fill();ctx.fillStyle="#f8fafc";ctx.beginPath();ctx.arc(44,-3,3,0,Math.PI*2);ctx.fill();ctx.restore();
-    const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);const barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,tiger.y-(alpha?65:50),barW,11,5);ctx.fill();ctx.fillStyle=alpha?"#fb7185":"#f59e0b";roundRect(ctx,tiger.x-barW/2+2,tiger.y-(alpha?63:48),(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase(),tiger.x,tiger.y-(alpha?72:57));
+    const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);const barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,tiger.y-(alpha?65:50),barW,11,5);ctx.fill();ctx.fillStyle=blood?"#ef4444":(alpha?"#fb7185":"#f59e0b");roundRect(ctx,tiger.x-barW/2+2,tiger.y-(alpha?63:48),(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase(),tiger.x,tiger.y-(alpha?72:57));
   }
 
   function drawStorySoldier(ctx,p,source,draw,mine){
@@ -1439,6 +1479,7 @@
     const stormExtraction = snap.launchType === "storm-extraction";
     const endlessSurvival = snap.launchType === "endless-survival";
     const storyLevel = snap.launchType === "shared-story" ? Math.max(1,Number(snap.storyMissionLevel||snap.mission?.level||1)) : 0;
+    const bloodChapter = storyLevel >= 11 && storyLevel <= 20;
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -1446,7 +1487,8 @@
     const visible = (x,y,pad=120)=>x >= view.x-pad && x <= view.x+view.w+pad && y >= view.y-pad && y <= view.y+view.h+pad;
     const nearRoad = (x,y,pad=75)=>verticalRoads.some((road)=>Math.abs(x-road)<pad)||horizontalRoads.some((road)=>Math.abs(y-road)<pad);
 
-    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,endlessSurvival?"#713f2b":(denAssault?"#62533c":(villageSiege?"#66a85c":(convoyRescue?"#6f8f4e":(alphaHunt?"#34435c":(stormExtraction?"#315a66":"#3f7b4d"))))));terrain.addColorStop(.52,endlessSurvival?"#3f3a2f":(denAssault?"#3f4936":(villageSiege?"#43814d":(convoyRescue?"#416b46":(alphaHunt?"#28384a":(stormExtraction?"#254956":"#2f6944"))))));terrain.addColorStop(1,endlessSurvival?"#241f2d":(denAssault?"#29382f":(villageSiege?"#2c6845":(convoyRescue?"#294f3e":(alphaHunt?"#1d2b3f":(stormExtraction?"#193845":"#24583c"))))));ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
+    const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,endlessSurvival?"#713f2b":(denAssault?"#62533c":(villageSiege?"#66a85c":(convoyRescue?"#6f8f4e":(alphaHunt?"#34435c":(stormExtraction?"#315a66":(bloodChapter?"#527044":"#3f7b4d")))))));terrain.addColorStop(.52,endlessSurvival?"#3f3a2f":(denAssault?"#3f4936":(villageSiege?"#43814d":(convoyRescue?"#416b46":(alphaHunt?"#28384a":(stormExtraction?"#254956":(bloodChapter?"#3b5337":"#2f6944")))))));terrain.addColorStop(1,endlessSurvival?"#241f2d":(denAssault?"#29382f":(villageSiege?"#2c6845":(convoyRescue?"#294f3e":(alphaHunt?"#1d2b3f":(stormExtraction?"#193845":(bloodChapter?"#302f32":"#24583c")))))));ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
+    if(bloodChapter){ctx.fillStyle="rgba(127,29,29,.09)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     ctx.fillStyle=endlessSurvival?"rgba(249,115,22,.13)":(denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":(alphaHunt?"rgba(147,197,253,.12)":(stormExtraction?"rgba(125,211,252,.13)":"rgba(102,164,91,.20)")))));
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
@@ -1553,6 +1595,40 @@
       if(visible(worldW*.54,gateY,340)){ctx.fillStyle="rgba(69,26,3,.90)";roundRect(ctx,worldW*.54-130,gateY-128,260,48,12);ctx.fill();ctx.strokeStyle="#fdba74";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#ffedd5";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("VILLAGE GATE",worldW*.54,gateY-97);}
     }else if(storyLevel === 10){
       const villageX=worldW*.55,villageY=worldH*.50;if(visible(villageX,villageY,360)){ctx.fillStyle="rgba(127,29,29,.18)";ctx.beginPath();ctx.arc(villageX,villageY,235,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=7;ctx.setLineDash([18,13]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(69,10,10,.90)";roundRect(ctx,villageX-145,villageY-60,290,48,12);ctx.fill();ctx.strokeStyle="#fda4af";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#ffe4e6";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("VILLAGE ALPHA TERRITORY",villageX,villageY-29);}
+    }else if(storyLevel === 11){
+      const pathX=worldW*.54;if(visible(pathX,worldH*.48,420)){ctx.fillStyle="rgba(21,128,61,.18)";ctx.fillRect(pathX-170,worldH*.12,340,worldH*.68);ctx.strokeStyle="#bef264";ctx.lineWidth=7;ctx.setLineDash([20,16]);ctx.strokeRect(pathX-170,worldH*.12,340,worldH*.68);ctx.setLineDash([]);ctx.fillStyle="rgba(20,83,45,.90)";roundRect(ctx,pathX-138,worldH*.15,276,46,12);ctx.fill();ctx.fillStyle="#ecfccb";ctx.font="950 16px system-ui";ctx.textAlign="center";ctx.fillText("NARROW ESCORT PATH",pathX,worldH*.15+29);}
+    }else if(storyLevel === 12){
+      for(const [xp,yp,size] of [[.21,.29,1],[.46,.57,1.15],[.72,.34,.95],[.84,.70,1.1]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,120))drawBloodTrailMarker(ctx,x,y,size,"AGGRESSION");}
+    }else if(storyLevel === 13){
+      for(const [xp,yp] of [[.34,.34],[.70,.59]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,180))drawResearchBeacon(ctx,x,y,1.18);}
+    }else if(storyLevel === 14){
+      const clinicX=worldW*.52,clinicY=worldH*.31;if(visible(clinicX,clinicY,170))drawFieldClinic(ctx,clinicX,clinicY,1.35);
+      if(visible(clinicX,clinicY,330)){ctx.strokeStyle="#fda4af";ctx.lineWidth=7;ctx.setLineDash([18,12]);ctx.beginPath();ctx.arc(clinicX,clinicY,170,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);}
+    }else if(storyLevel === 15){
+      const routeY=worldH*.50;for(const [xp,offset,angle,color] of [[.20,-18,0,"#b45309"],[.76,17,Math.PI,"#475569"]]){const x=worldW*xp,y=routeY+offset;if(visible(x,y,150))drawConvoyTruck(ctx,x,y,angle,color,true);}
+      const routeCheckpoints=snap.checkpoints||[];const routeDone=snap.checkpointCompletedIds||[];const routeIndex=Math.min(routeDone.length,Math.max(0,routeCheckpoints.length-1));const caravanPoint=routeCheckpoints[routeIndex]||{x:worldW*.38,y:routeY};if(visible(caravanPoint.x,caravanPoint.y,160))drawConvoyTruck(ctx,caravanPoint.x,caravanPoint.y,0,"#2563eb",false);
+      if(visible(worldW*.53,routeY,360)){ctx.fillStyle="rgba(69,26,3,.90)";roundRect(ctx,worldW*.53-135,routeY-120,270,46,12);ctx.fill();ctx.fillStyle="#ffedd5";ctx.font="950 16px system-ui";ctx.textAlign="center";ctx.fillText("CARAVAN AMBUSH",worldW*.53,routeY-91);}
+    }else if(storyLevel === 16){
+      for(const [xp,yp,size] of [[.18,.18,1.3],[.39,.32,1.25],[.66,.18,1.35],[.78,.61,1.3],[.43,.70,1.2],[.88,.37,1.25]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,120))drawStoryTree(ctx,x,y,size);}
+      if(visible(worldW*.52,worldH*.46,340)){ctx.fillStyle="rgba(20,83,45,.90)";roundRect(ctx,worldW*.52-128,worldH*.46-48,256,44,12);ctx.fill();ctx.fillStyle="#dcfce7";ctx.font="950 16px system-ui";ctx.textAlign="center";ctx.fillText("FOREST ESCORT ROUTE",worldW*.52,worldH*.46-20);}
+    }else if(storyLevel === 17){
+      for(const [xp,yp] of [[.18,.23],[.43,.34],[.70,.22],[.83,.65]]){const x=worldW*xp,y=worldH*yp;if(!visible(x,y,180))continue;ctx.strokeStyle="#fde68a";ctx.lineWidth=6;ctx.setLineDash([14,10]);ctx.beginPath();ctx.arc(x,y,82,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(120,53,15,.88)";roundRect(ctx,x-65,y-64,130,34,9);ctx.fill();ctx.fillStyle="#fef3c7";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText("SEARCH HOME",x,y-42);}
+    }else if(storyLevel === 18){
+      for(const [xp,yp] of [[.32,.34],[.72,.59]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,180))drawResearchBeacon(ctx,x,y,1.1);}
+      for(const [xp,yp] of [[.48,.22],[.82,.40]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,120))drawBloodTrailMarker(ctx,x,y,1,"CAPTURE PACK");}
+    }else if(storyLevel === 19){
+      for(const [xp,yp,size] of [[.18,.22,.9],[.38,.37,1],[.58,.21,.95],[.76,.39,1.05],[.31,.68,.95],[.61,.65,1.1],[.85,.68,.9]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,120))drawBloodTrailMarker(ctx,x,y,size,"SWARM");}
+      if(visible(worldW*.53,worldH*.50,390)){ctx.fillStyle="rgba(127,29,29,.22)";ctx.beginPath();ctx.arc(worldW*.53,worldH*.50,275,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#ef4444";ctx.lineWidth=8;ctx.setLineDash([22,14]);ctx.stroke();ctx.setLineDash([]);}
+    }else if(storyLevel === 20){
+      const bossX=worldW*.55,bossY=worldH*.51;if(visible(bossX,bossY,430)){ctx.fillStyle="rgba(127,29,29,.28)";ctx.beginPath();ctx.arc(bossX,bossY,300,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#ef4444";ctx.lineWidth=10;ctx.setLineDash([24,14]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(69,10,10,.94)";roundRect(ctx,bossX-150,bossY-82,300,52,13);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#ffe4e6";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("BLOOD TIGER TERRITORY",bossX,bossY-49);}
+    }
+
+    for(const checkpoint of (snap.checkpoints || [])){
+      if(!visible(checkpoint.x,checkpoint.y,160)) continue;
+      const completed=(snap.checkpointCompletedIds||[]).includes(checkpoint.id);
+      const playerReady=(snap.players||[]).filter((player)=>(player.checkpointIds||[]).includes(checkpoint.id)).length;
+      ctx.fillStyle=completed?"rgba(34,197,94,.25)":"rgba(59,130,246,.19)";ctx.strokeStyle=completed?"#4ade80":"#60a5fa";ctx.lineWidth=7;ctx.setLineDash([18,12]);ctx.beginPath();ctx.arc(checkpoint.x,checkpoint.y,Number(checkpoint.r||120),0,Math.PI*2);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle="rgba(2,6,23,.88)";roundRect(ctx,checkpoint.x-120,checkpoint.y-58,240,38,10);ctx.fill();ctx.fillStyle=completed?"#dcfce7":"#dbeafe";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${completed?"CHECKPOINT SAVED":checkpoint.label} • ${playerReady}/2`,checkpoint.x,checkpoint.y-33);
     }
 
     const spawns=(snap.spawns||snap.players||[]).map((player)=>({x:Number(player.x||0),y:Number(player.y||0)}));
@@ -1563,7 +1639,7 @@
     }
 
     const ex=snap.extraction;const survivalExtract=!!snap.mission?.survivalExtractAvailable;ctx.fillStyle=stormExtraction?"rgba(14,165,233,.26)":(endlessSurvival?(survivalExtract?"rgba(34,197,94,.28)":"rgba(249,115,22,.16)"):"rgba(34,197,94,.23)");ctx.strokeStyle=stormExtraction?"#7dd3fc":(endlessSurvival?(survivalExtract?"#4ade80":"#f97316"):"#4ade80");ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=stormExtraction?"#e0f2fe":(endlessSurvival?"#ffedd5":"#dcfce7");ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText(stormExtraction?"STORM EXTRACTION":(endlessSurvival?(survivalExtract?"BANK REWARDS":"LOCKED • CLEAR WAVE 3"):"SQUAD EXTRACTION"),ex.x,ex.y+6);if(stormExtraction){ctx.font="950 44px system-ui";ctx.fillText("H",ex.x,ex.y-24);}
-    const guideTarget=nearestUnrescuedCivilian()||nearestActiveTiger()||ex;
+    const guideTarget=nearestUnrescuedCivilian()||nextCheckpointForLocal()||nearestActiveTiger()||ex;
     if(state.local&&guideTarget){ctx.strokeStyle="rgba(103,232,249,.62)";ctx.lineWidth=4;ctx.setLineDash([12,11]);ctx.beginPath();ctx.moveTo(state.local.x,state.local.y);ctx.lineTo(guideTarget.x,guideTarget.y);ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle="rgba(103,232,249,.30)";ctx.lineWidth=3;ctx.beginPath();ctx.arc(guideTarget.x,guideTarget.y,guideTarget.hpMax?(guideTarget.boss?178:164):82,0,Math.PI*2);ctx.stroke();}
     ctx.strokeStyle="rgba(191,219,254,.7)";ctx.lineWidth=8;ctx.strokeRect(4,4,worldW-8,worldH-8);
   }

@@ -97,7 +97,7 @@ async function run(){
   assert(html.includes("Story Campaign"), "Story Campaign path is visible");
   assert(html.includes("Special Operations"), "Special Operations path is visible");
   assert(html.includes("Solo supports all 72 unlocked missions"), "home reports the real Solo unlock count");
-  assert(html.includes("Two Player is ready for Missions 1–10"), "home reports the exact converted co-op range");
+  assert(html.includes("Two Player is ready for Missions 1–20"), "home reports the exact converted co-op range");
 
   await clickCommand("hub-story");
   html = element("squadBody").innerHTML;
@@ -131,7 +131,25 @@ async function run(){
 
   await clickCommand("select-story", { squadStoryLevel:"11" });
   html = element("squadBody").innerHTML;
-  assert(html.includes("Solo only for now"), "Mission 11 remains accurately marked Solo-only");
+  assert(html.includes("Narrow Path Escort"), "Mission 11 exposes its Chapter 2 escort objective");
+  assert(html.includes("Two Player ready"), "Mission 11 is marked playable with a teammate");
+
+  await clickCommand("select-story", { squadStoryLevel:"13" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Double Research Capture"), "Mission 13 exposes its two-capture objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"19" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("High-Aggression Swarm"), "Mission 19 exposes its nine-tiger swarm objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"20" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Blood Tiger"), "Mission 20 exposes its Blood Tiger boss objective");
+  assert(html.includes("Two Player ready"), "Mission 20 is marked playable with a teammate");
+
+  await clickCommand("select-story", { squadStoryLevel:"21" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Solo only for now"), "Mission 21 remains accurately marked Solo-only");
 
   windowObject.openLiveSquadOps();
   await clickCommand("hub-operations");

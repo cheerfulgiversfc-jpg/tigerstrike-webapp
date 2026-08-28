@@ -4,6 +4,7 @@ const {
   joinSession,
   readSession,
   buildSnapshot,
+  updateOwnPresence,
   applyAction,
   claimReward,
 } = require("./squad-session");
@@ -109,7 +110,7 @@ async function run(){
   assert.equal(hostAgain.firstClaim, false, "host cannot receive a second server reward");
   assert.equal(teammateAgain.firstClaim, false, "teammate cannot receive a second server reward");
 
-  for(let level=2; level<=10; level++){
+  for(let level=2; level<=20; level++){
     const levelHost = { id:910100 + (level * 10), first_name:`Host ${level}` };
     const levelMate = { id:910101 + (level * 10), first_name:`Mate ${level}` };
     let levelSession = await createSession(levelHost, { launchType:"shared-story", storyMissionLevel:level });
@@ -117,7 +118,8 @@ async function run(){
     levelSession = await applyAction(levelSession, levelHost, "start");
     let levelSnapshot = await buildSnapshot(levelSession, levelHost.id);
     assert.equal(levelSnapshot.mission.level, level, `Story Mission ${level} keeps its own definition`);
-    assert(levelSnapshot.world.width >= 3800 + ((level - 1) * 100), `Story Mission ${level} keeps a large mission world`);
+    assert(levelSnapshot.world.width >= 3800, `Story Mission ${level} keeps a large mission world`);
+    if(level >= 11) assert.equal(levelSnapshot.world.width, 4800, `Story Mission ${level} uses the full Chapter 2 world width`);
     assert(levelSnapshot.world.height >= 2100, `Story Mission ${level} keeps Story-scale travel depth`);
     assert.equal(levelSnapshot.mission.title, `Story Mission ${level}`, `Story Mission ${level} has an accurate title`);
     assert(levelSnapshot.mission.objective.length > 12, `Story Mission ${level} has a real objective`);
@@ -139,11 +141,68 @@ async function run(){
       assert.equal(levelSnapshot.boss.name, "Village Alpha", "Mission 10 uses its real Village Alpha boss");
       assert.equal(levelSnapshot.boss.hpMax, 1000, "Mission 10 keeps the Village Alpha boss health");
     }
+    if(level === 11){
+      assert.equal(levelSnapshot.mission.chapterName, "Blood in the Jungle", "Mission 11 starts the real Chapter 2 campaign");
+      assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 11 escorts four villagers through the narrow path");
+    }
+    if(level === 12){
+      assert.equal(levelSnapshot.tigers.length, 4, "Mission 12 has a pack large enough for rising aggression");
+      assert(levelSnapshot.mission.dangerNote.includes("Every tiger killed"), "Mission 12 explains its real kill-driven aggression rule");
+    }
+    if(level === 13) assert.equal(levelSnapshot.mission.captureRequired, 2, "Mission 13 requires two research captures");
+    if(level === 14){
+      assert.equal(levelSnapshot.mission.rescueRequired, 1, "Mission 14 requires Doctor Amara's rescue");
+      assert.equal(levelSnapshot.civilians[0].name, "Doctor Amara", "Mission 14 identifies its protected doctor");
+      assert.equal(levelSnapshot.civilians[0].vip, true, "Doctor Amara is marked as the mission VIP");
+    }
+    if(level === 15){
+      assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 15 requires all caravan crew members");
+      assert.equal(levelSnapshot.tigers.length, 4, "Mission 15 has a complete caravan ambush pack");
+    }
+    if(level === 16) assert.equal(levelSnapshot.mission.rescueRequired, 5, "Mission 16 requires all five forest civilians");
+    if(level === 17){
+      assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 17 requires all four children");
+      assert(levelSnapshot.civilians.every((civilian)=>civilian.child === true), "Mission 17 marks every rescue target as a child");
+    }
+    if(level === 18){
+      assert.equal(levelSnapshot.mission.captureRequired, 2, "Mission 18 requires two aggressive-pack captures");
+      assert.equal(levelSnapshot.mission.aggressionBonus, 2, "Mission 18 applies its real close-range aggression damage");
+    }
+    if(level === 19){
+      assert.equal(levelSnapshot.tigers.length, 9, "Mission 19 contains the full nine-tiger swarm");
+      assert.equal(levelSnapshot.mission.aggressionBonus, 4, "Mission 19 begins at high aggression");
+    }
+    if(level === 20){
+      assert.equal(levelSnapshot.boss.name, "Blood Tiger", "Mission 20 uses the real Blood Tiger boss");
+      assert.equal(levelSnapshot.boss.hpMax, 1800, "Mission 20 keeps the Blood Tiger boss health");
+      assert.equal(levelSnapshot.boss.bloodRage, true, "Mission 20 boss carries the Blood Rage mechanic");
+    }
+    if(level === 12){
+      const firstTiger = levelSnapshot.tigers[0];
+      await writePlayerPatch(levelSession.code, levelHost.id, {
+        tigerDamage:{ [firstTiger.id]:firstTiger.hpMax },
+        lastSeenAt:Date.now(),
+      });
+      levelSnapshot = await buildSnapshot(await readSession(levelSession.code), levelHost.id);
+      assert.equal(levelSnapshot.mission.tigerKills, 1, "Mission 12 counts an actual tiger kill");
+      assert.equal(levelSnapshot.mission.aggressionBonus, 2, "Mission 12 raises surviving tiger damage after a kill");
+    }
+    if(level === 20){
+      const bloodTiger = levelSnapshot.boss;
+      await writePlayerPatch(levelSession.code, levelHost.id, {
+        tigerDamage:{ [bloodTiger.id]:Math.ceil(bloodTiger.hpMax * 0.70) },
+        lastSeenAt:Date.now(),
+      });
+      levelSnapshot = await buildSnapshot(await readSession(levelSession.code), levelHost.id);
+      assert.equal(levelSnapshot.mission.bloodRageActive, true, "Mission 20 activates Blood Rage below 35% health");
+      assert.equal(levelSnapshot.mission.aggressionBonus, 9, "Blood Rage adds six damage on top of the boss danger bonus");
+    }
     const clearedAt = Date.now();
     await writePlayerPatch(levelSession.code, levelHost.id, {
       x:levelSnapshot.extraction.x,
       y:levelSnapshot.extraction.y,
       rescuedIds:levelSnapshot.civilians.slice(0, levelSnapshot.mission.rescueRequired).map((c)=>c.id),
+      checkpointIds:(levelSnapshot.checkpoints || []).map((checkpoint)=>checkpoint.id),
       capturedIds:[],
       tigerDamage:Object.fromEntries(levelSnapshot.tigers.map((t)=>[t.id, t.hpMax])),
       lastSeenAt:clearedAt,
@@ -151,13 +210,14 @@ async function run(){
     await writePlayerPatch(levelSession.code, levelMate.id, {
       x:levelSnapshot.extraction.x,
       y:levelSnapshot.extraction.y,
+      checkpointIds:(levelSnapshot.checkpoints || []).map((checkpoint)=>checkpoint.id),
       lastSeenAt:clearedAt,
     });
-    if(level === 8){
+    if(levelSnapshot.mission.captureRequired > 0){
       levelSnapshot = await buildSnapshot(await readSession(levelSession.code), levelHost.id);
-      assert.equal(levelSnapshot.status, "active", "Mission 8 cannot finish by defeating the research tiger without capturing it");
+      assert.equal(levelSnapshot.status, "active", `Mission ${level} cannot finish without its required captures`);
       await writePlayerPatch(levelSession.code, levelHost.id, {
-        capturedIds:[levelSnapshot.tigers[0].id],
+        capturedIds:levelSnapshot.tigers.slice(0, levelSnapshot.mission.captureRequired).map((tiger)=>tiger.id),
         lastSeenAt:Date.now(),
       });
     }
@@ -168,9 +228,82 @@ async function run(){
     assert.deepEqual(levelHostReward.storyProgress, { completedLevel:level, unlockLevel:level + 1 }, `Story Mission ${level} unlocks the correct next mission for the host`);
     assert.deepEqual(levelMateReward.storyProgress, { completedLevel:level, unlockLevel:level + 1 }, `Story Mission ${level} unlocks the correct next mission for the teammate`);
     assert.notEqual(levelHostReward.receipt, levelMateReward.receipt, `Story Mission ${level} keeps player reward receipts separate`);
+    if(level === 20){
+      assert.equal(levelHostReward.reward.cash, 9500, "Mission 20 pays the Blood Tiger cash reward");
+      assert.equal(levelHostReward.reward.badge, "Blood Tiger Breakers", "Mission 20 awards the Blood Tiger badge");
+      assert.deepEqual(levelHostReward.storyProgress, { completedLevel:20, unlockLevel:21 }, "Mission 20 unlocks Mission 21");
+    }
     const levelHostAgain = await claimReward(await readSession(levelSession.code), levelHost);
     assert.equal(levelHostAgain.firstClaim, false, `Story Mission ${level} does not pay the host twice`);
   }
+
+  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:21 });
+  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 21 cannot create a fake shared Story room");
+  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 21");
+
+  const routeHost = { id:910811, first_name:"Route Host" };
+  const routeMate = { id:910812, first_name:"Route Mate" };
+  let routeSession = await createSession(routeHost, { launchType:"shared-story", storyMissionLevel:15 });
+  routeSession = await joinSession(routeSession.code, routeMate);
+  routeSession = await applyAction(routeSession, routeHost, "start");
+  let routeSnapshot = await buildSnapshot(routeSession, routeHost.id);
+  assert.equal(routeSnapshot.checkpoints.length, 3, "Mission 15 has three real moving-caravan checkpoints");
+  const caravanCivilians = routeSnapshot.civilians.map((civilian)=>civilian.id);
+  await writePlayerPatch(routeSession.code, routeHost.id, {
+    rescuedIds:caravanCivilians.slice(0, 2),
+    lastSeenAt:Date.now(),
+  });
+  await writePlayerPatch(routeSession.code, routeMate.id, {
+    rescuedIds:caravanCivilians.slice(2),
+    lastSeenAt:Date.now(),
+  });
+  routeSnapshot = await buildSnapshot(await readSession(routeSession.code), routeHost.id);
+  const followingCivilian = routeSnapshot.civilians.find((civilian)=>civilian.followingUserId === routeHost.id);
+  const routeHostPlayer = routeSnapshot.players.find((player)=>player.userId === routeHost.id);
+  assert.equal(followingCivilian.following, true, "rescued civilians visibly follow their rescuer");
+  assert(Math.hypot(followingCivilian.x - routeHostPlayer.x, followingCivilian.y - routeHostPlayer.y) < 100, "a following civilian stays beside the moving player");
+
+  for(const checkpoint of routeSnapshot.checkpoints){
+    for(const user of [routeHost, routeMate]){
+      await writePlayerPatch(routeSession.code, user.id, {
+        x:checkpoint.x,
+        y:checkpoint.y,
+        lastMoveAt:Date.now() - 2000,
+        lastSeenAt:Date.now(),
+      });
+      await updateOwnPresence(await readSession(routeSession.code), user, { x:checkpoint.x, y:checkpoint.y });
+    }
+    routeSnapshot = await buildSnapshot(await readSession(routeSession.code), routeHost.id);
+    assert(routeSnapshot.checkpointCompletedIds.includes(checkpoint.id), `${checkpoint.label} saves after both players arrive`);
+  }
+
+  const savedCheckpoint = routeSnapshot.checkpoints[routeSnapshot.checkpoints.length - 1];
+  await writePlayerPatch(routeSession.code, routeHost.id, {
+    hp:0,
+    downed:true,
+    livesRemaining:0,
+    respawnAt:Date.now() - 1,
+    x:100,
+    y:100,
+    lastSeenAt:Date.now(),
+  });
+  await updateOwnPresence(await readSession(routeSession.code), routeHost, {});
+  routeSnapshot = await buildSnapshot(await readSession(routeSession.code), routeHost.id);
+  const respawnedRouteHost = routeSnapshot.players.find((player)=>player.userId === routeHost.id);
+  assert.equal(respawnedRouteHost.downed, false, "a field life respawns the caravan player");
+  assert(Math.hypot(respawnedRouteHost.x - savedCheckpoint.x, respawnedRouteHost.y - savedCheckpoint.y) < 100, "field-life respawn uses the latest saved checkpoint");
+
+  for(const user of [routeHost, routeMate]){
+    await writePlayerPatch(routeSession.code, user.id, { hp:0, downed:true, livesRemaining:0, respawnAt:0, lastSeenAt:Date.now() });
+  }
+  routeSnapshot = await buildSnapshot(await readSession(routeSession.code), routeHost.id);
+  assert.equal(routeSnapshot.status, "failed", "the caravan route can still end in a squad wipe");
+  routeSession = await applyAction(await readSession(routeSession.code), routeHost, "restart");
+  routeSnapshot = await buildSnapshot(routeSession, routeHost.id);
+  const finalCheckpoint = routeSnapshot.checkpoints[routeSnapshot.checkpoints.length - 1];
+  assert(routeSnapshot.players.every((player)=>Math.hypot(player.x - finalCheckpoint.x, player.y - finalCheckpoint.y) < 100), "checkpoint restart returns both players to the latest saved caravan point");
+  assert.equal(routeSnapshot.rescuedIds.length, 4, "checkpoint restart preserves the rescued caravan crew");
+  assert.equal(routeSnapshot.checkpointCompletedIds.length, 3, "checkpoint restart preserves the completed moving route");
 
   const captureHost = { id:910303, first_name:"Capture Host" };
   const captureMate = { id:910304, first_name:"Capture Mate" };
@@ -539,7 +672,7 @@ async function run(){
   const survivalHostAgain = await claimReward(await readSession(survivalSession.code), survivalHost);
   assert.equal(survivalHostAgain.firstClaim, false, "Endless Survival cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-10 and seven Special Operations, survival waves, synchronized gear pause, reconnect/restart, separate unlocks, capture, and reward dedupe");
+  console.log("PASS: Story Missions 1-20 and seven Special Operations, following civilians, moving caravan checkpoints, checkpoint restart, Chapter 2 aggression, Blood Rage, reconnect, separate unlocks, capture, and reward dedupe");
 }
 
 run().catch((error)=>{
