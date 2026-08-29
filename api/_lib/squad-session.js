@@ -664,6 +664,7 @@ function newPlayer(user, slot=0){
     ammoMode:"real",
     lethalWoundedIds:[],
     rubberSlowUntil:{},
+    killSites:{},
     capturedIds:[],
     rescuedIds:[],
     checkpointIds:[],
@@ -694,6 +695,16 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     const until = Math.max(0, Number(src?.rubberSlowUntil?.[tiger.id] || 0));
     if(until > 0) rubberSlowUntil[tiger.id] = until;
   }
+  const killSites = {};
+  for(const tiger of ALL_COOP_TIGERS){
+    const site = src?.killSites?.[tiger.id];
+    if(!site || typeof site !== "object") continue;
+    killSites[tiger.id] = {
+      x:clamp(site.x, 24, MAX_COOP_WORLD.width - 24),
+      y:clamp(site.y, 24, MAX_COOP_WORLD.height - 24),
+      killedAt:Math.max(0, Number(site.killedAt || 0)),
+    };
+  }
   return {
     ...base,
     ...src,
@@ -715,6 +726,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     ammoMode:ammoRules.normalizeAmmoMode(src.ammoMode, "real") === "rubber" ? "rubber" : "real",
     lethalWoundedIds:[...new Set((Array.isArray(src.lethalWoundedIds) ? src.lethalWoundedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
     rubberSlowUntil,
+    killSites,
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     checkpointIds:[...new Set((Array.isArray(src.checkpointIds) ? src.checkpointIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_CHECKPOINTS.some((checkpoint)=>checkpoint.id === id)))],
     capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
@@ -754,7 +766,23 @@ function tigerSnapshots(session, players, at=nowMs()){
       damage = players.reduce((sum, player)=>sum + clamp(player?.bossDamage, 0, BOSS_HP_MAX), 0);
     }
     const hp = captured ? 0 : clamp(def.hpMax - damage, 0, def.hpMax);
-    return { ...def, ...tigerPosition(session, def, at), hp, defeated:hp <= 0, captured, lethalWounded, rubberSlowed };
+    const defeated = hp <= 0;
+    const killSite = players.map((player)=>player?.killSites?.[def.id]).find(Boolean);
+    const position = defeated && !captured && killSite
+      ? { x:Number(killSite.x), y:Number(killSite.y) }
+      : tigerPosition(session, def, at);
+    return {
+      ...def,
+      ...position,
+      hp,
+      defeated,
+      captured,
+      lethalWounded,
+      rubberSlowed,
+      carcass:defeated && !captured,
+      killedAt:defeated && !captured ? Math.max(0, Number(killSite?.killedAt || 0)) : 0,
+      bloodScentRadius:defeated && !captured ? 360 : 0,
+    };
   });
 }
 
@@ -854,9 +882,12 @@ function sessionDerived(session, players, at=nowMs()){
     .map((p)=>p.userId);
   const allTigersCleared = tigers.every((t)=>t.defeated);
   const tigerKills = tigers.filter((t)=>t.defeated && !t.captured).length;
+  const aggressionPerKill = Number.isFinite(Number(mission.aggressionPerKill))
+    ? Math.max(0, Number(mission.aggressionPerKill))
+    : 2;
   const bloodRageActive = !!boss?.bloodRage && !boss.defeated && Number(boss.hp || 0) <= Number(boss.hpMax || 1) * 0.35;
   const aggressionBonus = Math.max(0, Number(mission.hazardDamageBonus || 0))
-    + tigerKills * Math.max(0, Number(mission.aggressionPerKill || 0))
+    + tigerKills * aggressionPerKill
     + (bloodRageActive ? 6 : 0);
   const legacyBossOnlyRoom = session.launchType === "live-squad" && players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
   const captureRequired = Math.max(0, Number(mission.captureRequired || 0));
@@ -867,7 +898,7 @@ function sessionDerived(session, players, at=nowMs()){
   const checkpointsReady = checkpointCompletedIds.length >= checkpoints.length;
   const objectivesReady = rescuedIds.length >= mission.rescueRequired && capturedIds.length >= captureRequired && checkpointsReady && (allTigersCleared || legacyBossOnlyRoom);
   const squadWiped = players.length === session.memberIds.length && players.every((p)=>p.downed && Number(p.respawnAt || 0) <= 0 && Number(p.livesRemaining || 0) <= 0);
-  return { rescuedIds, capturedIds, checkpointCompletedIds, checkpointsReady, bossDamage, bossHp, boss, tigers, tigerKills, aggressionBonus, bloodRageActive, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
+  return { rescuedIds, capturedIds, checkpointCompletedIds, checkpointsReady, bossDamage, bossHp, boss, tigers, tigerKills, aggressionPerKill, aggressionBonus, bloodRageActive, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
 }
 
 function civilianSnapshots(session, players, rescuedIds){
@@ -954,6 +985,7 @@ async function maybeFinishSession(session, players){
           player.ammoMode = "real";
           player.lethalWoundedIds = [];
           player.rubberSlowUntil = {};
+          player.killSites = {};
           player.capturedIds = [];
           await writePlayer(session.code, player);
         }
@@ -1017,8 +1049,9 @@ async function buildSnapshot(session, viewerId){
       objective:mission.objective,
       rescueRequired:mission.rescueRequired,
       captureRequired:Math.max(0, Number(mission.captureRequired || 0)),
-      aggressionLabel:cleanText(mission.aggressionLabel, 50),
-      dangerNote:cleanText(mission.dangerNote, 180),
+      aggressionLabel:cleanText(mission.aggressionLabel || "Blood Scent", 50),
+      dangerNote:cleanText(mission.dangerNote || "Real-ammo kills leave bodies. Blood scent makes every surviving tiger hunt harder and deal more damage. Captures do not create blood scent.", 180),
+      aggressionPerKill:derived.aggressionPerKill,
       aggressionBonus:derived.aggressionBonus,
       tigerKills:derived.tigerKills,
       bloodRageActive:derived.bloodRageActive,
@@ -1122,13 +1155,21 @@ async function updateOwnPresence(session, user, patch={}){
       .filter((t)=>!t.defeated)
       .sort((a,b)=>distance(player,a)-distance(player,b))[0];
     const tigerKills = threats.filter((t)=>t.defeated && !t.captured).length;
+    const aggressionPerKill = Number.isFinite(Number(mission.aggressionPerKill))
+      ? Math.max(0, Number(mission.aggressionPerKill))
+      : 2;
+    const nearestCarcassDistance = threat
+      ? threats.filter((t)=>t.carcass).reduce((nearest, body)=>Math.min(nearest, distance(threat, body)), Infinity)
+      : Infinity;
+    const bloodScentActive = nearestCarcassDistance <= 360;
     const bloodRage = !!threat?.bloodRage && Number(threat.hp || 0) <= Number(threat.hpMax || 1) * 0.35;
-    const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0)) * (threat?.rubberSlowed ? 1.65 : 1);
-    if(threat && distance(player, threat) <= (threat.boss ? 122 : 102) && now - player.lastHazardAt >= hazardCooldown){
+    const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0) - (bloodScentActive ? 120 : 0)) * (threat?.rubberSlowed ? 1.65 : 1);
+    const huntRange = (threat?.boss ? 122 : 102) + (bloodScentActive ? 26 : 0);
+    if(threat && distance(player, threat) <= huntRange && now - player.lastHazardAt >= hazardCooldown){
       const armor = player.role === "assault" ? 3 : (player.role === "medic" ? 1 : 0);
       const baseDamage = threat.boss ? 13 : (threat.type === "Armored" ? 11 : 9);
       const aggressionDamage = Math.max(0, Number(mission.hazardDamageBonus || 0))
-        + tigerKills * Math.max(0, Number(mission.aggressionPerKill || 0))
+        + tigerKills * aggressionPerKill
         + (bloodRage ? 6 : 0);
       player.hp = clamp(player.hp - Math.max(6, baseDamage + aggressionDamage - armor), 0, player.maxHp);
       player.lastHazardAt = now;
@@ -1223,6 +1264,7 @@ async function applyAction(session, user, action, payload={}){
         p.tigerDamage = {};
         p.lethalWoundedIds = [];
         p.rubberSlowUntil = {};
+        p.killSites = {};
         p.capturedIds = [];
         p.rescuedIds = [];
         p.checkpointIds = [];
@@ -1265,6 +1307,10 @@ async function applyAction(session, user, action, payload={}){
     if(ammoMode === "real"){
       if(!Array.isArray(player.lethalWoundedIds)) player.lethalWoundedIds = [];
       if(!player.lethalWoundedIds.includes(target.id)) player.lethalWoundedIds.push(target.id);
+      if(appliedHit >= Number(target.hp || 0)){
+        if(!player.killSites || typeof player.killSites !== "object") player.killSites = {};
+        player.killSites[target.id] = { x:Number(target.x), y:Number(target.y), killedAt:now };
+      }
     }else{
       if(!player.rubberSlowUntil || typeof player.rubberSlowUntil !== "object") player.rubberSlowUntil = {};
       player.rubberSlowUntil[target.id] = now + 5200;

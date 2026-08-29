@@ -85,6 +85,21 @@ async function run(){
     /Capture blocked/,
     "a Real-wounded tiger cannot be captured"
   );
+  const woundedHost = await getState(playerStateKey(code, host.id));
+  await writePlayerPatch(code, host.id, {
+    tigerDamage:{ ...(woundedHost.tigerDamage || {}), [realTiger.id]:realTiger.hpMax - 1 },
+    lastAttackAt:0,
+    lastSeenAt:Date.now(),
+  });
+  session = await applyAction(await readSession(code), host, "attack", { tigerId:realTiger.id });
+  snapshot = await buildSnapshot(session, host.id);
+  const lethalBody = snapshot.tigers.find((tiger)=>tiger.id === realTiger.id);
+  assert.equal(lethalBody.carcass, true, "a lethal co-op kill leaves the tiger body on the map");
+  assert.equal(lethalBody.captured, false, "a lethal body is never treated as a capture");
+  assert.equal(lethalBody.bloodScentRadius, 360, "the body broadcasts an authoritative blood-scent zone");
+  assert.equal(snapshot.mission.tigerKills, 1, "the mission counts the lethal body");
+  assert.equal(snapshot.mission.aggressionBonus, 2, "a lethal kill raises surviving tiger damage in every mission");
+  assert(snapshot.players.find((player)=>player.userId === host.id).killSites[realTiger.id], "the kill position persists for reconnects");
 
   const startedBeforeGear = snapshot.startedAt;
   session = await applyAction(await readSession(code), host, "pause", { reason:"shop" });

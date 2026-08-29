@@ -221,8 +221,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V7.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V7.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.2 • Co-op Command");
+      ? `Tiger Strike V7.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V7.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.3 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -473,7 +473,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V7.2 Correct Combat & Capture Rules</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Real, Rubber, Tranq, and Capture rules are shared everywhere except kill-only Endless Survival.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V7.3 Blood Scent Ecosystem</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Lethal kills leave bodies and blood scent that strengthens the surviving pack. Clean captures create no blood scent. Endless Survival remains Real-only and kill-only.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -669,7 +669,7 @@
     if(!mission?.dangerNote) return "";
     const parts = [`🔥 ${mission.aggressionLabel || "Danger"}: ${mission.dangerNote}`];
     if(Number(mission.aggressionBonus || 0) > 0) parts.push(`Current close-range damage bonus: +${Number(mission.aggressionBonus || 0)}`);
-    if(Number(mission.tigerKills || 0) > 0 && Number(state.snapshot?.storyMissionLevel || 0) === 12) parts.push(`${mission.tigerKills} tiger kill${mission.tigerKills === 1 ? "" : "s"} raised aggression`);
+    if(Number(mission.tigerKills || 0) > 0) parts.push(`🩸 ${mission.tigerKills} ${mission.tigerKills === 1 ? "body" : "bodies"} on the map • +${Number(mission.aggressionBonus || 0)} pack damage`);
     if(mission.bloodRageActive) parts.push("BLOOD RAGE ACTIVE");
     return parts.join(" • ");
   }
@@ -1479,6 +1479,17 @@
     const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);const barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,tiger.y-(alpha?65:50),barW,11,5);ctx.fill();ctx.fillStyle=blood?"#ef4444":(alpha?"#fb7185":"#f59e0b");roundRect(ctx,tiger.x-barW/2+2,tiger.y-(alpha?63:48),(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase(),tiger.x,tiger.y-(alpha?72:57));
   }
 
+  function drawTigerCarcass(ctx,tiger,now){
+    if(!tiger?.carcass || tiger.captured) return;
+    const radius=clamp(Number(tiger.bloodScentRadius||360),220,430),pulse=.5+Math.sin(now/480+String(tiger.id||"").length)*.5;
+    ctx.save();ctx.translate(tiger.x,tiger.y);
+    ctx.strokeStyle=`rgba(251,113,133,${.14+pulse*.12})`;ctx.lineWidth=3;ctx.setLineDash([14,16]);ctx.beginPath();ctx.arc(0,0,radius,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="rgba(69,10,10,.30)";ctx.beginPath();ctx.ellipse(0,12,48,19,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#b45309";ctx.beginPath();ctx.ellipse(0,1,38,18,-.12,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(31,-5,14,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle="#111827";ctx.lineWidth=4;for(const stripeX of [-23,-10,3,16]){ctx.beginPath();ctx.moveTo(stripeX,-13);ctx.lineTo(stripeX+8,12);ctx.stroke();}
+    ctx.fillStyle="rgba(190,24,93,.78)";ctx.beginPath();ctx.ellipse(3,15,27,7,.08,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="rgba(15,23,42,.90)";roundRect(ctx,-78,-55,156,28,9);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=2;ctx.stroke();ctx.fillStyle="#ffe4e6";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText("BODY • BLOOD SCENT",0,-36);ctx.restore();
+  }
+
   function drawStorySoldier(ctx,p,source,draw,mine){
     const body=mine?"#0ea5e9":"#8b5cf6";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=Number(source.face||0);ctx.save();ctx.translate(draw.x,draw.y);ctx.rotate(face);
     ctx.fillStyle="rgba(2,6,23,.38)";ctx.beginPath();ctx.ellipse(1,19,18,7,0,0,Math.PI*2);ctx.fill();
@@ -1705,6 +1716,7 @@
     const view={x:state.camera.x,y:state.camera.y,w,h};ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(-view.x,-view.y);
     drawExpandedDistrict(ctx,snap,view);
     for(const civ of (snap.civilians||[])) drawStoryCivilian(ctx,civ,(snap.rescuedIds||[]).includes(civ.id));
+    for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawTigerCarcass(ctx,tiger,now);
     for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawStoryTiger(ctx,tiger,now);
     for(const p of (snap.players||[])){
       const mine=Number(p.userId)===viewerId(),source=mine&&state.local?state.local:p;let draw=state.remoteDraw.get(p.userId)||{x:source.x,y:source.y};draw.x+=(Number(source.x)-draw.x)*.22;draw.y+=(Number(source.y)-draw.y)*.22;state.remoteDraw.set(p.userId,draw);

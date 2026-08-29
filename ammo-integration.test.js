@@ -26,4 +26,8 @@ test("Solo, Shared Story, and Special Operations expose the same ammunition syst
   assert(game.includes('S?.mode === "Survival"') && game.includes("Survival is kill-only"), "Solo Survival is Real-only and capture-disabled");
   assert(server.includes('session.launchType === "endless-survival"') && server.includes("Capture is disabled in Endless Survival"), "Endless Survival is Real-only and capture-disabled on the server");
   assert(coop.includes("Kill-only Survival") && coop.includes("Real Only"), "Endless Survival shows accurate kill-only controls");
+  assert(game.includes("registerTigerCarcass") && game.includes("bloodScentRadius"), "Solo lethal kills leave persistent blood-scent bodies");
+  assert(game.includes("BODY • BLOOD SCENT") && coop.includes("BODY • BLOOD SCENT"), "solo and co-op visibly label lethal tiger bodies");
+  assert(server.includes("killSites") && server.includes("bloodScentRadius"), "co-op stores authoritative body locations and scent zones");
+  assert(server.includes(": 2;") && server.includes("tigerKills * aggressionPerKill"), "every co-op mission escalates surviving tiger damage after lethal kills");
 });

@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5042";
+const TS_BUILD = "5043";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -37705,7 +37705,47 @@ window.exitTutorialMode = function () {
 
 // --------------------------------------------------
 
-function carcassDifficulty(){ return clamp(1 + (S.carcasses.length*0.05), 1, 3.5); }
+function carcassDifficulty(){
+  const careerKills = Math.max(0, Number(S.opsTotals?.kills || 0));
+  return clamp(1 + ((S.carcasses || []).length * 0.05) + Math.min(0.65, careerKills * 0.005), 1, 3.5);
+}
+function bloodScentRadius(){
+  const missionKills = Math.max(0, Number((S.carcasses || []).length));
+  const careerKills = Math.max(0, Number(S.opsTotals?.kills || 0));
+  return clamp(230 + missionKills * 16 + Math.min(90, careerKills * 2), 230, 430);
+}
+function bloodAggressionState(){
+  const bodies = Math.max(0, Number((S.carcasses || []).length));
+  const careerKills = Math.max(0, Number(S.opsTotals?.kills || 0));
+  return {
+    bodies,
+    radius:bloodScentRadius(),
+    level:clamp(Math.round(bodies * 9 + careerKills * 1.5), 0, 100),
+    damageMul:carcassDifficulty(),
+  };
+}
+function tigerCarcassFrom(tiger, killer="player"){
+  return {
+    id:`carcass_${String(tiger?.id || Date.now())}_${Date.now()}`,
+    tigerId:tiger?.id ?? null,
+    tigerName:String(tiger?.name || tiger?.type || "Tiger"),
+    tigerType:String(tiger?.type || "Standard"),
+    x:Number(tiger?.x || 0),
+    y:Number(tiger?.y || 0),
+    facing:Number(tiger?.facing || tiger?.wanderAngle || 0),
+    bornAt:Date.now(),
+    killer:String(killer || "player"),
+    scentRadius:bloodScentRadius(),
+  };
+}
+function registerTigerCarcass(tiger, killer="player"){
+  if(!Array.isArray(S.carcasses)) S.carcasses = [];
+  S.carcasses.push(tigerCarcassFrom(tiger, killer));
+  if(S.carcasses.length > MAX_PERSIST_CARCASSES){
+    S.carcasses = S.carcasses.slice(-MAX_PERSIST_CARCASSES);
+  }
+  return S.carcasses[S.carcasses.length - 1];
+}
 function randomEvacZone(civilians=[]){
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
@@ -42274,10 +42314,7 @@ function rivalResolveTigerOutcome(tiger, outcome="kill", actor=null){
   tiger.alive = false;
   tigerPackRecordLoss(tiger, mode === "capture" ? "CAPTURE" : "KILL");
   if(mode !== "capture"){
-    S.carcasses.push({ x:tiger.x, y:tiger.y, bornAt:now });
-    if(S.carcasses.length > MAX_PERSIST_CARCASSES){
-      S.carcasses = S.carcasses.slice(-MAX_PERSIST_CARCASSES);
-    }
+    registerTigerCarcass(tiger, actor?.factionName || "rival");
   }
   if(Math.random() < 0.7){
     const cashKind = Math.random() < 0.5 ? "CASH" : "AMMO";
@@ -44266,9 +44303,10 @@ function roamTigers(){
       if(d < nearestCarcassDist) nearestCarcassDist = d;
     }
 
-    const killPressure = clamp((S.stats?.kills || 0) * 0.06, 0, 0.65);
-    const bloodScent = nearestCarcassDist < 210
-      ? (1 - (nearestCarcassDist / 210)) * (0.35 + killPressure)
+    const killPressure = clamp(((S.stats?.kills || 0) * 0.06) + ((S.opsTotals?.kills || 0) * 0.006), 0, 0.85);
+    const scentRadius = bloodScentRadius();
+    const bloodScent = nearestCarcassDist < scentRadius
+      ? (1 - (nearestCarcassDist / scentRadius)) * (0.40 + killPressure)
       : 0;
 
     if(bloodScent > 0.08){
@@ -47023,10 +47061,7 @@ function finishTigerKill(t){
   t.alive=false;
   tigerPackRecordLoss(t, "KILL");
   breakCombo("tiger killed");
-  S.carcasses.push({ x:t.x, y:t.y, bornAt:Date.now() });
-  if(S.carcasses.length > MAX_PERSIST_CARCASSES){
-    S.carcasses = S.carcasses.slice(-MAX_PERSIST_CARCASSES);
-  }
+  registerTigerCarcass(t, "player");
   const pay=payout("KILL");
   S.funds+=pay.cash; S.score+=pay.score;
   addContractTally("kills", 1);
@@ -47045,6 +47080,8 @@ function finishTigerKill(t){
   unlockAchv("kill1","First Kill");
   S.trust=clamp(S.trust+pay.trust,0,100);
   S.aggro=clamp(S.aggro+pay.aggro,0,100);
+  const bloodState = bloodAggressionState();
+  setEventText(`🩸 Blood scent spreading ${bloodState.radius}m • Pack aggression ${bloodState.level}% • Surviving tigers hit harder.`, 5.5);
   maybeReinforceOnKill();
   sfx("win"); hapticNotif("success");
   endBattle();
@@ -53220,11 +53257,30 @@ function drawEscortRouteLines(){
   }
   ctx.restore();
 }
-function drawCarcass(x,y){
-  ctx.globalAlpha=0.55;
-  ctx.fillStyle="rgba(180,40,60,.65)";
-  roundedRectFill(x-14,y-8,28,16,8);
-  ctx.globalAlpha=1;
+function drawCarcass(x,y,carcass=null){
+  const now = Date.now();
+  const radius = clamp(Number(carcass?.scentRadius || bloodScentRadius()), 210, 430);
+  const pulse = 0.5 + Math.sin(now / 520 + x * 0.01) * 0.5;
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.rotate(Number(carcass?.facing || 0));
+  ctx.strokeStyle=`rgba(248,113,113,${0.16 + pulse * 0.12})`;
+  ctx.lineWidth=2;
+  ctx.setLineDash([10,12]);
+  ctx.beginPath();ctx.ellipse(0,0,radius*.34,radius*.18,0,0,Math.PI*2);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle="rgba(69,10,10,.28)";ctx.beginPath();ctx.ellipse(0,8,37,16,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#b45309";ctx.beginPath();ctx.ellipse(0,0,34,17,-.08,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(29,-5,13,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle="#1f2937";ctx.lineWidth=4;
+  for(const stripeX of [-20,-8,5,17]){ctx.beginPath();ctx.moveTo(stripeX,-13);ctx.lineTo(stripeX+7,11);ctx.stroke();}
+  ctx.strokeStyle="#92400e";ctx.lineWidth=7;ctx.lineCap="round";
+  ctx.beginPath();ctx.moveTo(-18,10);ctx.lineTo(-27,18);ctx.moveTo(8,11);ctx.lineTo(20,17);ctx.stroke();
+  ctx.fillStyle="rgba(190,24,93,.72)";ctx.beginPath();ctx.ellipse(4,13,24,7,.08,0,Math.PI*2);ctx.fill();
+  ctx.rotate(-Number(carcass?.facing || 0));
+  ctx.fillStyle="rgba(15,23,42,.88)";roundedRectFill(-58,-52,116,25,9);
+  ctx.fillStyle="#fecdd3";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText("BODY • BLOOD SCENT",0,-35);
+  ctx.restore();
 }
 function drawDangerMarker(x,y){
   ctx.save();
@@ -59224,7 +59280,11 @@ function drawEntitiesLite(){
     max: mobile ? (lagTier >= 2 ? 8 : 14) : 24
   });
   for(const c of carcassesLite){
-    ctx.fillRect(c.x - 9, c.y - 4, 18, 8);
+    ctx.save();
+    ctx.strokeStyle="rgba(248,113,113,.20)";
+    ctx.beginPath();ctx.arc(c.x,c.y,Math.min(70,Number(c.scentRadius || 230)*.24),0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle="rgba(127,29,29,.76)";ctx.fillRect(c.x - 11, c.y - 5, 22, 10);
+    ctx.restore();
   }
 
   for(const p of pickupsDraw){
@@ -59485,7 +59545,7 @@ function drawEntities(){
       max: mobile ? (lagTier >= 2 ? 10 : (lagTier >= 1 ? 16 : 24)) : 34
     });
     for(const c of drawCarcasses){
-      drawSafe("drawCarcass", ()=>drawCarcass(c.x, c.y));
+      drawSafe("drawCarcass", ()=>drawCarcass(c.x, c.y, c));
     }
 
     // pickups
