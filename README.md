@@ -342,6 +342,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Both players complete and extract together, receive separate deduplicated reward receipts, and unlock the next Story mission independently. Mission 20 awards the `Blood Tiger Breakers` badge and unlocks Mission 21 for each player.
 - Existing field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, synchronized pause behavior, Solo Story progress, Missions 1–10, and all seven Special Operations remain unchanged.
 
+### V7.0 Real Extraction Endings
+
+- River Extraction now uses the same visible river geometry as the bright Story map. The boat, pickup circle, civilian boarding point, and soldier pickup are placed in water with a shore-accessible boarding radius; a boat route can no longer silently relocate onto a road.
+- Helicopter extractions show a real helicopter, board the soldier, and use a longer lift-off and fly-away sequence before the mission result appears.
+- Convoy, SUV, bus, and plane extractions use Story road lanes and visibly drive or taxi away. Boats travel along the river rather than across land.
+- Evacuated civilians board the named transport and disappear from the ground when it departs. The final soldier is also removed from the ground and shown as a cyan passenger inside the departing transport.
+- Generic safe-house artwork is suppressed whenever a named transport is active, preventing a safe-house marker from appearing under a boat, helicopter, or vehicle.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

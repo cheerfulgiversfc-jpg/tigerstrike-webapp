@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5020";
+const TS_BUILD = "5032";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -47825,6 +47825,7 @@ function evacRouteDefForKey(key){
   return EVAC_ROUTE_DEFS.find((row)=>row.key === key) || EVAC_ROUTE_DEFS[0];
 }
 function mapHasUsableEvacWater(){
+  if(normalizeModeName(S?.mode) === "Story") return true;
   try{ ensureMapObstacleCache(); }catch(e){}
   return (__mapWaterZones || []).some((zone)=>{
     if(!zone) return false;
@@ -47899,18 +47900,33 @@ function placeRealEvacRoute(def){
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
   const base = extractionSequencePlacement(def?.key === "boat" ? { key:"boat" } : { key:def?.vehicle || "safe_hold" });
-  const target = safeSpawnPoint(base.x, base.y, 34, true, true) || { x:base.x, y:base.y };
+  // Boat pickups are deliberately centered in visible water. Their generous
+  // boarding radius overlaps the shore so people can board without walking on
+  // water. Land transports still use an open ground/road point.
+  const target = def?.key === "boat"
+    ? { x:base.x, y:base.y }
+    : (safeSpawnPoint(base.x, base.y, 34, true, true) || { x:base.x, y:base.y });
   const sx = clamp(Number(S.me?.x || worldW * 0.2), 90, worldW - 90);
   const sy = clamp(Number(S.me?.y || worldH * 0.72), 90, worldH - 90);
-  const midRaw = { x:(sx + target.x) * 0.5, y:(sy + target.y) * 0.5 };
+  const approachTarget = def?.key === "boat" && Number.isFinite(base.shoreX) && Number.isFinite(base.shoreY)
+    ? { x:base.shoreX, y:base.shoreY }
+    : target;
+  const midRaw = { x:(sx + approachTarget.x) * 0.5, y:(sy + approachTarget.y) * 0.5 };
   const mid = findNearestOpenPoint(midRaw.x, midRaw.y, 28, { avoidKeepout:true, avoidWater:def?.key !== "boat", targetX:target.x, targetY:target.y }) || midRaw;
-  const alternateRaw = {
-    x:clamp(target.x + (target.x < worldW * 0.5 ? 170 : -170), 100, worldW - 100),
-    y:clamp(target.y + (target.y < worldH * 0.5 ? 150 : -150), 100, worldH - 100)
-  };
-  const alternate = findNearestOpenPoint(alternateRaw.x, alternateRaw.y, 34, { avoidKeepout:true, avoidWater:true, targetX:mid.x, targetY:mid.y })
-    || safeSpawnPoint(alternateRaw.x, alternateRaw.y, 34, true, true)
-    || alternateRaw;
+  const alternateRaw = def?.key === "boat"
+    ? {
+        x:clamp(target.x + (target.x < worldW * 0.5 ? 190 : -190), 100, worldW - 100),
+        y:target.y
+      }
+    : {
+        x:clamp(target.x + (target.x < worldW * 0.5 ? 170 : -170), 100, worldW - 100),
+        y:clamp(target.y + (target.y < worldH * 0.5 ? 150 : -150), 100, worldH - 100)
+      };
+  const alternate = def?.key === "boat"
+    ? alternateRaw
+    : (findNearestOpenPoint(alternateRaw.x, alternateRaw.y, 34, { avoidKeepout:true, avoidWater:true, targetX:mid.x, targetY:mid.y })
+      || safeSpawnPoint(alternateRaw.x, alternateRaw.y, 34, true, true)
+      || alternateRaw);
   return {
     x:target.x, y:target.y, r:70, startX:sx, startY:sy, midX:mid.x, midY:mid.y,
     altX:alternate.x, altY:alternate.y,
@@ -48140,7 +48156,7 @@ const EXTRACTION_SEQUENCE_DEFS = Object.freeze([
   Object.freeze({ key:"timed_escape", icon:"⏱️", label:"Timed Escape", instruction:"Reach extraction before the route closes.", holdSec:12, color:"rgba(248,113,113,.98)" })
 ]);
 function defaultExtractionSequenceState(){
-  return { active:false, complete:false, departing:false, key:"", label:"", instruction:"", icon:"", color:"", x:0, y:0, r:68, vehicleX:0, vehicleY:0, vehicleAngle:0, startedAt:0, deadlineAt:0, holdStartedAt:0, holdProgressMs:0, holdRequiredMs:0, departStartedAt:0, departUntil:0, lastTickAt:0, nextNoticeAt:0, pursuitSpawned:false, emergency:false, bonusCash:0 };
+  return { active:false, complete:false, departing:false, playerBoarded:false, key:"", label:"", instruction:"", icon:"", color:"", x:0, y:0, r:74, vehicleX:0, vehicleY:0, vehicleAngle:0, startedAt:0, deadlineAt:0, holdStartedAt:0, holdProgressMs:0, holdRequiredMs:0, departStartedAt:0, departUntil:0, lastTickAt:0, nextNoticeAt:0, pursuitSpawned:false, emergency:false, bonusCash:0 };
 }
 function ensureExtractionSequenceState(state=S){
   if(!state.extractionSequence || typeof state.extractionSequence !== "object") state.extractionSequence = defaultExtractionSequenceState();
@@ -48151,6 +48167,7 @@ function ensureExtractionSequenceState(state=S){
   ex.active = !!ex.active;
   ex.complete = !!ex.complete;
   ex.departing = !!ex.departing;
+  ex.playerBoarded = !!ex.playerBoarded;
   ex.pursuitSpawned = !!ex.pursuitSpawned;
   ex.emergency = !!ex.emergency;
   return ex;
@@ -48187,22 +48204,25 @@ function extractionSequencePlacement(def){
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
   ensureMapObstacleCache();
-  if(def?.key === "boat" && (__mapWaterZones || []).length){
-    const zone = (__mapWaterZones || [])[rand(0, (__mapWaterZones || []).length - 1)];
-    const radii = waterZoneRadii(zone);
-    const angle = Math.atan2(S.me.y - zone.y, S.me.x - zone.x);
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const shoreRaw = { x:zone.x + cos * radii.rx * 1.16, y:zone.y + sin * radii.ry * 1.16 };
-    const shore = findNearestOpenPoint(shoreRaw.x, shoreRaw.y, 28, {
-      avoidKeepout:true, avoidWater:true, targetX:zone.x, targetY:zone.y
-    }) || safeSpawnPoint(shoreRaw.x, shoreRaw.y, 28, true, true) || { x:shoreRaw.x, y:shoreRaw.y };
-    return {
-      x:shore.x, y:shore.y,
-      vehicleX:zone.x + cos * radii.rx * 0.66,
-      vehicleY:zone.y + sin * radii.ry * 0.66,
-      vehicleAngle:angle + Math.PI
-    };
+  const geometry = window.TigerExtractionGeometry;
+  if(def?.key === "boat"){
+    // Story phones use the bright repeated district river. Use that exact
+    // river geometry so a River Extraction can never land beside a road.
+    if(normalizeModeName(S?.mode) === "Story" && geometry?.sharedStoryRiverPlacement){
+      return geometry.sharedStoryRiverPlacement(worldW, worldH, S.me);
+    }
+    if((__mapWaterZones || []).length && geometry?.ellipseBoatPlacement){
+      const zones = (__mapWaterZones || []).map((zone)=>{
+        const radii = waterZoneRadii(zone);
+        return { ...zone, rx:radii.rx, ry:radii.ry };
+      });
+      const zone = geometry.largestWaterZone(zones);
+      const placed = geometry.ellipseBoatPlacement(zone, S.me);
+      if(placed) return placed;
+    }
+  }
+  if(normalizeModeName(S?.mode) === "Story" && def?.key !== "helicopter" && geometry?.sharedStoryRoadPlacement){
+    return geometry.sharedStoryRoadPlacement(worldW, worldH, S.me);
   }
   const targetX = S.me.x < worldW * 0.5 ? worldW * 0.78 : worldW * 0.22;
   const targetY = S.me.y < worldH * 0.5 ? worldH * 0.76 : worldH * 0.24;
@@ -48217,8 +48237,8 @@ function beginExtractionSequence(){
   const placement = extractionSequencePlacement(def);
   const now = Date.now();
   Object.assign(ex, {
-    active:true, complete:false, departing:false, key:def.key, label:def.label, instruction:def.instruction, icon:def.icon, color:def.color,
-    x:placement.x, y:placement.y, r:68, vehicleX:placement.vehicleX, vehicleY:placement.vehicleY, vehicleAngle:placement.vehicleAngle,
+    active:true, complete:false, departing:false, playerBoarded:false, key:def.key, label:def.label, instruction:def.instruction, icon:def.icon, color:def.color,
+    x:placement.x, y:placement.y, r:74, vehicleX:placement.vehicleX, vehicleY:placement.vehicleY, vehicleAngle:placement.vehicleAngle,
     startedAt:now, deadlineAt:now + 75000, holdStartedAt:0, holdProgressMs:0, holdRequiredMs:def.holdSec * 1000,
     departStartedAt:0, departUntil:0, lastTickAt:now, nextNoticeAt:now, pursuitSpawned:false, emergency:false, bonusCash:0
   });
@@ -48292,9 +48312,22 @@ function extractionSequenceTick(now=Date.now()){
     }
     if(ex.holdProgressMs >= ex.holdRequiredMs){
       ex.departing = true;
+      ex.playerBoarded = true;
       ex.departStartedAt = now;
-      ex.departUntil = now + 2400;
+      ex.departUntil = now + (window.TigerExtractionGeometry?.departureDurationMs?.(ex.key) || 4200);
       ex.nextNoticeAt = now;
+      S.me.x = ex.x;
+      S.me.y = ex.y;
+      S.me.vx = 0;
+      S.me.vy = 0;
+      triggerCinematicCameraCue("evac_depart", ex.vehicleX || ex.x, ex.vehicleY || ex.y, {
+        scale:1.08,
+        durationMs:1600,
+        letterboxMs:1450,
+        label:`${ex.icon || ""} ${ex.label || "Extraction"} departing`,
+        shake:0.08,
+        shakeMs:100
+      });
       setEventText(`${ex.icon} All aboard. Evacuation departing now!`, 2.6);
       sfx("win");
       hapticNotif("success");
@@ -48482,23 +48515,32 @@ function drawExtractionVehicle(ex, now=Date.now()){
   let x = Number(ex.vehicleX || ex.x);
   let y = Number(ex.vehicleY || ex.y);
   let angle = Number(ex.vehicleAngle || 0);
-  if(ex.key === "helicopter"){
-    y -= departPct * 260;
-    x += Math.sin(now / 180) * (1 - departPct) * 2;
+  let vehicleScale = 1;
+  const motion = window.TigerExtractionGeometry?.departureMotion?.(ex.key, departPct, angle);
+  if(motion){
+    x += Number(motion.dx || 0);
+    y += Number(motion.dy || 0);
+    vehicleScale = clamp(Number(motion.scale || 1), 0.52, 1);
+  }else if(ex.key === "helicopter"){
+    y -= departPct * 380;
+    x += departPct * 150;
+    vehicleScale = 1 - (departPct * 0.38);
   }else if(ex.key === "boat"){
-    x += Math.cos(angle) * departPct * 340;
-    y += Math.sin(angle) * departPct * 340;
+    x += Math.cos(angle) * departPct * 560;
+    y += Math.sin(angle) * departPct * 560;
   }else if(ex.key === "convoy" || ex.key === "suv" || ex.key === "bus" || ex.key === "plane" || ex.key === "timed_escape"){
     angle = Math.abs(Math.cos(angle)) < 0.3 ? 0 : angle;
-    x += Math.cos(angle) * departPct * 340;
-    y += Math.sin(angle) * departPct * 340;
+    x += Math.cos(angle) * departPct * 520;
+    y += Math.sin(angle) * departPct * 520;
   }
+  if(ex.key === "helicopter") x += Math.sin(now / 180) * (1 - departPct) * 2;
   drawEvacCinematicWash(x, y, ex.key, angle, departPct, now);
   drawPremiumEvacDepartureBurst(x, y, ex.key, angle, departPct, now);
   ctx.save();
   drawSoftEllipse(x, y + 18, ex.key === "helicopter" ? 42 : 48, ex.key === "boat" ? 14 : 18, "rgba(0,0,0,.30)", 1 - departPct * 0.35);
   ctx.translate(x, y);
   ctx.rotate(angle);
+  ctx.scale(vehicleScale, vehicleScale);
   ctx.globalAlpha = 0.98 - (departPct * 0.34);
   if(ex.key === "boat"){
     ctx.save();
@@ -48604,7 +48646,15 @@ function drawExtractionVehicle(ex, now=Date.now()){
       drawVehicleBeacon(25, -12, "rgba(248,113,113,.96)", now + 180);
     }
   }
-  if(!ex.departing){
+  if(ex.departing){
+    const departedPassengers = Math.min(8, Math.max(0, Math.floor(Number(ex.boardedCount || 0))));
+    for(let i=0;i<departedPassengers;i++){
+      ctx.fillStyle = "rgba(74,222,128,.98)";
+      ctx.beginPath();
+      ctx.arc(-12 + (i % 4) * 8, -3 + Math.floor(i / 4) * 8, 3.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }else{
     const boardedCount = Math.max(0, Math.floor(Number(ex.boardedCount ?? 0)));
     const totalCount = Math.max(0, Math.floor(Number(ex.boardingTotal ?? 0)));
     const rescued = Math.min(8, totalCount || (S.civilians || []).filter((c)=>c?.alive && c.evac).length);
@@ -48623,6 +48673,15 @@ function drawExtractionVehicle(ex, now=Date.now()){
         ctx.beginPath(); ctx.moveTo(px + 4, py); ctx.lineTo(-32, 0); ctx.stroke();
       }
     }
+  }
+  if(ex.playerBoarded){
+    ctx.fillStyle = "rgba(34,211,238,.98)";
+    ctx.beginPath();
+    ctx.arc(7, 0, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(224,242,254,.98)";
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
   }
   ctx.rotate(-angle);
   ctx.globalAlpha = 0.96;
@@ -48666,6 +48725,11 @@ function drawExtractionSequenceMarker(now=Date.now()){
   ctx.textAlign = "center";
   ctx.fillText(`${ex.icon} ${ex.label} • ${ex.departing ? "DEPARTING" : (inside ? `${Math.ceil((ex.holdRequiredMs-ex.holdProgressMs)/1000)}s` : "REACH VEHICLE")}`,ex.x,ex.y-ex.r-23);
   ctx.restore();
+}
+
+function playerBoardedForExtraction(state=S){
+  const ex = state?.extractionSequence;
+  return !!(ex?.active && ex?.departing && ex?.playerBoarded);
 }
 
 // ===================== MISSION COMPLETE =====================
@@ -50840,6 +50904,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
     const ex = zone.x;
     const ey = zone.y;
     const er = zone.r;
+    const typedEvacTransport = !!(S.evacRoute?.active || (S.extractionSequence?.active && !S.extractionSequence?.complete));
     const safeHue = activeSafeZoneHue(chapterStyle?.safeHue || "rgba(74,222,128,.95)", S);
     ctx.fillStyle = "rgba(16,56,34,.28)";
     ctx.beginPath();
@@ -50877,23 +50942,25 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // center marker (+)
-    rounded(ex - 13, ey - 13, 26, 26, 7, "rgba(74,222,128,.24)", safeHue);
-    ctx.fillStyle = "rgba(220,255,235,.96)";
-    ctx.fillRect(ex - 2, ey - 8, 4, 16);
-    ctx.fillRect(ex - 8, ey - 2, 16, 4);
-    drawEvacSafeHouseMarker(ex, ey, er, safeHue, { heavy });
+    if(!typedEvacTransport){
+      // A generic safe house is correct only when a named boat, helicopter, or
+      // road vehicle is not handling the evacuation.
+      rounded(ex - 13, ey - 13, 26, 26, 7, "rgba(74,222,128,.24)", safeHue);
+      ctx.fillStyle = "rgba(220,255,235,.96)";
+      ctx.fillRect(ex - 2, ey - 8, 4, 16);
+      ctx.fillRect(ex - 8, ey - 2, 16, 4);
+      drawEvacSafeHouseMarker(ex, ey, er, safeHue, { heavy });
 
-    // label signage restored on mobile too
-    rounded(ex - 72, ey - er - 34, 144, 26, 12, "rgba(16,56,34,.92)", safeHue);
-    ctx.fillStyle = "rgba(220,255,235,.98)";
-    ctx.textAlign = "center";
-    ctx.font = "900 10px system-ui";
-    ctx.fillText("EVAC SAFE ZONE", ex, ey - er - 16);
-    ctx.font = "800 9px system-ui";
-    ctx.fillStyle = "rgba(190,255,220,.9)";
-    ctx.fillText("FOLLOW MARKER", ex, ey - er - 4);
-    ctx.textAlign = "start";
+      rounded(ex - 72, ey - er - 34, 144, 26, 12, "rgba(16,56,34,.92)", safeHue);
+      ctx.fillStyle = "rgba(220,255,235,.98)";
+      ctx.textAlign = "center";
+      ctx.font = "900 10px system-ui";
+      ctx.fillText("EVAC SAFE ZONE", ex, ey - er - 16);
+      ctx.font = "800 9px system-ui";
+      ctx.fillStyle = "rgba(190,255,220,.9)";
+      ctx.fillText("FOLLOW MARKER", ex, ey - er - 4);
+      ctx.textAlign = "start";
+    }
   }
 
   for(const tr of (S.trapsPlaced || [])){
@@ -51898,6 +51965,7 @@ function drawMapScene(){
     const ex = safeZone.x;
     const ey = safeZone.y;
     const er = safeZone.r;
+    const typedEvacTransport = !!(S.evacRoute?.active || (S.extractionSequence?.active && !S.extractionSequence?.complete));
     const safeHue = activeSafeZoneHue(chapterStyle?.safeHue || "rgba(74,222,128,.95)", S);
 
     ctx.save();
@@ -51928,13 +51996,14 @@ function drawMapScene(){
     ctx.beginPath(); ctx.arc(ex,ey,er-9,0,Math.PI*2); ctx.stroke();
     ctx.setLineDash([]);
 
-    // center safe marker
-    ctx.fillStyle = safeHue;
-    rounded(ex-14, ey-14, 28, 28, 8, "rgba(74,222,128,.24)", safeHue);
-    ctx.fillStyle = "rgba(220,255,235,.95)";
-    ctx.fillRect(ex-2, ey-9, 4, 18);
-    ctx.fillRect(ex-9, ey-2, 18, 4);
-    drawEvacSafeHouseMarker(ex, ey, er, safeHue);
+    if(!typedEvacTransport){
+      ctx.fillStyle = safeHue;
+      rounded(ex-14, ey-14, 28, 28, 8, "rgba(74,222,128,.24)", safeHue);
+      ctx.fillStyle = "rgba(220,255,235,.95)";
+      ctx.fillRect(ex-2, ey-9, 4, 18);
+      ctx.fillRect(ex-9, ey-2, 18, 4);
+      drawEvacSafeHouseMarker(ex, ey, er, safeHue);
+    }
     for(let i=0;i<4;i++){
       const a = (Math.PI * 0.5 * i) + (Date.now() / 1300);
       const bx = ex + Math.cos(a) * (er + 14);
@@ -51942,15 +52011,16 @@ function drawMapScene(){
       rounded(bx-7, by-7, 14, 14, 5, "rgba(10,20,14,.88)", safeHue);
     }
 
-    // label + directional signage
-    rounded(ex-72, ey-er-34, 144, 26, 12, "rgba(16,56,34,.92)", safeHue);
-    ctx.fillStyle = "rgba(220,255,235,.98)";
-    ctx.font = "900 11px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText("EVAC SAFE ZONE", ex, ey-er-16);
-    ctx.font = "800 10px system-ui";
-    ctx.fillStyle = "rgba(190,255,220,.9)";
-    ctx.fillText("FOLLOW MARKER", ex, ey-er-4);
+    if(!typedEvacTransport){
+      rounded(ex-72, ey-er-34, 144, 26, 12, "rgba(16,56,34,.92)", safeHue);
+      ctx.fillStyle = "rgba(220,255,235,.98)";
+      ctx.font = "900 11px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("EVAC SAFE ZONE", ex, ey-er-16);
+      ctx.font = "800 10px system-ui";
+      ctx.fillStyle = "rgba(190,255,220,.9)";
+      ctx.fillText("FOLLOW MARKER", ex, ey-er-4);
+    }
 
     ctx.strokeStyle = "rgba(170,243,208,.72)";
     ctx.lineWidth = 2;
@@ -56223,6 +56293,7 @@ function drawTigerVisibilityFailsafe(t){
 }
 
 function drawSoldier(){
+  if(playerBoardedForExtraction(S)) return;
   const now = Date.now();
   const step = S.me.step || 0;
   const rollStart = Number.isFinite(S.rollAnimStart) ? S.rollAnimStart : 0;
@@ -56540,6 +56611,7 @@ function drawSoldier(){
 let __playerCosmeticTrail = [];
 let __playerCosmeticTrailAt = 0;
 function drawPlayerCosmeticTrail(){
+  if(playerBoardedForExtraction(S)) return;
   const def = activeMovementTrailCosmetic(S);
   if(!def || def === MOVEMENT_TRAIL_COSMETICS.TRAIL_NONE){
     __playerCosmeticTrail.length = 0;
@@ -59090,7 +59162,7 @@ function drawEntitiesLite(){
     }
   }
 
-  {
+  if(!playerBoardedForExtraction(S)){
     const smooth = smoothedDrawPoint(S.me, S.me.x, S.me.y, 0.42);
     const x = smooth.x;
     const y = smooth.y;
@@ -61999,6 +62071,12 @@ window.baseHqExecuteIvyGuidance = baseHqExecuteIvyGuidance;
 window.baseHqRefreshIvyGuidance = baseHqRefreshIvyGuidance;
 window.baseHqMissionControlAction = baseHqMissionControlAction;
 window.renderBaseHQ = renderBaseHQ;
+try{
+  if(new URLSearchParams(window.location.search || "").get("debug") === "1"){
+    window.__tigerExtractionQaLeaveBaseHq = ()=>leaveBaseHqView({ restoreMenu:true });
+    window.__tigerExtractionQaWithState = (callback)=>typeof callback === "function" ? callback(S) : null;
+  }
+}catch(e){}
 window.setBaseHqQuickMenuCollapsed = setBaseHqQuickMenuCollapsed;
 window.toggleBaseHqQuickMenu = toggleBaseHqQuickMenu;
 window.baseHqRunRecommendedCommand = baseHqRunRecommendedCommand;
