@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const { getState, setState } = require("./metrics-store");
+const ammoRules = require("../../ammo-modes");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -660,6 +661,9 @@ function newPlayer(user, slot=0){
     respawnAt:0,
     bossDamage:0,
     tigerDamage:{},
+    ammoMode:"real",
+    lethalWoundedIds:[],
+    rubberSlowUntil:{},
     capturedIds:[],
     rescuedIds:[],
     checkpointIds:[],
@@ -685,6 +689,11 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     const damage = clamp(src?.tigerDamage?.[tiger.id], 0, Math.max(tiger.hpMax, tiger.hpMax * 20));
     if(damage > 0) tigerDamage[tiger.id] = damage;
   }
+  const rubberSlowUntil = {};
+  for(const tiger of ALL_COOP_TIGERS){
+    const until = Math.max(0, Number(src?.rubberSlowUntil?.[tiger.id] || 0));
+    if(until > 0) rubberSlowUntil[tiger.id] = until;
+  }
   return {
     ...base,
     ...src,
@@ -703,6 +712,9 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     respawnAt:Math.max(0, Number(src.respawnAt || 0)),
     bossDamage:clamp(src.bossDamage, 0, 2000),
     tigerDamage,
+    ammoMode:ammoRules.normalizeAmmoMode(src.ammoMode, "real") === "rubber" ? "rubber" : "real",
+    lethalWoundedIds:[...new Set((Array.isArray(src.lethalWoundedIds) ? src.lethalWoundedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
+    rubberSlowUntil,
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     checkpointIds:[...new Set((Array.isArray(src.checkpointIds) ? src.checkpointIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_CHECKPOINTS.some((checkpoint)=>checkpoint.id === id)))],
     capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
@@ -734,13 +746,15 @@ function tigerSnapshots(session, players, at=nowMs()){
       ? { ...baseDef, hpMax:Math.round(baseDef.hpMax * survivalScale), name:`${baseDef.name} • Wave ${survivalWave}` }
       : baseDef;
     const captured = players.some((player)=>(player?.capturedIds || []).includes(def.id));
+    const lethalWounded = players.some((player)=>(player?.lethalWoundedIds || []).includes(def.id));
+    const rubberSlowed = players.some((player)=>Number(player?.rubberSlowUntil?.[def.id] || 0) > at);
     let damage = players.reduce((sum, player)=>sum + clamp(player?.tigerDamage?.[def.id], 0, def.hpMax), 0);
     if(session?.launchType === "live-squad" && def.boss && damage <= 0){
       // Keep rooms created by the first V5 release playable after this update.
       damage = players.reduce((sum, player)=>sum + clamp(player?.bossDamage, 0, BOSS_HP_MAX), 0);
     }
     const hp = captured ? 0 : clamp(def.hpMax - damage, 0, def.hpMax);
-    return { ...def, ...tigerPosition(session, def, at), hp, defeated:hp <= 0, captured };
+    return { ...def, ...tigerPosition(session, def, at), hp, defeated:hp <= 0, captured, lethalWounded, rubberSlowed };
   });
 }
 
@@ -1106,7 +1120,7 @@ async function updateOwnPresence(session, user, patch={}){
       .sort((a,b)=>distance(player,a)-distance(player,b))[0];
     const tigerKills = threats.filter((t)=>t.defeated && !t.captured).length;
     const bloodRage = !!threat?.bloodRage && Number(threat.hp || 0) <= Number(threat.hpMax || 1) * 0.35;
-    const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0));
+    const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0)) * (threat?.rubberSlowed ? 1.65 : 1);
     if(threat && distance(player, threat) <= (threat.boss ? 122 : 102) && now - player.lastHazardAt >= hazardCooldown){
       const armor = player.role === "assault" ? 3 : (player.role === "medic" ? 1 : 0);
       const baseDamage = threat.boss ? 13 : (threat.type === "Armored" ? 11 : 9);
@@ -1203,6 +1217,8 @@ async function applyAction(session, user, action, payload={}){
       if(!restartCheckpoint){
         p.bossDamage = 0;
         p.tigerDamage = {};
+        p.lethalWoundedIds = [];
+        p.rubberSlowUntil = {};
         p.capturedIds = [];
         p.rescuedIds = [];
         p.checkpointIds = [];
@@ -1219,7 +1235,11 @@ async function applyAction(session, user, action, payload={}){
     if(player.respawnAt > now) throw new Error("Your field life is bringing you back at Base Camp.");
     throw new Error("You are out of lives. Your teammate must revive you or the leader can restart after a squad wipe.");
   }
-  if(action === "attack"){
+  if(action === "ammo-mode"){
+    player.ammoMode = ammoRules.normalizeAmmoMode(payload.ammoMode, "real") === "rubber" ? "rubber" : "real";
+    player.lastSeenAt = now;
+    await writePlayer(session.code, player);
+  }else if(action === "attack"){
     const players = await memberPlayers(session);
     const tigers = tigerSnapshots(session, players, now).filter((t)=>!t.defeated);
     const requestedId = cleanText(payload.tigerId, 32);
@@ -1229,10 +1249,22 @@ async function applyAction(session, user, action, payload={}){
     if(now - player.lastAttackAt < 560) throw new Error("Weapon is cooling down.");
     const def = ROLE_DEFS[player.role];
     const combo = clamp(payload.combo || 0, 0, 3);
-    const hit = def.damage + combo * 2;
+    const ammoMode = player.ammoMode === "rubber" ? "rubber" : "real";
+    const rawHit = def.damage + combo * 2;
+    const hit = ammoMode === "rubber"
+      ? Math.max(1, Math.round(rawHit * ammoRules.damageMultiplier("rubber")))
+      : Math.max(1, Math.round(rawHit * 1.18));
+    const appliedHit = ammoMode === "rubber" ? Math.min(hit, Math.max(0, Number(target.hp || 0) - 1)) : hit;
     if(!player.tigerDamage || typeof player.tigerDamage !== "object") player.tigerDamage = {};
-    player.tigerDamage[target.id] = clamp(Number(player.tigerDamage[target.id] || 0) + hit, 0, target.hpMax);
-    if(target.boss) player.bossDamage = clamp(player.bossDamage + hit, 0, BOSS_HP_MAX);
+    player.tigerDamage[target.id] = clamp(Number(player.tigerDamage[target.id] || 0) + appliedHit, 0, target.hpMax);
+    if(ammoMode === "real"){
+      if(!Array.isArray(player.lethalWoundedIds)) player.lethalWoundedIds = [];
+      if(!player.lethalWoundedIds.includes(target.id)) player.lethalWoundedIds.push(target.id);
+    }else{
+      if(!player.rubberSlowUntil || typeof player.rubberSlowUntil !== "object") player.rubberSlowUntil = {};
+      player.rubberSlowUntil[target.id] = now + 5200;
+    }
+    if(target.boss) player.bossDamage = clamp(player.bossDamage + appliedHit, 0, BOSS_HP_MAX);
     player.lastAttackAt = now;
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
@@ -1243,6 +1275,7 @@ async function applyAction(session, user, action, payload={}){
     const target = tigers.find((t)=>t.id === requestedId) || tigers.sort((a,b)=>distance(player,a)-distance(player,b))[0];
     if(!target) throw new Error("The tiger threat is already cleared.");
     if(distance(player, target) > (target.boss ? 178 : 164)) throw new Error(`Move closer to ${target.name}.`);
+    if(target.lethalWounded) throw new Error("Capture blocked: Real ammunition caused a lethal injury. Use Rubber ammunition on a fresh tiger.");
     if(Number(target.hp || 0) > Number(target.hpMax || 1) * 0.30) throw new Error("Weaken the tiger to 30% health before capture.");
     if(!Array.isArray(player.capturedIds)) player.capturedIds = [];
     if(!player.capturedIds.includes(target.id)) player.capturedIds.push(target.id);

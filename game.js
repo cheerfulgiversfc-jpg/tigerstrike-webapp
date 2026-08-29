@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5032";
+const TS_BUILD = "5041";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -6311,17 +6311,22 @@ const WEAPON_LOADOUT_PRESETS = Object.freeze([
 ]);
 
 const AMMO = [
-  { id:"TRANQ_DARTS",  name:"Tranq Darts", grade:"Standard", price:50,  pack:10, family:"TRANQ_DARTS" },
-  { id:"TRANQ_HEAVY",  name:"Heavy Tranq Canisters", grade:"Epic", price:2500, pack:4, family:"TRANQ_DARTS" },
-  { id:"9MM_STD",      name:"9mm Standard", grade:"Standard", price:80, pack:25, family:"9MM" },
-  { id:"9MM_AP",       name:"9mm Armor Piercing", grade:"Rare", price:400, pack:20, family:"9MM" },
-  { id:"12GA_STD",     name:"12ga Buckshot", grade:"Standard", price:120, pack:12, family:"12GA" },
-  { id:"12GA_SLUG",    name:"12ga Slugs", grade:"Rare", price:600, pack:10, family:"12GA" },
-  { id:"556_STD",      name:"5.56 Standard", grade:"Standard", price:200, pack:30, family:"556" },
-  { id:"556_AP",       name:"5.56 AP", grade:"Epic", price:1200, pack:25, family:"556" },
-  { id:"762_STD",      name:"7.62 Standard", grade:"Standard", price:260, pack:20, family:"762" },
-  { id:"762_AP",       name:"7.62 AP", grade:"Epic", price:1500, pack:15, family:"762" },
-  { id:"RAIL_CELL",    name:"Rail Cells", grade:"Mythic", price:5000, pack:6, family:"RAIL" },
+  { id:"TRANQ_DARTS",  name:"Tranq Darts", grade:"Standard", price:50,  pack:10, family:"TRANQ_DARTS", mode:"tranq" },
+  { id:"TRANQ_HEAVY",  name:"Heavy Tranq Canisters", grade:"Epic", price:2500, pack:4, family:"TRANQ_DARTS", mode:"tranq" },
+  { id:"9MM_STD",      name:"9mm Real", grade:"Standard", price:80, pack:25, family:"9MM", mode:"real" },
+  { id:"9MM_AP",       name:"9mm Real AP", grade:"Rare", price:400, pack:20, family:"9MM", mode:"real" },
+  { id:"9MM_RUBBER",   name:"9mm Rubber", grade:"Standard", price:120, pack:25, family:"9MM", mode:"rubber" },
+  { id:"12GA_STD",     name:"12ga Real Buckshot", grade:"Standard", price:120, pack:12, family:"12GA", mode:"real" },
+  { id:"12GA_SLUG",    name:"12ga Real Slugs", grade:"Rare", price:600, pack:10, family:"12GA", mode:"real" },
+  { id:"12GA_RUBBER",  name:"12ga Rubber Baton", grade:"Standard", price:180, pack:12, family:"12GA", mode:"rubber" },
+  { id:"556_STD",      name:"5.56 Real", grade:"Standard", price:200, pack:30, family:"556", mode:"real" },
+  { id:"556_AP",       name:"5.56 Real AP", grade:"Epic", price:1200, pack:25, family:"556", mode:"real" },
+  { id:"556_RUBBER",   name:"5.56 Rubber", grade:"Standard", price:300, pack:30, family:"556", mode:"rubber" },
+  { id:"762_STD",      name:"7.62 Real", grade:"Standard", price:260, pack:20, family:"762", mode:"real" },
+  { id:"762_AP",       name:"7.62 Real AP", grade:"Epic", price:1500, pack:15, family:"762", mode:"real" },
+  { id:"762_RUBBER",   name:"7.62 Rubber", grade:"Standard", price:390, pack:20, family:"762", mode:"rubber" },
+  { id:"RAIL_CELL",    name:"Real Rail Cells", grade:"Mythic", price:5000, pack:6, family:"RAIL", mode:"real" },
+  { id:"RAIL_RUBBER",  name:"Rubber Impact Cells", grade:"Epic", price:7500, pack:6, family:"RAIL", mode:"rubber" },
 ];
 
 const MEDS = [
@@ -14075,7 +14080,7 @@ function resetModeProgressToFreshStart(mode, state = S){
 const MODE_PROFILE_KEYS = Object.freeze([
   "score","trust","aggro","lives","hp","armor","armorCap","stamina",
   "ownedWeapons","equippedWeaponId","preferredWeaponId","preferredLethalWeaponId","lastCombatLethalWeaponId",
-  "weaponAttachments","weaponForge","activeLoadoutPresetId","ammoReserve","mag","durability","weaponMastery","weaponMasteryTrees",
+  "weaponAttachments","weaponForge","activeLoadoutPresetId","ammoReserve","ammoModeByWeapon","mag","durability","weaponMastery","weaponMasteryTrees",
   "medkits","medkitSelectedId","repairKits","armorPlates","armorPlatesFallback","armorPlateSelectedId","trapsOwned","shields",
   "soldierAttackersOwned","soldierRescuersOwned","soldierAttackersDowned","soldierRescuersDowned","squadOwnershipLedger",
   "squadProgression","civilianSettlement","specialistStarUnlocks","stats","opsTotals","balanceStats","nemesis","cinematicBossHuntSeason",
@@ -14205,7 +14210,8 @@ const DEFAULT = {
   weaponAttachments:{},
   weaponForge: defaultWeaponForgeState(),
   activeLoadoutPresetId:"",
-  ammoReserve:{ "TRANQ_DARTS":20, "9MM_STD":40 },
+  ammoReserve:{ "TRANQ_DARTS":20, "9MM_STD":40, "9MM_RUBBER":25 },
+  ammoModeByWeapon:{ "W_9MM_JUNK":"real" },
   mag:{ loaded:6, cap:6, weaponId:"W_TRQ_PISTOL_MK1", ammoId:"TRANQ_DARTS" },
   durability:{},
   weaponMastery:{},
@@ -23955,6 +23961,7 @@ function captureWindowMinHp(t){
 }
 function tigerInCaptureHpWindow(t){
   if(!t || !t.alive) return false;
+  if(t.lethalWounded) return false;
   const hp = Math.max(0, Number(t.hp || 0));
   return hp <= captureWindowHp(t) && hp >= captureWindowMinHp(t);
 }
@@ -27082,9 +27089,10 @@ function collectPickup(p){
   else if(p.type==="AMMO"){
     // add ammo for equipped weapon
     const w=equippedWeapon();
+    const pickupAmmoId = bestAvailableAmmoIdForWeapon(w) || compatibleAmmoIdsForWeapon(w, selectedAmmoModeForWeapon(w))[0] || w.ammo;
     const pack = Math.max(1, Math.round(((w.ammo==="TRANQ_HEAVY") ? 1 : 6) * pickupMul * liveOpsMissionModifierValue("ammoPickupMul", 1, S)));
-    S.ammoReserve[w.ammo] = (S.ammoReserve[w.ammo]||0) + pack;
-    setEventText(`📦 Ammo picked up (+${pack} ${w.ammo})`, 4);
+    S.ammoReserve[pickupAmmoId] = (S.ammoReserve[pickupAmmoId]||0) + pack;
+    setEventText(`📦 Ammo picked up (+${pack} ${getAmmo(pickupAmmoId)?.name || pickupAmmoId})`, 4);
     sfx("loot");
     unlockAchv("ammo_pick","Ammo Scavenger");
   }
@@ -34930,7 +34938,13 @@ function shopGameplayEffect(kind, item){
     const highTier = Number(item.price || 0) >= 300000 ? "Endgame cash sink • " : "";
     return `${highTier}${role} weapon • buys and equips immediately • uses ${item.ammo}.`;
   }
-  if(kind === "ammo") return `Adds ${item.pack} reserve ammo • used by: ${weaponAmmoUsers(item.id)} • strongest compatible ammo auto-loads first.`;
+  if(kind === "ammo"){
+    const mode = ammoModeDisplay(ammoModeForId(item.id));
+    const rule = item.mode === "rubber"
+      ? "cannot kill tigers • slows them for live capture"
+      : (item.mode === "real" ? "lethal • faster damage • blocks live capture after a hit" : "required to finish a live capture");
+    return `Adds ${item.pack} ${mode} rounds • ${rule} • used by: ${weaponAmmoUsers(item.id)}.`;
+  }
   if(kind === "med"){
     const qty = Math.max(1, Math.floor(Number(item.qty || 1)));
     const value = qty > 1 ? ` • bulk value: ${qty} kits for $${Number(item.price || 0).toLocaleString()}` : "";
@@ -34960,7 +34974,7 @@ function shopTruthStateLine(kind, item){
     const reserve = compatibleAmmoReserveForWeapon(item);
     return `State: ${equipped ? "Equipped now" : (owned ? "Owned, ready to equip" : "Locked until purchased")} • Compatible reserve ${reserve} • Durability ${Math.round(weaponDurability(item.id))}%.`;
   }
-  if(kind === "ammo") return `State: ${ownedAmmoCount(item.id)} in reserve • Family ${item.family} • Used by ${weaponAmmoUsers(item.id)}.`;
+  if(kind === "ammo") return `State: ${ownedAmmoCount(item.id)} in reserve • ${ammoModeDisplay(ammoModeForId(item.id))} • Family ${item.family} • Used by ${weaponAmmoUsers(item.id)}.`;
   if(kind === "med") return `State: ${ownedMedCount(item.id)} owned • Next purchase adds ${Math.max(1, Math.floor(Number(item.qty || 1)))} kit${Math.max(1, Math.floor(Number(item.qty || 1))) === 1 ? "" : "s"}${S.hp < 100 ? " and auto-uses one if injured" : " to Inventory"}.`;
   if(kind === "armor") return `State: ${armorPlateCount(item.id)} owned • Next purchase adds ${Math.max(1, Math.floor(Number(item.qty || 1)))} plate${Math.max(1, Math.floor(Number(item.qty || 1))) === 1 ? "" : "s"}${S.armor < S.armorCap ? " and restores armor now" : " to Inventory"}.`;
   if(kind === "tool") return `State: ${ownedToolCount(item.id)} owned • Repairs equipped weapon durability on use.`;
@@ -35396,7 +35410,7 @@ function renderShopList(){
   }
 
   if(currentShopTab==="ammo"){
-    note.innerText=`${audit.label}. Ammo is grouped by weapon family; Epic ammo price is capped to Standard + $500.`;
+    note.innerText=`${audit.label}. Real rounds are lethal. Rubber rounds cost more, slow tigers, and can never kill; use Tranq to complete the capture.`;
     list.innerHTML = AMMO.map(a=>{
       const p=ammoPriceCapped(a);
       const owned = ownedAmmoCount(a.id);
@@ -36444,7 +36458,8 @@ function renderInventory(){
   const w=equippedWeapon();
   const forgeLoadout = weaponForgeLoadoutForWeapon(w.id, S);
   const ammoId=loadedAmmoIdForEquippedWeapon() || w.ammo;
-  const equippedReserve = compatibleAmmoReserveForWeapon(w);
+  const equippedMode = selectedAmmoModeForWeapon(w);
+  const equippedReserve = compatibleAmmoReserveForWeapon(w, equippedMode);
   const baseRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + storyBaseRank(def.key), 0);
   const baseMaxRanks = STORY_BASE_UPGRADES.reduce((n, def)=>n + def.maxRank, 0);
   const hqRanks = STORY_HQ_MODULES.reduce((n, def)=>n + storyHQRank(def.key), 0);
@@ -36461,7 +36476,7 @@ function renderInventory(){
   const settlementState = ensureCivilianSettlementState(S);
   document.getElementById("invSummary").innerHTML =
     `<b>Money:</b> $${S.funds.toLocaleString()} • <b>HP:</b> ${Math.round(S.hp)}/100 • <b>Armor:</b> ${Math.round(S.armor)}/${S.armorCap}<br>
-     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} ${ammoId} (reserve ${equippedReserve}) • <b>Build:</b> ${attachmentBuildSummaryForWeapon(w.id)} • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
+     <b>Equipped:</b> ${w.name} • <b>Durability:</b> ${Math.round(weaponDurability(w.id))}% • <b>Ammo:</b> ${S.mag.loaded}/${S.mag.cap} ${ammoModeDisplay(equippedMode)} (reserve ${equippedReserve}) • <b>Build:</b> ${attachmentBuildSummaryForWeapon(w.id)} • <b>Shields:</b> ${S.shields||0} • <b>Armor Plates:</b> ${totalArmorPlates()}<br>
      <b>Forge:</b> ${forgeLoadout.skin?.name || "Field Standard"} skin • ${forgeLoadout.effect?.name || "No Effect"} trail • ${weaponForgeWalletLabel(S)}<br>
      <b>Squad:</b> Attack ${squadAliveCount("attacker")}/${squadOwnedCount("attacker")} (down ${squadDownedCount("attacker")}) • Rescue ${squadAliveCount("rescue")}/${squadOwnedCount("rescue")} (down ${squadDownedCount("rescue")})<br>
      <b>Squad Abilities:</b> Tranq Burst ${squadTranqStatus} • Smoke Screen ${squadSmokeStatus}<br>
@@ -36492,6 +36507,10 @@ function renderInventory(){
       const disabled = treeLeft <= 0 || rank >= WEAPON_MASTERY_TREE_BRANCH_MAX;
       return `<button class="ghost" ${disabled ? "disabled" : ""} onclick="allocateWeaponMasteryTreePoint('${id}','${branch.key}')">+ ${branch.short} (${rank}/${WEAPON_MASTERY_TREE_BRANCH_MAX})</button>`;
     }).join("");
+    const mode = selectedAmmoModeForWeapon(ww);
+    const modeButtons = weaponSupportsAmmoMode(ww)
+      ? `<button class="ghost" ${mode === "real" ? "disabled" : ""} onclick="setWeaponAmmoMode('${id}','real')">🔴 Real</button><button class="ghost" ${mode === "rubber" ? "disabled" : ""} onclick="setWeaponAmmoMode('${id}','rubber')">🟡 Rubber</button>`
+      : `<span class="tag">💉 Tranq only</span>`;
     const xpTxt = mastery.nextXp == null
       ? `${mastery.xp} XP (MAX)`
       : `${mastery.xp}/${mastery.nextXp} XP`;
@@ -36500,13 +36519,14 @@ function renderInventory(){
         <div>
           <div class="itemName">${active?'✅ ':''}${ww.name} <span class="tag">${ww.grade}</span></div>
           <div class="itemDesc">${shopTruthStateLine("weapon", ww)}</div>
-          <div class="itemDesc">Ammo: ${ww.ammo} • Mag: ${buildStats.magCap} • Damage: ${buildStats.dmg[0]}-${buildStats.dmg[1]} • Range: ${buildStats.range} • Durability: ${dur}%</div>
+          <div class="itemDesc">Ammo mode: ${ammoModeDisplay(mode)} • Mag: ${buildStats.magCap} • Damage: ${buildStats.dmg[0]}-${buildStats.dmg[1]} • Range: ${buildStats.range} • Durability: ${dur}%</div>
           <div class="itemDesc">Attachments: ${equippedSlots || "None"}.</div>
           <div class="itemDesc">Mastery Lv ${mastery.level}/${WEAPON_MASTERY_MAX_LEVEL} • ${xpTxt} • Anti-jam ${jamCut}% • Reload smooth +${reloadSmooth}%</div>
           <div class="itemDesc">Tree points ${treeSpent}/${treeAvail} (${treeLeft} available) • STB ${treeRanks.STABILITY} • CTL ${treeRanks.CONTROL} • SIL ${treeRanks.SILENT_CAPTURE} • BST ${treeRanks.BURST_LETHALITY}</div>
         </div>
         <div style="text-align:right">
           <button ${active?'disabled':''} onclick="equipWeapon('${id}')">Equip</button>
+          <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${modeButtons}</div>
           <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${treeButtons}</div>
         </div>
       </div>`;
@@ -37252,11 +37272,36 @@ function ammoFamilyFor(ammoId){
   const ammo = getAmmo(ammoId);
   return String(ammo?.family || ammoId || "");
 }
-function compatibleAmmoIdsForWeapon(w){
+function ammoModeForId(ammoId){
+  const ammo = getAmmo(ammoId);
+  if(ammo?.mode) return window.TigerAmmoRules?.normalizeAmmoMode(ammo.mode, "real") || ammo.mode;
+  return ammoFamilyFor(ammoId) === "TRANQ_DARTS" ? "tranq" : "real";
+}
+function weaponSupportsAmmoMode(w){
+  return !!w && w.type === "lethal";
+}
+function ensureAmmoModeState(state=S){
+  if(!state.ammoModeByWeapon || typeof state.ammoModeByWeapon !== "object") state.ammoModeByWeapon = {};
+  for(const w of WEAPONS){
+    if(!weaponSupportsAmmoMode(w)) continue;
+    state.ammoModeByWeapon[w.id] = state.ammoModeByWeapon[w.id] === "rubber" ? "rubber" : "real";
+  }
+  return state.ammoModeByWeapon;
+}
+function selectedAmmoModeForWeapon(w=equippedWeapon()){
+  if(!w) return "real";
+  if(!weaponSupportsAmmoMode(w)) return "tranq";
+  ensureAmmoModeState(S);
+  return S.ammoModeByWeapon[w.id] === "rubber" ? "rubber" : "real";
+}
+function ammoModeDisplay(mode){
+  return mode === "rubber" ? "Rubber" : (mode === "tranq" ? "Tranq" : "Real");
+}
+function compatibleAmmoIdsForWeapon(w, mode=null){
   if(!w) return [];
   const family = ammoFamilyFor(w.ammo);
   return AMMO
-    .filter((ammo)=>ammo && ammoFamilyFor(ammo.id) === family)
+    .filter((ammo)=>ammo && ammoFamilyFor(ammo.id) === family && (!mode || ammoModeForId(ammo.id) === mode))
     .sort((a,b)=>{
       const eb = ammoEffectFor(b.id);
       const ea = ammoEffectFor(a.id);
@@ -37266,13 +37311,14 @@ function compatibleAmmoIdsForWeapon(w){
     })
     .map((ammo)=>ammo.id);
 }
-function compatibleAmmoReserveForWeapon(w){
+function compatibleAmmoReserveForWeapon(w, mode=null){
   if(!w) return 0;
-  return compatibleAmmoIdsForWeapon(w).reduce((sum, ammoId)=>sum + Math.max(0, Math.floor(Number(S.ammoReserve?.[ammoId] || 0))), 0);
+  return compatibleAmmoIdsForWeapon(w, mode).reduce((sum, ammoId)=>sum + Math.max(0, Math.floor(Number(S.ammoReserve?.[ammoId] || 0))), 0);
 }
 function bestAvailableAmmoIdForWeapon(w){
   if(!w) return "";
-  for(const ammoId of compatibleAmmoIdsForWeapon(w)){
+  const mode = selectedAmmoModeForWeapon(w);
+  for(const ammoId of compatibleAmmoIdsForWeapon(w, mode)){
     if(Math.max(0, Math.floor(Number(S.ammoReserve?.[ammoId] || 0))) > 0) return ammoId;
   }
   return "";
@@ -37301,6 +37347,11 @@ function jamChance(w){
 function autoReloadIfNeeded(force=false){
   const w=equippedWeapon();
   syncEquippedMagCap({ refill:false });
+  if(weaponSupportsAmmoMode(w) && S.mag?.weaponId === w.id && Number(S.mag.loaded || 0) > 0 && ammoModeForId(S.mag.ammoId) !== selectedAmmoModeForWeapon(w)){
+    S.ammoReserve[S.mag.ammoId] = Math.max(0, Number(S.ammoReserve[S.mag.ammoId] || 0)) + Number(S.mag.loaded || 0);
+    S.mag.loaded = 0;
+    S.mag.ammoId = "";
+  }
   if(!force && S.mag.loaded>0) return true;
   const ammoId = bestAvailableAmmoIdForWeapon(w);
   if(!ammoId) return false;
@@ -37317,6 +37368,48 @@ function autoReloadIfNeeded(force=false){
   sfx("reload"); hapticImpact("light");
   return true;
 }
+function setWeaponAmmoMode(weaponId, requestedMode, opts={}){
+  const w = getWeapon(weaponId);
+  if(!weaponSupportsAmmoMode(w)){
+    if(!opts.silent) toast("Tranquilizer weapons use darts, not Real or Rubber rounds.");
+    return false;
+  }
+  ensureAmmoModeState(S);
+  const mode = requestedMode === "rubber" ? "rubber" : "real";
+  if(S.ammoModeByWeapon[w.id] === mode) return true;
+  if(S.mag?.weaponId === w.id && Number(S.mag.loaded || 0) > 0 && S.mag.ammoId){
+    S.ammoReserve[S.mag.ammoId] = Math.max(0, Number(S.ammoReserve[S.mag.ammoId] || 0)) + Number(S.mag.loaded || 0);
+    S.mag.loaded = 0;
+    S.mag.ammoId = "";
+  }
+  S.ammoModeByWeapon[w.id] = mode;
+  if(S.equippedWeaponId === w.id) autoReloadIfNeeded(true);
+  if(!opts.silent){
+    const reserve = compatibleAmmoReserveForWeapon(w, mode);
+    interactionFeedback(`${w.name} switched to ${ammoModeDisplay(mode)} ammunition${reserve ? "." : " — no rounds owned."}`, { battle:!!S.inBattle, warn:!reserve });
+    sfx("ui"); hapticImpact("light");
+  }
+  save();
+  renderHUD();
+  renderCombatControls();
+  if(document.getElementById("invOverlay")?.style.display === "flex") renderInventory();
+  if(document.getElementById("shopOverlay")?.style.display === "flex") renderShopList();
+  if(document.getElementById("battleOverlay")?.style.display === "flex") { renderWeaponGrid(); updateBattleButtons(); updateAttackButton(); renderBattleStatus(); }
+  return true;
+}
+function toggleActiveAmmoMode(){
+  const w = equippedWeapon();
+  if(!weaponSupportsAmmoMode(w)){
+    const lethalId = preferredAttackWeaponId();
+    if(!lethalId) return interactionFeedback("Equip a ballistic weapon to choose Real or Rubber ammunition.", { warn:true });
+    equipWeapon(lethalId, { system:true, keepPreset:true });
+  }
+  const active = equippedWeapon();
+  return setWeaponAmmoMode(active.id, selectedAmmoModeForWeapon(active) === "real" ? "rubber" : "real");
+}
+window.toggleActiveAmmoMode = toggleActiveAmmoMode;
+window.setWeaponAmmoMode = setWeaponAmmoMode;
+window.selectedAmmoModeForWeapon = selectedAmmoModeForWeapon;
 function equipWeapon(id, opts={}){
   if(!S.ownedWeapons.includes(id)) return;
   const w=getWeapon(id); if(!w) return;
@@ -41865,7 +41958,9 @@ function applyTigerDamage(tiger, dmg, opts={}){
     }
   }
   const hpMax = Math.max(1, Number(tiger.hpMax || 1));
-  const floorHp = opts.floorOne ? 1 : 0;
+  const floorHp = Number.isFinite(Number(opts.floorHp))
+    ? clamp(Number(opts.floorHp), 0, hpMax)
+    : (opts.floorOne ? 1 : 0);
   const before = clamp(Number(tiger.hp || hpMax), floorHp, hpMax);
   const after = clamp(before - Math.max(0, Number(dmg || 0)), floorHp, hpMax);
   tiger.hp = after;
@@ -42296,7 +42391,7 @@ function rivalHuntersTick(){
       const tigerDist = dist(unit.x, unit.y, tiger.x, tiger.y);
       const shot = Math.max(4, Math.round(rand(8, 14) * Number(faction.dmgMul || 1) * clamp(1 - ((tigerPowerRank(tiger) - 1) * 0.06), 0.65, 1)));
       const hpRatio = clamp(Number(unit.hp || 0) / Math.max(1, Number(unit.hpMax || 1)), 0, 1);
-      const captureReady = tiger.hp > captureWindowMinHp(tiger) && tiger.hp <= captureWindowHp(tiger);
+      const captureReady = !tiger.lethalWounded && tiger.hp > captureWindowMinHp(tiger) && tiger.hp <= captureWindowHp(tiger);
       const forceKill = hpRatio <= 0.30 || tigerDist <= 88 || isBossTiger(tiger);
       const canCapture = captureReady && !forceKill;
       if(canCapture && Math.random() < clamp(Number(faction.captureBias || 0.26), 0.12, 0.62)){
@@ -44663,6 +44758,11 @@ function roamTigers(){
     }
     if(t.type==="Scout" && now < (t.dashUntil||0)) speedCap = Math.max(speedCap, motion.sprint + 0.35);
     if(t.type==="Berserker" && t.rageOn) speedCap = Math.max(speedCap, motion.sprint * 1.06);
+    if(now < Number(t.rubberSlowUntil || 0)){
+      speedCap *= window.TigerAmmoRules?.rubberSlowMultiplier(t.rubberSlowStacks, true) || 0.70;
+    }else if(Number(t.rubberSlowStacks || 0) > 0){
+      t.rubberSlowStacks = 0;
+    }
     speedCap *= directorSpeedMul;
     speedCap *= packSpeedMul;
     speedCap *= waterSpeedMul("tiger", t.x, t.y, 14);
@@ -46365,7 +46465,7 @@ function renderCombatControls(){
   }
 
   const t = activeTiger();
-  const captureReadyByHp = tigerInCaptureHpWindow(t);
+  const captureReadyByHp = tigerInCaptureHpWindow(t) && !t?.lethalWounded;
   const canPressCombatAction = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil);
   const medCount = totalMedkits();
   const armorPlateCountAll = totalArmorPlates();
@@ -46384,14 +46484,16 @@ function renderCombatControls(){
     el.disabled = disabled;
     const ready = !!t && captureReadyByHp;
     const hasTranq = !!t && captureTranqWeaponOptions(t).some((id)=>S.ownedWeapons.includes(id) && hasAmmoForWeaponId(id));
-    el.title = ready
+    el.title = t?.lethalWounded
+      ? "Capture blocked because Real ammunition caused a lethal injury."
+      : ready
       ? (hasTranq ? "Capture ready. Tap to secure the tiger." : "Capture ready, but you are out of tranquilizers.")
       : "Weaken the tiger into the capture window first.";
     if(id === "combatCaptureBtn"){
-      el.innerText = ready ? (hasTranq ? "💉 Capture READY" : "💉 Need Tranq") : "💉 Capture";
+      el.innerText = t?.lethalWounded ? "🚫 Capture Blocked" : (ready ? (hasTranq ? "💉 Capture READY" : "💉 Need Tranq") : "💉 Capture");
     }else{
       const label = el.querySelector(".touchBtnLabel");
-      if(label) label.innerText = ready ? (hasTranq ? "Capture!" : "No Tranq") : "Capture";
+      if(label) label.innerText = t?.lethalWounded ? "No Capture" : (ready ? (hasTranq ? "Capture!" : "No Tranq") : "Capture");
     }
   });
   setCaptureReadyVisual(captureReadyByHp);
@@ -46423,6 +46525,24 @@ function renderCombatControls(){
   if(touchFieldRollBtn){
     const label = touchFieldRollBtn.querySelector(".touchBtnLabel");
     if(label) label.innerText = rollLeft ? `Roll ${rollLeft}` : "Roll";
+  }
+  const ammoWeapon = equippedWeapon();
+  const ammoMode = selectedAmmoModeForWeapon(ammoWeapon);
+  const ammoModeEnabled = weaponSupportsAmmoMode(ammoWeapon) && canPressCombatAction;
+  const ammoModeLabel = ammoModeDisplay(ammoMode);
+  const ammoModeReserve = weaponSupportsAmmoMode(ammoWeapon) ? compatibleAmmoReserveForWeapon(ammoWeapon, ammoMode) : 0;
+  const ammoDesktop = document.getElementById("combatAmmoModeBtn");
+  if(ammoDesktop){
+    ammoDesktop.disabled = !ammoModeEnabled;
+    ammoDesktop.innerText = weaponSupportsAmmoMode(ammoWeapon) ? `${ammoMode === "rubber" ? "🟡" : "🔴"} ${ammoModeLabel} Ammo (${ammoModeReserve})` : "💉 Tranq Darts";
+  }
+  const ammoTouch = document.getElementById("touchAmmoModeBtn");
+  if(ammoTouch){
+    ammoTouch.disabled = !ammoModeEnabled;
+    const label = ammoTouch.querySelector(".touchBtnLabel");
+    const icon = ammoTouch.querySelector(".touchBtnIcon");
+    if(label) label.innerText = weaponSupportsAmmoMode(ammoWeapon) ? ammoModeLabel : "Tranq";
+    if(icon) icon.innerText = ammoMode === "rubber" ? "🟡" : (ammoMode === "tranq" ? "💉" : "🔴");
   }
 
   const prevLabel = combatWeaponLabel(-1);
@@ -46640,8 +46760,8 @@ function captureTranqWeaponLabel(t){
 function hasAmmoForWeaponId(id){
   const w = getWeapon(id);
   if(!w) return false;
-  if(S.equippedWeaponId === id && S.mag?.weaponId === id && S.mag.loaded > 0) return true;
-  return compatibleAmmoReserveForWeapon(w) > 0;
+  if(S.equippedWeaponId === id && S.mag?.weaponId === id && S.mag.loaded > 0 && ammoModeForId(S.mag.ammoId) === selectedAmmoModeForWeapon(w)) return true;
+  return compatibleAmmoReserveForWeapon(w, selectedAmmoModeForWeapon(w)) > 0;
 }
 function bestCaptureTranqWeaponId(t){
   const options = captureTranqWeaponOptions(t);
@@ -46654,17 +46774,19 @@ function bestCaptureTranqWeaponId(t){
     || "";
 }
 function canAttemptCapture(t){
+  if(t?.lethalWounded) return false;
   if(!tigerInCaptureHpWindow(t)) return false;
   if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return false;
   return captureTranqWeaponOptions(t).some((id)=>S.ownedWeapons.includes(id) && hasAmmoForWeaponId(id));
 }
 function canCaptureTiger(t){
+  if(t?.lethalWounded) return false;
   if(!tigerInCaptureHpWindow(t)) return false;
   if(isBossTiger(t) && !bossCaptureStrategyReady(t)) return false;
   if(!captureTranqWeaponOptions(t).includes(S.equippedWeaponId)) return false;
   const w=equippedWeapon();
   if(w.type!=="tranq") return false;
-  return (S.mag?.weaponId === w.id && S.mag.loaded > 0) || compatibleAmmoReserveForWeapon(w) > 0;
+  return (S.mag?.weaponId === w.id && S.mag.loaded > 0) || compatibleAmmoReserveForWeapon(w, "tranq") > 0;
 }
 function tutorialCaptureWindowReady(){
   const t = tigerById(S.activeTigerId);
@@ -46837,8 +46959,8 @@ function preferredAttackWeaponId(){
 }
 function equippedWeaponHasAmmoNow(){
   const w=equippedWeapon();
-  if(S.mag?.weaponId === w.id && S.mag.loaded>0) return true;
-  return compatibleAmmoReserveForWeapon(w)>0;
+  if(S.mag?.weaponId === w.id && S.mag.loaded>0 && ammoModeForId(S.mag.ammoId) === selectedAmmoModeForWeapon(w)) return true;
+  return compatibleAmmoReserveForWeapon(w, selectedAmmoModeForWeapon(w))>0;
 }
 function updateAttackButton(){
   const btn = document.getElementById("atkBtn");
@@ -46950,6 +47072,10 @@ function playerAction(action){
 
   if(action==="CAPTURE"){
     const preCaptureWeaponId = S.equippedWeaponId;
+    if(t.lethalWounded){
+      triggerCombatInteraction("capture_not_ready", { tiger:t, label:"LETHAL INJURY" });
+      return interactionFeedback("Capture blocked: this tiger was injured by Real ammunition. Rubber rounds must be used for a live capture.", { battle:true, warn:true });
+    }
     if(t.hp > captureWindowHp(t)){
       triggerCombatInteraction("capture_not_ready", { tiger:t, label:"WEAKEN MORE" });
       return interactionFeedback(`Capture not ready. Weaken tiger to ${captureWindowPctLabel()} HP or lower.`, { battle:true, warn:true });
@@ -47050,6 +47176,10 @@ function playerAction(action){
 
   if(action==="KILL"){
     if(t.hp>captureWindowHp(t)) return interactionFeedback(`Tiger HP is still too high to finish. Weaken it below ${captureWindowPctLabel()} HP.`, { battle:true, warn:true });
+    const lethal = getWeapon(S.preferredLethalWeaponId) || getWeapon(S.lastCombatLethalWeaponId);
+    if(!lethal || selectedAmmoModeForWeapon(lethal) !== "real"){
+      return interactionFeedback("Rubber rounds cannot kill. Switch your ballistic weapon to Real ammunition first.", { battle:true, warn:true });
+    }
     finishTigerKillWithWeapon(t, S.equippedWeaponId);
     return;
   }
@@ -47068,6 +47198,9 @@ function playerAction(action){
     }
 
     const w=equippedWeapon();
+    if(window.TigerTutorial?.isRunning && w.type === "lethal" && selectedAmmoModeForWeapon(w) !== "rubber"){
+      setWeaponAmmoMode(w.id, "rubber", { silent:true });
+    }
 
     // If this weapon is empty, do NOT auto-tigerTurn; let player switch weapons
     if(!equippedWeaponHasAmmoNow()){
@@ -47109,6 +47242,8 @@ function playerAction(action){
     addXP(2);
     
     const shotAmmoId = loadedAmmoIdForEquippedWeapon() || w.ammo;
+    const shotMode = ammoModeForId(shotAmmoId);
+    const rubberShot = shotMode === "rubber";
     const eff=ammoEffectFor(shotAmmoId);
     const handling = weaponHandlingProfile(w);
     const build = weaponBuildStats(w.id, S);
@@ -47122,6 +47257,7 @@ function playerAction(action){
     const crit=Math.random()<(eff.crit + perkCritBonus() + arcadeBuildcraftCritBonus() + build.critBonus);
     if(crit) dmg=Math.round(dmg*1.6);
     dmg=Math.round(dmg*eff.dmgMul);
+    if(rubberShot) dmg = Math.max(1, Math.round(dmg * (window.TigerAmmoRules?.damageMultiplier("rubber") || 0.62)));
     dmg=Math.round(dmg * weaponDistanceMul(w, attackDist));
 
     if(w.type==="tranq"){
@@ -47156,10 +47292,15 @@ function playerAction(action){
       hapticImpact("medium");
       setBattleMsg(`Friendly fire! Civilian #${victim.id} took ${civDmg}.`);
     } else {
+      if(shotMode === "real") t.lethalWounded = true;
+      if(rubberShot){
+        t.rubberSlowStacks = clamp(Math.floor(Number(t.rubberSlowStacks || 0)) + 1, 1, 4);
+        t.rubberSlowUntil = Date.now() + 5200;
+      }
       t.hitFlashUntil = Date.now() + 190;
-      t.hitFlashKind = crit ? "crit" : (w.type === "tranq" ? "tranq" : "hit");
+      t.hitFlashKind = rubberShot ? "rubber" : (crit ? "crit" : (w.type === "tranq" ? "tranq" : "hit"));
       t.lastHitDamage = dmg;
-      const tigerHit = applyTigerDamage(t, dmg, { floorOne:w.type==="tranq", tranq:w.type==="tranq", crit, sourceX:S.me.x, sourceY:S.me.y });
+      const tigerHit = applyTigerDamage(t, dmg, { floorOne:w.type==="tranq" || rubberShot, floorHp:rubberShot ? captureWindowMinHp(t) : undefined, tranq:w.type==="tranq", rubber:rubberShot, crit, sourceX:S.me.x, sourceY:S.me.y });
       const trailBaseColor = w.type==="tranq"
         ? (forgeTrail?.tranqColor || "rgba(96,165,250,.96)")
         : (forgeTrail?.color || "rgba(245,247,255,.96)");
@@ -47174,7 +47315,9 @@ function playerAction(action){
       addWeaponMasteryXp(w.id, 2);
       emitDamagePopup(t.x, t.y - 44, `-${tigerHit.dealt}`, crit ? "crit" : (w.type==="tranq" ? "tranq" : "hit"));
       hapticImpact(crit ? "heavy" : "light");
-      setBattleMsg(`${crit?'CRIT! ':''}Hit for ${tigerHit.dealt}. ${w.type==='tranq'?'(tranq applied)':''}`);
+      setBattleMsg(rubberShot
+        ? `Rubber hit for ${tigerHit.dealt}. Tiger slowed—switch to Tranq and Capture at 30% HP.`
+        : `${crit?'CRIT! ':''}Hit for ${tigerHit.dealt}. ${w.type==='tranq'?'(tranq applied)':(shotMode === 'real' ? '(lethal injury: capture blocked)' : '')}`);
       const staggerThreshold = Math.max(14, Math.round(Number(t.hpMax || 1) * (isBossTiger(t) ? 0.12 : 0.18)));
       if(crit || tigerHit.dealt >= staggerThreshold){
         triggerCombatInteraction("tiger_stagger", {
@@ -47214,7 +47357,7 @@ function playerAction(action){
         window.markTigerTutorialAction?.("capture_window", { id:t.id });
       }
     }catch(e){}
-    if(w.type==="tranq" && tigerInCaptureHpWindow(t)){
+    if((w.type==="tranq" || rubberShot) && tigerInCaptureHpWindow(t) && !t.lethalWounded){
       setBattleMsg(`Tiger is subdued. Tap Capture to use ${captureTranqWeaponLabel(t)}.`);
       triggerCombatInteraction("capture_ready", { tiger:t, label:"CAPTURE READY" });
     }
@@ -49260,7 +49403,7 @@ function firstHuntProgressState(target=null){
   const scanned = resolved || !!S.inBattle || Number(S.lockedTigerId || 0) > 0 || Number(S.scanTargetTigerId || 0) > 0 || Number(S.scanPing || 0) > 0;
   const rescued = Number(S.evacDone || 0) > 0;
   const extractionReady = (S.civilians || []).length > 0 && Number(S.evacDone || 0) >= (S.civilians || []).length;
-  const captureReady = !!(target && target.alive && target.hp <= captureWindowHp(target) && target.hp >= captureWindowMinHp(target));
+  const captureReady = !!(target && target.alive && !target.lethalWounded && target.hp <= captureWindowHp(target) && target.hp >= captureWindowMinHp(target));
   return { moved, rescued, scanned, resolved, extractionReady, captureReady, missionStats };
 }
 function renderFirstHuntCoach(target=null){
@@ -49323,7 +49466,7 @@ function renderFieldAlert(target=null){
   let text = "";
   let kind = "";
   if(!(S.paused || S.gameOver || S.missionEnded)){
-    const captureReady = !!(target && target.alive && target.hp <= captureWindowHp(target) && target.hp >= captureWindowMinHp(target));
+    const captureReady = !!(target && target.alive && !target.lethalWounded && target.hp <= captureWindowHp(target) && target.hp >= captureWindowMinHp(target));
     const urgentBattle = S.inBattle && /incoming|pounce|charge|strike|attack|roll|shield/i.test(String(S.battleMsg || ""));
     if(S.inBattle && captureReady){
       text = "CAPTURE WINDOW OPEN — TAP CAPTURE";
@@ -49419,7 +49562,8 @@ function renderHUD(){
   const w=equippedWeapon();
   document.getElementById("weaponTxt").innerText = w.name;
   document.getElementById("durTxt").innerText = Math.round(weaponDurability(w.id));
-  document.getElementById("ammoTxt").innerText = `${S.mag.loaded}/${S.mag.cap} ${loadedAmmoIdForEquippedWeapon() || w.ammo} (reserve ${compatibleAmmoReserveForWeapon(w)})`;
+  const hudAmmoMode = selectedAmmoModeForWeapon(w);
+  document.getElementById("ammoTxt").innerText = `${S.mag.loaded}/${S.mag.cap} ${ammoModeDisplay(hudAmmoMode)} (reserve ${compatibleAmmoReserveForWeapon(w, hudAmmoMode)})`;
   document.getElementById("medTxt").innerText = totalMedkits();
   document.getElementById("repTxt").innerText = totalRepairKits();
   const trapCooldownSecs = Math.max(0, Math.ceil((Number(S.trapCooldownUntil || 0) - Date.now()) / 1000));
@@ -61510,6 +61654,11 @@ function init(){
     S.preferredLethalWeaponId = S.ownedWeapons.find((id)=>getWeapon(id)?.type === "lethal") || DEFAULT.preferredLethalWeaponId;
   }
   if(!S.ammoReserve || typeof S.ammoReserve !== "object") S.ammoReserve = { ...DEFAULT.ammoReserve };
+  const needsAmmoModeMigration = !S.ammoModeByWeapon || typeof S.ammoModeByWeapon !== "object";
+  ensureAmmoModeState(S);
+  if(needsAmmoModeMigration && !Number.isFinite(Number(S.ammoReserve["9MM_RUBBER"]))){
+    S.ammoReserve["9MM_RUBBER"] = 25;
+  }
   if(!S.mag || typeof S.mag !== "object") S.mag = { ...DEFAULT.mag };
   if(!S.medkits || typeof S.medkits !== "object") S.medkits = { ...DEFAULT.medkits };
   if(!S.repairKits || typeof S.repairKits !== "object") S.repairKits = { ...DEFAULT.repairKits };
@@ -61633,6 +61782,9 @@ function init(){
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
 
   for(const t of (S.tigers || [])){
+    if(typeof t.lethalWounded !== "boolean") t.lethalWounded = false;
+    if(!Number.isFinite(t.rubberSlowUntil)) t.rubberSlowUntil = 0;
+    if(!Number.isFinite(t.rubberSlowStacks)) t.rubberSlowStacks = 0;
     if(!t.personality) t.personality = pickTigerPersonality(t.type || "Standard");
     if(typeof t.intent !== "string") t.intent = "";
     if(!Number.isFinite(t.intentUntil)) t.intentUntil = 0;

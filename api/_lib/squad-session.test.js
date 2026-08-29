@@ -57,6 +57,35 @@ async function run(){
     assert.equal(player.downed, false, "restart stands both players up");
   }
 
+  const rubberTiger = snapshot.tigers[0];
+  await writePlayerPatch(code, host.id, { x:rubberTiger.x, y:rubberTiger.y, lastAttackAt:0, lastSeenAt:Date.now() });
+  session = await applyAction(await readSession(code), host, "ammo-mode", { ammoMode:"rubber" });
+  snapshot = await buildSnapshot(session, host.id);
+  assert.equal(snapshot.players.find((player)=>player.userId === host.id).ammoMode, "rubber", "Live Squad saves Rubber ammunition selection per player");
+  session = await applyAction(await readSession(code), host, "attack", { tigerId:rubberTiger.id });
+  snapshot = await buildSnapshot(session, host.id);
+  assert(snapshot.tigers.find((tiger)=>tiger.id === rubberTiger.id).hp > 0, "a Rubber hit cannot kill a co-op tiger");
+  assert.equal(snapshot.tigers.find((tiger)=>tiger.id === rubberTiger.id).lethalWounded, false, "Rubber does not block capture");
+  assert.equal(snapshot.tigers.find((tiger)=>tiger.id === rubberTiger.id).rubberSlowed, true, "Rubber slows the tiger's attack cycle for both players");
+  await writePlayerPatch(code, host.id, { tigerDamage:{ [rubberTiger.id]:rubberTiger.hpMax - 1 }, lastAttackAt:0, lastSeenAt:Date.now() });
+  session = await applyAction(await readSession(code), host, "capture", { tigerId:rubberTiger.id });
+  snapshot = await buildSnapshot(session, host.id);
+  assert(snapshot.capturedIds.includes(rubberTiger.id), "a Rubber-weakened tiger can be captured");
+
+  const realTiger = snapshot.tigers.find((tiger)=>!tiger.defeated);
+  await writePlayerPatch(code, host.id, { x:realTiger.x, y:realTiger.y, lastAttackAt:0, lastSeenAt:Date.now() });
+  session = await applyAction(await readSession(code), host, "ammo-mode", { ammoMode:"real" });
+  session = await applyAction(session, host, "attack", { tigerId:realTiger.id });
+  snapshot = await buildSnapshot(session, host.id);
+  assert.equal(snapshot.tigers.find((tiger)=>tiger.id === realTiger.id).lethalWounded, true, "a Real hit marks the tiger as lethally wounded for both players");
+  const hostRaw = await getState(playerStateKey(code, host.id));
+  await writePlayerPatch(code, host.id, { tigerDamage:{ ...(hostRaw.tigerDamage || {}), [realTiger.id]:Math.ceil(realTiger.hpMax * 0.80) }, lastAttackAt:0, lastSeenAt:Date.now() });
+  await assert.rejects(
+    async()=>applyAction(await readSession(code), host, "capture", { tigerId:realTiger.id }),
+    /Capture blocked/,
+    "a Real-wounded tiger cannot be captured"
+  );
+
   const startedBeforeGear = snapshot.startedAt;
   session = await applyAction(await readSession(code), host, "pause", { reason:"shop" });
   session = await applyAction(session, teammate, "pause", { reason:"inventory" });

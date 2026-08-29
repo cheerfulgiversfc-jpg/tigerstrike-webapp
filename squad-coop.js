@@ -221,8 +221,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V7.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V7.0 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.0 • Co-op Command");
+      ? `Tiger Strike V7.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V7.1 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.1 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -367,15 +367,27 @@
     const civilian = nearestUnrescuedCivilian();
     const teammate = remoteSnapshotPlayer();
     const attack = $("squadAttackButton");
+    const capture = $("squadCaptureButton");
+    const ammo = $("squadAmmoModeButton");
     const rescue = $("squadRescueButton");
     const revive = $("squadReviveButton");
     const tigerNear = tiger && distance(state.local,tiger) <= (tiger.boss ? 178 : 164);
     const civNear = civilian && distance(state.local,civilian) <= 82;
     const reviveNear = teammate?.downed && distance(state.local,teammate) <= 108;
     const unavailable = !!state.local.downed || !!state.snapshot?.paused;
-    const captureReady = tiger && Number(tiger.hp || 0) <= Number(tiger.hpMax || 1) * 0.30;
+    const captureReady = tiger && !tiger.lethalWounded && Number(tiger.hp || 0) > 0 && Number(tiger.hp || 0) <= Number(tiger.hpMax || 1) * 0.30;
+    const ammoMode = localSnapshotPlayer()?.ammoMode === "rubber" ? "rubber" : "real";
     const unavailableLabel = state.snapshot?.paused ? "⏸️ Paused<br><small>Gear menu open</small>" : "⏳ Down<br><small>Recovery</small>";
-    if(attack){ attack.innerHTML = unavailable ? unavailableLabel : (tiger ? (tigerNear ? (captureReady ? `🛟 Capture<br><small>${esc(tiger.type || "Tiger")}</small>` : `🎯 Attack<br><small>${esc(tiger.type || "Tiger")}</small>`) : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"); attack.disabled = unavailable || !tiger; }
+    if(attack){ attack.innerHTML = unavailable ? unavailableLabel : (tiger ? (tigerNear ? `${ammoMode === "rubber" ? "🟡" : "🔴"} Attack<br><small>${ammoMode === "rubber" ? "Rubber • nonlethal" : "Real • lethal"}</small>` : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"); attack.disabled = unavailable || !tiger; }
+    if(capture){
+      const blocked = !!tiger?.lethalWounded;
+      capture.innerHTML = unavailable ? unavailableLabel : (blocked ? "🚫 Capture<br><small>Lethal injury</small>" : (captureReady ? `💉 Capture<br><small>${esc(tiger.type || "Tiger")}</small>` : "💉 Capture<br><small>Ready at 30%</small>"));
+      capture.disabled = unavailable || !tiger || !captureReady;
+    }
+    if(ammo){
+      ammo.innerHTML = unavailable ? unavailableLabel : `${ammoMode === "rubber" ? "🟡 Rubber" : "🔴 Real"}<br><small>Tap to switch</small>`;
+      ammo.disabled = unavailable;
+    }
     if(rescue){
       const noCivilianLabel = captureRequired() > 0
         ? `🔬 Capture Target<br><small>Use Attack at 30% health</small>`
@@ -460,7 +472,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V7.0 Co-op Paths</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign keeps your normal Story progress. Special Operations are separate replayable team challenges.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V7.1 Real + Rubber Ammunition</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign and all seven Special Operations now share the same lethal/nonlethal ammunition rules.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -582,6 +594,8 @@
         </div>
         <div class="squadActions">
           <button type="button" class="squadActionBtn attack" id="squadAttackButton" data-squad-command="action" data-squad-action="attack">🎯 Attack</button>
+          <button type="button" class="squadActionBtn" id="squadAmmoModeButton" data-squad-command="action" data-squad-action="ammo-mode">🔴 Real<br><small>Tap to switch</small></button>
+          <button type="button" class="squadActionBtn rescue" id="squadCaptureButton" data-squad-command="action" data-squad-action="capture">💉 Capture</button>
           <button type="button" class="squadActionBtn rescue" id="squadRescueButton" data-squad-command="action" data-squad-action="rescue">🛟 Rescue</button>
           <button type="button" class="squadActionBtn revive" id="squadReviveButton" data-squad-command="action" data-squad-action="revive">💚 Revive</button>
         </div>
@@ -640,7 +654,7 @@
     }
     if(captureRequired() > 0 && (snap.capturedIds || []).length < captureRequired()){
       const threats = (snap.tigers || []).filter((t)=>!t.defeated && Number(t.hp || 0) > 0);
-      return `Research objective: Weaken a tiger to 30% health, then tap Capture (${snap.capturedIds?.length || 0}/${captureRequired()} captured • ${threats.length} target${threats.length === 1 ? "" : "s"} active).`;
+      return `Research objective: Select Rubber, weaken a fresh tiger to 30% health, then tap Capture. Real hits block capture (${snap.capturedIds?.length || 0}/${captureRequired()} captured • ${threats.length} target${threats.length === 1 ? "" : "s"} active).`;
     }
     const threats = (snap.tigers || (snap.boss ? [snap.boss] : [])).filter((t)=>!t.defeated && Number(t.hp || 0) > 0);
     if(threats.length) return `Objective 2: Clear the ${sharedStoryActive() ? "Story" : "Special Operation"} tiger threat together (${threats.length} tiger${threats.length===1?"":"s"} active).`;
@@ -1105,15 +1119,21 @@
         if(!teammate?.downed) throw new Error("Your teammate does not need a revive.");
         if(distance(state.local,teammate) > 108) throw new Error("Move next to your downed teammate first.");
         extra.targetUserId = teammate.userId;
-      }else if(kind === "attack"){
+      }else if(kind === "ammo-mode"){
+        const current = localSnapshotPlayer()?.ammoMode === "rubber" ? "rubber" : "real";
+        extra.ammoMode = current === "real" ? "rubber" : "real";
+      }else if(kind === "attack" || kind === "capture"){
         const target = nearestActiveTiger();
         if(!target) throw new Error("The tiger threat is already cleared.");
         if(distance(state.local,target) > (target.boss ? 178 : 164)) throw new Error(`Move closer to ${target.name || "the tiger"} before attacking.`);
         extra.tigerId = target.id;
-        if(Number(target.hp || 0) <= Number(target.hpMax || 1) * 0.30) apiAction = "capture";
+        if(kind === "capture"){
+          if(target.lethalWounded) throw new Error("This tiger cannot be captured because Real ammunition caused a lethal injury.");
+          if(Number(target.hp || 0) > Number(target.hpMax || 1) * 0.30) throw new Error("Weaken the tiger to 30% health with Rubber ammunition first.");
+        }
       }
       await api(apiAction, extra);
-      setMessage(apiAction === "capture" ? "Tiger captured together!" : (kind === "rescue" ? "Civilian is following your squad—bring them through the route and into extraction." : (kind === "revive" ? "Teammate revived!" : "Hit confirmed.")));
+      setMessage(apiAction === "ammo-mode" ? `Ammunition switched to ${extra.ammoMode === "rubber" ? "Rubber (nonlethal)" : "Real (lethal)"}.` : (apiAction === "capture" ? "Tiger captured together!" : (kind === "rescue" ? "Civilian is following your squad—bring them through the route and into extraction." : (kind === "revive" ? "Teammate revived!" : "Hit confirmed."))));
     }catch(error){ setMessage(error.message, true); }
     finally{ state.actionBusy = false; }
   }
