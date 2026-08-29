@@ -661,7 +661,7 @@ function newPlayer(user, slot=0){
     respawnAt:0,
     bossDamage:0,
     tigerDamage:{},
-    ammoMode:"real",
+    ammoMode:"rubber",
     lethalWoundedIds:[],
     rubberSlowUntil:{},
     killSites:{},
@@ -723,7 +723,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     respawnAt:Math.max(0, Number(src.respawnAt || 0)),
     bossDamage:clamp(src.bossDamage, 0, 2000),
     tigerDamage,
-    ammoMode:ammoRules.normalizeAmmoMode(src.ammoMode, "real") === "rubber" ? "rubber" : "real",
+    ammoMode:ammoRules.normalizeAmmoMode(src.ammoMode, base.ammoMode) === "rubber" ? "rubber" : "real",
     lethalWoundedIds:[...new Set((Array.isArray(src.lethalWoundedIds) ? src.lethalWoundedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
     rubberSlowUntil,
     killSites,
@@ -1258,7 +1258,7 @@ async function applyAction(session, user, action, payload={}){
       p.x = spawn.x;
       p.y = spawn.y;
       p.face = 0;
-      if(session.launchType === "endless-survival") p.ammoMode = "real";
+      p.ammoMode = session.launchType === "endless-survival" ? "real" : "rubber";
       if(!restartCheckpoint){
         p.bossDamage = 0;
         p.tigerDamage = {};

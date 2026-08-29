@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5043";
+const TS_BUILD = "5044";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -14211,7 +14211,7 @@ const DEFAULT = {
   weaponForge: defaultWeaponForgeState(),
   activeLoadoutPresetId:"",
   ammoReserve:{ "TRANQ_DARTS":20, "9MM_STD":40, "9MM_RUBBER":25 },
-  ammoModeByWeapon:{ "W_9MM_JUNK":"real" },
+  ammoModeByWeapon:{ "W_9MM_JUNK":"rubber" },
   mag:{ loaded:6, cap:6, weaponId:"W_TRQ_PISTOL_MK1", ammoId:"TRANQ_DARTS" },
   durability:{},
   weaponMastery:{},
@@ -37307,7 +37307,10 @@ function ensureAmmoModeState(state=S){
   if(!state.ammoModeByWeapon || typeof state.ammoModeByWeapon !== "object") state.ammoModeByWeapon = {};
   for(const w of WEAPONS){
     if(!weaponSupportsAmmoMode(w)) continue;
-    state.ammoModeByWeapon[w.id] = state.ammoModeByWeapon[w.id] === "rubber" ? "rubber" : "real";
+    const saved = state.ammoModeByWeapon[w.id];
+    state.ammoModeByWeapon[w.id] = saved === "rubber"
+      ? "rubber"
+      : (saved === "real" ? "real" : (state.mode === "Survival" ? "real" : "rubber"));
   }
   return state.ammoModeByWeapon;
 }
@@ -37355,6 +37358,16 @@ function loadedAmmoIdForEquippedWeapon(){
   }
   return w.ammo;
 }
+function loadedAmmoMatchesSelectedMode(w=equippedWeapon()){
+  if(!w || !weaponSupportsAmmoMode(w)) return true;
+  if(S.mag?.weaponId !== w.id || Number(S.mag?.loaded || 0) <= 0) return false;
+  const ammo = getAmmo(S.mag?.ammoId);
+  return !!ammo
+    && ammoFamilyFor(ammo.id) === ammoFamilyFor(w.ammo)
+    && (window.TigerAmmoRules?.shotModeMatches
+      ? window.TigerAmmoRules.shotModeMatches(selectedAmmoModeForWeapon(w), ammoModeForId(ammo.id))
+      : ammoModeForId(ammo.id) === selectedAmmoModeForWeapon(w));
+}
 function weaponDurability(id){ if(S.durability[id]==null) S.durability[id]=100; return S.durability[id]; }
 function applyWearOnShot(w){
   const g=WEAPON_GRADE[w.grade]||WEAPON_GRADE.Common;
@@ -37371,8 +37384,16 @@ function jamChance(w){
 function autoReloadIfNeeded(force=false){
   const w=equippedWeapon();
   syncEquippedMagCap({ refill:false });
-  if(weaponSupportsAmmoMode(w) && S.mag?.weaponId === w.id && Number(S.mag.loaded || 0) > 0 && ammoModeForId(S.mag.ammoId) !== selectedAmmoModeForWeapon(w)){
-    S.ammoReserve[S.mag.ammoId] = Math.max(0, Number(S.ammoReserve[S.mag.ammoId] || 0)) + Number(S.mag.loaded || 0);
+  const loadedAmmo = getAmmo(S.mag?.ammoId);
+  const loadedAmmoInvalid = weaponSupportsAmmoMode(w) && S.mag?.weaponId === w.id && Number(S.mag.loaded || 0) > 0 && (
+    !loadedAmmo
+    || ammoFamilyFor(loadedAmmo.id) !== ammoFamilyFor(w.ammo)
+    || ammoModeForId(loadedAmmo.id) !== selectedAmmoModeForWeapon(w)
+  );
+  if(loadedAmmoInvalid){
+    if(loadedAmmo?.id){
+      S.ammoReserve[loadedAmmo.id] = Math.max(0, Number(S.ammoReserve[loadedAmmo.id] || 0)) + Number(S.mag.loaded || 0);
+    }
     S.mag.loaded = 0;
     S.mag.ammoId = "";
   }
@@ -37404,7 +37425,15 @@ function setWeaponAmmoMode(weaponId, requestedMode, opts={}){
     if(!opts.silent) interactionFeedback("Survival is kill-only. Only Real ammunition is available.", { warn:true, battle:!!S.inBattle });
     return false;
   }
-  if(S.ammoModeByWeapon[w.id] === mode) return true;
+  if(S.ammoModeByWeapon[w.id] === mode){
+    if(S.equippedWeaponId === w.id) autoReloadIfNeeded(false);
+    if(!opts.silent && mode === "rubber" && activeTiger()?.lethalWounded){
+      interactionFeedback("Rubber is loaded, but this tiger was already marked by a Real hit. Use Rubber from the first shot on a fresh tiger.", { battle:!!S.inBattle, warn:true });
+    }
+    renderHUD();
+    renderCombatControls();
+    return true;
+  }
   if(S.mag?.weaponId === w.id && Number(S.mag.loaded || 0) > 0 && S.mag.ammoId){
     S.ammoReserve[S.mag.ammoId] = Math.max(0, Number(S.ammoReserve[S.mag.ammoId] || 0)) + Number(S.mag.loaded || 0);
     S.mag.loaded = 0;
@@ -37414,7 +37443,11 @@ function setWeaponAmmoMode(weaponId, requestedMode, opts={}){
   if(S.equippedWeaponId === w.id) autoReloadIfNeeded(true);
   if(!opts.silent){
     const reserve = compatibleAmmoReserveForWeapon(w, mode);
-    interactionFeedback(`${w.name} switched to ${ammoModeDisplay(mode)} ammunition${reserve ? "." : " — no rounds owned."}`, { battle:!!S.inBattle, warn:!reserve });
+    const blockedTarget = mode === "rubber" && activeTiger()?.lethalWounded;
+    interactionFeedback(blockedTarget
+      ? `${w.name} switched to Rubber, but this tiger already has a Real-bullet injury. Choose a fresh tiger to capture.`
+      : `${w.name} switched to ${ammoModeDisplay(mode)} ammunition${reserve ? "." : " — no rounds owned."}`,
+    { battle:!!S.inBattle, warn:!reserve || blockedTarget });
     sfx("ui"); hapticImpact("light");
   }
   save();
@@ -46554,15 +46587,15 @@ function renderCombatControls(){
     const ready = !!t && captureReadyByHp;
     const hasTranq = !!t && captureTranqWeaponOptions(t).some((id)=>S.ownedWeapons.includes(id) && hasAmmoForWeaponId(id));
     el.title = t?.lethalWounded
-      ? "Capture blocked because Real ammunition caused a lethal injury."
+      ? "A Real round hit this tiger. Rubber cannot reverse that injury; capture a fresh tiger instead."
       : ready
       ? (hasTranq ? "Capture ready. Tap to secure the tiger." : "Capture ready, but you are out of tranquilizers.")
       : "Weaken the tiger into the capture window first.";
     if(id === "combatCaptureBtn"){
-      el.innerText = t?.lethalWounded ? "🚫 Capture Blocked" : (ready ? (hasTranq ? "💉 Capture READY" : "💉 Need Tranq") : "💉 Capture");
+      el.innerText = t?.lethalWounded ? "🚫 Real Hit — Fresh Tiger" : (ready ? (hasTranq ? "💉 Capture READY" : "💉 Need Tranq") : "💉 Capture");
     }else{
       const label = el.querySelector(".touchBtnLabel");
-      if(label) label.innerText = t?.lethalWounded ? "No Capture" : (ready ? (hasTranq ? "Capture!" : "No Tranq") : "Capture");
+      if(label) label.innerText = t?.lethalWounded ? "Fresh Tiger" : (ready ? (hasTranq ? "Capture!" : "No Tranq") : "Capture");
     }
   });
   setCaptureReadyVisual(captureReadyByHp);
@@ -46689,7 +46722,11 @@ function startCombat(){
   updateAttackButton();
   renderCombatControls();
   triggerBattleCinematic("enter", t.id);
-  setBattleMsg(`Engaged Tiger #${t.id}. Fight stays on the map.`);
+  const captureAmmoWeapon = getWeapon(S.preferredLethalWeaponId) || equippedWeapon();
+  const openingAmmoMode = selectedAmmoModeForWeapon(captureAmmoWeapon);
+  setBattleMsg(openingAmmoMode === "rubber"
+    ? `Engaged Tiger #${t.id}. Rubber is selected—keep every weakening hit nonlethal, then tap Capture in the window.`
+    : `⚠️ Real ammunition is selected. One hit will permanently block capture for Tiger #${t.id}. Switch to Rubber before firing if you want a live capture.`);
   interactionFeedback(`Tiger locked and engaged: #${t.id} (${t.type}).`, { battle:true, success:true, event:false });
   if(isBossTiger(t)){
     triggerBossPrefightWarning(t, bossIdentityProfile(t), Date.now());
@@ -46717,7 +46754,7 @@ function renderBattleStatus(){
   agentMeta.innerText = `Armor ${Math.round(S.armor)} • Stamina ${Math.round(S.stamina)} • Ammo ${S.mag.loaded}/${S.mag.cap}`;
   const mutation = t ? eliteTigerMutationLabel(t) : "";
   tigerMeta.innerText = t
-    ? `${t.type}${mutation ? ` • ${mutation}` : ""} • Capture window ${captureWindowPctLabel()} to 1% HP${isBossTiger(t) ? ` • ${bossCaptureStrategyStatus(t)}` : ""}`
+    ? `${t.type}${mutation ? ` • ${mutation}` : ""} • ${t.lethalWounded ? "CAPTURE BLOCKED: Real round hit" : `Capture window ${captureWindowPctLabel()} to 1% HP • Rubber hits ${Math.max(0, Number(t.rubberHitCount || 0))}`}${isBossTiger(t) ? ` • ${bossCaptureStrategyStatus(t)}` : ""}`
     : "Target lost";
   renderCombatControls();
 }
@@ -47295,6 +47332,19 @@ function playerAction(action){
       }
     }
 
+    // The button label and the physical magazine must always agree. Never let
+    // a stale Real magazine fire while the HUD says Rubber (or vice versa).
+    if(weaponSupportsAmmoMode(w) && !loadedAmmoMatchesSelectedMode(w)){
+      autoReloadIfNeeded(true);
+      if(!loadedAmmoMatchesSelectedMode(w)){
+        interactionFeedback(`Ammo safety stopped the shot: ${ammoModeDisplay(selectedAmmoModeForWeapon(w))} is selected, but no matching magazine could be loaded.`, { battle:true, warn:true });
+        sfx("jam");
+        renderWeaponGrid();
+        renderCombatControls();
+        return;
+      }
+    }
+
     if(Math.random()<jamChance(w)){
       addWeaponMasteryXp(w.id, 1);
       applyWearOnShot(w);
@@ -47314,7 +47364,7 @@ function playerAction(action){
     addXP(2);
     
     const shotAmmoId = loadedAmmoIdForEquippedWeapon() || w.ammo;
-    const shotMode = ammoModeForId(shotAmmoId);
+    const shotMode = weaponSupportsAmmoMode(w) ? selectedAmmoModeForWeapon(w) : ammoModeForId(shotAmmoId);
     const rubberShot = shotMode === "rubber";
     const eff=ammoEffectFor(shotAmmoId);
     const handling = weaponHandlingProfile(w);
@@ -47364,8 +47414,13 @@ function playerAction(action){
       hapticImpact("medium");
       setBattleMsg(`Friendly fire! Civilian #${victim.id} took ${civDmg}.`);
     } else {
-      if(shotMode === "real") t.lethalWounded = true;
+      if(shotMode === "real"){
+        t.lethalWounded = true;
+        t.lethalHitCount = Math.max(0, Math.floor(Number(t.lethalHitCount || 0))) + 1;
+        t.captureBlockedByAmmoId = shotAmmoId;
+      }
       if(rubberShot){
+        t.rubberHitCount = Math.max(0, Math.floor(Number(t.rubberHitCount || 0))) + 1;
         t.rubberSlowStacks = clamp(Math.floor(Number(t.rubberSlowStacks || 0)) + 1, 1, 4);
         t.rubberSlowUntil = Date.now() + 5200;
       }
@@ -61884,7 +61939,14 @@ function init(){
   if(S.mag.loaded===0) autoReloadIfNeeded(true);
 
   for(const t of (S.tigers || [])){
+    if(!Number.isFinite(t.lethalHitCount)){
+      // V7.4 clears legacy capture blocks that did not record an actual Real
+      // shot. Future blocks always carry both a hit count and ammo ID.
+      t.lethalHitCount = t.captureBlockedByAmmoId ? 1 : 0;
+      if(t.lethalWounded && t.lethalHitCount <= 0) t.lethalWounded = false;
+    }
     if(typeof t.lethalWounded !== "boolean") t.lethalWounded = false;
+    if(!Number.isFinite(t.rubberHitCount)) t.rubberHitCount = 0;
     if(!Number.isFinite(t.rubberSlowUntil)) t.rubberSlowUntil = 0;
     if(!Number.isFinite(t.rubberSlowStacks)) t.rubberSlowStacks = 0;
     if(!t.personality) t.personality = pickTigerPersonality(t.type || "Standard");

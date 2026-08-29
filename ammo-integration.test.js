@@ -13,11 +13,12 @@ test("Solo, Shared Story, and Special Operations expose the same ammunition syst
     assert(game.includes(id), `${id} is sold in the shared Shop catalog`);
   }
   assert(game.includes("floorHp:rubberShot ? captureWindowMinHp(t)"), "Solo Rubber shots cannot pass below the live-capture floor");
-  assert(game.includes("if(shotMode === \"real\") t.lethalWounded = true"), "Solo Real hits block capture");
+  assert(game.includes('if(shotMode === "real"){') && game.includes("t.lethalWounded = true"), "Solo Real hits block capture");
   assert(game.includes("setWeaponAmmoMode"), "Inventory and combat can switch ammunition modes");
+  assert(game.includes("loadedAmmoMatchesSelectedMode") && game.includes("Ammo safety stopped the shot"), "Solo blocks any shot whose physical magazine disagrees with the HUD mode");
   assert(html.includes("touchAmmoModeBtn") && html.includes("combatAmmoModeBtn"), "mobile and desktop combat controls expose ammunition switching");
   assert(coop.includes("squadAmmoModeButton") && coop.includes("squadCaptureButton"), "Live Squad has separate ammunition and Capture buttons");
-  assert(server.includes("ammoMode:\"real\"") && server.includes("lethalWoundedIds"), "co-op persists authoritative ammunition and capture state");
+  assert(server.includes("ammoMode:\"rubber\"") && server.includes("lethalWoundedIds"), "co-op persists authoritative ammunition and capture state");
   assert(route.includes('"ammo-mode"'), "the co-op API accepts ammunition mode changes");
   for(const operation of ["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival"]){
     assert(route.includes(operation), `${operation} stays routed through the shared co-op combat engine`);
@@ -30,4 +31,5 @@ test("Solo, Shared Story, and Special Operations expose the same ammunition syst
   assert(game.includes("BODY • BLOOD SCENT") && coop.includes("BODY • BLOOD SCENT"), "solo and co-op visibly label lethal tiger bodies");
   assert(server.includes("killSites") && server.includes("bloodScentRadius"), "co-op stores authoritative body locations and scent zones");
   assert(server.includes(": 2;") && server.includes("tigerKills * aggressionPerKill"), "every co-op mission escalates surviving tiger damage after lethal kills");
+  assert(server.includes('ammoMode:"rubber"') && server.includes('? "real" : "rubber"'), "fresh co-op missions start capture-safe on Rubber while Survival remains Real-only");
 });

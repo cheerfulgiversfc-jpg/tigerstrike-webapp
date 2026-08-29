@@ -45,5 +45,9 @@
     return !lethalWounded && current >= max * minRatio && current <= max * maxRatio;
   }
 
-  return Object.freeze({ MODES, normalizeAmmoMode, damageMultiplier, rubberSlowMultiplier, applyTigerAmmoDamage, canCaptureTiger });
+  function shotModeMatches(selectedMode, loadedMode){
+    return normalizeAmmoMode(selectedMode) === normalizeAmmoMode(loadedMode);
+  }
+
+  return Object.freeze({ MODES, normalizeAmmoMode, damageMultiplier, rubberSlowMultiplier, applyTigerAmmoDamage, canCaptureTiger, shotModeMatches });
 });

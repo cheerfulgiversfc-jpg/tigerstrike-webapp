@@ -28,3 +28,9 @@ test("rubber slow stacks safely", ()=>{
   assert.equal(rules.rubberSlowMultiplier(4, true), 0.54);
   assert.equal(rules.rubberSlowMultiplier(4, false), 1);
 });
+
+test("the loaded magazine must match the selected HUD mode", ()=>{
+  assert.equal(rules.shotModeMatches("rubber", "rubber"), true);
+  assert.equal(rules.shotModeMatches("rubber", "real"), false);
+  assert.equal(rules.shotModeMatches("real", "rubber"), false);
+});

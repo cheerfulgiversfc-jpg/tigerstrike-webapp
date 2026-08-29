@@ -221,8 +221,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V7.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V7.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.3 • Co-op Command");
+      ? `Tiger Strike V7.4 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V7.4 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.4 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -382,7 +382,7 @@
     if(attack){ attack.innerHTML = unavailable ? unavailableLabel : (tiger ? (tigerNear ? `${ammoMode === "rubber" ? "🟡" : "🔴"} Attack<br><small>${ammoMode === "rubber" ? "Rubber • nonlethal" : "Real • lethal"}</small>` : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"); attack.disabled = unavailable || !tiger; }
     if(capture){
       const blocked = !!tiger?.lethalWounded;
-      capture.innerHTML = unavailable ? unavailableLabel : (blocked ? "🚫 Capture<br><small>Lethal injury</small>" : (captureReady ? `💉 Capture<br><small>${esc(tiger.type || "Tiger")}</small>` : "💉 Capture<br><small>Ready at 30%</small>"));
+      capture.innerHTML = unavailable ? unavailableLabel : (blocked ? "🚫 Fresh Tiger<br><small>Real round hit</small>" : (captureReady ? `💉 Capture<br><small>${esc(tiger.type || "Tiger")}</small>` : "💉 Capture<br><small>Rubber to 30%</small>"));
       capture.disabled = unavailable || !tiger || !captureReady;
     }
     if(ammo){
@@ -473,7 +473,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V7.3 Blood Scent Ecosystem</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Lethal kills leave bodies and blood scent that strengthens the surviving pack. Clean captures create no blood scent. Endless Survival remains Real-only and kill-only.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V7.4 Capture-Safe Ammunition</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Fresh missions start with Rubber selected. The server verifies every shot, Rubber can never create a lethal injury, and Capture clearly identifies any tiger actually struck by Real ammunition.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>

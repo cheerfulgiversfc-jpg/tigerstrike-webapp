@@ -36,6 +36,7 @@ async function run(){
   assert.equal(snapshot.mission.level, 1, "real Story Mission 1 is selected");
   assert(snapshot.world.width >= 3800 && snapshot.world.height >= 2100, "co-op uses a Story-sized Mission 1 world");
   assert(snapshot.players.every((player)=>player.x < snapshot.world.width && player.y < snapshot.world.height), "both players spawn inside the expanded world");
+  assert(snapshot.players.every((player)=>player.ammoMode === "rubber"), "fresh co-op missions start both players on capture-safe Rubber ammunition");
   assert(snapshot.tigers.some((tiger)=>Math.hypot(tiger.x - snapshot.players[0].x, tiger.y - snapshot.players[0].y) > 1200), "objectives are spread across the larger district");
 
   session = await joinSession(code, host);
