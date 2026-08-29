@@ -23,4 +23,7 @@ test("Solo, Shared Story, and Special Operations expose the same ammunition syst
     assert(route.includes(operation), `${operation} stays routed through the shared co-op combat engine`);
   }
   assert(route.includes('"live-squad"'), "Night Fang Live Squad stays routed through the shared co-op combat engine");
+  assert(game.includes('S?.mode === "Survival"') && game.includes("Survival is kill-only"), "Solo Survival is Real-only and capture-disabled");
+  assert(server.includes('session.launchType === "endless-survival"') && server.includes("Capture is disabled in Endless Survival"), "Endless Survival is Real-only and capture-disabled on the server");
+  assert(coop.includes("Kill-only Survival") && coop.includes("Real Only"), "Endless Survival shows accurate kill-only controls");
 });

@@ -119,8 +119,8 @@
       id:"endless-survival",
       icon:"♾️",
       title:"Endless Survival",
-      short:"Survive escalating four-tiger waves, then extract after Wave 3 or keep fighting for more.",
-      description:"Hold Last Stand Basin against endless tiger waves led by the recurring Relentless Alpha. Every new wave has 22% more health, with a twelve-second regroup break between waves. After clearing Wave 3, both players can extract to bank the payout—or stay and risk another stronger wave for a larger reward.",
+      short:"Real ammunition only. Kill escalating four-tiger waves, then extract after Wave 3 or keep fighting.",
+      description:"Endless Survival is kill-only: no Rubber ammunition and no captures. Hold Last Stand Basin with Real ammunition against waves led by the recurring Relentless Alpha. Every new wave has 22% more health. After Wave 3, both players can extract to bank the payout—or risk another stronger wave.",
       reward:"Wave 3: $13,500 • 2 perk points • 22 season points • Last Stand Survivor badge • every extra wave increases the payout",
       mapLabel:"Last Stand Basin",
     },
@@ -221,8 +221,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V7.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V7.1 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.1 • Co-op Command");
+      ? `Tiger Strike V7.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V7.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.2 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -375,6 +375,7 @@
     const civNear = civilian && distance(state.local,civilian) <= 82;
     const reviveNear = teammate?.downed && distance(state.local,teammate) <= 108;
     const unavailable = !!state.local.downed || !!state.snapshot?.paused;
+    const survival = !!state.snapshot?.mission?.survival;
     const captureReady = tiger && !tiger.lethalWounded && Number(tiger.hp || 0) > 0 && Number(tiger.hp || 0) <= Number(tiger.hpMax || 1) * 0.30;
     const ammoMode = localSnapshotPlayer()?.ammoMode === "rubber" ? "rubber" : "real";
     const unavailableLabel = state.snapshot?.paused ? "⏸️ Paused<br><small>Gear menu open</small>" : "⏳ Down<br><small>Recovery</small>";
@@ -385,8 +386,8 @@
       capture.disabled = unavailable || !tiger || !captureReady;
     }
     if(ammo){
-      ammo.innerHTML = unavailable ? unavailableLabel : `${ammoMode === "rubber" ? "🟡 Rubber" : "🔴 Real"}<br><small>Tap to switch</small>`;
-      ammo.disabled = unavailable;
+      ammo.innerHTML = survival ? "🔴 Real Only<br><small>Kill-only Survival</small>" : (unavailable ? unavailableLabel : `${ammoMode === "rubber" ? "🟡 Rubber" : "🔴 Real"}<br><small>Tap to switch</small>`);
+      ammo.disabled = survival || unavailable;
     }
     if(rescue){
       const noCivilianLabel = captureRequired() > 0
@@ -472,7 +473,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V7.1 Real + Rubber Ammunition</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Campaign and all seven Special Operations now share the same lethal/nonlethal ammunition rules.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V7.2 Correct Combat & Capture Rules</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Real, Rubber, Tranq, and Capture rules are shared everywhere except kill-only Endless Survival.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -594,8 +595,9 @@
         </div>
         <div class="squadActions">
           <button type="button" class="squadActionBtn attack" id="squadAttackButton" data-squad-command="action" data-squad-action="attack">🎯 Attack</button>
-          <button type="button" class="squadActionBtn" id="squadAmmoModeButton" data-squad-command="action" data-squad-action="ammo-mode">🔴 Real<br><small>Tap to switch</small></button>
-          <button type="button" class="squadActionBtn rescue" id="squadCaptureButton" data-squad-command="action" data-squad-action="capture">💉 Capture</button>
+          ${survival
+            ? `<button type="button" class="squadActionBtn" id="squadAmmoModeButton" disabled>🔴 Real Only<br><small>No capture</small></button>`
+            : `<button type="button" class="squadActionBtn" id="squadAmmoModeButton" data-squad-command="action" data-squad-action="ammo-mode">🔴 Real<br><small>Tap to switch</small></button><button type="button" class="squadActionBtn rescue" id="squadCaptureButton" data-squad-command="action" data-squad-action="capture">💉 Capture</button>`}
           <button type="button" class="squadActionBtn rescue" id="squadRescueButton" data-squad-command="action" data-squad-action="rescue">🛟 Rescue</button>
           <button type="button" class="squadActionBtn revive" id="squadReviveButton" data-squad-command="action" data-squad-action="revive">💚 Revive</button>
         </div>

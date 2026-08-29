@@ -538,7 +538,7 @@ const EXPANDED_ENDLESS_SURVIVAL_MISSION = expandMissionDefinition({
   chapter:0,
   chapterName:"Last Stand Basin",
   title:"Endless Survival",
-  objective:"Survive escalating tiger waves. After clearing Wave 3, extract together to bank rewards or keep fighting for a larger payout.",
+  objective:"Real ammunition only. Kill every tiger in each escalating wave; captures are disabled. After Wave 3, extract together or keep fighting.",
   rescueRequired:0,
   timeLimitMs:SESSION_TTL_MS,
   world:WORLD,
@@ -951,6 +951,9 @@ async function maybeFinishSession(session, players){
         for(const player of players){
           player.bossDamage = 0;
           player.tigerDamage = {};
+          player.ammoMode = "real";
+          player.lethalWoundedIds = [];
+          player.rubberSlowUntil = {};
           player.capturedIds = [];
           await writePlayer(session.code, player);
         }
@@ -1214,6 +1217,7 @@ async function applyAction(session, user, action, payload={}){
       p.x = spawn.x;
       p.y = spawn.y;
       p.face = 0;
+      if(session.launchType === "endless-survival") p.ammoMode = "real";
       if(!restartCheckpoint){
         p.bossDamage = 0;
         p.tigerDamage = {};
@@ -1236,6 +1240,7 @@ async function applyAction(session, user, action, payload={}){
     throw new Error("You are out of lives. Your teammate must revive you or the leader can restart after a squad wipe.");
   }
   if(action === "ammo-mode"){
+    if(session.launchType === "endless-survival") throw new Error("Endless Survival is kill-only and uses Real ammunition only.");
     player.ammoMode = ammoRules.normalizeAmmoMode(payload.ammoMode, "real") === "rubber" ? "rubber" : "real";
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
@@ -1249,7 +1254,7 @@ async function applyAction(session, user, action, payload={}){
     if(now - player.lastAttackAt < 560) throw new Error("Weapon is cooling down.");
     const def = ROLE_DEFS[player.role];
     const combo = clamp(payload.combo || 0, 0, 3);
-    const ammoMode = player.ammoMode === "rubber" ? "rubber" : "real";
+    const ammoMode = session.launchType === "endless-survival" ? "real" : (player.ammoMode === "rubber" ? "rubber" : "real");
     const rawHit = def.damage + combo * 2;
     const hit = ammoMode === "rubber"
       ? Math.max(1, Math.round(rawHit * ammoRules.damageMultiplier("rubber")))
@@ -1269,6 +1274,7 @@ async function applyAction(session, user, action, payload={}){
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
   }else if(action === "capture"){
+    if(session.launchType === "endless-survival") throw new Error("Capture is disabled in Endless Survival. Eliminate every tiger to clear the wave.");
     const players = await memberPlayers(session);
     const tigers = tigerSnapshots(session, players, now).filter((t)=>!t.defeated);
     const requestedId = cleanText(payload.tigerId, 32);

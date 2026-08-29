@@ -636,6 +636,17 @@ async function run(){
   assert.equal(survivalSnapshot.boss.hpMax, 1500, "Wave 1 uses the base Relentless Alpha health");
   assert.equal(survivalSnapshot.world.width, 4800, "Endless Survival uses the full co-op world width");
   assert.equal(survivalSnapshot.world.height, 2800, "Endless Survival uses the full co-op world height");
+  assert(survivalSnapshot.players.every((player)=>player.ammoMode === "real"), "Endless Survival starts every player with Real ammunition");
+  await assert.rejects(
+    async()=>applyAction(await readSession(survivalSession.code), survivalHost, "ammo-mode", { ammoMode:"rubber" }),
+    /Real ammunition only/,
+    "Endless Survival rejects Rubber ammunition"
+  );
+  await assert.rejects(
+    async()=>applyAction(await readSession(survivalSession.code), survivalHost, "capture", { tigerId:survivalSnapshot.tigers[0].id }),
+    /Capture is disabled/,
+    "Endless Survival rejects capture actions"
+  );
 
   const relentless = survivalSnapshot.boss;
   await writePlayerPatch(survivalSession.code, survivalHost.id, { x:relentless.x, y:relentless.y, lastSeenAt:Date.now() });

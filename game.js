@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5041";
+const TS_BUILD = "5042";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -17026,6 +17026,13 @@ const STARTUP_LOADING_TIPS = [
   "Mission control checks terrain, sectors, units, events, and visuals before gameplay starts.",
   "The mission board opens at 100% so the map should not appear in unfinished chunks."
 ];
+const SURVIVAL_LOADING_TIPS = [
+  "Survival is kill-only: use Real ammunition.",
+  "Rubber rounds and Capture are disabled in Survival.",
+  "Clear every tiger to advance to the next wave.",
+  "Use armor, traps, and movement to protect the settlement core.",
+  "Boss roars mean the wave is about to get more aggressive."
+];
 let __phase18CinematicEvents = [];
 const PHASE18_CINEMATIC_EVENT_MAX = 18;
 let __frameSlowUntil = 0;
@@ -23960,6 +23967,7 @@ function captureWindowMinHp(t){
   return Math.max(1, Math.ceil((t?.hpMax || 0) * 0.01));
 }
 function tigerInCaptureHpWindow(t){
+  if(S?.mode === "Survival") return false;
   if(!t || !t.alive) return false;
   if(t.lethalWounded) return false;
   const hp = Math.max(0, Number(t.hp || 0));
@@ -27088,7 +27096,9 @@ function collectPickup(p){
   }
   else if(p.type==="AMMO"){
     // add ammo for equipped weapon
-    const w=equippedWeapon();
+    const w=S.mode === "Survival"
+      ? (getWeapon(S.preferredLethalWeaponId) || S.ownedWeapons.map(getWeapon).find((weapon)=>weapon?.type === "lethal") || equippedWeapon())
+      : equippedWeapon();
     const pickupAmmoId = bestAvailableAmmoIdForWeapon(w) || compatibleAmmoIdsForWeapon(w, selectedAmmoModeForWeapon(w))[0] || w.ammo;
     const pack = Math.max(1, Math.round(((w.ammo==="TRANQ_HEAVY") ? 1 : 6) * pickupMul * liveOpsMissionModifierValue("ammoPickupMul", 1, S)));
     S.ammoReserve[pickupAmmoId] = (S.ammoReserve[pickupAmmoId]||0) + pack;
@@ -30107,6 +30117,13 @@ function setMode(m){
     S.survivalWave = Math.max(1, Math.floor(Number(S.survivalWave || 1)));
     S.survivalStart = Date.now();
     S.surviveSeconds = 0;
+    const survivalWeaponId = S.ownedWeapons.find((id)=>id === S.preferredLethalWeaponId && getWeapon(id)?.type === "lethal")
+      || S.ownedWeapons.find((id)=>getWeapon(id)?.type === "lethal");
+    if(survivalWeaponId){
+      ensureAmmoModeState(S);
+      S.ammoModeByWeapon[survivalWeaponId] = "real";
+      equipWeapon(survivalWeaponId, { system:true, keepPreset:true });
+    }
   }
   if(nextMode==="Story"){
     // Keep Story progress when returning to Story mode.
@@ -35410,8 +35427,11 @@ function renderShopList(){
   }
 
   if(currentShopTab==="ammo"){
-    note.innerText=`${audit.label}. Real rounds are lethal. Rubber rounds cost more, slow tigers, and can never kill; use Tranq to complete the capture.`;
-    list.innerHTML = AMMO.map(a=>{
+    const survivalOnly = S.mode === "Survival";
+    note.innerText=survivalOnly
+      ? `${audit.label}. Survival is kill-only: Real ammunition only, with no Rubber rounds and no captures.`
+      : `${audit.label}. Real rounds are lethal. Rubber rounds cost more, slow tigers, and can never kill; use Tranq to complete the capture.`;
+    list.innerHTML = AMMO.filter((a)=>!survivalOnly || ammoModeForId(a.id) === "real").map(a=>{
       const p=ammoPriceCapped(a);
       const owned = ownedAmmoCount(a.id);
       return `
@@ -36146,6 +36166,7 @@ function buyWeapon(id){
 }
 function buyAmmo(id){
   const a=getAmmo(id); if(!a) return;
+  if(S.mode === "Survival" && ammoModeForId(id) !== "real") return toast("Survival is Real-ammunition only. Rubber and Tranq rounds are unavailable.");
   const p=ammoPriceCapped(a);
   if(S.funds < p) return toast("Not enough money.");
   S.funds -= p;
@@ -36509,8 +36530,10 @@ function renderInventory(){
     }).join("");
     const mode = selectedAmmoModeForWeapon(ww);
     const modeButtons = weaponSupportsAmmoMode(ww)
-      ? `<button class="ghost" ${mode === "real" ? "disabled" : ""} onclick="setWeaponAmmoMode('${id}','real')">🔴 Real</button><button class="ghost" ${mode === "rubber" ? "disabled" : ""} onclick="setWeaponAmmoMode('${id}','rubber')">🟡 Rubber</button>`
-      : `<span class="tag">💉 Tranq only</span>`;
+      ? (S.mode === "Survival"
+        ? `<button class="ghost" disabled>🔴 Real Only</button>`
+        : `<button class="ghost" ${mode === "real" ? "disabled" : ""} onclick="setWeaponAmmoMode('${id}','real')">🔴 Real</button><button class="ghost" ${mode === "rubber" ? "disabled" : ""} onclick="setWeaponAmmoMode('${id}','rubber')">🟡 Rubber</button>`)
+      : `<span class="tag">${S.mode === "Survival" ? "Unavailable in Survival" : "💉 Tranq only"}</span>`;
     const xpTxt = mastery.nextXp == null
       ? `${mastery.xp} XP (MAX)`
       : `${mastery.xp}/${mastery.nextXp} XP`;
@@ -36532,7 +36555,7 @@ function renderInventory(){
       </div>`;
   }).join("");
 
-  const ammoKeys = Object.keys(S.ammoReserve).sort();
+  const ammoKeys = Object.keys(S.ammoReserve).filter((aid)=>S.mode !== "Survival" || ammoModeForId(aid) === "real").sort();
   document.getElementById("invAmmo").innerHTML = ammoKeys.map(aid=>{
     const a=getAmmo(aid);
     return `
@@ -37291,6 +37314,7 @@ function ensureAmmoModeState(state=S){
 function selectedAmmoModeForWeapon(w=equippedWeapon()){
   if(!w) return "real";
   if(!weaponSupportsAmmoMode(w)) return "tranq";
+  if(S?.mode === "Survival") return "real";
   ensureAmmoModeState(S);
   return S.ammoModeByWeapon[w.id] === "rubber" ? "rubber" : "real";
 }
@@ -37376,6 +37400,10 @@ function setWeaponAmmoMode(weaponId, requestedMode, opts={}){
   }
   ensureAmmoModeState(S);
   const mode = requestedMode === "rubber" ? "rubber" : "real";
+  if(S.mode === "Survival" && mode !== "real"){
+    if(!opts.silent) interactionFeedback("Survival is kill-only. Only Real ammunition is available.", { warn:true, battle:!!S.inBattle });
+    return false;
+  }
   if(S.ammoModeByWeapon[w.id] === mode) return true;
   if(S.mag?.weaponId === w.id && Number(S.mag.loaded || 0) > 0 && S.mag.ammoId){
     S.ammoReserve[S.mag.ammoId] = Math.max(0, Number(S.ammoReserve[S.mag.ammoId] || 0)) + Number(S.mag.loaded || 0);
@@ -37398,6 +37426,7 @@ function setWeaponAmmoMode(weaponId, requestedMode, opts={}){
   return true;
 }
 function toggleActiveAmmoMode(){
+  if(S.mode === "Survival") return interactionFeedback("Survival is kill-only: Real ammunition only, with no capture option.", { warn:true, battle:!!S.inBattle });
   const w = equippedWeapon();
   if(!weaponSupportsAmmoMode(w)){
     const lethalId = preferredAttackWeaponId();
@@ -46465,7 +46494,8 @@ function renderCombatControls(){
   }
 
   const t = activeTiger();
-  const captureReadyByHp = tigerInCaptureHpWindow(t) && !t?.lethalWounded;
+  const survivalKillOnly = S.mode === "Survival";
+  const captureReadyByHp = !survivalKillOnly && tigerInCaptureHpWindow(t) && !t?.lethalWounded;
   const canPressCombatAction = inCombat && !S.paused && !S.missionEnded && !S.gameOver && !(S.respawnPendingUntil && Date.now() < S.respawnPendingUntil);
   const medCount = totalMedkits();
   const armorPlateCountAll = totalArmorPlates();
@@ -46481,7 +46511,8 @@ function renderCombatControls(){
   [["touchCaptureBtn", !canPressCombatAction], ["combatCaptureBtn", !canPressCombatAction]].forEach(([id, disabled])=>{
     const el = document.getElementById(id);
     if(!el) return;
-    el.disabled = disabled;
+    el.style.display = survivalKillOnly ? "none" : "";
+    el.disabled = disabled || survivalKillOnly;
     const ready = !!t && captureReadyByHp;
     const hasTranq = !!t && captureTranqWeaponOptions(t).some((id)=>S.ownedWeapons.includes(id) && hasAmmoForWeaponId(id));
     el.title = t?.lethalWounded
@@ -46533,16 +46564,16 @@ function renderCombatControls(){
   const ammoModeReserve = weaponSupportsAmmoMode(ammoWeapon) ? compatibleAmmoReserveForWeapon(ammoWeapon, ammoMode) : 0;
   const ammoDesktop = document.getElementById("combatAmmoModeBtn");
   if(ammoDesktop){
-    ammoDesktop.disabled = !ammoModeEnabled;
-    ammoDesktop.innerText = weaponSupportsAmmoMode(ammoWeapon) ? `${ammoMode === "rubber" ? "🟡" : "🔴"} ${ammoModeLabel} Ammo (${ammoModeReserve})` : "💉 Tranq Darts";
+    ammoDesktop.disabled = !ammoModeEnabled || survivalKillOnly;
+    ammoDesktop.innerText = survivalKillOnly ? `🔴 Real Only (${ammoModeReserve})` : (weaponSupportsAmmoMode(ammoWeapon) ? `${ammoMode === "rubber" ? "🟡" : "🔴"} ${ammoModeLabel} Ammo (${ammoModeReserve})` : "💉 Tranq Darts");
   }
   const ammoTouch = document.getElementById("touchAmmoModeBtn");
   if(ammoTouch){
-    ammoTouch.disabled = !ammoModeEnabled;
+    ammoTouch.disabled = !ammoModeEnabled || survivalKillOnly;
     const label = ammoTouch.querySelector(".touchBtnLabel");
     const icon = ammoTouch.querySelector(".touchBtnIcon");
-    if(label) label.innerText = weaponSupportsAmmoMode(ammoWeapon) ? ammoModeLabel : "Tranq";
-    if(icon) icon.innerText = ammoMode === "rubber" ? "🟡" : (ammoMode === "tranq" ? "💉" : "🔴");
+    if(label) label.innerText = survivalKillOnly ? "Real Only" : (weaponSupportsAmmoMode(ammoWeapon) ? ammoModeLabel : "Tranq");
+    if(icon) icon.innerText = survivalKillOnly ? "🔴" : (ammoMode === "rubber" ? "🟡" : (ammoMode === "tranq" ? "💉" : "🔴"));
   }
 
   const prevLabel = combatWeaponLabel(-1);
@@ -47071,6 +47102,7 @@ function playerAction(action){
   }
 
   if(action==="CAPTURE"){
+    if(S.mode === "Survival") return interactionFeedback("Capture is disabled in Survival. Eliminate every tiger in the wave to continue.", { battle:true, warn:true });
     const preCaptureWeaponId = S.equippedWeaponId;
     if(t.lethalWounded){
       triggerCombatInteraction("capture_not_ready", { tiger:t, label:"LETHAL INJURY" });
@@ -47198,9 +47230,12 @@ function playerAction(action){
     }
 
     const w=equippedWeapon();
-    if(window.TigerTutorial?.isRunning && w.type === "lethal" && selectedAmmoModeForWeapon(w) !== "rubber"){
+    if(S.mode !== "Survival" && window.TigerTutorial?.isRunning && w.type === "lethal" && selectedAmmoModeForWeapon(w) !== "rubber"){
       setWeaponAmmoMode(w.id, "rubber", { silent:true });
     }
+    // Survival may have inherited a Rubber-loaded magazine from another mode.
+    // Normalize it to the mode's Real-only rule before the shot is evaluated.
+    autoReloadIfNeeded(false);
 
     // If this weapon is empty, do NOT auto-tigerTurn; let player switch weapons
     if(!equippedWeaponHasAmmoNow()){
@@ -49629,6 +49664,12 @@ function renderHUD(){
   document.getElementById("tigerBar").style.width = t ? `${(t.hp/t.hpMax)*100}%` : "0%";
   const capturePctTxt = document.getElementById("capturePctTxt");
   if(capturePctTxt) capturePctTxt.innerText = captureWindowPctLabel();
+  const targetRuleLabel = document.getElementById("targetRuleLabel");
+  if(targetRuleLabel){
+    targetRuleLabel.innerHTML = S.mode === "Survival"
+      ? "Kill every tiger in the wave"
+      : `Capture at <b id="capturePctTxt">${captureWindowPctLabel()}</b> HP or lower`;
+  }
   const director = ensureMissionDirectorState(S);
   const directorPhase = DIRECTOR_PHASE_CONFIG[director.phase] ? director.phase : DIRECTOR_PHASES.CALM;
   const directorPressure = clamp(Math.round(Number(director.pressure || 0)), 0, 100);
@@ -49683,7 +49724,7 @@ function renderHUD(){
   const objEl = document.getElementById("objTxt");
   if(objEl) objEl.innerText =
     (S.mode==="Survival")
-      ? `🎯 Survive • Loot spawns • Traps hold tigers • Carcasses block movement${dayNightInline}`
+      ? `🎯 Kill every tiger in Wave ${S.survivalWave} • Real ammunition only • No Rubber • No Capture${dayNightInline}`
       : (S.mode==="Story")
         ? `🎯 ${storyObjective}${director5Inline}${dynInline}${invInline}${dayNightInline}${grace}`
       : (S.mode==="Arcade")
@@ -60368,8 +60409,9 @@ function updateStartupLoadingOverlay(force=false){
     __startupLoadingGuard.percentNode.textContent = `${pct}%`;
   }
   if(__startupLoadingGuard.tipNode){
-    const tipIndex = (Math.floor(elapsed / 5200) + Math.floor(Number(__startupLoadingGuard.tipIndex || 0))) % STARTUP_LOADING_TIPS.length;
-    __startupLoadingGuard.tipNode.textContent = STARTUP_LOADING_TIPS[tipIndex] || STARTUP_LOADING_TIPS[0];
+    const activeTips = S?.mode === "Survival" ? SURVIVAL_LOADING_TIPS : STARTUP_LOADING_TIPS;
+    const tipIndex = (Math.floor(elapsed / 5200) + Math.floor(Number(__startupLoadingGuard.tipIndex || 0))) % activeTips.length;
+    __startupLoadingGuard.tipNode.textContent = activeTips[tipIndex] || activeTips[0];
   }
   if(__startupLoadingGuard.checkNode){
     const scores = __startupLoadingGuard.stageScores || {};

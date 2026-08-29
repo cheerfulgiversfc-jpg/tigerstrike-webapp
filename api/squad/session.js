@@ -83,7 +83,7 @@ async function prepareInvite(botToken, user, session){
         name:"Endless Survival",
         button:"♾️ Join Endless Survival",
         heading:"♾️ ENDLESS SURVIVAL TEAMMATE REQUEST",
-        detail:"Defend Last Stand Basin through escalating tiger waves. Clear Wave 3, then extract together to bank your rewards or keep fighting for a larger payout.",
+        detail:"Kill-only operation: Real ammunition only, no Rubber rounds, and no captures. Clear Wave 3, then extract together or keep fighting for a larger payout.",
       },
   }[session.launchType] || {
         id:"night_fang",
