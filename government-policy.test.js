@@ -30,3 +30,18 @@ test("severe case risk suspends funding while clean work can restore it",()=>{
   assert(recovery.reviewPoints<25);
   assert(recovery.funding>0);
 });
+
+test("detention and rehabilitation suspend funding until the case is resolved",()=>{
+  assert.equal(policy.effectiveStatus({reviewPoints:82,trust:18,stage:"DETENTION_NOTICE"}),"DETAINED");
+  assert.equal(policy.effectiveStatus({reviewPoints:40,trust:60,stage:"REHABILITATION"}),"REHABILITATION");
+  const detained=policy.audit({reviewPoints:82,trust:18,captures:3,evac:4,stage:"QUESTIONING"});
+  assert.equal(detained.status,"DETAINED");
+  assert.equal(detained.funding,0);
+});
+
+test("GONE ROGUE permanently overrides trust and mission conduct funding",()=>{
+  const rogue=policy.audit({reviewPoints:0,trust:100,captures:5,evac:8,path:"ROGUE"});
+  assert.equal(rogue.status,"GONE_ROGUE");
+  assert.equal(rogue.fundingRate,0);
+  assert.equal(rogue.funding,0);
+});

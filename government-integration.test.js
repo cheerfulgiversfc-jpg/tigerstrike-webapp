@@ -14,6 +14,11 @@ test("government oversight is connected to solo, co-op, saves, and visible UI",(
   assert(html.includes("Government Oversight")&&html.includes("governmentAuditRisk"),"mission results show trust, review risk, and funding");
   assert(game.includes("governmentProgramStatusSummary")&&game.includes("Government grants depend on captures"),"mission brief explains consequences before deployment");
   assert(server.includes("governmentAudit")&&server.includes("auditDerived.tigerKills"),"the co-op server returns authoritative shared conduct totals");
+  assert(game.includes("GONE_ROGUE")&&game.includes("DETENTION_NOTICE")&&game.includes("REHABILITATION"),"the saved government state includes detention, rehabilitation, and rogue paths");
+  assert(game.includes("guardGovernmentDeployment()")&&coop.includes("governmentConsequencePending"),"detention blocks both solo and new co-op deployment until resolved");
+  assert(html.includes("governmentConsequenceOverlay")&&html.includes("Resolve Detention"),"the player receives a visible detention decision instead of a fake button");
+  assert(game.includes("GOV_RESPONSE")&&game.includes("Agency Hound")&&game.includes("responseUnitsDefeated"),"GONE ROGUE missions can deploy government response squads with tracked defeats");
+  assert(game.includes("governmentArmoryPurchasesLocked")&&game.includes("Government Supply Blacklist"),"rogue weapon, ammo, and armor purchases are blocked with an accurate explanation");
   assert(coop.includes("applyGovernmentMissionAudit")&&coop.includes("runId:data.receipt"),"each co-op player applies the audit once to their own save");
   assert(server.includes('exempt:operationId === "endless-survival"'),"Endless Survival is explicitly exempt");
 });

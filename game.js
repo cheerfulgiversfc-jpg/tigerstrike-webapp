@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5046";
+const TS_BUILD = "5047";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -1425,8 +1425,23 @@ const RIVAL_FACTION_DEFS = Object.freeze([
     dmgMul:1.06,
     hpMul:1.06,
   }),
+  Object.freeze({
+    key:"GOV_RESPONSE",
+    name:"Government Response Unit",
+    desc:"Tracks GONE ROGUE soldiers and attacks the player on sight.",
+    color:"#2563eb",
+    accent:"#93c5fd",
+    tigerBias:0,
+    civBias:0,
+    captureBias:0,
+    moveMul:1.14,
+    dmgMul:1.16,
+    hpMul:1.18,
+    government:true,
+  }),
 ]);
 const RIVAL_FACTION_BY_KEY = Object.freeze(Object.fromEntries(RIVAL_FACTION_DEFS.map((row)=>[row.key, row])));
+const STANDARD_RIVAL_FACTIONS = Object.freeze(RIVAL_FACTION_DEFS.filter((row)=>!row.government));
 const RIVAL_MAX_UNITS = 4;
 const RIVAL_MIN_SPAWN_LEVEL = 6;
 const RIVAL_BASE_AGGRO_RANGE = 320;
@@ -4498,6 +4513,9 @@ const GOVERNMENT_PROGRAM_STATUS = Object.freeze({
   MONITORED:{ label:"Monitored", icon:"👁️", fundingRate:0.60 },
   INVESTIGATION:{ label:"Active Investigation", icon:"🔎", fundingRate:0.25 },
   FUNDING_SUSPENDED:{ label:"Funding Suspended", icon:"⛔", fundingRate:0.00 },
+  DETAINED:{ label:"Detained for Questioning", icon:"🚔", fundingRate:0.00 },
+  REHABILITATION:{ label:"Rehabilitation Program", icon:"🕊️", fundingRate:0.00 },
+  GONE_ROGUE:{ label:"GONE ROGUE", icon:"⚠️", fundingRate:0.00 },
 });
 function defaultGovernmentProgramState(){
   return {
@@ -4508,6 +4526,19 @@ function defaultGovernmentProgramState(){
     cleanMissionStreak:0,
     activeCaseId:"",
     caseOpenedAt:0,
+    path:"PROGRAM",
+    consequenceStage:"CLEAR",
+    questioningStep:0,
+    questioningScore:0,
+    escapeStep:0,
+    rehabilitationStep:0,
+    rehabilitationTaskStep:0,
+    detentionCount:0,
+    rehabilitationsCompleted:0,
+    rogueSince:0,
+    responseDeployments:0,
+    responseUnitsDefeated:0,
+    lastResolution:"",
     history:[],
     appliedRunIds:{},
     lastAudit:null,
@@ -4535,18 +4566,49 @@ function ensureGovernmentProgramState(state=S){
     cleanMissionStreak:Math.max(0,Math.floor(Number(src.cleanMissionStreak || 0))),
     activeCaseId:String(src.activeCaseId || "").slice(0,80),
     caseOpenedAt:Math.max(0,Number(src.caseOpenedAt || 0)),
+    path:String(src.path || "PROGRAM").toUpperCase() === "ROGUE" ? "ROGUE" : "PROGRAM",
+    consequenceStage:["CLEAR","DETENTION_NOTICE","QUESTIONING","ESCAPE_CONFIRM","ESCAPE","REHABILITATION"].includes(String(src.consequenceStage || "CLEAR").toUpperCase()) ? String(src.consequenceStage || "CLEAR").toUpperCase() : "CLEAR",
+    questioningStep:clamp(Math.floor(Number(src.questioningStep || 0)),0,3),
+    questioningScore:clamp(Math.floor(Number(src.questioningScore || 0)),0,6),
+    escapeStep:clamp(Math.floor(Number(src.escapeStep || 0)),0,3),
+    rehabilitationStep:clamp(Math.floor(Number(src.rehabilitationStep || 0)),0,3),
+    rehabilitationTaskStep:clamp(Math.floor(Number(src.rehabilitationTaskStep || 0)),0,2),
+    detentionCount:Math.max(0,Math.floor(Number(src.detentionCount || 0))),
+    rehabilitationsCompleted:Math.max(0,Math.floor(Number(src.rehabilitationsCompleted || 0))),
+    rogueSince:Math.max(0,Number(src.rogueSince || 0)),
+    responseDeployments:Math.max(0,Math.floor(Number(src.responseDeployments || 0))),
+    responseUnitsDefeated:Math.max(0,Math.floor(Number(src.responseUnitsDefeated || 0))),
+    lastResolution:String(src.lastResolution || "").slice(0,120),
     history:(Array.isArray(src.history) ? src.history : []).filter((row)=>row && typeof row === "object").slice(-20),
     appliedRunIds:(src.appliedRunIds && typeof src.appliedRunIds === "object" && !Array.isArray(src.appliedRunIds)) ? { ...src.appliedRunIds } : {},
     lastAudit:(src.lastAudit && typeof src.lastAudit === "object") ? { ...src.lastAudit } : null,
   };
-  program.status = governmentStatusFor(program.reviewPoints, target.trust);
+  const standingStatus = governmentStatusFor(program.reviewPoints, target.trust);
+  if(program.path !== "ROGUE" && program.consequenceStage === "CLEAR" && standingStatus === "FUNDING_SUSPENDED"){
+    program.consequenceStage = "DETENTION_NOTICE";
+    program.detentionCount += 1;
+  }
+  program.status = window.TigerGovernmentPolicy?.effectiveStatus
+    ? window.TigerGovernmentPolicy.effectiveStatus({ reviewPoints:program.reviewPoints, trust:target.trust, path:program.path, stage:program.consequenceStage })
+    : (program.path === "ROGUE" ? "GONE_ROGUE" : (program.consequenceStage === "REHABILITATION" ? "REHABILITATION" : (["DETENTION_NOTICE","QUESTIONING","ESCAPE_CONFIRM","ESCAPE"].includes(program.consequenceStage) ? "DETAINED" : standingStatus)));
   target.governmentProgram = program;
   return program;
+}
+function governmentRogueActive(state=S){
+  return ensureGovernmentProgramState(state).path === "ROGUE";
+}
+function governmentArmoryPurchasesLocked(state=S){
+  return governmentRogueActive(state);
+}
+function governmentConsequencePending(state=S){
+  const program = ensureGovernmentProgramState(state);
+  return program.path !== "ROGUE" && program.consequenceStage !== "CLEAR";
 }
 function governmentProgramStatusSummary(state=S){
   const program = ensureGovernmentProgramState(state);
   const def = GOVERNMENT_PROGRAM_STATUS[program.status] || GOVERNMENT_PROGRAM_STATUS.GOOD_STANDING;
-  return `${def.icon} Government: ${def.label} • Trust ${Math.round(Number(state?.trust || 0))}/100 • Review ${program.reviewPoints}/100 • Funding ${Math.round(def.fundingRate*100)}%`;
+  const pursuit = program.path === "ROGUE" ? ` • Response teams ${program.responseDeployments}` : "";
+  return `${def.icon} Government: ${def.label} • Trust ${Math.round(Number(state?.trust || 0))}/100 • Review ${program.reviewPoints}/100 • Funding ${Math.round(def.fundingRate*100)}%${pursuit}`;
 }
 function applyGovernmentMissionAudit(input={}, opts={}){
   const mode = normalizeModeName(input.mode || S.mode);
@@ -4567,16 +4629,23 @@ function applyGovernmentMissionAudit(input={}, opts={}){
   const civDead = Math.max(0,Math.floor(Number(input.civDead || 0)));
   const clean = kills === 0 && civDead === 0;
   const beforeReview = program.reviewPoints;
-  const beforeStatus = governmentStatusFor(beforeReview, S.trust);
+  const beforeStatus = program.status || governmentStatusFor(beforeReview, S.trust);
   const policyResult = window.TigerGovernmentPolicy?.audit
-    ? window.TigerGovernmentPolicy.audit({ reviewPoints:beforeReview, trust:S.trust, captures, kills, evac, civDead, trustAlreadyApplied:!!opts.trustAlreadyApplied })
+    ? window.TigerGovernmentPolicy.audit({ reviewPoints:beforeReview, trust:S.trust, captures, kills, evac, civDead, trustAlreadyApplied:!!opts.trustAlreadyApplied, path:program.path, stage:program.consequenceStage })
     : null;
   const reviewDelta = policyResult ? policyResult.reviewDelta : (kills*18)+(civDead*28)-(captures*9)-(evac*2)-(clean && (captures>0 || evac>0) ? 8 : 0);
   program.reviewPoints = policyResult ? policyResult.reviewPoints : clamp(beforeReview + reviewDelta,0,100);
   const trustDelta = policyResult ? policyResult.trustDelta : (opts.trustAlreadyApplied ? 0 : clamp((captures*4)-(kills*5)-(civDead*10)+(clean && (captures>0 || evac>0) ? 2 : 0),-40,24));
   if(policyResult) S.trust = policyResult.trust;
   else if(trustDelta) S.trust = clamp(Math.round(Number(S.trust || 0)) + trustDelta,0,100);
-  const afterStatus = policyResult ? policyResult.status : governmentStatusFor(program.reviewPoints,S.trust);
+  const standingStatus = governmentStatusFor(program.reviewPoints,S.trust);
+  if(program.path !== "ROGUE" && program.consequenceStage === "CLEAR" && standingStatus === "FUNDING_SUSPENDED"){
+    program.consequenceStage = "DETENTION_NOTICE";
+    program.detentionCount += 1;
+  }
+  const afterStatus = window.TigerGovernmentPolicy?.effectiveStatus
+    ? window.TigerGovernmentPolicy.effectiveStatus({ reviewPoints:program.reviewPoints, trust:S.trust, path:program.path, stage:program.consequenceStage })
+    : (program.path === "ROGUE" ? "GONE_ROGUE" : (program.consequenceStage === "CLEAR" ? standingStatus : (program.consequenceStage === "REHABILITATION" ? "REHABILITATION" : "DETAINED")));
   program.status = afterStatus;
   const statusDef = GOVERNMENT_PROGRAM_STATUS[afterStatus] || GOVERNMENT_PROGRAM_STATUS.GOOD_STANDING;
   const funding = policyResult ? policyResult.funding : Math.max(0,Math.round((450+captures*750+evac*125)*statusDef.fundingRate));
@@ -4584,7 +4653,7 @@ function applyGovernmentMissionAudit(input={}, opts={}){
   program.totalFunding += funding;
   program.missionsAudited += 1;
   program.cleanMissionStreak = clean ? program.cleanMissionStreak + 1 : 0;
-  const underInvestigation = afterStatus === "INVESTIGATION" || afterStatus === "FUNDING_SUSPENDED";
+  const underInvestigation = ["INVESTIGATION","FUNDING_SUSPENDED","DETAINED","REHABILITATION","GONE_ROGUE"].includes(afterStatus);
   if(underInvestigation && !program.activeCaseId){
     program.activeCaseId = `CASE-${Date.now().toString(36).toUpperCase().slice(-6)}`;
     program.caseOpenedAt = Date.now();
@@ -5056,6 +5125,7 @@ function renderGovernmentProgramCard(audit=null){
   const funding=document.getElementById("governmentAuditFunding");
   const rows=document.getElementById("governmentAuditRows");
   const tags=document.getElementById("governmentAuditTags");
+  const action=document.getElementById("governmentConsequenceBtn");
   if(status)status.innerText=`${def.icon} ${def.label}`;
   if(trust)trust.innerText=`${Math.round(Number(S.trust||0))}/100`;
   if(risk)risk.innerText=`${program.reviewPoints}/100`;
@@ -5078,8 +5148,197 @@ function renderGovernmentProgramCard(audit=null){
   if(tags){
     const values=[`Funding ${Math.round(def.fundingRate*100)}%`,`Clean streak ${program.cleanMissionStreak}`];
     if(program.activeCaseId)values.push(program.activeCaseId);else values.push("No active case");
+    if(program.path === "ROGUE") values.push(`Response units defeated ${program.responseUnitsDefeated}`);
     tags.innerHTML=values.map((value)=>`<span class="premiumSummaryTag">${rewardEscapeHtml(value)}</span>`).join("");
   }
+  if(action){
+    const pending=governmentConsequencePending(S);
+    action.style.display=(pending||program.path==="ROGUE")?"inline-flex":"none";
+    action.innerText=program.path==="ROGUE"?"⚠️ View Rogue Status":"🚔 Resolve Detention";
+  }
+}
+const GOVERNMENT_QUESTIONING_STEPS = Object.freeze([
+  Object.freeze({ title:"Evidence Review", prompt:"Investigators show the mission record. Do you accept that lethal choices have consequences?", primary:"Accept responsibility", secondary:"Review the evidence quietly" }),
+  Object.freeze({ title:"Civilian Safety Hearing", prompt:"The panel asks what comes first during a rescue operation.", primary:"Civilian safety comes first", secondary:"Mission speed comes first" }),
+  Object.freeze({ title:"Wildlife Conduct Statement", prompt:"The final question asks how you will handle a tiger that can still be captured.", primary:"Use Rubber, Tranq, and a cage", secondary:"Use the fastest available option" }),
+]);
+const GOVERNMENT_REHABILITATION_STEPS = Object.freeze([
+  Object.freeze({ title:"Nonlethal Certification", prompt:"Complete the Rubber-ammunition safety drill and confirm that only Tranq completes a live capture.", tasks:["Load Rubber ammunition","Weaken the training tiger without killing it","Switch to Tranq and secure the live capture"] }),
+  Object.freeze({ title:"Civilian Rescue Exercise", prompt:"Escort the training civilian through the protected route without abandoning them.", tasks:["Reach the training civilian","Escort through the marked safe route","Finish inside civilian evacuation"] }),
+  Object.freeze({ title:"Wildlife Transfer Duty", prompt:"Secure the training cage and supervise its safe conservation-truck handoff.", tasks:["Inspect the tiger cage","Lock and tag the transport cage","Load the cage onto the conservation truck"] }),
+]);
+const GOVERNMENT_ESCAPE_STEPS = Object.freeze([
+  "Slip the interview-room restraints without raising the alarm",
+  "Cross the service corridor and reach the vehicle gate",
+  "Break through the outer checkpoint and disappear into the field",
+]);
+function renderGovernmentConsequence(){
+  const root=document.getElementById("governmentConsequenceOverlay");
+  if(!root)return;
+  const program=ensureGovernmentProgramState(S);
+  const title=document.getElementById("governmentConsequenceTitle");
+  const status=document.getElementById("governmentConsequenceStatus");
+  const body=document.getElementById("governmentConsequenceBody");
+  const actions=document.getElementById("governmentConsequenceActions");
+  const def=GOVERNMENT_PROGRAM_STATUS[program.status]||GOVERNMENT_PROGRAM_STATUS.GOOD_STANDING;
+  if(title)title.innerText=program.path==="ROGUE"?"⚠️ GONE ROGUE":"🚔 Government Case Resolution";
+  if(status)status.innerText=`${def.icon} ${def.label} • ${program.activeCaseId||"Case pending"} • Trust ${Math.round(Number(S.trust||0))}/100 • Review ${program.reviewPoints}/100`;
+  if(!body||!actions)return;
+  if(program.path==="ROGUE"){
+    body.innerHTML=`<div class="governmentDecisionWarning"><b>You escaped detention and are now GONE ROGUE.</b><br>Government grants are permanently stopped for this profile. Weapon, ammunition, and armor purchases are blocked. Armed response squads may enter future solo non-Survival missions; defeated units drop cash, ammunition, armor, and supply crates. Story progress is safe and will never be erased.</div>`;
+    actions.innerHTML=`<button class="ghost" type="button" onclick="closeGovernmentConsequence()">Return</button>`;
+    return;
+  }
+  if(program.consequenceStage==="QUESTIONING"){
+    const step=GOVERNMENT_QUESTIONING_STEPS[program.questioningStep]||GOVERNMENT_QUESTIONING_STEPS[0];
+    body.innerHTML=`<div class="governmentStepKicker">Question ${Math.min(3,program.questioningStep+1)} of 3</div><div class="governmentStepTitle">${rewardEscapeHtml(step.title)}</div><div class="governmentStepText">${rewardEscapeHtml(step.prompt)}</div><div class="governmentProgress"><span style="width:${Math.round((program.questioningStep/3)*100)}%"></span></div>`;
+    actions.innerHTML=`<button class="good" type="button" onclick="answerGovernmentQuestion(true)">${rewardEscapeHtml(step.primary)}</button><button class="ghost" type="button" onclick="answerGovernmentQuestion(false)">${rewardEscapeHtml(step.secondary)}</button>`;
+    return;
+  }
+  if(program.consequenceStage==="ESCAPE"){
+    const task=GOVERNMENT_ESCAPE_STEPS[program.escapeStep]||GOVERNMENT_ESCAPE_STEPS[0];
+    body.innerHTML=`<div class="governmentStepKicker">Detention Escape • Step ${Math.min(3,program.escapeStep+1)} of 3</div><div class="governmentStepTitle">Breakout in Progress</div><div class="governmentDecisionWarning"><b>Current escape objective:</b><br>${rewardEscapeHtml(task)}</div><div class="governmentProgress"><span style="width:${Math.round((program.escapeStep/3)*100)}%"></span></div><div class="hudLine">Completing the escape preserves progress but permanently activates GONE ROGUE consequences.</div>`;
+    actions.innerHTML=`<button class="danger" type="button" onclick="advanceGovernmentEscape()">Complete Escape Step ${Math.min(3,program.escapeStep+1)}</button>`;
+    return;
+  }
+  if(program.consequenceStage==="REHABILITATION"){
+    const step=GOVERNMENT_REHABILITATION_STEPS[program.rehabilitationStep]||GOVERNMENT_REHABILITATION_STEPS[0];
+    const task=step.tasks?.[program.rehabilitationTaskStep]||step.tasks?.[0]||"Complete field task";
+    const completedTasks=(program.rehabilitationStep*3)+program.rehabilitationTaskStep;
+    body.innerHTML=`<div class="governmentStepKicker">Rehabilitation Mission ${Math.min(3,program.rehabilitationStep+1)} of 3 • Task ${Math.min(3,program.rehabilitationTaskStep+1)} of 3</div><div class="governmentStepTitle">${rewardEscapeHtml(step.title)}</div><div class="governmentStepText">${rewardEscapeHtml(step.prompt)}</div><div class="governmentDecisionWarning"><b>Current field task:</b><br>${rewardEscapeHtml(task)}</div><div class="governmentProgress"><span style="width:${Math.round((completedTasks/9)*100)}%"></span></div><div class="hudLine">All nine field tasks must be completed. Finishing the program restores trust, closes the case, and returns government rescue funding. Story progress and inventory remain safe.</div>`;
+    actions.innerHTML=`<button class="good" type="button" onclick="completeGovernmentRehabilitationStep()">Complete Task ${Math.min(3,program.rehabilitationTaskStep+1)}</button>`;
+    return;
+  }
+  if(program.consequenceStage==="ESCAPE_CONFIRM"){
+    body.innerHTML=`<div class="governmentDecisionWarning"><b>This is the final warning.</b><br>Escaping preserves all Story progress, but permanently marks this profile GONE ROGUE. Government funding stops, the official weapon/ammo/armor shop closes to you, and armed response squads can hunt you during future solo non-Survival missions.</div>`;
+    actions.innerHTML=`<button class="danger" type="button" onclick="confirmGovernmentEscape()">Escape and Go Rogue</button><button class="good" type="button" onclick="beginGovernmentQuestioning()">Stay for Questioning</button>`;
+    return;
+  }
+  body.innerHTML=`<div class="governmentDecisionWarning"><b>Funding is suspended and deployment is on hold.</b><br>The government has detained your soldier for questioning. Stay, answer three questions, and complete three rehabilitation missions to return to the rescue program—or attempt an escape and become GONE ROGUE. No choice deletes Story progress.</div>`;
+  actions.innerHTML=`<button class="good" type="button" onclick="beginGovernmentQuestioning()">Stay for Questioning</button><button class="danger" type="button" onclick="beginGovernmentEscape()">Attempt Escape</button><button class="ghost" type="button" onclick="closeGovernmentConsequence()">Decide Later</button>`;
+}
+function openGovernmentConsequence(){
+  const overlay=document.getElementById("governmentConsequenceOverlay");
+  if(!overlay)return false;
+  renderGovernmentConsequence();
+  setPaused(true,"government-case");
+  overlay.style.display="flex";
+  syncGamepadFocus();
+  return true;
+}
+function closeGovernmentConsequence(){
+  const overlay=document.getElementById("governmentConsequenceOverlay");
+  if(overlay)overlay.style.display="none";
+  if(S.missionEnded){
+    setPaused(true,"complete");
+    document.getElementById("completeOverlay").style.display="flex";
+  }else setPaused(false,null);
+  syncGamepadFocus();
+}
+function beginGovernmentQuestioning(){
+  const program=ensureGovernmentProgramState(S);
+  if(program.path==="ROGUE")return;
+  program.consequenceStage="QUESTIONING";
+  program.questioningStep=clamp(program.questioningStep,0,2);
+  program.status="DETAINED";
+  save(true);
+  renderGovernmentConsequence();
+}
+function answerGovernmentQuestion(cooperative=true){
+  const program=ensureGovernmentProgramState(S);
+  if(program.consequenceStage!=="QUESTIONING")return;
+  program.questioningScore=clamp(program.questioningScore+(cooperative?2:1),0,6);
+  program.questioningStep+=1;
+  if(program.questioningStep>=GOVERNMENT_QUESTIONING_STEPS.length){
+    program.questioningStep=3;
+    program.consequenceStage="REHABILITATION";
+    program.rehabilitationStep=0;
+    program.rehabilitationTaskStep=0;
+    program.status="REHABILITATION";
+    toast("Questioning complete. Rehabilitation missions unlocked.");
+  }
+  save(true);
+  renderGovernmentConsequence();
+}
+function completeGovernmentRehabilitationStep(){
+  const program=ensureGovernmentProgramState(S);
+  if(program.consequenceStage!=="REHABILITATION")return;
+  program.rehabilitationTaskStep+=1;
+  if(program.rehabilitationTaskStep<3){
+    save(true);
+    renderGovernmentConsequence();
+    return;
+  }
+  program.rehabilitationTaskStep=0;
+  program.rehabilitationStep+=1;
+  if(program.rehabilitationStep<GOVERNMENT_REHABILITATION_STEPS.length){
+    save(true);
+    renderGovernmentConsequence();
+    return;
+  }
+  program.rehabilitationStep=3;
+  program.rehabilitationTaskStep=0;
+  program.rehabilitationsCompleted+=1;
+  const cooperation=clamp(Math.floor(Number(program.questioningScore||0)),0,6);
+  program.reviewPoints=Math.min(program.reviewPoints,Math.max(12,24-cooperation));
+  S.trust=Math.max(Math.round(Number(S.trust||0)),60+(cooperation*3));
+  program.path="PROGRAM";
+  program.consequenceStage="CLEAR";
+  program.activeCaseId="";
+  program.caseOpenedAt=0;
+  program.cleanMissionStreak=0;
+  program.lastResolution=`Rehabilitation completed ${new Date().toISOString()}`;
+  program.status=governmentStatusFor(program.reviewPoints,S.trust);
+  S.lastGovernmentAudit={ runId:`rehab:${Date.now()}`, mode:"Government", exempt:false, status:program.status, statusLabel:GOVERNMENT_PROGRAM_STATUS[program.status]?.label||"Good Standing", funding:0, reviewPoints:program.reviewPoints, reviewDelta:0, trust:S.trust, trustDelta:0, captures:0, kills:0, civDead:0, clean:true, caseId:"" };
+  save(true);
+  toast("Rehabilitation complete. Government standing and rescue funding restored.");
+  closeGovernmentConsequence();
+  renderGovernmentProgramCard(S.lastGovernmentAudit);
+}
+function beginGovernmentEscape(){
+  const program=ensureGovernmentProgramState(S);
+  if(program.path==="ROGUE")return;
+  program.consequenceStage="ESCAPE_CONFIRM";
+  program.status="DETAINED";
+  save(true);
+  renderGovernmentConsequence();
+}
+function confirmGovernmentEscape(){
+  const program=ensureGovernmentProgramState(S);
+  if(program.consequenceStage!=="ESCAPE_CONFIRM")return;
+  program.consequenceStage="ESCAPE";
+  program.escapeStep=0;
+  program.status="DETAINED";
+  save(true);
+  renderGovernmentConsequence();
+}
+function advanceGovernmentEscape(){
+  const program=ensureGovernmentProgramState(S);
+  if(program.consequenceStage!=="ESCAPE")return;
+  program.escapeStep+=1;
+  if(program.escapeStep<GOVERNMENT_ESCAPE_STEPS.length){
+    save(true);
+    renderGovernmentConsequence();
+    return;
+  }
+  program.path="ROGUE";
+  program.consequenceStage="CLEAR";
+  program.status="GONE_ROGUE";
+  program.rogueSince=Date.now();
+  program.lastResolution="Escaped government detention and entered GONE ROGUE status.";
+  program.activeCaseId=program.activeCaseId||`ROGUE-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+  S.trust=Math.min(Math.round(Number(S.trust||0)),15);
+  save(true);
+  toast("GONE ROGUE: government grants stopped and response squads activated.");
+  renderGovernmentConsequence();
+  renderGovernmentProgramCard();
+}
+function guardGovernmentDeployment(){
+  if(!governmentConsequencePending(S))return false;
+  document.getElementById("completeOverlay")?.style&&(document.getElementById("completeOverlay").style.display="none");
+  openGovernmentConsequence();
+  toast("Resolve detention before the next deployment.");
+  return true;
 }
 
 function socialRescueScore(stats={}, meta={}){
@@ -28219,7 +28478,13 @@ function showMissionBrief(durationMs=2600){
       : missionBossWarningText(card.mission);
   }
   if(intelEl) intelEl.innerText = `${isStory ? storyMissionIntelText(card.mission) : "Mission intelligence verified."}\n${governmentProgramStatusSummary(S)}`;
-  if(rewardEl) rewardEl.innerText = `${isStory ? storyChapterRewardPreviewText(card.mission) : "Mission payout follows operation rules."} Government grants depend on captures, civilian safety, trust, and active case review.`;
+  if(rewardEl){
+    const governmentProgram=ensureGovernmentProgramState(S);
+    const governmentRule=governmentProgram.path==="ROGUE"
+      ? "GONE ROGUE: no government grant. Armed response squads may enter this solo non-Survival mission and drop recoverable field supplies."
+      : "Government grants depend on captures, civilian safety, trust, and active case review.";
+    rewardEl.innerText = `${isStory ? storyChapterRewardPreviewText(card.mission) : "Mission payout follows operation rules."} ${governmentRule}`;
+  }
   renderMissionBriefRecommendations(card.mode, card.mission);
   if(hintEl){
     const baseHint = isArcade
@@ -35456,6 +35721,12 @@ function cashBundleGrantPreview(grant={}){
   if(positiveInt(grant.perkPoints)) bits.push(`+${positiveInt(grant.perkPoints)} Perk Points`);
   return bits.join(" • ") || "Supply bundle";
 }
+function cashBundleContainsRestrictedArmory(bundle){
+  const grant=bundle?.grant&&typeof bundle.grant==="object"?bundle.grant:{};
+  return Object.values(grant.ammo||{}).some((qty)=>positiveInt(qty)>0)
+    || Object.values(grant.armorPlates||{}).some((qty)=>positiveInt(qty)>0)
+    || (Array.isArray(grant.weapons)&&grant.weapons.length>0);
+}
 function cashBundleSavingsPercent(bundle){
   const price = Math.max(1, Number(bundle?.price || 0));
   const savings = Math.max(0, Number(bundle?.savings || 0));
@@ -35610,6 +35881,12 @@ function renderShopList(){
   const note=document.getElementById("shopNote");
   const audit = shopAuditSummary();
   renderShopFilterPanel(0, 0);
+  if(governmentArmoryPurchasesLocked(S) && ["weapons","ammo","armor"].includes(currentShopTab)){
+    const program=ensureGovernmentProgramState(S);
+    note.innerText="GONE ROGUE: official suppliers have blocked weapon, ammunition, and armor purchases. Medical, repair, trap, squad, and recovered field supplies remain usable.";
+    list.innerHTML=`<div class="item shopProductCard"><div class="shopItemCopy"><div class="itemName">⚠️ Government Supply Blacklist <span class="tag">${rewardEscapeHtml(program.activeCaseId||"ROGUE")}</span></div><div class="itemDesc">Defeat government response units during solo non-Survival missions to recover cash, ammunition, armor, and supply crates. Weapons you already own remain available in Inventory.</div></div><div class="shopItemActions"><button class="ghost" onclick="shopTab('meds')">Open Medical Supplies</button></div></div>`;
+    return;
+  }
 
   if(currentShopTab==="weapons"){
     ensureWeaponAttachmentState(S);
@@ -36342,7 +36619,8 @@ function renderShopList(){
         .slice(0, 4)
         .map((id)=>`<span class="tag">${tagLabels[id]}</span>`)
         .join("");
-      const canAfford = Number(S.funds || 0) >= Number(bundle.price || 0);
+      const rogueBlocked = governmentArmoryPurchasesLocked(S) && cashBundleContainsRestrictedArmory(bundle);
+      const canAfford = !rogueBlocked && Number(S.funds || 0) >= Number(bundle.price || 0);
       return `
         <div class="item">
           <div>
@@ -36351,11 +36629,11 @@ function renderShopList(){
             <div class="itemDesc">${shopGameplayEffect("bundle", bundle)}</div>
             <div class="itemDesc">${shopTruthStateLine("bundle", bundle)}</div>
             <div class="itemDesc">Individual value: <b>$${Number(bundle.individualValue || 0).toLocaleString()}</b> • You save <b>$${Number(bundle.savings || 0).toLocaleString()}</b> (${cashBundleSavingsPercent(bundle)}%).</div>
-            <div class="itemDesc">${canAfford ? "Ready to buy now." : `Need $${Math.max(0, Number(bundle.price || 0) - Number(S.funds || 0)).toLocaleString()} more.`}</div>
+            <div class="itemDesc">${rogueBlocked ? "GONE ROGUE blacklist: this bundle contains official ammunition or armor." : (canAfford ? "Ready to buy now." : `Need $${Math.max(0, Number(bundle.price || 0) - Number(S.funds || 0)).toLocaleString()} more.`)}</div>
           </div>
           <div style="text-align:right">
             <div class="price">$${bundle.price.toLocaleString()} • ${bundle.preview}</div>
-            <button onclick="buyCashBundle('${bundle.id}')" ${canAfford ? "" : "disabled"}>${canAfford ? "Buy Bundle" : "Need Cash"}</button>
+            <button onclick="buyCashBundle('${bundle.id}')" ${canAfford ? "" : "disabled"}>${rogueBlocked ? "Blacklisted" : (canAfford ? "Buy Bundle" : "Need Cash")}</button>
           </div>
         </div>`;
     }).join("");
@@ -36411,6 +36689,7 @@ function renderShopList(){
 }
 
 function buyWeapon(id){
+  if(governmentArmoryPurchasesLocked(S)) return toast("GONE ROGUE: government weapon suppliers have blacklisted this profile. Recover equipment from response squads.");
   const w=getWeapon(id); if(!w) return;
   if(S.ownedWeapons.includes(id)) return toast("Already owned.");
   if(S.funds < w.price) return toast("Not enough money.");
@@ -36429,6 +36708,7 @@ function buyWeapon(id){
   shopTruthRefresh(`${w.name} purchased and equipped. ${compatibleAmmoReserveForWeapon(w)} compatible ammo in reserve.`, { success:true });
 }
 function buyAmmo(id){
+  if(governmentArmoryPurchasesLocked(S)) return toast("GONE ROGUE: official ammunition purchases are blocked. Recover ammunition in the field.");
   const a=getAmmo(id); if(!a) return;
   if(S.mode === "Survival" && ammoModeForId(id) !== "real") return toast("Survival is Real-ammunition only. Rubber and Tranq rounds are unavailable.");
   const p=ammoPriceCapped(a);
@@ -36443,6 +36723,7 @@ function buyAmmo(id){
   shopTruthRefresh(`${a.name} purchased: +${a.pack} reserve (${ownedAmmoCount(id)} owned).${fitsEquipped ? " Compatible with equipped weapon." : ""}`, { success:true });
 }
 function buyArmor(id){
+  if(governmentArmoryPurchasesLocked(S)) return toast("GONE ROGUE: official armor purchases are blocked. Recover armor from response squads.");
   const ar=getArmor(id); if(!ar) return;
   if(S.funds < ar.price) return toast("Not enough money.");
   S.funds -= ar.price;
@@ -36513,6 +36794,7 @@ function buyShield(){
 function buyCashBundle(id){
   const bundle = cashBundleById(id);
   if(!bundle) return toast("Unknown bundle.");
+  if(governmentArmoryPurchasesLocked(S)&&cashBundleContainsRestrictedArmory(bundle)) return toast("GONE ROGUE: this official bundle contains blacklisted ammunition or armor.");
   const errors = cashBundleValidationErrors(bundle);
   if(errors.length) return toast(`Bundle disabled: ${errors[0]}`);
   if(S.funds < bundle.price) return toast("Not enough money.");
@@ -39674,6 +39956,7 @@ function createRivalHunter(faction, slotIndex=0){
 function rivalHuntersAllowedForMission(state=S){
   if(window.__TUTORIAL_MODE__) return false;
   if(normalizeModeName(state?.mode || "Story") === "Survival") return false;
+  if(governmentRogueActive(state)) return true;
   const wm = state?.worldMapCampaign;
   const activeRegionId = String(wm?.activeRivalRegionId || "");
   const activeRegion = activeRegionId ? worldMapRegionById(activeRegionId) : null;
@@ -39700,7 +39983,8 @@ function spawnRivalHunters(){
   const storyLevel = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   const arcadeLevel = clamp(Math.floor(Number(S.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
   const missionLevel = S.mode === "Story" ? storyLevel : arcadeLevel;
-  if(missionLevel < RIVAL_MIN_SPAWN_LEVEL){
+  const rogueHunt = governmentRogueActive(S);
+  if(!rogueHunt && missionLevel < RIVAL_MIN_SPAWN_LEVEL){
     clearRivalHunters("level");
     return;
   }
@@ -39708,7 +39992,7 @@ function spawnRivalHunters(){
     clearRivalHunters("no-rival-objective");
     return;
   }
-  const baseChance = S.mode === "Story" ? 0.30 : 0.45;
+  const baseChance = rogueHunt ? 0.58 : (S.mode === "Story" ? 0.30 : 0.45);
   const bonus = clamp((missionLevel - RIVAL_MIN_SPAWN_LEVEL) * 0.04, 0, 0.34);
   const spawnChance = clamp(baseChance + bonus, 0, 0.92);
   if(Math.random() > spawnChance){
@@ -39716,12 +40000,26 @@ function spawnRivalHunters(){
     return;
   }
 
-  const countBase = missionLevel >= 22 ? 3 : (missionLevel >= 12 ? 2 : 1);
-  const count = clamp(countBase + (Math.random() < 0.26 ? 1 : 0), 1, RIVAL_MAX_UNITS);
-  const faction = RIVAL_FACTION_DEFS[rand(0, RIVAL_FACTION_DEFS.length - 1)] || RIVAL_FACTION_DEFS[0];
-  S.rivalHunters = Array.from({ length: count }, (_, idx)=>createRivalHunter(faction, idx));
+  const countBase = rogueHunt ? (missionLevel >= 20 ? 3 : 2) : (missionLevel >= 22 ? 3 : (missionLevel >= 12 ? 2 : 1));
+  const count = clamp(countBase + (Math.random() < (rogueHunt ? 0.42 : 0.26) ? 1 : 0), 1, RIVAL_MAX_UNITS);
+  const faction = rogueHunt
+    ? RIVAL_FACTION_BY_KEY.GOV_RESPONSE
+    : (STANDARD_RIVAL_FACTIONS[rand(0, STANDARD_RIVAL_FACTIONS.length - 1)] || STANDARD_RIVAL_FACTIONS[0]);
+  S.rivalHunters = Array.from({ length: count }, (_, idx)=>{
+    const unit=createRivalHunter(faction, idx);
+    if(rogueHunt){
+      unit.isGovernment=true;
+      unit.callsign=`Agency Hound ${String(idx+1).padStart(2,"0")}`;
+      unit.hostileUntil=Date.now()+(6*60*60*1000);
+    }
+    return unit;
+  });
   S._rivalFactionName = faction.name;
-  setEventText(`⚠️ Rival faction spotted: ${faction.name}.`, 3.2);
+  if(rogueHunt){
+    const program=ensureGovernmentProgramState(S);
+    program.responseDeployments+=1;
+    setEventText(`🚨 Government response squad deployed. You have been found.`, 4.2);
+  }else setEventText(`⚠️ Rival faction spotted: ${faction.name}.`, 3.2);
 }
 
 
@@ -40647,6 +40945,7 @@ function spawnRogueTiger(options={}){
 let __deployInProgress = false;
 let __queuedDeployOpts = null;
 function deploy(opts={}){
+  if(!opts.governmentBypass && !window.__TUTORIAL_MODE__ && guardGovernmentDeployment()) return;
   if(__deployInProgress){
     __queuedDeployOpts = { ...(opts || {}) };
     return;
@@ -40990,6 +41289,7 @@ function deploy(opts={}){
 }
 
 function startNextMission(){
+  if(guardGovernmentDeployment()) return;
   const pendingWorldMapReturn = ensureWorldMapCampaignState(S);
   if(pendingWorldMapReturn.returnAfterComplete){
     closeComplete();
@@ -42570,13 +42870,30 @@ function lockedRival(){
 }
 function defeatRivalHunter(unit){
   if(!unit) return;
-  const cash = rand(650, 1450);
+  const governmentUnit = unit.factionKey === "GOV_RESPONSE" || unit.isGovernment === true;
+  const cash = governmentUnit ? rand(1300, 2900) : rand(650, 1450);
   S.funds += cash;
   S.score += 90;
   trackCashEarned(cash);
   addXP(35);
-  spawnPickup(Math.random() < 0.5 ? "AMMO" : "CASH", unit.x + rand(-10, 10), unit.y + rand(-10, 10));
-  setEventText(`✅ ${unit.callsign || "Rival"} defeated. Sabotage stopped • +$${cash.toLocaleString()}`, 3.6);
+  if(governmentUnit){
+    const program=ensureGovernmentProgramState(S);
+    program.responseUnitsDefeated+=1;
+    spawnPickup("CRATE", unit.x + rand(-12, 12), unit.y + rand(-10, 10));
+    spawnPickup(Math.random()<0.5?"AMMO":"ARMOR", unit.x + rand(-18, 18), unit.y + rand(-16, 16));
+    let weaponNote="";
+    const recoverable=WEAPONS.filter((weapon)=>weapon.type==="lethal"&&!S.ownedWeapons.includes(weapon.id)).sort((a,b)=>Number(a.price||0)-Number(b.price||0));
+    if(recoverable.length&&Math.random()<0.22){
+      const recovered=recoverable[0];
+      S.ownedWeapons.push(recovered.id);
+      if(S.durability[recovered.id]==null)S.durability[recovered.id]=65;
+      weaponNote=` • recovered ${recovered.name}`;
+    }
+    setEventText(`⚠️ ${unit.callsign||"Response unit"} defeated • +$${cash.toLocaleString()} • field supplies dropped${weaponNote}`,4.6);
+  }else{
+    spawnPickup(Math.random() < 0.5 ? "AMMO" : "CASH", unit.x + rand(-10, 10), unit.y + rand(-10, 10));
+    setEventText(`✅ ${unit.callsign || "Rival"} defeated. Sabotage stopped • +$${cash.toLocaleString()}`, 3.6);
+  }
   if(S.lockedRivalId === unit.id) S.lockedRivalId = null;
   updateAttackButton();
   renderCombatControls();
@@ -42595,14 +42912,14 @@ function playerAttackLockedRival(){
   }
   const attackWeaponId = preferredAttackWeaponId();
   if(!attackWeaponId){
-    interactionFeedback("No lethal ammo available to fight the rival. Buy ammo in Shop > Ammo.", { warn:true });
+    interactionFeedback(governmentRogueActive(S)?"No lethal ammunition available. Break contact and search field pickups or defeated response units.":"No lethal ammo available to fight the rival. Buy ammo in Shop > Ammo.", { warn:true });
     sfx("jam");
     return true;
   }
   if(S.equippedWeaponId !== attackWeaponId) equipWeapon(attackWeaponId, { system:true, keepPreset:true });
   const w = equippedWeapon();
   if(S.mag.loaded <= 0 && !autoReloadIfNeeded(true)){
-    interactionFeedback(`No reserve ammo for ${w.name}. Buy ammo or switch weapons.`, { warn:true });
+    interactionFeedback(governmentRogueActive(S)?`No reserve ammo for ${w.name}. Switch weapons or recover field ammunition.`:`No reserve ammo for ${w.name}. Buy ammo or switch weapons.`, { warn:true });
     return true;
   }
   if(Math.random() < jamChance(w)){
@@ -42711,6 +43028,7 @@ function rivalHuntersTick(){
 
   for(const unit of tickRivals){
     const faction = RIVAL_FACTION_BY_KEY[unit.factionKey] || RIVAL_FACTION_DEFS[0];
+    if(faction.government && governmentRogueActive(S)) unit.hostileUntil = Math.max(Number(unit.hostileUntil || 0), now + 60000);
     unit.step = (Number(unit.step || 0) + 0.08) % (Math.PI * 2);
     if(!Number.isFinite(unit.homeX) || !Number.isFinite(unit.homeY)){
       unit.homeX = unit.x;
@@ -57514,7 +57832,7 @@ function drawRivalHunter(unit){
   drawWaterRipple(x, y, 15, 0.46);
   ctx.save();
   ctx.globalAlpha = 0.58 + (Math.sin(Date.now() * 0.006) * 0.10);
-  ctx.strokeStyle = "rgba(251,146,60,.96)";
+  ctx.strokeStyle = faction.government ? "rgba(96,165,250,.98)" : "rgba(251,146,60,.96)";
   ctx.lineWidth = 3;
   ctx.setLineDash([5, 5]);
   ctx.beginPath();
@@ -62626,6 +62944,16 @@ syncWindowState();
 
 window.toast = toast;
 window.setPaused = setPaused;
+window.openGovernmentConsequence = openGovernmentConsequence;
+window.closeGovernmentConsequence = closeGovernmentConsequence;
+window.beginGovernmentQuestioning = beginGovernmentQuestioning;
+window.answerGovernmentQuestion = answerGovernmentQuestion;
+window.completeGovernmentRehabilitationStep = completeGovernmentRehabilitationStep;
+window.beginGovernmentEscape = beginGovernmentEscape;
+window.confirmGovernmentEscape = confirmGovernmentEscape;
+window.advanceGovernmentEscape = advanceGovernmentEscape;
+window.governmentRogueActive = governmentRogueActive;
+window.governmentConsequencePending = governmentConsequencePending;
 
 // Buttons used by index.html
 window.toggleSound = toggleSound;

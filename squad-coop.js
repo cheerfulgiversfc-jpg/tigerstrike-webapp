@@ -222,8 +222,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V7.6 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V7.6 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.6 • Co-op Command");
+      ? `Tiger Strike V7.7 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V7.7 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.7 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -474,7 +474,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V7.6 Government Oversight</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Solo and co-op mission conduct now changes government trust, investigation risk, and rescue funding. Captures and civilian safety repair the record; repeated lethal choices reduce or suspend grants. Survival remains exempt.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V7.7 Detention &amp; GONE ROGUE</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Solo and co-op conduct can now lead to detention. Complete questioning and three rehabilitation missions to return to the program, or escape into GONE ROGUE status. Story progress is never erased. Survival remains exempt from conduct audits.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -998,6 +998,10 @@
 
   async function create(){
     if(!hasTelegramAuth()) return setMessage("Please open the game inside Telegram first.", true);
+    if(window.governmentConsequencePending?.()){
+      window.openGovernmentConsequence?.();
+      return setMessage("Resolve government detention before creating a new squad mission.", true);
+    }
     if(state.launchType === "shared-story" && !twoPlayerStoryReady()){
       return setMessage(`Story Mission ${state.storyMissionLevel} is Solo only right now. Two Player is currently ready for Missions 1–${SHARED_STORY_LEVELS.length}.`, true);
     }
@@ -1015,6 +1019,10 @@
 
   async function join(codeValue=""){
     if(!hasTelegramAuth()) return setMessage("Please open the game inside Telegram first.", true);
+    if(window.governmentConsequencePending?.()){
+      window.openGovernmentConsequence?.();
+      return setMessage("Resolve government detention before joining a squad mission.", true);
+    }
     const code = extractCode(codeValue || state.joinDraft || $("squadJoinCode")?.value);
     if(code.length !== 6) return setMessage("Enter the complete six-character squad code.", true);
     try{
@@ -1150,6 +1158,9 @@
       const payload = await api("claim");
       applyReward(payload.reward);
       returnToCoopMenu("Co-op reward claimed and saved. Choose another mission when you are ready.");
+      if(window.governmentConsequencePending?.()){
+        window.setTimeout(()=>{ close(); window.openGovernmentConsequence?.(); },180);
+      }
     }catch(error){ setMessage(error.message, true); }
   }
 
