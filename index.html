@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V7.5 (Persistent Wildlife Transport)</title>
+  <title>Tiger Strike 🐅 — V7.6 (Government Oversight)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5045-wildlife-transport">
+  <link rel="stylesheet" href="./squad-coop.css?v=5046-government-oversight">
 
   <style>
     :root{
@@ -942,6 +942,10 @@
         linear-gradient(180deg, rgba(12,18,32,.92), rgba(8,12,22,.96));
       box-shadow:0 12px 24px rgba(6,10,20,.28);
     }
+    .governmentAuditCard{border-color:rgba(250,204,21,.50);background:radial-gradient(circle at 12% 15%,rgba(250,204,21,.12),transparent 44%),linear-gradient(180deg,rgba(24,22,12,.94),rgba(8,12,22,.97))}
+    .governmentAuditCard.good{border-color:rgba(74,222,128,.65)}
+    .governmentAuditCard.monitored{border-color:rgba(250,204,21,.72)}
+    .governmentAuditCard.investigation,.governmentAuditCard.suspended{border-color:rgba(251,113,133,.78);box-shadow:0 12px 28px rgba(127,29,29,.24)}
     .missionVictoryHero{
       display:grid;
       grid-template-columns:minmax(0,1fr) auto;
@@ -2428,12 +2432,13 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V7.5</span> <span class="tag">Persistent Wildlife Transport</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V7.6</span> <span class="tag">Government Oversight</span></div>
       <div class="sub">
         Real rounds kill and block capture. Rubber rounds weaken without killing. Tranq rounds finish a valid live capture.<br>
         Fresh non-Survival missions start on Rubber, and the loaded magazine is verified before every shot so the HUD can never say Rubber while firing Real.<br>
         Lethal kills leave visible bodies. Blood scent makes surviving tigers hunt harder and deal more damage; captures leave no blood scent.<br>
         Captured tigers remain in visible cages until mission end, then a skippable wildlife-recovery movie loads every cage onto a conservation truck.<br>
+        Government trust, case review, and rescue funding now react to captures, lethal choices, and civilian safety. Clean missions can close an investigation.<br>
         Survival is the only exception: Real ammunition only, no Rubber rounds, and no Capture option—kill every tiger to clear each wave.
       </div>
     </div>
@@ -3192,6 +3197,20 @@
         </div>
         <div class="premiumSummaryTags" id="completePremiumTags"></div>
       </div>
+      <div class="premiumSummaryCard governmentAuditCard" id="completeGovernmentAudit">
+        <div class="premiumSummaryTop">
+          <div class="premiumSummaryTitle">🏛️ Government Oversight</div>
+          <div class="premiumSummaryGrade" id="governmentAuditStatus">Good</div>
+        </div>
+        <div class="premiumSummarySub" id="governmentAuditSub">Mission audit preparing...</div>
+        <div class="premiumSummaryGrid">
+          <div class="premiumSummaryStat"><div class="premiumSummaryStatLabel">Trust</div><div class="premiumSummaryStatValue" id="governmentAuditTrust">80/100</div></div>
+          <div class="premiumSummaryStat"><div class="premiumSummaryStatLabel">Case Review</div><div class="premiumSummaryStatValue" id="governmentAuditRisk">0/100</div></div>
+          <div class="premiumSummaryStat"><div class="premiumSummaryStatLabel">Funding</div><div class="premiumSummaryStatValue" id="governmentAuditFunding">+$0</div></div>
+        </div>
+        <div class="rewardBreakdownList" id="governmentAuditRows"></div>
+        <div class="premiumSummaryTags" id="governmentAuditTags"></div>
+      </div>
       <div class="premiumSummaryCard rewardBreakdownCard" id="completeRewardBreakdown">
         <div class="premiumSummaryTop">
           <div class="premiumSummaryTitle">Mission Rewards 2.0</div>
@@ -3278,11 +3297,11 @@
   </div>
 </div>
 
-<!-- V7.5 Persistent Wildlife Transport -->
+<!-- V7.6 Government Oversight -->
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V7.5 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V7.6 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3323,12 +3342,13 @@
 </div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5045-wildlife-transport"></script>
-  <script src="./ammo-modes.js?v=5045-wildlife-transport"></script>
-  <script src="./game.js?v=5045-wildlife-transport"></script>
+  <script src="./extraction-geometry.js?v=5046-government-oversight"></script>
+  <script src="./ammo-modes.js?v=5046-government-oversight"></script>
+  <script src="./government-policy.js?v=5046-government-oversight"></script>
+  <script src="./game.js?v=5046-government-oversight"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
-  <script src="./squad-coop.js?v=5045-wildlife-transport"></script>
-  <script src="./extraction-qa.js?v=5045-wildlife-transport"></script>
+  <script src="./squad-coop.js?v=5046-government-oversight"></script>
+  <script src="./extraction-qa.js?v=5046-government-oversight"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

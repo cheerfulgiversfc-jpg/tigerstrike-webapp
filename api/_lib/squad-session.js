@@ -1431,6 +1431,17 @@ async function claimReward(session, user){
         badge:"Last Stand Survivor",
       }
     : (operationRewards[operationId] || operationRewards["live-squad"]);
+  const auditPlayers = await memberPlayers(session);
+  const auditDerived = sessionDerived(session, auditPlayers, nowMs());
+  const governmentAudit = {
+    runId:`coop:${session.code}:${uid}`,
+    mode:operationId === "endless-survival" ? "Survival" : (sharedStory ? "Story" : "Arcade"),
+    captures:auditDerived.capturedIds.length,
+    kills:auditDerived.tigerKills,
+    evac:auditDerived.rescuedIds.length,
+    civDead:0,
+    exempt:operationId === "endless-survival",
+  };
   return {
     firstClaim,
     receipt:`${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}`,
@@ -1438,6 +1449,7 @@ async function claimReward(session, user){
     reward:sharedStory
       ? sharedRewards[sharedLevel]
       : operationReward,
+    governmentAudit,
   };
 }
 

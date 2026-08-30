@@ -156,6 +156,10 @@ async function run(){
   const teammateReward = await claimReward(await readSession(code), teammate);
   assert.equal(hostReward.firstClaim, true, "host claims once");
   assert.equal(teammateReward.firstClaim, true, "teammate claims once");
+  assert.equal(hostReward.governmentAudit.exempt, false, "Shared Story completion receives a government conduct audit");
+  assert.equal(hostReward.governmentAudit.captures, 1, "the co-op audit counts the shared live capture");
+  assert.equal(hostReward.governmentAudit.kills, 1, "the co-op audit counts the shared lethal outcome");
+  assert.equal(hostReward.governmentAudit.runId, `coop:${code}:${host.id}`, "each player receives an individually deduplicated audit receipt");
   assert.deepEqual(hostReward.storyProgress, { completedLevel:1, unlockLevel:2 }, "Mission 2 unlocks for host");
   assert.deepEqual(teammateReward.storyProgress, { completedLevel:1, unlockLevel:2 }, "Mission 2 unlocks for teammate");
   assert.notEqual(hostReward.receipt, teammateReward.receipt, "players receive separate receipts");
@@ -734,6 +738,7 @@ async function run(){
   assert.equal(survivalHostReward.reward.seasonPoints, 22, "Wave 3 extraction awards 22 season points");
   assert.equal(survivalHostReward.reward.badge, "Last Stand Survivor", "Endless Survival awards its own badge");
   assert.equal(survivalHostReward.storyProgress, null, "Endless Survival never changes Story progress");
+  assert.equal(survivalHostReward.governmentAudit.exempt, true, "Endless Survival is exempt from government capture-policy investigation");
   assert.notEqual(survivalHostReward.receipt, survivalMateReward.receipt, "both survival players receive separate receipts");
   const survivalHostAgain = await claimReward(await readSession(survivalSession.code), survivalHost);
   assert.equal(survivalHostAgain.firstClaim, false, "Endless Survival cannot pay the same player twice in one room");

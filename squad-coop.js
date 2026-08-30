@@ -222,8 +222,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V7.5 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V7.5 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.5 • Co-op Command");
+      ? `Tiger Strike V7.6 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V7.6 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.6 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -474,7 +474,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V7.5 Persistent Wildlife Transport</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Captured tigers remain secured in visible cages for both players. Completed missions include a skippable wildlife-recovery movie showing every cage loaded onto a conservation truck.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V7.6 Government Oversight</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Solo and co-op mission conduct now changes government trust, investigation risk, and rescue funding. Captures and civilian safety repair the record; repeated lethal choices reduce or suspend grants. Survival remains exempt.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -1167,6 +1167,11 @@
     try{
       if(data.storyProgress && typeof window.applySharedStoryCompletion === "function"){
         window.applySharedStoryCompletion(data.storyProgress, data.receipt);
+      }
+    }catch(error){}
+    try{
+      if(data.governmentAudit && typeof window.applyGovernmentMissionAudit === "function"){
+        window.applyGovernmentMissionAudit({ ...data.governmentAudit, runId:data.receipt }, { trustAlreadyApplied:false, silent:false });
       }
     }catch(error){}
     try{ window.saveGameNow?.(); }catch(error){}

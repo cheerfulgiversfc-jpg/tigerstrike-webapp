@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5045";
+const TS_BUILD = "5046";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -4493,6 +4493,126 @@ function missionStatSnapshot(src=S.stats){
   }
   return out;
 }
+const GOVERNMENT_PROGRAM_STATUS = Object.freeze({
+  GOOD_STANDING:{ label:"Good Standing", icon:"✅", fundingRate:1.00 },
+  MONITORED:{ label:"Monitored", icon:"👁️", fundingRate:0.60 },
+  INVESTIGATION:{ label:"Active Investigation", icon:"🔎", fundingRate:0.25 },
+  FUNDING_SUSPENDED:{ label:"Funding Suspended", icon:"⛔", fundingRate:0.00 },
+});
+function defaultGovernmentProgramState(){
+  return {
+    reviewPoints:0,
+    status:"GOOD_STANDING",
+    totalFunding:0,
+    missionsAudited:0,
+    cleanMissionStreak:0,
+    activeCaseId:"",
+    caseOpenedAt:0,
+    history:[],
+    appliedRunIds:{},
+    lastAudit:null,
+  };
+}
+function governmentStatusFor(reviewPoints=0, trust=S?.trust){
+  if(window.TigerGovernmentPolicy?.statusFor) return window.TigerGovernmentPolicy.statusFor(reviewPoints,trust);
+  const review = clamp(Math.round(Number(reviewPoints || 0)), 0, 100);
+  const trustScore = clamp(Math.round(Number(trust ?? 80)), 0, 100);
+  if(review >= 75 || trustScore <= 20) return "FUNDING_SUSPENDED";
+  if(review >= 50 || trustScore <= 35) return "INVESTIGATION";
+  if(review >= 25 || trustScore <= 55) return "MONITORED";
+  return "GOOD_STANDING";
+}
+function ensureGovernmentProgramState(state=S){
+  const target = state && typeof state === "object" ? state : S;
+  const base = defaultGovernmentProgramState();
+  const src = target.governmentProgram && typeof target.governmentProgram === "object" ? target.governmentProgram : {};
+  const program = {
+    ...base,
+    ...src,
+    reviewPoints:clamp(Math.round(Number(src.reviewPoints || 0)),0,100),
+    totalFunding:Math.max(0,Math.round(Number(src.totalFunding || 0))),
+    missionsAudited:Math.max(0,Math.floor(Number(src.missionsAudited || 0))),
+    cleanMissionStreak:Math.max(0,Math.floor(Number(src.cleanMissionStreak || 0))),
+    activeCaseId:String(src.activeCaseId || "").slice(0,80),
+    caseOpenedAt:Math.max(0,Number(src.caseOpenedAt || 0)),
+    history:(Array.isArray(src.history) ? src.history : []).filter((row)=>row && typeof row === "object").slice(-20),
+    appliedRunIds:(src.appliedRunIds && typeof src.appliedRunIds === "object" && !Array.isArray(src.appliedRunIds)) ? { ...src.appliedRunIds } : {},
+    lastAudit:(src.lastAudit && typeof src.lastAudit === "object") ? { ...src.lastAudit } : null,
+  };
+  program.status = governmentStatusFor(program.reviewPoints, target.trust);
+  target.governmentProgram = program;
+  return program;
+}
+function governmentProgramStatusSummary(state=S){
+  const program = ensureGovernmentProgramState(state);
+  const def = GOVERNMENT_PROGRAM_STATUS[program.status] || GOVERNMENT_PROGRAM_STATUS.GOOD_STANDING;
+  return `${def.icon} Government: ${def.label} • Trust ${Math.round(Number(state?.trust || 0))}/100 • Review ${program.reviewPoints}/100 • Funding ${Math.round(def.fundingRate*100)}%`;
+}
+function applyGovernmentMissionAudit(input={}, opts={}){
+  const mode = normalizeModeName(input.mode || S.mode);
+  const runId = String(input.runId || S._missionRunId || `government:${Date.now()}`);
+  const program = ensureGovernmentProgramState(S);
+  if(mode === "Survival" || input.exempt === true){
+    const exempt = { runId, mode, exempt:true, status:program.status, label:"Survival exemption", funding:0, reviewDelta:0, trustDelta:0 };
+    S.lastGovernmentAudit = exempt;
+    return exempt;
+  }
+  if(runId && program.appliedRunIds[runId]){
+    S.lastGovernmentAudit = program.appliedRunIds[runId];
+    return program.appliedRunIds[runId];
+  }
+  const captures = Math.max(0,Math.floor(Number(input.captures || 0)));
+  const kills = Math.max(0,Math.floor(Number(input.kills || 0)));
+  const evac = Math.max(0,Math.floor(Number(input.evac || 0)));
+  const civDead = Math.max(0,Math.floor(Number(input.civDead || 0)));
+  const clean = kills === 0 && civDead === 0;
+  const beforeReview = program.reviewPoints;
+  const beforeStatus = governmentStatusFor(beforeReview, S.trust);
+  const policyResult = window.TigerGovernmentPolicy?.audit
+    ? window.TigerGovernmentPolicy.audit({ reviewPoints:beforeReview, trust:S.trust, captures, kills, evac, civDead, trustAlreadyApplied:!!opts.trustAlreadyApplied })
+    : null;
+  const reviewDelta = policyResult ? policyResult.reviewDelta : (kills*18)+(civDead*28)-(captures*9)-(evac*2)-(clean && (captures>0 || evac>0) ? 8 : 0);
+  program.reviewPoints = policyResult ? policyResult.reviewPoints : clamp(beforeReview + reviewDelta,0,100);
+  const trustDelta = policyResult ? policyResult.trustDelta : (opts.trustAlreadyApplied ? 0 : clamp((captures*4)-(kills*5)-(civDead*10)+(clean && (captures>0 || evac>0) ? 2 : 0),-40,24));
+  if(policyResult) S.trust = policyResult.trust;
+  else if(trustDelta) S.trust = clamp(Math.round(Number(S.trust || 0)) + trustDelta,0,100);
+  const afterStatus = policyResult ? policyResult.status : governmentStatusFor(program.reviewPoints,S.trust);
+  program.status = afterStatus;
+  const statusDef = GOVERNMENT_PROGRAM_STATUS[afterStatus] || GOVERNMENT_PROGRAM_STATUS.GOOD_STANDING;
+  const funding = policyResult ? policyResult.funding : Math.max(0,Math.round((450+captures*750+evac*125)*statusDef.fundingRate));
+  if(funding>0){S.funds=Math.max(0,Math.round(Number(S.funds||0)))+funding;trackCashEarned(funding);}
+  program.totalFunding += funding;
+  program.missionsAudited += 1;
+  program.cleanMissionStreak = clean ? program.cleanMissionStreak + 1 : 0;
+  const underInvestigation = afterStatus === "INVESTIGATION" || afterStatus === "FUNDING_SUSPENDED";
+  if(underInvestigation && !program.activeCaseId){
+    program.activeCaseId = `CASE-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+    program.caseOpenedAt = Date.now();
+  }else if(!underInvestigation && program.activeCaseId){
+    program.activeCaseId = "";
+    program.caseOpenedAt = 0;
+  }
+  const report = {
+    runId,mode,captures,kills,evac,civDead,clean,
+    beforeReview,reviewPoints:program.reviewPoints,reviewDelta:program.reviewPoints-beforeReview,
+    trust:Math.round(Number(S.trust||0)),trustDelta,
+    beforeStatus,status:afterStatus,statusLabel:statusDef.label,funding,fundingRate:statusDef.fundingRate,
+    caseId:program.activeCaseId,createdAt:Date.now(),exempt:false,
+  };
+  program.lastAudit = report;
+  program.history.push(report);
+  program.history = program.history.slice(-20);
+  program.appliedRunIds[runId] = report;
+  const appliedKeys = Object.keys(program.appliedRunIds);
+  if(appliedKeys.length>80){for(const key of appliedKeys.slice(0,appliedKeys.length-80)) delete program.appliedRunIds[key];}
+  S.lastGovernmentAudit = report;
+  __savePending = true;
+  if(!opts.silent){
+    const caseNote = report.caseId ? ` • ${report.caseId}` : "";
+    toast(`${statusDef.icon} ${statusDef.label}${caseNote} • Government funding +$${funding.toLocaleString()}`);
+  }
+  return report;
+}
 function beginMissionStatRun(reason="deploy"){
   S._missionStatsStart = missionStatSnapshot(S.stats);
   S._missionStatsFinal = null;
@@ -4657,6 +4777,7 @@ function renderCompleteRecapCard(payload=null){
   renderMissionPremiumSummaryCard();
   renderMissionRewards2Card();
   renderSocialRescueCard();
+  renderGovernmentProgramCard();
 }
 
 function renderMissionVictoryHero(summary=null){
@@ -4919,6 +5040,45 @@ function renderMissionRewards2Card(breakdown=null){
     tagsEl.innerHTML = (tags.length ? tags : ["Mission Clear"])
       .map((tag)=>`<span class="premiumSummaryTag">${rewardEscapeHtml(tag)}</span>`)
       .join("");
+  }
+}
+function renderGovernmentProgramCard(audit=null){
+  const root=document.getElementById("completeGovernmentAudit");
+  if(!root)return;
+  const program=ensureGovernmentProgramState(S);
+  const data=(audit&&typeof audit==="object")?audit:((S.lastGovernmentAudit&&typeof S.lastGovernmentAudit==="object")?S.lastGovernmentAudit:program.lastAudit);
+  const def=GOVERNMENT_PROGRAM_STATUS[program.status]||GOVERNMENT_PROGRAM_STATUS.GOOD_STANDING;
+  root.className=`premiumSummaryCard governmentAuditCard ${program.status.toLowerCase().replace("funding_","")}`;
+  const status=document.getElementById("governmentAuditStatus");
+  const sub=document.getElementById("governmentAuditSub");
+  const trust=document.getElementById("governmentAuditTrust");
+  const risk=document.getElementById("governmentAuditRisk");
+  const funding=document.getElementById("governmentAuditFunding");
+  const rows=document.getElementById("governmentAuditRows");
+  const tags=document.getElementById("governmentAuditTags");
+  if(status)status.innerText=`${def.icon} ${def.label}`;
+  if(trust)trust.innerText=`${Math.round(Number(S.trust||0))}/100`;
+  if(risk)risk.innerText=`${program.reviewPoints}/100`;
+  if(funding)funding.innerText=data?.exempt?"EXEMPT":`+$${Math.max(0,Number(data?.funding||0)).toLocaleString()}`;
+  if(sub){
+    sub.innerText=data?.exempt
+      ? "Survival is exempt from government capture policy and creates no investigation record."
+      : (data?`${data.clean?"Humane mission handling improved the record.":"Lethal and civilian outcomes were added to the case review."} Funding is currently ${Math.round(def.fundingRate*100)}%.`:"Your next non-Survival mission will receive a transparent government audit.");
+  }
+  if(rows){
+    const lines=[];
+    if(data&&!data.exempt){
+      lines.push({label:"Mission conduct",value:`${data.captures||0} captured • ${data.kills||0} killed • ${data.civDead||0} civilian losses`});
+      lines.push({label:"Case review",value:`${Number(data.reviewDelta||0)>=0?"+":""}${Number(data.reviewDelta||0)} points • now ${program.reviewPoints}/100`});
+      lines.push({label:"Funding decision",value:data.funding>0?`+$${Number(data.funding).toLocaleString()} approved`:`No government grant approved`});
+      if(data.caseId)lines.push({label:"Active investigation",value:data.caseId});
+    }
+    rows.innerHTML=lines.map((line)=>`<div class="rewardBreakdownRow"><div><b>${rewardEscapeHtml(line.label)}</b></div><div>${rewardEscapeHtml(line.value)}</div></div>`).join("");
+  }
+  if(tags){
+    const values=[`Funding ${Math.round(def.fundingRate*100)}%`,`Clean streak ${program.cleanMissionStreak}`];
+    if(program.activeCaseId)values.push(program.activeCaseId);else values.push("No active case");
+    tags.innerHTML=values.map((value)=>`<span class="premiumSummaryTag">${rewardEscapeHtml(value)}</span>`).join("");
   }
 }
 
@@ -14399,6 +14559,8 @@ const DEFAULT = {
   telegramCommunity:null,
   liveSquadRewardReceipts:{},
   liveSquadBadges:{},
+  governmentProgram:defaultGovernmentProgramState(),
+  lastGovernmentAudit:null,
   telegramEventDrop:null,
   socialRescue: defaultSocialRescueState(),
   lastMissionRecap:null,
@@ -21164,6 +21326,7 @@ function sanitizeRuntimeState(){
   ensureBalanceStatsState();
   ensureMissionTwistState();
   ensureCoopStrikeOpsState();
+  ensureGovernmentProgramState(S);
   ensureClanWarfrontState();
   ensureSquadAbilityState();
   ensureArcadeBuildcraftState(S);
@@ -28055,8 +28218,8 @@ function showMissionBrief(durationMs=2600){
       ? storyBossIntroText(card.mission)
       : missionBossWarningText(card.mission);
   }
-  if(intelEl) intelEl.innerText = isStory ? storyMissionIntelText(card.mission) : "";
-  if(rewardEl) rewardEl.innerText = isStory ? storyChapterRewardPreviewText(card.mission) : "";
+  if(intelEl) intelEl.innerText = `${isStory ? storyMissionIntelText(card.mission) : "Mission intelligence verified."}\n${governmentProgramStatusSummary(S)}`;
+  if(rewardEl) rewardEl.innerText = `${isStory ? storyChapterRewardPreviewText(card.mission) : "Mission payout follows operation rules."} Government grants depend on captures, civilian safety, trust, and active case review.`;
   renderMissionBriefRecommendations(card.mode, card.mission);
   if(hintEl){
     const baseHint = isArcade
@@ -28634,6 +28797,7 @@ function writeStoryProfileData(source="autosave", state=S){
     seasonPass: cloneState(seasonPass),
     masteryRewards: cloneState(masteryRewards),
     socialRescue: cloneState(ensureSocialRescueState(src)),
+    governmentProgram: cloneState(ensureGovernmentProgramState(src)),
     cosmeticCollection: cloneState(ensureCosmeticCollectionState(src)),
     savedAt: Date.now(),
     source: String(source || "autosave"),
@@ -28778,6 +28942,10 @@ function applyStoryProfileToState(state, profile){
   if(Number.isFinite(Number(profile.lives))) state.lives = clamp(Math.round(Number(profile.lives)), 0, 99);
   if(Number.isFinite(Number(profile.score))) state.score = Math.max(0, Math.round(Number(profile.score || 0)));
   if(Number.isFinite(Number(profile.trust))) state.trust = clamp(Math.round(Number(profile.trust)), 0, 100);
+  if(profile.governmentProgram && typeof profile.governmentProgram === "object"){
+    state.governmentProgram = cloneState(profile.governmentProgram);
+    ensureGovernmentProgramState(state);
+  }
   if(Number.isFinite(Number(profile.aggro))) state.aggro = clamp(Math.round(Number(profile.aggro)), 0, 100);
   if(Number.isFinite(Number(profile.stamina))) state.stamina = clamp(Math.round(Number(profile.stamina)), 0, 100);
   if(typeof profile.title === "string" && profile.title.trim()) state.title = profile.title;
@@ -29145,6 +29313,9 @@ function writeStoryProgressData(payload={}){
     socialRescue: (payload.socialRescue && typeof payload.socialRescue === "object")
       ? cloneState(normalizeSocialRescueState(payload.socialRescue))
       : cloneState(ensureSocialRescueState(S)),
+    governmentProgram: (payload.governmentProgram && typeof payload.governmentProgram === "object")
+      ? cloneState(payload.governmentProgram)
+      : cloneState(ensureGovernmentProgramState(S)),
     mag: {
       loaded: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).loaded || 0))),
       cap: Math.max(0, Math.floor(Number((payload.mag ?? S.mag ?? {}).cap || 0))),
@@ -31876,12 +32047,16 @@ function baseHqStatsHtml(){
   const hqRank = STORY_HQ_MODULES.reduce((n, def)=>n + storyHQRank(def.key), 0);
   const hqMax = STORY_HQ_MODULES.reduce((n, def)=>n + def.maxRank, 0);
   const soldiers = Math.max(0, Number(S.soldierAttackersOwned || 0) + Number(S.soldierRescuersOwned || 0));
+  const government = ensureGovernmentProgramState(S);
+  const governmentDef = GOVERNMENT_PROGRAM_STATUS[government.status] || GOVERNMENT_PROGRAM_STATUS.GOOD_STANDING;
   return `
     <div class="baseHqStat"><span>Funds</span><b>$${Number(S.funds || 0).toLocaleString()}</b></div>
     <div class="baseHqStat"><span>HQ Rank</span><b>${hqRank}/${hqMax}</b></div>
     <div class="baseHqStat"><span>Captured Tigers</span><b>${captures}</b></div>
     <div class="baseHqStat"><span>Civilians Saved</span><b>${rescued}</b></div>
     <div class="baseHqStat"><span>Squad</span><b>${soldiers} owned</b></div>
+    <div class="baseHqStat"><span>Government</span><b>${governmentDef.icon} ${baseHqEsc(governmentDef.label)}</b></div>
+    <div class="baseHqStat"><span>Case Review</span><b>${government.reviewPoints}/100</b></div>
     <div class="baseHqStat"><span>Weapon</span><b>${baseHqEsc(equippedWeapon()?.name || "Starter")}</b></div>
   `;
 }
@@ -49520,6 +49695,17 @@ function checkMissionComplete(){
       const fieldCashTruthNote = reversedFieldCash > 0
         ? `\nMission Result Accuracy: field cash $${reversedFieldCash.toLocaleString()} folded into final mission payout.\n`
         : "";
+      const governmentAudit = applyGovernmentMissionAudit({
+        runId:String(S._missionRunId||""),
+        mode:S.mode,
+        captures:missionStats.captures,
+        kills:missionStats.kills,
+        evac:civEvac,
+        civDead,
+      },{trustAlreadyApplied:true,silent:true});
+      const governmentNote = governmentAudit?.exempt
+        ? "\nGovernment Oversight: Survival exemption — no capture-policy review or funding decision.\n"
+        : `\nGovernment Oversight: ${governmentAudit?.statusLabel||"Good Standing"} • Trust ${Math.round(Number(S.trust||0))}/100 • Review ${Math.round(Number(governmentAudit?.reviewPoints||0))}/100 • Funding +$${Math.max(0,Number(governmentAudit?.funding||0)).toLocaleString()}${governmentAudit?.caseId?` • ${governmentAudit.caseId}`:""}\n`;
       const storyCampaign3Note = recordStoryCampaignMissionOutcome({
         missionStats,
         civTotal,
@@ -49579,6 +49765,7 @@ function checkMissionComplete(){
       renderMissionPremiumSummaryCard(premiumSummary);
       renderMissionRewards2Card(rewards2);
       renderSocialRescueCard(socialChallenge);
+      renderGovernmentProgramCard(governmentAudit);
       renderMissionCinematicOutroCard({
         activeMission,
         storyMission,
@@ -49590,7 +49777,7 @@ function checkMissionComplete(){
       });
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${director5Note}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${fieldCashTruthNote}${worldMapCampaignNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${director5Note}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${governmentNote}${fieldCashTruthNote}${worldMapCampaignNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       renderWildlifeTransportCinematic({ missionStats, activeMission, storyMission, arcadeMission });
       addXP(120);
