@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V7.4 (Capture-Safe Ammunition)</title>
+  <title>Tiger Strike 🐅 — V7.5 (Persistent Wildlife Transport)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5044-capture-safety">
+  <link rel="stylesheet" href="./squad-coop.css?v=5045-wildlife-transport">
 
   <style>
     :root{
@@ -1198,6 +1198,9 @@
     }
     .cinemaOutroTitle{font-size:18px;font-weight:1000;margin-bottom:6px}
     .cinemaOutroLine{color:var(--muted);font-size:12px;font-weight:850;line-height:1.45}
+    .wildlifeTransportCard{border:2px solid rgba(74,222,128,.58);border-radius:16px;padding:12px;margin-top:12px;background:linear-gradient(160deg,rgba(6,30,24,.96),rgba(8,15,27,.96));overflow:hidden}
+    .wildlifeTransportCanvas{display:block;width:100%;height:auto;aspect-ratio:12/5;border:1px solid rgba(134,239,172,.48);border-radius:12px;background:#173c2b;margin:9px 0}
+    .wildlifeTransportActions{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}
     @keyframes cinemaSweep{0%,45%{transform:translateX(-30%) rotate(0deg)}100%{transform:translateX(34%) rotate(0deg)}}
     @keyframes cinemaPulse{0%,100%{transform:scale(.96);opacity:.58}50%{transform:scale(1.06);opacity:.96}}
     @keyframes cinemaTiger{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-8px) rotate(3deg)}}
@@ -2425,11 +2428,12 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V7.4</span> <span class="tag">Capture-Safe Ammunition</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V7.5</span> <span class="tag">Persistent Wildlife Transport</span></div>
       <div class="sub">
         Real rounds kill and block capture. Rubber rounds weaken without killing. Tranq rounds finish a valid live capture.<br>
         Fresh non-Survival missions start on Rubber, and the loaded magazine is verified before every shot so the HUD can never say Rubber while firing Real.<br>
         Lethal kills leave visible bodies. Blood scent makes surviving tigers hunt harder and deal more damage; captures leave no blood scent.<br>
+        Captured tigers remain in visible cages until mission end, then a skippable wildlife-recovery movie loads every cage onto a conservation truck.<br>
         Survival is the only exception: Real ammunition only, no Rubber rounds, and no Capture option—kill every tiger to clear each wave.
       </div>
     </div>
@@ -3160,6 +3164,12 @@
         <div class="cinemaOutroTitle">🎬 Cinematic Escape Recap</div>
         <div class="cinemaOutroLine" id="completeCinemaOutroText">Escape recap preparing...</div>
       </div>
+      <div class="wildlifeTransportCard" id="wildlifeTransportCard" style="display:none">
+        <div class="cinemaOutroTitle">🚛 Wildlife Recovery Transport</div>
+        <div class="cinemaOutroLine" id="wildlifeTransportText">Conservation transport preparing...</div>
+        <canvas class="wildlifeTransportCanvas" id="wildlifeTransportCanvas" width="720" height="300" aria-label="Captured tiger cages being loaded onto a wildlife conservation truck"></canvas>
+        <div class="wildlifeTransportActions"><button class="good" type="button" onclick="playWildlifeTransportCinematic()">▶ Watch Again</button><button class="ghost" type="button" onclick="skipWildlifeTransportCinematic()">Skip Movie</button></div>
+      </div>
       <div class="premiumSummaryCard" id="completePremiumSummary">
         <div class="premiumSummaryTop">
           <div class="premiumSummaryTitle">Mission Performance</div>
@@ -3268,11 +3278,11 @@
   </div>
 </div>
 
-<!-- V7.4 Capture-Safe Ammunition -->
+<!-- V7.5 Persistent Wildlife Transport -->
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V7.4 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V7.5 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3313,12 +3323,12 @@
 </div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5044-capture-safety"></script>
-  <script src="./ammo-modes.js?v=5044-capture-safety"></script>
-  <script src="./game.js?v=5044-capture-safety"></script>
+  <script src="./extraction-geometry.js?v=5045-wildlife-transport"></script>
+  <script src="./ammo-modes.js?v=5045-wildlife-transport"></script>
+  <script src="./game.js?v=5045-wildlife-transport"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
-  <script src="./squad-coop.js?v=5044-capture-safety"></script>
-  <script src="./extraction-qa.js?v=5044-capture-safety"></script>
+  <script src="./squad-coop.js?v=5045-wildlife-transport"></script>
+  <script src="./extraction-qa.js?v=5045-wildlife-transport"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

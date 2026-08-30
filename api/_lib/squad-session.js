@@ -665,6 +665,7 @@ function newPlayer(user, slot=0){
     lethalWoundedIds:[],
     rubberSlowUntil:{},
     killSites:{},
+    captureSites:{},
     capturedIds:[],
     rescuedIds:[],
     checkpointIds:[],
@@ -705,6 +706,16 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
       killedAt:Math.max(0, Number(site.killedAt || 0)),
     };
   }
+  const captureSites = {};
+  for(const tiger of ALL_COOP_TIGERS){
+    const site = src?.captureSites?.[tiger.id];
+    if(!site || typeof site !== "object") continue;
+    captureSites[tiger.id] = {
+      x:clamp(site.x, 24, MAX_COOP_WORLD.width - 24),
+      y:clamp(site.y, 24, MAX_COOP_WORLD.height - 24),
+      capturedAt:Math.max(0, Number(site.capturedAt || 0)),
+    };
+  }
   return {
     ...base,
     ...src,
@@ -727,6 +738,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     lethalWoundedIds:[...new Set((Array.isArray(src.lethalWoundedIds) ? src.lethalWoundedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
     rubberSlowUntil,
     killSites,
+    captureSites,
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     checkpointIds:[...new Set((Array.isArray(src.checkpointIds) ? src.checkpointIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_CHECKPOINTS.some((checkpoint)=>checkpoint.id === id)))],
     capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
@@ -768,15 +780,18 @@ function tigerSnapshots(session, players, at=nowMs()){
     const hp = captured ? 0 : clamp(def.hpMax - damage, 0, def.hpMax);
     const defeated = hp <= 0;
     const killSite = players.map((player)=>player?.killSites?.[def.id]).find(Boolean);
-    const position = defeated && !captured && killSite
-      ? { x:Number(killSite.x), y:Number(killSite.y) }
-      : tigerPosition(session, def, at);
+    const captureSite = players.map((player)=>player?.captureSites?.[def.id]).find(Boolean);
+    const position = captured && captureSite
+      ? { x:Number(captureSite.x), y:Number(captureSite.y) }
+      : (defeated && killSite ? { x:Number(killSite.x), y:Number(killSite.y) } : tigerPosition(session, def, at));
     return {
       ...def,
       ...position,
       hp,
       defeated,
       captured,
+      cage:captured,
+      capturedAt:captured ? Math.max(0, Number(captureSite?.capturedAt || 0)) : 0,
       lethalWounded,
       rubberSlowed,
       carcass:defeated && !captured,
@@ -986,6 +1001,7 @@ async function maybeFinishSession(session, players){
           player.lethalWoundedIds = [];
           player.rubberSlowUntil = {};
           player.killSites = {};
+          player.captureSites = {};
           player.capturedIds = [];
           await writePlayer(session.code, player);
         }
@@ -1265,6 +1281,7 @@ async function applyAction(session, user, action, payload={}){
         p.lethalWoundedIds = [];
         p.rubberSlowUntil = {};
         p.killSites = {};
+        p.captureSites = {};
         p.capturedIds = [];
         p.rescuedIds = [];
         p.checkpointIds = [];
@@ -1331,6 +1348,8 @@ async function applyAction(session, user, action, payload={}){
     if(Number(target.hp || 0) > Number(target.hpMax || 1) * 0.30) throw new Error("Weaken the tiger to 30% health before capture.");
     if(!Array.isArray(player.capturedIds)) player.capturedIds = [];
     if(!player.capturedIds.includes(target.id)) player.capturedIds.push(target.id);
+    if(!player.captureSites || typeof player.captureSites !== "object") player.captureSites = {};
+    player.captureSites[target.id] = { x:Number(target.x), y:Number(target.y), capturedAt:now };
     player.lastAttackAt = now;
     player.lastSeenAt = now;
     await writePlayer(session.code, player);

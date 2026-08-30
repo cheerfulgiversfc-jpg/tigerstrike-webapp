@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5044";
+const TS_BUILD = "5045";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -14273,6 +14273,7 @@ const DEFAULT = {
 
   tigers:[],
   carcasses:[],
+  captureCages:[],
   supportUnits:[],
   rivalHunters:[],
   rescueSites:[],
@@ -14438,6 +14439,7 @@ chapterRewardsUnlocked: {},
 };
 
 const MAX_PERSIST_CARCASSES = 48;
+const MAX_PERSIST_CAPTURE_CAGES = 24;
 const MAX_PERSIST_PICKUPS = 26;
 const MAX_PERSIST_TRAPS = 24;
 const MAX_PERSIST_RESCUE_SITES = 12;
@@ -16696,6 +16698,7 @@ function capHead(list, max){
 function trimPersistentState(state){
   if(!state || typeof state !== "object") return state;
   state.carcasses = capTail(state.carcasses, MAX_PERSIST_CARCASSES);
+  state.captureCages = capTail(state.captureCages, MAX_PERSIST_CAPTURE_CAGES);
   state.pickups = capTail(state.pickups, MAX_PERSIST_PICKUPS);
   state.trapsPlaced = capTail(state.trapsPlaced, MAX_PERSIST_TRAPS);
   state.rescueSites = capHead(state.rescueSites, MAX_PERSIST_RESCUE_SITES);
@@ -16858,6 +16861,7 @@ function clearTransientMissionRuntime(state, reason=""){
   state._transitionGuardReason = String(reason || "");
   state.trapsPlaced = [];
   state.carcasses = [];
+  state.captureCages = [];
   state.pickups = [];
   state.supportUnits = [];
   state.rivalHunters = [];
@@ -16930,6 +16934,7 @@ function buildPersistedState(){
   delete out._tutorialSnapshot;
   delete out._tutorialPrev;
   out.carcasses = capTail(S.carcasses, MAX_PERSIST_CARCASSES);
+  out.captureCages = capTail(S.captureCages, MAX_PERSIST_CAPTURE_CAGES);
   out.pickups = capTail(S.pickups, MAX_PERSIST_PICKUPS);
   out.trapsPlaced = capTail(S.trapsPlaced, MAX_PERSIST_TRAPS);
   out.rescueSites = capHead(S.rescueSites, MAX_PERSIST_RESCUE_SITES);
@@ -20973,7 +20978,7 @@ function scaleWorldForViewportResize(oldW, oldH, newW, newH){
   scalePointXY(S.evacZone, sx, sy);
   if(S.evacZone && Number.isFinite(S.evacZone.r)) S.evacZone.r = S.evacZone.r * sr;
 
-  for(const arrName of ["civilians","tigers","pickups","carcasses","trapsPlaced","rescueSites","mapInteractables"]){
+  for(const arrName of ["civilians","tigers","pickups","carcasses","captureCages","trapsPlaced","rescueSites","mapInteractables"]){
     const arr = S[arrName];
     if(!Array.isArray(arr)) continue;
     for(const item of arr){
@@ -21016,6 +21021,7 @@ function clampWorldToCanvas(){
   if(!Array.isArray(S.tigers)) S.tigers = [];
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(!Array.isArray(S.carcasses)) S.carcasses = [];
+  if(!Array.isArray(S.captureCages)) S.captureCages = [];
   if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
   if(!Array.isArray(S.supportUnits)) S.supportUnits = [];
   if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
@@ -21024,6 +21030,7 @@ function clampWorldToCanvas(){
   S.tigers = S.tigers.filter((t)=>t && typeof t === "object");
   S.pickups = S.pickups.filter((p)=>p && typeof p === "object");
   S.carcasses = S.carcasses.filter((c)=>c && typeof c === "object");
+  S.captureCages = S.captureCages.filter((c)=>c && typeof c === "object");
   S.trapsPlaced = S.trapsPlaced.filter((t)=>t && typeof t === "object");
   S.supportUnits = S.supportUnits.filter((u)=>u && typeof u === "object");
   S.rescueSites = S.rescueSites.filter((s)=>s && typeof s === "object");
@@ -21082,6 +21089,10 @@ function clampWorldToCanvas(){
   for(const carcass of (S.carcasses || [])){
     carcass.x = clamp(carcass.x, 40, w - 40);
     carcass.y = clamp(carcass.y, 60, h - 40);
+  }
+  for(const cage of (S.captureCages || [])){
+    cage.x = clamp(cage.x, 40, w - 40);
+    cage.y = clamp(cage.y, 60, h - 40);
   }
   for(const trap of (S.trapsPlaced || [])){
     trap.x = clamp(trap.x, 40, w - 40);
@@ -21162,6 +21173,7 @@ function sanitizeRuntimeState(){
   if(!Array.isArray(S.rivalHunters)) S.rivalHunters = [];
   if(!Array.isArray(S.pickups)) S.pickups = [];
   if(!Array.isArray(S.carcasses)) S.carcasses = [];
+  if(!Array.isArray(S.captureCages)) S.captureCages = [];
   if(!Array.isArray(S.trapsPlaced)) S.trapsPlaced = [];
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   if(!Array.isArray(S.rescueSites)) S.rescueSites = [];
@@ -21354,6 +21366,15 @@ function sanitizeRuntimeState(){
   for(const c of S.carcasses){
     c.x = clampX(c.x, 40, w - 40);
     c.y = clampY(c.y, 60, h - 40);
+  }
+  S.captureCages = S.captureCages.filter((c)=>c && typeof c === "object" && Number.isFinite(c.x) && Number.isFinite(c.y)).slice(-MAX_PERSIST_CAPTURE_CAGES);
+  for(const cage of S.captureCages){
+    cage.x = clampX(cage.x, 40, w - 40);
+    cage.y = clampY(cage.y, 60, h - 40);
+    cage.tigerId = cage.tigerId ?? null;
+    cage.tigerName = String(cage.tigerName || "Tiger").slice(0, 80);
+    cage.tigerType = String(cage.tigerType || "Standard").slice(0, 40);
+    cage.capturedAt = Math.max(0, Number(cage.capturedAt || Date.now()));
   }
   S.trapsPlaced = S.trapsPlaced.filter((tr)=>tr && typeof tr === "object" && Number.isFinite(tr.x) && Number.isFinite(tr.y)).slice(-MAX_PERSIST_TRAPS);
   for(const tr of S.trapsPlaced){
@@ -27595,6 +27616,74 @@ function renderMissionCinematicOutroCard(summary={}){
     `Final beat: ${missionCinemaSafeText(bonusLine)}.`,
     missionCinemaSafeText(bossSeasonLine)
   ].join("<br>");
+}
+let __wildlifeTransportFrame = 0;
+let __wildlifeTransportScene = null;
+function drawWildlifeTransportFrame(progress=0){
+  const canvas = document.getElementById("wildlifeTransportCanvas");
+  if(!canvas || !__wildlifeTransportScene) return;
+  const c = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  const p = clamp(Number(progress || 0), 0, 1);
+  c.clearRect(0,0,w,h);
+  const sky = c.createLinearGradient(0,0,0,h);
+  sky.addColorStop(0,"#164e63");sky.addColorStop(.55,"#166534");sky.addColorStop(1,"#14532d");c.fillStyle=sky;c.fillRect(0,0,w,h);
+  c.fillStyle="#166534";c.fillRect(0,95,w,82);
+  for(let x=24;x<w;x+=72){c.fillStyle="#14532d";c.fillRect(x,66,8,54);c.fillStyle="#22c55e";c.beginPath();c.arc(x+4,61,23,0,Math.PI*2);c.fill();}
+  c.fillStyle="#334155";c.fillRect(0,177,w,123);c.strokeStyle="#facc15";c.lineWidth=5;c.setLineDash([30,22]);c.beginPath();c.moveTo(0,244);c.lineTo(w,244);c.stroke();c.setLineDash([]);
+  const arrive = clamp(p/.24,0,1), depart = clamp((p-.68)/.32,0,1);
+  const truckX = p < .68 ? (-330 + arrive*510) : (180 + depart*690);
+  c.save();c.translate(truckX,0);
+  c.fillStyle="#e2e8f0";c.fillRect(0,139,290,87);c.strokeStyle="#64748b";c.lineWidth=4;c.strokeRect(0,139,290,87);
+  c.fillStyle="#15803d";c.fillRect(290,158,92,68);c.fillStyle="#86efac";c.fillRect(307,168,48,24);c.fillStyle="#dcfce7";c.font="900 14px system-ui";c.textAlign="center";c.fillText("WILDLIFE",145,163);c.fillText("RECOVERY",145,181);
+  c.fillStyle="#0f172a";for(const wx of [45,245,320,362]){c.beginPath();c.arc(wx,228,18,0,Math.PI*2);c.fill();c.fillStyle="#94a3b8";c.beginPath();c.arc(wx,228,7,0,Math.PI*2);c.fill();c.fillStyle="#0f172a";}
+  const count = Math.max(1,Math.min(6,Number(__wildlifeTransportScene.count||1)));
+  for(let i=0;i<count;i++){
+    const loadStart=.24+i*(.40/Math.max(1,count));
+    const loaded=clamp((p-loadStart)/.12,0,1);
+    const groundX=410+i*48, targetX=28+i*43;
+    const cx=groundX+(targetX-groundX)*loaded, cy=208+(185-208)*loaded;
+    c.fillStyle="rgba(180,83,9,.95)";c.beginPath();c.ellipse(cx+16,cy,15,7,0,0,Math.PI*2);c.fill();
+    c.strokeStyle="#cbd5e1";c.lineWidth=2;c.strokeRect(cx,cy-16,34,30);for(let bx=6;bx<34;bx+=7){c.beginPath();c.moveTo(cx+bx,cy-16);c.lineTo(cx+bx,cy+14);c.stroke();}
+  }
+  c.restore();
+  c.fillStyle="#dbeafe";c.font="900 16px system-ui";c.textAlign="left";c.fillText(p<.24?"Transport arriving…":(p<.68?"Officials loading secured cages…":"Cages secured • truck departing"),18,28);
+  c.fillStyle="#bbf7d0";c.font="800 13px system-ui";c.fillText(`${__wildlifeTransportScene.count} live tiger${__wildlifeTransportScene.count===1?"":"s"} transferred without blood scent`,18,50);
+}
+function playWildlifeTransportCinematic(){
+  if(!__wildlifeTransportScene) return;
+  cancelAnimationFrame(__wildlifeTransportFrame);
+  const started = performance.now();
+  const tick = (now)=>{
+    const p = clamp((now-started)/7600,0,1);
+    drawWildlifeTransportFrame(p);
+    if(p < 1) __wildlifeTransportFrame = requestAnimationFrame(tick);
+    else {
+      const text = document.getElementById("wildlifeTransportText");
+      if(text) text.textContent = `${__wildlifeTransportScene.count} cage${__wildlifeTransportScene.count===1?"":"s"} loaded. The conservation truck has left the mission area.`;
+    }
+  };
+  __wildlifeTransportFrame = requestAnimationFrame(tick);
+}
+function skipWildlifeTransportCinematic(){
+  cancelAnimationFrame(__wildlifeTransportFrame);
+  drawWildlifeTransportFrame(1);
+  const text = document.getElementById("wildlifeTransportText");
+  if(text && __wildlifeTransportScene) text.textContent = `Movie skipped. ${__wildlifeTransportScene.count} captured tiger${__wildlifeTransportScene.count===1?" was":"s were"} safely transported.`;
+}
+function renderWildlifeTransportCinematic(summary={}){
+  const card = document.getElementById("wildlifeTransportCard");
+  const text = document.getElementById("wildlifeTransportText");
+  if(!card || !text) return;
+  const missionStats = summary.missionStats || S._missionStatsFinal || S.stats || {};
+  const count = Math.max(0,Math.floor(Number(missionStats.captures || (S.captureCages || []).length || 0)));
+  cancelAnimationFrame(__wildlifeTransportFrame);
+  if(S.mode === "Survival" || count <= 0){card.style.display="none";__wildlifeTransportScene=null;return;}
+  __wildlifeTransportScene = { count, cages:(S.captureCages || []).map((c)=>({ ...c })) };
+  card.style.display="block";
+  text.textContent = `${count} secured cage${count===1?" is":"s are"} waiting for the government wildlife-recovery truck.`;
+  drawWildlifeTransportFrame(0);
+  window.setTimeout(()=>playWildlifeTransportCinematic(),80);
 }
 function chapterRecapTextForCurrentStoryMission(){
   const mission = storyMissionForState(S);
@@ -37779,6 +37868,33 @@ function registerTigerCarcass(tiger, killer="player"){
   }
   return S.carcasses[S.carcasses.length - 1];
 }
+function captureCageFromTiger(tiger, captor="player"){
+  return {
+    id:`cage_${String(tiger?.id || Date.now())}_${Date.now()}`,
+    tigerId:tiger?.id ?? null,
+    tigerName:String(tiger?.alias || tiger?.name || tiger?.type || "Tiger"),
+    tigerType:String(tiger?.type || "Standard"),
+    x:Number(tiger?.x || 0),
+    y:Number(tiger?.y || 0),
+    facing:Number(tiger?.facing || tiger?.wanderAngle || 0),
+    capturedAt:Date.now(),
+    captor:String(captor || "player"),
+    transportStatus:"WAITING",
+  };
+}
+function registerTigerCaptureCage(tiger, captor="player"){
+  if(!tiger || S.mode === "Survival") return null;
+  if(!Array.isArray(S.captureCages)) S.captureCages = [];
+  const existing = S.captureCages.find((c)=>String(c?.tigerId) === String(tiger.id));
+  if(existing) return existing;
+  const cage = captureCageFromTiger(tiger, captor);
+  S.captureCages.push(cage);
+  if(S.captureCages.length > MAX_PERSIST_CAPTURE_CAGES){
+    S.captureCages = S.captureCages.slice(-MAX_PERSIST_CAPTURE_CAGES);
+  }
+  __savePending = true;
+  return cage;
+}
 function randomEvacZone(civilians=[]){
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
@@ -40392,6 +40508,7 @@ function deploy(opts={}){
   clearTransientCombatVisuals();
   transitionCleanupSweep("deploy-pre");
   hardResetMissionRuntimeState("deploy-runtime-reset");
+  S.captureCages = [];
 
   S.hp = carryStats ? carryHp : 100;
   S.armor = carryStats
@@ -42986,6 +43103,7 @@ function supportUnitsTick(){
               tiger.missionOutcome = "CAPTURE";
               triggerCombatInteraction("finish", { tiger, outcome:"CAPTURE" });
               pushTigerCaptureStruggle(tiger, "CAPTURE");
+              registerTigerCaptureCage(tiger, "specialist");
               tiger.alive = false;
               tigerPackRecordLoss(tiger, "CAPTURE");
               recordCapturedTigerTrophy(tiger, "specialist");
@@ -47241,6 +47359,7 @@ function playerAction(action){
     triggerCombatInteraction("finish", { tiger:t, outcome:"CAPTURE" });
     markTigerBehaviorAnim(t, "capture_struggle", 1200);
     pushTigerCaptureStruggle(t, "CAPTURE");
+    registerTigerCaptureCage(t, "player");
     t.alive=false;
     tigerPackRecordLoss(t, "CAPTURE");
     recordCapturedTigerTrophy(t, "player");
@@ -49473,6 +49592,7 @@ function checkMissionComplete(){
       document.getElementById("completeText").innerText =
         `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${director5Note}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${fieldCashTruthNote}${worldMapCampaignNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
+      renderWildlifeTransportCinematic({ missionStats, activeMission, storyMission, arcadeMission });
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
       grantSeasonPassPoints(missionSeasonPoints, (storyMission?.boss || arcadeMission?.boss) ? "Boss mission clear" : "Mission clear");
@@ -53335,6 +53455,32 @@ function drawCarcass(x,y,carcass=null){
   ctx.rotate(-Number(carcass?.facing || 0));
   ctx.fillStyle="rgba(15,23,42,.88)";roundedRectFill(-58,-52,116,25,9);
   ctx.fillStyle="#fecdd3";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText("BODY • BLOOD SCENT",0,-35);
+  ctx.restore();
+}
+function drawCaptureCage(cage){
+  if(!cage) return;
+  const x = Number(cage.x || 0);
+  const y = Number(cage.y || 0);
+  const pulse = 0.5 + Math.sin(Date.now() / 620 + x * 0.01) * 0.5;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "rgba(2,6,23,.36)";
+  ctx.beginPath();ctx.ellipse(0,18,42,13,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle = "rgba(180,83,9,.94)";
+  ctx.beginPath();ctx.ellipse(0,3,27,12,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(23,-1,9,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle = "rgba(17,24,39,.98)";
+  ctx.lineWidth = 3;
+  for(const sx of [-16,-6,5,15]){ctx.beginPath();ctx.moveTo(sx,-7);ctx.lineTo(sx+5,11);ctx.stroke();}
+  ctx.strokeStyle = "rgba(203,213,225,.98)";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(-39,-25,78,52);
+  ctx.lineWidth = 2.4;
+  for(let bx=-29;bx<=29;bx+=12){ctx.beginPath();ctx.moveTo(bx,-23);ctx.lineTo(bx,25);ctx.stroke();}
+  ctx.beginPath();ctx.moveTo(-37,-8);ctx.lineTo(37,-8);ctx.moveTo(-37,11);ctx.lineTo(37,11);ctx.stroke();
+  ctx.fillStyle = "rgba(15,23,42,.92)";roundedRectFill(-75,-58,150,25,9);
+  ctx.strokeStyle = `rgba(74,222,128,${0.72 + pulse * 0.26})`;ctx.lineWidth=2;ctx.strokeRect(-73,-56,146,21);
+  ctx.fillStyle = "rgba(220,252,231,.98)";ctx.font="900 10px system-ui";ctx.textAlign="center";ctx.fillText("CAGED • TRANSPORT PENDING",0,-41);
   ctx.restore();
 }
 function drawDangerMarker(x,y){
@@ -59341,6 +59487,11 @@ function drawEntitiesLite(){
     ctx.fillStyle="rgba(127,29,29,.76)";ctx.fillRect(c.x - 11, c.y - 5, 22, 10);
     ctx.restore();
   }
+  const captureCagesLite = viewportCullEntities(S.captureCages || [], {
+    pad:pickupPad,
+    max:mobile ? 10 : 18
+  });
+  for(const cage of captureCagesLite) drawCaptureCage(cage);
 
   for(const p of pickupsDraw){
     let color = "rgba(147,197,253,.9)";
@@ -59601,6 +59752,13 @@ function drawEntities(){
     });
     for(const c of drawCarcasses){
       drawSafe("drawCarcass", ()=>drawCarcass(c.x, c.y, c));
+    }
+    const drawCaptureCages = viewportCullEntities(S.captureCages || [], {
+      pad:propsPad,
+      max:mobile ? 14 : 24
+    });
+    for(const cage of drawCaptureCages){
+      drawSafe("drawCaptureCage", ()=>drawCaptureCage(cage));
     }
 
     // pickups

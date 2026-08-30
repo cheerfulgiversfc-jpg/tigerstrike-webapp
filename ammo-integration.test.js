@@ -32,4 +32,9 @@ test("Solo, Shared Story, and Special Operations expose the same ammunition syst
   assert(server.includes("killSites") && server.includes("bloodScentRadius"), "co-op stores authoritative body locations and scent zones");
   assert(server.includes(": 2;") && server.includes("tigerKills * aggressionPerKill"), "every co-op mission escalates surviving tiger damage after lethal kills");
   assert(server.includes('ammoMode:"rubber"') && server.includes('? "real" : "rubber"'), "fresh co-op missions start capture-safe on Rubber while Survival remains Real-only");
+  assert(game.includes("captureCages") && game.includes("registerTigerCaptureCage"), "solo captures leave persistent mission cages");
+  assert(game.includes("wildlifeTransportCanvas") && game.includes("playWildlifeTransportCinematic"), "solo completion provides a watchable wildlife transport movie");
+  assert(server.includes("captureSites") && server.includes("cage:captured"), "co-op stores authoritative cage locations for reconnects");
+  assert(coop.includes("drawTigerCage") && coop.includes("squadTransportCanvas"), "both co-op players see cages and the wildlife transport movie");
+  assert(html.includes("Skip Movie") && html.includes("Wildlife Recovery Transport"), "the transport cinematic is clearly labeled and skippable");
 });

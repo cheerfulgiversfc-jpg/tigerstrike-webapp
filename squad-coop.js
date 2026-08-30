@@ -18,6 +18,7 @@
     polling:false,
     pollTimer:0,
     frame:0,
+    transportFrame:0,
     lastFrameAt:0,
     lastSyncAt:0,
     lastActionUiAt:0,
@@ -221,8 +222,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V7.4 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V7.4 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.4 • Co-op Command");
+      ? `Tiger Strike V7.5 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V7.5 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.5 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -473,7 +474,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V7.4 Capture-Safe Ammunition</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Fresh missions start with Rubber selected. The server verifies every shot, Rubber can never create a lethal injury, and Capture clearly identifies any tiger actually struck by Real ammunition.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V7.5 Persistent Wildlife Transport</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Captured tigers remain secured in visible cages for both players. Completed missions include a skippable wildlife-recovery movie showing every cage loaded onto a conservation truck.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -584,6 +585,7 @@
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : "⏱️ Operation Failed")}</div>
         <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Math.min(100, Number(state.storyMissionLevel || 1) + 1)} unlocks when each player claims the result.` : `Both players cleared ${esc(selectedOperation().title)} and earned its separate Special Operation reward.`}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : `Time expired. The squad leader can restart ${esc(missionName())}.`)}</div>
+        ${snap.status === "complete" && (snap.capturedIds || []).length ? `<div class="squadTransportMovie"><div class="squadSmall">🚛 Wildlife Recovery • ${(snap.capturedIds || []).length} cage${(snap.capturedIds || []).length===1?"":"s"}</div><canvas id="squadTransportCanvas" width="520" height="210" aria-label="Co-op wildlife transport movie"></canvas><button type="button" class="squadBtn" data-squad-command="transport-skip">Skip Movie</button></div>` : ""}
         ${snap.status === "complete" ? `<button type="button" class="squadBtn good" data-squad-command="claim">Claim Co-op Reward</button>` : ""}
         ${snap.status === "failed" && snap.isHost ? `<button type="button" class="squadBtn good" data-squad-command="restart">Restart Mission</button>` : ""}
         ${snap.status === "failed" && !snap.isHost ? `<button type="button" class="squadBtn" disabled>Waiting for Leader to Restart</button>` : ""}
@@ -695,7 +697,7 @@
     bindMoveButtons();
     bindLobbyInput();
     if(state.snapshot?.status === "active") ensureFrame();
-    else drawArena();
+    else { drawArena(); if(state.snapshot?.status === "complete") startSquadTransportMovie(); }
   }
 
   function bindLobbyInput(){
@@ -788,6 +790,7 @@
       shop:()=>openEquipment("shop"),
       inventory:()=>openEquipment("inventory"),
       claim:()=>claim(),
+      "transport-skip":()=>skipSquadTransportMovie(),
       leave:()=>leave(),
       "paste-code":()=>pasteJoinCode(),
       "copy-code":()=>copyCode(),
@@ -976,7 +979,9 @@
     state.open = false;
     stopPolling();
     cancelAnimationFrame(state.frame);
+    cancelAnimationFrame(state.transportFrame);
     state.frame = 0;
+    state.transportFrame = 0;
     Object.keys(state.move).forEach((key)=>{ state.move[key] = false; });
     const overlay = $("liveSquadOverlay");
     overlay?.classList.remove("open");
@@ -1490,6 +1495,34 @@
     ctx.fillStyle="rgba(15,23,42,.90)";roundRect(ctx,-78,-55,156,28,9);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=2;ctx.stroke();ctx.fillStyle="#ffe4e6";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText("BODY • BLOOD SCENT",0,-36);ctx.restore();
   }
 
+  function drawTigerCage(ctx,tiger,now){
+    if(!tiger?.captured && !tiger?.cage) return;
+    const pulse=.5+Math.sin(now/600+String(tiger.id||"").length)*.5;
+    ctx.save();ctx.translate(tiger.x,tiger.y);
+    ctx.fillStyle="rgba(2,6,23,.38)";ctx.beginPath();ctx.ellipse(0,20,48,14,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#d97706";ctx.beginPath();ctx.ellipse(0,3,29,13,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(25,-2,10,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle="#111827";ctx.lineWidth=3;for(const sx of [-18,-7,5,16]){ctx.beginPath();ctx.moveTo(sx,-8);ctx.lineTo(sx+6,12);ctx.stroke();}
+    ctx.strokeStyle="#cbd5e1";ctx.lineWidth=4;ctx.strokeRect(-42,-27,84,57);ctx.lineWidth=2.5;for(let bx=-32;bx<=32;bx+=13){ctx.beginPath();ctx.moveTo(bx,-25);ctx.lineTo(bx,28);ctx.stroke();}
+    ctx.fillStyle="rgba(15,23,42,.92)";roundRect(ctx,-84,-62,168,27,9);ctx.fill();ctx.strokeStyle=`rgba(74,222,128,${.68+pulse*.3})`;ctx.lineWidth=2;ctx.stroke();ctx.fillStyle="#dcfce7";ctx.font="950 11px system-ui";ctx.textAlign="center";ctx.fillText("CAGED • TRANSPORT PENDING",0,-44);ctx.restore();
+  }
+
+  function drawSquadTransportMovie(progress=0){
+    const canvas=$("squadTransportCanvas");if(!canvas)return;
+    const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height,p=clamp(progress,0,1),count=Math.max(1,Math.min(5,(state.snapshot?.capturedIds||[]).length));
+    ctx.clearRect(0,0,w,h);ctx.fillStyle="#155e48";ctx.fillRect(0,0,w,h);ctx.fillStyle="#334155";ctx.fillRect(0,118,w,92);ctx.strokeStyle="#facc15";ctx.lineWidth=4;ctx.setLineDash([24,18]);ctx.beginPath();ctx.moveTo(0,167);ctx.lineTo(w,167);ctx.stroke();ctx.setLineDash([]);
+    const arrive=clamp(p/.25,0,1),depart=clamp((p-.7)/.3,0,1),tx=p<.7?-250+arrive*365:115+depart*540;
+    ctx.save();ctx.translate(tx,0);ctx.fillStyle="#e2e8f0";ctx.fillRect(0,82,220,66);ctx.fillStyle="#15803d";ctx.fillRect(220,96,72,52);ctx.fillStyle="#0f172a";for(const x of [35,180,242,278]){ctx.beginPath();ctx.arc(x,151,13,0,Math.PI*2);ctx.fill();}
+    for(let i=0;i<count;i++){const loaded=clamp((p-(.25+i*.07))/.14,0,1),gx=318+i*37,cx=gx+(22+i*36-gx)*loaded,cy=137+(116-137)*loaded;ctx.strokeStyle="#cbd5e1";ctx.lineWidth=2;ctx.strokeRect(cx,cy-14,29,27);ctx.fillStyle="#d97706";ctx.fillRect(cx+6,cy-3,17,8);}
+    ctx.restore();ctx.fillStyle="#ecfdf5";ctx.font="900 13px system-ui";ctx.textAlign="left";ctx.fillText(p<.25?"Recovery truck arriving…":(p<.7?"Loading live tiger cages…":"Cages secured • departing"),13,24);
+  }
+  function startSquadTransportMovie(){
+    if(!(state.snapshot?.capturedIds||[]).length || !$('squadTransportCanvas')) return;
+    cancelAnimationFrame(state.transportFrame);const started=performance.now();
+    const tick=(now)=>{const p=clamp((now-started)/6500,0,1);drawSquadTransportMovie(p);if(p<1)state.transportFrame=requestAnimationFrame(tick);};
+    state.transportFrame=requestAnimationFrame(tick);
+  }
+  function skipSquadTransportMovie(){cancelAnimationFrame(state.transportFrame);drawSquadTransportMovie(1);setMessage("Wildlife transport movie skipped. Every cage was safely loaded.");}
+
   function drawStorySoldier(ctx,p,source,draw,mine){
     const body=mine?"#0ea5e9":"#8b5cf6";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=Number(source.face||0);ctx.save();ctx.translate(draw.x,draw.y);ctx.rotate(face);
     ctx.fillStyle="rgba(2,6,23,.38)";ctx.beginPath();ctx.ellipse(1,19,18,7,0,0,Math.PI*2);ctx.fill();
@@ -1716,6 +1749,7 @@
     const view={x:state.camera.x,y:state.camera.y,w,h};ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(-view.x,-view.y);
     drawExpandedDistrict(ctx,snap,view);
     for(const civ of (snap.civilians||[])) drawStoryCivilian(ctx,civ,(snap.rescuedIds||[]).includes(civ.id));
+    for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawTigerCage(ctx,tiger,now);
     for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawTigerCarcass(ctx,tiger,now);
     for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawStoryTiger(ctx,tiger,now);
     for(const p of (snap.players||[])){

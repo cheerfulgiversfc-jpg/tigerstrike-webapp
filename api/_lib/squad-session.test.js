@@ -72,6 +72,16 @@ async function run(){
   session = await applyAction(await readSession(code), host, "capture", { tigerId:rubberTiger.id });
   snapshot = await buildSnapshot(session, host.id);
   assert(snapshot.capturedIds.includes(rubberTiger.id), "a Rubber-weakened tiger can be captured");
+  const capturedTiger = snapshot.tigers.find((tiger)=>tiger.id === rubberTiger.id);
+  assert.equal(capturedTiger.cage, true, "a captured co-op tiger remains visible in a cage");
+  assert.equal(capturedTiger.carcass, false, "a live capture never creates a blood-scent body");
+  const capturedPosition = { x:capturedTiger.x, y:capturedTiger.y };
+  const capturingPlayer = snapshot.players.find((player)=>player.userId === host.id);
+  assert(capturingPlayer.captureSites[rubberTiger.id], "the server saves the cage location on the capturing player");
+  session = await joinSession(code, host);
+  snapshot = await buildSnapshot(session, host.id);
+  const reconnectedCage = snapshot.tigers.find((tiger)=>tiger.id === rubberTiger.id);
+  assert.deepEqual({ x:reconnectedCage.x, y:reconnectedCage.y }, capturedPosition, "reconnecting keeps the cage in its exact capture location");
 
   const realTiger = snapshot.tigers.find((tiger)=>!tiger.defeated);
   await writePlayerPatch(code, host.id, { x:realTiger.x, y:realTiger.y, lastAttackAt:0, lastSeenAt:Date.now() });
