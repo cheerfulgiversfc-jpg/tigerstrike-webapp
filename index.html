@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V7.7 (Detention &amp; GONE ROGUE)</title>
+  <title>Tiger Strike 🐅 — V7.8 (Immersive Detention &amp; Field Gear)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5047-detention-gone-rogue">
+  <link rel="stylesheet" href="./squad-coop.css?v=5048-immersive-government">
 
   <style>
     :root{
@@ -954,6 +954,41 @@
     .governmentStepText{margin-top:8px;color:#dbeafe;font-weight:720;line-height:1.45}
     .governmentProgress{height:10px;margin:14px 0;border-radius:999px;overflow:hidden;background:rgba(15,23,42,.88);border:1px solid rgba(148,163,184,.3)}
     .governmentProgress span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#38bdf8,#4ade80)}
+    .governmentScene{position:relative;min-height:250px;margin:12px 0;padding:18px;border:1px solid rgba(96,165,250,.55);border-radius:18px;overflow:hidden;background:linear-gradient(180deg,#111827 0 62%,#293548 62% 100%);box-shadow:inset 0 0 50px rgba(0,0,0,.58)}
+    .governmentScene::before{content:"";position:absolute;left:50%;top:-28px;width:180px;height:110px;transform:translateX(-50%);background:radial-gradient(ellipse,rgba(254,240,138,.28),transparent 68%);pointer-events:none}
+    .governmentSceneTitle{position:relative;z-index:2;font-size:12px;font-weight:950;letter-spacing:.13em;text-transform:uppercase;color:#93c5fd}
+    .interrogationCast{position:absolute;inset:44px 18px 18px;display:grid;grid-template-columns:1fr 1.35fr 1fr;align-items:end;gap:8px}
+    .interrogationActor{text-align:center;font-weight:900;color:#e2e8f0;text-shadow:0 2px 5px #000}
+    .interrogationActor .person{display:block;font-size:48px;filter:drop-shadow(0 8px 5px rgba(0,0,0,.55))}
+    .interrogationActor.soldier .person{font-size:58px}
+    .interrogationTable{height:62px;border:2px solid #64748b;border-radius:8px 8px 2px 2px;background:linear-gradient(#475569,#1e293b);box-shadow:0 9px 0 #0f172a}
+    .cuffBadge{display:inline-flex;margin-top:5px;padding:4px 8px;border-radius:999px;background:rgba(127,29,29,.88);border:1px solid #fb7185;font-size:11px}
+    .cuffBadge.open{background:rgba(20,83,45,.9);border-color:#4ade80}
+    .governmentAnswerGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}
+    .governmentAnswerGrid button{min-height:58px;text-align:left;line-height:1.25}
+    .lockpickPanel{margin-top:12px;padding:12px;border:1px solid rgba(251,191,36,.48);border-radius:14px;background:rgba(35,27,9,.72)}
+    .lockpickTrack{position:relative;height:22px;margin:10px 0;border:1px solid #64748b;border-radius:999px;background:#07111f;overflow:hidden}
+    .lockpickTarget{position:absolute;top:0;bottom:0;border-radius:999px;background:rgba(74,222,128,.48);box-shadow:0 0 15px rgba(74,222,128,.48)}
+    .lockpickMarker{position:absolute;top:1px;width:5px;height:18px;border-radius:5px;background:#f8fafc;box-shadow:0 0 8px #fff;animation:lockpickSweep 1.4s linear infinite alternate}
+    @keyframes lockpickSweep{from{left:1%}to{left:98%}}
+    .governmentGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:12px 0;padding:8px;border:1px solid rgba(96,165,250,.45);border-radius:14px;background:#07111f}
+    .governmentGridCell{position:relative;aspect-ratio:1;border-radius:7px;background:#172234;border:1px solid rgba(100,116,139,.2);display:grid;place-items:center;font-size:22px}
+    .governmentGridCell.wall{background:repeating-linear-gradient(45deg,#334155,#334155 5px,#1e293b 5px,#1e293b 10px)}
+    .governmentGridCell.exit{background:rgba(20,83,45,.72);border-color:#4ade80}
+    .governmentGridCell.evac{background:rgba(6,78,59,.78);border-color:#34d399;box-shadow:inset 0 0 16px rgba(52,211,153,.2)}
+    .governmentGridCell.truck{background:rgba(30,64,175,.48);border-color:#60a5fa}
+    .governmentGridCell .stack{display:flex;gap:1px;align-items:center;justify-content:center;flex-wrap:wrap}
+    .governmentMovePad{display:grid;grid-template-columns:repeat(3,minmax(58px,90px));grid-template-areas:"x up x2" "left down right";gap:7px;justify-content:center;margin:12px 0}
+    .governmentMovePad button{min-height:52px;font-size:20px}
+    .governmentMovePad .up{grid-area:up}.governmentMovePad .left{grid-area:left}.governmentMovePad .down{grid-area:down}.governmentMovePad .right{grid-area:right}
+    .trainingMeters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+    .trainingMeter{padding:9px;border:1px solid rgba(96,165,250,.35);border-radius:10px;background:rgba(15,23,42,.78)}
+    .worldMapPrepChoice{display:flex!important;flex:1 1 210px;min-width:190px;max-width:100%;flex-direction:column;align-items:flex-start!important;gap:5px;text-align:left!important;white-space:normal!important;line-height:1.25}
+    .worldMapPrepChoice .prepChoiceName{display:block;font-size:15px;font-weight:950;color:#f8fafc}
+    .worldMapPrepChoice .prepChoiceMeta{display:block;font-size:12px;font-weight:850;color:#93c5fd}
+    .worldMapPrepChoice .prepChoicePerk{display:block;font-size:12px;font-weight:650;color:#cbd5e1}
+    @media(max-width:620px){.worldMapPrepChoice{flex-basis:100%;width:100%;min-width:0}}
+    @media(max-width:620px){.governmentAnswerGrid{grid-template-columns:1fr}.governmentScene{min-height:220px;padding:12px}.interrogationCast{inset:40px 8px 14px}.interrogationActor .person{font-size:38px}.interrogationActor.soldier .person{font-size:48px}.governmentGrid{gap:2px;padding:5px}.governmentGridCell{font-size:18px}}
     .missionVictoryHero{
       display:grid;
       grid-template-columns:minmax(0,1fr) auto;
@@ -2440,14 +2475,15 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V7.7</span> <span class="tag">Detention &amp; GONE ROGUE</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V7.8</span> <span class="tag">Immersive Detention &amp; Field Gear</span></div>
       <div class="sub">
         Real rounds kill and block capture. Rubber rounds weaken without killing. Tranq rounds finish a valid live capture.<br>
         Fresh non-Survival missions start on Rubber, and the loaded magazine is verified before every shot so the HUD can never say Rubber while firing Real.<br>
         Lethal kills leave visible bodies. Blood scent makes surviving tigers hunt harder and deal more damage; captures leave no blood scent.<br>
         Captured tigers remain in visible cages until mission end, then a skippable wildlife-recovery movie loads every cage onto a conservation truck.<br>
+        Pre-deployment secondaries are real field tools: Tranq Kit, Smoke Grenade, Med Drone, Signal Flare, and Shock Baton each have visible mission controls, limited charges, cooldowns, and gameplay effects.<br>
         Government trust, case review, and rescue funding now react to captures, lethal choices, and civilian safety. Clean missions can close an investigation.<br>
-        Funding suspension now leads to detention, questioning, and three rehabilitation missions—or an escape into permanent GONE ROGUE pursuit. Story progress is never erased.<br>
+        Funding suspension now opens a visible interrogation room with four answers per question. Players can pass into three playable rehabilitation exercises, or pick their handcuffs and physically escape into permanent GONE ROGUE pursuit. Story progress is never erased.<br>
         Survival is the only exception: Real ammunition only, no Rubber rounds, and no Capture option—kill every tiger to clear each wave.
       </div>
     </div>
@@ -2551,6 +2587,10 @@
             <span class="touchBtnIcon">↯</span>
             <span class="touchBtnLabel">Roll</span>
           </button>
+          <button class="touchBtn" id="touchSecondaryBtn" onclick="useSelectedMissionSecondary()">
+            <span class="touchBtnIcon">🎒</span>
+            <span class="touchBtnLabel">Gear</span>
+          </button>
         </div>
         <button class="touchBtn" id="touchCacheBtn" onclick="useNearestCache()">
           <span class="touchBtnIcon">📦</span>
@@ -2617,6 +2657,10 @@
             <span class="touchBtnIcon">🔁</span>
             <span class="touchBtnLabel">Real</span>
           </button>
+          <button class="touchBtn combatAux" id="touchCombatSecondaryBtn" onclick="useSelectedMissionSecondary()">
+            <span class="touchBtnIcon">🎒</span>
+            <span class="touchBtnLabel">Gear</span>
+          </button>
         </div>
       </div>
     </div>
@@ -2630,6 +2674,7 @@
         <button class="ghost" onclick="useRepairKit()">🧰 Repair</button>
         <button class="ghost" onclick="placeTrap()">🪤 Trap</button>
         <button class="ghost" id="fieldRollBtn" onclick="rollDodge()">↯ Roll</button>
+        <button class="ghost" id="secondaryActionBtn" onclick="useSelectedMissionSecondary()">🎒 Secondary</button>
       </div>
       <div class="row combatButtons" id="combatButtons">
         <button class="warn" id="combatAttackBtn" data-attack-btn>🔫 Attack</button>
@@ -2640,6 +2685,7 @@
         <button class="ghost" id="combatNextWeaponBtn" onclick="cycleWeapon(1)">Weapon ▶️</button>
         <button class="ghost" id="combatRollBtn" onclick="rollDodge()">Roll</button>
         <button class="ghost" id="combatAmmoModeBtn" onclick="toggleActiveAmmoMode()">🔴 Real Ammo</button>
+        <button class="ghost" id="combatSecondaryActionBtn" onclick="useSelectedMissionSecondary()">🎒 Secondary</button>
         <button class="ghost" onclick="endBattle('RETREAT')">↩️ Retreat</button>
       </div>
     </div>
@@ -3321,11 +3367,11 @@
   </div>
 </div>
 
-<!-- V7.7 Detention and GONE ROGUE -->
+<!-- V7.8 Immersive Detention and Field Gear -->
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V7.7 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V7.8 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3366,13 +3412,14 @@
 </div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5047-detention-gone-rogue"></script>
-  <script src="./ammo-modes.js?v=5047-detention-gone-rogue"></script>
-  <script src="./government-policy.js?v=5047-detention-gone-rogue"></script>
-  <script src="./game.js?v=5047-detention-gone-rogue"></script>
+  <script src="./extraction-geometry.js?v=5048-immersive-government"></script>
+  <script src="./ammo-modes.js?v=5048-immersive-government"></script>
+  <script src="./government-policy.js?v=5048-immersive-government"></script>
+  <script src="./game.js?v=5048-immersive-government"></script>
+  <script src="./field-systems.js?v=5048-immersive-government"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
-  <script src="./squad-coop.js?v=5047-detention-gone-rogue"></script>
-  <script src="./extraction-qa.js?v=5047-detention-gone-rogue"></script>
+  <script src="./squad-coop.js?v=5048-immersive-government"></script>
+  <script src="./extraction-qa.js?v=5048-immersive-government"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

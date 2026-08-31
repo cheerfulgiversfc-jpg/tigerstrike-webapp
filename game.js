@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5047";
+const TS_BUILD = "5048";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -5198,7 +5198,7 @@ function renderGovernmentConsequence(){
   if(program.consequenceStage==="ESCAPE"){
     const task=GOVERNMENT_ESCAPE_STEPS[program.escapeStep]||GOVERNMENT_ESCAPE_STEPS[0];
     body.innerHTML=`<div class="governmentStepKicker">Detention Escape • Step ${Math.min(3,program.escapeStep+1)} of 3</div><div class="governmentStepTitle">Breakout in Progress</div><div class="governmentDecisionWarning"><b>Current escape objective:</b><br>${rewardEscapeHtml(task)}</div><div class="governmentProgress"><span style="width:${Math.round((program.escapeStep/3)*100)}%"></span></div><div class="hudLine">Completing the escape preserves progress but permanently activates GONE ROGUE consequences.</div>`;
-    actions.innerHTML=`<button class="danger" type="button" onclick="advanceGovernmentEscape()">Complete Escape Step ${Math.min(3,program.escapeStep+1)}</button>`;
+    actions.innerHTML=`<button class="danger" type="button" disabled>Interactive escape loading…</button>`;
     return;
   }
   if(program.consequenceStage==="REHABILITATION"){
@@ -5206,7 +5206,7 @@ function renderGovernmentConsequence(){
     const task=step.tasks?.[program.rehabilitationTaskStep]||step.tasks?.[0]||"Complete field task";
     const completedTasks=(program.rehabilitationStep*3)+program.rehabilitationTaskStep;
     body.innerHTML=`<div class="governmentStepKicker">Rehabilitation Mission ${Math.min(3,program.rehabilitationStep+1)} of 3 • Task ${Math.min(3,program.rehabilitationTaskStep+1)} of 3</div><div class="governmentStepTitle">${rewardEscapeHtml(step.title)}</div><div class="governmentStepText">${rewardEscapeHtml(step.prompt)}</div><div class="governmentDecisionWarning"><b>Current field task:</b><br>${rewardEscapeHtml(task)}</div><div class="governmentProgress"><span style="width:${Math.round((completedTasks/9)*100)}%"></span></div><div class="hudLine">All nine field tasks must be completed. Finishing the program restores trust, closes the case, and returns government rescue funding. Story progress and inventory remain safe.</div>`;
-    actions.innerHTML=`<button class="good" type="button" onclick="completeGovernmentRehabilitationStep()">Complete Task ${Math.min(3,program.rehabilitationTaskStep+1)}</button>`;
+    actions.innerHTML=`<button class="good" type="button" disabled>Playable training mission loading…</button>`;
     return;
   }
   if(program.consequenceStage==="ESCAPE_CONFIRM"){
@@ -5261,39 +5261,8 @@ function answerGovernmentQuestion(cooperative=true){
   renderGovernmentConsequence();
 }
 function completeGovernmentRehabilitationStep(){
-  const program=ensureGovernmentProgramState(S);
-  if(program.consequenceStage!=="REHABILITATION")return;
-  program.rehabilitationTaskStep+=1;
-  if(program.rehabilitationTaskStep<3){
-    save(true);
-    renderGovernmentConsequence();
-    return;
-  }
-  program.rehabilitationTaskStep=0;
-  program.rehabilitationStep+=1;
-  if(program.rehabilitationStep<GOVERNMENT_REHABILITATION_STEPS.length){
-    save(true);
-    renderGovernmentConsequence();
-    return;
-  }
-  program.rehabilitationStep=3;
-  program.rehabilitationTaskStep=0;
-  program.rehabilitationsCompleted+=1;
-  const cooperation=clamp(Math.floor(Number(program.questioningScore||0)),0,6);
-  program.reviewPoints=Math.min(program.reviewPoints,Math.max(12,24-cooperation));
-  S.trust=Math.max(Math.round(Number(S.trust||0)),60+(cooperation*3));
-  program.path="PROGRAM";
-  program.consequenceStage="CLEAR";
-  program.activeCaseId="";
-  program.caseOpenedAt=0;
-  program.cleanMissionStreak=0;
-  program.lastResolution=`Rehabilitation completed ${new Date().toISOString()}`;
-  program.status=governmentStatusFor(program.reviewPoints,S.trust);
-  S.lastGovernmentAudit={ runId:`rehab:${Date.now()}`, mode:"Government", exempt:false, status:program.status, statusLabel:GOVERNMENT_PROGRAM_STATUS[program.status]?.label||"Good Standing", funding:0, reviewPoints:program.reviewPoints, reviewDelta:0, trust:S.trust, trustDelta:0, captures:0, kills:0, civDead:0, clean:true, caseId:"" };
-  save(true);
-  toast("Rehabilitation complete. Government standing and rescue funding restored.");
-  closeGovernmentConsequence();
-  renderGovernmentProgramCard(S.lastGovernmentAudit);
+  toast("Rehabilitation must be earned inside the three playable field-training missions.");
+  renderGovernmentConsequence();
 }
 function beginGovernmentEscape(){
   const program=ensureGovernmentProgramState(S);
@@ -5313,25 +5282,8 @@ function confirmGovernmentEscape(){
   renderGovernmentConsequence();
 }
 function advanceGovernmentEscape(){
-  const program=ensureGovernmentProgramState(S);
-  if(program.consequenceStage!=="ESCAPE")return;
-  program.escapeStep+=1;
-  if(program.escapeStep<GOVERNMENT_ESCAPE_STEPS.length){
-    save(true);
-    renderGovernmentConsequence();
-    return;
-  }
-  program.path="ROGUE";
-  program.consequenceStage="CLEAR";
-  program.status="GONE_ROGUE";
-  program.rogueSince=Date.now();
-  program.lastResolution="Escaped government detention and entered GONE ROGUE status.";
-  program.activeCaseId=program.activeCaseId||`ROGUE-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-  S.trust=Math.min(Math.round(Number(S.trust||0)),15);
-  save(true);
-  toast("GONE ROGUE: government grants stopped and response squads activated.");
+  toast("Escape progress only advances by moving your soldier to the service exit.");
   renderGovernmentConsequence();
-  renderGovernmentProgramCard();
 }
 function guardGovernmentDeployment(){
   if(!governmentConsequencePending(S))return false;
@@ -12208,7 +12160,7 @@ function toggleWorldMapDebugInfo(){
 function worldMapPrepButtonHtml(kind, item, selectedId, labelExtra=""){
   const active = item.id === selectedId;
   const icon = item.icon ? `${item.icon} ` : "";
-  return `<button class="${active ? "good" : "ghost"}" type="button" onclick="setWorldMapPrep('${worldMapEsc(kind)}','${worldMapEsc(item.id)}')"><b>${worldMapEsc(icon)}${worldMapEsc(item.name)}</b>${labelExtra ? `<span class="small">${worldMapEsc(labelExtra)}</span>` : ""}${item.perk ? `<span class="small">${worldMapEsc(item.perk)}</span>` : ""}</button>`;
+  return `<button class="${active ? "good" : "ghost"} worldMapPrepChoice" type="button" onclick="setWorldMapPrep('${worldMapEsc(kind)}','${worldMapEsc(item.id)}')"><span class="prepChoiceName">${worldMapEsc(icon)}${worldMapEsc(item.name)}</span>${labelExtra ? `<span class="prepChoiceMeta">${worldMapEsc(labelExtra)}</span>` : ""}${item.perk ? `<span class="prepChoicePerk">${worldMapEsc(item.perk)}</span>` : ""}</button>`;
 }
 function worldMapPrepPanelHtml(state=S){
   const prep = ensureWorldMapPrepState(state);
@@ -14705,6 +14657,14 @@ const DEFAULT = {
   missionTigerSpawnControl:null,
   _missionTigerInitialCount:0,
   settlementDefense:null,
+  missionSecondary:null,
+  secondarySmokeUntil:0,
+  secondaryFlareUntil:0,
+  secondaryDroneUntil:0,
+  secondaryShockUntil:0,
+  secondaryDroneTarget:null,
+  secondaryShockTarget:null,
+  secondaryTranqFx:null,
 
   scanPing:0,
   scanTargetTigerId:null,
@@ -41072,6 +41032,7 @@ function deploy(opts={}){
   S.stats.trapsPlaced = 0;
   S.stats.trapsTriggered = 0;
   beginMissionStatRun("deploy");
+  window.TigerFieldSystems?.resetMissionSecondaryForMission?.(S);
   S._missionStartAt = Date.now();
   S.arcadeMissionStartAt = 0;
   S.arcadeMissionLimitSec = 0;
@@ -44399,7 +44360,7 @@ function tickCiviliansAndThreats(){
       const nearbySupport = (S.supportUnits || []).filter(unit => dist(unit.x, unit.y, best.x, best.y) < 96).length;
       const guardMult = nearbySupport ? clamp(1 - nearbySupport * 0.35, 0.3, 1) : 1;
       const protectMult = S._protectTicks > 0 ? 0.45 : 1;
-      const smokeMult = squadAbilityActive("smoke_screen", now, S) ? 0.56 : 1;
+      const smokeMult = (squadAbilityActive("smoke_screen", now, S) || now < Number(S.secondarySmokeUntil || 0)) ? 0.32 : 1;
       const shieldMult = civilianShielded(best) ? 0 : 1;
       const personaDmgMul = best.aiState === "panicked" ? 1.08 : (best.aiState === "cooperative" ? 0.94 : 1.12);
       const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * smokeMult * personaDmgMul * perkCivMul() * storyCivilianDamageMul() * liveOpsMissionModifierValue("civilianDamageMul", 1, S);
@@ -45998,6 +45959,7 @@ function fieldPounceTarget(t){
 
 function startTigerFieldPounce(t, target, targetKind, now=Date.now()){
   if(!t || !target || S.inBattle || S.paused || S.gameOver || S.missionEnded) return false;
+  if(now < Number(S.secondarySmokeUntil || 0) && dist(t.x, t.y, S.me.x, S.me.y) <= 320) return false;
   if(now < Number(t._fieldPounceCooldownUntil || 0)) return false;
   const d = dist(t.x, t.y, target.x, target.y);
   if(d > (targetKind === "player" ? 142 : 128)) return false;
@@ -50341,6 +50303,7 @@ function renderHUD(){
   if(cacheBtn){
     cacheBtn.disabled = S.paused || S.inBattle || S.missionEnded || S.gameOver || missionTwistBlackoutActive(Date.now()) || !nearestCacheInteractable(132);
   }
+  window.TigerFieldSystems?.renderSecondaryHud?.(S);
 
   document.getElementById("mapTxt").innerText = currentMap().name;
 
@@ -62328,6 +62291,7 @@ function draw(){
         if(entityDrawOk){
           safeTick("drawExtractionSequenceMarker", ()=>drawExtractionSequenceMarker(Date.now()));
           safeTick("drawSettlementDefenseCore", ()=>drawSettlementDefenseCore(Date.now()));
+          safeTick("drawMissionSecondaryEffects", ()=>window.TigerFieldSystems?.drawMissionSecondaryEffects?.(ctx, S, Date.now()));
         }
         if(entityDrawOk && window.TigerTutorial?.isRunning){
           safeTick("drawTutorialStepWorldHighlight", ()=>drawTutorialStepWorldHighlight(Date.now()));
