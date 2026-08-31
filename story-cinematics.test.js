@@ -5,6 +5,7 @@ const cinema=require("./story-cinematics");
 
 const game=fs.readFileSync("game.js","utf8");
 const html=fs.readFileSync("index.html","utf8");
+const source=fs.readFileSync("story-cinematics.js","utf8");
 
 test("Mission 1 opening is a timed five-scene in-engine movie",()=>{
   assert.equal(cinema.SCENES.length,5);
@@ -29,4 +30,12 @@ test("player exposes captions, pause, replay, skip, and Story Journal replay",()
   assert(game.includes('["Mission 1 Movie","replayStoryMissionOneCinematic()"]'));
   assert(game.includes("TigerStoryCinema?.open"));
   assert(game.includes("TigerStoryCinema?.stop"));
+});
+
+test("polished attack faces civilians and deploys two soldiers from the helicopter",()=>{
+  assert(source.includes("drawTiger(c,tigerX,401,1.2,elapsed/130,-1)"));
+  assert(source.includes("const drop1=")&&source.includes("drop2="));
+  assert(source.includes("c.lineTo(s1.x,s1.y-46)")&&source.includes("c.lineTo(s2.x,s2.y-46)"));
+  assert(source.includes('drawSoldier(c,500,390')&&source.includes('drawSoldier(c,565,394'));
+  assert(source.includes('c.arc(-4,-21,1.8')&&source.includes('c.arc(-4,-25,1.8'));
 });

@@ -7,7 +7,7 @@
     Object.freeze({id:"dawn",start:0,end:4200,kicker:"BORDER JUNGLE • 06:12 AM",caption:"The village woke to another quiet morning at the edge of tiger country."}),
     Object.freeze({id:"patrol",start:4200,end:8500,kicker:"EASTERN VILLAGE ROAD",caption:"Villager: “The rescue patrol said this road was safe.”"}),
     Object.freeze({id:"attack",start:8500,end:14000,kicker:"EMERGENCY CHANNEL OPEN",caption:"Village radio: “Mayday! A tiger is inside the village—people are trapped!”"}),
-    Object.freeze({id:"arrival",start:14000,end:20000,kicker:"TIGER STRIKE RESPONSE",caption:"Commander Vale: “Agent, protect the civilians. Use nonlethal force if you can.”"}),
+    Object.freeze({id:"arrival",start:14000,end:20000,kicker:"TIGER STRIKE RESPONSE",caption:"Commander Vale: “Tiger Strike team, protect the civilians. Use nonlethal force if you can.”"}),
     Object.freeze({id:"mission",start:20000,end:DURATION,kicker:"MISSION 1 • FIRST RESPONSE",caption:"Escort both villagers to safety, then secure the tiger threat."}),
   ]);
   const clamp=(value,min,max)=>Math.max(min,Math.min(max,Number(value)||0));
@@ -33,13 +33,13 @@
     c.save();c.translate(x,y);c.scale(scale,scale);c.fillStyle="#6b4423";c.fillRect(-7,12,14,42);c.fillStyle="#0f6b3f";c.beginPath();c.arc(-18,2,25,0,Math.PI*2);c.arc(15,-5,29,0,Math.PI*2);c.arc(0,-25,27,0,Math.PI*2);c.fill();c.fillStyle="#22c55e";c.beginPath();c.arc(5,-29,16,0,Math.PI*2);c.fill();c.restore();
   }
   function drawCivilian(c,x,y,scale=1,run=0,color="#f59e0b"){
-    c.save();c.translate(x,y);c.scale(scale,scale);c.lineCap="round";c.strokeStyle="#172033";c.lineWidth=7;c.beginPath();c.moveTo(0,21);c.lineTo(-9+run*8,43);c.moveTo(1,21);c.lineTo(12-run*8,43);c.stroke();c.fillStyle=color;rounded(c,-15,-8,30,34,8);c.fill();c.strokeStyle="#d99b6c";c.lineWidth=6;c.beginPath();c.moveTo(-13,2);c.lineTo(-25-run*7,21);c.moveTo(13,2);c.lineTo(25+run*7,18);c.stroke();c.fillStyle="#8b5e3c";c.beginPath();c.arc(0,-21,13,0,Math.PI*2);c.fill();c.fillStyle="#18212f";c.beginPath();c.arc(0,-25,13,Math.PI,Math.PI*2);c.fill();c.restore();
+    c.save();c.translate(x,y);c.scale(scale,scale);c.lineCap="round";c.strokeStyle="#172033";c.lineWidth=7;c.beginPath();c.moveTo(0,21);c.lineTo(-9+run*8,43);c.moveTo(1,21);c.lineTo(12-run*8,43);c.stroke();c.fillStyle=color;rounded(c,-15,-8,30,34,8);c.fill();c.strokeStyle="#d99b6c";c.lineWidth=6;c.beginPath();c.moveTo(-13,2);c.lineTo(-25-run*7,21);c.moveTo(13,2);c.lineTo(25+run*7,18);c.stroke();c.fillStyle="#b77950";c.beginPath();c.arc(0,-21,13,0,Math.PI*2);c.fill();c.fillStyle="#18212f";c.beginPath();c.arc(0,-25,13,Math.PI,Math.PI*2);c.fill();c.fillStyle="#111827";c.beginPath();c.arc(-4,-21,1.8,0,Math.PI*2);c.arc(4,-21,1.8,0,Math.PI*2);c.fill();c.strokeStyle="#5b2d24";c.lineWidth=1.8;c.beginPath();c.arc(0,-16,4,.15,Math.PI-.15);c.stroke();c.restore();
   }
-  function drawSoldier(c,x,y,scale=1,run=0){
-    c.save();c.translate(x,y);c.scale(scale,scale);c.lineCap="round";c.strokeStyle="#18212f";c.lineWidth=8;c.beginPath();c.moveTo(-5,22);c.lineTo(-13+run*7,49);c.moveTo(6,22);c.lineTo(14-run*7,49);c.stroke();c.fillStyle="#3f5c35";rounded(c,-18,-12,36,42,8);c.fill();c.fillStyle="#202c20";c.fillRect(-18,9,36,8);c.strokeStyle="#1f2937";c.lineWidth=7;c.beginPath();c.moveTo(-10,0);c.lineTo(-29-run*4,22);c.moveTo(11,1);c.lineTo(30+run*4,18);c.stroke();c.fillStyle="#9a684a";c.beginPath();c.arc(0,-26,14,0,Math.PI*2);c.fill();c.fillStyle="#40523a";c.beginPath();c.arc(0,-31,17,Math.PI,Math.PI*2);c.lineTo(17,-27);c.lineTo(-17,-27);c.closePath();c.fill();c.strokeStyle="#111827";c.lineWidth=6;c.beginPath();c.moveTo(9,4);c.lineTo(39,11);c.stroke();c.restore();
+  function drawSoldier(c,x,y,scale=1,run=0,uniform="#3f5c35"){
+    c.save();c.translate(x,y);c.scale(scale,scale);c.lineCap="round";c.strokeStyle="#18212f";c.lineWidth=8;c.beginPath();c.moveTo(-5,22);c.lineTo(-13+run*7,49);c.moveTo(6,22);c.lineTo(14-run*7,49);c.stroke();c.fillStyle=uniform;rounded(c,-18,-12,36,42,8);c.fill();c.fillStyle="#202c20";c.fillRect(-18,9,36,8);c.strokeStyle="#1f2937";c.lineWidth=7;c.beginPath();c.moveTo(-10,0);c.lineTo(-29-run*4,22);c.moveTo(11,1);c.lineTo(30+run*4,18);c.stroke();c.fillStyle="#a87352";c.beginPath();c.arc(0,-26,14,0,Math.PI*2);c.fill();c.fillStyle="#40523a";c.beginPath();c.arc(0,-31,17,Math.PI,Math.PI*2);c.lineTo(17,-27);c.lineTo(-17,-27);c.closePath();c.fill();c.fillStyle="#0f172a";c.beginPath();c.arc(-4,-25,1.8,0,Math.PI*2);c.arc(4,-25,1.8,0,Math.PI*2);c.fill();c.strokeStyle="#5b2d24";c.lineWidth=1.8;c.beginPath();c.moveTo(-3,-19);c.quadraticCurveTo(0,-17,3,-19);c.stroke();c.strokeStyle="#111827";c.lineWidth=6;c.beginPath();c.moveTo(9,4);c.lineTo(39,11);c.stroke();c.restore();
   }
-  function drawTiger(c,x,y,scale=1,step=0){
-    c.save();c.translate(x,y);c.scale(scale,scale);const leg=Math.sin(step)*7;c.strokeStyle="#e97817";c.lineWidth=12;c.lineCap="round";c.beginPath();c.moveTo(-22,18);c.lineTo(-29+leg,43);c.moveTo(20,18);c.lineTo(28-leg,43);c.stroke();c.fillStyle="#f38b20";c.beginPath();c.ellipse(0,0,53,29,0,0,Math.PI*2);c.fill();c.beginPath();c.arc(48,-10,25,0,Math.PI*2);c.fill();c.beginPath();c.moveTo(35,-29);c.lineTo(41,-48);c.lineTo(54,-31);c.moveTo(53,-31);c.lineTo(67,-47);c.lineTo(70,-23);c.fill();c.strokeStyle="#de7814";c.lineWidth=10;c.beginPath();c.moveTo(-47,-5);c.quadraticCurveTo(-88,-22,-82,17);c.stroke();c.strokeStyle="#1f2937";c.lineWidth=5;[-30,-12,7,25].forEach((stripe)=>{c.beginPath();c.moveTo(stripe,-21);c.lineTo(stripe+7,10);c.stroke();});c.lineWidth=3;c.beginPath();c.moveTo(41,-23);c.lineTo(49,-6);c.moveTo(57,-27);c.lineTo(58,-8);c.stroke();c.fillStyle="#fff7ed";c.beginPath();c.ellipse(61,0,14,10,0,0,Math.PI*2);c.fill();c.fillStyle="#111827";c.beginPath();c.arc(58,-14,3,0,Math.PI*2);c.arc(72,-1,3,0,Math.PI*2);c.fill();c.restore();
+  function drawTiger(c,x,y,scale=1,step=0,direction=1){
+    c.save();c.translate(x,y);c.scale(scale*(direction<0?-1:1),scale);const leg=Math.sin(step)*7;c.strokeStyle="#e97817";c.lineWidth=12;c.lineCap="round";c.beginPath();c.moveTo(-22,18);c.lineTo(-29+leg,43);c.moveTo(20,18);c.lineTo(28-leg,43);c.stroke();c.fillStyle="#f38b20";c.beginPath();c.ellipse(0,0,53,29,0,0,Math.PI*2);c.fill();c.beginPath();c.arc(48,-10,25,0,Math.PI*2);c.fill();c.beginPath();c.moveTo(35,-29);c.lineTo(41,-48);c.lineTo(54,-31);c.moveTo(53,-31);c.lineTo(67,-47);c.lineTo(70,-23);c.fill();c.strokeStyle="#de7814";c.lineWidth=10;c.beginPath();c.moveTo(-47,-5);c.quadraticCurveTo(-88,-22,-82,17);c.stroke();c.strokeStyle="#1f2937";c.lineWidth=5;[-30,-12,7,25].forEach((stripe)=>{c.beginPath();c.moveTo(stripe,-21);c.lineTo(stripe+7,10);c.stroke();});c.lineWidth=3;c.beginPath();c.moveTo(41,-23);c.lineTo(49,-6);c.moveTo(57,-27);c.lineTo(58,-8);c.stroke();c.fillStyle="#fff7ed";c.beginPath();c.ellipse(61,0,14,10,0,0,Math.PI*2);c.fill();c.fillStyle="#111827";c.beginPath();c.arc(58,-14,3,0,Math.PI*2);c.arc(72,-1,3,0,Math.PI*2);c.fill();c.strokeStyle="#7f1d1d";c.lineWidth=2;c.beginPath();c.moveTo(64,5);c.quadraticCurveTo(70,10,77,5);c.stroke();c.restore();
   }
   function drawHelicopter(c,x,y,scale=1){
     c.save();c.translate(x,y);c.scale(scale,scale);c.strokeStyle="#111827";c.lineWidth=5;c.beginPath();c.moveTo(-70,-30);c.lineTo(54,-30);c.moveTo(-8,-29);c.lineTo(-8,-54);c.moveTo(-58,-54);c.lineTo(43,-54);c.stroke();c.fillStyle="#334a3a";c.beginPath();c.ellipse(0,0,58,27,0,0,Math.PI*2);c.fill();c.fillRect(48,-8,75,13);c.fillStyle="#6b8c78";c.beginPath();c.moveTo(118,-8);c.lineTo(142,-30);c.lineTo(136,15);c.closePath();c.fill();c.fillStyle="#93c5fd";c.beginPath();c.ellipse(22,-5,24,15,0,Math.PI,Math.PI*2);c.fill();c.strokeStyle="#1f2937";c.lineWidth=4;c.beginPath();c.moveTo(-30,22);c.lineTo(-38,39);c.lineTo(35,39);c.lineTo(29,23);c.stroke();c.restore();
@@ -52,14 +52,20 @@
     drawTree(c,85,265,.8);drawTree(c,350,250,1);drawTree(c,850,245,.9);drawHouse(c,220,280,1.05,true);drawHouse(c,748,265,1.1,true);
     c.fillStyle="#475569";c.fillRect(0,360,w,145);c.strokeStyle="#facc15";c.lineWidth=6;c.setLineDash([36,26]);c.beginPath();c.moveTo(0,432);c.lineTo(w,432);c.stroke();c.setLineDash([]);
     c.fillStyle="#315a3c";c.fillRect(0,505,w,35);
-    let civ1x=450,civ2x=535,tigerX=1080,soldierX=-120,heliX=-260,heliY=90;
+    let civ1x=450,civ2x=535,tigerX=1080,heliX=-260,heliY=90;
     if(scene.id==="patrol"){civ1x=lerp(410,565,ease(p));civ2x=lerp(500,650,ease(p));}
     if(scene.id==="attack"){civ1x=lerp(565,300,ease(p));civ2x=lerp(650,375,ease(p));tigerX=lerp(1040,655,ease(Math.min(1,p*1.25)));}
-    if(scene.id==="arrival"){civ1x=300;civ2x=375;tigerX=650;heliX=lerp(-240,640,ease(Math.min(1,p*1.3)));heliY=lerp(65,135,ease(p));soldierX=lerp(-100,485,ease(Math.max(0,(p-.42)/.58)));}
-    if(scene.id==="mission"){civ1x=290;civ2x=365;tigerX=700;soldierX=500;heliX=760;heliY=125;}
+    if(scene.id==="arrival"){civ1x=300;civ2x=375;tigerX=650;heliX=lerp(-240,640,ease(Math.min(1,p*1.3)));heliY=lerp(65,135,ease(p));}
+    if(scene.id==="mission"){civ1x=290;civ2x=365;tigerX=700;heliX=lerp(640,1120,ease(p));heliY=lerp(135,70,ease(p));}
     drawCivilian(c,civ1x,390,1,Math.sin(elapsed/120),"#f59e0b");drawCivilian(c,civ2x,395,.94,-Math.sin(elapsed/115),"#38bdf8");
-    if(scene.id==="attack"||scene.id==="arrival"||scene.id==="mission")drawTiger(c,tigerX,401,1.2,elapsed/130);
-    if(scene.id==="arrival"||scene.id==="mission"){drawHelicopter(c,heliX,heliY,.85);drawSoldier(c,soldierX,390,1.08,Math.sin(elapsed/110));}
+    if(scene.id==="attack"||scene.id==="arrival"||scene.id==="mission")drawTiger(c,tigerX,401,1.2,elapsed/130,-1);
+    if(scene.id==="arrival"){
+      drawHelicopter(c,heliX,heliY,.85);const drop1=ease((p-.28)/.38),drop2=ease((p-.46)/.38);const s1={x:lerp(heliX-28,500,drop1),y:lerp(heliY+48,390,drop1)},s2={x:lerp(heliX+34,565,drop2),y:lerp(heliY+48,394,drop2)};
+      if(p>.28){if(drop1<.99){c.strokeStyle="#dbeafe";c.lineWidth=3;c.beginPath();c.moveTo(heliX-28,heliY+22);c.lineTo(s1.x,s1.y-46);c.stroke();}drawSoldier(c,s1.x,s1.y,1.05,Math.sin(elapsed/110),"#3f5c35");}
+      if(p>.46){if(drop2<.99){c.strokeStyle="#dbeafe";c.lineWidth=3;c.beginPath();c.moveTo(heliX+34,heliY+22);c.lineTo(s2.x,s2.y-46);c.stroke();}drawSoldier(c,s2.x,s2.y,1.02,-Math.sin(elapsed/115),"#365f63");}
+    }else if(scene.id==="mission"){
+      drawHelicopter(c,heliX,heliY,.85);drawSoldier(c,500,390,1.08,Math.sin(elapsed/110),"#3f5c35");drawSoldier(c,565,394,1.04,-Math.sin(elapsed/115),"#365f63");
+    }
     if(scene.id==="attack"){
       c.fillStyle=`rgba(239,68,68,${.09+.08*Math.sin(elapsed/120)})`;c.fillRect(0,0,w,h);c.fillStyle="#fee2e2";c.font="900 28px system-ui";c.textAlign="center";c.fillText("⚠ TIGER INSIDE THE VILLAGE",w/2,80);
     }
