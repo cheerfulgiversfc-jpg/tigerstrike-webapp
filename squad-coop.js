@@ -222,8 +222,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V7.8 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V7.8 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.8 • Co-op Command");
+      ? `Tiger Strike V7.9 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V7.9 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.9 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -474,7 +474,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V7.8 Immersive Detention &amp; Field Gear</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Selected field gear now works inside missions. Government detention now includes a visible interrogation room, four-answer hearings, handcuff lock-picking, a playable escape, and three playable rehabilitation exercises. Story progress is never erased. Survival remains exempt from conduct audits.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V7.9 Story Cinema Preview</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Mission 1 now includes a skippable animated opening movie with moving characters and timed captions. Selected field gear and the playable government consequence systems remain active. Story progress is never erased.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>

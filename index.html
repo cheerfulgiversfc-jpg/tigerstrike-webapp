@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V7.8 (Immersive Detention &amp; Field Gear)</title>
+  <title>Tiger Strike 🐅 — V7.9 (Story Cinema Preview)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5048-immersive-government">
+  <link rel="stylesheet" href="./squad-coop.css?v=5049-story-cinema">
 
   <style>
     :root{
@@ -1122,6 +1122,18 @@
     }
     .storyIntroFooter{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
     .missionCinemaModal{width:min(720px,95vw)}
+    .storyMoviePlayer{display:none;position:relative;overflow:hidden;border:1px solid rgba(96,165,250,.72);border-radius:18px;background:#030712;box-shadow:0 22px 60px rgba(0,0,0,.5)}
+    .storyMovieCanvas{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#0b1120}
+    .storyMovieHud{position:absolute;z-index:2;inset:0 0 auto;pointer-events:none}
+    .storyMovieKicker{align-self:flex-start;margin:12px;padding:7px 10px;border-radius:999px;background:rgba(3,7,18,.78);border:1px solid rgba(147,197,253,.5);color:#bfdbfe;font-size:10px;font-weight:1000;letter-spacing:.1em}
+    .storyMovieCaptionWrap{min-height:54px;margin:0;padding:9px 12px;display:grid;place-items:center;background:rgba(3,7,18,.96);border-top:1px solid rgba(255,255,255,.18);text-align:center}
+    .storyMovieCaption{font-size:14px;font-weight:900;line-height:1.35;color:#fff;text-shadow:0 2px 3px #000}
+    .storyMovieProgressTrack{height:5px;background:rgba(148,163,184,.25)}
+    .storyMovieProgress{height:100%;width:0;background:linear-gradient(90deg,#22c55e,#60a5fa);transition:width .12s linear}
+    .storyMovieControls{display:flex;align-items:center;gap:8px;padding:9px 10px;background:rgba(3,7,18,.94)}
+    .storyMovieControls button{min-height:38px;padding:7px 10px}
+    .storyMovieTime{margin-left:auto;color:#cbd5e1;font-size:11px;font-weight:850}
+    @media(max-width:620px){.storyMovieKicker{margin:8px;font-size:9px}.storyMovieCaptionWrap{min-height:50px;margin:0;padding:7px 9px}.storyMovieCaption{font-size:12px}.storyMovieControls{padding:7px}.storyMovieControls button{min-height:36px;font-size:12px}}
     .missionCinemaHero{
       position:relative;
       overflow:hidden;
@@ -2475,13 +2487,14 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V7.8</span> <span class="tag">Immersive Detention &amp; Field Gear</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V7.9</span> <span class="tag">Story Cinema Preview</span></div>
       <div class="sub">
         Real rounds kill and block capture. Rubber rounds weaken without killing. Tranq rounds finish a valid live capture.<br>
         Fresh non-Survival missions start on Rubber, and the loaded magazine is verified before every shot so the HUD can never say Rubber while firing Real.<br>
         Lethal kills leave visible bodies. Blood scent makes surviving tigers hunt harder and deal more damage; captures leave no blood scent.<br>
         Captured tigers remain in visible cages until mission end, then a skippable wildlife-recovery movie loads every cage onto a conservation truck.<br>
         Pre-deployment secondaries are real field tools: Tranq Kit, Smoke Grenade, Med Drone, Signal Flare, and Shock Baton each have visible mission controls, limited charges, cooldowns, and gameplay effects.<br>
+        Story Mission 1 now opens with a real 26-second in-engine movie: moving villagers, a tiger emergency, the soldier response, timed captions, pause, replay, and skip controls.<br>
         Government trust, case review, and rescue funding now react to captures, lethal choices, and civilian safety. Clean missions can close an investigation.<br>
         Funding suspension now opens a visible interrogation room with four answers per question. Players can pass into three playable rehabilitation exercises, or pick their handcuffs and physically escape into permanent GONE ROGUE pursuit. Story progress is never erased.<br>
         Survival is the only exception: Real ammunition only, no Rubber rounds, and no Capture option—kill every tiger to clear each wave.
@@ -2953,6 +2966,7 @@
       <div class="storyChoiceGrid" id="storyChoiceGrid"></div>
       <div class="row">
         <button class="good" id="storyContinueBtn" onclick="beginStoryMissionFromIntro()">🎮 Begin Mission</button>
+        <button class="ghost" id="storyCinematicReplayBtn" onclick="replayStoryMissionOneCinematic()">🎬 Watch Mission 1 Movie</button>
         <button class="ghost" onclick="startQuickTutorialFromIntro()">🧭 Quick Tutorial</button>
         <button class="ghost" onclick="skipStoryIntro()">Skip</button>
       </div>
@@ -2971,14 +2985,21 @@
       <button class="ghost" onclick="skipMissionCinematicIntro()">Skip</button>
     </div>
     <div class="modalBody">
-      <div class="missionCinemaHero">
+      <div class="storyMoviePlayer" id="storyMoviePlayer">
+        <canvas class="storyMovieCanvas" id="storyMovieCanvas" width="960" height="540" aria-label="Animated Story Mission 1 opening cinematic"></canvas>
+        <div class="storyMovieHud"><div class="storyMovieKicker" id="storyMovieKicker">BORDER JUNGLE</div></div>
+        <div class="storyMovieCaptionWrap"><div class="storyMovieCaption" id="storyMovieCaption">Opening story channel...</div></div>
+        <div class="storyMovieProgressTrack"><div class="storyMovieProgress" id="storyMovieProgress"></div></div>
+        <div class="storyMovieControls"><button class="ghost" id="storyMoviePlayBtn" onclick="toggleStoryMoviePlayback()">⏸ Pause</button><button class="ghost" id="storyMovieReplayBtn" onclick="replayCurrentStoryMovie()">↻ Replay</button><span class="storyMovieTime" id="storyMovieTime">1 / 26 sec</span></div>
+      </div>
+      <div class="missionCinemaHero" id="missionCinemaStaticHero">
         <div class="missionCinemaZone"></div>
         <div class="missionCinemaRoute"></div>
         <div class="missionCinemaTiger">🐅</div>
         <div class="missionCinemaTitle" id="missionCinemaTitle">Danger Zone</div>
         <div class="missionCinemaSubtitle" id="missionCinemaSubtitle">Briefing loading...</div>
       </div>
-      <div class="missionCinemaGrid">
+      <div class="missionCinemaGrid" id="missionCinemaGrid">
         <div class="missionCinemaStat"><span>Tiger Threat</span><b id="missionCinemaThreat">Unknown</b></div>
         <div class="missionCinemaStat"><span>Civilians</span><b id="missionCinemaCivilians">0</b></div>
         <div class="missionCinemaStat"><span>Extraction</span><b id="missionCinemaExtraction">Safe Zone</b></div>
@@ -2988,7 +3009,7 @@
       </div>
       <div class="missionCinemaTimeline" id="missionCinemaTimeline"></div>
       <div class="row" style="margin-top:12px">
-        <button class="good" onclick="continueMissionCinematicIntro()">Continue Briefing</button>
+        <button class="good" id="missionCinemaContinueBtn" onclick="continueMissionCinematicIntro()">Continue Briefing</button>
         <button class="ghost" onclick="skipMissionCinematicIntro()">Skip Cinematic</button>
       </div>
     </div>
@@ -3367,11 +3388,11 @@
   </div>
 </div>
 
-<!-- V7.8 Immersive Detention and Field Gear -->
+<!-- V7.9 Story Cinema Preview -->
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V7.8 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V7.9 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3412,14 +3433,15 @@
 </div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5048-immersive-government"></script>
-  <script src="./ammo-modes.js?v=5048-immersive-government"></script>
-  <script src="./government-policy.js?v=5048-immersive-government"></script>
-  <script src="./game.js?v=5048-immersive-government"></script>
-  <script src="./field-systems.js?v=5048-immersive-government"></script>
+  <script src="./extraction-geometry.js?v=5049-story-cinema"></script>
+  <script src="./ammo-modes.js?v=5049-story-cinema"></script>
+  <script src="./government-policy.js?v=5049-story-cinema"></script>
+  <script src="./game.js?v=5049-story-cinema"></script>
+  <script src="./story-cinematics.js?v=5049-story-cinema"></script>
+  <script src="./field-systems.js?v=5049-story-cinema"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
-  <script src="./squad-coop.js?v=5048-immersive-government"></script>
-  <script src="./extraction-qa.js?v=5048-immersive-government"></script>
+  <script src="./squad-coop.js?v=5049-story-cinema"></script>
+  <script src="./extraction-qa.js?v=5049-story-cinema"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5048";
+const TS_BUILD = "5049";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -27923,10 +27923,13 @@ function renderMissionCinematicIntro(card=currentMissionCardData()){
   if(timeline){
     timeline.innerHTML = data.beats.map((beat, idx)=>`<div class="missionCinemaBeat">${idx + 1}. ${missionCinemaSafeText(beat)}</div>`).join("");
   }
+  const continueBtn=document.getElementById("missionCinemaContinueBtn");
+  if(continueBtn) continueBtn.innerText="Continue Briefing";
+  window.TigerStoryCinema?.mount?.(card, data);
   return data;
 }
 function showMissionCinematicIntro(onDone=null, opts={}){
-  const card = currentMissionCardData();
+  const card = opts.card || currentMissionCardData();
   if(!opts.force && !shouldShowMissionCinematicIntro(card)) return false;
   const overlay = document.getElementById("missionCinemaOverlay");
   if(!overlay || !card?.mission) return false;
@@ -27938,11 +27941,13 @@ function showMissionCinematicIntro(onDone=null, opts={}){
   if(brief) brief.style.display = "none";
   setPaused(true, "mission-cinematic");
   overlay.style.display = "flex";
+  window.TigerStoryCinema?.open?.(card, data);
   setEventText(`🎬 Briefing: ${data.threat} • ${data.extraction}`, 4);
   syncGamepadFocus();
   return true;
 }
 function continueMissionCinematicIntro(){
+  window.TigerStoryCinema?.stop?.();
   const overlay = document.getElementById("missionCinemaOverlay");
   if(overlay) overlay.style.display = "none";
   const fn = __missionCinemaContinue;
@@ -27958,6 +27963,30 @@ function continueMissionCinematicIntro(){
 }
 function skipMissionCinematicIntro(){
   continueMissionCinematicIntro();
+}
+function storyMissionOneCinematicCard(){
+  const source=STORY_CAMPAIGN_OBJECTIVES[0]||{};
+  return {
+    mode:"Story",
+    total:STORY_CAMPAIGN_OBJECTIVES.length,
+    mission:{...source,number:1,storyVariant:STORY_VARIANTS.CAMPAIGN}
+  };
+}
+function replayStoryMissionOneCinematic(){
+  const storyOverlay=document.getElementById("storyIntroOverlay");
+  const returnToJournal=!!(storyOverlay&&storyOverlay.style.display==="flex");
+  if(storyOverlay) storyOverlay.style.display="none";
+  const shown=showMissionCinematicIntro(()=>{
+    if(returnToJournal&&storyOverlay){
+      setPaused(true,"story-cinematic");
+      storyOverlay.style.display="flex";
+    }else if(S.paused&&S.pauseReason==="mission-cinematic"){
+      setPaused(false,null);
+    }
+    syncGamepadFocus();
+  },{force:true,card:storyMissionOneCinematicCard(),preview:true});
+  if(!shown&&storyOverlay) storyOverlay.style.display="flex";
+  return shown;
 }
 function renderMissionCinematicOutroCard(summary={}){
   const wrap = document.getElementById("completeCinemaOutro");
@@ -33080,6 +33109,7 @@ function baseHqRoomData(roomId=__baseHqSelectedRoom){
       title:"Cinema Archive",
       desc:`Base Intel: ${factList[factIndex]}`,
       actions:[
+        ["Mission 1 Movie","replayStoryMissionOneCinematic()"],
         ["Story Journal","openStoryFromBaseHQ()"],
         ["Mission Briefing","openMissionBriefFromBaseHQ()"],
         ["Boss Seasons","openCinematicBossHuntFromBaseHQ()"],
@@ -62984,6 +63014,7 @@ window.repairWorldMapSupplyRoutes = repairWorldMapSupplyRoutes;
 window.closeMissionBrief = closeMissionBrief;
 window.continueMissionCinematicIntro = continueMissionCinematicIntro;
 window.skipMissionCinematicIntro = skipMissionCinematicIntro;
+window.replayStoryMissionOneCinematic = replayStoryMissionOneCinematic;
 window.selectArcadeBuildcraft = selectArcadeBuildcraft;
 
 window.nextMap = nextMap;
