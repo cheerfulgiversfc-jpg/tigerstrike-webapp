@@ -3,6 +3,7 @@
 
   const MOVIE_ID="story:campaign:1:opening";
   const DURATION=25500;
+  const TAP_DEDUPE_MS=260;
   const SCENES=Object.freeze([
     Object.freeze({id:"dawn",start:0,end:4200,kicker:"BORDER JUNGLE • 06:12 AM",caption:"The village woke to another quiet morning at the edge of tiger country."}),
     Object.freeze({id:"patrol",start:4200,end:8500,kicker:"EASTERN VILLAGE ROAD",caption:"Villager: “The rescue patrol said this road was safe.”"}),
@@ -23,6 +24,53 @@
     return card?.mode==="Story"&&Number(mission.number||0)===1&&(variant.includes("campaign")||variant.includes("story"));
   }
   function el(id){return root.document?.getElementById(id)||null;}
+  function consumeTapEvent(event){
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    event?.stopImmediatePropagation?.();
+  }
+  function bindTap(button,action){
+    if(!button||button.dataset.storyCinemaTapBound==="1")return false;
+    button.dataset.storyCinemaTapBound="1";
+    button.style.touchAction="manipulation";
+    button.style.pointerEvents="auto";
+    let lastTapAt=0;
+    const guard=(event)=>{
+      if(button.disabled){consumeTapEvent(event);return;}
+      const now=Date.now();
+      if(now-lastTapAt<TAP_DEDUPE_MS){consumeTapEvent(event);return;}
+      lastTapAt=now;
+      consumeTapEvent(event);
+      action();
+    };
+    const shield=(event)=>event?.stopPropagation?.();
+    button.addEventListener("pointerdown",shield,{capture:true,passive:false});
+    button.addEventListener("touchstart",shield,{capture:true,passive:true});
+    button.addEventListener("pointerup",guard,{capture:true,passive:false});
+    button.addEventListener("touchend",guard,{capture:true,passive:false});
+    button.addEventListener("click",guard,{capture:true,passive:false});
+    return true;
+  }
+  function bindControls(){
+    const actions={
+      storyMoviePlayBtn:()=>toggle(),
+      storyMovieReplayBtn:()=>replay(),
+      missionCinemaTopSkipBtn:()=>root.skipMissionCinematicIntro?.(),
+      missionCinemaBottomSkipBtn:()=>root.skipMissionCinematicIntro?.(),
+      missionCinemaContinueBtn:()=>root.continueMissionCinematicIntro?.(),
+    };
+    Object.entries(actions).forEach(([id,action])=>bindTap(el(id),action));
+    const overlay=el("missionCinemaOverlay");
+    if(overlay&&overlay.dataset.storyCinemaShieldBound!=="1"){
+      overlay.dataset.storyCinemaShieldBound="1";
+      overlay.style.pointerEvents="auto";
+      overlay.style.touchAction="manipulation";
+      ["pointerdown","pointerup","touchstart","touchend","click"].forEach((eventName)=>{
+        overlay.addEventListener(eventName,(event)=>event.stopPropagation(),{passive:true});
+      });
+    }
+    return Object.keys(actions).every((id)=>Boolean(el(id)?.dataset.storyCinemaTapBound));
+  }
   function rounded(context,x,y,w,h,r){
     const radius=Math.min(r,w/2,h/2);context.beginPath();context.moveTo(x+radius,y);context.arcTo(x+w,y,x+w,y+h,radius);context.arcTo(x+w,y+h,x,y+h,radius);context.arcTo(x,y+h,x,y,radius);context.arcTo(x,y,x+w,y,radius);context.closePath();
   }
@@ -85,12 +133,13 @@
     runtime.frame=root.requestAnimationFrame?.(renderFrame)||0;
   }
   function mount(card){
+    bindControls();
     const player=el("storyMoviePlayer"),staticHero=el("missionCinemaStaticHero"),grid=el("missionCinemaGrid"),timeline=el("missionCinemaTimeline"),replay=el("storyMovieReplayBtn");const active=supports(card);
     if(player)player.style.display=active?"block":"none";if(staticHero)staticHero.style.display=active?"none":"block";if(grid)grid.style.display=active?"none":"grid";if(timeline)timeline.style.display=active?"none":"grid";if(replay)replay.style.display=active?"inline-flex":"none";
     return active;
   }
   function open(card){
-    stop();if(!mount(card))return false;const canvas=el("storyMovieCanvas");if(!canvas)return false;const context=canvas.getContext("2d");runtime={card,context,startedAt:performance.now(),paused:false,pauseElapsed:0,ended:false,sceneId:"",frame:0};
+    stop();bindControls();if(!mount(card))return false;const canvas=el("storyMovieCanvas");if(!canvas)return false;const context=canvas.getContext("2d");runtime={card,context,startedAt:performance.now(),paused:false,pauseElapsed:0,ended:false,sceneId:"",frame:0};
     const continueBtn=el("missionCinemaContinueBtn"),play=el("storyMoviePlayBtn"),replayButton=el("storyMovieReplayBtn");if(continueBtn)continueBtn.textContent="🎮 Start Mission";if(play)play.textContent="⏸ Pause";if(replayButton)replayButton.style.display="inline-flex";
     if(root.S){root.S.storyCinematicsSeen=root.S.storyCinematicsSeen&&typeof root.S.storyCinematicsSeen==="object"?root.S.storyCinematicsSeen:{};root.S.storyCinematicsSeen[MOVIE_ID]=Date.now();try{root.save?.(true);}catch(e){}}
     updateUi(0,true);runtime.frame=root.requestAnimationFrame?.(renderFrame)||0;return true;
@@ -102,7 +151,8 @@
   }
   function replay(){if(!runtime)return;runtime.ended=false;runtime.paused=false;runtime.pauseElapsed=0;runtime.startedAt=performance.now();runtime.sceneId="";const button=el("storyMoviePlayBtn"),replayButton=el("storyMovieReplayBtn");if(button)button.textContent="⏸ Pause";if(replayButton)replayButton.style.display="inline-flex";updateUi(0,true);}
 
-  const api={MOVIE_ID,DURATION,SCENES,supports,sceneAt,sceneProgress,mount,open,stop,toggle,replay,drawScene};
+  const api={MOVIE_ID,DURATION,TAP_DEDUPE_MS,SCENES,supports,sceneAt,sceneProgress,bindTap,bindControls,mount,open,stop,toggle,replay,drawScene};
   root.TigerStoryCinema=api;root.toggleStoryMoviePlayback=toggle;root.replayCurrentStoryMovie=replay;
+  if(root.document?.readyState==="loading")root.document.addEventListener("DOMContentLoaded",bindControls,{once:true});else bindControls();
   if(typeof module!=="undefined"&&module.exports)module.exports=api;
 })(typeof window!=="undefined"?window:globalThis);

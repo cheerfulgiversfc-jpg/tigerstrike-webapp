@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V7.9.1 (Story Cinema Polish)</title>
+  <title>Tiger Strike 🐅 — V7.9.2 (Cinema Touch Repair)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5050-story-cinema-polish">
+  <link rel="stylesheet" href="./squad-coop.css?v=5051-cinema-touch-repair">
 
   <style>
     :root{
@@ -1122,6 +1122,26 @@
     }
     .storyIntroFooter{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
     .missionCinemaModal{width:min(720px,95vw)}
+    #missionCinemaOverlay{
+      z-index:11000;
+      pointer-events:auto;
+      touch-action:manipulation;
+      isolation:isolate;
+    }
+    #missionCinemaOverlay .missionCinemaModal,
+    #missionCinemaOverlay .modalTop,
+    #missionCinemaOverlay .modalBody,
+    #missionCinemaOverlay .storyMoviePlayer,
+    #missionCinemaOverlay .storyMovieControls,
+    #missionCinemaOverlay button{
+      pointer-events:auto;
+    }
+    #missionCinemaOverlay button{
+      position:relative;
+      z-index:5;
+      touch-action:manipulation;
+      -webkit-tap-highlight-color:rgba(96,165,250,.24);
+    }
     .storyMoviePlayer{display:none;position:relative;overflow:hidden;border:1px solid rgba(96,165,250,.72);border-radius:18px;background:#030712;box-shadow:0 22px 60px rgba(0,0,0,.5)}
     .storyMovieCanvas{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#0b1120}
     .storyMovieHud{position:absolute;z-index:2;inset:0 0 auto;pointer-events:none}
@@ -2487,7 +2507,7 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V7.9.1</span> <span class="tag">Story Cinema Polish</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V7.9.2</span> <span class="tag">Cinema Touch Repair</span></div>
       <div class="sub">
         Real rounds kill and block capture. Rubber rounds weaken without killing. Tranq rounds finish a valid live capture.<br>
         Fresh non-Survival missions start on Rubber, and the loaded magazine is verified before every shot so the HUD can never say Rubber while firing Real.<br>
@@ -2982,7 +3002,7 @@
   <div class="modal missionCinemaModal">
     <div class="modalTop">
       <div class="modalTitle" id="missionCinemaHeader">🎬 Mission Cinematic</div>
-      <button class="ghost" onclick="skipMissionCinematicIntro()">Skip</button>
+      <button class="ghost" type="button" id="missionCinemaTopSkipBtn" onclick="skipMissionCinematicIntro()">Skip</button>
     </div>
     <div class="modalBody">
       <div class="storyMoviePlayer" id="storyMoviePlayer">
@@ -2990,7 +3010,7 @@
         <div class="storyMovieHud"><div class="storyMovieKicker" id="storyMovieKicker">BORDER JUNGLE</div></div>
         <div class="storyMovieCaptionWrap"><div class="storyMovieCaption" id="storyMovieCaption">Opening story channel...</div></div>
         <div class="storyMovieProgressTrack"><div class="storyMovieProgress" id="storyMovieProgress"></div></div>
-        <div class="storyMovieControls"><button class="ghost" id="storyMoviePlayBtn" onclick="toggleStoryMoviePlayback()">⏸ Pause</button><button class="ghost" id="storyMovieReplayBtn" onclick="replayCurrentStoryMovie()">↻ Replay</button><span class="storyMovieTime" id="storyMovieTime">1 / 26 sec</span></div>
+        <div class="storyMovieControls"><button class="ghost" type="button" id="storyMoviePlayBtn" onclick="toggleStoryMoviePlayback()">⏸ Pause</button><button class="ghost" type="button" id="storyMovieReplayBtn" onclick="replayCurrentStoryMovie()">↻ Replay</button><span class="storyMovieTime" id="storyMovieTime">1 / 26 sec</span></div>
       </div>
       <div class="missionCinemaHero" id="missionCinemaStaticHero">
         <div class="missionCinemaZone"></div>
@@ -3009,8 +3029,8 @@
       </div>
       <div class="missionCinemaTimeline" id="missionCinemaTimeline"></div>
       <div class="row" style="margin-top:12px">
-        <button class="good" id="missionCinemaContinueBtn" onclick="continueMissionCinematicIntro()">Continue Briefing</button>
-        <button class="ghost" onclick="skipMissionCinematicIntro()">Skip Cinematic</button>
+        <button class="good" type="button" id="missionCinemaContinueBtn" onclick="continueMissionCinematicIntro()">Continue Briefing</button>
+        <button class="ghost" type="button" id="missionCinemaBottomSkipBtn" onclick="skipMissionCinematicIntro()">Skip Cinematic</button>
       </div>
     </div>
   </div>
@@ -3388,11 +3408,11 @@
   </div>
 </div>
 
-<!-- V7.9.1 Story Cinema Polish -->
+<!-- V7.9.2 Cinema Touch Repair -->
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V7.9.1 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V7.9.2 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3433,15 +3453,15 @@
 </div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5050-story-cinema-polish"></script>
-  <script src="./ammo-modes.js?v=5050-story-cinema-polish"></script>
-  <script src="./government-policy.js?v=5050-story-cinema-polish"></script>
-  <script src="./game.js?v=5050-story-cinema-polish"></script>
-  <script src="./story-cinematics.js?v=5050-story-cinema-polish"></script>
-  <script src="./field-systems.js?v=5050-story-cinema-polish"></script>
+  <script src="./extraction-geometry.js?v=5051-cinema-touch-repair"></script>
+  <script src="./ammo-modes.js?v=5051-cinema-touch-repair"></script>
+  <script src="./government-policy.js?v=5051-cinema-touch-repair"></script>
+  <script src="./game.js?v=5051-cinema-touch-repair"></script>
+  <script src="./story-cinematics.js?v=5051-cinema-touch-repair"></script>
+  <script src="./field-systems.js?v=5051-cinema-touch-repair"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
-  <script src="./squad-coop.js?v=5050-story-cinema-polish"></script>
-  <script src="./extraction-qa.js?v=5050-story-cinema-polish"></script>
+  <script src="./squad-coop.js?v=5051-cinema-touch-repair"></script>
+  <script src="./extraction-qa.js?v=5051-cinema-touch-repair"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

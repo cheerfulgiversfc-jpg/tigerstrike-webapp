@@ -23,13 +23,44 @@ test("cinematic is limited to Story Campaign Mission 1",()=>{
 });
 
 test("player exposes captions, pause, replay, skip, and Story Journal replay",()=>{
-  for(const id of ["storyMovieCanvas","storyMovieCaption","storyMovieProgress","storyMoviePlayBtn","storyMovieReplayBtn","missionCinemaContinueBtn","storyCinematicReplayBtn"]){
+  for(const id of ["storyMovieCanvas","storyMovieCaption","storyMovieProgress","storyMoviePlayBtn","storyMovieReplayBtn","missionCinemaTopSkipBtn","missionCinemaBottomSkipBtn","missionCinemaContinueBtn","storyCinematicReplayBtn"]){
     assert(html.includes(`id="${id}"`),`${id} must be present`);
   }
   assert(game.includes("replayStoryMissionOneCinematic"));
   assert(game.includes('["Mission 1 Movie","replayStoryMissionOneCinematic()"]'));
   assert(game.includes("TigerStoryCinema?.open"));
   assert(game.includes("TigerStoryCinema?.stop"));
+});
+
+test("every cinematic action has protected Telegram touch handling",()=>{
+  assert.equal(cinema.TAP_DEDUPE_MS,260);
+  for(const eventName of ["pointerdown","touchstart","pointerup","touchend","click"]){
+    assert(source.includes(`addEventListener("${eventName}"`),`${eventName} must be handled`);
+  }
+  for(const id of ["storyMoviePlayBtn","storyMovieReplayBtn","missionCinemaTopSkipBtn","missionCinemaBottomSkipBtn","missionCinemaContinueBtn"]){
+    assert(source.includes(`${id}:`),`${id} must have a bound action`);
+  }
+  assert(source.includes("stopImmediatePropagation"));
+  assert(source.includes('overlay.style.pointerEvents="auto"'));
+  assert(html.includes("#missionCinemaOverlay{\n      z-index:11000"));
+});
+
+test("one physical touch activates exactly once even when a click follows",()=>{
+  const handlers={};
+  const button={
+    dataset:{},
+    style:{},
+    disabled:false,
+    addEventListener(name,handler){handlers[name]=handler;},
+  };
+  const event={preventDefault(){},stopPropagation(){},stopImmediatePropagation(){}};
+  let activations=0;
+  assert.equal(cinema.bindTap(button,()=>{activations+=1;}),true);
+  handlers.touchend(event);
+  handlers.click(event);
+  assert.equal(activations,1);
+  assert.equal(button.dataset.storyCinemaTapBound,"1");
+  assert.equal(button.style.touchAction,"manipulation");
 });
 
 test("polished attack faces civilians and deploys two soldiers from the helicopter",()=>{

@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5050";
+const TS_BUILD = "5051";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -27941,6 +27941,8 @@ function showMissionCinematicIntro(onDone=null, opts={}){
   if(brief) brief.style.display = "none";
   setPaused(true, "mission-cinematic");
   overlay.style.display = "flex";
+  overlay.style.pointerEvents = "auto";
+  overlay.setAttribute("aria-hidden", "false");
   window.TigerStoryCinema?.open?.(card, data);
   setEventText(`🎬 Briefing: ${data.threat} • ${data.extraction}`, 4);
   syncGamepadFocus();
@@ -27949,7 +27951,10 @@ function showMissionCinematicIntro(onDone=null, opts={}){
 function continueMissionCinematicIntro(){
   window.TigerStoryCinema?.stop?.();
   const overlay = document.getElementById("missionCinemaOverlay");
-  if(overlay) overlay.style.display = "none";
+  if(overlay){
+    overlay.style.display = "none";
+    overlay.setAttribute("aria-hidden", "true");
+  }
   const fn = __missionCinemaContinue;
   __missionCinemaContinue = null;
   if(fn){

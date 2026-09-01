@@ -222,8 +222,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V7.9.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V7.9.1 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.9.1 • Co-op Command");
+      ? `Tiger Strike V7.9.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V7.9.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.9.2 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -474,7 +474,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V7.9.1 Story Cinema Polish</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">The Mission 1 movie now has correctly directed tiger movement, visible character faces, two responding soldiers, and an on-screen helicopter deployment. Story progress is never erased.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V7.9.2 Cinema Touch Repair</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Every Mission 1 movie control now uses protected Telegram touch handling for pause, replay, skip, and mission start. Story progress is never erased.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
