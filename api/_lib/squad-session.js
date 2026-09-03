@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const { getState, setState } = require("./metrics-store");
 const ammoRules = require("../../ammo-modes");
+const tigerIntelligence = require("../../tiger-intelligence");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -674,6 +675,11 @@ function newPlayer(user, slot=0){
     lastSeenAt:nowMs(),
     lastMoveAt:nowMs(),
     lastAttackAt:0,
+    lastNoiseAt:0,
+    lastNoiseX:spawn.x,
+    lastNoiseY:spawn.y,
+    lastNoiseIntensity:0,
+    lastNoiseSource:"",
     lastHazardAt:0,
     rewardClaimed:false,
   };
@@ -747,6 +753,11 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     lastSeenAt:Math.max(0, Number(src.lastSeenAt || base.lastSeenAt)),
     lastMoveAt:Math.max(0, Number(src.lastMoveAt || base.lastMoveAt)),
     lastAttackAt:Math.max(0, Number(src.lastAttackAt || 0)),
+    lastNoiseAt:Math.max(0, Number(src.lastNoiseAt || 0)),
+    lastNoiseX:clamp(src.lastNoiseX ?? base.lastNoiseX, 24, MAX_COOP_WORLD.width - 24),
+    lastNoiseY:clamp(src.lastNoiseY ?? base.lastNoiseY, 24, MAX_COOP_WORLD.height - 24),
+    lastNoiseIntensity:clamp(src.lastNoiseIntensity, 0, 3),
+    lastNoiseSource:cleanText(src.lastNoiseSource, 24),
     lastHazardAt:Math.max(0, Number(src.lastHazardAt || 0)),
     rewardClaimed:!!src.rewardClaimed,
   };
@@ -765,6 +776,8 @@ function tigerPosition(session, tiger, at=nowMs()){
 function tigerSnapshots(session, players, at=nowMs()){
   const survivalWave = session?.launchType === "endless-survival" ? clamp(Math.floor(Number(session.survivalWave || 1)), 1, 50) : 1;
   const survivalScale = 1 + (survivalWave - 1) * 0.22;
+  const balance = tigerIntelligence.balanceFor({ playerCount:Math.max(2, players.length), mode:session?.launchType === "endless-survival" ? "Survival" : "Co-op", level:session?.storyMissionLevel || 1 });
+  const killSites = players.flatMap((player)=>Object.values(player?.killSites || {})).filter(Boolean);
   return missionDefinition(session).tigers.map((baseDef)=>{
     const def = session?.launchType === "endless-survival"
       ? { ...baseDef, hpMax:Math.round(baseDef.hpMax * survivalScale), name:`${baseDef.name} • Wave ${survivalWave}` }
@@ -784,6 +797,22 @@ function tigerSnapshots(session, players, at=nowMs()){
     const position = captured && captureSite
       ? { x:Number(captureSite.x), y:Number(captureSite.y) }
       : (defeated && killSite ? { x:Number(killSite.x), y:Number(killSite.y) } : tigerPosition(session, def, at));
+    const nearestPlayerDistance = players.filter((player)=>!player.downed).reduce((nearest, player)=>Math.min(nearest, distance(position, player)), Infinity);
+    const nearestBloodDistance = killSites.reduce((nearest, site)=>Math.min(nearest, distance(position, site)), Infinity);
+    let noiseScore = 0;
+    for(const player of players){
+      if(!player?.lastNoiseAt || !player?.lastNoiseIntensity) continue;
+      const event = tigerIntelligence.noiseEvent({ x:player.lastNoiseX, y:player.lastNoiseY, intensity:player.lastNoiseIntensity, source:player.lastNoiseSource, at:player.lastNoiseAt });
+      noiseScore = Math.max(noiseScore, tigerIntelligence.noiseAt(event, position.x, position.y, at));
+    }
+    const awareness = tigerIntelligence.awarenessFor({
+      distance:nearestPlayerDistance,
+      detectionRange:(def.boss ? 310 : 250) * balance.detectMul,
+      noise:noiseScore,
+      bloodScent:nearestBloodDistance <= 360 ? 0.82 : 0,
+      targetVisible:nearestPlayerDistance <= (def.boss ? 310 : 250) * balance.detectMul,
+      enraged:!!def.bloodRage && hp <= def.hpMax * 0.35,
+    });
     return {
       ...def,
       ...position,
@@ -797,6 +826,11 @@ function tigerSnapshots(session, players, at=nowMs()){
       carcass:defeated && !captured,
       killedAt:defeated && !captured ? Math.max(0, Number(killSite?.killedAt || 0)) : 0,
       bloodScentRadius:defeated && !captured ? 360 : 0,
+      awarenessState:awareness.key,
+      awarenessLabel:awareness.label,
+      awarenessColor:awareness.color,
+      awarenessIcon:awareness.icon,
+      awarenessScore:awareness.score,
     };
   });
 }
@@ -1138,6 +1172,7 @@ async function updateOwnPresence(session, user, patch={}){
   }
   if(!player.downed && session.status === "active" && patch && Number.isFinite(Number(patch.x)) && Number.isFinite(Number(patch.y))){
     const proposed = { x:clamp(patch.x, 24, mission.world.width - 24), y:clamp(patch.y, 24, mission.world.height - 24) };
+    const priorPosition = { x:player.x, y:player.y };
     const elapsed = clamp(now - player.lastMoveAt, 100, 1800);
     const maxMove = 70 + elapsed * 0.34 * def.speed;
     const moveDist = distance(player, proposed);
@@ -1145,6 +1180,13 @@ async function updateOwnPresence(session, user, patch={}){
       player.x = proposed.x;
       player.y = proposed.y;
       if(Number.isFinite(Number(patch.face))) player.face = clamp(patch.face, -Math.PI * 4, Math.PI * 4);
+      if(distance(priorPosition, proposed) >= 18 && now - Number(player.lastNoiseAt || 0) >= 900){
+        player.lastNoiseAt = now;
+        player.lastNoiseX = proposed.x;
+        player.lastNoiseY = proposed.y;
+        player.lastNoiseIntensity = 0.34;
+        player.lastNoiseSource = "footsteps";
+      }
     }
     player.lastMoveAt = now;
   }
@@ -1179,15 +1221,16 @@ async function updateOwnPresence(session, user, patch={}){
       : Infinity;
     const bloodScentActive = nearestCarcassDistance <= 360;
     const bloodRage = !!threat?.bloodRage && Number(threat.hp || 0) <= Number(threat.hpMax || 1) * 0.35;
-    const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0) - (bloodScentActive ? 120 : 0)) * (threat?.rubberSlowed ? 1.65 : 1);
-    const huntRange = (threat?.boss ? 122 : 102) + (bloodScentActive ? 26 : 0);
+    const livingBalance = tigerIntelligence.balanceFor({ playerCount:2, mode:session.launchType === "endless-survival" ? "Survival" : "Co-op", level:session.storyMissionLevel || 1 });
+    const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0) - (bloodScentActive ? 120 : 0)) * (threat?.rubberSlowed ? 1.65 : 1) * livingBalance.pounceCooldownMul;
+    const huntRange = ((threat?.boss ? 122 : 102) + (bloodScentActive ? 26 : 0)) * livingBalance.detectMul;
     if(threat && distance(player, threat) <= huntRange && now - player.lastHazardAt >= hazardCooldown){
       const armor = player.role === "assault" ? 3 : (player.role === "medic" ? 1 : 0);
       const baseDamage = threat.boss ? 13 : (threat.type === "Armored" ? 11 : 9);
       const aggressionDamage = Math.max(0, Number(mission.hazardDamageBonus || 0))
         + tigerKills * aggressionPerKill
         + (bloodRage ? 6 : 0);
-      player.hp = clamp(player.hp - Math.max(6, baseDamage + aggressionDamage - armor), 0, player.maxHp);
+      player.hp = clamp(player.hp - Math.max(5, Math.round((baseDamage + aggressionDamage - armor) * livingBalance.damageMul)), 0, player.maxHp);
       player.lastHazardAt = now;
       if(player.hp <= 0){
         player.downed = true;
@@ -1334,6 +1377,11 @@ async function applyAction(session, user, action, payload={}){
     }
     if(target.boss) player.bossDamage = clamp(player.bossDamage + appliedHit, 0, BOSS_HP_MAX);
     player.lastAttackAt = now;
+    player.lastNoiseAt = now;
+    player.lastNoiseX = Number(player.x);
+    player.lastNoiseY = Number(player.y);
+    player.lastNoiseIntensity = 1.35;
+    player.lastNoiseSource = "gunshot";
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
   }else if(action === "capture"){

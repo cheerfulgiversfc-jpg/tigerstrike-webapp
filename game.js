@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5051";
+const TS_BUILD = "5052";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 20;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -7,6 +7,21 @@ const DECORATIVE_UNIT_RINGS_ENABLED = false;
 const PREMIUM_2D_GRAPHICS_VERSION = 12;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
+let __livingTigerNoise = null;
+function livingTigerBalance(target=null){
+  const level = Math.max(1, typeof currentCampaignLevel === "function" ? currentCampaignLevel() : Number(S?.storyLevel || 1));
+  return window.TigerLivingIntelligence?.balanceFor?.({ playerCount:1, mode:S?.mode || "Story", level, target }) || {
+    solo:true, detectMul:0.86, damageMul:0.86, civilianDamageMul:0.92, pounceChanceMul:0.70,
+    pounceCooldownMul:1.25, packDecisionMul:0.62, maxCoordinatedAttackers:2, warningMsMul:1.30, memoryMs:3500,
+  };
+}
+function recordTigerWorldNoise(x, y, intensity=1, source="movement", noiseMul=1){
+  __livingTigerNoise = window.TigerLivingIntelligence?.noiseEvent?.({ x, y, intensity, source, noiseMul, at:Date.now() }) || null;
+  return __livingTigerNoise;
+}
+function livingTigerVisual(value){
+  return window.TigerLivingIntelligence?.visualFor?.(value) || { key:"calm", label:"Calm", color:"#4ade80", icon:"🟢", rank:0 };
+}
 if(tg){
   try{
     tg.expand?.();
@@ -9557,6 +9572,8 @@ function tigerDamageScale(t, target="player"){
     else if(target === "support") scale *= (phase >= 3 ? 1.15 : (phase >= 2 ? 1.08 : 1));
     else scale *= clamp(Number(phaseCfg.dmgMul || 1), 1, 1.30);
   }
+  const livingBalance = livingTigerBalance(t);
+  scale *= target === "civilian" ? livingBalance.civilianDamageMul : livingBalance.damageMul;
   return scale;
 }
 function tigerDefenseScale(t){
@@ -17255,6 +17272,7 @@ function clearTransientMissionRuntime(state, reason=""){
   state.extractionSequence = null;
   state.settlementDefense = null;
   state.missionTigerSpawnControl = null;
+  __livingTigerNoise = null;
   return state;
 }
 function stabilizeLoadedSaveState(state, sourceKey=""){
@@ -39189,6 +39207,7 @@ function setTigerHuntState(t, nextState, now=Date.now(), durationMs=640){
 
 function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
   ensureTigerHuntState(t, now);
+  const livingBalance = livingTigerBalance(t);
   const hasTarget = Number.isFinite(targetDist) && targetDist < (motion.detect + 80);
   const inPounceBand = Number.isFinite(targetDist) && targetDist > 88 && targetDist < 340;
 
@@ -39239,7 +39258,7 @@ function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
   }
 
   if(inPounceBand && now >= (t.nextPounceAt || 0)){
-    const chance = clamp(motion.pounceChance + 0.05, 0.09, 0.34);
+    const chance = clamp((motion.pounceChance + 0.05) * livingBalance.pounceChanceMul, 0.05, 0.30);
     if(Math.random() < chance){
       const dx = targetX - t.x;
       const dy = targetY - t.y;
@@ -39247,7 +39266,7 @@ function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
       t.pounceDirX = dx / dd;
       t.pounceDirY = dy / dd;
       t.pounceWindupStart = now;
-      t.pounceWindupUntil = now + rand(200, 340);
+      t.pounceWindupUntil = now + rand(200, 340) * livingBalance.warningMsMul;
       t.attackTelegraphKind = "pounce";
       t.attackTelegraphStart = now;
       t.attackTelegraphUntil = t.pounceWindupUntil + 420;
@@ -39255,7 +39274,7 @@ function tigerHuntStateTick(t, now, targetX, targetY, targetDist, motion){
       t.burstUntil = Math.max(t.burstUntil || 0, t.huntStateUntil + 80);
       setTigerIntent(t, "Pounce!", Math.max(200, t.pounceWindupUntil - now));
     } else {
-      t.nextPounceAt = now + rand(440, 980);
+      t.nextPounceAt = now + rand(440, 980) * livingBalance.pounceCooldownMul;
     }
   } else if(now >= (t.huntStateUntil || 0)){
     t.huntStateUntil = now + rand(700, 1300);
@@ -40949,6 +40968,7 @@ function deploy(opts={}){
   if(__startupComplete && !window.__TUTORIAL_MODE__) __gameplayLoadingGuardArmed = true;
   beginMissionTransitionGuard("deploy-begin", 2200);
   try{
+  __livingTigerNoise = null;
   const carryStats = !!opts.carryStats;
   const carryHp = clamp(Number.isFinite(opts.hp) ? opts.hp : S.hp, 0, 100);
   const carryArmor = clamp(Number.isFinite(opts.armor) ? opts.armor : S.armor, 0, S.armorCap || 100);
@@ -42478,6 +42498,7 @@ function sprint(){
   if(S.stamina < sprintCost) return interactionFeedback(`Not enough stamina to sprint. Need ${Math.ceil(sprintCost)} stamina.`, { warn:true });
   S.stamina -= sprintCost;
   S._sprintTicks=82;
+  recordTigerWorldNoise(S.me.x, S.me.y, 0.62, "sprint", 0.82);
   if(window.TigerTutorial?.isRunning && window.TigerTutorial.currentKey === "sprint"){
     window.TigerTutorial.sprintUsed = true;
   }
@@ -42927,6 +42948,7 @@ function playerAttackLockedRival(){
   const shotAmmoId = loadedAmmoIdForEquippedWeapon() || w.ammo;
   S.mag.loaded -= 1;
   S.stats.shots += 1;
+  recordTigerWorldNoise(S.me.x, S.me.y, 1.25, "gunshot", Number(w.noiseMul || 1));
   applyWearOnShot(w);
   const build = weaponBuildStats(w.id, S);
   const ammo = ammoEffectFor(shotAmmoId);
@@ -44452,6 +44474,7 @@ function tigerMotionProfile(t, def, now=Date.now()){
   const nemesisPounceMul = clamp(Number(t.nemesisPounceMul || 1), 0.8, 1.45);
 
   const mutationSpeedMul = eliteMutationSpeedMul(t);
+  const livingBalance = livingTigerBalance(t);
   const walk = (base.walk + (def.spd * 0.15) + (hunter * 0.30) + (pack * 0.25)) * persona.speedMul * nemesisSpeedMul * mutationSpeedMul;
   const chase = (base.chase + (def.spd * 0.20) + (hunter * 0.85) + (pack * 0.55) + (rage * 0.35) + (fading * 0.22)) * persona.speedMul * nemesisSpeedMul * mutationSpeedMul;
   const sprint = (base.sprint + (def.spd * 0.24) + (hunter * 1.05) + (pack * 0.85) + (rage * 0.55) + (scoutDash * 0.35)) * persona.speedMul * nemesisSpeedMul * mutationSpeedMul;
@@ -44463,13 +44486,13 @@ function tigerMotionProfile(t, def, now=Date.now()){
     chase,
     sprint,
     minChase: (base.minChase + (hunter * 0.55) + (pack * 0.30) + (rage * 0.35) + (fading * 0.20)) * Math.max(0.95, persona.speedMul),
-    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul * dynamicWeather2Mods(now).tigerDetectMul * dynamicDayNightMods(now).tigerDetectMul * eliteMutationDetectMul(t) * liveOpsMissionModifierValue("tigerDetectMul", 1, S),
+    detect: (base.detect + (hunter * 80) + (pack * 45) + (fading * 60)) * persona.detectMul * dynamicWeather2Mods(now).tigerDetectMul * dynamicDayNightMods(now).tigerDetectMul * eliteMutationDetectMul(t) * liveOpsMissionModifierValue("tigerDetectMul", 1, S) * livingBalance.detectMul,
     chaseAccel: base.chaseAccel + (hunter * 0.04) + (pack * 0.02) + (rage * 0.03),
     wanderAccel: base.wanderAccel,
     burstMs: base.burstMs,
     pounceForce: base.pounceForce + (hunter * 0.35) + (pack * 0.18) + (rage * 0.25),
-    pounceCd: base.pounceCd,
-    pounceChance: clamp((base.pounceChance + (hunter * 0.03) + (pack * 0.02) + (rage * 0.02)) * persona.pounceMul * nemesisPounceMul, 0, 0.30),
+    pounceCd: base.pounceCd.map((value)=>value * livingBalance.pounceCooldownMul),
+    pounceChance: clamp((base.pounceChance + (hunter * 0.03) + (pack * 0.02) + (rage * 0.02)) * persona.pounceMul * nemesisPounceMul * livingBalance.pounceChanceMul, 0, 0.26),
     turnRateWalk: turnBase * (0.60 + (hunter * 0.08)),
     turnRateChase: turnBase * (1.00 + (hunter * 0.12)),
     steerGain: steerBase + (hunter * 0.01),
@@ -44787,7 +44810,8 @@ function roamTigers(){
     let scoutAssigned = false;
     let protectorAssigned = false;
     let disruptorAssigned = false;
-    for(const tiger of ranked){
+    for(let rankedIndex=0; rankedIndex<ranked.length; rankedIndex++){
+      const tiger = ranked[rankedIndex];
       let role = TIGER_PACK_ROLES.HUNTER;
       if(pack.alpha && tiger.id === pack.alpha.id){
         role = TIGER_PACK_ROLES.ALPHA;
@@ -44809,8 +44833,12 @@ function roamTigers(){
       tiger.ecosystemKey = ecosystemTerritory?.key || "";
       tiger.ecosystemDenStrength = ecosystemTerritory?.denStrength || 0;
       tiger.ecosystemConflict = ecosystemTerritory?.conflict || 0;
+      tiger._livingCoordinationSlot = rankedIndex;
     }
   }
+  [...aliveTigers]
+    .sort((a,b)=>dist(a.x,a.y,S.me.x,S.me.y)-dist(b.x,b.y,S.me.x,S.me.y))
+    .forEach((tiger,index)=>{ tiger._livingGlobalAttackSlot = index; });
 
   let tickTigers = aliveTigers;
   const lagTier = frameLagTier();
@@ -44949,6 +44977,27 @@ function roamTigers(){
       ? (1 - (nearestCarcassDist / scentRadius)) * (0.40 + killPressure)
       : 0;
 
+    const livingBalance = livingTigerBalance(t);
+    const noiseScore = window.TigerLivingIntelligence?.noiseAt?.(__livingTigerNoise, t.x, t.y, now) || 0;
+    const awareness = window.TigerLivingIntelligence?.awarenessFor?.({
+      distance:playerDist,
+      detectionRange:motion.detect,
+      noise:noiseScore,
+      bloodScent,
+      targetVisible:playerDist <= motion.detect,
+      enraged:now < Number(t.enragedUntil || 0),
+      current:t.awarenessState,
+    }) || livingTigerVisual(t.awarenessState);
+    t.awarenessState = awareness.key;
+    t.awarenessScore = Number(awareness.score || 0);
+    t.awarenessLabel = awareness.label;
+    t.awarenessColor = awareness.color;
+    if(awareness.rank >= 2){
+      t._livingMemory = window.TigerLivingIntelligence?.rememberTarget?.(t._livingMemory, S.me, now, livingBalance.memoryMs) || t._livingMemory;
+    }else{
+      t._livingMemory = window.TigerLivingIntelligence?.rememberTarget?.(t._livingMemory, null, now, livingBalance.memoryMs) || null;
+    }
+
     if(bloodScent > 0.08){
       t.aggroBoost = clamp((t.aggroBoost||0) + bloodScent * 0.015, 0, 1.5);
       t.enragedUntil = Math.max(t.enragedUntil || 0, now + rand(650, 1300));
@@ -45008,21 +45057,36 @@ function roamTigers(){
       t.wanderAngle += (Math.random() - 0.5) * 0.22;
     }
 
+    if(noiseScore > 0.20 && __livingTigerNoise && !closeToPlayer && !closeToCiv){
+      targetX = __livingTigerNoise.x;
+      targetY = __livingTigerNoise.y;
+      targetDist = dist(t.x, t.y, targetX, targetY);
+      setTigerIntent(t, awareness.rank >= 2 ? "Track Sound" : "Investigate", 620);
+    }else if(t._livingMemory && !closeToPlayer && !closeToCiv && awareness.rank >= 1){
+      targetX = t._livingMemory.x;
+      targetY = t._livingMemory.y;
+      targetDist = dist(t.x, t.y, targetX, targetY);
+    }
+
     const pack = t.packId ? packStats[t.packId] : null;
+    const livingPackAllowed = Number(t._livingGlobalAttackSlot || 0) < livingBalance.maxCoordinatedAttackers;
     if(pack){
       const role = t.packRole || TIGER_PACK_ROLES.HUNTER;
       const morale = clamp(Number(t.packMorale || pack.packState?.morale || 1), 0.42, 1.08);
       const territoryHot = !!pack.playerInTerritory || !!pack.civiliansInTerritory || now < Number(pack.packState?.threatUntil || 0);
       const alpha = pack.alpha;
-      if(role === TIGER_PACK_ROLES.PROTECTOR && alpha && alpha.id !== t.id){
-        const guardDist = dist(t.x, t.y, alpha.x, alpha.y);
+      const woundedMate = (pack.members || []).filter((mate)=>mate && mate.alive && mate.id !== t.id && Number(mate.hp || 0) / Math.max(1, Number(mate.hpMax || 1)) <= 0.34).sort((a,b)=>Number(a.hp || 0)/Math.max(1,Number(a.hpMax || 1))-Number(b.hp || 0)/Math.max(1,Number(b.hpMax || 1)))[0];
+      const protectedMate = woundedMate || (alpha && alpha.id !== t.id ? alpha : null);
+      if(role === TIGER_PACK_ROLES.PROTECTOR && protectedMate){
+        const guardDist = dist(t.x, t.y, protectedMate.x, protectedMate.y);
         if(!closeToPlayer && !closeToCiv && guardDist > 64){
           const guardA = (now * 0.0012) + (t.id * 0.85);
-          targetX = alpha.x + Math.cos(guardA) * 38;
-          targetY = alpha.y + Math.sin(guardA) * 32;
+          targetX = protectedMate.x + Math.cos(guardA) * 38;
+          targetY = protectedMate.y + Math.sin(guardA) * 32;
           targetDist = dist(t.x, t.y, targetX, targetY);
+          if(woundedMate) setTigerIntent(t, "Guard Wounded", 520);
         }
-      } else if(role === TIGER_PACK_ROLES.SCOUT){
+      } else if(role === TIGER_PACK_ROLES.SCOUT && livingPackAllowed){
         if(territoryHot && playerDist < motion.detect + 170){
           const orbitA = Math.atan2(S.me.y - pack.territoryY, S.me.x - pack.territoryX) + ((t.id % 2 ? 1 : -1) * 0.72);
           targetX = S.me.x + Math.cos(orbitA) * 46;
@@ -45035,14 +45099,14 @@ function roamTigers(){
           targetY = pack.territoryY + Math.sin(patrolA) * patrolR;
           targetDist = dist(t.x, t.y, targetX, targetY);
         }
-      } else if(role === TIGER_PACK_ROLES.FLANKER && closeToPlayer && Number.isFinite(playerDist)){
+      } else if(role === TIGER_PACK_ROLES.FLANKER && livingPackAllowed && closeToPlayer && Number.isFinite(playerDist)){
         const side = (t.id % 2 === 0) ? 1 : -1;
         const flankA = Math.atan2(S.me.y - t.y, S.me.x - t.x) + (side * (0.58 + ((1 - morale) * 0.40)));
         const flankR = clamp(34 + (playerDist * 0.28), 34, 92);
         targetX = S.me.x + Math.cos(flankA) * flankR;
         targetY = S.me.y + Math.sin(flankA) * flankR;
         targetDist = dist(t.x, t.y, targetX, targetY);
-      } else if(role === TIGER_PACK_ROLES.DISRUPTOR && liveCivs.length){
+      } else if(role === TIGER_PACK_ROLES.DISRUPTOR && livingPackAllowed && liveCivs.length){
         let escort = null;
         let escortD = Infinity;
         for(const civ of liveCivs){
@@ -45072,7 +45136,7 @@ function roamTigers(){
       t._packSpeedMul = 1;
     }
 
-    const ai2ThinkReady = now >= Number(t._ai2NextDecisionAt || 0);
+    const ai2ThinkReady = now >= Number(t._ai2NextDecisionAt || 0) && (livingPackAllowed || Math.random() < livingBalance.packDecisionMul);
     if(ai2ThinkReady){
       t._ai2NextDecisionAt = now + rand(420, 780);
       if(t.type === "Alpha" && pack){
@@ -45097,13 +45161,13 @@ function roamTigers(){
         t.enragedUntil = Math.max(t.enragedUntil || 0, now + rand(1000, 1800));
         t.burstUntil = Math.max(t.burstUntil || 0, now + rand(520, 980));
         tigerAi2SetIntent(t, "Civilian Rush", 760, 5200);
-      } else if(t.type === "Scout" && playerDist < (motion.detect + 120 + ai2.flank * 150) * dynPlayerBiasMul){
+      } else if(t.type === "Scout" && livingPackAllowed && playerDist < (motion.detect + 120 + ai2.flank * 150) * dynPlayerBiasMul){
         t._ai2Behavior = "flank_player";
         t._ai2BehaviorUntil = now + rand(980, 1680);
         t._ai2FlankSide *= -1;
         t.burstUntil = Math.max(t.burstUntil || 0, now + rand(420, 820));
         tigerAi2SetIntent(t, "Flank", 720, 5200);
-      } else if(t.type === "Stalker" && Number.isFinite(targetDist) && targetDist > 96 && targetDist < (motion.detect + 90 + ai2.ambush * 150) * directorAggroMul){
+      } else if(t.type === "Stalker" && livingPackAllowed && Number.isFinite(targetDist) && targetDist > 96 && targetDist < (motion.detect + 90 + ai2.ambush * 150) * directorAggroMul){
         t._ai2Behavior = "ambush";
         t._ai2BehaviorUntil = now + rand(1100, 1900);
         if(now < Number(t.fadeUntil || 0)) t.burstUntil = Math.max(t.burstUntil || 0, now + rand(420, 760));
@@ -45168,7 +45232,7 @@ function roamTigers(){
       if(canRetreat){
         const fleeLabel = t.type === "Scout" ? "Flee" : (t.type === "Alpha" ? "Fallback Den" : "Retreat");
         tigerEcoSetBehavior(t, t.type === "Scout" ? "flee" : "retreat", now, rand(1300, 2200), fleeLabel, 5800);
-      } else if(t.type === "Alpha" && pack && denThreat && Math.random() < ecoAi.packCall){
+      } else if(t.type === "Alpha" && pack && denThreat && Math.random() < ecoAi.packCall * livingBalance.packDecisionMul){
         const callTarget = ecoPrey && ecoPreyDist < playerDist + 120 ? ecoPrey : S.me;
         t._ecoTargetX = callTarget.x;
         t._ecoTargetY = callTarget.y;
@@ -45996,12 +46060,15 @@ function startTigerFieldPounce(t, target, targetKind, now=Date.now()){
   if(!t || !target || S.inBattle || S.paused || S.gameOver || S.missionEnded) return false;
   if(now < Number(S.secondarySmokeUntil || 0) && dist(t.x, t.y, S.me.x, S.me.y) <= 320) return false;
   if(now < Number(t._fieldPounceCooldownUntil || 0)) return false;
+  const livingBalance = livingTigerBalance(t);
+  if(Number(t._livingGlobalAttackSlot || 0) >= livingBalance.maxCoordinatedAttackers) return false;
   const d = dist(t.x, t.y, target.x, target.y);
   if(d > (targetKind === "player" ? 142 : 128)) return false;
   t._fieldPounceTargetKind = targetKind;
   t._fieldPounceTargetId = targetKind === "civilian" ? target.id : 0;
-  t._fieldPounceResolveAt = now + TIGER_FIELD_POUNCE_TELEGRAPH_MS;
-  t._fieldPounceCooldownUntil = now + TIGER_FIELD_POUNCE_COOLDOWN_MS + rand(300, 1500);
+  const telegraphMs = TIGER_FIELD_POUNCE_TELEGRAPH_MS * livingBalance.warningMsMul;
+  t._fieldPounceResolveAt = now + telegraphMs;
+  t._fieldPounceCooldownUntil = now + (TIGER_FIELD_POUNCE_COOLDOWN_MS + rand(300, 1500)) * livingBalance.pounceCooldownMul;
   t.attackTelegraphStart = now;
   t.attackTelegraphUntil = t._fieldPounceResolveAt + 180;
   t.attackTelegraphKind = "pounce";
@@ -46010,8 +46077,8 @@ function startTigerFieldPounce(t, target, targetKind, now=Date.now()){
   t.pounceDirY = Math.sin(a);
   t.huntState = TIGER_HUNT_STATES.POUNCE;
   t.pounceWindupUntil = t._fieldPounceResolveAt;
-  markTigerBehaviorAnim(t, "pounce", TIGER_FIELD_POUNCE_TELEGRAPH_MS + 420);
-  setTigerIntent(t, targetKind === "civilian" ? "Ambush Prey" : "Ambush Agent", TIGER_FIELD_POUNCE_TELEGRAPH_MS + 360);
+  markTigerBehaviorAnim(t, "pounce", telegraphMs + 420);
+  setTigerIntent(t, targetKind === "civilian" ? "Ambush Prey" : "Ambush Agent", telegraphMs + 360);
   if(targetKind === "player"){
     S._fieldPounceThreatUntil = Math.max(Number(S._fieldPounceThreatUntil || 0), t._fieldPounceResolveAt + 420);
     interactionFeedback("Tiger ambush incoming. Roll to dodge.", { warn:true });
@@ -47966,6 +48033,7 @@ function playerAction(action){
 
     S.mag.loaded -= 1;
     S.stats.shots += 1;
+    recordTigerWorldNoise(S.me.x, S.me.y, 1.25, "gunshot", Number(w.noiseMul || 1));
     if(window.TigerTutorial?.isRunning) window.markTigerTutorialAction?.("attack", { id:t.id });
     S.meShotKickUntil = Date.now() + 140;
     addContractTally("shots", 1);
@@ -50720,13 +50788,16 @@ function renderHUD(){
           : `Evac ${S.evacDone}/${S.civilians.length||0} • Tigers ${S.tigers.filter(tiger=>tiger.alive).length}`;
   }
   if(mobileThreatChip){
+    const nearestAwareTiger = (S.tigers || []).filter((t)=>t?.alive).sort((a,b)=>dist(S.me.x,S.me.y,a.x,a.y)-dist(S.me.x,S.me.y,b.x,b.y))[0];
+    const awarenessVisual = livingTigerVisual(nearestAwareTiger?.awarenessState);
     const threatText =
       S.mode==="Arcade"
         ? (arcadeLeft <= 20 ? `Clock ${arcadeLeft}s` : `Combo x${Math.max(1, S.comboCount || 1)}`)
         : (S.mode==="Survival"
           ? "Pressure High"
           : (S._underAttack ? `Threat ${S._underAttack} attack` : "Threat Low"));
-    mobileThreatChip.innerText = `🔥 ${threatText} • ${directorPhaseLabel(directorPhase)} ${directorPressure}%`;
+    mobileThreatChip.innerText = `${awarenessVisual.icon} ${awarenessVisual.label} • ${threatText} • ${directorPhaseLabel(directorPhase)} ${directorPressure}%`;
+    mobileThreatChip.style.borderColor = awarenessVisual.color;
   }
   if(mobilePromptTxt){
     let mobilePrompt =
@@ -59926,7 +59997,9 @@ function drawTiger(t){
     ? ` ☠ ${t.nemesisAlias}${Number(t.nemesisPower || 0) > 0 ? ` Lv${Math.floor(Number(t.nemesisPower || 0))}` : ""}`
     : "";
   const mutationLabel = eliteTigerMutationLabel(t);
-  const fullLabel = t.type + bossTag + bossPhaseTag + nemesisLabel + (mutationLabel ? ` • ${mutationLabel}` : "") + persona + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
+  const awarenessVisual = livingTigerVisual(t.awarenessState);
+  const awarenessLabel = ` • ${awarenessVisual.icon} ${awarenessVisual.label}`;
+  const fullLabel = t.type + bossTag + bossPhaseTag + nemesisLabel + (mutationLabel ? ` • ${mutationLabel}` : "") + persona + awarenessLabel + (t.tranqTagged?" (tranq)":"") + dash + fade + roar + rage + hunt;
   const compactLabel = (t.nemesisAlias ? `${t.type} • ${t.nemesisAlias}` : t.type) + (mutationLabel ? ` • ${mutationLabel}` : "") + (t.tranqTagged ? " (tranq)" : "");
   const skipLabel =
     visualReadabilityHeavyMode() &&

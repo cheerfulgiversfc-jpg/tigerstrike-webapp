@@ -37,6 +37,7 @@ async function run(){
   assert(snapshot.world.width >= 3800 && snapshot.world.height >= 2100, "co-op uses a Story-sized Mission 1 world");
   assert(snapshot.players.every((player)=>player.x < snapshot.world.width && player.y < snapshot.world.height), "both players spawn inside the expanded world");
   assert(snapshot.players.every((player)=>player.ammoMode === "rubber"), "fresh co-op missions start both players on capture-safe Rubber ammunition");
+  assert(snapshot.tigers.every((tiger)=>["calm","suspicious","stalking","attacking","blood_frenzy"].includes(tiger.awarenessState)), "every co-op tiger exposes an authoritative awareness state");
   assert(snapshot.tigers.some((tiger)=>Math.hypot(tiger.x - snapshot.players[0].x, tiger.y - snapshot.players[0].y) > 1200), "objectives are spread across the larger district");
 
   session = await joinSession(code, host);
@@ -65,6 +66,7 @@ async function run(){
   assert.equal(snapshot.players.find((player)=>player.userId === host.id).ammoMode, "rubber", "Live Squad saves Rubber ammunition selection per player");
   session = await applyAction(await readSession(code), host, "attack", { tigerId:rubberTiger.id });
   snapshot = await buildSnapshot(session, host.id);
+  assert.notEqual(snapshot.tigers.find((tiger)=>tiger.id === rubberTiger.id).awarenessState, "calm", "nearby gunfire raises server-authoritative tiger awareness");
   assert(snapshot.tigers.find((tiger)=>tiger.id === rubberTiger.id).hp > 0, "a Rubber hit cannot kill a co-op tiger");
   assert.equal(snapshot.tigers.find((tiger)=>tiger.id === rubberTiger.id).lethalWounded, false, "Rubber does not block capture");
   assert.equal(snapshot.tigers.find((tiger)=>tiger.id === rubberTiger.id).rubberSlowed, true, "Rubber slows the tiger's attack cycle for both players");

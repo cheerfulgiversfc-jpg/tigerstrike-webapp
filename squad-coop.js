@@ -222,8 +222,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V7.9.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V7.9.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V7.9.2 • Co-op Command");
+      ? `Tiger Strike V8.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V8.0 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.0 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -474,7 +474,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V7.9.2 Cinema Touch Repair</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Every Mission 1 movie control now uses protected Telegram touch handling for pause, replay, skip, and mission start. Story progress is never erased.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V8.0 Living Tiger Intelligence</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Tigers now think, listen, remember, and hunt. Visible awareness states show when they are calm, suspicious, stalking, attacking, or following blood scent. Solo missions use slower detection, longer warnings, lower damage, and no more than two coordinated attackers.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -577,6 +577,7 @@
       <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${esc(playerConnectionText())}</div>
       <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
+      <div class="squadConnection" id="squadAwarenessNotice">${esc(awarenessText())}</div>
       ${snap.mission?.dangerNote ? `<div class="squadConnection bad" id="squadDangerNotice">${esc(dangerText())}</div>` : ""}
       ${survival && snap.mission.survivalExtractAvailable ? `<div class="squadConnection">✅ Extraction unlocked. Both players may bank the current reward, or stay out of the circle until the next wave begins.</div>` : ""}
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
@@ -674,6 +675,14 @@
     if(Number(mission.tigerKills || 0) > 0) parts.push(`🩸 ${mission.tigerKills} ${mission.tigerKills === 1 ? "body" : "bodies"} on the map • +${Number(mission.aggressionBonus || 0)} pack damage`);
     if(mission.bloodRageActive) parts.push("BLOOD RAGE ACTIVE");
     return parts.join(" • ");
+  }
+
+  function awarenessText(){
+    const mine = localSnapshotPlayer();
+    const tigers = (state.snapshot?.tigers || []).filter((tiger)=>!tiger.defeated);
+    const nearest = tigers.sort((a,b)=>Math.hypot((a.x||0)-(mine?.x||0),(a.y||0)-(mine?.y||0))-Math.hypot((b.x||0)-(mine?.x||0),(b.y||0)-(mine?.y||0)))[0];
+    if(!nearest) return "🟢 Tiger awareness: Area clear.";
+    return `${nearest.awarenessIcon || "🟢"} Tiger awareness: ${nearest.awarenessLabel || "Calm"}. Gunfire, footsteps, civilians, and blood scent can reveal the squad.`;
   }
 
   function pauseSummary(){
@@ -1488,6 +1497,7 @@
 
   function drawStoryTiger(ctx,tiger,now){
     if(tiger.defeated) return;const alpha=!!tiger.boss;const ghost=String(tiger.id||"")==="ghoststripe_alpha";const blood=String(tiger.id||"")==="s20_blood_tiger";const coat=blood?"#b91c1c":(ghost?"#dbeafe":"#f59e0b");const ear=blood?"#fb7185":(ghost?"#e2e8f0":"#fbbf24");const leg=blood?"#7f1d1d":(ghost?"#94a3b8":"#d97706");const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const facing=Math.sin((now/900)+(String(tiger.id).length))>=0?1:-1;
+    const awarenessColor=tiger.awarenessColor||"#4ade80";ctx.save();ctx.globalAlpha=.64;ctx.strokeStyle=awarenessColor;ctx.lineWidth=4;ctx.setLineDash([8,6]);ctx.beginPath();ctx.arc(tiger.x,tiger.y,alpha?72:56,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore();
     if(blood){ctx.save();ctx.fillStyle=tiger.hp<=tiger.hpMax*.35?"rgba(239,68,68,.28)":"rgba(127,29,29,.18)";ctx.shadowColor="#ef4444";ctx.shadowBlur=tiger.hp<=tiger.hpMax*.35?38:20;ctx.beginPath();ctx.arc(tiger.x,tiger.y,58,0,Math.PI*2);ctx.fill();ctx.restore();}
     ctx.save();ctx.translate(tiger.x,tiger.y);ctx.scale(facing*s,s);
     ctx.strokeStyle=coat;ctx.lineWidth=9;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-29,2);ctx.quadraticCurveTo(-54,-15,-64,4);ctx.stroke();
@@ -1497,7 +1507,7 @@
     ctx.strokeStyle="#111827";ctx.lineWidth=4;for(const x of [-20,-7,7,18]){ctx.beginPath();ctx.moveTo(x,-15);ctx.lineTo(x+8,13);ctx.stroke();}
     ctx.strokeStyle=leg;ctx.lineWidth=7;for(const x of [-18,9]){ctx.beginPath();ctx.moveTo(x,12);ctx.lineTo(x-2,28);ctx.stroke();}
     ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(37,-9,2.5,0,Math.PI*2);ctx.fill();ctx.fillStyle="#f8fafc";ctx.beginPath();ctx.arc(44,-3,3,0,Math.PI*2);ctx.fill();ctx.restore();
-    const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);const barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,tiger.y-(alpha?65:50),barW,11,5);ctx.fill();ctx.fillStyle=blood?"#ef4444":(alpha?"#fb7185":"#f59e0b");roundRect(ctx,tiger.x-barW/2+2,tiger.y-(alpha?63:48),(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase(),tiger.x,tiger.y-(alpha?72:57));
+    const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);const barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,tiger.y-(alpha?65:50),barW,11,5);ctx.fill();ctx.fillStyle=blood?"#ef4444":(alpha?"#fb7185":"#f59e0b");roundRect(ctx,tiger.x-barW/2+2,tiger.y-(alpha?63:48),(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(`${tiger.awarenessIcon||"🟢"} ${alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase()} • ${String(tiger.awarenessLabel||"Calm").toUpperCase()}`,tiger.x,tiger.y-(alpha?72:57));
   }
 
   function drawTigerCarcass(ctx,tiger,now){
