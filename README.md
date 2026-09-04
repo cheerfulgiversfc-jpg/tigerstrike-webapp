@@ -350,6 +350,17 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Evacuated civilians board the named transport and disappear from the ground when it departs. The final soldier is also removed from the ground and shown as a cyan passenger inside the departing transport.
 - Generic safe-house artwork is suppressed whenever a named transport is active, preventing a safe-house marker from appearing under a boat, helicopter, or vehicle.
 
+### V8.1 Shared Story Chapter 3
+
+- Story Campaign now offers a real Solo or Two Players choice for Missions 1–30. Solo remains available for every unlocked mission; Missions 31–100 remain accurately labeled Solo-only until their co-op versions are built.
+- Missions 21–30 follow the existing `The Deep Jungle` campaign: Research Team Escort, Tall Grass Predators, Veil Tiger Capture, River Trail Escort, Jungle Bridge Ambush, Lost Hunter Rescue, Abandoned Camp Escort, Large Pack Attack, Helicopter Evacuation, and the Stealth Tiger boss.
+- Every Chapter 3 mission uses the full 4,800 × 2,800 co-op world and has its own objective population, tiger pack, time limit, danger tuning, and mission-specific map landmarks.
+- Mission 23 requires the named Veil Tiger to be captured alive. Capturing another tiger cannot satisfy the objective, and a Real-ammo hit still permanently blocks that tiger from capture for the current run.
+- Escort missions use shared route checkpoints that both players must reach. Mission 29 requires all seven civilians and ends at a clearly marked helicopter extraction zone.
+- Mission 28 contains eight coordinated tigers. Mission 30 ends Chapter 3 against the 2,200 HP Stealth Tiger boss using Stalker behavior.
+- Each player completes, claims a separate deduplicated reward, and unlocks the next Story mission independently. Mission 30 awards the `Stealth Tiger Breakers` badge and unlocks Mission 31.
+- Field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, synchronized pause, Real/Rubber ammunition, persistent bodies and cages, government audits, Solo Story progress, Missions 1–20, and all seven Special Operations remain available.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

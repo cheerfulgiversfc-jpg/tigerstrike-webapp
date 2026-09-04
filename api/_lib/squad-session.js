@@ -297,6 +297,193 @@ const SHARED_STORY_MISSIONS = Object.freeze({
       Object.freeze({ id:"s20_blood_tiger", name:"Blood Tiger", type:"Berserker", hpMax:1800, baseX:655, baseY:565, rangeX:190, rangeY:150, speed:.50, phase:1.2, boss:true, bloodRage:true }),
     ]),
   }),
+  21:Object.freeze({
+    level:21, chapter:3, chapterName:"The Deep Jungle", title:"Story Mission 21",
+    objective:"Escort the four-person research team through the Deep Jungle route, clear the tiger patrol, and extract.", rescueRequired:4,
+    timeLimitMs:10 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s21_research_camp", x:390, y:390, r:125, label:"Research Camp" }),
+      Object.freeze({ id:"s21_sample_site", x:665, y:520, r:125, label:"Sample Site" }),
+      Object.freeze({ id:"s21_deep_exit", x:905, y:690, r:125, label:"Deep Jungle Exit" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s21_lead_biologist", x:240, y:245, name:"Lead Biologist", look:"medic", vip:true }),
+      Object.freeze({ id:"s21_field_researcher", x:455, y:420, name:"Field Researcher", look:"field" }),
+      Object.freeze({ id:"s21_sample_technician", x:735, y:270, name:"Sample Technician", look:"driver" }),
+      Object.freeze({ id:"s21_radio_analyst", x:915, y:690, name:"Radio Analyst", look:"scout" }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s21_territory_scout", name:"Territory Scout", type:"Scout", hpMax:305, baseX:315, baseY:455, rangeX:120, rangeY:88, speed:.88, phase:.4 }),
+      Object.freeze({ id:"s21_brush_stalker", name:"Brush Stalker", type:"Stalker", hpMax:365, baseX:555, baseY:320, rangeX:145, rangeY:108, speed:.76, phase:2.0 }),
+      Object.freeze({ id:"s21_camp_hunter", name:"Research Camp Hunter", type:"Standard", hpMax:385, baseX:785, baseY:515, rangeX:138, rangeY:104, speed:.73, phase:3.7 }),
+      Object.freeze({ id:"s21_pack_guard", name:"Deep Jungle Guard", type:"Armored", hpMax:470, baseX:935, baseY:715, rangeX:114, rangeY:92, speed:.59, phase:5.1 }),
+    ]),
+  }),
+  22:Object.freeze({
+    level:22, chapter:3, chapterName:"The Deep Jungle", title:"Story Mission 22",
+    objective:"Find the tigers hiding in tall grass, clear the concealed pack, and extract together.", rescueRequired:0,
+    dangerNote:"Tall-grass tigers begin suspicious and close distance quickly after gunfire. Watch their awareness labels and stay together.", aggressionLabel:"Tall Grass Ambush", hazardDamageBonus:1,
+    timeLimitMs:10 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s22_grass_scout", name:"Grassline Scout", type:"Scout", hpMax:290, baseX:245, baseY:370, rangeX:126, rangeY:92, speed:.92, phase:.2 }),
+      Object.freeze({ id:"s22_hidden_hunter", name:"Hidden Hunter", type:"Stalker", hpMax:355, baseX:455, baseY:270, rangeX:150, rangeY:110, speed:.80, phase:1.5 }),
+      Object.freeze({ id:"s22_reed_stalker", name:"Reed Stalker", type:"Stalker", hpMax:370, baseX:665, baseY:505, rangeX:148, rangeY:112, speed:.81, phase:2.8 }),
+      Object.freeze({ id:"s22_brush_mauler", name:"Brush Mauler", type:"Standard", hpMax:395, baseX:835, baseY:340, rangeX:140, rangeY:106, speed:.76, phase:4.1 }),
+      Object.freeze({ id:"s22_grass_guard", name:"Grassland Guard", type:"Armored", hpMax:485, baseX:940, baseY:710, rangeX:116, rangeY:94, speed:.60, phase:5.5 }),
+    ]),
+  }),
+  23:Object.freeze({
+    level:23, chapter:3, chapterName:"The Deep Jungle", title:"Story Mission 23",
+    objective:"Use Rubber ammunition to weaken and capture the Veil Tiger alive, clear its two guards, and extract.", rescueRequired:0, captureRequired:1,
+    captureTargetIds:Object.freeze(["s23_veil_tiger"]),
+    dangerNote:"Only the Veil Tiger counts for the capture objective. A Real-ammo hit makes it ineligible, so begin and remain on Rubber ammunition.", aggressionLabel:"Live Stealth Capture",
+    timeLimitMs:10 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s23_veil_scout", name:"Veil Scout", type:"Scout", hpMax:315, baseX:330, baseY:440, rangeX:126, rangeY:94, speed:.91, phase:.5 }),
+      Object.freeze({ id:"s23_veil_tiger", name:"Veil Tiger", type:"Stalker", hpMax:620, baseX:655, baseY:520, rangeX:185, rangeY:142, speed:.78, phase:2.2 }),
+      Object.freeze({ id:"s23_veil_guard", name:"Veil Guard", type:"Armored", hpMax:500, baseX:925, baseY:700, rangeX:118, rangeY:96, speed:.60, phase:4.8 }),
+    ]),
+  }),
+  24:Object.freeze({
+    level:24, chapter:3, chapterName:"The Deep Jungle", title:"Story Mission 24",
+    objective:"Escort five villagers through the river trail checkpoints, clear the riverbank tigers, and extract.", rescueRequired:5,
+    timeLimitMs:10 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s24_river_entry", x:360, y:420, r:125, label:"River Trail Entry" }),
+      Object.freeze({ id:"s24_river_crossing", x:645, y:625, r:125, label:"River Crossing" }),
+      Object.freeze({ id:"s24_far_bank", x:900, y:720, r:125, label:"Far Bank Safe Route" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s24_river_guide", x:230, y:250, name:"River Guide", look:"scout" }),
+      Object.freeze({ id:"s24_fisher", x:420, y:420, name:"Village Fisher", look:"driver" }),
+      Object.freeze({ id:"s24_healer", x:590, y:260, name:"River Healer", look:"medic" }),
+      Object.freeze({ id:"s24_farmer", x:770, y:520, name:"River Farmer", look:"field" }),
+      Object.freeze({ id:"s24_elder", x:925, y:700, name:"River Elder", look:"field", vip:true }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s24_bank_scout", name:"Riverbank Scout", type:"Scout", hpMax:320, baseX:305, baseY:430, rangeX:124, rangeY:92, speed:.89, phase:.4 }),
+      Object.freeze({ id:"s24_reed_hunter", name:"Reed Hunter", type:"Stalker", hpMax:380, baseX:560, baseY:350, rangeX:146, rangeY:110, speed:.78, phase:2.1 }),
+      Object.freeze({ id:"s24_crossing_tiger", name:"Crossing Tiger", type:"Standard", hpMax:410, baseX:785, baseY:535, rangeX:140, rangeY:108, speed:.74, phase:3.8 }),
+      Object.freeze({ id:"s24_far_bank_guard", name:"Far Bank Guard", type:"Armored", hpMax:505, baseX:930, baseY:710, rangeX:116, rangeY:94, speed:.60, phase:5.3 }),
+    ]),
+  }),
+  25:Object.freeze({
+    level:25, chapter:3, chapterName:"The Deep Jungle", title:"Story Mission 25",
+    objective:"Survive the jungle bridge ambush, secure all three bridge checkpoints, clear the pack, and extract.", rescueRequired:0,
+    dangerNote:"The bridge pack hits from both banks and deals 2 extra close-range damage. Secure each checkpoint with both soldiers.", aggressionLabel:"Bridge Ambush", hazardDamageBonus:2, hazardCooldownMs:1050,
+    timeLimitMs:10 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s25_bridge_approach", x:355, y:510, r:125, label:"Bridge Approach" }),
+      Object.freeze({ id:"s25_bridge_center", x:635, y:640, r:125, label:"Jungle Bridge Center" }),
+      Object.freeze({ id:"s25_far_bank", x:900, y:700, r:125, label:"Far Bank Perimeter" }),
+    ]),
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s25_bridge_scout_1", name:"Bridge Scout One", type:"Scout", hpMax:315, baseX:275, baseY:405, rangeX:128, rangeY:94, speed:.93, phase:.3 }),
+      Object.freeze({ id:"s25_bridge_scout_2", name:"Bridge Scout Two", type:"Scout", hpMax:325, baseX:440, baseY:690, rangeX:128, rangeY:96, speed:.94, phase:1.3 }),
+      Object.freeze({ id:"s25_center_hunter", name:"Bridge Center Hunter", type:"Stalker", hpMax:395, baseX:655, baseY:520, rangeX:152, rangeY:114, speed:.80, phase:2.5 }),
+      Object.freeze({ id:"s25_bank_mauler", name:"Far Bank Mauler", type:"Standard", hpMax:420, baseX:825, baseY:365, rangeX:140, rangeY:108, speed:.76, phase:4.0 }),
+      Object.freeze({ id:"s25_bridge_guard", name:"Bridge Guard", type:"Armored", hpMax:520, baseX:945, baseY:710, rangeX:118, rangeY:96, speed:.62, phase:5.4 }),
+    ]),
+  }),
+  26:Object.freeze({
+    level:26, chapter:3, chapterName:"The Deep Jungle", title:"Story Mission 26",
+    objective:"Find the lost hunter, escort him through both return checkpoints, clear the pursuing tigers, and extract.", rescueRequired:1,
+    timeLimitMs:10 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s26_hunter_rally", x:545, y:430, r:125, label:"Hunter Rally Point" }),
+      Object.freeze({ id:"s26_return_trail", x:865, y:680, r:125, label:"Return Trail" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s26_lost_hunter", x:585, y:285, name:"Lost Hunter", look:"scout", vip:true, injured:true }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s26_track_scout", name:"Hunter Track Scout", type:"Scout", hpMax:325, baseX:305, baseY:465, rangeX:126, rangeY:94, speed:.91, phase:.5 }),
+      Object.freeze({ id:"s26_trail_stalker", name:"Trail Stalker", type:"Stalker", hpMax:395, baseX:570, baseY:420, rangeX:150, rangeY:114, speed:.80, phase:2.2 }),
+      Object.freeze({ id:"s26_pursuit_tiger", name:"Pursuit Tiger", type:"Standard", hpMax:425, baseX:800, baseY:525, rangeX:140, rangeY:108, speed:.77, phase:3.8 }),
+      Object.freeze({ id:"s26_return_guard", name:"Return Trail Guard", type:"Armored", hpMax:525, baseX:930, baseY:710, rangeX:118, rangeY:96, speed:.62, phase:5.2 }),
+    ]),
+  }),
+  27:Object.freeze({
+    level:27, chapter:3, chapterName:"The Deep Jungle", title:"Story Mission 27",
+    objective:"Escort five survivors through the abandoned camp checkpoints, clear the occupying pack, and extract.", rescueRequired:5,
+    timeLimitMs:11 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s27_camp_gate", x:360, y:390, r:125, label:"Abandoned Camp Gate" }),
+      Object.freeze({ id:"s27_supply_yard", x:655, y:515, r:125, label:"Empty Supply Yard" }),
+      Object.freeze({ id:"s27_escape_lane", x:900, y:700, r:125, label:"Camp Escape Lane" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s27_camp_cook", x:235, y:245, name:"Camp Cook", look:"field" }),
+      Object.freeze({ id:"s27_radio_guard", x:420, y:410, name:"Radio Guard", look:"scout" }),
+      Object.freeze({ id:"s27_supply_medic", x:590, y:270, name:"Supply Medic", look:"medic" }),
+      Object.freeze({ id:"s27_mechanic", x:780, y:510, name:"Camp Mechanic", look:"driver" }),
+      Object.freeze({ id:"s27_route_lead", x:925, y:690, name:"Route Leader", look:"field", vip:true }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s27_gate_scout", name:"Camp Gate Scout", type:"Scout", hpMax:335, baseX:285, baseY:420, rangeX:128, rangeY:96, speed:.93, phase:.4 }),
+      Object.freeze({ id:"s27_tent_stalker", name:"Tent Stalker", type:"Stalker", hpMax:400, baseX:485, baseY:305, rangeX:152, rangeY:114, speed:.81, phase:1.7 }),
+      Object.freeze({ id:"s27_yard_hunter", name:"Supply Yard Hunter", type:"Standard", hpMax:430, baseX:675, baseY:525, rangeX:144, rangeY:110, speed:.77, phase:3.0 }),
+      Object.freeze({ id:"s27_lane_mauler", name:"Escape Lane Mauler", type:"Standard", hpMax:445, baseX:835, baseY:370, rangeX:140, rangeY:108, speed:.78, phase:4.2 }),
+      Object.freeze({ id:"s27_camp_guard", name:"Abandoned Camp Guard", type:"Armored", hpMax:545, baseX:940, baseY:710, rangeX:120, rangeY:98, speed:.63, phase:5.5 }),
+    ]),
+  }),
+  28:Object.freeze({
+    level:28, chapter:3, chapterName:"The Deep Jungle", title:"Story Mission 28",
+    objective:"Survive the large tiger pack attack, clear all eight threats, and extract together.", rescueRequired:0,
+    dangerNote:"Eight coordinated tigers attack faster and deal 3 extra close-range damage. Real-ammo kills make the surviving pack even more aggressive.", aggressionLabel:"Large Pack Attack", hazardDamageBonus:3, hazardCooldownMs:875,
+    timeLimitMs:11 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s28_pack_1", name:"Deep Pack Scout One", type:"Scout", hpMax:295, baseX:225, baseY:350, rangeX:126, rangeY:94, speed:.96, phase:.2 }),
+      Object.freeze({ id:"s28_pack_2", name:"Deep Pack Scout Two", type:"Scout", hpMax:305, baseX:405, baseY:255, rangeX:128, rangeY:96, speed:.97, phase:1.0 }),
+      Object.freeze({ id:"s28_pack_3", name:"Deep Pack Stalker One", type:"Stalker", hpMax:375, baseX:565, baseY:430, rangeX:152, rangeY:114, speed:.84, phase:1.9 }),
+      Object.freeze({ id:"s28_pack_4", name:"Deep Pack Stalker Two", type:"Stalker", hpMax:385, baseX:745, baseY:290, rangeX:150, rangeY:112, speed:.85, phase:2.8 }),
+      Object.freeze({ id:"s28_pack_5", name:"Deep Pack Hunter One", type:"Standard", hpMax:410, baseX:925, baseY:410, rangeX:144, rangeY:110, speed:.82, phase:3.7 }),
+      Object.freeze({ id:"s28_pack_6", name:"Deep Pack Hunter Two", type:"Standard", hpMax:420, baseX:305, baseY:695, rangeX:142, rangeY:108, speed:.82, phase:4.6 }),
+      Object.freeze({ id:"s28_pack_7", name:"Deep Pack Guard One", type:"Armored", hpMax:510, baseX:650, baseY:720, rangeX:120, rangeY:98, speed:.66, phase:5.5 }),
+      Object.freeze({ id:"s28_pack_8", name:"Deep Pack Guard Two", type:"Armored", hpMax:530, baseX:940, baseY:715, rangeX:120, rangeY:98, speed:.67, phase:6.4 }),
+    ]),
+  }),
+  29:Object.freeze({
+    level:29, chapter:3, chapterName:"The Deep Jungle", title:"Story Mission 29",
+    objective:"Escort all seven civilians through the landing-zone checkpoints, clear the tigers, and board the helicopter zone together.", rescueRequired:7,
+    extractionType:"helicopter",
+    timeLimitMs:12 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s29_lz_approach", x:365, y:420, r:130, label:"Helicopter LZ Approach" }),
+      Object.freeze({ id:"s29_lz_perimeter", x:650, y:545, r:130, label:"Helicopter Perimeter" }),
+      Object.freeze({ id:"s29_boarding_zone", x:905, y:700, r:130, label:"Helicopter Boarding Zone" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s29_civilian_1", x:210, y:230, name:"Village Teacher", look:"field" }),
+      Object.freeze({ id:"s29_civilian_2", x:350, y:410, name:"Village Medic", look:"medic" }),
+      Object.freeze({ id:"s29_civilian_3", x:490, y:245, name:"Radio Operator", look:"scout" }),
+      Object.freeze({ id:"s29_civilian_4", x:620, y:520, name:"Village Driver", look:"driver" }),
+      Object.freeze({ id:"s29_civilian_5", x:745, y:270, name:"Forest Worker", look:"field" }),
+      Object.freeze({ id:"s29_civilian_6", x:855, y:510, name:"Village Nurse", look:"medic" }),
+      Object.freeze({ id:"s29_civilian_7", x:930, y:690, name:"Village Elder", look:"field", vip:true }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s29_lz_scout", name:"Landing Zone Scout", type:"Scout", hpMax:345, baseX:285, baseY:430, rangeX:130, rangeY:98, speed:.95, phase:.4 }),
+      Object.freeze({ id:"s29_lz_stalker", name:"Landing Zone Stalker", type:"Stalker", hpMax:420, baseX:505, baseY:325, rangeX:154, rangeY:116, speed:.83, phase:1.9 }),
+      Object.freeze({ id:"s29_perimeter_hunter", name:"Perimeter Hunter", type:"Standard", hpMax:450, baseX:690, baseY:525, rangeX:146, rangeY:112, speed:.79, phase:3.1 }),
+      Object.freeze({ id:"s29_boarding_mauler", name:"Boarding Zone Mauler", type:"Standard", hpMax:465, baseX:845, baseY:360, rangeX:142, rangeY:110, speed:.80, phase:4.3 }),
+      Object.freeze({ id:"s29_lz_guard", name:"Landing Zone Guard", type:"Armored", hpMax:565, baseX:945, baseY:715, rangeX:122, rangeY:100, speed:.64, phase:5.6 }),
+    ]),
+  }),
+  30:Object.freeze({
+    level:30, chapter:3, chapterName:"The Deep Jungle", title:"Story Mission 30",
+    objective:"Track down the Stealth Tiger boss, defeat or capture it, and extract to finish Chapter 3.", rescueRequired:0,
+    dangerNote:"The Stealth Tiger moves quickly through concealment and deals 4 extra close-range damage. Watch its awareness state before it attacks.", aggressionLabel:"Stealth Tiger Boss", hazardDamageBonus:4, hazardCooldownMs:900,
+    timeLimitMs:12 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s30_stealth_tiger", name:"Stealth Tiger", type:"Stalker", hpMax:2200, baseX:655, baseY:565, rangeX:220, rangeY:168, speed:.58, phase:1.25, boss:true }),
+    ]),
+  }),
 });
 const ROLE_DEFS = Object.freeze({
   tracker:Object.freeze({ key:"tracker", label:"Tracker", damage:28, maxHp:105, speed:1.08 }),
@@ -326,6 +513,16 @@ const SHARED_STORY_WORLD_SIZES = Object.freeze({
   18:Object.freeze({ width:4800, height:2800 }),
   19:Object.freeze({ width:4800, height:2800 }),
   20:Object.freeze({ width:4800, height:2800 }),
+  21:Object.freeze({ width:4800, height:2800 }),
+  22:Object.freeze({ width:4800, height:2800 }),
+  23:Object.freeze({ width:4800, height:2800 }),
+  24:Object.freeze({ width:4800, height:2800 }),
+  25:Object.freeze({ width:4800, height:2800 }),
+  26:Object.freeze({ width:4800, height:2800 }),
+  27:Object.freeze({ width:4800, height:2800 }),
+  28:Object.freeze({ width:4800, height:2800 }),
+  29:Object.freeze({ width:4800, height:2800 }),
+  30:Object.freeze({ width:4800, height:2800 }),
 });
 const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
 const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
@@ -940,12 +1137,16 @@ function sessionDerived(session, players, at=nowMs()){
     + (bloodRageActive ? 6 : 0);
   const legacyBossOnlyRoom = session.launchType === "live-squad" && players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
   const captureRequired = Math.max(0, Number(mission.captureRequired || 0));
+  const captureTargetIds = (mission.captureTargetIds || []).filter((id)=>missionTigerIds.has(id));
+  const captureTargetsReady = captureTargetIds.length === 0
+    ? capturedIds.length >= captureRequired
+    : captureTargetIds.every((id)=>capturedIds.includes(id));
   const checkpoints = mission.checkpoints || [];
   const checkpointCompletedIds = checkpoints
     .filter((checkpoint)=>players.length === session.memberIds.length && players.every((player)=>(player.checkpointIds || []).includes(checkpoint.id)))
     .map((checkpoint)=>checkpoint.id);
   const checkpointsReady = checkpointCompletedIds.length >= checkpoints.length;
-  const objectivesReady = rescuedIds.length >= mission.rescueRequired && capturedIds.length >= captureRequired && checkpointsReady && (allTigersCleared || legacyBossOnlyRoom);
+  const objectivesReady = rescuedIds.length >= mission.rescueRequired && captureTargetsReady && checkpointsReady && (allTigersCleared || legacyBossOnlyRoom);
   const squadWiped = players.length === session.memberIds.length && players.every((p)=>p.downed && Number(p.respawnAt || 0) <= 0 && Number(p.livesRemaining || 0) <= 0);
   return { rescuedIds, capturedIds, checkpointCompletedIds, checkpointsReady, bossDamage, bossHp, boss, tigers, tigerKills, aggressionPerKill, aggressionBonus, bloodRageActive, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
 }
@@ -1099,6 +1300,9 @@ async function buildSnapshot(session, viewerId){
       objective:mission.objective,
       rescueRequired:mission.rescueRequired,
       captureRequired:Math.max(0, Number(mission.captureRequired || 0)),
+      captureTargetIds:[...(mission.captureTargetIds || [])],
+      captureTargetNames:(mission.captureTargetIds || []).map((id)=>mission.tigers.find((tiger)=>tiger.id === id)?.name || id),
+      extractionType:cleanText(mission.extractionType || "ground", 20),
       aggressionLabel:cleanText(mission.aggressionLabel || "Blood Scent", 50),
       dangerNote:cleanText(mission.dangerNote || "Real-ammo kills leave bodies. Blood scent makes every surviving tiger hunt harder and deal more damage. Captures do not create blood scent.", 180),
       aggressionPerKill:derived.aggressionPerKill,
@@ -1438,7 +1642,7 @@ async function claimReward(session, user){
   player.rewardClaimed = true;
   await writePlayer(session.code, player);
   const sharedStory = session.launchType === "shared-story";
-  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 20) : 0;
+  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 30) : 0;
   const sharedRewards = {
     1:{ cash:1800, perkPoints:1, seasonPoints:6, badge:"Shared Story First Patrol" },
     2:{ cash:2050, perkPoints:1, seasonPoints:7, badge:"Farm Road Guardians" },
@@ -1460,6 +1664,16 @@ async function claimReward(session, user){
     18:{ cash:7500, perkPoints:3, seasonPoints:24, badge:"Aggressive Pack Researchers" },
     19:{ cash:8200, perkPoints:3, seasonPoints:26, badge:"Swarm Survivors" },
     20:{ cash:9500, perkPoints:4, seasonPoints:30, badge:"Blood Tiger Breakers" },
+    21:{ cash:9900, perkPoints:4, seasonPoints:31, badge:"Deep Jungle Researchers" },
+    22:{ cash:10300, perkPoints:4, seasonPoints:32, badge:"Tall Grass Trackers" },
+    23:{ cash:11000, perkPoints:4, seasonPoints:34, badge:"Veil Tiger Researchers" },
+    24:{ cash:11400, perkPoints:4, seasonPoints:35, badge:"River Trail Guides" },
+    25:{ cash:11900, perkPoints:4, seasonPoints:36, badge:"Jungle Bridge Defenders" },
+    26:{ cash:12400, perkPoints:4, seasonPoints:37, badge:"Lost Hunter Rescue" },
+    27:{ cash:12900, perkPoints:5, seasonPoints:38, badge:"Abandoned Camp Escorts" },
+    28:{ cash:13750, perkPoints:5, seasonPoints:40, badge:"Deep Pack Survivors" },
+    29:{ cash:14600, perkPoints:5, seasonPoints:42, badge:"Helicopter Evac Team" },
+    30:{ cash:16000, perkPoints:6, seasonPoints:46, badge:"Stealth Tiger Breakers" },
   };
   const operationRewards = {
     "live-squad":{ cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },

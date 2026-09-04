@@ -171,7 +171,7 @@ async function run(){
   assert.equal(hostAgain.firstClaim, false, "host cannot receive a second server reward");
   assert.equal(teammateAgain.firstClaim, false, "teammate cannot receive a second server reward");
 
-  for(let level=2; level<=20; level++){
+  for(let level=2; level<=30; level++){
     const levelHost = { id:910100 + (level * 10), first_name:`Host ${level}` };
     const levelMate = { id:910101 + (level * 10), first_name:`Mate ${level}` };
     let levelSession = await createSession(levelHost, { launchType:"shared-story", storyMissionLevel:level });
@@ -180,7 +180,7 @@ async function run(){
     let levelSnapshot = await buildSnapshot(levelSession, levelHost.id);
     assert.equal(levelSnapshot.mission.level, level, `Story Mission ${level} keeps its own definition`);
     assert(levelSnapshot.world.width >= 3800, `Story Mission ${level} keeps a large mission world`);
-    if(level >= 11) assert.equal(levelSnapshot.world.width, 4800, `Story Mission ${level} uses the full Chapter 2 world width`);
+    if(level >= 11) assert.equal(levelSnapshot.world.width, 4800, `Story Mission ${level} uses the full expanded Story world width`);
     assert(levelSnapshot.world.height >= 2100, `Story Mission ${level} keeps Story-scale travel depth`);
     assert.equal(levelSnapshot.mission.title, `Story Mission ${level}`, `Story Mission ${level} has an accurate title`);
     assert(levelSnapshot.mission.objective.length > 12, `Story Mission ${level} has a real objective`);
@@ -238,6 +238,52 @@ async function run(){
       assert.equal(levelSnapshot.boss.hpMax, 1800, "Mission 20 keeps the Blood Tiger boss health");
       assert.equal(levelSnapshot.boss.bloodRage, true, "Mission 20 boss carries the Blood Rage mechanic");
     }
+    if(level === 21){
+      assert.equal(levelSnapshot.mission.chapterName, "The Deep Jungle", "Mission 21 starts the real Chapter 3 campaign");
+      assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 21 escorts all four research-team members");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 21 has a three-stage research route");
+    }
+    if(level === 22){
+      assert.equal(levelSnapshot.tigers.length, 5, "Mission 22 has a complete tall-grass pack");
+      assert(levelSnapshot.mission.objective.toLowerCase().includes("tall grass"), "Mission 22 names the real tall-grass objective");
+    }
+    if(level === 23){
+      assert.equal(levelSnapshot.mission.captureRequired, 1, "Mission 23 requires one live capture");
+      assert.deepEqual(levelSnapshot.mission.captureTargetIds, ["s23_veil_tiger"], "Mission 23 requires the named Veil Tiger rather than any tiger");
+      assert.deepEqual(levelSnapshot.mission.captureTargetNames, ["Veil Tiger"], "Mission 23 tells both players the exact capture target");
+      assert.equal(levelSnapshot.tigers.find((tiger)=>tiger.id === "s23_veil_tiger").type, "Stalker", "the Veil Tiger uses stealth behavior");
+    }
+    if(level === 24){
+      assert.equal(levelSnapshot.mission.rescueRequired, 5, "Mission 24 escorts five river-trail villagers");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 24 has a real three-stage river route");
+    }
+    if(level === 25){
+      assert.equal(levelSnapshot.tigers.length, 5, "Mission 25 has a five-tiger bridge ambush");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 25 requires both players to secure all bridge checkpoints");
+    }
+    if(level === 26){
+      assert.equal(levelSnapshot.mission.rescueRequired, 1, "Mission 26 requires the lost hunter rescue");
+      assert.equal(levelSnapshot.civilians[0].name, "Lost Hunter", "Mission 26 identifies its real rescue target");
+      assert.equal(levelSnapshot.civilians[0].vip, true, "the lost hunter is protected as a mission VIP");
+    }
+    if(level === 27){
+      assert.equal(levelSnapshot.mission.rescueRequired, 5, "Mission 27 escorts all five abandoned-camp survivors");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 27 has a three-stage abandoned-camp route");
+    }
+    if(level === 28){
+      assert.equal(levelSnapshot.tigers.length, 8, "Mission 28 contains the full eight-tiger pack");
+      assert.equal(levelSnapshot.mission.aggressionBonus, 3, "Mission 28 begins with large-pack danger damage");
+    }
+    if(level === 29){
+      assert.equal(levelSnapshot.mission.rescueRequired, 7, "Mission 29 requires all seven civilian rescues");
+      assert.equal(levelSnapshot.mission.extractionType, "helicopter", "Mission 29 uses a real helicopter-marked extraction zone");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 29 has a three-stage helicopter boarding route");
+    }
+    if(level === 30){
+      assert.equal(levelSnapshot.boss.name, "Stealth Tiger", "Mission 30 uses the real Stealth Tiger boss");
+      assert.equal(levelSnapshot.boss.hpMax, 2200, "Mission 30 keeps the Stealth Tiger boss health");
+      assert.equal(levelSnapshot.boss.type, "Stalker", "Mission 30 boss uses stealth behavior");
+    }
     if(level === 12){
       const firstTiger = levelSnapshot.tigers[0];
       await writePlayerPatch(levelSession.code, levelHost.id, {
@@ -277,8 +323,18 @@ async function run(){
     if(levelSnapshot.mission.captureRequired > 0){
       levelSnapshot = await buildSnapshot(await readSession(levelSession.code), levelHost.id);
       assert.equal(levelSnapshot.status, "active", `Mission ${level} cannot finish without its required captures`);
+      if(level === 23){
+        await writePlayerPatch(levelSession.code, levelHost.id, {
+          capturedIds:["s23_veil_scout"],
+          lastSeenAt:Date.now(),
+        });
+        levelSnapshot = await buildSnapshot(await readSession(levelSession.code), levelHost.id);
+        assert.equal(levelSnapshot.status, "active", "Mission 23 cannot be completed by capturing a different tiger");
+      }
       await writePlayerPatch(levelSession.code, levelHost.id, {
-        capturedIds:levelSnapshot.tigers.slice(0, levelSnapshot.mission.captureRequired).map((tiger)=>tiger.id),
+        capturedIds:levelSnapshot.mission.captureTargetIds?.length
+          ? levelSnapshot.mission.captureTargetIds
+          : levelSnapshot.tigers.slice(0, levelSnapshot.mission.captureRequired).map((tiger)=>tiger.id),
         lastSeenAt:Date.now(),
       });
     }
@@ -294,13 +350,18 @@ async function run(){
       assert.equal(levelHostReward.reward.badge, "Blood Tiger Breakers", "Mission 20 awards the Blood Tiger badge");
       assert.deepEqual(levelHostReward.storyProgress, { completedLevel:20, unlockLevel:21 }, "Mission 20 unlocks Mission 21");
     }
+    if(level === 30){
+      assert.equal(levelHostReward.reward.cash, 16000, "Mission 30 pays the Stealth Tiger cash reward");
+      assert.equal(levelHostReward.reward.badge, "Stealth Tiger Breakers", "Mission 30 awards the Stealth Tiger badge");
+      assert.deepEqual(levelHostReward.storyProgress, { completedLevel:30, unlockLevel:31 }, "Mission 30 unlocks Mission 31");
+    }
     const levelHostAgain = await claimReward(await readSession(levelSession.code), levelHost);
     assert.equal(levelHostAgain.firstClaim, false, `Story Mission ${level} does not pay the host twice`);
   }
 
-  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:21 });
-  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 21 cannot create a fake shared Story room");
-  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 21");
+  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:31 });
+  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 31 cannot create a fake shared Story room");
+  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 31");
 
   const routeHost = { id:910811, first_name:"Route Host" };
   const routeMate = { id:910812, first_name:"Route Mate" };
@@ -745,7 +806,7 @@ async function run(){
   const survivalHostAgain = await claimReward(await readSession(survivalSession.code), survivalHost);
   assert.equal(survivalHostAgain.firstClaim, false, "Endless Survival cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-20 and seven Special Operations, following civilians, moving caravan checkpoints, checkpoint restart, Chapter 2 aggression, Blood Rage, reconnect, separate unlocks, capture, and reward dedupe");
+  console.log("PASS: Story Missions 1-30 and seven Special Operations, Chapter 3 routes, named stealth capture, helicopter evacuation, checkpoint restart, reconnect, separate unlocks, capture, and reward dedupe");
 }
 
 run().catch((error)=>{
