@@ -80,6 +80,16 @@
     { level:38, title:"Town Center Swarm", description:"Hold the town center and clear a fast ten-tiger swarm." },
     { level:39, title:"Massive Village Pack", description:"Survive and clear twelve coordinated tigers across the abandoned village." },
     { level:40, title:"Twin Alpha Tigers", description:"Defeat or capture Ashclaw and Ruinstripe, then finish Chapter 4 together." },
+    { level:41, title:"Broken Bridge Escort", description:"Escort six civilians across three shared broken-bridge checkpoints." },
+    { level:42, title:"Riverbank Attack", description:"Clear seven tigers attacking through the riverbank reeds and shallows." },
+    { level:43, title:"River Tiger Capture", description:"Use Rubber ammunition to capture Currentstripe alive, then clear its guards." },
+    { level:44, title:"Wounded Water Escort", description:"Escort a wounded villager across three shallow-water safety points." },
+    { level:45, title:"River Crossing Ambush", description:"Break an eight-tiger ambush and secure the crossing in order." },
+    { level:46, title:"River Supply Convoy", description:"Protect four convoy members through three flooded-road checkpoints." },
+    { level:47, title:"River Camp Escort", description:"Escort seven civilians through the flooded approach to river camp." },
+    { level:48, title:"Rescue Boat Defense", description:"Rescue the boat crew, clear seven attackers, and board the boat together." },
+    { level:49, title:"River Delta Pack", description:"Survive and clear eleven coordinated tigers across the river delta." },
+    { level:50, title:"Giant River Tiger", description:"Defeat or capture the Giant River Tiger and finish Chapter 5 together." },
   ]);
   const SPECIAL_OPERATIONS = Object.freeze([
     {
@@ -247,8 +257,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V8.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V8.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.2 • Co-op Command");
+      ? `Tiger Strike V8.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V8.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.3 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -505,7 +515,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V8.2 Shared Story Chapter 4</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–40 can now be played Solo or with a teammate. Chapter 4 adds abandoned-home searches, street patrols, survivor routes, a triple live capture, convoy defense, scientist sample sites, real burning-building hazards, town swarms, and the Twin Alpha boss fight.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V8.3 Shared Story Chapter 5</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–50 can now be played Solo or with a teammate. Chapter 5 adds broken bridges, riverbank attacks, a named live capture, flooded crossings that slow soldiers, convoy and camp escorts, rescue-boat extraction, a river-delta pack, and the Giant River Tiger boss.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -542,6 +552,7 @@
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="11">Chapter 2 • 11–20</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="21">Chapter 3 • 21–30</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="31">Chapter 4 • 31–40</button>
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="41">Chapter 5 • 41–50</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.max(1, selected - 1)}" ${selected <= 1 ? "disabled" : ""}>← Previous</button>
       <span>Unlocked ${max}/100</span>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.min(max, selected + 1)}" ${selected >= max ? "disabled" : ""}>Next →</button>
@@ -1401,7 +1412,13 @@
     if(!dx && !dy) return;
     const len = Math.hypot(dx,dy) || 1;
     const roleSpeed = state.local.role === "tracker" ? 1.08 : (state.local.role === "assault" ? .96 : 1);
-    const speed = 185 * roleSpeed;
+    const inWater = (state.snapshot?.waterZones || []).some((zone)=>{
+      const rx=Math.max(1,Number(zone.rx||1)),ry=Math.max(1,Number(zone.ry||1));
+      const nx=(Number(state.local.x)-Number(zone.x||0))/rx,ny=(Number(state.local.y)-Number(zone.y||0))/ry;
+      return nx*nx+ny*ny<=1;
+    });
+    const waterMultiplier = inWater ? clamp(Number(state.snapshot?.mission?.waterSlowMultiplier || .60),.35,1) : 1;
+    const speed = 185 * roleSpeed * waterMultiplier;
     const world = state.snapshot?.world || { width:1000, height:760 };
     state.local.x = clamp(state.local.x + (dx/len)*speed*dt, 24, Number(world.width || 1000) - 24);
     state.local.y = clamp(state.local.y + (dy/len)*speed*dt, 24, Number(world.height || 760) - 24);
@@ -1471,6 +1488,17 @@
     ctx.fillStyle="#facc15";ctx.fillRect(-48,-4,16,7);ctx.fillRect(-23,-4,16,7);ctx.fillRect(2,-4,12,7);
     if(damaged){ctx.strokeStyle="#fb7185";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(-12,-22);ctx.lineTo(14,18);ctx.moveTo(10,-18);ctx.lineTo(-18,18);ctx.stroke();ctx.fillStyle="rgba(71,85,105,.46)";ctx.beginPath();ctx.arc(-18,-48,18,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(-6,-70,25,0,Math.PI*2);ctx.fill();}
     ctx.restore();
+  }
+
+  function drawRescueBoat(ctx,x,y,size=1,departed=false){
+    ctx.save();ctx.translate(x,y);ctx.scale(size,size);
+    ctx.strokeStyle="rgba(186,230,253,.72)";ctx.lineWidth=5;
+    for(const offset of [-38,-18,6]){ctx.beginPath();ctx.moveTo(-92,offset+36);ctx.quadraticCurveTo(-45,offset+24,5,offset+37);ctx.quadraticCurveTo(48,offset+49,98,offset+34);ctx.stroke();}
+    ctx.fillStyle="#e2e8f0";ctx.strokeStyle="#0f172a";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-82,5);ctx.lineTo(82,5);ctx.lineTo(55,43);ctx.lineTo(-58,43);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.fillStyle="#0284c7";roundRect(ctx,-30,-38,67,43,6);ctx.fill();ctx.strokeStyle="#bae6fd";ctx.stroke();ctx.fillStyle="#7dd3fc";ctx.fillRect(-18,-28,18,14);ctx.fillRect(8,-28,18,14);
+    ctx.strokeStyle="#334155";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(45,-3);ctx.lineTo(45,-50);ctx.stroke();ctx.fillStyle="#facc15";ctx.beginPath();ctx.moveTo(48,-48);ctx.lineTo(80,-36);ctx.lineTo(48,-24);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#0f172a";ctx.beginPath();ctx.arc(-51,16,8,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(56,16,8,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#e0f2fe";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(departed?"RESCUE BOAT DEPARTING":"RESCUE BOAT READY",0,65);ctx.restore();
   }
 
   function drawHighlandPeak(ctx,x,y,size=1){
@@ -1614,17 +1642,24 @@
     const bloodChapter = storyLevel >= 11 && storyLevel <= 20;
     const deepJungleChapter = storyLevel >= 21 && storyLevel <= 30;
     const abandonedVillageChapter = storyLevel >= 31 && storyLevel <= 40;
+    const riverTerritoryChapter = storyLevel >= 41 && storyLevel <= 50;
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
     const riverTop = worldH*.88;
     const visible = (x,y,pad=120)=>x >= view.x-pad && x <= view.x+view.w+pad && y >= view.y-pad && y <= view.y+view.h+pad;
     const nearRoad = (x,y,pad=75)=>verticalRoads.some((road)=>Math.abs(x-road)<pad)||horizontalRoads.some((road)=>Math.abs(y-road)<pad);
+    const inWaterZone = (x,y,pad=0)=>(snap.waterZones||[]).some((zone)=>{
+      const rx=Math.max(1,Number(zone.rx||1)+pad),ry=Math.max(1,Number(zone.ry||1)+pad);
+      const nx=(x-Number(zone.x||0))/rx,ny=(y-Number(zone.y||0))/ry;
+      return nx*nx+ny*ny<=1;
+    });
 
     const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,endlessSurvival?"#713f2b":(denAssault?"#62533c":(villageSiege?"#66a85c":(convoyRescue?"#6f8f4e":(alphaHunt?"#34435c":(stormExtraction?"#315a66":(bloodChapter?"#527044":"#3f7b4d")))))));terrain.addColorStop(.52,endlessSurvival?"#3f3a2f":(denAssault?"#3f4936":(villageSiege?"#43814d":(convoyRescue?"#416b46":(alphaHunt?"#28384a":(stormExtraction?"#254956":(bloodChapter?"#3b5337":"#2f6944")))))));terrain.addColorStop(1,endlessSurvival?"#241f2d":(denAssault?"#29382f":(villageSiege?"#2c6845":(convoyRescue?"#294f3e":(alphaHunt?"#1d2b3f":(stormExtraction?"#193845":(bloodChapter?"#302f32":"#24583c")))))));ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
     if(bloodChapter){ctx.fillStyle="rgba(127,29,29,.09)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     if(deepJungleChapter){ctx.fillStyle="rgba(34,197,94,.12)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     if(abandonedVillageChapter){ctx.fillStyle="rgba(148,163,184,.10)";ctx.fillRect(view.x,view.y,view.w,view.h);}
+    if(riverTerritoryChapter){ctx.fillStyle="rgba(6,182,212,.12)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     ctx.fillStyle=endlessSurvival?"rgba(249,115,22,.13)":(denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":(alphaHunt?"rgba(147,197,253,.12)":(stormExtraction?"rgba(125,211,252,.13)":"rgba(102,164,91,.20)")))));
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
@@ -1644,6 +1679,15 @@
     for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,worldH);ctx.stroke();}
     ctx.setLineDash([]);
 
+    for(const water of (snap.waterZones||[])){
+      if(!visible(water.x,water.y,Math.max(Number(water.rx||0),Number(water.ry||0))+90))continue;
+      const gradient=ctx.createRadialGradient(water.x,water.y,18,water.x,water.y,Math.max(40,Number(water.rx||180)));
+      gradient.addColorStop(0,"rgba(34,211,238,.62)");gradient.addColorStop(.72,"rgba(14,116,144,.78)");gradient.addColorStop(1,"rgba(8,47,73,.90)");
+      ctx.fillStyle=gradient;ctx.beginPath();ctx.ellipse(water.x,water.y,Number(water.rx||180),Number(water.ry||90),0,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=5;ctx.stroke();
+      ctx.strokeStyle="rgba(207,250,254,.50)";ctx.lineWidth=3;for(const offset of [-.5,0,.5]){ctx.beginPath();ctx.ellipse(water.x,water.y+Number(water.ry||90)*offset,Number(water.rx||180)*.86,Math.max(8,Number(water.ry||90)*.13),0,0,Math.PI*2);ctx.stroke();}
+      ctx.fillStyle="rgba(8,47,73,.92)";roundRect(ctx,water.x-105,water.y-Number(water.ry||90)-46,210,34,9);ctx.fill();ctx.fillStyle="#cffafe";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(`${water.label} • SLOWS MOVEMENT`,water.x,water.y-Number(water.ry||90)-23);
+    }
+
     for(const roadX of verticalRoads){
       const bridgeY=riverTop-34;ctx.fillStyle="#765a3b";ctx.fillRect(roadX-roadW*.63,bridgeY,roadW*1.26,94);ctx.strokeStyle="#e8c178";ctx.lineWidth=6;
       for(let x=roadX-roadW*.52;x<roadX+roadW*.53;x+=24){ctx.beginPath();ctx.moveTo(x,bridgeY-8);ctx.lineTo(x,bridgeY+102);ctx.stroke();}
@@ -1652,7 +1696,7 @@
     for(let i=0;i<(endlessSurvival?105:(denAssault?150:(villageSiege?185:(convoyRescue?210:(alphaHunt?175:(stormExtraction?125:240))))));i++){
       const x=70+((i*337+53)%Math.max(100,Math.floor(worldW-140)));
       const y=80+((i*191+97)%Math.max(100,Math.floor(worldH-180)));
-      if(!visible(x,y,70)||nearRoad(x,y,88)||y>riverTop-55) continue;
+      if(!visible(x,y,70)||nearRoad(x,y,88)||y>riverTop-55||inWaterZone(x,y,48)) continue;
       if(denAssault && i%3===0){ctx.fillStyle=i%2?"#78716c":"#57534e";ctx.beginPath();ctx.ellipse(x,y,18+(i%5)*4,13+(i%4)*3,(i%7)*.22,0,Math.PI*2);ctx.fill();}
       else drawStoryTree(ctx,x,y,.68+(i%5)*.075);
     }
@@ -1660,7 +1704,7 @@
     for(let i=0;i<(endlessSurvival?6:(denAssault?12:(villageSiege?58:(convoyRescue?18:(alphaHunt?8:(stormExtraction?14:34))))));i++){
       const x=100+((i*421+160)%Math.max(140,Math.floor(worldW-280)));
       const y=110+((i*263+120)%Math.max(140,Math.floor(riverTop-260)));
-      if(!visible(x,y,210)||nearRoad(x+80,y+52,125)) continue;
+      if(!visible(x,y,210)||nearRoad(x+80,y+52,125)||inWaterZone(x+80,y+52,110)) continue;
       drawStoryBuilding(ctx,x,y,142+(i%3)*14,88+(i%2)*12,roofColors[i%roofColors.length]);
     }
     if(denAssault){
@@ -1800,6 +1844,26 @@
       for(const [xp,yp,r] of [[.26,.30,175],[.52,.49,280],[.77,.32,185],[.70,.69,210]]){const x=worldW*xp,y=worldH*yp;if(!visible(x,y,r+80))continue;ctx.fillStyle="rgba(124,45,18,.16)";ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(251,146,60,.70)";ctx.lineWidth=7;ctx.setLineDash([22,15]);ctx.stroke();ctx.setLineDash([]);}if(visible(worldW*.53,worldH*.50,400)){ctx.fillStyle="rgba(67,20,7,.94)";roundRect(ctx,worldW*.53-145,worldH*.50-68,290,48,12);ctx.fill();ctx.fillStyle="#ffedd5";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("MASSIVE PACK • 12 TIGERS",worldW*.53,worldH*.50-37);}
     }else if(storyLevel === 40){
       for(const [x,y,color,label] of [[worldW*.42,worldH*.48,"#fb923c","ASHCLAW"],[worldW*.66,worldH*.50,"#a78bfa","RUINSTRIPE"]]){if(!visible(x,y,350))continue;ctx.fillStyle="rgba(69,10,10,.20)";ctx.beginPath();ctx.arc(x,y,235,0,Math.PI*2);ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=9;ctx.setLineDash([20,14]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(30,27,75,.94)";roundRect(ctx,x-92,y-62,184,44,11);ctx.fill();ctx.fillStyle="#f8fafc";ctx.font="950 16px system-ui";ctx.textAlign="center";ctx.fillText(`${label} ALPHA`,x,y-33);}
+    }else if(storyLevel === 41){
+      const water=(snap.waterZones||[])[0],y=water?.y||worldH*.56;for(let x=(water?.x||worldW*.5)-(water?.rx||worldW*.35)*.78;x<(water?.x||worldW*.5)+(water?.rx||worldW*.35)*.78;x+=62){ctx.save();ctx.translate(x,y+Math.sin(x*.009)*18);ctx.rotate(Math.sin(x*.013)*.09);ctx.fillStyle="#a16207";ctx.strokeStyle="#fde68a";ctx.lineWidth=3;roundRect(ctx,-27,-17,54,34,5);ctx.fill();ctx.stroke();ctx.restore();}if(visible(water?.x||worldW*.5,y,420)){ctx.fillStyle="rgba(69,26,3,.94)";roundRect(ctx,(water?.x||worldW*.5)-135,y-112,270,46,12);ctx.fill();ctx.fillStyle="#fef3c7";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("BROKEN BRIDGE • PLANK ROUTE",water?.x||worldW*.5,y-82);}
+    }else if(storyLevel === 42){
+      const water=(snap.waterZones||[])[0];for(let i=0;i<34;i++){const x=(water?.x||worldW*.5)-(water?.rx||worldW*.4)+i*((water?.rx||worldW*.4)*2/33),y=(water?.y||worldH*.58)+(i%2?-.76:.76)*(water?.ry||130);ctx.strokeStyle=i%3?"#65a30d":"#a3e635";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(x,y+28);ctx.quadraticCurveTo(x+(i%2?14:-12),y-8,x,y-42);ctx.stroke();}if(visible(water?.x||worldW*.5,water?.y||worldH*.58,390)){ctx.fillStyle="rgba(20,83,45,.94)";roundRect(ctx,(water?.x||worldW*.5)-125,(water?.y||worldH*.58)-72,250,44,11);ctx.fill();ctx.fillStyle="#ecfccb";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("RIVERBANK ATTACK",water?.x||worldW*.5,(water?.y||worldH*.58)-43);}
+    }else if(storyLevel === 43){
+      const tiger=(snap.tigers||[]).find((row)=>row.id==="s43_currentstripe")||{x:worldW*.56,y:worldH*.52};if(visible(tiger.x,tiger.y,340)){drawResearchBeacon(ctx,tiger.x,tiger.y,1.35);ctx.fillStyle="rgba(8,47,73,.95)";roundRect(ctx,tiger.x-145,tiger.y-158,290,46,12);ctx.fill();ctx.fillStyle="#cffafe";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("CURRENTSTRIPE • LIVE CAPTURE",tiger.x,tiger.y-128);}
+    }else if(storyLevel === 44){
+      const clinicX=worldW*.78,clinicY=worldH*.68;if(visible(clinicX,clinicY,210))drawFieldClinic(ctx,clinicX,clinicY,1.25);if(visible(worldW*.54,worldH*.54,380)){ctx.fillStyle="rgba(8,47,73,.94)";roundRect(ctx,worldW*.54-138,worldH*.54-62,276,46,12);ctx.fill();ctx.fillStyle="#e0f2fe";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("WOUNDED WATER ESCORT",worldW*.54,worldH*.54-32);}
+    }else if(storyLevel === 45){
+      for(const [xp,yp,r] of [[.30,.46,175],[.53,.54,235],[.77,.61,180]]){const x=worldW*xp,y=worldH*yp;if(!visible(x,y,r+60))continue;ctx.fillStyle="rgba(127,29,29,.17)";ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=7;ctx.setLineDash([20,14]);ctx.stroke();ctx.setLineDash([]);}if(visible(worldW*.54,worldH*.52,390)){ctx.fillStyle="rgba(69,10,10,.94)";roundRect(ctx,worldW*.54-135,worldH*.52-68,270,46,12);ctx.fill();ctx.fillStyle="#ffe4e6";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("RIVER CROSSING AMBUSH",worldW*.54,worldH*.52-38);}
+    }else if(storyLevel === 46){
+      const points=snap.checkpoints||[],done=snap.checkpointCompletedIds||[],index=Math.min(done.length,Math.max(0,points.length-1)),truckPoint=points[index]||{x:worldW*.32,y:worldH*.44};for(const [xp,yp,color] of [[.20,.34,"#475569"],[.72,.66,"#2563eb"]]){if(visible(worldW*xp,worldH*yp,170))drawConvoyTruck(ctx,worldW*xp,worldH*yp,0,color,true);}if(visible(truckPoint.x,truckPoint.y,180))drawConvoyTruck(ctx,truckPoint.x,truckPoint.y,0,"#16a34a",false);if(visible(worldW*.54,worldH*.50,380)){ctx.fillStyle="rgba(30,41,59,.95)";roundRect(ctx,worldW*.54-140,worldH*.50-72,280,46,12);ctx.fill();ctx.fillStyle="#f8fafc";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("RIVER SUPPLY CONVOY",worldW*.54,worldH*.50-42);}
+    }else if(storyLevel === 47){
+      const campX=worldW*.80,campY=worldH*.68;if(visible(campX,campY,220)){drawFieldClinic(ctx,campX-90,campY,1.05);drawStoryBuilding(ctx,campX+20,campY-38,145,92,"#0f766e");}if(visible(worldW*.66,worldH*.60,380)){ctx.fillStyle="rgba(6,78,59,.95)";roundRect(ctx,worldW*.66-126,worldH*.60-68,252,46,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("RIVER CAMP EVACUATION",worldW*.66,worldH*.60-38);}
+    }else if(storyLevel === 48){
+      const ex=snap.extraction||{x:worldW*.88,y:worldH*.78};if(visible(ex.x,ex.y,300))drawRescueBoat(ctx,ex.x,ex.y-18,1.35,false);if(visible(worldW*.55,worldH*.56,390)){ctx.fillStyle="rgba(8,47,73,.95)";roundRect(ctx,worldW*.55-140,worldH*.56-70,280,46,12);ctx.fill();ctx.fillStyle="#e0f2fe";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("DEFEND THE RESCUE BOAT",worldW*.55,worldH*.56-40);}
+    }else if(storyLevel === 49){
+      for(const water of (snap.waterZones||[])){if(!visible(water.x,water.y,Math.max(water.rx||0,water.ry||0)+80))continue;ctx.fillStyle="rgba(20,83,45,.56)";ctx.beginPath();ctx.ellipse(water.x,water.y,Number(water.rx||180)*.28,Number(water.ry||90)*.46,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#4ade80";ctx.lineWidth=5;ctx.stroke();}if(visible(worldW*.54,worldH*.51,420)){ctx.fillStyle="rgba(67,20,7,.95)";roundRect(ctx,worldW*.54-145,worldH*.51-72,290,48,12);ctx.fill();ctx.fillStyle="#ffedd5";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("RIVER DELTA PACK • 11 TIGERS",worldW*.54,worldH*.51-41);}
+    }else if(storyLevel === 50){
+      const boss=(snap.tigers||[]).find((row)=>row.id==="s50_giant_river_tiger")||snap.boss||{x:worldW*.59,y:worldH*.55};if(visible(boss.x,boss.y,480)){ctx.fillStyle="rgba(8,47,73,.27)";ctx.beginPath();ctx.arc(boss.x,boss.y,340,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#22d3ee";ctx.lineWidth=11;ctx.setLineDash([24,16]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(8,47,73,.96)";roundRect(ctx,boss.x-150,boss.y-92,300,50,13);ctx.fill();ctx.strokeStyle="#a5f3fc";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#ecfeff";ctx.font="950 19px system-ui";ctx.textAlign="center";ctx.fillText("GIANT RIVER TIGER",boss.x,boss.y-59);}
     }
 
     for(const fire of (snap.fireZones || [])){
@@ -1825,7 +1889,7 @@
       ctx.fillStyle="rgba(15,23,42,.86)";roundRect(ctx,baseX-118,baseY-112,236,78,16);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#cffafe";ctx.font="950 19px system-ui";ctx.textAlign="center";ctx.fillText("🛡️ BASE CAMP",baseX,baseY-82);ctx.font="800 13px system-ui";ctx.fillText("Respawn • Rally • Safe Start",baseX,baseY-57);
     }
 
-    const ex=snap.extraction;const survivalExtract=!!snap.mission?.survivalExtractAvailable;const helicopterExtraction=snap.mission?.extractionType==="helicopter";ctx.fillStyle=(stormExtraction||helicopterExtraction)?"rgba(14,165,233,.26)":(endlessSurvival?(survivalExtract?"rgba(34,197,94,.28)":"rgba(249,115,22,.16)"):"rgba(34,197,94,.23)");ctx.strokeStyle=(stormExtraction||helicopterExtraction)?"#7dd3fc":(endlessSurvival?(survivalExtract?"#4ade80":"#f97316"):"#4ade80");ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=(stormExtraction||helicopterExtraction)?"#e0f2fe":(endlessSurvival?"#ffedd5":"#dcfce7");ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText(helicopterExtraction?"HELICOPTER EXTRACTION":(stormExtraction?"STORM EXTRACTION":(endlessSurvival?(survivalExtract?"BANK REWARDS":"LOCKED • CLEAR WAVE 3"):"SQUAD EXTRACTION")),ex.x,ex.y+6);if(stormExtraction||helicopterExtraction){ctx.font="950 44px system-ui";ctx.fillText("H",ex.x,ex.y-24);}
+    const ex=snap.extraction;const survivalExtract=!!snap.mission?.survivalExtractAvailable;const helicopterExtraction=snap.mission?.extractionType==="helicopter";const boatExtraction=snap.mission?.extractionType==="boat";ctx.fillStyle=(stormExtraction||helicopterExtraction||boatExtraction)?"rgba(14,165,233,.26)":(endlessSurvival?(survivalExtract?"rgba(34,197,94,.28)":"rgba(249,115,22,.16)"):"rgba(34,197,94,.23)");ctx.strokeStyle=(stormExtraction||helicopterExtraction||boatExtraction)?"#7dd3fc":(endlessSurvival?(survivalExtract?"#4ade80":"#f97316"):"#4ade80");ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=(stormExtraction||helicopterExtraction||boatExtraction)?"#e0f2fe":(endlessSurvival?"#ffedd5":"#dcfce7");ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText(boatExtraction?"RESCUE BOAT EXTRACTION":(helicopterExtraction?"HELICOPTER EXTRACTION":(stormExtraction?"STORM EXTRACTION":(endlessSurvival?(survivalExtract?"BANK REWARDS":"LOCKED • CLEAR WAVE 3"):"SQUAD EXTRACTION"))),ex.x,ex.y+6);if(stormExtraction||helicopterExtraction){ctx.font="950 44px system-ui";ctx.fillText("H",ex.x,ex.y-24);}
     const guideTarget=(snap.mission?.checkpointsBeforeRescue ? nextCheckpointForLocal()||nearestUnrescuedCivilian() : nearestUnrescuedCivilian()||nextCheckpointForLocal())||requiredCaptureTiger()||nearestActiveTiger()||ex;
     if(state.local&&guideTarget){ctx.strokeStyle="rgba(103,232,249,.62)";ctx.lineWidth=4;ctx.setLineDash([12,11]);ctx.beginPath();ctx.moveTo(state.local.x,state.local.y);ctx.lineTo(guideTarget.x,guideTarget.y);ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle="rgba(103,232,249,.30)";ctx.lineWidth=3;ctx.beginPath();ctx.arc(guideTarget.x,guideTarget.y,guideTarget.hpMax?(guideTarget.boss?178:164):82,0,Math.PI*2);ctx.stroke();}
     ctx.strokeStyle="rgba(191,219,254,.7)";ctx.lineWidth=8;ctx.strokeRect(4,4,worldW-8,worldH-8);

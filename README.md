@@ -374,6 +374,18 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Both players claim separate deduplicated rewards and unlock the next mission independently. Mission 40 awards the `Twin Alpha Breakers` badge and unlocks Mission 41.
 - Existing Solo Story progress, Missions 1–30, all seven Special Operations, field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, ammunition modes, cages, bodies, and government systems remain available.
 
+### V8.3 Shared Story Chapter 5
+
+- Story Campaign now offers a real Solo or Two Players choice for Missions 1–50. Solo remains available for every unlocked mission; Missions 51–100 are accurately labeled Solo-only until their co-op versions are built.
+- Missions 41–50 follow the existing `River Territory` campaign: Broken Bridge Escort, Riverbank Attack, River Tiger Capture, Wounded Water Escort, River Crossing Ambush, River Supply Convoy, River Camp Escort, Rescue Boat Defense, River Delta Pack, and the Giant River Tiger boss.
+- River channels are actual visible map areas and slow soldiers who enter them. Each mission uses a safe bridge, shallow crossing, or marked route so the water never creates an invisible blocker.
+- Mission 41 requires six civilians and both soldiers to cross three broken-bridge checkpoints. Mission 44 escorts one wounded VIP through three water safety points.
+- Mission 43 requires the named Currentstripe River Tiger to be captured alive. Real-ammo hits still permanently disqualify it from capture during that run.
+- Missions 46 and 47 add shared convoy and river-camp routes. Mission 48 places the extraction zone in the water beside a visible rescue boat after the four-person crew and all seven threats are secured.
+- Mission 49 contains an eleven-tiger river-delta pack. Mission 50 contains the 2,850 HP Giant River Tiger boss with a low-health River Rage phase.
+- Both players claim separate deduplicated rewards and unlock the next mission independently. Mission 50 awards the `Giant River Tiger Breakers` badge and unlocks Mission 51.
+- Existing Solo Story progress, Missions 1–40, all seven Special Operations, field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, ammunition modes, cages, bodies, and government systems remain available.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

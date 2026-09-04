@@ -171,7 +171,7 @@ async function run(){
   assert.equal(hostAgain.firstClaim, false, "host cannot receive a second server reward");
   assert.equal(teammateAgain.firstClaim, false, "teammate cannot receive a second server reward");
 
-  for(let level=2; level<=40; level++){
+  for(let level=2; level<=50; level++){
     const levelHost = { id:910100 + (level * 10), first_name:`Host ${level}` };
     const levelMate = { id:910101 + (level * 10), first_name:`Mate ${level}` };
     let levelSession = await createSession(levelHost, { launchType:"shared-story", storyMissionLevel:level });
@@ -340,6 +340,49 @@ async function run(){
       assert.equal(levelSnapshot.boss.name, "Ruinstripe Alpha", "the Mission 40 HUD switches to the surviving Alpha twin");
       assert.equal(levelSnapshot.mission.aggressionBonus, 7, "the surviving Alpha gains three damage when its twin falls");
     }
+    if(level === 41){
+      assert.equal(levelSnapshot.mission.chapterName, "River Territory", "Mission 41 starts the real Chapter 5 campaign");
+      assert.equal(levelSnapshot.mission.rescueRequired, 6, "Mission 41 escorts six civilians across the broken bridge");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 41 has three shared broken-bridge checkpoints");
+      assert.equal(levelSnapshot.waterZones.length, 1, "Mission 41 exposes the river as a real map area");
+    }
+    if(level === 42){
+      assert.equal(levelSnapshot.tigers.length, 7, "Mission 42 has seven riverbank attackers");
+      assert(levelSnapshot.mission.waterSlowMultiplier < 1, "Mission 42 shallow water slows soldiers");
+    }
+    if(level === 43){
+      assert.equal(levelSnapshot.mission.captureRequired, 1, "Mission 43 requires one live river-tiger capture");
+      assert.deepEqual(levelSnapshot.mission.captureTargetIds, ["s43_currentstripe"], "Mission 43 requires Currentstripe rather than any tiger");
+      assert.deepEqual(levelSnapshot.mission.captureTargetNames, ["Currentstripe River Tiger"], "Mission 43 names its required live-capture target");
+    }
+    if(level === 44){
+      assert.equal(levelSnapshot.mission.rescueRequired, 1, "Mission 44 requires the wounded villager rescue");
+      assert.equal(levelSnapshot.civilians[0].injured, true, "Mission 44 marks its escort target as wounded");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 44 has three water-crossing safety points");
+    }
+    if(level === 45){
+      assert.equal(levelSnapshot.tigers.length, 8, "Mission 45 contains the complete eight-tiger crossing ambush");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 45 requires both players to secure the crossing in order");
+    }
+    if(level === 46){
+      assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 46 protects all four supply-convoy members");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 46 advances the convoy through three route checkpoints");
+    }
+    if(level === 47){
+      assert.equal(levelSnapshot.mission.rescueRequired, 7, "Mission 47 escorts seven civilians to river camp");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 47 has a three-stage river-camp route");
+    }
+    if(level === 48){
+      assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 48 rescues the complete boat crew");
+      assert.equal(levelSnapshot.mission.extractionType, "boat", "Mission 48 uses a real boat-marked extraction zone");
+      assert.equal(levelSnapshot.tigers.length, 7, "Mission 48 defends the rescue boat from seven tigers");
+    }
+    if(level === 49) assert.equal(levelSnapshot.tigers.length, 11, "Mission 49 contains the full eleven-tiger river-delta pack");
+    if(level === 50){
+      assert.equal(levelSnapshot.boss.name, "Giant River Tiger", "Mission 50 uses the real Giant River Tiger boss");
+      assert.equal(levelSnapshot.boss.hpMax, 2850, "Mission 50 keeps the Giant River Tiger boss health");
+      assert.equal(levelSnapshot.boss.bloodRage, true, "Mission 50 carries the low-health River Rage phase");
+    }
     if(level === 12){
       const firstTiger = levelSnapshot.tigers[0];
       await writePlayerPatch(levelSession.code, levelHost.id, {
@@ -416,13 +459,18 @@ async function run(){
       assert.equal(levelHostReward.reward.badge, "Twin Alpha Breakers", "Mission 40 awards the Twin Alpha badge");
       assert.deepEqual(levelHostReward.storyProgress, { completedLevel:40, unlockLevel:41 }, "Mission 40 unlocks Mission 41");
     }
+    if(level === 50){
+      assert.equal(levelHostReward.reward.cash, 35000, "Mission 50 pays the Giant River Tiger cash reward");
+      assert.equal(levelHostReward.reward.badge, "Giant River Tiger Breakers", "Mission 50 awards the Giant River Tiger badge");
+      assert.deepEqual(levelHostReward.storyProgress, { completedLevel:50, unlockLevel:51 }, "Mission 50 unlocks Mission 51");
+    }
     const levelHostAgain = await claimReward(await readSession(levelSession.code), levelHost);
     assert.equal(levelHostAgain.firstClaim, false, `Story Mission ${level} does not pay the host twice`);
   }
 
-  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:41 });
-  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 41 cannot create a fake shared Story room");
-  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 41");
+  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:51 });
+  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 51 cannot create a fake shared Story room");
+  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 51");
 
   const routeHost = { id:910811, first_name:"Route Host" };
   const routeMate = { id:910812, first_name:"Route Mate" };
@@ -867,7 +915,7 @@ async function run(){
   const survivalHostAgain = await claimReward(await readSession(survivalSession.code), survivalHost);
   assert.equal(survivalHostAgain.firstClaim, false, "Endless Survival cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-40 and seven Special Operations, Chapter 4 home searches, fire hazards, convoy and sample routes, Twin Alpha handoff, reconnect, separate unlocks, capture, and reward dedupe");
+  console.log("PASS: Story Missions 1-50 and seven Special Operations, Chapter 5 water slowdown, bridge and convoy routes, boat extraction, named river capture, Giant River Tiger, reconnect, separate unlocks, and reward dedupe");
 }
 
 run().catch((error)=>{

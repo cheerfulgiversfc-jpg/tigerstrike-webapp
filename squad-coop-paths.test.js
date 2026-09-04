@@ -97,7 +97,7 @@ async function run(){
   assert(html.includes("Story Campaign"), "Story Campaign path is visible");
   assert(html.includes("Special Operations"), "Special Operations path is visible");
   assert(html.includes("Solo supports all 72 unlocked missions"), "home reports the real Solo unlock count");
-  assert(html.includes("Two Player is ready for Missions 1–40"), "home reports the exact converted co-op range");
+  assert(html.includes("Two Player is ready for Missions 1–50"), "home reports the exact converted co-op range");
 
   await clickCommand("hub-story");
   html = element("squadBody").innerHTML;
@@ -105,6 +105,7 @@ async function run(){
   assert(html.includes("Story Mission 72"), "Story path defaults to the current unlocked mission");
   assert(html.includes("Chapter 3 • 21–30"), "Story path includes a direct Chapter 3 mission shortcut");
   assert(html.includes("Chapter 4 • 31–40"), "Story path includes a direct Chapter 4 mission shortcut");
+  assert(html.includes("Chapter 5 • 41–50"), "Story path includes a direct Chapter 5 mission shortcut");
   assert(html.includes("Solo only for now"), "unconverted missions are not presented as working co-op");
   assert(html.includes("Two Player coming later"), "unconverted Two Player button is visibly unavailable");
 
@@ -185,7 +186,24 @@ async function run(){
 
   await clickCommand("select-story", { squadStoryLevel:"41" });
   html = element("squadBody").innerHTML;
-  assert(html.includes("Solo only for now"), "Mission 41 remains accurately marked Solo-only");
+  assert(html.includes("Broken Bridge Escort"), "Mission 41 exposes its real broken-bridge escort");
+  assert(html.includes("Two Player ready"), "Mission 41 is marked playable with a teammate");
+
+  await clickCommand("select-story", { squadStoryLevel:"43" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("River Tiger Capture"), "Mission 43 exposes its named live-capture objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"48" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Rescue Boat Defense"), "Mission 48 exposes its real rescue-boat defense");
+
+  await clickCommand("select-story", { squadStoryLevel:"50" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Giant River Tiger"), "Mission 50 exposes its Giant River Tiger boss objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"51" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Solo only for now"), "Mission 51 remains accurately marked Solo-only");
 
   windowObject.openLiveSquadOps();
   await clickCommand("hub-operations");
