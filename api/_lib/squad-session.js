@@ -484,6 +484,209 @@ const SHARED_STORY_MISSIONS = Object.freeze({
       Object.freeze({ id:"s30_stealth_tiger", name:"Stealth Tiger", type:"Stalker", hpMax:2200, baseX:655, baseY:565, rangeX:220, rangeY:168, speed:.58, phase:1.25, boss:true }),
     ]),
   }),
+  31:Object.freeze({
+    level:31, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 31",
+    objective:"Search four abandoned homes, find all four survivors, clear the prowlers, and escort everyone to extraction.", rescueRequired:4, checkpointsBeforeRescue:true,
+    timeLimitMs:11 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s31_home_north", x:280, y:260, r:120, label:"North Abandoned Home" }),
+      Object.freeze({ id:"s31_home_market", x:505, y:455, r:120, label:"Market Abandoned Home" }),
+      Object.freeze({ id:"s31_home_east", x:765, y:285, r:120, label:"East Abandoned Home" }),
+      Object.freeze({ id:"s31_home_river", x:910, y:700, r:120, label:"Riverside Abandoned Home" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s31_survivor_north", x:285, y:270, name:"North Home Survivor", look:"field" }),
+      Object.freeze({ id:"s31_survivor_market", x:510, y:465, name:"Market Home Survivor", look:"medic" }),
+      Object.freeze({ id:"s31_survivor_east", x:770, y:295, name:"East Home Survivor", look:"scout" }),
+      Object.freeze({ id:"s31_survivor_river", x:915, y:710, name:"Riverside Survivor", look:"driver" }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s31_alley_scout", name:"Empty Alley Scout", type:"Scout", hpMax:350, baseX:350, baseY:520, rangeX:132, rangeY:98, speed:.95, phase:.4 }),
+      Object.freeze({ id:"s31_home_stalker", name:"Abandoned Home Stalker", type:"Stalker", hpMax:430, baseX:625, baseY:340, rangeX:158, rangeY:118, speed:.83, phase:2.2 }),
+      Object.freeze({ id:"s31_river_hunter", name:"Riverside Hunter", type:"Standard", hpMax:455, baseX:820, baseY:545, rangeX:146, rangeY:112, speed:.79, phase:3.9 }),
+      Object.freeze({ id:"s31_village_guard", name:"Village Ruin Guard", type:"Armored", hpMax:560, baseX:940, baseY:720, rangeX:122, rangeY:100, speed:.64, phase:5.4 }),
+    ]),
+  }),
+  32:Object.freeze({
+    level:32, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 32",
+    objective:"Patrol the abandoned village streets, clear all six roaming tigers, and extract together.", rescueRequired:0,
+    dangerNote:"Street tigers use buildings and intersections to close distance. Their patrol deals 2 extra close-range damage.", aggressionLabel:"Village Street Patrol", hazardDamageBonus:2,
+    timeLimitMs:11 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s32_street_1", name:"North Street Scout", type:"Scout", hpMax:330, baseX:230, baseY:350, rangeX:132, rangeY:98, speed:.97, phase:.2 }),
+      Object.freeze({ id:"s32_street_2", name:"Market Street Scout", type:"Scout", hpMax:340, baseX:410, baseY:255, rangeX:134, rangeY:100, speed:.98, phase:1.1 }),
+      Object.freeze({ id:"s32_street_3", name:"Crossroad Stalker", type:"Stalker", hpMax:420, baseX:600, baseY:465, rangeX:158, rangeY:120, speed:.85, phase:2.2 }),
+      Object.freeze({ id:"s32_street_4", name:"East Street Hunter", type:"Standard", hpMax:450, baseX:790, baseY:300, rangeX:148, rangeY:114, speed:.81, phase:3.3 }),
+      Object.freeze({ id:"s32_street_5", name:"South Street Hunter", type:"Standard", hpMax:465, baseX:480, baseY:715, rangeX:146, rangeY:112, speed:.82, phase:4.5 }),
+      Object.freeze({ id:"s32_street_6", name:"Village Street Guard", type:"Armored", hpMax:575, baseX:940, baseY:710, rangeX:122, rangeY:100, speed:.65, phase:5.7 }),
+    ]),
+  }),
+  33:Object.freeze({
+    level:33, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 33",
+    objective:"Escort six village survivors through three safe-route checkpoints, clear the tigers, and extract.", rescueRequired:6,
+    timeLimitMs:12 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s33_safe_lane", x:370, y:405, r:130, label:"Marked Safe Lane" }),
+      Object.freeze({ id:"s33_clinic_rally", x:650, y:535, r:130, label:"Abandoned Clinic Rally" }),
+      Object.freeze({ id:"s33_evac_approach", x:905, y:700, r:130, label:"Survivor Evac Approach" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s33_survivor_1", x:215, y:235, name:"Village Carpenter", look:"field" }),
+      Object.freeze({ id:"s33_survivor_2", x:355, y:410, name:"Village Nurse", look:"medic" }),
+      Object.freeze({ id:"s33_survivor_3", x:500, y:255, name:"Village Scout", look:"scout" }),
+      Object.freeze({ id:"s33_survivor_4", x:645, y:530, name:"Village Driver", look:"driver" }),
+      Object.freeze({ id:"s33_survivor_5", x:790, y:285, name:"Village Teacher", look:"field" }),
+      Object.freeze({ id:"s33_survivor_6", x:920, y:695, name:"Village Elder", look:"field", vip:true }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s33_route_scout", name:"Safe Route Scout", type:"Scout", hpMax:355, baseX:305, baseY:455, rangeX:132, rangeY:100, speed:.96, phase:.5 }),
+      Object.freeze({ id:"s33_clinic_stalker", name:"Clinic Stalker", type:"Stalker", hpMax:435, baseX:565, baseY:340, rangeX:158, rangeY:120, speed:.84, phase:2.1 }),
+      Object.freeze({ id:"s33_evac_hunter", name:"Evac Route Hunter", type:"Standard", hpMax:470, baseX:800, baseY:525, rangeX:148, rangeY:114, speed:.80, phase:3.8 }),
+      Object.freeze({ id:"s33_route_guard", name:"Safe Zone Guard", type:"Armored", hpMax:580, baseX:935, baseY:715, rangeX:124, rangeY:102, speed:.65, phase:5.3 }),
+    ]),
+  }),
+  34:Object.freeze({
+    level:34, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 34",
+    objective:"Use Rubber ammunition to capture three tigers alive for the village study, clear the remaining threats, and extract.", rescueRequired:0, captureRequired:3,
+    dangerNote:"Three live captures are mandatory. Real ammunition permanently disqualifies the tiger it hits from the study.", aggressionLabel:"Triple Research Capture",
+    timeLimitMs:12 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s34_sample_scout", name:"Village Sample Scout", type:"Scout", hpMax:350, baseX:260, baseY:370, rangeX:132, rangeY:100, speed:.95, phase:.3 }),
+      Object.freeze({ id:"s34_sample_stalker", name:"Village Sample Stalker", type:"Stalker", hpMax:430, baseX:455, baseY:270, rangeX:158, rangeY:120, speed:.84, phase:1.5 }),
+      Object.freeze({ id:"s34_sample_tiger", name:"Village Sample Tiger", type:"Standard", hpMax:460, baseX:650, baseY:510, rangeX:150, rangeY:114, speed:.80, phase:2.8 }),
+      Object.freeze({ id:"s34_sample_hunter", name:"Village Sample Hunter", type:"Standard", hpMax:475, baseX:825, baseY:350, rangeX:148, rangeY:114, speed:.81, phase:4.1 }),
+      Object.freeze({ id:"s34_sample_guard", name:"Village Sample Guard", type:"Armored", hpMax:590, baseX:940, baseY:710, rangeX:124, rangeY:102, speed:.65, phase:5.5 }),
+    ]),
+  }),
+  35:Object.freeze({
+    level:35, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 35",
+    objective:"Rescue the five-person evacuation convoy, secure its three route checkpoints, clear the ambush, and extract.", rescueRequired:5,
+    dangerNote:"The convoy route is under a coordinated ambush. Both soldiers must secure every checkpoint before the vehicles can advance.", aggressionLabel:"Evacuation Convoy Ambush", hazardDamageBonus:2,
+    timeLimitMs:12 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s35_convoy_rally", x:370, y:520, r:130, label:"Convoy Rally Point" }),
+      Object.freeze({ id:"s35_convoy_crossroad", x:650, y:520, r:130, label:"Convoy Crossroad" }),
+      Object.freeze({ id:"s35_convoy_exit", x:900, y:690, r:130, label:"Convoy Exit Lane" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s35_convoy_driver", x:235, y:285, name:"Evacuation Driver", look:"driver", vip:true }),
+      Object.freeze({ id:"s35_convoy_medic", x:420, y:495, name:"Evacuation Medic", look:"medic" }),
+      Object.freeze({ id:"s35_convoy_guard", x:590, y:275, name:"Convoy Guard", look:"scout" }),
+      Object.freeze({ id:"s35_convoy_mechanic", x:775, y:510, name:"Convoy Mechanic", look:"field" }),
+      Object.freeze({ id:"s35_convoy_dispatcher", x:925, y:690, name:"Evacuation Dispatcher", look:"field" }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s35_road_scout", name:"Convoy Road Scout", type:"Scout", hpMax:365, baseX:285, baseY:430, rangeX:134, rangeY:100, speed:.97, phase:.4 }),
+      Object.freeze({ id:"s35_wreck_stalker", name:"Convoy Wreck Stalker", type:"Stalker", hpMax:445, baseX:475, baseY:315, rangeX:160, rangeY:120, speed:.85, phase:1.8 }),
+      Object.freeze({ id:"s35_cargo_hunter", name:"Evacuation Cargo Hunter", type:"Standard", hpMax:475, baseX:675, baseY:525, rangeX:150, rangeY:114, speed:.81, phase:3.0 }),
+      Object.freeze({ id:"s35_exit_mauler", name:"Exit Lane Mauler", type:"Standard", hpMax:490, baseX:835, baseY:365, rangeX:148, rangeY:114, speed:.81, phase:4.3 }),
+      Object.freeze({ id:"s35_convoy_guard_tiger", name:"Convoy Breaker", type:"Armored", hpMax:605, baseX:945, baseY:715, rangeX:126, rangeY:102, speed:.66, phase:5.6 }),
+    ]),
+  }),
+  36:Object.freeze({
+    level:36, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 36",
+    objective:"Protect Doctor Imani while both soldiers collect samples at three research sites, clear the tigers, and extract.", rescueRequired:1,
+    timeLimitMs:12 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s36_sample_north", x:375, y:390, r:125, label:"North Sample Site" }),
+      Object.freeze({ id:"s36_sample_center", x:650, y:520, r:125, label:"Center Sample Site" }),
+      Object.freeze({ id:"s36_sample_east", x:890, y:680, r:125, label:"East Sample Site" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s36_doctor_imani", x:540, y:300, name:"Doctor Imani", look:"medic", vip:true }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s36_sample_scout", name:"Sample Site Scout", type:"Scout", hpMax:370, baseX:305, baseY:455, rangeX:134, rangeY:100, speed:.97, phase:.5 }),
+      Object.freeze({ id:"s36_scientist_stalker", name:"Scientist Stalker", type:"Stalker", hpMax:450, baseX:570, baseY:350, rangeX:160, rangeY:122, speed:.85, phase:2.2 }),
+      Object.freeze({ id:"s36_research_hunter", name:"Research Site Hunter", type:"Standard", hpMax:485, baseX:800, baseY:520, rangeX:150, rangeY:116, speed:.81, phase:3.8 }),
+      Object.freeze({ id:"s36_sample_guard", name:"Research Guard Tiger", type:"Armored", hpMax:615, baseX:935, baseY:710, rangeX:126, rangeY:104, speed:.66, phase:5.2 }),
+    ]),
+  }),
+  37:Object.freeze({
+    level:37, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 37",
+    objective:"Escort six civilians through the burning village route, avoid the fire zones, clear the tigers, and extract.", rescueRequired:6,
+    dangerNote:"Burning-building zones deal 8 damage every 1.4 seconds. Follow the marked route around the flames and keep the civilians moving.", aggressionLabel:"Burning Village", fireHazardDamage:8, fireHazardCooldownMs:1400,
+    timeLimitMs:13 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    fireZones:Object.freeze([
+      Object.freeze({ id:"s37_fire_north", x:350, y:300, r:72, label:"North House Fire" }),
+      Object.freeze({ id:"s37_fire_market", x:570, y:465, r:80, label:"Market Fire" }),
+      Object.freeze({ id:"s37_fire_east", x:800, y:320, r:74, label:"East Block Fire" }),
+      Object.freeze({ id:"s37_fire_south", x:735, y:680, r:82, label:"South Block Fire" }),
+    ]),
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s37_fire_route_1", x:390, y:520, r:125, label:"Clear Fire Lane" }),
+      Object.freeze({ id:"s37_fire_route_2", x:670, y:575, r:125, label:"Burning Market Bypass" }),
+      Object.freeze({ id:"s37_fire_route_3", x:910, y:705, r:125, label:"Fire Rescue Exit" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s37_civilian_1", x:205, y:235, name:"North Block Survivor", look:"field" }),
+      Object.freeze({ id:"s37_civilian_2", x:350, y:475, name:"Market Survivor", look:"medic" }),
+      Object.freeze({ id:"s37_civilian_3", x:495, y:260, name:"Village Fire Warden", look:"scout", vip:true }),
+      Object.freeze({ id:"s37_civilian_4", x:640, y:545, name:"East Block Survivor", look:"driver" }),
+      Object.freeze({ id:"s37_civilian_5", x:785, y:275, name:"School Survivor", look:"field" }),
+      Object.freeze({ id:"s37_civilian_6", x:925, y:690, name:"South Block Survivor", look:"field" }),
+    ]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s37_smoke_scout", name:"Smoke Scout", type:"Scout", hpMax:370, baseX:285, baseY:430, rangeX:134, rangeY:100, speed:.98, phase:.4 }),
+      Object.freeze({ id:"s37_flame_stalker", name:"Flame Stalker", type:"Stalker", hpMax:455, baseX:475, baseY:320, rangeX:160, rangeY:122, speed:.86, phase:1.8 }),
+      Object.freeze({ id:"s37_market_hunter", name:"Burning Market Hunter", type:"Standard", hpMax:490, baseX:675, baseY:525, rangeX:152, rangeY:116, speed:.82, phase:3.0 }),
+      Object.freeze({ id:"s37_ember_mauler", name:"Ember Mauler", type:"Standard", hpMax:505, baseX:835, baseY:370, rangeX:150, rangeY:114, speed:.82, phase:4.3 }),
+      Object.freeze({ id:"s37_fire_guard", name:"Burning Village Guard", type:"Armored", hpMax:625, baseX:945, baseY:715, rangeX:126, rangeY:104, speed:.67, phase:5.6 }),
+    ]),
+  }),
+  38:Object.freeze({
+    level:38, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 38",
+    objective:"Hold the town center against the ten-tiger swarm, clear every threat, and extract together.", rescueRequired:0,
+    dangerNote:"Ten tigers converge on the town center with a faster attack cycle and 4 extra close-range damage.", aggressionLabel:"Town Center Swarm", hazardDamageBonus:4, hazardCooldownMs:825,
+    timeLimitMs:13 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s38_swarm_1", name:"Town Scout One", type:"Scout", hpMax:320, baseX:205, baseY:335, rangeX:132, rangeY:100, speed:1.00, phase:.1 }),
+      Object.freeze({ id:"s38_swarm_2", name:"Town Scout Two", type:"Scout", hpMax:330, baseX:360, baseY:245, rangeX:134, rangeY:100, speed:1.01, phase:.8 }),
+      Object.freeze({ id:"s38_swarm_3", name:"Town Scout Three", type:"Scout", hpMax:340, baseX:515, baseY:400, rangeX:136, rangeY:102, speed:1.02, phase:1.5 }),
+      Object.freeze({ id:"s38_swarm_4", name:"Town Stalker One", type:"Stalker", hpMax:415, baseX:670, baseY:275, rangeX:160, rangeY:122, speed:.88, phase:2.2 }),
+      Object.freeze({ id:"s38_swarm_5", name:"Town Stalker Two", type:"Stalker", hpMax:425, baseX:830, baseY:420, rangeX:160, rangeY:122, speed:.89, phase:2.9 }),
+      Object.freeze({ id:"s38_swarm_6", name:"Town Hunter One", type:"Standard", hpMax:460, baseX:950, baseY:290, rangeX:150, rangeY:116, speed:.84, phase:3.6 }),
+      Object.freeze({ id:"s38_swarm_7", name:"Town Hunter Two", type:"Standard", hpMax:470, baseX:300, baseY:700, rangeX:150, rangeY:116, speed:.85, phase:4.3 }),
+      Object.freeze({ id:"s38_swarm_8", name:"Town Hunter Three", type:"Standard", hpMax:480, baseX:550, baseY:735, rangeX:152, rangeY:118, speed:.85, phase:5.0 }),
+      Object.freeze({ id:"s38_swarm_9", name:"Town Guard One", type:"Armored", hpMax:570, baseX:760, baseY:690, rangeX:126, rangeY:104, speed:.69, phase:5.7 }),
+      Object.freeze({ id:"s38_swarm_10", name:"Town Guard Two", type:"Armored", hpMax:590, baseX:955, baseY:720, rangeX:128, rangeY:104, speed:.70, phase:6.4 }),
+    ]),
+  }),
+  39:Object.freeze({
+    level:39, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 39",
+    objective:"Survive the massive twelve-tiger village pack, clear every threat, and reach extraction together.", rescueRequired:0,
+    dangerNote:"Twelve coordinated tigers hunt across the village. The pack begins with 5 extra damage and attacks faster at close range.", aggressionLabel:"Massive Village Pack", hazardDamageBonus:5, hazardCooldownMs:775,
+    timeLimitMs:14 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s39_pack_1", name:"Massive Pack Scout One", type:"Scout", hpMax:320, baseX:185, baseY:300, rangeX:132, rangeY:100, speed:1.02, phase:.1 }),
+      Object.freeze({ id:"s39_pack_2", name:"Massive Pack Scout Two", type:"Scout", hpMax:330, baseX:335, baseY:420, rangeX:134, rangeY:102, speed:1.03, phase:.7 }),
+      Object.freeze({ id:"s39_pack_3", name:"Massive Pack Scout Three", type:"Scout", hpMax:340, baseX:470, baseY:245, rangeX:136, rangeY:102, speed:1.04, phase:1.3 }),
+      Object.freeze({ id:"s39_pack_4", name:"Massive Pack Stalker One", type:"Stalker", hpMax:420, baseX:600, baseY:430, rangeX:162, rangeY:124, speed:.90, phase:1.9 }),
+      Object.freeze({ id:"s39_pack_5", name:"Massive Pack Stalker Two", type:"Stalker", hpMax:430, baseX:740, baseY:260, rangeX:162, rangeY:124, speed:.91, phase:2.5 }),
+      Object.freeze({ id:"s39_pack_6", name:"Massive Pack Stalker Three", type:"Stalker", hpMax:440, baseX:875, baseY:430, rangeX:164, rangeY:126, speed:.92, phase:3.1 }),
+      Object.freeze({ id:"s39_pack_7", name:"Massive Pack Hunter One", type:"Standard", hpMax:470, baseX:955, baseY:275, rangeX:152, rangeY:118, speed:.86, phase:3.7 }),
+      Object.freeze({ id:"s39_pack_8", name:"Massive Pack Hunter Two", type:"Standard", hpMax:480, baseX:260, baseY:710, rangeX:152, rangeY:118, speed:.87, phase:4.3 }),
+      Object.freeze({ id:"s39_pack_9", name:"Massive Pack Hunter Three", type:"Standard", hpMax:490, baseX:470, baseY:735, rangeX:154, rangeY:120, speed:.87, phase:4.9 }),
+      Object.freeze({ id:"s39_pack_10", name:"Massive Pack Hunter Four", type:"Standard", hpMax:500, baseX:670, baseY:690, rangeX:154, rangeY:120, speed:.88, phase:5.5 }),
+      Object.freeze({ id:"s39_pack_11", name:"Massive Pack Guard One", type:"Armored", hpMax:600, baseX:830, baseY:735, rangeX:128, rangeY:106, speed:.71, phase:6.1 }),
+      Object.freeze({ id:"s39_pack_12", name:"Massive Pack Guard Two", type:"Armored", hpMax:620, baseX:960, baseY:700, rangeX:130, rangeY:106, speed:.72, phase:6.7 }),
+    ]),
+  }),
+  40:Object.freeze({
+    level:40, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 40",
+    objective:"Defeat or capture both Twin Alpha Tigers, then extract together to finish Chapter 4.", rescueRequired:0,
+    dangerNote:"Ashclaw and Ruinstripe hunt as a pair. When one twin falls, its death adds 3 damage to the surviving Alpha.", aggressionLabel:"Twin Alpha Bosses", hazardDamageBonus:4, aggressionPerKill:3, hazardCooldownMs:850,
+    timeLimitMs:14 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s40_ashclaw_alpha", name:"Ashclaw Alpha", type:"Alpha", hpMax:1850, baseX:500, baseY:525, rangeX:205, rangeY:158, speed:.58, phase:.7, boss:true }),
+      Object.freeze({ id:"s40_ruinstripe_alpha", name:"Ruinstripe Alpha", type:"Alpha", hpMax:1850, baseX:795, baseY:545, rangeX:205, rangeY:158, speed:.59, phase:3.6, boss:true }),
+    ]),
+  }),
 });
 const ROLE_DEFS = Object.freeze({
   tracker:Object.freeze({ key:"tracker", label:"Tracker", damage:28, maxHp:105, speed:1.08 }),
@@ -523,6 +726,16 @@ const SHARED_STORY_WORLD_SIZES = Object.freeze({
   28:Object.freeze({ width:4800, height:2800 }),
   29:Object.freeze({ width:4800, height:2800 }),
   30:Object.freeze({ width:4800, height:2800 }),
+  31:Object.freeze({ width:4800, height:2800 }),
+  32:Object.freeze({ width:4800, height:2800 }),
+  33:Object.freeze({ width:4800, height:2800 }),
+  34:Object.freeze({ width:4800, height:2800 }),
+  35:Object.freeze({ width:4800, height:2800 }),
+  36:Object.freeze({ width:4800, height:2800 }),
+  37:Object.freeze({ width:4800, height:2800 }),
+  38:Object.freeze({ width:4800, height:2800 }),
+  39:Object.freeze({ width:4800, height:2800 }),
+  40:Object.freeze({ width:4800, height:2800 }),
 });
 const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
 const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
@@ -620,6 +833,12 @@ function expandMissionDefinition(base, targetWorld){
   const sy = world.height / WORLD.height;
   const tigerRoamScale = Math.min(1.55, Math.max(1.25, ((sx + sy) * .5) * .58));
   const point = (src)=>Object.freeze({ ...src, x:Math.round(Number(src.x || 0) * sx), y:Math.round(Number(src.y || 0) * sy) });
+  const fireZone = (src)=>Object.freeze({
+    ...src,
+    x:Math.round(Number(src.x || 0) * sx),
+    y:Math.round(Number(src.y || 0) * sy),
+    r:Math.round(Number(src.r || 72) * Math.min(sx, sy)),
+  });
   const tiger = (src)=>Object.freeze({
     ...src,
     baseX:Math.round(Number(src.baseX || 0) * sx),
@@ -639,6 +858,7 @@ function expandMissionDefinition(base, targetWorld){
     civilians:Object.freeze((base.civilians || []).map(point)),
     tigers:Object.freeze((base.tigers || []).map(tiger)),
     checkpoints:Object.freeze((base.checkpoints || []).map(point)),
+    fireZones:Object.freeze((base.fireZones || []).map(fireZone)),
   });
 }
 
@@ -878,6 +1098,7 @@ function newPlayer(user, slot=0){
     lastNoiseIntensity:0,
     lastNoiseSource:"",
     lastHazardAt:0,
+    lastFireAt:0,
     rewardClaimed:false,
   };
 }
@@ -956,6 +1177,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     lastNoiseIntensity:clamp(src.lastNoiseIntensity, 0, 3),
     lastNoiseSource:cleanText(src.lastNoiseSource, 24),
     lastHazardAt:Math.max(0, Number(src.lastHazardAt || 0)),
+    lastFireAt:Math.max(0, Number(src.lastFireAt || 0)),
     rewardClaimed:!!src.rewardClaimed,
   };
 }
@@ -1118,7 +1340,7 @@ function sessionDerived(session, players, at=nowMs()){
   const capturedIds = [...new Set(players.flatMap((p)=>p.capturedIds || []))]
     .filter((id)=>missionTigerIds.has(id));
   const tigers = tigerSnapshots(session, players, at);
-  const boss = tigers.find((t)=>t.boss) || tigers[tigers.length - 1];
+  const boss = tigers.find((t)=>t.boss && !t.defeated) || tigers.find((t)=>t.boss) || tigers[tigers.length - 1];
   const bossHpMax = Math.max(1, Number(boss?.hpMax || BOSS_HP_MAX));
   const bossDamage = clamp(bossHpMax - Number(boss?.hp || 0), 0, bossHpMax);
   const bossHp = Number(boss?.hp || 0);
@@ -1312,6 +1534,7 @@ async function buildSnapshot(session, viewerId){
       civilianCount:mission.civilians.length,
       tigerCount:mission.tigers.length,
       checkpointRequired:(mission.checkpoints || []).length,
+      checkpointsBeforeRescue:!!mission.checkpointsBeforeRescue,
       checkpointCompletedIds:derived.checkpointCompletedIds,
       timeLimitMs:missionLimitMs(session),
       survival:session.launchType === "endless-survival",
@@ -1325,6 +1548,7 @@ async function buildSnapshot(session, viewerId){
     extraction:mission.extraction,
     civilians:civilianSnapshots(session, players, derived.rescuedIds),
     checkpoints:mission.checkpoints || [],
+    fireZones:mission.fireZones || [],
     tigers:derived.tigers,
     boss:derived.boss,
     rescuedIds:derived.rescuedIds,
@@ -1398,7 +1622,7 @@ async function updateOwnPresence(session, user, patch={}){
     const routePlayers = await memberPlayers(session);
     const routeRows = routePlayers.map((row)=>row.userId === player.userId ? player : row);
     const rescued = new Set(routeRows.flatMap((row)=>row.rescuedIds || []));
-    if(rescued.size >= Number(mission.rescueRequired || 0)){
+    if(mission.checkpointsBeforeRescue || rescued.size >= Number(mission.rescueRequired || 0)){
       if(!Array.isArray(player.checkpointIds)) player.checkpointIds = [];
       for(let index=0; index<mission.checkpoints.length; index++){
         const checkpoint = mission.checkpoints[index];
@@ -1406,6 +1630,24 @@ async function updateOwnPresence(session, user, patch={}){
         if(priorReady && !player.checkpointIds.includes(checkpoint.id) && distance(player, checkpoint) <= Number(checkpoint.r || 120)){
           player.checkpointIds.push(checkpoint.id);
           break;
+        }
+      }
+    }
+  }
+  if(session.status === "active" && !player.downed && (mission.fireZones || []).length){
+    const fireZone = mission.fireZones.find((zone)=>distance(player, zone) <= Number(zone.r || 0));
+    const fireCooldown = Math.max(700, Number(mission.fireHazardCooldownMs || 1400));
+    if(fireZone && now - Number(player.lastFireAt || 0) >= fireCooldown){
+      player.hp = clamp(player.hp - Math.max(1, Number(mission.fireHazardDamage || 8)), 0, player.maxHp);
+      player.lastFireAt = now;
+      if(player.hp <= 0){
+        player.downed = true;
+        player.knockdowns = clamp(player.knockdowns + 1, 0, 999);
+        if(player.livesRemaining > 0){
+          player.livesRemaining = clamp(player.livesRemaining - 1, 0, STARTING_LIVES);
+          player.respawnAt = now + RESPAWN_DELAY_MS;
+        }else{
+          player.respawnAt = 0;
         }
       }
     }
@@ -1607,8 +1849,16 @@ async function applyAction(session, user, action, payload={}){
     await writePlayer(session.code, player);
   }else if(action === "rescue"){
     const id = cleanText(payload.civilianId, 24);
-    const civilian = missionDefinition(session).civilians.find((c)=>c.id === id);
+    const rescueMission = missionDefinition(session);
+    const civilian = rescueMission.civilians.find((c)=>c.id === id);
     if(!civilian) throw new Error("Civilian not found.");
+    if(rescueMission.checkpointsBeforeRescue){
+      const routePlayers = await memberPlayers(session);
+      const routeState = sessionDerived(session, routePlayers, now);
+      if(routeState.checkpointCompletedIds.length < (rescueMission.checkpoints || []).length){
+        throw new Error("Search all marked homes with your teammate before rescuing survivors.");
+      }
+    }
     if(distance(player, civilian) > 82) throw new Error("Move closer to the civilian.");
     if(!player.rescuedIds.includes(id)) player.rescuedIds.push(id);
     player.lastSeenAt = now;
@@ -1642,7 +1892,7 @@ async function claimReward(session, user){
   player.rewardClaimed = true;
   await writePlayer(session.code, player);
   const sharedStory = session.launchType === "shared-story";
-  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 30) : 0;
+  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 40) : 0;
   const sharedRewards = {
     1:{ cash:1800, perkPoints:1, seasonPoints:6, badge:"Shared Story First Patrol" },
     2:{ cash:2050, perkPoints:1, seasonPoints:7, badge:"Farm Road Guardians" },
@@ -1674,6 +1924,16 @@ async function claimReward(session, user){
     28:{ cash:13750, perkPoints:5, seasonPoints:40, badge:"Deep Pack Survivors" },
     29:{ cash:14600, perkPoints:5, seasonPoints:42, badge:"Helicopter Evac Team" },
     30:{ cash:16000, perkPoints:6, seasonPoints:46, badge:"Stealth Tiger Breakers" },
+    31:{ cash:16600, perkPoints:6, seasonPoints:47, badge:"Abandoned Home Searchers" },
+    32:{ cash:17200, perkPoints:6, seasonPoints:48, badge:"Village Street Patrol" },
+    33:{ cash:17900, perkPoints:6, seasonPoints:50, badge:"Survivor Safe Route" },
+    34:{ cash:18750, perkPoints:6, seasonPoints:52, badge:"Triple Capture Researchers" },
+    35:{ cash:19600, perkPoints:6, seasonPoints:54, badge:"Evacuation Convoy Guard" },
+    36:{ cash:20500, perkPoints:7, seasonPoints:56, badge:"Doctor Imani Protection" },
+    37:{ cash:21500, perkPoints:7, seasonPoints:58, badge:"Burning Village Rescuers" },
+    38:{ cash:22600, perkPoints:7, seasonPoints:60, badge:"Town Center Defenders" },
+    39:{ cash:23800, perkPoints:7, seasonPoints:62, badge:"Massive Pack Survivors" },
+    40:{ cash:25000, perkPoints:8, seasonPoints:65, badge:"Twin Alpha Breakers" },
   };
   const operationRewards = {
     "live-squad":{ cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },

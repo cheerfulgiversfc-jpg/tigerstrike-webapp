@@ -361,6 +361,19 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Each player completes, claims a separate deduplicated reward, and unlocks the next Story mission independently. Mission 30 awards the `Stealth Tiger Breakers` badge and unlocks Mission 31.
 - Field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, synchronized pause, Real/Rubber ammunition, persistent bodies and cages, government audits, Solo Story progress, Missions 1–20, and all seven Special Operations remain available.
 
+### V8.2 Shared Story Chapter 4
+
+- Story Campaign now offers a real Solo or Two Players choice for Missions 1–40. Solo remains available for every unlocked mission; Missions 41–100 remain accurately labeled Solo-only until their co-op versions are built.
+- Missions 31–40 follow the existing `Abandoned Villages` campaign: Abandoned Home Search, Village Street Patrol, Survivor Safe Route, Triple Research Capture, Evacuation Convoy Ambush, Doctor Imani's Samples, Burning Village Rescue, Town Center Swarm, Massive Village Pack, and the Twin Alpha boss fight.
+- Mission 31 has four shared home-search checkpoints that can be completed before the survivors begin following. Both players must inspect every home and rescue all four survivors.
+- Mission 34 requires three real live captures. Real-ammo hits still permanently disqualify the struck tiger from capture during that run.
+- Mission 35 advances a visible evacuation convoy through three shared checkpoints. Mission 36 protects Doctor Imani while both players secure three sample sites.
+- Mission 37 adds four server-authoritative fire zones. Entering a burning zone deals eight damage every 1.4 seconds; the marked route lets players avoid the flames.
+- Mission 38 contains a ten-tiger town-center swarm. Mission 39 contains a massive twelve-tiger pack.
+- Mission 40 contains two separate 1,850 HP Alpha bosses: Ashclaw and Ruinstripe. The HUD switches to the surviving twin when one falls, and that survivor gains three additional damage.
+- Both players claim separate deduplicated rewards and unlock the next mission independently. Mission 40 awards the `Twin Alpha Breakers` badge and unlocks Mission 41.
+- Existing Solo Story progress, Missions 1–30, all seven Special Operations, field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, ammunition modes, cages, bodies, and government systems remain available.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

@@ -171,7 +171,7 @@ async function run(){
   assert.equal(hostAgain.firstClaim, false, "host cannot receive a second server reward");
   assert.equal(teammateAgain.firstClaim, false, "teammate cannot receive a second server reward");
 
-  for(let level=2; level<=30; level++){
+  for(let level=2; level<=40; level++){
     const levelHost = { id:910100 + (level * 10), first_name:`Host ${level}` };
     const levelMate = { id:910101 + (level * 10), first_name:`Mate ${level}` };
     let levelSession = await createSession(levelHost, { launchType:"shared-story", storyMissionLevel:level });
@@ -284,6 +284,62 @@ async function run(){
       assert.equal(levelSnapshot.boss.hpMax, 2200, "Mission 30 keeps the Stealth Tiger boss health");
       assert.equal(levelSnapshot.boss.type, "Stalker", "Mission 30 boss uses stealth behavior");
     }
+    if(level === 31){
+      assert.equal(levelSnapshot.mission.chapterName, "Abandoned Villages", "Mission 31 starts the real Chapter 4 campaign");
+      assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 31 requires all four home survivors");
+      assert.equal(levelSnapshot.checkpoints.length, 4, "Mission 31 has four actual homes to search");
+      assert.equal(levelSnapshot.mission.checkpointsBeforeRescue, true, "Mission 31 allows home searches before survivors follow");
+      const firstHome = levelSnapshot.checkpoints[0];
+      await writePlayerPatch(levelSession.code, levelHost.id, { x:firstHome.x, y:firstHome.y, lastSeenAt:Date.now() });
+      await updateOwnPresence(await readSession(levelSession.code), levelHost, {});
+      levelSnapshot = await buildSnapshot(await readSession(levelSession.code), levelHost.id);
+      assert(levelSnapshot.players.find((player)=>player.userId === levelHost.id).checkpointIds.includes(firstHome.id), "Mission 31 records a searched home before any rescue");
+      await assert.rejects(
+        async()=>applyAction(await readSession(levelSession.code), levelHost, "rescue", { civilianId:"s31_survivor_north" }),
+        /Search all marked homes/,
+        "Mission 31 blocks survivor pickup until both players search every home"
+      );
+    }
+    if(level === 32) assert.equal(levelSnapshot.tigers.length, 6, "Mission 32 has six roaming street tigers");
+    if(level === 33){
+      assert.equal(levelSnapshot.mission.rescueRequired, 6, "Mission 33 escorts six village survivors");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 33 has a three-stage safe route");
+    }
+    if(level === 34) assert.equal(levelSnapshot.mission.captureRequired, 3, "Mission 34 requires three live research captures");
+    if(level === 35){
+      assert.equal(levelSnapshot.mission.rescueRequired, 5, "Mission 35 requires the five-person evacuation convoy");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 35 advances through three convoy route checkpoints");
+    }
+    if(level === 36){
+      assert.equal(levelSnapshot.mission.rescueRequired, 1, "Mission 36 requires Doctor Imani's protection");
+      assert.equal(levelSnapshot.civilians[0].name, "Doctor Imani", "Mission 36 identifies its protected scientist");
+      assert.equal(levelSnapshot.civilians[0].vip, true, "Doctor Imani is marked as the mission VIP");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 36 has three real sample sites");
+    }
+    if(level === 37){
+      assert.equal(levelSnapshot.mission.rescueRequired, 6, "Mission 37 escorts six civilians through the burning village");
+      assert.equal(levelSnapshot.fireZones.length, 4, "Mission 37 has four server-authoritative fire zones");
+      const fire = levelSnapshot.fireZones[0];
+      await writePlayerPatch(levelSession.code, levelHost.id, { x:fire.x, y:fire.y, hp:100, lastFireAt:0, lastHazardAt:Date.now(), lastSeenAt:Date.now() });
+      await updateOwnPresence(await readSession(levelSession.code), levelHost, {});
+      const burnedPlayer = await getState(playerStateKey(levelSession.code, levelHost.id));
+      assert(burnedPlayer.hp <= 92, "Mission 37 fire deals its real eight-point hazard damage");
+      const fireHp = burnedPlayer.hp;
+      await updateOwnPresence(await readSession(levelSession.code), levelHost, {});
+      const cooldownPlayer = await getState(playerStateKey(levelSession.code, levelHost.id));
+      assert.equal(cooldownPlayer.hp, fireHp, "Mission 37 fire cooldown prevents instant repeated damage");
+    }
+    if(level === 38) assert.equal(levelSnapshot.tigers.length, 10, "Mission 38 contains the complete ten-tiger town swarm");
+    if(level === 39) assert.equal(levelSnapshot.tigers.length, 12, "Mission 39 contains the massive twelve-tiger village pack");
+    if(level === 40){
+      assert.equal(levelSnapshot.tigers.filter((tiger)=>tiger.boss).length, 2, "Mission 40 contains both Alpha bosses");
+      assert.equal(levelSnapshot.boss.name, "Ashclaw Alpha", "Mission 40 starts by tracking Ashclaw Alpha");
+      const ashclaw = levelSnapshot.tigers.find((tiger)=>tiger.id === "s40_ashclaw_alpha");
+      await writePlayerPatch(levelSession.code, levelHost.id, { tigerDamage:{ [ashclaw.id]:ashclaw.hpMax }, lastSeenAt:Date.now() });
+      levelSnapshot = await buildSnapshot(await readSession(levelSession.code), levelHost.id);
+      assert.equal(levelSnapshot.boss.name, "Ruinstripe Alpha", "the Mission 40 HUD switches to the surviving Alpha twin");
+      assert.equal(levelSnapshot.mission.aggressionBonus, 7, "the surviving Alpha gains three damage when its twin falls");
+    }
     if(level === 12){
       const firstTiger = levelSnapshot.tigers[0];
       await writePlayerPatch(levelSession.code, levelHost.id, {
@@ -355,13 +411,18 @@ async function run(){
       assert.equal(levelHostReward.reward.badge, "Stealth Tiger Breakers", "Mission 30 awards the Stealth Tiger badge");
       assert.deepEqual(levelHostReward.storyProgress, { completedLevel:30, unlockLevel:31 }, "Mission 30 unlocks Mission 31");
     }
+    if(level === 40){
+      assert.equal(levelHostReward.reward.cash, 25000, "Mission 40 pays the Twin Alpha cash reward");
+      assert.equal(levelHostReward.reward.badge, "Twin Alpha Breakers", "Mission 40 awards the Twin Alpha badge");
+      assert.deepEqual(levelHostReward.storyProgress, { completedLevel:40, unlockLevel:41 }, "Mission 40 unlocks Mission 41");
+    }
     const levelHostAgain = await claimReward(await readSession(levelSession.code), levelHost);
     assert.equal(levelHostAgain.firstClaim, false, `Story Mission ${level} does not pay the host twice`);
   }
 
-  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:31 });
-  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 31 cannot create a fake shared Story room");
-  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 31");
+  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:41 });
+  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 41 cannot create a fake shared Story room");
+  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 41");
 
   const routeHost = { id:910811, first_name:"Route Host" };
   const routeMate = { id:910812, first_name:"Route Mate" };
@@ -806,7 +867,7 @@ async function run(){
   const survivalHostAgain = await claimReward(await readSession(survivalSession.code), survivalHost);
   assert.equal(survivalHostAgain.firstClaim, false, "Endless Survival cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-30 and seven Special Operations, Chapter 3 routes, named stealth capture, helicopter evacuation, checkpoint restart, reconnect, separate unlocks, capture, and reward dedupe");
+  console.log("PASS: Story Missions 1-40 and seven Special Operations, Chapter 4 home searches, fire hazards, convoy and sample routes, Twin Alpha handoff, reconnect, separate unlocks, capture, and reward dedupe");
 }
 
 run().catch((error)=>{

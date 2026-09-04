@@ -70,6 +70,16 @@
     { level:28, title:"Large Pack Attack", description:"Survive and clear eight coordinated Deep Jungle tigers." },
     { level:29, title:"Helicopter Evacuation", description:"Escort seven civilians through the landing-zone route and board the helicopter zone." },
     { level:30, title:"Stealth Tiger", description:"Track, defeat or capture the Stealth Tiger boss, then finish Chapter 3 together." },
+    { level:31, title:"Abandoned Home Search", description:"Search four abandoned homes, find four survivors, clear the prowlers, and escort everyone out." },
+    { level:32, title:"Village Street Patrol", description:"Clear six roaming tigers from the abandoned village streets." },
+    { level:33, title:"Survivor Safe Route", description:"Escort six survivors through three shared safe-route checkpoints." },
+    { level:34, title:"Triple Research Capture", description:"Use Rubber ammunition to capture three tigers alive for the village study." },
+    { level:35, title:"Evacuation Convoy Ambush", description:"Rescue five convoy members and secure all three vehicle route checkpoints." },
+    { level:36, title:"Doctor Imani's Samples", description:"Protect Doctor Imani while both players secure three research sample sites." },
+    { level:37, title:"Burning Village Rescue", description:"Escort six civilians around real damaging fire zones and through the marked rescue route." },
+    { level:38, title:"Town Center Swarm", description:"Hold the town center and clear a fast ten-tiger swarm." },
+    { level:39, title:"Massive Village Pack", description:"Survive and clear twelve coordinated tigers across the abandoned village." },
+    { level:40, title:"Twin Alpha Tigers", description:"Defeat or capture Ashclaw and Ruinstripe, then finish Chapter 4 together." },
   ]);
   const SPECIAL_OPERATIONS = Object.freeze([
     {
@@ -237,8 +247,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V8.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V8.1 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.1 • Co-op Command");
+      ? `Tiger Strike V8.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V8.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.2 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -397,6 +407,7 @@
     const reviveNear = teammate?.downed && distance(state.local,teammate) <= 108;
     const unavailable = !!state.local.downed || !!state.snapshot?.paused;
     const survival = !!state.snapshot?.mission?.survival;
+    const searchReady = !state.snapshot?.mission?.checkpointsBeforeRescue || (state.snapshot?.checkpointCompletedIds || []).length >= checkpointRequired();
     const captureReady = tiger && !tiger.lethalWounded && Number(tiger.hp || 0) > 0 && Number(tiger.hp || 0) <= Number(tiger.hpMax || 1) * 0.30;
     const ammoMode = localSnapshotPlayer()?.ammoMode === "rubber" ? "rubber" : "real";
     const unavailableLabel = state.snapshot?.paused ? "⏸️ Paused<br><small>Gear menu open</small>" : "⏳ Down<br><small>Recovery</small>";
@@ -414,8 +425,8 @@
       const noCivilianLabel = captureRequired() > 0
         ? `🔬 Capture Target<br><small>Use Attack at 30% health</small>`
         : "✅ Civilians Safe";
-      rescue.innerHTML = unavailable ? unavailableLabel : (civilian ? (civNear ? `🛟 Rescue<br><small>${esc(civilian.name || "Civilian")}</small>` : `👤 Find Civilian<br><small>${Math.round(distance(state.local,civilian))}m</small>`) : noCivilianLabel);
-      rescue.disabled = unavailable || !civilian;
+      rescue.innerHTML = unavailable ? unavailableLabel : (!searchReady ? "🏠 Search Homes<br><small>Both players required</small>" : (civilian ? (civNear ? `🛟 Rescue<br><small>${esc(civilian.name || "Civilian")}</small>` : `👤 Find Civilian<br><small>${Math.round(distance(state.local,civilian))}m</small>`) : noCivilianLabel));
+      rescue.disabled = unavailable || !civilian || !searchReady;
     }
     if(revive){ revive.innerHTML = unavailable ? unavailableLabel : (teammate?.downed ? (reviveNear ? "💚 Revive<br><small>Teammate</small>" : `💚 Reach Teammate<br><small>${Math.round(distance(state.local,teammate))}m</small>`) : "💚 Revive<br><small>Not needed</small>"); revive.disabled = unavailable || !teammate?.downed; }
   }
@@ -494,7 +505,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V8.1 Shared Story Chapter 3</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–30 can now be played Solo or with a teammate. Chapter 3 adds research escorts, tall-grass threats, a named live-capture target, river and bridge routes, a seven-person helicopter evacuation, and the Stealth Tiger boss.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V8.2 Shared Story Chapter 4</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–40 can now be played Solo or with a teammate. Chapter 4 adds abandoned-home searches, street patrols, survivor routes, a triple live capture, convoy defense, scientist sample sites, real burning-building hazards, town swarms, and the Twin Alpha boss fight.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -530,6 +541,7 @@
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="6">Co-op 6–10</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="11">Chapter 2 • 11–20</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="21">Chapter 3 • 21–30</button>
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="31">Chapter 4 • 31–40</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.max(1, selected - 1)}" ${selected <= 1 ? "disabled" : ""}>← Previous</button>
       <span>Unlocked ${max}/100</span>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.min(max, selected + 1)}" ${selected >= max ? "disabled" : ""}>Next →</button>
@@ -671,6 +683,11 @@
       }
       if(regroup > 0) return `Wave ${wave} cleared. Regroup at Base Camp—Wave ${wave + 1} begins in ${regroup}s. Extraction unlocks after Wave 3.`;
       return `Wave ${wave}: Clear all four tigers together. ${snap.mission.survivalExtractAvailable ? "Extraction is unlocked whenever the wave ends." : `Clear ${Math.max(0, 3 - Number(snap.mission.survivalWavesCleared || 0))} more wave${Math.max(0, 3 - Number(snap.mission.survivalWavesCleared || 0)) === 1 ? "" : "s"} to unlock extraction.`}`;
+    }
+    if(snap.mission?.checkpointsBeforeRescue && checkpointRequired() > 0 && (snap.checkpointCompletedIds || []).length < checkpointRequired()){
+      const checkpoint = (snap.checkpoints || []).find((row)=>!(snap.checkpointCompletedIds || []).includes(row.id));
+      const ready = (snap.players || []).filter((player)=>(player.checkpointIds || []).includes(checkpoint?.id)).length;
+      return `Search objective: Both players inspect ${checkpoint?.label || "the next location"} (${ready}/2 ready • ${(snap.checkpointCompletedIds || []).length}/${checkpointRequired()} locations searched).`;
     }
     if(rescueRequired() > 0 && (snap.rescuedIds || []).length < rescueRequired()) return `Objective 1: ${missionMeta().objective || "Escort the civilians"} (${snap.rescuedIds.length}/${rescueRequired()} now following).`;
     if(checkpointRequired() > 0 && (snap.checkpointCompletedIds || []).length < checkpointRequired()){
@@ -1596,6 +1613,7 @@
     const storyLevel = snap.launchType === "shared-story" ? Math.max(1,Number(snap.storyMissionLevel||snap.mission?.level||1)) : 0;
     const bloodChapter = storyLevel >= 11 && storyLevel <= 20;
     const deepJungleChapter = storyLevel >= 21 && storyLevel <= 30;
+    const abandonedVillageChapter = storyLevel >= 31 && storyLevel <= 40;
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -1606,6 +1624,7 @@
     const terrain=ctx.createLinearGradient(0,0,0,worldH);terrain.addColorStop(0,endlessSurvival?"#713f2b":(denAssault?"#62533c":(villageSiege?"#66a85c":(convoyRescue?"#6f8f4e":(alphaHunt?"#34435c":(stormExtraction?"#315a66":(bloodChapter?"#527044":"#3f7b4d")))))));terrain.addColorStop(.52,endlessSurvival?"#3f3a2f":(denAssault?"#3f4936":(villageSiege?"#43814d":(convoyRescue?"#416b46":(alphaHunt?"#28384a":(stormExtraction?"#254956":(bloodChapter?"#3b5337":"#2f6944")))))));terrain.addColorStop(1,endlessSurvival?"#241f2d":(denAssault?"#29382f":(villageSiege?"#2c6845":(convoyRescue?"#294f3e":(alphaHunt?"#1d2b3f":(stormExtraction?"#193845":(bloodChapter?"#302f32":"#24583c")))))));ctx.fillStyle=terrain;ctx.fillRect(view.x,view.y,view.w,view.h);
     if(bloodChapter){ctx.fillStyle="rgba(127,29,29,.09)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     if(deepJungleChapter){ctx.fillStyle="rgba(34,197,94,.12)";ctx.fillRect(view.x,view.y,view.w,view.h);}
+    if(abandonedVillageChapter){ctx.fillStyle="rgba(148,163,184,.10)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     ctx.fillStyle=endlessSurvival?"rgba(249,115,22,.13)":(denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":(alphaHunt?"rgba(147,197,253,.12)":(stormExtraction?"rgba(125,211,252,.13)":"rgba(102,164,91,.20)")))));
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
@@ -1761,6 +1780,34 @@
       const lzX=snap.extraction?.x||worldW*.87,lzY=snap.extraction?.y||worldH*.67;if(visible(lzX,lzY,300)){ctx.fillStyle="rgba(14,165,233,.15)";ctx.beginPath();ctx.arc(lzX,lzY,210,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#7dd3fc";ctx.lineWidth=8;ctx.setLineDash([22,14]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(8,47,73,.94)";roundRect(ctx,lzX-142,lzY-180,284,48,12);ctx.fill();ctx.fillStyle="#e0f2fe";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("HELICOPTER EVACUATION ZONE",lzX,lzY-149);}
     }else if(storyLevel === 30){
       const bossX=worldW*.55,bossY=worldH*.51;if(visible(bossX,bossY,440)){ctx.fillStyle="rgba(30,58,138,.17)";ctx.beginPath();ctx.arc(bossX,bossY,315,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#818cf8";ctx.lineWidth=10;ctx.setLineDash([10,20]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(30,27,75,.94)";roundRect(ctx,bossX-152,bossY-82,304,52,13);ctx.fill();ctx.strokeStyle="#a5b4fc";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#e0e7ff";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("STEALTH TIGER TERRITORY",bossX,bossY-49);}
+    }else if(storyLevel === 31){
+      for(const checkpoint of (snap.checkpoints||[])){if(!visible(checkpoint.x,checkpoint.y,180))continue;ctx.fillStyle="rgba(100,116,139,.18)";ctx.strokeStyle="#fbbf24";ctx.lineWidth=6;ctx.setLineDash([14,10]);ctx.beginPath();ctx.arc(checkpoint.x,checkpoint.y,105,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(30,41,59,.94)";roundRect(ctx,checkpoint.x-82,checkpoint.y-112,164,38,10);ctx.fill();ctx.fillStyle="#fef3c7";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText("SEARCH THIS HOME",checkpoint.x,checkpoint.y-87);}
+    }else if(storyLevel === 32){
+      for(const [xp,yp,angle] of [[.28,.24,0],[.54,.50,Math.PI/2],[.81,.50,0],[.54,.76,0]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,130))drawVillageBarricade(ctx,x,y,angle);}if(visible(worldW*.54,worldH*.50,360)){ctx.fillStyle="rgba(30,41,59,.94)";roundRect(ctx,worldW*.54-135,worldH*.50-120,270,46,12);ctx.fill();ctx.strokeStyle="#cbd5e1";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#f8fafc";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("VILLAGE STREET PATROL",worldW*.54,worldH*.50-90);}
+    }else if(storyLevel === 33){
+      const route=snap.checkpoints||[];if(route.length>1){ctx.strokeStyle="rgba(74,222,128,.72)";ctx.lineWidth=10;ctx.setLineDash([22,14]);ctx.beginPath();ctx.moveTo(route[0].x,route[0].y);for(const point of route.slice(1))ctx.lineTo(point.x,point.y);ctx.stroke();ctx.setLineDash([]);}if(visible(worldW*.54,worldH*.47,340)){ctx.fillStyle="rgba(20,83,45,.93)";roundRect(ctx,worldW*.54-126,worldH*.47-55,252,46,12);ctx.fill();ctx.fillStyle="#dcfce7";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("SURVIVOR SAFE ROUTE",worldW*.54,worldH*.47-25);}
+    }else if(storyLevel === 34){
+      for(const [xp,yp] of [[.28,.30],[.53,.53],[.78,.34]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,190))drawResearchBeacon(ctx,x,y,1.22);}if(visible(worldW*.54,worldH*.48,360)){ctx.fillStyle="rgba(8,47,73,.94)";roundRect(ctx,worldW*.54-138,worldH*.48-68,276,46,12);ctx.fill();ctx.fillStyle="#cffafe";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("THREE LIVE CAPTURES REQUIRED",worldW*.54,worldH*.48-38);}
+    }else if(storyLevel === 35){
+      const routeY=worldH*.50;for(const [xp,offset,angle,color] of [[.18,-20,0,"#2563eb"],[.76,18,Math.PI,"#475569"]]){const x=worldW*xp,y=routeY+offset;if(visible(x,y,155))drawConvoyTruck(ctx,x,y,angle,color,true);}const points=snap.checkpoints||[],done=snap.checkpointCompletedIds||[],index=Math.min(done.length,Math.max(0,points.length-1)),truckPoint=points[index]||{x:worldW*.36,y:routeY};if(visible(truckPoint.x,truckPoint.y,170))drawConvoyTruck(ctx,truckPoint.x,truckPoint.y,0,"#16a34a",false);if(visible(worldW*.53,routeY,360)){ctx.fillStyle="rgba(30,41,59,.94)";roundRect(ctx,worldW*.53-142,routeY-125,284,46,12);ctx.fill();ctx.strokeStyle="#facc15";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#fef9c3";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("EVACUATION CONVOY ROUTE",worldW*.53,routeY-95);}
+    }else if(storyLevel === 36){
+      const clinicX=worldW*.46,clinicY=worldH*.28;if(visible(clinicX,clinicY,190))drawFieldClinic(ctx,clinicX,clinicY,1.28);for(const checkpoint of (snap.checkpoints||[])){if(visible(checkpoint.x,checkpoint.y,190))drawResearchBeacon(ctx,checkpoint.x,checkpoint.y,1.05);}if(visible(worldW*.54,worldH*.48,360)){ctx.fillStyle="rgba(8,47,73,.94)";roundRect(ctx,worldW*.54-145,worldH*.48-62,290,46,12);ctx.fill();ctx.fillStyle="#cffafe";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("DOCTOR IMANI SAMPLE ROUTE",worldW*.54,worldH*.48-32);}
+    }else if(storyLevel === 37){
+      if(visible(worldW*.54,worldH*.46,380)){ctx.fillStyle="rgba(69,10,10,.94)";roundRect(ctx,worldW*.54-142,worldH*.46-62,284,48,12);ctx.fill();ctx.strokeStyle="#fb923c";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#ffedd5";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("BURNING VILLAGE • AVOID FIRE",worldW*.54,worldH*.46-31);}
+    }else if(storyLevel === 38){
+      const centerX=worldW*.54,centerY=worldH*.50;if(visible(centerX,centerY,430)){ctx.fillStyle="rgba(127,29,29,.22)";ctx.beginPath();ctx.arc(centerX,centerY,300,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#f97316";ctx.lineWidth=9;ctx.setLineDash([20,14]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(69,10,10,.94)";roundRect(ctx,centerX-135,centerY-72,270,48,12);ctx.fill();ctx.fillStyle="#ffedd5";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("TOWN CENTER SWARM",centerX,centerY-41);}
+    }else if(storyLevel === 39){
+      for(const [xp,yp,r] of [[.26,.30,175],[.52,.49,280],[.77,.32,185],[.70,.69,210]]){const x=worldW*xp,y=worldH*yp;if(!visible(x,y,r+80))continue;ctx.fillStyle="rgba(124,45,18,.16)";ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(251,146,60,.70)";ctx.lineWidth=7;ctx.setLineDash([22,15]);ctx.stroke();ctx.setLineDash([]);}if(visible(worldW*.53,worldH*.50,400)){ctx.fillStyle="rgba(67,20,7,.94)";roundRect(ctx,worldW*.53-145,worldH*.50-68,290,48,12);ctx.fill();ctx.fillStyle="#ffedd5";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("MASSIVE PACK • 12 TIGERS",worldW*.53,worldH*.50-37);}
+    }else if(storyLevel === 40){
+      for(const [x,y,color,label] of [[worldW*.42,worldH*.48,"#fb923c","ASHCLAW"],[worldW*.66,worldH*.50,"#a78bfa","RUINSTRIPE"]]){if(!visible(x,y,350))continue;ctx.fillStyle="rgba(69,10,10,.20)";ctx.beginPath();ctx.arc(x,y,235,0,Math.PI*2);ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=9;ctx.setLineDash([20,14]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(30,27,75,.94)";roundRect(ctx,x-92,y-62,184,44,11);ctx.fill();ctx.fillStyle="#f8fafc";ctx.font="950 16px system-ui";ctx.textAlign="center";ctx.fillText(`${label} ALPHA`,x,y-33);}
+    }
+
+    for(const fire of (snap.fireZones || [])){
+      if(!visible(fire.x,fire.y,Number(fire.r||180)+80)) continue;
+      const pulse=.78+Math.sin(Number(snap.serverNow||Date.now())/190+String(fire.id||"").length)*.14;
+      ctx.fillStyle=`rgba(239,68,68,${.17*pulse})`;ctx.beginPath();ctx.arc(fire.x,fire.y,Number(fire.r||180),0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fb923c";ctx.lineWidth=7;ctx.setLineDash([16,10]);ctx.stroke();ctx.setLineDash([]);
+      for(let flame=0;flame<5;flame++){const angle=(Math.PI*2*flame)/5,fx=fire.x+Math.cos(angle)*Number(fire.r||180)*.45,fy=fire.y+Math.sin(angle)*Number(fire.r||180)*.30;ctx.fillStyle=flame%2?"#facc15":"#f97316";ctx.beginPath();ctx.moveTo(fx,fy-34*pulse);ctx.quadraticCurveTo(fx+24,fy,fx,fy+28);ctx.quadraticCurveTo(fx-24,fy,fx,fy-34*pulse);ctx.fill();}
+      ctx.fillStyle="rgba(69,10,10,.94)";roundRect(ctx,fire.x-92,fire.y-Number(fire.r||180)-48,184,36,10);ctx.fill();ctx.fillStyle="#ffedd5";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(`${fire.label} • DAMAGE`,fire.x,fire.y-Number(fire.r||180)-24);
     }
 
     for(const checkpoint of (snap.checkpoints || [])){
@@ -1779,7 +1826,7 @@
     }
 
     const ex=snap.extraction;const survivalExtract=!!snap.mission?.survivalExtractAvailable;const helicopterExtraction=snap.mission?.extractionType==="helicopter";ctx.fillStyle=(stormExtraction||helicopterExtraction)?"rgba(14,165,233,.26)":(endlessSurvival?(survivalExtract?"rgba(34,197,94,.28)":"rgba(249,115,22,.16)"):"rgba(34,197,94,.23)");ctx.strokeStyle=(stormExtraction||helicopterExtraction)?"#7dd3fc":(endlessSurvival?(survivalExtract?"#4ade80":"#f97316"):"#4ade80");ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=(stormExtraction||helicopterExtraction)?"#e0f2fe":(endlessSurvival?"#ffedd5":"#dcfce7");ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText(helicopterExtraction?"HELICOPTER EXTRACTION":(stormExtraction?"STORM EXTRACTION":(endlessSurvival?(survivalExtract?"BANK REWARDS":"LOCKED • CLEAR WAVE 3"):"SQUAD EXTRACTION")),ex.x,ex.y+6);if(stormExtraction||helicopterExtraction){ctx.font="950 44px system-ui";ctx.fillText("H",ex.x,ex.y-24);}
-    const guideTarget=nearestUnrescuedCivilian()||nextCheckpointForLocal()||requiredCaptureTiger()||nearestActiveTiger()||ex;
+    const guideTarget=(snap.mission?.checkpointsBeforeRescue ? nextCheckpointForLocal()||nearestUnrescuedCivilian() : nearestUnrescuedCivilian()||nextCheckpointForLocal())||requiredCaptureTiger()||nearestActiveTiger()||ex;
     if(state.local&&guideTarget){ctx.strokeStyle="rgba(103,232,249,.62)";ctx.lineWidth=4;ctx.setLineDash([12,11]);ctx.beginPath();ctx.moveTo(state.local.x,state.local.y);ctx.lineTo(guideTarget.x,guideTarget.y);ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle="rgba(103,232,249,.30)";ctx.lineWidth=3;ctx.beginPath();ctx.arc(guideTarget.x,guideTarget.y,guideTarget.hpMax?(guideTarget.boss?178:164):82,0,Math.PI*2);ctx.stroke();}
     ctx.strokeStyle="rgba(191,219,254,.7)";ctx.lineWidth=8;ctx.strokeRect(4,4,worldW-8,worldH-8);
   }

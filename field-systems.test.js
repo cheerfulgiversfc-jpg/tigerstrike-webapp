@@ -79,5 +79,5 @@ test("the three rehabilitation activities are actual mission definitions",()=>{
     "Civilian Rescue Exercise",
     "Wildlife Transfer Duty",
   ]);
-  assert(html.includes("field-systems.js?v=5053-shared-story-chapter-3"));
+  assert(html.includes("field-systems.js?v=5054-shared-story-chapter-4"));
 });

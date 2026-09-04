@@ -97,13 +97,14 @@ async function run(){
   assert(html.includes("Story Campaign"), "Story Campaign path is visible");
   assert(html.includes("Special Operations"), "Special Operations path is visible");
   assert(html.includes("Solo supports all 72 unlocked missions"), "home reports the real Solo unlock count");
-  assert(html.includes("Two Player is ready for Missions 1–30"), "home reports the exact converted co-op range");
+  assert(html.includes("Two Player is ready for Missions 1–40"), "home reports the exact converted co-op range");
 
   await clickCommand("hub-story");
   html = element("squadBody").innerHTML;
   assert(html.includes("Unlocked 72/100"), "Story path keeps full Solo campaign progress");
   assert(html.includes("Story Mission 72"), "Story path defaults to the current unlocked mission");
   assert(html.includes("Chapter 3 • 21–30"), "Story path includes a direct Chapter 3 mission shortcut");
+  assert(html.includes("Chapter 4 • 31–40"), "Story path includes a direct Chapter 4 mission shortcut");
   assert(html.includes("Solo only for now"), "unconverted missions are not presented as working co-op");
   assert(html.includes("Two Player coming later"), "unconverted Two Player button is visibly unavailable");
 
@@ -167,7 +168,24 @@ async function run(){
 
   await clickCommand("select-story", { squadStoryLevel:"31" });
   html = element("squadBody").innerHTML;
-  assert(html.includes("Solo only for now"), "Mission 31 remains accurately marked Solo-only");
+  assert(html.includes("Abandoned Home Search"), "Mission 31 exposes its real home-search objective");
+  assert(html.includes("Two Player ready"), "Mission 31 is marked playable with a teammate");
+
+  await clickCommand("select-story", { squadStoryLevel:"34" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Triple Research Capture"), "Mission 34 exposes its three-capture objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"37" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Burning Village Rescue"), "Mission 37 exposes its real fire-hazard rescue");
+
+  await clickCommand("select-story", { squadStoryLevel:"40" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Twin Alpha Tigers"), "Mission 40 exposes its Twin Alpha boss objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"41" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Solo only for now"), "Mission 41 remains accurately marked Solo-only");
 
   windowObject.openLiveSquadOps();
   await clickCommand("hub-operations");
