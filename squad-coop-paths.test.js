@@ -97,7 +97,7 @@ async function run(){
   assert(html.includes("Story Campaign"), "Story Campaign path is visible");
   assert(html.includes("Special Operations"), "Special Operations path is visible");
   assert(html.includes("Solo supports all 72 unlocked missions"), "home reports the real Solo unlock count");
-  assert(html.includes("Two Player is ready for Missions 1–50"), "home reports the exact converted co-op range");
+  assert(html.includes("Two Player is ready for Missions 1–60"), "home reports the exact converted co-op range");
 
   await clickCommand("hub-story");
   html = element("squadBody").innerHTML;
@@ -106,6 +106,7 @@ async function run(){
   assert(html.includes("Chapter 3 • 21–30"), "Story path includes a direct Chapter 3 mission shortcut");
   assert(html.includes("Chapter 4 • 31–40"), "Story path includes a direct Chapter 4 mission shortcut");
   assert(html.includes("Chapter 5 • 41–50"), "Story path includes a direct Chapter 5 mission shortcut");
+  assert(html.includes("Chapter 6 • 51–60"), "Story path includes a direct Chapter 6 mission shortcut");
   assert(html.includes("Solo only for now"), "unconverted missions are not presented as working co-op");
   assert(html.includes("Two Player coming later"), "unconverted Two Player button is visibly unavailable");
 
@@ -203,7 +204,28 @@ async function run(){
 
   await clickCommand("select-story", { squadStoryLevel:"51" });
   html = element("squadBody").innerHTML;
-  assert(html.includes("Solo only for now"), "Mission 51 remains accurately marked Solo-only");
+  assert(html.includes("Mountain Village Escort"), "Mission 51 exposes its real mountain escort");
+  assert(html.includes("Two Player ready"), "Mission 51 is marked playable with a teammate");
+
+  await clickCommand("select-story", { squadStoryLevel:"53" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Silverpeak Capture"), "Mission 53 exposes its named rare-tiger capture");
+
+  await clickCommand("select-story", { squadStoryLevel:"57" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Whiteout Patrol"), "Mission 57 exposes its real snowstorm objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"58" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Mountain Air Rescue"), "Mission 58 exposes its helicopter rescue objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"60" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Mountain Alpha Tiger"), "Mission 60 exposes its Mountain Alpha boss objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"61" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Solo only for now"), "Mission 61 remains accurately marked Solo-only");
 
   windowObject.openLiveSquadOps();
   await clickCommand("hub-operations");

@@ -386,6 +386,18 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Both players claim separate deduplicated rewards and unlock the next mission independently. Mission 50 awards the `Giant River Tiger Breakers` badge and unlocks Mission 51.
 - Existing Solo Story progress, Missions 1–40, all seven Special Operations, field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, ammunition modes, cages, bodies, and government systems remain available.
 
+### V8.4 Shared Story Chapter 6
+
+- Story Campaign now offers a real Solo or Two Players choice for Missions 1–60. Solo remains available for every unlocked mission; Missions 61–100 are accurately labeled Solo-only until their co-op versions are built.
+- Missions 51–60 follow the existing `Mountain Edge` campaign: Mountain Village Escort, Cliffside Attack, Silverpeak Capture, Climber Rescue, Mountain Road Pack, Canyon Caravan, Whiteout Patrol, Mountain Air Rescue, Mountain Swarm, and the Mountain Alpha boss.
+- Missions 51, 54, 55, and 56 use ordered shared ridge, descent, road, and canyon checkpoints that both soldiers must secure.
+- Mission 53 requires the named Silverpeak Mountain Tiger to be captured alive. Real-ammo hits still permanently disqualify it from capture during that run.
+- Mission 57 adds an actual snowstorm overlay that cuts map visibility to 22 percent until both players clear the seven hidden tigers and activate all three visibility beacons.
+- Mission 58 protects a five-person rescue crew and shows two rescue helicopters at the mountain landing zone. Both soldiers must board the helicopter extraction after the LZ is secure.
+- Mission 59 contains a highly aggressive twelve-tiger mountain swarm. Mission 60 contains the 3,200 HP Mountain Alpha Tiger with a low-health Summit Rage phase.
+- Both players claim separate deduplicated rewards and unlock the next mission independently. Mission 60 awards the `Mountain Alpha Breakers` badge and unlocks Mission 61.
+- Existing Solo Story progress, Missions 1–50, all seven Special Operations, field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, ammunition modes, cages, bodies, and government systems remain available.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
