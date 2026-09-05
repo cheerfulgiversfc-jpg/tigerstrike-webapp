@@ -34,8 +34,16 @@ test("Live Squad drives exploration, combat, boss, victory, and defeat music", (
   assert(coop.includes("attacking || playerDown"));
 });
 
-test("V8.5 cache key forces Telegram to load the new soundtrack", () => {
-  assert(game.includes('const TS_BUILD = "5057"'));
-  assert(html.includes("game.js?v=5057-adaptive-soundtrack"));
-  assert(html.includes("squad-coop.js?v=5057-adaptive-soundtrack"));
+test("only one music arrangement owns the music channel at a time", () => {
+  assert(game.includes("if(__adaptiveAudio) stopAdaptiveAudioDirector()"), "legacy tonal bed must be removed while the soundtrack runs");
+  assert(game.includes("stopGameMusicVoices(__gameMusic, .035)"), "old notes must stop before a new arrangement begins");
+  assert(game.includes("voices:new Set()"), "scheduled music voices need one tracked owner");
+  assert(game.includes("if(next === __gameMusicExternalContext) return"), "identical co-op snapshots must not restart music timing");
+  assert(!game.includes('if(introOverlayVisible()){\n      playLaunchTheme(true);'), "intro fanfare must not layer over the menu score");
+});
+
+test("V8.5.1 cache key forces Telegram to load the corrected single mix", () => {
+  assert(game.includes('const TS_BUILD = "5058"'));
+  assert(html.includes("game.js?v=5058-single-music-mix"));
+  assert(html.includes("squad-coop.js?v=5058-single-music-mix"));
 });

@@ -280,8 +280,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V8.5 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V8.5 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.5 • Co-op Command");
+      ? `Tiger Strike V8.5.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V8.5.1 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.5.1 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -539,7 +539,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V8.5 Adaptive Soundtrack</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. The soundtrack now follows both modes with distinct menu, exploration, combat, boss, victory, and defeat music.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V8.5.1 Single Soundtrack Mix</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. One synchronized soundtrack follows both modes with distinct menu, exploration, combat, boss, victory, and defeat arrangements.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>

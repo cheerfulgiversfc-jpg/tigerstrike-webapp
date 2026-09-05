@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5057";
+const TS_BUILD = "5058";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 60;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -19854,7 +19854,7 @@ function unlockGameAudioFromGesture(){
   startGameMusicDirector();
   if(!wasUnlocked && !__audioUnlockedStingerPlayed){
     __audioUnlockedStingerPlayed = true;
-    setTimeout(()=>sfx("audioReady"), 24);
+    if(S.musicOn === false) setTimeout(()=>sfx("audioReady"), 24);
   }
 }
 ["pointerdown","touchstart","click"].forEach((eventName)=>{
@@ -19989,11 +19989,10 @@ function toggleSound(){
   if(S.soundOn){
     sfx("ui");
     ensureAudio();
-    startAdaptiveAudioDirector();
+    stopAdaptiveAudioDirector();
     startGameMusicDirector();
-    sfx("audioReady");
+    if(S.musicOn === false) sfx("audioReady");
     if(introOverlayVisible()){
-      playLaunchTheme(true);
       startLaunchMusicLoop(true);
     }
   }
@@ -20014,19 +20013,20 @@ function updateMusicNowPlayingUi(mode="menu"){
     const label=document.getElementById(id),button=label?.closest?.("button");
     if(!button) continue;
     button.dataset.musicMode=mode;
+    button.dataset.musicVoices=String(__gameMusic?.voices?.size || 0);
+    button.dataset.legacyMusic=__adaptiveAudio ? "on" : "off";
     button.title=`Now playing: ${title}`;
   }
 }
 function toggleMusic(){
   S.musicOn = S.musicOn === false;
-  updateMusicLabels();
   if(S.musicOn && S.soundOn){
     ensureAudio();
     startGameMusicDirector();
-    gameMusicStinger(gameMusicMode());
   }else{
     stopGameMusicDirector();
   }
+  updateMusicLabels();
   save();
   if(S.soundOn) sfx("ui");
 }
@@ -20087,6 +20087,7 @@ function startAdaptiveAudioDirector(){
 }
 function adaptiveAudioStinger(kind="danger"){
   if(!S.soundOn) return;
+  if(S.musicOn !== false) return;
   if(kind === "boss"){
     if(!sfxGate("stinger_boss", 1200)) return;
     beep(196, 84, "triangle", 0.038);
@@ -20183,14 +20184,29 @@ function adaptiveAudioDirectorTick(){
 
 function stopGameMusicDirector(){
   if(!__gameMusic) return;
+  const music = __gameMusic;
   try{
     const at = AC ? AC.currentTime : 0;
-    if(__gameMusic.out?.gain){
-      __gameMusic.out.gain.cancelScheduledValues(at);
-      __gameMusic.out.gain.setTargetAtTime(0.0001, at, 0.08);
+    stopGameMusicVoices(music, .035);
+    if(music.out?.gain){
+      music.out.gain.cancelScheduledValues(at);
+      music.out.gain.setTargetAtTime(0.0001, at, 0.035);
     }
   }catch(e){}
   __gameMusic = null;
+}
+function stopGameMusicVoices(music=__gameMusic, fadeSec=.045){
+  if(!music?.voices || !AC) return;
+  const at=AC.currentTime,stopAt=at+Math.max(.012,Number(fadeSec||.045));
+  for(const voice of music.voices){
+    try{
+      voice.gain?.gain?.cancelScheduledValues(at);
+      voice.gain?.gain?.setValueAtTime(Math.max(.0001,Number(voice.gain.gain.value||.0001)),at);
+      voice.gain?.gain?.exponentialRampToValueAtTime(.0001,stopAt);
+      for(const source of (voice.sources||[])) source?.stop?.(stopAt+.008);
+    }catch(e){}
+  }
+  music.voices.clear();
 }
 function startGameMusicDirector(){
   if(!S.soundOn || S.musicOn === false) return;
@@ -20205,13 +20221,16 @@ function startGameMusicDirector(){
       mode:"",
       step:0,
       nextStepAt:0,
-      lastStingerAt:0
+      lastStingerAt:0,
+      voices:new Set()
     };
     __gameMusicLastTickAt = 0;
   }catch(e){}
 }
 function setTigerStrikeMusicContext(context=""){
-  __gameMusicExternalContext = String(context || "").trim().toLowerCase();
+  const next = String(context || "").trim().toLowerCase();
+  if(next === __gameMusicExternalContext) return;
+  __gameMusicExternalContext = next;
   if(__gameMusic) __gameMusic.nextStepAt = 0;
 }
 function gameMusicMode(){
@@ -20286,6 +20305,14 @@ function gameMusicSpec(mode){
 function gameMusicHz(midi=60){
   return 440 * Math.pow(2, (Number(midi || 60) - 69) / 12);
 }
+function trackGameMusicVoice(sources, gain){
+  if(!__gameMusic?.voices) return null;
+  const owner=__gameMusic,voice={sources:(sources||[]).filter(Boolean),gain};
+  owner.voices.add(voice);
+  const last=voice.sources[voice.sources.length-1];
+  if(last) last.onended=()=>owner.voices?.delete(voice);
+  return voice;
+}
 function gameMusicNote(freq, durMs=220, type="sine", vol=0.05, when=0){
   if(!S.soundOn || S.musicOn === false || !AC || !__gameMusic?.out) return;
   try{
@@ -20310,6 +20337,7 @@ function gameMusicNote(freq, durMs=220, type="sine", vol=0.05, when=0){
     warmth.connect(filter);
     filter.connect(gain);
     gain.connect(__gameMusic.out);
+    trackGameMusicVoice([osc,warmth],gain);
     osc.start(start);
     warmth.start(start);
     osc.stop(start + dur + 0.04);
@@ -20339,7 +20367,7 @@ function gameMusicDrum(kind="hat", when=0, volume=.03){
       const osc=AC.createOscillator(),gain=AC.createGain();
       osc.type="sine";osc.frequency.setValueAtTime(132,start);osc.frequency.exponentialRampToValueAtTime(48,start+.13);
       gain.gain.setValueAtTime(Math.max(.001,volume),start);gain.gain.exponentialRampToValueAtTime(.0001,start+.16);
-      osc.connect(gain);gain.connect(__gameMusic.out);osc.start(start);osc.stop(start+.18);return;
+      osc.connect(gain);gain.connect(__gameMusic.out);trackGameMusicVoice([osc],gain);osc.start(start);osc.stop(start+.18);return;
     }
     const buffer = gameMusicNoise();
     if(!buffer) return;
@@ -20347,7 +20375,7 @@ function gameMusicDrum(kind="hat", when=0, volume=.03){
     src.buffer=buffer;filter.type=kind === "snare" ? "bandpass" : "highpass";filter.frequency.value=kind === "snare" ? 1500 : 6200;filter.Q.value=kind === "snare" ? .75 : .35;
     const length=kind === "snare" ? .15 : .045;
     gain.gain.setValueAtTime(Math.max(.001,volume),start);gain.gain.exponentialRampToValueAtTime(.0001,start+length);
-    src.connect(filter);filter.connect(gain);gain.connect(__gameMusic.out);src.start(start);src.stop(start+length+.02);
+    src.connect(filter);filter.connect(gain);gain.connect(__gameMusic.out);trackGameMusicVoice([src],gain);src.start(start);src.stop(start+length+.02);
   }catch(e){}
 }
 function gameMusicChord(midis, durMs, when, volume=.012){
@@ -20409,10 +20437,10 @@ function gameMusicDirectorTick(){
   __gameMusic.out.gain.cancelScheduledValues(at);
   __gameMusic.out.gain.setTargetAtTime(targetVol, at, 0.28);
   if(__gameMusic.mode !== mode){
+    stopGameMusicVoices(__gameMusic, .035);
     __gameMusic.mode = mode;
     __gameMusic.step = 0;
     __gameMusic.nextStepAt = at + .04;
-    gameMusicStinger(mode);
   }
   const stepDuration = 60 / Math.max(40,Number(spec.bpm || 100)) / 2;
   if(!Number.isFinite(__gameMusic.nextStepAt) || __gameMusic.nextStepAt < at - stepDuration){
@@ -20446,9 +20474,10 @@ function gameMusicDirectorTick(){
     __gameMusic.nextStepAt = when + stepDuration;
     scheduled += 1;
   }
+  updateMusicNowPlayingUi(mode);
 }
 function tickAudioDirectors(){
-  adaptiveAudioDirectorTick();
+  if(__adaptiveAudio) stopAdaptiveAudioDirector();
   gameMusicDirectorTick();
 }
 
@@ -28727,13 +28756,7 @@ function playLaunchTheme(force=false){
   const now = Date.now();
   if(!force && (now - __launchThemeAt) < 2600) return;
   __launchThemeAt = now;
-  try{
-    ensureAudio();
-    const notes = [392, 523, 659, 784];
-    notes.forEach((hz, idx)=>{
-      setTimeout(()=>beep(hz, 120, "triangle", 0.045), idx * 150);
-    });
-  }catch(e){}
+  startGameMusicDirector();
 }
 function introOverlayVisible(){
   const launch = document.getElementById("launchIntroOverlay");

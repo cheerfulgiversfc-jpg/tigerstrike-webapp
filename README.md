@@ -408,6 +408,13 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Music has its own on/off button on desktop and mobile. The main Sound button still mutes everything, including sound effects and music.
 - Telegram and iPhone autoplay rules are respected: audio starts after the first player tap and resumes through the same game audio system.
 
+### V8.5.1 Single Soundtrack Mix
+
+- Removes the older adaptive drone and launch-note loops that could play underneath the V8.5 score.
+- Tracks every scheduled music voice and stops the previous arrangement before a menu, mission, combat, boss, victory, or defeat transition begins.
+- Ignores repeated identical Live Squad music updates so server polling cannot disturb or restart the beat.
+- Keeps gameplay sound effects on their own channel while guaranteeing that only one music arrangement controls the soundtrack channel.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
