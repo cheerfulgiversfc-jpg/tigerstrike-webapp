@@ -205,6 +205,19 @@
     return targets.length ? targets.filter((id)=>captured.includes(id)).length : captured.length;
   };
   const checkpointRequired = () => Math.max(0, Number(missionMeta().checkpointRequired || 0));
+  function syncSquadMusicContext(){
+    if(!state.open){ window.setTigerStrikeMusicContext?.(""); return; }
+    const snap = state.snapshot;
+    if(!snap || snap.status === "waiting"){ window.setTigerStrikeMusicContext?.("menu"); return; }
+    if(snap.status === "complete"){ window.setTigerStrikeMusicContext?.("victory"); return; }
+    if(snap.status === "failed"){ window.setTigerStrikeMusicContext?.("defeat"); return; }
+    if(snap.status !== "active" || snap.paused){ window.setTigerStrikeMusicContext?.("menu"); return; }
+    const threats = (snap.tigers || []).filter((tiger)=>tiger && !tiger.defeated);
+    const attacking = threats.some((tiger)=>/attack|frenzy|stalk/i.test(String(tiger.awarenessLabel || "")));
+    const bossEngaged = threats.some((tiger)=>tiger.boss && Number(tiger.hp || 0) < Number(tiger.hpMax || 0));
+    const playerDown = (snap.players || []).some((player)=>player?.downed);
+    window.setTigerStrikeMusicContext?.(bossEngaged ? "boss" : ((attacking || playerDown) ? "battle" : "mission"));
+  }
   const maxUnlockedStoryLevel = () => clamp(Math.floor(Math.max(Number(window.S?.storyLastMission || 1), Number(window.S?.storyLevel || 1))), 1, 100);
   const twoPlayerStoryReady = (level=state.storyMissionLevel) => Math.max(1, Math.floor(Number(level || 1))) <= SHARED_STORY_LEVELS.length;
   const selectedStoryDescription = () => {
@@ -267,8 +280,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V8.4 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V8.4 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.4 • Co-op Command");
+      ? `Tiger Strike V8.5 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V8.5 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.5 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -336,6 +349,7 @@
       state.local.respawnAt = Number(mine.respawnAt || 0);
       state.local.role = mine.role;
     }
+    syncSquadMusicContext();
     const bodyMode = $("squadBody")?.dataset?.squadMode || "";
     if(snapshot.status === "active" && bodyMode === "active" && $("squadArena")){
       updateActiveHud();
@@ -525,7 +539,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V8.4 Shared Story Chapter 6</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can now be played Solo or with a teammate. Chapter 6 adds ridge escorts, cliff attacks, the rare Silverpeak capture, climber rescues, mountain-road and canyon routes, real snowstorm visibility, helicopter landing-zone defense, a twelve-tiger swarm, and the Mountain Alpha boss.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V8.5 Adaptive Soundtrack</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. The soundtrack now follows both modes with distinct menu, exploration, combat, boss, victory, and defeat music.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -769,6 +783,7 @@
     bindLobbyInput();
     if(state.snapshot?.status === "active") ensureFrame();
     else { drawArena(); if(state.snapshot?.status === "complete") startSquadTransportMovie(); }
+    syncSquadMusicContext();
   }
 
   function bindLobbyInput(){
@@ -1040,6 +1055,7 @@
     overlay.classList.add("open");
     overlay.setAttribute("aria-hidden","false");
     render();
+    syncSquadMusicContext();
     if(!hasTelegramAuth()) setMessage(sharedStoryActive()
       ? "Open Tiger Strike inside Telegram to create or join this two-player Story mission."
       : "Open Tiger Strike inside Telegram to create or join a live squad.", true);
@@ -1048,6 +1064,7 @@
 
   function close(){
     state.open = false;
+    syncSquadMusicContext();
     stopPolling();
     cancelAnimationFrame(state.frame);
     cancelAnimationFrame(state.transportFrame);

@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V8.4 (Shared Story Chapter 6)</title>
+  <title>Tiger Strike 🐅 — V8.5 (Adaptive Soundtrack)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5056-shared-story-chapter-6">
+  <link rel="stylesheet" href="./squad-coop.css?v=5057-adaptive-soundtrack">
 
   <style>
     :root{
@@ -2507,8 +2507,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V8.4</span> <span class="tag">Shared Story Chapter 6</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V8.5</span> <span class="tag">Adaptive Soundtrack</span></div>
       <div class="sub">
+        A continuous original soundtrack now follows the action: a memorable menu theme, calm mission music, rising danger, full combat percussion, Alpha boss music, and separate victory and defeat endings. Music also follows Live Squad matches and can be switched off independently.<br>
         Tigers now hear gunfire and footsteps, remember the last place they detected a soldier, react to blood scent, and show Calm, Suspicious, Stalking, Attacking, or Blood Frenzy awareness. Solo play is protected by slower detection, lower tiger damage, longer ambush warnings, and a two-attacker coordination limit.<br>
         Real rounds kill and block capture. Rubber rounds weaken without killing. Tranq rounds finish a valid live capture.<br>
         Fresh non-Survival missions start on Rubber, and the loaded magazine is verified before every shot so the HUD can never say Rubber while firing Real.<br>
@@ -2523,6 +2524,7 @@
     </div>
     <div class="row topActions">
       <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLbl">On</span></button>
+      <button class="ghost" onclick="toggleMusic()">🎵 Music <span id="musicLbl">On</span></button>
       <button class="ghost mobileCompactHide" onclick="if(window.openAbout){window.openAbout();}else{alert('Game is still loading. Please wait a few seconds.');}">ℹ️ About</button>
       <button class="ghost mobileCompactHide" onclick="openBaseHQ()">🏠 HQ</button>
       <button class="ghost mobileCompactHide" onclick="openMode()">🎮 Mode</button>
@@ -3409,11 +3411,11 @@
   </div>
 </div>
 
-<!-- V8.4 Shared Story Chapter 6 -->
+<!-- V8.5 Adaptive Soundtrack -->
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V8.4 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V8.5 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3434,6 +3436,7 @@
   </div>
   <div class="mobileUtilityBar">
     <button class="ghost" onclick="toggleSound()">🔊 <span id="soundLblMobile">On</span></button>
+    <button class="ghost" onclick="toggleMusic()">🎵 Music <span id="musicLblMobile">On</span></button>
     <button class="ghost" onclick="openBaseHQ()">🏠 HQ</button>
     <button class="ghost" onclick="togglePause()">⏸️ <span id="pauseLblMobile">Pause</span></button>
     <button class="ghost" onclick="togglePerformanceMode()">⚙️ <span id="perfLblMobile">Auto</span></button>
@@ -3454,16 +3457,16 @@
 </div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5056-shared-story-chapter-6"></script>
-  <script src="./ammo-modes.js?v=5056-shared-story-chapter-6"></script>
-  <script src="./government-policy.js?v=5056-shared-story-chapter-6"></script>
-  <script src="./tiger-intelligence.js?v=5056-shared-story-chapter-6"></script>
-  <script src="./game.js?v=5056-shared-story-chapter-6"></script>
-  <script src="./story-cinematics.js?v=5056-shared-story-chapter-6"></script>
-  <script src="./field-systems.js?v=5056-shared-story-chapter-6"></script>
+  <script src="./extraction-geometry.js?v=5057-adaptive-soundtrack"></script>
+  <script src="./ammo-modes.js?v=5057-adaptive-soundtrack"></script>
+  <script src="./government-policy.js?v=5057-adaptive-soundtrack"></script>
+  <script src="./tiger-intelligence.js?v=5057-adaptive-soundtrack"></script>
+  <script src="./game.js?v=5057-adaptive-soundtrack"></script>
+  <script src="./story-cinematics.js?v=5057-adaptive-soundtrack"></script>
+  <script src="./field-systems.js?v=5057-adaptive-soundtrack"></script>
   <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
-  <script src="./squad-coop.js?v=5056-shared-story-chapter-6"></script>
-  <script src="./extraction-qa.js?v=5056-shared-story-chapter-6"></script>
+  <script src="./squad-coop.js?v=5057-adaptive-soundtrack"></script>
+  <script src="./extraction-qa.js?v=5057-adaptive-soundtrack"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

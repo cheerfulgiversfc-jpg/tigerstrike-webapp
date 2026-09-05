@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5056";
+const TS_BUILD = "5057";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 60;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -14585,7 +14585,7 @@ const DEFAULT = {
   },
   worldMapCampaign: defaultWorldMapCampaignState(),
   modeProfiles:null,
-  soundOn:true, audioUnlocked:false,
+  soundOn:true, musicOn:true, musicVolume:0.78, audioUnlocked:false,
   performanceMode:"AUTO",
 
   lives:5, funds:1000, score:0, trust:80, aggro:10, stamina:100,
@@ -19832,6 +19832,8 @@ let __adaptiveAudioLastBossAt=0;
 let __adaptiveAudioLastDangerAt=0;
 let __gameMusic=null;
 let __gameMusicLastTickAt=0;
+let __gameMusicNoiseBuffer=null;
+let __gameMusicExternalContext="";
 let __audioUnlockedStingerPlayed=false;
 const AUDIO_AUDIBILITY_BOOST = 1.42;
 function ensureAudio(){
@@ -19997,6 +19999,38 @@ function toggleSound(){
   }
 }
 
+function updateMusicLabels(){
+  const label = S.musicOn === false ? "Off" : "On";
+  const desktop = document.getElementById("musicLbl");
+  const mobile = document.getElementById("musicLblMobile");
+  if(desktop) desktop.innerText = label;
+  if(mobile) mobile.innerText = label;
+  if(S.musicOn === false) updateMusicNowPlayingUi("off");
+}
+function updateMusicNowPlayingUi(mode="menu"){
+  const names={off:"Music off",menu:"Menu Theme",hq:"Base HQ Theme",mission:"Mission Exploration",danger:"Danger Rising",battle:"Tiger Combat",boss:"Alpha Boss Battle",victory:"Mission Victory",defeat:"Mission Defeat"};
+  const title = names[mode] || names.menu;
+  for(const id of ["musicLbl","musicLblMobile"]){
+    const label=document.getElementById(id),button=label?.closest?.("button");
+    if(!button) continue;
+    button.dataset.musicMode=mode;
+    button.title=`Now playing: ${title}`;
+  }
+}
+function toggleMusic(){
+  S.musicOn = S.musicOn === false;
+  updateMusicLabels();
+  if(S.musicOn && S.soundOn){
+    ensureAudio();
+    startGameMusicDirector();
+    gameMusicStinger(gameMusicMode());
+  }else{
+    stopGameMusicDirector();
+  }
+  save();
+  if(S.soundOn) sfx("ui");
+}
+
 function stopAdaptiveAudioDirector(){
   if(!__adaptiveAudio) return;
   try{
@@ -20159,7 +20193,7 @@ function stopGameMusicDirector(){
   __gameMusic = null;
 }
 function startGameMusicDirector(){
-  if(!S.soundOn) return;
+  if(!S.soundOn || S.musicOn === false) return;
   try{
     ensureAudio();
     if(!AC || !__audioMasterGain || __gameMusic) return;
@@ -20170,79 +20204,161 @@ function startGameMusicDirector(){
       out,
       mode:"",
       step:0,
-      nextNoteAt:0,
-      nextBeatAt:0,
+      nextStepAt:0,
       lastStingerAt:0
     };
     __gameMusicLastTickAt = 0;
   }catch(e){}
 }
+function setTigerStrikeMusicContext(context=""){
+  __gameMusicExternalContext = String(context || "").trim().toLowerCase();
+  if(__gameMusic) __gameMusic.nextStepAt = 0;
+}
 function gameMusicMode(){
-  if(!S.soundOn) return "off";
+  if(!S.soundOn || S.musicOn === false) return "off";
+  if(__gameMusicExternalContext){
+    const allowed = ["menu","hq","mission","danger","battle","boss","victory","defeat"];
+    if(allowed.includes(__gameMusicExternalContext)) return __gameMusicExternalContext;
+  }
   if(introOverlayVisible()) return "menu";
   try{ if(baseHqActive?.()) return "hq"; }catch(e){}
-  if(S.gameOver || S.missionEnded) return "menu";
-  if(S.inBattle || hasAliveBossTiger?.()) return "battle";
+  if(S.gameOver) return "defeat";
+  if(S.missionEnded) return "victory";
+  if(hasAliveBossTiger?.() && S.inBattle) return "boss";
+  if(S.inBattle) return "battle";
+  if(Number(S._underAttack || 0) > 0) return "danger";
   if(S.paused) return "menu";
   return "mission";
 }
 function gameMusicSpec(mode){
-  if(mode === "hq"){
-    return {
-      vol:0.18,
-      gap:440,
-      wave:"triangle",
-      root:[146.83, 196.00, 220.00, 293.66, 329.63],
-      bass:[73.42, 98.00],
-      beat:false
-    };
-  }
-  if(mode === "battle"){
-    return {
-      vol:0.22,
-      gap:255,
-      wave:"triangle",
-      root:[130.81, 155.56, 174.61, 196.00, 261.63],
-      bass:[65.41, 82.41, 98.00],
-      beat:true
-    };
-  }
-  if(mode === "mission"){
-    return {
-      vol:0.17,
-      gap:520,
-      wave:"sine",
-      root:[164.81, 196.00, 220.00, 246.94, 329.63],
-      bass:[82.41, 110.00],
-      beat:false
-    };
-  }
-  return {
-    vol:0.16,
-    gap:560,
-    wave:"triangle",
-    root:[196.00, 246.94, 293.66, 392.00, 493.88],
-    bass:[98.00, 130.81],
-    beat:false
+  const tracks = {
+    menu:{
+      bpm:94, volume:.72, root:50, scale:[0,3,5,7,10,12,15,17],
+      melody:[0,null,2,3,4,null,3,2,0,null,2,4,5,4,3,null],
+      bass:[0,null,0,null,5,null,3,null,0,null,0,null,5,null,4,null],
+      chords:[[0,3,7],[0,5,10],[3,7,10],[5,9,12]], drums:"light", wave:"triangle"
+    },
+    hq:{
+      bpm:82, volume:.62, root:48, scale:[0,2,3,7,9,12,14,15],
+      melody:[4,null,3,null,2,3,0,null,4,null,5,4,3,null,2,null],
+      bass:[0,null,null,null,3,null,null,null,5,null,null,null,3,null,null,null],
+      chords:[[0,3,7],[3,7,10],[5,9,12],[3,7,10]], drums:"soft", wave:"sine"
+    },
+    mission:{
+      bpm:108, volume:.68, root:50, scale:[0,3,5,7,10,12,15,17],
+      melody:[0,2,3,null,4,3,2,null,0,2,4,5,4,3,2,null],
+      bass:[0,null,0,null,5,null,5,null,3,null,3,null,4,null,5,null],
+      chords:[[0,3,7],[5,9,12],[3,7,10],[5,10,14]], drums:"march", wave:"triangle"
+    },
+    danger:{
+      bpm:124, volume:.76, root:47, scale:[0,2,3,5,7,8,10,12],
+      melody:[0,1,2,1,3,2,4,3,0,1,5,4,3,2,1,2],
+      bass:[0,null,0,0,3,null,3,3,5,null,5,5,4,null,4,4],
+      chords:[[0,3,7],[0,5,8],[3,7,10],[2,5,10]], drums:"drive", wave:"sawtooth"
+    },
+    battle:{
+      bpm:138, volume:.84, root:45, scale:[0,2,3,5,7,8,10,12],
+      melody:[0,2,3,5,4,3,2,1,0,2,6,5,4,3,2,4],
+      bass:[0,0,null,0,3,3,null,3,5,5,null,5,4,4,3,2],
+      chords:[[0,3,7],[3,7,10],[5,8,12],[2,5,10]], drums:"combat", wave:"sawtooth"
+    },
+    boss:{
+      bpm:150, volume:.90, root:43, scale:[0,1,3,5,6,8,10,12],
+      melody:[0,1,3,4,6,5,4,3,0,1,7,6,5,4,3,1],
+      bass:[0,0,0,null,4,4,4,null,5,5,5,null,3,3,2,1],
+      chords:[[0,3,6],[1,5,8],[3,6,10],[0,5,10]], drums:"boss", wave:"sawtooth"
+    },
+    victory:{
+      bpm:112, volume:.76, root:50, scale:[0,2,4,7,9,12,14,16],
+      melody:[0,2,4,5,7,5,4,2,3,4,5,7,6,5,4,7],
+      bass:[0,null,0,null,3,null,3,null,4,null,4,null,5,null,0,null],
+      chords:[[0,4,7],[3,7,11],[4,7,12],[0,4,9]], drums:"celebrate", wave:"triangle"
+    },
+    defeat:{
+      bpm:68, volume:.56, root:45, scale:[0,2,3,5,7,8,10,12],
+      melody:[4,null,3,null,2,null,1,null,3,null,2,null,1,null,0,null],
+      bass:[0,null,null,null,5,null,null,null,3,null,null,null,0,null,null,null],
+      chords:[[0,3,7],[5,8,12],[3,7,10],[0,3,8]], drums:"none", wave:"sine"
+    }
   };
+  return tracks[mode] || tracks.menu;
+}
+function gameMusicHz(midi=60){
+  return 440 * Math.pow(2, (Number(midi || 60) - 69) / 12);
 }
 function gameMusicNote(freq, durMs=220, type="sine", vol=0.05, when=0){
-  if(!S.soundOn || !AC || !__gameMusic?.out) return;
+  if(!S.soundOn || S.musicOn === false || !AC || !__gameMusic?.out) return;
   try{
     const start = Math.max(AC.currentTime + 0.006, Number(when || AC.currentTime));
     const dur = Math.max(0.05, Number(durMs || 220) / 1000);
-    const osc = AC.createOscillator();
+    const osc = AC.createOscillator(), warmth = AC.createOscillator();
+    const filter = AC.createBiquadFilter();
     const gain = AC.createGain();
     osc.type = type;
     osc.frequency.setValueAtTime(Math.max(30, Number(freq || 220)), start);
+    warmth.type = type === "sine" ? "triangle" : "sine";
+    warmth.frequency.setValueAtTime(Math.max(30, Number(freq || 220)), start);
+    warmth.detune.setValueAtTime(-7, start);
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(type === "sawtooth" ? 1550 : 2300, start);
+    filter.Q.value = .8;
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, Number(vol || 0.03)), start + 0.026);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, Number(vol || 0.03)), start + 0.035);
+    gain.gain.setTargetAtTime(Math.max(0.0002, Number(vol || 0.03)) * .72, start + .05, .09);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
-    osc.connect(gain);
+    osc.connect(filter);
+    warmth.connect(filter);
+    filter.connect(gain);
     gain.connect(__gameMusic.out);
     osc.start(start);
+    warmth.start(start);
     osc.stop(start + dur + 0.04);
+    warmth.stop(start + dur + 0.04);
   }catch(e){}
+}
+function gameMusicNoise(){
+  if(__gameMusicNoiseBuffer || !AC) return __gameMusicNoiseBuffer;
+  try{
+    const size = Math.max(1, Math.floor(AC.sampleRate * .18));
+    const buffer = AC.createBuffer(1, size, AC.sampleRate);
+    const data = buffer.getChannelData(0);
+    let seed = 918273;
+    for(let i=0;i<size;i++){
+      seed = (seed * 16807) % 2147483647;
+      data[i] = ((seed / 2147483647) * 2 - 1) * (1 - i / size);
+    }
+    __gameMusicNoiseBuffer = buffer;
+  }catch(e){}
+  return __gameMusicNoiseBuffer;
+}
+function gameMusicDrum(kind="hat", when=0, volume=.03){
+  if(!S.soundOn || S.musicOn === false || !AC || !__gameMusic?.out) return;
+  try{
+    const start = Math.max(AC.currentTime + .004, Number(when || AC.currentTime));
+    if(kind === "kick"){
+      const osc=AC.createOscillator(),gain=AC.createGain();
+      osc.type="sine";osc.frequency.setValueAtTime(132,start);osc.frequency.exponentialRampToValueAtTime(48,start+.13);
+      gain.gain.setValueAtTime(Math.max(.001,volume),start);gain.gain.exponentialRampToValueAtTime(.0001,start+.16);
+      osc.connect(gain);gain.connect(__gameMusic.out);osc.start(start);osc.stop(start+.18);return;
+    }
+    const buffer = gameMusicNoise();
+    if(!buffer) return;
+    const src=AC.createBufferSource(),filter=AC.createBiquadFilter(),gain=AC.createGain();
+    src.buffer=buffer;filter.type=kind === "snare" ? "bandpass" : "highpass";filter.frequency.value=kind === "snare" ? 1500 : 6200;filter.Q.value=kind === "snare" ? .75 : .35;
+    const length=kind === "snare" ? .15 : .045;
+    gain.gain.setValueAtTime(Math.max(.001,volume),start);gain.gain.exponentialRampToValueAtTime(.0001,start+length);
+    src.connect(filter);filter.connect(gain);gain.connect(__gameMusic.out);src.start(start);src.stop(start+length+.02);
+  }catch(e){}
+}
+function gameMusicChord(midis, durMs, when, volume=.012){
+  for(const midi of (midis || [])) gameMusicNote(gameMusicHz(midi), durMs, "sine", volume, when);
+}
+function gameMusicScheduleDrums(style, step, when){
+  if(style === "none") return;
+  const kickSets={soft:[0,8],light:[0,6,8,14],march:[0,4,8,12],drive:[0,3,6,8,11,14],combat:[0,3,4,7,8,11,12,15],boss:[0,2,4,6,8,10,12,14],celebrate:[0,4,8,12]};
+  if((kickSets[style] || []).includes(step)) gameMusicDrum("kick",when,style === "boss" ? .075 : .055);
+  if([4,12].includes(step) && !["soft","light"].includes(style)) gameMusicDrum("snare",when+.012,style === "boss" ? .052 : .042);
+  if(style !== "soft" && (step % (style === "light" ? 4 : 2) === 0)) gameMusicDrum("hat",when+.018,style === "boss" ? .024 : .018);
 }
 function gameMusicStinger(mode){
   if(!__gameMusic || !AC) return;
@@ -20250,10 +20366,18 @@ function gameMusicStinger(mode){
   if(now - Number(__gameMusic.lastStingerAt || 0) < 900) return;
   __gameMusic.lastStingerAt = now;
   const at = AC.currentTime + 0.012;
-  if(mode === "battle"){
+  if(mode === "boss"){
+    gameMusicNote(gameMusicHz(43), 260, "sawtooth", .072, at);
+    gameMusicNote(gameMusicHz(46), 240, "sawtooth", .058, at + .16);
+    gameMusicNote(gameMusicHz(49), 320, "triangle", .052, at + .34);
+  }else if(mode === "battle" || mode === "danger"){
     gameMusicNote(196, 120, "triangle", 0.07, at);
     gameMusicNote(293.66, 160, "triangle", 0.055, at + 0.10);
     gameMusicNote(392, 190, "sine", 0.04, at + 0.23);
+  }else if(mode === "victory"){
+    [62,66,69,74].forEach((midi,index)=>gameMusicNote(gameMusicHz(midi),250,"triangle",.052,at+index*.13));
+  }else if(mode === "defeat"){
+    [57,53,50,45].forEach((midi,index)=>gameMusicNote(gameMusicHz(midi),330,"sine",.038,at+index*.18));
   }else if(mode === "hq"){
     gameMusicNote(220, 130, "triangle", 0.045, at);
     gameMusicNote(293.66, 160, "sine", 0.04, at + 0.14);
@@ -20266,48 +20390,61 @@ function gameMusicStinger(mode){
   }
 }
 function gameMusicDirectorTick(){
-  if(!S.soundOn) return;
+  if(!S.soundOn || S.musicOn === false) return;
   if(!__gameMusic) startGameMusicDirector();
   if(!__gameMusic || !AC) return;
   const nowMs = Date.now();
   if(nowMs - Number(__gameMusicLastTickAt || 0) < 120) return;
   __gameMusicLastTickAt = nowMs;
   const mode = gameMusicMode();
+  updateMusicNowPlayingUi(mode);
   if(mode === "off"){
     stopGameMusicDirector();
     return;
   }
   const spec = gameMusicSpec(mode);
   const at = AC.currentTime;
-  const targetVol = iphoneStabilityModeActive?.() && frameLagTier?.() >= 2 ? 0.07 : spec.vol;
+  const userVolume = clamp(Number(S.musicVolume ?? .78), .2, 1);
+  const targetVol = (iphoneStabilityModeActive?.() && frameLagTier?.() >= 2 ? .46 : spec.volume) * userVolume;
   __gameMusic.out.gain.cancelScheduledValues(at);
   __gameMusic.out.gain.setTargetAtTime(targetVol, at, 0.28);
   if(__gameMusic.mode !== mode){
     __gameMusic.mode = mode;
     __gameMusic.step = 0;
-    __gameMusic.nextNoteAt = 0;
-    __gameMusic.nextBeatAt = 0;
+    __gameMusic.nextStepAt = at + .04;
     gameMusicStinger(mode);
   }
-  if(at >= Number(__gameMusic.nextNoteAt || 0)){
-    const step = Math.max(0, Math.floor(Number(__gameMusic.step || 0)));
-    const melody = spec.root;
-    const bass = spec.bass;
-    const pressure = clamp(Number(ensureMissionDirectorState?.(S)?.pressure || 0), 0, 100);
-    const idx = (step + Math.floor(pressure / 28)) % melody.length;
-    const octave = (mode === "battle" && step % 4 === 3) ? 2 : 1;
-    const noteVol = spec.vol * (mode === "battle" ? 0.54 : 0.42);
-    const noteDur = mode === "battle" ? 150 : (mode === "hq" ? 210 : 240);
-    gameMusicNote(melody[idx] * octave, noteDur, spec.wave, noteVol, at + 0.012);
-    if(step % (mode === "battle" ? 4 : 3) === 0){
-      gameMusicNote(bass[step % bass.length], mode === "battle" ? 180 : 260, "triangle", spec.vol * 0.34, at + 0.006);
-    }
-    __gameMusic.step = step + 1;
-    __gameMusic.nextNoteAt = at + (spec.gap / 1000);
+  const stepDuration = 60 / Math.max(40,Number(spec.bpm || 100)) / 2;
+  if(!Number.isFinite(__gameMusic.nextStepAt) || __gameMusic.nextStepAt < at - stepDuration){
+    __gameMusic.nextStepAt = at + .02;
   }
-  if(spec.beat && at >= Number(__gameMusic.nextBeatAt || 0)){
-    gameMusicNote(78, 54, "triangle", spec.vol * 0.44, at + 0.004);
-    __gameMusic.nextBeatAt = at + 0.50;
+  let scheduled = 0;
+  while(Number(__gameMusic.nextStepAt || 0) <= at + .34 && scheduled < 5){
+    const step = Math.max(0, Math.floor(Number(__gameMusic.step || 0)));
+    const patternStep = step % 16;
+    const phrase = Math.floor(step / 16);
+    const when = Math.max(at + .008, Number(__gameMusic.nextStepAt || at));
+    const pressure = clamp(Number(ensureMissionDirectorState?.(S)?.pressure || 0), 0, 100);
+    const melodyDegree = spec.melody[patternStep];
+    if(melodyDegree != null){
+      const pitchLift = ((mode === "battle" || mode === "boss") && pressure > 72 && patternStep >= 12) ? 12 : 0;
+      const midi = spec.root + 12 + spec.scale[melodyDegree % spec.scale.length] + pitchLift + (phrase % 2 === 1 && patternStep === 15 ? 12 : 0);
+      const noteMs = Math.round(stepDuration * 1000 * ((mode === "hq" || mode === "defeat") ? 1.55 : .86));
+      gameMusicNote(gameMusicHz(midi),noteMs,spec.wave,(mode === "boss" ? .040 : .034),when);
+    }
+    const bassDegree = spec.bass[patternStep];
+    if(bassDegree != null){
+      const bassMidi = spec.root - 12 + spec.scale[bassDegree % spec.scale.length];
+      gameMusicNote(gameMusicHz(bassMidi),Math.round(stepDuration*1000*1.7),"triangle",mode === "boss" ? .048 : .038,when);
+    }
+    if(patternStep === 0 || patternStep === 8){
+      const chord = spec.chords[(Math.floor(step / 8)) % spec.chords.length].map((offset)=>spec.root + offset);
+      gameMusicChord(chord,Math.round(stepDuration*1000*7.2),when+.01,mode === "boss" ? .010 : .012);
+    }
+    gameMusicScheduleDrums(spec.drums,patternStep,when);
+    __gameMusic.step = step + 1;
+    __gameMusic.nextStepAt = when + stepDuration;
+    scheduled += 1;
   }
 }
 function tickAudioDirectors(){
@@ -28623,10 +28760,9 @@ function playHuntPulse(){
 }
 function startLaunchMusicLoop(force=false){
   if(!S.soundOn) return;
-  if(__launchMusicLoopTimer && !force) return;
   clearLaunchMusicLoop();
-  playHuntPulse();
-  __launchMusicLoopTimer = setInterval(playHuntPulse, 1800);
+  startGameMusicDirector();
+  if(force && __gameMusic) __gameMusic.nextStepAt = 0;
 }
 function nextDailyCountdownText(){
   const now = new Date();
@@ -50329,6 +50465,7 @@ function renderHUD(){
   document.getElementById("soundLbl").innerText = S.soundOn ? "On" : "Off";
   const soundLblMobile = document.getElementById("soundLblMobile");
   if(soundLblMobile) soundLblMobile.innerText = S.soundOn ? "On" : "Off";
+  updateMusicLabels();
   const pauseLblMobile = document.getElementById("pauseLblMobile");
   if(pauseLblMobile) pauseLblMobile.innerText = S.paused ? "Resume" : "Pause";
   const squadCmdLabel = squadCommandLabel();
@@ -63029,6 +63166,8 @@ window.governmentConsequencePending = governmentConsequencePending;
 
 // Buttons used by index.html
 window.toggleSound = toggleSound;
+window.toggleMusic = toggleMusic;
+window.setTigerStrikeMusicContext = setTigerStrikeMusicContext;
 window.togglePerformanceMode = togglePerformanceMode;
 window.toggleLagMonitor = toggleLagMonitor;
 window.openHudCustomizer = openHudCustomizer;
@@ -63227,11 +63366,15 @@ window.runAudioRollVisualAudit = function runAudioRollVisualAudit(){
   return {
     build:TS_BUILD,
     soundOn:!!S.soundOn,
+    musicOn:S.musicOn !== false,
+    musicVolume:clamp(Number(S.musicVolume ?? .78), .2, 1),
     audioUnlocked:!!S.audioUnlocked,
     audioContextState:AC?.state || "",
     audioBoost:AUDIO_AUDIBILITY_BOOST,
     musicActive:!!__gameMusic,
     musicMode:__gameMusic?.mode || gameMusicMode(),
+    externalMusicContext:__gameMusicExternalContext,
+    soundtrackVersion:2,
     musicTick:__gameMusicLastTickAt || 0,
     rollHudVisible:!!(
       document.getElementById("touchFieldRollBtn") &&

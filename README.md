@@ -398,6 +398,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Both players claim separate deduplicated rewards and unlock the next mission independently. Mission 60 awards the `Mountain Alpha Breakers` badge and unlocks Mission 61.
 - Existing Solo Story progress, Missions 1–50, all seven Special Operations, field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, ammunition modes, cages, bodies, and government systems remain available.
 
+### V8.5 Adaptive Soundtrack
+
+- Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.
+- Menu, Base HQ, mission exploration, rising danger, active combat, Alpha boss, victory, and defeat each have a distinct arrangement built around one recognizable musical theme.
+- Music changes automatically without restarting when the player enters combat, encounters a boss, completes a mission, loses, pauses, or returns to a menu.
+- Live Squad now reports its real state to the music director, so two-player exploration, tiger attacks, boss fights, wins, and squad failures receive the correct soundtrack.
+- The sequencer schedules notes ahead to avoid the irregular gaps heard in the older loop, while keeping the score generated locally with no music download delay.
+- Music has its own on/off button on desktop and mobile. The main Sound button still mutes everything, including sound effects and music.
+- Telegram and iPhone autoplay rules are respected: audio starts after the first player tap and resumes through the same game audio system.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
