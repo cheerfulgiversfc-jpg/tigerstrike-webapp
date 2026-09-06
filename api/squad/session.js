@@ -163,7 +163,7 @@ module.exports = async function handler(req, res){
       const requestedLaunchType = String(body?.launchType || "").trim().toLowerCase();
       session = await createSession(user, {
         storyMissionLevel:requestedStoryLevel,
-        launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 20
+        launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 60
           ? "shared-story"
           : (["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
       });
@@ -179,7 +179,7 @@ module.exports = async function handler(req, res){
     let reward = null;
     if(action === "sync" || action === "status" || action === "role"){
       await updateOwnPresence(session, user, body?.player || (action === "role" ? { role:body?.role } : {}));
-    }else if(["start","restart","pause","resume","ammo-mode","attack","capture","rescue","revive"].includes(action)){
+    }else if(["start","restart","continue","pause","resume","ammo-mode","attack","capture","rescue","deliver","revive"].includes(action)){
       session = await applyAction(session, user, action, body || {});
     }else if(action === "invite"){
       invitation = await prepareInvite(botToken, user, session);

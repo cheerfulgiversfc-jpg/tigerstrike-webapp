@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { getState, setState } = require("./metrics-store");
+const { getState, setState, setStateIfAbsent } = require("./metrics-store");
 const ammoRules = require("../../ammo-modes");
 const tigerIntelligence = require("../../tiger-intelligence");
 
@@ -1540,6 +1540,7 @@ function newPlayer(user, slot=0){
     captureSites:{},
     capturedIds:[],
     rescuedIds:[],
+    securedCivilianIds:[],
     checkpointIds:[],
     revives:0,
     joinedAt:nowMs(),
@@ -1618,6 +1619,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     killSites,
     captureSites,
     rescuedIds:[...new Set((Array.isArray(src.rescuedIds) ? src.rescuedIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
+    securedCivilianIds:[...new Set((Array.isArray(src.securedCivilianIds) ? src.securedCivilianIds : []).map((id)=>cleanText(id, 24)).filter((id)=>ALL_COOP_CIVILIANS.some((c)=>c.id === id)))],
     checkpointIds:[...new Set((Array.isArray(src.checkpointIds) ? src.checkpointIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_CHECKPOINTS.some((checkpoint)=>checkpoint.id === id)))],
     capturedIds:[...new Set((Array.isArray(src.capturedIds) ? src.capturedIds : []).map((id)=>cleanText(id, 32)).filter((id)=>ALL_COOP_TIGERS.some((t)=>t.id === id)))],
     revives:clamp(src.revives, 0, 999),
@@ -1790,6 +1792,8 @@ function sessionDerived(session, players, at=nowMs()){
   const missionCivilianIds = new Set(mission.civilians.map((civilian)=>civilian.id));
   const rescuedIds = [...new Set(players.flatMap((p)=>p.rescuedIds || []))]
     .filter((id)=>missionCivilianIds.has(id));
+  const securedCivilianIds = [...new Set(players.flatMap((p)=>p.securedCivilianIds || []))]
+    .filter((id)=>missionCivilianIds.has(id) && rescuedIds.includes(id));
   const missionTigerIds = new Set(mission.tigers.map((tiger)=>tiger.id));
   const capturedIds = [...new Set(players.flatMap((p)=>p.capturedIds || []))]
     .filter((id)=>missionTigerIds.has(id));
@@ -1822,25 +1826,38 @@ function sessionDerived(session, players, at=nowMs()){
     .filter((checkpoint)=>players.length === session.memberIds.length && players.every((player)=>(player.checkpointIds || []).includes(checkpoint.id)))
     .map((checkpoint)=>checkpoint.id);
   const checkpointsReady = checkpointCompletedIds.length >= checkpoints.length;
-  const objectivesReady = rescuedIds.length >= mission.rescueRequired && captureTargetsReady && checkpointsReady && (allTigersCleared || legacyBossOnlyRoom);
+  const objectivesReady = securedCivilianIds.length >= mission.rescueRequired && captureTargetsReady && checkpointsReady && (allTigersCleared || legacyBossOnlyRoom);
   const squadWiped = players.length === session.memberIds.length && players.every((p)=>p.downed && Number(p.respawnAt || 0) <= 0 && Number(p.livesRemaining || 0) <= 0);
-  return { rescuedIds, capturedIds, checkpointCompletedIds, checkpointsReady, bossDamage, bossHp, boss, tigers, tigerKills, aggressionPerKill, aggressionBonus, bloodRageActive, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
+  return { rescuedIds, securedCivilianIds, capturedIds, checkpointCompletedIds, checkpointsReady, bossDamage, bossHp, boss, tigers, tigerKills, aggressionPerKill, aggressionBonus, bloodRageActive, onlineIds, extractionReadyIds, objectivesReady, allTigersCleared, squadWiped };
 }
 
-function civilianSnapshots(session, players, rescuedIds){
+function rescueHouseFor(mission){
+  const extraction = mission.extraction;
+  const offset = Math.max(170, Number(extraction.r || 90) + 95);
+  return {
+    x:clamp(Number(extraction.x || 0) - offset, 120, Number(mission.world.width || 1200) - 120),
+    y:clamp(Number(extraction.y || 0), 120, Number(mission.world.height || 1100) - 120),
+    r:105,
+    label:"Rescue House",
+  };
+}
+
+function civilianSnapshots(session, players, rescuedIds, securedCivilianIds){
   const mission = missionDefinition(session);
+  const rescueHouse = rescueHouseFor(mission);
   return mission.civilians.map((civilian, index)=>{
     const owner = players.find((player)=>(player.rescuedIds || []).includes(civilian.id));
     if(!owner) return { ...civilian, following:false, followingUserId:0, secured:false };
     const row = Math.floor(index / 2);
     const side = index % 2 === 0 ? -1 : 1;
+    const secured = securedCivilianIds.includes(civilian.id);
     return {
       ...civilian,
-      x:clamp(Number(owner.x || 0) + side * (38 + row * 8), 24, mission.world.width - 24),
-      y:clamp(Number(owner.y || 0) + 42 + row * 30, 24, mission.world.height - 24),
-      following:true,
+      x:secured ? rescueHouse.x + side * (28 + row * 7) : clamp(Number(owner.x || 0) + side * (38 + row * 8), 24, mission.world.width - 24),
+      y:secured ? rescueHouse.y + 28 + row * 25 : clamp(Number(owner.y || 0) + 42 + row * 30, 24, mission.world.height - 24),
+      following:!secured,
       followingUserId:owner.userId,
-      secured:distance(owner, mission.extraction) <= mission.extraction.r,
+      secured,
       rescued:rescuedIds.includes(civilian.id),
     };
   });
@@ -2002,16 +2019,22 @@ async function buildSnapshot(session, viewerId){
     world:mission.world,
     spawns:mission.spawns,
     extraction:mission.extraction,
-    civilians:civilianSnapshots(session, players, derived.rescuedIds),
+    rescueHouse:rescueHouseFor(mission),
+    civilians:civilianSnapshots(session, players, derived.rescuedIds, derived.securedCivilianIds),
     checkpoints:mission.checkpoints || [],
     fireZones:mission.fireZones || [],
     waterZones:mission.waterZones || [],
     tigers:derived.tigers,
     boss:derived.boss,
     rescuedIds:derived.rescuedIds,
+    securedCivilianIds:derived.securedCivilianIds,
     capturedIds:derived.capturedIds,
     checkpointCompletedIds:derived.checkpointCompletedIds,
     objectivesReady:derived.objectivesReady,
+    allRewardsClaimed:players.length === session.memberIds.length && players.every((player)=>player.rewardClaimed),
+    nextStoryMissionLevel:session.launchType === "shared-story" && EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0) + 1]
+      ? Number(session.storyMissionLevel || 0) + 1
+      : 0,
     squadWiped:derived.squadWiped,
     extractionReadyIds:derived.extractionReadyIds,
     players:players.map((p)=>({ ...p, online:at - p.lastSeenAt <= 15000 })),
@@ -2184,11 +2207,20 @@ async function applyAction(session, user, action, payload={}){
     }
     return writeSession(session);
   }
-  if(action === "start" || action === "restart"){
+  if(action === "start" || action === "restart" || action === "continue"){
     if(session.hostId !== uid) throw new Error("Only the squad leader can start the mission.");
     if(session.memberIds.length < 2) throw new Error("Invite one teammate before starting.");
     if(action === "start" && session.status !== "waiting") return session;
     if(action === "restart" && session.status !== "failed") throw new Error("Restart is available after the mission ends.");
+    if(action === "continue"){
+      if(session.launchType !== "shared-story") throw new Error("Continue Together is available for Shared Story missions.");
+      if(session.status !== "complete") throw new Error("Finish this mission before continuing.");
+      const finishedPlayers = await memberPlayers(session);
+      if(!finishedPlayers.every((row)=>row.rewardClaimed)) throw new Error("Both players must claim this mission's reward before continuing.");
+      const nextLevel = Number(session.storyMissionLevel || 0) + 1;
+      if(!EXPANDED_SHARED_STORY_MISSIONS[nextLevel]) throw new Error("The next Shared Story mission has not been converted yet. You may stay in the squad or leave.");
+      session.storyMissionLevel = nextLevel;
+    }
     session.status = "active";
     session.startedAt = now;
     session.completedAt = 0;
@@ -2230,6 +2262,7 @@ async function applyAction(session, user, action, payload={}){
         p.captureSites = {};
         p.capturedIds = [];
         p.rescuedIds = [];
+        p.securedCivilianIds = [];
         p.checkpointIds = [];
       }
       p.rewardClaimed = false;
@@ -2253,7 +2286,7 @@ async function applyAction(session, user, action, payload={}){
     const players = await memberPlayers(session);
     const tigers = tigerSnapshots(session, players, now).filter((t)=>!t.defeated);
     const requestedId = cleanText(payload.tigerId, 32);
-    const target = tigers.find((t)=>t.id === requestedId) || tigers.sort((a,b)=>distance(player,a)-distance(player,b))[0];
+    const target = requestedId ? tigers.find((t)=>t.id === requestedId) : tigers.sort((a,b)=>distance(player,a)-distance(player,b))[0];
     if(!target) throw new Error("The tiger threat is already cleared.");
     if(distance(player, target) > (target.boss ? 178 : 164)) throw new Error(`Move closer to ${target.name}.`);
     if(now - player.lastAttackAt < 560) throw new Error("Weapon is cooling down.");
@@ -2292,11 +2325,13 @@ async function applyAction(session, user, action, payload={}){
     const players = await memberPlayers(session);
     const tigers = tigerSnapshots(session, players, now).filter((t)=>!t.defeated);
     const requestedId = cleanText(payload.tigerId, 32);
-    const target = tigers.find((t)=>t.id === requestedId) || tigers.sort((a,b)=>distance(player,a)-distance(player,b))[0];
-    if(!target) throw new Error("The tiger threat is already cleared.");
+    const target = requestedId ? tigers.find((t)=>t.id === requestedId) : tigers.sort((a,b)=>distance(player,a)-distance(player,b))[0];
+    if(!target) throw new Error("This tiger was already captured or cleared.");
     if(distance(player, target) > (target.boss ? 178 : 164)) throw new Error(`Move closer to ${target.name}.`);
     if(target.lethalWounded) throw new Error("Capture blocked: Real ammunition caused a lethal injury. Use Rubber ammunition on a fresh tiger.");
     if(Number(target.hp || 0) > Number(target.hpMax || 1) * 0.30) throw new Error("Weaken the tiger to 30% health before capture.");
+    const captured = await setStateIfAbsent(`live_squad_capture_${session.code}_${session.startedAt}_${target.id}`, { userId:uid, capturedAt:now });
+    if(!captured) throw new Error("Your teammate already captured this tiger.");
     if(!Array.isArray(player.capturedIds)) player.capturedIds = [];
     if(!player.capturedIds.includes(target.id)) player.capturedIds.push(target.id);
     if(!player.captureSites || typeof player.captureSites !== "object") player.captureSites = {};
@@ -2317,7 +2352,23 @@ async function applyAction(session, user, action, payload={}){
       }
     }
     if(distance(player, civilian) > 82) throw new Error("Move closer to the civilian.");
+    const routePlayers = await memberPlayers(session);
+    const currentOwner = routePlayers.find((row)=>(row.rescuedIds || []).includes(id));
+    if(currentOwner && currentOwner.userId !== uid) throw new Error(`${civilian.name} is already following your teammate.`);
+    const reserved = currentOwner || await setStateIfAbsent(`live_squad_rescue_${session.code}_${session.startedAt}_${id}`, { userId:uid, rescuedAt:now });
+    if(!reserved) throw new Error(`${civilian.name} is already following your teammate.`);
     if(!player.rescuedIds.includes(id)) player.rescuedIds.push(id);
+    player.lastSeenAt = now;
+    await writePlayer(session.code, player);
+  }else if(action === "deliver"){
+    const rescueMission = missionDefinition(session);
+    const rescueHouse = rescueHouseFor(rescueMission);
+    if(distance(player, rescueHouse) > rescueHouse.r) throw new Error("Bring your following civilians inside the Rescue House circle first.");
+    const ownedFollowing = (player.rescuedIds || []).filter((id)=>!(player.securedCivilianIds || []).includes(id));
+    if(!ownedFollowing.length) throw new Error("No civilians are following you right now.");
+    if(!Array.isArray(player.securedCivilianIds)) player.securedCivilianIds = [];
+    player.securedCivilianIds.push(...ownedFollowing);
+    player.securedCivilianIds = [...new Set(player.securedCivilianIds)];
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
   }else if(action === "revive"){
@@ -2437,7 +2488,7 @@ async function claimReward(session, user){
     mode:operationId === "endless-survival" ? "Survival" : (sharedStory ? "Story" : "Arcade"),
     captures:auditDerived.capturedIds.length,
     kills:auditDerived.tigerKills,
-    evac:auditDerived.rescuedIds.length,
+    evac:auditDerived.securedCivilianIds.length,
     civDead:0,
     exempt:operationId === "endless-survival",
   };

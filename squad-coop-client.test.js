@@ -120,6 +120,9 @@ async function run(){
   assert.equal(element("squadBody").dataset.squadMode, "active", "the restored room opens directly on the active mission");
   assert(element("squadBody").innerHTML.includes('width="1200" height="760"'), "active co-op uses a camera viewport instead of a full-world canvas");
   assert(element("squadBody").innerHTML.includes("player-following camera"), "the expanded map exposes the camera-following battlefield to assistive UI");
+  assert(element("squadBody").innerHTML.includes('id="squadJoystick"'), "active co-op uses an analog movement joystick");
+  assert(!element("squadBody").innerHTML.includes('data-move="up"'), "the old four-button movement pad is removed");
+  assert(element("squadBody").innerHTML.includes("Take to House"), "the mission instructions expose the Rescue House delivery action");
   assert.equal(JSON.parse(storage.get(storageKey)).code, roomCode, "valid active room remains remembered");
   console.log("PASS: Telegram reopen restores the remembered active Story room");
 }

@@ -415,6 +415,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Ignores repeated identical Live Squad music updates so server polling cannot disturb or restart the beat.
 - Keeps gameplay sound effects on their own channel while guaranteeing that only one music arrangement controls the soundtrack channel.
 
+### V8.6 Persistent Co-op Campaign
+
+- Shared Story squads remain together after a mission instead of being dismantled when a reward is claimed.
+- Each player claims their own reward once; after both claims, the leader launches the next converted Story mission with the same squad code and both members.
+- Every completion screen keeps a visible Leave Squad choice, so the campaign continues until someone intentionally leaves.
+- The four-arrow co-op movement pad is replaced by a drag joystick while keyboard movement remains available.
+- Either player can rescue any available civilian, both can rescue different civilians simultaneously, and a civilian already following one soldier cannot be taken by the other.
+- Civilian owners escort followers to a visible Rescue House and use a real Take to House action before those civilians count as safe.
+- Both players may attack simultaneously, while atomic capture reservations ensure only one player records each tiger capture and cage.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

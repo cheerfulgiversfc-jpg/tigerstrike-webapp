@@ -59,6 +59,28 @@ async function run(){
     assert.equal(player.downed, false, "restart stands both players up");
   }
 
+  const firstCivilian = snapshot.civilians[0];
+  const secondCivilian = snapshot.civilians[1];
+  await writePlayerPatch(code, host.id, { x:firstCivilian.x, y:firstCivilian.y, lastSeenAt:Date.now() });
+  session = await applyAction(await readSession(code), host, "rescue", { civilianId:firstCivilian.id });
+  await writePlayerPatch(code, teammate.id, { x:firstCivilian.x, y:firstCivilian.y, lastSeenAt:Date.now() });
+  await assert.rejects(
+    async()=>applyAction(await readSession(code), teammate, "rescue", { civilianId:firstCivilian.id }),
+    /already following your teammate/,
+    "a civilian following one player cannot be claimed by the other"
+  );
+  await writePlayerPatch(code, teammate.id, { x:secondCivilian.x, y:secondCivilian.y, lastSeenAt:Date.now() });
+  session = await applyAction(await readSession(code), teammate, "rescue", { civilianId:secondCivilian.id });
+  snapshot = await buildSnapshot(session, host.id);
+  assert.equal(snapshot.civilians.filter((civilian)=>civilian.following).length, 2, "both players can rescue different civilians at the same time");
+  await writePlayerPatch(code, host.id, { x:snapshot.rescueHouse.x, y:snapshot.rescueHouse.y, lastSeenAt:Date.now() });
+  await writePlayerPatch(code, teammate.id, { x:snapshot.rescueHouse.x, y:snapshot.rescueHouse.y, lastSeenAt:Date.now() });
+  await applyAction(await readSession(code), host, "deliver");
+  session = await applyAction(await readSession(code), teammate, "deliver");
+  snapshot = await buildSnapshot(session, host.id);
+  assert.equal(snapshot.securedCivilianIds.length, 2, "each civilian owner can take their followers into the Rescue House");
+  assert.equal(snapshot.civilians.filter((civilian)=>civilian.secured).length, 2, "delivered civilians remain visibly safe at the Rescue House");
+
   const rubberTiger = snapshot.tigers[0];
   await writePlayerPatch(code, host.id, { x:rubberTiger.x, y:rubberTiger.y, lastAttackAt:0, lastSeenAt:Date.now() });
   session = await applyAction(await readSession(code), host, "ammo-mode", { ammoMode:"rubber" });
@@ -80,6 +102,11 @@ async function run(){
   const capturedPosition = { x:capturedTiger.x, y:capturedTiger.y };
   const capturingPlayer = snapshot.players.find((player)=>player.userId === host.id);
   assert(capturingPlayer.captureSites[rubberTiger.id], "the server saves the cage location on the capturing player");
+  await assert.rejects(
+    async()=>applyAction(await readSession(code), teammate, "capture", { tigerId:rubberTiger.id }),
+    /already captured or cleared/,
+    "only one player can receive the capture for a tiger"
+  );
   session = await joinSession(code, host);
   snapshot = await buildSnapshot(session, host.id);
   const reconnectedCage = snapshot.tigers.find((tiger)=>tiger.id === rubberTiger.id);
@@ -143,6 +170,7 @@ async function run(){
     x:snapshot.extraction.x,
     y:snapshot.extraction.y,
     rescuedIds:["civ_north","civ_market"],
+    securedCivilianIds:["civ_north","civ_market"],
     tigerDamage:{ tiger_scout:210, tiger_ambush:260 },
     lastSeenAt:completedAt,
   });
@@ -170,6 +198,47 @@ async function run(){
   const teammateAgain = await claimReward(await readSession(code), teammate);
   assert.equal(hostAgain.firstClaim, false, "host cannot receive a second server reward");
   assert.equal(teammateAgain.firstClaim, false, "teammate cannot receive a second server reward");
+
+  session = await applyAction(await readSession(code), host, "continue");
+  snapshot = await buildSnapshot(session, host.id);
+  assert.equal(snapshot.code, code, "continuing keeps the same squad code");
+  assert.equal(snapshot.status, "active", "the next Story mission starts without dismantling the squad");
+  assert.equal(snapshot.storyMissionLevel, 2, "the squad advances directly to Mission 2");
+  assert.equal(snapshot.memberCount, 2, "both players remain in the squad");
+  assert(snapshot.players.every((player)=>player.rewardClaimed === false), "the next mission has fresh per-player reward claims");
+  assert.equal(snapshot.rescuedIds.length, 0, "the next mission starts with fresh civilian progress");
+  assert.equal(snapshot.securedCivilianIds.length, 0, "the next mission starts with an empty Rescue House");
+
+  const raceHost = { id:910031, first_name:"Race Host" };
+  const raceMate = { id:910032, first_name:"Race Mate" };
+  let raceSession = await createSession(raceHost, { launchType:"shared-story", storyMissionLevel:8 });
+  raceSession = await joinSession(raceSession.code, raceMate);
+  raceSession = await applyAction(raceSession, raceHost, "start");
+  let raceSnapshot = await buildSnapshot(raceSession, raceHost.id);
+  const raceTiger = raceSnapshot.tigers[0];
+  for(const user of [raceHost, raceMate]){
+    await writePlayerPatch(raceSession.code, user.id, { x:raceTiger.x, y:raceTiger.y, lastAttackAt:0, lastSeenAt:Date.now() });
+  }
+  const attackResults = await Promise.allSettled([
+    applyAction(await readSession(raceSession.code), raceHost, "attack", { tigerId:raceTiger.id }),
+    applyAction(await readSession(raceSession.code), raceMate, "attack", { tigerId:raceTiger.id }),
+  ]);
+  assert.equal(attackResults.filter((result)=>result.status === "fulfilled").length, 2, "both players can attack the same tiger at the same time");
+  raceSnapshot = await buildSnapshot(await readSession(raceSession.code), raceHost.id);
+  const raceHostRaw = await getState(playerStateKey(raceSession.code, raceHost.id));
+  const raceMateRaw = await getState(playerStateKey(raceSession.code, raceMate.id));
+  const mateDamage = Number(raceMateRaw.tigerDamage?.[raceTiger.id] || 0);
+  await writePlayerPatch(raceSession.code, raceHost.id, {
+    tigerDamage:{ ...(raceHostRaw.tigerDamage || {}), [raceTiger.id]:raceTiger.hpMax - mateDamage - 1 },
+    lastSeenAt:Date.now(),
+  });
+  const captureResults = await Promise.allSettled([
+    applyAction(await readSession(raceSession.code), raceHost, "capture", { tigerId:raceTiger.id }),
+    applyAction(await readSession(raceSession.code), raceMate, "capture", { tigerId:raceTiger.id }),
+  ]);
+  assert.equal(captureResults.filter((result)=>result.status === "fulfilled").length, 1, "simultaneous capture taps produce exactly one successful captor");
+  raceSnapshot = await buildSnapshot(await readSession(raceSession.code), raceHost.id);
+  assert.equal(raceSnapshot.capturedIds.filter((id)=>id === raceTiger.id).length, 1, "simultaneous capture taps create one cage and one capture record");
 
   for(let level=2; level<=60; level++){
     const levelHost = { id:910100 + (level * 10), first_name:`Host ${level}` };
@@ -451,6 +520,7 @@ async function run(){
       x:levelSnapshot.extraction.x,
       y:levelSnapshot.extraction.y,
       rescuedIds:levelSnapshot.civilians.slice(0, levelSnapshot.mission.rescueRequired).map((c)=>c.id),
+      securedCivilianIds:levelSnapshot.civilians.slice(0, levelSnapshot.mission.rescueRequired).map((c)=>c.id),
       checkpointIds:(levelSnapshot.checkpoints || []).map((checkpoint)=>checkpoint.id),
       capturedIds:[],
       tigerDamage:Object.fromEntries(levelSnapshot.tigers.map((t)=>[t.id, t.hpMax])),
@@ -634,6 +704,7 @@ async function run(){
     x:denSnapshot.extraction.x,
     y:denSnapshot.extraction.y,
     rescuedIds:denSnapshot.civilians.map((civilian)=>civilian.id),
+    securedCivilianIds:denSnapshot.civilians.map((civilian)=>civilian.id),
     tigerDamage:Object.fromEntries(denSnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
     lastSeenAt:denClearedAt,
   });
@@ -685,6 +756,7 @@ async function run(){
     x:siegeSnapshot.extraction.x,
     y:siegeSnapshot.extraction.y,
     rescuedIds:siegeSnapshot.civilians.map((civilian)=>civilian.id),
+    securedCivilianIds:siegeSnapshot.civilians.map((civilian)=>civilian.id),
     tigerDamage:Object.fromEntries(siegeSnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
     lastSeenAt:siegeClearedAt,
   });
@@ -738,6 +810,7 @@ async function run(){
     x:convoySnapshot.extraction.x,
     y:convoySnapshot.extraction.y,
     rescuedIds:convoySnapshot.civilians.map((civilian)=>civilian.id),
+    securedCivilianIds:convoySnapshot.civilians.map((civilian)=>civilian.id),
     tigerDamage:Object.fromEntries(convoySnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
     lastSeenAt:convoyClearedAt,
   });
@@ -793,6 +866,7 @@ async function run(){
     x:alphaSnapshot.extraction.x,
     y:alphaSnapshot.extraction.y,
     rescuedIds:alphaSnapshot.civilians.map((civilian)=>civilian.id),
+    securedCivilianIds:alphaSnapshot.civilians.map((civilian)=>civilian.id),
     tigerDamage:Object.fromEntries(alphaSnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
     lastSeenAt:alphaClearedAt,
   });
@@ -848,6 +922,7 @@ async function run(){
     x:stormSnapshot.extraction.x,
     y:stormSnapshot.extraction.y,
     rescuedIds:stormSnapshot.civilians.map((civilian)=>civilian.id),
+    securedCivilianIds:stormSnapshot.civilians.map((civilian)=>civilian.id),
     tigerDamage:Object.fromEntries(stormSnapshot.tigers.map((tiger)=>[tiger.id, tiger.hpMax])),
     lastSeenAt:stormClearedAt,
   });

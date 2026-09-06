@@ -42,8 +42,8 @@ test("only one music arrangement owns the music channel at a time", () => {
   assert(!game.includes('if(introOverlayVisible()){\n      playLaunchTheme(true);'), "intro fanfare must not layer over the menu score");
 });
 
-test("V8.5.1 cache key forces Telegram to load the corrected single mix", () => {
-  assert(game.includes('const TS_BUILD = "5058"'));
-  assert(html.includes("game.js?v=5058-single-music-mix"));
-  assert(html.includes("squad-coop.js?v=5058-single-music-mix"));
+test("V8.6 cache key forces Telegram to load the persistent co-op campaign", () => {
+  assert(game.includes('const TS_BUILD = "5059"'));
+  assert(html.includes("game.js?v=5059-persistent-coop-campaign"));
+  assert(html.includes("squad-coop.js?v=5059-persistent-coop-campaign"));
 });

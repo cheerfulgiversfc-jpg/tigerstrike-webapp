@@ -202,6 +202,23 @@ async function setState(name, value){
   mem.set(key, data);
 }
 
+async function setStateIfAbsent(name, value){
+  const key = stateKey(name);
+  const data = JSON.stringify(value === undefined ? null : value);
+
+  if(hasKv()){
+    const values = await kvPipeline([
+      ["SET", key, data, "NX", "EX", String(STATE_TTL_SECONDS)],
+    ]);
+    return values[0] === "OK";
+  }
+
+  const mem = memStore();
+  if(mem.has(key)) return false;
+  mem.set(key, data);
+  return true;
+}
+
 async function getState(name){
   const key = stateKey(name);
   let raw = null;
@@ -228,5 +245,6 @@ module.exports = {
   getMetricsForDay,
   summarizeMetrics,
   setState,
+  setStateIfAbsent,
   getState,
 };
