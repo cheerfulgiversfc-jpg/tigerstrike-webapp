@@ -5,18 +5,46 @@ const test = require("node:test");
 const game = fs.readFileSync("game.js", "utf8");
 const html = fs.readFileSync("index.html", "utf8");
 const coop = fs.readFileSync("squad-coop.js", "utf8");
+const menuMusic = "assets/audio/tiger-strike-menu.mp3";
+const missionMusic = "assets/audio/testing-mission.mp3";
 
-test("V8.5 provides continuous multi-state music instead of isolated sound effects", () => {
-  for(const mode of ["menu","hq","mission","danger","battle","boss","victory","defeat"]){
-    assert(game.includes(`${mode}:{`), `missing ${mode} soundtrack`);
+test("V8.7 ships the two supplied full-length soundtrack files", () => {
+  for(const file of [menuMusic, missionMusic]){
+    assert(fs.existsSync(file), `missing ${file}`);
+    assert(fs.statSync(file).size > 1_000_000, `${file} is unexpectedly small`);
+    const header = fs.readFileSync(file).subarray(0, 3).toString("ascii");
+    assert(header === "ID3" || header.charCodeAt(0) === 0xff, `${file} is not an MP3`);
   }
-  assert(game.includes("gameMusicScheduleDrums"));
-  assert(game.includes("gameMusicChord"));
-  assert(game.includes("while(Number(__gameMusic.nextStepAt"), "music must schedule ahead to avoid gaps");
-  assert(game.includes("runFrameTask(\"adaptiveAudio\""), "soundtrack director must run continuously");
+  assert(game.includes('title:"Tiger Strike"'));
+  assert(game.includes('src:"./assets/audio/tiger-strike-menu.mp3"'));
+  assert(game.includes('title:"Testing"'));
+  assert(game.includes('src:"./assets/audio/testing-mission.mp3"'));
 });
 
-test("soundtrack unlocks from a user gesture and has a separate music control", () => {
+test("all gameplay contexts use Testing and all non-mission contexts use Tiger Strike", () => {
+  assert(game.includes('["mission","danger","battle","boss"].includes'));
+  for(const context of ["mission","battle","boss"]){
+    assert(coop.includes(`\"${context}\"`), `missing co-op ${context} transition`);
+  }
+  for(const mode of ["Story", "Arcade", "Survival"]){
+    assert(game.includes(`\"${mode}\"`), `missing ${mode} gameplay mode`);
+  }
+  assert(game.includes('if(introOverlayVisible()) return "menu"'));
+  assert(game.includes('if(baseHqActive?.()) return "hq"'));
+  assert(game.includes('if(S.paused) return "mission"'));
+});
+
+test("one looping audio element owns music and prevents overlapping tracks", () => {
+  assert(game.includes("const audio = new Audio()"));
+  assert(game.includes("audio.loop = true"));
+  assert(game.includes("audio.pause();"));
+  assert(game.includes("audio.src = track.src"));
+  assert(game.includes('__gameMusic = { audio, mode:"", trackKey:"", playbackBlocked:false }'));
+  const activeDirector = game.slice(game.indexOf("function gameMusicDirectorTick"), game.indexOf("function tickAudioDirectors"));
+  assert(!activeDirector.includes("gameMusicNote("), "the active director must not generate another score");
+});
+
+test("music unlocks from a gesture and respects both audio controls", () => {
   assert(game.includes('["pointerdown","touchstart","click"]'));
   assert(game.includes("startGameMusicDirector()"));
   assert(game.includes("function toggleMusic()"));
@@ -25,25 +53,8 @@ test("soundtrack unlocks from a user gesture and has a separate music control", 
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("Live Squad drives exploration, combat, boss, victory, and defeat music", () => {
-  assert(coop.includes("function syncSquadMusicContext()"));
-  for(const context of ["menu","mission","battle","boss","victory","defeat"]){
-    assert(coop.includes(`\"${context}\"`), `missing co-op ${context} transition`);
-  }
-  assert(coop.includes("bossEngaged"));
-  assert(coop.includes("attacking || playerDown"));
-});
-
-test("only one music arrangement owns the music channel at a time", () => {
-  assert(game.includes("if(__adaptiveAudio) stopAdaptiveAudioDirector()"), "legacy tonal bed must be removed while the soundtrack runs");
-  assert(game.includes("stopGameMusicVoices(__gameMusic, .035)"), "old notes must stop before a new arrangement begins");
-  assert(game.includes("voices:new Set()"), "scheduled music voices need one tracked owner");
-  assert(game.includes("if(next === __gameMusicExternalContext) return"), "identical co-op snapshots must not restart music timing");
-  assert(!game.includes('if(introOverlayVisible()){\n      playLaunchTheme(true);'), "intro fanfare must not layer over the menu score");
-});
-
-test("V8.6 cache key forces Telegram to load the persistent co-op campaign", () => {
-  assert(game.includes('const TS_BUILD = "5059"'));
-  assert(html.includes("game.js?v=5059-persistent-coop-campaign"));
-  assert(html.includes("squad-coop.js?v=5059-persistent-coop-campaign"));
+test("V8.7 cache key forces Telegram to load the two-track soundtrack", () => {
+  assert(game.includes('const TS_BUILD = "5060"'));
+  assert(html.includes("game.js?v=5060-two-track-soundtrack"));
+  assert(html.includes("squad-coop.js?v=5060-two-track-soundtrack"));
 });

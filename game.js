@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5059";
+const TS_BUILD = "5060";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 60;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -19836,6 +19836,20 @@ let __gameMusicNoiseBuffer=null;
 let __gameMusicExternalContext="";
 let __audioUnlockedStingerPlayed=false;
 const AUDIO_AUDIBILITY_BOOST = 1.42;
+const GAME_MUSIC_TRACKS = Object.freeze({
+  menu:Object.freeze({
+    key:"menu",
+    title:"Tiger Strike",
+    src:"./assets/audio/tiger-strike-menu.mp3",
+    volume:.76
+  }),
+  mission:Object.freeze({
+    key:"mission",
+    title:"Testing",
+    src:"./assets/audio/testing-mission.mp3",
+    volume:.82
+  })
+});
 function ensureAudio(){
   if(!S.soundOn) return;
   if(!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
@@ -20007,13 +20021,15 @@ function updateMusicLabels(){
   if(S.musicOn === false) updateMusicNowPlayingUi("off");
 }
 function updateMusicNowPlayingUi(mode="menu"){
-  const names={off:"Music off",menu:"Menu Theme",hq:"Base HQ Theme",mission:"Mission Exploration",danger:"Danger Rising",battle:"Tiger Combat",boss:"Alpha Boss Battle",victory:"Mission Victory",defeat:"Mission Defeat"};
-  const title = names[mode] || names.menu;
+  const trackKey = mode === "off" ? "off" : gameMusicTrackKey(mode);
+  const names={off:"Music off",menu:"Tiger Strike • Menus",mission:"Testing • Missions"};
+  const title = names[trackKey] || names.menu;
   for(const id of ["musicLbl","musicLblMobile"]){
     const label=document.getElementById(id),button=label?.closest?.("button");
     if(!button) continue;
     button.dataset.musicMode=mode;
-    button.dataset.musicVoices=String(__gameMusic?.voices?.size || 0);
+    button.dataset.musicTrack=trackKey;
+    button.dataset.musicLooping=String(!!__gameMusic?.audio?.loop);
     button.dataset.legacyMusic=__adaptiveAudio ? "on" : "off";
     button.title=`Now playing: ${title}`;
   }
@@ -20186,14 +20202,15 @@ function stopGameMusicDirector(){
   if(!__gameMusic) return;
   const music = __gameMusic;
   try{
-    const at = AC ? AC.currentTime : 0;
-    stopGameMusicVoices(music, .035);
-    if(music.out?.gain){
-      music.out.gain.cancelScheduledValues(at);
-      music.out.gain.setTargetAtTime(0.0001, at, 0.035);
+    music.audio?.pause?.();
+    if(music.audio){
+      music.audio.currentTime = 0;
+      music.audio.removeAttribute("src");
+      music.audio.load?.();
     }
   }catch(e){}
   __gameMusic = null;
+  __gameMusicLastTickAt = 0;
 }
 function stopGameMusicVoices(music=__gameMusic, fadeSec=.045){
   if(!music?.voices || !AC) return;
@@ -20212,26 +20229,24 @@ function startGameMusicDirector(){
   if(!S.soundOn || S.musicOn === false) return;
   try{
     ensureAudio();
-    if(!AC || !__audioMasterGain || __gameMusic) return;
-    const out = AC.createGain();
-    out.gain.value = 0.0001;
-    out.connect(__audioMasterGain);
-    __gameMusic = {
-      out,
-      mode:"",
-      step:0,
-      nextStepAt:0,
-      lastStingerAt:0,
-      voices:new Set()
-    };
+    if(!__gameMusic){
+      const audio = new Audio();
+      audio.loop = true;
+      audio.preload = "auto";
+      audio.playsInline = true;
+      audio.setAttribute("playsinline", "");
+      __gameMusic = { audio, mode:"", trackKey:"", playbackBlocked:false };
+    }
     __gameMusicLastTickAt = 0;
+    gameMusicDirectorTick(true);
   }catch(e){}
 }
 function setTigerStrikeMusicContext(context=""){
   const next = String(context || "").trim().toLowerCase();
   if(next === __gameMusicExternalContext) return;
   __gameMusicExternalContext = next;
-  if(__gameMusic) __gameMusic.nextStepAt = 0;
+  __gameMusicLastTickAt = 0;
+  if(__gameMusic) gameMusicDirectorTick(true);
 }
 function gameMusicMode(){
   if(!S.soundOn || S.musicOn === false) return "off";
@@ -20246,8 +20261,14 @@ function gameMusicMode(){
   if(hasAliveBossTiger?.() && S.inBattle) return "boss";
   if(S.inBattle) return "battle";
   if(Number(S._underAttack || 0) > 0) return "danger";
-  if(S.paused) return "menu";
+  if(S.paused && ["mode","mission-brief","daily-reward","launch-intro","story-intro","world-map","base-hq","base-hq-mode-preview"].includes(String(S.pauseReason || ""))) return "menu";
+  // A pause, Shop, Inventory, or mission overlay is still part of an active run.
+  // Keep the mission song playing until the run actually ends or returns to HQ.
+  if(S.paused) return "mission";
   return "mission";
+}
+function gameMusicTrackKey(mode=gameMusicMode()){
+  return ["mission","danger","battle","boss"].includes(String(mode || "")) ? "mission" : "menu";
 }
 function gameMusicSpec(mode){
   const tracks = {
@@ -20417,62 +20438,49 @@ function gameMusicStinger(mode){
     gameMusicNote(523.25, 150, "sine", 0.035, at + 0.14);
   }
 }
-function gameMusicDirectorTick(){
-  if(!S.soundOn || S.musicOn === false) return;
-  if(!__gameMusic) startGameMusicDirector();
-  if(!__gameMusic || !AC) return;
-  const nowMs = Date.now();
-  if(nowMs - Number(__gameMusicLastTickAt || 0) < 120) return;
-  __gameMusicLastTickAt = nowMs;
-  const mode = gameMusicMode();
-  updateMusicNowPlayingUi(mode);
-  if(mode === "off"){
-    stopGameMusicDirector();
+function gameMusicDirectorTick(force=false){
+  if(!S.soundOn || S.musicOn === false){
+    if(__gameMusic) stopGameMusicDirector();
     return;
   }
-  const spec = gameMusicSpec(mode);
-  const at = AC.currentTime;
+  if(!__gameMusic){
+    startGameMusicDirector();
+    return;
+  }
+  const nowMs = Date.now();
+  if(!force && nowMs - Number(__gameMusicLastTickAt || 0) < 240) return;
+  __gameMusicLastTickAt = nowMs;
+  const mode = gameMusicMode();
+  if(mode === "off"){
+    stopGameMusicDirector();
+    updateMusicNowPlayingUi("off");
+    return;
+  }
+
+  const trackKey = gameMusicTrackKey(mode);
+  const track = GAME_MUSIC_TRACKS[trackKey];
+  const audio = __gameMusic.audio;
+  if(!track || !audio) return;
   const userVolume = clamp(Number(S.musicVolume ?? .78), .2, 1);
-  const targetVol = (iphoneStabilityModeActive?.() && frameLagTier?.() >= 2 ? .46 : spec.volume) * userVolume;
-  __gameMusic.out.gain.cancelScheduledValues(at);
-  __gameMusic.out.gain.setTargetAtTime(targetVol, at, 0.28);
-  if(__gameMusic.mode !== mode){
-    stopGameMusicVoices(__gameMusic, .035);
-    __gameMusic.mode = mode;
-    __gameMusic.step = 0;
-    __gameMusic.nextStepAt = at + .04;
+  audio.volume = clamp(track.volume * userVolume, 0, 1);
+  audio.loop = true;
+
+  if(__gameMusic.trackKey !== trackKey){
+    // One HTML audio element owns music. Pause it before changing the source so
+    // the menu and mission songs can never overlap.
+    audio.pause();
+    try{ audio.currentTime = 0; }catch(e){}
+    audio.src = track.src;
+    audio.load();
+    __gameMusic.trackKey = trackKey;
   }
-  const stepDuration = 60 / Math.max(40,Number(spec.bpm || 100)) / 2;
-  if(!Number.isFinite(__gameMusic.nextStepAt) || __gameMusic.nextStepAt < at - stepDuration){
-    __gameMusic.nextStepAt = at + .02;
-  }
-  let scheduled = 0;
-  while(Number(__gameMusic.nextStepAt || 0) <= at + .34 && scheduled < 5){
-    const step = Math.max(0, Math.floor(Number(__gameMusic.step || 0)));
-    const patternStep = step % 16;
-    const phrase = Math.floor(step / 16);
-    const when = Math.max(at + .008, Number(__gameMusic.nextStepAt || at));
-    const pressure = clamp(Number(ensureMissionDirectorState?.(S)?.pressure || 0), 0, 100);
-    const melodyDegree = spec.melody[patternStep];
-    if(melodyDegree != null){
-      const pitchLift = ((mode === "battle" || mode === "boss") && pressure > 72 && patternStep >= 12) ? 12 : 0;
-      const midi = spec.root + 12 + spec.scale[melodyDegree % spec.scale.length] + pitchLift + (phrase % 2 === 1 && patternStep === 15 ? 12 : 0);
-      const noteMs = Math.round(stepDuration * 1000 * ((mode === "hq" || mode === "defeat") ? 1.55 : .86));
-      gameMusicNote(gameMusicHz(midi),noteMs,spec.wave,(mode === "boss" ? .040 : .034),when);
+  __gameMusic.mode = mode;
+  if(audio.paused){
+    const playAttempt = audio.play();
+    if(playAttempt?.then){
+      playAttempt.then(()=>{ if(__gameMusic?.audio === audio) __gameMusic.playbackBlocked=false; })
+        .catch(()=>{ if(__gameMusic?.audio === audio) __gameMusic.playbackBlocked=true; });
     }
-    const bassDegree = spec.bass[patternStep];
-    if(bassDegree != null){
-      const bassMidi = spec.root - 12 + spec.scale[bassDegree % spec.scale.length];
-      gameMusicNote(gameMusicHz(bassMidi),Math.round(stepDuration*1000*1.7),"triangle",mode === "boss" ? .048 : .038,when);
-    }
-    if(patternStep === 0 || patternStep === 8){
-      const chord = spec.chords[(Math.floor(step / 8)) % spec.chords.length].map((offset)=>spec.root + offset);
-      gameMusicChord(chord,Math.round(stepDuration*1000*7.2),when+.01,mode === "boss" ? .010 : .012);
-    }
-    gameMusicScheduleDrums(spec.drums,patternStep,when);
-    __gameMusic.step = step + 1;
-    __gameMusic.nextStepAt = when + stepDuration;
-    scheduled += 1;
   }
   updateMusicNowPlayingUi(mode);
 }
@@ -28785,7 +28793,7 @@ function startLaunchMusicLoop(force=false){
   if(!S.soundOn) return;
   clearLaunchMusicLoop();
   startGameMusicDirector();
-  if(force && __gameMusic) __gameMusic.nextStepAt = 0;
+  if(force && __gameMusic) gameMusicDirectorTick(true);
 }
 function nextDailyCountdownText(){
   const now = new Date();
@@ -63386,6 +63394,8 @@ window.runPremium2DHuntAudit = function runPremium2DHuntAudit(){
   };
 };
 window.runAudioRollVisualAudit = function runAudioRollVisualAudit(){
+  const mode = __gameMusic?.mode || gameMusicMode();
+  const trackKey = __gameMusic?.trackKey || gameMusicTrackKey(mode);
   return {
     build:TS_BUILD,
     soundOn:!!S.soundOn,
@@ -63395,9 +63405,15 @@ window.runAudioRollVisualAudit = function runAudioRollVisualAudit(){
     audioContextState:AC?.state || "",
     audioBoost:AUDIO_AUDIBILITY_BOOST,
     musicActive:!!__gameMusic,
-    musicMode:__gameMusic?.mode || gameMusicMode(),
+    musicMode:mode,
+    musicTrack:trackKey,
+    musicTitle:GAME_MUSIC_TRACKS[trackKey]?.title || "",
+    musicSource:GAME_MUSIC_TRACKS[trackKey]?.src || "",
+    musicLooping:!!__gameMusic?.audio?.loop,
+    musicPaused:!!__gameMusic?.audio?.paused,
+    playbackBlocked:!!__gameMusic?.playbackBlocked,
     externalMusicContext:__gameMusicExternalContext,
-    soundtrackVersion:2,
+    soundtrackVersion:3,
     musicTick:__gameMusicLastTickAt || 0,
     rollHudVisible:!!(
       document.getElementById("touchFieldRollBtn") &&

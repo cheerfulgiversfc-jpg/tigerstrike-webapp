@@ -281,8 +281,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V8.6 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V8.6 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.6 • Co-op Command");
+      ? `Tiger Strike V8.7 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V8.7 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.7 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -554,7 +554,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V8.6 Persistent Co-op Campaign</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. Co-op squads now stay together between missions, move with a joystick, and deliver rescued civilians to a real Rescue House.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V8.7 Two-Track Soundtrack</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. “Tiger Strike” plays outside missions, and “Testing” plays throughout Solo, co-op, Special Operations, Arcade, and Survival gameplay.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
