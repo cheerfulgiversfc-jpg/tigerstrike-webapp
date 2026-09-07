@@ -17,6 +17,26 @@
   touch-action:pan-y;
 }
 #liveSquadOverlay.open{display:block}
+body.liveSquadEquipmentOpen #liveSquadOverlay{
+  display:none!important;
+  pointer-events:none!important;
+  visibility:hidden!important;
+}
+body.liveSquadEquipmentOpen #shopOverlay.liveSquadEquipmentOverlay,
+body.liveSquadEquipmentOpen #invOverlay.liveSquadEquipmentOverlay{
+  display:flex!important;
+  z-index:10150!important;
+  pointer-events:auto!important;
+  visibility:visible!important;
+  touch-action:pan-y;
+}
+body.liveSquadEquipmentOpen #shopOverlay.liveSquadEquipmentOverlay .modal,
+body.liveSquadEquipmentOpen #invOverlay.liveSquadEquipmentOverlay .modal,
+body.liveSquadEquipmentOpen #shopOverlay.liveSquadEquipmentOverlay button,
+body.liveSquadEquipmentOpen #invOverlay.liveSquadEquipmentOverlay button{
+  pointer-events:auto!important;
+  touch-action:manipulation;
+}
 #baseHqLiveSquadFab{display:none}
 body.baseHqActive #baseHqLiveSquadFab{
   display:block;position:fixed;left:10px;bottom:max(12px,env(safe-area-inset-bottom));z-index:122;
@@ -110,6 +130,8 @@ body.baseHqActive #baseHqLiveSquadFab{
   .squadPrepBar{grid-template-columns:1fr 1fr}.squadPrepBar>div{grid-column:1/-1}.squadPrepBar .squadBtn{width:100%}.squadRoleGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.squadControls{grid-template-columns:132px minmax(0,1fr);gap:7px}
   .squadJoystick{width:126px}.squadJoystickRing{width:112px;height:112px}.squadJoystickKnob{width:52px;height:52px;margin:-26px}
   .squadActions{gap:5px}.squadActionBtn{min-height:58px;padding:5px;font-size:12px}
+  #squadArena{aspect-ratio:4/5;min-height:min(74dvh,720px);object-fit:fill}
+  .squadArenaPanel{padding:7px;background:linear-gradient(180deg,rgba(12,30,45,.98),rgba(5,13,24,.98))}
 }
 @media(max-width:430px){.squadMissionPicker{grid-template-columns:1fr}}
 @media(max-width:620px){.squadPathGrid,.squadPartyChoice,.squadJoinCard,.squadOperationGrid{grid-template-columns:1fr}.squadPathCard{min-height:160px}.squadSectionHead,.squadSelectedMission{flex-direction:column}.squadLevelNav span{width:100%;margin-left:0}.squadJoinRow{grid-template-columns:minmax(0,1fr) auto}.squadJoinRow .squadInput{grid-column:1/-1}}

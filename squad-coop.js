@@ -212,7 +212,10 @@
     if(!snap || snap.status === "waiting"){ window.setTigerStrikeMusicContext?.("menu"); return; }
     if(snap.status === "complete"){ window.setTigerStrikeMusicContext?.("victory"); return; }
     if(snap.status === "failed"){ window.setTigerStrikeMusicContext?.("defeat"); return; }
-    if(snap.status !== "active" || snap.paused){ window.setTigerStrikeMusicContext?.("menu"); return; }
+    // A Shop or Inventory visit pauses the shared simulation, but the player is
+    // still inside a mission. Keep the mission song instead of starting the
+    // menu song on top of it during the equipment handoff.
+    if(snap.status !== "active"){ window.setTigerStrikeMusicContext?.("menu"); return; }
     const threats = (snap.tigers || []).filter((tiger)=>tiger && !tiger.defeated);
     const attacking = threats.some((tiger)=>/attack|frenzy|stalk/i.test(String(tiger.awarenessLabel || "")));
     const bossEngaged = threats.some((tiger)=>tiger.boss && Number(tiger.hp || 0) < Number(tiger.hpMax || 0));
@@ -281,8 +284,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V8.7 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V8.7 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.7 • Co-op Command");
+      ? `Tiger Strike V8.8 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V8.8 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.8 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -554,7 +557,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V8.7 Two-Track Soundtrack</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. “Tiger Strike” plays outside missions, and “Testing” plays throughout Solo, co-op, Special Operations, Arcade, and Survival gameplay.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V8.8 Co-op Interaction + Visual Parity</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. Co-op now uses a taller premium battlefield on phones, richer Story-style scenery and characters, and reliable Shop and Inventory controls.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -1021,6 +1024,45 @@
     }, false);
   }
 
+  function setEquipmentPresentation(equipment="", open=false){
+    const liveOverlay = $("liveSquadOverlay");
+    const gearOverlay = $(equipment === "inventory" ? "invOverlay" : "shopOverlay");
+    const returnButton = $(equipment === "inventory" ? "inventoryResumeBtn" : "shopResumeBtn");
+    if(returnButton) returnButton.textContent = open ? "Return to Squad" : "Resume";
+    try{ document.body?.classList?.toggle?.("liveSquadEquipmentOpen", !!open); }catch(error){}
+    if(open){
+      liveOverlay?.classList.remove("open");
+      liveOverlay?.setAttribute("aria-hidden", "true");
+      liveOverlay?.setAttribute("inert", "");
+      if(liveOverlay?.style){
+        liveOverlay.style.display = "none";
+        liveOverlay.style.pointerEvents = "none";
+      }
+      gearOverlay?.classList?.add?.("liveSquadEquipmentOverlay");
+      gearOverlay?.setAttribute?.("data-live-squad-equipment", equipment);
+      if(gearOverlay?.style){
+        gearOverlay.style.zIndex = "10150";
+        gearOverlay.style.pointerEvents = "auto";
+        gearOverlay.style.touchAction = "pan-y";
+      }
+      return;
+    }
+    gearOverlay?.classList?.remove?.("liveSquadEquipmentOverlay");
+    gearOverlay?.removeAttribute?.("data-live-squad-equipment");
+    if(gearOverlay?.style){
+      gearOverlay.style.zIndex = "";
+      gearOverlay.style.pointerEvents = "";
+      gearOverlay.style.touchAction = "";
+    }
+    liveOverlay?.removeAttribute?.("inert");
+    if(liveOverlay?.style){
+      liveOverlay.style.display = "";
+      liveOverlay.style.pointerEvents = "";
+    }
+    liveOverlay?.classList.add("open");
+    liveOverlay?.setAttribute("aria-hidden", "false");
+  }
+
   async function openEquipment(kind="shop"){
     const equipment = kind === "inventory" ? "inventory" : "shop";
     if(state.equipmentOpen) return;
@@ -1032,18 +1074,18 @@
         setMessage(`Pausing the squad while you open ${equipment === "inventory" ? "Inventory" : "the Shop"}…`);
         await api("pause", { reason:equipment });
       }
-      const liveOverlay = $("liveSquadOverlay");
-      liveOverlay?.classList.remove("open");
-      liveOverlay?.setAttribute("aria-hidden", "true");
+      setEquipmentPresentation(equipment, true);
       if(equipment === "inventory") window.openInventory?.();
       else window.openShop?.();
       const gearOverlay = $(equipment === "inventory" ? "invOverlay" : "shopOverlay");
       if(gearOverlay?.style?.display !== "flex") throw new Error(`${equipment === "inventory" ? "Inventory" : "Shop"} could not open. Please try again.`);
+      // Reassert the layer handoff after WebKit finishes synthesizing the tap
+      // that opened this screen. This prevents the hidden co-op canvas from
+      // swallowing the next Shop or Inventory touch on Telegram for iPhone.
+      window.requestAnimationFrame?.(()=>setEquipmentPresentation(equipment, true));
     }catch(error){
       state.equipmentOpen = "";
-      const liveOverlay = $("liveSquadOverlay");
-      liveOverlay?.classList.add("open");
-      liveOverlay?.setAttribute("aria-hidden", "false");
+      setEquipmentPresentation(equipment, false);
       if(state.snapshot?.status === "active"){
         state.equipmentResumePending = true;
         finishEquipmentResume();
@@ -1073,9 +1115,7 @@
     const equipment = kind === "inventory" ? "inventory" : "shop";
     if(state.equipmentOpen !== equipment) return false;
     state.equipmentOpen = "";
-    const liveOverlay = $("liveSquadOverlay");
-    liveOverlay?.classList.add("open");
-    liveOverlay?.setAttribute("aria-hidden", "false");
+    setEquipmentPresentation(equipment, false);
     render();
     if(state.snapshot?.status === "active"){
       setMessage("Returning to your squad…");
@@ -1557,17 +1597,21 @@
   }
 
   function drawStoryTree(ctx,x,y,size=1){
-    ctx.fillStyle="rgba(15,23,42,.28)";ctx.beginPath();ctx.ellipse(x+5,y+15,25*size,9*size,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle="#65462c";ctx.fillRect(x-4*size,y-2*size,8*size,25*size);
-    for(const [dx,dy,r,c] of [[0,-12,19,"#166534"],[-13,-4,15,"#15803d"],[13,-3,15,"#14532d"],[0,-25,14,"#22c55e"]]){ctx.fillStyle=c;ctx.beginPath();ctx.arc(x+dx*size,y+dy*size,r*size,0,Math.PI*2);ctx.fill();}
+    ctx.save();
+    ctx.fillStyle="rgba(2,6,23,.34)";ctx.beginPath();ctx.ellipse(x+7*size,y+18*size,30*size,10*size,-.08,0,Math.PI*2);ctx.fill();
+    const trunk=ctx.createLinearGradient(x-6*size,y,x+8*size,y);trunk.addColorStop(0,"#3f2b20");trunk.addColorStop(.5,"#8b5a32");trunk.addColorStop(1,"#4a2f22");ctx.fillStyle=trunk;roundRect(ctx,x-6*size,y-7*size,12*size,32*size,3*size);ctx.fill();
+    for(const [dx,dy,r,c] of [[0,-12,23,"#166534"],[-17,-4,18,"#15803d"],[17,-3,18,"#14532d"],[-7,-27,17,"#22c55e"],[10,-25,15,"#16a34a"]]){ctx.fillStyle=c;ctx.beginPath();ctx.arc(x+dx*size,y+dy*size,r*size,0,Math.PI*2);ctx.fill();}
+    ctx.fillStyle="rgba(187,247,208,.25)";ctx.beginPath();ctx.ellipse(x-10*size,y-24*size,10*size,6*size,-.4,0,Math.PI*2);ctx.fill();ctx.restore();
   }
 
   function drawStoryBuilding(ctx,x,y,w,h,roof="#9a5c38"){
-    ctx.fillStyle="rgba(2,6,23,.28)";roundRect(ctx,x+8,y+10,w,h,9);ctx.fill();
-    ctx.fillStyle="#c7b79c";roundRect(ctx,x,y,w,h,8);ctx.fill();
+    ctx.save();ctx.fillStyle="rgba(2,6,23,.34)";roundRect(ctx,x+11,y+13,w,h,9);ctx.fill();
+    const wall=ctx.createLinearGradient(x,y,x,y+h);wall.addColorStop(0,"#ead9b8");wall.addColorStop(1,"#ae9875");ctx.fillStyle=wall;roundRect(ctx,x,y,w,h,8);ctx.fill();ctx.strokeStyle="rgba(255,248,220,.44)";ctx.lineWidth=3;ctx.stroke();
     ctx.fillStyle=roof;ctx.beginPath();ctx.moveTo(x-8,y+6);ctx.lineTo(x+w*.5,y-28);ctx.lineTo(x+w+8,y+6);ctx.closePath();ctx.fill();
-    ctx.fillStyle="#5b4333";ctx.fillRect(x+w*.43,y+h*.48,w*.18,h*.52);
-    ctx.fillStyle="#93c5fd";ctx.fillRect(x+w*.12,y+h*.26,w*.18,h*.2);ctx.fillRect(x+w*.7,y+h*.26,w*.18,h*.2);
+    ctx.strokeStyle="rgba(255,220,170,.45)";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x-4,y+5);ctx.lineTo(x+w*.5,y-24);ctx.lineTo(x+w+4,y+5);ctx.stroke();
+    ctx.fillStyle="#5b4333";ctx.fillRect(x+w*.41,y+h*.46,w*.2,h*.54);ctx.fillStyle="#fbbf24";ctx.beginPath();ctx.arc(x+w*.57,y+h*.73,2.5,0,Math.PI*2);ctx.fill();
+    for(const wx of [x+w*.12,x+w*.7]){ctx.fillStyle="#7dd3fc";ctx.fillRect(wx,y+h*.24,w*.18,h*.22);ctx.strokeStyle="#e0f2fe";ctx.lineWidth=3;ctx.strokeRect(wx,y+h*.24,w*.18,h*.22);ctx.beginPath();ctx.moveTo(wx+w*.09,y+h*.24);ctx.lineTo(wx+w*.09,y+h*.46);ctx.stroke();}
+    ctx.restore();
   }
 
   function drawDenCave(ctx,x,y,size=1){
@@ -1682,12 +1726,12 @@
     ctx.strokeStyle=pants;ctx.lineWidth=6;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-4,9);ctx.lineTo(-8,24);ctx.moveTo(4,9);ctx.lineTo(9,24);ctx.stroke();
     ctx.strokeStyle=shirt;ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(0,11);ctx.moveTo(-2,0);ctx.lineTo(-13,9);ctx.moveTo(2,0);ctx.lineTo(13,8);ctx.stroke();
     ctx.fillStyle="#d7a47f";ctx.beginPath();ctx.arc(0,-14,8,0,Math.PI*2);ctx.fill();ctx.fillStyle="#3f2d22";ctx.beginPath();ctx.arc(0,-17,8,Math.PI,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-2.7,-14.5,1,0,Math.PI*2);ctx.arc(2.7,-14.5,1,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1;ctx.beginPath();ctx.arc(0,-11.5,2.5,.12*Math.PI,.88*Math.PI);ctx.stroke();
     ctx.globalAlpha=1;ctx.font="900 12px system-ui";ctx.textAlign="center";ctx.fillStyle=rescued?"#bbf7d0":"#e0f2fe";ctx.fillText(civ.secured?"SAFE • RESCUE HOUSE":(civ.following?`FOLLOWING • ${civ.name}`:`RESCUE • ${civ.name}`),0,-32);ctx.restore();
   }
 
   function drawStoryTiger(ctx,tiger,now){
-    if(tiger.defeated) return;const alpha=!!tiger.boss;const ghost=String(tiger.id||"")==="ghoststripe_alpha";const blood=String(tiger.id||"")==="s20_blood_tiger";const coat=blood?"#b91c1c":(ghost?"#dbeafe":"#f59e0b");const ear=blood?"#fb7185":(ghost?"#e2e8f0":"#fbbf24");const leg=blood?"#7f1d1d":(ghost?"#94a3b8":"#d97706");const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const facing=Math.sin((now/900)+(String(tiger.id).length))>=0?1:-1;
-    const awarenessColor=tiger.awarenessColor||"#4ade80";ctx.save();ctx.globalAlpha=.64;ctx.strokeStyle=awarenessColor;ctx.lineWidth=4;ctx.setLineDash([8,6]);ctx.beginPath();ctx.arc(tiger.x,tiger.y,alpha?72:56,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+    if(tiger.defeated) return;const alpha=!!tiger.boss;const ghost=String(tiger.id||"")==="ghoststripe_alpha";const blood=String(tiger.id||"")==="s20_blood_tiger";const coat=blood?"#b91c1c":(ghost?"#dbeafe":"#f59e0b");const ear=blood?"#fb7185":(ghost?"#e2e8f0":"#fbbf24");const leg=blood?"#7f1d1d":(ghost?"#94a3b8":"#d97706");const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const nearest=(state.snapshot?.players||[]).slice().sort((a,b)=>distance(a,tiger)-distance(b,tiger))[0];const facing=nearest?(Number(nearest.x)>=Number(tiger.x)?1:-1):1;
     if(blood){ctx.save();ctx.fillStyle=tiger.hp<=tiger.hpMax*.35?"rgba(239,68,68,.28)":"rgba(127,29,29,.18)";ctx.shadowColor="#ef4444";ctx.shadowBlur=tiger.hp<=tiger.hpMax*.35?38:20;ctx.beginPath();ctx.arc(tiger.x,tiger.y,58,0,Math.PI*2);ctx.fill();ctx.restore();}
     ctx.save();ctx.translate(tiger.x,tiger.y);ctx.scale(facing*s,s);
     ctx.strokeStyle=coat;ctx.lineWidth=9;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-29,2);ctx.quadraticCurveTo(-54,-15,-64,4);ctx.stroke();
@@ -1696,7 +1740,7 @@
     ctx.fillStyle=ear;ctx.beginPath();ctx.moveTo(22,-17);ctx.lineTo(23,-29);ctx.lineTo(31,-20);ctx.closePath();ctx.fill();ctx.beginPath();ctx.moveTo(34,-19);ctx.lineTo(40,-28);ctx.lineTo(43,-15);ctx.closePath();ctx.fill();
     ctx.strokeStyle="#111827";ctx.lineWidth=4;for(const x of [-20,-7,7,18]){ctx.beginPath();ctx.moveTo(x,-15);ctx.lineTo(x+8,13);ctx.stroke();}
     ctx.strokeStyle=leg;ctx.lineWidth=7;for(const x of [-18,9]){ctx.beginPath();ctx.moveTo(x,12);ctx.lineTo(x-2,28);ctx.stroke();}
-    ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(37,-9,2.5,0,Math.PI*2);ctx.fill();ctx.fillStyle="#f8fafc";ctx.beginPath();ctx.arc(44,-3,3,0,Math.PI*2);ctx.fill();ctx.restore();
+    ctx.fillStyle="#fef3c7";ctx.beginPath();ctx.ellipse(42,-3,10,7,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(37,-9,2.8,0,Math.PI*2);ctx.arc(47,-4,2.4,0,Math.PI*2);ctx.fill();ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(38,-10,1,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#111827";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(48,-1);ctx.lineTo(56,-5);ctx.moveTo(48,1);ctx.lineTo(57,3);ctx.stroke();ctx.restore();
     const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);const barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,tiger.y-(alpha?65:50),barW,11,5);ctx.fill();ctx.fillStyle=blood?"#ef4444":(alpha?"#fb7185":"#f59e0b");roundRect(ctx,tiger.x-barW/2+2,tiger.y-(alpha?63:48),(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(`${tiger.awarenessIcon||"🟢"} ${alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase()} • ${String(tiger.awarenessLabel||"Calm").toUpperCase()}`,tiger.x,tiger.y-(alpha?72:57));
   }
 
@@ -1744,11 +1788,29 @@
     ctx.fillStyle="rgba(2,6,23,.38)";ctx.beginPath();ctx.ellipse(1,19,18,7,0,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle="#1e293b";ctx.lineWidth=7;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-5,10);ctx.lineTo(-8,25);ctx.moveTo(5,10);ctx.lineTo(8,25);ctx.stroke();
     ctx.fillStyle=body;roundRect(ctx,-11,-7,22,25,6);ctx.fill();ctx.strokeStyle=outline;ctx.lineWidth=2.5;ctx.stroke();
-    ctx.fillStyle="#334155";roundRect(ctx,-13,-4,26,15,4);ctx.fill();ctx.fillStyle="#6b7c65";ctx.beginPath();ctx.arc(0,-15,11,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(-11,-15,22,6);
+    ctx.fillStyle="#334155";roundRect(ctx,-13,-4,26,15,4);ctx.fill();ctx.fillStyle="#c98f6c";ctx.beginPath();ctx.ellipse(0,-13,8,9,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-3,-14,1.2,0,Math.PI*2);ctx.arc(3,-14,1.2,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-2,-10);ctx.lineTo(2,-10);ctx.stroke();ctx.fillStyle="#6b7c65";ctx.beginPath();ctx.arc(0,-18,11,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(-11,-18,22,5);
     ctx.strokeStyle="#dbeafe";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(8,-1);ctx.lineTo(27,0);ctx.stroke();ctx.fillStyle="#0f172a";ctx.fillRect(18,-4,15,5);ctx.restore();
     const recovery=respawnSeconds(p);const downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=outline;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,draw.y-35);
     ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-26,draw.y+31,52,7,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-25,draw.y+32,50*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),5,3);ctx.fill();
     ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,draw.y+52);
+  }
+
+  function drawPremiumDistrictTexture(ctx,view,worldW,worldH,now){
+    const glow=ctx.createRadialGradient(view.x+view.w*.28,view.y+view.h*.18,20,view.x+view.w*.28,view.y+view.h*.18,Math.max(view.w,view.h)*.78);
+    glow.addColorStop(0,"rgba(253,230,138,.13)");glow.addColorStop(.5,"rgba(74,222,128,.045)");glow.addColorStop(1,"rgba(2,6,23,.16)");ctx.fillStyle=glow;ctx.fillRect(view.x,view.y,view.w,view.h);
+    const start=Math.max(0,Math.floor((view.x+view.y)/83));
+    for(let i=start;i<start+78;i++){
+      const x=42+((i*389+97)%Math.max(80,Math.floor(worldW-84))),y=38+((i*227+41)%Math.max(80,Math.floor(worldH-76)));
+      if(x<view.x-20||x>view.x+view.w+20||y<view.y-20||y>view.y+view.h+20)continue;
+      const sway=Math.sin(now/900+i)*3;ctx.strokeStyle=i%3?"rgba(187,247,208,.20)":"rgba(250,204,21,.16)";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y+6);ctx.quadraticCurveTo(x+sway,y-1,x+sway*.6,y-8-(i%4)*2);ctx.stroke();
+    }
+  }
+
+  function sizeArenaCanvas(canvas){
+    const portrait=!!window.matchMedia?.("(max-width: 640px)")?.matches;
+    const targetW=portrait?900:1200,targetH=portrait?1125:760;
+    if(canvas.width!==targetW)canvas.width=targetW;
+    if(canvas.height!==targetH)canvas.height=targetH;
   }
 
   function drawExpandedDistrict(ctx, snap, view){
@@ -1787,6 +1849,7 @@
     ctx.fillStyle=endlessSurvival?"rgba(249,115,22,.13)":(denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":(alphaHunt?"rgba(147,197,253,.12)":(stormExtraction?"rgba(125,211,252,.13)":"rgba(102,164,91,.20)")))));
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
+    drawPremiumDistrictTexture(ctx,view,worldW,worldH,Number(snap.serverNow||Date.now()));
 
     ctx.fillStyle=endlessSurvival?"rgba(51,31,45,.94)":(denAssault?"rgba(32,31,29,.88)":(villageSiege?"rgba(31,142,174,.86)":(convoyRescue?"rgba(28,102,132,.86)":(alphaHunt?"rgba(23,61,93,.90)":(stormExtraction?"rgba(14,83,112,.94)":"rgba(35,117,145,.80)")))));ctx.beginPath();ctx.moveTo(0,riverTop);
     for(let x=0;x<=worldW+180;x+=180){ctx.lineTo(x,riverTop+Math.sin((x/worldW)*Math.PI*5)*42);}
@@ -1802,6 +1865,9 @@
     for(const y of horizontalRoads){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(worldW,y);ctx.stroke();}
     for(const x of verticalRoads){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,worldH);ctx.stroke();}
     ctx.setLineDash([]);
+    ctx.fillStyle="rgba(254,240,138,.72)";
+    for(const y of horizontalRoads){for(let x=34;x<worldW;x+=92){roundRect(ctx,x,y-3,38,6,3);ctx.fill();}}
+    for(const x of verticalRoads){for(let y=34;y<worldH;y+=92){roundRect(ctx,x-3,y,6,38,3);ctx.fill();}}
 
     for(const water of (snap.waterZones||[])){
       if(!visible(water.x,water.y,Math.max(Number(water.rx||0),Number(water.ry||0))+90))continue;
@@ -2081,7 +2147,9 @@
 
   function drawArena(){
     const canvas=$("squadArena"),snap=state.snapshot;if(!canvas||!snap)return;
+    sizeArenaCanvas(canvas);
     const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height,now=Number(snap.serverNow||Date.now());
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
     const worldW=Math.max(w,Number(snap.world?.width||w)),worldH=Math.max(h,Number(snap.world?.height||h));
     const focus=state.local||localSnapshotPlayer()||{x:worldW*.5,y:worldH*.5};
     const targetX=clamp(Number(focus.x)-w*.5,0,Math.max(0,worldW-w)),targetY=clamp(Number(focus.y)-h*.5,0,Math.max(0,worldH-h));
@@ -2099,6 +2167,8 @@
     }
     drawSnowstormOverlay(ctx,snap,view,now);
     ctx.restore();
+    const grade=ctx.createLinearGradient(0,0,0,h);grade.addColorStop(0,"rgba(186,230,253,.055)");grade.addColorStop(.58,"rgba(255,255,255,0)");grade.addColorStop(1,"rgba(2,6,23,.18)");ctx.fillStyle=grade;ctx.fillRect(0,0,w,h);
+    const vignette=ctx.createRadialGradient(w*.5,h*.46,Math.min(w,h)*.22,w*.5,h*.46,Math.max(w,h)*.72);vignette.addColorStop(.62,"rgba(2,6,23,0)");vignette.addColorStop(1,"rgba(2,6,23,.28)");ctx.fillStyle=vignette;ctx.fillRect(0,0,w,h);
     ctx.fillStyle="rgba(2,6,23,.84)";roundRect(ctx,18,18,350,54,12);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 16px system-ui";ctx.textAlign="left";ctx.fillText(sharedStoryActive()?`STORY MISSION ${Math.max(1,Number(snap.storyMissionLevel||1))} • ${String(snap.mission?.chapterName||"STORY DISTRICT").toUpperCase()}`:String(selectedOperation().mapLabel||"SPECIAL OPERATION").toUpperCase(),34,43);ctx.fillStyle="#93c5fd";ctx.font="850 12px system-ui";ctx.fillText(`${Math.round(worldW/100)/10}km × ${Math.round(worldH/100)/10}km • CAMERA FOLLOW`,34,61);
     drawCoopMiniMap(ctx,snap,view,w);drawOffscreenTeammate(ctx,snap,view,w,h);
   }
@@ -2142,7 +2212,7 @@
 
 
   const isTypingTarget = (target)=>!!target?.closest?.("input,textarea,select,[contenteditable='true']");
-  window.addEventListener("keydown",(event)=>{ if(!state.open||isTypingTarget(event.target))return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
+  window.addEventListener("keydown",(event)=>{ if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return;const key=String(event.key||"").toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){event.preventDefault();state.keys.add(key);} });
   window.addEventListener("keyup",(event)=>{ if(isTypingTarget(event.target))return;state.keys.delete(String(event.key||"").toLowerCase()); });
   window.openLiveSquadOps=open;
   window.openLiveSquadStoryMission=(storyMissionLevel=1)=>open({ storyMissionLevel });

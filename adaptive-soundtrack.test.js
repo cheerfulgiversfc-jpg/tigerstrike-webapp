@@ -53,8 +53,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V8.7 cache key forces Telegram to load the two-track soundtrack", () => {
-  assert(game.includes('const TS_BUILD = "5060"'));
-  assert(html.includes("game.js?v=5060-two-track-soundtrack"));
-  assert(html.includes("squad-coop.js?v=5060-two-track-soundtrack"));
+test("V8.8 cache key forces Telegram to load the current co-op build", () => {
+  assert(game.includes('const TS_BUILD = "5061"'));
+  assert(html.includes("game.js?v=5061-coop-parity"));
+  assert(html.includes("squad-coop.js?v=5061-coop-parity"));
 });

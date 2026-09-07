@@ -434,6 +434,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - One HTML audio player owns the music channel, pauses before switching songs, and prevents both tracks—or any older generated score—from playing at once.
 - Sound effects remain separate, and the existing Sound and Music switches continue to work.
 
+### V8.8 Co-op Interaction + Visual Parity
+
+- Co-op Shop and Inventory now fully replace the Live Squad layer while open, preventing the hidden high-priority co-op canvas from intercepting Telegram and iPhone touches.
+- Shop categories, Inventory tabs, Buy and Use controls remain interactive, and both equipment screens show a clear Return to Squad action.
+- Returning resumes the same active squad mission safely; the mission soundtrack continues while the shared simulation is paused for equipment.
+- The mobile co-op battlefield is taller and uses a portrait camera so players can see more of the mission instead of a compressed landscape strip.
+- Co-op maps now have richer lighting and ground texture, clearer road details, improved trees and homes, and a premium final color grade.
+- Soldiers and civilians have visible faces, tigers face the nearest player, and the unwanted oval target ring around living tigers is removed.
+- Solo Story remains unchanged by the equipment-layer fix, and both modes continue using their existing gameplay and progression systems.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
