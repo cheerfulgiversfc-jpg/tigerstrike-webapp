@@ -1263,6 +1263,154 @@ function userIdOf(user){
   const id = Number(user?.id || user || 0);
   return Number.isSafeInteger(id) && id > 0 ? id : 0;
 }
+
+const COOP_GEAR_CATALOG = Object.freeze([
+  Object.freeze({ id:"field_carbine", type:"weapon", name:"Field Carbine", icon:"🔫", price:0, damageMultiplier:1, description:"Reliable starter rifle for every Live Squad soldier." }),
+  Object.freeze({ id:"ranger_rifle", type:"weapon", name:"Ranger Rifle", icon:"🎯", price:4200, damageMultiplier:1.16, description:"More stopping power while remaining quick to handle." }),
+  Object.freeze({ id:"guardian_rifle", type:"weapon", name:"Guardian Rifle", icon:"🛡️", price:8800, damageMultiplier:1.34, description:"Heavy co-op rifle built for Alpha encounters." }),
+  Object.freeze({ id:"real_rounds", type:"ammo-real", name:"Real Rounds ×40", icon:"🔴", price:320, amount:40, description:"Lethal ammunition. Kills block capture and create blood scent." }),
+  Object.freeze({ id:"rubber_rounds", type:"ammo-rubber", name:"Rubber Rounds ×40", icon:"🟡", price:440, amount:40, description:"Nonlethal ammunition that prepares tigers for capture." }),
+  Object.freeze({ id:"tranq_charges", type:"tranq", name:"Tranq Charges ×5", icon:"💉", price:600, amount:5, description:"One charge completes a valid weakened-tiger capture." }),
+  Object.freeze({ id:"field_medkit", type:"medkit", name:"Field Medkit", icon:"❤️", price:750, amount:1, description:"Restores 50 health during a mission." }),
+  Object.freeze({ id:"armor_plate", type:"armor", name:"Armor Plate", icon:"🛡️", price:850, amount:1, description:"Restores 50 armor during a mission." }),
+]);
+
+function coopProfileKey(userId){ return `live_squad_profile_v1_${userIdOf(userId)}`; }
+function defaultCoopProfile(user){
+  return {
+    version:1,
+    userId:userIdOf(user),
+    name:playerName(user),
+    funds:2500,
+    perkPoints:0,
+    seasonPoints:0,
+    unlockedStoryLevel:1,
+    equippedWeaponId:"field_carbine",
+    ownedWeaponIds:["field_carbine"],
+    ammo:{ real:240, rubber:240, tranq:20 },
+    supplies:{ medkits:3, armorPlates:3 },
+    stats:{ missions:0, captures:0, kills:0, rescues:0, revives:0, cashEarned:0 },
+    badges:{},
+    achievements:{},
+    government:{ trust:100, reviews:0, lethalKills:0, captures:0, status:"FUNDED" },
+    rewardReceipts:{},
+    updatedAt:nowMs(),
+  };
+}
+function normalizeCoopProfile(raw, user){
+  const base = defaultCoopProfile(user);
+  const src = raw && typeof raw === "object" ? raw : {};
+  const owned = [...new Set((Array.isArray(src.ownedWeaponIds) ? src.ownedWeaponIds : base.ownedWeaponIds)
+    .map((id)=>cleanText(id, 32)).filter((id)=>COOP_GEAR_CATALOG.some((item)=>item.type === "weapon" && item.id === id)))];
+  if(!owned.includes("field_carbine")) owned.unshift("field_carbine");
+  const equipped = owned.includes(cleanText(src.equippedWeaponId, 32)) ? cleanText(src.equippedWeaponId, 32) : "field_carbine";
+  const stats = {};
+  for(const key of Object.keys(base.stats)) stats[key] = clamp(Math.floor(Number(src?.stats?.[key] || 0)), 0, 999999999);
+  const cleanMap = (value)=>Object.fromEntries(Object.entries(value && typeof value === "object" ? value : {}).slice(0, 500).map(([key,val])=>[cleanText(key, 80), Math.max(0, Number(val || 0))]).filter(([key])=>key));
+  return {
+    ...base,
+    ...src,
+    userId:userIdOf(src.userId || user),
+    name:cleanText(src.name || playerName(user), 60),
+    funds:clamp(Math.floor(Number(src.funds ?? base.funds)), 0, 999999999),
+    perkPoints:clamp(Math.floor(Number(src.perkPoints || 0)), 0, 999999),
+    seasonPoints:clamp(Math.floor(Number(src.seasonPoints || 0)), 0, 99999999),
+    unlockedStoryLevel:clamp(Math.floor(Number(src.unlockedStoryLevel || 1)), 1, 100),
+    equippedWeaponId:equipped,
+    ownedWeaponIds:owned,
+    ammo:{
+      real:clamp(Math.floor(Number(src?.ammo?.real ?? base.ammo.real)), 0, 999999),
+      rubber:clamp(Math.floor(Number(src?.ammo?.rubber ?? base.ammo.rubber)), 0, 999999),
+      tranq:clamp(Math.floor(Number(src?.ammo?.tranq ?? base.ammo.tranq)), 0, 999999),
+    },
+    supplies:{
+      medkits:clamp(Math.floor(Number(src?.supplies?.medkits ?? base.supplies.medkits)), 0, 9999),
+      armorPlates:clamp(Math.floor(Number(src?.supplies?.armorPlates ?? base.supplies.armorPlates)), 0, 9999),
+    },
+    stats,
+    badges:cleanMap(src.badges),
+    achievements:cleanMap(src.achievements),
+    government:{
+      trust:clamp(Math.floor(Number(src?.government?.trust ?? base.government.trust)), 0, 100),
+      reviews:clamp(Math.floor(Number(src?.government?.reviews || 0)), 0, 99999),
+      lethalKills:clamp(Math.floor(Number(src?.government?.lethalKills || 0)), 0, 999999),
+      captures:clamp(Math.floor(Number(src?.government?.captures || 0)), 0, 999999),
+      status:["FUNDED","WATCHLIST","SUSPENDED","GONE_ROGUE"].includes(src?.government?.status) ? src.government.status : "FUNDED",
+    },
+    rewardReceipts:cleanMap(src.rewardReceipts),
+    updatedAt:Math.max(0, Number(src.updatedAt || base.updatedAt)),
+  };
+}
+function refreshCoopAchievements(profile){
+  const at = nowMs();
+  if(profile.stats.missions >= 1) profile.achievements.firstDeployment ||= at;
+  if(profile.stats.captures >= 1) profile.achievements.firstLiveCapture ||= at;
+  if(profile.stats.rescues >= 10) profile.achievements.rescueTeam ||= at;
+  if(profile.stats.kills >= 25) profile.achievements.tigerHunter ||= at;
+  if(profile.stats.revives >= 5) profile.achievements.fieldMedic ||= at;
+  return profile;
+}
+async function readCoopProfile(user){
+  const uid = userIdOf(user);
+  if(!uid) throw new Error("Telegram player identity is missing.");
+  return normalizeCoopProfile(await getState(coopProfileKey(uid)), user);
+}
+async function writeCoopProfile(profile, user=profile?.userId){
+  const clean = refreshCoopAchievements(normalizeCoopProfile({ ...profile, updatedAt:nowMs() }, user));
+  await setState(coopProfileKey(clean.userId), clean);
+  return clean;
+}
+async function changeCoopStat(user, key, amount=1){
+  const profile = await readCoopProfile(user);
+  if(Object.prototype.hasOwnProperty.call(profile.stats, key)) profile.stats[key] = clamp(profile.stats[key] + amount, 0, 999999999);
+  return writeCoopProfile(profile, user);
+}
+
+async function applyCoopEquipmentAction(session, user, action, payload={}){
+  const uid = userIdOf(user);
+  if(action === "gear-use" && !session?.memberIds?.includes(uid)) throw new Error("Join this squad before using co-op field supplies.");
+  const profile = await readCoopProfile(user);
+  const itemId = cleanText(payload.itemId, 32);
+  const item = COOP_GEAR_CATALOG.find((row)=>row.id === itemId);
+  if(action === "gear-buy"){
+    if(!item) throw new Error("That co-op Shop item is unavailable.");
+    if(item.type === "weapon" && profile.ownedWeaponIds.includes(item.id)) throw new Error("You already own this co-op weapon.");
+    if(profile.funds < item.price) throw new Error("You do not have enough co-op money for this item.");
+    profile.funds -= item.price;
+    if(item.type === "weapon") profile.ownedWeaponIds.push(item.id);
+    else if(item.type === "ammo-real") profile.ammo.real += item.amount;
+    else if(item.type === "ammo-rubber") profile.ammo.rubber += item.amount;
+    else if(item.type === "tranq") profile.ammo.tranq += item.amount;
+    else if(item.type === "medkit") profile.supplies.medkits += item.amount;
+    else if(item.type === "armor") profile.supplies.armorPlates += item.amount;
+    return writeCoopProfile(profile, user);
+  }
+  if(action === "gear-equip"){
+    if(!item || item.type !== "weapon" || !profile.ownedWeaponIds.includes(item.id)) throw new Error("Own this co-op weapon before equipping it.");
+    profile.equippedWeaponId = item.id;
+    return writeCoopProfile(profile, user);
+  }
+  if(action === "gear-use"){
+    if(session.status !== "active" || sessionPaused(session)) throw new Error("Return to the active mission before using a field supply.");
+    const slot = session.memberIds.indexOf(uid);
+    const player = await readPlayer(session.code, uid, user, slot);
+    if(player.downed) throw new Error("Your teammate must revive you before you can use supplies.");
+    if(itemId === "field_medkit"){
+      if(profile.supplies.medkits < 1) throw new Error("You have no co-op medkits left.");
+      if(player.hp >= player.maxHp) throw new Error("Your health is already full.");
+      profile.supplies.medkits -= 1;
+      player.hp = Math.min(player.maxHp, player.hp + 50);
+    }else if(itemId === "armor_plate"){
+      if(profile.supplies.armorPlates < 1) throw new Error("You have no co-op armor plates left.");
+      if(player.armor >= 100) throw new Error("Your armor is already full.");
+      profile.supplies.armorPlates -= 1;
+      player.armor = Math.min(100, player.armor + 50);
+    }else throw new Error("That supply cannot be used in the field.");
+    await writePlayer(session.code, player);
+    return writeCoopProfile(profile, user);
+  }
+  throw new Error("Unknown co-op equipment action.");
+}
 function playerName(user){
   const username = cleanText(user?.username, 40).replace(/^@+/, "");
   const full = cleanText(`${user?.first_name || ""} ${user?.last_name || ""}`, 60);
@@ -1273,6 +1421,12 @@ function sessionKey(code){ return `live_squad_session_${cleanCode(code)}`; }
 function playerKey(code, userId){ return `live_squad_player_${cleanCode(code)}_${userIdOf(userId)}`; }
 function roleKey(value){ return ROLE_DEFS[String(value || "").toLowerCase()] ? String(value).toLowerCase() : "tracker"; }
 function distance(a, b){ return Math.hypot(Number(a?.x || 0) - Number(b?.x || 0), Number(a?.y || 0) - Number(b?.y || 0)); }
+function damagePlayer(player, amount){
+  const incoming = Math.max(0, Math.round(Number(amount || 0)));
+  const absorbed = Math.min(Number(player.armor || 0), Math.ceil(incoming * .65));
+  player.armor = clamp(Number(player.armor || 0) - absorbed, 0, 100);
+  player.hp = clamp(player.hp - Math.max(0, incoming - absorbed), 0, player.maxHp);
+}
 function expandMissionDefinition(base, targetWorld){
   const world = Object.freeze({ width:Number(targetWorld.width), height:Number(targetWorld.height) });
   const sx = world.width / WORLD.width;
@@ -1527,6 +1681,7 @@ function newPlayer(user, slot=0){
     face:0,
     hp:def.maxHp,
     maxHp:def.maxHp,
+    armor:100,
     downed:false,
     livesRemaining:STARTING_LIVES,
     knockdowns:0,
@@ -1607,6 +1762,7 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     face:clamp(src.face, -Math.PI * 4, Math.PI * 4),
     hp,
     maxHp,
+    armor:clamp(src.armor ?? 100, 0, 100),
     downed:!!src.downed || hp <= 0,
     livesRemaining:clamp(src.livesRemaining ?? STARTING_LIVES, 0, STARTING_LIVES),
     knockdowns:clamp(src.knockdowns, 0, 999),
@@ -1759,6 +1915,7 @@ async function createSession(user, opts={}){
     launchType,
   });
   await writePlayer(code, newPlayer(user, 0));
+  await writeCoopProfile(await readCoopProfile(user), user);
   return session;
 }
 
@@ -1767,6 +1924,7 @@ async function joinSession(codeValue, user){
   const uid = userIdOf(user);
   const session = await readSession(code);
   ensureLiveSession(session);
+  await writeCoopProfile(await readCoopProfile(user), user);
   if(session.status !== "waiting" && !session.memberIds.includes(uid)) throw new Error("This mission already started.");
   if(!session.memberIds.includes(uid)){
     if(session.memberIds.length >= 2) throw new Error("This squad already has two players.");
@@ -1961,6 +2119,7 @@ async function buildSnapshot(session, viewerId){
   const at = nowMs();
   const mission = missionDefinition(session);
   const derived = sessionDerived(session, players, at);
+  const viewerProfile = await readCoopProfile(viewerId);
   return {
     code:session.code,
     title:session.title,
@@ -2036,6 +2195,8 @@ async function buildSnapshot(session, viewerId){
       ? Number(session.storyMissionLevel || 0) + 1
       : 0,
     squadWiped:derived.squadWiped,
+    viewerProfile,
+    gearCatalog:COOP_GEAR_CATALOG,
     extractionReadyIds:derived.extractionReadyIds,
     players:players.map((p)=>({ ...p, online:at - p.lastSeenAt <= 15000 })),
   };
@@ -2118,7 +2279,7 @@ async function updateOwnPresence(session, user, patch={}){
     const fireZone = mission.fireZones.find((zone)=>distance(player, zone) <= Number(zone.r || 0));
     const fireCooldown = Math.max(700, Number(mission.fireHazardCooldownMs || 1400));
     if(fireZone && now - Number(player.lastFireAt || 0) >= fireCooldown){
-      player.hp = clamp(player.hp - Math.max(1, Number(mission.fireHazardDamage || 8)), 0, player.maxHp);
+      damagePlayer(player, Math.max(1, Number(mission.fireHazardDamage || 8)));
       player.lastFireAt = now;
       if(player.hp <= 0){
         player.downed = true;
@@ -2151,12 +2312,12 @@ async function updateOwnPresence(session, user, patch={}){
     const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0) - (bloodScentActive ? 120 : 0)) * (threat?.rubberSlowed ? 1.65 : 1) * livingBalance.pounceCooldownMul;
     const huntRange = ((threat?.boss ? 122 : 102) + (bloodScentActive ? 26 : 0)) * livingBalance.detectMul;
     if(threat && distance(player, threat) <= huntRange && now - player.lastHazardAt >= hazardCooldown){
-      const armor = player.role === "assault" ? 3 : (player.role === "medic" ? 1 : 0);
+      const roleArmor = player.role === "assault" ? 3 : (player.role === "medic" ? 1 : 0);
       const baseDamage = threat.boss ? 13 : (threat.type === "Armored" ? 11 : 9);
       const aggressionDamage = Math.max(0, Number(mission.hazardDamageBonus || 0))
         + tigerKills * aggressionPerKill
         + (bloodRage ? 6 : 0);
-      player.hp = clamp(player.hp - Math.max(5, Math.round((baseDamage + aggressionDamage - armor) * livingBalance.damageMul)), 0, player.maxHp);
+      damagePlayer(player, Math.max(5, Math.round((baseDamage + aggressionDamage - roleArmor) * livingBalance.damageMul)));
       player.lastHazardAt = now;
       if(player.hp <= 0){
         player.downed = true;
@@ -2245,6 +2406,7 @@ async function applyAction(session, user, action, payload={}){
         : defaultSpawn;
       p.hp = def.maxHp;
       p.maxHp = def.maxHp;
+      p.armor = 100;
       p.downed = false;
       p.livesRemaining = STARTING_LIVES;
       p.knockdowns = 0;
@@ -2293,7 +2455,10 @@ async function applyAction(session, user, action, payload={}){
     const def = ROLE_DEFS[player.role];
     const combo = clamp(payload.combo || 0, 0, 3);
     const ammoMode = session.launchType === "endless-survival" ? "real" : (player.ammoMode === "rubber" ? "rubber" : "real");
-    const rawHit = def.damage + combo * 2;
+    const profile = await readCoopProfile(user);
+    if(Number(profile.ammo[ammoMode] || 0) < 1) throw new Error(`You are out of ${ammoMode === "rubber" ? "Rubber" : "Real"} rounds. Open the co-op Shop to restock.`);
+    const weapon = COOP_GEAR_CATALOG.find((item)=>item.id === profile.equippedWeaponId && item.type === "weapon") || COOP_GEAR_CATALOG[0];
+    const rawHit = Math.max(1, Math.round((def.damage + combo * 2) * Number(weapon.damageMultiplier || 1)));
     const hit = ammoMode === "rubber"
       ? Math.max(1, Math.round(rawHit * ammoRules.damageMultiplier("rubber")))
       : Math.max(1, Math.round(rawHit * 1.18));
@@ -2319,6 +2484,9 @@ async function applyAction(session, user, action, payload={}){
     player.lastNoiseIntensity = 1.35;
     player.lastNoiseSource = "gunshot";
     player.lastSeenAt = now;
+    profile.ammo[ammoMode] -= 1;
+    if(ammoMode === "real" && appliedHit >= Number(target.hp || 0)) profile.stats.kills += 1;
+    await writeCoopProfile(profile, user);
     await writePlayer(session.code, player);
   }else if(action === "capture"){
     if(session.launchType === "endless-survival") throw new Error("Capture is disabled in Endless Survival. Eliminate every tiger to clear the wave.");
@@ -2330,6 +2498,8 @@ async function applyAction(session, user, action, payload={}){
     if(distance(player, target) > (target.boss ? 178 : 164)) throw new Error(`Move closer to ${target.name}.`);
     if(target.lethalWounded) throw new Error("Capture blocked: Real ammunition caused a lethal injury. Use Rubber ammunition on a fresh tiger.");
     if(Number(target.hp || 0) > Number(target.hpMax || 1) * 0.30) throw new Error("Weaken the tiger to 30% health before capture.");
+    const profile = await readCoopProfile(user);
+    if(profile.ammo.tranq < 1) throw new Error("You are out of Tranq Charges. Restock in the co-op Shop.");
     const captured = await setStateIfAbsent(`live_squad_capture_${session.code}_${session.startedAt}_${target.id}`, { userId:uid, capturedAt:now });
     if(!captured) throw new Error("Your teammate already captured this tiger.");
     if(!Array.isArray(player.capturedIds)) player.capturedIds = [];
@@ -2338,6 +2508,9 @@ async function applyAction(session, user, action, payload={}){
     player.captureSites[target.id] = { x:Number(target.x), y:Number(target.y), capturedAt:now };
     player.lastAttackAt = now;
     player.lastSeenAt = now;
+    profile.ammo.tranq -= 1;
+    profile.stats.captures += 1;
+    await writeCoopProfile(profile, user);
     await writePlayer(session.code, player);
   }else if(action === "rescue"){
     const id = cleanText(payload.civilianId, 24);
@@ -2358,6 +2531,7 @@ async function applyAction(session, user, action, payload={}){
     const reserved = currentOwner || await setStateIfAbsent(`live_squad_rescue_${session.code}_${session.startedAt}_${id}`, { userId:uid, rescuedAt:now });
     if(!reserved) throw new Error(`${civilian.name} is already following your teammate.`);
     if(!player.rescuedIds.includes(id)) player.rescuedIds.push(id);
+    if(!currentOwner){ await changeCoopStat(user, "rescues", 1); }
     player.lastSeenAt = now;
     await writePlayer(session.code, player);
   }else if(action === "deliver"){
@@ -2386,6 +2560,7 @@ async function applyAction(session, user, action, payload={}){
     player.lastSeenAt = now;
     await writePlayer(session.code, target);
     await writePlayer(session.code, player);
+    await changeCoopStat(user, "revives", 1);
   }
   return session;
 }
@@ -2492,14 +2667,34 @@ async function claimReward(session, user){
     civDead:0,
     exempt:operationId === "endless-survival",
   };
+  const awardedReward = sharedStory ? sharedRewards[sharedLevel] : operationReward;
+  let profile = await readCoopProfile(user);
+  const receipt = `${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}`;
+  if(firstClaim && !profile.rewardReceipts[receipt]){
+    profile.rewardReceipts[receipt] = nowMs();
+    profile.funds += Math.max(0, Number(awardedReward.cash || 0));
+    profile.perkPoints += Math.max(0, Number(awardedReward.perkPoints || 0));
+    profile.seasonPoints += Math.max(0, Number(awardedReward.seasonPoints || 0));
+    profile.stats.missions += 1;
+    profile.stats.cashEarned += Math.max(0, Number(awardedReward.cash || 0));
+    profile.badges[String(awardedReward.badge || "Live Squad Veteran")] = nowMs();
+    if(!governmentAudit.exempt){
+      profile.government.captures += governmentAudit.captures;
+      profile.government.lethalKills += governmentAudit.kills;
+      profile.government.trust = clamp(profile.government.trust + governmentAudit.captures * 2 - governmentAudit.kills * 5, 0, 100);
+      if(governmentAudit.kills > governmentAudit.captures) profile.government.reviews += 1;
+      profile.government.status = profile.government.trust < 30 ? "SUSPENDED" : (profile.government.trust < 60 ? "WATCHLIST" : "FUNDED");
+    }
+    if(sharedStory) profile.unlockedStoryLevel = Math.max(profile.unlockedStoryLevel, Math.min(100, sharedLevel + 1));
+    profile = await writeCoopProfile(profile, user);
+  }
   return {
     firstClaim,
-    receipt:`${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}`,
+    receipt,
     storyProgress:sharedStory ? { completedLevel:sharedLevel, unlockLevel:Math.min(100, sharedLevel + 1) } : null,
-    reward:sharedStory
-      ? sharedRewards[sharedLevel]
-      : operationReward,
+    reward:awardedReward,
     governmentAudit,
+    profile,
   };
 }
 
@@ -2515,6 +2710,7 @@ async function closeSession(session, user){
 
 module.exports = {
   ROLE_DEFS,
+  COOP_GEAR_CATALOG,
   TIGER_DEFS,
   SPECIAL_OPERATION_MISSIONS,
   SHARED_STORY_MISSION_1,
@@ -2527,6 +2723,9 @@ module.exports = {
   updateOwnPresence,
   applyAction,
   claimReward,
+  readCoopProfile,
+  writeCoopProfile,
+  applyCoopEquipmentAction,
   closeSession,
   ensureLiveSession,
   userIdOf,

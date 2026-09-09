@@ -115,8 +115,9 @@ async function run(){
   await recovery;
   await new Promise((resolve)=>setImmediate(resolve));
   assert(requests.length >= 1, "reopen makes a recovery request");
-  assert.equal(requests[0].action, "status", "reopen checks membership instead of trying to join again");
-  assert.equal(requests[0].code, roomCode, "reopen uses the remembered room code");
+  const statusRequest = requests.find((request)=>request.action === "status");
+  assert(statusRequest, "reopen checks membership instead of trying to join again");
+  assert.equal(statusRequest.code, roomCode, "reopen uses the remembered room code");
   assert.equal(element("squadBody").dataset.squadMode, "active", "the restored room opens directly on the active mission");
   assert(element("squadBody").innerHTML.includes('width="1200" height="760"'), "active co-op uses a camera viewport instead of a full-world canvas");
   assert(element("squadBody").innerHTML.includes("player-following camera"), "the expanded map exposes the camera-following battlefield to assistive UI");

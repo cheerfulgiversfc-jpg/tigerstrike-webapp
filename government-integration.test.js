@@ -19,6 +19,7 @@ test("government oversight is connected to solo, co-op, saves, and visible UI",(
   assert(html.includes("governmentConsequenceOverlay")&&html.includes("Resolve Detention"),"the player receives a visible detention decision instead of a fake button");
   assert(game.includes("GOV_RESPONSE")&&game.includes("Agency Hound")&&game.includes("responseUnitsDefeated"),"GONE ROGUE missions can deploy government response squads with tracked defeats");
   assert(game.includes("governmentArmoryPurchasesLocked")&&game.includes("Government Supply Blacklist"),"rogue weapon, ammo, and armor purchases are blocked with an accurate explanation");
-  assert(coop.includes("applyGovernmentMissionAudit")&&coop.includes("runId:data.receipt"),"each co-op player applies the audit once to their own save");
+  assert(!coop.includes('window.applyGovernmentMissionAudit'),"co-op never writes government results into the Solo save");
+  assert(server.includes("profile.government.trust")&&server.includes("profile.government.lethalKills"),"each co-op player's government audit stays in their own server profile");
   assert(server.includes('exempt:operationId === "endless-survival"'),"Endless Survival is explicitly exempt");
 });

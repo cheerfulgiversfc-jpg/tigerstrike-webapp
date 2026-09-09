@@ -27,6 +27,9 @@
     pending:new Set(),
     overlayBound:false,
     equipmentOpen:"",
+    profile:null,
+    gearCatalog:[],
+    walkVisual:new Map(),
     equipmentResumePending:false,
     equipmentResumeTimer:0,
     camera:{ x:0, y:0, ready:false, worldKey:"" },
@@ -222,7 +225,7 @@
     const playerDown = (snap.players || []).some((player)=>player?.downed);
     window.setTigerStrikeMusicContext?.(bossEngaged ? "boss" : ((attacking || playerDown) ? "battle" : "mission"));
   }
-  const maxUnlockedStoryLevel = () => clamp(Math.floor(Math.max(Number(window.S?.storyLastMission || 1), Number(window.S?.storyLevel || 1))), 1, 100);
+  const maxUnlockedStoryLevel = () => clamp(Math.floor(Number(state.profile?.unlockedStoryLevel || 1)), 1, 100);
   const twoPlayerStoryReady = (level=state.storyMissionLevel) => Math.max(1, Math.floor(Number(level || 1))) <= SHARED_STORY_LEVELS.length;
   const selectedStoryDescription = () => {
     const level = Math.max(1, Math.floor(Number(state.storyMissionLevel || 1)));
@@ -236,6 +239,32 @@
       <div><b>🎒 Squad Gear</b><small>${active ? "Opening gear pauses the shared mission for both players." : "Buy supplies or arrange your loadout before deployment."}</small></div>
       <button type="button" class="squadBtn" data-squad-command="shop">🛒 Shop</button>
       <button type="button" class="squadBtn" data-squad-command="inventory">🎒 Inventory</button>
+    </div>`;
+  }
+
+  function equipmentHtml(){
+    const profile = state.profile || { funds:0, ammo:{real:0,rubber:0,tranq:0}, supplies:{medkits:0,armorPlates:0}, stats:{}, ownedWeaponIds:[], equippedWeaponId:"field_carbine", badges:{}, achievements:{} };
+    const shop = state.equipmentOpen === "shop";
+    const catalog = Array.isArray(state.gearCatalog) ? state.gearCatalog : [];
+    const money = Math.max(0, Number(profile.funds || 0)).toLocaleString();
+    const itemCards = shop
+      ? catalog.filter((item)=>Number(item.price || 0) > 0).map((item)=>{
+          const owned = item.type === "weapon" && (profile.ownedWeaponIds || []).includes(item.id);
+          return `<div class="squadGearCard"><div class="squadGearIcon">${esc(item.icon || "🎒")}</div><div class="squadGearInfo"><b>${esc(item.name)}</b><small>${esc(item.description)}</small></div><div class="squadGearBuy"><strong>$${Number(item.price || 0).toLocaleString()}</strong><button type="button" class="squadBtn primary" data-squad-command="gear-buy" data-squad-item="${esc(item.id)}" ${owned ? "disabled" : ""}>${owned ? "Owned" : "Buy"}</button></div></div>`;
+        }).join("")
+      : catalog.filter((item)=>item.type === "weapon" && (profile.ownedWeaponIds || []).includes(item.id)).map((item)=>{
+          const equipped = profile.equippedWeaponId === item.id;
+          return `<div class="squadGearCard"><div class="squadGearIcon">${esc(item.icon || "🔫")}</div><div class="squadGearInfo"><b>${esc(item.name)}</b><small>${esc(item.description)}</small></div><div class="squadGearBuy"><button type="button" class="squadBtn ${equipped ? "good" : "primary"}" data-squad-command="gear-equip" data-squad-item="${esc(item.id)}" ${equipped ? "disabled" : ""}>${equipped ? "Equipped" : "Equip"}</button></div></div>`;
+        }).join("");
+    const stats = profile.stats || {};
+    return `<div class="squadPanel squadEquipmentPanel">
+      <div class="squadEquipmentHead"><div><div class="squadKicker">LIVE SQUAD PROFILE • CO-OP ONLY</div><div class="squadMissionName">${shop ? "🛒 Co-op Shop" : "🎒 Co-op Inventory"}</div><div class="squadDesc">This money, gear, ammunition, captures, kills, and achievements belong only to this Telegram player's co-op account. Solo, Arcade, and Survival saves are not used here.</div></div><button type="button" class="squadBtn good" data-squad-command="gear-back">Return to Squad</button></div>
+      <div class="squadGearSummary"><span>💵 $${money}</span><span>🔴 ${Number(profile.ammo?.real || 0)}</span><span>🟡 ${Number(profile.ammo?.rubber || 0)}</span><span>💉 ${Number(profile.ammo?.tranq || 0)}</span><span>❤️ ${Number(profile.supplies?.medkits || 0)}</span><span>🛡️ ${Number(profile.supplies?.armorPlates || 0)}</span></div>
+      <div class="squadEquipmentTabs"><button type="button" class="squadBtn ${shop ? "primary" : ""}" data-squad-command="gear-tab" data-squad-equipment="shop">Shop</button><button type="button" class="squadBtn ${!shop ? "primary" : ""}" data-squad-command="gear-tab" data-squad-equipment="inventory">Inventory</button></div>
+      ${!shop ? `<div class="squadProfileStats"><span>🏆 Missions ${Number(stats.missions||0)}</span><span>🔬 Captures ${Number(stats.captures||0)}</span><span>🐅 Kills ${Number(stats.kills||0)}</span><span>🛟 Rescues ${Number(stats.rescues||0)}</span><span>💚 Revives ${Number(stats.revives||0)}</span><span>🎖️ Achievements ${Object.keys(profile.achievements||{}).length}</span></div>` : ""}
+      <div class="squadGearList">${itemCards || `<div class="squadStatus">No co-op equipment is available.</div>`}</div>
+      ${!shop ? `<div class="squadSupplyShelf"><div><b>❤️ Field Medkits ×${Number(profile.supplies?.medkits||0)}</b><small>Use the Med button while playing.</small></div><div><b>🛡️ Armor Plates ×${Number(profile.supplies?.armorPlates||0)}</b><small>Use the Armor button while playing.</small></div></div>` : ""}
+      <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
     </div>`;
   }
 
@@ -284,8 +313,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V8.8 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V8.8 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.8 • Co-op Command");
+      ? `Tiger Strike V8.9 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V8.9 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.9 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -319,6 +348,14 @@
     }finally{ window.clearTimeout(timeout); }
     const payload = await response.json().catch(()=>null);
     if(!response.ok || !payload?.ok) throw new Error(payload?.error || "Live squad request failed.");
+    if(payload.profile && requestEpoch === state.roomEpoch){
+      const firstProfileLoad = !state.profile;
+      state.profile = payload.profile;
+      if(firstProfileLoad && !state.snapshot && state.hubSection === "home" && Number(state.storyMissionLevel || 1) <= 1){
+        state.storyMissionLevel = clamp(Math.floor(Number(state.profile.unlockedStoryLevel || 1)), 1, 100);
+      }
+    }
+    if(Array.isArray(payload.gearCatalog) && requestEpoch === state.roomEpoch) state.gearCatalog = payload.gearCatalog;
     if(payload.snapshot && requestEpoch === state.roomEpoch) applySnapshot(payload.snapshot, payload.roles);
     return payload;
   }
@@ -326,6 +363,8 @@
   function applySnapshot(snapshot, roles){
     if(!snapshot || typeof snapshot !== "object") return;
     state.snapshot = snapshot;
+    if(snapshot.viewerProfile) state.profile = snapshot.viewerProfile;
+    if(Array.isArray(snapshot.gearCatalog)) state.gearCatalog = snapshot.gearCatalog;
     state.launchType = normalizeLaunchType(snapshot.launchType);
     state.hubSection = state.launchType === "shared-story" ? "story" : "operations";
     state.storyMissionLevel = Number(snapshot.storyMissionLevel || 0);
@@ -348,6 +387,7 @@
       }
       state.local.hp = Number(mine.hp || 0);
       state.local.maxHp = Number(mine.maxHp || 100);
+      state.local.armor = Number(mine.armor || 0);
       state.local.downed = !!mine.downed;
       state.local.livesRemaining = Number(mine.livesRemaining || 0);
       state.local.respawnAt = Number(mine.respawnAt || 0);
@@ -452,6 +492,8 @@
     const ammo = $("squadAmmoModeButton");
     const rescue = $("squadRescueButton");
     const revive = $("squadReviveButton");
+    const med = $("squadMedButton");
+    const armor = $("squadArmorButton");
     const tigerNear = tiger && distance(state.local,tiger) <= (tiger.boss ? 178 : 164);
     const civNear = civilian && distance(state.local,civilian) <= 82;
     const houseNear = rescueHouse && distance(state.local,rescueHouse) <= Number(rescueHouse.r || 105);
@@ -461,12 +503,13 @@
     const searchReady = !state.snapshot?.mission?.checkpointsBeforeRescue || (state.snapshot?.checkpointCompletedIds || []).length >= checkpointRequired();
     const captureReady = tiger && !tiger.lethalWounded && Number(tiger.hp || 0) > 0 && Number(tiger.hp || 0) <= Number(tiger.hpMax || 1) * 0.30;
     const ammoMode = localSnapshotPlayer()?.ammoMode === "rubber" ? "rubber" : "real";
+    const profile = state.profile || { ammo:{real:0,rubber:0,tranq:0}, supplies:{medkits:0,armorPlates:0} };
     const unavailableLabel = state.snapshot?.paused ? "⏸️ Paused<br><small>Gear menu open</small>" : "⏳ Down<br><small>Recovery</small>";
-    if(attack){ attack.innerHTML = unavailable ? unavailableLabel : (tiger ? (tigerNear ? `${ammoMode === "rubber" ? "🟡" : "🔴"} Attack<br><small>${ammoMode === "rubber" ? "Rubber • nonlethal" : "Real • lethal"}</small>` : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"); attack.disabled = unavailable || !tiger; }
+    if(attack){ attack.innerHTML = unavailable ? unavailableLabel : (tiger ? (tigerNear ? `${ammoMode === "rubber" ? "🟡" : "🔴"} Attack<br><small>${Number(profile.ammo?.[ammoMode] || 0)} rounds</small>` : `🐅 Move Closer<br><small>${Math.round(distance(state.local,tiger))}m</small>`) : "✅ Threat Clear"); attack.disabled = unavailable || !tiger || Number(profile.ammo?.[ammoMode] || 0) < 1; }
     if(capture){
       const blocked = !!tiger?.lethalWounded;
-      capture.innerHTML = unavailable ? unavailableLabel : (blocked ? "🚫 Fresh Tiger<br><small>Real round hit</small>" : (captureReady ? `💉 Capture<br><small>${esc(tiger.type || "Tiger")}</small>` : "💉 Capture<br><small>Rubber to 30%</small>"));
-      capture.disabled = unavailable || !tiger || !captureReady;
+      capture.innerHTML = unavailable ? unavailableLabel : (blocked ? "🚫 Fresh Tiger<br><small>Real round hit</small>" : (captureReady ? `💉 Capture<br><small>${Number(profile.ammo?.tranq || 0)} charges</small>` : "💉 Capture<br><small>Rubber to 30%</small>"));
+      capture.disabled = unavailable || !tiger || !captureReady || Number(profile.ammo?.tranq || 0) < 1;
     }
     if(ammo){
       ammo.innerHTML = survival ? "🔴 Real Only<br><small>Kill-only Survival</small>" : (unavailable ? unavailableLabel : `${ammoMode === "rubber" ? "🟡 Rubber" : "🔴 Real"}<br><small>Tap to switch</small>`);
@@ -481,6 +524,8 @@
       rescue.disabled = unavailable || !searchReady || (!civNear && (!following.length || !houseNear));
     }
     if(revive){ revive.innerHTML = unavailable ? unavailableLabel : (teammate?.downed ? (reviveNear ? "💚 Revive<br><small>Teammate</small>" : `💚 Reach Teammate<br><small>${Math.round(distance(state.local,teammate))}m</small>`) : "💚 Revive<br><small>Not needed</small>"); revive.disabled = unavailable || !teammate?.downed; }
+    if(med){ med.innerHTML = `❤️ Med<br><small>${Number(profile.supplies?.medkits || 0)} left</small>`; med.disabled = unavailable || Number(profile.supplies?.medkits || 0) < 1 || Number(state.local.hp || 0) >= Number(state.local.maxHp || 1); }
+    if(armor){ armor.innerHTML = `🛡️ Armor<br><small>${Number(profile.supplies?.armorPlates || 0)} left</small>`; armor.disabled = unavailable || Number(profile.supplies?.armorPlates || 0) < 1 || Number(state.local.armor || 0) >= 100; }
   }
 
   function roleLabel(key){
@@ -557,7 +602,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V8.8 Co-op Interaction + Visual Parity</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. Co-op now uses a taller premium battlefield on phones, richer Story-style scenery and characters, and reliable Shop and Inventory controls.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V8.9 True Co-op Profiles + Control Parity</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. Every Telegram player now has separate co-op money, gear, supplies, statistics, achievements, and unlocks. The joystick and Solo-style actions stay visible while upright soldiers walk naturally.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -652,6 +697,8 @@
     const regroupSeconds = Math.max(0, Math.ceil(Number(snap?.mission?.survivalIntermissionMs || 0) / 1000));
     const statusText = snap?.status === "complete" ? "MISSION COMPLETE" : (snap?.status === "failed" ? "MISSION FAILED" : (snap?.paused ? "PAUSED" : (survival ? (regroupSeconds > 0 ? `WAVE ${survivalWave} CLEAR • ${regroupSeconds}s` : `WAVE ${survivalWave}`) : `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`)));
     const controlsDisabled = snap?.paused ? "disabled" : "";
+    const profile = state.profile || { ammo:{real:0,rubber:0,tranq:0}, supplies:{medkits:0,armorPlates:0} };
+    const ammoMode = mine?.ammoMode === "rubber" ? "rubber" : "real";
     return `<div class="squadPanel squadArenaPanel">
       ${equipmentButtonsHtml()}
       <div class="squadHud">
@@ -676,17 +723,19 @@
         ${snap.status === "complete" && (snap.capturedIds || []).length ? `<div class="squadTransportMovie"><div class="squadSmall">🚛 Wildlife Recovery • ${(snap.capturedIds || []).length} cage${(snap.capturedIds || []).length===1?"":"s"}</div><canvas id="squadTransportCanvas" width="520" height="210" aria-label="Co-op wildlife transport movie"></canvas><button type="button" class="squadBtn" data-squad-command="transport-skip">Skip Movie</button></div>` : ""}
         <div class="squadResultActions" id="squadResultActions">${completionActionsHtml()}</div>
       </div>
-      <div class="squadControls">
+      <div class="squadControls ${["complete","failed"].includes(snap.status) ? "resultOpen" : ""}">
         <div class="squadJoystick ${controlsDisabled ? "disabled" : ""}" id="squadJoystick" aria-label="Movement joystick">
           <div class="squadJoystickRing"><div class="squadJoystickKnob" id="squadJoystickKnob"></div></div><span>Move</span>
         </div>
         <div class="squadActions">
-          <button type="button" class="squadActionBtn attack" id="squadAttackButton" data-squad-command="action" data-squad-action="attack">🎯 Attack</button>
+          <button type="button" class="squadActionBtn attack" id="squadAttackButton" data-squad-command="action" data-squad-action="attack">🎯 Attack<br><small>${ammoMode === "rubber" ? "🟡" : "🔴"} ${Number(profile.ammo?.[ammoMode] || 0)}</small></button>
           ${survival
             ? `<button type="button" class="squadActionBtn" id="squadAmmoModeButton" disabled>🔴 Real Only<br><small>No capture</small></button>`
-            : `<button type="button" class="squadActionBtn" id="squadAmmoModeButton" data-squad-command="action" data-squad-action="ammo-mode">🔴 Real<br><small>Tap to switch</small></button><button type="button" class="squadActionBtn rescue" id="squadCaptureButton" data-squad-command="action" data-squad-action="capture">💉 Capture</button>`}
+            : `<button type="button" class="squadActionBtn" id="squadAmmoModeButton" data-squad-command="action" data-squad-action="ammo-mode">${ammoMode === "rubber" ? "🟡 Rubber" : "🔴 Real"}<br><small>Tap to switch</small></button><button type="button" class="squadActionBtn rescue" id="squadCaptureButton" data-squad-command="action" data-squad-action="capture">💉 Capture<br><small>${Number(profile.ammo?.tranq || 0)} charges</small></button>`}
           <button type="button" class="squadActionBtn rescue" id="squadRescueButton" data-squad-command="action" data-squad-action="rescue">🛟 Rescue</button>
           <button type="button" class="squadActionBtn revive" id="squadReviveButton" data-squad-command="action" data-squad-action="revive">💚 Revive</button>
+          <button type="button" class="squadActionBtn med" id="squadMedButton" data-squad-command="gear-use" data-squad-item="field_medkit">❤️ Med<br><small>${Number(profile.supplies?.medkits || 0)} left</small></button>
+          <button type="button" class="squadActionBtn armor" id="squadArmorButton" data-squad-command="gear-use" data-squad-item="armor_plate">🛡️ Armor<br><small>${Number(profile.supplies?.armorPlates || 0)} left</small></button>
         </div>
       </div>
       <div class="squadSmall" style="margin-top:8px">Hold and drag the joystick to move your soldier. Rescue civilians, then use Take to House inside the Rescue House circle. Each player has one automatic field life. Both players must finish inside extraction.</div>
@@ -811,7 +860,10 @@
   function render(){
     const body = $("squadBody");
     if(!body) return;
-    if(state.snapshot && ["active","complete","failed"].includes(state.snapshot.status)){
+    if(state.equipmentOpen){
+      body.dataset.squadMode = "equipment";
+      body.innerHTML = equipmentHtml();
+    }else if(state.snapshot && ["active","complete","failed"].includes(state.snapshot.status)){
       body.dataset.squadMode = state.snapshot.status;
       body.innerHTML = arenaHtml();
     }else{
@@ -940,6 +992,11 @@
       action:()=>action(actionName),
       shop:()=>openEquipment("shop"),
       inventory:()=>openEquipment("inventory"),
+      "gear-back":()=>returnFromEquipment(),
+      "gear-tab":()=>{ state.equipmentOpen = button?.dataset?.squadEquipment === "inventory" ? "inventory" : "shop"; render(); },
+      "gear-buy":()=>gearCommand("gear-buy", button?.dataset?.squadItem),
+      "gear-equip":()=>gearCommand("gear-equip", button?.dataset?.squadItem),
+      "gear-use":()=>gearCommand("gear-use", button?.dataset?.squadItem),
       claim:()=>claim(),
       "transport-skip":()=>skipSquadTransportMovie(),
       leave:()=>leave(),
@@ -1074,24 +1131,25 @@
         setMessage(`Pausing the squad while you open ${equipment === "inventory" ? "Inventory" : "the Shop"}…`);
         await api("pause", { reason:equipment });
       }
-      setEquipmentPresentation(equipment, true);
-      if(equipment === "inventory") window.openInventory?.();
-      else window.openShop?.();
-      const gearOverlay = $(equipment === "inventory" ? "invOverlay" : "shopOverlay");
-      if(gearOverlay?.style?.display !== "flex") throw new Error(`${equipment === "inventory" ? "Inventory" : "Shop"} could not open. Please try again.`);
-      // Reassert the layer handoff after WebKit finishes synthesizing the tap
-      // that opened this screen. This prevents the hidden co-op canvas from
-      // swallowing the next Shop or Inventory touch on Telegram for iPhone.
-      window.requestAnimationFrame?.(()=>setEquipmentPresentation(equipment, true));
+      render();
     }catch(error){
       state.equipmentOpen = "";
-      setEquipmentPresentation(equipment, false);
       if(state.snapshot?.status === "active"){
         state.equipmentResumePending = true;
         finishEquipmentResume();
       }
       setMessage(error.message, true);
     }
+  }
+
+  async function gearCommand(actionName, itemId){
+    try{
+      const payload = await api(actionName, { itemId:String(itemId || "") });
+      if(payload.snapshot?.viewerProfile) state.profile = payload.snapshot.viewerProfile;
+      const verb = actionName === "gear-buy" ? "Purchased" : (actionName === "gear-equip" ? "Equipped" : "Used");
+      setMessage(`${verb} co-op gear successfully.`);
+      render();
+    }catch(error){ setMessage(error.message, true); }
   }
 
   async function finishEquipmentResume(){
@@ -1112,10 +1170,9 @@
   }
 
   function returnFromEquipment(kind=""){
-    const equipment = kind === "inventory" ? "inventory" : "shop";
-    if(state.equipmentOpen !== equipment) return false;
+    const equipment = state.equipmentOpen;
+    if(!equipment) return false;
     state.equipmentOpen = "";
-    setEquipmentPresentation(equipment, false);
     render();
     if(state.snapshot?.status === "active"){
       setMessage("Returning to your squad…");
@@ -1130,6 +1187,9 @@
   function open(opts={}){
     if(!state.open){
       try{ window.prepareLiveSquadHub?.(); }catch(error){}
+    }
+    if(hasTelegramAuth() && !state.profile){
+      api("profile").then(()=>{ if(state.open && !state.snapshot) render(); }).catch(()=>{});
     }
     const overlay = $("liveSquadOverlay");
     if(!overlay) return;
@@ -1374,27 +1434,11 @@
 
   function applyReward(rewardPayload){
     const data = rewardPayload;
-    if(!data?.receipt || !data?.reward || !window.S) return false;
-    if(!window.S.liveSquadRewardReceipts || typeof window.S.liveSquadRewardReceipts !== "object") window.S.liveSquadRewardReceipts = {};
-    if(window.S.liveSquadRewardReceipts[data.receipt]) return false;
-    window.S.liveSquadRewardReceipts[data.receipt] = Date.now();
-    window.S.funds = Math.max(0, Number(window.S.funds || 0)) + Math.max(0, Number(data.reward.cash || 0));
-    window.S.perkPoints = Math.max(0, Number(window.S.perkPoints || 0)) + Math.max(0, Number(data.reward.perkPoints || 0));
-    if(!window.S.liveSquadBadges || typeof window.S.liveSquadBadges !== "object") window.S.liveSquadBadges = {};
-    window.S.liveSquadBadges[String(data.reward.badge || "Night Fang First Response")] = Date.now();
-    try{ if(typeof window.grantSeasonPassPoints === "function") window.grantSeasonPassPoints(Number(data.reward.seasonPoints || 0), missionName()); }catch(error){}
-    try{
-      if(data.storyProgress && typeof window.applySharedStoryCompletion === "function"){
-        window.applySharedStoryCompletion(data.storyProgress, data.receipt);
-      }
-    }catch(error){}
-    try{
-      if(data.governmentAudit && typeof window.applyGovernmentMissionAudit === "function"){
-        window.applyGovernmentMissionAudit({ ...data.governmentAudit, runId:data.receipt }, { trustAlreadyApplied:false, silent:false });
-      }
-    }catch(error){}
-    try{ window.saveGameNow?.(); }catch(error){}
-    return true;
+    if(!data?.receipt || !data?.reward) return false;
+    if(data.profile) state.profile = data.profile;
+    // Rewards are committed by the authenticated co-op server profile. Never
+    // copy them into window.S: that object belongs to Solo/Arcade/Survival.
+    return !!data.firstClaim;
   }
 
   async function maybeApplyReward(){
@@ -1415,6 +1459,7 @@
     state.snapshot = null;
     state.local = null;
     state.remoteDraw.clear();
+    state.walkVisual.clear();
     state.camera = { x:0, y:0, ready:false, worldKey:"" };
     state.joystick = { active:false, pointerId:null, x:0, y:0 };
     state.equipmentOpen = "";
@@ -1433,7 +1478,7 @@
     resetRoomState();
     state.hubSection = "home";
     state.launchType = "shared-story";
-    state.storyMissionLevel = clamp(Math.floor(Number(window.S?.storyLevel || 1)), 1, maxUnlockedStoryLevel());
+    state.storyMissionLevel = maxUnlockedStoryLevel();
     state.message = message;
     state.error = "";
     try{ window.prepareLiveSquadHub?.(); }catch(error){}
@@ -1721,9 +1766,9 @@
 
   function drawStoryCivilian(ctx,civ,rescued){
     const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"]};
-    const [shirt,pants]=colors[civ.look]||colors.field;ctx.save();ctx.translate(civ.x,civ.y);ctx.globalAlpha=civ.secured?.42:1;
+    const [shirt,pants]=colors[civ.look]||colors.field;const key=`civ:${civ.id}`;const prior=state.walkVisual.get(key)||{x:Number(civ.x),y:Number(civ.y),phase:0};const moved=Math.hypot(Number(civ.x)-prior.x,Number(civ.y)-prior.y);const walking=moved>.12&&!civ.secured;prior.phase=walking?prior.phase+Math.min(1,moved*.26):prior.phase*.9;prior.x=Number(civ.x);prior.y=Number(civ.y);state.walkVisual.set(key,prior);const stride=walking?Math.sin(prior.phase)*6:0;const bob=walking?Math.abs(Math.sin(prior.phase))*1.6:0;ctx.save();ctx.translate(civ.x,civ.y-bob);ctx.globalAlpha=civ.secured?.42:1;
     ctx.fillStyle="rgba(2,6,23,.32)";ctx.beginPath();ctx.ellipse(3,18,17,7,0,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle=pants;ctx.lineWidth=6;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-4,9);ctx.lineTo(-8,24);ctx.moveTo(4,9);ctx.lineTo(9,24);ctx.stroke();
+    ctx.strokeStyle=pants;ctx.lineWidth=6;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-4,9);ctx.lineTo(-8-stride*.5,24);ctx.moveTo(4,9);ctx.lineTo(9+stride*.5,24);ctx.stroke();ctx.fillStyle="#111827";ctx.beginPath();ctx.ellipse(-8-stride*.5,25,5,2.5,0,0,Math.PI*2);ctx.ellipse(9+stride*.5,25,5,2.5,0,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle=shirt;ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(0,11);ctx.moveTo(-2,0);ctx.lineTo(-13,9);ctx.moveTo(2,0);ctx.lineTo(13,8);ctx.stroke();
     ctx.fillStyle="#d7a47f";ctx.beginPath();ctx.arc(0,-14,8,0,Math.PI*2);ctx.fill();ctx.fillStyle="#3f2d22";ctx.beginPath();ctx.arc(0,-17,8,Math.PI,Math.PI*2);ctx.fill();
     ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-2.7,-14.5,1,0,Math.PI*2);ctx.arc(2.7,-14.5,1,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1;ctx.beginPath();ctx.arc(0,-11.5,2.5,.12*Math.PI,.88*Math.PI);ctx.stroke();
@@ -1733,13 +1778,13 @@
   function drawStoryTiger(ctx,tiger,now){
     if(tiger.defeated) return;const alpha=!!tiger.boss;const ghost=String(tiger.id||"")==="ghoststripe_alpha";const blood=String(tiger.id||"")==="s20_blood_tiger";const coat=blood?"#b91c1c":(ghost?"#dbeafe":"#f59e0b");const ear=blood?"#fb7185":(ghost?"#e2e8f0":"#fbbf24");const leg=blood?"#7f1d1d":(ghost?"#94a3b8":"#d97706");const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const nearest=(state.snapshot?.players||[]).slice().sort((a,b)=>distance(a,tiger)-distance(b,tiger))[0];const facing=nearest?(Number(nearest.x)>=Number(tiger.x)?1:-1):1;
     if(blood){ctx.save();ctx.fillStyle=tiger.hp<=tiger.hpMax*.35?"rgba(239,68,68,.28)":"rgba(127,29,29,.18)";ctx.shadowColor="#ef4444";ctx.shadowBlur=tiger.hp<=tiger.hpMax*.35?38:20;ctx.beginPath();ctx.arc(tiger.x,tiger.y,58,0,Math.PI*2);ctx.fill();ctx.restore();}
-    ctx.save();ctx.translate(tiger.x,tiger.y);ctx.scale(facing*s,s);
+    const gait=Math.sin(Number(now||0)/145+String(tiger.id||"").length)*5;const tigerBob=Math.abs(Math.sin(Number(now||0)/145+String(tiger.id||"").length))*1.5;ctx.save();ctx.translate(tiger.x,tiger.y-tigerBob);ctx.scale(facing*s,s);
     ctx.strokeStyle=coat;ctx.lineWidth=9;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-29,2);ctx.quadraticCurveTo(-54,-15,-64,4);ctx.stroke();
     ctx.strokeStyle="#111827";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-47,-6);ctx.lineTo(-51,2);ctx.stroke();
     ctx.fillStyle=coat;ctx.beginPath();ctx.ellipse(0,0,35,20,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(30,-7,16,0,Math.PI*2);ctx.fill();
     ctx.fillStyle=ear;ctx.beginPath();ctx.moveTo(22,-17);ctx.lineTo(23,-29);ctx.lineTo(31,-20);ctx.closePath();ctx.fill();ctx.beginPath();ctx.moveTo(34,-19);ctx.lineTo(40,-28);ctx.lineTo(43,-15);ctx.closePath();ctx.fill();
     ctx.strokeStyle="#111827";ctx.lineWidth=4;for(const x of [-20,-7,7,18]){ctx.beginPath();ctx.moveTo(x,-15);ctx.lineTo(x+8,13);ctx.stroke();}
-    ctx.strokeStyle=leg;ctx.lineWidth=7;for(const x of [-18,9]){ctx.beginPath();ctx.moveTo(x,12);ctx.lineTo(x-2,28);ctx.stroke();}
+    ctx.strokeStyle=leg;ctx.lineWidth=7;for(const [index,x] of [[0,-18],[1,-5],[2,9],[3,21]]){const swing=(index%2?gait:-gait);ctx.beginPath();ctx.moveTo(x,12);ctx.lineTo(x+swing*.55,28-Math.abs(swing)*.12);ctx.stroke();ctx.fillStyle="#111827";ctx.beginPath();ctx.ellipse(x+swing*.55,29,5,2,0,0,Math.PI*2);ctx.fill();}
     ctx.fillStyle="#fef3c7";ctx.beginPath();ctx.ellipse(42,-3,10,7,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(37,-9,2.8,0,Math.PI*2);ctx.arc(47,-4,2.4,0,Math.PI*2);ctx.fill();ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(38,-10,1,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#111827";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(48,-1);ctx.lineTo(56,-5);ctx.moveTo(48,1);ctx.lineTo(57,3);ctx.stroke();ctx.restore();
     const pct=clamp(Number(tiger.hp||0)/Math.max(1,Number(tiger.hpMax||1)),0,1);const barW=alpha?105:72;ctx.fillStyle="rgba(2,6,23,.8)";roundRect(ctx,tiger.x-barW/2,tiger.y-(alpha?65:50),barW,11,5);ctx.fill();ctx.fillStyle=blood?"#ef4444":(alpha?"#fb7185":"#f59e0b");roundRect(ctx,tiger.x-barW/2+2,tiger.y-(alpha?63:48),(barW-4)*pct,7,4);ctx.fill();ctx.fillStyle="#fff7ed";ctx.font=`900 ${alpha?14:11}px system-ui`;ctx.textAlign="center";ctx.fillText(`${tiger.awarenessIcon||"🟢"} ${alpha?String(tiger.name||"ALPHA").toUpperCase():String(tiger.type||"TIGER").toUpperCase()} • ${String(tiger.awarenessLabel||"Calm").toUpperCase()}`,tiger.x,tiger.y-(alpha?72:57));
   }
@@ -1784,12 +1829,16 @@
   function skipSquadTransportMovie(){cancelAnimationFrame(state.transportFrame);drawSquadTransportMovie(1);setMessage("Wildlife transport movie skipped. Every cage was safely loaded.");}
 
   function drawStorySoldier(ctx,p,source,draw,mine){
-    const body=mine?"#0ea5e9":"#8b5cf6";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=Number(source.face||0);ctx.save();ctx.translate(draw.x,draw.y);ctx.rotate(face);
-    ctx.fillStyle="rgba(2,6,23,.38)";ctx.beginPath();ctx.ellipse(1,19,18,7,0,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle="#1e293b";ctx.lineWidth=7;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-5,10);ctx.lineTo(-8,25);ctx.moveTo(5,10);ctx.lineTo(8,25);ctx.stroke();
-    ctx.fillStyle=body;roundRect(ctx,-11,-7,22,25,6);ctx.fill();ctx.strokeStyle=outline;ctx.lineWidth=2.5;ctx.stroke();
-    ctx.fillStyle="#334155";roundRect(ctx,-13,-4,26,15,4);ctx.fill();ctx.fillStyle="#c98f6c";ctx.beginPath();ctx.ellipse(0,-13,8,9,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-3,-14,1.2,0,Math.PI*2);ctx.arc(3,-14,1.2,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-2,-10);ctx.lineTo(2,-10);ctx.stroke();ctx.fillStyle="#6b7c65";ctx.beginPath();ctx.arc(0,-18,11,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(-11,-18,22,5);
-    ctx.strokeStyle="#dbeafe";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(8,-1);ctx.lineTo(27,0);ctx.stroke();ctx.fillStyle="#0f172a";ctx.fillRect(18,-4,15,5);ctx.restore();
+    const body="#64734b";const outline=p.downed?"#fb7185":(mine?"#67e8f9":"#c4b5fd");const face=Number(source.face||0);
+    const key=String(p.userId);const prior=state.walkVisual.get(key)||{x:Number(draw.x),y:Number(draw.y),phase:0};const moved=Math.hypot(Number(draw.x)-prior.x,Number(draw.y)-prior.y);const walking=moved>.18&&!p.downed;prior.phase=walking?prior.phase+Math.min(1.1,moved*.24):prior.phase*.88;prior.x=Number(draw.x);prior.y=Number(draw.y);state.walkVisual.set(key,prior);
+    const stride=walking?Math.sin(prior.phase)*7:0;const bob=walking?Math.abs(Math.sin(prior.phase))*2:0;const lookX=Math.cos(face)*1.5,lookY=Math.sin(face)*.7;
+    ctx.save();ctx.translate(draw.x,draw.y-bob);
+    ctx.fillStyle="rgba(2,6,23,.38)";ctx.beginPath();ctx.ellipse(1,23+bob,20,7,0,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle="#172033";ctx.lineWidth=7;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-5,9);ctx.lineTo(-8-stride*.48,25);ctx.moveTo(5,9);ctx.lineTo(8+stride*.48,25);ctx.stroke();
+    ctx.fillStyle="#111827";ctx.beginPath();ctx.ellipse(-8-stride*.48,26,6,3,0,0,Math.PI*2);ctx.ellipse(8+stride*.48,26,6,3,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=body;roundRect(ctx,-12,-8,24,27,6);ctx.fill();ctx.strokeStyle=outline;ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle="#334155";roundRect(ctx,-14,-4,28,16,4);ctx.fill();ctx.fillStyle="#c98f6c";ctx.beginPath();ctx.ellipse(0,-14,9,10,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(-3+lookX,-15+lookY,1.3,0,Math.PI*2);ctx.arc(3+lookX,-15+lookY,1.3,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#7c2d12";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-2+lookX*.4,-10);ctx.lineTo(2+lookX*.4,-10);ctx.stroke();ctx.fillStyle="#6b7c65";ctx.beginPath();ctx.arc(0,-19,12,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(-12,-19,24,5);
+    ctx.save();ctx.rotate(face);ctx.strokeStyle="#dbeafe";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(7,-1);ctx.lineTo(28,0);ctx.stroke();ctx.fillStyle="#0f172a";roundRect(ctx,17,-5,18,7,2);ctx.fill();ctx.fillStyle="#64748b";ctx.fillRect(31,-3,9,3);ctx.restore();ctx.restore();
     const recovery=respawnSeconds(p);const downLabel=p.downed?(recovery>0?` • RESPAWN ${recovery}s`:" • DOWN"):"";ctx.fillStyle=outline;ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${mine?"YOU":p.name}${downLabel}`,draw.x,draw.y-35);
     ctx.fillStyle="rgba(2,6,23,.82)";roundRect(ctx,draw.x-26,draw.y+31,52,7,4);ctx.fill();ctx.fillStyle=p.downed?"#ef4444":"#22c55e";roundRect(ctx,draw.x-25,draw.y+32,50*clamp(Number(p.hp||0)/Math.max(1,Number(p.maxHp||1)),0,1),5,3);ctx.fill();
     ctx.fillStyle="#fef3c7";ctx.font="900 11px system-ui";ctx.fillText(`❤️ ${Math.round(p.livesRemaining||0)}`,draw.x,draw.y+52);

@@ -7,6 +7,9 @@ const {
   updateOwnPresence,
   applyAction,
   claimReward,
+  readCoopProfile,
+  writeCoopProfile,
+  applyCoopEquipmentAction,
 } = require("./squad-session");
 const { getState, setState } = require("./metrics-store");
 
@@ -29,10 +32,31 @@ async function run(){
   const code = session.code;
   session = await joinSession(code, teammate);
   assert.equal(session.memberIds.length, 2, "both players join");
+  let hostProfile = await readCoopProfile(host);
+  let teammateProfile = await readCoopProfile(teammate);
+  assert.equal(hostProfile.userId, host.id, "host receives an authenticated co-op profile");
+  assert.equal(teammateProfile.userId, teammate.id, "teammate receives a different authenticated co-op profile");
+  const teammateMoneyBefore = teammateProfile.funds;
+  const teammateRealBefore = teammateProfile.ammo.real;
+  const hostRealBefore = hostProfile.ammo.real;
+  await applyCoopEquipmentAction(session, host, "gear-buy", { itemId:"real_rounds" });
+  hostProfile = await readCoopProfile(host);
+  teammateProfile = await readCoopProfile(teammate);
+  assert.equal(hostProfile.ammo.real, hostRealBefore + 40, "a co-op Shop purchase adds ammunition to the buyer");
+  assert.equal(teammateProfile.ammo.real, teammateRealBefore, "the purchase cannot alter the teammate's inventory");
+  assert.equal(teammateProfile.funds, teammateMoneyBefore, "the purchase cannot alter the teammate's wallet");
+  hostProfile.funds = 10000;
+  await writeCoopProfile(hostProfile, host);
+  await applyCoopEquipmentAction(session, host, "gear-buy", { itemId:"ranger_rifle" });
+  await applyCoopEquipmentAction(session, host, "gear-equip", { itemId:"ranger_rifle" });
+  hostProfile = await readCoopProfile(host);
+  assert.equal(hostProfile.equippedWeaponId, "ranger_rifle", "co-op Inventory equips an owned co-op weapon");
+  assert.equal((await readCoopProfile(teammate)).equippedWeaponId, "field_carbine", "equipment remains per player");
 
   session = await applyAction(session, host, "start");
   let snapshot = await buildSnapshot(session, host.id);
   assert.equal(snapshot.status, "active", "Mission 1 starts");
+  assert.equal(snapshot.viewerProfile.userId, host.id, "snapshots expose only the requesting player's co-op profile");
   assert.equal(snapshot.mission.level, 1, "real Story Mission 1 is selected");
   assert(snapshot.world.width >= 3800 && snapshot.world.height >= 2100, "co-op uses a Story-sized Mission 1 world");
   assert(snapshot.players.every((player)=>player.x < snapshot.world.width && player.y < snapshot.world.height), "both players spawn inside the expanded world");
@@ -193,11 +217,15 @@ async function run(){
   assert.deepEqual(hostReward.storyProgress, { completedLevel:1, unlockLevel:2 }, "Mission 2 unlocks for host");
   assert.deepEqual(teammateReward.storyProgress, { completedLevel:1, unlockLevel:2 }, "Mission 2 unlocks for teammate");
   assert.notEqual(hostReward.receipt, teammateReward.receipt, "players receive separate receipts");
+  assert.equal(hostReward.profile.stats.missions, 1, "claiming records one co-op mission on the host profile");
+  assert.equal(teammateReward.profile.stats.missions, 1, "claiming records one co-op mission on the teammate profile");
+  assert(hostReward.profile.funds > hostProfile.funds, "co-op cash is deposited into the co-op wallet");
 
   const hostAgain = await claimReward(await readSession(code), host);
   const teammateAgain = await claimReward(await readSession(code), teammate);
   assert.equal(hostAgain.firstClaim, false, "host cannot receive a second server reward");
   assert.equal(teammateAgain.firstClaim, false, "teammate cannot receive a second server reward");
+  assert.equal(hostAgain.profile.stats.missions, 1, "a duplicate claim cannot add a second co-op mission or payout");
 
   session = await applyAction(await readSession(code), host, "continue");
   snapshot = await buildSnapshot(session, host.id);
@@ -392,11 +420,13 @@ async function run(){
       await writePlayerPatch(levelSession.code, levelHost.id, { x:fire.x, y:fire.y, hp:100, lastFireAt:0, lastHazardAt:Date.now(), lastSeenAt:Date.now() });
       await updateOwnPresence(await readSession(levelSession.code), levelHost, {});
       const burnedPlayer = await getState(playerStateKey(levelSession.code, levelHost.id));
-      assert(burnedPlayer.hp <= 92, "Mission 37 fire deals its real eight-point hazard damage");
+      assert(burnedPlayer.hp < 100 && burnedPlayer.armor < 100, "Mission 37 fire deals real damage across armor and health");
       const fireHp = burnedPlayer.hp;
+      const fireArmor = burnedPlayer.armor;
       await updateOwnPresence(await readSession(levelSession.code), levelHost, {});
       const cooldownPlayer = await getState(playerStateKey(levelSession.code, levelHost.id));
       assert.equal(cooldownPlayer.hp, fireHp, "Mission 37 fire cooldown prevents instant repeated damage");
+      assert.equal(cooldownPlayer.armor, fireArmor, "Mission 37 cooldown also prevents repeated armor damage");
     }
     if(level === 38) assert.equal(levelSnapshot.tigers.length, 10, "Mission 38 contains the complete ten-tiger town swarm");
     if(level === 39) assert.equal(levelSnapshot.tigers.length, 12, "Mission 39 contains the massive twelve-tiger village pack");

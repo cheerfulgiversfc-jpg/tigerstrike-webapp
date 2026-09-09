@@ -26,7 +26,7 @@ function element(id){
 
 let soloLevel = 0;
 const windowObject = {
-  Telegram:{ WebApp:{ initData:"", initDataUnsafe:{ user:{ id:77 } } } },
+  Telegram:{ WebApp:{ initData:"signed-profile", initDataUnsafe:{ user:{ id:77 } } } },
   S:{ paused:true, pauseReason:"base-hq", storyLevel:72, storyLastMission:72 },
   localStorage:{ getItem(){ return null; }, setItem(){}, removeItem(){} },
   setTimeout:()=>1,
@@ -58,7 +58,7 @@ const context = {
   console,
   requestAnimationFrame:()=>1,
   cancelAnimationFrame(){},
-  fetch:async()=>({ ok:false, json:async()=>({ ok:false }) }),
+  fetch:async()=>({ ok:true, json:async()=>({ ok:true, profile:{ userId:77, unlockedStoryLevel:60 }, gearCatalog:[] }) }),
 };
 windowObject.document = documentObject;
 windowObject.navigator = context.navigator;
@@ -92,26 +92,25 @@ async function clickCommand(command, extra={}){
 
 async function run(){
   windowObject.openLiveSquadOps();
+  await new Promise((resolve)=>setImmediate(resolve));
   let html = element("squadBody").innerHTML;
   assert(html.includes("Choose how you want to play"), "Live Squad opens on the two-path home");
   assert(html.includes("Story Campaign"), "Story Campaign path is visible");
   assert(html.includes("Special Operations"), "Special Operations path is visible");
-  assert(html.includes("Solo supports all 72 unlocked missions"), "home reports the real Solo unlock count");
+  assert(html.includes("Solo supports all 60 unlocked missions"), "home reports the separate co-op profile unlock count");
   assert(html.includes("Two Player is ready for Missions 1–60"), "home reports the exact converted co-op range");
 
   await clickCommand("hub-story");
   html = element("squadBody").innerHTML;
-  assert(html.includes("Unlocked 72/100"), "Story path keeps full Solo campaign progress");
-  assert(html.includes("Story Mission 72"), "Story path defaults to the current unlocked mission");
+  assert(html.includes("Unlocked 60/100"), "Story path uses the co-op campaign profile instead of Solo progress");
+  assert(html.includes("Story Mission 60"), "Story path defaults to the current co-op mission");
   assert(html.includes("Chapter 3 • 21–30"), "Story path includes a direct Chapter 3 mission shortcut");
   assert(html.includes("Chapter 4 • 31–40"), "Story path includes a direct Chapter 4 mission shortcut");
   assert(html.includes("Chapter 5 • 41–50"), "Story path includes a direct Chapter 5 mission shortcut");
   assert(html.includes("Chapter 6 • 51–60"), "Story path includes a direct Chapter 6 mission shortcut");
-  assert(html.includes("Solo only for now"), "unconverted missions are not presented as working co-op");
-  assert(html.includes("Two Player coming later"), "unconverted Two Player button is visibly unavailable");
 
   await clickCommand("play-solo");
-  assert.equal(soloLevel, 72, "Solo choice routes the selected level into normal Story pre-deploy");
+  assert.equal(soloLevel, 60, "Solo choice routes the selected co-op campaign level into normal Story pre-deploy");
 
   windowObject.openLiveSquadOps();
   html = element("squadBody").innerHTML;
@@ -222,10 +221,6 @@ async function run(){
   await clickCommand("select-story", { squadStoryLevel:"60" });
   html = element("squadBody").innerHTML;
   assert(html.includes("Mountain Alpha Tiger"), "Mission 60 exposes its Mountain Alpha boss objective");
-
-  await clickCommand("select-story", { squadStoryLevel:"61" });
-  html = element("squadBody").innerHTML;
-  assert(html.includes("Solo only for now"), "Mission 61 remains accurately marked Solo-only");
 
   windowObject.openLiveSquadOps();
   await clickCommand("hub-operations");

@@ -5,6 +5,7 @@ const { getCommunitySnapshot } = require("../_lib/community");
 const { storageMode } = require("../_lib/metrics-store");
 const {
   ROLE_DEFS,
+  COOP_GEAR_CATALOG,
   cleanCode,
   createSession,
   joinSession,
@@ -13,6 +14,8 @@ const {
   updateOwnPresence,
   applyAction,
   claimReward,
+  applyCoopEquipmentAction,
+  readCoopProfile,
   closeSession,
   ensureLiveSession,
   userIdOf,
@@ -156,6 +159,12 @@ module.exports = async function handler(req, res){
     if(!initData) return json(res, 400, { ok:false, error:"Open Live Squad Operations inside Telegram." });
     const { user } = validateTelegramInitData(initData, botToken);
     const action = String(body?.action || "status").trim().toLowerCase();
+    if(action === "profile"){
+      return json(res, 200, { ok:true, profile:await readCoopProfile(user), gearCatalog:COOP_GEAR_CATALOG });
+    }
+    if(action === "gear-buy" || action === "gear-equip"){
+      return json(res, 200, { ok:true, profile:await applyCoopEquipmentAction(null, user, action, body || {}), gearCatalog:COOP_GEAR_CATALOG });
+    }
     let session = null;
 
     if(action === "create"){
@@ -181,6 +190,8 @@ module.exports = async function handler(req, res){
       await updateOwnPresence(session, user, body?.player || (action === "role" ? { role:body?.role } : {}));
     }else if(["start","restart","continue","pause","resume","ammo-mode","attack","capture","rescue","deliver","revive"].includes(action)){
       session = await applyAction(session, user, action, body || {});
+    }else if(["gear-buy","gear-equip","gear-use"].includes(action)){
+      await applyCoopEquipmentAction(session, user, action, body || {});
     }else if(action === "invite"){
       invitation = await prepareInvite(botToken, user, session);
     }else if(action === "claim"){

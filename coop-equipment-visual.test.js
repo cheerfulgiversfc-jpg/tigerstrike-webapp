@@ -7,23 +7,19 @@ const css = fs.readFileSync("squad-coop.css", "utf8");
 const html = fs.readFileSync("index.html", "utf8");
 const game = fs.readFileSync("game.js", "utf8");
 
-test("co-op equipment hands touch control to Shop and Inventory", () => {
-  assert(coop.includes("function setEquipmentPresentation"));
-  assert(coop.includes('liveOverlay.style.display = "none"'));
-  assert(coop.includes('liveOverlay.style.pointerEvents = "none"'));
-  assert(coop.includes('gearOverlay.style.zIndex = "10150"'));
-  assert(coop.includes('returnButton.textContent = open ? "Return to Squad" : "Resume"'));
-  assert(css.includes("body.liveSquadEquipmentOpen #liveSquadOverlay"));
-  assert(css.includes("#shopOverlay.liveSquadEquipmentOverlay"));
-  assert(css.includes("#invOverlay.liveSquadEquipmentOverlay"));
-  assert(html.includes('id="shopResumeBtn"'));
-  assert(html.includes('id="inventoryResumeBtn"'));
-  assert(game.includes('returnFromEquipment?.("shop")'));
-  assert(game.includes('returnFromEquipment?.("inventory")'));
+test("co-op equipment is rendered inside Live Squad and never opens Solo gear", () => {
+  assert(coop.includes("function equipmentHtml"));
+  assert(coop.includes("LIVE SQUAD PROFILE • CO-OP ONLY"));
+  assert(coop.includes('data-squad-command="gear-buy"'));
+  assert(coop.includes('data-squad-command="gear-equip"'));
+  const open = coop.slice(coop.indexOf("async function openEquipment"), coop.indexOf("async function finishEquipmentResume"));
+  assert(!open.includes("window.openShop"));
+  assert(!open.includes("window.openInventory"));
+  assert(css.includes(".squadEquipmentPanel"));
 });
 
 test("co-op equipment returns to and resumes the same squad", () => {
-  assert(coop.includes("setEquipmentPresentation(equipment, false)"));
+  assert(coop.includes('state.equipmentOpen = ""'));
   assert(coop.includes('await api("resume")'));
   assert(coop.includes('setMessage("Returning to your squad…")'));
   assert(coop.includes("if(!state.open||state.equipmentOpen||isTypingTarget(event.target))return"));
@@ -53,12 +49,21 @@ test("co-op characters are detailed and living tigers have no oval target ring",
   const civilian = coop.slice(coop.indexOf("function drawStoryCivilian"), coop.indexOf("function drawStoryTiger"));
   assert(civilian.includes("ctx.arc(-2.7,-14.5,1"), "civilian face is drawn");
   const soldier = coop.slice(coop.indexOf("function drawStorySoldier"), coop.indexOf("function drawPremiumDistrictTexture"));
-  assert(soldier.includes("ctx.arc(-3,-14,1.2"), "soldier face is drawn");
+  assert(soldier.includes("ctx.arc(-3+lookX,-15+lookY,1.3"), "soldier face is drawn");
+  assert(soldier.includes("const stride="), "soldier legs use a walking cycle");
+  assert(!soldier.includes("ctx.translate(draw.x,draw.y);ctx.rotate(face)"), "the full soldier can never rotate upside down");
 });
 
-test("V8.8 uses one cache key for every gameplay module", () => {
-  assert(game.includes('const TS_BUILD = "5061"'));
+test("V8.9 uses one cache key for every gameplay module", () => {
+  assert(game.includes('const TS_BUILD = "5062"'));
   for(const file of ["game.js", "squad-coop.js", "field-systems.js", "ammo-modes.js"]){
-    assert(html.includes(`${file}?v=5061-coop-parity`), `stale cache key for ${file}`);
+    assert(html.includes(`${file}?v=5062-coop-profile`), `stale cache key for ${file}`);
+  }
+});
+
+test("mobile co-op keeps the joystick and Solo-style actions on screen", () => {
+  assert(css.includes(".squadControls{position:fixed"));
+  for(const id of ["squadJoystick","squadAttackButton","squadRescueButton","squadMedButton","squadArmorButton"]){
+    assert(coop.includes(`id="${id}"`), `missing ${id}`);
   }
 });
