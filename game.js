@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5062";
+const TS_BUILD = "5063";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 60;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -19845,6 +19845,12 @@ const GAME_MUSIC_TRACKS = Object.freeze({
   }),
   mission:Object.freeze({
     key:"mission",
+    title:"No One Stands Alone",
+    src:"./assets/audio/no-one-stands-alone-mission.m4a",
+    volume:.82
+  }),
+  bossMission:Object.freeze({
+    key:"bossMission",
     title:"Testing",
     src:"./assets/audio/testing-mission.mp3",
     volume:.82
@@ -20022,7 +20028,7 @@ function updateMusicLabels(){
 }
 function updateMusicNowPlayingUi(mode="menu"){
   const trackKey = mode === "off" ? "off" : gameMusicTrackKey(mode);
-  const names={off:"Music off",menu:"Tiger Strike • Menus",mission:"Testing • Missions"};
+  const names={off:"Music off",menu:"Tiger Strike • Menus",mission:"No One Stands Alone • Missions",bossMission:"Testing • Boss Missions"};
   const title = names[trackKey] || names.menu;
   for(const id of ["musicLbl","musicLblMobile"]){
     const label=document.getElementById(id),button=label?.closest?.("button");
@@ -20251,7 +20257,7 @@ function setTigerStrikeMusicContext(context=""){
 function gameMusicMode(){
   if(!S.soundOn || S.musicOn === false) return "off";
   if(__gameMusicExternalContext){
-    const allowed = ["menu","hq","mission","danger","battle","boss","victory","defeat"];
+    const allowed = ["menu","hq","mission","danger","battle","boss","boss-mission","victory","defeat"];
     if(allowed.includes(__gameMusicExternalContext)) return __gameMusicExternalContext;
   }
   if(introOverlayVisible()) return "menu";
@@ -20268,7 +20274,26 @@ function gameMusicMode(){
   return "mission";
 }
 function gameMusicTrackKey(mode=gameMusicMode()){
-  return ["mission","danger","battle","boss"].includes(String(mode || "")) ? "mission" : "menu";
+  const musicMode = String(mode || "");
+  if(musicMode === "boss-mission") return "bossMission";
+  if(musicMode === "boss"){
+    // Arcade and Survival keep their requested mission song even when an
+    // Alpha enters combat. Story and Live Squad boss encounters use Testing.
+    if(!__gameMusicExternalContext && ["Arcade","Survival"].includes(S.mode)) return "mission";
+    return "bossMission";
+  }
+  if(["mission","danger","battle"].includes(musicMode)){
+    // Solo Story chapter finales use the previous mission song for the entire
+    // level. Live Squad sends an explicit context because its shared mission
+    // number is independent from the local Solo save.
+    if(!__gameMusicExternalContext && S.mode === "Story"){
+      const mission = storyMissionForState(S);
+      const level = Math.max(1, Math.floor(Number(mission?.number || storyMissionLevelForState(S) || 1)));
+      if(mission?.boss || level % 10 === 0) return "bossMission";
+    }
+    return "mission";
+  }
+  return "menu";
 }
 function gameMusicSpec(mode){
   const tracks = {
@@ -63413,7 +63438,7 @@ window.runAudioRollVisualAudit = function runAudioRollVisualAudit(){
     musicPaused:!!__gameMusic?.audio?.paused,
     playbackBlocked:!!__gameMusic?.playbackBlocked,
     externalMusicContext:__gameMusicExternalContext,
-    soundtrackVersion:3,
+    soundtrackVersion:4,
     musicTick:__gameMusicLastTickAt || 0,
     rollHudVisible:!!(
       document.getElementById("touchFieldRollBtn") &&

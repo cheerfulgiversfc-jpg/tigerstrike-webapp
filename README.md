@@ -425,13 +425,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Civilian owners escort followers to a visible Rescue House and use a real Take to House action before those civilians count as safe.
 - Both players may attack simultaneously, while atomic capture reservations ensure only one player records each tiger capture and cage.
 
-### V8.7 Two-Track Soundtrack
+### V9.0 Mission and Boss Soundtrack Split
 
-- Replaces every generated music arrangement with the two supplied full-length songs.
+- Uses the three supplied full-length songs through one exclusive music player.
 - `Tiger Strike.mp3` plays on the main menu, Base HQ, mode selection, and every other non-mission screen.
-- `Testing.mp3` plays throughout Solo Story, Shared Story co-op, Special Operations, Arcade, and Survival gameplay, including pauses and mission overlays.
-- Both tracks loop indefinitely and resume after Telegram's required first player interaction.
-- One HTML audio player owns the music channel, pauses before switching songs, and prevents both tracks—or any older generated score—from playing at once.
+- `No One Stands Alone.mp3` plays throughout regular Solo Story, Shared Story co-op, Special Operations, Arcade, and Survival gameplay, including pauses and mission overlays.
+- `Testing.mp3` plays for boss encounters and for the full Story chapter-finale missions 10, 20, 30, 40, 50, 60, and every later multiple of ten.
+- Every track loops indefinitely and resumes after Telegram's required first player interaction.
+- One HTML audio player owns the music channel, pauses before switching songs, and prevents tracks—or any older generated score—from playing at the same time.
 - Sound effects remain separate, and the existing Sound and Music switches continue to work.
 
 ### V8.8 Co-op Interaction + Visual Parity

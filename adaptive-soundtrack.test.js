@@ -6,23 +6,32 @@ const game = fs.readFileSync("game.js", "utf8");
 const html = fs.readFileSync("index.html", "utf8");
 const coop = fs.readFileSync("squad-coop.js", "utf8");
 const menuMusic = "assets/audio/tiger-strike-menu.mp3";
-const missionMusic = "assets/audio/testing-mission.mp3";
+const missionMusic = "assets/audio/no-one-stands-alone-mission.m4a";
+const bossMusic = "assets/audio/testing-mission.mp3";
 
-test("V8.7 ships the two supplied full-length soundtrack files", () => {
-  for(const file of [menuMusic, missionMusic]){
+test("V9.0 ships the three supplied full-length soundtrack files", () => {
+  for(const file of [menuMusic, missionMusic, bossMusic]){
     assert(fs.existsSync(file), `missing ${file}`);
     assert(fs.statSync(file).size > 1_000_000, `${file} is unexpectedly small`);
-    const header = fs.readFileSync(file).subarray(0, 3).toString("ascii");
-    assert(header === "ID3" || header.charCodeAt(0) === 0xff, `${file} is not an MP3`);
+    const header = fs.readFileSync(file).subarray(0, 12);
+    const mp3 = header.subarray(0, 3).toString("ascii") === "ID3" || header[0] === 0xff;
+    const m4a = header.subarray(4, 8).toString("ascii") === "ftyp";
+    assert(mp3 || m4a, `${file} is not supported soundtrack audio`);
   }
   assert(game.includes('title:"Tiger Strike"'));
   assert(game.includes('src:"./assets/audio/tiger-strike-menu.mp3"'));
+  assert(game.includes('title:"No One Stands Alone"'));
+  assert(game.includes('src:"./assets/audio/no-one-stands-alone-mission.m4a"'));
   assert(game.includes('title:"Testing"'));
   assert(game.includes('src:"./assets/audio/testing-mission.mp3"'));
 });
 
-test("all gameplay contexts use Testing and all non-mission contexts use Tiger Strike", () => {
-  assert(game.includes('["mission","danger","battle","boss"].includes'));
+test("regular gameplay, boss missions, and menus route to different tracks", () => {
+  assert(game.includes('["mission","danger","battle"].includes'));
+  assert(game.includes('musicMode === "boss-mission"'));
+  assert(game.includes('["Arcade","Survival"].includes(S.mode)'));
+  assert(game.includes('level % 10 === 0'));
+  assert(coop.includes('fullBossMission ? "boss-mission"'));
   for(const context of ["mission","battle","boss"]){
     assert(coop.includes(`\"${context}\"`), `missing co-op ${context} transition`);
   }
@@ -53,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V8.9 cache key forces Telegram to load the current co-op build", () => {
-  assert(game.includes('const TS_BUILD = "5062"'));
-  assert(html.includes("game.js?v=5062-coop-profile"));
-  assert(html.includes("squad-coop.js?v=5062-coop-profile"));
+test("V9.0 cache key forces Telegram to load the soundtrack split", () => {
+  assert(game.includes('const TS_BUILD = "5063"'));
+  assert(html.includes("game.js?v=5063-soundtrack-split"));
+  assert(html.includes("squad-coop.js?v=5063-soundtrack-split"));
 });

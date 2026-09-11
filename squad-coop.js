@@ -223,7 +223,9 @@
     const attacking = threats.some((tiger)=>/attack|frenzy|stalk/i.test(String(tiger.awarenessLabel || "")));
     const bossEngaged = threats.some((tiger)=>tiger.boss && Number(tiger.hp || 0) < Number(tiger.hpMax || 0));
     const playerDown = (snap.players || []).some((player)=>player?.downed);
-    window.setTigerStrikeMusicContext?.(bossEngaged ? "boss" : ((attacking || playerDown) ? "battle" : "mission"));
+    const storyLevel = Math.max(1, Math.floor(Number(snap.storyMissionLevel || state.storyMissionLevel || 1)));
+    const fullBossMission = sharedStoryActive() && storyLevel % 10 === 0;
+    window.setTigerStrikeMusicContext?.(fullBossMission ? "boss-mission" : (bossEngaged ? "boss" : ((attacking || playerDown) ? "battle" : "mission")));
   }
   const maxUnlockedStoryLevel = () => clamp(Math.floor(Number(state.profile?.unlockedStoryLevel || 1)), 1, 100);
   const twoPlayerStoryReady = (level=state.storyMissionLevel) => Math.max(1, Math.floor(Number(level || 1))) <= SHARED_STORY_LEVELS.length;
@@ -313,8 +315,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V8.9 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V8.9 • ${selectedOperation().mapLabel}` : "Tiger Strike V8.9 • Co-op Command");
+      ? `Tiger Strike V9.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V9.0 • ${selectedOperation().mapLabel}` : "Tiger Strike V9.0 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -602,7 +604,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V8.9 True Co-op Profiles + Control Parity</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. Every Telegram player now has separate co-op money, gear, supplies, statistics, achievements, and unlocks. The joystick and Solo-style actions stay visible while upright soldiers walk naturally.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V9.0 Mission &amp; Boss Soundtrack Split</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. No One Stands Alone now scores regular missions while Testing is reserved for chapter boss missions 10, 20, 30, 40, 50, and 60.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
