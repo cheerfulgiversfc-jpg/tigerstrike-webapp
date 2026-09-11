@@ -104,6 +104,16 @@
     { level:58, title:"Mountain Air Rescue", description:"Protect five rescue crew members and secure the helicopter landing zone." },
     { level:59, title:"Mountain Swarm", description:"Survive and clear twelve highly aggressive mountain tigers." },
     { level:60, title:"Mountain Alpha Tiger", description:"Defeat or capture the Mountain Alpha and finish Chapter 6 together." },
+    { level:61, title:"Deep Research Escort", description:"Escort six scientists through three deep-jungle checkpoints and clear the territorial pack." },
+    { level:62, title:"Guarded Cave Entrances", description:"Secure four cave entrances in order and clear all eight guarding tigers." },
+    { level:63, title:"Four-Tiger Research Capture", description:"Capture four named research tigers alive and clear their two guards." },
+    { level:64, title:"Cave Tunnel Escort", description:"Escort seven villagers through three tunnel checkpoints while clearing the pursuing pack." },
+    { level:65, title:"Massive Territory Pack", description:"Survive and clear thirteen coordinated tigers inside their core territory." },
+    { level:66, title:"Temporary Base Defense", description:"Protect four camp specialists and secure all three perimeter posts." },
+    { level:67, title:"Night Stalker Ambush", description:"Activate three night beacons and clear eight stealth tigers in reduced visibility." },
+    { level:68, title:"Research Equipment Defense", description:"Protect the lead scientist and secure three working equipment sites." },
+    { level:69, title:"Extreme Aggression Zone", description:"Survive fourteen enraged tigers whose damage rises further after lethal kills." },
+    { level:70, title:"Legendary Blood Tiger", description:"Defeat or capture the Legendary Blood Tiger and finish Chapter 7 together." },
   ]);
   const SPECIAL_OPERATIONS = Object.freeze([
     {
@@ -315,8 +325,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V9.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V9.0 • ${selectedOperation().mapLabel}` : "Tiger Strike V9.0 • Co-op Command");
+      ? `Tiger Strike V9.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V9.1 • ${selectedOperation().mapLabel}` : "Tiger Strike V9.1 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -604,7 +614,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V9.0 Mission &amp; Boss Soundtrack Split</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–60 can be played Solo or with a teammate. No One Stands Alone now scores regular missions while Testing is reserved for chapter boss missions 10, 20, 30, 40, 50, and 60.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V9.1 Shared Story Chapter 7</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–70 can be played Solo or with a teammate. Chapter 7 adds deep-jungle escorts, cave routes, four live captures, base defense, night stalkers, extreme aggression, and the Legendary Blood Tiger.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -643,6 +653,7 @@
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="31">Chapter 4 • 31–40</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="41">Chapter 5 • 41–50</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="51">Chapter 6 • 51–60</button>
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="61">Chapter 7 • 61–70</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.max(1, selected - 1)}" ${selected <= 1 ? "disabled" : ""}>← Previous</button>
       <span>Unlocked ${max}/100</span>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.min(max, selected + 1)}" ${selected >= max ? "disabled" : ""}>Next →</button>
@@ -1879,6 +1890,7 @@
     const abandonedVillageChapter = storyLevel >= 31 && storyLevel <= 40;
     const riverTerritoryChapter = storyLevel >= 41 && storyLevel <= 50;
     const mountainEdgeChapter = storyLevel >= 51 && storyLevel <= 60;
+    const tigerTerritoryChapter = storyLevel >= 61 && storyLevel <= 70;
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -1897,6 +1909,7 @@
     if(abandonedVillageChapter){ctx.fillStyle="rgba(148,163,184,.10)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     if(riverTerritoryChapter){ctx.fillStyle="rgba(6,182,212,.12)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     if(mountainEdgeChapter){ctx.fillStyle="rgba(148,163,184,.18)";ctx.fillRect(view.x,view.y,view.w,view.h);}
+    if(tigerTerritoryChapter){ctx.fillStyle="rgba(6,78,59,.22)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     ctx.fillStyle=endlessSurvival?"rgba(249,115,22,.13)":(denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":(alphaHunt?"rgba(147,197,253,.12)":(stormExtraction?"rgba(125,211,252,.13)":"rgba(102,164,91,.20)")))));
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
@@ -1934,7 +1947,7 @@
       for(let x=roadX-roadW*.52;x<roadX+roadW*.53;x+=24){ctx.beginPath();ctx.moveTo(x,bridgeY-8);ctx.lineTo(x,bridgeY+102);ctx.stroke();}
     }
 
-    for(let i=0;i<(endlessSurvival?105:(denAssault?150:(villageSiege?185:(convoyRescue?210:(alphaHunt?175:(stormExtraction?125:240))))));i++){
+    for(let i=0;i<(endlessSurvival?105:(denAssault?150:(villageSiege?185:(convoyRescue?210:(alphaHunt?175:(stormExtraction?125:(tigerTerritoryChapter?290:240)))))));i++){
       const x=70+((i*337+53)%Math.max(100,Math.floor(worldW-140)));
       const y=80+((i*191+97)%Math.max(100,Math.floor(worldH-180)));
       if(!visible(x,y,70)||nearRoad(x,y,88)||y>riverTop-55||inWaterZone(x,y,48)) continue;
@@ -1942,7 +1955,7 @@
       else drawStoryTree(ctx,x,y,.68+(i%5)*.075);
     }
     const roofColors=["#9a5c38","#7c4a32","#72452f","#a1623c"];
-    for(let i=0;i<(endlessSurvival?6:(denAssault?12:(villageSiege?58:(convoyRescue?18:(alphaHunt?8:(stormExtraction?14:34))))));i++){
+    for(let i=0;i<(endlessSurvival?6:(denAssault?12:(villageSiege?58:(convoyRescue?18:(alphaHunt?8:(stormExtraction?14:(tigerTerritoryChapter?12:34)))))));i++){
       const x=100+((i*421+160)%Math.max(140,Math.floor(worldW-280)));
       const y=110+((i*263+120)%Math.max(140,Math.floor(riverTop-260)));
       if(!visible(x,y,210)||nearRoad(x+80,y+52,125)||inWaterZone(x+80,y+52,110)) continue;
@@ -2125,6 +2138,26 @@
       for(const [xp,yp,r] of [[.22,.27,165],[.45,.48,230],[.69,.29,180],[.78,.66,210]]){const x=worldW*xp,y=worldH*yp;if(!visible(x,y,r+70))continue;ctx.fillStyle="rgba(127,29,29,.18)";ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=7;ctx.setLineDash([20,14]);ctx.stroke();ctx.setLineDash([]);}if(visible(worldW*.54,worldH*.50,420)){ctx.fillStyle="rgba(69,10,10,.96)";roundRect(ctx,worldW*.54-150,worldH*.50-72,300,48,12);ctx.fill();ctx.fillStyle="#ffe4e6";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("MOUNTAIN SWARM • 12 TIGERS",worldW*.54,worldH*.50-41);}
     }else if(storyLevel === 60){
       const boss=(snap.tigers||[]).find((row)=>row.id==="s60_mountain_alpha")||snap.boss||{x:worldW*.59,y:worldH*.54};if(visible(boss.x,boss.y,500)){drawHighlandPeak(ctx,boss.x,boss.y+120,1.7);ctx.fillStyle="rgba(30,41,59,.28)";ctx.beginPath();ctx.arc(boss.x,boss.y,355,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#c4b5fd";ctx.lineWidth=11;ctx.setLineDash([24,16]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(30,27,75,.96)";roundRect(ctx,boss.x-150,boss.y-96,300,52,13);ctx.fill();ctx.strokeStyle="#ddd6fe";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#f5f3ff";ctx.font="950 19px system-ui";ctx.textAlign="center";ctx.fillText("MOUNTAIN ALPHA TIGER",boss.x,boss.y-62);}
+    }else if(storyLevel === 61){
+      const route=snap.checkpoints||[];if(route.length>1){ctx.strokeStyle="#34d399";ctx.lineWidth=9;ctx.setLineDash([20,13]);ctx.beginPath();ctx.moveTo(route[0].x,route[0].y);for(const point of route.slice(1))ctx.lineTo(point.x,point.y);ctx.stroke();ctx.setLineDash([]);}for(const point of route){if(visible(point.x,point.y,180))drawResearchBeacon(ctx,point.x,point.y,1.15);}if(visible(worldW*.54,worldH*.48,390)){ctx.fillStyle="rgba(6,78,59,.96)";roundRect(ctx,worldW*.54-148,worldH*.48-68,296,48,12);ctx.fill();ctx.strokeStyle="#6ee7b7";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#d1fae5";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("DEEP RESEARCH EXPEDITION",worldW*.54,worldH*.48-37);}
+    }else if(storyLevel === 62){
+      for(const checkpoint of (snap.checkpoints||[])){if(visible(checkpoint.x,checkpoint.y,190))drawDenCave(ctx,checkpoint.x,checkpoint.y,1.28);}if(visible(worldW*.54,worldH*.49,410)){ctx.fillStyle="rgba(41,37,36,.96)";roundRect(ctx,worldW*.54-145,worldH*.49-74,290,48,12);ctx.fill();ctx.strokeStyle="#fbbf24";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#fef3c7";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("FOUR GUARDED CAVE ENTRANCES",worldW*.54,worldH*.49-43);}
+    }else if(storyLevel === 63){
+      for(const tiger of (snap.tigers||[]).filter((row)=>String(row.id||"").startsWith("s63_sample_"))){if(visible(tiger.x,tiger.y,190))drawResearchBeacon(ctx,tiger.x,tiger.y,1.08);}if(visible(worldW*.54,worldH*.48,400)){ctx.fillStyle="rgba(8,47,73,.96)";roundRect(ctx,worldW*.54-150,worldH*.48-72,300,48,12);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#cffafe";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("FOUR LIVE CAPTURES REQUIRED",worldW*.54,worldH*.48-41);}
+    }else if(storyLevel === 64){
+      const route=snap.checkpoints||[];if(route.length>1){ctx.strokeStyle="#fde68a";ctx.lineWidth=12;ctx.setLineDash([24,14]);ctx.beginPath();ctx.moveTo(route[0].x,route[0].y);for(const point of route.slice(1))ctx.lineTo(point.x,point.y);ctx.stroke();ctx.setLineDash([]);}for(const point of route){if(visible(point.x,point.y,185))drawDenCave(ctx,point.x,point.y,1.18);}if(visible(worldW*.54,worldH*.50,390)){ctx.fillStyle="rgba(69,26,3,.96)";roundRect(ctx,worldW*.54-132,worldH*.50-72,264,48,12);ctx.fill();ctx.fillStyle="#fef3c7";ctx.font="950 17px system-ui";ctx.textAlign="center";ctx.fillText("CAVE TUNNEL ESCORT",worldW*.54,worldH*.50-41);}
+    }else if(storyLevel === 65){
+      for(const [xp,yp,r] of [[.20,.27,180],[.43,.48,245],[.67,.30,195],[.79,.67,225]]){const x=worldW*xp,y=worldH*yp;if(!visible(x,y,r+70))continue;ctx.fillStyle="rgba(124,45,18,.19)";ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fb923c";ctx.lineWidth=8;ctx.setLineDash([22,15]);ctx.stroke();ctx.setLineDash([]);}if(visible(worldW*.54,worldH*.50,420)){ctx.fillStyle="rgba(67,20,7,.96)";roundRect(ctx,worldW*.54-155,worldH*.50-74,310,50,12);ctx.fill();ctx.fillStyle="#ffedd5";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("MASSIVE TERRITORY PACK • 13",worldW*.54,worldH*.50-42);}
+    }else if(storyLevel === 66){
+      for(const checkpoint of (snap.checkpoints||[])){if(visible(checkpoint.x,checkpoint.y,180)){drawLastStandFort(ctx,checkpoint.x,checkpoint.y,1.05);drawVillageBarricade(ctx,checkpoint.x,checkpoint.y+82,0);}}if(visible(worldW*.54,worldH*.49,410)){ctx.fillStyle="rgba(30,41,59,.96)";roundRect(ctx,worldW*.54-148,worldH*.49-76,296,50,12);ctx.fill();ctx.strokeStyle="#86efac";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#dcfce7";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("TEMPORARY BASE DEFENSE",worldW*.54,worldH*.49-44);}
+    }else if(storyLevel === 67){
+      for(const checkpoint of (snap.checkpoints||[])){if(!visible(checkpoint.x,checkpoint.y,180))continue;ctx.strokeStyle="#fef08a";ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(checkpoint.x,checkpoint.y+38);ctx.lineTo(checkpoint.x,checkpoint.y-58);ctx.stroke();ctx.fillStyle="#fde047";ctx.shadowColor="#fde047";ctx.shadowBlur=38;ctx.beginPath();ctx.arc(checkpoint.x,checkpoint.y-64,14,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}if(visible(worldW*.54,worldH*.48,410)){ctx.fillStyle="rgba(15,23,42,.96)";roundRect(ctx,worldW*.54-145,worldH*.48-72,290,48,12);ctx.fill();ctx.strokeStyle="#818cf8";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#e0e7ff";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("NIGHT STALKER AMBUSH",worldW*.54,worldH*.48-41);}
+    }else if(storyLevel === 68){
+      for(const checkpoint of (snap.checkpoints||[])){if(visible(checkpoint.x,checkpoint.y,190))drawResearchBeacon(ctx,checkpoint.x,checkpoint.y,1.3);}const labX=worldW*.54,labY=worldH*.49;if(visible(labX,labY,200))drawFieldClinic(ctx,labX,labY+135,1.15);if(visible(labX,labY,420)){ctx.fillStyle="rgba(8,47,73,.96)";roundRect(ctx,labX-158,labY-76,316,50,12);ctx.fill();ctx.strokeStyle="#22d3ee";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#cffafe";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("PROTECT RESEARCH EQUIPMENT",labX,labY-44);}
+    }else if(storyLevel === 69){
+      for(const [xp,yp,size] of [[.17,.22,1.1],[.34,.42,1.2],[.55,.25,1.05],[.73,.48,1.25],[.44,.70,1.12],[.84,.67,1.2]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,130))drawBloodTrailMarker(ctx,x,y,size,"EXTREME");}if(visible(worldW*.54,worldH*.50,440)){ctx.fillStyle="rgba(127,29,29,.25)";ctx.beginPath();ctx.arc(worldW*.54,worldH*.50,320,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#ef4444";ctx.lineWidth=10;ctx.setLineDash([24,14]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(69,10,10,.97)";roundRect(ctx,worldW*.54-165,worldH*.50-78,330,50,12);ctx.fill();ctx.fillStyle="#ffe4e6";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("EXTREME AGGRESSION • 14 TIGERS",worldW*.54,worldH*.50-46);}
+    }else if(storyLevel === 70){
+      const boss=(snap.tigers||[]).find((row)=>row.id==="s70_legendary_blood_tiger")||snap.boss||{x:worldW*.59,y:worldH*.54};if(visible(boss.x,boss.y,520)){for(const [dx,dy,size] of [[-260,-120,1.25],[245,-100,1.2],[-210,180,1.05],[230,190,1.12]])drawDenCave(ctx,boss.x+dx,boss.y+dy,size);ctx.fillStyle="rgba(127,29,29,.34)";ctx.beginPath();ctx.arc(boss.x,boss.y,375,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=12;ctx.setLineDash([26,15]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(69,10,10,.98)";roundRect(ctx,boss.x-175,boss.y-102,350,54,13);ctx.fill();ctx.strokeStyle="#fecdd3";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#fff1f2";ctx.font="950 19px system-ui";ctx.textAlign="center";ctx.fillText("LEGENDARY BLOOD TIGER",boss.x,boss.y-67);}
     }
 
     for(const fire of (snap.fireZones || [])){
@@ -2196,6 +2229,14 @@
     ctx.fillStyle="rgba(15,23,42,.88)";roundRect(ctx,view.x+view.w*.5-118,view.y+22,236,38,10);ctx.fill();ctx.fillStyle="#f8fafc";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`SNOWSTORM • VISIBILITY ${Math.round((1-intensity)*100)}%`,view.x+view.w*.5,view.y+47);ctx.restore();
   }
 
+  function drawNightVisibilityOverlay(ctx,snap,view){
+    const intensity=clamp(Number(snap.mission?.nightVisibilityIntensity||0),0,.9);if(intensity<=0)return;
+    const focus=state.local||localSnapshotPlayer()||{x:view.x+view.w*.5,y:view.y+view.h*.5};
+    ctx.save();const glow=ctx.createRadialGradient(Number(focus.x),Number(focus.y),90,Number(focus.x),Number(focus.y),Math.max(420,view.w*.72));
+    glow.addColorStop(0,`rgba(2,6,23,${.08+intensity*.10})`);glow.addColorStop(.45,`rgba(2,6,23,${.20+intensity*.22})`);glow.addColorStop(1,`rgba(2,6,23,${.48+intensity*.38})`);ctx.fillStyle=glow;ctx.fillRect(view.x,view.y,view.w,view.h);
+    ctx.fillStyle="rgba(15,23,42,.90)";roundRect(ctx,view.x+view.w*.5-126,view.y+22,252,38,10);ctx.fill();ctx.fillStyle="#e0e7ff";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`NIGHT AMBUSH • VISIBILITY ${Math.round((1-intensity)*100)}%`,view.x+view.w*.5,view.y+47);ctx.restore();
+  }
+
   function drawArena(){
     const canvas=$("squadArena"),snap=state.snapshot;if(!canvas||!snap)return;
     sizeArenaCanvas(canvas);
@@ -2217,6 +2258,7 @@
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
     drawSnowstormOverlay(ctx,snap,view,now);
+    drawNightVisibilityOverlay(ctx,snap,view);
     ctx.restore();
     const grade=ctx.createLinearGradient(0,0,0,h);grade.addColorStop(0,"rgba(186,230,253,.055)");grade.addColorStop(.58,"rgba(255,255,255,0)");grade.addColorStop(1,"rgba(2,6,23,.18)");ctx.fillStyle=grade;ctx.fillRect(0,0,w,h);
     const vignette=ctx.createRadialGradient(w*.5,h*.46,Math.min(w,h)*.22,w*.5,h*.46,Math.max(w,h)*.72);vignette.addColorStop(.62,"rgba(2,6,23,0)");vignette.addColorStop(1,"rgba(2,6,23,.28)");ctx.fillStyle=vignette;ctx.fillRect(0,0,w,h);

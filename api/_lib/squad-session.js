@@ -43,6 +43,30 @@ const SHARED_STORY_MISSION_1 = Object.freeze({
     Object.freeze({ ...TIGER_DEFS[1], name:"Forest Scout", type:"Scout", hpMax:112, baseX:390, baseY:560, rangeX:74, rangeY:54 }),
   ]),
 });
+const CHAPTER7_TIGER_POSITIONS = Object.freeze([
+  Object.freeze([175,300]), Object.freeze([305,500]), Object.freeze([435,285]), Object.freeze([555,515]),
+  Object.freeze([680,305]), Object.freeze([805,520]), Object.freeze([925,315]), Object.freeze([250,705]),
+  Object.freeze([475,720]), Object.freeze([680,690]), Object.freeze([835,725]), Object.freeze([965,700]),
+  Object.freeze([585,390]), Object.freeze([895,515]), Object.freeze([365,635]), Object.freeze([735,445]),
+]);
+function chapter7TigerPack(prefix, label, count, options={}){
+  const types = Array.isArray(options.types) ? options.types : [];
+  const total = clamp(Math.floor(Number(count || 1)), 1, CHAPTER7_TIGER_POSITIONS.length);
+  return Object.freeze(Array.from({ length:total }, (_, index)=>{
+    const point = CHAPTER7_TIGER_POSITIONS[index];
+    const type = types[index] || (index < Math.ceil(total * .25) ? "Scout" : (index < Math.ceil(total * .5) ? "Stalker" : (index < Math.ceil(total * .82) ? "Standard" : "Armored")));
+    const hpBonus = type === "Armored" ? 155 : (type === "Stalker" ? 70 : (type === "Standard" ? 95 : 0));
+    const speedBonus = type === "Scout" ? .14 : (type === "Stalker" ? .06 : (type === "Armored" ? -.12 : 0));
+    return Object.freeze({
+      id:`${prefix}_${index + 1}`,
+      name:`${label} ${index + 1}`,
+      type,
+      hpMax:Math.max(250, Math.floor(Number(options.hpBase || 430) + hpBonus + index * Number(options.hpStep || 9))),
+      baseX:point[0], baseY:point[1], rangeX:148 + (index % 4) * 8, rangeY:108 + (index % 3) * 8,
+      speed:Math.max(.48, Number(options.speed || .88) + speedBonus + (index % 3) * .01), phase:.25 + index * .57,
+    });
+  }));
+}
 const SHARED_STORY_MISSIONS = Object.freeze({
   1:SHARED_STORY_MISSION_1,
   2:Object.freeze({
@@ -1113,6 +1137,144 @@ const SHARED_STORY_MISSIONS = Object.freeze({
       Object.freeze({ id:"s60_mountain_alpha", name:"Mountain Alpha Tiger", type:"Alpha", hpMax:3200, baseX:650, baseY:545, rangeX:245, rangeY:185, speed:.58, phase:1.4, boss:true, bloodRage:true }),
     ]),
   }),
+  61:Object.freeze({
+    level:61, chapter:7, chapterName:"Tiger Territory", title:"Story Mission 61",
+    objective:"Escort six scientists through three deep-jungle research checkpoints, clear the territorial tigers, and extract together.", rescueRequired:6,
+    dangerNote:"The research team cannot move deeper until both soldiers secure each marked jungle checkpoint.", aggressionLabel:"Deep Research Escort", hazardDamageBonus:4,
+    timeLimitMs:15 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s61_canopy_gate", x:330, y:410, r:125, label:"Canopy Research Gate" }),
+      Object.freeze({ id:"s61_field_lab", x:620, y:520, r:125, label:"Deep Field Laboratory" }),
+      Object.freeze({ id:"s61_core_station", x:900, y:680, r:130, label:"Jungle Core Station" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s61_lead_scientist", x:205, y:245, name:"Lead Wildlife Scientist", look:"medic", vip:true }),
+      Object.freeze({ id:"s61_tracker", x:335, y:390, name:"Research Tracker", look:"scout" }),
+      Object.freeze({ id:"s61_botanist", x:465, y:255, name:"Field Botanist", look:"field" }),
+      Object.freeze({ id:"s61_technician", x:600, y:475, name:"Lab Technician", look:"driver" }),
+      Object.freeze({ id:"s61_vet", x:755, y:295, name:"Wildlife Veterinarian", look:"medic" }),
+      Object.freeze({ id:"s61_guide", x:910, y:670, name:"Territory Guide", look:"scout" }),
+    ]),
+    tigers:chapter7TigerPack("s61_research", "Research Route Tiger", 5, { hpBase:430 }),
+  }),
+  62:Object.freeze({
+    level:62, chapter:7, chapterName:"Tiger Territory", title:"Story Mission 62",
+    objective:"Secure all four cave entrances, clear the eight guarding tigers, and reach extraction together.", rescueRequired:0,
+    dangerNote:"Both soldiers must inspect the cave entrances in order. Stalker tigers use the entrances to launch close ambushes.", aggressionLabel:"Guarded Cave Entrances", hazardDamageBonus:4, hazardCooldownMs:800,
+    timeLimitMs:15 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s62_west_cave", x:260, y:365, r:125, label:"West Cave Entrance" }),
+      Object.freeze({ id:"s62_north_cave", x:500, y:265, r:125, label:"North Cave Entrance" }),
+      Object.freeze({ id:"s62_core_cave", x:720, y:520, r:125, label:"Core Cave Entrance" }),
+      Object.freeze({ id:"s62_east_cave", x:930, y:690, r:130, label:"East Cave Entrance" }),
+    ]),
+    civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s62_cave_guard", "Cave Guard", 8, { hpBase:445, types:["Scout","Stalker","Stalker","Stalker","Standard","Standard","Armored","Armored"] }),
+  }),
+  63:Object.freeze({
+    level:63, chapter:7, chapterName:"Tiger Territory", title:"Story Mission 63",
+    objective:"Capture all four research tigers alive with Rubber ammunition, clear their two guards, and extract together.", rescueRequired:0, captureRequired:4,
+    captureTargetIds:Object.freeze(["s63_sample_ember","s63_sample_vine","s63_sample_mist","s63_sample_dusk"]),
+    dangerNote:"All four marked research tigers must remain alive. A Real-ammo hit permanently disqualifies that tiger from capture.", aggressionLabel:"Four-Tiger Research Capture", hazardDamageBonus:3,
+    timeLimitMs:16 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s63_sample_ember", name:"Embercoat Research Tiger", type:"Scout", hpMax:590, baseX:265, baseY:390, rangeX:165, rangeY:125, speed:1.00, phase:.4 }),
+      Object.freeze({ id:"s63_sample_vine", name:"Vinestripe Research Tiger", type:"Stalker", hpMax:690, baseX:500, baseY:285, rangeX:185, rangeY:140, speed:.93, phase:1.7 }),
+      Object.freeze({ id:"s63_sample_mist", name:"Mistpaw Research Tiger", type:"Standard", hpMax:735, baseX:710, baseY:535, rangeX:175, rangeY:135, speed:.88, phase:3.0 }),
+      Object.freeze({ id:"s63_sample_dusk", name:"Duskstripe Research Tiger", type:"Stalker", hpMax:710, baseX:900, baseY:655, rangeX:185, rangeY:140, speed:.94, phase:4.3 }),
+      Object.freeze({ id:"s63_guard_1", name:"Research Pack Guard One", type:"Standard", hpMax:610, baseX:620, baseY:350, rangeX:165, rangeY:125, speed:.88, phase:5.1 }),
+      Object.freeze({ id:"s63_guard_2", name:"Research Pack Guard Two", type:"Armored", hpMax:780, baseX:950, baseY:720, rangeX:145, rangeY:118, speed:.74, phase:6.0 }),
+    ]),
+  }),
+  64:Object.freeze({
+    level:64, chapter:7, chapterName:"Tiger Territory", title:"Story Mission 64",
+    objective:"Escort seven villagers through the three-stage cave tunnel, clear the pursuing tigers, and extract together.", rescueRequired:7,
+    dangerNote:"The tunnel route is narrow. Both soldiers must reach each checkpoint before the villagers can continue.", aggressionLabel:"Cave Tunnel Escort", hazardDamageBonus:4,
+    timeLimitMs:16 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s64_tunnel_entry", x:335, y:410, r:125, label:"Cave Tunnel Entry" }),
+      Object.freeze({ id:"s64_tunnel_chamber", x:625, y:525, r:125, label:"Central Tunnel Chamber" }),
+      Object.freeze({ id:"s64_tunnel_exit", x:900, y:685, r:130, label:"Cave Tunnel Exit" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s64_elder", x:205, y:245, name:"Tunnel Elder", look:"field", vip:true }),
+      Object.freeze({ id:"s64_parent", x:325, y:390, name:"Village Parent", look:"medic" }),
+      Object.freeze({ id:"s64_guide", x:455, y:255, name:"Cave Guide", look:"scout" }),
+      Object.freeze({ id:"s64_worker", x:580, y:465, name:"Tunnel Worker", look:"driver" }),
+      Object.freeze({ id:"s64_healer", x:700, y:290, name:"Village Healer", look:"medic" }),
+      Object.freeze({ id:"s64_farmer", x:820, y:520, name:"Jungle Farmer", look:"field" }),
+      Object.freeze({ id:"s64_scout", x:925, y:675, name:"Tunnel Exit Scout", look:"scout" }),
+    ]),
+    tigers:chapter7TigerPack("s64_tunnel", "Tunnel Pursuer", 6, { hpBase:455, types:["Scout","Stalker","Stalker","Standard","Standard","Armored"] }),
+  }),
+  65:Object.freeze({
+    level:65, chapter:7, chapterName:"Tiger Territory", title:"Story Mission 65",
+    objective:"Survive the massive thirteen-tiger territory pack, clear every threat, and extract together.", rescueRequired:0,
+    dangerNote:"Thirteen coordinated tigers attack from the canopy and caves with 7 extra damage and a faster attack cycle.", aggressionLabel:"Massive Territory Pack", hazardDamageBonus:7, hazardCooldownMs:710,
+    timeLimitMs:17 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s65_massive_pack", "Territory Pack Tiger", 13, { hpBase:445, speed:.91 }),
+  }),
+  66:Object.freeze({
+    level:66, chapter:7, chapterName:"Tiger Territory", title:"Story Mission 66",
+    objective:"Defend the temporary base, protect four camp specialists, secure three perimeter posts, and clear the attack.", rescueRequired:4,
+    dangerNote:"The base is surrounded. Rescue the four specialists and have both soldiers secure every perimeter post.", aggressionLabel:"Temporary Base Defense", hazardDamageBonus:5, hazardCooldownMs:775,
+    timeLimitMs:16 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s66_west_post", x:330, y:410, r:130, label:"West Base Perimeter" }),
+      Object.freeze({ id:"s66_command_post", x:620, y:520, r:130, label:"Base Command Post" }),
+      Object.freeze({ id:"s66_east_post", x:905, y:680, r:130, label:"East Base Perimeter" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s66_commander", x:350, y:405, name:"Base Commander", look:"scout", vip:true }),
+      Object.freeze({ id:"s66_medic", x:555, y:300, name:"Camp Medic", look:"medic" }),
+      Object.freeze({ id:"s66_engineer", x:700, y:520, name:"Field Engineer", look:"driver" }),
+      Object.freeze({ id:"s66_researcher", x:900, y:665, name:"Camp Researcher", look:"field" }),
+    ]),
+    tigers:chapter7TigerPack("s66_base_attack", "Base Attack Tiger", 10, { hpBase:455, speed:.90 }),
+  }),
+  67:Object.freeze({
+    level:67, chapter:7, chapterName:"Tiger Territory", title:"Story Mission 67",
+    objective:"Survive the night ambush, activate three signal beacons, clear eight stealth tigers, and extract together.", rescueRequired:0,
+    dangerNote:"Visibility is severely reduced. Activate the beacons in order so both soldiers can reveal the extraction route.", aggressionLabel:"Night Stalker Ambush", hazardDamageBonus:6, hazardCooldownMs:720, nightVisibilityIntensity:.78,
+    timeLimitMs:16 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s67_beacon_1", x:325, y:405, r:125, label:"West Night Beacon" }),
+      Object.freeze({ id:"s67_beacon_2", x:620, y:520, r:125, label:"Core Night Beacon" }),
+      Object.freeze({ id:"s67_beacon_3", x:910, y:685, r:130, label:"Extraction Night Beacon" }),
+    ]),
+    civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s67_night_stalker", "Night Stalker", 8, { hpBase:475, speed:.96, types:Array(8).fill("Stalker") }),
+  }),
+  68:Object.freeze({
+    level:68, chapter:7, chapterName:"Tiger Territory", title:"Story Mission 68",
+    objective:"Protect the lead scientist, secure all three research-equipment sites, clear the tiger attack, and extract.", rescueRequired:1,
+    dangerNote:"Both soldiers must activate each equipment site before the research data is safe. Keep the lead scientist alive.", aggressionLabel:"Research Equipment Defense", hazardDamageBonus:5,
+    timeLimitMs:16 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s68_sensor_array", x:335, y:405, r:125, label:"Wildlife Sensor Array" }),
+      Object.freeze({ id:"s68_sample_lab", x:625, y:520, r:125, label:"Mobile Sample Laboratory" }),
+      Object.freeze({ id:"s68_radio_tower", x:905, y:680, r:130, label:"Research Radio Tower" }),
+    ]),
+    civilians:Object.freeze([Object.freeze({ id:"s68_lead_scientist", x:605, y:485, name:"Lead Equipment Scientist", look:"medic", vip:true })]),
+    tigers:chapter7TigerPack("s68_equipment", "Equipment Site Tiger", 9, { hpBase:465, speed:.91 }),
+  }),
+  69:Object.freeze({
+    level:69, chapter:7, chapterName:"Tiger Territory", title:"Story Mission 69",
+    objective:"Survive the extreme-aggression zone, clear all fourteen tigers, and reach extraction together.", rescueRequired:0,
+    dangerNote:"Fourteen enraged tigers hunt continuously. Real-ammo kills raise the surviving pack's damage even further.", aggressionLabel:"Extreme Aggression Zone", hazardDamageBonus:8, aggressionPerKill:2, hazardCooldownMs:660,
+    timeLimitMs:18 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s69_extreme", "Enraged Territory Tiger", 14, { hpBase:470, speed:.95 }),
+  }),
+  70:Object.freeze({
+    level:70, chapter:7, chapterName:"Tiger Territory", title:"Story Mission 70",
+    objective:"Defeat or capture the Legendary Blood Tiger, then reach extraction together to finish Chapter 7.", rescueRequired:0,
+    dangerNote:"The Legendary Blood Tiger hits with extreme force and enters Ancient Blood Rage below 35% health.", aggressionLabel:"Legendary Blood Tiger Boss", hazardDamageBonus:8, hazardCooldownMs:700,
+    timeLimitMs:18 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s70_legendary_blood_tiger", name:"Legendary Blood Tiger", type:"Alpha", hpMax:3900, baseX:650, baseY:545, rangeX:260, rangeY:195, speed:.62, phase:1.4, boss:true, bloodRage:true }),
+    ]),
+  }),
 });
 const ROLE_DEFS = Object.freeze({
   tracker:Object.freeze({ key:"tracker", label:"Tracker", damage:28, maxHp:105, speed:1.08 }),
@@ -1182,6 +1344,16 @@ const SHARED_STORY_WORLD_SIZES = Object.freeze({
   58:Object.freeze({ width:4800, height:2800 }),
   59:Object.freeze({ width:4800, height:2800 }),
   60:Object.freeze({ width:4800, height:2800 }),
+  61:Object.freeze({ width:4800, height:2800 }),
+  62:Object.freeze({ width:4800, height:2800 }),
+  63:Object.freeze({ width:4800, height:2800 }),
+  64:Object.freeze({ width:4800, height:2800 }),
+  65:Object.freeze({ width:4800, height:2800 }),
+  66:Object.freeze({ width:4800, height:2800 }),
+  67:Object.freeze({ width:4800, height:2800 }),
+  68:Object.freeze({ width:4800, height:2800 }),
+  69:Object.freeze({ width:4800, height:2800 }),
+  70:Object.freeze({ width:4800, height:2800 }),
 });
 const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
 const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
@@ -2167,6 +2339,7 @@ async function buildSnapshot(session, viewerId){
       checkpointsBeforeRescue:!!mission.checkpointsBeforeRescue,
       waterSlowMultiplier:clamp(Number(mission.waterSlowMultiplier || 1), .35, 1),
       snowstormIntensity:clamp(Number(mission.snowstormIntensity || 0), 0, .9),
+      nightVisibilityIntensity:clamp(Number(mission.nightVisibilityIntensity || 0), 0, .9),
       checkpointCompletedIds:derived.checkpointCompletedIds,
       timeLimitMs:missionLimitMs(session),
       survival:session.launchType === "endless-survival",
@@ -2575,7 +2748,7 @@ async function claimReward(session, user){
   player.rewardClaimed = true;
   await writePlayer(session.code, player);
   const sharedStory = session.launchType === "shared-story";
-  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 60) : 0;
+  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 70) : 0;
   const sharedRewards = {
     1:{ cash:1800, perkPoints:1, seasonPoints:6, badge:"Shared Story First Patrol" },
     2:{ cash:2050, perkPoints:1, seasonPoints:7, badge:"Farm Road Guardians" },
@@ -2637,6 +2810,16 @@ async function claimReward(session, user){
     58:{ cash:43500, perkPoints:11, seasonPoints:112, badge:"Mountain Air Rescue" },
     59:{ cash:44900, perkPoints:11, seasonPoints:116, badge:"Mountain Swarm Survivors" },
     60:{ cash:46500, perkPoints:12, seasonPoints:122, badge:"Mountain Alpha Breakers" },
+    61:{ cash:48200, perkPoints:12, seasonPoints:125, badge:"Deep Research Guides" },
+    62:{ cash:49900, perkPoints:12, seasonPoints:128, badge:"Cave Entrance Breakers" },
+    63:{ cash:51800, perkPoints:12, seasonPoints:132, badge:"Four-Tiger Research Team" },
+    64:{ cash:53700, perkPoints:13, seasonPoints:135, badge:"Cave Tunnel Lifeline" },
+    65:{ cash:55800, perkPoints:13, seasonPoints:138, badge:"Territory Pack Survivors" },
+    66:{ cash:58000, perkPoints:13, seasonPoints:142, badge:"Temporary Base Defenders" },
+    67:{ cash:60300, perkPoints:13, seasonPoints:146, badge:"Night Stalker Breakers" },
+    68:{ cash:62700, perkPoints:13, seasonPoints:150, badge:"Research Equipment Guard" },
+    69:{ cash:65300, perkPoints:14, seasonPoints:156, badge:"Extreme Aggression Survivors" },
+    70:{ cash:69000, perkPoints:15, seasonPoints:165, badge:"Legendary Blood Tiger Breakers" },
   };
   const operationRewards = {
     "live-squad":{ cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },

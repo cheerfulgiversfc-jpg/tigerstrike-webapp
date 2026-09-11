@@ -268,7 +268,7 @@ async function run(){
   raceSnapshot = await buildSnapshot(await readSession(raceSession.code), raceHost.id);
   assert.equal(raceSnapshot.capturedIds.filter((id)=>id === raceTiger.id).length, 1, "simultaneous capture taps create one cage and one capture record");
 
-  for(let level=2; level<=60; level++){
+  for(let level=2; level<=70; level++){
     const levelHost = { id:910100 + (level * 10), first_name:`Host ${level}` };
     const levelMate = { id:910101 + (level * 10), first_name:`Mate ${level}` };
     let levelSession = await createSession(levelHost, { launchType:"shared-story", storyMissionLevel:level });
@@ -525,6 +525,48 @@ async function run(){
       assert.equal(levelSnapshot.boss.hpMax, 3200, "Mission 60 keeps the Mountain Alpha boss health");
       assert.equal(levelSnapshot.boss.bloodRage, true, "Mission 60 carries the low-health Summit Rage phase");
     }
+    if(level === 61){
+      assert.equal(levelSnapshot.mission.chapterName, "Tiger Territory", "Mission 61 starts the real Chapter 7 campaign");
+      assert.equal(levelSnapshot.mission.rescueRequired, 6, "Mission 61 escorts all six scientists");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 61 has three shared research checkpoints");
+    }
+    if(level === 62){
+      assert.equal(levelSnapshot.tigers.length, 8, "Mission 62 has eight cave-entrance guards");
+      assert.equal(levelSnapshot.checkpoints.length, 4, "Mission 62 secures four cave entrances in order");
+    }
+    if(level === 63){
+      assert.equal(levelSnapshot.mission.captureRequired, 4, "Mission 63 requires four live research captures");
+      assert.deepEqual(levelSnapshot.mission.captureTargetIds, ["s63_sample_ember","s63_sample_vine","s63_sample_mist","s63_sample_dusk"], "Mission 63 requires its four named research tigers");
+      assert.equal(levelSnapshot.mission.captureTargetNames.length, 4, "Mission 63 names every required research tiger");
+    }
+    if(level === 64){
+      assert.equal(levelSnapshot.mission.rescueRequired, 7, "Mission 64 escorts all seven tunnel villagers");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 64 has a real three-stage cave route");
+    }
+    if(level === 65) assert.equal(levelSnapshot.tigers.length, 13, "Mission 65 contains the complete thirteen-tiger territory pack");
+    if(level === 66){
+      assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 66 protects all four camp specialists");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 66 secures three temporary-base perimeter posts");
+    }
+    if(level === 67){
+      assert.equal(levelSnapshot.tigers.length, 8, "Mission 67 contains eight stealth tigers");
+      assert(levelSnapshot.tigers.every((tiger)=>tiger.type === "Stalker"), "Mission 67 uses an all-Stalker night pack");
+      assert.equal(levelSnapshot.mission.nightVisibilityIntensity, .78, "Mission 67 exposes its reduced-visibility night layer");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 67 uses three working night beacons");
+    }
+    if(level === 68){
+      assert.equal(levelSnapshot.mission.rescueRequired, 1, "Mission 68 protects the lead equipment scientist");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 68 has three working research-equipment sites");
+    }
+    if(level === 69){
+      assert.equal(levelSnapshot.tigers.length, 14, "Mission 69 contains the full fourteen-tiger extreme-aggression pack");
+      assert.equal(levelSnapshot.mission.aggressionBonus, 8, "Mission 69 starts with extreme aggression damage");
+    }
+    if(level === 70){
+      assert.equal(levelSnapshot.boss.name, "Legendary Blood Tiger", "Mission 70 uses the real Legendary Blood Tiger boss");
+      assert.equal(levelSnapshot.boss.hpMax, 3900, "Mission 70 keeps the Legendary Blood Tiger boss health");
+      assert.equal(levelSnapshot.boss.bloodRage, true, "Mission 70 carries the low-health Ancient Blood Rage phase");
+    }
     if(level === 12){
       const firstTiger = levelSnapshot.tigers[0];
       await writePlayerPatch(levelSession.code, levelHost.id, {
@@ -612,13 +654,18 @@ async function run(){
       assert.equal(levelHostReward.reward.badge, "Mountain Alpha Breakers", "Mission 60 awards the Mountain Alpha badge");
       assert.deepEqual(levelHostReward.storyProgress, { completedLevel:60, unlockLevel:61 }, "Mission 60 unlocks Mission 61");
     }
+    if(level === 70){
+      assert.equal(levelHostReward.reward.cash, 69000, "Mission 70 pays the Legendary Blood Tiger cash reward");
+      assert.equal(levelHostReward.reward.badge, "Legendary Blood Tiger Breakers", "Mission 70 awards the Legendary Blood Tiger badge");
+      assert.deepEqual(levelHostReward.storyProgress, { completedLevel:70, unlockLevel:71 }, "Mission 70 unlocks Mission 71");
+    }
     const levelHostAgain = await claimReward(await readSession(levelSession.code), levelHost);
     assert.equal(levelHostAgain.firstClaim, false, `Story Mission ${level} does not pay the host twice`);
   }
 
-  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:61 });
-  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 61 cannot create a fake shared Story room");
-  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 61");
+  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:71 });
+  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 71 cannot create a fake shared Story room");
+  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 71");
 
   const routeHost = { id:910811, first_name:"Route Host" };
   const routeMate = { id:910812, first_name:"Route Mate" };
@@ -1068,7 +1115,7 @@ async function run(){
   const survivalHostAgain = await claimReward(await readSession(survivalSession.code), survivalHost);
   assert.equal(survivalHostAgain.firstClaim, false, "Endless Survival cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-60 and seven Special Operations, Chapter 6 ridge and canyon routes, snowstorm visibility, helicopter rescue, named mountain capture, Mountain Alpha, reconnect, separate unlocks, and reward dedupe");
+  console.log("PASS: Story Missions 1-70 and seven Special Operations, Chapter 7 cave routes, research captures, base defense, night visibility, Legendary Blood Tiger, reconnect, separate unlocks, and reward dedupe");
 }
 
 run().catch((error)=>{

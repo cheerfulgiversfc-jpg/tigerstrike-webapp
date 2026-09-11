@@ -388,7 +388,7 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 
 ### V8.4 Shared Story Chapter 6
 
-- Story Campaign now offers a real Solo or Two Players choice for Missions 1–60. Solo remains available for every unlocked mission; Missions 61–100 are accurately labeled Solo-only until their co-op versions are built.
+- Story Campaign now offers a real Solo or Two Players choice for Missions 1–70. Solo remains available for every unlocked mission; Missions 71–100 are accurately labeled Solo-only until their co-op versions are built.
 - Missions 51–60 follow the existing `Mountain Edge` campaign: Mountain Village Escort, Cliffside Attack, Silverpeak Capture, Climber Rescue, Mountain Road Pack, Canyon Caravan, Whiteout Patrol, Mountain Air Rescue, Mountain Swarm, and the Mountain Alpha boss.
 - Missions 51, 54, 55, and 56 use ordered shared ridge, descent, road, and canyon checkpoints that both soldiers must secure.
 - Mission 53 requires the named Silverpeak Mountain Tiger to be captured alive. Real-ammo hits still permanently disqualify it from capture during that run.
@@ -396,6 +396,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Mission 58 protects a five-person rescue crew and shows two rescue helicopters at the mountain landing zone. Both soldiers must board the helicopter extraction after the LZ is secure.
 - Mission 59 contains a highly aggressive twelve-tiger mountain swarm. Mission 60 contains the 3,200 HP Mountain Alpha Tiger with a low-health Summit Rage phase.
 - Both players claim separate deduplicated rewards and unlock the next mission independently. Mission 60 awards the `Mountain Alpha Breakers` badge and unlocks Mission 61.
+
+### V9.1 Shared Story Chapter 7
+
+- Converts Missions 61–70 from `Tiger Territory` into fully playable two-player Story missions while preserving Solo play for every level.
+- Missions include the Deep Research Escort, four guarded cave entrances, four named live captures, a cave-tunnel village escort, a thirteen-tiger territory pack, temporary-base defense, a reduced-visibility night ambush, three working research-equipment checkpoints, and a fourteen-tiger extreme-aggression zone.
+- Mission 70 uses the 3,900 HP Legendary Blood Tiger with a low-health Ancient Blood Rage phase and the boss soundtrack.
+- Every Chapter 7 mission uses the full 4,800 × 2,800 shared Story world, unique map dressing, ordered two-player checkpoints where required, squad-wipe restart, reconnect support, and separate deduplicated rewards.
+- Mission 70 awards the `Legendary Blood Tiger Breakers` badge and unlocks Mission 71 independently for both players.
 - Existing Solo Story progress, Missions 1–50, all seven Special Operations, field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, ammunition modes, cages, bodies, and government systems remain available.
 
 ### V8.5 Adaptive Soundtrack

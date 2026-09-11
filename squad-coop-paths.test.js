@@ -1,6 +1,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const vm = require("vm");
+const game = fs.readFileSync("game.js", "utf8");
 
 const elements = new Map();
 function element(id){
@@ -58,7 +59,7 @@ const context = {
   console,
   requestAnimationFrame:()=>1,
   cancelAnimationFrame(){},
-  fetch:async()=>({ ok:true, json:async()=>({ ok:true, profile:{ userId:77, unlockedStoryLevel:60 }, gearCatalog:[] }) }),
+  fetch:async()=>({ ok:true, json:async()=>({ ok:true, profile:{ userId:77, unlockedStoryLevel:70 }, gearCatalog:[] }) }),
 };
 windowObject.document = documentObject;
 windowObject.navigator = context.navigator;
@@ -97,20 +98,22 @@ async function run(){
   assert(html.includes("Choose how you want to play"), "Live Squad opens on the two-path home");
   assert(html.includes("Story Campaign"), "Story Campaign path is visible");
   assert(html.includes("Special Operations"), "Special Operations path is visible");
-  assert(html.includes("Solo supports all 60 unlocked missions"), "home reports the separate co-op profile unlock count");
-  assert(html.includes("Two Player is ready for Missions 1–60"), "home reports the exact converted co-op range");
+  assert(html.includes("Solo supports all 70 unlocked missions"), "home reports the separate co-op profile unlock count");
+  assert(html.includes("Two Player is ready for Missions 1–70"), "home reports the exact converted co-op range");
+  assert(game.includes("FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 70"), "normal Story pre-deploy also enables Two Player through Mission 70");
 
   await clickCommand("hub-story");
   html = element("squadBody").innerHTML;
-  assert(html.includes("Unlocked 60/100"), "Story path uses the co-op campaign profile instead of Solo progress");
-  assert(html.includes("Story Mission 60"), "Story path defaults to the current co-op mission");
+  assert(html.includes("Unlocked 70/100"), "Story path uses the co-op campaign profile instead of Solo progress");
+  assert(html.includes("Story Mission 70"), "Story path defaults to the current co-op mission");
   assert(html.includes("Chapter 3 • 21–30"), "Story path includes a direct Chapter 3 mission shortcut");
   assert(html.includes("Chapter 4 • 31–40"), "Story path includes a direct Chapter 4 mission shortcut");
   assert(html.includes("Chapter 5 • 41–50"), "Story path includes a direct Chapter 5 mission shortcut");
   assert(html.includes("Chapter 6 • 51–60"), "Story path includes a direct Chapter 6 mission shortcut");
+  assert(html.includes("Chapter 7 • 61–70"), "Story path includes a direct Chapter 7 mission shortcut");
 
   await clickCommand("play-solo");
-  assert.equal(soloLevel, 60, "Solo choice routes the selected co-op campaign level into normal Story pre-deploy");
+  assert.equal(soloLevel, 70, "Solo choice routes the selected co-op campaign level into normal Story pre-deploy");
 
   windowObject.openLiveSquadOps();
   html = element("squadBody").innerHTML;
@@ -221,6 +224,27 @@ async function run(){
   await clickCommand("select-story", { squadStoryLevel:"60" });
   html = element("squadBody").innerHTML;
   assert(html.includes("Mountain Alpha Tiger"), "Mission 60 exposes its Mountain Alpha boss objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"61" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Deep Research Escort"), "Mission 61 exposes its deep-jungle scientist escort");
+  assert(html.includes("Two Player ready"), "Mission 61 is marked playable with a teammate");
+
+  await clickCommand("select-story", { squadStoryLevel:"63" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Four-Tiger Research Capture"), "Mission 63 exposes its four required live captures");
+
+  await clickCommand("select-story", { squadStoryLevel:"66" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Temporary Base Defense"), "Mission 66 exposes its real base-defense objective");
+
+  await clickCommand("select-story", { squadStoryLevel:"67" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Night Stalker Ambush"), "Mission 67 exposes its reduced-visibility stealth ambush");
+
+  await clickCommand("select-story", { squadStoryLevel:"70" });
+  html = element("squadBody").innerHTML;
+  assert(html.includes("Legendary Blood Tiger"), "Mission 70 exposes its Legendary Blood Tiger boss objective");
 
   windowObject.openLiveSquadOps();
   await clickCommand("hub-operations");
