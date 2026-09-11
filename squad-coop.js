@@ -114,6 +114,16 @@
     { level:68, title:"Research Equipment Defense", description:"Protect the lead scientist and secure three working equipment sites." },
     { level:69, title:"Extreme Aggression Zone", description:"Survive fourteen enraged tigers whose damage rises further after lethal kills." },
     { level:70, title:"Legendary Blood Tiger", description:"Defeat or capture the Legendary Blood Tiger and finish Chapter 7 together." },
+    { level:71, title:"Jungle Center Evacuation", description:"Escort eight fleeing villagers through three evacuation checkpoints and clear the pursuing pack." },
+    { level:72, title:"All-Directions Rescue Ambush", description:"Rescue five surrounded civilians and clear the focused six-tiger ambush." },
+    { level:73, title:"Elite Hunter Capture", description:"Capture Razorclaw and Shadowfang alive with Rubber ammunition, then clear their guards." },
+    { level:74, title:"Dangerous Jungle Caravan", description:"Escort eight caravan members through three dangerous shared route checkpoints." },
+    { level:75, title:"Tiger King Swarm", description:"Survive and clear fifteen coordinated tigers attacking from the Tiger King's territory." },
+    { level:76, title:"Lost Soldier Rescue", description:"Find six lost soldiers and guide them through three rally points while clearing their hunters." },
+    { level:77, title:"Final Villager Evacuation", description:"Escort ten final villagers through three shared evacuation checkpoints." },
+    { level:78, title:"Massive Tiger King Ambush", description:"Survive sixteen surrounding tigers whose aggression rises through blood scent." },
+    { level:79, title:"Tiger King Preparation", description:"Activate four real field stations and defeat the Tiger King's twelve-tiger vanguard." },
+    { level:80, title:"Tiger King", description:"Defeat or capture the Tiger King and finish Chapter 8 together." },
   ]);
   const SPECIAL_OPERATIONS = Object.freeze([
     {
@@ -325,8 +335,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V9.1 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V9.1 • ${selectedOperation().mapLabel}` : "Tiger Strike V9.1 • Co-op Command");
+      ? `Tiger Strike V9.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V9.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V9.2 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -614,7 +624,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V9.1 Shared Story Chapter 7</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–70 can be played Solo or with a teammate. Chapter 7 adds deep-jungle escorts, cave routes, four live captures, base defense, night stalkers, extreme aggression, and the Legendary Blood Tiger.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V9.2 Shared Story Chapter 8</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–80 can be played Solo or with a teammate. Chapter 8 adds major evacuations, the corrected Mission 72 ambush, elite live captures, moving caravan routes, lost-soldier rescue, and the Tiger King.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -654,6 +664,7 @@
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="41">Chapter 5 • 41–50</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="51">Chapter 6 • 51–60</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="61">Chapter 7 • 61–70</button>
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="71">Chapter 8 • 71–80</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.max(1, selected - 1)}" ${selected <= 1 ? "disabled" : ""}>← Previous</button>
       <span>Unlocked ${max}/100</span>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.min(max, selected + 1)}" ${selected >= max ? "disabled" : ""}>Next →</button>
@@ -1778,7 +1789,7 @@
   }
 
   function drawStoryCivilian(ctx,civ,rescued){
-    const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"]};
+    const colors={field:["#f59e0b","#334155"],medic:["#f8fafc","#ef4444"],scout:["#60a5fa","#374151"],driver:["#f97316","#1f2937"],soldier:["#4d7c0f","#1f2937"]};
     const [shirt,pants]=colors[civ.look]||colors.field;const key=`civ:${civ.id}`;const prior=state.walkVisual.get(key)||{x:Number(civ.x),y:Number(civ.y),phase:0};const moved=Math.hypot(Number(civ.x)-prior.x,Number(civ.y)-prior.y);const walking=moved>.12&&!civ.secured;prior.phase=walking?prior.phase+Math.min(1,moved*.26):prior.phase*.9;prior.x=Number(civ.x);prior.y=Number(civ.y);state.walkVisual.set(key,prior);const stride=walking?Math.sin(prior.phase)*6:0;const bob=walking?Math.abs(Math.sin(prior.phase))*1.6:0;ctx.save();ctx.translate(civ.x,civ.y-bob);ctx.globalAlpha=civ.secured?.42:1;
     ctx.fillStyle="rgba(2,6,23,.32)";ctx.beginPath();ctx.ellipse(3,18,17,7,0,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle=pants;ctx.lineWidth=6;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-4,9);ctx.lineTo(-8-stride*.5,24);ctx.moveTo(4,9);ctx.lineTo(9+stride*.5,24);ctx.stroke();ctx.fillStyle="#111827";ctx.beginPath();ctx.ellipse(-8-stride*.5,25,5,2.5,0,0,Math.PI*2);ctx.ellipse(9+stride*.5,25,5,2.5,0,0,Math.PI*2);ctx.fill();
@@ -1891,6 +1902,7 @@
     const riverTerritoryChapter = storyLevel >= 41 && storyLevel <= 50;
     const mountainEdgeChapter = storyLevel >= 51 && storyLevel <= 60;
     const tigerTerritoryChapter = storyLevel >= 61 && storyLevel <= 70;
+    const tigerKingChapter = storyLevel >= 71 && storyLevel <= 80;
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -1910,6 +1922,7 @@
     if(riverTerritoryChapter){ctx.fillStyle="rgba(6,182,212,.12)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     if(mountainEdgeChapter){ctx.fillStyle="rgba(148,163,184,.18)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     if(tigerTerritoryChapter){ctx.fillStyle="rgba(6,78,59,.22)";ctx.fillRect(view.x,view.y,view.w,view.h);}
+    if(tigerKingChapter){ctx.fillStyle="rgba(120,53,15,.18)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     ctx.fillStyle=endlessSurvival?"rgba(249,115,22,.13)":(denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":(alphaHunt?"rgba(147,197,253,.12)":(stormExtraction?"rgba(125,211,252,.13)":"rgba(102,164,91,.20)")))));
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
@@ -1947,7 +1960,7 @@
       for(let x=roadX-roadW*.52;x<roadX+roadW*.53;x+=24){ctx.beginPath();ctx.moveTo(x,bridgeY-8);ctx.lineTo(x,bridgeY+102);ctx.stroke();}
     }
 
-    for(let i=0;i<(endlessSurvival?105:(denAssault?150:(villageSiege?185:(convoyRescue?210:(alphaHunt?175:(stormExtraction?125:(tigerTerritoryChapter?290:240)))))));i++){
+    for(let i=0;i<(endlessSurvival?105:(denAssault?150:(villageSiege?185:(convoyRescue?210:(alphaHunt?175:(stormExtraction?125:(tigerKingChapter?315:(tigerTerritoryChapter?290:240))))))));i++){
       const x=70+((i*337+53)%Math.max(100,Math.floor(worldW-140)));
       const y=80+((i*191+97)%Math.max(100,Math.floor(worldH-180)));
       if(!visible(x,y,70)||nearRoad(x,y,88)||y>riverTop-55||inWaterZone(x,y,48)) continue;
@@ -1955,7 +1968,7 @@
       else drawStoryTree(ctx,x,y,.68+(i%5)*.075);
     }
     const roofColors=["#9a5c38","#7c4a32","#72452f","#a1623c"];
-    for(let i=0;i<(endlessSurvival?6:(denAssault?12:(villageSiege?58:(convoyRescue?18:(alphaHunt?8:(stormExtraction?14:(tigerTerritoryChapter?12:34)))))));i++){
+    for(let i=0;i<(endlessSurvival?6:(denAssault?12:(villageSiege?58:(convoyRescue?18:(alphaHunt?8:(stormExtraction?14:(tigerKingChapter?18:(tigerTerritoryChapter?12:34))))))));i++){
       const x=100+((i*421+160)%Math.max(140,Math.floor(worldW-280)));
       const y=110+((i*263+120)%Math.max(140,Math.floor(riverTop-260)));
       if(!visible(x,y,210)||nearRoad(x+80,y+52,125)||inWaterZone(x+80,y+52,110)) continue;
@@ -2158,6 +2171,26 @@
       for(const [xp,yp,size] of [[.17,.22,1.1],[.34,.42,1.2],[.55,.25,1.05],[.73,.48,1.25],[.44,.70,1.12],[.84,.67,1.2]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,130))drawBloodTrailMarker(ctx,x,y,size,"EXTREME");}if(visible(worldW*.54,worldH*.50,440)){ctx.fillStyle="rgba(127,29,29,.25)";ctx.beginPath();ctx.arc(worldW*.54,worldH*.50,320,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#ef4444";ctx.lineWidth=10;ctx.setLineDash([24,14]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(69,10,10,.97)";roundRect(ctx,worldW*.54-165,worldH*.50-78,330,50,12);ctx.fill();ctx.fillStyle="#ffe4e6";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("EXTREME AGGRESSION • 14 TIGERS",worldW*.54,worldH*.50-46);}
     }else if(storyLevel === 70){
       const boss=(snap.tigers||[]).find((row)=>row.id==="s70_legendary_blood_tiger")||snap.boss||{x:worldW*.59,y:worldH*.54};if(visible(boss.x,boss.y,520)){for(const [dx,dy,size] of [[-260,-120,1.25],[245,-100,1.2],[-210,180,1.05],[230,190,1.12]])drawDenCave(ctx,boss.x+dx,boss.y+dy,size);ctx.fillStyle="rgba(127,29,29,.34)";ctx.beginPath();ctx.arc(boss.x,boss.y,375,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fb7185";ctx.lineWidth=12;ctx.setLineDash([26,15]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(69,10,10,.98)";roundRect(ctx,boss.x-175,boss.y-102,350,54,13);ctx.fill();ctx.strokeStyle="#fecdd3";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#fff1f2";ctx.font="950 19px system-ui";ctx.textAlign="center";ctx.fillText("LEGENDARY BLOOD TIGER",boss.x,boss.y-67);}
+    }else if(storyLevel === 71){
+      const route=snap.checkpoints||[];if(route.length>1){ctx.strokeStyle="#facc15";ctx.lineWidth=10;ctx.setLineDash([22,14]);ctx.beginPath();ctx.moveTo(route[0].x,route[0].y);for(const point of route.slice(1))ctx.lineTo(point.x,point.y);ctx.stroke();ctx.setLineDash([]);}for(const point of route){if(visible(point.x,point.y,175))drawVillageBarricade(ctx,point.x,point.y,0);}if(visible(worldW*.54,worldH*.48,400)){ctx.fillStyle="rgba(69,26,3,.96)";roundRect(ctx,worldW*.54-160,worldH*.48-72,320,50,12);ctx.fill();ctx.strokeStyle="#fde047";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#fef9c3";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("JUNGLE CENTER EVACUATION",worldW*.54,worldH*.48-40);}
+    }else if(storyLevel === 72){
+      const cx=worldW*.53,cy=worldH*.49;for(const [dx,dy] of [[-290,0],[290,0],[0,-220],[0,220],[-205,-160],[205,160]]){if(visible(cx+dx,cy+dy,120))drawBloodTrailMarker(ctx,cx+dx,cy+dy,1.05,"AMBUSH");}if(visible(cx,cy,430)){ctx.strokeStyle="#fb7185";ctx.lineWidth=10;ctx.setLineDash([22,14]);ctx.beginPath();ctx.arc(cx,cy,330,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(69,10,10,.97)";roundRect(ctx,cx-174,cy-74,348,50,12);ctx.fill();ctx.fillStyle="#ffe4e6";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("ALL-DIRECTIONS RESCUE AMBUSH",cx,cy-42);}
+    }else if(storyLevel === 73){
+      for(const tiger of (snap.tigers||[]).filter((row)=>row.id==="s73_razorclaw"||row.id==="s73_shadowfang")){if(visible(tiger.x,tiger.y,200))drawResearchBeacon(ctx,tiger.x,tiger.y,1.22);}if(visible(worldW*.54,worldH*.48,410)){ctx.fillStyle="rgba(49,46,129,.96)";roundRect(ctx,worldW*.54-158,worldH*.48-74,316,50,12);ctx.fill();ctx.strokeStyle="#a5b4fc";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#eef2ff";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("CAPTURE BOTH ELITE HUNTERS",worldW*.54,worldH*.48-42);}
+    }else if(storyLevel === 74){
+      const points=snap.checkpoints||[],done=snap.checkpointCompletedIds||[],index=Math.min(done.length,Math.max(0,points.length-1)),caravan=points[index]||{x:worldW*.32,y:worldH*.44};if(points.length>1){ctx.strokeStyle="#fbbf24";ctx.lineWidth=9;ctx.setLineDash([24,15]);ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);for(const point of points.slice(1))ctx.lineTo(point.x,point.y);ctx.stroke();ctx.setLineDash([]);}if(visible(caravan.x,caravan.y,180))drawConvoyTruck(ctx,caravan.x,caravan.y,0,"#b45309",false);if(visible(worldW*.54,worldH*.49,410)){ctx.fillStyle="rgba(69,26,3,.96)";roundRect(ctx,worldW*.54-154,worldH*.49-74,308,50,12);ctx.fill();ctx.fillStyle="#ffedd5";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("DANGEROUS JUNGLE CARAVAN",worldW*.54,worldH*.49-42);}
+    }else if(storyLevel === 75){
+      for(const [xp,yp,r] of [[.18,.25,185],[.40,.48,245],[.65,.28,200],[.80,.66,230]]){const x=worldW*xp,y=worldH*yp;if(!visible(x,y,r+70))continue;ctx.fillStyle="rgba(146,64,14,.20)";ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#f97316";ctx.lineWidth=9;ctx.setLineDash([22,14]);ctx.stroke();ctx.setLineDash([]);}if(visible(worldW*.54,worldH*.50,430)){ctx.fillStyle="rgba(67,20,7,.97)";roundRect(ctx,worldW*.54-160,worldH*.50-76,320,50,12);ctx.fill();ctx.fillStyle="#ffedd5";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("TIGER KING SWARM • 15",worldW*.54,worldH*.50-44);}
+    }else if(storyLevel === 76){
+      const route=snap.checkpoints||[];if(route.length>1){ctx.strokeStyle="#60a5fa";ctx.lineWidth=9;ctx.setLineDash([20,13]);ctx.beginPath();ctx.moveTo(route[0].x,route[0].y);for(const point of route.slice(1))ctx.lineTo(point.x,point.y);ctx.stroke();ctx.setLineDash([]);}for(const point of route){if(visible(point.x,point.y,180))drawLastStandFort(ctx,point.x,point.y,1.0);}if(visible(worldW*.54,worldH*.48,400)){ctx.fillStyle="rgba(30,58,138,.96)";roundRect(ctx,worldW*.54-144,worldH*.48-72,288,50,12);ctx.fill();ctx.strokeStyle="#93c5fd";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#dbeafe";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("RESCUE THE LOST PATROL",worldW*.54,worldH*.48-40);}
+    }else if(storyLevel === 77){
+      const route=snap.checkpoints||[];if(route.length>1){ctx.strokeStyle="#4ade80";ctx.lineWidth=11;ctx.setLineDash([24,15]);ctx.beginPath();ctx.moveTo(route[0].x,route[0].y);for(const point of route.slice(1))ctx.lineTo(point.x,point.y);ctx.stroke();ctx.setLineDash([]);}for(const point of route){if(visible(point.x,point.y,180))drawVillageBarricade(ctx,point.x,point.y,0);}if(visible(worldW*.54,worldH*.49,410)){ctx.fillStyle="rgba(20,83,45,.97)";roundRect(ctx,worldW*.54-160,worldH*.49-74,320,50,12);ctx.fill();ctx.strokeStyle="#86efac";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#dcfce7";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("FINAL VILLAGER EVACUATION",worldW*.54,worldH*.49-42);}
+    }else if(storyLevel === 78){
+      const cx=worldW*.54,cy=worldH*.50;for(const [xp,yp,size] of [[.16,.22,1.0],[.31,.68,1.12],[.55,.25,1.0],[.76,.65,1.18],[.86,.31,1.05]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,130))drawBloodTrailMarker(ctx,x,y,size,"KING");}if(visible(cx,cy,460)){ctx.fillStyle="rgba(127,29,29,.30)";ctx.beginPath();ctx.arc(cx,cy,360,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#ef4444";ctx.lineWidth=11;ctx.setLineDash([25,15]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(69,10,10,.98)";roundRect(ctx,cx-174,cy-80,348,52,12);ctx.fill();ctx.fillStyle="#ffe4e6";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("MASSIVE AMBUSH • 16 TIGERS",cx,cy-47);}
+    }else if(storyLevel === 79){
+      for(const checkpoint of (snap.checkpoints||[])){if(!visible(checkpoint.x,checkpoint.y,190))continue;drawResearchBeacon(ctx,checkpoint.x,checkpoint.y,1.20);drawVillageBarricade(ctx,checkpoint.x,checkpoint.y+90,0);}if(visible(worldW*.54,worldH*.49,430)){ctx.fillStyle="rgba(30,41,59,.97)";roundRect(ctx,worldW*.54-170,worldH*.49-76,340,52,12);ctx.fill();ctx.strokeStyle="#facc15";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#fef9c3";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("PREPARE FOR THE TIGER KING",worldW*.54,worldH*.49-43);}
+    }else if(storyLevel === 80){
+      const boss=(snap.tigers||[]).find((row)=>row.id==="s80_tiger_king")||snap.boss||{x:worldW*.59,y:worldH*.54};if(visible(boss.x,boss.y,550)){for(const [dx,dy,size] of [[-290,-135,1.35],[275,-120,1.3],[-245,210,1.15],[255,205,1.2]])drawDenCave(ctx,boss.x+dx,boss.y+dy,size);ctx.fillStyle="rgba(120,53,15,.38)";ctx.beginPath();ctx.arc(boss.x,boss.y,405,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#facc15";ctx.lineWidth=14;ctx.setLineDash([28,16]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(66,32,6,.99)";roundRect(ctx,boss.x-185,boss.y-108,370,58,14);ctx.fill();ctx.strokeStyle="#fde68a";ctx.lineWidth=5;ctx.stroke();ctx.fillStyle="#fef3c7";ctx.font="950 21px system-ui";ctx.textAlign="center";ctx.fillText("THE TIGER KING",boss.x,boss.y-70);}
     }
 
     for(const fire of (snap.fireZones || [])){

@@ -388,7 +388,7 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 
 ### V8.4 Shared Story Chapter 6
 
-- Story Campaign now offers a real Solo or Two Players choice for Missions 1–70. Solo remains available for every unlocked mission; Missions 71–100 are accurately labeled Solo-only until their co-op versions are built.
+- Story Campaign now offers a real Solo or Two Players choice for Missions 1–80. Solo remains available for every unlocked mission; Missions 81–100 are accurately labeled Solo-only until their co-op versions are built.
 - Missions 51–60 follow the existing `Mountain Edge` campaign: Mountain Village Escort, Cliffside Attack, Silverpeak Capture, Climber Rescue, Mountain Road Pack, Canyon Caravan, Whiteout Patrol, Mountain Air Rescue, Mountain Swarm, and the Mountain Alpha boss.
 - Missions 51, 54, 55, and 56 use ordered shared ridge, descent, road, and canyon checkpoints that both soldiers must secure.
 - Mission 53 requires the named Silverpeak Mountain Tiger to be captured alive. Real-ammo hits still permanently disqualify it from capture during that run.
@@ -404,6 +404,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Mission 70 uses the 3,900 HP Legendary Blood Tiger with a low-health Ancient Blood Rage phase and the boss soundtrack.
 - Every Chapter 7 mission uses the full 4,800 × 2,800 shared Story world, unique map dressing, ordered two-player checkpoints where required, squad-wipe restart, reconnect support, and separate deduplicated rewards.
 - Mission 70 awards the `Legendary Blood Tiger Breakers` badge and unlocks Mission 71 independently for both players.
+
+### V9.2 Shared Story Chapter 8
+
+- Converts Missions 71–80 from `The Tiger King` into fully playable two-player Story missions while preserving Solo play for every level.
+- Mission 71 evacuates eight villagers through three shared checkpoints. Mission 72 is the corrected focused five-civilian/six-tiger ambush, with every required target visible and no hidden objective elsewhere on the map.
+- Mission 73 requires Razorclaw and Shadowfang to be captured alive. Mission 74 is an eight-person moving caravan route, while Missions 75 and 78 contain real fifteen- and sixteen-tiger battles.
+- Mission 76 rescues six lost soldiers through three rally points. Mission 77 escorts ten final villagers out of the jungle.
+- Mission 79 turns “prepare for the Tiger King” into real gameplay with four ordered equipment stations and a twelve-tiger vanguard.
+- Mission 80 uses the 4,800 HP Tiger King with a low-health Royal Rage phase, boss music, and a `Tiger King Breakers` badge.
+- All Chapter 8 missions use the full 4,800 × 2,800 shared Story world, unique map dressing, squad-wipe restart, reconnect support, and separate deduplicated rewards and unlocks for both players.
 - Existing Solo Story progress, Missions 1–50, all seven Special Operations, field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, ammunition modes, cages, bodies, and government systems remain available.
 
 ### V8.5 Adaptive Soundtrack
