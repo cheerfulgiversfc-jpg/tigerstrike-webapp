@@ -416,6 +416,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - All Chapter 8 missions use the full 4,800 × 2,800 shared Story world, unique map dressing, squad-wipe restart, reconnect support, and separate deduplicated rewards and unlocks for both players.
 - Existing Solo Story progress, Missions 1–50, all seven Special Operations, field lives, teammate revives, squad-wipe restart, reconnect, Shop, Inventory, ammunition modes, cages, bodies, and government systems remain available.
 
+### V9.3 New Player Tutorial
+
+- Brand-new players receive a clear `Play Tutorial` or `Skip Tutorial` choice at Base HQ; existing saves are migrated without interrupting returning players.
+- The Solo-only training mission teaches the current joystick, Sprint, civilian rescue, scanning, tiger locking, Rubber/Real ammunition safety, live capture, field secondaries, combat controls, squad commands, Shop, Inventory, investigation, World Map, and extraction.
+- Training forces a verified Rubber magazine and prevents lethal mode during the capture lesson, so the required tiger cannot become accidentally ineligible for capture.
+- The compact tutorial card automatically moves above or below the current button, civilian, tiger, safe zone, or interactable using the live camera position.
+- Play, Skip, Next, and Finish use touch-safe pointer handling, and the chosen Signal Flare has a real limited-use mission effect that must be activated to finish its lesson.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

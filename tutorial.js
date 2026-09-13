@@ -10,6 +10,10 @@
   const nextBtn = document.getElementById("tutorialNext");
   const skipBtn = document.getElementById("tutorialSkip");
   const arrow = document.getElementById("tutorialArrow");
+  const welcomeOverlay = document.getElementById("tutorialWelcomeOverlay");
+  const welcomePlayBtn = document.getElementById("tutorialWelcomePlay");
+  const welcomeSkipBtn = document.getElementById("tutorialWelcomeSkip");
+  const FIRST_LAUNCH_TUTORIAL_KEY = "ts_tutorial_onboarding_v1";
   let highlightedEl = null;
 
   function byId(id){ return document.getElementById(id); }
@@ -86,6 +90,7 @@
     if(type === "cosmetics") T.cosmeticsOpened = true;
     if(type === "world_map") T.worldMapOpened = true;
     if(type === "hq") T.hqSeen = true;
+    if(type === "secondary") T.secondaryUsed = true;
     return true;
   }
   function agentMovedForTutorial(){
@@ -104,15 +109,7 @@
     return new Set([
       "move",
       "sprint",
-      "escort",
-      "guide_civilian",
-      "scan_line",
-      "lock_target",
-      "engage_tiger",
       "combat_buttons",
-      "attack_tiger",
-      "weaken_tiger",
-      "capture_window",
       "weapon_switch",
       "map_interactables",
       "interactables",
@@ -163,6 +160,9 @@
     if(id === "invBtn") return visibleEl("invBtn") || visibleEl("navInvBtn") || visibleSelector('button[onclick*="openInventory"]');
     if(id === "scanBtn") return visibleEl("scanBtn") || visibleEl("touchScanBtn");
     if(id === "sprintBtn") return visibleEl("touchSprintBtn");
+    if(id === "moveControl") return visibleEl("touchStickShell") || visibleEl("touchStick") || visibleEl("cv");
+    if(id === "ammoModeBtn") return visibleEl("touchAmmoModeBtn") || visibleEl("combatAmmoModeBtn");
+    if(id === "secondaryBtn") return visibleEl("touchSecondaryBtn") || visibleEl("touchCombatSecondaryBtn") || visibleEl("secondaryActionBtn") || visibleEl("combatSecondaryActionBtn");
     if(id === "shieldBtn") return visibleSelector("[data-shield-btn]") || visibleEl("touchShieldBtn") || visibleEl("combatArmorBtn") || visibleEl("touchCombatArmorBtn");
     if(id === "atkBtn") return visibleEl("atkBtn") || visibleEl("touchAttackBtn") || visibleEl("combatAttackBtn");
     if(id === "captureBtn") return visibleEl("capBtn") || visibleEl("touchCaptureBtn") || visibleEl("combatCaptureBtn");
@@ -185,6 +185,11 @@
       if(typeof window.getTutorialConfig === "function") return window.getTutorialConfig() || {};
     }catch(e){}
     return {};
+  }
+  function tutorialAmmoMode(){
+    const S = getS();
+    const weaponId = String(S?.equippedWeaponId || "");
+    return String(S?.ammoModeByWeapon?.[weaponId] || "rubber").toLowerCase();
   }
   function pickTutorialTiger(S){
     if(!S || !Array.isArray(S.tigers)) return null;
@@ -338,15 +343,50 @@
     if(overlayVisible("worldMapCampaignOverlay")) T.worldMapOpened = true;
     if(overlayVisible("baseHqOverlay") || document.body.classList.contains("baseHqActive") || S?.pauseReason === "base-hq") T.hqSeen = true;
   }
+  function canvasClientPoint(x, y){
+    const cv = byId("cv");
+    if(!cv || !Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return null;
+    const r = cv.getBoundingClientRect();
+    let point = { x:Number(x), y:Number(y) };
+    try{ point = window.tutorialWorldToScreenPoint?.(Number(x), Number(y)) || point; }catch(e){}
+    return {
+      x:r.left + (Number(point.x) / Math.max(1, cv.width)) * r.width,
+      y:r.top + (Number(point.y) / Math.max(1, cv.height)) * r.height
+    };
+  }
+  function tutorialCanvasTarget(step){
+    const S = getS();
+    if(!S || !step) return null;
+    if(step.arrow === "evacZone") return S.evacZone || null;
+    if(step.arrow === "tiger") return pickTutorialTiger(S);
+    if(step.arrow === "interactable"){
+      const items = (S.mapInteractables || []).filter((item)=>item && Number.isFinite(Number(item.x)) && Number.isFinite(Number(item.y)));
+      items.sort((a,b)=>Math.hypot(a.x-S.me.x,a.y-S.me.y)-Math.hypot(b.x-S.me.x,b.y-S.me.y));
+      return items[0] || null;
+    }
+    return null;
+  }
+  function tutorialTargetRect(step){
+    const canvasTarget = tutorialCanvasTarget(step);
+    if(canvasTarget){
+      const point = canvasClientPoint(canvasTarget.x, canvasTarget.y);
+      if(point) return { left:point.x-28, right:point.x+28, top:point.y-28, bottom:point.y+28, width:56, height:56 };
+    }
+    if(typeof step?.arrow === "string"){
+      const target = tutorialTarget(step.arrow);
+      if(target) return target.getBoundingClientRect();
+    }
+    return null;
+  }
   function setCardPlacement(step){
     if(!cardEl) return;
     const key = (typeof step === "string") ? step : (step?.key || "");
     const mobile = !!window.matchMedia?.("(max-width:760px)")?.matches;
-    const baseTop = mobile ? 12 : 70;
+    const baseTop = mobile ? 8 : 18;
     const margin = mobile ? 8 : 12;
     const maxH = key === "squad_shop"
-      ? (mobile ? "min(34vh, 280px)" : "min(36vh, 300px)")
-      : (mobile ? "min(42vh, 340px)" : "min(44vh, 360px)");
+      ? (mobile ? "min(30vh, 240px)" : "min(34vh, 290px)")
+      : (mobile ? "min(31vh, 250px)" : "min(36vh, 320px)");
 
     cardEl.style.left = "50%";
     cardEl.style.transform = "translateX(-50%)";
@@ -354,11 +394,10 @@
     cardEl.style.bottom = "auto";
     cardEl.style.top = `${baseTop}px`;
 
-    // Keep the tutorial card away from whichever visible control the player must tap.
-    const target = typeof step?.arrow === "string" && !["cv","evacZone","tiger"].includes(step.arrow)
-      ? tutorialTarget(step.arrow)
-      : null;
-    if(!target) return;
+    // Keep the coach card on the opposite side of every target—including map
+    // entities after the camera has moved—not only regular HTML buttons.
+    const tr = tutorialTargetRect(step);
+    if(!tr) return;
 
     const priorVisibility = cardEl.style.visibility;
     const priorTop = cardEl.style.top;
@@ -375,7 +414,6 @@
     const vpH = window.innerHeight || document.documentElement.clientHeight || 800;
     const minTop = margin;
     const maxTop = Math.max(minTop, vpH - cardH - margin);
-    const tr = target.getBoundingClientRect();
     const aboveTop = Math.round(tr.top - cardH - margin);
     const belowTop = Math.round(tr.bottom + margin);
     const canAbove = aboveTop >= minTop;
@@ -418,8 +456,8 @@
     return [
       {
         key:"intro",
-        title:"Current Game Tutorial",
-        text:"Welcome to the rebuilt Tiger Strike tutorial. This version teaches the current game: HQ, mission HUD, civilians, scan line, capture window, combat buttons, squad, shop, inventory, World Map, and real evacuation routes.",
+        title:"Tiger Strike Training",
+        text:"Welcome, soldier. This Solo training mission teaches the current game: the joystick, rescues, scanning, Rubber and Real ammo, live capture, field gear, combat, squad commands, Shop, Inventory, World Map, and extraction.",
         hint:"Tap Next to begin.",
         arrow:null,
         canNext: () => true
@@ -443,9 +481,9 @@
       {
         key:"move",
         title:"Move",
-        text:"Tap anywhere on the map to move your agent. The camera follows you, but important targets stay marked so you can find them again.",
-        hint:"Move your agent a short distance.",
-        arrow:"cv",
+        text:"Hold the joystick and drag it in the direction you want to walk. The camera follows your soldier. On a computer, you can also use WASD or the arrow keys.",
+        hint:"Use the joystick to move your soldier a short distance.",
+        arrow:"moveControl",
         canNext: () => agentMovedForTutorial()
       },
       {
@@ -526,9 +564,17 @@
         }
       },
       {
+        key:"rubber_ammo",
+        title:"Rubber Before Capture",
+        text:"Rubber rounds weaken a tiger but never kill it, so capture stays possible. Real rounds are lethal: one Real hit injures the tiger and permanently closes capture for that tiger. Training starts safely on Rubber.",
+        hint:"Confirm the ammo button says Rubber. If it says Real, tap it once to switch back.",
+        arrow:"ammoModeBtn",
+        canNext: () => tutorialAmmoMode() === "rubber"
+      },
+      {
         key:"attack_tiger",
-        title:"Attack Tiger",
-        text:"Tap Attack once. This proves the combat button works and starts lowering the tiger toward the capture window.",
+        title:"Use Rubber Rounds",
+        text:"Tap Attack once. Your Rubber rounds slow and weaken the tiger without making it impossible to capture.",
         hint:"Tap the highlighted Attack button.",
         arrow:"atkBtn",
         canNext: () => window.TigerTutorial.attackedOnce === true
@@ -588,17 +634,33 @@
         }
       },
       {
+        key:"field_consequences",
+        title:"Your Choices Change The World",
+        text:"Captured tigers remain in cages for wildlife transport and help government trust. A tiger killed with Real ammo leaves a body and blood scent; nearby tigers become more aggressive, and repeated lethal choices can reduce funding or start an investigation.",
+        hint:"For this training mission, you completed a safe live capture. Tap Next.",
+        arrow:null,
+        canNext: () => true
+      },
+      {
         key:"map_interactables",
         title:"Map Interactables",
         text:"Story maps include real interactables: Alarm reveals or disrupts threats, Barrier blocks danger lanes, and Cache grants resources. Other missions add gates, generators, bridges, crash sites, and convoy objects.",
         hint:"Use any one interactable once: Alarm, Barrier, or Cache.",
-        arrow:"cv",
+        arrow:"interactable",
         canNext: () => {
           if(window.TigerTutorial.interactableUsed === true) return true;
           const S = getS();
           if(!Array.isArray(S?.mapInteractables)) return false;
           return S.mapInteractables.some((it)=>it && (Number(it.cooldownUntil || 0) > 0 || Number(it.activeUntil || 0) > 0 || Number(it.uses || 0) < 1));
         }
+      },
+      {
+        key:"secondary_gear",
+        title:"Use Your Field Gear",
+        text:"The secondary item chosen before a mission appears as a real button with limited uses and a cooldown. This training gives you a Signal Flare, which reveals tigers, civilians, and extraction routes.",
+        hint:"Tap the Signal Flare button once.",
+        arrow:"secondaryBtn",
+        canNext: () => window.TigerTutorial.secondaryUsed === true
       },
       {
         key:"shield",
@@ -710,7 +772,7 @@
       {
         key:"done",
         title:"Done",
-        text:"Tutorial complete. You are ready to rescue civilians, scan and track tigers, use capture windows, command specialists, manage HQ, shop wisely, use the World Map, and extract safely.",
+        text:"Tutorial complete. You can now move with the joystick, rescue civilians, choose safe ammunition, capture tigers, use field gear, command specialists, manage HQ, shop wisely, follow the World Map, and extract safely.",
         hint:"Tap Finish to return to Base HQ.",
         arrow:null,
         finish:true,
@@ -748,6 +810,7 @@
     inventoryOpened:false,
     cosmeticsOpened:false,
     worldMapOpened:false,
+    secondaryUsed:false,
     hqSeen:false,
     combatButtonsSeen:false,
     captureButtonReady:false,
@@ -775,13 +838,16 @@
       "lock_target",
       "engage_tiger",
       "combat_buttons",
+      "rubber_ammo",
       "attack_tiger",
       "weaken_tiger",
       "capture_window",
       "weapon_switch",
       "ammo_warnings",
       "resolve_tiger",
+      "field_consequences",
       "map_interactables",
+      "secondary_gear",
       "shield",
       "squad_command",
       "squad_formation",
@@ -802,6 +868,8 @@
       "engage_tiger",
       "attack_tiger",
       "capture_window",
+      "rubber_ammo",
+      "secondary_gear",
       "escort",
       "shop",
       "squad_shop",
@@ -818,7 +886,7 @@
     const orderMatches = expectedKeys.every((key, idx)=>keys[idx] === key);
     const emptyTitles = steps.filter((step)=>!String(step?.title || "").trim()).map((step)=>step?.key || "(unknown)");
     const emptyHints = steps.filter((step)=>!String(step?.hint || "").trim() && !step?.finish).map((step)=>step?.key || "(unknown)");
-    const missingArrowTargets = steps.filter((step)=>step?.arrow && typeof step.arrow === "string" && !["cv","evacZone","tiger"].includes(step.arrow) && !tutorialTarget(step.arrow)).map((step)=>`${step.key}:${step.arrow}`);
+    const missingArrowTargets = steps.filter((step)=>step?.arrow && typeof step.arrow === "string" && !["cv","evacZone","tiger","interactable"].includes(step.arrow) && !tutorialTarget(step.arrow)).map((step)=>`${step.key}:${step.arrow}`);
     return {
       ok: steps.length === expectedKeys.length && orderMatches && missingExpected.length === 0 && missingRequired.length === 0 && duplicateKeys.length === 0 && emptyTitles.length === 0 && steps.every((step)=>step && step.key && step.title && typeof step.canNext === "function"),
       count: steps.length,
@@ -868,7 +936,8 @@
         squadOpened: !!T.squadOpened,
         inventoryOpened: !!T.inventoryOpened,
         cosmeticsOpened: !!T.cosmeticsOpened,
-        worldMapOpened: !!T.worldMapOpened
+        worldMapOpened: !!T.worldMapOpened,
+        secondaryUsed: !!T.secondaryUsed
       },
       state: {
         paused: !!S?.paused,
@@ -893,7 +962,7 @@
       "isRunning","currentKey","mapClicked","movementInputSeen","movedOnce","sprintUsed","scanUsed","lockedOnce",
       "engagedOnce","combatButtonsSeen","attackedOnce","captureWindowReached","captureButtonReady","combatOutcome",
       "weaponSwitched","interactableUsed","shieldUsed","squadCommandUsed","squadFormationUsed","shopOpened",
-      "squadOpened","inventoryOpened","cosmeticsOpened","worldMapOpened","stepActionSeen"
+      "squadOpened","inventoryOpened","cosmeticsOpened","worldMapOpened","secondaryUsed","stepActionSeen"
     ]){
       original[key] = T[key];
     }
@@ -923,6 +992,7 @@
       T.inventoryOpened = true;
       T.cosmeticsOpened = true;
       T.worldMapOpened = true;
+      T.secondaryUsed = true;
       let canNext = false;
       let error = "";
       try{ canNext = !!step.canNext?.(); }catch(e){ error = String(e?.message || e); }
@@ -939,6 +1009,7 @@
   };
 
   function showArrowAtEl(el){
+    if(!arrow) return;
     if(!el){ arrow.style.display = "none"; return; }
     const r = el.getBoundingClientRect();
     arrow.style.display = "block";
@@ -947,15 +1018,16 @@
   }
 
   function showArrowAtCanvasPoint(x, y){
-    const cv = byId("cv");
-    if(!cv || x == null || y == null){ arrow.style.display = "none"; return; }
-    const r = cv.getBoundingClientRect();
+    if(!arrow) return;
+    const point = canvasClientPoint(x, y);
+    if(!point){ arrow.style.display = "none"; return; }
     arrow.style.display = "block";
-    arrow.style.left = (r.left + (x / cv.width) * r.width) + "px";
-    arrow.style.top = (r.top + (y / cv.height) * r.height - 22) + "px";
+    arrow.style.left = point.x + "px";
+    arrow.style.top = (point.y - 22) + "px";
   }
 
   function hideArrow(){
+    if(!arrow) return;
     arrow.style.display = "none";
   }
   function clearStepHighlight(){
@@ -973,6 +1045,11 @@
       if(tiger && Number.isFinite(tiger.x) && Number.isFinite(tiger.y)){
         window.__tutorialTigerHighlight = { x:tiger.x, y:tiger.y, at:Date.now() };
       }
+      return;
+    }
+    if(step.arrow === "interactable"){
+      const item = tutorialCanvasTarget(step);
+      if(item) window.__tutorialTigerHighlight = { x:item.x, y:item.y, at:Date.now(), kind:"interactable" };
       return;
     }
     if(typeof step.arrow !== "string") return;
@@ -995,6 +1072,24 @@
 
   function setNextEnabled(on){
     nextBtn.disabled = !on;
+  }
+
+  function positionTutorialArrow(step, S=getS()){
+    if(step.arrow === "cv"){
+      showArrowAtEl(byId("cv"));
+    } else if(step.arrow === "evacZone"){
+      showArrowAtCanvasPoint(S?.evacZone?.x, S?.evacZone?.y);
+    } else if(step.arrow === "tiger"){
+      const tiger = pickTutorialTiger(S);
+      showArrowAtCanvasPoint(tiger?.x, tiger?.y);
+    } else if(step.arrow === "interactable"){
+      const item = tutorialCanvasTarget(step);
+      showArrowAtCanvasPoint(item?.x, item?.y);
+    } else if(typeof step.arrow === "string"){
+      showArrowAtEl(tutorialTarget(step.arrow));
+    } else {
+      hideArrow();
+    }
   }
 
   function render(){
@@ -1030,18 +1125,7 @@
     nextBtn.innerText = step.finish ? "Finish" : "Next";
     setCardPlacement(step);
 
-    if(step.arrow === "cv"){
-      showArrowAtEl(byId("cv"));
-    } else if(step.arrow === "evacZone"){
-      showArrowAtCanvasPoint(S?.evacZone?.x, S?.evacZone?.y);
-    } else if(step.arrow === "tiger"){
-      const tiger = pickTutorialTiger(S);
-      showArrowAtCanvasPoint(tiger?.x, tiger?.y);
-    } else if(typeof step.arrow === "string"){
-      showArrowAtEl(tutorialTarget(step.arrow));
-    } else {
-      hideArrow();
-    }
+    positionTutorialArrow(step, S);
     applyStepHighlight(step, S);
 
     setNextEnabled(tutorialStepCanNext(step));
@@ -1051,6 +1135,7 @@
       updateProgressFlags();
       if(step.key === "weaken_tiger") updateWeakenTigerHint();
       setCardPlacement(step);
+      positionTutorialArrow(step, getS());
       if(["lock_target","engage_tiger","combat_buttons","attack_tiger","weaken_tiger","capture_window","weapon_switch","ammo_warnings","resolve_tiger"].includes(step.key)){
         const target = pickTutorialTiger(getS());
         if(target && target.alive && getS()){
@@ -1065,6 +1150,10 @@
   function startTutorial(opts={}){
     const T = window.TigerTutorial;
     if(T.isRunning) return;
+    // A manual Training tap can race the delayed first-launch prompt. Starting
+    // training always counts as Play and closes that prompt before the field opens.
+    if(Number(getS()?.tutorialOnboardingVersion || 0) < 1) saveFirstLaunchChoice("play");
+    hideWelcome();
     const steps = getStepList();
     const startKey = typeof opts === "string" ? opts : String(opts?.startKey || "");
     const startIndex = startKey ? steps.findIndex((step)=>step.key === startKey) : -1;
@@ -1105,6 +1194,7 @@
     T.inventoryOpened = false;
     T.cosmeticsOpened = false;
     T.worldMapOpened = false;
+    T.secondaryUsed = false;
     T.hqSeen = false;
     T.combatButtonsSeen = false;
     T.captureButtonReady = false;
@@ -1138,7 +1228,7 @@
     render();
   }
 
-  function endTutorial(openModePicker=false){
+  function endTutorial(openModePicker=false, completed=true){
     const T = window.TigerTutorial;
     T.isRunning = false;
     T.step = 0;
@@ -1168,6 +1258,7 @@
     T.inventoryOpened = false;
     T.cosmeticsOpened = false;
     T.worldMapOpened = false;
+    T.secondaryUsed = false;
     T.hqSeen = false;
     T.combatButtonsSeen = false;
     T.captureButtonReady = false;
@@ -1186,7 +1277,8 @@
     if(openModePicker){
       setTimeout(() => {
         try{
-          if(typeof window.openBaseHQ === "function") window.openBaseHQ({ fromTutorial:true, home:true });
+          if(typeof window.openBaseHqHomeFromStartup === "function") window.openBaseHqHomeFromStartup();
+          else if(typeof window.openBaseHQ === "function") window.openBaseHQ({ fromTutorial:true, home:true });
           else if(typeof window.openModeOverlay === "function") window.openModeOverlay();
           else if(typeof window.openMode === "function") window.openMode();
         }catch(e){}
@@ -1194,10 +1286,67 @@
     }
 
     close();
-    try{ window.toast?.("Tutorial complete ✅"); }catch(e){}
+    try{ window.toast?.(completed ? "Tutorial complete ✅" : "Tutorial ended. You can replay it from Base HQ Training."); }catch(e){}
   }
 
-  nextBtn.addEventListener("click", () => {
+  function bindReliablePress(button, handler){
+    if(!button || typeof handler !== "function") return;
+    let lastPointerAt = 0;
+    button.addEventListener("pointerup", (event) => {
+      if(event.pointerType === "mouse" && event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      lastPointerAt = Date.now();
+      handler(event);
+    }, { passive:false });
+    button.addEventListener("click", (event) => {
+      if(Date.now() - lastPointerAt < 650){
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      handler(event);
+    });
+  }
+
+  function saveFirstLaunchChoice(choice){
+    const S = getS();
+    if(!S) return;
+    S.tutorialOnboardingVersion = 1;
+    S.tutorialOnboardingChoice = String(choice || "skip");
+    S.tutorialOnboardingAt = Date.now();
+    try{ localStorage.setItem(FIRST_LAUNCH_TUTORIAL_KEY, String(choice || "skip")); }catch(e){}
+    try{ window.saveGameNow?.(); }catch(e){}
+  }
+  function hideWelcome(){
+    if(welcomeOverlay){
+      welcomeOverlay.style.display = "none";
+      welcomeOverlay.setAttribute("aria-hidden", "true");
+    }
+  }
+  function showFirstLaunchTutorialChoice(){
+    const S = getS();
+    let locallySeen = false;
+    try{ locallySeen = !!localStorage.getItem(FIRST_LAUNCH_TUTORIAL_KEY); }catch(e){}
+    if(!welcomeOverlay || !S || locallySeen || Number(S.tutorialOnboardingVersion || 0) >= 1 || window.TigerTutorial?.isRunning) return false;
+    welcomeOverlay.style.display = "flex";
+    welcomeOverlay.setAttribute("aria-hidden", "false");
+    setTimeout(()=>welcomePlayBtn?.focus?.({preventScroll:true}), 50);
+    return true;
+  }
+  function beginFirstLaunchTutorial(){
+    saveFirstLaunchChoice("play");
+    hideWelcome();
+    if(typeof window.startTutorialFromBaseHQ === "function") window.startTutorialFromBaseHQ();
+    else startTutorial();
+  }
+  function skipFirstLaunchTutorial(){
+    saveFirstLaunchChoice("skip");
+    hideWelcome();
+    try{ window.toast?.("Tutorial skipped. You can play it anytime from Base HQ Training."); }catch(e){}
+  }
+
+  bindReliablePress(nextBtn, () => {
     const T = window.TigerTutorial;
     if(!T.isRunning) return;
     if(nextBtn.disabled) return;
@@ -1236,10 +1385,12 @@
     render();
   });
 
-  skipBtn.addEventListener("click", () => {
-    endTutorial(false);
-  });
+  bindReliablePress(skipBtn, () => endTutorial(true, false));
+  bindReliablePress(welcomePlayBtn, beginFirstLaunchTutorial);
+  bindReliablePress(welcomeSkipBtn, skipFirstLaunchTutorial);
 
   window.startTutorial = startTutorial;
   window.markTigerTutorialAction = markTutorialAction;
+  window.showFirstLaunchTutorialChoice = showFirstLaunchTutorialChoice;
+  setTimeout(showFirstLaunchTutorialChoice, 850);
 })();

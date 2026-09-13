@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V9.2 (Shared Story Chapter 8)</title>
+  <title>Tiger Strike 🐅 — V9.3 (New Player Tutorial)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5065-story-ch8">
+  <link rel="stylesheet" href="./squad-coop.css?v=5067-tutorial-v4">
 
   <style>
     :root{
@@ -2285,7 +2285,42 @@
       #rotateLock{display:none}
     }
 
-  /* Tutorial overlay (CLICK-THROUGH) */
+/* First-launch tutorial choice */
+#tutorialWelcomeOverlay{
+  position:fixed;
+  inset:0;
+  z-index:20050;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  padding-top:calc(16px + env(safe-area-inset-top));
+  padding-bottom:calc(16px + env(safe-area-inset-bottom));
+  background:rgba(2,6,16,.88);
+  backdrop-filter:blur(9px);
+  pointer-events:auto;
+}
+#tutorialWelcomeCard{
+  width:min(560px, 96vw);
+  max-height:min(720px, 92vh);
+  overflow:auto;
+  border:2px solid rgba(96,165,250,.8);
+  border-radius:24px;
+  padding:22px;
+  background:linear-gradient(160deg,rgba(13,33,58,.99),rgba(7,13,26,.99));
+  box-shadow:0 26px 90px rgba(0,0,0,.7),0 0 40px rgba(34,211,238,.14);
+  text-align:center;
+}
+#tutorialWelcomeCard h2{margin:4px 0 10px;font-size:clamp(26px,6vw,40px)}
+#tutorialWelcomeCard p{margin:8px 0;color:rgba(235,244,255,.9);line-height:1.45}
+#tutorialWelcomeActions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+#tutorialWelcomeActions button{min-height:58px;font-size:17px;font-weight:900;touch-action:manipulation}
+@media(max-width:520px){
+  #tutorialWelcomeCard{padding:18px;border-radius:20px}
+  #tutorialWelcomeActions{grid-template-columns:1fr}
+}
+
+/* Tutorial overlay (CLICK-THROUGH) */
 #tutorialOverlay{
   position:fixed;
   inset:0;
@@ -2297,14 +2332,14 @@
   pointer-events:none;
 }
 
-/* ✅ tutorial card is fixed at TOP and does not cover the map */
+/* The coach card moves between the top and bottom to uncover each target. */
 #tutorialCard{
   position:fixed;
   top:70px;
   left:50%;
   transform:translateX(-50%);
   width:min(620px,96vw);
-  max-height:min(44vh, 360px);
+  max-height:min(36vh, 320px);
   overflow:hidden;
   display:flex;
   flex-direction:column;
@@ -2316,6 +2351,7 @@
 
   /* ✅ only the card can be clicked */
   pointer-events:auto;
+  transition:top .16s ease;
 }
 
 /* allow scrolling inside tutorial if needed */
@@ -2335,7 +2371,7 @@
 #tutorialBtns{display:flex;justify-content:flex-end;gap:10px;padding:12px;border-top:1px solid var(--border);flex:0 0 auto;background:rgba(10,14,24,.94)}
 
 @media (max-width:760px){
-  #tutorialCard{top:12px;width:min(100vw - 12px,620px);max-height:min(42vh, 340px);border-radius:16px}
+  #tutorialCard{top:8px;width:min(100vw - 12px,620px);max-height:min(31vh, 250px);border-radius:16px}
   #tutorialBody{padding:12px}
 }
 
@@ -2507,8 +2543,9 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V9.2</span> <span class="tag">Shared Story Chapter 8</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V9.3</span> <span class="tag">New Player Tutorial</span></div>
       <div class="sub">
+        New players now receive a clear Play Tutorial or Skip Tutorial choice. Solo training teaches the current joystick, Rubber/Real ammo safety, live capture, field secondaries, rescues, extraction, Shop, Inventory, squad commands, and World Map. Its compact coach card automatically moves away from every highlighted button or map target.<br>
         Co-op Shop and Inventory now replace the Live Squad layer completely, remain touchable in Telegram, and use a clear Return to Squad button that resumes the same mission safely.<br>
         Co-op now uses a taller phone battlefield, richer lighting, detailed trees and homes, visible character faces, correctly facing tigers, clearer road markings, and no oval target ring around living tigers.<br>
         Your Tiger Strike soundtrack uses one looping song at a time: “Tiger Strike” on menus and at Base HQ, “No One Stands Alone” during regular gameplay, and “Testing” for boss missions and boss encounters.<br>
@@ -3393,6 +3430,20 @@
   </div>
 </div>
 
+<!-- First-launch tutorial choice -->
+<div id="tutorialWelcomeOverlay" role="dialog" aria-modal="true" aria-labelledby="tutorialWelcomeTitle" aria-hidden="true">
+  <div id="tutorialWelcomeCard">
+    <div style="font-size:52px" aria-hidden="true">🐅</div>
+    <h2 id="tutorialWelcomeTitle">Welcome to Tiger Strike</h2>
+    <p>Would you like a guided Solo training mission before you begin?</p>
+    <p>It teaches movement, rescues, tiger capture, ammunition, field gear, combat, extraction, Shop, Inventory, and the World Map. You can replay it later from Base HQ Training.</p>
+    <div id="tutorialWelcomeActions">
+      <button id="tutorialWelcomePlay" class="good" type="button">Play Tutorial</button>
+      <button id="tutorialWelcomeSkip" class="ghost" type="button">Skip Tutorial</button>
+    </div>
+  </div>
+</div>
+
 <!-- Tutorial Overlay (Strict step-lock UI) -->
 <div id="tutorialOverlay">
   <div id="tutorialCard">
@@ -3413,11 +3464,11 @@
   </div>
 </div>
 
-<!-- V9.2 Shared Story Chapter 8 -->
+<!-- V9.3 New Player Tutorial -->
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V9.2 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V9.3 • Co-op Command</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3458,17 +3509,20 @@
   </div>
 </div>
 
+<!-- Tutorial Arrow Pointer must exist before tutorial.js initializes. -->
+<div id="tutorialArrow">👇</div>
+
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5065-story-ch8"></script>
-  <script src="./ammo-modes.js?v=5065-story-ch8"></script>
-  <script src="./government-policy.js?v=5065-story-ch8"></script>
-  <script src="./tiger-intelligence.js?v=5065-story-ch8"></script>
-  <script src="./game.js?v=5065-story-ch8"></script>
-  <script src="./story-cinematics.js?v=5065-story-ch8"></script>
-  <script src="./field-systems.js?v=5065-story-ch8"></script>
-  <script src="./tutorial.js?v=4540-tutorial-3-full-qa"></script>
-  <script src="./squad-coop.js?v=5065-story-ch8"></script>
-  <script src="./extraction-qa.js?v=5065-story-ch8"></script>
+  <script src="./extraction-geometry.js?v=5067-tutorial-v4"></script>
+  <script src="./ammo-modes.js?v=5067-tutorial-v4"></script>
+  <script src="./government-policy.js?v=5067-tutorial-v4"></script>
+  <script src="./tiger-intelligence.js?v=5067-tutorial-v4"></script>
+  <script src="./game.js?v=5067-tutorial-v4"></script>
+  <script src="./story-cinematics.js?v=5067-tutorial-v4"></script>
+  <script src="./field-systems.js?v=5067-tutorial-v4"></script>
+  <script src="./tutorial.js?v=5067-tutorial-v4"></script>
+  <script src="./squad-coop.js?v=5067-tutorial-v4"></script>
+  <script src="./extraction-qa.js?v=5067-tutorial-v4"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";
@@ -3486,7 +3540,5 @@
   window.setTimeout(tryRecover, 9000);
 })();
 </script>
-<!-- Tutorial Arrow Pointer -->
-<div id="tutorialArrow">👇</div>
 </body>
 </html>

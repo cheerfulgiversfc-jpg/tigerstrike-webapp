@@ -151,6 +151,7 @@
     runtime.cooldownUntil=now+def.cooldown;
     runtime.activeUntil=Math.max(Number(runtime.activeUntil||0),now+900);
     runtime.lastEffect=effect.message;
+    try{root.markTigerTutorialAction?.("secondary",{id:runtime.id});}catch(e){}
     try{root.sfx?.("ui");root.hapticImpact?.("medium");}catch(e){}
     saveNow();
     renderSecondaryHud(state);

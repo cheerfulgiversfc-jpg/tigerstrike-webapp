@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5065";
+const TS_BUILD = "5067";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 80;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -14705,6 +14705,9 @@ const DEFAULT = {
   missionEnded:false,
   gameOver:false,
   storyIntroSeen:false,
+  tutorialOnboardingVersion:0,
+  tutorialOnboardingChoice:"",
+  tutorialOnboardingAt:0,
 
   // Phase 1 systems
   fogUntil:0,
@@ -16876,6 +16879,13 @@ function load(){
       return fallback;
     }
     const m = { ...DEFAULT, ...saved };
+    // Existing players already know the game and should not receive a surprise
+    // first-launch prompt after this update. Only genuinely new saves keep 0.
+    m.tutorialOnboardingVersion = Number.isFinite(Number(saved.tutorialOnboardingVersion))
+      ? Math.max(0, Math.floor(Number(saved.tutorialOnboardingVersion)))
+      : 1;
+    m.tutorialOnboardingChoice = String(saved.tutorialOnboardingChoice || "");
+    m.tutorialOnboardingAt = Math.max(0, Number(saved.tutorialOnboardingAt || 0));
     m.me = { ...DEFAULT.me, ...(saved.me||{}) };
     m.mag = { ...DEFAULT.mag, ...(saved.mag||{}) };
     m.ammoReserve = { ...DEFAULT.ammoReserve, ...(saved.ammoReserve||{}) };
@@ -38172,6 +38182,10 @@ function setWeaponAmmoMode(weaponId, requestedMode, opts={}){
   }
   ensureAmmoModeState(S);
   const mode = requestedMode === "rubber" ? "rubber" : "real";
+  if(window.__TUTORIAL_MODE__ && mode === "real"){
+    if(!opts.silent) interactionFeedback("Training safety is on. Use Rubber rounds so you can practice a live capture.", { warn:true, battle:!!S.inBattle });
+    return false;
+  }
   if(S.mode === "Survival" && mode !== "real"){
     if(!opts.silent) interactionFeedback("Survival is kill-only. Only Real ammunition is available.", { warn:true, battle:!!S.inBattle });
     return false;
@@ -38273,6 +38287,15 @@ window.enterTutorialMode = function () {
   if(!S._tutorialSnapshot){
     S._tutorialSnapshot = cloneState(S);
   }
+  // Tutorial can be launched from the desktop button, the mobile menu, or an
+  // HQ Training card. All paths must leave the walkable HQ world first.
+  try{ leaveBaseHqView({ restoreMenu:true }); }catch(e){}
+  // Training owns the screen while it runs. A pending daily reward or startup
+  // movie must never sit invisibly above the joystick and swallow touches.
+  ["dailyRewardOverlay","baseHqOverlay","launchIntroOverlay","storyIntroOverlay","missionCinemaOverlay","missionBriefOverlay","worldMapCampaignOverlay"].forEach((id)=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = "none";
+  });
   window.__TUTORIAL_MODE__ = true;
   S._tutorialPrev = {
     mode:S.mode,
@@ -38343,13 +38366,22 @@ window.enterTutorialMode = function () {
   if(!S.ownedWeapons.includes("W_9MM_JUNK")) S.ownedWeapons.push("W_9MM_JUNK");
   if(!S.ownedWeapons.includes("W_TRQ_PISTOL_MK1")) S.ownedWeapons.push("W_TRQ_PISTOL_MK1");
   S.ammoReserve["9MM_STD"] = Math.max(S.ammoReserve["9MM_STD"]||0, 24);
+  S.ammoReserve["9MM_RUBBER"] = Math.max(S.ammoReserve["9MM_RUBBER"]||0, 30);
   S.ammoReserve["TRANQ_DARTS"] = Math.max(S.ammoReserve["TRANQ_DARTS"]||0, 12);
   S.equippedWeaponId = "W_9MM_JUNK";
+  ensureAmmoModeState(S);
+  S.ammoModeByWeapon["W_9MM_JUNK"] = "rubber";
   const tutorialWeapon = getWeapon(S.equippedWeaponId);
   if(tutorialWeapon){
     S.mag.cap = tutorialWeapon.mag;
     S.mag.loaded = tutorialWeapon.mag;
+    S.mag.weaponId = tutorialWeapon.id;
+    S.mag.ammoId = "9MM_RUBBER";
   }
+
+  // Give the training mission one real, visible secondary-tool lesson.
+  S.worldMapPrepLast = { ...(S.worldMapPrepLast || {}), secondaryId:"flare" };
+  try{ window.resetMissionSecondaryForMission?.(S); }catch(e){}
 
   // reset battlefield
   S.tigers = [];
@@ -54628,7 +54660,13 @@ function drawMapInteractable(it){
     roundedRectFill(it.x - 22, it.y + 5, 5, 10, 1.4);
     roundedRectFill(it.x + 17, it.y + 5, 5, 10, 1.4);
   } else if(it.kind === "cache"){
-    crateBlock(it.x, it.y);
+    // drawMapInteractable is outside the map-background helper scope, so draw
+    // the cache directly instead of calling that private crateBlock helper.
+    ctx.fillStyle = "rgba(120,72,34,.96)";
+    roundedRectFill(it.x - 13, it.y - 11, 26, 22, 5);
+    ctx.strokeStyle = "rgba(254,215,170,.72)";
+    ctx.lineWidth = 1.8;
+    ctx.strokeRect(it.x - 12, it.y - 10, 24, 20);
     ctx.strokeStyle = palette[1];
     ctx.lineWidth = 1.4;
     ctx.beginPath();
@@ -63352,6 +63390,7 @@ window.openBaseHqChallengeBoard = openBaseHqChallengeBoard;
 window.openBaseHqLeaderboardBoard = openBaseHqLeaderboardBoard;
 window.openBaseHqEventBoard = openBaseHqEventBoard;
 window.openBaseHqHomeFromStartup = openBaseHqHomeFromStartup;
+window.tutorialWorldToScreenPoint = (x,y)=>worldToScreenPoint(x,y,S);
 window.buyBaseHqUpgrade = buyBaseHqUpgrade;
 window.openInventory = openInventory;
 window.closeInventory = closeInventory;
