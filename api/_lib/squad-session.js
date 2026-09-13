@@ -1428,6 +1428,159 @@ const SHARED_STORY_MISSIONS = Object.freeze({
       Object.freeze({ id:"s80_tiger_king", name:"Tiger King", type:"Alpha", hpMax:4800, baseX:650, baseY:545, rangeX:275, rangeY:205, speed:.66, phase:1.4, boss:true, bloodRage:true }),
     ]),
   }),
+  81:Object.freeze({
+    level:81, chapter:9, chapterName:"The Hidden Jungle", title:"Story Mission 81",
+    objective:"Escort the eight-person research team through three hidden-jungle survey checkpoints, clear the territorial pack, and extract together.", rescueRequired:8,
+    dangerNote:"The research team advances only after both soldiers secure each survey checkpoint.", aggressionLabel:"Hidden Jungle Expedition", hazardDamageBonus:7,
+    timeLimitMs:20 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s81_canopy_entry", x:305, y:390, r:130, label:"Canopy Entry Survey" }),
+      Object.freeze({ id:"s81_hidden_basin", x:610, y:510, r:130, label:"Hidden Basin Survey" }),
+      Object.freeze({ id:"s81_ruins_edge", x:915, y:685, r:135, label:"Ruins Edge Camp" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s81_lead_scientist", x:190, y:240, name:"Lead Jungle Scientist", look:"medic", vip:true }),
+      Object.freeze({ id:"s81_botanist", x:295, y:380, name:"Research Botanist", look:"field" }),
+      Object.freeze({ id:"s81_tracker", x:405, y:255, name:"Wildlife Tracker", look:"scout" }),
+      Object.freeze({ id:"s81_field_medic", x:515, y:455, name:"Expedition Medic", look:"medic" }),
+      Object.freeze({ id:"s81_cartographer", x:625, y:290, name:"Jungle Cartographer", look:"scout" }),
+      Object.freeze({ id:"s81_technician", x:735, y:515, name:"Research Technician", look:"driver" }),
+      Object.freeze({ id:"s81_conservationist", x:845, y:325, name:"Conservation Officer", look:"field" }),
+      Object.freeze({ id:"s81_radio", x:930, y:675, name:"Expedition Radio Operator", look:"driver" }),
+    ]),
+    tigers:chapter7TigerPack("s81_territorial", "Hidden Jungle Tiger", 10, { hpBase:555, speed:1.00 }),
+  }),
+  82:Object.freeze({
+    level:82, chapter:9, chapterName:"The Hidden Jungle", title:"Story Mission 82",
+    objective:"Locate and clear eight rare tigers across the hidden jungle without losing the two wildlife observers.", rescueRequired:2,
+    dangerNote:"Rare tigers use faster stalker movement. Protect both observers while the squad searches the marked habitats.", aggressionLabel:"Rare Tiger Encounter", hazardDamageBonus:7,
+    timeLimitMs:19 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    civilians:Object.freeze([
+      Object.freeze({ id:"s82_observer_lead", x:300, y:310, name:"Senior Wildlife Observer", look:"scout", vip:true }),
+      Object.freeze({ id:"s82_observer_field", x:825, y:610, name:"Field Wildlife Observer", look:"medic", vip:true }),
+    ]),
+    tigers:chapter7TigerPack("s82_rare", "Rare Hidden Tiger", 8, { hpBase:590, speed:1.04, types:["Stalker","Scout","Stalker","Armored","Stalker","Standard","Scout","Stalker"] }),
+  }),
+  83:Object.freeze({
+    level:83, chapter:9, chapterName:"The Hidden Jungle", title:"Story Mission 83",
+    objective:"Use Rubber ammunition to capture Shadeclaw, the stealth tiger, alive; clear its four guards and extract together.", rescueRequired:0, captureRequired:1,
+    captureTargetIds:Object.freeze(["s83_shadeclaw"]),
+    dangerNote:"Shadeclaw must remain alive. Any Real-ammo hit permanently blocks its capture.", aggressionLabel:"Stealth Tiger Capture", hazardDamageBonus:7, nightVisibilityIntensity:.32,
+    timeLimitMs:19 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s83_shadeclaw", name:"Shadeclaw Stealth Tiger", type:"Stalker", hpMax:1250, baseX:665, baseY:530, rangeX:235, rangeY:175, speed:1.08, phase:1.7 }),
+      Object.freeze({ id:"s83_guard_1", name:"Shade Guard One", type:"Scout", hpMax:630, baseX:315, baseY:340, rangeX:170, rangeY:125, speed:1.06, phase:.5 }),
+      Object.freeze({ id:"s83_guard_2", name:"Shade Guard Two", type:"Stalker", hpMax:710, baseX:510, baseY:700, rangeX:180, rangeY:130, speed:1.02, phase:2.8 }),
+      Object.freeze({ id:"s83_guard_3", name:"Shade Guard Three", type:"Standard", hpMax:795, baseX:825, baseY:320, rangeX:175, rangeY:130, speed:.95, phase:4.2 }),
+      Object.freeze({ id:"s83_guard_4", name:"Shade Guard Four", type:"Armored", hpMax:980, baseX:930, baseY:690, rangeX:160, rangeY:120, speed:.80, phase:5.6 }),
+    ]),
+  }),
+  84:Object.freeze({
+    level:84, chapter:9, chapterName:"The Hidden Jungle", title:"Story Mission 84",
+    objective:"Escort nine villagers through three ancient-ruins checkpoints, clear the hunters, and extract together.", rescueRequired:9,
+    dangerNote:"Both soldiers must secure the ruin route in order before the villagers can reach the Rescue House.", aggressionLabel:"Ancient Ruins Escort", hazardDamageBonus:7,
+    timeLimitMs:21 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s84_outer_arch", x:305, y:395, r:130, label:"Outer Ruins Arch" }),
+      Object.freeze({ id:"s84_temple_court", x:610, y:515, r:130, label:"Ancient Temple Court" }),
+      Object.freeze({ id:"s84_safe_passage", x:915, y:685, r:135, label:"Ruins Safe Passage" }),
+    ]),
+    civilians:Object.freeze(Array.from({ length:9 }, (_, index)=>Object.freeze({
+      id:`s84_villager_${index + 1}`,
+      x:185 + (index % 5) * 185,
+      y:245 + Math.floor(index / 5) * 365 + (index % 2) * 70,
+      name:`Ruins Villager ${index + 1}`,
+      look:["field","medic","scout","driver"][index % 4],
+      vip:index === 0,
+    }))),
+    tigers:chapter7TigerPack("s84_hunter", "Ruins Hunter", 10, { hpBase:575, speed:1.00 }),
+  }),
+  85:Object.freeze({
+    level:85, chapter:9, chapterName:"The Hidden Jungle", title:"Story Mission 85",
+    objective:"Secure four ancient-ruins sectors in order, clear the twelve-tiger guardian pack, and extract together.", rescueRequired:0,
+    dangerNote:"The ruins are a guarded route, not decoration. Both soldiers must enter all four marked sectors in order.", aggressionLabel:"Ruins Guardian Pack", hazardDamageBonus:8,
+    timeLimitMs:21 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s85_west_gate", x:265, y:360, r:125, label:"West Ruins Gate" }),
+      Object.freeze({ id:"s85_sunken_court", x:480, y:590, r:125, label:"Sunken Court" }),
+      Object.freeze({ id:"s85_guardian_hall", x:720, y:330, r:125, label:"Guardian Hall" }),
+      Object.freeze({ id:"s85_east_temple", x:930, y:685, r:130, label:"East Temple" }),
+    ]),
+    civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s85_guardian", "Ruins Guardian", 12, { hpBase:585, speed:1.01 }),
+  }),
+  86:Object.freeze({
+    level:86, chapter:9, chapterName:"The Hidden Jungle", title:"Story Mission 86",
+    objective:"Protect the six-person excavation team, activate four dig sites in order, clear the attackers, and extract together.", rescueRequired:6,
+    dangerNote:"Every excavation site is functional. Both soldiers must secure all four sites before extraction.", aggressionLabel:"Excavation Team Defense", hazardDamageBonus:8,
+    timeLimitMs:22 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s86_dig_alpha", x:275, y:355, r:125, label:"Excavation Site Alpha" }),
+      Object.freeze({ id:"s86_dig_bravo", x:500, y:270, r:125, label:"Excavation Site Bravo" }),
+      Object.freeze({ id:"s86_dig_charlie", x:730, y:525, r:125, label:"Excavation Site Charlie" }),
+      Object.freeze({ id:"s86_dig_delta", x:930, y:685, r:130, label:"Excavation Site Delta" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s86_director", x:205, y:245, name:"Excavation Director", look:"medic", vip:true }),
+      Object.freeze({ id:"s86_archaeologist", x:350, y:390, name:"Lead Archaeologist", look:"field" }),
+      Object.freeze({ id:"s86_engineer", x:500, y:260, name:"Dig Site Engineer", look:"driver" }),
+      Object.freeze({ id:"s86_historian", x:650, y:490, name:"Jungle Historian", look:"field" }),
+      Object.freeze({ id:"s86_medic", x:790, y:315, name:"Excavation Medic", look:"medic" }),
+      Object.freeze({ id:"s86_guard", x:925, y:675, name:"Excavation Guard", look:"soldier" }),
+    ]),
+    tigers:chapter7TigerPack("s86_attacker", "Excavation Attacker", 11, { hpBase:595, speed:1.01 }),
+  }),
+  87:Object.freeze({
+    level:87, chapter:9, chapterName:"The Hidden Jungle", title:"Story Mission 87",
+    objective:"Escort nine hidden-jungle survivors through three landing-zone checkpoints, clear the pursuit, and board the helicopter extraction together.", rescueRequired:9,
+    extractionType:"helicopter",
+    dangerNote:"The helicopter route is real: rescue the survivors, secure each landing-zone checkpoint, then board together.", aggressionLabel:"Hidden Jungle Air Evacuation", hazardDamageBonus:8,
+    timeLimitMs:22 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s87_survivor_rally", x:310, y:390, r:130, label:"Survivor Rally" }),
+      Object.freeze({ id:"s87_canopy_lane", x:620, y:515, r:130, label:"Canopy Landing Lane" }),
+      Object.freeze({ id:"s87_helicopter_lz", x:915, y:680, r:135, label:"Helicopter LZ" }),
+    ]),
+    civilians:Object.freeze(Array.from({ length:9 }, (_, index)=>Object.freeze({
+      id:`s87_survivor_${index + 1}`,
+      x:195 + (index % 5) * 180,
+      y:240 + Math.floor(index / 5) * 375 + (index % 2) * 72,
+      name:`Hidden Jungle Survivor ${index + 1}`,
+      look:["medic","field","scout","driver"][index % 4],
+      vip:index === 0,
+    }))),
+    tigers:chapter7TigerPack("s87_pursuer", "Air Evac Pursuer", 11, { hpBase:600, speed:1.03 }),
+  }),
+  88:Object.freeze({
+    level:88, chapter:9, chapterName:"The Hidden Jungle", title:"Story Mission 88",
+    objective:"Survive and clear sixteen extremely aggressive hidden-jungle tigers, then extract together.", rescueRequired:0,
+    dangerNote:"This pack attacks faster and hits harder. Every lethal kill adds more blood-scent aggression to the survivors.", aggressionLabel:"Extreme Hidden Jungle Aggression", hazardDamageBonus:11, aggressionPerKill:3, hazardCooldownMs:590,
+    timeLimitMs:23 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s88_extreme", "Enraged Hidden Tiger", 16, { hpBase:610, speed:1.06 }),
+  }),
+  89:Object.freeze({
+    level:89, chapter:9, chapterName:"The Hidden Jungle", title:"Story Mission 89",
+    objective:"Prepare for the Phantom Tiger by activating four tracking stations, defeating its fourteen-tiger vanguard, and extracting together.", rescueRequired:0,
+    dangerNote:"Preparation is real gameplay. Both soldiers must activate the signal, medical, armory, and phantom-tracking stations in order.", aggressionLabel:"Phantom Tiger Preparation", hazardDamageBonus:9, nightVisibilityIntensity:.24,
+    timeLimitMs:23 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s89_signal", x:270, y:360, r:125, label:"Hidden Signal Relay" }),
+      Object.freeze({ id:"s89_medical", x:500, y:280, r:125, label:"Forward Medical Station" }),
+      Object.freeze({ id:"s89_armory", x:730, y:525, r:125, label:"Hidden Jungle Armory" }),
+      Object.freeze({ id:"s89_phantom_tracker", x:930, y:685, r:130, label:"Phantom Tracking Station" }),
+    ]),
+    civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s89_vanguard", "Phantom Vanguard", 14, { hpBase:620, speed:1.04 }),
+  }),
+  90:Object.freeze({
+    level:90, chapter:9, chapterName:"The Hidden Jungle", title:"Story Mission 90",
+    objective:"Defeat or capture the Phantom Tiger, then reach extraction together to finish Chapter 9.", rescueRequired:0,
+    dangerNote:"The Phantom Tiger is a fast stealth boss that enters Phantom Rage below 35% health.", aggressionLabel:"Phantom Tiger Boss", hazardDamageBonus:12, hazardCooldownMs:560, nightVisibilityIntensity:.38,
+    timeLimitMs:24 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s90_phantom_tiger", name:"Phantom Tiger", type:"Stalker", hpMax:6000, baseX:650, baseY:545, rangeX:290, rangeY:215, speed:.78, phase:1.4, boss:true, bloodRage:true }),
+    ]),
+  }),
 });
 const ROLE_DEFS = Object.freeze({
   tracker:Object.freeze({ key:"tracker", label:"Tracker", damage:28, maxHp:105, speed:1.08 }),
@@ -1517,6 +1670,16 @@ const SHARED_STORY_WORLD_SIZES = Object.freeze({
   78:Object.freeze({ width:4800, height:2800 }),
   79:Object.freeze({ width:4800, height:2800 }),
   80:Object.freeze({ width:4800, height:2800 }),
+  81:Object.freeze({ width:4800, height:2800 }),
+  82:Object.freeze({ width:4800, height:2800 }),
+  83:Object.freeze({ width:4800, height:2800 }),
+  84:Object.freeze({ width:4800, height:2800 }),
+  85:Object.freeze({ width:4800, height:2800 }),
+  86:Object.freeze({ width:4800, height:2800 }),
+  87:Object.freeze({ width:4800, height:2800 }),
+  88:Object.freeze({ width:4800, height:2800 }),
+  89:Object.freeze({ width:4800, height:2800 }),
+  90:Object.freeze({ width:4800, height:2800 }),
 });
 const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
 const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
@@ -2911,7 +3074,7 @@ async function claimReward(session, user){
   player.rewardClaimed = true;
   await writePlayer(session.code, player);
   const sharedStory = session.launchType === "shared-story";
-  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 80) : 0;
+  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 90) : 0;
   const sharedRewards = {
     1:{ cash:1800, perkPoints:1, seasonPoints:6, badge:"Shared Story First Patrol" },
     2:{ cash:2050, perkPoints:1, seasonPoints:7, badge:"Farm Road Guardians" },
@@ -2993,6 +3156,16 @@ async function claimReward(session, user){
     78:{ cash:95500, perkPoints:17, seasonPoints:207, badge:"King's Ambush Survivors" },
     79:{ cash:99600, perkPoints:17, seasonPoints:214, badge:"Tiger King Vanguard Breakers" },
     80:{ cash:105000, perkPoints:18, seasonPoints:225, badge:"Tiger King Breakers" },
+    81:{ cash:109000, perkPoints:18, seasonPoints:231, badge:"Hidden Jungle Research Guides" },
+    82:{ cash:113200, perkPoints:18, seasonPoints:237, badge:"Rare Tiger Trackers" },
+    83:{ cash:117600, perkPoints:18, seasonPoints:243, badge:"Shadeclaw Researchers" },
+    84:{ cash:122200, perkPoints:19, seasonPoints:250, badge:"Ancient Ruins Lifeline" },
+    85:{ cash:127000, perkPoints:19, seasonPoints:257, badge:"Ruins Guardian Breakers" },
+    86:{ cash:132000, perkPoints:19, seasonPoints:264, badge:"Excavation Team Defenders" },
+    87:{ cash:137300, perkPoints:19, seasonPoints:272, badge:"Hidden Jungle Air Rescue" },
+    88:{ cash:142900, perkPoints:20, seasonPoints:280, badge:"Extreme Jungle Survivors" },
+    89:{ cash:148800, perkPoints:20, seasonPoints:289, badge:"Phantom Vanguard Breakers" },
+    90:{ cash:156000, perkPoints:21, seasonPoints:300, badge:"Phantom Tiger Breakers" },
   };
   const operationRewards = {
     "live-squad":{ cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },

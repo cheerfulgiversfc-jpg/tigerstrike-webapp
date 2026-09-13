@@ -54,10 +54,10 @@ test("co-op characters are detailed and living tigers have no oval target ring",
   assert(!soldier.includes("ctx.translate(draw.x,draw.y);ctx.rotate(face)"), "the full soldier can never rotate upside down");
 });
 
-test("V9.3 uses one cache key for every gameplay module", () => {
-  assert(game.includes('const TS_BUILD = "5067"'));
+test("V9.4 uses one cache key for every gameplay module", () => {
+  assert(game.includes('const TS_BUILD = "5068"'));
   for(const file of ["game.js", "squad-coop.js", "field-systems.js", "ammo-modes.js", "tutorial.js"]){
-    assert(html.includes(`${file}?v=5067-tutorial-v4`), `stale cache key for ${file}`);
+    assert(html.includes(`${file}?v=5068-shared-story-ch9`), `stale cache key for ${file}`);
   }
 });
 

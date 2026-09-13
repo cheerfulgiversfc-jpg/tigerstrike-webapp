@@ -424,6 +424,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - The compact tutorial card automatically moves above or below the current button, civilian, tiger, safe zone, or interactable using the live camera position.
 - Play, Skip, Next, and Finish use touch-safe pointer handling, and the chosen Signal Flare has a real limited-use mission effect that must be activated to finish its lesson.
 
+### V9.4 Shared Story Chapter 9
+
+- Converts Story Missions 81–90 from `The Hidden Jungle` into fully playable two-player missions while preserving Solo play for every level.
+- Mission 81 escorts eight researchers through three shared survey checkpoints. Mission 82 protects two observers during eight rare-tiger encounters, and Mission 83 requires Shadeclaw to be captured alive with Rubber ammunition.
+- Missions 84–86 add functional ancient-ruins routes, four guarded sectors, four working excavation sites, nine villager rescues, and a protected six-person dig team.
+- Mission 87 escorts nine survivors through a real helicopter route. Mission 88 is a sixteen-tiger extreme-aggression fight, while Mission 89 requires four preparation stations before clearing the Phantom vanguard.
+- Mission 90 uses a 6,000 HP Phantom Tiger with stealth behavior, a low-health Phantom Rage phase, boss music, and a `Phantom Tiger Breakers` badge.
+- Every Chapter 9 mission uses the full 4,800 × 2,800 Shared Story world, reconnect support, squad-wipe restarts, persistent cages and carcasses, and separate deduplicated rewards and unlocks for both players.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

@@ -268,7 +268,7 @@ async function run(){
   raceSnapshot = await buildSnapshot(await readSession(raceSession.code), raceHost.id);
   assert.equal(raceSnapshot.capturedIds.filter((id)=>id === raceTiger.id).length, 1, "simultaneous capture taps create one cage and one capture record");
 
-  for(let level=2; level<=80; level++){
+  for(let level=2; level<=90; level++){
     const levelHost = { id:910100 + (level * 10), first_name:`Host ${level}` };
     const levelMate = { id:910101 + (level * 10), first_name:`Mate ${level}` };
     let levelSession = await createSession(levelHost, { launchType:"shared-story", storyMissionLevel:level });
@@ -612,6 +612,53 @@ async function run(){
       assert.equal(levelSnapshot.boss.hpMax, 4800, "Mission 80 keeps the Tiger King boss health");
       assert.equal(levelSnapshot.boss.bloodRage, true, "Mission 80 carries the low-health Royal Rage phase");
     }
+    if(level === 81){
+      assert.equal(levelSnapshot.mission.chapterName, "The Hidden Jungle", "Mission 81 starts the real Chapter 9 campaign");
+      assert.equal(levelSnapshot.mission.rescueRequired, 8, "Mission 81 escorts all eight research-team members");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 81 has three shared survey checkpoints");
+    }
+    if(level === 82){
+      assert.equal(levelSnapshot.mission.rescueRequired, 2, "Mission 82 protects both wildlife observers");
+      assert.equal(levelSnapshot.tigers.length, 8, "Mission 82 contains eight rare tiger encounters");
+      assert(levelSnapshot.tigers.filter((tiger)=>tiger.type === "Stalker").length >= 4, "Mission 82 makes rare tigers use stealth behavior");
+    }
+    if(level === 83){
+      assert.equal(levelSnapshot.mission.captureRequired, 1, "Mission 83 requires one live stealth-tiger capture");
+      assert.deepEqual(levelSnapshot.mission.captureTargetIds, ["s83_shadeclaw"], "Mission 83 requires Shadeclaw specifically");
+      assert.deepEqual(levelSnapshot.mission.captureTargetNames, ["Shadeclaw Stealth Tiger"], "Mission 83 names the exact capture target");
+    }
+    if(level === 84){
+      assert.equal(levelSnapshot.mission.rescueRequired, 9, "Mission 84 escorts all nine ruins villagers");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 84 has a three-stage ancient-ruins route");
+    }
+    if(level === 85){
+      assert.equal(levelSnapshot.checkpoints.length, 4, "Mission 85 turns all four ruins sectors into real objectives");
+      assert.equal(levelSnapshot.tigers.length, 12, "Mission 85 contains the full twelve-tiger ruins guardian pack");
+    }
+    if(level === 86){
+      assert.equal(levelSnapshot.mission.rescueRequired, 6, "Mission 86 protects all six excavation specialists");
+      assert.equal(levelSnapshot.checkpoints.length, 4, "Mission 86 has four working excavation sites");
+    }
+    if(level === 87){
+      assert.equal(levelSnapshot.mission.rescueRequired, 9, "Mission 87 escorts all nine hidden-jungle survivors");
+      assert.equal(levelSnapshot.mission.extractionType, "helicopter", "Mission 87 uses real helicopter extraction");
+      assert.equal(levelSnapshot.checkpoints.length, 3, "Mission 87 has a three-stage helicopter route");
+    }
+    if(level === 88){
+      assert.equal(levelSnapshot.tigers.length, 16, "Mission 88 contains the full sixteen-tiger extreme-aggression pack");
+      assert.equal(levelSnapshot.mission.aggressionBonus, 11, "Mission 88 begins at extreme hidden-jungle aggression");
+      assert.equal(levelSnapshot.mission.aggressionPerKill, 3, "Mission 88 escalates faster after lethal kills");
+    }
+    if(level === 89){
+      assert.equal(levelSnapshot.checkpoints.length, 4, "Mission 89 turns preparation into four working stations");
+      assert.equal(levelSnapshot.tigers.length, 14, "Mission 89 includes the Phantom Tiger's fourteen-tiger vanguard");
+    }
+    if(level === 90){
+      assert.equal(levelSnapshot.boss.name, "Phantom Tiger", "Mission 90 uses the real Phantom Tiger boss");
+      assert.equal(levelSnapshot.boss.hpMax, 6000, "Mission 90 keeps the Phantom Tiger boss health");
+      assert.equal(levelSnapshot.boss.type, "Stalker", "Mission 90 uses stealth boss behavior");
+      assert.equal(levelSnapshot.boss.bloodRage, true, "Mission 90 carries the low-health Phantom Rage phase");
+    }
     if(level === 12){
       const firstTiger = levelSnapshot.tigers[0];
       await writePlayerPatch(levelSession.code, levelHost.id, {
@@ -709,13 +756,18 @@ async function run(){
       assert.equal(levelHostReward.reward.badge, "Tiger King Breakers", "Mission 80 awards the Tiger King badge");
       assert.deepEqual(levelHostReward.storyProgress, { completedLevel:80, unlockLevel:81 }, "Mission 80 unlocks Mission 81");
     }
+    if(level === 90){
+      assert.equal(levelHostReward.reward.cash, 156000, "Mission 90 pays the Phantom Tiger cash reward");
+      assert.equal(levelHostReward.reward.badge, "Phantom Tiger Breakers", "Mission 90 awards the Phantom Tiger badge");
+      assert.deepEqual(levelHostReward.storyProgress, { completedLevel:90, unlockLevel:91 }, "Mission 90 unlocks Mission 91");
+    }
     const levelHostAgain = await claimReward(await readSession(levelSession.code), levelHost);
     assert.equal(levelHostAgain.firstClaim, false, `Story Mission ${level} does not pay the host twice`);
   }
 
-  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:81 });
-  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 81 cannot create a fake shared Story room");
-  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 81");
+  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:91 });
+  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 91 cannot create a fake shared Story room");
+  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 91");
 
   const routeHost = { id:910811, first_name:"Route Host" };
   const routeMate = { id:910812, first_name:"Route Mate" };
@@ -1165,7 +1217,7 @@ async function run(){
   const survivalHostAgain = await claimReward(await readSession(survivalSession.code), survivalHost);
   assert.equal(survivalHostAgain.firstClaim, false, "Endless Survival cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-80 and seven Special Operations, Chapter 8 evacuations, corrected Mission 72, elite captures, moving caravan, lost-soldier rescue, Tiger King preparation and boss, reconnect, separate unlocks, and reward dedupe");
+  console.log("PASS: Story Missions 1-90 and seven Special Operations, Hidden Jungle escorts, rare and stealth tigers, functional ruins, excavation defense, air evacuation, Phantom Tiger, reconnect, separate unlocks, and reward dedupe");
 }
 
 run().catch((error)=>{
