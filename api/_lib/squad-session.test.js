@@ -268,7 +268,7 @@ async function run(){
   raceSnapshot = await buildSnapshot(await readSession(raceSession.code), raceHost.id);
   assert.equal(raceSnapshot.capturedIds.filter((id)=>id === raceTiger.id).length, 1, "simultaneous capture taps create one cage and one capture record");
 
-  for(let level=2; level<=90; level++){
+  for(let level=2; level<=100; level++){
     const levelHost = { id:910100 + (level * 10), first_name:`Host ${level}` };
     const levelMate = { id:910101 + (level * 10), first_name:`Mate ${level}` };
     let levelSession = await createSession(levelHost, { launchType:"shared-story", storyMissionLevel:level });
@@ -659,6 +659,53 @@ async function run(){
       assert.equal(levelSnapshot.boss.type, "Stalker", "Mission 90 uses stealth boss behavior");
       assert.equal(levelSnapshot.boss.bloodRage, true, "Mission 90 carries the low-health Phantom Rage phase");
     }
+    if(level === 91){
+      assert.equal(levelSnapshot.mission.chapterName, "The Ancient Guardian", "Mission 91 starts the real Chapter 10 campaign");
+      assert.equal(levelSnapshot.mission.rescueRequired, 12, "Mission 91 escorts all twelve final villagers");
+      assert.equal(levelSnapshot.checkpoints.length, 4, "Mission 91 uses four jungle-core evacuation checkpoints");
+      assert.equal(levelSnapshot.tigers.length, 12, "Mission 91 includes the full pursuing pack");
+    }
+    if(level === 92){
+      assert.equal(levelSnapshot.tigers.length, 18, "Mission 92 contains eighteen extremely aggressive tigers");
+      assert.equal(levelSnapshot.mission.aggressionBonus, 13, "Mission 92 starts at maximum ancient-jungle pressure");
+      assert.equal(levelSnapshot.mission.aggressionPerKill, 3, "Mission 92 sharply escalates after lethal kills");
+    }
+    if(level === 93){
+      assert.equal(levelSnapshot.mission.captureRequired, 1, "Mission 93 requires one live Guardian capture");
+      assert.deepEqual(levelSnapshot.mission.captureTargetIds, ["s93_guardian_tiger"], "Mission 93 requires the elite Guardian specifically");
+      assert.deepEqual(levelSnapshot.mission.captureTargetNames, ["Elite Guardian Tiger"], "Mission 93 names its required capture target");
+    }
+    if(level === 94){
+      assert.equal(levelSnapshot.mission.rescueRequired, 10, "Mission 94 escorts all ten convoy members");
+      assert.equal(levelSnapshot.checkpoints.length, 4, "Mission 94 uses four moving-convoy checkpoints");
+      assert.equal(levelSnapshot.tigers.length, 14, "Mission 94 contains the complete road ambush");
+    }
+    if(level === 95) assert.equal(levelSnapshot.tigers.length, 18, "Mission 95 contains the massive eighteen-tiger assault");
+    if(level === 96){
+      assert.equal(levelSnapshot.mission.rescueRequired, 8, "Mission 96 rescues all eight trapped soldiers");
+      assert.equal(levelSnapshot.checkpoints.length, 4, "Mission 96 uses four patrol rally checkpoints");
+      assert(levelSnapshot.civilians.every((civilian)=>civilian.look === "soldier"), "Mission 96 visibly renders every rescue target as a soldier");
+    }
+    if(level === 97){
+      assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 97 protects the full helicopter crew");
+      assert.equal(levelSnapshot.mission.extractionType, "helicopter", "Mission 97 uses real helicopter extraction");
+      assert.equal(levelSnapshot.checkpoints.length, 4, "Mission 97 has four functional flight stations");
+    }
+    if(level === 98){
+      assert.equal(levelSnapshot.tigers.length, 18, "Mission 98 contains the final eighteen-tiger swarm");
+      assert.equal(levelSnapshot.mission.aggressionBonus, 14, "Mission 98 begins at final-swarm aggression");
+      assert.equal(levelSnapshot.mission.aggressionPerKill, 3, "Mission 98 escalates after lethal kills");
+    }
+    if(level === 99){
+      assert.equal(levelSnapshot.checkpoints.length, 4, "Mission 99 turns all four Guardian seals into working objectives");
+      assert.equal(levelSnapshot.tigers.length, 14, "Mission 99 contains all fourteen temple guards");
+    }
+    if(level === 100){
+      assert.equal(levelSnapshot.boss.name, "The Ancient Tiger", "Mission 100 uses the real Ancient Tiger boss");
+      assert.equal(levelSnapshot.boss.hpMax, 8500, "Mission 100 keeps the Ancient Tiger final-boss health");
+      assert.equal(levelSnapshot.boss.type, "Alpha", "Mission 100 uses final Alpha behavior");
+      assert.equal(levelSnapshot.boss.bloodRage, true, "Mission 100 carries the low-health Guardian Rage phase");
+    }
     if(level === 12){
       const firstTiger = levelSnapshot.tigers[0];
       await writePlayerPatch(levelSession.code, levelHost.id, {
@@ -718,8 +765,8 @@ async function run(){
     assert.equal(levelSnapshot.status, "complete", `Story Mission ${level} can be completed by both players`);
     const levelHostReward = await claimReward(await readSession(levelSession.code), levelHost);
     const levelMateReward = await claimReward(await readSession(levelSession.code), levelMate);
-    assert.deepEqual(levelHostReward.storyProgress, { completedLevel:level, unlockLevel:level + 1 }, `Story Mission ${level} unlocks the correct next mission for the host`);
-    assert.deepEqual(levelMateReward.storyProgress, { completedLevel:level, unlockLevel:level + 1 }, `Story Mission ${level} unlocks the correct next mission for the teammate`);
+    assert.deepEqual(levelHostReward.storyProgress, { completedLevel:level, unlockLevel:Math.min(100, level + 1) }, `Story Mission ${level} unlocks the correct next mission for the host`);
+    assert.deepEqual(levelMateReward.storyProgress, { completedLevel:level, unlockLevel:Math.min(100, level + 1) }, `Story Mission ${level} unlocks the correct next mission for the teammate`);
     assert.notEqual(levelHostReward.receipt, levelMateReward.receipt, `Story Mission ${level} keeps player reward receipts separate`);
     if(level === 20){
       assert.equal(levelHostReward.reward.cash, 9500, "Mission 20 pays the Blood Tiger cash reward");
@@ -761,13 +808,20 @@ async function run(){
       assert.equal(levelHostReward.reward.badge, "Phantom Tiger Breakers", "Mission 90 awards the Phantom Tiger badge");
       assert.deepEqual(levelHostReward.storyProgress, { completedLevel:90, unlockLevel:91 }, "Mission 90 unlocks Mission 91");
     }
+    if(level === 100){
+      assert.equal(levelHostReward.reward.cash, 240000, "Mission 100 pays the Ancient Tiger cash reward");
+      assert.equal(levelHostReward.reward.badge, "Ancient Tiger Legends", "Mission 100 awards the final Ancient Tiger badge");
+      assert.deepEqual(levelHostReward.storyProgress, { completedLevel:100, unlockLevel:100 }, "Mission 100 completes the campaign without inventing Mission 101");
+      const finalSnapshot = await buildSnapshot(await readSession(levelSession.code), levelHost.id);
+      assert.equal(finalSnapshot.nextStoryMissionLevel, 0, "Mission 100 offers campaign completion instead of a fake next mission");
+    }
     const levelHostAgain = await claimReward(await readSession(levelSession.code), levelHost);
     assert.equal(levelHostAgain.firstClaim, false, `Story Mission ${level} does not pay the host twice`);
   }
 
-  const futureRoom = await createSession({ id:910809, first_name:"Future Mission" }, { launchType:"shared-story", storyMissionLevel:91 });
-  assert.equal(futureRoom.launchType, "live-squad", "an unconverted Mission 91 cannot create a fake shared Story room");
-  assert.equal(futureRoom.storyMissionLevel, 0, "an unconverted Story room cannot masquerade as Mission 91");
+  const finalRoom = await createSession({ id:910809, first_name:"Final Mission" }, { launchType:"shared-story", storyMissionLevel:100 });
+  assert.equal(finalRoom.launchType, "shared-story", "Mission 100 creates a real shared Story room");
+  assert.equal(finalRoom.storyMissionLevel, 100, "the final shared Story room keeps Mission 100");
 
   const routeHost = { id:910811, first_name:"Route Host" };
   const routeMate = { id:910812, first_name:"Route Mate" };
@@ -1217,7 +1271,7 @@ async function run(){
   const survivalHostAgain = await claimReward(await readSession(survivalSession.code), survivalHost);
   assert.equal(survivalHostAgain.firstClaim, false, "Endless Survival cannot pay the same player twice in one room");
 
-  console.log("PASS: Story Missions 1-90 and seven Special Operations, Hidden Jungle escorts, rare and stealth tigers, functional ruins, excavation defense, air evacuation, Phantom Tiger, reconnect, separate unlocks, and reward dedupe");
+  console.log("PASS: all 100 Story missions and seven Special Operations, Chapter 10 escorts, Guardian capture, convoy, helicopter defense, temple seals, Ancient Tiger finale, reconnect, separate unlocks, and reward dedupe");
 }
 
 run().catch((error)=>{

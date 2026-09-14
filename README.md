@@ -433,6 +433,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Mission 90 uses a 6,000 HP Phantom Tiger with stealth behavior, a low-health Phantom Rage phase, boss music, and a `Phantom Tiger Breakers` badge.
 - Every Chapter 9 mission uses the full 4,800 × 2,800 Shared Story world, reconnect support, squad-wipe restarts, persistent cages and carcasses, and separate deduplicated rewards and unlocks for both players.
 
+### V9.5 Complete Shared Story Campaign
+
+- Converts Story Missions 91–100 from `The Ancient Guardian` into fully playable two-player missions while preserving Solo play for every level.
+- Mission 91 escorts twelve final villagers through four jungle-core checkpoints. Missions 92, 95, and 98 contain complete eighteen-tiger extreme-aggression, massive-assault, and final-swarm encounters.
+- Mission 93 requires the elite Guardian Tiger to be captured alive. Mission 94 moves a ten-person convoy through four ancient-jungle checkpoints, and Mission 96 rescues eight visibly uniformed trapped soldiers through four rally points.
+- Mission 97 protects a four-person flight crew, activates four functional helicopter stations, and finishes with real helicopter extraction. Mission 99 makes all four ancient temple seals working two-player objectives.
+- Mission 100 uses the 8,500 HP Ancient Tiger with a low-health Guardian Rage phase, boss music, unique gold presentation, a `$240,000` reward, and the `Ancient Tiger Legends` badge.
+- Every Chapter 10 mission uses the full 4,800 × 2,800 Shared Story world, reconnect support, squad-wipe restarts, persistent cages and carcasses, and separate deduplicated rewards and unlocks for both players.
+- Completing Mission 100 now displays campaign completion instead of inventing a Mission 101 or showing a fake unfinished button.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

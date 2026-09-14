@@ -134,6 +134,16 @@
     { level:88, title:"Extreme Hidden Jungle Aggression", description:"Survive sixteen enraged tigers whose blood-scent aggression rises after lethal kills." },
     { level:89, title:"Phantom Tiger Preparation", description:"Activate four real preparation stations and defeat the Phantom Tiger's fourteen-tiger vanguard." },
     { level:90, title:"Phantom Tiger", description:"Defeat or capture the Phantom Tiger and finish Chapter 9 together." },
+    { level:91, title:"Jungle Core Evacuation", description:"Escort twelve final villagers through four shared jungle-core checkpoints and clear the pursuit." },
+    { level:92, title:"Ancient Jungle Extreme Aggression", description:"Survive eighteen ancient-jungle tigers whose blood-scent aggression escalates after lethal kills." },
+    { level:93, title:"Elite Guardian Capture", description:"Use Rubber ammunition to capture the elite Guardian Tiger alive, then clear its temple guards." },
+    { level:94, title:"Ancient Jungle Convoy", description:"Escort ten convoy members through four ancient-jungle route checkpoints." },
+    { level:95, title:"Massive Ancient Assault", description:"Survive and clear an eighteen-tiger assault attacking from every route." },
+    { level:96, title:"Trapped Soldier Rescue", description:"Rescue eight trapped soldiers and guide them through four shared rally checkpoints." },
+    { level:97, title:"Final Helicopter Defense", description:"Protect the flight crew, activate four helicopter stations, and extract by air together." },
+    { level:98, title:"Final Tiger Swarm", description:"Survive and clear the final eighteen-tiger swarm before extraction." },
+    { level:99, title:"Ancient Temple Entry", description:"Activate four guardian seals and clear the fourteen temple guards." },
+    { level:100, title:"The Ancient Tiger", description:"Defeat or capture the Ancient Tiger and complete the Story campaign together." },
   ]);
   const SPECIAL_OPERATIONS = Object.freeze([
     {
@@ -345,8 +355,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V9.4 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V9.4 • ${selectedOperation().mapLabel}` : "Tiger Strike V9.4 • Co-op Command");
+      ? `Tiger Strike V9.5 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V9.5 • ${selectedOperation().mapLabel}` : "Tiger Strike V9.5 • Co-op Command");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -610,7 +620,7 @@
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
-      <details class="squadHowTo" open><summary>How ${sharedStoryActive() ? "Shared Story" : selectedOperation().title} works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tigers, health, and extraction.<br><b>3.</b> Either player can rescue an available civilian or attack a tiger. A following civilian belongs to that rescuer, and only one player can complete each tiger capture.<br><b>4.</b> Bring your followers to the Rescue House and tap Take to House. ${sharedStoryActive() ? `Then clear the Story threats and extract together. After both rewards are claimed, the same squad can continue to Mission ${Math.min(100, Number(state.storyMissionLevel || 1) + 1)}.` : `${esc(missionMeta().objective || selectedOperation().short)} Special Operation progress stays separate from Story.`}</div></details>
+      <details class="squadHowTo" open><summary>How ${sharedStoryActive() ? "Shared Story" : selectedOperation().title} works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tigers, health, and extraction.<br><b>3.</b> Either player can rescue an available civilian or attack a tiger. A following civilian belongs to that rescuer, and only one player can complete each tiger capture.<br><b>4.</b> Bring your followers to the Rescue House and tap Take to House. ${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Then clear the final threat and extract together to complete the Shared Story campaign." : `Then clear the Story threats and extract together. After both rewards are claimed, the same squad can continue to Mission ${Number(state.storyMissionLevel || 1) + 1}.`) : `${esc(missionMeta().objective || selectedOperation().short)} Special Operation progress stays separate from Story.`}</div></details>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
         ${waiting ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate</button>` : ""}
@@ -634,7 +644,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V9.4 Shared Story Chapter 9</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">Story Missions 1–90 can be played Solo or with a teammate. Chapter 9 adds the Hidden Jungle research expedition, rare and stealth tigers, ancient ruins, excavation defense, helicopter evacuation, extreme aggression, and the Phantom Tiger.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V9.5 Complete Shared Story Campaign</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">All 100 Story missions can now be played Solo or with a teammate. Chapter 10 adds the jungle-core evacuation, elite Guardian capture, ancient convoy, trapped-soldier rescue, final helicopter defense, temple entry, and the Ancient Tiger finale.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -676,6 +686,7 @@
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="61">Chapter 7 • 61–70</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="71">Chapter 8 • 71–80</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="81">Chapter 9 • 81–90</button>
+      <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="91">Chapter 10 • 91–100</button>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.max(1, selected - 1)}" ${selected <= 1 ? "disabled" : ""}>← Previous</button>
       <span>Unlocked ${max}/100</span>
       <button type="button" class="squadBtn" data-squad-command="select-story" data-squad-story-level="${Math.min(max, selected + 1)}" ${selected >= max ? "disabled" : ""}>Next →</button>
@@ -754,7 +765,7 @@
       <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} expanded cooperative battlefield with a player-following camera"></canvas>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
         <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : "⏱️ Operation Failed")}</div>
-        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Math.min(100, Number(state.storyMissionLevel || 1) + 1)} unlocks when each player claims the result.` : `Both players cleared ${esc(selectedOperation().title)} and earned its separate Special Operation reward.`}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : `Time expired. The squad leader can restart ${esc(missionName())}.`)}</div>
+        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Story Mission 100 completed together. Both players can claim the final reward—the full Shared Story campaign is complete." : `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Number(state.storyMissionLevel || 1) + 1} unlocks when each player claims the result.`) : `Both players cleared ${esc(selectedOperation().title)} and earned its separate Special Operation reward.`}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : `Time expired. The squad leader can restart ${esc(missionName())}.`)}</div>
         ${snap.status === "complete" && (snap.capturedIds || []).length ? `<div class="squadTransportMovie"><div class="squadSmall">🚛 Wildlife Recovery • ${(snap.capturedIds || []).length} cage${(snap.capturedIds || []).length===1?"":"s"}</div><canvas id="squadTransportCanvas" width="520" height="210" aria-label="Co-op wildlife transport movie"></canvas><button type="button" class="squadBtn" data-squad-command="transport-skip">Skip Movie</button></div>` : ""}
         <div class="squadResultActions" id="squadResultActions">${completionActionsHtml()}</div>
       </div>
@@ -790,7 +801,7 @@
     if(sharedStoryActive() && nextLevel){
       if(snap.isHost) parts.push(`<button type="button" class="squadBtn primary" data-squad-command="continue" ${snap.allRewardsClaimed ? "" : "disabled"}>${snap.allRewardsClaimed ? `Continue to Mission ${nextLevel}` : "Waiting for Both Rewards"}</button>`);
       else parts.push(`<button type="button" class="squadBtn primary" disabled>${snap.allRewardsClaimed ? `Waiting for Leader • Mission ${nextLevel}` : "Waiting for Both Rewards"}</button>`);
-    }else if(sharedStoryActive()) parts.push(`<button type="button" class="squadBtn" disabled>Next Co-op Mission Not Ready Yet</button>`);
+    }else if(sharedStoryActive()) parts.push(`<button type="button" class="squadBtn good" disabled>✅ Shared Story Campaign Complete</button>`);
     parts.push(`<button type="button" class="squadBtn danger" data-squad-command="leave">Leave Squad</button>`);
     parts.push(`<div class="squadSmall">The squad stays together under code ${esc(snap.code)} until a player chooses Leave Squad.</div>`);
     return parts.join("");
@@ -1821,7 +1832,7 @@
   }
 
   function drawStoryTiger(ctx,tiger,now){
-    if(tiger.defeated) return;const alpha=!!tiger.boss;const tigerId=String(tiger.id||"");const ghost=tigerId==="ghoststripe_alpha"||tigerId==="s83_shadeclaw"||tigerId==="s90_phantom_tiger";const blood=tigerId==="s20_blood_tiger"||tigerId==="s70_legendary_blood_tiger";const coat=blood?"#b91c1c":(ghost?"#dbeafe":"#f59e0b");const ear=blood?"#fb7185":(ghost?"#e2e8f0":"#fbbf24");const leg=blood?"#7f1d1d":(ghost?"#94a3b8":"#d97706");const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const nearest=(state.snapshot?.players||[]).slice().sort((a,b)=>distance(a,tiger)-distance(b,tiger))[0];const facing=nearest?(Number(nearest.x)>=Number(tiger.x)?1:-1):1;
+    if(tiger.defeated) return;const alpha=!!tiger.boss;const tigerId=String(tiger.id||"");const ghost=tigerId==="ghoststripe_alpha"||tigerId==="s83_shadeclaw"||tigerId==="s90_phantom_tiger";const blood=tigerId==="s20_blood_tiger"||tigerId==="s70_legendary_blood_tiger";const ancient=tigerId==="s100_ancient_tiger";const coat=blood?"#b91c1c":(ghost?"#dbeafe":(ancient?"#facc15":"#f59e0b"));const ear=blood?"#fb7185":(ghost?"#e2e8f0":(ancient?"#fef08a":"#fbbf24"));const leg=blood?"#7f1d1d":(ghost?"#94a3b8":(ancient?"#a16207":"#d97706"));const s=alpha?1.28:(tiger.type==="Armored"?1.08:.94);const nearest=(state.snapshot?.players||[]).slice().sort((a,b)=>distance(a,tiger)-distance(b,tiger))[0];const facing=nearest?(Number(nearest.x)>=Number(tiger.x)?1:-1):1;
     if(blood){ctx.save();ctx.fillStyle=tiger.hp<=tiger.hpMax*.35?"rgba(239,68,68,.28)":"rgba(127,29,29,.18)";ctx.shadowColor="#ef4444";ctx.shadowBlur=tiger.hp<=tiger.hpMax*.35?38:20;ctx.beginPath();ctx.arc(tiger.x,tiger.y,58,0,Math.PI*2);ctx.fill();ctx.restore();}
     const gait=Math.sin(Number(now||0)/145+String(tiger.id||"").length)*5;const tigerBob=Math.abs(Math.sin(Number(now||0)/145+String(tiger.id||"").length))*1.5;ctx.save();ctx.translate(tiger.x,tiger.y-tigerBob);ctx.scale(facing*s,s);
     ctx.strokeStyle=coat;ctx.lineWidth=9;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-29,2);ctx.quadraticCurveTo(-54,-15,-64,4);ctx.stroke();
@@ -1907,6 +1918,20 @@
     if(canvas.height!==targetH)canvas.height=targetH;
   }
 
+  function drawCheckpointRoute(ctx,points,color){
+    if(!Array.isArray(points)||points.length<2)return;
+    ctx.strokeStyle=color;ctx.lineWidth=10;ctx.setLineDash([22,14]);ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);for(const point of points.slice(1))ctx.lineTo(point.x,point.y);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  function drawDangerTerritory(ctx,x,y,r,visible){
+    if(!visible(x,y,r+80))return;
+    ctx.fillStyle="rgba(127,29,29,.28)";ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#ef4444";ctx.lineWidth=11;ctx.setLineDash([24,14]);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  function drawMissionBanner(ctx,x,y,label,border,background){
+    ctx.fillStyle=background;roundRect(ctx,x-195,y-82,390,54,13);ctx.fill();ctx.strokeStyle=border;ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#f8fafc";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText(label,x,y-48);
+  }
+
   function drawExpandedDistrict(ctx, snap, view){
     const worldW = Math.max(view.w, Number(snap.world?.width || view.w));
     const worldH = Math.max(view.h, Number(snap.world?.height || view.h));
@@ -1925,6 +1950,7 @@
     const tigerTerritoryChapter = storyLevel >= 61 && storyLevel <= 70;
     const tigerKingChapter = storyLevel >= 71 && storyLevel <= 80;
     const hiddenJungleChapter = storyLevel >= 81 && storyLevel <= 90;
+    const ancientGuardianChapter = storyLevel >= 91 && storyLevel <= 100;
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -1946,6 +1972,7 @@
     if(tigerTerritoryChapter){ctx.fillStyle="rgba(6,78,59,.22)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     if(tigerKingChapter){ctx.fillStyle="rgba(120,53,15,.18)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     if(hiddenJungleChapter){ctx.fillStyle="rgba(20,83,45,.26)";ctx.fillRect(view.x,view.y,view.w,view.h);ctx.fillStyle="rgba(99,102,241,.07)";ctx.fillRect(view.x,view.y,view.w,view.h);}
+    if(ancientGuardianChapter){ctx.fillStyle="rgba(21,128,61,.22)";ctx.fillRect(view.x,view.y,view.w,view.h);ctx.fillStyle="rgba(250,204,21,.07)";ctx.fillRect(view.x,view.y,view.w,view.h);}
     ctx.fillStyle=endlessSurvival?"rgba(249,115,22,.13)":(denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":(alphaHunt?"rgba(147,197,253,.12)":(stormExtraction?"rgba(125,211,252,.13)":"rgba(102,164,91,.20)")))));
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
@@ -2234,6 +2261,26 @@
       for(const checkpoint of (snap.checkpoints||[])){if(!visible(checkpoint.x,checkpoint.y,210))continue;drawResearchBeacon(ctx,checkpoint.x,checkpoint.y,1.22);drawAncientRuin(ctx,checkpoint.x,checkpoint.y+105,.72,"PHANTOM PREP");}if(visible(worldW*.54,worldH*.49,460)){ctx.fillStyle="rgba(30,41,59,.98)";roundRect(ctx,worldW*.54-184,worldH*.49-82,368,54,13);ctx.fill();ctx.strokeStyle="#c4b5fd";ctx.lineWidth=4;ctx.stroke();ctx.fillStyle="#f5f3ff";ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText("PREPARE FOR THE PHANTOM TIGER",worldW*.54,worldH*.49-48);}
     }else if(storyLevel === 90){
       const boss=(snap.tigers||[]).find((row)=>row.id==="s90_phantom_tiger")||snap.boss||{x:worldW*.59,y:worldH*.54};if(visible(boss.x,boss.y,590)){for(const [dx,dy,size] of [[-300,-145,1.3],[290,-130,1.25],[-250,225,1.15],[265,215,1.18]])drawAncientRuin(ctx,boss.x+dx,boss.y+dy,size,"PHANTOM TEMPLE");ctx.fillStyle="rgba(49,46,129,.30)";ctx.beginPath();ctx.arc(boss.x,boss.y,430,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#c4b5fd";ctx.lineWidth=14;ctx.setLineDash([28,16]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="rgba(30,27,75,.99)";roundRect(ctx,boss.x-190,boss.y-112,380,60,14);ctx.fill();ctx.strokeStyle="#e0e7ff";ctx.lineWidth=5;ctx.stroke();ctx.fillStyle="#f5f3ff";ctx.font="950 22px system-ui";ctx.textAlign="center";ctx.fillText("THE PHANTOM TIGER",boss.x,boss.y-73);}
+    }else if(storyLevel === 91){
+      const route=snap.checkpoints||[];if(route.length>1){ctx.strokeStyle="#4ade80";ctx.lineWidth=11;ctx.setLineDash([24,14]);ctx.beginPath();ctx.moveTo(route[0].x,route[0].y);for(const p of route.slice(1))ctx.lineTo(p.x,p.y);ctx.stroke();ctx.setLineDash([]);}for(const p of route){if(visible(p.x,p.y,220))drawAncientRuin(ctx,p.x,p.y,1,"EVAC ROUTE");}drawMissionBanner(ctx,worldW*.54,worldH*.48,"JUNGLE CORE EVACUATION","#86efac","#14532d");
+    }else if(storyLevel === 92){
+      for(const [xp,yp,r] of [[.18,.24,195],[.39,.52,255],[.66,.27,210],[.82,.67,240]])drawDangerTerritory(ctx,worldW*xp,worldH*yp,r,visible);drawMissionBanner(ctx,worldW*.54,worldH*.50,"ANCIENT AGGRESSION • 18 TIGERS","#fda4af","#450a0a");
+    }else if(storyLevel === 93){
+      const target=(snap.tigers||[]).find((row)=>row.id==="s93_guardian_tiger")||{x:worldW*.55,y:worldH*.49};if(visible(target.x,target.y,260)){drawResearchBeacon(ctx,target.x,target.y,1.42);drawAncientRuin(ctx,target.x,target.y+150,1,"GUARDIAN SHRINE");}drawMissionBanner(ctx,worldW*.54,worldH*.48,"CAPTURE THE GUARDIAN ALIVE","#bef264","#365314");
+    }else if(storyLevel === 94){
+      const points=snap.checkpoints||[],done=snap.checkpointCompletedIds||[],index=Math.min(done.length,Math.max(0,points.length-1)),truck=points[index]||{x:worldW*.30,y:worldH*.43};drawCheckpointRoute(ctx,points,"#facc15");if(visible(truck.x,truck.y,190))drawConvoyTruck(ctx,truck.x,truck.y,0,"#15803d",false);drawMissionBanner(ctx,worldW*.54,worldH*.49,"ANCIENT JUNGLE CONVOY","#fde68a","#451a03");
+    }else if(storyLevel === 95){
+      drawDangerTerritory(ctx,worldW*.54,worldH*.50,380,visible);drawMissionBanner(ctx,worldW*.54,worldH*.50,"MASSIVE ANCIENT ASSAULT • 18","#fda4af","#450a0a");
+    }else if(storyLevel === 96){
+      const route=snap.checkpoints||[];drawCheckpointRoute(ctx,route,"#60a5fa");for(const p of route){if(visible(p.x,p.y,190))drawLastStandFort(ctx,p.x,p.y,1.08);}drawMissionBanner(ctx,worldW*.54,worldH*.48,"RESCUE THE TRAPPED SOLDIERS","#93c5fd","#1e3a8a");
+    }else if(storyLevel === 97){
+      const ex=snap.extraction||{x:worldW*.87,y:worldH*.68};for(const p of (snap.checkpoints||[])){if(visible(p.x,p.y,190)){drawResearchBeacon(ctx,p.x,p.y,1.05);drawVillageBarricade(ctx,p.x,p.y+78,0);}}if(visible(ex.x,ex.y,380)){drawRescueHelicopter(ctx,ex.x-135,ex.y-100,1.18);drawRescueHelicopter(ctx,ex.x+130,ex.y-55,.94);}drawMissionBanner(ctx,worldW*.54,worldH*.49,"FINAL HELICOPTER DEFENSE","#7dd3fc","#083344");
+    }else if(storyLevel === 98){
+      for(const [xp,yp] of [[.17,.22],[.31,.68],[.54,.25],[.77,.65],[.86,.31]]){const x=worldW*xp,y=worldH*yp;if(visible(x,y,140))drawBloodTrailMarker(ctx,x,y,1.12,"SWARM");}drawDangerTerritory(ctx,worldW*.54,worldH*.50,390,visible);drawMissionBanner(ctx,worldW*.54,worldH*.50,"FINAL TIGER SWARM • 18","#fda4af","#450a0a");
+    }else if(storyLevel === 99){
+      for(const p of (snap.checkpoints||[])){if(visible(p.x,p.y,240))drawAncientRuin(ctx,p.x,p.y,1.22,"GUARDIAN SEAL");}drawMissionBanner(ctx,worldW*.54,worldH*.49,"ACTIVATE FOUR GUARDIAN SEALS","#fde047","#365314");
+    }else if(storyLevel === 100){
+      const boss=(snap.tigers||[]).find((row)=>row.id==="s100_ancient_tiger")||snap.boss||{x:worldW*.59,y:worldH*.54};if(visible(boss.x,boss.y,640)){for(const [dx,dy,size] of [[-320,-155,1.45],[310,-140,1.4],[-265,240,1.28],[285,230,1.32]])drawAncientRuin(ctx,boss.x+dx,boss.y+dy,size,"ANCIENT TEMPLE");ctx.fillStyle="rgba(113,63,18,.40)";ctx.beginPath();ctx.arc(boss.x,boss.y,455,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#facc15";ctx.lineWidth=16;ctx.setLineDash([30,16]);ctx.stroke();ctx.setLineDash([]);}drawMissionBanner(ctx,boss.x,boss.y-35,"THE ANCIENT TIGER","#fef08a","#422006");
     }
 
     for(const fire of (snap.fireZones || [])){

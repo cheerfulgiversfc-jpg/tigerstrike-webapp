@@ -48,6 +48,7 @@ const CHAPTER7_TIGER_POSITIONS = Object.freeze([
   Object.freeze([680,305]), Object.freeze([805,520]), Object.freeze([925,315]), Object.freeze([250,705]),
   Object.freeze([475,720]), Object.freeze([680,690]), Object.freeze([835,725]), Object.freeze([965,700]),
   Object.freeze([585,390]), Object.freeze([895,515]), Object.freeze([365,635]), Object.freeze([735,445]),
+  Object.freeze([1045,455]), Object.freeze([1080,625]),
 ]);
 function chapter7TigerPack(prefix, label, count, options={}){
   const types = Array.isArray(options.types) ? options.types : [];
@@ -1581,6 +1582,148 @@ const SHARED_STORY_MISSIONS = Object.freeze({
       Object.freeze({ id:"s90_phantom_tiger", name:"Phantom Tiger", type:"Stalker", hpMax:6000, baseX:650, baseY:545, rangeX:290, rangeY:215, speed:.78, phase:1.4, boss:true, bloodRage:true }),
     ]),
   }),
+  91:Object.freeze({
+    level:91, chapter:10, chapterName:"The Ancient Guardian", title:"Story Mission 91",
+    objective:"Escort twelve final villagers from the jungle core through four shared evacuation checkpoints, clear the pursuit, and extract together.", rescueRequired:12,
+    dangerNote:"This is the final civilian evacuation. Both soldiers must secure all four jungle-core checkpoints in order.", aggressionLabel:"Jungle Core Evacuation", hazardDamageBonus:10,
+    timeLimitMs:24 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s91_core_village", x:245, y:345, r:125, label:"Jungle Core Village" }),
+      Object.freeze({ id:"s91_guardian_path", x:455, y:585, r:125, label:"Guardian Path" }),
+      Object.freeze({ id:"s91_ancient_crossing", x:710, y:335, r:125, label:"Ancient Crossing" }),
+      Object.freeze({ id:"s91_final_shelter", x:930, y:685, r:135, label:"Final Civilian Shelter" }),
+    ]),
+    civilians:Object.freeze(Array.from({ length:12 }, (_, index)=>Object.freeze({
+      id:`s91_villager_${index + 1}`,
+      x:165 + (index % 6) * 165,
+      y:230 + Math.floor(index / 6) * 390 + (index % 2) * 65,
+      name:`Jungle Core Villager ${index + 1}`,
+      look:["field","medic","scout","driver"][index % 4],
+      vip:index === 0,
+    }))),
+    tigers:chapter7TigerPack("s91_pursuer", "Jungle Core Pursuer", 12, { hpBase:640, speed:1.04 }),
+  }),
+  92:Object.freeze({
+    level:92, chapter:10, chapterName:"The Ancient Guardian", title:"Story Mission 92",
+    objective:"Survive and clear eighteen extremely aggressive ancient-jungle tigers, then extract together.", rescueRequired:0,
+    dangerNote:"The ancient pack attacks at maximum pressure. Every lethal kill adds severe blood-scent aggression to the survivors.", aggressionLabel:"Ancient Jungle Extreme Aggression", hazardDamageBonus:13, aggressionPerKill:3, hazardCooldownMs:540,
+    timeLimitMs:25 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s92_extreme", "Ancient Enraged Tiger", 18, { hpBase:650, speed:1.09 }),
+  }),
+  93:Object.freeze({
+    level:93, chapter:10, chapterName:"The Ancient Guardian", title:"Story Mission 93",
+    objective:"Use Rubber ammunition to capture the elite Guardian Tiger alive, clear its five temple guards, and extract together.", rescueRequired:0, captureRequired:1,
+    captureTargetIds:Object.freeze(["s93_guardian_tiger"]),
+    dangerNote:"The Guardian Tiger must remain alive. Any Real-ammo hit permanently blocks the required capture.", aggressionLabel:"Elite Guardian Capture", hazardDamageBonus:10, nightVisibilityIntensity:.28,
+    timeLimitMs:23 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s93_guardian_tiger", name:"Elite Guardian Tiger", type:"Armored", hpMax:1650, baseX:660, baseY:535, rangeX:245, rangeY:180, speed:.91, phase:1.6 }),
+      Object.freeze({ id:"s93_temple_guard_1", name:"Temple Guard One", type:"Scout", hpMax:670, baseX:285, baseY:330, rangeX:175, rangeY:125, speed:1.08, phase:.5 }),
+      Object.freeze({ id:"s93_temple_guard_2", name:"Temple Guard Two", type:"Stalker", hpMax:760, baseX:450, baseY:690, rangeX:185, rangeY:135, speed:1.05, phase:2.2 }),
+      Object.freeze({ id:"s93_temple_guard_3", name:"Temple Guard Three", type:"Standard", hpMax:850, baseX:700, baseY:305, rangeX:180, rangeY:130, speed:.98, phase:3.7 }),
+      Object.freeze({ id:"s93_temple_guard_4", name:"Temple Guard Four", type:"Stalker", hpMax:790, baseX:865, baseY:550, rangeX:175, rangeY:130, speed:1.06, phase:4.9 }),
+      Object.freeze({ id:"s93_temple_guard_5", name:"Temple Guard Five", type:"Armored", hpMax:1050, baseX:955, baseY:700, rangeX:160, rangeY:120, speed:.82, phase:5.8 }),
+    ]),
+  }),
+  94:Object.freeze({
+    level:94, chapter:10, chapterName:"The Ancient Guardian", title:"Story Mission 94",
+    objective:"Escort the ten-person convoy through four ancient-jungle checkpoints, clear every road threat, and extract together.", rescueRequired:10,
+    dangerNote:"The convoy advances only when both soldiers secure the marked route in order.", aggressionLabel:"Ancient Jungle Convoy", hazardDamageBonus:10,
+    timeLimitMs:25 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s94_convoy_start", x:245, y:350, r:130, label:"Convoy Start" }),
+      Object.freeze({ id:"s94_vine_pass", x:460, y:590, r:130, label:"Vine-Covered Pass" }),
+      Object.freeze({ id:"s94_temple_road", x:715, y:340, r:130, label:"Temple Road" }),
+      Object.freeze({ id:"s94_guardian_outpost", x:930, y:685, r:135, label:"Guardian Outpost" }),
+    ]),
+    civilians:Object.freeze(Array.from({ length:10 }, (_, index)=>Object.freeze({
+      id:`s94_convoy_${index + 1}`,
+      x:180 + (index % 5) * 195,
+      y:235 + Math.floor(index / 5) * 390 + (index % 2) * 62,
+      name:`Ancient Convoy Member ${index + 1}`,
+      look:["driver","soldier","medic","field","scout"][index % 5],
+      vip:index === 0,
+    }))),
+    tigers:chapter7TigerPack("s94_ambusher", "Ancient Convoy Ambusher", 14, { hpBase:655, speed:1.05 }),
+  }),
+  95:Object.freeze({
+    level:95, chapter:10, chapterName:"The Ancient Guardian", title:"Story Mission 95",
+    objective:"Survive the massive eighteen-tiger ancient-jungle assault, clear every threat, and extract together.", rescueRequired:0,
+    dangerNote:"Eighteen coordinated tigers attack from every route. Stay together and control the assault before moving to extraction.", aggressionLabel:"Massive Ancient Assault", hazardDamageBonus:13, hazardCooldownMs:525,
+    timeLimitMs:26 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s95_assault", "Ancient Assault Tiger", 18, { hpBase:660, speed:1.08 }),
+  }),
+  96:Object.freeze({
+    level:96, chapter:10, chapterName:"The Ancient Guardian", title:"Story Mission 96",
+    objective:"Rescue eight trapped soldiers, guide them through four rally checkpoints, clear their hunters, and extract together.", rescueRequired:8,
+    dangerNote:"Either teammate may rescue an available soldier, but both players must secure every rally point.", aggressionLabel:"Trapped Soldier Rescue", hazardDamageBonus:11,
+    timeLimitMs:25 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s96_distress_signal", x:250, y:345, r:125, label:"Distress Signal" }),
+      Object.freeze({ id:"s96_patrol_rally", x:465, y:590, r:125, label:"Patrol Rally" }),
+      Object.freeze({ id:"s96_temple_exit", x:715, y:335, r:125, label:"Temple Exit" }),
+      Object.freeze({ id:"s96_final_line", x:930, y:685, r:135, label:"Final Rescue Line" }),
+    ]),
+    civilians:Object.freeze(Array.from({ length:8 }, (_, index)=>Object.freeze({
+      id:`s96_soldier_${index + 1}`,
+      x:185 + (index % 4) * 245,
+      y:235 + Math.floor(index / 4) * 390 + (index % 2) * 70,
+      name:index === 0 ? "Trapped Patrol Captain" : `Trapped Soldier ${index + 1}`,
+      look:"soldier",
+      vip:index === 0,
+    }))),
+    tigers:chapter7TigerPack("s96_hunter", "Soldier Hunter", 14, { hpBase:665, speed:1.06 }),
+  }),
+  97:Object.freeze({
+    level:97, chapter:10, chapterName:"The Ancient Guardian", title:"Story Mission 97",
+    objective:"Protect the final evacuation helicopter crew, activate four flight stations, clear the attackers, and extract by helicopter together.", rescueRequired:4,
+    extractionType:"helicopter",
+    dangerNote:"The helicopter is functional. Secure its perimeter, fuel, rotor, and boarding stations in order before the final departure.", aggressionLabel:"Final Helicopter Defense", hazardDamageBonus:11,
+    timeLimitMs:26 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s97_perimeter", x:270, y:355, r:125, label:"Helicopter Perimeter" }),
+      Object.freeze({ id:"s97_fuel", x:500, y:285, r:125, label:"Fuel Station" }),
+      Object.freeze({ id:"s97_rotor", x:730, y:525, r:125, label:"Rotor Station" }),
+      Object.freeze({ id:"s97_boarding", x:930, y:685, r:135, label:"Final Boarding Zone" }),
+    ]),
+    civilians:Object.freeze([
+      Object.freeze({ id:"s97_pilot", x:245, y:250, name:"Final Evac Pilot", look:"driver", vip:true }),
+      Object.freeze({ id:"s97_copilot", x:470, y:470, name:"Evac Co-Pilot", look:"driver", vip:true }),
+      Object.freeze({ id:"s97_engineer", x:720, y:285, name:"Flight Engineer", look:"field", vip:true }),
+      Object.freeze({ id:"s97_medic", x:930, y:675, name:"Evac Flight Medic", look:"medic", vip:true }),
+    ]),
+    tigers:chapter7TigerPack("s97_attacker", "Helicopter Attacker", 15, { hpBase:670, speed:1.07 }),
+  }),
+  98:Object.freeze({
+    level:98, chapter:10, chapterName:"The Ancient Guardian", title:"Story Mission 98",
+    objective:"Survive and clear the final eighteen-tiger swarm, then reach extraction together.", rescueRequired:0,
+    dangerNote:"The final swarm combines scout, stalker, standard, and armored tigers at maximum attack speed.", aggressionLabel:"Final Tiger Swarm", hazardDamageBonus:14, aggressionPerKill:3, hazardCooldownMs:500,
+    timeLimitMs:27 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s98_swarm", "Final Swarm Tiger", 18, { hpBase:680, speed:1.11 }),
+  }),
+  99:Object.freeze({
+    level:99, chapter:10, chapterName:"The Ancient Guardian", title:"Story Mission 99",
+    objective:"Enter the ancient jungle temple by securing four guardian seals in order, defeat the fourteen temple guards, and extract together.", rescueRequired:0,
+    dangerNote:"The temple is a playable route. Both soldiers must activate all four guardian seals before the final chamber opens.", aggressionLabel:"Ancient Temple Entry", hazardDamageBonus:12, nightVisibilityIntensity:.30,
+    timeLimitMs:27 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    checkpoints:Object.freeze([
+      Object.freeze({ id:"s99_outer_seal", x:255, y:350, r:125, label:"Outer Guardian Seal" }),
+      Object.freeze({ id:"s99_vine_seal", x:470, y:590, r:125, label:"Vine Chamber Seal" }),
+      Object.freeze({ id:"s99_sun_seal", x:720, y:335, r:125, label:"Ancient Sun Seal" }),
+      Object.freeze({ id:"s99_inner_seal", x:930, y:685, r:135, label:"Inner Temple Seal" }),
+    ]),
+    civilians:Object.freeze([]),
+    tigers:chapter7TigerPack("s99_guard", "Ancient Temple Guard", 14, { hpBase:690, speed:1.08 }),
+  }),
+  100:Object.freeze({
+    level:100, chapter:10, chapterName:"The Ancient Guardian", title:"Story Mission 100",
+    objective:"Defeat or capture the Ancient Tiger, then reach extraction together to complete the Story campaign.", rescueRequired:0,
+    dangerNote:"The Ancient Tiger is the final threat. It enters Guardian Rage below 35% health and must be faced by both soldiers.", aggressionLabel:"The Ancient Tiger", hazardDamageBonus:15, hazardCooldownMs:475, nightVisibilityIntensity:.34,
+    timeLimitMs:30 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS, civilians:Object.freeze([]),
+    tigers:Object.freeze([
+      Object.freeze({ id:"s100_ancient_tiger", name:"The Ancient Tiger", type:"Alpha", hpMax:8500, baseX:650, baseY:545, rangeX:310, rangeY:225, speed:.82, phase:1.4, boss:true, bloodRage:true }),
+    ]),
+  }),
 });
 const ROLE_DEFS = Object.freeze({
   tracker:Object.freeze({ key:"tracker", label:"Tracker", damage:28, maxHp:105, speed:1.08 }),
@@ -1680,6 +1823,16 @@ const SHARED_STORY_WORLD_SIZES = Object.freeze({
   88:Object.freeze({ width:4800, height:2800 }),
   89:Object.freeze({ width:4800, height:2800 }),
   90:Object.freeze({ width:4800, height:2800 }),
+  91:Object.freeze({ width:4800, height:2800 }),
+  92:Object.freeze({ width:4800, height:2800 }),
+  93:Object.freeze({ width:4800, height:2800 }),
+  94:Object.freeze({ width:4800, height:2800 }),
+  95:Object.freeze({ width:4800, height:2800 }),
+  96:Object.freeze({ width:4800, height:2800 }),
+  97:Object.freeze({ width:4800, height:2800 }),
+  98:Object.freeze({ width:4800, height:2800 }),
+  99:Object.freeze({ width:4800, height:2800 }),
+  100:Object.freeze({ width:4800, height:2800 }),
 });
 const NIGHT_FANG_WORLD_SIZE = Object.freeze({ width:4200, height:2360 });
 const TIGER_DEN_WORLD_SIZE = Object.freeze({ width:4560, height:2560 });
@@ -3074,7 +3227,7 @@ async function claimReward(session, user){
   player.rewardClaimed = true;
   await writePlayer(session.code, player);
   const sharedStory = session.launchType === "shared-story";
-  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 90) : 0;
+  const sharedLevel = sharedStory ? clamp(Math.floor(Number(session.storyMissionLevel || 1)), 1, 100) : 0;
   const sharedRewards = {
     1:{ cash:1800, perkPoints:1, seasonPoints:6, badge:"Shared Story First Patrol" },
     2:{ cash:2050, perkPoints:1, seasonPoints:7, badge:"Farm Road Guardians" },
@@ -3166,6 +3319,16 @@ async function claimReward(session, user){
     88:{ cash:142900, perkPoints:20, seasonPoints:280, badge:"Extreme Jungle Survivors" },
     89:{ cash:148800, perkPoints:20, seasonPoints:289, badge:"Phantom Vanguard Breakers" },
     90:{ cash:156000, perkPoints:21, seasonPoints:300, badge:"Phantom Tiger Breakers" },
+    91:{ cash:163000, perkPoints:21, seasonPoints:310, badge:"Jungle Core Lifeline" },
+    92:{ cash:170200, perkPoints:21, seasonPoints:320, badge:"Ancient Aggression Survivors" },
+    93:{ cash:177700, perkPoints:22, seasonPoints:331, badge:"Guardian Tiger Researchers" },
+    94:{ cash:185500, perkPoints:22, seasonPoints:342, badge:"Ancient Convoy Guardians" },
+    95:{ cash:193600, perkPoints:22, seasonPoints:353, badge:"Ancient Assault Survivors" },
+    96:{ cash:202000, perkPoints:23, seasonPoints:365, badge:"Trapped Patrol Rescue Team" },
+    97:{ cash:210700, perkPoints:23, seasonPoints:377, badge:"Final Airlift Defenders" },
+    98:{ cash:219700, perkPoints:24, seasonPoints:390, badge:"Final Swarm Survivors" },
+    99:{ cash:229000, perkPoints:24, seasonPoints:403, badge:"Ancient Temple Vanguard" },
+    100:{ cash:240000, perkPoints:25, seasonPoints:420, badge:"Ancient Tiger Legends" },
   };
   const operationRewards = {
     "live-squad":{ cash:6500, perkPoints:1, seasonPoints:12, badge:"Night Fang First Response" },
