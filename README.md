@@ -452,6 +452,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Leaving a searching room cancels that room safely. Existing reconnection, private links, squad codes, per-player rewards, reward deduplication, and post-mission continuation are unchanged.
 - Fixes the live squad API's outdated Mission 60 gate so both Quick Match and private rooms accept the complete Shared Story campaign through Mission 100.
 
+### V10.1 Rescue Network Continuity — Leadership and Departures
+
+- The leader can pass leadership to a connected teammate in the lobby or after a mission. The roster shows who currently leads.
+- If the leader has been disconnected for at least 45 seconds while the teammate remains online, the server transfers leadership without removing either soldier. The former leader can reopen the same room and keep their mission progress.
+- Leaving does not close a two-person squad around the remaining teammate. Leaving mid-mission ends the current attempt with a clear `Teammate Left` result: the new leader can invite a replacement into the same code and restart with two real players. It does not award an incomplete mission.
+- When both Story rewards were claimed before somebody leaves, the remaining player keeps the room and may invite a new teammate to the next mission. An unclaimed result stays at the completed mission; its original departing player can return with the code to claim their own reward.
+- Leadership transfers do not change the per-player inventory, Story unlock, reward receipt, mission role, or captured-tiger state. This update does not yet add AI backup or uninterrupted one-player completion of an active co-op mission.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

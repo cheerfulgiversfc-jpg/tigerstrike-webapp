@@ -2,6 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const vm = require("vm");
 const game = fs.readFileSync("game.js", "utf8");
+const squad = fs.readFileSync("squad-coop.js", "utf8");
 const squadApi = fs.readFileSync("api/squad/session.js", "utf8");
 
 const elements = new Map();
@@ -103,6 +104,10 @@ async function run(){
   assert(html.includes("Two Player is ready for Missions 1–100"), "home reports the complete converted co-op range");
   assert(game.includes("FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100"), "normal Story pre-deploy enables Two Player through Mission 100");
   assert(squadApi.includes('requestedStoryLevel <= 100'), "the live API accepts private and Quick Match rooms through Mission 100");
+  assert(squadApi.includes('"handoff"'), "the live squad API exposes the explicit leadership handoff action");
+  assert(squad.includes('data-squad-command="handoff"'), "the squad leader can visibly pass leadership");
+  assert(squad.includes('Invite Replacement'), "a departed teammate can be replaced after an active mission stops");
+  assert(squad.includes('snap.memberCount < 2 ? "disabled"'), "a squad cannot restart without a real second player");
 
   await clickCommand("hub-story");
   html = element("squadBody").innerHTML;

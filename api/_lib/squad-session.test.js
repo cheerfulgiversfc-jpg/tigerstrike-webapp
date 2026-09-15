@@ -11,6 +11,7 @@ const {
   readCoopProfile,
   writeCoopProfile,
   applyCoopEquipmentAction,
+  closeSession,
 } = require("./squad-session");
 const { getState, setState } = require("./metrics-store");
 
@@ -29,6 +30,66 @@ async function writePlayerPatch(code, userId, patch){
 }
 
 async function run(){
+  const leader = { id:919980, first_name:"Leader" };
+  const partner = { id:919981, first_name:"Partner" };
+  const replacement = { id:919982, first_name:"Replacement" };
+  let networkRoom = await createSession(leader, { launchType:"shared-story", storyMissionLevel:11 });
+  networkRoom = await joinSession(networkRoom.code, partner);
+  await assert.rejects(()=>applyAction(networkRoom, partner, "handoff"), /Only the squad leader/, "a teammate cannot steal leadership");
+  networkRoom = await applyAction(networkRoom, leader, "handoff");
+  assert.equal(networkRoom.hostId, partner.id, "the leader can explicitly pass control without changing squad seats");
+  assert.deepEqual(networkRoom.memberIds, [leader.id, partner.id], "passing leadership keeps both soldiers in place");
+  await writePlayerPatch(networkRoom.code, partner.id, { lastSeenAt:Date.now() - 20000 });
+  await writePlayerPatch(networkRoom.code, leader.id, { lastSeenAt:Date.now() });
+  assert.equal((await buildSnapshot(await readSession(networkRoom.code), leader.id)).hostId, partner.id, "a short connection interruption never transfers leadership");
+  await writePlayerPatch(networkRoom.code, partner.id, { lastSeenAt:Date.now() - 46000 });
+  await writePlayerPatch(networkRoom.code, leader.id, { lastSeenAt:Date.now() });
+  let handoffSnapshot = await buildSnapshot(await readSession(networkRoom.code), leader.id);
+  assert.equal(handoffSnapshot.hostId, leader.id, "an online teammate takes leadership after 45 seconds without the leader");
+  await joinSession(networkRoom.code, partner);
+  assert.equal((await buildSnapshot(await readSession(networkRoom.code), partner.id)).hostId, leader.id, "the former leader reconnects as a player without taking back leadership");
+  networkRoom = await applyAction(await readSession(networkRoom.code), leader, "start");
+  networkRoom = await closeSession(networkRoom, leader);
+  assert.equal(networkRoom.status, "failed", "leaving an active mission stops unsafe one-player completion");
+  assert.equal(networkRoom.failureReason, "teammate_left", "a departure has its own recoverable failure reason");
+  assert.equal(networkRoom.hostId, partner.id, "the remaining teammate inherits leadership and the existing squad code");
+  assert.deepEqual(networkRoom.memberIds, [partner.id], "the departing member actually leaves the squad");
+  await assert.rejects(()=>applyAction(networkRoom, partner, "restart"), /Invite one teammate/, "restarting requires a real second player");
+  networkRoom = await joinSession(networkRoom.code, replacement);
+  assert.equal(networkRoom.memberIds.length, 2, "a replacement can join the recoverable room after a departure");
+  const recovered = await applyAction(networkRoom, partner, "restart");
+  assert.equal(recovered.status, "active", "new leader and replacement can restart the same story mission");
+  assert.equal((await buildSnapshot(recovered, partner.id)).players.length, 2, "both soldiers are present after replacement restart");
+  assert.deepEqual((await buildSnapshot(recovered, partner.id)).players.map((player)=>player.slot).sort(), [0,1], "replacement soldiers keep distinct field positions and respawn slots");
+
+  const claimedLeader = { id:919983, first_name:"Claimed Leader" };
+  const claimedPartner = { id:919984, first_name:"Claimed Partner" };
+  let completedRoom = await createSession(claimedLeader, { launchType:"shared-story", storyMissionLevel:11 });
+  completedRoom = await joinSession(completedRoom.code, claimedPartner);
+  await writePlayerPatch(completedRoom.code, claimedLeader.id, { rewardClaimed:true });
+  await writePlayerPatch(completedRoom.code, claimedPartner.id, { rewardClaimed:true });
+  await setState(`live_squad_session_${completedRoom.code}`, { ...completedRoom, status:"complete" });
+  completedRoom = await readSession(completedRoom.code);
+  completedRoom = await closeSession(completedRoom, claimedLeader);
+  assert.equal(completedRoom.hostId, claimedPartner.id, "leaving after both claims never closes the other player's squad");
+  assert.equal(completedRoom.status, "waiting", "the remaining teammate may invite a player to the next mission");
+  assert.equal(completedRoom.storyMissionLevel, 12, "completed Story Mission 11 moves safely to Mission 12 after both claims");
+  assert.equal((await buildSnapshot(completedRoom, claimedPartner.id)).allRewardsClaimed, false, "a solo waiting room never claims two-player rewards");
+  completedRoom = await joinSession(completedRoom.code, replacement);
+  assert.equal((await applyAction(completedRoom, claimedPartner, "start")).storyMissionLevel, 12, "the new pair starts Mission 12 without replaying Mission 11");
+
+  const pendingLeader = { id:919985, first_name:"Pending Leader" };
+  const pendingPartner = { id:919986, first_name:"Pending Partner" };
+  let pendingRoom = await createSession(pendingLeader, { launchType:"shared-story", storyMissionLevel:11 });
+  pendingRoom = await joinSession(pendingRoom.code, pendingPartner);
+  await setState(`live_squad_session_${pendingRoom.code}`, { ...pendingRoom, status:"complete" });
+  pendingRoom = await closeSession(await readSession(pendingRoom.code), pendingLeader);
+  assert.equal(pendingRoom.status, "complete", "unclaimed completed missions are preserved rather than advanced");
+  assert.equal((await buildSnapshot(pendingRoom, pendingPartner.id)).allRewardsClaimed, false, "one remaining player cannot advance on an unclaimed result");
+  pendingRoom = await joinSession(pendingRoom.code, pendingLeader);
+  assert.equal(pendingRoom.memberIds.length, 2, "the departing original player can return to claim their own reward");
+  await assert.rejects(()=>joinSession(pendingRoom.code, replacement), /already started|two players/, "a stranger cannot enter a completed unclaimed mission");
+
   const matchHost = { id:919901, first_name:"Match Host" };
   const matchMate = { id:919902, first_name:"Match Mate" };
   const differentMissionPlayer = { id:919903, first_name:"Different Mission" };

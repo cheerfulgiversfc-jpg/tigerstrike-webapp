@@ -586,7 +586,7 @@
       const respawn = respawnSeconds(player);
       const status = player.downed ? (respawn > 0 ? `RESPAWNING IN ${respawn}s` : "DOWNED — needs revive") : (player.online ? `HP ${Math.round(player.hp)}/${Math.round(player.maxHp)}` : "Reconnecting…");
       return `<div class="squadMember ${mine ? "me" : ""} ${player.online ? "" : "offline"}">
-        <div class="squadMemberName">${mine ? "⭐ " : ""}${esc(player.name)}</div>
+        <div class="squadMemberName">${Number(player.userId) === Number(state.snapshot?.hostId) ? "👑 " : ""}${mine ? "⭐ " : ""}${esc(player.name)}</div>
         <div class="squadMemberMeta">${esc(roleLabel(player.role))} • ${esc(status)}</div>
         <div class="squadMemberMeta">❤️ Life ${Math.round(player.livesRemaining || 0)} • Tiger damage ${Math.round(Object.values(player.tigerDamage || {}).reduce((sum,value)=>sum+Number(value||0),0))} • Rescues ${(player.rescuedIds || []).length} • Revives ${Math.round(player.revives || 0)}</div>
       </div>`;
@@ -626,6 +626,7 @@
         ${waiting ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Teammate</button>` : ""}
         ${waiting && snapshot.isHost ? `<button type="button" class="squadBtn good" id="squadStartButton" data-squad-command="start">${full ? "Start Mission" : "Need Teammate"}</button>` : ""}
         ${waiting && !snapshot.isHost ? `<button type="button" class="squadBtn good" disabled>Waiting for Leader</button>` : ""}
+        ${waiting && full && snapshot.isHost ? `<button type="button" class="squadBtn" data-squad-command="handoff">Pass Leadership</button>` : ""}
         <button type="button" class="squadBtn" data-squad-command="copy-code">Copy Code</button>
         <button type="button" class="squadBtn" data-squad-command="copy-link">Copy Invite Link</button>
         <button type="button" class="squadBtn danger" data-squad-command="leave">Leave Squad</button>
@@ -765,8 +766,8 @@
       <div class="squadMapLegend"><span><i class="you"></i>You</span><span><i class="team"></i>Teammate</span><span>${captureRequired() > 0 ? "🔬 Capture target" : "👤 Civilian"}</span><span>🐅 Tiger</span></div>
       <canvas id="squadArena" width="1200" height="760" aria-label="${esc(missionName())} expanded cooperative battlefield with a player-following camera"></canvas>
       <div class="squadBanner ${["complete","failed"].includes(snap.status) ? "show" : ""}" id="squadResultBanner">
-        <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : "⏱️ Operation Failed")}</div>
-        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Story Mission 100 completed together. Both players can claim the final reward—the full Shared Story campaign is complete." : `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Number(state.storyMissionLevel || 1) + 1} unlocks when each player claims the result.`) : `Both players cleared ${esc(selectedOperation().title)} and earned its separate Special Operation reward.`}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : `Time expired. The squad leader can restart ${esc(missionName())}.`)}</div>
+        <div class="squadBannerTitle">${snap.status === "complete" ? "🏆 Squad Extracted!" : (snap.failureReason === "squad_wipe" ? "💀 Squad Wiped" : (snap.failureReason === "teammate_left" ? "🔄 Teammate Left" : "⏱️ Operation Failed"))}</div>
+        <div class="squadBannerText">${snap.status === "complete" ? `${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Story Mission 100 completed together. Both players can claim the final reward—the full Shared Story campaign is complete." : `Story Mission ${Number(state.storyMissionLevel || 1)} completed together. Story Mission ${Number(state.storyMissionLevel || 1) + 1} unlocks when each player claims the result.`) : `Both players cleared ${esc(selectedOperation().title)} and earned its separate Special Operation reward.`}` : (snap.failureReason === "squad_wipe" ? "Both soldiers used their field life and went down. The squad leader can restart this mission with both lives restored." : (snap.failureReason === "teammate_left" ? "Your teammate left during the mission. The squad code is still yours. Invite them back or add another player, then restart together." : `Time expired. The squad leader can restart ${esc(missionName())}.`))}</div>
         ${snap.status === "complete" && (snap.capturedIds || []).length ? `<div class="squadTransportMovie"><div class="squadSmall">🚛 Wildlife Recovery • ${(snap.capturedIds || []).length} cage${(snap.capturedIds || []).length===1?"":"s"}</div><canvas id="squadTransportCanvas" width="520" height="210" aria-label="Co-op wildlife transport movie"></canvas><button type="button" class="squadBtn" data-squad-command="transport-skip">Skip Movie</button></div>` : ""}
         <div class="squadResultActions" id="squadResultActions">${completionActionsHtml()}</div>
       </div>
@@ -792,7 +793,7 @@
   function completionActionsHtml(){
     const snap = state.snapshot;
     if(!snap) return "";
-    if(snap.status === "failed") return `${snap.isHost ? `<button type="button" class="squadBtn good" data-squad-command="restart">Restart Mission</button>` : `<button type="button" class="squadBtn" disabled>Waiting for Leader to Restart</button>`}<button type="button" class="squadBtn danger" data-squad-command="leave">Leave Squad</button>`;
+    if(snap.status === "failed") return `${snap.failureReason === "teammate_left" && snap.memberCount < 2 ? `<button type="button" class="squadBtn primary" data-squad-command="invite">Invite Replacement</button><button type="button" class="squadBtn" data-squad-command="copy-code">Copy Code</button>` : ""}${snap.isHost ? `<button type="button" class="squadBtn good" data-squad-command="restart" ${snap.memberCount < 2 ? "disabled" : ""}>${snap.memberCount < 2 ? "Need Teammate" : "Restart Mission"}</button>` : `<button type="button" class="squadBtn" disabled>Waiting for Leader to Restart</button>`}${snap.isHost && snap.memberCount === 2 ? `<button type="button" class="squadBtn" data-squad-command="handoff">Pass Leadership</button>` : ""}<button type="button" class="squadBtn danger" data-squad-command="leave">Leave Squad</button>`;
     if(snap.status !== "complete") return "";
     const mine = localSnapshotPlayer();
     const nextLevel = Number(snap.nextStoryMissionLevel || 0);
@@ -803,6 +804,7 @@
       if(snap.isHost) parts.push(`<button type="button" class="squadBtn primary" data-squad-command="continue" ${snap.allRewardsClaimed ? "" : "disabled"}>${snap.allRewardsClaimed ? `Continue to Mission ${nextLevel}` : "Waiting for Both Rewards"}</button>`);
       else parts.push(`<button type="button" class="squadBtn primary" disabled>${snap.allRewardsClaimed ? `Waiting for Leader • Mission ${nextLevel}` : "Waiting for Both Rewards"}</button>`);
     }else if(sharedStoryActive()) parts.push(`<button type="button" class="squadBtn good" disabled>✅ Shared Story Campaign Complete</button>`);
+    if(snap.isHost && snap.memberCount === 2) parts.push(`<button type="button" class="squadBtn" data-squad-command="handoff">Pass Leadership</button>`);
     parts.push(`<button type="button" class="squadBtn danger" data-squad-command="leave">Leave Squad</button>`);
     parts.push(`<div class="squadSmall">The squad stays together under code ${esc(snap.code)} until a player chooses Leave Squad.</div>`);
     return parts.join("");
@@ -1037,6 +1039,7 @@
       start:()=>start(),
       restart:()=>restart(),
       continue:()=>continueTogether(),
+      handoff:()=>handoffLeadership(),
       action:()=>action(actionName),
       shop:()=>openEquipment("shop"),
       inventory:()=>openEquipment("inventory"),
@@ -1423,6 +1426,14 @@
     }
     try{ setMessage("Deploying both players…"); await api("start"); setMessage(`${missionName()} is live.`); ensureFrame(); }
     catch(error){ setMessage(error.message, true); }
+  }
+
+  async function handoffLeadership(){
+    if(!state.snapshot?.isHost) return setMessage("Only the squad leader can pass leadership.", true);
+    try{
+      await api("handoff");
+      setMessage("Leadership passed to your teammate. Both soldiers remain in the same squad and mission.");
+    }catch(error){ setMessage(error.message, true); }
   }
 
   async function restart(){

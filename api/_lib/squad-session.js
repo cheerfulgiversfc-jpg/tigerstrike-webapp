@@ -9,6 +9,7 @@ const RESPAWN_DELAY_MS = 3000;
 const STARTING_LIVES = 1;
 const MATCH_QUEUE_BUCKET_MS = 30 * 60 * 1000;
 const MATCH_QUEUE_LANES = 8;
+const LEADER_DISCONNECT_HANDOFF_MS = 45 * 1000;
 const BOSS_HP_MAX = 1200;
 const WORLD = Object.freeze({ width:1200, height:1100 });
 const MAX_COOP_WORLD = Object.freeze({ width:4800, height:2800 });
@@ -2278,6 +2279,7 @@ function normalizeSession(raw){
   const hostId = userIdOf(raw.hostId);
   const memberIds = [...new Set((Array.isArray(raw.memberIds) ? raw.memberIds : []).map(userIdOf).filter(Boolean))].slice(0, 2);
   if(!code || !hostId || !memberIds.includes(hostId)) return null;
+  const departedIds = [...new Set((Array.isArray(raw.departedIds) ? raw.departedIds : []).map(userIdOf).filter(Boolean))].filter((id)=>!memberIds.includes(id)).slice(0, 2);
   const pausedBy = {};
   const rawPausedBy = raw.pausedBy && typeof raw.pausedBy === "object" ? raw.pausedBy : {};
   for(const memberId of memberIds){
@@ -2295,6 +2297,7 @@ function normalizeSession(raw){
     code,
     hostId,
     memberIds,
+    departedIds,
     status:["waiting","active","complete","failed","closed"].includes(raw.status) ? raw.status : "waiting",
     createdAt:Math.max(0, Number(raw.createdAt || nowMs())),
     updatedAt:Math.max(0, Number(raw.updatedAt || nowMs())),
@@ -2584,12 +2587,21 @@ async function joinSession(codeValue, user){
   const session = await readSession(code);
   ensureLiveSession(session);
   await writeCoopProfile(await readCoopProfile(user), user);
-  if(session.status !== "waiting" && !session.memberIds.includes(uid)) throw new Error("This mission already started.");
+  const returningMember = session.departedIds.includes(uid);
+  if(session.status !== "waiting" && !session.memberIds.includes(uid) && !returningMember && !(session.status === "failed" && session.failureReason === "teammate_left")) throw new Error("This mission already started.");
   if(!session.memberIds.includes(uid)){
     if(session.memberIds.length >= 2) throw new Error("This squad already has two players.");
     session.memberIds.push(uid);
+    session.departedIds = session.departedIds.filter((id)=>id !== uid);
     await writeSession(session);
-    await writePlayer(code, newPlayer(user, 1));
+    const teammateId = session.memberIds.find((id)=>id !== uid);
+    const teammate = await readPlayer(code, teammateId, teammateId, 0);
+    const slot = teammate.slot === 0 ? 1 : 0;
+    const player = returningMember ? await readPlayer(code, uid, user, slot) : newPlayer(user, slot);
+    player.slot = slot;
+    player.name = playerName(user);
+    player.lastSeenAt = nowMs();
+    await writePlayer(code, player);
   }else{
     const slot = session.memberIds.indexOf(uid);
     const player = await readPlayer(code, uid, user, slot);
@@ -2822,8 +2834,20 @@ async function maybeFinishSession(session, players){
   return session;
 }
 
+async function maybeTransferDisconnectedLeader(session, players, at=nowMs()){
+  if(session.memberIds.length !== 2) return session;
+  const leader = players.find((player)=>player.userId === session.hostId);
+  const teammate = players.find((player)=>player.userId !== session.hostId);
+  if(!leader || !teammate || at - leader.lastSeenAt < LEADER_DISCONNECT_HANDOFF_MS || at - teammate.lastSeenAt > 15000) return session;
+  // Keep both mission seats and their progress. A reconnecting former leader
+  // returns as the same soldier, without taking control away from the new one.
+  session.hostId = teammate.userId;
+  return writeSession(session);
+}
+
 async function buildSnapshot(session, viewerId){
   const players = await memberPlayers(session);
+  session = await maybeTransferDisconnectedLeader(session, players);
   session = await maybeFinishSession(session, players);
   const at = nowMs();
   const mission = missionDefinition(session);
@@ -2901,7 +2925,7 @@ async function buildSnapshot(session, viewerId){
     capturedIds:derived.capturedIds,
     checkpointCompletedIds:derived.checkpointCompletedIds,
     objectivesReady:derived.objectivesReady,
-    allRewardsClaimed:players.length === session.memberIds.length && players.every((player)=>player.rewardClaimed),
+    allRewardsClaimed:session.memberIds.length === 2 && players.length === 2 && players.every((player)=>player.rewardClaimed),
     nextStoryMissionLevel:session.launchType === "shared-story" && EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0) + 1]
       ? Number(session.storyMissionLevel || 0) + 1
       : 0,
@@ -2920,10 +2944,11 @@ async function updateOwnPresence(session, user, patch={}){
   let player = await readPlayer(session.code, uid, user, slot);
   const now = nowMs();
   const mission = missionDefinition(session);
-  const defaultSpawn = mission.spawns[slot === 0 ? 0 : 1];
+  const fieldSlot = player.slot === 0 ? 0 : 1;
+  const defaultSpawn = mission.spawns[fieldSlot];
   const lastCheckpoint = (mission.checkpoints || []).reduce((last, checkpoint)=>(player.checkpointIds || []).includes(checkpoint.id) ? checkpoint : last, null);
   const spawn = lastCheckpoint
-    ? { x:lastCheckpoint.x + (slot === 0 ? -42 : 42), y:lastCheckpoint.y + 54 }
+    ? { x:lastCheckpoint.x + (fieldSlot === 0 ? -42 : 42), y:lastCheckpoint.y + 54 }
     : defaultSpawn;
   player.name = playerName(user);
   if(session.status === "waiting" && patch.role) player.role = roleKey(patch.role);
@@ -3052,6 +3077,16 @@ async function applyAction(session, user, action, payload={}){
   if(slot < 0) throw new Error("You are not a member of this squad.");
   let player = await readPlayer(session.code, uid, user, slot);
   const now = nowMs();
+  if(action === "handoff"){
+    if(session.hostId !== uid) throw new Error("Only the squad leader can hand off leadership.");
+    if(session.memberIds.length !== 2) throw new Error("A teammate must be in the squad before handing off leadership.");
+    const teammate = await readPlayer(session.code, session.memberIds.find((id)=>id !== uid), null, 1);
+    if(now - teammate.lastSeenAt > 15000) throw new Error("Wait for your teammate to reconnect before handing off leadership.");
+    session.hostId = teammate.userId;
+    player.lastSeenAt = now;
+    await writePlayer(session.code, player);
+    return writeSession(session);
+  }
   if(action === "pause" || action === "resume"){
     if(session.status !== "active") return session;
     if(!session.pausedBy || typeof session.pausedBy !== "object") session.pausedBy = {};
@@ -3451,10 +3486,30 @@ async function claimReward(session, user){
 
 async function closeSession(session, user){
   const uid = userIdOf(user);
-  if(session.hostId === uid){
+  if(!session.memberIds.includes(uid)) throw new Error("You are not a member of this squad.");
+  if(session.memberIds.length === 1){
     session.status = "closed";
-  }else{
-    session.memberIds = session.memberIds.filter((id)=>id !== uid);
+    return writeSession(session);
+  }
+  const players = await memberPlayers(session);
+  const completedAndClaimed = session.status === "complete" && session.launchType === "shared-story" && players.every((player)=>player.rewardClaimed);
+  session.memberIds = session.memberIds.filter((id)=>id !== uid);
+  session.departedIds = [...new Set([...(session.departedIds || []), uid])].slice(0, 2);
+  if(session.hostId === uid) session.hostId = session.memberIds[0];
+  // An active two-person mission cannot silently finish with one soldier.
+  // Preserve its code and remaining player's progress so a replacement may
+  // join and the new leader may restart safely.
+  if(session.status === "active"){
+    session.status = "failed";
+    session.failureReason = "teammate_left";
+    session.completedAt = nowMs();
+    session.pausedAt = 0;
+    session.pausedBy = {};
+  }else if(completedAndClaimed && EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0) + 1]){
+    session.storyMissionLevel += 1;
+    session.status = "waiting";
+    session.completedAt = 0;
+    session.failureReason = "";
   }
   return writeSession(session);
 }
