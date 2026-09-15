@@ -71,6 +71,7 @@ body.baseHqActive #baseHqLiveSquadFab{
 .squadPathCard{appearance:none;display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:0;min-height:190px;padding:18px;border:2px solid #3b5b82;border-radius:19px;background:#0b1424;color:#edf6ff;text-align:left;touch-action:manipulation}
 .squadPathCard.story{border-color:#4ade80;background:linear-gradient(145deg,rgba(20,83,45,.84),rgba(8,47,73,.82))}.squadPathCard.ops{border-color:#f59e0b;background:linear-gradient(145deg,rgba(92,54,12,.88),rgba(54,22,39,.82))}
 .squadPathCard.solo{border-color:#60a5fa;background:linear-gradient(145deg,rgba(30,64,175,.55),rgba(8,47,73,.82))}.squadPathCard.team{border-color:#a78bfa;background:linear-gradient(145deg,rgba(76,29,149,.58),rgba(30,58,95,.82))}
+.squadPathCard.quick{border-color:#facc15;background:linear-gradient(145deg,rgba(133,77,14,.72),rgba(8,47,73,.82))}
 .squadPathCard.locked{opacity:.5;filter:grayscale(.35)}.squadPathCard:disabled{cursor:not-allowed}
 .squadPathIcon{font-size:34px}.squadPathTitle{font:950 clamp(20px,5vw,28px)/1.1 system-ui}.squadPathCard small{color:#c3d4e7;font:750 13px/1.45 system-ui;flex:1}.squadPathCard b{color:#e0f2fe;font-size:13px}
 .squadJoinCard{display:grid;grid-template-columns:minmax(190px,.8fr) minmax(260px,1.2fr);gap:14px;align-items:end;margin:14px 0;padding:14px;border:1px solid #38557d;border-radius:16px;background:rgba(8,15,26,.72)}

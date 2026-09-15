@@ -7,6 +7,8 @@ const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
 const RESPAWN_DELAY_MS = 3000;
 const STARTING_LIVES = 1;
+const MATCH_QUEUE_BUCKET_MS = 30 * 60 * 1000;
+const MATCH_QUEUE_LANES = 8;
 const BOSS_HP_MAX = 1200;
 const WORLD = Object.freeze({ width:1200, height:1100 });
 const MAX_COOP_WORLD = Object.freeze({ width:4800, height:2800 });
@@ -2070,6 +2072,10 @@ function playerName(user){
 function cleanCode(value){ return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6); }
 function sessionKey(code){ return `live_squad_session_${cleanCode(code)}`; }
 function playerKey(code, userId){ return `live_squad_player_${cleanCode(code)}_${userIdOf(userId)}`; }
+function matchQueueKey(launchType, storyMissionLevel, bucket, lane){
+  const mission = normalizeLaunchType(launchType) === "shared-story" ? `story_${clamp(Math.floor(Number(storyMissionLevel || 1)), 1, 100)}` : normalizeLaunchType(launchType);
+  return `live_squad_match_${mission}_${bucket}_${lane}`;
+}
 function roleKey(value){ return ROLE_DEFS[String(value || "").toLowerCase()] ? String(value).toLowerCase() : "tracker"; }
 function distance(a, b){ return Math.hypot(Number(a?.x || 0) - Number(b?.x || 0), Number(a?.y || 0) - Number(b?.y || 0)); }
 function damagePlayer(player, amount){
@@ -2299,6 +2305,7 @@ function normalizeSession(raw){
     failureReason:cleanText(raw.failureReason, 32),
     storyMissionLevel:launchType === "shared-story" ? requestedStoryMissionLevel : 0,
     launchType,
+    matchmaking:raw.matchmaking === "public" ? "public" : "private",
     survivalWave:clamp(Math.floor(Number(raw.survivalWave || 1)), 1, 50),
     survivalWavesCleared:clamp(Math.floor(Number(raw.survivalWavesCleared || 0)), 0, 50),
     survivalIntermissionUntil:Math.max(0, Number(raw.survivalIntermissionUntil || 0)),
@@ -2564,6 +2571,7 @@ async function createSession(user, opts={}){
     completedAt:0,
     storyMissionLevel:launchType === "shared-story" ? requestedStoryMissionLevel : 0,
     launchType,
+    matchmaking:opts?.matchmaking === "public" ? "public" : "private",
   });
   await writePlayer(code, newPlayer(user, 0));
   await writeCoopProfile(await readCoopProfile(user), user);
@@ -2590,6 +2598,56 @@ async function joinSession(codeValue, user){
     await writePlayer(code, player);
   }
   return readSession(code);
+}
+
+async function quickMatch(user, opts={}){
+  const uid = userIdOf(user);
+  if(!uid) throw new Error("Telegram player identity is missing.");
+  const requestedStoryMissionLevel = clamp(Math.floor(Number(opts?.storyMissionLevel || 0)), 0, 100);
+  const requestedLaunchType = normalizeLaunchType(opts?.launchType);
+  const launchType = requestedLaunchType === "shared-story" && !EXPANDED_SHARED_STORY_MISSIONS[requestedStoryMissionLevel]
+    ? "live-squad"
+    : requestedLaunchType;
+  const storyMissionLevel = launchType === "shared-story" ? requestedStoryMissionLevel : 0;
+  const bucketNow = Math.floor(nowMs() / MATCH_QUEUE_BUCKET_MS);
+
+  async function joinWaitingEntry(entry){
+    if(!entry || Number(entry.expiresAt || 0) < nowMs() || userIdOf(entry.hostId) === uid) return null;
+    if(normalizeLaunchType(entry.launchType) !== launchType || Number(entry.storyMissionLevel || 0) !== storyMissionLevel) return null;
+    const waiting = await readSession(entry.code);
+    if(!waiting || waiting.status !== "waiting" || waiting.memberIds.length !== 1 || waiting.memberIds.includes(uid)) return null;
+    const reserved = await setStateIfAbsent(`live_squad_match_claim_${waiting.code}`, { userId:uid, claimedAt:nowMs() });
+    if(!reserved) return null;
+    try{ return await joinSession(waiting.code, user); }catch(error){ return null; }
+  }
+
+  for(const bucket of [bucketNow, bucketNow - 1]){
+    for(let lane=0; lane<MATCH_QUEUE_LANES; lane++){
+      const joined = await joinWaitingEntry(await getState(matchQueueKey(launchType, storyMissionLevel, bucket, lane)));
+      if(joined) return joined;
+    }
+  }
+
+  const created = await createSession(user, { launchType, storyMissionLevel, matchmaking:"public" });
+  const queueEntry = {
+    code:created.code,
+    hostId:uid,
+    launchType,
+    storyMissionLevel,
+    createdAt:nowMs(),
+    expiresAt:nowMs() + MATCH_QUEUE_BUCKET_MS * 2,
+  };
+  for(let lane=0; lane<MATCH_QUEUE_LANES; lane++){
+    const key = matchQueueKey(launchType, storyMissionLevel, bucketNow, lane);
+    if(await setStateIfAbsent(key, queueEntry)) return created;
+    const joined = await joinWaitingEntry(await getState(key));
+    if(joined){
+      await closeSession(created, user);
+      return joined;
+    }
+  }
+  await closeSession(created, user);
+  throw new Error("Quick Match is busy right now. Please try again in a moment.");
 }
 
 async function memberPlayers(session){
@@ -2776,6 +2834,7 @@ async function buildSnapshot(session, viewerId){
     title:session.title,
     storyMissionLevel:session.storyMissionLevel,
     launchType:session.launchType,
+    matchmaking:session.matchmaking,
     hostId:session.hostId,
     viewerId:userIdOf(viewerId),
     isHost:session.hostId === userIdOf(viewerId),
@@ -3410,6 +3469,7 @@ module.exports = {
   cleanCode,
   createSession,
   joinSession,
+  quickMatch,
   readSession,
   buildSnapshot,
   updateOwnPresence,

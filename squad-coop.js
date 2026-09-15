@@ -37,7 +37,7 @@
     joystick:{ active:false, pointerId:null, x:0, y:0 },
     keys:new Set(),
     priorPause:true,
-    message:"Create a private squad or enter a teammate's six-character code.",
+    message:"Use Quick Match, create a private squad, or enter a teammate's code.",
     error:"",
     storyMissionLevel:1,
     launchType:"shared-story",
@@ -355,8 +355,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V9.5 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-      : (state.snapshot ? `Tiger Strike V9.5 • ${selectedOperation().mapLabel}` : "Tiger Strike V9.5 • Co-op Command");
+      ? `Tiger Strike V10.0 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+      : (state.snapshot ? `Tiger Strike V10.0 • ${selectedOperation().mapLabel}` : "Tiger Strike V10.0 • Rescue Network");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -580,7 +580,7 @@
     const cards = [0,1].map((slot)=>{
       const player = players.find((p)=>Number(p.slot) === slot);
       if(!player){
-        return `<div class="squadMember"><div class="squadMemberName">Waiting for teammate…</div><div class="squadMemberMeta">Send the invitation or share code ${esc(state.code)}</div></div>`;
+        return `<div class="squadMember"><div class="squadMemberName">${state.snapshot?.matchmaking === "public" ? "🔎 Searching for a player…" : "Waiting for teammate…"}</div><div class="squadMemberMeta">${state.snapshot?.matchmaking === "public" ? "Quick Match is looking for this exact mission. You can cancel by leaving the squad." : `Send the invitation or share code ${esc(state.code)}`}</div></div>`;
       }
       const mine = Number(player.userId) === viewerId();
       const respawn = respawnSeconds(player);
@@ -615,7 +615,7 @@
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
       <div class="squadHero">
-        <div><div class="squadKicker">${sharedStoryActive() ? "Private Shared Story Squad" : "Private Live Squad"}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">Choose a role. The squad leader starts when both players are connected.</div></div>
+        <div><div class="squadKicker">${snapshot.matchmaking === "public" ? "Public Quick Match" : (sharedStoryActive() ? "Private Shared Story Squad" : "Private Live Squad")}</div><div class="squadMissionName">${esc(missionName())}</div><div class="squadDesc">${snapshot.matchmaking === "public" && !full ? "Searching for another Telegram player who selected this exact mission. You can choose your role while you wait." : "Choose a role. The squad leader starts when both players are connected."}</div></div>
         <button type="button" class="squadCodeBox" data-squad-command="copy-code" aria-label="Copy squad code ${esc(snapshot.code)}"><span class="squadSmall">SQUAD CODE • TAP TO COPY</span><span class="squadCode">${esc(displayCode(snapshot.code))}</span><span class="squadSmall" id="squadMemberCount">${snapshot.memberCount}/2 players connected</span></button>
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
@@ -644,7 +644,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V9.5 Complete Shared Story Campaign</div><div class="squadMissionName">Choose how you want to play</div><div class="squadDesc">All 100 Story missions can now be played Solo or with a teammate. Chapter 10 adds the jungle-core evacuation, elite Guardian capture, ancient convoy, trapped-soldier rescue, final helicopter defense, temple entry, and the Ancient Tiger finale.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V10.0 Tiger Strike Rescue Network</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can now find another Telegram player for the exact Story mission or Special Operation you choose. Private invite-code squads and Solo play remain available.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -704,7 +704,8 @@
       <div class="squadSelectedMission"><div><div class="squadKicker">Selected mission</div><div class="squadSectionTitle">Story Mission ${level}</div><div class="squadDesc">${esc(selectedStoryDescription())}</div></div><span class="squadReadyPill ${coopReady ? "ready" : "pending"}">${coopReady ? "Two Player ready" : "Solo only for now"}</span></div>
       <div class="squadPartyChoice">
         <button type="button" class="squadPathCard solo" data-squad-command="play-solo"><span class="squadPathIcon">👤</span><span class="squadPathTitle">Play Solo</span><small>Continue to the normal Story map and pre-deploy setup for Mission ${level}.</small><b>Prepare Solo Mission →</b></button>
-        <button type="button" class="squadPathCard team ${coopReady ? "" : "locked"}" data-squad-command="create" ${coopReady ? "" : "disabled"}><span class="squadPathIcon">👥</span><span class="squadPathTitle">Play with Teammate</span><small>${coopReady ? `Create a private two-player Story Mission ${level} room. Both players earn their own reward and unlock.` : "This mission still needs its full Two Player conversion. Play it Solo without losing progress."}</small><b>${coopReady ? "Create Two Player Squad →" : "Two Player coming later"}</b></button>
+        <button type="button" class="squadPathCard quick ${coopReady ? "" : "locked"}" data-squad-command="quick-match" ${coopReady ? "" : "disabled"}><span class="squadPathIcon">⚡</span><span class="squadPathTitle">Quick Match</span><small>Find another Telegram player who chose Story Mission ${level}. Mission level and rewards stay exact.</small><b>Find a Player →</b></button>
+        <button type="button" class="squadPathCard team ${coopReady ? "" : "locked"}" data-squad-command="create" ${coopReady ? "" : "disabled"}><span class="squadPathIcon">🔒</span><span class="squadPathTitle">Private Squad</span><small>${coopReady ? `Create a private two-player Story Mission ${level} room for somebody you invite.` : "This mission still needs its full Two Player conversion. Play it Solo without losing progress."}</small><b>${coopReady ? "Create Private Squad →" : "Two Player coming later"}</b></button>
       </div>
       ${joinSquadHtml()}
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
@@ -722,7 +723,7 @@
         ${SPECIAL_OPERATIONS.map((row)=>`<button type="button" class="squadMissionChoice ${operation.id === row.id ? "active" : ""}" data-squad-command="select-operation" data-squad-operation="${esc(row.id)}"><span>${row.icon} ${esc(row.title)}</span><small>${esc(row.short)}</small></button>`).join("")}
       </div>
       <div class="squadSelectedMission"><div><div class="squadKicker">Playable now • ${esc(operation.mapLabel)}</div><div class="squadSectionTitle">${operation.icon} ${esc(operation.title)}</div><div class="squadDesc">${esc(operation.description)}</div><div class="squadSmall"><b>Reward:</b> ${esc(operation.reward)}</div></div><span class="squadReadyPill ready">Two Players</span></div>
-      <div class="squadRow"><button type="button" class="squadBtn good" data-squad-command="create">Create ${esc(operation.title)} Squad</button></div>
+      <div class="squadRow"><button type="button" class="squadBtn primary" data-squad-command="quick-match">⚡ Quick Match ${esc(operation.title)}</button><button type="button" class="squadBtn good" data-squad-command="create">🔒 Create Private ${esc(operation.title)} Squad</button></div>
       ${joinSquadHtml()}
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadSmall">Each Special Operation has its own badge and payout. Special Operations do not change your Story mission number.</div>
@@ -1029,6 +1030,7 @@
       "select-operation":()=>selectMission(button?.dataset?.squadOperation || "live-squad"),
       "play-solo":()=>playSoloStory(),
       create:()=>create(),
+      "quick-match":()=>quickMatch(),
       join:()=>join(),
       role:()=>chooseRole(role),
       invite:()=>invite(),
@@ -1310,6 +1312,29 @@
       });
       state.code = payload.snapshot.code;
       setMessage("Squad created. Invite one teammate, choose roles, then start.");
+      startPolling();
+    }catch(error){ setMessage(error.message, true); }
+  }
+
+  async function quickMatch(){
+    if(!hasTelegramAuth()) return setMessage("Please open the game inside Telegram first.", true);
+    if(window.governmentConsequencePending?.()){
+      window.openGovernmentConsequence?.();
+      return setMessage("Resolve government detention before searching for a teammate.", true);
+    }
+    if(state.launchType === "shared-story" && !twoPlayerStoryReady()){
+      return setMessage(`Story Mission ${state.storyMissionLevel} is not available for Quick Match yet.`, true);
+    }
+    try{
+      setMessage(`Searching for a player for ${missionName()}…`);
+      const payload = await api("quick-match", {
+        storyMissionLevel:state.storyMissionLevel,
+        launchType:state.launchType,
+      });
+      state.code = payload.snapshot.code;
+      setMessage(payload.snapshot.memberCount >= 2
+        ? "Player found! Choose your roles, then the squad leader can start."
+        : "Quick Match is searching. Choose your role while you wait, or Leave Squad to cancel.");
       startPolling();
     }catch(error){ setMessage(error.message, true); }
   }

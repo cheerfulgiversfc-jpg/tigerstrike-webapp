@@ -443,6 +443,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Every Chapter 10 mission uses the full 4,800 × 2,800 Shared Story world, reconnect support, squad-wipe restarts, persistent cages and carcasses, and separate deduplicated rewards and unlocks for both players.
 - Completing Mission 100 now displays campaign completion instead of inventing a Mission 101 or showing a fake unfinished button.
 
+### V10.0 Tiger Strike Rescue Network — Quick Match Foundation
+
+- Adds a real public `Quick Match` choice to every Shared Story mission and every Special Operation while preserving Solo and private invite-code play.
+- Matchmaking pairs only players who selected the same mission and operation. Story Mission 91 can never be mixed with Mission 92, and Special Operations stay separated from Story.
+- The first player receives a visible searching room and can choose a role while waiting. The second compatible player joins the same two-person room, after which the leader starts through the existing reliable lobby.
+- Match claims are atomic so two players cannot take the same final squad slot. Expired, closed, full, self-owned, and mismatched queue entries are ignored.
+- Leaving a searching room cancels that room safely. Existing reconnection, private links, squad codes, per-player rewards, reward deduplication, and post-mission continuation are unchanged.
+- Fixes the live squad API's outdated Mission 60 gate so both Quick Match and private rooms accept the complete Shared Story campaign through Mission 100.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

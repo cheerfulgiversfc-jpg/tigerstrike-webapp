@@ -8,6 +8,7 @@ const {
   COOP_GEAR_CATALOG,
   cleanCode,
   createSession,
+  quickMatch,
   joinSession,
   readSession,
   buildSnapshot,
@@ -172,7 +173,16 @@ module.exports = async function handler(req, res){
       const requestedLaunchType = String(body?.launchType || "").trim().toLowerCase();
       session = await createSession(user, {
         storyMissionLevel:requestedStoryLevel,
-        launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 60
+        launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 100
+          ? "shared-story"
+          : (["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
+      });
+    }else if(action === "quick-match"){
+      const requestedStoryLevel = Math.max(0, Math.min(100, Math.floor(Number(body?.storyMissionLevel || 0))));
+      const requestedLaunchType = String(body?.launchType || "").trim().toLowerCase();
+      session = await quickMatch(user, {
+        storyMissionLevel:requestedStoryLevel,
+        launchType:requestedLaunchType === "shared-story" && requestedStoryLevel >= 1 && requestedStoryLevel <= 100
           ? "shared-story"
           : (["tiger-den","village-siege","convoy-rescue","alpha-hunt","storm-extraction","endless-survival"].includes(requestedLaunchType) ? requestedLaunchType : "live-squad"),
       });

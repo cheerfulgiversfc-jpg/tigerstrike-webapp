@@ -1,6 +1,7 @@
 const assert = require("assert");
 const {
   createSession,
+  quickMatch,
   joinSession,
   readSession,
   buildSnapshot,
@@ -28,6 +29,28 @@ async function writePlayerPatch(code, userId, patch){
 }
 
 async function run(){
+  const matchHost = { id:919901, first_name:"Match Host" };
+  const matchMate = { id:919902, first_name:"Match Mate" };
+  const differentMissionPlayer = { id:919903, first_name:"Different Mission" };
+  const waitingMatch = await quickMatch(matchHost, { launchType:"shared-story", storyMissionLevel:91 });
+  assert.equal(waitingMatch.matchmaking, "public", "Quick Match creates a public search room");
+  assert.equal(waitingMatch.memberIds.length, 1, "the first Quick Match player waits safely");
+  const foundMatch = await quickMatch(matchMate, { launchType:"shared-story", storyMissionLevel:91 });
+  assert.equal(foundMatch.code, waitingMatch.code, "a second player is matched into the same mission room");
+  assert.equal(foundMatch.memberIds.length, 2, "Quick Match fills exactly two player slots");
+  assert.equal((await buildSnapshot(foundMatch, matchMate.id)).matchmaking, "public", "both phones can identify a Quick Match lobby");
+  const nextWaitingMatch = await quickMatch({ id:919907, first_name:"Next Match" }, { launchType:"shared-story", storyMissionLevel:91 });
+  assert.notEqual(nextWaitingMatch.code, waitingMatch.code, "a full Quick Match room is never reused for a third player");
+  assert.equal(nextWaitingMatch.memberIds.length, 1, "the next player receives a fresh safe search room");
+  const differentMatch = await quickMatch(differentMissionPlayer, { launchType:"shared-story", storyMissionLevel:92 });
+  assert.notEqual(differentMatch.code, waitingMatch.code, "Quick Match never mixes different Story missions");
+  assert.equal(differentMatch.storyMissionLevel, 92, "a waiting player keeps the exact selected mission");
+  const operationHost = await quickMatch({ id:919904, first_name:"Operation Host" }, { launchType:"tiger-den" });
+  const operationMate = await quickMatch({ id:919905, first_name:"Operation Mate" }, { launchType:"tiger-den" });
+  const otherOperation = await quickMatch({ id:919906, first_name:"Other Operation" }, { launchType:"village-siege" });
+  assert.equal(operationMate.code, operationHost.code, "Quick Match pairs players who choose the same Special Operation");
+  assert.notEqual(otherOperation.code, operationHost.code, "Quick Match never mixes different Special Operations");
+
   let session = await createSession(host, { launchType:"shared-story", storyMissionLevel:1 });
   const code = session.code;
   session = await joinSession(code, teammate);

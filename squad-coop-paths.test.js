@@ -2,6 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const vm = require("vm");
 const game = fs.readFileSync("game.js", "utf8");
+const squadApi = fs.readFileSync("api/squad/session.js", "utf8");
 
 const elements = new Map();
 function element(id){
@@ -95,12 +96,13 @@ async function run(){
   windowObject.openLiveSquadOps();
   await new Promise((resolve)=>setImmediate(resolve));
   let html = element("squadBody").innerHTML;
-  assert(html.includes("Choose how you want to play"), "Live Squad opens on the two-path home");
+  assert(html.includes("Find your squad"), "Live Squad opens on the Rescue Network home");
   assert(html.includes("Story Campaign"), "Story Campaign path is visible");
   assert(html.includes("Special Operations"), "Special Operations path is visible");
   assert(html.includes("Solo supports all 100 unlocked missions"), "home reports the separate co-op profile unlock count");
   assert(html.includes("Two Player is ready for Missions 1–100"), "home reports the complete converted co-op range");
   assert(game.includes("FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100"), "normal Story pre-deploy enables Two Player through Mission 100");
+  assert(squadApi.includes('requestedStoryLevel <= 100'), "the live API accepts private and Quick Match rooms through Mission 100");
 
   await clickCommand("hub-story");
   html = element("squadBody").innerHTML;
@@ -114,13 +116,15 @@ async function run(){
   assert(html.includes("Chapter 8 • 71–80"), "Story path includes a direct Chapter 8 mission shortcut");
   assert(html.includes("Chapter 9 • 81–90"), "Story path includes a direct Chapter 9 mission shortcut");
   assert(html.includes("Chapter 10 • 91–100"), "Story path includes a direct Chapter 10 mission shortcut");
+  assert(html.includes("Quick Match"), "Story missions offer automatic teammate matching");
+  assert(html.includes("Private Squad"), "invite-only squads remain available beside Quick Match");
 
   await clickCommand("play-solo");
   assert.equal(soloLevel, 100, "Solo choice routes the selected co-op campaign level into normal Story pre-deploy");
 
   windowObject.openLiveSquadOps();
   html = element("squadBody").innerHTML;
-  assert(html.includes("Choose how you want to play"), "returning later opens Co-op Home again");
+  assert(html.includes("Find your squad"), "returning later opens the Rescue Network home again");
   await clickCommand("hub-story");
   await clickCommand("select-story", { squadStoryLevel:"6" });
   html = element("squadBody").innerHTML;
@@ -131,7 +135,7 @@ async function run(){
   await clickCommand("select-story", { squadStoryLevel:"8" });
   html = element("squadBody").innerHTML;
   assert(html.includes("First Research Capture"), "Mission 8 exposes its research-capture objective");
-  assert(html.includes("Create Two Player Squad"), "Mission 8 can create a real shared room");
+  assert(html.includes("Create Private Squad"), "Mission 8 can create a real private shared room");
 
   await clickCommand("select-story", { squadStoryLevel:"10" });
   html = element("squadBody").innerHTML;
@@ -341,7 +345,8 @@ async function run(){
   assert(html.includes("Cave Wilds"), "Tiger Den selection exposes its own map identity");
   assert(html.includes("Stoneclaw Alpha"), "Tiger Den selection exposes its own boss objective");
   assert(html.includes("$8,200"), "Tiger Den selection shows its exact reward");
-  assert(html.includes("Create Tiger Den Assault Squad"), "Tiger Den can create its own squad room");
+  assert(html.includes("Create Private Tiger Den Assault Squad"), "Tiger Den can create its own private squad room");
+  assert(html.includes("Quick Match Tiger Den Assault"), "Special Operations support automatic teammate matching");
 
   await clickCommand("select-operation", { squadOperation:"village-siege" });
   html = element("squadBody").innerHTML;
@@ -349,7 +354,7 @@ async function run(){
   assert(html.includes("Ironmane Alpha"), "Village Siege selection exposes its own boss objective");
   assert(html.includes("$9,600"), "Village Siege selection shows its exact reward");
   assert(html.includes("Suncrest Village Shield badge"), "Village Siege selection names its unique badge");
-  assert(html.includes("Create Village Siege Squad"), "Village Siege can create its own squad room");
+  assert(html.includes("Create Private Village Siege Squad"), "Village Siege can create its own private squad room");
 
   await clickCommand("select-operation", { squadOperation:"convoy-rescue" });
   html = element("squadBody").innerHTML;
@@ -357,7 +362,7 @@ async function run(){
   assert(html.includes("Roadclaw Alpha"), "Convoy Rescue selection exposes its own boss objective");
   assert(html.includes("$11,200"), "Convoy Rescue selection shows its exact reward");
   assert(html.includes("Redwood Convoy Guardian badge"), "Convoy Rescue selection names its unique badge");
-  assert(html.includes("Create Convoy Rescue Squad"), "Convoy Rescue can create its own squad room");
+  assert(html.includes("Create Private Convoy Rescue Squad"), "Convoy Rescue can create its own private squad room");
 
   await clickCommand("select-operation", { squadOperation:"alpha-hunt" });
   html = element("squadBody").innerHTML;
@@ -365,7 +370,7 @@ async function run(){
   assert(html.includes("Ghoststripe Alpha"), "Alpha Hunt selection exposes its own boss objective");
   assert(html.includes("$13,000"), "Alpha Hunt selection shows its exact reward");
   assert(html.includes("Ghoststripe Apex Hunter badge"), "Alpha Hunt selection names its unique badge");
-  assert(html.includes("Create Alpha Hunt Squad"), "Alpha Hunt can create its own squad room");
+  assert(html.includes("Create Private Alpha Hunt Squad"), "Alpha Hunt can create its own private squad room");
 
   await clickCommand("select-operation", { squadOperation:"storm-extraction" });
   html = element("squadBody").innerHTML;
@@ -373,7 +378,7 @@ async function run(){
   assert(html.includes("Tempest Alpha"), "Storm Extraction selection exposes its own boss objective");
   assert(html.includes("$15,000"), "Storm Extraction selection shows its exact reward");
   assert(html.includes("Tempest Coast Lifeline badge"), "Storm Extraction selection names its unique badge");
-  assert(html.includes("Create Storm Extraction Squad"), "Storm Extraction can create its own squad room");
+  assert(html.includes("Create Private Storm Extraction Squad"), "Storm Extraction can create its own private squad room");
 
   await clickCommand("select-operation", { squadOperation:"endless-survival" });
   html = element("squadBody").innerHTML;
@@ -382,7 +387,7 @@ async function run(){
   assert(html.includes("22% more health"), "Endless Survival explains its real wave scaling");
   assert(html.includes("Wave 3: $13,500"), "Endless Survival shows its exact first extraction reward");
   assert(html.includes("Last Stand Survivor badge"), "Endless Survival selection names its unique badge");
-  assert(html.includes("Create Endless Survival Squad"), "Endless Survival can create its own squad room");
+  assert(html.includes("Create Private Endless Survival Squad"), "Endless Survival can create its own private squad room");
 
   console.log("PASS: Co-op Home separates Story Campaign and seven playable Special Operations with accurate routing");
 }
