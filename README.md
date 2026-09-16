@@ -460,6 +460,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - When both Story rewards were claimed before somebody leaves, the remaining player keeps the room and may invite a new teammate to the next mission. An unclaimed result stays at the completed mission; its original departing player can return with the code to claim their own reward.
 - Leadership transfers do not change the per-player inventory, Story unlock, reward receipt, mission role, or captured-tiger state. This update does not yet add AI backup or uninterrupted one-player completion of an active co-op mission.
 
+### V10.1.1 Co-op Movement Sync
+
+- Moving soldiers send verified position and movement direction more often, while idle squads retain a lower polling rate. The local joystick and Story mission controls are unchanged.
+- The other phone now animates the teammate smoothly between position packets, using short, speed-bounded prediction. Prediction stops when the soldier stops or disconnects, and respawns snap to the server's new position.
+- The server no longer discards an entire position packet when its distance is too large; it advances only the allowed safe step and continues catching up. Remote drawing remains presentation-only—mission actions still use the server's real position.
+- Overlapping movement sends are serialized, and older server snapshots are ignored so delayed network responses cannot visually rewind the teammate.
+- The battlefield, minimap, and offscreen teammate arrow display the same smoothed location. Two different Telegram phones should still be tested on a real mission before claiming the visual issue is fully resolved.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

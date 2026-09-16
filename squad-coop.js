@@ -4,6 +4,7 @@
   const ACTIVE_ROOM_STORAGE_PREFIX = "ts_live_squad_active_v1";
   const ACTIVE_ROOM_MAX_AGE_MS = 3 * 60 * 60 * 1000;
   const tgApp = window.Telegram?.WebApp || null;
+  const squadMotion = window.TigerStrikeSquadMotion;
   const state = {
     open:false,
     code:"",
@@ -23,6 +24,7 @@
     lastSyncAt:0,
     lastActionUiAt:0,
     syncBusy:false,
+    syncPromise:null,
     actionBusy:false,
     pending:new Set(),
     overlayBound:false,
@@ -404,6 +406,13 @@
 
   function applySnapshot(snapshot, roles){
     if(!snapshot || typeof snapshot !== "object") return;
+    if(state.snapshot && cleanCode(snapshot.code) === cleanCode(state.snapshot.code) && Number(snapshot.serverNow || 0) < Number(state.snapshot.serverNow || 0)) return;
+    if(state.snapshot && cleanCode(snapshot.code) !== cleanCode(state.snapshot.code)) state.remoteDraw.clear();
+    const receivedAt = performance.now();
+    for(const player of (snapshot.players || [])){
+      if(Number(player.userId) === viewerId()) continue;
+      state.remoteDraw.set(player.userId, squadMotion.accept(state.remoteDraw.get(player.userId), player, receivedAt, snapshot.world));
+    }
     state.snapshot = snapshot;
     if(snapshot.viewerProfile) state.profile = snapshot.viewerProfile;
     if(Array.isArray(snapshot.gearCatalog)) state.gearCatalog = snapshot.gearCatalog;
@@ -1464,8 +1473,7 @@
       // Send the newest local position before judging action range. This keeps
       // a fast move-then-tap from being rejected using an older server position.
       if(state.local){
-        await api("sync", { player:{ x:state.local.x, y:state.local.y, face:state.local.face } });
-        state.lastSyncAt = Date.now();
+        await sync(true);
       }
       const extra = {};
       let apiAction = kind;
@@ -1657,38 +1665,52 @@
     state.polling = true;
     const run = async ()=>{
       if(!state.polling || !state.open || !state.code) return;
+      const cycleStartedAt = Date.now();
       await sync().catch(()=>{});
-      state.pollTimer = window.setTimeout(run, state.snapshot?.status === "active" ? 800 : 1100);
+      const desiredInterval = state.snapshot?.status === "active" ? (movementInput().moving ? 300 : 750) : 1100;
+      state.pollTimer = window.setTimeout(run, Math.max(100, desiredInterval - (Date.now() - cycleStartedAt)));
     };
     run();
   }
   function stopPolling(){ state.polling = false; clearTimeout(state.pollTimer); state.pollTimer = 0; }
 
-  async function sync(){
-    if(state.syncBusy || !state.code) return;
+  async function sync(force=false){
+    if(state.syncBusy){
+      if(!force) return;
+      await state.syncPromise?.catch(()=>{});
+    }
+    if(!state.code) return;
     state.syncBusy = true;
     try{
-      const player = state.local ? { x:state.local.x, y:state.local.y, face:state.local.face } : {};
-      await api("sync", { player });
+      const motion = movementInput();
+      const player = state.local ? { x:state.local.x, y:state.local.y, face:state.local.face, moving:motion.moving, moveX:motion.x, moveY:motion.y } : {};
+      state.syncPromise = api("sync", { player });
+      await state.syncPromise;
       state.lastSyncAt = Date.now();
       const node = $("squadConnection");
       if(node){ node.textContent = playerConnectionText(); node.classList.toggle("bad", remoteSnapshotPlayer()?.online === false); }
     }catch(error){
       const node = $("squadConnection");
       if(node){ node.textContent = "Connection interrupted—reconnecting…"; node.classList.add("bad"); }
-    }finally{ state.syncBusy = false; }
+      if(force) throw error;
+    }finally{ state.syncBusy = false; state.syncPromise = null; }
   }
 
-  function updateMovement(dt){
-    if(!state.local || state.local.downed || state.snapshot?.status !== "active" || state.snapshot?.paused) return;
+  function movementInput(){
+    if(!state.local || state.local.downed || state.snapshot?.status !== "active" || state.snapshot?.paused) return { x:0, y:0, moving:false };
     let dx = state.joystick.active ? state.joystick.x : 0;
     let dy = state.joystick.active ? state.joystick.y : 0;
     if(state.move.left || state.keys.has("arrowleft") || state.keys.has("a")) dx -= 1;
     if(state.move.right || state.keys.has("arrowright") || state.keys.has("d")) dx += 1;
     if(state.move.up || state.keys.has("arrowup") || state.keys.has("w")) dy -= 1;
     if(state.move.down || state.keys.has("arrowdown") || state.keys.has("s")) dy += 1;
-    if(!dx && !dy) return;
-    const len = Math.hypot(dx,dy) || 1;
+    const len = Math.hypot(dx,dy);
+    return len > .05 ? { x:dx/len, y:dy/len, moving:true } : { x:0, y:0, moving:false };
+  }
+
+  function updateMovement(dt){
+    const input = movementInput();
+    if(!input.moving) return;
     const roleSpeed = state.local.role === "tracker" ? 1.08 : (state.local.role === "assault" ? .96 : 1);
     const inWater = (state.snapshot?.waterZones || []).some((zone)=>{
       const rx=Math.max(1,Number(zone.rx||1)),ry=Math.max(1,Number(zone.ry||1));
@@ -1698,9 +1720,9 @@
     const waterMultiplier = inWater ? clamp(Number(state.snapshot?.mission?.waterSlowMultiplier || .60),.35,1) : 1;
     const speed = 185 * roleSpeed * waterMultiplier;
     const world = state.snapshot?.world || { width:1000, height:760 };
-    state.local.x = clamp(state.local.x + (dx/len)*speed*dt, 24, Number(world.width || 1000) - 24);
-    state.local.y = clamp(state.local.y + (dy/len)*speed*dt, 24, Number(world.height || 760) - 24);
-    state.local.face = Math.atan2(dy,dx);
+    state.local.x = clamp(state.local.x + input.x*speed*dt, 24, Number(world.width || 1000) - 24);
+    state.local.y = clamp(state.local.y + input.y*speed*dt, 24, Number(world.height || 760) - 24);
+    state.local.face = Math.atan2(input.y,input.x);
   }
 
   function ensureFrame(){
@@ -1713,7 +1735,7 @@
       state.lastFrameAt = at;
       updateMovement(dt);
       if(at - state.lastActionUiAt > 160){ state.lastActionUiAt = at; updateActionButtons(); }
-      drawArena();
+      drawArena(dt);
       state.frame = requestAnimationFrame(tick);
     };
     state.frame = requestAnimationFrame(tick);
@@ -2361,7 +2383,7 @@
     if(snap.rescueHouse&&Number(snap.mission?.rescueRequired||0)>0){ctx.fillStyle="#facc15";ctx.fillRect(mx+snap.rescueHouse.x*sx-3,my+snap.rescueHouse.y*sy-3,6,6);}
     for(const civ of (snap.civilians||[])){if((snap.rescuedIds||[]).includes(civ.id))continue;ctx.fillStyle="#e0f2fe";ctx.fillRect(mx+civ.x*sx-2,my+civ.y*sy-2,4,4);}
     for(const tiger of (snap.tigers||[])){if(tiger.defeated)continue;ctx.fillStyle="#fb923c";ctx.beginPath();ctx.arc(mx+tiger.x*sx,my+tiger.y*sy,tiger.boss?5:3.5,0,Math.PI*2);ctx.fill();}
-    for(const player of (snap.players||[])){const mine=Number(player.userId)===viewerId();const src=mine&&state.local?state.local:player;ctx.fillStyle=mine?"#22d3ee":"#a78bfa";ctx.beginPath();ctx.arc(mx+src.x*sx,my+src.y*sy,5,0,Math.PI*2);ctx.fill();}
+    for(const player of (snap.players||[])){const mine=Number(player.userId)===viewerId();const draw=state.remoteDraw.get(player.userId);const src=mine&&state.local?state.local:(draw ? { x:draw.drawX, y:draw.drawY } : player);ctx.fillStyle=mine?"#22d3ee":"#a78bfa";ctx.beginPath();ctx.arc(mx+src.x*sx,my+src.y*sy,5,0,Math.PI*2);ctx.fill();}
     ctx.strokeStyle="#f8fafc";ctx.lineWidth=1.5;ctx.strokeRect(mx+view.x*sx,my+view.y*sy,Math.min(mw,view.w*sx),Math.min(mh,view.h*sy));
     const mapName=sharedStoryActive()?`STORY M${Math.max(1,Number(snap.storyMissionLevel||1))} MAP`:`${String(selectedOperation().mapLabel||"SPECIAL OPERATION").toUpperCase()} MAP`;
     ctx.fillStyle="#dbeafe";ctx.font="900 11px system-ui";ctx.textAlign="center";ctx.fillText(mapName,mx+mw/2,my+mh-7);
@@ -2370,9 +2392,11 @@
   function drawOffscreenTeammate(ctx,snap,view,w,h){
     const teammate=remoteSnapshotPlayer();
     if(!teammate||!state.local)return;
-    const sx=Number(teammate.x)-view.x,sy=Number(teammate.y)-view.y;
+    const shown=state.remoteDraw.get(teammate.userId);
+    const shownX=Number(shown?.drawX ?? teammate.x),shownY=Number(shown?.drawY ?? teammate.y);
+    const sx=shownX-view.x,sy=shownY-view.y;
     if(sx>=42&&sx<=w-42&&sy>=42&&sy<=h-42)return;
-    const dx=Number(teammate.x)-Number(state.local.x),dy=Number(teammate.y)-Number(state.local.y),angle=Math.atan2(dy,dx);
+    const dx=shownX-Number(state.local.x),dy=shownY-Number(state.local.y),angle=Math.atan2(dy,dx);
     const cx=w/2,cy=h/2,limitX=w/2-54,limitY=h/2-54,scale=Math.min(limitX/Math.max(1,Math.abs(dx)),limitY/Math.max(1,Math.abs(dy)));
     const x=clamp(cx+dx*scale,54,w-54),y=clamp(cy+dy*scale,54,h-54);
     ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.fillStyle="#a78bfa";ctx.strokeStyle="#ede9fe";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(20,0);ctx.lineTo(-12,-12);ctx.lineTo(-7,0);ctx.lineTo(-12,12);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
@@ -2396,7 +2420,7 @@
     ctx.fillStyle="rgba(15,23,42,.90)";roundRect(ctx,view.x+view.w*.5-126,view.y+22,252,38,10);ctx.fill();ctx.fillStyle="#e0e7ff";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`NIGHT AMBUSH • VISIBILITY ${Math.round((1-intensity)*100)}%`,view.x+view.w*.5,view.y+47);ctx.restore();
   }
 
-  function drawArena(){
+  function drawArena(dt=.016){
     const canvas=$("squadArena"),snap=state.snapshot;if(!canvas||!snap)return;
     sizeArenaCanvas(canvas);
     const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height,now=Number(snap.serverNow||Date.now());
@@ -2413,7 +2437,17 @@
     for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawTigerCarcass(ctx,tiger,now);
     for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawStoryTiger(ctx,tiger,now);
     for(const p of (snap.players||[])){
-      const mine=Number(p.userId)===viewerId(),source=mine&&state.local?state.local:p;let draw=state.remoteDraw.get(p.userId)||{x:source.x,y:source.y};draw.x+=(Number(source.x)-draw.x)*.22;draw.y+=(Number(source.y)-draw.y)*.22;state.remoteDraw.set(p.userId,draw);
+      const mine=Number(p.userId)===viewerId(),source=mine&&state.local?state.local:p;
+      const remote=mine ? null : (state.remoteDraw.get(p.userId) || squadMotion.accept(null, p, performance.now(), snap.world));
+      const draw=mine ? { x:Number(source.x), y:Number(source.y) } : { x:Number(remote.drawX), y:Number(remote.drawY) };
+      if(!mine){
+        const inWater=(snap.waterZones||[]).some((zone)=>{const rx=Math.max(1,Number(zone.rx||1)),ry=Math.max(1,Number(zone.ry||1));const nx=(remote.x-Number(zone.x||0))/rx,ny=(remote.y-Number(zone.y||0))/ry;return nx*nx+ny*ny<=1;});
+        const roleSpeed=p.role==="tracker"?1.08:(p.role==="assault"?.96:1);
+        const speed=185*roleSpeed*(inWater?clamp(Number(snap.mission?.waterSlowMultiplier||.60),.35,1):1);
+        const next=squadMotion.step(remote, performance.now(), dt, speed, snap.world);
+        state.remoteDraw.set(p.userId,next);
+        draw.x=next.drawX;draw.y=next.drawY;
+      }
       ctx.globalAlpha=p.online===false?.5:1;drawStorySoldier(ctx,p,source,draw,mine);ctx.globalAlpha=1;
     }
     drawSnowstormOverlay(ctx,snap,view,now);

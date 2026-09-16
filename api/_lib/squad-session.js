@@ -2362,6 +2362,10 @@ function newPlayer(user, slot=0){
     joinedAt:nowMs(),
     lastSeenAt:nowMs(),
     lastMoveAt:nowMs(),
+    moving:false,
+    moveX:0,
+    moveY:0,
+    motionAt:0,
     lastAttackAt:0,
     lastNoiseAt:0,
     lastNoiseX:spawn.x,
@@ -2443,6 +2447,10 @@ function normalizePlayer(raw, fallbackUser=null, slot=0){
     joinedAt:Math.max(0, Number(src.joinedAt || base.joinedAt)),
     lastSeenAt:Math.max(0, Number(src.lastSeenAt || base.lastSeenAt)),
     lastMoveAt:Math.max(0, Number(src.lastMoveAt || base.lastMoveAt)),
+    moving:!!src.moving && !src.downed && hp > 0,
+    moveX:clamp(src.moveX, -1, 1),
+    moveY:clamp(src.moveY, -1, 1),
+    motionAt:Math.max(0, Number(src.motionAt || 0)),
     lastAttackAt:Math.max(0, Number(src.lastAttackAt || 0)),
     lastNoiseAt:Math.max(0, Number(src.lastNoiseAt || 0)),
     lastNoiseX:clamp(src.lastNoiseX ?? base.lastNoiseX, 24, MAX_COOP_WORLD.width - 24),
@@ -2981,19 +2989,34 @@ async function updateOwnPresence(session, user, patch={}){
     const elapsed = clamp(now - player.lastMoveAt, 100, 1800);
     const maxMove = 70 + elapsed * 0.34 * def.speed;
     const moveDist = distance(player, proposed);
-    if(moveDist <= maxMove){
-      player.x = proposed.x;
-      player.y = proposed.y;
-      if(Number.isFinite(Number(patch.face))) player.face = clamp(patch.face, -Math.PI * 4, Math.PI * 4);
-      if(distance(priorPosition, proposed) >= 18 && now - Number(player.lastNoiseAt || 0) >= 900){
-        player.lastNoiseAt = now;
-        player.lastNoiseX = proposed.x;
-        player.lastNoiseY = proposed.y;
-        player.lastNoiseIntensity = 0.34;
-        player.lastNoiseSource = "footsteps";
-      }
+    // Never discard an entire movement packet: doing so leaves the other
+    // phone frozen behind the local soldier. Apply only the safe bounded step
+    // and continue catching up on the next verified packet.
+    const ratio = moveDist > maxMove ? maxMove / moveDist : 1;
+    player.x = priorPosition.x + (proposed.x - priorPosition.x) * ratio;
+    player.y = priorPosition.y + (proposed.y - priorPosition.y) * ratio;
+    if(Number.isFinite(Number(patch.face))) player.face = clamp(patch.face, -Math.PI * 4, Math.PI * 4);
+    if(distance(priorPosition, player) >= 18 && now - Number(player.lastNoiseAt || 0) >= 900){
+      player.lastNoiseAt = now;
+      player.lastNoiseX = player.x;
+      player.lastNoiseY = player.y;
+      player.lastNoiseIntensity = 0.34;
+      player.lastNoiseSource = "footsteps";
     }
     player.lastMoveAt = now;
+  }
+  if(session.status === "active" && !player.downed && patch && Object.prototype.hasOwnProperty.call(patch, "moving")){
+    const dx = clamp(patch.moveX, -1, 1);
+    const dy = clamp(patch.moveY, -1, 1);
+    const length = Math.hypot(dx, dy);
+    player.moving = !!patch.moving && length > .05;
+    player.moveX = player.moving ? dx / Math.max(1, length) : 0;
+    player.moveY = player.moving ? dy / Math.max(1, length) : 0;
+    player.motionAt = now;
+  }else if(player.downed || session.status !== "active"){
+    player.moving = false;
+    player.moveX = 0;
+    player.moveY = 0;
   }
   if(session.status === "active" && !player.downed && (mission.checkpoints || []).length){
     const routePlayers = await memberPlayers(session);
@@ -3160,6 +3183,10 @@ async function applyAction(session, user, action, payload={}){
       p.x = spawn.x;
       p.y = spawn.y;
       p.face = 0;
+      p.moving = false;
+      p.moveX = 0;
+      p.moveY = 0;
+      p.motionAt = now;
       p.ammoMode = session.launchType === "endless-survival" ? "real" : "rubber";
       if(!restartCheckpoint){
         p.bossDamage = 0;

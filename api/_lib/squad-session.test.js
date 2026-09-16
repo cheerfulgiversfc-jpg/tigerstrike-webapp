@@ -30,6 +30,22 @@ async function writePlayerPatch(code, userId, patch){
 }
 
 async function run(){
+  const mover = { id:919970, first_name:"Mover" };
+  const observer = { id:919971, first_name:"Observer" };
+  let motionRoom = await createSession(mover, { launchType:"shared-story", storyMissionLevel:1 });
+  motionRoom = await joinSession(motionRoom.code, observer);
+  motionRoom = await applyAction(motionRoom, mover, "start");
+  const beforeMotion = (await buildSnapshot(motionRoom, mover.id)).players.find((player)=>player.userId === mover.id);
+  await updateOwnPresence(motionRoom, mover, { x:beforeMotion.x + 800, y:beforeMotion.y, face:0, moving:true, moveX:1, moveY:0 });
+  let afterMotion = (await buildSnapshot(await readSession(motionRoom.code), observer.id)).players.find((player)=>player.userId === mover.id);
+  assert(afterMotion.x > beforeMotion.x, "an oversized but legitimate packet advances the remote soldier instead of freezing it");
+  assert(afterMotion.x < beforeMotion.x + 300, "oversized packets remain speed-bounded and cannot teleport");
+  assert.equal(afterMotion.moving, true, "the other phone receives verified movement intent for smooth rendering");
+  assert.equal(afterMotion.moveX, 1, "the server records normalized horizontal movement");
+  await updateOwnPresence(motionRoom, mover, { x:afterMotion.x, y:afterMotion.y, moving:false, moveX:0, moveY:0 });
+  afterMotion = (await buildSnapshot(await readSession(motionRoom.code), observer.id)).players.find((player)=>player.userId === mover.id);
+  assert.equal(afterMotion.moving, false, "releasing the joystick stops remote prediction on the next position packet");
+
   const leader = { id:919980, first_name:"Leader" };
   const partner = { id:919981, first_name:"Partner" };
   const replacement = { id:919982, first_name:"Replacement" };
