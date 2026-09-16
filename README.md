@@ -468,6 +468,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Overlapping movement sends are serialized, and older server snapshots are ignored so delayed network responses cannot visually rewind the teammate.
 - The battlefield, minimap, and offscreen teammate arrow display the same smoothed location. Two different Telegram phones should still be tested on a real mission before claiming the visual issue is fully resolved.
 
+### V10.1.2 Premium Field Maps
+
+- Survival and Arcade now select the same premium map families used by Story Mode instead of the older `SV_*` and `AR_*` layouts.
+- Both modes use Story-sized worlds on phones, tablets, and desktop while retaining their own map names, atmosphere, objectives, and gameplay rules.
+- Arcade's ten chapters now follow the premium forest, suburbs, downtown, and industrial progression without falling back to a Survival ruins map.
+- The phone renderer now removes legacy hidden landmark collision from Story, Arcade, and Survival whenever the bright shared district layout is drawn, preventing scenery from blocking movement where nothing is visible.
+- Survival remains lethal-only. Its tiger counts, starting supplies, and wave economy are intentionally unchanged for the separate balance update.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

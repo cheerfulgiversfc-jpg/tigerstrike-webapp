@@ -1,10 +1,10 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5072";
+const TS_BUILD = "5073";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
 const DECORATIVE_UNIT_RINGS_ENABLED = false;
-const PREMIUM_2D_GRAPHICS_VERSION = 12;
+const PREMIUM_2D_GRAPHICS_VERSION = 13;
 const TIGER_FIELD_POUNCE_COOLDOWN_MS = 5200;
 const TIGER_FIELD_POUNCE_TELEGRAPH_MS = 760;
 let __livingTigerNoise = null;
@@ -9679,16 +9679,16 @@ const MODE_MAPS = {
     { key:"ST_INDUSTRIAL", name:"Industrial" },
   ],
   Arcade: [
-    { key:"AR_ARENA_BAY", name:"Arena Bay" },
-    { key:"AR_NEON_GRID", name:"Neon Grid" },
-    { key:"AR_SAND_YARD", name:"Sand Yard" },
-    { key:"AR_STEEL_PIT", name:"Steel Pit" },
+    { key:"ST_SUBURBS", name:"Arena Bay" },
+    { key:"ST_DOWNTOWN", name:"Neon Grid" },
+    { key:"ST_FOREST", name:"Sand Yard" },
+    { key:"ST_INDUSTRIAL", name:"Steel Pit" },
   ],
   Survival: [
-    { key:"SV_NIGHT_WOODS", name:"Night Woods" },
-    { key:"SV_STORM_DISTRICT", name:"Storm District" },
-    { key:"SV_RUINS", name:"Ruins" },
-    { key:"SV_ASH_FIELD", name:"Ash Field" },
+    { key:"ST_FOREST", name:"Night Woods" },
+    { key:"ST_DOWNTOWN", name:"Storm District" },
+    { key:"ST_INDUSTRIAL", name:"Ruins" },
+    { key:"ST_SUBURBS", name:"Ash Field" },
   ],
 };
 
@@ -9737,16 +9737,16 @@ const STORY_CHAPTER_MAPS = [
 ];
 
 const ARCADE_CHAPTER_MAPS = [
-  { key:"AR_SAND_YARD", name:"Arcade: Jungle Awakening" },
-  { key:"AR_ARENA_BAY", name:"Arcade: Growing Danger" },
+  { key:"ST_FOREST", name:"Arcade: Jungle Awakening" },
+  { key:"ST_SUBURBS", name:"Arcade: Growing Danger" },
   { key:"ST_FOREST", name:"Arcade: Deep Jungle" },
   { key:"ST_DOWNTOWN", name:"Arcade: Abandoned Village" },
-  { key:"AR_ARENA_BAY", name:"Arcade: River Crossing" },
-  { key:"AR_STEEL_PIT", name:"Arcade: Mountain Pass" },
+  { key:"ST_SUBURBS", name:"Arcade: River Crossing" },
+  { key:"ST_INDUSTRIAL", name:"Arcade: Mountain Pass" },
   { key:"ST_FOREST", name:"Arcade: Tiger Territory" },
-  { key:"AR_NEON_GRID", name:"Arcade: Jungle War" },
+  { key:"ST_DOWNTOWN", name:"Arcade: Jungle War" },
   { key:"ST_SUBURBS", name:"Arcade: Last Villages" },
-  { key:"SV_RUINS", name:"Arcade: Final Operation" },
+  { key:"ST_INDUSTRIAL", name:"Arcade: Final Operation" },
 ];
 
 const CHAPTER_VISUALS = {
@@ -18127,22 +18127,12 @@ function worldScaleForModeMission(mode, mission){
   const landscapeBoost = (mobile && landscape) ? 0.12 : (landscape ? 0.12 : 0);
   if(window.__TUTORIAL_MODE__) return 1;
   if(mobile && !landscape){
-    if(mode === "Story") return clamp(3.88 + ((Math.max(1, mission) - 1) * 0.016), 3.88, 6.18);
-    if(mode === "Arcade") return clamp(3.56 + ((Math.max(1, mission) - 1) * 0.014), 3.56, 5.72);
-    return clamp(3.70 + ((Math.max(1, mission) - 1) * 0.016), 3.70, 6.02);
+    return clamp(3.88 + ((Math.max(1, mission) - 1) * 0.016), 3.88, 6.18);
   }
   if(mobile && landscape){
-    if(mode === "Story") return clamp(4.12 + ((Math.max(1, mission) - 1) * 0.017) + landscapeBoost, 4.12, 6.38);
-    if(mode === "Arcade") return clamp(3.84 + ((Math.max(1, mission) - 1) * 0.015) + landscapeBoost, 3.84, 6.02);
-    return clamp(3.96 + ((Math.max(1, mission) - 1) * 0.017) + landscapeBoost, 3.96, 6.26);
+    return clamp(4.12 + ((Math.max(1, mission) - 1) * 0.017) + landscapeBoost, 4.12, 6.38);
   }
-  if(mode === "Story"){
-    return clamp(4.10 + ((Math.max(1, mission) - 1) * 0.019) + landscapeBoost, 4.10, 6.48);
-  }
-  if(mode === "Arcade"){
-    return clamp(3.78 + ((Math.max(1, mission) - 1) * 0.016) + landscapeBoost, 3.78, 6.08);
-  }
-  return clamp(3.92 + ((Math.max(1, mission) - 1) * 0.018) + landscapeBoost, 3.92, 6.32);
+  return clamp(4.10 + ((Math.max(1, mission) - 1) * 0.019) + landscapeBoost, 4.10, 6.48);
 }
 
 function desiredWorldLayout(state=S){
@@ -25392,12 +25382,13 @@ function ensureMapObstacleCache(){
   const rects = [];
   const circles = [];
   const waters = buildMapWaterZones(key, chapter, w, h);
-  // Story uses the same bright Shared Story district renderer as co-op. The
+  // Every field mode uses the same bright Shared Story district renderer as
+  // co-op on phones. Mode-specific names and atmosphere remain separate. The
   // legacy landmark colliders belong to a different hidden layout and were the
   // source of the invisible walls seen on phones. Explicit closed route gates
   // still block through blockedAt(); decorative scenery stays freely walkable.
-  const sharedStoryDistrict = normalizeModeName(S.mode) === "Story" && shouldUseMobileFastMapRenderer(S);
-  const denseLandmarks = sharedStoryDistrict ? [] : buildDenseLandmarks(key, chapter, w, h);
+  const sharedPremiumDistrict = ["Story", "Arcade", "Survival"].includes(normalizeModeName(S.mode)) && shouldUseMobileFastMapRenderer(S);
+  const denseLandmarks = sharedPremiumDistrict ? [] : buildDenseLandmarks(key, chapter, w, h);
   const family = mapFamilyKey(key);
   const sx = (v)=> v * (w / 960);
   const sy = (v)=> v * (h / 540);
@@ -25406,13 +25397,13 @@ function ensureMapObstacleCache(){
     addMapObstacleForLandmark(rects, circles, lm);
   }
 
-  for(const p of (sharedStoryDistrict ? [] : (MAP_REALISM_PROPS[family] || []))){
+  for(const p of (sharedPremiumDistrict ? [] : (MAP_REALISM_PROPS[family] || []))){
     const px = p.x * (w / 960);
     const py = p.y * (h / 540);
     addMapObstacleForLandmark(rects, circles, { kind:p.kind, x:px, y:py, s:p.s || 1 });
   }
 
-  if(!sharedStoryDistrict && family === "ST_SUBURBS"){
+  if(!sharedPremiumDistrict && family === "ST_SUBURBS"){
     const anchors = [
       [220,146],[460,146],[718,146],
       [240,388],[560,388],[820,388],
@@ -25423,7 +25414,7 @@ function ensureMapObstacleCache(){
       if(inMapScenarioKeepout(cx, cy, 24)) continue;
       pushMapObstacleRect(rects, cx, cy, sx(34), sy(22), 2);
     }
-  } else if(!sharedStoryDistrict && family === "ST_DOWNTOWN"){
+  } else if(!sharedPremiumDistrict && family === "ST_DOWNTOWN"){
     const blocks = [
       [180,145,74,60],[520,145,84,64],[840,145,72,58],
       [200,330,86,66],[560,325,92,68],[860,320,78,60],
@@ -25434,7 +25425,7 @@ function ensureMapObstacleCache(){
       if(inMapScenarioKeepout(cx, cy, Math.max(sx(bw), sy(bh)) * 0.52)) continue;
       pushMapObstacleRect(rects, cx, cy, sx(bw), sy(bh), 4);
     }
-  } else if(!sharedStoryDistrict && family === "ST_INDUSTRIAL"){
+  } else if(!sharedPremiumDistrict && family === "ST_INDUSTRIAL"){
     const industrialBlocks = [
       [218,158,198,96,5],
       [738,166,202,92,5],
