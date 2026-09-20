@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5073";
+const TS_BUILD = "5074";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -14458,6 +14458,13 @@ function resetModeProgressToFreshStart(mode, state = S){
     state.survivalWave = 1;
     state.survivalStart = Date.now();
     state.surviveSeconds = 0;
+    state.survivalDeploymentKitVersion = 0;
+    state.survivalRewardedWave = 0;
+    state.survivalBreakActive = false;
+    state.survivalBreakUntil = 0;
+    state.survivalPendingWave = 0;
+    state.survivalSupplyClaimed = false;
+    state.survivalSupplyChoice = "";
   }
 
   if(state.modeWallets && typeof state.modeWallets === "object"){
@@ -14583,6 +14590,13 @@ const DEFAULT = {
     Arcade:1000,
     Survival:1000,
   },
+  survivalDeploymentKitVersion:0,
+  survivalRewardedWave:0,
+  survivalBreakActive:false,
+  survivalBreakUntil:0,
+  survivalPendingWave:0,
+  survivalSupplyClaimed:false,
+  survivalSupplyChoice:"",
   worldMapCampaign: defaultWorldMapCampaignState(),
   modeProfiles:null,
   soundOn:true, musicOn:true, musicVolume:0.78, audioUnlocked:false,
@@ -27973,6 +27987,9 @@ let __dailyRewardContinue = null;
 let __launchThemeAt = 0;
 let __launchMusicLoopTimer = 0;
 let __returnToMissionBriefAfterShop = false;
+let __returnToSurvivalBreakAfterShop = false;
+let __survivalBreakShopRemainingMs = 0;
+let __lastSurvivalCountdownSecond = -1;
 let __missionCinemaContinue = null;
 let __missionCinemaShownKey = "";
 
@@ -29077,7 +29094,7 @@ function restartFromStoryCheckpoint(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(resume));
   }catch(e){}
 
-  ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay"].forEach((id)=>{
+  ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay","survivalSupplyOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -31041,7 +31058,7 @@ function updateModeDesc(){
       el.innerText=`Arcade Campaign: score-attack missions with a live timer, combo multiplier pressure, and medal ranking on clear.${S.clanRaidEnabled ? " Co-op Raid is ON." : " Co-op Raid is OFF."}`;
     }
   }
-  else el.innerText="Survival: no civilians. Tigers pressure-damage you. Events OFF.";
+  else el.innerText="Survival: fair escalating waves, lethal Real ammunition only, a deployment kit, guaranteed wave cash, one supply choice, and a 12-second preparation Shop break. Elite and Alpha threats arrive in later waves.";
   const clanStatus = document.getElementById("modeClanStatus");
   if(clanStatus){
     const cloud = (S.clanCloud && typeof S.clanCloud === "object") ? S.clanCloud : null;
@@ -31816,6 +31833,16 @@ function openShop(){
 function closeShop(){
   document.getElementById("shopOverlay").style.display="none";
   if(window.TigerLiveSquad?.returnFromEquipment?.("shop")) return;
+  if(__returnToSurvivalBreakAfterShop && S.mode === "Survival" && S.survivalBreakActive){
+    __returnToSurvivalBreakAfterShop = false;
+    S.survivalBreakUntil = Date.now() + Math.max(1000, Number(__survivalBreakShopRemainingMs || 1000));
+    __survivalBreakShopRemainingMs = 0;
+    renderSurvivalSupplyBreak();
+    setPaused(true, "survival-break");
+    syncGamepadFocus();
+    save(true);
+    return;
+  }
   if(__returnToMissionBriefAfterShop && !S.missionEnded && !S.inBattle && !S.gameOver){
     __returnToMissionBriefAfterShop = false;
     const overlay = document.getElementById("missionBriefOverlay");
@@ -38944,6 +38971,15 @@ function hardResetMissionRuntimeState(reason="mission-runtime-reset"){
   S._survivalClearAt = 0;
   S._pressTick = 0;
   S._pressure = 0;
+  S.survivalBreakActive = false;
+  S.survivalBreakUntil = 0;
+  S.survivalPendingWave = 0;
+  S.survivalSupplyClaimed = false;
+  S.survivalSupplyChoice = "";
+  const survivalOverlay = document.getElementById("survivalSupplyOverlay");
+  if(survivalOverlay) survivalOverlay.style.display = "none";
+  __returnToSurvivalBreakAfterShop = false;
+  __survivalBreakShopRemainingMs = 0;
   __sfxLastAt = Object.create(null);
   __stabilityEventLog = [];
   __phase15SelfHealState = { lastAt:0, lastToastAt:0, lastSummary:"", runCount:0 };
@@ -40530,15 +40566,63 @@ function spawnCivilians(){
 
 
 // ===================== TIGER TYPE =====================
+const SURVIVAL_BALANCE_VERSION = 1;
+const SURVIVAL_PREP_BREAK_MS = 12000;
+const SURVIVAL_DEPLOYMENT_REAL_AMMO = 72;
+
+function survivalTigerCountForWave(wave=S.survivalWave){
+  const w = Math.max(1, Math.floor(Number(wave || 1)));
+  if(w <= 3) return w + 1;
+  return Math.min(10, 4 + Math.floor((w - 3) / 2));
+}
+function survivalTigerBaseHpForWave(wave=S.survivalWave){
+  const w = Math.max(1, Math.floor(Number(wave || 1)));
+  if(w <= 4) return 110 + ((w - 1) * 10);
+  return 140 + ((w - 4) * 12);
+}
+function survivalDangerLabelForWave(wave=S.survivalWave){
+  const w = Math.max(1, Math.floor(Number(wave || 1)));
+  if(w >= 15) return "Extreme";
+  if(w >= 10) return "Severe";
+  if(w >= 5) return "High";
+  if(w >= 3) return "Rising";
+  return "Low";
+}
+function survivalWaveCashReward(wave){
+  const w = Math.max(1, Math.floor(Number(wave || 1)));
+  return 600 + (w * 150);
+}
+function survivalAmmoSupplyAmount(wave){
+  const w = Math.max(1, Math.floor(Number(wave || 1)));
+  return clamp(24 + (w * 4), 28, 72);
+}
+function survivalTigerTypeForWave(wave=S.survivalWave, roll=Math.random(), index=0){
+  const w = Math.max(1, Math.floor(Number(wave || 1)));
+  const r = clamp(Number(roll || 0), 0, 0.999999);
+  if(w >= 5 && w % 5 === 0 && index === 0) return "Alpha";
+  if(w <= 2) return r < 0.74 ? "Standard" : "Scout";
+  if(w <= 4){
+    if(r < 0.50) return "Standard";
+    if(r < 0.78) return "Scout";
+    return "Stalker";
+  }
+  if(w <= 6){
+    if(r < 0.38) return "Standard";
+    if(r < 0.62) return "Scout";
+    if(r < 0.86) return "Stalker";
+    return "Berserker";
+  }
+  if(r < 0.27) return "Standard";
+  if(r < 0.48) return "Scout";
+  if(r < 0.70) return "Stalker";
+  if(r < 0.91) return "Berserker";
+  return "Alpha";
+}
 function pickTigerType(){
   const r=Math.random();
 
   if(S.mode==="Survival"){
-    if(r<0.22) return "Scout";
-    if(r<0.48) return "Stalker";
-    if(r<0.72) return "Berserker";
-    if(r<0.90) return "Standard";
-    return "Alpha";
+    return survivalTigerTypeForWave(S.survivalWave, r, 1);
   }
 
   if(r<0.22) return "Scout";
@@ -40812,7 +40896,7 @@ function spawnTigers(){
   }
 
   if(S.mode==="Survival")
-    count=Math.min(4+(S.survivalWave-1),10);
+    count=survivalTigerCountForWave(S.survivalWave);
 
   const storyBoss=!!(storyMission && storyMission.boss);
   const storyBossCount = storyBoss ? 1 : 0;
@@ -40862,7 +40946,9 @@ function spawnTigers(){
   const diff=carcassDifficulty();
 
   for(let i=0;i<count;i++){
-    let typeKey=pickTigerType();
+    let typeKey=(S.mode==="Survival")
+      ? survivalTigerTypeForWave(S.survivalWave, Math.random(), i)
+      : pickTigerType();
     if(storyBoss && i < storyBossCount) typeKey = storyMission.bossType || "Alpha";
     if(arcadeBoss && i < arcadeBossCount) typeKey = arcadeMission.bossType || "Alpha";
     if(nemesisEntry && i === nemesisSlot){
@@ -40873,7 +40959,7 @@ function spawnTigers(){
 
     let baseHp=115;
     if(S.mode==="Arcade") baseHp=125+(S.arcadeLevel-1)*8;
-    if(S.mode==="Survival") baseHp=140+(S.survivalWave-1)*12;
+    if(S.mode==="Survival") baseHp=survivalTigerBaseHpForWave(S.survivalWave);
     if(S.mode==="Story") baseHp=122+((storyMission?.number || S.storyLevel || 1)-1)*6;
 
     let hp=Math.round(baseHp*def.hpMul*diff);
@@ -40982,7 +41068,10 @@ function spawnTigers(){
       applyNemesisEntryToTiger(tigerObj, nemesisEntry, storyMissionNo);
     }
     applyCinematicBossHuntTigerTraits(tigerObj);
-    assignEliteTigerMutation(tigerObj, { mutationChanceBonus:(storyBoss && i < storyBossCount) ? 0.10 : 0 });
+    assignEliteTigerMutation(tigerObj, {
+      mutationChanceBonus:(storyBoss && i < storyBossCount) ? 0.10 : 0,
+      disableMutation:S.mode==="Survival" && Math.max(1, Number(S.survivalWave || 1)) < 5
+    });
     S.tigers.push(tigerObj);
     tigerPackOnSpawn(tigerObj);
     missionDirectorMarkLaneSpawn(tigerObj.x, storyBoss && i < storyBossCount ? 1.35 : 1);
@@ -41045,14 +41134,16 @@ function spawnRogueTiger(options={}){
   const forcedType = (typeof options.typeKey === "string" && TIGER_TYPES.some((t)=>t.key === options.typeKey))
     ? options.typeKey
     : null;
-  const typeKey = forcedType || pickTigerType();
+  const typeKey = forcedType || (S.mode === "Survival"
+    ? survivalTigerTypeForWave(S.survivalWave, Math.random(), aliveCount)
+    : pickTigerType());
   const def = TIGER_TYPES.find((t)=>t.key===typeKey) || TIGER_TYPES[1];
   const diff = carcassDifficulty();
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
 
   let baseHp = 110;
   if(S.mode==="Arcade") baseHp = 122 + (S.arcadeLevel - 1) * 7;
-  if(S.mode==="Survival") baseHp = 135 + (S.survivalWave - 1) * 10;
+  if(S.mode==="Survival") baseHp = survivalTigerBaseHpForWave(S.survivalWave);
   if(S.mode==="Story") baseHp = 120 + ((storyMission?.number || S.storyLevel || 1) - 1) * 6;
   const hp = Math.round(baseHp * def.hpMul * diff * (S.mode==="Story" ? clamp(Number(storyMission?.endgameHpMul || 1), 1, 6) : 1));
   const worldW = worldWidth(S);
@@ -41160,7 +41251,10 @@ function spawnRogueTiger(options={}){
   }
   tiger.heading = Math.atan2(tiger.vy, tiger.vx);
   tiger.drawDir = tiger.vx >= 0 ? 1 : -1;
-  assignEliteTigerMutation(tiger, { mutationChanceBonus:forcedType === "Alpha" ? 0.08 : 0 });
+  assignEliteTigerMutation(tiger, {
+    mutationChanceBonus:forcedType === "Alpha" ? 0.08 : 0,
+    disableMutation:S.mode==="Survival" && Math.max(1, Number(S.survivalWave || 1)) < 5
+  });
 
   S.tigers.push(tiger);
   recordMissionTigerSpawn(1, options);
@@ -41169,6 +41263,38 @@ function spawnRogueTiger(options={}){
   applyTigerPackSpacing(S, { spawn:true });
   if(!ignoreDirectorBudget) missionDirectorMarkTigerSpawn();
   return tiger;
+}
+
+function ensureSurvivalDeploymentKit(){
+  if(S.mode !== "Survival") return false;
+  if(Math.floor(Number(S.survivalDeploymentKitVersion || 0)) >= SURVIVAL_BALANCE_VERSION) return false;
+  if(!Array.isArray(S.ownedWeapons)) S.ownedWeapons = [];
+  let weaponId = S.ownedWeapons.find((id)=>id === S.preferredLethalWeaponId && getWeapon(id)?.type === "lethal")
+    || S.ownedWeapons.find((id)=>getWeapon(id)?.type === "lethal");
+  if(!weaponId){
+    weaponId = "W_9MM_JUNK";
+    S.ownedWeapons.push(weaponId);
+  }
+  const weapon = getWeapon(weaponId);
+  if(!S.ammoReserve || typeof S.ammoReserve !== "object") S.ammoReserve = {};
+  ensureAmmoModeState(S);
+  S.ammoModeByWeapon[weaponId] = "real";
+  const ammoId = ammoModeForId(weapon?.ammo) === "real"
+    ? weapon.ammo
+    : (compatibleAmmoIdsForWeapon(weapon, "real")[0] || "9MM_STD");
+  S.ammoReserve[ammoId] = Math.max(SURVIVAL_DEPLOYMENT_REAL_AMMO, Math.floor(Number(S.ammoReserve[ammoId] || 0)));
+  S.equippedWeaponId = weaponId;
+  S.preferredLethalWeaponId = weaponId;
+  S.lastCombatLethalWeaponId = weaponId;
+  if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
+  S.medkits.M_SMALL = Math.max(2, Math.floor(Number(S.medkits.M_SMALL || 0)));
+  S.medkitSelectedId = "M_SMALL";
+  S.armor = Math.max(50, Number(S.armor || 0));
+  S.shields = Math.max(1, Math.floor(Number(S.shields || 0)));
+  S.survivalDeploymentKitVersion = SURVIVAL_BALANCE_VERSION;
+  syncEquippedMagCap({ refill:false });
+  autoReloadIfNeeded(true);
+  return true;
 }
 // ===================== DEPLOY / NEXT / RESTART =====================
 let __deployInProgress = false;
@@ -41325,6 +41451,11 @@ function deploy(opts={}){
   S._survivalClearAt = 0;
   S._pressure = 0;
   S._pressTick = 0;
+  S.survivalBreakActive = false;
+  S.survivalBreakUntil = 0;
+  S.survivalPendingWave = 0;
+  S.survivalSupplyClaimed = false;
+  S.survivalSupplyChoice = "";
   {
     const d = ensureMissionDirectorState(S);
     const storyMission = (S.mode === "Story") ? storyMissionForState(S) : null;
@@ -41356,6 +41487,8 @@ function deploy(opts={}){
   }
   checkProgressionUnlocks({ silent:true });
 
+  const survivalKitGranted = ensureSurvivalDeploymentKit();
+
   spawnRescueSites();
   spawnMapInteractables();
   spawnSupportUnits();
@@ -41374,6 +41507,9 @@ function deploy(opts={}){
   const spawnAudit = validateMissionSpawnLayout({ repair:true });
   if((spawnAudit?.fixed || 0) > 0){
     setEventText(`Spawn safety adjusted: ${spawnAudit.fixed}`, 1.3);
+  }
+  if(survivalKitGranted){
+    setEventText("Survival deployment kit issued: 72 Real rounds • 2 Med Kits • 50 Armor • 1 Shield", 7);
   }
   transitionCleanupSweep("deploy-post");
 
@@ -41592,7 +41728,7 @@ function restartModeFromMission1(){
   beginMissionTransitionGuard("restart-mode-m1", 1500);
   saveResumeTransitionBoundary("restart-mode-from-mission-1");
   const mode = normalizeModeName(S.mode);
-  ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay","modeOverlay"].forEach((id)=>{
+  ["battleOverlay","completeOverlay","overOverlay","weaponQuickOverlay","progressGuardOverlay","survivalSupplyOverlay","modeOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -41637,7 +41773,7 @@ function performResetGame(){
   S = cloneState(DEFAULT);
   bindFundsWallet(S);
   syncWindowState();
-  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","worldMapCampaignOverlay","progressGuardOverlay"].forEach((id)=>{
+  ["shopOverlay","invOverlay","weaponQuickOverlay","launchIntroOverlay","dailyRewardOverlay","storyIntroOverlay","worldMapCampaignOverlay","baseHqOverlay","missionCinemaOverlay","missionBriefOverlay","aboutOverlay","hudOverlay","completeOverlay","overOverlay","modeOverlay","worldMapCampaignOverlay","progressGuardOverlay","survivalSupplyOverlay"].forEach((id)=>{
     const el = document.getElementById(id);
     if(el) el.style.display = "none";
   });
@@ -45910,6 +46046,179 @@ function drawSettlementDefenseCore(now=Date.now()){
 }
 
 // ===================== SURVIVAL PRESSURE =====================
+function survivalRealAmmoTarget(){
+  let weapon = getWeapon(S.equippedWeaponId);
+  if(!weapon || weapon.type !== "lethal"){
+    const id = S.ownedWeapons?.find((wid)=>getWeapon(wid)?.type === "lethal");
+    weapon = getWeapon(id);
+  }
+  if(!weapon) return { weapon:null, ammoId:"9MM_STD" };
+  const ammoId = ammoModeForId(weapon.ammo) === "real"
+    ? weapon.ammo
+    : (compatibleAmmoIdsForWeapon(weapon, "real")[0] || "9MM_STD");
+  return { weapon, ammoId };
+}
+function survivalSupplyLabel(choice, wave=Math.max(1, Number(S.survivalWave || 1))){
+  if(choice === "medical") return "+2 Small Med Kits • +15 HP";
+  if(choice === "armor") return "+1 Tier II Plate • +25 Armor";
+  return `+${survivalAmmoSupplyAmount(wave)} Real rounds`;
+}
+function claimSurvivalWaveSupply(choice="ammo", opts={}){
+  if(S.mode !== "Survival" || !S.survivalBreakActive || S.survivalSupplyClaimed) return false;
+  const selected = ["ammo","medical","armor"].includes(choice) ? choice : "ammo";
+  const wave = Math.max(1, Math.floor(Number(S.survivalWave || 1)));
+  if(selected === "medical"){
+    if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
+    S.medkits.M_SMALL = Math.max(0, Math.floor(Number(S.medkits.M_SMALL || 0))) + 2;
+    S.hp = clamp(Number(S.hp || 0) + 15, 0, 100);
+  }else if(selected === "armor"){
+    ensureArmorPlateInventoryState();
+    ensureArmorPlateFallbackState();
+    const next = Math.max(
+      Math.floor(Number(S.armorPlates.A_TIER2 || 0)),
+      Math.floor(Number(S.armorPlatesFallback.A_TIER2 || 0))
+    ) + 1;
+    S.armorPlates.A_TIER2 = next;
+    S.armorPlatesFallback.A_TIER2 = next;
+    S.armor = clamp(Number(S.armor || 0) + 25, 0, Number(S.armorCap || 100));
+  }else{
+    const { ammoId } = survivalRealAmmoTarget();
+    if(!S.ammoReserve || typeof S.ammoReserve !== "object") S.ammoReserve = {};
+    S.ammoReserve[ammoId] = Math.max(0, Math.floor(Number(S.ammoReserve[ammoId] || 0))) + survivalAmmoSupplyAmount(wave);
+  }
+  S.survivalSupplyClaimed = true;
+  S.survivalSupplyChoice = selected;
+  renderSurvivalSupplyBreak();
+  if(!opts.silent){
+    toast(`Survival supply secured: ${survivalSupplyLabel(selected, wave)}`);
+    sfx("ui");
+    hapticImpact("light");
+  }
+  save(true);
+  return true;
+}
+function renderSurvivalSupplyBreak(){
+  const overlay = document.getElementById("survivalSupplyOverlay");
+  if(!overlay) return;
+  if(S.mode !== "Survival" || !S.survivalBreakActive){
+    overlay.style.display = "none";
+    return;
+  }
+  overlay.style.display = "flex";
+  const clearedWave = Math.max(1, Math.floor(Number(S.survivalWave || 1)));
+  const nextWave = Math.max(clearedWave + 1, Math.floor(Number(S.survivalPendingWave || (clearedWave + 1))));
+  const seconds = Math.max(0, Math.ceil((Number(S.survivalBreakUntil || 0) - Date.now()) / 1000));
+  const cash = survivalWaveCashReward(clearedWave);
+  const reward = document.getElementById("survivalSupplyReward");
+  const countdown = document.getElementById("survivalSupplyCountdown");
+  const countdownStage = document.getElementById("survivalCountdownStage");
+  const countdownNumber = document.getElementById("survivalCountdownNumber");
+  const countdownLabel = document.getElementById("survivalCountdownLabel");
+  const preview = document.getElementById("survivalSupplyPreview");
+  const status = document.getElementById("survivalSupplyStatus");
+  if(reward) reward.innerText = `Wave ${clearedWave} reward: +$${cash.toLocaleString()} guaranteed`;
+  if(countdown) countdown.innerText = `Wave ${nextWave} in ${seconds}s`;
+  if(countdownNumber) countdownNumber.innerText = String(seconds);
+  if(countdownLabel) countdownLabel.innerText = `Second${seconds===1?"":"s"} Until Wave ${nextWave}`;
+  if(countdownStage) countdownStage.classList.toggle("urgent", seconds <= 3);
+  if(seconds <= 3 && seconds > 0 && seconds !== __lastSurvivalCountdownSecond){
+    __lastSurvivalCountdownSecond = seconds;
+    sfx("ui");
+    hapticImpact("light");
+  }else if(seconds > 3){
+    __lastSurvivalCountdownSecond = seconds;
+  }
+  if(preview) preview.innerText = `Next: ${survivalTigerCountForWave(nextWave)} tigers • Danger ${survivalDangerLabelForWave(nextWave)} • ${survivalTigerBaseHpForWave(nextWave)} base HP`;
+  if(status) status.innerText = S.survivalSupplyClaimed
+    ? `Selected: ${survivalSupplyLabel(S.survivalSupplyChoice, clearedWave)}. You may visit the Shop while the timer is frozen.`
+    : "Pick one supply. If time expires, Ammunition is selected automatically.";
+  for(const [id, key] of [
+    ["survivalAmmoSupplyBtn","ammo"],
+    ["survivalMedicalSupplyBtn","medical"],
+    ["survivalArmorSupplyBtn","armor"]
+  ]){
+    const btn = document.getElementById(id);
+    if(!btn) continue;
+    btn.disabled = !!S.survivalSupplyClaimed;
+    btn.classList.toggle("active", S.survivalSupplyChoice === key);
+  }
+}
+function openSurvivalBreakShop(){
+  if(S.mode !== "Survival" || !S.survivalBreakActive) return toast("The Survival Shop is available during wave preparation.");
+  __survivalBreakShopRemainingMs = Math.max(1000, Number(S.survivalBreakUntil || 0) - Date.now());
+  __returnToSurvivalBreakAfterShop = true;
+  const overlay = document.getElementById("survivalSupplyOverlay");
+  if(overlay) overlay.style.display = "none";
+  currentShopTab = "ammo";
+  openShop();
+}
+function beginSurvivalWaveBreak(){
+  if(S.mode !== "Survival" || S.survivalBreakActive || S.gameOver || S.missionEnded) return false;
+  const clearedWave = Math.max(1, Math.floor(Number(S.survivalWave || 1)));
+  const defenseReward = grantSettlementDefenseReward();
+  if(Math.floor(Number(S.survivalRewardedWave || 0)) < clearedWave){
+    const cash = survivalWaveCashReward(clearedWave);
+    S.funds += cash;
+    trackCashEarned(cash);
+    addXP(18 + (clearedWave * 4));
+    S.survivalRewardedWave = clearedWave;
+  }
+  S.survivalBreakActive = true;
+  S.survivalBreakUntil = Date.now() + SURVIVAL_PREP_BREAK_MS;
+  S.survivalPendingWave = clearedWave + 1;
+  S.survivalSupplyClaimed = false;
+  S.survivalSupplyChoice = "";
+  S.survivalBreakDefenseReward = defenseReward || "";
+  S._survivalClearAt = 0;
+  __lastSurvivalCountdownSecond = -1;
+  setPaused(true, "survival-break");
+  renderSurvivalSupplyBreak();
+  sfx("event");
+  hapticImpact("medium");
+  save(true);
+  return true;
+}
+function startNextSurvivalWave(){
+  if(S.mode !== "Survival" || !S.survivalBreakActive || S.gameOver || S.missionEnded) return false;
+  if(!S.survivalSupplyClaimed) claimSurvivalWaveSupply("ammo", { silent:true });
+  const nextWave = Math.max(
+    Math.floor(Number(S.survivalWave || 1)) + 1,
+    Math.floor(Number(S.survivalPendingWave || 0))
+  );
+  S.survivalWave = nextWave;
+  S.survivalBreakActive = false;
+  S.survivalBreakUntil = 0;
+  S.survivalPendingWave = 0;
+  const chosenSupply = S.survivalSupplyChoice;
+  const defenseReward = String(S.survivalBreakDefenseReward || "");
+  S.survivalBreakDefenseReward = "";
+  __lastSurvivalCountdownSecond = -1;
+  const overlay = document.getElementById("survivalSupplyOverlay");
+  if(overlay) overlay.style.display = "none";
+  spawnTigers();
+  initializeMissionTigerSpawnControl(S);
+  const defense = ensureSettlementDefenseState(S);
+  if(defense.active){
+    defense.wavesCleared += 1;
+    defense.rewardGranted = false;
+    defense.coreHp = clamp(defense.coreHp + Math.round(defense.coreHpMax * 0.18), 0, defense.coreHpMax);
+  }
+  const spawnAudit = validateMissionSpawnLayout({ repair:true });
+  setPaused(false, null);
+  const safety = (spawnAudit?.fixed || 0) > 0 ? ` • ${spawnAudit.fixed} spawn${spawnAudit.fixed===1?"":"s"} adjusted` : "";
+  const defenseText = defenseReward ? " • Defense secured" : "";
+  setEventText(`Wave ${nextWave}: ${survivalTigerCountForWave(nextWave)} tigers • Danger ${survivalDangerLabelForWave(nextWave)} • ${survivalSupplyLabel(chosenSupply || "ammo", nextWave - 1)}${safety}${defenseText}`, 5);
+  toast(`Survival Wave ${nextWave} started.`);
+  save(true);
+  return true;
+}
+function survivalPreparationTick(){
+  if(S.mode !== "Survival" || !S.survivalBreakActive) return;
+  if(S.gameOver || S.missionEnded) return;
+  if(__returnToSurvivalBreakAfterShop || document.getElementById("shopOverlay")?.style.display === "flex") return;
+  renderSurvivalSupplyBreak();
+  if(Date.now() >= Number(S.survivalBreakUntil || 0)) startNextSurvivalWave();
+}
 function survivalPressureTick(){
   if(S.mode!=="Survival" || S.paused || S.gameOver) return;
   if(S.backupActive>0) return;
@@ -45922,28 +46231,9 @@ function survivalPressureTick(){
   if(aliveTigers.length <= 0){
     if(!Number.isFinite(S._survivalClearAt) || S._survivalClearAt <= 0){
       S._survivalClearAt = now + 1400;
-      setEventText(`Wave ${Math.max(1, S.survivalWave || 1)} cleared. Incoming pack...`, 2.4);
+      setEventText(`Wave ${Math.max(1, S.survivalWave || 1)} cleared. Preparation break incoming...`, 2.4);
     } else if(now >= S._survivalClearAt && !S.inBattle && !S.missionEnded){
-      S._survivalClearAt = 0;
-      const defenseReward = grantSettlementDefenseReward();
-      S.survivalWave = Math.max(1, Math.floor(S.survivalWave || 1) + 1);
-      spawnTigers();
-      const defense = ensureSettlementDefenseState(S);
-      if(defense.active){
-        defense.wavesCleared += 1;
-        defense.rewardGranted = false;
-        defense.coreHp = clamp(defense.coreHp + Math.round(defense.coreHpMax * 0.18), 0, defense.coreHpMax);
-      }
-      const spawnAudit = validateMissionSpawnLayout({ repair:true });
-      if((spawnAudit?.fixed || 0) > 0){
-        setEventText(`Wave ${S.survivalWave} started • spawn safety adjusted ${spawnAudit.fixed}${defenseReward ? " • Defense reward secured" : ""}`, 2.8);
-      } else {
-        setEventText(`Wave ${S.survivalWave} started • Tigers incoming`, 2.8);
-      }
-      toast(`Survival Wave ${S.survivalWave} started.`);
-      sfx("event");
-      hapticImpact("medium");
-      save();
+      beginSurvivalWaveBreak();
     }
     return;
   }
@@ -50723,7 +51013,9 @@ function renderHUD(){
   const objEl = document.getElementById("objTxt");
   if(objEl) objEl.innerText =
     (S.mode==="Survival")
-      ? `🎯 Kill every tiger in Wave ${S.survivalWave} • Real ammunition only • No Rubber • No Capture${dayNightInline}`
+      ? (S.survivalBreakActive
+        ? `🛡️ Preparation: Wave ${S.survivalWave} cleared • Choose supplies for Wave ${S.survivalPendingWave || (S.survivalWave + 1)}${dayNightInline}`
+        : `🎯 Kill all ${survivalTigerCountForWave(S.survivalWave)} tigers in Wave ${S.survivalWave} • Real ammunition only • No Rubber • No Capture${dayNightInline}`)
       : (S.mode==="Story")
         ? `🎯 ${storyObjective}${director5Inline}${dynInline}${invInline}${dayNightInline}${grace}`
       : (S.mode==="Arcade")
@@ -50757,6 +51049,11 @@ function renderHUD(){
         const bossHuntLabel = `Boss Cinema: ${bossHunt.title} ${bossHunt.points}/${bossHunt.target}`;
         storyOpsEl.innerText = `${focus} • ${rewardTrack} • ${seasonLabel} • ${bossHuntLabel}`;
       }
+    } else if(S.mode==="Survival"){
+      const nextWave = S.survivalBreakActive
+        ? Math.max(Number(S.survivalWave || 1) + 1, Number(S.survivalPendingWave || 0))
+        : Math.max(1, Number(S.survivalWave || 1) + 1);
+      storyOpsEl.innerText = `Survival Ops: Next Wave ${nextWave} • ${survivalTigerCountForWave(nextWave)} tigers • Danger ${survivalDangerLabelForWave(nextWave)} • Guaranteed cash + supply choice`;
     } else {
       storyOpsEl.innerText = "";
     }
@@ -50764,7 +51061,16 @@ function renderHUD(){
 
   // danger ping
   const dangerEl = document.getElementById("dangerTxt");
-  if(dangerEl && S.dangerCivId && S.mode!=="Survival"){
+  if(dangerEl && S.mode==="Survival"){
+    const wave = S.survivalBreakActive ? (S.survivalPendingWave || (S.survivalWave + 1)) : S.survivalWave;
+    dangerEl.innerText = `⚠️ Wave ${wave} danger: ${survivalDangerLabelForWave(wave)} • ${survivalTigerBaseHpForWave(wave)} base HP`;
+    dangerEl.style.color = "rgba(254,240,138,.98)";
+    dangerEl.style.fontWeight = "900";
+    dangerEl.style.background = "linear-gradient(90deg, rgba(92,63,12,.48), rgba(45,35,12,.24))";
+    dangerEl.style.border = "1px solid rgba(250,204,21,.58)";
+    dangerEl.style.borderRadius = "10px";
+    dangerEl.style.padding = "4px 8px";
+  } else if(dangerEl && S.dangerCivId){
     const civ = S.civilians.find(c=>c.id===S.dangerCivId);
     const d = civ ? Math.round(dist(S.me.x,S.me.y,civ.x,civ.y)) : null;
     dangerEl.innerText = civ ? `⚠️ Civilian #${civ.id} under attack near ${civ.rescueLabel || "the rescue site"} • Distance ${d}m` : "";
@@ -61614,6 +61920,7 @@ function missionBlockingOverlayVisible(){
     "weaponQuickOverlay",
     "aboutOverlay",
     "progressGuardOverlay",
+    "survivalSupplyOverlay",
     "completeOverlay",
     "overOverlay",
     "storyIntroOverlay",
@@ -61914,6 +62221,11 @@ function missionEntityStateInvalid(state=S){
   const meOk = !!(state.me && inWorld(state.me.x, state.me.y, 180));
   if(!meOk) return "player-missing";
 
+  // A cleared Survival wave intentionally has no living tiger while the
+  // preparation/reward screen is active. Do not let integrity recovery
+  // mistake that safe state for a broken mission and redeploy the player.
+  if(mode === "Survival" && (state.survivalBreakActive || Number(state._survivalClearAt || 0) > 0)) return "";
+
   if(!Array.isArray(state.tigers) || !state.tigers.length){
     const hasMissionCivilians = Array.isArray(state.civilians) && state.civilians.length > 0;
     return (state.missionEnded || state.gameOver || hasMissionCivilians) ? "" : "tigers-empty";
@@ -62030,7 +62342,8 @@ function closeTransientMissionOverlaysForGameplay(reason="stability-master"){
     "weaponQuickOverlay",
     "aboutOverlay",
     "hudOverlay",
-    "progressGuardOverlay"
+    "progressGuardOverlay",
+    "survivalSupplyOverlay"
   ];
   if(!keepComplete){
     ids.push("completeOverlay", "overOverlay");
@@ -62382,6 +62695,7 @@ function draw(){
       costHint:0.35, cadence:1, slowCadence:2, heavyCadence:3, extremeCadence:4
     });
     runFrameTask("arcadeModeTick", frameInterval(220, 1.45), arcadeModeTick, { costHint:0.6, critical:S.mode==="Arcade" });
+    runFrameTask("survivalPreparation", frameInterval(180, 1.35), survivalPreparationTick, { costHint:0.35, critical:S.mode==="Survival" && !!S.survivalBreakActive });
 
     if(!startupLoading && !(S.gameOver || S.paused || S.missionEnded)){
       runFrameTask("sanitizeState", frameInterval(lagCritical ? 360 : (lagHeavy ? 300 : 240), 2.2), sanitizeRuntimeState, {

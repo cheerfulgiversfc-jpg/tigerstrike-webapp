@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V10.1.2 (Premium Field Maps)</title>
+  <title>Tiger Strike 🐅 — V10.1.3 (Fair Survival Progression)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5073-premium-field-maps">
+  <link rel="stylesheet" href="./squad-coop.css?v=5074-fair-survival">
 
   <style>
     :root{
@@ -746,6 +746,29 @@
     .fieldAlert.danger{border-color:rgba(251,113,133,.92);background:rgba(88,16,29,.92);color:#fff1f2}
     .fieldAlert.capture{border-color:rgba(74,222,128,.96);background:rgba(6,78,59,.94);color:#ecfdf5;box-shadow:0 10px 25px rgba(0,0,0,.38),0 0 22px rgba(34,197,94,.24)}
     @keyframes fieldAlertEnter{from{opacity:0;transform:translate(-50%,-6px)}to{opacity:1;transform:translate(-50%,0)}}
+    #survivalCountdownStage{
+      margin:2px 0 14px;
+      padding:16px 12px 14px;
+      border:2px solid rgba(96,165,250,.72);
+      border-radius:18px;
+      background:radial-gradient(circle at 50% 30%,rgba(37,99,235,.28),rgba(7,15,31,.92) 68%);
+      text-align:center;
+      box-shadow:inset 0 0 26px rgba(59,130,246,.14),0 12px 34px rgba(0,0,0,.32);
+    }
+    #survivalCountdownNumber{
+      color:#f8fafc;
+      font-size:clamp(76px,22vw,150px);
+      font-weight:1000;
+      line-height:.82;
+      letter-spacing:-.06em;
+      text-shadow:0 0 30px rgba(96,165,250,.68),0 7px 0 rgba(0,0,0,.28);
+      font-variant-numeric:tabular-nums;
+    }
+    #survivalCountdownLabel{margin-top:12px;color:#bfdbfe;font-size:clamp(14px,4vw,22px);font-weight:1000;letter-spacing:.08em;text-transform:uppercase}
+    #survivalCountdownStage.urgent{border-color:rgba(251,113,133,.94);background:radial-gradient(circle at 50% 30%,rgba(190,24,93,.38),rgba(45,8,20,.94) 70%);animation:survivalCountdownPulse .72s ease-in-out infinite}
+    #survivalCountdownStage.urgent #survivalCountdownNumber{color:#fff1f2;text-shadow:0 0 34px rgba(251,113,133,.9),0 7px 0 rgba(0,0,0,.3)}
+    #survivalCountdownStage.urgent #survivalCountdownLabel{color:#fecdd3}
+    @keyframes survivalCountdownPulse{50%{transform:scale(1.025);box-shadow:inset 0 0 30px rgba(251,113,133,.22),0 0 28px rgba(244,63,94,.28)}}
     .mapStage{
       position:relative;
       --squad-wheel-x:84%;
@@ -2543,7 +2566,7 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V10.1.2</span> <span class="tag">Premium Field Maps</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V10.1.3</span> <span class="tag">Fair Survival Progression</span></div>
       <div class="sub">
         Quick Match now finds another Telegram player for the exact Story mission or Special Operation you select. Public matchmaking never mixes mission levels, while private invite codes and Solo play remain available. The live API now correctly accepts every Shared Story mission through Mission 100.<br>
         All 100 Story missions are fully playable alone or with a teammate. Missions 91–100 include the jungle-core evacuation, elite Guardian live capture, ancient convoy, helicopter defense, temple seals, and the 8,500 HP Ancient Tiger finale.<br>
@@ -3416,6 +3439,37 @@
   </div>
 </div>
 
+<!-- Survival wave preparation and guaranteed supplies -->
+<div class="overlay" id="survivalSupplyOverlay" role="dialog" aria-modal="true" aria-labelledby="survivalSupplyTitle">
+  <div class="modal" style="width:min(680px,96vw)">
+    <div class="modalTop">
+      <div>
+        <div class="modalTitle" id="survivalSupplyTitle">🛡️ Wave Cleared</div>
+        <div class="hudLine" id="survivalSupplyReward">Wave reward secured.</div>
+      </div>
+      <span class="tag" id="survivalSupplyCountdown">Next wave in 12s</span>
+    </div>
+    <div class="modalBody">
+      <div id="survivalCountdownStage" aria-live="assertive" aria-atomic="true">
+        <div id="survivalCountdownNumber">12</div>
+        <div id="survivalCountdownLabel">Seconds Until Wave 2</div>
+      </div>
+      <div class="hudLine" id="survivalSupplyPreview">Choose one guaranteed field supply before the next pack arrives.</div>
+      <div class="divider"></div>
+      <div class="row" id="survivalSupplyChoices">
+        <button class="good" id="survivalAmmoSupplyBtn" onclick="claimSurvivalWaveSupply('ammo')">🔫 Ammunition</button>
+        <button class="good" id="survivalMedicalSupplyBtn" onclick="claimSurvivalWaveSupply('medical')">❤️ Medical</button>
+        <button class="good" id="survivalArmorSupplyBtn" onclick="claimSurvivalWaveSupply('armor')">🛡️ Armor</button>
+      </div>
+      <div class="divider"></div>
+      <div class="hudLine" id="survivalSupplyStatus">Pick one supply. If time expires, Ammunition is selected automatically.</div>
+      <div class="row">
+        <button class="ghost" onclick="openSurvivalBreakShop()">🛒 Shop During Break</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Game Over -->
 <div class="overlay" id="overOverlay">
   <div class="modal">
@@ -3470,7 +3524,7 @@
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V10.1.2 • Premium Field Maps</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V10.1.3 • Fair Survival Progression</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3515,17 +3569,17 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5073-premium-field-maps"></script>
-  <script src="./ammo-modes.js?v=5073-premium-field-maps"></script>
-  <script src="./government-policy.js?v=5073-premium-field-maps"></script>
-  <script src="./tiger-intelligence.js?v=5073-premium-field-maps"></script>
-  <script src="./game.js?v=5073-premium-field-maps"></script>
-  <script src="./story-cinematics.js?v=5073-premium-field-maps"></script>
-  <script src="./field-systems.js?v=5073-premium-field-maps"></script>
-  <script src="./tutorial.js?v=5073-premium-field-maps"></script>
-  <script src="./squad-motion.js?v=5073-premium-field-maps"></script>
-  <script src="./squad-coop.js?v=5073-premium-field-maps"></script>
-  <script src="./extraction-qa.js?v=5073-premium-field-maps"></script>
+  <script src="./extraction-geometry.js?v=5074-fair-survival"></script>
+  <script src="./ammo-modes.js?v=5074-fair-survival"></script>
+  <script src="./government-policy.js?v=5074-fair-survival"></script>
+  <script src="./tiger-intelligence.js?v=5074-fair-survival"></script>
+  <script src="./game.js?v=5074-fair-survival"></script>
+  <script src="./story-cinematics.js?v=5074-fair-survival"></script>
+  <script src="./field-systems.js?v=5074-fair-survival"></script>
+  <script src="./tutorial.js?v=5074-fair-survival"></script>
+  <script src="./squad-motion.js?v=5074-fair-survival"></script>
+  <script src="./squad-coop.js?v=5074-fair-survival"></script>
+  <script src="./extraction-qa.js?v=5074-fair-survival"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

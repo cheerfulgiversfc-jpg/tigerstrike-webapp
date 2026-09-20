@@ -476,6 +476,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - The phone renderer now removes legacy hidden landmark collision from Story, Arcade, and Survival whenever the bright shared district layout is drawn, preventing scenery from blocking movement where nothing is visible.
 - Survival remains lethal-only. Its tiger counts, starting supplies, and wave economy are intentionally unchanged for the separate balance update.
 
+### V10.1.3 Fair Survival Progression
+
+- Survival now opens with 2 tigers in Wave 1, 3 in Wave 2, and 4 in Wave 3, then increases gradually instead of starting with an immediate four-tiger wall.
+- Early tiger base health begins at 110. Berserker, Alpha, and armored elite-mutation pressure is held back until later waves; every fifth wave from Wave 5 guarantees an Alpha lead threat.
+- The first Survival deployment provides at least 72 Real rounds, 2 Small Med Kits, 50 armor, and 1 shield without reducing better supplies already owned in the separate Survival profile.
+- Clearing a wave grants money exactly once and opens a 12-second preparation screen. The screen shows a large countdown, a red pulsing 3–2–1 warning, the next tiger count, base health, and danger level.
+- Every clear includes one real supply choice: ammunition, medical supplies, or armor. Ammunition is selected automatically if time expires without a choice.
+- Players can enter the Shop during preparation. The countdown freezes while shopping and returns to the same preparation screen instead of starting a wave behind the Shop.
+- Survival remains lethal-only with Real ammunition and no tiger-capture path.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.
