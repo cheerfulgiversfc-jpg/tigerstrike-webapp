@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const { getState, setState, setStateIfAbsent } = require("./metrics-store");
 const ammoRules = require("../../ammo-modes");
 const tigerIntelligence = require("../../tiger-intelligence");
+const livingWorld = require("../../living-world");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -1932,7 +1933,7 @@ const COOP_GEAR_CATALOG = Object.freeze([
 function coopProfileKey(userId){ return `live_squad_profile_v1_${userIdOf(userId)}`; }
 function defaultCoopProfile(user){
   return {
-    version:1,
+    version:2,
     userId:userIdOf(user),
     name:playerName(user),
     funds:2500,
@@ -1947,6 +1948,7 @@ function defaultCoopProfile(user){
     badges:{},
     achievements:{},
     government:{ trust:100, reviews:0, lethalKills:0, captures:0, status:"FUNDED" },
+    livingWorld:livingWorld.defaultState(),
     rewardReceipts:{},
     updatedAt:nowMs(),
   };
@@ -1991,6 +1993,8 @@ function normalizeCoopProfile(raw, user){
       captures:clamp(Math.floor(Number(src?.government?.captures || 0)), 0, 999999),
       status:["FUNDED","WATCHLIST","SUSPENDED","GONE_ROGUE"].includes(src?.government?.status) ? src.government.status : "FUNDED",
     },
+    version:2,
+    livingWorld:livingWorld.normalizeState(src.livingWorld),
     rewardReceipts:cleanMap(src.rewardReceipts),
     updatedAt:Math.max(0, Number(src.updatedAt || base.updatedAt)),
   };
@@ -3483,6 +3487,7 @@ async function claimReward(session, user){
   const awardedReward = sharedStory ? sharedRewards[sharedLevel] : operationReward;
   let profile = await readCoopProfile(user);
   const receipt = `${sharedStory ? `shared-story-${sharedLevel}` : operationId}:${session.code}:${uid}`;
+  let livingWorldOutcome = null;
   if(firstClaim && !profile.rewardReceipts[receipt]){
     profile.rewardReceipts[receipt] = nowMs();
     profile.funds += Math.max(0, Number(awardedReward.cash || 0));
@@ -3499,6 +3504,19 @@ async function claimReward(session, user){
       profile.government.status = profile.government.trust < 30 ? "SUSPENDED" : (profile.government.trust < 60 ? "WATCHLIST" : "FUNDED");
     }
     if(sharedStory) profile.unlockedStoryLevel = Math.max(profile.unlockedStoryLevel, Math.min(100, sharedLevel + 1));
+    if(sharedStory && sharedLevel <= livingWorld.PILOT_MAX_MISSION){
+      livingWorldOutcome = livingWorld.applyOutcome(profile.livingWorld, {
+        receipt:`coop:${receipt}`,
+        missionLevel:sharedLevel,
+        captures:governmentAudit.captures,
+        kills:governmentAudit.kills,
+        rescues:governmentAudit.evac,
+        civiliansLost:governmentAudit.civDead,
+        coop:true,
+        at:nowMs(),
+      });
+      profile.livingWorld = livingWorldOutcome.state;
+    }
     profile = await writeCoopProfile(profile, user);
   }
   return {
@@ -3507,6 +3525,7 @@ async function claimReward(session, user){
     storyProgress:sharedStory ? { completedLevel:sharedLevel, unlockLevel:Math.min(100, sharedLevel + 1) } : null,
     reward:awardedReward,
     governmentAudit,
+    livingWorldOutcome,
     profile,
   };
 }

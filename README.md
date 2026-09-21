@@ -486,6 +486,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Players can enter the Shop during preparation. The countdown freezes while shopping and returns to the same preparation screen instead of starting a wave behind the Shop.
 - Survival remains lethal-only with Real ammunition and no tiger-capture path.
 
+### V10.2 Living World Foundation
+
+- Connects Story Missions 1–10 to three persistent Chapter 1 districts: River Gate, Jungle Spine, and Iron Roar.
+- Mission results now leave visible changes to tiger pressure, settlement safety, and blood scent instead of disappearing after the reward screen.
+- Rescues and captures make a district safer; lethal kills increase blood scent and can preserve or increase local tiger pressure.
+- Adds a Living Chapter 1 dashboard to the World Map with district clears, Solo/Shared Story counts, rescues, captures, and kills.
+- Keeps Solo and Shared Story Living World progress separate. Each Telegram player owns their own co-op district state.
+- Uses unique mission and reward receipts so reopening, reconnecting, or claiming again cannot apply the same world result twice.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

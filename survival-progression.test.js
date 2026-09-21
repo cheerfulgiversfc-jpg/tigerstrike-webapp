@@ -91,8 +91,8 @@ test("Survival remains lethal-only with no capture shortcut", () => {
   assert(game.includes("Real ammunition only • No Rubber • No Capture"));
 });
 
-test("V10.1.3 cache bust reaches Telegram clients", () => {
-  assert(game.includes('const TS_BUILD = "5074"'));
-  assert(html.includes("V10.1.3"));
-  assert(html.includes("game.js?v=5074-fair-survival"));
+test("V10.2 cache bust reaches Telegram clients", () => {
+  assert(game.includes('const TS_BUILD = "5075"'));
+  assert(html.includes("V10.2"));
+  assert(html.includes("game.js?v=5075-living-world"));
 });

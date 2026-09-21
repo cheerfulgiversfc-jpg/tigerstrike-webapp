@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5074";
+const TS_BUILD = "5075";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -11820,7 +11820,7 @@ const WORLD_MAP_WEEKLY_LADDER = Object.freeze([
 ]);
 function defaultWorldMapCampaignState(){
   return {
-    version:2,
+    version:3,
     selectedRegionId:"river_gate",
     activeRegionId:"",
     activeRunId:"",
@@ -11885,6 +11885,7 @@ function defaultWorldMapCampaignState(){
     lastEventSeed:"",
     lastCrisisSeed:"",
     lastOutcome:"",
+    livingWorld:window.TigerLivingWorld?.defaultState?.() || null,
   };
 }
 function worldMapRegionById(id){
@@ -11901,7 +11902,7 @@ function ensureWorldMapCampaignState(state=S){
   const out = {
     ...defaultWorldMapCampaignState(),
     ...src,
-    version:2,
+    version:3,
     defendedRegions:(src.defendedRegions && typeof src.defendedRegions === "object") ? src.defendedRegions : {},
     regionControl:(src.regionControl && typeof src.regionControl === "object") ? src.regionControl : {},
     completedMissions:(src.completedMissions && typeof src.completedMissions === "object") ? src.completedMissions : {},
@@ -11950,6 +11951,7 @@ function ensureWorldMapCampaignState(state=S){
     activeRivalRegionId:String(src.activeRivalRegionId || ""),
     lastEventSeed:String(src.lastEventSeed || ""),
     lastCrisisSeed:String(src.lastCrisisSeed || ""),
+    livingWorld:window.TigerLivingWorld?.normalizeState?.(src.livingWorld) || src.livingWorld || null,
   };
   if(!worldMapRegionExists(out.selectedRegionId)) out.selectedRegionId = "river_gate";
   if(out.activeRegionId && !out.activeRunId){
@@ -12059,6 +12061,53 @@ function ensureWorldMapCampaignState(state=S){
   }
   state.worldMapCampaign = out;
   return out;
+}
+function livingWorldApi(){
+  return window.TigerLivingWorld || null;
+}
+function livingWorldState(wm=ensureWorldMapCampaignState(S)){
+  const api = livingWorldApi();
+  if(!api) return null;
+  wm.livingWorld = api.normalizeState(wm.livingWorld);
+  return wm.livingWorld;
+}
+function recordLivingWorldStoryOutcome({ missionStats=null, missionLevel=null, civDead=0 }={}){
+  if(S.mode !== "Story") return "";
+  if(normalizeStoryVariant(S.storyVariant) !== STORY_VARIANTS.CAMPAIGN) return "";
+  const api = livingWorldApi();
+  const level = Math.max(1, Math.floor(Number(missionLevel || S.storyLevel || 1)));
+  if(!api || level > api.PILOT_MAX_MISSION || !api.districtForMission(level)) return "";
+  const wm = ensureWorldMapCampaignState(S);
+  const launchedFromWorldMap = !!(wm.activeRegionId && wm.activeRunId);
+  const receipt = `solo:${String(S._missionRunId || `${level}:${S._missionStartAt || Date.now()}`)}`;
+  const result = api.applyOutcome(wm.livingWorld, {
+    receipt,
+    missionLevel:level,
+    captures:missionStats?.captures,
+    kills:missionStats?.kills,
+    rescues:missionStats?.evac,
+    civiliansLost:civDead,
+    coop:false,
+    at:Date.now(),
+  });
+  wm.livingWorld = result.state;
+  if(!result.applied) return "";
+  if(!launchedFromWorldMap){
+    const districtId = result.district.id;
+    wm.regionControl[districtId] = result.after.tigerPressure;
+    wm.settlementInfluence[districtId] = Math.max(Number(wm.settlementInfluence[districtId] || 0), result.after.settlementSafety);
+    wm.completedMissions[districtId] = Math.max(0, Math.floor(Number(wm.completedMissions[districtId] || 0))) + 1;
+    if(!wm.unlockedRegionIds.includes(districtId)) wm.unlockedRegionIds.push(districtId);
+    const faction = worldMapFactionInfluence(worldMapRegionById(districtId), S);
+    faction.hq = clamp(faction.hq + 4 + Math.floor(Number(missionStats?.evac || 0) / 2), 0, 100);
+    faction.tigers = clamp(faction.tigers - 4 - Math.floor(Number(missionStats?.captures || 0) / 2), 0, 100);
+    faction.settlements = clamp(Math.max(faction.settlements, result.after.settlementSafety), 0, 100);
+    wm.factionInfluence[districtId] = faction;
+  }
+  wm.selectedRegionId = result.district.id;
+  wm.lastOutcome = `Living World • ${result.summary}`;
+  wm.lastUpdatedAt = Date.now();
+  return `\nLiving World: ${result.summary}\n`;
 }
 function worldMapInitialControl(region, state=S){
   const story = Math.max(1, Math.floor(Number(state?.storyLevel || state?.storyLastMission || 1)));
@@ -13734,6 +13783,31 @@ function worldMapRegionCardHtml(region){
     </button>
   `;
 }
+function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
+  const api = livingWorldApi();
+  const living = livingWorldState(wm);
+  if(!api || !living) return "";
+  const cards = api.DISTRICTS.map((definition)=>{
+    const district = living.districts[definition.id];
+    const threat = api.threatLabel(district.tigerPressure);
+    const threatColor = district.tigerPressure >= 75 ? "#fb7185" : (district.tigerPressure >= 55 ? "#fbbf24" : "#4ade80");
+    return `<div class="card" style="border-color:${threatColor};background:linear-gradient(145deg,rgba(11,25,44,.96),rgba(6,14,27,.94))">
+      <div class="small">MISSIONS ${worldMapEsc(definition.missions)} • ${worldMapEsc(threat)} THREAT</div>
+      <div class="hudTitle">${worldMapEsc(definition.name)}</div>
+      <div class="small">🐅 Tiger Pressure <b>${district.tigerPressure}%</b></div>
+      <div class="small">🏘️ Settlement Safety <b>${district.settlementSafety}%</b></div>
+      <div class="small">🩸 Blood Scent <b>${district.bloodScent}%</b></div>
+      <div class="small">Clears ${district.clears} • Solo ${district.soloClears} • Co-op ${district.coopClears}</div>
+      <div class="small">Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</div>
+    </div>`;
+  }).join("");
+  return `<section class="card" id="livingWorldChapterOne" style="margin-top:10px;border-color:rgba(74,222,128,.62);background:linear-gradient(145deg,rgba(6,54,45,.50),rgba(8,15,29,.96))">
+    <div class="hudLine"><b>🌍 Living Chapter 1 • Persistent Districts</b></div>
+    <div class="small">Missions 1–10 now leave a lasting mark. Rescues and captures make districts safer. Lethal kills raise blood scent and can keep tiger pressure high. Solo and Shared Story each keep their own progression.</div>
+    <div class="small" style="margin-top:6px"><b>Latest:</b> ${worldMapEsc(living.headline)}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${cards}</div>
+  </section>`;
+}
 function renderWorldMapCampaign(){
   const root = document.getElementById("worldMapCampaignRoot");
   if(!root) return;
@@ -13809,6 +13883,7 @@ function renderWorldMapCampaign(){
     ${worldMapDebugInfoPanelHtml(selected, stats, wm)}
     ${worldMapSeasonHtml(selected)}
     ${worldMapPendingChoiceHtml(wm)}
+    ${worldMapLivingChapterOneHtml(wm)}
     ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
     ${wm.lastOutcome ? `<div class="card" style="margin-top:10px;border-color:rgba(74,222,128,.44)"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px">
@@ -50601,6 +50676,11 @@ function checkMissionComplete(){
         civEvac,
         mission:storyMission,
       });
+      const livingWorldNote = recordLivingWorldStoryOutcome({
+        missionStats,
+        civDead,
+        missionLevel:activeMission?.number || storyMission?.number || S.storyLevel,
+      });
       const worldMapCampaignNote = recordWorldMapCampaignOutcome({
         missionStats,
         missionLevel:activeMission?.number || storyMission?.number || S.storyLevel,
@@ -50665,7 +50745,7 @@ function checkMissionComplete(){
       });
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${director5Note}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${governmentNote}${fieldCashTruthNote}${worldMapCampaignNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${director5Note}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${governmentNote}${fieldCashTruthNote}${livingWorldNote}${worldMapCampaignNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       renderWildlifeTransportCinematic({ missionStats, activeMission, storyMission, arcadeMission });
       addXP(120);
