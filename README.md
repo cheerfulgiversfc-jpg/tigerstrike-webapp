@@ -515,6 +515,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo route objects update their collision and Repair Kit behavior; Shared Story displays the same bridge condition and applies the safe-route movement bonus to both players.
 - Mission briefings and the Living World dashboards show the exact Jungle Spine consequence before deployment, and reconnecting preserves it for the active squad.
 
+### V10.5 District Consequences — Iron Roar
+
+- Completes Living World consequences across Chapter 1 by activating Solo and Shared Story Missions 8–10.
+- High tiger pressure adds real Armored rail-yard patrols to Missions 8–9. Solo is capped at one additional patrol, while a critical two-player district can face two.
+- Mission 10 deliberately keeps its single Village Alpha instead of adding patrol clutter; saved pressure and blood scent still change the boss's awareness and damage.
+- Settlement safety restores the industrial power grid, fortifies the rail gate, opens an armored supply lane, and activates powered defenses that reduce incoming tiger damage.
+- The visible Iron Roar Armory Depot provides real Med Kit, armor, ammunition, Trap, and scan support. Rescued civilians return as armorers and engineers.
+- Solo map generators, gates, barricades, and vehicles reflect the saved district state; Shared Story draws the same power and fortification state and applies the same movement and defense bonuses to both players.
+- Every Chapter 1 district now has direct gameplay consequences, accurate pre-deployment briefings, separate Solo/Shared progression, and reconnect-safe co-op state.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

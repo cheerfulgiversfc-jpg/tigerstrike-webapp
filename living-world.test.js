@@ -114,6 +114,49 @@ test("a restored Jungle Spine opens routes, helpers, and full squad support", ()
   assert.match(coop.brief, /community bridge open/);
 });
 
+test("Iron Roar adds fair Armored pressure without crowding the Alpha boss", () => {
+  const defaults = livingWorld.defaultState();
+  const solo = livingWorld.missionConsequences(defaults, 8, { playerCount:1 });
+  const coop = livingWorld.missionConsequences(defaults, 8, { playerCount:2 });
+  const boss = livingWorld.missionConsequences(defaults, 10, { playerCount:2 });
+  assert.equal(solo.enabled, true);
+  assert.equal(solo.extraPatrols, 1);
+  assert.equal(coop.extraPatrols, 1);
+  assert.equal(coop.patrolType, "Armored");
+  assert.equal(coop.support.armoryDepot, false);
+  assert.equal(coop.support.powerGrid, false);
+  assert.equal(boss.extraPatrols, 0);
+  assert.match(boss.brief, /no added patrol in the Alpha boss arena/);
+});
+
+test("a restored Iron Roar powers defenses, workers, and the supply lane", () => {
+  const state = livingWorld.defaultState();
+  state.districts.iron_roar = {
+    ...state.districts.iron_roar,
+    tigerPressure:92,
+    settlementSafety:80,
+    bloodScent:96,
+  };
+  const solo = livingWorld.missionConsequences(state, 9, { playerCount:1 });
+  const coop = livingWorld.missionConsequences(state, 9, { playerCount:2 });
+  assert.equal(solo.extraPatrols, 1);
+  assert.equal(coop.extraPatrols, 2);
+  assert.equal(coop.patrolType, "Armored");
+  assert.equal(coop.damageBonus, 6);
+  assert.equal(coop.support.armoryDepot, true);
+  assert.equal(coop.support.powerGrid, true);
+  assert.equal(coop.support.fortifiedGate, true);
+  assert.equal(coop.support.safeRoute, true);
+  assert.equal(coop.support.routeSpeedMul, 1.08);
+  assert.equal(coop.support.returningCivilians, 2);
+  assert.equal(coop.support.damageReduction, 2);
+  assert.equal(coop.support.armorFloor, 65);
+  assert.equal(coop.support.ammoMinimum, 30);
+  assert.equal(coop.support.scanPing, 360);
+  assert.match(coop.brief, /2 extra Armored rail-yard patrols/);
+  assert.match(coop.brief, /industrial power grid online/);
+});
+
 test("District consequences are integrated into solo, Shared Story, and the Telegram cache build", () => {
   assert(game.includes("function recordLivingWorldStoryOutcome"));
   assert(game.includes("worldMapLivingChapterOneHtml(wm)"));
@@ -125,13 +168,16 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes("prepareLivingWorldMissionConsequences(S)"));
   assert(game.includes("spawnLivingWorldRiverGateSafeHouse()"));
   assert(game.includes("configureLivingWorldDistrictRoutes()"));
-  assert(game.includes('livingWorldSupportType:jungle ? "jungle_ranger"'));
+  assert(game.includes('jungle ? "jungle_ranger" : "river_safe_house"'));
+  assert(game.includes('iron ? "iron_armory"'));
+  assert(game.includes("livingWorldPlayerDamageReduction(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
   assert(squad.includes("function livingWorldMissionText"));
   assert(squad.includes("YOUR SHARED STORY WORLD"));
   assert(squad.includes("COMMUNITY BRIDGE • OPEN"));
-  assert(html.includes("living-world.js?v=5077-jungle-spine"));
-  assert(html.includes("V10.4 (Jungle Spine)"));
+  assert(squad.includes("IRON ROAR POWER GRID • ONLINE"));
+  assert(html.includes("living-world.js?v=5078-iron-roar"));
+  assert(html.includes("V10.5 (Iron Roar)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -220,4 +266,69 @@ test("a real Shared Story Jungle Spine room keeps Stalkers, routes, and Ranger s
   teammateProfile = await squadServer.readCoopProfile(teammate);
   assert(hostProfile.supplies.medkits >= 2 && teammateProfile.supplies.medkits >= 2);
   assert(hostProfile.ammo.rubber >= 24 && teammateProfile.ammo.rubber >= 24);
+});
+
+test("a real Shared Story Iron Roar room keeps Armored patrols and powered defenses", async () => {
+  const host = { id:910501, first_name:"Iron", last_name:"Leader" };
+  const teammate = { id:910502, first_name:"Roar", last_name:"Partner" };
+  let hostProfile = await squadServer.readCoopProfile(host);
+  hostProfile.livingWorld.districts.iron_roar = {
+    ...hostProfile.livingWorld.districts.iron_roar,
+    tigerPressure:92,
+    settlementSafety:80,
+    bloodScent:96,
+  };
+  hostProfile.supplies.medkits = 0;
+  hostProfile.supplies.armorPlates = 0;
+  hostProfile.ammo.real = 0;
+  hostProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(hostProfile, host);
+
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:9 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.mission.livingWorld.districtId, "iron_roar");
+  assert.equal(waiting.mission.livingWorld.extraPatrols, 2);
+  assert.equal(waiting.mission.tigerCount, 6);
+  assert.equal(waiting.settlementSupport.label, "Iron Roar Armory Depot");
+  assert.equal(waiting.settlementSupport.type, "iron_armory");
+  assert.equal(waiting.settlementSupport.returningCivilians, 2);
+
+  session = await squadServer.joinSession(session.code, teammate);
+  let teammateProfile = await squadServer.readCoopProfile(teammate);
+  teammateProfile.supplies.medkits = 0;
+  teammateProfile.supplies.armorPlates = 0;
+  teammateProfile.ammo.real = 0;
+  teammateProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(teammateProfile, teammate);
+  session = await squadServer.applyAction(session, host, "start");
+
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.powerGrid, true);
+  assert.equal(active.mission.livingWorld.support.fortifiedGate, true);
+  assert.equal(active.mission.livingWorld.support.damageReduction, 2);
+  assert.equal(active.tigers.filter((tiger)=>tiger.type === "Armored").length, 3);
+  assert(active.mission.aggressionBonus >= 6);
+  hostProfile = await squadServer.readCoopProfile(host);
+  teammateProfile = await squadServer.readCoopProfile(teammate);
+  assert(hostProfile.supplies.medkits >= 2 && teammateProfile.supplies.medkits >= 2);
+  assert(hostProfile.ammo.rubber >= 30 && teammateProfile.ammo.rubber >= 30);
+});
+
+test("Shared Story Mission 10 keeps its single Alpha under Iron Roar consequences", async () => {
+  const host = { id:910503, first_name:"Alpha", last_name:"Leader" };
+  let profile = await squadServer.readCoopProfile(host);
+  profile.livingWorld.districts.iron_roar = {
+    ...profile.livingWorld.districts.iron_roar,
+    tigerPressure:96,
+    settlementSafety:80,
+    bloodScent:96,
+  };
+  await squadServer.writeCoopProfile(profile, host);
+  const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:10 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+  assert.equal(waiting.mission.tigerCount, 1);
+  assert.equal(waiting.tigers.length, 1);
+  assert.equal(waiting.tigers[0].boss, true);
 });
