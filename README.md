@@ -505,6 +505,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Co-op uses the leader's saved River Gate condition for one shared battlefield; each player's result still updates only their own separate Shared Story world after reward claim.
 - Restarting or reconnecting preserves the mission's normalized consequence state, while unique reward receipts continue preventing duplicate world updates.
 
+### V10.4 District Consequences — Jungle Spine
+
+- Extends Living World gameplay consequences to Solo and Shared Story Missions 4–7 while preserving the original objectives and separate progression profiles.
+- High tiger pressure adds roaming Stalker patrols. Solo remains capped at one extra patrol, while a critical two-player district can field two.
+- Blood scent makes Jungle Spine Stalkers begin more alert, hunt harder, and inflict up to five extra close-range damage without changing capture rules.
+- Settlement safety rebuilds the community bridge, unlocks a faster safe escort route, and opens a visible Jungle Spine Ranger Station with real Med Kit, armor, ammunition, and scout support.
+- Rescued civilians visibly return as Ranger Station medics and scouts as settlement safety rises.
+- Solo route objects update their collision and Repair Kit behavior; Shared Story displays the same bridge condition and applies the safe-route movement bonus to both players.
+- Mission briefings and the Living World dashboards show the exact Jungle Spine consequence before deployment, and reconnecting preserves it for the active squad.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

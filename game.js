@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5076";
+const TS_BUILD = "5077";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -13825,12 +13825,12 @@ function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
       <div class="small">🩸 Blood Scent <b>${district.bloodScent}%</b></div>
       <div class="small">Clears ${district.clears} • Solo ${district.soloClears} • Co-op ${district.coopClears}</div>
       <div class="small">Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</div>
-      ${consequence?.enabled ? `<div class="small" style="margin-top:6px"><b>Next deployment:</b> ${worldMapEsc(consequence.brief)}</div>` : `<div class="small" style="margin-top:6px">District gameplay consequences unlock in a later V10.3 phase.</div>`}
+      ${consequence?.enabled ? `<div class="small" style="margin-top:6px"><b>Next deployment:</b> ${worldMapEsc(consequence.brief)}</div>` : `<div class="small" style="margin-top:6px">District gameplay consequences unlock in a later district phase.</div>`}
     </div>`;
   }).join("");
   return `<section class="card" id="livingWorldChapterOne" style="margin-top:10px;border-color:rgba(74,222,128,.62);background:linear-gradient(145deg,rgba(6,54,45,.50),rgba(8,15,29,.96))">
     <div class="hudLine"><b>🌍 Living Chapter 1 • Persistent Districts</b></div>
-    <div class="small">Missions 1–10 leave a lasting mark. River Gate now changes Missions 1–3 directly: pressure can add patrols, blood scent raises aggression, and safer settlements provide field support. Solo and Shared Story each keep their own progression.</div>
+    <div class="small">Missions 1–10 leave a lasting mark. River Gate changes Missions 1–3; Jungle Spine changes Missions 4–7 with roaming Stalkers, bridge and route conditions, returning civilians, and Ranger Station support. Solo and Shared Story each keep their own progression.</div>
     <div class="small" style="margin-top:6px"><b>Latest:</b> ${worldMapEsc(living.headline)}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${cards}</div>
   </section>`;
@@ -39751,14 +39751,17 @@ function spawnMapInteractables(){
   });
 }
 
-function spawnLivingWorldRiverGateSafeHouse(){
+function spawnLivingWorldDistrictSupport(){
   const effect = S._livingWorldMission;
-  if(!effect?.enabled || !effect.support?.safeHouse || window.__TUTORIAL_MODE__) return false;
+  const supportOpen = effect?.support?.safeHouse || effect?.support?.rangerStation;
+  if(!effect?.enabled || !supportOpen || window.__TUTORIAL_MODE__) return false;
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   if(S.mapInteractables.some((item)=>item?.livingWorldSupport)) return true;
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
-  let point = safeSpawnPoint(worldW * 0.28, worldH * 0.70, 24, true, true);
+  const jungle = effect.districtId === "jungle_spine";
+  const label = jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House";
+  let point = safeSpawnPoint(worldW * (jungle ? 0.34 : 0.28), worldH * (jungle ? 0.48 : 0.70), 24, true, true);
   if(inMapScenarioKeepout(point.x, point.y, 24)){
     point = findNearestOpenPoint(point.x, point.y, 24, {
       avoidKeepout:true,
@@ -39768,9 +39771,9 @@ function spawnLivingWorldRiverGateSafeHouse(){
     }) || point;
   }
   S.mapInteractables.push({
-    id:`LIVING-RIVER-GATE-${Math.max(1, Number(S.storyLevel || 1))}`,
+    id:`LIVING-${String(effect.districtId || "DISTRICT").toUpperCase()}-${Math.max(1, Number(S.storyLevel || 1))}`,
     kind:"cache",
-    label:"River Gate Safe House",
+    label,
     x:point.x,
     y:point.y,
     r:25,
@@ -39784,7 +39787,35 @@ function spawnLivingWorldRiverGateSafeHouse(){
     triggered:false,
     rewardClaimed:false,
     livingWorldSupport:true,
+    livingWorldSupportType:jungle ? "jungle_ranger" : "river_safe_house",
+    returningCivilians:Math.max(0, Number(effect.support?.returningCivilians || 0)),
   });
+  return true;
+}
+function spawnLivingWorldRiverGateSafeHouse(){
+  return spawnLivingWorldDistrictSupport();
+}
+
+function configureLivingWorldDistrictRoutes(){
+  const effect = S._livingWorldMission;
+  if(!effect?.enabled || effect.districtId !== "jungle_spine") return false;
+  const bridge = (S.mapInteractables || []).find((item)=>item?.kind === "bridge");
+  if(bridge){
+    bridge.routeOpen = !!effect.support?.bridgeOpen;
+    bridge.label = bridge.routeOpen ? "Jungle Spine Community Bridge" : "Jungle Spine Broken Bridge";
+  }
+  if(effect.support?.safeRoute){
+    const vehicle = (S.mapInteractables || []).find((item)=>item?.kind === "vehicle");
+    if(vehicle){
+      vehicle.repaired = true;
+      vehicle.label = "Jungle Spine Ranger Transport";
+      vehicle.activeUntil = Date.now() + (8 * 60 * 60 * 1000);
+    }
+    const gate = (S.mapInteractables || []).find((item)=>item?.kind === "gate");
+    if(gate) gate.routeOpen = true;
+  }
+  __blockedAtCache.clear();
+  invalidateMapCache();
   return true;
 }
 
@@ -39917,6 +39948,9 @@ function activeInteractiveRouteObjects(kind="", now=Date.now()){
 }
 function interactiveRouteSpeedMul(entityType, x, y, now=Date.now()){
   let mul = 1;
+  if((entityType === "civilian" || entityType === "support") && S._livingWorldMission?.districtId === "jungle_spine"){
+    mul *= clamp(Number(S._livingWorldMission?.support?.routeSpeedMul || 1), 1, 1.12);
+  }
   for(const it of activeInteractiveRouteObjects("", now)){
     const d = dist(x, y, it.x, it.y);
     if(it.kind === "vehicle" && it.repaired && d < 230 && (entityType === "civilian" || entityType === "support")) mul *= 1.20;
@@ -39976,14 +40010,21 @@ function activateMapInteractable(it){
     if(it.livingWorldSupport){
       if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
       S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
-      S.armor = clamp(Number(S.armor || 0) + 15, 0, S.armorCap || 100);
+      const jungleRanger = it.livingWorldSupportType === "jungle_ranger";
+      S.armor = clamp(Number(S.armor || 0) + (jungleRanger ? 8 : 15), 0, S.armorCap || 100);
       const supportWeapon = equippedWeapon();
       const supportAmmoId = supportWeapon ? (bestAvailableAmmoIdForWeapon(supportWeapon) || supportWeapon.ammo) : "";
-      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + 8;
+      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (jungleRanger ? 12 : 8);
+      if(jungleRanger){
+        S.scanPing = Math.max(Number(S.scanPing || 0), 240);
+        if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
+      }
       it.uses = 0;
       it.cooldownUntil = now + 60000;
       it.activeUntil = now + 900;
-      interactionFeedback("🏘️ River Gate volunteers supplied +1 Med Kit, +15 Armor, and +8 Ammo.", { success:true, seconds:4 });
+      interactionFeedback(jungleRanger
+        ? `🌿 Returning Jungle Spine volunteers supplied +1 Med Kit, +8 Armor, +12 Ammo${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a scout scan.`
+        : "🏘️ River Gate volunteers supplied +1 Med Kit, +15 Armor, and +8 Ammo.", { success:true, seconds:4 });
       __savePending = true;
       return true;
     }
@@ -41040,10 +41081,12 @@ function spawnTigers(){
   const storyMission = (S.mode==="Story") ? storyMissionForState(S) : null;
   const arcadeMission = (S.mode==="Arcade") ? activeArcadeMission(S) : null;
   let count=2;
+  let livingWorldPatrolStart = Infinity;
 
   if(S.mode==="Story"){
     count = clamp(storyMission?.tigers ?? (2 + Math.max(0,((storyMission?.number || S.storyLevel || 1)-1)-(7-3))), 1, 18);
     if(!storyMission?.boss && S._livingWorldMission?.enabled){
+      livingWorldPatrolStart = count;
       count = clamp(count + Math.max(0, Number(S._livingWorldMission.extraPatrols || 0)), 1, 18);
     }
   }
@@ -41111,6 +41154,9 @@ function spawnTigers(){
     if(arcadeBoss && i < arcadeBossCount) typeKey = arcadeMission.bossType || "Alpha";
     if(nemesisEntry && i === nemesisSlot){
       typeKey = nemesisEntry.type || typeKey;
+    }
+    if(i >= livingWorldPatrolStart){
+      typeKey = String(S._livingWorldMission?.patrolType || "Standard");
     }
 
     const def=TIGER_TYPES.find(t=>t.key===typeKey)||TIGER_TYPES[1];
@@ -41652,6 +41698,7 @@ function deploy(opts={}){
 
   spawnRescueSites();
   spawnMapInteractables();
+  configureLivingWorldDistrictRoutes();
   spawnLivingWorldRiverGateSafeHouse();
   spawnSupportUnits();
   spawnCivilians();
@@ -55043,7 +55090,7 @@ function drawMapInteractable(it){
   const labelByKind = {
     alarm:"Alarm",
     barricade:"Barrier",
-    cache:it.livingWorldSupport ? "River Gate Safe House" : "Cache",
+    cache:it.livingWorldSupport ? (it.label || "District Support") : "Cache",
     bridge:it.routeOpen ? "Bridge Open" : "Repair Bridge",
     vehicle:it.repaired ? (active ? "Fast Route" : "Vehicle Ready") : "Repair Vehicle",
     generator:it.powered ? "Power On" : "Generator",
@@ -55144,6 +55191,18 @@ function drawMapInteractable(it){
     ctx.moveTo(it.x, it.y - 10);
     ctx.lineTo(it.x, it.y + 10);
     ctx.stroke();
+    if(it.livingWorldSupportType === "jungle_ranger"){
+      const helpers = Math.max(1, Math.min(2, Number(it.returningCivilians || 0) || 1));
+      for(let idx=0; idx<helpers; idx++){
+        const hx = it.x + (idx === 0 ? -27 : 27);
+        ctx.fillStyle = idx === 0 ? "#16a34a" : "#0ea5e9";
+        roundedRectFill(hx - 6, it.y - 2, 12, 18, 4);
+        ctx.fillStyle = SKIN_TONES[(idx + 2) % SKIN_TONES.length];
+        ctx.beginPath();
+        ctx.arc(hx, it.y - 8, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   } else if(it.kind === "bridge"){
     ctx.fillStyle = it.routeOpen ? "rgba(87,68,45,.92)" : "rgba(91,41,41,.90)";
     roundedRectFill(it.x - 34, it.y - 10, 68, 20, 6);

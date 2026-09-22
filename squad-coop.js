@@ -357,8 +357,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V10.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V10.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V10.3 • District Consequences");
+      ? `Tiger Strike V10.4 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V10.4 • ${selectedOperation().mapLabel}` : "Tiger Strike V10.4 • Jungle Spine");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -629,7 +629,7 @@
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
-      ${livingWorldMissionText() ? `<div class="squadConnection">🌍 <b>River Gate deployment briefing:</b> ${esc(livingWorldMissionText())}</div>` : ""}
+      ${livingWorldMissionText() ? `<div class="squadConnection">🌍 <b>${esc(snapshot.mission?.livingWorld?.districtName || "District")} deployment briefing:</b> ${esc(livingWorldMissionText())}</div>` : ""}
       <details class="squadHowTo" open><summary>How ${sharedStoryActive() ? "Shared Story" : selectedOperation().title} works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tigers, health, and extraction.<br><b>3.</b> Either player can rescue an available civilian or attack a tiger. A following civilian belongs to that rescuer, and only one player can complete each tiger capture.<br><b>4.</b> Bring your followers to the Rescue House and tap Take to House. ${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Then clear the final threat and extract together to complete the Shared Story campaign." : `Then clear the Story threats and extract together. After both rewards are claimed, the same squad can continue to Mission ${Number(state.storyMissionLevel || 1) + 1}.`) : `${esc(missionMeta().objective || selectedOperation().short)} Special Operation progress stays separate from Story.`}</div></details>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
@@ -655,7 +655,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V10.3 Tiger Strike District Consequences</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for the exact Story mission or Special Operation you choose. River Gate now changes Shared Story Missions 1–3 through patrols, aggression, and settlement support.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V10.4 Tiger Strike Jungle Spine</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for the exact Story mission or Special Operation you choose. River Gate and Jungle Spine now remember squad choices and change their Story deployments.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -712,9 +712,9 @@
     const cards = api.DISTRICTS.map((definition)=>{
       const district = living.districts[definition.id];
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
-      return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later V10.3 phase.</small>`}</div></div>`;
+      return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V10.3 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Chapter 1</div><div class="squadDesc">Your Shared Story results persist separately from Solo. River Gate now changes Missions 1–3 through patrols, blood-scent aggression, and settlement support.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V10.4 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Chapter 1</div><div class="squadDesc">Your Shared Story results persist separately from Solo. River Gate affects Missions 1–3, while Jungle Spine affects Missions 4–7 through Stalker patrols, bridge routes, and Ranger Station support.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -918,7 +918,7 @@
   function livingWorldMissionText(){
     const consequence = state.snapshot?.mission?.livingWorld;
     if(!consequence?.enabled) return "";
-    return `${consequence.brief} These values come from the squad leader's saved Shared Story River Gate.`;
+    return `${consequence.brief} These values come from the squad leader's saved Shared Story ${consequence.districtName || "district"}.`;
   }
 
   function awarenessText(){
@@ -1740,7 +1740,8 @@
       return nx*nx+ny*ny<=1;
     });
     const waterMultiplier = inWater ? clamp(Number(state.snapshot?.mission?.waterSlowMultiplier || .60),.35,1) : 1;
-    const speed = 185 * roleSpeed * waterMultiplier;
+    const routeMultiplier = clamp(Number(state.snapshot?.mission?.livingWorld?.support?.routeSpeedMul || 1), 1, 1.12);
+    const speed = 185 * roleSpeed * waterMultiplier * routeMultiplier;
     const world = state.snapshot?.world || { width:1000, height:760 };
     state.local.x = clamp(state.local.x + input.x*speed*dt, 24, Number(world.width || 1000) - 24);
     state.local.y = clamp(state.local.y + input.y*speed*dt, 24, Number(world.height || 760) - 24);
@@ -2386,7 +2387,19 @@
       ctx.fillStyle="rgba(15,23,42,.86)";roundRect(ctx,baseX-118,baseY-112,236,78,16);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#cffafe";ctx.font="950 19px system-ui";ctx.textAlign="center";ctx.fillText("🛡️ BASE CAMP",baseX,baseY-82);ctx.font="800 13px system-ui";ctx.fillText("Respawn • Rally • Safe Start",baseX,baseY-57);
     }
 
-    const support=snap.settlementSupport;if(support&&visible(support.x,support.y,190)){ctx.fillStyle="rgba(16,185,129,.18)";ctx.strokeStyle="#6ee7b7";ctx.lineWidth=6;ctx.beginPath();ctx.arc(support.x,support.y,support.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#d1fae5";ctx.fillRect(support.x-52,support.y-34,104,72);ctx.fillStyle="#065f46";ctx.beginPath();ctx.moveTo(support.x-66,support.y-34);ctx.lineTo(support.x,support.y-82);ctx.lineTo(support.x+66,support.y-34);ctx.closePath();ctx.fill();ctx.fillStyle="#047857";ctx.fillRect(support.x-12,support.y+2,24,36);ctx.fillStyle="rgba(2,44,34,.94)";roundRect(ctx,support.x-94,support.y-118,188,30,9);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText("RIVER GATE SAFE HOUSE",support.x,support.y-98);}
+    const consequence=snap.mission?.livingWorld;
+    if(consequence?.districtId==="jungle_spine"){
+      const bx=worldW*.54,by=worldH*.50,bridgeOpen=!!consequence.support?.bridgeOpen;
+      if(visible(bx,by,250)){
+        ctx.save();ctx.translate(bx,by);ctx.fillStyle=bridgeOpen?"rgba(120,83,45,.94)":"rgba(87,56,34,.88)";
+        const planks=bridgeOpen?[-88,-58,-28,2,32,62,92]:[-88,-58,46,76,106];
+        for(const x of planks){ctx.save();ctx.translate(x,Math.sin(x*.08)*7);ctx.rotate((bridgeOpen?0:(x<0?-.18:.18)));ctx.fillRect(-12,-82,24,164);ctx.restore();}
+        ctx.strokeStyle=bridgeOpen?"#fde68a":"#fb7185";ctx.lineWidth=5;ctx.setLineDash([16,10]);ctx.beginPath();ctx.moveTo(-125,-100);ctx.lineTo(125,-100);ctx.moveTo(-125,100);ctx.lineTo(125,100);ctx.stroke();ctx.setLineDash([]);
+        ctx.fillStyle="rgba(2,6,23,.92)";roundRect(ctx,-116,-144,232,34,9);ctx.fill();ctx.fillStyle=bridgeOpen?"#dcfce7":"#ffe4e6";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(bridgeOpen?"COMMUNITY BRIDGE • OPEN":"BROKEN BRIDGE • ROUTE SLOW",0,-121);ctx.restore();
+      }
+      if(consequence.support?.safeRoute&&snap.settlementSupport&&snap.extraction){ctx.strokeStyle="rgba(74,222,128,.62)";ctx.lineWidth=9;ctx.setLineDash([22,15]);ctx.beginPath();ctx.moveTo(snap.settlementSupport.x,snap.settlementSupport.y);ctx.lineTo(worldW*.54,worldH*.50);ctx.lineTo(snap.extraction.x,snap.extraction.y);ctx.stroke();ctx.setLineDash([]);}
+    }
+    const support=snap.settlementSupport;if(support&&visible(support.x,support.y,190)){ctx.fillStyle="rgba(16,185,129,.18)";ctx.strokeStyle="#6ee7b7";ctx.lineWidth=6;ctx.beginPath();ctx.arc(support.x,support.y,support.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#d1fae5";ctx.fillRect(support.x-52,support.y-34,104,72);ctx.fillStyle="#065f46";ctx.beginPath();ctx.moveTo(support.x-66,support.y-34);ctx.lineTo(support.x,support.y-82);ctx.lineTo(support.x+66,support.y-34);ctx.closePath();ctx.fill();ctx.fillStyle="#047857";ctx.fillRect(support.x-12,support.y+2,24,36);ctx.fillStyle="rgba(2,44,34,.94)";roundRect(ctx,support.x-104,support.y-118,208,30,9);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(String(support.label||"DISTRICT SUPPORT").toUpperCase(),support.x,support.y-98);if(support.type==="jungle_ranger"){for(let i=0;i<Math.max(1,Number(support.returningCivilians||0));i++){const wx=support.x-30+i*60,wy=support.y+70;ctx.fillStyle="#86efac";ctx.beginPath();ctx.arc(wx,wy-18,9,0,Math.PI*2);ctx.fill();ctx.fillStyle="#166534";ctx.fillRect(wx-8,wy-9,16,25);ctx.fillStyle="#d1fae5";ctx.font="900 9px system-ui";ctx.fillText(i?"SCOUT":"MEDIC",wx,wy+29);}}}
     const house=snap.rescueHouse;if(Number(snap.mission?.rescueRequired||0)>0&&house&&visible(house.x,house.y,190)){ctx.fillStyle="rgba(34,197,94,.20)";ctx.strokeStyle="#4ade80";ctx.lineWidth=6;ctx.beginPath();ctx.arc(house.x,house.y,house.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#fef3c7";ctx.fillRect(house.x-58,house.y-38,116,82);ctx.fillStyle="#92400e";ctx.beginPath();ctx.moveTo(house.x-72,house.y-38);ctx.lineTo(house.x,house.y-94);ctx.lineTo(house.x+72,house.y-38);ctx.closePath();ctx.fill();ctx.fillStyle="#78350f";ctx.fillRect(house.x-14,house.y+4,28,40);ctx.fillStyle="rgba(2,44,34,.92)";roundRect(ctx,house.x-82,house.y-130,164,30,9);ctx.fill();ctx.fillStyle="#dcfce7";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText("RESCUE HOUSE",house.x,house.y-110);}
     const ex=snap.extraction;const survivalExtract=!!snap.mission?.survivalExtractAvailable;const helicopterExtraction=snap.mission?.extractionType==="helicopter";const boatExtraction=snap.mission?.extractionType==="boat";ctx.fillStyle=(stormExtraction||helicopterExtraction||boatExtraction)?"rgba(14,165,233,.26)":(endlessSurvival?(survivalExtract?"rgba(34,197,94,.28)":"rgba(249,115,22,.16)"):"rgba(34,197,94,.23)");ctx.strokeStyle=(stormExtraction||helicopterExtraction||boatExtraction)?"#7dd3fc":(endlessSurvival?(survivalExtract?"#4ade80":"#f97316"):"#4ade80");ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=(stormExtraction||helicopterExtraction||boatExtraction)?"#e0f2fe":(endlessSurvival?"#ffedd5":"#dcfce7");ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText(boatExtraction?"RESCUE BOAT EXTRACTION":(helicopterExtraction?"HELICOPTER EXTRACTION":(stormExtraction?"STORM EXTRACTION":(endlessSurvival?(survivalExtract?"BANK REWARDS":"LOCKED • CLEAR WAVE 3"):"SQUAD EXTRACTION"))),ex.x,ex.y+6);if(stormExtraction||helicopterExtraction){ctx.font="950 44px system-ui";ctx.fillText("H",ex.x,ex.y-24);}
     const routeTarget=snap.mission?.checkpointsBeforeRescue?nextCheckpointForLocal()||nearestUnrescuedCivilian():nearestUnrescuedCivilian()||nextCheckpointForLocal();
@@ -2467,7 +2480,8 @@
       if(!mine){
         const inWater=(snap.waterZones||[]).some((zone)=>{const rx=Math.max(1,Number(zone.rx||1)),ry=Math.max(1,Number(zone.ry||1));const nx=(remote.x-Number(zone.x||0))/rx,ny=(remote.y-Number(zone.y||0))/ry;return nx*nx+ny*ny<=1;});
         const roleSpeed=p.role==="tracker"?1.08:(p.role==="assault"?.96:1);
-        const speed=185*roleSpeed*(inWater?clamp(Number(snap.mission?.waterSlowMultiplier||.60),.35,1):1);
+        const routeMultiplier=clamp(Number(snap.mission?.livingWorld?.support?.routeSpeedMul||1),1,1.12);
+        const speed=185*roleSpeed*(inWater?clamp(Number(snap.mission?.waterSlowMultiplier||.60),.35,1):1)*routeMultiplier;
         const next=squadMotion.step(remote, performance.now(), dt, speed, snap.world);
         state.remoteDraw.set(p.userId,next);
         draw.x=next.drawX;draw.y=next.drawY;
