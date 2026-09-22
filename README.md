@@ -495,6 +495,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Keeps Solo and Shared Story Living World progress separate. Each Telegram player owns their own co-op district state.
 - Uses unique mission and reward receipts so reopening, reconnecting, or claiming again cannot apply the same world result twice.
 
+### V10.3 District Consequences — River Gate
+
+- Turns River Gate's saved Living World values into direct gameplay changes in Solo and Shared Story Missions 1–3.
+- High tiger pressure adds a real patrol. Solo is capped at one additional patrol, while a two-player squad can face two at critical pressure.
+- Persistent blood scent now raises starting tiger awareness, director pressure, civilian hunting bias, and close-range tiger damage.
+- Settlement safety supplies real help: Med Kit and armor minimums, later ammunition support, a high-safety scout ping, and a visible River Gate Safe House.
+- Mission briefings, the World Map, and the Shared Story screen state the exact consequence before deployment instead of hiding difficulty changes.
+- Co-op uses the leader's saved River Gate condition for one shared battlefield; each player's result still updates only their own separate Shared Story world after reward claim.
+- Restarting or reconnecting preserves the mission's normalized consequence state, while unique reward receipts continue preventing duplicate world updates.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

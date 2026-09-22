@@ -95,6 +95,75 @@
     return "Stable";
   }
 
+  function missionConsequences(raw, missionLevel, options={}){
+    const state = normalizeState(raw);
+    const definition = districtForMission(missionLevel);
+    const playerCount = Math.max(1, whole(options.playerCount) || 1);
+    if(!definition || definition.id !== "river_gate"){
+      return {
+        enabled:false,
+        districtId:definition?.id || "",
+        districtName:definition?.name || "",
+        missionLevel:whole(missionLevel),
+        extraPatrols:0,
+        startingAggroBoost:0,
+        directorPressureBonus:0,
+        damageBonus:0,
+        support:{ safeHouse:false, medkitMinimum:0, armorFloor:0, ammoMinimum:0, scanPing:0 },
+        brief:"No active district consequence for this mission.",
+        supportLabel:"No district support",
+      };
+    }
+
+    const district = state.districts[definition.id];
+    const rawPatrols = district.tigerPressure >= 82 ? 2 : (district.tigerPressure >= 65 ? 1 : 0);
+    const extraPatrols = playerCount <= 1 ? Math.min(1, rawPatrols) : rawPatrols;
+    const startingAggroBoost = clamp(
+      Math.max(0, district.tigerPressure - 45) * 0.003 + district.bloodScent * 0.0045,
+      0,
+      0.65
+    );
+    const directorPressureBonus = clamp(Math.round(Math.max(0, district.tigerPressure - 50) * 0.16 + district.bloodScent * 0.10), 0, 18);
+    const damageBonus = clamp(Math.floor(district.bloodScent / 20), 0, 4);
+    const support = {
+      safeHouse:district.settlementSafety >= 15,
+      medkitMinimum:district.settlementSafety >= 15 ? 2 : 1,
+      armorFloor:district.settlementSafety >= 35 ? 45 : (district.settlementSafety >= 15 ? 25 : 0),
+      ammoMinimum:district.settlementSafety >= 55 ? 20 : 0,
+      scanPing:district.settlementSafety >= 75 ? 280 : 0,
+    };
+    const pressureText = extraPatrols > 0
+      ? `${extraPatrols} extra tiger patrol${extraPatrols === 1 ? "" : "s"}`
+      : "no extra patrol";
+    const scentText = district.bloodScent > 0
+      ? `blood scent adds +${damageBonus} close-range damage and faster starting aggression`
+      : "no persistent blood-scent damage";
+    const supportBits = [
+      support.safeHouse ? "River Gate Safe House" : "no Safe House",
+      `${support.medkitMinimum} Med Kit minimum`,
+    ];
+    if(support.armorFloor > 0) supportBits.push(`${support.armorFloor} starting armor minimum`);
+    if(support.ammoMinimum > 0) supportBits.push(`${support.ammoMinimum} reserve-ammo minimum`);
+    if(support.scanPing > 0) supportBits.push("settlement scout ping");
+
+    return {
+      enabled:true,
+      districtId:definition.id,
+      districtName:definition.name,
+      missionLevel:whole(missionLevel),
+      tigerPressure:district.tigerPressure,
+      settlementSafety:district.settlementSafety,
+      bloodScent:district.bloodScent,
+      extraPatrols,
+      startingAggroBoost:Number(startingAggroBoost.toFixed(3)),
+      directorPressureBonus,
+      damageBonus,
+      support,
+      brief:`River Gate consequence: ${pressureText}; ${scentText}. Settlement support: ${supportBits.join(", ")}.`,
+      supportLabel:supportBits.join(" • "),
+    };
+  }
+
   function applyOutcome(raw, input={}){
     const state = normalizeState(raw);
     const missionLevel = whole(input.missionLevel);
@@ -162,5 +231,5 @@
     };
   }
 
-  return Object.freeze({ PILOT_MAX_MISSION, DISTRICTS, districtById, districtForMission, defaultState, normalizeState, threatLabel, applyOutcome });
+  return Object.freeze({ PILOT_MAX_MISSION, DISTRICTS, districtById, districtForMission, defaultState, normalizeState, threatLabel, missionConsequences, applyOutcome });
 });

@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5075";
+const TS_BUILD = "5076";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -12071,6 +12071,31 @@ function livingWorldState(wm=ensureWorldMapCampaignState(S)){
   wm.livingWorld = api.normalizeState(wm.livingWorld);
   return wm.livingWorld;
 }
+function livingWorldMissionConsequences(missionLevel=S.storyLevel, state=S){
+  if(state?.mode !== "Story" || normalizeStoryVariant(state.storyVariant) !== STORY_VARIANTS.CAMPAIGN || window.__TUTORIAL_MODE__) return null;
+  const api = livingWorldApi();
+  if(!api?.missionConsequences) return null;
+  const wm = ensureWorldMapCampaignState(state);
+  return api.missionConsequences(livingWorldState(wm), missionLevel, { playerCount:1 });
+}
+function prepareLivingWorldMissionConsequences(state=S){
+  state._livingWorldMission = livingWorldMissionConsequences(state.storyLevel, state);
+  const effect = state._livingWorldMission;
+  if(!effect?.enabled) return null;
+  if(!state.medkits || typeof state.medkits !== "object") state.medkits = {};
+  state.medkits.M_SMALL = Math.max(Number(state.medkits.M_SMALL || 0), Number(effect.support?.medkitMinimum || 0));
+  state.armor = Math.max(Number(state.armor || 0), Number(effect.support?.armorFloor || 0));
+  const weapon = equippedWeapon();
+  if(weapon && Number(effect.support?.ammoMinimum || 0) > 0){
+    const ammoId = bestAvailableAmmoIdForWeapon(weapon) || weapon.ammo;
+    state.ammoReserve[ammoId] = Math.max(Number(state.ammoReserve[ammoId] || 0), Number(effect.support.ammoMinimum));
+  }
+  state.scanPing = Math.max(Number(state.scanPing || 0), Number(effect.support?.scanPing || 0));
+  return effect;
+}
+function livingWorldMissionBriefLine(state=S){
+  return state?._livingWorldMission?.enabled ? state._livingWorldMission.brief : "";
+}
 function recordLivingWorldStoryOutcome({ missionStats=null, missionLevel=null, civDead=0 }={}){
   if(S.mode !== "Story") return "";
   if(normalizeStoryVariant(S.storyVariant) !== STORY_VARIANTS.CAMPAIGN) return "";
@@ -13791,6 +13816,7 @@ function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
     const district = living.districts[definition.id];
     const threat = api.threatLabel(district.tigerPressure);
     const threatColor = district.tigerPressure >= 75 ? "#fb7185" : (district.tigerPressure >= 55 ? "#fbbf24" : "#4ade80");
+    const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:1 });
     return `<div class="card" style="border-color:${threatColor};background:linear-gradient(145deg,rgba(11,25,44,.96),rgba(6,14,27,.94))">
       <div class="small">MISSIONS ${worldMapEsc(definition.missions)} • ${worldMapEsc(threat)} THREAT</div>
       <div class="hudTitle">${worldMapEsc(definition.name)}</div>
@@ -13799,11 +13825,12 @@ function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
       <div class="small">🩸 Blood Scent <b>${district.bloodScent}%</b></div>
       <div class="small">Clears ${district.clears} • Solo ${district.soloClears} • Co-op ${district.coopClears}</div>
       <div class="small">Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</div>
+      ${consequence?.enabled ? `<div class="small" style="margin-top:6px"><b>Next deployment:</b> ${worldMapEsc(consequence.brief)}</div>` : `<div class="small" style="margin-top:6px">District gameplay consequences unlock in a later V10.3 phase.</div>`}
     </div>`;
   }).join("");
   return `<section class="card" id="livingWorldChapterOne" style="margin-top:10px;border-color:rgba(74,222,128,.62);background:linear-gradient(145deg,rgba(6,54,45,.50),rgba(8,15,29,.96))">
     <div class="hudLine"><b>🌍 Living Chapter 1 • Persistent Districts</b></div>
-    <div class="small">Missions 1–10 now leave a lasting mark. Rescues and captures make districts safer. Lethal kills raise blood scent and can keep tiger pressure high. Solo and Shared Story each keep their own progression.</div>
+    <div class="small">Missions 1–10 leave a lasting mark. River Gate now changes Missions 1–3 directly: pressure can add patrols, blood scent raises aggression, and safer settlements provide field support. Solo and Shared Story each keep their own progression.</div>
     <div class="small" style="margin-top:6px"><b>Latest:</b> ${worldMapEsc(living.headline)}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${cards}</div>
   </section>`;
@@ -28781,13 +28808,15 @@ function showMissionBrief(durationMs=2600){
       ? storyBossIntroText(card.mission)
       : missionBossWarningText(card.mission);
   }
-  if(intelEl) intelEl.innerText = `${isStory ? storyMissionIntelText(card.mission) : "Mission intelligence verified."}\n${governmentProgramStatusSummary(S)}`;
+  const livingWorldBrief = isStory ? livingWorldMissionBriefLine(S) : "";
+  if(intelEl) intelEl.innerText = `${isStory ? storyMissionIntelText(card.mission) : "Mission intelligence verified."}${livingWorldBrief ? `\n🌍 ${livingWorldBrief}` : ""}\n${governmentProgramStatusSummary(S)}`;
   if(rewardEl){
     const governmentProgram=ensureGovernmentProgramState(S);
     const governmentRule=governmentProgram.path==="ROGUE"
       ? "GONE ROGUE: no government grant. Armed response squads may enter this solo non-Survival mission and drop recoverable field supplies."
       : "Government grants depend on captures, civilian safety, trust, and active case review.";
-    rewardEl.innerText = `${isStory ? storyChapterRewardPreviewText(card.mission) : "Mission payout follows operation rules."} ${governmentRule}`;
+    const districtSupport = livingWorldBrief ? ` District support: ${S._livingWorldMission.supportLabel}.` : "";
+    rewardEl.innerText = `${isStory ? storyChapterRewardPreviewText(card.mission) : "Mission payout follows operation rules."}${districtSupport} ${governmentRule}`;
   }
   renderMissionBriefRecommendations(card.mode, card.mission);
   if(hintEl){
@@ -39722,6 +39751,43 @@ function spawnMapInteractables(){
   });
 }
 
+function spawnLivingWorldRiverGateSafeHouse(){
+  const effect = S._livingWorldMission;
+  if(!effect?.enabled || !effect.support?.safeHouse || window.__TUTORIAL_MODE__) return false;
+  if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
+  if(S.mapInteractables.some((item)=>item?.livingWorldSupport)) return true;
+  const worldW = worldWidth(S);
+  const worldH = worldHeight(S);
+  let point = safeSpawnPoint(worldW * 0.28, worldH * 0.70, 24, true, true);
+  if(inMapScenarioKeepout(point.x, point.y, 24)){
+    point = findNearestOpenPoint(point.x, point.y, 24, {
+      avoidKeepout:true,
+      avoidWater:true,
+      targetX:S.me?.x || worldW * 0.3,
+      targetY:S.me?.y || worldH * 0.7,
+    }) || point;
+  }
+  S.mapInteractables.push({
+    id:`LIVING-RIVER-GATE-${Math.max(1, Number(S.storyLevel || 1))}`,
+    kind:"cache",
+    label:"River Gate Safe House",
+    x:point.x,
+    y:point.y,
+    r:25,
+    uses:1,
+    cooldownUntil:0,
+    activeUntil:0,
+    effectR:0,
+    routeOpen:true,
+    repaired:false,
+    powered:false,
+    triggered:false,
+    rewardClaimed:false,
+    livingWorldSupport:true,
+  });
+  return true;
+}
+
 function ensureInteractiveMapObjectSet(){
   if(window.__TUTORIAL_MODE__) return;
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
@@ -39907,6 +39973,20 @@ function activateMapInteractable(it){
   }
 
   if(it.kind==="cache"){
+    if(it.livingWorldSupport){
+      if(!S.medkits || typeof S.medkits !== "object") S.medkits = {};
+      S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
+      S.armor = clamp(Number(S.armor || 0) + 15, 0, S.armorCap || 100);
+      const supportWeapon = equippedWeapon();
+      const supportAmmoId = supportWeapon ? (bestAvailableAmmoIdForWeapon(supportWeapon) || supportWeapon.ammo) : "";
+      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + 8;
+      it.uses = 0;
+      it.cooldownUntil = now + 60000;
+      it.activeUntil = now + 900;
+      interactionFeedback("🏘️ River Gate volunteers supplied +1 Med Kit, +15 Armor, and +8 Ammo.", { success:true, seconds:4 });
+      __savePending = true;
+      return true;
+    }
     const cash = Math.round(rand(180, 520) * cacheRewardMul());
     S.funds += cash;
     trackCashEarned(cash);
@@ -40963,6 +41043,9 @@ function spawnTigers(){
 
   if(S.mode==="Story"){
     count = clamp(storyMission?.tigers ?? (2 + Math.max(0,((storyMission?.number || S.storyLevel || 1)-1)-(7-3))), 1, 18);
+    if(!storyMission?.boss && S._livingWorldMission?.enabled){
+      count = clamp(count + Math.max(0, Number(S._livingWorldMission.extraPatrols || 0)), 1, 18);
+    }
   }
 
   if(S.mode==="Arcade"){
@@ -41080,9 +41163,9 @@ function spawnTigers(){
       alive:true,
       packId:pack.id,
       aggroBoost:S.mode==="Story"
-        ? clamp((Number(storyMission?.endgameAggroMul || 1) - 1) * 0.26, 0, 0.55)
+        ? clamp((Number(storyMission?.endgameAggroMul || 1) - 1) * 0.26 + Number(S._livingWorldMission?.startingAggroBoost || 0), 0, 0.82)
         : 0,
-      civBias:clamp(def.civBias+(diff-1)*0.18,0,0.98),
+      civBias:clamp(def.civBias+(diff-1)*0.18 + Number(S._livingWorldMission?.bloodScent || 0) * 0.0012,0,0.98),
       stealth:def.stealth,
       rage:def.rage,
       personality:pickTigerPersonality(def.key),
@@ -41414,6 +41497,7 @@ function deploy(opts={}){
   transitionCleanupSweep("deploy-pre");
   hardResetMissionRuntimeState("deploy-runtime-reset");
   S.captureCages = [];
+  S._livingWorldMission = null;
 
   S.hp = carryStats ? carryHp : 100;
   S.armor = carryStats
@@ -41467,6 +41551,7 @@ function deploy(opts={}){
     S.trapsOwned = Math.max(S.trapsOwned || 0, mins.traps);
     S.repairKits["T_REPAIR"] = Math.max(S.repairKits["T_REPAIR"] || 0, mins.repair);
   }
+  prepareLivingWorldMissionConsequences(S);
 
   if(S.mode!=="Survival") S.evacZone = null;
   S.backupActive=0;
@@ -41534,10 +41619,11 @@ function deploy(opts={}){
   {
     const d = ensureMissionDirectorState(S);
     const storyMission = (S.mode === "Story") ? storyMissionForState(S) : null;
+    const livingWorldPressure = Math.max(0, Number(S._livingWorldMission?.directorPressureBonus || 0));
     const startPressure = clamp(
       10 + ((S.mode === "Story")
         ? (((storyMission?.number || S.storyLevel || 1) - 1) * 0.6 * clamp(Number(storyMission?.endgameAggroMul || 1), 1, 2.8))
-        : ((S.mode === "Arcade") ? ((S.arcadeLevel - 1) * 0.7) : ((S.survivalWave - 1) * 1.1))),
+        : ((S.mode === "Arcade") ? ((S.arcadeLevel - 1) * 0.7) : ((S.survivalWave - 1) * 1.1))) + livingWorldPressure,
       8,
       42
     );
@@ -41566,6 +41652,7 @@ function deploy(opts={}){
 
   spawnRescueSites();
   spawnMapInteractables();
+  spawnLivingWorldRiverGateSafeHouse();
   spawnSupportUnits();
   spawnCivilians();
   spawnTigers();
@@ -41628,6 +41715,9 @@ function deploy(opts={}){
       setEventText(`🐯 Tiger Den Raid active: scan ${den.cluesTotal || mission.denCluesRequired || 4} clues, rescue trapped civilians, and secure the Den Alpha.`, 8);
     }else if(mission.convoyMission){
       setEventText(`🚐 Convoy mission active: ${mission.convoyRouteLabel || "Balanced"} route • protect both civilian lanes.`, 8);
+    }
+    if(S._livingWorldMission?.enabled){
+      setEventText(`🌍 ${S._livingWorldMission.brief}`, 9);
     }
   }
 
@@ -46617,6 +46707,7 @@ function tigerFieldPounceDamage(t, targetKind="player"){
     Alpha: 24
   };
   let dmg = Number(baseByType[t.type] || 11);
+  dmg += Math.max(0, Number(S._livingWorldMission?.damageBonus || 0));
   if(isBossTiger(t) || t.nemesisAlias) dmg += 8;
   if(t.rageOn || Date.now() < Number(t.enragedUntil || 0) || Date.now() < Number(t.bossChargeUntil || 0)) dmg *= 1.18;
   if(targetKind === "civilian") dmg *= 1.16;
@@ -48802,6 +48893,7 @@ function tigerTurn(t, softened=false, opts={}){
 
   let dmg = rand(10,18) + Math.floor((S.aggro/100)*10);
   dmg = Math.round(dmg * diff * tigerDamageScale(t, "player"));
+  dmg += Math.max(0, Number(S._livingWorldMission?.damageBonus || 0));
 
   // abilities
   if(t.type==="Scout" && Date.now() < (t.dashUntil||0)) dmg = Math.round(dmg*1.03);
@@ -54951,7 +55043,7 @@ function drawMapInteractable(it){
   const labelByKind = {
     alarm:"Alarm",
     barricade:"Barrier",
-    cache:"Cache",
+    cache:it.livingWorldSupport ? "River Gate Safe House" : "Cache",
     bridge:it.routeOpen ? "Bridge Open" : "Repair Bridge",
     vehicle:it.repaired ? (active ? "Fast Route" : "Vehicle Ready") : "Repair Vehicle",
     generator:it.powered ? "Power On" : "Generator",

@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const test = require("node:test");
 const livingWorld = require("./living-world");
+const squadServer = require("./api/_lib/squad-session");
 
 const game = fs.readFileSync("game.js", "utf8");
 const html = fs.readFileSync("index.html", "utf8");
@@ -51,14 +52,91 @@ test("the same reward receipt cannot change the world twice", () => {
   assert.equal(first.state.districts.river_gate.soloClears, 0);
 });
 
-test("Living World is integrated into solo, Shared Story, and the Telegram cache build", () => {
+test("River Gate state produces real, balanced mission consequences", () => {
+  const state = livingWorld.defaultState();
+  state.districts.river_gate = {
+    ...state.districts.river_gate,
+    tigerPressure:88,
+    settlementSafety:78,
+    bloodScent:64,
+  };
+  const solo = livingWorld.missionConsequences(state, 2, { playerCount:1 });
+  const coop = livingWorld.missionConsequences(state, 2, { playerCount:2 });
+  assert.equal(solo.enabled, true);
+  assert.equal(solo.extraPatrols, 1, "solo patrol escalation stays capped");
+  assert.equal(coop.extraPatrols, 2, "two-player squad receives the full pressure patrol");
+  assert(coop.startingAggroBoost > 0);
+  assert.equal(coop.damageBonus, 3);
+  assert.equal(coop.support.safeHouse, true);
+  assert.equal(coop.support.ammoMinimum, 20);
+  assert.equal(coop.support.scanPing, 280);
+  assert.match(coop.brief, /2 extra tiger patrols/);
+});
+
+test("River Gate's default state gives support without secretly adding a patrol", () => {
+  const effect = livingWorld.missionConsequences(livingWorld.defaultState(), 1, { playerCount:1 });
+  assert.equal(effect.enabled, true);
+  assert.equal(effect.extraPatrols, 0);
+  assert.equal(effect.support.safeHouse, true);
+  assert.equal(effect.support.medkitMinimum, 2);
+  assert.equal(livingWorld.missionConsequences(livingWorld.defaultState(), 4).enabled, false);
+});
+
+test("District consequences are integrated into solo, Shared Story, and the Telegram cache build", () => {
   assert(game.includes("function recordLivingWorldStoryOutcome"));
   assert(game.includes("worldMapLivingChapterOneHtml(wm)"));
   assert(game.includes("Living World: ${result.summary}"));
   assert(server.includes('const livingWorld = require("../../living-world")'));
   assert(server.includes("livingWorldOutcome = livingWorld.applyOutcome"));
+  assert(server.includes("livingWorld.missionConsequences"));
+  assert(server.includes("function activeLivingWorldMission"));
+  assert(game.includes("prepareLivingWorldMissionConsequences(S)"));
+  assert(game.includes("spawnLivingWorldRiverGateSafeHouse()"));
   assert(squad.includes("function sharedLivingWorldHtml"));
+  assert(squad.includes("function livingWorldMissionText"));
   assert(squad.includes("YOUR SHARED STORY WORLD"));
-  assert(html.includes("living-world.js?v=5075-living-world"));
-  assert(html.includes("V10.2 (Living World Foundation)"));
+  assert(html.includes("living-world.js?v=5076-district-consequences"));
+  assert(html.includes("V10.3 (District Consequences)"));
+});
+
+test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
+  const host = { id:910301, first_name:"River", last_name:"Leader" };
+  const teammate = { id:910302, first_name:"Gate", last_name:"Partner" };
+  let hostProfile = await squadServer.readCoopProfile(host);
+  hostProfile.livingWorld.districts.river_gate = {
+    ...hostProfile.livingWorld.districts.river_gate,
+    tigerPressure:88,
+    settlementSafety:78,
+    bloodScent:64,
+  };
+  hostProfile.supplies.medkits = 0;
+  hostProfile.supplies.armorPlates = 0;
+  hostProfile.ammo.real = 0;
+  hostProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(hostProfile, host);
+
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:2 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.mission.livingWorld.extraPatrols, 2);
+  assert.equal(waiting.mission.tigerCount, 5);
+  assert.equal(waiting.settlementSupport.label, "River Gate Safe House");
+
+  session = await squadServer.joinSession(session.code, teammate);
+  let teammateProfile = await squadServer.readCoopProfile(teammate);
+  teammateProfile.supplies.medkits = 0;
+  teammateProfile.supplies.armorPlates = 0;
+  teammateProfile.ammo.real = 0;
+  teammateProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(teammateProfile, teammate);
+  session = await squadServer.applyAction(session, host, "start");
+
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), host.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.bloodScent, 64);
+  assert.equal(active.tigers.length, 5);
+  assert(active.mission.aggressionBonus >= 3);
+  hostProfile = await squadServer.readCoopProfile(host);
+  teammateProfile = await squadServer.readCoopProfile(teammate);
+  assert(hostProfile.supplies.medkits >= 2 && teammateProfile.supplies.medkits >= 2);
+  assert(hostProfile.ammo.rubber >= 20 && teammateProfile.ammo.rubber >= 20);
 });

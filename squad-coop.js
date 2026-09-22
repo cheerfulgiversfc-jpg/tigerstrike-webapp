@@ -357,8 +357,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V10.2 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V10.2 • ${selectedOperation().mapLabel}` : "Tiger Strike V10.2 • Living World");
+      ? `Tiger Strike V10.3 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V10.3 • ${selectedOperation().mapLabel}` : "Tiger Strike V10.3 • District Consequences");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -629,6 +629,7 @@
       </div>
       <div class="squadRoster" id="squadRoster">${rosterHtml()}</div>
       <div class="squadSmall">Choose your field role</div><div class="squadRoleGrid">${roleButtonsHtml()}</div>
+      ${livingWorldMissionText() ? `<div class="squadConnection">🌍 <b>River Gate deployment briefing:</b> ${esc(livingWorldMissionText())}</div>` : ""}
       <details class="squadHowTo" open><summary>How ${sharedStoryActive() ? "Shared Story" : selectedOperation().title} works</summary><div><b>1.</b> Cyan soldier = you. Purple soldier = your real teammate.<br><b>2.</b> Both phones see the same civilians, tigers, health, and extraction.<br><b>3.</b> Either player can rescue an available civilian or attack a tiger. A following civilian belongs to that rescuer, and only one player can complete each tiger capture.<br><b>4.</b> Bring your followers to the Rescue House and tap Take to House. ${sharedStoryActive() ? (Number(state.storyMissionLevel || 1) >= 100 ? "Then clear the final threat and extract together to complete the Shared Story campaign." : `Then clear the Story threats and extract together. After both rewards are claimed, the same squad can continue to Mission ${Number(state.storyMissionLevel || 1) + 1}.`) : `${esc(missionMeta().objective || selectedOperation().short)} Special Operation progress stays separate from Story.`}</div></details>
       <div class="squadStatus" id="squadStatus">${esc(state.message)}</div>
       <div class="squadRow">
@@ -654,7 +655,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V10.2 Tiger Strike Living World</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for the exact Story mission or Special Operation you choose. Shared Story Missions 1–10 now leave lasting district results.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V10.3 Tiger Strike District Consequences</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for the exact Story mission or Special Operation you choose. River Gate now changes Shared Story Missions 1–3 through patrols, aggression, and settlement support.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -710,9 +711,10 @@
     const living = api.normalizeState(state.profile.livingWorld);
     const cards = api.DISTRICTS.map((definition)=>{
       const district = living.districts[definition.id];
-      return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small></div></div>`;
+      const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
+      return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later V10.3 phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V10.2 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Chapter 1</div><div class="squadDesc">Your Shared Story results persist separately from Solo. Rescues and captures make districts safer; lethal kills raise blood scent.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V10.3 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Chapter 1</div><div class="squadDesc">Your Shared Story results persist separately from Solo. River Gate now changes Missions 1–3 through patrols, blood-scent aggression, and settlement support.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -780,6 +782,7 @@
       <div class="squadConnection ${remoteSnapshotPlayer()?.online === false ? "bad" : ""}" id="squadConnection">${esc(playerConnectionText())}</div>
       <div class="squadPauseNotice" id="squadPauseNotice" ${snap?.paused ? "" : "hidden"}>${snap?.paused ? esc(pauseSummary()) : ""}</div>
       <div class="squadObjective" id="squadObjective">${objectiveText()}</div>
+      ${livingWorldMissionText() ? `<div class="squadConnection" id="squadLivingWorldNotice">🌍 ${esc(livingWorldMissionText())}</div>` : ""}
       <div class="squadConnection" id="squadAwarenessNotice">${esc(awarenessText())}</div>
       ${snap.mission?.dangerNote ? `<div class="squadConnection bad" id="squadDangerNotice">${esc(dangerText())}</div>` : ""}
       ${survival && snap.mission.survivalExtractAvailable ? `<div class="squadConnection">✅ Extraction unlocked. Both players may bank the current reward, or stay out of the circle until the next wave begins.</div>` : ""}
@@ -910,6 +913,12 @@
     if(Number(mission.tigerKills || 0) > 0) parts.push(`🩸 ${mission.tigerKills} ${mission.tigerKills === 1 ? "body" : "bodies"} on the map • +${Number(mission.aggressionBonus || 0)} pack damage`);
     if(mission.bloodRageActive) parts.push("BLOOD RAGE ACTIVE");
     return parts.join(" • ");
+  }
+
+  function livingWorldMissionText(){
+    const consequence = state.snapshot?.mission?.livingWorld;
+    if(!consequence?.enabled) return "";
+    return `${consequence.brief} These values come from the squad leader's saved Shared Story River Gate.`;
   }
 
   function awarenessText(){
@@ -2377,6 +2386,7 @@
       ctx.fillStyle="rgba(15,23,42,.86)";roundRect(ctx,baseX-118,baseY-112,236,78,16);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#cffafe";ctx.font="950 19px system-ui";ctx.textAlign="center";ctx.fillText("🛡️ BASE CAMP",baseX,baseY-82);ctx.font="800 13px system-ui";ctx.fillText("Respawn • Rally • Safe Start",baseX,baseY-57);
     }
 
+    const support=snap.settlementSupport;if(support&&visible(support.x,support.y,190)){ctx.fillStyle="rgba(16,185,129,.18)";ctx.strokeStyle="#6ee7b7";ctx.lineWidth=6;ctx.beginPath();ctx.arc(support.x,support.y,support.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#d1fae5";ctx.fillRect(support.x-52,support.y-34,104,72);ctx.fillStyle="#065f46";ctx.beginPath();ctx.moveTo(support.x-66,support.y-34);ctx.lineTo(support.x,support.y-82);ctx.lineTo(support.x+66,support.y-34);ctx.closePath();ctx.fill();ctx.fillStyle="#047857";ctx.fillRect(support.x-12,support.y+2,24,36);ctx.fillStyle="rgba(2,44,34,.94)";roundRect(ctx,support.x-94,support.y-118,188,30,9);ctx.fill();ctx.fillStyle="#d1fae5";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText("RIVER GATE SAFE HOUSE",support.x,support.y-98);}
     const house=snap.rescueHouse;if(Number(snap.mission?.rescueRequired||0)>0&&house&&visible(house.x,house.y,190)){ctx.fillStyle="rgba(34,197,94,.20)";ctx.strokeStyle="#4ade80";ctx.lineWidth=6;ctx.beginPath();ctx.arc(house.x,house.y,house.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#fef3c7";ctx.fillRect(house.x-58,house.y-38,116,82);ctx.fillStyle="#92400e";ctx.beginPath();ctx.moveTo(house.x-72,house.y-38);ctx.lineTo(house.x,house.y-94);ctx.lineTo(house.x+72,house.y-38);ctx.closePath();ctx.fill();ctx.fillStyle="#78350f";ctx.fillRect(house.x-14,house.y+4,28,40);ctx.fillStyle="rgba(2,44,34,.92)";roundRect(ctx,house.x-82,house.y-130,164,30,9);ctx.fill();ctx.fillStyle="#dcfce7";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText("RESCUE HOUSE",house.x,house.y-110);}
     const ex=snap.extraction;const survivalExtract=!!snap.mission?.survivalExtractAvailable;const helicopterExtraction=snap.mission?.extractionType==="helicopter";const boatExtraction=snap.mission?.extractionType==="boat";ctx.fillStyle=(stormExtraction||helicopterExtraction||boatExtraction)?"rgba(14,165,233,.26)":(endlessSurvival?(survivalExtract?"rgba(34,197,94,.28)":"rgba(249,115,22,.16)"):"rgba(34,197,94,.23)");ctx.strokeStyle=(stormExtraction||helicopterExtraction||boatExtraction)?"#7dd3fc":(endlessSurvival?(survivalExtract?"#4ade80":"#f97316"):"#4ade80");ctx.lineWidth=6;ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=(stormExtraction||helicopterExtraction||boatExtraction)?"#e0f2fe":(endlessSurvival?"#ffedd5":"#dcfce7");ctx.font="950 18px system-ui";ctx.textAlign="center";ctx.fillText(boatExtraction?"RESCUE BOAT EXTRACTION":(helicopterExtraction?"HELICOPTER EXTRACTION":(stormExtraction?"STORM EXTRACTION":(endlessSurvival?(survivalExtract?"BANK REWARDS":"LOCKED • CLEAR WAVE 3"):"SQUAD EXTRACTION"))),ex.x,ex.y+6);if(stormExtraction||helicopterExtraction){ctx.font="950 44px system-ui";ctx.fillText("H",ex.x,ex.y-24);}
     const routeTarget=snap.mission?.checkpointsBeforeRescue?nextCheckpointForLocal()||nearestUnrescuedCivilian():nearestUnrescuedCivilian()||nextCheckpointForLocal();
@@ -2394,6 +2404,7 @@
     for(const y of [worldH*.24,worldH*.50,worldH*.76]){ctx.beginPath();ctx.moveTo(mx,my+y*sy);ctx.lineTo(mx+mw,my+y*sy);ctx.stroke();}
     ctx.fillStyle="#4ade80";ctx.beginPath();ctx.arc(mx+snap.extraction.x*sx,my+snap.extraction.y*sy,5,0,Math.PI*2);ctx.fill();
     if(snap.rescueHouse&&Number(snap.mission?.rescueRequired||0)>0){ctx.fillStyle="#facc15";ctx.fillRect(mx+snap.rescueHouse.x*sx-3,my+snap.rescueHouse.y*sy-3,6,6);}
+    if(snap.settlementSupport){ctx.fillStyle="#6ee7b7";ctx.fillRect(mx+snap.settlementSupport.x*sx-4,my+snap.settlementSupport.y*sy-4,8,8);}
     for(const civ of (snap.civilians||[])){if((snap.rescuedIds||[]).includes(civ.id))continue;ctx.fillStyle="#e0f2fe";ctx.fillRect(mx+civ.x*sx-2,my+civ.y*sy-2,4,4);}
     for(const tiger of (snap.tigers||[])){if(tiger.defeated)continue;ctx.fillStyle="#fb923c";ctx.beginPath();ctx.arc(mx+tiger.x*sx,my+tiger.y*sy,tiger.boss?5:3.5,0,Math.PI*2);ctx.fill();}
     for(const player of (snap.players||[])){const mine=Number(player.userId)===viewerId();const draw=state.remoteDraw.get(player.userId);const src=mine&&state.local?state.local:(draw ? { x:draw.drawX, y:draw.drawY } : player);ctx.fillStyle=mine?"#22d3ee":"#a78bfa";ctx.beginPath();ctx.arc(mx+src.x*sx,my+src.y*sy,5,0,Math.PI*2);ctx.fill();}

@@ -2249,7 +2249,11 @@ const ALL_COOP_MISSIONS = Object.freeze([
   ...Object.values(EXPANDED_SHARED_STORY_MISSIONS),
   ...Object.values(SPECIAL_OPERATION_MISSIONS),
 ]);
-const ALL_COOP_TIGERS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []));
+const LIVING_WORLD_PATROL_DEFS = Object.freeze([
+  Object.freeze({ id:"living-river-patrol-1", name:"River Gate Pressure Patrol", type:"Standard", hpMax:150, baseX:940, baseY:330, rangeX:150, rangeY:95, speed:.57, phase:.8, boss:false }),
+  Object.freeze({ id:"living-river-patrol-2", name:"River Gate Blood Patrol", type:"Stalker", hpMax:168, baseX:760, baseY:760, rangeX:130, rangeY:110, speed:.62, phase:2.1, boss:false }),
+]);
+const ALL_COOP_TIGERS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []), ...LIVING_WORLD_PATROL_DEFS]);
 const ALL_COOP_CIVILIANS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []));
 const ALL_COOP_CHECKPOINTS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.checkpoints || []));
 
@@ -2258,11 +2262,55 @@ function normalizeLaunchType(value){
   return VALID_LAUNCH_TYPES.includes(type) ? type : "live-squad";
 }
 
+function normalizeLivingWorldMission(raw){
+  const src = raw && typeof raw === "object" ? raw : {};
+  const support = src.support && typeof src.support === "object" ? src.support : {};
+  return {
+    enabled:!!src.enabled && cleanText(src.districtId, 40) === "river_gate",
+    districtId:cleanText(src.districtId, 40),
+    districtName:cleanText(src.districtName, 60),
+    missionLevel:clamp(Math.floor(Number(src.missionLevel || 0)), 0, 100),
+    tigerPressure:clamp(Math.round(Number(src.tigerPressure || 0)), 0, 100),
+    settlementSafety:clamp(Math.round(Number(src.settlementSafety || 0)), 0, 100),
+    bloodScent:clamp(Math.round(Number(src.bloodScent || 0)), 0, 100),
+    extraPatrols:clamp(Math.floor(Number(src.extraPatrols || 0)), 0, 2),
+    startingAggroBoost:clamp(Number(src.startingAggroBoost || 0), 0, .65),
+    directorPressureBonus:clamp(Math.round(Number(src.directorPressureBonus || 0)), 0, 18),
+    damageBonus:clamp(Math.floor(Number(src.damageBonus || 0)), 0, 4),
+    support:{
+      safeHouse:!!support.safeHouse,
+      medkitMinimum:clamp(Math.floor(Number(support.medkitMinimum || 0)), 0, 5),
+      armorFloor:clamp(Math.floor(Number(support.armorFloor || 0)), 0, 100),
+      ammoMinimum:clamp(Math.floor(Number(support.ammoMinimum || 0)), 0, 200),
+      scanPing:clamp(Math.floor(Number(support.scanPing || 0)), 0, 500),
+    },
+    brief:cleanText(src.brief, 360),
+    supportLabel:cleanText(src.supportLabel, 240),
+  };
+}
+
+function activeLivingWorldMission(session){
+  const consequence = normalizeLivingWorldMission(session?.livingWorldMission);
+  const level = Number(session?.storyMissionLevel || 0);
+  return session?.launchType === "shared-story" && level >= 1 && level <= 3 && consequence.enabled && consequence.missionLevel === level
+    ? consequence
+    : normalizeLivingWorldMission(null);
+}
+
 function missionDefinition(session){
-  if(session?.launchType === "shared-story"){
-    return EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0)] || EXPANDED_SHARED_STORY_MISSIONS[1];
-  }
-  return SPECIAL_OPERATION_MISSIONS[normalizeLaunchType(session?.launchType)] || EXPANDED_NIGHT_FANG_MISSION;
+  const base = session?.launchType === "shared-story"
+    ? (EXPANDED_SHARED_STORY_MISSIONS[Number(session.storyMissionLevel || 0)] || EXPANDED_SHARED_STORY_MISSIONS[1])
+    : (SPECIAL_OPERATION_MISSIONS[normalizeLaunchType(session?.launchType)] || EXPANDED_NIGHT_FANG_MISSION);
+  const consequence = activeLivingWorldMission(session);
+  if(!consequence.enabled || consequence.extraPatrols <= 0) return base;
+  const scaleX = Math.max(.55, Number(base.world?.width || 1200) / 1200);
+  const scaleY = Math.max(.55, Number(base.world?.height || 1100) / 1100);
+  const patrols = LIVING_WORLD_PATROL_DEFS.slice(0, consequence.extraPatrols).map((row)=>({
+    ...row,
+    baseX:clamp(Math.round(row.baseX * scaleX), 90, Number(base.world.width) - 90),
+    baseY:clamp(Math.round(row.baseY * scaleY), 100, Number(base.world.height) - 90),
+  }));
+  return { ...base, tigers:[...(base.tigers || []), ...patrols] };
 }
 
 function missionLimitMs(session){
@@ -2297,7 +2345,7 @@ function normalizeSession(raw){
     ? "live-squad"
     : requestedLaunchType;
   return {
-    version:1,
+    version:2,
     code,
     hostId,
     memberIds,
@@ -2316,6 +2364,7 @@ function normalizeSession(raw){
     survivalWave:clamp(Math.floor(Number(raw.survivalWave || 1)), 1, 50),
     survivalWavesCleared:clamp(Math.floor(Number(raw.survivalWavesCleared || 0)), 0, 50),
     survivalIntermissionUntil:Math.max(0, Number(raw.survivalIntermissionUntil || 0)),
+    livingWorldMission:normalizeLivingWorldMission(raw.livingWorldMission),
     title:launchType === "shared-story"
       ? `Shared Story Mission ${clamp(Math.floor(Number(raw.storyMissionLevel || 1)), 1, 100)}`
       : (SPECIAL_OPERATION_MISSIONS[launchType]?.title || "Operation Night Fang"),
@@ -2482,6 +2531,7 @@ function tigerSnapshots(session, players, at=nowMs()){
   const survivalScale = 1 + (survivalWave - 1) * 0.22;
   const balance = tigerIntelligence.balanceFor({ playerCount:Math.max(2, players.length), mode:session?.launchType === "endless-survival" ? "Survival" : "Co-op", level:session?.storyMissionLevel || 1 });
   const killSites = players.flatMap((player)=>Object.values(player?.killSites || {})).filter(Boolean);
+  const persistentBloodScent = clamp(Number(activeLivingWorldMission(session).bloodScent || 0) / 100, 0, 1);
   return missionDefinition(session).tigers.map((baseDef)=>{
     const def = session?.launchType === "endless-survival"
       ? { ...baseDef, hpMax:Math.round(baseDef.hpMax * survivalScale), name:`${baseDef.name} • Wave ${survivalWave}` }
@@ -2513,7 +2563,7 @@ function tigerSnapshots(session, players, at=nowMs()){
       distance:nearestPlayerDistance,
       detectionRange:(def.boss ? 310 : 250) * balance.detectMul,
       noise:noiseScore,
-      bloodScent:nearestBloodDistance <= 360 ? 0.82 : 0,
+      bloodScent:Math.max(nearestBloodDistance <= 360 ? 0.82 : 0, persistentBloodScent),
       targetVisible:nearestPlayerDistance <= (def.boss ? 310 : 250) * balance.detectMul,
       enraged:!!def.bloodRage && hp <= def.hpMax * 0.35,
     });
@@ -2575,6 +2625,8 @@ async function createSession(user, opts={}){
   const launchType = requestedLaunchType === "shared-story" && !EXPANDED_SHARED_STORY_MISSIONS[requestedStoryMissionLevel]
     ? "live-squad"
     : requestedLaunchType;
+  const hostProfile = await readCoopProfile(user);
+  const storyMissionLevel = launchType === "shared-story" ? requestedStoryMissionLevel : 0;
   let session = await writeSession({
     code,
     hostId:uid,
@@ -2584,12 +2636,15 @@ async function createSession(user, opts={}){
     updatedAt:nowMs(),
     startedAt:0,
     completedAt:0,
-    storyMissionLevel:launchType === "shared-story" ? requestedStoryMissionLevel : 0,
+    storyMissionLevel,
     launchType,
     matchmaking:opts?.matchmaking === "public" ? "public" : "private",
+    livingWorldMission:launchType === "shared-story" && storyMissionLevel <= 3
+      ? livingWorld.missionConsequences(hostProfile.livingWorld, storyMissionLevel, { playerCount:2 })
+      : null,
   });
   await writePlayer(code, newPlayer(user, 0));
-  await writeCoopProfile(await readCoopProfile(user), user);
+  await writeCoopProfile(hostProfile, user);
   return session;
 }
 
@@ -2705,7 +2760,8 @@ function sessionDerived(session, players, at=nowMs()){
   const bloodRageActive = !!boss?.bloodRage && !boss.defeated && Number(boss.hp || 0) <= Number(boss.hpMax || 1) * 0.35;
   const aggressionBonus = Math.max(0, Number(mission.hazardDamageBonus || 0))
     + tigerKills * aggressionPerKill
-    + (bloodRageActive ? 6 : 0);
+    + (bloodRageActive ? 6 : 0)
+    + Math.max(0, Number(activeLivingWorldMission(session).damageBonus || 0));
   const legacyBossOnlyRoom = session.launchType === "live-squad" && players.every((p)=>Object.keys(p?.tigerDamage || {}).length === 0) && players.some((p)=>Number(p?.bossDamage || 0) > 0);
   const captureRequired = Math.max(0, Number(mission.captureRequired || 0));
   const captureTargetIds = (mission.captureTargetIds || []).filter((id)=>missionTigerIds.has(id));
@@ -2865,6 +2921,7 @@ async function buildSnapshot(session, viewerId){
   const mission = missionDefinition(session);
   const derived = sessionDerived(session, players, at);
   const viewerProfile = await readCoopProfile(viewerId);
+  const livingWorldEffect = activeLivingWorldMission(session);
   return {
     code:session.code,
     title:session.title,
@@ -2921,11 +2978,18 @@ async function buildSnapshot(session, viewerId){
       survivalWavesCleared:session.launchType === "endless-survival" ? Number(session.survivalWavesCleared || 0) : 0,
       survivalIntermissionMs:session.launchType === "endless-survival" ? Math.max(0, Number(session.survivalIntermissionUntil || 0) - at) : 0,
       survivalExtractAvailable:session.launchType === "endless-survival" && Number(session.survivalWavesCleared || 0) >= 3,
+      livingWorld:livingWorldEffect.enabled ? livingWorldEffect : null,
     },
     world:mission.world,
     spawns:mission.spawns,
     extraction:mission.extraction,
     rescueHouse:rescueHouseFor(mission),
+    settlementSupport:livingWorldEffect.enabled && livingWorldEffect.support?.safeHouse ? {
+      x:Math.round(Number(mission.world.width || 1200) * .27),
+      y:Math.round(Number(mission.world.height || 1100) * .69),
+      r:88,
+      label:"River Gate Safe House",
+    } : null,
     civilians:civilianSnapshots(session, players, derived.rescuedIds, derived.securedCivilianIds),
     checkpoints:mission.checkpoints || [],
     fireZones:mission.fireZones || [],
@@ -3069,17 +3133,20 @@ async function updateOwnPresence(session, user, patch={}){
     const nearestCarcassDistance = threat
       ? threats.filter((t)=>t.carcass).reduce((nearest, body)=>Math.min(nearest, distance(threat, body)), Infinity)
       : Infinity;
-    const bloodScentActive = nearestCarcassDistance <= 360;
+    const livingWorldEffect = activeLivingWorldMission(session);
+    const persistentBloodScent = clamp(Number(livingWorldEffect.bloodScent || 0) / 100, 0, 1);
+    const bloodScentActive = nearestCarcassDistance <= 360 || persistentBloodScent > 0;
     const bloodRage = !!threat?.bloodRage && Number(threat.hp || 0) <= Number(threat.hpMax || 1) * 0.35;
     const livingBalance = tigerIntelligence.balanceFor({ playerCount:2, mode:session.launchType === "endless-survival" ? "Survival" : "Co-op", level:session.storyMissionLevel || 1 });
-    const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0) - (bloodScentActive ? 120 : 0)) * (threat?.rubberSlowed ? 1.65 : 1) * livingBalance.pounceCooldownMul;
-    const huntRange = ((threat?.boss ? 122 : 102) + (bloodScentActive ? 26 : 0)) * livingBalance.detectMul;
+    const hazardCooldown = Math.max(650, Number(mission.hazardCooldownMs || 1250) - (bloodRage ? 300 : 0) - (bloodScentActive ? 120 : 0) - persistentBloodScent * 120) * (threat?.rubberSlowed ? 1.65 : 1) * livingBalance.pounceCooldownMul;
+    const huntRange = ((threat?.boss ? 122 : 102) + (bloodScentActive ? 26 : 0) + persistentBloodScent * 24) * livingBalance.detectMul;
     if(threat && distance(player, threat) <= huntRange && now - player.lastHazardAt >= hazardCooldown){
       const roleArmor = player.role === "assault" ? 3 : (player.role === "medic" ? 1 : 0);
       const baseDamage = threat.boss ? 13 : (threat.type === "Armored" ? 11 : 9);
       const aggressionDamage = Math.max(0, Number(mission.hazardDamageBonus || 0))
         + tigerKills * aggressionPerKill
-        + (bloodRage ? 6 : 0);
+        + (bloodRage ? 6 : 0)
+        + Math.max(0, Number(livingWorldEffect.damageBonus || 0));
       damagePlayer(player, Math.max(5, Math.round((baseDamage + aggressionDamage - roleArmor) * livingBalance.damageMul)));
       player.lastHazardAt = now;
       if(player.hp <= 0){
@@ -3154,6 +3221,23 @@ async function applyAction(session, user, action, payload={}){
       const nextLevel = Number(session.storyMissionLevel || 0) + 1;
       if(!EXPANDED_SHARED_STORY_MISSIONS[nextLevel]) throw new Error("The next Shared Story mission has not been converted yet. You may stay in the squad or leave.");
       session.storyMissionLevel = nextLevel;
+    }
+    if(session.launchType === "shared-story" && Number(session.storyMissionLevel || 0) <= 3){
+      const hostProfile = await readCoopProfile(session.hostId);
+      session.livingWorldMission = livingWorld.missionConsequences(hostProfile.livingWorld, session.storyMissionLevel, { playerCount:2 });
+      const support = session.livingWorldMission?.support || {};
+      for(const memberId of session.memberIds){
+        const memberProfile = await readCoopProfile(memberId);
+        memberProfile.supplies.medkits = Math.max(Number(memberProfile.supplies.medkits || 0), Number(support.medkitMinimum || 0));
+        if(Number(support.armorFloor || 0) > 0) memberProfile.supplies.armorPlates = Math.max(Number(memberProfile.supplies.armorPlates || 0), 1);
+        if(Number(support.ammoMinimum || 0) > 0){
+          memberProfile.ammo.real = Math.max(Number(memberProfile.ammo.real || 0), Number(support.ammoMinimum));
+          memberProfile.ammo.rubber = Math.max(Number(memberProfile.ammo.rubber || 0), Number(support.ammoMinimum));
+        }
+        await writeCoopProfile(memberProfile, memberId);
+      }
+    }else{
+      session.livingWorldMission = normalizeLivingWorldMission(null);
     }
     session.status = "active";
     session.startedAt = now;
