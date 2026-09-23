@@ -36,8 +36,8 @@ test("all three field modes share the premium world scale and phone collision la
   assert(game.includes("const sharedPremiumDistrict"));
 });
 
-test("V10.5 is cache-busted for Telegram clients", () => {
-  assert(game.includes('const TS_BUILD = "5078"'));
-  assert(html.includes("V10.5"));
-  assert(html.includes("game.js?v=5078-iron-roar"));
+test("V10.6 is cache-busted for Telegram clients", () => {
+  assert(game.includes('const TS_BUILD = "5079"'));
+  assert(html.includes("V10.6"));
+  assert(html.includes("game.js?v=5079-bloodroot-passage"));
 });

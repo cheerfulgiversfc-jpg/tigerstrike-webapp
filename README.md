@@ -525,6 +525,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo map generators, gates, barricades, and vehicles reflect the saved district state; Shared Story draws the same power and fortification state and applies the same movement and defense bonuses to both players.
 - Every Chapter 1 district now has direct gameplay consequences, accurate pre-deployment briefings, separate Solo/Shared progression, and reconnect-safe co-op state.
 
+### V10.6 District Consequences — Bloodroot Passage
+
+- Opens the first Chapter 2 Living World district across Solo and Shared Story Missions 11–13 without replacing any mission objective.
+- Mission 11 can add Berserker pressure to its narrow escort route. Mission 12 caps the added patrol at one so it does not unfairly stack with the mission's existing kill-aggression pack.
+- Mission 13 deliberately adds no consequence patrols, preserving its original three tiger targets and requirement to capture two of them alive.
+- Settlement recovery activates trail lanterns, clears a faster safe passage, and opens a visible Bloodroot Research Clinic with real Med Kit, armor, Rubber ammunition, Tranq Dart, and scan support.
+- Rescued civilians visibly return as field medics and wildlife researchers. Humane ammunition support unlocks as the settlement becomes safer.
+- Blood scent still increases tiger awareness, civilian-hunting pressure, and close-range damage, while rebuilt community defenses can reduce incoming damage.
+- Solo and Shared Story keep separate persistent Bloodroot progress. Reopening, restarting, or reconnecting preserves the shared battlefield state, and reward receipts continue blocking duplicate world updates.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5078";
+const TS_BUILD = "5079";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -12090,6 +12090,13 @@ function prepareLivingWorldMissionConsequences(state=S){
     const ammoId = bestAvailableAmmoIdForWeapon(weapon) || weapon.ammo;
     state.ammoReserve[ammoId] = Math.max(Number(state.ammoReserve[ammoId] || 0), Number(effect.support.ammoMinimum));
   }
+  if(weapon && Number(effect.support?.rubberAmmoMinimum || 0) > 0){
+    const rubberAmmoId = compatibleAmmoIdsForWeapon(weapon, "rubber")[0];
+    if(rubberAmmoId) state.ammoReserve[rubberAmmoId] = Math.max(Number(state.ammoReserve[rubberAmmoId] || 0), Number(effect.support.rubberAmmoMinimum));
+  }
+  if(Number(effect.support?.tranqMinimum || 0) > 0){
+    state.ammoReserve.TRANQ_DARTS = Math.max(Number(state.ammoReserve.TRANQ_DARTS || 0), Number(effect.support.tranqMinimum));
+  }
   state.scanPing = Math.max(Number(state.scanPing || 0), Number(effect.support?.scanPing || 0));
   return effect;
 }
@@ -13832,8 +13839,8 @@ function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
     </div>`;
   }).join("");
   return `<section class="card" id="livingWorldChapterOne" style="margin-top:10px;border-color:rgba(74,222,128,.62);background:linear-gradient(145deg,rgba(6,54,45,.50),rgba(8,15,29,.96))">
-    <div class="hudLine"><b>🌍 Living Chapter 1 • Persistent Districts</b></div>
-    <div class="small">All Chapter 1 missions now react to lasting results. River Gate changes Missions 1–3; Jungle Spine changes Missions 4–7; Iron Roar changes Missions 8–10 with Armored patrols, industrial power, fortified routes, returning workers, and Armory support. Solo and Shared Story each keep their own progression.</div>
+    <div class="hudLine"><b>🌍 Living Story Districts • Chapters 1–2</b></div>
+    <div class="small">Missions 1–13 now react to lasting results. Chapter 1 remains fully active, while Bloodroot Passage changes Missions 11–13 through Berserker pressure, blood aggression, trail conditions, clinic volunteers, and humane capture research. Solo and Shared Story each keep their own progression.</div>
     <div class="small" style="margin-top:6px"><b>Latest:</b> ${worldMapEsc(living.headline)}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${cards}</div>
   </section>`;
@@ -39756,7 +39763,7 @@ function spawnMapInteractables(){
 
 function spawnLivingWorldDistrictSupport(){
   const effect = S._livingWorldMission;
-  const supportOpen = effect?.support?.safeHouse || effect?.support?.rangerStation || effect?.support?.armoryDepot;
+  const supportOpen = effect?.support?.safeHouse || effect?.support?.rangerStation || effect?.support?.armoryDepot || effect?.support?.fieldClinic || effect?.support?.researchPost;
   if(!effect?.enabled || !supportOpen || window.__TUTORIAL_MODE__) return false;
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   if(S.mapInteractables.some((item)=>item?.livingWorldSupport)) return true;
@@ -39764,8 +39771,9 @@ function spawnLivingWorldDistrictSupport(){
   const worldH = worldHeight(S);
   const jungle = effect.districtId === "jungle_spine";
   const iron = effect.districtId === "iron_roar";
-  const label = iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House");
-  let point = safeSpawnPoint(worldW * (iron ? 0.38 : (jungle ? 0.34 : 0.28)), worldH * (iron ? 0.64 : (jungle ? 0.48 : 0.70)), 24, true, true);
+  const bloodroot = effect.districtId === "bloodroot_passage";
+  const label = bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House"));
+  let point = safeSpawnPoint(worldW * (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28))), worldH * (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70))), 24, true, true);
   if(inMapScenarioKeepout(point.x, point.y, 24)){
     point = findNearestOpenPoint(point.x, point.y, 24, {
       avoidKeepout:true,
@@ -39791,7 +39799,7 @@ function spawnLivingWorldDistrictSupport(){
     triggered:false,
     rewardClaimed:false,
     livingWorldSupport:true,
-    livingWorldSupportType:iron ? "iron_armory" : (jungle ? "jungle_ranger" : "river_safe_house"),
+    livingWorldSupportType:bloodroot ? "bloodroot_clinic" : (iron ? "iron_armory" : (jungle ? "jungle_ranger" : "river_safe_house")),
     returningCivilians:Math.max(0, Number(effect.support?.returningCivilians || 0)),
   });
   return true;
@@ -39802,7 +39810,29 @@ function spawnLivingWorldRiverGateSafeHouse(){
 
 function configureLivingWorldDistrictRoutes(){
   const effect = S._livingWorldMission;
-  if(!effect?.enabled || !["jungle_spine","iron_roar"].includes(effect.districtId)) return false;
+  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage"].includes(effect.districtId)) return false;
+  if(effect.districtId === "bloodroot_passage"){
+    const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
+    if(generator){
+      generator.powered = !!effect.support?.lanternNetwork;
+      generator.label = generator.powered ? "Bloodroot Lantern Network" : "Bloodroot Signal Generator";
+      generator.activeUntil = generator.powered ? Date.now() + (8 * 60 * 60 * 1000) : 0;
+    }
+    const gate = (S.mapInteractables || []).find((item)=>item?.kind === "gate");
+    if(gate){
+      gate.routeOpen = !!effect.support?.safeRoute;
+      gate.label = gate.routeOpen ? "Cleared Bloodroot Path" : "Overgrown Bloodroot Path";
+    }
+    const vehicle = (S.mapInteractables || []).find((item)=>item?.kind === "vehicle");
+    if(vehicle && effect.support?.safeRoute){
+      vehicle.repaired = true;
+      vehicle.label = "Bloodroot Clinic Transport";
+      vehicle.activeUntil = Date.now() + (8 * 60 * 60 * 1000);
+    }
+    __blockedAtCache.clear();
+    invalidateMapCache();
+    return true;
+  }
   if(effect.districtId === "iron_roar"){
     const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
     if(generator){
@@ -40045,10 +40075,11 @@ function activateMapInteractable(it){
       S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       const jungleRanger = it.livingWorldSupportType === "jungle_ranger";
       const ironArmory = it.livingWorldSupportType === "iron_armory";
-      S.armor = clamp(Number(S.armor || 0) + (ironArmory ? 25 : (jungleRanger ? 8 : 15)), 0, S.armorCap || 100);
+      const bloodrootClinic = it.livingWorldSupportType === "bloodroot_clinic";
+      S.armor = clamp(Number(S.armor || 0) + (ironArmory ? 25 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15))), 0, S.armorCap || 100);
       const supportWeapon = equippedWeapon();
       const supportAmmoId = supportWeapon ? (bestAvailableAmmoIdForWeapon(supportWeapon) || supportWeapon.ammo) : "";
-      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (ironArmory ? 18 : (jungleRanger ? 12 : 8));
+      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (ironArmory ? 18 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8)));
       if(jungleRanger){
         S.scanPing = Math.max(Number(S.scanPing || 0), 240);
         if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
@@ -40057,11 +40088,19 @@ function activateMapInteractable(it){
         S.scanPing = Math.max(Number(S.scanPing || 0), 280);
         S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
       }
+      if(bloodrootClinic){
+        const supportRubberId = supportWeapon ? compatibleAmmoIdsForWeapon(supportWeapon, "rubber")[0] : "";
+        if(supportRubberId) S.ammoReserve[supportRubberId] = Math.max(0, Number(S.ammoReserve[supportRubberId] || 0)) + 18;
+        S.ammoReserve.TRANQ_DARTS = Math.max(0, Number(S.ammoReserve.TRANQ_DARTS || 0)) + 4;
+        S.scanPing = Math.max(Number(S.scanPing || 0), 300);
+      }
       it.uses = 0;
       it.cooldownUntil = now + 60000;
       it.activeUntil = now + 900;
       interactionFeedback(ironArmory
         ? "🏭 Iron Roar workers supplied +1 Med Kit, +25 Armor, +18 Ammo, 1 Trap, and a depot scan."
+        : bloodrootClinic
+        ? "🩺 Bloodroot volunteers supplied +1 Med Kit, +12 Armor, Rubber rounds, 4 Tranq Darts, and a trail scan."
         : jungleRanger
         ? `🌿 Returning Jungle Spine volunteers supplied +1 Med Kit, +8 Armor, +12 Ammo${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a scout scan.`
         : "🏘️ River Gate volunteers supplied +1 Med Kit, +15 Armor, and +8 Ammo.", { success:true, seconds:4 });
@@ -55235,11 +55274,15 @@ function drawMapInteractable(it){
     ctx.moveTo(it.x, it.y - 10);
     ctx.lineTo(it.x, it.y + 10);
     ctx.stroke();
-    if(it.livingWorldSupportType === "jungle_ranger" || it.livingWorldSupportType === "iron_armory"){
+    if(["jungle_ranger","iron_armory","bloodroot_clinic"].includes(it.livingWorldSupportType)){
       const helpers = Math.max(1, Math.min(2, Number(it.returningCivilians || 0) || 1));
       for(let idx=0; idx<helpers; idx++){
         const hx = it.x + (idx === 0 ? -27 : 27);
-        ctx.fillStyle = it.livingWorldSupportType === "iron_armory" ? (idx === 0 ? "#f59e0b" : "#64748b") : (idx === 0 ? "#16a34a" : "#0ea5e9");
+        ctx.fillStyle = it.livingWorldSupportType === "iron_armory"
+          ? (idx === 0 ? "#f59e0b" : "#64748b")
+          : it.livingWorldSupportType === "bloodroot_clinic"
+            ? (idx === 0 ? "#fb7185" : "#a78bfa")
+            : (idx === 0 ? "#16a34a" : "#0ea5e9");
         roundedRectFill(hx - 6, it.y - 2, 12, 18, 4);
         ctx.fillStyle = SKIN_TONES[(idx + 2) % SKIN_TONES.length];
         ctx.beginPath();

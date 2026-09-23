@@ -2262,6 +2262,10 @@ const LIVING_WORLD_PATROL_DEFS = Object.freeze({
     Object.freeze({ id:"living-iron-guard-1", name:"Iron Roar Rail Guard", type:"Armored", hpMax:225, baseX:905, baseY:320, rangeX:152, rangeY:108, speed:.54, phase:1.3, boss:false }),
     Object.freeze({ id:"living-iron-guard-2", name:"Iron Roar Yard Breaker", type:"Armored", hpMax:248, baseX:755, baseY:750, rangeX:142, rangeY:118, speed:.58, phase:3.1, boss:false }),
   ]),
+  bloodroot_passage:Object.freeze([
+    Object.freeze({ id:"living-bloodroot-rager-1", name:"Bloodroot Trail Berserker", type:"Berserker", hpMax:265, baseX:865, baseY:350, rangeX:168, rangeY:118, speed:.72, phase:1.5, boss:false }),
+    Object.freeze({ id:"living-bloodroot-rager-2", name:"Bloodroot Scent Hunter", type:"Berserker", hpMax:290, baseX:735, baseY:735, rangeX:156, rangeY:124, speed:.75, phase:3.4, boss:false }),
+  ]),
 });
 const ALL_COOP_TIGERS = Object.freeze([...ALL_COOP_MISSIONS.flatMap((mission)=>mission.tigers || []), ...Object.values(LIVING_WORLD_PATROL_DEFS).flat()]);
 const ALL_COOP_CIVILIANS = Object.freeze(ALL_COOP_MISSIONS.flatMap((mission)=>mission.civilians || []));
@@ -2276,7 +2280,7 @@ function normalizeLivingWorldMission(raw){
   const src = raw && typeof raw === "object" ? raw : {};
   const support = src.support && typeof src.support === "object" ? src.support : {};
   return {
-    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar"].includes(cleanText(src.districtId, 40)),
+    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage"].includes(cleanText(src.districtId, 40)),
     districtId:cleanText(src.districtId, 40),
     districtName:cleanText(src.districtName, 60),
     missionLevel:clamp(Math.floor(Number(src.missionLevel || 0)), 0, 100),
@@ -2292,8 +2296,11 @@ function normalizeLivingWorldMission(raw){
       safeHouse:!!support.safeHouse,
       rangerStation:!!support.rangerStation,
       armoryDepot:!!support.armoryDepot,
+      fieldClinic:!!support.fieldClinic,
+      researchPost:!!support.researchPost,
       bridgeOpen:!!support.bridgeOpen,
       powerGrid:!!support.powerGrid,
+      lanternNetwork:!!support.lanternNetwork,
       fortifiedGate:!!support.fortifiedGate,
       safeRoute:!!support.safeRoute,
       routeSpeedMul:clamp(Number(support.routeSpeedMul || 1), 1, 1.12),
@@ -2302,6 +2309,8 @@ function normalizeLivingWorldMission(raw){
       medkitMinimum:clamp(Math.floor(Number(support.medkitMinimum || 0)), 0, 5),
       armorFloor:clamp(Math.floor(Number(support.armorFloor || 0)), 0, 100),
       ammoMinimum:clamp(Math.floor(Number(support.ammoMinimum || 0)), 0, 200),
+      rubberAmmoMinimum:clamp(Math.floor(Number(support.rubberAmmoMinimum || 0)), 0, 200),
+      tranqMinimum:clamp(Math.floor(Number(support.tranqMinimum || 0)), 0, 50),
       scanPing:clamp(Math.floor(Number(support.scanPing || 0)), 0, 500),
     },
     brief:cleanText(src.brief, 360),
@@ -2313,7 +2322,7 @@ function activeLivingWorldMission(session){
   const consequence = normalizeLivingWorldMission(session?.livingWorldMission);
   const level = Number(session?.storyMissionLevel || 0);
   const district = livingWorld.districtForMission(level);
-  return session?.launchType === "shared-story" && level >= 1 && level <= 10 && consequence.enabled && consequence.missionLevel === level && consequence.districtId === district?.id
+  return session?.launchType === "shared-story" && level >= 1 && level <= 13 && consequence.enabled && consequence.missionLevel === level && consequence.districtId === district?.id
     ? consequence
     : normalizeLivingWorldMission(null);
 }
@@ -2661,7 +2670,7 @@ async function createSession(user, opts={}){
     storyMissionLevel,
     launchType,
     matchmaking:opts?.matchmaking === "public" ? "public" : "private",
-    livingWorldMission:launchType === "shared-story" && storyMissionLevel <= 10
+    livingWorldMission:launchType === "shared-story" && storyMissionLevel <= 13
       ? livingWorld.missionConsequences(hostProfile.livingWorld, storyMissionLevel, { playerCount:2 })
       : null,
   });
@@ -3006,12 +3015,12 @@ async function buildSnapshot(session, viewerId){
     spawns:mission.spawns,
     extraction:mission.extraction,
     rescueHouse:rescueHouseFor(mission),
-    settlementSupport:livingWorldEffect.enabled && (livingWorldEffect.support?.safeHouse || livingWorldEffect.support?.rangerStation || livingWorldEffect.support?.armoryDepot) ? {
-      x:Math.round(Number(mission.world.width || 1200) * (livingWorldEffect.districtId === "iron_roar" ? .38 : (livingWorldEffect.districtId === "jungle_spine" ? .34 : .27))),
-      y:Math.round(Number(mission.world.height || 1100) * (livingWorldEffect.districtId === "iron_roar" ? .64 : (livingWorldEffect.districtId === "jungle_spine" ? .48 : .69))),
+    settlementSupport:livingWorldEffect.enabled && (livingWorldEffect.support?.safeHouse || livingWorldEffect.support?.rangerStation || livingWorldEffect.support?.armoryDepot || livingWorldEffect.support?.fieldClinic || livingWorldEffect.support?.researchPost) ? {
+      x:Math.round(Number(mission.world.width || 1200) * (livingWorldEffect.districtId === "bloodroot_passage" ? .31 : (livingWorldEffect.districtId === "iron_roar" ? .38 : (livingWorldEffect.districtId === "jungle_spine" ? .34 : .27)))),
+      y:Math.round(Number(mission.world.height || 1100) * (livingWorldEffect.districtId === "bloodroot_passage" ? .58 : (livingWorldEffect.districtId === "iron_roar" ? .64 : (livingWorldEffect.districtId === "jungle_spine" ? .48 : .69)))),
       r:88,
-      label:livingWorldEffect.districtId === "iron_roar" ? "Iron Roar Armory Depot" : (livingWorldEffect.districtId === "jungle_spine" ? "Jungle Spine Ranger Station" : "River Gate Safe House"),
-      type:livingWorldEffect.districtId === "iron_roar" ? "iron_armory" : (livingWorldEffect.districtId === "jungle_spine" ? "jungle_ranger" : "river_safe_house"),
+      label:livingWorldEffect.districtId === "bloodroot_passage" ? (livingWorldEffect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (livingWorldEffect.districtId === "iron_roar" ? "Iron Roar Armory Depot" : (livingWorldEffect.districtId === "jungle_spine" ? "Jungle Spine Ranger Station" : "River Gate Safe House")),
+      type:livingWorldEffect.districtId === "bloodroot_passage" ? "bloodroot_clinic" : (livingWorldEffect.districtId === "iron_roar" ? "iron_armory" : (livingWorldEffect.districtId === "jungle_spine" ? "jungle_ranger" : "river_safe_house")),
       returningCivilians:Number(livingWorldEffect.support?.returningCivilians || 0),
     } : null,
     civilians:civilianSnapshots(session, players, derived.rescuedIds, derived.securedCivilianIds),
@@ -3247,7 +3256,7 @@ async function applyAction(session, user, action, payload={}){
       if(!EXPANDED_SHARED_STORY_MISSIONS[nextLevel]) throw new Error("The next Shared Story mission has not been converted yet. You may stay in the squad or leave.");
       session.storyMissionLevel = nextLevel;
     }
-    if(session.launchType === "shared-story" && Number(session.storyMissionLevel || 0) <= 10){
+    if(session.launchType === "shared-story" && Number(session.storyMissionLevel || 0) <= 13){
       const hostProfile = await readCoopProfile(session.hostId);
       session.livingWorldMission = livingWorld.missionConsequences(hostProfile.livingWorld, session.storyMissionLevel, { playerCount:2 });
       const support = session.livingWorldMission?.support || {};
@@ -3259,6 +3268,8 @@ async function applyAction(session, user, action, payload={}){
           memberProfile.ammo.real = Math.max(Number(memberProfile.ammo.real || 0), Number(support.ammoMinimum));
           memberProfile.ammo.rubber = Math.max(Number(memberProfile.ammo.rubber || 0), Number(support.ammoMinimum));
         }
+        memberProfile.ammo.rubber = Math.max(Number(memberProfile.ammo.rubber || 0), Number(support.rubberAmmoMinimum || 0));
+        memberProfile.ammo.tranq = Math.max(Number(memberProfile.ammo.tranq || 0), Number(support.tranqMinimum || 0));
         await writeCoopProfile(memberProfile, memberId);
       }
     }else{

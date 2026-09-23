@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V10.5 cache key forces Telegram to load Iron Roar", () => {
-  assert(game.includes('const TS_BUILD = "5078"'));
-  assert(html.includes("game.js?v=5078-iron-roar"));
-  assert(html.includes("tutorial.js?v=5078-iron-roar"));
+test("V10.6 cache key forces Telegram to load Bloodroot Passage", () => {
+  assert(game.includes('const TS_BUILD = "5079"'));
+  assert(html.includes("game.js?v=5079-bloodroot-passage"));
+  assert(html.includes("tutorial.js?v=5079-bloodroot-passage"));
 });
