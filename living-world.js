@@ -5,12 +5,13 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const PILOT_MAX_MISSION = 13;
+  const PILOT_MAX_MISSION = 17;
   const DISTRICTS = Object.freeze([
     Object.freeze({ id:"river_gate", name:"River Gate", missions:"1–3", minMission:1, maxMission:3, tigerPressure:52, settlementSafety:18 }),
     Object.freeze({ id:"jungle_spine", name:"Jungle Spine", missions:"4–7", minMission:4, maxMission:7, tigerPressure:62, settlementSafety:12 }),
     Object.freeze({ id:"iron_roar", name:"Iron Roar", missions:"8–10", minMission:8, maxMission:10, tigerPressure:72, settlementSafety:8 }),
     Object.freeze({ id:"bloodroot_passage", name:"Bloodroot Passage", missions:"11–13", minMission:11, maxMission:13, tigerPressure:68, settlementSafety:10 }),
+    Object.freeze({ id:"amara_haven", name:"Amara Haven", missions:"14–17", minMission:14, maxMission:17, tigerPressure:71, settlementSafety:9 }),
   ]);
 
   const clamp = (value, min, max)=>Math.min(max, Math.max(min, Number(value) || 0));
@@ -100,7 +101,7 @@
     const state = normalizeState(raw);
     const definition = districtForMission(missionLevel);
     const playerCount = Math.max(1, whole(options.playerCount) || 1);
-    const enabledDistrict = definition && ["river_gate", "jungle_spine", "iron_roar", "bloodroot_passage"].includes(definition.id);
+    const enabledDistrict = definition && ["river_gate", "jungle_spine", "iron_roar", "bloodroot_passage", "amara_haven"].includes(definition.id);
     if(!enabledDistrict){
       return {
         enabled:false,
@@ -112,7 +113,7 @@
         directorPressureBonus:0,
         damageBonus:0,
         patrolType:"Standard",
-        support:{ safeHouse:false, rangerStation:false, armoryDepot:false, fieldClinic:false, researchPost:false, bridgeOpen:false, powerGrid:false, lanternNetwork:false, fortifiedGate:false, safeRoute:false, routeSpeedMul:1, returningCivilians:0, damageReduction:0, medkitMinimum:0, armorFloor:0, ammoMinimum:0, rubberAmmoMinimum:0, tranqMinimum:0, scanPing:0 },
+        support:{ safeHouse:false, rangerStation:false, armoryDepot:false, fieldClinic:false, researchPost:false, fieldHospital:false, rescueBeacons:false, caravanRoute:false, childShelter:false, bridgeOpen:false, powerGrid:false, lanternNetwork:false, fortifiedGate:false, safeRoute:false, routeSpeedMul:1, returningCivilians:0, damageReduction:0, civilianDamageMul:1, medkitMinimum:0, armorFloor:0, ammoMinimum:0, rubberAmmoMinimum:0, tranqMinimum:0, scanPing:0 },
         brief:"No active district consequence for this mission.",
         supportLabel:"No district support",
       };
@@ -122,9 +123,13 @@
     const jungle = definition.id === "jungle_spine";
     const iron = definition.id === "iron_roar";
     const bloodroot = definition.id === "bloodroot_passage";
+    const amara = definition.id === "amara_haven";
     const bossMission = whole(missionLevel) === 10;
     const protectedCaptureMission = whole(missionLevel) === 13;
-    let rawPatrols = (bossMission || protectedCaptureMission) ? 0 : (bloodroot
+    const protectedEscortMission = amara && [14,17].includes(whole(missionLevel));
+    let rawPatrols = (bossMission || protectedCaptureMission || protectedEscortMission) ? 0 : (amara
+      ? (district.tigerPressure >= 88 ? 2 : (district.tigerPressure >= 68 ? 1 : 0))
+      : bloodroot
       ? (district.tigerPressure >= 86 ? 2 : (district.tigerPressure >= 66 ? 1 : 0))
       : iron
       ? (district.tigerPressure >= 88 ? 2 : (district.tigerPressure >= 68 ? 1 : 0))
@@ -132,20 +137,54 @@
         ? (district.tigerPressure >= 82 ? 2 : (district.tigerPressure >= 60 ? 1 : 0))
         : (district.tigerPressure >= 82 ? 2 : (district.tigerPressure >= 65 ? 1 : 0)));
     if(bloodroot && whole(missionLevel) === 12) rawPatrols = Math.min(1, rawPatrols);
+    if(amara && whole(missionLevel) === 15) rawPatrols = Math.min(1, rawPatrols);
     const extraPatrols = playerCount <= 1 ? Math.min(1, rawPatrols) : rawPatrols;
-    const startingAggroBoost = clamp(
-      Math.max(0, district.tigerPressure - (bloodroot ? 40 : (iron ? 38 : (jungle ? 42 : 45)))) * (bloodroot ? 0.0036 : (iron ? 0.0037 : (jungle ? 0.0034 : 0.003))) + district.bloodScent * (bloodroot ? 0.0058 : (iron ? 0.0055 : (jungle ? 0.005 : 0.0045))),
-      0,
-      0.65
-    );
-    const directorPressureBonus = clamp(Math.round(Math.max(0, district.tigerPressure - (bloodroot ? 44 : (iron ? 42 : (jungle ? 46 : 50)))) * (bloodroot ? 0.17 : (iron ? 0.18 : 0.16)) + district.bloodScent * (bloodroot ? 0.15 : (iron ? 0.14 : (jungle ? 0.12 : 0.10)))), 0, 18);
-    const damageBonus = clamp(Math.floor(district.bloodScent / (bloodroot ? 18 : (iron ? 16 : (jungle ? 18 : 20)))), 0, bloodroot ? 5 : (iron ? 6 : (jungle ? 5 : 4)));
-    const support = bloodroot ? {
+    const aggroPressureFloor = amara ? 41 : (bloodroot ? 40 : (iron ? 38 : (jungle ? 42 : 45)));
+    const aggroPressureRate = amara ? 0.0035 : (bloodroot ? 0.0036 : (iron ? 0.0037 : (jungle ? 0.0034 : 0.003)));
+    const aggroScentRate = amara ? 0.0056 : (bloodroot ? 0.0058 : (iron ? 0.0055 : (jungle ? 0.005 : 0.0045)));
+    const startingAggroBoost = clamp(Math.max(0, district.tigerPressure - aggroPressureFloor) * aggroPressureRate + district.bloodScent * aggroScentRate, 0, 0.65);
+    const directorPressureFloor = amara ? 45 : (bloodroot ? 44 : (iron ? 42 : (jungle ? 46 : 50)));
+    const directorPressureRate = (amara || bloodroot) ? 0.17 : (iron ? 0.18 : 0.16);
+    const directorScentRate = amara ? 0.14 : (bloodroot ? 0.15 : (iron ? 0.14 : (jungle ? 0.12 : 0.10)));
+    const directorPressureBonus = clamp(Math.round(Math.max(0, district.tigerPressure - directorPressureFloor) * directorPressureRate + district.bloodScent * directorScentRate), 0, 18);
+    const damageScentDivisor = amara ? 19 : (bloodroot ? 18 : (iron ? 16 : (jungle ? 18 : 20)));
+    const damageCap = amara ? 5 : (bloodroot ? 5 : (iron ? 6 : (jungle ? 5 : 4)));
+    const damageBonus = clamp(Math.floor(district.bloodScent / damageScentDivisor), 0, damageCap);
+    const support = amara ? {
+      safeHouse:false,
+      rangerStation:false,
+      armoryDepot:false,
+      fieldClinic:false,
+      researchPost:false,
+      fieldHospital:district.settlementSafety >= 14,
+      rescueBeacons:district.settlementSafety >= 25,
+      caravanRoute:district.settlementSafety >= 40,
+      childShelter:district.settlementSafety >= 54,
+      bridgeOpen:false,
+      powerGrid:false,
+      lanternNetwork:false,
+      fortifiedGate:district.settlementSafety >= 54,
+      safeRoute:district.settlementSafety >= 40,
+      routeSpeedMul:district.settlementSafety >= 40 ? 1.12 : 1,
+      returningCivilians:district.settlementSafety >= 68 ? 2 : (district.settlementSafety >= 42 ? 1 : 0),
+      damageReduction:district.settlementSafety >= 62 ? 1 : 0,
+      civilianDamageMul:district.settlementSafety >= 54 ? 0.78 : (district.settlementSafety >= 25 ? 0.90 : 1),
+      medkitMinimum:district.settlementSafety >= 62 ? 3 : (district.settlementSafety >= 14 ? 2 : 1),
+      armorFloor:district.settlementSafety >= 48 ? 45 : (district.settlementSafety >= 22 ? 25 : 0),
+      ammoMinimum:district.settlementSafety >= 58 ? 24 : 0,
+      rubberAmmoMinimum:0,
+      tranqMinimum:0,
+      scanPing:district.settlementSafety >= 70 ? 360 : (district.settlementSafety >= 25 ? 300 : 0),
+    } : bloodroot ? {
       safeHouse:false,
       rangerStation:false,
       armoryDepot:false,
       fieldClinic:district.settlementSafety >= 14,
       researchPost:district.settlementSafety >= 55,
+      fieldHospital:false,
+      rescueBeacons:false,
+      caravanRoute:false,
+      childShelter:false,
       bridgeOpen:false,
       powerGrid:false,
       lanternNetwork:district.settlementSafety >= 26,
@@ -154,6 +193,7 @@
       routeSpeedMul:district.settlementSafety >= 38 ? 1.10 : 1,
       returningCivilians:district.settlementSafety >= 68 ? 2 : (district.settlementSafety >= 42 ? 1 : 0),
       damageReduction:district.settlementSafety >= 50 ? 1 : 0,
+      civilianDamageMul:1,
       medkitMinimum:district.settlementSafety >= 14 ? 2 : 1,
       armorFloor:district.settlementSafety >= 45 ? 45 : (district.settlementSafety >= 20 ? 20 : 0),
       ammoMinimum:0,
@@ -166,6 +206,10 @@
       armoryDepot:district.settlementSafety >= 15,
       fieldClinic:false,
       researchPost:false,
+      fieldHospital:false,
+      rescueBeacons:false,
+      caravanRoute:false,
+      childShelter:false,
       bridgeOpen:false,
       powerGrid:district.settlementSafety >= 28,
       lanternNetwork:false,
@@ -174,6 +218,7 @@
       routeSpeedMul:district.settlementSafety >= 58 ? 1.08 : 1,
       returningCivilians:district.settlementSafety >= 72 ? 2 : (district.settlementSafety >= 45 ? 1 : 0),
       damageReduction:district.settlementSafety >= 60 ? 2 : (district.settlementSafety >= 28 ? 1 : 0),
+      civilianDamageMul:1,
       medkitMinimum:district.settlementSafety >= 35 ? 2 : 1,
       armorFloor:district.settlementSafety >= 55 ? 65 : (district.settlementSafety >= 20 ? 35 : 0),
       ammoMinimum:district.settlementSafety >= 55 ? 30 : 0,
@@ -186,6 +231,10 @@
       armoryDepot:false,
       fieldClinic:false,
       researchPost:false,
+      fieldHospital:false,
+      rescueBeacons:false,
+      caravanRoute:false,
+      childShelter:false,
       bridgeOpen:district.settlementSafety >= 30,
       powerGrid:false,
       lanternNetwork:false,
@@ -194,6 +243,7 @@
       routeSpeedMul:district.settlementSafety >= 55 ? 1.12 : 1,
       returningCivilians:district.settlementSafety >= 70 ? 2 : (district.settlementSafety >= 45 ? 1 : 0),
       damageReduction:0,
+      civilianDamageMul:1,
       medkitMinimum:district.settlementSafety >= 18 ? 2 : 1,
       armorFloor:district.settlementSafety >= 40 ? 40 : (district.settlementSafety >= 18 ? 20 : 0),
       ammoMinimum:district.settlementSafety >= 60 ? 24 : 0,
@@ -206,6 +256,10 @@
       armoryDepot:false,
       fieldClinic:false,
       researchPost:false,
+      fieldHospital:false,
+      rescueBeacons:false,
+      caravanRoute:false,
+      childShelter:false,
       bridgeOpen:false,
       powerGrid:false,
       lanternNetwork:false,
@@ -214,6 +268,7 @@
       routeSpeedMul:1,
       returningCivilians:0,
       damageReduction:0,
+      civilianDamageMul:1,
       medkitMinimum:district.settlementSafety >= 15 ? 2 : 1,
       armorFloor:district.settlementSafety >= 35 ? 45 : (district.settlementSafety >= 15 ? 25 : 0),
       ammoMinimum:district.settlementSafety >= 55 ? 20 : 0,
@@ -225,13 +280,23 @@
       ? "no added patrol in the Alpha boss arena"
       : protectedCaptureMission
         ? "no added patrol around the two protected research targets"
+      : protectedEscortMission
+        ? `no added patrol around ${whole(missionLevel) === 14 ? "Doctor Amara" : "the village children"}`
       : extraPatrols > 0
-        ? `${extraPatrols} extra ${bloodroot ? "Bloodroot Berserker " : (iron ? "Armored rail-yard " : (jungle ? "roaming Stalker " : "tiger "))}patrol${extraPatrols === 1 ? "" : "s"}`
+        ? `${extraPatrols} extra ${amara ? "Haven Stalker " : (bloodroot ? "Bloodroot Berserker " : (iron ? "Armored rail-yard " : (jungle ? "roaming Stalker " : "tiger ")))}patrol${extraPatrols === 1 ? "" : "s"}`
         : "no extra patrol";
     const scentText = district.bloodScent > 0
       ? `blood scent adds +${damageBonus} close-range damage and faster starting aggression`
       : "no persistent blood-scent damage";
-    const supportBits = bloodroot
+    const supportBits = amara
+      ? [
+          support.fieldHospital ? "Amara Haven Field Hospital" : "field hospital unavailable",
+          support.rescueBeacons ? "rescue beacon network active" : "rescue beacons offline",
+          support.caravanRoute ? "protected caravan route active" : "unsecured caravan road",
+          support.childShelter ? "children's safe shelter open" : "village shelter closed",
+          `${support.medkitMinimum} Med Kit minimum`,
+        ]
+      : bloodroot
       ? [
           support.researchPost ? "Bloodroot Research Clinic" : (support.fieldClinic ? "Bloodroot Trail Clinic" : "trail clinic unavailable"),
           support.lanternNetwork ? "lantern network active" : "dark trail—signal lanterns offline",
@@ -257,8 +322,9 @@
           support.safeHouse ? "River Gate Safe House" : "no Safe House",
           `${support.medkitMinimum} Med Kit minimum`,
         ];
-    if((jungle || iron || bloodroot) && support.returningCivilians > 0) supportBits.push(`${support.returningCivilians} returning civilian ${iron ? "worker" : (bloodroot ? "volunteer" : "helper")}${support.returningCivilians === 1 ? "" : "s"}`);
-    if((iron || bloodroot) && support.damageReduction > 0) supportBits.push(`${support.damageReduction} ${iron ? "powered-defense" : "clinic-armor"} damage reduction`);
+    if((jungle || iron || bloodroot || amara) && support.returningCivilians > 0) supportBits.push(`${support.returningCivilians} returning civilian ${iron ? "worker" : ((bloodroot || amara) ? "volunteer" : "helper")}${support.returningCivilians === 1 ? "" : "s"}`);
+    if((iron || bloodroot || amara) && support.damageReduction > 0) supportBits.push(`${support.damageReduction} ${iron ? "powered-defense" : (amara ? "escort-armor" : "clinic-armor")} damage reduction`);
+    if(amara && support.civilianDamageMul < 1) supportBits.push(`${Math.round((1 - support.civilianDamageMul) * 100)}% civilian protection`);
     if(support.armorFloor > 0) supportBits.push(`${support.armorFloor} starting armor minimum`);
     if(support.ammoMinimum > 0) supportBits.push(`${support.ammoMinimum} reserve-ammo minimum`);
     if(support.rubberAmmoMinimum > 0) supportBits.push(`${support.rubberAmmoMinimum} Rubber-round minimum`);
@@ -273,7 +339,7 @@
       tigerPressure:district.tigerPressure,
       settlementSafety:district.settlementSafety,
       bloodScent:district.bloodScent,
-      patrolType:bloodroot ? "Berserker" : (iron ? "Armored" : (jungle ? "Stalker" : "Standard")),
+      patrolType:amara ? "Stalker" : (bloodroot ? "Berserker" : (iron ? "Armored" : (jungle ? "Stalker" : "Standard"))),
       extraPatrols,
       startingAggroBoost:Number(startingAggroBoost.toFixed(3)),
       directorPressureBonus,

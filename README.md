@@ -535,6 +535,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Blood scent still increases tiger awareness, civilian-hunting pressure, and close-range damage, while rebuilt community defenses can reduce incoming damage.
 - Solo and Shared Story keep separate persistent Bloodroot progress. Reopening, restarting, or reconnecting preserves the shared battlefield state, and reward receipts continue blocking duplicate world updates.
 
+### V10.7 District Consequences — Amara Haven
+
+- Extends the Living World across Solo and Shared Story Missions 14–17 while preserving Doctor Amara, caravan, forest escort, and village-children objectives.
+- Missions 14 and 17 never receive added consequence patrols around their protected civilians. Mission 15 is capped at one additional Stalker, while Mission 16 can face the district's full two-patrol co-op pressure.
+- High tiger pressure and blood scent increase awareness, hunting pressure, and close-range damage without altering the original civilian counts or required rescue routes.
+- Settlement recovery opens the visible Amara Haven Field Hospital, powers rescue beacons, secures the caravan road, fortifies the village gate, and eventually reopens the children's safe shelter.
+- Real support includes up to three starting Med Kits, armor, ammunition, route scans, faster civilian escorts, and as much as 22% less tiger damage to Solo civilians.
+- Rescued residents visibly return as nurses and caravan drivers. Both Solo and Shared Story display the saved route and hospital condition before deployment.
+- Amara Haven progress remains separate between Solo and Shared Story, reconnects with the active squad battlefield, and uses the existing duplicate-proof reward and world-result receipts.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

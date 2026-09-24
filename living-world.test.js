@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–13 map to four persistent districts", () => {
+test("Missions 1–17 map to five persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -18,7 +18,9 @@ test("Missions 1–13 map to four persistent districts", () => {
   assert.equal(livingWorld.districtForMission(10).id, "iron_roar");
   assert.equal(livingWorld.districtForMission(11).id, "bloodroot_passage");
   assert.equal(livingWorld.districtForMission(13).id, "bloodroot_passage");
-  assert.equal(livingWorld.districtForMission(14), null);
+  assert.equal(livingWorld.districtForMission(14).id, "amara_haven");
+  assert.equal(livingWorld.districtForMission(17).id, "amara_haven");
+  assert.equal(livingWorld.districtForMission(18), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -202,6 +204,53 @@ test("a restored Bloodroot Passage opens a humane research route", () => {
   assert.match(coop.brief, /Bloodroot Research Clinic/);
 });
 
+test("Amara Haven protects the doctor and children while keeping escorts active", () => {
+  const defaults = livingWorld.defaultState();
+  const doctor = livingWorld.missionConsequences(defaults, 14, { playerCount:2 });
+  const caravan = livingWorld.missionConsequences(defaults, 15, { playerCount:2 });
+  const forest = livingWorld.missionConsequences(defaults, 16, { playerCount:1 });
+  const children = livingWorld.missionConsequences(defaults, 17, { playerCount:2 });
+  assert.equal(doctor.enabled, true);
+  assert.equal(doctor.extraPatrols, 0);
+  assert.match(doctor.brief, /no added patrol around Doctor Amara/);
+  assert.equal(caravan.extraPatrols, 1, "the caravan ambush never stacks a second consequence patrol");
+  assert.equal(forest.extraPatrols, 1, "solo escort pressure stays capped at one patrol");
+  assert.equal(forest.patrolType, "Stalker");
+  assert.equal(children.extraPatrols, 0);
+  assert.match(children.brief, /no added patrol around the village children/);
+});
+
+test("a restored Amara Haven protects civilians and opens its rescue network", () => {
+  const state = livingWorld.defaultState();
+  state.districts.amara_haven = {
+    ...state.districts.amara_haven,
+    tigerPressure:92,
+    settlementSafety:78,
+    bloodScent:95,
+  };
+  const caravan = livingWorld.missionConsequences(state, 15, { playerCount:2 });
+  const forest = livingWorld.missionConsequences(state, 16, { playerCount:2 });
+  assert.equal(caravan.extraPatrols, 1);
+  assert.equal(forest.extraPatrols, 2);
+  assert.equal(forest.damageBonus, 5);
+  assert.equal(forest.support.fieldHospital, true);
+  assert.equal(forest.support.rescueBeacons, true);
+  assert.equal(forest.support.caravanRoute, true);
+  assert.equal(forest.support.childShelter, true);
+  assert.equal(forest.support.fortifiedGate, true);
+  assert.equal(forest.support.safeRoute, true);
+  assert.equal(forest.support.routeSpeedMul, 1.12);
+  assert.equal(forest.support.returningCivilians, 2);
+  assert.equal(forest.support.damageReduction, 1);
+  assert.equal(forest.support.civilianDamageMul, 0.78);
+  assert.equal(forest.support.medkitMinimum, 3);
+  assert.equal(forest.support.armorFloor, 45);
+  assert.equal(forest.support.ammoMinimum, 24);
+  assert.equal(forest.support.scanPing, 360);
+  assert.match(forest.brief, /Amara Haven Field Hospital/);
+  assert.match(forest.brief, /22% civilian protection/);
+});
+
 test("District consequences are integrated into solo, Shared Story, and the Telegram cache build", () => {
   assert(game.includes("function recordLivingWorldStoryOutcome"));
   assert(game.includes("worldMapLivingChapterOneHtml(wm)"));
@@ -216,15 +265,18 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('jungle ? "jungle_ranger" : "river_safe_house"'));
   assert(game.includes('iron ? "iron_armory"'));
   assert(game.includes('bloodroot ? "bloodroot_clinic"'));
+  assert(game.includes('amara ? "amara_hospital"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S)"));
+  assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
   assert(squad.includes("function livingWorldMissionText"));
   assert(squad.includes("YOUR SHARED STORY WORLD"));
   assert(squad.includes("COMMUNITY BRIDGE • OPEN"));
   assert(squad.includes("IRON ROAR POWER GRID • ONLINE"));
   assert(squad.includes("LANTERNS ACTIVE"));
-  assert(html.includes("living-world.js?v=5079-bloodroot-passage"));
-  assert(html.includes("V10.6 (Bloodroot Passage)"));
+  assert(squad.includes("RESCUE BEACONS ACTIVE"));
+  assert(html.includes("living-world.js?v=5080-amara-haven"));
+  assert(html.includes("V10.7 (Amara Haven)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -445,4 +497,71 @@ test("Shared Story Mission 13 keeps exactly its original three research tigers",
   assert.equal(waiting.mission.captureRequired, 2);
   assert.equal(waiting.mission.tigerCount, 3);
   assert.equal(waiting.tigers.length, 3);
+});
+
+test("a real Shared Story Amara Haven room keeps Stalkers and hospital support", async () => {
+  const host = { id:910701, first_name:"Amara", last_name:"Leader" };
+  const teammate = { id:910702, first_name:"Haven", last_name:"Partner" };
+  let hostProfile = await squadServer.readCoopProfile(host);
+  hostProfile.livingWorld.districts.amara_haven = {
+    ...hostProfile.livingWorld.districts.amara_haven,
+    tigerPressure:92,
+    settlementSafety:78,
+    bloodScent:95,
+  };
+  hostProfile.supplies.medkits = 0;
+  hostProfile.supplies.armorPlates = 0;
+  hostProfile.ammo.real = 0;
+  hostProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(hostProfile, host);
+
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:16 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.mission.livingWorld.districtId, "amara_haven");
+  assert.equal(waiting.mission.livingWorld.extraPatrols, 2);
+  assert.equal(waiting.mission.tigerCount, 6);
+  assert.equal(waiting.settlementSupport.label, "Amara Haven Field Hospital");
+  assert.equal(waiting.settlementSupport.type, "amara_hospital");
+
+  session = await squadServer.joinSession(session.code, teammate);
+  let teammateProfile = await squadServer.readCoopProfile(teammate);
+  teammateProfile.supplies.medkits = 0;
+  teammateProfile.supplies.armorPlates = 0;
+  teammateProfile.ammo.real = 0;
+  teammateProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(teammateProfile, teammate);
+  session = await squadServer.applyAction(session, host, "start");
+
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.rescueBeacons, true);
+  assert.equal(active.mission.livingWorld.support.caravanRoute, true);
+  assert.equal(active.mission.livingWorld.support.childShelter, true);
+  assert.equal(active.mission.livingWorld.support.civilianDamageMul, 0.78);
+  assert.equal(active.tigers.filter((tiger)=>tiger.type === "Stalker").length, 2);
+  hostProfile = await squadServer.readCoopProfile(host);
+  teammateProfile = await squadServer.readCoopProfile(teammate);
+  assert(hostProfile.supplies.medkits >= 3 && teammateProfile.supplies.medkits >= 3);
+  assert(hostProfile.supplies.armorPlates >= 1 && teammateProfile.supplies.armorPlates >= 1);
+  assert(hostProfile.ammo.real >= 24 && teammateProfile.ammo.real >= 24);
+});
+
+test("Shared Story Missions 14 and 17 keep their protected civilian encounters exact", async () => {
+  for(const [level, userId, tigerCount, civilianCount] of [[14, 910703, 3, 1], [17, 910704, 3, 4]]){
+    const host = { id:userId, first_name:`Protected${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.amara_haven = {
+      ...profile.livingWorld.districts.amara_haven,
+      tigerPressure:96,
+      settlementSafety:78,
+      bloodScent:96,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+  }
 });

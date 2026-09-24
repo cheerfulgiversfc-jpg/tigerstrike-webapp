@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5079";
+const TS_BUILD = "5080";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -12106,6 +12106,9 @@ function livingWorldMissionBriefLine(state=S){
 function livingWorldPlayerDamageReduction(state=S){
   return Math.max(0, Math.floor(Number(state?._livingWorldMission?.support?.damageReduction || 0)));
 }
+function livingWorldCivilianDamageMul(state=S){
+  return clamp(Number(state?._livingWorldMission?.support?.civilianDamageMul ?? 1), 0.65, 1);
+}
 function recordLivingWorldStoryOutcome({ missionStats=null, missionLevel=null, civDead=0 }={}){
   if(S.mode !== "Story") return "";
   if(normalizeStoryVariant(S.storyVariant) !== STORY_VARIANTS.CAMPAIGN) return "";
@@ -12127,8 +12130,9 @@ function recordLivingWorldStoryOutcome({ missionStats=null, missionLevel=null, c
   });
   wm.livingWorld = result.state;
   if(!result.applied) return "";
-  if(!launchedFromWorldMap){
-    const districtId = result.district.id;
+  const districtId = result.district.id;
+  const strategicRegionExists = worldMapRegionExists(districtId);
+  if(!launchedFromWorldMap && strategicRegionExists){
     wm.regionControl[districtId] = result.after.tigerPressure;
     wm.settlementInfluence[districtId] = Math.max(Number(wm.settlementInfluence[districtId] || 0), result.after.settlementSafety);
     wm.completedMissions[districtId] = Math.max(0, Math.floor(Number(wm.completedMissions[districtId] || 0))) + 1;
@@ -12139,7 +12143,7 @@ function recordLivingWorldStoryOutcome({ missionStats=null, missionLevel=null, c
     faction.settlements = clamp(Math.max(faction.settlements, result.after.settlementSafety), 0, 100);
     wm.factionInfluence[districtId] = faction;
   }
-  wm.selectedRegionId = result.district.id;
+  if(strategicRegionExists) wm.selectedRegionId = districtId;
   wm.lastOutcome = `Living World • ${result.summary}`;
   wm.lastUpdatedAt = Date.now();
   return `\nLiving World: ${result.summary}\n`;
@@ -13840,7 +13844,7 @@ function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
   }).join("");
   return `<section class="card" id="livingWorldChapterOne" style="margin-top:10px;border-color:rgba(74,222,128,.62);background:linear-gradient(145deg,rgba(6,54,45,.50),rgba(8,15,29,.96))">
     <div class="hudLine"><b>🌍 Living Story Districts • Chapters 1–2</b></div>
-    <div class="small">Missions 1–13 now react to lasting results. Chapter 1 remains fully active, while Bloodroot Passage changes Missions 11–13 through Berserker pressure, blood aggression, trail conditions, clinic volunteers, and humane capture research. Solo and Shared Story each keep their own progression.</div>
+    <div class="small">Missions 1–17 now react to lasting results. Chapter 1 remains fully active; Bloodroot Passage changes Missions 11–13, and Amara Haven changes Missions 14–17 through protected VIP deployments, escort routes, rescue beacons, hospital volunteers, and civilian safety. Solo and Shared Story each keep their own progression.</div>
     <div class="small" style="margin-top:6px"><b>Latest:</b> ${worldMapEsc(living.headline)}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${cards}</div>
   </section>`;
@@ -39763,7 +39767,7 @@ function spawnMapInteractables(){
 
 function spawnLivingWorldDistrictSupport(){
   const effect = S._livingWorldMission;
-  const supportOpen = effect?.support?.safeHouse || effect?.support?.rangerStation || effect?.support?.armoryDepot || effect?.support?.fieldClinic || effect?.support?.researchPost;
+  const supportOpen = effect?.support?.safeHouse || effect?.support?.rangerStation || effect?.support?.armoryDepot || effect?.support?.fieldClinic || effect?.support?.researchPost || effect?.support?.fieldHospital;
   if(!effect?.enabled || !supportOpen || window.__TUTORIAL_MODE__) return false;
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   if(S.mapInteractables.some((item)=>item?.livingWorldSupport)) return true;
@@ -39772,8 +39776,9 @@ function spawnLivingWorldDistrictSupport(){
   const jungle = effect.districtId === "jungle_spine";
   const iron = effect.districtId === "iron_roar";
   const bloodroot = effect.districtId === "bloodroot_passage";
-  const label = bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House"));
-  let point = safeSpawnPoint(worldW * (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28))), worldH * (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70))), 24, true, true);
+  const amara = effect.districtId === "amara_haven";
+  const label = amara ? "Amara Haven Field Hospital" : (bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House")));
+  let point = safeSpawnPoint(worldW * (amara ? 0.72 : (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28)))), worldH * (amara ? 0.34 : (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70)))), 24, true, true);
   if(inMapScenarioKeepout(point.x, point.y, 24)){
     point = findNearestOpenPoint(point.x, point.y, 24, {
       avoidKeepout:true,
@@ -39799,7 +39804,7 @@ function spawnLivingWorldDistrictSupport(){
     triggered:false,
     rewardClaimed:false,
     livingWorldSupport:true,
-    livingWorldSupportType:bloodroot ? "bloodroot_clinic" : (iron ? "iron_armory" : (jungle ? "jungle_ranger" : "river_safe_house")),
+    livingWorldSupportType:amara ? "amara_hospital" : (bloodroot ? "bloodroot_clinic" : (iron ? "iron_armory" : (jungle ? "jungle_ranger" : "river_safe_house"))),
     returningCivilians:Math.max(0, Number(effect.support?.returningCivilians || 0)),
   });
   return true;
@@ -39810,7 +39815,29 @@ function spawnLivingWorldRiverGateSafeHouse(){
 
 function configureLivingWorldDistrictRoutes(){
   const effect = S._livingWorldMission;
-  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage"].includes(effect.districtId)) return false;
+  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven"].includes(effect.districtId)) return false;
+  if(effect.districtId === "amara_haven"){
+    const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
+    if(generator){
+      generator.powered = !!effect.support?.rescueBeacons;
+      generator.label = generator.powered ? "Amara Haven Rescue Beacons" : "Haven Emergency Radio";
+      generator.activeUntil = generator.powered ? Date.now() + (8 * 60 * 60 * 1000) : 0;
+    }
+    const gate = (S.mapInteractables || []).find((item)=>item?.kind === "gate");
+    if(gate){
+      gate.routeOpen = !!effect.support?.fortifiedGate;
+      gate.label = gate.routeOpen ? "Fortified Haven Gate" : "Unsecured Haven Gate";
+    }
+    const vehicle = (S.mapInteractables || []).find((item)=>item?.kind === "vehicle");
+    if(vehicle && effect.support?.caravanRoute){
+      vehicle.repaired = true;
+      vehicle.label = "Amara Haven Rescue Caravan";
+      vehicle.activeUntil = Date.now() + (8 * 60 * 60 * 1000);
+    }
+    __blockedAtCache.clear();
+    invalidateMapCache();
+    return true;
+  }
   if(effect.districtId === "bloodroot_passage"){
     const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
     if(generator){
@@ -40076,10 +40103,12 @@ function activateMapInteractable(it){
       const jungleRanger = it.livingWorldSupportType === "jungle_ranger";
       const ironArmory = it.livingWorldSupportType === "iron_armory";
       const bloodrootClinic = it.livingWorldSupportType === "bloodroot_clinic";
-      S.armor = clamp(Number(S.armor || 0) + (ironArmory ? 25 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15))), 0, S.armorCap || 100);
+      const amaraHospital = it.livingWorldSupportType === "amara_hospital";
+      if(amaraHospital) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
+      S.armor = clamp(Number(S.armor || 0) + (ironArmory ? 25 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15)))), 0, S.armorCap || 100);
       const supportWeapon = equippedWeapon();
       const supportAmmoId = supportWeapon ? (bestAvailableAmmoIdForWeapon(supportWeapon) || supportWeapon.ammo) : "";
-      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (ironArmory ? 18 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8)));
+      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (ironArmory ? 18 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8))));
       if(jungleRanger){
         S.scanPing = Math.max(Number(S.scanPing || 0), 240);
         if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
@@ -40094,6 +40123,7 @@ function activateMapInteractable(it){
         S.ammoReserve.TRANQ_DARTS = Math.max(0, Number(S.ammoReserve.TRANQ_DARTS || 0)) + 4;
         S.scanPing = Math.max(Number(S.scanPing || 0), 300);
       }
+      if(amaraHospital) S.scanPing = Math.max(Number(S.scanPing || 0), 320);
       it.uses = 0;
       it.cooldownUntil = now + 60000;
       it.activeUntil = now + 900;
@@ -40101,6 +40131,8 @@ function activateMapInteractable(it){
         ? "🏭 Iron Roar workers supplied +1 Med Kit, +25 Armor, +18 Ammo, 1 Trap, and a depot scan."
         : bloodrootClinic
         ? "🩺 Bloodroot volunteers supplied +1 Med Kit, +12 Armor, Rubber rounds, 4 Tranq Darts, and a trail scan."
+        : amaraHospital
+        ? "🏥 Amara Haven volunteers supplied +2 Med Kits, +18 Armor, +14 Ammo, and a rescue-route scan."
         : jungleRanger
         ? `🌿 Returning Jungle Spine volunteers supplied +1 Med Kit, +8 Armor, +12 Ammo${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a scout scan.`
         : "🏘️ River Gate volunteers supplied +1 Med Kit, +15 Armor, and +8 Ammo.", { success:true, seconds:4 });
@@ -45062,7 +45094,7 @@ function tickCiviliansAndThreats(){
       const smokeMult = (squadAbilityActive("smoke_screen", now, S) || now < Number(S.secondarySmokeUntil || 0)) ? 0.32 : 1;
       const shieldMult = civilianShielded(best) ? 0 : 1;
       const personaDmgMul = best.aiState === "panicked" ? 1.08 : (best.aiState === "cooperative" ? 0.94 : 1.12);
-      const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * smokeMult * personaDmgMul * perkCivMul() * storyCivilianDamageMul() * liveOpsMissionModifierValue("civilianDamageMul", 1, S);
+      const scaled = base * multType * rageMult * (1 + (diff-1)*0.22) * guardMult * protectMult * smokeMult * personaDmgMul * perkCivMul() * storyCivilianDamageMul() * livingWorldCivilianDamageMul(S) * liveOpsMissionModifierValue("civilianDamageMul", 1, S);
       const dmg = shieldMult ? Math.max(1, Math.round(scaled)) : 0;
       const prevHp = best.hp;
       best.hp = clamp(best.hp - dmg, 0, best.hpMax);
@@ -55261,25 +55293,38 @@ function drawMapInteractable(it){
   } else if(it.kind === "cache"){
     // drawMapInteractable is outside the map-background helper scope, so draw
     // the cache directly instead of calling that private crateBlock helper.
-    ctx.fillStyle = "rgba(120,72,34,.96)";
-    roundedRectFill(it.x - 13, it.y - 11, 26, 22, 5);
-    ctx.strokeStyle = "rgba(254,215,170,.72)";
-    ctx.lineWidth = 1.8;
-    ctx.strokeRect(it.x - 12, it.y - 10, 24, 20);
-    ctx.strokeStyle = palette[1];
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(it.x - 12, it.y - 4);
-    ctx.lineTo(it.x + 12, it.y - 4);
-    ctx.moveTo(it.x, it.y - 10);
-    ctx.lineTo(it.x, it.y + 10);
-    ctx.stroke();
-    if(["jungle_ranger","iron_armory","bloodroot_clinic"].includes(it.livingWorldSupportType)){
+    if(it.livingWorldSupportType === "amara_hospital"){
+      ctx.fillStyle = "rgba(224,242,254,.98)";
+      roundedRectFill(it.x - 28, it.y - 18, 56, 38, 7);
+      ctx.strokeStyle = "rgba(56,189,248,.92)";
+      ctx.lineWidth = 2.2;
+      ctx.strokeRect(it.x - 27, it.y - 17, 54, 36);
+      ctx.fillStyle = "rgba(225,29,72,.96)";
+      roundedRectFill(it.x - 3, it.y - 13, 6, 27, 1);
+      roundedRectFill(it.x - 12, it.y - 4, 24, 7, 1);
+    }else{
+      ctx.fillStyle = "rgba(120,72,34,.96)";
+      roundedRectFill(it.x - 13, it.y - 11, 26, 22, 5);
+      ctx.strokeStyle = "rgba(254,215,170,.72)";
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(it.x - 12, it.y - 10, 24, 20);
+      ctx.strokeStyle = palette[1];
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(it.x - 12, it.y - 4);
+      ctx.lineTo(it.x + 12, it.y - 4);
+      ctx.moveTo(it.x, it.y - 10);
+      ctx.lineTo(it.x, it.y + 10);
+      ctx.stroke();
+    }
+    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital"].includes(it.livingWorldSupportType)){
       const helpers = Math.max(1, Math.min(2, Number(it.returningCivilians || 0) || 1));
       for(let idx=0; idx<helpers; idx++){
         const hx = it.x + (idx === 0 ? -27 : 27);
         ctx.fillStyle = it.livingWorldSupportType === "iron_armory"
           ? (idx === 0 ? "#f59e0b" : "#64748b")
+          : it.livingWorldSupportType === "amara_hospital"
+            ? (idx === 0 ? "#38bdf8" : "#f472b6")
           : it.livingWorldSupportType === "bloodroot_clinic"
             ? (idx === 0 ? "#fb7185" : "#a78bfa")
             : (idx === 0 ? "#16a34a" : "#0ea5e9");
