@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–17 map to five persistent districts", () => {
+test("Missions 1–20 map to six persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -20,7 +20,9 @@ test("Missions 1–17 map to five persistent districts", () => {
   assert.equal(livingWorld.districtForMission(13).id, "bloodroot_passage");
   assert.equal(livingWorld.districtForMission(14).id, "amara_haven");
   assert.equal(livingWorld.districtForMission(17).id, "amara_haven");
-  assert.equal(livingWorld.districtForMission(18), null);
+  assert.equal(livingWorld.districtForMission(18).id, "crimson_hollow");
+  assert.equal(livingWorld.districtForMission(20).id, "crimson_hollow");
+  assert.equal(livingWorld.districtForMission(21), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -251,6 +253,47 @@ test("a restored Amara Haven protects civilians and opens its rescue network", (
   assert.match(forest.brief, /22% civilian protection/);
 });
 
+test("Crimson Hollow preserves the capture pack, swarm, and Blood Tiger counts", () => {
+  const defaults = livingWorld.defaultState();
+  const capture = livingWorld.missionConsequences(defaults, 18, { playerCount:2 });
+  const swarm = livingWorld.missionConsequences(defaults, 19, { playerCount:2 });
+  const boss = livingWorld.missionConsequences(defaults, 20, { playerCount:2 });
+  assert.equal(capture.enabled, true);
+  assert.equal(capture.extraPatrols, 0);
+  assert.match(capture.brief, /no added patrol around the aggressive capture pack/);
+  assert.equal(swarm.extraPatrols, 0);
+  assert.match(swarm.brief, /no added patrol inside the nine-tiger swarm/);
+  assert.equal(boss.extraPatrols, 0);
+  assert.match(boss.brief, /no added patrol in the Blood Tiger arena/);
+});
+
+test("a restored Crimson Hollow supplies humane capture and weakens Blood Rage", () => {
+  const state = livingWorld.defaultState();
+  state.districts.crimson_hollow = {
+    ...state.districts.crimson_hollow,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  const restored = livingWorld.missionConsequences(state, 20, { playerCount:2 });
+  assert.equal(restored.extraPatrols, 0);
+  assert.equal(restored.damageBonus, 6);
+  assert.equal(restored.support.conservationCamp, true);
+  assert.equal(restored.support.calmingTowers, true);
+  assert.equal(restored.support.swarmDefenses, true);
+  assert.equal(restored.support.bossWard, true);
+  assert.equal(restored.support.bossRageReduction, 3);
+  assert.equal(restored.support.returningCivilians, 2);
+  assert.equal(restored.support.damageReduction, 2);
+  assert.equal(restored.support.medkitMinimum, 3);
+  assert.equal(restored.support.armorFloor, 60);
+  assert.equal(restored.support.rubberAmmoMinimum, 64);
+  assert.equal(restored.support.tranqMinimum, 14);
+  assert.equal(restored.support.scanPing, 420);
+  assert.match(restored.brief, /Crimson Hollow Conservation Camp/);
+  assert.match(restored.brief, /3 Blood Rage damage reduction/);
+});
+
 test("District consequences are integrated into solo, Shared Story, and the Telegram cache build", () => {
   assert(game.includes("function recordLivingWorldStoryOutcome"));
   assert(game.includes("worldMapLivingChapterOneHtml(wm)"));
@@ -266,7 +309,8 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('iron ? "iron_armory"'));
   assert(game.includes('bloodroot ? "bloodroot_clinic"'));
   assert(game.includes('amara ? "amara_hospital"'));
-  assert(game.includes("livingWorldPlayerDamageReduction(S)"));
+  assert(game.includes('crimson ? "crimson_camp"'));
+  assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
   assert(squad.includes("function livingWorldMissionText"));
@@ -275,8 +319,10 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("IRON ROAR POWER GRID • ONLINE"));
   assert(squad.includes("LANTERNS ACTIVE"));
   assert(squad.includes("RESCUE BEACONS ACTIVE"));
-  assert(html.includes("living-world.js?v=5080-amara-haven"));
-  assert(html.includes("V10.7 (Amara Haven)"));
+  assert(squad.includes("BLOOD TIGER WARD ACTIVE"));
+  assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
+  assert(html.includes("living-world.js?v=5081-crimson-hollow"));
+  assert(html.includes("V10.8 (Crimson Hollow)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -563,5 +609,75 @@ test("Shared Story Missions 14 and 17 keep their protected civilian encounters e
     assert.equal(waiting.mission.tigerCount, tigerCount);
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
+  }
+});
+
+test("a real Shared Story Crimson Hollow room grants capture and anti-rage support", async () => {
+  const host = { id:910801, first_name:"Crimson", last_name:"Leader" };
+  const teammate = { id:910802, first_name:"Hollow", last_name:"Partner" };
+  let hostProfile = await squadServer.readCoopProfile(host);
+  hostProfile.livingWorld.districts.crimson_hollow = {
+    ...hostProfile.livingWorld.districts.crimson_hollow,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  hostProfile.supplies.medkits = 0;
+  hostProfile.supplies.armorPlates = 0;
+  hostProfile.ammo.real = 0;
+  hostProfile.ammo.rubber = 0;
+  hostProfile.ammo.tranq = 0;
+  await squadServer.writeCoopProfile(hostProfile, host);
+
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:18 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.mission.livingWorld.districtId, "crimson_hollow");
+  assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+  assert.equal(waiting.mission.tigerCount, 4);
+  assert.equal(waiting.mission.captureRequired, 2);
+  assert.equal(waiting.settlementSupport.label, "Crimson Hollow Conservation Camp");
+  assert.equal(waiting.settlementSupport.type, "crimson_camp");
+
+  session = await squadServer.joinSession(session.code, teammate);
+  let teammateProfile = await squadServer.readCoopProfile(teammate);
+  teammateProfile.supplies.medkits = 0;
+  teammateProfile.supplies.armorPlates = 0;
+  teammateProfile.ammo.real = 0;
+  teammateProfile.ammo.rubber = 0;
+  teammateProfile.ammo.tranq = 0;
+  await squadServer.writeCoopProfile(teammateProfile, teammate);
+  await squadServer.applyAction(session, host, "start");
+
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.calmingTowers, true);
+  assert.equal(active.mission.livingWorld.support.swarmDefenses, true);
+  assert.equal(active.mission.livingWorld.support.bossRageReduction, 3);
+  hostProfile = await squadServer.readCoopProfile(host);
+  teammateProfile = await squadServer.readCoopProfile(teammate);
+  assert(hostProfile.supplies.medkits >= 3 && teammateProfile.supplies.medkits >= 3);
+  assert(hostProfile.supplies.armorPlates >= 1 && teammateProfile.supplies.armorPlates >= 1);
+  assert(hostProfile.ammo.rubber >= 64 && teammateProfile.ammo.rubber >= 64);
+  assert(hostProfile.ammo.tranq >= 14 && teammateProfile.ammo.tranq >= 14);
+});
+
+test("Shared Story Missions 18–20 retain their exact designed encounters", async () => {
+  for(const [level, userId, tigerCount, captureRequired, bossCount] of [[18, 910803, 4, 2, 0], [19, 910804, 9, 0, 0], [20, 910805, 1, 0, 1]]){
+    const host = { id:userId, first_name:`Crimson${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.crimson_hollow = {
+      ...profile.livingWorld.districts.crimson_hollow,
+      tigerPressure:96,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.captureRequired, captureRequired);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, bossCount);
   }
 });

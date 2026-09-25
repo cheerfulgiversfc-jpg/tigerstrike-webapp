@@ -545,6 +545,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Rescued residents visibly return as nurses and caravan drivers. Both Solo and Shared Story display the saved route and hospital condition before deployment.
 - Amara Haven progress remains separate between Solo and Shared Story, reconnects with the active squad battlefield, and uses the existing duplicate-proof reward and world-result receipts.
 
+### V10.8 District Consequences — Crimson Hollow
+
+- Completes Chapter 2 Living World coverage across Solo and Shared Story Missions 18–20 without changing their original objectives.
+- Mission 18 keeps exactly four tigers and its required two live captures. Mission 19 keeps its designed nine-tiger swarm, and Mission 20 remains a single 1,800 HP Blood Tiger boss fight.
+- Crimson Hollow never adds patrol clutter to these already demanding encounters. Saved tiger pressure and blood scent instead change starting aggression, director pressure, and close-range damage.
+- Settlement recovery opens a visible Conservation Camp, activates calming towers, arms anti-swarm defenses, and powers a Blood Tiger ward that cuts the boss's low-health Blood Rage bonus by three damage.
+- Real support includes up to three starting Med Kits, 60 armor, 64 Rubber rounds, 14 Tranq Darts, a long-range scan, and two points of defensive damage reduction.
+- The Conservation Camp provides usable Solo supplies, while Shared Story grants both players their own supplies from their separate co-op profiles. Returning residents appear as wildlife handlers and trackers.
+- Every Chapter 2 mission now has accurate persistent consequences, separate Solo/Shared progression, reconnect-safe squad state, and duplicate-proof reward and world-result receipts.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.
