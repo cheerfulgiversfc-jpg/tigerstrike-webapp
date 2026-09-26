@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–27 map to eight persistent districts", () => {
+test("Missions 1–30 map to nine persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -26,7 +26,9 @@ test("Missions 1–27 map to eight persistent districts", () => {
   assert.equal(livingWorld.districtForMission(23).id, "veil_canopy");
   assert.equal(livingWorld.districtForMission(24).id, "riverveil_crossing");
   assert.equal(livingWorld.districtForMission(27).id, "riverveil_crossing");
-  assert.equal(livingWorld.districtForMission(28), null);
+  assert.equal(livingWorld.districtForMission(28).id, "shadow_basin");
+  assert.equal(livingWorld.districtForMission(30).id, "shadow_basin");
+  assert.equal(livingWorld.districtForMission(31), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -390,6 +392,52 @@ test("a restored Riverveil Crossing secures routes and protects civilians", () =
   assert.match(restored.brief, /26% civilian protection/);
 });
 
+test("Shadow Basin preserves its coordinated pack, helicopter rescue, and Stealth Tiger", () => {
+  const defaults = livingWorld.defaultState();
+  const pack = livingWorld.missionConsequences(defaults, 28, { playerCount:2 });
+  const rescue = livingWorld.missionConsequences(defaults, 29, { playerCount:2 });
+  const boss = livingWorld.missionConsequences(defaults, 30, { playerCount:2 });
+  assert.equal(pack.enabled, true);
+  assert.equal(pack.extraPatrols, 0);
+  assert.match(pack.brief, /no added patrol inside the eight-tiger coordinated pack/);
+  assert.equal(rescue.extraPatrols, 0);
+  assert.match(rescue.brief, /no added patrol around the seven-civilian helicopter evacuation/);
+  assert.equal(boss.extraPatrols, 0);
+  assert.match(boss.brief, /no added patrol in the Stealth Tiger arena/);
+});
+
+test("a restored Shadow Basin protects the LZ and tracks its boss", () => {
+  const state = livingWorld.defaultState();
+  state.districts.shadow_basin = {
+    ...state.districts.shadow_basin,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  const restored = livingWorld.missionConsequences(state, 30, { playerCount:2 });
+  assert.equal(restored.extraPatrols, 0);
+  assert.equal(restored.damageBonus, 6);
+  assert.equal(restored.support.shadowCommand, true);
+  assert.equal(restored.support.packSensors, true);
+  assert.equal(restored.support.lzDefenses, true);
+  assert.equal(restored.support.stealthArray, true);
+  assert.equal(restored.support.stealthBossReduction, 3);
+  assert.equal(restored.support.safeRoute, true);
+  assert.equal(restored.support.routeSpeedMul, 1.12);
+  assert.equal(restored.support.returningCivilians, 2);
+  assert.equal(restored.support.damageReduction, 2);
+  assert.equal(restored.support.civilianDamageMul, 0.72);
+  assert.equal(restored.support.medkitMinimum, 3);
+  assert.equal(restored.support.armorFloor, 65);
+  assert.equal(restored.support.ammoMinimum, 30);
+  assert.equal(restored.support.rubberAmmoMinimum, 48);
+  assert.equal(restored.support.tranqMinimum, 10);
+  assert.equal(restored.support.scanPing, 450);
+  assert.match(restored.brief, /Shadow Basin Forward Command/);
+  assert.match(restored.brief, /28% civilian protection/);
+  assert.match(restored.brief, /3 Stealth Tiger damage reduction/);
+});
+
 test("District consequences are integrated into solo, Shared Story, and the Telegram cache build", () => {
   assert(game.includes("function recordLivingWorldStoryOutcome"));
   assert(game.includes("worldMapLivingChapterOneHtml(wm)"));
@@ -408,6 +456,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('crimson ? "crimson_camp"'));
   assert(game.includes('veil ? "veil_outpost"'));
   assert(game.includes('riverveil ? "riverveil_station"'));
+  assert(game.includes('shadow ? "shadow_command"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
@@ -420,9 +469,11 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("BLOOD TIGER WARD ACTIVE"));
   assert(squad.includes("VEIL FIELD LAB ONLINE"));
   assert(squad.includes("SURVIVOR CAMP OPEN"));
+  assert(squad.includes("STEALTH TRACKING ONLINE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
-  assert(html.includes("living-world.js?v=5083-riverveil-crossing"));
-  assert(html.includes("V10.10 (Riverveil Crossing)"));
+  assert(server.includes("stealthBossReduction"));
+  assert(html.includes("living-world.js?v=5084-shadow-basin"));
+  assert(html.includes("V10.11 (Shadow Basin)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -927,5 +978,86 @@ test("Shared Story Missions 24–27 retain exact tigers, civilians, and checkpoi
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
+  }
+});
+
+test("a real Shared Story Shadow Basin room grants tracking and LZ support to both players", async () => {
+  const host = { id:911101, first_name:"Shadow", last_name:"Leader" };
+  const teammate = { id:911102, first_name:"Basin", last_name:"Partner" };
+  let hostProfile = await squadServer.readCoopProfile(host);
+  hostProfile.livingWorld.districts.shadow_basin = {
+    ...hostProfile.livingWorld.districts.shadow_basin,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  hostProfile.supplies.medkits = 0;
+  hostProfile.supplies.armorPlates = 0;
+  hostProfile.ammo.real = 0;
+  hostProfile.ammo.rubber = 0;
+  hostProfile.ammo.tranq = 0;
+  await squadServer.writeCoopProfile(hostProfile, host);
+
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:30 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.mission.livingWorld.districtId, "shadow_basin");
+  assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+  assert.equal(waiting.mission.tigerCount, 1);
+  assert.equal(waiting.tigers[0].name, "Stealth Tiger");
+  assert.equal(waiting.tigers[0].hpMax, 2200);
+  assert.equal(waiting.settlementSupport.label, "Shadow Basin Tracking Command");
+  assert.equal(waiting.settlementSupport.type, "shadow_command");
+
+  session = await squadServer.joinSession(session.code, teammate);
+  let teammateProfile = await squadServer.readCoopProfile(teammate);
+  teammateProfile.supplies.medkits = 0;
+  teammateProfile.supplies.armorPlates = 0;
+  teammateProfile.ammo.real = 0;
+  teammateProfile.ammo.rubber = 0;
+  teammateProfile.ammo.tranq = 0;
+  await squadServer.writeCoopProfile(teammateProfile, teammate);
+  await squadServer.applyAction(session, host, "start");
+
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.packSensors, true);
+  assert.equal(active.mission.livingWorld.support.lzDefenses, true);
+  assert.equal(active.mission.livingWorld.support.stealthArray, true);
+  assert.equal(active.mission.livingWorld.support.stealthBossReduction, 3);
+  hostProfile = await squadServer.readCoopProfile(host);
+  teammateProfile = await squadServer.readCoopProfile(teammate);
+  assert(hostProfile.supplies.medkits >= 3 && teammateProfile.supplies.medkits >= 3);
+  assert(hostProfile.supplies.armorPlates >= 1 && teammateProfile.supplies.armorPlates >= 1);
+  assert(hostProfile.ammo.real >= 30 && teammateProfile.ammo.real >= 30);
+  assert(hostProfile.ammo.rubber >= 48 && teammateProfile.ammo.rubber >= 48);
+  assert(hostProfile.ammo.tranq >= 10 && teammateProfile.ammo.tranq >= 10);
+});
+
+test("Shared Story Missions 28–30 retain exact encounters and extraction", async () => {
+  const rows = [
+    [28, 911103, 8, 0, 0, 0, "ground"],
+    [29, 911104, 5, 7, 3, 0, "helicopter"],
+    [30, 911105, 1, 0, 0, 1, "ground"],
+  ];
+  for(const [level, userId, tigerCount, civilianCount, checkpointCount, bossCount, extractionType] of rows){
+    const host = { id:userId, first_name:`Shadow${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.shadow_basin = {
+      ...profile.livingWorld.districts.shadow_basin,
+      tigerPressure:96,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.checkpoints.length, checkpointCount);
+    assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, bossCount);
+    assert.equal(waiting.mission.extractionType, extractionType);
   }
 });

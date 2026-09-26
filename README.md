@@ -575,6 +575,17 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - The station supplies Solo players directly and gives both Shared Story players their own supplies from separate co-op profiles. Returning residents appear as river guides and mechanics.
 - Riverveil progress remains separate between Solo and Shared Story. Reconnect-safe battlefield state and duplicate-proof reward and Living World receipts remain active.
 
+### V10.11 District Consequences — Shadow Basin
+
+- Extends the Living World through Solo and Shared Story Missions 28–30 without replacing or weakening their original objectives.
+- Mission 28 keeps exactly eight coordinated tigers. Mission 29 keeps exactly five tigers, seven civilians, three checkpoints, and its helicopter extraction. Mission 30 keeps one 2,200 HP Stealth Tiger boss.
+- No consequence patrols are added to these already crowded encounters. Persistent tiger pressure and blood scent instead increase awareness, director pressure, and close-range damage.
+- Settlement recovery opens a visible Shadow Basin Forward Command, activates pack sensors, fortifies the helicopter landing zone, and brings the Stealth Tiger tracking array online.
+- Real support includes up to three starting Med Kits, 65 armor, normal and Rubber ammunition, 10 Tranq Darts, long-range scans, faster escort routes, up to two points of defensive protection, and as much as 28% less damage to civilians.
+- A fully restored tracking array reduces the Stealth Tiger's saved blood-scent damage bonus by three without lowering its original 2,200 HP or removing the boss fight.
+- Forward Command supplies Solo players directly and gives both Shared Story players their own supplies from separate co-op profiles. Returning residents appear as Shadow Basin volunteers.
+- Shadow Basin progress remains separate between Solo and Shared Story. Reconnect-safe battlefield state and duplicate-proof reward and Living World receipts remain active.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.
