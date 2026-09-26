@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V10.8 cache key forces Telegram to load Crimson Hollow", () => {
-  assert(game.includes('const TS_BUILD = "5081"'));
-  assert(html.includes("game.js?v=5081-crimson-hollow"));
-  assert(html.includes("tutorial.js?v=5081-crimson-hollow"));
+test("V10.9 cache key forces Telegram to load Veil Canopy", () => {
+  assert(game.includes('const TS_BUILD = "5082"'));
+  assert(html.includes("game.js?v=5082-veil-canopy"));
+  assert(html.includes("tutorial.js?v=5082-veil-canopy"));
 });

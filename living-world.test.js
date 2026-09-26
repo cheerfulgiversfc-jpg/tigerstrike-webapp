@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–20 map to six persistent districts", () => {
+test("Missions 1–23 map to seven persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -22,7 +22,9 @@ test("Missions 1–20 map to six persistent districts", () => {
   assert.equal(livingWorld.districtForMission(17).id, "amara_haven");
   assert.equal(livingWorld.districtForMission(18).id, "crimson_hollow");
   assert.equal(livingWorld.districtForMission(20).id, "crimson_hollow");
-  assert.equal(livingWorld.districtForMission(21), null);
+  assert.equal(livingWorld.districtForMission(21).id, "veil_canopy");
+  assert.equal(livingWorld.districtForMission(23).id, "veil_canopy");
+  assert.equal(livingWorld.districtForMission(24), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -294,6 +296,50 @@ test("a restored Crimson Hollow supplies humane capture and weakens Blood Rage",
   assert.match(restored.brief, /3 Blood Rage damage reduction/);
 });
 
+test("Veil Canopy preserves the research escort, tall-grass pack, and live-capture target", () => {
+  const defaults = livingWorld.defaultState();
+  const escort = livingWorld.missionConsequences(defaults, 21, { playerCount:2 });
+  const ambush = livingWorld.missionConsequences(defaults, 22, { playerCount:2 });
+  const capture = livingWorld.missionConsequences(defaults, 23, { playerCount:2 });
+  assert.equal(escort.enabled, true);
+  assert.equal(escort.extraPatrols, 0);
+  assert.match(escort.brief, /no added patrol around the four-person research team/);
+  assert.equal(ambush.extraPatrols, 0);
+  assert.match(ambush.brief, /no added patrol inside the five-tiger tall-grass ambush/);
+  assert.equal(capture.extraPatrols, 0);
+  assert.match(capture.brief, /no added patrol around the Veil Tiger live-capture target/);
+});
+
+test("a restored Veil Canopy protects researchers and supplies humane field work", () => {
+  const state = livingWorld.defaultState();
+  state.districts.veil_canopy = {
+    ...state.districts.veil_canopy,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  const restored = livingWorld.missionConsequences(state, 23, { playerCount:2 });
+  assert.equal(restored.extraPatrols, 0);
+  assert.equal(restored.damageBonus, 5);
+  assert.equal(restored.support.researchOutpost, true);
+  assert.equal(restored.support.canopyBeacons, true);
+  assert.equal(restored.support.protectedResearchRoute, true);
+  assert.equal(restored.support.veilLab, true);
+  assert.equal(restored.support.safeRoute, true);
+  assert.equal(restored.support.routeSpeedMul, 1.12);
+  assert.equal(restored.support.returningCivilians, 2);
+  assert.equal(restored.support.damageReduction, 2);
+  assert.equal(restored.support.civilianDamageMul, 0.76);
+  assert.equal(restored.support.medkitMinimum, 3);
+  assert.equal(restored.support.armorFloor, 55);
+  assert.equal(restored.support.ammoMinimum, 22);
+  assert.equal(restored.support.rubberAmmoMinimum, 56);
+  assert.equal(restored.support.tranqMinimum, 12);
+  assert.equal(restored.support.scanPing, 420);
+  assert.match(restored.brief, /Veil Canopy Field Lab/);
+  assert.match(restored.brief, /24% civilian protection/);
+});
+
 test("District consequences are integrated into solo, Shared Story, and the Telegram cache build", () => {
   assert(game.includes("function recordLivingWorldStoryOutcome"));
   assert(game.includes("worldMapLivingChapterOneHtml(wm)"));
@@ -310,6 +356,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('bloodroot ? "bloodroot_clinic"'));
   assert(game.includes('amara ? "amara_hospital"'));
   assert(game.includes('crimson ? "crimson_camp"'));
+  assert(game.includes('veil ? "veil_outpost"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
@@ -320,9 +367,10 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("LANTERNS ACTIVE"));
   assert(squad.includes("RESCUE BEACONS ACTIVE"));
   assert(squad.includes("BLOOD TIGER WARD ACTIVE"));
+  assert(squad.includes("VEIL FIELD LAB ONLINE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
-  assert(html.includes("living-world.js?v=5081-crimson-hollow"));
-  assert(html.includes("V10.8 (Crimson Hollow)"));
+  assert(html.includes("living-world.js?v=5082-veil-canopy"));
+  assert(html.includes("V10.9 (Veil Canopy)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -679,5 +727,77 @@ test("Shared Story Missions 18–20 retain their exact designed encounters", asy
     assert.equal(waiting.mission.captureRequired, captureRequired);
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, bossCount);
+  }
+});
+
+test("a real Shared Story Veil Canopy room grants research and capture support", async () => {
+  const host = { id:910901, first_name:"Veil", last_name:"Leader" };
+  const teammate = { id:910902, first_name:"Canopy", last_name:"Partner" };
+  let hostProfile = await squadServer.readCoopProfile(host);
+  hostProfile.livingWorld.districts.veil_canopy = {
+    ...hostProfile.livingWorld.districts.veil_canopy,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  hostProfile.supplies.medkits = 0;
+  hostProfile.supplies.armorPlates = 0;
+  hostProfile.ammo.real = 0;
+  hostProfile.ammo.rubber = 0;
+  hostProfile.ammo.tranq = 0;
+  await squadServer.writeCoopProfile(hostProfile, host);
+
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:23 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.mission.livingWorld.districtId, "veil_canopy");
+  assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+  assert.equal(waiting.mission.tigerCount, 3);
+  assert.equal(waiting.mission.captureRequired, 1);
+  assert.equal(waiting.settlementSupport.label, "Veil Canopy Field Lab");
+  assert.equal(waiting.settlementSupport.type, "veil_outpost");
+
+  session = await squadServer.joinSession(session.code, teammate);
+  let teammateProfile = await squadServer.readCoopProfile(teammate);
+  teammateProfile.supplies.medkits = 0;
+  teammateProfile.supplies.armorPlates = 0;
+  teammateProfile.ammo.real = 0;
+  teammateProfile.ammo.rubber = 0;
+  teammateProfile.ammo.tranq = 0;
+  await squadServer.writeCoopProfile(teammateProfile, teammate);
+  await squadServer.applyAction(session, host, "start");
+
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.canopyBeacons, true);
+  assert.equal(active.mission.livingWorld.support.protectedResearchRoute, true);
+  assert.equal(active.mission.livingWorld.support.veilLab, true);
+  assert.equal(active.mission.livingWorld.support.civilianDamageMul, 0.76);
+  hostProfile = await squadServer.readCoopProfile(host);
+  teammateProfile = await squadServer.readCoopProfile(teammate);
+  assert(hostProfile.supplies.medkits >= 3 && teammateProfile.supplies.medkits >= 3);
+  assert(hostProfile.supplies.armorPlates >= 1 && teammateProfile.supplies.armorPlates >= 1);
+  assert(hostProfile.ammo.real >= 22 && teammateProfile.ammo.real >= 22);
+  assert(hostProfile.ammo.rubber >= 56 && teammateProfile.ammo.rubber >= 56);
+  assert(hostProfile.ammo.tranq >= 12 && teammateProfile.ammo.tranq >= 12);
+});
+
+test("Shared Story Missions 21–23 retain their exact designed encounters", async () => {
+  for(const [level, userId, tigerCount, civilianCount, captureRequired] of [[21, 910903, 4, 4, 0], [22, 910904, 5, 0, 0], [23, 910905, 3, 0, 1]]){
+    const host = { id:userId, first_name:`Veil${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.veil_canopy = {
+      ...profile.livingWorld.districts.veil_canopy,
+      tigerPressure:96,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.captureRequired, captureRequired);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
   }
 });

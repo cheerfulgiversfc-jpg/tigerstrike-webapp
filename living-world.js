@@ -5,7 +5,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const PILOT_MAX_MISSION = 20;
+  const PILOT_MAX_MISSION = 23;
   const DISTRICTS = Object.freeze([
     Object.freeze({ id:"river_gate", name:"River Gate", missions:"1–3", minMission:1, maxMission:3, tigerPressure:52, settlementSafety:18 }),
     Object.freeze({ id:"jungle_spine", name:"Jungle Spine", missions:"4–7", minMission:4, maxMission:7, tigerPressure:62, settlementSafety:12 }),
@@ -13,6 +13,7 @@
     Object.freeze({ id:"bloodroot_passage", name:"Bloodroot Passage", missions:"11–13", minMission:11, maxMission:13, tigerPressure:68, settlementSafety:10 }),
     Object.freeze({ id:"amara_haven", name:"Amara Haven", missions:"14–17", minMission:14, maxMission:17, tigerPressure:71, settlementSafety:9 }),
     Object.freeze({ id:"crimson_hollow", name:"Crimson Hollow", missions:"18–20", minMission:18, maxMission:20, tigerPressure:84, settlementSafety:6 }),
+    Object.freeze({ id:"veil_canopy", name:"Veil Canopy", missions:"21–23", minMission:21, maxMission:23, tigerPressure:76, settlementSafety:8 }),
   ]);
 
   const clamp = (value, min, max)=>Math.min(max, Math.max(min, Number(value) || 0));
@@ -102,7 +103,7 @@
     const state = normalizeState(raw);
     const definition = districtForMission(missionLevel);
     const playerCount = Math.max(1, whole(options.playerCount) || 1);
-    const enabledDistrict = definition && ["river_gate", "jungle_spine", "iron_roar", "bloodroot_passage", "amara_haven", "crimson_hollow"].includes(definition.id);
+    const enabledDistrict = definition && ["river_gate", "jungle_spine", "iron_roar", "bloodroot_passage", "amara_haven", "crimson_hollow", "veil_canopy"].includes(definition.id);
     if(!enabledDistrict){
       return {
         enabled:false,
@@ -114,7 +115,7 @@
         directorPressureBonus:0,
         damageBonus:0,
         patrolType:"Standard",
-        support:{ safeHouse:false, rangerStation:false, armoryDepot:false, fieldClinic:false, researchPost:false, fieldHospital:false, rescueBeacons:false, caravanRoute:false, childShelter:false, conservationCamp:false, calmingTowers:false, swarmDefenses:false, bossWard:false, bossRageReduction:0, bridgeOpen:false, powerGrid:false, lanternNetwork:false, fortifiedGate:false, safeRoute:false, routeSpeedMul:1, returningCivilians:0, damageReduction:0, civilianDamageMul:1, medkitMinimum:0, armorFloor:0, ammoMinimum:0, rubberAmmoMinimum:0, tranqMinimum:0, scanPing:0 },
+        support:{ safeHouse:false, rangerStation:false, armoryDepot:false, fieldClinic:false, researchPost:false, fieldHospital:false, rescueBeacons:false, caravanRoute:false, childShelter:false, conservationCamp:false, calmingTowers:false, swarmDefenses:false, bossWard:false, bossRageReduction:0, researchOutpost:false, canopyBeacons:false, protectedResearchRoute:false, veilLab:false, bridgeOpen:false, powerGrid:false, lanternNetwork:false, fortifiedGate:false, safeRoute:false, routeSpeedMul:1, returningCivilians:0, damageReduction:0, civilianDamageMul:1, medkitMinimum:0, armorFloor:0, ammoMinimum:0, rubberAmmoMinimum:0, tranqMinimum:0, scanPing:0 },
         brief:"No active district consequence for this mission.",
         supportLabel:"No district support",
       };
@@ -126,11 +127,13 @@
     const bloodroot = definition.id === "bloodroot_passage";
     const amara = definition.id === "amara_haven";
     const crimson = definition.id === "crimson_hollow";
+    const veil = definition.id === "veil_canopy";
     const bossMission = whole(missionLevel) === 10;
     const protectedCaptureMission = whole(missionLevel) === 13;
     const protectedEscortMission = amara && [14,17].includes(whole(missionLevel));
     const protectedCrimsonMission = crimson && [18,19,20].includes(whole(missionLevel));
-    let rawPatrols = (bossMission || protectedCaptureMission || protectedEscortMission || protectedCrimsonMission) ? 0 : (amara
+    const protectedVeilMission = veil && [21,22,23].includes(whole(missionLevel));
+    let rawPatrols = (bossMission || protectedCaptureMission || protectedEscortMission || protectedCrimsonMission || protectedVeilMission) ? 0 : (amara
       ? (district.tigerPressure >= 88 ? 2 : (district.tigerPressure >= 68 ? 1 : 0))
       : bloodroot
       ? (district.tigerPressure >= 86 ? 2 : (district.tigerPressure >= 66 ? 1 : 0))
@@ -142,20 +145,58 @@
     if(bloodroot && whole(missionLevel) === 12) rawPatrols = Math.min(1, rawPatrols);
     if(amara && whole(missionLevel) === 15) rawPatrols = Math.min(1, rawPatrols);
     const extraPatrols = playerCount <= 1 ? Math.min(1, rawPatrols) : rawPatrols;
-    const aggroPressureFloor = crimson ? 36 : (amara ? 41 : (bloodroot ? 40 : (iron ? 38 : (jungle ? 42 : 45))));
-    const aggroPressureRate = crimson ? 0.004 : (amara ? 0.0035 : (bloodroot ? 0.0036 : (iron ? 0.0037 : (jungle ? 0.0034 : 0.003))));
-    const aggroScentRate = crimson ? 0.006 : (amara ? 0.0056 : (bloodroot ? 0.0058 : (iron ? 0.0055 : (jungle ? 0.005 : 0.0045))));
-    const calmingAggroReduction = crimson && district.settlementSafety >= 24 ? (district.settlementSafety >= 58 ? 0.14 : 0.08) : 0;
+    const aggroPressureFloor = veil ? 35 : (crimson ? 36 : (amara ? 41 : (bloodroot ? 40 : (iron ? 38 : (jungle ? 42 : 45)))));
+    const aggroPressureRate = veil ? 0.0038 : (crimson ? 0.004 : (amara ? 0.0035 : (bloodroot ? 0.0036 : (iron ? 0.0037 : (jungle ? 0.0034 : 0.003)))));
+    const aggroScentRate = veil ? 0.006 : (crimson ? 0.006 : (amara ? 0.0056 : (bloodroot ? 0.0058 : (iron ? 0.0055 : (jungle ? 0.005 : 0.0045)))));
+    const calmingAggroReduction = veil && district.settlementSafety >= 24
+      ? (district.settlementSafety >= 58 ? 0.15 : 0.09)
+      : (crimson && district.settlementSafety >= 24 ? (district.settlementSafety >= 58 ? 0.14 : 0.08) : 0);
     const startingAggroBoost = clamp(Math.max(0, district.tigerPressure - aggroPressureFloor) * aggroPressureRate + district.bloodScent * aggroScentRate - calmingAggroReduction, 0, 0.65);
-    const directorPressureFloor = crimson ? 38 : (amara ? 45 : (bloodroot ? 44 : (iron ? 42 : (jungle ? 46 : 50))));
-    const directorPressureRate = crimson ? 0.19 : ((amara || bloodroot) ? 0.17 : (iron ? 0.18 : 0.16));
-    const directorScentRate = crimson ? 0.16 : (amara ? 0.14 : (bloodroot ? 0.15 : (iron ? 0.14 : (jungle ? 0.12 : 0.10))));
-    const calmingDirectorReduction = crimson && district.settlementSafety >= 40 ? (district.settlementSafety >= 65 ? 5 : 3) : 0;
+    const directorPressureFloor = veil ? 39 : (crimson ? 38 : (amara ? 45 : (bloodroot ? 44 : (iron ? 42 : (jungle ? 46 : 50)))));
+    const directorPressureRate = veil ? 0.18 : (crimson ? 0.19 : ((amara || bloodroot) ? 0.17 : (iron ? 0.18 : 0.16)));
+    const directorScentRate = veil ? 0.16 : (crimson ? 0.16 : (amara ? 0.14 : (bloodroot ? 0.15 : (iron ? 0.14 : (jungle ? 0.12 : 0.10)))));
+    const calmingDirectorReduction = veil && district.settlementSafety >= 40
+      ? (district.settlementSafety >= 65 ? 5 : 3)
+      : (crimson && district.settlementSafety >= 40 ? (district.settlementSafety >= 65 ? 5 : 3) : 0);
     const directorPressureBonus = clamp(Math.round(Math.max(0, district.tigerPressure - directorPressureFloor) * directorPressureRate + district.bloodScent * directorScentRate) - calmingDirectorReduction, 0, 18);
-    const damageScentDivisor = crimson ? 16 : (amara ? 19 : (bloodroot ? 18 : (iron ? 16 : (jungle ? 18 : 20))));
-    const damageCap = crimson ? 6 : (amara ? 5 : (bloodroot ? 5 : (iron ? 6 : (jungle ? 5 : 4))));
+    const damageScentDivisor = veil ? 18 : (crimson ? 16 : (amara ? 19 : (bloodroot ? 18 : (iron ? 16 : (jungle ? 18 : 20)))));
+    const damageCap = veil ? 5 : (crimson ? 6 : (amara ? 5 : (bloodroot ? 5 : (iron ? 6 : (jungle ? 5 : 4)))));
     const damageBonus = clamp(Math.floor(district.bloodScent / damageScentDivisor), 0, damageCap);
-    const support = crimson ? {
+    const support = veil ? {
+      safeHouse:false,
+      rangerStation:false,
+      armoryDepot:false,
+      fieldClinic:false,
+      researchPost:false,
+      fieldHospital:false,
+      rescueBeacons:false,
+      caravanRoute:false,
+      childShelter:false,
+      conservationCamp:false,
+      calmingTowers:false,
+      swarmDefenses:false,
+      bossWard:false,
+      bossRageReduction:0,
+      researchOutpost:district.settlementSafety >= 12,
+      canopyBeacons:district.settlementSafety >= 24,
+      protectedResearchRoute:district.settlementSafety >= 40,
+      veilLab:district.settlementSafety >= 58,
+      bridgeOpen:false,
+      powerGrid:false,
+      lanternNetwork:false,
+      fortifiedGate:false,
+      safeRoute:district.settlementSafety >= 40,
+      routeSpeedMul:district.settlementSafety >= 40 ? 1.12 : 1,
+      returningCivilians:district.settlementSafety >= 70 ? 2 : (district.settlementSafety >= 42 ? 1 : 0),
+      damageReduction:district.settlementSafety >= 65 ? 2 : (district.settlementSafety >= 40 ? 1 : 0),
+      civilianDamageMul:district.settlementSafety >= 58 ? 0.76 : (district.settlementSafety >= 24 ? 0.88 : 1),
+      medkitMinimum:district.settlementSafety >= 65 ? 3 : (district.settlementSafety >= 12 ? 2 : 1),
+      armorFloor:district.settlementSafety >= 55 ? 55 : (district.settlementSafety >= 25 ? 30 : 0),
+      ammoMinimum:district.settlementSafety >= 55 ? 22 : 0,
+      rubberAmmoMinimum:district.settlementSafety >= 58 ? 56 : (district.settlementSafety >= 24 ? 36 : 0),
+      tranqMinimum:district.settlementSafety >= 58 ? 12 : (district.settlementSafety >= 24 ? 6 : 0),
+      scanPing:district.settlementSafety >= 70 ? 420 : (district.settlementSafety >= 24 ? 350 : 0),
+    } : crimson ? {
       safeHouse:false,
       rangerStation:false,
       armoryDepot:false,
@@ -170,6 +211,10 @@
       swarmDefenses:district.settlementSafety >= 40,
       bossWard:district.settlementSafety >= 58,
       bossRageReduction:district.settlementSafety >= 58 ? 3 : 0,
+      researchOutpost:false,
+      canopyBeacons:false,
+      protectedResearchRoute:false,
+      veilLab:false,
       bridgeOpen:false,
       powerGrid:false,
       lanternNetwork:false,
@@ -200,6 +245,10 @@
       swarmDefenses:false,
       bossWard:false,
       bossRageReduction:0,
+      researchOutpost:false,
+      canopyBeacons:false,
+      protectedResearchRoute:false,
+      veilLab:false,
       bridgeOpen:false,
       powerGrid:false,
       lanternNetwork:false,
@@ -230,6 +279,10 @@
       swarmDefenses:false,
       bossWard:false,
       bossRageReduction:0,
+      researchOutpost:false,
+      canopyBeacons:false,
+      protectedResearchRoute:false,
+      veilLab:false,
       bridgeOpen:false,
       powerGrid:false,
       lanternNetwork:district.settlementSafety >= 26,
@@ -260,6 +313,10 @@
       swarmDefenses:false,
       bossWard:false,
       bossRageReduction:0,
+      researchOutpost:false,
+      canopyBeacons:false,
+      protectedResearchRoute:false,
+      veilLab:false,
       bridgeOpen:false,
       powerGrid:district.settlementSafety >= 28,
       lanternNetwork:false,
@@ -290,6 +347,10 @@
       swarmDefenses:false,
       bossWard:false,
       bossRageReduction:0,
+      researchOutpost:false,
+      canopyBeacons:false,
+      protectedResearchRoute:false,
+      veilLab:false,
       bridgeOpen:district.settlementSafety >= 30,
       powerGrid:false,
       lanternNetwork:false,
@@ -320,6 +381,10 @@
       swarmDefenses:false,
       bossWard:false,
       bossRageReduction:0,
+      researchOutpost:false,
+      canopyBeacons:false,
+      protectedResearchRoute:false,
+      veilLab:false,
       bridgeOpen:false,
       powerGrid:false,
       lanternNetwork:false,
@@ -346,13 +411,25 @@
         ? (whole(missionLevel) === 18
           ? "no added patrol around the aggressive capture pack"
           : (whole(missionLevel) === 19 ? "no added patrol inside the nine-tiger swarm" : "no added patrol in the Blood Tiger arena"))
+      : protectedVeilMission
+        ? (whole(missionLevel) === 21
+          ? "no added patrol around the four-person research team"
+          : (whole(missionLevel) === 22 ? "no added patrol inside the five-tiger tall-grass ambush" : "no added patrol around the Veil Tiger live-capture target"))
       : extraPatrols > 0
-        ? `${extraPatrols} extra ${crimson ? "Crimson Berserker " : (amara ? "Haven Stalker " : (bloodroot ? "Bloodroot Berserker " : (iron ? "Armored rail-yard " : (jungle ? "roaming Stalker " : "tiger "))))}patrol${extraPatrols === 1 ? "" : "s"}`
+          ? `${extraPatrols} extra ${veil ? "Veil Stalker " : (crimson ? "Crimson Berserker " : (amara ? "Haven Stalker " : (bloodroot ? "Bloodroot Berserker " : (iron ? "Armored rail-yard " : (jungle ? "roaming Stalker " : "tiger ")))))}patrol${extraPatrols === 1 ? "" : "s"}`
         : "no extra patrol";
     const scentText = district.bloodScent > 0
       ? `blood scent adds +${damageBonus} close-range damage and faster starting aggression`
       : "no persistent blood-scent damage";
-    const supportBits = crimson
+    const supportBits = veil
+      ? [
+          support.researchOutpost ? "Veil Canopy Research Outpost" : "research outpost unavailable",
+          support.canopyBeacons ? "canopy tracking beacons active" : "canopy beacons offline",
+          support.protectedResearchRoute ? "protected research route active" : "unsecured research trail",
+          support.veilLab ? "Veil Canopy Field Lab online" : "field lab unavailable",
+          `${support.medkitMinimum} Med Kit minimum`,
+        ]
+      : crimson
       ? [
           support.conservationCamp ? "Crimson Hollow Conservation Camp" : "conservation camp unavailable",
           support.calmingTowers ? "calming towers active" : "calming towers offline",
@@ -394,9 +471,9 @@
           support.safeHouse ? "River Gate Safe House" : "no Safe House",
           `${support.medkitMinimum} Med Kit minimum`,
         ];
-    if((jungle || iron || bloodroot || amara || crimson) && support.returningCivilians > 0) supportBits.push(`${support.returningCivilians} returning civilian ${iron ? "worker" : ((bloodroot || amara || crimson) ? "volunteer" : "helper")}${support.returningCivilians === 1 ? "" : "s"}`);
-    if((iron || bloodroot || amara || crimson) && support.damageReduction > 0) supportBits.push(`${support.damageReduction} ${iron ? "powered-defense" : (amara ? "escort-armor" : (crimson ? "anti-swarm armor" : "clinic-armor"))} damage reduction`);
-    if(amara && support.civilianDamageMul < 1) supportBits.push(`${Math.round((1 - support.civilianDamageMul) * 100)}% civilian protection`);
+    if((jungle || iron || bloodroot || amara || crimson || veil) && support.returningCivilians > 0) supportBits.push(`${support.returningCivilians} returning civilian ${iron ? "worker" : ((bloodroot || amara || crimson || veil) ? "volunteer" : "helper")}${support.returningCivilians === 1 ? "" : "s"}`);
+    if((iron || bloodroot || amara || crimson || veil) && support.damageReduction > 0) supportBits.push(`${support.damageReduction} ${iron ? "powered-defense" : (amara ? "escort-armor" : (crimson ? "anti-swarm armor" : (veil ? "canopy-guard armor" : "clinic-armor")))} damage reduction`);
+    if((amara || veil) && support.civilianDamageMul < 1) supportBits.push(`${Math.round((1 - support.civilianDamageMul) * 100)}% civilian protection`);
     if(crimson && support.bossRageReduction > 0) supportBits.push(`${support.bossRageReduction} Blood Rage damage reduction`);
     if(support.armorFloor > 0) supportBits.push(`${support.armorFloor} starting armor minimum`);
     if(support.ammoMinimum > 0) supportBits.push(`${support.ammoMinimum} reserve-ammo minimum`);
@@ -412,7 +489,7 @@
       tigerPressure:district.tigerPressure,
       settlementSafety:district.settlementSafety,
       bloodScent:district.bloodScent,
-      patrolType:crimson ? "Berserker" : (amara ? "Stalker" : (bloodroot ? "Berserker" : (iron ? "Armored" : (jungle ? "Stalker" : "Standard")))),
+      patrolType:veil ? "Stalker" : (crimson ? "Berserker" : (amara ? "Stalker" : (bloodroot ? "Berserker" : (iron ? "Armored" : (jungle ? "Stalker" : "Standard"))))),
       extraPatrols,
       startingAggroBoost:Number(startingAggroBoost.toFixed(3)),
       directorPressureBonus,

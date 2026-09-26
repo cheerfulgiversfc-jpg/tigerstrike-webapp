@@ -555,6 +555,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - The Conservation Camp provides usable Solo supplies, while Shared Story grants both players their own supplies from their separate co-op profiles. Returning residents appear as wildlife handlers and trackers.
 - Every Chapter 2 mission now has accurate persistent consequences, separate Solo/Shared progression, reconnect-safe squad state, and duplicate-proof reward and world-result receipts.
 
+### V10.9 District Consequences — Veil Canopy
+
+- Extends the Living World into Chapter 3 across Solo and Shared Story Missions 21–23 without replacing or weakening their original objectives.
+- Mission 21 keeps exactly four researchers, three route checkpoints, and four tigers. Mission 22 keeps its designed five-tiger tall-grass ambush. Mission 23 keeps exactly three tigers and requires the named Veil Tiger to be captured alive.
+- No consequence patrols are added to these carefully balanced encounters. Persistent tiger pressure and blood scent instead affect awareness, director pressure, and close-range damage.
+- Settlement recovery opens a visible Veil Canopy Research Outpost, activates canopy tracking beacons, secures a faster research route, and brings a humane Veil Tiger field lab online.
+- Real support includes up to three starting Med Kits, 55 armor, normal and Rubber ammunition, 12 Tranq Darts, a long-range scan, up to two points of defensive protection, and as much as 24% less damage to escorted researchers.
+- The outpost supplies Solo players directly and gives both Shared Story players their own supplies from their separate co-op profiles. Returning residents appear as rangers and field biologists.
+- Solo and Shared Story maintain separate Veil Canopy state. Active co-op missions remain reconnect-safe, while reward receipts and Living World receipts prevent duplicate payouts or repeated district changes.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.
