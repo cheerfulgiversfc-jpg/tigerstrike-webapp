@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V10.9 cache key forces Telegram to load Veil Canopy", () => {
-  assert(game.includes('const TS_BUILD = "5082"'));
-  assert(html.includes("game.js?v=5082-veil-canopy"));
-  assert(html.includes("tutorial.js?v=5082-veil-canopy"));
+test("V10.10 cache key forces Telegram to load Riverveil Crossing", () => {
+  assert(game.includes('const TS_BUILD = "5083"'));
+  assert(html.includes("game.js?v=5083-riverveil-crossing"));
+  assert(html.includes("tutorial.js?v=5083-riverveil-crossing"));
 });

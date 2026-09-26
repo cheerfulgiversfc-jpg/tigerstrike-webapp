@@ -565,6 +565,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - The outpost supplies Solo players directly and gives both Shared Story players their own supplies from their separate co-op profiles. Returning residents appear as rangers and field biologists.
 - Solo and Shared Story maintain separate Veil Canopy state. Active co-op missions remain reconnect-safe, while reward receipts and Living World receipts prevent duplicate payouts or repeated district changes.
 
+### V10.10 District Consequences — Riverveil Crossing
+
+- Extends the Living World through Solo and Shared Story Missions 24–27 while preserving every river, bridge, hunter, survivor, checkpoint, and extraction objective.
+- Mission 24 keeps five villagers, four tigers, and three river-trail checkpoints. Mission 25 keeps its five-tiger bridge ambush and three checkpoints. Mission 26 keeps one injured hunter, four tigers, and two return checkpoints. Mission 27 keeps five survivors, five tigers, and three camp checkpoints.
+- No consequence patrols are added to these escort-heavy missions. Saved tiger pressure and blood scent instead affect awareness, director pressure, and close-range damage.
+- Settlement recovery opens a visible Riverveil Rescue Station, secures the jungle bridge, activates hunter beacons, protects the return route, and reopens the abandoned camp as a survivor station.
+- Real support includes up to three starting Med Kits, 55 armor, 28 reserve rounds, Rubber ammunition, long-range scans, faster escorts, up to two points of defensive protection, and as much as 26% less damage to civilians.
+- The station supplies Solo players directly and gives both Shared Story players their own supplies from separate co-op profiles. Returning residents appear as river guides and mechanics.
+- Riverveil progress remains separate between Solo and Shared Story. Reconnect-safe battlefield state and duplicate-proof reward and Living World receipts remain active.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

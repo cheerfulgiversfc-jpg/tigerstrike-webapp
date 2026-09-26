@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–23 map to seven persistent districts", () => {
+test("Missions 1–27 map to eight persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -24,7 +24,9 @@ test("Missions 1–23 map to seven persistent districts", () => {
   assert.equal(livingWorld.districtForMission(20).id, "crimson_hollow");
   assert.equal(livingWorld.districtForMission(21).id, "veil_canopy");
   assert.equal(livingWorld.districtForMission(23).id, "veil_canopy");
-  assert.equal(livingWorld.districtForMission(24), null);
+  assert.equal(livingWorld.districtForMission(24).id, "riverveil_crossing");
+  assert.equal(livingWorld.districtForMission(27).id, "riverveil_crossing");
+  assert.equal(livingWorld.districtForMission(28), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -340,6 +342,54 @@ test("a restored Veil Canopy protects researchers and supplies humane field work
   assert.match(restored.brief, /24% civilian protection/);
 });
 
+test("Riverveil Crossing preserves every escort, bridge, hunter, and camp encounter", () => {
+  const defaults = livingWorld.defaultState();
+  const river = livingWorld.missionConsequences(defaults, 24, { playerCount:2 });
+  const bridge = livingWorld.missionConsequences(defaults, 25, { playerCount:2 });
+  const hunter = livingWorld.missionConsequences(defaults, 26, { playerCount:2 });
+  const camp = livingWorld.missionConsequences(defaults, 27, { playerCount:2 });
+  assert.equal(river.enabled, true);
+  assert.equal(river.extraPatrols, 0);
+  assert.match(river.brief, /no added patrol around the five-villager river escort/);
+  assert.equal(bridge.extraPatrols, 0);
+  assert.match(bridge.brief, /no added patrol inside the five-tiger bridge ambush/);
+  assert.equal(hunter.extraPatrols, 0);
+  assert.match(hunter.brief, /no added patrol around the injured lost hunter/);
+  assert.equal(camp.extraPatrols, 0);
+  assert.match(camp.brief, /no added patrol around the five abandoned-camp survivors/);
+});
+
+test("a restored Riverveil Crossing secures routes and protects civilians", () => {
+  const state = livingWorld.defaultState();
+  state.districts.riverveil_crossing = {
+    ...state.districts.riverveil_crossing,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  const restored = livingWorld.missionConsequences(state, 27, { playerCount:2 });
+  assert.equal(restored.extraPatrols, 0);
+  assert.equal(restored.damageBonus, 5);
+  assert.equal(restored.support.riverStation, true);
+  assert.equal(restored.support.bridgeSecured, true);
+  assert.equal(restored.support.hunterBeacons, true);
+  assert.equal(restored.support.survivorCamp, true);
+  assert.equal(restored.support.bridgeOpen, true);
+  assert.equal(restored.support.safeRoute, true);
+  assert.equal(restored.support.routeSpeedMul, 1.12);
+  assert.equal(restored.support.returningCivilians, 2);
+  assert.equal(restored.support.damageReduction, 2);
+  assert.equal(restored.support.civilianDamageMul, 0.74);
+  assert.equal(restored.support.medkitMinimum, 3);
+  assert.equal(restored.support.armorFloor, 55);
+  assert.equal(restored.support.ammoMinimum, 28);
+  assert.equal(restored.support.rubberAmmoMinimum, 32);
+  assert.equal(restored.support.tranqMinimum, 0);
+  assert.equal(restored.support.scanPing, 420);
+  assert.match(restored.brief, /Riverveil Rescue Station/);
+  assert.match(restored.brief, /26% civilian protection/);
+});
+
 test("District consequences are integrated into solo, Shared Story, and the Telegram cache build", () => {
   assert(game.includes("function recordLivingWorldStoryOutcome"));
   assert(game.includes("worldMapLivingChapterOneHtml(wm)"));
@@ -357,6 +407,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('amara ? "amara_hospital"'));
   assert(game.includes('crimson ? "crimson_camp"'));
   assert(game.includes('veil ? "veil_outpost"'));
+  assert(game.includes('riverveil ? "riverveil_station"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
@@ -368,9 +419,10 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("RESCUE BEACONS ACTIVE"));
   assert(squad.includes("BLOOD TIGER WARD ACTIVE"));
   assert(squad.includes("VEIL FIELD LAB ONLINE"));
+  assert(squad.includes("SURVIVOR CAMP OPEN"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
-  assert(html.includes("living-world.js?v=5082-veil-canopy"));
-  assert(html.includes("V10.9 (Veil Canopy)"));
+  assert(html.includes("living-world.js?v=5083-riverveil-crossing"));
+  assert(html.includes("V10.10 (Riverveil Crossing)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -799,5 +851,81 @@ test("Shared Story Missions 21–23 retain their exact designed encounters", asy
     assert.equal(waiting.mission.captureRequired, captureRequired);
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
+  }
+});
+
+test("a real Shared Story Riverveil room grants crossing and survivor support", async () => {
+  const host = { id:911001, first_name:"Riverveil", last_name:"Leader" };
+  const teammate = { id:911002, first_name:"Crossing", last_name:"Partner" };
+  let hostProfile = await squadServer.readCoopProfile(host);
+  hostProfile.livingWorld.districts.riverveil_crossing = {
+    ...hostProfile.livingWorld.districts.riverveil_crossing,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  hostProfile.supplies.medkits = 0;
+  hostProfile.supplies.armorPlates = 0;
+  hostProfile.ammo.real = 0;
+  hostProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(hostProfile, host);
+
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:27 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.mission.livingWorld.districtId, "riverveil_crossing");
+  assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+  assert.equal(waiting.mission.tigerCount, 5);
+  assert.equal(waiting.mission.rescueRequired, 5);
+  assert.equal(waiting.settlementSupport.label, "Riverveil Survivor Station");
+  assert.equal(waiting.settlementSupport.type, "riverveil_station");
+
+  session = await squadServer.joinSession(session.code, teammate);
+  let teammateProfile = await squadServer.readCoopProfile(teammate);
+  teammateProfile.supplies.medkits = 0;
+  teammateProfile.supplies.armorPlates = 0;
+  teammateProfile.ammo.real = 0;
+  teammateProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(teammateProfile, teammate);
+  await squadServer.applyAction(session, host, "start");
+
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.bridgeSecured, true);
+  assert.equal(active.mission.livingWorld.support.hunterBeacons, true);
+  assert.equal(active.mission.livingWorld.support.survivorCamp, true);
+  assert.equal(active.mission.livingWorld.support.civilianDamageMul, 0.74);
+  hostProfile = await squadServer.readCoopProfile(host);
+  teammateProfile = await squadServer.readCoopProfile(teammate);
+  assert(hostProfile.supplies.medkits >= 3 && teammateProfile.supplies.medkits >= 3);
+  assert(hostProfile.supplies.armorPlates >= 1 && teammateProfile.supplies.armorPlates >= 1);
+  assert(hostProfile.ammo.real >= 28 && teammateProfile.ammo.real >= 28);
+  assert(hostProfile.ammo.rubber >= 32 && teammateProfile.ammo.rubber >= 32);
+});
+
+test("Shared Story Missions 24–27 retain exact tigers, civilians, and checkpoints", async () => {
+  const rows = [
+    [24, 911003, 4, 5, 3],
+    [25, 911004, 5, 0, 3],
+    [26, 911005, 4, 1, 2],
+    [27, 911006, 5, 5, 3],
+  ];
+  for(const [level, userId, tigerCount, civilianCount, checkpointCount] of rows){
+    const host = { id:userId, first_name:`Riverveil${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.riverveil_crossing = {
+      ...profile.livingWorld.districts.riverveil_crossing,
+      tigerPressure:96,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.checkpoints.length, checkpointCount);
   }
 });
