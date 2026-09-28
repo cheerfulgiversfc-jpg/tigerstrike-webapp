@@ -586,6 +586,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Forward Command supplies Solo players directly and gives both Shared Story players their own supplies from separate co-op profiles. Returning residents appear as Shadow Basin volunteers.
 - Shadow Basin progress remains separate between Solo and Shared Story. Reconnect-safe battlefield state and duplicate-proof reward and Living World receipts remain active.
 
+### V10.12 District Consequences — Silent Village
+
+- Extends the Living World into Chapter 4 through Solo and Shared Story Missions 31–33 without replacing or weakening their original objectives.
+- Mission 31 keeps exactly four searchable homes, four survivors, four tigers, and the rule that the homes must be searched before rescue. Mission 32 keeps its designed six-tiger village street patrol. Mission 33 keeps exactly six survivors, four tigers, and three safe-route checkpoints.
+- No consequence patrols are added to these search- and escort-heavy encounters. Saved tiger pressure and blood scent instead affect awareness, director pressure, and close-range damage.
+- Settlement recovery opens a visible Silent Village Search Command, activates survivor beacons, secures the abandoned clinic relay, and opens a protected evacuation corridor.
+- Real support includes up to three starting Med Kits, 60 armor, normal and Rubber ammunition, long-range survivor scans, faster escort routes, up to two points of defensive protection, and as much as 26% less damage to civilians.
+- Search Command supplies Solo players directly and gives both Shared Story players their own supplies from separate co-op profiles. Returning residents appear as search volunteers and medics.
+- Silent Village progress remains separate between Solo and Shared Story. Reconnect-safe battlefield state and duplicate-proof reward and Living World receipts remain active.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

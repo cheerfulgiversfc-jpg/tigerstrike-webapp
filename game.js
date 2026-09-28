@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5084";
+const TS_BUILD = "5085";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -13846,8 +13846,8 @@ function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
     </div>`;
   }).join("");
   return `<section class="card" id="livingWorldChapterOne" style="margin-top:10px;border-color:rgba(74,222,128,.62);background:linear-gradient(145deg,rgba(6,54,45,.50),rgba(8,15,29,.96))">
-    <div class="hudLine"><b>🌍 Living Story Districts • Missions 1–30</b></div>
-    <div class="small">Missions 1–30 now react to lasting results. Shadow Basin preserves the exact eight-tiger pack, seven-civilian helicopter evacuation, and single Stealth Tiger boss while adding forward command, pack sensors, LZ defenses, and a tracking array. Solo and Shared Story each keep their own progression.</div>
+    <div class="hudLine"><b>🌍 Living Story Districts • Missions 1–33</b></div>
+    <div class="small">Missions 1–33 now react to lasting results. Silent Village preserves the exact four-home survivor search, six-tiger street patrol, and six-survivor safe-route escort while adding search command, survivor beacons, clinic support, and a protected evacuation corridor. Solo and Shared Story each keep their own progression.</div>
     <div class="small" style="margin-top:6px"><b>Latest:</b> ${worldMapEsc(living.headline)}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${cards}</div>
   </section>`;
@@ -39770,7 +39770,7 @@ function spawnMapInteractables(){
 
 function spawnLivingWorldDistrictSupport(){
   const effect = S._livingWorldMission;
-  const supportOpen = effect?.support?.safeHouse || effect?.support?.rangerStation || effect?.support?.armoryDepot || effect?.support?.fieldClinic || effect?.support?.researchPost || effect?.support?.fieldHospital || effect?.support?.conservationCamp || effect?.support?.researchOutpost || effect?.support?.riverStation || effect?.support?.shadowCommand;
+  const supportOpen = effect?.support?.safeHouse || effect?.support?.rangerStation || effect?.support?.armoryDepot || effect?.support?.fieldClinic || effect?.support?.researchPost || effect?.support?.fieldHospital || effect?.support?.conservationCamp || effect?.support?.researchOutpost || effect?.support?.riverStation || effect?.support?.shadowCommand || effect?.support?.villageCommand;
   if(!effect?.enabled || !supportOpen || window.__TUTORIAL_MODE__) return false;
   if(!Array.isArray(S.mapInteractables)) S.mapInteractables = [];
   if(S.mapInteractables.some((item)=>item?.livingWorldSupport)) return true;
@@ -39784,8 +39784,9 @@ function spawnLivingWorldDistrictSupport(){
   const veil = effect.districtId === "veil_canopy";
   const riverveil = effect.districtId === "riverveil_crossing";
   const shadow = effect.districtId === "shadow_basin";
-  const label = shadow ? (effect.support?.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command") : (riverveil ? (effect.support?.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station") : (veil ? (effect.support?.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost") : (crimson ? "Crimson Hollow Conservation Camp" : (amara ? "Amara Haven Field Hospital" : (bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House")))))));
-  let point = safeSpawnPoint(worldW * (shadow ? 0.68 : (riverveil ? 0.32 : (veil ? 0.36 : (crimson ? 0.44 : (amara ? 0.72 : (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28)))))))), worldH * (shadow ? 0.34 : (riverveil ? 0.68 : (veil ? 0.62 : (crimson ? 0.66 : (amara ? 0.34 : (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70)))))))), 24, true, true);
+  const silent = effect.districtId === "silent_village";
+  const label = silent ? (effect.support?.evacCorridor ? "Silent Village Evac Command" : "Silent Village Search Command") : (shadow ? (effect.support?.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command") : (riverveil ? (effect.support?.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station") : (veil ? (effect.support?.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost") : (crimson ? "Crimson Hollow Conservation Camp" : (amara ? "Amara Haven Field Hospital" : (bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House"))))))));
+  let point = safeSpawnPoint(worldW * (silent ? 0.34 : (shadow ? 0.68 : (riverveil ? 0.32 : (veil ? 0.36 : (crimson ? 0.44 : (amara ? 0.72 : (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28))))))))), worldH * (silent ? 0.36 : (shadow ? 0.34 : (riverveil ? 0.68 : (veil ? 0.62 : (crimson ? 0.66 : (amara ? 0.34 : (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70))))))))), 24, true, true);
   if(inMapScenarioKeepout(point.x, point.y, 24)){
     point = findNearestOpenPoint(point.x, point.y, 24, {
       avoidKeepout:true,
@@ -39811,7 +39812,7 @@ function spawnLivingWorldDistrictSupport(){
     triggered:false,
     rewardClaimed:false,
     livingWorldSupport:true,
-    livingWorldSupportType:shadow ? "shadow_command" : (riverveil ? "riverveil_station" : (veil ? "veil_outpost" : (crimson ? "crimson_camp" : (amara ? "amara_hospital" : (bloodroot ? "bloodroot_clinic" : (iron ? "iron_armory" : (jungle ? "jungle_ranger" : "river_safe_house"))))))),
+    livingWorldSupportType:silent ? "silent_command" : (shadow ? "shadow_command" : (riverveil ? "riverveil_station" : (veil ? "veil_outpost" : (crimson ? "crimson_camp" : (amara ? "amara_hospital" : (bloodroot ? "bloodroot_clinic" : (iron ? "iron_armory" : (jungle ? "jungle_ranger" : "river_safe_house")))))))),
     returningCivilians:Math.max(0, Number(effect.support?.returningCivilians || 0)),
   });
   return true;
@@ -39822,7 +39823,35 @@ function spawnLivingWorldRiverGateSafeHouse(){
 
 function configureLivingWorldDistrictRoutes(){
   const effect = S._livingWorldMission;
-  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin"].includes(effect.districtId)) return false;
+  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village"].includes(effect.districtId)) return false;
+  if(effect.districtId === "silent_village"){
+    const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
+    if(generator){
+      generator.powered = !!effect.support?.searchBeacons;
+      generator.label = generator.powered ? "Silent Village Survivor Beacons" : "Silent Village Search Relay";
+      generator.activeUntil = generator.powered ? Date.now() + (8 * 60 * 60 * 1000) : 0;
+    }
+    const barricade = (S.mapInteractables || []).find((item)=>item?.kind === "barricade");
+    if(barricade && effect.support?.clinicRelay){
+      barricade.label = "Silent Village Clinic Guard";
+      barricade.effectR = Math.max(Number(barricade.effectR || 0), barricadeEffectRadius());
+      barricade.activeUntil = Date.now() + (8 * 60 * 60 * 1000);
+    }
+    const vehicle = (S.mapInteractables || []).find((item)=>item?.kind === "vehicle");
+    if(vehicle && effect.support?.evacCorridor){
+      vehicle.repaired = true;
+      vehicle.label = "Silent Village Survivor Transport";
+      vehicle.activeUntil = Date.now() + (8 * 60 * 60 * 1000);
+    }
+    const gate = (S.mapInteractables || []).find((item)=>item?.kind === "gate");
+    if(gate){
+      gate.routeOpen = true;
+      gate.label = effect.support?.evacCorridor ? "Silent Village Evacuation Gate" : "Silent Village Search Gate";
+    }
+    __blockedAtCache.clear();
+    invalidateMapCache();
+    return true;
+  }
   if(effect.districtId === "shadow_basin"){
     const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
     if(generator){
@@ -40233,15 +40262,17 @@ function activateMapInteractable(it){
       const veilOutpost = it.livingWorldSupportType === "veil_outpost";
       const riverveilStation = it.livingWorldSupportType === "riverveil_station";
       const shadowCommand = it.livingWorldSupportType === "shadow_command";
+      const silentCommand = it.livingWorldSupportType === "silent_command";
       if(amaraHospital) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(crimsonCamp) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(veilOutpost) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(riverveilStation) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(shadowCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
-      S.armor = clamp(Number(S.armor || 0) + (ironArmory ? 25 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15)))))))), 0, S.armorCap || 100);
+      if(silentCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
+      S.armor = clamp(Number(S.armor || 0) + (ironArmory ? 25 : (silentCommand ? 24 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15))))))))), 0, S.armorCap || 100);
       const supportWeapon = equippedWeapon();
       const supportAmmoId = supportWeapon ? (bestAvailableAmmoIdForWeapon(supportWeapon) || supportWeapon.ammo) : "";
-      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (ironArmory ? 18 : (shadowCommand ? 18 : (riverveilStation ? 16 : (veilOutpost ? 12 : (crimsonCamp ? 12 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8))))))));
+      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (ironArmory ? 18 : (silentCommand ? 16 : (shadowCommand ? 18 : (riverveilStation ? 16 : (veilOutpost ? 12 : (crimsonCamp ? 12 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8)))))))));
       if(jungleRanger){
         S.scanPing = Math.max(Number(S.scanPing || 0), 240);
         if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
@@ -40282,10 +40313,18 @@ function activateMapInteractable(it){
         S.scanPing = Math.max(Number(S.scanPing || 0), 440);
         S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
       }
+      if(silentCommand){
+        const supportRubberId = supportWeapon ? compatibleAmmoIdsForWeapon(supportWeapon, "rubber")[0] : "";
+        if(supportRubberId) S.ammoReserve[supportRubberId] = Math.max(0, Number(S.ammoReserve[supportRubberId] || 0)) + 16;
+        S.scanPing = Math.max(Number(S.scanPing || 0), 420);
+        if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
+      }
       it.uses = 0;
       it.cooldownUntil = now + 60000;
       it.activeUntil = now + 900;
-      interactionFeedback(shadowCommand
+      interactionFeedback(silentCommand
+        ? `🏚️ Silent Village supplied +2 Med Kits, +24 Armor, +16 Ammo, Rubber rounds${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a survivor scan.`
+        : shadowCommand
         ? "🌑 Shadow Command supplied +2 Med Kits, +28 Armor, +18 Ammo, Rubber rounds, 4 Tranq Darts, 1 Trap, and a basin scan."
         : riverveilStation
         ? `🌊 Riverveil survivors supplied +2 Med Kits, +22 Armor, +16 Ammo, Rubber rounds${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a crossing scan.`
@@ -55459,7 +55498,20 @@ function drawMapInteractable(it){
   } else if(it.kind === "cache"){
     // drawMapInteractable is outside the map-background helper scope, so draw
     // the cache directly instead of calling that private crateBlock helper.
-    if(it.livingWorldSupportType === "shadow_command"){
+    if(it.livingWorldSupportType === "silent_command"){
+      ctx.fillStyle = "rgba(41,37,36,.98)";
+      roundedRectFill(it.x - 33, it.y - 21, 66, 44, 7);
+      ctx.strokeStyle = "rgba(250,204,21,.96)";
+      ctx.lineWidth = 2.4;
+      ctx.strokeRect(it.x - 32, it.y - 20, 64, 42);
+      ctx.fillStyle = "rgba(254,243,199,.98)";
+      roundedRectFill(it.x - 5, it.y - 14, 10, 31, 2);
+      roundedRectFill(it.x - 15, it.y - 4, 30, 10, 2);
+      ctx.fillStyle = "rgba(34,211,238,.95)";
+      ctx.beginPath();
+      ctx.arc(it.x + 21, it.y - 12, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }else if(it.livingWorldSupportType === "shadow_command"){
       ctx.fillStyle = "rgba(15,23,42,.98)";
       roundedRectFill(it.x - 33, it.y - 21, 66, 44, 7);
       ctx.strokeStyle = "rgba(167,139,250,.96)";
@@ -55536,12 +55588,14 @@ function drawMapInteractable(it){
       ctx.lineTo(it.x, it.y + 10);
       ctx.stroke();
     }
-    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","veil_outpost","riverveil_station","shadow_command"].includes(it.livingWorldSupportType)){
+    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","veil_outpost","riverveil_station","shadow_command","silent_command"].includes(it.livingWorldSupportType)){
       const helpers = Math.max(1, Math.min(2, Number(it.returningCivilians || 0) || 1));
       for(let idx=0; idx<helpers; idx++){
         const hx = it.x + (idx === 0 ? -27 : 27);
         ctx.fillStyle = it.livingWorldSupportType === "iron_armory"
           ? (idx === 0 ? "#f59e0b" : "#64748b")
+          : it.livingWorldSupportType === "silent_command"
+            ? (idx === 0 ? "#facc15" : "#22d3ee")
           : it.livingWorldSupportType === "shadow_command"
             ? (idx === 0 ? "#a78bfa" : "#22d3ee")
           : it.livingWorldSupportType === "riverveil_station"

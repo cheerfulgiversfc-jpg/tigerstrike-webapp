@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V10.11 cache key forces Telegram to load Shadow Basin", () => {
-  assert(game.includes('const TS_BUILD = "5084"'));
-  assert(html.includes("game.js?v=5084-shadow-basin"));
-  assert(html.includes("tutorial.js?v=5084-shadow-basin"));
+test("V10.12 cache key forces Telegram to load Silent Village", () => {
+  assert(game.includes('const TS_BUILD = "5085"'));
+  assert(html.includes("game.js?v=5085-silent-village"));
+  assert(html.includes("tutorial.js?v=5085-silent-village"));
 });

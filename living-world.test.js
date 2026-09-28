@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–30 map to nine persistent districts", () => {
+test("Missions 1–33 map to ten persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -28,7 +28,9 @@ test("Missions 1–30 map to nine persistent districts", () => {
   assert.equal(livingWorld.districtForMission(27).id, "riverveil_crossing");
   assert.equal(livingWorld.districtForMission(28).id, "shadow_basin");
   assert.equal(livingWorld.districtForMission(30).id, "shadow_basin");
-  assert.equal(livingWorld.districtForMission(31), null);
+  assert.equal(livingWorld.districtForMission(31).id, "silent_village");
+  assert.equal(livingWorld.districtForMission(33).id, "silent_village");
+  assert.equal(livingWorld.districtForMission(34), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -438,6 +440,50 @@ test("a restored Shadow Basin protects the LZ and tracks its boss", () => {
   assert.match(restored.brief, /3 Stealth Tiger damage reduction/);
 });
 
+test("Silent Village preserves the home search, street patrol, and safe-route escort", () => {
+  const defaults = livingWorld.defaultState();
+  const search = livingWorld.missionConsequences(defaults, 31, { playerCount:2 });
+  const patrol = livingWorld.missionConsequences(defaults, 32, { playerCount:2 });
+  const escort = livingWorld.missionConsequences(defaults, 33, { playerCount:2 });
+  assert.equal(search.enabled, true);
+  assert.equal(search.extraPatrols, 0);
+  assert.match(search.brief, /no added patrol around the four-home survivor search/);
+  assert.equal(patrol.extraPatrols, 0);
+  assert.match(patrol.brief, /no added patrol inside the six-tiger village street patrol/);
+  assert.equal(escort.extraPatrols, 0);
+  assert.match(escort.brief, /no added patrol around the six-survivor safe-route escort/);
+});
+
+test("a restored Silent Village protects survivors and opens evacuation", () => {
+  const state = livingWorld.defaultState();
+  state.districts.silent_village = {
+    ...state.districts.silent_village,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  const restored = livingWorld.missionConsequences(state, 33, { playerCount:2 });
+  assert.equal(restored.extraPatrols, 0);
+  assert.equal(restored.damageBonus, 5);
+  assert.equal(restored.support.villageCommand, true);
+  assert.equal(restored.support.searchBeacons, true);
+  assert.equal(restored.support.clinicRelay, true);
+  assert.equal(restored.support.evacCorridor, true);
+  assert.equal(restored.support.safeRoute, true);
+  assert.equal(restored.support.routeSpeedMul, 1.12);
+  assert.equal(restored.support.returningCivilians, 2);
+  assert.equal(restored.support.damageReduction, 2);
+  assert.equal(restored.support.civilianDamageMul, 0.74);
+  assert.equal(restored.support.medkitMinimum, 3);
+  assert.equal(restored.support.armorFloor, 60);
+  assert.equal(restored.support.ammoMinimum, 26);
+  assert.equal(restored.support.rubberAmmoMinimum, 32);
+  assert.equal(restored.support.tranqMinimum, 0);
+  assert.equal(restored.support.scanPing, 430);
+  assert.match(restored.brief, /Silent Village Search Command/);
+  assert.match(restored.brief, /26% civilian protection/);
+});
+
 test("District consequences are integrated into solo, Shared Story, and the Telegram cache build", () => {
   assert(game.includes("function recordLivingWorldStoryOutcome"));
   assert(game.includes("worldMapLivingChapterOneHtml(wm)"));
@@ -457,6 +503,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('veil ? "veil_outpost"'));
   assert(game.includes('riverveil ? "riverveil_station"'));
   assert(game.includes('shadow ? "shadow_command"'));
+  assert(game.includes('silent ? "silent_command"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
@@ -470,10 +517,11 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("VEIL FIELD LAB ONLINE"));
   assert(squad.includes("SURVIVOR CAMP OPEN"));
   assert(squad.includes("STEALTH TRACKING ONLINE"));
+  assert(squad.includes("SURVIVOR BEACONS ACTIVE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5084-shadow-basin"));
-  assert(html.includes("V10.11 (Shadow Basin)"));
+  assert(html.includes("living-world.js?v=5085-silent-village"));
+  assert(html.includes("V10.12 (Silent Village)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1059,5 +1107,82 @@ test("Shared Story Missions 28–30 retain exact encounters and extraction", asy
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, bossCount);
     assert.equal(waiting.mission.extractionType, extractionType);
+  }
+});
+
+test("a real Shared Story Silent Village room grants search and evacuation support to both players", async () => {
+  const host = { id:911201, first_name:"Silent", last_name:"Leader" };
+  const teammate = { id:911202, first_name:"Village", last_name:"Partner" };
+  let hostProfile = await squadServer.readCoopProfile(host);
+  hostProfile.livingWorld.districts.silent_village = {
+    ...hostProfile.livingWorld.districts.silent_village,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  hostProfile.supplies.medkits = 0;
+  hostProfile.supplies.armorPlates = 0;
+  hostProfile.ammo.real = 0;
+  hostProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(hostProfile, host);
+
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:33 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.mission.livingWorld.districtId, "silent_village");
+  assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+  assert.equal(waiting.mission.tigerCount, 4);
+  assert.equal(waiting.mission.rescueRequired, 6);
+  assert.equal(waiting.settlementSupport.label, "Silent Village Evac Command");
+  assert.equal(waiting.settlementSupport.type, "silent_command");
+
+  session = await squadServer.joinSession(session.code, teammate);
+  let teammateProfile = await squadServer.readCoopProfile(teammate);
+  teammateProfile.supplies.medkits = 0;
+  teammateProfile.supplies.armorPlates = 0;
+  teammateProfile.ammo.real = 0;
+  teammateProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(teammateProfile, teammate);
+  await squadServer.applyAction(session, host, "start");
+
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.searchBeacons, true);
+  assert.equal(active.mission.livingWorld.support.clinicRelay, true);
+  assert.equal(active.mission.livingWorld.support.evacCorridor, true);
+  assert.equal(active.mission.livingWorld.support.civilianDamageMul, 0.74);
+  hostProfile = await squadServer.readCoopProfile(host);
+  teammateProfile = await squadServer.readCoopProfile(teammate);
+  assert(hostProfile.supplies.medkits >= 3 && teammateProfile.supplies.medkits >= 3);
+  assert(hostProfile.supplies.armorPlates >= 1 && teammateProfile.supplies.armorPlates >= 1);
+  assert(hostProfile.ammo.real >= 26 && teammateProfile.ammo.real >= 26);
+  assert(hostProfile.ammo.rubber >= 32 && teammateProfile.ammo.rubber >= 32);
+});
+
+test("Shared Story Missions 31–33 retain exact homes, tigers, survivors, and checkpoints", async () => {
+  const rows = [
+    [31, 911203, 4, 4, 4, true],
+    [32, 911204, 6, 0, 0, false],
+    [33, 911205, 4, 6, 3, false],
+  ];
+  for(const [level, userId, tigerCount, civilianCount, checkpointCount, checkpointsBeforeRescue] of rows){
+    const host = { id:userId, first_name:`Silent${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.silent_village = {
+      ...profile.livingWorld.districts.silent_village,
+      tigerPressure:96,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.checkpoints.length, checkpointCount);
+    assert.equal(waiting.mission.checkpointsBeforeRescue, checkpointsBeforeRescue);
+    assert.equal(waiting.mission.extractionType, "ground");
   }
 });
