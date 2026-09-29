@@ -3,6 +3,7 @@ const { getState, setState, setStateIfAbsent } = require("./metrics-store");
 const ammoRules = require("../../ammo-modes");
 const tigerIntelligence = require("../../tiger-intelligence");
 const livingWorld = require("../../living-world");
+const missionMapTruth = require("../../mission-map-truth");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const MISSION_LIMIT_MS = 6 * 60 * 1000;
@@ -41,7 +42,7 @@ const SHARED_STORY_MISSION_1 = Object.freeze({
   world:WORLD,
   extraction:EXTRACTION,
   spawns:SPAWNS,
-  civilians:Object.freeze(CIVILIANS.slice(0, 3)),
+  civilians:Object.freeze(CIVILIANS.slice(0, 2)),
   tigers:Object.freeze([
     Object.freeze({ ...TIGER_DEFS[0], name:"Jungle Tiger", type:"Standard", hpMax:124, baseX:760, baseY:330, rangeX:86, rangeY:62 }),
     Object.freeze({ ...TIGER_DEFS[1], name:"Forest Scout", type:"Scout", hpMax:112, baseX:390, baseY:560, rangeX:74, rangeY:54 }),
@@ -2115,6 +2116,9 @@ function expandMissionDefinition(base, targetWorld){
     rangeX:Math.round(Number(src.rangeX || 0) * tigerRoamScale),
     rangeY:Math.round(Number(src.rangeY || 0) * tigerRoamScale),
   });
+  const truth = missionMapTruth.scale(Number(base.level || 0), WORLD.width, WORLD.height);
+  const truthLandmarks = truth ? truth.landmarks.map((item)=>point({ ...item })) : [];
+  const baseCheckpoints = (base.checkpoints || []).map(point);
   return Object.freeze({
     ...base,
     world,
@@ -2126,7 +2130,11 @@ function expandMissionDefinition(base, targetWorld){
     spawns:Object.freeze((base.spawns || []).map(point)),
     civilians:Object.freeze((base.civilians || []).map(point)),
     tigers:Object.freeze((base.tigers || []).map(tiger)),
-    checkpoints:Object.freeze((base.checkpoints || []).map(point)),
+    checkpoints:Object.freeze(baseCheckpoints),
+    checkpointsBeforeRescue:!!base.checkpointsBeforeRescue,
+    mapTruthVersion:truth ? missionMapTruth.VERSION : "",
+    mapTruthLandmarks:Object.freeze(truthLandmarks),
+    mapTruthRequiredActionIds:Object.freeze(truth ? [...truth.requiredActionIds] : []),
     fireZones:Object.freeze((base.fireZones || []).map(fireZone)),
     waterZones:Object.freeze((base.waterZones || []).map(waterZone)),
   });
@@ -3034,6 +3042,7 @@ async function buildSnapshot(session, viewerId){
       tigerCount:mission.tigers.length,
       checkpointRequired:(mission.checkpoints || []).length,
       checkpointsBeforeRescue:!!mission.checkpointsBeforeRescue,
+      mapTruthVersion:cleanText(mission.mapTruthVersion || "", 20),
       waterSlowMultiplier:clamp(Number(mission.waterSlowMultiplier || 1), .35, 1),
       snowstormIntensity:clamp(Number(mission.snowstormIntensity || 0), 0, .9),
       nightVisibilityIntensity:clamp(Number(mission.nightVisibilityIntensity || 0), 0, .9),
@@ -3060,6 +3069,7 @@ async function buildSnapshot(session, viewerId){
     } : null,
     civilians:civilianSnapshots(session, players, derived.rescuedIds, derived.securedCivilianIds),
     checkpoints:mission.checkpoints || [],
+    mapTruthLandmarks:mission.mapTruthLandmarks || [],
     fireZones:mission.fireZones || [],
     waterZones:mission.waterZones || [],
     tigers:derived.tigers,

@@ -520,8 +520,8 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("SURVIVOR BEACONS ACTIVE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5085-silent-village"));
-  assert(html.includes("V10.12 (Silent Village)"));
+  assert(html.includes("living-world.js?v=5100-map-truth"));
+  assert(html.includes("V10.13 (Mission Map Truth &amp; Parity)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {

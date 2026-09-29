@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5085";
+const TS_BUILD = "5100";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -11003,6 +11003,12 @@ function storyMissionLiveStepText(cfg, state=S){
   const civiliansPending = civilians.filter((c)=>c?.alive && !c.evac).length;
   const civiliansSafe = civilians.filter((c)=>c?.alive && c.evac).length;
   const tigersPending = tigers.filter((t)=>t?.alive).length;
+  const truthPending = missionMapTruthPending(src);
+  if(truthPending.length > 0){
+    const truth = missionMapTruthSpec(src);
+    const next = truth?.landmarks?.find((item)=>String(item.id) === String(truthPending[0]));
+    return `NEXT: reach and engage ${next?.label || "the marked mission location"} (${truth.requiredActionIds.length-truthPending.length}/${truth.requiredActionIds.length} map objectives complete).`;
+  }
   if(civiliansPending > 0){
     return `NEXT: rescue and escort ${civiliansPending} civilian${civiliansPending===1?"":"s"} to the green EVAC zone (${civiliansSafe}/${civilians.length} safe).`;
   }
@@ -11445,6 +11451,24 @@ function storyMissionForState(state=S){
     applyConvoyMissionProfile(cfg, src);
     if(variant === STORY_VARIANTS.CAMPAIGN){
       cfg.endgamePayoutMul *= clamp(Number(cfg.convoyPayoutMul || 1), 1, 2.3);
+    }
+  }
+
+  // V10.13: Missions 1-33 use the same authored mission truth as Live Squad.
+  // This runs after generic variety so named counts and map objectives cannot
+  // silently drift away from the mission shown to the player.
+  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 33){
+    const truth = window.TigerStrikeMissionMapTruth?.get?.(cfg.number);
+    if(truth){
+      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.13";
+      cfg.mapTruthTitle = truth.title;
+      cfg.mapTruthRequiredActionIds = [...truth.requiredActionIds];
+      cfg.civilians = Math.max(0, Number(truth.civilians || 0));
+      cfg.civiliansExact = true;
+      cfg.tigers = Math.max(1, Number(truth.tigers || 1));
+      cfg.tigersExact = true;
+      cfg.captureRequired = Math.max(0, Number(truth.captures || 0));
+      cfg.extractionType = truth.extraction || "ground";
     }
   }
 
@@ -39127,6 +39151,62 @@ function currentMapKey(){
   return currentMap().key;
 }
 
+function missionMapTruthSpec(state=S){
+  if(normalizeModeName(state?.mode) !== "Story") return null;
+  const level = clamp(Math.floor(Number(storyMissionLevelForState(state) || state?.storyLevel || 1)), 1, 100);
+  return window.TigerStrikeMissionMapTruth?.get?.(level) || null;
+}
+function missionMapTruthScaled(state=S){
+  const spec = missionMapTruthSpec(state);
+  if(!spec) return null;
+  return window.TigerStrikeMissionMapTruth?.scale?.(spec.level, worldWidth(state), worldHeight(state)) || null;
+}
+function ensureMissionMapTruthProgress(state=S){
+  const spec = missionMapTruthSpec(state);
+  if(!spec) return { mission:0, engagedIds:[] };
+  if(!state._missionMapTruthProgress || Number(state._missionMapTruthProgress.mission || 0) !== spec.level){
+    state._missionMapTruthProgress = { mission:spec.level, engagedIds:[] };
+  }
+  if(!Array.isArray(state._missionMapTruthProgress.engagedIds)) state._missionMapTruthProgress.engagedIds = [];
+  state._missionMapTruthProgress.engagedIds = [...new Set(state._missionMapTruthProgress.engagedIds.map(String))];
+  return state._missionMapTruthProgress;
+}
+function missionMapTruthPending(state=S){
+  const spec = missionMapTruthSpec(state);
+  if(!spec) return [];
+  const engaged = new Set(ensureMissionMapTruthProgress(state).engagedIds);
+  return spec.requiredActionIds.filter((id)=>!engaged.has(String(id)));
+}
+function missionMapTruthReady(state=S){
+  return missionMapTruthPending(state).length === 0;
+}
+function missionMapTruthKind(item){
+  const type = String(item?.type || "");
+  if(type === "bridge") return "bridge";
+  if(type === "gate") return "gate";
+  if(["caravan","vehicle","helicopter"].includes(type)) return "vehicle";
+  if(type === "barricade") return "barricade";
+  if(type === "cage") return "route_trap";
+  if(["home","hut","camp"].includes(type)) return "cache";
+  return "generator";
+}
+function missionMapTruthInteractables(){
+  const scaled = missionMapTruthScaled(S);
+  if(!scaled) return [];
+  const engaged = new Set(ensureMissionMapTruthProgress(S).engagedIds);
+  return scaled.landmarks.filter((item)=>item.required).map((item)=>({
+    kind:missionMapTruthKind(item),
+    label:item.label,
+    x:item.x,
+    y:item.y,
+    missionTruth:true,
+    missionTruthId:item.id,
+    missionTruthAction:item.action,
+    missionTruthType:item.type,
+    missionTruthEngaged:engaged.has(String(item.id)),
+  }));
+}
+
 function rescueSitePool(){
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
@@ -39721,7 +39801,9 @@ function mapInteractablePool(){
     { kind:"cache", label:"Route Supply Cache", x:w*0.36, y:h*0.56 },
     { kind:"barricade", label:"Road Barricade", x:w*0.62, y:h*0.43 },
   ];
-  return [...core, ...interactiveRoutes].map((it)=>({
+  const missionTruth = missionMapTruthInteractables();
+  return [...core, ...interactiveRoutes, ...missionTruth].map((it)=>({
+    ...it,
     kind: it.kind,
     label: it.label,
     x: clamp(Math.round(it.x), 70, w - 70),
@@ -39738,8 +39820,8 @@ function spawnMapInteractables(){
   const worldW = worldWidth(S);
   const worldH = worldHeight(S);
   S.mapInteractables = base.map((it, idx)=>{
-    let pt = safeSpawnPoint(it.x, it.y, 22, true, true);
-    if(inMapScenarioKeepout(pt.x, pt.y, 22)){
+    let pt = it.missionTruth ? { x:it.x, y:it.y } : safeSpawnPoint(it.x, it.y, 22, true, true);
+    if(!it.missionTruth && inMapScenarioKeepout(pt.x, pt.y, 22)){
       const clear = findNearestOpenPoint(pt.x, pt.y, 22, {
         avoidKeepout:true,
         avoidWater:true,
@@ -39749,6 +39831,7 @@ function spawnMapInteractables(){
       if(clear) pt = clear;
     }
     return {
+      ...it,
       id: `INT-${idx+1}`,
       kind: it.kind,
       label: it.label,
@@ -39759,7 +39842,7 @@ function spawnMapInteractables(){
       cooldownUntil: 0,
       activeUntil: 0,
       effectR: it.kind === "barricade" ? barricadeEffectRadius() : (it.kind === "route_trap" ? 112 : 0),
-      routeOpen: it.kind === "bridge" || it.kind === "gate",
+      routeOpen: it.missionTruth || it.kind === "bridge" || it.kind === "gate",
       repaired: false,
       powered: false,
       triggered: false,
@@ -40208,6 +40291,54 @@ function interactiveObjectBlocksRoute(it){
   return (it.kind === "bridge" || it.kind === "gate") && it.routeOpen === false;
 }
 
+function activateMissionMapTruthInteractable(it, now=Date.now()){
+  if(!it?.missionTruth || !it.missionTruthId) return false;
+  const progress = ensureMissionMapTruthProgress(S);
+  const id = String(it.missionTruthId);
+  if(progress.engagedIds.includes(id)){
+    interactionFeedback(`${it.label} already completed.`, { success:true, seconds:2 });
+    return false;
+  }
+  progress.engagedIds.push(id);
+  it.missionTruthEngaged = true;
+  it.uses = 0;
+  it.activeUntil = now + 30000;
+  it.cooldownUntil = now + 30000;
+  it.routeOpen = true;
+  it.repaired = ["repair","board"].includes(String(it.missionTruthAction || "")) || !!it.repaired;
+  it.powered = ["scan","sample","prepare"].includes(String(it.missionTruthAction || "")) || !!it.powered;
+  S.scanPing = Math.max(Number(S.scanPing || 0), 340);
+
+  let rallied = 0;
+  for(const civ of (S.civilians || [])){
+    if(!civ?.alive || civ.evac || dist(civ.x, civ.y, it.x, it.y) > 280) continue;
+    if(it.missionTruthAction === "triage") civ.hp = Math.min(civ.hpMax || 100, Number(civ.hp || 0) + 35);
+    civ.following = true;
+    civ.escortOwner = "player";
+    civ.panic = Math.max(0, Number(civ.panic || 0) - 45);
+    rallied += 1;
+  }
+  if(["defend","secure"].includes(String(it.missionTruthAction || ""))){
+    for(const tiger of (S.tigers || [])){
+      if(tiger?.alive && dist(tiger.x, tiger.y, it.x, it.y) < 250){
+        tiger.holdUntil = Math.max(Number(tiger.holdUntil || 0), now + 1250);
+      }
+    }
+  }
+  const spec = missionMapTruthSpec(S);
+  const pending = missionMapTruthPending(S);
+  const complete = Math.max(0, Number(spec?.requiredActionIds?.length || 0) - pending.length);
+  const total = Math.max(0, Number(spec?.requiredActionIds?.length || 0));
+  interactionFeedback(
+    `✅ ${it.label} ${String(it.missionTruthAction || "checked").toUpperCase()} • Map objectives ${complete}/${total}${rallied ? ` • ${rallied} civilian${rallied===1?"":"s"} rallied` : ""}`,
+    { success:true, seconds:4 }
+  );
+  setEventText(pending.length ? `Next map objective: ${spec.landmarks.find((row)=>String(row.id)===String(pending[0]))?.label || "follow the marked route"}.` : "All mission-map objectives complete. Finish the rescue and tiger objectives.", 4);
+  invalidateMapCache();
+  __savePending = true;
+  return true;
+}
+
 function activateMapInteractable(it){
   if(!it) return false;
   const now = Date.now();
@@ -40223,6 +40354,10 @@ function activateMapInteractable(it){
     const sec = Math.max(1, Math.ceil(((it.cooldownUntil || 0) - now) / 1000));
     interactionFeedback(`${it.label} cooling down (${sec}s).`, { warn:true });
     return false;
+  }
+
+  if(it.missionTruth){
+    return activateMissionMapTruthInteractable(it, now);
   }
 
   if(it.kind==="alarm"){
@@ -41952,6 +42087,10 @@ function deploy(opts={}){
   beginMissionStatRun("deploy");
   window.TigerFieldSystems?.resetMissionSecondaryForMission?.(S);
   S._missionStartAt = Date.now();
+  S._missionMapTruthProgress = {
+    mission:(S.mode === "Story" ? Math.max(1, Math.floor(Number(storyMissionLevelForState(S) || S.storyLevel || 1))) : 0),
+    engagedIds:[]
+  };
   S.arcadeMissionStartAt = 0;
   S.arcadeMissionLimitSec = 0;
   S.arcadeComboPeak = 0;
@@ -49842,6 +49981,7 @@ function evacuationTruthText(){
     mission?.objective,
     mission?.name,
     mission?.chapterName,
+    mission?.extractionType,
     mission?.routeLabel,
     mission?.convoyRouteLabel,
     mapIdentityProfile(S.mode, chapterIndexForMode(S.mode))?.name,
@@ -50776,8 +50916,9 @@ function checkMissionComplete(){
   const trapTriggerReady = !arcadeMission || (S.stats.trapsTriggered || 0) >= (arcadeMission.trapTriggerRequired || 0);
   const noKillReady = !arcadeMission || !arcadeMission.captureOnly || (S.stats.kills || 0) === 0;
   const denRaidReady = !activeMission?.denRaid || tigerDenRaidObjectiveReady(S);
+  const mapTruthReady = !storyMission || missionMapTruthReady(S);
   const rescueObjectiveReady = civTotal > 0 ? evacReady : !tAlive;
-  const primaryObjectivesReady = rescueObjectiveReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady && denRaidReady;
+  const primaryObjectivesReady = rescueObjectiveReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady && denRaidReady && mapTruthReady;
 
   if(primaryObjectivesReady){
     activateMissionTigerSpawnLockdown("primary-objectives-complete");
@@ -50800,6 +50941,17 @@ function checkMissionComplete(){
       S._denRaidHintAt = Date.now() + 3600;
       const den = ensureTigerDenRaidState(S);
       setEventText(den.revealed ? "Tiger den objective remains: rescue trapped civilians at the den marker." : "Tiger den objective remains: scan clues or reach the den marker to reveal it.", 3.2);
+    }
+    return;
+  }
+
+  if(!tAlive && evacReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady && denRaidReady && !mapTruthReady){
+    if(!S.missionEnded && !S.gameOver && Date.now() > Number(S._mapTruthHintAt || 0)){
+      S._mapTruthHintAt = Date.now() + 3200;
+      const pending = missionMapTruthPending(S);
+      const truth = missionMapTruthSpec(S);
+      const next = truth?.landmarks?.find((item)=>String(item.id) === String(pending[0]));
+      setEventText(`Map objective remains: reach and engage ${next?.label || "the marked mission location"}.`, 3.2);
     }
     return;
   }
@@ -52919,6 +53071,101 @@ function drawSharedStoryDistrictFoundation(w, h, heavy=false){
   }
 }
 
+function drawMissionMapTruthOverlay(opts={}){
+  if(S.mode !== "Story" || window.__TUTORIAL_MODE__) return;
+  const truth = missionMapTruthScaled(S);
+  if(!truth) return;
+  const progress = ensureMissionMapTruthProgress(S);
+  const engaged = new Set(progress.engagedIds.map(String));
+  const mobileFast = !!opts.mobileFast;
+  ctx.save();
+
+  if(truth.route.length > 1){
+    ctx.strokeStyle = "rgba(125,211,252,.82)";
+    ctx.lineWidth = mobileFast ? 7 : 10;
+    ctx.setLineDash(mobileFast ? [14,11] : [22,14]);
+    ctx.beginPath();
+    ctx.moveTo(truth.route[0].x, truth.route[0].y);
+    for(const item of truth.route.slice(1)) ctx.lineTo(item.x, item.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  const palette = {
+    home:"#fbbf24", hut:"#fbbf24", farm:"#a3e635", village:"#f59e0b",
+    clinic:"#fb7185", research:"#22d3ee", cage:"#67e8f9", bridge:"#fdba74",
+    river:"#38bdf8", trail:"#86efac", road:"#facc15", safe:"#4ade80",
+    gate:"#f59e0b", barricade:"#fb923c", vehicle:"#60a5fa", caravan:"#60a5fa",
+    helicopter:"#93c5fd", grass:"#bef264", forest:"#4ade80", blood:"#fb7185",
+    boss:"#f87171", camp:"#cbd5e1"
+  };
+  for(const item of truth.landmarks){
+    const color = palette[item.type] || "#e2e8f0";
+    const done = engaged.has(String(item.id));
+    const x = item.x, y = item.y;
+    ctx.globalAlpha = done ? .62 : .96;
+    ctx.fillStyle = done ? "rgba(20,83,45,.32)" : "rgba(15,23,42,.50)";
+    ctx.strokeStyle = done ? "#4ade80" : color;
+    ctx.lineWidth = item.required ? 5 : 3;
+    ctx.beginPath();
+    ctx.arc(x, y, item.required ? 54 : 38, 0, Math.PI*2);
+    ctx.fill();
+    ctx.setLineDash(item.required && !done ? [10,7] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if(["home","hut","farm","village","clinic"].includes(item.type)){
+      ctx.fillStyle = item.type === "clinic" ? "#f8fafc" : "#d6b889";
+      ctx.fillRect(x-25,y-17,50,35);
+      ctx.fillStyle = item.type === "clinic" ? "#ef4444" : "#92400e";
+      ctx.beginPath();ctx.moveTo(x-31,y-17);ctx.lineTo(x,y-39);ctx.lineTo(x+31,y-17);ctx.closePath();ctx.fill();
+      if(item.type === "clinic"){
+        ctx.fillRect(x-4,y-12,8,24);ctx.fillRect(x-12,y-4,24,8);
+      }else{
+        ctx.fillStyle="#78350f";ctx.fillRect(x-5,y+1,10,17);
+      }
+    }else if(item.type === "bridge"){
+      ctx.fillStyle="#8b5e34";ctx.fillRect(x-38,y-12,76,24);
+      ctx.strokeStyle="#fde68a";ctx.lineWidth=3;
+      for(let px=x-30;px<=x+30;px+=15){ctx.beginPath();ctx.moveTo(px,y-15);ctx.lineTo(px,y+15);ctx.stroke();}
+    }else if(["vehicle","caravan"].includes(item.type)){
+      ctx.fillStyle="#2563eb";ctx.fillRect(x-31,y-14,45,25);ctx.fillStyle="#475569";ctx.fillRect(x+14,y-10,18,21);
+      ctx.fillStyle="#0f172a";ctx.beginPath();ctx.arc(x-20,y+14,6,0,Math.PI*2);ctx.arc(x+20,y+14,6,0,Math.PI*2);ctx.fill();
+    }else if(item.type === "helicopter"){
+      ctx.fillStyle="#64748b";ctx.beginPath();ctx.ellipse(x,y,31,14,0,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle="#e2e8f0";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x-47,y-24);ctx.lineTo(x+47,y-24);ctx.moveTo(x,y-24);ctx.lineTo(x,y-7);ctx.stroke();
+    }else if(item.type === "cage"){
+      ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(x-25,y-22,50,44);
+      for(let px=x-17;px<=x+17;px+=11){ctx.beginPath();ctx.moveTo(px,y-22);ctx.lineTo(px,y+22);ctx.stroke();}
+    }else if(["grass","forest"].includes(item.type)){
+      ctx.strokeStyle=color;ctx.lineWidth=5;
+      for(let i=-3;i<=3;i++){ctx.beginPath();ctx.moveTo(x+i*8,y+22);ctx.quadraticCurveTo(x+i*9+6,y,x+i*7,y-25-(Math.abs(i)%2)*8);ctx.stroke();}
+    }else if(item.type === "boss" || item.type === "blood"){
+      ctx.fillStyle="rgba(127,29,29,.48)";ctx.beginPath();ctx.arc(x,y,27,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle=color;ctx.lineWidth=6;ctx.beginPath();ctx.arc(x,y,20,0,Math.PI*2);ctx.stroke();
+    }else if(item.type === "safe"){
+      ctx.fillStyle="rgba(34,197,94,.32)";ctx.beginPath();ctx.arc(x,y,28,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle=color;ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(x,y-17);ctx.lineTo(x,y+17);ctx.moveTo(x-17,y);ctx.lineTo(x+17,y);ctx.stroke();
+    }else{
+      ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,12,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle=color;ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x,y+28);ctx.lineTo(x,y-30);ctx.stroke();
+    }
+
+    if(!mobileFast || item.required){
+      const label = `${done ? "✓ " : (item.required ? "◆ " : "")}${item.label}`;
+      const labelW = Math.min(230, Math.max(106, label.length*6.3));
+      rounded(x-labelW/2,y-78,labelW,25,9,"rgba(8,15,28,.91)",done?"rgba(74,222,128,.9)":color);
+      ctx.fillStyle = done ? "#dcfce7" : "#f8fafc";
+      ctx.font = "900 10px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText(label, x, y-61);
+    }
+  }
+  ctx.textAlign = "start";
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey, chapterStyle, camX=0, camY=0){
   const lagTier = frameLagTier();
   const perfMode = performanceMode() === "PERFORMANCE";
@@ -53020,6 +53267,7 @@ function drawMapSceneMobileFast(frameNow, worldW, worldH, viewW, viewH, themeKey
     }
   }
   drawScanTigerGuidance();
+  drawMissionMapTruthOverlay({ mobileFast:true });
 
   if(Date.now() < (S.fogUntil || 0)){
     ctx.globalAlpha = 0.22;
@@ -53149,7 +53397,9 @@ function drawMapScene(){
     Math.round(dynObjective.markerX || 0),
     Math.round(dynObjective.markerY || 0),
     Math.round(dynObjective.progress || 0),
-    Math.round(dynObjective.target || 0)
+    Math.round(dynObjective.target || 0),
+    missionMapTruthSpec(S)?.level || 0,
+    ensureMissionMapTruthProgress(S).engagedIds.join(",")
   ].join("|");
   const lagTier = frameLagTier();
   const mobile = isMobileViewport();
@@ -54105,6 +54355,7 @@ function drawMapScene(){
   drawPremiumMapLightingPass({ nowTs:Date.now(), w, h, themeKey, chapterStyle });
   drawLightingAtmospherePass({ nowTs:Date.now(), w, h, themeKey, chapterStyle, mobileFast:false });
   drawPremium2DColorGrade({ themeKey, mobileFast:false });
+  drawMissionMapTruthOverlay({ mobileFast:false });
 
   drawMissionTwistOverlay(Date.now());
 

@@ -2514,6 +2514,29 @@
     ctx.fillStyle="rgba(15,23,42,.90)";roundRect(ctx,view.x+view.w*.5-126,view.y+22,252,38,10);ctx.fill();ctx.fillStyle="#e0e7ff";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`NIGHT AMBUSH • VISIBILITY ${Math.round((1-intensity)*100)}%`,view.x+view.w*.5,view.y+47);ctx.restore();
   }
 
+  function drawSharedMissionTruth(ctx,snap){
+    if(snap.launchType!=="shared-story"||!Array.isArray(snap.mapTruthLandmarks)||!snap.mapTruthLandmarks.length)return;
+    const doneIds=new Set((snap.checkpointCompletedIds||[]).map(String));
+    const checkpoints=snap.checkpoints||[];
+    const palette={home:"#fbbf24",hut:"#fbbf24",farm:"#a3e635",clinic:"#fb7185",research:"#22d3ee",cage:"#67e8f9",bridge:"#fdba74",river:"#38bdf8",trail:"#86efac",road:"#facc15",safe:"#4ade80",gate:"#f59e0b",barricade:"#fb923c",vehicle:"#60a5fa",caravan:"#60a5fa",helicopter:"#93c5fd",grass:"#bef264",forest:"#4ade80",blood:"#fb7185",boss:"#f87171",camp:"#cbd5e1"};
+    ctx.save();
+    ctx.strokeStyle="rgba(125,211,252,.48)";ctx.lineWidth=6;ctx.setLineDash([16,12]);ctx.beginPath();ctx.moveTo(snap.mapTruthLandmarks[0].x,snap.mapTruthLandmarks[0].y);for(const item of snap.mapTruthLandmarks.slice(1))ctx.lineTo(item.x,item.y);ctx.stroke();ctx.setLineDash([]);
+    for(const item of snap.mapTruthLandmarks){
+      const checkpoint=checkpoints.find((row)=>String(row.id)===`truth_${item.id}`||String(row.label)===String(item.label));
+      const done=checkpoint?doneIds.has(String(checkpoint.id)):false;
+      const activeObjective=!!checkpoint;
+      const color=palette[item.type]||"#e2e8f0";
+      ctx.fillStyle=done?"rgba(20,83,45,.42)":"rgba(15,23,42,.60)";ctx.strokeStyle=done?"#4ade80":color;ctx.lineWidth=activeObjective?5:3;ctx.beginPath();ctx.arc(item.x,item.y,activeObjective?48:34,0,Math.PI*2);ctx.fill();ctx.setLineDash(activeObjective&&!done?[9,7]:[]);ctx.stroke();ctx.setLineDash([]);
+      if(["home","hut","farm","clinic"].includes(item.type)){ctx.fillStyle=item.type==="clinic"?"#f8fafc":"#d6b889";ctx.fillRect(item.x-22,item.y-14,44,30);ctx.fillStyle=item.type==="clinic"?"#ef4444":"#92400e";ctx.beginPath();ctx.moveTo(item.x-27,item.y-14);ctx.lineTo(item.x,item.y-34);ctx.lineTo(item.x+27,item.y-14);ctx.closePath();ctx.fill();}
+      else if(item.type==="helicopter"){ctx.fillStyle="#64748b";ctx.beginPath();ctx.ellipse(item.x,item.y,28,12,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#e2e8f0";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(item.x-40,item.y-20);ctx.lineTo(item.x+40,item.y-20);ctx.stroke();}
+      else if(item.type==="bridge"){ctx.fillStyle="#8b5e34";ctx.fillRect(item.x-34,item.y-10,68,20);}
+      else if(item.type==="cage"){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(item.x-22,item.y-19,44,38);}
+      else {ctx.fillStyle=color;ctx.beginPath();ctx.arc(item.x,item.y,10,0,Math.PI*2);ctx.fill();}
+      if(item.required){const label=`${done?"✓ ":(activeObjective?"◆ ":"")}${item.label}`;const width=Math.min(220,Math.max(110,label.length*6.3));ctx.fillStyle="rgba(8,15,28,.92)";roundRect(ctx,item.x-width/2,item.y-70,width,25,9);ctx.fill();ctx.strokeStyle=done?"#4ade80":color;ctx.lineWidth=2;ctx.stroke();ctx.fillStyle="#f8fafc";ctx.font="900 10px system-ui";ctx.textAlign="center";ctx.fillText(label,item.x,item.y-53);}
+    }
+    ctx.restore();
+  }
+
   function drawArena(dt=.016){
     const canvas=$("squadArena"),snap=state.snapshot;if(!canvas||!snap)return;
     sizeArenaCanvas(canvas);
@@ -2526,6 +2549,7 @@
     else{state.camera.x+=(targetX-state.camera.x)*.16;state.camera.y+=(targetY-state.camera.y)*.16;}
     const view={x:state.camera.x,y:state.camera.y,w,h};ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(-view.x,-view.y);
     drawExpandedDistrict(ctx,snap,view);
+    drawSharedMissionTruth(ctx,snap);
     for(const civ of (snap.civilians||[])) drawStoryCivilian(ctx,civ,(snap.rescuedIds||[]).includes(civ.id));
     for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawTigerCage(ctx,tiger,now);
     for(const tiger of (snap.tigers||[snap.boss]).filter(Boolean)) drawTigerCarcass(ctx,tiger,now);

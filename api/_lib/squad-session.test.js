@@ -384,7 +384,8 @@ async function run(){
     assert(levelSnapshot.tigers.length >= 1, `Story Mission ${level} has shared tiger gameplay`);
     if(level === 6){
       assert(levelSnapshot.mission.objective.toLowerCase().includes("tall grass"), "Mission 6 names the tall-grass ambush");
-      assert.equal(levelSnapshot.tigers.length, 3, "Mission 6 has three hidden-grass threats");
+      assert.equal(levelSnapshot.tigers.filter((tiger)=>String(tiger.id).startsWith("story6_")).length, 3, "Mission 6 keeps its three authored hidden-grass threats");
+      assert(levelSnapshot.tigers.length >= 3, "Living World patrol pressure may add threats without replacing the authored pack");
     }
     if(level === 7){
       assert.equal(levelSnapshot.mission.rescueRequired, 1, "Mission 7 requires the injured villager escort");
@@ -394,7 +395,10 @@ async function run(){
       assert.equal(levelSnapshot.mission.captureRequired, 1, "Mission 8 requires a research capture");
       assert.equal(levelSnapshot.civilians.length, 0, "Mission 8 does not invent a civilian objective");
     }
-    if(level === 9) assert.equal(levelSnapshot.tigers.length, 4, "Mission 9 has a full village-gate pack");
+    if(level === 9){
+      assert.equal(levelSnapshot.tigers.filter((tiger)=>String(tiger.id).startsWith("story9_")).length, 4, "Mission 9 keeps its full authored village-gate pack");
+      assert(levelSnapshot.tigers.length >= 4, "Living World patrol pressure may reinforce Mission 9 without replacing its authored pack");
+    }
     if(level === 10){
       assert.equal(levelSnapshot.boss.name, "Village Alpha", "Mission 10 uses its real Village Alpha boss");
       assert.equal(levelSnapshot.boss.hpMax, 1000, "Mission 10 keeps the Village Alpha boss health");
@@ -404,7 +408,8 @@ async function run(){
       assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 11 escorts four villagers through the narrow path");
     }
     if(level === 12){
-      assert.equal(levelSnapshot.tigers.length, 4, "Mission 12 has a pack large enough for rising aggression");
+      assert.equal(levelSnapshot.tigers.filter((tiger)=>String(tiger.id).startsWith("s12_")).length, 4, "Mission 12 keeps its four authored aggression threats");
+      assert(levelSnapshot.tigers.length >= 4, "Living World patrol pressure may reinforce Mission 12 without replacing its authored pack");
       assert(levelSnapshot.mission.dangerNote.includes("Every tiger killed"), "Mission 12 explains its real kill-driven aggression rule");
     }
     if(level === 13) assert.equal(levelSnapshot.mission.captureRequired, 2, "Mission 13 requires two research captures");
@@ -415,7 +420,8 @@ async function run(){
     }
     if(level === 15){
       assert.equal(levelSnapshot.mission.rescueRequired, 4, "Mission 15 requires all caravan crew members");
-      assert.equal(levelSnapshot.tigers.length, 4, "Mission 15 has a complete caravan ambush pack");
+      assert.equal(levelSnapshot.tigers.filter((tiger)=>String(tiger.id).startsWith("s15_")).length, 4, "Mission 15 keeps its complete authored caravan ambush pack");
+      assert(levelSnapshot.tigers.length >= 4, "Living World patrol pressure may reinforce Mission 15 without replacing its authored pack");
     }
     if(level === 16) assert.equal(levelSnapshot.mission.rescueRequired, 5, "Mission 16 requires all five forest civilians");
     if(level === 17){
