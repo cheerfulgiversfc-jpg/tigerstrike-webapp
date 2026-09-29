@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5110";
+const TS_BUILD = "5120";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -11454,14 +11454,14 @@ function storyMissionForState(state=S){
     }
   }
 
-  // V10.14: every newly released batch extends the same authored mission
+  // V10.15: every newly released batch extends the same authored mission
   // truth used by Solo and Live Squad. Never ship a mission batch without it.
   // This runs after generic variety so named counts and map objectives cannot
   // silently drift away from the mission shown to the player.
-  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 37){
+  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 40){
     const truth = window.TigerStrikeMissionMapTruth?.get?.(cfg.number);
     if(truth){
-      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.14";
+      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.15";
       cfg.mapTruthTitle = truth.title;
       cfg.mapTruthRequiredActionIds = [...truth.requiredActionIds];
       cfg.civilians = Math.max(0, Number(truth.civilians || 0));
@@ -13871,8 +13871,8 @@ function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
     </div>`;
   }).join("");
   return `<section class="card" id="livingWorldChapterOne" style="margin-top:10px;border-color:rgba(74,222,128,.62);background:linear-gradient(145deg,rgba(6,54,45,.50),rgba(8,15,29,.96))">
-    <div class="hudLine"><b>🌍 Living Story Districts • Missions 1–37</b></div>
-    <div class="small">Missions 1–37 now react to lasting results. Emberfall Ward preserves the exact research captures, evacuation convoy, Doctor Imani sample route, and burning-village rescue while adding relief command, research beacons, convoy repair, and a protected firebreak corridor. Solo and Shared Story each keep their own progression.</div>
+    <div class="hudLine"><b>🌍 Living Story Districts • Missions 1–40</b></div>
+    <div class="small">Missions 1–40 now react to lasting results. Crownfall Square preserves the exact ten-tiger town-center swarm, twelve-tiger village pack, and separate Twin Alpha territories while adding defense command, alert towers, fortified defenses, and a Twin Alpha separation ward. Solo and Shared Story each keep their own progression.</div>
     <div class="small" style="margin-top:6px"><b>Latest:</b> ${worldMapEsc(living.headline)}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${cards}</div>
   </section>`;
@@ -39887,8 +39887,9 @@ function spawnLivingWorldDistrictSupport(){
   const shadow = effect.districtId === "shadow_basin";
   const silent = effect.districtId === "silent_village";
   const ember = effect.districtId === "emberfall_ward";
-  const label = ember ? (effect.support?.evacCorridor ? "Emberfall Firebreak Command" : "Emberfall Relief Command") : (silent ? (effect.support?.evacCorridor ? "Silent Village Evac Command" : "Silent Village Search Command") : (shadow ? (effect.support?.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command") : (riverveil ? (effect.support?.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station") : (veil ? (effect.support?.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost") : (crimson ? "Crimson Hollow Conservation Camp" : (amara ? "Amara Haven Field Hospital" : (bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House")))))))));
-  let point = safeSpawnPoint(worldW * (ember ? 0.38 : (silent ? 0.34 : (shadow ? 0.68 : (riverveil ? 0.32 : (veil ? 0.36 : (crimson ? 0.44 : (amara ? 0.72 : (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28)))))))))), worldH * (ember ? 0.62 : (silent ? 0.36 : (shadow ? 0.34 : (riverveil ? 0.68 : (veil ? 0.62 : (crimson ? 0.66 : (amara ? 0.34 : (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70)))))))))), 24, true, true);
+  const crownfall = effect.districtId === "crownfall_square";
+  const label = crownfall ? (effect.support?.bossWard ? "Crownfall Twin Ward Command" : "Crownfall Defense Command") : (ember ? (effect.support?.evacCorridor ? "Emberfall Firebreak Command" : "Emberfall Relief Command") : (silent ? (effect.support?.evacCorridor ? "Silent Village Evac Command" : "Silent Village Search Command") : (shadow ? (effect.support?.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command") : (riverveil ? (effect.support?.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station") : (veil ? (effect.support?.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost") : (crimson ? "Crimson Hollow Conservation Camp" : (amara ? "Amara Haven Field Hospital" : (bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House"))))))))));
+  let point = safeSpawnPoint(worldW * (crownfall ? 0.52 : (ember ? 0.38 : (silent ? 0.34 : (shadow ? 0.68 : (riverveil ? 0.32 : (veil ? 0.36 : (crimson ? 0.44 : (amara ? 0.72 : (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28))))))))))), worldH * (crownfall ? 0.66 : (ember ? 0.62 : (silent ? 0.36 : (shadow ? 0.34 : (riverveil ? 0.68 : (veil ? 0.62 : (crimson ? 0.66 : (amara ? 0.34 : (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70))))))))))), 24, true, true);
   if(inMapScenarioKeepout(point.x, point.y, 24)){
     point = findNearestOpenPoint(point.x, point.y, 24, {
       avoidKeepout:true,
@@ -39914,7 +39915,7 @@ function spawnLivingWorldDistrictSupport(){
     triggered:false,
     rewardClaimed:false,
     livingWorldSupport:true,
-    livingWorldSupportType:ember ? "emberfall_command" : (silent ? "silent_command" : (shadow ? "shadow_command" : (riverveil ? "riverveil_station" : (veil ? "veil_outpost" : (crimson ? "crimson_camp" : (amara ? "amara_hospital" : (bloodroot ? "bloodroot_clinic" : (iron ? "iron_armory" : (jungle ? "jungle_ranger" : "river_safe_house"))))))))),
+    livingWorldSupportType:crownfall ? "crownfall_command" : (ember ? "emberfall_command" : (silent ? "silent_command" : (shadow ? "shadow_command" : (riverveil ? "riverveil_station" : (veil ? "veil_outpost" : (crimson ? "crimson_camp" : (amara ? "amara_hospital" : (bloodroot ? "bloodroot_clinic" : (iron ? "iron_armory" : (jungle ? "jungle_ranger" : "river_safe_house")))))))))),
     returningCivilians:Math.max(0, Number(effect.support?.returningCivilians || 0)),
   });
   return true;
@@ -39925,7 +39926,18 @@ function spawnLivingWorldRiverGateSafeHouse(){
 
 function configureLivingWorldDistrictRoutes(){
   const effect = S._livingWorldMission;
-  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward"].includes(effect.districtId)) return false;
+  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square"].includes(effect.districtId)) return false;
+  if(effect.districtId === "crownfall_square"){
+    const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
+    if(generator){ generator.powered = !!effect.support?.calmingTowers; generator.label = generator.powered ? "Crownfall Town Alert Towers" : "Crownfall Alert Relay"; }
+    const barricade = (S.mapInteractables || []).find((item)=>item?.kind === "barricade");
+    if(barricade && effect.support?.swarmDefenses){ barricade.label = "Crownfall Fortified Square Defense"; barricade.effectR = Math.max(Number(barricade.effectR || 0), barricadeEffectRadius()); }
+    const routeTrap = (S.mapInteractables || []).find((item)=>item?.kind === "route_trap");
+    if(routeTrap && effect.support?.bossWard){ routeTrap.label = "Twin Alpha Separation Ward"; routeTrap.effectR = Math.max(Number(routeTrap.effectR || 0), 165); }
+    const gate = (S.mapInteractables || []).find((item)=>item?.kind === "gate");
+    if(gate){ gate.routeOpen = true; gate.label = effect.support?.bossWard ? "Crownfall Twin Ward Gate" : "Crownfall Square Gate"; }
+    __blockedAtCache.clear(); invalidateMapCache(); return true;
+  }
   if(effect.districtId === "emberfall_ward"){
     const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
     if(generator){
@@ -40446,6 +40458,7 @@ function activateMapInteractable(it){
       const shadowCommand = it.livingWorldSupportType === "shadow_command";
       const silentCommand = it.livingWorldSupportType === "silent_command";
       const emberfallCommand = it.livingWorldSupportType === "emberfall_command";
+      const crownfallCommand = it.livingWorldSupportType === "crownfall_command";
       if(amaraHospital) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(crimsonCamp) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(veilOutpost) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
@@ -40453,10 +40466,11 @@ function activateMapInteractable(it){
       if(shadowCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(silentCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(emberfallCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
-      S.armor = clamp(Number(S.armor || 0) + (ironArmory ? 25 : (emberfallCommand ? 26 : (silentCommand ? 24 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15)))))))))), 0, S.armorCap || 100);
+      if(crownfallCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
+      S.armor = clamp(Number(S.armor || 0) + (crownfallCommand ? 30 : (ironArmory ? 25 : (emberfallCommand ? 26 : (silentCommand ? 24 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15))))))))))), 0, S.armorCap || 100);
       const supportWeapon = equippedWeapon();
       const supportAmmoId = supportWeapon ? (bestAvailableAmmoIdForWeapon(supportWeapon) || supportWeapon.ammo) : "";
-      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (ironArmory ? 18 : (emberfallCommand ? 16 : (silentCommand ? 16 : (shadowCommand ? 18 : (riverveilStation ? 16 : (veilOutpost ? 12 : (crimsonCamp ? 12 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8))))))))));
+      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (crownfallCommand ? 18 : (ironArmory ? 18 : (emberfallCommand ? 16 : (silentCommand ? 16 : (shadowCommand ? 18 : (riverveilStation ? 16 : (veilOutpost ? 12 : (crimsonCamp ? 12 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8)))))))))));
       if(jungleRanger){
         S.scanPing = Math.max(Number(S.scanPing || 0), 240);
         if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
@@ -40509,10 +40523,19 @@ function activateMapInteractable(it){
         S.scanPing = Math.max(Number(S.scanPing || 0), 430);
         if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
       }
+      if(crownfallCommand){
+        const supportRubberId = supportWeapon ? compatibleAmmoIdsForWeapon(supportWeapon, "rubber")[0] : "";
+        if(supportRubberId) S.ammoReserve[supportRubberId] = Math.max(0, Number(S.ammoReserve[supportRubberId] || 0)) + 28;
+        S.ammoReserve.TRANQ_DARTS = Math.max(0, Number(S.ammoReserve.TRANQ_DARTS || 0)) + 6;
+        S.scanPing = Math.max(Number(S.scanPing || 0), 450);
+        S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
+      }
       it.uses = 0;
       it.cooldownUntil = now + 60000;
       it.activeUntil = now + 900;
-      interactionFeedback(emberfallCommand
+      interactionFeedback(crownfallCommand
+        ? "🏰 Crownfall Defense supplied +2 Med Kits, +30 Armor, +18 Ammo, 28 Rubber rounds, 6 Tranq Darts, 1 Trap, and a town-center scan."
+        : emberfallCommand
         ? `🔥 Emberfall Relief supplied +2 Med Kits, +26 Armor, +16 Ammo, Rubber rounds${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a firebreak scan.`
         : silentCommand
         ? `🏚️ Silent Village supplied +2 Med Kits, +24 Armor, +16 Ammo, Rubber rounds${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a survivor scan.`
@@ -55811,7 +55834,18 @@ function drawMapInteractable(it){
   } else if(it.kind === "cache"){
     // drawMapInteractable is outside the map-background helper scope, so draw
     // the cache directly instead of calling that private crateBlock helper.
-    if(it.livingWorldSupportType === "emberfall_command"){
+    if(it.livingWorldSupportType === "crownfall_command"){
+      ctx.fillStyle = "rgba(30,41,59,.98)";
+      roundedRectFill(it.x - 35, it.y - 23, 70, 48, 7);
+      ctx.strokeStyle = "rgba(250,204,21,.98)";
+      ctx.lineWidth = 2.6;
+      ctx.strokeRect(it.x - 34, it.y - 22, 68, 46);
+      ctx.fillStyle = "rgba(254,240,138,.98)";
+      roundedRectFill(it.x - 5, it.y - 16, 10, 34, 2);
+      roundedRectFill(it.x - 17, it.y - 5, 34, 10, 2);
+      ctx.strokeStyle = "rgba(251,113,133,.96)";
+      ctx.beginPath(); ctx.arc(it.x + 23, it.y - 13, 7, 0, Math.PI * 2); ctx.stroke();
+    }else if(it.livingWorldSupportType === "emberfall_command"){
       ctx.fillStyle = "rgba(69,10,10,.98)";
       roundedRectFill(it.x - 33, it.y - 21, 66, 44, 7);
       ctx.strokeStyle = "rgba(251,146,60,.98)";
@@ -55914,11 +55948,13 @@ function drawMapInteractable(it){
       ctx.lineTo(it.x, it.y + 10);
       ctx.stroke();
     }
-    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","veil_outpost","riverveil_station","shadow_command","silent_command"].includes(it.livingWorldSupportType)){
+    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","veil_outpost","riverveil_station","shadow_command","silent_command","emberfall_command","crownfall_command"].includes(it.livingWorldSupportType)){
       const helpers = Math.max(1, Math.min(2, Number(it.returningCivilians || 0) || 1));
       for(let idx=0; idx<helpers; idx++){
         const hx = it.x + (idx === 0 ? -27 : 27);
-        ctx.fillStyle = it.livingWorldSupportType === "iron_armory"
+        ctx.fillStyle = it.livingWorldSupportType === "crownfall_command"
+          ? (idx === 0 ? "#facc15" : "#fb7185")
+          : it.livingWorldSupportType === "iron_armory"
           ? (idx === 0 ? "#f59e0b" : "#64748b")
           : it.livingWorldSupportType === "silent_command"
             ? (idx === 0 ? "#facc15" : "#22d3ee")

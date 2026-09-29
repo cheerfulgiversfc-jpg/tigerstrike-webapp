@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–37 map to eleven persistent districts", () => {
+test("Missions 1–40 map to twelve persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -32,7 +32,9 @@ test("Missions 1–37 map to eleven persistent districts", () => {
   assert.equal(livingWorld.districtForMission(33).id, "silent_village");
   assert.equal(livingWorld.districtForMission(34).id, "emberfall_ward");
   assert.equal(livingWorld.districtForMission(37).id, "emberfall_ward");
-  assert.equal(livingWorld.districtForMission(38), null);
+  assert.equal(livingWorld.districtForMission(38).id, "crownfall_square");
+  assert.equal(livingWorld.districtForMission(40).id, "crownfall_square");
+  assert.equal(livingWorld.districtForMission(41), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -506,6 +508,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('riverveil ? "riverveil_station"'));
   assert(game.includes('shadow ? "shadow_command"'));
   assert(game.includes('silent ? "silent_command"'));
+  assert(game.includes('crownfall ? "crownfall_command"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
@@ -520,10 +523,11 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("SURVIVOR CAMP OPEN"));
   assert(squad.includes("STEALTH TRACKING ONLINE"));
   assert(squad.includes("SURVIVOR BEACONS ACTIVE"));
+  assert(squad.includes("TWIN ALPHA WARD ACTIVE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5110-emberfall"));
-  assert(html.includes("V10.14 (Emberfall Ward)"));
+  assert(html.includes("living-world.js?v=5120-crownfall"));
+  assert(html.includes("V10.15 (Crownfall Square)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1217,7 +1221,7 @@ test("Emberfall Ward protects the exact Missions 34–37 encounters", async () =
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.mission.extractionType, extractionType);
-    assert.equal(waiting.mission.mapTruthVersion, "10.14");
+    assert.equal(waiting.mission.mapTruthVersion, "10.15");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 37) assert.equal(waiting.fireZones.length, 4);
   }
@@ -1255,4 +1259,64 @@ test("Emberfall relief support reaches both Shared Story players", async () => {
   assert.equal(active.mission.livingWorld.support.clinicRelay, true);
   assert.equal(active.mission.livingWorld.support.evacCorridor, true);
   assert.equal(active.mission.livingWorld.support.civilianDamageMul, 0.74);
+});
+
+test("Crownfall Square protects the exact Missions 38–40 encounters", async () => {
+  const rows = [
+    [38, 911240, 10, 0],
+    [39, 911241, 12, 0],
+    [40, 911242, 2, 0],
+  ];
+  for(const [level, userId, tigerCount, civilianCount] of rows){
+    const host = { id:userId, first_name:`Crown${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.crownfall_square = {
+      ...profile.livingWorld.districts.crownfall_square,
+      tigerPressure:96,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.districtId, "crownfall_square");
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.mission.mapTruthVersion, "10.15");
+    if(level === 40){
+      assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, 2);
+      assert.deepEqual(waiting.tigers.map((tiger)=>tiger.hpMax), [1850,1850]);
+      assert.equal(waiting.mapTruthLandmarks.filter((item)=>item.type === "boss").length, 2);
+    }
+  }
+});
+
+test("Crownfall Defense support and Twin Alpha ward reach Shared Story", async () => {
+  const host = { id:911243, first_name:"Crownfall", last_name:"Leader" };
+  const teammate = { id:911244, first_name:"Ward", last_name:"Partner" };
+  const profile = await squadServer.readCoopProfile(host);
+  profile.livingWorld.districts.crownfall_square = {
+    ...profile.livingWorld.districts.crownfall_square,
+    tigerPressure:92,
+    settlementSafety:78,
+    bloodScent:80,
+  };
+  await squadServer.writeCoopProfile(profile, host);
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:40 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.settlementSupport.label, "Crownfall Twin Ward Command");
+  assert.equal(waiting.settlementSupport.type, "crownfall_command");
+  assert.equal(waiting.mission.livingWorld.support.calmingTowers, true);
+  assert.equal(waiting.mission.livingWorld.support.swarmDefenses, true);
+  assert.equal(waiting.mission.livingWorld.support.bossWard, true);
+  assert.equal(waiting.mission.livingWorld.support.stealthBossReduction, 3);
+  session = await squadServer.joinSession(session.code, teammate);
+  await squadServer.applyAction(session, host, "start");
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.armorFloor, 65);
+  assert.equal(active.mission.livingWorld.support.rubberAmmoMinimum, 72);
 });

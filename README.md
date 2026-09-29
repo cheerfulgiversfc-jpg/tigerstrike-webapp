@@ -612,6 +612,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Settlement recovery opens Emberfall Relief Command, research beacons, convoy repair support, and a protected firebreak corridor. Solo and Shared Story retain separate progression and supplies.
 - Future mission-level batches must include their Mission Map Truth & Parity work in the same update.
 
+### V10.15 Crownfall Square + Mission Map Truth — Missions 38–40
+
+- Extends the shared Mission Map Truth & Parity manifest through Missions 38–40 for both Solo and Shared Story.
+- Mission 38 preserves the exact ten-tiger town-center swarm and defense ring; Mission 39 preserves the exact twelve-tiger village pack and its territories.
+- Mission 40 preserves Ashclaw and Ruinstripe as two separate 1,850 HP Alpha bosses with named territories and a visible dividing ward.
+- Adds Crownfall Square as the twelfth persistent Living World district without adding unwanted patrols to these protected encounters.
+- Clean Crownfall outcomes unlock Defense Command supplies, town alert towers, fortified square defenses, and a Twin Alpha separation ward that reduces boss damage.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

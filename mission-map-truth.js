@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.14";
-  const MAX_MISSION = 37;
+  const VERSION = "10.15";
+  const MAX_MISSION = 40;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -133,6 +133,15 @@
     37:mission(37,"Burning Village Rescue",4,6,5,0,"ground",[
       mark("north_house_fire","fire","North House Fire",.29,.27), mark("market_fire","fire","Market Fire",.48,.42), mark("east_block_fire","fire","East Block Fire",.67,.29), mark("south_block_fire","fire","South Block Fire",.61,.62), mark("clear_fire_lane","trail","Clear Fire Lane",.33,.47,"secure",true), mark("burning_market_bypass","road","Burning Market Bypass",.56,.52,"secure",true), mark("fire_rescue_exit","safe","Fire Rescue Exit",.76,.64,"secure",true), mark("relief_staging","clinic","Village Relief Staging",.88,.72)
     ],[point(.20,.23),point(.33,.47),point(.56,.52),point(.76,.64),point(.88,.72)]),
+    38:mission(38,"Town Center Swarm",4,0,10,0,"ground",[
+      mark("west_village_approach","road","West Village Approach",.18,.50), mark("north_town_barricade","barricade","North Town Barricade",.50,.25), mark("town_center_defense","barricade","Town Center Defense Ring",.52,.50), mark("east_village_approach","road","East Village Approach",.82,.50), mark("squad_extraction","safe","Squad Extraction",.84,.72)
+    ],[point(.18,.50),point(.50,.25),point(.52,.50),point(.82,.50),point(.84,.72)]),
+    39:mission(39,"Massive Village Pack",4,0,12,0,"ground",[
+      mark("pack_territory_west","forest","Pack Territory West",.24,.43), mark("pack_territory_north","forest","Pack Territory North",.50,.24), mark("massive_pack_core","boss","Massive Pack Core",.54,.50), mark("pack_territory_south","forest","Pack Territory South",.56,.72), mark("squad_extraction","safe","Squad Extraction",.86,.70)
+    ],[point(.24,.43),point(.50,.24),point(.54,.50),point(.56,.72),point(.86,.70)]),
+    40:mission(40,"Twin Alpha Tigers",4,0,2,0,"ground",[
+      mark("alpha_tracking_command","research","Alpha Tracking Command",.21,.28), mark("ashclaw_territory","boss","Ashclaw Alpha Territory",.39,.48), mark("twin_alpha_divide","barricade","Twin Alpha Divide",.56,.50), mark("ruinstripe_territory","boss","Ruinstripe Alpha Territory",.73,.48), mark("chapter_extraction","safe","Chapter 4 Extraction",.87,.72)
+    ],[point(.21,.28),point(.39,.48),point(.56,.50),point(.73,.48),point(.87,.72)]),
   });
 
   function get(level){
