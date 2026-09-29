@@ -594,7 +594,7 @@ const SHARED_STORY_MISSIONS = Object.freeze({
     level:35, chapter:4, chapterName:"Abandoned Villages", title:"Story Mission 35",
     objective:"Rescue the five-person evacuation convoy, secure its three route checkpoints, clear the ambush, and extract.", rescueRequired:5,
     dangerNote:"The convoy route is under a coordinated ambush. Both soldiers must secure every checkpoint before the vehicles can advance.", aggressionLabel:"Evacuation Convoy Ambush", hazardDamageBonus:2,
-    timeLimitMs:12 * 60 * 1000, world:WORLD, extraction:EXTRACTION, spawns:SPAWNS,
+    timeLimitMs:12 * 60 * 1000, world:WORLD, extraction:EXTRACTION, extractionType:"vehicle", spawns:SPAWNS,
     checkpoints:Object.freeze([
       Object.freeze({ id:"s35_convoy_rally", x:370, y:520, r:130, label:"Convoy Rally Point" }),
       Object.freeze({ id:"s35_convoy_crossroad", x:650, y:520, r:130, label:"Convoy Crossroad" }),
@@ -2292,7 +2292,7 @@ function normalizeLivingWorldMission(raw){
   const src = raw && typeof raw === "object" ? raw : {};
   const support = src.support && typeof src.support === "object" ? src.support : {};
   return {
-    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village"].includes(cleanText(src.districtId, 40)),
+    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward"].includes(cleanText(src.districtId, 40)),
     districtId:cleanText(src.districtId, 40),
     districtName:cleanText(src.districtName, 60),
     missionLevel:clamp(Math.floor(Number(src.missionLevel || 0)), 0, 100),
@@ -2361,9 +2361,37 @@ function activeLivingWorldMission(session){
   const consequence = normalizeLivingWorldMission(session?.livingWorldMission);
   const level = Number(session?.storyMissionLevel || 0);
   const district = livingWorld.districtForMission(level);
-  return session?.launchType === "shared-story" && level >= 1 && level <= 33 && consequence.enabled && consequence.missionLevel === level && consequence.districtId === district?.id
+  return session?.launchType === "shared-story" && level >= 1 && level <= livingWorld.PILOT_MAX_MISSION && consequence.enabled && consequence.missionLevel === level && consequence.districtId === district?.id
     ? consequence
     : normalizeLivingWorldMission(null);
+}
+
+function livingWorldSettlementSupport(mission, effect){
+  const support = effect?.support || {};
+  const open = effect?.enabled && (support.safeHouse || support.rangerStation || support.armoryDepot || support.fieldClinic || support.researchPost || support.fieldHospital || support.conservationCamp || support.researchOutpost || support.riverStation || support.shadowCommand || support.villageCommand);
+  if(!open) return null;
+  const presentations = {
+    emberfall_ward:{ x:.38, y:.62, type:"emberfall_command", label:support.evacCorridor ? "Emberfall Firebreak Command" : "Emberfall Relief Command" },
+    silent_village:{ x:.34, y:.36, type:"silent_command", label:support.evacCorridor ? "Silent Village Evac Command" : "Silent Village Search Command" },
+    shadow_basin:{ x:.68, y:.34, type:"shadow_command", label:support.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command" },
+    riverveil_crossing:{ x:.32, y:.68, type:"riverveil_station", label:support.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station" },
+    veil_canopy:{ x:.36, y:.62, type:"veil_outpost", label:support.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost" },
+    crimson_hollow:{ x:.44, y:.66, type:"crimson_camp", label:"Crimson Hollow Conservation Camp" },
+    amara_haven:{ x:.72, y:.34, type:"amara_hospital", label:"Amara Haven Field Hospital" },
+    bloodroot_passage:{ x:.31, y:.58, type:"bloodroot_clinic", label:support.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic" },
+    iron_roar:{ x:.38, y:.64, type:"iron_armory", label:"Iron Roar Armory Depot" },
+    jungle_spine:{ x:.34, y:.48, type:"jungle_ranger", label:"Jungle Spine Ranger Station" },
+    river_gate:{ x:.27, y:.69, type:"river_safe_house", label:"River Gate Safe House" },
+  };
+  const view = presentations[effect.districtId] || presentations.river_gate;
+  return {
+    x:Math.round(Number(mission.world.width || 1200) * view.x),
+    y:Math.round(Number(mission.world.height || 1100) * view.y),
+    r:88,
+    label:view.label,
+    type:view.type,
+    returningCivilians:Number(support.returningCivilians || 0),
+  };
 }
 
 function missionDefinition(session){
@@ -2709,7 +2737,7 @@ async function createSession(user, opts={}){
     storyMissionLevel,
     launchType,
     matchmaking:opts?.matchmaking === "public" ? "public" : "private",
-    livingWorldMission:launchType === "shared-story" && storyMissionLevel <= 33
+    livingWorldMission:launchType === "shared-story" && storyMissionLevel <= livingWorld.PILOT_MAX_MISSION
       ? livingWorld.missionConsequences(hostProfile.livingWorld, storyMissionLevel, { playerCount:2 })
       : null,
   });
@@ -3059,14 +3087,7 @@ async function buildSnapshot(session, viewerId){
     spawns:mission.spawns,
     extraction:mission.extraction,
     rescueHouse:rescueHouseFor(mission),
-    settlementSupport:livingWorldEffect.enabled && (livingWorldEffect.support?.safeHouse || livingWorldEffect.support?.rangerStation || livingWorldEffect.support?.armoryDepot || livingWorldEffect.support?.fieldClinic || livingWorldEffect.support?.researchPost || livingWorldEffect.support?.fieldHospital || livingWorldEffect.support?.conservationCamp || livingWorldEffect.support?.researchOutpost || livingWorldEffect.support?.riverStation || livingWorldEffect.support?.shadowCommand || livingWorldEffect.support?.villageCommand) ? {
-      x:Math.round(Number(mission.world.width || 1200) * (livingWorldEffect.districtId === "silent_village" ? .34 : (livingWorldEffect.districtId === "shadow_basin" ? .68 : (livingWorldEffect.districtId === "riverveil_crossing" ? .32 : (livingWorldEffect.districtId === "veil_canopy" ? .36 : (livingWorldEffect.districtId === "crimson_hollow" ? .44 : (livingWorldEffect.districtId === "amara_haven" ? .72 : (livingWorldEffect.districtId === "bloodroot_passage" ? .31 : (livingWorldEffect.districtId === "iron_roar" ? .38 : (livingWorldEffect.districtId === "jungle_spine" ? .34 : .27)))))))))),
-      y:Math.round(Number(mission.world.height || 1100) * (livingWorldEffect.districtId === "silent_village" ? .36 : (livingWorldEffect.districtId === "shadow_basin" ? .34 : (livingWorldEffect.districtId === "riverveil_crossing" ? .68 : (livingWorldEffect.districtId === "veil_canopy" ? .62 : (livingWorldEffect.districtId === "crimson_hollow" ? .66 : (livingWorldEffect.districtId === "amara_haven" ? .34 : (livingWorldEffect.districtId === "bloodroot_passage" ? .58 : (livingWorldEffect.districtId === "iron_roar" ? .64 : (livingWorldEffect.districtId === "jungle_spine" ? .48 : .69)))))))))),
-      r:88,
-      label:livingWorldEffect.districtId === "silent_village" ? (livingWorldEffect.support?.evacCorridor ? "Silent Village Evac Command" : "Silent Village Search Command") : (livingWorldEffect.districtId === "shadow_basin" ? (livingWorldEffect.support?.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command") : (livingWorldEffect.districtId === "riverveil_crossing" ? (livingWorldEffect.support?.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station") : (livingWorldEffect.districtId === "veil_canopy" ? (livingWorldEffect.support?.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost") : (livingWorldEffect.districtId === "crimson_hollow" ? "Crimson Hollow Conservation Camp" : (livingWorldEffect.districtId === "amara_haven" ? "Amara Haven Field Hospital" : (livingWorldEffect.districtId === "bloodroot_passage" ? (livingWorldEffect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (livingWorldEffect.districtId === "iron_roar" ? "Iron Roar Armory Depot" : (livingWorldEffect.districtId === "jungle_spine" ? "Jungle Spine Ranger Station" : "River Gate Safe House")))))))) ,
-      type:livingWorldEffect.districtId === "silent_village" ? "silent_command" : (livingWorldEffect.districtId === "shadow_basin" ? "shadow_command" : (livingWorldEffect.districtId === "riverveil_crossing" ? "riverveil_station" : (livingWorldEffect.districtId === "veil_canopy" ? "veil_outpost" : (livingWorldEffect.districtId === "crimson_hollow" ? "crimson_camp" : (livingWorldEffect.districtId === "amara_haven" ? "amara_hospital" : (livingWorldEffect.districtId === "bloodroot_passage" ? "bloodroot_clinic" : (livingWorldEffect.districtId === "iron_roar" ? "iron_armory" : (livingWorldEffect.districtId === "jungle_spine" ? "jungle_ranger" : "river_safe_house")))))))) ,
-      returningCivilians:Number(livingWorldEffect.support?.returningCivilians || 0),
-    } : null,
+    settlementSupport:livingWorldSettlementSupport(mission, livingWorldEffect),
     civilians:civilianSnapshots(session, players, derived.rescuedIds, derived.securedCivilianIds),
     checkpoints:mission.checkpoints || [],
     mapTruthLandmarks:mission.mapTruthLandmarks || [],
@@ -3303,7 +3324,7 @@ async function applyAction(session, user, action, payload={}){
       if(!EXPANDED_SHARED_STORY_MISSIONS[nextLevel]) throw new Error("The next Shared Story mission has not been converted yet. You may stay in the squad or leave.");
       session.storyMissionLevel = nextLevel;
     }
-    if(session.launchType === "shared-story" && Number(session.storyMissionLevel || 0) <= 33){
+    if(session.launchType === "shared-story" && Number(session.storyMissionLevel || 0) <= livingWorld.PILOT_MAX_MISSION){
       const hostProfile = await readCoopProfile(session.hostId);
       session.livingWorldMission = livingWorld.missionConsequences(hostProfile.livingWorld, session.storyMissionLevel, { playerCount:2 });
       const support = session.livingWorldMission?.support || {};

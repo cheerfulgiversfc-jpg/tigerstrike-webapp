@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–33 map to ten persistent districts", () => {
+test("Missions 1–37 map to eleven persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -30,7 +30,9 @@ test("Missions 1–33 map to ten persistent districts", () => {
   assert.equal(livingWorld.districtForMission(30).id, "shadow_basin");
   assert.equal(livingWorld.districtForMission(31).id, "silent_village");
   assert.equal(livingWorld.districtForMission(33).id, "silent_village");
-  assert.equal(livingWorld.districtForMission(34), null);
+  assert.equal(livingWorld.districtForMission(34).id, "emberfall_ward");
+  assert.equal(livingWorld.districtForMission(37).id, "emberfall_ward");
+  assert.equal(livingWorld.districtForMission(38), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -520,8 +522,8 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("SURVIVOR BEACONS ACTIVE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5100-map-truth"));
-  assert(html.includes("V10.13 (Mission Map Truth &amp; Parity)"));
+  assert(html.includes("living-world.js?v=5110-emberfall"));
+  assert(html.includes("V10.14 (Emberfall Ward)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1185,4 +1187,72 @@ test("Shared Story Missions 31–33 retain exact homes, tigers, survivors, and c
     assert.equal(waiting.mission.checkpointsBeforeRescue, checkpointsBeforeRescue);
     assert.equal(waiting.mission.extractionType, "ground");
   }
+});
+
+test("Emberfall Ward protects the exact Missions 34–37 encounters", async () => {
+  const rows = [
+    [34, 911234, 5, 0, 0, 3, "ground"],
+    [35, 911235, 5, 5, 3, 0, "vehicle"],
+    [36, 911236, 4, 1, 3, 0, "ground"],
+    [37, 911237, 5, 6, 3, 0, "ground"],
+  ];
+  for(const [level, userId, tigerCount, civilianCount, checkpointCount, captureRequired, extractionType] of rows){
+    const host = { id:userId, first_name:`Ember${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.emberfall_ward = {
+      ...profile.livingWorld.districts.emberfall_ward,
+      tigerPressure:96,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.districtId, "emberfall_ward");
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.mission.captureRequired, captureRequired);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.checkpoints.length, checkpointCount);
+    assert.equal(waiting.mission.extractionType, extractionType);
+    assert.equal(waiting.mission.mapTruthVersion, "10.14");
+    assert(waiting.mapTruthLandmarks.length >= 5);
+    if(level === 37) assert.equal(waiting.fireZones.length, 4);
+  }
+});
+
+test("Emberfall relief support reaches both Shared Story players", async () => {
+  const host = { id:911238, first_name:"Ember", last_name:"Leader" };
+  const teammate = { id:911239, first_name:"Firebreak", last_name:"Partner" };
+  let hostProfile = await squadServer.readCoopProfile(host);
+  hostProfile.livingWorld.districts.emberfall_ward = {
+    ...hostProfile.livingWorld.districts.emberfall_ward,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:100,
+  };
+  hostProfile.supplies.medkits = 0;
+  hostProfile.supplies.armorPlates = 0;
+  hostProfile.ammo.real = 0;
+  hostProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(hostProfile, host);
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:37 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.settlementSupport.label, "Emberfall Firebreak Command");
+  assert.equal(waiting.settlementSupport.type, "emberfall_command");
+  session = await squadServer.joinSession(session.code, teammate);
+  const teammateProfile = await squadServer.readCoopProfile(teammate);
+  teammateProfile.supplies.medkits = 0;
+  teammateProfile.supplies.armorPlates = 0;
+  teammateProfile.ammo.real = 0;
+  teammateProfile.ammo.rubber = 0;
+  await squadServer.writeCoopProfile(teammateProfile, teammate);
+  await squadServer.applyAction(session, host, "start");
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.mission.livingWorld.support.searchBeacons, true);
+  assert.equal(active.mission.livingWorld.support.clinicRelay, true);
+  assert.equal(active.mission.livingWorld.support.evacCorridor, true);
+  assert.equal(active.mission.livingWorld.support.civilianDamageMul, 0.74);
 });

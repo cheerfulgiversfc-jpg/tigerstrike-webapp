@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V10.13 cache key forces Telegram to load Mission Map Truth", () => {
-  assert(game.includes('const TS_BUILD = "5100"'));
-  assert(html.includes("game.js?v=5100-map-truth"));
-  assert(html.includes("tutorial.js?v=5100-map-truth"));
+test("V10.14 cache key forces Telegram to load Emberfall Ward", () => {
+  assert(game.includes('const TS_BUILD = "5110"'));
+  assert(html.includes("game.js?v=5110-emberfall"));
+  assert(html.includes("tutorial.js?v=5110-emberfall"));
 });

@@ -5,7 +5,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const PILOT_MAX_MISSION = 33;
+  const PILOT_MAX_MISSION = 37;
   const DISTRICTS = Object.freeze([
     Object.freeze({ id:"river_gate", name:"River Gate", missions:"1–3", minMission:1, maxMission:3, tigerPressure:52, settlementSafety:18 }),
     Object.freeze({ id:"jungle_spine", name:"Jungle Spine", missions:"4–7", minMission:4, maxMission:7, tigerPressure:62, settlementSafety:12 }),
@@ -17,6 +17,7 @@
     Object.freeze({ id:"riverveil_crossing", name:"Riverveil Crossing", missions:"24–27", minMission:24, maxMission:27, tigerPressure:79, settlementSafety:7 }),
     Object.freeze({ id:"shadow_basin", name:"Shadow Basin", missions:"28–30", minMission:28, maxMission:30, tigerPressure:88, settlementSafety:5 }),
     Object.freeze({ id:"silent_village", name:"Silent Village", missions:"31–33", minMission:31, maxMission:33, tigerPressure:82, settlementSafety:6 }),
+    Object.freeze({ id:"emberfall_ward", name:"Emberfall Ward", missions:"34–37", minMission:34, maxMission:37, tigerPressure:86, settlementSafety:5 }),
   ]);
 
   const clamp = (value, min, max)=>Math.min(max, Math.max(min, Number(value) || 0));
@@ -106,7 +107,7 @@
     const state = normalizeState(raw);
     const definition = districtForMission(missionLevel);
     const playerCount = Math.max(1, whole(options.playerCount) || 1);
-    const enabledDistrict = definition && ["river_gate", "jungle_spine", "iron_roar", "bloodroot_passage", "amara_haven", "crimson_hollow", "veil_canopy", "riverveil_crossing", "shadow_basin", "silent_village"].includes(definition.id);
+    const enabledDistrict = definition && ["river_gate", "jungle_spine", "iron_roar", "bloodroot_passage", "amara_haven", "crimson_hollow", "veil_canopy", "riverveil_crossing", "shadow_basin", "silent_village", "emberfall_ward"].includes(definition.id);
     if(!enabledDistrict){
       return {
         enabled:false,
@@ -134,6 +135,7 @@
     const riverveil = definition.id === "riverveil_crossing";
     const shadow = definition.id === "shadow_basin";
     const silent = definition.id === "silent_village";
+    const ember = definition.id === "emberfall_ward";
     const bossMission = whole(missionLevel) === 10;
     const protectedCaptureMission = whole(missionLevel) === 13;
     const protectedEscortMission = amara && [14,17].includes(whole(missionLevel));
@@ -142,7 +144,8 @@
     const protectedRiverveilMission = riverveil && [24,25,26,27].includes(whole(missionLevel));
     const protectedShadowMission = shadow && [28,29,30].includes(whole(missionLevel));
     const protectedSilentMission = silent && [31,32,33].includes(whole(missionLevel));
-    let rawPatrols = (bossMission || protectedCaptureMission || protectedEscortMission || protectedCrimsonMission || protectedVeilMission || protectedRiverveilMission || protectedShadowMission || protectedSilentMission) ? 0 : (amara
+    const protectedEmberMission = ember && [34,35,36,37].includes(whole(missionLevel));
+    let rawPatrols = (bossMission || protectedCaptureMission || protectedEscortMission || protectedCrimsonMission || protectedVeilMission || protectedRiverveilMission || protectedShadowMission || protectedSilentMission || protectedEmberMission) ? 0 : (amara
       ? (district.tigerPressure >= 88 ? 2 : (district.tigerPressure >= 68 ? 1 : 0))
       : bloodroot
       ? (district.tigerPressure >= 86 ? 2 : (district.tigerPressure >= 66 ? 1 : 0))
@@ -154,10 +157,10 @@
     if(bloodroot && whole(missionLevel) === 12) rawPatrols = Math.min(1, rawPatrols);
     if(amara && whole(missionLevel) === 15) rawPatrols = Math.min(1, rawPatrols);
     const extraPatrols = playerCount <= 1 ? Math.min(1, rawPatrols) : rawPatrols;
-    const aggroPressureFloor = silent ? 35 : (shadow ? 34 : (riverveil ? 36 : (veil ? 35 : (crimson ? 36 : (amara ? 41 : (bloodroot ? 40 : (iron ? 38 : (jungle ? 42 : 45))))))));
-    const aggroPressureRate = silent ? 0.004 : (shadow ? 0.0042 : (riverveil ? 0.0039 : (veil ? 0.0038 : (crimson ? 0.004 : (amara ? 0.0035 : (bloodroot ? 0.0036 : (iron ? 0.0037 : (jungle ? 0.0034 : 0.003))))))));
-    const aggroScentRate = silent ? 0.006 : (shadow ? 0.0062 : (riverveil ? 0.0058 : (veil ? 0.006 : (crimson ? 0.006 : (amara ? 0.0056 : (bloodroot ? 0.0058 : (iron ? 0.0055 : (jungle ? 0.005 : 0.0045))))))));
-    const calmingAggroReduction = silent && district.settlementSafety >= 24
+    const aggroPressureFloor = (ember || silent) ? 35 : (shadow ? 34 : (riverveil ? 36 : (veil ? 35 : (crimson ? 36 : (amara ? 41 : (bloodroot ? 40 : (iron ? 38 : (jungle ? 42 : 45))))))));
+    const aggroPressureRate = (ember || silent) ? 0.004 : (shadow ? 0.0042 : (riverveil ? 0.0039 : (veil ? 0.0038 : (crimson ? 0.004 : (amara ? 0.0035 : (bloodroot ? 0.0036 : (iron ? 0.0037 : (jungle ? 0.0034 : 0.003))))))));
+    const aggroScentRate = (ember || silent) ? 0.006 : (shadow ? 0.0062 : (riverveil ? 0.0058 : (veil ? 0.006 : (crimson ? 0.006 : (amara ? 0.0056 : (bloodroot ? 0.0058 : (iron ? 0.0055 : (jungle ? 0.005 : 0.0045))))))));
+    const calmingAggroReduction = (ember || silent) && district.settlementSafety >= 24
       ? (district.settlementSafety >= 58 ? 0.15 : 0.09)
       : shadow && district.settlementSafety >= 24
       ? (district.settlementSafety >= 58 ? 0.16 : 0.09)
@@ -167,10 +170,10 @@
       ? (district.settlementSafety >= 58 ? 0.15 : 0.09)
       : (crimson && district.settlementSafety >= 24 ? (district.settlementSafety >= 58 ? 0.14 : 0.08) : 0);
     const startingAggroBoost = clamp(Math.max(0, district.tigerPressure - aggroPressureFloor) * aggroPressureRate + district.bloodScent * aggroScentRate - calmingAggroReduction, 0, 0.65);
-    const directorPressureFloor = silent ? 38 : (shadow ? 37 : (riverveil ? 40 : (veil ? 39 : (crimson ? 38 : (amara ? 45 : (bloodroot ? 44 : (iron ? 42 : (jungle ? 46 : 50))))))));
-    const directorPressureRate = silent ? 0.19 : (shadow ? 0.20 : (riverveil ? 0.18 : (veil ? 0.18 : (crimson ? 0.19 : ((amara || bloodroot) ? 0.17 : (iron ? 0.18 : 0.16))))));
-    const directorScentRate = silent ? 0.16 : (shadow ? 0.17 : (riverveil ? 0.15 : (veil ? 0.16 : (crimson ? 0.16 : (amara ? 0.14 : (bloodroot ? 0.15 : (iron ? 0.14 : (jungle ? 0.12 : 0.10))))))));
-    const calmingDirectorReduction = silent && district.settlementSafety >= 40
+    const directorPressureFloor = (ember || silent) ? 38 : (shadow ? 37 : (riverveil ? 40 : (veil ? 39 : (crimson ? 38 : (amara ? 45 : (bloodroot ? 44 : (iron ? 42 : (jungle ? 46 : 50))))))));
+    const directorPressureRate = (ember || silent) ? 0.19 : (shadow ? 0.20 : (riverveil ? 0.18 : (veil ? 0.18 : (crimson ? 0.19 : ((amara || bloodroot) ? 0.17 : (iron ? 0.18 : 0.16))))));
+    const directorScentRate = (ember || silent) ? 0.16 : (shadow ? 0.17 : (riverveil ? 0.15 : (veil ? 0.16 : (crimson ? 0.16 : (amara ? 0.14 : (bloodroot ? 0.15 : (iron ? 0.14 : (jungle ? 0.12 : 0.10))))))));
+    const calmingDirectorReduction = (ember || silent) && district.settlementSafety >= 40
       ? (district.settlementSafety >= 65 ? 5 : 3)
       : shadow && district.settlementSafety >= 40
       ? (district.settlementSafety >= 65 ? 6 : 3)
@@ -180,10 +183,10 @@
       ? (district.settlementSafety >= 65 ? 5 : 3)
       : (crimson && district.settlementSafety >= 40 ? (district.settlementSafety >= 65 ? 5 : 3) : 0);
     const directorPressureBonus = clamp(Math.round(Math.max(0, district.tigerPressure - directorPressureFloor) * directorPressureRate + district.bloodScent * directorScentRate) - calmingDirectorReduction, 0, 18);
-    const damageScentDivisor = silent ? 17 : (shadow ? 16 : (riverveil ? 18 : (veil ? 18 : (crimson ? 16 : (amara ? 19 : (bloodroot ? 18 : (iron ? 16 : (jungle ? 18 : 20))))))));
-    const damageCap = silent ? 5 : (shadow ? 6 : (riverveil ? 5 : (veil ? 5 : (crimson ? 6 : (amara ? 5 : (bloodroot ? 5 : (iron ? 6 : (jungle ? 5 : 4))))))));
+    const damageScentDivisor = (ember || silent) ? 17 : (shadow ? 16 : (riverveil ? 18 : (veil ? 18 : (crimson ? 16 : (amara ? 19 : (bloodroot ? 18 : (iron ? 16 : (jungle ? 18 : 20))))))));
+    const damageCap = (ember || silent) ? 5 : (shadow ? 6 : (riverveil ? 5 : (veil ? 5 : (crimson ? 6 : (amara ? 5 : (bloodroot ? 5 : (iron ? 6 : (jungle ? 5 : 4))))))));
     const damageBonus = clamp(Math.floor(district.bloodScent / damageScentDivisor), 0, damageCap);
-    const support = silent ? {
+    const support = (ember || silent) ? {
       safeHouse:false,
       rangerStation:false,
       armoryDepot:false,
@@ -550,6 +553,17 @@
       tranqMinimum:0,
       scanPing:district.settlementSafety >= 75 ? 280 : 0,
     };
+    const patrolLabel = ember ? "Emberfall Stalker "
+      : silent ? "Village Stalker "
+      : shadow ? "Shadow Stalker "
+      : riverveil ? "Riverveil Stalker "
+      : veil ? "Veil Stalker "
+      : crimson ? "Crimson Berserker "
+      : amara ? "Haven Stalker "
+      : bloodroot ? "Bloodroot Berserker "
+      : iron ? "Armored rail-yard "
+      : jungle ? "roaming Stalker "
+      : "tiger ";
     const pressureText = bossMission
       ? "no added patrol in the Alpha boss arena"
       : protectedCaptureMission
@@ -578,13 +592,27 @@
         ? (whole(missionLevel) === 31
           ? "no added patrol around the four-home survivor search"
           : (whole(missionLevel) === 32 ? "no added patrol inside the six-tiger village street patrol" : "no added patrol around the six-survivor safe-route escort"))
+      : protectedEmberMission
+        ? (whole(missionLevel) === 34
+          ? "no added patrol around the three protected research captures"
+          : (whole(missionLevel) === 35
+            ? "no added patrol around the five-person evacuation convoy"
+            : (whole(missionLevel) === 36 ? "no added patrol around Doctor Imani's sample route" : "no added patrol inside the burning-village rescue")))
       : extraPatrols > 0
-          ? `${extraPatrols} extra ${silent ? "Village Stalker " : (shadow ? "Shadow Stalker " : (riverveil ? "Riverveil Stalker " : (veil ? "Veil Stalker " : (crimson ? "Crimson Berserker " : (amara ? "Haven Stalker " : (bloodroot ? "Bloodroot Berserker " : (iron ? "Armored rail-yard " : (jungle ? "roaming Stalker " : "tiger "))))))))}patrol${extraPatrols === 1 ? "" : "s"}`
+          ? `${extraPatrols} extra ${patrolLabel}patrol${extraPatrols === 1 ? "" : "s"}`
         : "no extra patrol";
     const scentText = district.bloodScent > 0
       ? `blood scent adds +${damageBonus} close-range damage and faster starting aggression`
       : "no persistent blood-scent damage";
-    const supportBits = silent
+    const supportBits = ember
+      ? [
+          support.villageCommand ? "Emberfall Relief Command" : "relief command unavailable",
+          support.searchBeacons ? "research beacons active" : "research beacons offline",
+          support.clinicRelay ? "convoy repair depot online" : "repair depot offline",
+          support.evacCorridor ? "protected firebreak corridor open" : "firebreak corridor unsecured",
+          `${support.medkitMinimum} Med Kit minimum`,
+        ]
+      : silent
       ? [
           support.villageCommand ? "Silent Village Search Command" : "search command unavailable",
           support.searchBeacons ? "survivor search beacons active" : "search beacons offline",
@@ -658,9 +686,9 @@
           support.safeHouse ? "River Gate Safe House" : "no Safe House",
           `${support.medkitMinimum} Med Kit minimum`,
         ];
-    if((jungle || iron || bloodroot || amara || crimson || veil || riverveil || shadow || silent) && support.returningCivilians > 0) supportBits.push(`${support.returningCivilians} returning civilian ${iron ? "worker" : ((bloodroot || amara || crimson || veil || riverveil || shadow || silent) ? "volunteer" : "helper")}${support.returningCivilians === 1 ? "" : "s"}`);
-    if((iron || bloodroot || amara || crimson || veil || riverveil || shadow || silent) && support.damageReduction > 0) supportBits.push(`${support.damageReduction} ${iron ? "powered-defense" : (amara ? "escort-armor" : (crimson ? "anti-swarm armor" : (veil ? "canopy-guard armor" : (riverveil ? "crossing-guard armor" : (shadow ? "shadow-command armor" : (silent ? "village-rescue armor" : "clinic-armor"))))))} damage reduction`);
-    if((amara || veil || riverveil || shadow || silent) && support.civilianDamageMul < 1) supportBits.push(`${Math.round((1 - support.civilianDamageMul) * 100)}% civilian protection`);
+    if((jungle || iron || bloodroot || amara || crimson || veil || riverveil || shadow || silent || ember) && support.returningCivilians > 0) supportBits.push(`${support.returningCivilians} returning civilian ${iron ? "worker" : ((bloodroot || amara || crimson || veil || riverveil || shadow || silent || ember) ? "volunteer" : "helper")}${support.returningCivilians === 1 ? "" : "s"}`);
+    if((iron || bloodroot || amara || crimson || veil || riverveil || shadow || silent || ember) && support.damageReduction > 0) supportBits.push(`${support.damageReduction} ${iron ? "powered-defense" : (amara ? "escort-armor" : (crimson ? "anti-swarm armor" : (veil ? "canopy-guard armor" : (riverveil ? "crossing-guard armor" : (shadow ? "shadow-command armor" : (ember ? "firebreak armor" : (silent ? "village-rescue armor" : "clinic-armor")))))))} damage reduction`);
+    if((amara || veil || riverveil || shadow || silent || ember) && support.civilianDamageMul < 1) supportBits.push(`${Math.round((1 - support.civilianDamageMul) * 100)}% civilian protection`);
     if(crimson && support.bossRageReduction > 0) supportBits.push(`${support.bossRageReduction} Blood Rage damage reduction`);
     if(shadow && support.stealthBossReduction > 0) supportBits.push(`${support.stealthBossReduction} Stealth Tiger damage reduction`);
     if(support.armorFloor > 0) supportBits.push(`${support.armorFloor} starting armor minimum`);
@@ -677,7 +705,7 @@
       tigerPressure:district.tigerPressure,
       settlementSafety:district.settlementSafety,
       bloodScent:district.bloodScent,
-      patrolType:silent ? "Stalker" : (shadow ? "Stalker" : (riverveil ? "Stalker" : (veil ? "Stalker" : (crimson ? "Berserker" : (amara ? "Stalker" : (bloodroot ? "Berserker" : (iron ? "Armored" : (jungle ? "Stalker" : "Standard")))))))),
+      patrolType:(ember || silent) ? "Stalker" : (shadow ? "Stalker" : (riverveil ? "Stalker" : (veil ? "Stalker" : (crimson ? "Berserker" : (amara ? "Stalker" : (bloodroot ? "Berserker" : (iron ? "Armored" : (jungle ? "Stalker" : "Standard")))))))),
       extraPatrols,
       startingAggroBoost:Number(startingAggroBoost.toFixed(3)),
       directorPressureBonus,

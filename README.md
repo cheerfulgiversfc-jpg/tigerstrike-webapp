@@ -596,6 +596,22 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Search Command supplies Solo players directly and gives both Shared Story players their own supplies from separate co-op profiles. Returning residents appear as search volunteers and medics.
 - Silent Village progress remains separate between Solo and Shared Story. Reconnect-safe battlefield state and duplicate-proof reward and Living World receipts remain active.
 
+### V10.13 Mission Map Truth & Parity — Missions 1–33
+
+- Gives Missions 1–33 one authored landmark manifest shared by Solo and Shared Story.
+- Makes named homes, clinics, bridges, camps, capture pens, routes, defensive positions, and extraction sites appear in the mission that describes them.
+- Matches Solo civilian, tiger, capture, and extraction requirements to Shared Story while preserving synchronized squad completion rules.
+- Turns required Solo landmarks into real interactions and shows the same landmark route on both co-op phones.
+
+### V10.14 Emberfall Ward + Mission Map Truth — Missions 34–37
+
+- Extends Mission Map Truth & Parity through Missions 34–37 as a required part of the level batch.
+- Mission 34 keeps five tigers, requires three live research captures, and displays three matching capture pens. Mission 35 keeps five civilians, five tigers, three convoy checkpoints, and a vehicle extraction. Mission 36 protects Doctor Imani across three sample sites. Mission 37 keeps six civilians, five tigers, three rescue-route checkpoints, and four real fire zones.
+- Mission 37 fire causes actual Solo and Shared Story damage instead of acting as decoration.
+- Adds Emberfall Ward as the eleventh persistent Living World district without adding unwanted patrols to the four protected encounters.
+- Settlement recovery opens Emberfall Relief Command, research beacons, convoy repair support, and a protected firebreak corridor. Solo and Shared Story retain separate progression and supplies.
+- Future mission-level batches must include their Mission Map Truth & Parity work in the same update.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.

@@ -5,7 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.13";
+  const VERSION = "10.14";
+  const MAX_MISSION = 37;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -120,11 +121,23 @@
     33:mission(33,"Survivor Safe Route",4,6,4,0,"ground",[
       mark("safe_lane","trail","Marked Safe Lane",.31,.37,"secure",true), mark("clinic_rally","clinic","Abandoned Clinic Rally",.55,.49,"triage",true), mark("evac_approach","safe","Survivor Evac Approach",.77,.66,"secure",true)
     ],[point(.31,.37),point(.55,.49),point(.77,.66)]),
+    34:mission(34,"Triple Research Capture",4,0,5,3,"ground",[
+      mark("village_study_lab","research","Village Study Laboratory",.24,.28,"scan",true), mark("capture_pen_alpha","cage","Capture Pen Alpha",.43,.43,"prepare",true), mark("capture_pen_bravo","cage","Capture Pen Bravo",.62,.35,"prepare",true), mark("capture_pen_charlie","cage","Capture Pen Charlie",.70,.61,"prepare",true), mark("study_transport","vehicle","Research Transport",.86,.70)
+    ],[point(.24,.28),point(.43,.43),point(.62,.35),point(.70,.61),point(.86,.70)]),
+    35:mission(35,"Evacuation Convoy Ambush",4,5,5,0,"vehicle",[
+      mark("convoy_wreck","caravan","Disabled Evacuation Convoy",.22,.27,"repair",true), mark("convoy_rally","vehicle","Convoy Rally Point",.31,.47,"secure",true), mark("convoy_crossroad","road","Convoy Crossroad",.54,.47,"secure",true), mark("convoy_exit","vehicle","Convoy Exit Lane",.75,.63,"secure",true), mark("road_extraction","safe","Convoy Extraction",.88,.72)
+    ],[point(.22,.27),point(.31,.47),point(.54,.47),point(.75,.63),point(.88,.72)]),
+    36:mission(36,"Doctor Imani Sample Route",4,1,4,0,"ground",[
+      mark("imani_clinic","clinic","Doctor Imani Field Clinic",.31,.27,"protect",true), mark("sample_north","research","North Sample Site",.31,.35,"sample",true), mark("sample_center","research","Center Sample Site",.54,.47,"sample",true), mark("sample_east","research","East Sample Site",.74,.62,"sample",true), mark("research_evac","safe","Research Evacuation",.88,.72)
+    ],[point(.31,.27),point(.31,.35),point(.54,.47),point(.74,.62),point(.88,.72)]),
+    37:mission(37,"Burning Village Rescue",4,6,5,0,"ground",[
+      mark("north_house_fire","fire","North House Fire",.29,.27), mark("market_fire","fire","Market Fire",.48,.42), mark("east_block_fire","fire","East Block Fire",.67,.29), mark("south_block_fire","fire","South Block Fire",.61,.62), mark("clear_fire_lane","trail","Clear Fire Lane",.33,.47,"secure",true), mark("burning_market_bypass","road","Burning Market Bypass",.56,.52,"secure",true), mark("fire_rescue_exit","safe","Fire Rescue Exit",.76,.64,"secure",true), mark("relief_staging","clinic","Village Relief Staging",.88,.72)
+    ],[point(.20,.23),point(.33,.47),point(.56,.52),point(.76,.64),point(.88,.72)]),
   });
 
   function get(level){
     const key = Math.floor(Number(level || 0));
-    if(key < 1 || key > 33) return null;
+    if(key < 1 || key > MAX_MISSION) return null;
     return MISSIONS[key] || null;
   }
   function scale(level, width, height){
@@ -140,7 +153,7 @@
   }
   function validate(){
     const errors = [];
-    for(let level=1; level<=33; level++){
+    for(let level=1; level<=MAX_MISSION; level++){
       const spec = MISSIONS[level];
       if(!spec){ errors.push(`Mission ${level} missing`); continue; }
       if(!spec.title || !spec.landmarks.length) errors.push(`Mission ${level} lacks title or landmarks`);
@@ -158,5 +171,5 @@
     return errors;
   }
 
-  return Object.freeze({ VERSION, MISSIONS, get, scale, validate });
+  return Object.freeze({ VERSION, MAX_MISSION, MISSIONS, get, scale, validate });
 });
