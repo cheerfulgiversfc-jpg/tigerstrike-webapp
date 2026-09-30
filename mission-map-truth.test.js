@@ -3,13 +3,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const truth = require("./mission-map-truth.js");
 
-assert.equal(truth.VERSION, "10.15");
-assert.equal(truth.MAX_MISSION, 40);
-assert.deepEqual(truth.validate(), [], "all Missions 1-40 must have valid authored map truth");
-assert.equal(Object.keys(truth.MISSIONS).length, 40, "exactly Missions 1-40 are covered");
-assert.equal(truth.get(41), null, "V10.15 must not silently reuse Mission 40 for later missions");
+assert.equal(truth.VERSION, "10.16");
+assert.equal(truth.MAX_MISSION, 43);
+assert.deepEqual(truth.validate(), [], "all Missions 1-43 must have valid authored map truth");
+assert.equal(Object.keys(truth.MISSIONS).length, 43, "exactly Missions 1-43 are covered");
+assert.equal(truth.get(44), null, "V10.16 must not silently reuse Mission 43 for later missions");
 
-for(let level=1; level<=40; level++){
+for(let level=1; level<=43; level++){
   const spec = truth.get(level);
   assert.equal(spec.level, level);
   assert(spec.landmarks.length >= 3, `Mission ${level} needs at least three meaningful map landmarks`);
@@ -31,6 +31,10 @@ assert.equal(truth.get(37).landmarks.filter((item)=>item.type === "fire").length
 assert.equal(truth.get(38).tigers, 10, "Mission 38 keeps the exact ten-tiger swarm");
 assert.equal(truth.get(39).tigers, 12, "Mission 39 keeps the exact twelve-tiger pack");
 assert.equal(truth.get(40).landmarks.filter((item)=>item.type === "boss").length, 2, "Mission 40 shows both Alpha territories");
+assert.equal(truth.get(41).civilians, 6, "Mission 41 keeps six escorted civilians");
+assert.equal(truth.get(41).landmarks.filter((item)=>item.type === "bridge" && item.required).length, 2, "Mission 41 shows its working bridge route");
+assert.equal(truth.get(42).tigers, 7, "Mission 42 keeps the exact seven-tiger riverbank attack");
+assert.equal(truth.get(43).captures, 1, "Mission 43 requires Currentstripe to be captured alive");
 
 const game = fs.readFileSync(path.join(__dirname, "game.js"), "utf8");
 const coop = fs.readFileSync(path.join(__dirname, "squad-coop.js"), "utf8");
@@ -44,6 +48,6 @@ assert(server.includes('require("../../mission-map-truth")'), "Live Squad uses t
 assert(server.includes("mapTruthLandmarks:mission.mapTruthLandmarks || []"), "Live Squad sends authored landmarks to both phones");
 assert(coop.includes("drawSharedMissionTruth(ctx,snap)"), "Live Squad renders the shared mission landmarks");
 assert(game.includes("missionMapTruthHazardTick"), "Solo Mission 37 fire is a real gameplay hazard");
-assert(html.includes("mission-map-truth.js?v=5120-crownfall"), "mission truth loads before gameplay");
+assert(html.includes("mission-map-truth.js?v=5130-brokenwater"), "mission truth loads before gameplay");
 
 console.log("mission-map-truth tests passed");

@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.15";
-  const MAX_MISSION = 40;
+  const VERSION = "10.16";
+  const MAX_MISSION = 43;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -142,6 +142,15 @@
     40:mission(40,"Twin Alpha Tigers",4,0,2,0,"ground",[
       mark("alpha_tracking_command","research","Alpha Tracking Command",.21,.28), mark("ashclaw_territory","boss","Ashclaw Alpha Territory",.39,.48), mark("twin_alpha_divide","barricade","Twin Alpha Divide",.56,.50), mark("ruinstripe_territory","boss","Ruinstripe Alpha Territory",.73,.48), mark("chapter_extraction","safe","Chapter 4 Extraction",.87,.72)
     ],[point(.21,.28),point(.39,.48),point(.56,.50),point(.73,.48),point(.87,.72)]),
+    41:mission(41,"Broken Bridge Escort",5,6,4,0,"ground",[
+      mark("broken_bridge_entry","bridge","Broken Bridge Entry",.25,.45,"secure",true), mark("emergency_plank_crossing","bridge","Emergency Plank Crossing",.47,.50,"cross",true), mark("far_riverbank_rally","safe","Far Riverbank Rally",.70,.55,"secure",true), mark("river_rescue_extraction","safe","River Rescue Extraction",.88,.72)
+    ],[point(.20,.30),point(.25,.45),point(.47,.50),point(.70,.55),point(.88,.72)]),
+    42:mission(42,"Riverbank Attack",5,0,7,0,"ground",[
+      mark("west_bank_reeds","river","West Bank Reeds",.23,.40), mark("riverbank_shallows","river","Riverbank Shallows",.49,.54), mark("east_bank_reeds","grass","East Bank Reeds",.73,.41), mark("riverbank_fallback","barricade","Riverbank Fallback",.82,.64), mark("river_extraction","safe","Riverbank Extraction",.89,.73)
+    ],[point(.23,.40),point(.49,.54),point(.73,.41),point(.82,.64),point(.89,.73)]),
+    43:mission(43,"River Tiger Capture",5,0,4,1,"ground",[
+      mark("river_study_station","research","River Study Station",.26,.30,"scan",true), mark("currentstripe_pool","river","Currentstripe Capture Pool",.51,.48), mark("live_capture_pen","cage","Currentstripe Live-Capture Pen",.66,.58,"prepare",true), mark("wildlife_transport","vehicle","River Wildlife Transport",.87,.72)
+    ],[point(.26,.30),point(.51,.48),point(.66,.58),point(.87,.72)]),
   });
 
   function get(level){

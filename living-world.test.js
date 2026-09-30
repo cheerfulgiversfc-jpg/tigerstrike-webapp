@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–40 map to twelve persistent districts", () => {
+test("Missions 1–43 map to thirteen persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -34,7 +34,9 @@ test("Missions 1–40 map to twelve persistent districts", () => {
   assert.equal(livingWorld.districtForMission(37).id, "emberfall_ward");
   assert.equal(livingWorld.districtForMission(38).id, "crownfall_square");
   assert.equal(livingWorld.districtForMission(40).id, "crownfall_square");
-  assert.equal(livingWorld.districtForMission(41), null);
+  assert.equal(livingWorld.districtForMission(41).id, "brokenwater_reach");
+  assert.equal(livingWorld.districtForMission(43).id, "brokenwater_reach");
+  assert.equal(livingWorld.districtForMission(44), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -509,6 +511,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('shadow ? "shadow_command"'));
   assert(game.includes('silent ? "silent_command"'));
   assert(game.includes('crownfall ? "crownfall_command"'));
+  assert(game.includes('brokenwater ? "brokenwater_station"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
@@ -524,10 +527,11 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("STEALTH TRACKING ONLINE"));
   assert(squad.includes("SURVIVOR BEACONS ACTIVE"));
   assert(squad.includes("TWIN ALPHA WARD ACTIVE"));
+  assert(squad.includes("WILDLIFE ROUTE PROTECTED"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5120-crownfall"));
-  assert(html.includes("V10.15 (Crownfall Square)"));
+  assert(html.includes("living-world.js?v=5130-brokenwater"));
+  assert(html.includes("V10.16 (Brokenwater Reach)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1221,7 +1225,7 @@ test("Emberfall Ward protects the exact Missions 34–37 encounters", async () =
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.mission.extractionType, extractionType);
-    assert.equal(waiting.mission.mapTruthVersion, "10.15");
+    assert.equal(waiting.mission.mapTruthVersion, "10.16");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 37) assert.equal(waiting.fireZones.length, 4);
   }
@@ -1285,7 +1289,7 @@ test("Crownfall Square protects the exact Missions 38–40 encounters", async ()
     assert.equal(waiting.mission.rescueRequired, civilianCount);
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.15");
+    assert.equal(waiting.mission.mapTruthVersion, "10.16");
     if(level === 40){
       assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, 2);
       assert.deepEqual(waiting.tigers.map((tiger)=>tiger.hpMax), [1850,1850]);
@@ -1319,4 +1323,68 @@ test("Crownfall Defense support and Twin Alpha ward reach Shared Story", async (
   assert.equal(active.status, "active");
   assert.equal(active.mission.livingWorld.support.armorFloor, 65);
   assert.equal(active.mission.livingWorld.support.rubberAmmoMinimum, 72);
+});
+
+test("Brokenwater Reach protects the exact Missions 41–43 encounters", async () => {
+  const rows = [
+    [41, 911245, 4, 6, 3, 0],
+    [42, 911246, 7, 0, 0, 0],
+    [43, 911247, 4, 0, 0, 1],
+  ];
+  for(const [level, userId, tigerCount, civilianCount, checkpointCount, captureRequired] of rows){
+    const host = { id:userId, first_name:`Broken${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.brokenwater_reach = {
+      ...profile.livingWorld.districts.brokenwater_reach,
+      tigerPressure:96,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.districtId, "brokenwater_reach");
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.mission.captureRequired, captureRequired);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.checkpoints.length, checkpointCount);
+    assert.equal(waiting.waterZones.length, 1);
+    assert.equal(waiting.mission.mapTruthVersion, "10.16");
+    if(level === 43){
+      assert.deepEqual(waiting.mission.captureTargetIds, ["s43_currentstripe"]);
+      assert.equal(waiting.tigers.find((tiger)=>tiger.id === "s43_currentstripe")?.hpMax, 760);
+      assert.equal(waiting.mapTruthLandmarks.filter((item)=>item.type === "cage").length, 1);
+    }
+  }
+});
+
+test("Brokenwater support rebuilds the crossing and protects Currentstripe research", async () => {
+  const host = { id:911248, first_name:"Brokenwater", last_name:"Leader" };
+  const teammate = { id:911249, first_name:"River", last_name:"Partner" };
+  const profile = await squadServer.readCoopProfile(host);
+  profile.livingWorld.districts.brokenwater_reach = {
+    ...profile.livingWorld.districts.brokenwater_reach,
+    tigerPressure:88,
+    settlementSafety:78,
+    bloodScent:70,
+  };
+  await squadServer.writeCoopProfile(profile, host);
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:43 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.settlementSupport.label, "Brokenwater Wildlife Station");
+  assert.equal(waiting.settlementSupport.type, "brokenwater_station");
+  assert.equal(waiting.mission.livingWorld.support.bridgeSecured, true);
+  assert.equal(waiting.mission.livingWorld.support.hunterBeacons, true);
+  assert.equal(waiting.mission.livingWorld.support.survivorCamp, true);
+  assert.equal(waiting.mission.livingWorld.support.civilianDamageMul, 0.74);
+  assert.equal(waiting.mission.livingWorld.support.rubberAmmoMinimum, 52);
+  assert.equal(waiting.mission.livingWorld.support.tranqMinimum, 10);
+  session = await squadServer.joinSession(session.code, teammate);
+  await squadServer.applyAction(session, host, "start");
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.routeSpeedMul, 1.12);
 });

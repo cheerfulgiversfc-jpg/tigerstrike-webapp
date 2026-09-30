@@ -620,6 +620,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Adds Crownfall Square as the twelfth persistent Living World district without adding unwanted patrols to these protected encounters.
 - Clean Crownfall outcomes unlock Defense Command supplies, town alert towers, fortified square defenses, and a Twin Alpha separation ward that reduces boss damage.
 
+### V10.16 Brokenwater Reach + Mission Map Truth — Missions 41–43
+
+- Extends the shared Mission Map Truth & Parity manifest through Missions 41–43 for both Solo and Shared Story.
+- Mission 41 preserves six civilians, four tigers, three ordered broken-bridge checkpoints, and real slowing river water.
+- Mission 42 preserves the exact seven-tiger riverbank attack and shallow-water movement penalty.
+- Mission 43 preserves four tigers and requires the named 760-HP Currentstripe River Tiger to be captured alive.
+- Adds Brokenwater Reach as the thirteenth persistent Living World district without adding unwanted patrols to these protected encounters.
+- Clean outcomes unlock Rescue Station supplies, a rebuilt emergency bridge, river tracking beacons, civilian protection, and a protected wildlife route with Rubber and Tranq support.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.
