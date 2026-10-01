@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–43 map to thirteen persistent districts", () => {
+test("Missions 1–47 map to fourteen persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -36,7 +36,9 @@ test("Missions 1–43 map to thirteen persistent districts", () => {
   assert.equal(livingWorld.districtForMission(40).id, "crownfall_square");
   assert.equal(livingWorld.districtForMission(41).id, "brokenwater_reach");
   assert.equal(livingWorld.districtForMission(43).id, "brokenwater_reach");
-  assert.equal(livingWorld.districtForMission(44), null);
+  assert.equal(livingWorld.districtForMission(44).id, "floodplain_lifeline");
+  assert.equal(livingWorld.districtForMission(47).id, "floodplain_lifeline");
+  assert.equal(livingWorld.districtForMission(48), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -512,6 +514,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('silent ? "silent_command"'));
   assert(game.includes('crownfall ? "crownfall_command"'));
   assert(game.includes('brokenwater ? "brokenwater_station"'));
+  assert(game.includes('floodplain ? "floodplain_clinic"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
@@ -528,10 +531,11 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("SURVIVOR BEACONS ACTIVE"));
   assert(squad.includes("TWIN ALPHA WARD ACTIVE"));
   assert(squad.includes("WILDLIFE ROUTE PROTECTED"));
+  assert(squad.includes("RIVER CAMP LIFELINE OPEN"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5130-brokenwater"));
-  assert(html.includes("V10.16 (Brokenwater Reach)"));
+  assert(html.includes("living-world.js?v=5140-floodplain"));
+  assert(html.includes("V10.17 (Floodplain Lifeline)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1225,7 +1229,7 @@ test("Emberfall Ward protects the exact Missions 34–37 encounters", async () =
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.mission.extractionType, extractionType);
-    assert.equal(waiting.mission.mapTruthVersion, "10.16");
+    assert.equal(waiting.mission.mapTruthVersion, "10.17");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 37) assert.equal(waiting.fireZones.length, 4);
   }
@@ -1289,7 +1293,7 @@ test("Crownfall Square protects the exact Missions 38–40 encounters", async ()
     assert.equal(waiting.mission.rescueRequired, civilianCount);
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.16");
+    assert.equal(waiting.mission.mapTruthVersion, "10.17");
     if(level === 40){
       assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, 2);
       assert.deepEqual(waiting.tigers.map((tiger)=>tiger.hpMax), [1850,1850]);
@@ -1352,7 +1356,7 @@ test("Brokenwater Reach protects the exact Missions 41–43 encounters", async (
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 1);
-    assert.equal(waiting.mission.mapTruthVersion, "10.16");
+    assert.equal(waiting.mission.mapTruthVersion, "10.17");
     if(level === 43){
       assert.deepEqual(waiting.mission.captureTargetIds, ["s43_currentstripe"]);
       assert.equal(waiting.tigers.find((tiger)=>tiger.id === "s43_currentstripe")?.hpMax, 760);
@@ -1382,6 +1386,67 @@ test("Brokenwater support rebuilds the crossing and protects Currentstripe resea
   assert.equal(waiting.mission.livingWorld.support.civilianDamageMul, 0.74);
   assert.equal(waiting.mission.livingWorld.support.rubberAmmoMinimum, 52);
   assert.equal(waiting.mission.livingWorld.support.tranqMinimum, 10);
+  session = await squadServer.joinSession(session.code, teammate);
+  await squadServer.applyAction(session, host, "start");
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.routeSpeedMul, 1.12);
+});
+
+test("Floodplain Lifeline protects the exact Missions 44–47 encounters", async () => {
+  const rows = [
+    [44, 911250, 4, 1, 3],
+    [45, 911251, 8, 0, 3],
+    [46, 911252, 5, 4, 3],
+    [47, 911253, 5, 7, 3],
+  ];
+  for(const [level, userId, tigerCount, civilianCount, checkpointCount] of rows){
+    const host = { id:userId, first_name:`Flood${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.floodplain_lifeline = {
+      ...profile.livingWorld.districts.floodplain_lifeline,
+      tigerPressure:97,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.districtId, "floodplain_lifeline");
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.mission.captureRequired, 0);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.checkpoints.length, checkpointCount);
+    assert.equal(waiting.waterZones.length, 1);
+    assert.equal(waiting.mission.mapTruthVersion, "10.17");
+    assert(waiting.mapTruthLandmarks.length >= 4);
+  }
+});
+
+test("Floodplain support marks the crossings and keeps the River Camp route open", async () => {
+  const host = { id:911254, first_name:"Floodplain", last_name:"Leader" };
+  const teammate = { id:911255, first_name:"Camp", last_name:"Partner" };
+  const profile = await squadServer.readCoopProfile(host);
+  profile.livingWorld.districts.floodplain_lifeline = {
+    ...profile.livingWorld.districts.floodplain_lifeline,
+    tigerPressure:90,
+    settlementSafety:78,
+    bloodScent:70,
+  };
+  await squadServer.writeCoopProfile(profile, host);
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:47 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.settlementSupport.label, "Floodplain Lifeline Camp");
+  assert.equal(waiting.settlementSupport.type, "floodplain_clinic");
+  assert.equal(waiting.mission.livingWorld.support.bridgeSecured, true);
+  assert.equal(waiting.mission.livingWorld.support.hunterBeacons, true);
+  assert.equal(waiting.mission.livingWorld.support.survivorCamp, true);
+  assert.equal(waiting.mission.livingWorld.support.civilianDamageMul, 0.74);
+  assert.equal(waiting.mission.livingWorld.support.medkitMinimum, 3);
+  assert.equal(waiting.mission.livingWorld.support.rubberAmmoMinimum, 40);
   session = await squadServer.joinSession(session.code, teammate);
   await squadServer.applyAction(session, host, "start");
   const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);

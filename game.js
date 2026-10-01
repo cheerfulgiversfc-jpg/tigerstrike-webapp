@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5130";
+const TS_BUILD = "5140";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -11454,14 +11454,14 @@ function storyMissionForState(state=S){
     }
   }
 
-  // V10.16: every newly released batch extends the same authored mission
+  // V10.17: every newly released batch extends the same authored mission
   // truth used by Solo and Live Squad. Never ship a mission batch without it.
   // This runs after generic variety so named counts and map objectives cannot
   // silently drift away from the mission shown to the player.
-  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 43){
+  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 47){
     const truth = window.TigerStrikeMissionMapTruth?.get?.(cfg.number);
     if(truth){
-      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.16";
+      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.17";
       cfg.mapTruthTitle = truth.title;
       cfg.mapTruthRequiredActionIds = [...truth.requiredActionIds];
       cfg.civilians = Math.max(0, Number(truth.civilians || 0));
@@ -13871,8 +13871,8 @@ function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
     </div>`;
   }).join("");
   return `<section class="card" id="livingWorldChapterOne" style="margin-top:10px;border-color:rgba(74,222,128,.62);background:linear-gradient(145deg,rgba(6,54,45,.50),rgba(8,15,29,.96))">
-    <div class="hudLine"><b>🌍 Living Story Districts • Missions 1–43</b></div>
-    <div class="small">Missions 1–43 now react to lasting results. Brokenwater Reach preserves the six-person broken-bridge escort, seven-tiger riverbank attack, and Currentstripe live-capture mission while adding rescue-station supplies, a rebuilt bridge, river beacons, and a protected wildlife route. Solo and Shared Story each keep their own progression.</div>
+    <div class="hudLine"><b>🌍 Living Story Districts • Missions 1–47</b></div>
+    <div class="small">Missions 1–47 now react to lasting results. Floodplain Lifeline preserves the wounded water escort, eight-tiger crossing ambush, four-person supply convoy, and seven-civilian river-camp escort while adding medical supplies, safety posts, convoy markers, and a protected camp route. Solo and Shared Story each keep their own progression.</div>
     <div class="small" style="margin-top:6px"><b>Latest:</b> ${worldMapEsc(living.headline)}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${cards}</div>
   </section>`;
@@ -39889,8 +39889,9 @@ function spawnLivingWorldDistrictSupport(){
   const ember = effect.districtId === "emberfall_ward";
   const crownfall = effect.districtId === "crownfall_square";
   const brokenwater = effect.districtId === "brokenwater_reach";
-  const label = brokenwater ? (effect.support?.survivorCamp ? "Brokenwater Wildlife Station" : "Brokenwater Rescue Station") : (crownfall ? (effect.support?.bossWard ? "Crownfall Twin Ward Command" : "Crownfall Defense Command") : (ember ? (effect.support?.evacCorridor ? "Emberfall Firebreak Command" : "Emberfall Relief Command") : (silent ? (effect.support?.evacCorridor ? "Silent Village Evac Command" : "Silent Village Search Command") : (shadow ? (effect.support?.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command") : (riverveil ? (effect.support?.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station") : (veil ? (effect.support?.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost") : (crimson ? "Crimson Hollow Conservation Camp" : (amara ? "Amara Haven Field Hospital" : (bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House")))))))))));
-  let point = safeSpawnPoint(worldW * (brokenwater ? 0.34 : (crownfall ? 0.52 : (ember ? 0.38 : (silent ? 0.34 : (shadow ? 0.68 : (riverveil ? 0.32 : (veil ? 0.36 : (crimson ? 0.44 : (amara ? 0.72 : (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28)))))))))))), worldH * (brokenwater ? 0.68 : (crownfall ? 0.66 : (ember ? 0.62 : (silent ? 0.36 : (shadow ? 0.34 : (riverveil ? 0.68 : (veil ? 0.62 : (crimson ? 0.66 : (amara ? 0.34 : (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70)))))))))))), 24, true, true);
+  const floodplain = effect.districtId === "floodplain_lifeline";
+  const label = floodplain ? (effect.support?.survivorCamp ? "Floodplain Lifeline Camp" : "Floodplain Field Clinic") : (brokenwater ? (effect.support?.survivorCamp ? "Brokenwater Wildlife Station" : "Brokenwater Rescue Station") : (crownfall ? (effect.support?.bossWard ? "Crownfall Twin Ward Command" : "Crownfall Defense Command") : (ember ? (effect.support?.evacCorridor ? "Emberfall Firebreak Command" : "Emberfall Relief Command") : (silent ? (effect.support?.evacCorridor ? "Silent Village Evac Command" : "Silent Village Search Command") : (shadow ? (effect.support?.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command") : (riverveil ? (effect.support?.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station") : (veil ? (effect.support?.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost") : (crimson ? "Crimson Hollow Conservation Camp" : (amara ? "Amara Haven Field Hospital" : (bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House"))))))))))));
+  let point = safeSpawnPoint(worldW * (floodplain ? 0.72 : (brokenwater ? 0.34 : (crownfall ? 0.52 : (ember ? 0.38 : (silent ? 0.34 : (shadow ? 0.68 : (riverveil ? 0.32 : (veil ? 0.36 : (crimson ? 0.44 : (amara ? 0.72 : (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28))))))))))))), worldH * (floodplain ? 0.34 : (brokenwater ? 0.68 : (crownfall ? 0.66 : (ember ? 0.62 : (silent ? 0.36 : (shadow ? 0.34 : (riverveil ? 0.68 : (veil ? 0.62 : (crimson ? 0.66 : (amara ? 0.34 : (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70))))))))))))), 24, true, true);
   if(inMapScenarioKeepout(point.x, point.y, 24)){
     point = findNearestOpenPoint(point.x, point.y, 24, {
       avoidKeepout:true,
@@ -39916,7 +39917,7 @@ function spawnLivingWorldDistrictSupport(){
     triggered:false,
     rewardClaimed:false,
     livingWorldSupport:true,
-    livingWorldSupportType:brokenwater ? "brokenwater_station" : (crownfall ? "crownfall_command" : (ember ? "emberfall_command" : (silent ? "silent_command" : (shadow ? "shadow_command" : (riverveil ? "riverveil_station" : (veil ? "veil_outpost" : (crimson ? "crimson_camp" : (amara ? "amara_hospital" : (bloodroot ? "bloodroot_clinic" : (iron ? "iron_armory" : (jungle ? "jungle_ranger" : "river_safe_house"))))))))))),
+    livingWorldSupportType:floodplain ? "floodplain_clinic" : (brokenwater ? "brokenwater_station" : (crownfall ? "crownfall_command" : (ember ? "emberfall_command" : (silent ? "silent_command" : (shadow ? "shadow_command" : (riverveil ? "riverveil_station" : (veil ? "veil_outpost" : (crimson ? "crimson_camp" : (amara ? "amara_hospital" : (bloodroot ? "bloodroot_clinic" : (iron ? "iron_armory" : (jungle ? "jungle_ranger" : "river_safe_house")))))))))))),
     returningCivilians:Math.max(0, Number(effect.support?.returningCivilians || 0)),
   });
   return true;
@@ -39927,7 +39928,18 @@ function spawnLivingWorldRiverGateSafeHouse(){
 
 function configureLivingWorldDistrictRoutes(){
   const effect = S._livingWorldMission;
-  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach"].includes(effect.districtId)) return false;
+  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline"].includes(effect.districtId)) return false;
+  if(effect.districtId === "floodplain_lifeline"){
+    const bridge = (S.mapInteractables || []).find((item)=>item?.kind === "bridge");
+    if(bridge){ bridge.routeOpen = true; bridge.label = effect.support?.bridgeSecured ? "Floodplain Safety Crossing" : "Floodplain Emergency Ford"; }
+    const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
+    if(generator){ generator.powered = !!effect.support?.hunterBeacons; generator.label = generator.powered ? "Flooded Convoy Route Markers" : "Floodplain Route Radio"; }
+    const vehicle = (S.mapInteractables || []).find((item)=>item?.kind === "vehicle");
+    if(vehicle && effect.support?.hunterBeacons){ vehicle.repaired = true; vehicle.label = "Floodplain Supply Convoy"; }
+    const gate = (S.mapInteractables || []).find((item)=>item?.kind === "gate");
+    if(gate){ gate.routeOpen = true; gate.label = effect.support?.survivorCamp ? "River Camp Lifeline Gate" : "Floodplain Camp Gate"; }
+    __blockedAtCache.clear(); invalidateMapCache(); return true;
+  }
   if(effect.districtId === "brokenwater_reach"){
     const bridge = (S.mapInteractables || []).find((item)=>item?.kind === "bridge");
     if(bridge){ bridge.routeOpen = true; bridge.label = effect.support?.bridgeSecured ? "Brokenwater Rebuilt Bridge" : "Brokenwater Emergency Planks"; }
@@ -40472,6 +40484,7 @@ function activateMapInteractable(it){
       const emberfallCommand = it.livingWorldSupportType === "emberfall_command";
       const crownfallCommand = it.livingWorldSupportType === "crownfall_command";
       const brokenwaterStation = it.livingWorldSupportType === "brokenwater_station";
+      const floodplainClinic = it.livingWorldSupportType === "floodplain_clinic";
       if(amaraHospital) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(crimsonCamp) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(veilOutpost) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
@@ -40481,10 +40494,11 @@ function activateMapInteractable(it){
       if(emberfallCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(crownfallCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(brokenwaterStation) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
-      S.armor = clamp(Number(S.armor || 0) + (brokenwaterStation ? 24 : (crownfallCommand ? 30 : (ironArmory ? 25 : (emberfallCommand ? 26 : (silentCommand ? 24 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15)))))))))))), 0, S.armorCap || 100);
+      if(floodplainClinic) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 2;
+      S.armor = clamp(Number(S.armor || 0) + (floodplainClinic ? 26 : (brokenwaterStation ? 24 : (crownfallCommand ? 30 : (ironArmory ? 25 : (emberfallCommand ? 26 : (silentCommand ? 24 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15))))))))))))), 0, S.armorCap || 100);
       const supportWeapon = equippedWeapon();
       const supportAmmoId = supportWeapon ? (bestAvailableAmmoIdForWeapon(supportWeapon) || supportWeapon.ammo) : "";
-      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (brokenwaterStation ? 16 : (crownfallCommand ? 18 : (ironArmory ? 18 : (emberfallCommand ? 16 : (silentCommand ? 16 : (shadowCommand ? 18 : (riverveilStation ? 16 : (veilOutpost ? 12 : (crimsonCamp ? 12 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8))))))))))));
+      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (floodplainClinic ? 16 : (brokenwaterStation ? 16 : (crownfallCommand ? 18 : (ironArmory ? 18 : (emberfallCommand ? 16 : (silentCommand ? 16 : (shadowCommand ? 18 : (riverveilStation ? 16 : (veilOutpost ? 12 : (crimsonCamp ? 12 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8)))))))))))));
       if(jungleRanger){
         S.scanPing = Math.max(Number(S.scanPing || 0), 240);
         if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
@@ -40551,10 +40565,18 @@ function activateMapInteractable(it){
         S.scanPing = Math.max(Number(S.scanPing || 0), 430);
         if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
       }
+      if(floodplainClinic){
+        const supportRubberId = supportWeapon ? compatibleAmmoIdsForWeapon(supportWeapon, "rubber")[0] : "";
+        if(supportRubberId) S.ammoReserve[supportRubberId] = Math.max(0, Number(S.ammoReserve[supportRubberId] || 0)) + 18;
+        S.scanPing = Math.max(Number(S.scanPing || 0), 430);
+        if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
+      }
       it.uses = 0;
       it.cooldownUntil = now + 60000;
       it.activeUntil = now + 900;
-      interactionFeedback(brokenwaterStation
+      interactionFeedback(floodplainClinic
+        ? `🌊 Floodplain Lifeline supplied +3 Med Kits, +26 Armor, +16 Ammo, 18 Rubber rounds${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a flooded-route scan.`
+        : brokenwaterStation
         ? `🌊 Brokenwater Rescue supplied +2 Med Kits, +24 Armor, +16 Ammo, 24 Rubber rounds, 6 Tranq Darts${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a river scan.`
         : crownfallCommand
         ? "🏰 Crownfall Defense supplied +2 Med Kits, +30 Armor, +18 Ammo, 28 Rubber rounds, 6 Tranq Darts, 1 Trap, and a town-center scan."
@@ -55857,8 +55879,8 @@ function drawMapInteractable(it){
   } else if(it.kind === "cache"){
     // drawMapInteractable is outside the map-background helper scope, so draw
     // the cache directly instead of calling that private crateBlock helper.
-    if(it.livingWorldSupportType === "brokenwater_station"){
-      ctx.fillStyle = "rgba(8,47,73,.98)";
+    if(it.livingWorldSupportType === "brokenwater_station" || it.livingWorldSupportType === "floodplain_clinic"){
+      ctx.fillStyle = it.livingWorldSupportType === "floodplain_clinic" ? "rgba(6,78,59,.98)" : "rgba(8,47,73,.98)";
       roundedRectFill(it.x - 34, it.y - 22, 68, 46, 7);
       ctx.strokeStyle = "rgba(103,232,249,.98)";
       ctx.lineWidth = 2.5; ctx.strokeRect(it.x - 33, it.y - 21, 66, 44);
@@ -55981,11 +56003,13 @@ function drawMapInteractable(it){
       ctx.lineTo(it.x, it.y + 10);
       ctx.stroke();
     }
-    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","veil_outpost","riverveil_station","shadow_command","silent_command","emberfall_command","crownfall_command","brokenwater_station"].includes(it.livingWorldSupportType)){
+    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","veil_outpost","riverveil_station","shadow_command","silent_command","emberfall_command","crownfall_command","brokenwater_station","floodplain_clinic"].includes(it.livingWorldSupportType)){
       const helpers = Math.max(1, Math.min(2, Number(it.returningCivilians || 0) || 1));
       for(let idx=0; idx<helpers; idx++){
         const hx = it.x + (idx === 0 ? -27 : 27);
-        ctx.fillStyle = it.livingWorldSupportType === "brokenwater_station"
+        ctx.fillStyle = it.livingWorldSupportType === "floodplain_clinic"
+          ? (idx === 0 ? "#34d399" : "#38bdf8")
+          : it.livingWorldSupportType === "brokenwater_station"
           ? (idx === 0 ? "#22d3ee" : "#facc15")
           : it.livingWorldSupportType === "crownfall_command"
           ? (idx === 0 ? "#facc15" : "#fb7185")

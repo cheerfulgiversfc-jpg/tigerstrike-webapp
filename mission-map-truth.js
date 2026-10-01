@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.16";
-  const MAX_MISSION = 43;
+  const VERSION = "10.17";
+  const MAX_MISSION = 47;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -151,6 +151,18 @@
     43:mission(43,"River Tiger Capture",5,0,4,1,"ground",[
       mark("river_study_station","research","River Study Station",.26,.30,"scan",true), mark("currentstripe_pool","river","Currentstripe Capture Pool",.51,.48), mark("live_capture_pen","cage","Currentstripe Live-Capture Pen",.66,.58,"prepare",true), mark("wildlife_transport","vehicle","River Wildlife Transport",.87,.72)
     ],[point(.26,.30),point(.51,.48),point(.66,.58),point(.87,.72)]),
+    44:mission(44,"Wounded Water Escort",5,1,4,0,"ground",[
+      mark("wounded_villager_aid","clinic","Wounded Villager Aid Point",.20,.29,"triage",true), mark("shallow_water_entry","river","Shallow Water Entry",.31,.46,"secure",true), mark("midstream_safety_point","river","Midstream Safety Point",.53,.54,"cross",true), mark("dry_bank_medical_rally","clinic","Dry Bank Medical Rally",.77,.61,"triage",true), mark("medical_extraction","safe","River Medical Extraction",.89,.73)
+    ],[point(.20,.29),point(.31,.46),point(.53,.54),point(.77,.61),point(.89,.73)]),
+    45:mission(45,"River Crossing Ambush",5,0,8,0,"ground",[
+      mark("west_bank_defense","barricade","West Bank Defense",.29,.43,"defend",true), mark("crossing_center","river","Crossing Center",.52,.52,"secure",true), mark("east_bank_defense","barricade","East Bank Defense",.76,.59,"defend",true), mark("crossing_extraction","safe","Secured Crossing Extraction",.89,.73)
+    ],[point(.29,.43),point(.52,.52),point(.76,.59),point(.89,.73)]),
+    46:mission(46,"River Supply Convoy",5,4,5,0,"ground",[
+      mark("supply_convoy_rally","caravan","Supply Convoy Rally",.20,.31,"protect",true), mark("flooded_road_crossing","river","Flooded Road Crossing",.55,.53,"secure",true), mark("river_supply_depot","vehicle","River Supply Depot",.76,.64,"secure",true), mark("convoy_extraction","safe","Supply Convoy Extraction",.89,.73)
+    ],[point(.20,.31),point(.32,.42),point(.55,.53),point(.76,.64),point(.89,.73)]),
+    47:mission(47,"River Camp Escort",5,7,5,0,"ground",[
+      mark("river_trail_marker","trail","River Trail Marker",.30,.40,"secure",true), mark("river_camp_approach","river","River Camp Approach",.56,.53,"cross",true), mark("river_camp_gate","gate","River Camp Gate",.79,.64,"secure",true), mark("camp_extraction","safe","River Camp Extraction",.90,.73)
+    ],[point(.18,.27),point(.30,.40),point(.56,.53),point(.79,.64),point(.90,.73)]),
   });
 
   function get(level){

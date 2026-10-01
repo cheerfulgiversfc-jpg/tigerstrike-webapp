@@ -629,6 +629,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Adds Brokenwater Reach as the thirteenth persistent Living World district without adding unwanted patrols to these protected encounters.
 - Clean outcomes unlock Rescue Station supplies, a rebuilt emergency bridge, river tracking beacons, civilian protection, and a protected wildlife route with Rubber and Tranq support.
 
+### V10.17 Floodplain Lifeline + Mission Map Truth — Missions 44–47
+
+- Extends the shared Mission Map Truth & Parity manifest through Missions 44–47 for both Solo and Shared Story.
+- Mission 44 preserves one injured VIP, four tigers, and three ordered shallow-water safety checkpoints. Mission 45 preserves the exact eight-tiger crossing ambush and three river-defense checkpoints.
+- Mission 46 preserves the four-person supply convoy, five tigers, and three flooded-road checkpoints. Mission 47 preserves seven civilians, five tigers, and three River Camp route checkpoints.
+- Adds Floodplain Lifeline as the fourteenth persistent Living World district without adding unwanted patrols to these protected escort and ambush encounters.
+- Clean outcomes unlock a Field Clinic, shallow-water safety posts, flooded convoy markers, civilian protection, and a protected River Camp lifeline with real supplies in Solo and Shared Story.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.
