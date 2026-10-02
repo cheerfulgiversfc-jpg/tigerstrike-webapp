@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–47 map to fourteen persistent districts", () => {
+test("Missions 1–50 map to fifteen persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -38,7 +38,9 @@ test("Missions 1–47 map to fourteen persistent districts", () => {
   assert.equal(livingWorld.districtForMission(43).id, "brokenwater_reach");
   assert.equal(livingWorld.districtForMission(44).id, "floodplain_lifeline");
   assert.equal(livingWorld.districtForMission(47).id, "floodplain_lifeline");
-  assert.equal(livingWorld.districtForMission(48), null);
+  assert.equal(livingWorld.districtForMission(48).id, "tidefang_delta");
+  assert.equal(livingWorld.districtForMission(50).id, "tidefang_delta");
+  assert.equal(livingWorld.districtForMission(51), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -532,10 +534,11 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("TWIN ALPHA WARD ACTIVE"));
   assert(squad.includes("WILDLIFE ROUTE PROTECTED"));
   assert(squad.includes("RIVER CAMP LIFELINE OPEN"));
+  assert(squad.includes("GIANT TIGER TIDE WARD ACTIVE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5140-floodplain"));
-  assert(html.includes("V10.17 (Floodplain Lifeline)"));
+  assert(html.includes("living-world.js?v=5150-tidefang"));
+  assert(html.includes("V10.18 (Tidefang Delta)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1229,7 +1232,7 @@ test("Emberfall Ward protects the exact Missions 34–37 encounters", async () =
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.mission.extractionType, extractionType);
-    assert.equal(waiting.mission.mapTruthVersion, "10.17");
+    assert.equal(waiting.mission.mapTruthVersion, "10.18");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 37) assert.equal(waiting.fireZones.length, 4);
   }
@@ -1293,7 +1296,7 @@ test("Crownfall Square protects the exact Missions 38–40 encounters", async ()
     assert.equal(waiting.mission.rescueRequired, civilianCount);
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.17");
+    assert.equal(waiting.mission.mapTruthVersion, "10.18");
     if(level === 40){
       assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, 2);
       assert.deepEqual(waiting.tigers.map((tiger)=>tiger.hpMax), [1850,1850]);
@@ -1356,7 +1359,7 @@ test("Brokenwater Reach protects the exact Missions 41–43 encounters", async (
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 1);
-    assert.equal(waiting.mission.mapTruthVersion, "10.17");
+    assert.equal(waiting.mission.mapTruthVersion, "10.18");
     if(level === 43){
       assert.deepEqual(waiting.mission.captureTargetIds, ["s43_currentstripe"]);
       assert.equal(waiting.tigers.find((tiger)=>tiger.id === "s43_currentstripe")?.hpMax, 760);
@@ -1421,7 +1424,7 @@ test("Floodplain Lifeline protects the exact Missions 44–47 encounters", async
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 1);
-    assert.equal(waiting.mission.mapTruthVersion, "10.17");
+    assert.equal(waiting.mission.mapTruthVersion, "10.18");
     assert(waiting.mapTruthLandmarks.length >= 4);
   }
 });
@@ -1447,6 +1450,72 @@ test("Floodplain support marks the crossings and keeps the River Camp route open
   assert.equal(waiting.mission.livingWorld.support.civilianDamageMul, 0.74);
   assert.equal(waiting.mission.livingWorld.support.medkitMinimum, 3);
   assert.equal(waiting.mission.livingWorld.support.rubberAmmoMinimum, 40);
+  session = await squadServer.joinSession(session.code, teammate);
+  await squadServer.applyAction(session, host, "start");
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.routeSpeedMul, 1.12);
+});
+
+test("Tidefang Delta protects the exact Missions 48–50 encounters", async () => {
+  const rows = [
+    [48, 911256, 7, 4, 0, 1],
+    [49, 911257, 11, 0, 0, 2],
+    [50, 911258, 1, 0, 0, 1],
+  ];
+  for(const [level, userId, tigerCount, civilianCount, checkpointCount, waterCount] of rows){
+    const host = { id:userId, first_name:`Tide${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.tidefang_delta = {
+      ...profile.livingWorld.districts.tidefang_delta,
+      tigerPressure:97,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.districtId, "tidefang_delta");
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.mission.captureRequired, 0);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.checkpoints.length, checkpointCount);
+    assert.equal(waiting.waterZones.length, waterCount);
+    assert.equal(waiting.mission.mapTruthVersion, "10.18");
+    assert(waiting.mapTruthLandmarks.length >= 4);
+    if(level === 48) assert.equal(waiting.mission.extractionType, "boat");
+    if(level === 50){
+      const giant = waiting.tigers.find((tiger)=>tiger.id === "s50_giant_river_tiger");
+      assert.equal(giant?.hpMax, 2850);
+      assert.equal(giant?.bloodRage, true);
+    }
+  }
+});
+
+test("Tidefang support secures the boat lane and reduces Giant River Tiger rage", async () => {
+  const host = { id:911259, first_name:"Tidefang", last_name:"Leader" };
+  const teammate = { id:911260, first_name:"Delta", last_name:"Partner" };
+  const profile = await squadServer.readCoopProfile(host);
+  profile.livingWorld.districts.tidefang_delta = {
+    ...profile.livingWorld.districts.tidefang_delta,
+    tigerPressure:94,
+    settlementSafety:78,
+    bloodScent:72,
+  };
+  await squadServer.writeCoopProfile(profile, host);
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:50 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.settlementSupport.label, "Tidefang Marine Command");
+  assert.equal(waiting.settlementSupport.type, "tidefang_station");
+  assert.equal(waiting.mission.livingWorld.support.bridgeSecured, true);
+  assert.equal(waiting.mission.livingWorld.support.hunterBeacons, true);
+  assert.equal(waiting.mission.livingWorld.support.survivorCamp, true);
+  assert.equal(waiting.mission.livingWorld.support.bossRageReduction, 3);
+  assert.equal(waiting.mission.livingWorld.support.rubberAmmoMinimum, 56);
+  assert.equal(waiting.mission.livingWorld.support.tranqMinimum, 12);
   session = await squadServer.joinSession(session.code, teammate);
   await squadServer.applyAction(session, host, "start");
   const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);

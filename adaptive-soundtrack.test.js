@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V10.17 cache key forces Telegram to load Floodplain Lifeline", () => {
-  assert(game.includes('const TS_BUILD = "5140"'));
-  assert(html.includes("game.js?v=5140-floodplain"));
-  assert(html.includes("tutorial.js?v=5140-floodplain"));
+test("V10.18 cache key forces Telegram to load Tidefang Delta", () => {
+  assert(game.includes('const TS_BUILD = "5150"'));
+  assert(html.includes("game.js?v=5150-tidefang"));
+  assert(html.includes("tutorial.js?v=5150-tidefang"));
 });

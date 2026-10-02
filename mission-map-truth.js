@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.17";
-  const MAX_MISSION = 47;
+  const VERSION = "10.18";
+  const MAX_MISSION = 50;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -163,6 +163,15 @@
     47:mission(47,"River Camp Escort",5,7,5,0,"ground",[
       mark("river_trail_marker","trail","River Trail Marker",.30,.40,"secure",true), mark("river_camp_approach","river","River Camp Approach",.56,.53,"cross",true), mark("river_camp_gate","gate","River Camp Gate",.79,.64,"secure",true), mark("camp_extraction","safe","River Camp Extraction",.90,.73)
     ],[point(.18,.27),point(.30,.40),point(.56,.53),point(.79,.64),point(.90,.73)]),
+    48:mission(48,"Rescue Boat Defense",5,4,7,0,"boat",[
+      mark("river_rescue_dock","river","River Rescue Dock",.20,.31,"secure",true), mark("boat_channel","river","Rescue Boat Channel",.43,.49,"cross",true), mark("boat_defense_perimeter","barricade","Boat Defense Perimeter",.66,.57,"defend",true), mark("rescue_boat_boarding","vehicle","Rescue Boat Boarding Zone",.88,.72,"board",true)
+    ],[point(.20,.31),point(.43,.49),point(.66,.57),point(.88,.72)]),
+    49:mission(49,"River Delta Pack",5,0,11,0,"ground",[
+      mark("west_delta_channel","river","West Delta Channel",.22,.38,"secure",true), mark("delta_pack_core","boss","Eleven-Tiger Delta Pack",.51,.49,"defend",true), mark("east_delta_channel","river","East Delta Channel",.73,.42,"cross",true), mark("delta_fallback","barricade","Delta Fallback Line",.79,.64,"secure",true), mark("delta_extraction","safe","Delta Extraction",.90,.73)
+    ],[point(.22,.38),point(.51,.49),point(.73,.42),point(.79,.64),point(.90,.73)]),
+    50:mission(50,"Giant River Tiger",5,0,1,0,"ground",[
+      mark("river_command","research","River Command Sonar",.23,.30,"scan",true), mark("giant_tiger_channel","boss","Giant River Tiger Territory",.55,.49,"defend",true), mark("tide_ward","barricade","Tidefang Safety Ward",.72,.60,"defend",true), mark("chapter_extraction","safe","Chapter 5 Extraction",.90,.73)
+    ],[point(.23,.30),point(.55,.49),point(.72,.60),point(.90,.73)]),
   });
 
   function get(level){

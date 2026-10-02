@@ -2292,7 +2292,7 @@ function normalizeLivingWorldMission(raw){
   const src = raw && typeof raw === "object" ? raw : {};
   const support = src.support && typeof src.support === "object" ? src.support : {};
   return {
-    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline"].includes(cleanText(src.districtId, 40)),
+    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta"].includes(cleanText(src.districtId, 40)),
     districtId:cleanText(src.districtId, 40),
     districtName:cleanText(src.districtName, 60),
     missionLevel:clamp(Math.floor(Number(src.missionLevel || 0)), 0, 100),
@@ -2371,6 +2371,7 @@ function livingWorldSettlementSupport(mission, effect){
   const open = effect?.enabled && (support.safeHouse || support.rangerStation || support.armoryDepot || support.fieldClinic || support.researchPost || support.fieldHospital || support.conservationCamp || support.researchOutpost || support.riverStation || support.shadowCommand || support.villageCommand);
   if(!open) return null;
   const presentations = {
+    tidefang_delta:{ x:.32, y:.68, type:"tidefang_station", label:support.survivorCamp ? "Tidefang Marine Command" : "Tidefang Marine Station" },
     floodplain_lifeline:{ x:.72, y:.34, type:"floodplain_clinic", label:support.survivorCamp ? "Floodplain Lifeline Camp" : "Floodplain Field Clinic" },
     brokenwater_reach:{ x:.34, y:.68, type:"brokenwater_station", label:support.survivorCamp ? "Brokenwater Wildlife Station" : "Brokenwater Rescue Station" },
     crownfall_square:{ x:.52, y:.66, type:"crownfall_command", label:support.bossWard ? "Crownfall Twin Ward Command" : "Crownfall Defense Command" },

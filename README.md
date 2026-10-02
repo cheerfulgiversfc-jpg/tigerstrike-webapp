@@ -637,6 +637,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Adds Floodplain Lifeline as the fourteenth persistent Living World district without adding unwanted patrols to these protected escort and ambush encounters.
 - Clean outcomes unlock a Field Clinic, shallow-water safety posts, flooded convoy markers, civilian protection, and a protected River Camp lifeline with real supplies in Solo and Shared Story.
 
+### V10.18 Tidefang Delta + Mission Map Truth — Missions 47–50
+
+- Re-verifies Mission 47 without changing its seven-civilian River Camp escort, five tigers, three checkpoints, or Floodplain Lifeline consequences.
+- Extends the shared Mission Map Truth & Parity manifest through Missions 48–50 for both Solo and Shared Story.
+- Mission 48 preserves the four-person rescue-boat crew, exact seven-tiger defense, real water channel, and real boat extraction. Mission 49 preserves the exact eleven-tiger delta pack and both water channels.
+- Mission 50 preserves the single 2,850-HP Giant River Tiger, its River Rage behavior, and the choice to defeat or capture it before extracting.
+- Adds Tidefang Delta as the fifteenth persistent Living World district without adding unwanted patrols to these protected encounters.
+- Clean outcomes unlock a Marine Station, secured rescue-boat channel, delta sonar beacons, civilian protection, and a Giant River Tiger tide ward with Rubber and Tranq support.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.
