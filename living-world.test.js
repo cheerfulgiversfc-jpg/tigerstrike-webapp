@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–50 map to fifteen persistent districts", () => {
+test("Missions 1–53 map to sixteen persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -40,7 +40,9 @@ test("Missions 1–50 map to fifteen persistent districts", () => {
   assert.equal(livingWorld.districtForMission(47).id, "floodplain_lifeline");
   assert.equal(livingWorld.districtForMission(48).id, "tidefang_delta");
   assert.equal(livingWorld.districtForMission(50).id, "tidefang_delta");
-  assert.equal(livingWorld.districtForMission(51), null);
+  assert.equal(livingWorld.districtForMission(51).id, "silverpeak_ascent");
+  assert.equal(livingWorld.districtForMission(53).id, "silverpeak_ascent");
+  assert.equal(livingWorld.districtForMission(54), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -505,18 +507,19 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes("prepareLivingWorldMissionConsequences(S)"));
   assert(game.includes("spawnLivingWorldRiverGateSafeHouse()"));
   assert(game.includes("configureLivingWorldDistrictRoutes()"));
-  assert(game.includes('jungle ? "jungle_ranger" : "river_safe_house"'));
-  assert(game.includes('iron ? "iron_armory"'));
-  assert(game.includes('bloodroot ? "bloodroot_clinic"'));
-  assert(game.includes('amara ? "amara_hospital"'));
-  assert(game.includes('crimson ? "crimson_camp"'));
-  assert(game.includes('veil ? "veil_outpost"'));
-  assert(game.includes('riverveil ? "riverveil_station"'));
-  assert(game.includes('shadow ? "shadow_command"'));
-  assert(game.includes('silent ? "silent_command"'));
-  assert(game.includes('crownfall ? "crownfall_command"'));
-  assert(game.includes('brokenwater ? "brokenwater_station"'));
-  assert(game.includes('floodplain ? "floodplain_clinic"'));
+  assert(game.includes('jungle_spine:"jungle_ranger"'));
+  assert(game.includes('iron_roar:"iron_armory"'));
+  assert(game.includes('bloodroot_passage:"bloodroot_clinic"'));
+  assert(game.includes('amara_haven:"amara_hospital"'));
+  assert(game.includes('crimson_hollow:"crimson_camp"'));
+  assert(game.includes('veil_canopy:"veil_outpost"'));
+  assert(game.includes('riverveil_crossing:"riverveil_station"'));
+  assert(game.includes('shadow_basin:"shadow_command"'));
+  assert(game.includes('silent_village:"silent_command"'));
+  assert(game.includes('crownfall_square:"crownfall_command"'));
+  assert(game.includes('brokenwater_reach:"brokenwater_station"'));
+  assert(game.includes('floodplain_lifeline:"floodplain_clinic"'));
+  assert(game.includes('silverpeak_ascent:"silverpeak_lodge"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
@@ -535,10 +538,11 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("WILDLIFE ROUTE PROTECTED"));
   assert(squad.includes("RIVER CAMP LIFELINE OPEN"));
   assert(squad.includes("GIANT TIGER TIDE WARD ACTIVE"));
+  assert(squad.includes("WILDLIFE STATION ONLINE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5150-tidefang"));
-  assert(html.includes("V10.18 (Tidefang Delta)"));
+  assert(html.includes("living-world.js?v=5160-silverpeak"));
+  assert(html.includes("V10.19 (Silverpeak Ascent)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1232,7 +1236,7 @@ test("Emberfall Ward protects the exact Missions 34–37 encounters", async () =
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.mission.extractionType, extractionType);
-    assert.equal(waiting.mission.mapTruthVersion, "10.18");
+    assert.equal(waiting.mission.mapTruthVersion, "10.19");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 37) assert.equal(waiting.fireZones.length, 4);
   }
@@ -1296,7 +1300,7 @@ test("Crownfall Square protects the exact Missions 38–40 encounters", async ()
     assert.equal(waiting.mission.rescueRequired, civilianCount);
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.18");
+    assert.equal(waiting.mission.mapTruthVersion, "10.19");
     if(level === 40){
       assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, 2);
       assert.deepEqual(waiting.tigers.map((tiger)=>tiger.hpMax), [1850,1850]);
@@ -1359,7 +1363,7 @@ test("Brokenwater Reach protects the exact Missions 41–43 encounters", async (
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 1);
-    assert.equal(waiting.mission.mapTruthVersion, "10.18");
+    assert.equal(waiting.mission.mapTruthVersion, "10.19");
     if(level === 43){
       assert.deepEqual(waiting.mission.captureTargetIds, ["s43_currentstripe"]);
       assert.equal(waiting.tigers.find((tiger)=>tiger.id === "s43_currentstripe")?.hpMax, 760);
@@ -1424,7 +1428,7 @@ test("Floodplain Lifeline protects the exact Missions 44–47 encounters", async
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 1);
-    assert.equal(waiting.mission.mapTruthVersion, "10.18");
+    assert.equal(waiting.mission.mapTruthVersion, "10.19");
     assert(waiting.mapTruthLandmarks.length >= 4);
   }
 });
@@ -1484,7 +1488,7 @@ test("Tidefang Delta protects the exact Missions 48–50 encounters", async () =
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, waterCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.18");
+    assert.equal(waiting.mission.mapTruthVersion, "10.19");
     assert(waiting.mapTruthLandmarks.length >= 4);
     if(level === 48) assert.equal(waiting.mission.extractionType, "boat");
     if(level === 50){
@@ -1514,6 +1518,72 @@ test("Tidefang support secures the boat lane and reduces Giant River Tiger rage"
   assert.equal(waiting.mission.livingWorld.support.hunterBeacons, true);
   assert.equal(waiting.mission.livingWorld.support.survivorCamp, true);
   assert.equal(waiting.mission.livingWorld.support.bossRageReduction, 3);
+  assert.equal(waiting.mission.livingWorld.support.rubberAmmoMinimum, 56);
+  assert.equal(waiting.mission.livingWorld.support.tranqMinimum, 12);
+  session = await squadServer.joinSession(session.code, teammate);
+  await squadServer.applyAction(session, host, "start");
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.routeSpeedMul, 1.12);
+});
+
+test("Silverpeak Ascent protects the exact Missions 51–53 encounters", async () => {
+  const rows = [
+    [51, 911261, 4, 6, 3, 0],
+    [52, 911262, 7, 0, 0, 0],
+    [53, 911263, 4, 0, 0, 1],
+  ];
+  for(const [level, userId, tigerCount, civilianCount, checkpointCount, captureCount] of rows){
+    const host = { id:userId, first_name:`Peak${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.silverpeak_ascent = {
+      ...profile.livingWorld.districts.silverpeak_ascent,
+      tigerPressure:97,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.districtId, "silverpeak_ascent");
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.mission.captureRequired, captureCount);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.checkpoints.length, checkpointCount);
+    assert.equal(waiting.waterZones.length, 0);
+    assert.equal(waiting.mission.mapTruthVersion, "10.19");
+    assert(waiting.mapTruthLandmarks.length >= 4);
+    if(level === 53){
+      assert.deepEqual(waiting.mission.captureTargetIds, ["s53_silverpeak"]);
+      assert.equal(waiting.tigers.find((tiger)=>tiger.id === "s53_silverpeak")?.hpMax, 860);
+      assert.equal(waiting.mapTruthLandmarks.filter((item)=>item.type === "cage").length, 1);
+    }
+  }
+});
+
+test("Silverpeak support marks the ridge and protects humane mountain research", async () => {
+  const host = { id:911264, first_name:"Silverpeak", last_name:"Leader" };
+  const teammate = { id:911265, first_name:"Ridge", last_name:"Partner" };
+  const profile = await squadServer.readCoopProfile(host);
+  profile.livingWorld.districts.silverpeak_ascent = {
+    ...profile.livingWorld.districts.silverpeak_ascent,
+    tigerPressure:92,
+    settlementSafety:78,
+    bloodScent:70,
+  };
+  await squadServer.writeCoopProfile(profile, host);
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:53 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.settlementSupport.label, "Silverpeak Wildlife Station");
+  assert.equal(waiting.settlementSupport.type, "silverpeak_lodge");
+  assert.equal(waiting.mission.livingWorld.support.researchOutpost, true);
+  assert.equal(waiting.mission.livingWorld.support.canopyBeacons, true);
+  assert.equal(waiting.mission.livingWorld.support.protectedResearchRoute, true);
+  assert.equal(waiting.mission.livingWorld.support.veilLab, true);
+  assert.equal(waiting.mission.livingWorld.support.civilianDamageMul, 0.76);
   assert.equal(waiting.mission.livingWorld.support.rubberAmmoMinimum, 56);
   assert.equal(waiting.mission.livingWorld.support.tranqMinimum, 12);
   session = await squadServer.joinSession(session.code, teammate);

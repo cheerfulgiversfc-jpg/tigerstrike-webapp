@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.18";
-  const MAX_MISSION = 50;
+  const VERSION = "10.19";
+  const MAX_MISSION = 53;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -172,6 +172,15 @@
     50:mission(50,"Giant River Tiger",5,0,1,0,"ground",[
       mark("river_command","research","River Command Sonar",.23,.30,"scan",true), mark("giant_tiger_channel","boss","Giant River Tiger Territory",.55,.49,"defend",true), mark("tide_ward","barricade","Tidefang Safety Ward",.72,.60,"defend",true), mark("chapter_extraction","safe","Chapter 5 Extraction",.90,.73)
     ],[point(.23,.30),point(.55,.49),point(.72,.60),point(.90,.73)]),
+    51:mission(51,"Mountain Village Escort",6,6,4,0,"ground",[
+      mark("lower_ridge_entry","trail","Lower Ridge Entry",.28,.38,"secure",true), mark("mountain_pass","trail","Mountain Pass",.51,.48,"secure",true), mark("shelter_ridge","safe","Shelter Ridge",.75,.62,"secure",true), mark("mountain_village_extraction","safe","Mountain Village Extraction",.90,.73)
+    ],[point(.17,.24),point(.28,.38),point(.51,.48),point(.75,.62),point(.90,.73)]),
+    52:mission(52,"Cliffside Attack",6,0,7,0,"ground",[
+      mark("west_cliff_ledge","mountain","West Cliff Ledge",.24,.31,"scan",true), mark("high_pass_defense","barricade","High Pass Defense",.51,.48,"defend",true), mark("east_cliff_ledge","mountain","East Cliff Ledge",.76,.35,"scan",true), mark("cliffside_fallback","safe","Cliffside Fallback",.90,.73)
+    ],[point(.24,.31),point(.51,.48),point(.76,.35),point(.90,.73)]),
+    53:mission(53,"Silverpeak Capture",6,0,4,1,"ground",[
+      mark("silverpeak_tracking_post","research","Silverpeak Tracking Post",.24,.30,"scan",true), mark("silverpeak_territory","mountain","Silverpeak Tiger Territory",.52,.48,"defend",true), mark("silverpeak_capture_pen","cage","Silverpeak Live-Capture Pen",.69,.60,"prepare",true), mark("mountain_wildlife_transport","vehicle","Mountain Wildlife Transport",.89,.72)
+    ],[point(.24,.30),point(.52,.48),point(.69,.60),point(.89,.72)]),
   });
 
   function get(level){

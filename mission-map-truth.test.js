@@ -3,13 +3,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const truth = require("./mission-map-truth.js");
 
-assert.equal(truth.VERSION, "10.18");
-assert.equal(truth.MAX_MISSION, 50);
-assert.deepEqual(truth.validate(), [], "all Missions 1-50 must have valid authored map truth");
-assert.equal(Object.keys(truth.MISSIONS).length, 50, "exactly Missions 1-50 are covered");
-assert.equal(truth.get(51), null, "V10.18 must not silently reuse Mission 50 for later missions");
+assert.equal(truth.VERSION, "10.19");
+assert.equal(truth.MAX_MISSION, 53);
+assert.deepEqual(truth.validate(), [], "all Missions 1-53 must have valid authored map truth");
+assert.equal(Object.keys(truth.MISSIONS).length, 53, "exactly Missions 1-53 are covered");
+assert.equal(truth.get(54), null, "V10.19 must not silently reuse Mission 53 for later missions");
 
-for(let level=1; level<=50; level++){
+for(let level=1; level<=53; level++){
   const spec = truth.get(level);
   assert.equal(spec.level, level);
   assert(spec.landmarks.length >= 3, `Mission ${level} needs at least three meaningful map landmarks`);
@@ -49,6 +49,12 @@ assert.equal(truth.get(49).tigers, 11, "Mission 49 keeps the exact eleven-tiger 
 assert.equal(truth.get(49).landmarks.filter((item)=>item.type === "river").length, 2, "Mission 49 shows both delta channels");
 assert.equal(truth.get(50).tigers, 1, "Mission 50 keeps one Giant River Tiger");
 assert.equal(truth.get(50).landmarks.filter((item)=>item.type === "boss").length, 1, "Mission 50 shows the Giant River Tiger territory");
+assert.equal(truth.get(51).civilians, 6, "Mission 51 keeps six mountain villagers");
+assert.equal(truth.get(51).tigers, 4, "Mission 51 keeps its four ridge tigers");
+assert.equal(truth.get(51).landmarks.filter((item)=>item.required).length, 3, "Mission 51 keeps three working ridge checkpoints");
+assert.equal(truth.get(52).tigers, 7, "Mission 52 keeps the exact seven-tiger cliff attack");
+assert.equal(truth.get(53).captures, 1, "Mission 53 requires Silverpeak to be captured alive");
+assert.equal(truth.get(53).tigers, 4, "Mission 53 keeps Silverpeak and its three guards");
 
 const game = fs.readFileSync(path.join(__dirname, "game.js"), "utf8");
 const coop = fs.readFileSync(path.join(__dirname, "squad-coop.js"), "utf8");
@@ -58,11 +64,11 @@ assert(game.includes("drawMissionMapTruthOverlay({ mobileFast:true })"), "mobile
 assert(game.includes("drawMissionMapTruthOverlay({ mobileFast:false })"), "full map renders mission truth");
 assert(game.includes("missionMapTruthReady(S)"), "solo completion is gated by required visible map objectives");
 assert(game.includes("activateMissionMapTruthInteractable"), "mission landmarks have real player interaction");
-assert(game.includes("cfg.number <= 50"), "Solo Story applies exact Mission Map Truth counts through Mission 50");
+assert(game.includes("cfg.number <= 53"), "Solo Story applies exact Mission Map Truth counts through Mission 53");
 assert(server.includes('require("../../mission-map-truth")'), "Live Squad uses the same mission truth manifest");
 assert(server.includes("mapTruthLandmarks:mission.mapTruthLandmarks || []"), "Live Squad sends authored landmarks to both phones");
 assert(coop.includes("drawSharedMissionTruth(ctx,snap)"), "Live Squad renders the shared mission landmarks");
 assert(game.includes("missionMapTruthHazardTick"), "Solo Mission 37 fire is a real gameplay hazard");
-assert(html.includes("mission-map-truth.js?v=5150-tidefang"), "mission truth loads before gameplay");
+assert(html.includes("mission-map-truth.js?v=5160-silverpeak"), "mission truth loads before gameplay");
 
 console.log("mission-map-truth tests passed");

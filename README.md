@@ -646,6 +646,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Adds Tidefang Delta as the fifteenth persistent Living World district without adding unwanted patrols to these protected encounters.
 - Clean outcomes unlock a Marine Station, secured rescue-boat channel, delta sonar beacons, civilian protection, and a Giant River Tiger tide ward with Rubber and Tranq support.
 
+### V10.19 Silverpeak Ascent + Mission Map Truth — Missions 51–53
+
+- Extends the shared Mission Map Truth & Parity manifest through Missions 51–53 for both Solo and Shared Story.
+- Mission 51 preserves six mountain villagers, four tigers, and three ordered ridge checkpoints that both co-op soldiers must secure.
+- Mission 52 preserves the exact seven-tiger cliffside attack and its increased close-range mountain danger.
+- Mission 53 preserves four tigers and requires the named 860-HP Silverpeak Mountain Tiger to be captured alive; Real-ammo damage still disqualifies the target.
+- Adds Silverpeak Ascent as the sixteenth persistent Living World district without adding unwanted patrols to these protected encounters.
+- Clean outcomes unlock a Ranger Lodge, ridge trail markers, a protected mountain-shelter route, civilian protection, and a Silverpeak Wildlife Station with Rubber and Tranq support.
+
 ### V8.5 Adaptive Soundtrack
 
 - Replaces the sparse note loop with a continuous original in-engine Tiger Strike score built from layered melody, bass, harmony, and percussion.
