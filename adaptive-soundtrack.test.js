@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V10.19 cache key forces Telegram to load Silverpeak Ascent", () => {
-  assert(game.includes('const TS_BUILD = "5160"'));
-  assert(html.includes("game.js?v=5160-silverpeak"));
-  assert(html.includes("tutorial.js?v=5160-silverpeak"));
+test("V10.20 cache key forces Telegram to load Whiteout Descent", () => {
+  assert(game.includes('const TS_BUILD = "5170"'));
+  assert(html.includes("game.js?v=5170-whiteout"));
+  assert(html.includes("tutorial.js?v=5170-whiteout"));
 });

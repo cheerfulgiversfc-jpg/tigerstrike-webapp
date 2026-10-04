@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.19";
-  const MAX_MISSION = 53;
+  const VERSION = "10.20";
+  const MAX_MISSION = 57;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -181,6 +181,18 @@
     53:mission(53,"Silverpeak Capture",6,0,4,1,"ground",[
       mark("silverpeak_tracking_post","research","Silverpeak Tracking Post",.24,.30,"scan",true), mark("silverpeak_territory","mountain","Silverpeak Tiger Territory",.52,.48,"defend",true), mark("silverpeak_capture_pen","cage","Silverpeak Live-Capture Pen",.69,.60,"prepare",true), mark("mountain_wildlife_transport","vehicle","Mountain Wildlife Transport",.89,.72)
     ],[point(.24,.30),point(.52,.48),point(.69,.60),point(.89,.72)]),
+    54:mission(54,"Climber Rescue",6,4,4,0,"ground",[
+      mark("climber_search_ledges","mountain","Trapped Climber Ledges",.22,.25,"search",true), mark("upper_ledge_rally","mountain","Upper Ledge Rally",.30,.39,"secure",true), mark("rope_descent","trail","Rope Descent",.54,.52,"secure",true), mark("climber_rescue_shelter","safe","Climber Rescue Shelter",.76,.68,"secure",true), mark("climber_extraction","safe","Climber Extraction",.90,.73)
+    ],[point(.22,.25),point(.30,.39),point(.54,.52),point(.76,.68),point(.90,.73)]),
+    55:mission(55,"Mountain Road Pack",6,0,9,0,"ground",[
+      mark("mountain_road_entry","road","Mountain Road Entry",.28,.42,"secure",true), mark("hairpin_turn","road","Hairpin Turn",.52,.52,"secure",true), mark("nine_tiger_pack_core","boss","Nine-Tiger Road Pack",.63,.43,"defend",true), mark("mountain_road_exit","safe","Mountain Road Exit",.76,.68,"secure",true), mark("road_extraction","safe","Road Extraction",.90,.73)
+    ],[point(.28,.42),point(.52,.52),point(.63,.43),point(.76,.68),point(.90,.73)]),
+    56:mission(56,"Canyon Caravan",6,5,5,0,"ground",[
+      mark("caravan_rally","caravan","Mountain Caravan Rally",.20,.27,"protect",true), mark("canyon_mouth","mountain","Canyon Mouth",.29,.42,"secure",true), mark("narrow_canyon_bend","trail","Narrow Canyon Bend",.53,.53,"secure",true), mark("highland_exit","safe","Highland Exit",.76,.68,"secure",true), mark("caravan_extraction","safe","Caravan Extraction",.90,.73)
+    ],[point(.20,.27),point(.29,.42),point(.53,.53),point(.76,.68),point(.90,.73)]),
+    57:mission(57,"Whiteout Patrol",6,0,7,0,"ground",[
+      mark("lower_visibility_beacon","beacon","Lower Visibility Beacon",.28,.40,"activate",true), mark("mid_ridge_visibility_beacon","beacon","Mid-Ridge Visibility Beacon",.53,.52,"activate",true), mark("whiteout_pack_zone","mountain","Seven-Tiger Whiteout Zone",.64,.42,"scan",true), mark("extraction_visibility_beacon","beacon","Extraction Visibility Beacon",.76,.68,"activate",true), mark("whiteout_extraction","safe","Whiteout Extraction",.90,.73)
+    ],[point(.28,.40),point(.53,.52),point(.64,.42),point(.76,.68),point(.90,.73)]),
   });
 
   function get(level){

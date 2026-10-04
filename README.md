@@ -646,6 +646,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Adds Tidefang Delta as the fifteenth persistent Living World district without adding unwanted patrols to these protected encounters.
 - Clean outcomes unlock a Marine Station, secured rescue-boat channel, delta sonar beacons, civilian protection, and a Giant River Tiger tide ward with Rubber and Tranq support.
 
+### V10.20 Whiteout Descent + Mission Map Truth — Missions 54–57
+
+- Extends the shared Mission Map Truth & Parity manifest through Missions 54–57 for both Solo and Shared Story.
+- Mission 54 preserves four separated climbers, four tigers, and three ordered descent checkpoints.
+- Mission 55 preserves the exact nine-tiger mountain-road pack, its increased close-range danger, and three road checkpoints.
+- Mission 56 preserves the five-person canyon caravan, five ambush tigers, and three ordered canyon checkpoints.
+- Mission 57 preserves seven hidden tigers, three working visibility beacons, and the real snowstorm visibility hazard.
+- Adds Whiteout Descent as the seventeenth persistent Living World district without adding unwanted patrols to these authored encounters.
+- Clean outcomes unlock a Rescue Lodge, visibility-beacon network, protected climber and caravan descent, civilian protection, and a Whiteout Weather Station with storm-route supplies.
+
 ### V10.19 Silverpeak Ascent + Mission Map Truth — Missions 51–53
 
 - Extends the shared Mission Map Truth & Parity manifest through Missions 51–53 for both Solo and Shared Story.
