@@ -2292,7 +2292,7 @@ function normalizeLivingWorldMission(raw){
   const src = raw && typeof raw === "object" ? raw : {};
   const support = src.support && typeof src.support === "object" ? src.support : {};
   return {
-    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent"].includes(cleanText(src.districtId, 40)),
+    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit"].includes(cleanText(src.districtId, 40)),
     districtId:cleanText(src.districtId, 40),
     districtName:cleanText(src.districtName, 60),
     missionLevel:clamp(Math.floor(Number(src.missionLevel || 0)), 0, 100),
@@ -2372,6 +2372,7 @@ function livingWorldSettlementSupport(mission, effect){
   if(!open) return null;
   const presentations = {
     whiteout_descent:{ x:.68, y:.35, type:"whiteout_station", label:support.veilLab ? "Whiteout Weather Station" : "Whiteout Rescue Lodge" },
+    stormpeak_summit:{ x:.70, y:.32, type:"shadow_command", label:support.stealthArray ? "Stormpeak Alpha Command" : "Stormpeak Rescue Command" },
     silverpeak_ascent:{ x:.36, y:.62, type:"silverpeak_lodge", label:support.veilLab ? "Silverpeak Wildlife Station" : "Silverpeak Ranger Lodge" },
     tidefang_delta:{ x:.32, y:.68, type:"tidefang_station", label:support.survivorCamp ? "Tidefang Marine Command" : "Tidefang Marine Station" },
     floodplain_lifeline:{ x:.72, y:.34, type:"floodplain_clinic", label:support.survivorCamp ? "Floodplain Lifeline Camp" : "Floodplain Field Clinic" },

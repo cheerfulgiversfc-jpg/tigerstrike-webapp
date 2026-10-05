@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–57 map to seventeen persistent districts", () => {
+test("Missions 1–60 map to eighteen persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -44,7 +44,9 @@ test("Missions 1–57 map to seventeen persistent districts", () => {
   assert.equal(livingWorld.districtForMission(53).id, "silverpeak_ascent");
   assert.equal(livingWorld.districtForMission(54).id, "whiteout_descent");
   assert.equal(livingWorld.districtForMission(57).id, "whiteout_descent");
-  assert.equal(livingWorld.districtForMission(58), null);
+  assert.equal(livingWorld.districtForMission(58).id, "stormpeak_summit");
+  assert.equal(livingWorld.districtForMission(60).id, "stormpeak_summit");
+  assert.equal(livingWorld.districtForMission(61), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -523,6 +525,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('floodplain_lifeline:"floodplain_clinic"'));
   assert(game.includes('silverpeak_ascent:"silverpeak_lodge"'));
   assert(game.includes('whiteout_descent:"whiteout_station"'));
+  assert(game.includes('stormpeak_summit:"stormpeak_command"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
@@ -545,8 +548,8 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("WEATHER STATION ONLINE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5170-whiteout"));
-  assert(html.includes("V10.20 (Whiteout Descent)"));
+  assert(html.includes("living-world.js?v=5180-stormpeak"));
+  assert(html.includes("V10.21 (Stormpeak Summit)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1240,7 +1243,7 @@ test("Emberfall Ward protects the exact Missions 34–37 encounters", async () =
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.mission.extractionType, extractionType);
-    assert.equal(waiting.mission.mapTruthVersion, "10.20");
+    assert.equal(waiting.mission.mapTruthVersion, "10.21");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 37) assert.equal(waiting.fireZones.length, 4);
   }
@@ -1304,7 +1307,7 @@ test("Crownfall Square protects the exact Missions 38–40 encounters", async ()
     assert.equal(waiting.mission.rescueRequired, civilianCount);
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.20");
+    assert.equal(waiting.mission.mapTruthVersion, "10.21");
     if(level === 40){
       assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, 2);
       assert.deepEqual(waiting.tigers.map((tiger)=>tiger.hpMax), [1850,1850]);
@@ -1367,7 +1370,7 @@ test("Brokenwater Reach protects the exact Missions 41–43 encounters", async (
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 1);
-    assert.equal(waiting.mission.mapTruthVersion, "10.20");
+    assert.equal(waiting.mission.mapTruthVersion, "10.21");
     if(level === 43){
       assert.deepEqual(waiting.mission.captureTargetIds, ["s43_currentstripe"]);
       assert.equal(waiting.tigers.find((tiger)=>tiger.id === "s43_currentstripe")?.hpMax, 760);
@@ -1432,7 +1435,7 @@ test("Floodplain Lifeline protects the exact Missions 44–47 encounters", async
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 1);
-    assert.equal(waiting.mission.mapTruthVersion, "10.20");
+    assert.equal(waiting.mission.mapTruthVersion, "10.21");
     assert(waiting.mapTruthLandmarks.length >= 4);
   }
 });
@@ -1492,7 +1495,7 @@ test("Tidefang Delta protects the exact Missions 48–50 encounters", async () =
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, waterCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.20");
+    assert.equal(waiting.mission.mapTruthVersion, "10.21");
     assert(waiting.mapTruthLandmarks.length >= 4);
     if(level === 48) assert.equal(waiting.mission.extractionType, "boat");
     if(level === 50){
@@ -1558,7 +1561,7 @@ test("Silverpeak Ascent protects the exact Missions 51–53 encounters", async (
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 0);
-    assert.equal(waiting.mission.mapTruthVersion, "10.20");
+    assert.equal(waiting.mission.mapTruthVersion, "10.21");
     assert(waiting.mapTruthLandmarks.length >= 4);
     if(level === 53){
       assert.deepEqual(waiting.mission.captureTargetIds, ["s53_silverpeak"]);
@@ -1623,7 +1626,7 @@ test("Whiteout Descent protects the exact Missions 54–57 encounters", async ()
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.20");
+    assert.equal(waiting.mission.mapTruthVersion, "10.21");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 57){
       assert.equal(waiting.mission.snowstormIntensity, .78);
@@ -1652,6 +1655,71 @@ test("Whiteout support lights the descent route and opens the weather station", 
   assert.equal(waiting.mission.livingWorld.support.protectedResearchRoute, true);
   assert.equal(waiting.mission.livingWorld.support.veilLab, true);
   assert.equal(waiting.mission.livingWorld.support.civilianDamageMul, 0.76);
+  session = await squadServer.joinSession(session.code, teammate);
+  await squadServer.applyAction(session, host, "start");
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.routeSpeedMul, 1.12);
+});
+
+test("Stormpeak Summit protects the exact Missions 58–60 encounters", async () => {
+  const rows = [
+    [58, 911272, 6, 5, 3],
+    [59, 911273, 12, 0, 0],
+    [60, 911274, 1, 0, 0],
+  ];
+  for(const [level, userId, tigerCount, civilianCount, checkpointCount] of rows){
+    const host = { id:userId, first_name:`Stormpeak${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.stormpeak_summit = {
+      ...profile.livingWorld.districts.stormpeak_summit,
+      tigerPressure:97,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.districtId, "stormpeak_summit");
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.checkpoints.length, checkpointCount);
+    assert.equal(waiting.mission.mapTruthVersion, "10.21");
+    assert(waiting.mapTruthLandmarks.length >= 4);
+    if(level === 58) assert.equal(waiting.mission.extractionType, "helicopter");
+    if(level === 59) assert.equal(waiting.tigers.length, 12);
+    if(level === 60){
+      assert.equal(waiting.tigers[0].name, "Mountain Alpha Tiger");
+      assert.equal(waiting.tigers[0].hpMax, 3200);
+      assert.equal(waiting.mission.snowstormIntensity, .30);
+    }
+  }
+});
+
+test("Stormpeak support secures the rescue LZ and tracks the Mountain Alpha", async () => {
+  const host = { id:911275, first_name:"Stormpeak", last_name:"Leader" };
+  const teammate = { id:911276, first_name:"Summit", last_name:"Partner" };
+  const profile = await squadServer.readCoopProfile(host);
+  profile.livingWorld.districts.stormpeak_summit = {
+    ...profile.livingWorld.districts.stormpeak_summit,
+    tigerPressure:96,
+    settlementSafety:78,
+    bloodScent:80,
+  };
+  await squadServer.writeCoopProfile(profile, host);
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:60 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.settlementSupport.label, "Stormpeak Alpha Command");
+  assert.equal(waiting.settlementSupport.type, "shadow_command");
+  assert.equal(waiting.mission.livingWorld.support.shadowCommand, true);
+  assert.equal(waiting.mission.livingWorld.support.packSensors, true);
+  assert.equal(waiting.mission.livingWorld.support.lzDefenses, true);
+  assert.equal(waiting.mission.livingWorld.support.stealthArray, true);
+  assert.equal(waiting.mission.livingWorld.support.stealthBossReduction, 3);
+  assert.equal(waiting.mission.livingWorld.support.civilianDamageMul, 0.72);
   session = await squadServer.joinSession(session.code, teammate);
   await squadServer.applyAction(session, host, "start");
   const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);

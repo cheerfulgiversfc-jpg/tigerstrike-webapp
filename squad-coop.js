@@ -357,8 +357,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V10.20 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V10.20 • ${selectedOperation().mapLabel}` : "Tiger Strike V10.20 • Whiteout Descent");
+      ? `Tiger Strike V10.21 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V10.21 • ${selectedOperation().mapLabel}` : "Tiger Strike V10.21 • Stormpeak Summit");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -655,7 +655,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V10.20 Tiger Strike Whiteout Descent</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for the exact Story mission or Special Operation you choose. Living World consequences and Mission Map Truth now continue through Story Mission 57.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V10.21 Tiger Strike Stormpeak Summit</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for the exact Story mission or Special Operation you choose. Living World consequences and Mission Map Truth now continue through Story Mission 60.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -714,7 +714,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V10.20 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Your Shared Story results persist separately from Solo. Whiteout Descent brings lasting consequences to Missions 54–57 with the exact climber rescue, nine-tiger road pack, canyon caravan, whiteout patrol, Rescue Lodge, visibility beacons, protected descent, and Weather Station.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V10.21 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Your Shared Story results persist separately from Solo. Stormpeak Summit brings lasting consequences to Missions 58–60 with the exact five-person helicopter rescue, twelve-tiger swarm, 3,200-HP Mountain Alpha, Rescue Command, swarm sensors, defended LZ, and Alpha tracking ward.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -2427,6 +2427,12 @@
       ctx.strokeStyle=route?"rgba(52,211,153,.82)":"rgba(120,53,15,.62)";ctx.lineWidth=route?14:8;ctx.setLineDash(route?[26,14]:[10,18]);ctx.beginPath();ctx.moveTo(worldW*.17,worldH*.73);ctx.quadraticCurveTo(vx,vy-145,worldW*.87,worldH*.29);ctx.stroke();ctx.setLineDash([]);
       for(let i=0;i<4;i++){const bx=worldW*(.24+i*.18),by=worldH*(.67-i*.08);if(!visible(bx,by,100))continue;ctx.strokeStyle="#14532d";ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx,by-58);ctx.stroke();ctx.fillStyle=beacons?"#22d3ee":"#475569";ctx.shadowColor=beacons?"#06b6d4":"transparent";ctx.shadowBlur=beacons?25:0;ctx.beginPath();ctx.arc(bx,by-67,15,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
       if(visible(vx,vy,290)){ctx.fillStyle="rgba(2,44,34,.95)";roundRect(ctx,vx-190,vy-72,380,46,12);ctx.fill();ctx.strokeStyle=lab?"#67e8f9":"#6ee7b7";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#d1fae5";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${beacons?"CANOPY BEACONS ACTIVE":"BEACONS OFFLINE"} • ${lab?"VEIL FIELD LAB ONLINE":"FIELD LAB OFFLINE"}`,vx,vy-43);}
+    }
+    if(consequence?.districtId==="stormpeak_summit"){
+      const sx=worldW*.55,sy=worldH*.49,sensors=!!consequence.support?.packSensors,lz=!!consequence.support?.lzDefenses,ward=!!consequence.support?.stealthArray;
+      ctx.fillStyle="rgba(12,32,55,.18)";ctx.strokeStyle=lz?"rgba(125,211,252,.90)":"rgba(100,116,139,.72)";ctx.lineWidth=lz?12:7;ctx.setLineDash(lz?[28,13]:[10,18]);ctx.beginPath();ctx.moveTo(worldW*.20,worldH*.29);ctx.lineTo(worldW*.83,worldH*.27);ctx.lineTo(worldW*.89,worldH*.74);ctx.lineTo(worldW*.24,worldH*.78);ctx.closePath();ctx.fill();ctx.stroke();ctx.setLineDash([]);
+      for(let i=0;i<4;i++){const px=worldW*(.24+i*.18),py=worldH*(.66-i*.09);if(!visible(px,py,100))continue;ctx.fillStyle=sensors?"#7dd3fc":"#64748b";ctx.shadowColor=sensors?"#38bdf8":"transparent";ctx.shadowBlur=sensors?26:0;ctx.fillRect(px-8,py-54,16,54);ctx.beginPath();ctx.arc(px,py-64,16,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
+      if(visible(sx,sy,340)){ctx.fillStyle="rgba(15,23,42,.97)";roundRect(ctx,sx-225,sy-76,450,48,12);ctx.fill();ctx.strokeStyle=ward?"#fef08a":"#7dd3fc";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#f8fafc";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${sensors?"SUMMIT SWARM SENSORS ACTIVE":"SWARM SENSORS OFFLINE"} • ${ward?"MOUNTAIN ALPHA WARD ONLINE":"ALPHA WARD OFFLINE"}`,sx,sy-46);}
     }
     if(consequence?.districtId==="whiteout_descent"){
       const wx=worldW*.55,wy=worldH*.49,beacons=!!consequence.support?.canopyBeacons,route=!!consequence.support?.protectedResearchRoute,station=!!consequence.support?.veilLab;

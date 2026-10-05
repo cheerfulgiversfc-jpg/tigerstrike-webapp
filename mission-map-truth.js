@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.20";
-  const MAX_MISSION = 57;
+  const VERSION = "10.21";
+  const MAX_MISSION = 60;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -193,6 +193,15 @@
     57:mission(57,"Whiteout Patrol",6,0,7,0,"ground",[
       mark("lower_visibility_beacon","beacon","Lower Visibility Beacon",.28,.40,"activate",true), mark("mid_ridge_visibility_beacon","beacon","Mid-Ridge Visibility Beacon",.53,.52,"activate",true), mark("whiteout_pack_zone","mountain","Seven-Tiger Whiteout Zone",.64,.42,"scan",true), mark("extraction_visibility_beacon","beacon","Extraction Visibility Beacon",.76,.68,"activate",true), mark("whiteout_extraction","safe","Whiteout Extraction",.90,.73)
     ],[point(.28,.40),point(.53,.52),point(.64,.42),point(.76,.68),point(.90,.73)]),
+    58:mission(58,"Mountain Air Rescue",6,5,6,0,"helicopter",[
+      mark("mountain_rescue_camp","clinic","Mountain Rescue Crew Camp",.20,.27,"protect",true), mark("mountain_lz_approach","trail","Mountain LZ Approach",.30,.42,"secure",true), mark("mountain_lz_perimeter","barricade","Mountain LZ Perimeter",.55,.54,"defend",true), mark("rescue_helicopter_boarding","helicopter","Rescue Helicopter Boarding",.77,.69,"board",true), mark("air_rescue_departure","safe","Air Rescue Departure Lane",.90,.73)
+    ],[point(.20,.27),point(.30,.42),point(.55,.54),point(.77,.69),point(.90,.73)]),
+    59:mission(59,"Mountain Swarm",6,0,12,0,"ground",[
+      mark("west_swarm_ridge","mountain","West Swarm Ridge",.23,.34,"scan",true), mark("mountain_swarm_core","boss","Twelve-Tiger Mountain Swarm",.52,.49,"defend",true), mark("east_swarm_ridge","mountain","East Swarm Ridge",.76,.36,"scan",true), mark("summit_fallback","barricade","Summit Fallback Line",.78,.66,"defend",true), mark("swarm_extraction","safe","Mountain Swarm Extraction",.90,.73)
+    ],[point(.23,.34),point(.52,.49),point(.76,.36),point(.78,.66),point(.90,.73)]),
+    60:mission(60,"Mountain Alpha Tiger",6,0,1,0,"ground",[
+      mark("summit_tracking_command","research","Summit Alpha Tracking Command",.23,.30,"scan",true), mark("mountain_alpha_territory","boss","Mountain Alpha Territory",.55,.49,"defend",true), mark("summit_rage_ward","barricade","Summit Rage Safety Ward",.72,.61,"defend",true), mark("chapter_six_extraction","safe","Chapter 6 Extraction",.90,.73)
+    ],[point(.23,.30),point(.55,.49),point(.72,.61),point(.90,.73)]),
   });
 
   function get(level){

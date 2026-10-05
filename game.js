@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5170";
+const TS_BUILD = "5180";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -11454,14 +11454,14 @@ function storyMissionForState(state=S){
     }
   }
 
-  // V10.20: every newly released batch extends the same authored mission
+  // V10.21: every newly released batch extends the same authored mission
   // truth used by Solo and Live Squad. Never ship a mission batch without it.
   // This runs after generic variety so named counts and map objectives cannot
   // silently drift away from the mission shown to the player.
-  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 57){
+  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 60){
     const truth = window.TigerStrikeMissionMapTruth?.get?.(cfg.number);
     if(truth){
-      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.20";
+      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.21";
       cfg.mapTruthTitle = truth.title;
       cfg.mapTruthRequiredActionIds = [...truth.requiredActionIds];
       cfg.civilians = Math.max(0, Number(truth.civilians || 0));
@@ -13871,8 +13871,8 @@ function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
     </div>`;
   }).join("");
   return `<section class="card" id="livingWorldChapterOne" style="margin-top:10px;border-color:rgba(74,222,128,.62);background:linear-gradient(145deg,rgba(6,54,45,.50),rgba(8,15,29,.96))">
-    <div class="hudLine"><b>🌍 Living Story Districts • Missions 1–57</b></div>
-    <div class="small">Missions 1–57 now react to lasting results. Whiteout Descent preserves the four-climber rescue, exact nine-tiger road pack, five-person canyon caravan, and seven-tiger whiteout patrol while adding a Rescue Lodge, visibility beacons, protected descent route, and Weather Station. Solo and Shared Story each keep their own progression.</div>
+    <div class="hudLine"><b>🌍 Living Story Districts • Missions 1–60</b></div>
+    <div class="small">Missions 1–60 now react to lasting results. Stormpeak Summit preserves the five-person helicopter rescue, exact twelve-tiger mountain swarm, and single 3,200-HP Mountain Alpha while adding Rescue Command, summit swarm sensors, defended landing zones, and an Alpha tracking ward. Solo and Shared Story each keep their own progression.</div>
     <div class="small" style="margin-top:6px"><b>Latest:</b> ${worldMapEsc(living.headline)}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${cards}</div>
   </section>`;
@@ -39893,12 +39893,14 @@ function spawnLivingWorldDistrictSupport(){
   const tidefang = effect.districtId === "tidefang_delta";
   const silverpeak = effect.districtId === "silverpeak_ascent";
   const whiteout = effect.districtId === "whiteout_descent";
+  const stormpeak = effect.districtId === "stormpeak_summit";
   const baseLabel = floodplain ? (effect.support?.survivorCamp ? "Floodplain Lifeline Camp" : "Floodplain Field Clinic") : (brokenwater ? (effect.support?.survivorCamp ? "Brokenwater Wildlife Station" : "Brokenwater Rescue Station") : (crownfall ? (effect.support?.bossWard ? "Crownfall Twin Ward Command" : "Crownfall Defense Command") : (ember ? (effect.support?.evacCorridor ? "Emberfall Firebreak Command" : "Emberfall Relief Command") : (silent ? (effect.support?.evacCorridor ? "Silent Village Evac Command" : "Silent Village Search Command") : (shadow ? (effect.support?.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command") : (riverveil ? (effect.support?.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station") : (veil ? (effect.support?.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost") : (crimson ? "Crimson Hollow Conservation Camp" : (amara ? "Amara Haven Field Hospital" : (bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House"))))))))))));
-  const label = whiteout ? (effect.support?.veilLab ? "Whiteout Weather Station" : "Whiteout Rescue Lodge") : (silverpeak ? (effect.support?.veilLab ? "Silverpeak Wildlife Station" : "Silverpeak Ranger Lodge") : (tidefang ? (effect.support?.survivorCamp ? "Tidefang Marine Command" : "Tidefang Marine Station") : baseLabel));
+  const label = stormpeak ? (effect.support?.stealthArray ? "Stormpeak Alpha Command" : "Stormpeak Rescue Command") : (whiteout ? (effect.support?.veilLab ? "Whiteout Weather Station" : "Whiteout Rescue Lodge") : (silverpeak ? (effect.support?.veilLab ? "Silverpeak Wildlife Station" : "Silverpeak Ranger Lodge") : (tidefang ? (effect.support?.survivorCamp ? "Tidefang Marine Command" : "Tidefang Marine Station") : baseLabel)));
   let point = safeSpawnPoint(worldW * (floodplain ? 0.72 : (brokenwater ? 0.34 : (crownfall ? 0.52 : (ember ? 0.38 : (silent ? 0.34 : (shadow ? 0.68 : (riverveil ? 0.32 : (veil ? 0.36 : (crimson ? 0.44 : (amara ? 0.72 : (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28))))))))))))), worldH * (floodplain ? 0.34 : (brokenwater ? 0.68 : (crownfall ? 0.66 : (ember ? 0.62 : (silent ? 0.36 : (shadow ? 0.34 : (riverveil ? 0.68 : (veil ? 0.62 : (crimson ? 0.66 : (amara ? 0.34 : (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70))))))))))))), 24, true, true);
   if(tidefang) point = safeSpawnPoint(worldW * 0.32, worldH * 0.68, 24, true, true);
   if(silverpeak) point = safeSpawnPoint(worldW * 0.36, worldH * 0.62, 24, true, true);
   if(whiteout) point = safeSpawnPoint(worldW * 0.68, worldH * 0.35, 24, true, true);
+  if(stormpeak) point = safeSpawnPoint(worldW * 0.70, worldH * 0.32, 24, true, true);
   if(inMapScenarioKeepout(point.x, point.y, 24)){
     point = findNearestOpenPoint(point.x, point.y, 24, {
       avoidKeepout:true,
@@ -39914,6 +39916,7 @@ function spawnLivingWorldDistrictSupport(){
     emberfall_ward:"emberfall_command", crownfall_square:"crownfall_command", brokenwater_reach:"brokenwater_station",
     floodplain_lifeline:"floodplain_clinic", tidefang_delta:"tidefang_station", silverpeak_ascent:"silverpeak_lodge",
     whiteout_descent:"whiteout_station",
+    stormpeak_summit:"stormpeak_command",
   })[effect.districtId] || "river_safe_house";
   S.mapInteractables.push({
     id:`LIVING-${String(effect.districtId || "DISTRICT").toUpperCase()}-${Math.max(1, Number(S.storyLevel || 1))}`,
@@ -39943,7 +39946,18 @@ function spawnLivingWorldRiverGateSafeHouse(){
 
 function configureLivingWorldDistrictRoutes(){
   const effect = S._livingWorldMission;
-  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent"].includes(effect.districtId)) return false;
+  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit"].includes(effect.districtId)) return false;
+  if(effect.districtId === "stormpeak_summit"){
+    const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
+    if(generator){ generator.powered = !!effect.support?.packSensors; generator.label = generator.powered ? "Stormpeak Swarm Sensors" : "Stormpeak Emergency Radio"; }
+    const barricade = (S.mapInteractables || []).find((item)=>item?.kind === "barricade");
+    if(barricade && effect.support?.lzDefenses){ barricade.label = "Stormpeak Helicopter LZ Defense"; barricade.effectR = Math.max(Number(barricade.effectR || 0), barricadeEffectRadius()); }
+    const routeTrap = (S.mapInteractables || []).find((item)=>item?.kind === "route_trap");
+    if(routeTrap && effect.support?.stealthArray){ routeTrap.label = "Mountain Alpha Tracking Ward"; routeTrap.effectR = Math.max(Number(routeTrap.effectR || 0), 170); }
+    const gate = (S.mapInteractables || []).find((item)=>item?.kind === "gate");
+    if(gate){ gate.routeOpen = true; gate.label = effect.support?.stealthArray ? "Stormpeak Alpha Command Gate" : "Stormpeak Rescue Gate"; }
+    __blockedAtCache.clear(); invalidateMapCache(); return true;
+  }
   if(effect.districtId === "whiteout_descent"){
     const bridge = (S.mapInteractables || []).find((item)=>item?.kind === "bridge");
     if(bridge){ bridge.routeOpen = true; bridge.label = effect.support?.protectedResearchRoute ? "Whiteout Protected Descent" : "Whiteout Emergency Descent"; }
@@ -40542,6 +40556,7 @@ function activateMapInteractable(it){
       const tidefangStation = it.livingWorldSupportType === "tidefang_station";
       const silverpeakLodge = it.livingWorldSupportType === "silverpeak_lodge";
       const whiteoutStation = it.livingWorldSupportType === "whiteout_station";
+      const stormpeakCommand = it.livingWorldSupportType === "stormpeak_command";
       if(amaraHospital) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(crimsonCamp) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(veilOutpost) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
@@ -40555,10 +40570,11 @@ function activateMapInteractable(it){
       if(tidefangStation) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(silverpeakLodge) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(whiteoutStation) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
-      S.armor = clamp(Number(S.armor || 0) + (whiteoutStation ? 26 : (silverpeakLodge ? 22 : (tidefangStation ? 28 : (floodplainClinic ? 26 : (brokenwaterStation ? 24 : (crownfallCommand ? 30 : (ironArmory ? 25 : (emberfallCommand ? 26 : (silentCommand ? 24 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15)))))))))))))))), 0, S.armorCap || 100);
+      if(stormpeakCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
+      S.armor = clamp(Number(S.armor || 0) + (stormpeakCommand ? 30 : (whiteoutStation ? 26 : (silverpeakLodge ? 22 : (tidefangStation ? 28 : (floodplainClinic ? 26 : (brokenwaterStation ? 24 : (crownfallCommand ? 30 : (ironArmory ? 25 : (emberfallCommand ? 26 : (silentCommand ? 24 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15))))))))))))))))), 0, S.armorCap || 100);
       const supportWeapon = equippedWeapon();
       const supportAmmoId = supportWeapon ? (bestAvailableAmmoIdForWeapon(supportWeapon) || supportWeapon.ammo) : "";
-      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (whiteoutStation ? 16 : (silverpeakLodge ? 14 : (tidefangStation ? 18 : (floodplainClinic ? 16 : (brokenwaterStation ? 16 : (crownfallCommand ? 18 : (ironArmory ? 18 : (emberfallCommand ? 16 : (silentCommand ? 16 : (shadowCommand ? 18 : (riverveilStation ? 16 : (veilOutpost ? 12 : (crimsonCamp ? 12 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8))))))))))))))));
+      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (stormpeakCommand ? 18 : (whiteoutStation ? 16 : (silverpeakLodge ? 14 : (tidefangStation ? 18 : (floodplainClinic ? 16 : (brokenwaterStation ? 16 : (crownfallCommand ? 18 : (ironArmory ? 18 : (emberfallCommand ? 16 : (silentCommand ? 16 : (shadowCommand ? 18 : (riverveilStation ? 16 : (veilOutpost ? 12 : (crimsonCamp ? 12 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8)))))))))))))))));
       if(jungleRanger){
         S.scanPing = Math.max(Number(S.scanPing || 0), 240);
         if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
@@ -40652,10 +40668,19 @@ function activateMapInteractable(it){
         S.scanPing = Math.max(Number(S.scanPing || 0), 480);
         if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
       }
+      if(stormpeakCommand){
+        const supportRubberId = supportWeapon ? compatibleAmmoIdsForWeapon(supportWeapon, "rubber")[0] : "";
+        if(supportRubberId) S.ammoReserve[supportRubberId] = Math.max(0, Number(S.ammoReserve[supportRubberId] || 0)) + 24;
+        S.ammoReserve.TRANQ_DARTS = Math.max(0, Number(S.ammoReserve.TRANQ_DARTS || 0)) + 6;
+        S.scanPing = Math.max(Number(S.scanPing || 0), 500);
+        S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
+      }
       it.uses = 0;
       it.cooldownUntil = now + 60000;
       it.activeUntil = now + 900;
-      interactionFeedback(whiteoutStation
+      interactionFeedback(stormpeakCommand
+        ? "🏔️ Stormpeak Rescue Command supplied +2 Med Kits, +30 Armor, +18 Ammo, 24 Rubber rounds, 6 Tranq Darts, 1 Trap, and a summit scan."
+        : whiteoutStation
         ? `❄️ Whiteout Rescue Lodge supplied +2 Med Kits, +26 Armor, +16 Ammo, 20 Rubber rounds, 5 Tranq Darts${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a storm-route scan.`
         : silverpeakLodge
         ? `🏔️ Silverpeak Ranger Lodge supplied +2 Med Kits, +22 Armor, +14 Ammo, 24 Rubber rounds, 6 Tranq Darts${Number(it.returningCivilians || 0) >= 2 ? ", 1 Trap" : ""}, and a ridge scan.`
@@ -56013,10 +56038,10 @@ function drawMapInteractable(it){
       ctx.beginPath();
       ctx.arc(it.x + 21, it.y - 12, 6, 0, Math.PI * 2);
       ctx.fill();
-    }else if(it.livingWorldSupportType === "shadow_command"){
+    }else if(it.livingWorldSupportType === "shadow_command" || it.livingWorldSupportType === "stormpeak_command"){
       ctx.fillStyle = "rgba(15,23,42,.98)";
       roundedRectFill(it.x - 33, it.y - 21, 66, 44, 7);
-      ctx.strokeStyle = "rgba(167,139,250,.96)";
+      ctx.strokeStyle = it.livingWorldSupportType === "stormpeak_command" ? "rgba(125,211,252,.98)" : "rgba(167,139,250,.96)";
       ctx.lineWidth = 2.4;
       ctx.strokeRect(it.x - 32, it.y - 20, 64, 42);
       ctx.fillStyle = "rgba(237,233,254,.98)";
@@ -56090,7 +56115,7 @@ function drawMapInteractable(it){
       ctx.lineTo(it.x, it.y + 10);
       ctx.stroke();
     }
-    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","veil_outpost","silverpeak_lodge","whiteout_station","riverveil_station","shadow_command","silent_command","emberfall_command","crownfall_command","brokenwater_station","floodplain_clinic","tidefang_station"].includes(it.livingWorldSupportType)){
+    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","veil_outpost","silverpeak_lodge","whiteout_station","riverveil_station","shadow_command","stormpeak_command","silent_command","emberfall_command","crownfall_command","brokenwater_station","floodplain_clinic","tidefang_station"].includes(it.livingWorldSupportType)){
       const helpers = Math.max(1, Math.min(2, Number(it.returningCivilians || 0) || 1));
       for(let idx=0; idx<helpers; idx++){
         const hx = it.x + (idx === 0 ? -27 : 27);
@@ -56108,6 +56133,8 @@ function drawMapInteractable(it){
             ? (idx === 0 ? "#facc15" : "#22d3ee")
           : it.livingWorldSupportType === "shadow_command"
             ? (idx === 0 ? "#a78bfa" : "#22d3ee")
+          : it.livingWorldSupportType === "stormpeak_command"
+            ? (idx === 0 ? "#7dd3fc" : "#fef08a")
           : it.livingWorldSupportType === "riverveil_station"
             ? (idx === 0 ? "#22d3ee" : "#facc15")
           : it.livingWorldSupportType === "silverpeak_lodge"

@@ -646,6 +646,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Adds Tidefang Delta as the fifteenth persistent Living World district without adding unwanted patrols to these protected encounters.
 - Clean outcomes unlock a Marine Station, secured rescue-boat channel, delta sonar beacons, civilian protection, and a Giant River Tiger tide ward with Rubber and Tranq support.
 
+### V10.21 Stormpeak Summit + Mission Map Truth — Missions 58–60
+
+- Extends the shared Mission Map Truth & Parity manifest through Missions 58–60 for both Solo and Shared Story.
+- Mission 58 preserves five mountain-rescue crew members, six tigers, three ordered helicopter-LZ checkpoints, and a real helicopter extraction.
+- Mission 59 preserves the exact twelve-tiger mountain swarm and its increased close-range danger.
+- Mission 60 preserves the single 3,200-HP Mountain Alpha, Summit Rage behavior, and light-snow pressure.
+- Adds Stormpeak Summit as the eighteenth persistent Living World district without adding unwanted patrols to these authored encounters.
+- Clean outcomes unlock Rescue Command, summit swarm sensors, defended helicopter landing zones, civilian protection, and a Mountain Alpha tracking ward with Rubber and Tranq support.
+
 ### V10.20 Whiteout Descent + Mission Map Truth — Missions 54–57
 
 - Extends the shared Mission Map Truth & Parity manifest through Missions 54–57 for both Solo and Shared Story.
