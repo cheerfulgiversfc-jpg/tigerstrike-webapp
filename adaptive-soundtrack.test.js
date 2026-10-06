@@ -63,7 +63,7 @@ test("music unlocks from a gesture and respects both audio controls", () => {
 });
 
 test("V10.22 cache key forces Telegram to load One Battlefield", () => {
-  assert(game.includes('const TS_BUILD = "5190"'));
-  assert(html.includes("game.js?v=5190-one-battlefield"));
-  assert(html.includes("tutorial.js?v=5190-one-battlefield"));
+  assert(game.includes('const TS_BUILD = "5191"'));
+  assert(html.includes("game.js?v=5191-one-battlefield-final"));
+  assert(html.includes("tutorial.js?v=5191-one-battlefield-final"));
 });

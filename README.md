@@ -729,6 +729,8 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Co-op tigers have full heads, muzzles, ears, eyes, whiskers, articulated legs, paws, tails, layered coats, and stripes. Their legs animate only when their server position actually changes, removing the skating effect while idle.
 - Living tigers still have no oval target ring. Bodies, cages, health, awareness, bosses, armor, capture rules, and mission truth remain connected to the existing co-op simulation.
 - The premium battlefield finish adds stronger daylight, environmental color, and fine terrain detail without replacing mission-specific maps or objective landmarks.
+- Shared Story now selects the same map family as Solo for every chapter: Forest for Chapters 1, 3, and 7; Suburbs for Chapters 2, 5, and 9; Downtown for Chapters 4 and 8; and Industrial for Chapters 6 and 10.
+- Those shared foundations reproduce Solo's winding forest trails, suburban road network and homes, downtown street grid and buildings, and industrial roads, hazard markings, and compounds. Two-player objectives, water, mission landmarks, and Mission Map Truth are drawn on top instead of being replaced.
 - Mobile Live Squad controls now float over the battlefield like Solo: a large translucent joystick on the left and larger rounded action controls on the right. Every displayed action remains a real working co-op action.
 - Solo and co-op progression, equipment, rewards, reconnect behavior, mission continuity, and server-authoritative movement remain separate and unchanged.
 

@@ -2051,6 +2051,7 @@
     const tigerKingChapter = storyLevel >= 71 && storyLevel <= 80;
     const hiddenJungleChapter = storyLevel >= 81 && storyLevel <= 90;
     const ancientGuardianChapter = storyLevel >= 91 && storyLevel <= 100;
+    const sharedStoryFoundation = storyLevel > 0 && !!window.TigerStrikeBattlefieldRenderer?.drawStoryMapFoundation;
     const roadW = 112;
     const verticalRoads = [worldW*.28, worldW*.54, worldW*.81];
     const horizontalRoads = [worldH*.24, worldH*.50, worldH*.76];
@@ -2076,7 +2077,7 @@
     ctx.fillStyle=endlessSurvival?"rgba(249,115,22,.13)":(denAssault?"rgba(168,139,92,.16)":(villageSiege?"rgba(190,228,125,.19)":(convoyRescue?"rgba(217,168,91,.17)":(alphaHunt?"rgba(147,197,253,.12)":(stormExtraction?"rgba(125,211,252,.13)":"rgba(102,164,91,.20)")))));
     const tileW=132,tileH=96,startX=Math.floor(view.x/tileW)*tileW,startY=Math.floor(view.y/tileH)*tileH;
     for(let y=startY;y<view.y+view.h+tileH;y+=tileH){for(let x=startX;x<view.x+view.w+tileW;x+=tileW){ctx.fillRect(x+(((y/tileH)|0)%2)*28,y,96,68);}}
-    drawPremiumDistrictTexture(ctx,view,worldW,worldH,Number(snap.serverNow||Date.now()));
+    if(!sharedStoryFoundation)drawPremiumDistrictTexture(ctx,view,worldW,worldH,Number(snap.serverNow||Date.now()));
 
     ctx.fillStyle=endlessSurvival?"rgba(51,31,45,.94)":(denAssault?"rgba(32,31,29,.88)":(villageSiege?"rgba(31,142,174,.86)":(convoyRescue?"rgba(28,102,132,.86)":(alphaHunt?"rgba(23,61,93,.90)":(stormExtraction?"rgba(14,83,112,.94)":"rgba(35,117,145,.80)")))));ctx.beginPath();ctx.moveTo(0,riverTop);
     for(let x=0;x<=worldW+180;x+=180){ctx.lineTo(x,riverTop+Math.sin((x/worldW)*Math.PI*5)*42);}
@@ -2096,21 +2097,22 @@
     for(const y of horizontalRoads){for(let x=34;x<worldW;x+=92){roundRect(ctx,x,y-3,38,6,3);ctx.fill();}}
     for(const x of verticalRoads){for(let y=34;y<worldH;y+=92){roundRect(ctx,x-3,y,6,38,3);ctx.fill();}}
 
-    for(const water of (snap.waterZones||[])){
+    const drawCoopWaterZones=()=>{for(const water of (snap.waterZones||[])){
       if(!visible(water.x,water.y,Math.max(Number(water.rx||0),Number(water.ry||0))+90))continue;
       const gradient=ctx.createRadialGradient(water.x,water.y,18,water.x,water.y,Math.max(40,Number(water.rx||180)));
       gradient.addColorStop(0,"rgba(34,211,238,.62)");gradient.addColorStop(.72,"rgba(14,116,144,.78)");gradient.addColorStop(1,"rgba(8,47,73,.90)");
       ctx.fillStyle=gradient;ctx.beginPath();ctx.ellipse(water.x,water.y,Number(water.rx||180),Number(water.ry||90),0,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#67e8f9";ctx.lineWidth=5;ctx.stroke();
       ctx.strokeStyle="rgba(207,250,254,.50)";ctx.lineWidth=3;for(const offset of [-.5,0,.5]){ctx.beginPath();ctx.ellipse(water.x,water.y+Number(water.ry||90)*offset,Number(water.rx||180)*.86,Math.max(8,Number(water.ry||90)*.13),0,0,Math.PI*2);ctx.stroke();}
       ctx.fillStyle="rgba(8,47,73,.92)";roundRect(ctx,water.x-105,water.y-Number(water.ry||90)-46,210,34,9);ctx.fill();ctx.fillStyle="#cffafe";ctx.font="950 12px system-ui";ctx.textAlign="center";ctx.fillText(`${water.label} • SLOWS MOVEMENT`,water.x,water.y-Number(water.ry||90)-23);
-    }
+    }};
+    if(!sharedStoryFoundation)drawCoopWaterZones();
 
-    for(const roadX of verticalRoads){
+    if(!sharedStoryFoundation)for(const roadX of verticalRoads){
       const bridgeY=riverTop-34;ctx.fillStyle="#765a3b";ctx.fillRect(roadX-roadW*.63,bridgeY,roadW*1.26,94);ctx.strokeStyle="#e8c178";ctx.lineWidth=6;
       for(let x=roadX-roadW*.52;x<roadX+roadW*.53;x+=24){ctx.beginPath();ctx.moveTo(x,bridgeY-8);ctx.lineTo(x,bridgeY+102);ctx.stroke();}
     }
 
-    for(let i=0;i<(endlessSurvival?105:(denAssault?150:(villageSiege?185:(convoyRescue?210:(alphaHunt?175:(stormExtraction?125:(tigerKingChapter?315:(tigerTerritoryChapter?290:240))))))));i++){
+    for(let i=0;i<(sharedStoryFoundation?0:(endlessSurvival?105:(denAssault?150:(villageSiege?185:(convoyRescue?210:(alphaHunt?175:(stormExtraction?125:(tigerKingChapter?315:(tigerTerritoryChapter?290:240)))))))));i++){
       const x=70+((i*337+53)%Math.max(100,Math.floor(worldW-140)));
       const y=80+((i*191+97)%Math.max(100,Math.floor(worldH-180)));
       if(!visible(x,y,70)||nearRoad(x,y,88)||y>riverTop-55||inWaterZone(x,y,48)) continue;
@@ -2118,11 +2120,19 @@
       else drawStoryTree(ctx,x,y,.68+(i%5)*.075);
     }
     const roofColors=["#9a5c38","#7c4a32","#72452f","#a1623c"];
-    for(let i=0;i<(endlessSurvival?6:(denAssault?12:(villageSiege?58:(convoyRescue?18:(alphaHunt?8:(stormExtraction?14:(tigerKingChapter?18:(tigerTerritoryChapter?12:34))))))));i++){
+    for(let i=0;i<(sharedStoryFoundation?0:(endlessSurvival?6:(denAssault?12:(villageSiege?58:(convoyRescue?18:(alphaHunt?8:(stormExtraction?14:(tigerKingChapter?18:(tigerTerritoryChapter?12:34)))))))));i++){
       const x=100+((i*421+160)%Math.max(140,Math.floor(worldW-280)));
       const y=110+((i*263+120)%Math.max(140,Math.floor(riverTop-260)));
       if(!visible(x,y,210)||nearRoad(x+80,y+52,125)||inWaterZone(x+80,y+52,110)) continue;
       drawStoryBuilding(ctx,x,y,142+(i%3)*14,88+(i%2)*12,roofColors[i%roofColors.length]);
+    }
+    if(sharedStoryFoundation){
+      const family=window.TigerStrikeBattlefieldRenderer.storyFamilyForLevel(storyLevel);
+      window.TigerStrikeBattlefieldRenderer.drawStoryMapFoundation(ctx,{level:storyLevel,family,worldW,worldH,view});
+      const chapterTint=bloodChapter?"rgba(127,29,29,.09)":(deepJungleChapter?"rgba(34,197,94,.07)":(abandonedVillageChapter?"rgba(148,163,184,.08)":(riverTerritoryChapter?"rgba(6,182,212,.08)":(mountainEdgeChapter?"rgba(148,163,184,.12)":(tigerTerritoryChapter?"rgba(6,78,59,.14)":(tigerKingChapter?"rgba(120,53,15,.12)":(hiddenJungleChapter?"rgba(20,83,45,.16)":(ancientGuardianChapter?"rgba(250,204,21,.05)":"rgba(0,0,0,0)"))))))));
+      ctx.fillStyle=chapterTint;ctx.fillRect(view.x,view.y,view.w,view.h);
+      drawPremiumDistrictTexture(ctx,view,worldW,worldH,Number(snap.serverNow||Date.now()));
+      drawCoopWaterZones();
     }
     if(denAssault){
       const caves=[[worldW*.18,worldH*.17,1.05],[worldW*.58,worldH*.31,1.3],[worldW*.82,worldH*.62,1.12],[worldW*.43,worldH*.70,.92]];

@@ -84,6 +84,6 @@ assert(server.includes('require("../../mission-map-truth")'), "Live Squad uses t
 assert(server.includes("mapTruthLandmarks:mission.mapTruthLandmarks || []"), "Live Squad sends authored landmarks to both phones");
 assert(coop.includes("drawSharedMissionTruth(ctx,snap)"), "Live Squad renders the shared mission landmarks");
 assert(game.includes("missionMapTruthHazardTick"), "Solo Mission 37 fire is a real gameplay hazard");
-assert(html.includes("mission-map-truth.js?v=5190-one-battlefield"), "mission truth loads before gameplay");
+assert(html.includes("mission-map-truth.js?v=5191-one-battlefield-final"), "mission truth loads before gameplay");
 
 console.log("mission-map-truth tests passed");
