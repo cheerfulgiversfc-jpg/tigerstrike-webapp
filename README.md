@@ -721,6 +721,17 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Soldiers and civilians have visible faces, tigers face the nearest player, and the unwanted oval target ring around living tigers is removed.
 - Solo Story remains unchanged by the equipment-layer fix, and both modes continue using their existing gameplay and progression systems.
 
+### V10.22 One Battlefield — Shared Story Visual Core
+
+- Live Squad now loads a reusable premium battlefield renderer instead of relying only on its older simplified co-op character drawings.
+- Co-op soldiers have upright articulated walking, uniforms, armor vests, pouches, helmets, faces, headsets, backpacks, and aimed weapons. Their full bodies never rotate or appear upside down.
+- Co-op civilians have faces, clothing, arms, walking animation, injury details, and the same clear rescue/follow/safe labels.
+- Co-op tigers have full heads, muzzles, ears, eyes, whiskers, articulated legs, paws, tails, layered coats, and stripes. Their legs animate only when their server position actually changes, removing the skating effect while idle.
+- Living tigers still have no oval target ring. Bodies, cages, health, awareness, bosses, armor, capture rules, and mission truth remain connected to the existing co-op simulation.
+- The premium battlefield finish adds stronger daylight, environmental color, and fine terrain detail without replacing mission-specific maps or objective landmarks.
+- Mobile Live Squad controls now float over the battlefield like Solo: a large translucent joystick on the left and larger rounded action controls on the right. Every displayed action remains a real working co-op action.
+- Solo and co-op progression, equipment, rewards, reconnect behavior, mission continuity, and server-authoritative movement remain separate and unchanged.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

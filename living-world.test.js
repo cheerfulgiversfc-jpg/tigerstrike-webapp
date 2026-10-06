@@ -548,8 +548,8 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("WEATHER STATION ONLINE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5180-stormpeak"));
-  assert(html.includes("V10.21 (Stormpeak Summit)"));
+  assert(html.includes("living-world.js?v=5190-one-battlefield"));
+  assert(html.includes("V10.22 (One Battlefield)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {

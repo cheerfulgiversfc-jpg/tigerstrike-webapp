@@ -54,10 +54,10 @@ test("co-op characters are detailed and living tigers have no oval target ring",
   assert(!soldier.includes("ctx.translate(draw.x,draw.y);ctx.rotate(face)"), "the full soldier can never rotate upside down");
 });
 
-test("V10.21 uses one cache key for every gameplay module", () => {
-  assert(game.includes('const TS_BUILD = "5180"'));
-  for(const file of ["game.js", "living-world.js", "squad-motion.js", "squad-coop.js", "field-systems.js", "ammo-modes.js", "tutorial.js"]){
-    assert(html.includes(`${file}?v=5180-stormpeak`), `stale cache key for ${file}`);
+test("V10.22 uses one cache key for every gameplay module", () => {
+  assert(game.includes('const TS_BUILD = "5190"'));
+  for(const file of ["game.js", "living-world.js", "squad-motion.js", "shared-battlefield-renderer.js", "squad-coop.js", "field-systems.js", "ammo-modes.js", "tutorial.js"]){
+    assert(html.includes(`${file}?v=5190-one-battlefield`), `stale cache key for ${file}`);
   }
 });
 
