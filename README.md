@@ -734,6 +734,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Mobile Live Squad controls now float over the battlefield like Solo: a large translucent joystick on the left and larger rounded action controls on the right. Every displayed action remains a real working co-op action.
 - Solo and co-op progression, equipment, rewards, reconnect behavior, mission continuity, and server-authoritative movement remain separate and unchanged.
 
+### V10.23 Deepwild Research + Mission Map Truth — Missions 61–63
+
+- Added **Deepwild Research** as the nineteenth persistent Living World district for Story Missions 61–63 in Solo and Live Squad.
+- Mission 61 now truthfully shows and runs the six-scientist escort, five territorial tigers, research camp, three ordered research checkpoints, and team extraction.
+- Mission 62 now truthfully shows and runs all four guarded cave entrances in order with the exact eight-tiger perimeter—no hidden bonus patrols are added.
+- Mission 63 now truthfully shows four named live-capture zones, four protected capture targets, two guard tigers, the conservation pen, and wildlife transport.
+- Deepwild district recovery unlocks Research Command, checkpoint beacons, guarded-cave sensors, a protected route, and the Four-Tiger Conservation Lab.
+- Solo and co-op use the same V10.23 mission-truth manifest, map route, landmark identities, encounter counts, and persistent consequences.
+- The Deepwild support station supplies humane-capture ammunition, tranq darts, armor, medical aid, a trap, and a territory scan when restored.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

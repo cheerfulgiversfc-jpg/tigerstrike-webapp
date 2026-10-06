@@ -357,8 +357,8 @@
     const versionLabel = $("liveSquadVersionLabel");
     const titleLabel = $("liveSquadTitle");
     if(versionLabel) versionLabel.textContent = state.snapshot && sharedStoryActive()
-      ? `Tiger Strike V10.22 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
-    : (state.snapshot ? `Tiger Strike V10.22 • ${selectedOperation().mapLabel}` : "Tiger Strike V10.22 • One Battlefield");
+      ? `Tiger Strike V10.23 • Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))}`
+    : (state.snapshot ? `Tiger Strike V10.23 • ${selectedOperation().mapLabel}` : "Tiger Strike V10.23 • Deepwild Research");
     if(titleLabel) titleLabel.textContent = state.snapshot && sharedStoryActive()
       ? `📖 Story Mission ${Math.max(1, Number(state.storyMissionLevel || 1))} — Two Player`
       : (state.snapshot ? `${selectedOperation().icon} ${selectedOperation().title}` : (state.hubSection === "story" ? "📖 Story Campaign" : (state.hubSection === "operations" ? "🐅 Special Operations" : "🐅 Live Squad")));
@@ -655,7 +655,7 @@
     const storyMax = maxUnlockedStoryLevel();
     return `<div class="squadPanel">
       ${equipmentButtonsHtml()}
-      <div class="squadHomeHero"><div class="squadKicker">V10.22 Tiger Strike One Battlefield</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for the exact Story mission or Special Operation you choose. Shared Story now uses the premium battlefield characters, movement animation, color finish, and floating mobile controls.</div></div>
+      <div class="squadHomeHero"><div class="squadKicker">V10.23 Tiger Strike Deepwild Research</div><div class="squadMissionName">Find your squad</div><div class="squadDesc">Quick Match can find another Telegram player for the exact Story mission or Special Operation you choose. Shared Story Missions 61–63 now include their exact scientist escort, guarded cave, and four-tiger live-capture battlefields.</div></div>
       <div class="squadPathGrid">
         <button type="button" class="squadPathCard story" data-squad-command="hub-story">
           <span class="squadPathIcon">📖</span><span class="squadPathTitle">Story Campaign</span>
@@ -714,7 +714,7 @@
       const consequence = api.missionConsequences?.(living, definition.minMission, { playerCount:2 });
       return `<div class="squadGearCard"><div class="squadGearIcon">${district.tigerPressure >= 70 ? "🔴" : (district.tigerPressure >= 50 ? "🟠" : "🟢")}</div><div class="squadGearInfo"><b>${esc(definition.name)} • Missions ${esc(definition.missions)}</b><small>Tiger Pressure ${district.tigerPressure}% • Settlement Safety ${district.settlementSafety}% • Blood Scent ${district.bloodScent}%</small><small>Shared clears ${district.coopClears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</small>${consequence?.enabled ? `<small><b>Next deployment:</b> ${esc(consequence.brief)}</small>` : `<small>District gameplay consequences unlock in a later district phase.</small>`}</div></div>`;
     }).join("");
-    return `<section class="squadEquipmentPanel"><div class="squadKicker">V10.22 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Your Shared Story results persist separately from Solo. One Battlefield gives Live Squad the premium soldier, civilian, tiger, terrain finish, and mobile-control presentation while keeping the working two-player mission simulation.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
+    return `<section class="squadEquipmentPanel"><div class="squadKicker">V10.23 • YOUR SHARED STORY WORLD</div><div class="squadSectionTitle">🌍 Living Story Districts</div><div class="squadDesc">Your Shared Story results persist separately from Solo. Deepwild Research adds Missions 61–63 to the same premium battlefield, exact encounter, persistent consequence, and working two-player mission system.</div><div class="squadSmall"><b>Latest:</b> ${esc(living.headline)}</div><div class="squadGearList">${cards}</div></section>`;
   }
 
   function storyCampaignLandingHtml(){
@@ -2457,6 +2457,13 @@
       for(let i=0;i<4;i++){const bx=worldW*(.24+i*.18),by=worldH*(.67-i*.08);if(!visible(bx,by,100))continue;ctx.strokeStyle="#14532d";ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx,by-58);ctx.stroke();ctx.fillStyle=beacons?"#22d3ee":"#475569";ctx.shadowColor=beacons?"#06b6d4":"transparent";ctx.shadowBlur=beacons?25:0;ctx.beginPath();ctx.arc(bx,by-67,15,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
       if(visible(vx,vy,290)){ctx.fillStyle="rgba(2,44,34,.95)";roundRect(ctx,vx-190,vy-72,380,46,12);ctx.fill();ctx.strokeStyle=lab?"#67e8f9":"#6ee7b7";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#d1fae5";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${beacons?"CANOPY BEACONS ACTIVE":"BEACONS OFFLINE"} • ${lab?"VEIL FIELD LAB ONLINE":"FIELD LAB OFFLINE"}`,vx,vy-43);}
     }
+    if(consequence?.districtId==="deepwild_research"){
+      const dx=worldW*.55,dy=worldH*.49,beacons=!!consequence.support?.canopyBeacons,route=!!consequence.support?.protectedResearchRoute,lab=!!consequence.support?.veilLab;
+      ctx.strokeStyle=route?"rgba(110,231,183,.88)":"rgba(120,53,15,.66)";ctx.lineWidth=route?15:8;ctx.setLineDash(route?[28,14]:[10,18]);ctx.beginPath();ctx.moveTo(worldW*.16,worldH*.74);ctx.quadraticCurveTo(dx,dy-145,worldW*.90,worldH*.30);ctx.stroke();ctx.setLineDash([]);
+      for(let i=0;i<3;i++){const bx=worldW*(.30+i*.24),by=worldH*(.67-i*.12);if(!visible(bx,by,100))continue;ctx.strokeStyle="#14532d";ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx,by-58);ctx.stroke();ctx.fillStyle=beacons?"#fef08a":"#475569";ctx.shadowColor=beacons?"#fde047":"transparent";ctx.shadowBlur=beacons?25:0;ctx.beginPath();ctx.arc(bx,by-67,15,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
+      if(lab){for(let i=0;i<4;i++){const cx=worldW*(.36+(i%2)*.23),cy=worldH*(.40+Math.floor(i/2)*.22);ctx.strokeStyle="#6ee7b7";ctx.lineWidth=4;ctx.strokeRect(cx-24,cy-19,48,38);ctx.fillStyle="rgba(6,78,59,.72)";ctx.fillRect(cx-20,cy-15,40,30);}}
+      if(visible(dx,dy,330)){ctx.fillStyle="rgba(2,44,34,.97)";roundRect(ctx,dx-220,dy-76,440,48,12);ctx.fill();ctx.strokeStyle=lab?"#fef08a":"#6ee7b7";ctx.lineWidth=3;ctx.stroke();ctx.fillStyle="#d1fae5";ctx.font="950 13px system-ui";ctx.textAlign="center";ctx.fillText(`${beacons?"CHECKPOINT BEACONS ACTIVE":"BEACONS OFFLINE"} • ${lab?"CONSERVATION LAB ONLINE":"LAB OFFLINE"}`,dx,dy-46);}
+    }
     if(consequence?.districtId==="stormpeak_summit"){
       const sx=worldW*.55,sy=worldH*.49,sensors=!!consequence.support?.packSensors,lz=!!consequence.support?.lzDefenses,ward=!!consequence.support?.stealthArray;
       ctx.fillStyle="rgba(12,32,55,.18)";ctx.strokeStyle=lz?"rgba(125,211,252,.90)":"rgba(100,116,139,.72)";ctx.lineWidth=lz?12:7;ctx.setLineDash(lz?[28,13]:[10,18]);ctx.beginPath();ctx.moveTo(worldW*.20,worldH*.29);ctx.lineTo(worldW*.83,worldH*.27);ctx.lineTo(worldW*.89,worldH*.74);ctx.lineTo(worldW*.24,worldH*.78);ctx.closePath();ctx.fill();ctx.stroke();ctx.setLineDash([]);
@@ -2599,7 +2606,7 @@
     if(snap.launchType!=="shared-story"||!Array.isArray(snap.mapTruthLandmarks)||!snap.mapTruthLandmarks.length)return;
     const doneIds=new Set((snap.checkpointCompletedIds||[]).map(String));
     const checkpoints=snap.checkpoints||[];
-    const palette={home:"#fbbf24",hut:"#fbbf24",farm:"#a3e635",clinic:"#fb7185",research:"#22d3ee",cage:"#67e8f9",bridge:"#fdba74",river:"#38bdf8",trail:"#86efac",road:"#facc15",safe:"#4ade80",gate:"#f59e0b",barricade:"#fb923c",vehicle:"#60a5fa",caravan:"#60a5fa",helicopter:"#93c5fd",grass:"#bef264",forest:"#4ade80",blood:"#fb7185",boss:"#f87171",camp:"#cbd5e1",fire:"#fb923c"};
+    const palette={home:"#fbbf24",hut:"#fbbf24",farm:"#a3e635",clinic:"#fb7185",research:"#22d3ee",cage:"#67e8f9",den:"#fb923c",bridge:"#fdba74",river:"#38bdf8",trail:"#86efac",road:"#facc15",safe:"#4ade80",gate:"#f59e0b",barricade:"#fb923c",vehicle:"#60a5fa",caravan:"#60a5fa",helicopter:"#93c5fd",grass:"#bef264",forest:"#4ade80",blood:"#fb7185",boss:"#f87171",camp:"#cbd5e1",fire:"#fb923c"};
     ctx.save();
     ctx.strokeStyle="rgba(125,211,252,.48)";ctx.lineWidth=6;ctx.setLineDash([16,12]);ctx.beginPath();ctx.moveTo(snap.mapTruthLandmarks[0].x,snap.mapTruthLandmarks[0].y);for(const item of snap.mapTruthLandmarks.slice(1))ctx.lineTo(item.x,item.y);ctx.stroke();ctx.setLineDash([]);
     for(const item of snap.mapTruthLandmarks){
@@ -2612,6 +2619,7 @@
       else if(item.type==="helicopter"){ctx.fillStyle="#64748b";ctx.beginPath();ctx.ellipse(item.x,item.y,28,12,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#e2e8f0";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(item.x-40,item.y-20);ctx.lineTo(item.x+40,item.y-20);ctx.stroke();}
       else if(item.type==="bridge"){ctx.fillStyle="#8b5e34";ctx.fillRect(item.x-34,item.y-10,68,20);}
       else if(item.type==="cage"){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(item.x-22,item.y-19,44,38);}
+      else if(item.type==="den"){ctx.fillStyle="#3f2d22";ctx.beginPath();ctx.ellipse(item.x,item.y,27,19,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#090a0c";ctx.beginPath();ctx.ellipse(item.x,item.y+3,17,11,0,0,Math.PI*2);ctx.fill();}
       else if(item.type==="fire"){ctx.fillStyle="#f97316";ctx.beginPath();ctx.moveTo(item.x,item.y-26);ctx.quadraticCurveTo(item.x+24,item.y+3,item.x,item.y+25);ctx.quadraticCurveTo(item.x-25,item.y+2,item.x,item.y-26);ctx.fill();ctx.fillStyle="#fde047";ctx.beginPath();ctx.moveTo(item.x,item.y-12);ctx.quadraticCurveTo(item.x+11,item.y+4,item.x,item.y+15);ctx.quadraticCurveTo(item.x-11,item.y+4,item.x,item.y-12);ctx.fill();}
       else {ctx.fillStyle=color;ctx.beginPath();ctx.arc(item.x,item.y,10,0,Math.PI*2);ctx.fill();}
       if(item.required){const label=`${done?"✓ ":(activeObjective?"◆ ":"")}${item.label}`;const width=Math.min(220,Math.max(110,label.length*6.3));ctx.fillStyle="rgba(8,15,28,.92)";roundRect(ctx,item.x-width/2,item.y-70,width,25,9);ctx.fill();ctx.strokeStyle=done?"#4ade80":color;ctx.lineWidth=2;ctx.stroke();ctx.fillStyle="#f8fafc";ctx.font="900 10px system-ui";ctx.textAlign="center";ctx.fillText(label,item.x,item.y-53);}

@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.21";
-  const MAX_MISSION = 60;
+  const VERSION = "10.23";
+  const MAX_MISSION = 63;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -202,6 +202,15 @@
     60:mission(60,"Mountain Alpha Tiger",6,0,1,0,"ground",[
       mark("summit_tracking_command","research","Summit Alpha Tracking Command",.23,.30,"scan",true), mark("mountain_alpha_territory","boss","Mountain Alpha Territory",.55,.49,"defend",true), mark("summit_rage_ward","barricade","Summit Rage Safety Ward",.72,.61,"defend",true), mark("chapter_six_extraction","safe","Chapter 6 Extraction",.90,.73)
     ],[point(.23,.30),point(.55,.49),point(.72,.61),point(.90,.73)]),
+    61:mission(61,"Deep Research Escort",7,6,5,0,"ground",[
+      mark("deep_research_camp","research","Deepwild Research Camp",.18,.25,"protect",true), mark("canopy_research_gate","gate","Canopy Research Gate",.30,.40,"secure",true), mark("deep_field_laboratory","research","Deep Field Laboratory",.55,.52,"secure",true), mark("jungle_core_station","research","Jungle Core Station",.78,.67,"secure",true), mark("research_extraction","safe","Research Team Extraction",.90,.73)
+    ],[point(.18,.25),point(.30,.40),point(.55,.52),point(.78,.67),point(.90,.73)]),
+    62:mission(62,"Guarded Cave Entrances",7,0,8,0,"ground",[
+      mark("west_cave_entrance","den","West Cave Entrance",.23,.34,"secure",true), mark("north_cave_entrance","den","North Cave Entrance",.43,.25,"secure",true), mark("core_cave_entrance","den","Core Cave Entrance",.62,.49,"secure",true), mark("east_cave_entrance","den","East Cave Entrance",.80,.67,"secure",true), mark("cave_extraction","safe","Cave Perimeter Extraction",.90,.73)
+    ],[point(.23,.34),point(.43,.25),point(.62,.49),point(.80,.67),point(.90,.73)]),
+    63:mission(63,"Four-Tiger Research Capture",7,0,6,4,"ground",[
+      mark("territory_research_command","research","Territory Research Command",.22,.28,"scan",true), mark("ember_capture_zone","cage","Embercoat Capture Zone",.31,.39), mark("vine_capture_zone","cage","Vinestripe Capture Zone",.46,.30), mark("mist_capture_zone","cage","Mistpaw Capture Zone",.64,.54), mark("dusk_capture_zone","cage","Duskstripe Capture Zone",.78,.65), mark("four_tiger_capture_pen","cage","Four-Tiger Conservation Pen",.70,.64,"prepare",true), mark("wildlife_transport","vehicle","Territory Wildlife Transport",.90,.73)
+    ],[point(.22,.28),point(.31,.39),point(.46,.30),point(.64,.54),point(.78,.65),point(.70,.64),point(.90,.73)]),
   });
 
   function get(level){
