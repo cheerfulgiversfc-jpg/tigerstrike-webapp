@@ -8,10 +8,10 @@ const coop=fs.readFileSync("squad-coop.js","utf8");
 const css=fs.readFileSync("squad-coop.css","utf8");
 const html=fs.readFileSync("index.html","utf8");
 
-test("V10.23 keeps one reusable premium battlefield renderer",()=>{
+test("V10.24 keeps one reusable premium battlefield renderer",()=>{
   assert.equal(renderer.VERSION,"10.22");
   for(const name of ["drawSoldier","drawCivilian","drawTiger","drawBattlefieldFinish"])assert.equal(typeof renderer[name],"function");
-  assert(html.includes('shared-battlefield-renderer.js?v=5200-deepwild-research'));
+  assert(html.includes('shared-battlefield-renderer.js?v=5210-nightveil-frontier'));
   assert(html.indexOf("shared-battlefield-renderer.js")<html.indexOf("squad-coop.js"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawSoldier"));
   assert(coop.includes("TigerStrikeBattlefieldRenderer?.drawCivilian"));

@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V10.23 cache key forces Telegram to load Deepwild Research", () => {
-  assert(game.includes('const TS_BUILD = "5200"'));
-  assert(html.includes("game.js?v=5200-deepwild-research"));
-  assert(html.includes("tutorial.js?v=5200-deepwild-research"));
+test("V10.24 cache key forces Telegram to load Nightveil Frontier", () => {
+  assert(game.includes('const TS_BUILD = "5210"'));
+  assert(html.includes("game.js?v=5210-nightveil-frontier"));
+  assert(html.includes("tutorial.js?v=5210-nightveil-frontier"));
 });

@@ -744,6 +744,17 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo and co-op use the same V10.23 mission-truth manifest, map route, landmark identities, encounter counts, and persistent consequences.
 - The Deepwild support station supplies humane-capture ammunition, tranq darts, armor, medical aid, a trap, and a territory scan when restored.
 
+### V10.24 Nightveil Frontier + Mission Map Truth — Missions 64–67
+
+- Added **Nightveil Frontier** as the twentieth persistent Living World district for Story Missions 64–67 in Solo and Live Squad.
+- Mission 64 now truthfully shows and runs the seven-villager tunnel escort, six pursuing tigers, village refuge, and all three ordered cave-tunnel stages.
+- Mission 65 now truthfully shows and runs the exact thirteen-tiger territory pack with canopy, core-pack, cave-flank, fallback, and extraction landmarks.
+- Mission 66 now truthfully shows and runs four protected base specialists, ten attackers, the temporary base, and all three working perimeter posts.
+- Mission 67 now truthfully shows and runs three signal beacons, eight Stalker tigers, severe night visibility, and the revealed extraction route.
+- Nightveil recovery unlocks Base Command, tunnel and pack sensors, temporary-base perimeter defenses, the night signal network, civilian protection, and frontier supplies.
+- No Living World patrols are added to Missions 64–67, so their authored encounter counts and difficulty remain exact in Solo and co-op.
+- Solo and co-op use the same V10.24 mission-truth manifest, landmark identities, objective routes, and persistent consequences.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

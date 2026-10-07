@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.23";
-  const MAX_MISSION = 63;
+  const VERSION = "10.24";
+  const MAX_MISSION = 67;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -211,6 +211,18 @@
     63:mission(63,"Four-Tiger Research Capture",7,0,6,4,"ground",[
       mark("territory_research_command","research","Territory Research Command",.22,.28,"scan",true), mark("ember_capture_zone","cage","Embercoat Capture Zone",.31,.39), mark("vine_capture_zone","cage","Vinestripe Capture Zone",.46,.30), mark("mist_capture_zone","cage","Mistpaw Capture Zone",.64,.54), mark("dusk_capture_zone","cage","Duskstripe Capture Zone",.78,.65), mark("four_tiger_capture_pen","cage","Four-Tiger Conservation Pen",.70,.64,"prepare",true), mark("wildlife_transport","vehicle","Territory Wildlife Transport",.90,.73)
     ],[point(.22,.28),point(.31,.39),point(.46,.30),point(.64,.54),point(.78,.65),point(.70,.64),point(.90,.73)]),
+    64:mission(64,"Cave Tunnel Evacuation",7,7,6,0,"ground",[
+      mark("tunnel_village_refuge","camp","Tunnel Village Refuge",.18,.25,"protect",true), mark("cave_tunnel_entry","den","Cave Tunnel Entry",.30,.40,"secure",true), mark("central_tunnel_chamber","den","Central Tunnel Chamber",.55,.52,"secure",true), mark("cave_tunnel_exit","den","Cave Tunnel Exit",.78,.67,"secure",true), mark("tunnel_extraction","safe","Tunnel Evacuation Extraction",.90,.73)
+    ],[point(.18,.25),point(.30,.40),point(.55,.52),point(.78,.67),point(.90,.73)]),
+    65:mission(65,"Massive Territory Pack",7,0,13,0,"ground",[
+      mark("west_canopy_attack","forest","West Canopy Attack",.22,.36), mark("territory_pack_core","boss","Thirteen-Tiger Territory Pack",.52,.49), mark("cave_flank_attack","den","Cave Flank Attack",.76,.35), mark("territory_fallback","barricade","Territory Fallback Line",.78,.66), mark("pack_extraction","safe","Territory Pack Extraction",.90,.73)
+    ],[point(.22,.36),point(.52,.49),point(.76,.35),point(.78,.66),point(.90,.73)]),
+    66:mission(66,"Temporary Base Defense",7,4,10,0,"ground",[
+      mark("temporary_base_camp","camp","Temporary Base Specialists",.22,.28,"protect",true), mark("west_base_perimeter","barricade","West Base Perimeter",.30,.40,"defend",true), mark("base_command_post","research","Base Command Post",.55,.52,"defend",true), mark("east_base_perimeter","barricade","East Base Perimeter",.78,.67,"defend",true), mark("base_extraction","safe","Temporary Base Extraction",.90,.73)
+    ],[point(.22,.28),point(.30,.40),point(.55,.52),point(.78,.67),point(.90,.73)]),
+    67:mission(67,"Night Stalker Ambush",7,0,8,0,"ground",[
+      mark("west_night_beacon","beacon","West Night Beacon",.30,.40,"activate",true), mark("core_night_beacon","beacon","Core Night Beacon",.55,.52,"activate",true), mark("night_ambush_zone","forest","Eight-Stalker Ambush Zone",.64,.40), mark("extraction_night_beacon","beacon","Extraction Night Beacon",.78,.67,"activate",true), mark("night_extraction","safe","Revealed Night Extraction",.90,.73)
+    ],[point(.18,.73),point(.30,.40),point(.55,.52),point(.78,.67),point(.90,.73)]),
   });
 
   function get(level){
