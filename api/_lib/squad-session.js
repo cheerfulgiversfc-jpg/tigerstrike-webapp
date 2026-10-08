@@ -2292,7 +2292,7 @@ function normalizeLivingWorldMission(raw){
   const src = raw && typeof raw === "object" ? raw : {};
   const support = src.support && typeof src.support === "object" ? src.support : {};
   return {
-    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit","deepwild_research","nightveil_frontier"].includes(cleanText(src.districtId, 40)),
+    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit","deepwild_research","nightveil_frontier","bloodfang_dominion"].includes(cleanText(src.districtId, 40)),
     districtId:cleanText(src.districtId, 40),
     districtName:cleanText(src.districtName, 60),
     missionLevel:clamp(Math.floor(Number(src.missionLevel || 0)), 0, 100),
@@ -2371,6 +2371,7 @@ function livingWorldSettlementSupport(mission, effect){
   const open = effect?.enabled && (support.safeHouse || support.rangerStation || support.armoryDepot || support.fieldClinic || support.researchPost || support.fieldHospital || support.conservationCamp || support.researchOutpost || support.riverStation || support.shadowCommand || support.villageCommand);
   if(!open) return null;
   const presentations = {
+    bloodfang_dominion:{ x:.44, y:.66, type:"bloodfang_command", label:support.bossWard ? "Bloodfang Rage Ward Command" : "Bloodfang Research Command" },
     nightveil_frontier:{ x:.68, y:.34, type:"nightveil_command", label:support.stealthArray ? "Nightveil Signal Command" : "Nightveil Base Command" },
     deepwild_research:{ x:.36, y:.62, type:"deepwild_lab", label:support.veilLab ? "Deepwild Conservation Lab" : "Deepwild Research Command" },
     whiteout_descent:{ x:.68, y:.35, type:"whiteout_station", label:support.veilLab ? "Whiteout Weather Station" : "Whiteout Rescue Lodge" },

@@ -755,6 +755,17 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - No Living World patrols are added to Missions 64–67, so their authored encounter counts and difficulty remain exact in Solo and co-op.
 - Solo and co-op use the same V10.24 mission-truth manifest, landmark identities, objective routes, and persistent consequences.
 
+### V10.25 Bloodfang Dominion + Mission Map Truth — Missions 68–70
+
+- Added **Bloodfang Dominion** as the twenty-first persistent Living World district for Story Missions 68–70 in Solo and Live Squad.
+- Mission 68 now truthfully protects one lead scientist, activates all three research-equipment sites, and preserves the exact nine-tiger attack.
+- Mission 69 now truthfully shows the west and east rage perimeters, fourteen-tiger aggression core, blood-scent fallback line, and exact extraction route.
+- Mission 70 now truthfully contains one Legendary Blood Tiger, its lair, Blood Tiger Tracking Command, Ancient Blood Rage Ward, and Chapter 7 extraction.
+- Bloodfang recovery unlocks Research Command, the equipment defense network, aggression monitoring grid, scientist protection, and the Legendary Blood Rage Ward.
+- No Living World patrols are added to Missions 68–70, so their authored encounters and intended difficulty remain exact in Solo and co-op.
+- Solo and co-op use the same V10.25 mission-truth manifest, map routes, landmark identities, encounter counts, and persistent consequences.
+- Restored Bloodfang Research Command supplies medical aid, armor, ammunition, humane-capture rounds, tranq darts, a trap, and a Legendary Tiger scan.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

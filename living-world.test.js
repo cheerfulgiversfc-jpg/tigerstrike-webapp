@@ -9,7 +9,7 @@ const html = fs.readFileSync("index.html", "utf8");
 const squad = fs.readFileSync("squad-coop.js", "utf8");
 const server = fs.readFileSync("api/_lib/squad-session.js", "utf8");
 
-test("Missions 1–67 map to twenty persistent districts", () => {
+test("Missions 1–70 map to twenty-one persistent districts", () => {
   assert.equal(livingWorld.districtForMission(1).id, "river_gate");
   assert.equal(livingWorld.districtForMission(3).id, "river_gate");
   assert.equal(livingWorld.districtForMission(4).id, "jungle_spine");
@@ -50,7 +50,9 @@ test("Missions 1–67 map to twenty persistent districts", () => {
   assert.equal(livingWorld.districtForMission(63).id, "deepwild_research");
   assert.equal(livingWorld.districtForMission(64).id, "nightveil_frontier");
   assert.equal(livingWorld.districtForMission(67).id, "nightveil_frontier");
-  assert.equal(livingWorld.districtForMission(68), null);
+  assert.equal(livingWorld.districtForMission(68).id, "bloodfang_dominion");
+  assert.equal(livingWorld.districtForMission(70).id, "bloodfang_dominion");
+  assert.equal(livingWorld.districtForMission(71), null);
 });
 
 test("rescues and captures create a lasting safer district", () => {
@@ -532,6 +534,7 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(game.includes('stormpeak_summit:"stormpeak_command"'));
   assert(game.includes('deepwild_research:"deepwild_lab"'));
   assert(game.includes('nightveil_frontier:"nightveil_command"'));
+  assert(game.includes('bloodfang_dominion:"bloodfang_command"'));
   assert(game.includes("livingWorldPlayerDamageReduction(S, t)"));
   assert(game.includes("livingWorldCivilianDamageMul(S)"));
   assert(squad.includes("function sharedLivingWorldHtml"));
@@ -556,8 +559,8 @@ test("District consequences are integrated into solo, Shared Story, and the Tele
   assert(squad.includes("NIGHT BEACONS ONLINE"));
   assert(server.includes("6 - Number(livingWorldEffect.support?.bossRageReduction"));
   assert(server.includes("stealthBossReduction"));
-  assert(html.includes("living-world.js?v=5210-nightveil-frontier"));
-  assert(html.includes("V10.24 (Nightveil Frontier)"));
+  assert(html.includes("living-world.js?v=5211-bloodfang-dominion"));
+  assert(html.includes("V10.25 (Bloodfang Dominion)"));
 });
 
 test("a real Shared Story room keeps River Gate patrols and support through start and reconnect", async () => {
@@ -1251,7 +1254,7 @@ test("Emberfall Ward protects the exact Missions 34–37 encounters", async () =
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.mission.extractionType, extractionType);
-    assert.equal(waiting.mission.mapTruthVersion, "10.24");
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 37) assert.equal(waiting.fireZones.length, 4);
   }
@@ -1315,7 +1318,7 @@ test("Crownfall Square protects the exact Missions 38–40 encounters", async ()
     assert.equal(waiting.mission.rescueRequired, civilianCount);
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.24");
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
     if(level === 40){
       assert.equal(waiting.tigers.filter((tiger)=>tiger.boss).length, 2);
       assert.deepEqual(waiting.tigers.map((tiger)=>tiger.hpMax), [1850,1850]);
@@ -1378,7 +1381,7 @@ test("Brokenwater Reach protects the exact Missions 41–43 encounters", async (
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 1);
-    assert.equal(waiting.mission.mapTruthVersion, "10.24");
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
     if(level === 43){
       assert.deepEqual(waiting.mission.captureTargetIds, ["s43_currentstripe"]);
       assert.equal(waiting.tigers.find((tiger)=>tiger.id === "s43_currentstripe")?.hpMax, 760);
@@ -1443,7 +1446,7 @@ test("Floodplain Lifeline protects the exact Missions 44–47 encounters", async
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 1);
-    assert.equal(waiting.mission.mapTruthVersion, "10.24");
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
     assert(waiting.mapTruthLandmarks.length >= 4);
   }
 });
@@ -1503,7 +1506,7 @@ test("Tidefang Delta protects the exact Missions 48–50 encounters", async () =
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, waterCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.24");
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
     assert(waiting.mapTruthLandmarks.length >= 4);
     if(level === 48) assert.equal(waiting.mission.extractionType, "boat");
     if(level === 50){
@@ -1569,7 +1572,7 @@ test("Silverpeak Ascent protects the exact Missions 51–53 encounters", async (
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
     assert.equal(waiting.waterZones.length, 0);
-    assert.equal(waiting.mission.mapTruthVersion, "10.24");
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
     assert(waiting.mapTruthLandmarks.length >= 4);
     if(level === 53){
       assert.deepEqual(waiting.mission.captureTargetIds, ["s53_silverpeak"]);
@@ -1634,7 +1637,7 @@ test("Whiteout Descent protects the exact Missions 54–57 encounters", async ()
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.24");
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 57){
       assert.equal(waiting.mission.snowstormIntensity, .78);
@@ -1695,7 +1698,7 @@ test("Stormpeak Summit protects the exact Missions 58–60 encounters", async ()
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.24");
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
     assert(waiting.mapTruthLandmarks.length >= 4);
     if(level === 58) assert.equal(waiting.mission.extractionType, "helicopter");
     if(level === 59) assert.equal(waiting.tigers.length, 12);
@@ -1761,7 +1764,7 @@ test("Deepwild Research protects the exact Missions 61–63 encounters", async (
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.24");
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 63){
       assert.deepEqual(waiting.mission.captureTargetIds, ["s63_sample_ember","s63_sample_vine","s63_sample_mist","s63_sample_dusk"]);
@@ -1825,7 +1828,7 @@ test("Nightveil Frontier protects the exact Missions 64–67 encounters", async 
     assert.equal(waiting.tigers.length, tigerCount);
     assert.equal(waiting.civilians.length, civilianCount);
     assert.equal(waiting.checkpoints.length, checkpointCount);
-    assert.equal(waiting.mission.mapTruthVersion, "10.24");
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
     assert(waiting.mapTruthLandmarks.length >= 5);
     if(level === 64) assert.equal(waiting.mapTruthLandmarks.filter((item)=>item.type === "den").length, 3);
     if(level === 65) assert.equal(waiting.tigers.length, 13);
@@ -1863,4 +1866,75 @@ test("Nightveil support secures the tunnel, base perimeter, and signal network",
   const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
   assert.equal(active.status, "active");
   assert.equal(active.mission.livingWorld.support.routeSpeedMul, 1.12);
+});
+
+test("Bloodfang Dominion protects the exact Missions 68–70 encounters", async () => {
+  const rows = [
+    [68, 911288, 9, 1, 3],
+    [69, 911289, 14, 0, 0],
+    [70, 911290, 1, 0, 0],
+  ];
+  for(const [level, userId, tigerCount, civilianCount, checkpointCount] of rows){
+    const host = { id:userId, first_name:`Bloodfang${level}`, last_name:"Leader" };
+    const profile = await squadServer.readCoopProfile(host);
+    profile.livingWorld.districts.bloodfang_dominion = {
+      ...profile.livingWorld.districts.bloodfang_dominion,
+      tigerPressure:98,
+      settlementSafety:78,
+      bloodScent:100,
+    };
+    await squadServer.writeCoopProfile(profile, host);
+    const session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:level });
+    const waiting = await squadServer.buildSnapshot(session, host.id);
+    assert.equal(waiting.mission.livingWorld.districtId, "bloodfang_dominion");
+    assert.equal(waiting.mission.livingWorld.extraPatrols, 0);
+    assert.equal(waiting.mission.tigerCount, tigerCount);
+    assert.equal(waiting.mission.rescueRequired, civilianCount);
+    assert.equal(waiting.tigers.length, tigerCount);
+    assert.equal(waiting.civilians.length, civilianCount);
+    assert.equal(waiting.checkpoints.length, checkpointCount);
+    assert.equal(waiting.mission.mapTruthVersion, "10.25");
+    assert(waiting.mapTruthLandmarks.length >= 4);
+    if(level === 68){
+      assert.equal(waiting.mapTruthLandmarks.filter((item)=>item.required).length, 4);
+      assert.equal(waiting.mapTruthLandmarks.filter((item)=>["research","beacon"].includes(item.type)).length, 4);
+    }
+    if(level === 69) assert.equal(waiting.tigers.length, 14);
+    if(level === 70){
+      assert.equal(waiting.tigers[0].id, "s70_legendary_blood_tiger");
+      assert.equal(waiting.mapTruthLandmarks.filter((item)=>item.type === "boss").length, 1);
+    }
+  }
+});
+
+test("Bloodfang support protects research equipment and weakens Legendary Blood Rage", async () => {
+  const host = { id:911291, first_name:"Bloodfang", last_name:"Leader" };
+  const teammate = { id:911292, first_name:"Dominion", last_name:"Partner" };
+  const profile = await squadServer.readCoopProfile(host);
+  profile.livingWorld.districts.bloodfang_dominion = {
+    ...profile.livingWorld.districts.bloodfang_dominion,
+    tigerPressure:98,
+    settlementSafety:78,
+    bloodScent:90,
+  };
+  await squadServer.writeCoopProfile(profile, host);
+  let session = await squadServer.createSession(host, { launchType:"shared-story", storyMissionLevel:70 });
+  const waiting = await squadServer.buildSnapshot(session, host.id);
+  assert.equal(waiting.settlementSupport.label, "Bloodfang Rage Ward Command");
+  assert.equal(waiting.settlementSupport.type, "bloodfang_command");
+  assert.equal(waiting.mission.livingWorld.support.conservationCamp, true);
+  assert.equal(waiting.mission.livingWorld.support.calmingTowers, true);
+  assert.equal(waiting.mission.livingWorld.support.swarmDefenses, true);
+  assert.equal(waiting.mission.livingWorld.support.bossWard, true);
+  assert.equal(waiting.mission.livingWorld.support.bossRageReduction, 3);
+  assert.equal(waiting.mission.livingWorld.support.civilianDamageMul, 0.72);
+  assert.equal(waiting.mission.livingWorld.support.damageReduction, 2);
+  assert.equal(waiting.mission.livingWorld.support.ammoMinimum, 30);
+  assert.equal(waiting.mission.livingWorld.support.rubberAmmoMinimum, 64);
+  assert.equal(waiting.mission.livingWorld.support.tranqMinimum, 14);
+  session = await squadServer.joinSession(session.code, teammate);
+  await squadServer.applyAction(session, host, "start");
+  const active = await squadServer.buildSnapshot(await squadServer.readSession(session.code), teammate.id);
+  assert.equal(active.status, "active");
+  assert.equal(active.mission.livingWorld.support.bossWard, true);
 });

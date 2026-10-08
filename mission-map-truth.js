@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.24";
-  const MAX_MISSION = 67;
+  const VERSION = "10.25";
+  const MAX_MISSION = 70;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -223,6 +223,15 @@
     67:mission(67,"Night Stalker Ambush",7,0,8,0,"ground",[
       mark("west_night_beacon","beacon","West Night Beacon",.30,.40,"activate",true), mark("core_night_beacon","beacon","Core Night Beacon",.55,.52,"activate",true), mark("night_ambush_zone","forest","Eight-Stalker Ambush Zone",.64,.40), mark("extraction_night_beacon","beacon","Extraction Night Beacon",.78,.67,"activate",true), mark("night_extraction","safe","Revealed Night Extraction",.90,.73)
     ],[point(.18,.73),point(.30,.40),point(.55,.52),point(.78,.67),point(.90,.73)]),
+    68:mission(68,"Research Equipment Defense",7,1,9,0,"ground",[
+      mark("lead_equipment_scientist","research","Lead Equipment Scientist",.50,.45,"protect",true), mark("wildlife_sensor_array","research","Wildlife Sensor Array",.30,.40,"activate",true), mark("mobile_sample_laboratory","research","Mobile Sample Laboratory",.55,.52,"activate",true), mark("research_radio_tower","beacon","Research Radio Tower",.78,.67,"activate",true), mark("equipment_extraction","safe","Research Equipment Extraction",.90,.73)
+    ],[point(.18,.73),point(.30,.40),point(.50,.45),point(.55,.52),point(.78,.67),point(.90,.73)]),
+    69:mission(69,"Extreme Aggression Zone",7,0,14,0,"ground",[
+      mark("west_rage_perimeter","forest","West Rage Perimeter",.22,.34,"scan",true), mark("extreme_aggression_core","boss","Fourteen-Tiger Aggression Core",.53,.49,"defend",true), mark("east_rage_perimeter","forest","East Rage Perimeter",.76,.34,"scan",true), mark("blood_scent_fallback","barricade","Blood-Scent Fallback Line",.78,.66,"defend",true), mark("aggression_extraction","safe","Extreme Zone Extraction",.90,.73)
+    ],[point(.22,.34),point(.53,.49),point(.76,.34),point(.78,.66),point(.90,.73)]),
+    70:mission(70,"Legendary Blood Tiger",7,0,1,0,"ground",[
+      mark("blood_tiger_tracking_command","research","Blood Tiger Tracking Command",.23,.30,"scan",true), mark("legendary_blood_tiger_lair","boss","Legendary Blood Tiger Lair",.56,.50,"defend",true), mark("ancient_blood_rage_ward","barricade","Ancient Blood Rage Ward",.73,.62,"defend",true), mark("chapter_seven_extraction","safe","Chapter 7 Extraction",.90,.73)
+    ],[point(.23,.30),point(.56,.50),point(.73,.62),point(.90,.73)]),
   });
 
   function get(level){

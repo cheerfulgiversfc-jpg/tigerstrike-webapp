@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5210";
+const TS_BUILD = "5211";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -11454,14 +11454,14 @@ function storyMissionForState(state=S){
     }
   }
 
-  // V10.24: every newly released batch extends the same authored mission
+  // V10.25: every newly released batch extends the same authored mission
   // truth used by Solo and Live Squad. Never ship a mission batch without it.
   // This runs after generic variety so named counts and map objectives cannot
   // silently drift away from the mission shown to the player.
-  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 67){
+  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 70){
     const truth = window.TigerStrikeMissionMapTruth?.get?.(cfg.number);
     if(truth){
-      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.24";
+      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.25";
       cfg.mapTruthTitle = truth.title;
       cfg.mapTruthRequiredActionIds = [...truth.requiredActionIds];
       cfg.civilians = Math.max(0, Number(truth.civilians || 0));
@@ -39896,8 +39896,9 @@ function spawnLivingWorldDistrictSupport(){
   const stormpeak = effect.districtId === "stormpeak_summit";
   const deepwild = effect.districtId === "deepwild_research";
   const nightveil = effect.districtId === "nightveil_frontier";
+  const bloodfang = effect.districtId === "bloodfang_dominion";
   const baseLabel = floodplain ? (effect.support?.survivorCamp ? "Floodplain Lifeline Camp" : "Floodplain Field Clinic") : (brokenwater ? (effect.support?.survivorCamp ? "Brokenwater Wildlife Station" : "Brokenwater Rescue Station") : (crownfall ? (effect.support?.bossWard ? "Crownfall Twin Ward Command" : "Crownfall Defense Command") : (ember ? (effect.support?.evacCorridor ? "Emberfall Firebreak Command" : "Emberfall Relief Command") : (silent ? (effect.support?.evacCorridor ? "Silent Village Evac Command" : "Silent Village Search Command") : (shadow ? (effect.support?.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command") : (riverveil ? (effect.support?.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station") : (veil ? (effect.support?.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost") : (crimson ? "Crimson Hollow Conservation Camp" : (amara ? "Amara Haven Field Hospital" : (bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House"))))))))))));
-  const label = nightveil ? (effect.support?.stealthArray ? "Nightveil Signal Command" : "Nightveil Base Command") : (deepwild ? (effect.support?.veilLab ? "Deepwild Conservation Lab" : "Deepwild Research Command") : (stormpeak ? (effect.support?.stealthArray ? "Stormpeak Alpha Command" : "Stormpeak Rescue Command") : (whiteout ? (effect.support?.veilLab ? "Whiteout Weather Station" : "Whiteout Rescue Lodge") : (silverpeak ? (effect.support?.veilLab ? "Silverpeak Wildlife Station" : "Silverpeak Ranger Lodge") : (tidefang ? (effect.support?.survivorCamp ? "Tidefang Marine Command" : "Tidefang Marine Station") : baseLabel)))));
+  const label = bloodfang ? (effect.support?.bossWard ? "Bloodfang Rage Ward Command" : "Bloodfang Research Command") : (nightveil ? (effect.support?.stealthArray ? "Nightveil Signal Command" : "Nightveil Base Command") : (deepwild ? (effect.support?.veilLab ? "Deepwild Conservation Lab" : "Deepwild Research Command") : (stormpeak ? (effect.support?.stealthArray ? "Stormpeak Alpha Command" : "Stormpeak Rescue Command") : (whiteout ? (effect.support?.veilLab ? "Whiteout Weather Station" : "Whiteout Rescue Lodge") : (silverpeak ? (effect.support?.veilLab ? "Silverpeak Wildlife Station" : "Silverpeak Ranger Lodge") : (tidefang ? (effect.support?.survivorCamp ? "Tidefang Marine Command" : "Tidefang Marine Station") : baseLabel))))));
   let point = safeSpawnPoint(worldW * (floodplain ? 0.72 : (brokenwater ? 0.34 : (crownfall ? 0.52 : (ember ? 0.38 : (silent ? 0.34 : (shadow ? 0.68 : (riverveil ? 0.32 : (veil ? 0.36 : (crimson ? 0.44 : (amara ? 0.72 : (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28))))))))))))), worldH * (floodplain ? 0.34 : (brokenwater ? 0.68 : (crownfall ? 0.66 : (ember ? 0.62 : (silent ? 0.36 : (shadow ? 0.34 : (riverveil ? 0.68 : (veil ? 0.62 : (crimson ? 0.66 : (amara ? 0.34 : (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70))))))))))))), 24, true, true);
   if(tidefang) point = safeSpawnPoint(worldW * 0.32, worldH * 0.68, 24, true, true);
   if(silverpeak) point = safeSpawnPoint(worldW * 0.36, worldH * 0.62, 24, true, true);
@@ -39905,6 +39906,7 @@ function spawnLivingWorldDistrictSupport(){
   if(stormpeak) point = safeSpawnPoint(worldW * 0.70, worldH * 0.32, 24, true, true);
   if(deepwild) point = safeSpawnPoint(worldW * 0.36, worldH * 0.62, 24, true, true);
   if(nightveil) point = safeSpawnPoint(worldW * 0.68, worldH * 0.34, 24, true, true);
+  if(bloodfang) point = safeSpawnPoint(worldW * 0.44, worldH * 0.66, 24, true, true);
   if(inMapScenarioKeepout(point.x, point.y, 24)){
     point = findNearestOpenPoint(point.x, point.y, 24, {
       avoidKeepout:true,
@@ -39923,6 +39925,7 @@ function spawnLivingWorldDistrictSupport(){
     stormpeak_summit:"stormpeak_command",
     deepwild_research:"deepwild_lab",
     nightveil_frontier:"nightveil_command",
+    bloodfang_dominion:"bloodfang_command",
   })[effect.districtId] || "river_safe_house";
   S.mapInteractables.push({
     id:`LIVING-${String(effect.districtId || "DISTRICT").toUpperCase()}-${Math.max(1, Number(S.storyLevel || 1))}`,
@@ -39952,7 +39955,20 @@ function spawnLivingWorldRiverGateSafeHouse(){
 
 function configureLivingWorldDistrictRoutes(){
   const effect = S._livingWorldMission;
-  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit","deepwild_research","nightveil_frontier"].includes(effect.districtId)) return false;
+  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit","deepwild_research","nightveil_frontier","bloodfang_dominion"].includes(effect.districtId)) return false;
+  if(effect.districtId === "bloodfang_dominion"){
+    const bridge = (S.mapInteractables || []).find((item)=>item?.kind === "bridge");
+    if(bridge){ bridge.routeOpen = true; bridge.label = effect.support?.calmingTowers ? "Bloodfang Equipment Defense Route" : "Bloodfang Emergency Research Route"; }
+    const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
+    if(generator){ generator.powered = !!effect.support?.calmingTowers; generator.label = generator.powered ? "Research Equipment Network" : "Bloodfang Emergency Radio"; }
+    const barricade = (S.mapInteractables || []).find((item)=>item?.kind === "barricade");
+    if(barricade && effect.support?.swarmDefenses){ barricade.label = "Extreme Aggression Fallback Line"; barricade.effectR = Math.max(Number(barricade.effectR || 0), barricadeEffectRadius()); }
+    const routeTrap = (S.mapInteractables || []).find((item)=>item?.kind === "route_trap");
+    if(routeTrap && effect.support?.bossWard){ routeTrap.label = "Legendary Blood Rage Ward"; routeTrap.effectR = Math.max(Number(routeTrap.effectR || 0), 175); }
+    const gate = (S.mapInteractables || []).find((item)=>item?.kind === "gate");
+    if(gate){ gate.routeOpen = true; gate.label = effect.support?.bossWard ? "Bloodfang Rage Ward Gate" : "Bloodfang Research Gate"; }
+    __blockedAtCache.clear(); invalidateMapCache(); return true;
+  }
   if(effect.districtId === "nightveil_frontier"){
     const bridge = (S.mapInteractables || []).find((item)=>item?.kind === "bridge");
     if(bridge){ bridge.routeOpen = true; bridge.label = effect.support?.packSensors ? "Nightveil Sensor Tunnel" : "Nightveil Emergency Tunnel"; }
@@ -40591,6 +40607,7 @@ function activateMapInteractable(it){
       const stormpeakCommand = it.livingWorldSupportType === "stormpeak_command";
       const deepwildLab = it.livingWorldSupportType === "deepwild_lab";
       const nightveilCommand = it.livingWorldSupportType === "nightveil_command";
+      const bloodfangCommand = it.livingWorldSupportType === "bloodfang_command";
       if(amaraHospital) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(crimsonCamp) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(veilOutpost) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
@@ -40607,10 +40624,11 @@ function activateMapInteractable(it){
       if(stormpeakCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(deepwildLab) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(nightveilCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
-      S.armor = clamp(Number(S.armor || 0) + (nightveilCommand ? 30 : (deepwildLab ? 28 : (stormpeakCommand ? 30 : (whiteoutStation ? 26 : (silverpeakLodge ? 22 : (tidefangStation ? 28 : (floodplainClinic ? 26 : (brokenwaterStation ? 24 : (crownfallCommand ? 30 : (ironArmory ? 25 : (emberfallCommand ? 26 : (silentCommand ? 24 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15))))))))))))))))))), 0, S.armorCap || 100);
+      if(bloodfangCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
+      S.armor = clamp(Number(S.armor || 0) + (bloodfangCommand ? 32 : (nightveilCommand ? 30 : (deepwildLab ? 28 : (stormpeakCommand ? 30 : (whiteoutStation ? 26 : (silverpeakLodge ? 22 : (tidefangStation ? 28 : (floodplainClinic ? 26 : (brokenwaterStation ? 24 : (crownfallCommand ? 30 : (ironArmory ? 25 : (emberfallCommand ? 26 : (silentCommand ? 24 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15)))))))))))))))))))), 0, S.armorCap || 100);
       const supportWeapon = equippedWeapon();
       const supportAmmoId = supportWeapon ? (bestAvailableAmmoIdForWeapon(supportWeapon) || supportWeapon.ammo) : "";
-      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (nightveilCommand ? 18 : (deepwildLab ? 18 : (stormpeakCommand ? 18 : (whiteoutStation ? 16 : (silverpeakLodge ? 14 : (tidefangStation ? 18 : (floodplainClinic ? 16 : (brokenwaterStation ? 16 : (crownfallCommand ? 18 : (ironArmory ? 18 : (emberfallCommand ? 16 : (silentCommand ? 16 : (shadowCommand ? 18 : (riverveilStation ? 16 : (veilOutpost ? 12 : (crimsonCamp ? 12 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8)))))))))))))))))));
+      if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + (bloodfangCommand ? 20 : (nightveilCommand ? 18 : (deepwildLab ? 18 : (stormpeakCommand ? 18 : (whiteoutStation ? 16 : (silverpeakLodge ? 14 : (tidefangStation ? 18 : (floodplainClinic ? 16 : (brokenwaterStation ? 16 : (crownfallCommand ? 18 : (ironArmory ? 18 : (emberfallCommand ? 16 : (silentCommand ? 16 : (shadowCommand ? 18 : (riverveilStation ? 16 : (veilOutpost ? 12 : (crimsonCamp ? 12 : (amaraHospital ? 14 : (bloodrootClinic ? 10 : (jungleRanger ? 12 : 8))))))))))))))))))));
       if(jungleRanger){
         S.scanPing = Math.max(Number(S.scanPing || 0), 240);
         if(Number(it.returningCivilians || 0) >= 2) S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
@@ -40725,10 +40743,19 @@ function activateMapInteractable(it){
         S.scanPing = Math.max(Number(S.scanPing || 0), 520);
         S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
       }
+      if(bloodfangCommand){
+        const supportRubberId = supportWeapon ? compatibleAmmoIdsForWeapon(supportWeapon, "rubber")[0] : "";
+        if(supportRubberId) S.ammoReserve[supportRubberId] = Math.max(0, Number(S.ammoReserve[supportRubberId] || 0)) + 30;
+        S.ammoReserve.TRANQ_DARTS = Math.max(0, Number(S.ammoReserve.TRANQ_DARTS || 0)) + 8;
+        S.scanPing = Math.max(Number(S.scanPing || 0), 540);
+        S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
+      }
       it.uses = 0;
       it.cooldownUntil = now + 60000;
       it.activeUntil = now + 900;
-      interactionFeedback(nightveilCommand
+      interactionFeedback(bloodfangCommand
+        ? "🩸 Bloodfang Research Command supplied +2 Med Kits, +32 Armor, +20 Ammo, 30 Rubber rounds, 8 Tranq Darts, 1 Trap, and a Legendary Tiger scan."
+        : nightveilCommand
         ? "🌙 Nightveil Signal Command supplied +2 Med Kits, +30 Armor, +18 Ammo, 24 Rubber rounds, 4 Tranq Darts, 1 Trap, and a night-territory scan."
         : deepwildLab
         ? "🔬 Deepwild Conservation Lab supplied +2 Med Kits, +28 Armor, +18 Ammo, 28 Rubber rounds, 8 Tranq Darts, 1 Trap, and a territory scan."
@@ -56132,7 +56159,7 @@ function drawMapInteractable(it){
       ctx.beginPath();
       ctx.arc(it.x + 20, it.y - 12, 5, 0, Math.PI * 2);
       ctx.fill();
-    }else if(it.livingWorldSupportType === "crimson_camp"){
+    }else if(it.livingWorldSupportType === "crimson_camp" || it.livingWorldSupportType === "bloodfang_command"){
       ctx.fillStyle = "rgba(69,10,10,.97)";
       roundedRectFill(it.x - 30, it.y - 19, 60, 40, 7);
       ctx.strokeStyle = "rgba(251,113,133,.94)";
@@ -56169,7 +56196,7 @@ function drawMapInteractable(it){
       ctx.lineTo(it.x, it.y + 10);
       ctx.stroke();
     }
-    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","veil_outpost","silverpeak_lodge","whiteout_station","deepwild_lab","riverveil_station","shadow_command","stormpeak_command","nightveil_command","silent_command","emberfall_command","crownfall_command","brokenwater_station","floodplain_clinic","tidefang_station"].includes(it.livingWorldSupportType)){
+    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","bloodfang_command","veil_outpost","silverpeak_lodge","whiteout_station","deepwild_lab","riverveil_station","shadow_command","stormpeak_command","nightveil_command","silent_command","emberfall_command","crownfall_command","brokenwater_station","floodplain_clinic","tidefang_station"].includes(it.livingWorldSupportType)){
       const helpers = Math.max(1, Math.min(2, Number(it.returningCivilians || 0) || 1));
       for(let idx=0; idx<helpers; idx++){
         const hx = it.x + (idx === 0 ? -27 : 27);
@@ -56201,6 +56228,8 @@ function drawMapInteractable(it){
             ? (idx === 0 ? "#6ee7b7" : "#fef08a")
           : it.livingWorldSupportType === "veil_outpost"
             ? (idx === 0 ? "#34d399" : "#22d3ee")
+          : it.livingWorldSupportType === "bloodfang_command"
+            ? (idx === 0 ? "#fb7185" : "#22d3ee")
           : it.livingWorldSupportType === "crimson_camp"
             ? (idx === 0 ? "#fb7185" : "#facc15")
           : it.livingWorldSupportType === "amara_hospital"
