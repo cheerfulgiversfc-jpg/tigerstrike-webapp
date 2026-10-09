@@ -766,6 +766,17 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo and co-op use the same V10.25 mission-truth manifest, map routes, landmark identities, encounter counts, and persistent consequences.
 - Restored Bloodfang Research Command supplies medical aid, armor, ammunition, humane-capture rounds, tranq darts, a trap, and a Legendary Tiger scan.
 
+### V10.26 King's Reach + Mission Map Truth — Missions 71–73
+
+- Added **King's Reach** as the twenty-second persistent Living World district for Story Missions 71–73 in Solo and Live Squad.
+- Mission 71 now truthfully runs the eight-villager Jungle Center evacuation through three ordered checkpoints while exactly eight tigers pursue the group.
+- Mission 72 now truthfully places five surrounded civilians inside a visible six-tiger, all-directions ambush. It deliberately has no hidden map task that can leave players wandering after the rescue.
+- Mission 73 now requires Razorclaw and Shadowfang to be captured alive with Rubber ammunition while their three named guard tigers protect the territory.
+- King's Reach recovery unlocks Evacuation Command, rescue beacons, an ambush perimeter, a protected evacuation route, and the Elite Hunter Conservation Unit.
+- No Living World patrols are added to Missions 71–73, so their authored encounters and intended difficulty remain exact in Solo and co-op.
+- Solo and co-op use the same V10.26 mission-truth manifest, landmarks, routes, objective counts, and persistent consequences.
+- Restored King's Reach Command supplies medical aid, armor, Real and Rubber ammunition, tranq darts, a trap, and an objective scan.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

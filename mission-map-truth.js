@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.25";
-  const MAX_MISSION = 70;
+  const VERSION = "10.26";
+  const MAX_MISSION = 73;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -232,6 +232,15 @@
     70:mission(70,"Legendary Blood Tiger",7,0,1,0,"ground",[
       mark("blood_tiger_tracking_command","research","Blood Tiger Tracking Command",.23,.30,"scan",true), mark("legendary_blood_tiger_lair","boss","Legendary Blood Tiger Lair",.56,.50,"defend",true), mark("ancient_blood_rage_ward","barricade","Ancient Blood Rage Ward",.73,.62,"defend",true), mark("chapter_seven_extraction","safe","Chapter 7 Extraction",.90,.73)
     ],[point(.23,.30),point(.56,.50),point(.73,.62),point(.90,.73)]),
+    71:mission(71,"Jungle Center Evacuation",8,8,8,0,"ground",[
+      mark("jungle_center_refuge","village","Jungle Center Refuge",.18,.25,"protect",true), mark("jungle_center_gate","gate","Jungle Center Gate",.30,.40,"secure",true), mark("forest_evacuation_lane","trail","Forest Evacuation Lane",.55,.52,"secure",true), mark("outer_jungle_shelter","safe","Outer Jungle Shelter",.78,.67,"secure",true), mark("center_evacuation_extraction","safe","Jungle Center Extraction",.90,.73)
+    ],[point(.18,.25),point(.30,.40),point(.55,.52),point(.78,.67),point(.90,.73)]),
+    72:mission(72,"All-Directions Rescue Ambush",8,5,6,0,"ground",[
+      mark("surrounded_civilian_rally","camp","Five Surrounded Civilians",.53,.49), mark("north_ambush_sector","forest","North Ambush Sector",.53,.27), mark("east_ambush_sector","forest","East Ambush Sector",.78,.49), mark("south_ambush_sector","forest","South Ambush Sector",.53,.70), mark("west_ambush_sector","forest","West Ambush Sector",.28,.49), mark("focused_ambush_extraction","safe","Focused Ambush Extraction",.90,.73)
+    ],[point(.18,.73),point(.28,.49),point(.53,.27),point(.53,.49),point(.78,.49),point(.90,.73)]),
+    73:mission(73,"Elite Hunter Capture",8,0,5,2,"ground",[
+      mark("elite_hunter_tracking_command","research","Elite Hunter Tracking Command",.22,.28,"scan",true), mark("razorclaw_capture_zone","cage","Razorclaw Capture Zone",.31,.39), mark("shadowfang_capture_zone","cage","Shadowfang Capture Zone",.70,.60), mark("elite_hunter_conservation_pen","cage","Elite Hunter Conservation Pen",.76,.66,"prepare",true), mark("elite_wildlife_transport","vehicle","Elite Wildlife Transport",.90,.73)
+    ],[point(.22,.28),point(.31,.39),point(.53,.49),point(.70,.60),point(.76,.66),point(.90,.73)]),
   });
 
   function get(level){
