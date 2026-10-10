@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.26";
-  const MAX_MISSION = 73;
+  const VERSION = "10.27";
+  const MAX_MISSION = 77;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -241,6 +241,18 @@
     73:mission(73,"Elite Hunter Capture",8,0,5,2,"ground",[
       mark("elite_hunter_tracking_command","research","Elite Hunter Tracking Command",.22,.28,"scan",true), mark("razorclaw_capture_zone","cage","Razorclaw Capture Zone",.31,.39), mark("shadowfang_capture_zone","cage","Shadowfang Capture Zone",.70,.60), mark("elite_hunter_conservation_pen","cage","Elite Hunter Conservation Pen",.76,.66,"prepare",true), mark("elite_wildlife_transport","vehicle","Elite Wildlife Transport",.90,.73)
     ],[point(.22,.28),point(.31,.39),point(.53,.49),point(.70,.60),point(.76,.66),point(.90,.73)]),
+    74:mission(74,"Dangerous Jungle Caravan",8,8,10,0,"ground",[
+      mark("caravan_rally","caravan","Eight-Person Caravan Rally",.18,.25), mark("caravan_departure","road","Caravan Departure",.30,.40,"secure",true), mark("danger_jungle_pass","trail","Danger Jungle Pass",.55,.52,"secure",true), mark("safe_caravan_outpost","safe","Safe Caravan Outpost",.78,.67,"secure",true), mark("caravan_extraction","safe","Caravan Extraction",.90,.73)
+    ],[point(.18,.25),point(.30,.40),point(.55,.52),point(.78,.67),point(.90,.73)]),
+    75:mission(75,"Tiger King Swarm",8,0,15,0,"ground",[
+      mark("west_swarm_front","forest","West Swarm Front",.22,.36), mark("north_swarm_front","forest","North Swarm Front",.50,.25), mark("tiger_king_swarm_core","boss","Fifteen-Tiger Swarm Core",.54,.50), mark("east_swarm_front","forest","East Swarm Front",.78,.40), mark("swarm_extraction","safe","Swarm Extraction",.90,.73)
+    ],[point(.22,.36),point(.50,.25),point(.54,.50),point(.78,.40),point(.90,.73)]),
+    76:mission(76,"Lost Soldier Rescue",8,6,9,0,"ground",[
+      mark("lost_patrol_search","camp","Six Lost Soldiers",.18,.25), mark("lost_patrol_signal","beacon","Lost Patrol Signal",.30,.40,"secure",true), mark("field_rally_point","barricade","Field Rally Point",.55,.52,"secure",true), mark("soldier_rescue_lane","trail","Soldier Rescue Lane",.78,.67,"secure",true), mark("patrol_extraction","safe","Lost Patrol Extraction",.90,.73)
+    ],[point(.18,.25),point(.30,.40),point(.55,.52),point(.78,.67),point(.90,.73)]),
+    77:mission(77,"Final Villager Evacuation",8,10,10,0,"ground",[
+      mark("final_village_refuge","village","Final Village Refuge",.18,.25), mark("final_village_gate","gate","Final Village Gate",.30,.40,"secure",true), mark("jungle_exit_route","trail","Jungle Exit Route",.55,.52,"secure",true), mark("final_evacuation_staging","safe","Final Evacuation Staging",.78,.67,"secure",true), mark("final_village_extraction","safe","Final Village Extraction",.90,.73)
+    ],[point(.18,.25),point(.30,.40),point(.55,.52),point(.78,.67),point(.90,.73)]),
   });
 
   function get(level){

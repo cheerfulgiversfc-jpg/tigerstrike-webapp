@@ -777,6 +777,18 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo and co-op use the same V10.26 mission-truth manifest, landmarks, routes, objective counts, and persistent consequences.
 - Restored King's Reach Command supplies medical aid, armor, Real and Rubber ammunition, tranq darts, a trap, and an objective scan.
 
+### V10.27 Crownpath Exodus + Mission Map Truth — Missions 74–77
+
+- Added **Crownpath Exodus** as the twenty-third persistent Living World district for Story Missions 74–77 in Solo and Live Squad.
+- Mission 74 now truthfully escorts eight caravan members through three ordered checkpoints while exactly ten route tigers attack.
+- Mission 75 now truthfully runs the focused fifteen-tiger Tiger King swarm with no fake or hidden side objective.
+- Mission 76 now truthfully rescues six lost soldiers through three rally points while exactly nine hunters pressure the patrol.
+- Mission 77 now truthfully evacuates ten final villagers through three ordered checkpoints while exactly ten pursuers close in.
+- Crownpath recovery unlocks Caravan Command, the Tiger King swarm warning network, the lost-patrol rescue relay, civilian protection, and the final evacuation corridor.
+- No Living World patrols are added to Missions 74–77, so their authored encounters and intended difficulty remain exact in Solo and co-op.
+- Solo and co-op use the same V10.27 mission-truth manifest, landmarks, routes, objective counts, and persistent consequences.
+- Restored Crownpath Command supplies medical aid, armor, Real and Rubber ammunition, a trap, and a caravan-and-evacuation scan.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

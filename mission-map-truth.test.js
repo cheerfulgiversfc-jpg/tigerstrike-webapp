@@ -3,13 +3,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const truth = require("./mission-map-truth.js");
 
-assert.equal(truth.VERSION, "10.26");
-assert.equal(truth.MAX_MISSION, 73);
-assert.deepEqual(truth.validate(), [], "all Missions 1-73 must have valid authored map truth");
-assert.equal(Object.keys(truth.MISSIONS).length, 73, "exactly Missions 1-73 are covered");
-assert.equal(truth.get(74), null, "V10.26 must not silently reuse Mission 73 for later missions");
+assert.equal(truth.VERSION, "10.27");
+assert.equal(truth.MAX_MISSION, 77);
+assert.deepEqual(truth.validate(), [], "all Missions 1-77 must have valid authored map truth");
+assert.equal(Object.keys(truth.MISSIONS).length, 77, "exactly Missions 1-77 are covered");
+assert.equal(truth.get(78), null, "V10.27 must not silently reuse Mission 77 for later missions");
 
-for(let level=1; level<=73; level++){
+for(let level=1; level<=77; level++){
   const spec = truth.get(level);
   assert.equal(spec.level, level);
   assert(spec.landmarks.length >= 3, `Mission ${level} needs at least three meaningful map landmarks`);
@@ -103,6 +103,17 @@ assert.equal(truth.get(72).requiredActionIds.length, 0, "Mission 72 adds no hidd
 assert.equal(truth.get(73).captures, 2, "Mission 73 requires both Elite Hunters captured alive");
 assert.equal(truth.get(73).tigers, 5, "Mission 73 keeps two capture targets and three guards");
 assert.equal(truth.get(73).landmarks.filter((item)=>item.type === "cage").length, 3, "Mission 73 shows both capture zones and the conservation pen");
+assert.equal(truth.get(74).civilians, 8, "Mission 74 keeps all eight caravan members");
+assert.equal(truth.get(74).tigers, 10, "Mission 74 keeps its ten route tigers");
+assert.equal(truth.get(74).requiredActionIds.length, 3, "Mission 74 keeps exactly three working caravan checkpoints");
+assert.equal(truth.get(75).tigers, 15, "Mission 75 keeps the exact fifteen-tiger swarm");
+assert.equal(truth.get(75).requiredActionIds.length, 0, "Mission 75 adds no fake side objective to its focused swarm");
+assert.equal(truth.get(76).civilians, 6, "Mission 76 keeps all six lost soldiers");
+assert.equal(truth.get(76).tigers, 9, "Mission 76 keeps its nine patrol hunters");
+assert.equal(truth.get(76).requiredActionIds.length, 3, "Mission 76 keeps exactly three working patrol rally points");
+assert.equal(truth.get(77).civilians, 10, "Mission 77 keeps all ten final villagers");
+assert.equal(truth.get(77).tigers, 10, "Mission 77 keeps its ten evacuation pursuers");
+assert.equal(truth.get(77).requiredActionIds.length, 3, "Mission 77 keeps exactly three working evacuation checkpoints");
 
 const game = fs.readFileSync(path.join(__dirname, "game.js"), "utf8");
 const coop = fs.readFileSync(path.join(__dirname, "squad-coop.js"), "utf8");
@@ -112,11 +123,11 @@ assert(game.includes("drawMissionMapTruthOverlay({ mobileFast:true })"), "mobile
 assert(game.includes("drawMissionMapTruthOverlay({ mobileFast:false })"), "full map renders mission truth");
 assert(game.includes("missionMapTruthReady(S)"), "solo completion is gated by required visible map objectives");
 assert(game.includes("activateMissionMapTruthInteractable"), "mission landmarks have real player interaction");
-assert(game.includes("cfg.number <= 73"), "Solo Story applies exact Mission Map Truth counts through Mission 73");
+assert(game.includes("cfg.number <= 77"), "Solo Story applies exact Mission Map Truth counts through Mission 77");
 assert(server.includes('require("../../mission-map-truth")'), "Live Squad uses the same mission truth manifest");
 assert(server.includes("mapTruthLandmarks:mission.mapTruthLandmarks || []"), "Live Squad sends authored landmarks to both phones");
 assert(coop.includes("drawSharedMissionTruth(ctx,snap)"), "Live Squad renders the shared mission landmarks");
 assert(game.includes("missionMapTruthHazardTick"), "Solo Mission 37 fire is a real gameplay hazard");
-assert(html.includes("mission-map-truth.js?v=5212-kings-reach"), "mission truth loads before gameplay");
+assert(html.includes("mission-map-truth.js?v=5213-crownpath-exodus"), "mission truth loads before gameplay");
 
 console.log("mission-map-truth tests passed");
