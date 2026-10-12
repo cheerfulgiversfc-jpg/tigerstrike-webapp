@@ -2292,7 +2292,7 @@ function normalizeLivingWorldMission(raw){
   const src = raw && typeof raw === "object" ? raw : {};
   const support = src.support && typeof src.support === "object" ? src.support : {};
   return {
-    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit","deepwild_research","nightveil_frontier","bloodfang_dominion","kings_reach","crownpath_exodus","royal_fang_citadel"].includes(cleanText(src.districtId, 40)),
+    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit","deepwild_research","nightveil_frontier","bloodfang_dominion","kings_reach","crownpath_exodus","royal_fang_citadel","hidden_jungle_frontier"].includes(cleanText(src.districtId, 40)),
     districtId:cleanText(src.districtId, 40),
     districtName:cleanText(src.districtName, 60),
     missionLevel:clamp(Math.floor(Number(src.missionLevel || 0)), 0, 100),
@@ -2371,6 +2371,7 @@ function livingWorldSettlementSupport(mission, effect){
   const open = effect?.enabled && (support.safeHouse || support.rangerStation || support.armoryDepot || support.fieldClinic || support.researchPost || support.fieldHospital || support.conservationCamp || support.researchOutpost || support.riverStation || support.shadowCommand || support.villageCommand);
   if(!open) return null;
   const presentations = {
+    hidden_jungle_frontier:{ x:.38, y:.62, type:"hidden_jungle_command", label:support.veilLab ? "Shadeclaw Conservation Command" : "Hidden Jungle Research Command" },
     royal_fang_citadel:{ x:.44, y:.66, type:"royal_fang_command", label:support.bossWard ? "Tiger King Royal Command" : "Royal Campaign Command" },
     crownpath_exodus:{ x:.38, y:.62, type:"crownpath_command", label:support.evacCorridor ? "Crownpath Evacuation Command" : "Crownpath Caravan Command" },
     kings_reach:{ x:.36, y:.62, type:"kings_reach_command", label:support.veilLab ? "King's Reach Conservation Command" : "King's Reach Evacuation Command" },

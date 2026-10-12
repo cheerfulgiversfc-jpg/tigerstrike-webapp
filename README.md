@@ -800,6 +800,17 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo and co-op use the same V10.28 mission-truth manifest, landmarks, routes, encounter counts, and persistent consequences.
 - Restored Royal Command supplies medical aid, armor, Real and Rubber ammunition, tranq darts, a trap, and a Tiger King territory scan.
 
+### V10.29 Hidden Jungle Frontier + Mission Map Truth — Missions 81–83
+
+- Added **Hidden Jungle Frontier** as the twenty-fifth persistent Living World district for Story Missions 81–83 in Solo and Live Squad.
+- Mission 81 now truthfully escorts all eight researchers through three ordered survey checkpoints while exactly ten territorial tigers pressure the expedition.
+- Mission 82 now truthfully protects both wildlife observers while the squad locates and clears exactly eight rare tigers; it has no fake or hidden checkpoint task.
+- Mission 83 now requires the 1,250-HP Shadeclaw to be captured alive with Rubber ammunition while four named guards defend the territory. Any Real-ammo hit still permanently blocks Shadeclaw's capture.
+- Hidden Jungle recovery unlocks Research Command, rare-habitat sensors, a protected survey route, observer protection, and the Shadeclaw Conservation Unit.
+- No Living World patrols are added to Missions 81–83, so their authored encounters and intended difficulty remain exact in Solo and co-op.
+- Solo and co-op use the same V10.29 mission-truth manifest, landmarks, routes, encounter counts, capture target, and persistent consequences.
+- Restored Hidden Jungle Command supplies medical aid, armor, Real and Rubber ammunition, tranq darts, a trap, and a Shadeclaw territory scan.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

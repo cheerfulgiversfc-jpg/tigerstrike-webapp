@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.28";
-  const MAX_MISSION = 80;
+  const VERSION = "10.29";
+  const MAX_MISSION = 83;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -262,6 +262,15 @@
     80:mission(80,"The Tiger King",8,0,1,0,"ground",[
       mark("royal_tracking_command","research","Royal Tracking Command",.23,.30), mark("tiger_king_throne","boss","Tiger King Throne Territory",.56,.50), mark("royal_rage_ward","barricade","Royal Rage Ward",.73,.62), mark("chapter_eight_extraction","safe","Chapter 8 Extraction",.90,.73)
     ],[point(.23,.30),point(.56,.50),point(.73,.62),point(.90,.73)]),
+    81:mission(81,"Hidden Jungle Expedition",9,8,10,0,"ground",[
+      mark("hidden_jungle_research_camp","research","Eight-Person Research Camp",.17,.24), mark("canopy_entry_survey","trail","Canopy Entry Survey",.28,.36,"survey",true), mark("hidden_basin_survey","research","Hidden Basin Survey",.55,.49,"survey",true), mark("ruins_edge_camp","ruins","Ruins Edge Camp",.78,.63,"survey",true), mark("expedition_extraction","safe","Expedition Extraction",.90,.73)
+    ],[point(.17,.24),point(.28,.36),point(.55,.49),point(.78,.63),point(.90,.73)]),
+    82:mission(82,"Rare Tiger Encounter",9,2,8,0,"ground",[
+      mark("senior_observer_post","research","Senior Observer Post",.25,.29), mark("west_rare_habitat","forest","West Rare-Tiger Habitat",.31,.55), mark("hidden_canopy_habitat","forest","Hidden Canopy Habitat",.55,.33), mark("field_observer_post","research","Field Observer Post",.72,.57), mark("east_rare_habitat","forest","East Rare-Tiger Habitat",.82,.42), mark("rare_habitat_extraction","safe","Observer Extraction",.90,.73)
+    ],[point(.25,.29),point(.31,.55),point(.55,.33),point(.72,.57),point(.82,.42),point(.90,.73)]),
+    83:mission(83,"Shadeclaw Stealth Capture",9,0,5,1,"ground",[
+      mark("shadeclaw_tracking_command","research","Shadeclaw Tracking Command",.22,.29), mark("shade_guard_perimeter","forest","Four-Tiger Guard Perimeter",.41,.42), mark("shadeclaw_capture_zone","cage","Shadeclaw Live-Capture Zone",.60,.49), mark("shadeclaw_conservation_pen","cage","Shadeclaw Conservation Pen",.76,.64), mark("shadeclaw_transport","vehicle","Shadeclaw Wildlife Transport",.90,.73)
+    ],[point(.22,.29),point(.41,.42),point(.60,.49),point(.76,.64),point(.90,.73)]),
   });
 
   function get(level){

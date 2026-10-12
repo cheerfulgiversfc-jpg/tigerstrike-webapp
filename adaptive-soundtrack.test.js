@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V10.28 cache key forces Telegram to load Royal Fang Citadel", () => {
-  assert(game.includes('const TS_BUILD = "5214"'));
-  assert(html.includes("game.js?v=5214-royal-fang-citadel"));
-  assert(html.includes("tutorial.js?v=5214-royal-fang-citadel"));
+test("V10.29 cache key forces Telegram to load Hidden Jungle Frontier", () => {
+  assert(game.includes('const TS_BUILD = "5215"'));
+  assert(html.includes("game.js?v=5215-hidden-jungle-frontier"));
+  assert(html.includes("tutorial.js?v=5215-hidden-jungle-frontier"));
 });
