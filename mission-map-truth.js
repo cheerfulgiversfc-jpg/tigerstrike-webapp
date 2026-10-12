@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.27";
-  const MAX_MISSION = 77;
+  const VERSION = "10.28";
+  const MAX_MISSION = 80;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -253,6 +253,15 @@
     77:mission(77,"Final Villager Evacuation",8,10,10,0,"ground",[
       mark("final_village_refuge","village","Final Village Refuge",.18,.25), mark("final_village_gate","gate","Final Village Gate",.30,.40,"secure",true), mark("jungle_exit_route","trail","Jungle Exit Route",.55,.52,"secure",true), mark("final_evacuation_staging","safe","Final Evacuation Staging",.78,.67,"secure",true), mark("final_village_extraction","safe","Final Village Extraction",.90,.73)
     ],[point(.18,.25),point(.30,.40),point(.55,.52),point(.78,.67),point(.90,.73)]),
+    78:mission(78,"Massive Tiger King Ambush",8,0,16,0,"ground",[
+      mark("west_royal_ambush","forest","West Royal Ambush Front",.20,.34), mark("north_royal_ambush","forest","North Royal Ambush Front",.50,.23), mark("massive_ambush_core","boss","Sixteen-Tiger Ambush Core",.54,.50), mark("east_royal_ambush","forest","East Royal Ambush Front",.80,.36), mark("ambush_extraction","safe","Royal Ambush Extraction",.90,.73)
+    ],[point(.20,.34),point(.50,.23),point(.54,.50),point(.80,.36),point(.90,.73)]),
+    79:mission(79,"Tiger King Preparation",8,0,12,0,"ground",[
+      mark("forward_armory","armory","Forward Armory",.24,.35,"activate",true), mark("field_medical_station","clinic","Field Medical Station",.43,.27,"activate",true), mark("signal_relay_station","beacon","Signal Relay Station",.64,.53,"activate",true), mark("tiger_king_tracking_station","research","Tiger King Tracking Station",.79,.67,"activate",true), mark("vanguard_extraction","safe","Vanguard Extraction",.90,.73)
+    ],[point(.24,.35),point(.43,.27),point(.64,.53),point(.79,.67),point(.90,.73)]),
+    80:mission(80,"The Tiger King",8,0,1,0,"ground",[
+      mark("royal_tracking_command","research","Royal Tracking Command",.23,.30), mark("tiger_king_throne","boss","Tiger King Throne Territory",.56,.50), mark("royal_rage_ward","barricade","Royal Rage Ward",.73,.62), mark("chapter_eight_extraction","safe","Chapter 8 Extraction",.90,.73)
+    ],[point(.23,.30),point(.56,.50),point(.73,.62),point(.90,.73)]),
   });
 
   function get(level){

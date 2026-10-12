@@ -79,5 +79,5 @@ test("the three rehabilitation activities are actual mission definitions",()=>{
     "Civilian Rescue Exercise",
     "Wildlife Transfer Duty",
   ]);
-  assert(html.includes("field-systems.js?v=5213-crownpath-exodus"));
+  assert(html.includes("field-systems.js?v=5214-royal-fang-citadel"));
 });

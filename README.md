@@ -789,6 +789,17 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo and co-op use the same V10.27 mission-truth manifest, landmarks, routes, objective counts, and persistent consequences.
 - Restored Crownpath Command supplies medical aid, armor, Real and Rubber ammunition, a trap, and a caravan-and-evacuation scan.
 
+### V10.28 Royal Fang Citadel + Mission Map Truth — Missions 78–80
+
+- Added **Royal Fang Citadel** as the twenty-fourth persistent Living World district for Story Missions 78–80 in Solo and Live Squad.
+- Mission 78 now truthfully runs the exact sixteen-tiger Tiger King ambush with no fake or hidden side objective.
+- Mission 79 now truthfully runs the twelve-tiger royal vanguard and four ordered, working preparation stations: armory, medical, signal, and tracking.
+- Mission 80 now truthfully contains one 4,800-HP Tiger King, its throne territory, Royal Tracking Command, the Royal Rage Ward, and the Chapter 8 extraction.
+- Players may defeat or humanely capture the Tiger King according to the mission's existing lethal and capture rules; no unrelated interaction blocks completion.
+- No Living World patrols are added to Missions 78–80, so their authored encounters and intended difficulty remain exact in Solo and co-op.
+- Solo and co-op use the same V10.28 mission-truth manifest, landmarks, routes, encounter counts, and persistent consequences.
+- Restored Royal Command supplies medical aid, armor, Real and Rubber ammunition, tranq darts, a trap, and a Tiger King territory scan.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
