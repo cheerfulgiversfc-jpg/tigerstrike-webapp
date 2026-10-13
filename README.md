@@ -811,6 +811,17 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Solo and co-op use the same V10.29 mission-truth manifest, landmarks, routes, encounter counts, capture target, and persistent consequences.
 - Restored Hidden Jungle Command supplies medical aid, armor, Real and Rubber ammunition, tranq darts, a trap, and a Shadeclaw territory scan.
 
+### V10.30 Ancient Ruins Corridor + Mission Map Truth — Missions 84–87
+
+- Added **Ancient Ruins Corridor** as the twenty-sixth persistent Living World district for Story Missions 84–87 in Solo and Live Squad.
+- Mission 84 escorts exactly nine villagers through the Outer Arch, Temple Court, and Safe Passage while ten ruins hunters pursue them.
+- Mission 85 keeps the exact twelve-tiger guardian pack and requires all four visible ruins sectors to be secured.
+- Mission 86 protects the full six-person excavation team while four working dig sites are activated against eleven attackers.
+- Mission 87 escorts nine survivors through three real LZ checkpoints against eleven pursuers and finishes with a truthful helicopter extraction.
+- Expedition Command, guardian-sector survey beacons, excavation defenses, protected ruins routing, and the helicopter LZ corridor now appear and function in both Solo and Shared Story.
+- No extra Living World patrols are injected into Missions 84–87, preserving their authored encounter counts and intended difficulty.
+- Solo and co-op use the same V10.30 mission-truth manifest, landmarks, routes, encounter counts, and persistent consequences.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

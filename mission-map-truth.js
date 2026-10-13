@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.29";
-  const MAX_MISSION = 83;
+  const VERSION = "10.30";
+  const MAX_MISSION = 87;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -271,6 +271,18 @@
     83:mission(83,"Shadeclaw Stealth Capture",9,0,5,1,"ground",[
       mark("shadeclaw_tracking_command","research","Shadeclaw Tracking Command",.22,.29), mark("shade_guard_perimeter","forest","Four-Tiger Guard Perimeter",.41,.42), mark("shadeclaw_capture_zone","cage","Shadeclaw Live-Capture Zone",.60,.49), mark("shadeclaw_conservation_pen","cage","Shadeclaw Conservation Pen",.76,.64), mark("shadeclaw_transport","vehicle","Shadeclaw Wildlife Transport",.90,.73)
     ],[point(.22,.29),point(.41,.42),point(.60,.49),point(.76,.64),point(.90,.73)]),
+    84:mission(84,"Ancient Ruins Escort",9,9,10,0,"ground",[
+      mark("ruins_villager_camp","camp","Nine-Villager Ruins Camp",.17,.24), mark("outer_ruins_arch","ruins","Outer Ruins Arch",.29,.38,"secure",true), mark("ancient_temple_court","ruins","Ancient Temple Court",.55,.49,"secure",true), mark("ruins_safe_passage","trail","Ruins Safe Passage",.78,.64,"secure",true), mark("ruins_escort_extraction","safe","Ruins Escort Extraction",.90,.73)
+    ],[point(.17,.24),point(.29,.38),point(.55,.49),point(.78,.64),point(.90,.73)]),
+    85:mission(85,"Ruins Guardian Pack",9,0,12,0,"ground",[
+      mark("west_ruins_gate","gate","West Ruins Gate",.22,.37,"secure",true), mark("sunken_ruins_court","ruins","Sunken Ruins Court",.43,.27,"secure",true), mark("guardian_hall","boss","Twelve-Tiger Guardian Hall",.61,.49,"secure",true), mark("east_ruins_temple","ruins","East Ruins Temple",.80,.64,"secure",true), mark("guardian_pack_extraction","safe","Guardian Pack Extraction",.90,.73)
+    ],[point(.22,.37),point(.43,.27),point(.61,.49),point(.80,.64),point(.90,.73)]),
+    86:mission(86,"Excavation Team Defense",9,6,11,0,"ground",[
+      mark("excavation_team_camp","research","Six-Person Excavation Team",.18,.25), mark("dig_site_alpha","ruins","Dig Site Alpha",.29,.39,"excavate",true), mark("dig_site_bravo","ruins","Dig Site Bravo",.48,.29,"excavate",true), mark("dig_site_charlie","ruins","Dig Site Charlie",.62,.54,"excavate",true), mark("dig_site_delta","ruins","Dig Site Delta",.79,.66,"excavate",true), mark("excavation_extraction","safe","Excavation Team Extraction",.90,.73)
+    ],[point(.18,.25),point(.29,.39),point(.48,.29),point(.62,.54),point(.79,.66),point(.90,.73)]),
+    87:mission(87,"Hidden Jungle Air Evac",9,9,11,0,"helicopter",[
+      mark("hidden_survivor_camp","camp","Nine Hidden-Jungle Survivors",.17,.24), mark("survivor_rally","camp","Survivor Rally Point",.29,.39,"secure",true), mark("canopy_landing_lane","trail","Canopy Landing Lane",.56,.51,"secure",true), mark("hidden_jungle_helicopter_lz","helicopter","Hidden Jungle Helicopter LZ",.79,.66,"secure",true), mark("air_evac_helicopter","helicopter","Air Evac Helicopter",.90,.73)
+    ],[point(.17,.24),point(.29,.39),point(.56,.51),point(.79,.66),point(.90,.73)]),
   });
 
   function get(level){

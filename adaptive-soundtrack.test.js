@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V10.29 cache key forces Telegram to load Hidden Jungle Frontier", () => {
-  assert(game.includes('const TS_BUILD = "5215"'));
-  assert(html.includes("game.js?v=5215-hidden-jungle-frontier"));
-  assert(html.includes("tutorial.js?v=5215-hidden-jungle-frontier"));
+test("V10.30 cache key forces Telegram to load Ancient Ruins Corridor", () => {
+  assert(game.includes('const TS_BUILD = "5216"'));
+  assert(html.includes("game.js?v=5216-ancient-ruins-corridor"));
+  assert(html.includes("tutorial.js?v=5216-ancient-ruins-corridor"));
 });
