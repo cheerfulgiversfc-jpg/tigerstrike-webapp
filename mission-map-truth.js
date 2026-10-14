@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.30";
-  const MAX_MISSION = 87;
+  const VERSION = "10.31";
+  const MAX_MISSION = 90;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -283,6 +283,15 @@
     87:mission(87,"Hidden Jungle Air Evac",9,9,11,0,"helicopter",[
       mark("hidden_survivor_camp","camp","Nine Hidden-Jungle Survivors",.17,.24), mark("survivor_rally","camp","Survivor Rally Point",.29,.39,"secure",true), mark("canopy_landing_lane","trail","Canopy Landing Lane",.56,.51,"secure",true), mark("hidden_jungle_helicopter_lz","helicopter","Hidden Jungle Helicopter LZ",.79,.66,"secure",true), mark("air_evac_helicopter","helicopter","Air Evac Helicopter",.90,.73)
     ],[point(.17,.24),point(.29,.39),point(.56,.51),point(.79,.66),point(.90,.73)]),
+    88:mission(88,"Extreme Hidden Jungle Aggression",9,0,16,0,"ground",[
+      mark("west_extreme_territory","forest","West Extreme Territory",.20,.34), mark("hidden_aggression_core","boss","Sixteen-Tiger Aggression Core",.53,.49), mark("east_extreme_territory","forest","East Extreme Territory",.77,.34), mark("blood_scent_fallback","barricade","Hidden Jungle Fallback Line",.79,.66), mark("extreme_jungle_extraction","safe","Extreme Jungle Extraction",.90,.73)
+    ],[point(.20,.34),point(.53,.49),point(.77,.34),point(.79,.66),point(.90,.73)]),
+    89:mission(89,"Phantom Tiger Preparation",9,0,14,0,"ground",[
+      mark("hidden_signal_relay","beacon","Hidden Signal Relay",.25,.34,"activate",true), mark("forward_medical_station","clinic","Forward Medical Station",.43,.27,"activate",true), mark("hidden_jungle_armory","armory","Hidden Jungle Armory",.65,.53,"activate",true), mark("phantom_tracking_station","research","Phantom Tracking Station",.80,.67,"activate",true), mark("phantom_vanguard_extraction","safe","Phantom Vanguard Extraction",.90,.73)
+    ],[point(.25,.34),point(.43,.27),point(.65,.53),point(.80,.67),point(.90,.73)]),
+    90:mission(90,"The Phantom Tiger",9,0,1,0,"ground",[
+      mark("phantom_tracking_command","research","Phantom Tracking Command",.23,.30), mark("phantom_temple","boss","Phantom Tiger Temple",.56,.50), mark("phantom_rage_ward","barricade","Phantom Rage Ward",.73,.62), mark("chapter_nine_extraction","safe","Chapter 9 Extraction",.90,.73)
+    ],[point(.23,.30),point(.56,.50),point(.73,.62),point(.90,.73)]),
   });
 
   function get(level){

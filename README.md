@@ -822,6 +822,16 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - No extra Living World patrols are injected into Missions 84–87, preserving their authored encounter counts and intended difficulty.
 - Solo and co-op use the same V10.30 mission-truth manifest, landmarks, routes, encounter counts, and persistent consequences.
 
+### V10.31 Phantom Jungle Finale + Mission Map Truth — Missions 88–90
+
+- Added **Phantom Jungle Finale** as the twenty-seventh persistent Living World district for Story Missions 88–90 in Solo and Live Squad.
+- Mission 88 preserves the exact sixteen-tiger extreme-aggression fight and adds no fake checkpoint or hidden task.
+- Mission 89 keeps the exact fourteen-tiger vanguard and requires the signal relay, medical station, armory, and Phantom tracker to be activated in order.
+- Mission 90 preserves the 6,000-HP Phantom Tiger, stealth visibility, low-health Phantom Rage, optional kill-or-capture outcome, and Chapter 9 extraction.
+- Phantom Jungle Command, extreme-pack sensors, vanguard preparation defenses, safer routes, humane boss supplies, and the Phantom Rage Ward now function in Solo and Shared Story.
+- No extra Living World patrols are injected into Missions 88–90, preserving their authored encounter counts and intended difficulty.
+- Solo and co-op use the same V10.31 mission-truth manifest, landmarks, routes, encounter counts, optional boss capture rule, and persistent consequences.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
