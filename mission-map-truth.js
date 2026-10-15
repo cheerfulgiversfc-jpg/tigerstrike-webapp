@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.31";
-  const MAX_MISSION = 90;
+  const VERSION = "10.32";
+  const MAX_MISSION = 93;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -292,6 +292,15 @@
     90:mission(90,"The Phantom Tiger",9,0,1,0,"ground",[
       mark("phantom_tracking_command","research","Phantom Tracking Command",.23,.30), mark("phantom_temple","boss","Phantom Tiger Temple",.56,.50), mark("phantom_rage_ward","barricade","Phantom Rage Ward",.73,.62), mark("chapter_nine_extraction","safe","Chapter 9 Extraction",.90,.73)
     ],[point(.23,.30),point(.56,.50),point(.73,.62),point(.90,.73)]),
+    91:mission(91,"Jungle Core Evacuation",10,12,12,0,"ground",[
+      mark("jungle_core_village","village","Jungle Core Village",.22,.34,"secure",true), mark("guardian_path","trail","Guardian Path",.41,.59,"secure",true), mark("ancient_crossing","ruins","Ancient Crossing",.64,.34,"secure",true), mark("final_civilian_shelter","safe","Final Civilian Shelter",.80,.67,"secure",true), mark("jungle_core_extraction","safe","Jungle Core Extraction",.90,.73)
+    ],[point(.22,.34),point(.41,.59),point(.64,.34),point(.80,.67),point(.90,.73)]),
+    92:mission(92,"Ancient Jungle Extreme Aggression",10,0,18,0,"ground",[
+      mark("west_ancient_assault","forest","West Ancient Assault",.20,.34), mark("ancient_aggression_core","boss","Eighteen-Tiger Aggression Core",.53,.49), mark("east_ancient_assault","forest","East Ancient Assault",.77,.34), mark("guardian_fallback_line","barricade","Guardian Fallback Line",.79,.66), mark("ancient_aggression_extraction","safe","Ancient Aggression Extraction",.90,.73)
+    ],[point(.20,.34),point(.53,.49),point(.77,.34),point(.79,.66),point(.90,.73)]),
+    93:mission(93,"Elite Guardian Capture",10,0,6,1,"ground",[
+      mark("guardian_tracking_command","research","Guardian Tracking Command",.22,.29), mark("temple_guard_perimeter","ruins","Five-Tiger Temple Guard Perimeter",.42,.42), mark("guardian_capture_zone","cage","Elite Guardian Live-Capture Zone",.61,.50), mark("guardian_conservation_pen","cage","Guardian Conservation Pen",.77,.65), mark("guardian_wildlife_transport","vehicle","Guardian Wildlife Transport",.90,.73)
+    ],[point(.22,.29),point(.42,.42),point(.61,.50),point(.77,.65),point(.90,.73)]),
   });
 
   function get(level){

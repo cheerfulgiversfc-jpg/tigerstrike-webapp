@@ -3,13 +3,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const truth = require("./mission-map-truth.js");
 
-assert.equal(truth.VERSION, "10.31");
-assert.equal(truth.MAX_MISSION, 90);
-assert.deepEqual(truth.validate(), [], "all Missions 1-90 must have valid authored map truth");
-assert.equal(Object.keys(truth.MISSIONS).length, 90, "exactly Missions 1-90 are covered");
-assert.equal(truth.get(91), null, "V10.31 must not silently reuse Mission 90 for later missions");
+assert.equal(truth.VERSION, "10.32");
+assert.equal(truth.MAX_MISSION, 93);
+assert.deepEqual(truth.validate(), [], "all Missions 1-93 must have valid authored map truth");
+assert.equal(Object.keys(truth.MISSIONS).length, 93, "exactly Missions 1-93 are covered");
+assert.equal(truth.get(94), null, "V10.32 must not silently reuse Mission 93 for later missions");
 
-for(let level=1; level<=90; level++){
+for(let level=1; level<=93; level++){
   const spec = truth.get(level);
   assert.equal(spec.level, level);
   assert(spec.landmarks.length >= 3, `Mission ${level} needs at least three meaningful map landmarks`);
@@ -150,6 +150,15 @@ assert.equal(truth.get(90).tigers, 1, "Mission 90 keeps one Phantom Tiger");
 assert.equal(truth.get(90).captures, 0, "Mission 90 preserves capture as optional rather than falsely required");
 assert.equal(truth.get(90).landmarks.filter((item)=>item.type === "boss").length, 1, "Mission 90 shows the Phantom Tiger temple");
 assert.equal(truth.get(90).requiredActionIds.length, 0, "Mission 90 requires the visible boss objective, not a fake side task");
+assert.equal(truth.get(91).civilians, 12, "Mission 91 keeps all twelve final villagers");
+assert.equal(truth.get(91).tigers, 12, "Mission 91 keeps all twelve jungle-core pursuers");
+assert.equal(truth.get(91).requiredActionIds.length, 4, "Mission 91 keeps four working evacuation checkpoints");
+assert.equal(truth.get(92).tigers, 18, "Mission 92 keeps the exact eighteen-tiger ancient-jungle fight");
+assert.equal(truth.get(92).requiredActionIds.length, 0, "Mission 92 adds no fake side task to its focused fight");
+assert.equal(truth.get(93).tigers, 6, "Mission 93 keeps the Elite Guardian and five temple guards");
+assert.equal(truth.get(93).captures, 1, "Mission 93 requires the Elite Guardian captured alive");
+assert.equal(truth.get(93).requiredActionIds.length, 0, "Mission 93 adds no fake interaction beyond the live capture");
+assert.equal(truth.get(93).landmarks.filter((item)=>item.type === "cage").length, 2, "Mission 93 shows the Guardian capture zone and conservation pen");
 
 const game = fs.readFileSync(path.join(__dirname, "game.js"), "utf8");
 const coop = fs.readFileSync(path.join(__dirname, "squad-coop.js"), "utf8");
@@ -159,11 +168,11 @@ assert(game.includes("drawMissionMapTruthOverlay({ mobileFast:true })"), "mobile
 assert(game.includes("drawMissionMapTruthOverlay({ mobileFast:false })"), "full map renders mission truth");
 assert(game.includes("missionMapTruthReady(S)"), "solo completion is gated by required visible map objectives");
 assert(game.includes("activateMissionMapTruthInteractable"), "mission landmarks have real player interaction");
-assert(game.includes("cfg.number <= 90"), "Solo Story applies exact Mission Map Truth counts through Mission 90");
+assert(game.includes("cfg.number <= 93"), "Solo Story applies exact Mission Map Truth counts through Mission 93");
 assert(server.includes('require("../../mission-map-truth")'), "Live Squad uses the same mission truth manifest");
 assert(server.includes("mapTruthLandmarks:mission.mapTruthLandmarks || []"), "Live Squad sends authored landmarks to both phones");
 assert(coop.includes("drawSharedMissionTruth(ctx,snap)"), "Live Squad renders the shared mission landmarks");
 assert(game.includes("missionMapTruthHazardTick"), "Solo Mission 37 fire is a real gameplay hazard");
-assert(html.includes("mission-map-truth.js?v=5217-phantom-jungle-finale"), "mission truth loads before gameplay");
+assert(html.includes("mission-map-truth.js?v=5218-ancient-guardian-core"), "mission truth loads before gameplay");
 
 console.log("mission-map-truth tests passed");

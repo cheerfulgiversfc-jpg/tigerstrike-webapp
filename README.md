@@ -832,6 +832,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - No extra Living World patrols are injected into Missions 88–90, preserving their authored encounter counts and intended difficulty.
 - Solo and co-op use the same V10.31 mission-truth manifest, landmarks, routes, encounter counts, optional boss capture rule, and persistent consequences.
 
+### V10.32 Ancient Guardian Core + Mission Map Truth — Missions 91–93
+
+- Mission 91 now truthfully escorts exactly twelve villagers through four working jungle-core checkpoints while twelve pursuers pressure the route.
+- Mission 92 is the exact eighteen-tiger ancient-jungle battle with no fake side interaction.
+- Mission 93 keeps five temple guards and the 1,650-HP Elite Guardian; the Guardian must be captured alive and is shown with its capture zone, conservation pen, and transport route.
+- Ancient Guardian Core persists as its own Living World district. Clean results unlock evacuation beacons, an ancient-pack warning perimeter, safer routes, Guardian Conservation Command, and humane capture supplies.
+- Solo and co-op use the same V10.32 mission-truth manifest, landmarks, routes, encounter counts, required Guardian capture, and persistent consequences.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
