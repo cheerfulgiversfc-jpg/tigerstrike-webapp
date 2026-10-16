@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Tiger Strike 🐅 — V10.34 (Ancient Temple Finale)</title>
+  <title>Tiger Strike 🐅 — V11.0 (World After the Ancient Tiger)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="./squad-coop.css?v=5220-ancient-temple-finale">
+  <link rel="stylesheet" href="./squad-coop.css?v=5221-world-after-ancient-tiger">
 
   <style>
     :root{
@@ -2559,6 +2559,11 @@
   from{transform:scale(1);filter:brightness(1)}
   to{transform:scale(1.08);filter:brightness(1.28)}
 }
+#postCampaignEndingOverlay{z-index:12500;padding:10px}
+#postCampaignEndingOverlay .modal{width:min(820px,96vw);max-height:calc(100dvh - 20px)}
+#postCampaignEndingCanvas{display:block;width:100%;height:auto;max-height:52dvh;border-radius:18px;border:2px solid rgba(192,132,252,.55);background:#052e16}
+.postCampaignEndingHero{padding:14px;border-radius:18px;background:linear-gradient(145deg,rgba(53,22,78,.85),rgba(5,15,29,.96));border:1px solid rgba(192,132,252,.50)}
+.postCampaignEndingProgress{height:8px;border-radius:999px;background:rgba(148,163,184,.22);overflow:hidden;margin-top:10px}.postCampaignEndingProgress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#a855f7,#22c55e)}
   </style>
 </head>
 
@@ -2566,8 +2571,10 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">Tiger Strike 🐅 <span class="tag">V10.34</span> <span class="tag">Ancient Temple Finale</span></div>
+      <div class="title">Tiger Strike 🐅 <span class="tag">V11.0</span> <span class="tag">World After the Ancient Tiger</span></div>
       <div class="sub">
+        V11.0 begins after Story Mission 100: your capture-or-kill decision now plays a different animated ending and unlocks a command network covering all 30 persistent Living World districts.<br>
+        Settlement Siege, Escaped Alpha Transport, and Government Response Raid are real playable Solo crises with their own enemies, civilians, objectives, rewards, completion receipts, and safe return to the command network.<br>
         All 100 Story missions now share one authored map-truth system across Solo and Shared Story. Every future mission batch includes Mission Map Truth &amp; Parity in the same update—not as a later visual patch.<br>
         Mission 98 is the exact eighteen-tiger final swarm with no fake side objective. Mission 99 fields exactly fourteen temple guards and requires all four guardian seals activated in order. Mission 100 is the single 8,500-HP Ancient Tiger; defeating it or capturing it alive is valid before the final Story extraction.<br>
         Ancient Temple Finale is now a persistent Living World district for Missions 98–100. Clean outcomes unlock Ancient Temple Command, final-swarm sensors, guardian-seal defenses, the Ancient Tiger Rage Ward, and final-battle supplies in Solo and Shared Story while keeping their progress separate.<br>
@@ -3525,10 +3532,28 @@
 </div>
 
 <!-- V9.3 New Player Tutorial -->
+<!-- Mission 100 ending and post-campaign unlock movie -->
+<div class="overlay" id="postCampaignEndingOverlay" role="dialog" aria-modal="true" aria-labelledby="postCampaignEndingTitle">
+  <div class="modal">
+    <div class="modalTop"><div class="modalTitle">🎬 Story Finale</div><button class="ghost" type="button" onclick="closePostCampaignEnding()">Skip / Continue</button></div>
+    <div class="modalBody">
+      <div class="postCampaignEndingHero">
+        <div class="small">V11.0 • WORLD AFTER THE ANCIENT TIGER</div>
+        <div class="hudTitle" id="postCampaignEndingTitle">The World Changes</div>
+        <div class="hudLine" id="postCampaignEndingRoute">Campaign ending</div>
+      </div>
+      <canvas id="postCampaignEndingCanvas" width="960" height="540" aria-label="Animated Story Mission 100 ending"></canvas>
+      <div class="hudLine" id="postCampaignEndingCaption">The world is changing...</div>
+      <div class="postCampaignEndingProgress"><span id="postCampaignEndingProgress"></span></div>
+      <div class="row" style="margin-top:12px"><button class="good" id="postCampaignEndingReplayBtn" type="button" onclick="replayPostCampaignEnding()">▶ Watch Again</button><button class="ghost" type="button" onclick="closePostCampaignEnding();openWorldMapCampaign()">🌐 Open Command Network</button><button class="ghost" type="button" onclick="closePostCampaignEnding()">Continue to Results</button></div>
+    </div>
+  </div>
+</div>
+
 <div id="liveSquadOverlay" aria-hidden="true">
   <div class="squadShell">
     <div class="squadTop">
-      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V10.34 • Ancient Temple Finale</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
+      <div><div class="squadKicker" id="liveSquadVersionLabel">Tiger Strike V11.0 • World After the Ancient Tiger</div><div class="squadTitle" id="liveSquadTitle">🐅 Live Squad</div></div>
       <button class="squadClose" type="button" onclick="closeLiveSquadOps()">Close</button>
     </div>
     <div id="squadBody"></div>
@@ -3573,20 +3598,21 @@
 <div id="tutorialArrow">👇</div>
 
 <!-- IMPORTANT: load extraction geometry, then game (defines window.S and functions), then tutorial -->
-  <script src="./extraction-geometry.js?v=5220-ancient-temple-finale"></script>
-  <script src="./ammo-modes.js?v=5220-ancient-temple-finale"></script>
-  <script src="./government-policy.js?v=5220-ancient-temple-finale"></script>
-  <script src="./tiger-intelligence.js?v=5220-ancient-temple-finale"></script>
-  <script src="./living-world.js?v=5220-ancient-temple-finale"></script>
-  <script src="./mission-map-truth.js?v=5220-ancient-temple-finale"></script>
-  <script src="./game.js?v=5220-ancient-temple-finale"></script>
-  <script src="./story-cinematics.js?v=5220-ancient-temple-finale"></script>
-  <script src="./field-systems.js?v=5220-ancient-temple-finale"></script>
-  <script src="./tutorial.js?v=5220-ancient-temple-finale"></script>
-  <script src="./squad-motion.js?v=5220-ancient-temple-finale"></script>
-  <script src="./shared-battlefield-renderer.js?v=5220-ancient-temple-finale"></script>
-  <script src="./squad-coop.js?v=5220-ancient-temple-finale"></script>
-  <script src="./extraction-qa.js?v=5220-ancient-temple-finale"></script>
+  <script src="./extraction-geometry.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./ammo-modes.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./government-policy.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./tiger-intelligence.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./living-world.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./mission-map-truth.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./post-campaign.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./game.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./story-cinematics.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./field-systems.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./tutorial.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./squad-motion.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./shared-battlefield-renderer.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./squad-coop.js?v=5221-world-after-ancient-tiger"></script>
+  <script src="./extraction-qa.js?v=5221-world-after-ancient-tiger"></script>
 <script>
 (() => {
   const recoverOnceKey = "ts_boot_recover_once_4497";

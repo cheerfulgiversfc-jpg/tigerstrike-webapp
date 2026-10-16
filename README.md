@@ -857,6 +857,13 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Ancient Temple Finale persists as the final Living World district. Clean results unlock final-swarm sensors, guardian-seal defenses, Ancient Tiger Ward Command, and final-battle supplies.
 - Solo and co-op use the same V10.34 mission-truth manifest, landmarks, routes, exact encounters, optional final capture rule, and campaign-ending extraction while retaining separate progression.
 
+### V11.0 World After the Ancient Tiger
+
+- Completing Story Mission 100 now plays one of two in-engine ending movies: a living sanctuary ending for capturing the Ancient Tiger or an unstable power-vacuum ending for killing it. The earned ending can be replayed from the World Map.
+- The post-campaign command network promotes all 30 persistent Living World districts into one dashboard. Every district shows its real tiger pressure, settlement safety, blood scent, clears, rescues, captures, and kills.
+- Three rotating crisis operations are fully playable on real Story battlefields: Settlement Siege, Escaped Alpha Transport, and Government Response Raid. They modify encounter counts and objectives, pay receipt-protected rewards, return to the command network after completion, and never reset Missions 1–100.
+- Settlement Siege requires a six-civilian evacuation against an eight-tiger pack. Escaped Alpha Transport requires a live Alpha recapture. Government Response Raid forces four hostile government units into a civilian-and-tiger battlefield.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

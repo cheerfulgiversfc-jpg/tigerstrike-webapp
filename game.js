@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5220";
+const TS_BUILD = "5221";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -11473,6 +11473,18 @@ function storyMissionForState(state=S){
     }
   }
 
+  // V11.0 post-campaign crises reuse the real Story battlefield and systems.
+  // The active operation changes the objective/encounter, never the player's
+  // saved Story unlock level or the authored Mission 1–100 truth manifest.
+  if(variant === STORY_VARIANTS.CAMPAIGN){
+    const postCampaignOperation = src?.worldMapCampaign?.postCampaignOperation;
+    if(postCampaignOperation?.active && Number(postCampaignOperation.missionLevel || 0) === Number(cfg.number || 0)){
+      const postCfg = window.TigerPostCampaign?.applyCrisisProfile?.(cfg, postCampaignOperation) || cfg;
+      if(postCfg.convoyMission) applyConvoyMissionProfile(postCfg, src);
+      return postCfg;
+    }
+  }
+
   return cfg;
 }
 function storyMissionDisplayLabel(state=S){
@@ -11721,9 +11733,12 @@ function storyBranchPathLabel(path){
 function resolveStoryEndingFromState(state=S){
   const src = (state && typeof state === "object") ? state : S;
   const branch = ensureStoryBranchingState(src);
-  const finalChoice = String(src._storyFinalOutcome || "").trim().toUpperCase() === "CAPTURE" ? "CAPTURE" : "KILL";
+  const explicit = String(src._storyFinalOutcome || "").trim().toUpperCase();
+  const savedEndingEntry = Object.entries(STORY_ENDING_KEY_MAP).find(([, descriptor])=>descriptor.key === branch.lastEndingKey);
+  const savedChoice = savedEndingEntry?.[0]?.endsWith("_CAPTURE") ? "CAPTURE" : (savedEndingEntry ? "KILL" : "");
+  const finalChoice = explicit === "CAPTURE" ? "CAPTURE" : (explicit === "KILL" ? "KILL" : (savedChoice || "KILL"));
   const path = normalizeStoryBranchPath(branch.path);
-  const descriptor = STORY_ENDING_KEY_MAP[`${path}_${finalChoice}`] || STORY_ENDING_KEY_MAP.BALANCED_KILL;
+  const descriptor = savedEndingEntry?.[1] || STORY_ENDING_KEY_MAP[`${path}_${finalChoice}`] || STORY_ENDING_KEY_MAP.BALANCED_KILL;
   return { ...descriptor, path, finalChoice };
 }
 function recordStoryChapterBossChoice(chapter=1, choice="KILL", state=S){
@@ -11845,7 +11860,7 @@ const WORLD_MAP_WEEKLY_LADDER = Object.freeze([
 ]);
 function defaultWorldMapCampaignState(){
   return {
-    version:3,
+    version:4,
     selectedRegionId:"river_gate",
     activeRegionId:"",
     activeRunId:"",
@@ -11910,6 +11925,10 @@ function defaultWorldMapCampaignState(){
     lastEventSeed:"",
     lastCrisisSeed:"",
     lastOutcome:"",
+    postCampaignOperation:null,
+    postCampaignCompleted:{},
+    postCampaignClears:0,
+    postCampaignEndingSeen:false,
     livingWorld:window.TigerLivingWorld?.defaultState?.() || null,
   };
 }
@@ -11927,7 +11946,7 @@ function ensureWorldMapCampaignState(state=S){
   const out = {
     ...defaultWorldMapCampaignState(),
     ...src,
-    version:3,
+    version:4,
     defendedRegions:(src.defendedRegions && typeof src.defendedRegions === "object") ? src.defendedRegions : {},
     regionControl:(src.regionControl && typeof src.regionControl === "object") ? src.regionControl : {},
     completedMissions:(src.completedMissions && typeof src.completedMissions === "object") ? src.completedMissions : {},
@@ -11947,6 +11966,10 @@ function ensureWorldMapCampaignState(state=S){
     regionalSupplies:(src.regionalSupplies && typeof src.regionalSupplies === "object") ? src.regionalSupplies : {},
     factionInfluence:(src.factionInfluence && typeof src.factionInfluence === "object") ? src.factionInfluence : {},
     rivalSabotage:(src.rivalSabotage && typeof src.rivalSabotage === "object") ? src.rivalSabotage : {},
+    postCampaignOperation:(src.postCampaignOperation && typeof src.postCampaignOperation === "object") ? src.postCampaignOperation : null,
+    postCampaignCompleted:(src.postCampaignCompleted && typeof src.postCampaignCompleted === "object") ? src.postCampaignCompleted : {},
+    postCampaignClears:Math.max(0, Math.floor(Number(src.postCampaignClears || 0))),
+    postCampaignEndingSeen:!!src.postCampaignEndingSeen,
     season:(src.season && typeof src.season === "object") ? src.season : {},
     unlockedRegionIds:Array.isArray(src.unlockedRegionIds) ? src.unlockedRegionIds.map(String) : ["river_gate"],
     totalRewardCash:Math.max(0, Math.floor(Number(src.totalRewardCash || 0))),
@@ -13871,12 +13894,111 @@ function worldMapLivingChapterOneHtml(wm=ensureWorldMapCampaignState(S)){
     </div>`;
   }).join("");
   return `<section class="card" id="livingWorldChapterOne" style="margin-top:10px;border-color:rgba(74,222,128,.62);background:linear-gradient(145deg,rgba(6,54,45,.50),rgba(8,15,29,.96))">
-    <div class="hudLine"><b>🌍 Living Story Districts • Missions 1–60</b></div>
-    <div class="small">Missions 1–60 now react to lasting results. Stormpeak Summit preserves the five-person helicopter rescue, exact twelve-tiger mountain swarm, and single 3,200-HP Mountain Alpha while adding Rescue Command, summit swarm sensors, defended landing zones, and an Alpha tracking ward. Solo and Shared Story each keep their own progression.</div>
+    <div class="hudLine"><b>🌍 Living Story Districts • Missions 1–100</b></div>
+    <div class="small">All thirty Story districts remember rescues, captures, kills, blood scent, Solo clears, and Shared Story clears. Those results now feed the post-campaign command network after Mission 100.</div>
     <div class="small" style="margin-top:6px"><b>Latest:</b> ${worldMapEsc(living.headline)}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">${cards}</div>
   </section>`;
 }
+
+function postCampaignUnlocked(state=S){
+  return storyEndgameUnlocked(state) && !!ensureStoryBranchingState(state).lastEndingKey;
+}
+function worldMapPostCampaignHtml(wm=ensureWorldMapCampaignState(S)){
+  const api = window.TigerPostCampaign;
+  const livingApi = livingWorldApi();
+  const living = livingWorldState(wm);
+  if(!api || !livingApi || !living) return "";
+  if(!postCampaignUnlocked(S)){
+    return `<section class="card" style="margin-top:10px;border-color:rgba(148,163,184,.40)"><div class="hudTitle">🔒 V11.0 • World After the Ancient Tiger</div><div class="small">Complete Story Mission 100 to unlock the thirty-district command network, ending replay, and playable world crises.</div></section>`;
+  }
+  const board = api.crisisBoard(livingApi.DISTRICTS, living, Date.now());
+  const active = wm.postCampaignOperation?.active ? wm.postCampaignOperation : null;
+  const crisisCards = board.map((crisis)=>{
+    const district = living.districts[crisis.districtId];
+    const isActive = !!(active?.runId && active.typeId === crisis.id && active.districtId === crisis.districtId);
+    return `<div class="card" style="border-color:${crisis.id === "government_raid" ? "rgba(248,113,113,.62)" : "rgba(250,204,21,.55)"}">
+      <div class="small">${crisis.icon} LIVE CRISIS • ${worldMapEsc(crisis.districtName)} • Story battlefield ${crisis.missionLevel}</div>
+      <div class="hudTitle">${worldMapEsc(crisis.name)}</div>
+      <div class="small">${worldMapEsc(crisis.desc)}</div>
+      <div class="small">District state: Tiger Pressure ${Math.round(Number(district?.tigerPressure || 0))}% • Safety ${Math.round(Number(district?.settlementSafety || 0))}% • Blood Scent ${Math.round(Number(district?.bloodScent || 0))}%</div>
+      <div class="small">Real objective: ${worldMapEsc(crisis.objective)}</div>
+      <button class="good" onclick="startPostCampaignCrisis('${crisis.id}','${crisis.districtId}',${crisis.missionLevel})">${isActive ? "Resume Crisis" : "Deploy Solo"}</button>
+    </div>`;
+  }).join("");
+  const districtRows = livingApi.DISTRICTS.map((definition)=>{
+    const district = living.districts[definition.id];
+    const color = district.tigerPressure >= 75 ? "#fb7185" : (district.tigerPressure >= 55 ? "#fbbf24" : "#4ade80");
+    return `<div class="card" style="border-color:${color};min-height:118px"><div class="small">MISSIONS ${worldMapEsc(definition.missions)}</div><div class="hudTitle">${worldMapEsc(definition.name)}</div><div class="small">🐅 ${district.tigerPressure}% • 🏘️ ${district.settlementSafety}% • 🩸 ${district.bloodScent}%</div><div class="small">Clears ${district.clears} • Rescues ${district.rescues} • Captures ${district.captures} • Kills ${district.kills}</div></div>`;
+  }).join("");
+  const ending = resolveStoryEndingFromState(S);
+  return `<section class="card" id="postCampaignCommandNetwork" style="margin-top:10px;border-color:rgba(192,132,252,.66);background:linear-gradient(145deg,rgba(45,20,70,.72),rgba(8,15,29,.97))">
+    <div class="hudTitle">🌐 V11.0 • World After the Ancient Tiger</div>
+    <div class="hudLine">Post-Campaign Command Network • 30/30 districts online • ${Math.max(0,Number(wm.postCampaignClears || 0))} crisis clears</div>
+    <div class="small">Story Missions 1–100 remain complete and replayable. These rotating crises launch real Story battlefields with new objectives and leave your campaign unlocks untouched.</div>
+    <div class="row" style="margin-top:8px"><button class="ghost" onclick="replayPostCampaignFinale()">🎬 Watch ${worldMapEsc(ending.title)} Again</button><button class="ghost" onclick="startStoryNgPlus()">🧬 Start New Game+</button></div>
+    <div class="divider"></div><div class="hudTitle">Three Playable Crisis Operations</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">${crisisCards}</div>
+    <details style="margin-top:12px"><summary class="hudTitle" style="cursor:pointer">View all 30 command districts</summary><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:10px">${districtRows}</div></details>
+  </section>`;
+}
+
+function replayPostCampaignFinale(){
+  if(!postCampaignUnlocked(S)) return toast("Complete Story Mission 100 to unlock the ending movie.");
+  const ending = resolveStoryEndingFromState(S);
+  window.TigerPostCampaign?.openEnding?.(ending.finalChoice, ending);
+  return false;
+}
+
+function startPostCampaignCrisis(typeId, districtId, missionLevel){
+  if(!postCampaignUnlocked(S)) return toast("Complete Story Mission 100 before entering the post-campaign world.");
+  const api = window.TigerPostCampaign;
+  const type = api?.crisisById?.(typeId);
+  const district = livingWorldApi()?.districtById?.(districtId);
+  if(!type || !district) return toast("That crisis is unavailable. Refresh the command map.");
+  const level = clamp(Math.floor(Number(missionLevel || district.minMission || 1)), district.minMission, district.maxMission);
+  activateModeProfile("Story", S);
+  S.storyVariant = STORY_VARIANTS.CAMPAIGN;
+  S.storyPartyMode = "solo";
+  const wm = ensureWorldMapCampaignState(S);
+  const runId = `POST-${api.cycleKey(Date.now())}-${type.id}-${district.id}`;
+  wm.postCampaignOperation = { active:true, runId, typeId:type.id, districtId:district.id, districtName:district.name, missionLevel:level, startedAt:Date.now() };
+  wm.returnAfterComplete = true;
+  wm.lastOutcome = `${type.name} launched in ${district.name}. Complete the real Story ${level} battlefield objective to resolve it.`;
+  S.storyLevel = level;
+  S.storyLastMission = Math.max(100, Number(S.storyLastMission || 100));
+  const overlay = document.getElementById("worldMapCampaignOverlay");
+  if(overlay) overlay.style.display = "none";
+  beginMissionTransitionGuard("post-campaign-crisis", 1400);
+  saveResumeTransitionBoundary("post-campaign-crisis", { preserveWorldMap:true });
+  deploy({ skipBrief:false, skipStoryScene:true, source:"post-campaign", carryStats:false });
+  toast(`${type.icon} ${type.name} • ${district.name}. This is a real playable crisis.`);
+  save(true);
+  return false;
+}
+
+function recordPostCampaignCrisisOutcome({missionStats=null}={}){
+  const wm = ensureWorldMapCampaignState(S);
+  const operation = wm.postCampaignOperation;
+  if(!operation?.active) return "";
+  const type = window.TigerPostCampaign?.crisisById?.(operation.typeId);
+  if(!type) return "";
+  const runId = String(operation.runId || "");
+  wm.postCampaignCompleted = wm.postCampaignCompleted && typeof wm.postCampaignCompleted === "object" ? wm.postCampaignCompleted : {};
+  if(runId && wm.postCampaignCompleted[runId]) return "";
+  if(runId) wm.postCampaignCompleted[runId] = Date.now();
+  const cash = Math.max(0, Math.floor(Number(type.rewardCash || 0)));
+  const xp = Math.max(0, Math.floor(Number(type.rewardXp || 0)));
+  S.funds = Math.max(0, Number(S.funds || 0)) + cash;
+  if(cash) trackCashEarned(cash);
+  if(xp) addXP(xp);
+  wm.postCampaignClears = Math.max(0, Math.floor(Number(wm.postCampaignClears || 0))) + 1;
+  wm.lastOutcome = `${type.name} resolved in ${operation.districtName}. +$${cash.toLocaleString()} • +${xp}XP • ${Math.max(0,Number(missionStats?.evac || 0))} civilians evacuated.`;
+  wm.postCampaignOperation = null;
+  wm.returnAfterComplete = true;
+  return `\nPost-Campaign Crisis: ${wm.lastOutcome}\n`;
+}
+
 function renderWorldMapCampaign(){
   const root = document.getElementById("worldMapCampaignRoot");
   if(!root) return;
@@ -13952,6 +14074,7 @@ function renderWorldMapCampaign(){
     ${worldMapDebugInfoPanelHtml(selected, stats, wm)}
     ${worldMapSeasonHtml(selected)}
     ${worldMapPendingChoiceHtml(wm)}
+    ${worldMapPostCampaignHtml(wm)}
     ${worldMapLivingChapterOneHtml(wm)}
     ${stats.crisis ? `<div class="card" style="margin-top:10px;border-color:rgba(248,113,113,.62);background:linear-gradient(145deg,rgba(76,18,28,.72),rgba(8,15,26,.94))"><div class="hudTitle">World Crisis Active</div><div class="small">${worldMapEsc(worldMapCrisisLine(stats.crisis))}</div><div class="small">${worldMapEsc(worldMapCrisisRewardText(stats.crisis))}</div></div>` : ""}
     ${wm.lastOutcome ? `<div class="card" style="margin-top:10px;border-color:rgba(74,222,128,.44)"><div class="hudTitle">Last Campaign Result</div><div class="small">${worldMapEsc(wm.lastOutcome)}</div></div>` : ""}
@@ -39154,6 +39277,7 @@ function currentMapKey(){
 
 function missionMapTruthSpec(state=S){
   if(normalizeModeName(state?.mode) !== "Story") return null;
+  if(state?.worldMapCampaign?.postCampaignOperation?.active) return null;
   const level = clamp(Math.floor(Number(storyMissionLevelForState(state) || state?.storyLevel || 1)), 1, 100);
   return window.TigerStrikeMissionMapTruth?.get?.(level) || null;
 }
@@ -41456,7 +41580,7 @@ function createRivalHunter(faction, slotIndex=0){
 function rivalHuntersAllowedForMission(state=S){
   if(window.__TUTORIAL_MODE__) return false;
   if(normalizeModeName(state?.mode || "Story") === "Survival") return false;
-  if(governmentRogueActive(state)) return true;
+  if(governmentRogueActive(state) || state?._forceGovernmentResponse) return true;
   const wm = state?.worldMapCampaign;
   const activeRegionId = String(wm?.activeRivalRegionId || "");
   const activeRegion = activeRegionId ? worldMapRegionById(activeRegionId) : null;
@@ -41483,7 +41607,8 @@ function spawnRivalHunters(){
   const storyLevel = clamp(Math.floor(Number(S.storyLevel || 1)), 1, STORY_CAMPAIGN_OBJECTIVES.length);
   const arcadeLevel = clamp(Math.floor(Number(S.arcadeLevel || 1)), 1, ARCADE_CAMPAIGN_OBJECTIVES.length);
   const missionLevel = S.mode === "Story" ? storyLevel : arcadeLevel;
-  const rogueHunt = governmentRogueActive(S);
+  const forcedGovernmentRaid = !!S._forceGovernmentResponse;
+  const rogueHunt = governmentRogueActive(S) || forcedGovernmentRaid;
   if(!rogueHunt && missionLevel < RIVAL_MIN_SPAWN_LEVEL){
     clearRivalHunters("level");
     return;
@@ -41492,15 +41617,15 @@ function spawnRivalHunters(){
     clearRivalHunters("no-rival-objective");
     return;
   }
-  const baseChance = rogueHunt ? 0.58 : (S.mode === "Story" ? 0.30 : 0.45);
+  const baseChance = forcedGovernmentRaid ? 1 : (rogueHunt ? 0.58 : (S.mode === "Story" ? 0.30 : 0.45));
   const bonus = clamp((missionLevel - RIVAL_MIN_SPAWN_LEVEL) * 0.04, 0, 0.34);
   const spawnChance = clamp(baseChance + bonus, 0, 0.92);
-  if(Math.random() > spawnChance){
+  if(!forcedGovernmentRaid && Math.random() > spawnChance){
     clearRivalHunters("chance");
     return;
   }
 
-  const countBase = rogueHunt ? (missionLevel >= 20 ? 3 : 2) : (missionLevel >= 22 ? 3 : (missionLevel >= 12 ? 2 : 1));
+  const countBase = forcedGovernmentRaid ? 4 : (rogueHunt ? (missionLevel >= 20 ? 3 : 2) : (missionLevel >= 22 ? 3 : (missionLevel >= 12 ? 2 : 1)));
   const count = clamp(countBase + (Math.random() < (rogueHunt ? 0.42 : 0.26) ? 1 : 0), 1, RIVAL_MAX_UNITS);
   const faction = rogueHunt
     ? RIVAL_FACTION_BY_KEY.GOV_RESPONSE
@@ -41518,7 +41643,7 @@ function spawnRivalHunters(){
   if(rogueHunt){
     const program=ensureGovernmentProgramState(S);
     program.responseDeployments+=1;
-    setEventText(`🚨 Government response squad deployed. You have been found.`, 4.2);
+    setEventText(forcedGovernmentRaid ? `🚨 Crisis objective active: government response raid.` : `🚨 Government response squad deployed. You have been found.`, 4.2);
   }else setEventText(`⚠️ Rival faction spotted: ${faction.name}.`, 3.2);
 }
 
@@ -42748,6 +42873,7 @@ function deploy(opts={}){
   spawnCivilians();
   spawnTigers();
   initializeMissionTigerSpawnControl(S);
+  S._forceGovernmentResponse = !!((S.mode === "Story" ? storyMissionForState(S) : null)?.forceGovernmentResponse);
   spawnRivalHunters();
   seedTigerInvestigationClues(S);
   if(settlementServiceUnlocked("scouts")){
@@ -51505,9 +51631,10 @@ function checkMissionComplete(){
   const trapTriggerReady = !arcadeMission || (S.stats.trapsTriggered || 0) >= (arcadeMission.trapTriggerRequired || 0);
   const noKillReady = !arcadeMission || !arcadeMission.captureOnly || (S.stats.kills || 0) === 0;
   const denRaidReady = !activeMission?.denRaid || tigerDenRaidObjectiveReady(S);
+  const rivalObjectiveReady = !activeMission?.forceGovernmentResponse || !(S.rivalHunters || []).some((unit)=>unit?.alive);
   const mapTruthReady = !storyMission || missionMapTruthReady(S);
   const rescueObjectiveReady = civTotal > 0 ? evacReady : !tAlive;
-  const primaryObjectivesReady = rescueObjectiveReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady && denRaidReady && mapTruthReady;
+  const primaryObjectivesReady = rescueObjectiveReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady && denRaidReady && rivalObjectiveReady && mapTruthReady;
 
   if(primaryObjectivesReady){
     activateMissionTigerSpawnLockdown("primary-objectives-complete");
@@ -51541,6 +51668,15 @@ function checkMissionComplete(){
       const truth = missionMapTruthSpec(S);
       const next = truth?.landmarks?.find((item)=>String(item.id) === String(pending[0]));
       setEventText(`Map objective remains: reach and engage ${next?.label || "the marked mission location"}.`, 3.2);
+    }
+    return;
+  }
+
+  if(!tAlive && evacReady && captureReady && trapPlaceReady && trapTriggerReady && noKillReady && denRaidReady && mapTruthReady && !rivalObjectiveReady){
+    if(!S.missionEnded && !S.gameOver && Date.now() > Number(S._governmentRaidHintAt || 0)){
+      S._governmentRaidHintAt = Date.now() + 2800;
+      const remaining = (S.rivalHunters || []).filter((unit)=>unit?.alive).length;
+      setEventText(`Government raid remains: stop ${remaining} response unit${remaining === 1 ? "" : "s"} before extraction.`, 3.2);
     }
     return;
   }
@@ -51885,6 +52021,7 @@ function checkMissionComplete(){
         missionStats,
         missionLevel:activeMission?.number || storyMission?.number || S.storyLevel,
       });
+      const postCampaignCrisisNote = recordPostCampaignCrisisOutcome({ missionStats });
       const socialChallenge = recordSocialRescueMission({
         missionStats,
         civTotal,
@@ -51945,9 +52082,15 @@ function checkMissionComplete(){
       });
 
       document.getElementById("completeText").innerText =
-        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${director5Note}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${governmentNote}${fieldCashTruthNote}${livingWorldNote}${worldMapCampaignNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
+        `${heading}${arcadeSummary}${chapterCutscene}${chapterRewardNote}${storyProgressNote}${finalEnding}${endgamePayoutNote}${convoyBonusNote}${denRaidNote}${extractionNote}${director5Note}${settlementDefenseNote}${settlementNote}${squadProgressNote}${upkeepNote}${rewards2Note}${governmentNote}${fieldCashTruthNote}${livingWorldNote}${worldMapCampaignNote}${postCampaignCrisisNote}${liveCoopWorldNote}${cinematicBossHuntNote}${storyCampaign3Note}\n• Tigers Killed: ${missionStats.kills}\n• Tigers Captured: ${missionStats.captures}\n• Civilians Evacuated: ${missionStats.evac}\n• Traps Set: ${missionStats.trapsPlaced||0}\n• Trap Stops: ${missionStats.trapsTriggered||0}\n• Cash Earned: $${Number(missionStats.cashEarned || 0).toLocaleString()}\n• Shots Fired: ${missionStats.shots}\n\nYou can Shop/Inventory and then start next mission.`;
       document.getElementById("completeOverlay").style.display="flex";
       renderWildlifeTransportCinematic({ missionStats, activeMission, storyMission, arcadeMission });
+      if(storyMission?.number === 100 && storyVariant === STORY_VARIANTS.CAMPAIGN){
+        const endingInfo = resolveStoryEndingFromState(S);
+        const wm = ensureWorldMapCampaignState(S);
+        wm.postCampaignEndingSeen = true;
+        setTimeout(()=>window.TigerPostCampaign?.openEnding?.(endingInfo.finalChoice, endingInfo), 320);
+      }
       addXP(120);
       const missionSeasonPoints = (storyMission ? 24 : 18) + ((storyMission?.boss || arcadeMission?.boss) ? 8 : 0);
       grantSeasonPassPoints(missionSeasonPoints, (storyMission?.boss || arcadeMission?.boss) ? "Boss mission clear" : "Mission clear");
