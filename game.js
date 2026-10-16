@@ -1,5 +1,5 @@
 const tg = window.Telegram?.WebApp;
-const TS_BUILD = "5218";
+const TS_BUILD = "5219";
 const FLEXIBLE_SHARED_STORY_ENABLED = true;
 const FLEXIBLE_SHARED_STORY_PILOT_MAX_LEVEL = 100;
 const LEGACY_PREMIUM_BIPED_OVERLAYS_ENABLED = false;
@@ -11454,14 +11454,14 @@ function storyMissionForState(state=S){
     }
   }
 
-  // V10.32: every newly released batch extends the same authored mission
+  // V10.33: every newly released batch extends the same authored mission
   // truth used by Solo and Live Squad. Never ship a mission batch without it.
   // This runs after generic variety so named counts and map objectives cannot
   // silently drift away from the mission shown to the player.
-  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 93){
+  if(variant === STORY_VARIANTS.CAMPAIGN && cfg.number <= 97){
     const truth = window.TigerStrikeMissionMapTruth?.get?.(cfg.number);
     if(truth){
-      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.32";
+      cfg.mapTruthVersion = window.TigerStrikeMissionMapTruth.VERSION || "10.33";
       cfg.mapTruthTitle = truth.title;
       cfg.mapTruthRequiredActionIds = [...truth.requiredActionIds];
       cfg.civilians = Math.max(0, Number(truth.civilians || 0));
@@ -39904,8 +39904,9 @@ function spawnLivingWorldDistrictSupport(){
   const ruins = effect.districtId === "ancient_ruins_corridor";
   const phantom = effect.districtId === "phantom_jungle_finale";
   const guardian = effect.districtId === "ancient_guardian_core";
+  const evacuation = effect.districtId === "guardian_evacuation_front";
   const baseLabel = floodplain ? (effect.support?.survivorCamp ? "Floodplain Lifeline Camp" : "Floodplain Field Clinic") : (brokenwater ? (effect.support?.survivorCamp ? "Brokenwater Wildlife Station" : "Brokenwater Rescue Station") : (crownfall ? (effect.support?.bossWard ? "Crownfall Twin Ward Command" : "Crownfall Defense Command") : (ember ? (effect.support?.evacCorridor ? "Emberfall Firebreak Command" : "Emberfall Relief Command") : (silent ? (effect.support?.evacCorridor ? "Silent Village Evac Command" : "Silent Village Search Command") : (shadow ? (effect.support?.stealthArray ? "Shadow Basin Tracking Command" : "Shadow Basin Forward Command") : (riverveil ? (effect.support?.survivorCamp ? "Riverveil Survivor Station" : "Riverveil Rescue Station") : (veil ? (effect.support?.veilLab ? "Veil Canopy Field Lab" : "Veil Canopy Research Outpost") : (crimson ? "Crimson Hollow Conservation Camp" : (amara ? "Amara Haven Field Hospital" : (bloodroot ? (effect.support?.researchPost ? "Bloodroot Research Clinic" : "Bloodroot Trail Clinic") : (iron ? "Iron Roar Armory Depot" : (jungle ? "Jungle Spine Ranger Station" : "River Gate Safe House"))))))))))));
-  const label = guardian ? (effect.support?.veilLab ? "Guardian Conservation Command" : "Ancient Guardian Command") : (phantom ? (effect.support?.bossWard ? "Phantom Rage Ward Command" : "Phantom Jungle Command") : (ruins ? (effect.support?.evacCorridor ? "Ancient Ruins Air-Evac Command" : "Ancient Ruins Expedition Command") : (hidden ? (effect.support?.veilLab ? "Shadeclaw Conservation Command" : "Hidden Jungle Research Command") : (royalfang ? (effect.support?.bossWard ? "Tiger King Royal Command" : "Royal Campaign Command") : (crownpath ? (effect.support?.evacCorridor ? "Crownpath Evacuation Command" : "Crownpath Caravan Command") : (kings ? (effect.support?.veilLab ? "King's Reach Conservation Command" : "King's Reach Evacuation Command") : (bloodfang ? (effect.support?.bossWard ? "Bloodfang Rage Ward Command" : "Bloodfang Research Command") : (nightveil ? (effect.support?.stealthArray ? "Nightveil Signal Command" : "Nightveil Base Command") : (deepwild ? (effect.support?.veilLab ? "Deepwild Conservation Lab" : "Deepwild Research Command") : (stormpeak ? (effect.support?.stealthArray ? "Stormpeak Alpha Command" : "Stormpeak Rescue Command") : (whiteout ? (effect.support?.veilLab ? "Whiteout Weather Station" : "Whiteout Rescue Lodge") : (silverpeak ? (effect.support?.veilLab ? "Silverpeak Wildlife Station" : "Silverpeak Ranger Lodge") : (tidefang ? (effect.support?.survivorCamp ? "Tidefang Marine Command" : "Tidefang Marine Station") : baseLabel)))))))))))));
+  const label = evacuation ? (effect.support?.evacCorridor ? "Final Air-Evac Command" : "Guardian Evacuation Command") : (guardian ? (effect.support?.veilLab ? "Guardian Conservation Command" : "Ancient Guardian Command") : (phantom ? (effect.support?.bossWard ? "Phantom Rage Ward Command" : "Phantom Jungle Command") : (ruins ? (effect.support?.evacCorridor ? "Ancient Ruins Air-Evac Command" : "Ancient Ruins Expedition Command") : (hidden ? (effect.support?.veilLab ? "Shadeclaw Conservation Command" : "Hidden Jungle Research Command") : (royalfang ? (effect.support?.bossWard ? "Tiger King Royal Command" : "Royal Campaign Command") : (crownpath ? (effect.support?.evacCorridor ? "Crownpath Evacuation Command" : "Crownpath Caravan Command") : (kings ? (effect.support?.veilLab ? "King's Reach Conservation Command" : "King's Reach Evacuation Command") : (bloodfang ? (effect.support?.bossWard ? "Bloodfang Rage Ward Command" : "Bloodfang Research Command") : (nightveil ? (effect.support?.stealthArray ? "Nightveil Signal Command" : "Nightveil Base Command") : (deepwild ? (effect.support?.veilLab ? "Deepwild Conservation Lab" : "Deepwild Research Command") : (stormpeak ? (effect.support?.stealthArray ? "Stormpeak Alpha Command" : "Stormpeak Rescue Command") : (whiteout ? (effect.support?.veilLab ? "Whiteout Weather Station" : "Whiteout Rescue Lodge") : (silverpeak ? (effect.support?.veilLab ? "Silverpeak Wildlife Station" : "Silverpeak Ranger Lodge") : (tidefang ? (effect.support?.survivorCamp ? "Tidefang Marine Command" : "Tidefang Marine Station") : baseLabel))))))))))))));
   let point = safeSpawnPoint(worldW * (floodplain ? 0.72 : (brokenwater ? 0.34 : (crownfall ? 0.52 : (ember ? 0.38 : (silent ? 0.34 : (shadow ? 0.68 : (riverveil ? 0.32 : (veil ? 0.36 : (crimson ? 0.44 : (amara ? 0.72 : (bloodroot ? 0.31 : (iron ? 0.38 : (jungle ? 0.34 : 0.28))))))))))))), worldH * (floodplain ? 0.34 : (brokenwater ? 0.68 : (crownfall ? 0.66 : (ember ? 0.62 : (silent ? 0.36 : (shadow ? 0.34 : (riverveil ? 0.68 : (veil ? 0.62 : (crimson ? 0.66 : (amara ? 0.34 : (bloodroot ? 0.58 : (iron ? 0.64 : (jungle ? 0.48 : 0.70))))))))))))), 24, true, true);
   if(tidefang) point = safeSpawnPoint(worldW * 0.32, worldH * 0.68, 24, true, true);
   if(silverpeak) point = safeSpawnPoint(worldW * 0.36, worldH * 0.62, 24, true, true);
@@ -39921,6 +39922,7 @@ function spawnLivingWorldDistrictSupport(){
   if(ruins) point = safeSpawnPoint(worldW * 0.40, worldH * 0.62, 24, true, true);
   if(phantom) point = safeSpawnPoint(worldW * 0.44, worldH * 0.66, 24, true, true);
   if(guardian) point = safeSpawnPoint(worldW * 0.36, worldH * 0.62, 24, true, true);
+  if(evacuation) point = safeSpawnPoint(worldW * 0.40, worldH * 0.62, 24, true, true);
   if(inMapScenarioKeepout(point.x, point.y, 24)){
     point = findNearestOpenPoint(point.x, point.y, 24, {
       avoidKeepout:true,
@@ -39947,6 +39949,7 @@ function spawnLivingWorldDistrictSupport(){
     ancient_ruins_corridor:"ancient_ruins_command",
     phantom_jungle_finale:"phantom_jungle_command",
     ancient_guardian_core:"ancient_guardian_command",
+    guardian_evacuation_front:"guardian_evac_command",
   })[effect.districtId] || "river_safe_house";
   S.mapInteractables.push({
     id:`LIVING-${String(effect.districtId || "DISTRICT").toUpperCase()}-${Math.max(1, Number(S.storyLevel || 1))}`,
@@ -39976,7 +39979,20 @@ function spawnLivingWorldRiverGateSafeHouse(){
 
 function configureLivingWorldDistrictRoutes(){
   const effect = S._livingWorldMission;
-  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit","deepwild_research","nightveil_frontier","bloodfang_dominion","kings_reach","crownpath_exodus","royal_fang_citadel","hidden_jungle_frontier","ancient_ruins_corridor","phantom_jungle_finale","ancient_guardian_core"].includes(effect.districtId)) return false;
+  if(!effect?.enabled || !["jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit","deepwild_research","nightveil_frontier","bloodfang_dominion","kings_reach","crownpath_exodus","royal_fang_citadel","hidden_jungle_frontier","ancient_ruins_corridor","phantom_jungle_finale","ancient_guardian_core","guardian_evacuation_front"].includes(effect.districtId)) return false;
+  if(effect.districtId === "guardian_evacuation_front"){
+    const bridge = (S.mapInteractables || []).find((item)=>item?.kind === "bridge");
+    if(bridge){ bridge.routeOpen = true; bridge.label = effect.support?.evacCorridor ? "Final Air-Evac Corridor" : "Ancient Convoy Emergency Route"; }
+    const generator = (S.mapInteractables || []).find((item)=>item?.kind === "generator");
+    if(generator){ generator.powered = !!effect.support?.searchBeacons; generator.label = generator.powered ? "Guardian Evacuation Beacon Network" : "Guardian Evacuation Radio"; }
+    const vehicle = (S.mapInteractables || []).find((item)=>item?.kind === "vehicle");
+    if(vehicle && effect.support?.clinicRelay){ vehicle.repaired = true; vehicle.label = "Ancient Jungle Rescue Convoy"; }
+    const barricade = (S.mapInteractables || []).find((item)=>item?.kind === "barricade");
+    if(barricade && effect.support?.clinicRelay){ barricade.label = "Trapped Patrol Rescue Perimeter"; barricade.effectR = Math.max(Number(barricade.effectR || 0), barricadeEffectRadius()); }
+    const gate = (S.mapInteractables || []).find((item)=>item?.kind === "gate");
+    if(gate){ gate.routeOpen = true; gate.label = effect.support?.evacCorridor ? "Final Helicopter Corridor Gate" : "Guardian Evacuation Gate"; }
+    __blockedAtCache.clear(); invalidateMapCache(); return true;
+  }
   if(effect.districtId === "ancient_guardian_core"){
     const bridge = (S.mapInteractables || []).find((item)=>item?.kind === "bridge");
     if(bridge){ bridge.routeOpen = true; bridge.label = effect.support?.protectedResearchRoute ? "Guardian Evacuation Route" : "Ancient Emergency Trail"; }
@@ -40727,6 +40743,7 @@ function activateMapInteractable(it){
       const ancientRuinsCommand = it.livingWorldSupportType === "ancient_ruins_command";
       const phantomJungleCommand = it.livingWorldSupportType === "phantom_jungle_command";
       const ancientGuardianCommand = it.livingWorldSupportType === "ancient_guardian_command";
+      const guardianEvacCommand = it.livingWorldSupportType === "guardian_evac_command";
       if(amaraHospital) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(crimsonCamp) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(veilOutpost) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
@@ -40751,6 +40768,7 @@ function activateMapInteractable(it){
       if(ancientRuinsCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(phantomJungleCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       if(ancientGuardianCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
+      if(guardianEvacCommand) S.medkits.M_SMALL = Math.max(0, Number(S.medkits.M_SMALL || 0)) + 1;
       S.armor = clamp(Number(S.armor || 0) + (kingsReachCommand ? 28 : (bloodfangCommand ? 32 : (nightveilCommand ? 30 : (deepwildLab ? 28 : (stormpeakCommand ? 30 : (whiteoutStation ? 26 : (silverpeakLodge ? 22 : (tidefangStation ? 28 : (floodplainClinic ? 26 : (brokenwaterStation ? 24 : (crownfallCommand ? 30 : (ironArmory ? 25 : (emberfallCommand ? 26 : (silentCommand ? 24 : (shadowCommand ? 28 : (riverveilStation ? 22 : (veilOutpost ? 20 : (crimsonCamp ? 24 : (amaraHospital ? 18 : (bloodrootClinic ? 12 : (jungleRanger ? 8 : 15))))))))))))))))))))), 0, S.armorCap || 100);
       const supportWeapon = equippedWeapon();
       const supportAmmoId = supportWeapon ? (bestAvailableAmmoIdForWeapon(supportWeapon) || supportWeapon.ammo) : "";
@@ -40776,6 +40794,10 @@ function activateMapInteractable(it){
         if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + 14;
       }
       if(ancientGuardianCommand){
+        S.armor = clamp(Number(S.armor || 0) + 15, 0, S.armorCap || 100);
+        if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + 12;
+      }
+      if(guardianEvacCommand){
         S.armor = clamp(Number(S.armor || 0) + 15, 0, S.armorCap || 100);
         if(supportAmmoId) S.ammoReserve[supportAmmoId] = Math.max(0, Number(S.ammoReserve[supportAmmoId] || 0)) + 12;
       }
@@ -40947,10 +40969,18 @@ function activateMapInteractable(it){
         S.scanPing = Math.max(Number(S.scanPing || 0), 680);
         S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
       }
+      if(guardianEvacCommand){
+        const supportRubberId = supportWeapon ? compatibleAmmoIdsForWeapon(supportWeapon, "rubber")[0] : "";
+        if(supportRubberId) S.ammoReserve[supportRubberId] = Math.max(0, Number(S.ammoReserve[supportRubberId] || 0)) + 24;
+        S.scanPing = Math.max(Number(S.scanPing || 0), 700);
+        S.trapsOwned = Math.max(0, Number(S.trapsOwned || 0)) + 1;
+      }
       it.uses = 0;
       it.cooldownUntil = now + 60000;
       it.activeUntil = now + 900;
-      interactionFeedback(ancientGuardianCommand
+      interactionFeedback(guardianEvacCommand
+        ? "🚁 Guardian Evacuation Command supplied +2 Med Kits, +30 Armor, +20 Ammo, 24 Rubber rounds, 1 Trap, and a convoy-and-helicopter-route scan."
+        : ancientGuardianCommand
         ? "🛕 Ancient Guardian Command supplied +2 Med Kits, +30 Armor, +20 Ammo, 32 Rubber rounds, 10 Tranq Darts, 1 Trap, and a Guardian-core scan."
         : phantomJungleCommand
         ? "👻 Phantom Jungle Command supplied +2 Med Kits, +34 Armor, +22 Ammo, 30 Rubber rounds, 8 Tranq Darts, 1 Trap, and a Phantom territory scan."
@@ -56357,7 +56387,7 @@ function drawMapInteractable(it){
       ctx.moveTo(it.x - 25, it.y + 14);
       ctx.lineTo(it.x + 25, it.y + 14);
       ctx.stroke();
-    }else if(it.livingWorldSupportType === "veil_outpost" || it.livingWorldSupportType === "silverpeak_lodge" || it.livingWorldSupportType === "whiteout_station" || it.livingWorldSupportType === "deepwild_lab" || it.livingWorldSupportType === "kings_reach_command" || it.livingWorldSupportType === "hidden_jungle_command" || it.livingWorldSupportType === "ancient_guardian_command"){
+    }else if(it.livingWorldSupportType === "veil_outpost" || it.livingWorldSupportType === "silverpeak_lodge" || it.livingWorldSupportType === "whiteout_station" || it.livingWorldSupportType === "deepwild_lab" || it.livingWorldSupportType === "kings_reach_command" || it.livingWorldSupportType === "hidden_jungle_command" || it.livingWorldSupportType === "ancient_guardian_command" || it.livingWorldSupportType === "guardian_evac_command"){
       ctx.fillStyle = it.livingWorldSupportType === "whiteout_station" ? "rgba(30,41,59,.98)" : "rgba(6,78,59,.97)";
       roundedRectFill(it.x - 31, it.y - 20, 62, 42, 7);
       ctx.strokeStyle = "rgba(110,231,183,.96)";
@@ -56407,7 +56437,7 @@ function drawMapInteractable(it){
       ctx.lineTo(it.x, it.y + 10);
       ctx.stroke();
     }
-    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","bloodfang_command","royal_fang_command","phantom_jungle_command","hidden_jungle_command","ancient_guardian_command","ancient_ruins_command","kings_reach_command","crownpath_command","veil_outpost","silverpeak_lodge","whiteout_station","deepwild_lab","riverveil_station","shadow_command","stormpeak_command","nightveil_command","silent_command","emberfall_command","crownfall_command","brokenwater_station","floodplain_clinic","tidefang_station"].includes(it.livingWorldSupportType)){
+    if(["jungle_ranger","iron_armory","bloodroot_clinic","amara_hospital","crimson_camp","bloodfang_command","royal_fang_command","phantom_jungle_command","hidden_jungle_command","ancient_guardian_command","guardian_evac_command","ancient_ruins_command","kings_reach_command","crownpath_command","veil_outpost","silverpeak_lodge","whiteout_station","deepwild_lab","riverveil_station","shadow_command","stormpeak_command","nightveil_command","silent_command","emberfall_command","crownfall_command","brokenwater_station","floodplain_clinic","tidefang_station"].includes(it.livingWorldSupportType)){
       const helpers = Math.max(1, Math.min(2, Number(it.returningCivilians || 0) || 1));
       for(let idx=0; idx<helpers; idx++){
         const hx = it.x + (idx === 0 ? -27 : 27);
@@ -56447,6 +56477,8 @@ function drawMapInteractable(it){
             ? (idx === 0 ? "#34d399" : "#c4b5fd")
           : it.livingWorldSupportType === "ancient_guardian_command"
             ? (idx === 0 ? "#bef264" : "#22d3ee")
+          : it.livingWorldSupportType === "guardian_evac_command"
+            ? (idx === 0 ? "#7dd3fc" : "#facc15")
           : it.livingWorldSupportType === "veil_outpost"
             ? (idx === 0 ? "#34d399" : "#22d3ee")
           : it.livingWorldSupportType === "royal_fang_command"

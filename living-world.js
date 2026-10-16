@@ -5,7 +5,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const PILOT_MAX_MISSION = 93;
+  const PILOT_MAX_MISSION = 97;
   const DISTRICTS = Object.freeze([
     Object.freeze({ id:"river_gate", name:"River Gate", missions:"1–3", minMission:1, maxMission:3, tigerPressure:52, settlementSafety:18 }),
     Object.freeze({ id:"jungle_spine", name:"Jungle Spine", missions:"4–7", minMission:4, maxMission:7, tigerPressure:62, settlementSafety:12 }),
@@ -35,6 +35,7 @@
     Object.freeze({ id:"ancient_ruins_corridor", name:"Ancient Ruins Corridor", missions:"84–87", minMission:84, maxMission:87, tigerPressure:95, settlementSafety:2 }),
     Object.freeze({ id:"phantom_jungle_finale", name:"Phantom Jungle Finale", missions:"88–90", minMission:88, maxMission:90, tigerPressure:98, settlementSafety:1 }),
     Object.freeze({ id:"ancient_guardian_core", name:"Ancient Guardian Core", missions:"91–93", minMission:91, maxMission:93, tigerPressure:98, settlementSafety:1 }),
+    Object.freeze({ id:"guardian_evacuation_front", name:"Guardian Evacuation Front", missions:"94–97", minMission:94, maxMission:97, tigerPressure:98, settlementSafety:1 }),
   ]);
 
   const clamp = (value, min, max)=>Math.min(max, Math.max(min, Number(value) || 0));
@@ -124,7 +125,7 @@
     const state = normalizeState(raw);
     const definition = districtForMission(missionLevel);
     const playerCount = Math.max(1, whole(options.playerCount) || 1);
-    const enabledDistrict = definition && ["river_gate", "jungle_spine", "iron_roar", "bloodroot_passage", "amara_haven", "crimson_hollow", "veil_canopy", "riverveil_crossing", "shadow_basin", "silent_village", "emberfall_ward", "crownfall_square", "brokenwater_reach", "floodplain_lifeline", "tidefang_delta", "silverpeak_ascent", "whiteout_descent", "stormpeak_summit", "deepwild_research", "nightveil_frontier", "bloodfang_dominion", "kings_reach", "crownpath_exodus", "royal_fang_citadel", "hidden_jungle_frontier", "ancient_ruins_corridor", "phantom_jungle_finale", "ancient_guardian_core"].includes(definition.id);
+    const enabledDistrict = definition && ["river_gate", "jungle_spine", "iron_roar", "bloodroot_passage", "amara_haven", "crimson_hollow", "veil_canopy", "riverveil_crossing", "shadow_basin", "silent_village", "emberfall_ward", "crownfall_square", "brokenwater_reach", "floodplain_lifeline", "tidefang_delta", "silverpeak_ascent", "whiteout_descent", "stormpeak_summit", "deepwild_research", "nightveil_frontier", "bloodfang_dominion", "kings_reach", "crownpath_exodus", "royal_fang_citadel", "hidden_jungle_frontier", "ancient_ruins_corridor", "phantom_jungle_finale", "ancient_guardian_core", "guardian_evacuation_front"].includes(definition.id);
     if(!enabledDistrict){
       return {
         enabled:false,
@@ -170,6 +171,7 @@
     const ruins = definition.id === "ancient_ruins_corridor";
     const phantom = definition.id === "phantom_jungle_finale";
     const guardian = definition.id === "ancient_guardian_core";
+    const evacuation = definition.id === "guardian_evacuation_front";
     const bossMission = whole(missionLevel) === 10;
     const protectedCaptureMission = whole(missionLevel) === 13;
     const protectedEscortMission = amara && [14,17].includes(whole(missionLevel));
@@ -196,7 +198,8 @@
     const protectedRuinsMission = ruins && [84,85,86,87].includes(whole(missionLevel));
     const protectedPhantomMission = phantom && [88,89,90].includes(whole(missionLevel));
     const protectedGuardianMission = guardian && [91,92,93].includes(whole(missionLevel));
-    let rawPatrols = (bossMission || protectedCaptureMission || protectedEscortMission || protectedCrimsonMission || protectedVeilMission || protectedRiverveilMission || protectedShadowMission || protectedSilentMission || protectedEmberMission || protectedCrownfallMission || protectedBrokenwaterMission || protectedFloodplainMission || protectedTidefangMission || protectedSilverpeakMission || protectedWhiteoutMission || protectedStormpeakMission || protectedDeepwildMission || protectedNightveilMission || protectedBloodfangMission || protectedKingsMission || protectedCrownpathMission || protectedRoyalFangMission || protectedHiddenMission || protectedRuinsMission || protectedPhantomMission || protectedGuardianMission) ? 0 : (amara
+    const protectedEvacuationMission = evacuation && [94,95,96,97].includes(whole(missionLevel));
+    let rawPatrols = (bossMission || protectedCaptureMission || protectedEscortMission || protectedCrimsonMission || protectedVeilMission || protectedRiverveilMission || protectedShadowMission || protectedSilentMission || protectedEmberMission || protectedCrownfallMission || protectedBrokenwaterMission || protectedFloodplainMission || protectedTidefangMission || protectedSilverpeakMission || protectedWhiteoutMission || protectedStormpeakMission || protectedDeepwildMission || protectedNightveilMission || protectedBloodfangMission || protectedKingsMission || protectedCrownpathMission || protectedRoyalFangMission || protectedHiddenMission || protectedRuinsMission || protectedPhantomMission || protectedGuardianMission || protectedEvacuationMission) ? 0 : (amara
       ? (district.tigerPressure >= 88 ? 2 : (district.tigerPressure >= 68 ? 1 : 0))
       : bloodroot
       ? (district.tigerPressure >= 86 ? 2 : (district.tigerPressure >= 66 ? 1 : 0))
@@ -208,10 +211,10 @@
     if(bloodroot && whole(missionLevel) === 12) rawPatrols = Math.min(1, rawPatrols);
     if(amara && whole(missionLevel) === 15) rawPatrols = Math.min(1, rawPatrols);
     const extraPatrols = playerCount <= 1 ? Math.min(1, rawPatrols) : rawPatrols;
-    const aggroPressureFloor = (ember || silent || crownpath || ruins) ? 35 : ((shadow || stormpeak || nightveil) ? 34 : ((riverveil || brokenwater || floodplain || tidefang) ? 36 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 35 : ((crimson || bloodfang || royalfang || phantom) ? 36 : (amara ? 41 : (bloodroot ? 40 : (iron ? 38 : (jungle ? 42 : 45))))))));
-    const aggroPressureRate = (ember || silent || crownpath || ruins) ? 0.004 : ((shadow || stormpeak || nightveil) ? 0.0042 : ((riverveil || brokenwater || floodplain || tidefang) ? 0.0039 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 0.0038 : ((crimson || bloodfang || royalfang || phantom) ? 0.004 : (amara ? 0.0035 : (bloodroot ? 0.0036 : (iron ? 0.0037 : (jungle ? 0.0034 : 0.003))))))));
-    const aggroScentRate = (ember || silent || crownpath || ruins) ? 0.006 : ((shadow || stormpeak || nightveil) ? 0.0062 : ((riverveil || brokenwater || floodplain || tidefang) ? 0.0058 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 0.006 : ((crimson || bloodfang || royalfang || phantom) ? 0.006 : (amara ? 0.0056 : (bloodroot ? 0.0058 : (iron ? 0.0055 : (jungle ? 0.005 : 0.0045))))))));
-    const calmingAggroReduction = (ember || silent || crownpath || ruins) && district.settlementSafety >= 24
+    const aggroPressureFloor = (ember || silent || crownpath || ruins || evacuation) ? 35 : ((shadow || stormpeak || nightveil) ? 34 : ((riverveil || brokenwater || floodplain || tidefang) ? 36 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 35 : ((crimson || bloodfang || royalfang || phantom) ? 36 : (amara ? 41 : (bloodroot ? 40 : (iron ? 38 : (jungle ? 42 : 45))))))));
+    const aggroPressureRate = (ember || silent || crownpath || ruins || evacuation) ? 0.004 : ((shadow || stormpeak || nightveil) ? 0.0042 : ((riverveil || brokenwater || floodplain || tidefang) ? 0.0039 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 0.0038 : ((crimson || bloodfang || royalfang || phantom) ? 0.004 : (amara ? 0.0035 : (bloodroot ? 0.0036 : (iron ? 0.0037 : (jungle ? 0.0034 : 0.003))))))));
+    const aggroScentRate = (ember || silent || crownpath || ruins || evacuation) ? 0.006 : ((shadow || stormpeak || nightveil) ? 0.0062 : ((riverveil || brokenwater || floodplain || tidefang) ? 0.0058 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 0.006 : ((crimson || bloodfang || royalfang || phantom) ? 0.006 : (amara ? 0.0056 : (bloodroot ? 0.0058 : (iron ? 0.0055 : (jungle ? 0.005 : 0.0045))))))));
+    const calmingAggroReduction = (ember || silent || crownpath || ruins || evacuation) && district.settlementSafety >= 24
       ? (district.settlementSafety >= 58 ? 0.15 : 0.09)
       : (shadow || stormpeak || nightveil) && district.settlementSafety >= 24
       ? (district.settlementSafety >= 58 ? 0.16 : 0.09)
@@ -221,10 +224,10 @@
       ? (district.settlementSafety >= 58 ? 0.15 : 0.09)
       : ((crimson || bloodfang || royalfang || phantom || crownfall) && district.settlementSafety >= 24 ? (district.settlementSafety >= 58 ? 0.14 : 0.08) : 0);
     const startingAggroBoost = clamp(Math.max(0, district.tigerPressure - aggroPressureFloor) * aggroPressureRate + district.bloodScent * aggroScentRate - calmingAggroReduction, 0, 0.65);
-    const directorPressureFloor = (ember || silent || crownpath || ruins) ? 38 : ((shadow || stormpeak || nightveil) ? 37 : ((riverveil || brokenwater || floodplain || tidefang) ? 40 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 39 : ((crimson || bloodfang || royalfang || phantom) ? 38 : (amara ? 45 : (bloodroot ? 44 : (iron ? 42 : (jungle ? 46 : 50))))))));
-    const directorPressureRate = (ember || silent || crownpath || ruins) ? 0.19 : ((shadow || stormpeak || nightveil) ? 0.20 : ((riverveil || brokenwater || floodplain || tidefang) ? 0.18 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 0.18 : ((crimson || bloodfang || royalfang || phantom) ? 0.19 : ((amara || bloodroot) ? 0.17 : (iron ? 0.18 : 0.16))))));
-    const directorScentRate = (ember || silent || crownpath || ruins) ? 0.16 : ((shadow || stormpeak || nightveil) ? 0.17 : ((riverveil || brokenwater || floodplain || tidefang) ? 0.15 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 0.16 : ((crimson || bloodfang || royalfang || phantom) ? 0.16 : (amara ? 0.14 : (bloodroot ? 0.15 : (iron ? 0.14 : (jungle ? 0.12 : 0.10))))))));
-    const calmingDirectorReduction = (ember || silent || crownpath || ruins) && district.settlementSafety >= 40
+    const directorPressureFloor = (ember || silent || crownpath || ruins || evacuation) ? 38 : ((shadow || stormpeak || nightveil) ? 37 : ((riverveil || brokenwater || floodplain || tidefang) ? 40 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 39 : ((crimson || bloodfang || royalfang || phantom) ? 38 : (amara ? 45 : (bloodroot ? 44 : (iron ? 42 : (jungle ? 46 : 50))))))));
+    const directorPressureRate = (ember || silent || crownpath || ruins || evacuation) ? 0.19 : ((shadow || stormpeak || nightveil) ? 0.20 : ((riverveil || brokenwater || floodplain || tidefang) ? 0.18 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 0.18 : ((crimson || bloodfang || royalfang || phantom) ? 0.19 : ((amara || bloodroot) ? 0.17 : (iron ? 0.18 : 0.16))))));
+    const directorScentRate = (ember || silent || crownpath || ruins || evacuation) ? 0.16 : ((shadow || stormpeak || nightveil) ? 0.17 : ((riverveil || brokenwater || floodplain || tidefang) ? 0.15 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 0.16 : ((crimson || bloodfang || royalfang || phantom) ? 0.16 : (amara ? 0.14 : (bloodroot ? 0.15 : (iron ? 0.14 : (jungle ? 0.12 : 0.10))))))));
+    const calmingDirectorReduction = (ember || silent || crownpath || ruins || evacuation) && district.settlementSafety >= 40
       ? (district.settlementSafety >= 65 ? 5 : 3)
       : (shadow || stormpeak || nightveil) && district.settlementSafety >= 40
       ? (district.settlementSafety >= 65 ? 6 : 3)
@@ -234,8 +237,8 @@
       ? (district.settlementSafety >= 65 ? 5 : 3)
       : ((crimson || bloodfang || royalfang || phantom || crownfall) && district.settlementSafety >= 40 ? (district.settlementSafety >= 65 ? 5 : 3) : 0);
     const directorPressureBonus = clamp(Math.round(Math.max(0, district.tigerPressure - directorPressureFloor) * directorPressureRate + district.bloodScent * directorScentRate) - calmingDirectorReduction, 0, 18);
-    const damageScentDivisor = (ember || silent || crownpath || ruins) ? 17 : ((shadow || stormpeak || nightveil) ? 16 : ((riverveil || brokenwater || floodplain || tidefang) ? 18 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 18 : ((crimson || bloodfang || royalfang || phantom) ? 16 : (amara ? 19 : (bloodroot ? 18 : (iron ? 16 : (jungle ? 18 : 20))))))));
-    const damageCap = (ember || silent || crownpath || ruins) ? 5 : ((shadow || stormpeak || nightveil) ? 6 : ((riverveil || brokenwater || floodplain || tidefang) ? 5 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 5 : ((crimson || bloodfang || royalfang || phantom) ? 6 : (amara ? 5 : (bloodroot ? 5 : (iron ? 6 : (jungle ? 5 : 4))))))));
+    const damageScentDivisor = (ember || silent || crownpath || ruins || evacuation) ? 17 : ((shadow || stormpeak || nightveil) ? 16 : ((riverveil || brokenwater || floodplain || tidefang) ? 18 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 18 : ((crimson || bloodfang || royalfang || phantom) ? 16 : (amara ? 19 : (bloodroot ? 18 : (iron ? 16 : (jungle ? 18 : 20))))))));
+    const damageCap = (ember || silent || crownpath || ruins || evacuation) ? 5 : ((shadow || stormpeak || nightveil) ? 6 : ((riverveil || brokenwater || floodplain || tidefang) ? 5 : ((veil || silverpeak || whiteout || deepwild || kings || hidden || guardian) ? 5 : ((crimson || bloodfang || royalfang || phantom) ? 6 : (amara ? 5 : (bloodroot ? 5 : (iron ? 6 : (jungle ? 5 : 4))))))));
     const damageBonus = clamp(Math.floor(district.bloodScent / damageScentDivisor), 0, damageCap);
     const support = crownfall ? {
       safeHouse:false, rangerStation:false, armoryDepot:false, fieldClinic:false, researchPost:false, fieldHospital:false,
@@ -257,7 +260,7 @@
       rubberAmmoMinimum:district.settlementSafety >= 58 ? 72 : (district.settlementSafety >= 24 ? 44 : 0),
       tranqMinimum:district.settlementSafety >= 58 ? 14 : (district.settlementSafety >= 24 ? 8 : 0),
       scanPing:district.settlementSafety >= 70 ? 460 : (district.settlementSafety >= 24 ? 380 : 0),
-    } : (ember || silent || crownpath || ruins) ? {
+    } : (ember || silent || crownpath || ruins || evacuation) ? {
       safeHouse:false,
       rangerStation:false,
       armoryDepot:false,
@@ -624,7 +627,8 @@
       tranqMinimum:0,
       scanPing:district.settlementSafety >= 75 ? 280 : 0,
     };
-    const patrolLabel = guardian ? "Ancient Guardian Stalker "
+    const patrolLabel = evacuation ? "Guardian Evacuation Stalker "
+      : guardian ? "Ancient Guardian Stalker "
       : phantom ? "Phantom Jungle Berserker "
       : ruins ? "Ancient Ruins Stalker "
       : hidden ? "Hidden Jungle Stalker "
@@ -652,7 +656,13 @@
       : iron ? "Armored rail-yard "
       : jungle ? "roaming Stalker "
       : "tiger ";
-    const pressureText = protectedGuardianMission
+    const pressureText = protectedEvacuationMission
+      ? (whole(missionLevel) === 94
+        ? "no added patrol around the ten-person convoy, four route checkpoints, and fourteen ambushers"
+        : (whole(missionLevel) === 95
+          ? "no added patrol inside the exact eighteen-tiger massive assault"
+          : (whole(missionLevel) === 96 ? "no added patrol around the eight trapped soldiers, four rally checkpoints, and fourteen hunters" : "no added patrol around the four flight crew, four helicopter stations, and fifteen attackers")))
+      : protectedGuardianMission
       ? (whole(missionLevel) === 91
         ? "no added patrol around the twelve-villager jungle-core evacuation and twelve pursuers"
         : (whole(missionLevel) === 92 ? "no added patrol inside the exact eighteen-tiger ancient aggression fight" : "no added patrol around the Elite Guardian and five temple guards"))
@@ -770,7 +780,15 @@
     const scentText = district.bloodScent > 0
       ? `blood scent adds +${damageBonus} close-range damage and faster starting aggression`
       : "no persistent blood-scent damage";
-    const supportBits = guardian
+    const supportBits = evacuation
+      ? [
+          support.villageCommand ? "Guardian Evacuation Command" : "evacuation command unavailable",
+          support.searchBeacons ? "ancient-convoy route beacons active" : "convoy beacons offline",
+          support.clinicRelay ? "trapped-patrol defense relay online" : "patrol defense relay offline",
+          support.evacCorridor ? "final helicopter corridor open" : "helicopter corridor unsecured",
+          `${support.medkitMinimum} Med Kit minimum`,
+        ]
+      : guardian
       ? [
           support.researchOutpost ? "Ancient Guardian Command" : "Guardian command unavailable",
           support.canopyBeacons ? "jungle-core evacuation beacons active" : "evacuation beacons offline",
@@ -988,10 +1006,10 @@
           support.safeHouse ? "River Gate Safe House" : "no Safe House",
           `${support.medkitMinimum} Med Kit minimum`,
         ];
-    if((jungle || iron || bloodroot || amara || crimson || veil || riverveil || shadow || silent || ember || crownfall || brokenwater || floodplain || tidefang || silverpeak || whiteout || stormpeak || deepwild || nightveil || bloodfang || kings || crownpath || royalfang || hidden || ruins || phantom || guardian) && support.returningCivilians > 0) supportBits.push(`${support.returningCivilians} returning civilian ${iron ? "worker" : ((bloodroot || amara || crimson || veil || riverveil || shadow || silent || ember || crownfall || brokenwater || floodplain || tidefang || silverpeak || whiteout || stormpeak || deepwild || nightveil || bloodfang || kings || crownpath || royalfang || hidden || ruins || phantom || guardian) ? "volunteer" : "helper")}${support.returningCivilians === 1 ? "" : "s"}`);
-    const defenseLabel = guardian ? "Guardian-core armor" : phantom ? "Phantom-vanguard armor" : ruins ? "ruins-expedition armor" : hidden ? "expedition-guard armor" : royalfang ? "Royal campaign armor" : crownpath ? "Crownpath evacuation armor" : kings ? "King's Reach escort armor" : bloodfang ? "Bloodfang research armor" : nightveil ? "night-base armor" : deepwild ? "research-guard armor" : stormpeak ? "summit-rescue armor" : whiteout ? "whiteout-rescue armor" : silverpeak ? "mountain-rescue armor" : tidefang ? "marine-rescue armor" : floodplain ? "flood-route armor" : brokenwater ? "river-rescue armor" : crownfall ? "Crownfall defense" : iron ? "powered-defense" : amara ? "escort-armor" : crimson ? "anti-swarm armor" : veil ? "canopy-guard armor" : riverveil ? "crossing-guard armor" : shadow ? "shadow-command armor" : ember ? "firebreak armor" : silent ? "village-rescue armor" : "clinic-armor";
-    if((iron || bloodroot || amara || crimson || veil || riverveil || shadow || silent || ember || crownfall || brokenwater || floodplain || tidefang || silverpeak || whiteout || stormpeak || deepwild || nightveil || bloodfang || kings || crownpath || royalfang || hidden || ruins || phantom || guardian) && support.damageReduction > 0) supportBits.push(`${support.damageReduction} ${defenseLabel} damage reduction`);
-    if((amara || veil || riverveil || shadow || silent || ember || brokenwater || floodplain || tidefang || silverpeak || whiteout || stormpeak || deepwild || nightveil || bloodfang || kings || crownpath || royalfang || hidden || ruins || phantom || guardian) && support.civilianDamageMul < 1) supportBits.push(`${Math.round((1 - support.civilianDamageMul) * 100)}% civilian protection`);
+    if((jungle || iron || bloodroot || amara || crimson || veil || riverveil || shadow || silent || ember || crownfall || brokenwater || floodplain || tidefang || silverpeak || whiteout || stormpeak || deepwild || nightveil || bloodfang || kings || crownpath || royalfang || hidden || ruins || phantom || guardian || evacuation) && support.returningCivilians > 0) supportBits.push(`${support.returningCivilians} returning civilian ${iron ? "worker" : ((bloodroot || amara || crimson || veil || riverveil || shadow || silent || ember || crownfall || brokenwater || floodplain || tidefang || silverpeak || whiteout || stormpeak || deepwild || nightveil || bloodfang || kings || crownpath || royalfang || hidden || ruins || phantom || guardian || evacuation) ? "volunteer" : "helper")}${support.returningCivilians === 1 ? "" : "s"}`);
+    const defenseLabel = evacuation ? "Guardian-evacuation armor" : guardian ? "Guardian-core armor" : phantom ? "Phantom-vanguard armor" : ruins ? "ruins-expedition armor" : hidden ? "expedition-guard armor" : royalfang ? "Royal campaign armor" : crownpath ? "Crownpath evacuation armor" : kings ? "King's Reach escort armor" : bloodfang ? "Bloodfang research armor" : nightveil ? "night-base armor" : deepwild ? "research-guard armor" : stormpeak ? "summit-rescue armor" : whiteout ? "whiteout-rescue armor" : silverpeak ? "mountain-rescue armor" : tidefang ? "marine-rescue armor" : floodplain ? "flood-route armor" : brokenwater ? "river-rescue armor" : crownfall ? "Crownfall defense" : iron ? "powered-defense" : amara ? "escort-armor" : crimson ? "anti-swarm armor" : veil ? "canopy-guard armor" : riverveil ? "crossing-guard armor" : shadow ? "shadow-command armor" : ember ? "firebreak armor" : silent ? "village-rescue armor" : "clinic-armor";
+    if((iron || bloodroot || amara || crimson || veil || riverveil || shadow || silent || ember || crownfall || brokenwater || floodplain || tidefang || silverpeak || whiteout || stormpeak || deepwild || nightveil || bloodfang || kings || crownpath || royalfang || hidden || ruins || phantom || guardian || evacuation) && support.damageReduction > 0) supportBits.push(`${support.damageReduction} ${defenseLabel} damage reduction`);
+    if((amara || veil || riverveil || shadow || silent || ember || brokenwater || floodplain || tidefang || silverpeak || whiteout || stormpeak || deepwild || nightveil || bloodfang || kings || crownpath || royalfang || hidden || ruins || phantom || guardian || evacuation) && support.civilianDamageMul < 1) supportBits.push(`${Math.round((1 - support.civilianDamageMul) * 100)}% civilian protection`);
     if((crimson || tidefang || bloodfang || royalfang || phantom) && support.bossRageReduction > 0) supportBits.push(`${support.bossRageReduction} ${phantom ? "Phantom Rage" : (tidefang ? "Giant River Tiger" : (royalfang ? "Tiger King Royal Rage" : (bloodfang ? "Legendary Blood Rage" : "Blood Rage")))} damage reduction`);
     if(shadow && support.stealthBossReduction > 0) supportBits.push(`${support.stealthBossReduction} Stealth Tiger damage reduction`);
     if(stormpeak && support.stealthBossReduction > 0) supportBits.push(`${support.stealthBossReduction} Mountain Alpha damage reduction`);
@@ -1002,7 +1020,7 @@
     if(support.tranqMinimum > 0) supportBits.push(`${support.tranqMinimum} tranq-charge minimum`);
     if(support.scanPing > 0) supportBits.push("settlement scout ping");
 
-    const missionPatrolType = (guardian || ruins || hidden || crownpath || kings || nightveil || deepwild || stormpeak || whiteout || silverpeak || tidefang || floodplain || brokenwater) ? "Stalker" : crownfall ? "Armored" : (ember || silent || shadow || riverveil || veil || amara || jungle) ? "Stalker" : (phantom || royalfang || crimson || bloodfang || bloodroot) ? "Berserker" : iron ? "Armored" : "Standard";
+    const missionPatrolType = (evacuation || guardian || ruins || hidden || crownpath || kings || nightveil || deepwild || stormpeak || whiteout || silverpeak || tidefang || floodplain || brokenwater) ? "Stalker" : crownfall ? "Armored" : (ember || silent || shadow || riverveil || veil || amara || jungle) ? "Stalker" : (phantom || royalfang || crimson || bloodfang || bloodroot) ? "Berserker" : iron ? "Armored" : "Standard";
     return {
       enabled:true,
       districtId:definition.id,

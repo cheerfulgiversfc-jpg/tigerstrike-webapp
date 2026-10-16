@@ -54,10 +54,10 @@ test("co-op characters are detailed and living tigers have no oval target ring",
   assert(!soldier.includes("ctx.translate(draw.x,draw.y);ctx.rotate(face)"), "the full soldier can never rotate upside down");
 });
 
-test("V10.32 uses one cache key for every gameplay module", () => {
-  assert(game.includes('const TS_BUILD = "5218"'));
+test("V10.33 uses one cache key for every gameplay module", () => {
+  assert(game.includes('const TS_BUILD = "5219"'));
   for(const file of ["game.js", "living-world.js", "squad-motion.js", "shared-battlefield-renderer.js", "squad-coop.js", "field-systems.js", "ammo-modes.js", "tutorial.js"]){
-    assert(html.includes(`${file}?v=5218-ancient-guardian-core`), `stale cache key for ${file}`);
+    assert(html.includes(`${file}?v=5219-guardian-evacuation-front`), `stale cache key for ${file}`);
   }
 });
 

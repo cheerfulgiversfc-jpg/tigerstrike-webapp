@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.32";
-  const MAX_MISSION = 93;
+  const VERSION = "10.33";
+  const MAX_MISSION = 97;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -301,6 +301,18 @@
     93:mission(93,"Elite Guardian Capture",10,0,6,1,"ground",[
       mark("guardian_tracking_command","research","Guardian Tracking Command",.22,.29), mark("temple_guard_perimeter","ruins","Five-Tiger Temple Guard Perimeter",.42,.42), mark("guardian_capture_zone","cage","Elite Guardian Live-Capture Zone",.61,.50), mark("guardian_conservation_pen","cage","Guardian Conservation Pen",.77,.65), mark("guardian_wildlife_transport","vehicle","Guardian Wildlife Transport",.90,.73)
     ],[point(.22,.29),point(.42,.42),point(.61,.50),point(.77,.65),point(.90,.73)]),
+    94:mission(94,"Ancient Jungle Convoy",10,10,14,0,"ground",[
+      mark("ancient_convoy_start","caravan","Ten-Person Convoy Start",.22,.34,"secure",true), mark("vine_covered_pass","trail","Vine-Covered Pass",.41,.59,"secure",true), mark("ancient_temple_road","road","Temple Road",.64,.34,"secure",true), mark("guardian_outpost","camp","Guardian Outpost",.80,.67,"secure",true), mark("convoy_extraction","safe","Ancient Convoy Extraction",.90,.73)
+    ],[point(.22,.34),point(.41,.59),point(.64,.34),point(.80,.67),point(.90,.73)]),
+    95:mission(95,"Massive Ancient Assault",10,0,18,0,"ground",[
+      mark("west_assault_route","forest","West Assault Route",.20,.34), mark("massive_assault_core","boss","Eighteen-Tiger Assault Core",.53,.49), mark("east_assault_route","forest","East Assault Route",.77,.34), mark("evacuation_fallback","barricade","Evacuation Fallback Line",.79,.66), mark("assault_extraction","safe","Assault Extraction",.90,.73)
+    ],[point(.20,.34),point(.53,.49),point(.77,.34),point(.79,.66),point(.90,.73)]),
+    96:mission(96,"Trapped Soldier Rescue",10,8,14,0,"ground",[
+      mark("patrol_distress_signal","beacon","Trapped Patrol Distress Signal",.22,.34,"secure",true), mark("patrol_rally_point","camp","Patrol Rally Point",.41,.59,"secure",true), mark("soldier_temple_exit","ruins","Temple Exit",.64,.34,"secure",true), mark("final_rescue_line","barricade","Final Rescue Line",.80,.67,"secure",true), mark("soldier_rescue_extraction","safe","Soldier Rescue Extraction",.90,.73)
+    ],[point(.22,.34),point(.41,.59),point(.64,.34),point(.80,.67),point(.90,.73)]),
+    97:mission(97,"Final Helicopter Defense",10,4,15,0,"helicopter",[
+      mark("helicopter_perimeter","helicopter","Helicopter Perimeter",.24,.35,"activate",true), mark("helicopter_fuel_station","fuel","Fuel Station",.43,.27,"activate",true), mark("helicopter_rotor_station","repair","Rotor Station",.65,.53,"activate",true), mark("final_boarding_zone","helicopter","Final Boarding Zone",.80,.67,"activate",true), mark("final_evac_helicopter","helicopter","Final Evacuation Helicopter",.90,.73)
+    ],[point(.24,.35),point(.43,.27),point(.65,.53),point(.80,.67),point(.90,.73)]),
   });
 
   function get(level){

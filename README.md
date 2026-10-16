@@ -840,6 +840,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Ancient Guardian Core persists as its own Living World district. Clean results unlock evacuation beacons, an ancient-pack warning perimeter, safer routes, Guardian Conservation Command, and humane capture supplies.
 - Solo and co-op use the same V10.32 mission-truth manifest, landmarks, routes, encounter counts, required Guardian capture, and persistent consequences.
 
+### V10.33 Guardian Evacuation Front + Mission Map Truth — Missions 94–97
+
+- Mission 94 escorts exactly 10 ancient-convoy members through 4 ordered checkpoints against 14 ambushers.
+- Mission 95 is the exact 18-tiger ancient assault and adds no fake side objective.
+- Mission 96 rescues exactly 8 trapped soldiers through 4 ordered rally checkpoints against 14 hunters.
+- Mission 97 protects 4 flight-crew members and 4 working helicopter stations against 15 attackers, then finishes with real helicopter extraction.
+- Guardian Evacuation Front persists across Solo and Shared Story with convoy beacons, a trapped-patrol defense relay, the final helicopter corridor, safer routes, and Guardian Evacuation Command supplies.
+- Solo and co-op use the same V10.33 mission-truth manifest, landmarks, routes, encounter counts, rescue requirements, and extraction type while retaining separate progression.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 

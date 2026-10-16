@@ -3,13 +3,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const truth = require("./mission-map-truth.js");
 
-assert.equal(truth.VERSION, "10.32");
-assert.equal(truth.MAX_MISSION, 93);
-assert.deepEqual(truth.validate(), [], "all Missions 1-93 must have valid authored map truth");
-assert.equal(Object.keys(truth.MISSIONS).length, 93, "exactly Missions 1-93 are covered");
-assert.equal(truth.get(94), null, "V10.32 must not silently reuse Mission 93 for later missions");
+assert.equal(truth.VERSION, "10.33");
+assert.equal(truth.MAX_MISSION, 97);
+assert.deepEqual(truth.validate(), [], "all Missions 1-97 must have valid authored map truth");
+assert.equal(Object.keys(truth.MISSIONS).length, 97, "exactly Missions 1-97 are covered");
+assert.equal(truth.get(98), null, "V10.33 must not silently reuse Mission 97 for later missions");
 
-for(let level=1; level<=93; level++){
+for(let level=1; level<=97; level++){
   const spec = truth.get(level);
   assert.equal(spec.level, level);
   assert(spec.landmarks.length >= 3, `Mission ${level} needs at least three meaningful map landmarks`);
@@ -159,6 +159,18 @@ assert.equal(truth.get(93).tigers, 6, "Mission 93 keeps the Elite Guardian and f
 assert.equal(truth.get(93).captures, 1, "Mission 93 requires the Elite Guardian captured alive");
 assert.equal(truth.get(93).requiredActionIds.length, 0, "Mission 93 adds no fake interaction beyond the live capture");
 assert.equal(truth.get(93).landmarks.filter((item)=>item.type === "cage").length, 2, "Mission 93 shows the Guardian capture zone and conservation pen");
+assert.equal(truth.get(94).civilians, 10, "Mission 94 keeps all ten ancient-convoy members");
+assert.equal(truth.get(94).tigers, 14, "Mission 94 keeps all fourteen convoy ambushers");
+assert.equal(truth.get(94).requiredActionIds.length, 4, "Mission 94 keeps four working convoy checkpoints");
+assert.equal(truth.get(95).tigers, 18, "Mission 95 keeps the exact eighteen-tiger ancient assault");
+assert.equal(truth.get(95).requiredActionIds.length, 0, "Mission 95 adds no fake side task to its focused assault");
+assert.equal(truth.get(96).civilians, 8, "Mission 96 keeps all eight trapped soldiers");
+assert.equal(truth.get(96).tigers, 14, "Mission 96 keeps all fourteen patrol hunters");
+assert.equal(truth.get(96).requiredActionIds.length, 4, "Mission 96 keeps four working patrol-rally checkpoints");
+assert.equal(truth.get(97).civilians, 4, "Mission 97 keeps all four flight-crew members");
+assert.equal(truth.get(97).tigers, 15, "Mission 97 keeps all fifteen helicopter attackers");
+assert.equal(truth.get(97).requiredActionIds.length, 4, "Mission 97 keeps four working helicopter stations");
+assert.equal(truth.get(97).extraction, "helicopter", "Mission 97 uses truthful helicopter extraction");
 
 const game = fs.readFileSync(path.join(__dirname, "game.js"), "utf8");
 const coop = fs.readFileSync(path.join(__dirname, "squad-coop.js"), "utf8");
@@ -168,11 +180,11 @@ assert(game.includes("drawMissionMapTruthOverlay({ mobileFast:true })"), "mobile
 assert(game.includes("drawMissionMapTruthOverlay({ mobileFast:false })"), "full map renders mission truth");
 assert(game.includes("missionMapTruthReady(S)"), "solo completion is gated by required visible map objectives");
 assert(game.includes("activateMissionMapTruthInteractable"), "mission landmarks have real player interaction");
-assert(game.includes("cfg.number <= 93"), "Solo Story applies exact Mission Map Truth counts through Mission 93");
+assert(game.includes("cfg.number <= 97"), "Solo Story applies exact Mission Map Truth counts through Mission 97");
 assert(server.includes('require("../../mission-map-truth")'), "Live Squad uses the same mission truth manifest");
 assert(server.includes("mapTruthLandmarks:mission.mapTruthLandmarks || []"), "Live Squad sends authored landmarks to both phones");
 assert(coop.includes("drawSharedMissionTruth(ctx,snap)"), "Live Squad renders the shared mission landmarks");
 assert(game.includes("missionMapTruthHazardTick"), "Solo Mission 37 fire is a real gameplay hazard");
-assert(html.includes("mission-map-truth.js?v=5218-ancient-guardian-core"), "mission truth loads before gameplay");
+assert(html.includes("mission-map-truth.js?v=5219-guardian-evacuation-front"), "mission truth loads before gameplay");
 
 console.log("mission-map-truth tests passed");
