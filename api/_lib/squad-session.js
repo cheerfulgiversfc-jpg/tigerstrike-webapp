@@ -2292,7 +2292,7 @@ function normalizeLivingWorldMission(raw){
   const src = raw && typeof raw === "object" ? raw : {};
   const support = src.support && typeof src.support === "object" ? src.support : {};
   return {
-    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit","deepwild_research","nightveil_frontier","bloodfang_dominion","kings_reach","crownpath_exodus","royal_fang_citadel","hidden_jungle_frontier","ancient_ruins_corridor","phantom_jungle_finale","ancient_guardian_core","guardian_evacuation_front"].includes(cleanText(src.districtId, 40)),
+    enabled:!!src.enabled && ["river_gate","jungle_spine","iron_roar","bloodroot_passage","amara_haven","crimson_hollow","veil_canopy","riverveil_crossing","shadow_basin","silent_village","emberfall_ward","crownfall_square","brokenwater_reach","floodplain_lifeline","tidefang_delta","silverpeak_ascent","whiteout_descent","stormpeak_summit","deepwild_research","nightveil_frontier","bloodfang_dominion","kings_reach","crownpath_exodus","royal_fang_citadel","hidden_jungle_frontier","ancient_ruins_corridor","phantom_jungle_finale","ancient_guardian_core","guardian_evacuation_front","ancient_temple_finale"].includes(cleanText(src.districtId, 40)),
     districtId:cleanText(src.districtId, 40),
     districtName:cleanText(src.districtName, 60),
     missionLevel:clamp(Math.floor(Number(src.missionLevel || 0)), 0, 100),
@@ -2371,6 +2371,7 @@ function livingWorldSettlementSupport(mission, effect){
   const open = effect?.enabled && (support.safeHouse || support.rangerStation || support.armoryDepot || support.fieldClinic || support.researchPost || support.fieldHospital || support.conservationCamp || support.researchOutpost || support.riverStation || support.shadowCommand || support.villageCommand);
   if(!open) return null;
   const presentations = {
+    ancient_temple_finale:{ x:.44, y:.66, type:"ancient_temple_command", label:support.bossWard ? "Ancient Tiger Ward Command" : "Ancient Temple Command" },
     guardian_evacuation_front:{ x:.40, y:.62, type:"guardian_evac_command", label:support.evacCorridor ? "Final Air-Evac Command" : "Guardian Evacuation Command" },
     ancient_guardian_core:{ x:.36, y:.62, type:"ancient_guardian_command", label:support.veilLab ? "Guardian Conservation Command" : "Ancient Guardian Command" },
     phantom_jungle_finale:{ x:.44, y:.66, type:"phantom_jungle_command", label:support.bossWard ? "Phantom Rage Ward Command" : "Phantom Jungle Command" },

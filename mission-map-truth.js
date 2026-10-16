@@ -5,8 +5,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(){
   "use strict";
 
-  const VERSION = "10.33";
-  const MAX_MISSION = 97;
+  const VERSION = "10.34";
+  const MAX_MISSION = 100;
   const point = (x, y)=>Object.freeze({ x, y });
   const mark = (id, type, label, x, y, action="", required=false)=>Object.freeze({
     id, type, label, x, y, action, required:!!required
@@ -313,6 +313,15 @@
     97:mission(97,"Final Helicopter Defense",10,4,15,0,"helicopter",[
       mark("helicopter_perimeter","helicopter","Helicopter Perimeter",.24,.35,"activate",true), mark("helicopter_fuel_station","fuel","Fuel Station",.43,.27,"activate",true), mark("helicopter_rotor_station","repair","Rotor Station",.65,.53,"activate",true), mark("final_boarding_zone","helicopter","Final Boarding Zone",.80,.67,"activate",true), mark("final_evac_helicopter","helicopter","Final Evacuation Helicopter",.90,.73)
     ],[point(.24,.35),point(.43,.27),point(.65,.53),point(.80,.67),point(.90,.73)]),
+    98:mission(98,"Final Tiger Swarm",10,0,18,0,"ground",[
+      mark("west_final_swarm","forest","West Final Swarm Territory",.20,.34), mark("final_swarm_core","boss","Eighteen-Tiger Final Swarm",.53,.49), mark("east_final_swarm","forest","East Final Swarm Territory",.77,.34), mark("temple_fallback_line","barricade","Ancient Temple Fallback Line",.79,.66), mark("final_swarm_extraction","safe","Final Swarm Extraction",.90,.73)
+    ],[point(.20,.34),point(.53,.49),point(.77,.34),point(.79,.66),point(.90,.73)]),
+    99:mission(99,"Ancient Temple Entry",10,0,14,0,"ground",[
+      mark("outer_guardian_seal","ruins","Outer Guardian Seal",.24,.35,"activate",true), mark("vine_chamber_seal","ruins","Vine Chamber Seal",.43,.59,"activate",true), mark("ancient_sun_seal","ruins","Ancient Sun Seal",.65,.34,"activate",true), mark("inner_temple_seal","ruins","Inner Temple Seal",.80,.67,"activate",true), mark("ancient_temple_extraction","safe","Ancient Temple Extraction",.90,.73)
+    ],[point(.24,.35),point(.43,.59),point(.65,.34),point(.80,.67),point(.90,.73)]),
+    100:mission(100,"The Ancient Tiger",10,0,1,0,"ground",[
+      mark("ancient_command_post","research","Ancient Tiger Command",.22,.29), mark("ancient_temple_gate","ruins","Ancient Temple Gate",.39,.43), mark("ancient_tiger_arena","boss","8,500-HP Ancient Tiger Arena",.58,.50), mark("guardian_rage_perimeter","barricade","Guardian Rage Perimeter",.75,.62), mark("campaign_final_extraction","safe","Story Campaign Final Extraction",.90,.73)
+    ],[point(.22,.29),point(.39,.43),point(.58,.50),point(.75,.62),point(.90,.73)]),
   });
 
   function get(level){

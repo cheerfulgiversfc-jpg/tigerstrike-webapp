@@ -849,6 +849,14 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Guardian Evacuation Front persists across Solo and Shared Story with convoy beacons, a trapped-patrol defense relay, the final helicopter corridor, safer routes, and Guardian Evacuation Command supplies.
 - Solo and co-op use the same V10.33 mission-truth manifest, landmarks, routes, encounter counts, rescue requirements, and extraction type while retaining separate progression.
 
+### V10.34 Ancient Temple Finale + Mission Map Truth — Missions 98–100
+
+- Mission 98 is the exact 18-tiger final swarm and adds no fake side objective.
+- Mission 99 keeps exactly 14 temple guards and all 4 ordered guardian seals as working objectives.
+- Mission 100 keeps one 8,500-HP Ancient Tiger. Defeating it or capturing it alive remains valid, so live capture is not falsely required.
+- Ancient Temple Finale persists as the final Living World district. Clean results unlock final-swarm sensors, guardian-seal defenses, Ancient Tiger Ward Command, and final-battle supplies.
+- Solo and co-op use the same V10.34 mission-truth manifest, landmarks, routes, exact encounters, optional final capture rule, and campaign-ending extraction while retaining separate progression.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
