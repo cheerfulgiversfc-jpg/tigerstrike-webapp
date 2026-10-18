@@ -62,8 +62,8 @@ test("music unlocks from a gesture and respects both audio controls", () => {
   assert(html.includes('id="musicLblMobile"'));
 });
 
-test("V11.1 cache key forces Telegram to load Shared Living World", () => {
-  assert(game.includes('const TS_BUILD = "5222"'));
-  assert(html.includes("game.js?v=5222-shared-living-world"));
-  assert(html.includes("tutorial.js?v=5222-shared-living-world"));
+test("V11.2 cache key forces Telegram to load Living District Recovery", () => {
+  assert(game.includes('const TS_BUILD = "5223"'));
+  assert(html.includes("game.js?v=5223-living-district-recovery"));
+  assert(html.includes("tutorial.js?v=5223-living-district-recovery"));
 });

@@ -8,8 +8,8 @@ const game=fs.readFileSync("game.js","utf8");
 const html=fs.readFileSync("index.html","utf8");
 const squad=fs.readFileSync("squad-coop.js","utf8");
 
-test("V11.1 exposes exactly three real post-campaign crisis types",()=>{
-  assert.equal(postCampaign.VERSION,"11.1");
+test("V11.2 exposes exactly three real post-campaign crisis types",()=>{
+  assert.equal(postCampaign.VERSION,"11.2");
   assert.deepEqual(postCampaign.CRISIS_TYPES.map((row)=>row.id),[
     "settlement_siege","escaped_alpha","government_raid",
   ]);
@@ -68,15 +68,64 @@ test("post-campaign launch, completion, replay, and save migration are wired",()
   assert(game.includes("postCampaignCompleted:{}"));
   assert(game.includes("postCampaignEndingSeen:false"));
   assert(game.includes("wm.postCampaignCompleted[runId]"),"duplicate crisis rewards need a receipt guard");
+  assert(game.includes("if(wm.postCampaignOperation?.active) return \"\";"),"crisis must not also apply the ordinary Story district outcome");
   assert(game.includes("returnAfterComplete = true"));
   assert(game.includes("_forceGovernmentResponse"));
   assert(game.includes("openEnding?.(endingInfo.finalChoice, endingInfo)"));
-  assert(html.includes("View all 30 command districts")||game.includes("View all 30 command districts"));
+  assert(html.includes("Rebuild all 30 command districts")||game.includes("Rebuild all 30 command districts"));
 });
 
-test("release labels and cache point at V11.1",()=>{
-  assert(html.includes("V11.1"));
-  assert(html.includes("5222-shared-living-world"));
-  assert(squad.includes("Tiger Strike V11.1"));
+test("recovery projects have real costs, levels, and district effects",()=>{
+  const living=livingWorld.defaultState();
+  const recovery=postCampaign.normalizeRecovery(null,livingWorld.DISTRICTS);
+  assert.equal(postCampaign.RECOVERY_PROJECTS.length,3);
+  const before={...living.districts.river_gate};
+  const result=postCampaign.fundRecoveryProject(recovery,living,livingWorld.DISTRICTS,"river_gate","field_clinic",50000);
+  assert.equal(result.applied,true);
+  assert.equal(result.level,1);
+  assert.equal(result.fundsRemaining,40000);
+  assert(result.after.settlementSafety>before.settlementSafety);
+  assert(result.after.tigerPressure<before.tigerPressure);
+  assert(postCampaign.recoveryCost("field_clinic",1)>postCampaign.recoveryCost("field_clinic",0));
+});
+
+test("crisis outcomes change only their real district and reject duplicate receipts",()=>{
+  const living=livingWorld.defaultState();
+  const operation={runId:"POST-88-settlement_siege-river_gate",typeId:"settlement_siege",districtId:"river_gate",districtName:"River Gate"};
+  const result=postCampaign.applyCrisisDistrictOutcome(living,operation,{rescues:6,captures:1,kills:0,civiliansLost:0});
+  assert.equal(result.applied,true);
+  assert(result.after.settlementSafety>result.before.settlementSafety);
+  assert(result.after.tigerPressure<result.before.tigerPressure);
+  const duplicate=postCampaign.applyCrisisDistrictOutcome(result.state,operation,{rescues:6});
+  assert.equal(duplicate.applied,false);
+  assert.equal(duplicate.reason,"duplicate");
+});
+
+test("high-risk crises spread once per cycle and recovery defenses reduce the damage",()=>{
+  const living=livingWorld.defaultState();
+  const source=livingWorld.DISTRICTS[0];
+  living.districts[source.id].tigerPressure=96;
+  living.districts[source.id].bloodScent=100;
+  living.districts[source.id].settlementSafety=0;
+  const recovery=postCampaign.normalizeRecovery({lastCycle:90},livingWorld.DISTRICTS);
+  const spread=postCampaign.advanceCrisisSpread(living,livingWorld.DISTRICTS,recovery,91);
+  assert.equal(spread.applied,true);
+  assert(spread.events.length>=1);
+  const defendedRecovery=postCampaign.normalizeRecovery({lastCycle:90},livingWorld.DISTRICTS);
+  const targetId=spread.events[0].targetId;
+  for(const project of postCampaign.RECOVERY_PROJECTS) defendedRecovery.projects[targetId][project.id]=project.maxLevel;
+  const defended=postCampaign.advanceCrisisSpread(living,livingWorld.DISTRICTS,defendedRecovery,91);
+  const defendedEvent=defended.events.find((event)=>event.targetId===targetId);
+  assert(defendedEvent);
+  assert(defendedEvent.pressureRise<spread.events[0].pressureRise);
+  const repeated=postCampaign.advanceCrisisSpread(spread.state,livingWorld.DISTRICTS,spread.recovery,91);
+  assert.equal(repeated.applied,false);
+  assert.equal(repeated.reason,"already-applied");
+});
+
+test("release labels and cache point at V11.2",()=>{
+  assert(html.includes("V11.2"));
+  assert(html.includes("5223-living-district-recovery"));
+  assert(squad.includes("Tiger Strike V11.2"));
   assert.equal(/V10\.34/.test(squad),false);
 });

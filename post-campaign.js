@@ -5,8 +5,13 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function(root){
   "use strict";
 
-  const VERSION = "11.1";
+  const VERSION = "11.2";
   const CYCLE_MS = 12 * 60 * 60 * 1000;
+  const RECOVERY_PROJECTS = Object.freeze([
+    Object.freeze({ id:"field_clinic", icon:"🏥", name:"Field Clinic", desc:"Protects civilians and restores settlement safety.", baseCost:10000, maxLevel:3, safety:8, pressure:-3, bloodScent:0 }),
+    Object.freeze({ id:"ranger_watch", icon:"🗼", name:"Ranger Watch", desc:"Detects roaming packs before they reach the district.", baseCost:15000, maxLevel:3, safety:5, pressure:-8, bloodScent:-2 }),
+    Object.freeze({ id:"conservation_corridor", icon:"🌿", name:"Conservation Corridor", desc:"Moves tigers away from settlements and clears blood scent.", baseCost:20000, maxLevel:3, safety:4, pressure:-6, bloodScent:-10 }),
+  ]);
   const CRISIS_TYPES = Object.freeze([
     Object.freeze({
       id:"settlement_siege", coopLaunchType:"crisis-settlement-siege", icon:"🏘️", name:"Settlement Siege",
@@ -47,11 +52,114 @@
     });
   }
   const normalizeDistricts=(districts)=>Array.isArray(districts)?districts.filter((row)=>row&&row.id):[];
+  const clamp=(value,min,max)=>Math.max(min,Math.min(max,Number(value)||0));
+  const clone=(value)=>JSON.parse(JSON.stringify(value||{}));
+  const projectById=(id)=>RECOVERY_PROJECTS.find((row)=>row.id===String(id||""))||null;
+  function normalizeRecovery(raw={},districts=[]){
+    const src=raw&&typeof raw==="object"?raw:{};
+    const projects={};
+    for(const district of normalizeDistricts(districts)){
+      const current=src.projects?.[district.id]||{};
+      projects[district.id]={};
+      for(const project of RECOVERY_PROJECTS) projects[district.id][project.id]=clamp(Math.floor(Number(current[project.id]||0)),0,project.maxLevel);
+    }
+    return {
+      version:2,
+      projects,
+      totalInvested:Math.max(0,Math.floor(Number(src.totalInvested||0))),
+      totalProjects:Math.max(0,Math.floor(Number(src.totalProjects||0))),
+      lastCycle:Math.max(0,Math.floor(Number(src.lastCycle||0))),
+      spreadReceipts:src.spreadReceipts&&typeof src.spreadReceipts==="object"?{...src.spreadReceipts}:{},
+      spreadEvents:Array.isArray(src.spreadEvents)?src.spreadEvents.slice(-10):[],
+    };
+  }
+  function recoveryCost(projectId,currentLevel=0){
+    const project=projectById(projectId);
+    if(!project)return 0;
+    return Math.round(project.baseCost*(1+clamp(Math.floor(Number(currentLevel||0)),0,project.maxLevel)*0.55));
+  }
+  function recoveryStatus(districtState={},districtRecovery={}){
+    const levels=RECOVERY_PROJECTS.reduce((sum,project)=>sum+clamp(Math.floor(Number(districtRecovery?.[project.id]||0)),0,project.maxLevel),0);
+    const pressure=clamp(districtState.tigerPressure,0,100),safety=clamp(districtState.settlementSafety,0,100),blood=clamp(districtState.bloodScent,0,100);
+    const risk=clamp(Math.round(pressure+blood*.45-safety*.30-levels*4),0,100);
+    const tier=levels>=8?"Restored":levels>=5?"Rebuilding":levels>=2?"Stabilizing":"Exposed";
+    return { levels, tier, risk, spreadShield:clamp(levels*2,0,18) };
+  }
+  function fundRecoveryProject(rawRecovery,rawLiving,districts,districtId,projectId,availableFunds=0){
+    const defs=normalizeDistricts(districts),district=defs.find((row)=>row.id===String(districtId||"")),project=projectById(projectId);
+    const recovery=normalizeRecovery(rawRecovery,defs),living=clone(rawLiving);
+    if(!district||!project||!living?.districts?.[district.id]) return {applied:false,reason:"unavailable",recovery,livingState:living,fundsRemaining:availableFunds};
+    const level=clamp(Math.floor(Number(recovery.projects[district.id]?.[project.id]||0)),0,project.maxLevel);
+    if(level>=project.maxLevel)return {applied:false,reason:"max-level",recovery,livingState:living,fundsRemaining:availableFunds};
+    const cost=recoveryCost(project.id,level),funds=Math.max(0,Math.floor(Number(availableFunds||0)));
+    if(funds<cost)return {applied:false,reason:"insufficient-funds",cost,recovery,livingState:living,fundsRemaining:funds};
+    recovery.projects[district.id][project.id]=level+1;
+    recovery.totalInvested+=cost;recovery.totalProjects+=1;
+    const before={...living.districts[district.id]};
+    const after={...before,
+      settlementSafety:clamp(Math.round(Number(before.settlementSafety||0)+project.safety),0,100),
+      tigerPressure:clamp(Math.round(Number(before.tigerPressure||0)+project.pressure),5,96),
+      bloodScent:clamp(Math.round(Number(before.bloodScent||0)+project.bloodScent),0,100),
+      lastUpdatedAt:Date.now(),
+    };
+    living.districts[district.id]=after;
+    living.headline=`${district.name}: ${project.name} upgraded to Level ${level+1}. Safety ${before.settlementSafety}% → ${after.settlementSafety}%.`;
+    living.lastUpdatedAt=Date.now();
+    return {applied:true,cost,level:level+1,project,district,before,after,recovery,livingState:living,fundsRemaining:funds-cost,summary:living.headline};
+  }
+  function applyCrisisDistrictOutcome(rawLiving,operation={},stats={}){
+    const living=clone(rawLiving),districtId=String(operation.districtId||""),district=living?.districts?.[districtId];
+    if(!district)return {applied:false,reason:"district-missing",state:living};
+    living.receipts=living.receipts&&typeof living.receipts==="object"?living.receipts:{};
+    const receipt=`crisis:${String(operation.runId||`${operation.typeId}:${districtId}`)}`;
+    if(living.receipts[receipt])return {applied:false,reason:"duplicate",state:living,before:{...district},after:{...district}};
+    const rescues=Math.max(0,Math.floor(Number(stats.rescues??stats.evac??0))),captures=Math.max(0,Math.floor(Number(stats.captures||0))),kills=Math.max(0,Math.floor(Number(stats.kills||0))),lost=Math.max(0,Math.floor(Number(stats.civiliansLost??stats.civDead??0)));
+    const profile=operation.typeId==="escaped_alpha"?{pressure:-14,safety:6,blood:-6}:operation.typeId==="government_raid"?{pressure:-9,safety:9,blood:-2}:{pressure:-11,safety:12,blood:-3};
+    const before={...district};
+    const after={...before,
+      tigerPressure:clamp(Math.round(Number(before.tigerPressure||0)+profile.pressure-captures*2+kills+lost*4),5,96),
+      settlementSafety:clamp(Math.round(Number(before.settlementSafety||0)+profile.safety+rescues-lost*5),0,100),
+      bloodScent:clamp(Math.round(Number(before.bloodScent||0)+profile.blood+kills*5-captures*2),0,100),
+      clears:Math.max(0,Number(before.clears||0))+1,
+      rescues:Math.max(0,Number(before.rescues||0))+rescues,
+      captures:Math.max(0,Number(before.captures||0))+captures,
+      kills:Math.max(0,Number(before.kills||0))+kills,
+      civiliansLost:Math.max(0,Number(before.civiliansLost||0))+lost,
+      lastUpdatedAt:Date.now(),
+    };
+    living.districts[districtId]=after;living.receipts[receipt]=Date.now();living.receipts=Object.fromEntries(Object.entries(living.receipts).slice(-100));
+    living.headline=`${operation.districtName||districtId}: crisis resolved. Tiger pressure ${before.tigerPressure}% → ${after.tigerPressure}%; safety ${before.settlementSafety}% → ${after.settlementSafety}%.`;
+    living.lastUpdatedAt=Date.now();
+    return {applied:true,receipt,state:living,before,after,summary:living.headline};
+  }
+  function advanceCrisisSpread(rawLiving,districts,rawRecovery,currentCycle=cycleKey()){
+    const defs=normalizeDistricts(districts),living=clone(rawLiving),recovery=normalizeRecovery(rawRecovery,defs),cycle=Math.max(0,Math.floor(Number(currentCycle||0)));
+    if(!recovery.lastCycle){recovery.lastCycle=cycle;return {applied:false,reason:"initialized",state:living,recovery,events:[]};}
+    const receipt=`spread:${cycle}`;
+    if(cycle<=recovery.lastCycle||recovery.spreadReceipts[receipt])return {applied:false,reason:"already-applied",state:living,recovery,events:[]};
+    const sources=defs.map((definition,index)=>({definition,index,status:recoveryStatus(living.districts?.[definition.id],recovery.projects[definition.id])})).filter((row)=>row.status.risk>=62).sort((a,b)=>b.status.risk-a.status.risk).slice(0,3);
+    const used=new Set(),events=[];
+    for(const source of sources){
+      const direction=hash(`${cycle}:${source.definition.id}`)%2?1:-1;
+      const target=defs[(source.index+direction+defs.length)%defs.length];
+      if(!target||target.id===source.definition.id||used.has(target.id)||!living.districts?.[target.id])continue;
+      used.add(target.id);
+      const targetRecovery=recoveryStatus(living.districts[target.id],recovery.projects[target.id]);
+      const pressureRise=Math.max(1,8-Math.floor(targetRecovery.spreadShield/3)),bloodRise=Math.max(0,4-Math.floor(targetRecovery.spreadShield/5)),safetyLoss=Math.max(0,3-Math.floor(targetRecovery.spreadShield/6));
+      const before={...living.districts[target.id]};
+      const after={...before,tigerPressure:clamp(Number(before.tigerPressure||0)+pressureRise,5,96),bloodScent:clamp(Number(before.bloodScent||0)+bloodRise,0,100),settlementSafety:clamp(Number(before.settlementSafety||0)-safetyLoss,0,100),lastUpdatedAt:Date.now()};
+      living.districts[target.id]=after;
+      events.push({cycle,sourceId:source.definition.id,sourceName:source.definition.name,targetId:target.id,targetName:target.name,pressureRise,bloodRise,safetyLoss,shield:targetRecovery.spreadShield});
+    }
+    recovery.lastCycle=cycle;recovery.spreadReceipts[receipt]=Date.now();recovery.spreadReceipts=Object.fromEntries(Object.entries(recovery.spreadReceipts).slice(-24));recovery.spreadEvents=[...recovery.spreadEvents,...events].slice(-10);
+    if(events.length){living.headline=`Crisis spread: ${events.map((event)=>`${event.sourceName} → ${event.targetName}`).join(" • ")}.`;living.lastUpdatedAt=Date.now();}
+    return {applied:events.length>0,reason:events.length?"spread":"stable",state:living,recovery,events};
+  }
 
   function cycleKey(now=Date.now()){
     return Math.floor(Math.max(0,Number(now)||Date.now())/CYCLE_MS);
   }
-  function crisisBoard(districts, livingState=null, now=Date.now()){
+  function crisisBoard(districts, livingState=null, now=Date.now(), rawRecovery=null){
     const rows=normalizeDistricts(districts);
     if(!rows.length) return [];
     const cycle=cycleKey(now);
@@ -67,7 +175,8 @@
       used.add(pick.district.id);
       const span=Math.max(1,Number(pick.district.maxMission||1)-Number(pick.district.minMission||1)+1);
       const missionLevel=Math.max(1,Math.min(100,Number(pick.district.minMission||1)+(hash(`${cycle}:${type.id}:mission`)%span)));
-      return { ...type, districtId:pick.district.id, districtName:pick.district.name, missionLevel, cycle };
+      const recovery=normalizeRecovery(rawRecovery,rows),status=recoveryStatus(livingState?.districts?.[pick.district.id]||pick.district,recovery.projects[pick.district.id]);
+      return { ...type, districtId:pick.district.id, districtName:pick.district.name, missionLevel, cycle, risk:status.risk, recoveryTier:status.tier };
     });
   }
   function applyCrisisProfile(config, operation){
@@ -112,7 +221,6 @@
   const ENDING_DURATION=16000;
   let movie=null;
   const el=(id)=>root.document?.getElementById(id)||null;
-  const clamp=(n,a,b)=>Math.max(a,Math.min(b,Number(n)||0));
   const sceneFor=(choice,elapsed)=>{
     const scenes=ENDING_SCENES[choice]||ENDING_SCENES.KILL;
     return [...scenes].reverse().find((scene)=>elapsed>=scene.at)||scenes[0];
@@ -156,5 +264,5 @@
   root.openPostCampaignEnding=openEnding;
   root.replayPostCampaignEnding=replayEnding;
   root.closePostCampaignEnding=closeEnding;
-  return Object.freeze({VERSION,CYCLE_MS,CRISIS_TYPES,ENDING_SCENES,ENDING_DURATION,crisisById,crisisByLaunchType,isCrisisLaunchType,difficultyForPlayers,cycleKey,crisisBoard,applyCrisisProfile,sceneFor,drawEndingFrame,openEnding,replayEnding,closeEnding});
+  return Object.freeze({VERSION,CYCLE_MS,CRISIS_TYPES,RECOVERY_PROJECTS,ENDING_SCENES,ENDING_DURATION,crisisById,crisisByLaunchType,isCrisisLaunchType,difficultyForPlayers,projectById,normalizeRecovery,recoveryCost,recoveryStatus,fundRecoveryProject,applyCrisisDistrictOutcome,advanceCrisisSpread,cycleKey,crisisBoard,applyCrisisProfile,sceneFor,drawEndingFrame,openEnding,replayEnding,closeEnding});
 });

@@ -873,6 +873,15 @@ Live Squad now uses a Story-style shared district instead of the original placeh
 - Every participating Telegram player receives a separate co-op profile reward protected by a crisis-cycle receipt, so reopening or creating another room cannot pay the same rotating crisis twice.
 - Government Response Raid renders and validates four government response units separately from its five tigers. Government units cannot be tranquilized or captured.
 
+### V11.2 Living District Recovery
+
+- Completing a post-campaign crisis now changes the exact district where it happened. Civilian rescues and live captures improve safety and reduce pressure, while lethal kills and civilian losses can preserve blood scent and danger.
+- High-risk districts can spread tiger pressure into a neighboring district once per 12-hour command cycle. Every spread is receipt-protected, recorded in the Crisis Spread Monitor, and applied only once.
+- Every one of the thirty command districts has three permanent recovery projects: Field Clinic, Ranger Watch, and Conservation Corridor. Each project has three real upgrade levels, a rising cash cost, and immediate safety, pressure, or blood-scent effects.
+- Recovery levels reduce incoming crisis spread. Fully rebuilt districts move through Exposed, Stabilizing, Rebuilding, and Restored states instead of displaying a cosmetic label.
+- Solo crisis outcomes update the Solo Living World. Each Telegram player's Shared Living World outcome remains separate in their server-owned co-op profile and is synchronized into the command network after the once-only reward claim.
+- Story Missions 1–100, the three real crisis operations, drop-in co-op, reconnection, player scaling, and duplicate-proof rewards remain unchanged.
+
 ## Bot Phase 3B + 3C
 Phase 3B adds conversion analytics. Phase 3C adds scheduled LiveOps campaign posts.
 
